@@ -1,17 +1,26 @@
 package team
 
+import "sync"
+
 type OrchestrationTemplate interface {
 	ID() string
 	BuildEdges(def Definition, agentIDs []string) []embeddedGraphEdge
 }
 
-var templateRegistry = map[string]OrchestrationTemplate{}
+var (
+	templateRegistry   = map[string]OrchestrationTemplate{}
+	templateRegistryMu sync.RWMutex
+)
 
 func RegisterTemplate(t OrchestrationTemplate) {
+	templateRegistryMu.Lock()
+	defer templateRegistryMu.Unlock()
 	templateRegistry[t.ID()] = t
 }
 
 func LookupTemplate(mode string) OrchestrationTemplate {
+	templateRegistryMu.RLock()
+	defer templateRegistryMu.RUnlock()
 	return templateRegistry[mode]
 }
 

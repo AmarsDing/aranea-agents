@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/runtime"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
 )
 
@@ -75,7 +76,11 @@ func (r *ChannelRuntime) Start(parent context.Context) {
 	ctx, cancel := context.WithCancel(parent)
 	r.cancel = cancel
 	safego.Go(ctx, "channel_runtime.reload_loop", func() {
-		_ = r.mgr.Reload(ctx)
+		if err := r.mgr.Reload(ctx); err != nil {
+			event.SysLogWarn("channel.runtime.reload_failed", "渠道运行时 Reload 失败",
+				event.P("error", err.Error()),
+			)
+		}
 		interval := RuntimeReloadInterval()
 		if interval <= 0 {
 			<-ctx.Done()
@@ -88,7 +93,11 @@ func (r *ChannelRuntime) Start(parent context.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				_ = r.mgr.Reload(ctx)
+				if err := r.mgr.Reload(ctx); err != nil {
+					event.SysLogWarn("channel.runtime.reload_failed", "渠道运行时 Reload 失败",
+						event.P("error", err.Error()),
+					)
+				}
 			}
 		}
 	})
@@ -99,7 +108,11 @@ func (r *ChannelRuntime) Reload(ctx context.Context) {
 	if r == nil || r.mgr == nil || ChannelRuntimeDisabled() {
 		return
 	}
-	_ = r.mgr.Reload(ctx)
+	if err := r.mgr.Reload(ctx); err != nil {
+		event.SysLogWarn("channel.runtime.reload_failed", "渠道运行时 Reload 失败",
+			event.P("error", err.Error()),
+		)
+	}
 }
 
 // ConnectionInfo returns live connector state for a channel (F-01b).

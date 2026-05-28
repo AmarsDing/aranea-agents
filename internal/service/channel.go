@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/channel/lark"
 	"aranea-agents/internal/channel/slack"
 	"aranea-agents/internal/channel/telegram"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/strutil"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -283,7 +284,12 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *v1.UpdateChanne
 		return nil, err
 	}
 	if biz.RoutingTargetChanged(current.ConfigJSON, c.ConfigJSON) && s.peers != nil {
-		_, _ = s.peers.DeleteByChannelID(ctx, c.ID)
+		if _, err := s.peers.DeleteByChannelID(ctx, c.ID); err != nil {
+			event.SysLogWarn("channel.peer.delete_failed", "删除渠道 Peer 绑定失败",
+				event.P("channel_id", c.ID),
+				event.P("error", err.Error()),
+			)
+		}
 	}
 	s.reloadRuntime(ctx)
 	return bizChannelToProto(c), nil

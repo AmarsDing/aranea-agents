@@ -51,6 +51,7 @@ export function useAgentSettingsPage() {
     truncateStrategyOptions,
     snapshotModeOptions,
     memoryScopeOptions,
+    piiPolicyOptions,
     toolProfileOptions,
   } = useAgentRuntimeConfig();
 
@@ -408,6 +409,7 @@ export function useAgentSettingsPage() {
     truncateStrategyOptions,
     snapshotModeOptions,
     memoryScopeOptions,
+    piiPolicyOptions,
     loadSkillSlugOptions,
     resetSkillRuntimeDefaults: () =>
       resetSkillRuntimeDefaults(config, (message) => $q.notify({ type: "info", message })),

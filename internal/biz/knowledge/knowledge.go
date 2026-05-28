@@ -81,6 +81,11 @@ type Repo interface {
 	SearchChunks(ctx context.Context, q SearchQuery, queryEmbedding []float32) ([]Chunk, error)
 }
 
+// SparseSearcher is the interface for BM25/full-text search over knowledge chunks.
+type SparseSearcher interface {
+	SearchChunksBM25(ctx context.Context, q SearchQuery) ([]Chunk, error)
+}
+
 // ErrUnavailable is returned when Postgres/pgvector is not configured.
 var ErrUnavailable = errors.ServiceUnavailable(
 	"KNOWLEDGE",

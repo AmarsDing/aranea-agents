@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/team"
 
 	"github.com/google/uuid"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // ExecuteGraphBuildConfig executes a graph from a build config and returns the execution ID.
@@ -55,7 +56,7 @@ func (h *ChannelIngress) executeAsyncGraphTarget(
 	initialState map[string]any,
 ) (targetType, targetID, asyncID string, err error) {
 	if h == nil || h.graphs == nil {
-		return "", "", "", fmt.Errorf("channel async: graph service not configured")
+		return "", "", "", kerrors.FailedPrecondition("CHANNEL", "graph service not configured")
 	}
 	switch target.TargetType {
 	case "graph":
@@ -66,7 +67,7 @@ func (h *ChannelIngress) executeAsyncGraphTarget(
 		return "graph", target.GraphID, strings.TrimSpace(execID), nil
 	case "team_graph":
 		if h.teams == nil {
-			return "", "", "", fmt.Errorf("channel async: team repository not configured")
+			return "", "", "", kerrors.FailedPrecondition("CHANNEL", "team repository not configured")
 		}
 		teamRow, terr := h.teams.GetTeamByID(ctx, target.TeamID)
 		if terr != nil {
@@ -91,7 +92,7 @@ func (h *ChannelIngress) executeAsyncGraphTarget(
 		}
 		return "team_graph", graphID, strings.TrimSpace(execID), nil
 	default:
-		return "", "", "", fmt.Errorf("channel async: unsupported target type %q", target.TargetType)
+		return "", "", "", kerrors.BadRequest("CHANNEL", fmt.Sprintf("unsupported target type %q", target.TargetType))
 	}
 }
 

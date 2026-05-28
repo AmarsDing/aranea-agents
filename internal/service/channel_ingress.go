@@ -111,34 +111,84 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 		channelType := channelTypeFromConfig(chRow.ConfigJSON)
 		switch channelType {
 		case "dingtalk":
-			_ = h.handleDingTalkWebhook(w, r, chRow)
+			if err := h.handleDingTalkWebhook(w, r, chRow); err != nil {
+				event.SysLogWarn("channel.webhook.dingtalk_failed", "钉钉 Webhook 处理失败",
+					event.P("error", err.Error()),
+					event.P("channel_id", chRow.ID),
+				)
+			}
 			return nil
 		case "wecom", "wecom-app":
-			_ = h.handleWeComWebhook(w, r, chRow)
+			if err := h.handleWeComWebhook(w, r, chRow); err != nil {
+				event.SysLogWarn("channel.webhook.wecom_failed", "企微 Webhook 处理失败",
+					event.P("error", err.Error()),
+					event.P("channel_id", chRow.ID),
+				)
+			}
 			return nil
 		case "slack":
-			_ = h.handleSlackWebhook(w, r, chRow)
+			if err := h.handleSlackWebhook(w, r, chRow); err != nil {
+				event.SysLogWarn("channel.webhook.slack_failed", "Slack Webhook 处理失败",
+					event.P("error", err.Error()),
+					event.P("channel_id", chRow.ID),
+				)
+			}
 			return nil
 		case "telegram":
-			_ = h.handleTelegramWebhook(w, r, chRow)
+			if err := h.handleTelegramWebhook(w, r, chRow); err != nil {
+				event.SysLogWarn("channel.webhook.telegram_failed", "Telegram Webhook 处理失败",
+					event.P("error", err.Error()),
+					event.P("channel_id", chRow.ID),
+				)
+			}
 			return nil
 		case "wechat":
-			_ = h.handleWeChatWebhook(w, r, chRow)
+			if err := h.handleWeChatWebhook(w, r, chRow); err != nil {
+				event.SysLogWarn("channel.webhook.wechat_failed", "微信 Webhook 处理失败",
+					event.P("error", err.Error()),
+					event.P("channel_id", chRow.ID),
+				)
+			}
 			return nil
 		case "personal_qq":
-			_ = h.handleOneBotWebhook(w, r, chRow)
+			if err := h.handleOneBotWebhook(w, r, chRow); err != nil {
+				event.SysLogWarn("channel.webhook.onebot_failed", "OneBot Webhook 处理失败",
+					event.P("error", err.Error()),
+					event.P("channel_id", chRow.ID),
+				)
+			}
 			return nil
 		case "qq":
-			_ = h.handleQQWebhook(w, r, chRow)
+			if err := h.handleQQWebhook(w, r, chRow); err != nil {
+				event.SysLogWarn("channel.webhook.qq_failed", "QQ Webhook 处理失败",
+					event.P("error", err.Error()),
+					event.P("channel_id", chRow.ID),
+				)
+			}
 			return nil
 		case "line":
-			_ = h.handleLINEWebhook(w, r, chRow)
+			if err := h.handleLINEWebhook(w, r, chRow); err != nil {
+				event.SysLogWarn("channel.webhook.line_failed", "LINE Webhook 处理失败",
+					event.P("error", err.Error()),
+					event.P("channel_id", chRow.ID),
+				)
+			}
 			return nil
 		case "mattermost":
-			_ = h.handleMattermostWebhook(w, r, chRow)
+			if err := h.handleMattermostWebhook(w, r, chRow); err != nil {
+				event.SysLogWarn("channel.webhook.mattermost_failed", "Mattermost Webhook 处理失败",
+					event.P("error", err.Error()),
+					event.P("channel_id", chRow.ID),
+				)
+			}
 			return nil
 		case "teams":
-			_ = h.handleTeamsWebhook(w, r, chRow)
+			if err := h.handleTeamsWebhook(w, r, chRow); err != nil {
+				event.SysLogWarn("channel.webhook.teams_failed", "Teams Webhook 处理失败",
+					event.P("error", err.Error()),
+					event.P("channel_id", chRow.ID),
+				)
+			}
 			return nil
 		case "feishu":
 			// continue below
@@ -157,7 +207,13 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			http.Error(w, "credentials", http.StatusInternalServerError)
 			return nil
 		}
-		encryptKey, _ := resolveCredentialPlain(r.Context(), creds, "encrypt_key")
+		encryptKey, encErr := resolveCredentialPlain(r.Context(), creds, "encrypt_key")
+		if encErr != nil {
+			event.SysLogWarn("channel.credential.resolve_failed", "凭证解析失败",
+				event.P("key", "encrypt_key"),
+				event.P("error", encErr.Error()),
+			)
+		}
 		raw, err = lark.UnwrapEncryptedWebhookBody(encryptKey, raw)
 		if err != nil {
 			http.Error(w, "decrypt failed", http.StatusBadRequest)
@@ -167,7 +223,13 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return nil
 		}
-		verTok, _ := resolveCredentialPlain(r.Context(), creds, "verification_token")
+		verTok, verErr := resolveCredentialPlain(r.Context(), creds, "verification_token")
+		if verErr != nil {
+			event.SysLogWarn("channel.credential.resolve_failed", "凭证解析失败",
+				event.P("key", "verification_token"),
+				event.P("error", verErr.Error()),
+			)
+		}
 		parsed, err := lark.ParseWebhookPost(raw, verTok)
 		if err != nil {
 			http.Error(w, "bad event", http.StatusBadRequest)
@@ -215,7 +277,11 @@ func channelTypeFromConfig(configJSON string) string {
 	var env struct {
 		Type string `json:"type"`
 	}
-	_ = json.Unmarshal([]byte(configJSON), &env)
+	if err := json.Unmarshal([]byte(configJSON), &env); err != nil {
+		event.SysLogWarn("channel.config.parse_failed", "渠道配置 JSON 解析失败",
+			event.P("error", err.Error()),
+		)
+	}
 	return strings.TrimSpace(strings.ToLower(env.Type))
 }
 
@@ -223,7 +289,11 @@ func channelReceiveModeFromConfig(configJSON string) string {
 	var env struct {
 		ReceiveMode string `json:"receive_mode"`
 	}
-	_ = json.Unmarshal([]byte(configJSON), &env)
+	if err := json.Unmarshal([]byte(configJSON), &env); err != nil {
+		event.SysLogWarn("channel.config.parse_failed", "渠道配置 JSON 解析失败",
+			event.P("error", err.Error()),
+		)
+	}
 	return strings.TrimSpace(strings.ToLower(env.ReceiveMode))
 }
 

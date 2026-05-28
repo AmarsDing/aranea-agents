@@ -96,6 +96,7 @@ export function defaultAgentRuntimeConfig() {
       decay_interval_hours: 24,
       archive_threshold: 0.2,
       max_per_recall_chars: 1500,
+      pii_policy: "redact",
     },
     memoryWorker: {
       provider: "",
@@ -108,6 +109,8 @@ export function defaultAgentRuntimeConfig() {
       graph_max_hops: 2,
       identity_inject: true,
       strategy_inject: false,
+      decay_interval_hours: 168,
+      decay_overrides_json: "",
     },
     evolutionSettings: {
       enabled: false,
@@ -176,6 +179,12 @@ export const memoryScopeOptions = ["agent", "user", "team", "workspace", "global
   label: value,
   value,
 }));
+
+export const piiPolicyOptions = [
+  { label: "redact · 脱敏写入（默认）", value: "redact" },
+  { label: "block · 阻断写入", value: "block" },
+  { label: "review · 人工审核", value: "review" },
+];
 
 export const toolProfileOptions = [
   { label: "chat_only · 仅对话（无工具）", value: "chat_only" },

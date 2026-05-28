@@ -33,24 +33,20 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 		if err != nil || len(result.Slugs) == 0 {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
+		entries, err := deps.SkillUC.BatchGetSkillGuidance(ctx, result.Slugs)
+		if err != nil || len(entries) == 0 {
+			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
 		var b strings.Builder
 		b.WriteString("## Available Skills\n\nThe following skills are available for this turn. Use the skill_run tool to invoke them.\n\n")
 		totalChars := 0
 		written := 0
-		for _, slug := range result.Slugs {
-			skill, err := deps.SkillUC.GetBySkillKey(ctx, slug)
-			if err != nil {
-				continue
-			}
-			markdown, err := deps.SkillUC.GetLatestMarkdown(ctx, skill.ID)
-			if err != nil {
-				markdown = ""
-			}
-			m := manifest.Parse(markdown)
+		for _, e := range entries {
+			m := manifest.Parse(e.Guidance)
 			guidance := render.SkillGuidance(m, render.RenderOptions{})
-			entry := fmt.Sprintf("### %s\n%s\n\n", slug, guidance)
+			entry := fmt.Sprintf("### %s\n%s\n\n", e.Slug, guidance)
 			if totalChars+len(entry) > maxSkillGuidanceChars {
-				remaining := len(result.Slugs) - written
+				remaining := len(entries) - written
 				if remaining > 0 {
 					b.WriteString(fmt.Sprintf("... and %d more skills (truncated)\n", remaining))
 				}
@@ -60,10 +56,10 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 			totalChars += len(entry)
 			written++
 		}
-		cue := b.String()
-		if cue == "" {
+		if written == 0 {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
+		cue := b.String()
 		sys := trpcmodel.NewSystemMessage(cue)
 		args.Request.Messages = append([]trpcmodel.Message{sys}, args.Request.Messages...)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil

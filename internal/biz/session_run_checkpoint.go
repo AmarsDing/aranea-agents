@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 
+	"aranea-agents/internal/event"
+
 	"github.com/google/uuid"
 )
 
@@ -76,7 +78,9 @@ func (u *SessionRunUsecase) CreateDurableCheckpoint(ctx context.Context, snap Du
 		return SessionRunCheckpoint{}, err
 	}
 	cp.ID = id
-	_ = u.repo.UpdateCheckpointID(ctx, run.ID, id)
+	if err := u.repo.UpdateCheckpointID(ctx, run.ID, id); err != nil {
+		event.SysLogWarn("session_run_checkpoint", "update checkpoint id failed", event.P("run_id", run.ID), event.P("checkpoint_id", id), event.P("error", err.Error()))
+	}
 	return cp, nil
 }
 

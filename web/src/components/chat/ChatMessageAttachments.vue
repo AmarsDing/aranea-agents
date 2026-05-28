@@ -40,10 +40,8 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { useQuasar } from "quasar";
 import { useI18n } from "vue-i18n";
 import ArtifactPreview from "../../features/artifact/ArtifactPreview.vue";
-import { useArtifactStore } from "../../stores/artifact";
 import type { ArtifactMeta } from "../../features/artifact/types";
 import {
   attachmentMimeIcon,
@@ -57,10 +55,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   deleted: [id: string];
+  download: [meta: ArtifactMeta];
 }>();
-
-const { notify } = useQuasar();
-const { t } = useI18n();
 
 const previewOpen = ref(false);
 const previewMeta = ref<MessageAttachmentRef | null>(null);
@@ -81,26 +77,13 @@ function openPreview(item: MessageAttachmentRef) {
 }
 
 async function onDownload(meta: ArtifactMeta) {
-  try {
-    const artifactStore = useArtifactStore();
-    const signed = await artifactStore.signDownload(meta.id, meta.version);
-    window.open(artifactStore.artifactDownloadHref(signed.url), "_blank", "noopener,noreferrer");
-  } catch {
-    // user can retry from preview toolbar
-  }
+  emit("download", meta);
 }
 
 async function onDelete() {
   if (!previewId.value || !previewMeta.value) return;
-  try {
-    const artifactStore = useArtifactStore();
-    await artifactStore.remove(previewId.value);
-    emit("deleted", previewId.value);
-    previewOpen.value = false;
-    notify({ type: "positive", message: t("chat.attachmentDeleted") });
-  } catch {
-    notify({ type: "negative", message: t("chat.attachmentDeleteFailed") });
-  }
+  emit("deleted", previewId.value);
+  previewOpen.value = false;
 }
 </script>
 

@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/runtime"
+	"aranea-agents/internal/event"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -22,7 +23,7 @@ func RunGateway(
 	ch biz.Channel,
 	creds []biz.ChannelCredential,
 	lookup runtime.CredentialLookup,
-	handler runtime.InboundHandler,
+	handler port.InboundHandler,
 ) error {
 	token, err := lookup(ctx, creds, "bot_token")
 	if err != nil {
@@ -56,7 +57,7 @@ func RunGateway(
 		userID := m.Author.ID
 		ev := port.InboundEvent{
 			PlatformType:   "discord",
-			PeerID:         firstNonEmpty(userID, channelID),
+			PeerID:         port.FirstNonEmpty(userID, channelID),
 			Text:           text,
 			IdempotencyKey: "discord:" + m.ID,
 			OutboundMeta: map[string]string{
@@ -64,7 +65,11 @@ func RunGateway(
 				"channel":   channelID,
 			},
 		}
-		_ = handler.ProcessInbound(ctx, chRow, ev)
+		if err := handler.ProcessInbound(ctx, chRow, ev); err != nil {
+			event.SysLogWarn("channel.discord.inbound_failed", "Discord 入站处理失败",
+				event.P("error", err.Error()),
+			)
+		}
 	})
 
 	if err := session.Open(); err != nil {
@@ -74,13 +79,4 @@ func RunGateway(
 
 	<-ctx.Done()
 	return ctx.Err()
-}
-
-func firstNonEmpty(parts ...string) string {
-	for _, p := range parts {
-		if strings.TrimSpace(p) != "" {
-			return strings.TrimSpace(p)
-		}
-	}
-	return ""
 }

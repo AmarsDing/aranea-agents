@@ -195,7 +195,10 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 			return
 		}
 		rollbackDone = true
-		_ = runnerMgr.RollbackToBoundary(context.Background(), rollbackBoundary)
+		if rberr := runnerMgr.RollbackToBoundary(context.Background(), rollbackBoundary); rberr != nil {
+			event.CtxFlowLogWarn(context.Background(), "team.run.rollback_fail", "RollbackToBoundary failed",
+				event.P("boundary", rollbackBoundary), event.P("error", rberr.Error()))
+		}
 	}
 	defer func() {
 		if turnStatus != biz.TeamMemberStepStatusOK {

@@ -164,7 +164,6 @@ import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import { useChatBackgroundJobs } from "../../features/chat/useChatBackgroundJobs";
 import { useTaskDeadLetters } from "../../features/chat/useTaskDeadLetters";
-import { cancelChatBackgroundJob } from "../../features/chat/api";
 
 type ChatBackgroundJobRow = ReturnType<typeof useChatBackgroundJobs>["rows"]["value"][number];
 type TaskDeadLetterRow = ReturnType<typeof useTaskDeadLetters>["rows"]["value"][number];
@@ -172,6 +171,7 @@ type TaskDeadLetterRow = ReturnType<typeof useTaskDeadLetters>["rows"]["value"][
 const emit = defineEmits<{
   "focus-turn": [turnId: string];
   navigate: [route: { name: string; params: Record<string, string> }];
+  "cancel-job": [job: { id: string; source: string }];
 }>();
 
 const props = defineProps<{
@@ -254,14 +254,8 @@ async function cancelJob(job: ChatBackgroundJobRow) {
     message: t("chat.job.cancelConfirmMsg", "确定要取消此任务吗？此操作不可撤销。"),
     cancel: true,
     persistent: false,
-  }).onOk(async () => {
-    const ok = await cancelChatBackgroundJob(job.id, job.source);
-    if (ok) {
-      $q.notify({ type: "positive", message: t("chat.job.cancelled", "任务已取消") });
-      void loadJobs();
-    } else {
-      $q.notify({ type: "warning", message: t("chat.job.cancelFailed", "取消失败") });
-    }
+  }).onOk(() => {
+    emit("cancel-job", { id: job.id, source: job.source });
   });
 }
 

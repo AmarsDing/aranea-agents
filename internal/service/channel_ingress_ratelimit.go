@@ -1,11 +1,14 @@
 package service
 
 import (
+	"context"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/safego"
 )
 
 const (
@@ -22,7 +25,7 @@ type webhookRateLimiter struct {
 
 var webhookRateLimits sync.Map // channel_key -> *webhookRateLimiter
 
-var webhookRateLimitsLastCleaned time.Time
+var webhookRateLimitsLastCleaned atomic.Int64
 
 const webhookRateLimitsCleanupInterval = 5 * time.Minute
 
@@ -31,9 +34,12 @@ func allowWebhookRequest(channelKey string) bool {
 	if channelKey == "" {
 		return true
 	}
-	if now := time.Now(); now.Sub(webhookRateLimitsLastCleaned) >= webhookRateLimitsCleanupInterval {
-		webhookRateLimitsLastCleaned = now
-		go cleanupStaleWebhookRateLimits()
+	now := time.Now()
+	if now.Sub(time.Unix(webhookRateLimitsLastCleaned.Load(), 0)) >= webhookRateLimitsCleanupInterval {
+		webhookRateLimitsLastCleaned.Store(now.Unix())
+		safego.Go(context.Background(), "channel.webhook.rate_limit_cleanup", func() {
+			cleanupStaleWebhookRateLimits()
+		})
 	}
 	v, _ := webhookRateLimits.LoadOrStore(channelKey, &webhookRateLimiter{limit: defaultWebhookRateLimitPerMin})
 	rl := v.(*webhookRateLimiter)

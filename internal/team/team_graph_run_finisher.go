@@ -99,7 +99,10 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 	run.FinishedAt = now
 	run.UpdatedAt = now
 	run.DurationMS = int(time.Since(t0).Milliseconds())
-	_ = r.teams.UpdateTeamRun(ctx, run)
+	if err := r.teams.UpdateTeamRun(ctx, run); err != nil {
+		event.CtxFlowLogWarn(ctx, "team.graph.finisher_update_fail", "UpdateTeamRun failed in FinalizeGraphTeamRun",
+			event.P("team_run_id", run.ID), event.P("update_error", err.Error()))
+	}
 	if r.td.Pipeline.Bus != nil {
 		cp := run
 		env := event.NewEnvelope(event.EnvelopeTypeTeamRunFinished, "team-graph-coordinator", stepCtx.SessionID)

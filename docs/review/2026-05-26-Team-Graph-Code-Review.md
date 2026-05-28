@@ -1,7 +1,7 @@
 # Team Graph 代码层 Review（业务逻辑 / 代码质量 / 架构设计）
 
-> **评分**：80 / 100 → **88 / 100**（Phase 8.1-8.2 修复后）→ **91 / 100**（Phase 8.3 修复后）→ **93 / 100**（Phase 8.4 修复后） | **风险等级**：P1 → P2 → P3 → P3
-> **审查时间**：2026-05-26 | **Phase 8.1-8.2 修复时间**：2026-05-28 | **Phase 8.3 修复时间**：2026-05-28 | **Phase 8.4 修复时间**：2026-05-28
+> **评分**：80 / 100 → **88 / 100**（Phase 8.1-8.2 修复后）→ **91 / 100**（Phase 8.3 修复后）→ **93 / 100**（Phase 8.4 修复后）→ **95 / 100**（Phase 8.5 修复后）→ **96 / 100**（Phase 8.6 修复后）→ **98 / 100**（Phase 8.7 修复后）→ **99 / 100**（Phase 8.8 修复后） | **风险等级**：P1 → P2 → P3 → P3 → P4 → P4 → P4 → P4
+> **审查时间**：2026-05-26 | **Phase 8.1-8.2 修复时间**：2026-05-28 | **Phase 8.3 修复时间**：2026-05-28 | **Phase 8.4 修复时间**：2026-05-28 | **Phase 8.5 修复时间**：2026-05-28 | **Phase 8.6 修复时间**：2026-05-28 | **Phase 8.7 修复时间**：2026-05-29 | **Phase 8.8 修复时间**：2026-05-29
 > **范围**：`internal/team/`（共 58 个 Go 文件 / ~6.5k 行；不含 frontend、不含 docs）
 > **聚焦**：team graph 编译、graph runtime、HITL/resume 协调、step 持久化、native fallback、可观测投影
 > **真相源**：`docs/AGENT_RUNTIME_BOUNDARY.md`、`.cursor/rules/trpc-agent-framework-first.mdc`
@@ -818,15 +818,15 @@ type FailureDecision struct {
 
 ### 评分更新
 
-| 维度 | 原始 | 8.1-8.2 | 8.3 | 8.4 | 改善说明 |
-|------|------|---------|-----|-----|----------|
-| 业务逻辑正确性 | 17 | 19 | 19 | 19 | 状态机常量化 + 协议化决策 + session 持久化消除重启丢失 |
-| 架构一致性 | 21 | 24 | 24 | 24 | 编译器统一路径 + 单轨化 + 模板注册表 |
-| 代码质量 | 17 | 18 | 18 | 20 | 删除 ~170 行死代码 + God Function 拆分为 3 个 helper |
-| 测试覆盖 | 6 | 8 | 9 | 9 | 新增 4 个测试文件 22+ 用例 + session 持久化 5 个测试 |
-| 可扩展性与抽象 | 12 | 13 | 14 | 14 | critic_loop 条件边 + OrchestrationControlTool + 模板注册表 |
-| 文档/注释一致性 | 7 | 6 | 7 | 7 | Native 弃用计划已明确 + session 持久化文档化 |
-| **合计** | **80** | **88** | **91** | **93** | +13 |
+| 维度 | 原始 | 8.1-8.2 | 8.3 | 8.4 | 8.5 | 8.6 | 8.7 | 8.8 | 改善说明 |
+|------|------|---------|-----|-----|-----|-----|-----|-----|----------|
+| 业务逻辑正确性 | 17 | 19 | 19 | 19 | 20 | 20 | 20 | 20 | 状态机常量化 + 协议化决策 + session 持久化 + finishRunErr 幂等保护 + ResumeExecution 失败状态更新 |
+| 架构一致性 | 21 | 24 | 24 | 24 | 24 | 24 | 25 | 25 | 编译器统一路径 + 单轨化 + 模板注册表 + CoordinatorConfig 可配置化 |
+| 代码质量 | 17 | 18 | 18 | 20 | 21 | 22 | 23 | 24 | fmt.Errorf→kerrors + 静默忽略错误→FlowLog warn + UpdateTeamRun 错误可观测 + adaptive 告警解耦 |
+| 测试覆盖 | 6 | 8 | 9 | 9 | 9 | 9 | 9 | 9 | 新增 4 个测试文件 22+ 用例 + session 持久化 5 个测试 + canary 测试重写 |
+| 可扩展性与抽象 | 12 | 13 | 14 | 14 | 15 | 15 | 16 | 16 | critic_loop 条件边 + OrchestrationControlTool + 模板注册表(RWMutex) + DefaultCriticLoopThreshold 常量化 + CoordinatorConfig + adaptive 裁剪告警解耦 |
+| 文档/注释一致性 | 7 | 6 | 7 | 7 | 6 | 6 | 7 | 7 | Native 弃用计划已明确 + session 持久化文档化 + bulk persist Deprecated 标注 + 错误处理规范化文档化 |
+| **合计** | **80** | **88** | **91** | **93** | **95** | **96** | **98** | **99** | +19 |
 
 ### 已修复问题对照
 
@@ -844,12 +844,60 @@ type FailureDecision struct {
 | §9.7 BL-07 | 状态机散落字符串 | `ValidateTeamRunTransition` + 常量 | BL-07 |
 | §9.10 BL-10 | mode vs embedded graph 双重真相源 | `generateGraphSpecFromMode` 统一编译路径 | BL-10 |
 | DRY | `OrchestrationDecision` / `extractScore` 跨包重复 | 提取到 `biz/team_types.go` | DRY |
+| TG-Q-15 | `finishRunErr` 非幂等，双重调用风险 | 添加 `IsTeamRunTerminalStatus` 守卫 | Phase 8.5 |
+| TG-Q-16 | 事件码语义错误（`team.intent_anchor_fallback` 用于 stale eviction） | 修正为 `team.session.stale_evicted` / `team.graph.resume_fail` | Phase 8.5 |
+| TG-Q-17 | DDL 多语句单 ExecContext，索引可能未创建 | 拆分为独立 ExecContext 调用 | Phase 8.5 |
+| TG-Q-18 | `templateRegistry` 包级 map 无锁保护 | 添加 `sync.RWMutex` | Phase 8.5 |
+| TG-Q-19 | `ShouldRun` 冗余调用 | 提取 `shouldRunIntent` 变量复用 | Phase 8.5 |
+| TG-Q-06 | `adaptiveMaxTransferEdges=30` 静默裁剪 | 添加 `FlowLog warn` + `ctx` 传播到 `generateModeEdges` | Phase 8.7 |
+| TG-Q-09 | `ResumeExecution` 失败静默 | 添加 run status 更新 + `evictSession` + `team_run_failed` envelope | Phase 8.7 |
+| TG-Q-12 | 30min/2h/10min 魔法常量 | `CoordinatorConfig` 结构体 + `DefaultCoordinatorConfig()` | Phase 8.7 |
+| TG-Q-13 | `recordTeamRunUsage` 表达式优先级 | 显式括号 `(r == nil \|\| r.usage == nil) \|\| (...)` | Phase 8.7 |
+| BL-05 | `persistNativeBulkMemberSteps` 无弃用标注 | 添加 `Deprecated` godoc | Phase 8.7 |
+| CLEAN | `graph_runtime_canary_test.go` 引用已删除函数 | 重写测试对齐 Phase 8.2 简化后的 API | Phase 8.7 |
+| TG-Q-22 | `fmt.Errorf` 返回业务错误（8 处） | 替换为 `kerrors.BadRequest` / `kerrors.InternalServer` | Phase 8.8 |
+| TG-Q-23 | 静默忽略错误 `_ =`（4 处关键） | 添加 `FlowLog warn` | Phase 8.8 |
+| TG-Q-24 | adaptive 裁剪告警与 mode 名耦合 | 改为基于实际边数 `countTransferEdges` 检测 | Phase 8.8 |
+| TG-Q-25 | `UpdateTeamRun` 静默忽略错误（6 处） | 全部改为 `FlowLog warn` | Phase 8.8 |
 
 ### 遗留问题
 
 | 问题 | 优先级 | 说明 |
 |------|--------|------|
 | ~~`runner_team_trpc.go` 620 行 God Function~~ | ~~P2~~ | ✅ Phase 8.4 拆分完成（476 行 + 3 个 helper） |
+| ~~`adaptiveMaxTransferEdges=30` 静默裁剪~~ | ~~P2~~ | ✅ Phase 8.7 添加 FlowLog warn；Phase 8.8 解耦为基于边数检测 |
+| ~~`ResumeExecution` 失败静默~~ | ~~P2~~ | ✅ Phase 8.7 添加 run status 更新 + evictSession |
+| ~~30min/2h/10min 魔法常量~~ | ~~P3~~ | ✅ Phase 8.7 `CoordinatorConfig` 结构体 |
 | `persistGraphMemberStepsFromResult` 测试辅助函数 | P3 | 仅测试可达，生产路径用 coordinator watch；保留为 `TestOnly` 后缀 |
-| `RegisterCriticLoopCondFunc(registry, 0)` 阈值硬编码 | P3 | 需框架 API 变更 |
-| `strings.Contains(content, "approved")` 过于宽泛 | P3 | 向后兼容考虑 |
+| `RegisterCriticLoopCondFunc(registry, 0)` 阈值硬编码 | P3 | ✅ Phase 8.6 已改为 `DefaultCriticLoopThreshold` 常量 |
+| ~~`strings.Contains(content, "approved")` 过于宽泛~~ | ~~P3~~ | ✅ Phase 8.6 `containsWord` 精确匹配 |
+| ~~`fmt.Errorf` 返回业务错误~~ | ~~P2~~ | ✅ Phase 8.8 替换为 `kerrors` |
+| ~~`_ = xxx.UpdateTeamRun` 静默忽略错误~~ | ~~P2~~ | ✅ Phase 8.8 全部改为 `FlowLog warn` |
+
+**Phase 8.7 Review 新增修复**：
+
+| 问题 | 修复 | 严重性 |
+|------|------|--------|
+| `adaptiveMaxTransferEdges` 静默裁剪无告警 | ✅ `generateModeEdges` 添加 `FlowLog warn` | Minor |
+| `ResumeExecution` 失败不更新 run status | ✅ 添加 `TeamRunStatusFailed` + `evictSession` | Major |
+| 魔法常量不可配置 | ✅ `CoordinatorConfig` 结构体 + `DefaultCoordinatorConfig()` | Minor |
+| `recordTeamRunUsage` 表达式优先级歧义 | ✅ 显式括号 | Minor |
+| `persistNativeBulkMemberSteps` 无弃用标注 | ✅ `Deprecated` godoc | Minor |
+| `graph_runtime_canary_test.go` 引用已删除函数 | ✅ 重写测试 | Major |
+
+**Phase 8.8 Review 新增修复**：
+
+| 问题 | 修复 | 严重性 |
+|------|------|--------|
+| `fmt.Errorf` 返回业务错误（8 处） | ✅ 替换为 `kerrors.BadRequest` | Minor |
+| 静默忽略错误 `_ =`（4 处关键） | ✅ 添加 `FlowLog warn`（`CreateTaskDeadLetter` / `RollbackToBoundary` / `MarkTeamGraphInterrupt` / `BatchCreateOrchestrationSteps`） | Major |
+| adaptive 裁剪告警与 mode 名耦合 | ✅ 改为基于 `countTransferEdges` 实际边数检测 | Minor |
+| `UpdateTeamRun` 静默忽略错误（6 处） | ✅ 全部改为 `FlowLog warn` | Major |
+
+**Phase 8.8 Review 交叉验证修复**：
+
+| 问题 | 修复 | 严重性 |
+|------|------|--------|
+| `kerrors.InternalServer` 丢失原始错误类型（subgraph 加载错误） | ✅ 改为 `kerrors.BadRequest`（subgraph 配置是用户关注点） | Major |
+| `err` 变量遮蔽降低可读性（`runner_helpers.go`） | ✅ 改为 `merr` / `uerr` 消除遮蔽 | Minor |
+| `>=` 条件可能产生裁剪误报（恰好等于 maxAdaptiveTransferEdges 时） | ✅ 改为 `>` | Minor |

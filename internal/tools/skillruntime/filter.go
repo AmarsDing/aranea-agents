@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
@@ -13,12 +12,21 @@ import (
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
 
+type SkillResolver interface {
+	ListEnabledPublishedSkillCandidates(ctx context.Context) ([]biz.SkillRuntimeCandidate, error)
+	ListEnabledPublishedSkillKeys(ctx context.Context) ([]string, error)
+	ScoreByEmbedding(ctx context.Context, query string, candidates []biz.SkillRuntimeCandidate) (map[string]float64, error)
+}
+
+type RuntimeSettings interface {
+	GetSkillRuntimeJSON() string
+}
+
 const filterCacheMaxEntries = 512
 
 type filterCache struct {
 	mu      sync.Mutex
 	entries map[string]map[string]bool
-	count   atomic.Int64
 }
 
 func (c *filterCache) Load(key string) (map[string]bool, bool) {
@@ -34,11 +42,10 @@ func (c *filterCache) Store(key string, val map[string]bool) {
 	if c.entries == nil {
 		c.entries = make(map[string]map[string]bool, filterCacheMaxEntries)
 	}
-	if _, exists := c.entries[key]; !exists {
-		n := c.count.Add(1)
-		if n > filterCacheMaxEntries {
-			c.entries = make(map[string]map[string]bool, filterCacheMaxEntries)
-			c.count.Store(1)
+	if _, exists := c.entries[key]; !exists && len(c.entries) >= filterCacheMaxEntries {
+		for k := range c.entries {
+			delete(c.entries, k)
+			break
 		}
 	}
 	c.entries[key] = val
@@ -47,13 +54,12 @@ func (c *filterCache) Store(key string, val map[string]bool) {
 // AgentVisibilityFilter narrows visible skills per invocation using Layer A + Layer B
 // policy from agent_runtime_settings.skill_runtime_json and the turn query in RuntimeState.
 type AgentVisibilityFilter struct {
-	skillUC *biz.SkillUsecase
-	runtime *biz.AgentRuntimeSettings
+	skillUC SkillResolver
+	runtime RuntimeSettings
 	cache   filterCache
 }
 
-// NewAgentVisibilityFilter returns a trpc-agent-go VisibilityFilter backed by ResolveSkillSlugs.
-func NewAgentVisibilityFilter(skillUC *biz.SkillUsecase, runtime *biz.AgentRuntimeSettings) trpcskill.VisibilityFilter {
+func NewAgentVisibilityFilter(skillUC SkillResolver, runtime RuntimeSettings) trpcskill.VisibilityFilter {
 	f := &AgentVisibilityFilter{skillUC: skillUC, runtime: runtime}
 	return f.allow
 }
@@ -99,15 +105,4 @@ func (f *AgentVisibilityFilter) allowedSlugs(ctx context.Context) map[string]boo
 	}
 	f.cache.Store(cacheKey, set)
 	return set
-}
-
-func normalizeSlugSlice(slugs []string) []string {
-	out := make([]string, 0, len(slugs))
-	for _, slug := range slugs {
-		s := strings.TrimSpace(strings.ToLower(slug))
-		if s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
 }

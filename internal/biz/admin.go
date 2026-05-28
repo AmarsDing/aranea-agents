@@ -4,8 +4,9 @@ import (
 	"context"
 	"time"
 
+	"aranea-agents/internal/event"
+
 	"github.com/go-kratos/kratos/v2/errors"
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 // Admin is a Admin model.
@@ -71,7 +72,8 @@ func (uc *AdminUsecase) Logout(ctx context.Context, adminID int64) error {
 	if err != nil {
 		return err
 	}
-	log.Infof("admin %s logged out", admin.Name)
+	event.SysLogInfo("system.admin.logout", "admin logged out",
+		event.P("admin_name", admin.Name))
 	return nil
 }
 

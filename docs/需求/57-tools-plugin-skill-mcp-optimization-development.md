@@ -73,12 +73,14 @@ TPM-WAVE{N}-{主题}-{序号} — 跨主题汇总时使用
 
 | 组 | 包含 ID |
 |----|---------|
-| 安全 | TPM-P2-08（SerpAPI key）、TPM-P2-11/12（PII 泄露）、TPM-P2-27（OAuth stale token） |
+| 安全 | TPM-P2-08（SerpAPI key）✅、TPM-P2-11/12（PII 泄露）✅、TPM-P2-27（OAuth stale token）✅ |
 | 死配置 | TPM-P2-03/09/10（claudefetch / admin_bypass / confirm_tools / role_rules） ✅ |
-| 静默吞错 | TPM-P2-01（skill fail-open） ✅、TPM-P2-02（OpenAPI loader） ✅、TPM-P2-13（cost DB）、TPM-P2-21（reload）、TPM-P2-25（alert） |
-| 性能 | TPM-P2-05（cache eviction） ✅、TPM-P2-14/15/18/26/30 |
-| 缺测试 | TPM-P2-29（mcp probe/health/alert）、skill 全套 |
+| 静默吞错 | TPM-P2-01（skill fail-open） ✅、TPM-P2-02（OpenAPI loader） ✅、TPM-P2-13（cost DB）✅、TPM-P2-21（reload）✅、TPM-P2-25（alert）✅ |
+| 性能 | TPM-P2-05（cache eviction） ✅、TPM-P2-14/15/16/18/22/26/30 ✅ |
+| 安全路径 | TPM-P2-19（ReadSkillDirFiles 不安全路径）✅、TPM-P2-20（Multipart 限制不一致）✅ |
+| 缺测试 | TPM-P2-29（mcp probe/health/alert）✅、skill 全套 |
 | 代码卫生 | TPM-P2-04（configString 统一） ✅ |
+| 功能增强 | TPM-P2-17（job map TTL）✅、TPM-P2-23（RBAC）📋、TPM-P2-24（版本回滚）📋 |
 
 ### 3.2 Wave 2 包含的重设计
 
@@ -207,3 +209,13 @@ TPM-WAVE{N}-{主题}-{序号} — 跨主题汇总时使用
 | 2 | TPM-P2-15 | 2026-05-28 | ✅ | Manager 实际已是 Wire 单例，P2-15 不适用 |
 | 2 | TPM-P2-06 | 2026-05-28 | ✅ | globalBridge 已重构为 Wire DI 注入，P2-06 不适用 |
 | 2 | TPM-P2-17 | 2026-05-28 | ✅ | Engine jobs map 加 2h TTL 过期清理 + evictExpiredLocked |
+| 2 | Review2-2 | 2026-05-28 | ✅ | cli_admin/pkg_install_from_url.go SSRF 防护（validateRepoURL + isPrivateIP） |
+| 2 | Review2-3 | 2026-05-28 | ✅ | cache/result_cache.go TOCTOU 竞态修复（过期条目升级写锁后重新检查） |
+| 2 | Review2-4 | 2026-05-28 | ✅ | skillruntime/filter.go filterCache 全量驱逐改为随机淘汰 |
+| 2 | Review2-5 | 2026-05-28 | ✅ | skillruntime/resolve.go 删除 4 个死代码函数（红线#12） |
+| 2 | Review2-6 | 2026-05-28 | ✅ | webresearch/http_client.go 代理 URL 解析失败加 SysLogWarn |
+| 2 | Review2-7 | 2026-05-28 | ✅ | cli_admin/registry.go Deps.String() 遮蔽 APIToken |
+| 2 | Fix-Knowledge | 2026-05-28 | ✅ | knowledge/hybrid_retriever.go 删除 rerankCandidateLimit/trimChunks 重复声明 |
+| 2 | OOP-1 | 2026-05-28 | ✅ | kanban Bridge 9 方法接口拆分为 BridgeReader/BridgeWriter/BridgeLifecycle + Bridge 组合 |
+| 2 | OOP-2 | 2026-05-28 | ✅ | skillruntime 定义 SkillResolver/RuntimeSettings 窄接口，替代 *biz.SkillUsecase/*biz.AgentRuntimeSettings 具体类型依赖 |
+| 2 | OOP-3 | 2026-05-28 | ✅ | serviceawaitreply/tool.go MarkAwaitingUserReply 错误不再静默吞掉，改为 SysLogWarn |

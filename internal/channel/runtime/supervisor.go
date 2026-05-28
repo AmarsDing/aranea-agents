@@ -8,6 +8,8 @@ import (
 
 	"aranea-agents/internal/biz"
 	arametrics "aranea-agents/internal/metrics"
+	"aranea-agents/internal/event"
+	"aranea-agents/pkg/safego"
 )
 
 const (
@@ -34,7 +36,9 @@ func (m *Manager) runSupervised(
 		defer func() {
 			_ = m.leaseRepo.ReleaseRuntimeLease(context.Background(), leaseKey, m.ownerID)
 		}()
-		go m.renewLeaseLoop(renewCtx, leaseKey, platform, cancelRun)
+		safego.Go(renewCtx, "channel.runtime.lease_renew", func() {
+			m.renewLeaseLoop(renewCtx, leaseKey, platform, cancelRun)
+		})
 	}
 	arametrics.ChannelRuntimeConnected.WithLabelValues(platform, mode).Inc()
 	defer arametrics.ChannelRuntimeConnected.WithLabelValues(platform, mode).Dec()
@@ -56,7 +60,13 @@ func (m *Manager) runSupervised(
 			setChannelConnection(ch.ID, false)
 			return
 		}
-		_ = starter(runCtx, ch, creds, m.credLookup, m.handler)
+		if err := starter(runCtx, ch, creds, m.credLookup, m.handler); err != nil {
+			event.SysLogWarn("channel.runtime.starter_exited", "渠道连接器异常退出",
+				event.P("platform", platform),
+				event.P("channel_id", ch.ID),
+				event.P("error", err.Error()),
+			)
+		}
 		setChannelConnection(ch.ID, false)
 		if runCtx.Err() != nil {
 			return

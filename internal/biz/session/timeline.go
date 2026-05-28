@@ -13,7 +13,7 @@ func (uc *SessionUsecase) Timeline(ctx context.Context, id string, q TimelineQue
 	if id == "" {
 		return SessionTimeline{}, validationErr("session id is required")
 	}
-	sess, err := uc.sessions.GetSessionByID(ctx, id)
+	sess, err := uc.sessionReader.GetSessionByID(ctx, id)
 	if err != nil {
 		return SessionTimeline{}, err
 	}
@@ -59,7 +59,7 @@ func (uc *SessionUsecase) timelineMessagesOnly(ctx context.Context, sess Session
 }
 
 func (uc *SessionUsecase) timelineUnionPaged(ctx context.Context, sess Session, q TimelineQuery) (SessionTimeline, error) {
-	refs, total, err := uc.sessions.ListTimelineEventRefsPaged(ctx, sess.ID, q)
+	refs, total, err := uc.timelineReader.ListTimelineEventRefsPaged(ctx, sess.ID, q)
 	if err != nil {
 		return SessionTimeline{}, err
 	}

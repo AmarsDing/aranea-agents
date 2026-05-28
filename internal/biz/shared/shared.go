@@ -4,7 +4,6 @@ package shared
 
 import (
 	"encoding/json"
-	"fmt"
 	stderrors "errors"
 	"strings"
 
@@ -101,7 +100,7 @@ func JSONStringList(raw string) ([]string, error) {
 	}
 	var list []string
 	if err := json.Unmarshal([]byte(raw), &list); err != nil {
-		return nil, fmt.Errorf("json string list parse: %w", err)
+		return nil, errors.BadRequest("SHARED", "json string list parse: "+err.Error())
 	}
 	return list, nil
 }

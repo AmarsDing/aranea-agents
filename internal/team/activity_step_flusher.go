@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
@@ -101,7 +102,10 @@ func (f *ActivityStepFlusher) loop() {
 		batch := append([]biz.OrchestrationStep(nil), pending...)
 		pending = pending[:0]
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		_ = f.repo.BatchCreateOrchestrationSteps(ctx, batch)
+		if berr := f.repo.BatchCreateOrchestrationSteps(ctx, batch); berr != nil {
+			event.CtxFlowLogWarn(ctx, "team.step.batch_fail", "BatchCreateOrchestrationSteps failed",
+				event.P("batch_size", len(batch)), event.P("error", berr.Error()))
+		}
 		cancel()
 	}
 	for {

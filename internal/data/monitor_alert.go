@@ -109,31 +109,69 @@ func (r *monitorRepo) ReplaceAlertRules(ctx context.Context, rules []biz.Monitor
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `DELETE FROM monitor_alert_rules`); err != nil {
+
+	existingRows, err := tx.QueryContext(ctx, `SELECT id FROM monitor_alert_rules`)
+	if err != nil {
 		return err
 	}
+	existingIDs := map[string]struct{}{}
+	for existingRows.Next() {
+		var id string
+		if err := existingRows.Scan(&id); err != nil {
+			continue
+		}
+		existingIDs[id] = struct{}{}
+	}
+	existingRows.Close()
+
+	newIDs := map[string]struct{}{}
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, rule := range rules {
 		id := strings.TrimSpace(rule.ID)
 		if id == "" {
 			id = uuid.NewString()
 		}
+		newIDs[id] = struct{}{}
 		enabled := 0
 		if rule.Enabled {
 			enabled = 1
 		}
-		if _, err := tx.ExecContext(ctx, `
+		if _, exists := existingIDs[id]; exists {
+			_, err := tx.ExecContext(ctx, `
+UPDATE monitor_alert_rules
+SET name = ?, metric_key = ?, threshold = ?, window_minutes = ?, enabled = ?, severity = ?,
+    notify_webhook_url = ?, notify_channel_id = ?, cooldown_minutes = ?, updated_at = ?
+WHERE id = ?`,
+				rule.Name, rule.MetricKey, rule.Threshold, rule.WindowMinutes, enabled, rule.Severity,
+				rule.NotifyWebhookURL, rule.NotifyChannelID, rule.CooldownMinutes, now, id,
+			)
+			if err != nil {
+				return err
+			}
+		} else {
+			_, err := tx.ExecContext(ctx, `
 INSERT INTO monitor_alert_rules
   (id, name, metric_key, threshold, window_minutes, enabled, severity,
    notify_webhook_url, notify_channel_id, cooldown_minutes, created_at, updated_at,
    firing_state)
 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'idle')`,
-			id, rule.Name, rule.MetricKey, rule.Threshold, rule.WindowMinutes, enabled, rule.Severity,
-			rule.NotifyWebhookURL, rule.NotifyChannelID, rule.CooldownMinutes, now, now,
-		); err != nil {
-			return err
+				id, rule.Name, rule.MetricKey, rule.Threshold, rule.WindowMinutes, enabled, rule.Severity,
+				rule.NotifyWebhookURL, rule.NotifyChannelID, rule.CooldownMinutes, now, now,
+			)
+			if err != nil {
+				return err
+			}
 		}
 	}
+
+	for id := range existingIDs {
+		if _, exists := newIDs[id]; !exists {
+			if _, err := tx.ExecContext(ctx, `DELETE FROM monitor_alert_rules WHERE id = ?`, id); err != nil {
+				return err
+			}
+		}
+	}
+
 	return tx.Commit()
 }
 
@@ -192,9 +230,13 @@ WHERE id = ?`,
 	return nil
 }
 
-func (r *monitorRepo) CountMonitorEventsSince(ctx context.Context, eventKey, status string, sinceRFC3339 string) (int32, error) {
+func (r *monitorRepo) CountMonitorEventsSince(ctx context.Context, eventKey, status string, sinceRFC3339, untilRFC3339 string) (int32, error) {
 	q := `SELECT COUNT(*) FROM monitor_events WHERE deleted_at = '' AND event_key = ? AND created_at >= ?`
 	args := []any{eventKey, sinceRFC3339}
+	if strings.TrimSpace(untilRFC3339) != "" {
+		q += ` AND created_at < ?`
+		args = append(args, untilRFC3339)
+	}
 	if strings.TrimSpace(status) != "" {
 		q += ` AND status = ?`
 		args = append(args, status)
@@ -226,7 +268,8 @@ SELECT CAST(COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_m
 FROM monitor_events
 WHERE deleted_at = '' AND event_key = 'runner.completion' AND created_at >= ?
   AND COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) IS NOT NULL
-ORDER BY dur ASC`, sinceRFC3339)
+ORDER BY dur ASC
+LIMIT 10000`, sinceRFC3339)
 	if qErr != nil {
 		return 0, 0, 0, qErr
 	}

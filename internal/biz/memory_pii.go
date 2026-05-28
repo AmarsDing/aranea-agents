@@ -1,12 +1,13 @@
 package biz
 
 import (
-	"errors"
 	"regexp"
 	"strings"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-var ErrPIIBlocked = errors.New("memory: fact blocked by PII policy")
+var ErrPIIBlocked = kerrors.Forbidden("MEMORY", "fact blocked by PII policy")
 
 type PIIPolicy string
 

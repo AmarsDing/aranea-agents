@@ -1,10 +1,11 @@
 import { computed, ref, watch, type Ref } from "vue";
 import type { SessionRunRecord } from "./types";
-import { listSessionRuns } from "./api";
+import { useSessionStore } from "../../stores/session";
 
 const PAGE_SIZE = 20;
 
 export function useSessionRunsPanel(sessionId: Ref<string>) {
+  const sessionStore = useSessionStore();
   const runs = ref<SessionRunRecord[]>([]);
   const total = ref(0);
   const loading = ref(false);
@@ -25,7 +26,7 @@ export function useSessionRunsPanel(sessionId: Ref<string>) {
     loading.value = true;
     error.value = "";
     try {
-      const result = await listSessionRuns(id, PAGE_SIZE, offset.value);
+      const result = await sessionStore.fetchRuns(id, PAGE_SIZE, offset.value);
       runs.value = result.items;
       total.value = result.total;
     } catch (err) {

@@ -13,7 +13,7 @@ func (uc *SessionUsecase) ListParticipants(ctx context.Context, sessionID string
 	if sessionID == "" {
 		return nil, validationErr("session id is required")
 	}
-	sess, err := uc.sessions.GetSessionByID(ctx, sessionID)
+	sess, err := uc.sessionReader.GetSessionByID(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}

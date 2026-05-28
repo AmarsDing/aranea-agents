@@ -12,7 +12,6 @@ import (
 	"time"
 )
 
-// ReplyXML builds a passive-reply XML payload for WeChat server.
 func ReplyXML(toUser, fromUser, content string) string {
 	return fmt.Sprintf(
 		"<xml><ToUserName><![CDATA[%s]]></ToUserName><FromUserName><![CDATA[%s]]></FromUserName><CreateTime>%d</CreateTime><MsgType><![CDATA[text]]></MsgType><Content><![CDATA[%s]]></Content></xml>",
@@ -20,25 +19,18 @@ func ReplyXML(toUser, fromUser, content string) string {
 	)
 }
 
-// TextSender sends customer-service messages (active_mode).
 type TextSender struct {
 	AppID     string
 	AppSecret string
 	HTTP      *http.Client
-}
 
-// ID implements channel.Identified.
-func (s *TextSender) ID() string { return "wechat" }
-
-type tokenCache struct {
 	mu    sync.Mutex
 	token string
 	exp   time.Time
 }
 
-var globalTokenCache tokenCache
+func (s *TextSender) ID() string { return "wechat" }
 
-// SendText delivers text via custom service API.
 func (s *TextSender) SendText(ctx context.Context, openID, text string) error {
 	openID = strings.TrimSpace(openID)
 	text = strings.TrimSpace(text)
@@ -82,10 +74,10 @@ func (s *TextSender) SendText(ctx context.Context, openID, text string) error {
 }
 
 func (s *TextSender) accessToken(ctx context.Context) (string, error) {
-	globalTokenCache.mu.Lock()
-	defer globalTokenCache.mu.Unlock()
-	if globalTokenCache.token != "" && time.Now().Before(globalTokenCache.exp) {
-		return globalTokenCache.token, nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.token != "" && time.Now().Before(s.exp) {
+		return s.token, nil
 	}
 	appID := strings.TrimSpace(s.AppID)
 	secret := strings.TrimSpace(s.AppSecret)
@@ -122,12 +114,16 @@ func (s *TextSender) accessToken(ctx context.Context) (string, error) {
 	if out.AccessToken == "" {
 		return "", fmt.Errorf("wechat token: %s", strings.TrimSpace(out.ErrMsg))
 	}
-	globalTokenCache.token = out.AccessToken
+	s.token = out.AccessToken
 	ttl := time.Duration(out.ExpiresIn) * time.Second
 	if ttl <= 0 {
 		ttl = 7200 * time.Second
 	}
-	globalTokenCache.exp = time.Now().Add(ttl - 5*time.Minute)
+	buffer := 5 * time.Minute
+	if ttl <= buffer {
+		buffer = ttl / 2
+	}
+	s.exp = time.Now().Add(ttl - buffer)
 	return out.AccessToken, nil
 }
 

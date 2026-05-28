@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"aranea-agents/internal/event"
@@ -325,29 +326,21 @@ func spanKindFromStep(stepID, domain string) string {
 	switch {
 	case s == "chat.turn" || s == "turn":
 		return "root"
-	case hasPrefix(s, "llm.") || hasPrefix(s, "model.") || hasPrefix(s, "completion"):
+	case strings.HasPrefix(s, "llm.") || strings.HasPrefix(s, "model.") || strings.HasPrefix(s, "completion"):
 		return "llm"
-	case hasPrefix(s, "tool.") || hasPrefix(s, "function.") || hasSuffix(s, ".tool") || hasSuffix(s, ".function"):
+	case strings.HasPrefix(s, "tool.") || strings.HasPrefix(s, "function.") || strings.HasSuffix(s, ".tool") || strings.HasSuffix(s, ".function"):
 		return "tool"
-	case hasPrefix(s, "retrieve.") || hasPrefix(s, "memory.") || hasPrefix(s, "recall."):
-		return "retrieve"
-	case hasPrefix(s, "graph.") || hasPrefix(s, "node.") || hasSuffix(s, ".node"):
-		return "graph_node"
-	case hasPrefix(s, "hitl.") || hasPrefix(s, "human.") || hasPrefix(s, "confirm."):
+	case strings.HasPrefix(s, "retrieve.") || strings.HasPrefix(s, "memory.") || strings.HasPrefix(s, "recall."):
+		return "memory"
+	case strings.HasPrefix(s, "graph.") || strings.HasPrefix(s, "node.") || strings.HasSuffix(s, ".node"):
+		return "graph"
+	case strings.HasPrefix(s, "hitl.") || strings.HasPrefix(s, "human.") || strings.HasPrefix(s, "confirm."):
 		return "hitl"
-	case hasPrefix(s, "team.") || hasPrefix(s, "subteam."):
-		return "subteam"
+	case strings.HasPrefix(s, "team.") || strings.HasPrefix(s, "subteam."):
+		return "team"
 	default:
 		return "step"
 	}
-}
-
-func hasPrefix(s, prefix string) bool {
-	return strings.HasPrefix(s, prefix)
-}
-
-func hasSuffix(s, suffix string) bool {
-	return strings.HasSuffix(s, suffix)
 }
 
 func metaStr(m map[string]any, key string) string {
@@ -371,7 +364,7 @@ func coalesceStr(a, b string) string {
 type traceProjectorWorker struct {
 	name     string
 	queue    chan contract.Envelope
-	dropCount int64
+	dropCount atomic.Int64
 }
 
 func newTraceProjectorWorker(name string) *traceProjectorWorker {
@@ -401,10 +394,10 @@ func (w *traceProjectorWorker) Offer(ctx context.Context, env contract.Envelope)
 	select {
 	case w.queue <- env:
 	default:
-		w.dropCount++
-		if w.dropCount%100 == 1 {
+		w.dropCount.Add(1)
+		if w.dropCount.Load()%100 == 1 {
 			event.SysLogWarn("system.monitor.trace_projector_queue_full", "TraceProjector queue full, dropping envelope",
-				event.P("worker", w.name), event.P("total_drops", fmt.Sprint(w.dropCount)))
+				event.P("worker", w.name), event.P("total_drops", fmt.Sprint(w.dropCount.Load())))
 		}
 	}
 }

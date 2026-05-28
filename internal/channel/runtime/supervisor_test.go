@@ -55,7 +55,7 @@ func (r *countingRepo) ListCredentialsRaw(_ context.Context, channelID string) (
 
 func TestSupervisorReconnectsAfterDisconnect(t *testing.T) {
 	var calls atomic.Int32
-	runtime.RegisterStarter("reconnplat", "polling", func(ctx context.Context, ch biz.Channel, creds []biz.ChannelCredential, lookup runtime.CredentialLookup, handler runtime.InboundHandler) error {
+	runtime.RegisterStarter("reconnplat", "polling", func(ctx context.Context, ch biz.Channel, creds []biz.ChannelCredential, lookup runtime.CredentialLookup, handler port.InboundHandler) error {
 		n := calls.Add(1)
 		if n == 1 {
 			return errors.New("simulated disconnect")

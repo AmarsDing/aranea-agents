@@ -169,6 +169,7 @@
             :is-dark="isDark"
             @focus-turn="$emit('focus-turn', $event)"
             @navigate="$emit('navigate', $event)"
+            @cancel-job="$emit('cancel-job', $event)"
           />
           <q-btn
             dense
@@ -286,6 +287,7 @@ const emit = defineEmits<{
   "paste-file": [file: File];
   "focus-turn": [turnId: string];
   navigate: [route: { name: string; params: Record<string, string> }];
+  "cancel-job": [job: { id: string; source: string }];
 }>();
 
 const { t } = useI18n();

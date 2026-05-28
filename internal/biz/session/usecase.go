@@ -312,74 +312,108 @@ type SessionTurnUpdateFields struct {
 	MetadataJSON        *string
 }
 
-// SessionRepository persists sessions and reads timeline inputs（SQLite Ent）.
-type SessionRepository interface {
+type SessionReader interface {
 	SearchSessions(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
-	CreateSession(ctx context.Context, s Session) (Session, error)
 	GetSessionByID(ctx context.Context, id string) (Session, error)
+	GetSessionRevision(ctx context.Context, sessionID string) (int64, error)
+	ListSessionsForBatch(ctx context.Context, q SessionSearchQuery) ([]Session, error)
+	ListSessionsByIDs(ctx context.Context, ids []string) ([]Session, error)
+}
+
+type SessionWriter interface {
+	CreateSession(ctx context.Context, s Session) (Session, error)
 	UpdateSessionTitle(ctx context.Context, id, title string) (Session, error)
 	UpdateSession(ctx context.Context, id string, fields SessionUpdateFields) (Session, error)
 	RestoreSession(ctx context.Context, id string) (Session, error)
 	ArchiveSession(ctx context.Context, id string) (int, error)
 	DeleteSession(ctx context.Context, id string) (int, error)
 	DeleteSessionsByAgentID(ctx context.Context, agentID string) error
+	PinSession(ctx context.Context, id string) (Session, error)
+	UnpinSession(ctx context.Context, id string) (Session, error)
+	ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
+	DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
+	BumpSessionRevision(ctx context.Context, sessionID string) (int64, error)
+}
+
+type MessageReader interface {
 	CountMessagesBySession(ctx context.Context, sessionID string) (int, error)
 	ListMessagesBySession(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
 	ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error)
 	ListMessagesByStatus(ctx context.Context, sessionID, status string, limit int) ([]ChatMessage, error)
 	ListMessagesRecent(ctx context.Context, sessionID string, limit int) ([]ChatMessage, error)
 	SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
-	ListToolInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]ToolInvocationView, error)
-	ListSkillInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]SkillInvocationView, error)
-	ListTimelineEventRefsPaged(ctx context.Context, sessionID string, q TimelineQuery) ([]TimelineEventRef, int, error)
 	ListMessagesByIDs(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error)
+	ListMessagesAfterRevision(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error)
+}
+
+type MessageWriter interface {
+	AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
+	AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
+	UpdateMessageFeedbackJSON(ctx context.Context, sessionID, messageID, rating, comment string) error
+	UpsertChatActivityMessage(ctx context.Context, sessionID string, msg ChatMessage) error
+}
+
+type TimelineReader interface {
+	ListTimelineEventRefsPaged(ctx context.Context, sessionID string, q TimelineQuery) ([]TimelineEventRef, int, error)
 	ListToolInvocationsByIDs(ctx context.Context, sessionID string, ids []string) ([]ToolInvocationView, error)
 	ListSkillInvocationsByIDs(ctx context.Context, sessionID string, ids []string) ([]SkillInvocationView, error)
 	LookupAgentDisplayNames(ctx context.Context, agentIDs []string) (map[string]string, error)
-	// AppendChatTurn inserts user + assistant rows and updates session aggregates (native chat).
-	AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
-	// AppendChatMessage inserts a single message row and updates session aggregates.
-	AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
-	// UpdateMessageFeedbackJSON merges user feedback into messages.options_json for an assistant row.
-	UpdateMessageFeedbackJSON(ctx context.Context, sessionID, messageID, rating, comment string) error
-	// UpsertChatActivityMessage inserts or updates a chat.activity/v1 row keyed by message id.
-	UpsertChatActivityMessage(ctx context.Context, sessionID string, msg ChatMessage) error
-	// UpdateRunnerSnapshotJSON persists Runner session snapshot (events + KV state).
-	UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error
-	// UpdateSessionContextFromLLMUsage updates context bar fields from the latest model call (prompt vs context window).
-	UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, completionTokens, contextWindow int) error
-	// UpdateSessionContextAfterCompression sets estimated prompt usage after ADK snapshot compaction (summary + tail).
-	UpdateSessionContextAfterCompression(ctx context.Context, sessionID string, estimatedPromptTokens int, contextWindow int) error
-	// Session summaries (session_summaries DDL via data.EnsureSessionMemorySchema).
+}
+
+type InvocationReader interface {
+	ListToolInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]ToolInvocationView, error)
+	ListSkillInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]SkillInvocationView, error)
+}
+
+type SummaryRepo interface {
 	InsertSessionSummary(ctx context.Context, row SessionSummary) error
 	MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error)
 	ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error)
 	LatestSessionSummaryTime(ctx context.Context, sessionID string) (string, error)
 	UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error
-	// GetSessionState reads the session state KV store (state_json column).
+	SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error)
+}
+
+type StateRepo interface {
 	GetSessionState(ctx context.Context, sessionID string) (map[string]string, error)
-	// SaveSessionState writes the session state KV store (state_json column).
 	SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error
-	// Session turns (session_turns table).
+}
+
+type TurnRepo interface {
 	CreateSessionTurn(ctx context.Context, turn SessionTurn) (SessionTurn, error)
 	UpdateSessionTurn(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)
 	ListSessionTurns(ctx context.Context, sessionID string, limit, offset int) (SessionTurnListResult, error)
 	GetSessionTurn(ctx context.Context, id string) (SessionTurn, error)
-	// IncrementInvocationCounts bumps session-level tool / MCP / skill counters after a runtime invocation.
+}
+
+type ContextUpdater interface {
+	UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error
+	UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, completionTokens, contextWindow int) error
+	UpdateSessionContextAfterCompression(ctx context.Context, sessionID string, estimatedPromptTokens int, contextWindow int) error
 	IncrementInvocationCounts(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error
-	// ListSessionsForBatch returns sessions matching search scope with limit/offset pagination.
-	ListSessionsForBatch(ctx context.Context, q SessionSearchQuery) ([]Session, error)
-	ListSessionsByIDs(ctx context.Context, ids []string) ([]Session, error)
-	ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
-	DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
-	PinSession(ctx context.Context, id string) (Session, error)
-	UnpinSession(ctx context.Context, id string) (Session, error)
-	BumpSessionRevision(ctx context.Context, sessionID string) (int64, error)
-	GetSessionRevision(ctx context.Context, sessionID string) (int64, error)
-	ListMessagesAfterRevision(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error)
+}
+
+type CompressRepo interface {
 	TryIncrementCompressVersion(ctx context.Context, sessionID string) (oldVersion int64, err error)
 	CompressSessionInTx(ctx context.Context, sessionID string, fn func(ctx context.Context) error) error
-	SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error)
+}
+
+// SessionRepository persists sessions and reads timeline inputs（SQLite Ent）.
+//
+// Deprecated: SessionRepository is a fat composite interface. Prefer depending on the
+// narrower sub-interfaces (SessionReader, SessionWriter, MessageReader, etc.) directly.
+type SessionRepository interface {
+	SessionReader
+	SessionWriter
+	MessageReader
+	MessageWriter
+	TimelineReader
+	InvocationReader
+	SummaryRepo
+	StateRepo
+	TurnRepo
+	ContextUpdater
+	CompressRepo
 }
 
 // AgentLookup checks agent existence (decoupled from biz.AgentRepository).
@@ -394,27 +428,53 @@ type TeamLookup interface {
 
 // SessionUsecase handles session CRUD + timeline. Chat 写消息经 AppendChat* 等仓储方法，不经 SessionService RPC.
 type SessionUsecase struct {
-	sessions       SessionRepository
-	agents         AgentLookup
-	teams          TeamLookup
-	titleGenerator SessionTitleGenerator
-	participants   SessionParticipantRepository
+	sessionReader   SessionReader
+	sessionWriter   SessionWriter
+	messageReader   MessageReader
+	messageWriter   MessageWriter
+	timelineReader  TimelineReader
+	invocationReader InvocationReader
+	summaryRepo     SummaryRepo
+	stateRepo       StateRepo
+	turnRepo        TurnRepo
+	contextUpdater  ContextUpdater
+	compressRepo    CompressRepo
+	agents          AgentLookup
+	teams           TeamLookup
+	titleGenerator  SessionTitleGenerator
+	participants    SessionParticipantRepository
 }
 
 func NewSessionUsecase(sessions SessionRepository, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository) *SessionUsecase {
 	if titleGenerator == nil {
 		titleGenerator = NewNoopSessionTitleGenerator()
 	}
-	return &SessionUsecase{sessions: sessions, agents: agents, teams: teams, titleGenerator: titleGenerator, participants: participants}
+	return &SessionUsecase{
+		sessionReader:    sessions,
+		sessionWriter:    sessions,
+		messageReader:    sessions,
+		messageWriter:    sessions,
+		timelineReader:   sessions,
+		invocationReader: sessions,
+		summaryRepo:      sessions,
+		stateRepo:        sessions,
+		turnRepo:         sessions,
+		contextUpdater:   sessions,
+		compressRepo:     sessions,
+		agents:           agents,
+		teams:            teams,
+		titleGenerator:   titleGenerator,
+		participants:     participants,
+	}
 }
 
 func (uc *SessionUsecase) Search(ctx context.Context, q SessionSearchQuery) (SessionListResult, error) {
 	normalizeSessionSearch(&q)
-	return uc.sessions.SearchSessions(ctx, q)
+	return uc.sessionReader.SearchSessions(ctx, q)
 }
 
 func (uc *SessionUsecase) Get(ctx context.Context, id string) (Session, error) {
-	return uc.sessions.GetSessionByID(ctx, id)
+	return uc.sessionReader.GetSessionByID(ctx, id)
 }
 
 func (uc *SessionUsecase) Create(ctx context.Context, in Session) (Session, error) {
@@ -444,7 +504,7 @@ func (uc *SessionUsecase) Create(ctx context.Context, in Session) (Session, erro
 		return Session{}, validationErr("owner_type must be agent or team")
 	}
 	in.ID = uuid.NewString()
-	return uc.sessions.CreateSession(ctx, in)
+	return uc.sessionWriter.CreateSession(ctx, in)
 }
 
 func (uc *SessionUsecase) Rename(ctx context.Context, id, title string) (Session, error) {
@@ -452,7 +512,7 @@ func (uc *SessionUsecase) Rename(ctx context.Context, id, title string) (Session
 	if title == "" {
 		return Session{}, validationErr("title is required")
 	}
-	return uc.sessions.UpdateSessionTitle(ctx, id, title)
+	return uc.sessionWriter.UpdateSessionTitle(ctx, id, title)
 }
 
 func (uc *SessionUsecase) Update(ctx context.Context, id string, fields SessionUpdateFields) (Session, error) {
@@ -464,7 +524,7 @@ func (uc *SessionUsecase) Update(ctx context.Context, id string, fields SessionU
 		v := strings.TrimSpace(*fields.Title)
 		fields.Title = &v
 	}
-	return uc.sessions.UpdateSession(ctx, id, fields)
+	return uc.sessionWriter.UpdateSession(ctx, id, fields)
 }
 
 func (uc *SessionUsecase) Restore(ctx context.Context, id string) (Session, error) {
@@ -472,7 +532,7 @@ func (uc *SessionUsecase) Restore(ctx context.Context, id string) (Session, erro
 	if id == "" {
 		return Session{}, validationErr("session id is required")
 	}
-	return uc.sessions.RestoreSession(ctx, id)
+	return uc.sessionWriter.RestoreSession(ctx, id)
 }
 
 func (uc *SessionUsecase) Archive(ctx context.Context, id string) error {
@@ -480,12 +540,12 @@ func (uc *SessionUsecase) Archive(ctx context.Context, id string) error {
 	if id == "" {
 		return validationErr("session id is required")
 	}
-	n, err := uc.sessions.ArchiveSession(ctx, id)
+	n, err := uc.sessionWriter.ArchiveSession(ctx, id)
 	if err != nil {
 		return err
 	}
 	if n == 0 {
-		sess, getErr := uc.sessions.GetSessionByID(ctx, id)
+		sess, getErr := uc.sessionReader.GetSessionByID(ctx, id)
 		if getErr != nil {
 			return getErr
 		}
@@ -501,12 +561,12 @@ func (uc *SessionUsecase) Delete(ctx context.Context, id string) error {
 	if id == "" {
 		return validationErr("session id is required")
 	}
-	n, err := uc.sessions.DeleteSession(ctx, id)
+	n, err := uc.sessionWriter.DeleteSession(ctx, id)
 	if err != nil {
 		return err
 	}
 	if n == 0 {
-		sess, getErr := uc.sessions.GetSessionByID(ctx, id)
+		sess, getErr := uc.sessionReader.GetSessionByID(ctx, id)
 		if getErr != nil {
 			return getErr
 		}
@@ -521,7 +581,7 @@ func (uc *SessionUsecase) DeleteByAgent(ctx context.Context, agentID string) err
 	if strings.TrimSpace(agentID) == "" {
 		return validationErr("agent_id is required")
 	}
-	return uc.sessions.DeleteSessionsByAgentID(ctx, agentID)
+	return uc.sessionWriter.DeleteSessionsByAgentID(ctx, agentID)
 }
 
 func normalizeSessionSearch(q *SessionSearchQuery) {

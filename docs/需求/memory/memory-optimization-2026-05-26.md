@@ -2,7 +2,7 @@
 
 > **关联**：[`memory.md`](./memory.md) · [`memory.design.md`](./memory.design.md) · [`memory-development.md`](./memory-development.md) · 代码 Review [2026-05-26-Memory-Code-Review](../../review/2026-05-26-Memory-Code-Review.md)
 > **作者范围**：本文聚焦 **业务逻辑** 层面（用户/Agent 实际感受得到的能力差异）的优化。仅涉及代码结构、命名、格式的"代码质量"问题已收敛在 review 文档 P3，本文不重复。
-> **状态**：🟢 Sprint A 已落地（MEM-OPT-01 Phase 0–3 + MEM-OPT-03 优先级/Dead-Letter/Replay） · 🟢 Sprint B 已落地（MEM-OPT-02 Worker + 强化因子）
+> **状态**：🟢 Sprint A 已落地（MEM-OPT-01 Phase 0–3 + MEM-OPT-03 优先级/Dead-Letter/Replay） · 🟢 Sprint B 已落地（MEM-OPT-02 Worker + 强化因子） · 🟢 Sprint C 已落地（Dead-Letter 前端 + PII block 模式） · 🟢 Sprint D 已落地（MEM-OPT-06 Saga + Dry-Run + 前端 Cascade Tab 升级 + L4 置信度/衰减 UI + PII 策略配置 UI）
 
 ---
 
@@ -710,8 +710,8 @@ Memory Center → Cascade Tab：
 |------|------|------|------|
 | Sprint A（2 周） | OPT-01 Phase 0–3（DDL + 写路径错误 + 读校验灰度 + Reconciler） + OPT-03 优先级队列 + Dead-Letter + Replay RPC + 自动重放 cron | M | ✅ 已落地 |
 | Sprint B（2 周） | OPT-02 Worker + 强化因子（无 UI） | M | ✅ 已落地 |
-| Sprint C（2 周） | OPT-05 function call schema 双轨 + OPT-04 PII block 模式 | M | 📐 待开始 |
-| Sprint D（3 周） | OPT-06 Saga + Dry-Run + 前端 Cascade Tab 升级 | L | 📐 待开始 |
+| Sprint C（2 周） | OPT-05 function call schema 双轨 + OPT-04 PII block 模式 + Dead-Letter 前端 | M | ✅ 已落地 |
+| Sprint D（3 周） | OPT-06 Saga + Dry-Run + 前端 Cascade Tab 升级 + L4 置信度/衰减 UI + PII 策略配置 UI | L | ✅ 已落地 |
 | Sprint E（2 周） | OPT-04 PII review 工作流 + 前端审核 Tab + OPT-02 用户反馈强化打通 | M | 📐 待开始 |
 
 ---

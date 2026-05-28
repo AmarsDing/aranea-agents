@@ -20,6 +20,10 @@ export type {
   MemoryFactListResult,
   MemoryRelation,
   CascadeProposal,
+  CascadeFactDiff,
+  CascadeEntityRename,
+  CascadePreview,
+  CascadeSagaStep,
   MemoryRecallHit,
   CompositeSearchHit,
   MemoryWorkerStatus,
@@ -49,6 +53,10 @@ import type {
   MemoryFactListResult,
   MemoryRelation,
   CascadeProposal,
+  CascadeFactDiff,
+  CascadeEntityRename,
+  CascadePreview,
+  CascadeSagaStep,
   MemoryRecallHit,
   CompositeSearchHit,
   MemoryWorkerStatus,
@@ -522,6 +530,49 @@ export async function rejectCascadeProposal(id: string, reviewer = "admin", reas
   const res = await kratosApi.post(memoryEndpoints.rejectCascadeProposal(id), { reviewer, reason });
   const body = asRecord(res.data);
   return mapCascadeProposal(body.proposal ?? body.Proposal);
+}
+
+export async function previewCascadeApprove(id: string): Promise<CascadePreview> {
+  const res = await kratosApi.get(memoryEndpoints.previewCascadeApprove(id));
+  const body = asRecord(res.data);
+  const p = asRecord(body.preview ?? body.Preview);
+  const diffs: CascadeFactDiff[] = [];
+  for (const d of arr(p.fact_diffs ?? p.FactDiffs ?? [])) {
+    const r = asRecord(d);
+    diffs.push({ fact_id: pickStr(r, "fact_id"), before_statement: pickStr(r, "before_statement"), after_statement: pickStr(r, "after_statement"), scope: pickStr(r, "scope") });
+  }
+  const renames: CascadeEntityRename[] = [];
+  for (const e of arr(p.entity_renames ?? p.EntityRenames ?? [])) {
+    const r = asRecord(e);
+    renames.push({ entity_id: pickStr(r, "entity_id"), entity_type: pickStr(r, "entity_type"), old_name: pickStr(r, "old_name"), new_name: pickStr(r, "new_name") });
+  }
+  return { affected_entities_count: pickNum(p, "affected_entities_count"), affected_facts_count: pickNum(p, "affected_facts_count"), fact_diffs: diffs, entity_renames: renames };
+}
+
+export async function getCascadeSagaSteps(proposalId: string): Promise<CascadeSagaStep[]> {
+  const res = await kratosApi.get(memoryEndpoints.getCascadeSagaSteps(proposalId));
+  const body = asRecord(res.data);
+  const raw = arr(body.steps ?? body.Steps ?? []);
+  return raw.map((s: unknown) => {
+    const r = asRecord(s);
+    return { id: pickI64(r, "id"), proposal_id: pickStr(r, "proposal_id"), step_index: pickNum(r, "step_index"), step_name: pickStr(r, "step_name"), state: pickStr(r, "state"), is_critical: !!r.is_critical || !!r.IsCritical, attempts: pickNum(r, "attempts"), started_at: pickStr(r, "started_at"), finished_at: pickStr(r, "finished_at"), payload_json: pickStr(r, "payload_json"), result_json: pickStr(r, "result_json"), error: pickStr(r, "error") };
+  });
+}
+
+export async function retryCascadeApprove(id: string, reviewer = "admin"): Promise<CascadeProposal> {
+  const res = await kratosApi.post(memoryEndpoints.retryCascadeApprove(id), { reviewer });
+  const body = asRecord(res.data);
+  return mapCascadeProposal(body.proposal ?? body.Proposal);
+}
+
+export async function compensateCascadeApprove(id: string, reviewer = "admin"): Promise<CascadeProposal> {
+  const res = await kratosApi.post(memoryEndpoints.compensateCascadeApprove(id), { reviewer });
+  const body = asRecord(res.data);
+  return mapCascadeProposal(body.proposal ?? body.Proposal);
+}
+
+function arr(v: unknown): unknown[] {
+  return Array.isArray(v) ? v : [];
 }
 
 function mapRecallScores(raw: unknown) {

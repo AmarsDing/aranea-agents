@@ -77,13 +77,19 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 	if run == nil {
 		return
 	}
+	if biz.IsTeamRunTerminalStatus(run.Status) {
+		return
+	}
 	run.Status = biz.TeamRunStatusFailed
 	run.ErrorMessage = msg
 	run.FinishedAt = agent.RFC3339Now()
 	run.DurationMS = int(time.Since(t0).Milliseconds())
-	_ = r.teams.UpdateTeamRun(ctx, *run)
+	if err := r.teams.UpdateTeamRun(ctx, *run); err != nil {
+		event.CtxFlowLogWarn(ctx, "team.run.err_update_fail", "UpdateTeamRun failed in finishRunErr",
+			event.P("team_run_id", run.ID), event.P("update_error", err.Error()))
+	}
 	if biz.ShouldRecordTaskDeadLetter(run.DefinitionSnapshotJSON) {
-		_ = r.teams.CreateTaskDeadLetter(ctx, biz.TaskDeadLetter{
+		if dlerr := r.teams.CreateTaskDeadLetter(ctx, biz.TaskDeadLetter{
 			ID:               uuid.NewString(),
 			SourceType:       biz.TaskDeadLetterSourceTeamRun,
 			SourceID:         run.ID,
@@ -94,7 +100,10 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 			ErrorMessage:     msg,
 			Status:           biz.TaskDeadLetterStatusPending,
 			CreatedAt:        agent.RFC3339Now(),
-		})
+		}); dlerr != nil {
+			event.CtxFlowLogWarn(ctx, "team.run.dead_letter_fail", "CreateTaskDeadLetter failed",
+				event.P("team_run_id", run.ID), event.P("error", dlerr.Error()))
+		}
 	}
 	if r.td.Pipeline.Bus != nil {
 		cp := *run
@@ -123,8 +132,11 @@ func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRun) {
 	}
 	data := biz.BuildTeamRunSummaryData(run, steps)
 	summary := SummaryMapFromData(data)
-	if b, err := json.Marshal(summary); err == nil {
-		_ = r.teams.UpdateTeamRunSummaryJSON(ctx, run.ID, string(b))
+	if b, merr := json.Marshal(summary); merr == nil {
+		if uerr := r.teams.UpdateTeamRunSummaryJSON(ctx, run.ID, string(b)); uerr != nil {
+			event.CtxFlowLogWarn(ctx, "team.run.summary_update_fail", "UpdateTeamRunSummaryJSON failed",
+				event.P("team_run_id", run.ID), event.P("update_error", uerr.Error()))
+		}
 	}
 	r.td.Pipeline.Bus.Publish(ctx, TeamSummaryEnvelope(run, steps))
 }

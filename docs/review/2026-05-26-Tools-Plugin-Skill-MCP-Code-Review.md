@@ -147,11 +147,11 @@
 
 | ID | 子系统 | 问题 | 建议 |
 |----|-------|------|------|
-| **TPM-P2-01** | tools | `skillruntime/filter.go::allowedSlugs` 在 `ResolveSkillSlugs` 出错时 **fail open** 到所有已发布 skill | 改 fail closed（空集 + log + metric） |
-| **TPM-P2-02** | tools | `toolset.go::Assemble` OpenAPI loader 错误被 `continue` 静默吞掉 | 收集错误返回，至少 log，避免 misconfig 静默 |
-| **TPM-P2-03** | tools | `claudefetch` 注册表条目永远返回 `fmt.Errorf("not yet implemented")` | 对齐 `geminifetch` 模式返回 `(nil, nil)` 或从 registry 删除 |
-| **TPM-P2-04** | tools | 三处 `configString` helper 重复（`trpc/runtime_config.go` / `webresearch/config.go` / `testexec/config.go`），catalog-key → config 映射散落 | 抽 `internal/tools/keys` 单一 mapping |
-| **TPM-P2-05** | tools | `skillruntime/filter.go::cache` 用 `sync.Map` 按 invocation ID 累积无 eviction | LRU 或 invocation 结束清理 |
+| **TPM-P2-01** | tools | ~~`skillruntime/filter.go::allowedSlugs` 在 `ResolveSkillSlugs` 出错时 **fail open** 到所有已发布 skill~~ ✅ 2026-05-28：改为 fail-closed | 改 fail closed（空集 + log + metric） |
+| **TPM-P2-02** | tools | ~~`toolset.go::Assemble` OpenAPI loader 错误被 `continue` 静默吞掉~~ ✅ 2026-05-28：改为 SysLogWarn | 收集错误返回，至少 log，避免 misconfig 静默 |
+| **TPM-P2-03** | tools | ~~`claudefetch` 注册表条目永远返回 `fmt.Errorf("not yet implemented")`~~ ✅ 2026-05-28：对齐 geminifetch 返回 (nil, nil) | 对齐 `geminifetch` 模式返回 `(nil, nil)` 或从 registry 删除 |
+| **TPM-P2-04** | tools | ~~三处 `configString` helper 重复~~ ✅ 2026-05-28：统一到 tools 包 | 抽 `internal/tools/keys` 单一 mapping |
+| **TPM-P2-05** | tools | ~~`skillruntime/filter.go::cache` 用 `sync.Map` 按 invocation ID 累积无 eviction~~ ✅ 2026-05-28：加 512 条上限 | LRU 或 invocation 结束清理 |
 | **TPM-P2-06** | tools | ~~`kanban/bridge.go::globalBridge` 包级可变全局变量无锁~~ ✅ 2026-05-28：已重构为 Wire DI 注入 | 优先 context 注入；保留全局则加 `sync.Once` |
 | **TPM-P2-07** | tools | ~~mcpobserve 元数据写入 `context.Background()` 丢 trace~~ ✅ 2026-05-28：改为 `context.WithoutCancel(ctx)` | `context.WithoutCancel(ctx)` 或保留 timeout |
 | **TPM-P2-08** | tools | ~~`serpapi.go` API key 走 query string 进 access log~~ ✅ 2026-05-28：SerpAPI 不支持 header 鉴权，已加 redactedURL + 注释警示 | header 鉴权（若 plan 支持） |
@@ -348,6 +348,8 @@ health.Runner   ⟶ TestMCPServer × N (5min ticker)
 | `permission_guard.confirm_tools` | `internal/plugin/trpc/permission_guard.go` | ~~解析后未使用~~ ✅ 2026-05-28：字段与 schema 已删除 |
 | `permission_guard.role_rules` | JSON schema | ~~仅 schema，无实现~~ ✅ 2026-05-28：schema 已删除 |
 | `claudefetch` registry entry | `internal/tools/toolset.go:73-78` | ~~factory 永远 error~~ ✅ 2026-05-28：改为 `(nil, nil)` 对齐 geminifetch |
+| `skillruntime/resolve.go` 死函数 | `internal/tools/skillruntime/resolve.go` | ✅ 2026-05-28 Review2-5：删除 applyLayerA/filterByAllTags/filterByIntentPaths/scoreCandidates（均有 WithReasons 版本替代） |
+| `skillruntime/filter.go` normalizeSlugSlice | `internal/tools/skillruntime/filter.go` | ✅ 2026-05-28 Review2-4：删除死代码函数 |
 | `tools.workspace_exec` factory | registry | no-op；实际由 `WithCodeExecutor` 挂载 |
 
 ### 8.4 错误处理风格
@@ -364,15 +366,15 @@ health.Runner   ⟶ TestMCPServer × N (5min ticker)
 | 位置 | 评估 |
 |------|------|
 | `tools.Registry` | `sync.Once` 懒初始化，安全 |
-| `tools/cache.ResultCache` | RWMutex 配对正确 |
+| `tools/cache.ResultCache` | ✅ RWMutex 配对正确；2026-05-28 Review2-3：TOCTOU 竞态已修复（过期条目升级写锁后重新检查） |
 | `tools/skillruntime.filterCache` | ✅ 2026-05-28：mutex + atomic.Int64，512 条上限自动清理，替代原 sync.Map |
 | `tools/mcpobserve` 包级 RWMutex | wire-once 后只读，OK；但隐式全局耦合 |
-| `tools/kanban.globalBridge` | **无锁** package var，re-wire 可能 race |
+| `tools/kanban.globalBridge` | ✅ 2026-05-28：已重构为 Wire DI 注入 |
 | `plugin/trpc/runtime.go` plugins | RWMutex 读多写少 OK |
 | `plugin/trpc/cost_guard_budget.go` | per-tracker mutex + DB UPSERT，cross-process 一致性靠 DB 原子；本地 fail-silent 是问题（P2-13） |
-| `skill/watch/runner.go::childWatches` | **append 无锁**，与 startup `refreshChildWatches` 竞态 |
+| `skill/watch/runner.go::childWatches` | ✅ 2026-05-28：加 mu 保护（P2-22） |
 | `mcp/health/runner.go::TryLock` | 正确（防 pile-up） |
-| `mcp/health.probeAll → safego.Go` | 无 worker pool 上限（P2-30） |
+| `mcp/health.probeAll → safego.Go` | ✅ 2026-05-28：semaphore bounded concurrency（max=8）（P2-30） |
 
 ### 8.6 测试质量
 
@@ -405,11 +407,13 @@ health.Runner   ⟶ TestMCPServer × N (5min ticker)
 |------|--------|------|
 | **SSRF** | `mcp.probe.evaluateHTTP` 缺 redirect 校验（P1-11） | 必修 |
 | **SSRF** | plugin `hook_notify` 已有 `webhookurl.ValidateNotifyURL` | ✅ 已防 |
+| **SSRF** | tools `cli_admin/pkg_install_from_url.go` 缺 URL 校验 | ✅ 2026-05-28 Review2-2：已加 validateRepoURL + isPrivateIP |
 | **Path traversal** | skill ZIP zipslip 不完全（P1-07） | 必修 |
 | **PII 泄露** | plugin `audit_log.beforeModel` 不 redact request（P2-11） | 修复 |
 | **PII 泄露** | plugin `skill_usage_tracker` 原始 args 日志（P2-12） | 修复 |
 | **OAuth** | `mcp_oauth.go` refresh 失败回退陈旧 token（P2-27） | 修复 |
 | **凭证** | ~~tools `serpapi.go` API key in query string（P2-08）~~ ✅ 2026-05-28：已加 redactedURL 脱敏 |
+| **凭证** | tools `cli_admin/registry.go` Deps.String() 泄露 APIToken | ✅ 2026-05-28 Review2-7：Deps.String() 遮蔽 APIToken 为 "***" |
 | **RBAC** | skill 全 `true` 硬编码（P2-23） | 规划 |
 | **凭证存储** | mcp `config_json` 含 client_secret / refresh_token（明文 in row） | 需要 KMS / 字段加密（超出本 review 范围） |
 

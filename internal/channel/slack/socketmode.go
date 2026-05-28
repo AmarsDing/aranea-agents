@@ -8,6 +8,8 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/runtime"
+	"aranea-agents/internal/event"
+	"aranea-agents/pkg/safego"
 
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -24,7 +26,7 @@ func RunSocketMode(
 	ch biz.Channel,
 	creds []biz.ChannelCredential,
 	lookup runtime.CredentialLookup,
-	handler runtime.InboundHandler,
+	handler port.InboundHandler,
 ) error {
 	botToken, err := lookup(ctx, creds, "bot_token")
 	if err != nil {
@@ -47,7 +49,7 @@ func RunSocketMode(
 	socketClient := socketmode.New(client)
 	chRow := ch
 
-	go func() {
+	safego.Go(ctx, "channel.slack.socketmode", func() {
 		for {
 			select {
 			case <-ctx.Done():
@@ -72,11 +74,15 @@ func RunSocketMode(
 						continue
 					}
 					ev.PlatformType = "slack"
-					_ = handler.ProcessInbound(ctx, chRow, ev)
+					if err := handler.ProcessInbound(ctx, chRow, ev); err != nil {
+						event.SysLogWarn("channel.slack.inbound_failed", "Slack 入站处理失败",
+							event.P("error", err.Error()),
+						)
+					}
 				}
 			}
 		}
-	}()
+	})
 
 	return socketClient.RunContext(ctx)
 }
@@ -92,7 +98,7 @@ func messageEventToInbound(ev *slackevents.MessageEvent) (port.InboundEvent, boo
 	channelID := strings.TrimSpace(ev.Channel)
 	userID := strings.TrimSpace(ev.User)
 	return port.InboundEvent{
-		PeerID:         firstNonEmpty(userID, channelID),
+		PeerID:         port.FirstNonEmpty(userID, channelID),
 		Text:           text,
 		IdempotencyKey: "slack:" + strings.TrimSpace(ev.TimeStamp),
 		OutboundMeta: map[string]string{
@@ -100,13 +106,4 @@ func messageEventToInbound(ev *slackevents.MessageEvent) (port.InboundEvent, boo
 			"channel":   channelID,
 		},
 	}, true
-}
-
-func firstNonEmpty(parts ...string) string {
-	for _, p := range parts {
-		if strings.TrimSpace(p) != "" {
-			return strings.TrimSpace(p)
-		}
-	}
-	return ""
 }

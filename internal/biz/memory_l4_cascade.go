@@ -3,18 +3,19 @@ package biz
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/jsonutil"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-var ErrCascadeUnavailable = errors.New("memory: cascade store not available")
+var ErrCascadeUnavailable = kerrors.BadRequest("MEMORY", "cascade store not available")
 
-var ErrCascadeSagaInProgress = errors.New("memory: cascade saga already in progress")
+var ErrCascadeSagaInProgress = kerrors.Conflict("MEMORY", "cascade saga already in progress")
 
 type CascadeGraphStore interface {
 	InsertCascadeProposal(ctx context.Context, in CascadeProposalInsert) ([]byte, error)
@@ -307,11 +308,13 @@ func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([
 		}
 		entJSON := string(entRaw)
 		affectedJSON := jsonutil.IfaceStr(row, "affected_json")
+		replacePayload, _ := json.Marshal(map[string]string{"agent_id": agentID, "old_name": oldName, "new_name": newName})
+		syncPayload, _ := json.Marshal(map[string]string{"agent_id": agentID})
 		steps := []CascadeSagaStep{
 			{StepName: SagaStepUpsertEntity, IsCritical: true, PayloadJSON: entJSON},
 			{StepName: SagaStepTouchAffected, IsCritical: false, PayloadJSON: affectedJSON},
-			{StepName: SagaStepReplaceFacts, IsCritical: true, PayloadJSON: fmt.Sprintf(`{"agent_id":"%s","old_name":"%s","new_name":"%s"}`, agentID, oldName, newName)},
-			{StepName: SagaStepSyncIndex, IsCritical: false, PayloadJSON: fmt.Sprintf(`{"agent_id":"%s"}`, agentID)},
+			{StepName: SagaStepReplaceFacts, IsCritical: true, PayloadJSON: string(replacePayload)},
+			{StepName: SagaStepSyncIndex, IsCritical: false, PayloadJSON: string(syncPayload)},
 		}
 		if err := uc.store.InitCascadeSagaSteps(ctx, id, steps); err != nil {
 			return nil, err
@@ -371,11 +374,14 @@ func (uc *L4CascadeUsecase) executeSagaStep(ctx context.Context, step *CascadeSa
 	case SagaStepSyncIndex:
 		execErr = uc.execSyncIndex(ctx, row)
 	default:
-		execErr = fmt.Errorf("unknown saga step: %s", step.StepName)
+		execErr = kerrors.BadRequest("MEMORY", fmt.Sprintf("unknown saga step: %s", step.StepName))
 	}
 
 	if execErr != nil {
-		_ = uc.store.UpdateSagaStepState(ctx, step.ID, "failed", execErr.Error())
+		if err := uc.store.UpdateSagaStepState(ctx, step.ID, "failed", execErr.Error()); err != nil {
+			event.SysLogWarn("system.memory.saga_step_fail", "failed to mark saga step as failed",
+				event.P("step_id", step.ID), event.P("error", err.Error()))
+		}
 		return execErr
 	}
 	return uc.store.UpdateSagaStepState(ctx, step.ID, "succeeded", "")
@@ -454,24 +460,20 @@ func (uc *L4CascadeUsecase) execReplaceFacts(ctx context.Context, row map[string
 
 func (uc *L4CascadeUsecase) execSyncIndex(ctx context.Context, row map[string]any) error {
 	agentID := jsonutil.IfaceStr(row, "agent_id")
-	oldName := jsonutil.IfaceStr(row, "old_value")
-	newName := jsonutil.IfaceStr(row, "new_value")
-	if oldName == "" || newName == "" || uc.indexSync == nil {
+	if agentID == "" || uc.indexSync == nil {
 		return nil
 	}
-	updatedRows, _, err := uc.store.ReplaceNameInAgentFacts(ctx, agentID, oldName, newName)
+	marked, err := uc.store.MarkFactsIndexStaleByAgent(ctx, agentID)
 	if err != nil {
 		return err
 	}
-	var syncErrs []string
-	for _, raw := range updatedRows {
-		if err := uc.indexSync.SyncFactIndexFromRow(ctx, raw); err != nil {
-			syncErrs = append(syncErrs, err.Error())
-			event.SysLogWarn("system.auto_memory.l4_fail", "memory.cascade_approve.index_sync_fail", event.P("error", err.Error()))
+	resultJSON, _ := json.Marshal(map[string]any{"stale_marked": marked})
+	sagaSteps, _ := uc.store.GetCascadeSagaSteps(ctx, jsonutil.IfaceStr(row, "id"))
+	for _, s := range sagaSteps {
+		if s.StepName == SagaStepSyncIndex && s.State == "running" {
+			_ = uc.store.UpdateSagaStepResult(ctx, s.ID, string(resultJSON))
+			break
 		}
-	}
-	if len(syncErrs) > 0 {
-		return fmt.Errorf("index sync failed for %d facts", len(syncErrs))
 	}
 	return nil
 }

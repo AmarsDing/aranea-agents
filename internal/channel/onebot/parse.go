@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"aranea-agents/internal/channel/port"
 )
 
 // InboundMessage is a normalized OneBot HTTP push payload (NapCat/LLOneBot).
@@ -73,7 +75,7 @@ func ParseInbound(raw []byte) (*InboundMessage, error) {
 	if text == "" {
 		return nil, fmt.Errorf("onebot: empty message")
 	}
-	userID := firstNonEmpty(msg.UserID, msg.Sender.UserID)
+	userID := port.FirstNonEmpty(msg.UserID, msg.Sender.UserID)
 	peerID := userID
 	if strings.TrimSpace(msg.GroupID) != "" {
 		peerID = msg.GroupID
@@ -85,13 +87,4 @@ func ParseInbound(raw []byte) (*InboundMessage, error) {
 		GroupID:   strings.TrimSpace(msg.GroupID),
 		UserID:    userID,
 	}, nil
-}
-
-func firstNonEmpty(parts ...string) string {
-	for _, p := range parts {
-		if strings.TrimSpace(p) != "" {
-			return strings.TrimSpace(p)
-		}
-	}
-	return ""
 }

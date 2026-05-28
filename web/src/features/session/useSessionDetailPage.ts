@@ -2,7 +2,6 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import { useRoute, useRouter } from "vue-router";
 import type { Session } from "./types";
-import { exportSession } from "./api";
 import { downloadTextFile } from "./downloadExport";
 import { useSessionStore } from "../../stores/session/index";
 import { useSessionTimelinePanel } from "./useSessionTimelinePanel";
@@ -81,7 +80,7 @@ export function useSessionDetailPage() {
     if (!id || exporting.value) return;
     exporting.value = true;
     try {
-      const payload = await exportSession(id, format);
+      const payload = await sessionStore.exportSession(id, format);
       downloadTextFile(payload.content, payload.filename, payload.content_type);
       $q.notify({ type: "positive", message: format === "json" ? "JSON 已导出" : "Markdown 已导出" });
     } catch (err) {

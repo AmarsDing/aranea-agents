@@ -249,6 +249,15 @@ func (m *ingressSessionRepo) GetSessionRevision(context.Context, string) (int64,
 func (m *ingressSessionRepo) ListMessagesAfterRevision(context.Context, string, int64) ([]biz.ChatMessage, error) {
 	return nil, nil
 }
+func (m *ingressSessionRepo) TryIncrementCompressVersion(context.Context, string) (int64, error) {
+	return 0, nil
+}
+func (m *ingressSessionRepo) CompressSessionInTx(ctx context.Context, _ string, fn func(context.Context) error) error {
+	return fn(ctx)
+}
+func (m *ingressSessionRepo) SessionSummaryExists(context.Context, string, int, int) (bool, error) {
+	return false, nil
+}
 
 type ingressAgentRepo struct {
 	id string

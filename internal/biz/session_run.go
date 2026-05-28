@@ -2,14 +2,15 @@ package biz
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
+	"aranea-agents/internal/event"
+
 	"github.com/google/uuid"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-// Session run lifecycle phases (M55 §2.6 · CC-R-01).
 const (
 	SessionRunPhaseInteractive = "interactive"
 	SessionRunPhaseEscalating  = "escalating"
@@ -18,7 +19,6 @@ const (
 	SessionRunPhaseFailed      = "failed"
 )
 
-// DefaultSessionRunBudget matches blueprint run_policy defaults (§2.6.5).
 type SessionRunBudget struct {
 	SoftBudgetSec int
 	HardBudgetSec int
@@ -28,7 +28,6 @@ func DefaultSessionRunBudget() SessionRunBudget {
 	return SessionRunBudget{SoftBudgetSec: 180, HardBudgetSec: 900}
 }
 
-// SessionRun tracks one user-message execution lifecycle across Interactive/Durable phases.
 type SessionRun struct {
 	ID              string
 	SessionID       string
@@ -50,10 +49,8 @@ type SessionRun struct {
 	UpdatedAt       string
 }
 
-// DefaultDurableResumeClaimStaleSec is how long before a stale resume claim may be retried (CC-R-OPT-01).
 const DefaultDurableResumeClaimStaleSec = 300
 
-// SessionRunRepo persists session run rows (CC-R-01).
 type SessionRunRepo interface {
 	Create(ctx context.Context, run SessionRun) (string, error)
 	UpdatePhase(ctx context.Context, id, phase string) error
@@ -69,7 +66,6 @@ type SessionRunRepo interface {
 	MarkOrphanedRunsCancelled(ctx context.Context) (int, error)
 }
 
-// SessionRunListQuery filters session runs for chat jobs panel (CC-R-04).
 type SessionRunListQuery struct {
 	SessionID string
 	AgentID   string
@@ -77,7 +73,6 @@ type SessionRunListQuery struct {
 	Limit     int
 }
 
-// SessionRunCheckpoint stores durable resume payload (CC-R-03).
 type SessionRunCheckpoint struct {
 	ID           string
 	SessionRunID string
@@ -88,14 +83,12 @@ type SessionRunCheckpoint struct {
 	CreatedAt    string
 }
 
-// SessionRunCheckpointRepo persists checkpoint rows.
 type SessionRunCheckpointRepo interface {
 	Create(ctx context.Context, cp SessionRunCheckpoint) (string, error)
 	Get(ctx context.Context, id string) (SessionRunCheckpoint, error)
 	GetBySessionRunID(ctx context.Context, sessionRunID string) (SessionRunCheckpoint, error)
 }
 
-// SessionRunUsecase owns Interactive→Durable lifecycle bookkeeping.
 type SessionRunUsecase struct {
 	repo SessionRunRepo
 	cps  SessionRunCheckpointRepo
@@ -119,15 +112,16 @@ func sessionRunNow() string {
 	return time.Now().UTC().Format(time.RFC3339)
 }
 
-// StartInteractive creates a run row in interactive phase before agent execution begins.
+var errSessionRunNotInit = kerrors.InternalServer("SESSION_RUN", "SessionRunUsecase: not initialized")
+
 func (u *SessionRunUsecase) StartInteractive(ctx context.Context, sessionID, turnID, runtimeRunID, source, agentID string, budget SessionRunBudget) (SessionRun, error) {
 	if u == nil || u.repo == nil {
-		return SessionRun{}, fmt.Errorf("SessionRunUsecase: not initialized")
+		return SessionRun{}, errSessionRunNotInit
 	}
 	sessionID = strings.TrimSpace(sessionID)
 	turnID = strings.TrimSpace(turnID)
 	if sessionID == "" || turnID == "" {
-		return SessionRun{}, fmt.Errorf("SessionRunUsecase.StartInteractive: sessionID and turnID are required")
+		return SessionRun{}, kerrors.BadRequest("SESSION_RUN", "sessionID and turnID are required")
 	}
 	if budget.SoftBudgetSec <= 0 {
 		budget = DefaultSessionRunBudget()
@@ -161,76 +155,74 @@ func (u *SessionRunUsecase) StartInteractive(ctx context.Context, sessionID, tur
 
 func (u *SessionRunUsecase) MarkPhase(ctx context.Context, id, phase string) error {
 	if u == nil || u.repo == nil {
-		return fmt.Errorf("SessionRunUsecase: not initialized")
+		return errSessionRunNotInit
 	}
 	if strings.TrimSpace(id) == "" {
-		return fmt.Errorf("SessionRunUsecase.MarkPhase: id is required")
+		return kerrors.BadRequest("SESSION_RUN", "id is required")
 	}
 	return u.repo.UpdatePhase(ctx, id, NormalizeSessionRunPhase(phase))
 }
 
 func (u *SessionRunUsecase) Complete(ctx context.Context, id string) error {
 	if u == nil || u.repo == nil {
-		return fmt.Errorf("SessionRunUsecase: not initialized")
+		return errSessionRunNotInit
 	}
 	if strings.TrimSpace(id) == "" {
-		return fmt.Errorf("SessionRunUsecase.Complete: id is required")
+		return kerrors.BadRequest("SESSION_RUN", "id is required")
 	}
 	return u.repo.MarkTerminal(ctx, id, SessionRunPhaseCompleted, "")
 }
 
 func (u *SessionRunUsecase) Fail(ctx context.Context, id, errMsg string) error {
 	if u == nil || u.repo == nil {
-		return fmt.Errorf("SessionRunUsecase: not initialized")
+		return errSessionRunNotInit
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return fmt.Errorf("SessionRunUsecase.Fail: id is required")
+		return kerrors.BadRequest("SESSION_RUN", "id is required")
 	}
 	if err := u.repo.MarkTerminal(ctx, id, SessionRunPhaseFailed, strings.TrimSpace(errMsg)); err != nil {
 		return err
 	}
-	_ = u.repo.ClearResumeClaim(ctx, id)
+	if err := u.repo.ClearResumeClaim(ctx, id); err != nil {
+		event.SysLogWarn("session_run", "clear resume claim failed", event.P("id", id), event.P("error", err.Error()))
+	}
 	return nil
 }
 
-// TryClaimDurableResume atomically marks a durable run as resume-in-flight (CC-R-OPT-01).
 func (u *SessionRunUsecase) TryClaimDurableResume(ctx context.Context, id string) (bool, error) {
 	if u == nil || u.repo == nil {
-		return false, fmt.Errorf("SessionRunUsecase: not initialized")
+		return false, errSessionRunNotInit
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return false, fmt.Errorf("SessionRunUsecase.TryClaimDurableResume: id is required")
+		return false, kerrors.BadRequest("SESSION_RUN", "id is required")
 	}
 	staleBefore := time.Now().UTC().Add(-time.Duration(DefaultDurableResumeClaimStaleSec) * time.Second).Format(time.RFC3339)
 	return u.repo.TryClaimDurableResume(ctx, id, staleBefore)
 }
 
-// ClearResumeClaim releases a durable resume claim so the worker may retry (CC-R-OPT-01).
 func (u *SessionRunUsecase) ClearResumeClaim(ctx context.Context, id string) error {
 	if u == nil || u.repo == nil {
-		return fmt.Errorf("SessionRunUsecase: not initialized")
+		return errSessionRunNotInit
 	}
 	return u.repo.ClearResumeClaim(ctx, strings.TrimSpace(id))
 }
 
 func (u *SessionRunUsecase) Get(ctx context.Context, id string) (SessionRun, error) {
 	if u == nil || u.repo == nil {
-		return SessionRun{}, fmt.Errorf("SessionRunUsecase: not initialized")
+		return SessionRun{}, errSessionRunNotInit
 	}
 	return u.repo.Get(ctx, id)
 }
 
 func (u *SessionRunUsecase) GetActiveForSession(ctx context.Context, sessionID string) (SessionRun, error) {
 	if u == nil || u.repo == nil {
-		return SessionRun{}, fmt.Errorf("SessionRunUsecase: not initialized")
+		return SessionRun{}, errSessionRunNotInit
 	}
 	return u.repo.GetActiveForSession(ctx, sessionID)
 }
 
-// CleanupOrphanedRuns marks all active session_runs without finished_at as cancelled.
-// Should be called once on startup to clean up zombie runs from a previous crash.
 func (u *SessionRunUsecase) CleanupOrphanedRuns(ctx context.Context) (int, error) {
 	if u == nil || u.repo == nil {
 		return 0, nil

@@ -10,14 +10,17 @@ import {
   listSessionTurns,
   getSessionTimeline,
   listSessionChatMessages,
+  listSessionRuns,
+  listSessionParticipants,
   previewSessionBatch,
   batchArchiveSessions,
   batchDeleteSessions,
   pinSession,
   restoreSession,
-  unpinSession
+  unpinSession,
+  exportSession
 } from "../../features/session/api";
-import type { Session, SessionListResult } from "../../features/session/types";
+import type { Session, SessionListResult, SessionTurn, SessionTimeline, SessionRunRecord, SessionParticipant } from "../../features/session/types";
 import type { BatchOperationResult, BatchPreviewResult, SessionBatchScope } from "../../features/session/types";
 import type { Message } from "../../features/chat/types";
 import { emitSessionMutation } from "../sessionSync";
@@ -29,6 +32,13 @@ export const useSessionStore = defineStore("session", () => {
   const error = ref<string | null>(null);
   const total = ref(0);
   const keyword = ref("");
+
+  const turnsLoading = ref(false);
+  const timelineLoading = ref(false);
+  const messagesLoading = ref(false);
+  const turns = ref<{ items: SessionTurn[]; total: number } | null>(null);
+  const timeline = ref<SessionTimeline | null>(null);
+  const messages = ref<{ items: Message[]; currentRevision: number } | null>(null);
 
   async function loadSessions(params?: { keyword?: string; agent_id?: string; limit?: number; offset?: number }) {
     loading.value = true;
@@ -52,20 +62,38 @@ export const useSessionStore = defineStore("session", () => {
     limit?: number;
     offset?: number;
   }): Promise<SessionListResult> {
-    return searchSessions(params);
+    error.value = null;
+    try {
+      return await searchSessions(params);
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    }
   }
 
   async function fetchSession(id: string) {
-    const s = await getSession(id);
-    activeSession.value = s;
-    return s;
+    error.value = null;
+    try {
+      const s = await getSession(id);
+      activeSession.value = s;
+      return s;
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    }
   }
 
   async function newSession(payload: { agent_id?: string; team_id?: string; owner_type?: string; title?: string }) {
-    const s = await createSession({ ...payload, title: payload.title ?? "" });
-    sessions.value.unshift(s);
-    activeSession.value = s;
-    return s;
+    error.value = null;
+    try {
+      const s = await createSession({ ...payload, title: payload.title ?? "" });
+      sessions.value.unshift(s);
+      activeSession.value = s;
+      return s;
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    }
   }
 
   async function removeSession(id: string) {
@@ -130,15 +158,51 @@ export const useSessionStore = defineStore("session", () => {
   }
 
   async function fetchTurns(sessionId: string, limit = 20, offset = 0) {
-    return listSessionTurns(sessionId, limit, offset);
+    turnsLoading.value = true;
+    error.value = null;
+    try {
+      const result = await listSessionTurns(sessionId, limit, offset);
+      turns.value = result;
+      return result;
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    } finally {
+      turnsLoading.value = false;
+    }
   }
 
-  async function fetchTimeline(sessionId: string) {
-    return getSessionTimeline(sessionId);
+  async function fetchTimeline(
+    sessionId: string,
+    params?: { limit?: number; offset?: number; kind_filter?: string; sort_order?: string }
+  ) {
+    timelineLoading.value = true;
+    error.value = null;
+    try {
+      const result = await getSessionTimeline(sessionId, params);
+      timeline.value = result;
+      return result;
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    } finally {
+      timelineLoading.value = false;
+    }
   }
 
   async function fetchMessages(sessionId: string): Promise<{ items: Message[]; currentRevision: number }> {
-    return listSessionChatMessages(sessionId);
+    messagesLoading.value = true;
+    error.value = null;
+    try {
+      const result = await listSessionChatMessages(sessionId);
+      messages.value = result;
+      return result;
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    } finally {
+      messagesLoading.value = false;
+    }
   }
 
   function removeSessionLocal(id: string) {
@@ -151,6 +215,47 @@ export const useSessionStore = defineStore("session", () => {
     if (activeSession.value?.id === id) activeSession.value = updated;
   }
 
+  async function exportSessionAction(id: string, format: "markdown" | "json") {
+    error.value = null;
+    try {
+      return await exportSession(id, format);
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    }
+  }
+
+  async function restore(id: string) {
+    error.value = null;
+    try {
+      const result = await restoreSession(id);
+      return result;
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    }
+  }
+
+  async function fetchRuns(sessionId: string, limit = 20, offset = 0): Promise<{ items: SessionRunRecord[]; total: number }> {
+    error.value = null;
+    try {
+      return await listSessionRuns(sessionId, limit, offset);
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    }
+  }
+
+  async function fetchParticipants(sessionId: string): Promise<SessionParticipant[]> {
+    error.value = null;
+    try {
+      return await listSessionParticipants(sessionId);
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    }
+  }
+
   return {
     sessions,
     activeSession,
@@ -158,6 +263,12 @@ export const useSessionStore = defineStore("session", () => {
     error,
     total,
     keyword,
+    turnsLoading,
+    timelineLoading,
+    messagesLoading,
+    turns,
+    timeline,
+    messages,
     loadSessions,
     searchPage,
     fetchSession,
@@ -173,8 +284,11 @@ export const useSessionStore = defineStore("session", () => {
     fetchTurns,
     fetchTimeline,
     fetchMessages,
-    restore: restoreSession,
+    restore,
+    fetchRuns,
+    fetchParticipants,
     removeSessionLocal,
     updateSessionLocal,
+    exportSession: exportSessionAction,
   };
 });

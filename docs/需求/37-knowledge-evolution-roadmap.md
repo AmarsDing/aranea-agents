@@ -1,6 +1,6 @@
 # Knowledge 知识库 — 建设方向与演进方案
 
-> **版本**：2026-05-28 | **状态**：方案规划
+> **版本**：2026-05-28 | **状态**：Phase 1（Advanced RAG）已实现
 > **前置**：[37 knowledge.md](./37-knowledge.md) · [37 knowledge.design.md](./37-knowledge.design.md) · [37-knowledge-development.md](./37-knowledge-development.md)
 > **学术参考**：见附录 A
 
@@ -22,20 +22,25 @@
 | 异步入库 + WebSocket 进度推送 | ✅ | `internal/service/knowledge.go` + `useKnowledgeIngestWs.ts` |
 | Collection 级别权限隔离 | ✅ | `WithKnowledgeCollections` context 限定 |
 | Embedder 运行时热更新 | ✅ | `internal/service/knowledge_embedder.go` |
+| 查询重写（HyDE/Decomposition/MultiQuery） | ✅ | `internal/knowledge/query_rewriter.go` |
+| 混合检索（BM25+向量 RRF 融合） | ✅ | `internal/knowledge/hybrid_retriever.go` |
+| BM25 全文检索（PostgreSQL ts_vector） | ✅ | `internal/data/knowledge.go` |
+| 自适应检索路由（查询复杂度分类） | ✅ | `internal/knowledge/adaptive_router.go` |
+| 检索质量评估（CRAG 式自校验） | ✅ | `internal/knowledge/retrieval_evaluator.go` |
 
 ### 1.2 核心局限
 
-| # | 局限 | 影响 | 对标学术 |
-|---|------|------|----------|
-| L1 | **单次检索**：Agent 只能被动接收 topK chunks | 无法迭代精炼检索结果 | Agentic RAG (SoK 2026) |
-| L2 | **无查询重写**：原始 query 直接做嵌入 | 复杂/模糊查询召回率低 | HyDE, Query Decomposition |
-| L3 | **纯向量检索**：缺少 BM25 稀疏检索 | 专业术语精确匹配差 | Hybrid Retrieval |
-| L4 | **无知识结构**：扁平 chunks，无层次/图谱 | 多跳推理无法支撑 | GraphRAG, CORPUS2SKILL |
-| L5 | **无自适应检索**：所有查询走同一管线 | 简单查询浪费资源，复杂查询检索不足 | Adaptive RAG |
-| L6 | **无检索质量评估**：检索结果直接返回 | 低质量结果无法自纠 | CRAG, Self-RAG |
-| L7 | **无跨 Collection 联邦搜索** | 多知识源协同检索受限 | Federated Retrieval |
-| L8 | **Chunk 粒度固定** | 同 Collection 内文档共享分块参数 | Granularity-Aware Retrieval |
-| L9 | **无技能知识**：仅存储文档，不存储操作流程 | Agent 无法复用"如何做"知识 | SkillX, CORPUS2SKILL |
+| # | 局限 | 影响 | 对标学术 | 状态 |
+|---|------|------|----------|------|
+| L1 | **单次检索**：Agent 只能被动接收 topK chunks | 无法迭代精炼检索结果 | Agentic RAG (SoK 2026) | ❌ Phase 2 |
+| L2 | **无查询重写**：原始 query 直接做嵌入 | 复杂/模糊查询召回率低 | HyDE, Query Decomposition | ✅ 已解决 |
+| L3 | **纯向量检索**：缺少 BM25 稀疏检索 | 专业术语精确匹配差 | Hybrid Retrieval | ✅ 已解决 |
+| L4 | **无知识结构**：扁平 chunks，无层次/图谱 | 多跳推理无法支撑 | GraphRAG, CORPUS2SKILL | ❌ Phase 3 |
+| L5 | **无自适应检索**：所有查询走同一管线 | 简单查询浪费资源，复杂查询检索不足 | Adaptive RAG | ✅ 已解决 |
+| L6 | **无检索质量评估**：检索结果直接返回 | 低质量结果无法自纠 | CRAG, Self-RAG | ✅ 已解决 |
+| L7 | **无跨 Collection 联邦搜索** | 多知识源协同检索受限 | Federated Retrieval | ❌ Phase 2 |
+| L8 | **Chunk 粒度固定** | 同 Collection 内文档共享分块参数 | Granularity-Aware Retrieval | ❌ 未排期 |
+| L9 | **无技能知识**：仅存储文档，不存储操作流程 | Agent 无法复用"如何做"知识 | SkillX, CORPUS2SKILL | ❌ Phase 4 |
 
 ### 1.3 RAG 成熟度定位
 
@@ -47,9 +52,9 @@ Naive RAG (2023)    Advanced RAG (2024)    Agentic RAG (2025-2026)
   单向管线            Self-RAG/CRAG           迭代检索+自校验
   固定 topK           混合检索                多源融合+图推理
      │                    │                       │
-  ◄─── 当前 ────────────►│                       │
                          ▲                       ▲
-                    Phase 1 目标            Phase 2-4 目标
+                    当前位置 ◄─── Phase 1 已实现     │
+                                                 Phase 2-4 目标
 ```
 
 **当前 Aranea 知识库处于 Naive RAG 阶段**（已具备 Reranker，但缺少查询重写、迭代检索、知识结构等核心 Advanced/Agentic 能力）。
@@ -104,10 +109,11 @@ Memory (记忆)                    Knowledge (知识)
 
 ## 三、四阶段演进路线
 
-### Phase 1：Advanced RAG — 夯实检索质量
+### Phase 1：Advanced RAG — 夯实检索质量 ✅ 已实现
 
 > 目标：从 Naive RAG 升级到 Advanced RAG，提升检索精度和召回率。
 > 预期收益：检索精度提升 20-30%
+> **实现日期**：2026-05-28
 
 #### 1.1 查询重写与分解
 
@@ -645,15 +651,15 @@ Phase 1.4 质量评估 ──────┘
 
 ## 五、演进总览
 
-| 维度 | 当前 | Phase 1 | Phase 2 | Phase 3 | Phase 4 |
-|------|------|---------|---------|---------|---------|
-| 检索模式 | 单次向量检索 | 混合检索+查询重写 | 多轮迭代+自校验 | 图+向量融合 | 层次导航 |
-| Agent 角色 | 被动消费者 | 被动消费者 | 主动检索者 | 主动推理者 | 主动导航者 |
-| 知识结构 | 扁平 chunks | 扁平 chunks | 扁平 chunks | 实体关系图谱 | 技能层次树 |
-| 检索质量 | 基础 | +20-30% | +40-50% | +60-70% | +80%+ |
-| 复杂查询 | ❌ | 部分 | ✅ | ✅ | ✅ |
-| 多跳推理 | ❌ | ❌ | ❌ | ✅ | ✅ |
-| 技能复用 | ❌ | ❌ | ❌ | ❌ | ✅ |
+| 维度 | Phase 1 ✅ | Phase 2 | Phase 3 | Phase 4 |
+|------|-----------|---------|---------|---------|
+| 检索模式 | 混合检索+查询重写 | 多轮迭代+自校验 | 图+向量融合 | 层次导航 |
+| Agent 角色 | 被动消费者 | 主动检索者 | 主动推理者 | 主动导航者 |
+| 知识结构 | 扁平 chunks | 扁平 chunks | 实体关系图谱 | 技能层次树 |
+| 检索质量 | +20-30% | +40-50% | +60-70% | +80%+ |
+| 复杂查询 | 部分 | ✅ | ✅ | ✅ |
+| 多跳推理 | ❌ | ❌ | ✅ | ✅ |
+| 技能复用 | ❌ | ❌ | ❌ | ✅ |
 
 ---
 
@@ -676,7 +682,7 @@ Phase 1.4 质量评估 ──────┘
 
 ## 附录 B：新增文件清单
 
-### Phase 1
+### Phase 1 ✅ 已实现
 
 | 文件 | 类型 | 说明 |
 |------|------|------|
@@ -684,7 +690,17 @@ Phase 1.4 质量评估 ──────┘
 | `internal/knowledge/hybrid_retriever.go` | 新增 | 混合检索器（Dense+Sparse+RRF 融合） |
 | `internal/knowledge/adaptive_router.go` | 新增 | 自适应检索路由器 |
 | `internal/knowledge/retrieval_evaluator.go` | 新增 | 检索质量评估器 |
-| `api/kratos/knowledge/v1/knowledge.proto` | 修改 | SearchRequest 增加查询重写/混合检索字段 |
+| `internal/knowledge/query_rewriter_test.go` | 新增 | 查询重写单测 |
+| `internal/knowledge/hybrid_retriever_test.go` | 新增 | 混合检索单测 |
+| `internal/knowledge/adaptive_router_test.go` | 新增 | 自适应路由单测 |
+| `internal/service/knowledge_advanced.go` | 新增 | Service 层 Wire 工厂（4 个新 Provider） |
+| `internal/biz/knowledge/knowledge.go` | 修改 | 新增 `SparseSearcher` 接口 |
+| `internal/biz/knowledge.go` | 修改 | 导出 `KnowledgeSparseSearcher` 类型别名 |
+| `internal/data/knowledge.go` | 修改 | 新增 `SearchChunksBM25` + GIN tsvector 索引 |
+| `internal/data/data.go` | 修改 | 新增 `NewKnowledgeSparseSearcherFromData` Provider |
+| `internal/service/knowledge.go` | 修改 | Search 方法集成 AdaptiveRouter + RetrievalEvaluator |
+| `internal/service/service.go` | 修改 | ProviderSet 增加 4 个新 Provider |
+| `api/kratos/knowledge/v1/knowledge.proto` | 修改 | SearchRequest 增加 `rewrite_strategy` + `hybrid_search` 字段 |
 
 ### Phase 2
 

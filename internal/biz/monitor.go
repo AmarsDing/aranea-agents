@@ -27,10 +27,15 @@ type (
 	AlertMetricRegistry     = monitor.AlertMetricRegistry
 	AlertMetric             = monitor.AlertMetric
 	DiagBundleGenerator     = monitor.DiagBundleGenerator
+	UsecaseOption           = monitor.UsecaseOption
 )
 
 var (
 	NewMonitorUsecase               = monitor.NewUsecase
+	WithFilesystemHealthReader      = monitor.WithFilesystemHealthReader
+	WithRingBuffer                  = monitor.WithRingBuffer
+	WithEvalWorker                  = monitor.WithEvalWorker
+	WithRegistry                    = monitor.WithRegistry
 	NewTraceProjector               = monitor.NewTraceProjector
 	NewFlowFileAppender             = monitor.NewFlowFileAppender
 	NewAlertMetricRegistry          = monitor.NewAlertMetricRegistry

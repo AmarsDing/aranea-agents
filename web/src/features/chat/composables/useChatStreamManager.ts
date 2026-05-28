@@ -27,6 +27,8 @@ export type StreamManagerDeps = {
   resolveAgentId: () => string | undefined;
   markSendingDone: () => void;
   onRunStatus: (env: Envelope) => void;
+  touchRunActivity: () => void;
+  refreshRunStatus: (sessionId?: string) => Promise<void>;
 };
 
 export function useChatStreamManager(deps: StreamManagerDeps) {
@@ -121,6 +123,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       lastEventId: getChannelWsCursor(sessionId),
       onConnected: () => {
         deps.runtimeStore.setWsConnected(sessionId, true);
+        void deps.refreshRunStatus(sessionId);
       },
       onDisconnected: () => {
         deps.runtimeStore.setWsConnected(sessionId, false);
@@ -180,6 +183,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
             partialText: patch.partialText,
           });
         },
+        onRunActivity: deps.touchRunActivity,
       },
       { batched: true }
     );
@@ -209,6 +213,10 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
           actions: [{ label: t("chat.refresh", "刷新页面"), color: "white", handler: () => window.location.reload() }],
         });
       },
+      onConnected: () => {
+        deps.runtimeStore.setWsConnected(sessionId, true);
+        void deps.refreshRunStatus(sessionId);
+      },
     });
 
     bindStreamHandlers(
@@ -229,6 +237,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
           deps.messageStore.lastIntentPass = value;
         },
         resolveMemberMeta: resolveTeamMemberMeta,
+        onRunActivity: deps.touchRunActivity,
       }
     );
 
@@ -281,10 +290,6 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     );
   }
 
-  function patchTeamMessages(sessionId: string, streamId: string, env: Envelope, isDone: boolean) {
-    patchAgentMessages(sessionId, streamId, env, isDone);
-  }
-
   function subscribeSessionStream(
     sessionId: string,
     ownerKind: "agent" | "team",
@@ -306,7 +311,5 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     disconnectAll,
     cancelActiveStream,
     patchAgentMessages,
-    patchTeamMessages,
-    resolveTeamMemberMeta,
   };
 }

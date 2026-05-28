@@ -21,6 +21,8 @@
       :planner-kind="plannerKind"
       :react-tool-link-index="reactToolLinkIndex"
       @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
+      @retry="(id) => emit('retry', id)"
+      @dismiss-failed="(id) => emit('dismiss-failed', id)"
     />
     <ToolStrip
       v-if="visibleTools.length"
@@ -55,6 +57,9 @@
       :planner-kind="plannerKind"
       :react-tool-link-index="reactToolLinkIndex"
       @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
+      @retry="(id) => emit('retry', id)"
+      @dismiss-failed="(id) => emit('dismiss-failed', id)"
+      @regenerate="(msg) => emit('regenerate', msg)"
     />
   </article>
 </template>
@@ -88,6 +93,8 @@ const emit = defineEmits<{
   "a2ui-user-action": [payload: A2UIUserActionPayload];
   feedback: [payload: { messageId: string; rating: "positive" | "negative" }];
   regenerate: [message: Message];
+  retry: [messageId: string];
+  "dismiss-failed": [messageId: string];
 }>();
 
 const { t } = useI18n();

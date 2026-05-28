@@ -22,6 +22,24 @@ const maxHITLSLAExtensions = 3
 
 const sessionMaxAge = 2 * time.Hour
 
+const defaultCleanupInterval = 10 * time.Minute
+
+type CoordinatorConfig struct {
+	WatchTimeout   time.Duration
+	HITLSLATimeout time.Duration
+	SessionMaxAge  time.Duration
+	CleanupInterval time.Duration
+}
+
+func DefaultCoordinatorConfig() CoordinatorConfig {
+	return CoordinatorConfig{
+		WatchTimeout:    defaultGraphWatchTimeout,
+		HITLSLATimeout:  defaultHITLSLATimeout,
+		SessionMaxAge:   sessionMaxAge,
+		CleanupInterval: defaultCleanupInterval,
+	}
+}
+
 // TeamGraphExecutionBackend indexes and resumes team-linked graph executions.
 type TeamGraphExecutionBackend interface {
 	RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, teamID, teamRunID string, cfg biz.GraphBuildConfig) error
@@ -42,8 +60,7 @@ type TeamGraphRunCoordinator struct {
 	bus            event.Bus
 	finisher       TeamGraphRunFinisher
 	sessionRepo    biz.TeamGraphSessionRepo
-	watchTimeout   time.Duration
-	hitlSLATimeout time.Duration
+	cfg            CoordinatorConfig
 
 	mu       sync.RWMutex
 	sessions map[string]*teamGraphRunSession
@@ -80,8 +97,7 @@ func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teams biz.Team
 		bus:            bus,
 		sessionRepo:    sessionRepo,
 		sessions:       make(map[string]*teamGraphRunSession),
-		watchTimeout:   defaultGraphWatchTimeout,
-		hitlSLATimeout: defaultHITLSLATimeout,
+		cfg:            DefaultCoordinatorConfig(),
 	}
 }
 
@@ -189,16 +205,27 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 		return true, nil
 	}
 	if _, err := c.graphs.ResumeExecution(ctx, task.ExecutionID, resume); err != nil {
-		if c.bus != nil {
-			run, rerr := c.teams.GetTeamRunByID(ctx, sess.teamRunID)
-			if rerr == nil {
-				failEnv := event.NewEnvelope(event.EnvelopeTypeTeamRunFailed, "team-coordinator", sess.sessionID)
-				failEnv.TeamID = sess.teamID
-				failEnv.Metadata = map[string]any{"run_id": run.ID, "error_message": err.Error()}
-				c.bus.Publish(ctx, failEnv)
+		if c.teams != nil {
+			if run, rerr := c.teams.GetTeamRunByID(ctx, sess.teamRunID); rerr == nil {
+				if !biz.IsTeamRunTerminalStatus(run.Status) {
+					run.Status = biz.TeamRunStatusFailed
+					run.ErrorMessage = fmt.Sprintf("ResumeExecution failed: %s", err.Error())
+					run.FinishedAt = agent.RFC3339Now()
+					if uerr := c.teams.UpdateTeamRun(ctx, run); uerr != nil {
+						event.CtxFlowLogWarn(ctx, "team.graph.resume_fail_update", "UpdateTeamRun failed after ResumeExecution error",
+							event.P("team_run_id", run.ID), event.P("update_error", uerr.Error()))
+					}
+				}
+				if c.bus != nil {
+					failEnv := event.NewEnvelope(event.EnvelopeTypeTeamRunFailed, "team-coordinator", sess.sessionID)
+					failEnv.TeamID = sess.teamID
+					failEnv.Metadata = map[string]any{"run_id": run.ID, "error_message": err.Error()}
+					c.bus.Publish(ctx, failEnv)
+				}
 			}
 		}
-		event.SysLogError("team.intent.merge_fail", "HandleTeamGraphTaskCompleted: ResumeExecution failed",
+		c.evictSession(sess.execID)
+		event.SysLogError("team.graph.resume_fail", "HandleTeamGraphTaskCompleted: ResumeExecution failed",
 			event.P("execution_id", task.ExecutionID), event.P("error", err.Error()))
 		return true, err
 	}
@@ -250,11 +277,11 @@ func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *tea
 			DropPolicy: event.DropNewest,
 		})
 		defer unsub()
-		watchTimeout := c.watchTimeout
+		watchTimeout := c.cfg.WatchTimeout
 		if watchTimeout <= 0 {
 			watchTimeout = defaultGraphWatchTimeout
 		}
-		hitlSLA := c.hitlSLATimeout
+		hitlSLA := c.cfg.HITLSLATimeout
 		if hitlSLA <= 0 {
 			hitlSLA = defaultHITLSLATimeout
 		}
@@ -416,7 +443,10 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 	} else {
 		run.Status = biz.TeamRunStatusSuccess
 	}
-	_ = c.teams.UpdateTeamRun(ctx, run)
+	if err := c.teams.UpdateTeamRun(ctx, run); err != nil {
+		event.CtxFlowLogWarn(ctx, "team.graph.finalize_update_fail", "UpdateTeamRun failed in finalizeTeamRun",
+			event.P("team_run_id", run.ID), event.P("update_error", err.Error()))
+	}
 	if c.bus != nil {
 		typ := event.EnvelopeTypeTeamRunFinished
 		if failed {
@@ -445,16 +475,20 @@ func (c *TeamGraphRunCoordinator) CleanupStaleSessions() {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	maxAge := c.cfg.SessionMaxAge
+	if maxAge <= 0 {
+		maxAge = sessionMaxAge
+	}
 	now := time.Now()
 	for id, sess := range c.sessions {
-		if !sess.registeredAt.IsZero() && now.Sub(sess.registeredAt) > sessionMaxAge {
+		if !sess.registeredAt.IsZero() && now.Sub(sess.registeredAt) > maxAge {
 			if sess.watchStop != nil {
 				sess.watchStop()
 				sess.watchStop = nil
 			}
 			delete(c.sessions, id)
 			c.deleteSessionFromDB(id)
-			event.SysLogWarn("team.intent_anchor_fallback", "CleanupStaleSessions: evicted stale session", event.P("exec_id", id), event.P("age", now.Sub(sess.registeredAt).String()))
+			event.SysLogWarn("team.session.stale_evicted", "CleanupStaleSessions: evicted stale session", event.P("exec_id", id), event.P("age", now.Sub(sess.registeredAt).String()))
 		}
 	}
 }

@@ -5,7 +5,9 @@ import type { Session } from "../session/types";
 import type {
   AgentIdentity,
   AgentStrategyProfile,
+  CascadePreview,
   CascadeProposal,
+  CascadeSagaStep,
   EvolutionEvent,
   EvolutionMetricsReport,
   EvolutionProposal,
@@ -18,7 +20,6 @@ import {
   buildMemoryAssemblyTableColumns,
   buildMemoryFactTableColumns
 } from "./memoryTableUi";
-import { approveCascadeProposal, listCascadeProposals, rejectCascadeProposal } from "./api";
 import { useAgentsCatalogStore } from "../../stores/agents/catalog";
 import { useSessionStore } from "../../stores/session";
 import { useMemoryStore } from "../../stores/memory";
@@ -27,7 +28,17 @@ export function useMemoryCenterPage() {
   const agentsCatalog = useAgentsCatalogStore();
   const sessionStore = useSessionStore();
   const memoryStore = useMemoryStore();
-  const { facts: storeFacts, snapshots: storeSnapshots, entities: storeEntities } = storeToRefs(memoryStore);
+  const {
+    facts: storeFacts,
+    snapshots: storeSnapshots,
+    entities: storeEntities,
+    cascadePreview,
+    cascadeSagaSteps,
+    cascadeProposals: storeCascadeProposals,
+    loadingCascade: storeLoadingCascade,
+    loadingCascadePreview,
+    loadingCascadeSaga
+  } = storeToRefs(memoryStore);
 
   const tab = ref("overview");
   const showGraphTab = true;
@@ -36,7 +47,7 @@ export function useMemoryCenterPage() {
   const facts = storeFacts;
   const entities = storeEntities;
   const evolutionProposals = ref<EvolutionProposal[]>([]);
-  const cascadeProposals = ref<CascadeProposal[]>([]);
+  const cascadeProposals = storeCascadeProposals;
   const evolutionEvents = ref<EvolutionEvent[]>([]);
   const agentIdentity = ref<AgentIdentity | null>(null);
   const agentStrategy = ref<AgentStrategyProfile | null>(null);
@@ -56,11 +67,15 @@ export function useMemoryCenterPage() {
   const loadingSnapshots = ref(false);
   const loadingTasks = ref(false);
   const loadingEvolution = ref(false);
-  const loadingCascade = ref(false);
+  const loadingCascade = storeLoadingCascade;
   const cascadeActingId = ref<string | null>(null);
   const factsEndpointReady = ref(true);
   const snapshotDrawer = ref(false);
   const factDrawer = ref(false);
+  const cascadePreviewOpen = ref(false);
+  const cascadeSagaDrawerOpen = ref(false);
+  const cascadePreviewProposalId = ref<string | null>(null);
+  const cascadeSagaProposalId = ref<string | null>(null);
   const error = ref("");
 
   const loading = computed(
@@ -78,6 +93,9 @@ export function useMemoryCenterPage() {
   const factRows = computed(() => facts.value);
   const snapshotRows = computed(() => snapshots.value);
   const taskRows = computed(() => tasks.value);
+
+  const cascadePreviewData = computed<CascadePreview | null>(() => cascadePreview.value);
+  const sagaSteps = computed<CascadeSagaStep[]>(() => cascadeSagaSteps.value);
 
   const overviewCards = computed(() => {
     const avgContext = sessions.value.length
@@ -98,7 +116,7 @@ export function useMemoryCenterPage() {
     { title: "上下文接近上限", caption: "建议检查摘要阈值和注入片段数量。", count: sessions.value.filter((s) => ["warning", "critical", "exceeded"].includes(s.context_status)).length, icon: "report", color: "warning" },
     { title: "知识冲突待办", caption: "L3 conflict API 接入后展示需要仲裁的 facts。", count: facts.value.reduce((sum, fact) => sum + (fact.conflict_count || 0), 0), icon: "rule", color: "negative" },
     { title: "待审核进化提议", caption: "来自 Agent Evolution proposal queue。", count: evolutionProposals.value.length, icon: "auto_awesome", color: "info" },
-    { title: "Cascade 更名待审", caption: "L4 冲突门控产生的图谱/L3 级联审核。", count: cascadeProposals.value.length, icon: "sync_alt", color: "deep-orange" }
+    { title: "Cascade 更名待审", caption: "L4 冲突门控产生的图谱/L3 级联审核。", count: cascadeProposals.value.filter((p) => p.status === "pending").length, icon: "sync_alt", color: "deep-orange" }
   ]);
 
   const memoryLayers = computed(() => [
@@ -221,23 +239,15 @@ export function useMemoryCenterPage() {
   async function loadCascade() {
     const agentID = selectedAgentId.value || agents.value[0]?.id || "";
     if (!agentID) {
-      cascadeProposals.value = [];
       return;
     }
-    loadingCascade.value = true;
-    try {
-      cascadeProposals.value = await listCascadeProposals(agentID, { status: "pending", limit: 30 });
-    } catch {
-      cascadeProposals.value = [];
-    } finally {
-      loadingCascade.value = false;
-    }
+    await memoryStore.loadCascadeProposals(agentID);
   }
 
   async function approveCascade(row: CascadeProposal) {
     cascadeActingId.value = row.id;
     try {
-      await approveCascadeProposal(row.id);
+      await memoryStore.approveCascade(row.id);
       await Promise.all([loadCascade(), loadFacts(), loadEvolution()]);
     } finally {
       cascadeActingId.value = null;
@@ -247,8 +257,52 @@ export function useMemoryCenterPage() {
   async function rejectCascade(row: CascadeProposal) {
     cascadeActingId.value = row.id;
     try {
-      await rejectCascadeProposal(row.id, "admin", "rejected from memory center");
+      await memoryStore.rejectCascade(row.id);
       await loadCascade();
+    } finally {
+      cascadeActingId.value = null;
+    }
+  }
+
+  async function previewCascade(row: CascadeProposal) {
+    cascadePreviewProposalId.value = row.id;
+    cascadePreviewOpen.value = true;
+    memoryStore.clearCascadePreview();
+    await memoryStore.loadCascadePreview(row.id);
+  }
+
+  async function openSagaDrawer(row: CascadeProposal) {
+    cascadeSagaProposalId.value = row.id;
+    cascadeSagaDrawerOpen.value = true;
+    await memoryStore.loadCascadeSagaSteps(row.id);
+  }
+
+  async function retryCascade(row: CascadeProposal) {
+    cascadeActingId.value = row.id;
+    try {
+      await memoryStore.retryCascade(row.id);
+      await Promise.all([loadCascade(), loadFacts(), loadEvolution()]);
+    } finally {
+      cascadeActingId.value = null;
+    }
+  }
+
+  async function compensateCascade(row: CascadeProposal) {
+    cascadeActingId.value = row.id;
+    try {
+      await memoryStore.compensateCascade(row.id);
+      await Promise.all([loadCascade(), loadFacts(), loadEvolution()]);
+    } finally {
+      cascadeActingId.value = null;
+    }
+  }
+
+  async function confirmPreviewCascade(proposalId: string) {
+    cascadeActingId.value = proposalId;
+    try {
+      await memoryStore.approveCascade(proposalId);
+      cascadePreviewOpen.value = false;
+      await Promise.all([loadCascade(), loadFacts(), loadEvolution()]);
     } finally {
       cascadeActingId.value = null;
     }
@@ -259,14 +313,13 @@ export function useMemoryCenterPage() {
     try {
       const agentID = selectedAgentId.value || agents.value[0]?.id || "";
       const bundle = await memoryStore.loadEvolutionForAgent(agentID);
-      // entities synced via loadEvolutionForAgent
       agentIdentity.value = bundle.identity;
       agentStrategy.value = bundle.strategy;
       evolutionProposals.value = bundle.proposals;
       evolutionEvents.value = bundle.events;
       evolutionMetrics.value = bundle.metrics;
     } catch {
-      memoryStore.entities = [];
+      memoryStore.clearEntities();
       agentIdentity.value = null;
       agentStrategy.value = null;
       evolutionProposals.value = [];
@@ -286,10 +339,9 @@ export function useMemoryCenterPage() {
         status: factStatus.value || undefined,
         limit: 50
       });
-      // facts synced via memoryStore.loadFacts
       factsEndpointReady.value = true;
     } catch {
-      memoryStore.facts = [];
+      memoryStore.clearFacts();
       factsEndpointReady.value = false;
     } finally {
       loadingFacts.value = false;
@@ -298,7 +350,7 @@ export function useMemoryCenterPage() {
 
   async function loadSessionMemory() {
     if (!selectedSessionId.value) {
-      memoryStore.snapshots = [];
+      memoryStore.clearSnapshots();
       tasks.value = [];
       return;
     }
@@ -311,7 +363,7 @@ export function useMemoryCenterPage() {
     try {
       await memoryStore.loadSnapshots(selectedSessionId.value, 20);
     } catch {
-      memoryStore.snapshots = [];
+      memoryStore.clearSnapshots();
     } finally {
       loadingSnapshots.value = false;
     }
@@ -398,6 +450,14 @@ export function useMemoryCenterPage() {
     cascadeProposals,
     loadingCascade,
     cascadeActingId,
+    cascadePreviewOpen,
+    cascadePreviewData,
+    cascadePreviewProposalId,
+    loadingCascadePreview,
+    cascadeSagaDrawerOpen,
+    cascadeSagaProposalId,
+    sagaSteps,
+    loadingCascadeSaga,
     settingChecklist,
     scopeOptions,
     factStatusOptions,
@@ -411,6 +471,11 @@ export function useMemoryCenterPage() {
     loadCascade,
     approveCascade,
     rejectCascade,
+    previewCascade,
+    openSagaDrawer,
+    retryCascade,
+    compensateCascade,
+    confirmPreviewCascade,
     resetFactFilters,
     openSnapshot,
     openFact,

@@ -881,6 +881,50 @@ func (r *skillRepo) GetLatestSkillMarkdown(ctx context.Context, skillID string) 
 	return sv.ContentMarkdown, nil
 }
 
+func (r *skillRepo) BatchGetSkillMarkdownBySlugs(ctx context.Context, slugs []string) (map[string]string, error) {
+	if len(slugs) == 0 {
+		return map[string]string{}, nil
+	}
+	skills, err := r.client().PlatformSkill.Query().
+		Where(platformskill.SkillKeyIn(slugs...)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	skillIDs := make([]string, 0, len(skills))
+	keyToID := make(map[string]string, len(skills))
+	for _, s := range skills {
+		skillIDs = append(skillIDs, s.ID)
+		keyToID[s.SkillKey] = s.ID
+	}
+	if len(skillIDs) == 0 {
+		return map[string]string{}, nil
+	}
+	rows, err := r.client().SkillVersion.Query().
+		Where(skillversion.SkillIDIn(skillIDs...)).
+		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	idToMarkdown := make(map[string]string, len(skillIDs))
+	seen := make(map[string]bool, len(skillIDs))
+	for _, sv := range rows {
+		if seen[sv.SkillID] {
+			continue
+		}
+		seen[sv.SkillID] = true
+		idToMarkdown[sv.SkillID] = sv.ContentMarkdown
+	}
+	out := make(map[string]string, len(slugs))
+	for key, id := range keyToID {
+		if md, ok := idToMarkdown[id]; ok {
+			out[key] = md
+		}
+	}
+	return out, nil
+}
+
 type skillMetadataEnvelope struct {
 	Tags       []biz.SkillTag `json:"tags"`
 	StorageDir string         `json:"storage_dir"`

@@ -22,6 +22,8 @@ func NewKnowledgeRepo(db *sql.DB) biz.KnowledgeRepo {
 	return &knowledgeRepo{db: db}
 }
 
+var _ biz.KnowledgeSparseSearcher = (*knowledgeRepo)(nil)
+
 // EnsureKnowledgeSchema creates the knowledge tables and indexes when they do not exist.
 func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int) error {
 	if db == nil {
@@ -68,6 +70,8 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int) error {
 			ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)`),
 		`CREATE INDEX IF NOT EXISTS knowledge_chunks_collection_idx
 			ON knowledge_chunks(collection_id)`,
+		`CREATE INDEX IF NOT EXISTS knowledge_chunks_content_tsvector_idx
+			ON knowledge_chunks USING GIN (to_tsvector('simple', content))`,
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
@@ -315,6 +319,46 @@ LIMIT $3`, scoreFilter, filterClause)
 		rows, err = r.db.QueryContext(ctx, raw, vec, q.CollectionID, q.TopK, filterArg)
 	} else {
 		rows, err = r.db.QueryContext(ctx, raw, vec, q.CollectionID, q.TopK)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []biz.KnowledgeChunk
+	for rows.Next() {
+		var ch biz.KnowledgeChunk
+		if err := rows.Scan(&ch.ID, &ch.DocID, &ch.CollectionID, &ch.Content, &ch.MetadataJSON, &ch.ChunkIndex, &ch.Score); err != nil {
+			return nil, err
+		}
+		out = append(out, ch)
+	}
+	return out, rows.Err()
+}
+
+func (r *knowledgeRepo) SearchChunksBM25(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error) {
+	filterClause := ""
+	filterArg := json.RawMessage("{}")
+	if q.FilterJSON != "" {
+		filterClause = "AND metadata @> $3::jsonb"
+		filterArg = json.RawMessage(q.FilterJSON)
+	}
+	raw := fmt.Sprintf(`
+SELECT id, doc_id, collection_id, content, metadata::text, chunk_index,
+       ts_rank(to_tsvector('simple', content), plainto_tsquery('simple', $1)) AS score
+FROM knowledge_chunks
+WHERE collection_id = $2
+  AND to_tsvector('simple', content) @@ plainto_tsquery('simple', $1)
+  %s
+ORDER BY score DESC
+LIMIT $4`, filterClause)
+
+	var rows *sql.Rows
+	var err error
+	if filterClause != "" {
+		rows, err = r.db.QueryContext(ctx, raw, q.Query, q.CollectionID, filterArg, q.TopK)
+	} else {
+		rows, err = r.db.QueryContext(ctx, raw, q.Query, q.CollectionID, q.TopK)
 	}
 	if err != nil {
 		return nil, err

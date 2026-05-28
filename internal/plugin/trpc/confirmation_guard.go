@@ -11,17 +11,15 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-type confirmationGuardConfig = ConfirmationGuardConfig
-
 type ConfirmationGuardPlugin struct {
 	base basePlugin
-	cfg  confirmationGuardConfig
+	cfg  ConfirmationGuardConfig
 }
 
 var _ trpcplugin.Plugin = (*ConfirmationGuardPlugin)(nil)
 
 func NewConfirmationGuardPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus) *ConfirmationGuardPlugin {
-	var cfg confirmationGuardConfig
+	var cfg ConfirmationGuardConfig
 	cfg.DefaultAction = "reject"
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
 	return &ConfirmationGuardPlugin{base: newBasePlugin(p.Key, stats, bus), cfg: cfg}

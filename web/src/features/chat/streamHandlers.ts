@@ -60,6 +60,7 @@ export type StreamHandlerCtx = {
   ) => Pick<Session, "total_tokens" | "max_context_used_ratio" | "input_tokens" | "output_tokens"> | undefined;
   setLastIntentPass: (value: IntentPassResult | null) => void;
   onStreamingPatch?: (sessionId: string, patch: { reasoning?: string; partialText?: string; done?: boolean }) => void;
+  onRunActivity?: () => void;
   /** Team-only: resolve member meta for member_* envelopes */
   resolveMemberMeta?: (agentKey: string) => { agent_key: string; name: string; role: string };
   streamIdPrefix?: string;
@@ -181,6 +182,7 @@ export function bindStreamHandlers(
 
   stream.onType("text_delta", withSessionFilter(ctx, (env, sid) => {
     if (!env.content?.text && !env.content?.reasoning) return;
+    ctx.onRunActivity?.();
     ctx.onStreamingPatch?.(sid, {
       reasoning: env.content?.reasoning,
       partialText: env.content?.text,
@@ -200,6 +202,7 @@ export function bindStreamHandlers(
 
   stream.onType("tool_call", withSessionFilter(ctx, (env, sid) => {
     if (!env.tool_call) return;
+    ctx.onRunActivity?.();
     if (writer) {
       writer.update((cur) => upsertToolMessage(cur, sid, env, "before"));
       return;
@@ -218,6 +221,7 @@ export function bindStreamHandlers(
 
   stream.onType("run_status", (env: Envelope) => {
     if (env.session_id && env.session_id !== ctx.sessionId) return;
+    ctx.onRunActivity?.();
     ctx.onRunStatus(env);
   });
 

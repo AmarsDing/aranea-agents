@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/runtime"
+	"aranea-agents/internal/event"
 
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/client"
@@ -25,7 +26,7 @@ func RunStream(
 	ch biz.Channel,
 	creds []biz.ChannelCredential,
 	lookup runtime.CredentialLookup,
-	handler runtime.InboundHandler,
+	handler port.InboundHandler,
 ) error {
 	clientID, clientSecret, err := dingStreamCreds(ctx, ch, creds, lookup)
 	if err != nil {
@@ -38,7 +39,11 @@ func RunStream(
 			return nil, nil
 		}
 		ev.PlatformType = "dingtalk"
-		_ = handler.ProcessInbound(ctx, chRow, ev)
+		if err := handler.ProcessInbound(ctx, chRow, ev); err != nil {
+			event.SysLogWarn("channel.dingtalk.inbound_failed", "钉钉入站处理失败",
+				event.P("error", err.Error()),
+			)
+		}
 		return nil, nil
 	}
 	streamClient := client.NewStreamClient(
@@ -88,7 +93,7 @@ func parseStreamMessage(message *chatbot.BotCallbackDataModel) (port.InboundEven
 	if text == "" {
 		return port.InboundEvent{}, false
 	}
-	peerID := firstNonEmpty(generic.SenderStaffId, generic.ConversationId)
+	peerID := port.FirstNonEmpty(generic.SenderStaffId, generic.ConversationId)
 	return port.InboundEvent{
 		PeerID:         peerID,
 		Text:           text,
@@ -98,13 +103,4 @@ func parseStreamMessage(message *chatbot.BotCallbackDataModel) (port.InboundEven
 			"recipient":       generic.SessionWebhook,
 		},
 	}, true
-}
-
-func firstNonEmpty(parts ...string) string {
-	for _, p := range parts {
-		if strings.TrimSpace(p) != "" {
-			return strings.TrimSpace(p)
-		}
-	}
-	return ""
 }

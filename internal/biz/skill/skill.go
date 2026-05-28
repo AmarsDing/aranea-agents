@@ -39,9 +39,9 @@ type SkillVersionDetail struct {
 }
 
 type VersionListQuery struct {
-	SkillID  string
-	Limit    int
-	Offset   int
+	SkillID string
+	Limit   int
+	Offset  int
 }
 
 type VersionListResult struct {
@@ -88,14 +88,14 @@ type Skill struct {
 }
 
 type ListQuery struct {
-	Search             string
-	Tags               string
-	Enabled            string
-	Status             string
-	FilesystemMissing  string
-	SyncOrigin         string
-	Limit              int
-	Offset             int
+	Search            string
+	Tags              string
+	Enabled           string
+	Status            string
+	FilesystemMissing string
+	SyncOrigin        string
+	Limit             int
+	Offset            int
 }
 
 type ListResult struct {
@@ -151,29 +151,38 @@ type RunResult struct {
 	Offset int
 }
 
-type Repo interface {
+type SkillReader interface {
 	SearchSkills(ctx context.Context, q ListQuery) (ListResult, error)
 	GetSkillByID(ctx context.Context, id string) (Skill, error)
-	UpdateSkillEnabled(ctx context.Context, id string, enabled bool) (Skill, error)
-	DuplicateSkill(ctx context.Context, id string) (Skill, error)
-	DeleteSkill(ctx context.Context, id string) error
-	SearchSkillInvocations(ctx context.Context, q RunQuery) (RunResult, error)
-	GetSkillStorageDir(ctx context.Context, id string) (string, error)
-	ListSkillSimilaritySources(ctx context.Context) ([]SimilaritySource, error)
-	CreateSkillWithVersion(ctx context.Context, in CreateInput) (Skill, error)
 	GetSkillBySkillKey(ctx context.Context, skillKey string) (Skill, error)
-	UpsertSkillFromDisk(ctx context.Context, in DiskSyncInput) (Skill, DiskSyncOutcome, error)
+	GetSkillStorageDir(ctx context.Context, id string) (string, error)
+	GetLatestSkillMarkdown(ctx context.Context, skillID string) (string, error)
+	BatchGetSkillMarkdownBySlugs(ctx context.Context, slugs []string) (map[string]string, error)
 	ListRegisteredSlugs(ctx context.Context) ([]string, error)
 	ListEnabledPublishedSkillKeys(ctx context.Context) ([]string, error)
 	ListEnabledPublishedSkillCandidates(ctx context.Context) ([]RuntimeCandidate, error)
-	RecordSkillInvocation(ctx context.Context, in InvocationWrite) error
-	GetLatestSkillMarkdown(ctx context.Context, skillID string) (string, error)
+	ListSkillSimilaritySources(ctx context.Context) ([]SimilaritySource, error)
+	FilesystemHealthStats(ctx context.Context) (FilesystemHealthStats, error)
+	SearchSkillInvocations(ctx context.Context, q RunQuery) (RunResult, error)
+	ListSkillVersions(ctx context.Context, q VersionListQuery) (VersionListResult, error)
+}
+
+type SkillWriter interface {
+	CreateSkillWithVersion(ctx context.Context, in CreateInput) (Skill, error)
+	UpdateSkillEnabled(ctx context.Context, id string, enabled bool) (Skill, error)
+	DuplicateSkill(ctx context.Context, id string) (Skill, error)
+	DeleteSkill(ctx context.Context, id string) error
 	PatchSkill(ctx context.Context, id string, patch UpdateDraft) (Skill, error)
 	PublishSkill(ctx context.Context, id string) (Skill, error)
+	UpsertSkillFromDisk(ctx context.Context, in DiskSyncInput) (Skill, DiskSyncOutcome, error)
 	MarkSkillFilesystemMissing(ctx context.Context, slug string, missing bool) error
-	FilesystemHealthStats(ctx context.Context) (FilesystemHealthStats, error)
-	ListSkillVersions(ctx context.Context, q VersionListQuery) (VersionListResult, error)
+	RecordSkillInvocation(ctx context.Context, in InvocationWrite) error
 	RollbackSkillVersion(ctx context.Context, skillID string, versionID string) (Skill, error)
+}
+
+type Repo interface {
+	SkillReader
+	SkillWriter
 }
 
 // UpdateDraft is a partial update for admin edits (optional fields via booleans).
@@ -217,14 +226,14 @@ type DiskSyncOutcome struct {
 
 // CreateInput creates platform skill + initial skill_version (import / directory sync).
 type CreateInput struct {
-	Name             string
-	Slug             string
-	Description      string
-	Body             string
-	Tags             []SkillTag
-	StorageDir       string
-	SyncOrigin       string
-	Visibility       string
+	Name              string
+	Slug              string
+	Description       string
+	Body              string
+	Tags              []SkillTag
+	StorageDir        string
+	SyncOrigin        string
+	Visibility        string
 	DefaultConfigJSON string
 }
 
@@ -236,6 +245,32 @@ type DiskSyncInput struct {
 	Body        string
 	Tags        []SkillTag
 	StorageDir  string
+}
+
+type SkillFileEntry struct {
+	Path      string
+	Name      string
+	Language  string
+	Size      int64
+	UpdatedAt string
+}
+
+type SkillFileContent struct {
+	Path     string
+	Content  string
+	Language string
+}
+
+type SkillFilesystem interface {
+	ResolveRoot(ctx context.Context) string
+	CreateSkillDir(slug string, body string) (dir string, err error)
+	ListFiles(dir string) ([]SkillFileEntry, error)
+	ReadFile(dir string, relPath string) (SkillFileContent, error)
+	WriteFile(dir string, relPath string, content string) error
+	DeleteFile(dir string, relPath string) error
+	RootAccessible(ctx context.Context) bool
+	DirExists(dir string) bool
+	SafeFilePath(dir string, relPath string) (root string, absPath string, err error)
 }
 
 // SkillEmbedder generates text embeddings for semantic skill scoring.
@@ -346,6 +381,7 @@ func (u *Usecase) Duplicate(ctx context.Context, id string) (Skill, error) {
 	if err != nil {
 		return Skill{}, err
 	}
+	u.InvalidateEmbedCache()
 	applySkillPermission(ctx, &s)
 	return s, nil
 }
@@ -438,6 +474,30 @@ func (u *Usecase) GetLatestMarkdown(ctx context.Context, id string) (string, err
 		return "", errors.BadRequest("SKILL", "skill id is required")
 	}
 	return u.repo.GetLatestSkillMarkdown(ctx, id)
+}
+
+type SkillGuidanceEntry struct {
+	Slug     string
+	Guidance string
+}
+
+func (u *Usecase) BatchGetSkillGuidance(ctx context.Context, slugs []string) ([]SkillGuidanceEntry, error) {
+	if len(slugs) == 0 {
+		return nil, nil
+	}
+	markdownMap, err := u.repo.BatchGetSkillMarkdownBySlugs(ctx, slugs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SkillGuidanceEntry, 0, len(markdownMap))
+	for _, slug := range slugs {
+		md, ok := markdownMap[slug]
+		if !ok {
+			continue
+		}
+		out = append(out, SkillGuidanceEntry{Slug: slug, Guidance: md})
+	}
+	return out, nil
 }
 
 func (u *Usecase) Patch(ctx context.Context, id string, patch UpdateDraft) (Skill, error) {
@@ -545,9 +605,9 @@ const (
 	SyncOriginImport     = "import"
 	SyncOriginManual     = "manual"
 
-	InvocationSourceRuntime         = "runtime"
-	InvocationSourceFilesystemScan  = "filesystem_scan"
-	InvocationSourceFilesystemWatch = "filesystem_watch"
+	InvocationSourceRuntime             = "runtime"
+	InvocationSourceFilesystemScan      = "filesystem_scan"
+	InvocationSourceFilesystemWatch     = "filesystem_watch"
 	InvocationSourceFilesystemReconcile = "filesystem_reconcile"
 )
 
@@ -571,13 +631,13 @@ type SimilaritySource struct {
 }
 
 type ImportJob struct {
-	JobID            string                 `json:"job_id"`
-	Status           string                 `json:"status"`
-	ValidationStatus string                 `json:"validation_status"`
-	StorageRoot      string                 `json:"storage_root"`
-	Candidates       []ImportCandidate      `json:"candidates"`
-	ConflictGroups   []ConflictGroup        `json:"conflict_groups"`
-	Message          string                 `json:"message,omitempty"`
+	JobID            string            `json:"job_id"`
+	Status           string            `json:"status"`
+	ValidationStatus string            `json:"validation_status"`
+	StorageRoot      string            `json:"storage_root"`
+	Candidates       []ImportCandidate `json:"candidates"`
+	ConflictGroups   []ConflictGroup   `json:"conflict_groups"`
+	Message          string            `json:"message,omitempty"`
 }
 
 type ImportCandidate struct {
@@ -611,14 +671,14 @@ type SimilarityMetrics struct {
 }
 
 type ConflictGroup struct {
-	GroupID                string                 `json:"group_id"`
-	HighestSimilarityScore float64                `json:"highest_similarity_score"`
-	Metrics                SimilarityMetrics      `json:"metrics"`
-	Reason                 string                 `json:"reason"`
-	Evidence               []string               `json:"evidence"`
-	CandidateIDs           []string               `json:"candidate_ids"`
-	ExistingSkills         []SimilaritySource     `json:"existing_skills"`
-	CanRefine              bool                   `json:"can_refine"`
+	GroupID                string             `json:"group_id"`
+	HighestSimilarityScore float64            `json:"highest_similarity_score"`
+	Metrics                SimilarityMetrics  `json:"metrics"`
+	Reason                 string             `json:"reason"`
+	Evidence               []string           `json:"evidence"`
+	CandidateIDs           []string           `json:"candidate_ids"`
+	ExistingSkills         []SimilaritySource `json:"existing_skills"`
+	CanRefine              bool               `json:"can_refine"`
 }
 
 type RefineRequest struct {
@@ -664,11 +724,11 @@ type RuntimePolicy struct {
 	DeniedSlugs  []string `json:"denied_slugs"`
 	AllowedTags  []string `json:"allowed_tags"`
 
-	IntentRoutingEnabled   bool    `json:"intent_routing_enabled"`
-	IntentMaxPaths         int     `json:"intent_max_paths"`
-	MaxSkillsInToolset     int     `json:"max_skills_in_toolset"`
-	EmbeddingScoringEnabled bool   `json:"embedding_scoring_enabled"`
-	EmbeddingScoreWeight   float64 `json:"embedding_score_weight"`
+	IntentRoutingEnabled    bool    `json:"intent_routing_enabled"`
+	IntentMaxPaths          int     `json:"intent_max_paths"`
+	MaxSkillsInToolset      int     `json:"max_skills_in_toolset"`
+	EmbeddingScoringEnabled bool    `json:"embedding_scoring_enabled"`
+	EmbeddingScoreWeight    float64 `json:"embedding_score_weight"`
 }
 
 // RuntimeCandidate is a lightweight Skill row for routing.
@@ -687,25 +747,25 @@ func ParseRuntimePolicy(raw string) RuntimePolicy {
 		raw = "{}"
 	}
 	var wire struct {
-		AllowedSlugs           []string  `json:"allowed_slugs"`
-		DeniedSlugs            []string  `json:"denied_slugs"`
-		AllowedTags            []string  `json:"allowed_tags"`
-		IntentRoutingEnabled   *bool     `json:"intent_routing_enabled"`
-		IntentMaxPaths         int       `json:"intent_max_paths"`
-		MaxSkillsInToolset     int       `json:"max_skills_in_toolset"`
+		AllowedSlugs            []string `json:"allowed_slugs"`
+		DeniedSlugs             []string `json:"denied_slugs"`
+		AllowedTags             []string `json:"allowed_tags"`
+		IntentRoutingEnabled    *bool    `json:"intent_routing_enabled"`
+		IntentMaxPaths          int      `json:"intent_max_paths"`
+		MaxSkillsInToolset      int      `json:"max_skills_in_toolset"`
 		EmbeddingScoringEnabled *bool    `json:"embedding_scoring_enabled"`
-		EmbeddingScoreWeight   float64   `json:"embedding_score_weight"`
+		EmbeddingScoreWeight    float64  `json:"embedding_score_weight"`
 	}
 	if err := json.Unmarshal([]byte(raw), &wire); err != nil {
 		wire = struct {
-			AllowedSlugs           []string  `json:"allowed_slugs"`
-			DeniedSlugs            []string  `json:"denied_slugs"`
-			AllowedTags            []string  `json:"allowed_tags"`
-			IntentRoutingEnabled   *bool     `json:"intent_routing_enabled"`
-			IntentMaxPaths         int       `json:"intent_max_paths"`
-			MaxSkillsInToolset     int       `json:"max_skills_in_toolset"`
+			AllowedSlugs            []string `json:"allowed_slugs"`
+			DeniedSlugs             []string `json:"denied_slugs"`
+			AllowedTags             []string `json:"allowed_tags"`
+			IntentRoutingEnabled    *bool    `json:"intent_routing_enabled"`
+			IntentMaxPaths          int      `json:"intent_max_paths"`
+			MaxSkillsInToolset      int      `json:"max_skills_in_toolset"`
 			EmbeddingScoringEnabled *bool    `json:"embedding_scoring_enabled"`
-			EmbeddingScoreWeight   float64   `json:"embedding_score_weight"`
+			EmbeddingScoreWeight    float64  `json:"embedding_score_weight"`
 		}{}
 	}
 	p := RuntimePolicy{
@@ -742,25 +802,11 @@ func ParseRuntimePolicy(raw string) RuntimePolicy {
 	}
 	normalizeLowerSlice(&p.AllowedSlugs)
 	normalizeLowerSlice(&p.DeniedSlugs)
-	normalizeTagTokens(&p.AllowedTags)
+	normalizeLowerSlice(&p.AllowedTags)
 	return p
 }
 
 func normalizeLowerSlice(s *[]string) {
-	out := make([]string, 0, len(*s))
-	seen := map[string]bool{}
-	for _, x := range *s {
-		x = strings.TrimSpace(strings.ToLower(x))
-		if x == "" || seen[x] {
-			continue
-		}
-		seen[x] = true
-		out = append(out, x)
-	}
-	*s = out
-}
-
-func normalizeTagTokens(s *[]string) {
 	out := make([]string, 0, len(*s))
 	seen := map[string]bool{}
 	for _, x := range *s {
@@ -867,7 +913,9 @@ func (u *Usecase) refreshEmbedCache(ctx context.Context, candidates []RuntimeCan
 	}
 	for i, idx := range missing {
 		if i < len(embeddings) {
-			u.embedCache[candidates[idx].Slug] = embeddings[i]
+			if _, exists := u.embedCache[candidates[idx].Slug]; !exists {
+				u.embedCache[candidates[idx].Slug] = embeddings[i]
+			}
 		}
 	}
 	return nil

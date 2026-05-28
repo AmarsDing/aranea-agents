@@ -126,12 +126,23 @@ func (a *FlowFileAppender) Start(ctx context.Context, buses ...contract.Bus) {
 }
 
 func (a *FlowFileAppender) maintenance() {
+	a.syncOpenFiles()
 	compressed := a.compressOldFiles()
 	purged := a.purgeExpiredFiles()
 	a.purgeTmpFiles()
 	if compressed > 0 || purged > 0 {
 		event.SysLogInfo("system.monitor.flow_file.maintenance", "FlowFileAppender maintenance completed",
 			event.P("compressed", fmt.Sprint(compressed)), event.P("purged", fmt.Sprint(purged)))
+	}
+}
+
+func (a *FlowFileAppender) syncOpenFiles() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, f := range []*rotatingFile{a.flowFile, a.systemFile, a.traceFile, a.alertFile} {
+		if f != nil && f.file != nil {
+			f.file.Sync()
+		}
 	}
 }
 
@@ -267,18 +278,15 @@ func (a *FlowFileAppender) onEnvelope(env contract.Envelope) {
 		row["_text"] = env.Content.Text
 	}
 
-	target := a.routeFile(env)
-	if target == nil {
-		return
+	a.mu.Lock()
+	target := a.routeFileLocked(env)
+	if target != nil {
+		a.writeRowLocked(target, row)
 	}
-
-	a.writeRow(target, row)
+	a.mu.Unlock()
 }
 
-func (a *FlowFileAppender) routeFile(env contract.Envelope) *rotatingFile {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
+func (a *FlowFileAppender) routeFileLocked(env contract.Envelope) *rotatingFile {
 	switch env.Type {
 	case contract.EnvelopeTypeAlertNotify, contract.EnvelopeTypeMCPHealthAlert:
 		return a.ensureFile(&a.alertFile, "alert")
@@ -331,7 +339,7 @@ func (a *FlowFileAppender) ensureFile(slot **rotatingFile, prefix string) *rotat
 	return rf
 }
 
-func (a *FlowFileAppender) writeRow(rf *rotatingFile, row map[string]any) {
+func (a *FlowFileAppender) writeRowLocked(rf *rotatingFile, row map[string]any) {
 	if rf == nil {
 		return
 	}

@@ -20,6 +20,7 @@ func TestResolveModelAPI_RulesBeforeHeuristic(t *testing.T) {
 		},
 		CodeModel: "code-model",
 	}
+	compileModelRouterRules(cfg.Rules)
 	got := ResolveModelAPI("please translate this ``` code", cfg)
 	if got != "rule-model" {
 		t.Fatalf("expected rule-model, got %q", got)

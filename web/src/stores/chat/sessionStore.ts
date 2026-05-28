@@ -70,6 +70,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
   const sessions = ref<Session[]>([]);
   const selectedSession = ref<Session | null>(null);
   const teamSessions = ref<Record<string, TeamSessionRow[]>>({});
+  const error = ref<string | null>(null);
 
   let _currentAgentId: string | null = null;
 
@@ -113,30 +114,42 @@ export const useChatSessionStore = defineStore("chatSession", () => {
   async function loadAgentSessions(agentId: string, opts?: { refreshOnly?: boolean }) {
     if (!agentId) return;
     _currentAgentId = agentId;
-    const rows = await listSessions(agentId);
-    sessions.value = sortSessionsForDisplay(rows);
+    error.value = null;
+    try {
+      const rows = await listSessions(agentId);
+      sessions.value = sortSessionsForDisplay(rows);
 
-    if (opts?.refreshOnly) {
-      const currentId = selectedSession.value?.id;
-      if (currentId) {
-        const updated = rows.find((session) => session.id === currentId);
-        if (updated) selectedSession.value = updated;
+      if (opts?.refreshOnly) {
+        const currentId = selectedSession.value?.id;
+        if (currentId) {
+          const updated = rows.find((session) => session.id === currentId);
+          if (updated) selectedSession.value = updated;
+        }
+        return;
       }
-      return;
-    }
 
-    const selectedID = selectedSession.value?.id;
-    if (selectedID) {
-      selectedSession.value =
-        rows.find((session) => session.id === selectedID) ?? rows[0] ?? null;
-    } else if (!selectedSession.value && rows.length > 0) {
-      selectedSession.value = rows[0];
+      const selectedID = selectedSession.value?.id;
+      if (selectedID) {
+        selectedSession.value =
+          rows.find((session) => session.id === selectedID) ?? rows[0] ?? null;
+      } else if (!selectedSession.value && rows.length > 0) {
+        selectedSession.value = rows[0];
+      }
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
     }
   }
 
   async function loadTeamSessions(teamId: string) {
-    const rows = await listTeamSessions(teamId);
-    teamSessions.value[teamId] = sortSessionsForDisplay(rows).map(withTeamAt);
+    error.value = null;
+    try {
+      const rows = await listTeamSessions(teamId);
+      teamSessions.value[teamId] = sortSessionsForDisplay(rows).map(withTeamAt);
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    }
   }
 
   async function addAgentSession(
@@ -145,10 +158,16 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     options?: { dialog_mode?: string; default_provider?: string; default_model?: string }
   ) {
     if (!agentId) return null;
-    const created = await createSession({ agent_id: agentId, title, ...options });
-    sessions.value.unshift(created);
-    selectedSession.value = created;
-    return created;
+    error.value = null;
+    try {
+      const created = await createSession({ agent_id: agentId, title, ...options });
+      sessions.value.unshift(created);
+      selectedSession.value = created;
+      return created;
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    }
   }
 
   async function addTeamSession(
@@ -156,80 +175,128 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     title: string,
     options?: { dialog_mode?: string; default_provider?: string; default_model?: string }
   ) {
-    const created = await createSession({
-      owner_type: "team",
-      team_id: teamId,
-      title,
-      ...options,
-    });
-    teamSessions.value[teamId] = [
-      withTeamAt(created),
-      ...(teamSessions.value[teamId] ?? []),
-    ];
-    teamSelectedSessionId.value = created.id;
-    return created;
+    error.value = null;
+    try {
+      const created = await createSession({
+        owner_type: "team",
+        team_id: teamId,
+        title,
+        ...options,
+      });
+      teamSessions.value[teamId] = [
+        withTeamAt(created),
+        ...(teamSessions.value[teamId] ?? []),
+      ];
+      teamSelectedSessionId.value = created.id;
+      return created;
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    }
   }
 
   async function removeSessionLocal(id: string) {
-    await deleteSession(id);
-    removeSessionById(id);
-    emitSessionMutation({ type: "remove", id });
+    error.value = null;
+    try {
+      await deleteSession(id);
+      removeSessionById(id);
+      emitSessionMutation({ type: "remove", id });
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    }
   }
 
   async function removeTeamSessionLocal(teamId: string, sessionId: string) {
-    await deleteSession(sessionId);
-    teamSessions.value[teamId] = (teamSessions.value[teamId] ?? []).filter(
-      (session) => session.id !== sessionId
-    );
-    if (teamSelectedSessionId.value === sessionId) {
-      teamSelectedSessionId.value = teamSessions.value[teamId]?.[0]?.id ?? null;
+    error.value = null;
+    try {
+      await deleteSession(sessionId);
+      teamSessions.value[teamId] = (teamSessions.value[teamId] ?? []).filter(
+        (session) => session.id !== sessionId
+      );
+      if (teamSelectedSessionId.value === sessionId) {
+        teamSelectedSessionId.value = teamSessions.value[teamId]?.[0]?.id ?? null;
+      }
+      emitSessionMutation({ type: "remove", id: sessionId });
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
     }
-    emitSessionMutation({ type: "remove", id: sessionId });
   }
 
   async function setSessionPinnedLocal(id: string, pinned: boolean) {
-    const updated = pinned ? await pinSession(id) : await unpinSession(id);
-    updateSessionById(id, updated);
-    emitSessionMutation({ type: "update", id, session: updated });
-    return updated;
+    error.value = null;
+    try {
+      const updated = pinned ? await pinSession(id) : await unpinSession(id);
+      updateSessionById(id, updated);
+      emitSessionMutation({ type: "update", id, session: updated });
+      return updated;
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    }
   }
 
   async function setTeamSessionPinnedLocal(teamId: string, id: string, pinned: boolean) {
-    const updated = pinned ? await pinSession(id) : await unpinSession(id);
-    teamSessions.value[teamId] = sortSessionsForDisplay(
-      (teamSessions.value[teamId] ?? []).map((session) => (session.id === id ? updated : session))
-    ).map(withTeamAt);
-    emitSessionMutation({ type: "update", id, session: updated });
-    return updated;
+    error.value = null;
+    try {
+      const updated = pinned ? await pinSession(id) : await unpinSession(id);
+      teamSessions.value[teamId] = sortSessionsForDisplay(
+        (teamSessions.value[teamId] ?? []).map((session) => (session.id === id ? updated : session))
+      ).map(withTeamAt);
+      emitSessionMutation({ type: "update", id, session: updated });
+      return updated;
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    }
   }
 
   async function renameSessionLocal(id: string, title: string) {
-    const updated = await updateSessionTitle(id, title);
-    updateSessionById(id, updated);
-    emitSessionMutation({ type: "update", id, session: updated });
-    return updated;
+    error.value = null;
+    try {
+      const updated = await updateSessionTitle(id, title);
+      updateSessionById(id, updated);
+      emitSessionMutation({ type: "update", id, session: updated });
+      return updated;
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    }
   }
 
   async function renameTeamSessionLocal(teamId: string, id: string, title: string) {
-    const updated = await updateSessionTitle(id, title);
-    teamSessions.value[teamId] = (teamSessions.value[teamId] ?? []).map((session) =>
-      session.id === id
-        ? {
-            ...updated,
-            at: formatSessionTime(updated.last_message_at || updated.updated_at || updated.created_at),
-          }
-        : session
-    );
-    emitSessionMutation({ type: "update", id, session: updated });
-    return updated;
+    error.value = null;
+    try {
+      const updated = await updateSessionTitle(id, title);
+      teamSessions.value[teamId] = (teamSessions.value[teamId] ?? []).map((session) =>
+        session.id === id
+          ? {
+              ...updated,
+              at: formatSessionTime(updated.last_message_at || updated.updated_at || updated.created_at),
+            }
+          : session
+      );
+      emitSessionMutation({ type: "update", id, session: updated });
+      return updated;
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    }
   }
 
   async function clearAllAgentSessions(agentId: string) {
     if (!agentId) return;
-    await clearAgentSessions(agentId);
-    sessions.value = [];
-    selectedSession.value = null;
-    emitSessionMutation({ type: "refresh" });
+    error.value = null;
+    try {
+      await clearAgentSessions(agentId);
+      sessions.value = [];
+      selectedSession.value = null;
+      emitSessionMutation({ type: "refresh" });
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+      throw e;
+    }
   }
 
   function clearTeamSessions(teamId: string) {
@@ -315,6 +382,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     sessions,
     selectedSession,
     teamSessions,
+    error,
     currentSessionId,
     resetForAgentSwitch,
     resetForTeamSwitch,

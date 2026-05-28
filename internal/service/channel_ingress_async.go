@@ -13,6 +13,8 @@ import (
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 const (
@@ -40,12 +42,6 @@ func (h *ChannelIngress) dispatchAsyncInbound(
 	}
 	ctx = withChannelTurnJobID(ctx, jobID)
 
-	routing, err := biz.ParseChannelRouting(chRow.ConfigJSON)
-	if err != nil {
-		h.markTurnJob(ctx, biz.ChannelTurnJobStatusFailed, err.Error(), "", "")
-		return err
-	}
-	_ = routing
 	peerKey, err := h.inboundPeerKey(chRow, ev)
 	if err != nil {
 		h.markTurnJob(ctx, biz.ChannelTurnJobStatusFailed, err.Error(), "", "")
@@ -89,7 +85,7 @@ func (h *ChannelIngress) dispatchAsyncInbound(
 		}
 	default:
 		h.markTurnJob(ctx, biz.ChannelTurnJobStatusFailed, "async target not configured", "", "")
-		return fmt.Errorf("channel async: no graph_id or cron_task_id configured")
+		return kerrors.BadRequest("CHANNEL", "no graph_id or cron_task_id configured")
 	}
 
 	h.markTurnJob(ctx, biz.ChannelTurnJobStatusAsyncQueued, "", "", "")
@@ -220,7 +216,12 @@ func (h *ChannelIngress) completeAsyncTargetWatch(ctx context.Context, chRow biz
 		return
 	}
 	if jobID != "" && h.turnJobs != nil {
-		_ = h.turnJobs.UpdateStatus(ctx, jobID, biz.ChannelTurnJobStatusCompleted, "", "", truncateForLog(summary, 200))
+		if err := h.turnJobs.UpdateStatus(ctx, jobID, biz.ChannelTurnJobStatusCompleted, "", "", truncateForLog(summary, 200)); err != nil {
+			event.SysLogWarn("channel.async.job_status_update_failed", "异步任务状态更新失败",
+				event.P("job_id", jobID),
+				event.P("error", err.Error()),
+			)
+		}
 	}
 	_ = h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), summary, ev.OutboundMeta, ackIdempotencyKey(platform, ev, "async_done"))
 }
@@ -230,7 +231,12 @@ func (h *ChannelIngress) failAsyncTargetWatch(ctx context.Context, chRow biz.Cha
 		return
 	}
 	if jobID != "" && h.turnJobs != nil {
-		_ = h.turnJobs.UpdateStatus(ctx, jobID, biz.ChannelTurnJobStatusFailed, truncateForLog(cause.Error(), 200), "", "")
+		if err := h.turnJobs.UpdateStatus(ctx, jobID, biz.ChannelTurnJobStatusFailed, truncateForLog(cause.Error(), 200), "", ""); err != nil {
+			event.SysLogWarn("channel.async.job_status_update_failed", "异步任务状态更新失败",
+				event.P("job_id", jobID),
+				event.P("error", err.Error()),
+			)
+		}
 	}
 	_ = h.deliverTurnErrorReply(ctx, chRow, ev, platform, cause)
 	event.SysLogWarn(flowStepChannelTurnDone, "Channel 异步任务失败",
@@ -255,7 +261,12 @@ func (h *ChannelIngress) finishAsyncTargetWatch(ctx context.Context, chRow biz.C
 		watchErr = context.DeadlineExceeded
 	}
 	if jobID != "" && h.turnJobs != nil {
-		_ = h.turnJobs.UpdateStatus(ctx, jobID, status, truncateForLog(cause.Error(), 200), "", "")
+		if err := h.turnJobs.UpdateStatus(ctx, jobID, status, truncateForLog(cause.Error(), 200), "", ""); err != nil {
+			event.SysLogWarn("channel.async.job_status_update_failed", "异步任务状态更新失败",
+				event.P("job_id", jobID),
+				event.P("error", err.Error()),
+			)
+		}
 	}
 	_ = h.deliverTurnErrorReply(ctx, chRow, ev, platform, watchErr)
 	event.SysLogWarn(flowStepChannelTurnDone, "Channel 异步任务监听结束",

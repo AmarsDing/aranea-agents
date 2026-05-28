@@ -9,6 +9,8 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/event"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 func (h *ChannelIngress) runChatTurnWithOutcome(ctx context.Context, chRow biz.Channel, platform string, ev port.InboundEvent) (biz.ChannelTurnResult, error) {
@@ -110,6 +112,6 @@ func (h *ChannelIngress) channelTurnResultFromNative(sessionID string, result bi
 		return biz.ChannelTurnResult{Outcome: biz.TurnOutcomeCompleted, Reply: reply}, nil
 	default:
 		return biz.ChannelTurnResult{Outcome: biz.TurnOutcomeFailed},
-			fmt.Errorf("unexpected native turn outcome: %s", result.Outcome)
+			kerrors.InternalServer("CHANNEL", fmt.Sprintf("unexpected native turn outcome: %s", result.Outcome))
 	}
 }

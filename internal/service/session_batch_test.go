@@ -176,6 +176,15 @@ func (m *batchSessionRepo) GetSessionRevision(_ context.Context, sessionID strin
 func (m *batchSessionRepo) ListMessagesAfterRevision(context.Context, string, int64) ([]biz.ChatMessage, error) {
 	return nil, nil
 }
+func (m *batchSessionRepo) TryIncrementCompressVersion(context.Context, string) (int64, error) {
+	return 0, nil
+}
+func (m *batchSessionRepo) CompressSessionInTx(ctx context.Context, _ string, fn func(context.Context) error) error {
+	return fn(ctx)
+}
+func (m *batchSessionRepo) SessionSummaryExists(context.Context, string, int, int) (bool, error) {
+	return false, nil
+}
 
 func TestSessionService_BatchPreviewSessions_validation(t *testing.T) {
 	uc := biz.NewSessionUsecase(&batchSessionRepo{sessions: map[string]biz.Session{}}, nil, nil, nil, nil)

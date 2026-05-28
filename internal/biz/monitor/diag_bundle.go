@@ -3,11 +3,11 @@ package monitor
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type DiagBundle struct {
@@ -35,7 +35,7 @@ func NewDiagBundleGenerator(repo Repo) *DiagBundleGenerator {
 
 func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, runID, stepID, triggerType string, contextMinutes int32) (*DiagBundle, error) {
 	if g == nil {
-		return nil, fmt.Errorf("DiagBundleGenerator is nil")
+		return nil, kerrors.InternalServer("MONITOR", "DiagBundleGenerator is nil")
 	}
 	if contextMinutes <= 0 {
 		contextMinutes = 5
@@ -93,7 +93,7 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 				}
 				flowEntries = append(flowEntries, m)
 				total++
-				if strings.Contains(row.Key, "alert") {
+				if strings.HasPrefix(row.Key, "alert.") {
 					alertEntries = append(alertEntries, m)
 				}
 				if triggerMetadata == nil && stepID != "" && strings.Contains(row.Key, stepID) {
@@ -130,15 +130,15 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 	}
 
 	var usageData map[string]any
+	var usageRows []map[string]any
 	usageEvents, err := g.repo.ListMonitorEvents(ctx, EventsQuery{
 		Limit:  50,
 		Offset: 0,
 		Status: "",
 	})
 	if err == nil && usageEvents.Items != nil {
-		var usageRows []map[string]any
 		for _, row := range usageEvents.Items {
-			if !strings.Contains(row.Key, "usage") {
+			if !strings.HasPrefix(row.Key, "usage") {
 				continue
 			}
 			mj := row.MetadataJSON
@@ -166,7 +166,7 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 	manifest["files"] = map[string]any{
 		"flow.jsonl":   map[string]any{"entries": len(flowEntries)},
 		"trace.json":   map[string]any{"spans": spanCount},
-		"usage.json":   map[string]any{"records": len(usageData)},
+		"usage.json":   map[string]any{"records": len(usageRows)},
 		"alerts.jsonl": map[string]any{"entries": len(alertEntries)},
 	}
 

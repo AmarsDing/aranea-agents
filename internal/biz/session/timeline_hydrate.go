@@ -24,7 +24,7 @@ func (uc *SessionUsecase) hydrateTimelineRefs(ctx context.Context, sessionID str
 
 	msgByID := map[string]ChatMessage{}
 	if len(msgIDs) > 0 {
-		rows, err := uc.sessions.ListMessagesByIDs(ctx, sessionID, msgIDs)
+		rows, err := uc.messageReader.ListMessagesByIDs(ctx, sessionID, msgIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -34,7 +34,7 @@ func (uc *SessionUsecase) hydrateTimelineRefs(ctx context.Context, sessionID str
 	}
 	toolByID := map[string]ToolInvocationView{}
 	if len(toolIDs) > 0 {
-		rows, err := uc.sessions.ListToolInvocationsByIDs(ctx, sessionID, toolIDs)
+		rows, err := uc.timelineReader.ListToolInvocationsByIDs(ctx, sessionID, toolIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -44,7 +44,7 @@ func (uc *SessionUsecase) hydrateTimelineRefs(ctx context.Context, sessionID str
 	}
 	skillByID := map[string]SkillInvocationView{}
 	if len(skillIDs) > 0 {
-		rows, err := uc.sessions.ListSkillInvocationsByIDs(ctx, sessionID, skillIDs)
+		rows, err := uc.timelineReader.ListSkillInvocationsByIDs(ctx, sessionID, skillIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -73,7 +73,7 @@ func (uc *SessionUsecase) hydrateTimelineRefs(ctx context.Context, sessionID str
 	}
 	agentNames := map[string]string{}
 	if len(agentIDs) > 0 {
-		names, err := uc.sessions.LookupAgentDisplayNames(ctx, agentIDs)
+		names, err := uc.timelineReader.LookupAgentDisplayNames(ctx, agentIDs)
 		if err != nil {
 			return nil, err
 		}

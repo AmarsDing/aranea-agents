@@ -9,6 +9,9 @@ import (
 	"time"
 )
 
+var errStoreNotWired = errors.New("session memory store not wired")
+var errProposalIDRequired = errors.New("proposal_id is required")
+
 type CascadeSagaStep struct {
 	ID          int64  `json:"id"`
 	ProposalID  string `json:"proposal_id"`
@@ -26,11 +29,11 @@ type CascadeSagaStep struct {
 
 func (st *Store) InitCascadeSagaSteps(ctx context.Context, proposalID string, steps []CascadeSagaStep) error {
 	if st == nil || st.client == nil {
-		return errors.New("session memory store not wired")
+		return errStoreNotWired
 	}
 	proposalID = strings.TrimSpace(proposalID)
 	if proposalID == "" {
-		return errors.New("proposal_id is required")
+		return errProposalIDRequired
 	}
 	for i, s := range steps {
 		isCritical := 0

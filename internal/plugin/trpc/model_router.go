@@ -20,18 +20,17 @@ type ModelRouterConfig struct {
 	FallbackModel    string            `json:"fallback_model"`
 }
 
-type modelRouterConfig = ModelRouterConfig
-
 type ModelRouterPlugin struct {
 	base basePlugin
-	cfg  modelRouterConfig
+	cfg  ModelRouterConfig
 }
 
 var _ trpcplugin.Plugin = (*ModelRouterPlugin)(nil)
 
 func NewModelRouterPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus) *ModelRouterPlugin {
-	var cfg modelRouterConfig
+	var cfg ModelRouterConfig
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+	compileModelRouterRules(cfg.Rules)
 	return &ModelRouterPlugin{base: newBasePlugin(p.Key, stats, bus), cfg: cfg}
 }
 

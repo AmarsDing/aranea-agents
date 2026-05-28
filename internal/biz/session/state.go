@@ -3,18 +3,18 @@ package session
 import "context"
 
 func (uc *SessionUsecase) GetSessionState(ctx context.Context, sessionID string) (map[string]string, error) {
-	return uc.sessions.GetSessionState(ctx, sessionID)
+	return uc.stateRepo.GetSessionState(ctx, sessionID)
 }
 
 func (uc *SessionUsecase) SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error {
-	return uc.sessions.SaveSessionState(ctx, sessionID, state)
+	return uc.stateRepo.SaveSessionState(ctx, sessionID, state)
 }
 
 func (uc *SessionUsecase) ApplyStateDelta(ctx context.Context, sessionID string, delta StateDelta) error {
 	if delta.Path == "" {
 		return nil
 	}
-	state, err := uc.sessions.GetSessionState(ctx, sessionID)
+	state, err := uc.stateRepo.GetSessionState(ctx, sessionID)
 	if err != nil {
 		return err
 	}
@@ -29,5 +29,5 @@ func (uc *SessionUsecase) ApplyStateDelta(ctx context.Context, sessionID string,
 	default:
 		state[delta.Path] = delta.ValueJSON
 	}
-	return uc.sessions.SaveSessionState(ctx, sessionID, state)
+	return uc.stateRepo.SaveSessionState(ctx, sessionID, state)
 }

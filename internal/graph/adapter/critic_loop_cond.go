@@ -3,12 +3,15 @@ package adapter
 import (
 	"context"
 	"strings"
+	"unicode"
 
 	"aranea-agents/internal/biz"
 
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
+
+const DefaultCriticLoopThreshold = 0.0
 
 func criticLoopCondFunc(threshold float64) trpcgraph.ConditionalFunc {
 	return func(ctx context.Context, state trpcgraph.State) (string, error) {
@@ -29,7 +32,7 @@ func criticLoopCondFunc(threshold float64) trpcgraph.ConditionalFunc {
 			}
 		}
 		content := strings.ToLower(lastMsg.Content)
-		if strings.Contains(content, "approved") {
+		if containsWord(content, "approved") {
 			return "approved", nil
 		}
 		if threshold > 0 {
@@ -40,6 +43,26 @@ func criticLoopCondFunc(threshold float64) trpcgraph.ConditionalFunc {
 		}
 		return "retry", nil
 	}
+}
+
+func containsWord(s, word string) bool {
+	for {
+		idx := strings.Index(s, word)
+		if idx < 0 {
+			return false
+		}
+		beforeOk := idx == 0 || !isAlphaNum(rune(s[idx-1]))
+		afterIdx := idx + len(word)
+		afterOk := afterIdx >= len(s) || !isAlphaNum(rune(s[afterIdx]))
+		if beforeOk && afterOk {
+			return true
+		}
+		s = s[afterIdx:]
+	}
+}
+
+func isAlphaNum(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r)
 }
 
 func RegisterCriticLoopCondFunc(reg RegistryRegistrar, threshold float64) {

@@ -50,9 +50,21 @@
           :rows="cascadeProposals"
           :loading="loadingCascade"
           :acting-id="cascadeActingId"
+          v-model:preview-open="cascadePreviewOpen"
+          :preview-loading="loadingCascadePreview"
+          :preview="cascadePreviewData"
+          :preview-proposal-id="cascadePreviewProposalId"
+          v-model:saga-drawer-open="cascadeSagaDrawerOpen"
+          :saga-loading="loadingCascadeSaga"
+          :saga-steps="sagaSteps"
           @refresh="loadCascade"
           @approve="approveCascade"
           @reject="rejectCascade"
+          @preview="previewCascade"
+          @confirm-preview="confirmPreviewCascade"
+          @saga="openSagaDrawer"
+          @retry="retryCascade"
+          @compensate="compensateCascade"
         />
       </q-tab-panel>
 
@@ -140,6 +152,14 @@ const {
   cascadeProposals,
   loadingCascade,
   cascadeActingId,
+  cascadePreviewOpen,
+  cascadePreviewData,
+  cascadePreviewProposalId,
+  loadingCascadePreview,
+  cascadeSagaDrawerOpen,
+  cascadeSagaProposalId,
+  sagaSteps,
+  loadingCascadeSaga,
   settingChecklist,
   scopeOptions,
   factStatusOptions,
@@ -151,12 +171,17 @@ const {
   loadFacts,
   loadSessionMemory,
   loadCascade,
-  loadEvolution,
   approveCascade,
   rejectCascade,
+  previewCascade,
+  openSagaDrawer,
+  retryCascade,
+  compensateCascade,
+  confirmPreviewCascade,
   resetFactFilters,
   openSnapshot,
-  openFact
+  openFact,
+  loadEvolution
 } = useMemoryCenterPage();
 </script>
 

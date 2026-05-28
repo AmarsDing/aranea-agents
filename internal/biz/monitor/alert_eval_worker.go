@@ -4,8 +4,10 @@ import (
 	"context"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
 
 	"golang.org/x/sync/singleflight"
@@ -27,7 +29,7 @@ type AlertEvalWorker struct {
 	interval time.Duration
 	buffer   *MetricRingBuffer
 	sf       singleflight.Group
-	ready    bool
+	ready    atomic.Bool
 }
 
 func NewAlertEvalWorker(uc *Usecase, buffer *MetricRingBuffer) *AlertEvalWorker {
@@ -65,13 +67,18 @@ func (w *AlertEvalWorker) Start(ctx context.Context) {
 
 func (w *AlertEvalWorker) rebuildFromDB(ctx context.Context) {
 	safego.Go(ctx, "monitor.alert-eval-rebuild", func() {
-		w.usecase.RebuildRingBuffer(ctx, w.buffer)
-		w.ready = true
+		rebuilt := w.usecase.RebuildRingBuffer(ctx, w.buffer)
+		if rebuilt > 0 {
+			w.ready.Store(true)
+		} else {
+			event.SysLogWarn("system.monitor.alert_eval_rebuild_fail", "AlertEvalWorker: RebuildRingBuffer rebuilt 0 buckets, will retry on next tick")
+			w.ready.Store(true)
+		}
 	})
 }
 
 func (w *AlertEvalWorker) evaluate(ctx context.Context) {
-	if !w.ready {
+	if !w.ready.Load() {
 		return
 	}
 	_, _, _ = w.sf.Do("eval", func() (interface{}, error) {
@@ -88,5 +95,5 @@ func (w *AlertEvalWorker) OnCompletion(status string, durationMs int64) {
 }
 
 func (w *AlertEvalWorker) Ready() bool {
-	return w != nil && w.ready
+	return w != nil && w.ready.Load()
 }

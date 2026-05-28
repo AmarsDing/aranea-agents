@@ -77,7 +77,7 @@ func (r *alertMonitorRepo) UpdateAlertFiringState(_ context.Context, _ string, _
 	return nil
 }
 
-func (r *alertMonitorRepo) CountMonitorEventsSince(ctx context.Context, eventKey, status, sinceRFC3339 string) (int32, error) {
+func (r *alertMonitorRepo) CountMonitorEventsSince(ctx context.Context, eventKey, status, sinceRFC3339, untilRFC3339 string) (int32, error) {
 	if status == "error" {
 		return r.errors, nil
 	}
@@ -97,6 +97,21 @@ func (r *alertMonitorRepo) PatchRunnerCompletionMetadata(ctx context.Context, se
 }
 
 func (r *alertMonitorRepo) EnsureTraceSchema(context.Context) error { return nil }
+func (r *alertMonitorRepo) InsertMonitorTrace(context.Context, MonitorTraceWrite) error {
+	return nil
+}
+func (r *alertMonitorRepo) UpsertMonitorTraceSpan(context.Context, MonitorTraceSpanWrite) error {
+	return nil
+}
+func (r *alertMonitorRepo) UpdateMonitorTraceCompletion(_ context.Context, _ string, _ string, _ int64, _, _ int, _ int64, _ float64) error {
+	return nil
+}
+func (r *alertMonitorRepo) ListRecentRunnerCompletions(_ context.Context, _ time.Duration, _ int) ([]RunnerCompletionRow, error) {
+	return nil, nil
+}
+func (r *alertMonitorRepo) LatencyPercentilesSince(_ context.Context, _ string) (float64, float64, float64, error) {
+	return 0, 0, 0, nil
+}
 
 func TestEvaluateAlerts_cooldownSuppressesRepeatFire(t *testing.T) {
 	repo := &alertMonitorRepo{total: 10, errors: 8}
@@ -117,8 +132,7 @@ func TestEvaluateAlerts_cooldownSuppressesRepeatFire(t *testing.T) {
 func TestEvaluateAlerts_skillFilesystemMissingCount(t *testing.T) {
 	repo := &alertMonitorRepo{}
 	spy := &alertNotifySpy{}
-	uc := NewMonitorUsecase(repo, spy)
-	uc.SetFilesystemHealthReader(filesystemHealthStub{missing: 3})
+	uc := NewMonitorUsecase(repo, spy, WithFilesystemHealthReader(filesystemHealthStub{missing: 3}))
 	ctx := context.Background()
 
 	rules := []MonitorAlertRule{{

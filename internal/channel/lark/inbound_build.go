@@ -38,7 +38,7 @@ func BuildFeishuInboundEvent(p FeishuInboundParams) (port.InboundEvent, bool, st
 	}
 	return port.InboundEvent{
 		PlatformType:   "feishu",
-		PeerID:         firstNonEmptyPeerID(openID, userID, chatID),
+		PeerID:         port.FirstNonEmpty(openID, userID, chatID),
 		Text:           strings.TrimSpace(p.Text),
 		IdempotencyKey: "feishu:" + msgID,
 		OutboundMeta:   meta,

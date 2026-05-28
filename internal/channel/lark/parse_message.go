@@ -188,15 +188,6 @@ func InferChatTypeFromChatID(chatID string) string {
 	return ""
 }
 
-func firstNonEmptyPeerID(parts ...string) string {
-	for _, p := range parts {
-		if strings.TrimSpace(p) != "" {
-			return strings.TrimSpace(p)
-		}
-	}
-	return ""
-}
-
 func feishuMessageThreadID(msg *larkim.EventMessage) string {
 	if msg == nil || msg.ThreadId == nil {
 		return ""

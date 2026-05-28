@@ -21,7 +21,7 @@ func HandleWSInbound(
 	ch biz.Channel,
 	creds []biz.ChannelCredential,
 	lookup runtime.CredentialLookup,
-	handler runtime.InboundHandler,
+	handler port.InboundHandler,
 	ev port.InboundEvent,
 ) {
 	defer func() {
@@ -70,11 +70,15 @@ func notifyFeishuInboundError(
 	}
 	// SEC-02: do not expose internal error details to end users.
 	msg := "消息处理失败，请稍后重试"
-	_ = err // error already logged above via SysLogWarn
-	_ = (&FeishuTextSender{
+	_ = err
+	if sendErr := (&FeishuTextSender{
 		Region:        region,
 		AppID:         appID,
 		AppSecret:     strings.TrimSpace(appSecret),
 		ReceiveIDType: ReceiveIDTypeFromMeta(ev.OutboundMeta),
-	}).SendText(ctx, recipient, msg)
+	}).SendText(ctx, recipient, msg); sendErr != nil {
+		event.SysLogWarn("channel.lark.error_notify_failed", "飞书错误通知发送失败",
+			event.P("error", sendErr.Error()),
+		)
+	}
 }

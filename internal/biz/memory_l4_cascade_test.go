@@ -145,10 +145,10 @@ func (m *cascadeApproveStore) InitCascadeSagaSteps(_ context.Context, _ string, 
 
 func (m *cascadeApproveStore) GetCascadeSagaSteps(_ context.Context, proposalID string) ([]CascadeSagaStep, error) {
 	return []CascadeSagaStep{
-		{ID: 1, ProposalID: proposalID, StepIndex: 0, StepName: SagaStepUpsertEntity, State: "succeeded", IsCritical: true},
-		{ID: 2, ProposalID: proposalID, StepIndex: 1, StepName: SagaStepTouchAffected, State: "succeeded", IsCritical: false},
-		{ID: 3, ProposalID: proposalID, StepIndex: 2, StepName: SagaStepReplaceFacts, State: "succeeded", IsCritical: true},
-		{ID: 4, ProposalID: proposalID, StepIndex: 3, StepName: SagaStepSyncIndex, State: "succeeded", IsCritical: false},
+		{ID: 1, ProposalID: proposalID, StepIndex: 0, StepName: SagaStepUpsertEntity, State: "pending", IsCritical: true},
+		{ID: 2, ProposalID: proposalID, StepIndex: 1, StepName: SagaStepTouchAffected, State: "pending", IsCritical: false},
+		{ID: 3, ProposalID: proposalID, StepIndex: 2, StepName: SagaStepReplaceFacts, State: "pending", IsCritical: true},
+		{ID: 4, ProposalID: proposalID, StepIndex: 3, StepName: SagaStepSyncIndex, State: "pending", IsCritical: false},
 	}, nil
 }
 

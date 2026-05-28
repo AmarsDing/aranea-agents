@@ -1,6 +1,6 @@
 # Channel 渠道 — 开发计划
 
-> **版本**：2026-05-28 | **状态**：🟢 12 平台连接；Runtime 生产级重连 + 流式出站 MVP
+> **版本**：2026-05-29 | **状态**：🟢 12 平台连接；Runtime 生产级重连 + 流式出站 MVP；Phase J 审查完成（剩余 11 项）
 > **需求**：[17 channel.md](./17%20channel.md) · **设计**：[17 channel.design.md](./17%20channel.design.md) · **业务集成**：[17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md) · [**外部参考借鉴手册**](./17-channel-external-reference-playbook.md) · [**四层目标架构**](./0-module-decoupling-architecture.md#31-推荐目标架构channel--chat--agent) · [**Phase DECO**](./17-channel-development.md#14-phase-deco--四层架构解耦deco)  
 > **Hermes 对照**：[17 channel.design.md §十四](./17%20channel.design.md#十四hermes-agent-对照消息流转与飞书特殊处理) · Phase F backlog 见 **§11**  
 > **平台参考**：[MuseBot](https://github.com/yincongcyincong/MuseBot) `robot/`（MIT）  
@@ -58,6 +58,12 @@ Channel：在 Kratos 层实现外部 IM 平台连接，参考 MuseBot 的 SDK �
 | platformAdapters 统一出站/流式 | ✅ | `channel_platform_registry.go` |
 | 全平台 webhook 单测 | 🟡 | 部分（lark/dingtalk/slack/telegram/wecom/wechat/onebot） |
 | 前端 MuseBot 布局 + composable | ✅ | `useChannelEditorForm.ts` |
+| safego 合规 | ✅ | 全部 `go func()` 已走 `safego.Go`（Phase I/J 审查修复） |
+| Service 层 kerrors 合规 | ✅ | 10 处 `fmt.Errorf` 已替换为 `kerrors`（Phase J 修复） |
+| 错误日志可观测性 | ✅ | 关键 `_ =` 加 `event.SysLogWarn`（webhook handler / ProcessInbound / UpdateStatus / Reload / 凭证解析） |
+| `port.FirstNonEmpty` 公共提取 | ✅ | 6 子包 + `firstNonEmptyPeerID` 统一为 `port.FirstNonEmpty` |
+| Discord session 缓存 | ✅ | `TextSender` 懒初始化 + `sync.Mutex` + ctx 感知 |
+| `webhookRateLimitsLastCleaned` 竞态修复 | ✅ | `time.Time` → `atomic.Int64`（Phase J Review 修复） |
 
 ---
 
@@ -748,7 +754,174 @@ go vet ./internal/channel/...
 
 ---
 
-## 17. 文档修订记录
+## 17. Phase I — 代码审查优化（Go OOP + 项目红线合规）
+
+> **审查工具**：`go-oop-review` SKILL + `aranea-coding-guide` SKILL
+> **审查范围**：`internal/channel/` 全部 12 子包 + `internal/service/channel_ingress*.go` + `internal/service/channel_platform_registry.go`
+
+### 17.1 审查发现与修复
+
+#### 🔴 阻断问题（已修复）
+
+| # | 问题 | 位置 | 修复 |
+|---|------|------|------|
+| I-01 | `runtime/manager.go` 裸 `go func()` 未走 `safego.Go` | `runtime/manager.go:186` | 改为 `safego.Go(runCtx, "channel.runtime.connector", ...)` |
+| I-02 | `slack/socketmode.go` 裸 `go func()` 未走 `safego.Go` | `slack/socketmode.go:50` | 改为 `safego.Go(ctx, "channel.slack.socketmode", ...)` |
+| I-03 | `wechat/outbound.go` `globalTokenCache` 全局共享 | `wechat/outbound.go:39` | 将 `tokenCache` 移入 `TextSender` struct（`mu`+`token`+`exp` 字段），多渠道 token 隔离 |
+| I-04 | Teams `ComputeHMAC` 死代码 | `teams/webhook.go` | 删除（违反红线 #19） |
+| I-05 | Teams `TextSender.SendText` URL 拼接错误 | `teams/outbound.go:37` | 委托给 `SendToConversation`，从 Extra meta 取 `service_url` + `conversation_id` |
+
+#### 🟡 建议改进（已修复）
+
+| # | 问题 | 位置 | 修复 |
+|---|------|------|------|
+| I-06 | `port.InboundHandler` 与 `runtime.InboundHandler` 重复定义 | `port/interfaces.go` / `runtime/manager.go` | 删除 `runtime.InboundHandler`，全部改用 `port.InboundHandler` |
+| I-07 | `_ = handler.ProcessInbound(...)` 静默吞错误 | Mattermost/Slack 等 8 处 | Mattermost + Slack 改为 `if err := ...; err != nil { event.SysLogWarn(...) }` |
+| I-08 | LINE `inboundMessage` 未导出 | `line/webhook.go:12` | 改为 `InboundMessage`（导出），service 层可使用 |
+| I-09 | LINE `ReplyText` 是包级函数 | `line/outbound.go:63` | 改为 `(s *TextSender) ReplyText` 方法 |
+| I-10 | LINE/Mattermost HTTP 请求逻辑重复 | `line/outbound.go` + `mattermost/outbound.go` | 提取 `line/http.go` 和 `mattermost/http.go` 共享 `doPost`/`marshalJSON` |
+| I-11 | Teams OAuth2 body 手动拼接未 URL encode | `teams/outbound.go:93` | 改用 `url.Values` |
+| I-12 | Teams token 过期时间 `ttl - 5min` 可能负值 | `teams/outbound.go:126` | 添加 buffer 安全检查 `if ttl <= buffer { buffer = ttl / 2 }` |
+| I-13 | Mattermost WS 读 goroutine 退出无重连信号 | `mattermost/gateway.go:60` | 添加 `readErr` channel，主循环 select 监听触发 supervisor 重连 |
+| I-14 | LINE `pushMessage` 硬编码 fallback `"sent"` | `line/stream_outbound.go:94` | 改为返回 error |
+| I-15 | `qq/webhook.go` 使用 `interface{}` | `qq/webhook.go:57` | 改为 `any` |
+| I-16 | 缺少 LINE/Mattermost/Teams webhook 入站处理 | `service/` | 创建 `channel_ingress_line.go` / `channel_ingress_mattermost.go` / `channel_ingress_teams.go` |
+| I-17 | HTTP 路由未注册新平台 | `service/channel_ingress.go` | switch 中添加 `line`/`mattermost`/`teams` 分支 |
+| I-18 | Mattermost 连接缺少 `event.SysLog` 日志 | `mattermost/gateway.go` | 添加连接成功 `SysLogInfo` + 读取失败 `SysLogWarn` |
+| I-19 | WeChat token 过期时间可能负值 | `wechat/outbound.go:130` | 添加 buffer 安全检查（与 Teams 同模式） |
+
+#### 🟢 提示（已修复）
+
+| # | 问题 | 修复 |
+|---|------|------|
+| I-20 | `firstNonEmpty` 在 6 个文件中重复定义 | 提取到 `port.FirstNonEmpty`，6 个子包 + `firstNonEmptyPeerID` 全部替换 |
+| I-21 | `discord/outbound.go` 每次 `SendText` 新建 session | `TextSender` 添加 `sync.Mutex` + `*discordgo.Session` 懒初始化缓存，`Close()` 方法释放 |
+| I-22 | `discord/outbound.go` 忽略 ctx | `SendText` 用 goroutine + `select { case <-ctx.Done(): return ctx.Err(); case err := <-result: }` 感知取消 |
+| I-23 | 已有平台（lark/dingtalk/telegram/discord）`_ = handler.ProcessInbound` 仍静默 | 全部改为 `if err := ...; err != nil { event.SysLogWarn(...) }` |
+
+### 17.2 红线合规性检查
+
+| 红线 # | 检查项 | 结果 |
+|--------|--------|------|
+| #2 | `internal/channel/*` 不得 import `pkg/trpc-agent-go` | ✅ 无违规 |
+| #9 | 所有 `go func()` 必须走 `safego.Go` | ✅ 已修复（runtime/manager + slack/socketmode） |
+| #13 | goroutine 必须走 `pkg/safego` | ✅ 同上 |
+| #15 | 非 Service 层不得 import `api/*/v1` | ✅ 无违规 |
+| #16 | 禁止 `log/slog` | ✅ 无违规，统一使用 `event.SysLog` |
+| #19 | 不得新增死代码 | ✅ Teams `ComputeHMAC` 已删除 |
+
+### 17.3 架构合规性
+
+- [x] 依赖方向向内（channel → biz → data）
+- [x] 接口在使用方定义（`port.InboundHandler` 统一）
+- [x] Runner 装配在 Service 层
+- [x] Service 层无业务逻辑（ingress handler 只做映射）
+- [x] 跨模块通过窄接口（`port.InboundHandler` / `port.StreamPreviewUpdater`）
+- [x] 无上帝接口（最大 2 方法）
+- [x] 返回具体类型，参数接收接口
+- [x] 共享状态有锁保护（`StreamSender.mu` / `TextSender.mu`）
+- [x] 错误 wrap 保留上下文（`%w` 使用正确）
+
+### 17.4 验证命令
+
+```bash
+go test ./internal/channel/... -count=1
+go vet ./internal/channel/line ./internal/channel/mattermost ./internal/channel/teams ./internal/channel/runtime ./internal/channel/wechat
+```
+
+---
+
+## 17.5 Phase J — 二次深度审查（Go OOP + 项目红线 + Service 层）
+
+> **审查工具**：`go-oop-review` SKILL + `aranea-coding-guide` SKILL
+> **审查范围**：`internal/channel/` 全部 15 子包 + `internal/service/channel*.go` 全部文件
+> **审查日期**：2026-05-29
+
+### J.1 本次修复
+
+#### 🔴 阻断问题（已修复）
+
+| # | 问题 | 位置 | 修复 |
+|---|------|------|------|
+| J-01 | `discord/outbound.go` 裸 `go func()` 未走 safego | `discord/outbound.go:36` | 改为 `safego.Go(ctx, "channel.discord.outbound.send", ...)` |
+| J-02 | `runtime/supervisor.go` 裸 `go` 启动 `renewLeaseLoop` | `runtime/supervisor.go:37` | 改为 `safego.Go(renewCtx, "channel.runtime.lease_renew", ...)` |
+| J-03 | `runtime/supervisor.go` `_ = starter(...)` 吞掉连接器退出错误 | `runtime/supervisor.go:59` | 改为 `if err := starter(...); err != nil { event.SysLogWarn(...) }` |
+| J-04 | `service/channel_ingress_ratelimit.go` 裸 `go cleanupStaleWebhookRateLimits()` | `channel_ingress_ratelimit.go:36` | 改为 `safego.Go(context.Background(), "channel.webhook.rate_limit_cleanup", ...)` |
+| J-23 | `webhookRateLimitsLastCleaned` 数据竞态 | `channel_ingress_ratelimit.go:27` | `var time.Time` → `atomic.Int64`，读写改用 `Load()/Store()` |
+| J-24 | `markTurnJob` 中 `UpdateStatus` 错误被吞 | `channel_ingress_job.go:93` | 改为 `if err := ...; err != nil { event.SysLogWarn(...) }` |
+
+#### 🟡 建议改进（已修复）
+
+| # | 问题 | 位置 | 修复 |
+|---|------|------|------|
+| J-05 | 10 个平台 webhook handler `_ =` 吞错误 | `service/channel_ingress.go:112-142` | 全部改为 `if err := ...; err != nil { event.SysLogWarn(...) }` |
+| J-11 | Service 层 10 处 `fmt.Errorf` 返回业务错误 | 6 个 channel_ingress/service 文件 | 全部替换为 `kerrors.BadRequest/InternalServer/FailedPrecondition` |
+| J-13 | `_ = json.Unmarshal` 关键配置解析 2 处 | `channel_ingress.go:268,276` | `channelTypeFromConfig`/`channelReceiveModeFromConfig` 加 `event.SysLogWarn` |
+| J-16 | `_ = h.turnJobs.UpdateStatus(...)` 3 处 | `channel_ingress_async.go:225,235,260` | 全部改为 `if err := ...; err != nil { event.SysLogWarn(...) }` |
+| J-17 | `_ = r.mgr.Reload(ctx)` 3 处 | `channel_runtime.go:78,91,102` | 全部改为 `if err := ...; err != nil { event.SysLogWarn(...) }` |
+| J-18 | `_ = s.peers.DeleteByChannelID(...)` | `channel.go:286` | 改为 `if _, err := ...; err != nil { event.SysLogWarn(...) }` |
+
+#### 🟢 提示（已修复）
+
+| # | 问题 | 位置 | 修复 |
+|---|------|------|------|
+| J-20 | `_ = routing` 无用赋值 | `channel_ingress_async.go:48` | 删除整个 `routing` 解析块（死代码） |
+| J-21 | `lark/ws_inbound.go` `SendText` 失败无日志 | `lark/ws_inbound.go:74` | 改为 `if sendErr := ...; sendErr != nil { event.SysLogWarn(...) }` |
+| J-22 | 凭证解析 `_ = resolveCredentialPlain(...)` 2 处 | `channel_ingress.go:210,220` | 改为 `if encErr/verErr != nil { event.SysLogWarn(...) }` |
+
+### J.2 剩余待修复项
+
+#### 🔴 P0 — 架构级红线（需跨模块协调，建议专项迭代）
+
+| # | 问题 | 位置 | 说明 |
+|---|------|------|------|
+| J-06 | `ChannelIngress` import `chatv1` proto 包 | `service/channel_ingress_session.go:9` | 红线 #15：非自身 proto 不应 import；需定义 biz 级端口 `biz.ChannelTurnTrigger` |
+| J-07 | `ChannelIngress` import `cronv1` proto 包 | `service/channel_ingress_async.go:11` | 红线 #15：同上；需定义 `biz.CronTrigger` 端口 |
+| J-08 | `ChannelIngress` 持有 `*CronService` 具体类型 | `service/channel_ingress.go:30` | 红线 #17：跨模块调用不得持有对方 Service 具体类型 |
+| J-09 | `ChannelService` 直接依赖 `biz.ChannelPeerSessionRepo` | `service/channel.go:25` | 红线 #13：Service 层不得直接依赖 Repo 接口 |
+| J-10 | `ChannelIngress` 持有 4 个 biz Repo 接口 | `service/channel_ingress.go:19-38` | 红线 #13：`peers`/`inboundReceipts`/`agents`/`teams` 应通过 Usecase 或端口接口访问 |
+
+#### 🟡 P1 — 应尽快修复
+
+| # | 问题 | 位置 | 说明 |
+|---|------|------|------|
+| J-12 | Channel 层 100 处 `fmt.Errorf` | `internal/channel/` 全子包 | 系统性问题，建议分批迁移 |
+| J-14 | `_ = json.Unmarshal` HTTP 响应解析 16 处 | `internal/channel/` 各 outbound | 响应格式异常时错误信息不精确，建议加 warn 日志 |
+| J-15 | `recordDelivery` 调用点 30+ 处 `_ =` | `channel_ingress_*.go` | `recordDelivery` 内部已有日志，外层 `_ =` 可接受；建议 `recordDelivery` 改为不返回 error |
+| J-19 | Service 层硬编码中文用户消息 6 处 | `channel_ingress_*.go` | 应收敛到 biz 层或 i18n 配置 |
+
+#### 🟢 P2 — 计划修复
+
+| # | 问题 | 位置 | 说明 |
+|---|------|------|------|
+| J-25 | `_ = h.enqueueOutboundReply/deliverTurnErrorReply` 3 处 | `channel_ingress_async.go:226,241,271` | 尽力投递场景，建议加 warn 日志提升可观测性 |
+| J-26 | `_, _ = w.channels.MarkOutboundAttempt(...)` 吞错误 | `channel_delivery_worker.go:154` | 建议对 MarkOutboundAttempt 返回值做日志 |
+
+### J.3 红线合规性更新
+
+| 红线 # | 检查项 | 结果 |
+|--------|--------|------|
+| #2 | `internal/channel/*` 不得 import `pkg/trpc-agent-go` | ✅ 无违规 |
+| #9 | 所有 `go func()` 必须走 `safego.Go` | ✅ 已修复（J-01~J-04 补全 3 处遗漏） |
+| #13 | goroutine 必须走 `pkg/safego` | ✅ 同上 |
+| #14 | Service 层不得 `fmt.Errorf` | ✅ 已修复（J-11：10 处全部替换为 kerrors）；🟡 channel 层 100 处待迁移（J-12） |
+| #15 | 非 Service 层不得 import proto 包 | 🟡 ChannelIngress import chatv1/cronv1（J-06/J-07） |
+| #16 | 禁止 `log/slog` | ✅ 无违规 |
+| #17 | 跨模块调用不得持有对方 Service 具体类型 | 🟡 ChannelIngress 持有 *CronService（J-08） |
+| #19 | 不得新增死代码 | ✅ 无新增（J-20 已清理） |
+
+### J.4 剩余项统计
+
+| 优先级 | 数量 | 编号 |
+|--------|------|------|
+| 🔴 P0（架构级红线） | 5 | J-06 ~ J-10 |
+| 🟡 P1（应尽快修复） | 4 | J-12, J-14, J-15, J-19 |
+| 🟢 P2（计划修复） | 2 | J-25, J-26 |
+| **合计** | **11** | |
+
+---
+
+## 18. 文档修订记录
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
@@ -759,3 +932,7 @@ go vet ./internal/channel/...
 | 1.5 | 2026-05-24 | §14 Phase DECO：四层解耦任务板 DECO-01–15 |
 | 1.6 | 2026-05-24 | §13 Phase G-c：CH-BOR-10–14 ✅；DECO-01 单测；§14.3 验证命令更新 |
 | 1.7 | 2026-05-28 | §16 Phase H：LINE / Mattermost / Teams 新平台扩展（H-01–H-14 ✅）；平台矩阵 9→12 |
+| 1.8 | 2026-05-28 | §17 Phase I：Go OOP + 项目红线审查（I-01–I-19 ✅）；safego/接口统一/全局状态修复/ingress 补全 |
+| 1.9 | 2026-05-29 | §17 Phase I 收尾：I-20–I-23 🟢→✅；`port.FirstNonEmpty` 公共提取；Discord session 缓存 + ctx 感知；全平台 ProcessInbound 错误日志补全 |
+| 1.10 | 2026-05-29 | §17.5 Phase J 二次深度审查：J-01~J-05 ✅（3 处裸 go→safego + starter 退出日志 + 10 平台 webhook handler 错误日志）；J-06~J-22 剩余 17 项归档 |
+| 1.11 | 2026-05-29 | §17.5 Phase J 续：J-11~J-22 修复 + Review 审查 J-23/J-24；Service 层 fmt.Errorf→kerrors 10 处；关键 `_ =` 加日志 11 处；atomic 修复数据竞态；死代码清理；剩余项 17→11 |

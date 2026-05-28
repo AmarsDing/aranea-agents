@@ -11,26 +11,23 @@ import (
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 )
 
-type costGuardConfig struct {
+type CostGuardConfig struct {
 	DailyTokenBudget int      `json:"daily_token_budget"`
 	MaxPromptTokens  int      `json:"max_prompt_tokens"`
 	BlockedModels    []string `json:"blocked_models"`
 	FallbackModel    string   `json:"fallback_model"`
 }
 
-// CostGuardConfig is the product configuration for cost_guard plugin routing.
-type CostGuardConfig = costGuardConfig
-
 type CostGuardPlugin struct {
 	base basePlugin
-	cfg  costGuardConfig
+	cfg  CostGuardConfig
 	rt   *Runtime
 }
 
 var _ trpcplugin.Plugin = (*CostGuardPlugin)(nil)
 
 func NewCostGuardPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime) *CostGuardPlugin {
-	var cfg costGuardConfig
+	var cfg CostGuardConfig
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
 	return &CostGuardPlugin{base: newBasePlugin(p.Key, stats, bus), cfg: cfg, rt: rt}
 }

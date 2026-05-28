@@ -29,6 +29,17 @@ type (
 	SessionSummary          = session.SessionSummary
 	StateDelta              = session.StateDelta
 	SessionRepository       = session.SessionRepository
+	SessionReader           = session.SessionReader
+	SessionWriter           = session.SessionWriter
+	MessageReader           = session.MessageReader
+	MessageWriter           = session.MessageWriter
+	TimelineReader          = session.TimelineReader
+	InvocationReader        = session.InvocationReader
+	SummaryRepo             = session.SummaryRepo
+	StateRepo               = session.StateRepo
+	TurnRepo                = session.TurnRepo
+	ContextUpdater          = session.ContextUpdater
+	CompressRepo            = session.CompressRepo
 	SessionTitleGenerator   = session.SessionTitleGenerator
 	SessionUsecase          = session.SessionUsecase
 	SessionBatchScope       = session.SessionBatchScope

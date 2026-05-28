@@ -36,13 +36,15 @@ type KnowledgeService struct {
 	chunker       *knowledge.Chunker
 	embedder      *knowledge.Embedder
 	retriever     *knowledge.Retriever
+	router        *knowledge.AdaptiveRouter
+	evaluator     *knowledge.RetrievalEvaluator
 	bus           event.Bus
 	systemSetting biz.SystemSettingRepo
 }
 
 // NewKnowledgeService constructs a KnowledgeService.
-func NewKnowledgeService(uc *biz.KnowledgeUsecase, chunker *knowledge.Chunker, embedder *knowledge.Embedder, retriever *knowledge.Retriever, bus event.Bus, systemSetting biz.SystemSettingRepo) *KnowledgeService {
-	return &KnowledgeService{uc: uc, chunker: chunker, embedder: embedder, retriever: retriever, bus: bus, systemSetting: systemSetting}
+func NewKnowledgeService(uc *biz.KnowledgeUsecase, chunker *knowledge.Chunker, embedder *knowledge.Embedder, retriever *knowledge.Retriever, router *knowledge.AdaptiveRouter, evaluator *knowledge.RetrievalEvaluator, bus event.Bus, systemSetting biz.SystemSettingRepo) *KnowledgeService {
+	return &KnowledgeService{uc: uc, chunker: chunker, embedder: embedder, retriever: retriever, router: router, evaluator: evaluator, bus: bus, systemSetting: systemSetting}
 }
 
 // CreateCollection creates a new vector collection.
@@ -219,9 +221,38 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 		v := req.GetUseRerank()
 		q.UseRerank = &v
 	}
-	chunks, err := s.retriever.Search(ctx, q)
+
+	var chunks []biz.KnowledgeChunk
+	var err error
+
+	if s.router != nil {
+		var rewriteResult *knowledge.QueryRewriteResult
+		strategy := knowledge.ParseRewriteStrategy(req.GetRewriteStrategy())
+		if strategy != knowledge.RewriteNone {
+			rewriter := s.router.QueryRewriter()
+			if rewriter != nil {
+				rewriteResult, _ = rewriter.Rewrite(ctx, query, strategy)
+			}
+		}
+		chunks, err = s.router.Search(ctx, q, rewriteResult)
+	} else {
+		chunks, err = s.retriever.Search(ctx, q)
+	}
 	if err != nil {
 		return nil, kerrors.InternalServer("KNOWLEDGE", err.Error())
+	}
+
+	if s.evaluator != nil && len(chunks) > 0 {
+		assessment, evalErr := s.evaluator.Evaluate(ctx, query, chunks)
+		if evalErr == nil && !assessment.Sufficient && assessment.SupplementQuery != "" {
+			supQ := q
+			supQ.Query = assessment.SupplementQuery
+			supQ.TopK = q.TopK
+			supChunks, supErr := s.retriever.Search(ctx, supQ)
+			if supErr == nil && len(supChunks) > 0 {
+				chunks = knowledge.MergeSearchResults(chunks, supChunks, q.TopK)
+			}
+		}
 	}
 
 	out := make([]*v1.KnowledgeChunk, 0, len(chunks))

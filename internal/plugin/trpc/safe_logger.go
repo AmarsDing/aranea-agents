@@ -4,15 +4,28 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
 )
 
-var hookLogger = NewPluginSafeLogger("hook", nil)
+var (
+	hookLoggerMu sync.RWMutex
+	hookLogger   = NewPluginSafeLogger("hook", nil)
+)
 
 func InitHookLogger(bus event.Bus) {
+	hookLoggerMu.Lock()
 	hookLogger = NewPluginSafeLogger("hook", bus)
+	hookLoggerMu.Unlock()
+}
+
+func getHookLogger() *PluginSafeLogger {
+	hookLoggerMu.RLock()
+	l := hookLogger
+	hookLoggerMu.RUnlock()
+	return l
 }
 
 type PluginSafeLogger struct {

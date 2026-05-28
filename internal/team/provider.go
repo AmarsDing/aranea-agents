@@ -15,8 +15,12 @@ import (
 // and starts a background ticker that evicts sessions older than sessionMaxAge.
 func ProvideTeamGraphRunCoordinator(graphs *biz.GraphUsecase, teams biz.TeamRepository, bus event.Bus, sessionRepo biz.TeamGraphSessionRepo) *TeamGraphRunCoordinator {
 	coord := NewTeamGraphRunCoordinator(graphs, teams, bus, sessionRepo)
+	interval := coord.cfg.CleanupInterval
+	if interval <= 0 {
+		interval = defaultCleanupInterval
+	}
 	safego.Go(context.Background(), "team.graph.coordinator.cleanup", func() {
-		ticker := time.NewTicker(10 * time.Minute)
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for range ticker.C {
 			coord.CleanupStaleSessions()

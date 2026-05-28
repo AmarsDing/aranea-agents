@@ -328,11 +328,13 @@ Turn query 注入：`internal/service/trpc_turn.go` · `internal/team/runner_tea
 **Layer A**（`applyLayerA`）：
 - 按 `SkillRuntimePolicy.AllowedSlugs` / `DeniedSlugs` 过滤
 
-**Layer B**（`ResolveSkillSlugs`）：
+**Layer B**（`ResolveSkillSlugsDetailed`）：
 - `skillrouter.DetectIntentPaths(query, maxPaths)` → 分类路径关键词匹配
-- `filterByIntentPaths()` → 按分类路径缩小候选
-- `filterByAllTags()` → 按 `AllowedTags` + `ExtractTagHints()` 过滤
-- `scoreCandidates()` → 按分类路径匹配度评分，排序后取 `MaxSkillsInToolset`
+- `filterByIntentPathsWithReasons()` → 按分类路径缩小候选
+- `filterByAllTagsWithReasons()` → 按 `AllowedTags` + `ExtractTagHints()` 过滤
+- `scoreCandidatesWithReasons()` → 按分类路径匹配度评分
+- **Embedding 语义精排**（可选）：`SkillUsecase.ScoreByEmbedding(query, candidates)` → 余弦相似度融合评分
+- 排序后取 `MaxSkillsInToolset`，返回 `ResolveResult{Slugs, Reasons}`
 
 ### 5.3 意图路由与分类
 
@@ -360,6 +362,60 @@ Turn query 注入：`internal/service/trpc_turn.go` · `internal/team/runner_tea
 - `intent_routing_enabled`（默认 true）
 - `intent_max_paths`（默认 3）
 - `max_skills_in_toolset`（默认 32，上限 256）
+- `embedding_scoring_enabled`（默认 false）— 启用 embedding 语义精排
+- `embedding_score_weight`（默认 0.3，范围 0~1）— embedding 分权重
+
+### 5.6 Prompt 注入（方式 C）
+
+文件：`internal/agent/skill_guidance_inject.go`
+
+在 `productCallbackChain` 中注册 `newSkillGuidanceBeforeHook`（priority=5），仅 `SkillsUseFullProfile` 模式下启用。
+
+流程：
+1. `ResolveSkillSlugsDetailed` 获取当前 turn 的 skill slugs
+2. `BatchGetSkillGuidance(slugs)` 批量获取 skill markdown（2 条 SQL：按 skill_key 查 Skill + 按 skill_id 查最新 Version）
+3. `manifest.Parse` 解析 frontmatter → `render.SkillGuidance` 渲染指导内容
+4. 拼接为 system message 注入 `args.Request.Messages` 头部
+5. 截断保护：`maxSkillGuidanceChars=4000`；`written==0` 时不注入
+
+### 5.7 Embedding 语义精排
+
+文件：`internal/biz/skill/skill.go`（`ScoreByEmbedding`/`refreshEmbedCache`/`cosineSimilarity32`）
+
+评分融合公式：`final_score = keyword_score + cosine_similarity × 1000 × embedding_score_weight`
+
+- 默认 `embedding_score_weight=0.3`，最大 embedding 贡献 300 分
+- 低于 taxonomy 精确匹配（1000）和部分匹配（400），高于关键词匹配（100）
+- 仅在 `embedding_scoring_enabled: true` 时启用
+- 内存缓存：`embedCache map[string][]float32`，按 slug 缓存 embedding
+- 缓存失效：Publish/ToggleEnabled/Delete/Duplicate 时 `InvalidateEmbedCache()`
+- 优雅降级：embedding 不可用时回退到纯关键词评分，`event.SysLogWarn` 记录失败
+
+### 5.8 SkillFilesystem 端口
+
+接口定义在 `internal/biz/skill/skill.go`（`SkillFilesystem`），实现在 `internal/skill/storage/filesystem.go`。
+
+Service 层通过 `SkillFilesystem` 端口访问文件系统，不直接操作 `os` 包。Wire 绑定：`ProvideSkillResolveRootFn`（提供 `func(ctx) string`）+ `storage.NewSkillFilesystem`。
+
+端口方法：
+- `ResolveRoot(ctx)` — 解析存储根目录（动态：优先 SystemSettingRepo.root_directory，回落环境变量/默认路径）
+- `CreateSkillDir(slug, body)` — 创建 skill 目录 + SKILL.md
+- `ListFiles(dir)` — 遍历目录返回文件列表
+- `ReadFile(dir, relPath)` — 读取文件内容（含安全检查 + 大小限制）
+- `WriteFile(dir, relPath, content)` — 写入文件
+- `DeleteFile(dir, relPath)` — 删除文件
+- `RootAccessible(ctx)` — 检查根目录是否可访问
+- `DirExists(dir)` — 检查目录是否存在（替代 Service 层直接 `os.Stat`）
+- `SafeFilePath(dir, relPath)` — 路径安全检查（防目录穿越）
+
+### 5.9 Repo 窄接口拆分
+
+`Repo` 接口按职责拆分为 `SkillReader` + `SkillWriter`，`Repo` 组合两者保持向后兼容：
+
+- **SkillReader**（13 方法）：`SearchSkills`/`GetSkillByID`/`GetSkillBySkillKey`/`GetSkillStorageDir`/`GetLatestSkillMarkdown`/`BatchGetSkillMarkdownBySlugs`/`ListRegisteredSlugs`/`ListEnabledPublishedSkillKeys`/`ListEnabledPublishedSkillCandidates`/`ListSkillSimilaritySources`/`FilesystemHealthStats`/`SearchSkillInvocations`/`ListSkillVersions`
+- **SkillWriter**（10 方法）：`CreateSkillWithVersion`/`UpdateSkillEnabled`/`DuplicateSkill`/`DeleteSkill`/`PatchSkill`/`PublishSkill`/`UpsertSkillFromDisk`/`MarkSkillFilesystemMissing`/`RecordSkillInvocation`/`RollbackSkillVersion`
+
+新消费者应优先依赖窄接口（`SkillReader` 或 `SkillWriter`），仅同时需要读写时才使用 `Repo`。
 
 ---
 

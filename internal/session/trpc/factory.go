@@ -2,7 +2,8 @@ package session
 
 import (
 	"database/sql"
-	"log"
+
+	"aranea-agents/internal/event"
 
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
@@ -14,7 +15,7 @@ func NewTRPCSessionService(rawDB *sql.DB) trpcsession.Service {
 	}
 	svc, err := NewSQLiteSessionService(rawDB)
 	if err != nil {
-		log.Printf("[session] trpc SQLite session service unavailable (%v); using in-memory store — runner state will not persist across restarts", err)
+		event.SysLogWarn("session.factory", "trpc SQLite session service unavailable, using in-memory fallback", event.P("error", err.Error()))
 		return NewInMemorySessionService()
 	}
 	return svc

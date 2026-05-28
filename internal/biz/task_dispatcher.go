@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/safego"
 )
 
 const defaultDispatchInterval = 30 * time.Second
@@ -35,7 +36,7 @@ func (d *TaskDispatcher) Start() {
 	if d == nil || d.tasks == nil {
 		return
 	}
-	go d.loop()
+	safego.Go(context.Background(), "task_dispatcher.loop", d.loop)
 }
 
 func (d *TaskDispatcher) Stop() {

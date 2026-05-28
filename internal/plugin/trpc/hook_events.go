@@ -51,7 +51,7 @@ func (m *Manager) dispatchHookOnEvent(
 				if metrics.IsBlockedErr(err) {
 					return
 				}
-				hookLogger.Warn("hook: non-block error suppressed", "point", "on_event", "agent_id", agentID, "error", err)
+				getHookLogger().Warn("hook: non-block error suppressed", "point", "on_event", "agent_id", agentID, "error", err)
 			}
 		}()
 	}

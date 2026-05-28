@@ -13,6 +13,7 @@ export { useAdminStore } from "./admin";
 export { useChannelsStore } from "./channels";
 export { useChatStore } from "./chat";
 export { useChatConversationStore } from "./chat/conversationStore";
+export { useChatSessionStore } from "./chat/sessionStore";
 export { useCronStore } from "./cron";
 export { useGraphStore } from "./graph";
 export { useHeartbeatStore } from "./heartbeat";

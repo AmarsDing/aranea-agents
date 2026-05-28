@@ -138,6 +138,5 @@ export function useChatProviderOptions(store: Store) {
     loadChatOptions,
     onModeChange,
     onProviderChange,
-    ensureSelectedModel,
   };
 }

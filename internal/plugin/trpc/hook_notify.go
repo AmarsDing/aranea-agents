@@ -49,7 +49,7 @@ func (n *HookNotifier) EnqueueNotify(ctx context.Context, rh biz.ResolvedHook, p
 	if n == nil || n.repo == nil {
 		safego.Go(ctx, "hook.notify."+rh.Hook.Key, func() {
 			if err := deliverHookWebhook(url, body, opts.WebhookSecret, opts.TimeoutSec); err != nil {
-				hookLogger.Warn("hook.notify: fire-and-forget delivery failed", "hook", rh.Hook.Key, "error", err)
+				getHookLogger().Warn("hook.notify: fire-and-forget delivery failed", "hook", rh.Hook.Key, "error", err)
 			}
 		})
 		return nil
@@ -70,9 +70,9 @@ func (n *HookNotifier) EnqueueNotify(ctx context.Context, rh biz.ResolvedHook, p
 	safego.Go(ctx, "hook.notify.enqueue."+rh.Hook.Key, func() {
 		bg := context.Background()
 		if err := n.repo.Insert(bg, d); err != nil {
-			hookLogger.Warn("hook.notify: enqueue failed", "hook", rh.Hook.Key, "error", err)
+			getHookLogger().Warn("hook.notify: enqueue failed", "hook", rh.Hook.Key, "error", err)
 			if ferr := deliverHookWebhook(url, body, opts.WebhookSecret, opts.TimeoutSec); ferr != nil {
-				hookLogger.Warn("hook.notify: fallback delivery failed", "hook", rh.Hook.Key, "error", ferr)
+				getHookLogger().Warn("hook.notify: fallback delivery failed", "hook", rh.Hook.Key, "error", ferr)
 			}
 			return
 		}

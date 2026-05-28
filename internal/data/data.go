@@ -67,6 +67,7 @@ var ProviderSet = wire.NewSet(
 	ProvideTaskLinkRepo,
 	NewArtifactRepo,
 	NewKnowledgeRepoFromData,
+	NewKnowledgeSparseSearcherFromData,
 	NewEvalRepoFromData,
 	NewBackgroundJobRepo,
 	NewA2ARepoFromData,
@@ -521,6 +522,13 @@ func NewKnowledgeRepoFromData(d *Data) biz.KnowledgeRepo {
 		return nil
 	}
 	return NewKnowledgeRepo(d.Postgres())
+}
+
+func NewKnowledgeSparseSearcherFromData(d *Data) biz.KnowledgeSparseSearcher {
+	if d == nil || d.Postgres() == nil {
+		return nil
+	}
+	return &knowledgeRepo{db: d.Postgres()}
 }
 
 func NewEvalRepoFromData(d *Data) biz.EvalRepo {

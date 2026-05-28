@@ -58,10 +58,6 @@ export function useFollowUpQueue(
     }
   }
 
-  function onRunStatusHint(_rs: RunStatusFromWs) {
-    // reserved for non-envelope hints
-  }
-
   async function onCancelPending(pendingId: string) {
     const sid = sessionId.value;
     if (!sid || !pendingId) return;
@@ -113,9 +109,6 @@ export function useFollowUpQueue(
   return {
     pendingMessages,
     refreshPendingMessages,
-    startPendingPoll: scheduleInitialFetch,
-    stopPendingPoll,
-    onRunStatusHint,
     onRunStatusEnvelope,
     onCancelPending,
     onUpdatePending,

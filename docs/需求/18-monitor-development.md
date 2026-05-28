@@ -1,6 +1,6 @@
 # Monitor 监控 — 开发计划
 
-> **版本**：2026-05-28-v2 | **状态**：🟢 核心已通 + **MON-OPT-01~06 ✅ LOG-01/TRACE-01 ✅ DIAG-01/02 ✅ Latency P50/P95/P99 ✅ LOG-03 P0/P1 ✅**；待办为 LOG-02（跨 pkg）、LOOP-01（P3）
+> **版本**：2026-05-29-v3 | **状态**：🟢 核心已通 + **MON-OPT-01~06 ✅ LOG-01/TRACE-01 ✅ DIAG-01/02 ✅ Latency P50/P95/P99 ✅ LOG-03 P0/P1/P2 ✅ REDLINE ✅ QUALITY ✅**；待办为 LOG-02（跨 pkg）、LOOP-01（P3）
 > **需求**：[18 monitor.md](./18%20monitor.md) · **设计**：[18 monitor.design.md](./18%20monitor.design.md)（§九 方案 C）
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md)（I8-MON-01/02、MON-01、I5-MON-01/02）· **页面索引**：[frontend-pages.md](./frontend-pages.md) §监控
 
@@ -55,7 +55,11 @@
 | ListFlowLogs HTTP 历史 | ✅ | `FlowLogService.ListFlowLogs` + `biz.FlowLogUsecase` + Ent Repo |
 | LOG-03 P0 红线修复 | ✅ | 9 处 `log.Warnf`/`log.Errorf` → `event.SysLogWarn`/`SysLogError`（Graph/Task/Channel 域） |
 | LOG-03 P1 关键路径补全 | ✅ | Graph runtime、Session title/rollback、Knowledge embedder FlowLog 补全 |
+| LOG-03 P2 biz 层 fmt.Errorf 清理 | ✅ | session_run.go 13 处 + shared.go 1 处 + agent_settings_helpers.go 1 处 → `kerrors` |
+| LOG-03 P2 admin.go log.Infof 修复 | ✅ | → `event.SysLogInfo`（红线 #16） |
 | step_id 注册表扩展 | ✅ | 新增 15 个 step_id（graph/session/task/channel/knowledge 域） |
+| UsecaseOption 构造器注入 | ✅ | `UsecaseOption` 函数选项模式替代 4 个 `Set*`（保留 2 个循环依赖 setter） |
+| RebuildRingBuffer 逐分钟重建 | ✅ | `ensureBucketAt` + 60 桶逐分钟从 DB 重建 |
 
 ---
 
@@ -127,7 +131,7 @@
 |----|------|--------|------|----------|
 | LOG-01 | FlowLog 文件落盘 | P1 | ✅ | `FlowFileAppender` + 按日/大小轮转 + gzip + 30 天清理 |
 | LOG-02 | 框架层 zap 日志结构化 | P2 | ❌ | 跨 `pkg/trpc-agent-go` 修改，需独立 PR |
-| LOG-03 | 关键路径 FlowLog 补全 | P2 | ✅ P0/P1 完成 | P1 路径（Provider/Memory/MCP）已确认完成；P0 红线修复 9 处；P1 补全 Graph/Session/Knowledge |
+| LOG-03 | 关键路径 FlowLog 补全 | P2 | ✅ P0/P1/P2 完成 | P0 红线修复 9 处；P1 补全 Graph/Session/Knowledge；P2 biz 层 fmt.Errorf 全量清理 + admin.go log.Infof |
 | TRACE-01 | Trace 文件落盘 | P1 | ✅ | `runner.completion` → `trace-*.jsonl` |
 | DIAG-01 | AI 诊断包 | P1 | ✅ | `DiagBundleGenerator` + `GenerateDiagnosticBundle` RPC |
 | DIAG-02 | 根因分析规则引擎 | P1 | ✅ | `RootCauseEngine` 5 条内置规则 + 置信度评分 |
@@ -147,6 +151,8 @@
 | REDLINE-01 | Graph 域 3 处 `log.Warnf`（红线 #16） | ✅ | → `event.SysLogWarn`（graph_task_start_fail/task_status_fail/task_resume_fail） |
 | REDLINE-02 | Task 域 5 处 `log.Warnf`/`log.Errorf`（红线 #16） | ✅ | → `event.SysLogWarn`/`SysLogError`（task.timeout_update_fail/release_claim_fail/dispatcher_tick_fail/check_timeout_fail/claim_fail/dispatch_run_fail） |
 | REDLINE-03 | Channel 域 1 处 `log.Warnf`（红线 #16） | ✅ | → `event.SysLogWarn`（channel.dead_letter） |
+| REDLINE-04 | Admin 域 1 处 `log.Infof`（红线 #16） | ✅ | → `event.SysLogInfo`（system.admin.logout） |
+| REDLINE-05 | biz 层 15 处 `fmt.Errorf`（红线 #14） | ✅ | session_run.go 13 处 → `kerrors.InternalServer`/`BadRequest`；shared.go 1 处 → `errors.BadRequest`；agent_settings_helpers.go 1 处 → `kerrors.InternalServer` |
 
 ### 质量修复
 
@@ -154,6 +160,22 @@
 |----|------|------|------|
 | MON-Q-09 | 空库返回未持久化的合成默认规则 | ✅ | `ListMonitorAlertRules` 空库时自动 `ReplaceAlertRules` |
 | MON-Q-11 | `json_extract` 过滤无法走索引 | ✅ | generated columns（`meta_session_id`/`meta_duration_ms` 等）+ `COALESCE` 查询 |
+| MON-Q-12 | `FlowFileAppender.writeRow` 无锁保护（P0 data race） | ✅ | `writeRow` → `writeRowLocked`，统一在 `mu.Lock` 范围内 |
+| MON-Q-13 | `AlertEvalWorker.ready` bool 跨 goroutine 读写（P0 data race） | ✅ | `ready bool` → `ready atomic.Bool` |
+| MON-Q-14 | `TraceProjector.dropCount` 非 atomic（P0 data race） | ✅ | `dropCount int64` → `dropCount atomic.Int64` |
+| MON-Q-15 | `DiagBundleGenerator` fmt.Errorf（红线 #14）+ usageData 长度 bug | ✅ | → `kerrors.InternalServer`；`len(usageData)` → `len(usageRows)` |
+| MON-Q-16 | `service/monitor.go` 3 处 fmt.Errorf + ListMonitorAlertRules 吞错 | ✅ | → `kerrors.BadRequest`；添加 `event.SysLogWarn` 错误记录 |
+| MON-Q-17 | `ReplaceAlertRules` DELETE ALL 丢失 firing_state | ✅ | 增量 upsert：已存在→UPDATE 保留状态，新增→INSERT，删除→DELETE BY ID |
+| MON-Q-18 | `LatencyPercentilesSince` 无 LIMIT 可能全量加载 | ✅ | SQL 增加 `LIMIT 10000` |
+| MON-Q-19 | `UsecaseOption` 构造器注入重构 | ✅ | 函数选项模式替代 4 个 `Set*`（保留 `SetEvalWorker`/`SetRegistry` 循环依赖） |
+| MON-Q-20 | `RebuildRingBuffer` 只填当前桶 | ✅ | `ensureBucketAt` 逐分钟从 DB 重建 60 个桶 |
+| MON-Q-21 | `monitor_trace_backfill` watermark 用 `time.Now()` | ✅ | 使用最后一行的实际 `created_at` 作为 watermark |
+| MON-Q-22 | `RootCauseEngine` 正则编译错误无日志 | ✅ | `regexp.Compile` 失败时添加 `event.SysLogError` |
+| MON-Q-23 | `TraceProjector` hasPrefix/hasSuffix 包装函数冗余 | ✅ | 删除包装，直接使用 `strings.HasPrefix`/`strings.HasSuffix` |
+| MON-Q-24 | `RebuildRingBuffer` 累积计数 bug（Critical） | ✅ | `CountMonitorEventsSince` 增加 `untilRFC3339` 参数，SQL 加 `AND created_at < ?` 上界 |
+| MON-Q-25 | `AlertEvalWorker.rebuildFromDB` 无错误处理 | ✅ | `RebuildRingBuffer` 返回重建桶数，0 桶时记录 `SysLogWarn` |
+| MON-Q-26 | `DiagBundleGenerator` 脆弱 key 匹配 | ✅ | `strings.Contains` → `strings.HasPrefix`（`alert.`/`usage`） |
+| MON-Q-27 | `FlowFileAppender` 写入后无定时 Sync | ✅ | `maintenance` 周期添加 `syncOpenFiles`，每小时 Sync 所有打开文件 |
 
 **验证命令**：
 
@@ -178,7 +200,7 @@ cd web && pnpm lint && pnpm test && pnpm build
 | 6 | `ListFlowLogs` HTTP 历史 | P2 | ✅ `FlowLogService.ListFlowLogs` |
 | 7 | Tab 命名 `traces`→`runs`、服务端 completion 过滤 | P2 | ❌ |
 | 8 | LOG-02 框架层 zap 结构化 | P2 | ❌（跨 pkg 修改） |
-| 9 | LOG-03 关键路径 FlowLog 补全 | P2 | ✅ P0/P1 完成 |
+| 9 | LOG-03 关键路径 FlowLog 补全 | P2 | ✅ P0/P1/P2 完成 |
 | 10 | LOOP-01 闭环工作流 | P3 | ❌（待设计） |
 
 ---
@@ -204,6 +226,12 @@ cd web && pnpm lint && pnpm test && pnpm build
 - [x] ListFlowLogs HTTP 历史 API
 - [x] LOG-03 P0 红线修复（9 处 `log.Warnf`/`log.Errorf` → FlowLog）
 - [x] LOG-03 P1 关键路径补全（Graph/Session/Knowledge）
+- [x] LOG-03 P2 biz 层 fmt.Errorf 全量清理（15 处 → kerrors）
+- [x] LOG-03 P2 admin.go log.Infof → FlowLog
+- [x] UsecaseOption 构造器注入重构
+- [x] RebuildRingBuffer 逐分钟重建
+- [x] 3 处 P0 data race 修复（FlowFileAppender/AlertEvalWorker/TraceProjector）
+- [x] ReplaceAlertRules 增量 upsert 保留 firing_state
 
 ---
 

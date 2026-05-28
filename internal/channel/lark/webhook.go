@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/internal/channel/port"
 )
 
 const (
@@ -206,19 +207,10 @@ func fillCardActionFromWebhook(raw []byte, res *WebhookParseResult) error {
 		res.EventType = "card.action.trigger_v1"
 	}
 	res.CardActionValue = body.Action.Value
-	res.CardActionOperatorOpenID = strings.TrimSpace(firstNonEmpty(body.Operator.OpenID, body.OpenID))
+	res.CardActionOperatorOpenID = strings.TrimSpace(port.FirstNonEmpty(body.Operator.OpenID, body.OpenID))
 	res.CardOpenChatID = strings.TrimSpace(body.Context.OpenChatID)
-	res.CardOpenMessageID = strings.TrimSpace(firstNonEmpty(body.Context.OpenMessageID, body.OpenMessageID))
+	res.CardOpenMessageID = strings.TrimSpace(port.FirstNonEmpty(body.Context.OpenMessageID, body.OpenMessageID))
 	return nil
-}
-
-func firstNonEmpty(parts ...string) string {
-	for _, p := range parts {
-		if v := strings.TrimSpace(p); v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 type imTextContent struct {

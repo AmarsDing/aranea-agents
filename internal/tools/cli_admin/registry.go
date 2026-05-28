@@ -13,6 +13,7 @@ package cli_admin
 
 import (
 	"context"
+	"fmt"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -20,14 +21,18 @@ import (
 // Deps carries all external dependencies the cli_admin tools need.
 // Implementations are injected by internal/service when building the system admin agent.
 type Deps struct {
-	// SkillRepo provides read access to skills.
-	SkillRepo SkillRepository
-	// AgentRepo provides read access to agents.
-	AgentRepo AgentRepository
-	// APIBaseURL is the backend base URL for pkg_install_from_url.
+	SkillRepo  SkillRepository
+	AgentRepo  AgentRepository
 	APIBaseURL string
-	// APIToken is the admin token for package installation.
-	APIToken string
+	APIToken   string
+}
+
+func (d Deps) String() string {
+	token := d.APIToken
+	if token != "" {
+		token = "***"
+	}
+	return fmt.Sprintf("Deps{APIBaseURL:%q, APIToken:%q}", d.APIBaseURL, token)
 }
 
 // SkillRepository defines the skill read interface for cli_admin tools.

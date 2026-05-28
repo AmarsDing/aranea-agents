@@ -2,11 +2,11 @@ package service
 
 import (
 	"context"
-	"log"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
 )
 
@@ -31,9 +31,9 @@ func (w *SessionRunDurableWorker) Start(ctx context.Context) {
 	}
 	// Clean up zombie runs from a previous process crash/restart.
 	if n, err := w.runs.CleanupOrphanedRuns(context.Background()); err != nil {
-		log.Printf("[session-run-durable-worker] orphan cleanup failed: %v", err)
+		event.SysLogWarn("session.durable_worker", "orphan cleanup failed", event.P("error", err.Error()))
 	} else if n > 0 {
-		log.Printf("[session-run-durable-worker] orphaned runs cleaned up: count=%d", n)
+		event.SysLogInfo("session.durable_worker", "orphaned runs cleaned up", event.P("count", n))
 	}
 	safego.Go(ctx, "session-run-durable-worker", func() {
 		ticker := time.NewTicker(sessionRunWorkerPollInterval)

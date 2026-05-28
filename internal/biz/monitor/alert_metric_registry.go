@@ -82,14 +82,14 @@ func (m *RunnerErrorRateMetric) Evaluate(ctx context.Context, window time.Durati
 		return float64(wr.Errors) / float64(wr.Total), nil
 	}
 	since := time.Now().UTC().Add(-window).Format(time.RFC3339)
-	total, err := m.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since)
+	total, err := m.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since, "")
 	if err != nil {
 		return 0, err
 	}
 	if total == 0 {
 		return 0, nil
 	}
-	errors, err := m.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since)
+	errors, err := m.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since, "")
 	if err != nil {
 		return 0, err
 	}

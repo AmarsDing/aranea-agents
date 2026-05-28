@@ -143,7 +143,7 @@ func executeHookAction(ctx context.Context, stats StatsRecorder, notifier *HookN
 		metrics.PluginInvokeTotal.WithLabelValues("hook:"+rh.Hook.Key, point, st).Inc()
 		metrics.ObserveCallback("hook", point, start, err)
 		durationMS := time.Since(start).Milliseconds()
-		hookLogger.Info("hook.execute",
+		getHookLogger().Info("hook.execute",
 			"hook_key", rh.Hook.Key,
 			"point", point,
 			"action", action,
@@ -207,11 +207,11 @@ func executeHookAction(ctx context.Context, stats StatsRecorder, notifier *HookN
 		case "before_tool":
 			// ModifiedArguments returned by caller after executeHookAction.
 		default:
-			hookLogger.Debug("hook.modify skipped for point", "hook", rh.Hook.Key, "point", point)
+			getHookLogger().Debug("hook.modify skipped for point", "hook", rh.Hook.Key, "point", point)
 		}
 		return nil
 	default:
-		hookLogger.Warn("hook: unknown action type", "hook", rh.Hook.Key, "action", action)
+		getHookLogger().Warn("hook: unknown action type", "hook", rh.Hook.Key, "action", action)
 		return nil
 	}
 }
@@ -235,13 +235,13 @@ func logHookAction(rh biz.ResolvedHook, point, agentID, agentKey, toolName, acti
 	}
 	switch level {
 	case "debug":
-		hookLogger.Debug(msg, attrs...)
+		getHookLogger().Debug(msg, attrs...)
 	case "warn", "warning":
-		hookLogger.Warn(msg, attrs...)
+		getHookLogger().Warn(msg, attrs...)
 	case "error":
-		hookLogger.Error(msg, attrs...)
+		getHookLogger().Error(msg, attrs...)
 	default:
-		hookLogger.Info(msg, attrs...)
+		getHookLogger().Info(msg, attrs...)
 	}
 }
 

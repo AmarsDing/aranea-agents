@@ -18,8 +18,15 @@
             @click="selectEntity(entity.id)"
           >
             <q-item-section>
-              <q-item-label>{{ entity.name }}</q-item-label>
-              <q-item-label caption>{{ entity.entity_type }} · {{ entity.scope_type }}</q-item-label>
+              <q-item-label>
+                {{ entity.name }}
+                <q-badge
+                  :color="confidenceTierColor(entity.confidence)"
+                  :label="confidenceTierLabel(entity.confidence)"
+                  class="q-ml-xs"
+                />
+              </q-item-label>
+              <q-item-label caption>{{ entity.entity_type }} · {{ entity.scope_type }} · {{ (entity.confidence * 100).toFixed(0) }}%</q-item-label>
             </q-item-section>
           </q-item>
           <q-item v-if="!entities.length && !loadingEntities">
@@ -208,6 +215,18 @@ function entityName(id: string) {
 
 function truncate(s: string, n: number) {
   return s.length <= n ? s : `${s.slice(0, n)}…`;
+}
+
+function confidenceTierLabel(confidence: number) {
+  if (confidence >= 0.7) return "高";
+  if (confidence >= 0.4) return "中";
+  return "低";
+}
+
+function confidenceTierColor(confidence: number) {
+  if (confidence >= 0.7) return "positive";
+  if (confidence >= 0.4) return "warning";
+  return "negative";
 }
 </script>
 

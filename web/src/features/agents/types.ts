@@ -104,12 +104,15 @@ export type AgentRuntimeSettings = {
   l3_decay_interval_hours?: number;
   l3_archive_threshold?: number;
   l3_max_per_recall_chars?: number;
+  l3_pii_policy?: string;
   l4_enabled?: boolean;
   l4_graph_inject_neighbors?: boolean;
   l4_graph_max_neighbors?: number;
   l4_graph_max_hops?: number;
   l4_identity_inject?: boolean;
   l4_strategy_inject?: boolean;
+  l4_decay_interval_hours?: number;
+  l4_decay_overrides_json?: string;
   evo_enabled?: boolean;
   evo_auto_apply?: boolean;
   evo_min_episodes?: number;

@@ -1,6 +1,6 @@
 # M53: Team × Graph 编排融合 — 开发计划
 
-> **版本**：2026-05-28 | **状态**：✅ Phase 0.5–7 已落地；**Phase 8 进行中**（架构优化：状态机/协议化/单轨化/mode→template）  
+> **版本**：2026-05-29 | **状态**：✅ Phase 0.5–7 已落地；**Phase 8 进行中**（架构优化：状态机/协议化/单轨化/mode→template/配置化/错误处理规范化）  
 > **需求**：[53 team-graph-orchestration.md](./53%20team-graph-orchestration.md) · **设计**：[53 team-graph-orchestration.design.md](./53%20team-graph-orchestration.design.md)  
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-TG-01
 
@@ -443,12 +443,49 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 | REFACTOR | God Function 拆分：`resolveAnchorAndAttachments` + `prepareUserTurnOptions` + `finalizeTeamRun` | `team/runner_team_trpc.go` → `team/runner_team_turn.go` | ✅ |
 | TG-Q-04 | `persistGraphMemberStepsFromResult` 标记为 `TestOnly` 测试辅助 | `team/runner_finish_steps_test_helpers_test.go` | ✅ |
 
-### Phase 8.5 — 待实施
+### Phase 8.5 — Review 修复（✅ 已完成）
+
+| ID | 任务 | 影响域 | 状态 |
+|----|------|--------|------|
+| TG-Q-15 | `finishRunErr` 幂等保护（终态守卫） | `team/runner_helpers.go` | ✅ |
+| TG-Q-16 | 事件码语义修正（`team.session.stale_evicted` / `team.graph.resume_fail`） | `team/team_graph_run_coordinator.go` | ✅ |
+| TG-Q-17 | DDL 拆分为独立 ExecContext 调用 | `data/team_graph_session_schema.go` | ✅ |
+| TG-Q-18 | `templateRegistry` 添加 `sync.RWMutex` 保护 | `team/template_registry.go` | ✅ |
+| TG-Q-19 | `ShouldRun` 冗余调用消除 | `team/runner_team_turn.go` | ✅ |
+
+### Phase 8.6 — Critic Loop 优化（✅ 已完成）
+
+| ID | 任务 | 影响域 | 状态 |
+|----|------|--------|------|
+| TG-Q-20 | `containsWord` 精确匹配替代 `strings.Contains("approved")` | `graph/adapter/critic_loop_cond.go` | ✅ |
+| TG-Q-21 | `DefaultCriticLoopThreshold` 常量化替代硬编码 `0` | `graph/adapter/critic_loop_cond.go` + `runtime_adapter.go` | ✅ |
+
+### Phase 8.7 — Review 修复 + 配置化 + 清理（✅ 已完成）
+
+| ID | 任务 | 影响域 | 状态 |
+|----|------|--------|------|
+| TG-Q-06 | `adaptiveMaxTransferEdges` 静默裁剪添加 `FlowLog warn` | `team/graph_compile.go` | ✅ |
+| TG-Q-09 | `ResumeExecution` 失败添加 run status 更新 + `evictSession` | `team/team_graph_run_coordinator.go` | ✅ |
+| TG-Q-12 | 魔法常量提取为 `CoordinatorConfig` 结构体 | `team/team_graph_run_coordinator.go` + `provider.go` | ✅ |
+| TG-Q-13 | `recordTeamRunUsage` 表达式优先级显式括号 | `team/usage_record.go` | ✅ |
+| BL-05 | `persistNativeBulkMemberSteps` 标记 `Deprecated` | `team/runner_finish_steps.go` | ✅ |
+| CLEAN | 清理 `graph_runtime_canary_test.go` 死测试代码 | `team/graph_runtime_canary_test.go` + `team/graph_runtime_test.go` | ✅ |
+
+### Phase 8.8 — 错误处理规范化（✅ 已完成）
+
+| ID | 任务 | 影响域 | 状态 |
+|----|------|--------|------|
+| TG-Q-22 | `fmt.Errorf` → `kerrors` 替换（8 处） | `team/graph_compile.go` + `team/embedded_graph.go` | ✅ |
+| TG-Q-23 | 静默忽略错误添加 `FlowLog warn`（4 处关键：`CreateTaskDeadLetter` / `RollbackToBoundary` / `MarkTeamGraphInterrupt` / `BatchCreateOrchestrationSteps`） | `team/runner_helpers.go` + `team/runner_team_trpc.go` + `team/team_graph_execution_tracker.go` + `team/activity_step_flusher.go` | ✅ |
+| TG-Q-24 | adaptive 裁剪告警解耦：改为基于实际边数检测而非 mode 名硬编码 | `team/graph_compile.go` | ✅ |
+| TG-Q-25 | `UpdateTeamRun` 静默忽略错误全面消除（6 处） | `team/team_graph_run_coordinator.go` + `team/runner_team_turn.go` + `team/runner_helpers.go` + `team/team_graph_run_finisher.go` | ✅ |
+
+### Phase 8.9 — 待实施
 
 | ID | 任务 | BL | 优先级 | 说明 |
 |----|------|-----|--------|------|
 | BL-05 | Step 持久化事件驱动统一：删除 bulk persist 路径 | 中 | 依赖 Native 完全退役 |
-| BL-09 | Observer 单订阅化：`teamRunPipeline` + `runEventHandler` 接口 | 低 | 减少订阅开销 |
+| BL-09 | Observer 单订阅化：`teamRunPipeline` + `runEventHandler` 接口 | 低 | 减少订阅开销；当前 4 个订阅开销可接受，建议在 Observer 数量增长到 6+ 时再实施 |
 
 ### Phase 8 关键设计决策
 
@@ -456,3 +493,5 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 2. **编译器统一路径**：`compileToGraphBuildConfigWithLoader` 不再按 mode 分发，而是通过 `generateGraphSpecFromMode` 生成 embedded graph spec 后统一走 `compileFromEmbeddedGraph`
 3. **Native 仅紧急熔断**：`ARANEA_TEAM_NATIVE=1` 环境变量为唯一 Native 执行入口，灰度桶/canary/holdout 逻辑全部删除
 4. **HITL SLA 有界延期**：`maxHITLSLAExtensions = 3`，避免无限延期
+5. **CoordinatorConfig 可配置化**：`WatchTimeout` / `HITLSLATimeout` / `SessionMaxAge` / `CleanupInterval` 统一收敛到 `CoordinatorConfig` 结构体，默认值与原常量一致，支持构造后覆盖
+6. **错误处理规范化**：`fmt.Errorf` 统一替换为 `kerrors` 系列（BadRequest/InternalServer）；所有 `_ = xxx.UpdateTeamRun` / `_ = xxx.Create` 静默忽略改为 `FlowLog warn`，确保错误可观测

@@ -4,12 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
 	bizsess "aranea-agents/internal/biz/session"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -168,7 +168,7 @@ func (r *sessionParticipantRepo) ListBySession(ctx context.Context, sessionID st
 	}
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return nil, fmt.Errorf("session id is required")
+		return nil, kerrors.BadRequest("SESSION", "session id is required")
 	}
 	rows, err := db.QueryContext(ctx, `
 SELECT id, session_id, participant_type, participant_id, display_name, role_in_session, status,

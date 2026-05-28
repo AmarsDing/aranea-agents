@@ -14,7 +14,7 @@ import (
 	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
 
-	"github.com/go-kratos/kratos/v2/log"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 func (h *ChannelIngress) runChatTurn(
@@ -160,18 +160,18 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 		}
 		if payload.Kind != "" && payload.Kind != biz.ChannelOutboundTextKind && payload.Kind != biz.ChannelOutboundCardKind {
 			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "invalid").Inc()
-			_, _ = w.channels.MarkOutboundAttempt(ctx, row, fmt.Errorf("unsupported delivery kind %q", payload.Kind))
+			_, _ = w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", fmt.Sprintf("unsupported delivery kind %q", payload.Kind)))
 			continue
 		}
 		if payload.Kind == biz.ChannelOutboundCardKind && strings.TrimSpace(payload.CardJSON) == "" && strings.TrimSpace(payload.Text) == "" {
 			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "invalid").Inc()
-			_, _ = w.channels.MarkOutboundAttempt(ctx, row, fmt.Errorf("outbound_card missing card_json"))
+			_, _ = w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", "outbound_card missing card_json"))
 			continue
 		}
 		if payload.Kind == "" || payload.Kind == biz.ChannelOutboundTextKind {
 			if strings.TrimSpace(payload.Text) == "" {
 				arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "invalid").Inc()
-				_, _ = w.channels.MarkOutboundAttempt(ctx, row, fmt.Errorf("outbound_text missing text"))
+				_, _ = w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", "outbound_text missing text"))
 				continue
 			}
 		}

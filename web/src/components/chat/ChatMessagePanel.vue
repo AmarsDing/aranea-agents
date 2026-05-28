@@ -95,6 +95,8 @@
           @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
           @feedback="(p) => emit('feedback', p)"
           @regenerate="(msg) => emit('regenerate', msg)"
+          @retry="(id) => emit('retry', id)"
+          @dismiss-failed="(id) => emit('dismiss-failed', id)"
         />
         <ChatMessageRow
           v-else
@@ -111,6 +113,7 @@
           @retry="(id) => emit('retry', id)"
           @dismiss-failed="(id) => emit('dismiss-failed', id)"
           @attachment-deleted="(id) => emit('attachment-deleted', id)"
+          @download-artifact="(meta) => emit('download-artifact', meta)"
           @regenerate="(msg) => emit('regenerate', msg)"
         />
       </q-virtual-scroll>
@@ -135,6 +138,8 @@
             @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
             @feedback="(p) => emit('feedback', p)"
             @regenerate="(msg) => emit('regenerate', msg)"
+            @retry="(id) => emit('retry', id)"
+            @dismiss-failed="(id) => emit('dismiss-failed', id)"
           />
         </template>
         <ChatMessageRow
@@ -153,6 +158,7 @@
           @retry="(id) => emit('retry', id)"
           @dismiss-failed="(id) => emit('dismiss-failed', id)"
           @attachment-deleted="(id) => emit('attachment-deleted', id)"
+          @download-artifact="(meta) => emit('download-artifact', meta)"
           @regenerate="(msg) => emit('regenerate', msg)"
         />
       </div>
@@ -219,6 +225,7 @@
       @submit-tool-confirm="emit('submit-tool-confirm', $event)"
       @open-artifact="emit('open-artifact', $event)"
       @attachment-deleted="emit('attachment-deleted', $event)"
+      @download-artifact="emit('download-artifact', $event)"
       @paste-file="emit('paste-file', $event)"
       @focus-turn="emit('focus-turn', $event)"
       @navigate="emit('navigate', $event)"
@@ -330,6 +337,7 @@ const emit = defineEmits<{
   retry: [messageId: string];
   "dismiss-failed": [messageId: string];
   "attachment-deleted": [id: string];
+  "download-artifact": [meta: import("../../features/artifact/types").ArtifactMeta];
   regenerate: [message: Message];
 }>();
 

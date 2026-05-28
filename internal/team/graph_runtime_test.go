@@ -20,10 +20,10 @@ func TestTeamGraphRuntimeEnabled_defaultGraph(t *testing.T) {
 
 func TestTeamGraphRuntimeEnabled_nativeOptOut(t *testing.T) {
 	t.Setenv("ARANEA_TEAM_GRAPH_RUNTIME", "")
-	t.Setenv("ARANEA_TEAM_NATIVE", "")
-	def := Definition{RuntimeEngine: "native"}
+	t.Setenv("ARANEA_TEAM_NATIVE", "1")
+	def := Definition{RuntimeEngine: "graph"}
 	if TeamGraphRuntimeEnabled(def) {
-		t.Fatal("runtime_engine=native should disable graph path")
+		t.Fatal("ARANEA_TEAM_NATIVE=1 should disable graph path regardless of RuntimeEngine")
 	}
 }
 

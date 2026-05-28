@@ -42,7 +42,7 @@ func (r *feedbackMonitorRepo) ReplaceAlertRules(context.Context, []MonitorAlertR
 func (r *feedbackMonitorRepo) UpdateAlertFiringState(context.Context, string, MonitorAlertFiringState, *time.Time, float64, *time.Time) error {
 	return nil
 }
-func (r *feedbackMonitorRepo) CountMonitorEventsSince(context.Context, string, string, string) (int32, error) {
+func (r *feedbackMonitorRepo) CountMonitorEventsSince(context.Context, string, string, string, string) (int32, error) {
 	return 0, nil
 }
 func (r *feedbackMonitorRepo) AvgRunnerCompletionDurationMsSince(context.Context, string) (float64, error) {
@@ -55,6 +55,21 @@ func (r *feedbackMonitorRepo) PatchRunnerCompletionMetadata(context.Context, str
 	return false, nil
 }
 func (r *feedbackMonitorRepo) EnsureTraceSchema(context.Context) error { return nil }
+func (r *feedbackMonitorRepo) InsertMonitorTrace(context.Context, MonitorTraceWrite) error {
+	return nil
+}
+func (r *feedbackMonitorRepo) UpsertMonitorTraceSpan(context.Context, MonitorTraceSpanWrite) error {
+	return nil
+}
+func (r *feedbackMonitorRepo) UpdateMonitorTraceCompletion(_ context.Context, _ string, _ string, _ int64, _, _ int, _ int64, _ float64) error {
+	return nil
+}
+func (r *feedbackMonitorRepo) ListRecentRunnerCompletions(_ context.Context, _ time.Duration, _ int) ([]RunnerCompletionRow, error) {
+	return nil, nil
+}
+func (r *feedbackMonitorRepo) LatencyPercentilesSince(_ context.Context, _ string) (float64, float64, float64, error) {
+	return 0, 0, 0, nil
+}
 
 type testFeedbackEnqueuer struct {
 	calls []struct {

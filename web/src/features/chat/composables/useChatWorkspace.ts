@@ -39,6 +39,7 @@ import { useChatSettingsDialog } from "./useChatSettingsDialog";
 import { hydrateAgentSettings } from "../agentPlannerSettings";
 import { parseChannelSessionMeta } from "../channelSessionMeta";
 import { useKnowledgeStore } from "../../../stores/knowledge";
+import { useArtifactStore } from "../../../stores/artifact";
 import type { ComposerUsageSnapshot } from "../composerUsageMetrics";
 
 export function useChatWorkspace() {
@@ -190,6 +191,8 @@ export function useChatWorkspace() {
     resolveAgentId: () => appStore.selectedAgent?.id,
     markSendingDone: () => sender.markSendingDone(),
     onRunStatus: (env) => applyRunStatusFromEnvelope(env),
+    touchRunActivity: () => sender.touchRunActivity(),
+    refreshRunStatus: refreshRunStatusForUi,
   });
 
   const selectedAgentId = computed(() => appStore.selectedAgent?.id);
@@ -554,13 +557,13 @@ export function useChatWorkspace() {
         awaitingRunId.value = "";
         clearAwaitMeta();
         inputText.value = "";
-        sender.clearFailedPendingForSession();
+        sender.clearFailedPendingForSession(prevSid);
         return;
       }
       inputText.value = sessionDrafts.get(sid) || "";
       onSessionSwitch(sid);
       if (sid !== prevSid) {
-        sender.clearFailedPendingForSession();
+        sender.clearFailedPendingForSession(prevSid);
         void bindSessionView(sid, true);
       }
     },
@@ -688,6 +691,15 @@ export function useChatWorkspace() {
       fileAccept,
       openSessionArtifact,
       onArtifactDeleted,
+      downloadArtifact: async (meta: import("../../features/artifact/types").ArtifactMeta) => {
+        try {
+          const artifactStore = useArtifactStore();
+          const signed = await artifactStore.signDownload(meta.id, meta.version);
+          window.open(artifactStore.artifactDownloadHref(signed.url), "_blank", "noopener,noreferrer");
+        } catch {
+          $q.notify({ type: "negative", message: t("chat.attachmentDownloadFailed", "下载失败") });
+        }
+      },
       onSelectSession: entityNav.onSelectSession,
       onRenameSession: entityNav.onRenameSession,
       onTogglePinSession: entityNav.onTogglePinSession,
@@ -748,6 +760,10 @@ export function useChatWorkspace() {
       regenerateMessage: (message: import("../../domain/types").Message) => {
         const sid = sessionStore.currentSessionId();
         if (!sid) return;
+        if (runStatus.value === "running" || runStatus.value === "pending") {
+          streamManager.cancelActiveStream();
+          sender.stopStreaming(sid);
+        }
         const msgs = messageStore.getMessages(sid);
         const userIdx = msgs.findIndex((m) => m.id === message.id);
         if (userIdx < 0) return;
@@ -764,6 +780,19 @@ export function useChatWorkspace() {
           sender.sendTeamMessage(userMsg);
         } else {
           sender.sendAgentUserContent(userMsg);
+        }
+      },
+      cancelBackgroundJob: async (job: { id: string; source: string }) => {
+        try {
+          const { cancelChatBackgroundJob } = await import("../api");
+          const ok = await cancelChatBackgroundJob(job.id, job.source);
+          if (ok) {
+            $q.notify({ type: "positive", message: t("chat.job.cancelled", "任务已取消") });
+          } else {
+            $q.notify({ type: "warning", message: t("chat.job.cancelFailed", "取消失败") });
+          }
+        } catch {
+          $q.notify({ type: "warning", message: t("chat.job.cancelFailed", "取消失败") });
         }
       },
     }),

@@ -17,6 +17,8 @@ type (
 	SkillRunQuery           = skill.RunQuery
 	SkillRunResult          = skill.RunResult
 	SkillRepo               = skill.Repo
+	SkillReader             = skill.SkillReader
+	SkillWriter             = skill.SkillWriter
 	SkillUpdateDraft        = skill.UpdateDraft
 	SkillInvocationWrite    = skill.InvocationWrite
 	SkillCreateInput        = skill.CreateInput
@@ -37,7 +39,11 @@ type (
 	SkillRuntimePolicy      = skill.RuntimePolicy
 	SkillRuntimeCandidate   = skill.RuntimeCandidate
 	SkillFilesystemHealthStats = skill.FilesystemHealthStats
-	SkillEmbedder           = skill.SkillEmbedder
+	SkillEmbedder              = skill.SkillEmbedder
+	SkillGuidanceEntry         = skill.SkillGuidanceEntry
+	SkillFilesystem            = skill.SkillFilesystem
+	SkillFileEntry             = skill.SkillFileEntry
+	SkillFileContent           = skill.SkillFileContent
 )
 
 const (

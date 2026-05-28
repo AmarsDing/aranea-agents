@@ -136,6 +136,7 @@
           v-if="messageAttachments.length"
           :attachments="messageAttachments"
           @deleted="(id) => emit('attachment-deleted', id)"
+          @download="(meta) => emit('download-artifact', meta)"
         />
         <div
           v-if="bundle.presentation.bodyMarkdown"
@@ -281,6 +282,7 @@ const emit = defineEmits<{
   retry: [messageId: string];
   "dismiss-failed": [messageId: string];
   "attachment-deleted": [id: string];
+  "download-artifact": [meta: import("../../features/artifact/types").ArtifactMeta];
   regenerate: [message: Message];
 }>();
 

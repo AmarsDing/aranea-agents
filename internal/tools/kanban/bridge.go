@@ -2,16 +2,28 @@ package kanban
 
 import "context"
 
-type Bridge interface {
+type BridgeReader interface {
 	Show(ctx context.Context, taskID string) (map[string]any, error)
 	List(ctx context.Context, executionID, status string, limit int) ([]map[string]any, error)
+}
+
+type BridgeWriter interface {
 	Complete(ctx context.Context, taskID, summary, output, metadata string) (map[string]any, error)
 	Block(ctx context.Context, taskID, reason, metadata string) (map[string]any, error)
 	Unblock(ctx context.Context, taskID, comment string) (map[string]any, error)
 	Heartbeat(ctx context.Context, taskID, agentKey, metadata string) (map[string]any, error)
+}
+
+type BridgeLifecycle interface {
 	Comment(ctx context.Context, taskID, author, body, commentType string) (map[string]any, error)
 	Create(ctx context.Context, executionID, nodeID, title, assignee, input string, parentIDs []string) (map[string]any, error)
 	Link(ctx context.Context, parentTaskID, childTaskID string) error
+}
+
+type Bridge interface {
+	BridgeReader
+	BridgeWriter
+	BridgeLifecycle
 }
 
 func TaskIDFromEnv() string {

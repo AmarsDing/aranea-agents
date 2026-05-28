@@ -7,7 +7,10 @@ import (
 	"aranea-agents/internal/knowledge"
 	araneasession "aranea-agents/internal/session"
 	"aranea-agents/internal/skill/importer"
+	"aranea-agents/internal/skill/storage"
 	"aranea-agents/internal/team"
+	"context"
+	"strings"
 
 	"github.com/google/wire"
 )
@@ -39,6 +42,8 @@ var ProviderSet = wire.NewSet(
 	NewMCPServerService,
 	importer.NewEngine,
 	NewSkillService,
+	ProvideSkillResolveRootFn,
+	storage.NewSkillFilesystem,
 	NewSessionService,
 	NewSessionProjectionAdapter,
 	wire.Bind(new(biz.SessionProjection), new(*SessionProjectionAdapter)),
@@ -70,6 +75,10 @@ var ProviderSet = wire.NewSet(
 	wire.Bind(new(biz.EmbeddingService), new(*knowledge.Embedder)),
 	wire.Bind(new(biz.SkillEmbedder), new(*knowledge.Embedder)),
 	NewKnowledgeRetriever,
+	NewKnowledgeHybridRetriever,
+	NewKnowledgeQueryRewriter,
+	NewKnowledgeAdaptiveRouter,
+	NewKnowledgeRetrievalEvaluator,
 	NewSkillDBRepository,
 	NewMemoryLLMExtractor,
 	wire.Bind(new(biz.MemoryTextExtractor), new(*MemoryLLMExtractor)),
@@ -81,3 +90,13 @@ var ProviderSet = wire.NewSet(
 	// PGO-3: AI prompt refinement service.
 	NewAIRefineService,
 )
+
+func ProvideSkillResolveRootFn(sys biz.SystemSettingRepo) func(ctx context.Context) string {
+	return func(ctx context.Context) string {
+		st, err := sys.Get(ctx)
+		if err == nil && strings.TrimSpace(st.RootDirectory) != "" {
+			return storage.ResolveRootWithPlatform(st.RootDirectory)
+		}
+		return storage.ResolveRoot()
+	}
+}

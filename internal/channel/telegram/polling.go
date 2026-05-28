@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/runtime"
+	"aranea-agents/internal/event"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -23,7 +24,7 @@ func RunPolling(
 	ch biz.Channel,
 	creds []biz.ChannelCredential,
 	lookup runtime.CredentialLookup,
-	handler runtime.InboundHandler,
+	handler port.InboundHandler,
 ) error {
 	token, err := lookup(ctx, creds, "bot_token")
 	if err != nil {
@@ -55,7 +56,11 @@ func RunPolling(
 				continue
 			}
 			ev.PlatformType = "telegram"
-			_ = handler.ProcessInbound(ctx, ch, ev)
+			if err := handler.ProcessInbound(ctx, ch, ev); err != nil {
+				event.SysLogWarn("channel.telegram.inbound_failed", "Telegram 入站处理失败",
+					event.P("error", err.Error()),
+				)
+			}
 		}
 	}
 }

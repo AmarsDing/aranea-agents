@@ -28,7 +28,7 @@ func (uc *SessionUsecase) Export(ctx context.Context, id, format string) (conten
 		return "", "", "", validationErr("format must be markdown or json")
 	}
 
-	sess, err := uc.sessions.GetSessionByID(ctx, id)
+	sess, err := uc.sessionReader.GetSessionByID(ctx, id)
 	if err != nil {
 		return "", "", "", err
 	}
@@ -61,7 +61,7 @@ func (uc *SessionUsecase) Export(ctx context.Context, id, format string) (conten
 }
 
 func (uc *SessionUsecase) listAllMessages(ctx context.Context, sessionID string) ([]ChatMessage, error) {
-	total, err := uc.sessions.CountMessagesBySession(ctx, sessionID)
+	total, err := uc.messageReader.CountMessagesBySession(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func (uc *SessionUsecase) listAllMessages(ctx context.Context, sessionID string)
 		if remaining := total - offset; remaining < limit {
 			limit = remaining
 		}
-		chunk, err := uc.sessions.ListMessagesBySession(ctx, sessionID, limit, offset)
+		chunk, err := uc.messageReader.ListMessagesBySession(ctx, sessionID, limit, offset)
 		if err != nil {
 			return nil, err
 		}

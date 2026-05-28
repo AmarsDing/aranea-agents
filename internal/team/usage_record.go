@@ -90,7 +90,7 @@ func (r *Runner) recordTeamRunUsage(
 	promptTok, completionTok int,
 	prov, mod, dialogMode string,
 ) {
-	if r == nil || r.usage == nil || (promptTok <= 0 && completionTok <= 0) {
+	if (r == nil || r.usage == nil) || (promptTok <= 0 && completionTok <= 0) {
 		return
 	}
 	now := time.Now().UTC()

@@ -153,6 +153,7 @@ export function hydrateRuntimeFromSettings(
       decay_interval_hours: settings.l3_decay_interval_hours ?? config.memoryL3.decay_interval_hours,
       archive_threshold: settings.l3_archive_threshold ?? config.memoryL3.archive_threshold,
       max_per_recall_chars: settings.l3_max_per_recall_chars ?? config.memoryL3.max_per_recall_chars,
+      pii_policy: settings.l3_pii_policy || config.memoryL3.pii_policy,
     },
     memoryL4: {
       enabled: settings.l4_enabled ?? config.memoryL4.enabled,
@@ -161,6 +162,8 @@ export function hydrateRuntimeFromSettings(
       graph_max_hops: settings.l4_graph_max_hops ?? config.memoryL4.graph_max_hops,
       identity_inject: settings.l4_identity_inject ?? config.memoryL4.identity_inject,
       strategy_inject: settings.l4_strategy_inject ?? config.memoryL4.strategy_inject,
+      decay_interval_hours: settings.l4_decay_interval_hours ?? config.memoryL4.decay_interval_hours,
+      decay_overrides_json: settings.l4_decay_overrides_json || config.memoryL4.decay_overrides_json,
     },
     evolutionSettings: {
       enabled: settings.evo_enabled ?? config.evolutionSettings.enabled,

@@ -71,6 +71,7 @@
             :truncate-strategy-options="truncateStrategyOptions"
             :snapshot-mode-options="snapshotModeOptions"
             :memory-scope-options="memoryScopeOptions"
+            :pii-policy-options="piiPolicyOptions"
             :available-optional-files="availableOptionalFiles"
           @add-optional-file="addOptionalFile"
             @open-evolution-tab="tab = 'evolution'"
@@ -333,6 +334,7 @@ const {
   truncateStrategyOptions,
   snapshotModeOptions,
   memoryScopeOptions,
+  piiPolicyOptions,
   loadSkillSlugOptions,
   resetSkillRuntimeDefaults,
   loadingSkillSlugs,

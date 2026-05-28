@@ -251,6 +251,42 @@ export type CascadeProposal = {
   updated_at?: string;
 };
 
+export type CascadeFactDiff = {
+  fact_id: string;
+  before_statement: string;
+  after_statement: string;
+  scope: string;
+};
+
+export type CascadeEntityRename = {
+  entity_id: string;
+  entity_type: string;
+  old_name: string;
+  new_name: string;
+};
+
+export type CascadePreview = {
+  affected_entities_count: number;
+  affected_facts_count: number;
+  fact_diffs: CascadeFactDiff[];
+  entity_renames: CascadeEntityRename[];
+};
+
+export type CascadeSagaStep = {
+  id: number;
+  proposal_id: string;
+  step_index: number;
+  step_name: string;
+  state: string;
+  is_critical: boolean;
+  attempts: number;
+  started_at: string;
+  finished_at: string;
+  payload_json: string;
+  result_json: string;
+  error: string;
+};
+
 export type EvolutionMetricsReport = {
   events_total: number;
   events_reverted: number;

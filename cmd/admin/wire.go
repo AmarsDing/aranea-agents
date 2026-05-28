@@ -371,12 +371,15 @@ func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, eventBus event.Bu
 }
 
 func provideMonitorUsecase(repo biz.MonitorRepo, notifier biz.AlertNotifier, skillUC *biz.SkillUsecase) *biz.MonitorUsecase {
-	uc := biz.NewMonitorUsecase(repo, notifier)
+	var fsHealth biz.FilesystemHealthReader
 	if skillUC != nil {
-		uc.SetFilesystemHealthReader(monitorSkillHealthAdapter{skills: skillUC})
+		fsHealth = monitorSkillHealthAdapter{skills: skillUC}
 	}
 	rb := monitor.NewMetricRingBuffer()
-	uc.SetRingBuffer(rb)
+	uc := biz.NewMonitorUsecase(repo, notifier,
+		biz.WithFilesystemHealthReader(fsHealth),
+		biz.WithRingBuffer(rb),
+	)
 	w := monitor.NewAlertEvalWorker(uc, rb)
 	uc.SetEvalWorker(w)
 	reg := monitor.NewAlertMetricRegistry()

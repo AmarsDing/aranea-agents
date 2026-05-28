@@ -40,12 +40,16 @@ func (c *ResultCache) Get(toolName string, args []byte) (any, bool) {
 	c.mu.RLock()
 	e, ok := c.items[k]
 	c.mu.RUnlock()
-	if !ok || time.Now().After(e.expiresAt) {
-		if ok {
-			c.mu.Lock()
+	if !ok {
+		return nil, false
+	}
+	if time.Now().After(e.expiresAt) {
+		c.mu.Lock()
+		e2, ok2 := c.items[k]
+		if ok2 && time.Now().After(e2.expiresAt) {
 			delete(c.items, k)
-			c.mu.Unlock()
 		}
+		c.mu.Unlock()
 		return nil, false
 	}
 	return e.result, true

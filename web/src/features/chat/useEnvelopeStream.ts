@@ -134,7 +134,7 @@ export function useChatStream(sessionId: string, streamOpts?: ChatStreamFactoryO
 
 export function createTeamStream(
   sessionId: string,
-  streamOpts?: { onReplayState?: (replaying: boolean, count?: number) => void; onReconnectFailed?: () => void }
+  streamOpts?: { onReplayState?: (replaying: boolean, count?: number) => void; onReconnectFailed?: () => void; onConnected?: () => void }
 ): UseEnvelopeStreamReturn {
   return createEnvelopeStream({
     sessionId,
@@ -142,6 +142,7 @@ export function createTeamStream(
     autoConnect: false,
     onReplayState: streamOpts?.onReplayState,
     onReconnectFailed: streamOpts?.onReconnectFailed,
+    onConnected: () => streamOpts?.onConnected?.(),
   });
 }
 

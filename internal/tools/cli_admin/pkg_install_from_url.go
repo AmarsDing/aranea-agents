@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/url"
+	"strings"
 
 	"aranea-agents/internal/pkginstall"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -32,8 +35,10 @@ func newPkgInstallFromURLTool(deps Deps) trpctool.Tool {
 		if input.URL == "" {
 			return pkgInstallOutput{}, fmt.Errorf("url is required")
 		}
+		if err := validateRepoURL(input.URL); err != nil {
+			return pkgInstallOutput{}, fmt.Errorf("invalid url: %w", err)
+		}
 
-		// Clone the package repository.
 		pkgDir, cleanup, err := pkginstall.FetchFromURL(input.URL, input.Ref, true)
 		if err != nil {
 			return pkgInstallOutput{}, fmt.Errorf("fetch package: %w", err)
@@ -93,4 +98,58 @@ func newPkgInstallFromURLTool(deps Deps) trpctool.Tool {
 		function.WithName("cli_admin_pkg_install_from_url"),
 		function.WithDescription("从 Git 仓库 URL 安装完整的 aranea package（含 MCP 服务器/Skill/Agent/Team/Graph）。"),
 	)
+}
+
+func validateRepoURL(raw string) error {
+	if strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "./") || strings.HasPrefix(raw, "../") || len(raw) >= 2 && raw[1] == ':' {
+		return nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("parse url: %w", err)
+	}
+	scheme := strings.ToLower(u.Scheme)
+	switch scheme {
+	case "https", "http":
+		host := u.Hostname()
+		if host == "" {
+			return fmt.Errorf("host is empty")
+		}
+		ips, err := net.LookupIP(host)
+		if err != nil {
+			return fmt.Errorf("lookup host %q: %w", host, err)
+		}
+		for _, ip := range ips {
+			if isPrivateIP(ip) {
+				return fmt.Errorf("host %q resolves to private/internal IP %s; not allowed", host, ip)
+			}
+		}
+		return nil
+	case "file", "":
+		return nil
+	default:
+		if len(u.Scheme) == 1 {
+			return nil
+		}
+		return fmt.Errorf("scheme %q is not allowed; only https, http, and file are permitted", u.Scheme)
+	}
+}
+
+func isPrivateIP(ip net.IP) bool {
+	privateNets := []net.IPNet{
+		{IP: net.ParseIP("10.0.0.0"), Mask: net.CIDRMask(8, 32)},
+		{IP: net.ParseIP("172.16.0.0"), Mask: net.CIDRMask(12, 32)},
+		{IP: net.ParseIP("192.168.0.0"), Mask: net.CIDRMask(16, 32)},
+		{IP: net.ParseIP("127.0.0.0"), Mask: net.CIDRMask(8, 32)},
+		{IP: net.ParseIP("169.254.0.0"), Mask: net.CIDRMask(16, 32)},
+		{IP: net.ParseIP("::1"), Mask: net.CIDRMask(128, 128)},
+		{IP: net.ParseIP("fc00::"), Mask: net.CIDRMask(7, 128)},
+		{IP: net.ParseIP("fe80::"), Mask: net.CIDRMask(10, 128)},
+	}
+	for _, n := range privateNets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return ip.IsUnspecified()
 }

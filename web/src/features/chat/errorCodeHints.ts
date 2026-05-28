@@ -1,5 +1,3 @@
-import { useI18n } from "vue-i18n";
-
 export type TurnErrorCode =
   | "AGENT_BUILD_FAILED"
   | "ATTACHMENT_FAILED"
@@ -17,11 +15,11 @@ export interface ErrorActionHint {
 }
 
 const ACTION_LABELS: Record<ErrorActionHint["action"], string> = {
-  switch_model: "chat.errorHint.switchModel",
-  retry: "chat.errorHint.retry",
-  rephrase: "chat.errorHint.rephrase",
-  check_config: "chat.errorHint.checkConfig",
-  remove_attachment: "chat.errorHint.removeAttachment",
+  switch_model: "建议切换模型",
+  retry: "可点击重试",
+  rephrase: "请尝试换种表述",
+  check_config: "请检查配置",
+  remove_attachment: "请移除附件",
   none: "",
 };
 

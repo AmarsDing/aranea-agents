@@ -86,6 +86,20 @@ func (rb *MetricRingBuffer) ensureBucket() *metricBucket {
 	return &rb.buckets[len(rb.buckets)-1]
 }
 
+func (rb *MetricRingBuffer) ensureBucketAt(startUnix int64) *metricBucket {
+	for i := range rb.buckets {
+		if rb.buckets[i].startUnix == startUnix {
+			return &rb.buckets[i]
+		}
+	}
+	if len(rb.buckets) >= rb.capacity {
+		copy(rb.buckets, rb.buckets[1:])
+		rb.buckets = rb.buckets[:rb.capacity-1]
+	}
+	rb.buckets = append(rb.buckets, newMetricBucket(startUnix))
+	return &rb.buckets[len(rb.buckets)-1]
+}
+
 func (rb *MetricRingBuffer) IncTotal(key string) {
 	rb.mu.Lock()
 	b := rb.ensureBucket()

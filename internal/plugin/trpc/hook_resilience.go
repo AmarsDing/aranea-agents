@@ -91,7 +91,7 @@ func resilientHookErr(point string, err error) error {
 	if metrics.IsBlockedErr(err) {
 		return err
 	}
-	hookLogger.Warn("hook: non-block error suppressed", "point", point, "error", err)
+	getHookLogger().Warn("hook: non-block error suppressed", "point", point, "error", err)
 	return nil
 }
 
@@ -104,7 +104,7 @@ func recoverHookPanic(point string, recovered any, prior error) error {
 		return prior
 	}
 	stack := debug.Stack()
-	hookLogger.Error("hook: panic recovered",
+	getHookLogger().Error("hook: panic recovered",
 		"point", point,
 		"panic", fmt.Sprintf("%v", recovered),
 		"stack", string(stack))

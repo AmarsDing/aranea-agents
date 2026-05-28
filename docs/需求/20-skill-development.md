@@ -1,6 +1,6 @@
 # Skill 技能 — 开发计划
 
-> **版本**：2026-05-21 | **状态**：✅ 管理面 + 运行时装配（Layer A/B）已接通
+> **版本**：2026-05-29 | **状态**：✅ 管理面 + 运行时装配（Layer A/B）+ Phase 1 + Phase 2 + 架构优化已接通
 > **需求**：[20 skill.md](./20%20skill.md) · **设计**：[20 skill.design.md](./20%20skill.design.md) · **架构**：[20 skill struct design.md](./20%20skill%20struct%20design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **变更**：[changelog/2026-05-21-Skill-DocSync-RuntimeWire.md](../changelog/2026-05-21-Skill-DocSync-RuntimeWire.md)
 
@@ -41,9 +41,9 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 | 存储根解析 | ✅ | `storage.ResolveRootWithPlatform` + `work_directory` |
 | Agent 设置 UI | ✅ | `AgentSettingsSkillsTab`：`skill_runtime_json` 白名单/标签/意图收窄 |
 | 前端管理 | ✅ | 列表/编辑 Dialog/导入/运行记录 |
-| 版本历史 / 回滚 API | ❌ | 仅展示当前版本号 |
-| RBAC 权限 | 🟡 | Proto 有 `SkillPermissions`；data 层仍硬编码 `CanEdit=true` |
-| Preview 选中原因 | ❌ | 仅返回 enabled slug 列表 + 存储根 |
+| 版本历史 / 回滚 API | ✅ | `GetSkillVersions` + `RollbackSkillVersion`；不可变策略（新建版本 + patch 递增） |
+| RBAC 权限 | ✅ | `requireAdminAccess` + `applySkillPermission`；未认证返回零权限 |
+| Preview 选中原因 | ✅ | `ResolveSkillSlugsDetailed` 返回 `Reasons map[string]string` + `agent_id` 关联 |
 
 ---
 
@@ -72,17 +72,17 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 
 | # | 差距 | 优先级 | 说明 |
 |---|------|--------|------|
-| 1 | 版本历史 / 回滚 API | P3 | `GetSkillVersions` + `RollbackSkillVersion` |
-| 2 | RBAC 权限 | P3 | 替换 data 层硬编码 `CanEdit` |
-| 3 | Import multipart 完全 codegen | P3 | `ImportSkillZip` 仍走 `RegisterSkillImportMultipart` |
-| 4 | 未落地 Ent 字段 | P3 | `visibility`、`default_config_json`、`file_manifest_json`、`message_id` 等 |
-| 5 | 自动负熵报告 | P3 | 聚合指标 + 趋势 |
-| 6 | Prompt 注入（方式 C） | P4 | Assembler → system message |
-| 7 | embedding 语义精排 | P4 | 增强 `scoreCandidates` |
-| 8 | Budget 中间件 | P4 | token 上限裁剪 |
-| 9 | Preview API 增强 | P4 | `Reasons map[string]string` |
-| 10 | Skill 依赖 / 冲突表 | P4 | 安装时检查 + 运行时互斥 |
-| 11 | `internal/skill/manifest/` · `render/` | P4 | frontmatter 解析与 prompt 渲染 |
+| 1 | 版本历史 / 回滚 API | P3 | ✅ | `GetSkillVersions` + `RollbackSkillVersion`；事务保护 |
+| 2 | RBAC 权限 | P3 | ✅ | `requireAdminAccess` + 未认证零权限 |
+| 3 | Import multipart 完全 codegen | P3 | 🟡 | 保留手动注册，已补齐 admin 校验 + 指标 |
+| 4 | 未落地 Ent 字段 | P3 | ✅ | `visibility`/`default_config_json`/`file_manifest_json`/`message_id` |
+| 5 | 自动负熵报告 | P3 | ❌ | 聚合指标 + 趋势 |
+| 6 | Prompt 注入（方式 C） | P4 | ✅ | BeforeModelHook + `BatchGetSkillGuidance` 批量获取 |
+| 7 | embedding 语义精排 | P4 | ✅ | `SkillEmbedder` + `ScoreByEmbedding` + 评分融合 |
+| 8 | Budget 中间件 | P4 | ❌ | token 上限裁剪 |
+| 9 | Preview API 增强 | P4 | ✅ | `Reasons map[string]string` + `agent_id` |
+| 10 | Skill 依赖 / 冲突表 | P4 | ❌ | 安装时检查 + 运行时互斥 |
+| 11 | `internal/skill/manifest/` · `render/` | P4 | ✅ | frontmatter 解析与 prompt 渲染 |
 
 ---
 
@@ -115,14 +115,14 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 |---|------|--------|------|------|
 | 1 | Layer A/B 接通 `buildSkillDeps` + turn query | P2 | — | ✅ |
 | 2 | 文档四件套与代码对齐 | P0 | — | ✅ |
-| 3 | `GetSkillVersions` + `RollbackSkillVersion` | P3 | Phase 1 | ❌ |
-| 4 | RBAC 替换硬编码权限 | P3 | Phase 1 | ❌ |
+| 3 | `GetSkillVersions` + `RollbackSkillVersion` | P3 | Phase 1 | ✅ |
+| 4 | RBAC 替换硬编码权限 | P3 | Phase 1 | ✅ |
 | 5 | Import multipart codegen | P3 | Phase 1 | 🟡 |
-| 6 | Ent 字段补齐 | P3 | Phase 1 | ❌ |
-| 7 | Prompt 注入方式 C | P4 | Phase 2 | ❌ |
-| 8 | embedding 精排 | P4 | Phase 2 | ❌ |
-| 9 | Preview 选中原因 | P4 | Phase 2 | ❌ |
-| 10 | manifest/render 包 | P4 | Phase 2 | ❌ |
+| 6 | Ent 字段补齐 | P3 | Phase 1 | ✅ |
+| 7 | Prompt 注入方式 C | P4 | Phase 2 | ✅ |
+| 8 | embedding 精排 | P4 | Phase 2 | ✅ |
+| 9 | Preview 选中原因 | P4 | Phase 2 | ✅ |
+| 10 | manifest/render 包 | P4 | Phase 2 | ✅ |
 
 ---
 
@@ -137,14 +137,17 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 
 ### Phase 1（P3）
 
-- [ ] 版本历史列表与回滚
-- [ ] 权限由 RBAC 控制
-- [ ] Import 端点在 proto/OpenAPI 完整声明
+- [x] 版本历史列表与回滚（不可变策略：新建版本 + patch 递增 + 事务保护）
+- [x] 权限由 RBAC 控制（`requireAdminAccess` + 未认证零权限）
+- [x] Ent 字段补齐（`visibility`/`default_config_json`/`file_manifest_json`/`message_id`）
+- [ ] Import 端点在 proto/OpenAPI 完整声明（保留手动注册，已补齐 admin 校验 + 指标）
 
 ### Phase 2（P4）
 
-- [ ] Prompt 注入方式 C 可选
-- [ ] Preview 返回选中原因
+- [x] Prompt 注入方式 C（BeforeModelHook + `BatchGetSkillGuidance` 批量获取 + 截断 + 空 guidance 防护）
+- [x] Preview 返回选中原因（`ResolveSkillSlugsDetailed` + `Reasons map[string]string`）
+- [x] Embedding 语义精排（`SkillEmbedder` + `ScoreByEmbedding` + 内存缓存 + 评分融合 + 优雅降级）
+- [x] manifest/render 包（frontmatter 解析 + 变量替换 + prompt 渲染）
 
 ---
 
@@ -152,7 +155,12 @@ Skill 技能系统：管理 Agent 可用的能力包（SKILL.md + 附件），�
 
 | 依赖/风险 | 说明 |
 |-----------|------|
-| RBAC | 权限接入依赖 Admin/Auth 基础设施 |
-| 向量库 | embedding 精排依赖向量检索 |
-| 版本回滚 | 需考虑 Agent 绑定与运行时策略兼容性 |
+| RBAC | ✅ 已接入 `requireAdminAccess` + 未认证零权限 |
+| 向量库 | ✅ embedding 精排已通过 `SkillEmbedder` 接口接入 `knowledge.Embedder`，复用现有 Embedding 基础设施 |
+| 版本回滚 | ✅ 不可变策略（新建版本 + patch 递增），事务保护 |
 | Filter 缓存 | `AgentVisibilityFilter` 按 invocationID 缓存；长跑进程需关注内存（后续可加 TTL） |
+| Embedding 缓存 | `Usecase.embedCache` 按 slug 缓存 embedding；Publish/ToggleEnabled/Delete/Duplicate 时失效 |
+| N+1 查询 | ✅ 已通过 `BatchGetSkillMarkdownBySlugs` 批量获取解决 |
+| Service 层文件 I/O | ✅ 已通过 `SkillFilesystem` 端口下沉到 storage 层，Service 层不再直接操作 `os` 包 |
+| Repo 接口膨胀 | ✅ 已拆分为 `SkillReader` + `SkillWriter` 窄接口，`Repo` 组合两者 |
+| Wire 绑定 | ✅ `ProvideSkillResolveRootFn` + `storage.NewSkillFilesystem`，动态解析 root_directory |

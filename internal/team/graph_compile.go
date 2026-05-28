@@ -6,6 +6,9 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // CompileAgentKey resolves catalog agent_key from agent_id; may return "" to fall back to agent_id.
@@ -38,11 +41,11 @@ func compileToGraphBuildConfigWithLoader(ctx context.Context, def Definition, ra
 
 	members := EnabledMembers(def)
 	if len(members) == 0 {
-		return biz.GraphBuildConfig{}, fmt.Errorf("team: compile graph: no enabled members")
+		return biz.GraphBuildConfig{}, kerrors.BadRequest("TEAM", "compile graph: no enabled members")
 	}
 
 	mode := normalizeCompileMode(def.Mode)
-	spec := generateGraphSpecFromMode(def, mode)
+	spec := generateGraphSpecFromMode(ctx, def, mode)
 	cfg, err := compileFromEmbeddedGraph(ctx, def, spec, agentKey, loader)
 	if err != nil {
 		return biz.GraphBuildConfig{}, err
@@ -63,7 +66,7 @@ func normalizeCompileMode(mode string) string {
 	}
 }
 
-func generateGraphSpecFromMode(def Definition, mode string) *embeddedGraphSpec {
+func generateGraphSpecFromMode(ctx context.Context, def Definition, mode string) *embeddedGraphSpec {
 	members := EnabledMembers(def)
 	if len(members) == 0 {
 		return nil
@@ -82,7 +85,7 @@ func generateGraphSpecFromMode(def Definition, mode string) *embeddedGraphSpec {
 	}
 	nodes = append(nodes, embeddedGraphNode{ID: "end", Type: "end", Label: "End"})
 
-	edges := generateModeEdges(mode, def, nodes)
+	edges := generateModeEdges(ctx, mode, def, nodes)
 
 	return &embeddedGraphSpec{
 		Version: 1,
@@ -92,7 +95,7 @@ func generateGraphSpecFromMode(def Definition, mode string) *embeddedGraphSpec {
 	}
 }
 
-func generateModeEdges(mode string, def Definition, nodes []embeddedGraphNode) []embeddedGraphEdge {
+func generateModeEdges(ctx context.Context, mode string, def Definition, nodes []embeddedGraphNode) []embeddedGraphEdge {
 	if len(nodes) == 0 {
 		return nil
 	}
@@ -116,10 +119,25 @@ func generateModeEdges(mode string, def Definition, nodes []embeddedGraphNode) [
 	} else {
 		modeEdges = pipelineTemplate{}.BuildEdges(def, agentIDs)
 	}
+	trimmed := countTransferEdges(modeEdges) > maxAdaptiveTransferEdges
+	if trimmed {
+		event.CtxFlowLogWarn(ctx, "team.compile.adaptive_trimmed", "transfer edges trimmed due to member count exceeding limit",
+			event.P("member_count", len(agentIDs)), event.P("max_transfer_edges", maxAdaptiveTransferEdges), event.P("mode", mode))
+	}
 	out = append(out, modeEdges...)
 
 	out = append(out, embeddedGraphEdge{Source: agentIDs[len(agentIDs)-1], Target: "end"})
 	return out
+}
+
+func countTransferEdges(edges []embeddedGraphEdge) int {
+	n := 0
+	for _, e := range edges {
+		if e.Label == "transfer" {
+			n++
+		}
+	}
+	return n
 }
 
 func memberNodeID(m MemberDef, index int) string {

@@ -199,7 +199,7 @@ Knowledge 知识库：管理 Agent 的知识来源，支持文档上传、分块
 
 > 完整方案见 [37-knowledge-evolution-roadmap.md](./37-knowledge-evolution-roadmap.md)
 
-- [ ] **Phase 5：Advanced RAG** — 查询重写（HyDE/Decomposition/MultiQuery）+ 混合检索（BM25+向量 RRF）+ 自适应检索 + 检索质量评估（CRAG）
+- [x] **Phase 5：Advanced RAG** — 查询重写（HyDE/Decomposition/MultiQuery）+ 混合检索（BM25+向量 RRF）+ 自适应检索 + 检索质量评估（CRAG）
 - [ ] **Phase 6：Agentic RAG** — 多轮迭代检索工具 + 跨 Collection 联邦搜索 + Plan-Then-Retrieve 模式
 - [ ] **Phase 7：GraphRAG** — 知识图谱构建（实体/关系提取）+ 图增强检索 + 图查询工具
 - [ ] **Phase 8：Skill Knowledge** — 技能知识库（三层技能层次）+ 知识导航工具 + 技能蒸馏管线

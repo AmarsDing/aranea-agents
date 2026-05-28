@@ -11,7 +11,7 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-func BuildTRPCSkillTools(ctx context.Context, skillUC *biz.SkillUsecase, sys biz.SystemSettingRepo, opts *SkillToolsetOptions, exec codeexecutor.CodeExecutor) ([]trpctool.Tool, error) {
+func BuildTRPCSkillTools(ctx context.Context, skillUC SkillResolver, sys biz.SystemSettingRepo, opts *SkillToolsetOptions, exec codeexecutor.CodeExecutor) ([]trpctool.Tool, error) {
 	if skillUC == nil {
 		return nil, nil
 	}

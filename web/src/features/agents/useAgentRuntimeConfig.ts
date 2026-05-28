@@ -4,6 +4,7 @@ import {
   defaultAgentAdvancedSettings,
   defaultAgentRuntimeConfig,
   memoryScopeOptions,
+  piiPolicyOptions,
   snapshotModeOptions,
   truncateStrategyOptions,
   toolProfileOptions,
@@ -72,6 +73,7 @@ export function useAgentRuntimeConfig() {
     truncateStrategyOptions,
     snapshotModeOptions,
     memoryScopeOptions,
+    piiPolicyOptions,
     toolProfileOptions,
   };
 }

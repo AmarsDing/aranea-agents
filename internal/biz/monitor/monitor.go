@@ -181,6 +181,7 @@ type RunnerCompletionRow struct {
 	RunID     string
 	AgentID   string
 	Status    string
+	CreatedAt string
 }
 
 type Repo interface {
@@ -194,7 +195,7 @@ type Repo interface {
 	ListAlertRules(ctx context.Context) ([]AlertRule, error)
 	ReplaceAlertRules(ctx context.Context, rules []AlertRule) error
 	UpdateAlertFiringState(ctx context.Context, id string, state AlertFiringState, lastFiredAt *time.Time, lastFiredValue float64, recoveredAt *time.Time) error
-	CountMonitorEventsSince(ctx context.Context, eventKey, status, sinceRFC3339 string) (int32, error)
+	CountMonitorEventsSince(ctx context.Context, eventKey, status, sinceRFC3339, untilRFC3339 string) (int32, error)
 	AvgRunnerCompletionDurationMsSince(ctx context.Context, sinceRFC3339 string) (float64, error)
 	LatencyPercentilesSince(ctx context.Context, sinceRFC3339 string) (p50, p95, p99 float64, err error)
 	ExistsRunnerCompletion(ctx context.Context, sessionID, invocationID string) (bool, error)
@@ -240,26 +241,42 @@ type Usecase struct {
 
 const rulesCacheTTL = 5 * time.Minute
 
-// SetFilesystemHealthReader configures skill filesystem metrics for alert rules.
-func (u *Usecase) SetFilesystemHealthReader(r FilesystemHealthReader) {
-	if u == nil {
-		return
-	}
-	u.fsHealth = r
+type UsecaseOption func(*Usecase)
+
+func WithFilesystemHealthReader(r FilesystemHealthReader) UsecaseOption {
+	return func(u *Usecase) { u.fsHealth = r }
 }
 
-func (u *Usecase) SetRingBuffer(rb *MetricRingBuffer) {
-	if u == nil {
-		return
+func WithRingBuffer(rb *MetricRingBuffer) UsecaseOption {
+	return func(u *Usecase) { u.ringBuffer = rb }
+}
+
+func WithEvalWorker(w *AlertEvalWorker) UsecaseOption {
+	return func(u *Usecase) { u.evalWorker = w }
+}
+
+func WithRegistry(r *AlertMetricRegistry) UsecaseOption {
+	return func(u *Usecase) { u.registry = r }
+}
+
+func NewUsecase(repo Repo, notifier AlertNotifier, opts ...UsecaseOption) *Usecase {
+	uc := &Usecase{repo: repo, notifier: notifier}
+	for _, opt := range opts {
+		opt(uc)
 	}
-	u.ringBuffer = rb
+	return uc
 }
 
 func (u *Usecase) SetEvalWorker(w *AlertEvalWorker) {
-	if u == nil {
-		return
+	if u != nil {
+		u.evalWorker = w
 	}
-	u.evalWorker = w
+}
+
+func (u *Usecase) SetRegistry(r *AlertMetricRegistry) {
+	if u != nil {
+		u.registry = r
+	}
 }
 
 func (u *Usecase) EvalWorker() *AlertEvalWorker {
@@ -269,23 +286,11 @@ func (u *Usecase) EvalWorker() *AlertEvalWorker {
 	return u.evalWorker
 }
 
-func (u *Usecase) SetRegistry(r *AlertMetricRegistry) {
-	if u == nil {
-		return
-	}
-	u.registry = r
-}
-
 func (u *Usecase) Registry() *AlertMetricRegistry {
 	if u == nil {
 		return nil
 	}
 	return u.registry
-}
-
-// NewUsecase constructs a MonitorUsecase.
-func NewUsecase(repo Repo, notifier AlertNotifier) *Usecase {
-	return &Usecase{repo: repo, notifier: notifier}
 }
 
 // RecordAuditLog persists an admin audit row (best-effort, logs on failure).
@@ -345,7 +350,10 @@ func (u *Usecase) ReplaceAlertRules(ctx context.Context, rules []AlertRule) erro
 		return nil
 	}
 
-	oldRules, _ := u.repo.ListAlertRules(ctx)
+	oldRules, listErr := u.repo.ListAlertRules(ctx)
+	if listErr != nil {
+		event.SysLogWarn("system.monitor.alert_rules_list_fail", "ReplaceAlertRules: ListAlertRules failed", event.P("error", listErr.Error()))
+	}
 	oldIDs := make(map[string]struct{}, len(oldRules))
 	for _, r := range oldRules {
 		oldIDs[r.ID] = struct{}{}
@@ -499,13 +507,13 @@ func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {
 	} else {
 		since := time.Now().UTC().Add(-time.Duration(window) * time.Minute).Format(time.RFC3339)
 		var errTotal error
-		total, errTotal = u.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since)
+		total, errTotal = u.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since, "")
 		if errTotal != nil {
 			event.SysLogWarn("system.monitor.alert_count_fail", "EvaluateAlerts: CountMonitorEventsSince(total) failed", event.P("rule_id", rule.ID), event.P("error", errTotal.Error()))
 			return
 		}
 		var errErrors error
-		errors, errErrors = u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since)
+		errors, errErrors = u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since, "")
 		if errErrors != nil {
 			event.SysLogWarn("system.monitor.alert_count_fail", "EvaluateAlerts: CountMonitorEventsSince(errors) failed", event.P("rule_id", rule.ID), event.P("error", errErrors.Error()))
 			return
@@ -660,11 +668,11 @@ func (u *Usecase) GetRunnerMetrics(ctx context.Context, windowMinutes int) (Runn
 	}
 	out.WindowMinutes = windowMinutes
 	since := time.Now().UTC().Add(-time.Duration(windowMinutes) * time.Minute).Format(time.RFC3339)
-	total, err := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since)
+	total, err := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since, "")
 	if err != nil {
 		return out, err
 	}
-	errors, err := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since)
+	errors, err := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since, "")
 	if err != nil {
 		return out, err
 	}
@@ -783,22 +791,31 @@ func MergeRunnerCompletionUsagePatch(usageEventID, traceID string) string {
 	return string(raw)
 }
 
-func (u *Usecase) RebuildRingBuffer(ctx context.Context, rb *MetricRingBuffer) {
+func (u *Usecase) RebuildRingBuffer(ctx context.Context, rb *MetricRingBuffer) int {
 	if u == nil || u.repo == nil || rb == nil {
-		return
+		return 0
 	}
-	since := time.Now().UTC().Add(-time.Duration(defaultBucketCapacity) * time.Minute).Format(time.RFC3339)
-	total, errT := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since)
-	if errT != nil {
-		return
+	now := time.Now().UTC()
+	windowMinutes := defaultBucketCapacity
+	rebuilt := 0
+	for i := windowMinutes - 1; i >= 0; i-- {
+		bucketStart := now.Add(-time.Duration(i) * time.Minute).Truncate(rb.bucketSize)
+		since := bucketStart.Format(time.RFC3339)
+		until := bucketStart.Add(rb.bucketSize).Format(time.RFC3339)
+		total, errT := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since, until)
+		if errT != nil {
+			continue
+		}
+		errors, errE := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since, until)
+		if errE != nil {
+			continue
+		}
+		rb.mu.Lock()
+		b := rb.ensureBucketAt(bucketStart.Unix())
+		b.totals["runner.completion"] = int64(total)
+		b.errors["runner.completion"] = int64(errors)
+		rb.mu.Unlock()
+		rebuilt++
 	}
-	errors, errE := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since)
-	if errE != nil {
-		return
-	}
-	rb.mu.Lock()
-	b := rb.ensureBucket()
-	b.totals["runner.completion"] = int64(total)
-	b.errors["runner.completion"] = int64(errors)
-	rb.mu.Unlock()
+	return rebuilt
 }

@@ -8,7 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
-	"aranea-agents/internal/channel/runtime"
+	"aranea-agents/internal/event"
 )
 
 const (
@@ -46,7 +46,7 @@ func NewTextInboundBatcher() *TextInboundBatcher {
 	}
 }
 
-func (b *TextInboundBatcher) flush(ctx context.Context, handler runtime.InboundHandler, key inboundBatchKey) {
+func (b *TextInboundBatcher) flush(ctx context.Context, handler port.InboundHandler, key inboundBatchKey) {
 	b.mu.Lock()
 	entry, ok := b.pending[key]
 	if !ok {
@@ -61,19 +61,27 @@ func (b *TextInboundBatcher) flush(ctx context.Context, handler runtime.InboundH
 	ev.IdempotencyKey = batchIdempotencyKey(entry.idempotencyKeys)
 	b.mu.Unlock()
 	if handler != nil {
-		_ = handler.ProcessInbound(ctx, ch, ev)
+		if err := handler.ProcessInbound(ctx, ch, ev); err != nil {
+			event.SysLogWarn("channel.lark.inbound_failed", "飞书入站处理失败",
+				event.P("error", err.Error()),
+			)
+		}
 	}
 }
 
 func (b *TextInboundBatcher) Submit(
 	ctx context.Context,
-	handler runtime.InboundHandler,
+	handler port.InboundHandler,
 	ch biz.Channel,
 	ev port.InboundEvent,
 ) {
 	if b == nil {
 		if handler != nil {
-			_ = handler.ProcessInbound(ctx, ch, ev)
+			if err := handler.ProcessInbound(ctx, ch, ev); err != nil {
+				event.SysLogWarn("channel.lark.inbound_failed", "飞书入站处理失败",
+					event.P("error", err.Error()),
+				)
+			}
 		}
 		return
 	}
@@ -82,7 +90,11 @@ func (b *TextInboundBatcher) Submit(
 	}
 	text := strings.TrimSpace(ev.Text)
 	if text == "" {
-		_ = handler.ProcessInbound(ctx, ch, ev)
+		if err := handler.ProcessInbound(ctx, ch, ev); err != nil {
+			event.SysLogWarn("channel.lark.inbound_failed", "飞书入站处理失败",
+				event.P("error", err.Error()),
+			)
+		}
 		return
 	}
 	peerKey := strings.TrimSpace(ev.PeerKey)

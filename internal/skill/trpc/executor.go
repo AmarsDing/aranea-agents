@@ -25,8 +25,3 @@ func NewExecutorForAgent(ctx context.Context, factory *localexec.Factory, agentT
 	exec := factory.Resolve(ctx, agentType, workDir)
 	return WrapWithArtifactSave(exec)
 }
-
-// NewExecutor is deprecated; use NewExecutorForAgent. backend is treated as agentType override.
-func NewExecutor(factory *localexec.Factory, backend, workDir string) codeexecutor.CodeExecutor {
-	return NewExecutorForAgent(context.Background(), factory, backend, workDir)
-}

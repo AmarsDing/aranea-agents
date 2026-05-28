@@ -10,6 +10,7 @@ type (
 	KnowledgeRepo          = knowledge.Repo
 	KnowledgeUsecase       = knowledge.Usecase
 	KnowledgeEmbedSetting  = knowledge.EmbedSetting
+	KnowledgeSparseSearcher = knowledge.SparseSearcher
 )
 
 var (

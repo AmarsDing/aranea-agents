@@ -314,7 +314,7 @@ internal/provider       ← LLM 模型驱动（ModelForProviderModel）
 internal/runtimedeps    ← 运行时依赖注入（TurnDeps、Runtime 聚合）
 internal/compress       ← L0 上下文压缩（长对话摘要）
 internal/memory         ← 会话记忆（SQLite 适配器 → trpcmemory.Service）
-internal/session        ← 会话存储（TRPC SessionService 适配）
+internal/session        ← 会话存储（TRPC SessionService 适配）+ 压缩（CAS + 事务 + 幂等）
 internal/skill          ← 技能系统（导入、执行、Watch 热重载）
 internal/graph          ← 图编排（TRPC Graph Builder）
 internal/channel        ← 渠道集成（飞书 Webhook 等）

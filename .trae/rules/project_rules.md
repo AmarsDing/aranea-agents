@@ -67,6 +67,7 @@ internal/data           ← Repo 实现（Ent ORM + SQLite）
 | 12 | 不得新增已无调用者的 deprecated 方法 | 死代码即删 |
 | 13 | Service 层不得直接依赖 Repo 接口 | 通过 Usecase 层访问，Repo 接口只在 biz/data 层出现 |
 | 14 | 压缩操作必须通过 CAS + 事务保证原子性 | `TryIncrementCompressVersion` + `CompressSessionInTx` |
+| 15 | Repository 接口方法不得超过 5 个 | 超过则按职责域拆分为子接口（`SessionReader`/`SessionWriter`/`MessageReader` 等） |
 
 ### 2.3 前端红线
 

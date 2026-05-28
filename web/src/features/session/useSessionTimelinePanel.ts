@@ -1,11 +1,12 @@
 import { computed, ref, watch, type Ref } from "vue";
 import type { SessionTimeline } from "./types";
-import { getSessionTimeline } from "./api";
+import { useSessionStore } from "../../stores/session";
 import { buildTimelineStats } from "../../components/sessions/sessionTimelineUi";
 
 const PAGE_SIZE = 100;
 
 export function useSessionTimelinePanel(sessionId: Ref<string>) {
+  const sessionStore = useSessionStore();
   const timeline = ref<SessionTimeline | null>(null);
   const loading = ref(false);
   const error = ref("");
@@ -29,7 +30,7 @@ export function useSessionTimelinePanel(sessionId: Ref<string>) {
     loading.value = true;
     error.value = "";
     try {
-      timeline.value = await getSessionTimeline(id, {
+      timeline.value = await sessionStore.fetchTimeline(id, {
         limit: PAGE_SIZE,
         offset: offset.value,
         kind_filter: kindFilter.value || undefined,

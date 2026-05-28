@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
 	v1 "aranea-agents/api/kratos/monitor/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
+	"aranea-agents/internal/event"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -201,7 +201,9 @@ func (s *MonitorService) ListMonitorAlertRules(ctx context.Context, _ *v1.GetMon
 	}
 	if len(rules) == 0 {
 		defaults := defaultAlertRules()
-		_ = s.uc.ReplaceAlertRules(ctx, defaults)
+		if err := s.uc.ReplaceAlertRules(ctx, defaults); err != nil {
+			event.SysLogWarn("system.monitor.alert_rules_replace_fail", "ListMonitorAlertRules: ReplaceAlertRules failed", event.P("error", err.Error()))
+		}
 		rules = defaults
 	}
 	resp := &v1.ListMonitorAlertRulesResponse{Items: make([]*v1.MonitorAlertRule, 0, len(rules))}
@@ -287,7 +289,7 @@ func parseFlowLogTimeBounds(sinceRaw, untilRaw string) (since, until time.Time, 
 		since, err = time.Parse(time.RFC3339Nano, s)
 		if err != nil {
 			if since, err = time.Parse(time.RFC3339, s); err != nil {
-				return time.Time{}, time.Time{}, fmt.Errorf("invalid since: %w", err)
+				return time.Time{}, time.Time{}, kerrors.BadRequest("MONITOR", "invalid since: "+err.Error())
 			}
 		}
 		since = since.UTC()
@@ -296,13 +298,13 @@ func parseFlowLogTimeBounds(sinceRaw, untilRaw string) (since, until time.Time, 
 		until, err = time.Parse(time.RFC3339Nano, u)
 		if err != nil {
 			if until, err = time.Parse(time.RFC3339, u); err != nil {
-				return time.Time{}, time.Time{}, fmt.Errorf("invalid until: %w", err)
+				return time.Time{}, time.Time{}, kerrors.BadRequest("MONITOR", "invalid until: "+err.Error())
 			}
 		}
 		until = until.UTC()
 	}
 	if !since.IsZero() && !until.IsZero() && until.Before(since) {
-		return time.Time{}, time.Time{}, fmt.Errorf("until must be after since")
+		return time.Time{}, time.Time{}, kerrors.BadRequest("MONITOR", "until must be after since")
 	}
 	return since, until, nil
 }

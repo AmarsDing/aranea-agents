@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/internal/event"
 )
 
 type channelTurnJobContextKey struct{}
@@ -90,7 +91,13 @@ func (h *ChannelIngress) markTurnJob(ctx context.Context, status, errMsg, previe
 	if jobID == "" {
 		return
 	}
-	_ = h.turnJobs.UpdateStatus(ctx, jobID, status, errMsg, previewID, preview)
+	if err := h.turnJobs.UpdateStatus(ctx, jobID, status, errMsg, previewID, preview); err != nil {
+		event.SysLogWarn("channel.job.status_update_failed", "TurnJob 状态更新失败",
+			event.P("job_id", jobID),
+			event.P("status", status),
+			event.P("error", err.Error()),
+		)
+	}
 	h.publishBackgroundJobRefresh(ctx, jobID, sessionID, status)
 }
 

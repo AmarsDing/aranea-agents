@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/runtime"
 	"aranea-agents/pkg/safego"
 
@@ -25,7 +26,7 @@ func RunWebSocket(
 	ch biz.Channel,
 	creds []biz.ChannelCredential,
 	lookup runtime.CredentialLookup,
-	handler runtime.InboundHandler,
+	handler port.InboundHandler,
 ) error {
 	appID, appSecret, err := WSAppCredentials(ctx, ch, creds, lookup)
 	if err != nil {

@@ -102,6 +102,16 @@ func ValidateOutboundMeta(platform string, meta map[string]string) []string {
 	return issues
 }
 
+// FirstNonEmpty returns the first non-blank string after trimming whitespace.
+func FirstNonEmpty(parts ...string) string {
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 // NormalizeOutboundMeta returns a trimmed copy suitable for outbound delivery passthrough.
 func NormalizeOutboundMeta(meta map[string]string) map[string]string {
 	if len(meta) == 0 {

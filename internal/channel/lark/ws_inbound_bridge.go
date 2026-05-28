@@ -8,13 +8,12 @@ import (
 	"aranea-agents/internal/channel/runtime"
 )
 
-// wsInboundBridge adapts HandleWSInbound to runtime.InboundHandler for text batching.
 type wsInboundBridge struct {
 	ctx     context.Context
 	ch      biz.Channel
 	creds   []biz.ChannelCredential
 	lookup  runtime.CredentialLookup
-	handler runtime.InboundHandler
+	handler port.InboundHandler
 }
 
 func (b wsInboundBridge) ProcessInbound(_ context.Context, ch biz.Channel, ev port.InboundEvent) error {

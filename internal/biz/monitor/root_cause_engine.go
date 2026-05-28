@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"regexp"
 	"strings"
+
+	"aranea-agents/internal/event"
 )
 
 type RootCauseRule struct {
@@ -51,6 +53,9 @@ func NewRootCauseEngine() *RootCauseEngine {
 		if p := rules[i].Condition.Pattern; p != "" {
 			if re, err := regexp.Compile(p); err == nil {
 				rules[i].Condition.compiledPattern = re
+			} else {
+				event.SysLogError("system.monitor.root_cause_regex_fail", "NewRootCauseEngine: regexp.Compile failed",
+					event.P("rule_id", rules[i].ID), event.P("pattern", p), event.P("error", err.Error()))
 			}
 		}
 	}

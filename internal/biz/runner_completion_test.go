@@ -45,7 +45,7 @@ func (r *completionMonitorRepo) ReplaceAlertRules(ctx context.Context, rules []M
 func (r *completionMonitorRepo) UpdateAlertFiringState(_ context.Context, _ string, _ MonitorAlertFiringState, _ *time.Time, _ float64, _ *time.Time) error {
 	return nil
 }
-func (r *completionMonitorRepo) CountMonitorEventsSince(ctx context.Context, eventKey, status, sinceRFC3339 string) (int32, error) {
+func (r *completionMonitorRepo) CountMonitorEventsSince(ctx context.Context, eventKey, status, sinceRFC3339, untilRFC3339 string) (int32, error) {
 	return 0, nil
 }
 
@@ -64,6 +64,21 @@ func (r *completionMonitorRepo) PatchRunnerCompletionMetadata(ctx context.Contex
 }
 
 func (r *completionMonitorRepo) EnsureTraceSchema(context.Context) error { return nil }
+func (r *completionMonitorRepo) InsertMonitorTrace(context.Context, MonitorTraceWrite) error {
+	return nil
+}
+func (r *completionMonitorRepo) UpsertMonitorTraceSpan(context.Context, MonitorTraceSpanWrite) error {
+	return nil
+}
+func (r *completionMonitorRepo) UpdateMonitorTraceCompletion(_ context.Context, _ string, _ string, _ int64, _, _ int, _ int64, _ float64) error {
+	return nil
+}
+func (r *completionMonitorRepo) ListRecentRunnerCompletions(_ context.Context, _ time.Duration, _ int) ([]RunnerCompletionRow, error) {
+	return nil, nil
+}
+func (r *completionMonitorRepo) LatencyPercentilesSince(_ context.Context, _ string) (float64, float64, float64, error) {
+	return 0, 0, 0, nil
+}
 
 func TestBuildRunnerCompletionMetadataJSON_v1(t *testing.T) {
 	de := DomainEvent{

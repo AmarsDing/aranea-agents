@@ -397,6 +397,16 @@
           :min="1"
           :disable="memoryLayersDisabled"
         />
+        <q-select
+          v-model="config.memoryL3.pii_policy"
+          dense
+          outlined
+          emit-value
+          map-options
+          label="PII 策略"
+          :options="piiPolicyOptions"
+          :disable="memoryLayersDisabled"
+        />
       </div>
     </section>
 
@@ -436,6 +446,27 @@
         />
         <q-toggle v-model="config.memoryL4.identity_inject" label="注入身份" :disable="memoryLayersDisabled" />
         <q-toggle v-model="config.memoryL4.strategy_inject" label="注入策略" :disable="memoryLayersDisabled" />
+        <q-input
+          v-model.number="config.memoryL4.decay_interval_hours"
+          dense
+          outlined
+          type="number"
+          label="衰减间隔小时"
+          hint="0 = 禁用衰减；默认 168（7天）"
+          :min="0"
+          :disable="memoryLayersDisabled"
+        />
+        <q-input
+          v-model="config.memoryL4.decay_overrides_json"
+          class="app-grid-span-full app-field-long"
+          dense
+          outlined
+          type="textarea"
+          autogrow
+          label="衰减覆盖 JSON"
+          hint='按实体类型覆盖半衰期，如 {"person": 90, "event": 7}'
+          :disable="memoryLayersDisabled"
+        />
       </div>
       <q-banner rounded class="q-mt-md settings-info-banner">
         风格进化（SOUL.md）与自动提议流水线请在
@@ -505,7 +536,7 @@ const props = withDefaults(
     truncateStrategyOptions: { label: string; value: string }[];
     snapshotModeOptions: { label: string; value: string }[];
     memoryScopeOptions: { label: string; value: string }[];
-    // PGO-1: heartbeatFile removed; optional files from useAgentPromptFiles.
+    piiPolicyOptions: { label: string; value: string }[];
     availableOptionalFiles?: AgentFile[];
   }>(),
   {

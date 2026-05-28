@@ -143,7 +143,7 @@ func (uc *SessionUsecase) loadBatchCandidates(ctx context.Context, ids []string,
 				trimmed = append(trimmed, id)
 			}
 		}
-		out, err := uc.sessions.ListSessionsByIDs(ctx, trimmed)
+		out, err := uc.sessionReader.ListSessionsByIDs(ctx, trimmed)
 		if err != nil {
 			return batchLoadResult{}, err
 		}
@@ -170,7 +170,7 @@ func (uc *SessionUsecase) loadBatchCandidatesByScope(ctx context.Context, scope 
 	var all []Session
 	offset := 0
 	for len(all) < SessionBatchMaxScan {
-		batch, err := uc.sessions.ListSessionsForBatch(ctx, scopeToSearchQuery(scope, SessionBatchPageSize, offset))
+		batch, err := uc.sessionReader.ListSessionsForBatch(ctx, scopeToSearchQuery(scope, SessionBatchPageSize, offset))
 		if err != nil {
 			return nil, false, err
 		}
@@ -227,7 +227,7 @@ func (uc *SessionUsecase) BatchArchive(ctx context.Context, ids []string, olderT
 			Truncated:       truncated,
 		}, nil
 	}
-	processed, failed, err := uc.sessions.ArchiveSessionsByIDs(ctx, matched)
+	processed, failed, err := uc.sessionWriter.ArchiveSessionsByIDs(ctx, matched)
 	if err != nil {
 		return SessionBatchResult{}, err
 	}
@@ -254,7 +254,7 @@ func (uc *SessionUsecase) BatchDelete(ctx context.Context, ids []string, olderTh
 			Truncated:       truncated,
 		}, nil
 	}
-	processed, failed, err := uc.sessions.DeleteSessionsByIDs(ctx, matched)
+	processed, failed, err := uc.sessionWriter.DeleteSessionsByIDs(ctx, matched)
 	if err != nil {
 		return SessionBatchResult{}, err
 	}

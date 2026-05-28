@@ -77,7 +77,7 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 - **Phase 3**（✅）：按用户凭据 + 密钥加密存储
 - **Phase 4**（✅）：URL 预检 API + P1-09 probe auth_required + P1-08 skill ApplyImport
 - **Phase 5**（✅）：MCP 子系统架构优化（TPM-P1-10/11/12 + P2 修复 + 测试补全 + defaults 集中）
-- **Phase 6**（📋）：MCP 中长期优化（P2 安全/性能 + Probe 策略化 + Lifecycle FSM）
+- **Phase 6**（🚧）：MCP 中长期优化（P2 安全/性能 ✅ + Probe 策略化 ✅ + Review 修复 ✅ + Lifecycle FSM 📋）
 
 ---
 
@@ -166,7 +166,7 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 | # | ID | 任务 | 说明 | 优先级 | 波次 |
 |---|-----|------|------|--------|------|
 | 24 | TPM-D-M1 | ~~Transport 类型化 + 单一 Codec~~ | ✅ Transport 类型化 + ToConnectionConfig 委托 + 默认超时保持一致 | P1→P2 | ✅ 2026-05-28 |
-| 25 | TPM-D-M2 | ~~Probe 策略化（Handshake Strategy）~~ | ✅ ProbeStrategy 接口 + ConnectivityProbe + AuthAwareProbe + ProbeMode 配置 | P2 | ✅ 2026-05-28 |
+| 25 | TPM-D-M2 | ~~Probe 策略化（Handshake Strategy）~~ | ✅ ProbeStrategy 接口 + ConnectivityProbe + AuthAwareProbe + ProbeMode 配置 + validateHTTPConfig DRY 修复 + auth_aware 无 auth 路径语义修复 | P2 | ✅ 2026-05-28 |
 | 26 | TPM-D-M3 | Health/Reconnect/Alert 统一为 Server Lifecycle FSM | 消除 metadata 并发写 + 告警逻辑散落 | P2→P3 | Wave 4 |
 
 ### 10.4 依赖与风险
@@ -174,5 +174,5 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 - **P2-27 OAuth token 管理**：当前每次 Agent 回合重新获取 token（client_credentials），无缓存无主动刷新；多副本部署需外置 token store
 - **P2-28 metadata 并发写**：health runner 和 mcpobserve 并发写 `metadata_json`，last-write-wins 可能丢数据；FSM 是根本解
 - **P2-30 无 worker pool**：大量 MCP 服务器时 health probe 可能产生大量并发 goroutine
-- **D-M2 Probe 策略化**：✅ 已完成。ConnectivityProbe（默认，仅网络连通性）+ AuthAwareProbe（带 OAuth/API Key 探活）。full_handshake 模式预留但未实现，需 trpc-agent-go 框架侧支持 MCP Initialize 探活接口
+- **D-M2 Probe 策略化**：✅ 已完成。ConnectivityProbe（默认，仅网络连通性）+ AuthAwareProbe（带 OAuth/API Key 探活）。full_handshake 模式预留但未实现，需 trpc-agent-go 框架侧支持 MCP Initialize 探活接口。Review 修复：validateHTTPConfig 消除 DRY 违规、auth_aware 无 auth 路径 401/403 翻转为 OK=false
 - **D-M3 Lifecycle FSM**：是中长期最大架构改动，需要独立 design 文档

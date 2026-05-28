@@ -46,7 +46,7 @@ func ValidatePluginCallbackPoints(p biz.Plugin) {
 	for _, pt := range p.CallbackPoints {
 		norm := strings.ToLower(strings.TrimSpace(pt))
 		if _, ok := declSet[norm]; !ok {
-			hookLogger.Warn("plugin: callback_point not implemented by builtin",
+			getHookLogger().Warn("plugin: callback_point not implemented by builtin",
 				"plugin", p.Key,
 				"point", pt,
 				"implemented", declared,

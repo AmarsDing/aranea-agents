@@ -2,14 +2,13 @@ package biz
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
 
-	"github.com/go-kratos/kratos/v2/errors"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 )
 
@@ -132,7 +131,7 @@ func (uc *GraphUsecase) ExecuteGraph(ctx context.Context, graphID, sessionID, ex
 		exec.Status = "failed"
 		exec.ErrorMessage = err.Error()
 		uc.notifyExecComplete(exec)
-		return nil, errors.FromError(ErrGraphSaveRun).WithCause(err)
+		return nil, kerrors.FromError(ErrGraphSaveRun).WithCause(err)
 	}
 
 	safego.Go(context.Background(), "graph.consumeEvents", func() {
@@ -146,7 +145,6 @@ func (uc *GraphUsecase) ExecuteGraph(ctx context.Context, graphID, sessionID, ex
 	return exec, nil
 }
 
-// ExecuteGraphBuildConfig runs a graph from an explicit build config (compiled team path).
 func (uc *GraphUsecase) ExecuteGraphBuildConfig(ctx context.Context, graphID, sessionID, execID string, cfg GraphBuildConfig, initialState map[string]any) (*GraphExecution, error) {
 	if execID == "" {
 		execID = uuid.New().String()
@@ -177,7 +175,7 @@ func (uc *GraphUsecase) ExecuteGraphBuildConfig(ctx context.Context, graphID, se
 		exec.Status = "failed"
 		exec.ErrorMessage = err.Error()
 		uc.notifyExecComplete(exec)
-		return nil, errors.FromError(ErrGraphSaveRun).WithCause(err)
+		return nil, kerrors.FromError(ErrGraphSaveRun).WithCause(err)
 	}
 
 	safego.Go(context.Background(), "graph.consumeEvents", func() {
@@ -242,7 +240,7 @@ func (uc *GraphUsecase) ResumeExecution(ctx context.Context, executionID string,
 
 	runtime, eventCh, err := uc.factory.BuildAndResume(ctx, cfg, exec.SessionID, exec.GraphID, executionID, lineageID, resumeValue)
 	if err != nil {
-		return nil, errors.FromError(ErrGraphResume).WithCause(err)
+		return nil, kerrors.FromError(ErrGraphResume).WithCause(err)
 	}
 
 	exec.runtime = runtime
@@ -254,7 +252,7 @@ func (uc *GraphUsecase) ResumeExecution(ctx context.Context, executionID string,
 	})
 
 	if err := uc.runRepo.UpdateRun(ctx, exec); err != nil {
-		return nil, fmt.Errorf("update run after resume: %w", err)
+		return nil, kerrors.InternalServer("GRAPH", "update run after resume").WithCause(err)
 	}
 	return exec, nil
 }

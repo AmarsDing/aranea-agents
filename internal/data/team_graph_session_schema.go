@@ -9,8 +9,8 @@ func EnsureTeamGraphSessionSchema(ctx context.Context, db *sql.DB) error {
 	if db == nil {
 		return nil
 	}
-	_, err := db.ExecContext(ctx, `
-CREATE TABLE IF NOT EXISTS team_graph_sessions (
+	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS team_graph_sessions (
   exec_id TEXT PRIMARY KEY,
   team_run_id TEXT NOT NULL DEFAULT '',
   team_id TEXT NOT NULL DEFAULT '',
@@ -22,11 +22,14 @@ CREATE TABLE IF NOT EXISTS team_graph_sessions (
   last_activity_at TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL DEFAULT '',
   updated_at TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS idx_team_graph_sessions_team_run
-  ON team_graph_sessions(team_run_id);
-CREATE INDEX IF NOT EXISTS idx_team_graph_sessions_status
-  ON team_graph_sessions(status);
-`)
-	return err
+)`,
+		`CREATE INDEX IF NOT EXISTS idx_team_graph_sessions_team_run ON team_graph_sessions(team_run_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_team_graph_sessions_status ON team_graph_sessions(status)`,
+	}
+	for _, s := range stmts {
+		if _, err := db.ExecContext(ctx, s); err != nil {
+			return err
+		}
+	}
+	return nil
 }

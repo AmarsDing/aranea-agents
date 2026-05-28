@@ -15,7 +15,7 @@ Plugin 是 ADK 运行时的回调扩展机制，用于在 Agent 执行过程中�
 
 当前系统管理内置 Plugin 的启用、配置、排序和绑定关系，不支持用户上传任意 Go 插件代码。
 
-**回调编排（2026-05-28）**：实现以 `internal/plugin/trpc/orchestration.go` 为权威。DB 内置 Plugin 走 Runner `WithPlugins`（按 `sort_order`）；框架 Plugin（Identity、Guardrail、ToolCallID、MessageMerger）由 `Manager.RunnerPluginsForAgent` 自动追加；产品 Hook 规则走 LLMAgent Callback Chain；`model_router` / `cost_guard` 的 catalog 换模走 `agent.ModelSelector`。`confirmation_guard` Runner Plugin 直接阻断（BeforeTool CustomResult），不再依赖 Chain ConfirmGate。
+**回调编排（2026-05-28）**：编排注释已合并至 `internal/plugin/trpc/manager.go` 顶部。DB 内置 Plugin 走 Runner `WithPlugins`（按 `sort_order`）；框架 Plugin（Identity、Guardrail、ToolCallID、MessageMerger）由 `Manager.RunnerPluginsForAgent` 自动追加；产品 Hook 规则走 LLMAgent Callback Chain；`model_router` / `cost_guard` 的 catalog 换模走 `agent.ModelSelector`。`confirmation_guard` Runner Plugin 直接阻断（BeforeTool CustomResult），不再依赖 Chain ConfirmGate。
 
 ---
 

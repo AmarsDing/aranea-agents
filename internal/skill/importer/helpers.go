@@ -161,57 +161,6 @@ func highRiskFileNames(files map[string][]byte) []string {
 	return names
 }
 
-func parseSkillMarkdown(body string) (string, string, []biz.SkillTag) {
-	name := ""
-	description := ""
-	tags := []biz.SkillTag{}
-	lines := strings.Split(body, "\n")
-	inFrontmatter := false
-	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
-		inFrontmatter = true
-		for _, line := range lines[1:] {
-			trimmed := strings.TrimSpace(line)
-			if trimmed == "---" {
-				break
-			}
-			if key, value, ok := splitMetaLine(trimmed); ok {
-				switch strings.ToLower(key) {
-				case "name", "title":
-					name = strings.Trim(value, `"'`)
-				case "description", "summary":
-					description = strings.Trim(value, `"'`)
-				case "tags":
-					for _, tag := range strings.Split(strings.Trim(value, "[]"), ",") {
-						tag = strings.Trim(strings.TrimSpace(tag), `"'`)
-						if tag != "" {
-							tags = append(tags, biz.SkillTag{Name: tag, Source: "user"})
-						}
-					}
-				}
-			}
-		}
-	}
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if name == "" && strings.HasPrefix(trimmed, "# ") {
-			name = strings.TrimSpace(strings.TrimPrefix(trimmed, "# "))
-			continue
-		}
-		if description == "" && !inFrontmatter && trimmed != "" && !strings.HasPrefix(trimmed, "#") {
-			description = trimmed
-		}
-	}
-	return name, description, tags
-}
-
-func splitMetaLine(line string) (string, string, bool) {
-	idx := strings.Index(line, ":")
-	if idx < 0 {
-		return "", "", false
-	}
-	return strings.TrimSpace(line[:idx]), strings.TrimSpace(line[idx+1:]), true
-}
-
 func summarizeImportStatus(candidates []biz.SkillImportCandidate, groups []biz.SkillConflictGroup) string {
 	for _, candidate := range candidates {
 		if candidate.ValidationStatus == "block" {

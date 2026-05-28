@@ -192,7 +192,8 @@ func (r *monitorRepo) ListRecentRunnerCompletions(ctx context.Context, since tim
 		        COALESCE(meta_session_id, json_extract(metadata_json, '$.session_id'), event_key) AS session_id,
 		        COALESCE(json_extract(metadata_json, '$.run_id'), '') AS run_id,
 		        COALESCE(meta_agent_id, json_extract(metadata_json, '$.agent_id'), '') AS agent_id,
-		        CASE WHEN status = 'error' THEN 'error' ELSE 'ok' END AS status
+		        CASE WHEN status = 'error' THEN 'error' ELSE 'ok' END AS status,
+		        created_at
 		 FROM monitor_events
 		 WHERE event_key = 'runner.completion' AND created_at >= ? AND deleted_at = ''
 		 ORDER BY created_at DESC
@@ -204,7 +205,7 @@ func (r *monitorRepo) ListRecentRunnerCompletions(ctx context.Context, since tim
 	var out []biz.RunnerCompletionRow
 	for rows.Next() {
 		var row biz.RunnerCompletionRow
-		if err := rows.Scan(&row.TraceID, &row.SessionID, &row.RunID, &row.AgentID, &row.Status); err != nil {
+		if err := rows.Scan(&row.TraceID, &row.SessionID, &row.RunID, &row.AgentID, &row.Status, &row.CreatedAt); err != nil {
 			continue
 		}
 		out = append(out, row)

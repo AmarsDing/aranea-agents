@@ -18,6 +18,8 @@ import (
 	"aranea-agents/internal/channel/telegram"
 	"aranea-agents/internal/channel/wechat"
 	"aranea-agents/internal/channel/wecom"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type outboundHandler func(ctx context.Context, h *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error
@@ -257,7 +259,7 @@ func (h *ChannelIngress) sendOutboundPayload(ctx context.Context, channelID stri
 	}
 	adap, ok := platformAdapters[strings.ToLower(strings.TrimSpace(payload.Platform))]
 	if !ok || adap.outbound == nil {
-		return fmt.Errorf("unsupported outbound platform %q", payload.Platform)
+		return kerrors.BadRequest("CHANNEL", fmt.Sprintf("unsupported outbound platform %q", payload.Platform))
 	}
 	return adap.outbound(ctx, h, chRow, creds, payload)
 }

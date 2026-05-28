@@ -11,7 +11,6 @@ import (
 	v1 "aranea-agents/api/kratos/skill/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/skill/importer"
-	"aranea-agents/internal/skill/storage"
 	"aranea-agents/internal/tools/skillruntime"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -24,21 +23,26 @@ type SkillService struct {
 
 	uc      *biz.SkillUsecase
 	agentUC *biz.AgentUsecase
-	sys     biz.SystemSettingRepo
+	fs      biz.SkillFilesystem
 	import_ *importer.Engine
 }
 
-func NewSkillService(uc *biz.SkillUsecase, agentUC *biz.AgentUsecase, sys biz.SystemSettingRepo, importEng *importer.Engine) *SkillService {
-	return &SkillService{uc: uc, agentUC: agentUC, sys: sys, import_: importEng}
+func NewSkillService(uc *biz.SkillUsecase, agentUC *biz.AgentUsecase, fs biz.SkillFilesystem, importEng *importer.Engine) *SkillService {
+	return &SkillService{uc: uc, agentUC: agentUC, fs: fs, import_: importEng}
 }
 
-func (s *SkillService) resolvedStorageRoot(ctx context.Context) string {
-	if s.sys != nil {
-		if st, err := s.sys.Get(ctx); err == nil {
-			return storage.ResolveRootWithPlatform(st.RootDirectory)
-		}
+func (s *SkillService) GetSkillFilesystemHealth(ctx context.Context, _ *emptypb.Empty) (*v1.SkillFilesystemHealth, error) {
+	root := s.fs.ResolveRoot(ctx)
+	stats, err := s.uc.FilesystemHealthStats(ctx)
+	if err != nil {
+		return nil, err
 	}
-	return storage.ResolveRoot()
+	return &v1.SkillFilesystemHealth{
+		RootAccessible:         s.fs.RootAccessible(ctx),
+		ResolvedRoot:           root,
+		MissingCount:           int32(stats.MissingCount),
+		PendingFilesystemCount: int32(stats.PendingFilesystemCount),
+	}, nil
 }
 
 func toProtoSkill(s biz.Skill) *v1.Skill {
@@ -145,24 +149,6 @@ func (s *SkillService) ListSkills(ctx context.Context, req *v1.ListSkillsRequest
 	return resp, nil
 }
 
-func (s *SkillService) GetSkillFilesystemHealth(ctx context.Context, _ *emptypb.Empty) (*v1.SkillFilesystemHealth, error) {
-	root := s.resolvedStorageRoot(ctx)
-	rootAccessible := true
-	if st, err := os.Stat(root); err != nil || !st.IsDir() {
-		rootAccessible = false
-	}
-	stats, err := s.uc.FilesystemHealthStats(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &v1.SkillFilesystemHealth{
-		RootAccessible:         rootAccessible,
-		ResolvedRoot:           root,
-		MissingCount:           int32(stats.MissingCount),
-		PendingFilesystemCount: int32(stats.PendingFilesystemCount),
-	}, nil
-}
-
 func (s *SkillService) ToggleSkillEnabled(ctx context.Context, req *v1.ToggleSkillEnabledRequest) (*v1.Skill, error) {
 	out, err := s.uc.ToggleEnabled(ctx, req.GetId(), req.GetEnabled())
 	if err != nil {
@@ -193,69 +179,42 @@ func (s *SkillService) DeleteSkill(ctx context.Context, req *v1.DeleteSkillReque
 }
 
 func (s *SkillService) ListSkillFiles(ctx context.Context, req *v1.ListSkillFilesRequest) (*v1.ListSkillFilesResponse, error) {
-	root, err := s.skillDir(ctx, req.GetId())
+	dir, err := s.skillDir(ctx, req.GetId())
 	if err != nil {
 		return nil, kerrors.BadRequest("SKILL", err.Error())
 	}
-	var items []*v1.SkillFile
-	walkErr := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		rel = filepath.ToSlash(rel)
+	entries, err := s.fs.ListFiles(dir)
+	if err != nil {
+		return nil, kerrors.BadRequest("SKILL", err.Error())
+	}
+	items := make([]*v1.SkillFile, 0, len(entries))
+	for _, e := range entries {
 		items = append(items, &v1.SkillFile{
-			Path: rel, Name: pathBase(rel), Language: languageForPath(rel), Size: info.Size(), UpdatedAt: info.ModTime().UTC().Format("2006-01-02T15:04:05Z07:00"),
+			Path: e.Path, Name: e.Name, Language: e.Language, Size: e.Size, UpdatedAt: e.UpdatedAt,
 		})
-		return nil
-	})
-	if walkErr != nil {
-		return nil, kerrors.BadRequest("SKILL", walkErr.Error())
 	}
 	return &v1.ListSkillFilesResponse{Items: items}, nil
 }
 
 func (s *SkillService) GetSkillFile(ctx context.Context, req *v1.GetSkillFileRequest) (*v1.SkillFileContent, error) {
-	root, path, err := s.safeSkillFilePath(ctx, req.GetId(), req.GetPath())
+	dir, err := s.skillDir(ctx, req.GetId())
 	if err != nil {
 		return nil, kerrors.BadRequest("SKILL", err.Error())
 	}
-	info, err := os.Stat(path)
+	content, err := s.fs.ReadFile(dir, req.GetPath())
 	if err != nil {
-		return nil, err
+		return nil, kerrors.BadRequest("SKILL", err.Error())
 	}
-	if info.IsDir() {
-		return nil, kerrors.BadRequest("SKILL", "skill file path points to a directory")
-	}
-	if info.Size() > 2*1024*1024 {
-		return nil, kerrors.BadRequest("SKILL", "skill file is too large to edit")
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	rel, _ := filepath.Rel(root, path)
-	rel = filepath.ToSlash(rel)
-	return &v1.SkillFileContent{Path: rel, Content: string(raw), Language: languageForPath(rel)}, nil
+	return &v1.SkillFileContent{Path: content.Path, Content: content.Content, Language: content.Language}, nil
 }
 
 func (s *SkillService) UpdateSkillFile(ctx context.Context, req *v1.UpdateSkillFileRequest) (*v1.SkillFileContent, error) {
-	_, path, err := s.safeSkillFilePath(ctx, req.GetId(), req.GetPath())
+	dir, err := s.skillDir(ctx, req.GetId())
 	if err != nil {
 		return nil, kerrors.BadRequest("SKILL", err.Error())
 	}
-	if err := os.WriteFile(path, []byte(req.GetContent()), 0o644); err != nil {
-		return nil, err
+	if err := s.fs.WriteFile(dir, req.GetPath(), req.GetContent()); err != nil {
+		return nil, kerrors.BadRequest("SKILL", err.Error())
 	}
 	return s.GetSkillFile(ctx, &v1.GetSkillFileRequest{Id: req.GetId(), Path: req.GetPath()})
 }
@@ -281,14 +240,10 @@ func (s *SkillService) CreateSkill(ctx context.Context, req *v1.CreateSkillReque
 	if slug != "" && (strings.ContainsAny(slug, `/\`) || strings.Contains(slug, "..")) {
 		return nil, kerrors.BadRequest("SKILL", "invalid slug")
 	}
-	root := s.resolvedStorageRoot(ctx)
-	dir := filepath.Join(root, slug)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, err
-	}
 	body := strings.TrimSpace(req.GetBodyMarkdown())
-	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(body), 0o644); err != nil {
-		return nil, err
+	dir, err := s.fs.CreateSkillDir(slug, body)
+	if err != nil {
+		return nil, kerrors.BadRequest("SKILL", err.Error())
 	}
 	tags := make([]biz.SkillTag, 0, len(req.GetTags()))
 	for _, t := range req.GetTags() {
@@ -357,18 +312,18 @@ func (s *SkillService) DeleteSkillFile(ctx context.Context, req *v1.DeleteSkillF
 	if strings.EqualFold(filepath.ToSlash(rel), "SKILL.md") || strings.EqualFold(filepath.ToSlash(rel), "skill.md") {
 		return nil, kerrors.BadRequest("SKILL", "cannot delete primary SKILL.md via DeleteSkillFile")
 	}
-	_, path, err := s.safeSkillFilePath(ctx, req.GetId(), rel)
+	dir, err := s.skillDir(ctx, req.GetId())
 	if err != nil {
 		return nil, kerrors.BadRequest("SKILL", err.Error())
 	}
-	if err := os.Remove(path); err != nil {
-		return nil, err
+	if err := s.fs.DeleteFile(dir, rel); err != nil {
+		return nil, kerrors.BadRequest("SKILL", err.Error())
 	}
 	return &emptypb.Empty{}, nil
 }
 
 func (s *SkillService) PreviewSkillRuntime(ctx context.Context, req *v1.PreviewSkillRuntimeRequest) (*v1.PreviewSkillRuntimeResponse, error) {
-	root := s.resolvedStorageRoot(ctx)
+	root := s.fs.ResolveRoot(ctx)
 	agentID := strings.TrimSpace(req.GetAgentId())
 	userQuery := strings.TrimSpace(req.GetUserQuery())
 
@@ -481,64 +436,12 @@ func (s *SkillService) skillDir(ctx context.Context, id string) (string, error) 
 			}
 			return "", getErr
 		}
-		dir = filepath.Join(s.resolvedStorageRoot(ctx), current.Slug)
+		dir = filepath.Join(s.fs.ResolveRoot(ctx), current.Slug)
 	}
-	if _, statErr := os.Stat(dir); statErr != nil {
-		return "", statErr
+	if !s.fs.DirExists(dir) {
+		return "", os.ErrNotExist
 	}
 	return dir, nil
 }
 
-func (s *SkillService) safeSkillFilePath(ctx context.Context, id string, relPath string) (string, string, error) {
-	root, err := s.skillDir(ctx, id)
-	if err != nil {
-		return "", "", err
-	}
-	relPath = strings.TrimSpace(filepath.ToSlash(relPath))
-	if relPath == "" || strings.Contains(relPath, "..") || strings.HasPrefix(relPath, "/") {
-		return "", "", errors.New("unsafe skill file path")
-	}
-	path := filepath.Join(root, filepath.FromSlash(relPath))
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		return "", "", err
-	}
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return "", "", err
-	}
-	if absPath != absRoot && !strings.HasPrefix(absPath, absRoot+string(os.PathSeparator)) {
-		return "", "", errors.New("skill file path escapes skill directory")
-	}
-	return absRoot, absPath, nil
-}
 
-func languageForPath(path string) string {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".md", ".markdown":
-		return "markdown"
-	case ".js", ".mjs", ".cjs":
-		return "javascript"
-	case ".ts":
-		return "typescript"
-	case ".py":
-		return "python"
-	case ".json":
-		return "json"
-	case ".yaml", ".yml":
-		return "yaml"
-	case ".sh":
-		return "shell"
-	default:
-		return "text"
-	}
-}
-
-func pathBase(name string) string {
-	name = strings.Trim(filepath.ToSlash(name), "/")
-	if name == "" || name == "." {
-		return ""
-	}
-	parts := strings.Split(name, "/")
-	return parts[len(parts)-1]
-}

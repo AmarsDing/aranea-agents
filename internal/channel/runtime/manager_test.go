@@ -30,7 +30,7 @@ func TestNeedsRuntimeConnector(t *testing.T) {
 }
 
 func TestRegisterStarter(t *testing.T) {
-	runtime.RegisterStarter("testplat", "polling", func(ctx context.Context, ch biz.Channel, creds []biz.ChannelCredential, lookup runtime.CredentialLookup, handler runtime.InboundHandler) error {
+	runtime.RegisterStarter("testplat", "polling", func(ctx context.Context, ch biz.Channel, creds []biz.ChannelCredential, lookup runtime.CredentialLookup, handler port.InboundHandler) error {
 		return ctx.Err()
 	})
 	ch := biz.Channel{

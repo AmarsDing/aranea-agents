@@ -21,12 +21,12 @@ import (
 )
 
 type anchorResolution struct {
-	member   MemberDef
-	agent    biz.Agent
-	prov     string
-	mod      string
-	attRefs  []artifactbiz.Ref
-	attN     int
+	member  MemberDef
+	agent   biz.Agent
+	prov    string
+	mod     string
+	attRefs []artifactbiz.Ref
+	attN    int
 }
 
 func (r *Runner) resolveAnchorAndAttachments(
@@ -131,7 +131,8 @@ func (r *Runner) prepareUserTurnOptions(
 	}
 	var intentRunOpts []trpcagent.RunOption
 	var intRes intent.RunResult
-	if intent.ShouldRun(ar.agent, content) {
+	shouldRunIntent := intent.ShouldRun(ar.agent, content)
+	if shouldRunIntent {
 		intRes = intent.RunForAgent(ctx, ar.agent, r.td.Catalog.LLM, r.td.LLMHTTP, ar.prov, ar.mod, content)
 		if intRes.Artifact != nil {
 			if strings.TrimSpace(intRes.RawJSON) != "" {
@@ -154,7 +155,7 @@ func (r *Runner) prepareUserTurnOptions(
 			return
 		}
 	}
-	if intent.ShouldRun(ar.agent, content) && r.td.Pipeline.Bus != nil {
+	if shouldRunIntent && r.td.Pipeline.Bus != nil {
 		meta := intent.RunMeta{
 			AgentID:   ar.agent.ID,
 			SessionID: sess.ID,
@@ -192,7 +193,10 @@ func (r *Runner) finalizeTeamRun(
 	run.DurationMS = int(time.Since(t0).Milliseconds())
 	run.OutputPreview = preview(assistantMsg.ContentMarkdown, 512)
 	run.FinishedAt = agent.RFC3339Now()
-	_ = r.teams.UpdateTeamRun(ctx, *run)
+	if err := r.teams.UpdateTeamRun(ctx, *run); err != nil {
+		event.CtxFlowLogWarn(ctx, "team.run.finish_update_fail", "UpdateTeamRun failed in finalizeTeamRun",
+			event.P("team_run_id", run.ID), event.P("update_error", err.Error()))
+	}
 
 	r.recordTeamRunUsage(ctx, *run, teamRow.ID, ar.agent, promptTok, completionTok, ar.prov, ar.mod, dialogMode)
 

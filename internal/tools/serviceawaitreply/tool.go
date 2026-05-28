@@ -13,6 +13,8 @@ import (
 	"context"
 	"fmt"
 
+	"aranea-agents/internal/event"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -65,7 +67,9 @@ func (t *ServiceTool) Declaration() *trpctool.Declaration {
 func (t *ServiceTool) Call(ctx context.Context, _ []byte) (any, error) {
 	// Mark framework routing state (so the runner persists await_user_reply route).
 	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
-		_ = trpcagent.MarkAwaitingUserReply(inv)
+		if err := trpcagent.MarkAwaitingUserReply(inv); err != nil {
+			event.SysLogWarn("system.await_user_reply", "MarkAwaitingUserReply failed", event.P("error", err.Error()))
+		}
 	}
 
 	fn := ReplyFuncFromContext(ctx)

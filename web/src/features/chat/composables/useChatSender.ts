@@ -1,4 +1,4 @@
-import { ref, computed, type Ref, type ComputedRef } from "vue";
+import { ref, reactive, computed, type Ref, type ComputedRef } from "vue";
 import { useQuasar } from "quasar";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
@@ -13,6 +13,7 @@ import type { UseEnvelopeStreamReturn } from "../useEnvelopeStream";
 import type { WsUpstream } from "../envelope";
 import { createPlaceholderMessage } from "../streamHandlers";
 import { shouldBlockAttachmentsForModel } from "../modelCapabilities";
+// TECH-DEBT: direct API call; move to store — chat optimization
 import { sendMessage } from "../api";
 import { AWAIT_KIND_TOOL_CONFIRM } from "../awaitConstants";
 
@@ -21,11 +22,15 @@ import type { RunStatusValue } from "../types";
 type SessionStore = ReturnType<typeof useChatSessionStore>;
 type MessageStore = ReturnType<typeof useChatMessageStore>;
 
-export function isFailedPendingMessage(id: string, registry?: Set<string>): boolean {
-  return (registry ?? emptyFailedSet).has(id);
-}
-
-const emptyFailedSet = new Set<string>();
+type SendStrategy = {
+  resolveSessionId: () => string | undefined;
+  ensureSession: (title: string) => Promise<void>;
+  resolveProviderModel: () => { provider: string; model: string };
+  buildWsPayload: (sessionId: string, pendingUserId: string, content: string, provider: string, model: string) => WsUpstream;
+  ensureStream: (sessionId: string) => UseEnvelopeStreamReturn;
+  httpFallbackKeys: { agentKey: string | undefined; teamId: string | undefined };
+  errorLabel: string;
+};
 
 export type SenderDeps = {
   appStore: ReturnType<typeof useAppStore>;
@@ -71,7 +76,7 @@ export function useChatSender(deps: SenderDeps) {
   const RUN_STALL_CHECK_INTERVAL_MS = 30_000;
   let stallCheckInterval: ReturnType<typeof setInterval> | null = null;
 
-  const failedPendingIds = reactive(new Set<string>());
+  const failedPendingIds = reactive(new Map<string, string>());
 
   function clearStallCheck() {
     if (stallCheckInterval != null) {
@@ -124,8 +129,14 @@ export function useChatSender(deps: SenderDeps) {
     lastRunEventAt = Date.now();
   }
 
-  function clearFailedPendingForSession() {
-    failedPendingIds.clear();
+  function clearFailedPendingForSession(sessionId?: string) {
+    if (!sessionId) {
+      failedPendingIds.clear();
+      return;
+    }
+    for (const [pendingId, sid] of failedPendingIds) {
+      if (sid === sessionId) failedPendingIds.delete(pendingId);
+    }
   }
 
   function stopStreaming(sessionId?: string) {
@@ -176,10 +187,8 @@ export function useChatSender(deps: SenderDeps) {
     if (!content) return;
     if (!isActiveRun() && sending.value) return;
 
-    // P1-2: Distinguish await reply vs tool confirm
     if (deps.isAwaitingUser.value) {
       if (deps.awaitKind.value === AWAIT_KIND_TOOL_CONFIRM) {
-        // Tool confirm should only use approve/deny buttons, ignore text input
         $q.notify({ type: "info", message: t("chat.toolConfirmUseButtons", "请使用批准或拒绝按钮来确认工具调用") });
         return;
       }
@@ -202,9 +211,8 @@ export function useChatSender(deps: SenderDeps) {
     );
   }
 
-  /** Mark a pending user message as failed (preserves the bubble for retry). */
   function markPendingUserFailed(sessionId: string, pendingUserId: string, errorMsg: string) {
-    failedPendingIds.add(pendingUserId);
+    failedPendingIds.set(pendingUserId, sessionId);
     const msgs = deps.messageStore.getMessages(sessionId);
     deps.messageStore.setMessages(
       sessionId,
@@ -252,18 +260,15 @@ export function useChatSender(deps: SenderDeps) {
         await deps.refreshPendingMessages?.();
         return;
       }
-      // Backend rejected enqueue — likely no active run. Reset status and retry as new turn.
       dropPendingUserRow(sessionId, pendingUserId);
       deps.setRunStatus("idle");
-      await sendAgentUserContent(content);
+      await sendUserContent("agent", content);
     } catch (err: unknown) {
       dropPendingUserRow(sessionId, pendingUserId);
       const errMessage = err instanceof Error ? err.message : "";
-      // P1-3: Map backend error codes to user-friendly messages
       if (errMessage.includes("CHAT_RUN_ENDED")) {
-        // Backend says run ended — reset status and retry as new turn
         deps.setRunStatus("idle");
-        await sendAgentUserContent(content);
+        await sendUserContent("agent", content);
       } else if (errMessage.includes("CHAT_QUEUE_FULL")) {
         $q.notify({ type: "warning", message: t("chat.enqueueQueueFull", "排队消息已满，请稍后再试") });
       } else {
@@ -275,7 +280,6 @@ export function useChatSender(deps: SenderDeps) {
     }
   }
 
-  /** Send via HTTP as fallback when WS is disconnected. */
   async function sendViaHttpFallback(
     sessionId: string,
     content: string,
@@ -311,7 +315,96 @@ export function useChatSender(deps: SenderDeps) {
     });
   }
 
-  async function sendAgentUserContent(content: string, reusePendingId?: string) {
+  function getAgentStrategy(): SendStrategy {
+    return {
+      resolveSessionId: () => deps.sessionStore.selectedSession?.id,
+      ensureSession: async (title) => {
+        if (!deps.sessionStore.selectedSession) await deps.onNewSession(title);
+      },
+      resolveProviderModel: () => {
+        const selectedModel = deps.selectedProviderModel.value;
+        const provider =
+          selectedModel?.provider ||
+          deps.sessionStore.selectedSession?.provider ||
+          deps.appStore.selectedAgent?.provider ||
+          "";
+        const model =
+          selectedModel?.model ||
+          deps.sessionStore.selectedSession?.model ||
+          deps.appStore.selectedAgent?.model ||
+          "";
+        return { provider, model };
+      },
+      buildWsPayload: (sessionId, pendingUserId, content, provider, model) => ({
+        direction: "client_to_server",
+        channel: "chat",
+        type: "user_message",
+        request_id: pendingUserId,
+        payload: {
+          session_id: sessionId,
+          agent_key: deps.appStore.selectedAgent?.agent_key,
+          content,
+          options: {
+            dialog_mode: deps.dialogMode.value,
+            provider,
+            model,
+            attachments: deps.attachments.value.map((item) => ({ id: item.id })),
+            knowledge_bases: deps.selectedKnowledgeBases.value,
+          },
+        },
+      }),
+      ensureStream: deps.ensureChatStream,
+      httpFallbackKeys: { agentKey: deps.appStore.selectedAgent?.agent_key, teamId: undefined },
+      errorLabel: t("chat.sendFailed", "发送失败，请稍后重试"),
+    };
+  }
+
+  function getTeamStrategy(): SendStrategy {
+    return {
+      resolveSessionId: () => deps.sessionStore.teamSelectedSessionId,
+      ensureSession: async (title) => {
+        if (!deps.sessionStore.teamSelectedSessionId) await deps.onNewSession(title);
+      },
+      resolveProviderModel: () => {
+        const selectedModel = deps.selectedProviderModel.value;
+        const teamId = deps.sessionStore.selectedTeamId!;
+        const session = deps.sessionStore.teamSessions[teamId]?.find(
+          (item) => item.id === deps.sessionStore.teamSelectedSessionId
+        );
+        const provider = selectedModel?.provider || session?.provider || "";
+        const model = selectedModel?.model || session?.model || "";
+        return { provider, model };
+      },
+      buildWsPayload: (sessionId, pendingUserId, content, provider, model) => ({
+        direction: "client_to_server",
+        channel: "chat",
+        type: "user_message",
+        request_id: pendingUserId,
+        payload: {
+          session_id: sessionId,
+          team_id: deps.sessionStore.selectedTeamId,
+          content,
+          options: {
+            dialog_mode: deps.dialogMode.value,
+            provider,
+            model,
+            attachments: deps.attachments.value.map((item) => ({ id: item.id })),
+            knowledge_bases: deps.selectedKnowledgeBases.value,
+          },
+        },
+      }),
+      ensureStream: deps.ensureTeamStream,
+      httpFallbackKeys: { agentKey: undefined, teamId: deps.sessionStore.selectedTeamId ?? undefined },
+      errorLabel: t("chat.teamSendFailed", "Team 发送失败"),
+    };
+  }
+
+  async function sendUserContent(
+    entityKind: ChatEntityKind,
+    content: string,
+    reusePendingId?: string
+  ) {
+    const strategy = entityKind === "team" ? getTeamStrategy() : getAgentStrategy();
     const text = content.trim();
     if (!text) return;
     const followUp = isActiveRun();
@@ -320,21 +413,17 @@ export function useChatSender(deps: SenderDeps) {
     }
     let clearAttachments = true;
     try {
-      if (!deps.sessionStore.selectedSession) await deps.onNewSession(deps.makeSessionTitle(text));
-      if (!deps.sessionStore.selectedSession) {
+      await strategy.ensureSession(deps.makeSessionTitle(text));
+      const sessionId = strategy.resolveSessionId();
+      if (!sessionId) {
         $q.notify({ type: "negative", message: t("chat.sessionCreateFailed", "未创建会话或会话无效，请重试") });
         if (!followUp) markSendingDone();
         return;
       }
-      const sessionId = deps.sessionStore.selectedSession.id;
       if (!followUp) {
         markSending(sessionId);
       }
 
-      // Optimistic UI: clear input and show placeholder immediately so the user
-      // sees their message without waiting for backend availability checks.
-      // turn_id="" means "unassigned" — groupMessagesByTurn groups this with
-      // the ws-stream row via turn_id until the server returns a persisted message.
       const pendingUserId = reusePendingId ?? `pending-user-${crypto.randomUUID()}`;
       if (!reusePendingId) {
         deps.inputText.value = "";
@@ -344,17 +433,8 @@ export function useChatSender(deps: SenderDeps) {
         ]);
       }
 
+      const { provider, model } = strategy.resolveProviderModel();
       const selectedModel = deps.selectedProviderModel.value;
-      const provider =
-        selectedModel?.provider ||
-        deps.sessionStore.selectedSession.provider ||
-        deps.appStore.selectedAgent?.provider ||
-        "";
-      const model =
-        selectedModel?.model ||
-        deps.sessionStore.selectedSession.model ||
-        deps.appStore.selectedAgent?.model ||
-        "";
       const blockReason = shouldBlockAttachmentsForModel({ provider, model, capabilities: selectedModel?.capabilities }, deps.attachments.value);
       if (blockReason) {
         clearAttachments = false;
@@ -363,14 +443,12 @@ export function useChatSender(deps: SenderDeps) {
         } else {
           notifyUnsupportedImageModel();
         }
-        // Remove the optimistic placeholder since we're aborting the send.
         if (!reusePendingId) dropPendingUserRow(sessionId, pendingUserId);
         if (!followUp) markSendingDone();
         return;
       }
 
       if (!(await checkBackendAvailability())) {
-        // P0-1: Mark as failed instead of removing
         markPendingUserFailed(sessionId, pendingUserId, t("chat.sendFailedBackend", "后端不可用"));
         if (!followUp) markSendingDone();
         return;
@@ -381,38 +459,17 @@ export function useChatSender(deps: SenderDeps) {
         return;
       }
 
-      const wsPayload: WsUpstream = {
-        direction: "client_to_server",
-        channel: "chat",
-        type: "user_message",
-        request_id: pendingUserId,
-        payload: {
-          session_id: sessionId,
-          agent_key: deps.appStore.selectedAgent?.agent_key,
-          content: text,
-          options: {
-            dialog_mode: deps.dialogMode.value,
-            provider,
-            model,
-            attachments: deps.attachments.value.map((item) => ({ id: item.id })),
-            knowledge_bases: deps.selectedKnowledgeBases.value,
-          },
-        },
-      };
-
-      // P0-2: Try WS first, fallback to HTTP if disconnected
       try {
-        const stream = deps.ensureChatStream(sessionId);
-        deps.sendChatViaWs(stream, wsPayload);
+        const stream = strategy.ensureStream(sessionId);
+        deps.sendChatViaWs(stream, strategy.buildWsPayload(sessionId, pendingUserId, text, provider, model));
       } catch (wsError) {
-        // WS unavailable — fallback to HTTP
         $q.notify({ type: "info", message: t("chat.wsFallbackHttp", "WebSocket 不可用，正在通过 HTTP 发送…") });
         try {
           await sendViaHttpFallback(
             sessionId,
             text,
-            deps.appStore.selectedAgent?.agent_key,
-            undefined,
+            strategy.httpFallbackKeys.agentKey,
+            strategy.httpFallbackKeys.teamId,
             {
               dialogMode: deps.dialogMode.value,
               provider,
@@ -421,7 +478,6 @@ export function useChatSender(deps: SenderDeps) {
               knowledgeBases: deps.selectedKnowledgeBases.value,
             }
           );
-          // HTTP success — reload messages to get the persisted version
           dropPendingUserRow(sessionId, pendingUserId);
           await deps.messageStore.loadMessages({ sessionId });
         } catch (httpError) {
@@ -431,17 +487,18 @@ export function useChatSender(deps: SenderDeps) {
       }
     } catch (error) {
       if (!(error instanceof DOMException && error.name === "AbortError")) {
-        const sid = deps.sessionStore.selectedSession?.id;
+        const sid = strategy.resolveSessionId();
         if (sid) {
-          // P0-1: Mark as failed instead of removing — user can retry
-          const pendingId = sid && deps.messageStore.getMessages(sid).find((m) => m.content_markdown === text && m.id.startsWith("pending-user-"))?.id;
+          const pendingId = deps.messageStore.getMessages(sid).find(
+            (m) => m.content_markdown === text && m.id.startsWith("pending-user-")
+          )?.id;
           if (pendingId) {
             markPendingUserFailed(sid, pendingId, t("chat.sendFailedRetry", "发送失败，请点击重试"));
           }
         }
         $q.notify({
           type: "negative",
-          message: error instanceof Error ? error.message : t("chat.sendFailed", "发送失败，请稍后重试"),
+          message: error instanceof Error ? error.message : strategy.errorLabel,
         });
         if (!followUp) markSendingDone();
       }
@@ -450,6 +507,10 @@ export function useChatSender(deps: SenderDeps) {
         deps.attachments.value = [];
       }
     }
+  }
+
+  async function sendAgentUserContent(content: string, reusePendingId?: string) {
+    await sendUserContent("agent", content, reusePendingId);
   }
 
   async function sendAgentMessage(content: string) {
@@ -457,126 +518,7 @@ export function useChatSender(deps: SenderDeps) {
   }
 
   async function sendTeamMessage(content: string, reusePendingId?: string) {
-    const followUp = isActiveRun();
-    if (!followUp) {
-      markSending();
-    }
-    let sessionIdForCatch = "";
-    let clearAttachments = true;
-    try {
-      if (!deps.sessionStore.teamSelectedSessionId) await deps.onNewSession(deps.makeSessionTitle(content));
-      const sessionId = deps.sessionStore.teamSelectedSessionId;
-      if (!sessionId) {
-        $q.notify({ type: "negative", message: t("chat.sessionCreateFailed", "未创建会话或会话无效，请重试") });
-        if (!followUp) markSendingDone();
-        return;
-      }
-      sessionIdForCatch = sessionId;
-      if (!followUp) {
-        markSending(sessionId);
-      }
-
-      const pendingUserId = reusePendingId ?? `pending-user-${crypto.randomUUID()}`;
-      if (!reusePendingId) {
-        deps.inputText.value = "";
-        deps.messageStore.setMessages(sessionId, [
-          ...deps.messageStore.getMessages(sessionId),
-          createPlaceholderMessage(pendingUserId, sessionId, "user", content),
-        ]);
-      }
-
-      const teamId = deps.sessionStore.selectedTeamId!;
-      const session = deps.sessionStore.teamSessions[teamId]?.find((item) => item.id === sessionId);
-      const selectedModel = deps.selectedProviderModel.value;
-      const provider = selectedModel?.provider || session?.provider || "";
-      const model = selectedModel?.model || session?.model || "";
-      const blockReason = shouldBlockAttachmentsForModel({ provider, model, capabilities: selectedModel?.capabilities }, deps.attachments.value);
-      if (blockReason) {
-        clearAttachments = false;
-        if (blockReason === "ATTACHMENT_UNSUPPORTED") {
-          $q.notify({ type: "warning", message: t("chat.fileModelUnsupported", "当前模型不支持文件附件，请移除附件或切换模型") });
-        } else {
-          notifyUnsupportedImageModel();
-        }
-        // Remove the optimistic placeholder since we're aborting the send.
-        dropPendingUserRow(sessionId, pendingUserId);
-        if (!followUp) markSendingDone();
-        return;
-      }
-
-      if (!(await checkBackendAvailability())) {
-        // P0-1: Mark as failed instead of removing
-        markPendingUserFailed(sessionId, pendingUserId, t("chat.sendFailedBackend", "后端不可用"));
-        if (!followUp) markSendingDone();
-        return;
-      }
-
-      if (followUp) {
-        await enqueueDuringRun(sessionId, content, pendingUserId);
-        return;
-      }
-
-      // P0-2: Try WS first, fallback to HTTP
-      try {
-        const stream = deps.ensureTeamStream(sessionId);
-        deps.sendChatViaWs(stream, {
-          direction: "client_to_server",
-          channel: "chat",
-          type: "user_message",
-          request_id: pendingUserId,
-          payload: {
-            session_id: sessionId,
-            team_id: deps.sessionStore.selectedTeamId,
-            content,
-            options: {
-              dialog_mode: deps.dialogMode.value,
-              provider,
-              model,
-              attachments: deps.attachments.value.map((item) => ({ id: item.id })),
-              knowledge_bases: deps.selectedKnowledgeBases.value,
-            },
-          },
-        });
-      } catch (wsError) {
-        $q.notify({ type: "info", message: t("chat.wsFallbackHttp", "WebSocket 不可用，正在通过 HTTP 发送…") });
-        try {
-          await sendViaHttpFallback(
-            sessionId,
-            content,
-            undefined,
-            deps.sessionStore.selectedTeamId ?? undefined,
-            {
-              dialogMode: deps.dialogMode.value,
-              provider,
-              model,
-              attachments: deps.attachments.value,
-              knowledgeBases: deps.selectedKnowledgeBases.value,
-            }
-          );
-          dropPendingUserRow(sessionId, pendingUserId);
-          await deps.messageStore.loadMessages({ sessionId });
-        } catch (httpError) {
-          markPendingUserFailed(sessionId, pendingUserId, t("chat.sendFailedRetry", "发送失败，请点击重试"));
-          if (!followUp) markSendingDone();
-        }
-      }
-    } catch (error) {
-      if (!(error instanceof DOMException && error.name === "AbortError")) {
-        $q.notify({ type: "negative", message: error instanceof Error ? error.message : t("chat.teamSendFailed", "Team 发送失败") });
-        if (sessionIdForCatch) {
-          const pendingId = deps.messageStore.getMessages(sessionIdForCatch).find(
-            (m) => m.content_markdown === content && m.id.startsWith("pending-user-")
-          )?.id;
-          if (pendingId) {
-            markPendingUserFailed(sessionIdForCatch, pendingId, t("chat.sendFailedRetry", "发送失败，请点击重试"));
-          }
-        }
-      }
-    } finally {
-      if (clearAttachments) {
-        deps.attachments.value = [];
-      }
-    }
+    await sendUserContent("team", content, reusePendingId);
   }
 
   return {

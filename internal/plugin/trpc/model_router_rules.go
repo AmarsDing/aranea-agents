@@ -4,7 +4,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
+
+	"aranea-agents/internal/event"
 )
 
 // ModelRouterRule is one configurable routing rule (rules[] in model_router config).
@@ -15,19 +16,28 @@ type ModelRouterRule struct {
 	MinChars int      `json:"min_chars"`
 	Priority int      `json:"priority"`
 
-	compileOnce   sync.Once
 	compiledRegex *regexp.Regexp
 }
 
-func (r *ModelRouterRule) compiled() *regexp.Regexp {
-	r.compileOnce.Do(func() {
-		if pat := strings.TrimSpace(r.Regex); pat != "" {
-			if re, err := regexp.Compile(pat); err == nil {
-				r.compiledRegex = re
-			}
+func (r *ModelRouterRule) compile() {
+	if pat := strings.TrimSpace(r.Regex); pat != "" {
+		if re, err := regexp.Compile(pat); err == nil {
+			r.compiledRegex = re
+		} else {
+			event.SysLogWarn("plugin.model_router.compile_fail", "model_router rule regex compile failed",
+				event.P("model", r.Model), event.P("regex", pat), event.P("error", err.Error()))
 		}
-	})
+	}
+}
+
+func (r *ModelRouterRule) compiled() *regexp.Regexp {
 	return r.compiledRegex
+}
+
+func compileModelRouterRules(rules []ModelRouterRule) {
+	for i := range rules {
+		rules[i].compile()
+	}
 }
 
 func resolveModelFromRules(prompt string, rules []ModelRouterRule) string {

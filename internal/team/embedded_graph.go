@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type embeddedGraphSpec struct {
@@ -35,10 +37,10 @@ type embeddedGraphNode struct {
 }
 
 type embeddedGraphEdge struct {
-	ID       string `json:"id"`
-	Source   string `json:"source"`
-	Target   string `json:"target"`
-	Label    string `json:"label"`
+	ID        string `json:"id"`
+	Source    string `json:"source"`
+	Target    string `json:"target"`
+	Label     string `json:"label"`
 	Condition string `json:"condition"`
 }
 
@@ -98,7 +100,7 @@ func isEmbeddedDecorID(id string) bool {
 
 func compileFromEmbeddedGraph(ctx context.Context, def Definition, spec *embeddedGraphSpec, agentKey CompileAgentKey, loader GraphBuildConfigLoader) (biz.GraphBuildConfig, error) {
 	if spec == nil {
-		return biz.GraphBuildConfig{}, fmt.Errorf("team: embedded graph is nil")
+		return biz.GraphBuildConfig{}, kerrors.BadRequest("TEAM", "embedded graph is nil")
 	}
 	memberByAgentID := map[string]MemberDef{}
 	for i, m := range EnabledMembers(def) {
@@ -158,7 +160,7 @@ func compileFromEmbeddedGraph(ctx context.Context, def Definition, spec *embedde
 				ID: id, Type: "task", Description: strings.TrimSpace(n.Label),
 				RequiredRole: strings.TrimSpace(n.Role), AssignmentMode: strings.TrimSpace(n.AssignmentMode),
 				AssignmentStrategy: strings.TrimSpace(n.AssignmentStrategy),
-				InterruptAfter: true,
+				InterruptAfter:     true,
 			}))
 		case "review":
 			executableIDs[id] = struct{}{}
@@ -170,21 +172,21 @@ func compileFromEmbeddedGraph(ctx context.Context, def Definition, spec *embedde
 		case "subgraph":
 			ref := strings.TrimSpace(n.SubgraphID)
 			if ref == "" {
-				return biz.GraphBuildConfig{}, fmt.Errorf("team: subgraph node %q requires subgraph_id", id)
+				return biz.GraphBuildConfig{}, kerrors.BadRequest("TEAM", fmt.Sprintf("subgraph node %q requires subgraph_id", id))
 			}
 			if loader == nil {
-				return biz.GraphBuildConfig{}, fmt.Errorf("team: subgraph node %q requires graph loader", id)
+				return biz.GraphBuildConfig{}, kerrors.BadRequest("TEAM", fmt.Sprintf("subgraph node %q requires graph loader", id))
 			}
 			subCfg, err := loadEmbeddedSubgraphConfig(ctx, loader, ref, loading)
 			if err != nil {
-				return biz.GraphBuildConfig{}, fmt.Errorf("team: subgraph node %q: %w", id, err)
+				return biz.GraphBuildConfig{}, kerrors.BadRequest("TEAM", fmt.Sprintf("subgraph node %q: %s", id, err.Error()))
 			}
 			executableIDs[id] = struct{}{}
 			subgraphs = append(subgraphs, biz.SubgraphDef{ID: id, GraphID: ref, BuildConfig: subCfg})
 		}
 	}
 	if len(executableIDs) == 0 {
-		return biz.GraphBuildConfig{}, fmt.Errorf("team: embedded graph has no executable nodes")
+		return biz.GraphBuildConfig{}, kerrors.BadRequest("TEAM", "embedded graph has no executable nodes")
 	}
 
 	edges, condEdges, entry, finish, branchIDs := compileEmbeddedEdges(def, spec, nodeTypeByID, executableIDs)
@@ -233,10 +235,10 @@ func compileEmbeddedBizNode(n embeddedGraphNode, base biz.NodeDef) biz.NodeDef {
 func loadEmbeddedSubgraphConfig(ctx context.Context, loader GraphBuildConfigLoader, graphID string, loading map[string]struct{}) (biz.GraphBuildConfig, error) {
 	graphID = strings.TrimSpace(graphID)
 	if graphID == "" {
-		return biz.GraphBuildConfig{}, fmt.Errorf("subgraph_id is required")
+		return biz.GraphBuildConfig{}, kerrors.BadRequest("TEAM", "subgraph_id is required")
 	}
 	if _, ok := loading[graphID]; ok {
-		return biz.GraphBuildConfig{}, fmt.Errorf("subgraph cycle detected at %q", graphID)
+		return biz.GraphBuildConfig{}, kerrors.BadRequest("TEAM", fmt.Sprintf("subgraph cycle detected at %q", graphID))
 	}
 	loading[graphID] = struct{}{}
 	defer delete(loading, graphID)

@@ -9,7 +9,14 @@ import {
   getAgentStrategy,
   listEvolutionProposals,
   listEvolutionEvents,
-  getEvolutionMetrics
+  getEvolutionMetrics,
+  listCascadeProposals,
+  approveCascadeProposal,
+  rejectCascadeProposal,
+  previewCascadeApprove,
+  getCascadeSagaSteps,
+  retryCascadeApprove,
+  compensateCascadeApprove
 } from "../../features/memory/api";
 import type {
   L0AssemblySnapshot,
@@ -22,7 +29,10 @@ import type {
   AgentStrategyProfile,
   EvolutionProposal,
   EvolutionEvent,
-  EvolutionMetricsReport
+  EvolutionMetricsReport,
+  CascadePreview,
+  CascadeProposal,
+  CascadeSagaStep
 } from "../../features/memory/types";
 
 export type MemoryEvolutionBundle = {
@@ -39,6 +49,13 @@ export const useMemoryStore = defineStore("memory", () => {
   const facts = ref<MemoryFact[]>([]);
   const entities = ref<MemoryEntity[]>([]);
   const loading = ref(false);
+
+  const cascadeProposals = ref<CascadeProposal[]>([]);
+  const cascadePreview = ref<CascadePreview | null>(null);
+  const cascadeSagaSteps = ref<CascadeSagaStep[]>([]);
+  const loadingCascade = ref(false);
+  const loadingCascadePreview = ref(false);
+  const loadingCascadeSaga = ref(false);
 
   async function loadSnapshots(sessionID: string, limit = 20): Promise<L0AssemblySnapshot[]> {
     loading.value = true;
@@ -87,15 +104,99 @@ export const useMemoryStore = defineStore("memory", () => {
     };
   }
 
+  async function loadCascadeProposals(agentID: string) {
+    loadingCascade.value = true;
+    try {
+      const [pending, partial, failed] = await Promise.all([
+        listCascadeProposals(agentID, { status: "pending", limit: 30 }).catch(() => []),
+        listCascadeProposals(agentID, { status: "partial", limit: 30 }).catch(() => []),
+        listCascadeProposals(agentID, { status: "failed", limit: 30 }).catch(() => [])
+      ]);
+      cascadeProposals.value = [...pending, ...partial, ...failed];
+      return cascadeProposals.value;
+    } finally {
+      loadingCascade.value = false;
+    }
+  }
+
+  async function approveCascade(proposalID: string) {
+    return approveCascadeProposal(proposalID);
+  }
+
+  async function rejectCascade(proposalID: string, reviewer = "admin", reason = "rejected from memory center") {
+    return rejectCascadeProposal(proposalID, reviewer, reason);
+  }
+
+  async function loadCascadePreview(proposalID: string): Promise<CascadePreview> {
+    loadingCascadePreview.value = true;
+    try {
+      cascadePreview.value = await previewCascadeApprove(proposalID);
+      return cascadePreview.value;
+    } finally {
+      loadingCascadePreview.value = false;
+    }
+  }
+
+  async function loadCascadeSagaSteps(proposalID: string): Promise<CascadeSagaStep[]> {
+    loadingCascadeSaga.value = true;
+    try {
+      cascadeSagaSteps.value = await getCascadeSagaSteps(proposalID);
+      return cascadeSagaSteps.value;
+    } finally {
+      loadingCascadeSaga.value = false;
+    }
+  }
+
+  async function retryCascade(proposalID: string, reviewer = "admin") {
+    return retryCascadeApprove(proposalID, reviewer);
+  }
+
+  async function compensateCascade(proposalID: string, reviewer = "admin") {
+    return compensateCascadeApprove(proposalID, reviewer);
+  }
+
+  function clearCascadePreview() {
+    cascadePreview.value = null;
+  }
+
+  function clearSnapshots() {
+    snapshots.value = [];
+  }
+
+  function clearFacts() {
+    facts.value = [];
+  }
+
+  function clearEntities() {
+    entities.value = [];
+  }
+
   return {
     snapshots,
     facts,
     entities,
     loading,
+    cascadeProposals,
+    cascadePreview,
+    cascadeSagaSteps,
+    loadingCascade,
+    loadingCascadePreview,
+    loadingCascadeSaga,
     loadSnapshots,
     loadFacts,
     loadEntities,
     loadL1Tasks,
-    loadEvolutionForAgent
+    loadEvolutionForAgent,
+    loadCascadeProposals,
+    approveCascade,
+    rejectCascade,
+    loadCascadePreview,
+    loadCascadeSagaSteps,
+    retryCascade,
+    compensateCascade,
+    clearCascadePreview,
+    clearSnapshots,
+    clearFacts,
+    clearEntities
   };
 });

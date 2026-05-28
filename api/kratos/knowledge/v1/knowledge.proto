@@ -116,6 +116,10 @@ message SearchRequest {
   string filter_json = 5;     // optional metadata filter (JSON)
   optional bool use_rerank = 6;       // unset = use global reranker when configured
   int32 rerank_candidates = 7;        // vector candidates before rerank (0 = default)
+  // rewrite_strategy: hyde | decomposition | multi_query (empty = no rewrite).
+  string rewrite_strategy = 10;
+  // hybrid_search: auto | dense | sparse | rrf (empty = auto).
+  string hybrid_search = 11;
 }
 
 message SearchResponse {

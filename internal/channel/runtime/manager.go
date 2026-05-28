@@ -13,18 +13,14 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/safego"
 )
-
-// InboundHandler processes a normalized inbound event (implemented by service.ChannelIngress).
-type InboundHandler interface {
-	ProcessInbound(ctx context.Context, ch biz.Channel, ev port.InboundEvent) error
-}
 
 // CredentialLookup resolves plain credential values from channel_credential rows.
 type CredentialLookup func(ctx context.Context, creds []biz.ChannelCredential, key string) (string, error)
 
 // Starter runs a long-lived platform connector until ctx is cancelled.
-type Starter func(ctx context.Context, ch biz.Channel, creds []biz.ChannelCredential, lookup CredentialLookup, handler InboundHandler) error
+type Starter func(ctx context.Context, ch biz.Channel, creds []biz.ChannelCredential, lookup CredentialLookup, handler port.InboundHandler) error
 
 var (
 	registryMu sync.RWMutex
@@ -61,7 +57,7 @@ type runningInstance struct {
 // Manager supervises long-running channel connectors per DB instance.
 type Manager struct {
 	channels   *biz.ChannelUsecase
-	handler    InboundHandler
+	handler    port.InboundHandler
 	credLookup CredentialLookup
 
 	mu      sync.Mutex
@@ -72,7 +68,7 @@ type Manager struct {
 	leaseTTL  time.Duration
 }
 
-func NewManager(channels *biz.ChannelUsecase, handler InboundHandler, credLookup CredentialLookup) *Manager {
+func NewManager(channels *biz.ChannelUsecase, handler port.InboundHandler, credLookup CredentialLookup) *Manager {
 	return &Manager{
 		channels:   channels,
 		handler:    handler,
@@ -183,10 +179,10 @@ func (m *Manager) Reload(ctx context.Context) error {
 			close(done)
 			continue
 		}
-		go func(starter Starter, fingerprint, plat, recvMode string) {
+		safego.Go(runCtx, "channel.runtime.connector", func() {
 			defer close(done)
-			m.runSupervised(runCtx, chCopy, fingerprint, starter, plat, recvMode)
-		}(st, fp, platform, mode)
+			m.runSupervised(runCtx, chCopy, fp, st, platform, mode)
+		})
 		event.SysLogInfo("channel.runtime.connector_start", "Channel Runtime 启动连接器",
 			event.P("channel_id", chCopy.ID),
 			event.P("platform", platform),

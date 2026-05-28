@@ -155,3 +155,17 @@ func (fixedSessionRepo) ListMessagesAfterRevision(context.Context, string, int64
 }
 
 var _ sessionsess.SessionRepository = fixedSessionRepo{}
+
+var (
+	_ sessionsess.SessionReader    = fixedSessionRepo{}
+	_ sessionsess.SessionWriter    = fixedSessionRepo{}
+	_ sessionsess.MessageReader    = fixedSessionRepo{}
+	_ sessionsess.MessageWriter    = fixedSessionRepo{}
+	_ sessionsess.TimelineReader   = fixedSessionRepo{}
+	_ sessionsess.InvocationReader = fixedSessionRepo{}
+	_ sessionsess.SummaryRepo      = fixedSessionRepo{}
+	_ sessionsess.StateRepo        = fixedSessionRepo{}
+	_ sessionsess.TurnRepo         = fixedSessionRepo{}
+	_ sessionsess.ContextUpdater   = fixedSessionRepo{}
+	_ sessionsess.CompressRepo     = fixedSessionRepo{}
+)

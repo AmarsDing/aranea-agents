@@ -54,7 +54,7 @@ func ParseWebhook(body []byte, header http.Header, appSecret string) (*WebhookRe
 	res := &WebhookResult{}
 	switch payload.OPCode {
 	case dto.HTTPCallbackValidation:
-		data, ok := payload.Data.(map[string]interface{})
+		data, ok := payload.Data.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("qq: invalid validation payload")
 		}

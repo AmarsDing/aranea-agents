@@ -21,14 +21,14 @@ func (uc *SessionUsecase) CreateTurn(ctx context.Context, turn SessionTurn) (Ses
 	if turn.UpdatedAt == "" {
 		turn.UpdatedAt = turn.CreatedAt
 	}
-	return uc.sessions.CreateSessionTurn(ctx, turn)
+	return uc.turnRepo.CreateSessionTurn(ctx, turn)
 }
 
 func (uc *SessionUsecase) UpdateTurn(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error) {
 	if strings.TrimSpace(id) == "" {
 		return SessionTurn{}, validationErr("turn id is required")
 	}
-	return uc.sessions.UpdateSessionTurn(ctx, id, fields)
+	return uc.turnRepo.UpdateSessionTurn(ctx, id, fields)
 }
 
 // IncrementInvocationCounts bumps session.tool_call_count / mcp_call_count / skill_call_count.
@@ -37,7 +37,7 @@ func (uc *SessionUsecase) IncrementInvocationCounts(ctx context.Context, session
 	if sessionID == "" || (toolDelta == 0 && mcpDelta == 0 && skillDelta == 0) {
 		return nil
 	}
-	return uc.sessions.IncrementInvocationCounts(ctx, sessionID, toolDelta, mcpDelta, skillDelta)
+	return uc.contextUpdater.IncrementInvocationCounts(ctx, sessionID, toolDelta, mcpDelta, skillDelta)
 }
 
 func (uc *SessionUsecase) ListTurns(ctx context.Context, sessionID string, limit, offset int) (SessionTurnListResult, error) {
@@ -51,5 +51,5 @@ func (uc *SessionUsecase) ListTurns(ctx context.Context, sessionID string, limit
 	if offset < 0 {
 		offset = 0
 	}
-	return uc.sessions.ListSessionTurns(ctx, sessionID, limit, offset)
+	return uc.turnRepo.ListSessionTurns(ctx, sessionID, limit, offset)
 }

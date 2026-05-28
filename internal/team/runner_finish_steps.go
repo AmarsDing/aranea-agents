@@ -26,6 +26,7 @@ type TeamRunFinishInput struct {
 }
 
 // persistNativeBulkMemberSteps writes one team_run_step per enabled member (Native bulk path).
+// Deprecated: Native path is emergency-only (ARANEA_TEAM_NATIVE=1). Will be removed when Native is fully retired (BL-05).
 func (r *Runner) persistNativeBulkMemberSteps(ctx context.Context, in TeamRunFinishInput, members []MemberDef) {
 	if r == nil || in.GraphExecID != "" {
 		return

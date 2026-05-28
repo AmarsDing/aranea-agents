@@ -93,7 +93,12 @@ func (w *MonitorTraceBackfillWorker) runOnce(ctx context.Context) {
 		inserted++
 	}
 	if len(rows) > 0 {
-		latestCreatedAt = time.Now().UTC().Format(time.RFC3339)
+		lastRow := rows[len(rows)-1]
+		if lastRow.CreatedAt != "" {
+			latestCreatedAt = lastRow.CreatedAt
+		} else {
+			latestCreatedAt = time.Now().UTC().Format(time.RFC3339)
+		}
 		w.watermark = latestCreatedAt
 	}
 	if inserted > 0 {

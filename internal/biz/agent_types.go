@@ -322,6 +322,10 @@ func (s *AgentRuntimeSettings) GetSkills() SkillsCfg {
 	}
 }
 
+func (s *AgentRuntimeSettings) GetSkillRuntimeJSON() string {
+	return s.SkillRuntimeJSON
+}
+
 // GetCodeExecutor returns the code executor domain view.
 func (s *AgentRuntimeSettings) GetCodeExecutor() CodeExecutorCfg {
 	if s == nil {

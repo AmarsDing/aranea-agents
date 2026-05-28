@@ -7,13 +7,14 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/tools/skillrouter"
 	"aranea-agents/pkg/strutil"
 )
 
 // SkillToolsetOptions narrows which published Skills are mounted for one turn (layer A + B).
 type SkillToolsetOptions struct {
-	Runtime   *biz.AgentRuntimeSettings
+	Runtime   RuntimeSettings
 	UserQuery string
 }
 
@@ -24,7 +25,7 @@ type ResolveResult struct {
 }
 
 // ResolveSkillSlugs applies Layer A (allow/deny) and Layer B (intent + tags + score cap).
-func ResolveSkillSlugs(ctx context.Context, skillUC *biz.SkillUsecase, opts *SkillToolsetOptions) ([]string, error) {
+func ResolveSkillSlugs(ctx context.Context, skillUC SkillResolver, opts *SkillToolsetOptions) ([]string, error) {
 	result, err := ResolveSkillSlugsDetailed(ctx, skillUC, opts)
 	if err != nil {
 		return nil, err
@@ -33,14 +34,14 @@ func ResolveSkillSlugs(ctx context.Context, skillUC *biz.SkillUsecase, opts *Ski
 }
 
 // ResolveSkillSlugsDetailed applies Layer A + B and returns per-slug reasons.
-func ResolveSkillSlugsDetailed(ctx context.Context, skillUC *biz.SkillUsecase, opts *SkillToolsetOptions) (*ResolveResult, error) {
+func ResolveSkillSlugsDetailed(ctx context.Context, skillUC SkillResolver, opts *SkillToolsetOptions) (*ResolveResult, error) {
 	candidates, err := skillUC.ListEnabledPublishedSkillCandidates(ctx)
 	if err != nil {
 		return nil, err
 	}
 	rawPolicy := "{}"
-	if opts != nil && opts.Runtime != nil && strings.TrimSpace(opts.Runtime.SkillRuntimeJSON) != "" {
-		rawPolicy = opts.Runtime.SkillRuntimeJSON
+	if opts != nil && opts.Runtime != nil && strings.TrimSpace(opts.Runtime.GetSkillRuntimeJSON()) != "" {
+		rawPolicy = opts.Runtime.GetSkillRuntimeJSON()
 	}
 	policy := biz.ParseSkillRuntimePolicy(rawPolicy)
 	query := ""
@@ -78,7 +79,9 @@ func ResolveSkillSlugsDetailed(ctx context.Context, skillUC *biz.SkillUsecase, o
 
 	if policy.EmbeddingScoringEnabled && strings.TrimSpace(query) != "" {
 		embScores, embErr := skillUC.ScoreByEmbedding(ctx, query, final)
-		if embErr == nil && len(embScores) > 0 {
+		if embErr != nil {
+			event.SysLogWarn("system.skillruntime.embedding_score_failed", "embedding scoring failed; falling back to keyword scores", event.P("error", embErr))
+		} else if len(embScores) > 0 {
 			weight := policy.EmbeddingScoreWeight
 			for i := range scored {
 				if sim, ok := embScores[scored[i].slug]; ok {
@@ -118,23 +121,6 @@ type slugScore struct {
 	slug   string
 	score  int
 	reason string
-}
-
-func applyLayerA(in []biz.SkillRuntimeCandidate, policy biz.SkillRuntimePolicy) []biz.SkillRuntimeCandidate {
-	deny := strutil.SliceToSet(policy.DeniedSlugs)
-	allow := strutil.SliceToSet(policy.AllowedSlugs)
-	out := make([]biz.SkillRuntimeCandidate, 0, len(in))
-	for _, c := range in {
-		slug := strings.TrimSpace(strings.ToLower(c.Slug))
-		if slug == "" || deny[slug] {
-			continue
-		}
-		if len(allow) > 0 && !allow[slug] {
-			continue
-		}
-		out = append(out, c)
-	}
-	return out
 }
 
 func formatSimilarity(sim float64) string {
@@ -187,16 +173,6 @@ func mergeTagRequirements(policyTags, hints []string) []string {
 	return out
 }
 
-func filterByAllTags(in []biz.SkillRuntimeCandidate, required []string) []biz.SkillRuntimeCandidate {
-	out := make([]biz.SkillRuntimeCandidate, 0, len(in))
-	for _, c := range in {
-		if skillHasAllTags(c, required) {
-			out = append(out, c)
-		}
-	}
-	return out
-}
-
 func filterByAllTagsWithReasons(in []biz.SkillRuntimeCandidate, required []string, reasons map[string]string) []biz.SkillRuntimeCandidate {
 	out := make([]biz.SkillRuntimeCandidate, 0, len(in))
 	for _, c := range in {
@@ -226,16 +202,6 @@ func skillHasAllTags(c biz.SkillRuntimeCandidate, required []string) bool {
 		}
 	}
 	return true
-}
-
-func filterByIntentPaths(in []biz.SkillRuntimeCandidate, paths []string) []biz.SkillRuntimeCandidate {
-	out := make([]biz.SkillRuntimeCandidate, 0, len(in))
-	for _, c := range in {
-		if matchesAnyIntentPath(c, paths) {
-			out = append(out, c)
-		}
-	}
-	return out
 }
 
 func filterByIntentPathsWithReasons(in []biz.SkillRuntimeCandidate, paths []string, reasons map[string]string) []biz.SkillRuntimeCandidate {
@@ -288,45 +254,6 @@ func skillMatchesPath(c biz.SkillRuntimeCandidate, path string) bool {
 		return false
 	}
 	return false
-}
-
-func scoreCandidates(in []biz.SkillRuntimeCandidate, paths []string) []slugScore {
-	pathSet := map[string]bool{}
-	for _, p := range paths {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			pathSet[p] = true
-		}
-	}
-	out := make([]slugScore, 0, len(in))
-	for _, c := range in {
-		sc := 0
-		for _, tp := range c.TaxonomyPaths {
-			tp = strings.TrimSpace(tp)
-			for p := range pathSet {
-				if tp == "" || p == "" {
-					continue
-				}
-				tpl := strings.ToLower(tp)
-				pl := strings.ToLower(p)
-				if tpl == pl {
-					sc += 1000
-				} else if strings.Contains(tpl, pl) || strings.Contains(pl, tpl) {
-					sc += 400
-				}
-			}
-		}
-		if sc == 0 && len(paths) > 0 {
-			for _, p := range paths {
-				if skillMatchesPath(c, strings.TrimSpace(p)) {
-					sc += 100
-					break
-				}
-			}
-		}
-		out = append(out, slugScore{slug: c.Slug, score: sc})
-	}
-	return out
 }
 
 func scoreCandidatesWithReasons(in []biz.SkillRuntimeCandidate, paths []string, reasons map[string]string) []slugScore {

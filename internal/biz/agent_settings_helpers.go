@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // pgoDefaultFilesV2 reads the PGO_DEFAULT_FILES_V2 env-flag without importing
@@ -438,7 +440,7 @@ func configJSONFromSettings(settings AgentRuntimeSettings, files []AgentPromptFi
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
-		return "", fmt.Errorf("config json marshal: %w", err)
+		return "", kerrors.InternalServer("AGENT_SETTINGS", "config json marshal: "+err.Error())
 	}
 	return string(data), nil
 }
