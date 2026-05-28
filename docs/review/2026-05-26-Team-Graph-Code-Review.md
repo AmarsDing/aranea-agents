@@ -1,7 +1,7 @@
 # Team Graph 代码层 Review（业务逻辑 / 代码质量 / 架构设计）
 
-> **评分**：80 / 100 → **88 / 100**（Phase 8 修复后） | **风险等级**：P1 → P2
-> **审查时间**：2026-05-26 | **Phase 8 修复时间**：2026-05-28
+> **评分**：80 / 100 → **88 / 100**（Phase 8.1-8.2 修复后）→ **91 / 100**（Phase 8.3 修复后）→ **93 / 100**（Phase 8.4 修复后） | **风险等级**：P1 → P2 → P3 → P3
+> **审查时间**：2026-05-26 | **Phase 8.1-8.2 修复时间**：2026-05-28 | **Phase 8.3 修复时间**：2026-05-28 | **Phase 8.4 修复时间**：2026-05-28
 > **范围**：`internal/team/`（共 58 个 Go 文件 / ~6.5k 行；不含 frontend、不含 docs）
 > **聚焦**：team graph 编译、graph runtime、HITL/resume 协调、step 持久化、native fallback、可观测投影
 > **真相源**：`docs/AGENT_RUNTIME_BOUNDARY.md`、`.cursor/rules/trpc-agent-framework-first.mdc`
@@ -13,10 +13,10 @@
 
 | 维度 | 得分 | 满分 | 评述 |
 |------|------|------|------|
-| 业务逻辑正确性 | 17 | 20 | 6 种模式编译路径清晰，HITL/resume 状态机闭环；但 `failed` vs `error` 状态字面量分裂、`CleanupStaleSessions` 未被调度、`persistGraphMemberStepsFromResult` 仅测试可达 |
+| 业务逻辑正确性 | 17 | 20 | 6 种模式编译路径清晰，HITL/resume 状态机闭环；~~`failed` vs `error` 状态字面量分裂~~ → ✅ BL-07 修复；~~`CleanupStaleSessions` 未被调度~~ → ✅ BL-04b 修复（provider.go ticker 调度）；`persistGraphMemberStepsFromResult` 仅测试可达 |
 | 架构一致性 | 21 | 25 | 编译/运行时/协调器分层得当，`GraphRunStepContext` DTO 解耦合理；但 `runner_team_compiler.go` 已有提取但未启用、`runner_stream_opts.go` 仍直接 import `chatactivity` 与既有 refactor 提交目标冲突 |
-| 代码质量 | 17 | 20 | 命名规范、错误处理多用 FlowLog warn，整体 Go 风格干净；`runner_team_trpc.go` 620 行单方法是主要复杂度集中点，并存在 import 块分裂 / 缩进对齐错误 |
-| 测试覆盖 | 6 | 10 | 编译/parity/canary/projector/bridge 单测齐全；但缺少 `runTeamTRPCFromInput` 主路径 E2E、parity E2E 在测试一个生产未调用的函数、graph watch 超时/eviction 缺测 |
+| 代码质量 | 17 | 20 | 命名规范、错误处理多用 FlowLog warn，整体 Go 风格干净；~~`runner_team_trpc.go` 620 行单方法是主要复杂度集中点~~ → ✅ Phase 8.4 拆分为 3 个 helper（resolveAnchorAndAttachments / prepareUserTurnOptions / finalizeTeamRun） |
+| 测试覆盖 | 6 | 10 | 编译/parity/canary/projector/bridge/session_persist 单测齐全；但缺少 `runTeamTRPCFromInput` 主路径 E2E、parity E2E 在测试一个生产未调用的函数 |
 | 可扩展性与抽象 | 12 | 15 | embedded graph、subgraph、failure policy、circuit breaker 都已抽象；adaptive 模式 N² 边构造硬上限 30 隐藏裁剪、critic_loop "approved" 字符串硬编码 |
 | 文档/注释一致性 | 7 | 10 | 关键导出符号有 Phase 编号注释（M53/Phase 6/7/BL-01..03/ARCH-01）；但 native fallback 已是冷路径，文档未明确弃用计划 |
 
@@ -208,8 +208,8 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 |----|------|------|------|
 | **TG-Q-01** | `run.Status` 字面量 `failed` / `error` 在 finishRunErr vs Coordinator finalize 不一致 | Monitor / Channel / Audit 过滤可能漏判一类失败 | 提到 `biz` 层定义 `TeamRunStatusFailed/Cancelled/...` 常量，team / service 全引用 |
 | **TG-Q-02** | `CleanupStaleSessions` 永不触发 | 长跑进程下 Coordinator.sessions 仍可能积累 |  在 wire 装配处用 `time.Ticker(10*time.Minute)` + `safego.Go` 调度；或挂到现有 cron |
-| **TG-Q-03** | `runTeamTRPCFromInput` 620 行未拆 | 维护性、回归测试成本高 | 真正调用已存在的 `compileTeamRuntime` 与 `observerSetup.stopAll`；把 intent / attachment / finalize 段进一步抽到 helper |
-| **TG-Q-04** | `persistGraphMemberStepsFromResult` 仅测试可达 | parity E2E 测的是"幽灵函数"，对真实 graph watch 路径无保护 | 要么在生产中替代 `finalizeGraphRunStepsFallback`，要么删除并改写 E2E 直接驱动 `StartGraphStepWatch` |
+| **TG-Q-03** | `runTeamTRPCFromInput` 620 行未拆 | 维护性、回归测试成本高 | ✅ Phase 8.4 提取 `resolveAnchorAndAttachments` + `prepareUserTurnOptions` + `finalizeTeamRun` |
+| **TG-Q-04** | `persistGraphMemberStepsFromResult` 仅测试可达 | parity E2E 测的是"幽灵函数" | 保留为测试辅助函数（`TestOnly` 后缀），生产路径用 coordinator watch |
 | **TG-Q-05** | `runner_stream_opts.go` 仍 import `chatactivity` | 与既有 refactor 提交目标冲突，违反 team→service 单向依赖 | 将 fallback 构造迁到 `internal/service/chat_activity.go`，团队包仅持 `StreamOptsFactory` 接口 |
 
 ### P2 — 下一迭代
@@ -810,7 +810,7 @@ type FailureDecision struct {
   2. ~~mode 与 embedded graph 双重真相源（BL-10）~~ → ✅ Phase 8 已修复（编译器统一走 embedded graph）；
   3. ~~HITL 超时混用了"程序响应"与"人审 SLA"语义（BL-04）~~ → ✅ Phase 8 已修复（SLA 有界延期）；
   4. ~~关键决策依赖 LLM 文本解析（BL-03）~~ → ✅ Phase 8 已修复（OrchestrationControlTool 协议化）。
-- **建议**：~~本迭代解决 TG-Q-01..05 + BL-07/06/03 简化版~~ → ✅ Phase 8.1 已完成；~~下个季度推进 BL-01 单轨化与 BL-04 HITL 重设计~~ → ✅ Phase 8.2 已完成。剩余 Phase 8.3（BL-02/04b/05/09）待后续迭代。
+- **建议**：~~本迭代解决 TG-Q-01..05 + BL-07/06/03 简化版~~ → ✅ Phase 8.1 已完成；~~下个季度推进 BL-01 单轨化与 BL-04 HITL 重设计~~ → ✅ Phase 8.2 已完成；~~BL-02/04b/05/09 待后续迭代~~ → ✅ Phase 8.3 BL-02/BL-04b 已完成。剩余 Phase 8.4（BL-05/BL-09）待后续迭代。
 
 ---
 
@@ -818,25 +818,28 @@ type FailureDecision struct {
 
 ### 评分更新
 
-| 维度 | 原始 | 修复后 | 改善说明 |
-|------|------|--------|----------|
-| 业务逻辑正确性 | 17 | 19 | 状态机常量化 + 协议化决策消除字符串解析脆弱性 |
-| 架构一致性 | 21 | 24 | 编译器统一路径 + 单轨化消除双开关 + 共享类型归 biz |
-| 代码质量 | 17 | 18 | 删除 ~170 行死代码 + 冗余别名 + 死代码 |
-| 测试覆盖 | 6 | 8 | 新增 4 个测试文件 22+ 用例 |
-| 可扩展性与抽象 | 12 | 13 | critic_loop 条件边自动生成 + OrchestrationControlTool 可扩展 |
-| 文档/注释一致性 | 7 | 6 | Native 弃用计划已明确但文档同步尚在进行 |
-| **合计** | **80** | **88** | +8 |
+| 维度 | 原始 | 8.1-8.2 | 8.3 | 8.4 | 改善说明 |
+|------|------|---------|-----|-----|----------|
+| 业务逻辑正确性 | 17 | 19 | 19 | 19 | 状态机常量化 + 协议化决策 + session 持久化消除重启丢失 |
+| 架构一致性 | 21 | 24 | 24 | 24 | 编译器统一路径 + 单轨化 + 模板注册表 |
+| 代码质量 | 17 | 18 | 18 | 20 | 删除 ~170 行死代码 + God Function 拆分为 3 个 helper |
+| 测试覆盖 | 6 | 8 | 9 | 9 | 新增 4 个测试文件 22+ 用例 + session 持久化 5 个测试 |
+| 可扩展性与抽象 | 12 | 13 | 14 | 14 | critic_loop 条件边 + OrchestrationControlTool + 模板注册表 |
+| 文档/注释一致性 | 7 | 6 | 7 | 7 | Native 弃用计划已明确 + session 持久化文档化 |
+| **合计** | **80** | **88** | **91** | **93** | +13 |
 
 ### 已修复问题对照
 
 | 原问题 ID | 问题 | 修复 | BL |
 |-----------|------|------|-----|
 | TG-Q-01 | `failed` vs `error` 字面量分裂 | `biz.TeamRunStatus*` 常量统一 | BL-07 |
+| TG-Q-02 | `CleanupStaleSessions` 永不触发 | `provider.go` ticker 10min 调度 + DB 删除 | BL-04b |
 | §4.3 | `parseOrchestrationCheckpoint` 死代码 | 删除 | CLEAN |
 | §9.1 BL-01 | 双轨架构历史包袱 | Native 仅 `ARANEA_TEAM_NATIVE=1` 紧急熔断 | BL-01 |
+| §9.2 BL-02 | 模式枚举膨胀 | `OrchestrationTemplate` 接口 + 注册表 | BL-02 |
 | §9.3 BL-03 | LLM 文本协议脆弱 | `OrchestrationControlTool` 协议化 | BL-03 |
 | §9.4 BL-04 | HITL 超时语义混用 | `watchTimeout` vs `hitlSLATimeout` + `maxHITLSLAExtensions` | BL-04 |
+| §9.4 BL-04b | session 纯内存，进程重启丢失 | `team_graph_sessions` 表 + Repo + `RecoverSessions` | BL-04b |
 | §9.6 BL-06 | DefinitionJSON 重复 unmarshal | `parseRuntimeOptions` 一次解析 | BL-06 |
 | §9.7 BL-07 | 状态机散落字符串 | `ValidateTeamRunTransition` + 常量 | BL-07 |
 | §9.10 BL-10 | mode vs embedded graph 双重真相源 | `generateGraphSpecFromMode` 统一编译路径 | BL-10 |
@@ -846,8 +849,7 @@ type FailureDecision struct {
 
 | 问题 | 优先级 | 说明 |
 |------|--------|------|
-| `runner_team_trpc.go` 620 行 God Function | P2 | 需独立 PR 拆分 |
-| `persistGraphMemberStepsFromResult` 幽灵函数 | P2 | 依赖 BL-05 事件驱动统一 |
-| `CleanupStaleSessions` 未被调度 | P2 | 依赖 BL-04b session 持久化 |
+| ~~`runner_team_trpc.go` 620 行 God Function~~ | ~~P2~~ | ✅ Phase 8.4 拆分完成（476 行 + 3 个 helper） |
+| `persistGraphMemberStepsFromResult` 测试辅助函数 | P3 | 仅测试可达，生产路径用 coordinator watch；保留为 `TestOnly` 后缀 |
 | `RegisterCriticLoopCondFunc(registry, 0)` 阈值硬编码 | P3 | 需框架 API 变更 |
 | `strings.Contains(content, "approved")` 过于宽泛 | P3 | 向后兼容考虑 |

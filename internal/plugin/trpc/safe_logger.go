@@ -3,7 +3,6 @@ package plugintrpc
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"aranea-agents/internal/event"
@@ -42,17 +41,40 @@ func (l *PluginSafeLogger) Debug(msg string, attrs ...any) {
 }
 
 func (l *PluginSafeLogger) write(level, msg string, attrs ...any) {
-	var buf strings.Builder
-	fmt.Fprintf(&buf, "[%s][%s] %s", level, l.pluginName, msg)
+	pairs := make([]event.Pair, 0, len(attrs)/2)
 	for i := 0; i+1 < len(attrs); i += 2 {
-		fmt.Fprintf(&buf, " %v=%v", attrs[i], attrs[i+1])
+		key, _ := attrs[i].(string)
+		if key != "" {
+			pairs = append(pairs, event.P(key, attrs[i+1]))
+		}
 	}
-	text := buf.String()
 
-	fmt.Fprintln(os.Stderr, text)
-	os.Stderr.Sync()
+	stepID := "plugin." + l.pluginName
+	switch level {
+	case "ERROR":
+		event.SysLogError(stepID, msg, pairs...)
+	case "WARN":
+		event.SysLogWarn(stepID, msg, pairs...)
+	default:
+		event.SysLogInfo(stepID, msg, pairs...)
+	}
 
 	if l.bus != nil {
+		var buf strings.Builder
+		buf.WriteString("[")
+		buf.WriteString(level)
+		buf.WriteString("][")
+		buf.WriteString(l.pluginName)
+		buf.WriteString("] ")
+		buf.WriteString(msg)
+		for i := 0; i+1 < len(attrs); i += 2 {
+			k, _ := attrs[i].(string)
+			buf.WriteString(" ")
+			buf.WriteString(k)
+			buf.WriteString("=")
+			fmt.Fprintf(&buf, "%v", attrs[i+1])
+		}
+		text := buf.String()
 		env := event.NewEnvelope(event.EnvelopeTypeLog, l.pluginName, "")
 		env.Channel = "monitor"
 		env.Metadata = map[string]any{"level": level, "source": l.pluginName}

@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
 	trpcguardrail "trpc.group/trpc-go/trpc-agent-go/plugin/guardrail"
 	trpcidentity "trpc.group/trpc-go/trpc-agent-go/plugin/identity"
@@ -20,9 +21,10 @@ type AgentKeyResolver func(ctx context.Context, agentKey string) string
 
 // Manager aggregates plugin Runtime and hook rules for callback chain assembly.
 type Manager struct {
-	rt               *Runtime
-	hooks            *biz.HookResolver
-	resolveAgentID   AgentKeyResolver
+	rt             *Runtime
+	hooks          *biz.HookResolver
+	resolveAgentID AgentKeyResolver
+	resolveMu      sync.RWMutex
 
 	guardrailOnce sync.Once
 	guardrail     *trpcguardrail.Plugin
@@ -36,7 +38,10 @@ type Manager struct {
 func NewManager(rt *Runtime, hooks *biz.HookResolver) *Manager {
 	m := &Manager{rt: rt, hooks: hooks}
 	if hooks != nil {
-		_ = hooks.Reload(context.Background())
+		if err := hooks.Reload(context.Background()); err != nil {
+			event.SysLogWarn("system.hook.reload_fail", "Hook 规则加载失败，Hook 通知将不可用",
+				event.P("error", err.Error()))
+		}
 	}
 	return m
 }
@@ -70,17 +75,25 @@ func (m *Manager) SetAgentKeyResolver(fn AgentKeyResolver) {
 	if m == nil {
 		return
 	}
+	m.resolveMu.Lock()
 	m.resolveAgentID = fn
+	m.resolveMu.Unlock()
 	if m.rt != nil {
 		m.rt.SetAgentKeyResolver(fn)
 	}
 }
 
 func (m *Manager) platformAgentID(ctx context.Context, agentKey string) string {
-	if m == nil || m.resolveAgentID == nil {
+	if m == nil {
 		return ""
 	}
-	return strings.TrimSpace(m.resolveAgentID(ctx, agentKey))
+	m.resolveMu.RLock()
+	fn := m.resolveAgentID
+	m.resolveMu.RUnlock()
+	if fn == nil {
+		return ""
+	}
+	return strings.TrimSpace(fn(ctx, agentKey))
 }
 
 // ReloadHooks refreshes hook rules from the database.
@@ -162,10 +175,13 @@ func (m *Manager) RunnerPluginsForAgent(agentID string) []trpcplugin.Plugin {
 		return nil
 	}
 	plugins := m.PluginsForAgent(agentID)
-	plugins = append(plugins, &productEventPlugin{mgr: m})
-	if m.resolveAgentID != nil {
+	plugins = append(plugins, &productEventPlugin{mgr: m, name: "aranea_event_bridge"})
+	m.resolveMu.RLock()
+	resolver := m.resolveAgentID
+	m.resolveMu.RUnlock()
+	if resolver != nil {
 		m.identityOnce.Do(func() {
-			m.identity = BuildIdentityPlugin(m.resolveAgentID)
+			m.identity = BuildIdentityPlugin(resolver)
 		})
 		if m.identity != nil {
 			plugins = append(plugins, m.identity)

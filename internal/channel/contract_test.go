@@ -5,15 +5,20 @@ import (
 
 	"aranea-agents/internal/channel"
 	"aranea-agents/internal/channel/lark"
+	"aranea-agents/internal/channel/line"
+	"aranea-agents/internal/channel/mattermost"
 	"aranea-agents/internal/channel/slack"
+	"aranea-agents/internal/channel/teams"
 	"aranea-agents/internal/channel/telegram"
 )
 
-// Compile-time check: outbound adapters match openclaw-style OutboundText split.
 var (
 	_ channel.OutboundText = (*lark.FeishuTextSender)(nil)
 	_ channel.OutboundText = (*slack.TextSender)(nil)
 	_ channel.OutboundText = (*telegram.TextSender)(nil)
+	_ channel.OutboundText = (*line.TextSender)(nil)
+	_ channel.OutboundText = (*mattermost.TextSender)(nil)
+	_ channel.OutboundText = (*teams.TextSender)(nil)
 )
 
 func TestFeishuTextSenderID(t *testing.T) {

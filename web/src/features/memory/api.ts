@@ -23,6 +23,8 @@ export type {
   MemoryRecallHit,
   CompositeSearchHit,
   MemoryWorkerStatus,
+  MemoryWorkerQueueStats,
+  MemoryDeadLetterEntry,
   MemoryPlatformSettings
 } from "./types";
 
@@ -52,7 +54,7 @@ import type {
   MemoryWorkerStatus,
   MemoryPlatformSettings
 } from "./types";
-import { asRecord, mapStringFloat, pickBool, pickI32, pickNum, pickOptionalI32, pickStr, pickStrArray } from "../../shared/wireJson";
+import { asRecord, mapStringFloat, parseJsonArray, pickBool, pickI32, pickI64, pickNum, pickOptionalI32, pickStr, pickStrArray } from "../../shared/wireJson";
 import { kratosApi } from "../../services/axiosHandler";
 import { memoryEndpoints } from "./memoryEndpoints";
 
@@ -179,6 +181,8 @@ function mapFact(raw: unknown): MemoryFact {
     version: pickI32(f, "version", "version"),
     status: pickStr(f, "status", "status"),
     pii_flag: pickBool(f, "pii_flag", "piiFlag"),
+    pii_types: parseJsonArray(pickStr(f, "pii_types", "piiTypes")),
+    quality_score: pickNum(f, "quality_score", "qualityScore"),
     created_at: pickStr(f, "created_at", "createdAt"),
     updated_at: pickStr(f, "updated_at", "updatedAt")
   };
@@ -602,12 +606,31 @@ export async function compositeSearchMemories(params: {
 
 export async function getMemoryWorkerStatus(): Promise<MemoryWorkerStatus> {
   const raw = asRecord(await memory.GetMemoryWorkerStatus({}));
+  const mapQueueStats = (snakeKey: string): MemoryWorkerQueueStats | undefined => {
+    const camelKey = snakeKey.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+    const obj = asRecord(raw[snakeKey] || raw[camelKey]);
+    if (!obj || Object.keys(obj).length === 0) return undefined;
+    return {
+      capacity: pickI32(obj, "capacity"),
+      in_flight: pickI32(obj, "in_flight", "inFlight"),
+      dropped_total: pickI64(obj, "dropped_total", "droppedTotal"),
+      debounced_total: pickI64(obj, "debounced_total", "debouncedTotal")
+    };
+  };
   return {
     jobs_done: pickI32(raw, "jobs_done", "jobsDone"),
     jobs_dead: pickI32(raw, "jobs_dead", "jobsDead"),
     llm_fallback_total: pickI32(raw, "llm_fallback_total", "llmFallbackTotal"),
     avg_extraction_seconds: pickNum(raw, "avg_extraction_seconds", "avgExtractionSeconds"),
-    episode_backfill_total: pickI32(raw, "episode_backfill_total", "episodeBackfillTotal")
+    episode_backfill_total: pickI32(raw, "episode_backfill_total", "episodeBackfillTotal"),
+    queue_high: mapQueueStats("queue_high"),
+    queue_normal: mapQueueStats("queue_normal"),
+    queue_low: mapQueueStats("queue_low"),
+    index_active: pickI32(raw, "index_active", "indexActive"),
+    index_stale: pickI32(raw, "index_stale", "indexStale"),
+    index_disabled: pickI32(raw, "index_disabled", "indexDisabled"),
+    db_available: pickBool(raw, "db_available", "dbAvailable"),
+    dead_letter_pending: pickI64(raw, "dead_letter_pending", "deadLetterPending")
   };
 }
 
@@ -635,4 +658,39 @@ export async function updateMemoryPlatformSettings(input: {
     episodeBackfillDisabled: input.episode_backfill_disabled
   });
   return mapMemoryPlatformSettings(raw);
+}
+
+function mapDeadLetterEntry(raw: unknown): MemoryDeadLetterEntry {
+  const e = asRecord(raw);
+  return {
+    id: pickI64(e, "id"),
+    session_id: pickStr(e, "session_id", "sessionId"),
+    app_name: pickStr(e, "app_name", "appName"),
+    drop_reason: pickStr(e, "drop_reason", "dropReason"),
+    priority: pickI32(e, "priority"),
+    attempts: pickI32(e, "attempts"),
+    state: pickStr(e, "state"),
+    last_error: pickStr(e, "last_error", "lastError"),
+    enqueued_at: pickStr(e, "enqueued_at", "enqueuedAt"),
+    failed_at: pickStr(e, "failed_at", "failedAt")
+  };
+}
+
+export async function listMemoryDeadLetters(state?: string, limit?: number): Promise<MemoryDeadLetterEntry[]> {
+  const raw = await memory.ListMemoryDeadLetters({ state: state || "pending", limit: limit || 50 });
+  const resp = asRecord(raw);
+  const items = (resp.items || []) as unknown[];
+  return items.map(mapDeadLetterEntry);
+}
+
+export async function replayMemoryDeadLetter(id: number): Promise<MemoryDeadLetterEntry> {
+  const raw = await memory.ReplayMemoryDeadLetter({ id });
+  const resp = asRecord(raw);
+  return mapDeadLetterEntry(resp.entry);
+}
+
+export async function abandonMemoryDeadLetter(id: number): Promise<MemoryDeadLetterEntry> {
+  const raw = await memory.AbandonMemoryDeadLetter({ id });
+  const resp = asRecord(raw);
+  return mapDeadLetterEntry(resp.entry);
 }

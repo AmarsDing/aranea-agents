@@ -11,11 +11,15 @@ import (
 const (
 	DefaultCompressMinGap = 10 * time.Minute
 	compressRunTimeout    = 8 * time.Minute
+
+	defaultCompressThreshold = 0.6
+	forcedCompressThreshold  = 0.35
+	defaultKeepTurns         = 4
 )
 
 func compressThresholdAndKeep(ag biz.Agent) (threshold float64, keepTurns int) {
-	threshold = 0.6
-	keepTurns = 4
+	threshold = defaultCompressThreshold
+	keepTurns = defaultKeepTurns
 	if ag.Settings == nil {
 		return threshold, keepTurns
 	}
@@ -48,8 +52,8 @@ func sessionCompressThreshold(ag biz.Agent) float64 {
 	if ag.Settings != nil {
 		mode = strings.ToLower(strings.TrimSpace(ag.Settings.L0SnapshotMode))
 	}
-	if mode == "always" && threshold > 0.35 {
-		return 0.35
+	if mode == "always" && threshold > forcedCompressThreshold {
+		return forcedCompressThreshold
 	}
 	return threshold
 }

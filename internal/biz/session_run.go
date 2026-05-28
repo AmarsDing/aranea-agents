@@ -237,3 +237,10 @@ func (u *SessionRunUsecase) CleanupOrphanedRuns(ctx context.Context) (int, error
 	}
 	return u.repo.MarkOrphanedRunsCancelled(ctx)
 }
+
+func (u *SessionRunUsecase) ListBySession(ctx context.Context, sessionID string, limit, offset int) ([]SessionRun, int, error) {
+	if u == nil || u.repo == nil {
+		return nil, 0, nil
+	}
+	return u.repo.ListBySession(ctx, sessionID, limit, offset)
+}

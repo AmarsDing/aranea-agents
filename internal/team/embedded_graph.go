@@ -331,29 +331,32 @@ func compileEmbeddedEdges(def Definition, spec *embeddedGraphSpec, nodeTypeByID 
 		finish = joinTarget
 	}
 	if mode == "critic_loop" && len(executableIDs) >= 2 {
-		var lastExec, firstExec string
-		for id := range executableIDs {
-			if firstExec == "" || id < firstExec {
-				firstExec = id
+		firstExec := entry
+		lastExec := finish
+		if firstExec == "" {
+			for id := range executableIDs {
+				if firstExec == "" || id < firstExec {
+					firstExec = id
+				}
 			}
-			if lastExec == "" || id > lastExec {
-				lastExec = id
+		}
+		if lastExec == "" {
+			for id := range executableIDs {
+				if lastExec == "" || id > lastExec {
+					lastExec = id
+				}
 			}
 		}
-		if finish != "" {
-			lastExec = finish
+		if firstExec != "" && lastExec != "" {
+			condEdges = append(condEdges, biz.ConditionalEdgeDef{
+				From:        lastExec,
+				CondFuncRef: biz.CriticLoopCondFuncRef,
+				PathMap: map[string]string{
+					"approved": lastExec,
+					"retry":    firstExec,
+				},
+			})
 		}
-		if entry != "" {
-			firstExec = entry
-		}
-		condEdges = append(condEdges, biz.ConditionalEdgeDef{
-			From:        lastExec,
-			CondFuncRef: biz.CriticLoopCondFuncRef,
-			PathMap: map[string]string{
-				"approved": lastExec,
-				"retry":    firstExec,
-			},
-		})
 	}
 	return out, condEdges, entry, finish, branchIDs
 }

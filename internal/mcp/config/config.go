@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	trpcmcp "trpc.group/trpc-go/trpc-agent-go/tool/mcp"
 )
 
 // Transport is a normalized MCP transport type. JSON deserialization automatically
@@ -90,6 +88,7 @@ type ServerConfig struct {
 	RequireUserCredentials bool              `json:"require_user_credentials"`
 	AllowAdHocHTTP         bool              `json:"allow_adhoc_http"`
 	AdHocTimeoutSec        int               `json:"adhoc_timeout_sec"`
+	ProbeMode              string            `json:"probe_mode"`
 }
 
 // DefaultJSON returns "{}" when raw is empty.
@@ -117,28 +116,6 @@ func DurationSec(sec int) time.Duration {
 		return 0
 	}
 	return time.Duration(sec) * time.Second
-}
-
-// ToTRPCConnectionConfig is the SINGLE canonical mapping from platform ServerConfig
-// to trpc-agent-go MCP connection settings. All runtime code paths must call this
-// instead of constructing trpcmcp.ConnectionConfig manually so transport normalization,
-// timeout defaults, and field mapping stay aligned. TPM-D-M1.
-func ToTRPCConnectionConfig(sc ServerConfig) trpcmcp.ConnectionConfig {
-	transport := string(sc.Transport)
-	if transport == "" {
-		transport = string(TransportStdio)
-	}
-	cfg := trpcmcp.ConnectionConfig{
-		Transport: transport,
-		ServerURL: strings.TrimSpace(sc.URL),
-		Headers:   sc.Headers,
-		Command:   strings.TrimSpace(sc.Command),
-		Args:      sc.Args,
-	}
-	if sc.TimeoutSec > 0 {
-		cfg.Timeout = DurationSec(sc.TimeoutSec)
-	}
-	return cfg
 }
 
 // NormalizeTransport maps any accepted UI/API transport spelling to its canonical

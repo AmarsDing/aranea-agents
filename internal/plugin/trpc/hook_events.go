@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/metrics"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
@@ -31,7 +32,7 @@ func (m *Manager) dispatchHookOnEvent(
 		return e, nil
 	}
 	eventType := eventTypeLabel(e)
-	for i, rh := range resolved {
+	for _, rh := range resolved {
 		if rh.Rule.CallbackPoint != "on_event" {
 			continue
 		}
@@ -44,10 +45,15 @@ func (m *Manager) dispatchHookOnEvent(
 			stats = m.rt.stats
 			notifier = m.rt.HookNotifier()
 		}
-		if err := executeHookAction(ctx, stats, notifier, rh, "on_event", agentID, agentKey, "", e); err != nil {
-			return e, err
-		}
-		_ = i // hook executed
+		func() {
+			defer func() { recoverHookPanic("on_event", recover(), nil) }()
+			if err := executeHookAction(ctx, stats, notifier, rh, "on_event", agentID, agentKey, "", e); err != nil {
+				if metrics.IsBlockedErr(err) {
+					return
+				}
+				hookLogger.Warn("hook: non-block error suppressed", "point", "on_event", "agent_id", agentID, "error", err)
+			}
+		}()
 	}
 	return e, nil
 }

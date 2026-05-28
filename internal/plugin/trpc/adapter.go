@@ -9,6 +9,13 @@ import (
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 )
 
+type adaptedPlugin struct {
+	plugin              trpcplugin.Plugin
+	modelRouter         *ModelRouterConfig
+	costGuard           *CostGuardConfig
+	confirmationGuard   *ConfirmationGuardConfig
+}
+
 func builtin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime) trpcplugin.Plugin {
 	key := strings.ToLower(strings.TrimSpace(p.Key))
 	switch key {
@@ -41,10 +48,30 @@ func builtin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime) trpc
 	}
 }
 
-func adapt(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime) trpcplugin.Plugin {
+func adapt(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime) *adaptedPlugin {
 	if !p.Enabled {
 		return nil
 	}
 	ValidatePluginCallbackPoints(p)
-	return builtin(p, stats, bus, rt)
+	tp := builtin(p, stats, bus, rt)
+	if tp == nil {
+		return nil
+	}
+	ap := &adaptedPlugin{plugin: tp}
+	key := strings.ToLower(strings.TrimSpace(p.Key))
+	switch key {
+	case "model_router":
+		var cfg ModelRouterConfig
+		parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+		ap.modelRouter = &cfg
+	case "cost_guard":
+		var cfg CostGuardConfig
+		parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+		ap.costGuard = &cfg
+	case "confirmation_guard":
+		var cfg ConfirmationGuardConfig
+		parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+		ap.confirmationGuard = &cfg
+	}
+	return ap
 }

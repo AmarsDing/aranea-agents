@@ -2,38 +2,26 @@
 
 > Cursor / Claude Code 入口。人类开发者见 [README.md](./README.md)。
 
-## 第一步（必读）
-
-1. **[docs/README.md](./docs/README.md)** — 项目 AI 入口：文档索引、工作流、分级验证
-2. 只读 **与当前任务相关的** 文档（按 docs/README §5 索引）；禁止为找上下文扫全库 `changelog/`
-
 ## 编码规范（按任务选读）
 
-| 任务 | 文档 |
-|------|------|
-| 后端 Go | [docs/guides/AI-DEVELOPMENT-SPECIFICATION.md](./docs/guides/AI-DEVELOPMENT-SPECIFICATION.md) 速查卡 |
-| 前端 | [docs/guides/frontend-guide.md](./docs/guides/frontend-guide.md) |
-| Agent 运行时 | `.cursor/rules/trpc-agent-framework-first.mdc` |
-| 代码探索 | CodeGraph 优先（`.cursor/rules/codegraph.mdc`） |
+> 详细规范在 `.trae/skills/` 下的 SKILLs 中，本文件为精简索引。内容冲突时以 SKILL 为准。
+
+| 任务 | SKILL | 说明 |
+|------|-------|------|
+| 后端 Go | `aranea-coding-guide` | 架构铁律、分层规范、框架集成（详细版） |
+| 后端 Go OOP | `go-oop-guide` | 通用 Go OOP 编程指导 |
+| 后端 Go 审查 | `go-oop-review` | Go OOP 代码审查 |
+| 前端 | `aranea-frontend-guide` | 数据流铁律、分层规范、UX 主题（详细版） |
+| 前端 Vue 3 | `vue-frontend-guide` | 通用 Vue 3 编程指导 |
+| 前端审查 | `aranea-frontend-review` | 前端代码审查（含业务检查） |
+| Agent 运行时 | `.cursor/rules/trpc-agent-framework-first.mdc` | 框架真相源 |
 
 ## 红线（违反即停）
 
-- `internal/biz` 不得 import `pkg/trpc-agent-go`
-- Runner 装配只在 `internal/service`，不在 `internal/server`
-- 结构性查询：**CodeGraph 先于 grep**
-
-完整 14 条红线见 AI-DEVELOPMENT-SPECIFICATION 速查卡。
-
-## 验证
-
-按改动类型选 **最小验证集**，见 [docs/README.md §4.2](./docs/README.md#42-分级验证按改动选跑)。提交 / PR 前跑全量 `make ci`。
+完整后端 19 条红线见 `aranea-coding-guide` SKILL；完整前端 14 条红线见 `aranea-frontend-guide` SKILL。
 
 ## 任务执行
 
-- 有任务 ID（如 `CC-A-01`、`M53-*`）时：只读对应 `*-development.md` / blueprint 中 **该 ID 块**
 - 列假设 → 编码 → 分级验证 → 通过后再扩 scope
 - 只改与任务直接相关的文件；不顺带 refactor 相邻模块
 
-## 行为准则
-
-通用编码纪律见 [docs/skills/karpathy-guidelines/SKILL.md](./docs/skills/karpathy-guidelines/SKILL.md)（优先级低于 AI-DEVELOPMENT-SPECIFICATION）。

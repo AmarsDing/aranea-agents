@@ -1,6 +1,6 @@
 # Monitor 监控 — 开发计划
 
-> **版本**：2026-05-28 | **状态**：🟢 核心已通（6 Tab + 告警 + Logs 1c + **Phase 1d 方案 C** ✅）；概览 Dashboard Phase 2～3b ✅；**MON-OPT-01~06 ✅ LOG-01/TRACE-01 ✅ DIAG-01/02 ✅**；待办为 latency 聚合等 P2
+> **版本**：2026-05-28-v2 | **状态**：🟢 核心已通 + **MON-OPT-01~06 ✅ LOG-01/TRACE-01 ✅ DIAG-01/02 ✅ Latency P50/P95/P99 ✅ LOG-03 P0/P1 ✅**；待办为 LOG-02（跨 pkg）、LOOP-01（P3）
 > **需求**：[18 monitor.md](./18%20monitor.md) · **设计**：[18 monitor.design.md](./18%20monitor.design.md)（§九 方案 C）
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md)（I8-MON-01/02、MON-01、I5-MON-01/02）· **页面索引**：[frontend-pages.md](./frontend-pages.md) §监控
 
@@ -15,12 +15,12 @@
 | 层 | 路径 |
 |----|------|
 | Proto | `api/kratos/monitor/v1/monitor.proto` |
-| Biz | `internal/biz/monitor.go`、`monitor_alert` 逻辑、`runner_completion.go` |
+| Biz | `internal/biz/monitor.go`、`internal/biz/monitor/`（alert_eval_worker、metric_ring_buffer、trace_projector、flow_file_appender、alert_metric_registry、root_cause_engine、diag_bundle）、`runner_completion.go` |
 | Data | `internal/data/monitor.go`、`internal/data/monitor_alert.go`、`internal/data/monitor_trace.go` |
-| Service | `internal/service/monitor.go`、`monitor_notify.go` |
-| Agent 运行时 | `internal/biz/monitor/`（alert_eval_worker、metric_ring_buffer、trace_projector、flow_file_appender、alert_metric_registry、root_cause_engine、diag_bundle） |
+| Service | `internal/service/monitor.go`、`monitor_notify.go`、`monitor_flow_log.go` |
 | Cron | `internal/cronrunner/jobs/monitor_trace_backfill.go` |
 | 用量 | `internal/biz/usage.go`、`internal/service/turn_usage.go`、`chat_usage_ingress.go` |
+| FlowLog | `internal/biz/flowlog/`、`internal/data/flow_log_repo.go` |
 | 前端 | `web/src/pages/MonitorPage.vue`、`web/src/features/monitor/*`、`web/src/components/monitor/*` |
 | SQL | `docs/sql/07_monitor.sql`、`docs/sql/14_monitor_alert.sql` |
 | FlowLogger | [52-flow-logger-development.md](./52-flow-logger-development.md) — Logs 流程 Tab 与 Runs 详情 Flow |
@@ -35,7 +35,8 @@
 | Token 用量记录 | ✅ | `turn_usage.go` / `chat_usage_ingress.go` → `UsageUsecase` |
 | 用量查询 API | ✅ | `UsageService`：`/v1/usage/overview`、`/events` 等 |
 | Runner 窗口指标 | ✅ | `GET /v1/monitor/runner-metrics` + `MonitorRunnerMetrics` / `RunnerMetricsPanel`（Store + composable） |
-| 错误率统计（窗口） | ✅ | `GetRunnerMetrics` 聚合 `runner.completion`；非独立 latency 指标 |
+| 错误率统计（窗口） | ✅ | `GetRunnerMetrics` 聚合 `runner.completion` |
+| 全局 Latency 聚合 | ✅ | `LatencyPercentilesSince` + `meta_duration_ms` generated column；P50/P95/P99 |
 | 告警规则 | ✅ | `monitor_alert_rules` + `GET/PUT /v1/monitor/alert-rules` |
 | 告警评估 | ✅ | `EvaluateAlerts`：`runner.error_rate` → `alert.fired`；MON-OPT-03 RingBuffer + EvalWorker |
 | 告警冷却持久化 | ✅ | MON-OPT-02：`firing` 状态机 + DB 持久化 `last_fired_at` |
@@ -51,18 +52,18 @@
 | Events / Runs 分工（方案 C） | ✅ | `runCorrelation.ts`、`RealtimeEvents` 过滤、Runs「打开会话」 |
 | Logs 流程/进程拆分 | ✅ | `useLogStreamHub`、`LogStreamPanel`、[changelog](../changelog/2026-05-20-Monitor-Logs-Split.md) |
 | 监控 Dashboard（`/overview`） | ✅ | Phase 0～3b 完成；见 [18-monitor-dashboard-development.md](./18-monitor-dashboard-development.md) |
-| 响应时间（latency）专用指标 | ❌ | Runs 行有 `latency_ms`；无全局 latency 聚合 API |
+| ListFlowLogs HTTP 历史 | ✅ | `FlowLogService.ListFlowLogs` + `biz.FlowLogUsecase` + Ent Repo |
+| LOG-03 P0 红线修复 | ✅ | 9 处 `log.Warnf`/`log.Errorf` → `event.SysLogWarn`/`SysLogError`（Graph/Task/Channel 域） |
+| LOG-03 P1 关键路径补全 | ✅ | Graph runtime、Session title/rollback、Knowledge embedder FlowLog 补全 |
+| step_id 注册表扩展 | ✅ | 新增 15 个 step_id（graph/session/task/channel/knowledge 域） |
 
 ---
 
 ## 3. 差距与优化（P2+）
 
-1. **P2 — Latency 指标**：全局 P50/P95、按 Agent/Model 聚合（Runs 行字段已有，缺聚合 API）。
-2. **P2 — UI 命名**：路由 Tab `traces` → `runs` 别名；Events 服务端 `hide_linked_completions`（减轻前端过滤）。
-3. **P2 — FlowLogger Phase 2**：`ListFlowLogs` HTTP 历史（流程 Tab 当前仅 WS 实时）。
-4. **P2 — LOG-02**：框架层 zap 日志结构化（JSON Encoder）— 跨 `pkg/trpc-agent-go` 修改，需独立 PR。
-5. **P2 — LOG-03**：关键路径 FlowLog 补全（P1 路径：Provider/Memory/MCP）— 逐路径迁移。
-6. **P3 — LOOP-01**：闭环工作流（detected → tracing → analyzing → fixing → verifying → closed）。
+1. **P2 — UI 命名**：路由 Tab `traces` → `runs` 别名；Events 服务端 `hide_linked_completions`（减轻前端过滤）。
+2. **P2 — LOG-02**：框架层 zap 日志结构化（JSON Encoder）— 跨 `pkg/trpc-agent-go` 修改，需独立 PR。
+3. **P3 — LOOP-01**：闭环工作流（detected → tracing → analyzing → fixing → verifying → closed）。
 
 ---
 
@@ -77,7 +78,7 @@
 | I6-TEL-02 | Trace 瀑布图 + usage spans | ✅ |
 | Phase 2 | Dashboard 增强（`/overview`） | ✅ 见 [18-monitor-dashboard-development.md](./18-monitor-dashboard-development.md) |
 | Phase 3 | 告警（已提前完成，见上） | ✅ |
-| Phase 1（原） | 全局 latency / error_rate 聚合 API | ❌ 部分由 Runner 指标覆盖 |
+| Phase 1（原） | 全局 latency / error_rate 聚合 API | ✅ P50/P95/P99 + `meta_duration_ms` generated column |
 
 ### Phase 1c — Logs 流程/进程拆分
 
@@ -126,18 +127,33 @@
 |----|------|--------|------|----------|
 | LOG-01 | FlowLog 文件落盘 | P1 | ✅ | `FlowFileAppender` + 按日/大小轮转 + gzip + 30 天清理 |
 | LOG-02 | 框架层 zap 日志结构化 | P2 | ❌ | 跨 `pkg/trpc-agent-go` 修改，需独立 PR |
-| LOG-03 | 关键路径 FlowLog 补全 | P2 | ❌ | P1 路径（Provider/Memory/MCP）待逐路径迁移 |
+| LOG-03 | 关键路径 FlowLog 补全 | P2 | ✅ P0/P1 完成 | P1 路径（Provider/Memory/MCP）已确认完成；P0 红线修复 9 处；P1 补全 Graph/Session/Knowledge |
 | TRACE-01 | Trace 文件落盘 | P1 | ✅ | `runner.completion` → `trace-*.jsonl` |
 | DIAG-01 | AI 诊断包 | P1 | ✅ | `DiagBundleGenerator` + `GenerateDiagnosticBundle` RPC |
 | DIAG-02 | 根因分析规则引擎 | P1 | ✅ | `RootCauseEngine` 5 条内置规则 + 置信度评分 |
 | LOOP-01 | 闭环工作流 | P3 | ❌ | 待设计 |
+
+### Latency 聚合（2026-05-28 新增）
+
+| ID | 任务 | 优先级 | 状态 | 关键实现 |
+|----|------|--------|------|----------|
+| LATENCY-01 | 全局 P50/P95/P99 聚合 API | P2 | ✅ | `LatencyPercentilesSince` + `percentileIndex` + `meta_duration_ms` generated column |
+| LATENCY-02 | `RunnerMetricsSummary` 扩展 | P2 | ✅ | Proto 新增 `p50_duration_ms`/`p95_duration_ms`/`p99_duration_ms` |
+
+### 红线修复（2026-05-28 新增）
+
+| ID | 问题 | 状态 | 修复 |
+|----|------|------|------|
+| REDLINE-01 | Graph 域 3 处 `log.Warnf`（红线 #16） | ✅ | → `event.SysLogWarn`（graph_task_start_fail/task_status_fail/task_resume_fail） |
+| REDLINE-02 | Task 域 5 处 `log.Warnf`/`log.Errorf`（红线 #16） | ✅ | → `event.SysLogWarn`/`SysLogError`（task.timeout_update_fail/release_claim_fail/dispatcher_tick_fail/check_timeout_fail/claim_fail/dispatch_run_fail） |
+| REDLINE-03 | Channel 域 1 处 `log.Warnf`（红线 #16） | ✅ | → `event.SysLogWarn`（channel.dead_letter） |
 
 ### 质量修复
 
 | ID | 问题 | 状态 | 修复 |
 |----|------|------|------|
 | MON-Q-09 | 空库返回未持久化的合成默认规则 | ✅ | `ListMonitorAlertRules` 空库时自动 `ReplaceAlertRules` |
-| MON-Q-11 | `json_extract` 过滤无法走索引 | ✅ | generated columns（`meta_session_id` 等）+ `COALESCE` 查询 |
+| MON-Q-11 | `json_extract` 过滤无法走索引 | ✅ | generated columns（`meta_session_id`/`meta_duration_ms` 等）+ `COALESCE` 查询 |
 
 **验证命令**：
 
@@ -154,15 +170,15 @@ cd web && pnpm lint && pnpm test && pnpm build
 
 | # | 任务 | 优先级 | 状态 |
 |---|------|--------|------|
-| 1 | 全局 latency 聚合 API | P2 | ❌ |
+| 1 | 全局 latency 聚合 API | P2 | ✅ P50/P95/P99 |
 | 2 | Dashboard 图表/占比/Runner（`/overview`） | P2 | ✅ [18-monitor-dashboard-development.md](./18-monitor-dashboard-development.md) |
 | 3 | 告警规则引擎 | P2 | ✅ |
 | 4 | 通知渠道 Webhook/Channel | P3 | ✅ |
 | 5 | 方案 C Runs/Events + correlation | P1 | ✅ |
-| 6 | `ListFlowLogs` HTTP 历史 | P2 | ❌（FlowLogger Phase 2） |
+| 6 | `ListFlowLogs` HTTP 历史 | P2 | ✅ `FlowLogService.ListFlowLogs` |
 | 7 | Tab 命名 `traces`→`runs`、服务端 completion 过滤 | P2 | ❌ |
 | 8 | LOG-02 框架层 zap 结构化 | P2 | ❌（跨 pkg 修改） |
-| 9 | LOG-03 关键路径 FlowLog 补全 | P2 | ❌（逐路径迁移） |
+| 9 | LOG-03 关键路径 FlowLog 补全 | P2 | ✅ P0/P1 完成 |
 | 10 | LOOP-01 闭环工作流 | P3 | ❌（待设计） |
 
 ---
@@ -184,7 +200,10 @@ cd web && pnpm lint && pnpm test && pnpm build
 - [x] Audit / Events / Traces / Logs：见 [18 monitor.md §7](./18%20monitor.md#7-验收要点)
 - [x] 方案 C（Phase 1d）：Runs 主排障 + Events 不重复 completion + correlation（RUN-01～06）
 - [x] Dashboard（`/overview`）ECharts + Runner + Monitor Usage 去重 — [18 monitor-dashboard.md](./18%20monitor-dashboard.md)
-- [ ] 全局 latency 聚合（P2）
+- [x] 全局 latency 聚合 P50/P95/P99（LATENCY-01/02）
+- [x] ListFlowLogs HTTP 历史 API
+- [x] LOG-03 P0 红线修复（9 处 `log.Warnf`/`log.Errorf` → FlowLog）
+- [x] LOG-03 P1 关键路径补全（Graph/Session/Knowledge）
 
 ---
 
@@ -195,3 +214,4 @@ cd web && pnpm lint && pnpm test && pnpm build
 - **方案 C**：`trace_id` / `usage_event_id` 缺失时仍落库 completion，Events 仅降级展示。
 - **Runs 列表**以 `recordTurnUsage` 为准，与 `CHAT_RECORD_RUNNER_USAGE` 环境变量无关。
 - 前端跳转遵守 [frontend-guide.md](../guides/frontend-guide.md) — `useMonitorRunNavigation` 编排，组件不直连 router。
+- **LOG-02** 跨 `pkg/trpc-agent-go` 修改，需独立 PR，不在本迭代范围。

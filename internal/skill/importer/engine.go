@@ -11,12 +11,15 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"aranea-agents/internal/event"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/skill/storage"
 )
+
+const MaxZipBytes = 20 * 1024 * 1024
 
 // Engine holds in-memory import jobs and executes zip inspection / LLM similarity (OpenAI-compatible + Anthropic messages).
 type Engine struct {
@@ -26,11 +29,15 @@ type Engine struct {
 
 	jobsMu sync.RWMutex
 	jobs   map[string]*jobState
+	jobTTL time.Duration
 }
+
+const defaultJobTTL = 2 * time.Hour
 
 type jobState struct {
 	public     biz.SkillImportJob
 	candidates map[string]candidateState
+	createdAt  time.Time
 }
 
 type candidateState struct {
@@ -43,10 +50,11 @@ type candidateState struct {
 // NewEngine constructs the skill ZIP importer. Skill storage root resolves via skillstorage + system settings.
 func NewEngine(repo biz.SkillRepo, llm *biz.LlmProviderModelUsecase, sys biz.SystemSettingRepo) *Engine {
 	return &Engine{
-		repo: repo,
-		llm:  llm,
-		sys:  sys,
-		jobs: make(map[string]*jobState),
+		repo:   repo,
+		llm:    llm,
+		sys:    sys,
+		jobs:   make(map[string]*jobState),
+		jobTTL: defaultJobTTL,
 	}
 }
 
@@ -83,12 +91,11 @@ func (e *Engine) Import(ctx context.Context, file multipart.File, header *multip
 	if !strings.HasSuffix(strings.ToLower(header.Filename), ".zip") {
 		return biz.SkillImportJob{}, validationError("skill upload must be a .zip file")
 	}
-	const maxZipBytes = 20 * 1024 * 1024
-	data, err := io.ReadAll(io.LimitReader(file, maxZipBytes+1))
+	data, err := io.ReadAll(io.LimitReader(file, MaxZipBytes+1))
 	if err != nil {
 		return biz.SkillImportJob{}, err
 	}
-	if len(data) > maxZipBytes {
+	if len(data) > MaxZipBytes {
 		return biz.SkillImportJob{}, validationError("skill zip must be <= 20MB")
 	}
 	job := &jobState{
@@ -101,6 +108,7 @@ func (e *Engine) Import(ctx context.Context, file multipart.File, header *multip
 			ConflictGroups:   []biz.SkillConflictGroup{},
 		},
 		candidates: map[string]candidateState{},
+		createdAt:  time.Now(),
 	}
 	if err = e.inspectSkillZip(ctx, data, job); err != nil {
 		job.public.Status = "failed"
@@ -120,15 +128,29 @@ func (e *Engine) Import(ctx context.Context, file multipart.File, header *multip
 }
 
 func (e *Engine) GetImportJob(jobID string) (biz.SkillImportJob, error) {
-	e.jobsMu.RLock()
-	defer e.jobsMu.RUnlock()
+	e.jobsMu.Lock()
+	e.evictExpiredLocked()
 	job := e.jobs[strings.TrimSpace(jobID)]
+	if job != nil && time.Since(job.createdAt) > e.jobTTL {
+		delete(e.jobs, jobID)
+		job = nil
+	}
+	e.jobsMu.Unlock()
 	if job == nil {
 		return biz.SkillImportJob{}, ErrImportJobNotFound
 	}
 	out := job.public
 	out.StorageRoot = e.resolveRoot(context.Background())
 	return out, nil
+}
+
+func (e *Engine) evictExpiredLocked() {
+	now := time.Now()
+	for id, job := range e.jobs {
+		if now.Sub(job.createdAt) > e.jobTTL {
+			delete(e.jobs, id)
+		}
+	}
 }
 
 func (e *Engine) RefineConflictGroup(ctx context.Context, jobID string, groupID string, in biz.SkillRefineRequest) (biz.SkillRefineResult, error) {
@@ -413,6 +435,8 @@ func (e *Engine) inspectSkillZip(ctx context.Context, data []byte, job *jobState
 	return e.inspectSimilarity(ctx, job, existing)
 }
 
+const maxSimilarityLLMCalls = 50
+
 func (e *Engine) inspectSimilarity(ctx context.Context, job *jobState, existing []biz.SkillSimilaritySource) error {
 	if len(existing) == 0 {
 		return nil
@@ -431,12 +455,19 @@ func (e *Engine) inspectSimilarity(ctx context.Context, job *jobState, existing 
 		}
 		return nil
 	}
+	llmCalls := 0
 	for _, candidate := range job.public.Candidates {
 		if candidate.ValidationStatus != "pass" {
 			continue
 		}
 		state := job.candidates[candidate.CandidateID]
 		for _, source := range existing {
+			if llmCalls >= maxSimilarityLLMCalls {
+				event.SysLogWarn("system.skill.similarity_cap", "inspectSimilarity LLM 调用达到上限，跳过剩余比较",
+					event.P("cap", maxSimilarityLLMCalls))
+				return nil
+			}
+			llmCalls++
 			metrics, reason, evidence, err := e.modelSimilarity(ctx, cfg, state, source)
 			if err != nil {
 				continue

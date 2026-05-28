@@ -148,6 +148,21 @@ func (u *AgentUsecase) GetByAgentKey(ctx context.Context, agentKey string) (Agen
 	return u.hydrate(ctx, a)
 }
 
+func (u *AgentUsecase) GetAgentRuntimeSettings(ctx context.Context, agentID string) (AgentRuntimeSettings, error) {
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return AgentRuntimeSettings{}, kerrors.BadRequest("AGENT", "agent id is required")
+	}
+	settings, err := u.repo.GetAgentRuntimeSettings(ctx, agentID)
+	if err != nil {
+		if stderrors.Is(err, sql.ErrNoRows) {
+			return DefaultAgentRuntimeSettings(), nil
+		}
+		return AgentRuntimeSettings{}, err
+	}
+	return settings, nil
+}
+
 func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) {
 	settings, err := u.repo.GetAgentRuntimeSettings(ctx, agent.ID)
 	if err != nil {

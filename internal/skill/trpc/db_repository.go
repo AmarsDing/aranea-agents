@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
@@ -77,18 +78,19 @@ func (r *DBRepositoryAdapter) Get(name string) (*trpcskill.Skill, error) {
 		return entry.skill, nil
 	}
 
-	// Lazy-load skill body from DB.
 	body := r.loadBody(context.Background(), entry)
 	sk := &trpcskill.Skill{
 		Summary: entry.summary,
 		Body:    body,
 	}
 
-	r.mu.Lock()
-	if idx < len(r.entries) {
-		r.entries[idx].skill = sk
+	if body != "" {
+		r.mu.Lock()
+		if idx < len(r.entries) {
+			r.entries[idx].skill = sk
+		}
+		r.mu.Unlock()
 	}
-	r.mu.Unlock()
 	return sk, nil
 }
 
@@ -124,6 +126,8 @@ func (r *DBRepositoryAdapter) refreshIfStale(ctx context.Context) {
 func (r *DBRepositoryAdapter) reload(ctx context.Context) {
 	candidates, err := r.uc.ListEnabledPublishedCandidates(ctx)
 	if err != nil {
+		event.SysLogWarn("system.skill.reload_fail", "skill 缓存刷新失败，保留陈旧数据",
+			event.P("error", err.Error()))
 		return
 	}
 	entries := make([]dbSkillEntry, 0, len(candidates))
@@ -166,10 +170,14 @@ func (r *DBRepositoryAdapter) reload(ctx context.Context) {
 func (r *DBRepositoryAdapter) loadBody(ctx context.Context, entry dbSkillEntry) string {
 	sk, err := r.uc.GetBySlug(ctx, entry.slug)
 	if err != nil {
+		event.SysLogWarn("system.skill.load_body_fail", "skill body 加载失败",
+			event.P("slug", entry.slug), event.P("error", err.Error()))
 		return ""
 	}
 	body, err := r.uc.GetLatestMarkdown(ctx, sk.ID)
 	if err != nil {
+		event.SysLogWarn("system.skill.load_markdown_fail", "skill markdown 加载失败",
+			event.P("slug", entry.slug), event.P("skill_id", sk.ID), event.P("error", err.Error()))
 		return ""
 	}
 	dir, _ := r.uc.GetStorageDir(ctx, sk.ID)

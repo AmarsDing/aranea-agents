@@ -34,6 +34,22 @@ func (m *mockL4GraphRepo) ApplyConfidenceDecay(_ context.Context, _, _, _ string
 	return 0, nil
 }
 
+func (m *mockL4GraphRepo) RecordEntityReinforcement(_ context.Context, _ string, _ ReinforcementSignal, _ string) error {
+	return nil
+}
+
+func (m *mockL4GraphRepo) GetRecentReinforcementCounts(_ context.Context, _, _ string, _ int) (map[string]int, error) {
+	return nil, nil
+}
+
+func (m *mockL4GraphRepo) ApplyBusinessConfidenceDecay(_ context.Context, _, _ string, _ L4DecayConfig, _ int64) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockL4GraphRepo) ArchiveLowConfidenceEntities(_ context.Context, _, _ string, _ float64) (int64, error) {
+	return 0, nil
+}
+
 func TestL4GraphUsecase_WriteFromUserText_NilRepo(t *testing.T) {
 	uc := NewL4GraphUsecase(nil)
 	n, err := uc.WriteFromUserText(context.Background(), "ag1", "u1", "My name is Alice")

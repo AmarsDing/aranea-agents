@@ -18,27 +18,27 @@ type RootCauseRule struct {
 }
 
 type RootCauseCondition struct {
-	StepID        string
-	Phase         string
-	ErrorCodes    []string
-	Pattern       string
-	Prerequisites []Prerequisite
+	StepID           string
+	Phase            string
+	ErrorCodes       []string
+	Pattern          string
+	compiledPattern  *regexp.Regexp
+	Prerequisites    []Prerequisite
 }
 
 type Prerequisite struct {
-	StepID   string
-	Phase    string
-	Present  bool
+	StepID string
+	Phase  string
 }
 
 type RootCauseResult struct {
-	RuleID      string            `json:"rule_id"`
-	Name        string            `json:"name"`
-	RootCause   string            `json:"root_cause"`
-	FixSuggest  string            `json:"fix_suggest"`
-	Severity    string            `json:"severity"`
-	Confidence  float64           `json:"confidence"`
-	Metadata    map[string]any    `json:"metadata,omitempty"`
+	RuleID     string         `json:"rule_id"`
+	Name       string         `json:"name"`
+	RootCause  string         `json:"root_cause"`
+	FixSuggest string         `json:"fix_suggest"`
+	Severity   string         `json:"severity"`
+	Confidence float64        `json:"confidence"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
 }
 
 type RootCauseEngine struct {
@@ -46,9 +46,15 @@ type RootCauseEngine struct {
 }
 
 func NewRootCauseEngine() *RootCauseEngine {
-	return &RootCauseEngine{
-		rules: builtinRootCauseRules(),
+	rules := builtinRootCauseRules()
+	for i := range rules {
+		if p := rules[i].Condition.Pattern; p != "" {
+			if re, err := regexp.Compile(p); err == nil {
+				rules[i].Condition.compiledPattern = re
+			}
+		}
 	}
+	return &RootCauseEngine{rules: rules}
 }
 
 func (e *RootCauseEngine) Evaluate(ctx context.Context, stepID, phase string, metadata map[string]any) []RootCauseResult {
@@ -96,24 +102,20 @@ func (e *RootCauseEngine) matchRule(rule RootCauseRule, stepID, phase string, me
 			return false, 0
 		}
 	}
-	if cond.Pattern != "" {
-		re, err := regexp.Compile(cond.Pattern)
-		if err != nil {
-			return false, 0
-		}
+	if cond.compiledPattern != nil {
 		msg := metaStr(metadata, "error_message")
 		if msg == "" {
 			msg = metaStr(metadata, "message")
 		}
-		if !re.MatchString(msg) {
+		if !cond.compiledPattern.MatchString(msg) {
 			return false, 0
 		}
 	}
 	confidence := 0.6
-	if len(cond.Prerequisites) > 0 {
+	if len(cond.Prerequisites) > 0 && metadata != nil {
 		met := 0
 		for _, pre := range cond.Prerequisites {
-			if pre.Present {
+			if matchPrerequisite(pre, metadata) {
 				met++
 			}
 		}
@@ -130,6 +132,22 @@ func (e *RootCauseEngine) matchRule(rule RootCauseRule, stepID, phase string, me
 	return true, confidence
 }
 
+func matchPrerequisite(pre Prerequisite, metadata map[string]any) bool {
+	if pre.StepID != "" {
+		ms := metaStr(metadata, "step_id")
+		if !matchStepID(pre.StepID, ms) {
+			return false
+		}
+	}
+	if pre.Phase != "" {
+		mp := metaStr(metadata, "flow_phase")
+		if !strings.EqualFold(pre.Phase, mp) {
+			return false
+		}
+	}
+	return true
+}
+
 func matchStepID(pattern, stepID string) bool {
 	if pattern == stepID {
 		return true
@@ -138,7 +156,7 @@ func matchStepID(pattern, stepID string) bool {
 		prefix := strings.TrimSuffix(pattern, "*")
 		return strings.HasPrefix(stepID, prefix)
 	}
-	return strings.Contains(strings.ToLower(stepID), strings.ToLower(pattern))
+	return false
 }
 
 func builtinRootCauseRules() []RootCauseRule {

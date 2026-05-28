@@ -34,6 +34,7 @@ type (
 	SessionBatchScope       = session.SessionBatchScope
 	SessionBatchPreview     = session.SessionBatchPreview
 	SessionBatchResult      = session.SessionBatchResult
+	SessionParticipant      = session.SessionParticipant
 )
 
 // Session interfaces for dependency injection.

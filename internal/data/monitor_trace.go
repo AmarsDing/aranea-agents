@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS monitor_trace_spans (
 			{"monitor_events", "meta_invocation_id", "ALTER TABLE monitor_events ADD COLUMN meta_invocation_id TEXT GENERATED ALWAYS AS (json_extract(metadata_json, '$.invocation_id')) VIRTUAL"},
 			{"monitor_events", "meta_agent_id", "ALTER TABLE monitor_events ADD COLUMN meta_agent_id TEXT GENERATED ALWAYS AS (json_extract(metadata_json, '$.agent_id')) VIRTUAL"},
 			{"monitor_events", "meta_trace_id", "ALTER TABLE monitor_events ADD COLUMN meta_trace_id TEXT GENERATED ALWAYS AS (json_extract(metadata_json, '$.trace_id')) VIRTUAL"},
+			{"monitor_events", "meta_duration_ms", "ALTER TABLE monitor_events ADD COLUMN meta_duration_ms REAL GENERATED ALWAYS AS (CAST(json_extract(metadata_json, '$.duration_ms') AS REAL)) VIRTUAL"},
 		}
 		for _, p := range eventPatches {
 			has, err := columnExists(ctx, db, p.table, p.col)
@@ -187,10 +188,10 @@ func (r *monitorRepo) ListRecentRunnerCompletions(ctx context.Context, since tim
 	}
 	sinceStr := time.Now().UTC().Add(-since).Format(time.RFC3339)
 	rows, err := r.data.RawDB().QueryContext(ctx,
-		`SELECT COALESCE(json_extract(metadata_json, '$.trace_id'), '') AS trace_id,
-		        COALESCE(json_extract(metadata_json, '$.session_id'), event_key) AS session_id,
+		`SELECT COALESCE(meta_trace_id, json_extract(metadata_json, '$.trace_id'), '') AS trace_id,
+		        COALESCE(meta_session_id, json_extract(metadata_json, '$.session_id'), event_key) AS session_id,
 		        COALESCE(json_extract(metadata_json, '$.run_id'), '') AS run_id,
-		        COALESCE(json_extract(metadata_json, '$.agent_id'), '') AS agent_id,
+		        COALESCE(meta_agent_id, json_extract(metadata_json, '$.agent_id'), '') AS agent_id,
 		        CASE WHEN status = 'error' THEN 'error' ELSE 'ok' END AS status
 		 FROM monitor_events
 		 WHERE event_key = 'runner.completion' AND created_at >= ? AND deleted_at = ''

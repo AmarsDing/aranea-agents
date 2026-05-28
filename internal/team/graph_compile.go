@@ -109,89 +109,16 @@ func generateModeEdges(mode string, def Definition, nodes []embeddedGraphNode) [
 	out := make([]embeddedGraphEdge, 0, len(agentIDs)+2)
 	out = append(out, embeddedGraphEdge{Source: "start", Target: agentIDs[0]})
 
+	t := LookupTemplate(mode)
 	var modeEdges []embeddedGraphEdge
-	switch mode {
-	case "parallel":
-		modeEdges = generateParallelEdges(def, agentIDs)
-	case "critic_loop":
-		modeEdges = generateCriticLoopEdges(agentIDs)
-	case "adaptive":
-		modeEdges = generateAdaptiveEdges(agentIDs)
-	case "coordinator":
-		modeEdges = generateCoordinatorEdges(agentIDs)
-	default:
-		modeEdges = generateSequentialEdges(agentIDs)
+	if t != nil {
+		modeEdges = t.BuildEdges(def, agentIDs)
+	} else {
+		modeEdges = pipelineTemplate{}.BuildEdges(def, agentIDs)
 	}
 	out = append(out, modeEdges...)
 
 	out = append(out, embeddedGraphEdge{Source: agentIDs[len(agentIDs)-1], Target: "end"})
-	return out
-}
-
-func generateSequentialEdges(ids []string) []embeddedGraphEdge {
-	out := make([]embeddedGraphEdge, 0, len(ids)-1)
-	for i := 0; i < len(ids)-1; i++ {
-		out = append(out, embeddedGraphEdge{Source: ids[i], Target: ids[i+1], Label: "flow"})
-	}
-	return out
-}
-
-func generateParallelEdges(def Definition, ids []string) []embeddedGraphEdge {
-	entry := ids[0]
-	finish := ids[len(ids)-1]
-	out := make([]embeddedGraphEdge, 0, len(ids))
-	for _, id := range ids[1:] {
-		if id == finish {
-			continue
-		}
-		out = append(out, embeddedGraphEdge{Source: entry, Target: id, Label: "flow"})
-	}
-	for _, id := range ids {
-		if id == entry || id == finish {
-			continue
-		}
-		out = append(out, embeddedGraphEdge{Source: id, Target: finish, Label: "flow"})
-	}
-	return out
-}
-
-func generateCoordinatorEdges(ids []string) []embeddedGraphEdge {
-	if len(ids) < 2 {
-		return generateSequentialEdges(ids)
-	}
-	hub := ids[0]
-	finish := ids[len(ids)-1]
-	out := make([]embeddedGraphEdge, 0, len(ids)*2)
-	for _, id := range ids[1:] {
-		out = append(out, embeddedGraphEdge{Source: hub, Target: id, Label: "dispatch"})
-		if id != finish {
-			out = append(out, embeddedGraphEdge{Source: id, Target: finish, Label: "flow"})
-		}
-	}
-	if hub != finish {
-		out = append(out, embeddedGraphEdge{Source: hub, Target: finish, Label: "flow"})
-	}
-	return out
-}
-
-func generateCriticLoopEdges(ids []string) []embeddedGraphEdge {
-	return generateSequentialEdges(ids)
-}
-
-const adaptiveMaxTransferEdges = 30
-
-func generateAdaptiveEdges(ids []string) []embeddedGraphEdge {
-	out := generateSequentialEdges(ids)
-	transferCount := 0
-	for i := 0; i < len(ids) && transferCount < adaptiveMaxTransferEdges; i++ {
-		for j := 0; j < len(ids) && transferCount < adaptiveMaxTransferEdges; j++ {
-			if i == j || j == i+1 {
-				continue
-			}
-			out = append(out, embeddedGraphEdge{Source: ids[i], Target: ids[j], Label: "transfer"})
-			transferCount++
-		}
-	}
 	return out
 }
 

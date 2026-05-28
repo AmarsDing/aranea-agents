@@ -54,7 +54,7 @@ func TestDECO01_SessionRevisionChannelToWebSync(t *testing.T) {
 			sessionID: {ID: sessionID, SessionRevision: 0},
 		}},
 	}
-	uc := biz.NewSessionUsecase(repo, nil, nil, nil)
+	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil)
 	proj := service.NewSessionProjectionAdapter(uc, nil)
 	bus := event.NewBus()
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{SessionID: sessionID, BufferSize: 4})

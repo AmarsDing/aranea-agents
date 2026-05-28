@@ -46,8 +46,8 @@ func (fixedSessionRepo) UpdateSession(context.Context, string, sessionsess.Sessi
 func (fixedSessionRepo) RestoreSession(context.Context, string) (sessionsess.Session, error) {
 	return sessionsess.Session{}, errors.New("not implemented")
 }
-func (fixedSessionRepo) ArchiveSession(context.Context, string) error { return nil }
-func (fixedSessionRepo) DeleteSession(context.Context, string) error  { return nil }
+func (fixedSessionRepo) ArchiveSession(context.Context, string) (int, error) { return 0, nil }
+func (fixedSessionRepo) DeleteSession(context.Context, string) (int, error)  { return 0, nil }
 func (fixedSessionRepo) DeleteSessionsByAgentID(context.Context, string) error {
 	return nil
 }
@@ -81,6 +81,9 @@ func (fixedSessionRepo) ListToolInvocationsByIDs(context.Context, string, []stri
 }
 func (fixedSessionRepo) ListSkillInvocationsByIDs(context.Context, string, []string) ([]sessionsess.SkillInvocationView, error) {
 	return nil, nil
+}
+func (fixedSessionRepo) LookupAgentDisplayNames(context.Context, []string) (map[string]string, error) {
+	return map[string]string{}, nil
 }
 func (fixedSessionRepo) AppendChatTurn(context.Context, string, sessionsess.ChatMessage, sessionsess.ChatMessage) error {
 	return nil

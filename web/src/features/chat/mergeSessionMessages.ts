@@ -67,12 +67,26 @@ export function mergeIncrementalSessionMessages(
   return mergeSessionMessages([...byId.values()], local, opts);
 }
 
+const PENDING_MATCH_TIME_WINDOW_MS = 5_000;
+
 /** Match a pending-user placeholder to a server-persisted user message by content. */
 function isPendingUserMatch(pending: Message, serverUser: Message): boolean {
   if (!isPendingUserOrigin(pending.origin)) return false;
   if (pending.role !== "user" || serverUser.role !== "user") return false;
   if (pending.session_id !== serverUser.session_id) return false;
-  return pending.content_markdown === serverUser.content_markdown;
+  if (pending.content_markdown !== serverUser.content_markdown) return false;
+
+  if (pending.turn_number > 0 && serverUser.turn_number > 0 && pending.turn_number !== serverUser.turn_number) {
+    return false;
+  }
+
+  const pendingTime = new Date(pending.created_at).getTime();
+  const serverTime = new Date(serverUser.created_at).getTime();
+  if (Number.isFinite(pendingTime) && Number.isFinite(serverTime)) {
+    if (Math.abs(pendingTime - serverTime) > PENDING_MATCH_TIME_WINDOW_MS) return false;
+  }
+
+  return true;
 }
 
 /** Build a map from (sessionId, role=user, content) → server message for fast lookup. */

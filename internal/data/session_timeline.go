@@ -9,7 +9,6 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/agent"
 	"aranea-agents/internal/data/ent/message"
-	"aranea-agents/internal/data/ent/platformskill"
 	skillinvocationpkg "aranea-agents/internal/data/ent/skillinvocation"
 	toolinvocationpkg "aranea-agents/internal/data/ent/toolinvocation"
 
@@ -161,10 +160,7 @@ func (r *sessionRepo) ListToolInvocationsByIDs(ctx context.Context, sessionID st
 		return nil, nil
 	}
 	byID := make(map[string]biz.ToolInvocationView, len(rows))
-	views, err := toolInvocationRowsToViews(ctx, c, rows)
-	if err != nil {
-		return nil, err
-	}
+	views := toolInvocationRowsToViews(rows, nil)
 	for _, view := range views {
 		byID[view.ID] = view
 	}
@@ -193,10 +189,7 @@ func (r *sessionRepo) ListSkillInvocationsByIDs(ctx context.Context, sessionID s
 	if len(rows) == 0 {
 		return nil, nil
 	}
-	views, err := skillInvocationRowsToViews(ctx, c, rows)
-	if err != nil {
-		return nil, err
-	}
+	views := skillInvocationRowsToViews(rows, nil)
 	byID := make(map[string]biz.SkillInvocationView, len(views))
 	for _, view := range views {
 		byID[view.ID] = view
@@ -210,24 +203,7 @@ func (r *sessionRepo) ListSkillInvocationsByIDs(ctx context.Context, sessionID s
 	return out, nil
 }
 
-func toolInvocationRowsToViews(ctx context.Context, c *ent.Client, rows []*ent.ToolInvocation) ([]biz.ToolInvocationView, error) {
-	agentNames := map[string]string{}
-	agentIDs := make([]string, 0)
-	for _, row := range rows {
-		if row.AgentID != "" {
-			agentIDs = append(agentIDs, row.AgentID)
-		}
-	}
-	agentIDs = dedupeStrings(agentIDs)
-	if len(agentIDs) > 0 {
-		agents, err := c.Agent.Query().Where(agent.IDIn(agentIDs...), agent.DeletedAtEQ("")).All(ctx)
-		if err != nil {
-			return nil, err
-		}
-		for _, a := range agents {
-			agentNames[a.ID] = a.DisplayName
-		}
-	}
+func toolInvocationRowsToViews(rows []*ent.ToolInvocation, agentNames map[string]string) []biz.ToolInvocationView {
 	out := make([]biz.ToolInvocationView, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, biz.ToolInvocationView{
@@ -250,32 +226,10 @@ func toolInvocationRowsToViews(ctx context.Context, c *ent.Client, rows []*ent.T
 			CreatedAt:        row.CreatedAt,
 		})
 	}
-	return out, nil
+	return out
 }
 
-func skillInvocationRowsToViews(ctx context.Context, c *ent.Client, rows []*ent.SkillInvocation) ([]biz.SkillInvocationView, error) {
-	skillIDs := dedupeStrings(skillIDsFromSkillInvocations(rows))
-	names := map[string]string{}
-	if len(skillIDs) > 0 {
-		skills, err := c.PlatformSkill.Query().Where(platformskill.IDIn(skillIDs...), platformskill.DeletedAtEQ("")).All(ctx)
-		if err != nil {
-			return nil, err
-		}
-		for _, s := range skills {
-			names[s.ID] = s.Name
-		}
-	}
-	agentIDs := dedupeStrings(agentIDsFromSkillInvocations(rows))
-	agentNames := map[string]string{}
-	if len(agentIDs) > 0 {
-		agents, err := c.Agent.Query().Where(agent.IDIn(agentIDs...), agent.DeletedAtEQ("")).All(ctx)
-		if err != nil {
-			return nil, err
-		}
-		for _, a := range agents {
-			agentNames[a.ID] = a.DisplayName
-		}
-	}
+func skillInvocationRowsToViews(rows []*ent.SkillInvocation, agentNames map[string]string) []biz.SkillInvocationView {
 	out := make([]biz.SkillInvocationView, 0, len(rows))
 	for _, row := range rows {
 		started := row.StartedAt
@@ -285,7 +239,7 @@ func skillInvocationRowsToViews(ctx context.Context, c *ent.Client, rows []*ent.
 		out = append(out, biz.SkillInvocationView{
 			ID:               row.ID,
 			SkillID:          row.SkillID,
-			SkillName:        names[row.SkillID],
+			SkillName:        "",
 			SkillVersion:     row.SkillVersion,
 			AgentID:          row.AgentID,
 			AgentDisplayName: agentNames[row.AgentID],
@@ -299,6 +253,22 @@ func skillInvocationRowsToViews(ctx context.Context, c *ent.Client, rows []*ent.
 			ErrorCode:        row.ErrorCode,
 			ErrorMessage:     row.ErrorMessage,
 		})
+	}
+	return out
+}
+
+func (r *sessionRepo) LookupAgentDisplayNames(ctx context.Context, agentIDs []string) (map[string]string, error) {
+	agentIDs = dedupeStrings(agentIDs)
+	if len(agentIDs) == 0 {
+		return map[string]string{}, nil
+	}
+	agents, err := r.data.entClient.Agent.Query().Where(agent.IDIn(agentIDs...), agent.DeletedAtEQ("")).All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(agents))
+	for _, a := range agents {
+		out[a.ID] = a.DisplayName
 	}
 	return out, nil
 }

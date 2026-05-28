@@ -293,6 +293,111 @@ func (s *MemoryService) RejectCascadeProposal(ctx context.Context, req *v1.Rejec
 	return &v1.RejectCascadeProposalResponse{Proposal: p}, nil
 }
 
+func (s *MemoryService) PreviewCascadeApprove(ctx context.Context, req *v1.PreviewCascadeApproveRequest) (*v1.PreviewCascadeApproveResponse, error) {
+	if s.cascade == nil {
+		return nil, kerrors.InternalServer("MEMORY", "cascade store not wired")
+	}
+	id := strings.TrimSpace(req.GetId())
+	if id == "" {
+		return nil, kerrors.BadRequest("MEMORY", "id is required")
+	}
+	preview, err := s.cascade.Preview(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	pb := &v1.CascadePreview{
+		AffectedEntitiesCount: int32(preview.AffectedEntitiesCount),
+		AffectedFactsCount:    int32(preview.AffectedFactsCount),
+	}
+	for _, d := range preview.FactDiffs {
+		pb.FactDiffs = append(pb.FactDiffs, &v1.CascadeFactDiff{
+			FactId:          d.FactID,
+			BeforeStatement: d.BeforeStatement,
+			AfterStatement:  d.AfterStatement,
+			Scope:           d.Scope,
+		})
+	}
+	for _, r := range preview.EntityRenames {
+		pb.EntityRenames = append(pb.EntityRenames, &v1.CascadeEntityRename{
+			EntityId:   r.EntityID,
+			EntityType: r.EntityType,
+			OldName:    r.OldName,
+			NewName:    r.NewName,
+		})
+	}
+	return &v1.PreviewCascadeApproveResponse{Preview: pb}, nil
+}
+
+func (s *MemoryService) GetCascadeSagaSteps(ctx context.Context, req *v1.GetCascadeSagaStepsRequest) (*v1.GetCascadeSagaStepsResponse, error) {
+	if s.cascade == nil {
+		return nil, kerrors.InternalServer("MEMORY", "cascade store not wired")
+	}
+	proposalID := strings.TrimSpace(req.GetProposalId())
+	if proposalID == "" {
+		return nil, kerrors.BadRequest("MEMORY", "proposal_id is required")
+	}
+	steps, err := s.cascade.GetSagaSteps(ctx, proposalID)
+	if err != nil {
+		return nil, err
+	}
+	out := &v1.GetCascadeSagaStepsResponse{}
+	for _, step := range steps {
+		out.Steps = append(out.Steps, &v1.CascadeSagaStep{
+			Id:          step.ID,
+			ProposalId:  step.ProposalID,
+			StepIndex:   int32(step.StepIndex),
+			StepName:    step.StepName,
+			State:       step.State,
+			IsCritical:  step.IsCritical,
+			Attempts:    int32(step.Attempts),
+			StartedAt:   step.StartedAt,
+			FinishedAt:  step.FinishedAt,
+			PayloadJson: step.PayloadJSON,
+			ResultJson:  step.ResultJSON,
+			Error:       step.Error,
+		})
+	}
+	return out, nil
+}
+
+func (s *MemoryService) RetryCascadeApprove(ctx context.Context, req *v1.RetryCascadeApproveRequest) (*v1.RetryCascadeApproveResponse, error) {
+	if s.cascade == nil {
+		return nil, kerrors.InternalServer("MEMORY", "cascade store not wired")
+	}
+	id := strings.TrimSpace(req.GetId())
+	if id == "" {
+		return nil, kerrors.BadRequest("MEMORY", "id is required")
+	}
+	raw, err := s.cascade.Retry(ctx, id, strings.TrimSpace(req.GetReviewer()))
+	if err != nil {
+		return nil, err
+	}
+	p, err := pbCascadeProposal(raw)
+	if err != nil || p == nil {
+		return nil, kerrors.InternalServer("MEMORY", "failed to hydrate cascade proposal")
+	}
+	return &v1.RetryCascadeApproveResponse{Proposal: p}, nil
+}
+
+func (s *MemoryService) CompensateCascadeApprove(ctx context.Context, req *v1.CompensateCascadeApproveRequest) (*v1.CompensateCascadeApproveResponse, error) {
+	if s.cascade == nil {
+		return nil, kerrors.InternalServer("MEMORY", "cascade store not wired")
+	}
+	id := strings.TrimSpace(req.GetId())
+	if id == "" {
+		return nil, kerrors.BadRequest("MEMORY", "id is required")
+	}
+	raw, err := s.cascade.Compensate(ctx, id, strings.TrimSpace(req.GetReviewer()))
+	if err != nil {
+		return nil, err
+	}
+	p, err := pbCascadeProposal(raw)
+	if err != nil || p == nil {
+		return nil, kerrors.InternalServer("MEMORY", "failed to hydrate cascade proposal")
+	}
+	return &v1.CompensateCascadeApproveResponse{Proposal: p}, nil
+}
+
 func pbCascadeProposal(raw []byte) (*v1.CascadeProposal, error) {
 	m, err := jsonutil.ParseMap(raw)
 	if err != nil {

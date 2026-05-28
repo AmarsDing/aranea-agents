@@ -70,6 +70,9 @@ func (rt *Runtime) Close() {
 	if c, ok := rt.stats.(interface{ Close() }); ok {
 		c.Close()
 	}
+	if rt.budgets != nil {
+		rt.budgets.Reset()
+	}
 }
 
 // HookNotifier returns the configured Hook notify worker.
@@ -133,33 +136,22 @@ func (rt *Runtime) Apply(_ context.Context, plugins []biz.Plugin) {
 		if !p.Enabled {
 			continue
 		}
-		if tp := adapt(p, stats, bus, rt); tp != nil {
-			ValidatePluginCallbackPoints(p)
-			e := runtimeEntry{
-				plugin:        tp,
-				scope:         strings.TrimSpace(p.Scope),
-				key:           p.Key,
-				enabled:       true,
-				sortOrder:     p.SortOrder,
-				orchestration: ResolvePluginOrchestration(p),
-			}
-			if p.Key == "model_router" {
-				var cfg ModelRouterConfig
-				parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
-				e.modelRouter = &cfg
-			}
-			if p.Key == "cost_guard" {
-				var cfg CostGuardConfig
-				parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
-				e.costGuard = &cfg
-			}
-			if p.Key == "confirmation_guard" {
-				var cfg ConfirmationGuardConfig
-				parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
-				e.confirmationGuard = &cfg
-			}
-			built = append(built, e)
+		ap := adapt(p, stats, bus, rt)
+		if ap == nil {
+			continue
 		}
+		e := runtimeEntry{
+			plugin:        ap.plugin,
+			scope:         strings.TrimSpace(p.Scope),
+			key:           p.Key,
+			enabled:       true,
+			sortOrder:     p.SortOrder,
+			orchestration: ResolvePluginOrchestration(p),
+			modelRouter:         ap.modelRouter,
+			costGuard:           ap.costGuard,
+			confirmationGuard:   ap.confirmationGuard,
+		}
+		built = append(built, e)
 	}
 	rt.mu.Lock()
 	rt.active = built

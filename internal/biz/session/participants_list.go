@@ -5,7 +5,10 @@ import (
 	"strings"
 )
 
-func (uc *SessionUsecase) ListParticipants(ctx context.Context, sessionID string, repo SessionParticipantRepository) ([]SessionParticipant, error) {
+func (uc *SessionUsecase) ListParticipants(ctx context.Context, sessionID string) ([]SessionParticipant, error) {
+	if uc == nil || uc.participants == nil {
+		return nil, nil
+	}
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return nil, validationErr("session id is required")
@@ -18,8 +21,8 @@ func (uc *SessionUsecase) ListParticipants(ctx context.Context, sessionID string
 	if err != nil {
 		return nil, err
 	}
-	if err := repo.SyncFromSession(ctx, sess, messages); err != nil {
+	if err := uc.participants.SyncFromSession(ctx, sess, messages); err != nil {
 		return nil, err
 	}
-	return repo.ListBySession(ctx, sessionID)
+	return uc.participants.ListBySession(ctx, sessionID)
 }

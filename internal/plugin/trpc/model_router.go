@@ -23,10 +23,8 @@ type ModelRouterConfig struct {
 type modelRouterConfig = ModelRouterConfig
 
 type ModelRouterPlugin struct {
-	name   string
-	cfg    modelRouterConfig
-	stats  StatsRecorder
-	logger *PluginSafeLogger
+	base basePlugin
+	cfg  modelRouterConfig
 }
 
 var _ trpcplugin.Plugin = (*ModelRouterPlugin)(nil)
@@ -34,10 +32,10 @@ var _ trpcplugin.Plugin = (*ModelRouterPlugin)(nil)
 func NewModelRouterPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus) *ModelRouterPlugin {
 	var cfg modelRouterConfig
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
-	return &ModelRouterPlugin{name: p.Key, cfg: cfg, stats: stats, logger: NewPluginSafeLogger(p.Key, bus)}
+	return &ModelRouterPlugin{base: newBasePlugin(p.Key, stats, bus), cfg: cfg}
 }
 
-func (m *ModelRouterPlugin) Name() string { return m.name }
+func (m *ModelRouterPlugin) Name() string { return m.base.Name() }
 
 func (m *ModelRouterPlugin) Register(r *trpcplugin.Registry) {
 	r.BeforeModel(m.beforeModel)
@@ -51,11 +49,11 @@ func (m *ModelRouterPlugin) beforeModel(ctx context.Context, args *trpcmodel.Bef
 		target = ResolveModelAPI(promptText(args.Request), m.cfg)
 	}
 	if target != "" && target != origModel {
-		m.logger.Info("plugin.model_router.before_model", "status", "routed_via_selector", "orig_model", origModel, "target_model", target)
+		m.base.logger.Info("plugin.model_router.before_model", "status", "routed_via_selector", "orig_model", origModel, "target_model", target)
 	} else {
-		m.logger.Info("plugin.model_router.before_model", "status", "no_route", "orig_model", origModel)
+		m.base.logger.Info("plugin.model_router.before_model", "status", "no_route", "orig_model", origModel)
 	}
-	m.record(ctx, "before_model", "ok")
+	m.base.record(ctx, "before_model", "ok")
 	return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 }
 
@@ -100,8 +98,3 @@ func looksLikeCodeTask(prompt string) bool {
 	return false
 }
 
-func (m *ModelRouterPlugin) record(ctx context.Context, point, status string) {
-	if m.stats != nil {
-		m.stats.Record(ctx, m.name, point, status)
-	}
-}

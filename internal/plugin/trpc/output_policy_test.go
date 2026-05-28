@@ -11,9 +11,11 @@ import (
 
 func newTestOutputPolicy(cfg outputPolicyConfig) *OutputPolicyPlugin {
 	return &OutputPolicyPlugin{
-		name:   "output_policy",
-		cfg:    cfg,
-		logger: NewPluginSafeLogger("output_policy", nil),
+		base: basePlugin{
+			name:   "output_policy",
+			logger: NewPluginSafeLogger("output_policy", nil),
+		},
+		cfg: cfg,
 	}
 }
 

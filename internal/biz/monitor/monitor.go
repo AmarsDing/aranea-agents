@@ -196,6 +196,7 @@ type Repo interface {
 	UpdateAlertFiringState(ctx context.Context, id string, state AlertFiringState, lastFiredAt *time.Time, lastFiredValue float64, recoveredAt *time.Time) error
 	CountMonitorEventsSince(ctx context.Context, eventKey, status, sinceRFC3339 string) (int32, error)
 	AvgRunnerCompletionDurationMsSince(ctx context.Context, sinceRFC3339 string) (float64, error)
+	LatencyPercentilesSince(ctx context.Context, sinceRFC3339 string) (p50, p95, p99 float64, err error)
 	ExistsRunnerCompletion(ctx context.Context, sessionID, invocationID string) (bool, error)
 	PatchRunnerCompletionMetadata(ctx context.Context, sessionID, runID, invocationID, patchJSON string) (bool, error)
 	InsertMonitorTrace(ctx context.Context, tw TraceWrite) error
@@ -213,6 +214,9 @@ type RunnerMetricsSummary struct {
 	ErrorRate     float64
 	SuccessRate   float64
 	AvgDurationMs float64
+	P50DurationMs float64
+	P95DurationMs float64
+	P99DurationMs float64
 }
 
 // FilesystemHealthReader supplies live skill filesystem health for alerts.
@@ -393,8 +397,8 @@ func (u *Usecase) EvaluateAlerts(ctx context.Context) {
 					continue
 				}
 				u.evaluateMetricValue(ctx, rule, value)
+				continue
 			}
-			continue
 		}
 		switch metricKey {
 		case "runner.error_rate":
@@ -414,8 +418,8 @@ func (u *Usecase) evaluateMetricValue(ctx context.Context, rule AlertRule, value
 		})
 		_ = u.RecordMonitorEvent(ctx, EventWrite{
 			EventKey: "alert.recovered", Name: rule.Name,
-			Description:  fmt.Sprintf("%s %.2f recovered below %.2f", rule.MetricKey, value, recoveryThreshold(rule)),
-			Status:       "recovered", MetadataJSON: string(meta),
+			Description: fmt.Sprintf("%s %.2f recovered below %.2f", rule.MetricKey, value, recoveryThreshold(rule)),
+			Status:      "recovered", MetadataJSON: string(meta),
 		})
 		if u.notifier != nil {
 			u.notifier.Notify(ctx, rule, map[string]any{
@@ -437,8 +441,8 @@ func (u *Usecase) evaluateMetricValue(ctx context.Context, rule AlertRule, value
 	})
 	if err := u.RecordMonitorEvent(ctx, EventWrite{
 		EventKey: "alert.fired", Name: rule.Name,
-		Description:  fmt.Sprintf("%s %.2f >= %.2f", rule.MetricKey, value, rule.Threshold),
-		Status:       strings.TrimSpace(rule.Severity), MetadataJSON: string(meta),
+		Description: fmt.Sprintf("%s %.2f >= %.2f", rule.MetricKey, value, rule.Threshold),
+		Status:      strings.TrimSpace(rule.Severity), MetadataJSON: string(meta),
 	}); err != nil {
 		event.SysLogWarn("system.monitor.alert_fired_persist_fail", "RecordMonitorEvent for alert.fired failed",
 			event.P("rule_id", rule.ID), event.P("error", err.Error()))
@@ -515,132 +519,19 @@ func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {
 		return
 	}
 	rate := float64(errors) / float64(total)
-	now := time.Now().UTC()
-
-	// MON-OPT-02: recovery transition — firing rule whose metric dropped below recovery threshold.
-	if rule.FiringState == AlertFiringStateFiring && rate < recoveryThreshold(rule) {
-		u.MarkAlertRecovered(ctx, rule, now)
-		// Publish alert.recovered event.
-		meta, _ := json.Marshal(map[string]any{
-			"rule_id": rule.ID, "error_rate": rate, "total": total, "window_minutes": window,
-		})
-		_ = u.RecordMonitorEvent(ctx, EventWrite{
-			EventKey:     "alert.recovered",
-			Name:         rule.Name,
-			Description:  fmt.Sprintf("error rate %.2f recovered below %.2f", rate, recoveryThreshold(rule)),
-			Status:       "recovered",
-			MetadataJSON: string(meta),
-		})
-		if u.notifier != nil {
-			u.notifier.Notify(ctx, rule, map[string]any{
-				"rule_id": rule.ID, "name": rule.Name, "error_rate": rate,
-				"recovered_at": now.Format(time.RFC3339),
-			})
-		}
-		return
-	}
-
-	if rate < rule.Threshold {
-		return
-	}
-	if !u.ShouldFireAlert(rule, now) {
-		return
-	}
-	// MON-OPT-02: persist firing state before publishing (prevents duplicate fires on restart).
-	u.MarkAlertFiredPersistent(ctx, rule, now, rate)
-	meta, _ := json.Marshal(map[string]any{
-		"rule_id": rule.ID, "error_rate": rate, "errors": errors, "total": total, "window_minutes": window,
-	})
-	if err := u.RecordMonitorEvent(ctx, EventWrite{
-		EventKey:     "alert.fired",
-		Name:         rule.Name,
-		Description:  fmt.Sprintf("error rate %.2f >= %.2f", rate, rule.Threshold),
-		Status:       strings.TrimSpace(rule.Severity),
-		MetadataJSON: string(meta),
-	}); err != nil {
-		event.SysLogWarn("system.monitor.alert_fired_persist_fail", "RecordMonitorEvent for alert.fired failed", event.P("rule_id", rule.ID), event.P("error", err.Error()))
-	}
-	payload := map[string]any{
-		"rule_id":        rule.ID,
-		"name":           rule.Name,
-		"error_rate":     rate,
-		"errors":         errors,
-		"total":          total,
-		"window_minutes": window,
-		"severity":       strings.TrimSpace(rule.Severity),
-		"fired_at":       now.Format(time.RFC3339),
-	}
-	if u.notifier != nil {
-		u.notifier.Notify(ctx, rule, payload)
-	}
+	u.evaluateMetricValue(ctx, rule, rate)
 }
 
 func (u *Usecase) evaluateSkillFilesystemMissingCount(ctx context.Context, rule AlertRule) {
 	if u == nil || u.fsHealth == nil {
 		return
 	}
-	missing, pending, err := u.fsHealth.FilesystemHealthStats(ctx)
+	missing, _, err := u.fsHealth.FilesystemHealthStats(ctx)
 	if err != nil {
 		event.SysLogWarn("system.monitor.fs_health_fail", "EvaluateAlerts: FilesystemHealthStats failed", event.P("rule_id", rule.ID), event.P("error", err.Error()))
 		return
 	}
-	missingF := float64(missing)
-	now := time.Now().UTC()
-
-	// MON-OPT-02: recovery transition — firing rule whose metric dropped below recovery threshold.
-	if rule.FiringState == AlertFiringStateFiring && missingF < recoveryThreshold(rule) {
-		u.MarkAlertRecovered(ctx, rule, now)
-		meta, _ := json.Marshal(map[string]any{
-			"rule_id": rule.ID, "missing_count": missing, "threshold": rule.Threshold,
-		})
-		_ = u.RecordMonitorEvent(ctx, EventWrite{
-			EventKey:     "alert.recovered",
-			Name:         rule.Name,
-			Description:  fmt.Sprintf("skill filesystem missing %d recovered below %.0f", missing, recoveryThreshold(rule)),
-			Status:       "recovered",
-			MetadataJSON: string(meta),
-		})
-		if u.notifier != nil {
-			u.notifier.Notify(ctx, rule, map[string]any{
-				"rule_id": rule.ID, "name": rule.Name, "missing_count": missing,
-				"recovered_at": now.Format(time.RFC3339),
-			})
-		}
-		return
-	}
-
-	if missingF < rule.Threshold {
-		return
-	}
-	if !u.ShouldFireAlert(rule, now) {
-		return
-	}
-	// MON-OPT-02: persist firing state before publishing (prevents duplicate fires on restart).
-	u.MarkAlertFiredPersistent(ctx, rule, now, missingF)
-	meta, _ := json.Marshal(map[string]any{
-		"rule_id": rule.ID, "missing_count": missing, "pending_filesystem_count": pending, "threshold": rule.Threshold,
-	})
-	if err := u.RecordMonitorEvent(ctx, EventWrite{
-		EventKey:     "alert.fired",
-		Name:         rule.Name,
-		Description:  fmt.Sprintf("skill filesystem missing %d >= %.0f", missing, rule.Threshold),
-		Status:       strings.TrimSpace(rule.Severity),
-		MetadataJSON: string(meta),
-	}); err != nil {
-		event.SysLogWarn("system.monitor.skill_alert_fired_persist_fail", "RecordMonitorEvent for skill alert.fired failed", event.P("rule_id", rule.ID), event.P("error", err.Error()))
-	}
-	payload := map[string]any{
-		"rule_id":                  rule.ID,
-		"name":                     rule.Name,
-		"missing_count":            missing,
-		"pending_filesystem_count": pending,
-		"threshold":                rule.Threshold,
-		"severity":                 strings.TrimSpace(rule.Severity),
-		"fired_at":                 now.Format(time.RFC3339),
-	}
-	if u.notifier != nil {
-		u.notifier.Notify(ctx, rule, payload)
-	}
+	u.evaluateMetricValue(ctx, rule, float64(missing))
 }
 
 // ShouldFireAlert checks whether an alert rule should fire now.
@@ -785,6 +676,11 @@ func (u *Usecase) GetRunnerMetrics(ctx context.Context, windowMinutes int) (Runn
 	}
 	if avg, err := u.repo.AvgRunnerCompletionDurationMsSince(ctx, since); err == nil {
 		out.AvgDurationMs = avg
+	}
+	if p50, p95, p99, err := u.repo.LatencyPercentilesSince(ctx, since); err == nil {
+		out.P50DurationMs = p50
+		out.P95DurationMs = p95
+		out.P99DurationMs = p99
 	}
 	return out, nil
 }

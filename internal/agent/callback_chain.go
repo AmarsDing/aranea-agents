@@ -46,6 +46,9 @@ func productCallbackChain(ctx context.Context, ag biz.Agent, deps TRPCBuilderDep
 	if hook := newRuntimeCueBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}
+	if hook := newSkillGuidanceBeforeHook(ag, deps); hook != nil {
+		entries = append(entries, hook)
+	}
 	if hook := newMemoryInjectBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}

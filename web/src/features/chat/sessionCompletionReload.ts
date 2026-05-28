@@ -1,6 +1,7 @@
 import type { useChatSessionStore } from "../../stores/chat/sessionStore";
 import type { useChatMessageStore } from "../../stores/chat/messageStore";
 import type { useChatStreamingSnapshots } from "../../stores/chatStreamingSnapshots";
+import { getSession } from "../session/api";
 
 type SessionStore = ReturnType<typeof useChatSessionStore>;
 type MessageStore = ReturnType<typeof useChatMessageStore>;
@@ -19,6 +20,11 @@ export async function reloadSessionAfterCompletion(input: {
 
   await input.messageStore.loadMessages({ sessionId, dropStaleInFlight: true });
   input.streamingSnapshots.clear(sessionId);
+
+  try {
+    const serverSession = await getSession(sessionId);
+    input.sessionStore.reconcileFromServer(sessionId, serverSession);
+  } catch {}
 
   if (input.sessionStore.entityKind === "agent") {
     const agentId = input.resolveAgentId?.()?.trim();

@@ -18,7 +18,7 @@ import (
 )
 
 type FlowFileAppender struct {
-	dir        string
+	dir           string
 	retentionDays int
 	compressAge   time.Duration
 
@@ -126,19 +126,25 @@ func (a *FlowFileAppender) Start(ctx context.Context, buses ...contract.Bus) {
 }
 
 func (a *FlowFileAppender) maintenance() {
-	a.compressOldFiles()
-	a.purgeExpiredFiles()
+	compressed := a.compressOldFiles()
+	purged := a.purgeExpiredFiles()
+	a.purgeTmpFiles()
+	if compressed > 0 || purged > 0 {
+		event.SysLogInfo("system.monitor.flow_file.maintenance", "FlowFileAppender maintenance completed",
+			event.P("compressed", fmt.Sprint(compressed)), event.P("purged", fmt.Sprint(purged)))
+	}
 }
 
-func (a *FlowFileAppender) compressOldFiles() {
+func (a *FlowFileAppender) compressOldFiles() int {
 	if a.dir == "" || a.compressAge <= 0 {
-		return
+		return 0
 	}
 	entries, err := os.ReadDir(a.dir)
 	if err != nil {
-		return
+		return 0
 	}
 	cutoff := time.Now().UTC().Add(-a.compressAge)
+	compressed := 0
 	for _, e := range entries {
 		name := e.Name()
 		if !strings.HasSuffix(name, ".jsonl") {
@@ -156,41 +162,60 @@ func (a *FlowFileAppender) compressOldFiles() {
 		if _, err := os.Stat(dstPath); err == nil {
 			continue
 		}
-		a.compressFile(srcPath, dstPath)
+		if a.compressFile(srcPath, dstPath) {
+			compressed++
+		}
 	}
+	return compressed
 }
 
-func (a *FlowFileAppender) compressFile(src, dst string) {
+func (a *FlowFileAppender) compressFile(src, dst string) bool {
+	tmpDst := dst + ".tmp"
 	sf, err := os.Open(src)
 	if err != nil {
-		return
+		return false
 	}
 	defer sf.Close()
-	df, err := os.Create(dst)
+	df, err := os.Create(tmpDst)
 	if err != nil {
-		return
+		return false
 	}
-	defer df.Close()
 	gw := gzip.NewWriter(df)
-	defer gw.Close()
 	if _, err := io.Copy(gw, sf); err != nil {
-		os.Remove(dst)
-		return
+		gw.Close()
+		df.Close()
+		os.Remove(tmpDst)
+		return false
 	}
-	gw.Close()
+	if err := gw.Close(); err != nil {
+		df.Close()
+		os.Remove(tmpDst)
+		return false
+	}
+	if err := df.Sync(); err != nil {
+		df.Close()
+		os.Remove(tmpDst)
+		return false
+	}
 	df.Close()
+	if err := os.Rename(tmpDst, dst); err != nil {
+		os.Remove(tmpDst)
+		return false
+	}
 	os.Remove(src)
+	return true
 }
 
-func (a *FlowFileAppender) purgeExpiredFiles() {
+func (a *FlowFileAppender) purgeExpiredFiles() int {
 	if a.dir == "" || a.retentionDays <= 0 {
-		return
+		return 0
 	}
 	entries, err := os.ReadDir(a.dir)
 	if err != nil {
-		return
+		return 0
 	}
 	cutoff := time.Now().UTC().AddDate(0, 0, -a.retentionDays)
+	purged := 0
 	for _, e := range entries {
 		name := e.Name()
 		if !strings.HasSuffix(name, ".jsonl") && !strings.HasSuffix(name, ".jsonl.gz") {
@@ -203,7 +228,26 @@ func (a *FlowFileAppender) purgeExpiredFiles() {
 		if info.ModTime().UTC().After(cutoff) {
 			continue
 		}
-		os.Remove(filepath.Join(a.dir, name))
+		if os.Remove(filepath.Join(a.dir, name)) == nil {
+			purged++
+		}
+	}
+	return purged
+}
+
+func (a *FlowFileAppender) purgeTmpFiles() {
+	if a.dir == "" {
+		return
+	}
+	entries, err := os.ReadDir(a.dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasSuffix(name, ".gz.tmp") {
+			os.Remove(filepath.Join(a.dir, name))
+		}
 	}
 }
 
@@ -299,6 +343,7 @@ func (a *FlowFileAppender) writeRow(rf *rotatingFile, row map[string]any) {
 
 func (rf *rotatingFile) Close() {
 	if rf != nil && rf.file != nil {
+		rf.file.Sync()
 		rf.file.Close()
 		rf.file = nil
 	}

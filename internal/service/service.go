@@ -68,6 +68,7 @@ var ProviderSet = wire.NewSet(
 	NewKnowledgeChunker,
 	NewKnowledgeEmbedder,
 	wire.Bind(new(biz.EmbeddingService), new(*knowledge.Embedder)),
+	wire.Bind(new(biz.SkillEmbedder), new(*knowledge.Embedder)),
 	NewKnowledgeRetriever,
 	NewSkillDBRepository,
 	NewMemoryLLMExtractor,

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/skill/manifest"
 	"aranea-agents/pkg/strutil"
 )
 
@@ -36,7 +37,10 @@ func ValidateSkillPackage(files map[string][]byte, dirSlugHint string, existing 
 		}, nil
 	}
 	body := string(bodyBytes)
-	name, desc, tags := parseSkillMarkdown(body)
+	parsed := manifest.Parse(body)
+	name := parsed.Name
+	desc := parsed.Description
+	tags := parsed.Tags
 	slug := slugify(strutil.FirstNonEmpty(name, pathBaseSkill(dirSlugHint)))
 	if slug == "" {
 		slug = slugify(pathBaseSkill(dirSlugHint))
@@ -96,18 +100,35 @@ func ReadSkillDirFiles(dir string) (map[string][]byte, error) {
 			return err
 		}
 		rel = filepath.ToSlash(rel)
-		if rel == "" || strings.Contains(rel, "..") {
-			return nil
+		if !isSafePath(rel) {
+			return fmt.Errorf("unsafe relative path in skill directory: %q", rel)
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
 		if len(data) > 2*1024*1024 {
-			return validationError("skill file too large: " + rel)
+			return fmt.Errorf("skill file too large: %s", rel)
 		}
 		out[rel] = data
 		return nil
 	})
 	return out, err
+}
+
+func isSafePath(rel string) bool {
+	if rel == "" {
+		return false
+	}
+	cleaned := filepath.ToSlash(filepath.Clean(rel))
+	if cleaned != rel {
+		return false
+	}
+	if strings.Contains(rel, "..") {
+		return false
+	}
+	if strings.HasPrefix(rel, "/") || strings.HasPrefix(rel, "\\") {
+		return false
+	}
+	return true
 }

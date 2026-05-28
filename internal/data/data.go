@@ -75,6 +75,7 @@ var ProviderSet = wire.NewSet(
 	NewFlowLogRepo,
 	NewWebhookRepo,
 	NewMemoryJobDeadLetterRepo,
+	NewTeamGraphSessionRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -337,6 +338,9 @@ func ensureSchemaDDL(rawDB *sql.DB, entClient *ent.Client) error {
 	if err := ensureEntityReinforcementsSchema(context.Background(), entClient); err != nil {
 		return fmt.Errorf("entity reinforcements schema: %w", err)
 	}
+	if err := ensureCascadeSagaPatches(context.Background(), entClient); err != nil {
+		return fmt.Errorf("cascade saga patches: %w", err)
+	}
 	if err := ensureBuiltinPlatformTools(context.Background(), entClient); err != nil {
 		return err
 	}
@@ -409,6 +413,9 @@ func ensureSchemaDDL(rawDB *sql.DB, entClient *ent.Client) error {
 	}
 	if err := EnsureEcosystemSchema(ctxSchema, entClient); err != nil {
 		return fmt.Errorf("ecosystem schema: %w", err)
+	}
+	if err := EnsureTeamGraphSessionSchema(ctxSchema, rawDB); err != nil {
+		return fmt.Errorf("team graph session schema: %w", err)
 	}
 	return nil
 }

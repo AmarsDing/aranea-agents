@@ -47,6 +47,42 @@ func (m *cascadeGraphStoreMock) ReplaceNameInAgentFacts(context.Context, string,
 	return nil, 0, nil
 }
 
+func (m *cascadeGraphStoreMock) InitCascadeSagaSteps(_ context.Context, _ string, _ []CascadeSagaStep) error {
+	return nil
+}
+
+func (m *cascadeGraphStoreMock) GetCascadeSagaSteps(_ context.Context, _ string) ([]CascadeSagaStep, error) {
+	return nil, nil
+}
+
+func (m *cascadeGraphStoreMock) UpdateSagaStepState(_ context.Context, _ int64, _, _ string) error {
+	return nil
+}
+
+func (m *cascadeGraphStoreMock) UpdateSagaStepResult(_ context.Context, _ int64, _ string) error {
+	return nil
+}
+
+func (m *cascadeGraphStoreMock) HasCascadeSaga(_ context.Context, _ string) (bool, error) {
+	return false, nil
+}
+
+func (m *cascadeGraphStoreMock) SaveCascadeOriginalStatements(_ context.Context, _, _ string, _ []string) error {
+	return nil
+}
+
+func (m *cascadeGraphStoreMock) RevertCascadeFactStatements(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
+func (m *cascadeGraphStoreMock) ListCascadeFactDiffs(_ context.Context, _, _, _ string, _ int) ([]map[string]any, error) {
+	return nil, nil
+}
+
+func (m *cascadeGraphStoreMock) MarkFactsIndexStaleByAgent(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
+
 func TestL4CascadeUsecase_ProposeNameConflict(t *testing.T) {
 	store := &cascadeGraphStoreMock{}
 	uc := NewL4CascadeUsecase(store, nil)
@@ -97,6 +133,51 @@ func (m *cascadeApproveStore) GetEntityRow(_ context.Context, _ string) ([]byte,
 
 func (m *cascadeApproveStore) UpdateCascadeProposalStatus(_ context.Context, id, status, reviewer, note string) ([]byte, error) {
 	return json.Marshal(map[string]any{"id": id, "status": status, "reviewed_by": reviewer, "review_note": note})
+}
+
+func (m *cascadeApproveStore) HasCascadeSaga(_ context.Context, _ string) (bool, error) {
+	return false, nil
+}
+
+func (m *cascadeApproveStore) InitCascadeSagaSteps(_ context.Context, _ string, _ []CascadeSagaStep) error {
+	return nil
+}
+
+func (m *cascadeApproveStore) GetCascadeSagaSteps(_ context.Context, proposalID string) ([]CascadeSagaStep, error) {
+	return []CascadeSagaStep{
+		{ID: 1, ProposalID: proposalID, StepIndex: 0, StepName: SagaStepUpsertEntity, State: "succeeded", IsCritical: true},
+		{ID: 2, ProposalID: proposalID, StepIndex: 1, StepName: SagaStepTouchAffected, State: "succeeded", IsCritical: false},
+		{ID: 3, ProposalID: proposalID, StepIndex: 2, StepName: SagaStepReplaceFacts, State: "succeeded", IsCritical: true},
+		{ID: 4, ProposalID: proposalID, StepIndex: 3, StepName: SagaStepSyncIndex, State: "succeeded", IsCritical: false},
+	}, nil
+}
+
+func (m *cascadeApproveStore) ReplaceNameInAgentFacts(_ context.Context, _, _, _ string) ([][]byte, int, error) {
+	return nil, 0, nil
+}
+
+func (m *cascadeApproveStore) ListCascadeFactDiffs(_ context.Context, _, _, _ string, _ int) ([]map[string]any, error) {
+	return nil, nil
+}
+
+func (m *cascadeApproveStore) SaveCascadeOriginalStatements(_ context.Context, _, _ string, _ []string) error {
+	return nil
+}
+
+func (m *cascadeApproveStore) UpdateSagaStepState(_ context.Context, _ int64, _, _ string) error {
+	return nil
+}
+
+func (m *cascadeApproveStore) UpdateSagaStepResult(_ context.Context, _ int64, _ string) error {
+	return nil
+}
+
+func (m *cascadeApproveStore) RevertCascadeFactStatements(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
+func (m *cascadeApproveStore) MarkFactsIndexStaleByAgent(_ context.Context, _ string) (int64, error) {
+	return 0, nil
 }
 
 func TestL4CascadeUsecase_Approve(t *testing.T) {

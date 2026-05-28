@@ -175,6 +175,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		if deps.Team.TeamGraphCoord != nil {
 			deps.Team.TeamsNative.SetTeamGraphRunCoordinator(deps.Team.TeamGraphCoord)
 			deps.Team.TeamGraphCoord.SetFinisher(deps.Team.TeamsNative)
+			deps.Team.TeamGraphCoord.RecoverSessions(context.Background())
 		}
 	}
 

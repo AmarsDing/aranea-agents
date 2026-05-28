@@ -1,6 +1,7 @@
 package biz
 
 import (
+	"aranea-agents/internal/event"
 	"context"
 	"fmt"
 	"strings"
@@ -8,7 +9,6 @@ import (
 	"time"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
-	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/uuid"
 )
 
@@ -446,7 +446,8 @@ func (uc *TaskUsecase) CheckTimeouts(ctx context.Context) error {
 		if task.Status == TaskStatusClaimed {
 			task.Status = TaskStatusTimedOut
 			if err := uc.repo.UpdateTask(ctx, task); err != nil {
-				log.Errorf("timeout update task_id=%s: %v", e.taskID, err)
+				event.SysLogError("system.task.timeout_update_fail", "timeout update task failed",
+					event.P("task_id", e.taskID), event.P("error", err.Error()))
 				continue
 			}
 			uc.recordTaskEvent(ctx, e.taskID, "task_timed_out", task.NodeID, "task timed out")
@@ -482,7 +483,8 @@ func (uc *TaskUsecase) ReleaseClaim(ctx context.Context, taskID string) {
 	task.Assignee = ""
 	task.ClaimedAt = nil
 	if err := uc.repo.UpdateTask(ctx, task); err != nil {
-		log.Warnf("release claim update task_id=%s: %v", taskID, err)
+		event.SysLogWarn("system.task.release_claim_fail", "release claim update failed",
+			event.P("task_id", taskID), event.P("error", err.Error()))
 	}
 	uc.recordTaskEvent(ctx, taskID, "task_claim_released", task.NodeID, "claim released after dispatch failure")
 	uc.publishTaskStatus(ctx, task, nil)

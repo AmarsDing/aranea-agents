@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // ModelRouterRule is one configurable routing rule (rules[] in model_router config).
@@ -13,6 +14,20 @@ type ModelRouterRule struct {
 	Regex    string   `json:"regex"`
 	MinChars int      `json:"min_chars"`
 	Priority int      `json:"priority"`
+
+	compileOnce   sync.Once
+	compiledRegex *regexp.Regexp
+}
+
+func (r *ModelRouterRule) compiled() *regexp.Regexp {
+	r.compileOnce.Do(func() {
+		if pat := strings.TrimSpace(r.Regex); pat != "" {
+			if re, err := regexp.Compile(pat); err == nil {
+				r.compiledRegex = re
+			}
+		}
+	})
+	return r.compiledRegex
 }
 
 func resolveModelFromRules(prompt string, rules []ModelRouterRule) string {
@@ -27,7 +42,8 @@ func resolveModelFromRules(prompt string, rules []ModelRouterRule) string {
 		}
 		return sorted[i].Priority > sorted[j].Priority
 	})
-	for _, rule := range sorted {
+	for i := range sorted {
+		rule := &sorted[i]
 		model := strings.TrimSpace(rule.Model)
 		if model == "" {
 			continue
@@ -35,11 +51,7 @@ func resolveModelFromRules(prompt string, rules []ModelRouterRule) string {
 		if rule.MinChars > 0 && len(prompt) < rule.MinChars {
 			continue
 		}
-		if pat := strings.TrimSpace(rule.Regex); pat != "" {
-			re, err := regexp.Compile(pat)
-			if err != nil {
-				continue
-			}
+		if re := rule.compiled(); re != nil {
 			if re.MatchString(prompt) {
 				return model
 			}

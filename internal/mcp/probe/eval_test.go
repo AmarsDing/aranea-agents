@@ -1,19 +1,12 @@
 package probe
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
 
-// TestDoHTTPProbe_oauthRequired verifies that a 401/403 response is treated as
-// "network reachable, auth required" (OK=true, Status="auth_required") rather than
-// a hard error, so OAuth-protected MCP servers don't create false alarms in the
-// admin health dashboard. (TPM-P1-09)
-//
-// doHTTPProbe is tested directly (same package) with http.DefaultClient so the
-// SSRF guard (which blocks loopback addresses) is bypassed — the unit under test
-// is the status-code branch, not the SSRF guard.
 func TestDoHTTPProbe_oauthRequired(t *testing.T) {
 	for _, code := range []int{http.StatusUnauthorized, http.StatusForbidden} {
 		code := code
@@ -35,7 +28,6 @@ func TestDoHTTPProbe_oauthRequired(t *testing.T) {
 	}
 }
 
-// TestDoHTTPProbe_serverError verifies that a 500 response is still an error.
 func TestDoHTTPProbe_serverError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -51,7 +43,6 @@ func TestDoHTTPProbe_serverError(t *testing.T) {
 	}
 }
 
-// TestDoHTTPProbe_success verifies 200-range is treated as OK.
 func TestDoHTTPProbe_success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -67,9 +58,8 @@ func TestDoHTTPProbe_success(t *testing.T) {
 	}
 }
 
-// TestEvaluate_disabled verifies that a disabled server returns OK=false without network call.
 func TestEvaluate_disabled(t *testing.T) {
-	result := Evaluate(false, "{}")
+	result := Evaluate(context.Background(), false, "{}")
 	if result.OK {
 		t.Error("expected OK=false for disabled server")
 	}
@@ -79,7 +69,7 @@ func TestEvaluate_disabled(t *testing.T) {
 }
 
 func TestEvaluate_stdioNoCommand(t *testing.T) {
-	result := Evaluate(true, `{"transport":"stdio"}`)
+	result := Evaluate(context.Background(), true, `{"transport":"stdio"}`)
 	if result.OK {
 		t.Error("expected OK=false for stdio without command")
 	}
@@ -89,7 +79,7 @@ func TestEvaluate_stdioNoCommand(t *testing.T) {
 }
 
 func TestEvaluate_httpNoURL(t *testing.T) {
-	result := Evaluate(true, `{"transport":"sse"}`)
+	result := Evaluate(context.Background(), true, `{"transport":"sse"}`)
 	if result.OK {
 		t.Error("expected OK=false for HTTP without URL")
 	}
@@ -99,7 +89,7 @@ func TestEvaluate_httpNoURL(t *testing.T) {
 }
 
 func TestEvaluate_invalidJSON(t *testing.T) {
-	result := Evaluate(true, `{invalid`)
+	result := Evaluate(context.Background(), true, `{invalid`)
 	if result.OK {
 		t.Error("expected OK=false for invalid JSON")
 	}
@@ -124,7 +114,7 @@ func TestEvaluate_transportAutoNormalize(t *testing.T) {
 }
 
 func TestEvaluate_unknownTransport(t *testing.T) {
-	result := Evaluate(true, `{"transport":"websocket"}`)
+	result := Evaluate(context.Background(), true, `{"transport":"websocket"}`)
 	if result.OK {
 		t.Error("expected OK=false for unknown transport")
 	}

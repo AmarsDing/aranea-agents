@@ -2,13 +2,14 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/provider"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -30,7 +31,9 @@ func (g *LLMSessionTitleGenerator) Generate(ctx context.Context, userMessage str
 
 	m, err := g.resolveModel(ctx)
 	if err != nil {
-		return "", fmt.Errorf("session title: resolve model: %w", err)
+		event.CtxFlowLogWarn(ctx, "system.session.title_fail", "session title: resolve model failed",
+			event.P("error", err.Error()))
+		return "", kerrors.InternalServer("SESSION", "session title: resolve model: "+err.Error())
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -45,13 +48,17 @@ func (g *LLMSessionTitleGenerator) Generate(ctx context.Context, userMessage str
 
 	ch, err := m.GenerateContent(ctx, req)
 	if err != nil {
-		return "", fmt.Errorf("session title: llm call: %w", err)
+		event.CtxFlowLogWarn(ctx, "system.session.title_fail", "session title: llm call failed",
+			event.P("error", err.Error()))
+		return "", kerrors.InternalServer("SESSION", "session title: llm call: "+err.Error())
 	}
 
 	var sb strings.Builder
 	for resp := range ch {
 		if resp.Error != nil {
-			return "", fmt.Errorf("session title: llm error: %s", resp.Error.Message)
+			event.CtxFlowLogWarn(ctx, "system.session.title_fail", "session title: llm error",
+				event.P("error", resp.Error.Message))
+			return "", kerrors.InternalServer("SESSION", "session title: llm error: "+resp.Error.Message)
 		}
 		for _, c := range resp.Choices {
 			if c.Delta.Content != "" {
@@ -76,7 +83,7 @@ func (g *LLMSessionTitleGenerator) resolveModel(ctx context.Context) (trpcmodel.
 		return nil, err
 	}
 	if len(models) == 0 {
-		return nil, fmt.Errorf("no models in catalog")
+		return nil, kerrors.NotFound("SESSION", "no models in catalog")
 	}
 
 	pm := pickTitleModel(models)

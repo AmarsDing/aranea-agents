@@ -41,6 +41,7 @@ type TeamGraphRunCoordinator struct {
 	teams          biz.TeamRepository
 	bus            event.Bus
 	finisher       TeamGraphRunFinisher
+	sessionRepo    biz.TeamGraphSessionRepo
 	watchTimeout   time.Duration
 	hitlSLATimeout time.Duration
 
@@ -72,11 +73,12 @@ const (
 	graphWatchStepsAndFinalize
 )
 
-func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teams biz.TeamRepository, bus event.Bus) *TeamGraphRunCoordinator {
+func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teams biz.TeamRepository, bus event.Bus, sessionRepo biz.TeamGraphSessionRepo) *TeamGraphRunCoordinator {
 	return &TeamGraphRunCoordinator{
 		graphs:         graphs,
 		teams:          teams,
 		bus:            bus,
+		sessionRepo:    sessionRepo,
 		sessions:       make(map[string]*teamGraphRunSession),
 		watchTimeout:   defaultGraphWatchTimeout,
 		hitlSLATimeout: defaultHITLSLATimeout,
@@ -113,6 +115,7 @@ func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context
 	c.mu.Lock()
 	c.sessions[execID] = sess
 	c.mu.Unlock()
+	c.persistSession(ctx, sess, biz.TeamRunStatusRunning)
 	return nil
 }
 
@@ -138,7 +141,11 @@ func (c *TeamGraphRunCoordinator) MarkTeamGraphInterrupt(ctx context.Context, ex
 		return nil
 	}
 	run.Status = biz.TeamRunStatusWaitingHuman
-	return c.teams.UpdateTeamRun(ctx, run)
+	if err := c.teams.UpdateTeamRun(ctx, run); err != nil {
+		return err
+	}
+	c.updateSessionStatus(ctx, sess.execID, biz.TeamRunStatusWaitingHuman)
+	return nil
 }
 
 // DeferTeamRunSuccessIfHITL keeps the team run open when graph execution paused for human task.
@@ -208,6 +215,7 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 			if err := c.teams.UpdateTeamRun(ctx, run); err != nil {
 				event.SysLogWarn("team.usage_record_fail", "HandleTeamGraphTaskCompleted: UpdateTeamRun failed", event.P("team_run_id", run.ID), event.P("error", err.Error()))
 			}
+			c.updateSessionStatus(ctx, sess.execID, biz.TeamRunStatusRunning)
 		}
 	}
 	c.startGraphWatch(ctx, sess, graphWatchStepsAndFinalize)
@@ -427,6 +435,7 @@ func (c *TeamGraphRunCoordinator) evictSession(execID string) {
 	c.mu.Lock()
 	delete(c.sessions, strings.TrimSpace(execID))
 	c.mu.Unlock()
+	c.deleteSessionFromDB(execID)
 }
 
 // CleanupStaleSessions removes sessions older than sessionMaxAge (e.g. after process restart).
@@ -444,6 +453,7 @@ func (c *TeamGraphRunCoordinator) CleanupStaleSessions() {
 				sess.watchStop = nil
 			}
 			delete(c.sessions, id)
+			c.deleteSessionFromDB(id)
 			event.SysLogWarn("team.intent_anchor_fallback", "CleanupStaleSessions: evicted stale session", event.P("exec_id", id), event.P("age", now.Sub(sess.registeredAt).String()))
 		}
 	}
@@ -466,6 +476,110 @@ func (c *TeamGraphRunCoordinator) stopWatch(execID string) {
 		sess.watchStop()
 		sess.watchStop = nil
 	}
+}
+
+func (c *TeamGraphRunCoordinator) persistSession(ctx context.Context, sess *teamGraphRunSession, status string) {
+	if c == nil || c.sessionRepo == nil || sess == nil {
+		return
+	}
+	now := agent.RFC3339Now()
+	dbSess := biz.TeamGraphSession{
+		ExecID:         sess.execID,
+		TeamRunID:      sess.teamRunID,
+		TeamID:         sess.teamID,
+		SessionID:      sess.sessionID,
+		InputPreview:   sess.inputPreview,
+		DefinitionJSON: sess.definitionJSON,
+		Status:         status,
+		RegisteredAt:   now,
+		LastActivityAt: now,
+		UpdatedAt:      now,
+	}
+	if existing, err := c.sessionRepo.GetSession(ctx, sess.execID); err == nil {
+		dbSess.CreatedAt = existing.CreatedAt
+	} else {
+		dbSess.CreatedAt = now
+	}
+	if err := c.sessionRepo.SaveSession(ctx, dbSess); err != nil {
+		event.SysLogWarn("team.session.persist_fail", "persistSession: SaveSession failed",
+			event.P("exec_id", sess.execID), event.P("error", err.Error()))
+	}
+}
+
+func (c *TeamGraphRunCoordinator) updateSessionStatus(ctx context.Context, execID, status string) {
+	if c == nil || c.sessionRepo == nil {
+		return
+	}
+	if err := c.sessionRepo.UpdateSessionStatus(ctx, execID, status); err != nil {
+		event.SysLogWarn("team.session.update_fail", "updateSessionStatus failed",
+			event.P("exec_id", execID), event.P("status", status), event.P("error", err.Error()))
+	}
+}
+
+func (c *TeamGraphRunCoordinator) deleteSessionFromDB(execID string) {
+	if c == nil || c.sessionRepo == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := c.sessionRepo.DeleteSession(ctx, execID); err != nil {
+		event.SysLogWarn("team.session.delete_fail", "deleteSessionFromDB failed",
+			event.P("exec_id", execID), event.P("error", err.Error()))
+	}
+}
+
+// RecoverSessions rebuilds in-memory sessions from DB after process restart (BL-04b).
+// Running sessions whose graph runtime was lost are cancelled; waiting_human sessions
+// are re-registered so that HITL task completion can resume them.
+func (c *TeamGraphRunCoordinator) RecoverSessions(ctx context.Context) {
+	if c == nil || c.sessionRepo == nil {
+		return
+	}
+	cancelled, err := c.sessionRepo.MarkOrphanedSessionsTerminal(ctx)
+	if err != nil {
+		event.SysLogWarn("team.session.recover_fail", "RecoverSessions: MarkOrphanedSessionsTerminal failed",
+			event.P("error", err.Error()))
+	}
+	if cancelled > 0 {
+		event.SysLogWarn("team.session.orphan_cancelled", "RecoverSessions: cancelled orphaned running sessions",
+			event.P("count", cancelled))
+	}
+	active, err := c.sessionRepo.ListActiveSessions(ctx)
+	if err != nil {
+		event.SysLogWarn("team.session.recover_fail", "RecoverSessions: ListActiveSessions failed",
+			event.P("error", err.Error()))
+		return
+	}
+	if len(active) == 0 {
+		return
+	}
+	recovered := 0
+	for _, dbSess := range active {
+		sess := &teamGraphRunSession{
+			teamRunID:      dbSess.TeamRunID,
+			teamID:         dbSess.TeamID,
+			sessionID:      dbSess.SessionID,
+			execID:         dbSess.ExecID,
+			inputPreview:   dbSess.InputPreview,
+			definitionJSON: dbSess.DefinitionJSON,
+			stepDedup:      newGraphStepDedup(),
+			registeredAt:   time.Now(),
+		}
+		reg, memberByNode, stepSortIndex := buildResumeSessionContext(dbSess.DefinitionJSON, dbSess.InputPreview)
+		sess.obsReg = reg
+		sess.obsStore = biz.NewOrchestrationStatusStore(reg)
+		sess.memberByNode = memberByNode
+		sess.stepSortIndex = stepSortIndex
+		c.mu.Lock()
+		c.sessions[dbSess.ExecID] = sess
+		c.mu.Unlock()
+		if dbSess.Status == biz.TeamRunStatusWaitingHuman {
+			c.startCompletionWatch(ctx, sess)
+		}
+		recovered++
+	}
+	event.SysLogWarn("team.session.recovered", "RecoverSessions: recovered sessions from DB",
+		event.P("recovered", recovered))
 }
 
 // BuildTaskResumeValue builds the resume payload for graph checkpoint continuation.

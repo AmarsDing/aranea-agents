@@ -2,9 +2,9 @@ package session
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
@@ -60,10 +60,10 @@ func (r *Runtime) SyncRunnerSnapshot(ctx context.Context, userID, sessionID, sna
 	}
 	k := Key(userID, sessionID)
 	if err := k.CheckSessionKey(); err != nil {
-		return fmt.Errorf("session sync key: %w", err)
+		return kerrors.InternalServer("SESSION", "session sync key: "+err.Error())
 	}
 	if _, err := r.svc.GetSession(ctx, k); err != nil {
-		return fmt.Errorf("session sync get: %w", err)
+		return kerrors.InternalServer("SESSION", "session sync get: "+err.Error())
 	}
 	state := trpcsession.StateMap{}
 	if raw := strings.TrimSpace(snapshotJSON); raw != "" {
@@ -76,7 +76,7 @@ func (r *Runtime) SyncRunnerSnapshot(ctx context.Context, userID, sessionID, sna
 		return nil
 	}
 	if err := r.svc.UpdateSessionState(ctx, k, state); err != nil {
-		return fmt.Errorf("session sync update: %w", err)
+		return kerrors.InternalServer("SESSION", "session sync update: "+err.Error())
 	}
 	return nil
 }
@@ -108,10 +108,10 @@ func (r *Runtime) SyncStateDelta(ctx context.Context, userID, sessionID, operati
 	}
 	k := Key(userID, sessionID)
 	if err := k.CheckSessionKey(); err != nil {
-		return fmt.Errorf("session state sync key: %w", err)
+		return kerrors.InternalServer("SESSION", "session state sync key: "+err.Error())
 	}
 	if _, err := r.svc.GetSession(ctx, k); err != nil {
-		return fmt.Errorf("session state sync get: %w", err)
+		return kerrors.InternalServer("SESSION", "session state sync get: "+err.Error())
 	}
 	state := trpcsession.StateMap{}
 	key := stateKVKey(path)
@@ -122,7 +122,7 @@ func (r *Runtime) SyncStateDelta(ctx context.Context, userID, sessionID, operati
 		state[key] = []byte(valueJSON)
 	}
 	if err := r.svc.UpdateSessionState(ctx, k, state); err != nil {
-		return fmt.Errorf("session state sync update: %w", err)
+		return kerrors.InternalServer("SESSION", "session state sync update: "+err.Error())
 	}
 	return nil
 }

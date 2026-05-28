@@ -195,6 +195,14 @@ Hook on_event 规则经 HookResolver + event 桥接（非 Chain 条目）
 | `plugintrpc.NewManager` | `Runtime` + `HookResolver` |
 | `TRPCBuilderDeps.PluginManager` | `internal/agent/builder_deps.go` |
 
+**Runtime.Close 清理范围**（2026-05-28）：`HookRetryWorker.Stop()` → `StatsRecorder.Close()`（batch worker drain） → `CostGuardBudgetRegistry.Reset()`（清空 byScope map）。
+
+**并发安全**（2026-05-28）：`Manager.resolveAgentID` 读写加 `resolveMu sync.RWMutex` 保护；`StatsRecorder.resolveAgent` 读写加 `resolveMu sync.RWMutex` 保护；`ModelRouterRule.compiled()` 惰性编译加 `compileOnce sync.Once` 保护；`CostGuardBudgetRegistry.TrackerForScope` 读路径用 `RLock` 优化。
+
+**日志规范**（2026-05-28）：`PluginSafeLogger` 统一使用 `event.SysLog*`（符合红线 16），不再直接写 `os.Stderr`；Hook 事件 key 按场景区分：`system.hook.reload_fail`（仅规则加载）、`system.hook.delivery_fail`（交付失败）、`system.hook.delivery_retry`（重试）。
+
+**goroutine 安全**（2026-05-28）：`StatsRecorder.worker()` 改用 `safego.Go` 启动（符合红线 13），防止 panic 导致进程崩溃。
+
 ---
 
 ## 七、涉及文件（维护索引）

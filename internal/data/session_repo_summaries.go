@@ -98,3 +98,18 @@ func (r *sessionRepo) UpdateSessionListSummary(ctx context.Context, sessionID, s
 		Save(ctx)
 	return err
 }
+
+func (r *sessionRepo) SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return false, kerrors.BadRequest("SESSION", "session id is required")
+	}
+	var cnt int
+	err := entQueryRowScan(r.data.entClient, ctx,
+		`SELECT COUNT(1) FROM session_summaries WHERE session_id = ? AND from_turn = ? AND to_turn = ?`,
+		[]any{sessionID, fromTurn, toTurn}, &cnt)
+	if err != nil {
+		return false, err
+	}
+	return cnt > 0, nil
+}

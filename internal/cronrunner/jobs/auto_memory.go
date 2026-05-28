@@ -309,7 +309,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 			}
 		}
 		if l4Written > 0 {
-			w.l4.RunDecay(ctx, agentID)
+			w.l4.RunDecayWithConfig(ctx, agentID, biz.DefaultL4DecayConfig())
 		}
 	}
 

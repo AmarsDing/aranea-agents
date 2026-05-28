@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	mcpconfig "aranea-agents/internal/mcp/config"
 	mcpdefaults "aranea-agents/internal/mcp"
+	mcpconfig "aranea-agents/internal/mcp/config"
 )
 
-func resolveMCPAuthToken(ctx context.Context, auth mcpconfig.AuthConfig) (string, error) {
+func ResolveMCPAuthToken(ctx context.Context, auth mcpconfig.AuthConfig) (string, error) {
 	authType := strings.ToLower(strings.TrimSpace(auth.Type))
 	switch authType {
 	case "oauth2", "oauth2_client_credentials":

@@ -33,6 +33,15 @@ func (r *CostGuardBudgetRegistry) SetUsageRepo(repo biz.PluginCostGuardUsageRepo
 	r.mu.Unlock()
 }
 
+func (r *CostGuardBudgetRegistry) Reset() {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	r.byScope = make(map[string]*CostGuardBudgetTracker)
+	r.mu.Unlock()
+}
+
 func normalizeCostGuardScopeKey(scope string) string {
 	scope = strings.TrimSpace(scope)
 	if scope == "" || strings.EqualFold(scope, "global") {
@@ -46,6 +55,12 @@ func (r *CostGuardBudgetRegistry) TrackerForScope(scope string) *CostGuardBudget
 		return NewCostGuardBudgetTracker()
 	}
 	key := normalizeCostGuardScopeKey(scope)
+	r.mu.RLock()
+	if t, ok := r.byScope[key]; ok && t != nil {
+		r.mu.RUnlock()
+		return t
+	}
+	r.mu.RUnlock()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if t, ok := r.byScope[key]; ok && t != nil {

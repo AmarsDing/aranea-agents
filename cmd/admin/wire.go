@@ -144,14 +144,18 @@ func toEventPairs(pairs []biz.LogPair) []event.Pair {
 }
 
 // mcpProberAdapter wraps internal/mcp/probe to implement biz.MCPProber.
-type mcpProberAdapter struct{}
+type mcpProberAdapter struct {
+	prober *mcpprobe.Prober
+}
 
-func (mcpProberAdapter) Evaluate(enabled bool, configJSON string) biz.MCPTestResult {
-	r := mcpprobe.Evaluate(enabled, configJSON)
+func (a mcpProberAdapter) Evaluate(ctx context.Context, enabled bool, configJSON string) biz.MCPTestResult {
+	r := a.prober.Evaluate(ctx, enabled, configJSON)
 	return biz.MCPTestResult{OK: r.OK, Status: r.Status, Message: r.Message, Details: r.Details}
 }
 
-func provideMCPProber() biz.MCPProber { return mcpProberAdapter{} }
+func provideMCPProber() biz.MCPProber {
+	return mcpProberAdapter{prober: mcpprobe.NewProber(chatagent.ResolveMCPAuthToken)}
+}
 
 // mcpMetadataAdapter wraps internal/mcp/metadata to implement biz.MCPMetadataEditor.
 type mcpMetadataAdapter struct{}
@@ -765,8 +769,8 @@ func provideFlowFileAppender() *monitor.FlowFileAppender {
 	return monitor.NewFlowFileAppender(dir)
 }
 
-func provideMonitorTraceBackfillWorker(repo biz.MonitorRepo, logger log.Logger) *jobs.MonitorTraceBackfillWorker {
-	return jobs.NewMonitorTraceBackfillWorker(repo, logger)
+func provideMonitorTraceBackfillWorker(repo biz.MonitorRepo) *jobs.MonitorTraceBackfillWorker {
+	return jobs.NewMonitorTraceBackfillWorker(repo)
 }
 
 func provideDiagBundleGenerator(repo biz.MonitorRepo) *biz.DiagBundleGenerator {

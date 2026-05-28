@@ -9,9 +9,12 @@ import (
 	"aranea-agents/internal/channel/discord"
 	"aranea-agents/internal/channel/dingtalk"
 	"aranea-agents/internal/channel/lark"
+	"aranea-agents/internal/channel/line"
+	"aranea-agents/internal/channel/mattermost"
 	"aranea-agents/internal/channel/onebot"
 	"aranea-agents/internal/channel/qq"
 	"aranea-agents/internal/channel/slack"
+	"aranea-agents/internal/channel/teams"
 	"aranea-agents/internal/channel/telegram"
 	"aranea-agents/internal/channel/wechat"
 	"aranea-agents/internal/channel/wecom"
@@ -46,6 +49,9 @@ func init() {
 	registerPlatform("personal_qq", outboundPersonalQQ, nil)
 	registerPlatform("wechat", outboundWechat, nil)
 	registerPlatform("qq", outboundQQ, nil)
+	registerPlatform("line", outboundLine, streamLine)
+	registerPlatform("mattermost", outboundMattermost, streamMattermost)
+	registerPlatform("teams", outboundTeams, nil)
 }
 
 func outboundFeishu(ctx context.Context, h *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
@@ -176,6 +182,56 @@ func streamSlack(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []
 		return nil, err
 	}
 	return &slack.StreamSender{BotToken: token, HTTP: h.http}, nil
+}
+
+func outboundLine(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
+	channelToken, err := resolveCredentialPlain(ctx, creds, "channel_token")
+	if err != nil {
+		return err
+	}
+	return (&line.TextSender{ChannelToken: channelToken, HTTP: h.http}).SendText(ctx, payload.Recipient, payload.Text)
+}
+
+func streamLine(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, _ map[string]string) (streamPreviewUpdater, error) {
+	channelToken, err := resolveCredentialPlain(ctx, creds, "channel_token")
+	if err != nil {
+		return nil, err
+	}
+	return &line.StreamSender{ChannelToken: channelToken, HTTP: h.http}, nil
+}
+
+func outboundMattermost(ctx context.Context, h *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
+	serverURL, _ := resolveCredentialPlain(ctx, creds, "server_url")
+	botToken, err := resolveCredentialPlain(ctx, creds, "bot_token")
+	if err != nil {
+		return err
+	}
+	return (&mattermost.TextSender{ServerURL: serverURL, BotToken: botToken, HTTP: h.http}).SendText(ctx, payload.Recipient, payload.Text)
+}
+
+func streamMattermost(ctx context.Context, h *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, _ map[string]string) (streamPreviewUpdater, error) {
+	serverURL, _ := resolveCredentialPlain(ctx, creds, "server_url")
+	botToken, err := resolveCredentialPlain(ctx, creds, "bot_token")
+	if err != nil {
+		return nil, err
+	}
+	return &mattermost.StreamSender{ServerURL: serverURL, BotToken: botToken, HTTP: h.http}, nil
+}
+
+func outboundTeams(ctx context.Context, _ *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
+	appID, _ := resolveCredentialPlain(ctx, creds, "app_id")
+	appSecret, err := resolveCredentialPlain(ctx, creds, "app_secret")
+	if err != nil {
+		return err
+	}
+	sender := &teams.TextSender{AppID: appID, AppSecret: appSecret}
+	token, err := sender.AccessToken(ctx)
+	if err != nil {
+		return err
+	}
+	serviceURL := payload.Extra["service_url"]
+	conversationID := payload.Extra["conversation_id"]
+	return teams.SendToConversation(ctx, nil, token, serviceURL, conversationID, payload.Text)
 }
 
 func (h *ChannelIngress) newStreamUpdater(ctx context.Context, chRow biz.Channel, platform string, meta map[string]string) (streamPreviewUpdater, error) {

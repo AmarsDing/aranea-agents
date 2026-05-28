@@ -10,7 +10,6 @@ import (
 	"aranea-agents/pkg/safego"
 
 	"github.com/go-kratos/kratos/v2/errors"
-	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/uuid"
 )
 
@@ -298,7 +297,8 @@ func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e 
 				node := nodeDefFromConfig(cfg, e.NodeID)
 				if ShouldCreateTaskForNode(node) {
 					if err := uc.taskCoord.OnGraphNodeStart(ctx, exec, node, ""); err != nil {
-						log.Warnf("graph task on node start: execution=%s node=%s: %v", exec.ID, e.NodeID, err)
+						event.SysLogWarn("system.graph.task_start_fail", "graph task on node start failed",
+							event.P("execution_id", exec.ID), event.P("node_id", e.NodeID), event.P("error", err.Error()))
 					}
 				}
 			}

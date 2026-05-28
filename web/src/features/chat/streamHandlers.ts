@@ -11,6 +11,7 @@ import { sessionContextPatchFromEnvelope } from "./sessionContextPatch";
 import type { SessionContextPatch } from "./sessionContextPatch";
 
 import { originFromId } from "./messageOrigin";
+import { formatErrorWithHint } from "./errorCodeHints";
 
 export function createPlaceholderMessage(
   id: string,
@@ -131,6 +132,19 @@ export function patchStreamingEnvelope(
   });
 }
 
+function withSessionFilter(
+  ctx: StreamHandlerCtx,
+  handler: (env: Envelope, sid: string) => void
+): (env: Envelope) => void {
+  return (env: Envelope) => {
+    if (shouldSessionWsSkipEnvelope(env)) return;
+    const sid = env.session_id || ctx.sessionId;
+    const active = ctx.resolveActiveSessionId();
+    if (sid !== ctx.sessionId || (active && sid !== active)) return;
+    handler(env, sid);
+  };
+}
+
 export function bindStreamHandlers(
   stream: UseEnvelopeStreamReturn,
   ctx: StreamHandlerCtx,
@@ -161,32 +175,20 @@ export function bindStreamHandlers(
     }
   }
 
-  stream.onType("context_usage", (env: Envelope) => {
-    if (shouldSessionWsSkipEnvelope(env)) return;
-    const sid = env.session_id || ctx.sessionId;
-    const active = ctx.resolveActiveSessionId();
-    if (sid !== ctx.sessionId || (active && sid !== active)) return;
-    applySessionContextPatch(sid, env);
-  });
+  stream.onType("context_usage", withSessionFilter(ctx, (_env, sid) => {
+    applySessionContextPatch(sid, _env);
+  }));
 
-  stream.onType("text_delta", (env: Envelope) => {
-    if (shouldSessionWsSkipEnvelope(env)) return;
-    const sid = env.session_id || ctx.sessionId;
-    const active = ctx.resolveActiveSessionId();
-    if (sid !== ctx.sessionId || (active && sid !== active)) return;
+  stream.onType("text_delta", withSessionFilter(ctx, (env, sid) => {
     if (!env.content?.text && !env.content?.reasoning) return;
     ctx.onStreamingPatch?.(sid, {
       reasoning: env.content?.reasoning,
       partialText: env.content?.text,
     });
     patch(sid, streamRowId(ctx, sid), env, false);
-  });
+  }));
 
-  stream.onType("text_done", (env: Envelope) => {
-    if (shouldSessionWsSkipEnvelope(env)) return;
-    const sid = env.session_id || ctx.sessionId;
-    const active = ctx.resolveActiveSessionId();
-    if (sid !== ctx.sessionId || (active && sid !== active)) return;
+  stream.onType("text_done", withSessionFilter(ctx, (env, sid) => {
     ctx.onStreamingPatch?.(sid, {
       reasoning: env.content?.reasoning,
       partialText: env.content?.text,
@@ -194,31 +196,25 @@ export function bindStreamHandlers(
     });
     patch(sid, streamRowId(ctx, sid), env, true);
     applySessionContextPatch(sid, env);
-  });
+  }));
 
-  stream.onType("tool_call", (env: Envelope) => {
-    if (shouldSessionWsSkipEnvelope(env)) return;
-    const sid = env.session_id || ctx.sessionId;
-    const active = ctx.resolveActiveSessionId();
-    if (sid !== ctx.sessionId || (active && sid !== active) || !env.tool_call) return;
+  stream.onType("tool_call", withSessionFilter(ctx, (env, sid) => {
+    if (!env.tool_call) return;
     if (writer) {
       writer.update((cur) => upsertToolMessage(cur, sid, env, "before"));
       return;
     }
     ctx.setMessages(sid, upsertToolMessage(ctx.getMessages(sid), sid, env, "before"));
-  });
+  }));
 
-  stream.onType("tool_result", (env: Envelope) => {
-    if (shouldSessionWsSkipEnvelope(env)) return;
-    const sid = env.session_id || ctx.sessionId;
-    const active = ctx.resolveActiveSessionId();
-    if (sid !== ctx.sessionId || (active && sid !== active) || !env.tool_call) return;
+  stream.onType("tool_result", withSessionFilter(ctx, (env, sid) => {
+    if (!env.tool_call) return;
     if (writer) {
       writer.update((cur) => upsertToolMessage(cur, sid, env, "after"));
       return;
     }
     ctx.setMessages(sid, upsertToolMessage(ctx.getMessages(sid), sid, env, "after"));
-  });
+  }));
 
   stream.onType("run_status", (env: Envelope) => {
     if (env.session_id && env.session_id !== ctx.sessionId) return;
@@ -308,7 +304,8 @@ export function bindStreamHandlers(
     if (errType.startsWith("flow_")) return;
     const hint = env.error?.hint?.trim();
     const msg = env.error?.message ?? "stream failed";
-    ctx.onErrorNotify(hint ? `${msg} — ${hint}` : msg);
+    const errorCode = env.error?.code;
+    ctx.onErrorNotify(hint ? `${formatErrorWithHint(msg, errorCode)} — ${hint}` : formatErrorWithHint(msg, errorCode));
     const sid = ctx.resolveActiveSessionId() ?? ctx.sessionId;
     writer?.flushSync();
     if (sid) {

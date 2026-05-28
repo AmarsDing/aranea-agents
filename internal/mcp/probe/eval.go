@@ -1,6 +1,7 @@
 package probe
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os/exec"
@@ -19,26 +20,10 @@ type TestResult struct {
 	Details map[string]any `json:"details,omitempty"`
 }
 
-func Evaluate(enabled bool, configJSON string) TestResult {
-	if !enabled {
-		return TestResult{OK: false, Status: "unknown", Message: "MCP 服务器已停用，未执行连接测试"}
-	}
-	cfg, err := config.ParseServerConfigJSON(configJSON)
-	if err != nil {
-		return TestResult{OK: false, Status: "error", Message: "config_json 格式错误: " + err.Error()}
-	}
-	switch cfg.Transport {
-	case config.TransportStdio:
-		return evaluateStdio(cfg)
-	case config.TransportSSE, config.TransportStreamable:
-		return evaluateHTTP(cfg)
-	default:
-		return TestResult{
-			OK:      false,
-			Status:  "error",
-			Message: fmt.Sprintf("transport 必须是 %v（收到 %q）", config.KnownTransports(), cfg.Transport),
-		}
-	}
+var defaultProber = NewProber(nil)
+
+func Evaluate(ctx context.Context, enabled bool, configJSON string) TestResult {
+	return defaultProber.Evaluate(ctx, enabled, configJSON)
 }
 
 func evaluateStdio(cfg config.ServerConfig) TestResult {
@@ -58,19 +43,26 @@ func evaluateStdio(cfg config.ServerConfig) TestResult {
 }
 
 func evaluateHTTP(cfg config.ServerConfig) TestResult {
+	rawURL, timeout, errResult := validateHTTPConfig(cfg)
+	if errResult != nil {
+		return *errResult
+	}
+	return doHTTPProbe(rawURL, cfg.Headers, outboundguard.NewClient(timeout))
+}
+
+func validateHTTPConfig(cfg config.ServerConfig) (string, time.Duration, *TestResult) {
 	rawURL := strings.TrimSpace(cfg.URL)
 	if rawURL == "" {
-		return TestResult{OK: false, Status: "error", Message: "HTTP 传输需要填写 URL"}
+		return "", 0, &TestResult{OK: false, Status: "error", Message: "HTTP 传输需要填写 URL"}
 	}
 	if err := outboundguard.ValidateURL(rawURL); err != nil {
-		return TestResult{OK: false, Status: "error", Message: "URL 校验失败: " + err.Error()}
+		return "", 0, &TestResult{OK: false, Status: "error", Message: "URL 校验失败: " + err.Error()}
 	}
-
 	timeout := config.DurationSec(cfg.TimeoutSec)
 	if timeout <= 0 || timeout > time.Duration(mcp.DefaultProbeTimeoutSec)*time.Second {
 		timeout = time.Duration(mcp.DefaultProbeTimeoutSec) * time.Second
 	}
-	return doHTTPProbe(rawURL, cfg.Headers, outboundguard.NewClient(timeout))
+	return rawURL, timeout, nil
 }
 
 func doHTTPProbe(rawURL string, headers map[string]string, client *http.Client) TestResult {

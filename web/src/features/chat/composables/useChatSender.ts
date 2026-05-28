@@ -21,12 +21,11 @@ import type { RunStatusValue } from "../types";
 type SessionStore = ReturnType<typeof useChatSessionStore>;
 type MessageStore = ReturnType<typeof useChatMessageStore>;
 
-/** Pending user message IDs tracked for retry on failure. */
-const failedPendingIds = new Set<string>();
-
-export function isFailedPendingMessage(id: string): boolean {
-  return failedPendingIds.has(id);
+export function isFailedPendingMessage(id: string, registry?: Set<string>): boolean {
+  return (registry ?? emptyFailedSet).has(id);
 }
+
+const emptyFailedSet = new Set<string>();
 
 export type SenderDeps = {
   appStore: ReturnType<typeof useAppStore>;
@@ -65,14 +64,36 @@ export function useChatSender(deps: SenderDeps) {
 
   const sending = ref(false);
   let sendingTimeout: ReturnType<typeof setTimeout> | null = null;
-  /** Distinguish "send in progress" from "agent running". Send timeout only
-   *  guards the initial dispatch; the agent run itself is tracked by runStatus. */
   const SEND_DISPATCH_TIMEOUT_MS = 30_000;
 
-  /** Track the last WS event timestamp for the active run; used to detect
-   *  stalled runs instead of a hard 120s timeout. */
   let lastRunEventAt = 0;
-  const RUN_STALL_TIMEOUT_MS = 180_000; // 3 min with no events → stall warning
+  const RUN_STALL_TIMEOUT_MS = 180_000;
+  const RUN_STALL_CHECK_INTERVAL_MS = 30_000;
+  let stallCheckInterval: ReturnType<typeof setInterval> | null = null;
+
+  const failedPendingIds = reactive(new Set<string>());
+
+  function clearStallCheck() {
+    if (stallCheckInterval != null) {
+      clearInterval(stallCheckInterval);
+      stallCheckInterval = null;
+    }
+  }
+
+  function startStallCheck() {
+    clearStallCheck();
+    stallCheckInterval = setInterval(() => {
+      if (!sending.value || lastRunEventAt === 0) return;
+      if (Date.now() - lastRunEventAt > RUN_STALL_TIMEOUT_MS) {
+        $q.notify({
+          type: "warning",
+          message: t("chat.runStallWarning", "响应时间较长，请耐心等待或停止生成"),
+          timeout: 8000,
+        });
+        clearStallCheck();
+      }
+    }, RUN_STALL_CHECK_INTERVAL_MS);
+  }
 
   function markSending(sessionId?: string) {
     sending.value = true;
@@ -83,11 +104,13 @@ export function useChatSender(deps: SenderDeps) {
         $q.notify({ type: "warning", message: t("chat.sendDispatchTimeout", "消息发送超时，请检查网络连接") });
       }
     }, SEND_DISPATCH_TIMEOUT_MS);
+    startStallCheck();
   }
 
   function markSendingDone() {
     sending.value = false;
     clearSendingTimeout();
+    clearStallCheck();
   }
 
   function clearSendingTimeout() {
@@ -97,9 +120,12 @@ export function useChatSender(deps: SenderDeps) {
     }
   }
 
-  /** Called when a WS envelope arrives for the active run — resets stall timer. */
   function touchRunActivity() {
     lastRunEventAt = Date.now();
+  }
+
+  function clearFailedPendingForSession() {
+    failedPendingIds.clear();
   }
 
   function stopStreaming(sessionId?: string) {
@@ -190,14 +216,12 @@ export function useChatSender(deps: SenderDeps) {
     );
   }
 
-  /** Retry a failed pending user message. */
   async function retryFailedMessage(pendingUserId: string) {
     const sid = deps.sessionStore.selectedSession?.id ?? deps.sessionStore.teamSelectedSessionId;
     if (!sid) return;
     const msgs = deps.messageStore.getMessages(sid);
     const failed = msgs.find((m) => m.id === pendingUserId);
     if (!failed || failed.status !== "failed") return;
-    // Reset status to ok and re-send
     failedPendingIds.delete(pendingUserId);
     deps.messageStore.setMessages(
       sid,
@@ -205,7 +229,12 @@ export function useChatSender(deps: SenderDeps) {
         m.id === pendingUserId ? { ...m, status: "ok", error_message: "" } : m
       )
     );
-    await sendAgentUserContent(failed.content_markdown, pendingUserId);
+    const entityKind = deps.sessionStore.entityKind;
+    if (entityKind === "team") {
+      await sendTeamMessage(failed.content_markdown, pendingUserId);
+    } else {
+      await sendAgentUserContent(failed.content_markdown, pendingUserId);
+    }
   }
 
   async function enqueueDuringRun(sessionId: string, content: string, pendingUserId: string) {
@@ -427,7 +456,7 @@ export function useChatSender(deps: SenderDeps) {
     await sendAgentUserContent(content);
   }
 
-  async function sendTeamMessage(content: string) {
+  async function sendTeamMessage(content: string, reusePendingId?: string) {
     const followUp = isActiveRun();
     if (!followUp) {
       markSending();
@@ -447,14 +476,14 @@ export function useChatSender(deps: SenderDeps) {
         markSending(sessionId);
       }
 
-      // Optimistic UI: clear input and show placeholder immediately.
-      // turn_id="" means "unassigned" — grouped by turn_id in TurnBlock.
-      const pendingUserId = `pending-user-${crypto.randomUUID()}`;
-      deps.inputText.value = "";
-      deps.messageStore.setMessages(sessionId, [
-        ...deps.messageStore.getMessages(sessionId),
-        createPlaceholderMessage(pendingUserId, sessionId, "user", content),
-      ]);
+      const pendingUserId = reusePendingId ?? `pending-user-${crypto.randomUUID()}`;
+      if (!reusePendingId) {
+        deps.inputText.value = "";
+        deps.messageStore.setMessages(sessionId, [
+          ...deps.messageStore.getMessages(sessionId),
+          createPlaceholderMessage(pendingUserId, sessionId, "user", content),
+        ]);
+      }
 
       const teamId = deps.sessionStore.selectedTeamId!;
       const session = deps.sessionStore.teamSessions[teamId]?.find((item) => item.id === sessionId);
@@ -534,13 +563,13 @@ export function useChatSender(deps: SenderDeps) {
     } catch (error) {
       if (!(error instanceof DOMException && error.name === "AbortError")) {
         $q.notify({ type: "negative", message: error instanceof Error ? error.message : t("chat.teamSendFailed", "Team 发送失败") });
-      }
-      if (sessionIdForCatch) {
-        const pendingId = deps.messageStore.getMessages(sessionIdForCatch).find(
-          (m) => m.content_markdown === content && m.id.startsWith("pending-user-")
-        )?.id;
-        if (pendingId) {
-          markPendingUserFailed(sessionIdForCatch, pendingId, t("chat.sendFailedRetry", "发送失败，请点击重试"));
+        if (sessionIdForCatch) {
+          const pendingId = deps.messageStore.getMessages(sessionIdForCatch).find(
+            (m) => m.content_markdown === content && m.id.startsWith("pending-user-")
+          )?.id;
+          if (pendingId) {
+            markPendingUserFailed(sessionIdForCatch, pendingId, t("chat.sendFailedRetry", "发送失败，请点击重试"));
+          }
         }
       }
     } finally {
@@ -563,5 +592,7 @@ export function useChatSender(deps: SenderDeps) {
     sendAgentUserContent,
     retryFailedMessage,
     touchRunActivity,
+    clearFailedPendingForSession,
+    failedPendingIds,
   };
 }

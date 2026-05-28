@@ -33,7 +33,7 @@ type MCPTestResult struct {
 // MCPProber abstracts MCP server connectivity testing so biz does not
 // depend on internal/mcp/probe directly.
 type MCPProber interface {
-	Evaluate(enabled bool, configJSON string) MCPTestResult
+	Evaluate(ctx context.Context, enabled bool, configJSON string) MCPTestResult
 }
 
 // MCPMetadataEditor abstracts metadata_json manipulation so biz does not
@@ -173,7 +173,7 @@ func (u *MCPServerUsecase) TestMCPServer(ctx context.Context, id string) (MCPTes
 	if u.prober == nil {
 		return MCPTestResult{}, errors.InternalServer("MCP_SERVER", "mcp prober not configured")
 	}
-	result := u.prober.Evaluate(row.Enabled, row.ConfigJSON)
+	result := u.prober.Evaluate(ctx, row.Enabled, row.ConfigJSON)
 	if err := u.persistHealth(ctx, &row, result); err != nil {
 		return result, err
 	}
@@ -224,11 +224,11 @@ func (u *MCPServerUsecase) MarkHealthAlertEmitted(ctx context.Context, id string
 }
 
 // ValidateConfig runs probe without persisting (pre-create URL check).
-func (u *MCPServerUsecase) ValidateConfig(enabled bool, configJSON string) MCPTestResult {
+func (u *MCPServerUsecase) ValidateConfig(ctx context.Context, enabled bool, configJSON string) MCPTestResult {
 	if u.prober == nil {
 		return MCPTestResult{OK: false, Status: "unknown", Message: "mcp prober not configured"}
 	}
-	return u.prober.Evaluate(enabled, configJSON)
+	return u.prober.Evaluate(ctx, enabled, configJSON)
 }
 
 func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, result MCPTestResult) error {

@@ -126,6 +126,12 @@ func requiredCredentials(channelType string) []string {
 		return []string{"app_secret"}
 	case "personal_qq":
 		return []string{"receive_token", "send_token"}
+	case "line":
+		return []string{"channel_secret", "channel_token"}
+	case "mattermost":
+		return []string{"server_url", "bot_token"}
+	case "teams":
+		return []string{"app_id", "app_secret"}
 	default:
 		return nil
 	}

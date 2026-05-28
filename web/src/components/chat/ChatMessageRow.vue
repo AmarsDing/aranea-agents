@@ -163,9 +163,20 @@
       </template>
       <div
         v-if="message.role !== 'user' && message.status === 'error' && row.assistantErrorDetail(message)"
-        class="text-caption text-negative q-mt-xs chat-assistant-error"
+        class="row items-center q-gutter-xs q-mt-xs chat-assistant-error"
       >
-        {{ row.assistantErrorDetail(message) }}
+        <q-icon name="error_outline" color="negative" size="16px" />
+        <span class="text-caption text-negative">{{ row.assistantErrorDetail(message) }}</span>
+        <q-btn
+          flat
+          dense
+          no-caps
+          color="primary"
+          size="sm"
+          icon="refresh"
+          :label="t('chat.regenerate', '重新生成')"
+          @click="emit('regenerate', message)"
+        />
       </div>
       <div
         v-if="message.role === 'assistant' && message.status === 'ok' && message.id"
@@ -270,6 +281,7 @@ const emit = defineEmits<{
   retry: [messageId: string];
   "dismiss-failed": [messageId: string];
   "attachment-deleted": [id: string];
+  regenerate: [message: Message];
 }>();
 
 const { t } = useI18n();

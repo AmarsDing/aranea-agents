@@ -48,7 +48,9 @@ func (n *HookNotifier) EnqueueNotify(ctx context.Context, rh biz.ResolvedHook, p
 
 	if n == nil || n.repo == nil {
 		safego.Go(ctx, "hook.notify."+rh.Hook.Key, func() {
-			_ = deliverHookWebhook(url, body, opts.WebhookSecret, opts.TimeoutSec)
+			if err := deliverHookWebhook(url, body, opts.WebhookSecret, opts.TimeoutSec); err != nil {
+				hookLogger.Warn("hook.notify: fire-and-forget delivery failed", "hook", rh.Hook.Key, "error", err)
+			}
 		})
 		return nil
 	}
@@ -69,7 +71,9 @@ func (n *HookNotifier) EnqueueNotify(ctx context.Context, rh biz.ResolvedHook, p
 		bg := context.Background()
 		if err := n.repo.Insert(bg, d); err != nil {
 			hookLogger.Warn("hook.notify: enqueue failed", "hook", rh.Hook.Key, "error", err)
-			_ = deliverHookWebhook(url, body, opts.WebhookSecret, opts.TimeoutSec)
+			if ferr := deliverHookWebhook(url, body, opts.WebhookSecret, opts.TimeoutSec); ferr != nil {
+				hookLogger.Warn("hook.notify: fallback delivery failed", "hook", rh.Hook.Key, "error", ferr)
+			}
 			return
 		}
 		n.processDelivery(bg, d, opts.TimeoutSec)
@@ -100,7 +104,7 @@ func (n *HookNotifier) processDeliveryFrom(ctx context.Context, d biz.HookDelive
 	if startAttempt > max {
 		// All attempts already consumed — mark failed and return.
 		if err := n.repo.UpdateResult(ctx, d.ID, biz.HookDeliveryFailed, max, "max attempts reached"); err != nil {
-			event.SysLogWarn("system.hook.reload_fail", "hook.notify: UpdateResult failed", event.P("id", d.ID), event.P("error", err.Error()))
+			event.SysLogWarn("system.hook.delivery_fail", "hook.notify: UpdateResult failed", event.P("id", d.ID), event.P("error", err.Error()))
 		}
 		return
 	}
@@ -110,20 +114,20 @@ func (n *HookNotifier) processDeliveryFrom(ctx context.Context, d biz.HookDelive
 		err := deliverHookWebhook(d.WebhookURL, []byte(d.PayloadJSON), d.WebhookSecret, timeoutSec)
 		if err == nil {
 			if uerr := n.repo.UpdateResult(ctx, d.ID, biz.HookDeliverySuccess, attempt, ""); uerr != nil {
-				event.SysLogWarn("system.hook.reload_fail", "hook.notify: UpdateResult(success) failed", event.P("id", d.ID), event.P("error", uerr.Error()))
+				event.SysLogWarn("system.hook.delivery_fail", "hook.notify: UpdateResult(success) failed", event.P("id", d.ID), event.P("error", uerr.Error()))
 			}
 			return
 		}
 		lastErr = err.Error()
 		if uerr := n.repo.UpdateResult(ctx, d.ID, biz.HookDeliveryPending, attempt, lastErr); uerr != nil {
-			event.SysLogWarn("system.hook.reload_fail", "hook.notify: UpdateResult(pending) failed", event.P("id", d.ID), event.P("attempt", attempt), event.P("error", uerr.Error()))
+			event.SysLogWarn("system.hook.delivery_fail", "hook.notify: UpdateResult(pending) failed", event.P("id", d.ID), event.P("attempt", attempt), event.P("error", uerr.Error()))
 		}
 		if attempt < max {
 			time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
 		}
 	}
 	if uerr := n.repo.UpdateResult(ctx, d.ID, biz.HookDeliveryFailed, max, lastErr); uerr != nil {
-		event.SysLogWarn("system.hook.reload_fail", "hook.notify: UpdateResult(failed) failed", event.P("id", d.ID), event.P("error", uerr.Error()))
+		event.SysLogWarn("system.hook.delivery_fail", "hook.notify: UpdateResult(failed) failed", event.P("id", d.ID), event.P("error", uerr.Error()))
 	}
 	arametrics.PluginInvokeTotal.WithLabelValues("hook:"+d.HookKey, "notify", "delivery_failed").Inc()
 }
@@ -150,7 +154,7 @@ func deliverHookWebhook(url string, body []byte, secret string, timeoutSec int) 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("webhook HTTP %d", resp.StatusCode)
+		return kerrors.InternalServer("HOOK", fmt.Sprintf("webhook HTTP %d", resp.StatusCode))
 	}
 	return nil
 }

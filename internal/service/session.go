@@ -8,7 +8,6 @@ import (
 
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
-	sessionsess "aranea-agents/internal/biz/session"
 	"aranea-agents/pkg/strutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -20,20 +19,17 @@ import (
 type SessionService struct {
 	v1.UnimplementedSessionServiceServer
 
-	uc           *biz.SessionUsecase
-	mon          *biz.MonitorUsecase
-	runs         biz.SessionRunRepo
-	participants sessionsess.SessionParticipantRepository
+	uc    *biz.SessionUsecase
+	mon   *biz.MonitorUsecase
+	runs  *biz.SessionRunUsecase
 }
 
-// NewSessionService constructs the service.
 func NewSessionService(
 	uc *biz.SessionUsecase,
 	mon *biz.MonitorUsecase,
-	runs biz.SessionRunRepo,
-	participants sessionsess.SessionParticipantRepository,
+	runs *biz.SessionRunUsecase,
 ) *SessionService {
-	return &SessionService{uc: uc, mon: mon, runs: runs, participants: participants}
+	return &SessionService{uc: uc, mon: mon, runs: runs}
 }
 
 func toProtoSession(s biz.Session) *v1.Session {
@@ -196,6 +192,7 @@ func (s *SessionService) CreateSession(ctx context.Context, req *v1.CreateSessio
 	if err != nil {
 		return nil, err
 	}
+	biz.RecordAdminAudit(ctx, s.mon, "create.session", "session", created.ID, "title="+created.Title)
 	return toProtoSession(created), nil
 }
 
@@ -244,6 +241,7 @@ func (s *SessionService) UpdateSession(ctx context.Context, req *v1.UpdateSessio
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}
+	biz.RecordAdminAudit(ctx, s.mon, "update.session", "session", req.GetId(), "fields updated")
 	return toProtoSession(out), nil
 }
 

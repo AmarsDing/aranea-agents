@@ -74,7 +74,7 @@ func (w *HookDeliveryRetryWorker) retryStale() {
 
 	stale, err := w.repo.ListStalePending(ctx, time.Now().UTC().Add(-hookRetryStaleAfter), hookRetryBatchSize)
 	if err != nil {
-		event.SysLogWarn("system.hook.reload_fail", "hook.delivery.retry_worker: ListStalePending failed", event.P("error", err.Error()))
+		event.SysLogWarn("system.hook.delivery_retry", "hook.delivery.retry_worker: ListStalePending failed", event.P("error", err.Error()))
 		return
 	}
 	for _, d := range stale {
@@ -94,7 +94,7 @@ func (w *HookDeliveryRetryWorker) retryOne(d biz.HookDelivery) {
 
 	claimed, err := w.repo.TryClaimForRetry(ctx, d.ID, d.AttemptCount)
 	if err != nil {
-		event.SysLogWarn("system.hook.reload_fail", "hook.delivery.retry_worker: TryClaimForRetry failed",
+		event.SysLogWarn("system.hook.delivery_retry", "hook.delivery.retry_worker: TryClaimForRetry failed",
 			event.P("id", d.ID), event.P("error", err.Error()))
 		return
 	}
@@ -102,7 +102,7 @@ func (w *HookDeliveryRetryWorker) retryOne(d biz.HookDelivery) {
 		return // another instance already claimed this delivery
 	}
 
-	event.SysLogInfo("system.hook.reload_fail", "hook.delivery.retry_worker: retrying stale delivery",
+	event.SysLogInfo("system.hook.delivery_retry", "hook.delivery.retry_worker: retrying stale delivery",
 		event.P("id", d.ID),
 		event.P("hook_key", d.HookKey),
 		event.P("attempt_count", d.AttemptCount+1),

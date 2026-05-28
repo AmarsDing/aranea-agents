@@ -12,6 +12,7 @@
 > - ❌ AgenticFilter / OCR / 多租户隔离 / code_search 未实现。
 >
 > 进度以 `guides/execution-plan.md` 与 [37-knowledge-development.md](./37-knowledge-development.md) 为准。
+> 演进路线：[37-knowledge-evolution-roadmap.md](./37-knowledge-evolution-roadmap.md)（Naive RAG → Advanced RAG → Agentic RAG → GraphRAG → Skill Knowledge）。
 
 ---
 

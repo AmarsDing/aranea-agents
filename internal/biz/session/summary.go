@@ -54,3 +54,15 @@ func (uc *SessionUsecase) LatestSessionSummaryTime(ctx context.Context, sessionI
 func (uc *SessionUsecase) UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error {
 	return uc.sessions.UpdateSessionListSummary(ctx, sessionID, summary)
 }
+
+func (uc *SessionUsecase) TryIncrementCompressVersion(ctx context.Context, sessionID string) (int64, error) {
+	return uc.sessions.TryIncrementCompressVersion(ctx, sessionID)
+}
+
+func (uc *SessionUsecase) CompressSessionInTx(ctx context.Context, sessionID string, fn func(ctx context.Context) error) error {
+	return uc.sessions.CompressSessionInTx(ctx, sessionID, fn)
+}
+
+func (uc *SessionUsecase) SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error) {
+	return uc.sessions.SessionSummaryExists(ctx, sessionID, fromTurn, toTurn)
+}

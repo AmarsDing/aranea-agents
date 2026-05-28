@@ -1,7 +1,3 @@
-/**
- * Chat session list store — manages session CRUD, selection, and team sessions.
- * Split from the monolithic useChatStore for single-responsibility.
- */
 import { ref } from "vue";
 import { defineStore } from "pinia";
 import {
@@ -16,30 +12,13 @@ import {
   type Session,
 } from "../../features/session/api";
 import type { SessionContextPatch } from "../../features/chat/sessionContextPatch";
+import { reconcilePatchFromServer } from "../../features/chat/sessionContextPatch";
 import { formatSessionTime } from "../../features/chat/composables/chatWorkspaceUtils";
 import type { ChatEntityKind } from "../../components/chat/types";
+import { emitSessionMutation, onSessionMutation } from "../sessionSync";
+import { sortSessionsForDisplay } from "../../features/session/sessionSort";
 
 export type TeamSessionRow = Session & { at: string };
-
-function sessionListSortKey(session: Session): number {
-  const pinned = session.pinned_at?.trim();
-  if (pinned) {
-    const t = new Date(pinned).getTime();
-    if (Number.isFinite(t)) return t;
-  }
-  return 0;
-}
-
-function sortSessionsForDisplay(rows: Session[]): Session[] {
-  return [...rows].sort((a, b) => {
-    const pinDiff = sessionListSortKey(b) - sessionListSortKey(a);
-    if (pinDiff !== 0) return pinDiff;
-    const aMsg = new Date(a.last_message_at || a.updated_at || a.created_at).getTime();
-    const bMsg = new Date(b.last_message_at || b.updated_at || b.created_at).getTime();
-    if (aMsg !== bMsg) return bMsg - aMsg;
-    return new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime();
-  });
-}
 
 function mergeSessionMetrics<T extends Session>(session: T, patch: SessionContextPatch): T {
   return {
@@ -92,6 +71,27 @@ export const useChatSessionStore = defineStore("chatSession", () => {
   const selectedSession = ref<Session | null>(null);
   const teamSessions = ref<Record<string, TeamSessionRow[]>>({});
 
+  let _currentAgentId: string | null = null;
+
+  onSessionMutation((mutation) => {
+    switch (mutation.type) {
+      case "remove":
+        removeSessionById(mutation.id);
+        break;
+      case "archive":
+        removeSessionById(mutation.id);
+        break;
+      case "update":
+        updateSessionById(mutation.id, mutation.session);
+        break;
+      case "refresh":
+        if (_currentAgentId) {
+          loadAgentSessions(_currentAgentId, { refreshOnly: true });
+        }
+        break;
+    }
+  });
+
   function currentSessionId(): string | null {
     if (entityKind.value === "team") return teamSelectedSessionId.value;
     return selectedSession.value?.id ?? null;
@@ -112,6 +112,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
 
   async function loadAgentSessions(agentId: string, opts?: { refreshOnly?: boolean }) {
     if (!agentId) return;
+    _currentAgentId = agentId;
     const rows = await listSessions(agentId);
     sessions.value = sortSessionsForDisplay(rows);
 
@@ -171,10 +172,8 @@ export const useChatSessionStore = defineStore("chatSession", () => {
 
   async function removeSessionLocal(id: string) {
     await deleteSession(id);
-    sessions.value = sessions.value.filter((s) => s.id !== id);
-    if (selectedSession.value?.id === id) {
-      selectedSession.value = sessions.value[0] ?? null;
-    }
+    removeSessionById(id);
+    emitSessionMutation({ type: "remove", id });
   }
 
   async function removeTeamSessionLocal(teamId: string, sessionId: string) {
@@ -185,16 +184,13 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     if (teamSelectedSessionId.value === sessionId) {
       teamSelectedSessionId.value = teamSessions.value[teamId]?.[0]?.id ?? null;
     }
+    emitSessionMutation({ type: "remove", id: sessionId });
   }
 
   async function setSessionPinnedLocal(id: string, pinned: boolean) {
     const updated = pinned ? await pinSession(id) : await unpinSession(id);
-    sessions.value = sortSessionsForDisplay(
-      sessions.value.map((session) => (session.id === id ? updated : session))
-    );
-    if (selectedSession.value?.id === id) {
-      selectedSession.value = updated;
-    }
+    updateSessionById(id, updated);
+    emitSessionMutation({ type: "update", id, session: updated });
     return updated;
   }
 
@@ -203,15 +199,14 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     teamSessions.value[teamId] = sortSessionsForDisplay(
       (teamSessions.value[teamId] ?? []).map((session) => (session.id === id ? updated : session))
     ).map(withTeamAt);
+    emitSessionMutation({ type: "update", id, session: updated });
     return updated;
   }
 
   async function renameSessionLocal(id: string, title: string) {
     const updated = await updateSessionTitle(id, title);
-    sessions.value = sessions.value.map((session) => (session.id === id ? updated : session));
-    if (selectedSession.value?.id === id) {
-      selectedSession.value = updated;
-    }
+    updateSessionById(id, updated);
+    emitSessionMutation({ type: "update", id, session: updated });
     return updated;
   }
 
@@ -225,6 +220,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
           }
         : session
     );
+    emitSessionMutation({ type: "update", id, session: updated });
     return updated;
   }
 
@@ -233,6 +229,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     await clearAgentSessions(agentId);
     sessions.value = [];
     selectedSession.value = null;
+    emitSessionMutation({ type: "refresh" });
   }
 
   function clearTeamSessions(teamId: string) {
@@ -266,6 +263,51 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     }
   }
 
+  function reconcileFromServer(sessionId: string, serverSession: Session) {
+    const id = sessionId.trim();
+    if (!id) return;
+    const patch = reconcilePatchFromServer(serverSession);
+    patchSessionMetricsLocal(id, patch);
+  }
+
+  function removeSessionById(id: string) {
+    sessions.value = sessions.value.filter((s) => s.id !== id);
+    for (const teamId of Object.keys(teamSessions.value)) {
+      teamSessions.value[teamId] = (teamSessions.value[teamId] ?? []).filter(
+        (session) => session.id !== id
+      );
+    }
+    if (selectedSession.value?.id === id) {
+      selectedSession.value = sessions.value[0] ?? null;
+    }
+    if (teamSelectedSessionId.value === id) {
+      const teamId = selectedTeamId.value;
+      if (teamId) {
+        teamSelectedSessionId.value = teamSessions.value[teamId]?.[0]?.id ?? null;
+      }
+    }
+  }
+
+  function updateSessionById(id: string, updated: Session) {
+    sessions.value = sortSessionsForDisplay(
+      sessions.value.map((session) => (session.id === id ? updated : session))
+    );
+    for (const teamId of Object.keys(teamSessions.value)) {
+      teamSessions.value[teamId] = (teamSessions.value[teamId] ?? []).map((session) =>
+        session.id === id ? withTeamAt(updated) : session
+      );
+    }
+    if (selectedSession.value?.id === id) {
+      selectedSession.value = updated;
+    }
+  }
+
+  function refreshFromAdmin() {
+    if (_currentAgentId) {
+      loadAgentSessions(_currentAgentId, { refreshOnly: true });
+    }
+  }
+
   return {
     entityKind,
     selectedTeamId,
@@ -290,5 +332,9 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     clearTeamSessions,
     findSessionById,
     patchSessionMetricsLocal,
+    reconcileFromServer,
+    removeSessionById,
+    updateSessionById,
+    refreshFromAdmin,
   };
 });

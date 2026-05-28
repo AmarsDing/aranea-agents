@@ -50,7 +50,6 @@
     />
     <template #actions>
       <q-btn flat rounded no-caps label="重置" icon="restart_alt" @click="$emit('reset')" />
-      <q-btn color="primary" unelevated rounded no-caps label="查询" icon="manage_search" :loading="loading" @click="$emit('search')" />
     </template>
     <template #footer>
       <div class="app-actions-bar app-actions-bar--start">
@@ -79,7 +78,6 @@ defineProps<{
   ownerType: string | null;
   status: string | null;
   contextStatus: string | null;
-  loading?: boolean;
   selectionMode: boolean;
   ownerOptions: { label: string; value: string }[];
   statusOptions: { label: string; value: string }[];
@@ -92,7 +90,6 @@ defineEmits<{
   "update:status": [v: string | null];
   "update:contextStatus": [v: string | null];
   reset: [];
-  search: [];
   "toggle-selection": [];
   "retention-archive": [];
   "retention-delete": [];

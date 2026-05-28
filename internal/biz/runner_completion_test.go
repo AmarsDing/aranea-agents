@@ -63,6 +63,8 @@ func (r *completionMonitorRepo) PatchRunnerCompletionMetadata(ctx context.Contex
 	return true, nil
 }
 
+func (r *completionMonitorRepo) EnsureTraceSchema(context.Context) error { return nil }
+
 func TestBuildRunnerCompletionMetadataJSON_v1(t *testing.T) {
 	de := DomainEvent{
 		SessionID:        "sess-1",

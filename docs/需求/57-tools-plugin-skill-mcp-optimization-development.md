@@ -31,7 +31,7 @@ TPM-WAVE{N}-{主题}-{序号} — 跨主题汇总时使用
 | Review 文档 | ✅ [`2026-05-26-Tools-Plugin-Skill-MCP-Code-Review.md`](../review/2026-05-26-Tools-Plugin-Skill-MCP-Code-Review.md) |
 | 跟踪文档 | ✅ 本文档 |
 | Wave 1 P1 实施 | ✅ 全部完成 |
-| Wave 2 P2 实施 | ✅ 大部分完成（P2-01~05/07/09/10/25/26/27/28/29/30 + P3-12/13 + D-M1 已完成） |
+| Wave 2 P2 实施 | ✅ 大部分完成（P2-01~05/07/08/09/10/11/12/13/14/16/18/19/20/21/22/25/26/27/28/29/30 + P3-12/13 + D-M1/M2 已完成） |
 | Wave 3/4 | 📋 待启动 |
 
 ---
@@ -182,6 +182,28 @@ TPM-WAVE{N}-{主题}-{序号} — 跨主题汇总时使用
 | 2 | TPM-P2-28 | 2026-05-28 | — | metadata 并发写 → UpdateMCPServerMetadata 只写 metadata+status 字段 |
 | 2 | TPM-P2-30 | 2026-05-28 | — | health probeAll semaphore bounded concurrency（max=8） |
 | 2 | TPM-P3-13 | 2026-05-28 | — | classify 前缀启发式评估后保留（误判风险极低） |
-| 2 | Review-1 | 2026-05-28 | — | 删除 ToTRPCConnectionConfig 死代码，消除双 source of truth |
-| 2 | Review-2 | 2026-05-28 | — | cost_guard TryConsume 安全网语义注释 |
-| 2 | Review-3 | 2026-05-28 | — | cost_guard fallback bypass daily_budget 设计意图注释 |
+| 2 | Review-1 | 2026-05-28 | ✅ | 删除 ToTRPCConnectionConfig 死代码，消除双 source of truth |
+| 2 | Review-2 | 2026-05-28 | ✅ | cost_guard TryConsume 安全网语义注释 |
+| 2 | Review-3 | 2026-05-28 | ✅ | cost_guard fallback bypass daily_budget 设计意图注释 |
+| 2 | Review-4 | 2026-05-28 | ✅ | filter.go slog.Warn 违反红线 #10 → 替换为 event.SysLogWarn |
+| 2 | Review-5 | 2026-05-28 | ✅ | filter.go allowedSlugs 空 if 块简化 |
+| 2 | Review-6 | 2026-05-28 | ✅ | 测试代码 promoted field 风格统一为 base: basePlugin{...} |
+| 2 | Fix-Misc | 2026-05-28 | ✅ | runner.go SkillInvocationWrite 删除不存在的 SkillName 字段 |
+| 2 | TPM-D-M2 | 2026-05-28 | — | Probe 策略化：ProbeStrategy 接口 + ConnectivityProbe + AuthAwareProbe + ProbeMode 配置 + 28 个单测 |
+| 2 | TPM-P2-13 | 2026-05-28 | ✅ | cost_guard AddTokens 写库失败不再静默吞错，改为 SysLogWarn |
+| 2 | TPM-P2-21 | 2026-05-28 | ✅ | skill DBRepositoryAdapter reload/loadBody 失败加 SysLogWarn |
+| 2 | TPM-P2-11 | 2026-05-28 | ✅ | audit_log.summarizeMessages 加 maybeRedact 脱敏 |
+| 2 | TPM-P2-12 | 2026-05-28 | ✅ | skill_usage_tracker input/output preview 加 redactText 脱敏 |
+| 2 | TPM-P2-08 | 2026-05-28 | ✅ | SerpAPI key redactedURL + 注释警示（SerpAPI 不支持 header 鉴权） |
+| 2 | TPM-P2-14 | 2026-05-28 | ✅ | retry_and_reflect global scope 加 1h TTL eviction |
+| 2 | TPM-P2-18 | 2026-05-28 | ✅ | inspectSimilarity LLM 调用加上限 50 次 |
+| 2 | Review-7 | 2026-05-28 | ✅ | AuthAwareProbe.Probe 提取 validateHTTPConfig 消除 DRY 违规 |
+| 2 | Review-8 | 2026-05-28 | ✅ | auth_aware 无 auth 路径翻转 auth_required → OK=false |
+| 2 | Review-9 | 2026-05-28 | ✅ | loadBody 失败不缓存空 body Skill |
+| 2 | TPM-P2-22 | 2026-05-28 | ✅ | watch/runner.go childWatches 并发写加 mu 保护 |
+| 2 | TPM-P2-19 | 2026-05-28 | ✅ | ReadSkillDirFiles 不安全路径改为返回错误（与 ZIP 严格性对齐） |
+| 2 | TPM-P2-20 | 2026-05-28 | ✅ | Multipart 25MB→20MB 与 engine MaxZipBytes 统一 |
+| 2 | TPM-P2-16 | 2026-05-28 | ✅ | dispatchHookOnEvent 失败策略与 chain hook 统一（resilient swallow + block 传播） |
+| 2 | TPM-P2-15 | 2026-05-28 | ✅ | Manager 实际已是 Wire 单例，P2-15 不适用 |
+| 2 | TPM-P2-06 | 2026-05-28 | ✅ | globalBridge 已重构为 Wire DI 注入，P2-06 不适用 |
+| 2 | TPM-P2-17 | 2026-05-28 | ✅ | Engine jobs map 加 2h TTL 过期清理 + evictExpiredLocked |

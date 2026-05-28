@@ -38,8 +38,8 @@ func (m *batchSessionRepo) UpdateSession(context.Context, string, biz.SessionUpd
 func (m *batchSessionRepo) RestoreSession(context.Context, string) (biz.Session, error) {
 	return biz.Session{}, nil
 }
-func (m *batchSessionRepo) ArchiveSession(context.Context, string) error { return nil }
-func (m *batchSessionRepo) DeleteSession(context.Context, string) error  { return nil }
+func (m *batchSessionRepo) ArchiveSession(context.Context, string) (int, error) { return 0, nil }
+func (m *batchSessionRepo) DeleteSession(context.Context, string) (int, error)  { return 0, nil }
 func (m *batchSessionRepo) DeleteSessionsByAgentID(context.Context, string) error {
 	return nil
 }
@@ -75,6 +75,9 @@ func (m *batchSessionRepo) ListToolInvocationsByIDs(context.Context, string, []s
 }
 func (m *batchSessionRepo) ListSkillInvocationsByIDs(context.Context, string, []string) ([]biz.SkillInvocationView, error) {
 	return nil, nil
+}
+func (m *batchSessionRepo) LookupAgentDisplayNames(context.Context, []string) (map[string]string, error) {
+	return map[string]string{}, nil
 }
 func (m *batchSessionRepo) AppendChatTurn(context.Context, string, biz.ChatMessage, biz.ChatMessage) error {
 	return nil
@@ -175,8 +178,8 @@ func (m *batchSessionRepo) ListMessagesAfterRevision(context.Context, string, in
 }
 
 func TestSessionService_BatchPreviewSessions_validation(t *testing.T) {
-	uc := biz.NewSessionUsecase(&batchSessionRepo{sessions: map[string]biz.Session{}}, nil, nil, nil)
-	svc := service.NewSessionService(uc, nil, nil, nil)
+	uc := biz.NewSessionUsecase(&batchSessionRepo{sessions: map[string]biz.Session{}}, nil, nil, nil, nil)
+	svc := service.NewSessionService(uc, nil, nil)
 
 	_, err := svc.BatchPreviewSessions(context.Background(), &v1.BatchPreviewSessionsRequest{})
 	if err == nil {
@@ -196,8 +199,8 @@ func TestSessionService_BatchPreviewSessions_skippedNotFound(t *testing.T) {
 	repo := &batchSessionRepo{sessions: map[string]biz.Session{
 		"s1": {ID: "s1", Status: "completed", CreatedAt: "2020-01-01T00:00:00Z"},
 	}}
-	uc := biz.NewSessionUsecase(repo, nil, nil, nil)
-	svc := service.NewSessionService(uc, nil, nil, nil)
+	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil)
+	svc := service.NewSessionService(uc, nil, nil)
 
 	resp, err := svc.BatchPreviewSessions(context.Background(), &v1.BatchPreviewSessionsRequest{
 		Mode: "delete",

@@ -82,6 +82,7 @@ func entSessionToBiz(e *ent.Session) biz.Session {
 		StateJSON:                  e.StateJSON,
 		MetadataJSON:               e.MetadataJSON,
 		SessionRevision:            e.SessionRevision,
+		CompressVersion:            e.CompressVersion,
 	}
 }
 
@@ -316,32 +317,38 @@ func (r *sessionRepo) UnpinSession(ctx context.Context, id string) (biz.Session,
 	return r.GetSessionByID(ctx, id)
 }
 
-func (r *sessionRepo) ArchiveSession(ctx context.Context, id string) error {
+func (r *sessionRepo) ArchiveSession(ctx context.Context, id string) (int, error) {
 	c := r.data.entClient
 	now := nowRFC3339()
-	_, err := c.Session.Update().
-		Where(entsession.IDEQ(id), entsession.DeletedAtEQ("")).
+	n, err := c.Session.Update().
+		Where(entsession.IDEQ(id), entsession.DeletedAtEQ(""), entsession.StatusNEQ("running"), entsession.StatusNEQ("archived")).
 		SetStatus("archived").
 		SetArchivedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
-func (r *sessionRepo) DeleteSession(ctx context.Context, id string) error {
+func (r *sessionRepo) DeleteSession(ctx context.Context, id string) (int, error) {
 	c := r.data.entClient
 	now := nowRFC3339()
-	_, err := c.Session.Update().
-		Where(entsession.IDEQ(id), entsession.DeletedAtEQ("")).
+	n, err := c.Session.Update().
+		Where(entsession.IDEQ(id), entsession.DeletedAtEQ(""), entsession.StatusNEQ("running")).
 		SetDeletedAt(now).
 		SetStatus("deleted").
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
-		return err
+		return 0, err
+	}
+	if n == 0 {
+		return 0, nil
 	}
 	_, _ = NewChannelPeerSessionRepo(r.data).DeleteBySessionID(ctx, id)
-	return nil
+	return n, nil
 }
 
 func (r *sessionRepo) DeleteSessionsByAgentID(ctx context.Context, agentID string) error {
@@ -1119,4 +1126,28 @@ func (r *sessionRepo) ListMessagesAfterRevision(ctx context.Context, sessionID s
 		return r.ListMessagesBySession(ctx, sessionID, biz.MessageListMaxLimit, 0)
 	}
 	return r.ListMessagesAfterTurn(ctx, sessionID, int(afterRevision))
+}
+
+func (r *sessionRepo) TryIncrementCompressVersion(ctx context.Context, sessionID string) (int64, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return 0, kerrors.BadRequest("SESSION", "session id is required")
+	}
+	var old int64
+	err := entQueryRowScan(r.data.entClient, ctx,
+		`UPDATE sessions SET compress_version = compress_version + 1, updated_at = ? WHERE id = ? AND deleted_at = '' RETURNING compress_version - 1`,
+		[]any{nowRFC3339(), sessionID}, &old)
+	return old, err
+}
+
+func (r *sessionRepo) CompressSessionInTx(ctx context.Context, _ string, fn func(ctx context.Context) error) error {
+	tx, err := r.data.entClient.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	if err := fn(ctx); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }

@@ -101,6 +101,7 @@
         @feedback="composer.onMessageFeedback"
         @retry="composer.retryFailedMessage"
         @dismiss-failed="composer.dismissFailedMessage"
+        @regenerate="composer.regenerateMessage"
       />
       <input ref="fileRef" type="file" hidden multiple :accept="session.fileAccept" @change="composer.onFileChange" />
     </div>

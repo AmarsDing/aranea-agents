@@ -3,7 +3,6 @@ package sessionmemory
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"math"
 	"strings"
 	"time"
@@ -139,31 +138,53 @@ func (st *Store) GetRecentReinforcementCounts(ctx context.Context, scopeType, sc
 	}
 	cutoffMs := time.Now().UTC().Add(-time.Duration(windowDays) * 24 * time.Hour).UnixMilli()
 	rows, err := st.client.QueryContext(ctx, `
-SELECT e.id, COALESCE(r.cnt, 0)
+SELECT e.id,
+       COALESCE(pos.cnt, 0),
+       COALESCE(neg.cnt, 0)
 FROM memory_entities e
 LEFT JOIN (
     SELECT entity_id, COUNT(*) as cnt
     FROM entity_reinforcements
-    WHERE occurred_at > ?
+    WHERE occurred_at > ? AND signal IN ('hit','confirmed','edited')
     GROUP BY entity_id
-) r ON e.id = r.entity_id
-WHERE e.scope_type = ? AND e.scope_id = ? AND e.status = 'active' AND e.deleted_at = ''`, cutoffMs, scopeType, scopeID)
+) pos ON e.id = pos.entity_id
+LEFT JOIN (
+    SELECT entity_id, COUNT(*) as cnt
+    FROM entity_reinforcements
+    WHERE occurred_at > ? AND signal = 'refuted'
+    GROUP BY entity_id
+) neg ON e.id = neg.entity_id
+WHERE e.scope_type = ? AND e.scope_id = ? AND e.status = 'active' AND e.deleted_at = ''`, cutoffMs, cutoffMs, scopeType, scopeID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := make(map[string]int)
+	type reinforcementRow struct {
+		EntityID  string
+		PosCount  int
+		NegCount  int
+	}
+	var entries []reinforcementRow
 	for rows.Next() {
-		var id string
-		var cnt int
-		if err := rows.Scan(&id, &cnt); err != nil {
+		var r reinforcementRow
+		if err := rows.Scan(&r.EntityID, &r.PosCount, &r.NegCount); err != nil {
 			return nil, err
 		}
-		if cnt > 0 {
-			out[id] = cnt
+		if r.PosCount > 0 || r.NegCount > 0 {
+			entries = append(entries, r)
 		}
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make(map[string]int, len(entries))
+	for _, r := range entries {
+		net := r.PosCount - r.NegCount
+		if net > 0 {
+			out[r.EntityID] = net
+		}
+	}
+	return out, nil
 }
 
 func (st *Store) ApplyBusinessConfidenceDecay(ctx context.Context, scopeType, scopeID string, cfg biz.L4DecayConfig, nowUnixMs int64) (int64, error) {
@@ -210,11 +231,18 @@ WHERE scope_type = ? AND scope_id = ? AND status = 'active' AND deleted_at = ''
 	if err := rows.Err(); err != nil {
 		return 0, err
 	}
+	if len(entities) == 0 {
+		return 0, nil
+	}
 	alpha := cfg.Alpha
 	if alpha <= 0 {
 		alpha = 0.15
 	}
-	var total int64
+	type updateEntry struct {
+		ID       string
+		NewConf  float64
+	}
+	var updates []updateEntry
 	for _, e := range entities {
 		updatedAt, parseErr := time.Parse(time.RFC3339, e.UpdatedAt)
 		if parseErr != nil {
@@ -239,15 +267,38 @@ WHERE scope_type = ? AND scope_id = ? AND status = 'active' AND deleted_at = ''
 		if math.Abs(newConf-e.Confidence) < 0.001 {
 			continue
 		}
-		_, err := st.client.ExecContext(ctx, `
+		updates = append(updates, updateEntry{ID: e.ID, NewConf: newConf})
+	}
+	if len(updates) == 0 {
+		return 0, nil
+	}
+	tx, err := st.client.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			tx.Rollback()
+		}
+	}()
+	var total int64
+	for _, u := range updates {
+		res, err := tx.ExecContext(ctx, `
 UPDATE memory_entities SET confidence = ?, updated_at = updated_at
 WHERE id = ? AND scope_type = ? AND scope_id = ? AND status = 'active'`,
-			newConf, e.ID, scopeType, scopeID)
+			u.NewConf, u.ID, scopeType, scopeID)
 		if err != nil {
 			continue
 		}
-		total++
+		if n, _ := res.RowsAffected(); n > 0 {
+			total++
+		}
 	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	committed = true
 	return total, nil
 }
 
@@ -288,13 +339,13 @@ func (st *Store) ListEntitiesByConfidenceRange(ctx context.Context, scopeType, s
 	if limit <= 0 {
 		limit = 100
 	}
-	rows, err := st.client.QueryContext(ctx, fmt.Sprintf(`
+	rows, err := st.client.QueryContext(ctx, `
 SELECT id, name, name_normalized, confidence, metadata_json, updated_at
 FROM memory_entities
 WHERE scope_type = ? AND scope_id = ? AND status = 'active' AND deleted_at = ''
   AND confidence >= ? AND confidence < ?
 ORDER BY confidence ASC
-LIMIT %d`, limit), scopeType, scopeID, minConf, maxConf)
+LIMIT ?`, scopeType, scopeID, minConf, maxConf, limit)
 	if err != nil {
 		return nil, err
 	}

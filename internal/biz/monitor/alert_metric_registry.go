@@ -2,6 +2,8 @@ package monitor
 
 import (
 	"context"
+	"math"
+	"sort"
 	"sync"
 	"time"
 )
@@ -50,6 +52,9 @@ func (r *AlertMetricRegistry) List() []AlertMetric {
 	for _, m := range r.m {
 		out = append(out, m)
 	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Key() < out[j].Key()
+	})
 	return out
 }
 
@@ -65,7 +70,7 @@ func NewRunnerErrorRateMetric(repo Repo, rb *MetricRingBuffer) *RunnerErrorRateM
 func (m *RunnerErrorRateMetric) Key() string        { return "runner.error_rate" }
 func (m *RunnerErrorRateMetric) Description() string { return "Runner error rate within time window" }
 func (m *RunnerErrorRateMetric) Evaluate(ctx context.Context, window time.Duration) (float64, error) {
-	windowMin := int(window.Minutes())
+	windowMin := int(math.Ceil(window.Minutes()))
 	if windowMin <= 0 {
 		windowMin = 60
 	}

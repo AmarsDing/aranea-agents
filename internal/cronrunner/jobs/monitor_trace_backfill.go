@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -10,14 +11,12 @@ import (
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
-
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 type MonitorTraceBackfillWorker struct {
-	repo     biz.MonitorRepo
-	interval time.Duration
-	log      *log.Helper
+	repo      biz.MonitorRepo
+	interval  time.Duration
+	watermark string
 }
 
 func defaultBackfillInterval() time.Duration {
@@ -29,11 +28,10 @@ func defaultBackfillInterval() time.Duration {
 	return 6 * time.Hour
 }
 
-func NewMonitorTraceBackfillWorker(repo biz.MonitorRepo, logger log.Logger) *MonitorTraceBackfillWorker {
+func NewMonitorTraceBackfillWorker(repo biz.MonitorRepo) *MonitorTraceBackfillWorker {
 	return &MonitorTraceBackfillWorker{
 		repo:     repo,
 		interval: defaultBackfillInterval(),
-		log:      log.NewHelper(logger),
 	}
 }
 
@@ -61,12 +59,22 @@ func (w *MonitorTraceBackfillWorker) runOnce(ctx context.Context) {
 		event.SysLogWarn("system.monitor.trace_backfill_schema_fail", "backfill: EnsureTraceSchema failed", event.P("error", err.Error()))
 		return
 	}
-	rows, err := w.repo.ListRecentRunnerCompletions(ctx, 30*24*time.Hour, 1000)
+	since := 30 * 24 * time.Hour
+	if w.watermark != "" {
+		if wm, err := time.Parse(time.RFC3339, w.watermark); err == nil {
+			elapsed := time.Since(wm)
+			if elapsed < since {
+				since = elapsed + time.Hour
+			}
+		}
+	}
+	rows, err := w.repo.ListRecentRunnerCompletions(ctx, since, 1000)
 	if err != nil {
 		event.SysLogWarn("system.monitor.trace_backfill_query_fail", "backfill: ListRecentRunnerCompletions failed", event.P("error", err.Error()))
 		return
 	}
 	inserted := 0
+	var latestCreatedAt string
 	for _, row := range rows {
 		tw := monitor.TraceWrite{
 			TraceID:   row.TraceID,
@@ -84,7 +92,13 @@ func (w *MonitorTraceBackfillWorker) runOnce(ctx context.Context) {
 		}
 		inserted++
 	}
-	if inserted > 0 && w.log != nil {
-		w.log.Debugf("monitor trace backfill: inserted %d traces", inserted)
+	if len(rows) > 0 {
+		latestCreatedAt = time.Now().UTC().Format(time.RFC3339)
+		w.watermark = latestCreatedAt
+	}
+	if inserted > 0 {
+		event.SysLogInfo("system.monitor.trace_backfill_done", "monitor trace backfill completed",
+			event.P("inserted", fmt.Sprint(inserted)),
+			event.P("since", since.String()))
 	}
 }

@@ -185,8 +185,10 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 		case deadLetter:
 			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "dead_letter").Inc()
 			if w.log != nil {
-				w.log.Warnf("channel delivery dead-letter channel=%s delivery=%s platform=%s attempts=%d err=%v",
-					row.ChannelID, row.ID, payload.Platform, payload.Attempts+1, sendErr)
+				event.SysLogWarn("system.channel.dead_letter", "channel delivery dead-letter",
+					event.P("channel_id", row.ChannelID), event.P("delivery_id", row.ID),
+					event.P("platform", payload.Platform), event.P("attempts", fmt.Sprint(payload.Attempts+1)),
+					event.P("error", sendErr.Error()))
 			}
 		default:
 			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "retry").Inc()

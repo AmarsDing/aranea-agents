@@ -106,8 +106,8 @@ func (m *ingressSessionRepo) UpdateSession(context.Context, string, biz.SessionU
 func (m *ingressSessionRepo) RestoreSession(context.Context, string) (biz.Session, error) {
 	return biz.Session{}, nil
 }
-func (m *ingressSessionRepo) ArchiveSession(context.Context, string) error { return nil }
-func (m *ingressSessionRepo) DeleteSession(context.Context, string) error  { return nil }
+func (m *ingressSessionRepo) ArchiveSession(context.Context, string) (int, error) { return 0, nil }
+func (m *ingressSessionRepo) DeleteSession(context.Context, string) (int, error)  { return 0, nil }
 func (m *ingressSessionRepo) DeleteSessionsByAgentID(context.Context, string) error {
 	return nil
 }
@@ -143,6 +143,9 @@ func (m *ingressSessionRepo) ListToolInvocationsByIDs(context.Context, string, [
 }
 func (m *ingressSessionRepo) ListSkillInvocationsByIDs(context.Context, string, []string) ([]biz.SkillInvocationView, error) {
 	return nil, nil
+}
+func (m *ingressSessionRepo) LookupAgentDisplayNames(context.Context, []string) (map[string]string, error) {
+	return map[string]string{}, nil
 }
 func (m *ingressSessionRepo) AppendChatTurn(context.Context, string, biz.ChatMessage, biz.ChatMessage) error {
 	return nil
@@ -315,7 +318,7 @@ func TestEnsureChannelSessionRebindsStalePeerBind(t *testing.T) {
 	}
 	sessRepo := &ingressSessionRepo{sessions: map[string]biz.Session{}}
 	agents := ingressAgentRepo{id: agentID}
-	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil)
+	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil)
 	h := &ChannelIngress{
 		peers:    peerRepo,
 		sessions: sessions,
@@ -369,7 +372,7 @@ func TestEnsureChannelSessionReusesLivePeerBind(t *testing.T) {
 		},
 	}
 	agents := ingressAgentRepo{id: agentID}
-	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil)
+	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil)
 	h := &ChannelIngress{
 		peers:    peerRepo,
 		sessions: sessions,

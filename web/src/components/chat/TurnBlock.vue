@@ -42,6 +42,7 @@
       :react-tool-link-index="reactToolLinkIndex"
       @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
       @feedback="(p) => emit('feedback', p)"
+      @regenerate="(msg) => emit('regenerate', msg)"
     />
     <ChatMessageRow
       v-for="(member, mIdx) in block.members"
@@ -86,6 +87,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   "a2ui-user-action": [payload: A2UIUserActionPayload];
   feedback: [payload: { messageId: string; rating: "positive" | "negative" }];
+  regenerate: [message: Message];
 }>();
 
 const { t } = useI18n();

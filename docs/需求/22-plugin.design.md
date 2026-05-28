@@ -726,13 +726,42 @@ func (rt *Runtime) Close() { ... }
 ### 7.3 Adapter 适配层
 
 ```go
-// adapt 将 biz.Plugin 转换为 trpcplugin.Plugin
+// adaptedPlugin 包装 Plugin 实例及其已解析的配置，消除 Apply 中重复 parsePluginConfig
+type adaptedPlugin struct {
+    plugin              trpcplugin.Plugin
+    modelRouter         *ModelRouterConfig
+    costGuard           *CostGuardConfig
+    confirmationGuard   *ConfirmationGuardConfig
+}
+
+// adapt 将 biz.Plugin 转换为 adaptedPlugin（含已解析配置）
 // disabled 或未知 key 返回 nil
-func adapt(p biz.Plugin) trpcplugin.Plugin {
+func adapt(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime) *adaptedPlugin {
     if !p.Enabled {
         return nil
     }
-    return builtin(p)
+    ValidatePluginCallbackPoints(p)
+    tp := builtin(p, stats, bus, rt)
+    if tp == nil {
+        return nil
+    }
+    ap := &adaptedPlugin{plugin: tp}
+    key := strings.ToLower(strings.TrimSpace(p.Key))
+    switch key {
+    case "model_router":
+        var cfg ModelRouterConfig
+        parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+        ap.modelRouter = &cfg
+    case "cost_guard":
+        var cfg CostGuardConfig
+        parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+        ap.costGuard = &cfg
+    case "confirmation_guard":
+        var cfg ConfirmationGuardConfig
+        parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+        ap.confirmationGuard = &cfg
+    }
+    return ap
 }
 
 // builtin 根据 key 创建具体内置插件实例
@@ -849,8 +878,8 @@ func (m *Manager) Close(ctx context.Context) error
 
 | Plugin | 桥接文件 | 注册回调点 | 功能 |
 |--------|----------|------------|------|
-| `identity` | `internal/plugin/trpc/identity_bridge.go` | BeforeAgent, BeforeTool | 用户身份解析与透传（Headers/EnvVars） |
-| `guardrail` | `internal/plugin/trpc/guardrail_bridge.go` | BeforeModel（PromptInjection + UnsafeIntent） | 输入侧安全护栏（基于规则，可升级为 LLM 驱动） |
+| `identity` | `internal/plugin/trpc/identity_bridge.go` | BeforeAgent, BeforeTool | 用户身份解析与透传（Headers/EnvVars/Token）；支持 `ContextWithToken` 从 ctx 提取 access token |
+| `guardrail` | `internal/plugin/trpc/guardrail_bridge.go` | BeforeModel（PromptInjection + UnsafeIntent） | 输入侧安全护栏：rule-based 快速过滤（5 类 PromptInjection + 6 类 UnsafeIntent）+ 可选 LLM 深度审查（`GuardrailReviewers` 链式组合）；`normalizeInput` 过滤零宽字符（`Cf`/`Mn`/`Me`）+ 小写归一化；`detectPromptInjection`/`detectUnsafeIntent` 匹配前先归一化，防止零宽字符绕过 |
 | `tool_call_id` | 框架 `plugin/toolcallid` | AfterModel | 规范化跨厂商 ToolCall ID |
 | `consecutive_message_merger` | 框架 `plugin/messagemerger` | BeforeModel | 合并同角色连续消息，减少 Token 消耗 |
 
@@ -860,12 +889,12 @@ func (m *Manager) Close(ctx context.Context) error
 
 ```go
 type AuditLogPlugin struct {
-    name string
+    base basePlugin  // 嵌入 basePlugin（name + stats + logger），消除 9 个插件的重复代码
 }
 
 var _ trpcplugin.Plugin = (*AuditLogPlugin)(nil)
 
-func (a *AuditLogPlugin) Name() string { return a.name }
+func (a *AuditLogPlugin) Name() string { return a.base.Name() }
 
 func (a *AuditLogPlugin) Register(r *trpcplugin.Registry) {
     r.AfterTool(func(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
@@ -873,25 +902,15 @@ func (a *AuditLogPlugin) Register(r *trpcplugin.Registry) {
         if args.Error != nil {
             status = "error"
         }
-        var sessionID, agentKey string
-        if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
-            agentKey = inv.AgentName
-            if inv.Session != nil {
-                sessionID = inv.Session.ID
-            }
-        }
-        slog.Info("audit_log.tool_call",
-            "plugin", a.name,
-            "tool", args.ToolName,
-            "session_id", sessionID,
-            "agent_key", agentKey,
-            "status", status,
-            "at", time.Now().UTC().Format(time.RFC3339),
-        )
+        a.base.record(ctx, "after_tool", status)
         return &trpctool.AfterToolResult{}, nil
     })
 }
 ```
+
+**basePlugin 嵌入**（`internal/plugin/trpc/base_plugin.go`）：9 个内置插件共用 `name`/`stats`/`logger` 字段和 `record()` 方法，消除重复代码。
+
+**PluginSafeLogger**（`internal/plugin/trpc/safe_logger.go`）：统一使用 `event.SysLog*` 记录日志（符合红线 16），同时通过 `event.Bus` 发布到 monitor channel。不再直接写 `os.Stderr`。
 
 ### 8.3 内置插件实现模板
 
@@ -899,16 +918,17 @@ func (a *AuditLogPlugin) Register(r *trpcplugin.Registry) {
 
 ```go
 type XxxPlugin struct {
-    name   string
+    base   basePlugin       // 嵌入 basePlugin（name + stats + logger）
     config XxxConfig
 }
 
 var _ trpcplugin.Plugin = (*XxxPlugin)(nil)
 
-func (p *XxxPlugin) Name() string { return p.name }
+func (p *XxxPlugin) Name() string { return p.base.Name() }
 
 func (p *XxxPlugin) Register(r *trpcplugin.Registry) {
     // 注册所需的回调点
+    // 使用 p.base.record(ctx, point, status) 记录统计
 }
 ```
 

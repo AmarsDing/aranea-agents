@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
+	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
 )
@@ -46,6 +48,7 @@ type RepoStatsRecorder struct {
 	repo         biz.PluginRepo
 	runs         biz.PluginRunRepo
 	resolveAgent AgentKeyResolver
+	resolveMu    sync.RWMutex
 
 	ch   chan CallbackEvent
 	done chan struct{}
@@ -63,13 +66,15 @@ func NewRepoStatsRecorder(repo biz.PluginRepo, runs biz.PluginRunRepo) *RepoStat
 		done: make(chan struct{}),
 	}
 	r.wg.Add(1)
-	go r.worker()
+	safego.Go(context.Background(), "stats.worker", r.worker)
 	return r
 }
 
 func (r *RepoStatsRecorder) SetAgentKeyResolver(fn AgentKeyResolver) {
 	if r != nil {
+		r.resolveMu.Lock()
 		r.resolveAgent = fn
+		r.resolveMu.Unlock()
 	}
 }
 
@@ -80,6 +85,7 @@ func (r *RepoStatsRecorder) RecordEvent(_ context.Context, ev CallbackEvent) {
 	select {
 	case r.ch <- ev:
 	default:
+		arametrics.PluginInvokeTotal.WithLabelValues("stats_recorder", "record", "dropped").Inc()
 	}
 }
 
@@ -151,12 +157,16 @@ func (r *RepoStatsRecorder) flush(batch []CallbackEvent) {
 	}
 	aggr := r.aggregate(batch)
 	bg := context.Background()
+	failedKeys := make(map[string]bool, len(aggr))
 	for key, delta := range aggr {
 		if err := r.repo.IncrementStats(bg, key, delta); err != nil {
-			_ = err
+			failedKeys[key] = true
 		}
 	}
 	for _, ev := range batch {
+		if failedKeys[strings.TrimSpace(ev.PluginKey)] {
+			continue
+		}
 		r.persistRun(bg, ev)
 	}
 }
@@ -214,8 +224,13 @@ func (r *RepoStatsRecorder) persistRun(bg context.Context, ev CallbackEvent) {
 		action = callbackAction(st)
 	}
 	agentID := strings.TrimSpace(ev.AgentID)
-	if agentID == "" && r.resolveAgent != nil {
-		agentID = strings.TrimSpace(r.resolveAgent(bg, ""))
+	if agentID == "" {
+		r.resolveMu.RLock()
+		fn := r.resolveAgent
+		r.resolveMu.RUnlock()
+		if fn != nil {
+			agentID = strings.TrimSpace(fn(bg, ""))
+		}
 	}
 	detail, _ := json.Marshal(map[string]string{
 		"point":   strings.TrimSpace(ev.Point),
@@ -223,7 +238,7 @@ func (r *RepoStatsRecorder) persistRun(bg context.Context, ev CallbackEvent) {
 		"action":  action,
 		"summary": strings.TrimSpace(ev.Summary),
 	})
-	_ = r.runs.Insert(bg, biz.PluginRun{
+	if err := r.runs.Insert(bg, biz.PluginRun{
 		ID:            uuid.NewString(),
 		PluginKey:     pluginKey,
 		PluginID:      pluginID,
@@ -234,7 +249,10 @@ func (r *RepoStatsRecorder) persistRun(bg context.Context, ev CallbackEvent) {
 		DurationMS:    ev.DurationMS,
 		DetailJSON:    string(detail),
 		CreatedAt:     time.Now().UTC().Format(time.RFC3339),
-	})
+	}); err != nil {
+		event.SysLogWarn("system.plugin.run_persist_fail", "PluginRun 写入失败",
+			event.P("plugin", pluginKey), event.P("point", ev.Point), event.P("error", err.Error()))
+	}
 }
 
 func callbackAction(status string) string {

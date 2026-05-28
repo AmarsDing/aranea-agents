@@ -53,6 +53,41 @@ func (uc *SessionUsecase) hydrateTimelineRefs(ctx context.Context, sessionID str
 		}
 	}
 
+	agentIDs := make([]string, 0)
+	seen := map[string]struct{}{}
+	collectAgentID := func(id string) {
+		if id == "" {
+			return
+		}
+		if _, ok := seen[id]; ok {
+			return
+		}
+		seen[id] = struct{}{}
+		agentIDs = append(agentIDs, id)
+	}
+	for _, tool := range toolByID {
+		collectAgentID(tool.AgentID)
+	}
+	for _, skill := range skillByID {
+		collectAgentID(skill.AgentID)
+	}
+	agentNames := map[string]string{}
+	if len(agentIDs) > 0 {
+		names, err := uc.sessions.LookupAgentDisplayNames(ctx, agentIDs)
+		if err != nil {
+			return nil, err
+		}
+		agentNames = names
+	}
+	for id, tool := range toolByID {
+		tool.AgentDisplayName = agentNames[tool.AgentID]
+		toolByID[id] = tool
+	}
+	for id, skill := range skillByID {
+		skill.AgentDisplayName = agentNames[skill.AgentID]
+		skillByID[id] = skill
+	}
+
 	items := make([]SessionTimelineItem, 0, len(refs))
 	for _, ref := range refs {
 		switch ref.Kind {

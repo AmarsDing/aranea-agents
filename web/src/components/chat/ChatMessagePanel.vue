@@ -94,6 +94,7 @@
           :react-tool-link-index="props.reactToolLinkIndex"
           @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
           @feedback="(p) => emit('feedback', p)"
+          @regenerate="(msg) => emit('regenerate', msg)"
         />
         <ChatMessageRow
           v-else
@@ -110,6 +111,7 @@
           @retry="(id) => emit('retry', id)"
           @dismiss-failed="(id) => emit('dismiss-failed', id)"
           @attachment-deleted="(id) => emit('attachment-deleted', id)"
+          @regenerate="(msg) => emit('regenerate', msg)"
         />
       </q-virtual-scroll>
       <div
@@ -132,6 +134,7 @@
             :react-tool-link-index="props.reactToolLinkIndex"
             @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
             @feedback="(p) => emit('feedback', p)"
+            @regenerate="(msg) => emit('regenerate', msg)"
           />
         </template>
         <ChatMessageRow
@@ -150,6 +153,7 @@
           @retry="(id) => emit('retry', id)"
           @dismiss-failed="(id) => emit('dismiss-failed', id)"
           @attachment-deleted="(id) => emit('attachment-deleted', id)"
+          @regenerate="(msg) => emit('regenerate', msg)"
         />
       </div>
       <ChatPendingQueue
@@ -326,6 +330,7 @@ const emit = defineEmits<{
   retry: [messageId: string];
   "dismiss-failed": [messageId: string];
   "attachment-deleted": [id: string];
+  regenerate: [message: Message];
 }>();
 
 const { t } = useI18n();

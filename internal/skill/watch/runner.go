@@ -11,8 +11,8 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
-	"aranea-agents/internal/skill/storage"
 	"aranea-agents/internal/skill/importer"
+	"aranea-agents/internal/skill/storage"
 	"aranea-agents/pkg/safego"
 
 	"github.com/fsnotify/fsnotify"
@@ -23,11 +23,11 @@ const debounceWindow = 2 * time.Second
 
 // Runner watches the skill root and upserts DB rows from on-disk skill packages.
 type Runner struct {
-	uc       *biz.SkillUsecase
-	sys      biz.SystemSettingRepo
-	log      log.Logger
-	eventBus event.Bus
-	reporter SyncReporter
+	uc        *biz.SkillUsecase
+	sys       biz.SystemSettingRepo
+	log       log.Logger
+	eventBus  event.Bus
+	reporter  SyncReporter
 	alertEval AlertEvaluator
 
 	mu           sync.Mutex
@@ -120,23 +120,30 @@ func (r *Runner) logf(level log.Level, event string, kvs ...interface{}) {
 }
 
 func (r *Runner) refreshChildWatches(w *fsnotify.Watcher, root string) {
-	for _, p := range r.childWatches {
+	r.mu.Lock()
+	old := r.childWatches
+	r.childWatches = nil
+	r.mu.Unlock()
+	for _, p := range old {
 		_ = w.Remove(p)
 	}
-	r.childWatches = nil
 	ents, err := os.ReadDir(root)
 	if err != nil {
 		return
 	}
+	var added []string
 	for _, e := range ents {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
 		p := filepath.Join(root, e.Name())
 		if err := w.Add(p); err == nil {
-			r.childWatches = append(r.childWatches, p)
+			added = append(added, p)
 		}
 	}
+	r.mu.Lock()
+	r.childWatches = added
+	r.mu.Unlock()
 }
 
 func (r *Runner) onEvent(ctx context.Context, w *fsnotify.Watcher, root string, ev fsnotify.Event) {
@@ -149,7 +156,9 @@ func (r *Runner) onEvent(ctx context.Context, w *fsnotify.Watcher, root string, 
 			rel, _ := filepath.Rel(root, ev.Name)
 			if rel == slug && !strings.Contains(slug, string(filepath.Separator)) {
 				_ = w.Add(ev.Name)
+				r.mu.Lock()
 				r.childWatches = append(r.childWatches, ev.Name)
+				r.mu.Unlock()
 			}
 		}
 	}
@@ -291,7 +300,6 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 	}
 	_ = r.uc.RecordInvocation(ctx, biz.SkillInvocationWrite{
 		SkillID:       sk.ID,
-		SkillName:     sk.Name,
 		SkillVersion:  ver,
 		Status:        "success",
 		DurationMS:    dur,

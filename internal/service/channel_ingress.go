@@ -131,6 +131,15 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 		case "qq":
 			_ = h.handleQQWebhook(w, r, chRow)
 			return nil
+		case "line":
+			_ = h.handleLINEWebhook(w, r, chRow)
+			return nil
+		case "mattermost":
+			_ = h.handleMattermostWebhook(w, r, chRow)
+			return nil
+		case "teams":
+			_ = h.handleTeamsWebhook(w, r, chRow)
+			return nil
 		case "feishu":
 			// continue below
 		default:

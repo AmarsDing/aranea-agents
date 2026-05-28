@@ -4,7 +4,9 @@ package skill
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"strings"
+	"sync"
 
 	authpkg "aranea-agents/pkg/auth"
 
@@ -236,14 +238,24 @@ type DiskSyncInput struct {
 	StorageDir  string
 }
 
+// SkillEmbedder generates text embeddings for semantic skill scoring.
+// Defined here to avoid circular import with parent biz package.
+type SkillEmbedder interface {
+	Embed(ctx context.Context, text string) ([]float32, error)
+	EmbedBatch(ctx context.Context, texts []string) ([][]float32, error)
+}
+
 // Usecase implements skill CRUD workflows.
 type Usecase struct {
-	repo Repo
+	repo       Repo
+	embedder   SkillEmbedder
+	embedMu    sync.RWMutex
+	embedCache map[string][]float32
 }
 
 // NewUsecase constructs a SkillUsecase.
-func NewUsecase(repo Repo) *Usecase {
-	return &Usecase{repo: repo}
+func NewUsecase(repo Repo, embedder SkillEmbedder) *Usecase {
+	return &Usecase{repo: repo, embedder: embedder}
 }
 
 func (u *Usecase) List(ctx context.Context, q ListQuery) (ListResult, error) {
@@ -318,6 +330,7 @@ func (u *Usecase) ToggleEnabled(ctx context.Context, id string, enabled bool) (S
 	if err != nil {
 		return Skill{}, err
 	}
+	u.InvalidateEmbedCache()
 	applySkillPermission(ctx, &s)
 	return s, nil
 }
@@ -344,7 +357,12 @@ func (u *Usecase) Delete(ctx context.Context, id string) error {
 	if err := requireAdminAccess(ctx); err != nil {
 		return err
 	}
-	return u.repo.DeleteSkill(ctx, id)
+	err := u.repo.DeleteSkill(ctx, id)
+	if err != nil {
+		return err
+	}
+	u.InvalidateEmbedCache()
+	return nil
 }
 
 func (u *Usecase) SearchRuns(ctx context.Context, q RunQuery) (RunResult, error) {
@@ -448,6 +466,7 @@ func (u *Usecase) Publish(ctx context.Context, id string) (Skill, error) {
 	if err != nil {
 		return Skill{}, err
 	}
+	u.InvalidateEmbedCache()
 	applySkillPermission(ctx, &s)
 	return s, nil
 }
@@ -645,9 +664,11 @@ type RuntimePolicy struct {
 	DeniedSlugs  []string `json:"denied_slugs"`
 	AllowedTags  []string `json:"allowed_tags"`
 
-	IntentRoutingEnabled bool `json:"intent_routing_enabled"`
-	IntentMaxPaths       int  `json:"intent_max_paths"`
-	MaxSkillsInToolset   int  `json:"max_skills_in_toolset"`
+	IntentRoutingEnabled   bool    `json:"intent_routing_enabled"`
+	IntentMaxPaths         int     `json:"intent_max_paths"`
+	MaxSkillsInToolset     int     `json:"max_skills_in_toolset"`
+	EmbeddingScoringEnabled bool   `json:"embedding_scoring_enabled"`
+	EmbeddingScoreWeight   float64 `json:"embedding_score_weight"`
 }
 
 // RuntimeCandidate is a lightweight Skill row for routing.
@@ -666,21 +687,25 @@ func ParseRuntimePolicy(raw string) RuntimePolicy {
 		raw = "{}"
 	}
 	var wire struct {
-		AllowedSlugs         []string `json:"allowed_slugs"`
-		DeniedSlugs          []string `json:"denied_slugs"`
-		AllowedTags          []string `json:"allowed_tags"`
-		IntentRoutingEnabled *bool    `json:"intent_routing_enabled"`
-		IntentMaxPaths       int      `json:"intent_max_paths"`
-		MaxSkillsInToolset   int      `json:"max_skills_in_toolset"`
+		AllowedSlugs           []string  `json:"allowed_slugs"`
+		DeniedSlugs            []string  `json:"denied_slugs"`
+		AllowedTags            []string  `json:"allowed_tags"`
+		IntentRoutingEnabled   *bool     `json:"intent_routing_enabled"`
+		IntentMaxPaths         int       `json:"intent_max_paths"`
+		MaxSkillsInToolset     int       `json:"max_skills_in_toolset"`
+		EmbeddingScoringEnabled *bool    `json:"embedding_scoring_enabled"`
+		EmbeddingScoreWeight   float64   `json:"embedding_score_weight"`
 	}
 	if err := json.Unmarshal([]byte(raw), &wire); err != nil {
 		wire = struct {
-			AllowedSlugs         []string `json:"allowed_slugs"`
-			DeniedSlugs          []string `json:"denied_slugs"`
-			AllowedTags          []string `json:"allowed_tags"`
-			IntentRoutingEnabled *bool    `json:"intent_routing_enabled"`
-			IntentMaxPaths       int      `json:"intent_max_paths"`
-			MaxSkillsInToolset   int      `json:"max_skills_in_toolset"`
+			AllowedSlugs           []string  `json:"allowed_slugs"`
+			DeniedSlugs            []string  `json:"denied_slugs"`
+			AllowedTags            []string  `json:"allowed_tags"`
+			IntentRoutingEnabled   *bool     `json:"intent_routing_enabled"`
+			IntentMaxPaths         int       `json:"intent_max_paths"`
+			MaxSkillsInToolset     int       `json:"max_skills_in_toolset"`
+			EmbeddingScoringEnabled *bool    `json:"embedding_scoring_enabled"`
+			EmbeddingScoreWeight   float64   `json:"embedding_score_weight"`
 		}{}
 	}
 	p := RuntimePolicy{
@@ -693,8 +718,12 @@ func ParseRuntimePolicy(raw string) RuntimePolicy {
 	} else {
 		p.IntentRoutingEnabled = true
 	}
+	if wire.EmbeddingScoringEnabled != nil {
+		p.EmbeddingScoringEnabled = *wire.EmbeddingScoringEnabled
+	}
 	p.IntentMaxPaths = wire.IntentMaxPaths
 	p.MaxSkillsInToolset = wire.MaxSkillsInToolset
+	p.EmbeddingScoreWeight = wire.EmbeddingScoreWeight
 
 	if p.IntentMaxPaths <= 0 {
 		p.IntentMaxPaths = 3
@@ -704,6 +733,12 @@ func ParseRuntimePolicy(raw string) RuntimePolicy {
 	}
 	if p.MaxSkillsInToolset > 256 {
 		p.MaxSkillsInToolset = 256
+	}
+	if p.EmbeddingScoreWeight <= 0 {
+		p.EmbeddingScoreWeight = 0.3
+	}
+	if p.EmbeddingScoreWeight > 1 {
+		p.EmbeddingScoreWeight = 1
 	}
 	normalizeLowerSlice(&p.AllowedSlugs)
 	normalizeLowerSlice(&p.DeniedSlugs)
@@ -772,4 +807,104 @@ func applyInvocationPermissions(ctx context.Context, items []SkillInvocation) {
 	for i := range items {
 		items[i].Permissions = SkillInvocationPermissions{CanViewDetail: canView}
 	}
+}
+
+// ScoreByEmbedding computes cosine similarity between the query and each candidate's
+// cached embedding. Returns nil if embedding is unavailable or query is empty.
+func (u *Usecase) ScoreByEmbedding(ctx context.Context, query string, candidates []RuntimeCandidate) (map[string]float64, error) {
+	if u.embedder == nil || strings.TrimSpace(query) == "" || len(candidates) == 0 {
+		return nil, nil
+	}
+	if err := u.refreshEmbedCache(ctx, candidates); err != nil {
+		return nil, err
+	}
+	queryEmb, err := u.embedder.Embed(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	u.embedMu.RLock()
+	defer u.embedMu.RUnlock()
+	scores := make(map[string]float64, len(candidates))
+	for _, c := range candidates {
+		if emb, ok := u.embedCache[c.Slug]; ok {
+			scores[c.Slug] = cosineSimilarity32(queryEmb, emb)
+		}
+	}
+	return scores, nil
+}
+
+// InvalidateEmbedCache clears all cached skill embeddings.
+func (u *Usecase) InvalidateEmbedCache() {
+	u.embedMu.Lock()
+	defer u.embedMu.Unlock()
+	u.embedCache = nil
+}
+
+func (u *Usecase) refreshEmbedCache(ctx context.Context, candidates []RuntimeCandidate) error {
+	u.embedMu.RLock()
+	missing := make([]int, 0, len(candidates))
+	for i, c := range candidates {
+		if _, ok := u.embedCache[c.Slug]; !ok {
+			missing = append(missing, i)
+		}
+	}
+	u.embedMu.RUnlock()
+	if len(missing) == 0 {
+		return nil
+	}
+	texts := make([]string, len(missing))
+	for i, idx := range missing {
+		texts[i] = skillCorpusText(candidates[idx])
+	}
+	embeddings, err := u.embedder.EmbedBatch(ctx, texts)
+	if err != nil {
+		return err
+	}
+	u.embedMu.Lock()
+	defer u.embedMu.Unlock()
+	if u.embedCache == nil {
+		u.embedCache = make(map[string][]float32, len(candidates))
+	}
+	for i, idx := range missing {
+		if i < len(embeddings) {
+			u.embedCache[candidates[idx].Slug] = embeddings[i]
+		}
+	}
+	return nil
+}
+
+func skillCorpusText(c RuntimeCandidate) string {
+	var b strings.Builder
+	b.WriteString(c.Slug)
+	b.WriteString(" ")
+	b.WriteString(c.Name)
+	b.WriteString(" ")
+	b.WriteString(c.Description)
+	for _, t := range c.Tags {
+		b.WriteString(" ")
+		b.WriteString(t.Name)
+	}
+	for _, p := range c.TaxonomyPaths {
+		b.WriteString(" ")
+		b.WriteString(p)
+	}
+	return b.String()
+}
+
+func cosineSimilarity32(a, b []float32) float64 {
+	if len(a) == 0 || len(b) == 0 || len(a) != len(b) {
+		return 0
+	}
+	var dot, normA, normB float64
+	for i := range a {
+		ai := float64(a[i])
+		bi := float64(b[i])
+		dot += ai * bi
+		normA += ai * ai
+		normB += bi * bi
+	}
+	if normA == 0 || normB == 0 {
+		return 0
+	}
+	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
 }

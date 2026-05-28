@@ -41,6 +41,19 @@ func (s *stubMCPRepo) UpdateMCPServer(_ context.Context, m MCPServer) (MCPServer
 
 func (s *stubMCPRepo) DeleteMCPServer(_ context.Context, _ string) error { return nil }
 
+func (s *stubMCPRepo) GetMCPServerByKey(_ context.Context, key string) (MCPServer, error) {
+	for _, r := range s.rows {
+		if r.Key == key {
+			return r, nil
+		}
+	}
+	return MCPServer{}, nil
+}
+
+func (s *stubMCPRepo) UpdateMCPServerMetadata(_ context.Context, _ string, _ string, _ string) error {
+	return nil
+}
+
 func TestRecordReconnectMetadata_PersistsCountAndTimestamp(t *testing.T) {
 	repo := &stubMCPRepo{rows: []MCPServer{{
 		ID:           "m1",

@@ -13,6 +13,8 @@ import (
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 )
 
+var dangerousCommands = []string{"rm -rf", "drop table", "format c:"}
+
 type outputPolicyConfig struct {
 	BlockedPatterns       []string `json:"blocked_patterns"`
 	DangerousCommandCheck bool     `json:"dangerous_command_check"`
@@ -21,10 +23,8 @@ type outputPolicyConfig struct {
 }
 
 type OutputPolicyPlugin struct {
-	name   string
-	cfg    outputPolicyConfig
-	stats  StatsRecorder
-	logger *PluginSafeLogger
+	base basePlugin
+	cfg  outputPolicyConfig
 }
 
 var _ trpcplugin.Plugin = (*OutputPolicyPlugin)(nil)
@@ -34,16 +34,13 @@ func NewOutputPolicyPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus) *Ou
 	cfg.DangerousCommandCheck = true
 	cfg.BlockOnViolation = true
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
-	name := p.Key
 	return &OutputPolicyPlugin{
-		name:   name,
-		cfg:    cfg,
-		stats:  stats,
-		logger: NewPluginSafeLogger(name, bus),
+		base: newBasePlugin(p.Key, stats, bus),
+		cfg:  cfg,
 	}
 }
 
-func (o *OutputPolicyPlugin) Name() string { return o.name }
+func (o *OutputPolicyPlugin) Name() string { return o.base.Name() }
 
 func (o *OutputPolicyPlugin) Register(r *trpcplugin.Registry) {
 	r.AfterModel(o.afterModel)
@@ -56,8 +53,8 @@ func (o *OutputPolicyPlugin) afterModel(ctx context.Context, args *trpcmodel.Aft
 	}
 	text := responseText(args.Response)
 	if viol, pat := o.violation(text); viol {
-		o.logger.Info("plugin.output_policy.after_model", "status", "blocked", "pattern", pat, "block_on_violation", o.cfg.BlockOnViolation)
-		o.record(ctx, "after_model", "blocked")
+		o.base.logger.Info("plugin.output_policy.after_model", "status", "blocked", "pattern", pat, "block_on_violation", o.cfg.BlockOnViolation)
+		o.base.record(ctx, "after_model", "blocked")
 		if o.cfg.BlockOnViolation {
 			msg := strings.TrimSpace(o.cfg.ReplacementMessage)
 			if msg == "" {
@@ -69,9 +66,9 @@ func (o *OutputPolicyPlugin) afterModel(ctx context.Context, args *trpcmodel.Aft
 			}, nil
 		}
 	} else {
-		o.logger.Info("plugin.output_policy.after_model", "status", "ok")
+		o.base.logger.Info("plugin.output_policy.after_model", "status", "ok")
 	}
-	o.record(ctx, "after_model", "ok")
+	o.base.record(ctx, "after_model", "ok")
 	return &trpcmodel.AfterModelResult{Context: ctx}, nil
 }
 
@@ -91,8 +88,8 @@ func (o *OutputPolicyPlugin) onEvent(
 	if !viol {
 		return e, nil
 	}
-	o.record(ctx, "on_event", "blocked")
-	o.logger.Warn("output_policy.event_blocked", "plugin", o.name, "pattern", pat, "block_on_violation", o.cfg.BlockOnViolation)
+	o.base.record(ctx, "on_event", "blocked")
+	o.base.logger.Warn("output_policy.event_blocked", "plugin", o.base.name, "pattern", pat, "block_on_violation", o.cfg.BlockOnViolation)
 	// TPM-P1-04: actually enforce block_on_violation in streaming path. Previously
 	// the event passed through unchanged — admin's block_on_violation=true was a no-op
 	// for OnEvent (only afterModel honored it). Now we splice the chunk content with
@@ -126,8 +123,7 @@ func (o *OutputPolicyPlugin) violation(text string) (bool, string) {
 		return true, "blocked_patterns"
 	}
 	if o.cfg.DangerousCommandCheck {
-		danger := []string{"rm -rf", "drop table", "format c:"}
-		if containsAny(text, danger) {
+		if containsAny(text, dangerousCommands) {
 			return true, "dangerous_command"
 		}
 	}
@@ -149,8 +145,3 @@ func eventText(e *trpcevent.Event) string {
 	return b.String()
 }
 
-func (o *OutputPolicyPlugin) record(ctx context.Context, point, status string) {
-	if o.stats != nil {
-		o.stats.Record(ctx, o.name, point, status)
-	}
-}

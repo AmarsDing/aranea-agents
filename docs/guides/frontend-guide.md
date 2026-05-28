@@ -238,6 +238,7 @@ Page.vue          ← import composable + storeToRefs；模板只做布局与事
 | 异步/错误/列表重置 | 放在 actions | 在组件中散装处理 |
 | 对外暴露 | 清晰的 `loadXxx` / `saveXxx` | 外部随意 patch |
 | 新 Store | `stores/index.ts` 具名导出 + 保留 default export | 删除 Pinia 工厂 |
+| 跨 Store 同步 | 通过 `stores/sessionSync.ts` 事件总线 | 直接 import 另一 Store 导致循环依赖 |
 
 ### 2.3 Composable 层
 

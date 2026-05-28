@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/go-kratos/kratos/v2/log"
+	"aranea-agents/internal/event"
 )
 
 const defaultDispatchInterval = 30 * time.Second
@@ -20,7 +20,6 @@ type TaskDispatcher struct {
 	runner   TaskDispatchAgentRunner
 	interval time.Duration
 	stop     chan struct{}
-	log      *log.Helper
 }
 
 func NewTaskDispatcher(tasks *TaskUsecase, runner TaskDispatchAgentRunner) *TaskDispatcher {
@@ -29,7 +28,6 @@ func NewTaskDispatcher(tasks *TaskUsecase, runner TaskDispatchAgentRunner) *Task
 		runner:   runner,
 		interval: defaultDispatchInterval,
 		stop:     make(chan struct{}),
-		log:      log.NewHelper(log.DefaultLogger),
 	}
 }
 
@@ -61,7 +59,8 @@ func (d *TaskDispatcher) loop() {
 		case <-ticker.C:
 			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 			if err := d.tick(ctx); err != nil {
-				d.log.Warnf("task dispatcher tick: %v", err)
+				event.SysLogWarn("system.task.dispatcher_tick_fail", "task dispatcher tick failed",
+					event.P("error", err.Error()))
 			}
 			cancel()
 		}
@@ -73,7 +72,8 @@ func (d *TaskDispatcher) tick(ctx context.Context) error {
 		return nil
 	}
 	if err := d.tasks.CheckTimeouts(ctx); err != nil {
-		d.log.Warnf("task check timeouts: %v", err)
+		event.SysLogWarn("system.task.check_timeout_fail", "task check timeouts failed",
+			event.P("error", err.Error()))
 	}
 	items, err := d.tasks.ListPendingTasks(ctx, 50)
 	if err != nil {
@@ -92,7 +92,8 @@ func (d *TaskDispatcher) tick(ctx context.Context) error {
 		}
 		claimed, err := d.tasks.ClaimTask(ctx, task.TaskID, agentKey)
 		if err != nil {
-			d.log.Warnf("task dispatch claim: task_id=%s agent=%s: %v", task.TaskID, agentKey, err)
+			event.SysLogWarn("system.task.claim_fail", "task dispatch claim failed",
+				event.P("task_id", task.TaskID), event.P("agent", agentKey), event.P("error", err.Error()))
 			continue
 		}
 		if claimed == nil {
@@ -100,7 +101,8 @@ func (d *TaskDispatcher) tick(ctx context.Context) error {
 		}
 		if d.runner != nil {
 			if err := d.runner.DispatchTask(ctx, claimed, agentKey); err != nil {
-				d.log.Warnf("task dispatch run: task_id=%s agent=%s: %v", claimed.TaskID, agentKey, err)
+				event.SysLogWarn("system.task.dispatch_run_fail", "task dispatch run failed",
+					event.P("task_id", claimed.TaskID), event.P("agent", agentKey), event.P("error", err.Error()))
 				d.tasks.ReleaseClaim(ctx, claimed.TaskID)
 			}
 		}

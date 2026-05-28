@@ -76,9 +76,8 @@ func (c L4DecayConfig) HalfLifeForEntityType(entityType string, isCore bool) flo
 }
 
 type L4DecayResult struct {
-	Decayed   int
-	Archived  int
-	Reinforced int
+	Decayed  int
+	Archived int
 }
 
 type L4GraphWriter interface {

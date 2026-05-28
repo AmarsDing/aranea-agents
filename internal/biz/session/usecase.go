@@ -58,6 +58,7 @@ type Session struct {
 	StateJSON                  string
 	MetadataJSON               string
 	SessionRevision            int64
+	CompressVersion            int64
 }
 
 // SessionSearchQuery filters sessions（对齐遗留 REST query）.
@@ -319,8 +320,8 @@ type SessionRepository interface {
 	UpdateSessionTitle(ctx context.Context, id, title string) (Session, error)
 	UpdateSession(ctx context.Context, id string, fields SessionUpdateFields) (Session, error)
 	RestoreSession(ctx context.Context, id string) (Session, error)
-	ArchiveSession(ctx context.Context, id string) error
-	DeleteSession(ctx context.Context, id string) error
+	ArchiveSession(ctx context.Context, id string) (int, error)
+	DeleteSession(ctx context.Context, id string) (int, error)
 	DeleteSessionsByAgentID(ctx context.Context, agentID string) error
 	CountMessagesBySession(ctx context.Context, sessionID string) (int, error)
 	ListMessagesBySession(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
@@ -334,6 +335,7 @@ type SessionRepository interface {
 	ListMessagesByIDs(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error)
 	ListToolInvocationsByIDs(ctx context.Context, sessionID string, ids []string) ([]ToolInvocationView, error)
 	ListSkillInvocationsByIDs(ctx context.Context, sessionID string, ids []string) ([]SkillInvocationView, error)
+	LookupAgentDisplayNames(ctx context.Context, agentIDs []string) (map[string]string, error)
 	// AppendChatTurn inserts user + assistant rows and updates session aggregates (native chat).
 	AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
 	// AppendChatMessage inserts a single message row and updates session aggregates.
@@ -375,6 +377,9 @@ type SessionRepository interface {
 	BumpSessionRevision(ctx context.Context, sessionID string) (int64, error)
 	GetSessionRevision(ctx context.Context, sessionID string) (int64, error)
 	ListMessagesAfterRevision(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error)
+	TryIncrementCompressVersion(ctx context.Context, sessionID string) (oldVersion int64, err error)
+	CompressSessionInTx(ctx context.Context, sessionID string, fn func(ctx context.Context) error) error
+	SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error)
 }
 
 // AgentLookup checks agent existence (decoupled from biz.AgentRepository).
@@ -393,13 +398,14 @@ type SessionUsecase struct {
 	agents         AgentLookup
 	teams          TeamLookup
 	titleGenerator SessionTitleGenerator
+	participants   SessionParticipantRepository
 }
 
-func NewSessionUsecase(sessions SessionRepository, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator) *SessionUsecase {
+func NewSessionUsecase(sessions SessionRepository, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository) *SessionUsecase {
 	if titleGenerator == nil {
 		titleGenerator = NewNoopSessionTitleGenerator()
 	}
-	return &SessionUsecase{sessions: sessions, agents: agents, teams: teams, titleGenerator: titleGenerator}
+	return &SessionUsecase{sessions: sessions, agents: agents, teams: teams, titleGenerator: titleGenerator, participants: participants}
 }
 
 func (uc *SessionUsecase) Search(ctx context.Context, q SessionSearchQuery) (SessionListResult, error) {
@@ -474,17 +480,20 @@ func (uc *SessionUsecase) Archive(ctx context.Context, id string) error {
 	if id == "" {
 		return validationErr("session id is required")
 	}
-	sess, err := uc.sessions.GetSessionByID(ctx, id)
+	n, err := uc.sessions.ArchiveSession(ctx, id)
 	if err != nil {
 		return err
 	}
-	if sess.Status == "running" {
-		return validationErr("running session cannot be archived")
+	if n == 0 {
+		sess, getErr := uc.sessions.GetSessionByID(ctx, id)
+		if getErr != nil {
+			return getErr
+		}
+		if sess.Status == "running" {
+			return validationErr("running session cannot be archived")
+		}
 	}
-	if sess.Status == "archived" {
-		return nil
-	}
-	return uc.sessions.ArchiveSession(ctx, id)
+	return nil
 }
 
 func (uc *SessionUsecase) Delete(ctx context.Context, id string) error {
@@ -492,17 +501,20 @@ func (uc *SessionUsecase) Delete(ctx context.Context, id string) error {
 	if id == "" {
 		return validationErr("session id is required")
 	}
-	sess, err := uc.sessions.GetSessionByID(ctx, id)
+	n, err := uc.sessions.DeleteSession(ctx, id)
 	if err != nil {
 		return err
 	}
-	if sess.Status == "running" {
-		return validationErr("running session cannot be deleted")
+	if n == 0 {
+		sess, getErr := uc.sessions.GetSessionByID(ctx, id)
+		if getErr != nil {
+			return getErr
+		}
+		if sess.Status == "running" {
+			return validationErr("running session cannot be deleted")
+		}
 	}
-	if strings.TrimSpace(sess.DeletedAt) != "" {
-		return nil
-	}
-	return uc.sessions.DeleteSession(ctx, id)
+	return nil
 }
 
 func (uc *SessionUsecase) DeleteByAgent(ctx context.Context, agentID string) error {

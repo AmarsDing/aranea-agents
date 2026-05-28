@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
-// CostGuardBudgetTracker tracks daily token consumption for cost_guard.
 type CostGuardBudgetTracker struct {
 	mu       sync.Mutex
 	day      string
@@ -25,7 +25,6 @@ func NewCostGuardBudgetTracker() *CostGuardBudgetTracker {
 	return &CostGuardBudgetTracker{scopeKey: "global"}
 }
 
-// SetUsageRepo enables cross-process persistence for daily totals.
 func (t *CostGuardBudgetTracker) SetUsageRepo(repo biz.PluginCostGuardUsageRepo, scopeKey string) {
 	if t == nil {
 		return
@@ -56,32 +55,42 @@ func (t *CostGuardBudgetTracker) TryConsume(budget, add int) bool {
 		add = 1
 	}
 	t.mu.Lock()
-	defer t.mu.Unlock()
 	t.ensureDayLocked()
 	if t.tokens+add > budget {
+		t.mu.Unlock()
 		return false
 	}
 	t.tokens += add
-	if t.repo != nil {
-		_ = t.repo.AddTokens(context.Background(), t.day, t.scopeKey, add)
+	day := t.day
+	scope := t.scopeKey
+	repo := t.repo
+	t.mu.Unlock()
+	if repo != nil {
+		t.persistAdd(day, scope, add, repo)
 	}
 	return true
 }
 
-// AddOverBudget accounts for tokens that exceeded the daily budget but were allowed
-// through (e.g. the cost_guard fallback model bypass — TPM-P1-03). The local tracker
-// and persistence are kept honest so dashboards reflect actual spend; budget gates
-// will still reject subsequent base-model calls until day rollover.
 func (t *CostGuardBudgetTracker) AddOverBudget(add int) {
 	if t == nil || add <= 0 {
 		return
 	}
 	t.mu.Lock()
-	defer t.mu.Unlock()
 	t.ensureDayLocked()
 	t.tokens += add
-	if t.repo != nil {
-		_ = t.repo.AddTokens(context.Background(), t.day, t.scopeKey, add)
+	day := t.day
+	scope := t.scopeKey
+	repo := t.repo
+	t.mu.Unlock()
+	if repo != nil {
+		t.persistAdd(day, scope, add, repo)
+	}
+}
+
+func (t *CostGuardBudgetTracker) persistAdd(day, scope string, delta int, repo biz.PluginCostGuardUsageRepo) {
+	if err := repo.AddTokens(context.Background(), day, scope, delta); err != nil {
+		event.SysLogWarn("system.plugin.cost_guard_persist_fail", "cost_guard 写库失败，本地累加与远端可能漂移",
+			event.P("scope", scope), event.P("day", day), event.P("delta", delta), event.P("error", err.Error()))
 	}
 }
 
@@ -95,11 +104,13 @@ func (t *CostGuardBudgetTracker) ensureDayLocked() {
 	if t.repo != nil {
 		if n, err := t.repo.GetTokens(context.Background(), day, t.scopeKey); err == nil {
 			t.tokens = n
+		} else {
+			event.SysLogWarn("system.plugin.cost_guard_load_fail", "cost_guard 读取日用量失败，从 0 开始计数",
+				event.P("scope", t.scopeKey), event.P("day", day), event.P("error", err.Error()))
 		}
 	}
 }
 
-// ResolveCostGuardTarget returns fallback model when guard rules require routing away from baseMod.
 func ResolveCostGuardTarget(baseMod string, cfg CostGuardConfig, estTokens int, tracker *CostGuardBudgetTracker) string {
 	baseMod = strings.TrimSpace(baseMod)
 	if need, _ := costGuardNeedsFallback(baseMod, cfg, estTokens, tracker); !need {
@@ -136,7 +147,6 @@ func costGuardShouldBlock(baseMod string, cfg CostGuardConfig, estTokens int, tr
 	return true, reason
 }
 
-// EstimateInvocationTokens heuristically estimates prompt tokens from an invocation.
 func EstimateInvocationTokens(inv *trpcagent.Invocation) int {
 	if inv == nil {
 		return 1

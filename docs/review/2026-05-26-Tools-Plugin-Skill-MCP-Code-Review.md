@@ -152,23 +152,23 @@
 | **TPM-P2-03** | tools | `claudefetch` 注册表条目永远返回 `fmt.Errorf("not yet implemented")` | 对齐 `geminifetch` 模式返回 `(nil, nil)` 或从 registry 删除 |
 | **TPM-P2-04** | tools | 三处 `configString` helper 重复（`trpc/runtime_config.go` / `webresearch/config.go` / `testexec/config.go`），catalog-key → config 映射散落 | 抽 `internal/tools/keys` 单一 mapping |
 | **TPM-P2-05** | tools | `skillruntime/filter.go::cache` 用 `sync.Map` 按 invocation ID 累积无 eviction | LRU 或 invocation 结束清理 |
-| **TPM-P2-06** | tools | `kanban/bridge.go::globalBridge` 包级可变全局变量无锁 | 优先 context 注入；保留全局则加 `sync.Once` |
+| **TPM-P2-06** | tools | ~~`kanban/bridge.go::globalBridge` 包级可变全局变量无锁~~ ✅ 2026-05-28：已重构为 Wire DI 注入 | 优先 context 注入；保留全局则加 `sync.Once` |
 | **TPM-P2-07** | tools | ~~mcpobserve 元数据写入 `context.Background()` 丢 trace~~ ✅ 2026-05-28：改为 `context.WithoutCancel(ctx)` | `context.WithoutCancel(ctx)` 或保留 timeout |
-| **TPM-P2-08** | tools | `serpapi.go` API key 走 query string 进 access log | header 鉴权（若 plan 支持） |
+| **TPM-P2-08** | tools | ~~`serpapi.go` API key 走 query string 进 access log~~ ✅ 2026-05-28：SerpAPI 不支持 header 鉴权，已加 redactedURL + 注释警示 | header 鉴权（若 plan 支持） |
 | **TPM-P2-09** | plugin | ~~`cost_guard.admin_bypass` schema 字段在 `cost_guard.go:41` 默认置 true 但**从未读取**~~ ✅ 2026-05-28：字段与 schema 已删除 | 实现 admin bypass 或从 schema 删除 |
 | **TPM-P2-10** | plugin | ~~`permission_guard.confirm_tools` 字段 schema 有但**未实现**；`role_rules` 同样~~ ✅ 2026-05-28：confirm_tools/role_rules 字段与 schema 已删除 | 实现或从 schema 删除 |
-| **TPM-P2-11** | plugin | `audit_log.beforeModel.summarizeMessages` 不走 `maybeRedact`，模型 request 可泄敏 | 加 redact；与 `audit_log.afterModel` 对齐 |
-| **TPM-P2-12** | plugin | `skill_usage_tracker` 记录原始 tool args 无 redact | 走 `redactText` |
-| **TPM-P2-13** | plugin | `cost_guard_budget.AddTokens` 写库失败 `_ =` 静默 | log + metric；本地累加但 cross-process 漂移 |
-| **TPM-P2-14** | plugin | `retry_and_reflect` `tracking_scope: "global"` 用 `map[string]int` 无 eviction | LRU/TTL |
-| **TPM-P2-15** | plugin | `Manager.OnEvent` 每事件 `trpcplugin.NewManager(...)` | scope 缓存 manager 实例 |
-| **TPM-P2-16** | plugin | `dispatchHookOnEvent` 与 chain hook 失败策略不一致（一个 propagate block error，一个 resilient swallow） | 统一 policy 文档 |
-| **TPM-P2-17** | skill | importer 内存 job map 不持久 + 无 TTL | DB / Redis + 过期清理 |
-| **TPM-P2-18** | skill | `inspectSimilarity` 对每个 candidate × 现有 skill LLM 调用，无上限/批处理 | 加 cap；batch prompt |
-| **TPM-P2-19** | skill | `validate.go::ReadSkillDirFiles` 不安全相对路径**静默返回** | 失败 fail；与 ZIP 严格性对齐 |
-| **TPM-P2-20** | skill | `skill_import_http.go` Multipart 25MB vs engine 20MB **限制不一致** | 统一常量 |
-| **TPM-P2-21** | skill | `DBRepositoryAdapter.reload` 失败**保留陈旧缓存无 log** | log + metric + stale gauge |
-| **TPM-P2-22** | skill | `watch/runner.go::childWatches` 并发写无锁 | mutex 或 single-writer goroutine |
+| **TPM-P2-11** | plugin | ~~`audit_log.beforeModel.summarizeMessages` 不走 `maybeRedact`，模型 request 可泄敏~~ ✅ 2026-05-28：summarizeMessages 加 maybeRedact | 加 redact；与 `audit_log.afterModel` 对齐 |
+| **TPM-P2-12** | plugin | ~~`skill_usage_tracker` 记录原始 tool args 无 redact~~ ✅ 2026-05-28：input/output preview 加 redactText | 走 `redactText` |
+| **TPM-P2-13** | plugin | ~~`cost_guard_budget.AddTokens` 写库失败 `_ =` 静默~~ ✅ 2026-05-28：改为 SysLogWarn | log + metric；本地累加但 cross-process 漂移 |
+| **TPM-P2-14** | plugin | ~~`retry_and_reflect` `tracking_scope: "global"` 用 `map[string]int` 无 eviction~~ ✅ 2026-05-28：加 1h TTL eviction | LRU/TTL |
+| **TPM-P2-15** | plugin | ~~`Manager.OnEvent` 每事件 `trpcplugin.NewManager(...)`~~ ✅ 2026-05-28：已重构为复用单一 Manager 实例 | scope 缓存 manager 实例 |
+| **TPM-P2-16** | plugin | ~~`dispatchHookOnEvent` 与 chain hook 失败策略不一致（一个 propagate block error，一个 resilient swallow）~~ ✅ 2026-05-28：统一为 resilient swallow + block 传播 | 统一 policy 文档 |
+| **TPM-P2-17** | skill | ~~importer 内存 job map 不持久 + 无 TTL~~ ✅ 2026-05-28：加 2h TTL 过期清理 + evictExpiredLocked | DB / Redis + 过期清理 |
+| **TPM-P2-18** | skill | ~~`inspectSimilarity` 对每个 candidate × 现有 skill LLM 调用，无上限/批处理~~ ✅ 2026-05-28：加 50 次上限 | 加 cap；batch prompt |
+| **TPM-P2-19** | skill | ~~`validate.go::ReadSkillDirFiles` 不安全相对路径**静默返回**~~ ✅ 2026-05-28：改为返回错误（与 ZIP 严格性对齐） | 失败 fail；与 ZIP 严格性对齐 |
+| **TPM-P2-20** | skill | ~~`skill_import_http.go` Multipart 25MB vs engine 20MB **限制不一致**~~ ✅ 2026-05-28：已统一为 `MaxZipBytes` 常量 | 统一常量 |
+| **TPM-P2-21** | skill | ~~`DBRepositoryAdapter.reload` 失败**保留陈旧缓存无 log**~~ ✅ 2026-05-28：reload/loadBody 失败加 SysLogWarn | log + metric + stale gauge |
+| **TPM-P2-22** | skill | ~~`watch/runner.go::childWatches` 并发写无锁~~ ✅ 2026-05-28：加 mu 保护 | mutex 或 single-writer goroutine |
 | **TPM-P2-23** | skill | `SkillPermissions` 全 `true` 硬编码 | 接入 RBAC |
 | **TPM-P2-24** | skill | 无版本回滚 API（即使数据层有 `skill_version` 表）| 暴露 rollback RPC |
 | **TPM-P2-25** | mcp | ~~`alert.MarkHealthAlertEmitted` 失败 `_ =` 吞掉~~ ✅ 2026-05-28：改为 log + metric | log + metric |
@@ -355,8 +355,9 @@ health.Runner   ⟶ TestMCPServer × N (5min ticker)
 - **统一模式**：`logger.Warn / Info` + 多用 `event.CtxFlowLog*`；少数关键路径 return error 终结。
 - **风险**：
   - plugin / skill / mcp 多处 `_ = repo.Xxx(ctx, ...)` 静默忽略（参见 P2-13 / P2-21 / P2-25）。
-  - **整个 plugin / tools / skill / mcp 子系统都无 `recover()`**——hook panic 直接传播到框架。
+  - ~~**整个 plugin / tools / skill / mcp 子系统都无 `recover()`**——hook panic 直接传播到框架。~~ ✅ 2026-05-28：P1-05 hook_resilience 已添加 recoverHookPanic + wrapResilient
   - skill / mcp 多处 `_ = json.Unmarshal(...)` 静默接受 partial config。
+  - ~~`skillruntime/filter.go` 使用 `slog.Warn` 违反红线 #10~~ ✅ 2026-05-28：已替换为 `event.SysLogWarn`
 
 ### 8.5 并发安全
 
@@ -364,6 +365,7 @@ health.Runner   ⟶ TestMCPServer × N (5min ticker)
 |------|------|
 | `tools.Registry` | `sync.Once` 懒初始化，安全 |
 | `tools/cache.ResultCache` | RWMutex 配对正确 |
+| `tools/skillruntime.filterCache` | ✅ 2026-05-28：mutex + atomic.Int64，512 条上限自动清理，替代原 sync.Map |
 | `tools/mcpobserve` 包级 RWMutex | wire-once 后只读，OK；但隐式全局耦合 |
 | `tools/kanban.globalBridge` | **无锁** package var，re-wire 可能 race |
 | `plugin/trpc/runtime.go` plugins | RWMutex 读多写少 OK |
@@ -377,7 +379,7 @@ health.Runner   ⟶ TestMCPServer × N (5min ticker)
 | 子系统 | 单元测试 | 边界 | E2E | 评级 |
 |--------|---------|------|-----|------|
 | tools | toolset_assemble / workspace / prune / webresearch / hostexecnorm / cache / preview | ★★★★ | webresearch integration ★★ | 总体良好；缺 kanban / knowledge |
-| plugin | orchestration_policy / cost_guard scope / hook_notify SSRF / chain mirror / builtin | ★★★★ | 几乎无端到端 turn 测试 | 缺 cost_guard double-block 回归 |
+| plugin | orchestration_policy / cost_guard scope / hook_notify SSRF / chain mirror / builtin / ~~cost_guard double-block~~ ✅ / ~~output_policy streaming~~ ✅ / ~~hook_resilience~~ ✅ | ★★★★ | 几乎无端到端 turn 测试 | ✅ 2026-05-28：P1-03/04/05 回归测试已补全 |
 | skill | 仅 slug 化 2 个 trivial 测 | ★ | 全无 | 测试覆盖**最弱**子系统 |
 | mcp | config / classify / metadata | ★★ | 全无 | probe / health / alert 三个核心包**零测试** |
 
@@ -391,7 +393,7 @@ health.Runner   ⟶ TestMCPServer × N (5min ticker)
 | webresearch | search + 5 个并发 fetch；URL fetch 走 framework `httpfetch` 批量；4 MiB / 12000 byte 限制 | ★★★★ |
 | plugin chain | 每个 turn 装配 chain；OnEvent **每事件 `NewManager`**（P2-15） | 流式热路径有改进空间 |
 | cost_guard `estimateRequestTokens` | 遍历完整 session 历史 + `EventMu.RLock` | O(events) per call，长 session 注意 |
-| skill watch | debounce 2s + reconcile 5min（可关）；ZIP 全量 in-memory（≤20MB） | OK；similarity LLM 调用无 cap（P2-18） |
+| skill watch | debounce 2s + reconcile 5min（可关）；ZIP 全量 in-memory（≤20MB） | OK；~~similarity LLM 调用无 cap（P2-18）~~ ✅ 2026-05-28：已加 50 次上限 |
 | mcp health | 5min ticker × server；`safego.Go` 无 worker pool | 中等规模 OK；fleet 大时建议加 bounded |
 | mcp reconnect | runtime SSE/streamable=3，stdio=0 | 合理 |
 
@@ -407,7 +409,7 @@ health.Runner   ⟶ TestMCPServer × N (5min ticker)
 | **PII 泄露** | plugin `audit_log.beforeModel` 不 redact request（P2-11） | 修复 |
 | **PII 泄露** | plugin `skill_usage_tracker` 原始 args 日志（P2-12） | 修复 |
 | **OAuth** | `mcp_oauth.go` refresh 失败回退陈旧 token（P2-27） | 修复 |
-| **凭证** | tools `serpapi.go` API key in query string（P2-08） | 文档警示 |
+| **凭证** | ~~tools `serpapi.go` API key in query string（P2-08）~~ ✅ 2026-05-28：已加 redactedURL 脱敏 |
 | **RBAC** | skill 全 `true` 硬编码（P2-23） | 规划 |
 | **凭证存储** | mcp `config_json` 含 client_secret / refresh_token（明文 in row） | 需要 KMS / 字段加密（超出本 review 范围） |
 

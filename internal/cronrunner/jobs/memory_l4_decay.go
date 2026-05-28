@@ -16,7 +16,6 @@ import (
 
 const (
 	memoryL4DecayDefaultInterval = 24 * time.Hour
-	memoryL4DecayBatchSize       = 500
 	memoryL4ArchiveThreshold     = 0.1
 )
 

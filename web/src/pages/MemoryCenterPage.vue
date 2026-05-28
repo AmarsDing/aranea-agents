@@ -80,6 +80,7 @@
         <div class="column q-gutter-md">
           <memory-platform-settings-panel />
           <memory-worker-status-panel />
+          <memory-dead-letter-panel />
           <memory-recall-tester-panel :agent-id="selectedAgentId" :session-id="selectedSessionId" />
           <memory-settings-status-panel :items="settingChecklist" />
         </div>
@@ -92,6 +93,7 @@
 </template>
 
 <script setup lang="ts">
+import MemoryDeadLetterPanel from "../features/memory/MemoryDeadLetterPanel.vue";
 import MemoryPlatformSettingsPanel from "../features/memory/MemoryPlatformSettingsPanel.vue";
 import MemoryGraphExplorer from "../features/memory/MemoryGraphExplorer.vue";
 import MemoryRecallTesterPanel from "../features/memory/MemoryRecallTesterPanel.vue";

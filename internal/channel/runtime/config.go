@@ -59,6 +59,12 @@ func defaultReceiveMode(channelType string) string {
 		return "gateway"
 	case "personal_qq":
 		return "onebot"
+	case "line":
+		return "webhook"
+	case "mattermost":
+		return "websocket"
+	case "teams":
+		return "webhook"
 	default:
 		return "webhook"
 	}

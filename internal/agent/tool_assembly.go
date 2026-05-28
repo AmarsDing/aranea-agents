@@ -361,7 +361,7 @@ func applyMCPAuthHeaders(ctx context.Context, serverKey string, sc mcpconfig.Ser
 	authType := strings.ToLower(strings.TrimSpace(sc.Auth.Type))
 	key := strings.TrimSpace(sc.Auth.APIKey)
 	if strings.HasPrefix(authType, "oauth2") {
-		if token, err := resolveMCPAuthToken(ctx, sc.Auth); err == nil && token != "" {
+		if token, err := ResolveMCPAuthToken(ctx, sc.Auth); err == nil && token != "" {
 			key = token
 		} else if strings.TrimSpace(sc.Auth.AccessToken) != "" {
 			key = strings.TrimSpace(sc.Auth.AccessToken)

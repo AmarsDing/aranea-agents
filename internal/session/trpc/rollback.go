@@ -10,8 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/ctxuser"
 	"aranea-agents/pkg/trpcscope"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 const trpcSessionEventsTable = "trpc_session_events"
@@ -44,7 +47,7 @@ func (s *RunnerRollbackStore) MarkBoundary(ctx context.Context, sessionID, _, _ 
 		SessionID: strings.TrimSpace(sessionID),
 	}
 	if cur.SessionID == "" {
-		return "", fmt.Errorf("runner rollback: session_id is required")
+		return "", kerrors.BadRequest("SESSION", "runner rollback: session_id is required")
 	}
 	var maxID sql.NullInt64
 	err := s.db.QueryRowContext(ctx,
@@ -52,7 +55,9 @@ func (s *RunnerRollbackStore) MarkBoundary(ctx context.Context, sessionID, _, _ 
 		cur.AppName, cur.UserID, cur.SessionID,
 	).Scan(&maxID)
 	if err != nil {
-		return "", fmt.Errorf("runner rollback mark: %w", err)
+		event.CtxFlowLogWarn(ctx, "system.session.rollback_fail", "runner rollback mark failed",
+			event.P("session_id", sessionID), event.P("error", err.Error()))
+		return "", kerrors.InternalServer("SESSION", "runner rollback mark: "+err.Error())
 	}
 	if maxID.Valid {
 		cur.EventID = maxID.Int64
@@ -69,7 +74,9 @@ func (s *RunnerRollbackStore) RollbackToBoundary(ctx context.Context, sessionID,
 		return err
 	}
 	if sid := strings.TrimSpace(sessionID); sid != "" && sid != cur.SessionID {
-		return fmt.Errorf("runner rollback: boundary session %q does not match %q", cur.SessionID, sid)
+		event.CtxFlowLogWarn(ctx, "system.session.rollback_fail", "runner rollback session mismatch",
+			event.P("boundary_session", cur.SessionID), event.P("target_session", sid))
+		return kerrors.BadRequest("SESSION", fmt.Sprintf("runner rollback: boundary session %q does not match %q", cur.SessionID, sid))
 	}
 	now := time.Now().UTC().UnixNano()
 	_, err = s.db.ExecContext(ctx,
@@ -77,7 +84,9 @@ func (s *RunnerRollbackStore) RollbackToBoundary(ctx context.Context, sessionID,
 		now, now, cur.AppName, cur.UserID, cur.SessionID, cur.EventID,
 	)
 	if err != nil {
-		return fmt.Errorf("runner rollback: %w", err)
+		event.CtxFlowLogWarn(ctx, "system.session.rollback_fail", "runner rollback update failed",
+			event.P("session_id", cur.SessionID), event.P("error", err.Error()))
+		return kerrors.InternalServer("SESSION", "runner rollback: "+err.Error())
 	}
 	return nil
 }
@@ -94,7 +103,7 @@ func decodeRollbackCursor(s string) (rollbackCursor, error) {
 	var cur rollbackCursor
 	raw := strings.TrimSpace(s)
 	if raw == "" {
-		return cur, fmt.Errorf("runner rollback: empty boundary")
+		return cur, kerrors.BadRequest("SESSION", "runner rollback: empty boundary")
 	}
 	b, err := base64.RawURLEncoding.DecodeString(raw)
 	if err != nil {
@@ -102,10 +111,10 @@ func decodeRollbackCursor(s string) (rollbackCursor, error) {
 			cur.EventID = legacyID
 			return cur, nil
 		}
-		return cur, fmt.Errorf("runner rollback boundary decode: %w", err)
+		return cur, kerrors.InternalServer("SESSION", "runner rollback boundary decode: "+err.Error())
 	}
 	if err := json.Unmarshal(b, &cur); err != nil {
-		return cur, fmt.Errorf("runner rollback boundary unmarshal: %w", err)
+		return cur, kerrors.InternalServer("SESSION", "runner rollback boundary unmarshal: "+err.Error())
 	}
 	cur.AppName = strings.TrimSpace(cur.AppName)
 	if cur.AppName == "" {
@@ -117,7 +126,7 @@ func decodeRollbackCursor(s string) (rollbackCursor, error) {
 	}
 	cur.SessionID = strings.TrimSpace(cur.SessionID)
 	if cur.SessionID == "" {
-		return cur, fmt.Errorf("runner rollback: boundary session_id is required")
+		return cur, kerrors.BadRequest("SESSION", "runner rollback: boundary session_id is required")
 	}
 	return cur, nil
 }

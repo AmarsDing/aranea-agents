@@ -119,6 +119,8 @@ export type MemoryFact = {
   version: number;
   status: string;
   pii_flag: boolean;
+  pii_types: string[];
+  quality_score: number;
   created_at: string;
   updated_at: string;
 };
@@ -298,6 +300,34 @@ export type MemoryWorkerStatus = {
   llm_fallback_total: number;
   avg_extraction_seconds: number;
   episode_backfill_total: number;
+  queue_high?: MemoryWorkerQueueStats;
+  queue_normal?: MemoryWorkerQueueStats;
+  queue_low?: MemoryWorkerQueueStats;
+  index_active?: number;
+  index_stale?: number;
+  index_disabled?: number;
+  db_available?: boolean;
+  dead_letter_pending?: number;
+};
+
+export type MemoryWorkerQueueStats = {
+  capacity: number;
+  in_flight: number;
+  dropped_total?: number;
+  debounced_total?: number;
+};
+
+export type MemoryDeadLetterEntry = {
+  id: number;
+  session_id: string;
+  app_name: string;
+  drop_reason: string;
+  priority: number;
+  attempts: number;
+  state: string;
+  last_error: string;
+  enqueued_at: string;
+  failed_at: string;
 };
 
 export type MemoryPlatformSettings = {

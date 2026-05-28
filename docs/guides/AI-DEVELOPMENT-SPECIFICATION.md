@@ -149,6 +149,7 @@
 | 能力 | 主要包 | 关键函数/类型 |
 |------|--------|---------------|
 | 会话快照读写 | `internal/session/trpc` | `SQLiteSessionService` |
+| 会话压缩 | `internal/session` | `Compressor`（CAS + 事务 + 幂等） |
 | Agent 构建 | `internal/agent` | `BuildLLMAgent` |
 | LLM 模型驱动 | `internal/provider` | `ModelForProviderModel` |
 | 工具注册与装配 | `internal/tools` | `Assemble`、`Registry` |

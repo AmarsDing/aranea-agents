@@ -51,5 +51,26 @@ func ensureMemoryFactsIndexStatusPatches(ctx context.Context, c *ent.Client) err
 		`CREATE INDEX IF NOT EXISTS idx_memory_facts_index_status ON memory_facts(index_status, index_synced_at)`); err != nil {
 		return err
 	}
+
+	extraPatches := []struct {
+		column string
+		ddl    string
+	}{
+		{"pii_types", `ALTER TABLE memory_facts ADD COLUMN pii_types TEXT NOT NULL DEFAULT ''`},
+		{"quality_score", `ALTER TABLE memory_facts ADD COLUMN quality_score REAL NOT NULL DEFAULT 0`},
+	}
+	for _, p := range extraPatches {
+		has, err := sqliteColumnExists(ctx, c, "memory_facts", p.column)
+		if err != nil {
+			return err
+		}
+		if has {
+			continue
+		}
+		if _, err := c.ExecContext(ctx, p.ddl); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }

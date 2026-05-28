@@ -12,6 +12,7 @@ import (
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcprovider "trpc.group/trpc-go/trpc-agent-go/model/provider"
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 type OpenAICompatMessage struct {
@@ -163,3 +164,76 @@ func reasoningFromAPIRawJSON(raw json.RawMessage) string {
 }
 
 func float64Ptr(v float64) *float64 { return &v }
+
+type OpenAICompatToolCallResult struct {
+	Name      string
+	Arguments string
+}
+
+func CallOpenAICompatChatWithTools(ctx context.Context, hc *http.Client, cfg ProviderAPIConfig, modelName string, messages []OpenAICompatMessage, tools []map[string]any) (text string, toolCalls []OpenAICompatToolCallResult, promptTok, completionTok int, err error) {
+	m, err := trpcCompatModel(cfg, hc)
+	if err != nil {
+		return "", nil, 0, 0, err
+	}
+	toolDecls := make(map[string]trpctool.Tool, len(tools))
+	for _, t := range tools {
+		name, _ := t["name"].(string)
+		desc, _ := t["description"].(string)
+		params, _ := t["parameters"].(map[string]any)
+		decl := &trpctool.Declaration{
+			Name:        name,
+			Description: desc,
+		}
+		if params != nil {
+			schemaBytes, _ := json.Marshal(params)
+			var schema trpctool.Schema
+			if json.Unmarshal(schemaBytes, &schema) == nil {
+				decl.InputSchema = &schema
+			}
+		}
+		toolDecls[name] = &staticToolDecl{decl: decl}
+	}
+	req := &trpcmodel.Request{
+		Messages: openAICompatToTRPCMessages(messages),
+		GenerationConfig: trpcmodel.GenerationConfig{
+			Temperature: float64Ptr(0.7),
+		},
+		Tools: toolDecls,
+	}
+	respCh, err := m.GenerateContent(ctx, req)
+	if err != nil {
+		return "", nil, 0, 0, err
+	}
+	var last *trpcmodel.Response
+	for resp := range respCh {
+		if resp.Error != nil {
+			return "", nil, 0, 0, kerrors.InternalServer("PROVIDER", resp.Error.Message)
+		}
+		last = resp
+	}
+	if last == nil {
+		return "", nil, 0, 0, kerrors.InternalServer("PROVIDER", "empty LLM response")
+	}
+	if len(last.Choices) == 0 {
+		return "", nil, 0, 0, kerrors.InternalServer("PROVIDER", "empty choices")
+	}
+	ch := last.Choices[0]
+	text = strings.TrimSpace(ch.Message.Content)
+	for _, tc := range ch.Message.ToolCalls {
+		toolCalls = append(toolCalls, OpenAICompatToolCallResult{
+			Name:      tc.Function.Name,
+			Arguments: string(tc.Function.Arguments),
+		})
+	}
+	if last.Usage != nil {
+		promptTok = last.Usage.PromptTokens
+		completionTok = last.Usage.CompletionTokens
+	}
+	return text, toolCalls, promptTok, completionTok, nil
+}
+
+type staticToolDecl struct {
+	decl *trpctool.Declaration
+}
+
+func (s *staticToolDecl) Declaration() *trpctool.Declaration { return s.decl }

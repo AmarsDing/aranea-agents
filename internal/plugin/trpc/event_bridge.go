@@ -13,12 +13,13 @@ import (
 
 // productEventPlugin wires Runner OnEvent to hook rules (on_event) and metrics.
 type productEventPlugin struct {
-	mgr *Manager
+	mgr  *Manager
+	name string
 }
 
 var _ trpcplugin.Plugin = (*productEventPlugin)(nil)
 
-func (p *productEventPlugin) Name() string { return "aranea_event_bridge" }
+func (p *productEventPlugin) Name() string { return p.name }
 
 func (p *productEventPlugin) Register(r *trpcplugin.Registry) {
 	if r == nil || p == nil || p.mgr == nil {

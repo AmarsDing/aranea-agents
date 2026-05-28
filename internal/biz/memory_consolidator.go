@@ -28,11 +28,20 @@ type ConsolidateInput struct {
 
 // MemoryProposal is one derived memory write candidate from a consolidator.
 type MemoryProposal struct {
-	Layer           string
-	Statement       string
-	Topics          []string
-	SourceMessageID string
+	Layer             string
+	Statement         string
+	Topics            []string
+	SourceMessageID   string
+	ExtractionQuality float64
+	PIITypes          []string
+	IsPIISensitive    bool
 }
+
+const (
+	ExtractionQualityFunctionCall = 1.0
+	ExtractionQualityJSONMode     = 0.85
+	ExtractionQualityHeuristic    = 0.50
+)
 
 // MemoryConsolidator extracts structured memory proposals from recent messages.
 type MemoryConsolidator interface {
@@ -44,6 +53,9 @@ var defaultHeuristicPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)I(?:'m| am)\s+(?:a |an )?([a-z]+(?:\s+[a-z]+)?)\s*(?:\.|,|$)`),
 	regexp.MustCompile(`(?i)I\s+(?:prefer|like|love|hate|dislike)\s+([^.!?\n]+)`),
 	regexp.MustCompile(`(?i)(?:please|always|never)\s+(?:call me|refer to me as)\s+([^.!?\n]+)`),
+	regexp.MustCompile(`(?:我叫|我的名字是|我的名字叫|本人名叫)\s*([^\s,.，。！!？?]+)`),
+	regexp.MustCompile(`(?:我喜欢|我爱好|我偏好|我讨厌|我不喜欢|我反感)\s*([^.!?\n，。！？]+)`),
+	regexp.MustCompile(`(?:请|永远|永远不要|不要)\s*(?:叫我|称呼我为|用)\s*([^.!?\n，。！？]+)`),
 }
 
 // HeuristicConsolidator applies regex patterns without an LLM call.
@@ -84,9 +96,10 @@ func (c *HeuristicConsolidator) Extract(_ context.Context, in ConsolidateInput) 
 		}
 		seen[key] = struct{}{}
 		out = append(out, MemoryProposal{
-			Layer:           MemoryLayerL3,
-			Statement:       stmt,
-			SourceMessageID: strings.TrimSpace(msg.MessageID),
+			Layer:             MemoryLayerL3,
+			Statement:         stmt,
+			SourceMessageID:   strings.TrimSpace(msg.MessageID),
+			ExtractionQuality: ExtractionQualityHeuristic,
 		})
 		}
 	}
@@ -155,10 +168,11 @@ func (c *FeedbackConsolidator) Extract(_ context.Context, in ConsolidateInput) (
 			return nil, nil
 		}
 		return []MemoryProposal{{
-			Layer:           MemoryLayerL3,
-			Statement:       stmt,
-			Topics:          []string{"feedback", "preference"},
-			SourceMessageID: strings.TrimSpace(msg.MessageID),
+			Layer:             MemoryLayerL3,
+			Statement:         stmt,
+			Topics:            []string{"feedback", "preference"},
+			SourceMessageID:   strings.TrimSpace(msg.MessageID),
+			ExtractionQuality: ExtractionQualityJSONMode,
 		}}, nil
 	}
 	return nil, nil

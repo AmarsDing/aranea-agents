@@ -6,7 +6,6 @@ import (
 
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
-	sessionsess "aranea-agents/internal/biz/session"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -49,14 +48,14 @@ func (s *SessionService) ListSessionRuns(ctx context.Context, req *v1.ListSessio
 
 // ListSessionParticipants implements GET /v1/sessions/{session_id}/participants.
 func (s *SessionService) ListSessionParticipants(ctx context.Context, req *v1.ListSessionParticipantsRequest) (*v1.ListSessionParticipantsResponse, error) {
-	if s.uc == nil || s.participants == nil {
+	if s.uc == nil {
 		return &v1.ListSessionParticipantsResponse{}, nil
 	}
 	sessionID := strings.TrimSpace(req.GetSessionId())
 	if sessionID == "" {
 		return nil, kerrors.BadRequest("SESSION", "session_id is required")
 	}
-	rows, err := s.uc.ListParticipants(ctx, sessionID, s.participants)
+	rows, err := s.uc.ListParticipants(ctx, sessionID)
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}
@@ -89,7 +88,7 @@ func toProtoSessionRunRecord(run biz.SessionRun) *v1.SessionRunRecord {
 	}
 }
 
-func toProtoSessionParticipant(row sessionsess.SessionParticipant) *v1.SessionParticipant {
+func toProtoSessionParticipant(row biz.SessionParticipant) *v1.SessionParticipant {
 	return &v1.SessionParticipant{
 		Id:               row.ID,
 		SessionId:        row.SessionID,

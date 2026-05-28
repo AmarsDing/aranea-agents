@@ -1,4 +1,4 @@
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import { useRoute, useRouter } from "vue-router";
 import type { Session } from "./types";
@@ -55,15 +55,22 @@ export function useSessionDetailPage() {
 
   async function handleArchive() {
     if (!session.value) return;
-    await sessionStore.archive(session.value.id);
+    const prev = session.value;
     session.value = { ...session.value, status: "archived" };
-    $q.notify({ type: "positive", message: "已归档" });
+    try {
+      await sessionStore.archive(prev.id);
+      $q.notify({ type: "positive", message: "已归档" });
+    } catch (err) {
+      session.value = prev;
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "归档失败" });
+    }
   }
 
   async function handleRestore() {
     if (!session.value) return;
     try {
       session.value = await sessionStore.restore(session.value.id);
+      $q.notify({ type: "positive", message: "已恢复" });
     } catch (err) {
       $q.notify({ type: "negative", message: err instanceof Error ? err.message : "恢复失败" });
     }
@@ -86,6 +93,10 @@ export function useSessionDetailPage() {
 
   onMounted(() => {
     applyDeepLinkTab();
+    void loadSession();
+  });
+
+  watch(sessionId, () => {
     void loadSession();
   });
 

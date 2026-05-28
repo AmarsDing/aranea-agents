@@ -54,6 +54,7 @@ func (r *feedbackMonitorRepo) ExistsRunnerCompletion(context.Context, string, st
 func (r *feedbackMonitorRepo) PatchRunnerCompletionMetadata(context.Context, string, string, string, string) (bool, error) {
 	return false, nil
 }
+func (r *feedbackMonitorRepo) EnsureTraceSchema(context.Context) error { return nil }
 
 type testFeedbackEnqueuer struct {
 	calls []struct {

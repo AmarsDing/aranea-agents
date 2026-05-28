@@ -190,6 +190,9 @@ message RunnerMetricsSummary {
   double error_rate = 4;
   double success_rate = 5;
   double avg_duration_ms = 6;
+  double p50_duration_ms = 7;
+  double p95_duration_ms = 8;
+  double p99_duration_ms = 9;
 }
 
 message CodeExecutorCapability {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/metrics"
+	"aranea-agents/internal/skill/importer"
 	authpkg "aranea-agents/pkg/auth"
 
 	"go.opentelemetry.io/otel"
@@ -51,7 +52,7 @@ func skillImportMultipartHandler(s *SkillService) func(ctx kratoshttp.Context) e
 		}
 
 		req := ctx.Request().WithContext(spanCtx)
-		if err := req.ParseMultipartForm(25 << 20); err != nil {
+		if err := req.ParseMultipartForm(int64(importer.MaxZipBytes)); err != nil {
 			span.SetStatus(codes.Error, err.Error())
 			span.RecordError(err)
 			metrics.SkillImportTotal.WithLabelValues("upload", "bad_request").Inc()

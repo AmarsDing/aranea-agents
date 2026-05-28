@@ -16,6 +16,11 @@
             <q-chip dense color="primary" text-color="white">{{ fact.scope_type }}</q-chip>
             <q-chip dense color="blue-grey" text-color="white">{{ fact.fact_kind || "fact" }}</q-chip>
             <q-chip dense :color="scoreColor(fact.confidence)" text-color="white">confidence {{ formatPercent(fact.confidence) }}</q-chip>
+            <q-chip v-if="fact.quality_score > 0" dense :color="scoreColor(fact.quality_score)" text-color="white">quality {{ formatPercent(fact.quality_score) }}</q-chip>
+            <q-chip v-if="fact.pii_flag" dense color="negative" text-color="white">PII</q-chip>
+          </div>
+          <div v-if="fact.pii_flag && fact.pii_types?.length" class="q-mt-sm">
+            <q-badge v-for="t in fact.pii_types" :key="t" color="deep-orange" class="q-mr-xs">{{ t }}</q-badge>
           </div>
           <q-separator class="q-my-md" />
           <div class="text-caption text-grey-7">Details</div>

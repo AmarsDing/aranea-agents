@@ -197,56 +197,112 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 
 	fromTurn := body[0].TurnNumber
 	toTurn := body[len(body)-1].TurnNumber
-	row := biz.SessionSummary{
-		ID:              uuid.NewString(),
-		SessionID:       sessionID,
-		SummaryMarkdown: md,
-		FromTurn:        fromTurn,
-		ToTurn:          toTurn,
-		TokenEstimate:   roughTokenEstimate(md),
-		CreatedAt:       time.Now().UTC().Format(time.RFC3339),
+
+	versionBeforeCAS := sess.CompressVersion
+	oldVersion, casErr := c.Sessions.TryIncrementCompressVersion(ctx, sessionID)
+	if casErr != nil {
+		return casErr
 	}
-	if err := c.Sessions.InsertSessionSummary(ctx, row); err != nil {
-		return err
+	if oldVersion != versionBeforeCAS {
+		return nil
 	}
 
-	allRows, err := c.Sessions.ListSessionSummaries(ctx, sessionID)
-	if err != nil {
-		return err
+	exists, existsErr := c.Sessions.SessionSummaryExists(ctx, sessionID, fromTurn, toTurn)
+	if existsErr != nil && c.EventBus != nil {
+		event.SessionSysLogWarn(ctx, sessionID, "system.session.compress", "幂等检查失败",
+			event.P("error", existsErr.Error()))
 	}
-	merged := mergeSessionSummariesMarkdown(allRows)
+	if exists {
+		return nil
+	}
 
-	var tail []biz.ChatMessage
-	for _, m := range timeline {
-		if m.TurnNumber > cutoffTurn {
-			tail = append(tail, m)
+	var txMerged string
+	var txTail []biz.ChatMessage
+	var txErr error
+	txErr = c.Sessions.CompressSessionInTx(ctx, sessionID, func(txCtx context.Context) error {
+		row := biz.SessionSummary{
+			ID:              uuid.NewString(),
+			SessionID:       sessionID,
+			SummaryMarkdown: md,
+			FromTurn:        fromTurn,
+			ToTurn:          toTurn,
+			TokenEstimate:   roughTokenEstimate(md),
+			CreatedAt:       time.Now().UTC().Format(time.RFC3339),
 		}
-	}
+		if err := c.Sessions.InsertSessionSummary(txCtx, row); err != nil {
+			return err
+		}
 
-	author := strings.TrimSpace(ag.AgentKey)
-	if c.Agents != nil && strings.TrimSpace(sess.AgentID) != "" {
-		if a, e := c.Agents.GetAgentByID(ctx, sess.AgentID); e == nil {
-			if k := strings.TrimSpace(a.AgentKey); k != "" {
-				author = k
+		allRows, err := c.Sessions.ListSessionSummaries(txCtx, sessionID)
+		if err != nil {
+			return err
+		}
+		txMerged = mergeSessionSummariesMarkdown(allRows)
+
+		for _, m := range timeline {
+			if m.TurnNumber > cutoffTurn {
+				txTail = append(txTail, m)
 			}
 		}
-	}
-	if author == "" {
-		author = "agent"
-	}
 
-	raw, err := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, merged, tail, author)
-	if err != nil {
-		return err
-	}
-	if err := c.Sessions.UpdateRunnerSnapshotJSON(ctx, sessionID, raw); err != nil {
-		return err
+		author := strings.TrimSpace(ag.AgentKey)
+		if c.Agents != nil && strings.TrimSpace(sess.AgentID) != "" {
+			if a, e := c.Agents.GetAgentByID(txCtx, sess.AgentID); e == nil {
+				if k := strings.TrimSpace(a.AgentKey); k != "" {
+					author = k
+				}
+			}
+		}
+		if author == "" {
+			author = "agent"
+		}
+
+		raw, err := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, txMerged, txTail, author)
+		if err != nil {
+			return err
+		}
+		if err := c.Sessions.UpdateRunnerSnapshotJSON(txCtx, sessionID, raw); err != nil {
+			return err
+		}
+
+		win := llmcontext.ResolveWindow(llmcontext.ResolveInput{
+			SessionDefaultWindow: sess.LastContextWindowTokens,
+			AgentWindow:          ag.ContextWindow,
+		})
+		est := estimateCompactedPromptTokens(txMerged, txTail)
+		if err := c.Sessions.UpdateSessionContextAfterCompression(txCtx, sessionID, est, win); err != nil {
+			return err
+		}
+
+		preview := firstSummaryLine(txMerged)
+		if preview != "" {
+			_ = c.Sessions.UpdateSessionListSummary(txCtx, sessionID, preview)
+		}
+
+		return nil
+	})
+	if txErr != nil {
+		return txErr
 	}
 
 	if c.Runtime != nil {
-		if syncErr := c.Runtime.SyncRunnerSnapshot(ctx, trpcUserID, sessionID, raw, merged); syncErr != nil && c.EventBus != nil {
-			event.SessionSysLogWarn(ctx, sessionID, "system.session.compress", "trpc 快照同步失败",
-				event.P("error", syncErr.Error()), event.P("user_id", trpcUserID))
+		author := strings.TrimSpace(ag.AgentKey)
+		if c.Agents != nil && strings.TrimSpace(sess.AgentID) != "" {
+			if a, e := c.Agents.GetAgentByID(ctx, sess.AgentID); e == nil {
+				if k := strings.TrimSpace(a.AgentKey); k != "" {
+					author = k
+				}
+			}
+		}
+		if author == "" {
+			author = "agent"
+		}
+		raw, snapErr := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, txMerged, txTail, author)
+		if snapErr == nil {
+			if syncErr := c.Runtime.SyncRunnerSnapshot(ctx, trpcUserID, sessionID, raw, txMerged); syncErr != nil && c.EventBus != nil {
+				event.SessionSysLogWarn(ctx, sessionID, "system.session.compress", "trpc 快照同步失败",
+					event.P("error", syncErr.Error()), event.P("user_id", trpcUserID))
+			}
 		}
 	}
 
@@ -254,21 +310,11 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		SessionDefaultWindow: sess.LastContextWindowTokens,
 		AgentWindow:          ag.ContextWindow,
 	})
-	est := estimateCompactedPromptTokens(merged, tail)
-	if err := c.Sessions.UpdateSessionContextAfterCompression(ctx, sessionID, est, win); err != nil && c.EventBus != nil {
-		event.SessionSysLogWarn(ctx, sessionID, "system.session.compress", "压缩后上下文用量更新失败",
-			event.P("error", err.Error()),
-			event.P("estimated_prompt_tokens", est),
-			event.P("context_window", win),
-		)
-	}
+	est := estimateCompactedPromptTokens(txMerged, txTail)
 	ratio := llmcontext.ContextRatio(est, win)
 	status := llmcontext.ContextStatusForRatio(ratio)
 
-	preview := firstSummaryLine(merged)
-	if preview != "" {
-		_ = c.Sessions.UpdateSessionListSummary(ctx, sessionID, preview)
-	}
+	preview := firstSummaryLine(txMerged)
 	c.publishCompressionNotice(ctx, sessionID, fromTurn, toTurn, preview, est, win, ratio, status)
 	c.resyncSessionMemory(ctx, sessionID)
 	return nil

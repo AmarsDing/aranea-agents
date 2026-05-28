@@ -120,13 +120,13 @@ function kratosSessionTimelineToLegacy(data: KratosSessionTimeline): SessionTime
   };
 }
 
-export async function listSessions(agentID: string): Promise<Session[]> {
-  const data = await searchSessions({ agent_id: agentID, limit: 200 });
+export async function listSessions(agentID: string, limit = 200, offset?: number): Promise<Session[]> {
+  const data = await searchSessions({ agent_id: agentID, limit, offset });
   return data.items;
 }
 
-export async function listTeamSessions(teamID: string): Promise<Session[]> {
-  const data = await searchSessions({ team_id: teamID, limit: 200 });
+export async function listTeamSessions(teamID: string, limit = 200, offset?: number): Promise<Session[]> {
+  const data = await searchSessions({ team_id: teamID, limit, offset });
   return data.items;
 }
 
@@ -380,9 +380,11 @@ function kratosChatRowToMessage(row: ChatMessageRow): Message {
 
 /** Kratos `GET /v1/sessions/{id}/messages`（替代遗留 `/api/v1/chat/messages` 列表）。 */
 export async function listSessionChatMessages(
-  sessionID: string
+  sessionID: string,
+  limit?: number,
+  offset?: number
 ): Promise<{ items: Message[]; currentRevision: number }> {
-  const data = await sessionApi.ListSessionMessages({ id: sessionID, limit: undefined, offset: undefined });
+  const data = await sessionApi.ListSessionMessages({ id: sessionID, limit, offset });
   return {
     items: (data.items ?? []).map(kratosChatRowToMessage),
     currentRevision: Number(data.currentRevision ?? 0),

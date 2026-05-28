@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/skill/storage"
+	"aranea-agents/internal/tools/skillruntime"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -22,12 +23,13 @@ type SkillService struct {
 	v1.UnimplementedSkillServiceServer
 
 	uc      *biz.SkillUsecase
+	agentUC *biz.AgentUsecase
 	sys     biz.SystemSettingRepo
 	import_ *importer.Engine
 }
 
-func NewSkillService(uc *biz.SkillUsecase, sys biz.SystemSettingRepo, importEng *importer.Engine) *SkillService {
-	return &SkillService{uc: uc, sys: sys, import_: importEng}
+func NewSkillService(uc *biz.SkillUsecase, agentUC *biz.AgentUsecase, sys biz.SystemSettingRepo, importEng *importer.Engine) *SkillService {
+	return &SkillService{uc: uc, agentUC: agentUC, sys: sys, import_: importEng}
 }
 
 func (s *SkillService) resolvedStorageRoot(ctx context.Context) string {
@@ -365,16 +367,42 @@ func (s *SkillService) DeleteSkillFile(ctx context.Context, req *v1.DeleteSkillF
 	return &emptypb.Empty{}, nil
 }
 
-func (s *SkillService) PreviewSkillRuntime(ctx context.Context, _ *v1.PreviewSkillRuntimeRequest) (*v1.PreviewSkillRuntimeResponse, error) {
+func (s *SkillService) PreviewSkillRuntime(ctx context.Context, req *v1.PreviewSkillRuntimeRequest) (*v1.PreviewSkillRuntimeResponse, error) {
 	root := s.resolvedStorageRoot(ctx)
+	agentID := strings.TrimSpace(req.GetAgentId())
+	userQuery := strings.TrimSpace(req.GetUserQuery())
+
+	if agentID != "" {
+		runtime, err := s.agentUC.GetAgentRuntimeSettings(ctx, agentID)
+		if err != nil {
+			return nil, err
+		}
+		opts := &skillruntime.SkillToolsetOptions{Runtime: &runtime, UserQuery: userQuery}
+		result, err := skillruntime.ResolveSkillSlugsDetailed(ctx, s.uc, opts)
+		if err != nil {
+			return nil, err
+		}
+		return &v1.PreviewSkillRuntimeResponse{
+			ResolvedStorageRoot:   root,
+			EnabledPublishedCount: int32(len(result.Slugs)),
+			EnabledSkillSlugs:     result.Slugs,
+			Reasons:               result.Reasons,
+		}, nil
+	}
+
 	slugs, err := s.uc.ListEnabledPublishedSkillKeys(ctx)
 	if err != nil {
 		return nil, err
+	}
+	reasons := make(map[string]string, len(slugs))
+	for _, slug := range slugs {
+		reasons[slug] = "enabled and published"
 	}
 	return &v1.PreviewSkillRuntimeResponse{
 		ResolvedStorageRoot:   root,
 		EnabledPublishedCount: int32(len(slugs)),
 		EnabledSkillSlugs:     slugs,
+		Reasons:               reasons,
 	}, nil
 }
 

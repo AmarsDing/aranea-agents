@@ -126,7 +126,7 @@ func (s *MCPServerService) DeleteMCPServer(ctx context.Context, req *v1.DeleteMC
 }
 
 func (s *MCPServerService) ValidateMCPServer(ctx context.Context, req *v1.ValidateMCPServerRequest) (*v1.ValidateMCPServerResponse, error) {
-	res := s.uc.ValidateConfig(req.GetEnabled(), req.GetConfigJson())
+	res := s.uc.ValidateConfig(ctx, req.GetEnabled(), req.GetConfigJson())
 	detailsJSON := "{}"
 	if len(res.Details) > 0 {
 		b, err := json.Marshal(res.Details)

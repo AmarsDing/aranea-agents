@@ -2,6 +2,7 @@ package plugintrpc
 
 import (
 	"context"
+	"regexp"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -19,11 +20,16 @@ type sensitiveMaskConfig struct {
 	BlockLeakOutput bool            `json:"block_leak_output"`
 }
 
+type compiledCustomPattern struct {
+	Pattern     string
+	Replacement string
+	RE          *regexp.Regexp
+}
+
 type SensitiveDataMaskPlugin struct {
-	name   string
-	cfg    sensitiveMaskConfig
-	stats  StatsRecorder
-	logger *PluginSafeLogger
+	base      basePlugin
+	cfg       sensitiveMaskConfig
+	compiled  []compiledCustomPattern
 }
 
 var _ trpcplugin.Plugin = (*SensitiveDataMaskPlugin)(nil)
@@ -35,10 +41,26 @@ func NewSensitiveDataMaskPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus
 	cfg.MaskSecret = true
 	cfg.BlockLeakOutput = true
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
-	return &SensitiveDataMaskPlugin{name: p.Key, cfg: cfg, stats: stats, logger: NewPluginSafeLogger(p.Key, bus)}
+	var compiled []compiledCustomPattern
+	for _, c := range cfg.CustomPatterns {
+		pat := strings.TrimSpace(c.Pattern)
+		if pat == "" {
+			continue
+		}
+		re, err := regexp.Compile(pat)
+		if err != nil {
+			continue
+		}
+		repl := strings.TrimSpace(c.Replacement)
+		if repl == "" {
+			repl = "[redacted]"
+		}
+		compiled = append(compiled, compiledCustomPattern{Pattern: pat, Replacement: repl, RE: re})
+	}
+	return &SensitiveDataMaskPlugin{base: newBasePlugin(p.Key, stats, bus), cfg: cfg, compiled: compiled}
 }
 
-func (s *SensitiveDataMaskPlugin) Name() string { return s.name }
+func (s *SensitiveDataMaskPlugin) Name() string { return s.base.Name() }
 
 func (s *SensitiveDataMaskPlugin) Register(r *trpcplugin.Registry) {
 	r.BeforeModel(s.beforeModel)
@@ -51,13 +73,12 @@ func (s *SensitiveDataMaskPlugin) beforeModel(ctx context.Context, args *trpcmod
 	}
 	msgCount := len(args.Request.Messages)
 	for i := range args.Request.Messages {
-		args.Request.Messages[i].Content = redactTextFull(
+		args.Request.Messages[i].Content = s.redact(
 			args.Request.Messages[i].Content,
-			s.cfg.MaskEmail, s.cfg.MaskPhone, s.cfg.MaskSecret, s.cfg.CustomPatterns,
 		)
 	}
-	s.logger.Info("plugin.sensitive_mask.before_model", "status", "ok", "messages", msgCount, "mask_email", s.cfg.MaskEmail, "mask_phone", s.cfg.MaskPhone, "mask_secret", s.cfg.MaskSecret)
-	s.record(ctx, "before_model", "ok")
+	s.base.logger.Info("plugin.sensitive_mask.before_model", "status", "ok", "messages", msgCount, "mask_email", s.cfg.MaskEmail, "mask_phone", s.cfg.MaskPhone, "mask_secret", s.cfg.MaskSecret)
+	s.base.record(ctx, "before_model", "ok")
 	return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 }
 
@@ -67,32 +88,34 @@ func (s *SensitiveDataMaskPlugin) afterModel(ctx context.Context, args *trpcmode
 	}
 	text := responseText(args.Response)
 	if text == "" {
-		s.record(ctx, "after_model", "ok")
+		s.base.record(ctx, "after_model", "ok")
 		return &trpcmodel.AfterModelResult{Context: ctx}, nil
 	}
 	if secretRE.MatchString(text) && s.cfg.BlockLeakOutput {
-		s.logger.Info("plugin.sensitive_mask.after_model", "status", "blocked", "reason", "secret_leak_detected")
-		s.record(ctx, "after_model", "blocked")
+		s.base.logger.Info("plugin.sensitive_mask.after_model", "status", "blocked", "reason", "secret_leak_detected")
+		s.base.record(ctx, "after_model", "blocked")
 		return &trpcmodel.AfterModelResult{
 			Context:        ctx,
 			CustomResponse: blockedModelResponse("sensitive_data_mask: possible secret leak in model output"),
 		}, nil
 	}
-	masked := redactTextFull(text, s.cfg.MaskEmail, s.cfg.MaskPhone, s.cfg.MaskSecret, s.cfg.CustomPatterns)
+	masked := s.redact(text)
 	if masked != text {
 		applyResponseText(args.Response, masked)
-		s.logger.Info("plugin.sensitive_mask.after_model", "status", "ok", "masked", true)
+		s.base.logger.Info("plugin.sensitive_mask.after_model", "status", "ok", "masked", true)
 	} else {
-		s.logger.Info("plugin.sensitive_mask.after_model", "status", "ok", "masked", false)
+		s.base.logger.Info("plugin.sensitive_mask.after_model", "status", "ok", "masked", false)
 	}
-	s.record(ctx, "after_model", "ok")
+	s.base.record(ctx, "after_model", "ok")
 	return &trpcmodel.AfterModelResult{Context: ctx}, nil
 }
 
-func (s *SensitiveDataMaskPlugin) record(ctx context.Context, point, status string) {
-	if s.stats != nil {
-		s.stats.Record(ctx, s.name, point, status)
+func (s *SensitiveDataMaskPlugin) redact(text string) string {
+	text = redactText(text, s.cfg.MaskEmail, s.cfg.MaskPhone, s.cfg.MaskSecret)
+	for _, c := range s.compiled {
+		text = c.RE.ReplaceAllString(text, c.Replacement)
 	}
+	return text
 }
 
 func responseText(resp *trpcmodel.Response) string {

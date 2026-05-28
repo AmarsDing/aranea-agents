@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/team"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -77,7 +78,8 @@ func (r *GraphTaskRuntime) PublishTaskStatus(ctx context.Context, task *biz.Grap
 	}
 	exec, err := r.graphUC.GetExecution(ctx, task.ExecutionID)
 	if err != nil {
-		r.log.Warnf("graph task status publish: execution=%s: %v", task.ExecutionID, err)
+		event.SysLogWarn("system.graph.task_status_fail", "graph task status publish failed",
+			event.P("execution_id", task.ExecutionID), event.P("error", err.Error()))
 		return
 	}
 	if r.orch != nil {
@@ -152,7 +154,8 @@ func (r *GraphTaskRuntime) OnTaskCompleted(ctx context.Context, task *biz.GraphT
 	if exec.Status == "waiting_human" && (exec.InterruptNode == task.NodeID || exec.CurrentNode == task.NodeID) {
 		_, err = r.graphUC.ResumeExecution(ctx, task.ExecutionID, resumeValue)
 		if err != nil {
-			r.log.Warnf("graph resume after task complete: execution=%s task=%s: %v", task.ExecutionID, task.TaskID, err)
+			event.SysLogWarn("system.graph.task_resume_fail", "graph resume after task complete failed",
+				event.P("execution_id", task.ExecutionID), event.P("task_id", task.TaskID), event.P("error", err.Error()))
 		}
 		return err
 	}

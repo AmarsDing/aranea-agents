@@ -2,12 +2,12 @@ package skillruntime
 
 import (
 	"context"
-	"log/slog"
 	"strings"
 	"sync"
 	"sync/atomic"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
@@ -94,9 +94,8 @@ func (f *AgentVisibilityFilter) allowedSlugs(ctx context.Context) map[string]boo
 			}
 		}
 	}
-	if len(set) == 0 && err == nil {
-	} else if err != nil {
-		slog.Warn("skillruntime: ResolveSkillSlugs failed; hiding all skills (fail-closed)", "error", err)
+	if err != nil {
+		event.SysLogWarn("system.skillruntime.resolve_failed", "ResolveSkillSlugs failed; hiding all skills (fail-closed)", event.P("error", err))
 	}
 	f.cache.Store(cacheKey, set)
 	return set

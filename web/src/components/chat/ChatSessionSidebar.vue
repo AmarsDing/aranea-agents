@@ -207,7 +207,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import type { DeleteKind, SessionView } from "./types";
@@ -219,6 +219,8 @@ import {
   presentTurnStatus,
   toneToQuasarColor,
 } from "../../domain/conversationPresentation";
+import { sortSessionsForDisplay } from "../../features/session/sessionSort";
+import { isFavoriteSession, toggleFavoriteSession } from "../../stores/sessionSync";
 
 const props = defineProps<{
   open: boolean;
@@ -245,17 +247,10 @@ const $q = useQuasar();
 
 const inboxSessions = computed(() => props.inboxSessions ?? []);
 
-const FAVORITE_KEY = "chat:favorite-sessions";
-
-const favoriteIDs = ref(new Set(loadIDs(FAVORITE_KEY)));
-
 const timelineGroups = computed(() => {
-  const pinned = [...props.sessions]
-    .filter((session) => isPinned(session))
-    .sort((a, b) => pinnedTime(b) - pinnedTime(a));
-  const regular = [...props.sessions]
-    .filter((session) => !isPinned(session))
-    .sort((a, b) => sessionTime(b) - sessionTime(a));
+  const sorted = sortSessionsForDisplay(props.sessions);
+  const pinned = sorted.filter((session) => isPinned(session));
+  const regular = sorted.filter((session) => !isPinned(session));
   const groups: Array<{ key: string; label: string; sessions: SessionView[] }> = [];
 
   if (pinned.length) groups.push({ key: "pinned", label: t("chat.pinnedSessions"), sessions: pinned });
@@ -311,7 +306,7 @@ function isPinned(session: SessionView) {
 }
 
 function isFavorite(id: string) {
-  return favoriteIDs.value.has(id);
+  return isFavoriteSession(id);
 }
 
 function togglePin(session: SessionView) {
@@ -319,8 +314,7 @@ function togglePin(session: SessionView) {
 }
 
 function toggleFavorite(id: string) {
-  favoriteIDs.value = toggleID(favoriteIDs.value, id);
-  saveIDs(FAVORITE_KEY, favoriteIDs.value);
+  toggleFavoriteSession(id);
 }
 
 function sessionProgressColor(sessionId: string) {
@@ -397,32 +391,6 @@ function sessionTime(session: SessionView) {
   return Number.isFinite(value) ? value : 0;
 }
 
-function pinnedTime(session: SessionView) {
-  const raw = session.pinned_at?.trim();
-  if (!raw) return 0;
-  const value = new Date(raw).getTime();
-  return Number.isFinite(value) ? value : 0;
-}
-
-function toggleID(ids: Set<string>, id: string) {
-  const next = new Set(ids);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  return next;
-}
-
-function loadIDs(key: string) {
-  try {
-    const value = JSON.parse(localStorage.getItem(key) || "[]");
-    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveIDs(key: string, ids: Set<string>) {
-  localStorage.setItem(key, JSON.stringify([...ids]));
-}
 </script>
 
 <style scoped>

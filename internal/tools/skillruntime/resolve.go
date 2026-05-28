@@ -2,6 +2,7 @@ package skillruntime
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -16,8 +17,23 @@ type SkillToolsetOptions struct {
 	UserQuery string
 }
 
+// ResolveResult holds the output of skill resolution with per-slug reasons.
+type ResolveResult struct {
+	Slugs   []string
+	Reasons map[string]string
+}
+
 // ResolveSkillSlugs applies Layer A (allow/deny) and Layer B (intent + tags + score cap).
 func ResolveSkillSlugs(ctx context.Context, skillUC *biz.SkillUsecase, opts *SkillToolsetOptions) ([]string, error) {
+	result, err := ResolveSkillSlugsDetailed(ctx, skillUC, opts)
+	if err != nil {
+		return nil, err
+	}
+	return result.Slugs, nil
+}
+
+// ResolveSkillSlugsDetailed applies Layer A + B and returns per-slug reasons.
+func ResolveSkillSlugsDetailed(ctx context.Context, skillUC *biz.SkillUsecase, opts *SkillToolsetOptions) (*ResolveResult, error) {
 	candidates, err := skillUC.ListEnabledPublishedSkillCandidates(ctx)
 	if err != nil {
 		return nil, err
@@ -32,7 +48,9 @@ func ResolveSkillSlugs(ctx context.Context, skillUC *biz.SkillUsecase, opts *Ski
 		query = opts.UserQuery
 	}
 
-	afterA := applyLayerA(candidates, policy)
+	reasons := make(map[string]string, len(candidates))
+
+	afterA := applyLayerAWithReasons(candidates, policy, reasons)
 
 	paths := []string(nil)
 	if policy.IntentRoutingEnabled && strings.TrimSpace(query) != "" {
@@ -41,7 +59,7 @@ func ResolveSkillSlugs(ctx context.Context, skillUC *biz.SkillUsecase, opts *Ski
 
 	afterB := afterA
 	if len(paths) > 0 {
-		narrowed := filterByIntentPaths(afterA, paths)
+		narrowed := filterByIntentPathsWithReasons(afterA, paths, reasons)
 		if len(narrowed) > 0 {
 			afterB = narrowed
 		}
@@ -50,13 +68,32 @@ func ResolveSkillSlugs(ctx context.Context, skillUC *biz.SkillUsecase, opts *Ski
 	requiredTags := mergeTagRequirements(policy.AllowedTags, skillrouter.ExtractTagHints(query))
 	final := afterB
 	if len(requiredTags) > 0 {
-		tagged := filterByAllTags(afterB, requiredTags)
+		tagged := filterByAllTagsWithReasons(afterB, requiredTags, reasons)
 		if len(tagged) > 0 {
 			final = tagged
 		}
 	}
 
-	scored := scoreCandidates(final, paths)
+	scored := scoreCandidatesWithReasons(final, paths, reasons)
+
+	if policy.EmbeddingScoringEnabled && strings.TrimSpace(query) != "" {
+		embScores, embErr := skillUC.ScoreByEmbedding(ctx, query, final)
+		if embErr == nil && len(embScores) > 0 {
+			weight := policy.EmbeddingScoreWeight
+			for i := range scored {
+				if sim, ok := embScores[scored[i].slug]; ok {
+					scored[i].score += int(sim * 1000 * weight)
+					if scored[i].reason == "enabled and published" || scored[i].reason == "no intent match; included by default" {
+						scored[i].reason = "embedding similarity: " + formatSimilarity(sim)
+					} else {
+						scored[i].reason += " + embedding: " + formatSimilarity(sim)
+					}
+					reasons[scored[i].slug] = scored[i].reason
+				}
+			}
+		}
+	}
+
 	sort.SliceStable(scored, func(i, j int) bool {
 		if scored[i].score != scored[j].score {
 			return scored[i].score > scored[j].score
@@ -68,15 +105,19 @@ func ResolveSkillSlugs(ctx context.Context, skillUC *biz.SkillUsecase, opts *Ski
 	for _, s := range scored {
 		out = append(out, s.slug)
 		if len(out) >= policy.MaxSkillsInToolset {
+			for _, remaining := range scored[len(out):] {
+				reasons[remaining.slug] = "exceeded max_skills_in_toolset cap"
+			}
 			break
 		}
 	}
-	return out, nil
+	return &ResolveResult{Slugs: out, Reasons: reasons}, nil
 }
 
 type slugScore struct {
-	slug  string
-	score int
+	slug   string
+	score  int
+	reason string
 }
 
 func applyLayerA(in []biz.SkillRuntimeCandidate, policy biz.SkillRuntimePolicy) []biz.SkillRuntimeCandidate {
@@ -91,6 +132,34 @@ func applyLayerA(in []biz.SkillRuntimeCandidate, policy biz.SkillRuntimePolicy) 
 		if len(allow) > 0 && !allow[slug] {
 			continue
 		}
+		out = append(out, c)
+	}
+	return out
+}
+
+func formatSimilarity(sim float64) string {
+	return fmt.Sprintf("%.2f", sim)
+}
+
+func applyLayerAWithReasons(in []biz.SkillRuntimeCandidate, policy biz.SkillRuntimePolicy, reasons map[string]string) []biz.SkillRuntimeCandidate {
+	deny := strutil.SliceToSet(policy.DeniedSlugs)
+	allow := strutil.SliceToSet(policy.AllowedSlugs)
+	out := make([]biz.SkillRuntimeCandidate, 0, len(in))
+	for _, c := range in {
+		slug := strings.TrimSpace(strings.ToLower(c.Slug))
+		if slug == "" {
+			reasons[c.Slug] = "empty slug"
+			continue
+		}
+		if deny[slug] {
+			reasons[slug] = "denied by policy"
+			continue
+		}
+		if len(allow) > 0 && !allow[slug] {
+			reasons[slug] = "not in allowed slugs"
+			continue
+		}
+		reasons[slug] = "passed layer A"
 		out = append(out, c)
 	}
 	return out
@@ -128,6 +197,18 @@ func filterByAllTags(in []biz.SkillRuntimeCandidate, required []string) []biz.Sk
 	return out
 }
 
+func filterByAllTagsWithReasons(in []biz.SkillRuntimeCandidate, required []string, reasons map[string]string) []biz.SkillRuntimeCandidate {
+	out := make([]biz.SkillRuntimeCandidate, 0, len(in))
+	for _, c := range in {
+		if skillHasAllTags(c, required) {
+			out = append(out, c)
+		} else {
+			reasons[c.Slug] = "missing required tags"
+		}
+	}
+	return out
+}
+
 func skillHasAllTags(c biz.SkillRuntimeCandidate, required []string) bool {
 	if len(required) == 0 {
 		return true
@@ -152,6 +233,18 @@ func filterByIntentPaths(in []biz.SkillRuntimeCandidate, paths []string) []biz.S
 	for _, c := range in {
 		if matchesAnyIntentPath(c, paths) {
 			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func filterByIntentPathsWithReasons(in []biz.SkillRuntimeCandidate, paths []string, reasons map[string]string) []biz.SkillRuntimeCandidate {
+	out := make([]biz.SkillRuntimeCandidate, 0, len(in))
+	for _, c := range in {
+		if matchesAnyIntentPath(c, paths) {
+			out = append(out, c)
+		} else {
+			reasons[c.Slug] = "no intent path match"
 		}
 	}
 	return out
@@ -232,6 +325,57 @@ func scoreCandidates(in []biz.SkillRuntimeCandidate, paths []string) []slugScore
 			}
 		}
 		out = append(out, slugScore{slug: c.Slug, score: sc})
+	}
+	return out
+}
+
+func scoreCandidatesWithReasons(in []biz.SkillRuntimeCandidate, paths []string, reasons map[string]string) []slugScore {
+	pathSet := map[string]bool{}
+	for _, p := range paths {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			pathSet[p] = true
+		}
+	}
+	out := make([]slugScore, 0, len(in))
+	for _, c := range in {
+		sc := 0
+		matchDetail := ""
+		for _, tp := range c.TaxonomyPaths {
+			tp = strings.TrimSpace(tp)
+			for p := range pathSet {
+				if tp == "" || p == "" {
+					continue
+				}
+				tpl := strings.ToLower(tp)
+				pl := strings.ToLower(p)
+				if tpl == pl {
+					sc += 1000
+					matchDetail = "exact taxonomy path match"
+				} else if strings.Contains(tpl, pl) || strings.Contains(pl, tpl) {
+					sc += 400
+					matchDetail = "partial taxonomy path match"
+				}
+			}
+		}
+		if sc == 0 && len(paths) > 0 {
+			for _, p := range paths {
+				if skillMatchesPath(c, strings.TrimSpace(p)) {
+					sc += 100
+					matchDetail = "keyword match"
+					break
+				}
+			}
+		}
+		if matchDetail == "" {
+			if len(paths) > 0 {
+				matchDetail = "no intent match; included by default"
+			} else {
+				matchDetail = "enabled and published"
+			}
+		}
+		reasons[c.Slug] = matchDetail
+		out = append(out, slugScore{slug: c.Slug, score: sc, reason: matchDetail})
 	}
 	return out
 }

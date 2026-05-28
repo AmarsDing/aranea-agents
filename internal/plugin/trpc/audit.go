@@ -25,10 +25,8 @@ type auditConfig struct {
 }
 
 type AuditLogPlugin struct {
-	name   string
-	cfg    auditConfig
-	stats  StatsRecorder
-	logger *PluginSafeLogger
+	base basePlugin
+	cfg  auditConfig
 }
 
 var _ trpcplugin.Plugin = (*AuditLogPlugin)(nil)
@@ -44,16 +42,13 @@ func NewAuditLogPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus) *AuditL
 	if cfg.MaxContentLength <= 0 {
 		cfg.MaxContentLength = 500
 	}
-	name := p.Key
 	return &AuditLogPlugin{
-		name:   name,
-		cfg:    cfg,
-		stats:  stats,
-		logger: NewPluginSafeLogger(name, bus),
+		base: newBasePlugin(p.Key, stats, bus),
+		cfg:  cfg,
 	}
 }
 
-func (a *AuditLogPlugin) Name() string { return a.name }
+func (a *AuditLogPlugin) Name() string { return a.base.Name() }
 
 func (a *AuditLogPlugin) Register(r *trpcplugin.Registry) {
 	r.BeforeAgent(a.beforeAgent)
@@ -68,7 +63,7 @@ func (a *AuditLogPlugin) Register(r *trpcplugin.Registry) {
 func (a *AuditLogPlugin) beforeAgent(ctx context.Context, args *trpcagent.BeforeAgentArgs) (*trpcagent.BeforeAgentResult, error) {
 	sid, akey := sessionAgentKey(ctx, args.Invocation)
 	a.logLifecycle("before_agent", sid, akey)
-	a.record(ctx, "before_agent", "ok")
+	a.base.record(ctx, "before_agent", "ok")
 	return &trpcagent.BeforeAgentResult{Context: ctx}, nil
 }
 
@@ -82,7 +77,7 @@ func (a *AuditLogPlugin) afterAgent(ctx context.Context, args *trpcagent.AfterAg
 		sid, akey = sessionAgentKey(ctx, args.Invocation)
 	}
 	a.logLifecycle("after_agent", sid, akey, "status", status)
-	a.record(ctx, "after_agent", status)
+	a.base.record(ctx, "after_agent", status)
 	return &trpcagent.AfterAgentResult{Context: ctx}, nil
 }
 
@@ -90,7 +85,7 @@ func (a *AuditLogPlugin) beforeModel(ctx context.Context, args *trpcmodel.Before
 	sid, akey := sessionAgentKey(ctx, nil)
 	if a.cfg.LogModelRequest && args != nil && args.Request != nil {
 		summary := a.summarizeMessages(args.Request)
-		a.logger.Info("plugin.audit_log.before_model",
+		a.base.logger.Info("plugin.audit_log.before_model",
 			"session_id", sid,
 			"agent_key", akey,
 			"model", modelNameFromContext(ctx),
@@ -99,7 +94,7 @@ func (a *AuditLogPlugin) beforeModel(ctx context.Context, args *trpcmodel.Before
 	} else {
 		a.logLifecycle("before_model", sid, akey)
 	}
-	a.record(ctx, "before_model", "ok")
+	a.base.record(ctx, "before_model", "ok")
 	return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 }
 
@@ -112,7 +107,7 @@ func (a *AuditLogPlugin) afterModel(ctx context.Context, args *trpcmodel.AfterMo
 	if a.cfg.LogModelResponse && args != nil && args.Response != nil {
 		text := a.maybeRedact(responseText(args.Response))
 		text = truncateString(text, a.cfg.MaxContentLength)
-		a.logger.Info("plugin.audit_log.after_model",
+		a.base.logger.Info("plugin.audit_log.after_model",
 			"session_id", sid,
 			"agent_key", akey,
 			"status", status,
@@ -121,7 +116,7 @@ func (a *AuditLogPlugin) afterModel(ctx context.Context, args *trpcmodel.AfterMo
 	} else {
 		a.logLifecycle("after_model", sid, akey, "status", status)
 	}
-	a.record(ctx, "after_model", status)
+	a.base.record(ctx, "after_model", status)
 	return &trpcmodel.AfterModelResult{Context: ctx}, nil
 }
 
@@ -129,20 +124,20 @@ func (a *AuditLogPlugin) beforeTool(ctx context.Context, args *trpctool.BeforeTo
 	if args != nil && a.cfg.LogToolArgs {
 		preview := truncateString(a.maybeRedact(string(args.Arguments)), a.cfg.MaxContentLength)
 		sid, akey := sessionAgentKey(ctx, nil)
-		a.logger.Info("plugin.audit_log.before_tool",
+		a.base.logger.Info("plugin.audit_log.before_tool",
 			"tool", args.ToolName,
 			"session_id", sid,
 			"agent_key", akey,
 			"args_preview", preview,
 		)
 	}
-	a.record(ctx, "before_tool", "ok")
+	a.base.record(ctx, "before_tool", "ok")
 	return &trpctool.BeforeToolResult{Context: ctx}, nil
 }
 
 func (a *AuditLogPlugin) afterTool(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {
 	if args == nil {
-		a.record(ctx, "after_tool", "ok")
+		a.base.record(ctx, "after_tool", "ok")
 		return &trpctool.AfterToolResult{}, nil
 	}
 	status := "ok"
@@ -150,14 +145,14 @@ func (a *AuditLogPlugin) afterTool(ctx context.Context, args *trpctool.AfterTool
 		status = "error"
 	}
 	sid, akey := sessionAgentKey(ctx, nil)
-	a.logger.Info("plugin.audit_log.after_tool",
+	a.base.logger.Info("plugin.audit_log.after_tool",
 		"tool", args.ToolName,
 		"session_id", sid,
 		"agent_key", akey,
 		"status", status,
 		"at", time.Now().UTC().Format(time.RFC3339),
 	)
-	a.record(ctx, "after_tool", status)
+	a.base.record(ctx, "after_tool", status)
 	return &trpctool.AfterToolResult{}, nil
 }
 
@@ -174,13 +169,13 @@ func (a *AuditLogPlugin) onEvent(
 	if kind == "" {
 		kind = "event"
 	}
-	a.logger.Info("plugin.audit_log.on_event",
+	a.base.logger.Info("plugin.audit_log.on_event",
 		"session_id", sid,
 		"agent_key", akey,
 		"event_object", kind,
 		"author", e.Author,
 	)
-	a.record(ctx, "on_event", "ok")
+	a.base.record(ctx, "on_event", "ok")
 	return e, nil
 }
 
@@ -205,16 +200,11 @@ func (a *AuditLogPlugin) summarizeMessages(req *trpcmodel.Request) string {
 		if content == "" {
 			continue
 		}
+		content = a.maybeRedact(content)
 		content = truncateString(content, a.cfg.MaxContentLength)
 		fmt.Fprintf(&b, "[%s]%s", role, content)
 	}
 	return b.String()
-}
-
-func (a *AuditLogPlugin) record(ctx context.Context, point, status string) {
-	if a.stats != nil {
-		a.stats.Record(ctx, a.name, point, status)
-	}
 }
 
 func (a *AuditLogPlugin) logLifecycle(point, sessionID, agentKey string, extra ...any) {
@@ -224,5 +214,5 @@ func (a *AuditLogPlugin) logLifecycle(point, sessionID, agentKey string, extra .
 		"agent_key", agentKey,
 	}
 	kv = append(kv, extra...)
-	a.logger.Info("plugin.audit_log."+point, kv...)
+	a.base.logger.Info("plugin.audit_log."+point, kv...)
 }

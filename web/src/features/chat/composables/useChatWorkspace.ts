@@ -310,6 +310,7 @@ export function useChatWorkspace() {
       entityNav.focusAgentSessionView(sessionId, agentId, options),
     onTurnComplete: () => {
       jobsRefreshNonce.value += 1;
+      inboundHydrateError.value = "";
     },
     onHydrateError: (sessionId, message) => {
       if (selectedSessionId.value === sessionId) {
@@ -553,11 +554,13 @@ export function useChatWorkspace() {
         awaitingRunId.value = "";
         clearAwaitMeta();
         inputText.value = "";
+        sender.clearFailedPendingForSession();
         return;
       }
       inputText.value = sessionDrafts.get(sid) || "";
       onSessionSwitch(sid);
       if (sid !== prevSid) {
+        sender.clearFailedPendingForSession();
         void bindSessionView(sid, true);
       }
     },
@@ -741,6 +744,27 @@ export function useChatWorkspace() {
           sid,
           messageStore.getMessages(sid).filter((m) => m.id !== messageId)
         );
+      },
+      regenerateMessage: (message: import("../../domain/types").Message) => {
+        const sid = sessionStore.currentSessionId();
+        if (!sid) return;
+        const msgs = messageStore.getMessages(sid);
+        const userIdx = msgs.findIndex((m) => m.id === message.id);
+        if (userIdx < 0) return;
+        let userMsg = "";
+        for (let i = userIdx - 1; i >= 0; i--) {
+          if (msgs[i].role === "user") {
+            userMsg = msgs[i].content_markdown;
+            break;
+          }
+        }
+        if (!userMsg) return;
+        const entityKind = sessionStore.entityKind;
+        if (entityKind === "team") {
+          sender.sendTeamMessage(userMsg);
+        } else {
+          sender.sendAgentUserContent(userMsg);
+        }
       },
     }),
     dialogs: reactive({

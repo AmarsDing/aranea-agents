@@ -11,6 +11,9 @@ var channelCatalog = []ChannelCatalogItem{
 	slackCatalogItem(),
 	telegramCatalogItem(),
 	discordCatalogItem(),
+	lineCatalogItem(),
+	mattermostCatalogItem(),
+	teamsCatalogItem(),
 	qqCatalogItem(),
 	personalQQCatalogItem(),
 }
@@ -101,5 +104,23 @@ func qqCatalogItem() ChannelCatalogItem {
 func personalQQCatalogItem() ChannelCatalogItem {
 	item := channelCatalogItem("personal_qq", "QQ（OneBot）", "国内", "onebot", "NapCat/LLOneBot HTTP 推送；MuseBot personalqq.go", 100, true, false, true)
 	item.ReceiveModes = []string{"onebot"}
+	return item
+}
+
+func lineCatalogItem() ChannelCatalogItem {
+	item := channelCatalogItem("line", "LINE", "海外", "webhook", "LINE Messaging API Webhook；line-bot-sdk-go", 75, true, true, true)
+	item.ReceiveModes = []string{"webhook"}
+	return item
+}
+
+func mattermostCatalogItem() ChannelCatalogItem {
+	item := channelCatalogItem("mattermost", "Mattermost", "开源协作", "websocket", "Mattermost WebSocket + REST API v4；自部署", 85, true, true, true)
+	item.ReceiveModes = []string{"webhook", "websocket"}
+	return item
+}
+
+func teamsCatalogItem() ChannelCatalogItem {
+	item := channelCatalogItem("teams", "Microsoft Teams", "办公协作", "webhook", "Bot Framework Webhook；OAuth2 client_credentials", 55, true, false, true)
+	item.ReceiveModes = []string{"webhook"}
 	return item
 }

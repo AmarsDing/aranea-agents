@@ -87,10 +87,12 @@ func TestCostGuard_BeforeModel_FallbackBypassesDailyBudget(t *testing.T) {
 	registry.byScope["global"] = tracker
 
 	c := &CostGuardPlugin{
-		name:   "cost_guard",
-		cfg:    cfg,
-		stats:  &noopStatsRecorder{},
-		logger: NewPluginSafeLogger("cost_guard", nil),
+		base: basePlugin{
+			name:   "cost_guard",
+			stats:  &noopStatsRecorder{},
+			logger: NewPluginSafeLogger("cost_guard", nil),
+		},
+		cfg: cfg,
 		rt: &Runtime{
 			budgets: registry,
 			active:  []runtimeEntry{{key: "cost_guard", scope: "global", costGuard: &cfg}},
@@ -125,10 +127,12 @@ func TestCostGuard_BeforeModel_BlocksNonFallbackWhenOverBudget(t *testing.T) {
 	registry.byScope["global"] = tracker
 
 	c := &CostGuardPlugin{
-		name:   "cost_guard",
-		cfg:    cfg,
-		stats:  &noopStatsRecorder{},
-		logger: NewPluginSafeLogger("cost_guard", nil),
+		base: basePlugin{
+			name:   "cost_guard",
+			stats:  &noopStatsRecorder{},
+			logger: NewPluginSafeLogger("cost_guard", nil),
+		},
+		cfg: cfg,
 		rt: &Runtime{
 			budgets: registry,
 			active:  []runtimeEntry{{key: "cost_guard", scope: "global", costGuard: &cfg}},

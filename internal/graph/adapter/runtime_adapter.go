@@ -72,6 +72,9 @@ func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any)
 	eventCh, err := r.agent.Run(runCtx, inv)
 	if err != nil {
 		r.clearRunCancel()
+		event.SysLogError("system.graph.runtime_run_fail", "graph runtime run failed",
+			event.P("session_id", r.sessionID), event.P("graph_id", r.graphID),
+			event.P("execution_id", r.execID), event.P("error", err.Error()))
 		return nil, fmt.Errorf("graph runtime run: %w", err)
 	}
 
@@ -114,6 +117,9 @@ func (r *trpcGraphRuntime) Resume(ctx context.Context, lineageID string, resumeV
 	eventCh, err := r.agent.Run(runCtx, inv)
 	if err != nil {
 		r.clearRunCancel()
+		event.SysLogError("system.graph.runtime_resume_fail", "graph runtime resume failed",
+			event.P("session_id", r.sessionID), event.P("graph_id", r.graphID),
+			event.P("execution_id", r.execID), event.P("error", err.Error()))
 		return nil, fmt.Errorf("graph runtime resume: %w", err)
 	}
 

@@ -37,9 +37,6 @@ func (uc *SessionUsecase) ListMessagesPaged(ctx context.Context, sessionID strin
 	if sessionID == "" {
 		return MessageListResult{}, validationErr("session id is required")
 	}
-	if _, err := uc.sessions.GetSessionByID(ctx, sessionID); err != nil {
-		return MessageListResult{}, err
-	}
 	total, err := uc.sessions.CountMessagesBySession(ctx, sessionID)
 	if err != nil {
 		return MessageListResult{}, err
@@ -131,9 +128,6 @@ func (uc *SessionUsecase) UpdateMessageFeedback(ctx context.Context, sessionID, 
 	}
 	if rating != "positive" && rating != "negative" {
 		return validationErr("rating must be positive or negative")
-	}
-	if _, err := uc.sessions.GetSessionByID(ctx, sessionID); err != nil {
-		return err
 	}
 	return uc.sessions.UpdateMessageFeedbackJSON(ctx, sessionID, messageID, rating, strings.TrimSpace(comment))
 }

@@ -11,14 +11,14 @@ import (
 )
 
 type DiagBundle struct {
-	BundleID      string
-	Manifest      map[string]any
-	FlowJSONL     string
-	TraceJSON     string
-	UsageJSON     string
-	AlertsJSONL   string
-	RootCauses    []RootCauseResult
-	Total         int
+	BundleID    string
+	Manifest    map[string]any
+	FlowJSONL   string
+	TraceJSON   string
+	UsageJSON   string
+	AlertsJSONL string
+	RootCauses  []RootCauseResult
+	Total       int
 }
 
 type DiagBundleGenerator struct {
@@ -65,34 +65,49 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 
 	var flowEntries []map[string]any
 	var alertEntries []map[string]any
-	var traceData map[string]any
-	var usageData map[string]any
+	var triggerMetadata map[string]any
 	total := 0
 
 	if sessionID != "" || traceID != "" {
 		events, err := g.repo.ListMonitorEvents(ctx, EventsQuery{
-			Limit:  200,
+			Limit:  500,
 			Offset: 0,
 			Status: "",
 		})
 		if err == nil && events.Items != nil {
 			for _, row := range events.Items {
+				mj := row.MetadataJSON
+				matched := false
+				if traceID != "" && strings.Contains(mj, traceID) {
+					matched = true
+				}
+				if !matched && sessionID != "" && strings.Contains(mj, sessionID) {
+					matched = true
+				}
+				if !matched {
+					continue
+				}
 				m := map[string]any{
 					"id": row.ID, "name": row.Name, "status": row.Status,
 					"created_at": row.CreatedAt, "metadata_json": row.MetadataJSON,
 				}
-				mj := row.MetadataJSON
-				if strings.Contains(mj, traceID) || strings.Contains(mj, sessionID) {
-					flowEntries = append(flowEntries, m)
-					total++
-					if strings.Contains(row.Key, "alert") {
-						alertEntries = append(alertEntries, m)
+				flowEntries = append(flowEntries, m)
+				total++
+				if strings.Contains(row.Key, "alert") {
+					alertEntries = append(alertEntries, m)
+				}
+				if triggerMetadata == nil && stepID != "" && strings.Contains(row.Key, stepID) {
+					var parsed map[string]any
+					if json.Unmarshal([]byte(mj), &parsed) == nil {
+						triggerMetadata = parsed
 					}
 				}
 			}
 		}
 	}
 
+	var traceData map[string]any
+	spanCount := 0
 	if traceID != "" {
 		traceRow, err := g.repo.GetMonitorTrace(ctx, traceID)
 		if err == nil {
@@ -101,6 +116,45 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 				"created_at": traceRow.CreatedAt, "metadata_json": traceRow.MetadataJSON,
 			}
 			total++
+			if cfg := parseMetadataJSON(traceRow.MetadataJSON); cfg != nil {
+				if sc, ok := cfg["span_count"]; ok {
+					switch v := sc.(type) {
+					case float64:
+						spanCount = int(v)
+					case int:
+						spanCount = v
+					}
+				}
+			}
+		}
+	}
+
+	var usageData map[string]any
+	usageEvents, err := g.repo.ListMonitorEvents(ctx, EventsQuery{
+		Limit:  50,
+		Offset: 0,
+		Status: "",
+	})
+	if err == nil && usageEvents.Items != nil {
+		var usageRows []map[string]any
+		for _, row := range usageEvents.Items {
+			if !strings.Contains(row.Key, "usage") {
+				continue
+			}
+			mj := row.MetadataJSON
+			if traceID != "" && !strings.Contains(mj, traceID) {
+				if sessionID != "" && !strings.Contains(mj, sessionID) {
+					continue
+				}
+			}
+			usageRows = append(usageRows, map[string]any{
+				"id": row.ID, "name": row.Name, "status": row.Status,
+				"created_at": row.CreatedAt, "metadata_json": mj,
+			})
+		}
+		if len(usageRows) > 0 {
+			usageData = map[string]any{"records": usageRows}
+			total += len(usageRows)
 		}
 	}
 
@@ -110,28 +164,39 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 	usageJSON, _ := json.Marshal(usageData)
 
 	manifest["files"] = map[string]any{
-		"flow.jsonl":  map[string]any{"entries": len(flowEntries)},
-		"trace.json":  map[string]any{"spans": len(traceData)},
-		"usage.json":  map[string]any{"records": len(usageData)},
+		"flow.jsonl":   map[string]any{"entries": len(flowEntries)},
+		"trace.json":   map[string]any{"spans": spanCount},
+		"usage.json":   map[string]any{"records": len(usageData)},
 		"alerts.jsonl": map[string]any{"entries": len(alertEntries)},
 	}
-	_, _ = json.Marshal(manifest)
 
 	var rootCauseResults []RootCauseResult
 	if g.engine != nil && stepID != "" {
-		rootCauseResults = g.engine.Evaluate(ctx, stepID, "error", nil)
+		rootCauseResults = g.engine.Evaluate(ctx, stepID, "error", triggerMetadata)
 	}
 
 	return &DiagBundle{
-		BundleID:      bundleID,
-		Manifest:      manifest,
-		FlowJSONL:     string(flowJSONL),
-		TraceJSON:     string(traceJSON),
-		UsageJSON:     string(usageJSON),
-		AlertsJSONL:   string(alertsJSONL),
-		RootCauses:    rootCauseResults,
-		Total:         total,
+		BundleID:    bundleID,
+		Manifest:    manifest,
+		FlowJSONL:   string(flowJSONL),
+		TraceJSON:   string(traceJSON),
+		UsageJSON:   string(usageJSON),
+		AlertsJSONL: string(alertsJSONL),
+		RootCauses:  rootCauseResults,
+		Total:       total,
 	}, nil
+}
+
+func parseMetadataJSON(raw string) map[string]any {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var m map[string]any
+	if json.Unmarshal([]byte(raw), &m) != nil {
+		return nil
+	}
+	return m
 }
 
 func nonEmpty(ss ...string) []string {

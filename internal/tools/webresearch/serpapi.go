@@ -42,6 +42,8 @@ func (p *serpAPIProvider) search(ctx context.Context, query string) (*SearchResp
 	q := u.Query()
 	q.Set("engine", "google")
 	q.Set("q", query)
+	// TPM-P2-08: SerpAPI only supports query-string auth; header auth is not available.
+	// The key MUST NOT appear in any log output. Use redactedURL when logging.
 	q.Set("api_key", p.apiKey)
 	q.Set("num", fmt.Sprintf("%d", p.cfg.MaxResults))
 	u.RawQuery = q.Encode()
@@ -54,7 +56,7 @@ func (p *serpAPIProvider) search(ctx context.Context, query string) (*SearchResp
 	started := time.Now()
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("web_research: serpapi request failed: %w", err)
+		return nil, fmt.Errorf("web_research: serpapi request failed for %s: %w", redactedURL(u), err)
 	}
 	defer resp.Body.Close()
 
@@ -110,4 +112,14 @@ func (p *serpAPIProvider) search(ctx context.Context, query string) (*SearchResp
 		}
 	}
 	return out, nil
+}
+
+func redactedURL(u *url.URL) string {
+	c := *u
+	q := c.Query()
+	if q.Has("api_key") {
+		q.Set("api_key", "***")
+	}
+	c.RawQuery = q.Encode()
+	return c.String()
 }

@@ -96,6 +96,8 @@ func (r *alertMonitorRepo) PatchRunnerCompletionMetadata(ctx context.Context, se
 	return false, nil
 }
 
+func (r *alertMonitorRepo) EnsureTraceSchema(context.Context) error { return nil }
+
 func TestEvaluateAlerts_cooldownSuppressesRepeatFire(t *testing.T) {
 	repo := &alertMonitorRepo{total: 10, errors: 8}
 	spy := &alertNotifySpy{}

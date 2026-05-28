@@ -211,12 +211,19 @@ message DeleteSkillFileRequest {
   string path = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
-message PreviewSkillRuntimeRequest {}
+message PreviewSkillRuntimeRequest {
+  // Optional: preview for a specific agent (applies Layer A/B policy).
+  string agent_id = 1;
+  // Optional: simulate a user query for intent routing (Layer B).
+  string user_query = 2;
+}
 
 message PreviewSkillRuntimeResponse {
   string resolved_storage_root = 1;
   int32 enabled_published_count = 2;
   repeated string enabled_skill_slugs = 3;
+  // Per-slug reason: why each skill was included or excluded.
+  map<string, string> reasons = 4;
 }
 
 // Skill import (ZIP batch). JSON field names match web/src/features/skills/types.ts (snake_case).
@@ -423,8 +430,16 @@ service SkillService {
   rpc ListSkillRuns(ListSkillRunsRequest) returns (ListSkillRunsResponse) {
     option (google.api.http) = {get: "/v1/skill-runs"};
   }
-  // ImportSkillZip is served via multipart POST /v1/skills/import (RegisterSkillImportMultipart on SkillService).
-  rpc ImportSkillZip(google.protobuf.Empty) returns (ImportSkillZipResponse);
+  // ImportSkillZip accepts a ZIP file via multipart/form-data at POST /v1/skills/import.
+  // The actual handler is registered by RegisterSkillImportMultipart (not proto codegen)
+  // because proto cannot express multipart uploads. This RPC declaration exists solely
+  // to include the endpoint in the generated OpenAPI spec.
+  rpc ImportSkillZip(google.protobuf.Empty) returns (ImportSkillZipResponse) {
+    option (google.api.http) = {
+      post: "/v1/skills/import"
+      body: "*"
+    };
+  }
   rpc GetSkillImportJob(GetSkillImportJobRequest) returns (SkillImportJob) {
     option (google.api.http) = {get: "/v1/skills/import/{job_id}"};
   }

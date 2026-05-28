@@ -1,6 +1,6 @@
 # Channel 渠道 — 开发计划
 
-> **版本**：2026-05-24 | **状态**：🟢 9 平台连接；Runtime 生产级重连 + 流式出站 MVP  
+> **版本**：2026-05-28 | **状态**：🟢 12 平台连接；Runtime 生产级重连 + 流式出站 MVP
 > **需求**：[17 channel.md](./17%20channel.md) · **设计**：[17 channel.design.md](./17%20channel.design.md) · **业务集成**：[17-channel-agent-team-integration.md](./17-channel-agent-team-integration.md) · [**外部参考借鉴手册**](./17-channel-external-reference-playbook.md) · [**四层目标架构**](./0-module-decoupling-architecture.md#31-推荐目标架构channel--chat--agent) · [**Phase DECO**](./17-channel-development.md#14-phase-deco--四层架构解耦deco)  
 > **Hermes 对照**：[17 channel.design.md §十四](./17%20channel.design.md#十四hermes-agent-对照消息流转与飞书特殊处理) · Phase F backlog 见 **§11**  
 > **平台参考**：[MuseBot](https://github.com/yincongcyincong/MuseBot) `robot/`（MIT）  
@@ -17,7 +17,7 @@ Channel：在 Kratos 层实现外部 IM 平台连接，参考 MuseBot 的 SDK �
 - `api/kratos/channel/v1/channel.proto`
 - `internal/service/channel.go` / `channel_ingress*.go` / `channel_delivery_worker.go` / `channel_runtime.go`
 - `internal/biz/channel*.go` / `channel_catalog.go`
-- `internal/channel/{lark,dingtalk,wecom,slack,telegram,discord,wechat,onebot,qq,runtime}/`
+- `internal/channel/{lark,dingtalk,wecom,slack,telegram,discord,wechat,onebot,qq,line,mattermost,teams,runtime}/`
 - `internal/cronrunner/jobs/channel_delivery.go` / `channel_health.go`
 - `web/src/features/channels/` · `web/src/components/channels/`
 
@@ -47,13 +47,13 @@ Channel：在 Kratos 层实现外部 IM 平台连接，参考 MuseBot 的 SDK �
 | 异步 delivery + 重试 | ✅ | worker 5s，指数退避，最多 3 次 |
 | delivery Prometheus + dead-letter | ✅ | `aranea_channel_delivery_total{platform,status}` |
 | DB 多实例 + 凭据加密 | ✅ | `channel` + `channel_credential` |
-| Catalog bundled 标记 | ✅ | 9/10 平台 bundled（qq ✅ botgo） |
+| Catalog bundled 标记 | ✅ | 12/12 平台 bundled（line ✅ · mattermost ✅ · teams ✅） |
 | MuseBot 全平台 Catalog 规格 | ✅ | 文档 + catalog 10 项 |
-| 长连接 Runtime | ✅ | larkws / ding stream / socketmode / polling / discord |
+| 长连接 Runtime | ✅ | larkws / ding stream / socketmode / polling / discord / mattermost |
 | Manager.Reload reconcile | ✅ | config/enabled/receive_mode fingerprint |
 | Runtime 断线重连 | ✅ | `runSupervised` 指数退避 1s→5m |
 | Runtime fingerprint 含凭据 revision | ✅ | `CredentialsRevision` + CRUD reload |
-| 流式 edit 回复 | ✅ MVP | Telegram / Feishu / Slack；其余 unary 回退 |
+| 流式 edit 回复 | ✅ MVP | Telegram / Feishu / Slack / LINE / Mattermost；其余 unary 回退 |
 | 流式错误传播 + Prometheus | ✅ | `OnReplyDelta` 中断 + `aranea_channel_stream_update_total` |
 | platformAdapters 统一出站/流式 | ✅ | `channel_platform_registry.go` |
 | 全平台 webhook 单测 | 🟡 | 部分（lark/dingtalk/slack/telegram/wecom/wechat/onebot） |
@@ -75,6 +75,9 @@ Channel：在 Kratos 层实现外部 IM 平台连接，参考 MuseBot 的 SDK �
 | `discord` | gateway WS | gateway ✅ · outbound ✅ | ✅ | discordgo |
 | `qq` | webhook + botgo WS | webhook ✅ · outbound ✅ | ✅ | botgo |
 | `personal_qq` | OneBot HTTP | webhook ✅ · outbound ✅ | ✅ | OneBot 协议 |
+| `line` | Webhook | webhook ✅ · outbound ✅ · 流式 update ✅ | ✅ | line-bot-sdk-go |
+| `mattermost` | WebSocket / Webhook | webhook ✅ · websocket ✅ · outbound ✅ · 流式 update ✅ | ✅ | gorilla/websocket + REST API v4 |
+| `teams` | Bot Framework Webhook | webhook ✅ · outbound ✅ | ✅ | Bot Framework OAuth2 |
 
 ---
 
@@ -142,6 +145,8 @@ ProcessInbound → processInboundStreaming → RunNativeTurnStreaming
 | `telegram` | sendMessage | editMessageText（2s 节流） | `internal/channel/telegram/stream_outbound.go` |
 | `feishu` | im.v1 messages POST | im.v1 messages PATCH | `internal/channel/lark/stream_outbound.go` |
 | `slack` | chat.postMessage | chat.update（2s 节流） | `internal/channel/slack/stream_outbound.go` |
+| `line` | push message | update message（2s 节流） | `internal/channel/line/stream_outbound.go` |
+| `mattermost` | create post | patch post（2s 节流） | `internal/channel/mattermost/stream_outbound.go` |
 | 其他 | — | unary 回退 | delivery 队列 |
 
 流式回合不走 outbound delivery 队列；失败写入 `channel_delivery` audit（`status=streamed|error`）。
@@ -691,7 +696,59 @@ cd web && pnpm test -- useChatInboundSync inboundSyncEnvelope decoP2Sync
 
 ---
 
-## 15. 文档修订记录
+## 16. Phase H — 新平台扩展（LINE / Mattermost / Teams）
+
+> **参考**：Botpress（10+ 平台 Adapter Registry）、NoneBot2（Driver-Adapter 分离）、line-bot-sdk-go、gorilla/websocket、Bot Framework REST API
+> **与 §3 分工**：Phase C = MuseBot 对齐 9 平台；**Phase H = 超越 MuseBot，扩展海外/开源协作平台**
+
+### 16.1 任务板
+
+| ID | 优先级 | 任务 | 包 / 文件 | 状态 | 验收 |
+|----|--------|------|-----------|------|------|
+| H-01 | P1 | LINE Webhook 入站 + HMAC-SHA256 验签 | `channel/line/webhook.go` | ✅ | ParseInbound + VerifySignature 单测绿 |
+| H-02 | P1 | LINE Push API 出站 + Reply API | `channel/line/outbound.go` | ✅ | TextSender 实现 OutboundText 接口 |
+| H-03 | P1 | LINE 流式出站（push → update） | `channel/line/stream_outbound.go` | ✅ | StreamSender 2s 节流 + force flush |
+| H-04 | P1 | Mattermost Webhook 入站 + Token 验签 | `channel/mattermost/webhook.go` | ✅ | ParseInbound + VerifyToken 单测绿 |
+| H-05 | P1 | Mattermost REST API v4 出站 | `channel/mattermost/outbound.go` | ✅ | TextSender 实现 OutboundText 接口 |
+| H-06 | P1 | Mattermost WebSocket 长连接 | `channel/mattermost/gateway.go` | ✅ | RegisterStarter("mattermost", "websocket") + parseWSMessage 单测 |
+| H-07 | P1 | Mattermost 流式出站（create → patch） | `channel/mattermost/stream_outbound.go` | ✅ | StreamSender 2s 节流 + force flush |
+| H-08 | P2 | Teams Bot Framework Webhook 入站 | `channel/teams/webhook.go` | ✅ | ParseInbound 单测绿 |
+| H-09 | P2 | Teams OAuth2 client_credentials + 出站 | `channel/teams/outbound.go` | ✅ | TextSender + SendToConversation + token 缓存 |
+| H-10 | P1 | 新平台 Catalog + 凭据 Schema + Rules | `biz/channel_catalog*.go` · `channel_rules.go` | ✅ | 12 平台 catalog API 可查 |
+| H-11 | P1 | 新平台 platform registry 注册 | `service/channel_platform_registry.go` | ✅ | outbound + stream 工厂注册 |
+| H-12 | P1 | OutboundMeta 新键（service_url / conversation_id / reply_token） | `channel/port/meta.go` | ✅ | ValidateOutboundMeta 覆盖新平台 |
+| H-13 | P1 | PlatformTextLimit 新平台 | `channel/preview/platform.go` | ✅ | line=5000 / teams=11800 / mattermost=11800 |
+| H-14 | P1 | all.go 注册 + runtime config 默认 receive_mode | `channel/all/all.go` · `runtime/config.go` | ✅ | init() 注册 + defaultReceiveMode |
+
+### 16.2 平台连接模式对照
+
+| 平台 | Webhook | WebSocket | 流式出站 | SDK |
+|------|---------|-----------|---------|-----|
+| LINE | ✅ HMAC-SHA256 | — | ✅ push→update | line-bot-sdk-go（仅类型引用） |
+| Mattermost | ✅ Token 验签 | ✅ gorilla/websocket | ✅ create→patch | gorilla/websocket + REST API v4 |
+| Teams | ✅ Bot Framework | — | —（unary 回退） | Bot Framework OAuth2 + REST API |
+
+### 16.3 架构决策
+
+| 决策 | 选择 | 原因 |
+|------|------|------|
+| LINE SDK 使用方式 | 仅类型引用，核心逻辑自研 | line-bot-sdk-go 依赖较重；自研 ParseInbound/VerifySignature 更轻量可控 |
+| Mattermost SDK 使用方式 | 不使用官方 SDK | mattermost-server/v6 依赖极重（200+ 间接依赖）；改用 gorilla/websocket + REST API v4 |
+| Teams SDK 使用方式 | 不使用 Bot Framework SDK | Go 版社区实现不成熟；Bot Framework REST API 简洁，OAuth2 client_credentials 可自研 |
+| Teams 出站接口 | `SendToConversation` 独立函数 | Teams 需要 serviceURL + conversationID，不符合 `OutboundText.SendText(recipient, text)` 二参数签名；通过 Extra meta 传递 |
+| LINE/Mattermost 流式 | 支持 | LINE 有 update message API；Mattermost 有 patch post API；均可实现 edit-in-place |
+
+### 16.4 验证命令
+
+```bash
+go test ./internal/channel/line/... ./internal/channel/mattermost/... ./internal/channel/teams/... -count=1
+go test ./internal/channel/port/... ./internal/channel/preview/... -count=1
+go vet ./internal/channel/...
+```
+
+---
+
+## 17. 文档修订记录
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
@@ -701,3 +758,4 @@ cd web && pnpm test -- useChatInboundSync inboundSyncEnvelope decoP2Sync
 | 1.4 | 2026-05-24 | 头部链入解耦文档 §3.1 四层目标架构 |
 | 1.5 | 2026-05-24 | §14 Phase DECO：四层解耦任务板 DECO-01–15 |
 | 1.6 | 2026-05-24 | §13 Phase G-c：CH-BOR-10–14 ✅；DECO-01 单测；§14.3 验证命令更新 |
+| 1.7 | 2026-05-28 | §16 Phase H：LINE / Mattermost / Teams 新平台扩展（H-01–H-14 ✅）；平台矩阵 9→12 |

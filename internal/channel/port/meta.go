@@ -22,6 +22,9 @@ const (
 	MetaSessionID         = "session_id"
 	MetaSessionWebhook    = "session_webhook"
 	MetaResponseURL       = "response_url"
+	MetaServiceURL        = "service_url"
+	MetaConversationID    = "conversation_id"
+	MetaReplyToken        = "reply_token"
 )
 
 var knownOutboundMetaKeys = map[string]struct{}{
@@ -40,12 +43,18 @@ var knownOutboundMetaKeys = map[string]struct{}{
 	MetaSessionID:        {},
 	MetaSessionWebhook:   {},
 	MetaResponseURL:      {},
+	MetaServiceURL:       {},
+	MetaConversationID:   {},
+	MetaReplyToken:       {},
 }
 
 var platformRequiredOutboundMeta = map[string][]string{
-	"feishu": {MetaRecipient},
-	"lark":   {MetaRecipient},
-	"slack":  {MetaResponseURL},
+	"feishu":     {MetaRecipient},
+	"lark":       {MetaRecipient},
+	"slack":      {MetaResponseURL},
+	"teams":      {MetaServiceURL, MetaConversationID},
+	"mattermost": {MetaRecipient},
+	"line":       {MetaRecipient},
 }
 
 // LocalKeyFromMeta returns a stable routing key for preview/run registry (CH-BOR-07/10).

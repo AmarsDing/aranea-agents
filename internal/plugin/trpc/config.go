@@ -42,64 +42,6 @@ func truncateString(s string, max int) string {
 	return s[:max] + "…"
 }
 
-func stringSliceField(m map[string]any, key string) []string {
-	raw, ok := m[key]
-	if !ok || raw == nil {
-		return nil
-	}
-	switch v := raw.(type) {
-	case []string:
-		return v
-	case []any:
-		out := make([]string, 0, len(v))
-		for _, item := range v {
-			if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
-				out = append(out, strings.TrimSpace(s))
-			}
-		}
-		return out
-	default:
-		return nil
-	}
-}
-
-func boolField(m map[string]any, key string, def bool) bool {
-	raw, ok := m[key]
-	if !ok {
-		return def
-	}
-	if b, ok := raw.(bool); ok {
-		return b
-	}
-	return def
-}
-
-func intField(m map[string]any, key string, def int) int {
-	raw, ok := m[key]
-	if !ok {
-		return def
-	}
-	switch v := raw.(type) {
-	case int:
-		return v
-	case float64:
-		return int(v)
-	default:
-		return def
-	}
-}
-
-func stringFieldMap(m map[string]any, key string) string {
-	raw, ok := m[key]
-	if !ok || raw == nil {
-		return ""
-	}
-	if s, ok := raw.(string); ok {
-		return strings.TrimSpace(s)
-	}
-	return ""
-}
-
 type customPattern struct {
 	Pattern     string `json:"pattern"`
 	Replacement string `json:"replacement"`
@@ -112,10 +54,6 @@ var (
 )
 
 func redactText(s string, maskEmail, maskPhone, maskSecret bool) string {
-	return redactTextFull(s, maskEmail, maskPhone, maskSecret, nil)
-}
-
-func redactTextFull(s string, maskEmail, maskPhone, maskSecret bool, customs []customPattern) string {
 	if s == "" {
 		return s
 	}
@@ -127,21 +65,6 @@ func redactTextFull(s string, maskEmail, maskPhone, maskSecret bool, customs []c
 	}
 	if maskSecret {
 		s = secretRE.ReplaceAllString(s, "[secret redacted]")
-	}
-	for _, c := range customs {
-		pat := strings.TrimSpace(c.Pattern)
-		if pat == "" {
-			continue
-		}
-		re, err := regexp.Compile(pat)
-		if err != nil {
-			continue
-		}
-		repl := strings.TrimSpace(c.Replacement)
-		if repl == "" {
-			repl = "[redacted]"
-		}
-		s = re.ReplaceAllString(s, repl)
 	}
 	return s
 }
@@ -187,16 +110,6 @@ func agentKeyFromInvocation(inv *trpcagent.Invocation) string {
 		return ""
 	}
 	return strings.TrimSpace(inv.AgentName)
-}
-
-func invocationMeta(ctx context.Context) (sessionID, agentKey string) {
-	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
-		if inv.Session != nil {
-			sessionID = inv.Session.ID
-		}
-		agentKey = strings.TrimSpace(inv.AgentName)
-	}
-	return
 }
 
 func toolInList(name string, list []string) bool {

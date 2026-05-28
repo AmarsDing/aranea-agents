@@ -63,6 +63,21 @@ func credentialProperties(channelType string) map[string]any {
 			"receive_token": propField("qq_one_bot_receive_token", password, true),
 			"send_token":    propField("qq_one_bot_send_token", password, true),
 		}
+	case "line":
+		return map[string]any{
+			"channel_secret": propField("line_channel_secret", password, true),
+			"channel_token":  propField("line_channel_access_token", password, true),
+		}
+	case "mattermost":
+		return map[string]any{
+			"server_url": propField("mattermost_server_url", "", true),
+			"bot_token":  propField("mattermost_bot_token", password, true),
+		}
+	case "teams":
+		return map[string]any{
+			"app_id":     propField("teams_app_id", "", true),
+			"app_secret": propField("teams_app_secret", password, true),
+		}
 	default:
 		return nil
 	}

@@ -120,6 +120,20 @@ export function sessionContextPatchFromCompressMeta(
   return patch;
 }
 
+export function reconcilePatchFromServer(server: Session): SessionContextPatch {
+  return {
+    context_used_ratio: server.context_used_ratio,
+    context_used_tokens: server.context_used_tokens,
+    context_status: server.context_status,
+    total_tokens: server.total_tokens,
+    max_context_used_ratio: server.max_context_used_ratio,
+    input_tokens: server.input_tokens,
+    output_tokens: server.output_tokens,
+    total_cost_micro_usd: server.total_cost_micro_usd,
+    last_context_window_tokens: server.last_context_window_tokens,
+  };
+}
+
 export function sessionContextPatchFromEnvelope(
   env: Envelope,
   prev?: Pick<Session, "total_tokens" | "max_context_used_ratio" | "input_tokens" | "output_tokens">

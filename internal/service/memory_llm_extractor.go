@@ -64,11 +64,6 @@ func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.Consolidat
 	var cfg chatagent.ProviderAPIConfig
 	chatagent.MergeProviderConfigJSON(row.ConfigJSON, &cfg)
 
-	msgs := []chatagent.OpenAICompatMessage{
-		{Role: "system", Content: compress.MemoryExtractSystemPrompt},
-		{Role: "user", Content: "Conversation excerpt:\n\n" + transcript},
-	}
-
 	callCtx := ctx
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc
@@ -76,17 +71,46 @@ func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.Consolidat
 		defer cancel()
 	}
 
-	text, _, _, _, err := chatagent.CallOpenAICompatChat(callCtx, e.HTTP, cfg, mod, msgs)
-	if err != nil {
-		return nil, err
+	msgs := []chatagent.OpenAICompatMessage{
+		{Role: "system", Content: compress.MemoryExtractSystemPromptV2},
+		{Role: "user", Content: "Conversation excerpt:\n\n" + transcript},
 	}
-	facts, err := compress.ParseMemoryExtractJSON(text)
-	if err != nil {
-		return nil, err
+
+	tools := []map[string]any{compress.ExtractMemoryFactsFunctionSchema}
+	text, toolCalls, _, _, callErr := chatagent.CallOpenAICompatChatWithTools(callCtx, e.HTTP, cfg, mod, msgs, tools)
+
+	var proposals []biz.MemoryProposal
+	var extractionQuality float64
+
+	if callErr == nil {
+		for _, tc := range toolCalls {
+			if tc.Name == compress.ExtractMemoryFactsFunctionName {
+				facts, _, parseErr := compress.ParseMemoryExtractFunctionCallArgs(tc.Arguments)
+				if parseErr == nil && len(facts) > 0 {
+					extractionQuality = biz.ExtractionQualityFunctionCall
+					proposals = convertFactsToProposals(facts, in.Messages, extractionQuality)
+				}
+				break
+			}
+		}
 	}
-	if len(facts) == 0 {
-		return nil, nil
+
+	if len(proposals) == 0 && callErr == nil && strings.TrimSpace(text) != "" {
+		facts, parseErr := compress.ParseMemoryExtractJSON(text)
+		if parseErr == nil && len(facts) > 0 {
+			extractionQuality = biz.ExtractionQualityJSONMode
+			proposals = convertFactsToProposals(facts, in.Messages, extractionQuality)
+		}
 	}
+
+	if len(proposals) == 0 && callErr != nil {
+		return nil, callErr
+	}
+
+	return proposals, nil
+}
+
+func convertFactsToProposals(facts []compress.MemoryExtractFact, messages []biz.ConsolidateMessage, quality float64) []biz.MemoryProposal {
 	out := make([]biz.MemoryProposal, 0, len(facts))
 	seen := make(map[string]struct{}, len(facts))
 	for _, f := range facts {
@@ -95,14 +119,20 @@ func (e *MemoryLLMExtractor) ExtractFacts(ctx context.Context, in biz.Consolidat
 			continue
 		}
 		seen[key] = struct{}{}
-		out = append(out, biz.MemoryProposal{
-			Layer:           biz.MemoryLayerL3,
-			Statement:       f.Statement,
-			Topics:          f.Topics,
-			SourceMessageID: biz.ResolveProposalMessageID(f.Statement, in.Messages),
-		})
+		p := biz.MemoryProposal{
+			Layer:             biz.MemoryLayerL3,
+			Statement:         f.Statement,
+			Topics:            f.Topics,
+			SourceMessageID:   biz.ResolveProposalMessageID(f.Statement, messages),
+			ExtractionQuality: quality,
+			IsPIISensitive:    f.IsPIISensitive,
+		}
+		if f.Confidence > 0 {
+			p.Topics = append(p.Topics, f.SubjectType)
+		}
+		out = append(out, p)
 	}
-	return out, nil
+	return out
 }
 
 func (e *MemoryLLMExtractor) resolveProviderModel(ctx context.Context, in biz.ConsolidateInput) (prov, mod string, err error) {

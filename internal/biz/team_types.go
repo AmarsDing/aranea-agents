@@ -1,6 +1,7 @@
 package biz
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 )
@@ -224,6 +225,29 @@ type TeamRunMemberSummaryData struct {
 	CostMicroUSD  int64
 	ToolCallCount int
 	OutputPreview string
+}
+
+type TeamGraphSession struct {
+	ExecID         string `json:"exec_id"`
+	TeamRunID      string `json:"team_run_id"`
+	TeamID         string `json:"team_id"`
+	SessionID      string `json:"session_id"`
+	InputPreview   string `json:"input_preview"`
+	DefinitionJSON string `json:"definition_json"`
+	Status         string `json:"status"`
+	RegisteredAt   string `json:"registered_at"`
+	LastActivityAt string `json:"last_activity_at"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
+}
+
+type TeamGraphSessionRepo interface {
+	SaveSession(ctx context.Context, sess TeamGraphSession) error
+	UpdateSessionStatus(ctx context.Context, execID, status string) error
+	GetSession(ctx context.Context, execID string) (TeamGraphSession, error)
+	ListActiveSessions(ctx context.Context) ([]TeamGraphSession, error)
+	DeleteSession(ctx context.Context, execID string) error
+	MarkOrphanedSessionsTerminal(ctx context.Context) (int, error)
 }
 
 // TeamRunSummaryData aggregates run-level and per-member stats for RPC / Monitor.

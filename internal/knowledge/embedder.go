@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 
+	"aranea-agents/internal/event"
+
 	"google.golang.org/genai"
 )
 
@@ -179,9 +181,13 @@ func (e *Embedder) embedOpenAIBatch(ctx context.Context, baseURL, apiKey, model 
 		}
 		var r resp
 		if err := json.Unmarshal(body, &r); err != nil {
+			event.SysLogError("system.knowledge.embed_fail", "knowledge embedder openai parse failed",
+				event.P("error", err.Error()))
 			return nil, fmt.Errorf("embedder openai: %w", err)
 		}
 		if len(r.Data) != len(batch) {
+			event.SysLogError("system.knowledge.embed_fail", "knowledge embedder openai count mismatch",
+				event.P("expected", fmt.Sprint(len(batch))), event.P("got", fmt.Sprint(len(r.Data))))
 			return nil, fmt.Errorf("embedder openai: expected %d embeddings, got %d", len(batch), len(r.Data))
 		}
 		ordered := make([][]float32, len(batch))
@@ -215,10 +221,13 @@ func (e *Embedder) embedOllamaBatch(ctx context.Context, baseURL, model string, 
 
 func (e *Embedder) embedGeminiBatch(ctx context.Context, apiKey, model string, dim int, texts []string) ([][]float32, error) {
 	if apiKey == "" {
+		event.SysLogError("system.knowledge.embed_fail", "knowledge embedder gemini API key required")
 		return nil, fmt.Errorf("embedder gemini: API key required")
 	}
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{APIKey: apiKey})
 	if err != nil {
+		event.SysLogError("system.knowledge.embed_fail", "knowledge embedder gemini client failed",
+			event.P("error", err.Error()))
 		return nil, fmt.Errorf("embedder gemini client: %w", err)
 	}
 	model = strings.TrimPrefix(model, "models/")
@@ -240,6 +249,8 @@ func (e *Embedder) embedGeminiBatch(ctx context.Context, apiKey, model string, d
 		}
 		resp, err := client.Models.EmbedContent(ctx, model, contents, cfg)
 		if err != nil {
+			event.SysLogError("system.knowledge.embed_fail", "knowledge embedder gemini API failed",
+				event.P("error", err.Error()))
 			return nil, fmt.Errorf("embedder gemini: %w", err)
 		}
 		if len(resp.Embeddings) != len(batch) {

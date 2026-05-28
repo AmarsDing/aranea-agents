@@ -420,6 +420,76 @@ message RejectCascadeProposalRequest {
   CascadeProposal proposal = 1;
 }
 
+message CascadeFactDiff {
+  string fact_id = 1;
+  string before_statement = 2;
+  string after_statement = 3;
+  string scope = 4;
+}
+
+message CascadeEntityRename {
+  string entity_id = 1;
+  string entity_type = 2;
+  string old_name = 3;
+  string new_name = 4;
+}
+
+message CascadePreview {
+  int32 affected_entities_count = 1;
+  int32 affected_facts_count = 2;
+  repeated CascadeFactDiff fact_diffs = 3;
+  repeated CascadeEntityRename entity_renames = 4;
+}
+
+message PreviewCascadeApproveRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message PreviewCascadeApproveResponse {
+  CascadePreview preview = 1;
+}
+
+message CascadeSagaStep {
+  int64 id = 1;
+  string proposal_id = 2;
+  int32 step_index = 3;
+  string step_name = 4;
+  string state = 5;
+  bool is_critical = 6;
+  int32 attempts = 7;
+  string started_at = 8;
+  string finished_at = 9;
+  string payload_json = 10;
+  string result_json = 11;
+  string error = 12;
+}
+
+message GetCascadeSagaStepsRequest {
+  string proposal_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetCascadeSagaStepsResponse {
+  repeated CascadeSagaStep steps = 1;
+}
+
+message RetryCascadeApproveRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string reviewer = 2;
+}
+
+message RetryCascadeApproveResponse {
+  CascadeProposal proposal = 1;
+}
+
+message CompensateCascadeApproveRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string reviewer = 2;
+}
+
+message CompensateCascadeApproveResponse {
+  CascadeProposal proposal = 1;
+}
+
 message MemoryRecallScoreBreakdown {
   double keyword = 1;
   double vector = 2;
@@ -619,6 +689,28 @@ service MemoryService {
   rpc RejectCascadeProposal(RejectCascadeProposalRequest) returns (RejectCascadeProposalResponse) {
     option (google.api.http) = {
       post: "/v1/memory/cascade/proposals/{id}/reject"
+      body: "*"
+    };
+  }
+
+  rpc PreviewCascadeApprove(PreviewCascadeApproveRequest) returns (PreviewCascadeApproveResponse) {
+    option (google.api.http) = {get: "/v1/memory/cascade/proposals/{id}/preview"};
+  }
+
+  rpc GetCascadeSagaSteps(GetCascadeSagaStepsRequest) returns (GetCascadeSagaStepsResponse) {
+    option (google.api.http) = {get: "/v1/memory/cascade/proposals/{proposal_id}/saga-steps"};
+  }
+
+  rpc RetryCascadeApprove(RetryCascadeApproveRequest) returns (RetryCascadeApproveResponse) {
+    option (google.api.http) = {
+      post: "/v1/memory/cascade/proposals/{id}/retry"
+      body: "*"
+    };
+  }
+
+  rpc CompensateCascadeApprove(CompensateCascadeApproveRequest) returns (CompensateCascadeApproveResponse) {
+    option (google.api.http) = {
+      post: "/v1/memory/cascade/proposals/{id}/compensate"
       body: "*"
     };
   }

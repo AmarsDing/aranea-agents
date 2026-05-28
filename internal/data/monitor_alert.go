@@ -207,10 +207,10 @@ func (r *monitorRepo) CountMonitorEventsSince(ctx context.Context, eventKey, sta
 func (r *monitorRepo) AvgRunnerCompletionDurationMsSince(ctx context.Context, sinceRFC3339 string) (float64, error) {
 	var avg sql.NullFloat64
 	err := r.data.RawDB().QueryRowContext(ctx, `
-SELECT AVG(CAST(json_extract(metadata_json, '$.duration_ms') AS REAL))
+SELECT AVG(CAST(COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) AS REAL))
 FROM monitor_events
 WHERE deleted_at = '' AND event_key = 'runner.completion' AND created_at >= ?
-  AND json_extract(metadata_json, '$.duration_ms') IS NOT NULL`, sinceRFC3339).Scan(&avg)
+  AND COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) IS NOT NULL`, sinceRFC3339).Scan(&avg)
 	if err != nil {
 		return 0, err
 	}
@@ -218,4 +218,47 @@ WHERE deleted_at = '' AND event_key = 'runner.completion' AND created_at >= ?
 		return 0, nil
 	}
 	return avg.Float64, nil
+}
+
+func (r *monitorRepo) LatencyPercentilesSince(ctx context.Context, sinceRFC3339 string) (p50, p95, p99 float64, err error) {
+	rows, qErr := r.data.RawDB().QueryContext(ctx, `
+SELECT CAST(COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) AS REAL) AS dur
+FROM monitor_events
+WHERE deleted_at = '' AND event_key = 'runner.completion' AND created_at >= ?
+  AND COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) IS NOT NULL
+ORDER BY dur ASC`, sinceRFC3339)
+	if qErr != nil {
+		return 0, 0, 0, qErr
+	}
+	defer rows.Close()
+	var durations []float64
+	for rows.Next() {
+		var d float64
+		if scanErr := rows.Scan(&d); scanErr != nil {
+			continue
+		}
+		if d > 0 {
+			durations = append(durations, d)
+		}
+	}
+	n := len(durations)
+	if n == 0 {
+		return 0, 0, 0, nil
+	}
+	p50 = durations[percentileIndex(n, 50)]
+	p95 = durations[percentileIndex(n, 95)]
+	p99 = durations[percentileIndex(n, 99)]
+	return p50, p95, p99, nil
+}
+
+func percentileIndex(n, percentile int) int {
+	if n <= 1 {
+		return 0
+	}
+	idx := float64(percentile) / 100.0 * float64(n-1)
+	lo := int(idx)
+	if lo >= n-1 {
+		return n - 1
+	}
+	return lo
 }

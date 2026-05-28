@@ -37,6 +37,7 @@ type (
 	SkillRuntimePolicy      = skill.RuntimePolicy
 	SkillRuntimeCandidate   = skill.RuntimeCandidate
 	SkillFilesystemHealthStats = skill.FilesystemHealthStats
+	SkillEmbedder           = skill.SkillEmbedder
 )
 
 const (

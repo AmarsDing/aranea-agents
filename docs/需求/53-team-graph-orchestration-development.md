@@ -429,13 +429,25 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 | BL-10b | `compileEmbeddedEdges` 新增条件边生成：critic_loop 自动生成 `ConditionalEdgeDef` | `team/embedded_graph.go` | ✅ |
 | CLEAN | 删除旧 `compileEdges` / `compileEntryFinish` / `compileSequentialEdges` 等 8 个死代码函数（~170 行） | `team/graph_compile.go` | ✅ |
 
-### Phase 8.3 — 待实施
+### Phase 8.3 — 持久化与模板（✅ 已完成）
+
+| ID | 任务 | BL | 影响域 | 状态 |
+|----|------|-----|--------|------|
+| BL-02 | 模板注册表：`OrchestrationTemplate` 接口 + 5 个内置模板 | `team/template_registry.go` | ✅ |
+| BL-04b | `team_graph_sessions` 持久化：新增 raw SQL DDL + Repo + 进程重启恢复 | `biz/team_types.go` `data/team_graph_session_*.go` `team/team_graph_run_coordinator.go` | ✅ |
+
+### Phase 8.4 — 代码质量优化（✅ 已完成）
+
+| ID | 任务 | 影响域 | 状态 |
+|----|------|--------|------|
+| REFACTOR | God Function 拆分：`resolveAnchorAndAttachments` + `prepareUserTurnOptions` + `finalizeTeamRun` | `team/runner_team_trpc.go` → `team/runner_team_turn.go` | ✅ |
+| TG-Q-04 | `persistGraphMemberStepsFromResult` 标记为 `TestOnly` 测试辅助 | `team/runner_finish_steps_test_helpers_test.go` | ✅ |
+
+### Phase 8.5 — 待实施
 
 | ID | 任务 | BL | 优先级 | 说明 |
 |----|------|-----|--------|------|
-| BL-02 | 模板注册表：`OrchestrationTemplate` 接口 + 5 个内置模板 | 中 | 依赖 BL-10 已完成 |
-| BL-04b | `team_graph_sessions` 持久化：新增 Ent schema + 进程重启恢复 | 高 | 需 DB 迁移 |
-| BL-05 | Step 持久化事件驱动统一：删除 bulk persist 路径 | 中 | 依赖 BL-01 |
+| BL-05 | Step 持久化事件驱动统一：删除 bulk persist 路径 | 中 | 依赖 Native 完全退役 |
 | BL-09 | Observer 单订阅化：`teamRunPipeline` + `runEventHandler` 接口 | 低 | 减少订阅开销 |
 
 ### Phase 8 关键设计决策

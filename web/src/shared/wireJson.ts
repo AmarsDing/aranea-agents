@@ -47,6 +47,22 @@ export function pickStrArray(r: Record<string, unknown>, snake: string, camel: s
   return v.filter((x): x is string => typeof x === "string");
 }
 
+export function pickI64(r: Record<string, unknown>, snake: string, camel: string): number {
+  const v = r[snake] ?? r[camel];
+  if (typeof v === "number" && !Number.isNaN(v)) return v;
+  if (typeof v === "string" && v.trim() !== "") return Number(v);
+  return 0;
+}
+
+export function parseJsonArray(json: string): string[] {
+  if (!json || json === "[]" || json === "") return [];
+  try {
+    const parsed = JSON.parse(json);
+    if (Array.isArray(parsed)) return parsed.filter((x): x is string => typeof x === "string");
+  } catch { /* ignore */ }
+  return [];
+}
+
 export function mapStringFloat(raw: unknown): Record<string, number> {
   const o = asRecord(raw);
   const out: Record<string, number> = {};

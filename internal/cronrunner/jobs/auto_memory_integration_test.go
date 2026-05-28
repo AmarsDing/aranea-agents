@@ -165,7 +165,7 @@ func TestAutoMemoryWorker_IntegrationExtractChain(t *testing.T) {
 			ID: msgID, SessionID: sessID, Role: "user", ContentMarkdown: "I prefer dark mode",
 		}},
 	}
-	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil)
+	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil, nil)
 	agentsUC := newMemoryEnabledAgentsUC(agentID)
 	q := memtrpc.NewMemoryJobQueue(4, 0)
 	w, err := NewAutoMemoryWorker(0, sessionsUC, agentsUC, store, nil, nil, nil, biz.NewHeuristicConsolidator(), q)
@@ -222,7 +222,7 @@ func TestAutoMemoryWorker_DrainUsesInjectedQueue(t *testing.T) {
 			ID: "m1", SessionID: "sess-q-1", Role: "user", ContentMarkdown: "My name is Alice",
 		}},
 	}
-	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil)
+	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil, nil)
 	agentsUC := newMemoryEnabledAgentsUC("agent-q-1")
 	q := memtrpc.NewMemoryJobQueue(4, 0)
 	w, err := NewAutoMemoryWorker(0, sessionsUC, agentsUC, store, nil, nil, nil, biz.NewHeuristicConsolidator(), q)

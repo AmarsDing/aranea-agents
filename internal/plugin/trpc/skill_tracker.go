@@ -21,10 +21,8 @@ type skillUsageConfig struct {
 }
 
 type SkillUsageTrackerPlugin struct {
-	name   string
-	cfg    skillUsageConfig
-	stats  StatsRecorder
-	logger *PluginSafeLogger
+	base basePlugin
+	cfg  skillUsageConfig
 }
 
 var _ trpcplugin.Plugin = (*SkillUsageTrackerPlugin)(nil)
@@ -40,16 +38,13 @@ func NewSkillUsageTrackerPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus
 	if cfg.MaxPreviewLength <= 0 {
 		cfg.MaxPreviewLength = 500
 	}
-	name := p.Key
 	return &SkillUsageTrackerPlugin{
-		name:   name,
-		cfg:    cfg,
-		stats:  stats,
-		logger: NewPluginSafeLogger(name, bus),
+		base: newBasePlugin(p.Key, stats, bus),
+		cfg:  cfg,
 	}
 }
 
-func (s *SkillUsageTrackerPlugin) Name() string { return s.name }
+func (s *SkillUsageTrackerPlugin) Name() string { return s.base.Name() }
 
 func (s *SkillUsageTrackerPlugin) Register(r *trpcplugin.Registry) {
 	r.BeforeTool(s.beforeTool)
@@ -70,8 +65,8 @@ func (s *SkillUsageTrackerPlugin) beforeTool(ctx context.Context, args *trpctool
 		return &trpctool.BeforeToolResult{Context: ctx}, nil
 	}
 	if s.cfg.CaptureInputPreview {
-		preview := truncateString(string(args.Arguments), s.cfg.MaxPreviewLength)
-		s.logger.Info("plugin.skill_tracker.before_tool",
+		preview := truncateString(redactText(string(args.Arguments), true, true, true), s.cfg.MaxPreviewLength)
+		s.base.logger.Info("plugin.skill_tracker.before_tool",
 			"tool", args.ToolName,
 			"input_preview", preview,
 		)
@@ -95,10 +90,10 @@ func (s *SkillUsageTrackerPlugin) afterTool(ctx context.Context, args *trpctool.
 	}
 	fields := []any{"tool", args.ToolName, "status", status}
 	if s.cfg.CaptureOutputPreview && args.Result != nil {
-		fields = append(fields, "output_preview", truncateString(formatToolResult(args.Result), s.cfg.MaxPreviewLength))
+		fields = append(fields, "output_preview", truncateString(redactText(formatToolResult(args.Result), true, true, true), s.cfg.MaxPreviewLength))
 	}
-	s.logger.Info("plugin.skill_tracker.after_tool", fields...)
-	s.record(ctx, "after_tool", status)
+	s.base.logger.Info("plugin.skill_tracker.after_tool", fields...)
+	s.base.record(ctx, "after_tool", status)
 	return &trpctool.AfterToolResult{}, nil
 }
 
@@ -116,8 +111,3 @@ func formatToolResult(result any) string {
 	}
 }
 
-func (s *SkillUsageTrackerPlugin) record(ctx context.Context, point, status string) {
-	if s.stats != nil {
-		s.stats.Record(ctx, s.name, point, status)
-	}
-}

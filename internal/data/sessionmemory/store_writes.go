@@ -64,8 +64,12 @@ func (st *Store) upsertFactRowOn(ctx context.Context, db sqlRunner, in MemoryFac
 	}
 	if pii := biz.ScanPII(stmt); pii.PIIFlag {
 		in.PIIFlag = true
+		in.PIITypes = pii.PIITypes
 		if rs := strings.TrimSpace(pii.RedactedStatement); rs != "" {
 			in.RedactedStatement = rs
+		}
+		if biz.ParsePIIPolicy(in.PIIPolicy) == biz.PIIPolicyBlock {
+			return nil, biz.ErrPIIBlocked
 		}
 	}
 	fp := strings.TrimSpace(in.Fingerprint)
@@ -121,6 +125,15 @@ func (st *Store) upsertFactRowOn(ctx context.Context, db sqlRunner, in MemoryFac
 		pii = 1
 	}
 
+	piiTypesJSON := "[]"
+	if len(in.PIITypes) > 0 {
+		if b, err := json.Marshal(in.PIITypes); err == nil {
+			piiTypesJSON = string(b)
+		}
+	}
+
+	qualityScore := in.QualityScore
+
 	useC := int(in.UseCount)
 	hitC := int(in.HitCount)
 	pfc := int(in.PositiveFeedbackCount)
@@ -141,7 +154,7 @@ func (st *Store) upsertFactRowOn(ctx context.Context, db sqlRunner, in MemoryFac
 		updatedAt = now
 	}
 
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", 45), ",")
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", 47), ",")
 	insertSQL := strings.TrimSpace(fmt.Sprintf(`
 INSERT INTO memory_facts (
  id, scope_type, scope_id, workspace_id, user_id, team_id, agent_id,
@@ -152,9 +165,9 @@ INSERT INTO memory_facts (
  source_kind, source_episode_id, source_session_id, source_message_id, source_external,
  version, status, superseded_by,
  embedding_status, embedding_model, embedding_dim, embedding_blob, embedding_norm,
- pii_flag, redacted_statement,
+ pii_flag, redacted_statement, pii_types,
  ttl_days, decay_factor, next_decay_at, last_used_at, expires_at,
- metadata_json, created_at, updated_at, archived_at, deleted_at
+ metadata_json, quality_score, created_at, updated_at, archived_at, deleted_at
 ) VALUES (%s)
 ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
  statement = excluded.statement,
@@ -176,6 +189,8 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
  metadata_json = excluded.metadata_json,
  updated_at = excluded.updated_at,
  pii_flag = excluded.pii_flag,
+ pii_types = excluded.pii_types,
+ quality_score = excluded.quality_score,
  version = memory_facts.version + 1,
  use_count = memory_facts.use_count,
  hit_count = memory_facts.hit_count,
@@ -192,9 +207,9 @@ ON CONFLICT(scope_type, scope_id, fingerprint) DO UPDATE SET
 		sk, epID, sessID, msgID, ext,
 		v, stTxt, "",
 		"pending", "", 0, ([]byte)(nil), 0.0,
-		pii, strings.TrimSpace(in.RedactedStatement),
+		pii, strings.TrimSpace(in.RedactedStatement), piiTypesJSON,
 		0, 0.98, "", "", "",
-		meta, createdAt, updatedAt, "", "",
+		meta, qualityScore, createdAt, updatedAt, "", "",
 	}
 
 	if _, err := db.ExecContext(ctx, insertSQL, args...); err != nil {
@@ -242,6 +257,9 @@ type MemoryFactUpsert struct {
 	Status                string
 	PIIFlag               bool
 	RedactedStatement     string
+	PIIPolicy             string
+	PIITypes              []string
+	QualityScore          float64
 	MetadataJSON          string
 	CreatedAt             string
 	UpdatedAt             string

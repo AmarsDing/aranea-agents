@@ -19,10 +19,8 @@ type permissionGuardConfig struct {
 }
 
 type PermissionGuardPlugin struct {
-	name         string
+	base         basePlugin
 	cfg          permissionGuardConfig
-	stats        StatsRecorder
-	logger       *PluginSafeLogger
 	resolveAgent AgentKeyResolver
 }
 
@@ -32,12 +30,12 @@ func NewPermissionGuardPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, 
 	var cfg permissionGuardConfig
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
 	return &PermissionGuardPlugin{
-		name: p.Key, cfg: cfg, stats: stats,
-		logger: NewPluginSafeLogger(p.Key, bus), resolveAgent: resolveAgent,
+		base: newBasePlugin(p.Key, stats, bus), cfg: cfg,
+		resolveAgent: resolveAgent,
 	}
 }
 
-func (p *PermissionGuardPlugin) Name() string { return p.name }
+func (p *PermissionGuardPlugin) Name() string { return p.base.Name() }
 
 func (p *PermissionGuardPlugin) Register(r *trpcplugin.Registry) {
 	r.BeforeTool(p.beforeTool)
@@ -48,21 +46,21 @@ func (p *PermissionGuardPlugin) beforeTool(ctx context.Context, args *trpctool.B
 		return &trpctool.BeforeToolResult{Context: ctx}, nil
 	}
 	if len(p.cfg.AgentAllowlist) > 0 && !p.agentAllowed(ctx, nil) {
-		p.logger.Info("plugin.permission_guard.before_tool", "status", "skip", "tool", args.ToolName, "reason", "agent_not_in_allowlist")
-		p.record(ctx, "before_tool", "success")
+		p.base.logger.Info("plugin.permission_guard.before_tool", "status", "skip", "tool", args.ToolName, "reason", "agent_not_in_allowlist")
+		p.base.record(ctx, "before_tool", "success")
 		return &trpctool.BeforeToolResult{Context: ctx}, nil
 	}
 	if toolInList(args.ToolName, p.cfg.DenyTools) {
-		p.logger.Info("plugin.permission_guard.before_tool", "status", "blocked", "tool", args.ToolName, "reason", "deny_tools")
-		p.record(ctx, "before_tool", "blocked")
+		p.base.logger.Info("plugin.permission_guard.before_tool", "status", "blocked", "tool", args.ToolName, "reason", "deny_tools")
+		p.base.record(ctx, "before_tool", "blocked")
 		msg := fmt.Sprintf("permission_guard: tool %q is not permitted", args.ToolName)
 		return &trpctool.BeforeToolResult{
 			Context:      ctx,
 			CustomResult: map[string]any{"error": msg, "blocked": true},
 		}, nil
 	}
-	p.logger.Info("plugin.permission_guard.before_tool", "status", "success", "tool", args.ToolName)
-	p.record(ctx, "before_tool", "success")
+	p.base.logger.Info("plugin.permission_guard.before_tool", "status", "success", "tool", args.ToolName)
+	p.base.record(ctx, "before_tool", "success")
 	return &trpctool.BeforeToolResult{Context: ctx}, nil
 }
 
@@ -89,8 +87,3 @@ func agentKeyFromCtx(ctx context.Context, inv *trpcagent.Invocation) string {
 	return key
 }
 
-func (p *PermissionGuardPlugin) record(ctx context.Context, point, status string) {
-	if p.stats != nil {
-		p.stats.Record(ctx, p.name, point, status)
-	}
-}
