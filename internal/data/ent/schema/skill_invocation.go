@@ -41,5 +41,6 @@ func (SkillInvocation) Fields() []ent.Field {
 		field.String("error_code").Default(""),
 		field.String("source").Default("runtime").MaxLen(64),
 		field.String("activation_id").Default("").MaxLen(256),
+		field.String("message_id").Default("").MaxLen(256),
 	}
 }

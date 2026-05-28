@@ -6,6 +6,7 @@
     @click="$emit('select')"
   >
     <q-card-section class="row items-start justify-between no-wrap q-pb-sm">
+      <q-icon name="drag_indicator" size="16px" class="graph-task-card__drag-handle q-mr-xs" />
       <div class="col min-width-0">
         <div class="text-weight-medium">{{ task.nodeId || task.taskId }}</div>
         <div class="text-caption app-text-secondary">{{ task.requiredRole || "worker" }}</div>

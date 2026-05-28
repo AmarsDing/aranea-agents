@@ -21,15 +21,14 @@ type MonitorService struct {
 
 	uc     *biz.MonitorUsecase
 	server *conf.Server
+	diag   *biz.DiagBundleGenerator
 
-	// Delegated sub-services — separated for SRP; RPC methods still live on
-	// MonitorService because the proto defines them on MonitorServiceServer.
 	flowLogSvc  *FlowLogService
 	codeExecSvc *CodeExecutorService
 }
 
-func NewMonitorService(uc *biz.MonitorUsecase, server *conf.Server, flowLogSvc *FlowLogService, codeExecSvc *CodeExecutorService) *MonitorService {
-	return &MonitorService{uc: uc, server: server, flowLogSvc: flowLogSvc, codeExecSvc: codeExecSvc}
+func NewMonitorService(uc *biz.MonitorUsecase, server *conf.Server, flowLogSvc *FlowLogService, codeExecSvc *CodeExecutorService, diag *biz.DiagBundleGenerator) *MonitorService {
+	return &MonitorService{uc: uc, server: server, flowLogSvc: flowLogSvc, codeExecSvc: codeExecSvc, diag: diag}
 }
 
 func bizAuditToProto(a biz.AuditLog) *v1.AuditLog {
@@ -201,16 +200,22 @@ func (s *MonitorService) ListMonitorAlertRules(ctx context.Context, _ *v1.GetMon
 		return nil, err
 	}
 	if len(rules) == 0 {
-		rules = []biz.MonitorAlertRule{{
-			ID: "default-runner-errors", Name: "Runner error rate",
-			MetricKey: "runner.error_rate", Threshold: 0.25, WindowMinutes: 60, Enabled: true, Severity: "warning",
-		}}
+		defaults := defaultAlertRules()
+		_ = s.uc.ReplaceAlertRules(ctx, defaults)
+		rules = defaults
 	}
 	resp := &v1.ListMonitorAlertRulesResponse{Items: make([]*v1.MonitorAlertRule, 0, len(rules))}
 	for i := range rules {
 		resp.Items = append(resp.Items, toProtoAlertRule(rules[i]))
 	}
 	return resp, nil
+}
+
+func defaultAlertRules() []biz.MonitorAlertRule {
+	return []biz.MonitorAlertRule{{
+		ID: "default-runner-errors", Name: "Runner error rate",
+		MetricKey: "runner.error_rate", Threshold: 0.25, WindowMinutes: 60, Enabled: true, Severity: "warning",
+	}}
 }
 
 func (s *MonitorService) PutMonitorAlertRules(ctx context.Context, req *v1.PutMonitorAlertRulesRequest) (*v1.PutMonitorAlertRulesResponse, error) {
@@ -374,4 +379,34 @@ func (s *MonitorService) GetCodeExecutorCapabilities(ctx context.Context, in *v1
 		return &v1.GetCodeExecutorCapabilitiesResponse{}, nil
 	}
 	return s.codeExecSvc.GetCodeExecutorCapabilities(ctx, in)
+}
+
+func (s *MonitorService) GenerateDiagnosticBundle(ctx context.Context, in *v1.GenerateDiagnosticBundleRequest) (*v1.GenerateDiagnosticBundleResponse, error) {
+	if s == nil || s.diag == nil {
+		return nil, kerrors.New(503, "SERVICE_UNAVAILABLE", "diagnostic bundle generator not available")
+	}
+	bundle, err := s.diag.Generate(ctx,
+		in.GetTraceId(), in.GetSessionId(), in.GetRunId(), in.GetStepId(),
+		in.GetTriggerType(), in.GetContextMinutes(),
+	)
+	if err != nil {
+		return nil, kerrors.New(500, "INTERNAL", err.Error())
+	}
+	manifestJSON, _ := json.Marshal(bundle.Manifest)
+	if len(bundle.RootCauses) > 0 {
+		var m map[string]any
+		if err := json.Unmarshal(manifestJSON, &m); err == nil {
+			m["root_causes"] = bundle.RootCauses
+			manifestJSON, _ = json.Marshal(m)
+		}
+	}
+	return &v1.GenerateDiagnosticBundleResponse{
+		BundleId:     bundle.BundleID,
+		ManifestJson: string(manifestJSON),
+		TotalEntries: int32(bundle.Total),
+		FlowJsonl:    bundle.FlowJSONL,
+		TraceJson:    bundle.TraceJSON,
+		UsageJson:    bundle.UsageJSON,
+		AlertsJsonl:  bundle.AlertsJSONL,
+	}, nil
 }

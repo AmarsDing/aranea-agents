@@ -3,7 +3,7 @@
     <q-card class="app-dialog-card app-glass-dialog app-maximized-dialog tool-editor-shell">
       <div class="tool-editor-shell__head">
         <div class="tool-editor-shell__head-left">
-          <q-btn flat dense round icon="arrow_back" class="app-registry-icon-btn" :disable="editorStore.saving" @click="editorStore.closeEditor()">
+          <q-btn flat dense round icon="arrow_back" class="app-registry-icon-btn" :disable="editorStore.saving" @click="tryClose">
             <q-tooltip>返回</q-tooltip>
           </q-btn>
           <div class="tool-editor-shell__breadcrumb">
@@ -296,7 +296,7 @@
           </div>
 
           <div class="tool-editor-main__footer">
-            <q-btn outline no-caps label="取消" @click="editorStore.closeEditor()" />
+            <q-btn outline no-caps label="取消" @click="tryClose" />
             <q-btn no-caps unelevated class="app-registry-primary-btn" icon="save" label="保存" :loading="editorStore.saving" @click="editorStore.save()" />
           </div>
         </main>
@@ -309,6 +309,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
+import { useQuasar } from "quasar";
 import { useToolEditorStore } from "../../stores/tools/toolEditor";
 import { useToolDetailStore } from "../../stores/tools/toolDetail";
 import { TOOL_CREATE_TEMPLATES, TOOL_FIELD_HINTS, isRegistryLockedTool } from "../../features/tools/toolEditorCopy";
@@ -322,6 +323,7 @@ import ToolSchemaForm from "./ToolSchemaForm.vue";
 
 const editorStore = useToolEditorStore();
 const detailStore = useToolDetailStore();
+const $q = useQuasar();
 
 const helpOpen = ref(false);
 const activeSection = ref("basic");
@@ -412,9 +414,37 @@ function onScroll() {
   }
 }
 
+function tryClose() {
+  if (editorStore.dirty) {
+    $q.dialog({
+      title: "未保存的更改",
+      message: "当前有未保存的更改，确定要关闭吗？",
+      cancel: { label: "继续编辑", flat: true, noCaps: true },
+      ok: { label: "放弃更改", noCaps: true, color: "negative" },
+      persistent: true,
+    }).onOk(() => {
+      editorStore.closeEditor();
+    });
+  } else {
+    editorStore.closeEditor();
+  }
+}
+
 function onDialogUpdate(val: boolean) {
   if (!val) {
-    editorStore.closeEditor();
+    if (editorStore.dirty) {
+      $q.dialog({
+        title: "未保存的更改",
+        message: "当前有未保存的更改，确定要关闭吗？",
+        cancel: { label: "继续编辑", flat: true, noCaps: true },
+        ok: { label: "放弃更改", noCaps: true, color: "negative" },
+        persistent: true,
+      }).onOk(() => {
+        editorStore.closeEditor();
+      });
+    } else {
+      editorStore.closeEditor();
+    }
   }
 }
 

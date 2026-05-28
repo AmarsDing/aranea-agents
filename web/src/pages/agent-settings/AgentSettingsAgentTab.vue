@@ -57,8 +57,6 @@
           emit-value
           map-options
           use-input
-          fill-input
-          hide-selected
           input-debounce="0"
           label="模型"
           hint="仅可选择 Provider 管理中已录入且启用的模型。"
@@ -131,7 +129,7 @@
       </q-banner>
       <q-banner rounded class="q-mt-md settings-info-banner">
         月度费用上限请在
-        <a href="#" class="settings-link" @click.prevent="$emit('open-permissions-tab')">「权限」</a>
+        <q-btn flat dense color="primary" label="「权限」" @click="$emit('open-permissions-tab')" />
         Tab 配置用量配额（Chat Turn 前生效）。
       </q-banner>
     </section>
@@ -184,7 +182,7 @@
 
       <q-banner rounded class="q-mt-md settings-info-banner">
         记忆分层、心跳与语义检索请前往
-        <a href="#" class="settings-link" @click.prevent="$emit('open-memory-tab')">「记忆」</a>
+        <q-btn flat dense color="primary" label="「记忆」" @click="$emit('open-memory-tab')" />
         Tab 配置。
       </q-banner>
     </section>

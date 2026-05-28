@@ -202,6 +202,25 @@ message GetCodeExecutorCapabilitiesResponse {
   repeated CodeExecutorCapability backends = 1;
 }
 
+message GenerateDiagnosticBundleRequest {
+  string trigger_type = 1;
+  string trace_id = 2;
+  string session_id = 3;
+  string run_id = 4;
+  string step_id = 5;
+  int32  context_minutes = 6;
+}
+
+message GenerateDiagnosticBundleResponse {
+  string bundle_id = 1;
+  string manifest_json = 2;
+  int32  total_entries = 3;
+  string flow_jsonl = 4;
+  string trace_json = 5;
+  string usage_json = 6;
+  string alerts_jsonl = 7;
+}
+
 service MonitorService {
   rpc ListAuditLogs(ListAuditLogsRequest) returns (ListAuditLogsResponse) {
     option (google.api.http) = {get: "/v1/monitor/audit"};
@@ -239,5 +258,11 @@ service MonitorService {
   }
   rpc GetCodeExecutorCapabilities(GetMonitorLogsRequest) returns (GetCodeExecutorCapabilitiesResponse) {
     option (google.api.http) = {get: "/v1/monitor/code-executor-capabilities"};
+  }
+  rpc GenerateDiagnosticBundle(GenerateDiagnosticBundleRequest) returns (GenerateDiagnosticBundleResponse) {
+    option (google.api.http) = {
+      post: "/v1/monitor/diagnostic-bundle"
+      body: "*"
+    };
   }
 }

@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,36 +16,36 @@ import (
 
 const (
 	memoryL4DecayDefaultInterval = 24 * time.Hour
+	memoryL4DecayBatchSize       = 500
+	memoryL4ArchiveThreshold     = 0.1
 )
 
-// MemoryL4DecayWorker periodically reduces confidence for stale L4 graph entities.
-//
-// MEM-OPT-02: runDecay inside L4GraphUsecase is only triggered inline during
-// auto-memory writes, so entities that are read but never written never decay.
-// This cron job drives decay globally across all agents that have L4 enabled,
-// matching the per-agent schedule set in agent runtime settings.
 type MemoryL4DecayWorker struct {
 	interval time.Duration
 	l4       biz.L4GraphWriter
 	agents   *biz.AgentUsecase
+	cfg      biz.L4DecayConfig
 	log      *log.Helper
 }
 
-// NewMemoryL4DecayWorker creates the L4 decay cron worker.
-// Pass interval ≤ 0 for the default (24 h).
 func NewMemoryL4DecayWorker(interval time.Duration, l4 biz.L4GraphWriter, agents *biz.AgentUsecase, logger log.Logger) *MemoryL4DecayWorker {
 	if interval <= 0 {
 		interval = memoryL4DecayDefaultInterval
+	}
+	if envHours := os.Getenv("MEMORY_L4_DECAY_INTERVAL_HOURS"); envHours != "" {
+		if h, err := strconv.Atoi(envHours); err == nil && h > 0 {
+			interval = time.Duration(h) * time.Hour
+		}
 	}
 	return &MemoryL4DecayWorker{
 		interval: interval,
 		l4:       l4,
 		agents:   agents,
+		cfg:      biz.DefaultL4DecayConfig(),
 		log:      log.NewHelper(logger),
 	}
 }
 
-// Start blocks until ctx is cancelled, running L4 decay on each tick.
 func (w *MemoryL4DecayWorker) Start(ctx context.Context) {
 	if w == nil || w.l4 == nil {
 		return
@@ -75,21 +76,22 @@ func (w *MemoryL4DecayWorker) runOnce(ctx context.Context) {
 			}
 			return
 		}
-		var total int
+		var totalDecayed, totalArchived, totalAgents int
 		for _, t := range targets {
 			if !t.WriteL4Graph {
 				continue
 			}
-			w.l4.RunDecay(ctx, t.AgentID)
-			total++
+			result := w.l4.RunDecayWithConfig(ctx, t.AgentID, w.cfg)
+			totalDecayed += result.Decayed
+			totalArchived += result.Archived
+			totalAgents++
 		}
-		if total > 0 && w.log != nil {
-			w.log.Debugf("memory l4 decay: triggered for %d agents", total)
+		if totalAgents > 0 && w.log != nil {
+			w.log.Debugf("memory l4 decay: %d agents, %d decayed, %d archived", totalAgents, totalDecayed, totalArchived)
 		}
 	})
 }
 
-// MemoryL4DecayDisabled returns true when the L4 decay cron is disabled via env.
 func MemoryL4DecayDisabled() bool {
 	raw := strings.TrimSpace(strings.ToLower(os.Getenv("MEMORY_L4_DECAY_DISABLED")))
 	return raw == "1" || raw == "true" || raw == "yes"

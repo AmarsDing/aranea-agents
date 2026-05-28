@@ -14,6 +14,8 @@ type AgentMemoryMaintenanceTarget struct {
 	WriteL4Graph         bool
 	L2RetentionDays      int
 	L3DecayIntervalHours int
+	L4DecayIntervalHours int
+	L4DecayOverridesJSON string
 }
 
 // ListMemoryMaintenanceTargets returns agents with memory master gate enabled and decay/retention settings resolved.
@@ -48,6 +50,8 @@ func (u *AgentUsecase) ListMemoryMaintenanceTargets(ctx context.Context) ([]Agen
 				WriteL4Graph:         policy.WriteL4Graph,
 				L2RetentionDays:      policy.L2RetentionDays,
 				L3DecayIntervalHours: policy.L3DecayIntervalHours,
+				L4DecayIntervalHours: policy.L4DecayIntervalHours,
+				L4DecayOverridesJSON: policy.L4DecayOverridesJSON,
 			})
 		}
 		if len(page.Items) < pageSize || offset+len(page.Items) >= page.Total {

@@ -111,7 +111,7 @@
       <template v-else>
         <div
           v-if="showThinkingIndicator"
-          class="chat-thinking-line text-caption text-grey-7 q-mb-xs"
+          class="chat-thinking-line chat-thinking-pulse text-caption text-grey-7 q-mb-xs"
         >
           {{ row.t("chat.thinking", "正在思考…") }}
         </div>
@@ -177,8 +177,9 @@
           round
           size="sm"
           icon="thumb_up_off_alt"
+          :color="userFeedback === 'positive' ? 'primary' : undefined"
           :aria-label="row.t('chat.feedbackPositive')"
-          @click="emit('feedback', { messageId: message.id, rating: 'positive' })"
+          @click="userFeedback = 'positive'; emit('feedback', { messageId: message.id, rating: 'positive' })"
         />
         <q-btn
           flat
@@ -186,8 +187,9 @@
           round
           size="sm"
           icon="thumb_down_off_alt"
+          :color="userFeedback === 'negative' ? 'negative' : undefined"
           :aria-label="row.t('chat.feedbackNegative')"
-          @click="emit('feedback', { messageId: message.id, rating: 'negative' })"
+          @click="userFeedback = 'negative'; emit('feedback', { messageId: message.id, rating: 'negative' })"
         />
       </div>
       <div
@@ -213,7 +215,7 @@
           color="grey"
           size="sm"
           icon="close"
-          :label="t('chat.dismiss', '关闭')"
+          :label="t('chat.dismiss', '移除')"
           @click="emit('dismiss-failed', message.id)"
         />
       </div>
@@ -232,7 +234,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, toRef } from "vue";
+import { computed, ref, toRef } from "vue";
 import { useI18n } from "vue-i18n";
 import ResolvedAvatarImg from "../avatar/ResolvedAvatarImg.vue";
 import {
@@ -271,6 +273,8 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+const userFeedback = ref<"positive" | "negative" | null>(null);
 
 const props = defineProps<{
   message: Message;
@@ -335,3 +339,13 @@ function renderStreamingMarkdown(content: string) {
   return renderChatMarkdownForMessage(props.message.id, content, true);
 }
 </script>
+
+<style scoped>
+.chat-thinking-pulse {
+  animation: chat-pulse 1.5s ease-in-out infinite;
+}
+@keyframes chat-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+</style>

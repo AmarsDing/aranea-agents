@@ -23,6 +23,12 @@ func (r *stubMCPServerRepo) ListMCPServers(_ context.Context) ([]biz.MCPServer, 
 func (r *stubMCPServerRepo) GetMCPServer(_ context.Context, _ string) (biz.MCPServer, error) {
 	return r.server, nil
 }
+func (r *stubMCPServerRepo) GetMCPServerByKey(_ context.Context, _ string) (biz.MCPServer, error) {
+	return r.server, nil
+}
+func (r *stubMCPServerRepo) UpdateMCPServerMetadata(_ context.Context, _ string, _ string, _ string) error {
+	return nil
+}
 
 // stubMCPUsecase is a minimal *biz.MCPServerUsecase substitute for probeOne testing.
 // We can't create biz.MCPServerUsecase directly, so we compose the runner manually

@@ -8,40 +8,54 @@ import (
 )
 
 // applyTeamRuntimeExecutionOptions enables checkpoint/HITL/interrupt for Graph team runs (M53 Phase 6).
+type parsedRuntimeOptions struct {
+	EnableCheckpoint  bool
+	CheckpointPresent bool
+	Nodes             []graphNodePolicy
+}
+
+func parseRuntimeOptions(raw string) parsedRuntimeOptions {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return parsedRuntimeOptions{EnableCheckpoint: true, CheckpointPresent: true}
+	}
+	var body struct {
+		EnableCheckpoint *bool `json:"enable_checkpoint"`
+		Graph            struct {
+			Nodes []graphNodePolicy `json:"nodes"`
+		} `json:"graph"`
+	}
+	if err := json.Unmarshal([]byte(raw), &body); err != nil {
+		return parsedRuntimeOptions{EnableCheckpoint: true, CheckpointPresent: false}
+	}
+	opts := parsedRuntimeOptions{CheckpointPresent: true}
+	if body.EnableCheckpoint != nil {
+		opts.EnableCheckpoint = *body.EnableCheckpoint
+	} else {
+		opts.EnableCheckpoint = true
+	}
+	opts.Nodes = body.Graph.Nodes
+	return opts
+}
+
 func applyTeamRuntimeExecutionOptions(cfg biz.GraphBuildConfig, def Definition, rawDefinitionJSON string) biz.GraphBuildConfig {
+	opts := parseRuntimeOptions(rawDefinitionJSON)
 	cfg.EnableCheckpoint = true
-	if spec, ok := parseOrchestrationCheckpoint(rawDefinitionJSON); ok && !spec {
+	if opts.CheckpointPresent && !opts.EnableCheckpoint {
 		cfg.EnableCheckpoint = false
 	}
-	before, after := collectGraphInterrupts(rawDefinitionJSON)
+	before, after := collectGraphInterruptsFromNodes(opts.Nodes)
 	if len(before) > 0 {
 		cfg.InterruptBefore = appendUniqueStrings(cfg.InterruptBefore, before...)
 	}
 	if len(after) > 0 {
 		cfg.InterruptAfter = appendUniqueStrings(cfg.InterruptAfter, after...)
 	}
-	applyEmbeddedNodePolicies(&cfg, rawDefinitionJSON)
+	applyEmbeddedNodePoliciesFromNodes(&cfg, opts.Nodes)
 	if def.FailurePolicy != nil && def.FailurePolicy.CircuitBreaker != nil {
 		cfg = biz.ApplyCircuitBreakerPolicy(cfg, def.FailurePolicy.CircuitBreaker)
 	}
 	return cfg
-}
-
-func parseOrchestrationCheckpoint(raw string) (bool, bool) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return true, true
-	}
-	var body struct {
-		EnableCheckpoint *bool `json:"enable_checkpoint"`
-	}
-	if err := json.Unmarshal([]byte(raw), &body); err != nil {
-		return true, false
-	}
-	if body.EnableCheckpoint == nil {
-		return true, true
-	}
-	return *body.EnableCheckpoint, true
 }
 
 type graphNodePolicy struct {
@@ -55,7 +69,11 @@ type graphNodePolicy struct {
 }
 
 func collectGraphInterrupts(raw string) (before, after []string) {
-	for _, n := range parseGraphNodes(raw) {
+	return collectGraphInterruptsFromNodes(parseGraphNodes(raw))
+}
+
+func collectGraphInterruptsFromNodes(nodes []graphNodePolicy) (before, after []string) {
+	for _, n := range nodes {
 		id := strings.TrimSpace(n.ID)
 		if id == "" {
 			continue
@@ -74,8 +92,15 @@ func applyEmbeddedNodePolicies(cfg *biz.GraphBuildConfig, raw string) {
 	if cfg == nil {
 		return
 	}
+	applyEmbeddedNodePoliciesFromNodes(cfg, parseGraphNodes(raw))
+}
+
+func applyEmbeddedNodePoliciesFromNodes(cfg *biz.GraphBuildConfig, nodes []graphNodePolicy) {
+	if cfg == nil {
+		return
+	}
 	policies := map[string]graphNodePolicy{}
-	for _, n := range parseGraphNodes(raw) {
+	for _, n := range nodes {
 		id := strings.TrimSpace(n.ID)
 		if id == "" {
 			continue
@@ -88,8 +113,6 @@ func applyEmbeddedNodePolicies(cfg *biz.GraphBuildConfig, raw string) {
 		if !ok {
 			continue
 		}
-		// Use full assignment from runtime policy as source of truth,
-		// overriding any compile-time defaults to avoid dual-application.
 		cfg.Nodes[i].InterruptBefore = n.InterruptBefore
 		cfg.Nodes[i].InterruptAfter = n.InterruptAfter
 		if len(n.Destinations) > 0 {

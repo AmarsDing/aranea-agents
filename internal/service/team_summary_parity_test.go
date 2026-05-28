@@ -10,14 +10,14 @@ import (
 func TestRunSummaryMapProtoParity(t *testing.T) {
 	run := biz.TeamRun{
 		ID: "run-1", TeamID: "team-1", SessionID: "sess-1",
-		Mode: "sequential", Status: "success",
+		Mode: "sequential", Status: biz.TeamRunStatusSuccess,
 		TokenIn: 10, TokenOut: 20, DurationMS: 100, CostMicroUSD: 42,
 		OutputPreview: "team output", ErrorMessage: "  ",
 	}
 	steps := []biz.TeamRunStep{
 		{
 			AgentID: "ag-1", AgentKey: "a1", AgentName: "Agent One", Role: "worker",
-			SortOrder: 0, Status: "ok", TokenIn: 3, TokenOut: 20, DurationMS: 50,
+			SortOrder: 0, Status: biz.TeamMemberStepStatusOK, TokenIn: 3, TokenOut: 20, DurationMS: 50,
 			CostMicroUSD: 21, ToolCallCount: 2, OutputPreview: "member output",
 		},
 	}

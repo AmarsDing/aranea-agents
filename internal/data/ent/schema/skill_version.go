@@ -31,5 +31,6 @@ func (SkillVersion) Fields() []ent.Field {
 		field.Text("manifest_json").Default("{}"),
 		field.String("published_at").Default(""),
 		field.String("validation_status").Default(""),
+		field.Text("file_manifest_json").Default("[]"),
 	}
 }

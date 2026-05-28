@@ -41,5 +41,7 @@ func (PlatformSkill) Fields() []ent.Field {
 		field.String("risk_level").Default("low").MaxLen(32),
 		field.String("entry_path").Default("SKILL.md").MaxLen(512),
 		field.Bool("filesystem_missing").Default(false),
+		field.String("visibility").Default("workspace").MaxLen(64),
+		field.Text("fallback_config_json").StorageKey("default_config_json").Default("{}"),
 	}
 }

@@ -3,13 +3,16 @@ package plugintrpc
 import (
 	"context"
 	"strings"
+	"sync"
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
 
-	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcguardrail "trpc.group/trpc-go/trpc-agent-go/plugin/guardrail"
+	trpcidentity "trpc.group/trpc-go/trpc-agent-go/plugin/identity"
+	trpcmessagemerger "trpc.group/trpc-go/trpc-agent-go/plugin/messagemerger"
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
-	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+	trpctoolcallid "trpc.group/trpc-go/trpc-agent-go/plugin/toolcallid"
 )
 
 // AgentKeyResolver maps runtime agent_key to platform agent_id (optional).
@@ -20,6 +23,13 @@ type Manager struct {
 	rt               *Runtime
 	hooks            *biz.HookResolver
 	resolveAgentID   AgentKeyResolver
+
+	guardrailOnce sync.Once
+	guardrail     *trpcguardrail.Plugin
+	guardrailErr  error
+
+	identityOnce sync.Once
+	identity     *trpcidentity.Plugin
 }
 
 // NewManager wires Runtime + HookResolver and loads hooks from the DB.
@@ -81,7 +91,7 @@ func (m *Manager) ReloadHooks(ctx context.Context) error {
 	return m.hooks.Reload(ctx)
 }
 
-// MergeChain appends hook rules and chain-orchestrated plugins onto the product base chain.
+// MergeChain appends hook rules onto the product base chain.
 func (m *Manager) MergeChain(ctx context.Context, agentID, agentKey string, base *callbacks.Chain) *callbacks.Chain {
 	if m == nil {
 		return base
@@ -98,18 +108,6 @@ func (m *Manager) MergeChain(ctx context.Context, agentID, agentKey string, base
 			notifier = m.rt.HookNotifier()
 		}
 		entries = append(entries, wrapResilientHooks(HookCallbacks(resolved, agentID, agentKey, stats, notifier))...)
-	}
-
-	if m.rt != nil {
-		plugins, orders := m.rt.ChainPluginsForAgent(agentID)
-		if len(plugins) > 0 {
-			pluginEntries, err := ChainEntriesForPlugins(plugins, orders)
-			if err != nil {
-				hookLogger.Warn("plugin.chain_mirror failed", "agent_id", agentID, "error", err)
-			} else {
-				entries = append(entries, pluginEntries...)
-			}
-		}
 	}
 
 	if len(entries) == 0 {
@@ -158,30 +156,32 @@ func (m *Manager) RunnerPlugins() []trpcplugin.Plugin {
 	return m.RunnerPluginsForAgent("")
 }
 
-// RunnerPluginsForAgent returns scope-filtered plugins plus the OnEvent bridge.
+// RunnerPluginsForAgent returns scope-filtered plugins plus the OnEvent bridge and framework plugins.
 func (m *Manager) RunnerPluginsForAgent(agentID string) []trpcplugin.Plugin {
 	if m == nil {
 		return nil
 	}
 	plugins := m.PluginsForAgent(agentID)
-	return append(plugins, &productEventPlugin{mgr: m})
+	plugins = append(plugins, &productEventPlugin{mgr: m})
+	if m.resolveAgentID != nil {
+		m.identityOnce.Do(func() {
+			m.identity = BuildIdentityPlugin(m.resolveAgentID)
+		})
+		if m.identity != nil {
+			plugins = append(plugins, m.identity)
+		}
+	}
+	m.guardrailOnce.Do(func() {
+		m.guardrail, m.guardrailErr = BuildGuardrailPlugin()
+	})
+	if m.guardrailErr == nil && m.guardrail != nil {
+		plugins = append(plugins, m.guardrail)
+	}
+	plugins = append(plugins,
+		trpctoolcallid.New(),
+		trpcmessagemerger.New(),
+	)
+	return plugins
 }
 
-// OnEvent forwards events to scope-filtered DB plugins.
-func (m *Manager) OnEvent(
-	ctx context.Context,
-	invocation *trpcagent.Invocation,
-	e *trpcevent.Event,
-) (*trpcevent.Event, error) {
-	agentKey := agentKeyFromInvocation(invocation)
-	agentID := m.platformAgentID(ctx, agentKey)
-	plugins := m.PluginsForAgent(agentID)
-	if len(plugins) == 0 {
-		return e, nil
-	}
-	mgr, err := trpcplugin.NewManager(plugins...)
-	if err != nil {
-		return e, err
-	}
-	return mgr.OnEvent(ctx, invocation, e)
-}
+

@@ -19,7 +19,7 @@
             <div class="text-caption text-grey-7">{{ activeFileMeta.caption }}</div>
           </div>
           <div class="row q-gutter-sm">
-            <q-btn outline rounded icon="refresh" label="重新召唤" @click="$emit('reload')" />
+            <q-btn outline rounded icon="refresh" label="重新召唤" @click="confirmReload" />
             <!-- PGO-3-WEB-03: AIRefineButton for file Tab editor. -->
             <AIRefineButton
               scope="agent.file"
@@ -41,9 +41,12 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useQuasar } from "quasar";
 import type { AgentFile } from "./agentUi";
 import { tokenEstimateFor, tokenText } from "./agentUi";
 import AiRefineButton from "./AIRefineButton.vue";
+
+const $q = useQuasar();
 
 const props = defineProps<{
   files: AgentFile[];
@@ -74,6 +77,17 @@ const emit = defineEmits<{
   reload: [];
   save: [];
 }>();
+
+function confirmReload() {
+  $q.dialog({
+    title: "重新召唤",
+    message: "未保存的更改将丢失，确定重新召唤？",
+    cancel: true,
+    persistent: true
+  }).onOk(() => {
+    emit("reload");
+  });
+}
 
 const splitterModel = computed({
   get: () => props.splitter,

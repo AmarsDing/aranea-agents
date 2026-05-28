@@ -221,6 +221,15 @@ async function duplicate(team: Team) {
   }
 }
 
+function confirmRemove(team: Team) {
+  $q.dialog({
+    title: "删除 Team",
+    message: `确定删除「${team.display_name}」？此操作不可撤销。`,
+    cancel: true,
+    persistent: true,
+  }).onOk(() => void remove(team));
+}
+
 async function remove(team: Team) {
   try {
     await teamsPageStore.removeTeam(team.id);
@@ -391,7 +400,7 @@ function upsertRunStep(step: TeamRunStep) {
     runEventsConnected, runEventsReplaying, selectedTeam, runs, stepsByRun, stepsLoading,
     summariesByRun, summariesLoading, testOpen, testTeam, testLoading, testError, testReply, testRun,
     form, definition, agentOptions, definitionJSON, canSave, filteredTeams,
-    loadRows, openCreate, openEdit, addMember, removeMember, applyTemplate, save, duplicate, remove,
+    loadRows, openCreate, openEdit, addMember, removeMember, applyTemplate, save, duplicate, confirmRemove,
     copyKey, openRuns, openRunTest, executeRunTest, loadRunSummary, openRunObservatory, openTeamObservatory, loadRuns, loadRunSteps
   };
 }

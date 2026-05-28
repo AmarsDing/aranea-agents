@@ -52,12 +52,12 @@ export function useAgentRuntimeConfig() {
     return buildAgentConfigJson(config, files);
   }
 
-  function onAdvancedSave(
+  async function onAdvancedSave(
     payload: AgentAdvancedSettingsForm,
     save: () => void | Promise<void>,
   ) {
     applyAdvancedSaveToRuntime(config, advancedState, payload);
-    void save();
+    await save();
   }
 
   return {

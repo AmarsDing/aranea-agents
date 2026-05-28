@@ -1,7 +1,7 @@
 # Monitor AI 闭环追踪方案
 
 > **关联**：[`18 monitor.md`](./18%20monitor.md) · [`18-monitor-optimization-2026-05-26.md`](./18-monitor-optimization-2026-05-26.md) · [`52-flow-logger.design.md`](./52-flow-logger.design.md) · 代码 Review [`2026-05-26-Monitor-Code-Review.md`](../review/2026-05-26-Monitor-Code-Review.md)
-> **状态**：📐 设计草案，待评审
+> **状态**：🟡 Phase A~D 部分落地（LOG-01 ✅ TRACE-01 ✅ DIAG-01 ✅ DIAG-02 ✅）；LOG-02/LOG-03/LOOP-01 待实施
 > **创建**：2026-05-28
 
 ---
@@ -60,26 +60,26 @@
 
 | 差距编号 | 描述 | 影响 | 关联 |
 |----------|------|------|------|
-| **GAP-01** | FlowLog 无文件落盘 | 进程重启/DB 损坏后无法回溯历史 | 新增 |
+| **GAP-01** | FlowLog 无文件落盘 | ~~进程重启/DB 损坏后无法回溯历史~~ ✅ LOG-01 已落地 | 新增 → ✅ |
 | **GAP-02** | 框架层 zap 日志无结构化输出 | AI 无法解析 stdout 彩色文本 | 新增 |
 | **GAP-03** | 部分关键路径仍用 slog 而非 FlowLog | 关键错误无 trace_id 关联，AI 无法追踪 | MON-Q-07 相关 |
-| **GAP-04** | `monitor_traces` 表无写入路径 | Traces Tab 空白，AI 无法获取 span 树 | MON-Q-05 / MON-OPT-05 |
-| **GAP-05** | 无诊断包自动聚合 | AI 需手动跨表/跨文件拼接信息 | 52-flow-logger §7 基础版 |
-| **GAP-06** | 无根因分析规则引擎 | AI 只能展示日志，无法自动推导因果链 | 新增 |
+| **GAP-04** | `monitor_traces` 表无写入路径 | ~~Traces Tab 空白，AI 无法获取 span 树~~ ✅ MON-OPT-05 已落地 | MON-Q-05 / MON-OPT-05 → ✅ |
+| **GAP-05** | 无诊断包自动聚合 | ~~AI 需手动跨表/跨文件拼接信息~~ ✅ DIAG-01 已落地 | 52-flow-logger §7 基础版 → ✅ |
+| **GAP-06** | 无根因分析规则引擎 | ~~AI 只能展示日志，无法自动推导因果链~~ ✅ DIAG-02 已落地 | 新增 → ✅ |
 | **GAP-07** | 告警触发后无自动追踪动作 | 告警 → 人工看日志 → 手动排查，未闭环 | MON-OPT-02 相关 |
-| **GAP-08** | Chat FlowLog 仍走 SessionBus | 全局 Monitor 连接需双 pump，可能丢失 | MON-Q-01 / MON-OPT-01 |
+| **GAP-08** | Chat FlowLog 仍走 SessionBus | ~~全局 Monitor 连接需双 pump，可能丢失~~ ✅ MON-OPT-01 已落地 | MON-Q-01 / MON-OPT-01 → ✅ |
 
 ### 1.3 已有优化方案覆盖情况
 
 | 本方案编号 | 已有方案覆盖 | 说明 |
 |------------|-------------|------|
-| LOG-01（文件落盘） | ❌ 无 | 全新能力 |
-| LOG-02（zap 结构化） | ❌ 无 | 全新能力 |
-| LOG-03（路径补全） | 🟡 MON-OPT-01 间接改善 | Bus 分离后 FlowLog 可靠性提升，但不补路径 |
-| TRACE-01（Trace 写入） | ✅ MON-OPT-05 | 本方案引用，不重复设计 |
-| DIAG-01（诊断包） | 🟡 52-flow-logger §7 | 基础 JSONL 导出已有，需增强 |
-| DIAG-02（根因引擎） | ❌ 无 | 全新能力 |
-| LOOP-01（闭环工作流） | ❌ 无 | 全新能力 |
+| LOG-01（文件落盘） | ✅ 已落地 | `FlowFileAppender` + 按日/大小轮转 + gzip + 30 天清理 |
+| LOG-02（zap 结构化） | ❌ 未实施 | 跨 `pkg/trpc-agent-go` 修改，需独立 PR |
+| LOG-03（路径补全） | ❌ 未实施 | P1 路径（Provider/Memory/MCP）待逐路径迁移 |
+| TRACE-01（Trace 写入） | ✅ 已落地 | `runner.completion` → `trace-*.jsonl` |
+| DIAG-01（诊断包） | ✅ 已落地 | `DiagBundleGenerator` + `GenerateDiagnosticBundle` RPC |
+| DIAG-02（根因引擎） | ✅ 已落地 | `RootCauseEngine` 5 条内置规则 + 置信度评分 |
+| LOOP-01（闭环工作流） | ❌ 未实施 | 待设计 |
 
 ---
 

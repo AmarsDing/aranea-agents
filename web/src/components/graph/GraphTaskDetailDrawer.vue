@@ -1,6 +1,6 @@
 <template>
-  <q-dialog :model-value="open" persistent maximized @update:model-value="onDialogUpdate">
-    <q-card class="graph-task-drawer app-dialog-card app-dialog-card--lg app-glass-dialog">
+  <q-dialog :model-value="open" persistent @update:model-value="onDialogUpdate">
+    <q-card class="graph-task-drawer app-dialog-card app-glass-dialog" :style="{ minWidth: '480px', maxWidth: '600px' }">
       <q-card-section class="app-glass-dialog__head row items-start justify-between no-wrap">
         <div class="col min-width-0">
           <div class="app-glass-dialog__title">任务详情</div>

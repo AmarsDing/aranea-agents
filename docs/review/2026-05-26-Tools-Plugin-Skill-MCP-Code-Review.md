@@ -119,8 +119,8 @@
 | Runner/Manager 装配在 `internal/service` 而非 `internal/server` | ✅ | ✅（`PluginService` / `HookService`）| ✅（importer 走 service） | ✅（`MCPServerUsecase`）|
 | `internal/server` 0 处 import 子包 | ✅ | ✅ | ⚠️ `skill_import_http.go` 在 `internal/service`，但走 `registerCustomRoutes` 绕过 proto 契约 | ✅ |
 | 子包之间无循环依赖 | ✅ | ✅ | ✅ | ✅ |
-| 与 framework 类型保持 alias（不 fork 实现）| ✅（`tool.go` 全 alias） | ✅（`trpcplugin.Plugin` 直实现） | ✅（`trpcskill.Repository` 适配）| ✅（`config.ToTRPCConnectionConfig` 但未启用） |
-| 无 `panic()` 直接抛出 | ✅ | ⚠️ 无 `recover()`，hook 内 panic 会拖垮 turn | ✅ | ✅ |
+| 与 framework 类型保持 alias（不 fork 实现）| ✅（`tool.go` 全 alias） | ✅（`trpcplugin.Plugin` 直实现） | ✅（`trpcskill.Repository` 适配）| ✅（`MCPServerConfig.ToConnectionConfig` 统一映射） |
+| 无 `panic()` 直接抛出 | ✅ | ✅ 2026-05-28：`wrapResilient` + `recoverHookPanic` 已覆盖 | ✅ | ✅ |
 
 ---
 
@@ -136,10 +136,10 @@
 | **TPM-P1-06** | skill | `DBRepositoryAdapter` 设置 `Summary.Name = c.Name`（display name），但 `filter.go` 与 `skillruntime/filter.go` 都以 slug allow-list 比对 `summary.Name` | `internal/skill/trpc/db_repository.go:139` · `internal/skill/trpc/filter.go:18-19` · `internal/tools/skillruntime/filter.go:37-38` | DB-backed skill 全部被过滤掉（slug ≠ display name）；Layer A 实际不生效 | `DBRepositoryAdapter` 改为 `Summary.Name = slug`（保留 display name 走 `Description` 或新字段），或 filter 改为按 repository key/slug 匹配 |
 | **TPM-P1-07** | skill | importer ZIP `createImportedSkill` 缺 **路径包含校验**：仅 `strings.Contains(clean, "..")`，未做 `filepath.Rel(targetDir, joined)` | `internal/skill/importer/engine.go:255-260` | Windows drive 前缀、编码变体可能逃逸 `targetDir`（zipslip 不完全防护） | `joined := filepath.Join(targetDir, clean)`; `rel, err := filepath.Rel(targetDir, joined)`; 若 `err != nil` 或 `strings.HasPrefix(rel, "..")` 则拒绝 |
 | **TPM-P1-08** | skill | `ApplyImport` 循环写入无事务/回滚：前几条 `createImportedSkill` 已写盘 + DB row，后续失败直接 `return` | `internal/skill/importer/engine.go:167-181` | 残留 orphan 目录与 DB row；重试可能命中唯一索引冲突 | 包 transaction 或实现 compensating delete；至少在 doc 标注"非原子"并补 cleanup CLI |
-| **TPM-P1-09** | mcp | `probe.evaluateHTTP` 不处理 OAuth：只发 `cfg.Headers`，OAuth 受保护的 MCP server 探活恒为 `error` | `internal/mcp/probe/eval.go:81-85` | Admin 健康面板对 OAuth MCP 持续告警，与运行时实际可连接矛盾；alert 噪音 | （a）为 oauth2 类型 transport 注入 token 解析接口（保持 mcp 包不 import agent），（b）或明确文档"探活仅校验网络连通" |
-| **TPM-P1-10** | mcp | Transport alias **4 处分裂**：`config.NormalizeTransport` 接受 `streamable_http` → `streamable`；`probe.Evaluate` switch 只认 `sse / streamable_http`；framework 两个都吃；`mcpobserve.DefaultSessionReconnectMax` 硬编码 `streamable` / `sse` | `internal/mcp/config/config.go:83-95` · `internal/mcp/probe/eval.go:30-37` · `internal/tools/mcpobserve/observe.go:96` | DB 里存 `streamable` 的 server：runtime 正常运行但 probe 永远 `transport 必须是 ...` 报错 | 全链统一调 `config.NormalizeTransport`；运行时装配前先 normalize；probe switch 改为 normalize 后比较 |
-| **TPM-P1-11** | mcp | `probe.evaluateHTTP` 使用 `http.Client` 默认重定向（最多 10 次），可绕过 `validatePublicHost` | `internal/mcp/probe/eval.go:76` | 攻击者构造公网 URL 301 → `127.0.0.1`，SSRF | `client.CheckRedirect = func(req *http.Request, via []*http.Request) error { return validatePublicHost(req.URL.Hostname()) }` |
-| **TPM-P1-12** | mcp | `internal/mcp/config/config.go::ToTRPCConnectionConfig` **生产未调用**，runtime 在 `internal/tools/toolset.go::buildMCPToolSet` 手写 mapping | `internal/mcp/config/config.go` 全函数 · `internal/tools/toolset.go::buildMCPToolSet` | "标准" mapping 与"实际" mapping 双 source of truth，新增字段一处加一处忘 | 将 `ToTRPCConnectionConfig` 升级为唯一入口（补 `Env`/auth/reconnect），runtime 改调；或删除该函数避免假权威 |
+| **TPM-P1-09** | mcp | ~~`probe.evaluateHTTP` 不处理 OAuth~~ ✅ 2026-05-26：probe 401/403 → `auth_required` 状态；完整 OAuth 探活待 D-M2 | `internal/mcp/probe/eval.go:81-85` | Admin 健康面板对 OAuth MCP 持续告警，与运行时实际可连接矛盾；alert 噪音 | （a）为 oauth2 类型 transport 注入 token 解析接口（保持 mcp 包不 import agent），（b）或明确文档"探活仅校验网络连通" |
+| **TPM-P1-10** | mcp | ~~Transport alias 4 处分裂~~ ✅ 2026-05-28：Transport 类型化 + UnmarshalJSON 自动 normalize；probe/mcpobserve 统一 | `internal/mcp/config/config.go:83-95` · `internal/mcp/probe/eval.go:30-37` · `internal/tools/mcpobserve/observe.go:96` | DB 里存 `streamable` 的 server：runtime 正常运行但 probe 永远 `transport 必须是 ...` 报错 | 全链统一调 `config.NormalizeTransport`；运行时装配前先 normalize；probe switch 改为 normalize 后比较 |
+| **TPM-P1-11** | mcp | ~~probe SSRF redirect 绕过~~ ✅ 2026-05-26：`outboundguard.NewClient` 已内置 CheckRedirect | `internal/mcp/probe/eval.go:76` | 攻击者构造公网 URL 301 → `127.0.0.1`，SSRF | `client.CheckRedirect = func(req *http.Request, via []*http.Request) error { return validatePublicHost(req.URL.Hostname()) }` |
+| **TPM-P1-12** | mcp | ~~ToTRPCConnectionConfig 生产未调用~~ ✅ 2026-05-28：ToTRPCConnectionConfig 已删除；MCPServerConfig.ToConnectionConfig 统一映射入口 | `internal/mcp/config/config.go` 全函数 · `internal/tools/toolset.go::buildMCPToolSet` | "标准" mapping 与"实际" mapping 双 source of truth，新增字段一处加一处忘 | 将 `ToTRPCConnectionConfig` 升级为唯一入口（补 `Env`/auth/reconnect），runtime 改调；或删除该函数避免假权威 |
 
 ---
 
@@ -153,10 +153,10 @@
 | **TPM-P2-04** | tools | 三处 `configString` helper 重复（`trpc/runtime_config.go` / `webresearch/config.go` / `testexec/config.go`），catalog-key → config 映射散落 | 抽 `internal/tools/keys` 单一 mapping |
 | **TPM-P2-05** | tools | `skillruntime/filter.go::cache` 用 `sync.Map` 按 invocation ID 累积无 eviction | LRU 或 invocation 结束清理 |
 | **TPM-P2-06** | tools | `kanban/bridge.go::globalBridge` 包级可变全局变量无锁 | 优先 context 注入；保留全局则加 `sync.Once` |
-| **TPM-P2-07** | tools | `mcpobserve` 元数据写入 `context.Background()` 丢 trace | `context.WithoutCancel(ctx)` 或保留 timeout |
+| **TPM-P2-07** | tools | ~~mcpobserve 元数据写入 `context.Background()` 丢 trace~~ ✅ 2026-05-28：改为 `context.WithoutCancel(ctx)` | `context.WithoutCancel(ctx)` 或保留 timeout |
 | **TPM-P2-08** | tools | `serpapi.go` API key 走 query string 进 access log | header 鉴权（若 plan 支持） |
-| **TPM-P2-09** | plugin | `cost_guard.admin_bypass` schema 字段在 `cost_guard.go:41` 默认置 true 但**从未读取** | 实现 admin bypass 或从 schema 删除 |
-| **TPM-P2-10** | plugin | `permission_guard.confirm_tools` 字段 schema 有但**未实现**；`role_rules` 同样 | 实现或从 schema 删除 |
+| **TPM-P2-09** | plugin | ~~`cost_guard.admin_bypass` schema 字段在 `cost_guard.go:41` 默认置 true 但**从未读取**~~ ✅ 2026-05-28：字段与 schema 已删除 | 实现 admin bypass 或从 schema 删除 |
+| **TPM-P2-10** | plugin | ~~`permission_guard.confirm_tools` 字段 schema 有但**未实现**；`role_rules` 同样~~ ✅ 2026-05-28：confirm_tools/role_rules 字段与 schema 已删除 | 实现或从 schema 删除 |
 | **TPM-P2-11** | plugin | `audit_log.beforeModel.summarizeMessages` 不走 `maybeRedact`，模型 request 可泄敏 | 加 redact；与 `audit_log.afterModel` 对齐 |
 | **TPM-P2-12** | plugin | `skill_usage_tracker` 记录原始 tool args 无 redact | 走 `redactText` |
 | **TPM-P2-13** | plugin | `cost_guard_budget.AddTokens` 写库失败 `_ =` 静默 | log + metric；本地累加但 cross-process 漂移 |
@@ -171,12 +171,12 @@
 | **TPM-P2-22** | skill | `watch/runner.go::childWatches` 并发写无锁 | mutex 或 single-writer goroutine |
 | **TPM-P2-23** | skill | `SkillPermissions` 全 `true` 硬编码 | 接入 RBAC |
 | **TPM-P2-24** | skill | 无版本回滚 API（即使数据层有 `skill_version` 表）| 暴露 rollback RPC |
-| **TPM-P2-25** | mcp | `alert.MarkHealthAlertEmitted` 失败 `_ =` 吞掉，引起重复告警 | log + metric |
-| **TPM-P2-26** | mcp | `mcpobserve` 每次 reconnect O(n) 全表扫 server 找 key | 改 `GetByKey` |
-| **TPM-P2-27** | mcp | OAuth refresh 失败 fallback 用陈旧 `access_token`，掩盖过期 | 强失败 + 持久化 rotated refresh token |
-| **TPM-P2-28** | mcp | `metadata` row 并发 health + reconnect 写为 last-write-wins | 乐观锁或字段级 merge |
-| **TPM-P2-29** | mcp | `probe/health/alert` 三个包**零测试** | 至少 stdio/HTTP probe + ctx cancel + alert debounce |
-| **TPM-P2-30** | mcp | `health.probeAll` 每 server `safego.Go` 无 worker pool 上限 | bounded concurrency |
+| **TPM-P2-25** | mcp | ~~`alert.MarkHealthAlertEmitted` 失败 `_ =` 吞掉~~ ✅ 2026-05-28：改为 log + metric | log + metric |
+| **TPM-P2-26** | mcp | ~~mcpobserve 每次 reconnect O(n) 全表扫 server 找 key~~ ✅ 2026-05-28：改 `GetMCPServerByKey` | 改 `GetByKey` |
+| **TPM-P2-27** | mcp | ~~OAuth refresh 失败 fallback 用陈旧 `access_token`，掩盖过期~~ ✅ 2026-05-28：强失败不再 fallback | 强失败 + 持久化 rotated refresh token |
+| **TPM-P2-28** | mcp | ~~metadata row 并发 health + reconnect 写为 last-write-wins~~ ✅ 2026-05-28：`UpdateMCPServerMetadata` 只写 metadata+status 字段 | 乐观锁或字段级 merge |
+| **TPM-P2-29** | mcp | ~~`probe/health/alert` 三个包零测试~~ ✅ 2026-05-28：probe + alert + config 测试已补全 | 至少 stdio/HTTP probe + ctx cancel + alert debounce |
+| **TPM-P2-30** | mcp | ~~health.probeAll 每 server `safego.Go` 无 worker pool 上限~~ ✅ 2026-05-28：semaphore bounded concurrency（max=8） | bounded concurrency |
 
 ---
 
@@ -195,8 +195,8 @@
 | TPM-P3-09 | skill | `slugify` 空输入 fallback `skill-0`（`len("")=0`）始终同名 |
 | TPM-P3-10 | skill | `importBlockMessages` 用 `"?"` 拼接（疑似 newline 占位损坏）|
 | TPM-P3-11 | skill | importer/validator 多处 `"?????..."` 占位中文未完成 |
-| TPM-P3-12 | mcp | 大量 magic numbers（10s probe、5min health、3 reconnect、15s OAuth、60s runtime） |
-| TPM-P3-13 | mcp | `classify.IsMCPToolInvocation` 仅前缀启发式，未来 broker tool 命名变化需手动维护 |
+| TPM-P3-12 | mcp | ~~大量 magic numbers~~ ✅ 2026-05-28：集中到 `internal/mcp/defaults.go` |
+| TPM-P3-13 | mcp | ~~`classify.IsMCPToolInvocation` 仅前缀启发式~~ ✅ 2026-05-28：评估后保留，`mcp_`+`__` 模式与框架一致 |
 
 ---
 
@@ -343,11 +343,11 @@ health.Runner   ⟶ TestMCPServer × N (5min ticker)
 
 | 符号 | 文件 | 性质 |
 |------|------|------|
-| `mcp/config.ToTRPCConnectionConfig` | `internal/mcp/config/config.go` | **生产 0 引用**，runtime 走 `toolset.go` 自写 mapping |
-| `cost_guard.admin_bypass` | `internal/plugin/trpc/cost_guard.go:18,41` | schema 暴露 + 默认 true，**代码从不读** |
-| `permission_guard.confirm_tools` | `internal/plugin/trpc/permission_guard.go` | 解析后**未使用** |
-| `permission_guard.role_rules` | JSON schema | 仅 schema，无实现 |
-| `claudefetch` registry entry | `internal/tools/toolset.go:73-78` | factory 永远 error |
+| `mcp/config.ToTRPCConnectionConfig` | `internal/mcp/config/config.go` | ~~生产 0 引用~~ ✅ 2026-05-28：已删除，runtime 统一走 `toolset.go::MCPServerConfig.ToConnectionConfig` |
+| `cost_guard.admin_bypass` | `internal/plugin/trpc/cost_guard.go:18,41` | ~~schema 暴露 + 默认 true，代码从不读~~ ✅ 2026-05-28：字段与 schema 已删除 |
+| `permission_guard.confirm_tools` | `internal/plugin/trpc/permission_guard.go` | ~~解析后未使用~~ ✅ 2026-05-28：字段与 schema 已删除 |
+| `permission_guard.role_rules` | JSON schema | ~~仅 schema，无实现~~ ✅ 2026-05-28：schema 已删除 |
+| `claudefetch` registry entry | `internal/tools/toolset.go:73-78` | ~~factory 永远 error~~ ✅ 2026-05-28：改为 `(nil, nil)` 对齐 geminifetch |
 | `tools.workspace_exec` factory | registry | no-op；实际由 `WithCodeExecutor` 挂载 |
 
 ### 8.4 错误处理风格

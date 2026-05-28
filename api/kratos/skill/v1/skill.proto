@@ -54,6 +54,9 @@ message Skill {
   bool filesystem_missing = 22;
   // filesystem | import | manual
   string sync_origin = 23;
+  // system | workspace | agent | private | public
+  string visibility = 24;
+  string default_config_json = 25;
 }
 
 message SkillFilesystemHealth {
@@ -152,6 +155,7 @@ message SkillInvocation {
   SkillInvocationPermissions permissions = 18;
   string source = 19;
   string activation_id = 20;
+  string message_id = 21;
 }
 
 message ListSkillRunsRequest {
@@ -322,6 +326,36 @@ message SkillRefineResult {
   repeated string source_existing_skill_ids = 6;
 }
 
+message SkillVersionDetail {
+  string id = 1;
+  string skill_id = 2;
+  string version = 3;
+  string status = 4;
+  string content_markdown = 5;
+  string validation_status = 6;
+  string published_at = 7;
+  string created_at = 8;
+  string file_manifest_json = 9;
+}
+
+message GetSkillVersionsRequest {
+  string skill_id = 1 [(google.api.field_behavior) = REQUIRED];
+  int32 page = 2;
+  int32 page_size = 3;
+}
+
+message GetSkillVersionsResponse {
+  repeated SkillVersionDetail items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message RollbackSkillVersionRequest {
+  string skill_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string version_id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
 service SkillService {
   rpc ListSkills(ListSkillsRequest) returns (ListSkillsResponse) {
     option (google.api.http) = {get: "/v1/skills"};
@@ -403,6 +437,15 @@ service SkillService {
   rpc RefineSkillImportConflict(RefineSkillImportConflictRequest) returns (SkillRefineResult) {
     option (google.api.http) = {
       post: "/v1/skills/import/{job_id}/conflict-groups/{group_id}/refine"
+      body: "*"
+    };
+  }
+  rpc GetSkillVersions(GetSkillVersionsRequest) returns (GetSkillVersionsResponse) {
+    option (google.api.http) = {get: "/v1/skills/{skill_id}/versions"};
+  }
+  rpc RollbackSkillVersion(RollbackSkillVersionRequest) returns (Skill) {
+    option (google.api.http) = {
+      post: "/v1/skills/{skill_id}/versions/{version_id}/rollback"
       body: "*"
     };
   }

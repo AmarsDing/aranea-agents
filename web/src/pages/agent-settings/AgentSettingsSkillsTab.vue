@@ -13,7 +13,7 @@
         </div>
         <div class="settings-section__actions">
           <q-btn flat rounded dense no-caps label="刷新列表" :loading="loadingSkillSlugs" @click="$emit('load-skill-slugs')" />
-          <q-btn flat rounded dense no-caps label="恢复默认" @click="$emit('reset-skill-defaults')" />
+          <q-btn flat rounded dense no-caps label="恢复默认" @click="confirmReset" />
         </div>
       </div>
 
@@ -241,9 +241,12 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useQuasar } from "quasar";
 import AgentToolsSection from "../../components/agents/AgentToolsSection.vue";
 import type { CodeExecutorCapability } from "../../features/monitor/types";
 import type { AgentRuntimeConfigForm } from "../../features/agents/agentRuntimeConfig";
+
+const $q = useQuasar();
 
 const baseExecutorOptions = [
   { label: "Local（子进程，开发用）", value: "local" },
@@ -274,10 +277,21 @@ const props = withDefaults(
   },
 );
 
-defineEmits<{
+const emit = defineEmits<{
   "load-skill-slugs": [];
   "reset-skill-defaults": [];
 }>();
+
+function confirmReset() {
+  $q.dialog({
+    title: "恢复默认",
+    message: "确定恢复默认 Skill 配置？当前自定义设置将被覆盖。",
+    cancel: true,
+    persistent: true
+  }).onOk(() => {
+    emit("reset-skill-defaults");
+  });
+}
 
 const capabilityByType = computed(() => {
   const map = new Map<string, CodeExecutorCapability>();

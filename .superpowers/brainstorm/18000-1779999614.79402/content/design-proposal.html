@@ -1,0 +1,288 @@
+<h2>Graph UI 全面优化方案（n8n 标杆对齐）</h2>
+<p class="subtitle">7 项优化 · 详细设计规格</p>
+
+<div class="section">
+  <h3>① 节点色彩体系重构</h3>
+  <p class="subtitle">n8n 使用高饱和度、强区分度的类别色彩，每种节点类型一眼可辨</p>
+  <div class="cards">
+    <div class="card" data-choice="current" onclick="toggleSelect(this)">
+      <div class="card-image" style="padding:16px; background:#1a1a2e">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center">
+          <div style="padding:8px 14px; border-radius:10px; border:1px solid rgba(156,39,176,0.3); background:rgba(156,39,176,0.08); color:#c084fc; font-size:12px; font-weight:700">Function</div>
+          <div style="padding:8px 14px; border-radius:10px; border:1px solid rgba(99,102,241,0.3); background:rgba(99,102,241,0.08); color:#818cf8; font-size:12px; font-weight:700">LLM</div>
+          <div style="padding:8px 14px; border-radius:10px; border:1px solid rgba(255,152,0,0.3); background:rgba(255,152,0,0.08); color:#fb923c; font-size:12px; font-weight:700">Tool</div>
+          <div style="padding:8px 14px; border-radius:10px; border:1px solid rgba(34,197,94,0.3); background:rgba(34,197,94,0.08); color:#4ade80; font-size:12px; font-weight:700">Agent</div>
+          <div style="padding:8px 14px; border-radius:10px; border:1px solid rgba(148,163,184,0.3); background:rgba(148,163,184,0.08); color:#94a3b8; font-size:12px; font-weight:700">Router</div>
+          <div style="padding:8px 14px; border-radius:10px; border:1px solid rgba(156,39,176,0.3); background:rgba(156,39,176,0.08); color:#c084fc; font-size:12px; font-weight:700">Join</div>
+          <div style="padding:8px 14px; border-radius:10px; border:1px solid rgba(245,158,11,0.3); background:rgba(245,158,11,0.08); color:#fbbf24; font-size:12px; font-weight:700">HITL</div>
+        </div>
+        <div style="text-align:center; margin-top:12px; color:#f87171; font-size:11px">⚠ Function/Join 同色 · Agent/LLM 色近 · 整体饱和度低</div>
+      </div>
+      <div class="card-body">
+        <h3>当前配色</h3>
+        <p>7 种类型中 3 对色差不足，暗色模式下几乎无法区分</p>
+      </div>
+    </div>
+    <div class="card" data-choice="proposed" onclick="toggleSelect(this)">
+      <div class="card-image" style="padding:16px; background:#1a1a2e">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:center">
+          <div style="padding:8px 14px; border-radius:10px; border:2px solid #a78bfa; background:rgba(167,139,250,0.15); color:#a78bfa; font-size:12px; font-weight:700">⚡ Function</div>
+          <div style="padding:8px 14px; border-radius:10px; border:2px solid #60a5fa; background:rgba(96,165,250,0.15); color:#60a5fa; font-size:12px; font-weight:700">🧠 LLM</div>
+          <div style="padding:8px 14px; border-radius:10px; border:2px solid #fbbf24; background:rgba(251,191,36,0.15); color:#fbbf24; font-size:12px; font-weight:700">🔧 Tool</div>
+          <div style="padding:8px 14px; border-radius:10px; border:2px solid #34d399; background:rgba(52,211,153,0.15); color:#34d399; font-size:12px; font-weight:700">🤖 Agent</div>
+          <div style="padding:8px 14px; border-radius:10px; border:2px solid #f472b6; background:rgba(244,114,182,0.15); color:#f472b6; font-size:12px; font-weight:700">🔀 Router</div>
+          <div style="padding:8px 14px; border-radius:10px; border:2px solid #94a3b8; background:rgba(148,163,184,0.15); color:#94a3b8; font-size:12px; font-weight:700">🔗 Join</div>
+          <div style="padding:8px 14px; border-radius:10px; border:2px solid #fb923c; background:rgba(251,146,60,0.15); color:#fb923c; font-size:12px; font-weight:700">✋ HITL</div>
+        </div>
+        <div style="text-align:center; margin-top:12px; color:#34d399; font-size:11px">✓ 7 色 7 调 · 高饱和 · 强边框 · 图标前缀</div>
+      </div>
+      <div class="card-body">
+        <h3>优化配色（推荐）</h3>
+        <p>每类型独立色相，2px 边框 + 15% 填充 + 图标前缀，暗色/亮色均高区分</p>
+      </div>
+    </div>
+  </div>
+  <div style="margin-top:12px; padding:12px; border-radius:10px; background:rgba(96,165,250,0.08); border:1px solid rgba(96,165,250,0.2)">
+    <div style="font-size:11px; font-weight:700; color:#60a5fa; margin-bottom:6px">新配色方案</div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:6px; font-size:11px">
+      <div><span style="color:#a78bfa">■</span> Function: 紫罗兰 #a78bfa</div>
+      <div><span style="color:#60a5fa">■</span> LLM: 天蓝 #60a5fa</div>
+      <div><span style="color:#fbbf24">■</span> Tool: 琥珀 #fbbf24</div>
+      <div><span style="color:#34d399">■</span> Agent: 翡翠 #34d399</div>
+      <div><span style="color:#f472b6">■</span> Router: 粉红 #f472b6</div>
+      <div><span style="color:#94a3b8">■</span> Join: 石板 #94a3b8</div>
+      <div><span style="color:#fb923c">■</span> HITL: 橘色 #fb923c</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>② 属性面板分组折叠</h3>
+  <p class="subtitle">n8n 风格：按功能域分组，高级选项默认折叠，减少认知负荷</p>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">当前：平铺表单</div>
+      <div class="mockup-body" style="padding:12px; background:var(--bg-secondary); font-size:11px; color:#aaa">
+        <div style="margin-bottom:6px">节点 ID: [___________]</div>
+        <div style="margin-bottom:6px">节点类型: [___________]</div>
+        <div style="margin-bottom:6px">指令: [___________]</div>
+        <div style="margin-bottom:6px">模型名称: [___________]</div>
+        <div style="margin-bottom:6px">Agent 名称: [___________]</div>
+        <div style="margin-bottom:6px">工具列表: [___________]</div>
+        <div style="margin-bottom:6px">执行前中断: [__]</div>
+        <div style="margin-bottom:6px">执行后中断: [__]</div>
+        <div style="margin-bottom:6px">重试次数: [___________]</div>
+        <div style="margin-bottom:6px">失败策略: [___________]</div>
+        <div style="margin-bottom:6px">Fallback: [___________]</div>
+        <div style="margin-bottom:6px">Destinations: [___________]</div>
+        <div style="margin-bottom:6px">Input Mapper: [___________]</div>
+        <div style="margin-bottom:6px">Output Mapper: [___________]</div>
+        <div style="margin-bottom:6px">缓存: ▸ 展开</div>
+        <div style="color:#f87171; margin-top:8px">⚠ 15+ 字段平铺，滚动负担重</div>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">优化：分组折叠</div>
+      <div class="mockup-body" style="padding:12px; background:var(--bg-secondary); font-size:11px; color:#aaa">
+        <div style="padding:8px 10px; border-radius:8px; border-left:3px solid #34d399; background:rgba(52,211,153,0.06); margin-bottom:8px">
+          <div style="font-weight:700; color:#34d399; font-size:10px; letter-spacing:0.05em">基本信息</div>
+          <div style="margin-top:4px">节点 ID · 类型 · 指令</div>
+        </div>
+        <div style="padding:8px 10px; border-radius:8px; border-left:3px solid #60a5fa; background:rgba(96,165,250,0.06); margin-bottom:8px">
+          <div style="font-weight:700; color:#60a5fa; font-size:10px; letter-spacing:0.05em">模型与 Agent</div>
+          <div style="margin-top:4px">模型 · Agent · 工具</div>
+        </div>
+        <div style="padding:8px 10px; border-radius:8px; border-left:3px solid #fb923c; background:rgba(251,146,60,0.06); margin-bottom:8px">
+          <div style="font-weight:700; color:#fb923c; font-size:10px; letter-spacing:0.05em">中断与审批 (HITL)</div>
+          <div style="margin-top:4px">执行前/后中断</div>
+        </div>
+        <div style="padding:8px 10px; border-radius:8px; border-left:3px solid #f472b6; background:rgba(244,114,182,0.06); margin-bottom:8px">
+          <div style="display:flex; justify-content:space-between; align-items:center">
+            <div style="font-weight:700; color:#f472b6; font-size:10px; letter-spacing:0.05em">高级选项</div>
+            <span style="color:#666; font-size:10px">▸</span>
+          </div>
+          <div style="color:#666; margin-top:2px; font-size:10px">重试 · 失败策略 · Mapper · 缓存…</div>
+        </div>
+        <div style="color:#34d399; margin-top:8px">✓ 4 组 · 高级默认折叠 · 色彩标识 · 信息密度↑</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>③ 列表页搜索/筛选/排序</h3>
+  <p class="subtitle">n8n 风格：顶部搜索栏 + 状态筛选 + 排序 + 卡片信息增强</p>
+  <div class="mockup">
+    <div class="mockup-header">优化后列表页布局</div>
+    <div class="mockup-body" style="padding:16px; background:var(--bg-secondary); font-size:12px; color:#aaa">
+      <div style="display:flex; gap:10px; margin-bottom:14px; align-items:center">
+        <div style="flex:1; padding:8px 14px; border-radius:10px; border:1px solid #444; display:flex; align-items:center; gap:8px">
+          <span>🔍</span><span style="color:#666">搜索 Graph 名称或描述…</span>
+        </div>
+        <div style="padding:8px 14px; border-radius:10px; border:1px solid #444">引擎 ▾</div>
+        <div style="padding:8px 14px; border-radius:10px; border:1px solid #444">排序 ▾</div>
+        <div style="padding:8px 16px; border-radius:10px; background:#3b82f6; color:white; font-weight:600">+ 新增</div>
+      </div>
+      <div style="padding:14px; border:1px solid #3b82f6; border-radius:14px; background:rgba(59,130,246,0.04); border-left:3px solid #34d399">
+        <div style="display:flex; justify-content:space-between; align-items:center">
+          <div>
+            <strong style="font-size:15px; color:#e2e8f0">智能客服工作流</strong>
+            <span style="margin-left:8px; padding:2px 8px; border-radius:99px; background:rgba(52,211,153,0.15); color:#34d399; font-size:10px">DAG</span>
+            <span style="margin-left:4px; padding:2px 8px; border-radius:99px; background:rgba(251,191,36,0.15); color:#fbbf24; font-size:10px">检查点</span>
+          </div>
+          <div style="display:flex; gap:8px; align-items:center">
+            <span style="font-size:10px; color:#666">更新于 2 分钟前</span>
+            <span style="padding:4px 12px; border-radius:8px; background:#3b82f6; color:white; font-size:11px; cursor:pointer">▶ 执行</span>
+            <span style="cursor:pointer">⋯</span>
+          </div>
+        </div>
+        <p style="color:#888; font-size:12px; margin:6px 0">多轮对话 + 知识库检索 + 人工审批</p>
+        <div style="display:flex; gap:12px; margin-top:6px">
+          <span style="font-size:11px; color:#34d399">🤖 Agent ×2</span>
+          <span style="font-size:11px; color:#60a5fa">🧠 LLM ×1</span>
+          <span style="font-size:11px; color:#f472b6">🔀 Router ×1</span>
+          <span style="font-size:11px; color:#fb923c">✋ HITL ×1</span>
+          <span style="font-size:11px; color:#666">5 节点 · 4 连线</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>④ 运行页进度指示与统计概览</h3>
+  <p class="subtitle">n8n 风格：顶部进度条 + 节点完成统计 + 步骤计数器</p>
+  <div class="mockup">
+    <div class="mockup-header">优化后运行页工具栏</div>
+    <div class="mockup-body" style="padding:16px; background:var(--bg-secondary); font-size:12px; color:#aaa">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px">
+        <span>←</span>
+        <strong style="color:#e2e8f0">智能客服工作流</strong>
+        <span style="padding:3px 10px; border-radius:6px; background:rgba(96,165,250,0.15); color:#60a5fa; font-size:11px; font-weight:600">● Running</span>
+        <span style="font-size:11px; color:#666">Step 3/7</span>
+        <span style="flex:1"></span>
+        <span style="padding:3px 10px; border-radius:6px; background:rgba(52,211,153,0.15); color:#34d399; font-size:11px">● Live</span>
+        <span style="padding:4px 10px; border-radius:6px; border:1px solid #ef4444; color:#ef4444; font-size:11px; cursor:pointer">⏹ Stop</span>
+      </div>
+      <div style="height:4px; border-radius:2px; background:#333; overflow:hidden; margin-bottom:10px">
+        <div style="width:43%; height:100%; background:linear-gradient(90deg, #34d399, #60a5fa); border-radius:2px"></div>
+      </div>
+      <div style="display:flex; gap:16px; font-size:11px">
+        <div><span style="color:#34d399">✓ 2</span> <span style="color:#666">完成</span></div>
+        <div><span style="color:#60a5fa">● 1</span> <span style="color:#666">运行中</span></div>
+        <div><span style="color:#666">○ 4</span> <span style="color:#666">等待</span></div>
+        <div><span style="color:#666">⏱ 1.2s</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>⑤ 右键菜单与快捷键</h3>
+  <p class="subtitle">n8n 风格：节点右键菜单 + 画布右键菜单 + 常用快捷键</p>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">节点右键菜单</div>
+      <div class="mockup-body" style="padding:12px; background:var(--bg-secondary); font-size:11px; color:#aaa">
+        <div style="border:1px solid #444; border-radius:10px; overflow:hidden; width:200px">
+          <div style="padding:8px 12px; border-bottom:1px solid #333; display:flex; justify-content:space-between"><span>编辑属性</span><span style="color:#666">Enter</span></div>
+          <div style="padding:8px 12px; border-bottom:1px solid #333; display:flex; justify-content:space-between"><span>复制节点</span><span style="color:#666">Ctrl+D</span></div>
+          <div style="padding:8px 12px; border-bottom:1px solid #333; display:flex; justify-content:space-between"><span>删除节点</span><span style="color:#666">Del</span></div>
+          <div style="padding:8px 12px; border-bottom:1px solid #333; display:flex; justify-content:space-between"><span>断开所有连线</span><span style="color:#666"></span></div>
+          <div style="padding:8px 12px; border-bottom:1px solid #333; display:flex; justify-content:space-between"><span>设为入口节点</span><span style="color:#666"></span></div>
+          <div style="padding:8px 12px; display:flex; justify-content:space-between"><span>设为结束节点</span><span style="color:#666"></span></div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">快捷键一览</div>
+      <div class="mockup-body" style="padding:12px; background:var(--bg-secondary); font-size:11px; color:#aaa">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px 16px">
+          <div><span style="color:#60a5fa">Ctrl+S</span> 保存</div>
+          <div><span style="color:#60a5fa">Ctrl+Z</span> 撤销</div>
+          <div><span style="color:#60a5fa">Delete</span> 删除</div>
+          <div><span style="color:#60a5fa">Ctrl+D</span> 复制节点</div>
+          <div><span style="color:#60a5fa">Ctrl+F</span> 适应画布</div>
+          <div><span style="color:#60a5fa">Ctrl+L</span> 自动布局</div>
+          <div><span style="color:#60a5fa">?</span> 快捷键帮助</div>
+          <div><span style="color:#60a5fa">Esc</span> 取消选中</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>⑥ 边线样式增强</h3>
+  <p class="subtitle">n8n 风格：普通边实线 + 条件边虚线 + Transfer 边动画 + 颜色编码</p>
+  <div class="mockup">
+    <div class="mockup-header">边线类型对比</div>
+    <div class="mockup-body" style="padding:16px; background:var(--bg-secondary); font-size:12px; color:#aaa">
+      <div style="display:flex; flex-direction:column; gap:14px">
+        <div style="display:flex; align-items:center; gap:12px">
+          <div style="width:120px; height:2px; background:#60a5fa"></div>
+          <span>普通边 · 实线 · 蓝色</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px">
+          <div style="width:120px; height:2px; background:repeating-linear-gradient(90deg, #f472b6 0, #f472b6 6px, transparent 6px, transparent 10px)"></div>
+          <span>条件边 · 虚线 · 粉红 + 标签</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px">
+          <div style="width:120px; height:2px; background:repeating-linear-gradient(90deg, #fbbf24 0, #fbbf24 4px, transparent 4px, transparent 8px); opacity:0.8"></div>
+          <span>Transfer 边 · 短虚线 · 琥珀 + 动画</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px">
+          <div style="width:120px; height:2px; background:repeating-linear-gradient(90deg, #34d399 0, #34d399 8px, transparent 8px, transparent 14px)"></div>
+          <span>Dispatch 边 · 长虚线 · 翡翠 + 标签</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>⑦ 节点信息密度提升</h3>
+  <p class="subtitle">n8n 风格：节点显示 IO 预览、运行状态、耗时，运行态信息丰富</p>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">设计态节点</div>
+      <div class="mockup-body" style="padding:16px; background:var(--bg-secondary); display:flex; justify-content:center">
+        <div style="min-width:200px; max-width:240px; border:2px solid #34d399; border-radius:14px; background:rgba(52,211,153,0.08); overflow:hidden">
+          <div style="height:3px; background:#34d399"></div>
+          <div style="padding:10px 12px">
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px">
+              <div style="width:22px; height:22px; border-radius:6px; background:rgba(52,211,153,0.2); display:flex; align-items:center; justify-content:center; font-size:12px">🤖</div>
+              <span style="font-size:10px; font-weight:700; color:#34d399; text-transform:uppercase; letter-spacing:0.05em">Agent</span>
+            </div>
+            <div style="font-weight:700; font-size:13px; color:#e2e8f0">客服助手</div>
+            <div style="margin-top:4px; font-size:10px; color:#94a3b8; background:rgba(52,211,153,0.1); padding:2px 6px; border-radius:4px; display:inline-block">role: support</div>
+            <div style="margin-top:6px; font-size:10px; color:#888; line-height:1.4">处理用户咨询，检索知识库…</div>
+            <div style="margin-top:6px; padding-top:6px; border-top:1px dashed #444; font-size:10px; color:#666">🔧 search_kb · reply</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">运行态节点</div>
+      <div class="mockup-body" style="padding:16px; background:var(--bg-secondary); display:flex; justify-content:center">
+        <div style="min-width:200px; max-width:240px; border:2px solid #34d399; border-radius:14px; background:rgba(52,211,153,0.08); overflow:hidden; box-shadow:0 0 12px rgba(52,211,153,0.2)">
+          <div style="height:3px; background:#34d399"></div>
+          <div style="padding:10px 12px">
+            <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px">
+              <div style="width:22px; height:22px; border-radius:6px; background:rgba(52,211,153,0.2); display:flex; align-items:center; justify-content:center; font-size:12px">🤖</div>
+              <span style="font-size:10px; font-weight:700; color:#34d399; text-transform:uppercase; letter-spacing:0.05em">Agent</span>
+              <span style="margin-left:auto; padding:2px 6px; border-radius:4px; background:rgba(52,211,153,0.2); color:#34d399; font-size:9px; font-weight:700">✓ 完成</span>
+            </div>
+            <div style="font-weight:700; font-size:13px; color:#e2e8f0">客服助手</div>
+            <div style="margin-top:4px; font-size:10px; color:#94a3b8; background:rgba(52,211,153,0.1); padding:2px 6px; border-radius:4px; display:inline-block">role: support</div>
+            <div style="margin-top:6px; padding-top:6px; border-top:1px dashed #444; display:flex; flex-direction:column; gap:3px; font-size:10px">
+              <div style="color:#34d399">收：用户提问 "如何退款？"</div>
+              <div style="color:#60a5fa">交：已生成回复方案</div>
+              <div style="color:#888">⏱ 1.2s</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

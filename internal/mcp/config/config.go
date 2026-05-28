@@ -3,11 +3,64 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
 	trpcmcp "trpc.group/trpc-go/trpc-agent-go/tool/mcp"
 )
+
+// Transport is a normalized MCP transport type. JSON deserialization automatically
+// normalizes aliases (e.g. "streamable_http" → "streamable") so all consumers
+// see a single canonical representation. TPM-P1-10.
+type Transport string
+
+const (
+	TransportStdio      Transport = "stdio"
+	TransportSSE        Transport = "sse"
+	TransportStreamable Transport = "streamable"
+)
+
+// transportAliases is the single source of truth for transport name normalization.
+var transportAliases = map[string]Transport{
+	"stdio":           TransportStdio,
+	"sse":             TransportSSE,
+	"streamable":      TransportStreamable,
+	"streamable_http": TransportStreamable,
+	"streamablehttp":  TransportStreamable,
+	"http":            TransportStreamable,
+}
+
+// ParseTransport normalizes and validates a transport string.
+func ParseTransport(s string) (Transport, error) {
+	key := strings.ToLower(strings.TrimSpace(s))
+	if t, ok := transportAliases[key]; ok {
+		return t, nil
+	}
+	return "", fmt.Errorf("unknown transport: %q (valid: %v)", s, KnownTransports())
+}
+
+// UnmarshalJSON implements json.Unmarshaler so any alias is auto-normalized.
+func (t *Transport) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	parsed, err := ParseTransport(s)
+	if err != nil {
+		return err
+	}
+	*t = parsed
+	return nil
+}
+
+// MarshalJSON implements json.Marshaler to emit the canonical form.
+func (t Transport) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(t))
+}
+
+// String implements fmt.Stringer.
+func (t Transport) String() string { return string(t) }
 
 // AuthConfig is optional OAuth2 / API key metadata inside config_json.
 type AuthConfig struct {
@@ -24,7 +77,7 @@ type AuthConfig struct {
 
 // ServerConfig is the canonical shape of mcp_server.config_json.
 type ServerConfig struct {
-	Transport              string            `json:"transport"`
+	Transport              Transport         `json:"transport"`
 	URL                    string            `json:"url"`
 	Command                string            `json:"command"`
 	Args                   []string          `json:"args"`
@@ -48,6 +101,7 @@ func DefaultJSON(raw string) string {
 }
 
 // ParseServerConfigJSON unmarshals config_json; empty input becomes an empty config.
+// Transport aliases are automatically normalized (e.g. "streamable_http" → "streamable").
 func ParseServerConfigJSON(raw string) (ServerConfig, error) {
 	raw = DefaultJSON(raw)
 	var c ServerConfig
@@ -57,17 +111,22 @@ func ParseServerConfigJSON(raw string) (ServerConfig, error) {
 	return c, nil
 }
 
+// DurationSec converts seconds to time.Duration; non-positive returns zero.
+func DurationSec(sec int) time.Duration {
+	if sec <= 0 {
+		return 0
+	}
+	return time.Duration(sec) * time.Second
+}
+
 // ToTRPCConnectionConfig is the SINGLE canonical mapping from platform ServerConfig
-// to trpc-agent-go MCP connection settings. All runtime code paths (toolset.go,
-// mcp_production.go) must call this instead of constructing trpcmcp.ConnectionConfig
-// manually so transport/timeout/env stay aligned. TPM-P1-12.
-//
-// Note: Headers map is shared by reference; callers that mutate (e.g. inject
-// Authorization) should clone first.
+// to trpc-agent-go MCP connection settings. All runtime code paths must call this
+// instead of constructing trpcmcp.ConnectionConfig manually so transport normalization,
+// timeout defaults, and field mapping stay aligned. TPM-D-M1.
 func ToTRPCConnectionConfig(sc ServerConfig) trpcmcp.ConnectionConfig {
-	transport := NormalizeTransport(sc.Transport)
+	transport := string(sc.Transport)
 	if transport == "" {
-		transport = TransportStdio
+		transport = string(TransportStdio)
 	}
 	cfg := trpcmcp.ConnectionConfig{
 		Transport: transport,
@@ -82,50 +141,22 @@ func ToTRPCConnectionConfig(sc ServerConfig) trpcmcp.ConnectionConfig {
 	return cfg
 }
 
-// DurationSec converts seconds to time.Duration; non-positive returns zero.
-func DurationSec(sec int) time.Duration {
-	if sec <= 0 {
-		return 0
-	}
-	return time.Duration(sec) * time.Second
-}
-
-// Canonical transport string values used across probe / runtime / observer.
-// Keep in sync with trpc-agent-go/tool/mcp/config.go which accepts both
-// "streamable" and "streamable_http"; we always emit "streamable".
-const (
-	TransportStdio      = "stdio"
-	TransportSSE        = "sse"
-	TransportStreamable = "streamable"
-)
-
-// transportAliases is the single source of truth for transport name normalization.
-// Add new aliases here so all callers (probe, runtime, observer, ToTRPCConnectionConfig)
-// stay aligned. TPM-P1-10.
-var transportAliases = map[string]string{
-	"stdio":           TransportStdio,
-	"sse":             TransportSSE,
-	"streamable":      TransportStreamable,
-	"streamable_http": TransportStreamable,
-	"streamablehttp":  TransportStreamable,
-	"http":            TransportStreamable, // backward compat with early configs
-}
-
 // NormalizeTransport maps any accepted UI/API transport spelling to its canonical
 // value. Unknown values are returned as-is (lower-cased trimmed) so callers can
 // validate via IsKnownTransport and return precise errors.
 func NormalizeTransport(t string) string {
 	key := strings.ToLower(strings.TrimSpace(t))
 	if canon, ok := transportAliases[key]; ok {
-		return canon
+		return string(canon)
 	}
 	return key
 }
 
 // IsKnownTransport reports whether t (after normalization) is a supported transport.
 func IsKnownTransport(t string) bool {
-	switch NormalizeTransport(t) {
-	case TransportStdio, TransportSSE, TransportStreamable:
+	nt := NormalizeTransport(t)
+	switch nt {
+	case string(TransportStdio), string(TransportSSE), string(TransportStreamable):
 		return true
 	}
 	return false
@@ -133,5 +164,5 @@ func IsKnownTransport(t string) bool {
 
 // KnownTransports returns canonical transport names for error messages and UI hints.
 func KnownTransports() []string {
-	return []string{TransportStdio, TransportSSE, TransportStreamable}
+	return []string{string(TransportStdio), string(TransportSSE), string(TransportStreamable)}
 }

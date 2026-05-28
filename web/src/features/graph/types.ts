@@ -176,7 +176,7 @@ export type NodeStyleConfig = {
 export const NODE_TYPE_STYLES: Record<NodeType, NodeStyleConfig> = {
   function: { shape: "box", fillColor: "var(--graph-node-function-fill)", borderColor: "var(--graph-node-function-border)", icon: "functions", label: "Function" },
   llm: { shape: "box", fillColor: "var(--graph-node-llm-fill)", borderColor: "var(--graph-node-llm-border)", icon: "psychology", label: "LLM" },
-  tool: { shape: "box", fillColor: "var(--graph-node-tool-fill)", borderColor: "var(--graph-node-tool-border)", icon: "handyman", label: "Tool" },
+  tool: { shape: "box", fillColor: "var(--graph-node-tool-fill)", borderColor: "var(--graph-node-tool-border)", icon: "build", label: "Tool" },
   agent: { shape: "box", fillColor: "var(--graph-node-agent-fill)", borderColor: "var(--graph-node-agent-border)", icon: "smart_toy", label: "Agent" },
   router: { shape: "diamond", fillColor: "var(--graph-node-router-fill)", borderColor: "var(--graph-node-router-border)", icon: "alt_route", label: "Router" },
   join: { shape: "diamond", fillColor: "var(--graph-node-join-fill)", borderColor: "var(--graph-node-join-border)", icon: "merge_type", label: "Join" },
@@ -185,9 +185,9 @@ export const NODE_TYPE_STYLES: Record<NodeType, NodeStyleConfig> = {
 
 export const EXECUTION_STATUS_STYLES: Record<string, { color: string; icon: string; label: string }> = {
   idle: { color: "grey", icon: "radio_button_unchecked", label: "等待" },
-  running: { color: "blue", icon: "sync", label: "运行中" },
-  completed: { color: "green", icon: "check_circle", label: "完成" },
-  failed: { color: "red", icon: "error", label: "失败" },
+  running: { color: "cyan", icon: "sync", label: "运行中" },
+  completed: { color: "emerald", icon: "check_circle", label: "完成" },
+  failed: { color: "pink", icon: "error", label: "失败" },
   interrupted: { color: "amber", icon: "pause_circle", label: "中断" },
   waiting: { color: "grey-6", icon: "schedule", label: "等待" },
 };

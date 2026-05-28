@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"strings"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -47,4 +48,15 @@ func NewToolSetRegistration(name, description string, factory func(ctx context.C
 		ToolSetFactory:   factory,
 		EnabledByDefault: false,
 	}
+}
+
+func ConfigString(m map[string]any, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := m[k]; ok {
+			if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
+				return strings.TrimSpace(s)
+			}
+		}
+	}
+	return ""
 }

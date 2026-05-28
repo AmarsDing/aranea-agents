@@ -53,6 +53,7 @@ func TestRepoStatsRecorder_IncrementStats(t *testing.T) {
 		t.Fatalf("count=%d", repo.count)
 	}
 	rec := NewRepoStatsRecorder(repo, nil)
+	defer rec.Close()
 	rec.Record(context.Background(), "audit_log", "after_tool", "ok")
 }
 

@@ -87,6 +87,37 @@ type TracesQuery struct {
 	Status   string
 }
 
+type TraceWrite struct {
+	TraceID       string
+	SessionID     string
+	RunID         string
+	InvocationID  string
+	AgentID       string
+	TeamID        string
+	ParentTraceID string
+	Name          string
+	Status        string
+	DurationMs    int64
+	SpanCount     int
+	ErrorCount    int
+	TotalTokens   int64
+	TotalCostUsd  float64
+	MetadataJSON  string
+}
+
+type TraceSpanWrite struct {
+	TraceID        string
+	SpanID         string
+	ParentSpanID   string
+	Kind           string
+	Name           string
+	StartedAt      int64
+	EndedAt        int64
+	Status         string
+	AttributesJSON string
+	ErrorJSON      string
+}
+
 // ListResult is a paginated list of platform rows.
 type ListResult struct {
 	Items []PlatformRow
@@ -144,6 +175,14 @@ type AlertNotifier interface {
 }
 
 // Repo abstracts monitor persistence.
+type RunnerCompletionRow struct {
+	TraceID   string
+	SessionID string
+	RunID     string
+	AgentID   string
+	Status    string
+}
+
 type Repo interface {
 	ListAuditLogs(ctx context.Context, query AuditQuery) (AuditListResult, error)
 	InsertAuditLog(ctx context.Context, entry AuditLog) error
@@ -154,13 +193,16 @@ type Repo interface {
 	GetMonitorTrace(ctx context.Context, id string) (PlatformRow, error)
 	ListAlertRules(ctx context.Context) ([]AlertRule, error)
 	ReplaceAlertRules(ctx context.Context, rules []AlertRule) error
-	// UpdateAlertFiringState persists the firing state machine columns (MON-OPT-02).
-	// SQLite: runs inside BEGIN IMMEDIATE to prevent duplicate fires on restart.
 	UpdateAlertFiringState(ctx context.Context, id string, state AlertFiringState, lastFiredAt *time.Time, lastFiredValue float64, recoveredAt *time.Time) error
 	CountMonitorEventsSince(ctx context.Context, eventKey, status, sinceRFC3339 string) (int32, error)
 	AvgRunnerCompletionDurationMsSince(ctx context.Context, sinceRFC3339 string) (float64, error)
 	ExistsRunnerCompletion(ctx context.Context, sessionID, invocationID string) (bool, error)
 	PatchRunnerCompletionMetadata(ctx context.Context, sessionID, runID, invocationID, patchJSON string) (bool, error)
+	InsertMonitorTrace(ctx context.Context, tw TraceWrite) error
+	UpsertMonitorTraceSpan(ctx context.Context, sw TraceSpanWrite) error
+	UpdateMonitorTraceCompletion(ctx context.Context, traceID string, status string, durationMs int64, spanCount, errorCount int, totalTokens int64, totalCostUsd float64) error
+	EnsureTraceSchema(ctx context.Context) error
+	ListRecentRunnerCompletions(ctx context.Context, since time.Duration, limit int) ([]RunnerCompletionRow, error)
 }
 
 // RunnerMetricsSummary aggregates runner.completion monitor events.
@@ -187,6 +229,9 @@ type Usecase struct {
 	rulesCache  []AlertRule
 	rulesExpire time.Time
 	rulesMu     sync.RWMutex
+	ringBuffer  *MetricRingBuffer
+	evalWorker  *AlertEvalWorker
+	registry    *AlertMetricRegistry
 }
 
 const rulesCacheTTL = 5 * time.Minute
@@ -197,6 +242,41 @@ func (u *Usecase) SetFilesystemHealthReader(r FilesystemHealthReader) {
 		return
 	}
 	u.fsHealth = r
+}
+
+func (u *Usecase) SetRingBuffer(rb *MetricRingBuffer) {
+	if u == nil {
+		return
+	}
+	u.ringBuffer = rb
+}
+
+func (u *Usecase) SetEvalWorker(w *AlertEvalWorker) {
+	if u == nil {
+		return
+	}
+	u.evalWorker = w
+}
+
+func (u *Usecase) EvalWorker() *AlertEvalWorker {
+	if u == nil {
+		return nil
+	}
+	return u.evalWorker
+}
+
+func (u *Usecase) SetRegistry(r *AlertMetricRegistry) {
+	if u == nil {
+		return
+	}
+	u.registry = r
+}
+
+func (u *Usecase) Registry() *AlertMetricRegistry {
+	if u == nil {
+		return nil
+	}
+	return u.registry
 }
 
 // NewUsecase constructs a MonitorUsecase.
@@ -299,12 +379,77 @@ func (u *Usecase) EvaluateAlerts(ctx context.Context) {
 		if !rule.Enabled {
 			continue
 		}
-		switch strings.TrimSpace(rule.MetricKey) {
+		metricKey := strings.TrimSpace(rule.MetricKey)
+		if u.registry != nil {
+			if m, ok := u.registry.Get(metricKey); ok {
+				window := time.Duration(rule.WindowMinutes) * time.Minute
+				if window <= 0 {
+					window = 60 * time.Minute
+				}
+				value, err := m.Evaluate(ctx, window)
+				if err != nil {
+					event.SysLogWarn("system.monitor.alert_eval_fail", "EvaluateAlerts: metric evaluation failed",
+						event.P("rule_id", rule.ID), event.P("metric_key", metricKey), event.P("error", err.Error()))
+					continue
+				}
+				u.evaluateMetricValue(ctx, rule, value)
+			}
+			continue
+		}
+		switch metricKey {
 		case "runner.error_rate":
 			u.evaluateRunnerErrorRate(ctx, rule)
 		case "skill.filesystem_missing_count":
 			u.evaluateSkillFilesystemMissingCount(ctx, rule)
 		}
+	}
+}
+
+func (u *Usecase) evaluateMetricValue(ctx context.Context, rule AlertRule, value float64) {
+	now := time.Now().UTC()
+	if rule.FiringState == AlertFiringStateFiring && value < recoveryThreshold(rule) {
+		u.MarkAlertRecovered(ctx, rule, now)
+		meta, _ := json.Marshal(map[string]any{
+			"rule_id": rule.ID, "metric_key": rule.MetricKey, "value": value, "recovery_threshold": recoveryThreshold(rule),
+		})
+		_ = u.RecordMonitorEvent(ctx, EventWrite{
+			EventKey: "alert.recovered", Name: rule.Name,
+			Description:  fmt.Sprintf("%s %.2f recovered below %.2f", rule.MetricKey, value, recoveryThreshold(rule)),
+			Status:       "recovered", MetadataJSON: string(meta),
+		})
+		if u.notifier != nil {
+			u.notifier.Notify(ctx, rule, map[string]any{
+				"rule_id": rule.ID, "name": rule.Name, "metric_key": rule.MetricKey,
+				"value": value, "recovered_at": now.Format(time.RFC3339),
+			})
+		}
+		return
+	}
+	if value < rule.Threshold {
+		return
+	}
+	if !u.ShouldFireAlert(rule, now) {
+		return
+	}
+	u.MarkAlertFiredPersistent(ctx, rule, now, value)
+	meta, _ := json.Marshal(map[string]any{
+		"rule_id": rule.ID, "metric_key": rule.MetricKey, "value": value, "threshold": rule.Threshold,
+	})
+	if err := u.RecordMonitorEvent(ctx, EventWrite{
+		EventKey: "alert.fired", Name: rule.Name,
+		Description:  fmt.Sprintf("%s %.2f >= %.2f", rule.MetricKey, value, rule.Threshold),
+		Status:       strings.TrimSpace(rule.Severity), MetadataJSON: string(meta),
+	}); err != nil {
+		event.SysLogWarn("system.monitor.alert_fired_persist_fail", "RecordMonitorEvent for alert.fired failed",
+			event.P("rule_id", rule.ID), event.P("error", err.Error()))
+	}
+	payload := map[string]any{
+		"rule_id": rule.ID, "name": rule.Name, "metric_key": rule.MetricKey,
+		"value": value, "threshold": rule.Threshold,
+		"severity": strings.TrimSpace(rule.Severity), "fired_at": now.Format(time.RFC3339),
+	}
+	if u.notifier != nil {
+		u.notifier.Notify(ctx, rule, payload)
 	}
 }
 
@@ -319,6 +464,7 @@ func (u *Usecase) cachedAlertRules(ctx context.Context) []AlertRule {
 
 	rules, err := u.repo.ListAlertRules(ctx)
 	if err != nil {
+		event.SysLogWarn("system.monitor.alert_rules_load_fail", "cachedAlertRules: ListAlertRules failed", event.P("error", err.Error()))
 		return nil
 	}
 
@@ -338,22 +484,34 @@ func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {
 	if window <= 0 {
 		window = 60
 	}
-	since := time.Now().UTC().Add(-time.Duration(window) * time.Minute).Format(time.RFC3339)
-	total, errTotal := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since)
-	if errTotal != nil {
-		event.SysLogWarn("system.monitor.alert_count_fail", "EvaluateAlerts: CountMonitorEventsSince(total) failed", event.P("rule_id", rule.ID), event.P("error", errTotal.Error()))
-		return
+
+	var total int32
+	var errors int32
+
+	if u.ringBuffer != nil {
+		wr := u.ringBuffer.SumLastN(window)
+		total = int32(wr.Total)
+		errors = int32(wr.Errors)
+	} else {
+		since := time.Now().UTC().Add(-time.Duration(window) * time.Minute).Format(time.RFC3339)
+		var errTotal error
+		total, errTotal = u.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since)
+		if errTotal != nil {
+			event.SysLogWarn("system.monitor.alert_count_fail", "EvaluateAlerts: CountMonitorEventsSince(total) failed", event.P("rule_id", rule.ID), event.P("error", errTotal.Error()))
+			return
+		}
+		var errErrors error
+		errors, errErrors = u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since)
+		if errErrors != nil {
+			event.SysLogWarn("system.monitor.alert_count_fail", "EvaluateAlerts: CountMonitorEventsSince(errors) failed", event.P("rule_id", rule.ID), event.P("error", errErrors.Error()))
+			return
+		}
 	}
+
 	if total == 0 {
-		// MON-OPT-02: if rule is firing and there are 0 completions, treat as recovered.
 		if rule.FiringState == AlertFiringStateFiring {
 			u.MarkAlertRecovered(ctx, rule, time.Now().UTC())
 		}
-		return
-	}
-	errors, errErrors := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since)
-	if errErrors != nil {
-		event.SysLogWarn("system.monitor.alert_count_fail", "EvaluateAlerts: CountMonitorEventsSince(errors) failed", event.P("rule_id", rule.ID), event.P("error", errErrors.Error()))
 		return
 	}
 	rate := float64(errors) / float64(total)
@@ -727,4 +885,24 @@ func MergeRunnerCompletionUsagePatch(usageEventID, traceID string) string {
 		return "{}"
 	}
 	return string(raw)
+}
+
+func (u *Usecase) RebuildRingBuffer(ctx context.Context, rb *MetricRingBuffer) {
+	if u == nil || u.repo == nil || rb == nil {
+		return
+	}
+	since := time.Now().UTC().Add(-time.Duration(defaultBucketCapacity) * time.Minute).Format(time.RFC3339)
+	total, errT := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since)
+	if errT != nil {
+		return
+	}
+	errors, errE := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since)
+	if errE != nil {
+		return
+	}
+	rb.mu.Lock()
+	b := rb.ensureBucket()
+	b.totals["runner.completion"] = int64(total)
+	b.errors["runner.completion"] = int64(errors)
+	rb.mu.Unlock()
 }

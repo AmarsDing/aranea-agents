@@ -148,6 +148,19 @@ async function openDetail(tool: Tool) {
 }
 
 async function updateRisk(tool: Tool, value: string) {
+  if (value === "critical" || value === "high") {
+    $q.dialog({
+      title: "风险级别变更",
+      message: `确定将「${tool.display_name || tool.key}」的风险级别设为「${value}」？这可能影响工具的调用策略。`,
+      cancel: true,
+      persistent: true
+    }).onOk(() => doUpdateRisk(tool, value));
+    return;
+  }
+  await doUpdateRisk(tool, value);
+}
+
+async function doUpdateRisk(tool: Tool, value: string) {
   try {
     await toolsStore.editTool(tool.id || tool.key, {
       key: tool.key,

@@ -5,6 +5,9 @@ import "aranea-agents/internal/biz/skill"
 type (
 	SkillTag                = skill.SkillTag
 	SkillVersionSummary     = skill.SkillVersionSummary
+	SkillVersionDetail      = skill.SkillVersionDetail
+	SkillVersionListQuery   = skill.VersionListQuery
+	SkillVersionListResult  = skill.VersionListResult
 	SkillPermissions        = skill.SkillPermissions
 	Skill                   = skill.Skill
 	SkillListQuery          = skill.ListQuery

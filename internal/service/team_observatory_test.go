@@ -88,9 +88,9 @@ func TestGetTeamRunObservatory(t *testing.T) {
 			ID:             "t1",
 			DefinitionJSON: `{"members":[{"agent_id":"a1","sort_order":1,"name":"A"}]}`,
 		},
-		run: biz.TeamRun{ID: "run-1", TeamID: "t1", SessionID: "s1", Status: "success", Mode: "sequential"},
-		steps: []biz.TeamRunStep{
-			{AgentID: "a1", AgentKey: "k1", AgentName: "A", SortOrder: 1, Status: "ok", OutputPreview: "done"},
+		run: biz.TeamRun{ID: "run-1", TeamID: "t1", SessionID: "s1", Status: biz.TeamRunStatusSuccess, Mode: "sequential"},
+	steps: []biz.TeamRunStep{
+		{AgentID: "a1", AgentKey: "k1", AgentName: "A", SortOrder: 1, Status: biz.TeamMemberStepStatusOK, OutputPreview: "done"},
 		},
 	}
 	svc := &TeamService{uc: biz.NewTeamUsecase(repo, nil)}
@@ -98,7 +98,7 @@ func TestGetTeamRunObservatory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(resp.Nodes) != 1 || resp.Nodes[0].Status != "success" {
+	if len(resp.Nodes) != 1 || resp.Nodes[0].Status != string(biz.AgentNodeStatusSuccess) {
 		t.Fatalf("resp: %+v", resp.Nodes)
 	}
 }

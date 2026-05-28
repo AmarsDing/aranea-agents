@@ -51,7 +51,7 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 	runID := uuid.NewString()
 	teamCtx, teamCancel := context.WithCancel(ctx)
 	o.runs.StoreCancelable(sessionID, runID, teamCancel)
-	o.setRunStatus(ctx, sessionID, runID, "running", "")
+	o.setRunStatus(ctx, sessionID, runID, biz.TeamRunStatusRunning, "")
 	if unlock != nil {
 		unlock()
 	}
@@ -63,7 +63,7 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 	// Hook: Build + Run (TeamsNative encapsulates team runtime build/project/persist).
 	userMsg, assistantMsg, err = o.team.TeamsNative.RunTurnFromInput(teamCtx, sess, input)
 	if err != nil {
-		o.setRunStatus(ctx, sessionID, runID, "failed", err.Error())
+		o.setRunStatus(ctx, sessionID, runID, biz.TeamRunStatusFailed, err.Error())
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		return userMsg, assistantMsg, err
 	}

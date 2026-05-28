@@ -37,7 +37,7 @@
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
         <q-btn flat no-caps label="取消" @click="$emit('update:open', false)" />
-        <q-btn color="primary" unelevated no-caps label="运行" :loading="loading" @click="$emit('submit')" />
+        <q-btn color="primary" unelevated no-caps label="运行" :loading="loading" :disable="!agentId" @click="$emit('submit')" />
       </q-card-actions>
     </q-card>
   </q-dialog>

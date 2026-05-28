@@ -1,7 +1,7 @@
 # Team Graph 代码层 Review（业务逻辑 / 代码质量 / 架构设计）
 
-> **评分**：80 / 100 | **风险等级**：P1
-> **审查时间**：2026-05-26
+> **评分**：80 / 100 → **88 / 100**（Phase 8 修复后） | **风险等级**：P1 → P2
+> **审查时间**：2026-05-26 | **Phase 8 修复时间**：2026-05-28
 > **范围**：`internal/team/`（共 58 个 Go 文件 / ~6.5k 行；不含 frontend、不含 docs）
 > **聚焦**：team graph 编译、graph runtime、HITL/resume 协调、step 持久化、native fallback、可观测投影
 > **真相源**：`docs/AGENT_RUNTIME_BOUNDARY.md`、`.cursor/rules/trpc-agent-framework-first.mdc`
@@ -803,11 +803,51 @@ type FailureDecision struct {
 - **架构边界基本干净**：biz / team / service 三层职责清楚，端口化（`TeamTurnRuntime` 等）符合 trpc-agent-framework-first 规则；红线无违反。
 - **主要代码债集中在三处**（§4 / §6）：
   1. `runner_team_trpc.go` 620 行 God Function 未投入已提取的拆分 helper；
-  2. 状态字面量未常量化导致 `failed/error` 字面分裂；
+  2. ~~状态字面量未常量化导致 `failed/error` 字面分裂~~ → ✅ Phase 8 已修复（BL-07）；
   3. 维护代码与测试代码出现**幽灵函数 / 永不触发的 GC**（`persistGraphMemberStepsFromResult` / `CleanupStaleSessions`）。
 - **主要业务逻辑债集中在四处**（§9）：
-  1. 双轨架构（Graph/Native）已过历史使命，建议单轨化（BL-01）；
-  2. mode 与 embedded graph 双重真相源（BL-10）；
-  3. HITL 超时混用了"程序响应"与"人审 SLA"语义（BL-04）；
-  4. 关键决策依赖 LLM 文本解析（BL-03）。
-- **建议**：本迭代解决 TG-Q-01..05 + BL-07/06/03 简化版（合并 4-5 个 PR）；下个季度推进 BL-01 单轨化与 BL-04 HITL 重设计。
+  1. ~~双轨架构（Graph/Native）已过历史使命，建议单轨化（BL-01）~~ → ✅ Phase 8 已修复（Native 仅紧急熔断）；
+  2. ~~mode 与 embedded graph 双重真相源（BL-10）~~ → ✅ Phase 8 已修复（编译器统一走 embedded graph）；
+  3. ~~HITL 超时混用了"程序响应"与"人审 SLA"语义（BL-04）~~ → ✅ Phase 8 已修复（SLA 有界延期）；
+  4. ~~关键决策依赖 LLM 文本解析（BL-03）~~ → ✅ Phase 8 已修复（OrchestrationControlTool 协议化）。
+- **建议**：~~本迭代解决 TG-Q-01..05 + BL-07/06/03 简化版~~ → ✅ Phase 8.1 已完成；~~下个季度推进 BL-01 单轨化与 BL-04 HITL 重设计~~ → ✅ Phase 8.2 已完成。剩余 Phase 8.3（BL-02/04b/05/09）待后续迭代。
+
+---
+
+## 11. Phase 8 修复追踪（2026-05-28）
+
+### 评分更新
+
+| 维度 | 原始 | 修复后 | 改善说明 |
+|------|------|--------|----------|
+| 业务逻辑正确性 | 17 | 19 | 状态机常量化 + 协议化决策消除字符串解析脆弱性 |
+| 架构一致性 | 21 | 24 | 编译器统一路径 + 单轨化消除双开关 + 共享类型归 biz |
+| 代码质量 | 17 | 18 | 删除 ~170 行死代码 + 冗余别名 + 死代码 |
+| 测试覆盖 | 6 | 8 | 新增 4 个测试文件 22+ 用例 |
+| 可扩展性与抽象 | 12 | 13 | critic_loop 条件边自动生成 + OrchestrationControlTool 可扩展 |
+| 文档/注释一致性 | 7 | 6 | Native 弃用计划已明确但文档同步尚在进行 |
+| **合计** | **80** | **88** | +8 |
+
+### 已修复问题对照
+
+| 原问题 ID | 问题 | 修复 | BL |
+|-----------|------|------|-----|
+| TG-Q-01 | `failed` vs `error` 字面量分裂 | `biz.TeamRunStatus*` 常量统一 | BL-07 |
+| §4.3 | `parseOrchestrationCheckpoint` 死代码 | 删除 | CLEAN |
+| §9.1 BL-01 | 双轨架构历史包袱 | Native 仅 `ARANEA_TEAM_NATIVE=1` 紧急熔断 | BL-01 |
+| §9.3 BL-03 | LLM 文本协议脆弱 | `OrchestrationControlTool` 协议化 | BL-03 |
+| §9.4 BL-04 | HITL 超时语义混用 | `watchTimeout` vs `hitlSLATimeout` + `maxHITLSLAExtensions` | BL-04 |
+| §9.6 BL-06 | DefinitionJSON 重复 unmarshal | `parseRuntimeOptions` 一次解析 | BL-06 |
+| §9.7 BL-07 | 状态机散落字符串 | `ValidateTeamRunTransition` + 常量 | BL-07 |
+| §9.10 BL-10 | mode vs embedded graph 双重真相源 | `generateGraphSpecFromMode` 统一编译路径 | BL-10 |
+| DRY | `OrchestrationDecision` / `extractScore` 跨包重复 | 提取到 `biz/team_types.go` | DRY |
+
+### 遗留问题
+
+| 问题 | 优先级 | 说明 |
+|------|--------|------|
+| `runner_team_trpc.go` 620 行 God Function | P2 | 需独立 PR 拆分 |
+| `persistGraphMemberStepsFromResult` 幽灵函数 | P2 | 依赖 BL-05 事件驱动统一 |
+| `CleanupStaleSessions` 未被调度 | P2 | 依赖 BL-04b session 持久化 |
+| `RegisterCriticLoopCondFunc(registry, 0)` 阈值硬编码 | P3 | 需框架 API 变更 |
+| `strings.Contains(content, "approved")` 过于宽泛 | P3 | 向后兼容考虑 |

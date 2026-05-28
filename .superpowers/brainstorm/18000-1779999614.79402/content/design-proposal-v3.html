@@ -1,0 +1,228 @@
+<h2>Graph UI 优化方案 v3（科幻科技感）</h2>
+<p class="subtitle">细线霓虹 · 紧凑布局 · 科幻交互</p>
+
+<div class="section">
+  <h3>① 霓虹发光流动边线 — 细线科幻</h3>
+  <p class="subtitle">1px 细线 + 微光晕 + 流动光点，科幻感十足</p>
+  <div class="mockup">
+    <div class="mockup-header">4 种边线类型（细线版）</div>
+    <div class="mockup-body" style="padding:28px 20px; background:#0a0a14; display:flex; flex-direction:column; gap:24px">
+      <div style="display:flex; align-items:center; gap:20px">
+        <div style="position:relative; width:200px; height:2px; overflow:visible">
+          <div style="position:absolute; inset:0; height:1px; border-radius:1px; background:rgba(96,165,250,0.5); box-shadow:0 0 4px rgba(96,165,250,0.3), 0 0 8px rgba(96,165,250,0.15)"></div>
+          <div style="position:absolute; top:-3px; width:8px; height:8px; border-radius:50%; background:#93c5fd; box-shadow:0 0 6px #93c5fd, 0 0 14px rgba(147,197,253,0.5); animation:flow-dot2 2.5s linear infinite"></div>
+        </div>
+        <div>
+          <div style="font-weight:700; font-size:13px; color:#93c5fd; letter-spacing:0.02em">普通边</div>
+          <div style="font-size:10px; color:#475569">1px · 蓝色微光 · 慢速光点</div>
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:20px">
+        <div style="position:relative; width:200px; height:2px; overflow:visible">
+          <div style="position:absolute; inset:0; height:1px; border-radius:1px; background:repeating-linear-gradient(90deg, rgba(244,114,182,0.6) 0, rgba(244,114,182,0.6) 6px, transparent 6px, transparent 11px); box-shadow:0 0 4px rgba(244,114,182,0.25), 0 0 8px rgba(244,114,182,0.1)"></div>
+          <div style="position:absolute; top:-3px; width:7px; height:7px; border-radius:50%; background:#f9a8d4; box-shadow:0 0 6px #f9a8d4, 0 0 14px rgba(249,168,212,0.5); animation:flow-dot2 2s linear infinite"></div>
+        </div>
+        <div>
+          <div style="font-weight:700; font-size:13px; color:#f9a8d4; letter-spacing:0.02em">条件边</div>
+          <div style="font-size:10px; color:#475569">1px 虚线 · 粉红微光 · 中速光点 + 标签</div>
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:20px">
+        <div style="position:relative; width:200px; height:2px; overflow:visible">
+          <div style="position:absolute; inset:0; height:1px; border-radius:1px; background:repeating-linear-gradient(90deg, rgba(251,191,36,0.6) 0, rgba(251,191,36,0.6) 4px, transparent 4px, transparent 7px); box-shadow:0 0 4px rgba(251,191,36,0.25), 0 0 8px rgba(251,191,36,0.1)"></div>
+          <div style="position:absolute; top:-3px; width:7px; height:7px; border-radius:50%; background:#fde68a; box-shadow:0 0 6px #fde68a, 0 0 14px rgba(253,230,138,0.5); animation:flow-dot2 1.2s linear infinite"></div>
+        </div>
+        <div>
+          <div style="font-weight:700; font-size:13px; color:#fde68a; letter-spacing:0.02em">Transfer 边</div>
+          <div style="font-size:10px; color:#475569">1px 短虚线 · 琥珀微光 · 快速光点</div>
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:20px">
+        <div style="position:relative; width:200px; height:2px; overflow:visible">
+          <div style="position:absolute; inset:0; height:1px; border-radius:1px; background:repeating-linear-gradient(90deg, rgba(52,211,153,0.6) 0, rgba(52,211,153,0.6) 8px, transparent 8px, transparent 15px); box-shadow:0 0 4px rgba(52,211,153,0.25), 0 0 8px rgba(52,211,153,0.1)"></div>
+          <div style="position:absolute; top:-3px; width:7px; height:7px; border-radius:50%; background:#6ee7b7; box-shadow:0 0 6px #6ee7b7, 0 0 14px rgba(110,231,183,0.5); animation:flow-dot2 3s linear infinite"></div>
+        </div>
+        <div>
+          <div style="font-weight:700; font-size:13px; color:#6ee7b7; letter-spacing:0.02em">Dispatch 边</div>
+          <div style="font-size:10px; color:#475569">1px 长虚线 · 翡翠微光 · 慢速光点</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <style>@keyframes flow-dot2 { 0% { left:-10px; } 100% { left:200px; } }</style>
+</div>
+
+<div class="section">
+  <h3>② 列表页 — 紧凑双列布局</h3>
+  <p class="subtitle">双列卡片 + 信息紧凑排列 + 无多余留白</p>
+  <div class="mockup">
+    <div class="mockup-header">优化后列表页（紧凑版）</div>
+    <div class="mockup-body" style="padding:16px; background:#0a0a14; font-family:system-ui,sans-serif">
+      <div style="display:flex; gap:8px; margin-bottom:12px; align-items:center">
+        <div style="flex:1; padding:8px 12px; border-radius:8px; border:1px solid rgba(96,165,250,0.2); background:rgba(96,165,250,0.04); display:flex; align-items:center; gap:8px">
+          <span style="color:#60a5fa; font-size:12px">🔍</span><span style="color:#475569; font-size:12px">搜索…</span>
+        </div>
+        <div style="padding:8px 12px; border-radius:8px; border:1px solid rgba(148,163,184,0.15); color:#64748b; font-size:12px">引擎 ▾</div>
+        <div style="padding:8px 12px; border-radius:8px; border:1px solid rgba(148,163,184,0.15); color:#64748b; font-size:12px">排序 ▾</div>
+        <div style="padding:8px 14px; border-radius:8px; background:linear-gradient(135deg, #3b82f6, #6366f1); color:white; font-weight:700; font-size:12px; box-shadow:0 0 10px rgba(99,102,241,0.25)">+ 新增</div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+        <div style="padding:14px; border:1px solid rgba(52,211,153,0.2); border-radius:12px; background:linear-gradient(135deg, rgba(52,211,153,0.03), rgba(96,165,250,0.03)); box-shadow:0 0 16px rgba(52,211,153,0.06), 0 2px 8px rgba(0,0,0,0.3)">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px">
+            <span style="font-weight:900; font-size:14px; color:#f1f5f9">智能客服工作流</span>
+            <span style="font-size:10px; color:#475569">2m ago</span>
+          </div>
+          <div style="font-size:11px; color:#64748b; margin-bottom:8px; line-height:1.4">多轮对话 + 知识库检索 + 人工审批</div>
+          <div style="display:flex; gap:4px; flex-wrap:wrap; margin-bottom:8px">
+            <span style="padding:2px 6px; border-radius:4px; background:rgba(52,211,153,0.1); color:#34d399; font-size:9px; font-weight:700; border:1px solid rgba(52,211,153,0.12)">🤖×2</span>
+            <span style="padding:2px 6px; border-radius:4px; background:rgba(96,165,250,0.1); color:#60a5fa; font-size:9px; font-weight:700; border:1px solid rgba(96,165,250,0.12)">🧠×1</span>
+            <span style="padding:2px 6px; border-radius:4px; background:rgba(244,114,182,0.1); color:#f472b6; font-size:9px; font-weight:700; border:1px solid rgba(244,114,182,0.12)">🔀×1</span>
+            <span style="padding:2px 6px; border-radius:4px; background:rgba(251,146,60,0.1); color:#fb923c; font-size:9px; font-weight:700; border:1px solid rgba(251,146,60,0.12)">✋×1</span>
+            <span style="padding:2px 6px; border-radius:4px; background:rgba(52,211,153,0.08); color:#34d399; font-size:9px; font-weight:600; border:1px solid rgba(52,211,153,0.1)">DAG</span>
+            <span style="padding:2px 6px; border-radius:4px; background:rgba(251,191,36,0.08); color:#fbbf24; font-size:9px; font-weight:600; border:1px solid rgba(251,191,36,0.1)">检查点</span>
+          </div>
+          <div style="display:flex; gap:6px; align-items:center">
+            <div style="padding:4px 12px; border-radius:6px; background:linear-gradient(135deg, #22c55e, #34d399); color:white; font-weight:700; font-size:11px; box-shadow:0 0 8px rgba(34,197,94,0.25)">▶ 执行</div>
+            <div style="padding:4px 8px; border-radius:6px; border:1px solid rgba(148,163,184,0.15); color:#64748b; font-size:11px">✏️</div>
+            <div style="padding:4px 8px; border-radius:6px; border:1px solid rgba(148,163,184,0.15); color:#64748b; font-size:11px">📋</div>
+            <span style="flex:1"></span>
+            <span style="color:#475569; font-size:10px">5节点·4线</span>
+          </div>
+        </div>
+
+        <div style="padding:14px; border:1px solid rgba(96,165,250,0.2); border-radius:12px; background:linear-gradient(135deg, rgba(96,165,250,0.03), rgba(167,139,250,0.03)); box-shadow:0 0 16px rgba(96,165,250,0.06), 0 2px 8px rgba(0,0,0,0.3)">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px">
+            <span style="font-weight:900; font-size:14px; color:#f1f5f9">数据分析管线</span>
+            <span style="font-size:10px; color:#475569">1h ago</span>
+          </div>
+          <div style="font-size:11px; color:#64748b; margin-bottom:8px; line-height:1.4">ETL 清洗 → LLM 摘要 → 报告生成</div>
+          <div style="display:flex; gap:4px; flex-wrap:wrap; margin-bottom:8px">
+            <span style="padding:2px 6px; border-radius:4px; background:rgba(167,139,250,0.1); color:#a78bfa; font-size:9px; font-weight:700; border:1px solid rgba(167,139,250,0.12)">⚡×2</span>
+            <span style="padding:2px 6px; border-radius:4px; background:rgba(96,165,250,0.1); color:#60a5fa; font-size:9px; font-weight:700; border:1px solid rgba(96,165,250,0.12)">🧠×1</span>
+            <span style="padding:2px 6px; border-radius:4px; background:rgba(251,191,36,0.1); color:#fbbf24; font-size:9px; font-weight:700; border:1px solid rgba(251,191,36,0.12)">🔧×1</span>
+            <span style="padding:2px 6px; border-radius:4px; background:rgba(148,163,184,0.08); color:#94a3b8; font-size:9px; font-weight:600; border:1px solid rgba(148,163,184,0.1)">🔗×1</span>
+            <span style="padding:2px 6px; border-radius:4px; background:rgba(96,165,250,0.08); color:#60a5fa; font-size:9px; font-weight:600; border:1px solid rgba(96,165,250,0.1)">BSP</span>
+          </div>
+          <div style="display:flex; gap:6px; align-items:center">
+            <div style="padding:4px 12px; border-radius:6px; background:linear-gradient(135deg, #22c55e, #34d399); color:white; font-weight:700; font-size:11px; box-shadow:0 0 8px rgba(34,197,94,0.25)">▶ 执行</div>
+            <div style="padding:4px 8px; border-radius:6px; border:1px solid rgba(148,163,184,0.15); color:#64748b; font-size:11px">✏️</div>
+            <div style="padding:4px 8px; border-radius:6px; border:1px solid rgba(148,163,184,0.15); color:#64748b; font-size:11px">📋</div>
+            <span style="flex:1"></span>
+            <span style="color:#475569; font-size:10px">5节点·5线</span>
+          </div>
+        </div>
+
+        <div style="padding:14px; border:1px solid rgba(251,191,36,0.2); border-radius:12px; background:linear-gradient(135deg, rgba(251,191,36,0.03), rgba(251,146,60,0.03)); box-shadow:0 0 16px rgba(251,191,36,0.06), 0 2px 8px rgba(0,0,0,0.3)">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px">
+            <span style="font-weight:900; font-size:14px; color:#f1f5f9">审批流程</span>
+            <span style="font-size:10px; color:#475569">3d ago</span>
+          </div>
+          <div style="font-size:11px; color:#64748b; margin-bottom:8px; line-height:1.4">提交 → 审核 → 归档</div>
+          <div style="display:flex; gap:4px; flex-wrap:wrap; margin-bottom:8px">
+            <span style="padding:2px 6px; border-radius:4px; background:rgba(52,211,153,0.1); color:#34d399; font-size:9px; font-weight:700; border:1px solid rgba(52,211,153,0.12)">🤖×1</span>
+            <span style="padding:2px 6px; border-radius:4px; background:rgba(244,114,182,0.1); color:#f472b6; font-size:9px; font-weight:700; border:1px solid rgba(244,114,182,0.12)">🔀×1</span>
+            <span style="padding:2px 6px; border-radius:4px; background:rgba(251,146,60,0.1); color:#fb923c; font-size:9px; font-weight:700; border:1px solid rgba(251,146,60,0.12)">✋×1</span>
+            <span style="padding:2px 6px; border-radius:4px; background:rgba(251,191,36,0.08); color:#fbbf24; font-size:9px; font-weight:600; border:1px solid rgba(251,191,36,0.1)">检查点</span>
+          </div>
+          <div style="display:flex; gap:6px; align-items:center">
+            <div style="padding:4px 12px; border-radius:6px; background:linear-gradient(135deg, #22c55e, #34d399); color:white; font-weight:700; font-size:11px; box-shadow:0 0 8px rgba(34,197,94,0.25)">▶ 执行</div>
+            <div style="padding:4px 8px; border-radius:6px; border:1px solid rgba(148,163,184,0.15); color:#64748b; font-size:11px">✏️</div>
+            <div style="padding:4px 8px; border-radius:6px; border:1px solid rgba(148,163,184,0.15); color:#64748b; font-size:11px">📋</div>
+            <span style="flex:1"></span>
+            <span style="color:#475569; font-size:10px">3节点·2线</span>
+          </div>
+        </div>
+
+        <div style="padding:14px; border:1px solid rgba(148,163,184,0.12); border-radius:12px; background:rgba(148,163,184,0.02); border-style:dashed; display:flex; align-items:center; justify-content:center; min-height:120px; cursor:pointer">
+          <div style="text-align:center">
+            <div style="font-size:24px; color:#475569; margin-bottom:4px">+</div>
+            <div style="font-size:11px; color:#475569; font-weight:600">新增 Graph</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>③ 右键菜单 — 科幻交互</h3>
+  <p class="subtitle">无分割线 · 悬浮发光滑块 · 科技感动效</p>
+  <div class="mockup">
+    <div class="mockup-header">节点右键菜单</div>
+    <div class="mockup-body" style="padding:24px; background:#0a0a14; display:flex; justify-content:center; align-items:center; min-height:300px">
+      <div style="width:220px; border:1px solid rgba(96,165,250,0.15); border-radius:12px; background:rgba(10,10,20,0.95); backdrop-filter:blur(24px); box-shadow:0 0 20px rgba(96,165,250,0.06), 0 8px 32px rgba(0,0,0,0.6); overflow:hidden; position:relative">
+        <div style="position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg, transparent, rgba(96,165,250,0.4), transparent)"></div>
+
+        <div class="ctx-item" style="padding:9px 14px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; transition:all 0.15s; position:relative" onmouseover="this.style.background='linear-gradient(90deg, rgba(96,165,250,0.08), transparent)'; this.querySelector('.ctx-glow').style.opacity='1'" onmouseout="this.style.background='transparent'; this.querySelector('.ctx-glow').style.opacity='0'">
+          <div class="ctx-glow" style="position:absolute; left:0; top:2px; bottom:2px; width:2px; background:#60a5fa; border-radius:0 2px 2px 0; box-shadow:0 0 8px #60a5fa; opacity:0; transition:opacity 0.15s"></div>
+          <span style="color:#e2e8f0; font-size:12px; font-weight:600; padding-left:6px">✏️ 编辑属性</span>
+          <span style="padding:1px 6px; border-radius:3px; background:rgba(96,165,250,0.08); color:#60a5fa; font-size:9px; font-weight:700; border:1px solid rgba(96,165,250,0.12)">Enter</span>
+        </div>
+
+        <div class="ctx-item" style="padding:9px 14px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; transition:all 0.15s; position:relative" onmouseover="this.style.background='linear-gradient(90deg, rgba(96,165,250,0.08), transparent)'; this.querySelector('.ctx-glow').style.opacity='1'" onmouseout="this.style.background='transparent'; this.querySelector('.ctx-glow').style.opacity='0'">
+          <div class="ctx-glow" style="position:absolute; left:0; top:2px; bottom:2px; width:2px; background:#60a5fa; border-radius:0 2px 2px 0; box-shadow:0 0 8px #60a5fa; opacity:0; transition:opacity 0.15s"></div>
+          <span style="color:#e2e8f0; font-size:12px; font-weight:600; padding-left:6px">📋 复制节点</span>
+          <span style="padding:1px 6px; border-radius:3px; background:rgba(96,165,250,0.08); color:#60a5fa; font-size:9px; font-weight:700; border:1px solid rgba(96,165,250,0.12)">Ctrl+D</span>
+        </div>
+
+        <div class="ctx-item" style="padding:9px 14px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; transition:all 0.15s; position:relative" onmouseover="this.style.background='linear-gradient(90deg, rgba(239,68,68,0.08), transparent)'; this.querySelector('.ctx-glow').style.opacity='1'; this.querySelector('.ctx-glow').style.background='#ef4444'; this.querySelector('.ctx-glow').style.boxShadow='0 0 8px #ef4444'" onmouseout="this.style.background='transparent'; this.querySelector('.ctx-glow').style.opacity='0'">
+          <div class="ctx-glow" style="position:absolute; left:0; top:2px; bottom:2px; width:2px; background:#ef4444; border-radius:0 2px 2px 0; box-shadow:0 0 8px #ef4444; opacity:0; transition:opacity 0.15s"></div>
+          <span style="color:#f87171; font-size:12px; font-weight:600; padding-left:6px">🗑 删除节点</span>
+          <span style="padding:1px 6px; border-radius:3px; background:rgba(239,68,68,0.08); color:#f87171; font-size:9px; font-weight:700; border:1px solid rgba(239,68,68,0.12)">Del</span>
+        </div>
+
+        <div class="ctx-item" style="padding:9px 14px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; transition:all 0.15s; position:relative" onmouseover="this.style.background='linear-gradient(90deg, rgba(96,165,250,0.08), transparent)'; this.querySelector('.ctx-glow').style.opacity='1'" onmouseout="this.style.background='transparent'; this.querySelector('.ctx-glow').style.opacity='0'">
+          <div class="ctx-glow" style="position:absolute; left:0; top:2px; bottom:2px; width:2px; background:#60a5fa; border-radius:0 2px 2px 0; box-shadow:0 0 8px #60a5fa; opacity:0; transition:opacity 0.15s"></div>
+          <span style="color:#e2e8f0; font-size:12px; font-weight:600; padding-left:6px">🔗 断开所有连线</span>
+        </div>
+
+        <div class="ctx-item" style="padding:9px 14px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; transition:all 0.15s; position:relative" onmouseover="this.style.background='linear-gradient(90deg, rgba(52,211,153,0.08), transparent)'; this.querySelector('.ctx-glow').style.opacity='1'; this.querySelector('.ctx-glow').style.background='#34d399'; this.querySelector('.ctx-glow').style.boxShadow='0 0 8px #34d399'" onmouseout="this.style.background='transparent'; this.querySelector('.ctx-glow').style.opacity='0'">
+          <div class="ctx-glow" style="position:absolute; left:0; top:2px; bottom:2px; width:2px; background:#34d399; border-radius:0 2px 2px 0; box-shadow:0 0 8px #34d399; opacity:0; transition:opacity 0.15s"></div>
+          <span style="color:#34d399; font-size:12px; font-weight:600; padding-left:6px">▶ 设为入口节点</span>
+        </div>
+
+        <div class="ctx-item" style="padding:9px 14px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; transition:all 0.15s; position:relative" onmouseover="this.style.background='linear-gradient(90deg, rgba(239,68,68,0.08), transparent)'; this.querySelector('.ctx-glow').style.opacity='1'; this.querySelector('.ctx-glow').style.background='#ef4444'; this.querySelector('.ctx-glow').style.boxShadow='0 0 8px #ef4444'" onmouseout="this.style.background='transparent'; this.querySelector('.ctx-glow').style.opacity='0'">
+          <div class="ctx-glow" style="position:absolute; left:0; top:2px; bottom:2px; width:2px; background:#ef4444; border-radius:0 2px 2px 0; box-shadow:0 0 8px #ef4444; opacity:0; transition:opacity 0.15s"></div>
+          <span style="color:#f87171; font-size:12px; font-weight:600; padding-left:6px">⏹ 设为结束节点</span>
+        </div>
+
+        <div style="position:absolute; bottom:0; left:0; right:0; height:1px; background:linear-gradient(90deg, transparent, rgba(96,165,250,0.2), transparent)"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>④ 运行页进度条 — 细线科幻</h3>
+  <p class="subtitle">2px 细线进度条 + 微光指示点 + 紧凑统计</p>
+  <div class="mockup">
+    <div class="mockup-header">优化后运行页工具栏</div>
+    <div class="mockup-body" style="padding:16px; background:#0a0a14; font-family:system-ui,sans-serif">
+      <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px">
+        <span style="color:#475569; font-size:14px; cursor:pointer">←</span>
+        <span style="font-weight:900; font-size:14px; color:#f1f5f9">智能客服工作流</span>
+        <span style="padding:3px 10px; border-radius:6px; background:rgba(96,165,250,0.12); color:#93c5fd; font-size:11px; font-weight:700; border:1px solid rgba(96,165,250,0.2); box-shadow:0 0 8px rgba(96,165,250,0.1)">● Running</span>
+        <span style="font-size:11px; color:#64748b; font-weight:600">Step 3/7</span>
+        <span style="flex:1"></span>
+        <span style="padding:3px 10px; border-radius:6px; background:rgba(52,211,153,0.12); color:#34d399; font-size:11px; font-weight:700; border:1px solid rgba(52,211,153,0.2)">● Live</span>
+        <div style="padding:5px 12px; border-radius:8px; border:1px solid rgba(239,68,68,0.25); background:rgba(239,68,68,0.06); color:#f87171; font-size:11px; font-weight:700; cursor:pointer">⏹ Stop</div>
+      </div>
+
+      <div style="position:relative; height:2px; border-radius:1px; background:rgba(30,41,59,0.8); overflow:visible; margin-bottom:10px">
+        <div style="width:43%; height:100%; border-radius:1px; background:linear-gradient(90deg, #34d399, #60a5fa); box-shadow:0 0 6px rgba(96,165,250,0.3), 0 0 12px rgba(52,211,153,0.15)"></div>
+        <div style="position:absolute; top:-4px; left:43%; width:10px; height:10px; border-radius:50%; background:#60a5fa; box-shadow:0 0 8px #60a5fa, 0 0 16px rgba(96,165,250,0.4); transform:translateX(-50%)"></div>
+      </div>
+
+      <div style="display:flex; gap:16px; font-size:11px; font-weight:600">
+        <div style="display:flex; align-items:center; gap:3px"><span style="color:#34d399">●</span><span style="color:#34d399; font-weight:800">2</span><span style="color:#475569">完成</span></div>
+        <div style="display:flex; align-items:center; gap:3px"><span style="color:#60a5fa">●</span><span style="color:#60a5fa; font-weight:800">1</span><span style="color:#475569">运行中</span></div>
+        <div style="display:flex; align-items:center; gap:3px"><span style="color:#334155">○</span><span style="color:#64748b; font-weight:800">4</span><span style="color:#475569">等待</span></div>
+        <div style="display:flex; align-items:center; gap:3px"><span style="color:#fbbf24">⏱</span><span style="color:#fbbf24; font-weight:800">1.2s</span></div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -45,7 +45,7 @@ func parityMemberOutcomes(def Definition) []parityMemberOutcome {
 			TokenOut:      50 + sortOrder*5,
 			ToolCallCount: toolCalls,
 			Output:        fmt.Sprintf("reply from %s in %s mode", m.AgentID, def.Mode),
-			Status:        "ok",
+			Status:        biz.TeamMemberStepStatusOK,
 		})
 	}
 	return out
@@ -57,7 +57,7 @@ func parityRunBase(mode string) biz.TeamRun {
 		TeamID:    "team-parity",
 		SessionID: "sess-parity",
 		Mode:      mode,
-		Status:    "success",
+		Status:    biz.TeamRunStatusSuccess,
 	}
 }
 

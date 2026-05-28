@@ -344,6 +344,11 @@ func (q *MemoryJobQueue) QueueStats() MemoryQueueStats {
 	}
 }
 
+func (q *MemoryJobQueue) QueueLaneStats() (highLen, normalLen, lowLen int, highCap, normalCap, lowCap int, dropped, debounced int64) {
+	s := q.QueueStats()
+	return s.HighLen, s.NormalLen, s.LowLen, memQueueHighCap, memQueueNormalCap, memQueueLowCap, s.Dropped, s.Debounced
+}
+
 // NewAutoMemoryEnqueuer adapts a wired queue to biz.AutoMemoryEnqueuer (normal priority).
 func NewAutoMemoryEnqueuer(q AutoMemoryQueue) func(appName, sessionID string, enqueuedAt time.Time) {
 	return func(appName, sessionID string, enqueuedAt time.Time) {

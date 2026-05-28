@@ -2,6 +2,7 @@ package plugintrpc
 
 import (
 	"context"
+	"fmt"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
@@ -34,18 +35,28 @@ func (c *ConfirmationGuardPlugin) Register(r *trpcplugin.Registry) {
 	r.BeforeTool(c.beforeTool)
 }
 
-// beforeTool is telemetry-only; blocking is unified in agent.Callback Chain ConfirmGate.
+// beforeTool blocks tool execution when confirmation is required.
 func (c *ConfirmationGuardPlugin) beforeTool(ctx context.Context, args *trpctool.BeforeToolArgs) (*trpctool.BeforeToolResult, error) {
 	if args == nil {
 		return &trpctool.BeforeToolResult{Context: ctx}, nil
 	}
-	needs := MatchConfirmationGuard(c.cfg, args.ToolName, args.Arguments)
+	if MatchConfirmationGuard(c.cfg, args.ToolName, args.Arguments) {
+		c.logger.Info("plugin.confirmation_guard.before_tool",
+			"status", "blocked",
+			"tool", args.ToolName,
+			"default_action", c.cfg.DefaultAction,
+		)
+		c.record(ctx, "before_tool", "blocked")
+		msg := fmt.Sprintf("confirmation_guard: tool %q requires confirmation", args.ToolName)
+		return &trpctool.BeforeToolResult{
+			Context:      ctx,
+			CustomResult: map[string]any{"error": msg, "blocked": true},
+		}, nil
+	}
 	c.logger.Info("plugin.confirmation_guard.before_tool",
 		"status", "success",
 		"tool", args.ToolName,
-		"needs_confirm", needs,
-		"default_action", c.cfg.DefaultAction,
-		"enforced_by", "chain_confirm_gate",
+		"needs_confirm", false,
 	)
 	c.record(ctx, "before_tool", "success")
 	return &trpctool.BeforeToolResult{Context: ctx}, nil

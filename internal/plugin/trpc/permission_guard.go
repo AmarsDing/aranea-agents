@@ -15,7 +15,6 @@ import (
 
 type permissionGuardConfig struct {
 	DenyTools      []string `json:"deny_tools"`
-	ConfirmTools   []string `json:"confirm_tools"`
 	AgentAllowlist []string `json:"agent_allowlist"`
 }
 

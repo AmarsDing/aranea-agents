@@ -31,14 +31,16 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		if eff[biz.ToolKeyMCPToolSet] && len(mcpServers) > 0 {
 			cfg.MCPServers = mcpServers
 		}
-		if len(mcpServers) > 0 {
-			if brokerCfg := buildMCPBrokerFromServers(mcpServers, platformAllowAdHoc); brokerCfg != nil {
-				cfg.MCPBroker = brokerCfg
-			}
-		} else if eff[biz.ToolKeyMCPBroker] {
-			mcpBrokerCfg, err := resolveMCPBrokerConfig(ctx, deps, ag.ID)
-			if err == nil && mcpBrokerCfg != nil {
-				cfg.MCPBroker = mcpBrokerCfg
+		if eff[biz.ToolKeyMCPBroker] {
+			if len(mcpServers) > 0 {
+				if brokerCfg := buildMCPBrokerFromServers(mcpServers, platformAllowAdHoc); brokerCfg != nil {
+					cfg.MCPBroker = brokerCfg
+				}
+			} else {
+				mcpBrokerCfg, err := resolveMCPBrokerConfig(ctx, deps, ag.ID)
+				if err == nil && mcpBrokerCfg != nil {
+					cfg.MCPBroker = mcpBrokerCfg
+				}
 			}
 		}
 
@@ -276,7 +278,7 @@ func resolveMCPServers(ctx context.Context, deps TRPCBuilderDeps, agentID string
 		}
 		out = append(out, tooltrpc.MCPServerConfig{
 			Name:                key,
-			Transport:           sc.Transport,
+			Transport:           string(sc.Transport),
 			ServerURL:           sc.URL,
 			Command:             sc.Command,
 			Args:                sc.Args,

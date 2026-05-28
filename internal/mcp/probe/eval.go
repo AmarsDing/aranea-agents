@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/internal/mcp"
 	"aranea-agents/internal/mcp/config"
 	"aranea-agents/pkg/outboundguard"
 )
@@ -26,10 +27,7 @@ func Evaluate(enabled bool, configJSON string) TestResult {
 	if err != nil {
 		return TestResult{OK: false, Status: "error", Message: "config_json 格式错误: " + err.Error()}
 	}
-	// TPM-P1-10: normalize transport via the single source of truth so probe and
-	// runtime agree on aliases (streamable / streamable_http / http → streamable).
-	transport := config.NormalizeTransport(cfg.Transport)
-	switch transport {
+	switch cfg.Transport {
 	case config.TransportStdio:
 		return evaluateStdio(cfg)
 	case config.TransportSSE, config.TransportStreamable:
@@ -69,15 +67,12 @@ func evaluateHTTP(cfg config.ServerConfig) TestResult {
 	}
 
 	timeout := config.DurationSec(cfg.TimeoutSec)
-	if timeout <= 0 || timeout > 10*time.Second {
-		timeout = 10 * time.Second
+	if timeout <= 0 || timeout > time.Duration(mcp.DefaultProbeTimeoutSec)*time.Second {
+		timeout = time.Duration(mcp.DefaultProbeTimeoutSec) * time.Second
 	}
 	return doHTTPProbe(rawURL, cfg.Headers, outboundguard.NewClient(timeout))
 }
 
-// doHTTPProbe performs the actual GET probe and interprets the HTTP status code.
-// It is separated from evaluateHTTP so tests can call it with a plain http.Client
-// (bypassing the SSRF guard that blocks loopback addresses in unit test servers).
 func doHTTPProbe(rawURL string, headers map[string]string, client *http.Client) TestResult {
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -101,11 +96,6 @@ func doHTTPProbe(rawURL string, headers map[string]string, client *http.Client) 
 			Details: map[string]any{"status_code": resp.StatusCode},
 		}
 	}
-	// TPM-P1-09: 401/403 indicates the server is reachable but requires authentication
-	// (OAuth, API key, etc.). The probe only verifies network connectivity — it does not
-	// inject runtime credentials — so treat this as "network OK, auth required" rather than
-	// a hard failure. This prevents false alarms in the admin health dashboard for
-	// OAuth-protected MCP servers that are actually healthy.
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		return TestResult{
 			OK:      true,
@@ -121,5 +111,3 @@ func doHTTPProbe(rawURL string, headers map[string]string, client *http.Client) 
 		Details: map[string]any{"status_code": resp.StatusCode},
 	}
 }
-
-

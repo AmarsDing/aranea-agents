@@ -1,5 +1,10 @@
 package biz
 
+import (
+	"context"
+	"time"
+)
+
 // memory_queue_contract.go — H-01: shared memory queue contracts.
 //
 // MemoryDeadLetterSink and related types are domain contracts. They belong in biz
@@ -39,4 +44,30 @@ type MemoryDeadLetterRequest struct {
 // Implementations must be goroutine-safe.
 type MemoryDeadLetterSink interface {
 	WriteMemoryDeadLetter(r MemoryDeadLetterRequest, reason MemoryDeadLetterReason, lastErr string)
+}
+
+// MemoryDeadLetterEntry holds the fields returned by dead-letter admin queries.
+type MemoryDeadLetterEntry struct {
+	ID         int64
+	EnqueuedAt time.Time
+	FailedAt   time.Time
+	SessionID  string
+	AppName    string
+	DropReason string
+	Priority   int
+	Attempts   int
+	State      string
+	LastError  string
+}
+
+// MemoryDeadLetterAdminRepo is the biz-level port for dead-letter admin operations.
+// Service layer depends on this interface instead of the concrete data repo,
+// keeping the dependency direction: service → biz (not service → data).
+type MemoryDeadLetterAdminRepo interface {
+	ListDeadLetters(ctx context.Context, state string, limit int) ([]MemoryDeadLetterEntry, error)
+	GetDeadLetter(ctx context.Context, id int64) (MemoryDeadLetterEntry, error)
+	MarkDeadLetterReplayed(ctx context.Context, id int64) error
+	MarkDeadLetterAbandoned(ctx context.Context, id int64, reason string) error
+	CountDeadLettersByState(ctx context.Context) (pending, replayed, abandoned int64, err error)
+	ReplayDeadLetterIntoQueue(ctx context.Context, id int64, enqueue func(sessionID, appName, userID, feedbackMsgID string, priority MemoryJobPriority)) error
 }

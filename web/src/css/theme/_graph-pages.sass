@@ -1,46 +1,70 @@
 // Graph 列表 / 编辑器 / 运行页共享样式（对齐 entity-pages 玻璃体系）
 
 :root
-  --graph-node-function-fill: color-mix(in srgb, #9c27b0 10%, var(--glass-elevated))
-  --graph-node-function-border: color-mix(in srgb, #9c27b0 42%, var(--glass-border))
-  --graph-node-llm-fill: color-mix(in srgb, var(--color-accent) 10%, var(--glass-elevated))
-  --graph-node-llm-border: color-mix(in srgb, var(--color-accent) 38%, var(--glass-border))
-  --graph-node-tool-fill: color-mix(in srgb, #ff9800 10%, var(--glass-elevated))
-  --graph-node-tool-border: color-mix(in srgb, #ff9800 40%, var(--glass-border))
-  --graph-node-agent-fill: color-mix(in srgb, var(--color-success) 10%, var(--glass-elevated))
-  --graph-node-agent-border: color-mix(in srgb, var(--color-success) 38%, var(--glass-border))
-  --graph-node-router-fill: color-mix(in srgb, var(--color-text-secondary) 8%, var(--glass-elevated))
-  --graph-node-router-border: color-mix(in srgb, var(--color-text-secondary) 35%, var(--glass-border))
-  --graph-node-join-fill: color-mix(in srgb, #9c27b0 8%, var(--glass-elevated))
-  --graph-node-join-border: color-mix(in srgb, #9c27b0 35%, var(--glass-border))
-  --graph-node-hitl-fill: color-mix(in srgb, var(--color-warning) 12%, var(--glass-elevated))
-  --graph-node-hitl-border: color-mix(in srgb, var(--color-warning) 42%, var(--glass-border))
+  --graph-node-function-fill: color-mix(in srgb, #a78bfa 8%, var(--glass-elevated))
+  --graph-node-function-border: #a78bfa
+  --graph-node-llm-fill: color-mix(in srgb, #22d3ee 8%, var(--glass-elevated))
+  --graph-node-llm-border: #22d3ee
+  --graph-node-tool-fill: color-mix(in srgb, #fbbf24 8%, var(--glass-elevated))
+  --graph-node-tool-border: #fbbf24
+  --graph-node-agent-fill: color-mix(in srgb, #34d399 8%, var(--glass-elevated))
+  --graph-node-agent-border: #34d399
+  --graph-node-router-fill: color-mix(in srgb, #f472b6 8%, var(--glass-elevated))
+  --graph-node-router-border: #f472b6
+  --graph-node-join-fill: color-mix(in srgb, #94a3b8 8%, var(--glass-elevated))
+  --graph-node-join-border: #94a3b8
+  --graph-node-hitl-fill: color-mix(in srgb, #fb923c 8%, var(--glass-elevated))
+  --graph-node-hitl-border: #fb923c
+  --graph-edge-normal: #22d3ee
+  --graph-edge-conditional: #f472b6
+  --graph-edge-transfer: #fbbf24
+  --graph-edge-dispatch: #34d399
+  --graph-ctx-bg: rgba(3,7,18,0.97)
+  --graph-ctx-border: rgba(34,211,238,0.12)
+  --graph-ctx-text: #a5f3fc
+  --graph-ctx-accent: #22d3ee
+  --graph-ctx-danger: #f472b6
+  --graph-ctx-success: #34d399
 
 body.body--dark
-  --graph-node-function-fill: color-mix(in srgb, #c084fc 14%, var(--glass-surface))
-  --graph-node-function-border: color-mix(in srgb, #c084fc 36%, var(--glass-border))
-  --graph-node-llm-fill: color-mix(in srgb, var(--color-accent) 12%, var(--glass-surface))
-  --graph-node-llm-border: color-mix(in srgb, var(--color-accent) 34%, var(--glass-border))
-  --graph-node-tool-fill: color-mix(in srgb, #fb923c 12%, var(--glass-surface))
-  --graph-node-tool-border: color-mix(in srgb, #fb923c 34%, var(--glass-border))
-  --graph-node-agent-fill: color-mix(in srgb, var(--color-success) 12%, var(--glass-surface))
-  --graph-node-agent-border: color-mix(in srgb, var(--color-success) 34%, var(--glass-border))
-  --graph-node-router-fill: color-mix(in srgb, var(--color-text-secondary) 10%, var(--glass-surface))
-  --graph-node-router-border: color-mix(in srgb, var(--color-text-secondary) 28%, var(--glass-border))
-  --graph-node-join-fill: color-mix(in srgb, #c084fc 10%, var(--glass-surface))
-  --graph-node-join-border: color-mix(in srgb, #c084fc 28%, var(--glass-border))
-  --graph-node-hitl-fill: color-mix(in srgb, var(--color-warning) 14%, var(--glass-surface))
-  --graph-node-hitl-border: color-mix(in srgb, var(--color-warning) 36%, var(--glass-border))
+  --graph-node-function-fill: color-mix(in srgb, #a78bfa 12%, var(--glass-surface))
+  --graph-node-function-border: #a78bfa
+  --graph-node-llm-fill: color-mix(in srgb, #22d3ee 12%, var(--glass-surface))
+  --graph-node-llm-border: #22d3ee
+  --graph-node-tool-fill: color-mix(in srgb, #fbbf24 12%, var(--glass-surface))
+  --graph-node-tool-border: #fbbf24
+  --graph-node-agent-fill: color-mix(in srgb, #34d399 12%, var(--glass-surface))
+  --graph-node-agent-border: #34d399
+  --graph-node-router-fill: color-mix(in srgb, #f472b6 12%, var(--glass-surface))
+  --graph-node-router-border: #f472b6
+  --graph-node-join-fill: color-mix(in srgb, #94a3b8 12%, var(--glass-surface))
+  --graph-node-join-border: #94a3b8
+  --graph-node-hitl-fill: color-mix(in srgb, #fb923c 12%, var(--glass-surface))
+  --graph-node-hitl-border: #fb923c
 
 .graphs-page
   @extend .app-entity-page
+
+.graphs-filter-bar
+  display: flex
+  align-items: center
+  gap: 8px
+  flex-wrap: wrap
+
+.graphs-filter-bar__search
+  min-width: 200px
+  max-width: 280px
+  flex: 1
+
+.graphs-filter-bar__select
+  min-width: 130px
 
 .graphs-grid
   @extend .app-entity-grid
 
 .graphs-page .app-entity-grid
-  grid-template-columns: repeat(auto-fill, minmax(300px, 380px))
-  gap: 14px
+  grid-template-columns: repeat(2, 1fr)
+  gap: 12px
   align-items: start
 
 .graph-card
@@ -62,21 +86,53 @@ body.body--dark
 .graph-card__inner
   display: flex
   flex-direction: column
-  gap: 10px
-  padding: 14px 16px 12px
+  gap: 6px
+  padding: 10px 14px 8px
 
 .graph-card__name
   margin: 0
   color: var(--color-text-heading)
-  font-size: 16px
-  font-weight: 800
+  font-size: 14px
+  font-weight: 900
   line-height: 1.25
+
+.graph-card__time
+  flex-shrink: 0
+  color: var(--color-text-tertiary)
+  font-size: 10px
+  white-space: nowrap
 
 .graph-card__desc
   margin: 0
   color: var(--color-text-secondary)
-  font-size: 13px
-  line-height: 1.5
+  font-size: 11px
+  line-height: 1.4
+  white-space: nowrap
+  overflow: hidden
+  text-overflow: ellipsis
+
+.graph-card__chips
+  display: flex
+  flex-wrap: wrap
+  gap: 4px
+
+.graph-card__chip
+  display: inline-flex
+  align-items: center
+  padding: 1px 6px
+  border: 1px solid var(--glass-border)
+  border-radius: 999px
+  background: color-mix(in srgb, var(--glass-elevated) 60%, transparent)
+  font-size: 10px
+  font-weight: 700
+  line-height: 1.4
+  white-space: nowrap
+
+.graph-card__summary
+  flex-shrink: 0
+  color: var(--color-text-tertiary)
+  font-size: 10px
+  white-space: nowrap
 
 .graph-card__tags
   display: flex
@@ -100,9 +156,29 @@ body.body--dark
   display: flex
   align-items: center
   justify-content: flex-end
-  gap: 2px
-  padding-top: 8px
+  gap: 0
+  padding-top: 6px
   border-top: 1px solid var(--glass-border)
+
+.graph-card--add
+  cursor: pointer
+  border: 2px dashed var(--glass-border)
+  background: transparent
+  box-shadow: none
+  backdrop-filter: none
+  -webkit-backdrop-filter: none
+  min-height: 120px
+  transition: border-color 160ms ease, background 160ms ease
+
+.graph-card--add:hover
+  border-color: var(--color-accent)
+  background: color-mix(in srgb, var(--color-accent) 4%, var(--glass-elevated))
+
+.graph-card--add__label
+  margin-top: 4px
+  color: var(--color-text-tertiary)
+  font-size: 11px
+  font-weight: 700
 
 .graphs-empty
   @extend .app-entity-empty
@@ -128,18 +204,19 @@ body.body--dark
   position: relative
   min-width: 200px
   max-width: 260px
-  border: 1px solid var(--glass-border)
+  border: 2px solid var(--node-accent, var(--color-accent))
   border-radius: 16px
   background: var(--glass-elevated)
   backdrop-filter: blur(var(--glass-blur-default))
   -webkit-backdrop-filter: blur(var(--glass-blur-default))
-  box-shadow: var(--shadow-entity-panel)
+  box-shadow: 0 0 8px color-mix(in srgb, var(--node-accent, var(--color-accent)) 12%, transparent), var(--shadow-entity-panel)
   overflow: hidden
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease
 
 .graph-flow-node__accent
-  height: 3px
+  height: 2px
   background: var(--node-accent, var(--color-accent))
+  box-shadow: 0 0 6px var(--node-accent, var(--color-accent))
 
 .graph-flow-node__body
   padding: 10px 12px 12px
@@ -175,6 +252,26 @@ body.body--dark
   background: color-mix(in srgb, var(--color-accent) 12%, var(--glass-surface))
   color: var(--color-text-secondary)
 
+.graph-flow-node__status-badge--running
+  background: rgba(34,211,238,0.12)
+  color: #22d3ee
+  border: 1px solid rgba(34,211,238,0.2)
+
+.graph-flow-node__status-badge--completed
+  background: rgba(52,211,153,0.12)
+  color: #34d399
+  border: 1px solid rgba(52,211,153,0.2)
+
+.graph-flow-node__status-badge--failed
+  background: rgba(244,114,182,0.12)
+  color: #f472b6
+  border: 1px solid rgba(244,114,182,0.2)
+
+.graph-flow-node__status-badge--interrupted
+  background: rgba(251,191,36,0.12)
+  color: #fbbf24
+  border: 1px solid rgba(251,191,36,0.2)
+
 .graph-flow-node__label
   font-weight: 700
   font-size: 13px
@@ -205,6 +302,23 @@ body.body--dark
   font-size: 11px
   line-height: 1.45
 
+.graph-flow-node__tools
+  display: flex
+  flex-wrap: wrap
+  gap: 3px
+  margin-top: 6px
+
+.graph-flow-node__tool-chip
+  display: inline-flex
+  padding: 1px 5px
+  border-radius: 3px
+  background: color-mix(in srgb, var(--node-accent, var(--color-accent)) 10%, var(--glass-surface))
+  color: var(--node-accent, var(--color-accent))
+  font-size: 9px
+  font-weight: 600
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace
+  line-height: 1.3
+
 .graph-flow-node__io
   margin-top: 6px
   padding-top: 6px
@@ -226,21 +340,26 @@ body.body--dark
   background: var(--glass-elevated)
 
 .graph-flow-node--selected
-  border-color: color-mix(in srgb, var(--color-accent) 42%, var(--glass-border))
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 28%, transparent), var(--shadow-entity-panel)
+  border-color: var(--node-accent, var(--color-accent))
+  box-shadow: 0 0 12px color-mix(in srgb, var(--node-accent, var(--color-accent)) 30%, transparent), 0 0 0 1px color-mix(in srgb, var(--node-accent, var(--color-accent)) 20%, transparent), var(--shadow-entity-panel)
   transform: translateY(-1px)
 
 .graph-flow-node--running
   animation: graph-node-pulse 1.5s ease-in-out infinite
+  border-color: #22d3ee
+  box-shadow: 0 0 16px rgba(34,211,238,0.25), 0 0 32px rgba(34,211,238,0.1)
 
 .graph-flow-node--completed
-  border-color: color-mix(in srgb, var(--color-success) 36%, var(--glass-border))
+  border-color: #34d399
+  box-shadow: 0 0 8px rgba(52,211,153,0.2)
 
 .graph-flow-node--failed
-  border-color: color-mix(in srgb, var(--color-danger) 36%, var(--glass-border))
+  border-color: #f472b6
+  box-shadow: 0 0 8px rgba(244,114,182,0.2)
 
 .graph-flow-node--interrupted
-  border-color: color-mix(in srgb, var(--color-warning) 36%, var(--glass-border))
+  border-color: #fbbf24
+  box-shadow: 0 0 8px rgba(251,191,36,0.2)
 
 .graph-flow-diamond
   width: 100px
@@ -276,6 +395,24 @@ body.body--dark
   text-align: center
   overflow-wrap: break-word
   line-height: 1.2
+
+.graph-flow-diamond__branch-label
+  position: absolute
+  font-size: 10px
+  font-weight: 700
+  line-height: 1
+  transform: rotate(-45deg)
+  pointer-events: none
+
+.graph-flow-diamond__branch-label--yes
+  right: -6px
+  top: 50%
+  color: var(--color-success, #4caf50)
+
+.graph-flow-diamond__branch-label--no
+  left: -6px
+  top: 50%
+  color: var(--color-danger, #f44336)
 
 @keyframes graph-diamond-pulse
   0%, 100%
@@ -351,6 +488,22 @@ body.body--dark
   text-transform: uppercase
   color: var(--color-text-secondary)
 
+.graph-property-panel__group
+  border-left: 3px solid var(--node-accent, var(--color-accent))
+  margin: 4px 0
+  border-radius: 0 8px 8px 0
+  overflow: hidden
+
+.graph-property-panel__group-header
+  font-size: 11px !important
+  font-weight: 800 !important
+  letter-spacing: 0.06em !important
+  text-transform: uppercase !important
+  color: var(--color-text-secondary) !important
+
+.graph-property-panel__group-body
+  padding: 4px 0 8px
+
 .graph-property-panel__empty
   display: flex
   flex-direction: column
@@ -416,6 +569,64 @@ body.body--dark
   background: color-mix(in srgb, var(--color-success) 18%, var(--glass-surface))
   color: var(--color-success)
 
+.graph-run-page__step-counter
+  font-size: 11px
+  font-weight: 700
+  color: var(--color-text-secondary)
+  letter-spacing: 0.02em
+  white-space: nowrap
+
+.graph-run-progress
+  padding: 0 16px 6px
+  background: var(--glass-surface)
+
+.graph-run-progress__bar
+  position: relative
+  height: 2px
+  background: rgba(30,41,59,0.8)
+  border-radius: 1px
+  overflow: visible
+
+.graph-run-progress__fill
+  height: 100%
+  background: linear-gradient(90deg, #34d399, #22d3ee)
+  border-radius: 1px
+  box-shadow: 0 0 6px rgba(34,211,238,0.4), 0 0 12px rgba(52,211,153,0.2)
+  transition: width 400ms ease
+
+.graph-run-progress__dot
+  position: absolute
+  top: 50%
+  width: 10px
+  height: 10px
+  border-radius: 50%
+  background: #22d3ee
+  box-shadow: 0 0 6px rgba(34,211,238,0.6), 0 0 14px rgba(34,211,238,0.3)
+  transform: translate(-50%, -50%)
+  transition: left 400ms ease
+
+.graph-run-progress__stats
+  display: flex
+  align-items: center
+  gap: 10px
+  margin-top: 4px
+  font-size: 11px
+  font-weight: 600
+  line-height: 1
+
+.graph-run-progress__stat--completed
+  color: #34d399
+
+.graph-run-progress__stat--running
+  color: #22d3ee
+
+.graph-run-progress__stat--waiting
+  color: var(--color-text-tertiary)
+
+.graph-run-progress__stat--duration
+  color: var(--color-text-tertiary)
+  margin-left: auto
+
 .team-orchestrate-page__toolbar
   display: flex
   align-items: center
@@ -470,9 +681,9 @@ body.body--dark
 
 @keyframes graph-node-pulse
   0%, 100%
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 24%, transparent)
+    box-shadow: 0 0 8px rgba(34,211,238,0.15), 0 0 24px rgba(34,211,238,0.06)
   50%
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 48%, transparent)
+    box-shadow: 0 0 16px rgba(34,211,238,0.35), 0 0 48px rgba(34,211,238,0.12)
 
 .graph-workbench
   display: flex
@@ -505,11 +716,26 @@ body.body--dark
   background-image: radial-gradient(circle at top, color-mix(in srgb, var(--color-accent) 5%, transparent), transparent 34%)
 
 .graph-editor-canvas .vue-flow__edge-path
-  stroke: color-mix(in srgb, var(--color-accent) 28%, var(--color-icon-muted))
-  stroke-width: 2px
+  stroke: var(--graph-edge-normal)
+  stroke-width: 1px
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--graph-edge-normal) 40%, transparent))
 
 .graph-editor-canvas .vue-flow__edge.selected .vue-flow__edge-path
-  stroke: var(--color-accent)
+  stroke: var(--graph-edge-normal)
+  stroke-width: 1.5px
+  filter: drop-shadow(0 0 4px var(--graph-edge-normal))
+
+.graph-edge--conditional .vue-flow__edge-path
+  stroke: var(--graph-edge-conditional)
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--graph-edge-conditional) 40%, transparent))
+
+.graph-edge--transfer .vue-flow__edge-path
+  stroke: var(--graph-edge-transfer)
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--graph-edge-transfer) 40%, transparent))
+
+.graph-edge--dispatch .vue-flow__edge-path
+  stroke: var(--graph-edge-dispatch)
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--graph-edge-dispatch) 40%, transparent))
 
 .graph-editor-canvas .vue-flow__controls
   border: 1px solid var(--glass-border)
@@ -866,8 +1092,15 @@ body.body--dark
 
 .graph-task-card
   border-radius: 14px
-  cursor: pointer
+  cursor: grab
   transition: box-shadow 0.2s
+
+.graph-task-card:active
+  cursor: grabbing
+
+.graph-task-card__drag-handle
+  opacity: 0.35
+  align-self: center
 
 .graph-task-card--selected
   box-shadow: 0 0 0 2px var(--color-accent, var(--q-primary))
@@ -885,4 +1118,5 @@ body.body--dark
   min-height: 48px
 
 .graph-kanban-ghost
-  opacity: 0.45
+  opacity: 0.5
+  background: var(--q-primary)

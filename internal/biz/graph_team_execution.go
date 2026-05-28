@@ -31,7 +31,7 @@ func (uc *GraphUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, 
 		ID:        execID,
 		GraphID:   graphID,
 		SessionID: strings.TrimSpace(sessionID),
-		Status:    "running",
+		Status:    TeamRunStatusRunning,
 		StartedAt: time.Now(),
 	}
 	uc.mu.Lock()
@@ -66,7 +66,7 @@ func (uc *GraphUsecase) MarkTeamGraphInterrupt(ctx context.Context, execID, node
 	nodeID = strings.TrimSpace(nodeID)
 	lineageID = strings.TrimSpace(lineageID)
 	uc.mu.Lock()
-	exec.Status = "waiting_human"
+	exec.Status = TeamRunStatusWaitingHuman
 	exec.InterruptNode = nodeID
 	exec.CurrentNode = nodeID
 	if lineageID != "" {

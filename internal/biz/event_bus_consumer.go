@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 
+	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/safego"
 )
@@ -21,14 +22,15 @@ func NewEventBusConsumer(
 	sessions *SessionUsecase,
 	runnerSync RunnerSnapshotSync,
 	usage *UsageUsecase,
-	monitor *MonitorUsecase,
+	monitorUC *MonitorUsecase,
 	memWorker *TurnMemoryWorker,
 	eventStore *EventStoreUsecase,
+	traceProj *monitor.TraceProjector,
 ) *EventBusConsumer {
 	return &EventBusConsumer{
 		eventBus: eventBus,
 		buffer:   newEventBufferHandler(eventBuffer),
-		runner:   newRunnerCompletionHandler(sessions, usage, monitor, memWorker),
+		runner:   newRunnerCompletionHandler(sessions, usage, monitorUC, memWorker, traceProj),
 		state:    newStateDeltaHandler(sessions, runnerSync),
 		persist:  newEventPersistHandler(eventStore),
 	}

@@ -44,18 +44,21 @@
 
 ---
 
-## 三、编排边界（四层）
+## 三、编排边界（三层 + 框架 Plugin）
 
 权威注释：`internal/plugin/trpc/orchestration.go`。
 
 | 层 | 职责 | 排序依据 |
 |----|------|----------|
-| **1. Runner WithPlugins** | DB 内置 Plugin（audit_log、guards、skill_tracker 等） | `plugins.sort_order` ASC |
+| **1. Runner WithPlugins** | DB 内置 Plugin（audit_log、guards、skill_tracker 等）+ 框架 Plugin（identity、guardrail、toolcallid、messagemerger） | DB Plugin `sort_order` ASC → 框架 Plugin 追加 |
 | **2. LLMAgent Callback Chain** | 产品固定链 + Hook 规则 | 固定优先级 + Hook `300+sort_order` |
 | **3. ModelSelector** | 仅 catalog 级模型切换（router / cost_guard blocked_models） | Agent 构造时单次选择 |
-| **4. Hook on_event** | 用户规则的事件处理 | `productEventPlugin` 桥接 Manager.OnEvent |
 
-**工具确认**：统一在 Chain `BeforeTool`（ConfirmGate，priority 10）；`confirmation_guard` Runner 插件仅遥测；`permission_guard` 只处理 `deny_tools`。
+**框架 Plugin 自动注入**：`Manager.RunnerPluginsForAgent` 在 DB Plugin 之后追加 `productEventPlugin`（OnEvent 桥接）、`identity`（身份透传）、`guardrail`（PromptInjection + UnsafeIntent 检测）、`tool_call_id`（ToolCall ID 规范化）、`consecutive_message_merger`（消息合并）。这些 Plugin 无需 DB 配置，始终生效。
+
+**工具确认**：`confirmation_guard` Runner Plugin 直接通过 BeforeTool `CustomResult` 阻断高风险工具，不再依赖 Chain ConfirmGate；`permission_guard` 处理 `deny_tools` 阻断。
+
+**编排统一**：所有 DB Plugin 统一走 Runner `WithPlugins` 路径，不再支持 `callback_orchestration:"chain"` 镜像。`plugin_chain_mirror.go` 已移除。
 
 ---
 
@@ -89,8 +92,7 @@
 | 方法 | 说明 |
 |------|------|
 | `MergeChain` | HookResolver → `HookCallbacks` + `wrapResilientHooks` |
-| `RunnerPluginsForAgent` | 作用域过滤 Plugin + `productEventPlugin` |
-| `OnEvent` | 按 platform agent_id 过滤后 `plugin.NewManager` 转发 |
+| `RunnerPluginsForAgent` | 作用域过滤 Plugin + `productEventPlugin` + 框架 Plugin（identity/guardrail/toolcallid/messagemerger） |
 | `ReloadHooks` | CRUD 后刷新 Hook 快照 |
 
 ### 4.4 Hook 解析
@@ -136,18 +138,15 @@
 | `plugins` | `callback_points_json`、`config_json`、`scope`、`sort_order` |
 | `hooks` | `config_json`、`enabled`、`sort_order` |
 
-### 4.8 Plugin 编排路径（P3）
+### 4.8 Plugin 编排路径（统一 Runner）
 
-| `callback_orchestration` | Runner `WithPlugins` | LLMAgent Chain |
-|--------------------------|----------------------|----------------|
-| `runner`（默认） | ✅ | ❌ |
-| `chain` | ❌ | ✅（`PluginToChainEntries`） |
+所有 DB 内置 Plugin 统一走 Runner `WithPlugins` 路径，不再支持 `callback_orchestration:"chain"` 镜像。
 
 内置插件（`audit_log`、`model_router`、`cost_guard` 等）与声明 `on_event` 的插件**强制 runner**，防止双触发与 OnEvent 丢失。
 
-**Chain 白名单**（`orchestration_policy.go` → `chainAllowlistBuiltinKeys`）：仅列出的内置插件可在 `callback_orchestration:"chain"` 时镜像到 LLMAgent Chain；当前默认 **`skill_usage_tracker`**。其余内置插件即使配置 `chain` 也会回落 Runner 并打 warn 日志。自定义插件（无内置注册）可按配置走 Chain。
+`OrchestrationChain` 路径和 `plugin_chain_mirror.go` 已移除。`skill_usage_tracker` 等原白名单插件也统一走 Runner 路径。
 
-Hook 规则使用 **`wrapResilientHooks`**（非 block 错误不中断回合）。Chain 镜像插件**不**套用 Hook 韧性包装，避免吞掉 Plugin 自身需上抛的错误。
+Hook 规则使用 **`wrapResilientHooks`**（非 block 错误不中断回合）。
 
 ### 4.9 Hook notify 投递（P3）
 

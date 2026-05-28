@@ -74,6 +74,7 @@ var ProviderSet = wire.NewSet(
 	NewEventStoreRepo,
 	NewFlowLogRepo,
 	NewWebhookRepo,
+	NewMemoryJobDeadLetterRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -332,6 +333,9 @@ func ensureSchemaDDL(rawDB *sql.DB, entClient *ent.Client) error {
 	}
 	if err := ensureAgentRuntimePatches(context.Background(), entClient); err != nil {
 		return fmt.Errorf("agent runtime patches: %w", err)
+	}
+	if err := ensureEntityReinforcementsSchema(context.Background(), entClient); err != nil {
+		return fmt.Errorf("entity reinforcements schema: %w", err)
 	}
 	if err := ensureBuiltinPlatformTools(context.Background(), entClient); err != nil {
 		return err

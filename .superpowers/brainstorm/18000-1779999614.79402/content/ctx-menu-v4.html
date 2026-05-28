@@ -1,0 +1,94 @@
+<h2>右键菜单 v4 — 科幻交互精调</h2>
+<p class="subtitle">图标对齐 · 文字统一 · 科技配色</p>
+
+<div class="section">
+  <h3>节点右键菜单</h3>
+  <p class="subtitle">图标列对齐 · 统一 12px · 冷蓝白文字 · 悬浮左侧光条</p>
+  <div class="mockup">
+    <div class="mockup-header">精调版</div>
+    <div class="mockup-body" style="padding:32px 20px; background:#080810; display:flex; justify-content:center; align-items:center; min-height:360px">
+      <div style="width:230px; border:1px solid rgba(56,189,248,0.12); border-radius:10px; background:rgba(8,8,16,0.96); backdrop-filter:blur(24px); box-shadow:0 0 24px rgba(56,189,248,0.04), 0 12px 40px rgba(0,0,0,0.7); overflow:hidden; position:relative">
+        <div style="position:absolute; top:0; left:0; right:0; height:1px; background:linear-gradient(90deg, transparent, rgba(56,189,248,0.35), transparent)"></div>
+
+        <div class="ctx-item" style="padding:8px 14px; display:flex; align-items:center; gap:10px; cursor:pointer; transition:all 0.12s; position:relative" onmouseover="this.style.background='linear-gradient(90deg, rgba(56,189,248,0.07), transparent)'; this.querySelector('.glow').style.opacity='1'" onmouseout="this.style.background='transparent'; this.querySelector('.glow').style.opacity='0'">
+          <div class="glow" style="position:absolute; left:0; top:3px; bottom:3px; width:2px; background:#38bdf8; border-radius:0 1px 1px 0; box-shadow:0 0 6px #38bdf8; opacity:0; transition:opacity 0.12s"></div>
+          <span style="width:18px; text-align:center; font-size:13px; flex-shrink:0; padding-left:4px">✏️</span>
+          <span style="flex:1; color:#cbd5e1; font-size:12px; font-weight:500">编辑属性</span>
+          <span style="padding:1px 5px; border-radius:3px; background:rgba(56,189,248,0.06); color:#38bdf8; font-size:9px; font-weight:600; border:1px solid rgba(56,189,248,0.1); font-family:ui-monospace,monospace">Enter</span>
+        </div>
+
+        <div class="ctx-item" style="padding:8px 14px; display:flex; align-items:center; gap:10px; cursor:pointer; transition:all 0.12s; position:relative" onmouseover="this.style.background='linear-gradient(90deg, rgba(56,189,248,0.07), transparent)'; this.querySelector('.glow').style.opacity='1'" onmouseout="this.style.background='transparent'; this.querySelector('.glow').style.opacity='0'">
+          <div class="glow" style="position:absolute; left:0; top:3px; bottom:3px; width:2px; background:#38bdf8; border-radius:0 1px 1px 0; box-shadow:0 0 6px #38bdf8; opacity:0; transition:opacity 0.12s"></div>
+          <span style="width:18px; text-align:center; font-size:13px; flex-shrink:0; padding-left:4px">📋</span>
+          <span style="flex:1; color:#cbd5e1; font-size:12px; font-weight:500">复制节点</span>
+          <span style="padding:1px 5px; border-radius:3px; background:rgba(56,189,248,0.06); color:#38bdf8; font-size:9px; font-weight:600; border:1px solid rgba(56,189,248,0.1); font-family:ui-monospace,monospace">Ctrl+D</span>
+        </div>
+
+        <div class="ctx-item" style="padding:8px 14px; display:flex; align-items:center; gap:10px; cursor:pointer; transition:all 0.12s; position:relative" onmouseover="this.style.background='linear-gradient(90deg, rgba(248,113,113,0.07), transparent)'; this.querySelector('.glow').style.opacity='1'; this.querySelector('.glow').style.background='#f87171'; this.querySelector('.glow').style.boxShadow='0 0 6px #f87171'" onmouseout="this.style.background='transparent'; this.querySelector('.glow').style.opacity='0'">
+          <div class="glow" style="position:absolute; left:0; top:3px; bottom:3px; width:2px; background:#f87171; border-radius:0 1px 1px 0; box-shadow:0 0 6px #f87171; opacity:0; transition:opacity 0.12s"></div>
+          <span style="width:18px; text-align:center; font-size:13px; flex-shrink:0; padding-left:4px">🗑</span>
+          <span style="flex:1; color:#cbd5e1; font-size:12px; font-weight:500">删除节点</span>
+          <span style="padding:1px 5px; border-radius:3px; background:rgba(248,113,113,0.06); color:#f87171; font-size:9px; font-weight:600; border:1px solid rgba(248,113,113,0.1); font-family:ui-monospace,monospace">Del</span>
+        </div>
+
+        <div class="ctx-item" style="padding:8px 14px; display:flex; align-items:center; gap:10px; cursor:pointer; transition:all 0.12s; position:relative" onmouseover="this.style.background='linear-gradient(90deg, rgba(56,189,248,0.07), transparent)'; this.querySelector('.glow').style.opacity='1'" onmouseout="this.style.background='transparent'; this.querySelector('.glow').style.opacity='0'">
+          <div class="glow" style="position:absolute; left:0; top:3px; bottom:3px; width:2px; background:#38bdf8; border-radius:0 1px 1px 0; box-shadow:0 0 6px #38bdf8; opacity:0; transition:opacity 0.12s"></div>
+          <span style="width:18px; text-align:center; font-size:13px; flex-shrink:0; padding-left:4px">🔗</span>
+          <span style="flex:1; color:#cbd5e1; font-size:12px; font-weight:500">断开所有连线</span>
+        </div>
+
+        <div class="ctx-item" style="padding:8px 14px; display:flex; align-items:center; gap:10px; cursor:pointer; transition:all 0.12s; position:relative" onmouseover="this.style.background='linear-gradient(90deg, rgba(52,211,153,0.07), transparent)'; this.querySelector('.glow').style.opacity='1'; this.querySelector('.glow').style.background='#34d399'; this.querySelector('.glow').style.boxShadow='0 0 6px #34d399'" onmouseout="this.style.background='transparent'; this.querySelector('.glow').style.opacity='0'">
+          <div class="glow" style="position:absolute; left:0; top:3px; bottom:3px; width:2px; background:#34d399; border-radius:0 1px 1px 0; box-shadow:0 0 6px #34d399; opacity:0; transition:opacity 0.12s"></div>
+          <span style="width:18px; text-align:center; font-size:13px; flex-shrink:0; padding-left:4px">▶</span>
+          <span style="flex:1; color:#cbd5e1; font-size:12px; font-weight:500">设为入口节点</span>
+        </div>
+
+        <div class="ctx-item" style="padding:8px 14px; display:flex; align-items:center; gap:10px; cursor:pointer; transition:all 0.12s; position:relative" onmouseover="this.style.background='linear-gradient(90deg, rgba(248,113,113,0.07), transparent)'; this.querySelector('.glow').style.opacity='1'; this.querySelector('.glow').style.background='#f87171'; this.querySelector('.glow').style.boxShadow='0 0 6px #f87171'" onmouseout="this.style.background='transparent'; this.querySelector('.glow').style.opacity='0'">
+          <div class="glow" style="position:absolute; left:0; top:3px; bottom:3px; width:2px; background:#f87171; border-radius:0 1px 1px 0; box-shadow:0 0 6px #f87171; opacity:0; transition:opacity 0.12s"></div>
+          <span style="width:18px; text-align:center; font-size:13px; flex-shrink:0; padding-left:4px">⏹</span>
+          <span style="flex:1; color:#cbd5e1; font-size:12px; font-weight:500">设为结束节点</span>
+        </div>
+
+        <div style="position:absolute; bottom:0; left:0; right:0; height:1px; background:linear-gradient(90deg, transparent, rgba(56,189,248,0.2), transparent)"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>设计规格</h3>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:13px">
+    <div style="padding:12px; border-radius:10px; background:rgba(56,189,248,0.04); border:1px solid rgba(56,189,248,0.1)">
+      <div style="font-weight:700; color:#38bdf8; margin-bottom:6px; font-size:11px; text-transform:uppercase; letter-spacing:0.05em">图标列</div>
+      <ul style="margin:0; padding-left:16px; color:#94a3b8; line-height:1.8">
+        <li>宽度 18px 固定，text-align:center</li>
+        <li>font-size: 13px 统一</li>
+        <li>padding-left: 4px 避开光条</li>
+      </ul>
+    </div>
+    <div style="padding:12px; border-radius:10px; background:rgba(56,189,248,0.04); border:1px solid rgba(56,189,248,0.1)">
+      <div style="font-weight:700; color:#38bdf8; margin-bottom:6px; font-size:11px; text-transform:uppercase; letter-spacing:0.05em">文字</div>
+      <ul style="margin:0; padding-left:16px; color:#94a3b8; line-height:1.8">
+        <li>color: #cbd5e1 统一冷白</li>
+        <li>font-size: 12px / font-weight: 500</li>
+        <li>快捷键 monospace 9px</li>
+      </ul>
+    </div>
+    <div style="padding:12px; border-radius:10px; background:rgba(56,189,248,0.04); border:1px solid rgba(56,189,248,0.1)">
+      <div style="font-weight:700; color:#38bdf8; margin-bottom:6px; font-size:11px; text-transform:uppercase; letter-spacing:0.05em">悬浮光条</div>
+      <ul style="margin:0; padding-left:16px; color:#94a3b8; line-height:1.8">
+        <li>默认操作：#38bdf8 天蓝</li>
+        <li>危险操作：#f87171 红</li>
+        <li>入口操作：#34d399 翡翠</li>
+      </ul>
+    </div>
+    <div style="padding:12px; border-radius:10px; background:rgba(56,189,248,0.04); border:1px solid rgba(56,189,248,0.1)">
+      <div style="font-weight:700; color:#38bdf8; margin-bottom:6px; font-size:11px; text-transform:uppercase; letter-spacing:0.05em">容器</div>
+      <ul style="margin:0; padding-left:16px; color:#94a3b8; line-height:1.8">
+        <li>背景 rgba(8,8,16,0.96) + blur(24px)</li>
+        <li>边框 rgba(56,189,248,0.12)</li>
+        <li>顶/底 1px 渐变光线</li>
+      </ul>
+    </div>
+  </div>
+</div>

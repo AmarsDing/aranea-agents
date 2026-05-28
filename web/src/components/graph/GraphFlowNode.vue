@@ -26,7 +26,7 @@
           :display-status="displayStatus"
           :fine-status="fineStatusKey"
         />
-        <q-badge v-else-if="data.execStatus" dense rounded class="graph-flow-node__status-badge">
+        <q-badge v-else-if="data.execStatus" dense rounded class="graph-flow-node__status-badge" :class="statusBadgeClass">
           {{ statusLabel }}
         </q-badge>
       </div>
@@ -34,6 +34,9 @@
       <div v-if="roleLabel" class="graph-flow-node__role">{{ roleLabel }}</div>
       <div v-if="agentKeyLine" class="graph-flow-node__agent-key">{{ agentKeyLine }}</div>
       <div v-if="responsibilityLine" class="graph-flow-node__hint">{{ truncate(responsibilityLine, 56) }}</div>
+      <div v-if="toolChips.length" class="graph-flow-node__tools">
+        <span v-for="t in toolChips" :key="t" class="graph-flow-node__tool-chip">{{ t }}</span>
+      </div>
       <div v-if="ioPreviewLine" class="graph-flow-node__io">{{ truncate(ioPreviewLine, 64) }}</div>
       <div v-if="fineStatusLabel && !showStatusChip" class="graph-flow-node__fine-status">{{ fineStatusLabel }}</div>
     </div>
@@ -64,6 +67,7 @@ const props = defineProps<{
     inputPreview?: string;
     outputPreview?: string;
     currentActivity?: string;
+    toolNames?: string[];
   };
   selected?: boolean;
 }>();
@@ -131,6 +135,21 @@ const fineStatusLabel = computed(() => {
   const key = props.data.fineStatus as AgentNodeStatus | undefined;
   if (!key) return "";
   return AGENT_NODE_STATUS_STYLES[key]?.label ?? key;
+});
+
+const toolChips = computed(() => {
+  const tools = props.data.toolNames ?? [];
+  if (tools.length <= 3) return tools;
+  return [...tools.slice(0, 3), `+${tools.length - 3}`];
+});
+
+const statusBadgeClass = computed(() => {
+  const s = props.data.execStatus;
+  if (s === "running") return "graph-flow-node__status-badge--running";
+  if (s === "completed") return "graph-flow-node__status-badge--completed";
+  if (s === "error" || s === "failed") return "graph-flow-node__status-badge--failed";
+  if (s === "interrupted") return "graph-flow-node__status-badge--interrupted";
+  return "";
 });
 
 function truncate(text: string, max: number) {

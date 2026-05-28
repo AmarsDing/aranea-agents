@@ -16,7 +16,7 @@
         <q-input :model-value="capabilityLines" class="app-field-long" outlined type="textarea" rows="4" hint="例如 chat、summarize" @update:model-value="emit('update:capabilityLines', String($event ?? ''))" />
       </div>
       <div class="app-actions-bar app-actions-bar--start">
-        <q-btn color="primary" rounded unelevated no-caps label="保存 AgentCard" :loading="saving" @click="emit('save')" />
+        <q-btn color="primary" rounded unelevated no-caps label="保存 AgentCard" :loading="saving" :disable="!card" @click="emit('save')" />
       </div>
     </div>
   </section>

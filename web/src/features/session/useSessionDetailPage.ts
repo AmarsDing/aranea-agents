@@ -38,7 +38,7 @@ export function useSessionDetailPage() {
   async function loadSession() {
     const id = sessionId.value;
     if (!id) {
-      sessionError.value = "Missing session ID";
+      sessionError.value = "缺少会话 ID";
       loadingSession.value = false;
       return;
     }
@@ -47,7 +47,7 @@ export function useSessionDetailPage() {
     try {
       session.value = await sessionStore.fetchSession(id);
     } catch (err) {
-      sessionError.value = err instanceof Error ? err.message : "Failed to load session";
+      sessionError.value = err instanceof Error ? err.message : "加载会话失败";
     } finally {
       loadingSession.value = false;
     }
@@ -57,6 +57,7 @@ export function useSessionDetailPage() {
     if (!session.value) return;
     await sessionStore.archive(session.value.id);
     session.value = { ...session.value, status: "archived" };
+    $q.notify({ type: "positive", message: "已归档" });
   }
 
   async function handleRestore() {
@@ -64,7 +65,7 @@ export function useSessionDetailPage() {
     try {
       session.value = await sessionStore.restore(session.value.id);
     } catch (err) {
-      console.error("Restore failed", err);
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "恢复失败" });
     }
   }
 

@@ -10,11 +10,11 @@ import (
 func TestBuildTeamRunSummary(t *testing.T) {
 	run := biz.TeamRun{
 		ID: "run-1", TeamID: "team-1", SessionID: "sess-1",
-		Mode: "sequential", Status: "success",
+		Mode: "sequential", Status: biz.TeamRunStatusSuccess,
 		TokenIn: 10, TokenOut: 20, DurationMS: 100,
 	}
 	steps := []biz.TeamRunStep{
-		{AgentKey: "a1", AgentName: "Agent One", Role: "worker", SortOrder: 0, Status: "ok", TokenOut: 20, ToolCallCount: 2},
+		{AgentKey: "a1", AgentName: "Agent One", Role: "worker", SortOrder: 0, Status: biz.TeamMemberStepStatusOK, TokenOut: 20, ToolCallCount: 2},
 	}
 	summary := BuildTeamRunSummary(run, steps)
 	if summary["run_id"] != "run-1" {
@@ -33,7 +33,7 @@ func TestBuildTeamRunSummary(t *testing.T) {
 }
 
 func TestSummaryMapFromDataMatchesBuildTeamRunSummary(t *testing.T) {
-	run := biz.TeamRun{ID: "run-1", TeamID: "t1", SessionID: "s1", Status: "success"}
+	run := biz.TeamRun{ID: "run-1", TeamID: "t1", SessionID: "s1", Status: biz.TeamRunStatusSuccess}
 	steps := []biz.TeamRunStep{{AgentKey: "a1", ToolCallCount: 1}}
 	data := biz.BuildTeamRunSummaryData(run, steps)
 	if got := SummaryMapFromData(data); got["run_id"] != BuildTeamRunSummary(run, steps)["run_id"] {
@@ -42,7 +42,7 @@ func TestSummaryMapFromDataMatchesBuildTeamRunSummary(t *testing.T) {
 }
 
 func TestTeamSummaryEnvelope(t *testing.T) {
-	run := biz.TeamRun{ID: "r1", TeamID: "t1", SessionID: "s1", Status: "success"}
+	run := biz.TeamRun{ID: "r1", TeamID: "t1", SessionID: "s1", Status: biz.TeamRunStatusSuccess}
 	env := TeamSummaryEnvelope(run, nil)
 	if env.Type != event.EnvelopeTypeTeamSummary {
 		t.Fatalf("type=%s", env.Type)

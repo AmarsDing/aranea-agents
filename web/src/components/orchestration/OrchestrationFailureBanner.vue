@@ -13,21 +13,35 @@
       <q-btn v-if="canRetry" flat dense color="primary" label="重试" @click="$emit('retry', primary?.node_id)" />
       <q-btn v-if="canFallback" flat dense color="warning" label="切 fallback" @click="$emit('fallback', primary?.node_id)" />
       <q-btn v-if="canReview" flat dense color="primary" label="审核" @click="$emit('review', primary?.node_id)" />
-      <q-btn flat dense color="grey-7" label="终止" @click="$emit('halt')" />
+      <q-btn flat dense color="negative" label="终止" @click="confirmHalt" />
     </template>
   </q-banner>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useQuasar } from "quasar";
 import type { AgentNodeState } from "../../features/orchestration/types";
+
+const $q = useQuasar();
 
 const props = defineProps<{
   nodes: AgentNodeState[];
   runStatus?: string;
 }>();
 
-defineEmits<{ retry: [nodeId?: string]; fallback: [nodeId?: string]; review: [nodeId?: string]; halt: [] }>();
+const emit = defineEmits<{ retry: [nodeId?: string]; fallback: [nodeId?: string]; review: [nodeId?: string]; halt: [] }>();
+
+function confirmHalt() {
+  $q.dialog({
+    title: "终止编排",
+    message: "确定终止当前编排运行？此操作不可撤销。",
+    cancel: true,
+    persistent: true,
+  }).onOk(() => {
+    emit("halt");
+  });
+}
 
 const failedNodes = computed(() =>
   props.nodes.filter(

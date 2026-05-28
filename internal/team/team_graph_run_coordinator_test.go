@@ -152,7 +152,7 @@ func newCoordTestBackend() *coordGraphBackend {
 
 func TestTeamGraphRunCoordinator_DeferTeamRunSuccessIfHITL(t *testing.T) {
 	backend := newCoordTestBackend()
-	repo := &memTeamRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", Status: "running"}}}
+	repo := &memTeamRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", Status: biz.TeamRunStatusRunning}}}
 	bus := event.NewBus()
 	coord := NewTeamGraphRunCoordinator(backend, repo, bus)
 	cfg := biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}
@@ -162,19 +162,19 @@ func TestTeamGraphRunCoordinator_DeferTeamRunSuccessIfHITL(t *testing.T) {
 	if err := coord.MarkTeamGraphInterrupt(context.Background(), "exec-1", "review-1", "lineage-1"); err != nil {
 		t.Fatal(err)
 	}
-	run := biz.TeamRun{ID: "run-1", Status: "running"}
+	run := biz.TeamRun{ID: "run-1", Status: biz.TeamRunStatusRunning}
 	deferred, err := coord.DeferTeamRunSuccessIfHITL(context.Background(), "exec-1", &run)
 	if err != nil || !deferred {
 		t.Fatalf("deferred=%v err=%v run=%+v", deferred, err, run)
 	}
-	if run.Status != teamRunStatusWaitingHuman {
+	if run.Status != biz.TeamRunStatusWaitingHuman {
 		t.Fatalf("status=%q", run.Status)
 	}
 }
 
 func TestTeamGraphRunCoordinator_finalizeTeamRun(t *testing.T) {
 	backend := newCoordTestBackend()
-	repo := &memTeamRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: teamRunStatusWaitingHuman}}}
+	repo := &memTeamRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusWaitingHuman}}}
 	bus := event.NewBus()
 	coord := NewTeamGraphRunCoordinator(backend, repo, bus)
 	ctx := context.Background()
@@ -198,7 +198,7 @@ func TestTeamGraphRunCoordinator_finalizeTeamRun(t *testing.T) {
 		t.Fatal("timeout waiting for team_run_finished")
 	}
 	got, err := repo.GetTeamRunByID(ctx, "run-1")
-	if err != nil || got.Status != "success" {
+	if err != nil || got.Status != biz.TeamRunStatusSuccess {
 		t.Fatalf("run=%+v err=%v", got, err)
 	}
 }

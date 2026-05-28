@@ -9,12 +9,15 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/mcp"
 	"aranea-agents/internal/mcp/alert"
 	"aranea-agents/pkg/safego"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
+
+const maxConcurrentProbes = 8
 
 var (
 	probeTotal = promauto.NewCounterVec(prometheus.CounterOpts{
@@ -47,18 +50,18 @@ func NewRunner(deps Deps) *Runner {
 func DefaultInterval() time.Duration {
 	raw := strings.TrimSpace(os.Getenv("MCP_HEALTH_INTERVAL"))
 	if raw == "" {
-		return 5 * time.Minute
+		return mcp.DefaultHealthInterval
 	}
 	d, err := time.ParseDuration(raw)
 	if err != nil || d <= 0 {
-		return 5 * time.Minute
+		return mcp.DefaultHealthInterval
 	}
 	return d
 }
 
 func (r *Runner) Start(ctx context.Context, interval time.Duration) {
 	if interval <= 0 {
-		interval = 5 * time.Minute
+		interval = mcp.DefaultHealthInterval
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -84,17 +87,24 @@ func (r *Runner) probeAll(ctx context.Context) {
 		event.SysLogError("system.mcp.health_list_fail", "MCP 健康检查列表失败", event.P("error", err))
 		return
 	}
+	sem := make(chan struct{}, maxConcurrentProbes)
+	var wg sync.WaitGroup
 	for _, srv := range servers {
 		if ctx.Err() != nil {
-			return
+			break
 		}
 		if !srv.Enabled || strings.TrimSpace(srv.DeletedAt) != "" {
 			continue
 		}
+		srv := srv
+		sem <- struct{}{}
+		wg.Add(1)
 		safego.Go(ctx, "mcp.health.probe."+srv.Key, func() {
+			defer func() { <-sem; wg.Done() }()
 			r.probeOne(ctx, srv)
 		})
 	}
+	wg.Wait()
 }
 
 func (r *Runner) probeOne(ctx context.Context, srv biz.MCPServer) {
@@ -106,11 +116,6 @@ func (r *Runner) probeOne(ctx context.Context, srv biz.MCPServer) {
 	}
 	elapsed := time.Since(start)
 
-	// TPM-P1-09: "auth_required" means the server is network-reachable but requires
-	// OAuth / API-key credentials that the probe does not inject. Treat it as a distinct
-	// status rather than "error" so the health dashboard shows the correct reason and
-	// alert rules are not triggered for servers that are actually healthy at the network
-	// layer. Only hard failures (OK=false, Status≠"auth_required") raise an alert.
 	metricStatus := result.Status
 	if metricStatus == "" {
 		if result.OK {

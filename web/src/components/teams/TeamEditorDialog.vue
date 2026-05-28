@@ -285,9 +285,12 @@
 
 <script setup lang="ts">
 import { computed, watch } from "vue";
+import { useQuasar } from "quasar";
 import type { TeamDefinition } from "../../features/teams/types";
 import TeamCompilePreview from "./TeamCompilePreview.vue";
 import { failureDefaultOptions, failureOnErrorOptions, modeOptions, parallelFailOptions, roleOptions, runtimeEngineOptions, statusOptions, teamTemplateOptions, type TeamTemplateKey } from "./teamUtils";
+
+const $q = useQuasar();
 
 const props = withDefaults(
   defineProps<{
@@ -331,7 +334,15 @@ const intentAnchorOptions = computed(() =>
 
 function onTemplatePick(key: TeamTemplateKey | null) {
   emit("update:selectedTemplateKey", key);
-  if (key) emit("applyTemplate", key);
+  if (!key) return;
+  $q.dialog({
+    title: "应用模板",
+    message: "应用模板将覆盖当前配置，确定继续？",
+    cancel: true,
+    persistent: true,
+  }).onOk(() => {
+    emit("applyTemplate", key);
+  });
 }
 
 const filteredRuntimeEngineOptions = computed(() =>

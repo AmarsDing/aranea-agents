@@ -119,9 +119,10 @@
                       <q-item-section avatar><q-icon name="history" /></q-item-section>
                       <q-item-section>执行历史</q-item-section>
                     </q-item>
-                    <q-item v-close-popup clickable @click="runNow(props.row)">
+                    <q-item v-close-popup clickable :disable="triggeringId === props.row.id" @click="runNow(props.row)">
                       <q-item-section avatar><q-icon name="play_arrow" /></q-item-section>
                       <q-item-section>立即执行</q-item-section>
+                      <q-item-section v-if="triggeringId === props.row.id" side><q-spinner size="18px" /></q-item-section>
                     </q-item>
                     <q-item v-if="props.row.status === 'dead'" v-close-popup clickable @click="resetDeadTask(props.row)">
                       <q-item-section avatar><q-icon name="restart_alt" color="warning" /></q-item-section>
@@ -181,6 +182,7 @@ const {
   editorOpen,
   editingRow,
   savingId,
+  triggeringId,
   formSubmitting,
   formServerError,
   columns,

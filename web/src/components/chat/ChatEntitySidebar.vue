@@ -59,7 +59,7 @@
                   </q-item-label>
                 </q-item-section>
                 <q-item-section side class="chat-entity-actions">
-                  <div class="chat-action-stack">
+                  <div class="chat-action-stack entity-actions">
                     <q-btn
                       dense
                       round
@@ -129,7 +129,7 @@
                   </q-item-label>
                 </q-item-section>
                 <q-item-section side class="chat-entity-actions">
-                  <div class="chat-action-stack">
+                  <div class="chat-action-stack entity-actions">
                     <q-btn
                       dense
                       round
@@ -375,6 +375,19 @@ function parseTeamDefinition(raw?: string) {
   display: flex;
   align-items: center;
   gap: var(--space-1);
+}
+
+.entity-actions {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.q-item:hover .entity-actions {
+  opacity: 1;
+}
+
+.chat-entity-item--active .entity-actions {
+  opacity: 1;
 }
 
 .chat-action-btn {

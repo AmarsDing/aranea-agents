@@ -2,22 +2,54 @@ package skillruntime
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/pkg/strutil"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
+
+const filterCacheMaxEntries = 512
+
+type filterCache struct {
+	mu      sync.Mutex
+	entries map[string]map[string]bool
+	count   atomic.Int64
+}
+
+func (c *filterCache) Load(key string) (map[string]bool, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	v, ok := c.entries[key]
+	return v, ok
+}
+
+func (c *filterCache) Store(key string, val map[string]bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.entries == nil {
+		c.entries = make(map[string]map[string]bool, filterCacheMaxEntries)
+	}
+	if _, exists := c.entries[key]; !exists {
+		n := c.count.Add(1)
+		if n > filterCacheMaxEntries {
+			c.entries = make(map[string]map[string]bool, filterCacheMaxEntries)
+			c.count.Store(1)
+		}
+	}
+	c.entries[key] = val
+}
 
 // AgentVisibilityFilter narrows visible skills per invocation using Layer A + Layer B
 // policy from agent_runtime_settings.skill_runtime_json and the turn query in RuntimeState.
 type AgentVisibilityFilter struct {
 	skillUC *biz.SkillUsecase
 	runtime *biz.AgentRuntimeSettings
-	cache   sync.Map // invocationID -> map[string]bool
+	cache   filterCache
 }
 
 // NewAgentVisibilityFilter returns a trpc-agent-go VisibilityFilter backed by ResolveSkillSlugs.
@@ -49,7 +81,7 @@ func (f *AgentVisibilityFilter) allowedSlugs(ctx context.Context) map[string]boo
 		}
 	}
 	if v, ok := f.cache.Load(cacheKey); ok {
-		return v.(map[string]bool)
+		return v
 	}
 	opts := &SkillToolsetOptions{Runtime: f.runtime, UserQuery: TurnQueryFromContext(ctx)}
 	slugs, err := ResolveSkillSlugs(ctx, f.skillUC, opts)
@@ -63,13 +95,8 @@ func (f *AgentVisibilityFilter) allowedSlugs(ctx context.Context) map[string]boo
 		}
 	}
 	if len(set) == 0 && err == nil {
-		// Policy produced no slugs while candidates exist — keep repo mount but hide all.
 	} else if err != nil {
-		// Fail open to enabled published keys only when resolution errors.
-		keys, listErr := f.skillUC.ListEnabledPublishedSkillKeys(ctx)
-		if listErr == nil {
-			set = strutil.SliceToSet(normalizeSlugSlice(keys))
-		}
+		slog.Warn("skillruntime: ResolveSkillSlugs failed; hiding all skills (fail-closed)", "error", err)
 	}
 	f.cache.Store(cacheKey, set)
 	return set

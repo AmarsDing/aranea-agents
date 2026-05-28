@@ -46,7 +46,7 @@
           @run-test="openRunTest"
           @duplicate="duplicate"
           @edit="openEdit"
-          @remove="remove"
+          @remove="confirmRemove"
         />
       </div>
     </section>
@@ -171,7 +171,7 @@ const {
   applyTemplate,
   save,
   duplicate,
-  remove,
+  confirmRemove,
   copyKey,
   openRuns,
   openRunTest,

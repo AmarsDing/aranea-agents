@@ -5,7 +5,7 @@
       <q-space />
       <div class="app-actions-bar">
         <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="$emit('reload')" />
-        <q-btn color="primary" unelevated rounded no-caps icon="save" label="保存" :loading="saving" @click="$emit('save')" />
+        <q-btn color="primary" unelevated rounded no-caps icon="save" label="保存" :loading="saving" :disable="!rules.length || rules.some(r => !r.name?.trim() || !r.metric_key?.trim())" @click="$emit('save')" />
       </div>
     </q-card-section>
     <q-separator />

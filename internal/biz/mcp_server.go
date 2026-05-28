@@ -65,8 +65,10 @@ type MCPServer struct {
 type MCPServerRepo interface {
 	ListMCPServers(ctx context.Context) ([]MCPServer, error)
 	GetMCPServer(ctx context.Context, id string) (MCPServer, error)
+	GetMCPServerByKey(ctx context.Context, key string) (MCPServer, error)
 	CreateMCPServer(ctx context.Context, m MCPServer) (MCPServer, error)
 	UpdateMCPServer(ctx context.Context, m MCPServer) (MCPServer, error)
+	UpdateMCPServerMetadata(ctx context.Context, id string, metadataJSON string, status string) error
 	DeleteMCPServer(ctx context.Context, id string) error
 }
 
@@ -187,19 +189,9 @@ func (u *MCPServerUsecase) RecordReconnectMetadata(ctx context.Context, serverKe
 	if serverKey == "" {
 		return nil
 	}
-	rows, err := u.repo.ListMCPServers(ctx)
+	row, err := u.repo.GetMCPServerByKey(ctx, serverKey)
 	if err != nil {
 		return err
-	}
-	var row *MCPServer
-	for i := range rows {
-		if strings.TrimSpace(rows[i].Key) == serverKey {
-			row = &rows[i]
-			break
-		}
-	}
-	if row == nil {
-		return nil
 	}
 	if u.metaEdit == nil {
 		return errors.InternalServer("MCP_SERVER", "mcp metadata editor not configured")
@@ -210,9 +202,7 @@ func (u *MCPServerUsecase) RecordReconnectMetadata(ctx context.Context, serverKe
 	if err != nil {
 		return err
 	}
-	row.MetadataJSON = raw
-	_, err = u.repo.UpdateMCPServer(ctx, *row)
-	return err
+	return u.repo.UpdateMCPServerMetadata(ctx, row.ID, raw, "")
 }
 
 // MarkHealthAlertEmitted records last_health_alert_at in metadata_json to debounce monitor events.
@@ -230,9 +220,7 @@ func (u *MCPServerUsecase) MarkHealthAlertEmitted(ctx context.Context, id string
 	if err != nil {
 		return err
 	}
-	row.MetadataJSON = raw
-	_, err = u.repo.UpdateMCPServer(ctx, row)
-	return err
+	return u.repo.UpdateMCPServerMetadata(ctx, row.ID, raw, "")
 }
 
 // ValidateConfig runs probe without persisting (pre-create URL check).
@@ -249,12 +237,10 @@ func (u *MCPServerUsecase) persistHealth(ctx context.Context, row *MCPServer, re
 	}
 	meta := u.metaEdit.Parse(row.MetadataJSON)
 	at := time.Now().UTC()
-	row.Status = u.metaEdit.ApplyHealth(meta, result.Status, result.OK, result.Message, at)
+	status := u.metaEdit.ApplyHealth(meta, result.Status, result.OK, result.Message, at)
 	raw, err := u.metaEdit.Marshal(meta)
 	if err != nil {
 		return err
 	}
-	row.MetadataJSON = raw
-	_, err = u.repo.UpdateMCPServer(ctx, *row)
-	return err
+	return u.repo.UpdateMCPServerMetadata(ctx, row.ID, raw, status)
 }

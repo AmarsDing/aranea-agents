@@ -3,7 +3,7 @@
 // 全局布局、Shell、按昼夜分叉的页面局部样式（分支与 Quasar 一致：body:not(.body--dark) / body.body--dark）
 
 body
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif
+  font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif
 
 body:not(.body--dark)
   background: $cream-page
@@ -59,11 +59,11 @@ body:not(.body--dark)
 
   // 页面内卡片：白底 + 轻玻璃感 + 大圆角 + 软阴影；概览内 .dashboard-glass-card 另有覆盖
   .q-card
-    background: rgba(255, 255, 255, 0.92)
+    background: rgba(255, 255, 255, 0.94)
     border: 1px solid $cream-border-soft
     border-radius: 16px
-    box-shadow: 0 4px 24px $cream-shadow-soft, 0 1px 3px $cream-shadow
-    backdrop-filter: blur(8px)
+    box-shadow: 0 2px 16px $cream-shadow-soft, 0 1px 3px $cream-shadow
+    backdrop-filter: blur(6px)
 
   .q-separator
     background: $cream-border-soft
@@ -188,14 +188,14 @@ body:not(.body--dark)
 
 body.body--dark
   .q-btn.bg-primary:not(.q-btn--outline):not(.q-btn--flat)
-    background: rgba(0, 229, 255, 0.15) !important
+    background: color-mix(in srgb, var(--color-accent) 28%, transparent) !important
     color: var(--color-accent) !important
-    border: 1px solid var(--color-accent) !important
-    box-shadow: 0 0 16px rgba(0, 229, 255, 0.22)
+    border: 1px solid color-mix(in srgb, var(--color-accent) 50%, transparent) !important
+    box-shadow: 0 0 12px rgba(77, 216, 232, 0.18)
 
     &:hover
-      background: rgba(0, 229, 255, 0.25) !important
-      box-shadow: 0 0 20px rgba(0, 229, 255, 0.32)
+      background: color-mix(in srgb, var(--color-accent) 38%, transparent) !important
+      box-shadow: 0 0 18px rgba(77, 216, 232, 0.28)
 
   .q-btn--outline.text-primary,
   .q-btn--flat.text-primary
@@ -205,7 +205,7 @@ body.body--dark
     color: var(--color-accent) !important
 
   .q-chip.bg-primary
-    background: rgba(0, 229, 255, 0.15) !important
+    background: color-mix(in srgb, var(--color-accent) 22%, transparent) !important
     color: var(--color-accent) !important
     border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)
 
@@ -529,8 +529,8 @@ body:not(.body--dark)
       border: 1px solid rgba(141, 110, 99, 0.1)
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62)
     .chat-input.q-field--focused .q-field__control
-      border-color: rgba(233, 162, 59, 0.65)
-      box-shadow: 0 0 0 2px rgba(233, 162, 59, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.7)
+      border-color: rgba(212, 137, 26, 0.6)
+      box-shadow: 0 0 0 2px rgba(212, 137, 26, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.7)
     .chat-toolbar-field .q-field__control
       background: rgba(255, 255, 255, 0.68)
       border-color: rgba(141, 110, 99, 0.16)
@@ -611,8 +611,8 @@ body.body--dark
       background: rgba(30, 41, 59, 0.76)
       border-color: rgba(148, 163, 184, 0.18)
     .chat-input.q-field--focused .q-field__control
-      border-color: rgba(0, 229, 255, 0.55)
-      box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.22)
+      border-color: rgba(77, 216, 232, 0.55)
+      box-shadow: 0 0 0 2px rgba(77, 216, 232, 0.22)
     .text-cream-text
       color: var(--chat-text-primary) !important
     .text-cream-muted
@@ -625,13 +625,13 @@ body.body--dark
     .chat-toolbar-btn--filled,
     .chat-send-btn,
     .chat-primary-btn
-      background: rgba(0, 229, 255, 0.15) !important
+      background: color-mix(in srgb, var(--color-accent) 24%, transparent) !important
       color: var(--color-accent) !important
-      border: 1px solid var(--color-accent) !important
-      box-shadow: 0 0 16px rgba(0, 229, 255, 0.28)
+      border: 1px solid color-mix(in srgb, var(--color-accent) 48%, transparent) !important
+      box-shadow: 0 0 12px rgba(77, 216, 232, 0.18)
       &:hover
-        background: rgba(0, 229, 255, 0.25) !important
-        box-shadow: 0 0 20px rgba(0, 229, 255, 0.38)
+        background: color-mix(in srgb, var(--color-accent) 36%, transparent) !important
+        box-shadow: 0 0 18px rgba(77, 216, 232, 0.26)
     .chat-icon-btn,
     .chat-action-btn,
     .chat-toolbar-btn--outline
@@ -853,7 +853,7 @@ body:not(.body--dark) .chat-page
     color: var(--color-text-secondary)
   .chat-message-bubble--sent
     background: var(--color-accent)
-    border: 1px solid rgba(233, 162, 59, 0.42)
+    border: 1px solid rgba(212, 137, 26, 0.42)
     box-shadow: var(--glass-inner-highlight)
     color: var(--color-on-accent)
   .chat-message-bubble--sent .message-name,
@@ -874,12 +874,12 @@ body:not(.body--dark) .chat-page
     color: var(--color-text-heading)
   .chat-message-content a
     color: var(--color-accent)
-    border-bottom-color: rgba(233, 162, 59, 0.45)
+    border-bottom-color: rgba(212, 137, 26, 0.45)
   .chat-message-content a:hover
     color: var(--color-accent-hover)
   .chat-message-content th
     color: var(--color-text-primary)
-    background: rgba(233, 162, 59, 0.1)
+    background: rgba(212, 137, 26, 0.1)
   .chat-tool-details__summary-text
     color: var(--color-text-primary)
 
@@ -898,9 +898,9 @@ body.body--dark .chat-page
     color: var(--color-text-secondary)
   .chat-message-bubble--sent,
   .chat-message-bubble--dark.chat-message-bubble--sent
-    background: rgba(0, 229, 255, 0.12)
-    border: 1px solid rgba(0, 229, 255, 0.42)
-    box-shadow: 0 0 16px rgba(0, 229, 255, 0.12)
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent)
+    border: 1px solid color-mix(in srgb, var(--color-accent) 38%, transparent)
+    box-shadow: 0 0 12px rgba(77, 216, 232, 0.1)
     color: var(--color-text-primary)
   .chat-message-bubble--sent .message-name,
   .chat-message-bubble--sent .message-stamp,
@@ -917,13 +917,13 @@ body.body--dark .chat-page
     box-shadow: var(--glass-inner-highlight)
   .chat-q-message:hover .chat-message-bubble--sent,
   .chat-q-message:hover .chat-message-bubble--dark.chat-message-bubble--sent
-    background: rgba(0, 229, 255, 0.18)
-    box-shadow: 0 0 20px rgba(0, 229, 255, 0.15)
+    background: color-mix(in srgb, var(--color-accent) 22%, transparent)
+    box-shadow: 0 0 16px rgba(77, 216, 232, 0.14)
   .message-avatar--user
     background: var(--glass-elevated) !important
     color: var(--color-accent) !important
     border: 1px solid var(--glass-border)
-    box-shadow: 0 0 12px rgba(0, 229, 255, 0.12)
+    box-shadow: 0 0 12px rgba(77, 216, 232, 0.12)
   .chat-message-content :is(h1, h2, h3, h4, h5, h6)
     color: var(--color-text-heading)
   .chat-message-content--dark :is(h1, h2, h3, h4, h5, h6),
@@ -936,7 +936,7 @@ body.body--dark .chat-page
     color: var(--color-link)
   .chat-message-content th
     color: var(--color-text-primary)
-    background: rgba(0, 229, 255, 0.1)
+    background: rgba(77, 216, 232, 0.1)
   .chat-tool-details__summary-text
     color: var(--color-text-primary)
 
@@ -1134,7 +1134,7 @@ body:not(.body--dark)
   border-radius: 12px
 
 body.body--dark .skill-import-dialog
-  box-shadow: 0 0 28px rgba(0, 229, 255, 0.14)
+  box-shadow: 0 0 28px rgba(77, 216, 232, 0.14)
 
 body.body--dark
   .skills-page,
@@ -1172,14 +1172,14 @@ body.body--dark
       &:hover
         background: var(--glass-surface-hover) !important
         border-color: var(--glass-border-hover)
-        box-shadow: 0 0 20px rgba(0, 229, 255, 0.12)
+        box-shadow: 0 0 20px rgba(77, 216, 232, 0.12)
 
     .sessions-summary-card
       transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease
       &:hover
         background: var(--glass-surface-hover) !important
         border-color: var(--glass-border-hover)
-        box-shadow: 0 0 16px rgba(0, 229, 255, 0.1)
+        box-shadow: 0 0 16px rgba(77, 216, 232, 0.1)
 
     .q-table th
       background: var(--glass-surface)
@@ -1218,13 +1218,13 @@ body.body--dark
       color: var(--color-accent) !important
       border-color: color-mix(in srgb, var(--color-accent) 38%, transparent) !important
       &:hover
-        background: rgba(0, 229, 255, 0.08)
+        background: rgba(77, 216, 232, 0.08)
 
     .sessions-btn-ghost
       color: var(--color-text-secondary) !important
       &:hover
         color: var(--color-accent) !important
-        background: rgba(0, 229, 255, 0.06)
+        background: rgba(77, 216, 232, 0.06)
 
     .sessions-icon-btn
       color: var(--color-text-secondary)
@@ -1246,7 +1246,7 @@ body.body--dark
       color: var(--color-accent)
 
   .skill-ux-dialog-card
-    box-shadow: 0 0 24px rgba(0, 229, 255, 0.12)
+    box-shadow: 0 0 24px rgba(77, 216, 232, 0.12)
 
 // Session detail + timeline（UX.md §2 玻璃 token）
 .session-detail-page
@@ -2129,9 +2129,9 @@ body:not(.body--dark) .overview-primary-btn:hover
 
 body.body--dark .overview-primary-btn
   border: 1px solid var(--color-accent) !important
-  background: rgba(0, 229, 255, 0.14) !important
+  background: rgba(77, 216, 232, 0.14) !important
   color: var(--color-accent) !important
-  box-shadow: 0 0 14px rgba(0, 229, 255, 0.2)
+  box-shadow: 0 0 14px rgba(77, 216, 232, 0.2)
 
 .overview-summary-panel
   min-height: 100%
@@ -2253,4 +2253,4 @@ body.body--dark .overview-page .q-field--outlined .q-field__control
 
 body.body--dark .overview-page .q-field--focused .q-field__control
   border-color: var(--color-accent) !important
-  box-shadow: 0 0 0 2px rgba(0, 229, 255, 0.18)
+  box-shadow: 0 0 0 2px rgba(77, 216, 232, 0.18)

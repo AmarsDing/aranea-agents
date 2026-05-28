@@ -67,6 +67,9 @@ export function useAgentSettingsPage() {
 
   const tab = ref("agent");
   const advancedDialog = ref(false);
+  const loadError = ref("");
+  const pageLoading = ref(true);
+  const modelChanged = ref(false);
 
   const form = reactive<Agent>({
     id: "",
@@ -130,7 +133,10 @@ export function useAgentSettingsPage() {
 
   const selectedProviderModelIDModel = computed({
     get: () => selectedProviderModelID.value,
-    set: (value: string | null | undefined) => selectProviderModel(value ?? null),
+    set: (value: string | null | undefined) => {
+      selectProviderModel(value ?? null);
+      modelChanged.value = true;
+    },
   });
 
   const promptFiles = useAgentPromptFiles(agentId, (opts) => $q.notify(opts));
@@ -178,8 +184,7 @@ export function useAgentSettingsPage() {
 
   async function applyLoadedAgent(agent: Agent | null | undefined) {
     if (!agent?.id) {
-      $q.notify({ type: "warning", message: "未找到该 Agent" });
-      router.back();
+      loadError.value = "未找到该 Agent";
       return false;
     }
     Object.assign(form, agent);
@@ -193,14 +198,15 @@ export function useAgentSettingsPage() {
     if (agent.files?.length) {
       hydrateFiles(agent.files);
     }
+    modelChanged.value = false;
     return true;
   }
 
   onMounted(async () => {
     const id = String(route.params.id ?? "").trim();
     if (!id) {
-      $q.notify({ type: "negative", message: "缺少 Agent ID" });
-      router.back();
+      loadError.value = "缺少 Agent ID";
+      pageLoading.value = false;
       return;
     }
     try {
@@ -213,8 +219,9 @@ export function useAgentSettingsPage() {
       ]);
       await applyLoadedAgent(agent);
     } catch (e) {
-      $q.notify({ type: "negative", message: e instanceof Error ? e.message : "加载 Agent 失败" });
-      router.back();
+      loadError.value = e instanceof Error ? e.message : "加载 Agent 失败";
+    } finally {
+      pageLoading.value = false;
     }
   });
 
@@ -226,8 +233,7 @@ export function useAgentSettingsPage() {
         const agent = await detailStore.fetchById(newId);
         await applyLoadedAgent(agent);
       } catch (e) {
-        $q.notify({ type: "negative", message: e instanceof Error ? e.message : "加载 Agent 失败" });
-        router.back();
+        loadError.value = e instanceof Error ? e.message : "加载 Agent 失败";
       }
     },
   );
@@ -242,13 +248,15 @@ export function useAgentSettingsPage() {
       });
       return;
     }
-    const modelResult = await runAgentModelValidate();
-    if (!modelResult.ok) {
-      $q.notify({
-        type: "negative",
-        message: modelResult.message || "模型不可用，请检查 Provider 管理中的目录配置",
-      });
-      return;
+    if (modelChanged.value) {
+      const modelResult = await runAgentModelValidate();
+      if (!modelResult.ok) {
+        $q.notify({
+          type: "negative",
+          message: modelResult.message || "模型不可用，请检查 Provider 管理中的目录配置",
+        });
+        return;
+      }
     }
     const plannerErr = validatePlannerFormState();
     if (plannerErr) {
@@ -278,31 +286,28 @@ export function useAgentSettingsPage() {
       await loadPromptPreview();
       await primeThumbnailCache();
       void refreshFileTokenEstimates(form.id);
+      modelChanged.value = false;
       $q.notify({ type: "positive", message: "已保存" });
     } catch (e) {
       $q.notify({ type: "negative", message: e instanceof Error ? e.message : "保存失败" });
     }
   }
 
-  function handleAdvancedSave(payload: typeof advancedState) {
-    onAdvancedSave(payload, saveAgent);
+  async function handleAdvancedSave(payload: typeof advancedState) {
+    try {
+      await onAdvancedSave(payload, saveAgent);
+      advancedDialog.value = false;
+    } catch {
+      // saveAgent already shows error notification
+    }
   }
 
   async function toggleFavorite() {
     const next = !form.is_favorite;
     form.is_favorite = next;
     try {
-      const updated = await detailStore.patch(form.id, {
-        ...form,
-        is_favorite: next,
-        settings: buildSettingsPayload({
-          ...serializePlannerFormState(),
-          ...serializeRalphLoopFormState(),
-        }),
-        files: filesForSave().map(({ name, body, sort_order }) => ({ name, body, sort_order })),
-      });
-      Object.assign(form, updated);
-      hydrateSettings(updated, runtimeHydrateHooks());
+      const updated = await detailStore.patch(form.id, { is_favorite: next });
+      form.is_favorite = updated.is_favorite;
       store.upsertAgent(updated);
     } catch (error) {
       form.is_favorite = !next;
@@ -326,6 +331,30 @@ export function useAgentSettingsPage() {
     }
   }
 
+  async function loadInitial() {
+    const id = String(route.params.id ?? "").trim();
+    if (!id) {
+      loadError.value = "缺少 Agent ID";
+      return;
+    }
+    loadError.value = "";
+    pageLoading.value = true;
+    try {
+      const [agent] = await Promise.all([
+        detailStore.fetchById(id),
+        loadProviderModels(),
+        loadCatalogTools(),
+        loadSkillSlugOptions(),
+        loadCodeExecutorCapabilities(),
+      ]);
+      await applyLoadedAgent(agent);
+    } catch (e) {
+      loadError.value = e instanceof Error ? e.message : "加载 Agent 失败";
+    } finally {
+      pageLoading.value = false;
+    }
+  }
+
   return {
     tab,
     form,
@@ -337,8 +366,12 @@ export function useAgentSettingsPage() {
     avatarPickerOpen,
     promptDialog,
     advancedDialog,
+    loadError,
+    pageLoading,
+    modelChanged,
     toggleFavorite,
     reloadAgent,
+    loadInitial,
     saveAgent,
     promptModes,
     statusOptions,

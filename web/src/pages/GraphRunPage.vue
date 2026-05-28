@@ -12,12 +12,26 @@
       <q-space />
       <q-badge v-if="streamConnected" rounded class="graph-run-page__live-badge">实时</q-badge>
       <q-badge rounded :color="statusColor">{{ displayStatus }}</q-badge>
-      <q-btn v-if="displayStatus === 'running'" flat dense round icon="stop" color="negative" @click="cancelExec">
+      <span v-if="progressStepLabel && showProgressBar" class="graph-run-page__step-counter">{{ progressStepLabel }}</span>
+      <q-btn v-if="displayStatus === 'running'" flat dense round icon="stop" color="negative" @click="confirmCancelExec">
         <q-tooltip>取消执行</q-tooltip>
       </q-btn>
       <q-btn v-if="displayStatus === 'waiting_human'" flat dense round icon="play_arrow" color="positive" @click="resumeExec">
         <q-tooltip>恢复执行</q-tooltip>
       </q-btn>
+    </div>
+
+    <div v-if="showProgressBar" class="graph-run-progress">
+      <div class="graph-run-progress__bar">
+        <div class="graph-run-progress__fill" :style="{ width: progressPercent + '%' }"></div>
+        <div class="graph-run-progress__dot" :style="{ left: progressPercent + '%' }"></div>
+      </div>
+      <div class="graph-run-progress__stats">
+        <span class="graph-run-progress__stat graph-run-progress__stat--completed">● {{ progressCompleted }} 完成</span>
+        <span v-if="progressRunning > 0" class="graph-run-progress__stat graph-run-progress__stat--running">● {{ progressRunning }} 运行中</span>
+        <span v-if="progressWaiting > 0" class="graph-run-progress__stat graph-run-progress__stat--waiting">○ {{ progressWaiting }} 等待</span>
+        <span v-if="progressDurationSec" class="graph-run-progress__stat graph-run-progress__stat--duration">⏱ {{ progressDurationSec }}s</span>
+      </div>
     </div>
 
     <div class="graph-workbench__body graph-run-page__body">
@@ -95,6 +109,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import GraphEditorCanvas from "../components/graph/GraphEditorCanvas.vue";
 import GraphRunInspector from "../components/graph/GraphRunInspector.vue";
 import GraphHitlDialog from "../components/graph/GraphHitlDialog.vue";
@@ -135,6 +150,7 @@ const {
   timeTravelLoading,
   stepIndex,
   onSelectNode,
+  confirmCancelExec,
   cancelExec,
   resumeExec,
   submitHitlResume,
@@ -159,4 +175,57 @@ const {
   formatTime,
   goBack,
 } = useGraphRunPage();
+
+const progressCompleted = computed(() => {
+  let count = 0;
+  for (const state of execNodeStates.value.values()) {
+    if (state.status === "completed") count++;
+  }
+  return count;
+});
+
+const progressRunning = computed(() => {
+  let count = 0;
+  for (const state of execNodeStates.value.values()) {
+    if (state.status === "running") count++;
+  }
+  return count;
+});
+
+const progressWaiting = computed(() => {
+  let count = 0;
+  for (const state of execNodeStates.value.values()) {
+    if (state.status === "waiting" || state.status === "idle") count++;
+  }
+  return count;
+});
+
+const progressTotal = computed(() => {
+  const fromStates = execNodeStates.value.size;
+  const fromDef = graphDef.nodes?.length ?? 0;
+  return Math.max(fromStates, fromDef);
+});
+
+const progressPercent = computed(() => {
+  if (progressTotal.value === 0) return 0;
+  return Math.round((progressCompleted.value / progressTotal.value) * 100);
+});
+
+const progressStepLabel = computed(() => {
+  if (executionSummary.value?.totalSteps) {
+    return `Step ${progressCompleted.value}/${executionSummary.value.totalSteps}`;
+  }
+  if (progressTotal.value > 0) {
+    return `Step ${progressCompleted.value}/${progressTotal.value}`;
+  }
+  return "";
+});
+
+const progressDurationSec = computed(() => {
+  const ms = executionSummary.value?.durationMs;
+  if (ms && ms > 0) return (ms / 1000).toFixed(1);
+  return "";
+});
+
+const showProgressBar = computed(() => execNodeStates.value.size > 0);
 </script>

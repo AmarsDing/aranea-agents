@@ -3,7 +3,7 @@
 > **关联**：[`18 monitor.md`](./18%20monitor.md) · [`18 monitor.design.md`](./18%20monitor.design.md) · [`18-monitor-development.md`](./18-monitor-development.md) · 代码 Review [2026-05-26-Monitor-Code-Review](../review/2026-05-26-Monitor-Code-Review.md)
 > **规则真相源**：[`monitor-streams-wire.mdc`](../../.cursor/rules/monitor-streams-wire.mdc) · [`AGENT_RUNTIME_BOUNDARY.md`](../AGENT_RUNTIME_BOUNDARY.md)
 > **范围**：本文聚焦 **业务逻辑层面** 的优化（用户/运维实际感受得到的能力差异）。代码风格、命名、格式等问题已在 review 文档 P3 收敛，本文不重复。
-> **状态**：📐 设计草案，待评审
+> **状态**：✅ 已全部落地（2026-05-28）
 
 ---
 
@@ -101,6 +101,13 @@ func (e *TraceEmitter) emit(...) {
 | WS 全局连接 goroutine 数 | -50%（单 pump） |
 | 集成测 `TestDualBusRouting_NoFlowLogOnSessionBus` | ✅ |
 
+### 1.4 实现落地（2026-05-28）
+
+- `event.Infra.Publish()` 按 EnvelopeType 路由表自动分发（`flow_log`/`log` → MonitorBus，其余 → SessionBus）
+- 默认 `split` 模式，`dual` 模式通过 env flag 可回退
+- `ws.go` 全局连接仅订阅 MonitorBus，单 pump
+- 移除 `globalMode && monitorBus != sessionBus` 双 pump 分支
+
 ---
 
 ## 2. MON-OPT-02：告警冷却持久化 + 多实例分布式去重
@@ -194,6 +201,13 @@ FOR UPDATE;
 | `alert.recovered` 事件覆盖率 | ≥ 95% |
 | 集成测 `TestAlertCooldownPersistedAcrossRestart` | ✅ |
 | 集成测 `TestAlertConcurrentEvaluation_SingleNotification` | ✅ |
+
+### 2.4 实现落地（2026-05-28）
+
+- `monitor_alert_rules` 新增 `last_fired_at`/`last_fired_value`/`last_fired_window_start`/`firing_state`/`recovered_at` 列
+- `Usecase` 实现 `ShouldFireAlert`（DB 持久化优先 + 内存 fallback）、`MarkAlertFiredPersistent`、`MarkAlertRecovered`
+- `evaluateRunnerErrorRate` / `evaluateSkillFilesystemMissingCount` / `evaluateMetricValue` 统一 recovery 逻辑
+- `recovery_factor` 默认 0.9，`recoveryThreshold()` 计算
 
 ---
 
@@ -293,6 +307,14 @@ sf.Do(rule.ID, func() (interface{}, error) {
 | 1000 QPS completion 下评估 CPU 占用 | < 5% 单核 |
 | 评估延迟（事件 → 触发 alert） | ≤ 60 s（30 s 评估周期 + 30 s 入桶延迟） |
 | 集成测 `TestAlertEval_RingBuffer_ConsistentWithDB` | ✅ |
+
+### 3.4 实现落地（2026-05-28）
+
+- `MetricRingBuffer`：内存滑动窗口，O(1) 增量更新，60 个 1 分钟桶
+- `AlertEvalWorker`：独立 goroutine 30s ticker 统一评估，替代每次 completion 触发
+- `singleflight.Group` 防并发评估
+- `event_bus_runner_handler` 移除 `safego.Go("monitor.evaluate-alerts")`，改为 `OnCompletion` 更新 RingBuffer
+- `RebuildRingBuffer` 启动时从 DB 加载最近 1 小时数据
 
 ---
 
@@ -394,6 +416,14 @@ WS 升级握手时可上行：
 | 高峰丢弃集中在 low 优先级 | ≥ 95% |
 | 客户端能感知反压并展示 banner | ✅ |
 | 集成测 `TestWSPriorityQueue_HighNeverDropped` | ✅ |
+
+### 4.4 实现落地（2026-05-28）
+
+- WS 连接按 EnvelopeType 分优先级 channel（high/normal/low）
+- `writePump` 按 high → normal → low 顺序取
+- high 优先级永不丢弃（阻塞超时后关闭连接）
+- normal/low 满时 DropNewest + 计数
+- `monitor.backpressure` envelope 反馈客户端
 
 ---
 
@@ -501,6 +531,16 @@ UI：Traces 详情可点 parent → 跳转上一段 trace；Waterfall 跨 trace 
 | Run 详情前端请求数 | 从 N+1 降到 2 次（trace + spans） |
 | 历史回填覆盖率 | ≥ 99%（30 天内） |
 | 集成测 `TestTraceProjector_RunnerCompletion_BuildsTraceWithSpans` | ✅ |
+
+### 5.4 实现落地（2026-05-28）
+
+- `TraceProjector`：订阅 EventBus，首次 trace_id 出现 INSERT `monitor_traces`，后续 span UPSERT
+- `spanKindFromStep`：`HasPrefix`/`HasSuffix` 精确匹配（已修复 Contains 误分类）
+- `OnRunnerCompletion`：关闭 trace（UPDATE status/duration/tokens）
+- `evictStaleTraces`：1 分钟清理 ticker，10 分钟 TTL 淘汰孤儿 trace
+- `EnsureTraceSchema`：`monitor_traces` 扩展列 + `monitor_trace_spans` 建表 + `monitor_events` generated columns
+- `MonitorTraceBackfillWorker`：6 小时间隔 cron，从 `monitor_events` 回填历史 trace
+- `traceProjectorWorker`：256 buffer + drop 计数（每 100 次打印 SysLogWarn）
 
 ---
 
@@ -613,6 +653,16 @@ message MonitorAlertRule {
 | 表达式 DSL 覆盖现有 runner.error_rate + filesystem 两规则 | ✅ |
 | 旧 metric_key + threshold 规则向后兼容 | 100% |
 | 集成测 `TestAlertExpressionDSL_RunnerErrorRate_WithScope` | ✅ |
+
+### 6.4 实现落地（2026-05-28）
+
+- `AlertMetric` 接口：`Key()`/`Description()`/`Evaluate(ctx, window)`
+- `AlertMetricRegistry`：`Register`/`Get`/`List`，线程安全（`sync.RWMutex`）
+- `RunnerErrorRateMetric`：优先 RingBuffer，fallback DB COUNT
+- `SkillFilesystemMissingMetric`：从 `FilesystemHealthReader` 取
+- `Usecase.EvaluateAlerts` 优先使用注册表，fallback 到 switch
+- `evaluateMetricValue` 通用评估方法（recovery + threshold + fire 逻辑统一）
+- DSL 解析器（Phase 2）暂未实现，当前仅 Registry
 
 ---
 

@@ -24,7 +24,7 @@
     <q-list v-if="results.length" bordered separator class="rounded-borders">
       <q-item v-for="chunk in results" :key="chunk.id">
         <q-item-section>
-          <q-item-label caption>score {{ chunk.score.toFixed(4) }} · chunk #{{ chunk.chunk_index }}</q-item-label>
+          <q-item-label caption>score {{ chunk.score.toFixed(2) }} · chunk #{{ chunk.chunk_index }}</q-item-label>
           <q-item-label class="q-mt-xs">{{ chunk.content }}</q-item-label>
         </q-item-section>
       </q-item>

@@ -69,11 +69,11 @@ func TestCancelTeamRun_PublishesCancelledRunStatus(t *testing.T) {
 	defer unsub()
 
 	reg := rt.NewRunRegistry()
-	reg.SetStatus("sess-team-1", "run-team-1", "running", "")
+	reg.SetStatus("sess-team-1", "run-team-1", biz.TeamRunStatusRunning, "")
 	reg.StoreCancelable("sess-team-1", "run-team-1", func() {})
 
 	repo := &cancelTeamRunRepo{runs: map[string]biz.TeamRun{
-		"tr-1": {ID: "tr-1", SessionID: "sess-team-1", Status: "running"},
+		"tr-1": {ID: "tr-1", SessionID: "sess-team-1", Status: biz.TeamRunStatusRunning},
 	}}
 	svc := NewTeamService(biz.NewTeamUsecase(repo, nil), nil, nil, nil, nil, reg, bus)
 
@@ -81,7 +81,7 @@ func TestCancelTeamRun_PublishesCancelledRunStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resp.GetStatus() != "cancelled" {
+	if resp.GetStatus() != biz.TeamRunStatusCancelled {
 		t.Fatalf("status=%q", resp.GetStatus())
 	}
 
@@ -93,7 +93,7 @@ func TestCancelTeamRun_PublishesCancelledRunStatus(t *testing.T) {
 		if env.SessionID != "sess-team-1" {
 			t.Fatalf("session=%q", env.SessionID)
 		}
-		if env.Metadata["status"] != "cancelled" {
+		if env.Metadata["status"] != biz.TeamRunStatusCancelled {
 			t.Fatalf("status=%v", env.Metadata["status"])
 		}
 	default:

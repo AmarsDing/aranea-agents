@@ -47,16 +47,16 @@ func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresea
 		return tools.AssemblyConfig{EnabledTools: []string{"duckduckgo"}}, true
 	case "gemini_web_fetch":
 		cfg := tools.AssemblyConfig{EnabledTools: []string{"geminifetch"}}
-		if v := configString(merged, "model", "gemini_model"); v != "" {
+		if v := tools.ConfigString(merged, "model", "gemini_model"); v != "" {
 			cfg.GeminiModel = v
 		}
 		return cfg, true
 	case "google_search":
 		cfg := tools.AssemblyConfig{EnabledTools: []string{"google_search"}}
-		if v := configString(merged, "api_key", "google_api_key"); v != "" {
+		if v := tools.ConfigString(merged, "api_key", "google_api_key"); v != "" {
 			cfg.GoogleAPIKey = v
 		}
-		if v := configString(merged, "cx", "engine_id", "google_cx", "search_engine_id"); v != "" {
+		if v := tools.ConfigString(merged, "cx", "engine_id", "google_cx", "search_engine_id"); v != "" {
 			cfg.GoogleCX = v
 		}
 		return cfg, true
@@ -72,7 +72,7 @@ func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresea
 		return tools.AssemblyConfig{EnabledTools: []string{"await_user_reply"}}, true
 	case "claude_code":
 		cfg := tools.AssemblyConfig{EnabledTools: []string{"claudecode"}}
-		if v := configString(merged, "base_dir", "claude_code_dir", "working_dir"); v != "" {
+		if v := tools.ConfigString(merged, "base_dir", "claude_code_dir", "working_dir"); v != "" {
 			cfg.ClaudeCodeDir = v
 		}
 		return cfg, true
@@ -84,24 +84,13 @@ func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresea
 }
 
 func applyFilesystemDir(cfg *tools.AssemblyConfig, m map[string]any) {
-	if v := configString(m, "filesystem_dir", "base_dir", "working_dir", "root_dir"); v != "" {
+	if v := tools.ConfigString(m, "filesystem_dir", "base_dir", "working_dir", "root_dir"); v != "" {
 		cfg.FilesystemDir = v
 	}
 }
 
 func applyShellExecDir(cfg *tools.AssemblyConfig, m map[string]any) {
-	if v := configString(m, "base_dir", "shell_root", "filesystem_dir", "working_dir", "root_dir"); v != "" {
+	if v := tools.ConfigString(m, "base_dir", "shell_root", "filesystem_dir", "working_dir", "root_dir"); v != "" {
 		cfg.ShellExecDir = v
 	}
-}
-
-func configString(m map[string]any, keys ...string) string {
-	for _, k := range keys {
-		if v, ok := m[k]; ok {
-			if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
-				return strings.TrimSpace(s)
-			}
-		}
-	}
-	return ""
 }

@@ -196,7 +196,6 @@ function onSave() {
     context_compaction_enabled: compactionEnabled.value,
     session_summary_enabled: sessionSummaryEnabled.value
   });
-  emit("update:open", false);
 }
 
 watch(

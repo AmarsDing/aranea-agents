@@ -479,6 +479,24 @@ message MemoryWorkerStatus {
   int64 llm_fallback_total = 3;
   double avg_extraction_seconds = 4;
   int64 episode_backfill_total = 5;
+  // MEM-OPT-01: index health
+  int64 fact_index_stale_count = 6;
+  int64 fact_index_disabled_count = 7;
+  // MEM-OPT-03: queue stats
+  message QueueStats {
+    int64 capacity = 1;
+    int64 in_flight = 2;
+    int64 dropped_total = 3;
+    int64 debounced_total = 4;
+  }
+  QueueStats queue_high = 10;
+  QueueStats queue_normal = 11;
+  QueueStats queue_low = 12;
+  int64 oldest_pending_age_ms = 20;
+  // DB health: false when underlying store queries fail (counts may be stale/zero).
+  bool db_available = 21;
+  // Global dead-letter pending count (not queue-specific).
+  int64 dead_letter_pending = 22;
 }
 
 message MemoryPlatformSettings {
@@ -495,6 +513,47 @@ message GetMemoryPlatformSettingsRequest {}
 message UpdateMemoryPlatformSettingsRequest {
   bool policy_strict = 1;
   bool episode_backfill_disabled = 2;
+}
+
+// MEM-OPT-03: Dead-Letter messages
+
+message MemoryDeadLetterEntry {
+  int64 id = 1;
+  string enqueued_at = 2;
+  string failed_at = 3;
+  string session_id = 4;
+  string app_name = 5;
+  string drop_reason = 6;
+  int32 priority = 7;
+  int32 attempts = 8;
+  string state = 9;
+  string last_error = 10;
+}
+
+message ListMemoryDeadLettersRequest {
+  string state = 1;
+  int32 limit = 2;
+}
+
+message ListMemoryDeadLettersResponse {
+  repeated MemoryDeadLetterEntry items = 1;
+}
+
+message ReplayMemoryDeadLetterRequest {
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ReplayMemoryDeadLetterResponse {
+  MemoryDeadLetterEntry entry = 1;
+}
+
+message AbandonMemoryDeadLetterRequest {
+  int64 id = 1 [(google.api.field_behavior) = REQUIRED];
+  string reason = 2;
+}
+
+message AbandonMemoryDeadLetterResponse {
+  MemoryDeadLetterEntry entry = 1;
 }
 
 service MemoryService {
@@ -589,6 +648,26 @@ service MemoryService {
   rpc UpdateMemoryPlatformSettings(UpdateMemoryPlatformSettingsRequest) returns (MemoryPlatformSettings) {
     option (google.api.http) = {
       put: "/v1/memory/platform/settings"
+      body: "*"
+    };
+  }
+
+  // MEM-OPT-03: Dead-Letter management RPCs
+
+  rpc ListMemoryDeadLetters(ListMemoryDeadLettersRequest) returns (ListMemoryDeadLettersResponse) {
+    option (google.api.http) = {get: "/v1/memory/worker/dead-letters"};
+  }
+
+  rpc ReplayMemoryDeadLetter(ReplayMemoryDeadLetterRequest) returns (ReplayMemoryDeadLetterResponse) {
+    option (google.api.http) = {
+      post: "/v1/memory/worker/dead-letters/{id}/replay"
+      body: "*"
+    };
+  }
+
+  rpc AbandonMemoryDeadLetter(AbandonMemoryDeadLetterRequest) returns (AbandonMemoryDeadLetterResponse) {
+    option (google.api.http) = {
+      post: "/v1/memory/worker/dead-letters/{id}/abandon"
       body: "*"
     };
   }

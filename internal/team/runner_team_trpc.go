@@ -530,10 +530,10 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		AnchorMem:      anchorMem,
 		AnchorAg:       firstAg,
 	}
-	if graphExecID == "" {
-		r.persistNativeBulkMemberSteps(ctx, finishIn, members)
-	} else {
+	if graphExecID != "" {
 		r.finalizeGraphRunStepsFallback(ctx, finishIn)
+	} else {
+		r.persistNativeBulkMemberSteps(ctx, finishIn, members)
 	}
 	r.recordTeamRunUsage(ctx, run, teamRow.ID, firstAg, promptTok, completionTok, prov0, mod0, dialogMode)
 

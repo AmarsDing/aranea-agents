@@ -4,7 +4,7 @@
 <template>
   <q-card flat bordered class="monitor-card">
     <q-card-section class="q-pb-none">
-      <div class="text-h6 text-weight-bold">Runs</div>
+      <div class="text-h6 text-weight-bold">运行</div>
       <div class="text-caption text-grey-7">单次对话运行真相源（Token 用量 + Flow / Waterfall / Span）</div>
     </q-card-section>
 
@@ -63,7 +63,7 @@
         <q-td :props="props">
           <div class="app-registry-cell-actions">
             <q-btn flat dense round icon="account_tree" color="primary" aria-label="查看 Trace" @click="onOpenTrace(props.row)">
-              <q-tooltip>Details</q-tooltip>
+              <q-tooltip>详情</q-tooltip>
             </q-btn>
           </div>
         </q-td>
@@ -86,7 +86,7 @@
     <q-card class="monitor-trace-dialog">
       <q-card-section class="row items-start justify-between">
         <div>
-          <div class="text-h6">Trace detail</div>
+          <div class="text-h6">Trace 详情</div>
           <div class="text-caption text-grey-7">
             {{ detail?.agent_key || detail?.agent_id }} / {{ detail?.provider_code }} / {{ detail?.model_api_id }}
           </div>
@@ -106,7 +106,7 @@
             @click="openChatSession(activeCorrelation.sessionId)"
           />
           <flow-log-export-button :trace-id="activeCorrelation.traceId" :lines="flowLines" />
-          <q-btn flat icon="content_copy" label="Copy JSON" @click="copyDetail" />
+          <q-btn flat icon="content_copy" label="复制 JSON" @click="copyDetail" />
           <q-btn flat round dense icon="close" v-close-popup />
         </div>
       </q-card-section>
@@ -115,10 +115,10 @@
         <div class="col-12 col-md-4">
           <q-card flat bordered class="monitor-card">
             <q-card-section>
-              <div class="text-subtitle1 text-weight-bold">Summary</div>
+              <div class="text-subtitle1 text-weight-bold">概要</div>
               <q-list dense>
                 <q-item>
-                  <q-item-section>Status</q-item-section>
+                  <q-item-section>状态</q-item-section>
                   <q-item-section side>
                     <q-badge :color="statusColor(detail?.status)">{{ detail?.status || "unknown" }}</q-badge>
                   </q-item-section>
@@ -128,19 +128,19 @@
                   <q-item-section side>{{ detail?.agent_key || detail?.agent_id || "-" }}</q-item-section>
                 </q-item>
                 <q-item>
-                  <q-item-section>Provider / Model</q-item-section>
+                  <q-item-section>Provider / 模型</q-item-section>
                   <q-item-section side>{{ detail?.provider_code || "-" }} / {{ detail?.model_api_id || "-" }}</q-item-section>
                 </q-item>
                 <q-item>
-                  <q-item-section>Tokens</q-item-section>
+                  <q-item-section>Token 数</q-item-section>
                   <q-item-section side>{{ formatCount(detail?.input_tokens) }} / {{ formatCount(detail?.output_tokens) }}</q-item-section>
                 </q-item>
                 <q-item>
-                  <q-item-section>Latency</q-item-section>
+                  <q-item-section>延迟</q-item-section>
                   <q-item-section side>{{ formatLatency(detail?.latency_ms) }}</q-item-section>
                 </q-item>
                 <q-item>
-                  <q-item-section>Cost</q-item-section>
+                  <q-item-section>费用</q-item-section>
                   <q-item-section side>{{ formatMoney(detail?.total_cost_micro_usd) }}</q-item-section>
                 </q-item>
               </q-list>
@@ -151,15 +151,15 @@
           <q-card flat bordered class="monitor-card">
             <q-card-section>
               <q-tabs v-model="detailTab" dense align="left" active-color="primary">
-                <q-tab name="flow" label="Flow" icon="timeline" />
-                <q-tab name="waterfall" label="Waterfall" icon="waterfall_chart" />
-                <q-tab name="tree" label="Span tree" icon="account_tree" />
+                <q-tab name="flow" label="流程" icon="timeline" />
+                <q-tab name="waterfall" label="瀑布图" icon="waterfall_chart" />
+                <q-tab name="tree" label="Span 树" icon="account_tree" />
               </q-tabs>
               <q-separator class="q-mt-sm" />
               <q-tab-panels v-model="detailTab" animated class="q-mt-md">
                 <q-tab-panel name="flow" class="q-pa-none">
                   <div class="row items-center q-mb-sm q-gutter-sm">
-                    <q-badge outline color="teal">{{ flowLines.length }} flow logs</q-badge>
+                    <q-badge outline color="teal">{{ flowLines.length }} 流程日志</q-badge>
                     <span class="text-caption text-grey-7">Live capture while detail is open (filtered by trace_id)</span>
                   </div>
                   <flow-trace-panel :lines="flowLines" />
@@ -177,7 +177,7 @@
         <div class="col-12">
           <q-card flat bordered class="monitor-card">
             <q-card-section>
-              <div class="text-subtitle1 text-weight-bold">Raw JSON</div>
+              <div class="text-subtitle1 text-weight-bold">原始 JSON</div>
               <pre class="monitor-json">{{ detailJSON }}</pre>
             </q-card-section>
           </q-card>
@@ -300,7 +300,7 @@ function spanToNode(span: unknown, index: number): TreeNode {
 
 async function copyDetail() {
   await copyToClipboard(detailJSON.value);
-  Notify.create({ message: "Copied", color: "positive", position: "top" });
+  Notify.create({ message: "已复制", color: "positive", position: "top" });
 }
 
 function statusColor(status?: string) {

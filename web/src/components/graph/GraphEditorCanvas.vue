@@ -22,6 +22,7 @@
       :delete-key-code="readOnly ? null : 'Delete'"
       @node-click="onNodeClick"
       @pane-click="onPaneClick"
+      @node-contextmenu="onNodeContextMenu"
       @connect="onConnect"
       @nodes-change="onNodesChange"
       @edges-change="onEdgesChange"
@@ -31,11 +32,20 @@
       <Controls />
       <MiniMap />
     </VueFlow>
+    <GraphContextMenu
+      :visible="ctxMenuVisible"
+      :x="ctxMenuX"
+      :y="ctxMenuY"
+      :items="ctxMenuItems"
+      @select="onCtxMenuSelect"
+      @close="onCtxMenuClose"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, computed } from "vue";
+import { ref, watch, nextTick, computed, onMounted, onUnmounted } from "vue";
+import { useQuasar } from "quasar";
 import { VueFlow, useVueFlow, type Connection, type Edge, type Node, type NodeChange, type EdgeChange, Position } from "@vue-flow/core";
 import { Background } from "@vue-flow/background";
 import { Controls } from "@vue-flow/controls";
@@ -46,6 +56,8 @@ import "@vue-flow/controls/dist/style.css";
 import "@vue-flow/minimap/dist/style.css";
 import GraphFlowNode from "./GraphFlowNode.vue";
 import GraphFlowDiamond from "./GraphFlowDiamond.vue";
+import GraphContextMenu from "./GraphContextMenu.vue";
+import type { ContextMenuItem } from "./GraphContextMenu.vue";
 import type { NodeDef, EdgeDef, ConditionalEdgeDef, NodeType, GraphDefinition } from "../../features/graph/types";
 import { NODE_TYPE_STYLES } from "../../features/graph/types";
 import { defaultNodePosition, readGraphLayout, writeGraphNodePosition } from "../../features/graph/editor/graphLayout";
@@ -82,7 +94,13 @@ const emit = defineEmits<{
   updateGraph: [];
 }>();
 
-const { project, fitView } = useVueFlow();
+const { project, fitView, getSelectedNodes } = useVueFlow();
+const $q = useQuasar();
+
+const ctxMenuVisible = ref(false);
+const ctxMenuX = ref(0);
+const ctxMenuY = ref(0);
+const ctxMenuNodeId = ref<string | null>(null);
 
 const nodeTypes: Record<string, any> = {
   function: GraphFlowNode,
@@ -99,18 +117,7 @@ const readOnly = computed(() => props.readOnly ?? false);
 const defaultEdgeOptions = {
   type: "smoothstep",
   animated: false,
-  style: { stroke: "var(--color-icon-muted)", strokeWidth: 2 },
-};
-
-const edgeLabelStyle = {
-  fill: "var(--color-text-secondary)",
-  fontSize: 10,
-  fontWeight: 600,
-};
-
-const edgeLabelBgStyle = {
-  fill: "var(--glass-elevated)",
-  fillOpacity: 0.92,
+  style: { stroke: "var(--graph-edge-normal)", strokeWidth: 1 },
 };
 
 function edgeKindLabel(kind?: string): string | undefined {
@@ -164,6 +171,7 @@ function buildNodes(): Node[] {
         inputPreview: execState?.inputPreview,
         outputPreview: execState?.outputPreview,
         currentActivity: execState?.currentActivity,
+        toolNames: n.toolNames,
       },
       style: isDiamond
         ? {
@@ -180,18 +188,22 @@ function buildEdges(): Edge[] {
   for (const e of props.graphDef.edges) {
     const isTransfer = (e.kind ?? "").toLowerCase() === "transfer";
     const isDispatch = (e.kind ?? "").toLowerCase() === "dispatch";
+    const edgeClass = isTransfer ? "graph-edge--transfer" : isDispatch ? "graph-edge--dispatch" : "";
     edges.push({
       id: `e-${e.from}-${e.to}`,
       source: e.from,
       target: e.to,
       type: "smoothstep",
       animated: isTransfer,
+      class: edgeClass,
       style: isTransfer
-        ? { stroke: "var(--color-icon-muted)", strokeWidth: 1.5, strokeDasharray: "6 4" }
-        : { stroke: "var(--color-icon-muted)", strokeWidth: 2 },
+        ? { stroke: "var(--graph-edge-transfer)", strokeWidth: 1, strokeDasharray: "4 3" }
+        : isDispatch
+          ? { stroke: "var(--graph-edge-dispatch)", strokeWidth: 1, strokeDasharray: "8 6" }
+          : { stroke: "var(--graph-edge-normal)", strokeWidth: 1 },
       label: edgeKindLabel(e.kind) ?? (isTransfer ? "移交" : isDispatch ? "分派" : undefined),
-      labelStyle: edgeLabelStyle,
-      labelBgStyle: edgeLabelBgStyle,
+      labelStyle: { fill: "var(--graph-ctx-text)", fontSize: 10, fontWeight: 600 },
+      labelBgStyle: { fill: "var(--graph-ctx-bg)", fillOpacity: 0.9, stroke: "var(--graph-ctx-border)", strokeWidth: 0.5 },
       labelBgPadding: [6, 4],
       labelBgBorderRadius: 6,
     });
@@ -204,12 +216,13 @@ function buildEdges(): Edge[] {
         source: ce.from,
         target,
         type: "smoothstep",
+        class: "graph-edge--conditional",
         label,
-        labelStyle: edgeLabelStyle,
-        labelBgStyle: edgeLabelBgStyle,
+        labelStyle: { fill: "var(--graph-edge-conditional)", fontSize: 10, fontWeight: 600 },
+        labelBgStyle: { fill: "var(--graph-ctx-bg)", fillOpacity: 0.9, stroke: "rgba(244,114,182,0.15)", strokeWidth: 0.5 },
         labelBgPadding: [6, 4],
         labelBgBorderRadius: 6,
-        style: { strokeDasharray: "5 5" },
+        style: { stroke: "var(--graph-edge-conditional)", strokeWidth: 1, strokeDasharray: "6 5" },
       });
     }
   }
@@ -266,6 +279,106 @@ function onNodeClick({ node }: { node: Node }) {
 
 function onPaneClick() {
   emit("selectNode", null);
+  ctxMenuVisible.value = false;
+}
+
+const ctxMenuItems = computed<ContextMenuItem[]>(() => [
+  { icon: "✎", label: "编辑属性", shortcut: "Enter", action: "edit" },
+  { icon: "⧉", label: "复制节点", shortcut: "Ctrl+D", action: "duplicate" },
+  { icon: "✕", label: "删除节点", shortcut: "Del", danger: true, action: "delete" },
+  { icon: "⟂", label: "断开所有连线", action: "disconnect" },
+  { icon: "▷", label: "设为入口节点", success: true, action: "setEntry" },
+  { icon: "◻", label: "设为结束节点", danger: true, action: "setFinish" },
+]);
+
+function onNodeContextMenu({ event, node }: { event: MouseEvent; node: Node }) {
+  event.preventDefault();
+  ctxMenuNodeId.value = node.id;
+  ctxMenuX.value = event.clientX;
+  ctxMenuY.value = event.clientY;
+  ctxMenuVisible.value = true;
+  emit("selectNode", node.id);
+}
+
+function onCtxMenuSelect(action: string) {
+  const nodeId = ctxMenuNodeId.value;
+  if (!nodeId) return;
+  ctxMenuVisible.value = false;
+
+  switch (action) {
+    case "edit":
+      emit("selectNode", nodeId);
+      break;
+    case "duplicate":
+      duplicateNode(nodeId);
+      break;
+    case "delete":
+      deleteNode(nodeId);
+      break;
+    case "disconnect":
+      disconnectNode(nodeId);
+      break;
+    case "setEntry":
+      props.graphDef.entryPoint = nodeId;
+      emit("updateGraph");
+      break;
+    case "setFinish":
+      props.graphDef.finishPoint = nodeId;
+      emit("updateGraph");
+      break;
+  }
+}
+
+function onCtxMenuClose() {
+  ctxMenuVisible.value = false;
+}
+
+function duplicateNode(nodeId: string) {
+  if (readOnly.value) return;
+  const src = props.graphDef.nodes.find((n) => n.id === nodeId);
+  if (!src) return;
+  const newId = `${src.type}_${Date.now()}`;
+  const dup: NodeDef = { ...src, id: newId, description: `${src.description || src.id} (副本)` };
+  props.graphDef.nodes.push(dup);
+
+  const srcNode = internalNodes.value.find((n) => n.id === nodeId);
+  const pos = srcNode ? { x: srcNode.position.x + 40, y: srcNode.position.y + 40 } : { x: 100, y: 100 };
+  writeGraphNodePosition(props.graphDef, newId, pos);
+
+  emit("updateGraph");
+  emit("selectNode", newId);
+}
+
+function deleteNode(nodeId: string) {
+  if (readOnly.value) return;
+  const nodeIdx = props.graphDef.nodes.findIndex((n) => n.id === nodeId);
+  if (nodeIdx < 0) return;
+  const nodeLabel = props.graphDef.nodes[nodeIdx].description || nodeId;
+  const connectedEdges = props.graphDef.edges.filter((e) => e.from === nodeId || e.to === nodeId).length;
+  const connectedCondEdges = props.graphDef.conditionalEdges.filter((e) => e.from === nodeId || Object.values(e.pathMap ?? {}).includes(nodeId)).length;
+  const totalEdges = connectedEdges + connectedCondEdges;
+  const edgeHint = totalEdges > 0 ? `，同时移除 ${totalEdges} 条连线` : "";
+  $q.dialog({
+    title: "删除节点",
+    message: `确定删除节点「${nodeLabel}」${edgeHint}？此操作不可撤销。`,
+    cancel: true,
+    persistent: true,
+  }).onOk(() => {
+    const idx = props.graphDef.nodes.findIndex((n) => n.id === nodeId);
+    if (idx >= 0) {
+      props.graphDef.nodes.splice(idx, 1);
+      props.graphDef.edges = props.graphDef.edges.filter((e) => e.from !== nodeId && e.to !== nodeId);
+      props.graphDef.conditionalEdges = props.graphDef.conditionalEdges.filter((e) => e.from !== nodeId && !Object.values(e.pathMap ?? {}).includes(nodeId));
+      emit("updateGraph");
+    }
+  });
+}
+
+function disconnectNode(nodeId: string) {
+  if (readOnly.value) return;
+  props.graphDef.edges = props.graphDef.edges.filter((e) => e.from !== nodeId && e.to !== nodeId);
+  props.graphDef.conditionalEdges = props.graphDef.conditionalEdges.filter((e) => e.from !== nodeId && !Object.values(e.pathMap ?? {}).includes(nodeId));
+  emit("updateGraph");
 }
 
 function onConnect(connection: Connection) {
@@ -326,10 +439,25 @@ function onNodesChange(changes: NodeChange[]) {
       const nodeId = change.id;
       const nodeIdx = props.graphDef.nodes.findIndex((n) => n.id === nodeId);
       if (nodeIdx >= 0) {
-        props.graphDef.nodes.splice(nodeIdx, 1);
-        props.graphDef.edges = props.graphDef.edges.filter((e) => e.from !== nodeId && e.to !== nodeId);
-        props.graphDef.conditionalEdges = props.graphDef.conditionalEdges.filter((e) => e.from !== nodeId && !Object.values(e.pathMap ?? {}).includes(nodeId));
-        emit("updateGraph");
+        const nodeLabel = props.graphDef.nodes[nodeIdx].description || nodeId;
+        const connectedEdges = props.graphDef.edges.filter((e) => e.from === nodeId || e.to === nodeId).length;
+        const connectedCondEdges = props.graphDef.conditionalEdges.filter((e) => e.from === nodeId || Object.values(e.pathMap ?? {}).includes(nodeId)).length;
+        const totalEdges = connectedEdges + connectedCondEdges;
+        const edgeHint = totalEdges > 0 ? `，同时移除 ${totalEdges} 条连线` : "";
+        $q.dialog({
+          title: "删除节点",
+          message: `确定删除节点「${nodeLabel}」${edgeHint}？此操作不可撤销。`,
+          cancel: true,
+          persistent: true,
+        }).onOk(() => {
+          const idx = props.graphDef.nodes.findIndex((n) => n.id === nodeId);
+          if (idx >= 0) {
+            props.graphDef.nodes.splice(idx, 1);
+            props.graphDef.edges = props.graphDef.edges.filter((e) => e.from !== nodeId && e.to !== nodeId);
+            props.graphDef.conditionalEdges = props.graphDef.conditionalEdges.filter((e) => e.from !== nodeId && !Object.values(e.pathMap ?? {}).includes(nodeId));
+            emit("updateGraph");
+          }
+        });
       }
     }
   }
@@ -411,4 +539,35 @@ function onNodeDragStop({ node }: { node: Node }) {
   writeGraphNodePosition(props.graphDef, node.id, node.position);
   emit("updateGraph");
 }
+
+function onCanvasKeydown(e: KeyboardEvent) {
+  if (e.key === "Escape") {
+    ctxMenuVisible.value = false;
+    return;
+  }
+  if (readOnly.value) return;
+  if (e.key === "Enter") {
+    const selected = getSelectedNodes.value;
+    if (selected.length === 1) {
+      emit("selectNode", selected[0].id);
+    }
+    return;
+  }
+  if (e.key === "d" && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    const selected = getSelectedNodes.value;
+    if (selected.length === 1) {
+      duplicateNode(selected[0].id);
+    }
+    return;
+  }
+}
+
+onMounted(() => {
+  document.addEventListener("keydown", onCanvasKeydown, true);
+});
+
+onUnmounted(() => {
+  document.removeEventListener("keydown", onCanvasKeydown, true);
+});
 </script>

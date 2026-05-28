@@ -22,6 +22,18 @@
       />
     </div>
 
+    <q-slider
+      :model-value="stepIndex"
+      :min="0"
+      :max="maxStep"
+      :step="1"
+      label
+      label-always
+      color="primary"
+      @update:model-value="$emit('update:stepIndex', Number($event))"
+      class="q-mb-md"
+    />
+
     <template v-if="selectedCheckpoint">
       <div class="text-caption app-text-secondary q-mb-xs">已选检查点</div>
       <div class="graph-time-travel-panel__mono q-mb-sm">{{ selectedCheckpoint.checkpointId }}</div>
@@ -64,6 +76,7 @@ defineProps<{
   editLoading: boolean;
   timeTravelLoading: boolean;
   stepIndex: number;
+  maxStep?: number;
 }>();
 
 defineEmits<{

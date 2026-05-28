@@ -350,7 +350,6 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	var monitorCh <-chan event.Envelope
 	wc.unsubscribe = func() {}
 	if !probeMode {
-		// EP-RT-06: reliable for session chat; lossy for global monitor.
 		subOpts := event.SubscribeOptions{
 			BufferSize: 256,
 			Reliable:   !globalMode,
@@ -362,11 +361,15 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 		eventCh = ch
 		unsubSession := unsub
 		unsubAll := func() { unsubSession() }
-		if globalMode && s.monitorBus != nil && s.monitorBus != s.eventBus {
-			mCh, mUnsub := s.monitorBus.Subscribe(event.SubscribeOptions{
+		if s.monitorBus != nil && s.monitorBus != s.eventBus {
+			monOpts := event.SubscribeOptions{
 				BufferSize: 128,
 				DropPolicy: event.DropNewest,
-			})
+			}
+			if !globalMode {
+				monOpts.SessionID = sessionID
+			}
+			mCh, mUnsub := s.monitorBus.Subscribe(monOpts)
 			monitorCh = mCh
 			prev := unsubAll
 			unsubAll = func() {

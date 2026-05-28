@@ -221,7 +221,7 @@ func (r *teamRepo) HasActiveTeamRun(ctx context.Context, teamID string) (bool, e
 	count, err := r.data.entClient.TeamRun.Query().
 		Where(
 			teamrun.TeamIDEQ(teamID),
-			teamrun.StatusIn("running", "pending"),
+			teamrun.StatusIn(biz.TeamRunStatusRunning, biz.TeamRunStatusPending),
 		).
 		Limit(1).
 		Count(ctx)
@@ -272,7 +272,7 @@ func (r *teamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRun) (biz.Team
 		run.StartedAt = now
 	}
 	if run.Status == "" {
-		run.Status = "running"
+		run.Status = biz.TeamRunStatusRunning
 	}
 	if run.TopologyJSON == "" {
 		run.TopologyJSON = "{}"
@@ -339,7 +339,7 @@ func (r *teamRepo) CreateTeamRunStep(ctx context.Context, step biz.TeamRunStep) 
 		step.CreatedAt = now
 	}
 	if step.Status == "" {
-		step.Status = "success"
+		step.Status = biz.TeamMemberStepStatusOK
 	}
 	_, err := r.data.entClient.TeamRunStep.Create().
 		SetID(step.ID).

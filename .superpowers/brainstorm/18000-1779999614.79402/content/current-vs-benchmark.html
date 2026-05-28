@@ -1,0 +1,200 @@
+<h2>Graph UI 现状 vs 行业标杆对比</h2>
+<p class="subtitle">分析当前 UI 与 Flowise / LangGraph Studio / n8n 的差距</p>
+
+<div class="section">
+  <h3>一、列表页 (GraphsPage)</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">当前状态</div>
+      <div class="mockup-body" style="padding:16px; background:var(--bg-secondary)">
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <div style="padding:14px; border:1px solid #444; border-radius:14px; background:rgba(255,255,255,0.04)">
+            <div style="display:flex; justify-content:space-between">
+              <strong style="font-size:15px">My Workflow</strong>
+              <span style="color:#888">🌳</span>
+            </div>
+            <p style="color:#888; font-size:12px; margin:6px 0">描述文本...</p>
+            <div style="display:flex; gap:6px">
+              <span style="padding:2px 8px; border-radius:99px; border:1px solid #444; font-size:10px; color:#888">3 节点</span>
+              <span style="padding:2px 8px; border-radius:99px; border:1px solid #444; font-size:10px; color:#888">2 连线</span>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:4px; margin-top:8px; border-top:1px solid #444; padding-top:8px">
+              <span style="color:#888; font-size:11px">▶ 📋 🗑</span>
+            </div>
+          </div>
+          <div style="color:#666; font-size:12px; font-style:italic">问题：信息密度低、缺少状态/时间、卡片操作不直观、无搜索/筛选</div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">行业标杆 (n8n / Flowise)</div>
+      <div class="mockup-body" style="padding:16px; background:var(--bg-secondary)">
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <div style="display:flex; gap:10px; margin-bottom:8px">
+            <div style="flex:1; padding:8px 12px; border-radius:8px; border:1px solid #555; font-size:12px; color:#aaa">🔍 搜索工作流...</div>
+            <div style="padding:8px 12px; border-radius:8px; border:1px solid #555; font-size:12px; color:#aaa">筛选 ▾</div>
+          </div>
+          <div style="padding:14px; border:1px solid #3b82f6; border-radius:14px; background:rgba(59,130,246,0.06); border-left:3px solid #3b82f6">
+            <div style="display:flex; justify-content:space-between; align-items:center">
+              <strong style="font-size:15px">My Workflow</strong>
+              <div style="display:flex; gap:6px; align-items:center">
+                <span style="padding:2px 8px; border-radius:99px; background:#22c55e22; color:#22c55e; font-size:10px">● Active</span>
+                <span style="color:#666; font-size:11px">2m ago</span>
+              </div>
+            </div>
+            <p style="color:#888; font-size:12px; margin:6px 0">描述文本...</p>
+            <div style="display:flex; gap:8px; align-items:center; margin-top:8px">
+              <span style="font-size:11px; color:#aaa">5 节点</span>
+              <span style="color:#444">·</span>
+              <span style="font-size:11px; color:#aaa">3 连线</span>
+              <span style="color:#444">·</span>
+              <span style="font-size:11px; color:#aaa">DAG</span>
+              <span style="flex:1"></span>
+              <span style="padding:4px 10px; border-radius:8px; background:#3b82f6; color:white; font-size:11px; cursor:pointer">▶ Run</span>
+              <span style="padding:4px 8px; border-radius:8px; border:1px solid #444; font-size:11px; color:#aaa; cursor:pointer">✏️</span>
+              <span style="padding:4px 8px; border-radius:8px; border:1px solid #444; font-size:11px; color:#aaa; cursor:pointer">⋯</span>
+            </div>
+          </div>
+          <div style="color:#22c55e; font-size:12px">✓ 搜索筛选 · 状态标签 · 时间信息 · 快捷操作 · 视觉层次</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>二、编辑器页 (GraphEditorPage)</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">当前状态</div>
+      <div class="mockup-body" style="padding:16px; background:var(--bg-secondary)">
+        <div style="display:flex; flex-direction:column; gap:8px; font-size:12px; color:#aaa">
+          <div style="border-bottom:1px solid #444; padding:8px; display:flex; gap:8px; align-items:center">
+            <span>←</span><strong>编辑 Graph</strong><span style="flex:1"></span><span style="color:#f59e0b">未保存</span><span>💾</span><span>▶</span>
+          </div>
+          <div style="display:flex; gap:0; min-height:200px">
+            <div style="width:80px; padding:8px; border-right:1px solid #444; font-size:10px">
+              <div style="margin-bottom:8px; color:#888">组件库</div>
+              <div style="padding:6px; border:1px solid #444; border-radius:8px; margin-bottom:4px">🤖 Agent</div>
+              <div style="padding:6px; border:1px solid #444; border-radius:8px; margin-bottom:4px">🧠 LLM</div>
+              <div style="padding:6px; border:1px solid #444; border-radius:8px; margin-bottom:4px">🔧 Tool</div>
+              <div style="padding:6px; border:1px solid #444; border-radius:8px; margin-bottom:4px">🔀 Router</div>
+            </div>
+            <div style="flex:1; padding:12px; display:flex; align-items:center; justify-content:center; color:#555; font-size:11px">
+              画布区域 - 节点样式单调，缺少类型色彩区分
+            </div>
+            <div style="width:80px; padding:8px; border-left:1px solid #444; font-size:10px">
+              <div style="margin-bottom:8px; color:#888">属性</div>
+              <div style="color:#555">节点 ID</div>
+              <div style="color:#555">指令</div>
+              <div style="color:#555">模型</div>
+            </div>
+          </div>
+          <div style="color:#f59e0b; font-size:11px">⚠ 问题：属性面板平铺表单、无分组折叠、节点色彩区分弱、缺少快捷键/右键菜单</div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">行业标杆 (LangGraph Studio / Flowise)</div>
+      <div class="mockup-body" style="padding:16px; background:var(--bg-secondary)">
+        <div style="display:flex; flex-direction:column; gap:8px; font-size:12px; color:#aaa">
+          <div style="border-bottom:1px solid #444; padding:8px; display:flex; gap:8px; align-items:center">
+            <span>←</span><strong>编辑 Graph</strong><span style="font-size:10px; color:#666">v3 · 5 nodes</span><span style="flex:1"></span><span style="color:#f59e0b">●</span><span>💾 Save</span><span style="padding:2px 8px; border-radius:6px; background:#3b82f6; color:white">▶ Run</span>
+          </div>
+          <div style="display:flex; gap:0; min-height:200px">
+            <div style="width:80px; padding:8px; border-right:1px solid #444; font-size:10px">
+              <div style="margin-bottom:8px; color:#888">节点库</div>
+              <div style="padding:6px; border:1px solid #22c55e44; border-radius:8px; margin-bottom:4px; background:#22c55e11; border-left:2px solid #22c55e">🤖 Agent</div>
+              <div style="padding:6px; border:1px solid #3b82f644; border-radius:8px; margin-bottom:4px; background:#3b82f611; border-left:2px solid #3b82f6">🧠 LLM</div>
+              <div style="padding:6px; border:1px solid #f59e0b44; border-radius:8px; margin-bottom:4px; background:#f59e0b11; border-left:2px solid #f59e0b">🔧 Tool</div>
+              <div style="padding:6px; border:1px solid #8b5cf644; border-radius:8px; margin-bottom:4px; background:#8b5cf611; border-left:2px solid #8b5cf6">🔀 Router</div>
+            </div>
+            <div style="flex:1; padding:12px; display:flex; align-items:center; justify-content:center; color:#555; font-size:11px">
+              画布 - 节点有色彩标识、连接点高亮、自动布局
+            </div>
+            <div style="width:80px; padding:8px; border-left:1px solid #444; font-size:10px">
+              <div style="margin-bottom:8px; color:#888">属性</div>
+              <div style="padding:4px 6px; background:#ffffff08; border-radius:6px; margin-bottom:4px; border-left:2px solid #22c55e">
+                <div style="font-size:9px; color:#22c55e; font-weight:700">BASIC</div>
+                <div style="color:#888; font-size:10px">ID · 名称</div>
+              </div>
+              <div style="padding:4px 6px; background:#ffffff08; border-radius:6px; margin-bottom:4px; border-left:2px solid #3b82f6">
+                <div style="font-size:9px; color:#3b82f6; font-weight:700">MODEL</div>
+                <div style="color:#888; font-size:10px">指令 · 模型</div>
+              </div>
+              <div style="padding:4px 6px; background:#ffffff08; border-radius:6px; border-left:2px solid #f59e0b">
+                <div style="font-size:9px; color:#f59e0b; font-weight:700">ADVANCED</div>
+                <div style="color:#888; font-size:10px">重试 · 缓存</div>
+              </div>
+            </div>
+          </div>
+          <div style="color:#22c55e; font-size:11px">✓ 分类色彩 · 分组属性 · 快捷键 · 右键菜单 · 自动布局</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>三、运行监控页 (GraphRunPage)</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">当前状态</div>
+      <div class="mockup-body" style="padding:16px; background:var(--bg-secondary)">
+        <div style="font-size:12px; color:#aaa">
+          <div style="border-bottom:1px solid #444; padding:8px; display:flex; gap:8px; align-items:center">
+            <span>←</span><strong>执行监控</strong><span style="font-size:10px; color:#3b82f6">running</span><span style="flex:1"></span><span style="color:#22c55e; font-size:10px">● 实时</span><span>⏹</span>
+          </div>
+          <div style="padding:8px; color:#f59e0b; font-size:11px; margin-top:4px">
+            ⚠ 问题：状态可视化弱、时间线信息密度低、看板缺少统计、检查点交互不直观
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">行业标杆 (LangGraph Studio)</div>
+      <div class="mockup-body" style="padding:16px; background:var(--bg-secondary)">
+        <div style="font-size:12px; color:#aaa">
+          <div style="border-bottom:1px solid #444; padding:8px; display:flex; gap:8px; align-items:center">
+            <span>←</span><strong>执行监控</strong>
+            <span style="padding:2px 8px; border-radius:6px; background:#3b82f622; color:#3b82f6; font-size:10px; font-weight:600">● Running</span>
+            <span style="font-size:10px; color:#666">Step 3/7 · 1.2s</span>
+            <span style="flex:1"></span>
+            <span style="padding:2px 8px; border-radius:6px; background:#22c55e22; color:#22c55e; font-size:10px">● Live</span>
+          </div>
+          <div style="padding:8px; color:#22c55e; font-size:11px; margin-top:4px">
+            ✓ 进度条 · 节点状态热力图 · 步骤详情折叠 · 检查点时间线 · 快速回放
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>核心差距总结</h3>
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>当前优势</h4>
+      <ul>
+        <li>玻璃态设计语言统一</li>
+        <li>严格分层架构（易扩展）</li>
+        <li>实时 WebSocket 流完整</li>
+        <li>检查点/时间旅行功能齐全</li>
+        <li>任务看板/HITL 已实现</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>待优化项</h4>
+      <ul>
+        <li>节点色彩区分度不足（7种类型视觉差异小）</li>
+        <li>属性面板平铺表单，无分组/折叠</li>
+        <li>列表页缺少搜索/筛选/排序</li>
+        <li>运行页缺少进度指示和统计概览</li>
+        <li>缺少右键菜单和快捷键</li>
+        <li>边线样式单一，条件边与普通边区分弱</li>
+        <li>节点信息密度可提升（IO预览、状态）</li>
+      </ul>
+    </div>
+  </div>
+</div>

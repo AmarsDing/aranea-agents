@@ -119,6 +119,7 @@ export function useAgentHooksPanel(agentId: () => string, agentKey: () => string
     agentKey,
     createScopedHook,
     openEdit,
-    saveEdit
+    saveEdit,
+    reload: loadRows
   };
 }

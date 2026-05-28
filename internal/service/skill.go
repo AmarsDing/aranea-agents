@@ -50,6 +50,8 @@ func toProtoSkill(s biz.Skill) *v1.Skill {
 		Enabled:              s.Enabled,
 		FilesystemMissing:    s.FilesystemMissing,
 		SyncOrigin:           s.SyncOrigin,
+		Visibility:           s.Visibility,
+		DefaultConfigJson:    s.DefaultConfigJSON,
 		InvokeCount:          int32(s.InvokeCount),
 		SuccessCount:         int32(s.SuccessCount),
 		FailureCount:         int32(s.FailureCount),
@@ -107,6 +109,7 @@ func toProtoInvocation(x biz.SkillInvocation) *v1.SkillInvocation {
 		ErrorMessage:     x.ErrorMessage,
 		Source:           x.Source,
 		ActivationId:     x.ActivationID,
+		MessageId:        x.MessageID,
 		Permissions: &v1.SkillInvocationPermissions{
 			CanViewDetail: x.Permissions.CanViewDetail,
 		},
@@ -396,6 +399,48 @@ func (s *SkillService) ListSkillRuns(ctx context.Context, req *v1.ListSkillRunsR
 		resp.Items = append(resp.Items, toProtoInvocation(result.Items[i]))
 	}
 	return resp, nil
+}
+
+func (s *SkillService) GetSkillVersions(ctx context.Context, req *v1.GetSkillVersionsRequest) (*v1.GetSkillVersionsResponse, error) {
+	limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
+	result, err := s.uc.ListVersions(ctx, biz.SkillVersionListQuery{
+		SkillID: req.GetSkillId(),
+		Limit:   limit,
+		Offset:  offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp := &v1.GetSkillVersionsResponse{Total: int32(result.Total), Page: page, PageSize: pageSize}
+	for i := range result.Items {
+		resp.Items = append(resp.Items, toProtoVersionDetail(result.Items[i]))
+	}
+	return resp, nil
+}
+
+func (s *SkillService) RollbackSkillVersion(ctx context.Context, req *v1.RollbackSkillVersionRequest) (*v1.Skill, error) {
+	out, err := s.uc.RollbackVersion(ctx, req.GetSkillId(), req.GetVersionId())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("SKILL", "skill or version not found")
+		}
+		return nil, err
+	}
+	return toProtoSkill(out), nil
+}
+
+func toProtoVersionDetail(v biz.SkillVersionDetail) *v1.SkillVersionDetail {
+	return &v1.SkillVersionDetail{
+		Id:               v.ID,
+		SkillId:          v.SkillID,
+		Version:          v.Version,
+		Status:           v.Status,
+		ContentMarkdown:  v.ContentMarkdown,
+		ValidationStatus: v.ValidationStatus,
+		PublishedAt:      v.PublishedAt,
+		CreatedAt:        v.CreatedAt,
+		FileManifestJson: v.FileManifestJSON,
+	}
 }
 
 func (s *SkillService) skillDir(ctx context.Context, id string) (string, error) {

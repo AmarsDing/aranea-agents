@@ -275,8 +275,8 @@ func (r *monitorRepo) ExistsRunnerCompletion(ctx context.Context, sessionID, inv
 	var n int
 	err := r.data.RawDB().QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM monitor_events WHERE deleted_at = '' AND event_key = 'runner.completion'
-		 AND json_extract(metadata_json, '$.session_id') = ?
-		 AND json_extract(metadata_json, '$.invocation_id') = ?`,
+		 AND COALESCE(meta_session_id, json_extract(metadata_json, '$.session_id')) = ?
+		 AND COALESCE(meta_invocation_id, json_extract(metadata_json, '$.invocation_id')) = ?`,
 		sessionID, invocationID,
 	).Scan(&n)
 	if err != nil {

@@ -24,6 +24,7 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
   const open = ref(false);
   const tool = ref<Tool | null>(null);
   const activeTab = ref("overview");
+  const loading = ref(false);
 
   const overrides = ref<ToolAgentOverride[]>([]);
   const overridesLoading = ref(false);
@@ -100,11 +101,16 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
   }
 
   async function refreshDetail() {
+    loading.value = true;
     testResult.value = null;
     testArgsJson.value = "{}";
     syncConfigFromTool();
-    await loadOverrides();
-    await Promise.all([loadRecentRuns(), loadAgentBindingSummary()]);
+    try {
+      await loadOverrides();
+      await Promise.all([loadRecentRuns(), loadAgentBindingSummary()]);
+    } finally {
+      loading.value = false;
+    }
   }
 
   async function openDetail(t: Tool) {
@@ -236,6 +242,7 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
     open,
     tool,
     activeTab,
+    loading,
     overrides,
     overridesLoading,
     recentRuns,

@@ -208,7 +208,19 @@ var (
 		Help: "Team run runtime path: graph success, native fallback, or native primary.",
 	}, []string{"outcome", "reason"})
 
-	// SafegoPanicRecovered counts panics recovered by safego.
+	// SkillImportTotal counts skill ZIP import operations by phase and status.
+	SkillImportTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "aranea_skill_import_total",
+		Help: "Number of skill ZIP import operations, labelled by phase and status.",
+	}, []string{"phase", "status"})
+
+	// SkillImportDuration tracks skill ZIP import latency by phase.
+	SkillImportDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "aranea_skill_import_duration_seconds",
+		Help:    "Duration of skill ZIP import operations by phase.",
+		Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30, 60, 120},
+	}, []string{"phase"})
+
 	SafegoPanicRecovered = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "aranea_safego_panic_recovered_total",
 		Help: "Number of panics recovered by safego, labelled by goroutine name.",

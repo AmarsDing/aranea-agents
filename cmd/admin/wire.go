@@ -21,6 +21,7 @@ import (
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/monitor"
 	biztool "aranea-agents/internal/biz/tool"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
@@ -66,13 +67,15 @@ func provideEventBusSideConsumers(
 	flowLogs *biz.FlowLogUsecase,
 	monitor *biz.MonitorUsecase,
 	memWorker *biz.TurnMemoryWorker,
+	traceProj *monitor.TraceProjector,
+	fileAppender *monitor.FlowFileAppender,
 ) *biz.EventBusSideConsumers {
 	var sessionBus, monitorBus event.Bus
 	if infra != nil {
 		sessionBus = infra.SessionBus
 		monitorBus = infra.MonitorBus
 	}
-	return biz.NewEventBusSideConsumers(sessionBus, monitorBus, tools, webhooks, sessions, flowLogs, monitor, memWorker)
+	return biz.NewEventBusSideConsumers(sessionBus, monitorBus, tools, webhooks, sessions, flowLogs, monitor, memWorker, traceProj, fileAppender)
 }
 
 func provideCronRunnerDeps(
@@ -368,6 +371,16 @@ func provideMonitorUsecase(repo biz.MonitorRepo, notifier biz.AlertNotifier, ski
 	if skillUC != nil {
 		uc.SetFilesystemHealthReader(monitorSkillHealthAdapter{skills: skillUC})
 	}
+	rb := monitor.NewMetricRingBuffer()
+	uc.SetRingBuffer(rb)
+	w := monitor.NewAlertEvalWorker(uc, rb)
+	uc.SetEvalWorker(w)
+	reg := monitor.NewAlertMetricRegistry()
+	reg.Register(monitor.NewRunnerErrorRateMetric(repo, rb))
+	if skillUC != nil {
+		reg.Register(monitor.NewSkillFilesystemMissingMetric(monitorSkillHealthAdapter{skills: skillUC}))
+	}
+	uc.SetRegistry(reg)
 	return uc
 }
 
@@ -519,8 +532,19 @@ func provideChatSender(svc *service.ChatService) server.ChatSender {
 	return svc
 }
 
-func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, cascade *biz.L4CascadeUsecase, memStore *sessionmemory.Store, sysUC *biz.SystemSettingUsecase) *service.MemoryService {
-	return service.NewMemoryService(biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec, factSync), cascade, memStore, sysUC)
+func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, cascade *biz.L4CascadeUsecase, memStore *sessionmemory.Store, sysUC *biz.SystemSettingUsecase, deadLetterRepo biz.MemoryDeadLetterAdminRepo, queue memtrpc.AutoMemoryQueue, queueStats *memtrpc.MemoryJobQueue) *service.MemoryService {
+	enqueue := func(ctx context.Context, id int64) error {
+		return deadLetterRepo.ReplayDeadLetterIntoQueue(ctx, id, func(sessionID, appName, userID, feedbackMsgID string, priority biz.MemoryJobPriority) {
+			queue.Enqueue(memtrpc.AutoMemoryJobRequest{
+				SessionID:         sessionID,
+				AppName:           appName,
+				UserID:            userID,
+				FeedbackMessageID: feedbackMsgID,
+				Priority:          priority,
+			})
+		})
+	}
+	return service.NewMemoryService(biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec, factSync), cascade, memStore, sysUC, deadLetterRepo, enqueue, queueStats)
 }
 
 func provideL4CascadeUsecase(memStore *sessionmemory.Store, factSync biz.MemoryFactIndexSyncer) *biz.L4CascadeUsecase {
@@ -675,6 +699,29 @@ func provideMemoryL4DecayWorker(l4 biz.L4GraphWriter, agents *biz.AgentUsecase, 
 	return jobs.NewMemoryL4DecayWorker(0, l4, agents, logger)
 }
 
+func provideMemoryFactIndexReconciler(store *sessionmemory.Store, factSync biz.MemoryFactIndexSyncer, logger log.Logger) *jobs.MemoryFactIndexReconciler {
+	if jobs.MemoryIndexReconcileDisabled() {
+		return nil
+	}
+	return jobs.NewMemoryFactIndexReconciler(0, store, factSync, logger)
+}
+
+func provideMemoryDeadLetterReplayer(repo biz.MemoryDeadLetterAdminRepo, queue memtrpc.AutoMemoryQueue, logger log.Logger) *jobs.MemoryDeadLetterReplayer {
+	if jobs.MemoryDeadLetterReplayDisabled() {
+		return nil
+	}
+	enqueue := func(sessionID, appName, userID, feedbackMsgID string, priority biz.MemoryJobPriority) {
+		queue.Enqueue(memtrpc.AutoMemoryJobRequest{
+			SessionID:         sessionID,
+			AppName:           appName,
+			UserID:            userID,
+			FeedbackMessageID: feedbackMsgID,
+			Priority:          priority,
+		})
+	}
+	return jobs.NewMemoryDeadLetterReplayer(0, repo, enqueue, logger)
+}
+
 func provideEventStoreCleanup(store *biz.EventStoreUsecase, logger log.Logger) *jobs.EventStoreCleanup {
 	if jobs.EventStoreCleanupDisabled() {
 		return nil
@@ -698,6 +745,32 @@ func provideFlowLogCleanup(flowLogs *biz.FlowLogUsecase, logger log.Logger) *job
 
 func provideMonitorAlertCooldownCleanup(uc *biz.MonitorUsecase, logger log.Logger) *jobs.MonitorAlertCooldownCleanup {
 	return jobs.NewMonitorAlertCooldownCleanup(0, 0, uc, logger)
+}
+
+func provideMonitorAlertEvalWorker(uc *biz.MonitorUsecase) *monitor.AlertEvalWorker {
+	return uc.EvalWorker()
+}
+
+func provideTraceProjector(repo biz.MonitorRepo, infra *event.Infra) *monitor.TraceProjector {
+	var sessionBus, monitorBus event.Bus
+	if infra != nil {
+		sessionBus = infra.SessionBus
+		monitorBus = infra.MonitorBus
+	}
+	return monitor.NewTraceProjector(repo, sessionBus, monitorBus)
+}
+
+func provideFlowFileAppender() *monitor.FlowFileAppender {
+	dir := strings.TrimSpace(os.Getenv("MONITOR_FLOW_LOG_DIR"))
+	return monitor.NewFlowFileAppender(dir)
+}
+
+func provideMonitorTraceBackfillWorker(repo biz.MonitorRepo, logger log.Logger) *jobs.MonitorTraceBackfillWorker {
+	return jobs.NewMonitorTraceBackfillWorker(repo, logger)
+}
+
+func provideDiagBundleGenerator(repo biz.MonitorRepo) *biz.DiagBundleGenerator {
+	return biz.NewDiagBundleGenerator(repo)
 }
 
 func provideChannelDeliveryScanner(worker *service.ChannelDeliveryWorker, logger log.Logger) *jobs.ChannelDeliveryWorker {
@@ -797,11 +870,15 @@ type wireOut struct {
 	ToolAuditCleanup            *jobs.ToolAuditCleanup
 	FlowLogCleanup              *jobs.FlowLogCleanup
 	MonitorAlertCooldownCleanup *jobs.MonitorAlertCooldownCleanup
+	MonitorAlertEvalWorker      *monitor.AlertEvalWorker
+	MonitorTraceBackfillWorker  *jobs.MonitorTraceBackfillWorker
 	MemoryL2Decay               *jobs.MemoryL2DecayWorker
 	MemoryL3Decay               *jobs.MemoryL3DecayWorker
 	MemoryL4Decay               *jobs.MemoryL4DecayWorker
 	MemoryEpisodeBackfill       *jobs.MemoryEpisodeBackfillWorker
 	MemoryDataMigration         *jobs.MemoryDataMigrationWorker
+	MemoryFactIndexReconciler   *jobs.MemoryFactIndexReconciler
+	MemoryDeadLetterReplayer    *jobs.MemoryDeadLetterReplayer
 	ModelCatalogRunner          *modelcatalog.Runner
 }
 
@@ -823,11 +900,15 @@ func provideWireOut(
 	toolAuditCleanup *jobs.ToolAuditCleanup,
 	flowLogCleanup *jobs.FlowLogCleanup,
 	monitorAlertCooldown *jobs.MonitorAlertCooldownCleanup,
+	monitorAlertEvalWorker *monitor.AlertEvalWorker,
+	monitorTraceBackfillWorker *jobs.MonitorTraceBackfillWorker,
 	memoryL2Decay *jobs.MemoryL2DecayWorker,
 	memoryL3Decay *jobs.MemoryL3DecayWorker,
 	memoryL4Decay *jobs.MemoryL4DecayWorker,
 	memoryEpisodeBackfill *jobs.MemoryEpisodeBackfillWorker,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
+	memoryFactIndexReconciler *jobs.MemoryFactIndexReconciler,
+	memoryDeadLetterReplayer *jobs.MemoryDeadLetterReplayer,
 	modelCatalogRunner *modelcatalog.Runner,
 ) wireOut {
 	return wireOut{
@@ -838,10 +919,12 @@ func provideWireOut(
 		ChannelRuntime:          channelRuntime,
 		PluginRuntime:           pluginRuntime,
 		EventStoreCleanup:       eventStoreCleanup, ToolAuditCleanup: toolAuditCleanup,
-		FlowLogCleanup: flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, MemoryL2Decay: memoryL2Decay, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
-		MemoryEpisodeBackfill: memoryEpisodeBackfill,
-		MemoryDataMigration:   memoryDataMigration,
-		ModelCatalogRunner:    modelCatalogRunner,
+		FlowLogCleanup: flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
+		MemoryEpisodeBackfill:     memoryEpisodeBackfill,
+		MemoryDataMigration:       memoryDataMigration,
+		MemoryFactIndexReconciler: memoryFactIndexReconciler,
+		MemoryDeadLetterReplayer:  memoryDeadLetterReplayer,
+		ModelCatalogRunner:        modelCatalogRunner,
 	}
 }
 
@@ -920,6 +1003,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideCodeExecutorFactory,
 		provideAutoMemoryQueue,
 		wire.Bind(new(memtrpc.AutoMemoryQueue), new(*memtrpc.MemoryJobQueue)),
+		wire.Bind(new(biz.MemoryDeadLetterAdminRepo), new(*data.MemoryJobDeadLetterRepo)),
 		provideMemoryPolicyEngine,
 		provideFactIndexSync,
 		provideMemoryL2Recall,
@@ -972,9 +1056,16 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideMemoryL4DecayWorker,
 		provideMemoryEpisodeBackfillWorker,
 		provideMemoryDataMigrationWorker,
+		provideMemoryFactIndexReconciler,
+		provideMemoryDeadLetterReplayer,
 		provideToolAuditCleanup,
 		provideFlowLogCleanup,
 		provideMonitorAlertCooldownCleanup,
+		provideMonitorAlertEvalWorker,
+		provideTraceProjector,
+		provideFlowFileAppender,
+		provideMonitorTraceBackfillWorker,
+		provideDiagBundleGenerator,
 		provideMCPHealthRunnerDeps,
 		provideMCPHealthRunner,
 		provideA2AGatewayHealthRunnerDeps,

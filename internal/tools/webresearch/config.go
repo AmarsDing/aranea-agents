@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"aranea-agents/internal/tools"
 )
 
 // Config holds platform/agent configuration for web_research.
@@ -45,14 +47,14 @@ func ConfigFromMap(m map[string]any) Config {
 		cfg.APIKey = resolveAPIKeyFromEnv(cfg.Provider)
 		return cfg
 	}
-	if v := configString(m, "provider", "search_provider"); v != "" {
+	if v := tools.ConfigString(m, "provider", "search_provider"); v != "" {
 		cfg.Provider = strings.ToLower(v)
 	}
-	cfg.APIKey = configString(m, "api_key", "tavily_api_key", "serpapi_api_key")
+	cfg.APIKey = tools.ConfigString(m, "api_key", "tavily_api_key", "serpapi_api_key")
 	if cfg.APIKey == "" {
 		cfg.APIKey = resolveAPIKeyFromEnv(cfg.Provider)
 	}
-	if v := configString(m, "search_depth"); v != "" {
+	if v := tools.ConfigString(m, "search_depth"); v != "" {
 		cfg.SearchDepth = v
 	}
 	if n := configInt(m, "max_results"); n > 0 {
@@ -70,7 +72,7 @@ func ConfigFromMap(m map[string]any) Config {
 	if sec := configInt(m, "timeout_sec", "timeout_seconds"); sec > 0 {
 		cfg.Timeout = time.Duration(sec) * time.Second
 	}
-	cfg.HTTPProxy = configString(m, "http_proxy", "proxy_url")
+	cfg.HTTPProxy = tools.ConfigString(m, "http_proxy", "proxy_url")
 	if cfg.HTTPProxy == "" {
 		cfg.HTTPProxy = strings.TrimSpace(os.Getenv("ARANEA_WEB_HTTP_PROXY"))
 	}
@@ -88,17 +90,6 @@ func resolveAPIKeyFromEnv(provider string) string {
 	default:
 		return strings.TrimSpace(os.Getenv("TAVILY_API_KEY"))
 	}
-}
-
-func configString(m map[string]any, keys ...string) string {
-	for _, k := range keys {
-		if v, ok := m[k]; ok {
-			if s, ok := v.(string); ok && strings.TrimSpace(s) != "" {
-				return strings.TrimSpace(s)
-			}
-		}
-	}
-	return ""
 }
 
 func configInt(m map[string]any, keys ...string) int {

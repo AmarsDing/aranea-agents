@@ -12,7 +12,7 @@ import (
 
 func TestPermissionGuard_DenyToolsOnly(t *testing.T) {
 	p := NewPermissionGuardPlugin(
-		biz.Plugin{Key: "permission_guard", ConfigJSON: `{"deny_tools":["execute_sql"],"confirm_tools":["delete_file"]}`},
+		biz.Plugin{Key: "permission_guard", ConfigJSON: `{"deny_tools":["execute_sql"]}`},
 		nil, nil, nil,
 	)
 
@@ -21,7 +21,7 @@ func TestPermissionGuard_DenyToolsOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	if res.CustomResult != nil {
-		t.Fatalf("confirm_tools should pass through permission_guard, got %#v", res.CustomResult)
+		t.Fatalf("non-denied tool should pass through permission_guard, got %#v", res.CustomResult)
 	}
 
 	res, err = p.beforeTool(context.Background(), &trpctool.BeforeToolArgs{ToolName: "execute_sql"})

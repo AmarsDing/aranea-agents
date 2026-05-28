@@ -290,7 +290,7 @@ func (s *TeamService) CancelTeamRun(ctx context.Context, req *v1.CancelTeamRunRe
 	if err != nil {
 		return nil, mapTeamErr(err)
 	}
-	if r.Status != "running" && r.Status != "pending" {
+	if r.Status != biz.TeamRunStatusRunning && r.Status != biz.TeamRunStatusPending {
 		return nil, kerrors.BadRequest("TEAM", "only running or pending team runs can be cancelled")
 	}
 	if s.runs != nil && strings.TrimSpace(r.SessionID) != "" {
@@ -363,7 +363,7 @@ func (s *TeamService) RunTeamTest(ctx context.Context, req *v1.RunTeamTestReques
 		}
 	}
 	if run.ID == "" {
-		run = biz.TeamRun{TeamID: teamID, SessionID: sess.ID, Status: "success"}
+		run = biz.TeamRun{TeamID: teamID, SessionID: sess.ID, Status: biz.TeamRunStatusSuccess}
 	}
 
 	return &v1.RunTeamTestResponse{

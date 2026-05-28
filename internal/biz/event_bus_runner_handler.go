@@ -1,12 +1,11 @@
 package biz
 
 import (
+	"aranea-agents/internal/biz/monitor"
 	"context"
 	"os"
 	"strings"
 	"time"
-
-	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
 )
@@ -17,20 +16,23 @@ type runnerCompletionHandler struct {
 	usage     *UsageUsecase
 	monitor   *MonitorUsecase
 	memWorker *TurnMemoryWorker
+	traceProj *monitor.TraceProjector
 	logger    SessionLogWriter
 }
 
 func newRunnerCompletionHandler(
 	sessions *SessionUsecase,
 	usage *UsageUsecase,
-	monitor *MonitorUsecase,
+	monitorUC *MonitorUsecase,
 	memWorker *TurnMemoryWorker,
+	traceProj *monitor.TraceProjector,
 ) *runnerCompletionHandler {
 	return &runnerCompletionHandler{
 		sessions:  sessions,
 		usage:     usage,
-		monitor:   monitor,
+		monitor:   monitorUC,
 		memWorker: memWorker,
+		traceProj: traceProj,
 	}
 }
 
@@ -57,10 +59,20 @@ func (h *runnerCompletionHandler) Handle(ctx context.Context, de DomainEvent) {
 		if err := RecordRunnerCompletion(ctx, h.monitor, de); err != nil {
 			h.logError(context.Background(), de.SessionID, "event_bus.monitor.persist", "监控事件写入失败", LogPair{Key: "error", Value: err})
 		}
-		evalCtx := context.WithoutCancel(ctx)
-		safego.Go(evalCtx, "monitor.evaluate-alerts", func() {
-			h.monitor.EvaluateAlerts(evalCtx)
-		})
+		if w := h.monitor.EvalWorker(); w != nil {
+			status := "ok"
+			if de.Error != nil {
+				status = "error"
+			}
+			w.OnCompletion(status, int64(de.DurationMS))
+		}
+	}
+	if h.traceProj != nil && de.TraceID != "" {
+		status := "ok"
+		if de.Error != nil {
+			status = "error"
+		}
+		h.traceProj.OnRunnerCompletion(ctx, de.TraceID, status, int64(de.DurationMS))
 	}
 	if de.Usage == nil || h.usage == nil {
 		return

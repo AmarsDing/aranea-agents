@@ -7,6 +7,7 @@ import (
 	v1 "aranea-agents/api/kratos/memory/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/internal/event"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -81,15 +82,56 @@ func (s *MemoryService) CompositeSearchMemories(ctx context.Context, req *v1.Com
 	return out, nil
 }
 
-func (s *MemoryService) GetMemoryWorkerStatus(_ context.Context, _ *v1.GetMemoryWorkerStatusRequest) (*v1.MemoryWorkerStatus, error) {
+func (s *MemoryService) GetMemoryWorkerStatus(ctx context.Context, _ *v1.GetMemoryWorkerStatusRequest) (*v1.MemoryWorkerStatus, error) {
 	done, dead, fallback, backfill, avg := biz.MemoryWorkerStatsGlobal().Snapshot()
-	return &v1.MemoryWorkerStatus{
-		JobsDone:            done,
-		JobsDead:            dead,
-		LlmFallbackTotal:    fallback,
+	out := &v1.MemoryWorkerStatus{
+		JobsDone:             done,
+		JobsDead:             dead,
+		LlmFallbackTotal:     fallback,
 		AvgExtractionSeconds: avg,
 		EpisodeBackfillTotal: backfill,
-	}, nil
+		DbAvailable:          true,
+	}
+	if s.memStore != nil {
+		fresh, stale, disabled, err := s.memStore.CountFactsByIndexStatus(ctx)
+		if err != nil {
+			out.DbAvailable = false
+			event.SysLogWarn("memory.worker_status", "CountFactsByIndexStatus failed", event.P("error", err.Error()))
+		} else {
+			out.FactIndexStaleCount = stale
+			out.FactIndexDisabledCount = disabled
+			_ = fresh
+		}
+	}
+	if s.deadLetterRepo != nil {
+		pending, replayed, abandoned, err := s.deadLetterRepo.CountDeadLettersByState(ctx)
+		if err != nil {
+			out.DbAvailable = false
+			event.SysLogWarn("memory.worker_status", "CountDeadLettersByState failed", event.P("error", err.Error()))
+		} else {
+			out.DeadLetterPending = pending
+			_ = replayed
+			_ = abandoned
+		}
+	}
+	if s.queueStats != nil {
+		highLen, normalLen, lowLen, highCap, normalCap, lowCap, dropped, debounced := s.queueStats.QueueLaneStats()
+		out.QueueHigh = &v1.MemoryWorkerStatus_QueueStats{
+			Capacity:       int64(highCap),
+			InFlight:       int64(highLen),
+			DroppedTotal:   dropped,
+			DebouncedTotal: debounced,
+		}
+		out.QueueNormal = &v1.MemoryWorkerStatus_QueueStats{
+			Capacity: int64(normalCap),
+			InFlight: int64(normalLen),
+		}
+		out.QueueLow = &v1.MemoryWorkerStatus_QueueStats{
+			Capacity: int64(lowCap),
+			InFlight: int64(lowLen),
+		}
+	}
+	return out, nil
 }
 
 func pbRecallHit(row sessionmemory.RecallDebugRow) *v1.MemoryRecallHit {

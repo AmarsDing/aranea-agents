@@ -11,6 +11,7 @@ import (
 	"time"
 
 	mcpconfig "aranea-agents/internal/mcp/config"
+	mcpdefaults "aranea-agents/internal/mcp"
 )
 
 func resolveMCPAuthToken(ctx context.Context, auth mcpconfig.AuthConfig) (string, error) {
@@ -49,9 +50,6 @@ func fetchOAuth2RefreshToken(ctx context.Context, auth mcpconfig.AuthConfig) (st
 	tokenURL := strings.TrimSpace(auth.TokenURL)
 	refresh := strings.TrimSpace(auth.RefreshToken)
 	if tokenURL == "" || refresh == "" {
-		if t := strings.TrimSpace(auth.AccessToken); t != "" {
-			return t, nil
-		}
 		return "", fmt.Errorf("oauth2_refresh: token_url and refresh_token are required")
 	}
 	form := url.Values{}
@@ -72,7 +70,7 @@ func postOAuth2Token(ctx context.Context, tokenURL string, form url.Values, clie
 	if clientID != "" && clientSecret != "" {
 		req.SetBasicAuth(clientID, clientSecret)
 	}
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := &http.Client{Timeout: time.Duration(mcpdefaults.DefaultOAuth2TimeoutSec) * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err

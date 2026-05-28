@@ -2,7 +2,7 @@
 
 > **关联**：[`memory.md`](./memory.md) · [`memory.design.md`](./memory.design.md) · [`memory-development.md`](./memory-development.md) · 代码 Review [2026-05-26-Memory-Code-Review](../../review/2026-05-26-Memory-Code-Review.md)
 > **作者范围**：本文聚焦 **业务逻辑** 层面（用户/Agent 实际感受得到的能力差异）的优化。仅涉及代码结构、命名、格式的"代码质量"问题已收敛在 review 文档 P3，本文不重复。
-> **状态**：📐 设计草案，待评审
+> **状态**：🟢 Sprint A 已落地（MEM-OPT-01 Phase 0–3 + MEM-OPT-03 优先级/Dead-Letter/Replay） · 🟢 Sprint B 已落地（MEM-OPT-02 Worker + 强化因子）
 
 ---
 
@@ -107,10 +107,21 @@ return top-K from filtered
 
 ### 1.3 迁移路径
 
-1. **Phase 0**：DDL 加列默认 `fresh`，不影响存量。
-2. **Phase 1**：写路径错误捕获 + 状态标记上线（行为兼容）。
-3. **Phase 2**：读路径校验启用 feature flag `MEMORY_READ_CONSISTENCY_CHECK=1`，灰度。
-4. **Phase 3**：Reconciler cron 启用；feature flag 默认开。
+1. **Phase 0**：DDL 加列默认 `fresh`，不影响存量。 ✅
+2. **Phase 1**：写路径错误捕获 + 状态标记上线（行为兼容）。 ✅
+3. **Phase 2**：读路径校验启用 feature flag `MEMORY_READ_CONSISTENCY_CHECK=1`，灰度。 ✅
+4. **Phase 3**：Reconciler cron 启用；feature flag 默认开。 ✅
+
+**实施代码锚点**：
+
+| 文件 | 说明 |
+|------|------|
+| `internal/data/sql/memory_chain.sql` | DDL: `index_status`, `index_synced_at`, `index_attempts`, `index_last_error` 列 |
+| `internal/data/memory_fact_index_sync.go` | Phase 1: `MarkFactIndexStale` / `MarkFactIndexSynced` |
+| `internal/memory/trpc/sqlite_adapter.go` | Phase 2: `SearchMemories` 读路径一致性校验（feature flag 控制） |
+| `internal/data/sessionmemory/store_fact_embedding.go` | Phase 2: `GetFactConsistencyRow` / `CountFactsByIndexStatus` |
+| `internal/cronrunner/jobs/memory_fact_index_reconciler.go` | Phase 3: 定期 Reconciler（6h 周期，max 5 次后 disabled） |
+| `internal/service/memory_recall.go` | `GetMemoryWorkerStatus` 扩展 `fact_index_stale_count` / `fact_index_disabled_count` |
 
 ### 1.4 验收标准
 
@@ -207,7 +218,31 @@ RecordEntityReinforcement(ctx, entityID string, signal ReinforcementSignal) erro
 
 入库：`entity_reinforcements(entity_id, signal, occurred_at)`，Worker 评估 `recent_hits = COUNT WHERE occurred_at > now-7d`.
 
-### 2.3 验收标准
+### 2.3 迁移路径
+
+1. **Phase 0**：DDL `entity_reinforcements` 表 + `agent_runtime_settings` 新列（`l4_decay_interval_hours` / `l4_decay_overrides_json`）。 ✅
+2. **Phase 1**：Biz 层类型定义（`ReinforcementSignal` / `L4DecayConfig` / `L4DecayResult`）+ `L4GraphRepo` / `L4GraphWriter` 接口扩展。 ✅
+3. **Phase 2**：Data 层实现（`RecordEntityReinforcement` / `GetRecentReinforcementCounts` / `ApplyBusinessConfidenceDecay` / `ArchiveLowConfidenceEntities`）。 ✅
+4. **Phase 3**：Usecase 层 `RunDecayWithConfig` 业务化衰减模型 + `RecordEntityReinforcement`。 ✅
+5. **Phase 4**：Worker 层 `MemoryL4DecayWorker` 增强（`L4DecayConfig` / `MEMORY_L4_DECAY_INTERVAL_HOURS` / 统计 decayed/archived）。 ✅
+6. **Phase 5**：Cue 层 `L4MemoryCue` confidence 分级注入（`< 0.3` 过滤 / `0.3~0.6` tentative / `≥ 0.6` 正常）。 ✅
+7. **Phase 6**：配置层透传（`MemoryCfg` / `AgentRuntimeSettings` / `MemoryRuntimePolicy` / `AgentMemoryMaintenanceTarget`）。 ✅
+
+**实施代码锚点**：
+
+| 文件 | 说明 |
+|------|------|
+| `docs/sql/10_memory_l4_reinforcements.sql` | DDL: `entity_reinforcements` 表 |
+| `internal/data/memory_l4_reinforcements_patch.go` | Go 迁移代码 |
+| `internal/biz/memory_l4.go` | `ReinforcementSignal` / `L4DecayConfig` / `L4DecayResult` + 接口扩展 |
+| `internal/data/sessionmemory/entity_lookup.go` | `RecordEntityReinforcement` / `ApplyBusinessConfidenceDecay` / `ArchiveLowConfidenceEntities` |
+| `internal/data/memory_l4.go` | `l4GraphRepo` 桥接 + `l4GraphWriterAdapter` 扩展 |
+| `internal/biz/memory_l4_usecase.go` | `RunDecayWithConfig` / `RecordEntityReinforcement` |
+| `internal/cronrunner/jobs/memory_l4_decay.go` | Worker 增强：`L4DecayConfig` + 环境变量 + 统计 |
+| `internal/agent/l4_prompt.go` | confidence 分级注入 + tentative 标记 |
+| `internal/data/agent_runtime_patch.go` | DDL patch: `l4_decay_interval_hours` / `l4_decay_overrides_json` |
+
+### 2.4 验收标准
 
 | 指标 | 目标 |
 |------|------|
@@ -278,9 +313,21 @@ CREATE INDEX idx_memory_job_dl_state_enq ON memory_job_deadletter(state, enqueue
 ```
 
 **API**：
-- `ListMemoryDeadLetters` RPC：分页 + 过滤
-- `ReplayMemoryDeadLetter(id)`：重入 normal 队列
-- 自动重放：cron `MemoryDeadLetterReplayer`，1 h 一次，max 3 次后置 `abandoned`
+- `ListMemoryDeadLetters` RPC：分页 + 过滤 ✅
+- `ReplayMemoryDeadLetter(id)`：重入 normal 队列 ✅（通过 `ReplayDeadLetterIntoQueue` 真正重入队）
+- `AbandonMemoryDeadLetter(id, reason)`：永久放弃 ✅
+- 自动重放：cron `MemoryDeadLetterReplayer`，30 min 一次 ✅
+
+**实施代码锚点**：
+
+| 文件 | 说明 |
+|------|------|
+| `internal/data/memory_job_deadletter.go` | Dead-Letter 表 + CRUD + `ReplayDeadLetterIntoQueue` |
+| `internal/biz/memory_queue_contract.go` | `MemoryDeadLetterSink` 接口 + `MemoryDeadLetterRequest` |
+| `internal/memory/trpc/auto_memory_queue.go` | 三优先级队列 + 租户配额 + `writeDeadLetter` |
+| `internal/service/memory_deadletter.go` | List/Replay/Abandon RPC |
+| `internal/cronrunner/jobs/memory_dead_letter_replayer.go` | 自动重放 cron（30min） |
+| `api/kratos/memory/v1/memory.proto` | `MemoryDeadLetterEntry` + 3 RPC + `QueueStats` |
 
 #### 3.2.4 队列可观测
 
@@ -659,13 +706,13 @@ Memory Center → Cascade Tab：
 
 ## 8. 排期建议（参考）
 
-| 迭代 | 内容 | 预估 |
-|------|------|------|
-| Sprint A（2 周） | OPT-01 Phase 0–2（DDL + 写路径错误 + 读校验灰度） + OPT-03 优先级队列 + dead-letter 表 | M |
-| Sprint B（2 周） | OPT-02 Worker + 强化因子（无 UI） + OPT-01 Phase 3（reconciler + Stats） | M |
-| Sprint C（2 周） | OPT-05 function call schema 双轨 + OPT-04 PII block 模式 | M |
-| Sprint D（3 周） | OPT-06 Saga + Dry-Run + 前端 Cascade Tab 升级 | L |
-| Sprint E（2 周） | OPT-04 PII review 工作流 + 前端审核 Tab + OPT-02 用户反馈强化打通 | M |
+| 迭代 | 内容 | 预估 | 状态 |
+|------|------|------|------|
+| Sprint A（2 周） | OPT-01 Phase 0–3（DDL + 写路径错误 + 读校验灰度 + Reconciler） + OPT-03 优先级队列 + Dead-Letter + Replay RPC + 自动重放 cron | M | ✅ 已落地 |
+| Sprint B（2 周） | OPT-02 Worker + 强化因子（无 UI） | M | ✅ 已落地 |
+| Sprint C（2 周） | OPT-05 function call schema 双轨 + OPT-04 PII block 模式 | M | 📐 待开始 |
+| Sprint D（3 周） | OPT-06 Saga + Dry-Run + 前端 Cascade Tab 升级 | L | 📐 待开始 |
+| Sprint E（2 周） | OPT-04 PII review 工作流 + 前端审核 Tab + OPT-02 用户反馈强化打通 | M | 📐 待开始 |
 
 ---
 

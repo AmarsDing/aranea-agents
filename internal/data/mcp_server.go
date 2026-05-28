@@ -70,6 +70,29 @@ func (r *mcpServerRepo) GetMCPServer(ctx context.Context, id string) (biz.MCPSer
 	return entToBizMCP(row), nil
 }
 
+func (r *mcpServerRepo) GetMCPServerByKey(ctx context.Context, key string) (biz.MCPServer, error) {
+	row, err := r.data.entClient.PlatformMCPServer.Query().
+		Where(platformmcpserver.ServerKeyEQ(key), platformmcpserver.DeletedAtEQ("")).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.MCPServer{}, sql.ErrNoRows
+		}
+		return biz.MCPServer{}, err
+	}
+	return entToBizMCP(row), nil
+}
+
+func (r *mcpServerRepo) UpdateMCPServerMetadata(ctx context.Context, id string, metadataJSON string, status string) error {
+	update := r.data.entClient.PlatformMCPServer.UpdateOneID(id).
+		SetMetadataJSON(metadataJSON).
+		SetUpdatedAt(nowRFC3339())
+	if status != "" {
+		update = update.SetStatus(status)
+	}
+	return update.Exec(ctx)
+}
+
 func (r *mcpServerRepo) CreateMCPServer(ctx context.Context, m biz.MCPServer) (biz.MCPServer, error) {
 	now := nowRFC3339()
 	if m.CreatedAt == "" {

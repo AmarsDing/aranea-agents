@@ -1,12 +1,12 @@
 <template>
-  <q-dialog :model-value="modelValue" maximized @update:model-value="emit('update:modelValue', $event)">
+  <q-dialog :model-value="modelValue" maximized persistent @update:model-value="onDialogUpdate">
     <q-card class="app-dialog-card app-glass-dialog app-maximized-dialog">
       <q-card-section class="row items-center justify-between q-pb-sm">
         <div>
           <div class="text-h6">编辑 Skill 文件</div>
           <div class="text-caption text-grey-7">{{ skill?.name }}</div>
         </div>
-        <q-btn flat round dense icon="close" v-close-popup />
+        <q-btn flat round dense icon="close" @click="tryClose" />
       </q-card-section>
       <q-separator />
       <q-card-section class="app-dual-column-editor">
@@ -167,5 +167,27 @@ function resetEditor() {
 
 function fileIcon(language: string) {
   return language === "markdown" ? "description" : language === "python" ? "data_object" : language === "javascript" || language === "typescript" ? "code" : "insert_drive_file";
+}
+
+function tryClose() {
+  if (hasChanges.value) {
+    $q.dialog({
+      title: "未保存的更改",
+      message: "当前文件有未保存的修改，确定要关闭吗？",
+      cancel: { label: "继续编辑", flat: true, noCaps: true },
+      ok: { label: "放弃更改", noCaps: true, color: "negative" },
+      persistent: true,
+    }).onOk(() => {
+      emit("update:modelValue", false);
+    });
+  } else {
+    emit("update:modelValue", false);
+  }
+}
+
+function onDialogUpdate(val: boolean) {
+  if (!val) {
+    tryClose();
+  }
 }
 </script>

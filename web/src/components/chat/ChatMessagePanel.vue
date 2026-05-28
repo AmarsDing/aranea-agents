@@ -29,6 +29,14 @@
           :has-messages="props.messages.length > 0"
         />
         <div class="chat-message-header__actions row items-center justify-end no-wrap">
+          <template v-if="wsConnected === false">
+            <q-icon name="wifi_off" size="18px" color="warning" class="q-mr-xs">
+              <q-tooltip>连接已断开</q-tooltip>
+            </q-icon>
+          </template>
+          <template v-else-if="wsConnected === true">
+            <span class="ws-connected-dot q-mr-xs" />
+          </template>
           <ChatRunnerStatus
             v-if="runStatus && runStatus !== 'idle' && runStatus !== 'completed' && runStatus !== 'cancelled' && runStatus !== 'failed'"
             class="chat-message-header__runner q-mr-xs"
@@ -424,3 +432,14 @@ onMounted(() => {
   void nextTick(() => refreshActivePrompt());
 });
 </script>
+
+<style scoped>
+.ws-connected-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-success, #4caf50);
+  opacity: 0.6;
+}
+</style>

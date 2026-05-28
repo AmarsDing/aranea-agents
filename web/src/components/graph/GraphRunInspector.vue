@@ -36,6 +36,7 @@
           :edit-loading="editLoading"
           :time-travel-loading="timeTravelLoading"
           :step-index="stepIndex"
+          :max-step="maxStep"
           @update:state-patch-json="$emit('update:statePatchJson', $event)"
           @update:step-index="$emit('update:stepIndex', $event)"
           @time-travel="$emit('timeTravel')"
@@ -113,4 +114,6 @@ const tab = computed({
   get: () => props.tab,
   set: (value: string) => emit("update:tab", value),
 });
+
+const maxStep = computed(() => Math.max(0, props.checkpoints.length - 1));
 </script>

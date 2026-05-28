@@ -27,11 +27,11 @@ const sensitiveMaskSchema = `{"type":"object","properties":{"mask_email":{"type"
 
 const confirmationGuardSchema = `{"type":"object","properties":{"confirm_tools":{"type":"array","items":{"type":"string"},"default":[]},"confirm_patterns":{"type":"array","items":{"type":"string"},"default":[]},"timeout_seconds":{"type":"integer","default":300},"default_action":{"type":"string","enum":["reject","allow"],"default":"reject"}}}`
 
-const costGuardSchema = `{"type":"object","properties":{"daily_token_budget":{"type":"integer","default":0},"max_prompt_tokens":{"type":"integer","default":0},"blocked_models":{"type":"array","items":{"type":"string"},"default":[]},"fallback_model":{"type":"string","default":""},"admin_bypass":{"type":"boolean","default":true}}}`
+const costGuardSchema = `{"type":"object","properties":{"daily_token_budget":{"type":"integer","default":0},"max_prompt_tokens":{"type":"integer","default":0},"blocked_models":{"type":"array","items":{"type":"string"},"default":[]},"fallback_model":{"type":"string","default":""}}}`
 
 const modelRouterSchema = `{"type":"object","properties":{"rules":{"type":"array","items":{"type":"object","properties":{"model":{"type":"string"},"contains":{"type":"array","items":{"type":"string"}},"regex":{"type":"string"},"min_chars":{"type":"integer"},"priority":{"type":"integer"}}},"default":[]},"default_model":{"type":"string","default":""},"code_model":{"type":"string","default":""},"long_context_model":{"type":"string","default":""},"fallback_model":{"type":"string","default":""}}}`
 
-const permissionGuardSchema = `{"type":"object","properties":{"deny_tools":{"type":"array","items":{"type":"string"},"default":[]},"confirm_tools":{"type":"array","items":{"type":"string"},"default":[]},"agent_allowlist":{"type":"array","items":{"type":"string"},"default":[]},"role_rules":{"type":"array","items":{"type":"object"},"default":[]}}}`
+const permissionGuardSchema = `{"type":"object","properties":{"deny_tools":{"type":"array","items":{"type":"string"},"default":[]},"agent_allowlist":{"type":"array","items":{"type":"string"},"default":[]}}}`
 
 const outputPolicySchema = `{"type":"object","properties":{"blocked_patterns":{"type":"array","items":{"type":"string"},"default":[]},"dangerous_command_check":{"type":"boolean","default":true},"block_on_violation":{"type":"boolean","default":true},"replacement_message":{"type":"string","default":""}}}`
 

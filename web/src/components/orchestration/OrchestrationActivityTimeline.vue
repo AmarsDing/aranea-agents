@@ -1,7 +1,7 @@
 <template>
   <div class="orch-activity-timeline">
     <div v-if="showToolbar" class="orch-activity-timeline__toolbar row items-center q-mb-sm q-gutter-sm">
-      <q-badge color="primary" outline>GetTeamRunObservatoryTimeline RPC</q-badge>
+      <q-badge color="primary" outline>活动时间线</q-badge>
       <q-select
         v-if="nodeFilterOptions.length"
         :model-value="nodeFilter"

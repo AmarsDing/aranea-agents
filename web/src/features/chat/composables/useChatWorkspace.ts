@@ -61,6 +61,7 @@ export function useChatWorkspace() {
   const displayAgents = ref<Agent[]>([]);
   const displayTeams = ref<TeamRow[]>([]);
   const inputText = ref("");
+  const sessionDrafts = reactive(new Map<string, string>());
   const selectedKnowledgeBases = ref<string[]>([]);
   const knowledgeBaseOptions = ref<Array<{ label: string; value: string }>>([]);
 
@@ -543,13 +544,18 @@ export function useChatWorkspace() {
   watch(
     () => selectedSessionForUi.value?.id,
     (sid, prevSid) => {
+      if (prevSid) {
+        sessionDrafts.set(prevSid, inputText.value);
+      }
       if (!sid) {
         onSessionSwitch(undefined);
         isAwaitingUser.value = false;
         awaitingRunId.value = "";
         clearAwaitMeta();
+        inputText.value = "";
         return;
       }
+      inputText.value = sessionDrafts.get(sid) || "";
       onSessionSwitch(sid);
       if (sid !== prevSid) {
         void bindSessionView(sid, true);
@@ -710,7 +716,11 @@ export function useChatWorkspace() {
       awaitToolKey,
       submitAwaitingReply: sender.submitAwaitingReply,
       submitToolConfirm: sender.submitToolConfirm,
-      onSend: sender.onSend,
+      onSend: async () => {
+        const sid = selectedSessionForUi.value?.id;
+        await sender.onSend();
+        if (sid) sessionDrafts.delete(sid);
+      },
       submitA2UIUserAction,
       onModeChange,
       onProviderChange,

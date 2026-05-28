@@ -250,8 +250,8 @@ export function useTeamRunObservatoryPage() {
     await resumeRun(parseAdvancedResume());
   }
 
-  async function onHitlReject() {
-    await resumeRun({ action: "halt" });
+  async function onHitlReject(action: string = "halt") {
+    await resumeRun({ action });
   }
 
   async function onHitlFallback() {

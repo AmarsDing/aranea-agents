@@ -272,6 +272,16 @@ func main() {
 		logger.Log(log.LevelInfo, "msg", "monitor alert cooldown cleanup started", "interval", "1h", "maxAge", "24h")
 	}
 
+	if out.MonitorAlertEvalWorker != nil {
+		go out.MonitorAlertEvalWorker.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "monitor alert eval worker started", "interval", "30s")
+	}
+
+	if out.MonitorTraceBackfillWorker != nil {
+		go out.MonitorTraceBackfillWorker.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "monitor trace backfill worker started", "interval", "6h")
+	}
+
 	if out.MemoryL2Decay != nil {
 		go out.MemoryL2Decay.Start(cronCtx)
 		logger.Log(log.LevelInfo, "msg", "memory l2 decay worker started", "interval", "24h")
@@ -290,6 +300,16 @@ func main() {
 	if out.MemoryEpisodeBackfill != nil {
 		go out.MemoryEpisodeBackfill.Start(cronCtx)
 		logger.Log(log.LevelInfo, "msg", "memory episode backfill worker started", "interval", "6h")
+	}
+
+	if out.MemoryFactIndexReconciler != nil {
+		go out.MemoryFactIndexReconciler.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "memory fact index reconciler started", "interval", "6h")
+	}
+
+	if out.MemoryDeadLetterReplayer != nil {
+		go out.MemoryDeadLetterReplayer.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "memory dead letter replayer started", "interval", "30m")
 	}
 
 	if out.ModelCatalogRunner != nil {

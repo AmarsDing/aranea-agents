@@ -70,6 +70,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useQuasar } from "quasar";
 import ModelRouterRulesEditor, { type ModelRouterRulePayload } from "./ModelRouterRulesEditor.vue";
 
 type SchemaProperty = {
@@ -89,6 +90,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   "update:modelValue": [value: string];
 }>();
+
+const $q = useQuasar();
 
 const schema = computed(() => {
   try {
@@ -170,7 +173,7 @@ function setJSONField(key: string, text: string) {
     const parsed = JSON.parse(text || "[]");
     setValue(key, parsed);
   } catch {
-    // keep invalid text in textarea until user fixes JSON mode
+    $q.notify({ type: "warning", message: "JSON 格式错误" });
   }
 }
 </script>

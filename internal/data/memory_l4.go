@@ -104,6 +104,34 @@ func (r *l4GraphRepo) ApplyConfidenceDecay(ctx context.Context, scopeType, scope
 	return r.store.ApplyConfidenceDecay(ctx, scopeType, scopeID, olderThanRFC3339, factor)
 }
 
+func (r *l4GraphRepo) RecordEntityReinforcement(ctx context.Context, entityID string, signal biz.ReinforcementSignal, source string) error {
+	if r == nil || r.store == nil {
+		return nil
+	}
+	return r.store.RecordEntityReinforcement(ctx, entityID, signal, source)
+}
+
+func (r *l4GraphRepo) GetRecentReinforcementCounts(ctx context.Context, scopeType, scopeID string, windowDays int) (map[string]int, error) {
+	if r == nil || r.store == nil {
+		return nil, nil
+	}
+	return r.store.GetRecentReinforcementCounts(ctx, scopeType, scopeID, windowDays)
+}
+
+func (r *l4GraphRepo) ApplyBusinessConfidenceDecay(ctx context.Context, scopeType, scopeID string, cfg biz.L4DecayConfig, nowUnixMs int64) (int64, error) {
+	if r == nil || r.store == nil {
+		return 0, nil
+	}
+	return r.store.ApplyBusinessConfidenceDecay(ctx, scopeType, scopeID, cfg, nowUnixMs)
+}
+
+func (r *l4GraphRepo) ArchiveLowConfidenceEntities(ctx context.Context, scopeType, scopeID string, threshold float64) (int64, error) {
+	if r == nil || r.store == nil {
+		return 0, nil
+	}
+	return r.store.ArchiveLowConfidenceEntities(ctx, scopeType, scopeID, threshold)
+}
+
 type l4GraphWriterAdapter struct {
 	uc *biz.L4GraphUsecase
 }
@@ -121,6 +149,14 @@ func (a *l4GraphWriterAdapter) WriteFromUserText(ctx context.Context, agentID, u
 
 func (a *l4GraphWriterAdapter) RunDecay(ctx context.Context, agentID string) {
 	a.uc.RunDecay(ctx, agentID)
+}
+
+func (a *l4GraphWriterAdapter) RunDecayWithConfig(ctx context.Context, agentID string, cfg biz.L4DecayConfig) biz.L4DecayResult {
+	return a.uc.RunDecayWithConfig(ctx, agentID, cfg)
+}
+
+func (a *l4GraphWriterAdapter) RecordEntityReinforcement(ctx context.Context, entityID string, signal biz.ReinforcementSignal, source string) error {
+	return a.uc.RecordEntityReinforcement(ctx, entityID, signal, source)
 }
 
 func NewL4GraphUsecaseFromStore(store *sessionmemory.Store, cascade *biz.L4CascadeUsecase) *biz.L4GraphUsecase {

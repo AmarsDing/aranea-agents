@@ -5,13 +5,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/pgvector"
 	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/safego"
 
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcmemtool "trpc.group/trpc-go/trpc-agent-go/memory/tool"
@@ -24,12 +27,15 @@ const (
 	factSourceTRPC     = "trpc_memory"
 )
 
+var memoryReadConsistencyCheck = os.Getenv("MEMORY_READ_CONSISTENCY_CHECK") == "1"
+
 type sqliteMemoryService struct {
 	store           *sessionmemory.Store
 	indexSync       biz.MemoryFactIndexSyncer
 	autoMemoryQueue AutoMemoryQueue
 	vector          vectorFactSearcher
 	settingsLoader  AgentRuntimeSettingsLoader
+	resyncFlight    singleflightGroup
 }
 
 // vectorFactSearcher optional pgvector recall for SearchMemories.
@@ -38,6 +44,30 @@ type vectorFactSearcher interface {
 }
 
 var _ trpcmemory.Service = (*sqliteMemoryService)(nil)
+
+type singleflightGroup struct {
+	mu sync.Mutex
+	m  map[string]struct{}
+}
+
+func (g *singleflightGroup) TryStart(key string) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.m == nil {
+		g.m = make(map[string]struct{})
+	}
+	if _, ok := g.m[key]; ok {
+		return false
+	}
+	g.m[key] = struct{}{}
+	return true
+}
+
+func (g *singleflightGroup) Done(key string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	delete(g.m, key)
+}
 
 func NewSQLiteMemoryService(store *sessionmemory.Store, indexSync biz.MemoryFactIndexSyncer, queue AutoMemoryQueue, vector vectorFactSearcher, settingsLoader AgentRuntimeSettingsLoader) trpcmemory.Service {
 	if store == nil {
@@ -162,6 +192,20 @@ func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.
 				if entryID == "" {
 					entryID = fmt.Sprintf("%d", h.ID)
 				}
+				if memoryReadConsistencyCheck && factID != "" && s.store != nil {
+					row, consistencyErr := s.store.GetFactConsistencyRow(ctx, factID)
+					if consistencyErr != nil {
+						event.SysLogWarn("system.auto_memory.extract_fail", "read consistency check failed, skipping validation",
+							event.P("fact_id", factID), event.P("error", consistencyErr.Error()))
+					} else if row.Status == "" || row.Status != "active" || row.IndexStatus == "disabled" {
+						continue
+					} else if row.IndexStatus == "stale" {
+						s.asyncResyncFact(ctx, factID)
+						continue
+					} else if row.Statement != "" && row.Statement != memText {
+						memText = row.Statement
+					}
+				}
 				now := time.Now()
 				out = append(out, &trpcmemory.Entry{
 					ID:      entryID,
@@ -188,6 +232,29 @@ func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.
 		return s.ReadMemories(ctx, uk, int(topK))
 	}
 	return entries, nil
+}
+
+func (s *sqliteMemoryService) asyncResyncFact(ctx context.Context, factID string) {
+	if s.indexSync == nil || s.store == nil {
+		return
+	}
+	if !s.resyncFlight.TryStart(factID) {
+		return
+	}
+	syncer := s.indexSync
+	store := s.store
+	bgCtx := context.WithoutCancel(ctx)
+	safego.Go(bgCtx, "memory.index_resync_on_hit", func() {
+		defer s.resyncFlight.Done(factID)
+		raw, err := store.GetFactRawRow(bgCtx, factID)
+		if err != nil || raw == nil {
+			return
+		}
+		if err := syncer.SyncFactIndexFromRow(bgCtx, raw); err != nil {
+			event.SysLogWarn("system.auto_memory.extract_fail", "async resync on stale hit failed",
+				event.P("fact_id", factID), event.P("error", err.Error()))
+		}
+	})
 }
 
 func (s *sqliteMemoryService) listEntries(ctx context.Context, uk trpcmemory.UserKey, keyword string, limit int, minImportance float64) ([]*trpcmemory.Entry, error) {

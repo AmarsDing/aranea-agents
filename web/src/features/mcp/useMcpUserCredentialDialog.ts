@@ -63,6 +63,15 @@ export function useMcpUserCredentialDialog(
     }
   }
 
+  function confirmRemove(credentialKey: string) {
+    $q.dialog({
+      title: "删除凭据",
+      message: `确定删除凭据「${credentialKey}」？删除后 Agent 将无法使用该凭据访问 MCP 服务。`,
+      cancel: true,
+      persistent: true,
+    }).onOk(() => void remove(credentialKey));
+  }
+
   async function remove(credentialKey: string) {
     try {
       await mcpStore.removeUserCredential(mcpServerId(), userId(), credentialKey);
@@ -73,5 +82,5 @@ export function useMcpUserCredentialDialog(
     }
   }
 
-  return { loading, saving, items, form, canSave, reload, save, remove };
+  return { loading, saving, items, form, canSave, reload, save, remove: confirmRemove };
 }

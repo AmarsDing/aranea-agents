@@ -161,7 +161,7 @@
       :node="hitlReviewNode"
       :loading="resumeLoading"
       @approve="onHitlApprove"
-      @reject="onHitlReject"
+      @reject="onHitlReject($event)"
       @fallback="onHitlFallback"
     />
   </q-page>

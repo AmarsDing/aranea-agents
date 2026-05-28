@@ -9,7 +9,11 @@ import (
 	"aranea-agents/internal/biz"
 )
 
-// L4MemoryCue appends knowledge-graph context when L4 is enabled for the agent.
+const (
+	l4CueMinConfidence      = 0.3
+	l4CueTentativeThreshold = 0.6
+)
+
 func L4MemoryCue(ctx context.Context, admin biz.SessionAdminStore, ag biz.Agent, policy biz.MemoryRuntimePolicy, query string) string {
 	if admin == nil || !policy.InjectL4 {
 		return ""
@@ -49,12 +53,19 @@ func L4MemoryCue(ctx context.Context, admin biz.SessionAdminStore, ag biz.Agent,
 			name := strings.TrimSpace(fmt.Sprint(ent["name"]))
 			etype := strings.TrimSpace(fmt.Sprint(ent["entity_type"]))
 			desc := strings.TrimSpace(fmt.Sprint(ent["description"]))
+			confidence := floatVal(ent["confidence"])
 			if name == "" {
+				continue
+			}
+			if confidence < l4CueMinConfidence {
 				continue
 			}
 			fmt.Fprintf(&b, "- [%s] %s", etype, name)
 			if desc != "" && desc != "<nil>" {
 				fmt.Fprintf(&b, ": %s", desc)
+			}
+			if confidence < l4CueTentativeThreshold {
+				b.WriteString(" (tentative — may be outdated, verify if uncertain)")
 			}
 			b.WriteByte('\n')
 		}
@@ -111,4 +122,19 @@ func truncateText(s string, maxChars int) string {
 		return ""
 	}
 	return safeTruncate(s, maxChars)
+}
+
+func floatVal(v any) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case float32:
+		return float64(n)
+	case int:
+		return float64(n)
+	case int64:
+		return float64(n)
+	default:
+		return 0
+	}
 }

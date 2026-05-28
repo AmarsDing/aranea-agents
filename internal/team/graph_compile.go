@@ -42,32 +42,10 @@ func compileToGraphBuildConfigWithLoader(ctx context.Context, def Definition, ra
 	}
 
 	mode := normalizeCompileMode(def.Mode)
-	nodes := make([]biz.NodeDef, 0, len(members))
-	memberIDs := make([]string, 0, len(members))
-	for i, m := range members {
-		id := memberNodeID(m, i)
-		memberIDs = append(memberIDs, id)
-		key := resolveCompileAgentKey(m, agentKey)
-		nodes = append(nodes, biz.NodeDef{
-			ID:           id,
-			Type:         "agent",
-			Description:  memberDescription(m),
-			Instruction:  strings.TrimSpace(m.TaskPrompt),
-			AgentName:    key,
-			RequiredRole: strings.TrimSpace(m.Role),
-		})
-	}
-
-	edges, condEdges := compileEdges(mode, def, memberIDs)
-	entry, finish := compileEntryFinish(mode, def, memberIDs)
-
-	cfg := biz.GraphBuildConfig{
-		Nodes:            nodes,
-		Edges:            edges,
-		ConditionalEdges: condEdges,
-		EntryPoint:       entry,
-		FinishPoint:      finish,
-		ExecutionEngine:  biz.EngineBSP,
+	spec := generateGraphSpecFromMode(def, mode)
+	cfg, err := compileFromEmbeddedGraph(ctx, def, spec, agentKey, loader)
+	if err != nil {
+		return biz.GraphBuildConfig{}, err
 	}
 	return biz.ApplyFailurePolicy(cfg, def.FailurePolicy), nil
 }
@@ -83,6 +61,138 @@ func normalizeCompileMode(mode string) string {
 		}
 		return m
 	}
+}
+
+func generateGraphSpecFromMode(def Definition, mode string) *embeddedGraphSpec {
+	members := EnabledMembers(def)
+	if len(members) == 0 {
+		return nil
+	}
+
+	nodes := make([]embeddedGraphNode, 0, len(members)+2)
+	nodes = append(nodes, embeddedGraphNode{ID: "start", Type: "start", Label: "Start"})
+	for i, m := range members {
+		nodes = append(nodes, embeddedGraphNode{
+			ID:      memberNodeID(m, i),
+			Type:    "agent",
+			Label:   memberDescription(m),
+			AgentID: strings.TrimSpace(m.AgentID),
+			Role:    strings.TrimSpace(m.Role),
+		})
+	}
+	nodes = append(nodes, embeddedGraphNode{ID: "end", Type: "end", Label: "End"})
+
+	edges := generateModeEdges(mode, def, nodes)
+
+	return &embeddedGraphSpec{
+		Version: 1,
+		Layout:  mode,
+		Nodes:   nodes,
+		Edges:   edges,
+	}
+}
+
+func generateModeEdges(mode string, def Definition, nodes []embeddedGraphNode) []embeddedGraphEdge {
+	if len(nodes) == 0 {
+		return nil
+	}
+	agentIDs := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		if isEmbeddedExecutableNode(n.Type) {
+			agentIDs = append(agentIDs, n.ID)
+		}
+	}
+	if len(agentIDs) == 0 {
+		return nil
+	}
+
+	out := make([]embeddedGraphEdge, 0, len(agentIDs)+2)
+	out = append(out, embeddedGraphEdge{Source: "start", Target: agentIDs[0]})
+
+	var modeEdges []embeddedGraphEdge
+	switch mode {
+	case "parallel":
+		modeEdges = generateParallelEdges(def, agentIDs)
+	case "critic_loop":
+		modeEdges = generateCriticLoopEdges(agentIDs)
+	case "adaptive":
+		modeEdges = generateAdaptiveEdges(agentIDs)
+	case "coordinator":
+		modeEdges = generateCoordinatorEdges(agentIDs)
+	default:
+		modeEdges = generateSequentialEdges(agentIDs)
+	}
+	out = append(out, modeEdges...)
+
+	out = append(out, embeddedGraphEdge{Source: agentIDs[len(agentIDs)-1], Target: "end"})
+	return out
+}
+
+func generateSequentialEdges(ids []string) []embeddedGraphEdge {
+	out := make([]embeddedGraphEdge, 0, len(ids)-1)
+	for i := 0; i < len(ids)-1; i++ {
+		out = append(out, embeddedGraphEdge{Source: ids[i], Target: ids[i+1], Label: "flow"})
+	}
+	return out
+}
+
+func generateParallelEdges(def Definition, ids []string) []embeddedGraphEdge {
+	entry := ids[0]
+	finish := ids[len(ids)-1]
+	out := make([]embeddedGraphEdge, 0, len(ids))
+	for _, id := range ids[1:] {
+		if id == finish {
+			continue
+		}
+		out = append(out, embeddedGraphEdge{Source: entry, Target: id, Label: "flow"})
+	}
+	for _, id := range ids {
+		if id == entry || id == finish {
+			continue
+		}
+		out = append(out, embeddedGraphEdge{Source: id, Target: finish, Label: "flow"})
+	}
+	return out
+}
+
+func generateCoordinatorEdges(ids []string) []embeddedGraphEdge {
+	if len(ids) < 2 {
+		return generateSequentialEdges(ids)
+	}
+	hub := ids[0]
+	finish := ids[len(ids)-1]
+	out := make([]embeddedGraphEdge, 0, len(ids)*2)
+	for _, id := range ids[1:] {
+		out = append(out, embeddedGraphEdge{Source: hub, Target: id, Label: "dispatch"})
+		if id != finish {
+			out = append(out, embeddedGraphEdge{Source: id, Target: finish, Label: "flow"})
+		}
+	}
+	if hub != finish {
+		out = append(out, embeddedGraphEdge{Source: hub, Target: finish, Label: "flow"})
+	}
+	return out
+}
+
+func generateCriticLoopEdges(ids []string) []embeddedGraphEdge {
+	return generateSequentialEdges(ids)
+}
+
+const adaptiveMaxTransferEdges = 30
+
+func generateAdaptiveEdges(ids []string) []embeddedGraphEdge {
+	out := generateSequentialEdges(ids)
+	transferCount := 0
+	for i := 0; i < len(ids) && transferCount < adaptiveMaxTransferEdges; i++ {
+		for j := 0; j < len(ids) && transferCount < adaptiveMaxTransferEdges; j++ {
+			if i == j || j == i+1 {
+				continue
+			}
+			out = append(out, embeddedGraphEdge{Source: ids[i], Target: ids[j], Label: "transfer"})
+			transferCount++
+		}
+	}
+	return out
 }
 
 func memberNodeID(m MemberDef, index int) string {
@@ -126,172 +236,6 @@ func resolveCompileAgentKey(m MemberDef, agentKey CompileAgentKey) string {
 	return id
 }
 
-func compileEntryFinish(mode string, def Definition, ids []string) (entry, finish string) {
-	if len(ids) == 0 {
-		return "", ""
-	}
-	entry = ids[0]
-	finish = ids[len(ids)-1]
-	if mode == "parallel" {
-		if synth := synthesizerNodeID(def, ids); synth != "" {
-			finish = synth
-		}
-	}
-	return entry, finish
-}
-
-func synthesizerNodeID(def Definition, ids []string) string {
-	synth := strings.TrimSpace(SynthesizerAgentID(def))
-	if synth == "" {
-		return ""
-	}
-	for i, m := range EnabledMembers(def) {
-		if strings.TrimSpace(m.AgentID) == synth {
-			return memberNodeID(m, i)
-		}
-	}
-	return ""
-}
-
-func compileEdges(mode string, def Definition, ids []string) ([]biz.EdgeDef, []biz.ConditionalEdgeDef) {
-	if len(ids) == 0 {
-		return nil, nil
-	}
-	switch mode {
-	case "parallel":
-		return compileParallelEdges(def, ids), nil
-	case "critic_loop":
-		return compileCriticLoopEdges(ids), compileCriticLoopConditional(ids)
-	case "adaptive":
-		return compileAdaptiveEdges(ids), nil
-	case "coordinator":
-		return compileCoordinatorEdges(ids), nil
-	default:
-		return compileSequentialEdges(ids), nil
-	}
-}
-
-func compileSequentialEdges(ids []string) []biz.EdgeDef {
-	out := make([]biz.EdgeDef, 0, len(ids)-1)
-	for i := 0; i < len(ids)-1; i++ {
-		out = append(out, biz.EdgeDef{From: ids[i], To: ids[i+1], Kind: "flow"})
-	}
-	return out
-}
-
-func compileParallelEdges(def Definition, ids []string) []biz.EdgeDef {
-	workers := parallelWorkerNodeIDs(def, ids)
-	if len(workers) == 0 {
-		return compileSequentialEdges(ids)
-	}
-	finish := ids[len(ids)-1]
-	if synth := synthesizerNodeID(def, ids); synth != "" {
-		finish = synth
-	}
-	entry := workers[0]
-	if entry == finish {
-		return compileSequentialEdges(ids)
-	}
-	out := make([]biz.EdgeDef, 0, len(workers)*2)
-	for _, w := range workers {
-		if w == entry {
-			continue
-		}
-		out = append(out, biz.EdgeDef{From: entry, To: w, Kind: "flow"})
-	}
-	for _, w := range workers {
-		if w == finish {
-			continue
-		}
-		out = append(out, biz.EdgeDef{From: w, To: finish, Kind: "flow"})
-	}
-	return out
-}
-
-func parallelWorkerNodeIDs(def Definition, ids []string) []string {
-	synth := synthesizerNodeID(def, ids)
-	workers := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if synth != "" && id == synth {
-			continue
-		}
-		workers = append(workers, id)
-	}
-	if len(workers) == 0 {
-		return ids
-	}
-	return workers
-}
-
-func compileCoordinatorEdges(ids []string) []biz.EdgeDef {
-	if len(ids) < 2 {
-		return nil
-	}
-	hub := ids[0]
-	finish := ids[len(ids)-1]
-	out := make([]biz.EdgeDef, 0, len(ids)*2)
-	for _, id := range ids[1:] {
-		out = append(out, biz.EdgeDef{From: hub, To: id, Kind: "dispatch"})
-		if id != finish {
-			out = append(out, biz.EdgeDef{From: id, To: finish, Kind: "flow"})
-		}
-	}
-	if hub != finish {
-		out = append(out, biz.EdgeDef{From: hub, To: finish, Kind: "flow"})
-	}
-	return out
-}
-
-func compileCriticLoopEdges(ids []string) []biz.EdgeDef {
-	out := make([]biz.EdgeDef, 0, len(ids))
-	for i := 0; i < len(ids)-1; i++ {
-		out = append(out, biz.EdgeDef{From: ids[i], To: ids[i+1], Kind: "flow"})
-	}
-	return out
-}
-
-func compileCriticLoopConditional(ids []string) []biz.ConditionalEdgeDef {
-	if len(ids) < 2 {
-		return nil
-	}
-	last := ids[len(ids)-1]
-	first := ids[0]
-	return []biz.ConditionalEdgeDef{{
-		From: last,
-		PathMap: map[string]string{
-			"approved": last,
-			"retry":    first,
-		},
-	}}
-}
-
-const adaptiveMaxTransferEdges = 30
-
-func compileAdaptiveEdges(ids []string) []biz.EdgeDef {
-	if len(ids) == 0 {
-		return nil
-	}
-	out := compileSequentialEdges(ids)
-	transferCount := 0
-	for i := 0; i < len(ids) && transferCount < adaptiveMaxTransferEdges; i++ {
-		for j := 0; j < len(ids) && transferCount < adaptiveMaxTransferEdges; j++ {
-			if i == j || j == i+1 {
-				continue
-			}
-			out = append(out, biz.EdgeDef{From: ids[i], To: ids[j], Kind: "transfer"})
-			transferCount++
-		}
-	}
-	// Warn when the full N² overlay was truncated so callers can surface this to users.
-	maxPossible := len(ids) * (len(ids) - 1)
-	if maxPossible > adaptiveMaxTransferEdges {
-		_ = fmt.Sprintf("adaptive: transfer overlay capped at %d (needed %d for %d members); some cross-agent transfers omitted",
-			adaptiveMaxTransferEdges, maxPossible, len(ids))
-	}
-	return out
-}
-
-// CompileTemplateID returns the orchestration template id for a team mode.
 func CompileTemplateID(mode string) string {
 	switch normalizeCompileMode(mode) {
 	case "parallel":

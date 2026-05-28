@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"strings"
 
+	authpkg "aranea-agents/pkg/auth"
+
 	"github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -20,6 +22,31 @@ type SkillVersionSummary struct {
 	Version          string
 	ValidationStatus string
 	PublishedAt      string
+}
+
+type SkillVersionDetail struct {
+	ID               string
+	SkillID          string
+	Version          string
+	Status           string
+	ContentMarkdown  string
+	ValidationStatus string
+	PublishedAt      string
+	CreatedAt        string
+	FileManifestJSON string
+}
+
+type VersionListQuery struct {
+	SkillID  string
+	Limit    int
+	Offset   int
+}
+
+type VersionListResult struct {
+	Items  []SkillVersionDetail
+	Total  int
+	Limit  int
+	Offset int
 }
 
 type SkillPermissions struct {
@@ -54,6 +81,8 @@ type Skill struct {
 	Permissions          SkillPermissions
 	FilesystemMissing    bool
 	SyncOrigin           string
+	Visibility           string
+	DefaultConfigJSON    string
 }
 
 type ListQuery struct {
@@ -98,6 +127,7 @@ type SkillInvocation struct {
 	ErrorMessage     string
 	Source           string
 	ActivationID     string
+	MessageID        string
 	Permissions      SkillInvocationPermissions
 }
 
@@ -140,6 +170,8 @@ type Repo interface {
 	PublishSkill(ctx context.Context, id string) (Skill, error)
 	MarkSkillFilesystemMissing(ctx context.Context, slug string, missing bool) error
 	FilesystemHealthStats(ctx context.Context) (FilesystemHealthStats, error)
+	ListSkillVersions(ctx context.Context, q VersionListQuery) (VersionListResult, error)
+	RollbackSkillVersion(ctx context.Context, skillID string, versionID string) (Skill, error)
 }
 
 // UpdateDraft is a partial update for admin edits (optional fields via booleans).
@@ -157,7 +189,6 @@ type UpdateDraft struct {
 // InvocationWrite inserts a skill_invocation row (filesystem sync, runtime, etc.).
 type InvocationWrite struct {
 	SkillID       string
-	SkillName     string
 	SkillVersion  string
 	AgentID       string
 	UserID        string
@@ -167,11 +198,13 @@ type InvocationWrite struct {
 	StartedAt     string
 	EndedAt       string
 	InputPreview  string
+	InputHash     string
 	OutputPreview string
 	ErrorCode     string
 	ErrorMessage  string
 	Source        string
 	ActivationID  string
+	MessageID     string
 }
 
 // DiskSyncOutcome describes side effects of a filesystem upsert.
@@ -182,13 +215,15 @@ type DiskSyncOutcome struct {
 
 // CreateInput creates platform skill + initial skill_version (import / directory sync).
 type CreateInput struct {
-	Name        string
-	Slug        string
-	Description string
-	Body        string
-	Tags        []SkillTag
-	StorageDir  string
-	SyncOrigin  string
+	Name             string
+	Slug             string
+	Description      string
+	Body             string
+	Tags             []SkillTag
+	StorageDir       string
+	SyncOrigin       string
+	Visibility       string
+	DefaultConfigJSON string
 }
 
 // DiskSyncInput upserts skill rows from on-disk packages (directory watcher).
@@ -229,7 +264,12 @@ func (u *Usecase) List(ctx context.Context, q ListQuery) (ListResult, error) {
 	if q.Status != "" && q.Status != "draft" && q.Status != "published" && q.Status != "archived" {
 		return ListResult{}, errors.BadRequest("SKILL", "unsupported skill status")
 	}
-	return u.repo.SearchSkills(ctx, q)
+	result, err := u.repo.SearchSkills(ctx, q)
+	if err != nil {
+		return result, err
+	}
+	applySkillPermissions(ctx, result.Items)
+	return result, nil
 }
 
 func (u *Usecase) Get(ctx context.Context, id string) (Skill, error) {
@@ -240,10 +280,14 @@ func (u *Usecase) Get(ctx context.Context, id string) (Skill, error) {
 	if err != nil {
 		return Skill{}, err
 	}
+	applySkillPermission(ctx, &s)
 	return s, nil
 }
 
 func (u *Usecase) Create(ctx context.Context, in CreateInput) (Skill, error) {
+	if err := requireAdminAccess(ctx); err != nil {
+		return Skill{}, err
+	}
 	in.Name = strings.TrimSpace(in.Name)
 	in.Slug = strings.TrimSpace(in.Slug)
 	in.Description = strings.TrimSpace(in.Description)
@@ -255,26 +299,50 @@ func (u *Usecase) Create(ctx context.Context, in CreateInput) (Skill, error) {
 	if in.Slug == "" {
 		return Skill{}, errors.BadRequest("SKILL", "skill slug is required")
 	}
-	return u.repo.CreateSkillWithVersion(ctx, in)
+	s, err := u.repo.CreateSkillWithVersion(ctx, in)
+	if err != nil {
+		return Skill{}, err
+	}
+	applySkillPermission(ctx, &s)
+	return s, nil
 }
 
 func (u *Usecase) ToggleEnabled(ctx context.Context, id string, enabled bool) (Skill, error) {
+	if err := requireAdminAccess(ctx); err != nil {
+		return Skill{}, err
+	}
 	if strings.TrimSpace(id) == "" {
 		return Skill{}, errors.BadRequest("SKILL", "skill id is required")
 	}
-	return u.repo.UpdateSkillEnabled(ctx, id, enabled)
+	s, err := u.repo.UpdateSkillEnabled(ctx, id, enabled)
+	if err != nil {
+		return Skill{}, err
+	}
+	applySkillPermission(ctx, &s)
+	return s, nil
 }
 
 func (u *Usecase) Duplicate(ctx context.Context, id string) (Skill, error) {
+	if err := requireAdminAccess(ctx); err != nil {
+		return Skill{}, err
+	}
 	if strings.TrimSpace(id) == "" {
 		return Skill{}, errors.BadRequest("SKILL", "skill id is required")
 	}
-	return u.repo.DuplicateSkill(ctx, id)
+	s, err := u.repo.DuplicateSkill(ctx, id)
+	if err != nil {
+		return Skill{}, err
+	}
+	applySkillPermission(ctx, &s)
+	return s, nil
 }
 
 func (u *Usecase) Delete(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return errors.BadRequest("SKILL", "skill id is required")
+	}
+	if err := requireAdminAccess(ctx); err != nil {
+		return err
 	}
 	return u.repo.DeleteSkill(ctx, id)
 }
@@ -293,7 +361,12 @@ func (u *Usecase) SearchRuns(ctx context.Context, q RunQuery) (RunResult, error)
 	if q.Status != "" && q.Status != "success" && q.Status != "failure" && q.Status != "pending" {
 		return RunResult{}, errors.BadRequest("SKILL", "unsupported run status")
 	}
-	return u.repo.SearchSkillInvocations(ctx, q)
+	result, err := u.repo.SearchSkillInvocations(ctx, q)
+	if err != nil {
+		return result, err
+	}
+	applyInvocationPermissions(ctx, result.Items)
+	return result, nil
 }
 
 func (u *Usecase) GetStorageDir(ctx context.Context, id string) (string, error) {
@@ -305,11 +378,21 @@ func (u *Usecase) GetBySkillKey(ctx context.Context, skillKey string) (Skill, er
 	if skillKey == "" {
 		return Skill{}, errors.BadRequest("SKILL", "skill key is required")
 	}
-	return u.repo.GetSkillBySkillKey(ctx, skillKey)
+	s, err := u.repo.GetSkillBySkillKey(ctx, skillKey)
+	if err != nil {
+		return Skill{}, err
+	}
+	applySkillPermission(ctx, &s)
+	return s, nil
 }
 
 func (u *Usecase) UpsertSkillFromDisk(ctx context.Context, in DiskSyncInput) (Skill, DiskSyncOutcome, error) {
-	return u.repo.UpsertSkillFromDisk(ctx, in)
+	s, outcome, err := u.repo.UpsertSkillFromDisk(ctx, in)
+	if err != nil {
+		return Skill{}, outcome, err
+	}
+	applySkillPermission(ctx, &s)
+	return s, outcome, nil
 }
 
 func (u *Usecase) ListRegisteredSlugs(ctx context.Context) ([]string, error) {
@@ -340,17 +423,33 @@ func (u *Usecase) GetLatestMarkdown(ctx context.Context, id string) (string, err
 }
 
 func (u *Usecase) Patch(ctx context.Context, id string, patch UpdateDraft) (Skill, error) {
+	if err := requireAdminAccess(ctx); err != nil {
+		return Skill{}, err
+	}
 	if strings.TrimSpace(id) == "" {
 		return Skill{}, errors.BadRequest("SKILL", "skill id is required")
 	}
-	return u.repo.PatchSkill(ctx, id, patch)
+	s, err := u.repo.PatchSkill(ctx, id, patch)
+	if err != nil {
+		return Skill{}, err
+	}
+	applySkillPermission(ctx, &s)
+	return s, nil
 }
 
 func (u *Usecase) Publish(ctx context.Context, id string) (Skill, error) {
 	if strings.TrimSpace(id) == "" {
 		return Skill{}, errors.BadRequest("SKILL", "skill id is required")
 	}
-	return u.repo.PublishSkill(ctx, id)
+	if err := requireAdminAccess(ctx); err != nil {
+		return Skill{}, err
+	}
+	s, err := u.repo.PublishSkill(ctx, id)
+	if err != nil {
+		return Skill{}, err
+	}
+	applySkillPermission(ctx, &s)
+	return s, nil
 }
 
 func (u *Usecase) MarkFilesystemMissing(ctx context.Context, slug string, missing bool) error {
@@ -365,12 +464,54 @@ func (u *Usecase) FilesystemHealthStats(ctx context.Context) (FilesystemHealthSt
 	return u.repo.FilesystemHealthStats(ctx)
 }
 
+func (u *Usecase) ListVersions(ctx context.Context, q VersionListQuery) (VersionListResult, error) {
+	q.SkillID = strings.TrimSpace(q.SkillID)
+	if q.SkillID == "" {
+		return VersionListResult{}, errors.BadRequest("SKILL", "skill id is required")
+	}
+	if q.Limit <= 0 {
+		q.Limit = 20
+	}
+	if q.Limit > 100 {
+		q.Limit = 100
+	}
+	if q.Offset < 0 {
+		q.Offset = 0
+	}
+	return u.repo.ListSkillVersions(ctx, q)
+}
+
+func (u *Usecase) RollbackVersion(ctx context.Context, skillID string, versionID string) (Skill, error) {
+	skillID = strings.TrimSpace(skillID)
+	versionID = strings.TrimSpace(versionID)
+	if skillID == "" {
+		return Skill{}, errors.BadRequest("SKILL", "skill id is required")
+	}
+	if versionID == "" {
+		return Skill{}, errors.BadRequest("SKILL", "version id is required")
+	}
+	if err := requireAdminAccess(ctx); err != nil {
+		return Skill{}, err
+	}
+	s, err := u.repo.RollbackSkillVersion(ctx, skillID, versionID)
+	if err != nil {
+		return Skill{}, err
+	}
+	applySkillPermission(ctx, &s)
+	return s, nil
+}
+
 func (u *Usecase) GetBySlug(ctx context.Context, slug string) (Skill, error) {
 	slug = strings.TrimSpace(slug)
 	if slug == "" {
 		return Skill{}, errors.BadRequest("SKILL", "skill slug is required")
 	}
-	return u.repo.GetSkillBySkillKey(ctx, slug)
+	s, err := u.repo.GetSkillBySkillKey(ctx, slug)
+	if err != nil {
+		return Skill{}, err
+	}
+	applySkillPermission(ctx, &s)
+	return s, nil
 }
 
 // ListEnabledPublishedCandidates is a shorter alias for ListEnabledPublishedSkillCandidates.
@@ -596,4 +737,39 @@ func normalizeTagTokens(s *[]string) {
 		out = append(out, x)
 	}
 	*s = out
+}
+
+func applySkillPermissions(ctx context.Context, items []Skill) {
+	for i := range items {
+		applySkillPermission(ctx, &items[i])
+	}
+}
+
+func applySkillPermission(ctx context.Context, s *Skill) {
+	a, ok := authpkg.FromContext(ctx)
+	if !ok || a == nil {
+		s.Permissions = SkillPermissions{}
+		return
+	}
+	if a.HasAdminAccess() {
+		s.Permissions = SkillPermissions{CanEdit: true, CanDelete: true, CanToggleEnabled: true, CanDuplicate: true}
+		return
+	}
+	s.Permissions = SkillPermissions{CanEdit: true, CanDelete: false, CanToggleEnabled: true, CanDuplicate: true}
+}
+
+func requireAdminAccess(ctx context.Context) error {
+	a, ok := authpkg.FromContext(ctx)
+	if !ok || a == nil || !a.HasAdminAccess() {
+		return errors.Forbidden("SKILL", "admin access required")
+	}
+	return nil
+}
+
+func applyInvocationPermissions(ctx context.Context, items []SkillInvocation) {
+	a, ok := authpkg.FromContext(ctx)
+	canView := ok && a != nil && a.HasAdminAccess()
+	for i := range items {
+		items[i].Permissions = SkillInvocationPermissions{CanViewDetail: canView}
+	}
 }

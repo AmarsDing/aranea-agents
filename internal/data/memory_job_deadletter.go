@@ -22,6 +22,7 @@ type MemoryJobDeadLetterRepo struct {
 }
 
 var _ biz.MemoryDeadLetterSink = (*MemoryJobDeadLetterRepo)(nil)
+var _ biz.MemoryDeadLetterAdminRepo = (*MemoryJobDeadLetterRepo)(nil)
 
 // NewMemoryJobDeadLetterRepo creates the dead-letter repository.
 func NewMemoryJobDeadLetterRepo(d *Data) *MemoryJobDeadLetterRepo {
@@ -80,7 +81,22 @@ func (r *MemoryJobDeadLetterRepo) WriteMemoryDeadLetter(
 	now := time.Now().UnixMilli()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err := r.data.RawDB().ExecContext(ctx, `
+	res, err := r.data.RawDB().ExecContext(ctx, `
+UPDATE memory_job_deadletter
+   SET attempts = attempts + 1,
+       last_error = ?,
+       failed_at = ?
+ WHERE session_id = ?
+   AND app_name = ?
+   AND priority = ?
+   AND state = 'pending'
+   AND attempts < 3`, lastErr, now, req.SessionID, req.AppName, int(req.Priority))
+	if err == nil {
+		if n, _ := res.RowsAffected(); n > 0 {
+			return
+		}
+	}
+	_, err = r.data.RawDB().ExecContext(ctx, `
 INSERT INTO memory_job_deadletter
   (enqueued_at, failed_at, session_id, app_name, user_id, feedback_msg_id,
    payload_json, drop_reason, priority, attempts, last_error, state)
@@ -94,22 +110,8 @@ VALUES (?,?,?,?,?,?,?,?,?,0,?,'pending')`,
 	}
 }
 
-// MemoryDeadLetterListResult is returned by ListDeadLetters.
-type MemoryDeadLetterListResult struct {
-	ID         int64
-	EnqueuedAt time.Time
-	FailedAt   time.Time
-	SessionID  string
-	AppName    string
-	DropReason string
-	Priority   int
-	Attempts   int
-	State      string
-	LastError  string
-}
-
 // ListDeadLetters returns pending dead-letter jobs ordered by enqueued_at.
-func (r *MemoryJobDeadLetterRepo) ListDeadLetters(ctx context.Context, state string, limit int) ([]MemoryDeadLetterListResult, error) {
+func (r *MemoryJobDeadLetterRepo) ListDeadLetters(ctx context.Context, state string, limit int) ([]biz.MemoryDeadLetterEntry, error) {
 	if state == "" {
 		state = "pending"
 	}
@@ -126,9 +128,9 @@ LIMIT ?`, state, limit)
 		return nil, err
 	}
 	defer rows.Close()
-	var out []MemoryDeadLetterListResult
+	var out []biz.MemoryDeadLetterEntry
 	for rows.Next() {
-		var row MemoryDeadLetterListResult
+		var row biz.MemoryDeadLetterEntry
 		var enqueuedMs, failedMs int64
 		if err := rows.Scan(&row.ID, &enqueuedMs, &failedMs,
 			&row.SessionID, &row.AppName, &row.DropReason,
@@ -154,6 +156,23 @@ func (r *MemoryJobDeadLetterRepo) MarkDeadLetterAbandoned(ctx context.Context, i
 	_, err := r.data.RawDB().ExecContext(ctx,
 		`UPDATE memory_job_deadletter SET state='abandoned', last_error=?, attempts=attempts+1 WHERE id=?`, reason, id)
 	return err
+}
+
+func (r *MemoryJobDeadLetterRepo) GetDeadLetter(ctx context.Context, id int64) (biz.MemoryDeadLetterEntry, error) {
+	var row biz.MemoryDeadLetterEntry
+	var enqueuedMs, failedMs int64
+	err := r.data.RawDB().QueryRowContext(ctx, `
+SELECT id, enqueued_at, failed_at, session_id, app_name, drop_reason, priority, attempts, state, last_error
+FROM memory_job_deadletter WHERE id=?`, id).
+		Scan(&row.ID, &enqueuedMs, &failedMs,
+			&row.SessionID, &row.AppName, &row.DropReason,
+			&row.Priority, &row.Attempts, &row.State, &row.LastError)
+	if err != nil {
+		return biz.MemoryDeadLetterEntry{}, err
+	}
+	row.EnqueuedAt = time.UnixMilli(enqueuedMs).UTC()
+	row.FailedAt = time.UnixMilli(failedMs).UTC()
+	return row, nil
 }
 
 // CountDeadLettersByState returns counts grouped by state.

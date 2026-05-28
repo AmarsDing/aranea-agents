@@ -72,12 +72,14 @@ type MemoryCfg struct {
 	L3MaxPerRecallChars  int     `json:"l3_max_per_recall_chars,omitempty"`
 
 	// L4 knowledge graph.
-	L4Enabled              bool `json:"l4_enabled,omitempty"`
-	L4GraphInjectNeighbors bool `json:"l4_graph_inject_neighbors,omitempty"`
-	L4GraphMaxNeighbors    int  `json:"l4_graph_max_neighbors,omitempty"`
-	L4GraphMaxHops         int  `json:"l4_graph_max_hops,omitempty"`
-	L4IdentityInject       bool `json:"l4_identity_inject,omitempty"`
-	L4StrategyInject       bool `json:"l4_strategy_inject,omitempty"`
+	L4Enabled              bool   `json:"l4_enabled,omitempty"`
+	L4GraphInjectNeighbors bool   `json:"l4_graph_inject_neighbors,omitempty"`
+	L4GraphMaxNeighbors    int    `json:"l4_graph_max_neighbors,omitempty"`
+	L4GraphMaxHops         int    `json:"l4_graph_max_hops,omitempty"`
+	L4IdentityInject       bool   `json:"l4_identity_inject,omitempty"`
+	L4StrategyInject       bool   `json:"l4_strategy_inject,omitempty"`
+	L4DecayIntervalHours   int    `json:"l4_decay_interval_hours,omitempty"`
+	L4DecayOverridesJSON   string `json:"l4_decay_overrides_json,omitempty"`
 }
 
 // ToolsCfg holds tool execution and retry settings.
@@ -214,6 +216,8 @@ func (s *AgentRuntimeSettings) ApplyMemory(cfg MemoryCfg) {
 	s.L4GraphMaxHops = cfg.L4GraphMaxHops
 	s.L4IdentityInject = cfg.L4IdentityInject
 	s.L4StrategyInject = cfg.L4StrategyInject
+	s.L4DecayIntervalHours = cfg.L4DecayIntervalHours
+	s.L4DecayOverridesJSON = cfg.L4DecayOverridesJSON
 }
 
 func (s *AgentRuntimeSettings) ApplyTools(cfg ToolsCfg) {

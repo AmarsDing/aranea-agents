@@ -9,11 +9,11 @@ import (
 func TestBuildTeamRunSummaryData(t *testing.T) {
 	run := TeamRun{
 		ID: "run-1", TeamID: "team-1", SessionID: "sess-1",
-		Mode: "sequential", Status: "success",
+		Mode: "sequential", Status: TeamRunStatusSuccess,
 		TokenIn: 10, TokenOut: 20, DurationMS: 100,
 	}
 	steps := []TeamRunStep{
-		{AgentKey: "a1", AgentName: "Agent One", Role: "worker", SortOrder: 0, Status: "ok", TokenOut: 20, ToolCallCount: 2},
+		{AgentKey: "a1", AgentName: "Agent One", Role: "worker", SortOrder: 0, Status: TeamMemberStepStatusOK, TokenOut: 20, ToolCallCount: 2},
 	}
 	data := BuildTeamRunSummaryData(run, steps)
 	if data.RunID != "run-1" || data.ToolCallCount != 2 || data.MemberCount != 1 {
@@ -27,7 +27,7 @@ func TestBuildTeamRunSummaryData(t *testing.T) {
 func TestTeamUsecase_GetRunSummary(t *testing.T) {
 	repo := &runSummaryRepo{
 		runs: map[string]TeamRun{
-			"run-1": {ID: "run-1", TeamID: "t1", SessionID: "s1", Mode: "sequential", Status: "success"},
+			"run-1": {ID: "run-1", TeamID: "t1", SessionID: "s1", Mode: "sequential", Status: TeamRunStatusSuccess},
 		},
 		steps: map[string][]TeamRunStep{
 			"run-1": {{AgentKey: "a1", ToolCallCount: 4}},

@@ -1,6 +1,6 @@
 # M53: Team × Graph 编排融合 — 开发计划
 
-> **版本**：2026-05-23 | **状态**：✅ Phase 0.5–6 已落地；**Phase 7 进行中**（Graph 默认 + Native 应急退役；Task/Subgraph 编译与 Task bridge 已接线）  
+> **版本**：2026-05-28 | **状态**：✅ Phase 0.5–7 已落地；**Phase 8 进行中**（架构优化：状态机/协议化/单轨化/mode→template）  
 > **需求**：[53 team-graph-orchestration.md](./53%20team-graph-orchestration.md) · **设计**：[53 team-graph-orchestration.design.md](./53%20team-graph-orchestration.design.md)  
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：EP-TG-01
 
@@ -306,8 +306,10 @@ OrchestrationSpec (definition_json)
 | 差距 | 现状 | 目标 Phase |
 |------|------|------------|
 | Rollout  playbook | changelog 提及，无 Runbook | Phase 5 TG-RT-FLAG |
-| `trpc_build.go` 退役 | 六种 mode 仍维护 | Phase 7 TG-RT-RETIRE |
-| 系统框图 / 11 文档 | 仍写 `BuildTRPCTeam` 主路径 | Phase 7 TG-0-ARCH |
+| `trpc_build.go` 退役 | ✅ Phase 8：`BuildTRPCTeam` 仅 `ARANEA_TEAM_NATIVE=1` 紧急熔断；编译器统一走 `compileFromEmbeddedGraph` | Phase 8 ✅ |
+| 系统框图 / 11 文档 | ✅ Phase 8：编译器不再按 mode 分发，`generateGraphSpecFromMode` 自动生成 embedded graph spec | Phase 8 ✅ |
+| 灰度桶 / canary | ✅ Phase 8：`graph_runtime_canary.go` 简化，灰度逻辑删除 | Phase 8 ✅ |
+| Native fallback 决策树 | ✅ Phase 8：`fallback_policy.go` 简化，仅保留紧急熔断 | Phase 8 ✅ |
 
 ### 8.4 推荐实施顺序
 
@@ -317,9 +319,11 @@ Phase 5  parity + UI + metrics + Canary
 Phase 6  默认 Graph + Checkpoint/HITL + Spec v2
     ↓
 Phase 7  移除 Native + Task/Subgraph + 文档/arch 图更新
+    ↓
+Phase 8  架构优化（状态机 / 协议化 / 单轨化 / mode→template）
 ```
 
-**原则**：每阶段 **扩大 Graph 执行占比**，指标达标后再进入下一阶段；Native 保留至 Phase 7 前均为 **安全网**。
+**原则**：每阶段 **扩大 Graph 执行占比**，指标达标后再进入下一阶段；Native 保留至 Phase 7 前均为 **安全网**。Phase 8 在 Phase 7 基础上消除架构债。
 
 ### 8.5 配置速查（当前双轨期）
 
@@ -394,3 +398,49 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 - [36 graph-workflow.md](./36%20graph-workflow.md) — §0.1 增加 Team 融合路径
 - [execution-plan.md](../guides/execution-plan.md) — 迭代 TG 任务板
 - [README-development.md](./README-development.md) — 索引 M53
+
+---
+
+## Phase 8 — 架构优化（2026-05-28 启动）
+
+> **目标**：消除 Phase 0.5–7 遗留的架构债，统一编译路径、协议化决策、状态机显式建模。
+
+### Phase 8.1 — 基础加固（✅ 已完成）
+
+| ID | 任务 | BL | 影响域 | 状态 |
+|----|------|-----|--------|------|
+| BL-07 | `TeamRunStatus` 常量统一真相源 + 状态机 `ValidateTeamRunTransition` | `biz/team_types.go` | ✅ |
+| BL-06 | `DefinitionJSON` 一次解析 `parseRuntimeOptions`，消除 3 次 `json.Unmarshal` | `team/graph_runtime_options.go` | ✅ |
+| BL-03 | `OrchestrationControlTool` 协议化 + `ParseOrchestrationDecision` + `IsApprovedDecision` | `biz/team_types.go` `team/trpc_build.go` `graph/adapter/critic_loop_cond.go` | ✅ |
+| BL-04a | HITL 超时语义拆分：`watchTimeout`(30min) vs `hitlSLATimeout`(24h) + `maxHITLSLAExtensions`(3) | `team/team_graph_run_coordinator.go` | ✅ |
+| DRY | 共享类型提取到 `biz`：`OrchestrationDecision` / `OrchestrationControlToolName` / `CriticLoopCondFuncRef` / `ExtractScore` | `biz/team_types.go` | ✅ |
+| CLEAN | 移除冗余别名 `teamRunStatusWaitingHuman`；删除死代码 `parseOrchestrationCheckpoint` | `team/team_graph_run_coordinator.go` `team/graph_runtime_options.go` | ✅ |
+| TEST | 新增 4 个测试文件 22+ 测试用例 | `biz/team_types_test.go` `team/trpc_build_test.go` `graph/adapter/critic_loop_cond_test.go` | ✅ |
+
+### Phase 8.2 — 单轨化 + mode→template（✅ 已完成）
+
+| ID | 任务 | BL | 影响域 | 状态 |
+|----|------|-----|--------|------|
+| BL-01a | `fallback_policy.go` 简化：`DecideNativeFallback` 仅保留 `ARANEA_TEAM_NATIVE=1` 紧急熔断 | `team/fallback_policy.go` | ✅ |
+| BL-01b | `graph_runtime.go` 简化：删除灰度/桶/百分比逻辑，仅保留 `ARANEA_TEAM_GRAPH_RUNTIME=0` 熔断 | `team/graph_runtime.go` | ✅ |
+| BL-01c | `graph_runtime_canary.go` 简化：`TeamGraphRuntimeEnabledForTeam` 直接委托 `TeamGraphRuntimeEnabled` | `team/graph_runtime_canary.go` | ✅ |
+| BL-01d | `runner_team_compiler.go` 简化：移除 Native fallback 分支，仅紧急熔断时走 `BuildTRPCTeam` | `team/runner_team_compiler.go` | ✅ |
+| BL-10a | 编译器统一走 `compileFromEmbeddedGraph`：当 `definition.graph` 为空时 `generateGraphSpecFromMode` 自动生成 spec | `team/graph_compile.go` | ✅ |
+| BL-10b | `compileEmbeddedEdges` 新增条件边生成：critic_loop 自动生成 `ConditionalEdgeDef` | `team/embedded_graph.go` | ✅ |
+| CLEAN | 删除旧 `compileEdges` / `compileEntryFinish` / `compileSequentialEdges` 等 8 个死代码函数（~170 行） | `team/graph_compile.go` | ✅ |
+
+### Phase 8.3 — 待实施
+
+| ID | 任务 | BL | 优先级 | 说明 |
+|----|------|-----|--------|------|
+| BL-02 | 模板注册表：`OrchestrationTemplate` 接口 + 5 个内置模板 | 中 | 依赖 BL-10 已完成 |
+| BL-04b | `team_graph_sessions` 持久化：新增 Ent schema + 进程重启恢复 | 高 | 需 DB 迁移 |
+| BL-05 | Step 持久化事件驱动统一：删除 bulk persist 路径 | 中 | 依赖 BL-01 |
+| BL-09 | Observer 单订阅化：`teamRunPipeline` + `runEventHandler` 接口 | 低 | 减少订阅开销 |
+
+### Phase 8 关键设计决策
+
+1. **共享类型归 `biz`**：`OrchestrationDecision` / `OrchestrationControlToolName` / `CriticLoopCondFuncRef` / `ExtractScore` 统一定义在 `biz/team_types.go`，`team` 和 `graph/adapter` 包引用 `biz.*`
+2. **编译器统一路径**：`compileToGraphBuildConfigWithLoader` 不再按 mode 分发，而是通过 `generateGraphSpecFromMode` 生成 embedded graph spec 后统一走 `compileFromEmbeddedGraph`
+3. **Native 仅紧急熔断**：`ARANEA_TEAM_NATIVE=1` 环境变量为唯一 Native 执行入口，灰度桶/canary/holdout 逻辑全部删除
+4. **HITL SLA 有界延期**：`maxHITLSLAExtensions = 3`，避免无限延期

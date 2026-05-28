@@ -10,7 +10,7 @@
       <q-btn flat rounded icon="refresh" label="刷新" :loading="loading" class="q-ml-sm" @click="load" />
     </div>
 
-    <q-input v-model="search" dense outlined clearable label="搜索" class="q-mb-md" @update:model-value="load" />
+    <q-input v-model="search" dense outlined clearable label="搜索" class="q-mb-md" @update:model-value="debouncedLoad" />
 
     <div class="row q-col-gutter-md">
       <div v-for="p in products" :key="p.id" class="col-12 col-md-6 col-lg-4">
@@ -53,7 +53,7 @@
         </q-card-section>
         <q-card-actions align="right" class="app-actions-bar">
           <q-btn flat no-caps label="取消" v-close-popup />
-          <q-btn color="primary" unelevated no-caps label="发布" :loading="publishing" @click="publish" />
+          <q-btn color="primary" unelevated no-caps label="发布" :loading="publishing" :disable="!draft.name || !draft.display_name || !draft.type" @click="publish" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -72,6 +72,7 @@ const {
   installingId,
   draft,
   load,
+  debouncedLoad,
   install,
   publish,
 } = useEcosystemPage();

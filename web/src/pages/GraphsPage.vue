@@ -15,39 +15,102 @@
       <template #action><q-btn flat color="white" label="重试" @click="loadRows" /></template>
     </q-banner>
 
-    <section class="graphs-grid q-mt-lg">
+    <section class="graphs-filter-bar q-mt-md">
+      <q-input
+        v-model="searchQuery"
+        dense
+        outlined
+        placeholder="搜索 Graph..."
+        class="graphs-filter-bar__search"
+      >
+        <template #prepend><q-icon name="search" /></template>
+        <template v-if="searchQuery" #append><q-icon name="close" class="cursor-pointer" @click="searchQuery = ''" /></template>
+      </q-input>
+      <q-select
+        v-model="engineFilter"
+        :options="ENGINE_FILTER_OPTIONS"
+        dense
+        outlined
+        emit-value
+        map-options
+        class="graphs-filter-bar__select"
+      />
+      <q-select
+        v-model="sortKey"
+        :options="SORT_OPTIONS"
+        dense
+        outlined
+        emit-value
+        map-options
+        class="graphs-filter-bar__select"
+      />
+      <q-btn-toggle
+        v-model="sortOrder"
+        no-caps
+        flat
+        dense
+        toggle-color="primary"
+        :options="[
+          { value: 'asc', icon: 'arrow_upward' },
+          { value: 'desc', icon: 'arrow_downward' },
+        ]"
+      />
+    </section>
+
+    <section class="graphs-grid q-mt-md">
       <q-card
-        v-for="graph in rows"
+        v-for="graph in filteredRows"
         :key="graph.id"
         flat
         :class="['graph-card', { 'is-dark': isDark }]"
         @click="openEditor(graph.id)"
       >
         <div class="graph-card__inner">
-          <div class="row items-start justify-between no-wrap">
+          <div class="row items-center justify-between no-wrap">
             <h3 class="graph-card__name col min-width-0 ellipsis">{{ graph.name }}</h3>
-            <q-icon name="account_tree" size="18px" class="text-grey-6" />
+            <span class="graph-card__time">{{ relativeTime(graph.updatedAt) }}</span>
           </div>
-          <p v-if="graph.description" class="graph-card__desc ellipsis-2-lines">{{ graph.description }}</p>
-          <div class="graph-card__tags">
-            <span class="graph-card__tag">{{ graph.nodes?.length ?? 0 }} 节点</span>
-            <span class="graph-card__tag">{{ graph.edges?.length ?? 0 }} 连线</span>
-            <span v-if="graph.executionEngine === 'dag'" class="graph-card__tag">DAG</span>
-            <span v-if="graph.enableCheckpoint" class="graph-card__tag">检查点</span>
+          <p v-if="graph.description" class="graph-card__desc ellipsis">{{ graph.description }}</p>
+          <div class="graph-card__chips">
+            <template v-for="(count, type) in countNodesByType(graph)" :key="type">
+              <span
+                v-if="count"
+                class="graph-card__chip"
+                :style="{ borderColor: (NODE_TYPE_STYLES as any)[type]?.borderColor, color: (NODE_TYPE_STYLES as any)[type]?.borderColor }"
+              >{{ (NODE_TYPE_EMOJI as any)[type] }}×{{ count }}</span>
+            </template>
+          </div>
+          <div class="row items-center justify-between no-wrap">
+            <div class="graph-card__tags">
+              <span v-if="graph.executionEngine === 'dag'" class="graph-card__tag">DAG</span>
+              <span v-else class="graph-card__tag">BSP</span>
+              <span v-if="graph.enableCheckpoint" class="graph-card__tag">检查点</span>
+            </div>
+            <span class="graph-card__summary">{{ graph.nodes?.length ?? 0 }}节点·{{ graph.edges?.length ?? 0 }}线</span>
           </div>
           <footer class="graph-card__foot">
-            <q-btn flat dense round icon="play_arrow" @click.stop="openRunDialog(graph)">
+            <q-btn flat dense round icon="play_arrow" size="sm" @click.stop="openRunDialog(graph)">
               <q-tooltip>执行</q-tooltip>
             </q-btn>
-            <q-btn flat dense round icon="content_copy" @click.stop="duplicateGraph(graph)">
+            <q-btn flat dense round icon="edit" size="sm" @click.stop="openEditor(graph.id)">
+              <q-tooltip>编辑</q-tooltip>
+            </q-btn>
+            <q-btn flat dense round icon="content_copy" size="sm" @click.stop="duplicateGraph(graph)">
               <q-tooltip>复制</q-tooltip>
             </q-btn>
-            <q-btn flat dense round icon="delete" color="negative" @click.stop="removeGraph(graph)">
+            <q-btn flat dense round icon="delete" size="sm" color="negative" @click.stop="confirmRemoveGraph(graph)">
               <q-tooltip>删除</q-tooltip>
             </q-btn>
           </footer>
         </div>
       </q-card>
+
+      <div class="graph-card graph-card--add" @click="openCreate">
+        <div class="graph-card__inner column items-center justify-center">
+          <q-icon name="add" size="28px" color="grey-6" />
+          <span class="graph-card--add__label">新增 Graph</span>
+        </div>
+      </div>
     </section>
 
     <q-card v-if="!loading && rows.length === 0" flat :class="['graphs-empty', { 'is-dark': isDark }, 'q-mt-lg']">
@@ -87,8 +150,19 @@ import { useGraphsPage } from "../features/graph/useGraphsPage";
 const {
   isDark,
   rows,
+  filteredRows,
   loading,
   error,
+  searchQuery,
+  engineFilter,
+  sortKey,
+  sortOrder,
+  SORT_OPTIONS,
+  ENGINE_FILTER_OPTIONS,
+  NODE_TYPE_EMOJI,
+  NODE_TYPE_STYLES,
+  countNodesByType,
+  relativeTime,
   runDialogOpen,
   runDialogGraph,
   runSessionId,
@@ -100,6 +174,6 @@ const {
   openRunDialog,
   executeRun,
   duplicateGraph,
-  removeGraph
+  confirmRemoveGraph,
 } = useGraphsPage();
 </script>

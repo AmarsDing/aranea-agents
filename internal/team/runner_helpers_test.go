@@ -50,7 +50,7 @@ func TestPersistStep_EmitsStartedAndFinished(t *testing.T) {
 	run := biz.TeamRun{ID: "run-1", SessionID: "sess-1"}
 	ag := biz.Agent{ID: "a1", AgentKey: "worker-a", DisplayName: "Worker A"}
 	m := MemberDef{Role: "worker"}
-	asst := biz.ChatMessage{Role: "assistant", ContentMarkdown: "done", Status: "ok", CreatedAt: "2026-01-01T00:00:00Z"}
+	asst := biz.ChatMessage{Role: "assistant", ContentMarkdown: "done", Status: biz.TeamMemberStepStatusOK, CreatedAt: "2026-01-01T00:00:00Z"}
 
 	runner.persistStep(context.Background(), run, "team-1", 0, m, ag, "hello", asst, "", "", "default", 2)
 

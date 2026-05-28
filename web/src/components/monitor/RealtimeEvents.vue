@@ -13,7 +13,7 @@
       <q-select v-model="category" class="app-page-toolbar__field" dense outlined emit-value map-options label="分类" :options="categoryOptions" />
       <template #actions>
         <q-btn flat rounded no-caps :icon="paused ? 'play_arrow' : 'pause'" :label="paused ? '恢复' : '暂停'" @click="toggleStream" />
-        <q-btn flat rounded no-caps icon="delete_sweep" label="清除" @click="clearRuntimeEvents" />
+        <q-btn flat rounded no-caps icon="delete_sweep" label="清除" @click="confirmClearEvents" />
       </template>
     </AppPageToolbar>
 
@@ -120,6 +120,7 @@
 
 <script setup lang="ts">
 import { computed, ref, toRef, watch } from "vue";
+import { useQuasar } from "quasar";
 import AppPageToolbar from "../layout/AppPageToolbar.vue";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
@@ -128,6 +129,8 @@ import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
 import type { PlatformResource, MonitorTraceEvent } from "../../features/monitor/types";
 import { useMonitorRealtimeEvents, type MonitorViewEvent } from "../../features/monitor/useMonitorRealtimeEvents";
 import { MONITOR_EVENTS_TABLE_COLUMNS } from "./monitorTableUi";
+
+const $q = useQuasar();
 
 const props = defineProps<{
   persistedEvents: PlatformResource[];
@@ -153,6 +156,17 @@ const {
   copyJSON,
   eventColor
 } = useMonitorRealtimeEvents(toRef(() => props.persistedEvents), toRef(() => props.traces));
+
+function confirmClearEvents() {
+  $q.dialog({
+    title: "清除事件",
+    message: "确定清除所有实时事件？此操作不可撤销。",
+    cancel: true,
+    persistent: true
+  }).onOk(() => {
+    clearRuntimeEvents();
+  });
+}
 
 const page = ref(1);
 const pageSize = ref(12);

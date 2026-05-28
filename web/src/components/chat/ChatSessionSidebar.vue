@@ -194,13 +194,12 @@
           @click="$emit('new-session')"
         />
         <q-btn
-          outline
+          flat
           dense
-          class="chat-outline-danger-btn"
-          color="negative"
+          color="grey-7"
           no-caps
           :label="t('chat.clearAllSession')"
-          @click="$emit('delete', 'all', '')"
+          @click="confirmClearAll"
         />
       </div>
     </aside>
@@ -272,6 +271,17 @@ const timelineGroups = computed(() => {
   }
   return groups;
 });
+
+function confirmClearAll() {
+  $q.dialog({
+    title: t("chat.clearAllSession"),
+    message: t("chat.clearAllConfirm", "确定要清除全部会话吗？此操作不可撤销。"),
+    cancel: true,
+    persistent: true,
+  }).onOk(() => {
+    emit("delete", "all", "");
+  });
+}
 
 function renameSession(session: SessionView) {
   $q.dialog({

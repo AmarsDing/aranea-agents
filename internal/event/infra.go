@@ -46,7 +46,7 @@ func monitorBusRef() Bus {
 func NewInfra() *Infra {
 	mode := routingMode(os.Getenv("MONITOR_BUS_ROUTING"))
 	if mode == "" {
-		mode = routingModeDual
+		mode = routingModeSplit
 	}
 	return &Infra{
 		SessionBus: NewBus(),
@@ -94,18 +94,28 @@ const (
 //
 // Routing mode is controlled by the MONITOR_BUS_ROUTING environment variable
 // (read once at NewInfra / BindInfra time):
-//   - "dual" (default, Phase 0): flow_log and log go to BOTH SessionBus and MonitorBus.
-//   - "split" (Phase 1):         flow_log and log go to MonitorBus ONLY.
+//   - "split" (default, Phase 1): flow_log and log go to MonitorBus ONLY.
+//   - "dual"  (Phase 0 fallback): flow_log and log go to BOTH SessionBus and MonitorBus.
 //
-// All other envelope types go to SessionBus only.
+// Monitor-only types (flow_log, log) are isolated from the session bus to prevent
+// high-frequency monitor events from crowding out chat/team envelopes.
+//
+// Alert and MCP health events are dual-published so both session-scoped and
+// global monitor connections receive them.
 func (infra *Infra) Publish(ctx context.Context, env Envelope) {
 	switch env.Type {
 	case EnvelopeTypeFlowLog, EnvelopeTypeLog:
 		if infra.routing != routingModeSplit {
-			// Phase 0 dual: keep flow_log on SessionBus for backward compat.
 			if infra.SessionBus != nil {
 				infra.SessionBus.Publish(ctx, env)
 			}
+		}
+		if infra.MonitorBus != nil {
+			infra.MonitorBus.Publish(ctx, env)
+		}
+	case EnvelopeTypeAlertNotify, EnvelopeTypeMCPHealthAlert:
+		if infra.SessionBus != nil {
+			infra.SessionBus.Publish(ctx, env)
 		}
 		if infra.MonitorBus != nil {
 			infra.MonitorBus.Publish(ctx, env)

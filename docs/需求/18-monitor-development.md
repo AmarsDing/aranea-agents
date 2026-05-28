@@ -1,6 +1,6 @@
 # Monitor 监控 — 开发计划
 
-> **版本**：2026-05-21 | **状态**：🟢 核心已通（6 Tab + 告警 + Logs 1c + **Phase 1d 方案 C** ✅）；概览 Dashboard Phase 2～3b ✅；待办为 latency 聚合等 P2
+> **版本**：2026-05-28 | **状态**：🟢 核心已通（6 Tab + 告警 + Logs 1c + **Phase 1d 方案 C** ✅）；概览 Dashboard Phase 2～3b ✅；**MON-OPT-01~06 ✅ LOG-01/TRACE-01 ✅ DIAG-01/02 ✅**；待办为 latency 聚合等 P2
 > **需求**：[18 monitor.md](./18%20monitor.md) · **设计**：[18 monitor.design.md](./18%20monitor.design.md)（§九 方案 C）
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md)（I8-MON-01/02、MON-01、I5-MON-01/02）· **页面索引**：[frontend-pages.md](./frontend-pages.md) §监控
 
@@ -16,8 +16,10 @@
 |----|------|
 | Proto | `api/kratos/monitor/v1/monitor.proto` |
 | Biz | `internal/biz/monitor.go`、`monitor_alert` 逻辑、`runner_completion.go` |
-| Data | `internal/data/monitor.go`、`internal/data/monitor_alert.go` |
+| Data | `internal/data/monitor.go`、`internal/data/monitor_alert.go`、`internal/data/monitor_trace.go` |
 | Service | `internal/service/monitor.go`、`monitor_notify.go` |
+| Agent 运行时 | `internal/biz/monitor/`（alert_eval_worker、metric_ring_buffer、trace_projector、flow_file_appender、alert_metric_registry、root_cause_engine、diag_bundle） |
+| Cron | `internal/cronrunner/jobs/monitor_trace_backfill.go` |
 | 用量 | `internal/biz/usage.go`、`internal/service/turn_usage.go`、`chat_usage_ingress.go` |
 | 前端 | `web/src/pages/MonitorPage.vue`、`web/src/features/monitor/*`、`web/src/components/monitor/*` |
 | SQL | `docs/sql/07_monitor.sql`、`docs/sql/14_monitor_alert.sql` |
@@ -35,8 +37,17 @@
 | Runner 窗口指标 | ✅ | `GET /v1/monitor/runner-metrics` + `MonitorRunnerMetrics` / `RunnerMetricsPanel`（Store + composable） |
 | 错误率统计（窗口） | ✅ | `GetRunnerMetrics` 聚合 `runner.completion`；非独立 latency 指标 |
 | 告警规则 | ✅ | `monitor_alert_rules` + `GET/PUT /v1/monitor/alert-rules` |
-| 告警评估 | ✅ | `EvaluateAlerts`：`runner.error_rate` → `alert.fired` |
+| 告警评估 | ✅ | `EvaluateAlerts`：`runner.error_rate` → `alert.fired`；MON-OPT-03 RingBuffer + EvalWorker |
+| 告警冷却持久化 | ✅ | MON-OPT-02：`firing` 状态机 + DB 持久化 `last_fired_at` |
+| 告警注册表 | ✅ | MON-OPT-06：`AlertMetricRegistry` 替代 switch/case |
 | 告警通知 | ✅ | `monitor_notify.go`：Webhook + Channel；`cooldown_minutes` |
+| FlowLog Bus 分离 | ✅ | MON-OPT-01：`flow_log`/`log` 路由到 MonitorBus；WS 全局连接单 pump |
+| Trace 写入回路 | ✅ | MON-OPT-05：`TraceProjector` + `MonitorTraceProjector` + 历史回填 |
+| FlowLog 文件落盘 | ✅ | LOG-01：`FlowFileAppender` + 按日/大小轮转 + gzip + 30 天清理 |
+| Trace 文件落盘 | ✅ | TRACE-01：`runner.completion` → `trace-*.jsonl` |
+| AI 诊断包 | ✅ | DIAG-01：`DiagBundleGenerator` + `GenerateDiagnosticBundle` API |
+| 根因分析引擎 | ✅ | DIAG-02：`RootCauseEngine` 5 条内置规则 + 置信度评分 |
+| WS 反压可观测 | ✅ | MON-OPT-04：优先级队列 + drop 计数 + 反压事件 |
 | Events / Runs 分工（方案 C） | ✅ | `runCorrelation.ts`、`RealtimeEvents` 过滤、Runs「打开会话」 |
 | Logs 流程/进程拆分 | ✅ | `useLogStreamHub`、`LogStreamPanel`、[changelog](../changelog/2026-05-20-Monitor-Logs-Split.md) |
 | 监控 Dashboard（`/overview`） | ✅ | Phase 0～3b 完成；见 [18-monitor-dashboard-development.md](./18-monitor-dashboard-development.md) |
@@ -49,6 +60,9 @@
 1. **P2 — Latency 指标**：全局 P50/P95、按 Agent/Model 聚合（Runs 行字段已有，缺聚合 API）。
 2. **P2 — UI 命名**：路由 Tab `traces` → `runs` 别名；Events 服务端 `hide_linked_completions`（减轻前端过滤）。
 3. **P2 — FlowLogger Phase 2**：`ListFlowLogs` HTTP 历史（流程 Tab 当前仅 WS 实时）。
+4. **P2 — LOG-02**：框架层 zap 日志结构化（JSON Encoder）— 跨 `pkg/trpc-agent-go` 修改，需独立 PR。
+5. **P2 — LOG-03**：关键路径 FlowLog 补全（P1 路径：Provider/Memory/MCP）— 逐路径迁移。
+6. **P3 — LOOP-01**：闭环工作流（detected → tracing → analyzing → fixing → verifying → closed）。
 
 ---
 
@@ -91,6 +105,40 @@
 | MON-1d-09 | `MonitorPage` / `useMonitorRunNavigation` 深链 | web | P1 | ✅ |
 | MON-1d-10 | changelog + 文档同步 | docs | P1 | ✅ |
 
+### MON-OPT — 业务逻辑优化（2026-05-26 方案落地）
+
+> 方案详见 [18-monitor-optimization-2026-05-26.md](./18-monitor-optimization-2026-05-26.md)
+
+| ID | 任务 | 优先级 | 状态 | 关键实现 |
+|----|------|--------|------|----------|
+| MON-OPT-01 | FlowLog 流彻底分离到 MonitorBus | P1 | ✅ | `event.Infra` 路由表 split 模式；WS 全局连接单 pump |
+| MON-OPT-02 | 告警冷却持久化 + firing 状态机 | P1 | ✅ | `UpdateAlertFiringState` + `MarkAlertFiredPersistent` + `MarkAlertRecovered` |
+| MON-OPT-03 | 告警评估批量化 + 滑动窗口 | P1 | ✅ | `MetricRingBuffer` + `AlertEvalWorker`（30s ticker）+ singleflight |
+| MON-OPT-04 | WS 反压可观测 + 优先级队列 | P1 | ✅ | 优先级 channel + drop 计数 + 反压事件 |
+| MON-OPT-05 | Trace 写入回路 + 历史回填 | P1 | ✅ | `TraceProjector` + `EnsureTraceSchema` + `MonitorTraceBackfillWorker` |
+| MON-OPT-06 | 告警规则注册表 | P2 | ✅ | `AlertMetricRegistry` + `RunnerErrorRateMetric` + `SkillFilesystemMissingMetric` |
+
+### AI 闭环追踪（2026-05-28 方案落地）
+
+> 方案详见 [18-monitor-ai-closed-loop-2026-05-28.md](./18-monitor-ai-closed-loop-2026-05-28.md)
+
+| ID | 任务 | 优先级 | 状态 | 关键实现 |
+|----|------|--------|------|----------|
+| LOG-01 | FlowLog 文件落盘 | P1 | ✅ | `FlowFileAppender` + 按日/大小轮转 + gzip + 30 天清理 |
+| LOG-02 | 框架层 zap 日志结构化 | P2 | ❌ | 跨 `pkg/trpc-agent-go` 修改，需独立 PR |
+| LOG-03 | 关键路径 FlowLog 补全 | P2 | ❌ | P1 路径（Provider/Memory/MCP）待逐路径迁移 |
+| TRACE-01 | Trace 文件落盘 | P1 | ✅ | `runner.completion` → `trace-*.jsonl` |
+| DIAG-01 | AI 诊断包 | P1 | ✅ | `DiagBundleGenerator` + `GenerateDiagnosticBundle` RPC |
+| DIAG-02 | 根因分析规则引擎 | P1 | ✅ | `RootCauseEngine` 5 条内置规则 + 置信度评分 |
+| LOOP-01 | 闭环工作流 | P3 | ❌ | 待设计 |
+
+### 质量修复
+
+| ID | 问题 | 状态 | 修复 |
+|----|------|------|------|
+| MON-Q-09 | 空库返回未持久化的合成默认规则 | ✅ | `ListMonitorAlertRules` 空库时自动 `ReplaceAlertRules` |
+| MON-Q-11 | `json_extract` 过滤无法走索引 | ✅ | generated columns（`meta_session_id` 等）+ `COALESCE` 查询 |
+
 **验证命令**：
 
 ```bash
@@ -113,6 +161,9 @@ cd web && pnpm lint && pnpm test && pnpm build
 | 5 | 方案 C Runs/Events + correlation | P1 | ✅ |
 | 6 | `ListFlowLogs` HTTP 历史 | P2 | ❌（FlowLogger Phase 2） |
 | 7 | Tab 命名 `traces`→`runs`、服务端 completion 过滤 | P2 | ❌ |
+| 8 | LOG-02 框架层 zap 结构化 | P2 | ❌（跨 pkg 修改） |
+| 9 | LOG-03 关键路径 FlowLog 补全 | P2 | ❌（逐路径迁移） |
+| 10 | LOOP-01 闭环工作流 | P3 | ❌（待设计） |
 
 ---
 
@@ -120,6 +171,16 @@ cd web && pnpm lint && pnpm test && pnpm build
 
 - [x] Usage：Runner 指标 + 跳转概览（用量大盘在 `/overview`，见 Dashboard 三件套）
 - [x] Alerts：规则可配置；超阈 `alert.fired`；Webhook/Channel 出站（冷却生效）
+- [x] 告警冷却持久化 + firing 状态机（MON-OPT-02）
+- [x] 告警评估批量化 + RingBuffer + EvalWorker（MON-OPT-03）
+- [x] 告警注册表 AlertMetricRegistry（MON-OPT-06）
+- [x] FlowLog Bus 分离到 MonitorBus（MON-OPT-01）
+- [x] Trace 写入回路 + 历史回填（MON-OPT-05）
+- [x] FlowLog 文件落盘 + gzip + 30 天清理（LOG-01）
+- [x] Trace 文件落盘（TRACE-01）
+- [x] AI 诊断包 GenerateDiagnosticBundle API（DIAG-01）
+- [x] 根因分析规则引擎 5 条内置规则（DIAG-02）
+- [x] WS 反压可观测 + 优先级队列（MON-OPT-04）
 - [x] Audit / Events / Traces / Logs：见 [18 monitor.md §7](./18%20monitor.md#7-验收要点)
 - [x] 方案 C（Phase 1d）：Runs 主排障 + Events 不重复 completion + correlation（RUN-01～06）
 - [x] Dashboard（`/overview`）ECharts + Runner + Monitor Usage 去重 — [18 monitor-dashboard.md](./18%20monitor-dashboard.md)

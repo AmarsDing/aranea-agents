@@ -12,7 +12,7 @@ import (
 func builtin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime) trpcplugin.Plugin {
 	key := strings.ToLower(strings.TrimSpace(p.Key))
 	switch key {
-	case "audit_log", "audit-log", "auditlog", "runtime_audit":
+	case "audit_log":
 		return NewAuditLogPlugin(p, stats, bus)
 	case "skill_usage_tracker":
 		return NewSkillUsageTrackerPlugin(p, stats, bus)

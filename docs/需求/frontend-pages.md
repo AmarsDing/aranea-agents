@@ -489,8 +489,25 @@ flowchart LR
 | 组件拆分 | **中等** | Knowledge/Evaluation/A2A 已 page-to-components；Chat workspace 仍集中在大 composable |
 | 单测 | **偏弱** | mapper/flow 有单测；多数页面无 E2E |
 | Store 策略 | **混合** | 新模块多 store + composable；老页部分 page 直连 API |
+| UX 安全 | **良好** | 破坏性操作（删除/回滚/清除/终止）均有二次确认；表单验证覆盖核心对话框；编辑器关闭检测未保存变更 |
+| 国际化 | **中等** | 核心 Chat/Agent/Session 已 i18n；Monitor/Hooks/ResourceManager 部分标签已中文化，仍有零星硬编码 |
 
 **未单独成页的能力**（通过弹窗或其它页嵌入）：Skill 导入任务、Plugin 配置编辑、Agent 高级对话框、Monitor Trace 详情抽屉等。
+
+### 8.1 UX 改进记录（2026-05-28）
+
+| 类别 | 改进项 |
+|------|--------|
+| 破坏性操作保护 | Team/Graph/节点/凭据/版本回滚/取消执行/终止 Run/清除日志/风险级别修改 — 全部增加确认对话框 |
+| 表单验证 | Evaluation/Ecosystem/Hooks/AlertRules/Agent 保存/A2A 保存 — 增加前端校验 + 按钮禁用 |
+| 编辑器保护 | Tool 编辑器、Skill 编辑器关闭时检测未保存变更并确认 |
+| Chat 体验 | IME 防误触、发送按钮空输入禁用、草稿保存、WS 连接状态指示、附件文件名加宽+tooltip、思考指示器动画、反馈按钮选中态、ReasoningPeek 单击展开 |
+| Agent 设置 | 加载失败显示错误页+重试、收藏只 patch 单字段、保存仅模型变更时校验、返回按钮命名路由、模型选择器移除 hide-selected |
+| Graph | 节点删除级联确认、Router 分支标签、任务详情非全屏、时间回溯滑块、看板拖拽提示、属性面板全局设置入口 |
+| Orchestration | HITL 拒绝/终止拆分为两个按钮、终止按钮改 negative 色+确认、Timeline 移除 RPC 暴露 |
+| 国际化 | TraceList/FlowLogExport/HooksPage/ResourceManager/SessionDetail — 英文标签中文化 |
+| 数据展示 | Session 消息 Markdown 渲染、Knowledge 搜索 score 2 位小数、Cron 立即执行 loading |
+| 死代码清理 | 删除 ChatToolCallCard、ToolDetailDialog、ToolEditorForm |
 
 ---
 

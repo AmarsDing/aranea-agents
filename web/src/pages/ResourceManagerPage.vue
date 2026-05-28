@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <q-page :class="['app-standard-page app-registry-page resource-manager-page', { 'is-dark': isDark }]">
     <template v-if="isProviderResource">
       <AppPageHero kicker="LLM Provider" :title="pageTitle" :subtitle="pageSubtitle">
@@ -95,7 +95,7 @@
         <template #body-cell-status="props">
           <q-td :props="props">
             <q-badge :color="props.row.enabled ? 'positive' : 'grey'">
-              {{ props.row.enabled ? "enabled" : "disabled" }}
+              {{ props.row.enabled ? "已启用" : "已禁用" }}
             </q-badge>
           </q-td>
         </template>
@@ -542,17 +542,17 @@
         </template>
 
         <q-card-section v-else class="app-form-field-grid app-form-field-grid--2col">
-          <q-input v-model="form.key" dense outlined label="Key" />
-          <q-input v-model="form.name" dense outlined label="Name" />
-          <q-input v-model="form.description" class="app-grid-span-full" dense outlined autogrow type="textarea" label="Description" />
+          <q-input v-model="form.key" dense outlined label="标识" />
+          <q-input v-model="form.name" dense outlined label="名称" />
+          <q-input v-model="form.description" class="app-grid-span-full" dense outlined autogrow type="textarea" label="描述" />
           <q-input v-model="form.provider" dense outlined label="Provider" />
-          <q-input v-model="form.model" dense outlined label="Model" />
-          <q-input v-model="form.parent_id" dense outlined label="Parent ID" />
+          <q-input v-model="form.model" dense outlined label="模型" />
+          <q-input v-model="form.parent_id" dense outlined label="父级 ID" />
           <q-input v-model="form.agent_id" dense outlined label="Agent ID" />
-          <q-input v-model.number="form.sort_order" dense outlined type="number" label="Sort Order" />
-          <q-toggle v-model="form.enabled" color="primary" label="Enabled" />
-          <q-input v-model="form.config_json" class="app-grid-span-full" dense outlined autogrow type="textarea" label="Config JSON" />
-          <q-input v-model="form.metadata_json" class="app-grid-span-full" dense outlined autogrow type="textarea" label="Metadata JSON" />
+          <q-input v-model.number="form.sort_order" dense outlined type="number" label="排序" />
+          <q-toggle v-model="form.enabled" color="primary" label="启用" />
+          <q-input v-model="form.config_json" class="app-grid-span-full" dense outlined autogrow type="textarea" label="配置 JSON" />
+          <q-input v-model="form.metadata_json" class="app-grid-span-full" dense outlined autogrow type="textarea" label="元数据 JSON" />
         </q-card-section>
         <q-separator v-if="isProviderResource" />
         <q-card-actions class="app-actions-bar app-glass-dialog__actions provider-dialog-actions">

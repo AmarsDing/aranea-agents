@@ -29,6 +29,7 @@ func TestRecordHookAudit_persistsBlockedRun(t *testing.T) {
 	repo := &statsRepoStub{key: "unused"}
 	runs := &pluginRunsInsertStub{}
 	rec := NewRepoStatsRecorder(repo, runs)
+	defer rec.Close()
 
 	rh := biz.ResolvedHook{
 		Hook: biz.Hook{Key: "deny-tools", Name: "Deny Tools"},

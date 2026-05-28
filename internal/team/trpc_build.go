@@ -2,7 +2,6 @@ package team
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -205,11 +204,19 @@ func buildEscalationFunc(clc *CriticLoopConfig) func(ev *trpcevent.Event) bool {
 			return false
 		}
 		for _, ch := range ev.Choices {
+			for _, tc := range ch.Message.ToolCalls {
+				if tc.Function.Name == biz.OrchestrationControlToolName {
+					d, err := biz.ParseOrchestrationDecision(tc.Function.Arguments)
+					if err == nil && biz.IsApprovedDecision(d, threshold) {
+						return true
+					}
+				}
+			}
 			content := strings.ToLower(ch.Message.Content)
 			if strings.Contains(content, "approved") {
 				return true
 			}
-			score := extractScore(content)
+			score := biz.ExtractScore(content)
 			if score > 0 && score >= threshold {
 				return true
 			}
@@ -218,30 +225,43 @@ func buildEscalationFunc(clc *CriticLoopConfig) func(ev *trpcevent.Event) bool {
 	}
 }
 
-func extractScore(content string) float64 {
-	type scorePayload struct {
-		Score float64 `json:"score"`
-	}
-	var payloads []scorePayload
-	if err := json.Unmarshal([]byte(content), &payloads); err == nil {
-		for _, p := range payloads {
-			if p.Score > 0 {
-				return p.Score
-			}
-		}
-	}
-	var single scorePayload
-	if err := json.Unmarshal([]byte(content), &single); err == nil && single.Score > 0 {
-		return single.Score
-	}
-	return 0
-}
+const OrchestrationControlToolSchema = `{
+  "name": "orchestration_control",
+  "description": "Signal orchestration decisions (approve, retry, escalate) during multi-agent workflows. Use this tool instead of writing the decision in plain text.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": ["approve", "retry", "escalate"],
+        "description": "The orchestration decision: approve to accept and move forward, retry to request another iteration, escalate to flag for human review."
+      },
+      "score": {
+        "type": "number",
+        "description": "Optional quality score (0.0-1.0). If provided and above the configured threshold, the decision is treated as approved."
+      },
+      "reason": {
+        "type": "string",
+        "description": "Brief explanation for the decision."
+      }
+    },
+    "required": ["action"]
+  }
+}`
 
 func defaultEscalationFunc(ev *trpcevent.Event) bool {
 	if ev == nil || ev.Response == nil {
 		return false
 	}
 	for _, ch := range ev.Choices {
+		for _, tc := range ch.Message.ToolCalls {
+			if tc.Function.Name == biz.OrchestrationControlToolName {
+				d, err := biz.ParseOrchestrationDecision(tc.Function.Arguments)
+				if err == nil && d.Action == "approve" {
+					return true
+				}
+			}
+		}
 		if strings.Contains(strings.ToLower(ch.Message.Content), "approved") {
 			return true
 		}

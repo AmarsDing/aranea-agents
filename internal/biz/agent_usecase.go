@@ -267,10 +267,11 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	}
 	files = withFileDefaults(files)
 	if strings.TrimSpace(in.ConfigJSON) == "" {
-		in.ConfigJSON, err = configJSONFromSettings(settings, files)
-		if err != nil {
-			return Agent{}, err
+		configJSON, configErr := configJSONFromSettings(settings, files)
+		if configErr != nil {
+			return Agent{}, configErr
 		}
+		in.ConfigJSON = configJSON
 	}
 	in.ConfigJSON = EmbedAgentKindInConfigJSON(in.ConfigJSON, in.Kind, in.A2AProxy)
 	in.Status = strings.TrimSpace(in.Status)

@@ -11,6 +11,8 @@
     <Handle type="source" :position="Position.Bottom" :style="{ left: '50%', bottom: '0' }" />
     <Handle v-if="data.nodeType === 'router'" type="source" :position="Position.Right" :style="{ right: '0', top: '50%' }" id="branch-yes" />
     <Handle v-if="data.nodeType === 'router'" type="source" :position="Position.Left" :style="{ left: '0', top: '50%' }" id="branch-no" />
+    <span v-if="data.nodeType === 'router'" class="graph-flow-diamond__branch-label graph-flow-diamond__branch-label--yes">是</span>
+    <span v-if="data.nodeType === 'router'" class="graph-flow-diamond__branch-label graph-flow-diamond__branch-label--no">否</span>
   </div>
 </template>
 

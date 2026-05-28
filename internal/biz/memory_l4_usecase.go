@@ -159,6 +159,29 @@ func (uc *L4GraphUsecase) RunDecay(ctx context.Context, agentID string) {
 	uc.runDecay(ctx, agentID)
 }
 
+func (uc *L4GraphUsecase) RunDecayWithConfig(ctx context.Context, agentID string, cfg L4DecayConfig) L4DecayResult {
+	if uc == nil || uc.repo == nil {
+		return L4DecayResult{}
+	}
+	nowMs := time.Now().UTC().UnixMilli()
+	decayed, err := uc.repo.ApplyBusinessConfidenceDecay(ctx, "agent", agentID, cfg, nowMs)
+	if err != nil {
+		return L4DecayResult{}
+	}
+	archived, _ := uc.repo.ArchiveLowConfidenceEntities(ctx, "agent", agentID, 0.1)
+	return L4DecayResult{
+		Decayed:  int(decayed),
+		Archived: int(archived),
+	}
+}
+
+func (uc *L4GraphUsecase) RecordEntityReinforcement(ctx context.Context, entityID string, signal ReinforcementSignal, source string) error {
+	if uc == nil || uc.repo == nil {
+		return nil
+	}
+	return uc.repo.RecordEntityReinforcement(ctx, entityID, signal, source)
+}
+
 func (uc *L4GraphUsecase) preparePersonUpsert(existing L4EntitySnapshot, newName, description string) (L4EntityWrite, bool) {
 	newName = strings.TrimSpace(newName)
 	nameNorm := strings.ToLower(newName)

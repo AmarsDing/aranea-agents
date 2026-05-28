@@ -7,7 +7,12 @@
       <q-btn flat rounded dense no-caps icon="open_in_new" label="全局 Hook" :to="{ name: 'hooks' }" />
     </div>
 
-    <q-banner v-if="loadError" rounded class="bg-negative text-white">{{ loadError }}</q-banner>
+    <q-banner v-if="loadError" rounded class="bg-negative text-white">
+      {{ loadError }}
+      <template #action>
+        <q-btn flat color="white" label="重试" @click="reload" />
+      </template>
+    </q-banner>
 
     <HooksTable
       variant="agent"
@@ -68,6 +73,7 @@ const {
   editSort,
   createScopedHook,
   openEdit,
-  saveEdit
+  saveEdit,
+  reload
 } = useAgentHooksPanel(() => props.agentId, () => props.agentKey);
 </script>

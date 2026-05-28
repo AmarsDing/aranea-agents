@@ -148,6 +148,8 @@ type AgentRuntimeSettings struct {
 	L4GraphMaxHops            int
 	L4IdentityInject          bool
 	L4StrategyInject          bool
+	L4DecayIntervalHours      int
+	L4DecayOverridesJSON      string
 	EvoEnabled                bool
 	EvoAutoApply              bool
 	EvoMinEpisodes            int
@@ -286,6 +288,8 @@ func (s *AgentRuntimeSettings) GetMemory() MemoryCfg {
 		L4GraphMaxHops:           s.L4GraphMaxHops,
 		L4IdentityInject:         s.L4IdentityInject,
 		L4StrategyInject:         s.L4StrategyInject,
+		L4DecayIntervalHours:     s.L4DecayIntervalHours,
+		L4DecayOverridesJSON:     s.L4DecayOverridesJSON,
 	}
 }
 

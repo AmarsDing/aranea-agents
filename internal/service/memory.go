@@ -13,17 +13,24 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
+type queueStatsProvider interface {
+	QueueLaneStats() (highLen, normalLen, lowLen int, highCap, normalCap, lowCap int, dropped, debounced int64)
+}
+
 type MemoryService struct {
 	v1.UnimplementedMemoryServiceServer
 
-	admin    *biz.MemoryAdminUsecase
-	cascade  *biz.L4CascadeUsecase
-	memStore *sessionmemory.Store
-	sysUC    *biz.SystemSettingUsecase
+	admin             *biz.MemoryAdminUsecase
+	cascade           *biz.L4CascadeUsecase
+	memStore          *sessionmemory.Store
+	sysUC             *biz.SystemSettingUsecase
+	deadLetterRepo    biz.MemoryDeadLetterAdminRepo
+	deadLetterEnqueue func(ctx context.Context, id int64) error
+	queueStats        queueStatsProvider
 }
 
-func NewMemoryService(admin *biz.MemoryAdminUsecase, cascade *biz.L4CascadeUsecase, memStore *sessionmemory.Store, sysUC *biz.SystemSettingUsecase) *MemoryService {
-	return &MemoryService{admin: admin, cascade: cascade, memStore: memStore, sysUC: sysUC}
+func NewMemoryService(admin *biz.MemoryAdminUsecase, cascade *biz.L4CascadeUsecase, memStore *sessionmemory.Store, sysUC *biz.SystemSettingUsecase, deadLetterRepo biz.MemoryDeadLetterAdminRepo, deadLetterEnqueue func(ctx context.Context, id int64) error, queueStats queueStatsProvider) *MemoryService {
+	return &MemoryService{admin: admin, cascade: cascade, memStore: memStore, sysUC: sysUC, deadLetterRepo: deadLetterRepo, deadLetterEnqueue: deadLetterEnqueue, queueStats: queueStats}
 }
 
 func (s *MemoryService) requireAdmin() error {

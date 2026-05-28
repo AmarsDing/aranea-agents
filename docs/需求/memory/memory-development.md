@@ -1,6 +1,6 @@
 # Memory 记忆 — 开发计划（总）
 
-> **版本**：2026-05-24 | **状态**：🟢 L0–L3 + 运行时双轨已落地；🟢 L3 向量双写 + recall usecase 注入；🟢 CompositeSearch 分数修复；🟢 MemoryWorker LLM + 配置 UI；🟢 Cascade 后端 + Memory Center Tab；🟡 全局衰减  
+> **版本**：2026-05-28 | **状态**：🟢 L0–L3 + 运行时双轨已落地；🟢 L3 向量双写 + recall usecase 注入；🟢 CompositeSearch 分数修复；🟢 MemoryWorker LLM + 配置 UI；🟢 Cascade 后端 + Memory Center Tab；🟢 全局衰减 + 业务化置信度模型 + 强化因子；🟢 MEM-OPT-01 L3 双轨读一致性 + MEM-OPT-03 优先级/Dead-Letter + MEM-OPT-02 L4 衰减/强化
 > **需求**：[`memory.md`](./memory.md) · [`L0.md`](./L0.md)～[`L4.md`](./L4.md)  
 > **设计**：[`memory.design.md`](./memory.design.md)  
 > **进度真相**：[execution-plan.md](../../guides/execution-plan.md) · [0-system-development.md](../0-system-development.md) §8.6  
@@ -44,10 +44,15 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 | L4 注入 | `internal/agent/l4_prompt.go` |
 | Turn 后调度 | `internal/biz/memory_worker.go` |
 | 周期 AutoMemory | `internal/cronrunner/jobs/auto_memory.go` |
+| L3 索引一致性 | `internal/data/memory_fact_index_sync.go` + `internal/cronrunner/jobs/memory_fact_index_reconciler.go` |
+| Dead-Letter | `internal/data/memory_job_deadletter.go` + `internal/service/memory_deadletter.go` + `internal/cronrunner/jobs/memory_dead_letter_replayer.go` |
+| 优先级队列 | `internal/memory/trpc/auto_memory_queue.go` + `internal/biz/memory_queue_contract.go` |
+| L4 衰减/强化 | `internal/biz/memory_l4.go` + `internal/data/sessionmemory/entity_lookup.go` + `internal/cronrunner/jobs/memory_l4_decay.go` + `internal/agent/l4_prompt.go` |
+| entity_reinforcements | `docs/sql/10_memory_l4_reinforcements.sql` + `internal/data/memory_l4_reinforcements_patch.go` |
 
 ---
 
-## 2. 全局现状（2026-05-24）
+## 2. 全局现状（2026-05-28）
 
 | 项 | 状态 |
 |----|------|
@@ -58,6 +63,7 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 | L3 facts SQLite + Admin | ✅ |
 | L3 embedding 双写（SQLite blob + pgvector 索引） | ✅ |
 | L3 pgvector（可选 Search 轨） | 🟡 |
+| L3 双轨读一致性（MEM-OPT-01） | ✅ Phase 0–3 全部落地 |
 | L4 实体/关系 + prompt 注入 | ✅ |
 | L4 启发式写入 / 衰减元数据 | 🟡 MVP |
 | trpc memory.Service | ✅ |
@@ -66,6 +72,7 @@ Agent 记忆：**五层产品模型（L0–L4）** + **trpc-agent-go `memory.Ser
 | 级联 BFS + 审核 UI | ✅ RPC + 门控 + Memory Center Cascade Tab |
 | L3 rerank / 统一 decay | 🟡 rerank + scored recall ✅；decay cron ✅ |
 | Auto-memory upsert 失败重试 | ✅ 任一 fact 失败 fail job |
+| AutoMemoryQueue 优先级 / Dead-Letter（MEM-OPT-03） | ✅ 三优先级 + 租户配额 + Dead-Letter 持久化 + Replay RPC + 自动重放 cron |
 | SessionAdminStore 子接口拆分 | 🟡 L0–L4 接口已拆；typed RecallHit 渐进 |
 | Memory Center 前端 | 🟡（Cascade Tab ✅；其余 Tab 已接入） |
 | 存储三写收敛 | ✅ facts 权威 + legacy backfill（旧 trpc 路径，见 §7）+ pgvector 索引 |

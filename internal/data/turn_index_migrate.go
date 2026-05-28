@@ -9,7 +9,7 @@ import (
 	"aranea-agents/internal/data/ent"
 )
 
-func columnExists(ctx context.Context, client *ent.Client, table, column string) (bool, error) {
+func entColumnExists(ctx context.Context, client *ent.Client, table, column string) (bool, error) {
 	var count int
 	err := entQueryRowScan(client, ctx,
 		`SELECT COUNT(1) FROM pragma_table_info(?) WHERE name = ?`,
@@ -20,8 +20,8 @@ func columnExists(ctx context.Context, client *ent.Client, table, column string)
 	return count > 0, nil
 }
 
-func addColumnIfMissing(ctx context.Context, client *ent.Client, table, column, ddl string) error {
-	exists, err := columnExists(ctx, client, table, column)
+func entAddColumnIfMissing(ctx context.Context, client *ent.Client, table, column, ddl string) error {
+	exists, err := entColumnExists(ctx, client, table, column)
 	if err != nil {
 		return fmt.Errorf("check column %s.%s: %w", table, column, err)
 	}
@@ -47,7 +47,7 @@ func ensureMessagesTurnNumberPatch(ctx context.Context, client *ent.Client) erro
 	if !hasTable {
 		return nil
 	}
-	return addColumnIfMissing(ctx, client, "messages", "turn_number",
+	return entAddColumnIfMissing(ctx, client, "messages", "turn_number",
 		`ALTER TABLE messages ADD COLUMN turn_number INTEGER NOT NULL DEFAULT 0`)
 }
 
@@ -64,23 +64,23 @@ func RunTurnIndexToTurnIDMigration(ctx context.Context, client *ent.Client) erro
 	}
 	log.Println("[migration] turn_index → turn_id/turn_number/seq_in_turn: starting")
 
-	if err := addColumnIfMissing(ctx, client, "messages", "turn_id",
+	if err := entAddColumnIfMissing(ctx, client, "messages", "turn_id",
 		`ALTER TABLE messages ADD COLUMN turn_id VARCHAR(256) NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}
 
-	if err := addColumnIfMissing(ctx, client, "messages", "turn_number",
+	if err := entAddColumnIfMissing(ctx, client, "messages", "turn_number",
 		`ALTER TABLE messages ADD COLUMN turn_number INTEGER NOT NULL DEFAULT 0`); err != nil {
 		return err
 	}
 
-	if err := addColumnIfMissing(ctx, client, "messages", "seq_in_turn",
+	if err := entAddColumnIfMissing(ctx, client, "messages", "seq_in_turn",
 		`ALTER TABLE messages ADD COLUMN seq_in_turn INTEGER NOT NULL DEFAULT 0`); err != nil {
 		return err
 	}
 
-	hasOldIndex, _ := columnExists(ctx, client, "messages", "turn_index")
-	hasSTOldIndex, _ := columnExists(ctx, client, "session_turns", "turn_index")
+	hasOldIndex, _ := entColumnExists(ctx, client, "messages", "turn_index")
+	hasSTOldIndex, _ := entColumnExists(ctx, client, "session_turns", "turn_index")
 
 	if hasOldIndex {
 		stCol := "turn_index"

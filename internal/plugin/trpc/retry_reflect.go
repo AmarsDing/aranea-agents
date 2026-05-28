@@ -35,6 +35,7 @@ type RetryAndReflectPlugin struct {
 }
 
 var _ trpcplugin.Plugin = (*RetryAndReflectPlugin)(nil)
+var _ trpcplugin.Closer = (*RetryAndReflectPlugin)(nil)
 
 func NewRetryAndReflectPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime) *RetryAndReflectPlugin {
 	var cfg retryReflectConfig
@@ -60,7 +61,29 @@ func NewRetryAndReflectPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, 
 func (r *RetryAndReflectPlugin) Name() string { return r.name }
 
 func (r *RetryAndReflectPlugin) Register(reg *trpcplugin.Registry) {
+	reg.AfterAgent(r.afterAgent)
 	reg.AfterTool(r.afterTool)
+}
+
+func (r *RetryAndReflectPlugin) afterAgent(ctx context.Context, args *trpcagent.AfterAgentArgs) (*trpcagent.AfterAgentResult, error) {
+	if args != nil && args.Invocation != nil && args.Invocation.InvocationID != "" {
+		prefix := args.Invocation.InvocationID + ":"
+		r.mu.Lock()
+		for key := range r.retries {
+			if strings.HasPrefix(key, prefix) {
+				delete(r.retries, key)
+			}
+		}
+		r.mu.Unlock()
+	}
+	return &trpcagent.AfterAgentResult{Context: ctx}, nil
+}
+
+func (r *RetryAndReflectPlugin) Close(_ context.Context) error {
+	r.mu.Lock()
+	r.retries = make(map[string]int)
+	r.mu.Unlock()
+	return nil
 }
 
 func (r *RetryAndReflectPlugin) afterTool(ctx context.Context, args *trpctool.AfterToolArgs) (*trpctool.AfterToolResult, error) {

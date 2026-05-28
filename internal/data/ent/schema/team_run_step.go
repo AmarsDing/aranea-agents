@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"aranea-agents/internal/biz"
+
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
@@ -28,7 +30,7 @@ func (TeamRunStep) Fields() []ent.Field {
 		field.String("agent_name").Default(""),
 		field.String("role").Default(""),
 		field.Int("sort_order").Default(0),
-		field.String("status").Default("success"),
+		field.String("status").Default(biz.TeamMemberStepStatusOK),
 		field.Text("input_preview").Default(""),
 		field.Text("output_preview").Default(""),
 		field.Int("token_in").Default(0),

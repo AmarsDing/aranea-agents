@@ -2,7 +2,6 @@
   <div
     class="chat-reasoning-peek"
     :class="{
-      'chat-reasoning-peek--selected': selected,
       'chat-reasoning-peek--expanded': expanded,
       'chat-reasoning-peek--streaming': streaming,
       'chat-reasoning-peek--dark': isDark,
@@ -11,7 +10,6 @@
     role="region"
     :aria-label="t('chat.reasoningTitle', '思考过程')"
     @click="onClick"
-    @dblclick.stop="onDoubleClick"
     @wheel="onWheel"
     @keydown.escape="clearSelection"
   >
@@ -27,7 +25,7 @@
         v-html="renderedHtml"
       />
     </div>
-    <div v-if="selected && canScroll && !followTail" class="chat-reasoning-peek__hint text-caption">
+    <div v-if="expanded && canScroll && !followTail" class="chat-reasoning-peek__hint text-caption">
       {{ t("chat.reasoningScrollHint", "滚轮查看更多") }}
     </div>
   </div>
@@ -48,7 +46,6 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
-const selected = ref(false);
 const expanded = ref(false);
 const scrollOffset = ref(0);
 const viewportRef = ref<HTMLElement | null>(null);
@@ -116,26 +113,19 @@ watch(
 );
 
 function onClick() {
-  selected.value = true;
-  void nextTick(applyTailFollow);
-}
-
-function onDoubleClick() {
   expanded.value = !expanded.value;
-  selected.value = true;
   followTail.value = !expanded.value;
   void nextTick(applyTailFollow);
 }
 
 function clearSelection() {
-  selected.value = false;
   expanded.value = false;
   followTail.value = true;
   void nextTick(scrollToTail);
 }
 
 function onWheel(e: WheelEvent) {
-  if (!selected.value || maxScroll.value <= 0) return;
+  if (!expanded.value || maxScroll.value <= 0) return;
   e.preventDefault();
   const step = Math.max(18, Math.abs(e.deltaY));
   const dir = e.deltaY > 0 ? 1 : -1;

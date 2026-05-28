@@ -62,7 +62,7 @@
             class="q-mr-xs"
           />
           <q-icon v-else name="insert_drive_file" size="20px" class="q-mr-xs" color="primary" />
-          <span class="ellipsis text-caption" style="max-width: 56px">{{ file.name }}</span>
+          <span class="ellipsis text-caption" style="max-width: 140px">{{ file.name }}</span><q-tooltip>{{ file.name }}</q-tooltip>
           <q-btn
             icon="close"
             class="chat-file-tile__close"
@@ -210,6 +210,7 @@
             dense
             unelevated
             color="primary"
+            :disable="!modelValue.trim()"
             :aria-label="t('chat.send')"
             class="chat-toolbar-btn chat-toolbar-btn--filled"
             @click="$emit('send')"
@@ -313,7 +314,7 @@ function handlePaste(event: ClipboardEvent) {
 }
 
 function onInputKeydown(event: KeyboardEvent) {
-  if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+  if (event.key !== "Enter" || event.shiftKey || event.isComposing || event.keyCode === 229) return;
   event.preventDefault();
   emit("send");
 }

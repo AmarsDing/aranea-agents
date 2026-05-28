@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/event"
+	mcpdefaults "aranea-agents/internal/mcp"
+	mcpconfig "aranea-agents/internal/mcp/config"
 	"aranea-agents/internal/metrics"
 	"aranea-agents/pkg/safego"
 
@@ -86,20 +88,20 @@ func ObserverForServer(serverKey string) trpcmcp.ReconnectObserver {
 			at := time.Now().UTC()
 			key := name
 			safego.Go(ctx, "mcp.reconnect_metadata", func() {
-				rec(context.Background(), key, at)
+				rec(context.WithoutCancel(ctx), key, at)
 			})
 		}
 	}
 }
 
 // DefaultSessionReconnectMax returns the default max reconnect attempts for network transports.
-// Transport aliases here MUST stay aligned with internal/mcp/config.transportAliases (TPM-P1-10);
-// we keep the local switch instead of importing mcpconfig to avoid a dependency from this
-// low-level observer package back into config.
+// Uses the canonical mcpconfig.NormalizeTransport so all transport aliases are handled
+// consistently (TPM-P1-10).
 func DefaultSessionReconnectMax(transport string) int {
-	switch strings.ToLower(strings.TrimSpace(transport)) {
-	case "sse", "streamable", "streamable_http", "streamablehttp", "http":
-		return 3
+	normalized := mcpconfig.NormalizeTransport(transport)
+	switch normalized {
+	case string(mcpconfig.TransportSSE), string(mcpconfig.TransportStreamable):
+		return mcpdefaults.DefaultSessionReconnectMax
 	default:
 		return 0
 	}
@@ -114,7 +116,7 @@ func EffectiveSessionReconnectMax(transport string, configured int) int {
 }
 
 // RecentReconnectWindow is used by the frontend to show a "recent reconnect" chip.
-const RecentReconnectWindow = 24 * time.Hour
+const RecentReconnectWindow = mcpdefaults.RecentReconnectWindow
 
 // IsRecentReconnect reports whether lastReconnectAt (RFC3339) is within RecentReconnectWindow.
 func IsRecentReconnect(lastReconnectAt string) bool {

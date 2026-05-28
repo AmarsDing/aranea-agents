@@ -74,8 +74,8 @@
     <q-dialog v-model="migrationOpen">
       <q-card class="app-dialog-card app-dialog-card--sm">
         <q-card-section>
-          <div class="text-h6">Agent 迁移</div>
-          <div class="text-body2 text-grey-7 q-mt-sm">导入、导出、批量映射与冲突处理将在单独流程中实现；当前先保留入口。</div>
+          <div class="text-h6">Agent 迁移 <q-badge color="orange" class="q-ml-sm">即将推出</q-badge></div>
+          <div class="text-body2 text-grey-7 q-mt-sm">导入、导出、批量映射与冲突处理功能正在开发中，敬请期待。</div>
         </q-card-section>
         <q-card-actions align="right" class="app-actions-bar">
           <q-btn color="primary" flat rounded no-caps label="知道了" v-close-popup />

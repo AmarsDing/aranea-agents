@@ -138,7 +138,15 @@ func eventText(e *trpcevent.Event) string {
 	if e == nil || e.Response == nil {
 		return ""
 	}
-	return responseText(e.Response)
+	var b strings.Builder
+	for _, ch := range e.Response.Choices {
+		if ch.Delta.Content != "" {
+			b.WriteString(ch.Delta.Content)
+		} else if ch.Message.Content != "" {
+			b.WriteString(ch.Message.Content)
+		}
+	}
+	return b.String()
 }
 
 func (o *OutputPolicyPlugin) record(ctx context.Context, point, status string) {

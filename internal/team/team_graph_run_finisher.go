@@ -79,7 +79,7 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 	if err != nil {
 		return
 	}
-	if run.Status != teamRunStatusWaitingHuman && run.Status != biz.TeamRunStatusRunning {
+	if run.Status != biz.TeamRunStatusWaitingHuman && run.Status != biz.TeamRunStatusRunning {
 		return
 	}
 	t0 := time.Now()

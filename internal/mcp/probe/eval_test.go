@@ -77,3 +77,75 @@ func TestEvaluate_disabled(t *testing.T) {
 		t.Errorf("expected status=unknown, got %q", result.Status)
 	}
 }
+
+func TestEvaluate_stdioNoCommand(t *testing.T) {
+	result := Evaluate(true, `{"transport":"stdio"}`)
+	if result.OK {
+		t.Error("expected OK=false for stdio without command")
+	}
+	if result.Status != "error" {
+		t.Errorf("expected status=error, got %q", result.Status)
+	}
+}
+
+func TestEvaluate_httpNoURL(t *testing.T) {
+	result := Evaluate(true, `{"transport":"sse"}`)
+	if result.OK {
+		t.Error("expected OK=false for HTTP without URL")
+	}
+	if result.Status != "error" {
+		t.Errorf("expected status=error, got %q", result.Status)
+	}
+}
+
+func TestEvaluate_invalidJSON(t *testing.T) {
+	result := Evaluate(true, `{invalid`)
+	if result.OK {
+		t.Error("expected OK=false for invalid JSON")
+	}
+	if result.Status != "error" {
+		t.Errorf("expected status=error, got %q", result.Status)
+	}
+}
+
+func TestEvaluate_transportAutoNormalize(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	result := doHTTPProbe(srv.URL, nil, http.DefaultClient)
+	if !result.OK {
+		t.Errorf("expected OK=true for streamable_http alias, got OK=false; message: %s", result.Message)
+	}
+	if result.Status != "ok" {
+		t.Errorf("expected status=ok, got %q", result.Status)
+	}
+}
+
+func TestEvaluate_unknownTransport(t *testing.T) {
+	result := Evaluate(true, `{"transport":"websocket"}`)
+	if result.OK {
+		t.Error("expected OK=false for unknown transport")
+	}
+	if result.Status != "error" {
+		t.Errorf("expected status=error, got %q", result.Status)
+	}
+}
+
+func TestEvaluate_httpWithHeaders(t *testing.T) {
+	var receivedAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	result := doHTTPProbe(srv.URL, map[string]string{"Authorization": "Bearer test123"}, http.DefaultClient)
+	if !result.OK {
+		t.Errorf("expected OK=true, got OK=false; message: %s", result.Message)
+	}
+	if receivedAuth != "Bearer test123" {
+		t.Errorf("expected Authorization header to be forwarded, got %q", receivedAuth)
+	}
+}

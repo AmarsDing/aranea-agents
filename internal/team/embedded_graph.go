@@ -187,7 +187,7 @@ func compileFromEmbeddedGraph(ctx context.Context, def Definition, spec *embedde
 		return biz.GraphBuildConfig{}, fmt.Errorf("team: embedded graph has no executable nodes")
 	}
 
-	edges, entry, finish, branchIDs := compileEmbeddedEdges(def, spec, nodeTypeByID, executableIDs)
+	edges, condEdges, entry, finish, branchIDs := compileEmbeddedEdges(def, spec, nodeTypeByID, executableIDs)
 	if entry == "" {
 		for id := range executableIDs {
 			entry = id
@@ -202,6 +202,7 @@ func compileFromEmbeddedGraph(ctx context.Context, def Definition, spec *embedde
 		Nodes:             nodes,
 		Subgraphs:         subgraphs,
 		Edges:             edges,
+		ConditionalEdges:  condEdges,
 		EntryPoint:        entry,
 		FinishPoint:       finish,
 		ParallelBranchIDs: branchIDs,
@@ -276,12 +277,13 @@ func resolveEmbeddedAgentKey(n embeddedGraphNode, member MemberDef, agentKey Com
 	return strings.TrimSpace(n.AgentID)
 }
 
-func compileEmbeddedEdges(def Definition, spec *embeddedGraphSpec, nodeTypeByID map[string]string, executableIDs map[string]struct{}) ([]biz.EdgeDef, string, string, []string) {
+func compileEmbeddedEdges(def Definition, spec *embeddedGraphSpec, nodeTypeByID map[string]string, executableIDs map[string]struct{}) ([]biz.EdgeDef, []biz.ConditionalEdgeDef, string, string, []string) {
 	mode := normalizeCompileMode(def.Mode)
 	var entry, finish string
 	joinFeeders := make([]string, 0, 4)
 	joinTarget := ""
 	out := make([]biz.EdgeDef, 0, len(spec.Edges))
+	var condEdges []biz.ConditionalEdgeDef
 	for _, e := range spec.Edges {
 		from := strings.TrimSpace(e.Source)
 		to := strings.TrimSpace(e.Target)
@@ -328,7 +330,32 @@ func compileEmbeddedEdges(def Definition, spec *embeddedGraphSpec, nodeTypeByID 
 		}
 		finish = joinTarget
 	}
-	return out, entry, finish, branchIDs
+	if mode == "critic_loop" && len(executableIDs) >= 2 {
+		var lastExec, firstExec string
+		for id := range executableIDs {
+			if firstExec == "" || id < firstExec {
+				firstExec = id
+			}
+			if lastExec == "" || id > lastExec {
+				lastExec = id
+			}
+		}
+		if finish != "" {
+			lastExec = finish
+		}
+		if entry != "" {
+			firstExec = entry
+		}
+		condEdges = append(condEdges, biz.ConditionalEdgeDef{
+			From:        lastExec,
+			CondFuncRef: biz.CriticLoopCondFuncRef,
+			PathMap: map[string]string{
+				"approved": lastExec,
+				"retry":    firstExec,
+			},
+		})
+	}
+	return out, condEdges, entry, finish, branchIDs
 }
 
 func embeddedEdgeKind(mode string, e embeddedGraphEdge) string {

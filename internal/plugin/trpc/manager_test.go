@@ -11,11 +11,21 @@ import (
 func TestManager_RunnerPlugins_includesEventBridge(t *testing.T) {
 	mgr := NewManager(NewRuntime(nil), nil)
 	plugins := mgr.RunnerPlugins()
-	if len(plugins) != 1 {
-		t.Fatalf("len=%d want 1 (event bridge only)", len(plugins))
+	names := make(map[string]bool, len(plugins))
+	for _, p := range plugins {
+		names[p.Name()] = true
 	}
-	if plugins[0].Name() != "aranea_event_bridge" {
-		t.Fatalf("name=%q", plugins[0].Name())
+	if !names["aranea_event_bridge"] {
+		t.Fatal("missing aranea_event_bridge plugin")
+	}
+	if !names["guardrail"] {
+		t.Fatal("missing guardrail plugin")
+	}
+	if !names["tool_call_id"] {
+		t.Fatal("missing tool_call_id plugin")
+	}
+	if !names["consecutive_message_merger"] {
+		t.Fatal("missing consecutive_message_merger plugin")
 	}
 }
 

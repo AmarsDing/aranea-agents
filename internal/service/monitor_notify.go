@@ -71,7 +71,18 @@ func (n *MonitorAlertNotifier) notifyViaChannel(ctx context.Context, channelID s
 	if err != nil || webhookURL == "" {
 		return fmt.Errorf("channel has no webhook_url credential")
 	}
-	text := fmt.Sprintf("[Monitor Alert] %s — error_rate=%v (rule %s)", rule.Name, payload["error_rate"], rule.ID)
+	metricKey := rule.MetricKey
+	if metricKey == "" {
+		metricKey = "unknown"
+	}
+	metricVal := payload["error_rate"]
+	if metricVal == nil {
+		metricVal = payload["missing_count"]
+	}
+	if metricVal == nil {
+		metricVal = payload[metricKey]
+	}
+	text := fmt.Sprintf("[Monitor Alert] %s — %s=%v (rule %s)", rule.Name, metricKey, metricVal, rule.ID)
 	body := map[string]any{"text": text, "alert": payload}
 	return postAlertWebhook(webhookURL, body)
 }

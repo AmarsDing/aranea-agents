@@ -287,6 +287,8 @@
       </div>
     </template>
 
+    <q-inner-loading :showing="detailStore.loading" />
+
     <tool-override-editor-dialog
       :open="detailStore.overrideEditorOpen"
       :form="detailStore.overrideForm"

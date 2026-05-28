@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 
+	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/safego"
 )
@@ -15,6 +16,8 @@ type EventBusSideConsumers struct {
 	flowLog      *flowLogPersistConsumer
 	userFeedback *userFeedbackConsumer
 	webhooks     *WebhookDispatcher
+	traceProj    *monitor.TraceProjector
+	fileAppender *monitor.FlowFileAppender
 	logger       SessionLogWriter
 }
 
@@ -25,8 +28,10 @@ func NewEventBusSideConsumers(
 	webhooks *WebhookDispatcher,
 	sessions *SessionUsecase,
 	flowLogs *FlowLogUsecase,
-	monitor *MonitorUsecase,
+	monitorUC *MonitorUsecase,
 	memWorker *TurnMemoryWorker,
+	traceProj *monitor.TraceProjector,
+	fileAppender *monitor.FlowFileAppender,
 ) *EventBusSideConsumers {
 	if sessionBus == nil {
 		return nil
@@ -36,8 +41,10 @@ func NewEventBusSideConsumers(
 		callback:     newCallbackConsumer(sessionBus, webhooks),
 		messageStore: newMessageStoreConsumer(sessionBus, sessions),
 		flowLog:      newFlowLogPersistConsumer(flowLogs, sessionBus, monitorBus),
-		userFeedback: newUserFeedbackConsumer(sessionBus, monitor, memWorker),
+		userFeedback: newUserFeedbackConsumer(sessionBus, monitorUC, memWorker),
 		webhooks:     webhooks,
+		traceProj:    traceProj,
+		fileAppender: fileAppender,
 	}
 }
 
@@ -79,6 +86,22 @@ func (c *EventBusSideConsumers) Start(ctx context.Context) {
 	if c.userFeedback != nil {
 		c.userFeedback.Start(ctx)
 	}
+	if c.traceProj != nil {
+		c.traceProj.Start(ctx)
+	}
+	if c.fileAppender != nil {
+		c.fileAppender.Start(ctx, c.fileAppenderBuses()...)
+	}
+}
+
+func (c *EventBusSideConsumers) fileAppenderBuses() []contract.Bus {
+	var buses []contract.Bus
+	if c.flowLog != nil {
+		for _, b := range c.flowLog.buses {
+			buses = append(buses, b)
+		}
+	}
+	return buses
 }
 
 func runTypedConsumer(ctx context.Context, name string, bus contract.Bus, opts contract.SubscribeOptions, fn func(context.Context, contract.Envelope)) {

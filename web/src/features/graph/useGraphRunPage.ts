@@ -131,6 +131,15 @@ export function useGraphRunPage() {
     });
   }
 
+  function confirmCancelExec() {
+    $q.dialog({
+      title: "取消执行",
+      message: "确定取消当前执行？正在运行的节点将被中断。",
+      cancel: true,
+      persistent: true,
+    }).onOk(() => void cancelExec());
+  }
+
   async function cancelExec() {
     if (!execId.value) return;
     try {
@@ -236,6 +245,7 @@ export function useGraphRunPage() {
     timeTravelLoading: timeTravel.timeTravelLoading,
     stepIndex: timeTravel.stepIndexInput,
     onSelectNode,
+    confirmCancelExec,
     cancelExec,
     resumeExec: hitl.resumeExec,
     submitHitlResume: hitl.submitHitlResume,

@@ -14,9 +14,11 @@ import (
 	"aranea-agents/pkg/safego"
 )
 
-const teamRunStatusWaitingHuman = biz.TeamRunStatusWaitingHuman
-
 const defaultGraphWatchTimeout = 30 * time.Minute
+
+const defaultHITLSLATimeout = 24 * time.Hour
+
+const maxHITLSLAExtensions = 3
 
 const sessionMaxAge = 2 * time.Hour
 
@@ -35,11 +37,12 @@ type TeamGraphTaskResumeHandler interface {
 
 // TeamGraphRunCoordinator unifies team graph execution register, HITL defer, and task resume (M53 P1).
 type TeamGraphRunCoordinator struct {
-	graphs       TeamGraphExecutionBackend
-	teams        biz.TeamRepository
-	bus          event.Bus
-	finisher     TeamGraphRunFinisher
-	watchTimeout time.Duration
+	graphs         TeamGraphExecutionBackend
+	teams          biz.TeamRepository
+	bus            event.Bus
+	finisher       TeamGraphRunFinisher
+	watchTimeout   time.Duration
+	hitlSLATimeout time.Duration
 
 	mu       sync.RWMutex
 	sessions map[string]*teamGraphRunSession
@@ -71,11 +74,12 @@ const (
 
 func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teams biz.TeamRepository, bus event.Bus) *TeamGraphRunCoordinator {
 	return &TeamGraphRunCoordinator{
-		graphs:       graphs,
-		teams:        teams,
-		bus:          bus,
-		sessions:     make(map[string]*teamGraphRunSession),
-		watchTimeout: defaultGraphWatchTimeout,
+		graphs:         graphs,
+		teams:          teams,
+		bus:            bus,
+		sessions:       make(map[string]*teamGraphRunSession),
+		watchTimeout:   defaultGraphWatchTimeout,
+		hitlSLATimeout: defaultHITLSLATimeout,
 	}
 }
 
@@ -127,10 +131,13 @@ func (c *TeamGraphRunCoordinator) MarkTeamGraphInterrupt(ctx context.Context, ex
 	if err != nil {
 		return err
 	}
-	if run.Status == teamRunStatusWaitingHuman {
+	if run.Status == biz.TeamRunStatusWaitingHuman {
 		return nil
 	}
-	run.Status = teamRunStatusWaitingHuman
+	if !biz.ValidateTeamRunTransition(run.Status, biz.TeamRunStatusWaitingHuman) {
+		return nil
+	}
+	run.Status = biz.TeamRunStatusWaitingHuman
 	return c.teams.UpdateTeamRun(ctx, run)
 }
 
@@ -143,13 +150,16 @@ func (c *TeamGraphRunCoordinator) DeferTeamRunSuccessIfHITL(ctx context.Context,
 	if err != nil {
 		return false, err
 	}
-	if exec.Status != teamRunStatusWaitingHuman {
+	if exec.Status != biz.TeamRunStatusWaitingHuman {
 		return false, nil
 	}
 	if strings.TrimSpace(exec.InterruptNode) == "" {
 		return false, nil
 	}
-	run.Status = teamRunStatusWaitingHuman
+	if !biz.ValidateTeamRunTransition(run.Status, biz.TeamRunStatusWaitingHuman) {
+		return false, nil
+	}
+	run.Status = biz.TeamRunStatusWaitingHuman
 	if err := c.teams.UpdateTeamRun(ctx, *run); err != nil {
 		return false, err
 	}
@@ -189,10 +199,15 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 	if err != nil {
 		return true, err
 	}
-	if run.Status == teamRunStatusWaitingHuman {
-		run.Status = biz.TeamRunStatusRunning
-		if err := c.teams.UpdateTeamRun(ctx, run); err != nil {
-			event.SysLogWarn("team.usage_record_fail", "HandleTeamGraphTaskCompleted: UpdateTeamRun failed", event.P("team_run_id", run.ID), event.P("error", err.Error()))
+	if run.Status == biz.TeamRunStatusWaitingHuman {
+		if !biz.ValidateTeamRunTransition(run.Status, biz.TeamRunStatusRunning) {
+			event.SysLogWarn("team.transition_invalid", "HandleTeamGraphTaskCompleted: invalid transition",
+				event.P("team_run_id", run.ID), event.P("from", run.Status), event.P("to", biz.TeamRunStatusRunning))
+		} else {
+			run.Status = biz.TeamRunStatusRunning
+			if err := c.teams.UpdateTeamRun(ctx, run); err != nil {
+				event.SysLogWarn("team.usage_record_fail", "HandleTeamGraphTaskCompleted: UpdateTeamRun failed", event.P("team_run_id", run.ID), event.P("error", err.Error()))
+			}
 		}
 	}
 	c.startGraphWatch(ctx, sess, graphWatchStepsAndFinalize)
@@ -231,13 +246,27 @@ func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *tea
 		if watchTimeout <= 0 {
 			watchTimeout = defaultGraphWatchTimeout
 		}
+		hitlSLA := c.hitlSLATimeout
+		if hitlSLA <= 0 {
+			hitlSLA = defaultHITLSLATimeout
+		}
 		deadline := time.After(watchTimeout)
+		hitlExtensions := 0
 		for {
 			select {
 			case <-watchCtx.Done():
 				return
 			case <-deadline:
 				if mode == graphWatchStepsAndFinalize {
+					sessRun, runErr := c.teams.GetTeamRunByID(watchCtx, sess.teamRunID)
+					if runErr == nil && sessRun.Status == biz.TeamRunStatusWaitingHuman && hitlExtensions < maxHITLSLAExtensions {
+						hitlExtensions++
+						event.SysLogWarn("team.hitl_sla_expired", "HITL SLA expired, extending deadline for manual resolution",
+							event.P("exec_id", sess.execID), event.P("hitl_sla", hitlSLA.String()),
+							event.P("extension", hitlExtensions), event.P("max_extensions", maxHITLSLAExtensions))
+						deadline = time.After(hitlSLA)
+						continue
+					}
 					c.finalizeTeamRun(watchCtx, sess, true, fmt.Sprintf("graph resume watch timed out after %s", watchTimeout))
 				}
 				return
@@ -267,7 +296,7 @@ func shouldResumeTeamGraph(exec *biz.GraphExecution, nodeID string) bool {
 	if nodeID == "" {
 		return false
 	}
-	if exec.Status == teamRunStatusWaitingHuman && (exec.InterruptNode == nodeID || exec.CurrentNode == nodeID) {
+	if exec.Status == biz.TeamRunStatusWaitingHuman && (exec.InterruptNode == nodeID || exec.CurrentNode == nodeID) {
 		return true
 	}
 	return strings.HasPrefix(exec.GraphID, "team:") && exec.InterruptNode == nodeID
@@ -367,7 +396,7 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 	if err != nil {
 		return
 	}
-	if run.Status != teamRunStatusWaitingHuman && run.Status != biz.TeamRunStatusRunning {
+	if run.Status != biz.TeamRunStatusWaitingHuman && run.Status != biz.TeamRunStatusRunning {
 		return
 	}
 	now := agent.RFC3339Now()

@@ -249,6 +249,7 @@ func NewGraphBuilderFactory(
 	agentChecker biz.AgentExistenceCheckerFunc,
 	resolvers graphtrpc.GraphNodeResolverSet,
 ) biz.GraphBuilderFactory {
+	RegisterCriticLoopCondFunc(registry, 0)
 	return &trpcGraphBuilderFactory{
 		registry:     registry,
 		saver:        saver,

@@ -57,7 +57,7 @@ func (rt *Runtime) SetHookDeliveryRepo(repo biz.HookDeliveryRepo) {
 	}
 }
 
-// Close stops background workers started by this Runtime (e.g. hook retry worker).
+// Close stops background workers started by this Runtime (e.g. hook retry worker, stats worker).
 func (rt *Runtime) Close() {
 	if rt == nil {
 		return
@@ -66,6 +66,9 @@ func (rt *Runtime) Close() {
 	defer rt.mu.Unlock()
 	if rt.retryWorker != nil {
 		rt.retryWorker.Stop()
+	}
+	if c, ok := rt.stats.(interface{ Close() }); ok {
+		c.Close()
 	}
 }
 
@@ -177,38 +180,17 @@ func PluginMatchesScope(scope, agentID string) bool {
 	return scope == agentID
 }
 
-// PluginsForAgent returns Runner-orchestrated plugins for the agent (excludes chain-only).
+// PluginsForAgent returns active plugins for the agent.
 func (rt *Runtime) PluginsForAgent(agentID string) []trpcplugin.Plugin {
 	rt.mu.RLock()
 	defer rt.mu.RUnlock()
 	out := make([]trpcplugin.Plugin, 0, len(rt.active))
 	for _, e := range rt.active {
-		if e.orchestration == OrchestrationChain {
-			continue
-		}
 		if PluginMatchesScope(e.scope, agentID) {
 			out = append(out, e.plugin)
 		}
 	}
 	return out
-}
-
-// ChainPluginsForAgent returns plugins mirrored into LLMAgent Callback Chain for the agent.
-func (rt *Runtime) ChainPluginsForAgent(agentID string) ([]trpcplugin.Plugin, []int) {
-	rt.mu.RLock()
-	defer rt.mu.RUnlock()
-	plugins := make([]trpcplugin.Plugin, 0)
-	orders := make([]int, 0)
-	for _, e := range rt.active {
-		if e.orchestration != OrchestrationChain {
-			continue
-		}
-		if PluginMatchesScope(e.scope, agentID) {
-			plugins = append(plugins, e.plugin)
-			orders = append(orders, e.sortOrder)
-		}
-	}
-	return plugins, orders
 }
 
 // ModelRouterConfigForAgent returns model_router config when the plugin is enabled for the agent.

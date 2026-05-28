@@ -52,6 +52,9 @@ type MemoryRuntimePolicy struct {
 	L4IdentityInject       bool
 	L4StrategyInject       bool
 
+	L4DecayIntervalHours int
+	L4DecayOverridesJSON string
+
 	MemoryToolMaxResults int
 	MemoryToolMinScore   float64
 
@@ -97,6 +100,8 @@ func ResolveMemoryRuntimePolicy(settings *AgentRuntimeSettings) MemoryRuntimePol
 		L4GraphMaxHops:         settings.L4GraphMaxHops,
 		L4IdentityInject:       settings.L4IdentityInject,
 		L4StrategyInject:       settings.L4StrategyInject,
+		L4DecayIntervalHours:   settings.L4DecayIntervalHours,
+		L4DecayOverridesJSON:   settings.L4DecayOverridesJSON,
 		MemoryToolMaxResults:   settings.MemoryMaxResults,
 		MemoryToolMinScore:     settings.MemoryMinScore,
 		L2RetentionDays:        settings.L2RetentionDays,

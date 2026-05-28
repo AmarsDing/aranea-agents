@@ -135,7 +135,7 @@ func parityAssistantMsg(sessionID, markdown string) biz.ChatMessage {
 		SessionID:       sessionID,
 		Role:            "assistant",
 		ContentMarkdown: markdown,
-		Status:          "ok",
+		Status:          biz.TeamMemberStepStatusOK,
 		CreatedAt:       "2026-05-23T00:00:00Z",
 	}
 }

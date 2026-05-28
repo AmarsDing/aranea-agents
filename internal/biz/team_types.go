@@ -1,14 +1,101 @@
 package biz
 
-// TeamRunStatus constants — single source of truth for team_run.status values.
-// All packages must reference these instead of bare string literals.
+import (
+	"encoding/json"
+	"strings"
+)
+
 const (
+	TeamRunStatusPending      = "pending"
 	TeamRunStatusRunning      = "running"
 	TeamRunStatusSuccess      = "success"
 	TeamRunStatusFailed       = "failed"
 	TeamRunStatusCancelled    = "cancelled"
 	TeamRunStatusWaitingHuman = "waiting_human"
 )
+
+var teamRunTerminalStatuses = map[string]bool{
+	TeamRunStatusSuccess:   true,
+	TeamRunStatusFailed:    true,
+	TeamRunStatusCancelled: true,
+}
+
+func IsTeamRunTerminalStatus(status string) bool {
+	return teamRunTerminalStatuses[status]
+}
+
+var teamRunValidTransitions = map[string][]string{
+	TeamRunStatusPending:      {TeamRunStatusRunning, TeamRunStatusCancelled},
+	TeamRunStatusRunning:      {TeamRunStatusWaitingHuman, TeamRunStatusSuccess, TeamRunStatusFailed, TeamRunStatusCancelled},
+	TeamRunStatusWaitingHuman: {TeamRunStatusRunning, TeamRunStatusSuccess, TeamRunStatusFailed, TeamRunStatusCancelled},
+}
+
+func ValidateTeamRunTransition(from, to string) bool {
+	if from == to {
+		return true
+	}
+	allowed, ok := teamRunValidTransitions[from]
+	if !ok {
+		return false
+	}
+	for _, s := range allowed {
+		if s == to {
+			return true
+		}
+	}
+	return false
+}
+
+const OrchestrationControlToolName = "orchestration_control"
+
+const CriticLoopCondFuncRef = "critic_loop_decision"
+
+type OrchestrationDecision struct {
+	Action string  `json:"action"`
+	Score  float64 `json:"score"`
+	Reason string  `json:"reason"`
+}
+
+func ParseOrchestrationDecision(args []byte) (OrchestrationDecision, error) {
+	var d OrchestrationDecision
+	if err := json.Unmarshal(args, &d); err != nil {
+		return d, err
+	}
+	return d, nil
+}
+
+func IsApprovedDecision(d OrchestrationDecision, threshold float64) bool {
+	if d.Action == "approve" {
+		return true
+	}
+	if d.Score > 0 && threshold > 0 && d.Score >= threshold {
+		return true
+	}
+	return false
+}
+
+func ExtractScore(content string) float64 {
+	type scorePayload struct {
+		Score float64 `json:"score"`
+	}
+	var payloads []scorePayload
+	if err := json.Unmarshal([]byte(content), &payloads); err == nil {
+		for _, p := range payloads {
+			if p.Score > 0 {
+				return p.Score
+			}
+		}
+	}
+	var single scorePayload
+	if err := json.Unmarshal([]byte(content), &single); err == nil && single.Score > 0 {
+		return single.Score
+	}
+	return 0
+}
+
+func ExtractScoreFromLowerContent(content string) float64 {
+	return ExtractScore(strings.ToLower(content))
+}
 
 // TeamMemberStepStatus constants — per-member step status used in
 // ChatMessage.Status, TeamRunStep.Status and the in-memory `turnStatus` tracker

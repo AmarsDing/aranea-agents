@@ -1,7 +1,11 @@
 package plugintrpc
 
 import (
+	"context"
 	"testing"
+
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
 func TestResolveCostGuardTarget_BlockedModel(t *testing.T) {
@@ -69,4 +73,98 @@ func TestShouldPersistPluginRun(t *testing.T) {
 	if !shouldPersistPluginRun("blocked") || !shouldPersistPluginRun("error") {
 		t.Fatal("blocked/error should persist")
 	}
+}
+
+func TestCostGuard_BeforeModel_FallbackBypassesDailyBudget(t *testing.T) {
+	tracker := NewCostGuardBudgetTracker()
+	cfg := CostGuardConfig{
+		DailyTokenBudget: 100,
+		FallbackModel:    "cheap-model",
+	}
+	tracker.TryConsume(cfg.DailyTokenBudget, 100)
+
+	registry := NewCostGuardBudgetRegistry()
+	registry.byScope["global"] = tracker
+
+	c := &CostGuardPlugin{
+		name:   "cost_guard",
+		cfg:    cfg,
+		stats:  &noopStatsRecorder{},
+		logger: NewPluginSafeLogger("cost_guard", nil),
+		rt: &Runtime{
+			budgets: registry,
+			active:  []runtimeEntry{{key: "cost_guard", scope: "global", costGuard: &cfg}},
+		},
+	}
+
+	ctx := contextWithModelName(context.Background(), "cheap-model")
+	args := &trpcmodel.BeforeModelArgs{
+		Request: &trpcmodel.Request{
+			Messages: []trpcmodel.Message{{Role: trpcmodel.RoleUser, Content: "test"}},
+		},
+	}
+
+	res, err := c.beforeModel(ctx, args)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.CustomResponse != nil {
+		t.Fatal("fallback model should bypass daily budget block, but got blocked")
+	}
+}
+
+func TestCostGuard_BeforeModel_BlocksNonFallbackWhenOverBudget(t *testing.T) {
+	tracker := NewCostGuardBudgetTracker()
+	cfg := CostGuardConfig{
+		DailyTokenBudget: 100,
+		FallbackModel:    "cheap-model",
+	}
+	tracker.TryConsume(cfg.DailyTokenBudget, 100)
+
+	registry := NewCostGuardBudgetRegistry()
+	registry.byScope["global"] = tracker
+
+	c := &CostGuardPlugin{
+		name:   "cost_guard",
+		cfg:    cfg,
+		stats:  &noopStatsRecorder{},
+		logger: NewPluginSafeLogger("cost_guard", nil),
+		rt: &Runtime{
+			budgets: registry,
+			active:  []runtimeEntry{{key: "cost_guard", scope: "global", costGuard: &cfg}},
+		},
+	}
+
+	ctx := contextWithModelName(context.Background(), "expensive-model")
+	args := &trpcmodel.BeforeModelArgs{
+		Request: &trpcmodel.Request{
+			Messages: []trpcmodel.Message{{Role: trpcmodel.RoleUser, Content: "test"}},
+		},
+	}
+
+	res, err := c.beforeModel(ctx, args)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res.CustomResponse == nil {
+		t.Fatal("non-fallback model over budget should be blocked")
+	}
+}
+
+type budgetTestCtxKey string
+
+const modelNameCtxKey budgetTestCtxKey = "model_name"
+
+func contextWithModelName(ctx context.Context, modelName string) context.Context {
+	inv := &trpcagent.Invocation{Model: &stubModelInfo{name: modelName}}
+	return trpcagent.NewInvocationContext(ctx, inv)
+}
+
+type stubModelInfo struct {
+	trpcmodel.Model
+	name string
+}
+
+func (m *stubModelInfo) Info() trpcmodel.Info {
+	return trpcmodel.Info{Name: m.name}
 }

@@ -15,7 +15,7 @@
         <div v-if="session.summary" class="app-registry-cell-desc q-mt-sm">{{ session.summary }}</div>
       </div>
       <div class="row q-gutter-sm shrink-0">
-        <q-btn outline rounded no-caps color="primary" icon="chat" label="继续会话" :to="chatRoute" />
+        <q-btn outline rounded no-caps color="primary" icon="chat" label="继续会话" :to="chatRoute || { name: 'chat', query: { session: session?.id } }" />
         <q-btn-dropdown flat rounded no-caps icon="download" label="导出">
           <q-list dense>
             <q-item v-close-popup clickable @click="$emit('export', 'markdown')">
@@ -96,7 +96,7 @@ withDefaults(
     chatRoute?: RouteLocationRaw;
   }>(),
   {
-    chatRoute: () => ({ name: "chat" })
+    chatRoute: undefined
   }
 );
 

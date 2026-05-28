@@ -54,7 +54,7 @@ func (r *summaryTeamRepo) GetTeamByID(_ context.Context, id string) (biz.Team, e
 func TestGetTeamRunSummary_AggregatesSteps(t *testing.T) {
 	repo := &summaryTeamRepo{
 		runs: map[string]biz.TeamRun{
-			"run-1": {ID: "run-1", TeamID: "t1", SessionID: "s1", Mode: "sequential", Status: "success", TokenIn: 5, TokenOut: 10},
+			"run-1": {ID: "run-1", TeamID: "t1", SessionID: "s1", Mode: "sequential", Status: biz.TeamRunStatusSuccess, TokenIn: 5, TokenOut: 10},
 		},
 		steps: map[string][]biz.TeamRunStep{
 			"run-1": {

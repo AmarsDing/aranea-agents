@@ -1,4 +1,3 @@
-// Package alert publishes sustained MCP health degradation events for Monitor.
 package alert
 
 import (
@@ -9,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/mcp"
 	"aranea-agents/internal/mcp/metadata"
 	"aranea-agents/internal/metrics"
 
@@ -21,10 +21,8 @@ var healthAlertTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 	Help: "MCP sustained health alerts emitted by server_key.",
 }, []string{"server_key"})
 
-// DefaultSustainedErrorAfter is how long health_status=error must persist before alerting.
-const DefaultSustainedErrorAfter = 5 * time.Minute
+const DefaultSustainedErrorAfter = mcp.DefaultSustainedErrorAfter
 
-// Publisher emits monitor events when MCP servers stay unhealthy.
 type Publisher struct {
 	bus event.Bus
 	uc  *biz.MCPServerUsecase
@@ -37,16 +35,15 @@ func NewPublisher(bus event.Bus, uc *biz.MCPServerUsecase) *Publisher {
 func SustainedErrorAfter() time.Duration {
 	raw := strings.TrimSpace(os.Getenv("MCP_HEALTH_ALERT_AFTER"))
 	if raw == "" {
-		return DefaultSustainedErrorAfter
+		return mcp.DefaultSustainedErrorAfter
 	}
 	d, err := time.ParseDuration(raw)
 	if err != nil || d <= 0 {
-		return DefaultSustainedErrorAfter
+		return mcp.DefaultSustainedErrorAfter
 	}
 	return d
 }
 
-// MaybeEmitAfterHealth persists sustained-error alerts after probe + PersistHealth.
 func (p *Publisher) MaybeEmitAfterHealth(ctx context.Context, srv biz.MCPServer, result biz.MCPTestResult) {
 	if p == nil || p.bus == nil || result.OK {
 		return
@@ -75,6 +72,9 @@ func (p *Publisher) MaybeEmitAfterHealth(ctx context.Context, srv biz.MCPServer,
 	}
 	p.bus.Publish(ctx, env)
 	if p.uc != nil {
-		_ = p.uc.MarkHealthAlertEmitted(ctx, srv.ID, now)
+		if err := p.uc.MarkHealthAlertEmitted(ctx, srv.ID, now); err != nil {
+			event.SysLogWarn("system.mcp.health_alert_persist_fail", "MCP 健康告警持久化失败",
+				event.P("server_key", srv.Key), event.P("error", err.Error()))
+		}
 	}
 }

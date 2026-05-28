@@ -101,6 +101,7 @@
 </template>
 
 <script setup lang="ts">
+import { useQuasar } from "quasar";
 import AppPageHero from "../components/layout/AppPageHero.vue";
 import { onMounted } from "vue";
 import KnowledgeEmbedderPanel from "../components/knowledge/KnowledgeEmbedderPanel.vue";
@@ -112,6 +113,7 @@ import KnowledgeIngestDialog from "../components/knowledge/KnowledgeIngestDialog
 import { useKnowledgePage } from "../features/knowledge/useKnowledgePage";
 import { useKnowledgeStore } from "../stores/knowledge";
 
+const $q = useQuasar();
 const knowledgeStore = useKnowledgeStore();
 const {
   collections,
@@ -154,6 +156,7 @@ onMounted(() => {
   void loadCollections();
   void knowledgeStore.loadEmbedderConfig().catch((e) => {
     console.warn("[knowledge] embedder config load failed", e);
+    $q.notify({ type: "warning", message: "Embedder 配置加载失败，检索功能可能不可用" });
   });
 });
 </script>

@@ -27,7 +27,7 @@
                 color="primary"
                 label="回滚"
                 :loading="rollingBackVersion === item.version"
-                @click="$emit('rollback', item.version)"
+                @click="confirmRollback(item.version)"
               />
             </q-item-section>
           </q-item>
@@ -38,19 +38,33 @@
 </template>
 
 <script setup lang="ts">
+import { useQuasar } from "quasar";
 import type { GraphVersionInfo } from "../../features/graph/types";
 
-defineProps<{
+const $q = useQuasar();
+
+const props = defineProps<{
   modelValue: boolean;
   versions: GraphVersionInfo[];
   loading: boolean;
   rollingBackVersion: number | null;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   "update:modelValue": [value: boolean];
   rollback: [version: number];
 }>();
+
+function confirmRollback(version: number) {
+  $q.dialog({
+    title: "回滚版本",
+    message: `确定回滚到 v${version}？当前版本将被覆盖。`,
+    cancel: true,
+    persistent: true,
+  }).onOk(() => {
+    emit("rollback", version);
+  });
+}
 
 function formatTime(value: string) {
   if (!value) return "—";

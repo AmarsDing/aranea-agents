@@ -1,19 +1,19 @@
 <template>
   <q-page class="app-standard-page app-registry-page hooks-page">
     <AppPageHero
-      kicker="Callback rules"
-      title="Hook / Callback rules"
+      kicker="回调规则"
+      title="Hook / 回调规则"
       subtitle="Configure lifecycle hooks for Agent, Model, Tool, and Runner events (log, notify, block, modify)."
     >
       <template #actions>
         <q-btn outline rounded no-caps icon="send" label="投递队列" to="/hooks/deliveries" />
-        <q-btn outline rounded no-caps icon="history" label="运行记录" to="/plugins/runs" />
-        <q-btn color="primary" rounded unelevated no-caps icon="add" label="New Hook" @click="openCreate" />
+        <q-btn outline rounded no-caps icon="history" label="运行记录" to="/hooks/deliveries" />
+        <q-btn color="primary" rounded unelevated no-caps icon="add" label="新建 Hook" @click="openCreate" />
       </template>
     </AppPageHero>
 
     <AppPageToolbar>
-      <q-input v-model="search" class="app-page-toolbar__search" dense outlined clearable debounce="200" label="Search">
+      <q-input v-model="search" class="app-page-toolbar__search" dense outlined clearable debounce="200" label="搜索">
         <template #prepend><q-icon name="search" /></template>
       </q-input>
       <q-select
@@ -29,7 +29,7 @@
       />
       <template #actions>
         <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
-        <q-btn flat rounded no-caps icon="refresh" label="Refresh" :loading="loading" @click="loadRows" />
+        <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
       </template>
     </AppPageToolbar>
 
@@ -63,22 +63,22 @@
     <q-dialog v-model="editorOpen" persistent maximized>
       <q-card>
         <q-card-section class="row items-center justify-between">
-          <div class="text-h6">{{ editingId ? "Edit Hook" : "New Hook" }}</div>
+          <div class="text-h6">{{ editingId ? "编辑 Hook" : "新建 Hook" }}</div>
           <q-btn flat round dense icon="close" v-close-popup />
         </q-card-section>
         <q-separator />
         <q-card-section class="q-gutter-md app-form-wide">
           <div class="app-form-field-grid app-form-field-grid--2col">
-            <q-input v-model="form.key" dense outlined label="Key" :disable="Boolean(editingId)" />
-            <q-input v-model="form.name" dense outlined label="Name" />
-            <q-toggle v-model="form.enabled" label="Enabled" />
+            <q-input v-model="form.key" dense outlined label="标识" :disable="Boolean(editingId)" />
+            <q-input v-model="form.name" dense outlined label="名称" />
+            <q-toggle v-model="form.enabled" label="启用" />
           </div>
-          <q-input v-model="form.description" class="app-field-long" dense outlined type="textarea" autogrow label="Description" />
+          <q-input v-model="form.description" class="app-field-long" dense outlined type="textarea" autogrow label="描述" />
           <callback-editor v-model="form.rule" v-model:sort-order="form.sort_order" />
         </q-card-section>
         <q-card-actions align="right" class="app-actions-bar">
-          <q-btn flat no-caps label="Cancel" v-close-popup />
-          <q-btn color="primary" unelevated no-caps label="Save" :loading="saving" @click="saveHook" />
+          <q-btn flat no-caps label="取消" v-close-popup />
+          <q-btn color="primary" unelevated no-caps label="保存" :loading="saving" :disable="!form.key?.trim() || !form.name?.trim()" @click="saveHook" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -187,7 +187,7 @@ function openEdit(row: HookRow) {
 
 async function saveHook() {
   if (!form.key.trim() || !form.name.trim()) {
-    $q.notify({ type: "warning", message: "Key and name are required" });
+    $q.notify({ type: "warning", message: "标识和名称为必填" });
     return;
   }
   saving.value = true;
@@ -213,7 +213,7 @@ async function saveHook() {
     }
     editorOpen.value = false;
     await loadRows();
-    $q.notify({ type: "positive", message: "Saved" });
+    $q.notify({ type: "positive", message: "已保存" });
   } catch (e) {
     $q.notify({ type: "negative", message: e instanceof Error ? e.message : String(e) });
   } finally {
@@ -235,8 +235,8 @@ async function toggleEnabled(row: HookRow, enabled: boolean) {
 
 function confirmDelete(row: HookRow) {
   $q.dialog({
-    title: "Delete Hook",
-    message: `Delete ${row.name}?`,
+    title: "删除 Hook",
+    message: `确定删除「${row.name}」？`,
     cancel: true,
     persistent: true
   }).onOk(async () => {

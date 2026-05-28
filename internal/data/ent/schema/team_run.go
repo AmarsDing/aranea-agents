@@ -1,6 +1,8 @@
 package schema
 
 import (
+	"aranea-agents/internal/biz"
+
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
@@ -25,7 +27,7 @@ func (TeamRun) Fields() []ent.Field {
 		field.String("session_id").Default(""),
 		field.String("message_id").Default(""),
 		field.String("mode").Default(""),
-		field.String("status").Default("running"),
+		field.String("status").Default(biz.TeamRunStatusRunning),
 		field.Text("input_preview").Default(""),
 		field.Text("output_preview").Default(""),
 		field.Int("token_in").Default(0),

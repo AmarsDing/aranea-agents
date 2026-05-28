@@ -14,6 +14,13 @@ export function useEcosystemPage() {
   const installingId = ref("");
   const draft = reactive({ name: "", display_name: "", description: "", type: "skill_pack" });
 
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function debouncedLoad() {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => void load(), 300);
+  }
+
   async function load() {
     try {
       await store.load(search.value);
@@ -58,6 +65,7 @@ export function useEcosystemPage() {
     installingId,
     draft,
     load,
+    debouncedLoad,
     install,
     publish
   };

@@ -17,7 +17,7 @@
             <span class="text-caption text-grey-6">{{ formatDate(msg.created_at) }}</span>
             <q-badge v-if="msg.status !== 'ok'" :color="msg.status === 'error' ? 'negative' : 'warning'" outline>{{ msg.status }}</q-badge>
           </div>
-          <div class="session-message-row__content">{{ msg.content_markdown }}</div>
+          <div class="session-message-row__content" v-html="renderMarkdown(msg.content_markdown)"></div>
           <div v-if="msg.token_in || msg.token_out" class="text-caption text-grey-6 q-mt-xs">
             IN {{ msg.token_in }} · OUT {{ msg.token_out }}
             <span v-if="msg.latency_ms"> · {{ msg.latency_ms }}ms</span>
@@ -32,10 +32,15 @@
 <script setup lang="ts">
 import { toRef } from "vue";
 import { useSessionMessagesPanel } from "../../features/session/useSessionMessagesPanel";
+import { renderChatMarkdown } from "../../features/chat/chatMessageMarkdown";
 
 const props = defineProps<{ sessionId: string }>();
 
 const { messages, loading, error } = useSessionMessagesPanel(toRef(() => props.sessionId));
+
+function renderMarkdown(content: string) {
+  return renderChatMarkdown(content || "");
+}
 
 function roleLabel(role: string) {
   if (role === "user") return "用户";

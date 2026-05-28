@@ -6,7 +6,7 @@
         :show-evolving="showEvolving"
         :favorite="form.is_favorite"
         :saving="saving"
-        @back="router.back()"
+        @back="router.push({ name: 'agents' })"
         @change-avatar="avatarPickerOpen = true"
         @open-prompt="promptDialog = true"
         @open-advanced="advancedDialog = true"
@@ -14,6 +14,18 @@
         @save="saveAgent"
       />
       <q-separator />
+
+      <q-banner v-if="loadError" rounded class="bg-negative text-white q-ma-md">
+        <template #avatar>
+          <q-icon name="error" />
+        </template>
+        {{ loadError }}
+        <template #action>
+          <q-btn flat color="white" label="重试" @click="loadInitial" />
+        </template>
+      </q-banner>
+
+      <template v-if="!loadError">
       <q-tabs v-model="tab" dense align="left" class="agent-settings-tabs" :breakpoint="0">
         <q-tab name="agent" label="Agent" />
         <q-tab name="memory" label="记忆" />
@@ -147,6 +159,8 @@
         </q-tab-panel>
 
       </q-tab-panels>
+      </template>
+      <q-inner-loading :showing="pageLoading" />
     </q-card>
 
     <q-dialog v-model="promptDialog">
@@ -280,8 +294,12 @@ const {
   avatarPickerOpen,
   promptDialog,
   advancedDialog,
+  loadError,
+  pageLoading,
+  modelChanged,
   toggleFavorite,
   reloadAgent,
+  loadInitial,
   saveAgent,
   promptModes,
   statusOptions,

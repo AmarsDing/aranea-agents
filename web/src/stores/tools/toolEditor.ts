@@ -1,5 +1,5 @@
 import { defineStore } from "pinia";
-import { reactive, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 import { useQuasar } from "quasar";
 import {
   editorTabForJsonKey,
@@ -44,11 +44,17 @@ export const useToolEditorStore = defineStore("toolEditor", () => {
   const activeTab = ref("basic");
   const jsonErrors = reactive<Record<string, string>>({});
   const form = reactive<ToolUpsertInput>(blankToolForm());
+  const originalForm = ref<ToolUpsertInput>(blankToolForm());
   const riskOptions = riskLevelOptions;
   const selectedTemplate = ref("blank");
 
   const onSavedCallback = ref<(() => void | Promise<void>) | null>(null);
   const onCreatedCallback = ref<((tool: Tool) => void | Promise<void>) | null>(null);
+
+  const dirty = computed(() => {
+    const keys = Object.keys(originalForm.value) as (keyof ToolUpsertInput)[];
+    return keys.some((k) => form[k] !== originalForm.value[k]);
+  });
 
   function setCallbacks(opts: { onSaved?: () => void | Promise<void>; onCreated?: (tool: Tool) => void | Promise<void> }) {
     if (opts.onSaved) onSavedCallback.value = opts.onSaved;
@@ -57,6 +63,7 @@ export const useToolEditorStore = defineStore("toolEditor", () => {
 
   function assignForm(input: ToolUpsertInput) {
     Object.assign(form, input);
+    Object.assign(originalForm.value, input);
     Object.keys(jsonErrors).forEach((key) => delete jsonErrors[key]);
   }
 
@@ -163,6 +170,7 @@ export const useToolEditorStore = defineStore("toolEditor", () => {
     activeTab,
     jsonErrors,
     form,
+    dirty,
     riskOptions,
     selectedTemplate,
     setCallbacks,

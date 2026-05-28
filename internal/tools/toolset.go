@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/event"
 
+	mcpdefaults "aranea-agents/internal/mcp"
 	mcpconfig "aranea-agents/internal/mcp/config"
 	"aranea-agents/internal/tools/hostexecnorm"
 	"aranea-agents/internal/tools/mcpobserve"
@@ -23,10 +24,11 @@ import (
 	trpcfile "trpc.group/trpc-go/trpc-agent-go/tool/file"
 	trpcgooglesearch "trpc.group/trpc-go/trpc-agent-go/tool/google/search"
 
+	memorytool "aranea-agents/internal/tools/memory"
+
 	trpchostexec "trpc.group/trpc-go/trpc-agent-go/tool/hostexec"
 	trpcmcp "trpc.group/trpc-go/trpc-agent-go/tool/mcp"
 	trpcmcpbroker "trpc.group/trpc-go/trpc-agent-go/tool/mcpbroker"
-	memorytool "aranea-agents/internal/tools/memory"
 	trpcopenapi "trpc.group/trpc-go/trpc-agent-go/tool/openapi"
 	trpctodo "trpc.group/trpc-go/trpc-agent-go/tool/todo"
 	trpcgeminifetch "trpc.group/trpc-go/trpc-agent-go/tool/webfetch/geminifetch"
@@ -43,27 +45,27 @@ func Registry() []*ToolRegistration {
 	registryOnce.Do(func() {
 		registry = []*ToolRegistration{
 			{
-			Name:        "file",
-			Description: "File operation ToolSet (read, write, search, replace, list)",
-			Category:    "filesystem",
-			ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-				return nil, nil
+				Name:        "file",
+				Description: "File operation ToolSet (read, write, search, replace, list)",
+				Category:    "filesystem",
+				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
+					return nil, nil
+				},
+				EnabledByDefault:    true,
+				RiskLevel:           "low",
+				SupportsConcurrency: true,
 			},
-			EnabledByDefault:    true,
-			RiskLevel:           "low",
-			SupportsConcurrency: true,
-		},
-		{
-			Name:        "hostexec",
-			Description: "Host command execution ToolSet (shell, bash, powershell)",
-			Category:    "execution",
-			ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-				return nil, nil
+			{
+				Name:        "hostexec",
+				Description: "Host command execution ToolSet (shell, bash, powershell)",
+				Category:    "execution",
+				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
+					return nil, nil
+				},
+				EnabledByDefault:     false,
+				RiskLevel:            "critical",
+				RequiresConfirmation: true,
 			},
-			EnabledByDefault:     false,
-			RiskLevel:            "critical",
-			RequiresConfirmation: true,
-		},
 			{
 				Name:        "httpfetch",
 				Description: "HTTP web page fetch tool",
@@ -79,7 +81,7 @@ func Registry() []*ToolRegistration {
 				Description: "Claude web fetch tool (Claude-powered page extraction) — framework stub, not yet implemented",
 				Category:    "web",
 				Factory: func(ctx context.Context) (Tool, error) {
-					return nil, fmt.Errorf("claudefetch: framework stub, not yet implemented in trpc-agent-go")
+					return nil, nil
 				},
 				EnabledByDefault: false,
 				RiskLevel:        "medium",
@@ -168,16 +170,16 @@ func Registry() []*ToolRegistration {
 				RiskLevel:        "low",
 			},
 			{
-			Name:        "claudecode",
-			Description: "Claude Code ToolSet (bash, edit, read, write, glob, grep, etc.)",
-			Category:    "coding",
-			ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-				return nil, nil
+				Name:        "claudecode",
+				Description: "Claude Code ToolSet (bash, edit, read, write, glob, grep, etc.)",
+				Category:    "coding",
+				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
+					return nil, nil
+				},
+				EnabledByDefault:     false,
+				RiskLevel:            "critical",
+				RequiresConfirmation: true,
 			},
-			EnabledByDefault:     false,
-			RiskLevel:            "critical",
-			RequiresConfirmation: true,
-		},
 			{
 				Name:        "workspace_exec",
 				Description: "Workspace execution tools (exec, write_stdin, kill_session)",
@@ -255,6 +257,26 @@ type MCPBrokerConfig struct {
 	Servers         []MCPServerConfig
 	AllowAdHocHTTP  bool
 	AdHocTimeoutSec int
+}
+
+// ToConnectionConfig is the SINGLE mapping from MCPServerConfig to the framework
+// ConnectionConfig. All runtime code paths (buildMCPToolSet, buildMCPBrokerTools)
+// must call this instead of constructing trpcmcp.ConnectionConfig manually so
+// transport normalization, timeout defaults, and field mapping stay aligned.
+// TPM-P1-12.
+func (c MCPServerConfig) ToConnectionConfig() trpcmcp.ConnectionConfig {
+	transport := mcpconfig.NormalizeTransport(c.Transport)
+	if transport == "" {
+		transport = string(mcpconfig.TransportStdio)
+	}
+	return trpcmcp.ConnectionConfig{
+		Transport: transport,
+		ServerURL: strings.TrimSpace(c.ServerURL),
+		Headers:   c.Headers,
+		Command:   strings.TrimSpace(c.Command),
+		Args:      c.Args,
+		Timeout:   mcpTimeoutDuration(c.TimeoutSec),
+	}
 }
 
 type AssemblyConfig struct {
@@ -456,7 +478,7 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 }
 
 // DefaultMCPServerTimeoutSec is applied when config_json.timeout_sec is unset.
-const DefaultMCPServerTimeoutSec = 60
+const DefaultMCPServerTimeoutSec = mcpdefaults.DefaultRuntimeTimeoutSec
 
 func mcpTimeoutDuration(timeoutSec int) time.Duration {
 	if timeoutSec <= 0 {
@@ -466,20 +488,7 @@ func mcpTimeoutDuration(timeoutSec int) time.Duration {
 }
 
 func buildMCPToolSet(cfg MCPServerConfig) (ToolSet, error) {
-	// TPM-P1-10: route every transport string through the canonical normalizer so
-	// "streamable_http" / "http" / "STREAMABLE" all converge on the framework value.
-	transport := mcpconfig.NormalizeTransport(cfg.Transport)
-	if transport == "" {
-		transport = mcpconfig.TransportStdio
-	}
-	connCfg := trpcmcp.ConnectionConfig{
-		Transport: transport,
-		ServerURL: strings.TrimSpace(cfg.ServerURL),
-		Headers:   cfg.Headers,
-		Command:   strings.TrimSpace(cfg.Command),
-		Args:      cfg.Args,
-		Timeout:   mcpTimeoutDuration(cfg.TimeoutSec),
-	}
+	connCfg := cfg.ToConnectionConfig()
 
 	opts := []trpcmcp.ToolSetOption{
 		trpcmcp.WithName(cfg.Name),
@@ -488,7 +497,7 @@ func buildMCPToolSet(cfg MCPServerConfig) (ToolSet, error) {
 	if pred := ToolFilterForPrefix(cfg.ToolPrefix); pred != nil {
 		opts = append(opts, trpcmcp.WithToolFilterFunc(pred))
 	}
-	reconnectMax := mcpobserve.EffectiveSessionReconnectMax(transport, cfg.SessionReconnectMax)
+	reconnectMax := mcpobserve.EffectiveSessionReconnectMax(connCfg.Transport, cfg.SessionReconnectMax)
 	if reconnectMax > 0 {
 		opts = append(opts, trpcmcp.WithSessionReconnect(reconnectMax))
 	}
@@ -499,24 +508,11 @@ func buildMCPToolSet(cfg MCPServerConfig) (ToolSet, error) {
 func buildMCPBrokerTools(cfg MCPBrokerConfig) ([]Tool, error) {
 	servers := make(map[string]trpcmcp.ConnectionConfig, len(cfg.Servers))
 	for _, s := range cfg.Servers {
-		// TPM-P1-10: single normalization path; see buildMCPToolSet.
-		transport := mcpconfig.NormalizeTransport(s.Transport)
-		if transport == "" {
-			transport = mcpconfig.TransportStdio
-		}
-		connCfg := trpcmcp.ConnectionConfig{
-			Transport: transport,
-			ServerURL: strings.TrimSpace(s.ServerURL),
-			Headers:   s.Headers,
-			Command:   strings.TrimSpace(s.Command),
-			Args:      s.Args,
-			Timeout:   mcpTimeoutDuration(s.TimeoutSec),
-		}
 		name := strings.TrimSpace(s.Name)
 		if name == "" {
 			continue
 		}
-		servers[name] = connCfg
+		servers[name] = s.ToConnectionConfig()
 	}
 
 	brokerOpts := []trpcmcpbroker.Option{}

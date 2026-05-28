@@ -1,8 +1,9 @@
 # MCP 协议 — 开发计划
 
-> **版本**：2026-05-21 | **状态**：🟢 P3–P4 已落地
+> **版本**：2026-05-28 | **状态**：🟢 Phase 5 已落地，Phase 6 规划中
 > **需求**：[19 mcp.md](./19%20mcp.md) · **设计**：[19 mcp.design.md](./19%20mcp.design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：I4-MCP-01 / I5-MCP-01 ✅
+> **优化计划**：[57-tools-plugin-skill-mcp-optimization-development.md](./57-tools-plugin-skill-mcp-optimization-development.md)
 
 ---
 
@@ -72,8 +73,11 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 ## 5. 开发阶段
 
 - **Phase 1**（✅）：CRUD、探活、ToolSet/Broker、超时、重连、OAuth 基础
-- **Phase 2**：MCP 调用统计 E2E + Monitor 告警
-- **Phase 3**：按用户凭据 + 密钥加密存储
+- **Phase 2**（✅）：MCP 调用统计 E2E + Monitor 告警
+- **Phase 3**（✅）：按用户凭据 + 密钥加密存储
+- **Phase 4**（✅）：URL 预检 API + P1-09 probe auth_required + P1-08 skill ApplyImport
+- **Phase 5**（✅）：MCP 子系统架构优化（TPM-P1-10/11/12 + P2 修复 + 测试补全 + defaults 集中）
+- **Phase 6**（📋）：MCP 中长期优化（P2 安全/性能 + Probe 策略化 + Lifecycle FSM）
 
 ---
 
@@ -88,6 +92,16 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 | 5 | ~~Monitor：`health_status=error` 持续告警~~ ✅ | P3 | Phase 2 |
 | 6 | ~~按用户凭据配置页~~ ✅ | P3 | Phase 3 |
 | 7 | ~~`POST /v1/mcp-servers/validate`~~ ✅ | P4 | Phase 3 |
+| 8 | ~~probe 401/403 → auth_required~~ ✅ | P1 | Phase 4 |
+| 9 | Transport 类型化 + NormalizeTransport 全链统一 | P1 | Phase 5 |
+| 10 | probe SSRF CheckRedirect 修复 | P1 | Phase 5 |
+| 11 | ToConnectionConfig 统一 + MCPServerConfig 消除双 Config | P1 | Phase 5 |
+| 12 | mcpobserve 统一使用 config.NormalizeTransport | P1 | Phase 5 |
+| 13 | MCP Broker 显式挂载（需 mcp_broker 工具键启用） | P2 | Phase 5 |
+| 14 | mcpobserve context.Background() → context.WithoutCancel | P2 | Phase 5 |
+| 15 | alert.MarkHealthAlertEmitted 失败不再静默吞错 | P2 | Phase 5 |
+| 16 | 补 probe/health/alert 单元测试 | P2 | Phase 5 |
+| 17 | Magic numbers 集中到 defaults.go | P3 | Phase 5 |
 
 ---
 
@@ -108,3 +122,57 @@ MCP（Model Context Protocol）集成：平台注册外部 MCP 服务器，Agent
 - MCP 协议版本演进需跟踪 trpc-agent-go `tool/mcp` 更新。
 - OAuth token 缓存在进程内；多副本部署需后续外置 token store。
 - 探活 HTTP GET 不等同完整 MCP 握手，仅作可达性粗检。
+
+---
+
+## 9. Phase 5 执行进度
+
+| # | 任务 | 状态 | 完成日期 | 备注 |
+|---|------|------|---------|------|
+| 9 | Transport 类型化 + NormalizeTransport 全链统一 | ✅ | 2026-05-28 | TPM-P1-10：Transport 类型 + UnmarshalJSON 自动 normalize |
+| 10 | probe SSRF CheckRedirect 修复 | ✅ | 2026-05-26 | TPM-P1-11：outboundguard.NewClient 已内置 CheckRedirect |
+| 11 | ToConnectionConfig 统一 + MCPServerConfig 补全 Env | ✅ | 2026-05-28 | TPM-P1-12：ToConnectionConfig 补 Env 字段 |
+| 12 | mcpobserve 统一使用 config.NormalizeTransport | ✅ | 2026-05-28 | TPM-P1-10 残留：删除本地 switch |
+| 13 | MCP Broker 显式挂载 | ✅ | 2026-05-28 | 需 mcp_broker 工具键启用才挂载 |
+| 14 | mcpobserve context.WithoutCancel | ✅ | 2026-05-28 | TPM-P2-07：保留 trace |
+| 15 | alert 失败不再静默吞错 | ✅ | 2026-05-28 | TPM-P2-25：log + metric |
+| 16 | 补 config 单元测试 | ✅ | 2026-05-28 | TPM-P2-29 部分：ParseTransport + UnmarshalJSON |
+| 17 | Magic numbers 集中 | ✅ | 2026-05-28 | TPM-P3-12：internal/mcp/defaults.go |
+
+---
+
+## 10. Phase 6 待办清单（MCP 中长期优化）
+
+> 来源：[2026-05-26 综合Review](../review/2026-05-26-Tools-Plugin-Skill-MCP-Code-Review.md) 中 MCP 相关 P2/P3/D 项
+
+### 10.1 P2 安全与性能（Wave 2 剩余）
+
+| # | ID | 任务 | 说明 | 优先级 | 状态 |
+|---|-----|------|------|--------|------|
+| 18 | TPM-P2-26 | ~~mcpobserve 每次 reconnect O(n) 全表扫 server 找 key~~ | 改 `GetMCPServerByKey` 精确查询 | P2 | ✅ 2026-05-28 |
+| 19 | TPM-P2-27 | ~~OAuth refresh 失败 fallback 用陈旧 `access_token`~~ | 强失败不再 fallback | P2 | ✅ 2026-05-28 |
+| 20 | TPM-P2-28 | ~~metadata row 并发 health + reconnect 写为 last-write-wins~~ | `UpdateMCPServerMetadata` 只写 metadata+status 字段 | P2 | ✅ 2026-05-28 |
+| 21 | TPM-P2-29 | ~~probe/health/alert 三个包测试覆盖不足~~ | probe + alert + config 测试已补 | P2 | ✅ 2026-05-28 |
+| 22 | TPM-P2-30 | ~~health.probeAll 每 server safego.Go 无 worker pool 上限~~ | semaphore bounded concurrency | P2 | ✅ 2026-05-28 |
+
+### 10.2 P3 维护性
+
+| # | ID | 任务 | 说明 | 优先级 |
+|---|-----|------|------|--------|
+| 23 | TPM-P3-13 | ~~classify.IsMCPToolInvocation 仅前缀启发式~~ | 评估后保留：`mcp_`+`__` 模式与框架一致，误判风险极低 | P3 | ✅ 2026-05-28 |
+
+### 10.3 架构重设计（中长期）
+
+| # | ID | 任务 | 说明 | 优先级 | 波次 |
+|---|-----|------|------|--------|------|
+| 24 | TPM-D-M1 | ~~Transport 类型化 + 单一 Codec~~ | ✅ Transport 类型化 + ToConnectionConfig 委托 + 默认超时保持一致 | P1→P2 | ✅ 2026-05-28 |
+| 25 | TPM-D-M2 | Probe 策略化（Handshake Strategy） | 支持带认证探活 + 完整 MCP 握手探活 | P2 | Wave 2 |
+| 26 | TPM-D-M3 | Health/Reconnect/Alert 统一为 Server Lifecycle FSM | 消除 metadata 并发写 + 告警逻辑散落 | P2→P3 | Wave 4 |
+
+### 10.4 依赖与风险
+
+- **P2-27 OAuth token 管理**：当前每次 Agent 回合重新获取 token（client_credentials），无缓存无主动刷新；多副本部署需外置 token store
+- **P2-28 metadata 并发写**：health runner 和 mcpobserve 并发写 `metadata_json`，last-write-wins 可能丢数据；FSM 是根本解
+- **P2-30 无 worker pool**：大量 MCP 服务器时 health probe 可能产生大量并发 goroutine
+- **D-M2 Probe 策略化**：需要 trpc-agent-go 框架侧支持 MCP Initialize 探活接口
+- **D-M3 Lifecycle FSM**：是中长期最大架构改动，需要独立 design 文档

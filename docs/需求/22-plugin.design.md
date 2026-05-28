@@ -15,7 +15,7 @@ Plugin 是 ADK 运行时的回调扩展机制，用于在 Agent 执行过程中�
 
 当前系统管理内置 Plugin 的启用、配置、排序和绑定关系，不支持用户上传任意 Go 插件代码。
 
-**回调编排（2026-05-21）**：实现以 `internal/plugin/trpc/orchestration.go` 为权威。DB 内置 Plugin 走 Runner `WithPlugins`（按 `sort_order`）；产品 Tool 确认与 Hook 走 LLMAgent Callback Chain；`model_router` / `cost_guard` 的 catalog 换模走 `agent.ModelSelector`，Plugin BeforeModel 仅 telemetry / 预算拦截。
+**回调编排（2026-05-28）**：实现以 `internal/plugin/trpc/orchestration.go` 为权威。DB 内置 Plugin 走 Runner `WithPlugins`（按 `sort_order`）；框架 Plugin（Identity、Guardrail、ToolCallID、MessageMerger）由 `Manager.RunnerPluginsForAgent` 自动追加；产品 Hook 规则走 LLMAgent Callback Chain；`model_router` / `cost_guard` 的 catalog 换模走 `agent.ModelSelector`。`confirmation_guard` Runner Plugin 直接阻断（BeforeTool CustomResult），不再依赖 Chain ConfirmGate。
 
 ---
 
@@ -684,16 +684,25 @@ service.ProviderSet → NewPluginService(uc, runtime)
 
 ```go
 type Runtime struct {
-    mu     sync.RWMutex
-    active []trpcplugin.Plugin
+    mu          sync.RWMutex
+    active      []runtimeEntry
+    stats       StatsRecorder
+    retryWorker *HookRetryWorker
+}
+
+type runtimeEntry struct {
+    plugin        trpcplugin.Plugin
+    scope         string
+    sortOrder     int
+    orchestration PluginOrchestrationPath
 }
 
 // Apply 替换活跃插件集（仅实例化 enabled + 已知 key 的插件）
 func (rt *Runtime) Apply(_ context.Context, plugins []biz.Plugin) {
-    built := make([]trpcplugin.Plugin, 0, len(plugins))
+    built := make([]runtimeEntry, 0, len(plugins))
     for _, p := range plugins {
-        if tp := adapt(p); tp != nil {
-            built = append(built, tp)
+        if tp := adapt(p, rt.stats, rt.bus, rt); tp != nil {
+            built = append(built, runtimeEntry{plugin: tp, scope: p.Scope, sortOrder: p.SortOrder})
         }
     }
     rt.mu.Lock()
@@ -701,14 +710,12 @@ func (rt *Runtime) Apply(_ context.Context, plugins []biz.Plugin) {
     rt.mu.Unlock()
 }
 
-// Plugins 返回当前活跃插件的快照
-func (rt *Runtime) Plugins() []trpcplugin.Plugin {
-    rt.mu.RLock()
-    defer rt.mu.RUnlock()
-    out := make([]trpcplugin.Plugin, len(rt.active))
-    copy(out, rt.active)
-    return out
-}
+// PluginsForAgent returns active plugins for the agent.
+func (rt *Runtime) PluginsForAgent(agentID string) []trpcplugin.Plugin { ... }
+
+// Close stops background workers (hook retry worker, stats batch worker).
+func (rt *Runtime) Close() { ... }
+```
 ```
 
 线程安全保证：
@@ -730,11 +737,11 @@ func adapt(p biz.Plugin) trpcplugin.Plugin {
 
 // builtin 根据 key 创建具体内置插件实例
 // 未知 key 返回 nil（静默跳过，防止数据库实验数据破坏运行时）
-func builtin(p biz.Plugin) trpcplugin.Plugin {
+func builtin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime) trpcplugin.Plugin {
     key := strings.ToLower(strings.TrimSpace(p.Key))
     switch key {
-    case "audit_log", "audit-log", "auditlog":
-        return &AuditLogPlugin{name: p.Key}
+    case "audit_log":
+        return NewAuditLogPlugin(p, stats, bus)
     // 后续内置插件在此添加 case
     default:
         return nil
@@ -826,15 +833,26 @@ func (m *Manager) Close(ctx context.Context) error
 
 | Key | 实现文件 | 注册回调点 |
 |-----|----------|------------|
-| `runtime_audit` | `internal/plugin/trpc/runtime_audit.go` | BeforeAgent, AfterAgent, BeforeModel, AfterModel, BeforeTool, AfterTool, OnEvent |
+| `audit_log` | `internal/plugin/trpc/audit.go` | BeforeAgent, AfterAgent, BeforeModel, AfterModel, BeforeTool, AfterTool, OnEvent |
 | `skill_usage_tracker` | `internal/plugin/trpc/skill_tracker.go` | BeforeTool, AfterTool |
-| `retry_and_reflect` | `internal/plugin/trpc/retry_reflect.go` | AfterTool |
+| `retry_and_reflect` | `internal/plugin/trpc/retry_reflect.go` | AfterAgent, AfterTool |
 | `sensitive_data_mask` | `internal/plugin/trpc/sensitive_mask.go` | BeforeModel, AfterModel |
-| `confirmation_guard` | `internal/plugin/trpc/confirmation_guard.go` | BeforeTool |
+| `confirmation_guard` | `internal/plugin/trpc/confirmation_guard.go` | BeforeTool（直接阻断） |
 | `cost_guard` | `internal/plugin/trpc/cost_guard.go` | BeforeModel |
 | `model_router` | `internal/plugin/trpc/model_router.go` | BeforeModel |
 | `permission_guard` | `internal/plugin/trpc/permission_guard.go` | BeforeTool |
 | `output_policy` | `internal/plugin/trpc/output_policy.go` | AfterModel, OnEvent |
+
+### 8.0 框架 Plugin（自动注入，无需 DB 配置）
+
+以下 trpc-agent-go 框架 Plugin 由 `Manager.RunnerPluginsForAgent` 自动追加到每个 Runner，无需在 DB 中启用/配置：
+
+| Plugin | 桥接文件 | 注册回调点 | 功能 |
+|--------|----------|------------|------|
+| `identity` | `internal/plugin/trpc/identity_bridge.go` | BeforeAgent, BeforeTool | 用户身份解析与透传（Headers/EnvVars） |
+| `guardrail` | `internal/plugin/trpc/guardrail_bridge.go` | BeforeModel（PromptInjection + UnsafeIntent） | 输入侧安全护栏（基于规则，可升级为 LLM 驱动） |
+| `tool_call_id` | 框架 `plugin/toolcallid` | AfterModel | 规范化跨厂商 ToolCall ID |
+| `consecutive_message_merger` | 框架 `plugin/messagemerger` | BeforeModel | 合并同角色连续消息，减少 Token 消耗 |
 
 ### 8.2 已实现：AuditLogPlugin
 
