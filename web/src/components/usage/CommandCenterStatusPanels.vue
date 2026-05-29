@@ -117,6 +117,8 @@ defineProps<{
     color: var(--color-text-secondary)
     text-align: center
     margin-bottom: 8px
+    flex-direction: column
+    box-sizing: content-box
 
   &__sparkline
     height: 24px

@@ -912,6 +912,7 @@ export default {
     }
   },
   overviewPage: {
+    greeting: "你好，{username}",
     filterRange: "时间范围",
     filterProvider: "Provider",
     filterModel: "模型",
@@ -937,6 +938,30 @@ export default {
     totalTokens: "总 Token",
     totalCost: "总费用",
     successRate: "成功率",
-    tokenComposition: "Token 构成"
+    tokenComposition: "Token 构成",
+    statActiveAgents: "活跃 Agent",
+    statProviders: "Provider",
+    statCategories: "行业",
+    statTeams: "Team",
+    statTodayChats: "今日对话",
+    statTodayTokens: "今日 Token",
+    tokenTrendTitle: "Token 消费趋势",
+    tokenTrendSubtitle: "今日 Token 使用量随时间变化",
+    metricTodayCalls: "今日调用",
+    metricTodayCost: "今日费用",
+    metricTodayTokens: "今日 Token",
+    metricSuccessRate: "成功率",
+    metricBudgetUsage: "月预算使用率",
+    metricYesterday: "昨日",
+    metricMonthCost: "本月",
+    metricAvgPerCall: "均值/调用",
+    metricInput: "输入",
+    metricOutput: "输出",
+    metricAvgSpeed: "均速",
+    metricFailed: "失败",
+    metricAvgLatency: "均延迟",
+    metricForecast: "预计月底",
+    metricAgents: "个 Agent",
+    metricNew: "新增"
   }
 };

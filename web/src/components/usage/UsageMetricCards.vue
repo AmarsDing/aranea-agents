@@ -8,18 +8,19 @@
         <div class="overview-stat-card__label">{{ card.label }}</div>
       </div>
       <div class="overview-stat-card__body">
-        <span class="overview-stat-card__value">{{ card.value }}</span>
+        <span class="overview-stat-card__value" :class="card.valueClass">{{ card.value }}</span>
         <span v-if="card.delta" class="overview-stat-card__delta" :class="card.deltaClass">{{ card.delta }}</span>
       </div>
-      <div class="overview-stat-card__footer">
-        <template v-if="card.caption">{{ card.caption }}</template>
-        <div v-if="card.bar" class="overview-stat-card__bar">
-          <div class="overview-stat-card__bar-fill" :class="card.bar.fillClass" :style="{ width: card.bar.width }" />
-        </div>
-        <div v-if="card.forecast" class="overview-stat-card__forecast" :class="card.forecastClass">
-          <q-icon name="trending_up" size="12px" />
-          {{ card.forecast }}
-        </div>
+      <div class="overview-stat-card__bottom">
+        <span class="overview-stat-card__bottom-left" :class="card.subClass">{{ card.sub }}</span>
+        <span class="overview-stat-card__bottom-right">{{ card.caption }}</span>
+      </div>
+      <div v-if="card.bar" class="overview-stat-card__bar">
+        <div class="overview-stat-card__bar-fill" :class="card.bar.fillClass" :style="{ width: card.bar.width }" />
+      </div>
+      <div v-if="card.forecast" class="overview-stat-card__forecast" :class="card.forecastClass">
+        <q-icon name="trending_up" size="12px" />
+        {{ card.forecast }}
       </div>
     </div>
   </div>
@@ -27,8 +28,11 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import type { ModelUsageOverview } from "../../features/usage/types";
 import { formatUsdFromMicro, formatCount } from "../../features/usage/moneyFormat";
+
+const { t } = useI18n();
 
 const props = defineProps<{
   overview: ModelUsageOverview | null;
@@ -39,8 +43,11 @@ interface StatCard {
   icon: string;
   iconClass?: string;
   value: string;
+  valueClass?: string;
   delta?: string;
   deltaClass?: string;
+  sub?: string;
+  subClass?: string;
   caption?: string;
   bar?: { width: string; fillClass: string };
   forecast?: string;
@@ -55,27 +62,47 @@ const cards = computed<StatCard[]>(() => {
 
   const result: StatCard[] = [
     {
-      label: "今日调用",
+      label: t("overviewPage.metricTodayCalls"),
       icon: "phone_in_talk",
       value: fmtCount(today?.call_count),
+      valueClass: "overview-stat-card__value--tech-blue",
       delta: fmtDelta(today?.call_count, yesterday?.call_count),
       deltaClass: (today?.call_count ?? 0) >= (yesterday?.call_count ?? 0) ? "overview-stat-card__delta--up" : "overview-stat-card__delta--down",
-      caption: `昨日 ${fmtCount(yesterday?.call_count)}`
+      sub: fmtPct(today?.success_rate),
+      subClass: "overview-stat-card__bottom-left--tech",
+      caption: `${t("overviewPage.metricYesterday")} ${fmtCount(yesterday?.call_count)}`
     },
     {
-      label: "今日费用",
+      label: t("overviewPage.metricTodayCost"),
       icon: "payments",
       iconClass: "overview-stat-card__icon-wrap--accent",
       value: fmtMoney(today?.total_cost_micro_usd),
+      valueClass: "overview-stat-card__value--tech-amber",
       delta: fmtDelta(today?.total_cost_micro_usd, yesterday?.total_cost_micro_usd),
       deltaClass: (today?.total_cost_micro_usd ?? 0) >= (yesterday?.total_cost_micro_usd ?? 0) ? "overview-stat-card__delta--up" : "overview-stat-card__delta--down",
-      caption: `本月 ${fmtMoney(month?.total_cost_micro_usd)}`
+      sub: `${t("overviewPage.metricMonthCost")} ${fmtMoney(month?.total_cost_micro_usd)}`,
+      subClass: "",
+      caption: `${t("overviewPage.metricAvgPerCall")} ${fmtMoney(today?.call_count ? (today.total_cost_micro_usd ?? 0) / today.call_count : 0)}`
     },
     {
-      label: "今日 Token",
+      label: t("overviewPage.metricTodayTokens"),
       icon: "data_usage",
       value: fmtCount(today?.total_tokens),
-      caption: `输入 ${fmtCount(today?.input_tokens)} / 输出 ${fmtCount(today?.output_tokens)}`
+      valueClass: "overview-stat-card__value--tech-cyan",
+      delta: fmtDelta(today?.total_tokens, yesterday?.total_tokens),
+      deltaClass: (today?.total_tokens ?? 0) >= (yesterday?.total_tokens ?? 0) ? "overview-stat-card__delta--up" : "overview-stat-card__delta--down",
+      sub: `${t("overviewPage.metricInput")} ${fmtCount(today?.input_tokens)} / ${t("overviewPage.metricOutput")} ${fmtCount(today?.output_tokens)}`,
+      subClass: "",
+      caption: `${t("overviewPage.metricAvgSpeed")} ${today?.avg_tokens_per_second ? today.avg_tokens_per_second.toFixed(1) : "—"} tok/s`
+    },
+    {
+      label: t("overviewPage.metricSuccessRate"),
+      icon: "verified",
+      value: fmtPct(today?.success_rate),
+      valueClass: "overview-stat-card__value--tech-green",
+      sub: `${t("overviewPage.metricFailed")} ${fmtCount(today?.failed_count)}`,
+      subClass: "",
+      caption: `${t("overviewPage.metricAvgLatency")} ${today?.avg_latency_ms ? Math.round(today.avg_latency_ms) : "—"}ms`
     }
   ];
 
@@ -96,17 +123,18 @@ const cards = computed<StatCard[]>(() => {
       if (dayOfMonth > 0 && daysInMonth > 0) {
         const dailyAvg = (month.total_cost_micro_usd ?? 0) / dayOfMonth;
         const f = (dailyAvg * daysInMonth) / 1_000_000;
-        forecast = `预计月底 $${f.toFixed(2)}`;
+        forecast = `${t("overviewPage.metricForecast")} $${f.toFixed(2)}`;
         if (dailyAvg * daysInMonth > dash.total_cap_micro_usd) forecastClass = "overview-stat-card__forecast--danger";
       }
     }
 
     result.push({
-      label: "月预算使用率",
+      label: t("overviewPage.metricBudgetUsage"),
       icon: "account_balance_wallet",
       iconClass: pct >= 90 ? "overview-stat-card__icon-wrap--danger" : pct >= 70 ? "overview-stat-card__icon-wrap--warn" : undefined,
       value: `${pct}%`,
-      caption: `${dash.configured_count} 个 Agent · 已用 $${((dash.total_spent_micro_usd ?? 0) / 1_000_000).toFixed(2)} / $${((dash.total_cap_micro_usd ?? 0) / 1_000_000).toFixed(2)}`,
+      valueClass: pct >= 90 ? "overview-stat-card__value--tech-red" : pct >= 70 ? "overview-stat-card__value--tech-amber" : "overview-stat-card__value--tech-green",
+      caption: `${dash.configured_count} ${t("overviewPage.metricAgents")} · $${((dash.total_spent_micro_usd ?? 0) / 1_000_000).toFixed(2)} / $${((dash.total_cap_micro_usd ?? 0) / 1_000_000).toFixed(2)}`,
       bar: { width: `${Math.min(pct, 100)}%`, fillClass },
       forecast,
       forecastClass
@@ -122,11 +150,15 @@ function fmtCount(v?: number) {
 function fmtMoney(v?: number) {
   return formatUsdFromMicro(v);
 }
+function fmtPct(v?: number) {
+  if (v == null) return "—";
+  return `${(v * 100).toFixed(1)}%`;
+}
 function fmtDelta(cur?: number, prev?: number) {
   const p = prev ?? 0;
   const n = cur ?? 0;
   if (p === 0 && n === 0) return "0%";
-  if (p === 0) return "新增";
+  if (p === 0) return t("overviewPage.metricNew");
   const d = ((n - p) / p) * 100;
   return `${d >= 0 ? "+" : ""}${d.toFixed(1)}%`;
 }

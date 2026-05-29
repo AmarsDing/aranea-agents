@@ -4,8 +4,12 @@
       <CommandCenterHero
         :username="username"
         :active-agent-count="agentStats.active"
+        :provider-count="providerCount"
+        :category-count="categoryCount"
+        :team-count="teamCount"
         :today-session-count="sessionActiveCount"
         :today-token-count="overview?.today?.total_tokens ?? 0"
+        @open-token-trend="openTokenTrendDialog"
       >
         <template #actions>
           <OverviewMonitorQuickLinks />
@@ -133,6 +137,11 @@
         </div>
       </div>
     </div>
+
+    <TokenTrendDialog
+      v-model:open="tokenTrendDialogOpen"
+      :trend-points="overview?.trends ?? []"
+    />
   </q-page>
 </template>
 
@@ -152,9 +161,9 @@ import UsageMetricCards from "../components/usage/UsageMetricCards.vue";
 import UsageTokenComposition from "../components/usage/UsageTokenComposition.vue";
 import UsageTopAgents from "../components/usage/UsageTopAgents.vue";
 import UsageTopModels from "../components/usage/UsageTopModels.vue";
-
 import UsageModelCostPie from "../components/usage/UsageModelCostPie.vue";
 import UsageProviderCostPie from "../components/usage/UsageProviderCostPie.vue";
+import TokenTrendDialog from "../components/usage/TokenTrendDialog.vue";
 
 const UsageTrendChart = defineAsyncComponent(() => import("../components/usage/UsageTrendChart.vue"));
 
@@ -168,7 +177,9 @@ const {
   providerModels, providerHealthLoading,
   runnerMetrics, runnerLoading, runnerWindowMinutes,
   reloadRunnerMetrics, openRunsTab,
-  agentStats, username, providerHealthSummary,
+  agentStats, providerCount, categoryCount, teamCount,
+  tokenTrendDialogOpen, openTokenTrendDialog,
+  username, providerHealthSummary,
   sessionActiveCount, sessionSparkline, runnerStats
 } = useOverviewPage();
 

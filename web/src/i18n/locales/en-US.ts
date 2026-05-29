@@ -914,6 +914,7 @@ export default {
     tooltipDelete: "Delete"
   },
   overviewPage: {
+    greeting: "Hello, {username}",
     filterRange: "Time range",
     filterProvider: "Provider",
     filterModel: "Model",
@@ -939,6 +940,30 @@ export default {
     totalTokens: "Total tokens",
     totalCost: "Total cost",
     successRate: "Success rate",
-    tokenComposition: "Token composition"
+    tokenComposition: "Token composition",
+    statActiveAgents: "Active Agents",
+    statProviders: "Providers",
+    statCategories: "Categories",
+    statTeams: "Teams",
+    statTodayChats: "Today Chats",
+    statTodayTokens: "Today Tokens",
+    tokenTrendTitle: "Token Consumption Trend",
+    tokenTrendSubtitle: "Today's token usage over time",
+    metricTodayCalls: "Today Calls",
+    metricTodayCost: "Today Cost",
+    metricTodayTokens: "Today Tokens",
+    metricSuccessRate: "Success Rate",
+    metricBudgetUsage: "Monthly Budget",
+    metricYesterday: "Yesterday",
+    metricMonthCost: "This month",
+    metricAvgPerCall: "Avg/call",
+    metricInput: "In",
+    metricOutput: "Out",
+    metricAvgSpeed: "Avg speed",
+    metricFailed: "Failed",
+    metricAvgLatency: "Avg latency",
+    metricForecast: "Est. EOM",
+    metricAgents: "agents",
+    metricNew: "New"
   }
 };

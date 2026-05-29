@@ -220,18 +220,21 @@ body.body--dark
 body:not(.body--dark)
   .q-menu
     background: rgba(255, 253, 248, 0.92) !important
-    border: 1px solid var(--glass-border) !important
     border-radius: 14px !important
-    box-shadow: 0 8px 32px rgba(93, 64, 55, 0.1), 0 2px 8px rgba(93, 64, 55, 0.06) !important
+    box-shadow: 0 0 0 1px var(--glass-border), 0 8px 32px rgba(93, 64, 55, 0.1), 0 2px 8px rgba(93, 64, 55, 0.06) !important
     backdrop-filter: blur(var(--glass-blur-default))
     -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
+  .q-menu .q-list
+    padding: 4px
+
   .q-menu .q-item
     border-radius: 8px
-    margin: 2px 4px
+    margin: 1px 2px
     padding: 8px 12px
     min-height: 36px
     color: var(--color-text-primary)
+    transition: background 0.15s ease
 
   .q-menu .q-item:hover,
   .q-menu .q-item.q-manual-focusable--focused
@@ -243,6 +246,10 @@ body:not(.body--dark)
     background: color-mix(in srgb, var(--color-accent) 12%, var(--glass-surface)) !important
     color: var(--color-accent) !important
 
+  .q-menu .q-separator
+    background: var(--glass-border)
+    margin: 4px 8px
+
   .q-select__dropdown-icon
     color: var(--color-icon-muted)
 
@@ -252,24 +259,45 @@ body:not(.body--dark)
   .q-field--outlined .q-field__control:hover::before
     border-color: color-mix(in srgb, var(--color-accent) 35%, var(--glass-border))
 
-  .q-field--outlined.q-field--focused .q-field__control::after
+  .q-field--outlined .q-field__control::after,
+  .q-field--outlined.q-field--focused .q-field__control::after,
+  .q-field--outlined.q-field--highlighted .q-field__control::after
+    border-width: 1px
+    border-color: transparent
+
+  .q-field--outlined.q-field--focused .q-field__control::after,
+  .q-field--outlined.q-field--highlighted .q-field__control::after
     border-color: var(--color-accent)
+
+  .q-field__native,
+  .q-field__input
+    color: var(--color-text-primary)
+
+  .q-field__label
+    color: var(--color-text-secondary)
+
+  .q-field--focused .q-field__label,
+  .q-field--highlighted .q-field__label
+    color: var(--color-accent)
 
 body.body--dark
   .q-menu
     background: color-mix(in srgb, var(--glass-surface) 94%, transparent) !important
-    border: 1px solid var(--glass-border) !important
     border-radius: 14px !important
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.32), 0 2px 8px rgba(0, 0, 0, 0.18) !important
+    box-shadow: 0 0 0 1px var(--glass-border), 0 8px 32px rgba(0, 0, 0, 0.32), 0 2px 8px rgba(0, 0, 0, 0.18) !important
     backdrop-filter: blur(var(--glass-blur-elevated))
     -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
 
+  .q-menu .q-list
+    padding: 4px
+
   .q-menu .q-item
     border-radius: 8px
-    margin: 2px 4px
+    margin: 1px 2px
     padding: 8px 12px
     min-height: 36px
     color: var(--color-text-primary)
+    transition: background 0.15s ease
 
   .q-menu .q-item:hover,
   .q-menu .q-item.q-manual-focusable--focused
@@ -281,6 +309,10 @@ body.body--dark
     background: color-mix(in srgb, var(--color-accent) 14%, var(--glass-surface)) !important
     color: var(--color-accent) !important
 
+  .q-menu .q-separator
+    background: var(--glass-border)
+    margin: 4px 8px
+
   .q-select__dropdown-icon
     color: var(--color-icon-muted)
 
@@ -290,8 +322,49 @@ body.body--dark
   .q-field--outlined .q-field__control:hover::before
     border-color: color-mix(in srgb, var(--color-accent) 35%, var(--glass-border))
 
-  .q-field--outlined.q-field--focused .q-field__control::after
+  .q-field--outlined .q-field__control::after,
+  .q-field--outlined.q-field--focused .q-field__control::after,
+  .q-field--outlined.q-field--highlighted .q-field__control::after
+    border-width: 1px
+    border-color: transparent
+
+  .q-field--outlined.q-field--focused .q-field__control::after,
+  .q-field--outlined.q-field--highlighted .q-field__control::after
     border-color: var(--color-accent)
+
+  .q-field--dark .q-field__native,
+  .q-field--dark .q-field__input,
+  .q-field__native,
+  .q-field__input
+    color: var(--color-text-primary)
+
+  .q-field--dark .q-field__label,
+  .q-field__label
+    color: var(--color-text-secondary)
+
+  .q-field--focused .q-field__label,
+  .q-field--highlighted .q-field__label
+    color: var(--color-accent)
+
+// ── QMenu / QSelect 下拉面板滚动条 ──
+.q-menu
+  scrollbar-width: thin
+  scrollbar-color: var(--table-scrollbar-thumb, rgba(100, 116, 139, 0.18)) transparent
+
+  &::-webkit-scrollbar
+    width: 5px
+
+  &::-webkit-scrollbar-track
+    background: transparent
+
+  &::-webkit-scrollbar-thumb
+    border-radius: 4px
+    border: 1px solid transparent
+    background-clip: content-box
+    background-color: var(--table-scrollbar-thumb, rgba(100, 116, 139, 0.18))
+
+  &::-webkit-scrollbar-thumb:hover
+    background-color: var(--table-scrollbar-thumb-hover, rgba(100, 116, 139, 0.35))
 
 // ── QTable 全局滚动条主题 ──
 .q-table__middle
@@ -2331,7 +2404,6 @@ body.body--dark .overview-panel--danger
   @media (width <= 479px)
     grid-template-columns: 1fr
 
-// ── 单张 Stat Card ──
 .overview-stat-card
   border-radius: 14px
   background: var(--color-background-elevated, rgba(128, 128, 128, 0.04))
@@ -2339,7 +2411,7 @@ body.body--dark .overview-panel--danger
   padding: 20px 22px
   display: flex
   flex-direction: column
-  gap: 10px
+  gap: 6px
   transition: border-color 0.2s ease, background 0.2s ease
 
 body.body--dark .overview-stat-card
@@ -2395,15 +2467,113 @@ body.body--dark .overview-stat-card__icon-wrap--accent
 .overview-stat-card__body
   display: flex
   align-items: baseline
+  justify-content: center
   gap: 10px
 
 .overview-stat-card__value
-  font-size: 1.72rem
+  font-size: 2rem
   font-weight: 700
   line-height: 1.15
   color: var(--color-text-primary)
   letter-spacing: -0.02em
   font-variant-numeric: tabular-nums
+
+  &--tech-blue
+    background: linear-gradient(135deg, #4F46E5, #2563EB)
+    -webkit-background-clip: text
+    -webkit-text-fill-color: transparent
+    background-clip: text
+
+  &--tech-cyan
+    background: linear-gradient(135deg, #0891B2, #06B6D4)
+    -webkit-background-clip: text
+    -webkit-text-fill-color: transparent
+    background-clip: text
+
+  &--tech-amber
+    background: linear-gradient(135deg, #D97706, #F59E0B)
+    -webkit-background-clip: text
+    -webkit-text-fill-color: transparent
+    background-clip: text
+
+  &--tech-green
+    background: linear-gradient(135deg, #059669, #10B981)
+    -webkit-background-clip: text
+    -webkit-text-fill-color: transparent
+    background-clip: text
+
+  &--tech-red
+    background: linear-gradient(135deg, #DC2626, #EF4444)
+    -webkit-background-clip: text
+    -webkit-text-fill-color: transparent
+    background-clip: text
+
+body.body--dark
+  .overview-stat-card__value--tech-blue
+    background: linear-gradient(135deg, #818CF8, #3B82F6)
+    -webkit-background-clip: text
+    -webkit-text-fill-color: transparent
+    background-clip: text
+
+  .overview-stat-card__value--tech-cyan
+    background: linear-gradient(135deg, #22D3EE, #67E8F9)
+    -webkit-background-clip: text
+    -webkit-text-fill-color: transparent
+    background-clip: text
+
+  .overview-stat-card__value--tech-amber
+    background: linear-gradient(135deg, #FBBF24, #FCD34D)
+    -webkit-background-clip: text
+    -webkit-text-fill-color: transparent
+    background-clip: text
+
+  .overview-stat-card__value--tech-green
+    background: linear-gradient(135deg, #34D399, #6EE7B7)
+    -webkit-background-clip: text
+    -webkit-text-fill-color: transparent
+    background-clip: text
+
+  .overview-stat-card__value--tech-red
+    background: linear-gradient(135deg, #F87171, #FCA5A5)
+    -webkit-background-clip: text
+    -webkit-text-fill-color: transparent
+    background-clip: text
+
+.overview-stat-card__bottom
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 8px
+  font-size: 0.74rem
+  line-height: 1.3
+  margin-top: auto
+
+.overview-stat-card__bottom-left
+  color: var(--color-text-secondary)
+  flex-shrink: 1
+  min-width: 0
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+  &--tech
+    background: linear-gradient(135deg, #4F46E5, #2563EB)
+    -webkit-background-clip: text
+    -webkit-text-fill-color: transparent
+    background-clip: text
+    font-weight: 600
+
+body.body--dark
+  .overview-stat-card__bottom-left--tech
+    background: linear-gradient(135deg, #818CF8, #22D3EE)
+    -webkit-background-clip: text
+    -webkit-text-fill-color: transparent
+    background-clip: text
+
+.overview-stat-card__bottom-right
+  color: var(--color-text-secondary)
+  flex-shrink: 0
+  text-align: right
 
 .overview-stat-card__delta
   font-size: 0.74rem
