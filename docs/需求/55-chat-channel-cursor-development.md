@@ -1,6 +1,6 @@
 # M55 — Chat × Channel × Cursor 对标 — 开发计划
 
-> **版本**：2026-05-29 | **状态**：🚧 Phase A–D 已交付；**Phase R**（Run 升格）已排期；**Phase C UX 收口 ✅ 已完成**；Phase E 部分启动  
+> **版本**：2026-05-29 | **状态**：🚧 Phase A–D 已交付；**Phase R**（Run 升格）已排期；**Phase C UX 收口 ✅ 已完成**；**Phase E Reasoning 侧栏 ✅ 已完成**
 > **方案**：[55-chat-channel-cursor-solution.md](./55-chat-channel-cursor-solution.md)  
 > **四层解耦（DECO）**：[17-channel-development.md §14](./17-channel-development.md#14-phase-deco--四层架构解耦deco)（DECO-11/12/13/14 · 衔接 CC-A/C）
 > **蓝图**：[55-chat-channel-cursor-solution.md §9 附录](../需求/55-chat-channel-cursor-solution.md#9-附录企业级蓝图与-ai-落地指南)  
@@ -39,7 +39,7 @@
 | Web TurnBlock + ToolStrip | ✅ | 默认开启；Team Session 仍走平铺 |
 | Background Job 面板 | ✅ | `ChatBackgroundJobsPanel` + `GET /v1/chat/jobs` |
 | 飞书 peer bind stale rebind | ✅ | CC-HOT-01 · [changelog](../changelog/2026-05-23-M55-Feishu-Rebind-UX-Backlog.md) |
-| UserBubble 来源徽标（Tier 0 platform） | 🚧 | CC-B-07 · `options_json.platform` |
+| UserBubble 来源徽标（Tier 0 platform） | ✅ | CC-B-07 · `source_meta` → `q-chip` 渲染 |
 | 思考/ReAct 互斥 UX | ✅ | CC-C-UX-01~03 · CC-WEB-REASONING-02~04 |
 | 思考流式缓存（Store vs DB） | ✅ | CC-WEB-REASONING-01~04 · `ChatReasoningPeek` live tail |
 | 飞书出站格式化（思考/正文） | ✅ | CC-CHANNEL-FMT-01~06 · [changelog](../changelog/2026-05-23-M55-Phase-R-UX-Channel-Format-Reasoning.md) |
@@ -50,6 +50,28 @@
 | ChatComposer 上下文压力警告 | ✅ | CC-C-UX-08 · warning/critical 双级 banner |
 | 消息反馈交互优化 | ✅ | CC-C-UX-09 · 实心图标切换 + tooltip |
 | Prompt Preview API 接入 | ✅ | CC-E-02 · `AgentDetailStore.fetchPromptPreview` → `useContextBreakdown` |
+| Reasoning 侧栏模式 | ✅ | CC-E-04 · `ChatReasoningDrawer` + `useReasoningSidebar` |
+| 虚拟列表集成 | ✅ | CC-C-05 · `q-virtual-scroll` + `CHAT_VIRTUAL_SCROLL_THRESHOLD=40` |
+| mapPreviewToReport 提取 | ✅ | 纯函数从 `useChatWorkspace` 提取到 `contextBreakdown.ts` |
+| BREAKDOWN_COLORS 迁移 CSS 变量 | ✅ | `--chart-color-*` token 昼夜差异化 |
+| ChatMessagePanel border-radius | ✅ | 内联 style 提取为 `var(--chat-bubble-radius)` |
+| ChatMessagePanel script 瘦身 | ✅ | timeline 逻辑提取到 `useChatTimeline` composable |
+| Session 顶栏 sync 诊断 | ✅ | CC-C-07 · WS 连接点 + tooltip 显示 rev 号 |
+| completion 增量 hydrate | ✅ | CC-C-06 · `afterRevision` 增量加载 + 安全回退 |
+| UserBubble 来源徽标 | ✅ | CC-B-07 · `source_meta` → `q-chip` 渲染 |
+| ChatMessageList 子组件提取 | ✅ | 消息列表区域提取为独立组件，滚动 ref 透传 |
+| _chat-message-panel.sass rgba token 化 | ✅ | 14 处语义 rgba 提取为 CSS 变量（含 9 新 token） |
+| sessionCompletionReload 数据流合规 | ✅ | `getSession` 直接 API 调用迁移到 `sessionStore.fetchAndReconcileSession` |
+| ChatMessageList 类型修正 | ✅ | `pendingMessages` prop 从 `ChatAttachment[]` 修正为 `PendingMessage[]` |
+| PendingMessage 类型归一 | ✅ | 从 `api.ts` 迁入 `types.ts`，展示组件从 `types.ts` 引入 |
+| --chat-indigo-shadow 重复定义清理 | ✅ | 移除旧值 `rgba(79,70,229,0.22)`，保留语义值 `rgba(99,102,241,0.30)` |
+| fetchAndReconcileSession 错误处理 | ✅ | 空 catch 块改为 `error.value = e?.message ?? String(e)` |
+| CC-E-02 Phase 2 前端架构 | ✅ | `EnvelopeUsage.prompt_breakdown` 类型 + `computeBreakdownFromServer` 精确数据优先 + `isPrecise` 标记 |
+| CC-E-03 前端组件 | ✅ | `ChatDiffViewer.vue` inline diff + `diffEditHelpers.ts` + `ChatExecutionCard` 工具分流 |
+| CC-E-01 前端 UI | ✅ | `ChatMentionPopup.vue` + `ContextRefItem`/`ContextRef` 类型 + `SendMessageOptions.context_refs` |
+| CC-F-UI-01 Job 面板增强 | ✅ | `sessionRunStatus.ts` 枚举补全 + `jobFormatters.ts` + 耗时/阶段显示 |
+| Diff 颜色 token 化 | ✅ | `--color-diff-removed`/`--color-diff-added` + bg 变量（昼夜差异化） |
+| ChatBackgroundJobsPanel 数据流合规 | ✅ | `resolveDeadLetter` 改为 `emit('resolve-dead-letter')` + `ACTIVE_RUN_STATUSES` 统一 |
 | Channel 入站 Session 列表同步 | ✅ | CC-WEB-SESSION-01 |
 | M55 E2E 手工验收 | ⏳ | SYNC/UI/JOB ✅；Run 生命周期 M55-RUN 📋 |
 | 卡 Turn / 飞书无回复 / 工具假死 | 🟡 | CC-FIX-TOOL/CHANNEL ✅；运维 CC-FEISHU-OPS-01 📋 |
@@ -107,7 +129,7 @@ gantt
 | CC-B-04 | 选中 Session 强制 Session WS | ✅ | |
 | CC-B-05 | revision debounced hydrate + replay 门控 | ✅ | `wsReplaying` |
 | CC-B-06 | Envelope `source=channel` + 入站 focus | 🟡 | toast「查看」已有；**auto-focus / 铃铛通知未交付** → CC-B-06b · [分析](../changelog/2026-05-23-M55-Stuck-Turn-Inbound-Sync-Analysis.md) |
-| CC-B-07 | UserBubble 来源徽标 + `platform` | 🚧 | Tier 0 · §1.5 |
+| CC-B-07 | UserBubble 来源徽标 + `platform` | ✅ | 已实现：`source_meta` → `q-chip` 渲染（飞书/钉钉/企微等） |
 
 ---
 
@@ -119,9 +141,9 @@ gantt
 | CC-C-02 | ToolStrip 默认折叠 | ✅ | |
 | CC-C-03 | `groupMessagesByTurn` + 单测 | ✅ | 缺 feishu 115 条 fixture |
 | CC-C-04 | 滚动锚定最后一轮正文 | ✅ | |
-| CC-C-05 | 虚拟列表 benchmark | ⏳ | M55-UI-01 |
-| CC-C-06 | rAF 批处理 + completion 增量 | ⏳ | `messageStoreBatch` 有 rAF；completion 仍全量 hydrate |
-| CC-C-07 | Session 顶栏 sync 诊断 | 📋 | |
+| CC-C-05 | 虚拟列表 benchmark | ✅ | `q-virtual-scroll` 已集成，阈值 `CHAT_VIRTUAL_SCROLL_THRESHOLD=40` |
+| CC-C-06 | rAF 批处理 + completion 增量 | ✅ | `afterRevision` 增量加载 + 安全回退 |
+| CC-C-07 | Session 顶栏 sync 诊断 | ✅ | WS 连接点 + tooltip 显示 rev 号 |
 | **CC-C-UX-01** | 思考/ReAct 互斥；空 reasoning 不展示 | ✅ | 无空「思考过程」 |
 | **CC-C-UX-02** | 流式「正在思考…」单行态 + spinner | ✅ | 首字节前 UX + CSS spinner |
 | **CC-C-UX-03** | 双 ToolStrip 去重/合并 | ✅ | 单轮一条摘要 |
@@ -150,25 +172,26 @@ gantt
 
 | ID | 任务 | 状态 | 说明 |
 |----|------|------|------|
-| CC-E-01 | Composer `@` 引用 | 📋 | 需后端配合 |
-| CC-E-02 | 上下文清单抽屉 | 🟡 | Phase 1 已实现：`ChatContextBreakdownPopover` 点击圆环展开分类占比；Phase 2 精确推送待后端扩展 `EnvelopeUsage.breakdown`；Prompt Preview API 已接入 `useContextBreakdown`（`AgentDetailStore.fetchPromptPreview` → `mapPreviewToReport`） |
-| CC-E-03 | diff Apply 卡片 | 📋 | 需后端配合 |
-| CC-E-04 | Reasoning 侧栏模式 | 📋 | |
+| CC-E-01 | Composer `@` 引用 | 🚧 | 前端 UI 组件已就绪：`ChatMentionPopup.vue` + `ContextRefItem`/`ContextRef` 类型 + `SendMessageOptions.context_refs` 字段；需后端 `SendMessageOptions` proto 新增 `context_refs` 字段 |
+| CC-E-02 | 上下文清单抽屉 | 🚧 | Phase 1 ✅ + Phase 2 前端已就绪：`EnvelopeUsage.prompt_breakdown` 类型扩展 + `computeBreakdownFromServer` 精确数据优先 + `isPrecise` 标记；需后端 `context_usage` envelope 推送 `prompt_breakdown` 字段 |
+| CC-E-03 | diff Apply 卡片 | 🚧 | 前端组件已就绪：`ChatDiffViewer.vue` inline diff + `diffEditHelpers.ts` 纯函数 + `ChatExecutionCard` 工具分流 + Apply/Reject emit；需后端 `EnvelopeToolCall` 结构化 diff 字段透传 |
+| CC-E-04 | Reasoning 侧栏模式 | ✅ | `ChatReasoningDrawer` + `useReasoningSidebar`；侧栏模式时内联替换为可点击提示 |
 
 ---
 
-### Phase F — 24h Durable Job（P2）— 📋 未启动
+### Phase F — 24h Durable Job（P2）— 🚧 前端部分就绪
 
 > **评审（§13.5）**：CC-F-01 须与 **CC-R-03** 合并——Worker 续跑 Agent checkpoint，非仅 Graph watch。
 
-| ID | 任务 | 状态 |
-|----|------|------|
-| CC-F-01 | Worker deadline 24h | 📋 合并 CC-R-03 |
+| ID | 任务 | 状态 | 说明 |
+|----|------|------|------|
+| CC-F-01 | Worker deadline 24h | 📋 合并 CC-R-03 | 需后端 Worker 支持 |
 | CC-F-02 | Graph / trpc checkpoint resume **Phase 1** | 🟡 | 会话快照 + 合成 prompt；真 invocation → **CC-F-02b** |
 | CC-F-02b | trpc invocation 级 restore | 📋 | Phase F · 对接 trpc RunOption |
-| CC-F-03 | IM 进度百分比 | 📋 |
-| CC-F-04 | 取消 / 重试 Job API | 📋 |
-| CC-F-05 | async 白名单 | 📋 |
+| CC-F-03 | IM 进度百分比 | 📋 | |
+| CC-F-04 | 取消 / 重试 Job API | 📋 | |
+| CC-F-05 | async 白名单 | 📋 | |
+| CC-F-UI-01 | Job 面板增强 | ✅ | `sessionRunStatus.ts` 补全 interactive/escalating/durable 枚举 + `ACTIVE_RUN_STATUSES` 统一 + `jobFormatters.ts` 耗时/阶段格式化 + 面板显示运行耗时 |
 
 ---
 
@@ -308,3 +331,35 @@ gantt
 | [1-chat-development.md](./1-chat-development.md) | Phase 9 M55 状态 |
 | [17-channel-development.md](./17-channel-development.md) | D7 peer rebind |
 | [execution-plan.md](../guides/execution-plan.md) | 迭代 CC 任务板 |
+
+---
+
+## 9. 剩余工作（2026-05-29 更新）
+
+> 所有前端可独立推进的架构/组件/类型工作已完成。以下为需后端配合的集成项和手工验收。
+
+### 需后端配合（前端组件已就绪，等待后端 API/字段扩展）
+
+| ID | 任务 | 前端就绪 | 后端依赖 |
+|----|------|----------|----------|
+| CC-E-02 Phase 2 | Prompt 占比精确推送 | ✅ `EnvelopeUsage.prompt_breakdown` + `computeBreakdownFromServer` + `isPrecise` | 后端 `context_usage` envelope 新增 `prompt_breakdown` 字段 |
+| CC-E-01 | Composer @ 引用 | ✅ `ChatMentionPopup.vue` + `ContextRef` 类型 + `SendMessageOptions.context_refs` | 后端 `SendMessageOptions` proto 新增 `context_refs` 字段 + Turn 链路解析 |
+| CC-E-03 | diff Apply/Reject | ✅ `ChatDiffViewer.vue` + `diffEditHelpers.ts` + `ChatExecutionCard` 分流 + emit | 后端 `EnvelopeToolCall` 新增结构化 diff 字段 + Apply/Reject API |
+| CC-F-01 | Worker deadline 24h | 📋 | 后端 Worker 续跑 checkpoint |
+
+### 手工验收
+
+| ID | 任务 | 说明 |
+|----|------|------|
+| CC-E2E-RUN-01 | Agent 单轮正常完成 | 发送消息 → 流式输出 → runner_completion → 增量 hydrate |
+| CC-E2E-RUN-02 | Agent 工具调用 | diff_edit/patch_file → ChatDiffViewer 渲染 → Apply/Reject 按钮 |
+| CC-E2E-RUN-03 | Team 多成员协作 | 并行执行 → 成员 lane → completion 合并 |
+| CC-E2E-RUN-04 | Durable Job 生命周期 | interactive → escalating → durable → resume → completed |
+
+### 前端收尾（低优先级）
+
+| ID | 任务 | 说明 |
+|----|------|------|
+| 🟡 CSS-01 | `.chat-message-content--dark` 6 处裸 rgba token 化 | P3 |
+| 🟡 CSS-02 | `channelInboundSession.ts` 的 `getSession` 迁移 | 与 sessionCompletionReload 同模式 |
+| 🟡 TECH-DEBT | `useChatBackgroundJobs`/`useTaskDeadLetters` composable 直接调 API | 应迁入 Store |

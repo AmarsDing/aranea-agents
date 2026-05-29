@@ -56,14 +56,63 @@
 
     <AppRegistryPagination v-model:page="page" v-model:page-size="pageSize" :page-max="pageMax" :total="total" :loading="loading" label="个 Tool" />
 
-    <tool-detail-drawer />
+    <tool-detail-drawer
+      :open="detailStore.open"
+      :tool="detailStore.tool"
+      :active-tab="detailStore.activeTab"
+      :loading="detailStore.loading"
+      :overrides="detailStore.overrides"
+      :overrides-loading="detailStore.overridesLoading"
+      :recent-runs="detailStore.recentRuns"
+      :runs-loading="detailStore.runsLoading"
+      :test-args-json="detailStore.testArgsJson"
+      :test-timeout-sec="detailStore.testTimeoutSec"
+      :test-running="detailStore.testRunning"
+      :test-result="detailStore.testResult"
+      :config-json="detailStore.configJson"
+      :config-saving="detailStore.configSaving"
+      :override-editor-open="detailStore.overrideEditorOpen"
+      :editing-override="detailStore.editingOverride"
+      :override-saving="detailStore.overrideSaving"
+      :override-form="detailStore.overrideForm"
+      :agent-binding-summary="detailStore.agentBindingSummary"
+      :agent-binding-loading="detailStore.agentBindingLoading"
+      :agent-options="detailStore.agentOptions"
+      :agents-loading="detailStore.agentsLoading"
+      @close="detailStore.closeDetail()"
+      @update:active-tab="detailStore.activeTab = $event"
+      @update:test-args-json="detailStore.testArgsJson = $event"
+      @update:test-timeout-sec="detailStore.testTimeoutSec = $event"
+      @run-test="detailStore.runToolTest()"
+      @update:config-json="detailStore.configJson = $event"
+      @save-config="detailStore.saveConfig()"
+      @edit-override="detailStore.openOverrideEditor($event)"
+      @delete-override="detailStore.confirmRemoveOverride($event)"
+      @update:override-editor-open="detailStore.overrideEditorOpen = $event"
+      @update:override-form="detailStore.overrideForm = $event"
+      @save-override="detailStore.saveOverride()"
+      @edit-tool="onEditTool"
+      @remove-tool="removeTool"
+    />
 
-    <tool-editor-dialog />
+    <tool-editor-dialog
+      :open="editorStore.open"
+      :editing-id="editorStore.editingId"
+      :form="editorStore.form"
+      :saving="editorStore.saving"
+      :dirty="editorStore.dirty"
+      :json-errors="editorStore.jsonErrors"
+      :selected-template="editorStore.selectedTemplate"
+      @close="editorStore.closeEditor()"
+      @save="editorStore.save()"
+      @apply-template="editorStore.applyTemplate($event)"
+      @patch-form="onPatchForm"
+    />
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useQuasar } from "quasar";
 import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
@@ -82,6 +131,7 @@ import {
 import { useToolDetailStore } from "../stores/tools/toolDetail";
 import { useToolEditorStore } from "../stores/tools/toolEditor";
 import { useToolToggle } from "../features/tools/useToolEditor";
+import { patchToolForm } from "../features/tools/toolFormPatch";
 import type { Tool } from "../features/tools/types";
 import { useToolsStore } from "../stores/tools";
 
@@ -219,6 +269,26 @@ function batchRemove() {
     await loadRows();
   });
 }
+
+function onEditTool(tool: Tool) {
+  detailStore.closeDetail();
+  editorStore.openEdit(tool);
+}
+
+function onPatchForm(p: Record<string, unknown>) {
+  patchToolForm(editorStore.form, p);
+}
+
+watch(
+  () => editorStore.open,
+  (isOpen) => {
+    if (!isOpen && editorStore.editingId && detailStore.tool) {
+      nextTick(() => {
+        detailStore.openDetail(detailStore.tool!);
+      });
+    }
+  }
+);
 
 watch([search, category, riskLevel, enabled], () => {
   page.value = 1;

@@ -677,3 +677,32 @@ Data 层统一使用 `kerrors` 返回错误，禁止 `errors.New` / `sql.ErrNoRo
 | `globalResultCache` | `sync.RWMutex`（`globalMu`） | `internal/tools/cache/result_cache.go` |
 | `toolWebResChecker` | `sync.RWMutex`（`toolWebResCheckerMu`） | `internal/biz/tool/tool_catalog_runtime.go` |
 | `filterCache.entries` | `sync.RWMutex`（读用 RLock，写用 Lock） | `internal/tools/skillruntime/filter.go` |
+
+---
+
+## 十七、Wire 窄接口规范
+
+Wire provider 函数不得依赖跨模块具体类型（红线 #7）。已改造的 provider：
+
+| Provider | 旧参数 | 新参数 | 说明 |
+|----------|--------|--------|------|
+| `provideSkillWatchRunner` | `*biz.SkillUsecase` | `watch.SkillReader` + `watch.SkillWriter` | watch 包已定义窄接口 |
+| `provideMonitorUsecase` | `*biz.SkillUsecase` | `biz.FilesystemHealthReader` | 通过 `provideFilesystemHealthReader` 适配 |
+
+**待改造**：
+
+| Provider | 当前参数 | 目标 | 说明 |
+|----------|----------|------|------|
+| `provideChatServiceDeps` | `*biz.SkillUsecase` | 拆分 `rt.Catalog.SkillUC` 为窄接口 | 影响面大，后续迭代 |
+
+---
+
+## 十八、Skill 文件系统安全规范
+
+`CreateSkillDir` 必须校验 slug 参数：
+
+| 校验规则 | 错误类型 | 说明 |
+|----------|----------|------|
+| 空 slug | `kerrors.BadRequest("SKILL", "slug is required")` | 防止 SKILL.md 写入根目录 |
+| 包含 `..` | `kerrors.BadRequest("SKILL", "slug contains unsafe path characters")` | 防止路径遍历 |
+| 以 `/` 开头 | `kerrors.BadRequest("SKILL", "slug contains unsafe path characters")` | 防止绝对路径逃逸 |

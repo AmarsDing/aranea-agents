@@ -2,8 +2,8 @@
 
 > **评分**：**98 / 100** | **风险等级**：P3  
 > **文档**：[23-tools-development.md](../需求/23-tools-development.md)  
-> **代码锚点**：`internal/tools/` · `internal/tools/trpc/` · `pkg/trpc-agent-go/tool/file/` · `internal/agent/tool_assembly.go` · `internal/skill/` · `internal/biz/skill/`  
-> **审查时间**：2026-05-29（Phase 4 + Phase 5 + Phase 6 + Phase 7 + Round 3 + Round 4 复核）
+> **代码锚点**：`internal/tools/` · `internal/tools/trpc/` · `pkg/trpc-agent-go/tool/file/` · `internal/agent/tool_assembly.go` · `internal/skill/` · `internal/biz/skill/` · `cmd/admin/wire.go`  
+> **审查时间**：2026-05-29（Phase 4 + Phase 5 + Phase 6 + Phase 7 + Round 3 + Round 4 + Round 5 复核）
 
 **专项 Review**：[Phase 4 片段编辑](./2026-05-22-Tools-Phase4-Fragment-Edit-Review.md) · [Phase 5 工作区统一](./2026-05-22-Tools-Phase5-Workspace-Unification-Review.md)
 
@@ -265,6 +265,70 @@ Skill Router (internal/tools/skillrouter) — 意图检测 + 标签过滤
 
 ---
 
+## Round 5 审查报告（2026-05-29）— Wire 窄接口 + 错误规范 + 编译修复
+
+### 变更文件
+
+| 文件 | 变更 | 对应 ID |
+|------|------|---------|
+| `cmd/admin/wire.go` | `provideSkillWatchRunner` 参数 `*biz.SkillUsecase` → `watch.SkillReader` + `watch.SkillWriter` | SKILL-P2-06 |
+| `cmd/admin/wire.go` | `provideMonitorUsecase` 参数 `*biz.SkillUsecase` → `biz.FilesystemHealthReader` | SKILL-P2-06 |
+| `cmd/admin/wire.go` | 新增 `provideFilesystemHealthReader` + Wire bindings | SKILL-P2-06 |
+| `cmd/admin/wire_gen.go` | Wire 重新生成 | — |
+| `internal/skill/storage/filesystem.go` | `CreateSkillDir` 空 slug 校验 + 路径安全检查 | SKILL-P2-03 |
+| `internal/tools/testexec/execute.go` | 2 处 `fmt.Errorf` → `kerrors.InternalServer`/`kerrors.NotFound` | BE1 |
+| `internal/tools/trpc/toolsets.go` | 1 处 `fmt.Errorf` → `kerrors.BadRequest` | BE1 |
+| `internal/biz/llm_provider_model.go` | `RunHealthChecks` 闭包变量捕获修复 | FIX-MISC-3 |
+
+### aranea-review 审查结果
+
+| 维度 | 🔴 阻断 | 🟡 建议 | 🟢 提示 | 合计 |
+|------|---------|---------|---------|------|
+| **后端 — 架构合规** | 0 | 0 | 0 | 0 |
+| **后端 — 分层合规** | 0 | 0 | 0 | 0 |
+| **后端 — OOP** | 0 | 0 | 0 | 0 |
+| **后端 — Agent 运行时** | 0 | 0 | 0 | 0 |
+| **后端 — 并发安全** | 0 | 0 | 0 | 0 |
+| **后端 — 错误处理** | 0 | 0 | 0 | 0 |
+| **后端 — 依赖注入** | 0 | 1 | 0 | 1 |
+| **前端 — 数据流合规** | 0 | 0 | 0 | 0 |
+| **前端 — 组件分层** | 0 | 0 | 0 | 0 |
+| **前端 — 业务逻辑归属** | 0 | 0 | 0 | 0 |
+| **前端 — 聊天消息分组** | 0 | 0 | 0 | 0 |
+| **前端 — UX 主题** | 0 | 0 | 0 | 0 |
+| **构建与回归** | 0 | 0 | 0 | 0 |
+
+### 建议项
+
+| ID | 维度 | 端 | 文件 | 问题描述 | 修复建议 |
+|----|------|----|------|----------|----------|
+| R5-S01 | 依赖注入 | 后端 | `cmd/admin/wire.go` | `provideChatServiceDeps` 仍依赖 `*biz.SkillUsecase` 具体类型（传入 `rt.Catalog.SkillUC`） | 拆分 `rt.Catalog.SkillUC` 为窄接口，后续迭代处理 |
+
+### 亮点
+
+- **Wire 窄接口改造**：`provideSkillWatchRunner` 和 `provideMonitorUsecase` 不再依赖 `*biz.SkillUsecase` 具体类型，改用 `watch.SkillReader`/`watch.SkillWriter` 和 `biz.FilesystemHealthReader` 窄接口，红线 #7 合规
+- **CreateSkillDir 安全加固**：空 slug 和路径遍历攻击（`..`、`/` 前缀）被 kerrors.BadRequest 拦截，防止 SKILL.md 写入根目录
+- **错误规范迁移**：testexec/trpc 桥接层 3 处 `fmt.Errorf` 迁移到 `kerrors`，业务错误链路完整
+- **编译修复**：`RunHealthChecks` 闭包变量捕获 bug 修复——循环变量 `base`/`row.ID`/`row.Status` 在 goroutine 中可能被后续迭代覆盖，通过局部变量捕获解决
+
+### 后端合规性清单
+
+- [x] 依赖方向向内（biz 不 import data/service/trpc-agent-go/proto）
+- [x] Runner 装配在 Service 层
+- [x] Service 层无业务逻辑
+- [x] 跨模块通过窄接口（watch.SkillReader/Writer + FilesystemHealthReader）
+- [x] Wire 绑定在 Service 层
+- [x] 无工具生成代码的手动修改
+- [x] goroutine 走 safego
+- [x] 业务错误用 kerrors
+- [x] 日志用 FlowLog
+- [x] 共享状态有锁保护
+- [x] 无上帝对象注入
+- [x] 接口方法 ≤ 5
+- [x] Repository 接口方法 ≤ 5（否则拆子接口）
+
+---
+
 ## 变更记录
 
 | 日期 | 说明 |
@@ -275,3 +339,4 @@ Skill Router (internal/tools/skillrouter) — 意图检测 + 标签过滤
 | 2026-05-29 | Phase 8 质量加固复核 → **93 分**；AgentRepo/ChannelRepo 拆分 + ToolFilter 测试 + BM25 双路径 + safego 修复 + AdaptiveRouter 注入 |
 | 2026-05-29 | Round 3 复核 → **96 分**；`replace_content` 走 textfile 编解码 + 需求符合度满分 + 文档同步 |
 | 2026-05-29 | Round 4 复核 → **98 分**；Skill 子系统 ISP 合规 + sentinel error + 200+ 单测 + 生产 Bug 修复 + 红线合规 |
+| 2026-05-29 | Round 5 复核 → **98 分**；Wire 窄接口改造 + CreateSkillDir 安全加固 + testexec/trpc kerrors 迁移 + RunHealthChecks 编译修复 |

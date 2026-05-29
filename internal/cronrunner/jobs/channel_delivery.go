@@ -4,21 +4,22 @@ import (
 	"context"
 	"time"
 
-	"aranea-agents/internal/service"
 	"aranea-agents/pkg/safego"
 
 	"github.com/go-kratos/kratos/v2/log"
 )
 
-// ChannelDeliveryWorker drains pending outbound channel messages with retry.
+type PendingDeliveryProcessor interface {
+	ProcessPending(ctx context.Context, limit int) error
+}
+
 type ChannelDeliveryWorker struct {
 	interval time.Duration
-	worker   *service.ChannelDeliveryWorker
+	worker   PendingDeliveryProcessor
 	log      *log.Helper
 }
 
-// NewChannelDeliveryWorker creates a worker. Pass interval ≤0 for 5 seconds default.
-func NewChannelDeliveryWorker(interval time.Duration, worker *service.ChannelDeliveryWorker, logger log.Logger) *ChannelDeliveryWorker {
+func NewChannelDeliveryWorker(interval time.Duration, worker PendingDeliveryProcessor, logger log.Logger) *ChannelDeliveryWorker {
 	if interval <= 0 {
 		interval = 5 * time.Second
 	}

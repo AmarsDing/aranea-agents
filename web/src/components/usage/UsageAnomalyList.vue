@@ -1,8 +1,13 @@
 <template>
-  <q-card flat class="overview-panel overview-anomaly-panel">
+  <q-card flat class="overview-panel overview-panel--danger">
     <q-card-section>
-      <div class="text-h6 overview-section-title">异常请求</div>
-      <div class="text-caption overview-section-caption">失败、超时或取消的模型调用</div>
+      <div class="row items-center q-gutter-sm">
+        <q-icon name="warning_amber" class="overview-panel__alert-icon overview-panel__alert-icon--danger" />
+        <div>
+          <div class="text-h6 overview-section-title">异常请求</div>
+          <div class="text-caption overview-section-caption">失败、超时或取消的模型调用</div>
+        </div>
+      </div>
     </q-card-section>
     <q-separator class="overview-separator" />
     <q-card-section class="q-pa-none">

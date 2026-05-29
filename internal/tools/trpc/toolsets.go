@@ -11,6 +11,7 @@ import (
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -154,7 +155,7 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, 
 	if cfg.WebResearch {
 		t, err := webresearchpkg.NewTool(cfg.WebResearchCfg)
 		if err != nil {
-			return nil, fmt.Errorf("web_research: %w", err)
+			return nil, kerrors.BadRequest("TOOL", fmt.Sprintf("web_research: %s", err.Error()))
 		}
 		customTools = append(customTools, t)
 	}

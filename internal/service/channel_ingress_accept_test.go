@@ -28,7 +28,7 @@ func (r *ingressChannelRepo) AddDelivery(_ context.Context, _ biz.ChannelDeliver
 
 func TestAcceptInboundReturnsExecuteSync(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo)
+	uc := biz.NewChannelUsecase(repo, biz.NewCredentialCrypto(nil))
 	h := &ChannelIngress{
 		channels:        uc,
 		inboundReceipts: ingressReceiptStub{},
@@ -58,7 +58,7 @@ func TestAcceptInboundReturnsExecuteSync(t *testing.T) {
 
 func TestAcceptInboundDefersAckWhenStreaming(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo)
+	uc := biz.NewChannelUsecase(repo, biz.NewCredentialCrypto(nil))
 	h := &ChannelIngress{
 		channels:        uc,
 		inboundReceipts: ingressReceiptStub{},
@@ -87,7 +87,7 @@ func TestAcceptInboundDefersAckWhenStreaming(t *testing.T) {
 
 func TestAcceptInboundReturnsDispatchAsync(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo)
+	uc := biz.NewChannelUsecase(repo, biz.NewCredentialCrypto(nil))
 	h := &ChannelIngress{
 		channels:        uc,
 		inboundReceipts: ingressReceiptStub{},
@@ -114,7 +114,7 @@ func TestAcceptInboundReturnsDispatchAsync(t *testing.T) {
 
 func TestAcceptInboundSkipsDuplicateInbound(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo)
+	uc := biz.NewChannelUsecase(repo, biz.NewCredentialCrypto(nil))
 	h := &ChannelIngress{
 		channels:        uc,
 		inboundReceipts: ingressReceiptStub{},
@@ -140,7 +140,7 @@ func TestAcceptInboundSkipsDuplicateInbound(t *testing.T) {
 
 func TestProcessInboundHTTPResponds200(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo)
+	uc := biz.NewChannelUsecase(repo, biz.NewCredentialCrypto(nil))
 	h := &ChannelIngress{
 		channels:        uc,
 		inboundReceipts: ingressReceiptStub{},

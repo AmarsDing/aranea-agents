@@ -1,14 +1,16 @@
 package biz
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"context"
 	"io"
 	"strings"
+
+	"aranea-agents/internal/event"
 
 	"github.com/go-kratos/kratos/v2/errors"
 )
@@ -31,12 +33,12 @@ func parseProviderConfigJSON(cfg string) (map[string]any, error) {
 	return m, nil
 }
 
-func encryptCredential(ctx context.Context, plain string) (string, error) {
+func (c *CredentialCrypto) encryptCredential(ctx context.Context, plain string) (string, error) {
 	plain = strings.TrimSpace(plain)
 	if plain == "" {
 		return "", nil
 	}
-	key, err := credentialAESKey(ctx)
+	key, err := c.aesKey(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -59,12 +61,12 @@ func encryptCredential(ctx context.Context, plain string) (string, error) {
 	return base64.StdEncoding.EncodeToString(sealed), nil
 }
 
-func decryptCredential(ctx context.Context, enc string) (string, error) {
+func (c *CredentialCrypto) decryptCredential(ctx context.Context, enc string) (string, error) {
 	enc = strings.TrimSpace(enc)
 	if enc == "" {
 		return "", nil
 	}
-	key, err := credentialAESKey(ctx)
+	key, err := c.aesKey(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -94,7 +96,6 @@ func decryptCredential(ctx context.Context, enc string) (string, error) {
 	return string(plain), nil
 }
 
-// ProviderCredentialsReveal is decrypted credential material for admin edit UI only.
 type ProviderCredentialsReveal struct {
 	APIKey       string
 	SecretKey    string
@@ -103,7 +104,6 @@ type ProviderCredentialsReveal struct {
 	HACandidates []HACandidateCredentialReveal
 }
 
-// HACandidateCredentialReveal pairs HA candidate name with decrypted API key.
 type HACandidateCredentialReveal struct {
 	Name   string
 	APIKey string
@@ -204,9 +204,12 @@ func mergeHACandidateSecrets(cur, pat map[string]any) {
 	pat["ha_candidates"] = patCands
 }
 
-func revealCredentialsFromConfig(ctx context.Context, cfg string) (ProviderCredentialsReveal, error) {
-	cfg = decryptConfigJSONForRuntime(ctx, cfg)
-	var c struct {
+func (c *CredentialCrypto) RevealCredentialsFromConfig(ctx context.Context, cfg string) (ProviderCredentialsReveal, error) {
+	decrypted, err := c.DecryptConfigJSONForRuntime(ctx, cfg)
+	if err != nil {
+		return ProviderCredentialsReveal{}, err
+	}
+	var cr struct {
 		APIKey       string `json:"api_key"`
 		APIKeySet    bool   `json:"api_key_set"`
 		SecretKey    string `json:"secret_key"`
@@ -215,19 +218,19 @@ func revealCredentialsFromConfig(ctx context.Context, cfg string) (ProviderCrede
 			APIKey string `json:"api_key"`
 		} `json:"ha_candidates"`
 	}
-	if strings.TrimSpace(cfg) == "" {
+	if strings.TrimSpace(decrypted) == "" {
 		return ProviderCredentialsReveal{}, nil
 	}
-	if err := json.Unmarshal([]byte(cfg), &c); err != nil {
+	if err := json.Unmarshal([]byte(decrypted), &cr); err != nil {
 		return ProviderCredentialsReveal{}, errors.BadRequest("LLM_PROVIDER_MODEL", invalidProviderConfigJSONMsg)
 	}
 	out := ProviderCredentialsReveal{
-		APIKey:       strings.TrimSpace(c.APIKey),
-		SecretKey:    strings.TrimSpace(c.SecretKey),
-		HasAPIKey:    c.APIKeySet || c.APIKey != "",
-		HasSecretKey: c.SecretKey != "",
+		APIKey:       strings.TrimSpace(cr.APIKey),
+		SecretKey:    strings.TrimSpace(cr.SecretKey),
+		HasAPIKey:    cr.APIKeySet || cr.APIKey != "",
+		HasSecretKey: cr.SecretKey != "",
 	}
-	for _, ha := range c.HACandidates {
+	for _, ha := range cr.HACandidates {
 		ak := strings.TrimSpace(ha.APIKey)
 		if ak == "" {
 			continue
@@ -260,8 +263,8 @@ func configJSONHasPlaintextSecrets(m map[string]any) bool {
 	return false
 }
 
-func requireCredentialKeyForPlaintext(ctx context.Context, cfg string) error {
-	key, err := credentialAESKey(ctx)
+func (c *CredentialCrypto) RequireKeyForPlaintext(ctx context.Context, cfg string) error {
+	key, err := c.aesKey(ctx)
 	if err != nil {
 		return err
 	}
@@ -281,7 +284,7 @@ func requireCredentialKeyForPlaintext(ctx context.Context, cfg string) error {
 	return nil
 }
 
-func processConfigJSONForStorage(ctx context.Context, cfg string) (string, error) {
+func (c *CredentialCrypto) ProcessConfigJSONForStorage(ctx context.Context, cfg string) (string, error) {
 	m, err := parseProviderConfigJSON(cfg)
 	if err != nil {
 		return "", err
@@ -289,7 +292,7 @@ func processConfigJSONForStorage(ctx context.Context, cfg string) (string, error
 	if m == nil {
 		return "", nil
 	}
-	key, err := credentialAESKey(ctx)
+	key, err := c.aesKey(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -301,7 +304,7 @@ func processConfigJSONForStorage(ctx context.Context, cfg string) (string, error
 		return string(out), err
 	}
 	if v, ok := m["api_key"].(string); ok && strings.TrimSpace(v) != "" {
-		enc, err := encryptCredential(ctx, v)
+		enc, err := c.encryptCredential(ctx, v)
 		if err != nil {
 			return "", err
 		}
@@ -310,7 +313,7 @@ func processConfigJSONForStorage(ctx context.Context, cfg string) (string, error
 		m["api_key_set"] = true
 	}
 	if v, ok := m["secret_key"].(string); ok && strings.TrimSpace(v) != "" {
-		enc, err := encryptCredential(ctx, v)
+		enc, err := c.encryptCredential(ctx, v)
 		if err != nil {
 			return "", err
 		}
@@ -324,7 +327,7 @@ func processConfigJSONForStorage(ctx context.Context, cfg string) (string, error
 				continue
 			}
 			if ak, ok := cm["api_key"].(string); ok && strings.TrimSpace(ak) != "" {
-				enc, err := encryptCredential(ctx, ak)
+				enc, err := c.encryptCredential(ctx, ak)
 				if err != nil {
 					return "", err
 				}
@@ -375,22 +378,26 @@ func sanitizeConfigJSONForAPI(cfg string) string {
 	return string(out)
 }
 
-func decryptConfigJSONForRuntime(ctx context.Context, cfg string) string {
+func (c *CredentialCrypto) DecryptConfigJSONForRuntime(ctx context.Context, cfg string) (string, error) {
 	cfg = strings.TrimSpace(cfg)
 	if cfg == "" {
-		return cfg
+		return cfg, nil
 	}
 	var m map[string]any
 	if json.Unmarshal([]byte(cfg), &m) != nil {
-		return cfg
+		return cfg, nil
 	}
 	if enc, ok := m["api_key_enc"].(string); ok && strings.TrimSpace(enc) != "" {
-		if plain, err := decryptCredential(ctx, enc); err == nil && plain != "" {
+		if plain, err := c.decryptCredential(ctx, enc); err != nil {
+			event.SysLogWarn("credential.decrypt", "api_key 解密失败", event.P("error", err.Error()))
+		} else if plain != "" {
 			m["api_key"] = plain
 		}
 	}
 	if enc, ok := m["secret_key_enc"].(string); ok && strings.TrimSpace(enc) != "" {
-		if plain, err := decryptCredential(ctx, enc); err == nil && plain != "" {
+		if plain, err := c.decryptCredential(ctx, enc); err != nil {
+			event.SysLogWarn("credential.decrypt", "secret_key 解密失败", event.P("error", err.Error()))
+		} else if plain != "" {
 			m["secret_key"] = plain
 		}
 	}
@@ -401,7 +408,9 @@ func decryptConfigJSONForRuntime(ctx context.Context, cfg string) string {
 				continue
 			}
 			if enc, ok := cm["api_key_enc"].(string); ok && strings.TrimSpace(enc) != "" {
-				if plain, err := decryptCredential(ctx, enc); err == nil && plain != "" {
+				if plain, err := c.decryptCredential(ctx, enc); err != nil {
+					event.SysLogWarn("credential.decrypt", "ha_candidate api_key 解密失败", event.P("error", err.Error()))
+				} else if plain != "" {
 					cm["api_key"] = plain
 				}
 			}
@@ -410,7 +419,7 @@ func decryptConfigJSONForRuntime(ctx context.Context, cfg string) string {
 		m["ha_candidates"] = cands
 	}
 	out, _ := json.Marshal(m)
-	return string(out)
+	return string(out), nil
 }
 
 func asString(v any) string {
@@ -423,7 +432,11 @@ func sanitizeProviderModelForAPI(m ProviderModel) ProviderModel {
 	return m
 }
 
-func prepareProviderModelForRuntime(ctx context.Context, m ProviderModel) ProviderModel {
-	m.ConfigJSON = decryptConfigJSONForRuntime(ctx, m.ConfigJSON)
-	return m
+func (c *CredentialCrypto) PrepareProviderModelForRuntime(ctx context.Context, m ProviderModel) (ProviderModel, error) {
+	decrypted, err := c.DecryptConfigJSONForRuntime(ctx, m.ConfigJSON)
+	if err != nil {
+		return ProviderModel{}, err
+	}
+	m.ConfigJSON = decrypted
+	return m, nil
 }

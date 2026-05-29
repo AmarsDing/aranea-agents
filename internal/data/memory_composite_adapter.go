@@ -12,6 +12,8 @@ type MemoryCompositeRecallAdapter struct {
 	store *sessionmemory.Store
 }
 
+var _ biz.SessionCompositeRecallStore = (*MemoryCompositeRecallAdapter)(nil)
+
 func NewMemoryCompositeRecallAdapter(store *sessionmemory.Store) biz.SessionCompositeRecallStore {
 	if store == nil {
 		return nil

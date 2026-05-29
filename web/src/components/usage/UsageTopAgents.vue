@@ -6,7 +6,10 @@
     </q-card-section>
     <q-separator class="overview-separator" />
     <q-list separator class="overview-rank-list">
-      <q-item v-for="row in rows" :key="row.agent_id || row.agent_key">
+      <q-item v-for="(row, idx) in rows" :key="row.agent_id || row.agent_key">
+        <q-item-section avatar class="overview-rank-index">
+          <span class="overview-rank-badge" :class="{ 'overview-rank-badge--top': idx < 3 }">{{ idx + 1 }}</span>
+        </q-item-section>
         <q-item-section avatar>
           <q-avatar class="overview-agent-avatar" icon="smart_toy" />
         </q-item-section>

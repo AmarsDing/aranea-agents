@@ -20,7 +20,7 @@ func (h *ChannelIngress) handleLINEWebhook(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	channelSecret, _ := resolveCredentialPlain(r.Context(), creds, "channel_secret")
+	channelSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "channel_secret")
 	if err := line.VerifySignature(channelSecret, string(raw), r.Header.Get("X-Line-Signature")); err != nil {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil

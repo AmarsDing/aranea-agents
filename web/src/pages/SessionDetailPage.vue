@@ -25,7 +25,7 @@
             <q-badge :color="statusBadgeColor(session.status)">{{ session.status }}</q-badge>
           </div>
           <div class="text-caption text-grey-7 q-mt-xs">
-            {{ session.id }} · 创建 {{ formatDate(session.created_at) }} · 最后活跃 {{ formatDate(session.last_message_at || session.updated_at) }}
+            {{ session.id }} · 创建 {{ formatSessionDate(session.created_at) }} · 最后活跃 {{ formatSessionDate(session.last_message_at || session.updated_at) }}
           </div>
         </div>
         <div class="row q-gutter-sm">
@@ -135,6 +135,7 @@ import {
   formatCostMicroUsd,
   formatNumber,
   formatPercent,
+  formatSessionDate,
   ownerChipColor,
   ownerLabel,
   ratioValue,
@@ -162,10 +163,5 @@ const {
   timelinePanel
 } = useSessionDetailPage();
 
-function formatDate(value: string) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString();
-}
+
 </script>

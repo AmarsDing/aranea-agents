@@ -14,7 +14,7 @@
           <div class="row items-center q-gutter-sm">
             <span class="text-caption text-weight-bold">{{ roleLabel(msg.role) }}</span>
             <span v-if="msg.model_name" class="text-caption text-grey-6">{{ msg.model_name }}</span>
-            <span class="text-caption text-grey-6">{{ formatDate(msg.created_at) }}</span>
+            <span class="text-caption text-grey-6">{{ formatSessionDate(msg.created_at) }}</span>
             <q-badge v-if="msg.status !== 'ok'" :color="msg.status === 'error' ? 'negative' : 'warning'" outline>{{ msg.status }}</q-badge>
           </div>
           <div class="session-message-row__content" v-html="renderMarkdown(msg.content_markdown)"></div>
@@ -33,6 +33,7 @@
 import { toRef } from "vue";
 import { useSessionMessagesPanel } from "../../features/session/useSessionMessagesPanel";
 import { renderChatMarkdown } from "../../features/chat/chatMessageMarkdown";
+import { formatSessionDate } from "./sessionUi";
 
 const props = defineProps<{ sessionId: string }>();
 
@@ -49,10 +50,5 @@ function roleLabel(role: string) {
   return role;
 }
 
-function formatDate(value: string) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString();
-}
+
 </script>

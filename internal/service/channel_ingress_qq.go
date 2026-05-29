@@ -24,7 +24,7 @@ func (h *ChannelIngress) handleQQWebhook(w http.ResponseWriter, r *http.Request,
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	appSecret, _ := resolveCredentialPlain(r.Context(), creds, "app_secret")
+	appSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "app_secret")
 	if err := qq.VerifyRequest(appSecret, r.Header, raw); err != nil {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil

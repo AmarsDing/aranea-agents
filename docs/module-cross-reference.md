@@ -1,0 +1,591 @@
+# Aranea-Agents 模块开发交叉参考手册
+
+> **定位**：AI 开发某个模块时，快速定位所有关联模块、共享契约和变更影响面。
+> **与蓝图的关系**：蓝图描述"模块是什么"，本手册描述"改模块 X 时必须注意谁"。
+> **编码规范**：详见 SKILLs，本文聚焦**跨模块关联**。
+
+---
+
+## 使用方法
+
+1. 找到你要开发的模块卡片
+2. 检查 **上游依赖**：你调用了谁的接口？改了签名谁会断？
+3. 检查 **下游影响**：谁依赖你的接口？改了谁会崩？
+4. 检查 **共享契约**：你修改的类型/事件是否被其他模块消费？
+5. 检查 **事件契约**：你新增/修改的事件类型是否在消费方处理？
+6. 检查 **前端对应**：后端改动是否需要前端同步？
+
+---
+
+## 一、后端模块开发上下文卡片
+
+### 1.1 Agent 构建 (`internal/agent/`)
+
+**职责**：将 biz.Agent + 依赖构建为 trpcagent.Agent，创建 Runner，执行 Turn。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（Agent/Tool/Memory/Skill 类型）、`provider`（LLM 模型）、`tools`（工具装配）、`skill/trpc`（技能过滤）、`plugin/trpc`（插件回调）、`knowledge`（知识检索）、`event`（日志）、`session`（会话服务）、`memory/trpc`（记忆服务） |
+| **下游影响** | `service/chat`（ChatOrchestrator 调用 BuildTRPCAgent）、`team`（BuildTeamMemberAgents 调用 BuildTRPCAgent）、`a2a`（A2A invoker 构建 Agent） |
+| **核心导出** | `BuildTRPCLLMAgent()`、`NewTRPCRunner()`、`RunTRPCUserTurn()`、`TRPCBuilderDeps`、`TRPCRunnerDeps` |
+| **实现接口** | 无（直接被 Service 层调用，不实现 biz 端口） |
+| **共享类型** | `TRPCBuilderDeps`（6 组子依赖 DTO，被 service/chat 和 team 共享） |
+| **事件生产** | 不直接生产事件（Runner 产出的事件由 Service 层投递到 EventBus） |
+| **事件消费** | 无 |
+| **数据库** | 无直接访问（通过 biz Repo 间接访问） |
+| **前端对应** | ChatPage（对话执行）、AgentSettingsPage（Agent 配置影响构建） |
+
+**⚠️ 开发注意**：
+- 修改 `TRPCBuilderDeps` 结构体时，必须同步更新 `service/chat_wire.go` 的 `provideChatServiceDeps` 和 `team/trpc_build.go`
+- 修改 Prompt 层级（L1-L4）时，影响所有 Agent 的系统提示词，需回归测试 Chat + Team
+- 新增 `llmagent.Option` 时，检查 `BuildTRPCLLMAgent` 是否已传递该选项
+
+---
+
+### 1.2 工具装配 (`internal/tools/`)
+
+**职责**：工具注册中心 + Assemble 装配。18 个内置工具 + AgentTool + MCP + Custom。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（Tool/Agent 类型）、`pkg/trpc-agent-go/tool`（框架工具 API） |
+| **下游影响** | `agent`（BuildTRPCAgent 调用 Assemble 获取工具列表）、`service/chat`（工具策略解析）、`team`（Team 成员工具装配） |
+| **核心导出** | `Registry()`、`Assemble()`、`AssemblyConfig`、`ToolRegistration`、`builtin_tools_seed.go` |
+| **共享类型** | `AssemblyConfig`（被 agent 和 service/chat 共享）、`AssembledToolsets` |
+| **事件生产** | 无 |
+| **事件消费** | 无 |
+| **数据库** | 无直接访问（工具配置通过 biz ToolUsecase 获取） |
+| **前端对应** | ToolsPage（工具目录）、AgentSettingsPage（工具策略配置） |
+
+**⚠️ 开发注意**：
+- 新增工具必须先在 `Registry()` 注册 `ToolRegistration` + `builtin_tools_seed.go` 添加种子
+- Chat 和 Team 共用同一 `BuildToolsets` 逻辑，新增工具必须验证两处生效
+- 修改 `AssemblyConfig` 结构体时，同步更新 `tools/trpc/toolsets.go` 的适配层
+
+---
+
+### 1.3 LLM Provider (`internal/provider/`)
+
+**职责**：LLM 模型工厂，将 biz Provider 配置转换为 trpcmodel.Model。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（LlmProviderModelUsecase/Repo 类型）、`event`（日志） |
+| **下游影响** | `agent`（BuildTRPCAgent 调用 TRPCModelForProviderModel）、`runtime`（providers.go） |
+| **核心导出** | `TRPCModelForProviderModel()`、`Catalog`、`WrapModelWithMetrics()` |
+| **共享类型** | 无（返回框架 `trpcmodel.Model` 接口） |
+| **事件生产** | 无 |
+| **事件消费** | 无 |
+| **数据库** | 无直接访问（通过 biz LlmProviderModelUsecase 获取配置） |
+| **前端对应** | ResourceManagerPage（Provider/Model 管理） |
+
+**⚠️ 开发注意**：
+- 新增 Provider 类型时，需在 `trpc_llm.go` 的 `MapProviderType` 添加映射
+- HA 策略（Failover/Hedge）配置在 `LlmProviderModelUsecase` 的 CatalogConfig 中
+- Provider 连接问题不会导致编译错误，但会在运行时影响所有使用该 Provider 的 Agent
+
+---
+
+### 1.4 记忆服务 (`internal/memory/`)
+
+**职责**：5 层记忆系统适配器，提供记忆 CRUD + 6 个记忆工具 + 自动提取。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（Memory 类型）、`pkg/trpc-agent-go/memory`（框架记忆 API） |
+| **下游影响** | `agent`（MemoryService.Tools() 注入记忆工具）、`service/chat`（记忆管理 API）、`service/memory`（L4 级联管理） |
+| **核心导出** | `NewSQLiteMemoryService()`、`Service.Tools()`、`Service.EnqueueAutoMemoryJob()` |
+| **共享类型** | `trpcmemory.Service` 接口（被 agent 和 service 共享） |
+| **事件生产** | 无直接生产（记忆提取通过 EventBus 异步触发） |
+| **事件消费** | 记忆提取 Worker 消费 `runner_completion` 事件 |
+| **数据库** | SQLite（memory_facts/memory_entities/memory_l4_graph）+ PostgreSQL（embedding 向量） |
+| **前端对应** | MemoryCenterPage（5 层记忆浏览）、AgentSettingsPage（记忆策略配置） |
+
+**⚠️ 开发注意**：
+- 记忆写入必须经 broker/async 异步写（红线 #3），禁止在 plugin 回调中直接写库
+- 记忆工具通过 `service.Tools()` 注入，不手动构造
+- 修改记忆层级结构时，需同步更新前端 MemoryCenterPage 的 5 个 Tab
+
+---
+
+### 1.5 会话存储 (`internal/session/`)
+
+**职责**：适配 trpcsession.Service，提供会话快照读写。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（Session 类型）、`pkg/trpc-agent-go/session`（框架会话 API） |
+| **下游影响** | `agent`（NewTRPCRunner 注入 SessionService）、`service/chat`（会话持久化） |
+| **核心导出** | `SQLiteSessionService`、`Service` 接口实现 |
+| **共享类型** | `trpcsession.Service` 接口 |
+| **事件生产** | 无 |
+| **事件消费** | 无 |
+| **数据库** | SQLite（sessions/messages/session_turns/session_runs） |
+| **前端对应** | SessionsPage、ChatPage（会话列表 + 消息展示） |
+
+---
+
+### 1.6 Chat 服务 (`internal/service/chat*.go`)
+
+**职责**：Chat 传输桥点 + Runner 装配入口。实现所有 Turn 相关端口接口。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（全部 Turn/Session/Agent/Channel 端口接口）、`agent`（BuildTRPCAgent/NewTRPCRunner）、`tools`（Assemble）、`provider`（Model）、`runtime`（TurnDeps）、`team`（TeamOrchestrationDeps）、`event`（Infra）、`memory`（MemoryService）、`session`（SessionService）、`knowledge`（检索）、`plugin/trpc`（Manager）、`skill/trpc`（Filter） |
+| **下游影响** | **几乎所有模块**：Channel/Cron/A2A/WS/DurableWorker 通过端口接口依赖 ChatService |
+| **核心导出** | `ChatService`（实现 7 个 biz 端口接口）、`ChatOrchestrator`（实现 `biz.TurnExecutor`） |
+| **实现接口** | `NativeTurnGateway`、`TurnExecutorGateway`、`TurnRunControlGateway`、`TurnGateway`、`TurnControlGateway`、`DurableResumeGateway`、`A2ARunnerFactory` |
+| **共享类型** | `TurnInput`（被 Channel/Cron/A2A/WS 共享的传输中立输入） |
+| **事件生产** | **全部聊天事件**：text_delta、tool_call、tool_result、runner_completion、context_usage、error、run_status 等 |
+| **事件消费** | 会话投影（SessionProjectionAdapter 消费事件持久化消息） |
+| **数据库** | 无直接访问（通过 biz Usecase 间接访问） |
+| **前端对应** | ChatPage（对话界面 + WS 实时流） |
+
+**⚠️ 开发注意**：
+- **最关键的模块**：修改 ChatService 的任何方法签名，可能影响 Channel/Cron/A2A/WS/DurableWorker
+- 新增 Turn 入口点时，必须同步更新 `TurnEntryPointConfig` 和 `ChatOrchestrator.ExecuteTurn` 的准入逻辑
+- 修改 `TurnInput` 结构体时，所有调用方（Channel/Cron/A2A/WS）都需要同步更新
+- 修改事件类型时，前端 `realtime/envelope.ts` 和 `features/chat/` 的流处理器需要同步
+
+---
+
+### 1.7 Channel 渠道 (`internal/channel/` + `internal/service/channel*.go`)
+
+**职责**：12+ IM 平台适配 + 入站消息处理 + 出站消息投递。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（Channel 类型、NativeTurnGateway/TurnControlGateway 端口、GraphExecutor 端口）、`event`（Infra） |
+| **下游影响** | 无（Channel 是终端消费者，不被其他模块依赖） |
+| **核心导出** | `Runner`/`OutboundText`/`InboundHandler` 接口、各平台适配器 |
+| **消费接口** | `NativeTurnGateway`（执行 Turn）、`TurnControlGateway`（卡片操作）、`GraphExecutor`（Graph 执行）、`CronTriggerGateway`（触发定时任务） |
+| **共享类型** | `InboundEvent`、`OutboundMessage`、`port.Meta` |
+| **事件生产** | `channel_inbound`、`channel_outbound`、`channel_delivery` |
+| **事件消费** | 无 |
+| **数据库** | 通过 biz ChannelUsecase 访问（channels/channel_credentials/channel_deliveries/channel_turn_jobs） |
+| **前端对应** | ChannelsPage（渠道管理） |
+
+**⚠️ 开发注意**：
+- 新增平台适配器时，在 `channel/all/all.go` 注册，实现 `Runner` + `OutboundText` 接口
+- Channel 不持有 `*ChatService` 具体类型，通过 `biz.NativeTurnGateway` 端口交互
+- 入站消息处理链：`ProcessInbound` → 路由匹配 → `ExecuteTurn` → 事件流 → 出站投递
+
+---
+
+### 1.8 Team 多 Agent (`internal/team/`)
+
+**职责**：Team 编排，6 种模式（Sequential/Parallel/Coordinator/CriticLoop/Swarm/Adaptive）。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（Team 类型、AgentIDExistenceChecker 端口）、`agent`（BuildTeamMemberAgents）、`provider`（LLM 模型）、`tools`（工具装配）、`skill/trpc`（技能过滤）、`event`（日志）、`graph/trpc`（Graph 编译路径） |
+| **下游影响** | `service/team`（TeamService 调用 Team Runner） |
+| **核心导出** | `BuildWorkflowRoot()`、`BuildTeamMemberAgents()`、`BuildTRPCTeam()`（Deprecated 回退） |
+| **消费接口** | `AgentIDExistenceChecker`（验证成员 Agent 存在，Wire 绑定到 AgentRepository） |
+| **共享类型** | `TeamDefinition`、`TeamRunResult` |
+| **事件生产** | `team_run_started`、`team_run_finished`、`team_run_failed`、`team_step_started`、`team_step_finished`、`member_message_start/delta/done`、`team_summary` |
+| **事件消费** | 无 |
+| **数据库** | 通过 biz TeamUsecase 访问（teams/team_runs/team_run_steps） |
+| **前端对应** | TeamsPage、TeamOrchestratePage、TeamRunObservatoryPage |
+
+**⚠️ 开发注意**：
+- 当前默认使用 **GraphAgent 编译路径**，原生路径为紧急回退
+- 修改 Team 编排逻辑时，需同时验证 Graph 编译路径和原生回退路径
+- Team 事件类型（team_run_*、member_message_*）被前端 TeamsPage 和 MonitorPage 消费
+
+---
+
+### 1.9 Graph 图编排 (`internal/graph/`)
+
+**职责**：可视化图定义 + 执行引擎 + HITL + 检查点 + 时间旅行。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（Graph 类型、GraphBuildConfig/GraphRuntime 端口）、`agent`（Agent 节点构建）、`event`（事件桥接）、`trpc-agent-go/graph`（框架 Graph API） |
+| **下游影响** | `service/graph`（GraphService 调用 Builder）、`team`（Graph 编译路径）、`biz/graph.go`（GraphUsecase） |
+| **核心导出** | `Builder`、`BuildAndRun()`、`BuildRuntime()`、`Visualize()`、`Validate()`、`ListTemplates()` |
+| **实现接口** | `biz.GraphBuilderFactory`（被 GraphUsecase 和 Team 消费） |
+| **共享类型** | `GraphDefinition`、`GraphExecution`、`NodeDef`、`EdgeDef`、`Task` |
+| **事件生产** | `graph_node_start`、`graph_node_end`、`graph_node_error`、`graph_step`、`graph_execution_done`、`graph_task_status`、`checkpoint` |
+| **事件消费** | 无 |
+| **数据库** | 通过 biz GraphUsecase 访问（graph_executions/graph_tasks/graph_task_events） |
+| **前端对应** | GraphsPage、GraphEditorPage、GraphRunPage、GraphExecutionsPage |
+
+**⚠️ 开发注意**：
+- Graph 执行引擎同时被 **GraphService**（直接执行）和 **Team**（编译路径）消费
+- 修改节点类型时，需同步更新前端 `GraphEditorCanvas` 的节点组件
+- HITL 任务节点产生的 `Task` 被前端 `GraphRunPage` 消费
+
+---
+
+### 1.10 Cron 定时任务 (`internal/cronrunner/`)
+
+**职责**：Cron 调度 + 定时触发 Agent Turn。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（Cron 类型、NativeTurnGateway 端口）、`event`（日志） |
+| **下游影响** | 无（Cron 是终端消费者） |
+| **消费接口** | `NativeTurnGateway`（执行定时 Turn） |
+| **共享类型** | 无 |
+| **事件生产** | `cron_task_triggered`、`cron_task_completed`、`cron_task_failed` |
+| **事件消费** | 无 |
+| **数据库** | 通过 biz CronUsecase 访问（cron_tasks/cron_task_runs） |
+| **前端对应** | CronTasksPage、CronRunsPage |
+
+---
+
+### 1.11 A2A 协议 (`internal/a2a/`)
+
+**职责**：Agent-to-Agent 通信协议（Agent Card、远程调用、Graph 恢复）。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（A2A 类型、A2ARunnerFactory 端口）、`agent`（Agent 构建）、`graph`（Graph 恢复）、`event`（日志） |
+| **下游影响** | `service/a2a`（A2AService 调用 A2A invoker） |
+| **消费接口** | `biz.A2ARunnerFactory`（构建 A2A Runner，Wire 绑定到 ChatService） |
+| **共享类型** | `AgentCard`、`TaskState`、`Message`（A2A 协议类型） |
+| **事件生产** | 无直接生产（通过 A2ARunnerFactory 间接使用 Chat 事件流） |
+| **事件消费** | 无 |
+| **数据库** | 通过 biz A2AUsecase 访问（a2a_endpoints） |
+| **前端对应** | A2APage |
+
+---
+
+### 1.12 事件系统 (`internal/event/`)
+
+**职责**：双总线（SessionBus + MonitorBus）发布/订阅，事件缓冲，Flow Log。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | 无（基础设施层，不依赖业务模块） |
+| **下游影响** | **所有模块**：chat/channel/team/graph/monitor/memory/plugin 都依赖 EventBus |
+| **核心导出** | `Infra`（双总线）、`Bus` 接口、`Buffer`、`Envelope`、`EnvelopeType`（30+ 事件类型常量）、`FlowLog`、`SysLog*`/`SessionSysLog*` |
+| **共享类型** | `Envelope`（所有事件消费者共享）、`EnvelopeType`（事件类型枚举） |
+| **事件生产** | 不生产业务事件（只提供基础设施） |
+| **事件消费** | 不消费业务事件（Bus 本身是传输层） |
+| **数据库** | FlowLogRepo（flow_log_events 表） |
+| **前端对应** | MonitorPage（Flow Log 展示）、ChatPage（WS 事件流） |
+
+**⚠️ 开发注意**：
+- 新增 `EnvelopeType` 常量时，必须同步更新前端 `realtime/envelope.ts` 的类型定义
+- 修改 `Envelope` 结构体时，影响所有事件消费者（chat/session/monitor/plugin）
+- 修改 Bus 投递策略时，需回归测试 WS 推送的实时性
+
+---
+
+### 1.13 知识库 (`internal/knowledge/`)
+
+**职责**：文档摄入管线（上传 → OCR → 分块 → Embedding → pgvector → 检索）。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（Knowledge 类型）、`provider`（Embedding 模型） |
+| **下游影响** | `agent`（知识注入 Prompt L4 层）、`service/knowledge`（Knowledge API） |
+| **核心导出** | `Ingest()`、`Retriever`、`Chunker` |
+| **共享类型** | `Chunk`、`RetrievalResult` |
+| **事件生产** | `knowledge_ingest` |
+| **事件消费** | 无 |
+| **数据库** | 通过 biz KnowledgeUsecase 访问（knowledge_bases/knowledge_documents + pgvector chunks） |
+| **前端对应** | KnowledgePage |
+
+---
+
+### 1.14 Plugin 插件 (`internal/plugin/`)
+
+**职责**：Plugin 生命周期管理 + 回调链（audit/modify/notify）+ 费用守卫。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（Plugin 类型）、`event`（日志）、`trpc-agent-go/plugin`（框架 Plugin API） |
+| **下游影响** | `agent`（PluginManager 注入到 Runner）、`service/plugin`（Plugin API） |
+| **核心导出** | `Manager`、`Registry()`、`CostGuard` |
+| **共享类型** | `PluginConfig`、`HookResult` |
+| **事件生产** | `plugin_hook_audit`、`plugin_hook_modify`、`plugin_hook_notify` |
+| **事件消费** | 无 |
+| **数据库** | 通过 biz PluginUsecase 访问（plugins/plugin_runs） |
+| **前端对应** | PluginsPage、PluginRunsPage |
+
+---
+
+### 1.15 评估系统 (`internal/evaluation/`)
+
+**职责**：LLM Judge 评估框架（数据集 → 运行 → 评分 → 统计）。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（Evaluation 类型）、`agent`（构建评估 Agent） |
+| **下游影响** | `service/evaluation`（Evaluation API） |
+| **核心导出** | `Runner`、`Scores`、`LLMJudge` |
+| **共享类型** | `EvaluationRun`、`EvaluationResult` |
+| **事件生产** | 无 |
+| **事件消费** | 无 |
+| **数据库** | 通过 biz EvalUsecase 访问 |
+| **前端对应** | EvaluationPage |
+
+---
+
+### 1.16 Monitor 监控 (`internal/service/monitor*.go` + `internal/biz/monitor/`)
+
+**职责**：Flow Log、Trace 投影、告警规则评估、通知。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（Monitor 类型）、`event`（MonitorBus 消费） |
+| **下游影响** | 无（Monitor 是终端消费者） |
+| **核心导出** | `MonitorUsecase`、`AlertEvaluator`、`AlertNotifier` |
+| **共享类型** | `FlowLogEntry`、`AlertRule`、`TraceEvent` |
+| **事件生产** | `alert_notify` |
+| **事件消费** | 消费 MonitorBus 的 `flow_log`、`log` 事件；消费 `alert_notify` 触发通知 |
+| **数据库** | 通过 biz MonitorUsecase 访问（monitor_events/monitor_traces/monitor_alert_rules） |
+| **前端对应** | MonitorPage（日志 + 告警 + Trace） |
+
+---
+
+## 二、前端模块开发上下文卡片
+
+### 2.1 Chat 域（最复杂的前端域）
+
+**涉及文件**：`features/chat/api.ts`、`stores/chat/`（4 个 Store）、`components/chat/`（35+ 组件）、`realtime/`
+
+| 维度 | 内容 |
+|------|------|
+| **Store 拆分** | `useChatSessionStore`（会话列表）、`useChatMessageStore`（消息）、`useChatRuntimeStore`（运行时控制）、`useChatConversationStore`（WS 投影） |
+| **跨 Store 通信** | `sessionSync` 事件总线（与 SessionStore 同步）、AppStore → ChatSessionStore（Agent 切换重置） |
+| **WS 事件消费** | text_delta、tool_call、tool_result、runner_completion、context_usage、error、run_status、intent_pass、member_message_*、team_run_* |
+| **后端对应** | ChatService（HTTP API + WS /v1/ws） |
+| **共享类型** | `Message`、`ChatOption`、`RunStatus`（定义在 features/chat/api.ts） |
+
+**⚠️ 开发注意**：
+- 消息分组必须使用堆栈模型（`groupMessagesByTurn` 按 `role=user` 边界），禁止使用 `turn_index`
+- in-flight 消息（pending-user-*/ws-stream-*/member-*）排序在持久化消息之后
+- 修改 `Envelope` 类型时，需同步 `realtime/envelope.ts`
+
+---
+
+### 2.2 Agent 域
+
+**涉及文件**：`features/agents/api.ts`、`stores/agents/`（3 个 Store）、`components/agents/`（25 组件）
+
+| 维度 | 内容 |
+|------|------|
+| **Store 拆分** | `useAppStore`（全局 Agent 列表 + 选中）、`useAgentsPageStore`（列表页筛选）、`useAgentDetailStore`（设置页详情） |
+| **跨 Store 通信** | AppStore → ChatSessionStore/ChatMessageStore（Agent 切换重置）、AgentsPageStore → AppStore（upsertAgent） |
+| **后端对应** | AgentService（CRUD）+ ChatService（对话） |
+| **共享类型** | `Agent`、`AgentRuntimeSettings`、`AgentPromptFile` |
+
+---
+
+### 2.3 Graph 域
+
+**涉及文件**：`features/graph/api.ts`、`stores/graph/`、`components/graph/`（18 组件）
+
+| 维度 | 内容 |
+|------|------|
+| **Store** | `useGraphStore`（图列表 + 编辑 + 执行 + 检查点 + 任务） |
+| **WS 事件消费** | graph_node_start/end/error、graph_step、graph_execution_done、graph_task_status、checkpoint |
+| **后端对应** | GraphService（CRUD + 执行 + 任务） |
+| **共享类型** | `GraphDefinition`、`GraphExecution`、`NodeDef`、`Task` |
+
+**⚠️ 开发注意**：
+- Graph 编辑器使用 Vue Flow 库，节点组件在 `components/graph/`
+- 修改后端 `NodeDef` 类型时，需同步前端节点组件的 props
+
+---
+
+### 2.4 Team 域
+
+**涉及文件**：`features/teams/api.ts`、`stores/teams/`、`components/teams/`（9 组件）
+
+| 维度 | 内容 |
+|------|------|
+| **Store 拆分** | `useTeamsStore`（列表）、`useTeamsPageStore`（页面状态） |
+| **WS 事件消费** | team_run_started/finished/failed、team_step_started/finished、member_message_*、team_summary |
+| **后端对应** | TeamService（CRUD + 运行） |
+| **共享类型** | `Team`、`TeamRun`、`TeamRunStep` |
+
+---
+
+### 2.5 Monitor 域
+
+**涉及文件**：`features/monitor/api.ts`、`stores/monitor/`、`components/monitor/`（17 组件）
+
+| 维度 | 内容 |
+|------|------|
+| **Store** | `useMonitorStore`（日志 + 告警 + Trace + 运行时指标） |
+| **WS 事件消费** | flow_log、log、alert_notify、mcp_health_alert（通过 globalWsHub session_id=*） |
+| **后端对应** | MonitorService + EventService |
+| **跨 Store 依赖** | `listChannels`（从 channels/api 获取告警渠道选项） |
+
+---
+
+### 2.6 实时通信层 (`realtime/`)
+
+**涉及文件**：`ws-transport.ts`、`globalWsHub.ts`、`useEnvelopeStream.ts`、`dispatcher.ts`、`envelope.ts`
+
+| 维度 | 内容 |
+|------|------|
+| **核心导出** | `createEnvelopeStream()`、`useEnvelopeStream()`、`EnvelopeDispatcher`、`Envelope` 类型、46 种 `EnvelopeType` |
+| **消费方** | Chat（会话流）、Monitor（日志流）、Teams（运行流）、Graph（执行流）、Orchestration（编排流） |
+| **后端对应** | WSServer (`internal/server/ws.go`) + EventBus (`internal/event/`) |
+
+**⚠️ 开发注意**：
+- 新增 `EnvelopeType` 时，必须同时更新：后端 `internal/event/envelope.go` + 前端 `realtime/envelope.ts`
+- `globalWsHub` 使用引用计数，`acquireGlobalWsConsumer`/`releaseGlobalWsConsumer` 必须配对调用
+
+---
+
+## 三、跨模块变更影响速查表
+
+### 3.1 修改 biz 层端口接口时
+
+| 修改的接口 | 影响的模块 | 需要同步更新 |
+|-----------|-----------|-------------|
+| `TurnExecutorGateway` | WSServer | `internal/server/ws.go` 字段类型 + 测试 stub |
+| `TurnRunControlGateway` | DurableWorker | `internal/service/session_run_durable_worker.go` + `cmd/admin/wire.go` |
+| `TurnControlGateway` | ChannelIngress | `internal/service/channel_ingress.go` |
+| `NativeTurnGateway` | Channel/Cron | `internal/service/channel_ingress.go` + `internal/service/cron.go` |
+| `DurableResumeGateway` | DurableWorker | `internal/service/session_run_durable_worker.go` |
+| `A2ARunnerFactory` | A2AService | `internal/service/a2a_endpoint.go` |
+| `CronTriggerGateway` | ChannelIngress | `internal/service/channel_ingress.go` |
+| `GraphExecutor` | Channel/Cron | `internal/service/channel_ingress.go` + `internal/service/cron.go` |
+| `GraphBuilderFactory` | GraphUsecase + Team | `internal/biz/graph.go` + `internal/team/` |
+| `AgentIDExistenceChecker` | TeamUsecase | `internal/biz/team_usecase.go` |
+
+### 3.2 修改共享类型时
+
+| 修改的类型 | 定义位置 | 影响的模块 |
+|-----------|---------|-----------|
+| `TurnInput` | `biz/turn_input.go` | ChatService、ChannelIngress、CronService、A2AService、WSServer |
+| `TurnResult` | `biz/turn_input.go` | ChatOrchestrator、ChannelIngress |
+| `NativeTurnResult` | `biz/native_turn_result.go` | ChatOrchestrator、ChannelIngress |
+| `Envelope` | `event/envelope.go` | 所有事件生产者/消费者 + 前端 `realtime/envelope.ts` |
+| `EnvelopeType` | `event/envelope.go` | 所有事件生产者/消费者 + 前端 `realtime/envelope.ts` |
+| `Agent` | `biz/agent_types.go` | AgentUsecase、ChatOrchestrator、Team、A2A、前端 |
+| `Tool` | `biz/tool/tool.go` | ToolUsecase、ChatOrchestrator、前端 |
+| `GraphDefinition` | `biz/graph.go` | GraphUsecase、GraphService、Team、前端 |
+| `TeamDefinition` | `biz/team_types.go` | TeamUsecase、TeamService、前端 |
+
+### 3.3 修改事件类型时
+
+| 新增/修改的事件 | 生产者 | 消费者 | 前端处理 |
+|---------------|--------|--------|---------|
+| `text_delta` | ChatOrchestrator | WS 推送、SessionProjection | ChatMessageStore 追加流式文本 |
+| `tool_call` / `tool_result` | ChatOrchestrator | WS 推送、SessionProjection | ChatMessageStore 显示工具步骤 |
+| `runner_completion` | ChatOrchestrator | WS 推送、MemoryWorker | ChatRuntimeStore 触发 loadMessages |
+| `graph_node_*` | Graph Builder | WS 推送 | GraphStore 更新节点状态 |
+| `team_run_*` | Team Runner | WS 推送 | TeamsStore 更新运行状态 |
+| `alert_notify` | Monitor | WS 推送 + Channel 通知 | InboundNotificationStore |
+| `flow_log` | 任意模块 | MonitorBus → FlowLogRepo | MonitorPage 日志展示 |
+
+### 3.4 修改数据库 Schema 时
+
+| 修改的表 | Ent Schema | 影响的 Repo | 影响的 Usecase | 影响的前端 |
+|---------|-----------|------------|---------------|-----------|
+| agents | ✅ | AgentRepo | AgentUsecase | AgentsPage |
+| sessions | ✅ | SessionRepo | SessionUsecase | ChatPage/SessionsPage |
+| messages | ✅ | SessionRepo | SessionUsecase | ChatPage |
+| teams | ✅ | TeamRepo | TeamUsecase | TeamsPage |
+| tools | ✅ | ToolRepo | ToolUsecase | ToolsPage |
+| channels | ✅ | ChannelRepo | ChannelUsecase | ChannelsPage |
+| cron_tasks | ✅ | CronRepo | CronUsecase | CronTasksPage |
+| hooks | ✅ | HookRepo | HookUsecase | HooksPage |
+| plugins | ✅ | PluginRepo | PluginUsecase | PluginsPage |
+| memory_* | 原生 SQL | MemoryRepo | MemoryUsecase | MemoryCenterPage |
+| graph_* | 原生 SQL | GraphRepo | GraphUsecase | GraphsPage |
+| flow_log_events | 原生 SQL | FlowLogRepo | MonitorUsecase | MonitorPage |
+
+---
+
+## 四、前后端对齐速查
+
+| 后端 Service | Proto 包 | 前端 Service 工厂 | 前端 Store | 前端页面 |
+|-------------|---------|-----------------|-----------|---------|
+| ChatService | chat/v1 | createChatService | useChatSessionStore + useChatMessageStore + useChatRuntimeStore + useChatConversationStore | ChatPage |
+| AgentService | agent/v1 | createAgentService | useAppStore + useAgentsPageStore + useAgentDetailStore | AgentsPage + AgentSettingsPage |
+| TeamService | team/v1 | createTeamService | useTeamsStore + useTeamsPageStore | TeamsPage + TeamOrchestratePage |
+| GraphService | graph/v1 | createGraphService | useGraphStore | GraphsPage + GraphEditorPage + GraphRunPage |
+| SessionService | session/v1 | createSessionService | useSessionStore | SessionsPage |
+| ChannelService | channel/v1 | createChannelService | useChannelsStore | ChannelsPage |
+| ToolService | tool/v1 | createToolService | useToolsStore + useToolDetailStore + useToolEditorStore | ToolsPage |
+| CronService | cron/v1 | createCronService | useCronStore | CronTasksPage |
+| HookService | hook/v1 | createHookService | useHooksStore | HooksPage |
+| PluginService | plugin/v1 | createPluginService | usePluginsStore | PluginsPage |
+| SkillService | skill/v1 | createSkillService | useSkillsStore | SkillsPage |
+| MemoryService | memory/v1 | createMemoryService | useMemoryStore | MemoryCenterPage |
+| KnowledgeService | knowledge/v1 | createKnowledgeService | useKnowledgeStore | KnowledgePage |
+| MonitorService | monitor/v1 | createMonitorService | useMonitorStore | MonitorPage |
+| A2AService | a2a/v1 | createA2AService | useA2AStore | A2APage |
+| LlmProviderModelService | llm_provider_model/v1 | createLlmProviderModelService | usePlatformStore | ResourceManagerPage |
+| UsageService | usage/v1 | createUsageService | useUsageStore | UsageEventsPage |
+| EvaluationService | evaluation/v1 | createEvaluationService | useEvaluationStore | EvaluationPage |
+| EcosystemService | ecosystem/v1 | createEcosystemService | useEcosystemStore | EcosystemPage |
+| ArtifactService | artifact/v1 | createArtifactService | useArtifactStore | ArtifactsPage |
+| MCPServerService | mcp_server/v1 | createMCPServerService | useMcpStore | McpServersPage |
+| SystemSettingService | system_setting/v1 | createSystemSettingService | useSystemSettingsStore | SystemSettingsPage |
+| ModelCatalogService | model_catalog/v1 | createModelCatalogService | usePlatformStore | ResourceManagerPage |
+| AdminService | admin/v1 | createAdminService | useAuthStore | LoginPage |
+
+---
+
+## 五、开发场景速查
+
+### 场景 1：新增一个 LLM Provider
+
+| 步骤 | 模块 | 文件 |
+|------|------|------|
+| 1. 添加 Provider 类型映射 | provider | `internal/provider/trpc_llm.go` MapProviderType |
+| 2. 实现框架 Model 接口 | trpc-agent-go | `pkg/trpc-agent-go/model/<provider>/` |
+| 3. 添加 HA 选项 | provider | `internal/provider/trpc_llm.go` buildProviderOptions |
+| 4. 前端添加选项 | 前端 | `web/src/config/chatOptions.ts` CHAT_MODEL_PROVIDER_OPTIONS |
+| 5. 验证 | 全栈 | 后端 `go build` + 前端 `pnpm build` |
+
+**关联模块**：provider → agent → service/chat → 前端 ChatPage
+
+### 场景 2：新增一个内置工具
+
+| 步骤 | 模块 | 文件 |
+|------|------|------|
+| 1. 注册 ToolRegistration | tools | `internal/tools/registry.go` Registry() |
+| 2. 添加种子数据 | tools | `internal/tools/builtin_tools_seed.go` |
+| 3. 实现 Assemble 覆盖（如需配置） | tools | `internal/tools/toolset.go` Assemble() |
+| 4. 前端工具目录展示 | 前端 | ToolsPage 自动展示（从后端拉取） |
+| 5. 验证 Chat + Team | 全栈 | 两种编排模式都使用 BuildToolsets |
+
+**关联模块**：tools → agent → service/chat + team → 前端 ToolsPage/AgentSettingsPage
+
+### 场景 3：新增一个 Channel 平台
+
+| 步骤 | 模块 | 文件 |
+|------|------|------|
+| 1. 实现适配器 | channel | `internal/channel/<platform>/`（Runner + OutboundText） |
+| 2. 注册到 All | channel | `internal/channel/all/all.go` |
+| 3. 添加渠道 Catalog 图标 | biz | `internal/biz/channelicons/` |
+| 4. 前端渠道类型选项 | 前端 | ChannelsPage 自动展示（从后端拉取 Catalog） |
+| 5. 验证入站+出站 | 全栈 | Webhook → ProcessInbound → ExecuteTurn → SendText |
+
+**关联模块**：channel → biz(NativeTurnGateway) → service/chat → event → 前端 ChannelsPage
+
+### 场景 4：新增一个 Envelope 事件类型
+
+| 步骤 | 模块 | 文件 |
+|------|------|------|
+| 1. 添加 EnvelopeType 常量 | event | `internal/event/envelope.go` |
+| 2. 生产者发布事件 | 对应 Service | 在事件流循环中 Infra.Publish() |
+| 3. 消费者处理事件 | 对应 Consumer | Bus.Subscribe() 或 WS 推送 |
+| 4. 前端类型定义 | 前端 | `web/src/realtime/envelope.ts` |
+| 5. 前端事件处理 | 前端 | 对应 Store/Composable 的 dispatcher.onType() |
+
+**关联模块**：event → 生产者 Service → 消费者 → 前端 realtime → 前端 Store
+
+### 场景 5：修改 TurnInput 结构体
+
+| 步骤 | 模块 | 文件 |
+|------|------|------|
+| 1. 修改 biz 类型定义 | biz | `internal/biz/turn_input.go` TurnInput |
+| 2. 更新所有调用方 | service | ChatService、ChannelIngress、CronService、A2AService |
+| 3. 更新 WS 协议 | server | `internal/server/ws.go` buildBizTurnOptions |
+| 4. 更新前端 WS 发送 | 前端 | ChatComposer 的 WS message 构建 |
+| 5. 验证所有入口 | 全栈 | HTTP Chat + WS Chat + Channel + Cron + A2A |
+
+**关联模块**：biz → service/chat + channel + cron + a2a + server/ws → 前端 ChatPage

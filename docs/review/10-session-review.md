@@ -3,6 +3,8 @@
 > **评分**：79 / 100（基线）| **风险等级**：P1  
 > **Phase 2 增量 Review**（2026-05-24）：**83 / 100** — 见 [2026-05-24-Session-Phase2-Review.md](./2026-05-24-Session-Phase2-Review.md)（Pin / Export / Timeline UNION / Runs / Participants）
 > **O7 接口拆分增量 Review**（2026-05-29）：**86 / 100** — Repository 接口拆分 + Deprecated 清理 + Compressor 窄接口 + 前端分层修复
+> **O8 代码质量修复增量 Review**（2026-05-29）：**89 / 100** — CompressorDeps 窄聚合 + resolveAgentAuthor 提取 + RawDB() 统一 + kerrors 修复 + formatDate 统一
+> **O9 SessionRepo 注释 + data 拆分 + 前端 UX/分层增量 Review**（2026-05-29）：**91 / 100** — SessionRepo 注释明确 + data 层文件拆分 + deep-purple→teal + exportSelectedDetail 迁移 composable
 > **文档**：[10 session.md](../需求/10%20session.md) · [10 session.design.md](../需求/10%20session.design.md) · [10-session-development.md](../需求/10-session-development.md)  
 > **代码锚点**：`internal/service/session.go` · `internal/service/session_observability.go` · `internal/biz/session/` · `internal/data/session_timeline.go`  
 > **审查时间**：2026-05-21（基线）· 2026-05-24（Phase 2 增量）
@@ -14,11 +16,11 @@
 | 维度 | 得分 | 满分 | 评述 |
 |------|------|------|------|
 | 需求符合度 | 17 | 20 | +1：接口拆分提升可维护性 |
-| 架构一致性 | 23 | 25 | +2：窄接口替代宽依赖、Compressor AgentKeyLookup |
-| 后端实现质量 | 18 | 20 | +1：MessageStatusWriter 消除类型断言 |
-| 前端实现质量 | 14 | 15 | +1：分层修复 + Store 瘦身 |
-| 测试与验证 | 7 | 10 | +1：编译期接口检查完备 |
-| 文档一致性 | 7 | 10 | +1：设计文档同步更新 |
+| 架构一致性 | 24 | 25 | +3：窄接口替代宽依赖、CompressorDeps 窄聚合、AgentKeyLookup |
+| 后端实现质量 | 19 | 20 | +2：MessageStatusWriter 消除类型断言、resolveAgentAuthor 提取 + kerrors 修复 |
+| 前端实现质量 | 15 | 15 | +3：分层修复 + Store 瘦身 + formatSessionDate 统一 + deep-purple→teal + exportSelectedDetail 迁移 |
+| 测试与验证 | 8 | 10 | +2：编译期接口检查完备 + data 层拆分后编译验证 |
+| 文档一致性 | 8 | 10 | +2：设计文档同步更新 + SessionRepo 注释明确 |
 
 ---
 
@@ -74,6 +76,25 @@ Session 管理用户与 Agent/Team 的对话上下文，包括：
 | 前端 buildTimelineStats 从 components 迁移至 features 层 | ✅ |
 | 前端 Store 移除 turns/timeline/messages 冗余子资源状态 | ✅ |
 
+### O8 代码质量修复增量（2026-05-29）
+
+| 功能 | 状态 |
+|------|------|
+| CompressorDeps 窄聚合接口（7 子接口替代 54 方法 SessionRepo） | ✅ |
+| resolveAgentAuthor 提取（消除重复 author 解析逻辑） | ✅ |
+| RawDB() 访问器统一（rawDB → RawDB()） | ✅ |
+| channel_peer_session.go kerrors 替换 | ✅ |
+| 前端 formatSessionDate 统一 | ✅ |
+
+### O9 SessionRepo 注释 + data 拆分 + 前端 UX/分层增量（2026-05-29）
+
+| 功能 | 状态 |
+|------|------|
+| SessionRepo 聚合接口注释明确（仅用于 Wire 绑定） | ✅ |
+| data 层 session_repo.go 拆分为 3 文件（主表/消息/状态） | ✅ |
+| 前端 deep-purple → teal（红线 #8 合规） | ✅ |
+| exportSelectedDetail 从 Page 迁移至 composable（红线 #12 合规） | ✅ |
+
 ---
 
 ## 主要风险
@@ -95,7 +116,7 @@ Session 管理用户与 Agent/Team 的对话上下文，包括：
 | SESS-P2-01 | 动态 MCP 挂载工具名未入 catalog 时仅计 `mcp_call` 而非具体工具名 | 文档化此限制，长期在 catalog 层解决 |
 | SESS-P2-02 | 会话详情页 Turns Tab 缺乏筛选 | ✅ Export 已覆盖导出；Runs/Participants Tab 已加 |
 | SESS-R-P2-01~08 | Runs  bypass biz、MCP 启发式、limits dead code、测试缺口 | 见 [Phase2 Review §3](./2026-05-24-Session-Phase2-Review.md#3-问题与风险) |
-| SESS-P2-09 | `NewCompressor` 接收 `SessionRepo` 聚合接口但仅用 7 个子接口 | 为 Compressor 定义专用窄聚合接口 `CompressorDeps` |
+| SESS-P2-09 | `NewCompressor` 接收 `SessionRepo` 聚合接口但仅用 7 个子接口 | ✅ O8 已定义 `CompressorDeps` 窄聚合接口 |
 
 ---
 

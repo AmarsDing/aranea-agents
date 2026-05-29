@@ -122,7 +122,7 @@
         :label="t('chat.inputLabel')"
         type="textarea"
         autogrow
-        :input-style="{ minHeight: '72px' }"
+        :input-style="{ minHeight: '56px' }"
         :dark="isDark"
         :disable="inputDisabled ?? sending"
         @keydown="onInputKeydown"
@@ -130,8 +130,8 @@
         @update:model-value="$emit('update:modelValue', String($event ?? ''))"
       />
 
-      <div class="chat-toolbar chat-toolbar-bar q-mt-sm">
-        <div class="chat-toolbar-fields row items-end no-wrap">
+      <div class="chat-toolbar q-mt-sm">
+        <div class="chat-toolbar-fields row items-center no-wrap">
           <q-select
             :model-value="dialogMode"
             dense
@@ -214,7 +214,7 @@
             class="chat-toolbar-btn chat-toolbar-btn--outline"
             @click="$emit('pick-file')"
           >
-            <q-icon name="attach_file" size="20px" />
+            <q-icon name="attach_file" size="18px" />
             <q-tooltip>{{ fileSupported === false ? t('chat.fileNotSupported') : (fileAccept ? t('chat.limitedFileTypes') : artifactMaxSizeHint()) }}</q-tooltip>
           </q-btn>
           <q-btn
@@ -226,7 +226,7 @@
             class="chat-toolbar-btn chat-toolbar-btn--outline"
             @click="$emit('voice')"
           >
-            <q-icon name="mic" size="20px" />
+            <q-icon name="mic" size="18px" />
           </q-btn>
           <q-btn
             v-if="sending"
@@ -237,7 +237,7 @@
             class="chat-toolbar-btn chat-toolbar-btn--filled"
             @click="$emit('stop')"
           >
-            <q-icon name="stop" size="20px" />
+            <q-icon name="stop" size="18px" />
           </q-btn>
           <q-btn
             v-else
@@ -249,7 +249,7 @@
             class="chat-toolbar-btn chat-toolbar-btn--filled"
             @click="$emit('send')"
           >
-            <q-icon name="send" size="20px" />
+            <q-icon name="send" size="18px" />
           </q-btn>
         </div>
       </div>

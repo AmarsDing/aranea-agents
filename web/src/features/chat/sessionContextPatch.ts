@@ -1,4 +1,4 @@
-import type { Envelope, EnvelopeUsage } from "../../realtime/envelope";
+import type { Envelope, EnvelopeUsage, PromptTokenBreakdown } from "../../realtime/envelope";
 import type { Session } from "../session/types";
 import { contextRatioFromPrompt, contextStatusFromRatio } from "../session/contextMetrics";
 
@@ -15,7 +15,9 @@ export type SessionContextPatch = Partial<
     | "total_cost_micro_usd"
     | "last_context_window_tokens"
   >
->;
+> & {
+  promptBreakdown?: PromptTokenBreakdown;
+};
 
 /** Prompt tokens used for context-window fill (max in turn), distinct from billing aggregates. */
 export function contextPromptTokensFromUsage(usage: EnvelopeUsage | undefined): number {
@@ -55,6 +57,10 @@ export function sessionContextPatchFromStepUsage(usage: EnvelopeUsage | undefine
     patch.last_context_window_tokens = usage.max_tokens;
   }
 
+  if (usage.prompt_breakdown) {
+    patch.promptBreakdown = usage.prompt_breakdown;
+  }
+
   return patch;
 }
 
@@ -92,6 +98,10 @@ export function sessionContextPatchFromUsage(
   const prevMax = prev?.max_context_used_ratio ?? 0;
   if (ratio > prevMax) {
     patch.max_context_used_ratio = ratio;
+  }
+
+  if (usage.prompt_breakdown) {
+    patch.promptBreakdown = usage.prompt_breakdown;
   }
 
   return patch;

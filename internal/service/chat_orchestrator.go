@@ -196,12 +196,14 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 
 // Compile-time interface assertions.
 var (
-	_ biz.TurnExecutor        = (*ChatOrchestrator)(nil)
-	_ biz.NativeTurnGateway   = (*ChatService)(nil)
-	_ biz.TurnExecutorGateway = (*ChatService)(nil)
-	_ biz.TurnRunControlGateway = (*ChatService)(nil)
-	_ biz.TurnGateway         = (*ChatService)(nil)
-	_ biz.TurnControlGateway  = (*ChatService)(nil)
+	_ biz.TurnExecutor           = (*ChatOrchestrator)(nil)
+	_ biz.NativeTurnGateway      = (*ChatService)(nil)
+	_ biz.TurnExecutorGateway    = (*ChatService)(nil)
+	_ biz.TurnRunControlGateway  = (*ChatService)(nil)
+	_ biz.TurnGateway            = (*ChatService)(nil)
+	_ biz.TurnControlGateway     = (*ChatService)(nil)
+	_ biz.DurableResumeGateway   = (*ChatService)(nil)
+	_ biz.PendingQueueGateway    = (*ChatService)(nil)
 )
 
 // Execute implements biz.TurnExecutor — the shared entry point for all turn

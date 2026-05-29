@@ -13,6 +13,8 @@ type memoryEpisodeIndexSync struct {
 	store *sessionmemory.Store
 }
 
+var _ biz.EpisodeIndexSyncer = (*memoryEpisodeIndexSync)(nil)
+
 func NewMemoryEpisodeIndexSync(vec *biz.MemoryUsecase, store *sessionmemory.Store) biz.EpisodeIndexSyncer {
 	if vec == nil || store == nil {
 		return nil

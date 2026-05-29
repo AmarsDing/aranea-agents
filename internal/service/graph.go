@@ -14,6 +14,8 @@ type GraphService struct {
 	orchProjector *GraphOrchestrationProjector
 }
 
+var _ biz.GraphExecutor = (*GraphService)(nil)
+
 func NewGraphService(uc *biz.GraphUsecase, taskUC *biz.TaskUsecase, graphTel *GraphExecutionTelemetry, orchProjector *GraphOrchestrationProjector, _ *GraphTaskRuntime) *GraphService {
 	return &GraphService{uc: uc, taskUC: taskUC, graphTel: graphTel, orchProjector: orchProjector}
 }

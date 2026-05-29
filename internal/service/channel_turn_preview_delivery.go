@@ -65,7 +65,7 @@ func (h *ChannelIngress) buildTurnPreviewDelivery(
 			}
 			return nil
 		}
-		sec, err := resolveCredentialPlain(ctx, creds, "app_secret")
+		sec, err := resolveCredentialPlain(ctx, h.channels, creds, "app_secret")
 		if err != nil {
 			event.SysLogWarn(flowStepChannelToolCard, "Channel tool card delivery skipped: app_secret",
 				event.P("channel_id", chRow.ID),

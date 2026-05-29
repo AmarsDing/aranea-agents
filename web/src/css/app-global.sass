@@ -274,7 +274,7 @@ body.body--dark .theme-preview-page
 
 .chat-composer
   flex: 0 0 auto
-  border-top: 1px solid rgba(141, 110, 99, 0.12)
+  border-top: 1px solid color-mix(in srgb, var(--glass-border) 60%, transparent)
   border-radius: 0 0 16px 16px
 
 .chat-side
@@ -301,6 +301,8 @@ body.body--dark .theme-preview-page
   position: relative
   z-index: 2
   min-width: 0
+  overflow-x: hidden
+  overflow-y: hidden
   transition: width 0.22s ease, opacity 0.18s ease
 
 .chat-side__toggle
@@ -362,46 +364,59 @@ body.body--dark .theme-preview-page
 .chat-input .q-field__control
   max-height: 400px
   overflow: auto
-  border-radius: 18px
-  padding: 10px 12px
+  border-radius: 14px
+  padding: 8px 12px
 
 .chat-input textarea
-  min-height: 72px
+  min-height: 56px
   max-height: 400px
 
 .chat-toolbar
-  min-height: 40px
-  align-items: stretch
-
-.chat-toolbar-bar
   display: flex
-  align-items: flex-end
+  align-items: center
   justify-content: space-between
-  gap: var(--space-4)
+  gap: var(--space-3)
   width: 100%
   min-width: 0
+  min-height: 36px
 
 .chat-toolbar-fields
-  flex: 0 1 auto
-  gap: var(--space-2)
+  flex: 1 1 auto
+  gap: 6px
   min-width: 0
+  overflow-x: auto
+  scrollbar-width: none
+  &::-webkit-scrollbar
+    display: none
 
 .chat-toolbar-field
   flex: 0 0 auto
   min-width: 0
 
 .chat-toolbar-field--mode
-  width: 152px
+  width: 130px
+  flex-shrink: 0
 
 .chat-toolbar-field--model
-  width: 196px
+  width: 180px
+  flex-shrink: 0
 
 .chat-toolbar-field--kb
-  width: 168px
-  max-width: 28vw
+  width: 160px
+  max-width: 24vw
+  flex-shrink: 1
+
+@media (max-width: 1100px)
+  .chat-toolbar-field--mode
+    width: 110px
+  .chat-toolbar-field--model
+    width: 150px
+  .chat-toolbar-field--kb
+    width: 130px
+    max-width: 20vw
 
 @media (max-width: 899px)
-  .chat-toolbar-bar
+  .chat-toolbar
     flex-direction: column
     align-items: stretch
     gap: var(--space-2)
@@ -409,6 +424,7 @@ body.body--dark .theme-preview-page
   .chat-toolbar-fields
     flex-wrap: wrap
     width: 100%
+    overflow-x: visible
 
   .chat-toolbar-field--mode,
   .chat-toolbar-field--model
@@ -425,14 +441,9 @@ body.body--dark .theme-preview-page
     width: 100%
     margin-left: 0
 
-.chat-side--left,
-.chat-side--right
-  overflow-x: hidden
-  overflow-y: hidden
-
 .chat-toolbar-field .q-field__control
-  min-height: 44px
-  border-radius: 14px
+  min-height: 36px
+  border-radius: 10px
 
 // 聊天页：锁定 layout 视口高度，避免消息列表把整页撑长（须在 .chat-messages 内滚动）
 .app-layout-root:has(.chat-page)
@@ -467,17 +478,22 @@ body.body--dark .theme-preview-page
   margin-left: auto
   justify-content: flex-end
   align-items: center
-  gap: 8px
-  min-height: 40px
+  gap: 4px
+  min-height: 36px
 
 .chat-toolbar-btn
-  width: 40px !important
-  height: 40px !important
-  min-width: 40px !important
-  min-height: 40px !important
+  width: 36px !important
+  height: 36px !important
+  min-width: 36px !important
+  min-height: 36px !important
   padding: 0 !important
-  border-radius: 12px !important
+  border-radius: 10px !important
   flex-shrink: 0
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.15s ease
+  &:hover
+    transform: translateY(-1px)
+  &:active
+    transform: translateY(0) scale(0.96)
 
 .chat-toolbar-btn--outline
   background: color-mix(in srgb, var(--glass-surface) 88%, transparent) !important
@@ -534,6 +550,9 @@ body:not(.body--dark)
     .chat-toolbar-field .q-field__control
       background: rgba(255, 255, 255, 0.68)
       border-color: rgba(141, 110, 99, 0.16)
+    .chat-toolbar-field.q-field--focused .q-field__control
+      border-color: rgba(212, 137, 26, 0.5)
+      box-shadow: 0 0 0 1px rgba(212, 137, 26, 0.2)
     .chat-context-pill
       color: $cream-text-light
       background: rgba(255, 255, 255, 0.58)
@@ -613,6 +632,12 @@ body.body--dark
     .chat-input.q-field--focused .q-field__control
       border-color: rgba(77, 216, 232, 0.55)
       box-shadow: 0 0 0 2px rgba(77, 216, 232, 0.22)
+    .chat-toolbar-field .q-field__control
+      background: rgba(30, 41, 59, 0.76)
+      border-color: rgba(148, 163, 184, 0.18)
+    .chat-toolbar-field.q-field--focused .q-field__control
+      border-color: rgba(77, 216, 232, 0.45)
+      box-shadow: 0 0 0 1px rgba(77, 216, 232, 0.18)
     .text-cream-text
       color: var(--chat-text-primary) !important
     .text-cream-muted
@@ -661,10 +686,10 @@ body.body--dark
       transform: none
 
 // --- 聊天消息气泡（UX.md §5.2 玻璃卡片；昼夜仅换 token）---
-$chat-bubble-radius: 18px
-$chat-bubble-pad-y: 18px
-$chat-bubble-pad-x: 22px
-$chat-msg-gap: 20px
+$chat-bubble-radius: 16px
+$chat-bubble-pad-y: 14px
+$chat-bubble-pad-x: 18px
+$chat-msg-gap: 16px
 $chat-user-max: 46rem
 
 .chat-page .chat-q-message .q-message-received .q-message-text,
@@ -947,12 +972,26 @@ body.body--dark .chat-page
     border-left-color: color-mix(in srgb, var(--color-accent) 45%, transparent)
     background: color-mix(in srgb, var(--glass-surface) 80%, transparent)
 
-// 流式生成：左侧细强调条，禁止整卡绿色外框
+// 流式生成：左侧细强调条 + 微脉动，禁止整卡绿色外框
 .chat-page .chat-q-message--streaming .chat-message-bubble--received
   box-shadow: var(--glass-inner-highlight), inset 3px 0 0 var(--color-accent)
+  animation: chat-stream-pulse 2s ease-in-out infinite
+
+@keyframes chat-stream-pulse
+  0%, 100%
+    box-shadow: var(--glass-inner-highlight), inset 3px 0 0 var(--color-accent)
+  50%
+    box-shadow: var(--glass-inner-highlight), inset 3px 0 0 var(--color-accent), 0 0 8px color-mix(in srgb, var(--color-accent) 15%, transparent)
 
 body.body--dark .chat-page .chat-q-message--streaming .chat-message-bubble--received
   box-shadow: var(--glass-inner-highlight), inset 3px 0 0 color-mix(in srgb, var(--color-accent) 70%, transparent)
+  animation: chat-stream-pulse-dark 2s ease-in-out infinite
+
+@keyframes chat-stream-pulse-dark
+  0%, 100%
+    box-shadow: var(--glass-inner-highlight), inset 3px 0 0 color-mix(in srgb, var(--color-accent) 70%, transparent)
+  50%
+    box-shadow: var(--glass-inner-highlight), inset 3px 0 0 color-mix(in srgb, var(--color-accent) 70%, transparent), 0 0 12px color-mix(in srgb, var(--color-accent) 20%, transparent)
 
 @media (max-width: 900px)
   :root
@@ -2042,12 +2081,40 @@ body.body--dark
 .overview-page__shell
   max-width: 1440px
   margin: 0 auto
-  padding: 12px 12px 28px
+  padding: 8px 12px 28px
   @media (min-width: 1024px)
-    padding: 16px 24px 36px
+    padding: 12px 24px 36px
 
+// ── 筛选栏：横排紧凑 ──
+.overview-filter-bar
+  margin-bottom: var(--space-4)
+
+.overview-filter-bar__inner
+  display: flex
+  flex-wrap: wrap
+  gap: var(--space-3)
+  align-items: flex-end
+  padding: var(--space-3) var(--space-4)
+  border-radius: 14px
+  background: var(--glass-surface)
+  border: 1px solid var(--glass-border)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+.overview-filter-field
+  min-width: 130px
+  flex: 1 1 140px
+  max-width: 200px
+
+// ── 内容区 ──
 .overview-section
   margin-top: 16px
+
+.overview-section-group
+  margin-top: var(--space-5)
+
+.overview-section-group--alert
+  margin-top: var(--space-4)
 
 .overview-metrics-row
   margin-bottom: 4px
@@ -2065,6 +2132,7 @@ body.body--dark
 .overview-item-caption
   color: var(--color-text-secondary) !important
 
+// ── 面板 / 卡片通用玻璃材质 ──
 .overview-filter-card,
 .overview-panel,
 .overview-metric-card
@@ -2087,8 +2155,72 @@ body.body--dark .overview-metric-card:hover
   background: var(--glass-surface-hover) !important
   border-color: var(--glass-border-hover) !important
 
+// ── 警示面板变体 ──
+.overview-panel--warning
+  border-color: rgba(240, 155, 84, 0.35) !important
+
+body.body--dark .overview-panel--warning
+  border-color: rgba(255, 175, 77, 0.28) !important
+
+.overview-panel--danger
+  border-color: rgba(229, 92, 92, 0.35) !important
+
+body.body--dark .overview-panel--danger
+  border-color: rgba(255, 94, 122, 0.28) !important
+
+.overview-panel__alert-icon
+  font-size: 22px
+  color: var(--color-warning)
+
+.overview-panel__alert-icon--danger
+  color: var(--color-danger)
+
+// ── 指标卡分层 ──
+.overview-metrics-tier
+  margin-bottom: var(--space-4)
+
+.overview-metric-card--budget
+  margin-bottom: var(--space-3)
+  border-color: rgba(240, 155, 84, 0.3) !important
+
+body.body--dark .overview-metric-card--budget
+  border-color: rgba(255, 175, 77, 0.22) !important
+
+.overview-metrics-primary
+  display: grid
+  gap: var(--space-3)
+  grid-template-columns: repeat(4, minmax(0, 1fr))
+  margin-bottom: var(--space-3)
+
+  @media (width <= 1023px)
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+
+  @media (width <= 479px)
+    grid-template-columns: 1fr
+
+.overview-metrics-secondary
+  display: grid
+  gap: var(--space-3)
+  grid-template-columns: repeat(2, minmax(0, 1fr))
+
+  @media (width <= 479px)
+    grid-template-columns: 1fr
+
+.overview-metric-card--secondary
+  opacity: 0.88
+
 .overview-metric-card__body
   padding: 14px 16px !important
+
+.overview-metric-card__icon-row
+  display: flex
+  align-items: center
+  gap: var(--space-2)
+  margin-bottom: var(--space-1)
+
+.overview-metric-card__icon
+  font-size: 18px
+  color: var(--color-accent)
 
 .overview-metric-card__label
   font-size: 0.75rem
@@ -2101,6 +2233,13 @@ body.body--dark .overview-metric-card:hover
   line-height: 1.2
   margin: 6px 0 4px
   color: var(--color-text-primary)
+
+.overview-metric-card__value--lg
+  font-size: clamp(1.5rem, 2.5vw, 2rem)
+
+.overview-metric-card__value--sm
+  font-size: clamp(1rem, 1.5vw, 1.25rem)
+  font-weight: 700
 
 .overview-metric-card__caption
   font-size: 0.75rem
@@ -2118,6 +2257,29 @@ body.body--dark .overview-metric-card:hover
 .overview-metric-card__caption--danger
   color: var(--color-danger) !important
 
+// ── 预算进度条 ──
+.overview-metric-card__bar
+  height: 4px
+  border-radius: 2px
+  background: var(--glass-border)
+  margin-top: var(--space-2)
+  overflow: hidden
+
+.overview-metric-card__bar-fill
+  height: 100%
+  border-radius: 2px
+  transition: width 0.4s ease
+
+.overview-metric-card__bar-fill--ok
+  background: var(--color-success)
+
+.overview-metric-card__bar-fill--warn
+  background: var(--color-warning)
+
+.overview-metric-card__bar-fill--danger
+  background: var(--color-danger)
+
+// ── 主按钮 ──
 .overview-primary-btn
   background: var(--color-accent) !important
   color: var(--color-on-accent, #fff) !important
@@ -2133,8 +2295,31 @@ body.body--dark .overview-primary-btn
   color: var(--color-accent) !important
   box-shadow: 0 0 14px rgba(77, 216, 232, 0.2)
 
+// ── 区间摘要网格 ──
 .overview-summary-panel
   min-height: 100%
+
+.overview-summary-grid
+  display: grid
+  grid-template-columns: 1fr 1fr
+  gap: var(--space-3) var(--space-4)
+
+.overview-summary-item
+  padding: var(--space-2) 0
+
+.overview-summary-item__label
+  font-size: 0.75rem
+  font-weight: 600
+  color: var(--color-text-secondary)
+  margin-bottom: 2px
+
+.overview-summary-item__value
+  font-size: 1.1rem
+  font-weight: 700
+  color: var(--color-text-primary)
+
+.overview-summary-item__value--accent
+  color: var(--color-accent)
 
 .overview-summary-list .q-item
   min-height: 40px
@@ -2154,6 +2339,7 @@ body.body--dark .overview-primary-btn
   border: 1px solid var(--glass-border) !important
   background: var(--color-info-soft) !important
 
+// ── 趋势条形图（旧版保留） ──
 .overview-trend-grid
   align-items: end
   display: grid
@@ -2194,6 +2380,7 @@ body.body--dark .overview-trend-bar__fill
   color: var(--color-text-secondary)
   font-size: 0.7rem
 
+// ── 空状态 ──
 .overview-empty
   min-height: 180px
   display: grid
@@ -2206,10 +2393,36 @@ body.body--dark .overview-trend-bar__fill
 .overview-empty-inline
   color: var(--color-text-secondary)
 
+// ── 排行列表 ──
 .overview-rank-value
   font-weight: 700
   color: var(--color-text-primary)
 
+.overview-rank-index
+  min-width: 28px !important
+  padding-right: 0 !important
+
+.overview-rank-badge
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  width: 24px
+  height: 24px
+  border-radius: 8px
+  font-size: 0.7rem
+  font-weight: 700
+  color: var(--color-text-secondary)
+  background: var(--glass-border)
+
+.overview-rank-badge--top
+  color: var(--color-on-accent, #fff)
+  background: var(--color-accent)
+
+body.body--dark .overview-rank-badge--top
+  color: var(--canvas-base)
+  background: var(--color-accent)
+
+// ── Agent 头像 ──
 .overview-agent-avatar
   background: var(--color-info-soft) !important
   color: var(--color-accent) !important
@@ -2217,6 +2430,7 @@ body.body--dark .overview-trend-bar__fill
 body.body--dark .overview-agent-avatar
   border: 1px solid var(--glass-border)
 
+// ── 异常表格 ──
 .overview-anomaly-table
   background: transparent !important
 
@@ -2244,6 +2458,7 @@ body.body--dark .overview-agent-avatar
   border-color: rgba(240, 155, 84, 0.45) !important
   background: var(--color-warning-soft) !important
 
+// ── 筛选栏输入框 ──
 body:not(.body--dark) .overview-page .q-field--outlined .q-field__control
   background: rgba(255, 253, 245, 0.65)
 

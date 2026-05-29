@@ -98,15 +98,16 @@ func TestChannelCredentialEncryptRoundTrip(t *testing.T) {
 	}
 	_ = os.Setenv(envCredentialKey, hex.EncodeToString(key))
 	defer os.Unsetenv(envCredentialKey)
+	c := NewCredentialCrypto(nil)
 
-	ref, err := EncryptChannelSecretRef(context.Background(), "app-secret-value")
+	ref, err := c.EncryptChannelSecretRef(context.Background(), "app-secret-value")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if ref == "" || ref[:4] != "enc:" {
 		t.Fatalf("unexpected ref %q", ref)
 	}
-	plain, err := DecryptChannelSecretRef(context.Background(), ref)
+	plain, err := c.DecryptChannelSecretRef(context.Background(), ref)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +134,7 @@ func TestChannelUpsertCredentialsStoresEncryptedRef(t *testing.T) {
 			ConfigJSON: `{"type":"feishu","receive_mode":"webhook","config":{"app_id":"cli_test"},"webhook":{"path":"/webhooks/feishu-demo"}}`,
 		}},
 	}
-	uc := NewChannelUsecase(repo)
+	uc := NewChannelUsecase(repo, NewCredentialCrypto(nil))
 	items, err := uc.UpsertCredentials(context.Background(), "ch-1", []ChannelCredentialInput{{
 		CredentialKey: "app_secret",
 		Secret:        "super-secret",
@@ -154,7 +155,7 @@ func TestChannelUpsertCredentialsStoresEncryptedRef(t *testing.T) {
 	if raw[0].SecretRef[:4] != "enc:" {
 		t.Fatalf("expected enc ref, got %q", raw[0].SecretRef)
 	}
-	plain, err := DecryptChannelSecretRef(context.Background(), raw[0].SecretRef)
+	plain, err := uc.crypto.DecryptChannelSecretRef(context.Background(), raw[0].SecretRef)
 	if err != nil || plain != "super-secret" {
 		t.Fatalf("decrypt: %v plain=%q", err, plain)
 	}
@@ -212,7 +213,7 @@ func TestChannelRunHealthChecksUpdatesStatus(t *testing.T) {
 			}},
 		},
 	}
-	uc := NewChannelUsecase(repo)
+	uc := NewChannelUsecase(repo, NewCredentialCrypto(nil))
 	if err := uc.RunHealthChecks(context.Background()); err != nil {
 		t.Fatal(err)
 	}

@@ -413,6 +413,8 @@ type CompressRepo interface {
 	CompressSessionInTx(ctx context.Context, sessionID string, fn func(ctx context.Context) error) error
 }
 
+// SessionRepo aggregates all session sub-repositories for Wire binding only.
+// Consumers should depend on the specific sub-interface they need.
 type SessionRepo interface {
 	SessionReader
 	SessionWriter

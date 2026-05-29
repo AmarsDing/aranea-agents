@@ -1,4 +1,5 @@
 import { formatTokenCount } from "./composerUsageMetrics";
+import type { PromptTokenBreakdown } from "../../realtime/envelope";
 
 export type PromptBreakdownCategory = {
   key: string;
@@ -14,15 +15,17 @@ export type PromptBreakdown = {
   contextRatio: number;
 };
 
+// NOTE: color 值为 CSS 变量字符串（var(--chart-color-*)），仅适用于 DOM 内联样式；
+// 若需 Canvas/Chart.js 等场景，须通过 getComputedStyle 读取计算值。
 export const BREAKDOWN_COLORS: Record<string, string> = {
-  system_prompt: "#E9A23B",
-  skills: "#8B5CF6",
-  memory: "#06B6D4",
-  intent_pass: "#F59E0B",
-  session_summary: "#10B981",
-  tool_results: "#EF4444",
-  history: "#6B7280",
-  user_message: "#EC4899",
+  system_prompt: "var(--chart-color-system-prompt)",
+  skills: "var(--chart-color-skills)",
+  memory: "var(--chart-color-memory)",
+  intent_pass: "var(--chart-color-intent-pass)",
+  session_summary: "var(--chart-color-session-summary)",
+  tool_results: "var(--chart-color-tool-results)",
+  history: "var(--chart-color-history)",
+  user_message: "var(--chart-color-user-message)",
 };
 
 export const BREAKDOWN_LABELS: Record<string, string> = {
@@ -80,6 +83,46 @@ export function computeBreakdown(
   contextWindow: number,
   toolCallCount: number,
   messageCount: number,
+  serverBreakdown?: PromptTokenBreakdown,
+): PromptBreakdown {
+  if (serverBreakdown && Object.values(serverBreakdown).some((v) => v != null && v > 0)) {
+    return computeBreakdownFromServer(serverBreakdown, contextUsedTokens, contextWindow);
+  }
+  return computeBreakdownFromEstimation(preview, contextUsedTokens, contextWindow, toolCallCount, messageCount);
+}
+
+function computeBreakdownFromServer(
+  bd: PromptTokenBreakdown,
+  contextUsedTokens: number,
+  contextWindow: number,
+): PromptBreakdown {
+  const categories: PromptBreakdownCategory[] = [];
+  const keys: (keyof PromptTokenBreakdown)[] = [
+    "system_prompt", "skills", "memory", "intent_pass",
+    "session_summary", "tool_results", "history", "user_message",
+  ];
+  for (const key of keys) {
+    const tokens = bd[key];
+    if (tokens != null && tokens > 0) {
+      categories.push({
+        key,
+        label: BREAKDOWN_LABELS[key] ?? key,
+        estTokens: tokens,
+        color: BREAKDOWN_COLORS[key] ?? "var(--chart-color-history)",
+      });
+    }
+  }
+  const totalPromptTokens = contextUsedTokens > 0 ? contextUsedTokens : categories.reduce((s, c) => s + c.estTokens, 0);
+  const ratio = contextWindow > 0 ? Math.min(1, totalPromptTokens / contextWindow) : 0;
+  return { categories, totalPromptTokens, contextWindow, contextRatio: ratio };
+}
+
+function computeBreakdownFromEstimation(
+  preview: PromptPreviewReport | null,
+  contextUsedTokens: number,
+  contextWindow: number,
+  toolCallCount: number,
+  messageCount: number,
 ): PromptBreakdown {
   const categories: PromptBreakdownCategory[] = [];
 
@@ -121,15 +164,17 @@ export function computeBreakdown(
     }
   }
 
-  const avgToolResultTokens = 800;
-  const toolResultTokens = toolCallCount * avgToolResultTokens;
+  const EST_TOOL_RESULT_TOKENS = 800;
+  const EST_USER_MSG_TOKENS = 60;
+
+  const toolResultTokens = toolCallCount * EST_TOOL_RESULT_TOKENS;
   if (toolResultTokens > 0) {
     categories.push({ key: "tool_results", label: BREAKDOWN_LABELS.tool_results, estTokens: toolResultTokens, color: BREAKDOWN_COLORS.tool_results });
     accounted += toolResultTokens;
   }
 
   const residual = Math.max(0, contextUsedTokens - accounted);
-  const userMsgTokens = Math.min(residual, Math.max(0, messageCount) * 60);
+  const userMsgTokens = Math.min(residual, Math.max(0, messageCount) * EST_USER_MSG_TOKENS);
   const historyTokens = Math.max(0, residual - userMsgTokens);
 
   if (userMsgTokens > 0) {

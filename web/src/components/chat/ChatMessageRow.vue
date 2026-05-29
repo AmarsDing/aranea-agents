@@ -366,8 +366,24 @@ function renderStreamingMarkdown(content: string) {
 .chat-thinking-pulse {
   animation: chat-pulse 1.5s ease-in-out infinite;
 }
+
 @keyframes chat-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%, 100% { opacity: 100%; }
+  50% { opacity: 40%; }
+}
+
+.chat-reasoning-inline-hint {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.chat-reasoning-inline-hint:hover {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  color: var(--color-accent);
 }
 </style>

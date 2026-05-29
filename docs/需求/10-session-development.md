@@ -20,7 +20,9 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | `internal/service/session_batch.go` | BatchPreview / BatchArchive / BatchDelete + Audit |
 | `internal/biz/session/` | 领域用例：CRUD、Timeline、Export、Participants、Pin、Turn |
 | `internal/biz/session_state.go` | State KV / ApplyStateDelta |
-| `internal/data/session_repo.go` | 主表与消息 |
+| `internal/data/session_repo.go` | 主表（~705 行） |
+| `internal/data/session_message_repo.go` | 消息子接口实现（~340 行） |
+| `internal/data/session_state_repo.go` | State KV 实现（~45 行） |
 | `internal/data/session_timeline.go` | Timeline SQL UNION 分页 |
 | `internal/data/session_participant_*.go` | participants 表 + 读时聚合 |
 | `internal/data/session_run_*.go` | M55 `session_runs` 生命周期 |
@@ -69,7 +71,9 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | O4 | `AppendChatTurn` 事务内查询合并 | P3 | 待办 |
 | O6 | SessionCompressor 模型选择策略收敛 | P3 | 待办 |
 | O7 | Repository 接口拆分 + Deprecated 清理 | P2 | ✅ |
-| P2-refactor | biz/data 文件拆分收尾 | P2 | 🟡 部分（timeline/export/participant 已拆；接口拆分 ✅ O7） |
+| O8 | CompressorDeps 窄聚合 + 代码质量修复 | P2 | ✅ |
+| O9 | SessionRepo 注释 + data 层拆分 + 前端 UX/分层修复 | P2 | ✅ |
+| P2-refactor | biz/data 文件拆分收尾 | P2 | 🟡 部分（timeline/export/participant 已拆；接口拆分 ✅ O7；data 拆分 ✅ O9） |
 
 ### 3.2 功能差距
 
@@ -180,6 +184,29 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 - 前端：`buildTimelineStats` 从 components 迁移至 features 层
 - 前端：Store 移除 `turns`/`timeline`/`messages` 冗余子资源状态
 
+### O8 代码质量修复（2026-05-29）
+
+**变更**：Compressor 构造函数收窄 + data 层规范修复 + 前端统一
+
+| 变更 | 文件 | 说明 |
+|------|------|------|
+| CompressorDeps | compressor.go | 7 子接口窄聚合替代 SessionRepo（54 方法） |
+| RawDB() 访问器 | session_repo.go | rawDB → RawDB()，与项目 40+ 处用法一致 |
+| kerrors 替换 | channel_peer_session.go | fmt.Errorf → kerrors.BadRequest |
+| resolveAgentAuthor | compressor.go | 提取重复的 author 解析逻辑 |
+| formatSessionDate | sessionUi.ts + 4 组件 | 统一日期格式化函数 |
+
+### O9 SessionRepo 注释 + data 层拆分 + 前端 UX/分层修复（2026-05-29）
+
+**变更**：SessionRepo 注释明确 + data 层文件拆分 + 前端 UX 红线修复 + 分层合规
+
+| 变更 | 文件 | 说明 |
+|------|------|------|
+| SessionRepo 注释 | usecase.go | 添加注释明确仅用于 Wire 绑定，消费者应依赖具体子接口 |
+| data 层文件拆分 | session_repo.go → 3 文件 | 主表 ~705 行 + 消息 ~340 行 + 状态 ~45 行 |
+| deep-purple → teal | sessionUi.ts + SessionTurnsPanel.vue | 修复前端红线 #8（禁止日间用霓虹紫作强调色） |
+| exportSelectedDetail 迁移 | SessionsPage.vue → useSessionsPage.ts | Page 不直接 import features/api，经 composable |
+
 ---
 
 ## 8. 待优化清单（全部）
@@ -205,7 +232,8 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | O4 | AppendChatTurn 查询合并 | 事务内 `maxMessageTurnTx` + session 一次查 | 待办 |
 | O6 | Compressor 模型选择收敛 | 统一 L0 provider/model fallback 策略 | 待办 |
 | O7 | Repository 接口拆分 | SessionWriter→5+SessionBatchWriter+SessionPinWriter+SessionRevisionWriter; MessageReader→5+MessageSearchReader; SummaryRepo→SummaryReader+SummaryWriter; SessionRunRepo→SessionRunReader+SessionRunWriter+SessionRunDurableRepo; SessionRepository→SessionRepo; Compressor.Agents→AgentKeyLookup; MessageStatusWriter 新接口 | ✅ |
-| P2-refactor | 文件拆分收尾 | `session_usecase` 常量迁出；repo 按域分文件 | 🟡 |
+| O9 | SessionRepo 注释 + data 拆分 + 前端 UX/分层 | SessionRepo 注释明确 Wire 绑定用途; session_repo.go 拆分 3 文件; deep-purple→teal; exportSelectedDetail 迁移 composable | ✅ |
+| P2-refactor | 文件拆分收尾 | `session_usecase` 常量迁出；repo 按域分文件 | ✅ data 层已拆分 |
 | SYNC-01 | state_json  bulk sync | event_bus 全量 state 写 trpc（现仅 per-key KV） | 待办 |
 | SYNC-02 | Ent-only snapshot 路径 | 非 event bus 路径也调 `SyncRunnerSnapshot` | 待办 |
 
@@ -272,4 +300,4 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | [2026-05-24-Session-Phase2-Review.md](../review/2026-05-24-Session-Phase2-Review.md) | **代码 Review**（83/100）；P1 风险 SESS-R-P1-01~03 映射 §8 任务 ID |
 | [10-session-review.md](../review/10-session-review.md) | 模块 Review 基线 + Phase 2 增量索引 |
 
-**最后同步**：2026-05-24
+**最后同步**：2026-05-29

@@ -2,6 +2,8 @@
   <div class="ctx-breakdown" :class="{ 'ctx-breakdown--dark': isDark }">
     <div class="ctx-breakdown__header row items-center justify-between no-wrap">
       <span class="ctx-breakdown__title text-weight-medium">{{ t("chat.promptBreakdown", "Prompt 占比分解") }}</span>
+      <q-badge v-if="isPrecise" outline color="positive" class="ctx-breakdown__badge">{{ t("chat.preciseData", "精确") }}</q-badge>
+      <q-badge v-else outline color="grey" class="ctx-breakdown__badge">{{ t("chat.estimatedData", "估算") }}</q-badge>
     </div>
 
     <div class="ctx-breakdown__ring-section column items-center q-py-md">
@@ -43,7 +45,7 @@
 
     <div class="ctx-breakdown__footer row items-center justify-between text-caption">
       <span>{{ t("chat.totalPromptTokens", "总计") }} {{ formatTokenCount(breakdown.totalPromptTokens) }}{{ breakdown.contextWindow > 0 ? ` / ${formatTokenCount(breakdown.contextWindow)}` : "" }}</span>
-      <span v-if="totalCostMicroUsd > 0">{{ formatUsdCompact(totalCostMicroUsd) }}</span>
+      <span v-if="totalCostMicroUsd && totalCostMicroUsd > 0">{{ formatUsdCompact(totalCostMicroUsd) }}</span>
     </div>
   </div>
 </template>
@@ -61,23 +63,24 @@ const props = defineProps<{
   breakdown: PromptBreakdown;
   contextStatus?: string;
   totalCostMicroUsd?: number;
+  isPrecise?: boolean;
   isDark?: boolean;
 }>();
 
 const { t } = useI18n();
 
-const pctLabel = computed(() => `${Math.round(breakdown.contextRatio * 100)}%`);
+const pctLabel = computed(() => `${Math.round(props.breakdown.contextRatio * 100)}%`);
 
 const ringColor = computed(() => {
   const status = props.contextStatus?.trim();
   if (status) return composerContextColor(status);
-  if (breakdown.contextRatio >= 0.8) return composerContextColor(undefined, breakdown.contextRatio);
+  if (props.breakdown.contextRatio >= 0.8) return composerContextColor(undefined, props.breakdown.contextRatio);
   return "accent";
 });
 
 function barWidth(tokens: number): string {
-  if (breakdown.totalPromptTokens <= 0) return "0%";
-  return `${Math.min(100, Math.round((tokens / breakdown.totalPromptTokens) * 100))}%`;
+  if (props.breakdown.totalPromptTokens <= 0) return "0%";
+  return `${Math.min(100, Math.round((tokens / props.breakdown.totalPromptTokens) * 100))}%`;
 }
 </script>
 
@@ -100,6 +103,12 @@ function barWidth(tokens: number): string {
 .ctx-breakdown__title {
   font-size: 13px;
   color: var(--color-text-primary);
+}
+
+.ctx-breakdown__badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
 }
 
 .ctx-breakdown__ring {

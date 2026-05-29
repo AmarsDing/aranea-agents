@@ -42,11 +42,21 @@ func (r *hookDeliveryRepo) Insert(ctx context.Context, d biz.HookDelivery) error
 	if maxAttempts <= 0 {
 		maxAttempts = 3
 	}
+	idempotencyKey := strings.TrimSpace(d.IdempotencyKey)
+	if idempotencyKey != "" {
+		_, err := r.data.RawDB().ExecContext(ctx, `
+INSERT OR IGNORE INTO hook_deliveries (id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, idempotency_key, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			id, d.HookKey, d.HookID, d.WebhookURL, d.WebhookSecret, d.PayloadJSON, string(biz.NormalizeHookDeliveryStatus(string(d.Status))),
+			d.AttemptCount, maxAttempts, d.LastError, idempotencyKey, now, updated,
+		)
+		return err
+	}
 	_, err := r.data.RawDB().ExecContext(ctx, `
-INSERT INTO hook_deliveries (id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO hook_deliveries (id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, idempotency_key, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, d.HookKey, d.HookID, d.WebhookURL, d.WebhookSecret, d.PayloadJSON, string(biz.NormalizeHookDeliveryStatus(string(d.Status))),
-		d.AttemptCount, maxAttempts, d.LastError, now, updated,
+		d.AttemptCount, maxAttempts, d.LastError, idempotencyKey, now, updated,
 	)
 	return err
 }
@@ -106,7 +116,7 @@ func (r *hookDeliveryRepo) List(ctx context.Context, q biz.HookDeliveryQuery) (b
 	}
 	listArgs := append(append([]any{}, args...), limit, offset)
 	rows, err := r.data.RawDB().QueryContext(ctx, `
-SELECT id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, created_at, updated_at
+SELECT id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, idempotency_key, created_at, updated_at
 FROM hook_deliveries`+where+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...)
 	if err != nil {
 		return biz.HookDeliveryListResult{}, err
@@ -117,11 +127,11 @@ FROM hook_deliveries`+where+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listAr
 		var d biz.HookDelivery
 		var status string
 		if err := rows.Scan(&d.ID, &d.HookKey, &d.HookID, &d.WebhookURL, &d.WebhookSecret, &d.PayloadJSON, &status,
-			&d.AttemptCount, &d.MaxAttempts, &d.LastError, &d.CreatedAt, &d.UpdatedAt); err != nil {
+			&d.AttemptCount, &d.MaxAttempts, &d.LastError, &d.IdempotencyKey, &d.CreatedAt, &d.UpdatedAt); err != nil {
 			return biz.HookDeliveryListResult{}, err
 		}
 		d.Status = biz.NormalizeHookDeliveryStatus(status)
-		d.WebhookSecret = "" // sensitive: scrubbed from list API results; only delivery paths use it
+		d.WebhookSecret = ""
 		items = append(items, d)
 	}
 	return biz.HookDeliveryListResult{Items: items, Total: total, Limit: int32(limit), Offset: int32(offset)}, rows.Err()
@@ -138,7 +148,7 @@ func (r *hookDeliveryRepo) ListStalePending(ctx context.Context, updatedBefore t
 	}
 	cutoff := updatedBefore.UTC().Format(time.RFC3339)
 	rows, err := r.data.RawDB().QueryContext(ctx, `
-SELECT id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, created_at, updated_at
+SELECT id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, idempotency_key, created_at, updated_at
 FROM hook_deliveries
 WHERE status = 'pending'
   AND attempt_count < max_attempts
@@ -154,7 +164,7 @@ LIMIT ?`, cutoff, limit)
 		var d biz.HookDelivery
 		var status string
 		if err := rows.Scan(&d.ID, &d.HookKey, &d.HookID, &d.WebhookURL, &d.WebhookSecret, &d.PayloadJSON, &status,
-			&d.AttemptCount, &d.MaxAttempts, &d.LastError, &d.CreatedAt, &d.UpdatedAt); err != nil {
+			&d.AttemptCount, &d.MaxAttempts, &d.LastError, &d.IdempotencyKey, &d.CreatedAt, &d.UpdatedAt); err != nil {
 			return nil, err
 		}
 		d.Status = biz.NormalizeHookDeliveryStatus(status)

@@ -15,12 +15,13 @@ import (
 type SystemSettingService struct {
 	v1.UnimplementedSystemSettingServiceServer
 
-	uc              *biz.SystemSettingUsecase
-	a2aPublicBase   *A2APublicBaseReloader
+	uc            *biz.SystemSettingUsecase
+	a2aPublicBase *A2APublicBaseReloader
+	crypto        *biz.CredentialCrypto
 }
 
-func NewSystemSettingService(uc *biz.SystemSettingUsecase, a2aPublicBase *A2APublicBaseReloader) *SystemSettingService {
-	return &SystemSettingService{uc: uc, a2aPublicBase: a2aPublicBase}
+func NewSystemSettingService(uc *biz.SystemSettingUsecase, a2aPublicBase *A2APublicBaseReloader, crypto *biz.CredentialCrypto) *SystemSettingService {
+	return &SystemSettingService{uc: uc, a2aPublicBase: a2aPublicBase, crypto: crypto}
 }
 
 func (s *SystemSettingService) GetSystemSettings(ctx context.Context, _ *emptypb.Empty) (*v1.SystemSettings, error) {

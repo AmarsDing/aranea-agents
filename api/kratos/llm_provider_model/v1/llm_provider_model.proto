@@ -27,6 +27,7 @@ message ProviderModel {
   string updated_at = 13;
   string deleted_at = 14;
   ModelCapabilities capabilities = 15;
+  bool pricing_configured = 16;
 }
 
 message ModelCapabilities {

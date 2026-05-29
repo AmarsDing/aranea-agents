@@ -10,8 +10,6 @@ import (
 	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
 )
 
-// SystemInfoResponse is the JSON payload returned by GET /v1/system/info.
-// Fields are best-effort; missing values are returned as empty strings.
 type SystemInfoResponse struct {
 	Version          string            `json:"version"`
 	GitCommit        string            `json:"git_commit"`
@@ -22,8 +20,6 @@ type SystemInfoResponse struct {
 	Features         map[string]string `json:"features"`
 }
 
-// GetSystemInfoHandler returns a Kratos HTTP handler for GET /v1/system/info.
-// The version/commit/buildTime params are injected at wire-time from ldflags.
 func (s *SystemSettingService) GetSystemInfoHandler(version, gitCommit, buildTime string) kratoshttp.HandlerFunc {
 	return func(ctx kratoshttp.Context) error {
 		row, err := s.uc.Get(context.Background())
@@ -39,7 +35,7 @@ func (s *SystemSettingService) GetSystemInfoHandler(version, gitCommit, buildTim
 			DefaultProvider:  row.DefaultRefineLLM.Provider,
 			DefaultModel:     row.DefaultRefineLLM.Model,
 			SkillStorageRoot: row.RootDirectory,
-			Features:         buildSystemFeatures(),
+			Features:         buildSystemFeatures(s.crypto),
 		}
 		w := ctx.Response()
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -48,9 +44,9 @@ func (s *SystemSettingService) GetSystemInfoHandler(version, gitCommit, buildTim
 	}
 }
 
-func buildSystemFeatures() map[string]string {
+func buildSystemFeatures(crypto *biz.CredentialCrypto) map[string]string {
 	features := map[string]string{}
-	if biz.IsCredentialEncryptionAvailable() {
+	if crypto != nil && crypto.IsAvailable() {
 		features["credential_encryption"] = "available"
 	} else {
 		features["credential_encryption"] = "unavailable"

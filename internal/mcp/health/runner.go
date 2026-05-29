@@ -33,7 +33,7 @@ var (
 )
 
 type Deps struct {
-	MCP    biz.MCPServerRepo
+	MCP    biz.MCPServerReader
 	UC     *biz.MCPServerUsecase
 	Alerts *alert.Publisher
 }

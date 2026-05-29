@@ -17,6 +17,8 @@ type sessionParticipantRepo struct {
 	data *Data
 }
 
+var _ bizsess.SessionParticipantRepository = (*sessionParticipantRepo)(nil)
+
 func NewSessionParticipantRepo(d *Data) bizsess.SessionParticipantRepository {
 	return &sessionParticipantRepo{data: d}
 }

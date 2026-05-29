@@ -1,6 +1,6 @@
 <template>
   <q-drawer
-    :model-value="detailStore.open"
+    :model-value="open"
     :width="640"
     :breakpoint="1024"
     side="right"
@@ -9,20 +9,20 @@
     class="tool-detail-drawer"
     @update:model-value="onDrawerUpdate"
   >
-    <template v-if="detailStore.tool">
+    <template v-if="tool">
       <div class="tool-detail-drawer__head">
         <div class="tool-detail-drawer__head-info">
-          <div class="tool-detail-drawer__title">{{ detailStore.tool.display_name }}</div>
-          <div class="tool-detail-drawer__subtitle app-registry-muted-caption">{{ detailStore.tool.key }}</div>
+          <div class="tool-detail-drawer__title">{{ tool.display_name }}</div>
+          <div class="tool-detail-drawer__subtitle app-registry-muted-caption">{{ tool.key }}</div>
         </div>
         <div class="tool-detail-drawer__head-actions row q-gutter-xs">
           <q-btn flat dense round icon="edit" class="app-registry-icon-btn" @click="onEdit">
             <q-tooltip>编辑</q-tooltip>
           </q-btn>
-          <q-btn flat dense round icon="delete" color="negative" class="app-registry-icon-btn" @click="onRemove">
+          <q-btn flat dense round icon="delete" color="negative" class="app-registry-icon-btn" @click="$emit('remove-tool', tool)">
             <q-tooltip>删除</q-tooltip>
           </q-btn>
-          <q-btn flat dense round icon="close" class="app-registry-icon-btn" @click="detailStore.closeDetail()">
+          <q-btn flat dense round icon="close" class="app-registry-icon-btn" @click="$emit('close')">
             <q-tooltip>关闭</q-tooltip>
           </q-btn>
         </div>
@@ -30,51 +30,52 @@
       <q-separator />
 
       <div class="tool-detail-drawer__meta">
-        <q-chip dense :color="detailStore.tool.enabled ? 'positive' : 'grey'" text-color="white">
-          {{ detailStore.tool.enabled ? "已启用" : "已停用" }}
+        <q-chip dense :color="tool.enabled ? 'positive' : 'grey'" text-color="white">
+          {{ tool.enabled ? "已启用" : "已停用" }}
         </q-chip>
-        <q-chip dense :color="riskQuasarColor(detailStore.tool.risk_level)" text-color="white">
-          {{ riskLabel(detailStore.tool.risk_level) }}
+        <q-chip dense :color="riskQuasarColor(tool.risk_level)" text-color="white">
+          {{ riskLabel(tool.risk_level) }}
         </q-chip>
-        <q-chip v-if="detailStore.tool.requires_confirmation" dense color="warning" text-color="dark">
+        <q-chip v-if="tool.requires_confirmation" dense color="warning" text-color="dark">
           {{ policyChip.requires_confirmation.label }}
           <q-tooltip>{{ policyChip.requires_confirmation.tooltip }}</q-tooltip>
         </q-chip>
-        <q-chip v-if="detailStore.tool.supports_streaming" dense outline>
+        <q-chip v-if="tool.supports_streaming" dense outline>
           {{ policyChip.supports_streaming.label }}
           <q-tooltip>{{ policyChip.supports_streaming.tooltip }}</q-tooltip>
         </q-chip>
-        <q-chip v-if="detailStore.tool.supports_concurrency" dense outline>
+        <q-chip v-if="tool.supports_concurrency" dense outline>
           {{ policyChip.supports_concurrency.label }}
           <q-tooltip>{{ policyChip.supports_concurrency.tooltip }}</q-tooltip>
         </q-chip>
-        <q-chip dense outline>{{ runtimeStatusLabel(detailStore.tool.runtime_status) }}</q-chip>
+        <q-chip dense outline>{{ runtimeStatusLabel(tool.runtime_status) }}</q-chip>
       </div>
 
       <q-tabs
-        v-model="detailStore.activeTab"
+        :model-value="activeTab"
         dense
         class="app-registry-detail-tabs"
         active-color="primary"
         indicator-color="primary"
         align="left"
         no-caps
+        @update:model-value="$emit('update:activeTab', $event)"
       >
         <q-tab name="overview" label="概览" />
         <q-tab name="config" label="配置" />
-        <q-tab name="agents" :label="'Agent (' + detailStore.overrides.length + ')'" />
+        <q-tab name="agents" :label="'Agent (' + overrides.length + ')'" />
       </q-tabs>
 
       <div class="tool-detail-drawer__body">
-        <q-tab-panels v-model="detailStore.activeTab" class="app-registry-detail-panels bg-transparent">
+        <q-tab-panels :model-value="activeTab" class="app-registry-detail-panels bg-transparent" @update:model-value="onActiveTabChange">
           <q-tab-panel name="overview" class="q-pa-none">
             <q-banner rounded class="app-registry-detail-banner q-mb-md">
-              {{ detailStore.tool.description || "暂无描述" }}
+              {{ tool.description || "暂无描述" }}
             </q-banner>
 
             <div class="tool-detail-metrics q-mb-md">
               <div class="tool-detail-metrics__card">
-                <div class="tool-detail-metrics__value">{{ detailStore.tool.invoke_count }}</div>
+                <div class="tool-detail-metrics__value">{{ tool.invoke_count }}</div>
                 <div class="tool-detail-metrics__label">总调用</div>
               </div>
               <div class="tool-detail-metrics__card">
@@ -82,20 +83,20 @@
                 <div class="tool-detail-metrics__label">成功率</div>
               </div>
               <div class="tool-detail-metrics__card">
-                <div class="tool-detail-metrics__value">{{ detailStore.tool.success_count }}</div>
+                <div class="tool-detail-metrics__value">{{ tool.success_count }}</div>
                 <div class="tool-detail-metrics__label">成功</div>
               </div>
               <div class="tool-detail-metrics__card">
-                <div class="tool-detail-metrics__value" :class="detailStore.tool.failure_count > 0 ? 'text-negative' : ''">{{ detailStore.tool.failure_count }}</div>
+                <div class="tool-detail-metrics__value" :class="tool.failure_count > 0 ? 'text-negative' : ''">{{ tool.failure_count }}</div>
                 <div class="tool-detail-metrics__label">失败</div>
               </div>
             </div>
 
             <div class="row q-col-gutter-sm text-body2 q-mb-md">
-              <div class="col-6"><span class="text-weight-medium">Key：</span>{{ detailStore.tool.key }}</div>
-              <div class="col-6"><span class="text-weight-medium">分类：</span>{{ detailStore.tool.category }}</div>
-              <div class="col-6"><span class="text-weight-medium">来源：</span>{{ detailStore.tool.source }}</div>
-              <div class="col-6"><span class="text-weight-medium">风险：</span>{{ riskLabel(detailStore.tool.risk_level) }}</div>
+              <div class="col-6"><span class="text-weight-medium">Key：</span>{{ tool.key }}</div>
+              <div class="col-6"><span class="text-weight-medium">分类：</span>{{ tool.category }}</div>
+              <div class="col-6"><span class="text-weight-medium">来源：</span>{{ tool.source }}</div>
+              <div class="col-6"><span class="text-weight-medium">风险：</span>{{ riskLabel(tool.risk_level) }}</div>
             </div>
 
             <q-expansion-item
@@ -113,24 +114,24 @@
               </div>
             </q-expansion-item>
 
-            <q-card v-if="detailStore.tool.source !== 'mcp'" flat bordered class="q-mb-md tool-detail-test-card">
+            <q-card v-if="tool.source !== 'mcp'" flat bordered class="q-mb-md tool-detail-test-card">
               <q-card-section class="q-pb-sm">
                 <div class="text-subtitle2">在线测试</div>
                 <div class="text-caption text-grey-7">单次调用验证（默认超时 30s，写入 tool_test 调用记录）。</div>
               </q-card-section>
               <q-card-section class="q-pt-none q-gutter-sm">
                 <q-input
-                  :model-value="detailStore.testArgsJson"
+                  :model-value="testArgsJson"
                   type="textarea"
                   dense
                   outlined
                   autogrow
                   label="参数 JSON"
-                  @update:model-value="detailStore.testArgsJson = String($event ?? '{}')"
+                  @update:model-value="$emit('update:testArgsJson', String($event ?? '{}'))"
                 />
                 <div class="row q-gutter-sm items-center">
                   <q-input
-                    :model-value="detailStore.testTimeoutSec"
+                    :model-value="testTimeoutSec"
                     class="col-4"
                     dense
                     outlined
@@ -138,7 +139,7 @@
                     label="超时 (秒)"
                     :min="1"
                     :max="120"
-                    @update:model-value="detailStore.testTimeoutSec = Number($event) || 30"
+                    @update:model-value="$emit('update:testTimeoutSec', Number($event) || 30)"
                   />
                   <q-btn
                     no-caps
@@ -146,32 +147,32 @@
                     class="app-registry-primary-btn"
                     label="运行测试"
                     icon="play_arrow"
-                    :loading="detailStore.testRunning"
-                    @click="detailStore.runToolTest()"
+                    :loading="testRunning"
+                    @click="$emit('run-test')"
                   />
                 </div>
-                <q-banner v-if="detailStore.testResult" rounded :class="detailStore.testResult.status === 'success' ? 'bg-green-1' : 'bg-red-1'">
+                <q-banner v-if="testResult" rounded :class="testResult.status === 'success' ? 'bg-green-1' : 'bg-red-1'">
                   <template #avatar>
                     <q-icon
-                      :name="detailStore.testResult.status === 'success' ? 'check_circle' : 'error'"
-                      :color="detailStore.testResult.status === 'success' ? 'positive' : 'negative'"
+                      :name="testResult.status === 'success' ? 'check_circle' : 'error'"
+                      :color="testResult.status === 'success' ? 'positive' : 'negative'"
                     />
                   </template>
-                  <div class="text-body2">{{ detailStore.testResult.status }} · {{ detailStore.testResult.duration_ms }}ms</div>
-                  <div v-if="detailStore.testResult.error_message" class="text-caption q-mt-xs">{{ detailStore.testResult.error_message }}</div>
-                  <tool-json-block v-else-if="detailStore.testResult.result_preview" class="q-mt-xs" :text="detailStore.testResult.result_preview" />
+                  <div class="text-body2">{{ testResult.status }} · {{ testResult.duration_ms }}ms</div>
+                  <div v-if="testResult.error_message" class="text-caption q-mt-xs">{{ testResult.error_message }}</div>
+                  <tool-json-block v-else-if="testResult.result_preview" class="q-mt-xs" :text="testResult.result_preview" />
                 </q-banner>
               </q-card-section>
             </q-card>
 
             <q-expansion-item dense-toggle label="最近调用记录" class="q-mb-md">
               <div class="q-pt-sm">
-                <div v-if="detailStore.runsLoading" class="text-center q-pa-md">
+                <div v-if="runsLoading" class="text-center q-pa-md">
                   <q-spinner-dots size="28px" />
                 </div>
                 <template v-else>
-                  <q-list v-if="detailStore.recentRuns.length" separator dense class="rounded-borders">
-                    <q-item v-for="r in detailStore.recentRuns.slice(0, 5)" :key="r.id" class="app-registry-list-item">
+                  <q-list v-if="recentRuns.length" separator dense class="rounded-borders">
+                    <q-item v-for="r in recentRuns.slice(0, 5)" :key="r.id" class="app-registry-list-item">
                       <q-item-section avatar>
                         <q-icon :name="runStatusIcon(r.status)" :color="runStatusColor(r.status)" size="sm" />
                       </q-item-section>
@@ -191,7 +192,7 @@
                     class="app-registry-accent-btn q-mt-sm"
                     icon="history"
                     label="查看全部调用记录"
-                    :to="{ name: 'tool-runs', query: { tool_key: detailStore.tool.key } }"
+                    :to="{ name: 'tool-runs', query: { tool_key: tool.key } }"
                   />
                 </template>
               </div>
@@ -200,32 +201,32 @@
 
           <q-tab-panel name="config" class="q-pa-none">
             <tool-detail-config-panel
-              :tool="detailStore.tool"
-              :config-json="detailStore.configJson"
-              :saving="detailStore.configSaving"
-              @update:config-json="detailStore.configJson = $event"
-              @save="detailStore.saveConfig()"
+              :tool="tool"
+              :config-json="configJson"
+              :saving="configSaving"
+              @update:config-json="$emit('update:configJson', $event)"
+              @save="$emit('save-config')"
             />
           </q-tab-panel>
 
           <q-tab-panel name="agents" class="q-pa-none">
-            <div v-if="detailStore.agentBindingLoading" class="text-center q-pa-md">
+            <div v-if="agentBindingLoading" class="text-center q-pa-md">
               <q-spinner-dots size="28px" />
               <div class="text-caption q-mt-sm">正在汇总各 Agent 生效状态…</div>
             </div>
             <template v-else>
-              <q-banner v-if="detailStore.agentBindingSummary" rounded dense class="settings-info-banner q-mb-md">
-                <strong>生效摘要：</strong>{{ detailStore.bindingSummaryLine(detailStore.agentBindingSummary) }}。
+              <q-banner v-if="agentBindingSummary" rounded dense class="settings-info-banner q-mb-md">
+                <strong>生效摘要：</strong>{{ bindingSummaryLine(agentBindingSummary) }}。
                 Profile / allow / deny 在
                 <router-link :to="{ name: 'agents' }" class="text-primary">Agent 列表</router-link>
                 → 能力 Tab 配置。
               </q-banner>
 
               <AppRegistryTable
-                v-if="detailStore.agentBindingSummary?.rows.length"
+                v-if="agentBindingSummary?.rows.length"
                 :shell="false"
                 :data-shell="true"
-                :rows="detailStore.agentBindingSummary.rows"
+                :rows="agentBindingSummary.rows"
                 :columns="agentBindingColumns"
                 row-key="agent_id"
                 hide-pagination
@@ -251,12 +252,12 @@
               <div class="text-subtitle2 q-mb-xs">显式覆盖（tool_agent_overrides）</div>
             </template>
 
-            <div v-if="detailStore.overridesLoading && !detailStore.agentBindingLoading" class="text-center q-pa-md">
+            <div v-if="overridesLoading && !agentBindingLoading" class="text-center q-pa-md">
               <q-spinner-dots size="28px" />
             </div>
-            <template v-else-if="!detailStore.agentBindingLoading">
-              <q-list v-if="detailStore.overrides.length" separator dense class="rounded-borders">
-                <q-item v-for="o in detailStore.overrides" :key="o.id" class="app-registry-list-item">
+            <template v-else-if="!agentBindingLoading">
+              <q-list v-if="overrides.length" separator dense class="rounded-borders">
+                <q-item v-for="o in overrides" :key="o.id" class="app-registry-list-item">
                   <q-item-section avatar>
                     <q-icon :name="o.enabled ? 'check_circle' : 'cancel'" :color="o.enabled ? 'positive' : 'negative'" size="sm" />
                   </q-item-section>
@@ -268,10 +269,10 @@
                   </q-item-section>
                   <q-item-section side>
                     <div class="row q-gutter-xs">
-                      <q-btn flat dense round icon="edit" size="sm" class="app-registry-icon-btn" @click="detailStore.openOverrideEditor(o)">
+                      <q-btn flat dense round icon="edit" size="sm" class="app-registry-icon-btn" @click="$emit('edit-override', o)">
                         <q-tooltip>编辑覆盖</q-tooltip>
                       </q-btn>
-                      <q-btn flat dense round icon="delete" size="sm" class="app-registry-icon-btn" @click="detailStore.confirmRemoveOverride(o)">
+                      <q-btn flat dense round icon="delete" size="sm" class="app-registry-icon-btn" @click="$emit('delete-override', o)">
                         <q-tooltip>删除覆盖</q-tooltip>
                       </q-btn>
                     </div>
@@ -279,36 +280,36 @@
                 </q-item>
               </q-list>
               <div v-else class="text-caption q-pa-sm">暂无 Agent 覆盖配置</div>
-              <q-btn flat no-caps icon="add" label="添加覆盖" class="app-registry-accent-btn q-mt-sm" @click="detailStore.openOverrideEditor(null)" />
+              <q-btn flat no-caps icon="add" label="添加覆盖" class="app-registry-accent-btn q-mt-sm" @click="$emit('edit-override', null)" />
             </template>
           </q-tab-panel>
         </q-tab-panels>
       </div>
     </template>
 
-    <q-inner-loading :showing="detailStore.loading" />
+    <q-inner-loading :showing="loading" />
 
     <tool-override-editor-dialog
-      :open="detailStore.overrideEditorOpen"
-      :form="detailStore.overrideForm"
-      :editing="Boolean(detailStore.editingOverride)"
-      :saving="detailStore.overrideSaving"
-      :agent-options="detailStore.agentOptions"
-      :agents-loading="detailStore.agentsLoading"
-      @update:open="detailStore.overrideEditorOpen = $event"
-      @update:form="detailStore.overrideForm = $event"
-      @save="detailStore.saveOverride()"
+      :open="overrideEditorOpen"
+      :form="overrideForm"
+      :editing="Boolean(editingOverride)"
+      :saving="overrideSaving"
+      :agent-options="agentOptions"
+      :agents-loading="agentsLoading"
+      @update:open="$emit('update:overrideEditorOpen', $event)"
+      @update:form="$emit('update:overrideForm', $event)"
+      @save="$emit('save-override')"
     />
   </q-drawer>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { useToolDetailStore } from "../../stores/tools/toolDetail";
-import { useToolEditorStore } from "../../stores/tools/toolEditor";
-import { useToolToggle } from "../../features/tools/useToolEditor";
 import { TOOL_POLICY_CHIP_COPY } from "../../features/tools/toolEditorCopy";
-import type { ToolAgentBindingRow } from "../../features/tools/toolAgentBindingSummary";
+import { bindingSummaryLine } from "../../features/tools/toolAgentBindingSummary";
+import type { ToolAgentBindingRow, ToolAgentBindingSummary } from "../../features/tools/toolAgentBindingSummary";
+import type { Tool, ToolAgentOverride, ToolInvocation, ToolTestResult } from "../../features/tools/types";
+import type { ToolOverrideForm } from "../../features/tools/useToolDetailPanel";
 import { registryCol, REGISTRY_COL_W } from "../../features/ui/registryTableColumns";
 import { riskLabel, riskQuasarColor, runtimeStatusLabel, prettyJSON } from "./toolUi";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
@@ -316,9 +317,48 @@ import ToolDetailConfigPanel from "./ToolDetailConfigPanel.vue";
 import ToolJsonBlock from "./ToolJsonBlock.vue";
 import ToolOverrideEditorDialog from "./ToolOverrideEditorDialog.vue";
 
-const detailStore = useToolDetailStore();
-const editorStore = useToolEditorStore();
-const { removeTool } = useToolToggle(() => {});
+const props = defineProps<{
+  open: boolean;
+  tool: Tool | null;
+  activeTab: string;
+  loading: boolean;
+  overrides: ToolAgentOverride[];
+  overridesLoading: boolean;
+  recentRuns: ToolInvocation[];
+  runsLoading: boolean;
+  testArgsJson: string;
+  testTimeoutSec: number;
+  testRunning: boolean;
+  testResult: ToolTestResult | null;
+  configJson: string;
+  configSaving: boolean;
+  overrideEditorOpen: boolean;
+  editingOverride: ToolAgentOverride | null;
+  overrideSaving: boolean;
+  overrideForm: ToolOverrideForm;
+  agentBindingSummary: ToolAgentBindingSummary | null;
+  agentBindingLoading: boolean;
+  agentOptions: { label: string; value: string }[];
+  agentsLoading: boolean;
+}>();
+
+const emit = defineEmits<{
+  "update:open": [value: boolean];
+  "update:activeTab": [value: string];
+  "update:testArgsJson": [value: string];
+  "update:testTimeoutSec": [value: number];
+  "run-test": [];
+  "update:configJson": [value: string];
+  "save-config": [];
+  "edit-override": [row: ToolAgentOverride | null];
+  "delete-override": [row: ToolAgentOverride];
+  "update:overrideEditorOpen": [value: boolean];
+  "update:overrideForm": [value: ToolOverrideForm];
+  "save-override": [];
+  "edit-tool": [tool: Tool];
+  "remove-tool": [tool: Tool];
+  close: [];
+}>();
 
 const policyChip = TOOL_POLICY_CHIP_COPY;
 
@@ -348,13 +388,13 @@ function runStatusColor(status: string): string {
 }
 
 const successRate = computed(() => {
-  const t = detailStore.tool;
+  const t = props.tool;
   if (!t || t.invoke_count === 0) return "—";
   return ((t.success_count / t.invoke_count) * 100).toFixed(1) + "%";
 });
 
 const successRateClass = computed(() => {
-  const t = detailStore.tool;
+  const t = props.tool;
   if (!t || t.invoke_count === 0) return "";
   const rate = t.success_count / t.invoke_count;
   if (rate >= 0.95) return "text-positive";
@@ -362,10 +402,10 @@ const successRateClass = computed(() => {
   return "text-negative";
 });
 
-const prettyParamsSchema = computed(() => prettyJSON(detailStore.tool?.parameters_schema_json || "{}"));
-const prettyResultSchema = computed(() => prettyJSON(detailStore.tool?.result_schema_json || "{}"));
+const prettyParamsSchema = computed(() => prettyJSON(props.tool?.parameters_schema_json || "{}"));
+const prettyResultSchema = computed(() => prettyJSON(props.tool?.result_schema_json || "{}"));
 const hasResultSchema = computed(() => {
-  const raw = detailStore.tool?.result_schema_json;
+  const raw = props.tool?.result_schema_json;
   return raw && raw.trim() !== "{}";
 });
 
@@ -376,17 +416,16 @@ const agentBindingColumns = [
 ];
 
 function onDrawerUpdate(val: boolean) {
-  if (!val) detailStore.closeDetail();
+  if (!val) emit("close");
+}
+
+function onActiveTabChange(val: string | number) {
+  emit("update:activeTab", String(val));
 }
 
 function onEdit() {
-  if (detailStore.tool) {
-    detailStore.closeDetail();
-    editorStore.openEdit(detailStore.tool);
+  if (props.tool) {
+    emit("edit-tool", props.tool);
   }
-}
-
-function onRemove() {
-  if (detailStore.tool) removeTool(detailStore.tool);
 }
 </script>

@@ -204,7 +204,7 @@ func (u *ModelCatalogUsecase) Sync(ctx context.Context, dryRun bool) (modelcatal
 		out.Log.Errors = append(out.Log.Errors, "load catalog after sync: "+loadErr.Error())
 		return u.finalizeSyncOutput(out, kerrors.InternalServer("MODEL_CATALOG", fmt.Sprintf("load catalog after sync: %s", loadErr.Error())))
 	}
-	applyRes := u.applier.Apply(ctx, cat, out.Policy.AutoApply)
+	applyRes := u.applier.ApplyWithMigration(ctx, cat, out.Policy.AutoApply)
 	out.Apply = applyRes
 	out.Log.Stats.LLMRowsUpdated = applyRes.LLMRowsUpdated
 	out.Log.Stats.DeprecatedDisabled = applyRes.LLMRowsDisabled

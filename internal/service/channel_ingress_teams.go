@@ -20,8 +20,8 @@ func (h *ChannelIngress) handleTeamsWebhook(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	appID, _ := resolveCredentialPlain(r.Context(), creds, "app_id")
-	appSecret, _ := resolveCredentialPlain(r.Context(), creds, "app_secret")
+	appID, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "app_id")
+	appSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "app_secret")
 	if err := teams.VerifyRequest(appID, appSecret, r.Header, raw); err != nil {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil

@@ -24,6 +24,7 @@ description: "Aranea-Agents 项目前端统一编码指南。当在本项目编�
 - [第九章：任务速查卡](#第九章任务速查卡)
 - [第十章：AI 编码自检清单](#第十章ai-编码自检清单)
 - [第十一章：验证命令](#第十一章验证命令)
+- [第十二章：模块关联强制检查](#第十二章模块关联强制检查)
 
 ---
 
@@ -446,6 +447,7 @@ registryColActions<Row>();
 
 ### 改动中（逐层检查）
 
+- [ ] **已读模块交叉参考手册**：在 `docs/module-cross-reference.md` 中找到目标前端模块卡片，确认后端对应 Service/Proto/Store、跨 Store 依赖、事件消费
 - [ ] 展示组件是否直接调用 API / Store？若有 → 已上收或已备案例外
 - [ ] **Page** 是否直接 `import` `features/*/api`？若有 → 迁入 Store + composable
 - [ ] 新网络请求是否只出现在 `features/*/api.ts` 或 `services/`，且由 Store action 触发？
@@ -505,3 +507,37 @@ registryColActions<Row>();
 | Team 紧凑卡片 | `TeamCard.vue`、`_entity-pages.sass` |
 | Dialog 毛玻璃 | `_glass-dialog.sass` |
 | 侧栏 | `MainLayout.vue`、`_sidebar.sass` |
+
+---
+
+## 第十二章：模块关联强制检查
+
+> **前端模块不是孤岛。改任何 Store/Page/组件前，必须先读关联文档。** 违反即停。
+
+### 12.1 关联文档索引
+
+| 文档 | 路径 | 定位 |
+|------|------|------|
+| **架构蓝图** | `docs/architecture-blueprint.md` | 前端全貌：36 个 Store、实时层、路由 |
+| **模块交叉参考** | `docs/module-cross-reference.md` | §三·前端模块上下文卡 + §六·前后端对齐表 |
+
+### 12.2 开发前强制步骤
+
+```
+步骤 1：确定前端域（chat/tools/agents/...）→ 读交叉参考 §三 对应前端模块卡片
+步骤 2：检查「后端对应」→ 确认 Service/Proto/Store 对齐
+步骤 3：检查「跨 Store 依赖」→ 是否需要 sessionSync 事件总线
+步骤 4：检查「事件消费」→ 新增 WS 消息类型是否已在 dispatcher 注册
+步骤 5：查 §六·前后端对齐表 → 确认后端改动是否需要前端同步
+```
+
+### 12.3 典型遗漏案例
+
+| 遗漏 | 后果 |
+|------|------|
+| 后端新增了 proto 字段但前端 api.ts 没更新 | 前端取不到新字段 |
+| 新增 Store 但没在 stores/index.ts 导出 | Quasar Pinia 安装不一致 |
+| 跨 Store 直接 import 导致循环依赖 | 运行时 undefined |
+| 新增 Envelope 类型但 dispatcher 没注册处理函数 | WS 消息被静默丢弃 |
+| 展示组件 import 了 Store | 违反红线 #1 |
+| Dialog 内直接调 API | 违反红线 #4 |

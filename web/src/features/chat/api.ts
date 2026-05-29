@@ -151,12 +151,7 @@ export async function stopGeneration(sessionId: string): Promise<boolean> {
   }
 }
 
-export interface PendingMessage {
-  id: string;
-  content: string;
-  status: string;
-  created_at: string;
-}
+export type { PendingMessage } from "./types";
 
 export async function getPendingMessages(sessionId: string): Promise<PendingMessage[]> {
   try {

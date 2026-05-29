@@ -402,7 +402,21 @@ func wrapFailover(cfg CatalogConfig, rt *RoundTrip, primary trpcmodel.Model) (tr
 	if len(candidates) < 2 {
 		return primary, nil
 	}
-	fo, err := trpcfailover.New(trpcfailover.WithCandidates(candidates...))
+	fo, err := trpcfailover.New(
+		trpcfailover.WithCandidates(candidates...),
+		trpcfailover.WithSwitchCallback(func(ctx context.Context, from, to string, err error) {
+			errMsg := ""
+			if err != nil {
+				errMsg = err.Error()
+			}
+			event.CtxFlowLogWarn(ctx, "system.provider.ha_failover", "HA 故障切换",
+				event.P("ha_mode", "failover"),
+				event.P("from_candidate", from),
+				event.P("to_candidate", to),
+				event.P("error", errMsg),
+			)
+		}),
+	)
 	if err != nil {
 		return primary, nil
 	}
@@ -421,7 +435,16 @@ func wrapHedge(cfg CatalogConfig, rt *RoundTrip, primary trpcmodel.Model) (trpcm
 	if len(candidates) < 2 {
 		return primary, nil
 	}
-	hedgeOpts := []trpchedge.Option{trpchedge.WithCandidates(candidates...)}
+	hedgeOpts := []trpchedge.Option{
+		trpchedge.WithCandidates(candidates...),
+		trpchedge.WithSwitchCallback(func(ctx context.Context, from, to string, err error) {
+			event.CtxFlowLogWarn(ctx, "system.provider.ha_hedge", "HA 对冲切换",
+				event.P("ha_mode", "hedge"),
+				event.P("primary_candidate", from),
+				event.P("winner_candidate", to),
+			)
+		}),
+	}
 	if cfg.HAHedgeDelayMs > 0 {
 		hedgeOpts = append(hedgeOpts, trpchedge.WithDelay(time.Duration(cfg.HAHedgeDelayMs)*time.Millisecond))
 	}

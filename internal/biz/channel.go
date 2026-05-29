@@ -137,11 +137,12 @@ type ChannelRepo interface {
 }
 
 type ChannelUsecase struct {
-	repo ChannelRepo
+	repo   ChannelRepo
+	crypto *CredentialCrypto
 }
 
-func NewChannelUsecase(repo ChannelRepo) *ChannelUsecase {
-	return &ChannelUsecase{repo: repo}
+func NewChannelUsecase(repo ChannelRepo, crypto *CredentialCrypto) *ChannelUsecase {
+	return &ChannelUsecase{repo: repo, crypto: crypto}
 }
 
 func (u *ChannelUsecase) Catalog() []ChannelCatalogItem {
@@ -150,6 +151,14 @@ func (u *ChannelUsecase) Catalog() []ChannelCatalogItem {
 
 func (u *ChannelUsecase) List(ctx context.Context) ([]Channel, error) {
 	return u.repo.List(ctx)
+}
+
+func (u *ChannelUsecase) DecryptSecretRef(ctx context.Context, ref string) (string, error) {
+	return u.crypto.DecryptChannelSecretRef(ctx, ref)
+}
+
+func (u *ChannelUsecase) EncryptSecretRef(ctx context.Context, plain string) (string, error) {
+	return u.crypto.EncryptChannelSecretRef(ctx, plain)
 }
 
 func (u *ChannelUsecase) Get(ctx context.Context, id string) (Channel, error) {
@@ -281,7 +290,7 @@ func (u *ChannelUsecase) UpsertCredentials(ctx context.Context, channelID string
 		}
 		if secretRef == "" {
 			var encErr error
-			secretRef, encErr = EncryptChannelSecretRef(ctx, secret)
+			secretRef, encErr = u.crypto.EncryptChannelSecretRef(ctx, secret)
 			if encErr != nil {
 				return nil, encErr
 			}
@@ -334,7 +343,8 @@ func (u *ChannelUsecase) RunHealthChecks(ctx context.Context) error {
 		safego.Go(ctx, "channel.EvaluateTestAll", func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-			credentials, err := u.repo.ListCredentials(ctx, ch.ID)
+			writeCtx := context.WithoutCancel(ctx)
+			credentials, err := u.repo.ListCredentials(writeCtx, ch.ID)
 			if err != nil {
 				return
 			}
@@ -343,7 +353,7 @@ func (u *ChannelUsecase) RunHealthChecks(ctx context.Context) error {
 				return
 			}
 			mu.Lock()
-			_, _ = u.updateTestMetadata(ctx, ch, result)
+			_, _ = u.updateTestMetadata(writeCtx, ch, result)
 			mu.Unlock()
 		})
 	}

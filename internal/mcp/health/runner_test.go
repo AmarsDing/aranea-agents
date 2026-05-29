@@ -11,9 +11,9 @@ import (
 	"aranea-agents/internal/mcp/alert"
 )
 
-// stubMCPServerRepo is a minimal biz.MCPServerRepo stub.
+// stubMCPServerRepo is a minimal biz.MCPServerReader stub.
 type stubMCPServerRepo struct {
-	biz.MCPServerRepo
+	biz.MCPServerReader
 	server biz.MCPServer
 }
 

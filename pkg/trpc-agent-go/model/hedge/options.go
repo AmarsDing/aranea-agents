@@ -10,6 +10,7 @@
 package hedge
 
 import (
+	"context"
 	"time"
 
 	"trpc.group/trpc-go/trpc-agent-go/model"
@@ -23,7 +24,10 @@ type options struct {
 	contextWindow int
 	delay         time.Duration
 	delays        []time.Duration
+	onSwitch      SwitchCallback
 }
+
+type SwitchCallback func(ctx context.Context, fromCandidate string, toCandidate string, err error)
 
 func newOptions(opt ...Option) options {
 	opts := options{
@@ -35,27 +39,20 @@ func newOptions(opt ...Option) options {
 	return opts
 }
 
-// Option configures a hedge model.
 type Option func(*options)
 
-// WithCandidates appends hedge candidates in launch order.
-// Multiple calls accumulate candidates instead of replacing them.
 func WithCandidates(candidates ...model.Model) Option {
 	return func(o *options) {
 		o.candidates = append(o.candidates, candidates...)
 	}
 }
 
-// WithName sets a stable logical model name for the hedge wrapper.
 func WithName(name string) Option {
 	return func(o *options) {
 		o.name = name
 	}
 }
 
-// WithContextWindow sets the model context window size in tokens for this
-// hedge wrapper. If unset, the wrapper reports a context window only when all
-// candidate models report the same positive context window.
 func WithContextWindow(tokens int) Option {
 	return func(o *options) {
 		if tokens > 0 {
@@ -64,17 +61,21 @@ func WithContextWindow(tokens int) Option {
 	}
 }
 
-// WithDelay sets a fixed interval between successive hedge launches.
 func WithDelay(delay time.Duration) Option {
 	return func(o *options) {
 		o.delay = delay
 	}
 }
 
-// WithDelays sets absolute launch offsets for candidates[1:].
 func WithDelays(delays ...time.Duration) Option {
 	return func(o *options) {
 		o.delays = make([]time.Duration, len(delays))
 		copy(o.delays, delays)
+	}
+}
+
+func WithSwitchCallback(cb SwitchCallback) Option {
+	return func(o *options) {
+		o.onSwitch = cb
 	}
 }

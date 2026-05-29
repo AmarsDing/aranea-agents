@@ -69,7 +69,7 @@ func (n *MonitorAlertNotifier) notifyViaChannel(ctx context.Context, channelID s
 	if err != nil {
 		return err
 	}
-	webhookURL, err := resolveCredentialPlain(ctx, creds, "webhook_url")
+	webhookURL, err := resolveCredentialPlain(ctx, n.channels, creds, "webhook_url")
 	if err != nil || webhookURL == "" {
 		return kerrors.BadRequest("MONITOR", "channel has no webhook_url credential")
 	}

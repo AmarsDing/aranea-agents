@@ -53,6 +53,7 @@ func toProtoPM(m biz.ProviderModel) *v1.ProviderModel {
 			Thinking: caps.Thinking,
 			TextOnly: caps.TextOnly,
 		},
+		PricingConfigured: m.PricingConfigured,
 	}
 }
 

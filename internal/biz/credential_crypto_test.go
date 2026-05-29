@@ -38,8 +38,9 @@ func TestProcessConfigJSONForStorage_EncryptsAPIKey(t *testing.T) {
 	}
 	_ = os.Setenv(envCredentialKey, hex.EncodeToString(key))
 	defer os.Unsetenv(envCredentialKey)
+	c := NewCredentialCrypto(nil)
 
-	out, err := processConfigJSONForStorage(context.Background(), `{"api_key":"sk-test","provider_type":"openai"}`)
+	out, err := c.ProcessConfigJSONForStorage(context.Background(), `{"api_key":"sk-test","provider_type":"openai"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +54,10 @@ func TestProcessConfigJSONForStorage_EncryptsAPIKey(t *testing.T) {
 	if m["api_key_enc"] == nil {
 		t.Fatal("expected api_key_enc")
 	}
-	dec := decryptConfigJSONForRuntime(context.Background(), out)
+	dec, err := c.DecryptConfigJSONForRuntime(context.Background(), out)
+	if err != nil {
+		t.Fatalf("decrypt error: %v", err)
+	}
 	if !strings.Contains(dec, "sk-test") {
 		t.Fatalf("decrypt failed: %s", dec)
 	}

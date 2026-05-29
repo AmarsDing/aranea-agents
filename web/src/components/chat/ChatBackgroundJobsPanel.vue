@@ -44,9 +44,10 @@
                   <q-item-section>
                     <q-item-label class="ellipsis">{{ job.summary || job.id }}</q-item-label>
                     <q-item-label caption>
-                      {{ job.source === "session_run" ? (job.phase || job.status) : (job.target_type || "sync") }}
+                      {{ job.source === "session_run" ? (jobPhaseLabel(job) || job.status) : (job.target_type || "sync") }}
                       <span v-if="job.target_id && job.source !== 'session_run'"> · {{ job.target_id }}</span>
                       <span v-if="job.turn_id"> · turn {{ job.turn_id.slice(0, 8) }}</span>
+                      <span v-if="jobElapsed(job)"> · {{ jobElapsed(job) }}</span>
                     </q-item-label>
                   </q-item-section>
                   <q-item-section side>
@@ -135,7 +136,7 @@
                           size="sm"
                           color="primary"
                           :label="t('chat.deadLetter.resolve', '标记已处理')"
-                          @click.stop="resolveDeadLetter(row.id)"
+                          @click.stop="emit('resolve-dead-letter', row.id)"
                         />
                       </div>
                     </q-item-section>
@@ -164,6 +165,8 @@ import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import { useChatBackgroundJobs } from "../../features/chat/useChatBackgroundJobs";
 import { useTaskDeadLetters } from "../../features/chat/useTaskDeadLetters";
+import { formatElapsed, phaseLabel } from "../../features/chat/jobFormatters";
+import { ACTIVE_RUN_STATUSES } from "../../features/chat/sessionRunStatus";
 
 type ChatBackgroundJobRow = ReturnType<typeof useChatBackgroundJobs>["rows"]["value"][number];
 type TaskDeadLetterRow = ReturnType<typeof useTaskDeadLetters>["rows"]["value"][number];
@@ -172,6 +175,7 @@ const emit = defineEmits<{
   "focus-turn": [turnId: string];
   navigate: [route: { name: string; params: Record<string, string> }];
   "cancel-job": [job: { id: string; source: string }];
+  "resolve-dead-letter": [id: string];
 }>();
 
 const props = defineProps<{
@@ -240,10 +244,18 @@ function refreshActiveTab() {
   }
 }
 
-const ACTIVE_JOB_STATUSES = new Set(["running", "accepted", "async_queued", "queued", "interactive", "escalating", "durable"]);
-
 function isJobActive(job: ChatBackgroundJobRow) {
-  return ACTIVE_JOB_STATUSES.has(job.status);
+  return ACTIVE_RUN_STATUSES.has(job.status);
+}
+
+function jobElapsed(job: ChatBackgroundJobRow): string {
+  if (!isJobActive(job)) return "";
+  return formatElapsed(job.created_at, job.updated_at);
+}
+
+function jobPhaseLabel(job: ChatBackgroundJobRow): string {
+  if (!job.phase) return "";
+  return phaseLabel(job.phase);
 }
 
 const $q = useQuasar();

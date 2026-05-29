@@ -21,7 +21,7 @@ func (h *ChannelIngress) handleWeComWebhook(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	token, _ := resolveCredentialPlain(r.Context(), creds, "token")
+	token, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "token")
 	if err := wecom.VerifySignature(token, r.URL.Query().Get("timestamp"), r.URL.Query().Get("nonce"), r.URL.Query().Get("msg_signature")); err != nil {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil

@@ -20,9 +20,11 @@
       :is-team-session="isTeamSession"
       :planner-kind="plannerKind"
       :react-tool-link-index="reactToolLinkIndex"
+      :reasoning-sidebar-open="reasoningSidebarOpen"
       @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
       @retry="(id) => emit('retry', id)"
       @dismiss-failed="(id) => emit('dismiss-failed', id)"
+      @pin-reasoning="(id) => emit('pin-reasoning', id)"
     />
     <ToolStrip
       v-if="visibleTools.length"
@@ -43,9 +45,11 @@
         :is-team-session="isTeamSession"
         :planner-kind="plannerKind"
         :react-tool-link-index="reactToolLinkIndex"
+        :reasoning-sidebar-open="reasoningSidebarOpen"
         @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
         @feedback="(p) => emit('feedback', p)"
         @regenerate="(msg) => emit('regenerate', msg)"
+        @pin-reasoning="(id) => emit('pin-reasoning', id)"
       />
       <ChatMessageRow
         v-for="(member, mIdx) in block.members"
@@ -57,10 +61,12 @@
         :is-team-session="isTeamSession"
         :planner-kind="plannerKind"
         :react-tool-link-index="reactToolLinkIndex"
+        :reasoning-sidebar-open="reasoningSidebarOpen"
         @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
         @retry="(id) => emit('retry', id)"
         @dismiss-failed="(id) => emit('dismiss-failed', id)"
         @regenerate="(msg) => emit('regenerate', msg)"
+        @pin-reasoning="(id) => emit('pin-reasoning', id)"
       />
     </div>
   </article>
@@ -89,6 +95,7 @@ const props = defineProps<{
   plannerKind?: string;
   reactToolLinkIndex: ReactToolLinkIndex;
   focused?: boolean;
+  reasoningSidebarOpen?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -97,6 +104,7 @@ const emit = defineEmits<{
   regenerate: [message: Message];
   retry: [messageId: string];
   "dismiss-failed": [messageId: string];
+  "pin-reasoning": [messageId: string];
 }>();
 
 const { t } = useI18n();
@@ -113,33 +121,33 @@ const visibleTools = computed(() =>
 );
 </script>
 
-<style scoped>
-.turn-block {
-  margin-bottom: var(--space-3);
-  padding: var(--space-3) var(--space-3);
-  border-radius: 14px;
-  background: var(--glass-surface);
-  border: 1px solid var(--glass-border);
-  transition: box-shadow 0.25s ease, border-color 0.25s ease;
-}
+<style scoped lang="sass">
+.turn-block
+  margin-bottom: var(--space-2)
+  padding: var(--space-2) var(--space-2) var(--space-1)
+  border-radius: 14px
+  background: color-mix(in srgb, var(--glass-surface) 35%, transparent)
+  border: 1px solid color-mix(in srgb, var(--glass-border) 50%, transparent)
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, background 0.2s ease
 
-.turn-block--focused {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 35%, transparent);
-}
+.turn-block--focused
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--glass-border))
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 25%, transparent)
+  background: color-mix(in srgb, var(--glass-surface) 50%, transparent)
 
-.turn-block__channel-bar {
-  margin: calc(-1 * var(--space-1)) 0 var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-  color: var(--color-text-secondary);
-}
+.turn-block__channel-bar
+  margin: calc(-1 * var(--space-1)) 0 var(--space-2)
+  padding: var(--space-1) var(--space-2)
+  border-radius: 8px
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent)
+  color: var(--color-text-secondary)
+  font-size: 11.5px
+  font-weight: 600
+  letter-spacing: 0.02em
 
-.turn-block__response {
-  position: relative;
-  padding-top: var(--space-1);
-  margin-top: var(--space-1);
-  border-top: 1px solid color-mix(in srgb, var(--glass-border) 50%, transparent);
-}
+.turn-block__response
+  position: relative
+  padding-top: var(--space-1)
+  margin-top: var(--space-1)
+  border-top: 1px solid color-mix(in srgb, var(--glass-border) 35%, transparent)
 </style>

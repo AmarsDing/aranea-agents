@@ -3,6 +3,7 @@
 
 .chat-mid-card
   background-clip: padding-box
+  border-radius: var(--chat-bubble-radius, 18px)
 
 // ===== Header =====
 .chat-message-header
@@ -195,7 +196,7 @@ body.body--dark .chat-header-prompt__box
 .chat-messages
   min-width: 0
   max-width: 100%
-  padding: 28px var(--chat-edge-gutter) 36px
+  padding: 20px var(--chat-edge-gutter) 28px
   background: var(--chat-canvas-light)
   overflow-x: hidden
   box-sizing: border-box
@@ -225,24 +226,24 @@ body.body--dark .chat-messages
 
 // ===== Empty state =====
 .chat-empty-state
-  min-height: 220px
-  padding: 24px
+  min-height: 260px
+  padding: 32px 24px
 
 .chat-empty-state__halo
   position: relative
   display: flex
   align-items: center
   justify-content: center
-  width: 88px
-  height: 88px
+  width: 80px
+  height: 80px
   border-radius: 50%
-  background: radial-gradient(closest-side, var(--chat-indigo-soft) 0%, var(--chat-indigo-faint) 70%, rgba(99, 102, 241, 0) 100%)
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--color-accent) 18%, transparent) 0%, color-mix(in srgb, var(--color-accent) 6%, transparent) 70%, transparent 100%)
   &::before
     content: ""
     position: absolute
     inset: 0
     border-radius: 50%
-    border: 1px dashed var(--chat-indigo-border)
+    border: 1.5px dashed color-mix(in srgb, var(--color-accent) 30%, var(--glass-border))
     animation: chat-empty-spin 22s linear infinite
 
 @keyframes chat-empty-spin
@@ -251,17 +252,42 @@ body.body--dark .chat-messages
 
 .chat-empty-state__title
   color: var(--color-text-primary)
-  font-size: 15px
+  font-size: 16px
   font-weight: 700
+  letter-spacing: -0.01em
 
 .chat-empty-state__hint
   color: var(--chat-text-muted)
+  font-size: 13px
+
+.chat-empty-state__suggestions
+  flex-wrap: wrap
+  max-width: 420px
+
+.chat-empty-state__chip
+  font-size: 12.5px
+  font-weight: 500
+  cursor: pointer
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease
+  &:hover
+    background: color-mix(in srgb, var(--color-accent) 8%, transparent)
+    border-color: color-mix(in srgb, var(--color-accent) 45%, var(--glass-border))
+    transform: translateY(-1px)
 
 body.body--dark .chat-empty-state__title
   color: var(--color-text-primary)
 
 body.body--dark .chat-empty-state__hint
   color: var(--chat-text-muted)
+
+body.body--dark .chat-empty-state__halo
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--color-accent) 22%, transparent) 0%, color-mix(in srgb, var(--color-accent) 8%, transparent) 70%, transparent 100%)
+  &::before
+    border-color: color-mix(in srgb, var(--color-accent) 35%, var(--glass-border))
+
+body.body--dark .chat-empty-state__chip:hover
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent)
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--glass-border))
 
 // ===== File tile =====
 .chat-file-tile
@@ -294,7 +320,7 @@ body.body--dark .chat-empty-state__hint
 .chat-q-message
   width: 100%
   max-width: 100%
-  animation: chat-message-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both
+  animation: chat-message-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both
 
   & + .chat-q-message
     margin-top: var(--chat-block-gap)
@@ -379,10 +405,10 @@ body.body--dark .chat-empty-state__hint
 @keyframes chat-message-in
   0%
     opacity: 0
-    transform: translateY(6px) scale(0.985)
+    transform: translateY(4px)
   100%
     opacity: 1
-    transform: translateY(0) scale(1)
+    transform: translateY(0)
 
 // ===== Bubble (鎴戜滑鑷鐨?inner 鍗＄墖) =====
 .chat-message-bubble
@@ -390,12 +416,12 @@ body.body--dark .chat-empty-state__hint
   width: 100%
   max-width: 100%
   min-width: 0
-  padding: 18px 22px
+  padding: 14px 18px
   border-radius: var(--chat-bubble-radius)
   font-size: 15px
-  line-height: 1.8
+  line-height: 1.75
   box-sizing: border-box
-  transition: box-shadow 0.22s ease, transform 0.22s ease
+  transition: box-shadow 0.22s ease, transform 0.22s ease, background 0.2s ease, border-color 0.2s ease
   overflow: hidden
   overflow-wrap: anywhere
 
@@ -423,22 +449,23 @@ body.body--dark .chat-empty-state__hint
   opacity: 0.92
 
 .chat-reasoning-peek
-  margin-bottom: 8px
-  padding: 8px 10px
-  border-radius: 8px
-  border: 1px solid var(--glass-border, rgba(128, 128, 128, 0.25))
-  background: var(--color-surface-soft, rgba(128, 128, 128, 0.06))
+  margin-bottom: 10px
+  padding: 10px 12px
+  border-radius: 10px
+  border: 1px solid color-mix(in srgb, var(--glass-border) 80%, transparent)
+  background: color-mix(in srgb, var(--glass-surface) 50%, transparent)
   cursor: pointer
   outline: none
   overflow: hidden
-  transition: border-color 0.15s ease, box-shadow 0.15s ease
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease
 
 .chat-reasoning-peek--streaming
-  border-color: color-mix(in srgb, var(--color-accent, #e9a23b) 25%, var(--glass-border, rgba(128, 128, 128, 0.25)))
+  border-color: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-accent) 4%, var(--glass-surface))
 
 .chat-reasoning-peek--selected
-  border-color: var(--color-accent, #e9a23b)
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent, #e9a23b) 35%, transparent)
+  border-color: var(--color-accent)
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent)
 
 .chat-reasoning-peek__label
   color: var(--color-text-secondary)
@@ -446,7 +473,11 @@ body.body--dark .chat-empty-state__hint
   user-select: none
   display: flex
   align-items: center
-  gap: 4px
+  gap: 5px
+  font-size: 11.5px
+  font-weight: 600
+  letter-spacing: 0.02em
+  text-transform: uppercase
 
 .chat-reasoning-peek__live
   opacity: 0.7
@@ -518,11 +549,11 @@ body.body--dark .chat-empty-state__hint
   background-image: linear-gradient(180deg, var(--color-danger-soft), var(--chat-danger-faint))
 
 .chat-message-bubble--dark.chat-message-bubble--tool
-  background-image: linear-gradient(180deg, rgba(14, 165, 233, 0.16), rgba(30, 41, 59, 0.92))
+  background-image: linear-gradient(180deg, rgba(14, 165, 233, 0.16), var(--chat-surface-muted-92))
   border-color: var(--chat-info-border-dark)
 
 .chat-message-bubble--dark.chat-message-bubble--tool-failed
-  background-image: linear-gradient(180deg, var(--chat-danger-soft), rgba(30, 41, 59, 0.92))
+  background-image: linear-gradient(180deg, var(--chat-danger-soft), var(--chat-surface-muted-92))
   border-color: var(--chat-danger-border-dark)
 
 // ===== Failed user message (retry banner) =====
@@ -531,13 +562,13 @@ body.body--dark .chat-empty-state__hint
   background-image: linear-gradient(180deg, var(--color-danger-soft), var(--chat-danger-faint))
 
 .chat-message-bubble--dark.chat-message-bubble--send-failed
-  background-image: linear-gradient(180deg, var(--chat-danger-soft), rgba(30, 41, 59, 0.92))
+  background-image: linear-gradient(180deg, var(--chat-danger-soft), var(--chat-surface-muted-92))
   border-color: var(--chat-danger-border-dark)
 
 .message-failed-banner
   padding: 4px 8px
   border-radius: 6px
-  background: rgba(239, 68, 68, 0.06)
+  background: var(--chat-danger-faint-bg)
 
 // ===== Avatar =====
 .message-avatar
@@ -545,20 +576,20 @@ body.body--dark .chat-empty-state__hint
   flex-shrink: 0
   font-weight: 700
   letter-spacing: 0.02em
-  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18), 0 0 0 3px var(--chat-text-on-accent)
+  box-shadow: 0 4px 12px var(--chat-avatar-shadow), 0 0 0 2px var(--chat-text-on-accent)
   border: none
-  transition: transform 0.22s ease, box-shadow 0.22s ease
+  transition: transform 0.2s ease, box-shadow 0.2s ease
 
   &:hover
-    transform: translateY(-1px) scale(1.04)
+    transform: translateY(-1px) scale(1.03)
 
   &--user
-    box-shadow: 0 8px 20px rgba(99, 102, 241, 0.30), 0 0 0 3px rgba(255, 255, 255, 0.95)
+    box-shadow: 0 4px 12px var(--chat-indigo-shadow), 0 0 0 2px var(--chat-avatar-ring)
 
 body.body--dark .message-avatar
-  box-shadow: 0 8px 20px var(--chat-shadow-overlay), 0 0 0 3px rgba(30, 41, 59, 0.95)
+  box-shadow: 0 4px 12px var(--chat-shadow-overlay), 0 0 0 2px var(--chat-avatar-ring)
   &--user
-    box-shadow: 0 8px 20px var(--chat-indigo-border-strong), 0 0 0 3px rgba(30, 41, 59, 0.95)
+    box-shadow: 0 4px 12px var(--chat-indigo-border-strong), 0 0 0 2px var(--chat-avatar-ring)
 
 .message-avatar__initials
   font-size: 14px
@@ -568,9 +599,9 @@ body.body--dark .message-avatar
 .message-meta-row
   display: flex
   align-items: baseline
-  gap: 10px
+  gap: 8px
   margin-bottom: 0
-  padding: 0
+  padding: 0 2px
   flex-wrap: wrap
 
 .message-meta-row--sent
@@ -578,19 +609,23 @@ body.body--dark .message-avatar
   flex-direction: row-reverse
 
 .message-name
-  font-size: 13px
+  font-size: 12.5px
   font-weight: 650
   letter-spacing: 0.01em
   color: var(--color-text-primary)
-  line-height: 1.25
+  line-height: 1.3
 
 .message-stamp
   font-size: 11px
   font-weight: 500
-  letter-spacing: 0.03em
+  letter-spacing: 0.02em
   color: var(--color-text-secondary)
-  line-height: 1.25
+  line-height: 1.3
   font-variant-numeric: tabular-nums
+  opacity: 0.5
+  transition: opacity 0.15s ease
+
+.chat-q-message:hover .message-stamp
   opacity: 0.88
 
 .message-send-tags
@@ -608,36 +643,45 @@ body.body--dark .message-avatar
   color: var(--chat-text-on-accent-soft)
 
 body.body--dark .message-send-tags:not(.message-send-tags--sent)
-  color: rgba(148, 163, 184, 0.95)
+  color: var(--chat-text-slate-95)
+
+.message-feedback
+  opacity: 0
+  transition: opacity 0.15s ease
+
+.chat-q-message:hover .message-feedback,
+.message-feedback:has(.text-primary),
+.message-feedback:has(.text-negative)
+  opacity: 1
 
 // ===== Streaming typing indicator =====
 .chat-typing
   display: inline-flex
   align-items: center
-  gap: 5px
-  margin-top: 6px
+  gap: 4px
+  margin-top: 8px
   padding: 4px 0
   vertical-align: middle
 
   i
-    width: 6px
-    height: 6px
+    width: 5px
+    height: 5px
     border-radius: 50%
-    background: currentColor
-    opacity: 0.45
-    animation: chat-typing-bounce 1.2s ease-in-out infinite
+    background: var(--color-accent)
+    opacity: 0.4
+    animation: chat-typing-bounce 1.4s ease-in-out infinite
 
   i:nth-child(2)
-    animation-delay: 0.18s
+    animation-delay: 0.2s
   i:nth-child(3)
-    animation-delay: 0.36s
+    animation-delay: 0.4s
 
 @keyframes chat-typing-bounce
   0%, 60%, 100%
     transform: translateY(0)
-    opacity: 0.4
+    opacity: 0.35
   30%
-    transform: translateY(-4px)
+    transform: translateY(-5px)
     opacity: 1
 
 // 流式强调条见 app-global（inset box-shadow）；成员左条保留 ::before
@@ -689,9 +733,19 @@ body.body--dark .message-send-tags:not(.message-send-tags--sent)
   right: 24px
   bottom: 18px
   z-index: 5
-  width: 44px
-  height: 44px
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22), 0 2px 4px var(--chat-shadow-8)
+  width: 40px
+  height: 40px
+  background: var(--glass-surface) !important
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  border: 1px solid var(--glass-border) !important
+  box-shadow: 0 6px 20px var(--chat-shadow-md), 0 2px 4px var(--chat-shadow-8)
+  transition: transform 0.18s ease, box-shadow 0.18s ease
+  &:hover
+    transform: translateY(-1px)
+    box-shadow: 0 8px 24px var(--chat-shadow-md), 0 2px 6px var(--chat-shadow-8)
+  &:active
+    transform: translateY(0) scale(0.96)
 
 .chat-scroll-fade-enter-active,
 .chat-scroll-fade-leave-active
@@ -722,7 +776,7 @@ body.body--dark .message-send-tags:not(.message-send-tags--sent)
   &::-webkit-details-marker
     display: none
   &:hover
-    background: rgba(14, 165, 233, 0.09)
+    background: var(--chat-info-soft-bg)
 
 .chat-tool-details[open] > .chat-tool-details__summary
   margin-bottom: 4px
@@ -754,13 +808,13 @@ body.body--dark .message-send-tags:not(.message-send-tags--sent)
   color: var(--color-text-primary)
 
 .chat-message-bubble--dark .chat-tool-details__hint::after
-  color: rgba(148, 163, 184, 0.92)
+  color: var(--chat-text-slate-92)
 
 .chat-message-bubble--dark .chat-tool-details__summary:hover
   background: var(--chat-info-soft-dark)
 
 .chat-message-bubble--dark .chat-tool-details__body
-  border-top-color: rgba(148, 163, 184, 0.28)
+  border-top-color: var(--chat-border-slate-28)
 
 // ===== Markdown content =====
 .chat-message-content
@@ -848,7 +902,7 @@ body.body--dark .message-send-tags:not(.message-send-tags--sent)
   td
     min-width: 96px
     padding: 9px 12px
-    border: 1px solid rgba(100, 116, 139, 0.22)
+    border: 1px solid var(--chat-table-border)
     text-align: left
     vertical-align: top
 
@@ -895,7 +949,7 @@ body.body--dark .message-send-tags:not(.message-send-tags--sent)
     border: 1px solid var(--chat-scrollbar-thumb-dark)
     border-radius: 6px
     background: var(--chat-surface-light-4)
-    color: rgba(226, 232, 240, 0.82)
+    color: var(--chat-text-copy-btn)
     font-size: 11.5px
     font-weight: 600
     letter-spacing: 0.02em
@@ -974,7 +1028,7 @@ body.body--dark .message-send-tags:not(.message-send-tags--sent)
   hr
     margin: 1.1em 0
     border: 0
-    border-top: 1px solid rgba(100, 116, 139, 0.22)
+    border-top: 1px solid var(--chat-table-border)
 
   img
     max-width: 100%
@@ -1058,7 +1112,7 @@ body:not(.body--dark) .chat-message-content--sent
     color: var(--color-text-primary)
   th,
   td
-    border-color: rgba(148, 163, 184, 0.2)
+    border-color: var(--chat-table-border)
 
   code
     background: var(--chat-border-subtle)

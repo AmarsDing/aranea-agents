@@ -5,7 +5,6 @@ import (
 	cryptorand "crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"math/rand/v2"
 	"net/http"
 	"strings"
@@ -16,6 +15,7 @@ import (
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/modelcatalog"
 	"aranea-agents/pkg/outboundguard"
+	"aranea-agents/pkg/safego"
 
 	"github.com/go-kratos/kratos/v2/errors"
 )
@@ -138,8 +138,25 @@ type LlmProviderModelValidator interface {
 	ValidateProviderPair(ctx context.Context, provider, model string) (bool, error)
 }
 
+// ModelPricingRepo interface
 type ModelPricingRepo interface {
 	UpsertModelPricingRule(ctx context.Context, rule ModelPricingRule) error
+}
+
+// PricingSourcePriority returns the priority of a pricing source.
+// Higher value = higher priority; lower-priority sources cannot overwrite higher ones.
+// manual > model-inspect > models.dev-sync
+func PricingSourcePriority(source string) int {
+	switch strings.ToLower(strings.TrimSpace(source)) {
+	case "manual":
+		return 100
+	case "model-inspect":
+		return 50
+	case "models.dev-sync":
+		return 10
+	default:
+		return 0
+	}
 }
 
 type LlmProviderModelRepo interface {
@@ -184,10 +201,11 @@ type LlmProviderModelUsecase struct {
 	validator LlmProviderModelValidator
 	pricing   ModelPricingRepo
 	inspector LLMInspector
+	crypto    *CredentialCrypto
 }
 
-func NewLlmProviderModelUsecase(reader LlmProviderModelReader, writer LlmProviderModelWriter, validator LlmProviderModelValidator, pricing ModelPricingRepo, inspector LLMInspector) *LlmProviderModelUsecase {
-	return &LlmProviderModelUsecase{reader: reader, writer: writer, validator: validator, pricing: pricing, inspector: inspector}
+func NewLlmProviderModelUsecase(reader LlmProviderModelReader, writer LlmProviderModelWriter, validator LlmProviderModelValidator, pricing ModelPricingRepo, inspector LLMInspector, crypto *CredentialCrypto) *LlmProviderModelUsecase {
+	return &LlmProviderModelUsecase{reader: reader, writer: writer, validator: validator, pricing: pricing, inspector: inspector, crypto: crypto}
 }
 
 func (u *LlmProviderModelUsecase) List(ctx context.Context) ([]ProviderModel, error) {
@@ -215,7 +233,7 @@ func (u *LlmProviderModelUsecase) GetByProviderAndModel(ctx context.Context, pro
 	if err != nil {
 		return ProviderModel{}, err
 	}
-	return prepareProviderModelForRuntime(ctx, m), nil
+	return u.crypto.PrepareProviderModelForRuntime(ctx, m)
 }
 
 func (u *LlmProviderModelUsecase) Create(ctx context.Context, in ProviderModel) (ProviderModel, error) {
@@ -230,11 +248,11 @@ func (u *LlmProviderModelUsecase) Create(ctx context.Context, in ProviderModel) 
 	if in.Status == "" {
 		in.Status = "active"
 	}
-	if err := requireCredentialKeyForPlaintext(ctx, in.ConfigJSON); err != nil {
+	if err := u.crypto.RequireKeyForPlaintext(ctx, in.ConfigJSON); err != nil {
 		return ProviderModel{}, err
 	}
 	var err error
-	in.ConfigJSON, err = processConfigJSONForStorage(ctx, in.ConfigJSON)
+	in.ConfigJSON, err = u.crypto.ProcessConfigJSONForStorage(ctx, in.ConfigJSON)
 	if err != nil {
 		return ProviderModel{}, err
 	}
@@ -278,10 +296,10 @@ func (u *LlmProviderModelUsecase) Update(ctx context.Context, id string, patch P
 		if err != nil {
 			return ProviderModel{}, err
 		}
-		if err := requireCredentialKeyForPlaintext(ctx, mergedCfg); err != nil {
+		if err := u.crypto.RequireKeyForPlaintext(ctx, mergedCfg); err != nil {
 			return ProviderModel{}, err
 		}
-		processed, err := processConfigJSONForStorage(ctx, mergedCfg)
+		processed, err := u.crypto.ProcessConfigJSONForStorage(ctx, mergedCfg)
 		if err != nil {
 			return ProviderModel{}, err
 		}
@@ -327,7 +345,7 @@ func (u *LlmProviderModelUsecase) RevealCredentials(ctx context.Context, id stri
 	if err != nil {
 		return ProviderCredentialsReveal{}, err
 	}
-	return revealCredentialsFromConfig(ctx, m.ConfigJSON)
+	return u.crypto.RevealCredentialsFromConfig(ctx, m.ConfigJSON)
 }
 
 func (u *LlmProviderModelUsecase) ValidatePair(ctx context.Context, provider, model string) (bool, string, error) {
@@ -350,12 +368,22 @@ func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) 
 		if in.ResourceID != "" {
 			row, err := u.reader.GetProviderModel(ctx, in.ResourceID)
 			if err == nil && row.ConfigJSON != "" {
-				mergeInspectConfigJSON(prepareProviderModelForRuntime(ctx, row).ConfigJSON, &in)
+				prepared, decErr := u.crypto.PrepareProviderModelForRuntime(ctx, row)
+				if decErr != nil {
+					event.SysLogWarn("llm_provider_model.inspect", "解密 config_json 失败", event.P("error", decErr.Error()))
+				} else {
+					mergeInspectConfigJSON(prepared.ConfigJSON, &in)
+				}
 			}
 		} else if in.ProviderCode != "" && in.ModelAPIID != "" {
 			row, err := u.reader.GetProviderModelByProviderAndModel(ctx, in.ProviderCode, in.ModelAPIID)
 			if err == nil && row.ConfigJSON != "" {
-				mergeInspectConfigJSON(prepareProviderModelForRuntime(ctx, row).ConfigJSON, &in)
+				prepared, decErr := u.crypto.PrepareProviderModelForRuntime(ctx, row)
+				if decErr != nil {
+					event.SysLogWarn("llm_provider_model.inspect", "解密 config_json 失败", event.P("error", decErr.Error()))
+				} else {
+					mergeInspectConfigJSON(prepared.ConfigJSON, &in)
+				}
 			}
 		}
 	}
@@ -538,7 +566,11 @@ func (u *LlmProviderModelUsecase) RunHealthChecks(ctx context.Context) error {
 		if !row.Enabled || row.DeletedAt != "" {
 			continue
 		}
-		cfg := prepareProviderModelForRuntime(ctx, row)
+		cfg, decErr := u.crypto.PrepareProviderModelForRuntime(ctx, row)
+		if decErr != nil {
+			event.SysLogWarn("provider.health", "解密 config_json 失败", event.P("model_id", row.ID), event.P("error", decErr.Error()))
+			continue
+		}
 		var c struct {
 			APIBaseURL string `json:"api_base_url"`
 		}
@@ -548,24 +580,26 @@ func (u *LlmProviderModelUsecase) RunHealthChecks(ctx context.Context) error {
 			continue
 		}
 		if err := outboundguard.ValidateURL(base); err != nil {
-			if updErr := u.writer.UpdateProviderModelStatus(ctx, row.ID, "degraded"); updErr != nil {
+			writeCtx := context.WithoutCancel(ctx)
+			if updErr := u.writer.UpdateProviderModelStatus(writeCtx, row.ID, "degraded"); updErr != nil {
 				event.SysLogWarn("provider.health", "update degraded status failed", event.P("model_id", row.ID), event.P("error", updErr.Error()))
 			}
 			continue
 		}
 		wg.Add(1)
 		sem <- struct{}{}
-		go func(rowID, baseURL, currentStatus string) {
+		checkBase := base
+		checkRowID := row.ID
+		checkCurrentStatus := row.Status
+		safego.Go(ctx, "provider.health_check", func() {
 			defer func() {
-				if r := recover(); r != nil {
-					event.SysLogWarn("provider.health", "health_check_panic", event.P("model_id", rowID), event.P("panic", fmt.Sprintf("%v", r)))
-				}
 				<-sem
 				wg.Done()
 			}()
+			writeCtx := context.WithoutCancel(ctx)
 			jitter := time.Duration(rand.IntN(500)) * time.Millisecond
 			time.Sleep(jitter)
-			req, err := http.NewRequestWithContext(ctx, http.MethodHead, baseURL, nil)
+			req, err := http.NewRequestWithContext(ctx, http.MethodHead, checkBase, nil)
 			if err != nil {
 				return
 			}
@@ -574,18 +608,18 @@ func (u *LlmProviderModelUsecase) RunHealthChecks(ctx context.Context) error {
 				if resp != nil {
 					resp.Body.Close()
 				}
-				if updErr := u.writer.UpdateProviderModelStatus(ctx, rowID, "degraded"); updErr != nil {
-					event.SysLogWarn("provider.health", "update degraded status failed", event.P("model_id", rowID), event.P("error", updErr.Error()))
+				if updErr := u.writer.UpdateProviderModelStatus(writeCtx, checkRowID, "degraded"); updErr != nil {
+					event.SysLogWarn("provider.health", "update degraded status failed", event.P("model_id", checkRowID), event.P("error", updErr.Error()))
 				}
 				return
 			}
 			resp.Body.Close()
-			if currentStatus == "degraded" {
-				if updErr := u.writer.UpdateProviderModelStatus(ctx, rowID, "active"); updErr != nil {
-					event.SysLogWarn("provider.health", "update active status failed", event.P("model_id", rowID), event.P("error", updErr.Error()))
+			if checkCurrentStatus == "degraded" {
+				if updErr := u.writer.UpdateProviderModelStatus(writeCtx, checkRowID, "active"); updErr != nil {
+					event.SysLogWarn("provider.health", "update active status failed", event.P("model_id", checkRowID), event.P("error", updErr.Error()))
 				}
 			}
-		}(row.ID, base, row.Status)
+		})
 	}
 	wg.Wait()
 	return nil

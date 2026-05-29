@@ -91,6 +91,17 @@ export type EnvelopeError = {
   pending_id?: string;
 };
 
+export type PromptTokenBreakdown = {
+  system_prompt?: number;
+  skills?: number;
+  memory?: number;
+  intent_pass?: number;
+  session_summary?: number;
+  tool_results?: number;
+  history?: number;
+  user_message?: number;
+};
+
 export type EnvelopeUsage = {
   prompt_tokens: number;
   completion_tokens: number;
@@ -99,6 +110,8 @@ export type EnvelopeUsage = {
   /** Max prompt tokens in the turn — context window fill (ReAct uses peak prompt). */
   context_prompt_tokens?: number;
   turn_total_tokens?: number;
+  /** Category-level prompt token breakdown (CC-E-02 Phase 2). When present, frontend uses this instead of estimation. */
+  prompt_breakdown?: PromptTokenBreakdown;
 };
 
 export type EnvelopeActions = {

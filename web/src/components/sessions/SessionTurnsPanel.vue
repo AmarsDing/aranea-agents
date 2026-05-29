@@ -21,7 +21,7 @@
             {{ turn.final_content_preview }}
           </q-item-label>
           <q-item-label caption class="text-grey-6">
-            {{ formatDate(turn.started_at) }}
+            {{ formatSessionDate(turn.started_at) }}
             <span v-if="turn.duration_ms"> · 耗时 {{ formatDuration(turn.duration_ms) }}</span>
             <span v-if="turn.error_message" class="text-negative"> · {{ turn.error_message }}</span>
           </q-item-label>
@@ -33,7 +33,7 @@
             <div class="q-mt-xs">
               <q-badge v-if="turn.model_call_count" color="blue-grey" outline class="q-mr-xs">模型 {{ turn.model_call_count }}</q-badge>
               <q-badge v-if="turn.tool_call_count" color="info" outline class="q-mr-xs">工具 {{ turn.tool_call_count }}</q-badge>
-              <q-badge v-if="turn.skill_call_count" color="deep-purple" outline>技能 {{ turn.skill_call_count }}</q-badge>
+              <q-badge v-if="turn.skill_call_count" color="teal" outline>技能 {{ turn.skill_call_count }}</q-badge>
             </div>
           </div>
         </q-item-section>
@@ -51,19 +51,13 @@
 <script setup lang="ts">
 import { toRef } from "vue";
 import { useSessionTurnsPanel } from "../../features/session/useSessionTurnsPanel";
+import { formatSessionDate } from "./sessionUi";
 
 const props = defineProps<{ sessionId: string }>();
 
 const { turns, total, loading, error, offset, pageSize, pageLabel, prevPage, nextPage } = useSessionTurnsPanel(
   toRef(() => props.sessionId),
 );
-
-function formatDate(value: string) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return value;
-  return d.toLocaleString();
-}
 
 function formatDuration(ms: number) {
   if (ms < 1000) return `${ms}ms`;

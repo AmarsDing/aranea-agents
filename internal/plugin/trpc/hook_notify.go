@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/hook"
 	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
 	"aranea-agents/pkg/outboundwebhook"
@@ -62,16 +63,17 @@ func (n *HookNotifier) EnqueueNotify(ctx context.Context, rh biz.ResolvedHook, p
 	}
 
 	d := biz.HookDelivery{
-		ID:            uuid.NewString(),
-		HookKey:       rh.Hook.Key,
-		HookID:        rh.Hook.ID,
-		WebhookURL:    url,
-		WebhookSecret: opts.WebhookSecret,
-		PayloadJSON:   string(body),
-		Status:        biz.HookDeliveryPending,
-		MaxAttempts:   opts.MaxAttempts,
-		CreatedAt:     time.Now().UTC().Format(time.RFC3339),
-		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
+		ID:             uuid.NewString(),
+		HookKey:        rh.Hook.Key,
+		HookID:         rh.Hook.ID,
+		WebhookURL:     url,
+		WebhookSecret:  opts.WebhookSecret,
+		PayloadJSON:    string(body),
+		Status:         biz.HookDeliveryPending,
+		MaxAttempts:    opts.MaxAttempts,
+		IdempotencyKey: hook.DeliveryIdempotencyKey(rh.Hook.ID, payload),
+		CreatedAt:      time.Now().UTC().Format(time.RFC3339),
+		UpdatedAt:      time.Now().UTC().Format(time.RFC3339),
 	}
 	safego.Go(ctx, "hook.notify.enqueue."+rh.Hook.Key, func() {
 		maxAttempts := opts.MaxAttempts

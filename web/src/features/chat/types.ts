@@ -24,6 +24,7 @@ export type SendMessageOptions = {
   model?: string;
   attachments?: Array<{ id: string }>;
   knowledge_bases?: string[];
+  context_refs?: ContextRef[];
 };
 
 import type { Message } from "../../domain/types";
@@ -74,6 +75,51 @@ export type ToolUseEvent = {
   expanded?: boolean;
 };
 
+export type DiffEditHunk = {
+  search: string;
+  replace: string;
+  replace_all?: boolean;
+};
+
+export type DiffEditArguments = {
+  file_name: string;
+  edits: DiffEditHunk[];
+  expected_mtime_ms?: number;
+};
+
+export type PatchFileArguments = {
+  file_name: string;
+  patch?: string;
+  hunks?: Array<Record<string, unknown>>;
+  expected_mtime_ms?: number;
+};
+
+export type FileEditResult = {
+  applied_edits?: number;
+  applied_hunks?: number;
+  total_replacements?: number;
+  file_name?: string;
+  content?: string;
+  error?: string;
+};
+
+export type ContextRefKind = "file" | "folder" | "knowledge_base" | "artifact";
+
+export type ContextRefItem = {
+  key: string;
+  kind: ContextRefKind;
+  label: string;
+  description: string;
+  icon: string;
+  iconColor: string;
+};
+
+export type ContextRef = {
+  kind: ContextRefKind;
+  ref_id: string;
+  label: string;
+};
+
 /** ReAct ACTION step with linked `chat.activity/v1` tool rows (see `reactPlannerToolLink`). */
 export type ReactStepWithTools = ReactStep & {
   linkedTools: ToolUseEvent[];
@@ -83,4 +129,11 @@ export type ReactStepWithTools = ReactStep & {
 export type ReactToolLinkIndex = {
   linkedToolIds: ReadonlySet<string>;
   stepsByAssistantIndex: ReadonlyMap<number, ReactStepWithTools[]>;
+};
+
+export type PendingMessage = {
+  id: string;
+  content: string;
+  status: string;
+  created_at: string;
 };

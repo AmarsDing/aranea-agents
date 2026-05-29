@@ -14,6 +14,8 @@ type SessionProjectionAdapter struct {
 }
 
 // NewSessionProjectionAdapter wires session messages + run activity into the projection port.
+var _ biz.SessionProjection = (*SessionProjectionAdapter)(nil)
+
 func NewSessionProjectionAdapter(sessions *biz.SessionUsecase, orch *ChatOrchestrator) *SessionProjectionAdapter {
 	return &SessionProjectionAdapter{sessions: sessions, orch: orch}
 }

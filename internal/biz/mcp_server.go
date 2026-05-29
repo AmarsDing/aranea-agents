@@ -62,24 +62,37 @@ type MCPServer struct {
 	DeletedAt    string
 }
 
-type MCPServerRepo interface {
+type MCPServerReader interface {
 	ListMCPServers(ctx context.Context) ([]MCPServer, error)
 	GetMCPServer(ctx context.Context, id string) (MCPServer, error)
 	GetMCPServerByKey(ctx context.Context, key string) (MCPServer, error)
+}
+
+type MCPServerWriter interface {
 	CreateMCPServer(ctx context.Context, m MCPServer) (MCPServer, error)
 	UpdateMCPServer(ctx context.Context, m MCPServer) (MCPServer, error)
-	UpdateMCPServerMetadata(ctx context.Context, id string, metadataJSON string, status string) error
 	DeleteMCPServer(ctx context.Context, id string) error
+}
+
+type MCPServerMetadataWriter interface {
+	UpdateMCPServerMetadata(ctx context.Context, id string, metadataJSON string, status string) error
+}
+
+type MCPServerRepo interface {
+	MCPServerReader
+	MCPServerWriter
+	MCPServerMetadataWriter
 }
 
 type MCPServerUsecase struct {
 	repo     MCPServerRepo
 	prober   MCPProber
 	metaEdit MCPMetadataEditor
+	crypto   *CredentialCrypto
 }
 
-func NewMCPServerUsecase(repo MCPServerRepo) *MCPServerUsecase {
-	return &MCPServerUsecase{repo: repo}
+func NewMCPServerUsecase(repo MCPServerRepo, crypto *CredentialCrypto) *MCPServerUsecase {
+	return &MCPServerUsecase{repo: repo, crypto: crypto}
 }
 
 // SetProber injects the MCP probe implementation after construction.

@@ -122,15 +122,15 @@
 
 | ID | 来源 | 问题 |
 |----|------|------|
-| **OV-01** | Overview Review | `Overview()` 10+ 顺序 DB 调用，无 errgroup / 无缓存（`internal/biz/usage/usage.go:379-418`） |
-| **OV-02** | Overview Review | 写入维护 daily/hourly rollup，但读路径全部扫 raw events 表 |
-| **OV-03** | Overview Review | 前端 `loadOverview` 静默 catch，失败用户无感知（`web/src/stores/usage/index.ts:20-31`） |
+| **OV-01** | Overview Review | ~~`Overview()` 10+ 顺序 DB 调用，无 errgroup / 无缓存~~ | ✅ Round 5（errgroup 并行） |
+| **OV-02** | Overview Review | ~~写入维护 daily/hourly rollup，但读路径全部扫 raw events 表~~ | ✅ Round 6（daily rollup 读取路径 + 自动选择） |
+| **OV-03** | Overview Review | ~~前端 `loadOverview` 静默 catch，失败用户无感知~~ | ✅ Round 6（error ref + q-banner 重试） |
 | **OV-04** | Overview Review | ~~`QuotaDashboard` N+1 `SumScopeCostInPeriod`；单条配额错误 `continue` 低报~~ | ✅ Round 5（BatchSumScopeCost + 错误日志） |
-| **MD-02** | Model Review | 价格三写入路径无优先级合约（manual/inspect/sync），漂移风险（`internal/data/llm_provider_model.go:188-214`） |
-| **MD-03** | Model Review | `Applier.Apply` 默认调 `RunProviderMigrations`，auto_apply 每次 sync 强制迁移 |
+| **MD-02** | Model Review | ~~价格三写入路径无优先级合约（manual/inspect/sync），漂移风险~~ | ✅ Round 6（PricingSourcePriority + upsert 优先级守卫） |
+| **MD-03** | Model Review | ~~`Applier.Apply` 默认调 `RunProviderMigrations`，auto_apply 每次 sync 强制迁移~~ | ✅ Round 6（Apply 纯化 + ApplyWithMigration 向后兼容） |
 | **MD-05** | Model Review | ~~`RunHealthChecks` 串行扫所有 enabled，无 worker pool / jitter~~ | ✅ Round 5（并发 pool=5 + jitter + panic recovery） |
 | **HK-04** | Hook Review | ~~`HookResolver.Reload` 为空操作，`Resolve` 每个 turn 全表 List DB~~ | ✅ Round 5（内存缓存 + RWMutex + loaded 标志） |
-| **HK-06** | Hook Review | 无投递幂等键，重复触发 = 重复 POST |
+| **HK-06** | Hook Review | ~~无投递幂等键，重复触发 = 重复 POST~~ | ✅ Round 6（idempotency_key + INSERT OR IGNORE + partial unique index） |
 | **HK-08** | Hook Review | ~~Gateway `Webhook` proto 响应包含完整 `secret`~~ | ✅ 已实现 maskSecret + webhookToProto（List 脱敏，Create/Update 明文为标准模式） |
 | **KB-03** | Knowledge Review | ~~嵌入维度无强校验~~ | ✅ Round 2 |
 | **KB-06** | Knowledge Review | ~~Memory 与 Knowledge 共用同一 Embedder 实例~~ | ✅ Round 4 |
@@ -256,4 +256,4 @@
 
 ---
 
-*最后更新：2026-05-29 · HK-04/MD-05/OV-04/HK-08 已完成（Round 5 Hook/Model/Overview P1 修复）· TST-04 已完成（Skill 子系统 200+ 单测）· TST-02/03 部分完成（Team/Graph coordinator + execution_summary 11 单测）· KB-02/03/05/06/07/10/11/13/14/19/20 已完成（Knowledge Round 3+4 P0-P2）· SKILL-P2-03/04/05/06 已完成（Skill Round 2+4 P2）*
+*最后更新：2026-05-29 · OV-01/02/03/04 MD-02/03/05 HK-04/06/08 已完成（Round 5+6 Overview/Model/Hook P1 修复）· TST-04 已完成（Skill 子系统 200+ 单测）· TST-02/03 部分完成（Team/Graph coordinator + execution_summary 11 单测）· KB-02/03/05/06/07/10/11/13/14/19/20 已完成（Knowledge Round 3+4 P0-P2）· SKILL-P2-03/04/05/06 已完成（Skill Round 2+4 P2）*

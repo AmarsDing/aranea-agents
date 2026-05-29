@@ -12,7 +12,7 @@
           <q-item-label>{{ run.id }}</q-item-label>
           <q-item-label caption class="text-grey-6">
             Turn {{ run.turn_id || "—" }}
-            <span v-if="run.started_at"> · {{ formatDate(run.started_at) }}</span>
+            <span v-if="run.started_at"> · {{ formatSessionDate(run.started_at) }}</span>
             <span v-if="run.error_message" class="text-negative"> · {{ run.error_message }}</span>
           </q-item-label>
         </q-item-section>
@@ -33,18 +33,13 @@
 <script setup lang="ts">
 import { toRef } from "vue";
 import { useSessionRunsPanel } from "../../features/session/useSessionRunsPanel";
+import { formatSessionDate } from "./sessionUi";
 
 const props = defineProps<{ sessionId: string }>();
 
 const { runs, total, loading, error, offset, pageSize, pageLabel, prevPage, nextPage } = useSessionRunsPanel(
   toRef(() => props.sessionId)
 );
-
-function formatDate(value: string) {
-  if (!value) return "—";
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? value : d.toLocaleString();
-}
 
 function phaseColor(phase: string) {
   if (phase === "completed") return "positive";

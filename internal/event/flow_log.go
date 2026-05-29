@@ -141,6 +141,8 @@ var stepTitleRegistry = map[string]string{
 	"system.provider.preflight_fail": "模型预检失败",
 	"system.provider.config_resolved": "模型配置已解析",
 	"system.provider.preflight_ok": "模型预检通过",
+	"system.provider.ha_failover":  "HA 故障切换",
+	"system.provider.ha_hedge":    "HA 对冲切换",
 	"system.tool.record_fail":      "工具调用记录失败",
 	"system.intent.pass_done":      "意图识别完成",
 	"system.memory_worker.enqueue": "自动记忆任务入队",

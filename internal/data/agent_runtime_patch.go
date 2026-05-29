@@ -106,3 +106,23 @@ func sqliteColumnExists(ctx context.Context, c *ent.Client, table, column string
 	}
 	return true, nil
 }
+
+func sqliteIndexExists(ctx context.Context, c *ent.Client, table, indexName string) (bool, error) {
+	indexName = strings.TrimSpace(indexName)
+	if indexName == "" {
+		return false, nil
+	}
+	rows, err := c.QueryContext(ctx, `SELECT 1 FROM pragma_index_list(?) WHERE name = ? LIMIT 1`, table, indexName)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return false, nil
+	}
+	var one int
+	if err := rows.Scan(&one); err != nil {
+		return false, err
+	}
+	return true, nil
+}

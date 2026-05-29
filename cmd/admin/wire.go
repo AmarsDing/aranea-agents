@@ -220,8 +220,20 @@ func (llmInspectorAdapter) Run(in biz.InspectMerge) (biz.LLMInspectResult, error
 
 func provideLLMInspector() biz.LLMInspector { return llmInspectorAdapter{} }
 
-func provideLlmProviderModelUsecaseWithDeps(repo biz.LlmProviderModelRepo, inspector biz.LLMInspector) *biz.LlmProviderModelUsecase {
-	return biz.NewLlmProviderModelUsecase(repo, repo, repo, repo, inspector)
+func provideCredentialCrypto(sys biz.SystemSettingRepo) *biz.CredentialCrypto {
+	var keyRepo biz.SystemSettingCredentialKeyRepo = sys
+	resolver := func(ctx context.Context) ([]byte, error) {
+		return biz.ResolveCredentialAESKey(ctx, keyRepo)
+	}
+	cc := biz.NewCredentialCrypto(resolver)
+	if !cc.IsAvailable() {
+		event.SysLogWarn("credential.encryption", "凭据加密密钥未配置，API 密钥将以明文存储。请设置 ARANEA_CREDENTIAL_KEY 环境变量或在系统设置中初始化加密密钥。")
+	}
+	return cc
+}
+
+func provideLlmProviderModelUsecaseWithDeps(repo biz.LlmProviderModelRepo, inspector biz.LLMInspector, crypto *biz.CredentialCrypto) *biz.LlmProviderModelUsecase {
+	return biz.NewLlmProviderModelUsecase(repo, repo, repo, repo, inspector, crypto)
 }
 
 // webResearchReadinessAdapter wraps internal/tools/webresearch to implement biztool.WebResearchReadinessChecker.
@@ -338,8 +350,8 @@ func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, 
 }
 
 // provideMCPServerUsecaseWithDeps injects prober and metadata editor after Wire construction.
-func provideMCPServerUsecaseWithDeps(repo biz.MCPServerRepo, prober biz.MCPProber, metaEdit biz.MCPMetadataEditor) *biz.MCPServerUsecase {
-	uc := biz.NewMCPServerUsecase(repo)
+func provideMCPServerUsecaseWithDeps(repo biz.MCPServerRepo, prober biz.MCPProber, metaEdit biz.MCPMetadataEditor, crypto *biz.CredentialCrypto) *biz.MCPServerUsecase {
+	uc := biz.NewMCPServerUsecase(repo, crypto)
 	uc.SetProber(prober)
 	uc.SetMetadataEditor(metaEdit)
 	return uc
@@ -384,6 +396,13 @@ func provideMonitorUsecase(repo biz.MonitorRepo, notifier biz.AlertNotifier, fsH
 	}
 	uc.SetRegistry(reg)
 	return uc
+}
+
+func provideFilesystemHealthReader(skillUC *biz.SkillUsecase) biz.FilesystemHealthReader {
+	if skillUC == nil {
+		return nil
+	}
+	return monitorSkillHealthAdapter{skills: skillUC}
 }
 
 func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase) *biz.UsageUsecase {
@@ -790,7 +809,7 @@ func provideChannelDeliveryScanner(worker *service.ChannelDeliveryWorker, logger
 	return jobs.NewChannelDeliveryWorker(0, worker, logger)
 }
 
-func provideMCPHealthRunnerDeps(mcpRepo biz.MCPServerRepo, mcpUC *biz.MCPServerUsecase, bus event.Bus) health.Deps {
+func provideMCPHealthRunnerDeps(mcpRepo biz.MCPServerReader, mcpUC *biz.MCPServerUsecase, bus event.Bus) health.Deps {
 	return health.Deps{
 		MCP:    mcpRepo,
 		UC:     mcpUC,
@@ -1006,6 +1025,8 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideCronRunner,
 		wire.Bind(new(biz.CronTaskTrigger), new(*cronrunner.Runner)),
 		provideSkillWatchRunner,
+		wire.Bind(new(watch.SkillReader), new(*biz.SkillUsecase)),
+		wire.Bind(new(watch.SkillWriter), new(*biz.SkillUsecase)),
 		providePromptFileAIEditor,
 		provideSessionTitleGenerator,
 		provideRunRegistry,
@@ -1025,6 +1046,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideMCPMetadataEditor,
 		provideMCPServerUsecaseWithDeps,
 		provideLLMInspector,
+		provideCredentialCrypto,
 		provideLlmProviderModelUsecaseWithDeps,
 		provideWebResearchReadinessChecker,
 		provideBizWebResearchReadinessChecker,
@@ -1083,6 +1105,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideMonitorAlertNotifier,
 		provideChannelRunEscalationNotifier,
 		provideSessionRunDurableWorker,
+		provideFilesystemHealthReader,
 		provideMonitorUsecase,
 		provideUsageUsecase,
 		provideSystemSettingUsecase,
@@ -1103,6 +1126,8 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		wire.Bind(new(araneasession.AgentKeyLookup), new(biz.AgentRepository)),
 		wire.Bind(new(biz.TaskGraphResolver), new(*biz.GraphUsecase)),
 		wire.Bind(new(importer.SkillImportRepo), new(biz.SkillRepo)),
+		wire.Bind(new(biz.MCPServerReader), new(biz.MCPServerRepo)),
+		wire.Bind(new(araneasession.CompressorDeps), new(biz.SessionRepo)),
 		newApp,
 		provideWireOut,
 	))

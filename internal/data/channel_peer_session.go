@@ -3,12 +3,12 @@ package data
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformchannelpeersession"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type channelPeerSessionRepo struct {
@@ -60,7 +60,7 @@ func (r *channelPeerSessionRepo) UpdateSessionID(ctx context.Context, channelID,
 	channelID = strings.TrimSpace(channelID)
 	sessionID = strings.TrimSpace(sessionID)
 	if channelID == "" || sessionID == "" {
-		return biz.ChannelPeerSession{}, fmt.Errorf("channel peer session: missing channel_id or session_id")
+		return biz.ChannelPeerSession{}, kerrors.BadRequest("CHANNEL_PEER_SESSION", "missing channel_id or session_id")
 	}
 	n, err := r.data.entClient.PlatformChannelPeerSession.Update().
 		Where(
@@ -81,7 +81,7 @@ func (r *channelPeerSessionRepo) UpdateSessionID(ctx context.Context, channelID,
 
 func (r *channelPeerSessionRepo) Create(ctx context.Context, row biz.ChannelPeerSession) (biz.ChannelPeerSession, error) {
 	if strings.TrimSpace(row.ID) == "" || strings.TrimSpace(row.ChannelID) == "" || strings.TrimSpace(row.SessionID) == "" {
-		return biz.ChannelPeerSession{}, fmt.Errorf("channel peer session: missing id, channel_id, or session_id")
+		return biz.ChannelPeerSession{}, kerrors.BadRequest("CHANNEL_PEER_SESSION", "missing id, channel_id, or session_id")
 	}
 	now := nowRFC3339()
 	if row.CreatedAt == "" {

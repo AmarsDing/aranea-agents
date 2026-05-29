@@ -139,7 +139,7 @@ func catalogToolNames(key string) []string {
 
 func findCallable(ctx context.Context, ts *tools.AssembledToolsets, names ...string) (trpctool.CallableTool, error) {
 	if ts == nil {
-		return nil, fmt.Errorf("no toolsets assembled")
+		return nil, kerrors.InternalServer("TOOL", "no toolsets assembled")
 	}
 	for _, name := range names {
 		if t, ok := matchCallable(ts.Tools, name); ok {
@@ -154,7 +154,7 @@ func findCallable(ctx context.Context, ts *tools.AssembledToolsets, names ...str
 			}
 		}
 	}
-	return nil, fmt.Errorf("callable tool not found in assembly (tried %v)", names)
+	return nil, kerrors.NotFound("TOOL", fmt.Sprintf("callable tool not found in assembly (tried %v)", names))
 }
 
 func matchCallable(toolsList []trpctool.Tool, name string) (trpctool.CallableTool, bool) {

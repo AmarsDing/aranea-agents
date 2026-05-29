@@ -22,7 +22,7 @@ func (h *ChannelIngress) handleDingTalkWebhook(w http.ResponseWriter, r *http.Re
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	secret, _ := resolveCredentialPlain(r.Context(), creds, "secret")
+	secret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "secret")
 	if err := dingtalk.VerifySign(r.URL.Query().Get("timestamp"), r.URL.Query().Get("sign"), secret); err != nil {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil

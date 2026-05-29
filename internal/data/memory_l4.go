@@ -138,6 +138,8 @@ type l4GraphWriterAdapter struct {
 	uc *biz.L4GraphUsecase
 }
 
+var _ biz.L4GraphWriter = (*l4GraphWriterAdapter)(nil)
+
 func NewL4GraphWriterAdapter(uc *biz.L4GraphUsecase) biz.L4GraphWriter {
 	if uc == nil {
 		return nil

@@ -73,7 +73,7 @@ func (u *MCPServerUsecase) UpsertUserCredential(ctx context.Context, mcpServerID
 	if secret == "" {
 		return MCPServerUserCredential{}, errors.BadRequest("MCP_SERVER", "secret is required")
 	}
-	secretRef, err := EncryptChannelSecretRef(ctx, secret)
+	secretRef, err := u.crypto.EncryptChannelSecretRef(ctx, secret)
 	if err != nil {
 		return MCPServerUserCredential{}, err
 	}
@@ -154,7 +154,7 @@ func (u *MCPServerUsecase) ResolveUserAuthHeaders(ctx context.Context, serverKey
 	if picked == nil {
 		return headers, errors.Forbidden("MCP_SERVER", "no user credential configured for this MCP server")
 	}
-	plain, err := DecryptChannelSecretRef(ctx, picked.SecretRef)
+	plain, err := u.crypto.DecryptChannelSecretRef(ctx, picked.SecretRef)
 	if err != nil {
 		return headers, err
 	}

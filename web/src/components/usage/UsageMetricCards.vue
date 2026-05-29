@@ -1,12 +1,38 @@
 <template>
-  <div class="app-metrics-grid overview-metrics-row">
-    <q-card v-for="item in cards" :key="item.label" flat class="overview-metric-card app-metrics-grid__item">
+  <div class="overview-metrics-tier">
+    <div v-if="budgetCard" class="overview-metric-card overview-metric-card--budget app-metrics-grid__item">
       <q-card-section class="overview-metric-card__body">
-        <div class="overview-metric-card__label">{{ item.label }}</div>
-        <div class="overview-metric-card__value">{{ item.value }}</div>
-        <div class="overview-metric-card__caption" :class="item.toneClass">{{ item.caption }}</div>
+        <div class="overview-metric-card__icon-row">
+          <q-icon name="account_balance_wallet" class="overview-metric-card__icon" />
+          <span class="overview-metric-card__label">{{ budgetCard.label }}</span>
+        </div>
+        <div class="overview-metric-card__value overview-metric-card__value--lg">{{ budgetCard.value }}</div>
+        <div class="overview-metric-card__caption" :class="budgetCard.toneClass">{{ budgetCard.caption }}</div>
+        <div v-if="budgetCard.toneClass" class="overview-metric-card__bar">
+          <div class="overview-metric-card__bar-fill" :class="budgetBarClass" :style="{ width: budgetBarWidth }" />
+        </div>
       </q-card-section>
-    </q-card>
+    </div>
+
+    <div class="overview-metrics-primary">
+      <q-card v-for="item in primaryCards" :key="item.label" flat class="overview-metric-card overview-metric-card--primary app-metrics-grid__item">
+        <q-card-section class="overview-metric-card__body">
+          <div class="overview-metric-card__label">{{ item.label }}</div>
+          <div class="overview-metric-card__value">{{ item.value }}</div>
+          <div class="overview-metric-card__caption" :class="item.toneClass">{{ item.caption }}</div>
+        </q-card-section>
+      </q-card>
+    </div>
+
+    <div class="overview-metrics-secondary">
+      <q-card v-for="item in secondaryCards" :key="item.label" flat class="overview-metric-card overview-metric-card--secondary app-metrics-grid__item">
+        <q-card-section class="overview-metric-card__body">
+          <div class="overview-metric-card__label">{{ item.label }}</div>
+          <div class="overview-metric-card__value overview-metric-card__value--sm">{{ item.value }}</div>
+          <div class="overview-metric-card__caption" :class="item.toneClass">{{ item.caption }}</div>
+        </q-card-section>
+      </q-card>
+    </div>
   </div>
 </template>
 
@@ -19,22 +45,40 @@ const props = defineProps<{
   overview: ModelUsageOverview | null;
 }>();
 
-const cards = computed(() => {
+const budgetCard = computed(() => {
+  const dash = props.overview?.quota_dashboard;
+  if (!dash || dash.configured_count <= 0) return null;
+  const util = dash.max_utilization_ratio ?? 0;
+  return {
+    label: "月预算使用率",
+    value: `${Math.round(util * 100)}%`,
+    caption: `${dash.configured_count} 个 Agent · 已用 $${((dash.total_spent_micro_usd ?? 0) / 1_000_000).toFixed(2)} / $${((dash.total_cap_micro_usd ?? 0) / 1_000_000).toFixed(2)}`,
+    toneClass: util >= 0.9 ? "overview-metric-card__caption--danger" : util >= 0.7 ? "overview-metric-card__caption--warn" : "",
+    util
+  };
+});
+
+const budgetBarClass = computed(() => {
+  const util = budgetCard.value?.util ?? 0;
+  if (util >= 0.9) return "overview-metric-card__bar-fill--danger";
+  if (util >= 0.7) return "overview-metric-card__bar-fill--warn";
+  return "overview-metric-card__bar-fill--ok";
+});
+
+const budgetBarWidth = computed(() => {
+  const util = budgetCard.value?.util ?? 0;
+  return `${Math.min(util * 100, 100)}%`;
+});
+
+const primaryCards = computed(() => {
   const today = props.overview?.today;
   const month = props.overview?.month;
-  const dash = props.overview?.quota_dashboard;
-  const base = [
+  return [
     {
       label: "今日调用",
       value: formatCount(today?.call_count),
       caption: `较昨日 ${formatDelta(today?.call_count, props.overview?.yesterday.call_count)}`,
       toneClass: deltaToneClass(today?.call_count, props.overview?.yesterday.call_count)
-    },
-    {
-      label: "今日 Token",
-      value: formatCount(today?.total_tokens),
-      caption: `输入 ${formatCount(today?.input_tokens)} / 输出 ${formatCount(today?.output_tokens)}`,
-      toneClass: ""
     },
     {
       label: "今日费用",
@@ -43,11 +87,23 @@ const cards = computed(() => {
       toneClass: deltaToneClass(today?.total_cost_micro_usd, props.overview?.yesterday.total_cost_micro_usd)
     },
     {
+      label: "今日 Token",
+      value: formatCount(today?.total_tokens),
+      caption: `输入 ${formatCount(today?.input_tokens)} / 输出 ${formatCount(today?.output_tokens)}`,
+      toneClass: ""
+    },
+    {
       label: "本月费用",
       value: formatMoney(month?.total_cost_micro_usd),
       caption: `本月调用 ${formatCount(month?.call_count)} 次`,
       toneClass: ""
-    },
+    }
+  ];
+});
+
+const secondaryCards = computed(() => {
+  const today = props.overview?.today;
+  return [
     {
       label: "平均延迟",
       value: formatLatency(today?.avg_latency_ms),
@@ -61,16 +117,6 @@ const cards = computed(() => {
       toneClass: ""
     }
   ];
-  if (dash && dash.configured_count > 0) {
-    const util = dash.max_utilization_ratio ?? 0;
-    base.unshift({
-      label: "月预算使用率",
-      value: `${Math.round(util * 100)}%`,
-      caption: `${dash.configured_count} 个 Agent · 已用 $${((dash.total_spent_micro_usd ?? 0) / 1_000_000).toFixed(2)} / $${((dash.total_cap_micro_usd ?? 0) / 1_000_000).toFixed(2)}`,
-      toneClass: util >= 0.9 ? "overview-metric-card__caption--danger" : util >= 0.7 ? "overview-metric-card__caption--warn" : ""
-    });
-  }
-  return base;
 });
 
 function formatCount(value?: number) {

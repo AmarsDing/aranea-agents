@@ -253,10 +253,12 @@ export default {
     rulesEmptyHint: "暂无路由规则；按 priority 降序匹配 contains / regex / min_chars。"
   },
   menu: {
-    groupMain: "常用",
-    groupEntities: "代理与组织",
-    groupRegistry: "资源与调度",
-    groupOps: "运维与商业",
+    groupWorkspace: "工作台",
+    groupAgents: "智能体",
+    groupModels: "模型与渠道",
+    groupTools: "工具与集成",
+    groupKnowledge: "知识与数据",
+    groupOps: "调度与运维",
     overview: "概览",
     usageEvents: "用量事件",
     usageQuotas: "用量配额",

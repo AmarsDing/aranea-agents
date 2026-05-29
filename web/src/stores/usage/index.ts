@@ -13,12 +13,14 @@ export const useUsageStore = defineStore("usage", () => {
   const trends = ref<ModelUsageTrendPoint[]>([]);
   const events = ref<ModelTokenUsageEvent[]>([]);
   const loading = ref(false);
+  const error = ref("");
   const eventsLoading = ref(false);
   const eventsError = ref("");
   const exporting = ref(false);
 
   async function loadOverview(query: ModelUsageQuery = {}, trendGranularity: "day" | "hour" = "day") {
     loading.value = true;
+    error.value = "";
     try {
       const o = await getModelUsageOverview(query);
       if (trendGranularity === "hour") {
@@ -26,6 +28,9 @@ export const useUsageStore = defineStore("usage", () => {
       }
       overview.value = o;
       return o;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e);
+      throw e;
     } finally {
       loading.value = false;
     }
@@ -69,6 +74,7 @@ export const useUsageStore = defineStore("usage", () => {
     trends,
     events,
     loading,
+    error,
     eventsLoading,
     eventsError,
     exporting,

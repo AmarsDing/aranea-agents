@@ -20,7 +20,7 @@ func (h *ChannelIngress) handleMattermostWebhook(w http.ResponseWriter, r *http.
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	receiveToken, _ := resolveCredentialPlain(r.Context(), creds, "receive_token")
+	receiveToken, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "receive_token")
 	if err := mattermost.VerifyToken(receiveToken, r.URL.Query().Get("token")); err != nil {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil

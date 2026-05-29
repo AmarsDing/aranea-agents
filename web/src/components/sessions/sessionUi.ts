@@ -70,7 +70,7 @@ export function ownerLabel(value: string) {
 
 /** Quasar chip：日间 primary / team 用 secondary 语义；与全局主题兼容 */
 export function ownerChipColor(value: string) {
-  return value === "team" ? "deep-purple" : "primary";
+  return value === "team" ? "teal" : "primary";
 }
 
 export function statusBadgeColor(value: string) {
@@ -98,6 +98,8 @@ export function formatCostMicroUsd(value: number) {
 }
 
 export function formatSessionDate(value: string) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString();
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString();
 }

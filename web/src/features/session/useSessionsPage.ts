@@ -6,6 +6,7 @@ import type { BatchPreviewResult, BulkProgress, RetentionDialogMode, SessionBatc
 import type { Session } from "./types";
 import { useSessionStore } from "../../stores/session/index";
 import { sortSessionsForDisplay } from "./sessionSort";
+import { downloadTextFile } from "./downloadExport";
 
 export function useSessionsPage() {
   const $q = useQuasar();
@@ -296,6 +297,17 @@ export function useSessionsPage() {
     }
   }
 
+  async function exportSelectedDetail(format: "markdown" | "json") {
+    if (!selected.value) return;
+    try {
+      const payload = await sessionStore.exportSession(selected.value.id, format);
+      downloadTextFile(payload.content, payload.filename, payload.content_type);
+      $q.notify({ type: "positive", message: "导出成功" });
+    } catch (err) {
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "导出失败" });
+    }
+  }
+
   return {
     rows,
     selected,
@@ -340,6 +352,7 @@ export function useSessionsPage() {
     togglePinRow,
     promptDeleteSelected: () => promptDelete([...selectedIds.value]),
     archiveSelected: () => runBatchArchive([...selectedIds.value]),
-    exportSession: sessionStore.exportSession
+    exportSession: sessionStore.exportSession,
+    exportSelectedDetail
   };
 }

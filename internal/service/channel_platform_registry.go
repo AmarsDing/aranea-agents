@@ -61,7 +61,7 @@ func outboundFeishu(ctx context.Context, h *ChannelIngress, chRow biz.Channel, c
 	if err != nil {
 		return err
 	}
-	sec, err := resolveCredentialPlain(ctx, creds, "app_secret")
+	sec, err := resolveCredentialPlain(ctx, h.channels, creds, "app_secret")
 	if err != nil {
 		return err
 	}
@@ -86,20 +86,20 @@ func outboundFeishu(ctx context.Context, h *ChannelIngress, chRow biz.Channel, c
 }
 
 func outboundDingtalk(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
-	secret, _ := resolveCredentialPlain(ctx, creds, "secret")
-	webhookURL, _ := resolveCredentialPlain(ctx, creds, "webhook_url")
+	secret, _ := resolveCredentialPlain(ctx, h.channels, creds, "secret")
+	webhookURL, _ := resolveCredentialPlain(ctx, h.channels, creds, "webhook_url")
 	target := payload.Extra["session_webhook"]
 	return (&dingtalk.TextSender{WebhookURL: webhookURL, Secret: secret, HTTP: h.http}).SendText(ctx, target, payload.Text)
 }
 
 func outboundWecom(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
-	webhookURL, _ := resolveCredentialPlain(ctx, creds, "webhook_url")
+	webhookURL, _ := resolveCredentialPlain(ctx, h.channels, creds, "webhook_url")
 	target := payload.Extra["response_url"]
 	return (&wecom.TextSender{WebhookURL: webhookURL, HTTP: h.http}).SendText(ctx, target, payload.Text)
 }
 
 func outboundSlack(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
-	token, err := resolveCredentialPlain(ctx, creds, "bot_token")
+	token, err := resolveCredentialPlain(ctx, h.channels, creds, "bot_token")
 	if err != nil {
 		return err
 	}
@@ -107,15 +107,15 @@ func outboundSlack(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds 
 }
 
 func outboundTelegram(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
-	token, err := resolveCredentialPlain(ctx, creds, "bot_token")
+	token, err := resolveCredentialPlain(ctx, h.channels, creds, "bot_token")
 	if err != nil {
 		return err
 	}
 	return (&telegram.TextSender{BotToken: token, HTTP: h.http}).SendText(ctx, payload.Recipient, payload.Text)
 }
 
-func outboundDiscord(ctx context.Context, _ *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
-	token, err := resolveCredentialPlain(ctx, creds, "bot_token")
+func outboundDiscord(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
+	token, err := resolveCredentialPlain(ctx, h.channels, creds, "bot_token")
 	if err != nil {
 		return err
 	}
@@ -123,7 +123,7 @@ func outboundDiscord(ctx context.Context, _ *ChannelIngress, _ biz.Channel, cred
 }
 
 func outboundPersonalQQ(ctx context.Context, h *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
-	sendToken, _ := resolveCredentialPlain(ctx, creds, "send_token")
+	sendToken, _ := resolveCredentialPlain(ctx, h.channels, creds, "send_token")
 	httpServer := oneBotHTTPServer(chRow.ConfigJSON)
 	return (&onebot.TextSender{
 		HTTPServer: httpServer,
@@ -133,7 +133,7 @@ func outboundPersonalQQ(ctx context.Context, h *ChannelIngress, chRow biz.Channe
 }
 
 func outboundWechat(ctx context.Context, h *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
-	appID, appSecret := wechatAppCreds(chRow.ConfigJSON, creds, ctx)
+	appID, appSecret := wechatAppCreds(chRow.ConfigJSON, creds, ctx, h.channels)
 	return (&wechat.TextSender{
 		AppID:     appID,
 		AppSecret: appSecret,
@@ -141,8 +141,8 @@ func outboundWechat(ctx context.Context, h *ChannelIngress, chRow biz.Channel, c
 	}).SendText(ctx, payload.Recipient, payload.Text)
 }
 
-func outboundQQ(ctx context.Context, _ *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
-	appSecret, err := resolveCredentialPlain(ctx, creds, "app_secret")
+func outboundQQ(ctx context.Context, h *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
+	appSecret, err := resolveCredentialPlain(ctx, h.channels, creds, "app_secret")
 	if err != nil {
 		return err
 	}
@@ -153,7 +153,7 @@ func outboundQQ(ctx context.Context, _ *ChannelIngress, chRow biz.Channel, creds
 }
 
 func streamTelegram(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, _ map[string]string) (streamPreviewUpdater, error) {
-	token, err := resolveCredentialPlain(ctx, creds, "bot_token")
+	token, err := resolveCredentialPlain(ctx, h.channels, creds, "bot_token")
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +165,7 @@ func streamFeishu(ctx context.Context, h *ChannelIngress, chRow biz.Channel, cre
 	if err != nil {
 		return nil, err
 	}
-	sec, err := resolveCredentialPlain(ctx, creds, "app_secret")
+	sec, err := resolveCredentialPlain(ctx, h.channels, creds, "app_secret")
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +179,7 @@ func streamFeishu(ctx context.Context, h *ChannelIngress, chRow biz.Channel, cre
 }
 
 func streamSlack(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, _ map[string]string) (streamPreviewUpdater, error) {
-	token, err := resolveCredentialPlain(ctx, creds, "bot_token")
+	token, err := resolveCredentialPlain(ctx, h.channels, creds, "bot_token")
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +187,7 @@ func streamSlack(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []
 }
 
 func outboundLine(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
-	channelToken, err := resolveCredentialPlain(ctx, creds, "channel_token")
+	channelToken, err := resolveCredentialPlain(ctx, h.channels, creds, "channel_token")
 	if err != nil {
 		return err
 	}
@@ -195,7 +195,7 @@ func outboundLine(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds [
 }
 
 func streamLine(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, _ map[string]string) (streamPreviewUpdater, error) {
-	channelToken, err := resolveCredentialPlain(ctx, creds, "channel_token")
+	channelToken, err := resolveCredentialPlain(ctx, h.channels, creds, "channel_token")
 	if err != nil {
 		return nil, err
 	}
@@ -203,8 +203,8 @@ func streamLine(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []b
 }
 
 func outboundMattermost(ctx context.Context, h *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
-	serverURL, _ := resolveCredentialPlain(ctx, creds, "server_url")
-	botToken, err := resolveCredentialPlain(ctx, creds, "bot_token")
+	serverURL, _ := resolveCredentialPlain(ctx, h.channels, creds, "server_url")
+	botToken, err := resolveCredentialPlain(ctx, h.channels, creds, "bot_token")
 	if err != nil {
 		return err
 	}
@@ -212,17 +212,17 @@ func outboundMattermost(ctx context.Context, h *ChannelIngress, chRow biz.Channe
 }
 
 func streamMattermost(ctx context.Context, h *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, _ map[string]string) (streamPreviewUpdater, error) {
-	serverURL, _ := resolveCredentialPlain(ctx, creds, "server_url")
-	botToken, err := resolveCredentialPlain(ctx, creds, "bot_token")
+	serverURL, _ := resolveCredentialPlain(ctx, h.channels, creds, "server_url")
+	botToken, err := resolveCredentialPlain(ctx, h.channels, creds, "bot_token")
 	if err != nil {
 		return nil, err
 	}
 	return &mattermost.StreamSender{ServerURL: serverURL, BotToken: botToken, HTTP: h.http}, nil
 }
 
-func outboundTeams(ctx context.Context, _ *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
-	appID, _ := resolveCredentialPlain(ctx, creds, "app_id")
-	appSecret, err := resolveCredentialPlain(ctx, creds, "app_secret")
+func outboundTeams(ctx context.Context, h *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
+	appID, _ := resolveCredentialPlain(ctx, h.channels, creds, "app_id")
+	appSecret, err := resolveCredentialPlain(ctx, h.channels, creds, "app_secret")
 	if err != nil {
 		return err
 	}

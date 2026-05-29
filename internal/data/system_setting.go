@@ -7,7 +7,6 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
-	"aranea-agents/internal/event"
 )
 
 type systemSettingRepo struct {
@@ -19,12 +18,6 @@ var _ biz.SystemSettingRepo = (*systemSettingRepo)(nil)
 // NewSystemSettingRepo implements biz.SystemSettingRepo and registers DB-backed credential key resolution.
 func NewSystemSettingRepo(d *Data) biz.SystemSettingRepo {
 	repo := &systemSettingRepo{data: d}
-	biz.SetCredentialKeyResolver(func(ctx context.Context) ([]byte, error) {
-		return biz.ResolveCredentialAESKey(ctx, repo)
-	})
-	if !biz.IsCredentialEncryptionAvailable() {
-		event.SysLogWarn("credential.encryption", "凭据加密密钥未配置，API 密钥将以明文存储。请设置 ARANEA_CREDENTIAL_KEY 环境变量或在系统设置中初始化加密密钥。")
-	}
 	return repo
 }
 

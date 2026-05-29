@@ -32,14 +32,27 @@
     </template>
 
     <div class="chat-execution-card__body">
-      <div v-if="hasArgs" class="chat-execution-card__section">
-        <div class="text-caption text-weight-medium q-mb-xs">{{ t("chat.toolArgs", "参数") }}</div>
-        <pre class="chat-execution-card__pre">{{ argsText }}</pre>
-      </div>
-      <div v-if="hasResult" class="chat-execution-card__section q-mt-sm">
-        <div class="text-caption text-weight-medium q-mb-xs">{{ t("chat.toolResult", "结果") }}</div>
-        <pre class="chat-execution-card__pre">{{ resultText }}</pre>
-      </div>
+      <ChatDiffViewer
+        v-if="isFileEdit"
+        :file-name="diffFileName"
+        :hunks="diffHunks"
+        :tool-name="event.tool_name"
+        :applied-count="appliedCount"
+        :is-dark="isDark"
+        :show-actions="showDiffActions"
+        @apply="$emit('apply-diff', { toolName: event.tool_name, fileName: diffFileName })"
+        @reject="$emit('reject-diff', { toolName: event.tool_name, fileName: diffFileName })"
+      />
+      <template v-else>
+        <div v-if="hasArgs" class="chat-execution-card__section">
+          <div class="text-caption text-weight-medium q-mb-xs">{{ t("chat.toolArgs", "参数") }}</div>
+          <pre class="chat-execution-card__pre">{{ argsText }}</pre>
+        </div>
+        <div v-if="hasResult" class="chat-execution-card__section q-mt-sm">
+          <div class="text-caption text-weight-medium q-mb-xs">{{ t("chat.toolResult", "结果") }}</div>
+          <pre class="chat-execution-card__pre">{{ resultText }}</pre>
+        </div>
+      </template>
       <div v-if="errorText" class="text-caption text-negative q-mt-sm">{{ errorText }}</div>
       <div v-if="hasMetadata" class="chat-execution-card__section q-mt-sm">
         <div class="text-caption text-weight-medium q-mb-xs">{{ t("chat.activity.metadata", "元数据") }}</div>
@@ -58,21 +71,41 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { useQuasar } from "quasar";
 import {
   formatDurationLabel,
   maskSensitiveJSON,
   resolveActivityIcon,
   resolveDisplayLabel,
 } from "../../features/chat/activityPresentation";
-import type { ToolUseEvent } from "../../features/chat/types";
+import type { ToolUseEvent, FileEditResult } from "../../features/chat/types";
+import { isFileEditTool, extractDiffHunks, extractFileName } from "../../features/chat/diffEditHelpers";
+import ChatDiffViewer from "./ChatDiffViewer.vue";
 
 const props = defineProps<{
   event: ToolUseEvent;
   showMemberLabel?: boolean;
 }>();
 
+defineEmits<{
+  "apply-diff": [payload: { toolName: string; fileName: string }];
+  "reject-diff": [payload: { toolName: string; fileName: string }];
+}>();
+
 const { t } = useI18n();
+const $q = useQuasar();
 const expanded = ref(false);
+
+const isDark = computed(() => $q.dark.isActive);
+
+const isFileEdit = computed(() => isFileEditTool(props.event.tool_name));
+const diffHunks = computed(() => extractDiffHunks(props.event.tool_name, props.event.arguments));
+const diffFileName = computed(() => extractFileName(props.event.arguments));
+const appliedCount = computed(() => {
+  const result = props.event.result as FileEditResult | undefined;
+  return result?.applied_edits ?? result?.applied_hunks ?? 0;
+});
+const showDiffActions = computed(() => isFileEdit.value && props.event.status === "success");
 
 const status = computed(() => props.event.status);
 const isLongRunning = computed(() => Boolean(props.event.is_long_running));
@@ -152,19 +185,22 @@ const hasMetadata = computed(() => Boolean(props.event.run_id?.trim() || props.e
 <style scoped lang="sass">
 .chat-execution-card
   border-radius: 10px
-  border: 1px solid var(--glass-border)
-  background: var(--glass-surface)
+  border: 1px solid color-mix(in srgb, var(--glass-border) 65%, transparent)
+  background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
   overflow: hidden
+  transition: border-color 0.2s ease
 
 .chat-execution-card--running
-  border-color: color-mix(in srgb, var(--color-warning) 35%, transparent)
+  border-color: color-mix(in srgb, var(--color-warning) 30%, transparent)
 
 .chat-execution-card--failed
-  border-color: color-mix(in srgb, var(--color-danger) 35%, transparent)
+  border-color: color-mix(in srgb, var(--color-danger) 30%, transparent)
 
 .chat-execution-card--cancelled
-  border-color: color-mix(in srgb, var(--color-text-tertiary) 35%, transparent)
-  opacity: 0.92
+  border-color: color-mix(in srgb, var(--color-text-tertiary) 30%, transparent)
+  opacity: 0.88
 
 .chat-execution-card__body
   padding: 0 var(--space-3) var(--space-3)
@@ -179,13 +215,13 @@ const hasMetadata = computed(() => Boolean(props.event.run_id?.trim() || props.e
   overflow: auto
   white-space: pre-wrap
   word-break: break-word
-  background: var(--glass-surface)
+  background: color-mix(in srgb, var(--glass-surface) 70%, transparent)
 
 body.body--dark .chat-execution-card__pre
   background: var(--glass-surface-hover)
 
 .chat-execution-card__audit
   padding-top: var(--space-1)
-  border-top: 1px dashed var(--glass-border)
+  border-top: 1px dashed color-mix(in srgb, var(--glass-border) 60%, transparent)
   line-height: 1.4
 </style>

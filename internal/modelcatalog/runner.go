@@ -109,7 +109,7 @@ func (r *Runner) syncAndApplyLocked(ctx context.Context, syncer *Syncer, store *
 		out.Log.Errors = append(out.Log.Errors, "load catalog after sync: "+loadErr.Error())
 		return out, ApplyResult{}, fmt.Errorf("load catalog after sync: %w", loadErr)
 	}
-	applyRes := r.applier.Apply(ctx, cat, out.Policy.AutoApply)
+	applyRes := r.applier.ApplyWithMigration(ctx, cat, out.Policy.AutoApply)
 	out.Apply = applyRes
 	out.Log.Stats.LLMRowsUpdated = applyRes.LLMRowsUpdated
 	out.Log.Stats.DeprecatedDisabled = applyRes.LLMRowsDisabled

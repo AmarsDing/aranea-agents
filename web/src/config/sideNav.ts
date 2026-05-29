@@ -13,7 +13,7 @@ export type NavGroup = {
 
 export const sideNavGroups: NavGroup[] = [
   {
-    labelKey: "menu.groupMain",
+    labelKey: "menu.groupWorkspace",
     items: [
       { to: "/overview", icon: "dashboard", labelKey: "menu.overview" },
       { to: "/usage/events", icon: "receipt_long", labelKey: "menu.usageEvents" },
@@ -23,7 +23,7 @@ export const sideNavGroups: NavGroup[] = [
     ]
   },
   {
-    labelKey: "menu.groupEntities",
+    labelKey: "menu.groupAgents",
     items: [
       { to: "/agents", icon: "smart_toy", labelKey: "menu.agents" },
       { to: "/settings/agent-categories", icon: "account_tree", labelKey: "menu.agentCategories" },
@@ -32,26 +32,36 @@ export const sideNavGroups: NavGroup[] = [
     ]
   },
   {
-    labelKey: "menu.groupRegistry",
+    labelKey: "menu.groupModels",
     items: [
       { to: "/models", icon: "model_training", labelKey: "menu.models" },
-      { to: "/channels", icon: "hub", labelKey: "menu.channels" },
+      { to: "/channels", icon: "hub", labelKey: "menu.channels" }
+    ]
+  },
+  {
+    labelKey: "menu.groupTools",
+    items: [
       { to: "/mcp-servers", icon: "extension", labelKey: "menu.mcp" },
+      { to: "/tools", icon: "handyman", labelKey: "menu.tools" },
       { to: "/skills", icon: "psychology", labelKey: "menu.skills" },
       { to: "/plugins", icon: "tune", labelKey: "menu.plugins" },
       { to: "/hooks", icon: "link", labelKey: "menu.hooks" },
+      { to: "/a2a", icon: "swap_horiz", labelKey: "menu.a2a" }
+    ]
+  },
+  {
+    labelKey: "menu.groupKnowledge",
+    items: [
       { to: "/knowledge", icon: "menu_book", labelKey: "menu.knowledge" },
       { to: "/artifacts", icon: "inventory_2", labelKey: "menu.artifacts" },
-      { to: "/evaluation", icon: "fact_check", labelKey: "menu.evaluation" },
-      { to: "/a2a", icon: "swap_horiz", labelKey: "menu.a2a" },
-      { to: "/tools", icon: "handyman", labelKey: "menu.tools" },
-      { to: "/cron", icon: "schedule", labelKey: "menu.cron" },
-      { to: "/cron/runs", icon: "history", labelKey: "menu.cronRuns" }
+      { to: "/evaluation", icon: "fact_check", labelKey: "menu.evaluation" }
     ]
   },
   {
     labelKey: "menu.groupOps",
     items: [
+      { to: "/cron", icon: "schedule", labelKey: "menu.cron" },
+      { to: "/cron/runs", icon: "history", labelKey: "menu.cronRuns" },
       { to: "/monitor/logs", icon: "monitor_heart", labelKey: "menu.monitor", exact: false },
       { to: "/shop", icon: "storefront", labelKey: "menu.shop" },
       { to: "/settings", icon: "settings", labelKey: "menu.settings" }

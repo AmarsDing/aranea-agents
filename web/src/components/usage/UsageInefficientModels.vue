@@ -1,8 +1,13 @@
 <template>
-  <q-card flat class="overview-panel">
+  <q-card flat class="overview-panel overview-panel--warning">
     <q-card-section>
-      <div class="text-h6 overview-section-title">低性价比模型</div>
-      <div class="text-caption overview-section-caption">高费用且低 TPS 或成功率偏低的模型</div>
+      <div class="row items-center q-gutter-sm">
+        <q-icon name="speed" class="overview-panel__alert-icon" />
+        <div>
+          <div class="text-h6 overview-section-title">低性价比模型</div>
+          <div class="text-caption overview-section-caption">高费用且低 TPS 或成功率偏低的模型</div>
+        </div>
+      </div>
     </q-card-section>
     <q-separator class="overview-separator" />
     <q-card-section>

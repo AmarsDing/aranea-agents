@@ -69,7 +69,7 @@ func TestSupervisorReconnectsAfterDisconnect(t *testing.T) {
 		Enabled:    true,
 		ConfigJSON: `{"type":"reconnplat","receive_mode":"polling"}`,
 	}}}
-	uc := biz.NewChannelUsecase(repo)
+	uc := biz.NewChannelUsecase(repo, biz.NewCredentialCrypto(nil))
 	mgr := runtime.NewManager(uc, reconnectHandler{}, func(ctx context.Context, creds []biz.ChannelCredential, key string) (string, error) {
 		return "token", nil
 	})

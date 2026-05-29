@@ -4,6 +4,7 @@ import {
   clearAgentSessions,
   createSession,
   deleteSession,
+  getSession,
   listSessions,
   listTeamSessions,
   pinSession,
@@ -337,6 +338,17 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     patchSessionMetricsLocal(id, patch);
   }
 
+  async function fetchAndReconcileSession(sessionId: string): Promise<void> {
+    const id = sessionId.trim();
+    if (!id) return;
+    try {
+      const serverSession = await getSession(id);
+      reconcileFromServer(id, serverSession);
+    } catch (e: any) {
+      error.value = e?.message ?? String(e);
+    }
+  }
+
   function removeSessionById(id: string) {
     sessions.value = sessions.value.filter((s) => s.id !== id);
     for (const teamId of Object.keys(teamSessions.value)) {
@@ -401,6 +413,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     findSessionById,
     patchSessionMetricsLocal,
     reconcileFromServer,
+    fetchAndReconcileSession,
     removeSessionById,
     updateSessionById,
     refreshFromAdmin,

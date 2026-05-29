@@ -21,7 +21,7 @@ func (h *ChannelIngress) handleTelegramWebhook(w http.ResponseWriter, r *http.Re
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	webhookSecret, _ := resolveCredentialPlain(r.Context(), creds, "webhook_secret")
+	webhookSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "webhook_secret")
 	if err := telegram.VerifySecretToken(r.Header.Get("X-Telegram-Bot-Api-Secret-Token"), webhookSecret); err != nil {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil

@@ -155,6 +155,7 @@ export function useChatWorkspace() {
       outputTokens: s.output_tokens ?? 0,
       totalTokens: s.total_tokens ?? 0,
       totalCostMicroUsd: s.total_cost_micro_usd ?? 0,
+      promptBreakdown: s.promptBreakdown,
     };
   });
 

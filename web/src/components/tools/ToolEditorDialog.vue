@@ -1,17 +1,17 @@
 <template>
-  <q-dialog :model-value="editorStore.open" maximized @update:model-value="onDialogUpdate">
+  <q-dialog :model-value="open" maximized @update:model-value="onDialogUpdate">
     <q-card class="app-dialog-card app-glass-dialog app-maximized-dialog tool-editor-shell">
       <div class="tool-editor-shell__head">
         <div class="tool-editor-shell__head-left">
-          <q-btn flat dense round icon="arrow_back" class="app-registry-icon-btn" :disable="editorStore.saving" @click="tryClose">
+          <q-btn flat dense round icon="arrow_back" class="app-registry-icon-btn" :disable="saving" @click="tryClose">
             <q-tooltip>返回</q-tooltip>
           </q-btn>
           <div class="tool-editor-shell__breadcrumb">
             <span class="tool-editor-shell__breadcrumb-prefix">Tools</span>
             <q-icon name="chevron_right" size="xs" color="grey-6" />
-            <span class="tool-editor-shell__breadcrumb-current">{{ editorStore.editingId ? "编辑" : "新建" }}</span>
+            <span class="tool-editor-shell__breadcrumb-current">{{ editingId ? "编辑" : "新建" }}</span>
           </div>
-          <div v-if="editorStore.editingId && editorStore.form.display_name" class="tool-editor-shell__entity">{{ editorStore.form.display_name }}</div>
+          <div v-if="editingId && form.display_name" class="tool-editor-shell__entity">{{ form.display_name }}</div>
         </div>
         <div class="tool-editor-shell__head-right">
           <q-btn flat dense round icon="help_outline" class="app-registry-icon-btn" @click="helpOpen = true">
@@ -47,7 +47,7 @@
             </div>
           </div>
 
-          <div v-if="editorStore.editingId && diffLines.length" class="tool-editor-aside__diff">
+          <div v-if="editingId && diffLines.length" class="tool-editor-aside__diff">
             <div class="tool-editor-aside__nav-title">变更预览</div>
             <div class="tool-editor-aside__diff-list">
               <div v-for="(line, i) in diffLines.slice(0, 6)" :key="i" class="tool-editor-aside__diff-line text-caption">
@@ -71,14 +71,14 @@
                   </div>
                 </div>
 
-                <div v-if="!editorStore.editingId" class="tool-template-grid q-mb-md">
+                <div v-if="!editingId" class="tool-template-grid q-mb-md">
                   <button
                     v-for="tpl in templates"
                     :key="tpl.id"
                     type="button"
                     class="tool-template-card"
-                    :class="{ 'tool-template-card--active': editorStore.selectedTemplate === tpl.id }"
-                    @click="editorStore.applyTemplate(tpl.id)"
+                    :class="{ 'tool-template-card--active': selectedTemplate === tpl.id }"
+                    @click="$emit('apply-template', tpl.id)"
                   >
                     <span class="tool-template-card__label">{{ tpl.label }}</span>
                     <span class="tool-template-card__caption">{{ tpl.caption }}</span>
@@ -87,13 +87,13 @@
 
                 <div class="app-form-field-grid app-form-field-grid--2col">
                   <tool-field-hint-input
-                    :model-value="editorStore.form.display_name"
+                    :model-value="form.display_name"
                     label="显示名称"
                     :hint="hints.display_name"
-                    @update:model-value="patch({ display_name: $event })"
+                    @update:model-value="$emit('patch-form', { display_name: $event })"
                   />
                   <q-select
-                    :model-value="editorStore.form.category"
+                    :model-value="form.category"
                     dense
                     outlined
                     emit-value
@@ -101,18 +101,18 @@
                     label="分类"
                     :hint="hints.category"
                     :options="categoryFilterOptions"
-                    @update:model-value="patch({ category: String($event ?? 'custom') })"
+                    @update:model-value="$emit('patch-form', { category: String($event ?? 'custom') })"
                   />
                   <q-input
                     class="app-grid-span-full app-field-long"
-                    :model-value="editorStore.form.description"
+                    :model-value="form.description"
                     dense
                     outlined
                     autogrow
                     type="textarea"
                     label="描述"
                     :hint="hints.description"
-                    @update:model-value="patch({ description: String($event ?? '') })"
+                    @update:model-value="$emit('patch-form', { description: String($event ?? '') })"
                   />
                 </div>
               </section>
@@ -129,11 +129,11 @@
                   </div>
                 </div>
                 <tool-schema-builder
-                  :model-value="editorStore.form.parameters_schema_json"
+                  :model-value="form.parameters_schema_json"
                   title="调用参数定义"
                   :hint="hints.parameters_schema_json"
                   :readonly="schemaReadonly"
-                  @update:model-value="patch({ parameters_schema_json: $event })"
+                  @update:model-value="$emit('patch-form', { parameters_schema_json: $event })"
                 />
                 <q-expansion-item dense-toggle label="返回结构说明（可选）" class="q-mt-md">
                   <div class="q-pt-sm">
@@ -142,11 +142,11 @@
                       不配置不影响工具运行，但 AI 无法预知返回格式。
                     </p>
                     <tool-schema-builder
-                      :model-value="editorStore.form.result_schema_json"
+                      :model-value="form.result_schema_json"
                       title="返回结构定义"
                       :hint="hints.result_schema_json"
                       :readonly="schemaReadonly"
-                      @update:model-value="patch({ result_schema_json: $event })"
+                      @update:model-value="$emit('patch-form', { result_schema_json: $event })"
                     />
                   </div>
                 </q-expansion-item>
@@ -177,31 +177,31 @@
                       已有配置项的工具通常不需要修改此区域。
                     </p>
                     <tool-schema-builder
-                      :model-value="editorStore.form.config_schema_json"
+                      :model-value="form.config_schema_json"
                       title="配置项定义"
                       :hint="hints.config_schema_json"
                       :readonly="schemaReadonly"
-                      @update:model-value="patch({ config_schema_json: $event })"
+                      @update:model-value="$emit('patch-form', { config_schema_json: $event })"
                     />
                   </div>
                 </q-expansion-item>
 
                 <div class="tool-editor-section__subtitle">当前配置值</div>
-                <q-banner v-if="editorStore.form.key === 'web_research'" rounded dense class="settings-info-banner q-mb-sm">
+                <q-banner v-if="form.key === 'web_research'" rounded dense class="settings-info-banner q-mb-sm">
                   API Key 留空时使用
                   <router-link :to="{ name: 'settings' }" class="text-primary">系统设置 → Web 研究</router-link>
                   或环境变量 TAVILY_API_KEY。
                 </q-banner>
                 <template v-if="hasConfigSchema">
                   <tool-schema-form
-                    :schema-json="editorStore.form.config_schema_json"
-                    :model-value="editorStore.form.config_json"
-                    @update:model-value="patch({ config_json: $event })"
+                    :schema-json="form.config_schema_json"
+                    :model-value="form.config_json"
+                    @update:model-value="$emit('patch-form', { config_json: $event })"
                   />
                 </template>
                 <q-input
                   v-else
-                  :model-value="editorStore.form.config_json"
+                  :model-value="form.config_json"
                   type="textarea"
                   outlined
                   autogrow
@@ -210,9 +210,9 @@
                   label="配置 JSON"
                   :hint="hints.config_json"
                   :readonly="schemaReadonly"
-                  :error="Boolean(editorStore.jsonErrors.config_json)"
-                  :error-message="editorStore.jsonErrors.config_json"
-                  @update:model-value="patch({ config_json: String($event ?? '{}') })"
+                  :error="Boolean(jsonErrors.config_json)"
+                  :error-message="jsonErrors.config_json"
+                  @update:model-value="$emit('patch-form', { config_json: String($event ?? '{}') })"
                 />
                 <q-banner v-if="extraConfigKeys.length" rounded class="settings-warning-banner q-mt-sm">
                   以下字段不在配置 Schema 中，保存时可能被后端拒绝：{{ extraConfigKeys.join(", ") }}
@@ -239,7 +239,7 @@
                       <li v-for="(line, i) in defaultDiffLines" :key="i">{{ line }}</li>
                     </ul>
                     <q-input
-                      :model-value="editorStore.form.default_config_json"
+                      :model-value="form.default_config_json"
                       type="textarea"
                       outlined
                       autogrow
@@ -247,17 +247,17 @@
                       class="app-field-long"
                       label="默认配置 JSON"
                       :readonly="registryLocked"
-                      :error="Boolean(editorStore.jsonErrors.default_config_json)"
-                      :error-message="editorStore.jsonErrors.default_config_json"
-                      @update:model-value="patch({ default_config_json: String($event ?? '{}') })"
+                      :error="Boolean(jsonErrors.default_config_json)"
+                      :error-message="jsonErrors.default_config_json"
+                      @update:model-value="$emit('patch-form', { default_config_json: String($event ?? '{}') })"
                     />
-                    <q-btn v-if="!registryLocked" flat dense no-caps size="sm" label="从当前配置复制" @click="copyConfigToDefault" />
+                    <q-btn v-if="!registryLocked" flat dense no-caps size="sm" label="从当前配置复制" @click="$emit('patch-form', { default_config_json: form.config_json })" />
                   </div>
                 </q-expansion-item>
                 <q-expansion-item dense-toggle label="扩展元数据">
                   <div class="q-pt-sm">
                     <q-input
-                      :model-value="editorStore.form.metadata_json"
+                      :model-value="form.metadata_json"
                       type="textarea"
                       outlined
                       autogrow
@@ -265,9 +265,9 @@
                       class="app-field-long"
                       label="元数据 JSON"
                       :readonly="registryLocked"
-                      :error="Boolean(editorStore.jsonErrors.metadata_json)"
-                      :error-message="editorStore.jsonErrors.metadata_json"
-                      @update:model-value="patch({ metadata_json: String($event ?? '{}') })"
+                      :error="Boolean(jsonErrors.metadata_json)"
+                      :error-message="jsonErrors.metadata_json"
+                      @update:model-value="$emit('patch-form', { metadata_json: String($event ?? '{}') })"
                     />
                   </div>
                 </q-expansion-item>
@@ -276,7 +276,7 @@
                     <q-input
                       v-for="field in rawFields"
                       :key="field.key"
-                      :model-value="editorStore.form[field.key]"
+                      :model-value="form[field.key]"
                       type="textarea"
                       outlined
                       autogrow
@@ -284,9 +284,9 @@
                       class="app-field-long"
                       :label="field.label"
                       :readonly="registryLocked"
-                      :error="Boolean(editorStore.jsonErrors[field.key])"
-                      :error-message="editorStore.jsonErrors[field.key]"
-                      @update:model-value="patch({ [field.key]: String($event ?? '{}') })"
+                      :error="Boolean(jsonErrors[field.key])"
+                      :error-message="jsonErrors[field.key]"
+                      @update:model-value="$emit('patch-form', { [field.key]: String($event ?? '{}') })"
                     />
                   </div>
                 </q-expansion-item>
@@ -297,7 +297,7 @@
 
           <div class="tool-editor-main__footer">
             <q-btn outline no-caps label="取消" @click="tryClose" />
-            <q-btn no-caps unelevated class="app-registry-primary-btn" icon="save" label="保存" :loading="editorStore.saving" @click="editorStore.save()" />
+            <q-btn no-caps unelevated class="app-registry-primary-btn" icon="save" label="保存" :loading="saving" @click="$emit('save')" />
           </div>
         </main>
       </div>
@@ -308,21 +308,35 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, ref } from "vue";
 import { useQuasar } from "quasar";
-import { useToolEditorStore } from "../../stores/tools/toolEditor";
-import { useToolDetailStore } from "../../stores/tools/toolDetail";
 import { TOOL_CREATE_TEMPLATES, TOOL_FIELD_HINTS, isRegistryLockedTool } from "../../features/tools/toolEditorCopy";
-import { patchToolForm } from "../../features/tools/toolFormPatch";
 import { configExtraKeys, configDiffSummary } from "../../features/tools/jsonSchemaBuilder";
+import type { ToolUpsertInput } from "../../features/tools/types";
 import { toolEditorJsonKeys, validateToolJsonFields, categoryFilterOptions } from "./toolUi";
 import ToolFieldHintInput from "./editor/ToolFieldHintInput.vue";
 import ToolEditorHelpDrawer from "./editor/ToolEditorHelpDrawer.vue";
 import ToolSchemaBuilder from "./editor/ToolSchemaBuilder.vue";
 import ToolSchemaForm from "./ToolSchemaForm.vue";
 
-const editorStore = useToolEditorStore();
-const detailStore = useToolDetailStore();
+const props = defineProps<{
+  open: boolean;
+  editingId: string;
+  form: ToolUpsertInput;
+  saving: boolean;
+  dirty: boolean;
+  jsonErrors: Record<string, string>;
+  selectedTemplate: string;
+}>();
+
+const emit = defineEmits<{
+  "update:open": [value: boolean];
+  save: [];
+  close: [];
+  "apply-template": [id: string];
+  "patch-form": [p: Record<string, unknown>];
+}>();
+
 const $q = useQuasar();
 
 const helpOpen = ref(false);
@@ -339,24 +353,24 @@ const navSections = [
   { id: "advanced", label: "高级选项", hint: "默认值、元数据", icon: "more_horiz" }
 ];
 
-const registryLocked = computed(() => isRegistryLockedTool(editorStore.form));
+const registryLocked = computed(() => isRegistryLockedTool(props.form));
 const schemaReadonly = computed(() => registryLocked.value);
 
 const hasConfigSchema = computed(() => {
   try {
-    const s = JSON.parse(editorStore.form.config_schema_json || "{}");
+    const s = JSON.parse(props.form.config_schema_json || "{}");
     return s.properties && Object.keys(s.properties).length > 0;
   } catch {
     return false;
   }
 });
 
-const extraConfigKeys = computed(() => configExtraKeys(editorStore.form.config_json, editorStore.form.config_schema_json));
+const extraConfigKeys = computed(() => configExtraKeys(props.form.config_json, props.form.config_schema_json));
 
-const defaultDiffLines = computed(() => configDiffSummary(editorStore.form.config_json, editorStore.form.default_config_json));
+const defaultDiffLines = computed(() => configDiffSummary(props.form.config_json, props.form.default_config_json));
 
 const diffLines = computed(() => {
-  if (!editorStore.editingId) return [];
+  if (!props.editingId) return [];
   return defaultDiffLines.value;
 });
 
@@ -364,7 +378,7 @@ const validationChecks = computed(() => {
   const keys = [...toolEditorJsonKeys];
   const fieldObj = keys.reduce(
     (acc, k) => {
-      acc[k] = editorStore.form[k];
+      acc[k] = props.form[k];
       return acc;
     },
     {} as Record<string, string>
@@ -381,14 +395,6 @@ const rawFields = [
   { key: "result_schema_json" as const, label: "返回 Schema JSON" },
   { key: "config_schema_json" as const, label: "配置 Schema JSON" }
 ];
-
-function patch(p: Record<string, unknown>) {
-  patchToolForm(editorStore.form, p);
-}
-
-function copyConfigToDefault() {
-  patch({ default_config_json: editorStore.form.config_json });
-}
 
 function scrollToSection(id: string) {
   activeSection.value = id;
@@ -414,48 +420,33 @@ function onScroll() {
   }
 }
 
+function confirmDiscardAndClose() {
+  $q.dialog({
+    title: "未保存的更改",
+    message: "当前有未保存的更改，确定要关闭吗？",
+    cancel: { label: "继续编辑", flat: true, noCaps: true },
+    ok: { label: "放弃更改", noCaps: true, color: "negative" },
+    persistent: true,
+  }).onOk(() => {
+    emit("close");
+  });
+}
+
 function tryClose() {
-  if (editorStore.dirty) {
-    $q.dialog({
-      title: "未保存的更改",
-      message: "当前有未保存的更改，确定要关闭吗？",
-      cancel: { label: "继续编辑", flat: true, noCaps: true },
-      ok: { label: "放弃更改", noCaps: true, color: "negative" },
-      persistent: true,
-    }).onOk(() => {
-      editorStore.closeEditor();
-    });
+  if (props.dirty) {
+    confirmDiscardAndClose();
   } else {
-    editorStore.closeEditor();
+    emit("close");
   }
 }
 
 function onDialogUpdate(val: boolean) {
   if (!val) {
-    if (editorStore.dirty) {
-      $q.dialog({
-        title: "未保存的更改",
-        message: "当前有未保存的更改，确定要关闭吗？",
-        cancel: { label: "继续编辑", flat: true, noCaps: true },
-        ok: { label: "放弃更改", noCaps: true, color: "negative" },
-        persistent: true,
-      }).onOk(() => {
-        editorStore.closeEditor();
-      });
+    if (props.dirty) {
+      confirmDiscardAndClose();
     } else {
-      editorStore.closeEditor();
+      emit("close");
     }
   }
 }
-
-watch(
-  () => editorStore.open,
-  (isOpen) => {
-    if (!isOpen && editorStore.editingId && detailStore.tool) {
-      nextTick(() => {
-        detailStore.openDetail(detailStore.tool!);
-      });
-    }
-  }
-);
 </script>

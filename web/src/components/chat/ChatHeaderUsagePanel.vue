@@ -26,9 +26,11 @@
         class="ctx-breakdown-menu"
       >
         <ChatContextBreakdownPopover
+          v-if="breakdown"
           :breakdown="breakdown"
           :context-status="contextStatus"
           :total-cost-micro-usd="usageSnapshot?.totalCostMicroUsd"
+          :is-precise="isPrecise"
           :is-dark="isDark"
         />
       </q-menu>
@@ -83,6 +85,11 @@ const usageParts = computed(() =>
 
 const hasBreakdown = computed(() =>
   props.breakdown != null && props.breakdown.categories.length > 0,
+);
+
+const isPrecise = computed(() =>
+  props.usageSnapshot?.promptBreakdown != null &&
+  Object.values(props.usageSnapshot.promptBreakdown).some((v) => v != null && v > 0),
 );
 
 function onRingClick() {

@@ -25,6 +25,16 @@ type AgentKeyLookup interface {
 	GetAgentByID(ctx context.Context, id string) (biz.Agent, error)
 }
 
+type CompressorDeps interface {
+	biz.SessionReader
+	biz.MessageReader
+	biz.MessageWriter
+	biz.SummaryReader
+	biz.SummaryWriter
+	biz.ContextUpdater
+	biz.CompressRepo
+}
+
 type Compressor struct {
 	sessionReader  biz.SessionReader
 	messageReader  biz.MessageReader
@@ -46,7 +56,7 @@ var _ biz.NativeTurnCompressor = (*Compressor)(nil)
 var _ biz.DurableTurnCompressor = (*Compressor)(nil)
 
 func NewCompressor(
-	sessions biz.SessionRepo,
+	sessions CompressorDeps,
 	agents AgentKeyLookup,
 	runtime *Runtime,
 	memory MemoryResync,
@@ -260,17 +270,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 			}
 		}
 
-		author := strings.TrimSpace(ag.AgentKey)
-		if c.agents != nil && strings.TrimSpace(sess.AgentID) != "" {
-			if a, e := c.agents.GetAgentByID(txCtx, sess.AgentID); e == nil {
-				if k := strings.TrimSpace(a.AgentKey); k != "" {
-					author = k
-				}
-			}
-		}
-		if author == "" {
-			author = "agent"
-		}
+		author := c.resolveAgentAuthor(txCtx, ag, sess.AgentID)
 
 		raw, err := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, txMerged, txTail, author)
 		if err != nil {
@@ -303,17 +303,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 	}
 
 	if c.Runtime != nil {
-		author := strings.TrimSpace(ag.AgentKey)
-		if c.agents != nil && strings.TrimSpace(sess.AgentID) != "" {
-			if a, e := c.agents.GetAgentByID(ctx, sess.AgentID); e == nil {
-				if k := strings.TrimSpace(a.AgentKey); k != "" {
-					author = k
-				}
-			}
-		}
-		if author == "" {
-			author = "agent"
-		}
+		author := c.resolveAgentAuthor(ctx, ag, sess.AgentID)
 		raw, snapErr := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, txMerged, txTail, author)
 		if snapErr == nil {
 			if syncErr := c.Runtime.SyncRunnerSnapshot(ctx, trpcUserID, sessionID, raw, txMerged); syncErr != nil && c.EventBus != nil {
@@ -335,6 +325,21 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 	c.publishCompressionNotice(ctx, sessionID, fromTurn, toTurn, preview, est, win, ratio, status)
 	c.resyncSessionMemory(ctx, sessionID)
 	return nil
+}
+
+func (c *Compressor) resolveAgentAuthor(ctx context.Context, ag biz.Agent, agentID string) string {
+	author := strings.TrimSpace(ag.AgentKey)
+	if c.agents != nil && strings.TrimSpace(agentID) != "" {
+		if a, e := c.agents.GetAgentByID(ctx, agentID); e == nil {
+			if k := strings.TrimSpace(a.AgentKey); k != "" {
+				author = k
+			}
+		}
+	}
+	if author == "" {
+		author = "agent"
+	}
+	return author
 }
 
 func (c *Compressor) publishCompressionNotice(ctx context.Context, sessionID string, fromTurn, toTurn int, preview string, contextUsedTokens, contextWindow int, ratio float64, status string) {

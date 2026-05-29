@@ -6,7 +6,10 @@
     </q-card-section>
     <q-separator class="overview-separator" />
     <q-list separator class="overview-rank-list">
-      <q-item v-for="row in rows" :key="`${row.provider_code}:${row.model_api_id}`">
+      <q-item v-for="(row, idx) in rows" :key="`${row.provider_code}:${row.model_api_id}`">
+        <q-item-section avatar class="overview-rank-index">
+          <span class="overview-rank-badge" :class="{ 'overview-rank-badge--top': idx < 3 }">{{ idx + 1 }}</span>
+        </q-item-section>
         <q-item-section>
           <q-item-label class="text-weight-medium">{{ row.model_display_name || row.model_api_id }}</q-item-label>
           <q-item-label caption class="overview-item-caption">{{ row.provider_code }} / {{ row.model_api_id }}</q-item-label>

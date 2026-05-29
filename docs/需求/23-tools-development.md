@@ -1,6 +1,6 @@
 # Tools 工具 — 开发计划
 
-> **版本**：7.0（2026-05-29）| **状态**：✅ 核心已实现；**Phase 4 片段编辑 ✅**；**Phase 5 工作区统一 ✅**；**Phase 6 架构优化 ✅**；**Round 3 P2/P3 修复 ✅**；**Phase 7 质量加固 ✅**；**Phase 8 ISP + 测试 + Knowledge ✅**
+> **版本**：8.0（2026-05-29）| **状态**：✅ 核心已实现；**Phase 4 片段编辑 ✅**；**Phase 5 工作区统一 ✅**；**Phase 6 架构优化 ✅**；**Round 3 P2/P3 修复 ✅**；**Phase 7 质量加固 ✅**；**Phase 8 ISP + 测试 + Knowledge ✅**；**Round 5 Wire 窄接口 + 错误规范 ✅**
 > **需求**：[23 tools.md](./23%20tools.md) · [23 tools-fragment-edit.md](./23%20tools-fragment-edit.md) · **设计**：[23 tools.design.md](./23%20tools.design.md) · [23 tools-fragment-edit.design.md](./23%20tools-fragment-edit.design.md) · **结构**：[23 tools struct design.md](./23%20tools%20struct%20design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
@@ -113,6 +113,10 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 44 | **P2** | `resolveWorkdir` 绝对路径校验 | ✅ Round 3：workspace 子路径包含检查 |
 | 45 | **P3** | `editFileSnapshot.Raw` 死代码 | ✅ Round 3：已删除 |
 | 46 | **P2** | `/tools/audits` 页面文档 | ✅ Round 3：`frontend-pages.md` 已补充 |
+| 47 | **P2** | wire.go `*biz.SkillUsecase` 具体类型 → 窄接口 | ✅ Round 5：`watch.SkillReader`/`SkillWriter` + `biz.FilesystemHealthReader` |
+| 48 | **P2** | CreateSkillDir 空 slug 校验 | ✅ Round 5：kerrors.BadRequest 拒绝空/不安全 slug |
+| 49 | **P2** | testexec/trpc fmt.Errorf → kerrors | ✅ Round 5：3 处业务错误迁移 |
+| 50 | **P1** | RunHealthChecks 闭包变量编译错误 | ✅ Round 5：循环变量捕获修复 |
 
 > **说明**：曾起草「53 Desktop App」文档，**不实施**；Shell 工作区优化归属本模块 Phase 5，不涉及 Electron/App 打包。
 
@@ -331,6 +335,10 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 22 | TestTool 超时 + 错误不吞 | P2 | 7 | — | ✅ WithTimeout + SysLogWarn |
 | 23 | testexec knowledge_reflect case | P2 | 7 | — | ✅ 显式 case |
 | 24 | filterCache LRU + RWMutex + Stats | P2 | 7 | — | ✅ atomic 计数器 |
+| 25 | wire.go SkillUsecase → 窄接口 | **P2** | **R5** | — | ✅ watch.SkillReader/Writer + FilesystemHealthReader |
+| 26 | CreateSkillDir 空 slug 校验 | P2 | R5 | — | ✅ kerrors.BadRequest + 路径安全检查 |
+| 27 | testexec/trpc fmt.Errorf → kerrors | P2 | R5 | — | ✅ 3 处业务错误迁移 |
+| 28 | RunHealthChecks 闭包变量修复 | **P1** | **R5** | — | ✅ 循环变量捕获 |
 
 ---
 
@@ -437,24 +445,27 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 |---|------|------|
 | 1 | `buildMCPToolSet` / `buildMCPBrokerTools` 测试 | Assemble 子装配器中 MCP 路径无测试覆盖 |
 | 2 | Ent schema 重新生成 | `internal/data/` 编译错误（Visibility/FallbackConfigJSON/FileManifestJSON/MessageID/CompressVersion 字段缺失），需 `go generate` 重新生成 |
+| 3 | `provideChatServiceDeps` 中 `*biz.SkillUsecase` 具体类型 | 传入 `rt.Catalog.SkillUC`，需拆分 Catalog 依赖为窄接口 |
 
 ### P2（中优先级）
 
 | # | 任务 | 说明 |
 |---|------|------|
-| 3 | `custom/` 包冒烟测试 | 用户模板工具无测试 |
-| 4 | `memory/` 包测试 | 整个包无测试文件 |
-| 5 | tools 层 `fmt.Errorf` 评估 | `internal/tools/knowledge/tool.go` 13 处 `fmt.Errorf`，评估是否转为 `kerrors.BadRequest` |
-| 6 | BM25 分数归一化 | `mergeBM25Results` 直接拼接 tsvector 和 trigram 结果，分数尺度不同可能导致排序偏差 |
-| 7 | `AdaptiveRouter.Search` 签名简化 | 调用方常传 `nil` + `""`，考虑提供简化签名 |
+| 4 | `custom/` 包冒烟测试 | 用户模板工具无测试 |
+| 5 | `memory/` 包测试 | 整个包无测试文件 |
+| 6 | tools 层 `fmt.Errorf` 评估 | 工具执行层（kanban/webresearch/cli_admin/runtime_alias）70 处 `fmt.Errorf` 属于框架工具 Call 返回值，不经过 kerrors 链，保持不变 |
+| 7 | BM25 分数归一化 | `mergeBM25Results` 直接拼接 tsvector 和 trigram 结果，分数尺度不同可能导致排序偏差 |
+| 8 | `AdaptiveRouter.Search` 签名简化 | 调用方常传 `nil` + `""`，考虑提供简化签名 |
+| 9 | `slugify("")` 全局唯一 slug 生成 | 空 slug 已在 `CreateSkillDir` 校验拦截，但 `slugify` 本身仍生成 "skill-0" 非唯一值 |
 
 ### P3（低优先级）
 
 | # | 任务 | 说明 |
 |---|------|------|
-| 8 | `BuildToolsets` 集成测试 | 核心桥接函数需 mock-heavy 测试 |
-| 9 | E2E 全链路测试 | `read_file` → `diff_edit` → shell 读同路径 |
-| 10 | `AgentPromptFileRepo` 监控 | 恰好 5 方法处于红线边界，新增方法需立即拆分 |
+| 10 | `BuildToolsets` 集成测试 | 核心桥接函数需 mock-heavy 测试 |
+| 11 | E2E 全链路测试 | `read_file` → `diff_edit` → shell 读同路径 |
+| 12 | `AgentPromptFileRepo` 监控 | 恰好 5 方法处于红线边界，新增方法需立即拆分 |
+| 13 | `biz/` 预存测试失败修复 | `TestRecordReconnectMetadata`/`TestAgentRuntimeSettings_DomainAccessors`/`TestValidateRalphLoopSettings` 3 个测试失败 |
 
 ---
 

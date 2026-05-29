@@ -11,6 +11,8 @@ type cascadeGraphStore struct {
 	store *sessionmemory.Store
 }
 
+var _ biz.CascadeGraphStore = (*cascadeGraphStore)(nil)
+
 func NewCascadeGraphStore(store *sessionmemory.Store) biz.CascadeGraphStore {
 	if store == nil {
 		return nil

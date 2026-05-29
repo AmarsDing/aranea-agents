@@ -240,6 +240,10 @@ func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule 
 		).
 		Only(ctx)
 	if err == nil {
+		if biz.PricingSourcePriority(rule.Source) < biz.PricingSourcePriority(row.Source) {
+			_ = tx.Rollback()
+			return nil
+		}
 		err = client.ModelPricingRule.UpdateOneID(row.ID).
 			SetCurrency(rule.Currency).
 			SetInputPriceMicroUsdPer1k(rule.InputPriceMicroUSDPer1K).

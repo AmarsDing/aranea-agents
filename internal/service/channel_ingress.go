@@ -207,7 +207,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			http.Error(w, "credentials", http.StatusInternalServerError)
 			return nil
 		}
-		encryptKey, encErr := resolveCredentialPlain(r.Context(), creds, "encrypt_key")
+		encryptKey, encErr := resolveCredentialPlain(r.Context(), h.channels, creds, "encrypt_key")
 		if encErr != nil {
 			event.SysLogWarn("channel.credential.resolve_failed", "凭证解析失败",
 				event.P("key", "encrypt_key"),
@@ -223,7 +223,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return nil
 		}
-		verTok, verErr := resolveCredentialPlain(r.Context(), creds, "verification_token")
+		verTok, verErr := resolveCredentialPlain(r.Context(), h.channels, creds, "verification_token")
 		if verErr != nil {
 			event.SysLogWarn("channel.credential.resolve_failed", "凭证解析失败",
 				event.P("key", "verification_token"),
@@ -315,7 +315,7 @@ func ingressFirstNonEmpty(parts ...string) string {
 	return ""
 }
 
-func resolveCredentialPlain(ctx context.Context, creds []biz.ChannelCredential, key string) (string, error) {
+func resolveCredentialPlain(ctx context.Context, channels *biz.ChannelUsecase, creds []biz.ChannelCredential, key string) (string, error) {
 	key = strings.TrimSpace(key)
 	for _, c := range creds {
 		if !strings.EqualFold(strings.TrimSpace(c.CredentialKey), key) {
@@ -325,7 +325,7 @@ func resolveCredentialPlain(ctx context.Context, creds []biz.ChannelCredential, 
 		if ref == "" {
 			return "", nil
 		}
-		return ResolveSecretRef(ctx, ref)
+		return ResolveSecretRef(ctx, channels, ref)
 	}
 	return "", nil
 }

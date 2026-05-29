@@ -434,7 +434,7 @@ func (s *ChannelService) testFeishuLive(ctx context.Context, configJSON string, 
 	if cerr != nil {
 		return biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: cerr.Error()}
 	}
-	sec, serr := ResolveSecretRef(ctx, appRef)
+	sec, serr := ResolveSecretRef(ctx, s.uc, appRef)
 	if serr != nil {
 		return biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: serr.Error()}
 	}
@@ -451,7 +451,7 @@ func (s *ChannelService) testFeishuLive(ctx context.Context, configJSON string, 
 
 // testSlackLive performs a live slack auth.test.
 func (s *ChannelService) testSlackLive(ctx context.Context, configJSON string, creds []biz.ChannelCredential) biz.ChannelTestResult {
-	token, terr := resolveCredentialPlain(ctx, creds, "bot_token")
+	token, terr := resolveCredentialPlain(ctx, s.uc, creds, "bot_token")
 	if terr != nil || strings.TrimSpace(token) == "" {
 		return biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: "bot_token not configured"}
 	}
@@ -463,7 +463,7 @@ func (s *ChannelService) testSlackLive(ctx context.Context, configJSON string, c
 
 // testTelegramLive performs a live telegram getMe test.
 func (s *ChannelService) testTelegramLive(ctx context.Context, configJSON string, creds []biz.ChannelCredential) biz.ChannelTestResult {
-	token, terr := resolveCredentialPlain(ctx, creds, "bot_token")
+	token, terr := resolveCredentialPlain(ctx, s.uc, creds, "bot_token")
 	if terr != nil || strings.TrimSpace(token) == "" {
 		return biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: "bot_token not configured"}
 	}

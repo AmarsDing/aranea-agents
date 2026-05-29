@@ -10,8 +10,7 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-// ResolveSecretRef resolves secret_ref forms: env:VAR_NAME and enc: (AES-GCM blob).
-func ResolveSecretRef(ctx context.Context, ref string) (string, error) {
+func ResolveSecretRef(ctx context.Context, channels *biz.ChannelUsecase, ref string) (string, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
 		return "", kerrors.BadRequest("SECRET", "empty secret_ref")
@@ -28,7 +27,7 @@ func ResolveSecretRef(ctx context.Context, ref string) (string, error) {
 		return v, nil
 	}
 	if strings.HasPrefix(ref, "enc:") {
-		plain, err := biz.DecryptChannelSecretRef(ctx, ref)
+		plain, err := channels.DecryptSecretRef(ctx, ref)
 		if err != nil {
 			return "", err
 		}

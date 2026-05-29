@@ -67,10 +67,6 @@ func (a *Applier) Apply(ctx context.Context, cat Catalog, autoApply string) Appl
 	}
 
 	var res ApplyResult
-	stats, errs := RunProviderMigrations(ctx, a.backend)
-	res.Migration = stats
-	res.Errors = append(res.Errors, errs...)
-
 	rows, err := a.backend.ListProviderModels(ctx)
 	if err != nil {
 		res.Errors = append(res.Errors, err.Error())
@@ -148,6 +144,30 @@ func (a *Applier) Apply(ctx context.Context, cat Catalog, autoApply string) Appl
 			}
 		}
 	}
+	return res
+}
+
+// ApplyWithMigration runs provider migrations first, then applies catalog merge.
+// Prefer calling Apply() + RunProviderMigrations() separately for explicit control.
+func (a *Applier) ApplyWithMigration(ctx context.Context, cat Catalog, autoApply string) ApplyResult {
+	if a == nil || a.backend == nil || len(cat) == 0 {
+		return ApplyResult{}
+	}
+	mode := strings.ToLower(strings.TrimSpace(autoApply))
+	if mode == "" || mode == "none" {
+		return ApplyResult{}
+	}
+
+	var res ApplyResult
+	stats, errs := RunProviderMigrations(ctx, a.backend)
+	res.Migration = stats
+	res.Errors = append(res.Errors, errs...)
+
+	mergeRes := a.Apply(ctx, cat, autoApply)
+	res.LLMRowsUpdated = mergeRes.LLMRowsUpdated
+	res.LLMRowsDisabled = mergeRes.LLMRowsDisabled
+	res.PricingRulesUpdated = mergeRes.PricingRulesUpdated
+	res.Errors = append(res.Errors, mergeRes.Errors...)
 	return res
 }
 

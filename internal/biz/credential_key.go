@@ -10,24 +10,40 @@ import (
 	"github.com/go-kratos/kratos/v2/errors"
 )
 
-// CredentialKeyResolver loads the 32-byte AES key for credential encryption.
 type CredentialKeyResolver func(ctx context.Context) ([]byte, error)
 
-var credentialKeyResolver CredentialKeyResolver
-
-// SetCredentialKeyResolver wires DB/env credential key resolution (called from data.NewSystemSettingRepo).
-func SetCredentialKeyResolver(r CredentialKeyResolver) {
-	credentialKeyResolver = r
-}
-
-// SystemSettingCredentialKeyRepo is the subset of SystemSettingRepo used for credential keys.
 type SystemSettingCredentialKeyRepo interface {
 	EnsureCredentialEncryptionKey(ctx context.Context) (string, error)
 }
 
 const invalidCredentialKeyMsg = "ARANEA_CREDENTIAL_KEY must be 32-byte hex or base64"
 
-// ResolveCredentialAESKey prefers ARANEA_CREDENTIAL_KEY env, else system_settings.credential_encryption_key.
+type CredentialCrypto struct {
+	resolver CredentialKeyResolver
+}
+
+func NewCredentialCrypto(resolver CredentialKeyResolver) *CredentialCrypto {
+	return &CredentialCrypto{resolver: resolver}
+}
+
+func (c *CredentialCrypto) IsAvailable() bool {
+	if c.resolver != nil {
+		return true
+	}
+	return strings.TrimSpace(os.Getenv(envCredentialKey)) != ""
+}
+
+func (c *CredentialCrypto) aesKey(ctx context.Context) ([]byte, error) {
+	if c.resolver != nil {
+		return c.resolver(ctx)
+	}
+	raw := strings.TrimSpace(os.Getenv(envCredentialKey))
+	if raw == "" {
+		return nil, nil
+	}
+	return parseCredentialKeyMaterial(raw)
+}
+
 func ResolveCredentialAESKey(ctx context.Context, sys SystemSettingCredentialKeyRepo) ([]byte, error) {
 	if raw := strings.TrimSpace(os.Getenv(envCredentialKey)); raw != "" {
 		key, err := parseCredentialKeyMaterial(raw)
@@ -68,22 +84,4 @@ func parseCredentialKeyMaterial(raw string) ([]byte, error) {
 		return key, nil
 	}
 	return nil, errors.BadRequest("CREDENTIAL_KEY", invalidCredentialKeyMsg)
-}
-
-func credentialAESKey(ctx context.Context) ([]byte, error) {
-	if credentialKeyResolver != nil {
-		return credentialKeyResolver(ctx)
-	}
-	raw := strings.TrimSpace(os.Getenv(envCredentialKey))
-	if raw == "" {
-		return nil, nil
-	}
-	return parseCredentialKeyMaterial(raw)
-}
-
-func IsCredentialEncryptionAvailable() bool {
-	if credentialKeyResolver != nil {
-		return true
-	}
-	return strings.TrimSpace(os.Getenv(envCredentialKey)) != ""
 }

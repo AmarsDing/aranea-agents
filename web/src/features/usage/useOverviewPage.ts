@@ -10,7 +10,7 @@ const VALID_RANGES = new Set(["today", "7d", "30d", "month"]);
 export function useOverviewPage() {
   const route = useRoute();
   const usageStore = useUsageStore();
-  const { overview, loading } = storeToRefs(usageStore);
+  const { overview, loading, error } = storeToRefs(usageStore);
   const trendGranularity = ref<"day" | "hour">("day");
   const initialRange = String(route.query.range || "30d");
   const filters = reactive<ModelUsageQuery>({
@@ -58,6 +58,7 @@ export function useOverviewPage() {
   return {
     overview,
     loading,
+    error,
     trendGranularity,
     filters,
     rangeOptions,

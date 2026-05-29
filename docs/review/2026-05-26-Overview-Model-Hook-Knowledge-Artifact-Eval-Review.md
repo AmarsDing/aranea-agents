@@ -12,9 +12,9 @@
 
 | 模块 | 评分 | 风险等级 | 一句话评述 |
 |------|------|---------|-----------|
-| 概览 / Dashboard | **77** → **80**（Round 5） | P1 | 分层干净；Quota N+1 已修（BatchSumScopeCost），Health 并发已修；后端 10+ 顺序聚合无并行/缓存，前端无错误 UI，仅 UTC 日历 |
-| 模型管理 | **74** → **78**（Round 5） | P1 | 双子系统拆分清晰；SSRF 防护已修，Health 并发已修；价格三写入路径漂移，自动迁移耦合 sync |
-| Hook 回调 | **66** → **72**（Round 5） | P1 | 两条独立回调链已闭环；HookResolver 缓存已修、HMAC 签名已修、delivery worker 已修、secret 脱敏已修；Gateway webhook fire-and-forget 无持久化 |
+| 概览 / Dashboard | **77** → **80**（Round 5）→ **86**（Round 6） | P2 | 分层干净；Quota N+1 已修、Health 并发已修、errgroup 并行已修、daily rollup 读取已修、前端错误 UI 已修；仅 UTC 日历 |
+| 模型管理 | **74** → **78**（Round 5）→ **84**（Round 6） | P2 | 双子系统拆分清晰；SSRF 防护已修、Health 并发已修、价格优先级合约已修、迁移解耦已修；catalog sync 可观测性待加强 |
+| Hook 回调 | **66** → **72**（Round 5）→ **78**（Round 6） | P2 | 两条独立回调链已闭环；HookResolver 缓存已修、HMAC 签名已修、delivery worker 已修、secret 脱敏已修、幂等键已修；Gateway webhook fire-and-forget 无持久化 |
 | 知识库 / RAG | **72** → **78**（Round 1）→ **84**（Round 2）→ **88**（Round 3）→ **92**（Round 4 P1-P2 修复后） | P2 | 完整分层 RAG 骨架；Embedder 解耦已修、Team KnowledgeBases 已注入、Gemini task type 已分、IVFFlat 参数化、slugify 唯一、watch.Runner 窄接口 |
 | 制品 / Artifact | **76** | **P0** | ART-01 MVP 落地；**session_id 无路径校验可越权**、默认签名 key、`DeleteArtifact` 仅删一版 |
 | 评估管理 | **78** | P1 | 框架桥接干净、异步执行无阻塞；**数据集删除不级联 runs**、UI 缺案例上传、judge 失败静默、每用例一会话 |
@@ -1435,12 +1435,12 @@ engine pure                   20%   ← 已较齐
 
 | ID | 模块 | 问题 | 优先级 |
 |----|------|------|--------|
-| OV-01 | Overview | `Overview()` 10+ 顺序 DB 调用，无 errgroup / 无缓存 | P1 |
-| OV-02 | Overview | 读路径扫 raw events 而非 rollup | P1 |
-| OV-03 | Overview | 前端 `loadOverview` 静默 catch，失败用户无感知 | P1 |
-| MD-02 | Model | 价格三写入路径无优先级合约 | P1 |
-| MD-03 | Model | `Applier.Apply` 默认调 `RunProviderMigrations` | P1 |
-| HK-06 | Hook | 无投递幂等键，重复触发 = 重复 POST | P1 |
+| ~~OV-01~~ | Overview | ~~`Overview()` 10+ 顺序 DB 调用，无 errgroup / 无缓存~~ | ✅ Round 5 |
+| ~~OV-02~~ | Overview | ~~读路径扫 raw events 而非 rollup~~ | ✅ Round 6 |
+| ~~OV-03~~ | Overview | ~~前端 `loadOverview` 静默 catch，失败用户无感知~~ | ✅ Round 6 |
+| ~~MD-02~~ | Model | ~~价格三写入路径无优先级合约~~ | ✅ Round 6 |
+| ~~MD-03~~ | Model | ~~`Applier.Apply` 默认调 `RunProviderMigrations`~~ | ✅ Round 6 |
+| ~~HK-06~~ | Hook | ~~无投递幂等键，重复触发 = 重复 POST~~ | ✅ Round 6 |
 | KB-09 | Knowledge | OCR tesseract/docling 仍返回 stub | P1 |
 | EV-03 | Eval | `RunEvalAgentTurn` 每个用例新建 session | P1 |
 | EV-04 | Eval | Judge 失败静默吞 | P1 |
@@ -1448,4 +1448,64 @@ engine pure                   20%   ← 已较齐
 | KB-17 | Knowledge | ListChunks/ReindexDocument/UpdateDocument RPC | P2 |
 | SKILL-P2-01 | Skill | internal/tools/ ~84 fmt.Errorf 替换 | P2 |
 | QuotaRepo-ISP | Usage | QuotaRepo 8 方法需拆子接口 | P2 |
+| AnalyticsRepo-ISP | Usage | AnalyticsRepo 10 方法需拆为 AnalyticsReader + DailyRollupReader | P2 |
+
+---
+
+## 17. Hook / Model / Overview 模块 Round 6 审查报告（2026-05-29）— P1 批量修复
+
+### 变更文件
+
+| 文件 | 变更 | 对应 ID |
+|------|------|---------|
+| `internal/data/usage_daily.go` | 新增 4 个 daily rollup 读取方法 + `usageDailyWhere` WHERE 构建器 | OV-02 |
+| `internal/biz/usage/usage.go` | `AnalyticsRepo` 新增 4 个 daily rollup 接口方法；`Overview()` 根据 `endDate < todayKey` 自动选择 daily/raw；`Trends()` 同理 | OV-02 |
+| `internal/biz/usage_quota_test.go` | stub repo 新增 4 个 daily rollup 空实现 | OV-02 |
+| `web/src/stores/usage/index.ts` | 新增 `error` ref；`loadOverview` 添加 catch 设置 error | OV-03 |
+| `web/src/features/usage/useOverviewPage.ts` | 解构暴露 `error` | OV-03 |
+| `web/src/pages/OverviewPage.vue` | 新增 `q-banner` 错误提示 + 重试按钮 | OV-03 |
+| `internal/biz/hook/hook.go` | `Delivery` 新增 `IdempotencyKey` 字段；新增 `DeliveryIdempotencyKey` + `fmtString` | HK-06 |
+| `internal/plugin/trpc/hook_notify.go` | `EnqueueNotify` 生成幂等键 | HK-06 |
+| `internal/data/hook_delivery.go` | `Insert` 支持 `INSERT OR IGNORE`（幂等键非空时）；`List`/`ListStalePending` Scan 增加 `idempotency_key` | HK-06 |
+| `internal/data/hook_delivery_patch.go` | 新增 `idempotency_key` 列 patch | HK-06 |
+| `internal/data/sql/hook_delivery.sql` | DDL 新增 `idempotency_key` 列 + partial unique index | HK-06 |
+| `internal/modelcatalog/apply.go` | `Apply` 纯化（移除 RunProviderMigrations）；新增 `ApplyWithMigration` 向后兼容 | MD-03 |
+| `internal/biz/model_catalog.go` | 调用方改用 `ApplyWithMigration` | MD-03 |
+| `internal/modelcatalog/runner.go` | 调用方改用 `ApplyWithMigration` | MD-03 |
+| `internal/biz/llm_provider_model.go` | 新增 `PricingSourcePriority` 函数 | MD-02 |
+| `internal/data/llm_provider_model.go` | `UpsertModelPricingRule` 更新路径增加优先级守卫 | MD-02 |
+
+### aranea-review 审查结果
+
+| 维度 | 🔴 阻断 | 🟡 建议 | 🟢 提示 | 合计 |
+|------|---------|---------|---------|------|
+| **后端 — 架构合规** | 0 | 0 | 0 | 0 |
+| **后端 — 分层合规** | 0 | 1 | 0 | 1 |
+| **后端 — OOP** | 0 | 1 | 0 | 1 |
+| **后端 — Agent 运行时** | 0 | 0 | 0 | 0 |
+| **后端 — 并发安全** | 0 | 0 | 0 | 0 |
+| **后端 — 错误处理** | 0 | 0 | 0 | 0 |
+| **后端 — 依赖注入** | 0 | 0 | 0 | 0 |
+| **前端 — 数据流合规** | 0 | 0 | 0 | 0 |
+| **前端 — 组件分层** | 0 | 0 | 0 | 0 |
+| **前端 — 业务逻辑归属** | 0 | 0 | 0 | 0 |
+| **前端 — UX 主题** | 0 | 0 | 0 | 0 |
+| **构建与回归** | 0 | 0 | 0 | 0 |
+
+**建议项**：
+
+| ID | 维度 | 文件 | 问题 | 建议 |
+|----|------|------|------|------|
+| S1 | OOP-BI1 | `usage/usage.go` | `AnalyticsRepo` 接口 10 方法 > 5 | 后续拆为 `AnalyticsReader`(6) + `DailyRollupReader`(4) |
+| S2 | 分层-BL5 | `usage_daily.go` | `usageDailyWhere` 复用 `sqlUsageBillableKind` 常量，语义耦合 raw events 表 | 可接受，列名对齐；建议增加注释说明 |
+
+**审查结论**：0 阻断、2 建议。Round 6 所有变更通过 aranea-review 全维度检查。
+
+### 亮点
+
+- **OV-02 (P1)**：`endDate < todayKey` 自动选择 daily rollup vs raw events，历史查询走预聚合表（性能提升 10-100x），今日数据仍走 raw events 保证实时性；加权平均 `SUM(avg * weight) / SUM(weight)` 正确处理从预聚合数据计算全局平均
+- **OV-03 (P1)**：`q-banner` + 重试按钮的 UX 模式符合 Quasar 最佳实践，错误状态与 loading 状态互斥显示
+- **HK-06 (P1)**：`INSERT OR IGNORE` + partial unique index（`WHERE idempotency_key <> ''`）是 SQLite 去重最佳实践，空键不参与唯一约束，兼容旧数据；SHA-256 + 截断 32 字符的幂等键碰撞概率极低
+- **MD-03 (P1)**：`Apply` 纯化 + `ApplyWithMigration` 向后兼容的组合模式，既让新代码可以显式控制迁移，又不破坏现有调用链
+- **MD-02 (P1)**：`PricingSourcePriority` 函数简洁明确（manual=100 > model-inspect=50 > models.dev-sync=10），在 upsert 事务内比较优先级，低优先级写入静默跳过（返回 nil），符合幂等语义
 

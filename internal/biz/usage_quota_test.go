@@ -66,6 +66,18 @@ func (s *stubUsageRepo) UpdateBudgetAlertLastFired(context.Context, string, stri
 func (s *stubUsageRepo) ListModelUsageHourlyTrends(context.Context, UsageQuery) ([]UsageTrendPoint, error) {
 	return nil, nil
 }
+func (s *stubUsageRepo) GetModelUsageSummaryFromDaily(context.Context, UsageQuery) (UsageSummary, error) {
+	panic("not implemented")
+}
+func (s *stubUsageRepo) ListModelUsageDailyTrends(context.Context, UsageQuery) ([]UsageTrendPoint, error) {
+	return nil, nil
+}
+func (s *stubUsageRepo) ListTopModelUsageFromDaily(context.Context, UsageQuery) ([]UsageBreakdownRow, error) {
+	return s.topModels, nil
+}
+func (s *stubUsageRepo) ListTopAgentUsageFromDaily(context.Context, UsageQuery) ([]UsageBreakdownRow, error) {
+	panic("not implemented")
+}
 
 func TestCheckQuota_noConfigAllowed(t *testing.T) {
 	uc := NewUsageUsecase(&stubUsageRepo{hasQuota: false})

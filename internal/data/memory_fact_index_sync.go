@@ -16,6 +16,8 @@ type memoryFactIndexSync struct {
 }
 
 // NewMemoryFactIndexSync dual-writes L3 fact vectors to pgvector (optional) and SQLite embedding_blob.
+var _ biz.MemoryFactIndexSyncer = (*memoryFactIndexSync)(nil)
+
 func NewMemoryFactIndexSync(vec *biz.MemoryUsecase, store *sessionmemory.Store) biz.MemoryFactIndexSyncer {
 	if vec == nil {
 		return nil

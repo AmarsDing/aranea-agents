@@ -263,6 +263,10 @@ type AnalyticsRepo interface {
 	ListTopAgentUsage(ctx context.Context, query Query) ([]BreakdownRow, error)
 	ListModelUsageEvents(ctx context.Context, query Query) ([]TokenUsageEvent, error)
 	ListModelUsageHourlyTrends(ctx context.Context, query Query) ([]TrendPoint, error)
+	GetModelUsageSummaryFromDaily(ctx context.Context, query Query) (Summary, error)
+	ListModelUsageDailyTrends(ctx context.Context, query Query) ([]TrendPoint, error)
+	ListTopModelUsageFromDaily(ctx context.Context, query Query) ([]BreakdownRow, error)
+	ListTopAgentUsageFromDaily(ctx context.Context, query Query) ([]BreakdownRow, error)
 }
 
 // WriteRepo persists usage events and resolves pricing.
@@ -368,6 +372,7 @@ func MapRepoErr(err error) error {
 // Overview returns the full usage dashboard data.
 func (u *Usecase) Overview(ctx context.Context, query Query) (Overview, error) {
 	now := u.now()
+	todayKey := dateKey(now)
 	rangeQuery := u.normalizeQuery(query, now)
 	todayQuery := query
 	todayQuery.StartDate = dateKey(now)
@@ -380,8 +385,6 @@ func (u *Usecase) Overview(ctx context.Context, query Query) (Overview, error) {
 	monthQuery.StartDate = dateKey(time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC))
 	monthQuery.EndDate = dateKey(now)
 
-	// OV-01: run independent DB calls in parallel with errgroup to reduce
-	// wall-clock latency from 10+ sequential round-trips to 1 parallel fan-out.
 	var (
 		today            Summary
 		yesterdaySummary Summary
@@ -397,20 +400,53 @@ func (u *Usecase) Overview(ctx context.Context, query Query) (Overview, error) {
 	anomalyQuery := withLimit(rangeQuery, 12)
 	anomalyQuery.Status = "abnormal"
 
-	// OV-01: errgroup.WithContext cancels the shared context on the first fatal
-	// error, allowing all in-flight DB queries to abort early.
 	eg, egCtx := errgroup.WithContext(ctx)
 
 	eg.Go(func() error { var e error; today, e = u.repo.GetModelUsageSummary(egCtx, todayQuery); return e })
-	eg.Go(func() error { var e error; yesterdaySummary, e = u.repo.GetModelUsageSummary(egCtx, yesterdayQuery); return e })
-	eg.Go(func() error { var e error; month, e = u.repo.GetModelUsageSummary(egCtx, monthQuery); return e })
-	eg.Go(func() error { var e error; rangeSummary, e = u.repo.GetModelUsageSummary(egCtx, rangeQuery); return e })
+	eg.Go(func() error {
+		var e error
+		yesterdaySummary, e = u.repo.GetModelUsageSummaryFromDaily(egCtx, yesterdayQuery)
+		return e
+	})
+	eg.Go(func() error {
+		var e error
+		if monthQuery.EndDate < todayKey {
+			month, e = u.repo.GetModelUsageSummaryFromDaily(egCtx, monthQuery)
+		} else {
+			month, e = u.repo.GetModelUsageSummary(egCtx, monthQuery)
+		}
+		return e
+	})
+	eg.Go(func() error {
+		var e error
+		if rangeQuery.EndDate < todayKey {
+			rangeSummary, e = u.repo.GetModelUsageSummaryFromDaily(egCtx, rangeQuery)
+		} else {
+			rangeSummary, e = u.repo.GetModelUsageSummary(egCtx, rangeQuery)
+		}
+		return e
+	})
 	eg.Go(func() error { var e error; trends, e = u.Trends(egCtx, rangeQuery); return e })
-	eg.Go(func() error { var e error; topModels, e = u.repo.ListTopModelUsage(egCtx, withLimit(rangeQuery, 8)); return e })
-	eg.Go(func() error { var e error; topAgents, e = u.repo.ListTopAgentUsage(egCtx, withLimit(rangeQuery, 8)); return e })
+	eg.Go(func() error {
+		var e error
+		if rangeQuery.EndDate < todayKey {
+			topModels, e = u.repo.ListTopModelUsageFromDaily(egCtx, withLimit(rangeQuery, 8))
+		} else {
+			topModels, e = u.repo.ListTopModelUsage(egCtx, withLimit(rangeQuery, 8))
+		}
+		return e
+	})
+	eg.Go(func() error {
+		var e error
+		if rangeQuery.EndDate < todayKey {
+			topAgents, e = u.repo.ListTopAgentUsageFromDaily(egCtx, withLimit(rangeQuery, 8))
+		} else {
+			topAgents, e = u.repo.ListTopAgentUsage(egCtx, withLimit(rangeQuery, 8))
+		}
+		return e
+	})
 	eg.Go(func() error { var e error; anomalies, e = u.repo.ListModelUsageEvents(egCtx, anomalyQuery); return e })
 
-	// Best-effort: quota and inefficiency dashboards — failures never cancel the group.
 	var quotaErr, ineffErr error
 	eg.Go(func() error { quotaDash, quotaErr = u.QuotaDashboard(egCtx); return nil })
 	eg.Go(func() error { inefficient, ineffErr = u.InefficientModels(egCtx, rangeQuery); return nil })
@@ -444,6 +480,10 @@ func (u *Usecase) Trends(ctx context.Context, query Query) ([]TrendPoint, error)
 	q := u.normalizeQuery(query, u.now())
 	if strings.EqualFold(strings.TrimSpace(q.Granularity), "hour") {
 		return u.repo.ListModelUsageHourlyTrends(ctx, q)
+	}
+	todayKey := dateKey(u.now())
+	if q.EndDate < todayKey {
+		return u.repo.ListModelUsageDailyTrends(ctx, q)
 	}
 	return u.repo.ListModelUsageTrends(ctx, q)
 }

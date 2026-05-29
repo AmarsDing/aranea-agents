@@ -103,8 +103,6 @@ import {
   statusFilterOptions
 } from "../components/sessions/sessionUi";
 import { useSessionsPage } from "../features/session/useSessionsPage";
-import { downloadTextFile } from "../features/session/downloadExport";
-import { useQuasar } from "quasar";
 
 const {
   rows,
@@ -149,21 +147,9 @@ const {
   togglePinRow,
   promptDeleteSelected,
   archiveSelected,
-  exportSession
+  exportSession,
+  exportSelectedDetail
 } = useSessionsPage();
-
-const $q = useQuasar();
-
-async function exportSelectedDetail(format: "markdown" | "json") {
-  if (!selected.value) return;
-  try {
-    const payload = await exportSession(selected.value.id, format);
-    downloadTextFile(payload.content, payload.filename, payload.content_type);
-    $q.notify({ type: "positive", message: "导出成功" });
-  } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "导出失败" });
-  }
-}
 
 const summaryCards = computed(() => buildSessionsSummaryCards(rows.value, total.value));
 

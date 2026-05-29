@@ -254,10 +254,12 @@ export default {
     rulesEmptyHint: "No routing rules yet. Rules match by priority, then contains / regex / min_chars."
   },
   menu: {
-    groupMain: "Main",
-    groupEntities: "Agents & org",
-    groupRegistry: "Resources & jobs",
-    groupOps: "Ops & business",
+    groupWorkspace: "Workspace",
+    groupAgents: "Agents",
+    groupModels: "Models & Channels",
+    groupTools: "Tools & Integrations",
+    groupKnowledge: "Knowledge & Data",
+    groupOps: "Scheduling & Ops",
     overview: "Overview",
     usageEvents: "Usage events",
     usageQuotas: "Usage quotas",

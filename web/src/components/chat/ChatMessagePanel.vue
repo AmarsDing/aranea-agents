@@ -1,5 +1,5 @@
 <template>
-  <q-card flat bordered class="col column no-wrap chat-mid-card" style="min-height: 0; border-radius: 18px">
+  <q-card flat bordered class="col column no-wrap chat-mid-card" style="min-height: 0">
     <q-banner v-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm app-info-banner">
       <template #avatar>
         <q-spinner-dots color="primary" size="20px" />
@@ -36,7 +36,10 @@
             </q-icon>
           </template>
           <template v-else-if="wsConnected === true">
-            <span class="ws-connected-dot q-mr-xs" />
+            <span class="ws-connected-dot q-mr-xs">
+              <q-tooltip v-if="sessionRevision">同步完成 · rev {{ sessionRevision }}</q-tooltip>
+              <q-tooltip v-else>已连接</q-tooltip>
+            </span>
           </template>
           <ChatRunnerStatus
             v-if="runStatus && runStatus !== 'idle' && runStatus !== 'completed' && runStatus !== 'cancelled' && runStatus !== 'failed'"
@@ -68,133 +71,37 @@
     <ChatTeamMemberStrip v-if="isTeamSession" :members="teamMemberLanes" />
     <q-separator class="cream-sep" />
     <div class="col row no-wrap chat-messages-area" style="min-height: 0">
-    <div :key="sessionKey" class="chat-messages col column no-wrap" style="min-height: 0">
-      <div
-        v-if="!props.messages.length"
-        ref="messagesScrollEl"
-        class="col relative-position chat-messages__viewport"
-        @click="handleMessagesClick"
-      >
-        <div class="chat-empty-state column items-center justify-center">
-          <div class="chat-empty-state__halo">
-            <q-icon name="forum" size="38px" color="primary" />
-          </div>
-          <div class="chat-empty-state__title q-mt-md">{{ t("chat.emptyMessages") }}</div>
-          <div class="chat-empty-state__hint text-caption q-mt-xs">{{ t("chat.inputLabel") }}</div>
-        </div>
-      </div>
-      <q-virtual-scroll
-        v-else-if="useVirtualMessageList"
-        ref="virtualScrollRef"
-        class="col chat-messages__viewport"
-        style="min-height: 0"
-        :items="timelineItems"
-        :virtual-scroll-item-size="virtualRowSize"
-        :virtual-scroll-slice-size="48"
-        :virtual-scroll-slice-ratio-before="2"
-        :virtual-scroll-slice-ratio-after="2"
-        v-slot="{ item, index }"
-        @scroll="onMessagesScrollWrapped"
-        @click="handleMessagesClick"
-      >
-        <TurnBlock
-          v-if="useTurnBlockMode && item.kind === 'block'"
-          :block="item.block"
-          :focused="turnIsFocused(item.block.turnId, item.block.user?.id)"
-          :all-messages="props.messages"
-          :is-dark="props.isDark"
-          :is-team-session="props.isTeamSession"
-          :planner-kind="props.plannerKind"
-          :react-tool-link-index="props.reactToolLinkIndex"
-          @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
-          @feedback="(p) => emit('feedback', p)"
-          @regenerate="(msg) => emit('regenerate', msg)"
-          @retry="(id) => emit('retry', id)"
-          @dismiss-failed="(id) => emit('dismiss-failed', id)"
-        />
-        <ChatMessageRow
-          v-else
-          :message="item.message"
-          :index="index"
-          v-memo="[item.message.id, item.message.content_markdown, item.message.status, item.message.options_json, props.isDark, props.plannerKind]"
-          :messages="props.messages"
-          :is-dark="props.isDark"
-          :is-team-session="props.isTeamSession"
-          :planner-kind="props.plannerKind"
-          :react-tool-link-index="props.reactToolLinkIndex"
-          @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
-          @feedback="(p) => emit('feedback', p)"
-          @retry="(id) => emit('retry', id)"
-          @dismiss-failed="(id) => emit('dismiss-failed', id)"
-          @attachment-deleted="(id) => emit('attachment-deleted', id)"
-          @download-artifact="(meta) => emit('download-artifact', meta)"
-          @regenerate="(msg) => emit('regenerate', msg)"
-        />
-      </q-virtual-scroll>
-      <div
-        v-else
-        ref="messagesScrollEl"
-        class="col relative-position chat-messages__viewport"
-        @scroll.passive="onMessagesScrollWrapped"
-        @click="handleMessagesClick"
-      >
-        <template v-if="useTurnBlockMode">
-          <TurnBlock
-            v-for="block in turnBlocks"
-            :key="block.turnId"
-            :block="block"
-            :focused="turnIsFocused(block.turnId, block.user?.id)"
-            :all-messages="props.messages"
-            :is-dark="props.isDark"
-            :is-team-session="props.isTeamSession"
-            :planner-kind="props.plannerKind"
-            :react-tool-link-index="props.reactToolLinkIndex"
-            @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
-            @feedback="(p) => emit('feedback', p)"
-            @regenerate="(msg) => emit('regenerate', msg)"
-            @retry="(id) => emit('retry', id)"
-            @dismiss-failed="(id) => emit('dismiss-failed', id)"
-          />
-        </template>
-        <ChatMessageRow
-          v-else
-          v-for="(message, idx) in props.messages"
-          :key="message.id"
-          v-memo="[message.id, message.content_markdown, message.status, message.options_json, props.isDark, props.plannerKind]"
-          :message="message"
-          :index="idx"
-          :messages="props.messages"
-          :is-dark="props.isDark"
-          :is-team-session="props.isTeamSession"
-          :planner-kind="props.plannerKind"
-          :react-tool-link-index="props.reactToolLinkIndex"
-          @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
-          @retry="(id) => emit('retry', id)"
-          @dismiss-failed="(id) => emit('dismiss-failed', id)"
-          @attachment-deleted="(id) => emit('attachment-deleted', id)"
-          @download-artifact="(meta) => emit('download-artifact', meta)"
-          @regenerate="(msg) => emit('regenerate', msg)"
-        />
-      </div>
-      <ChatPendingQueue
-        :messages="props.pendingMessages ?? []"
-        :is-dark="props.isDark"
-        @cancel-pending="(id) => emit('cancel-pending', id)"
-        @update-pending="(id, content) => emit('update-pending', id, content)"
-      />
-      <transition name="chat-scroll-fade">
-        <q-btn
-          v-if="showScrollBtn"
-          round
-          unelevated
-          color="primary"
-          icon="arrow_downward"
-          class="chat-scroll-bottom"
-          aria-label="滚动到最新消息"
-          @click="scrollToBottom(true)"
-        />
-      </transition>
-    </div>
+    <ChatMessageList
+      ref="messageListRef"
+      :session-key="sessionKey"
+      :messages="props.messages"
+      :pending-messages="props.pendingMessages ?? []"
+      :is-dark="props.isDark"
+      :is-team-session="props.isTeamSession"
+      :planner-kind="props.plannerKind"
+      :react-tool-link-index="props.reactToolLinkIndex"
+      :reasoning-sidebar-open="props.reasoningSidebarOpen"
+      :use-virtual="useVirtualMessageList"
+      :use-turn-block-mode="useTurnBlockMode"
+      :timeline-items="timelineItems"
+      :turn-blocks="turnBlocks"
+      :virtual-row-size="virtualRowSize"
+      :show-scroll-btn="showScrollBtn"
+      :turn-is-focused="turnIsFocused"
+      @messages-click="handleMessagesClick"
+      @scroll="onMessagesScrollWrapped"
+      @scroll-to-bottom="scrollToBottom"
+      @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
+      @feedback="(p) => emit('feedback', p)"
+      @regenerate="(msg) => emit('regenerate', msg)"
+      @retry="(id) => emit('retry', id)"
+      @dismiss-failed="(id) => emit('dismiss-failed', id)"
+      @attachment-deleted="(id) => emit('attachment-deleted', id)"
+      @download-artifact="(meta) => emit('download-artifact', meta)"
+      @pin-reasoning-message="(id) => emit('pin-reasoning-message', id)"
+      @cancel-pending="(id) => emit('cancel-pending', id)"
+      @update-pending="(id, content) => emit('update-pending', id, content)"
+    />
 
     <q-separator class="cream-sep" />
     <ChatComposer
@@ -262,26 +169,19 @@
 import { computed, nextTick, onMounted, ref, toRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type { QVirtualScroll } from "quasar";
-import ChatMessageRow from "./ChatMessageRow.vue";
-import TurnBlock from "./TurnBlock.vue";
 import ChatRunnerStatus from "./ChatRunnerStatus.vue";
-import ChatTeamMemberStrip, { type TeamMemberLane } from "./ChatTeamMemberStrip.vue";
-import ChatPendingQueue from "./ChatPendingQueue.vue";
+import ChatTeamMemberStrip from "./ChatTeamMemberStrip.vue";
+import ChatMessageList from "./ChatMessageList.vue";
 import ChatComposer from "./ChatComposer.vue";
 import ChatHeaderUsagePanel from "./ChatHeaderUsagePanel.vue";
 import ChatHeaderPromptBar from "./ChatHeaderPromptBar.vue";
 import ChatReasoningDrawer from "./ChatReasoningDrawer.vue";
 import type { RunStatusValue } from "../../features/chat/types";
-import { useChatMessageRow } from "../../features/chat/useChatMessageRow";
+import { useChatTimeline, type TimelineItem } from "../../features/chat/composables/useChatTimeline";
 import {
   CHAT_VIRTUAL_ROW_ESTIMATE,
   CHAT_VIRTUAL_SCROLL_THRESHOLD,
 } from "../../features/chat/chatListVirtual";
-import {
-  groupMessagesByTurn,
-  type TurnBlockGroup,
-} from "../../features/chat/groupMessagesByTurn";
-import { useTurnBlockEnabled } from "../../features/chat/useTurnBlock";
 import { useChatMessageScroll, useChatCodeCopy } from "../../features/chat/composables/useChatMessageScroll";
 import { useChatScrollTitle } from "../../features/chat/useChatScrollTitle";
 import type { A2UIUserActionPayload } from "../../features/chat/a2uiUserAction";
@@ -379,47 +279,24 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const messagesRef = computed(() => props.messages);
-const messageRow = useChatMessageRow(messagesRef);
 
-const teamMemberLanes = computed((): TeamMemberLane[] => {
-  if (!props.isTeamSession) return [];
-  const lanes = new Map<string, TeamMemberLane>();
-  for (const message of props.messages) {
-    if (!messageRow.isTeamMember(message)) continue;
-    const key = messageRow.messageIdentityKey(message);
-    const meta = messageRow.teamMemberMeta(message);
-    const label = meta?.name || meta?.agent_key || messageRow.displayMessageName(message);
-    const streaming = message.status === "streaming" || message.status === "tool_running";
-    const prev = lanes.get(key);
-    lanes.set(key, {
-      key,
-      label,
-      streaming: (prev?.streaming ?? false) || streaming,
-    });
-  }
-  return [...lanes.values()];
-});
-
-const useTurnBlockMode = computed(() => useTurnBlockEnabled() && !props.isTeamSession);
-const turnBlocks = computed((): TurnBlockGroup[] =>
-  useTurnBlockMode.value ? groupMessagesByTurn(props.messages) : []
-);
-
-type TimelineItem =
-  | { kind: "block"; block: TurnBlockGroup }
-  | { kind: "message"; message: Message };
-
-const timelineItems = computed((): TimelineItem[] => {
-  if (useTurnBlockMode.value) {
-    return turnBlocks.value.map((block) => ({ kind: "block" as const, block }));
-  }
-  return props.messages.map((message) => ({ kind: "message" as const, message }));
+const {
+  messageRow,
+  teamMemberLanes,
+  useTurnBlockMode,
+  turnBlocks,
+  timelineItems,
+} = useChatTimeline({
+  messages: messagesRef,
+  isTeamSession: props.isTeamSession,
 });
 
 const useVirtualMessageList = computed(() => timelineItems.value.length >= CHAT_VIRTUAL_SCROLL_THRESHOLD);
 const virtualRowSize = CHAT_VIRTUAL_ROW_ESTIMATE;
-const virtualScrollRef = ref<QVirtualScroll | null>(null);
-const messagesScrollEl = ref<HTMLElement | null>(null);
+const messageListRef = ref<InstanceType<typeof ChatMessageList> | null>(null);
+
+const virtualScrollRef = computed(() => messageListRef.value?.virtualScrollRef ?? null);
+const messagesScrollEl = computed(() => messageListRef.value?.getScrollTarget() ?? null);
 
 const sessionKey = computed(() => props.sessionId?.trim() || props.sessionTitle);
 const sessionTitleRef = computed(() => props.sessionTitle);

@@ -36,7 +36,7 @@ describe("inbound turn-complete routing (DECO-R-P2-03)", () => {
     expect(shouldGlobalHubFinalizeTurn(true, false, true)).toBe(true);
   });
 
-  it("expects dropStaleInFlight reload contract on completion helpers", async () => {
+  it("expects dropStaleInFlight + afterRevision reload contract on completion helpers", async () => {
     const loadMessages = vi.fn().mockResolvedValue(undefined);
     const { reloadSessionAfterCompletion } = await import("../sessionCompletionReload");
     await reloadSessionAfterCompletion({
@@ -45,16 +45,18 @@ describe("inbound turn-complete routing (DECO-R-P2-03)", () => {
         selectedTeamId: "",
         loadAgentSessions: vi.fn(),
         loadTeamSessions: vi.fn(),
+        fetchAndReconcileSession: vi.fn().mockResolvedValue(undefined),
       } as never,
       messageStore: {
         loadMessages,
+        sessionRevisionBySession: { "sess-1": 3 },
       } as never,
       streamingSnapshots: { clear: vi.fn() } as never,
       sessionId: "sess-1",
       resolveAgentId: () => "agent-1",
     });
     expect(loadMessages).toHaveBeenCalledWith(
-      expect.objectContaining({ dropStaleInFlight: true })
+      expect.objectContaining({ dropStaleInFlight: true, afterRevision: 3 })
     );
   });
 });

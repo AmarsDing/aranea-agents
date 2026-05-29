@@ -212,7 +212,7 @@ func oneBotHTTPServer(configJSON string) string {
 	return strings.TrimSpace(env.Config.HTTPServer)
 }
 
-func wechatAppCreds(configJSON string, creds []biz.ChannelCredential, ctx context.Context) (appID, appSecret string) {
+func wechatAppCreds(configJSON string, creds []biz.ChannelCredential, ctx context.Context, channels *biz.ChannelUsecase) (appID, appSecret string) {
 	var env struct {
 		Config struct {
 			AppID string `json:"app_id"`
@@ -220,6 +220,6 @@ func wechatAppCreds(configJSON string, creds []biz.ChannelCredential, ctx contex
 	}
 	_ = json.Unmarshal([]byte(configJSON), &env)
 	appID = strings.TrimSpace(env.Config.AppID)
-	appSecret, _ = resolveCredentialPlain(ctx, creds, "app_secret")
+	appSecret, _ = resolveCredentialPlain(ctx, channels, creds, "app_secret")
 	return appID, strings.TrimSpace(appSecret)
 }

@@ -50,7 +50,14 @@ func (s *stubMCPRepo) GetMCPServerByKey(_ context.Context, key string) (MCPServe
 	return MCPServer{}, nil
 }
 
-func (s *stubMCPRepo) UpdateMCPServerMetadata(_ context.Context, _ string, _ string, _ string) error {
+func (s *stubMCPRepo) UpdateMCPServerMetadata(_ context.Context, id string, metadataJSON string, status string) error {
+	for i := range s.rows {
+		if s.rows[i].ID == id {
+			s.rows[i].MetadataJSON = metadataJSON
+			s.rows[i].Status = status
+			return nil
+		}
+	}
 	return nil
 }
 
@@ -60,7 +67,7 @@ func TestRecordReconnectMetadata_PersistsCountAndTimestamp(t *testing.T) {
 		Key:          "my-server",
 		MetadataJSON: `{"reconnect_count":2}`,
 	}}}
-	uc := NewMCPServerUsecase(repo)
+	uc := NewMCPServerUsecase(repo, NewCredentialCrypto(nil))
 	uc.SetMetadataEditor(testMCPMetadataEditor{})
 	at := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
 	if err := uc.RecordReconnectMetadata(context.Background(), "my-server", at); err != nil {

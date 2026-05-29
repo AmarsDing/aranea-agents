@@ -4,6 +4,7 @@ package hook
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"strings"
@@ -292,18 +293,19 @@ const (
 
 // Delivery is one queued Hook notify webhook attempt.
 type Delivery struct {
-	ID            string
-	HookKey       string
-	HookID        string
-	WebhookURL    string
-	WebhookSecret string
-	PayloadJSON   string
-	Status        DeliveryStatus
-	AttemptCount  int
-	MaxAttempts   int
-	LastError     string
-	CreatedAt     string
-	UpdatedAt     string
+	ID             string
+	HookKey        string
+	HookID         string
+	WebhookURL     string
+	WebhookSecret  string
+	PayloadJSON    string
+	Status         DeliveryStatus
+	AttemptCount   int
+	MaxAttempts    int
+	LastError      string
+	IdempotencyKey string
+	CreatedAt      string
+	UpdatedAt      string
 }
 
 // DeliveryQuery filters hook_deliveries list API.
@@ -370,6 +372,37 @@ func NormalizeDeliveryStatus(s string) DeliveryStatus {
 	default:
 		return DeliveryPending
 	}
+}
+
+// DeliveryIdempotencyKey produces a deterministic key from hook ID + event identity.
+// Same hook + same event = same key → duplicate triggers map to one delivery row.
+func DeliveryIdempotencyKey(hookID string, payload map[string]any) string {
+	h := sha256.New()
+	h.Write([]byte(hookID))
+	if eventType, ok := payload["event_type"]; ok {
+		h.Write([]byte{0})
+		h.Write([]byte(fmtString(eventType)))
+	}
+	if runID, ok := payload["run_id"]; ok {
+		h.Write([]byte{0})
+		h.Write([]byte(fmtString(runID)))
+	}
+	if sessionID, ok := payload["session_id"]; ok {
+		h.Write([]byte{0})
+		h.Write([]byte(fmtString(sessionID)))
+	}
+	return hex.EncodeToString(h.Sum(nil))[:32]
+}
+
+func fmtString(v any) string {
+	if v == nil {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return s
 }
 
 // ── Hook delivery usecase ─────────────────────────────────────────────────────

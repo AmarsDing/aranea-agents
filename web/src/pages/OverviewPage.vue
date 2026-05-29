@@ -15,13 +15,8 @@
         </template>
       </OverviewPageHero>
 
-      <OverviewRunnerMetrics />
-
-      <q-card flat class="overview-filter-card q-mb-md">
-        <q-card-section class="q-pb-sm">
-          <div class="text-subtitle2 text-weight-medium overview-section-label">筛选</div>
-        </q-card-section>
-        <q-card-section class="q-pt-none app-form-field-grid items-end">
+      <div class="overview-filter-bar">
+        <div class="overview-filter-bar__inner">
           <q-select
             v-model="filters.range"
             dense
@@ -30,6 +25,7 @@
             map-options
             label="时间范围"
             :options="rangeOptions"
+            class="overview-filter-field"
             @update:model-value="loadOverview"
           />
           <q-input
@@ -39,6 +35,7 @@
             clearable
             label="Provider"
             debounce="300"
+            class="overview-filter-field"
             @update:model-value="loadOverview"
           />
           <q-input
@@ -48,6 +45,7 @@
             clearable
             label="模型"
             debounce="300"
+            class="overview-filter-field"
             @update:model-value="loadOverview"
           />
           <q-select
@@ -59,6 +57,7 @@
             map-options
             label="状态"
             :options="statusOptions"
+            class="overview-filter-field"
             @update:model-value="loadOverview"
           />
           <q-select
@@ -69,68 +68,88 @@
             map-options
             label="趋势粒度"
             :options="granularityOptions"
+            class="overview-filter-field"
             @update:model-value="loadOverview"
           />
-        </q-card-section>
-      </q-card>
+        </div>
+      </div>
 
       <div class="overview-content" :class="{ 'overview-content--loading': loading }">
         <q-inner-loading :showing="loading" color="primary">
           <q-spinner size="42px" />
         </q-inner-loading>
 
+        <q-banner v-if="error" class="bg-negative text-white q-mb-md" rounded>
+          <template #avatar>
+            <q-icon name="error" />
+          </template>
+          加载概览数据失败：{{ error }}
+          <template #action>
+            <q-btn flat label="重试" @click="loadOverview" />
+          </template>
+        </q-banner>
+
         <UsageMetricCards :overview="overview" />
 
-        <div class="row q-col-gutter-md overview-section">
-          <div class="col-12 col-lg-8">
-            <UsageTrendChart :points="overview?.trends ?? []" :hourly="trendGranularity === 'hour'" />
+        <OverviewRunnerMetrics />
+
+        <section class="overview-section-group">
+          <div class="row q-col-gutter-md">
+            <div class="col-12 col-lg-8">
+              <UsageTrendChart :points="overview?.trends ?? []" :hourly="trendGranularity === 'hour'" />
+            </div>
+            <div class="col-12 col-lg-4">
+              <q-card flat class="overview-panel overview-summary-panel">
+                <q-card-section>
+                  <div class="text-h6 overview-section-title">区间摘要</div>
+                  <div class="text-caption overview-section-caption">当前筛选范围内的总量</div>
+                </q-card-section>
+                <q-separator class="overview-separator" />
+                <q-card-section class="q-py-sm">
+                  <div class="overview-summary-grid">
+                    <div class="overview-summary-item">
+                      <div class="overview-summary-item__label">总调用</div>
+                      <div class="overview-summary-item__value">{{ formatCount(overview?.range.call_count) }}</div>
+                    </div>
+                    <div class="overview-summary-item">
+                      <div class="overview-summary-item__label">总 Token</div>
+                      <div class="overview-summary-item__value">{{ formatCount(overview?.range.total_tokens) }}</div>
+                    </div>
+                    <div class="overview-summary-item">
+                      <div class="overview-summary-item__label">总费用</div>
+                      <div class="overview-summary-item__value overview-summary-item__value--accent">{{ formatMoney(overview?.range.total_cost_micro_usd) }}</div>
+                    </div>
+                    <div class="overview-summary-item">
+                      <div class="overview-summary-item__label">成功率</div>
+                      <div class="overview-summary-item__value">{{ formatPercent(overview?.range.success_rate) }}</div>
+                    </div>
+                  </div>
+                </q-card-section>
+              </q-card>
+            </div>
           </div>
-          <div class="col-12 col-lg-4">
-            <q-card flat class="overview-panel overview-summary-panel">
-              <q-card-section>
-                <div class="text-h6 overview-section-title">区间摘要</div>
-                <div class="text-caption overview-section-caption">当前筛选范围内的总量</div>
-              </q-card-section>
-              <q-list dense class="overview-summary-list">
-                <q-item>
-                  <q-item-section class="overview-summary-label">总调用</q-item-section>
-                  <q-item-section side class="overview-summary-value">{{ formatCount(overview?.range.call_count) }}</q-item-section>
-                </q-item>
-                <q-item>
-                  <q-item-section class="overview-summary-label">总 Token</q-item-section>
-                  <q-item-section side class="overview-summary-value">{{ formatCount(overview?.range.total_tokens) }}</q-item-section>
-                </q-item>
-                <q-item>
-                  <q-item-section class="overview-summary-label">总费用</q-item-section>
-                  <q-item-section side class="overview-summary-value">{{ formatMoney(overview?.range.total_cost_micro_usd) }}</q-item-section>
-                </q-item>
-                <q-item>
-                  <q-item-section class="overview-summary-label">成功率</q-item-section>
-                  <q-item-section side class="overview-summary-value">{{ formatPercent(overview?.range.success_rate) }}</q-item-section>
-                </q-item>
-              </q-list>
-            </q-card>
-          </div>
-        </div>
+        </section>
 
         <UsageBreakdownCharts :top-models="overview?.top_models ?? []" />
 
-        <div class="row q-col-gutter-md overview-section">
-          <div class="col-12 col-lg-6">
-            <UsageTopModels :rows="overview?.top_models ?? []" />
+        <section class="overview-section-group">
+          <div class="row q-col-gutter-md">
+            <div class="col-12 col-lg-6">
+              <UsageTopModels :rows="overview?.top_models ?? []" />
+            </div>
+            <div class="col-12 col-lg-6">
+              <UsageTopAgents :rows="overview?.top_agents ?? []" />
+            </div>
           </div>
-          <div class="col-12 col-lg-6">
-            <UsageTopAgents :rows="overview?.top_agents ?? []" />
-          </div>
-        </div>
+        </section>
 
-        <div v-if="(overview?.inefficient_models?.length ?? 0) > 0" class="overview-section">
+        <section v-if="(overview?.inefficient_models?.length ?? 0) > 0" class="overview-section-group overview-section-group--alert">
           <UsageInefficientModels :rows="overview?.inefficient_models ?? []" />
-        </div>
+        </section>
 
-        <div class="overview-section">
+        <section class="overview-section-group overview-section-group--alert">
           <UsageAnomalyList :rows="overview?.anomalies ?? []" />
-        </div>
+        </section>
       </div>
     </div>
   </q-page>
@@ -154,6 +173,7 @@ const UsageBreakdownCharts = defineAsyncComponent(() => import("../components/us
 const {
   overview,
   loading,
+  error,
   trendGranularity,
   filters,
   rangeOptions,

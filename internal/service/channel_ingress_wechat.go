@@ -19,7 +19,7 @@ func (h *ChannelIngress) handleWeChatWebhook(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	token, _ := resolveCredentialPlain(r.Context(), creds, "token")
+	token, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "token")
 	if r.Method == http.MethodGet {
 		echo, err := wechat.VerifyURL(token, q.Get("timestamp"), q.Get("nonce"), q.Get("echostr"), q.Get("signature"))
 		if err != nil {
@@ -82,7 +82,7 @@ func (h *ChannelIngress) handleOneBotWebhook(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	receiveToken, _ := resolveCredentialPlain(r.Context(), creds, "receive_token")
+	receiveToken, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "receive_token")
 	if err := onebot.VerifySignature(receiveToken, raw, r.Header.Get("X-Signature")); err != nil {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil
