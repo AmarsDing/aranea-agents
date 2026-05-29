@@ -1,10 +1,11 @@
 import type { QTableColumn } from "quasar";
-import type { PlatformResource } from "../../features/platform/types";
+import type { PlatformResource, ProviderConfig, ModelCategory, CapabilityChip } from "../../features/platform/types";
 import {
   REGISTRY_COL_W,
   registryCol,
   registryColActions
 } from "../../features/ui/registryTableColumns";
+import { toNullableNumber, hasPricingConfigured } from "../../features/platform/providerUtils";
 
 /** ProviderModelsTable 列定义 */
 export const PROVIDER_MODEL_TABLE_COLUMNS: QTableColumn<PlatformResource>[] = [
@@ -26,40 +27,6 @@ export const PLATFORM_RESOURCE_TABLE_COLUMNS: QTableColumn<PlatformResource>[] =
   registryCol<PlatformResource>("status", "Status", "status", "left", REGISTRY_COL_W.status),
   registryColActions<PlatformResource>()
 ];
-
-export type ModelCategory = {
-  value: string;
-  label: string;
-  tooltip: string;
-};
-
-export type CapabilityChip = {
-  key: string;
-  label: string;
-  source?: string;
-};
-
-export type ProviderConfig = {
-  provider_type?: string;
-  variant?: string;
-  ha_mode?: string;
-  provider_display_name?: string;
-  secret_id?: string;
-  aws_region?: string;
-  api_key?: string;
-  api_key_set?: boolean;
-  model_category?: ModelCategory[];
-  capability_chips?: CapabilityChip[];
-  model_size_label?: string;
-  context_window_k?: number | string | null;
-  max_output_tokens?: number | string | null;
-  tokens_per_second?: number | string | null;
-  model_hotness_score?: number | string | null;
-  usage_call_count_30d?: number | string | null;
-  usage_total_tokens_30d?: number | string | null;
-  usage_cost_micro_usd_30d?: number | string | null;
-  success_rate_30d?: number | string | null;
-};
 
 export function getProviderConfig(row: PlatformResource): ProviderConfig {
   if (!row.config_json) return {};
@@ -131,7 +98,9 @@ export function hotnessTone(score: number): string {
 
 export function formatTps(value: ProviderConfig["tokens_per_second"]) {
   const numberValue = toNullableNumber(value);
-  return numberValue === null ? "—" : `${numberValue}/s`;
+  if (numberValue === null) return "—";
+  const rounded = numberValue >= 100 ? Math.round(numberValue) : Math.round(numberValue * 10) / 10;
+  return `${rounded} tok/s`;
 }
 
 export function formatContextWindow(value: ProviderConfig["context_window_k"]) {
@@ -161,8 +130,19 @@ export function listSecretDisplay(visible: boolean, revealedApiKey: string) {
   return visible ? revealedApiKey || "••••••" : "••••••";
 }
 
-function toNullableNumber(value: unknown) {
-  if (value === "" || value === null || value === undefined) return null;
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) ? numberValue : null;
+export function formatLatency(value: unknown) {
+  const numberValue = toNullableNumber(value);
+  if (numberValue === null) return "—";
+  return `${Math.round(numberValue)} ms`;
+}
+
+export function formatCompact(value: number) {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 10_000) return `${(value / 10_000).toFixed(0)}k`;
+  return String(value);
+}
+
+export function rowPricingNotConfigured(row: PlatformResource): boolean {
+  const config = getProviderConfig(row);
+  return !hasPricingConfigured(config);
 }

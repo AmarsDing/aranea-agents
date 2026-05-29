@@ -15,6 +15,8 @@ type channelPeerSessionRepo struct {
 	data *Data
 }
 
+var _ biz.ChannelPeerSessionRepo = (*channelPeerSessionRepo)(nil)
+
 // NewChannelPeerSessionRepo implements biz.ChannelPeerSessionRepo.
 func NewChannelPeerSessionRepo(d *Data) biz.ChannelPeerSessionRepo {
 	return &channelPeerSessionRepo{data: d}

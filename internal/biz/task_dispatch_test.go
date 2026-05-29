@@ -77,7 +77,7 @@ func TestAllParentTasksComplete(t *testing.T) {
 			{ParentTaskID: "parent-open", ChildTaskID: "child"},
 		},
 	}}
-	uc := &TaskUsecase{repo: repo, linkRepo: links}
+	uc := &TaskUsecase{reader: repo, writer: repo, comments: repo, logs: repo, runs: repo, events: repo, linkRepo: links}
 
 	ready, err := uc.allParentTasksComplete(context.Background(), "child")
 	if err != nil {
@@ -105,10 +105,10 @@ func TestIsTaskReadyForDispatch(t *testing.T) {
 	links := &stubTaskLinkRepo{parents: map[string][]*TaskLink{
 		"child": {{ParentTaskID: "parent", ChildTaskID: "child"}},
 	}}
-	uc := &TaskUsecase{repo: repo, linkRepo: links}
+	uc := &TaskUsecase{reader: repo, writer: repo, comments: repo, logs: repo, runs: repo, events: repo, linkRepo: links}
 	task := &GraphTask{TaskID: "child", CreatedAt: time.Now()}
 
-	if uc.isTaskReadyForDispatch(context.Background(), task) {
+	if uc.IsTaskReadyForDispatch(context.Background(), task) {
 		t.Fatal("dispatch should wait for parent completion")
 	}
 }

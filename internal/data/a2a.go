@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	biza2a "aranea-agents/internal/biz/a2a"
 	a2apkg "aranea-agents/internal/a2a"
 )
 
@@ -16,6 +17,8 @@ import (
 type a2aRepo struct {
 	db *sql.DB
 }
+
+var _ biza2a.Repo = (*a2aRepo)(nil)
 
 // NewA2ARepo returns a biz.A2ARepo backed by the provided *sql.DB.
 func NewA2ARepo(db *sql.DB) biz.A2ARepo {

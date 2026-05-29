@@ -11,6 +11,8 @@ type l4GraphRepo struct {
 	store *sessionmemory.Store
 }
 
+var _ biz.L4GraphRepo = (*l4GraphRepo)(nil)
+
 func NewL4GraphRepo(store *sessionmemory.Store) biz.L4GraphRepo {
 	if store == nil {
 		return nil

@@ -33,7 +33,6 @@ type editFileSnapshot struct {
 	AbsPath    string
 	RelPath    string
 	Content    string
-	Raw        []byte
 	Mode       os.FileMode
 	MtimeMs    int64
 	Encoding   string
@@ -127,7 +126,6 @@ func (f *fileToolSet) loadEditSnapshot(
 		AbsPath:    filePath,
 		RelPath:    relPath,
 		Content:    content,
-		Raw:        raw,
 		Mode:       st.Mode(),
 		MtimeMs:    mtimeMs,
 		Encoding:   encoding,

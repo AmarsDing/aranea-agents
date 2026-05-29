@@ -114,5 +114,12 @@ function onDragStart(event: DragEvent, type: NodeType) {
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = "move";
   }
+  const ghost = document.createElement("div");
+  const style = NODE_TYPE_STYLES[type];
+  ghost.textContent = style.label;
+  ghost.style.cssText = `padding:6px 14px;border-radius:8px;font-size:12px;font-weight:600;color:${style.borderColor};background:color-mix(in srgb, ${style.borderColor} 10%, var(--glass-surface));border:1px solid color-mix(in srgb, ${style.borderColor} 30%, transparent);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);white-space:nowrap;position:absolute;top:-9999px;`;
+  document.body.appendChild(ghost);
+  event.dataTransfer?.setDragImage(ghost, ghost.offsetWidth / 2, ghost.offsetHeight / 2);
+  requestAnimationFrame(() => document.body.removeChild(ghost));
 }
 </script>

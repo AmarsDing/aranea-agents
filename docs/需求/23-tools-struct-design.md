@@ -97,6 +97,7 @@ type ToolRegistration struct {
     ToolSetFactory       func(ctx context.Context) (ToolSet, error)    // 工具集工厂
     EnabledByDefault     bool
     Category             string   // filesystem / execution / web / search / communication / productivity / interaction / coding / integration / composition
+    Tags                 []string // 分类标签，支持 RegistryByTag / RegistryByCategory 查询
     RiskLevel            string   // low / medium / high / critical
     RequiresConfirmation bool
     SupportsStreaming    bool
@@ -108,6 +109,7 @@ type ToolRegistration struct {
 - `Factory` 与 `ToolSetFactory` 互斥：单工具用 Factory，工具集用 ToolSetFactory
 - `EnabledByDefault`：true 表示 catalog 行 `enabled=true`（默认开放），false 表示仅显式允许
 - `Category`：与 `builtin_tools_seed.go` 中的分类对齐
+- `Tags`：工具分类标签，用于按标签/分类查询注册工具（`RegistryByTag`/`RegistryByCategory`）
 - `RiskLevel`：影响前端展示与 Agent 策略
 
 ### 3.3 装配配置（AssemblyConfig）
@@ -184,37 +186,67 @@ type OpenAPISpecConfig struct {
 
 ```
 internal/tools/
-├── tool.go                  — 类型别名（Tool/CallableTool/StreamableTool/ToolSet/Declaration/Schema）
-├── toolset.go               — Registry() 注册表 + Assemble() 装配入口
+├── tool.go                  — 类型别名 + ConfigString + RegistryByTag/RegistryByCategory
+├── toolset.go               — Registry() 注册表 + Assemble() 编排调度 + 子装配器
 ├── doc.go                   — 包文档（框架能力速查 + 注册工具清单 + 自定义工具指南）
 │
 ├── trpc/                    — 向后兼容适配层：ToolsetConfig → AssemblyConfig → tools.Assemble()
-│   └── toolsets.go          — BuildToolsets()，被 trpc_build.go 调用
+│   ├── toolsets.go          — BuildToolsets()，被 trpc_build.go 调用
+│   ├── effective_config.go  — Effective tool keys → ToolsetConfig 映射
+│   ├── runtime_config.go    — 运行时配置解析
+│   ├── confirmation.go      — 工具确认策略
+│   └── toolset_prune.go     — 工具集裁剪
+│
+├── cache/                   — 工具结果缓存（LRU 驱逐 + TTL）
+│   └── result_cache.go      — ResultCache + Global()/SetGlobal()
 │
 ├── custom/                  — 自定义工具实现
 │   └── demo.go              — 示例：使用 function.NewFunctionTool 构建自定义工具
 │
-├── memory/                  — Memory 工具（add/update/load/search/delete）
-│   └── tools.go             — DefaultTools() 返回 5 个标准 memory 工具
+├── hostexecnorm/            — 主机执行工具参数归一化
+│   ├── normalize.go         — working_dir → workdir 兼容映射
+│   └── wrap.go              — ToolSet 包装器
+│
+├── kanban/                  — 看板工具集（CI/CD 集成）
+│   ├── bridge.go            — Bridge/BridgeReader/BridgeWriter/BridgeLifecycle 接口
+│   └── tools.go             — NewToolset + Enabled
 │
 ├── knowledge/               — Knowledge 工具
 │   └── tool.go              — knowledge_search 工具 + WithRetriever context 注入
 │
-├── serviceawaitreply/       — 服务级 await_user_reply（阻塞式，替代框架内置版）
-│   └── tool.go              — ServiceTool + ReplyFunc context 注入
+├── mcpobserve/              — MCP 运行时可观测性
+│   └── observe.go           — 重连检测 + SessionReconnectMax
 │
-├── mcpmount/                — MCP 服务器发现与 ToolSet 组装（迁移中）
-│   ├── config.go
-│   └── transport.go
+├── memory/                  — Memory 工具（add/update/load/search/delete）
+│   └── tools.go             — DefaultTools() 返回标准 memory 工具
+│
+├── preview/                 — 工具调用预览脱敏
+│   └── preview.go           — RedactAndTruncate
+│
+├── serviceawaitreply/       — 服务级 await_user_reply（阻塞式，替代框架内置版）
+│   ├── tool.go              — ServiceTool + ReplyFunc context 注入
+│   └── tool_confirm.go      — 确认请求上下文
 │
 ├── skillrouter/             — Skill 检测与分类
 │   ├── detect.go
-│   ├── detect_test.go
 │   └── taxonomy.go
 │
-└── skillruntime/            — Skill 工具集解析
-    ├── resolve.go
-    └── toolset.go
+├── skillruntime/            — Skill 工具集解析
+│   ├── runtime.go           — 运行时工具集构建
+│   ├── toolset.go           — Skill ToolSet
+│   ├── resolve.go           — Skill 解析
+│   └── filter.go            — Skill 过滤（fail-closed + 缓存驱逐）
+│
+├── testexec/                — 工具在线测试
+│   ├── config.go            — 测试配置解析
+│   └── execute.go           — 测试执行
+│
+├── webresearch/             — Web 搜索工具
+│   ├── tool.go              — web_research CallableTool
+│   └── config.go            — 搜索配置
+│
+└── cli_admin/               — CLI 管理工具
+    └── registry.go          — Skill 安装/卸载工具
 ```
 
 **与旧设计的差异**：不设 `tooldef/`、`toolctx/`、`middleware/`、`executor/`、`adkbridge/`、`backends/`、`telemetry/` 子包。框架接口直接通过 type alias 使用，横切关注点通过框架内建机制注入。
@@ -225,26 +257,26 @@ internal/tools/
 
 ### 5.1 注册工具清单
 
-| 注册名 | Category | Factory / ToolSetFactory | EnabledByDefault | RiskLevel | RequiresConfirmation |
-|--------|----------|--------------------------|------------------|-----------|---------------------|
-| `file` | filesystem | `ToolSetFactory: trpcfile.NewToolSet` | ✅ | low | — |
-| `hostexec` | execution | `ToolSetFactory: trpchostexec.NewToolSet` | ❌ | critical | ✅ |
-| `httpfetch` | web | `Factory: trpchttpfetch.NewTool` | ❌ | medium | — |
-| `claudefetch` | web | `Factory` (stub) | ❌ | medium | — |
-| `geminifetch` | web | `Factory: trpcgeminifetch.NewTool` | ❌ | medium | — |
-| `duckduckgo` | search | `Factory: trpcduckduckgo.NewTool` | ❌ | medium | — |
-| `google_search` | search | `ToolSetFactory: trpcgooglesearch.NewToolSet` | ❌ | medium | — |
-| `arxiv_search` | search | `ToolSetFactory: trpcarxivsearch.NewToolSet` | ❌ | low | — |
-| `wikipedia` | search | `ToolSetFactory: trpcwikipedia.NewToolSet` | ❌ | low | — |
-| `email` | communication | `ToolSetFactory: trpcemail.NewToolSet` | ❌ | high | ✅ |
-| `todo` | productivity | `Factory: trpctodo.New` | ❌ | low | — |
-| `await_user_reply` | interaction | `Factory: trpcawaitreply.New` | ❌ | low | — |
-| `claudecode` | coding | `ToolSetFactory: trpcclaudecode.NewToolSet` | ❌ | critical | ✅ |
-| `workspace_exec` | execution | `Factory: trpcworkspaceexec.NewExecTool` | ❌ | critical | ✅ |
-| `openapi` | integration | `ToolSetFactory` (需 spec 配置) | ❌ | medium | — |
-| `agent` | composition | 无 Factory（运行时通过 AgentToolConfig 注入） | ❌ | medium | — |
-| `mcp` | integration | 无 Factory（运行时通过 MCPServerConfig 注入） | ❌ | medium | — |
-| `mcpbroker` | integration | 无 Factory（运行时通过 MCPBrokerConfig 注入） | ❌ | medium | — |
+| 注册名 | Category | Tags | Factory / ToolSetFactory | EnabledByDefault | RiskLevel | RequiresConfirmation |
+|--------|----------|------|--------------------------|------------------|-----------|---------------------|
+| `file` | filesystem | filesystem, read, write, search | `ToolSetFactory: trpcfile.NewToolSet` | ✅ | low | — |
+| `hostexec` | execution | shell, exec, command | `ToolSetFactory: trpchostexec.NewToolSet` | ❌ | critical | ✅ |
+| `httpfetch` | web | web, fetch, http | `Factory: trpchttpfetch.NewTool` | ❌ | medium | — |
+| `claudefetch` | web | web, fetch, claude | `Factory` (stub) | ❌ | medium | — |
+| `geminifetch` | web | web, fetch, gemini | `Factory: trpcgeminifetch.NewTool` | ❌ | medium | — |
+| `duckduckgo` | search | search, web | `Factory: trpcduckduckgo.NewTool` | ❌ | medium | — |
+| `google_search` | search | search, web, google | `ToolSetFactory: trpcgooglesearch.NewToolSet` | ❌ | medium | — |
+| `arxiv_search` | search | search, academic, paper | `ToolSetFactory: trpcarxivsearch.NewToolSet` | ❌ | low | — |
+| `wikipedia` | search | search, encyclopedia | `ToolSetFactory: trpcwikipedia.NewToolSet` | ❌ | low | — |
+| `email` | communication | email, send, smtp | `ToolSetFactory: trpcemail.NewToolSet` | ❌ | high | ✅ |
+| `todo` | productivity | todo, task, manage | `Factory: trpctodo.New` | ❌ | low | — |
+| `await_user_reply` | interaction | interaction, reply, await | `Factory: trpcawaitreply.New` | ❌ | low | — |
+| `claudecode` | coding | coding, ide, claude | `ToolSetFactory: trpcclaudecode.NewToolSet` | ❌ | critical | ✅ |
+| `workspace_exec` | execution | exec, workspace, code | `Factory` (CodeExecutor 路径) | ❌ | critical | ✅ |
+| `openapi` | integration | api, rest, openapi | `ToolSetFactory` (需 spec 配置) | ❌ | medium | — |
+| `agent` | composition | agent, delegation, composition | 无 Factory（运行时通过 AgentToolConfig 注入） | ❌ | medium | — |
+| `mcp` | integration | mcp, integration, protocol | 无 Factory（运行时通过 MCPServerConfig 注入） | ❌ | medium | — |
+| `mcpbroker` | integration | mcp, broker, discovery | 无 Factory（运行时通过 MCPBrokerConfig 注入） | ❌ | medium | — |
 
 ### 5.2 非 Registry 注入的工具
 
@@ -277,9 +309,18 @@ buildToolsetsForAgent() ─── ToolsetConfig 标记哪些工具启用
 BuildToolsets() ─── ToolsetConfig → AssemblyConfig
         │              (enabled 名列表 + 配置参数)
         ▼
-Assemble() ─── 遍历 Registry，按 enabled 名匹配
-        │         Factory/ToolSetFactory 创建实例
-        │         + 后处理（dir 覆盖、AgentTool、MCP、CustomTools）
+Assemble() ─── 编排调度，依次调用子装配器：
+        │    assembleFromRegistry()    — Registry 注册工具匹配
+        │    assembleFilesystem()      — 文件系统工具集（WithBaseDir 覆盖）
+        │    assembleHostExec()        — 主机命令执行（WithBaseDir + 归一化包装）
+        │    assembleGeminiFetch()     — Gemini 网页抓取（需 GeminiModel）
+        │    assembleGoogleSearch()    — Google 搜索（需 APIKey + CX）
+        │    assembleClaudeCode()      — Claude Code（WithBaseDir 覆盖）
+        │    assembleOpenAPISpecs()    — OpenAPI Spec 工具集
+        │    assembleAgentTools()      — Agent-as-Tool
+        │    assembleMCPServers()      — MCP 服务器
+        │    assembleMCPBroker()       — MCP Broker
+        │    assembleMemory()          — 记忆工具
         ▼
 AssembledToolsets ─── { ToolSets, Tools }
         │
@@ -560,12 +601,79 @@ type EffectiveAgentTool struct {
 
 ---
 
-## 十二、新增工具的步骤清单
+## 十二、Biz 层 ToolRepo 子接口
 
-1. 在 `internal/tools/toolset.go` 的 `Registry()` 中添加 `ToolRegistration` 条目
+`ToolRepo` 原有 18 个方法，违反项目红线 #15（Repository 接口方法不得超过 5 个）。已拆分为 8 个子接口 + 1 个组合接口：
+
+| 子接口 | 方法数 | 职责 |
+|--------|--------|------|
+| `ToolReader` | 2 | 工具查询（SearchTools, GetTool） |
+| `ToolWriter` | 5 | 工具增删改（Create, Update, Delete, UpdateEnabled, UpdateConfig） |
+| `ToolInvocationReader` | 2 | 调用记录查询（SearchInvocations, GetInvocationParams） |
+| `ToolInvocationWriter` | 1 | 调用记录写入（RecordInvocation） |
+| `ToolAuditRepo` | 3 | 审计日志（RecordAudit, SearchAudits, PurgeOldAudits） |
+| `ToolOverrideReader` | 2 | Agent 覆盖查询（ListOverrides, ListOverridesByAgent） |
+| `ToolOverrideWriter` | 2 | Agent 覆盖写入（UpsertOverride, DeleteOverride） |
+| `ToolSyncer` | 1 | 内置工具同步（SyncBuiltinTools） |
+| `ToolCatalogReader` | 4 | 只读窄接口（= ToolReader + ToolOverrideReader） |
+
+`ToolRepo` 保留为组合接口（嵌入上述 8 个子接口），保持向后兼容。
+
+**窄接口传播**：
+
+| 消费者 | 依赖接口 | 说明 |
+|--------|----------|------|
+| `ToolUsecase` | `ToolRepo`（全量） | Usecase 需要全量访问 |
+| `AgentUsecase.tools` | `ToolCatalogReader` | 只需 SearchTools + Override 查询 |
+| `agent.Deps.ToolsCatalog` | `biz.ToolCatalogReader` | 只需读取工具目录 |
+| `team.Runner.toolsCatalog` | `biz.ToolCatalogReader` | 只需读取工具目录 |
+| `runtime.Catalog.Tools` | `biz.ToolCatalogReader` | 只需读取工具目录 |
+
+---
+
+## 十三、新增工具的步骤清单
+
+1. 在 `internal/tools/toolset.go` 的 `Registry()` 中添加 `ToolRegistration` 条目（含 Tags 标签）
 2. 若工具需要配置，在 `AssemblyConfig` 中添加对应字段
-3. 在 `internal/tools/trpc/toolsets.go` 的 `BuildToolsets()` 中添加启用标志映射
-4. 在 `internal/agent/trpc_build.go` 的 `buildToolsetsForAgent()` 中添加 effective key 到配置的映射
-5. 在 `internal/data/builtin_tools_seed.go` 中添加种子数据（key 必须与 `Declaration().Name` 一致）
-6. 在 `internal/biz/agent_effective_tools.go` 中按需更新 tool group 和 profile 定义
-7. 编写单元测试验证注册 → 装配 → 注入链路
+3. 在 `internal/tools/toolset.go` 中添加 `assembleXxx()` 子装配器函数
+4. 在 `internal/tools/trpc/toolsets.go` 的 `BuildToolsets()` 中添加启用标志映射
+5. 在 `internal/agent/trpc_build.go` 的 `buildToolsetsForAgent()` 中添加 effective key 到配置的映射
+6. 在 `internal/data/builtin_tools_seed.go` 中添加种子数据（key 必须与 `Declaration().Name` 一致）
+7. 在 `internal/biz/agent_effective_tools.go` 中按需更新 tool group 和 profile 定义
+8. 编写单元测试验证注册 → 装配 → 注入链路
+9. 在 `internal/tools/trpc/effective_config.go` 的 `ToolsetConfigFromEffectiveKeys` 中添加映射
+10. 在 `internal/tools/testexec/config.go` 中添加在线测试支持判断
+
+---
+
+## 十四、Data 层错误处理规范
+
+Data 层统一使用 `kerrors` 返回错误，禁止 `errors.New` / `sql.ErrNoRows`：
+
+| 场景 | 使用 |
+|------|------|
+| Ent 客户端不可用 | `kerrors.InternalServer("TOOL", "ent client unavailable")` |
+| 记录不存在 | `kerrors.NotFound("TOOL", "tool not found")` |
+| 参数校验失败 | `kerrors.BadRequest("TOOL", "tool key is required")` |
+
+---
+
+## 十五、装配可观测性规范
+
+`Assemble` 子装配器在以下场景必须通过 `event.SysLogWarn` 记录日志：
+
+| 场景 | 日志事件 | 说明 |
+|------|----------|------|
+| 工具已启用但配置缺失 | `system.tool_assembly_skip` | geminifetch 无 model、google_search 无 apiKey/cx |
+| Factory 返回 nil 无 error | `system.tool_assembly_skip` | stub 工具或占位注册项 |
+| OpenAPI spec 加载失败 | `system.builtin_tools_sync_fail` | 已有 |
+
+---
+
+## 十六、并发安全规范
+
+| 全局变量 | 保护方式 | 位置 |
+|----------|----------|------|
+| `globalResultCache` | `sync.RWMutex`（`globalMu`） | `internal/tools/cache/result_cache.go` |
+| `toolWebResChecker` | `sync.RWMutex`（`toolWebResCheckerMu`） | `internal/biz/tool/tool_catalog_runtime.go` |
+| `filterCache.entries` | `sync.RWMutex`（读用 RLock，写用 Lock） | `internal/tools/skillruntime/filter.go` |

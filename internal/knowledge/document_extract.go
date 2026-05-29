@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcdoc "trpc.group/trpc-go/trpc-agent-go/knowledge/document"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/document/reader"
 )
@@ -22,7 +23,7 @@ func ExtractDocumentText(raw []byte, source, mimeType string) (string, error) {
 // ExtractDocumentTextWithOCR allows injecting an OCR provider (tests / Wire).
 func ExtractDocumentTextWithOCR(ctx context.Context, ocr OCRProvider, raw []byte, source, mimeType string) (string, error) {
 	if len(raw) == 0 {
-		return "", fmt.Errorf("document content is empty")
+		return "", kerrors.BadRequest("KNOWLEDGE", "document content is empty")
 	}
 	if ocr == nil {
 		ocr = NewOCRProviderFromEnv()
@@ -44,7 +45,7 @@ func ExtractDocumentTextWithOCR(ctx context.Context, ocr OCRProvider, raw []byte
 		if utf8.Valid(raw) {
 			return string(raw), nil
 		}
-		return "", fmt.Errorf("unsupported document type %q (mime=%q)", ext, mimeType)
+		return "", kerrors.BadRequest("KNOWLEDGE", fmt.Sprintf("unsupported document type %q (mime=%q)", ext, mimeType))
 	}
 	name := strings.TrimSpace(source)
 	if name == "" {
@@ -52,7 +53,7 @@ func ExtractDocumentTextWithOCR(ctx context.Context, ocr OCRProvider, raw []byte
 	}
 	docs, err := r.ReadFromReader(name, bytes.NewReader(raw))
 	if err != nil {
-		return "", fmt.Errorf("read document: %w", err)
+		return "", kerrors.InternalServer("KNOWLEDGE", "read document failed: "+err.Error())
 	}
 	return joinDocumentTexts(docs), nil
 }

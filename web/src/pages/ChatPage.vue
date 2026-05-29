@@ -47,6 +47,7 @@
         :context-ratio="session.selectedSessionForUi?.context_used_ratio ?? 0"
         :context-status="session.selectedSessionForUi?.context_status"
         :usage-snapshot="session.composerUsageSnapshot"
+        :context-breakdown="session.contextBreakdown"
         :session-total-tokens="session.selectedSessionForUi?.total_tokens ?? null"
         :knowledge-base-options="composer.knowledgeBaseOptions"
         :selected-knowledge-bases="composer.selectedKnowledgeBases"
@@ -71,6 +72,8 @@
         :show-background-jobs="entity.selectedEntityKind === 'agent'"
         :agent-id="entity.store.selectedAgent?.id"
         :jobs-refresh-nonce="session.jobsRefreshNonce"
+        :reasoning-sidebar-open="session.reasoningSidebarOpen"
+        :reasoning-sidebar-active="session.reasoningSidebarActive"
         :pending-messages="composer.pendingMessages"
         :run-status="composer.runStatus"
         :run-agent-name="composer.runMeta?.agentName"
@@ -98,7 +101,12 @@
         @focus-turn="session.focusSessionTurn"
         @navigate="onNavigate"
         @cancel-job="composer.cancelBackgroundJob"
+        @paste-unsupported="onPasteUnsupported"
+        @new-session="session.addAgentSession"
         @focus-turn-cleared="session.clearFocusTurn"
+        @toggle-reasoning-sidebar="session.toggleReasoningSidebar"
+        @pin-reasoning-message="session.pinReasoningMessage"
+        @close-reasoning-sidebar="session.toggleReasoningSidebar"
         @a2ui-user-action="composer.submitA2UIUserAction"
         @feedback="composer.onMessageFeedback"
         @retry="composer.retryFailedMessage"
@@ -121,10 +129,12 @@
       :inbox-sessions="session.inboxSessions"
       :selected-session-id="session.selectedSessionForUi?.id"
       :is-dark="layout.isDark"
+      :favorite-ids="session.favoriteIds"
       @select="session.onSelectSession"
       @new-session="session.onNewSession"
       @rename="session.onRenameSession"
       @toggle-pin="session.onTogglePinSession"
+      @toggle-favorite="session.onToggleFavorite"
       @trace="session.openSessionTrace"
       @delete="entity.openDelete"
       @restore="session.onRestoreSession"
@@ -180,11 +190,19 @@ import ChatWorkspaceShell from "../components/chat/ChatWorkspaceShell.vue";
 import SessionTimelineDialog from "../components/chat/SessionTimelineDialog.vue";
 import { useRouter } from "vue-router";
 import { useChatWorkspace } from "../features/chat/composables/useChatWorkspace";
+import { useQuasar } from "quasar";
+import { useI18n } from "vue-i18n";
 
 const { fileRef, layout, entity, session, composer, dialogs } = useChatWorkspace();
 const router = useRouter();
+const $q = useQuasar();
+const { t } = useI18n();
 
 function onNavigate(route: { name: string; params: Record<string, string> }) {
   router.push(route);
+}
+
+function onPasteUnsupported() {
+  $q.notify({ type: "warning", message: t("chat.clipboardFileUnsupported", "当前模型不支持此类型的文件粘贴") });
 }
 </script>

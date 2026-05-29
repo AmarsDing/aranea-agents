@@ -151,33 +151,53 @@ type RunResult struct {
 	Offset int
 }
 
-type SkillReader interface {
+type SkillQueryReader interface {
 	SearchSkills(ctx context.Context, q ListQuery) (ListResult, error)
+	SearchSkillInvocations(ctx context.Context, q RunQuery) (RunResult, error)
+	ListSkillVersions(ctx context.Context, q VersionListQuery) (VersionListResult, error)
+	ListSkillSimilaritySources(ctx context.Context) ([]SimilaritySource, error)
+	ListRegisteredSlugs(ctx context.Context) ([]string, error)
+}
+
+type SkillLookupReader interface {
 	GetSkillByID(ctx context.Context, id string) (Skill, error)
 	GetSkillBySkillKey(ctx context.Context, skillKey string) (Skill, error)
 	GetSkillStorageDir(ctx context.Context, id string) (string, error)
 	GetLatestSkillMarkdown(ctx context.Context, skillID string) (string, error)
-	BatchGetSkillMarkdownBySlugs(ctx context.Context, slugs []string) (map[string]string, error)
-	ListRegisteredSlugs(ctx context.Context) ([]string, error)
-	ListEnabledPublishedSkillKeys(ctx context.Context) ([]string, error)
-	ListEnabledPublishedSkillCandidates(ctx context.Context) ([]RuntimeCandidate, error)
-	ListSkillSimilaritySources(ctx context.Context) ([]SimilaritySource, error)
-	FilesystemHealthStats(ctx context.Context) (FilesystemHealthStats, error)
-	SearchSkillInvocations(ctx context.Context, q RunQuery) (RunResult, error)
-	ListSkillVersions(ctx context.Context, q VersionListQuery) (VersionListResult, error)
 }
 
-type SkillWriter interface {
+type SkillRuntimeReader interface {
+	BatchGetSkillMarkdownBySlugs(ctx context.Context, slugs []string) (map[string]string, error)
+	ListEnabledPublishedSkillKeys(ctx context.Context) ([]string, error)
+	ListEnabledPublishedSkillCandidates(ctx context.Context) ([]RuntimeCandidate, error)
+	FilesystemHealthStats(ctx context.Context) (FilesystemHealthStats, error)
+}
+
+type SkillReader interface {
+	SkillQueryReader
+	SkillLookupReader
+	SkillRuntimeReader
+}
+
+type SkillMutationWriter interface {
 	CreateSkillWithVersion(ctx context.Context, in CreateInput) (Skill, error)
 	UpdateSkillEnabled(ctx context.Context, id string, enabled bool) (Skill, error)
 	DuplicateSkill(ctx context.Context, id string) (Skill, error)
 	DeleteSkill(ctx context.Context, id string) error
 	PatchSkill(ctx context.Context, id string, patch UpdateDraft) (Skill, error)
+}
+
+type SkillSyncWriter interface {
 	PublishSkill(ctx context.Context, id string) (Skill, error)
 	UpsertSkillFromDisk(ctx context.Context, in DiskSyncInput) (Skill, DiskSyncOutcome, error)
 	MarkSkillFilesystemMissing(ctx context.Context, slug string, missing bool) error
 	RecordSkillInvocation(ctx context.Context, in InvocationWrite) error
 	RollbackSkillVersion(ctx context.Context, skillID string, versionID string) (Skill, error)
+}
+
+type SkillWriter interface {
+	SkillMutationWriter
+	SkillSyncWriter
 }
 
 type Repo interface {
@@ -261,16 +281,29 @@ type SkillFileContent struct {
 	Language string
 }
 
-type SkillFilesystem interface {
+type SkillFilePathResolver interface {
 	ResolveRoot(ctx context.Context) string
-	CreateSkillDir(slug string, body string) (dir string, err error)
+	SafeFilePath(dir string, relPath string) (root string, absPath string, err error)
+}
+
+type SkillFileReader interface {
+	SkillFilePathResolver
 	ListFiles(dir string) ([]SkillFileEntry, error)
 	ReadFile(dir string, relPath string) (SkillFileContent, error)
-	WriteFile(dir string, relPath string, content string) error
-	DeleteFile(dir string, relPath string) error
 	RootAccessible(ctx context.Context) bool
 	DirExists(dir string) bool
-	SafeFilePath(dir string, relPath string) (root string, absPath string, err error)
+}
+
+type SkillFileWriter interface {
+	SkillFilePathResolver
+	CreateSkillDir(slug string, body string) (dir string, err error)
+	WriteFile(dir string, relPath string, content string) error
+	DeleteFile(dir string, relPath string) error
+}
+
+type SkillFilesystem interface {
+	SkillFileReader
+	SkillFileWriter
 }
 
 // SkillEmbedder generates text embeddings for semantic skill scoring.

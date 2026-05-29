@@ -194,18 +194,12 @@ func (s stubTurnGateway) ExecuteTurn(_ context.Context, _ biz.TurnInput) (biz.Tu
 	return biz.TurnResult{}, s.err
 }
 
-func (stubTurnGateway) HasActiveRun(_ string) bool {
-	return false
+func (stubTurnGateway) RunNativeTurn(_ context.Context, _ biz.TurnInput) (biz.ChatMessage, biz.ChatMessage, error) {
+	return biz.ChatMessage{}, biz.ChatMessage{}, nil
 }
 
-func (stubTurnGateway) CancelRun(_ context.Context, _ string) bool {
-	return false
-}
-
-func (stubTurnGateway) SetRunStatus(_ context.Context, _, _, _, _ string) {}
-
-func (stubTurnGateway) LastPendingMessageID(_ string) string {
-	return ""
+func (s stubTurnGateway) RunNativeTurnWithOutcome(_ context.Context, _ biz.TurnInput) (biz.NativeTurnResult, error) {
+	return biz.NativeTurnResult{}, s.err
 }
 
 func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {

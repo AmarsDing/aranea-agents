@@ -27,22 +27,27 @@ type sessionRepo struct {
 }
 
 var (
-	_ biz.SessionReader    = (*sessionRepo)(nil)
-	_ biz.SessionWriter    = (*sessionRepo)(nil)
-	_ biz.MessageReader    = (*sessionRepo)(nil)
-	_ biz.MessageWriter    = (*sessionRepo)(nil)
-	_ biz.TimelineReader   = (*sessionRepo)(nil)
-	_ biz.InvocationReader = (*sessionRepo)(nil)
-	_ biz.SummaryRepo      = (*sessionRepo)(nil)
-	_ biz.StateRepo        = (*sessionRepo)(nil)
-	_ biz.TurnRepo         = (*sessionRepo)(nil)
-	_ biz.ContextUpdater   = (*sessionRepo)(nil)
-	_ biz.CompressRepo     = (*sessionRepo)(nil)
-	_ biz.SessionRepository = (*sessionRepo)(nil)
+	_ biz.SessionReader        = (*sessionRepo)(nil)
+	_ biz.SessionWriter        = (*sessionRepo)(nil)
+	_ biz.SessionBatchWriter   = (*sessionRepo)(nil)
+	_ biz.SessionPinWriter     = (*sessionRepo)(nil)
+	_ biz.SessionRevisionWriter = (*sessionRepo)(nil)
+	_ biz.MessageReader        = (*sessionRepo)(nil)
+	_ biz.MessageSearchReader  = (*sessionRepo)(nil)
+	_ biz.MessageWriter        = (*sessionRepo)(nil)
+	_ biz.MessageStatusWriter  = (*sessionRepo)(nil)
+	_ biz.TimelineReader       = (*sessionRepo)(nil)
+	_ biz.InvocationReader     = (*sessionRepo)(nil)
+	_ biz.SummaryReader        = (*sessionRepo)(nil)
+	_ biz.SummaryWriter        = (*sessionRepo)(nil)
+	_ biz.StateRepo            = (*sessionRepo)(nil)
+	_ biz.TurnRepo             = (*sessionRepo)(nil)
+	_ biz.ContextUpdater       = (*sessionRepo)(nil)
+	_ biz.CompressRepo         = (*sessionRepo)(nil)
+	_ biz.SessionRepo           = (*sessionRepo)(nil)
 )
 
-// NewSessionRepo implements biz.SessionRepository.
-func NewSessionRepo(d *Data) biz.SessionRepository {
+func NewSessionRepo(d *Data) biz.SessionRepo {
 	return &sessionRepo{data: d}
 }
 

@@ -50,6 +50,15 @@
               >
                 {{ chip.label }}
               </span>
+              <q-icon
+                v-if="rowPricingNotConfigured(props.row)"
+                name="price_check"
+                size="16px"
+                color="warning"
+                class="provider-pricing-warn"
+              >
+                <q-tooltip>未配置定价，用量监控费用将显示为 0</q-tooltip>
+              </q-icon>
             </div>
           </div>
         </div>
@@ -205,6 +214,7 @@ import {
   providerCategories,
   providerDisplayName,
   providerHasApiKey,
+  rowPricingNotConfigured,
   showVariantChip
 } from "./providerModelUi";
 

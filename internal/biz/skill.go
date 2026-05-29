@@ -19,6 +19,11 @@ type (
 	SkillRepo               = skill.Repo
 	SkillReader             = skill.SkillReader
 	SkillWriter             = skill.SkillWriter
+	SkillQueryReader        = skill.SkillQueryReader
+	SkillLookupReader       = skill.SkillLookupReader
+	SkillRuntimeReader      = skill.SkillRuntimeReader
+	SkillMutationWriter     = skill.SkillMutationWriter
+	SkillSyncWriter         = skill.SkillSyncWriter
 	SkillUpdateDraft        = skill.UpdateDraft
 	SkillInvocationWrite    = skill.InvocationWrite
 	SkillCreateInput        = skill.CreateInput
@@ -44,6 +49,9 @@ type (
 	SkillFilesystem            = skill.SkillFilesystem
 	SkillFileEntry             = skill.SkillFileEntry
 	SkillFileContent           = skill.SkillFileContent
+	SkillFilePathResolver      = skill.SkillFilePathResolver
+	SkillFileReader            = skill.SkillFileReader
+	SkillFileWriter            = skill.SkillFileWriter
 )
 
 const (

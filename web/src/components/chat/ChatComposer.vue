@@ -50,6 +50,39 @@
       </template>
     </q-banner>
 
+    <q-banner
+      v-if="contextPressureLevel === 'critical'"
+      rounded
+      class="q-mb-sm app-banner-warning"
+      dense
+    >
+      <template #avatar>
+        <q-icon name="warning" color="negative" />
+      </template>
+      <div class="text-body2">{{ t("chat.contextPressureCritical", "上下文窗口接近满载，回复可能被截断") }}</div>
+      <template #action>
+        <q-btn
+          flat
+          dense
+          no-caps
+          color="primary"
+          :label="t('chat.contextPressureNewSession', '新会话')"
+          @click="$emit('new-session')"
+        />
+      </template>
+    </q-banner>
+    <q-banner
+      v-else-if="contextPressureLevel === 'warning'"
+      rounded
+      class="q-mb-sm app-banner-warning"
+      dense
+    >
+      <template #avatar>
+        <q-icon name="info" color="warning" />
+      </template>
+      {{ t("chat.contextPressureWarning", "上下文窗口使用率较高，建议开启新会话以获得更好效果") }}
+    </q-banner>
+
     <div class="chat-composer-inner">
       <div v-if="attachments.length" class="chat-attachments row q-gutter-xs q-mb-sm">
         <div v-for="file in attachments" :key="file.id" class="chat-file-tile row items-center">
@@ -225,9 +258,9 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { useQuasar } from "quasar";
-import ChatEnqueueMessage from "../../features/chat/components/ChatEnqueueMessage.vue";
+import ChatEnqueueMessage from "./ChatEnqueueMessage.vue";
 import ChatSessionArtifactsPanel from "./ChatSessionArtifactsPanel.vue";
 import ChatBackgroundJobsPanel from "./ChatBackgroundJobsPanel.vue";
 import { AWAIT_KIND_TOOL_CONFIRM } from "../../features/chat/awaitConstants";
@@ -288,10 +321,19 @@ const emit = defineEmits<{
   "focus-turn": [turnId: string];
   navigate: [route: { name: string; params: Record<string, string> }];
   "cancel-job": [job: { id: string; source: string }];
+  "paste-unsupported": [];
+  "new-session": [];
 }>();
 
 const { t } = useI18n();
-const $q = useQuasar();
+
+const contextPressureLevel = computed<"warning" | "critical" | null>(() => {
+  const ratio = props.contextRatio ?? 0;
+  const status = props.contextStatus?.trim();
+  if (status === "exceeded" || status === "critical" || ratio >= 0.8) return "critical";
+  if (status === "warning" || ratio >= 0.6) return "warning";
+  return null;
+});
 
 function handlePaste(event: ClipboardEvent) {
   const items = event.clipboardData?.items;
@@ -301,11 +343,10 @@ function handlePaste(event: ClipboardEvent) {
     if (item.kind === "file") {
       const file = item.getAsFile();
       if (!file) continue;
-      // If fileAccept is non-empty, model only accepts non-image files (no vision support)
       const isImage = file.type?.toLowerCase().startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp|svg|heic|heif)$/i.test(file.name);
       if (props.fileAccept && isImage) {
         event.preventDefault();
-        $q.notify({ type: "warning", message: t("chat.clipboardFileUnsupported", "当前模型不支持此类型的文件粘贴") });
+        emit("paste-unsupported");
         return;
       }
       event.preventDefault();

@@ -60,7 +60,7 @@
 import { computed, ref, toRef, watch } from "vue";
 import type { ChatEventInspectorStreamDeps } from "../../features/chat/composables/useChatEventInspector";
 import { useSessionTimelineInspector } from "../../features/session/useSessionTimelineInspector";
-import { buildTimelineStats } from "../sessions/sessionTimelineUi";
+import { buildTimelineStats } from "../../features/session/timelineHelpers";
 import SessionEventInspectorPanel from "./SessionEventInspectorPanel.vue";
 import SessionTimelineEntry from "../sessions/SessionTimelineEntry.vue";
 import SessionTimelineStats from "../sessions/SessionTimelineStats.vue";

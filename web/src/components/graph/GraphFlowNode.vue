@@ -11,6 +11,8 @@
         'graph-flow-node--interrupted': data.execStatus === 'interrupted',
       },
     ]"
+    role="group"
+    :aria-label="primaryLabel"
     :style="nodeStyle"
   >
     <Handle type="target" :position="Position.Left" class="graph-flow-node__handle" />
@@ -48,6 +50,7 @@
 import { computed } from "vue";
 import { Handle, Position } from "@vue-flow/core";
 import { NODE_TYPE_STYLES, EXECUTION_STATUS_STYLES, type NodeType } from "../../features/graph/types";
+import { truncate } from "../../features/graph/utils";
 import { AGENT_NODE_STATUS_STYLES, DISPLAY_STATUS_STYLES } from "../../features/orchestration/agentNodeStatusStyles";
 import type { AgentNodeStatus, DisplayStatus } from "../../features/orchestration/types";
 import OrchestrationStatusChip from "../orchestration/OrchestrationStatusChip.vue";
@@ -152,7 +155,5 @@ const statusBadgeClass = computed(() => {
   return "";
 });
 
-function truncate(text: string, max: number) {
-  return text.length > max ? `${text.slice(0, max)}…` : text;
-}
+
 </script>

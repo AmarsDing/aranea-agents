@@ -1,13 +1,8 @@
-import type { SessionTimelineItem, SessionTimelineSummary } from "../../features/session/types";
+import type { SessionTimelineItem } from "../../features/session/types";
+export type { TimelineStat } from "../../features/session/timelineHelpers";
+export { buildTimelineStats } from "../../features/session/timelineHelpers";
 
 export type TimelineAccent = "user" | "agent" | "tool" | "skill" | "mcp" | "error";
-
-export type TimelineStat = {
-  key: string;
-  label: string;
-  value: number;
-  icon: string;
-};
 
 export function timelineEntryAccent(item: SessionTimelineItem): TimelineAccent {
   if (/fail|error/i.test(item.status)) return "error";
@@ -68,15 +63,6 @@ export function prettyTimelineJSON(value: string): string {
   } catch {
     return value;
   }
-}
-
-export function buildTimelineStats(summary?: SessionTimelineSummary | null): TimelineStat[] {
-  return [
-    { key: "message", label: "Messages", value: summary?.message_count ?? 0, icon: "chat" },
-    { key: "tool", label: "Tools", value: summary?.tool_count ?? 0, icon: "build" },
-    { key: "skill", label: "Skills", value: summary?.skill_count ?? 0, icon: "auto_awesome" },
-    { key: "mcp", label: "MCP", value: summary?.mcp_count ?? 0, icon: "hub" }
-  ];
 }
 
 export const timelineKindFilterOptions = [

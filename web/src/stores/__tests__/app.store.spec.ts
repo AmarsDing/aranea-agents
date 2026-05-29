@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { setActivePinia, createPinia } from "pinia";
 import { useAppStore } from "../app";
-import { useChatStore } from "../chat";
+import { useChatSessionStore } from "../chat/sessionStore";
+import { useChatMessageStore } from "../chat/messageStore";
+import { useChatRuntimeStore } from "../chat/runtimeStore";
 
 vi.mock("../../features/session/api", () => ({
   listSessions: vi.fn().mockResolvedValue([]),
@@ -49,12 +51,12 @@ describe("useAppStore", () => {
 
   it("removeAgentFromList removes and clears selection", async () => {
     const store = useAppStore();
-    const chat = useChatStore();
+    const session = useChatSessionStore();
     await store.loadAgents();
     await store.removeAgentFromList("agent-1");
     expect(store.agents).toHaveLength(0);
     expect(store.selectedAgent).toBeNull();
-    expect(chat.sessions).toEqual([]);
+    expect(session.sessions).toEqual([]);
   });
 
   it("addAgent creates agent and prepends to list", async () => {
@@ -67,92 +69,106 @@ describe("useAppStore", () => {
   });
 });
 
-describe("useChatStore", () => {
+describe("chat sub-stores", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
   });
 
   it("stores messages by session id", async () => {
-    const chat = useChatStore();
-    chat.setMessages("sess-1", [{ id: "m1" } as any]);
-    expect(chat.getMessages("sess-1")).toHaveLength(1);
-    (chat as any).selectedSession = { id: "sess-1" } as any;
-    expect(chat.messages).toHaveLength(1);
+    const message = useChatMessageStore();
+    message.setMessages("sess-1", [{ id: "m1" } as any]);
+    expect(message.getMessages("sess-1")).toHaveLength(1);
   });
 
   it("tracks ws connected per session", () => {
-    const chat = useChatStore();
-    chat.setWsConnected("sess-1", true);
-    (chat as any).selectedSession = { id: "sess-1" } as any;
-    (chat as any).entityKind = "agent";
-    expect(chat.wsConnected).toBe(true);
+    const runtime = useChatRuntimeStore();
+    runtime.setWsConnected("sess-1", true);
+    expect(runtime.isWsConnected("sess-1")).toBe(true);
+    expect(runtime.isWsConnected("sess-2")).toBe(false);
   });
 
   it("clearTeamSessions only removes that team session caches", () => {
-    const chat = useChatStore();
-    chat.teamSessions["team-1"] = [{ id: "t-s1", at: "" } as any, { id: "t-s2", at: "" } as any];
-    chat.teamSessions["team-2"] = [{ id: "t-s3", at: "" } as any];
-    chat.setMessages("t-s1", [{ id: "m1" } as any]);
-    chat.setMessages("t-s2", [{ id: "m2" } as any]);
-    chat.setMessages("t-s3", [{ id: "m3" } as any]);
-    chat.setMessages("agent-s1", [{ id: "m4" } as any]);
-    (chat as any).teamSelectedSessionId = "t-s1";
+    const session = useChatSessionStore();
+    const message = useChatMessageStore();
+    session.teamSessions["team-1"] = [{ id: "t-s1", at: "" } as any, { id: "t-s2", at: "" } as any];
+    session.teamSessions["team-2"] = [{ id: "t-s3", at: "" } as any];
+    message.setMessages("t-s1", [{ id: "m1" } as any]);
+    message.setMessages("t-s2", [{ id: "m2" } as any]);
+    message.setMessages("t-s3", [{ id: "m3" } as any]);
+    message.setMessages("agent-s1", [{ id: "m4" } as any]);
+    (session as any).teamSelectedSessionId = "t-s1";
 
-    chat.clearTeamSessions("team-1");
+    session.clearTeamSessions("team-1");
+    const runtime = useChatRuntimeStore();
+    for (const sid of ["t-s1", "t-s2"]) {
+      message.deleteSessionMessages(sid);
+      runtime.deleteSessionRuntime(sid);
+    }
 
-    expect(chat.teamSessions["team-1"]).toEqual([]);
-    expect(chat.teamSelectedSessionId).toBeNull();
-    expect(chat.getMessages("t-s1")).toEqual([]);
-    expect(chat.getMessages("t-s2")).toEqual([]);
-    expect(chat.getMessages("t-s3")).toHaveLength(1);
-    expect(chat.getMessages("agent-s1")).toHaveLength(1);
+    expect(session.teamSessions["team-1"]).toEqual([]);
+    expect(session.teamSelectedSessionId).toBeNull();
+    expect(message.getMessages("t-s1")).toEqual([]);
+    expect(message.getMessages("t-s2")).toEqual([]);
+    expect(message.getMessages("t-s3")).toHaveLength(1);
+    expect(message.getMessages("agent-s1")).toHaveLength(1);
   });
 
   it("clearAllAgentSessions only clears that agent session caches", async () => {
     const { clearAgentSessions } = await import("../../features/session/api");
-    const chat = useChatStore();
-    (chat as any).sessions = [
+    const session = useChatSessionStore();
+    const message = useChatMessageStore();
+    const runtime = useChatRuntimeStore();
+    (session as any).sessions = [
       { id: "agent-s1", title: "A" } as any,
       { id: "agent-s2", title: "B" } as any,
     ];
-    chat.setMessages("agent-s1", [{ id: "m1" } as any]);
-    chat.setMessages("agent-s2", [{ id: "m2" } as any]);
-    chat.setMessages("team-s1", [{ id: "m3" } as any]);
-    chat.sessionRevisionBySession["agent-s1"] = 3;
-    chat.wsConnectedBySession["agent-s2"] = true;
+    message.setMessages("agent-s1", [{ id: "m1" } as any]);
+    message.setMessages("agent-s2", [{ id: "m2" } as any]);
+    message.setMessages("team-s1", [{ id: "m3" } as any]);
+    message.sessionRevisionBySession["agent-s1"] = 3;
+    runtime.wsConnectedBySession["agent-s2"] = true;
 
-    await chat.clearAllAgentSessions("agent-1");
+    const sessionIds = session.sessions.map((s) => s.id);
+    await session.clearAllAgentSessions("agent-1");
+    for (const sid of sessionIds) {
+      message.deleteSessionMessages(sid);
+      runtime.deleteSessionRuntime(sid);
+    }
 
     expect(clearAgentSessions).toHaveBeenCalledWith("agent-1");
-    expect(chat.sessions).toEqual([]);
-    expect(chat.selectedSession).toBeNull();
-    expect(chat.getMessages("agent-s1")).toEqual([]);
-    expect(chat.getMessages("agent-s2")).toEqual([]);
-    expect(chat.sessionRevisionBySession["agent-s1"]).toBeUndefined();
-    expect(chat.wsConnectedBySession["agent-s2"]).toBeUndefined();
-    expect(chat.getMessages("team-s1")).toHaveLength(1);
+    expect(session.sessions).toEqual([]);
+    expect(session.selectedSession).toBeNull();
+    expect(message.getMessages("agent-s1")).toEqual([]);
+    expect(message.getMessages("agent-s2")).toEqual([]);
+    expect(message.sessionRevisionBySession["agent-s1"]).toBeUndefined();
+    expect(runtime.wsConnectedBySession["agent-s2"]).toBeUndefined();
+    expect(message.getMessages("team-s1")).toHaveLength(1);
   });
 
   it("removeTeamSessionLocal deletes session and clears caches", async () => {
     const { deleteSession } = await import("../../features/session/api");
-    const chat = useChatStore();
-    chat.teamSessions["team-1"] = [
+    const session = useChatSessionStore();
+    const message = useChatMessageStore();
+    const runtime = useChatRuntimeStore();
+    session.teamSessions["team-1"] = [
       { id: "t-s1", at: "" } as any,
       { id: "t-s2", at: "" } as any,
     ];
-    (chat as any).teamSelectedSessionId = "t-s1";
-    chat.setMessages("t-s1", [{ id: "m1" } as any]);
-    chat.sessionRevisionBySession["t-s1"] = 2;
-    chat.wsConnectedBySession["t-s1"] = true;
+    (session as any).teamSelectedSessionId = "t-s1";
+    message.setMessages("t-s1", [{ id: "m1" } as any]);
+    message.sessionRevisionBySession["t-s1"] = 2;
+    runtime.wsConnectedBySession["t-s1"] = true;
 
-    await chat.removeTeamSessionLocal("team-1", "t-s1");
+    await session.removeTeamSessionLocal("team-1", "t-s1");
+    message.deleteSessionMessages("t-s1");
+    runtime.deleteSessionRuntime("t-s1");
 
     expect(deleteSession).toHaveBeenCalledWith("t-s1");
-    expect(chat.teamSessions["team-1"]).toHaveLength(1);
-    expect(chat.teamSessions["team-1"]![0].id).toBe("t-s2");
-    expect(chat.teamSelectedSessionId).toBe("t-s2");
-    expect(chat.getMessages("t-s1")).toEqual([]);
-    expect(chat.sessionRevisionBySession["t-s1"]).toBeUndefined();
-    expect(chat.wsConnectedBySession["t-s1"]).toBeUndefined();
+    expect(session.teamSessions["team-1"]).toHaveLength(1);
+    expect(session.teamSessions["team-1"]![0].id).toBe("t-s2");
+    expect(session.teamSelectedSessionId).toBe("t-s2");
+    expect(message.getMessages("t-s1")).toEqual([]);
+    expect(message.sessionRevisionBySession["t-s1"]).toBeUndefined();
+    expect(runtime.wsConnectedBySession["t-s1"]).toBeUndefined();
   });
 });

@@ -6,11 +6,14 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	bizplugin "aranea-agents/internal/biz/plugin"
 )
 
 type pluginRunRepo struct {
 	data *Data
 }
+
+var _ bizplugin.RunRepo = (*pluginRunRepo)(nil)
 
 func NewPluginRunRepo(data *Data) biz.PluginRunRepo {
 	return &pluginRunRepo{data: data}

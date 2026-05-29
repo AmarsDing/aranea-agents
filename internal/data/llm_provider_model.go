@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -19,6 +20,8 @@ import (
 type llmProviderModelRepo struct {
 	data *Data
 }
+
+var _ biz.LlmProviderModelRepo = (*llmProviderModelRepo)(nil)
 
 func NewLlmProviderModelRepo(d *Data) biz.LlmProviderModelRepo {
 	return &llmProviderModelRepo{data: d}
@@ -51,6 +54,7 @@ func entToBizPM(e *ent.LlmProviderModel) biz.ProviderModel {
 			TextOnly: e.CapabilityTextOnly,
 		},
 		CapabilitiesExplicit: e.CapabilitiesExplicit,
+		PricingConfigured:    configJSONHasPricing(e.ConfigJSON),
 		CreatedAt:            e.CreatedAt,
 		UpdatedAt:            e.UpdatedAt,
 		DeletedAt:            e.DeletedAt,
@@ -197,6 +201,14 @@ func (r *llmProviderModelRepo) DeleteProviderModel(ctx context.Context, id strin
 		Exec(ctx)
 }
 
+func (r *llmProviderModelRepo) UpdateProviderModelStatus(ctx context.Context, id string, status string) error {
+	now := nowRFC3339()
+	return r.data.entClient.LlmProviderModel.UpdateOneID(id).
+		SetStatus(status).
+		SetUpdatedAt(now).
+		Exec(ctx)
+}
+
 func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule biz.ModelPricingRule) error {
 	if strings.TrimSpace(rule.ProviderCode) == "" || strings.TrimSpace(rule.ModelAPIID) == "" {
 		return errors.New("provider_code and model_api_id are required")
@@ -214,7 +226,12 @@ func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule 
 	if rule.MetadataJSON == "" {
 		rule.MetadataJSON = "{}"
 	}
-	row, err := r.data.entClient.ModelPricingRule.Query().
+	tx, err := r.data.entClient.Tx(ctx)
+	if err != nil {
+		return err
+	}
+	client := tx.Client()
+	row, err := client.ModelPricingRule.Query().
 		Where(
 			modelpricingrule.ProviderCodeEQ(rule.ProviderCode),
 			modelpricingrule.ModelAPIIDEQ(rule.ModelAPIID),
@@ -223,7 +240,7 @@ func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule 
 		).
 		Only(ctx)
 	if err == nil {
-		return r.data.entClient.ModelPricingRule.UpdateOneID(row.ID).
+		err = client.ModelPricingRule.UpdateOneID(row.ID).
 			SetCurrency(rule.Currency).
 			SetInputPriceMicroUsdPer1k(rule.InputPriceMicroUSDPer1K).
 			SetOutputPriceMicroUsdPer1k(rule.OutputPriceMicroUSDPer1K).
@@ -241,8 +258,14 @@ func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule 
 			SetMetadataJSON(rule.MetadataJSON).
 			SetUpdatedAt(now).
 			Exec(ctx)
+		if err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		return tx.Commit()
 	}
 	if !ent.IsNotFound(err) {
+		_ = tx.Rollback()
 		return err
 	}
 	rid := rule.ID
@@ -250,7 +273,7 @@ func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule 
 		rid = fmt.Sprintf("pricing:%s:%s:%d", rule.ProviderCode, strings.ReplaceAll(rule.ModelAPIID, "/", "_"), time.Now().UTC().UnixNano())
 	}
 	rule.IsActive = true
-	_, err = r.data.entClient.ModelPricingRule.Create().
+	_, err = client.ModelPricingRule.Create().
 		SetID(rid).
 		SetProviderCode(rule.ProviderCode).
 		SetModelAPIID(rule.ModelAPIID).
@@ -275,5 +298,47 @@ func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule 
 		SetCreatedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
-	return err
+	if err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
+func configJSONHasPricing(cfg string) bool {
+	cfg = strings.TrimSpace(cfg)
+	if cfg == "" || cfg == "{}" {
+		return false
+	}
+	var m struct {
+		InputPriceMicroUSDPer1K       int64 `json:"input_price_micro_usd_per_1k"`
+		OutputPriceMicroUSDPer1K      int64 `json:"output_price_micro_usd_per_1k"`
+		CachedInputPriceMicroUSDPer1K int64 `json:"cached_input_price_micro_usd_per_1k"`
+		ReasoningPriceMicroUSDPer1K   int64 `json:"reasoning_price_micro_usd_per_1k"`
+		EmbeddingPriceMicroUSDPer1K   int64 `json:"embedding_price_micro_usd_per_1k"`
+		Cost                          *struct {
+			InputUSDPer1M      float64 `json:"input_usd_per_1m"`
+			OutputUSDPer1M     float64 `json:"output_usd_per_1m"`
+			CacheReadUSDPer1M  float64 `json:"cache_read_usd_per_1m"`
+			CacheWriteUSDPer1M float64 `json:"cache_write_usd_per_1m"`
+			ReasoningUSDPer1M  float64 `json:"reasoning_usd_per_1m"`
+			EmbeddingUSDPer1M  float64 `json:"embedding_usd_per_1m"`
+		} `json:"cost"`
+	}
+	if json.Unmarshal([]byte(cfg), &m) != nil {
+		return false
+	}
+	if m.InputPriceMicroUSDPer1K > 0 || m.OutputPriceMicroUSDPer1K > 0 ||
+		m.CachedInputPriceMicroUSDPer1K > 0 || m.ReasoningPriceMicroUSDPer1K > 0 ||
+		m.EmbeddingPriceMicroUSDPer1K > 0 {
+		return true
+	}
+	if m.Cost != nil {
+		if m.Cost.InputUSDPer1M > 0 || m.Cost.OutputUSDPer1M > 0 ||
+			m.Cost.CacheReadUSDPer1M > 0 || m.Cost.CacheWriteUSDPer1M > 0 ||
+			m.Cost.ReasoningUSDPer1M > 0 || m.Cost.EmbeddingUSDPer1M > 0 {
+			return true
+		}
+	}
+	return false
 }

@@ -28,11 +28,11 @@ func (uc *TaskUsecase) LinkTasks(ctx context.Context, parentTaskID, childTaskID 
 	if uc.linkRepo == nil {
 		return kerrors.InternalServer("TASK", "task link repo not configured")
 	}
-	parent, err := uc.repo.GetTask(ctx, parentTaskID)
+	parent, err := uc.reader.GetTask(ctx, parentTaskID)
 	if err != nil {
 		return err
 	}
-	child, err := uc.repo.GetTask(ctx, childTaskID)
+	child, err := uc.reader.GetTask(ctx, childTaskID)
 	if err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func (uc *TaskUsecase) promoteReadyChildren(ctx context.Context, parentTask *Gra
 		return
 	}
 	for _, link := range links {
-		child, err := uc.repo.GetTask(ctx, link.ChildTaskID)
+		child, err := uc.reader.GetTask(ctx, link.ChildTaskID)
 		if err != nil || child.Status != TaskStatusPending {
 			continue
 		}

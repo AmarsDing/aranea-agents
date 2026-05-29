@@ -1,6 +1,6 @@
-import { ref, type Ref } from "vue";
-import { listChatOptions } from "../api";
+import { ref } from "vue";
 import { usePlatformStore } from "../../../stores/platform";
+import { useChatRuntimeStore } from "../../../stores/chat/runtimeStore";
 import type { PlatformResource } from "../../platform/types";
 import type { ChatOption } from "../types";
 import {
@@ -82,9 +82,10 @@ export function useChatProviderOptions(store: Store) {
   }
 
   async function loadChatOptions() {
+    const runtimeStore = useChatRuntimeStore();
     let modeRows: ChatOption[] = [];
     try {
-      modeRows = await listChatOptions("dialog_mode");
+      modeRows = await runtimeStore.listChatOptions("dialog_mode");
     } catch {
       /* keep fallback */
     }
@@ -97,7 +98,7 @@ export function useChatProviderOptions(store: Store) {
     }
     if (!modelRows.length) {
       try {
-        const catalogModels = await listChatOptions("model");
+        const catalogModels = await runtimeStore.listChatOptions("model");
         if (catalogModels.length) {
           modelRows = chatModelOptionsToPlatform(catalogModels);
         }

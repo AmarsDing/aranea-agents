@@ -246,6 +246,18 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	if r.knowledgeRetriever != nil {
 		runCtx = knowledgetool.WithRetriever(runCtx, r.knowledgeRetriever)
 	}
+	if r.knowledgeRouter != nil {
+		runCtx = knowledgetool.WithAdaptiveRouter(runCtx, r.knowledgeRouter)
+	}
+	if r.knowledgeFederatedRetriever != nil {
+		runCtx = knowledgetool.WithFederatedRetriever(runCtx, r.knowledgeFederatedRetriever)
+	}
+	if r.knowledgeEvaluator != nil {
+		runCtx = knowledgetool.WithRetrievalEvaluator(runCtx, r.knowledgeEvaluator)
+	}
+	if len(input.Options.KnowledgeBases) > 0 {
+		runCtx = knowledgetool.WithKnowledgeCollections(runCtx, input.Options.KnowledgeBases)
+	}
 	if teamEmitter != nil {
 		teamEmitter.LogStart("team.run.execute", "执行团队任务", event.P("mode", mode))
 	}

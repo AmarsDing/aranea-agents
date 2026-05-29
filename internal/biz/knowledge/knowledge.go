@@ -63,22 +63,32 @@ type SearchQuery struct {
 }
 
 // Repo is the persistence interface for knowledge base operations.
-type Repo interface {
+type CollectionRepo interface {
 	CreateCollection(ctx context.Context, c Collection) (Collection, error)
 	GetCollection(ctx context.Context, id string) (Collection, error)
 	ListCollections(ctx context.Context, workspace string, limit, offset int) ([]Collection, int, error)
 	DeleteCollection(ctx context.Context, id string) error
 	UpdateCollectionCounts(ctx context.Context, id string, docDelta, chunkDelta int) error
+}
 
+type DocumentRepo interface {
 	CreateDocument(ctx context.Context, d Document) (Document, error)
 	GetDocument(ctx context.Context, id string) (Document, error)
 	UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error
 	ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]Document, int, error)
 	DeleteDocument(ctx context.Context, id string) error
+}
 
+type ChunkRepo interface {
 	InsertChunks(ctx context.Context, chunks []Chunk) error
 	DeleteChunksByDocument(ctx context.Context, docID string) error
 	SearchChunks(ctx context.Context, q SearchQuery, queryEmbedding []float32) ([]Chunk, error)
+}
+
+type Repo interface {
+	CollectionRepo
+	DocumentRepo
+	ChunkRepo
 }
 
 // SparseSearcher is the interface for BM25/full-text search over knowledge chunks.
@@ -94,16 +104,18 @@ var ErrUnavailable = errors.ServiceUnavailable(
 
 // Usecase implements collection/document/search operations.
 type Usecase struct {
-	repo Repo
+	collections CollectionRepo
+	documents   DocumentRepo
+	chunks      ChunkRepo
 }
 
 // NewUsecase constructs a KnowledgeUsecase.
 func NewUsecase(repo Repo) *Usecase {
-	return &Usecase{repo: repo}
+	return &Usecase{collections: repo, documents: repo, chunks: repo}
 }
 
 func (u *Usecase) requireRepo() error {
-	if u == nil || u.repo == nil {
+	if u == nil || u.collections == nil || u.documents == nil || u.chunks == nil {
 		return ErrUnavailable
 	}
 	return nil
@@ -139,7 +151,7 @@ func (u *Usecase) CreateCollection(ctx context.Context, in Collection) (Collecti
 	if in.Status == "" {
 		in.Status = "active"
 	}
-	return u.repo.CreateCollection(ctx, in)
+	return u.collections.CreateCollection(ctx, in)
 }
 
 // GetCollection returns a single collection.
@@ -150,7 +162,7 @@ func (u *Usecase) GetCollection(ctx context.Context, id string) (Collection, err
 	if strings.TrimSpace(id) == "" {
 		return Collection{}, errors.BadRequest("KNOWLEDGE", "id is required")
 	}
-	return u.repo.GetCollection(ctx, id)
+	return u.collections.GetCollection(ctx, id)
 }
 
 // ListCollections returns all collections visible in the workspace.
@@ -161,7 +173,7 @@ func (u *Usecase) ListCollections(ctx context.Context, workspace string, limit, 
 	if limit <= 0 {
 		limit = 20
 	}
-	return u.repo.ListCollections(ctx, workspace, limit, offset)
+	return u.collections.ListCollections(ctx, workspace, limit, offset)
 }
 
 // DeleteCollection removes a collection and all its documents/chunks.
@@ -172,7 +184,7 @@ func (u *Usecase) DeleteCollection(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return errors.BadRequest("KNOWLEDGE", "id is required")
 	}
-	return u.repo.DeleteCollection(ctx, id)
+	return u.collections.DeleteCollection(ctx, id)
 }
 
 // CreateDocument records a document and returns it (status=pending).
@@ -194,7 +206,7 @@ func (u *Usecase) CreateDocument(ctx context.Context, d Document) (Document, err
 	if d.Status == "" {
 		d.Status = "pending"
 	}
-	return u.repo.CreateDocument(ctx, d)
+	return u.documents.CreateDocument(ctx, d)
 }
 
 // ListDocuments returns documents for a collection.
@@ -205,7 +217,7 @@ func (u *Usecase) ListDocuments(ctx context.Context, collectionID string, limit,
 	if limit <= 0 {
 		limit = 20
 	}
-	return u.repo.ListDocuments(ctx, collectionID, limit, offset)
+	return u.documents.ListDocuments(ctx, collectionID, limit, offset)
 }
 
 // DeleteDocument removes a document and its chunks. Repo implementations MUST
@@ -219,7 +231,7 @@ func (u *Usecase) DeleteDocument(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return errors.BadRequest("KNOWLEDGE", "id is required")
 	}
-	return u.repo.DeleteDocument(ctx, id)
+	return u.documents.DeleteDocument(ctx, id)
 }
 
 // InsertChunks stores indexed chunks for a document.
@@ -230,7 +242,7 @@ func (u *Usecase) InsertChunks(ctx context.Context, chunks []Chunk) error {
 	if len(chunks) == 0 {
 		return nil
 	}
-	return u.repo.InsertChunks(ctx, chunks)
+	return u.chunks.InsertChunks(ctx, chunks)
 }
 
 // Search performs a vector similarity search.
@@ -247,7 +259,7 @@ func (u *Usecase) Search(ctx context.Context, q SearchQuery, queryEmbedding []fl
 	if q.TopK <= 0 {
 		q.TopK = 5
 	}
-	return u.repo.SearchChunks(ctx, q, queryEmbedding)
+	return u.chunks.SearchChunks(ctx, q, queryEmbedding)
 }
 
 // UpdateDocumentStatus marks a document's indexing state.
@@ -255,7 +267,7 @@ func (u *Usecase) UpdateDocumentStatus(ctx context.Context, id, status, errMsg s
 	if err := u.requireRepo(); err != nil {
 		return err
 	}
-	return u.repo.UpdateDocumentStatus(ctx, id, status, errMsg, chunkCount)
+	return u.documents.UpdateDocumentStatus(ctx, id, status, errMsg, chunkCount)
 }
 
 // UpdateCollectionCounts adjusts document/chunk tallies on a collection.
@@ -263,7 +275,7 @@ func (u *Usecase) UpdateCollectionCounts(ctx context.Context, id string, docDelt
 	if err := u.requireRepo(); err != nil {
 		return err
 	}
-	return u.repo.UpdateCollectionCounts(ctx, id, docDelta, chunkDelta)
+	return u.collections.UpdateCollectionCounts(ctx, id, docDelta, chunkDelta)
 }
 
 // ── Embed settings ────────────────────────────────────────────────────────────

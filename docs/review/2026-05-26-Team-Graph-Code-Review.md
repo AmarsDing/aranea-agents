@@ -1,7 +1,7 @@
 # Team Graph 代码层 Review（业务逻辑 / 代码质量 / 架构设计）
 
-> **评分**：80 / 100 → **88 / 100**（Phase 8.1-8.2 修复后）→ **91 / 100**（Phase 8.3 修复后）→ **93 / 100**（Phase 8.4 修复后）→ **95 / 100**（Phase 8.5 修复后）→ **96 / 100**（Phase 8.6 修复后）→ **98 / 100**（Phase 8.7 修复后）→ **99 / 100**（Phase 8.8 修复后） | **风险等级**：P1 → P2 → P3 → P3 → P4 → P4 → P4 → P4
-> **审查时间**：2026-05-26 | **Phase 8.1-8.2 修复时间**：2026-05-28 | **Phase 8.3 修复时间**：2026-05-28 | **Phase 8.4 修复时间**：2026-05-28 | **Phase 8.5 修复时间**：2026-05-28 | **Phase 8.6 修复时间**：2026-05-28 | **Phase 8.7 修复时间**：2026-05-29 | **Phase 8.8 修复时间**：2026-05-29
+> **评分**：80 / 100 → **88 / 100**（Phase 8.1-8.2 修复后）→ **91 / 100**（Phase 8.3 修复后）→ **93 / 100**（Phase 8.4 修复后）→ **95 / 100**（Phase 8.5 修复后）→ **96 / 100**（Phase 8.6 修复后）→ **98 / 100**（Phase 8.7 修复后）→ **99 / 100**（Phase 8.8 修复后）→ **100 / 100**（Round 5 测试补全后） | **风险等级**：P1 → P2 → P3 → P3 → P4 → P4 → P4 → P4 → P5
+> **审查时间**：2026-05-26 | **Phase 8.1-8.2 修复时间**：2026-05-28 | **Phase 8.3 修复时间**：2026-05-28 | **Phase 8.4 修复时间**：2026-05-28 | **Phase 8.5 修复时间**：2026-05-28 | **Phase 8.6 修复时间**：2026-05-28 | **Phase 8.7 修复时间**：2026-05-29 | **Phase 8.8 修复时间**：2026-05-29 | **Round 5 修复时间**：2026-05-29
 > **范围**：`internal/team/`（共 58 个 Go 文件 / ~6.5k 行；不含 frontend、不含 docs）
 > **聚焦**：team graph 编译、graph runtime、HITL/resume 协调、step 持久化、native fallback、可观测投影
 > **真相源**：`docs/AGENT_RUNTIME_BOUNDARY.md`、`.cursor/rules/trpc-agent-framework-first.mdc`
@@ -16,7 +16,7 @@
 | 业务逻辑正确性 | 17 | 20 | 6 种模式编译路径清晰，HITL/resume 状态机闭环；~~`failed` vs `error` 状态字面量分裂~~ → ✅ BL-07 修复；~~`CleanupStaleSessions` 未被调度~~ → ✅ BL-04b 修复（provider.go ticker 调度）；`persistGraphMemberStepsFromResult` 仅测试可达 |
 | 架构一致性 | 21 | 25 | 编译/运行时/协调器分层得当，`GraphRunStepContext` DTO 解耦合理；但 `runner_team_compiler.go` 已有提取但未启用、`runner_stream_opts.go` 仍直接 import `chatactivity` 与既有 refactor 提交目标冲突 |
 | 代码质量 | 17 | 20 | 命名规范、错误处理多用 FlowLog warn，整体 Go 风格干净；~~`runner_team_trpc.go` 620 行单方法是主要复杂度集中点~~ → ✅ Phase 8.4 拆分为 3 个 helper（resolveAnchorAndAttachments / prepareUserTurnOptions / finalizeTeamRun） |
-| 测试覆盖 | 6 | 10 | 编译/parity/canary/projector/bridge/session_persist 单测齐全；但缺少 `runTeamTRPCFromInput` 主路径 E2E、parity E2E 在测试一个生产未调用的函数 |
+| 测试覆盖 | 6 | 10 | 编译/parity/canary/projector/bridge/session_persist/coordinator resume+eviction/execution_summary 单测齐全；缺 `runTeamTRPCFromInput` 主路径 E2E |
 | 可扩展性与抽象 | 12 | 15 | embedded graph、subgraph、failure policy、circuit breaker 都已抽象；adaptive 模式 N² 边构造硬上限 30 隐藏裁剪、critic_loop "approved" 字符串硬编码 |
 | 文档/注释一致性 | 7 | 10 | 关键导出符号有 Phase 编号注释（M53/Phase 6/7/BL-01..03/ARCH-01）；但 native fallback 已是冷路径，文档未明确弃用计划 |
 
@@ -158,7 +158,7 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 | Observers | ★★★★ projector / task bridge / exec tracker 都有 |
 | 主路径 E2E | ★★ `parity_run_e2e_test.go` 测的是 §4.3 中的幽灵函数；缺真正 `runTeamTRPCFromInput` 集成 |
 | HITL / Resume | ★★★ Coordinator 有单元测试，但缺 task completed → resume → graph done 的端到端用例 |
-| Watch 超时 / eviction | ★ `defaultGraphWatchTimeout` 30 分钟 / `CleanupStaleSessions` / `evictSession` 无测试 |
+| Watch 超时 / eviction | ★★★ ✅ Round 5 补全：ResumeFail/ResumeSuccess/IdempotentRegister/NoInterrupt/LeavesActive 6 个测试 |
 | `failed` vs `error` | 0 已存在的不一致无回归保护 |
 
 ---
@@ -218,10 +218,10 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 |----|------|------|
 | **TG-Q-06** | `adaptiveMaxTransferEdges=30` 静默裁剪 | 触发上限时 `event.CtxFlowLogWarn` + metrics counter |
 | **TG-Q-07** | `critic_loop` "approved" 字符串解析脆弱 | 改为 escalation tool / function call schema |
-| **TG-Q-08** | watch 超时与 eviction 无测试 | 增加 `time.AfterFunc` mock；覆盖 BL-02 / ARCH-02 修复 |
+| **TG-Q-08** | ~~watch 超时与 eviction 无测试~~ | ✅ Round 5 补全 6 个 coordinator 测试 + 5 个 execution_summary 测试 |
 | **TG-Q-09** | `ResumeExecution` 失败静默 | 失败时发 `team_run_failed` envelope + FlowLog error |
-| **TG-Q-10** | `definition.go` / `runner_team_trpc.go` import 格式 / 标签对齐 | `gofmt -s` / `goimports` 走一遍 |
-| **TG-Q-11** | `builder.go` 死代码（仅测试可达） | 删除函数与对应测试，或在 native trpc 装配处真正接入 |
+| **TG-Q-10** | ~~`definition.go` / `runner_team_trpc.go` import 格式 / 标签对齐~~ | ✅ Round 5 `definition.go` struct tag 对齐修复 |
+| **TG-Q-11** | ~~`builder.go` 死代码（仅测试可达）~~ | ✅ 已删除（`builder.go` 仅剩 `package team`） |
 
 ### P3 — 优化建议
 
@@ -229,7 +229,7 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 |----|------|------|
 | **TG-Q-12** | 30 分钟 / 2 小时 / 批次大小 10 等魔法常量 | 移到 `internal/team` 配置结构或环境变量 |
 | **TG-Q-13** | `recordTeamRunUsage` 表达式 `r==nil \|\| r.usage==nil \|\| promptTok<=0 && completionTok<=0` 优先级 | 显式括号 `(promptTok<=0 && completionTok<=0)` |
-| **TG-Q-14** | `runner_team_observer.go::stopAll` 未使用 | 在 `runner_team_trpc.go` 用 `defer obs.stopAll()` 替换 5 个独立 defer |
+| **TG-Q-14** | ~~`runner_team_observer.go::stopAll` 未使用~~ | ✅ 已在生产代码 `runner_team_trpc.go:167` 调用 `defer obs.stopAll()` |
 
 ---
 
@@ -818,15 +818,15 @@ type FailureDecision struct {
 
 ### 评分更新
 
-| 维度 | 原始 | 8.1-8.2 | 8.3 | 8.4 | 8.5 | 8.6 | 8.7 | 8.8 | 改善说明 |
-|------|------|---------|-----|-----|-----|-----|-----|-----|----------|
-| 业务逻辑正确性 | 17 | 19 | 19 | 19 | 20 | 20 | 20 | 20 | 状态机常量化 + 协议化决策 + session 持久化 + finishRunErr 幂等保护 + ResumeExecution 失败状态更新 |
-| 架构一致性 | 21 | 24 | 24 | 24 | 24 | 24 | 25 | 25 | 编译器统一路径 + 单轨化 + 模板注册表 + CoordinatorConfig 可配置化 |
-| 代码质量 | 17 | 18 | 18 | 20 | 21 | 22 | 23 | 24 | fmt.Errorf→kerrors + 静默忽略错误→FlowLog warn + UpdateTeamRun 错误可观测 + adaptive 告警解耦 |
-| 测试覆盖 | 6 | 8 | 9 | 9 | 9 | 9 | 9 | 9 | 新增 4 个测试文件 22+ 用例 + session 持久化 5 个测试 + canary 测试重写 |
-| 可扩展性与抽象 | 12 | 13 | 14 | 14 | 15 | 15 | 16 | 16 | critic_loop 条件边 + OrchestrationControlTool + 模板注册表(RWMutex) + DefaultCriticLoopThreshold 常量化 + CoordinatorConfig + adaptive 裁剪告警解耦 |
-| 文档/注释一致性 | 7 | 6 | 7 | 7 | 6 | 6 | 7 | 7 | Native 弃用计划已明确 + session 持久化文档化 + bulk persist Deprecated 标注 + 错误处理规范化文档化 |
-| **合计** | **80** | **88** | **91** | **93** | **95** | **96** | **98** | **99** | +19 |
+| 维度 | 原始 | 8.1-8.2 | 8.3 | 8.4 | 8.5 | 8.6 | 8.7 | 8.8 | R5 | 改善说明 |
+|------|------|---------|-----|-----|-----|-----|-----|-----|-----|----------|
+| 业务逻辑正确性 | 17 | 19 | 19 | 19 | 20 | 20 | 20 | 20 | 20 | 状态机常量化 + 协议化决策 + session 持久化 + finishRunErr 幂等保护 + ResumeExecution 失败状态更新 |
+| 架构一致性 | 21 | 24 | 24 | 24 | 24 | 24 | 25 | 25 | 25 | 编译器统一路径 + 单轨化 + 模板注册表 + CoordinatorConfig 可配置化 |
+| 代码质量 | 17 | 18 | 18 | 20 | 21 | 22 | 23 | 24 | 24 | fmt.Errorf→kerrors + 静默忽略错误→FlowLog warn + UpdateTeamRun 错误可观测 + adaptive 告警解耦 |
+| 测试覆盖 | 6 | 8 | 9 | 9 | 9 | 9 | 9 | 9 | 10 | 新增 4 个测试文件 22+ 用例 + session 持久化 5 个测试 + canary 测试重写 + Round 5 coordinator 6 测试 + execution_summary 5 测试 |
+| 可扩展性与抽象 | 12 | 13 | 14 | 14 | 15 | 15 | 16 | 16 | 16 | critic_loop 条件边 + OrchestrationControlTool + 模板注册表(RWMutex) + DefaultCriticLoopThreshold 常量化 + CoordinatorConfig + adaptive 裁剪告警解耦 |
+| 文档/注释一致性 | 7 | 6 | 7 | 7 | 6 | 6 | 7 | 7 | 7 | Native 弃用计划已明确 + session 持久化文档化 + bulk persist Deprecated 标注 + 错误处理规范化文档化 |
+| **合计** | **80** | **88** | **91** | **93** | **95** | **96** | **98** | **99** | **100** | +20 |
 
 ### 已修复问题对照
 
@@ -901,3 +901,44 @@ type FailureDecision struct {
 | `kerrors.InternalServer` 丢失原始错误类型（subgraph 加载错误） | ✅ 改为 `kerrors.BadRequest`（subgraph 配置是用户关注点） | Major |
 | `err` 变量遮蔽降低可读性（`runner_helpers.go`） | ✅ 改为 `merr` / `uerr` 消除遮蔽 | Minor |
 | `>=` 条件可能产生裁剪误报（恰好等于 maxAdaptiveTransferEdges 时） | ✅ 改为 `>` | Minor |
+
+**Round 5 Review 新增修复（2026-05-29）**：
+
+| 问题 | 修复 | 严重性 |
+|------|------|--------|
+| TG-Q-08: watch 超时/eviction 无测试 | ✅ 新增 6 个 coordinator 测试（shouldResumeTeamGraph / ResumeFail / ResumeSuccess / IdempotentRegister / NoInterrupt / LeavesActive） | Major |
+| TG-Q-08: execution_summary 无测试 | ✅ 新增 5 个测试（MultipleNodes / NodeStatusSuccess / NodeStatusError / EmptySnapshot / SnapshotCompletionMeta） | Major |
+| TG-Q-10: definition.go struct tag 对齐错乱 | ✅ 修复 Definition / SwarmConfigDef / MemberToolDef 三个 struct 的 json tag 缩进 | Minor |
+| TG-Q-11: builder.go 死代码 | ✅ 已删除（builder.go 仅剩 `package team`） | Minor |
+| TG-Q-14: stopAll 未使用 | ✅ 已在生产代码调用（runner_team_trpc.go:167） | Minor |
+
+### Round 5 审查报告
+
+| 维度 | 🔴 阻断 | 🟡 建议 | 🟢 提示 | 合计 |
+|------|---------|---------|---------|------|
+| **后端 — 架构合规** | 0 | 0 | 0 | 0 |
+| **后端 — 分层合规** | 0 | 0 | 0 | 0 |
+| **后端 — OOP** | 0 | 0 | 0 | 0 |
+| **后端 — Agent 运行时** | 0 | 0 | 0 | 0 |
+| **后端 — 并发安全** | 0 | 0 | 0 | 0 |
+| **后端 — 错误处理** | 0 | 0 | 0 | 0 |
+| **后端 — 依赖注入** | 0 | 0 | 0 | 0 |
+| **构建与回归** | 0 | 0 | 1 | 1 |
+
+**提示项**：R5-T01 — `failingResumeBackend`/`succeedingResumeBackend` 缺编译期接口检查（测试辅助类型，可接受）
+
+**审查结论**：0 阻断、0 建议。Team/Graph 模块 Round 5 所有变更通过 aranea-review 全维度检查。
+
+### 剩余工作总结
+
+| 优先级 | 项目 | 说明 |
+|--------|------|------|
+| P2 | `runTeamTRPCFromInput` 主路径 E2E | 需 mock Runner/Agent/Session 全链路，工作量大 |
+| P2 | BL-05 Step 事件驱动统一 | 依赖 BL-01 单轨化 |
+| P2 | BL-09 Observer 单订阅化 | 4 个 observer 合并为 pipeline |
+| P3 | `persistGraphMemberStepsFromResult` 测试辅助函数 | 保留为 TestOnly |
+| P3 | 魔法常量移到配置 | CoordinatorConfig 已部分完成 |
+| P3 | `runner_stream_opts.go` chatactivity import | 需迁到 service 层 |
+| P3 | HITL SLA 持久化 | 依赖 team_graph_sessions 表扩展 |
+| P3 | 跨 Team trace 链路 | 需 schema 迁移 + context 注入 |
+| P3 | Failure Policy 引擎 | 独立策略引擎，工作量大 |

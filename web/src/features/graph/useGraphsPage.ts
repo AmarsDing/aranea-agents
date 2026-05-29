@@ -5,6 +5,7 @@ import { storeToRefs } from "pinia";
 import { useGraphStore } from "../../stores/graph";
 import type { GraphDefinition, NodeType } from "./types";
 import { NODE_TYPE_STYLES } from "./types";
+import { relativeTime } from "./utils";
 import { useGraphExecute } from "./useGraphExecute";
 
 const SORT_OPTIONS = [
@@ -81,18 +82,7 @@ export function useGraphsPage() {
     return counts;
   }
 
-  function relativeTime(dateStr: string) {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    const minutes = Math.floor(diff / 60000);
-    if (minutes < 1) return "刚刚";
-    if (minutes < 60) return `${minutes}分钟前`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}小时前`;
-    const days = Math.floor(hours / 24);
-    if (days < 30) return `${days}天前`;
-    const months = Math.floor(days / 30);
-    return `${months}个月前`;
-  }
+
 
   onMounted(() => void loadRows());
 

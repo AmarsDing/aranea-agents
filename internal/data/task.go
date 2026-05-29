@@ -19,6 +19,8 @@ type taskRepo struct {
 	data *Data
 }
 
+var _ biz.TaskRepo = (*taskRepo)(nil)
+
 func NewTaskRepo(data *Data) biz.TaskRepo {
 	return &taskRepo{data: data}
 }

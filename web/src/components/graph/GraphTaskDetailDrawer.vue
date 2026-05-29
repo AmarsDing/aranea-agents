@@ -193,14 +193,14 @@ const emit = defineEmits<{
 }>();
 
 const tab = ref("detail");
-const agentKey = ref("graph-operator");
+const agentKey = ref("");
 const submitOutput = ref("");
 const submitSummary = ref("");
 const blockedReason = ref("");
 const unblockComment = ref("");
-const reviewerAgent = ref("graph-reviewer");
+const reviewerAgent = ref("");
 const reviewComment = ref("");
-const commentAuthor = ref("operator");
+const commentAuthor = ref("");
 const commentContent = ref("");
 
 const statusLabel = computed(() =>
@@ -252,6 +252,11 @@ watch(
     submitSummary.value = props.task?.summary ?? "";
     commentContent.value = "";
     unblockComment.value = "";
+    agentKey.value = "";
+    reviewerAgent.value = "";
+    commentAuthor.value = "";
+    blockedReason.value = "";
+    reviewComment.value = "";
   },
 );
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz/backgroundjob"
+	bizbackgroundjob "aranea-agents/internal/biz/backgroundjob"
 	"aranea-agents/internal/data/ent"
 	entbgjob "aranea-agents/internal/data/ent/backgroundjob"
 
@@ -16,6 +17,8 @@ import (
 type backgroundJobRepo struct {
 	data *Data
 }
+
+var _ bizbackgroundjob.Repo = (*backgroundJobRepo)(nil)
 
 // NewBackgroundJobRepo wires the data-layer implementation of backgroundjob.Repo.
 func NewBackgroundJobRepo(d *Data) backgroundjob.Repo {

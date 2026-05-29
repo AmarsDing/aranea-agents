@@ -12,22 +12,23 @@ func ToolsetConfigFromEffectiveKeys(eff map[string]bool) ToolsetConfig {
 	cfg := ToolsetConfig{
 		Filesystem: has("read_file") || has("read_multiple_files") || has("save_file") ||
 			has("list_file") || has("search_file") || has("search_content") || has("replace_content") || has("diff_edit") || has("patch_file"),
-		ShellExec:       has("shell_exec"),
-		WebFetch:        has("web_fetch"),
-		WebSearch:       has("duckduckgo_search"),
-		WebResearch:     has(biz.ToolKeyWebResearch),
-		GeminiFetch:     has("gemini_web_fetch"),
-		GoogleSearch:    has("google_search"),
-		ArxivSearch:     has("arxiv_search"),
-		Wikipedia:       has("wikipedia_search"),
-		Email:           has("send_email"),
-		Todo:            has("todo_write"),
-		AwaitReply:      has("await_user_reply"),
-		ClaudeCode:      has("claude_code"),
-		WorkspaceExec:   has("workspace_exec"),
-		KnowledgeSearch: has(biz.ToolKeyKnowledgeSearch),
-		CallAgent:       has(biz.ToolKeyCallAgent),
-		Kanban:          has(biz.ToolKeyKanban),
+		ShellExec:        has("shell_exec"),
+		WebFetch:         has("web_fetch"),
+		WebSearch:        has("duckduckgo_search"),
+		WebResearch:      has(biz.ToolKeyWebResearch),
+		GeminiFetch:      has("gemini_web_fetch"),
+		GoogleSearch:     has("google_search"),
+		ArxivSearch:      has("arxiv_search"),
+		Wikipedia:        has("wikipedia_search"),
+		Email:            has("send_email"),
+		Todo:             has("todo_write"),
+		AwaitReply:       has("await_user_reply"),
+		ClaudeCode:       has("claude_code"),
+		WorkspaceExec:    has("workspace_exec"),
+		KnowledgeSearch:  has(biz.ToolKeyKnowledgeSearch),
+		KnowledgeReflect: has(biz.ToolKeyKnowledgeReflect),
+		CallAgent:        has(biz.ToolKeyCallAgent),
+		Kanban:           has(biz.ToolKeyKanban),
 	}
 	return cfg
 }
@@ -37,6 +38,6 @@ func ToolsetConfigHasAny(cfg ToolsetConfig) bool {
 	return cfg.Filesystem || cfg.ShellExec || cfg.WebFetch || cfg.WebSearch || cfg.WebResearch ||
 		cfg.GeminiFetch || cfg.GoogleSearch || cfg.ArxivSearch || cfg.Wikipedia ||
 		cfg.Email || cfg.Todo || cfg.AwaitReply || cfg.ClaudeCode || cfg.WorkspaceExec ||
-		cfg.KnowledgeSearch || cfg.CallAgent || cfg.Kanban || cfg.MemoryEnabled ||
+		cfg.KnowledgeSearch || cfg.KnowledgeReflect || cfg.CallAgent || cfg.Kanban || cfg.MemoryEnabled ||
 		len(cfg.MCPServers) > 0 || cfg.MCPBroker != nil || len(cfg.CustomTools) > 0
 }

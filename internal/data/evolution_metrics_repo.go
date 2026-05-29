@@ -14,6 +14,8 @@ type evolutionMetricsRepo struct {
 	data *Data
 }
 
+var _ biz.EvolutionMetricsRepo = (*evolutionMetricsRepo)(nil)
+
 func NewEvolutionMetricsRepo(data *Data) biz.EvolutionMetricsRepo {
 	return &evolutionMetricsRepo{data: data}
 }

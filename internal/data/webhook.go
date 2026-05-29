@@ -17,6 +17,8 @@ type webhookRepo struct {
 	data *Data
 }
 
+var _ biz.WebhookRepository = (*webhookRepo)(nil)
+
 func NewWebhookRepo(d *Data) biz.WebhookRepository {
 	return &webhookRepo{data: d}
 }

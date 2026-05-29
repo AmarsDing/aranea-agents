@@ -34,3 +34,73 @@ func TestExtractTagHints(t *testing.T) {
 		t.Fatalf("missing tokens: %v", h)
 	}
 }
+
+func TestDetectIntentPaths_EmptyQuery(t *testing.T) {
+	paths := DetectIntentPaths("", 3)
+	if paths != nil {
+		t.Fatalf("expected nil for empty query, got %v", paths)
+	}
+}
+
+func TestDetectIntentPaths_SingleKeyword(t *testing.T) {
+	paths := DetectIntentPaths("帮我发邮件", 3)
+	if len(paths) == 0 {
+		t.Fatal("expected at least one path for keyword '邮件'")
+	}
+	found := false
+	for _, p := range paths {
+		if p == `交互与执行/消息发送（发邮件）` {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected path '交互与执行/消息发送（发邮件）', got %v", paths)
+	}
+}
+
+func TestDetectIntentPaths_NoMatch(t *testing.T) {
+	paths := DetectIntentPaths("zzzzz_no_match_at_all", 3)
+	if len(paths) != 0 {
+		t.Fatalf("expected empty for no-match query, got %v", paths)
+	}
+}
+
+func TestExtractTagHints_EmptyInput(t *testing.T) {
+	h := ExtractTagHints("")
+	if h != nil {
+		t.Fatalf("expected nil for empty input, got %v", h)
+	}
+}
+
+func TestExtractTagHints_DuplicateTokens(t *testing.T) {
+	q := "domain:sales domain:sales file_type:xlsx file_type:xlsx"
+	h := ExtractTagHints(q)
+	got := map[string]int{}
+	for _, tok := range h {
+		got[tok]++
+	}
+	for tok, count := range got {
+		if count > 1 {
+			t.Errorf("duplicate token %q appears %d times", tok, count)
+		}
+	}
+	if len(h) != 2 {
+		t.Fatalf("expected 2 unique tokens, got %d: %v", len(h), h)
+	}
+}
+
+func TestTaxonomyLeaves_NonEmpty(t *testing.T) {
+	leaves := TaxonomyLeaves()
+	if len(leaves) == 0 {
+		t.Fatal("TaxonomyLeaves() returned empty slice")
+	}
+	for i, leaf := range leaves {
+		if leaf.Path == "" {
+			t.Errorf("leaf[%d] has empty Path", i)
+		}
+		if len(leaf.Keywords) == 0 {
+			t.Errorf("leaf[%d] has no Keywords", i)
+		}
+	}
+}

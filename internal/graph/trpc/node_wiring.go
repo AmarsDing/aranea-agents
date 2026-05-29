@@ -8,6 +8,8 @@ import (
 
 	"aranea-agents/internal/biz"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -81,28 +83,28 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Bu
 	switch normalizeNodeType(n.Type) {
 	case "llm":
 		if deps == nil || deps.Models == nil {
-			return nil, fmt.Errorf("graph: node %q type llm requires BuildDeps.Models", n.ID)
+			return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q type llm requires BuildDeps.Models", n.ID))
 		}
 		mdl, err := deps.Models.ResolveModel(ctx, n.ModelName)
 		if err != nil {
-			return nil, fmt.Errorf("graph: node %q llm model: %w", n.ID, err)
+			return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: node %q llm model: %v", n.ID, err))
 		}
 		toolMap := map[string]trpctool.Tool{}
 		if deps.Tools != nil && len(n.ToolNames) > 0 {
 			toolMap, err = deps.Tools.ResolveTools(ctx, n.ToolNames)
 			if err != nil {
-				return nil, fmt.Errorf("graph: node %q llm tools: %w", n.ID, err)
+				return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: node %q llm tools: %v", n.ID, err))
 			}
 		}
 		sg.AddLLMNode(n.ID, mdl, n.Instruction, toolMap, opts...)
 		return nil, nil
 	case "tool", "tools":
 		if deps == nil || deps.Tools == nil {
-			return nil, fmt.Errorf("graph: node %q type tool requires BuildDeps.Tools", n.ID)
+			return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q type tool requires BuildDeps.Tools", n.ID))
 		}
 		toolMap, err := deps.Tools.ResolveTools(ctx, n.ToolNames)
 		if err != nil {
-			return nil, fmt.Errorf("graph: node %q tools: %w", n.ID, err)
+			return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: node %q tools: %v", n.ID, err))
 		}
 		sg.AddToolsNode(n.ID, toolMap, opts...)
 		return nil, nil
@@ -112,17 +114,17 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Bu
 			ref = strings.TrimSpace(n.ID)
 		}
 		if deps == nil || deps.Agents == nil {
-			return nil, fmt.Errorf("graph: node %q type agent requires BuildDeps.Agents", n.ID)
+			return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q type agent requires BuildDeps.Agents", n.ID))
 		}
 		sub, err := deps.Agents.ResolveAgent(ctx, ref)
 		if err != nil {
-			return nil, fmt.Errorf("graph: node %q agent %q: %w", n.ID, ref, err)
+			return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: node %q agent %q: %v", n.ID, ref, err))
 		}
 		extras := []trpcagent.Agent{sub}
 		if fb := strings.TrimSpace(n.FallbackAgent); fb != "" {
 			fallback, ferr := deps.Agents.ResolveAgent(ctx, fb)
 			if ferr != nil {
-				return nil, fmt.Errorf("graph: node %q fallback agent %q: %w", n.ID, fb, ferr)
+				return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: node %q fallback agent %q: %v", n.ID, fb, ferr))
 			}
 			extras = append(extras, fallback)
 		}
@@ -137,7 +139,7 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Bu
 			sg.AddNode(n.ID, SkipNodeFunc(n.ID), opts...)
 			return nil, nil
 		}
-		return nil, fmt.Errorf("graph: node %q type function requires Func or %q FuncRef", n.ID, biz.SkipNodeFuncRef)
+		return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q type function requires Func or %q FuncRef", n.ID, biz.SkipNodeFuncRef))
 	case "router":
 		sg.AddNode(n.ID, func(ctx context.Context, state trpcgraph.State) (any, error) {
 			return state, nil
@@ -153,7 +155,7 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Bu
 		return nil, nil
 	default:
 		if n.Func == nil {
-			return nil, fmt.Errorf("graph: node %q has no Func (type=%q FuncRef=%q)", n.ID, n.Type, n.FuncRef)
+			return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q has no Func (type=%q FuncRef=%q)", n.ID, n.Type, n.FuncRef))
 		}
 		sg.AddNode(n.ID, n.Func, opts...)
 		return nil, nil

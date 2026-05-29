@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	arametrics "aranea-agents/internal/metrics"
+	"aranea-agents/internal/event"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -67,11 +68,13 @@ func (h *ChannelIngress) applyPreTurnIngressPolicy(
 		if err != nil {
 			return true, err
 		}
-		_ = h.recordDelivery(ctx, chRow.ID, "steered", map[string]any{
+		if err := h.recordDelivery(ctx, chRow.ID, "steered", map[string]any{
 			"peer_id":    ev.PeerID,
 			"session_id": sessionID,
 			"pending_id": pendingID,
-		}, "")
+		}, ""); err != nil {
+			event.SysLogWarn("channel.ingress.delivery", "recordDelivery failed", event.P("channel_id", chRow.ID), event.P("error", err.Error()))
+		}
 		return true, nil
 	default:
 		return false, nil

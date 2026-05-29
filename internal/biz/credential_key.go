@@ -80,3 +80,10 @@ func credentialAESKey(ctx context.Context) ([]byte, error) {
 	}
 	return parseCredentialKeyMaterial(raw)
 }
+
+func IsCredentialEncryptionAvailable() bool {
+	if credentialKeyResolver != nil {
+		return true
+	}
+	return strings.TrimSpace(os.Getenv(envCredentialKey)) != ""
+}

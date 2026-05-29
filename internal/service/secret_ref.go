@@ -2,27 +2,28 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"strings"
 
 	"aranea-agents/internal/biz"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // ResolveSecretRef resolves secret_ref forms: env:VAR_NAME and enc: (AES-GCM blob).
 func ResolveSecretRef(ctx context.Context, ref string) (string, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
-		return "", fmt.Errorf("empty secret_ref")
+		return "", kerrors.BadRequest("SECRET", "empty secret_ref")
 	}
 	if strings.HasPrefix(ref, "env:") {
 		name := strings.TrimSpace(strings.TrimPrefix(ref, "env:"))
 		if name == "" {
-			return "", fmt.Errorf("env: variable name is empty")
+			return "", kerrors.BadRequest("SECRET", "env: variable name is empty")
 		}
 		v := os.Getenv(name)
 		if v == "" {
-			return "", fmt.Errorf("environment variable %q is not set", name)
+			return "", kerrors.NotFound("SECRET", "environment variable "+name+" is not set")
 		}
 		return v, nil
 	}
@@ -34,7 +35,7 @@ func ResolveSecretRef(ctx context.Context, ref string) (string, error) {
 		return plain, nil
 	}
 	if strings.HasPrefix(ref, "local:") {
-		return "", fmt.Errorf("local: secret_ref is deprecated; re-save credentials or use env:VAR_NAME")
+		return "", kerrors.BadRequest("SECRET", "local: secret_ref is deprecated; re-save credentials or use env:VAR_NAME")
 	}
-	return "", fmt.Errorf("unsupported secret_ref (use env:NAME or enc:)")
+	return "", kerrors.BadRequest("SECRET", "unsupported secret_ref (use env:NAME or enc:)")
 }

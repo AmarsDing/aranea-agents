@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	bizcron "aranea-agents/internal/biz/cron"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/crontask"
 	"aranea-agents/internal/data/ent/crontaskrun"
@@ -17,6 +18,8 @@ import (
 type cronRepo struct {
 	data *Data
 }
+
+var _ bizcron.Repo = (*cronRepo)(nil)
 
 // NewCronRepo implements biz.CronRepo for cron_task / cron_task_run.
 func NewCronRepo(d *Data) biz.CronRepo {

@@ -18,6 +18,8 @@ type channelRepo struct {
 	data *Data
 }
 
+var _ biz.ChannelRepo = (*channelRepo)(nil)
+
 // NewChannelRepo implements biz.ChannelRepo (legacy channels / channel_* tables).
 func NewChannelRepo(d *Data) biz.ChannelRepo {
 	return &channelRepo{data: d}

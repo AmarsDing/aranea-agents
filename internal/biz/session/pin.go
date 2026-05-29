@@ -10,7 +10,7 @@ func (uc *SessionUsecase) Pin(ctx context.Context, id string) (Session, error) {
 	if id == "" {
 		return Session{}, validationErr("session id is required")
 	}
-	return uc.sessionWriter.PinSession(ctx, id)
+	return uc.sessionPinWriter.PinSession(ctx, id)
 }
 
 func (uc *SessionUsecase) Unpin(ctx context.Context, id string) (Session, error) {
@@ -18,5 +18,5 @@ func (uc *SessionUsecase) Unpin(ctx context.Context, id string) (Session, error)
 	if id == "" {
 		return Session{}, validationErr("session id is required")
 	}
-	return uc.sessionWriter.UnpinSession(ctx, id)
+	return uc.sessionPinWriter.UnpinSession(ctx, id)
 }

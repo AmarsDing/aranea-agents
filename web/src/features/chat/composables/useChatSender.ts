@@ -532,6 +532,7 @@ export function useChatSender(deps: SenderDeps) {
     submitToolConfirm: deps.submitToolConfirm,
     onSend,
     sendAgentUserContent,
+    sendTeamMessage,
     retryFailedMessage,
     touchRunActivity,
     clearFailedPendingForSession,

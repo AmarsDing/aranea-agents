@@ -13,6 +13,13 @@ type sessionRunRepo struct {
 	data *Data
 }
 
+var (
+	_ biz.SessionRunReader      = (*sessionRunRepo)(nil)
+	_ biz.SessionRunWriter      = (*sessionRunRepo)(nil)
+	_ biz.SessionRunDurableRepo = (*sessionRunRepo)(nil)
+	_ biz.SessionRunRepo        = (*sessionRunRepo)(nil)
+)
+
 // NewSessionRunRepo implements biz.SessionRunRepo.
 func NewSessionRunRepo(d *Data) biz.SessionRunRepo {
 	return &sessionRunRepo{data: d}

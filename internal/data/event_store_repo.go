@@ -16,6 +16,8 @@ type eventStoreRepo struct {
 	data *Data
 }
 
+var _ biz.EventStoreRepo = (*eventStoreRepo)(nil)
+
 func NewEventStoreRepo(d *Data) biz.EventStoreRepo {
 	return &eventStoreRepo{data: d}
 }

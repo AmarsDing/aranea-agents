@@ -2,7 +2,6 @@ import { computed, onMounted, onUnmounted, reactive, ref, shallowRef, toRef, wat
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import { useRoute } from "vue-router";
-import { enqueueMessage, submitMessageFeedback } from "../api";
 import type { SessionView, TeamRow } from "../../../components/chat/types";
 import type { Agent } from "../../agents/types";
 import { useAppStore } from "../../../stores/app";
@@ -36,11 +35,19 @@ import { createChatFocusCoordinator } from "../chatFocusCoordinator";
 import { useChatEntityNav } from "./useChatEntityNav";
 import { useChatTraceDialog, useChatSessionArtifacts } from "./useChatTraceAndArtifacts";
 import { useChatSettingsDialog } from "./useChatSettingsDialog";
+import { useChatDialogs } from "./useChatDialogs";
+import { useChatComposerActions } from "./useChatComposerActions";
+import { favoriteSessionIDs, toggleFavoriteSession } from "../../../stores/sessionSync";
 import { hydrateAgentSettings } from "../agentPlannerSettings";
 import { parseChannelSessionMeta } from "../channelSessionMeta";
 import { useKnowledgeStore } from "../../../stores/knowledge";
 import { useArtifactStore } from "../../../stores/artifact";
 import type { ComposerUsageSnapshot } from "../composerUsageMetrics";
+import { useContextBreakdown } from "./useContextBreakdown";
+import { mapPreviewToReport, type PromptPreviewReport } from "../contextBreakdown";
+import { useAgentDetailStore } from "../../../stores/agents/detail";
+import type { AgentPromptPreview } from "../../agents/types";
+import { useReasoningSidebar } from "./useReasoningSidebar";
 
 export function useChatWorkspace() {
   const { t } = useI18n();
@@ -51,6 +58,7 @@ export function useChatWorkspace() {
   const messageStore = useChatMessageStore();
   const runtimeStore = useChatRuntimeStore();
   const conversationStore = useChatConversationStore();
+  const agentDetailStore = useAgentDetailStore();
 
   const isDark = computed(() => $q.dark.isActive);
   const leftOpen = ref(true);
@@ -150,7 +158,31 @@ export function useChatWorkspace() {
     };
   });
 
-  const displayMessages = computed(() => messageStore.messages);
+  const promptPreviewData = ref<AgentPromptPreview | null>(null);
+
+  const promptPreviewRef = computed<PromptPreviewReport | null>(() =>
+    promptPreviewData.value ? mapPreviewToReport(promptPreviewData.value) : null,
+  );
+
+  async function loadPromptPreviewForAgent(agentId: string) {
+    try {
+      promptPreviewData.value = await agentDetailStore.fetchPromptPreview(agentId);
+    } catch {
+      promptPreviewData.value = null;
+    }
+  }
+
+  const contextBreakdown = useContextBreakdown({
+    usageSnapshot: composerUsageSnapshot,
+    promptPreview: promptPreviewRef,
+    toolCallCount: computed(() => selectedSessionForUi.value?.tool_call_count ?? 0),
+    messageCount: computed(() => selectedSessionForUi.value?.message_count ?? 0),
+  });
+
+  const displayMessages = computed(() => {
+    const sid = sessionStore.currentSessionId();
+    return sid ? messageStore.getMessages(sid) : [];
+  });
 
   const reactToolLinkIndex = shallowRef(buildReactToolLinkIndex([]));
   watch(
@@ -163,6 +195,12 @@ export function useChatWorkspace() {
 
   const sessionIdForPending = computed(() => selectedSessionForUi.value?.id);
   const sessionIdForArtifacts = computed(() => selectedSessionForUi.value?.id);
+  const selectedSessionId = computed(() => selectedSessionForUi.value?.id);
+
+  const reasoningSidebar = useReasoningSidebar({
+    messages: displayMessages,
+    sessionId: selectedSessionId,
+  });
   const jobsRefreshNonce = ref(0);
   const inboundHydrateError = ref("");
   const sessionLoading = ref(false);
@@ -193,10 +231,19 @@ export function useChatWorkspace() {
     onRunStatus: (env) => applyRunStatusFromEnvelope(env),
     touchRunActivity: () => sender.touchRunActivity(),
     refreshRunStatus: refreshRunStatusForUi,
+    onCompressNotice: (_sid: string, prevRatio: number, newRatio: number) => {
+      const prevPct = Math.round(prevRatio * 100);
+      const newPct = Math.round(newRatio * 100);
+      $q.notify({
+        type: "info",
+        message: t("chat.contextCompressed", `上下文已自动压缩 (${prevPct}% → ${newPct}%)`),
+        classes: "chat-compress-banner",
+        timeout: 4000,
+      });
+    },
   });
 
   const selectedAgentId = computed(() => appStore.selectedAgent?.id);
-  const selectedSessionId = computed(() => selectedSessionForUi.value?.id);
 
   watch(
     () => ({
@@ -230,6 +277,14 @@ export function useChatWorkspace() {
     { immediate: true }
   );
 
+  watch(selectedAgentId, (id) => {
+    if (id) {
+      void loadPromptPreviewForAgent(id);
+    } else {
+      promptPreviewData.value = null;
+    }
+  }, { immediate: true });
+
   async function refreshRunStatusForUi() {
     const sid = selectedSessionForUi.value?.id;
     if (!sid) {
@@ -253,7 +308,7 @@ export function useChatWorkspace() {
     const sid = sessionStore.currentSessionId();
     if (!sid) return;
     try {
-      await submitMessageFeedback({
+      await runtimeStore.submitFeedback({
         session_id: sid,
         message_id: payload.messageId,
         rating: payload.rating,
@@ -443,6 +498,19 @@ export function useChatWorkspace() {
     messageStore.setMessages(sid, updated);
   }
 
+  const composerActions = useChatComposerActions({
+    sessionStore,
+    messageStore,
+    runtimeStore,
+    streamManager,
+    sender,
+    runStatus,
+    selectedSessionId: computed(() => selectedSessionForUi.value?.id),
+    notify: (opts) => $q.notify(opts),
+    t,
+    sessionDrafts,
+  });
+
   const isRunnerActive = computed(
     () => runStatus.value === "running" || runStatus.value === "pending" || sender.sending.value
   );
@@ -479,7 +547,7 @@ export function useChatWorkspace() {
     const sid = selectedSessionForUi.value?.id;
     if (!sid || !content.trim()) return;
     try {
-      const res = await enqueueMessage(sid, content.trim());
+      const res = await runtimeStore.enqueue(sid, content.trim());
       if (res.accepted) {
         $q.notify({
           type: "positive",
@@ -674,10 +742,14 @@ export function useChatWorkspace() {
       inboxSessions: conversationStore.inboxSessions,
       selectedSessionForUi,
       composerUsageSnapshot,
+      contextBreakdown,
       displayMessages,
       reactToolLinkIndex,
       sessionRevision,
-      wsConnected: computed(() => runtimeStore.wsConnected),
+      wsConnected: computed(() => {
+        const sid = sessionStore.currentSessionId();
+        return sid ? runtimeStore.isWsConnected(sid) : false;
+      }),
       wsReplaying: streamManager.wsReplaying,
       jobsRefreshNonce,
       inboundHydrateError,
@@ -685,13 +757,18 @@ export function useChatWorkspace() {
       focusTurnId,
       focusSessionTurn,
       clearFocusTurn,
+      reasoningSidebarOpen: reasoningSidebar.open,
+      reasoningSidebarActive: reasoningSidebar.activeReasoning,
+      toggleReasoningSidebar: reasoningSidebar.toggle,
+      pinReasoningMessage: reasoningSidebar.pinMessage,
+      unpinReasoning: reasoningSidebar.unpin,
       sessionArtifacts,
       sessionArtifactsLoading,
       fileSupported,
       fileAccept,
       openSessionArtifact,
       onArtifactDeleted,
-      downloadArtifact: async (meta: import("../../features/artifact/types").ArtifactMeta) => {
+      downloadArtifact: async (meta: import("../../artifact/types").ArtifactMeta) => {
         try {
           const artifactStore = useArtifactStore();
           const signed = await artifactStore.signDownload(meta.id, meta.version);
@@ -703,6 +780,8 @@ export function useChatWorkspace() {
       onSelectSession: entityNav.onSelectSession,
       onRenameSession: entityNav.onRenameSession,
       onTogglePinSession: entityNav.onTogglePinSession,
+      favoriteIds: computed(() => favoriteSessionIDs.value),
+      onToggleFavorite: (id: string) => { toggleFavoriteSession(id); },
       onRestoreSession: entityNav.onRestoreSession,
       onArchiveSession: entityNav.onArchiveSession,
       onSessionDetail: entityNav.onSessionDetail,
@@ -731,11 +810,7 @@ export function useChatWorkspace() {
       awaitToolKey,
       submitAwaitingReply: sender.submitAwaitingReply,
       submitToolConfirm: sender.submitToolConfirm,
-      onSend: async () => {
-        const sid = selectedSessionForUi.value?.id;
-        await sender.onSend();
-        if (sid) sessionDrafts.delete(sid);
-      },
+      onSend: composerActions.onSend,
       submitA2UIUserAction,
       onModeChange,
       onProviderChange,
@@ -749,76 +824,13 @@ export function useChatWorkspace() {
       onVoiceClick,
       onMessageFeedback,
       retryFailedMessage: sender.retryFailedMessage,
-      dismissFailedMessage: (messageId: string) => {
-        const sid = sessionStore.currentSessionId();
-        if (!sid) return;
-        messageStore.setMessages(
-          sid,
-          messageStore.getMessages(sid).filter((m) => m.id !== messageId)
-        );
-      },
-      regenerateMessage: (message: import("../../domain/types").Message) => {
-        const sid = sessionStore.currentSessionId();
-        if (!sid) return;
-        if (runStatus.value === "running" || runStatus.value === "pending") {
-          streamManager.cancelActiveStream();
-          sender.stopStreaming(sid);
-        }
-        const msgs = messageStore.getMessages(sid);
-        const userIdx = msgs.findIndex((m) => m.id === message.id);
-        if (userIdx < 0) return;
-        let userMsg = "";
-        for (let i = userIdx - 1; i >= 0; i--) {
-          if (msgs[i].role === "user") {
-            userMsg = msgs[i].content_markdown;
-            break;
-          }
-        }
-        if (!userMsg) return;
-        const entityKind = sessionStore.entityKind;
-        if (entityKind === "team") {
-          sender.sendTeamMessage(userMsg);
-        } else {
-          sender.sendAgentUserContent(userMsg);
-        }
-      },
-      cancelBackgroundJob: async (job: { id: string; source: string }) => {
-        try {
-          const { cancelChatBackgroundJob } = await import("../api");
-          const ok = await cancelChatBackgroundJob(job.id, job.source);
-          if (ok) {
-            $q.notify({ type: "positive", message: t("chat.job.cancelled", "任务已取消") });
-          } else {
-            $q.notify({ type: "warning", message: t("chat.job.cancelFailed", "取消失败") });
-          }
-        } catch {
-          $q.notify({ type: "warning", message: t("chat.job.cancelFailed", "取消失败") });
-        }
-      },
+      dismissFailedMessage: composerActions.dismissFailedMessage,
+      regenerateMessage: composerActions.regenerateMessage,
+      cancelBackgroundJob: composerActions.cancelBackgroundJob,
     }),
-    dialogs: reactive({
-      settingsOpen,
-      settingsMode,
-      settingsId,
-      editName,
-      editKey,
-      editProvider,
-      editModel,
-      settingsSaving,
-      settingsTitle,
-      onSaveSettings,
-      deleteOpen: deleteFlow.deleteOpen,
-      deleteKind: deleteFlow.deleteKind,
-      deleteTargetId: deleteFlow.deleteTargetId,
-      deleteNameInput: deleteFlow.deleteNameInput,
-      deleteBlockBusy: deleteFlow.deleteBlockBusy,
-      deleteBlockDefault: deleteFlow.deleteBlockDefault,
-      deleting: deleteFlow.deleting,
-      expectedDeleteName: deleteFlow.expectedDeleteName,
-      deleteNameError: deleteFlow.deleteNameError,
-      canConfirmDelete: deleteFlow.canConfirmDelete,
-      deleteTitleText: deleteFlow.deleteTitleText,
-      onConfirmDelete: deleteFlow.onConfirmDelete,
+    dialogs: useChatDialogs({
+      deleteFlow,
+      settingsDialog,
       traceOpen,
       traceSessionId,
       traceSessionTitle,
@@ -826,6 +838,7 @@ export function useChatWorkspace() {
       traceStreamDeps,
       selectedProviderModel,
       fileSupported,
+      onSaveSettings,
     }),
   };
 }

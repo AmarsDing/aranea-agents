@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -125,4 +126,102 @@ func (r *usageRepo) ListActiveQuotas(ctx context.Context) ([]biz.UsageQuota, err
 		out = append(out, entUsageQuotaToBiz(row))
 	}
 	return out, nil
+}
+
+type quotaGroupKey struct {
+	scopeType   string
+	periodStart string
+	periodEnd   string
+}
+
+func (r *usageRepo) BatchSumScopeCost(ctx context.Context, quotas []biz.UsageQuota) (map[string]int64, error) {
+	result := make(map[string]int64, len(quotas))
+	if len(quotas) == 0 {
+		return result, nil
+	}
+	groups := make(map[quotaGroupKey][]biz.UsageQuota)
+	for _, q := range quotas {
+		key := quotaGroupKey{scopeType: q.ScopeType, periodStart: q.PeriodStart, periodEnd: q.PeriodEnd}
+		groups[key] = append(groups[key], q)
+	}
+	for gk, gq := range groups {
+		switch gk.scopeType {
+		case "agent":
+			ids := make([]string, 0, len(gq))
+			for _, q := range gq {
+				ids = append(ids, q.ScopeID)
+			}
+			sql := fmt.Sprintf(
+				`SELECT agent_id, COALESCE(SUM(total_cost_micro_usd), 0) FROM model_token_usage_events WHERE date_key >= ? AND date_key <= ? AND %s AND agent_id IN (%s) GROUP BY agent_id`,
+				sqlUsageBillableKind, placeholders(len(ids)),
+			)
+			args := []any{gk.periodStart, gk.periodEnd}
+			for _, id := range ids {
+				args = append(args, id)
+			}
+			rows, err := r.ent().QueryContext(ctx, sql, args...)
+			if err != nil {
+				return result, err
+			}
+			for rows.Next() {
+				var id string
+				var spent int64
+				if err := rows.Scan(&id, &spent); err != nil {
+					rows.Close()
+					return result, err
+				}
+				result["agent:"+id] = spent
+			}
+			rows.Close()
+		case "user":
+			ids := make([]string, 0, len(gq))
+			for _, q := range gq {
+				ids = append(ids, q.ScopeID)
+			}
+			sql := fmt.Sprintf(
+				`SELECT user_id, COALESCE(SUM(total_cost_micro_usd), 0) FROM model_token_usage_events WHERE date_key >= ? AND date_key <= ? AND %s AND user_id IN (%s) GROUP BY user_id`,
+				sqlUsageBillableKind, placeholders(len(ids)),
+			)
+			args := []any{gk.periodStart, gk.periodEnd}
+			for _, id := range ids {
+				args = append(args, id)
+			}
+			rows, err := r.ent().QueryContext(ctx, sql, args...)
+			if err != nil {
+				return result, err
+			}
+			for rows.Next() {
+				var id string
+				var spent int64
+				if err := rows.Scan(&id, &spent); err != nil {
+					rows.Close()
+					return result, err
+				}
+				result["user:"+id] = spent
+			}
+			rows.Close()
+		case "global":
+			var spent int64
+			sql := fmt.Sprintf(
+				`SELECT COALESCE(SUM(total_cost_micro_usd), 0) FROM model_token_usage_events WHERE date_key >= ? AND date_key <= ? AND %s`,
+				sqlUsageBillableKind,
+			)
+			if err := entQueryRowScan(r.ent(), ctx, sql, []any{gk.periodStart, gk.periodEnd}, &spent); err != nil {
+				return result, err
+			}
+			result["global:global"] = spent
+		}
+	}
+	return result, nil
+}
+
+func placeholders(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	s := "?"
+	for i := 1; i < n; i++ {
+		s += ",?"
+	}
+	return s
 }

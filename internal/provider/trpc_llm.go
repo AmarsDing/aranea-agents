@@ -81,7 +81,7 @@ func trpcModelFromCatalogConfig(ctx context.Context, cfg CatalogConfig, rt *Roun
 	}
 	m = WrapModelWithMetrics(m, strings.TrimSpace(cfg.ProviderType), name)
 
-	return wrapHA(ctx, m, cfg, rt)
+	return wrapHA(m, cfg, rt)
 }
 
 func MapProviderType(pt string) string {
@@ -188,18 +188,9 @@ func ModelSupportsFileAttachments(ctx context.Context, catalog *biz.LlmProviderM
 	return true
 }
 
-func CapabilitiesForProviderModel(pm biz.ProviderModel) ModelCapabilities {
+func CapabilitiesForProviderModel(pm biz.ProviderModel) biz.ModelCapabilities {
 	if pm.CapabilitiesExplicit {
-		return ModelCapabilities{
-			Text:     pm.Capabilities.Text,
-			Vision:   pm.Capabilities.Vision,
-			Audio:    pm.Capabilities.Audio,
-			File:     pm.Capabilities.File,
-			ToolCall: pm.Capabilities.ToolCall,
-			Cache:    pm.Capabilities.Cache,
-			Thinking: pm.Capabilities.Thinking,
-			TextOnly: pm.Capabilities.TextOnly,
-		}
+		return pm.Capabilities
 	}
 	cfg, err := CatalogFromModel(ModelCatalogInput{
 		Model:      pm.Model,
@@ -281,10 +272,7 @@ func buildProviderOptions(cfg CatalogConfig, rt *RoundTrip) []trpcprovider.Optio
 	return opts
 }
 
-func buildHuggingFaceSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
-	if strings.ToLower(cfg.ProviderType) != "huggingface" {
-		return nil
-	}
+func buildHuggingFaceSpecificOptions(_ CatalogConfig) []trpcprovider.Option {
 	return nil
 }
 
@@ -392,8 +380,7 @@ func buildHunyuanSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
 	return []trpcprovider.Option{trpcprovider.WithHunyuanOption(providerOpts...)}
 }
 
-func wrapHA(ctx context.Context, primary trpcmodel.Model, cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, error) {
-	_ = ctx
+func wrapHA(primary trpcmodel.Model, cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, error) {
 	switch strings.ToLower(strings.TrimSpace(cfg.HAMode)) {
 	case "failover":
 		return wrapFailover(cfg, rt, primary)
@@ -446,6 +433,11 @@ func wrapHedge(cfg CatalogConfig, rt *RoundTrip, primary trpcmodel.Model) (trpcm
 }
 
 func trpcModelFromCandidate(c HACandidateConfig, rt *RoundTrip) (trpcmodel.Model, error) {
+	if baseURL := strings.TrimSpace(c.BaseURL); baseURL != "" {
+		if err := outboundguard.ValidateURL(baseURL); err != nil {
+			return nil, fmt.Errorf("HA candidate URL blocked: %w", err)
+		}
+	}
 	providerName := MapProviderType(c.ProviderType)
 	opts := []trpcprovider.Option{}
 	if apiKey := strings.TrimSpace(c.APIKey); apiKey != "" {
@@ -457,5 +449,9 @@ func trpcModelFromCandidate(c HACandidateConfig, rt *RoundTrip) (trpcmodel.Model
 	if rt != nil && rt.HTTP != nil && rt.HTTP.Transport != nil {
 		opts = append(opts, trpcprovider.WithHTTPClientTransport(rt.HTTP.Transport))
 	}
-	return trpcprovider.Model(providerName, c.Name, opts...)
+	m, err := trpcprovider.Model(providerName, c.Name, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return WrapModelWithMetrics(m, strings.TrimSpace(c.ProviderType), c.Name), nil
 }

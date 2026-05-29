@@ -357,14 +357,15 @@ func topicsJSON(topics []string) string {
 	if len(topics) == 0 {
 		return "[]"
 	}
-	parts := make([]string, 0, len(topics))
+	filtered := make([]string, 0, len(topics))
 	for _, t := range topics {
 		t = strings.TrimSpace(t)
 		if t != "" {
-			parts = append(parts, `"`+t+`"`)
+			filtered = append(filtered, t)
 		}
 	}
-	return "[" + strings.Join(parts, ",") + "]"
+	b, _ := json.Marshal(filtered)
+	return string(b)
 }
 
 type factRow struct {

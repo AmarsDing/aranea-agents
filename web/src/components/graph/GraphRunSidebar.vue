@@ -44,7 +44,19 @@
       </div>
 
       <div class="graph-run-sidebar__section">
-        <div class="graph-run-sidebar__title q-mb-sm">步骤时间线</div>
+        <div class="graph-run-sidebar__title row items-center q-mb-sm">
+          <span>步骤时间线</span>
+          <q-space />
+          <q-btn
+            v-if="execution.steps.length > 1"
+            flat
+            dense
+            no-caps
+            size="11px"
+            :label="allExpanded ? '全部折叠' : '全部展开'"
+            @click="toggleAll"
+          />
+        </div>
         <q-timeline v-if="execution.steps.length" color="primary" dense>
           <q-timeline-entry
             v-for="step in execution.steps"
@@ -53,9 +65,36 @@
             :subtitle="formatTime(step.timestamp)"
             :icon="stepIcon(step.status)"
             :color="stepColor(step.status)"
+            :class="['graph-run-step', { 'graph-run-step--error': step.status === 'failed' || step.status === 'error', 'graph-run-step--expanded': expandedSteps.has(step.stepIndex) }]"
           >
-            <div class="text-caption">{{ step.status }}</div>
-            <div v-if="step.error" class="text-negative text-caption">{{ step.error }}</div>
+            <div class="graph-run-step__header row items-center no-wrap">
+              <q-badge
+                outline
+                :color="stepColor(step.status)"
+                :label="step.status"
+                class="graph-run-step__status-badge"
+              />
+              <q-space />
+              <q-btn
+                flat
+                dense
+                round
+                size="xs"
+                :icon="expandedSteps.has(step.stepIndex) ? 'expand_less' : 'expand_more'"
+                @click="toggleStep(step.stepIndex)"
+              />
+            </div>
+            <div v-if="step.error" class="graph-run-step__error q-mt-xs">{{ step.error }}</div>
+            <div v-if="expandedSteps.has(step.stepIndex)" class="graph-run-step__detail q-mt-sm">
+              <div v-if="step.inputState" class="q-mb-sm">
+                <div class="text-caption app-text-secondary">输入状态</div>
+                <pre class="graph-run-step__json">{{ formatJson(step.inputState) }}</pre>
+              </div>
+              <div v-if="step.outputState">
+                <div class="text-caption app-text-secondary">输出状态</div>
+                <pre class="graph-run-step__json">{{ formatJson(step.outputState) }}</pre>
+              </div>
+            </div>
           </q-timeline-entry>
         </q-timeline>
         <div v-else class="text-caption app-text-secondary">暂无步骤记录。</div>
@@ -66,24 +105,61 @@
 </template>
 
 <script setup lang="ts">
+import { reactive, computed } from "vue";
 import type { GraphExecution, GraphRunExecutionSummary } from "../../features/graph/types";
+import { formatTime, stepIcon, stepColor } from "../../features/graph/utils";
 
-defineProps<{
+const props = defineProps<{
   execution: GraphExecution | null;
   executionSummary: GraphRunExecutionSummary | null;
   displayStatus: string;
   statusColor: string;
   streamConnected: boolean;
   isDark: boolean;
-  formatTime: (ts: string) => string;
-  stepIcon: (status: string) => string;
-  stepColor: (status: string) => string;
   embedded?: boolean;
 }>();
+
+const expandedSteps = reactive(new Set<number>());
+
+const allExpanded = computed(() => {
+  if (!props.execution?.steps.length) return false;
+  return props.execution.steps.every((s) => expandedSteps.has(s.stepIndex));
+});
+
+function toggleStep(index: number) {
+  if (expandedSteps.has(index)) {
+    expandedSteps.delete(index);
+  } else {
+    expandedSteps.add(index);
+  }
+}
+
+function toggleAll() {
+  if (!props.execution?.steps.length) return;
+  if (allExpanded.value) {
+    expandedSteps.clear();
+  } else {
+    for (const s of props.execution.steps) {
+      expandedSteps.add(s.stepIndex);
+    }
+  }
+}
 
 function formatDurationMs(ms: number) {
   if (!ms) return "—";
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
+}
+
+const JSON_PREVIEW_MAX = 4096;
+
+function formatJson(state: Record<string, unknown> | undefined): string {
+  if (!state) return "";
+  try {
+    const raw = JSON.stringify(state, null, 2);
+    return raw.length > JSON_PREVIEW_MAX ? `${raw.slice(0, JSON_PREVIEW_MAX)}\n… (已截断，共 ${raw.length} 字符)` : raw;
+  } catch {
+    return String(state);
+  }
 }
 </script>

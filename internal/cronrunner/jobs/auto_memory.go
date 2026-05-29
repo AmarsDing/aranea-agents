@@ -8,6 +8,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/sessionmemory"
@@ -441,6 +442,12 @@ func topicsJSON(topics []string) string {
 func previewText(s string, max int) string {
 	s = strings.TrimSpace(s)
 	if max <= 0 || len(s) <= max {
+		return s
+	}
+	for max > 0 && !utf8.RuneStart(s[max]) {
+		max--
+	}
+	if max <= 0 {
 		return s
 	}
 	return s[:max] + "…"

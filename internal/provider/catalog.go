@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"aranea-agents/internal/biz"
 )
 
 // ModelCatalogInput is the provider-model slice needed to build a runtime catalog (no biz import).
@@ -36,18 +38,7 @@ type CatalogConfig struct {
 	HACandidates         []HACandidateConfig
 	HAHedgeDelayMs       int
 	RateLimitRPM         int
-	Capabilities         ModelCapabilities
-}
-
-type ModelCapabilities struct {
-	Text     bool `json:"text"`
-	Vision   bool `json:"vision"`
-	Audio    bool `json:"audio"`
-	File     bool `json:"file"`
-	ToolCall bool `json:"tool_call"`
-	Cache    bool `json:"cache"`
-	Thinking bool `json:"thinking"`
-	TextOnly bool `json:"text_only"`
+	Capabilities         biz.ModelCapabilities
 }
 
 type HACandidateConfig struct {
@@ -80,7 +71,7 @@ type catalogConfigJSON struct {
 	HACandidates         []HACandidateConfig `json:"ha_candidates"`
 	HAHedgeDelayMs       int                 `json:"ha_hedge_delay_ms"`
 	RateLimitRPM         int                 `json:"rate_limit_rpm"`
-	Capabilities         ModelCapabilities   `json:"capabilities"`
+	Capabilities         biz.ModelCapabilities   `json:"capabilities"`
 }
 
 func CatalogFromModel(in ModelCatalogInput) (CatalogConfig, error) {
@@ -229,11 +220,11 @@ func catalogConfigToConfig(c catalogConfigJSON, modelAPI string) CatalogConfig {
 	return cfg
 }
 
-func hasExplicitCapabilities(c ModelCapabilities) bool {
+func hasExplicitCapabilities(c biz.ModelCapabilities) bool {
 	return c.Text || c.Vision || c.Audio || c.File || c.ToolCall || c.Cache || c.Thinking || c.TextOnly
 }
 
-func mergeCapabilities(base, override ModelCapabilities) ModelCapabilities {
+func mergeCapabilities(base, override biz.ModelCapabilities) biz.ModelCapabilities {
 	if override.Text {
 		base.Text = true
 	}

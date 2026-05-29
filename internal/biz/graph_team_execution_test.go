@@ -24,7 +24,7 @@ func (m *memGraphRunRepo) GetRun(_ context.Context, id string) (*GraphExecution,
 	return nil, ErrNotFound
 }
 
-func (m *memGraphRunRepo) ListRunsByGraph(context.Context, string, int, string) ([]*GraphExecution, string, error) {
+func (m *memGraphRunRepo) ListRunsByGraph(_ context.Context, _ string, _ int, _ string, _ ...GraphRunListOption) ([]*GraphExecution, string, error) {
 	return nil, "", nil
 }
 

@@ -7,12 +7,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/go-kratos/kratos/v2/errors"
 
 	"aranea-agents/internal/biz/shared"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/webhookurl"
 )
 
@@ -412,7 +414,10 @@ type ResolvedHook struct {
 
 // Resolver loads hooks from the DB and matches them to agents at chain-build time.
 type Resolver struct {
-	uc *Usecase
+	uc     *Usecase
+	mu     sync.RWMutex
+	cache  []ResolvedHook
+	loaded bool
 }
 
 // NewResolver creates a resolver backed by HookUsecase.
@@ -429,7 +434,7 @@ func (r *Resolver) Reload(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	enabled := make([]Hook, 0, len(all))
+	enabled := make([]ResolvedHook, 0, len(all))
 	for _, h := range all {
 		if !hookRuleActive(h) {
 			continue
@@ -438,8 +443,12 @@ func (r *Resolver) Reload(ctx context.Context) error {
 		if err != nil || cfg.CallbackPoint == "" {
 			continue
 		}
-		enabled = append(enabled, h)
+		enabled = append(enabled, ResolvedHook{Hook: h, Rule: cfg})
 	}
+	r.mu.Lock()
+	r.cache = enabled
+	r.loaded = true
+	r.mu.Unlock()
 	return nil
 }
 
@@ -455,28 +464,31 @@ func hookRuleActive(h Hook) bool {
 }
 
 // Resolve returns hooks whose config matches the agent (tool_name checked at invoke time).
+// It reads from the in-memory cache populated by Reload; if the cache is empty it
+// falls back to a DB query and auto-populates the cache.
 func (r *Resolver) Resolve(agentID, agentKey string) []ResolvedHook {
 	if r == nil {
 		return nil
 	}
-	all, err := r.uc.List(context.Background())
-	if err != nil {
-		return nil
+	r.mu.RLock()
+	cached := r.cache
+	wasLoaded := r.loaded
+	r.mu.RUnlock()
+	if !wasLoaded {
+		if err := r.Reload(context.Background()); err != nil {
+			event.SysLogWarn("system.hook", "resolver.fallback_reload_failed", event.P("error", err.Error()))
+			return nil
+		}
+		r.mu.RLock()
+		cached = r.cache
+		r.mu.RUnlock()
 	}
-
-	out := make([]ResolvedHook, 0, len(all))
-	for _, h := range all {
-		if !hookRuleActive(h) {
+	out := make([]ResolvedHook, 0, len(cached))
+	for _, rh := range cached {
+		if !AppliesToAgent(rh.Rule.Condition, agentID, agentKey) {
 			continue
 		}
-		cfg, err := ParseConfig(h.ConfigJSON)
-		if err != nil || cfg.CallbackPoint == "" {
-			continue
-		}
-		if !AppliesToAgent(cfg.Condition, agentID, agentKey) {
-			continue
-		}
-		out = append(out, ResolvedHook{Hook: h, Rule: cfg})
+		out = append(out, rh)
 	}
 	return out
 }

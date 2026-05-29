@@ -45,11 +45,11 @@ func NewPromptFileAIEditor(catalog *biz.LlmProviderModelUsecase, rt *provider.Ro
 
 func (e *PromptFileAIEditor) Revise(ctx context.Context, providerName, modelName, fileName, currentBody, instruction string) (string, error) {
 	if e == nil || e.catalog == nil || e.rt == nil {
-		return "", fmt.Errorf("prompt file ai editor not configured")
+		return "", kerrors.InternalServer("AGENT_FILE", "prompt file ai editor not configured")
 	}
 	instruction = strings.TrimSpace(instruction)
 	if instruction == "" {
-		return "", fmt.Errorf("instruction is required")
+		return "", kerrors.BadRequest("AGENT_FILE", "instruction is required")
 	}
 	m, err := e.resolveModel(ctx, providerName, modelName)
 	if err != nil {
@@ -66,12 +66,12 @@ func (e *PromptFileAIEditor) Revise(ctx context.Context, providerName, modelName
 	}
 	ch, err := m.GenerateContent(ctx, req)
 	if err != nil {
-		return "", fmt.Errorf("prompt file ai: %w", err)
+		return "", kerrors.InternalServer("AGENT_FILE", "prompt file ai: "+err.Error())
 	}
 	var sb strings.Builder
 	for resp := range ch {
 		if resp.Error != nil {
-			return "", fmt.Errorf("prompt file ai: %s", resp.Error.Message)
+			return "", kerrors.InternalServer("AGENT_FILE", "prompt file ai: "+resp.Error.Message)
 		}
 		for _, c := range resp.Choices {
 			if c.Delta.Content != "" {
@@ -112,7 +112,7 @@ func (e *PromptFileAIEditor) resolveModel(ctx context.Context, providerName, mod
 		picked = models[0]
 	}
 	if picked.Provider == "" {
-		return nil, fmt.Errorf("no matching model in catalog")
+		return nil, kerrors.BadRequest("AGENT_FILE", "no matching model in catalog")
 	}
 	return provider.TRPCModelForProviderModel(ctx, e.catalog, e.rt, picked.Provider, picked.Model)
 }

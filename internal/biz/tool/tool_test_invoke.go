@@ -6,9 +6,10 @@ import (
 	"time"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
+
+	"aranea-agents/internal/event"
 )
 
-// ToolTestResult is the outcome of TestTool.
 type ToolTestResult struct {
 	Status        string
 	ResultPreview string
@@ -70,6 +71,12 @@ func (u *ToolUsecase) TestTool(ctx context.Context, toolID, argumentsJSON string
 		ErrorMessage:  res.ErrorMessage,
 		Source:        "tool_test",
 	}
-	_ = u.RecordToolInvocation(context.Background(), write)
+	recordCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := u.RecordToolInvocation(recordCtx, write); err != nil {
+		event.SysLogWarn("system.tool_test_record_fail", "tools.test.record_invocation_failed",
+			event.P("tool_key", write.ToolKey),
+			event.P("error", err.Error()))
+	}
 	return res, nil
 }

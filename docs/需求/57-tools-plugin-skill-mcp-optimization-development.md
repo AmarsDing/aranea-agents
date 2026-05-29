@@ -219,3 +219,82 @@ TPM-WAVE{N}-{主题}-{序号} — 跨主题汇总时使用
 | 2 | OOP-1 | 2026-05-28 | ✅ | kanban Bridge 9 方法接口拆分为 BridgeReader/BridgeWriter/BridgeLifecycle + Bridge 组合 |
 | 2 | OOP-2 | 2026-05-28 | ✅ | skillruntime 定义 SkillResolver/RuntimeSettings 窄接口，替代 *biz.SkillUsecase/*biz.AgentRuntimeSettings 具体类型依赖 |
 | 2 | OOP-3 | 2026-05-28 | ✅ | serviceawaitreply/tool.go MarkAwaitingUserReply 错误不再静默吞掉，改为 SysLogWarn |
+| 2 | TST-SKILL-01 | 2026-05-29 | ✅ | biz/skill Usecase 48 个单测（CRUD + 权限 + Embedding 缓存 + ParseRuntimePolicy） |
+| 2 | TST-SKILL-02 | 2026-05-29 | ✅ | skill/storage SkillFilesystem 37 个单测（SafeFilePath zipslip 防护 + 文件操作 + 辅助函数） |
+| 2 | TST-SKILL-03 | 2026-05-29 | ✅ | skillruntime ResolveSkillSlugsDetailed 37 个单测（Layer A/B + 意图路由 + 标签过滤 + Embedding 评分） |
+| 2 | ERR-SKILL-01 | 2026-05-29 | ✅ | importer 包 22 处 fmt.Errorf → 16 个 sentinel error + pathError/detailError 类型（支持 errors.Is 链式匹配） |
+| 2 | LOG-SKILL-01 | 2026-05-29 | ✅ | watch/ 模块日志迁移 kratos/v2/log → internal/event FlowLog（SysLogInfo/Warn/Error） |
+| 2 | SAFE-SKILL-01 | 2026-05-29 | ✅ | watch/runner.go time.AfterFunc 回调走 safego.Go（红线 #13 合规） |
+| 2 | OOP-SKILL-01 | 2026-05-29 | ✅ | importer.Engine 改用 SkillImportRepo 窄接口（3 方法）替代完整 biz.SkillRepo（22 方法） |
+| 2 | FIX-MISC-2 | 2026-05-29 | ✅ | memory_l4_cascade.go 添加 store 字段修复编译错误；knowledge/tool.go Search 签名对齐 |
+| 2 | OOP-SKILL-02 | 2026-05-29 | ✅ | SkillReader(13)→SkillQueryReader(5)+SkillLookupReader(4)+SkillRuntimeReader(4)；SkillWriter(10)→SkillMutationWriter(5)+SkillSyncWriter(5)；SkillFilesystem(10)→SkillFilePathResolver(2)+SkillFileReader(4+2)+SkillFileWriter(3+2) |
+| 2 | TST-SKILL-04 | 2026-05-29 | ✅ | importer/validate ValidateSkillPackage 49 个单测（高风险文件/Shell 脚本/重复名/路径安全/slugify） |
+| 2 | TST-SKILL-05 | 2026-05-29 | ✅ | importer/chat 22+ 个单测（OpenAI/Anthropic 端点/prompt 构建/JSON 解析/凭证检测/模型解析/HTTP mock） |
+| 2 | TST-SKILL-06 | 2026-05-29 | ✅ | skillrouter 6 个补充单测（空查询/单关键词/无匹配/空输入/重复 token/分类叶子） |
+| 2 | TST-SKILL-07 | 2026-05-29 | ✅ | manifest Parse 6 个单测（有效/空/无效 YAML/缺 name/tags/taxonomy_paths） |
+| 2 | ERR-SKILL-02 | 2026-05-29 | ✅ | importer 包最后 3 处 fmt.Errorf → detailErr()；detailError.Error() 补充 sentinel 消息 |
+| 2 | FIX-SKILL-01 | 2026-05-29 | ✅ | chat.go providerModelHasCredentials 支持 api_key_set；resolveChatModel 改用 GetByProviderAndModel；json.Unmarshal 吞错误修复 |
+
+---
+
+## 10. 剩余工作总结（2026-05-29）
+
+### 10.1 Wave 2 已完成统计
+
+| 类别 | 完成数 | 总数 | 完成率 |
+|------|--------|------|--------|
+| P1 关键路径 | 11 | 11 | 100% |
+| P2 强化 | 28 | 30 | 93% |
+| P3 维护性 | 2 | 13 | 15% |
+| D 重设计 | 3 | 14 | 21% |
+| Q 速胜 | 9 | 10 | 90% |
+| Skill OOP/测试/错误 | 15 | 15 | 100% |
+
+### 10.2 Wave 2 未完成项（P2-23/P2-24）
+
+| ID | 主题 | 优先级 | 说明 |
+|----|------|--------|------|
+| TPM-P2-23 | Skill RBAC 权限控制 | P2 | 当前 RBAC hard-coded `true`（DEBT-04），需设计权限模型 |
+| TPM-P2-24 | Skill 版本回滚 | P2 | 依赖 TPM-D-S3（Copy-on-Write + Rollback），需先完成架构设计 |
+
+### 10.3 Skill 子系统剩余优化项
+
+| ID | 优先级 | 主题 | 说明 |
+|----|--------|------|------|
+| SKILL-P2-01 | P2 | `internal/tools/` ~84 处 `fmt.Errorf` | 工具执行层错误，非业务错误，不经过 kerrors 链，低优先级 |
+| SKILL-P2-02 | P2 | `SkillFileReader` 6 方法（略超 ≤5） | 可接受；SkillFilePathResolver 已提取独立子接口 |
+| SKILL-P2-03 | P2 | `slugify("")` 固定生成 "skill-0" | 非唯一，需补全局唯一 slug 生成逻辑 |
+| SKILL-P2-04 | P2 | `GetImportJob` 读操作用 `Lock()` | 改为 `RLock()` 提升并发读性能 |
+| SKILL-P2-05 | P2 | `ApplyImport` 中文错误消息 | 统一为英文 sentinel error |
+| SKILL-P2-06 | P2 | `watch.Runner` + `trpc.DBRepositoryAdapter` 依赖 `*biz.SkillUsecase` 具体类型 | 改用窄接口依赖 |
+
+### 10.4 Wave 3 架构升级（待启动）
+
+| ID | 主题 | 依赖 |
+|----|------|------|
+| TPM-D-P1 | Cost Guard Reservation Pattern | — |
+| TPM-D-P2 | Hook Isolation Layer 全量版本 | — |
+| TPM-D-P4 | Output Policy Streaming State Machine 全量版本 | — |
+| TPM-D-T2 | Tool Effective Plan with Reason | — |
+| TPM-D-S1 | Skill Saga Import | TPM-D-S3 |
+| TPM-D-S3 | Skill Version Copy-on-Write + Rollback | — |
+| TPM-D-S4 | Skill Policy Trace | — |
+| §16.0 模式 A | Schema-as-Code（contract 包） | — |
+
+### 10.5 Wave 4 中长期愿景（待启动）
+
+| ID | 主题 |
+|----|------|
+| §16.0 模式 B | Event Sourcing（skill/mcp metadata 改事件流） |
+| §16.0 模式 C | Policy Engine（OPA-lite） |
+| TPM-D-M3 | MCP Server Lifecycle FSM |
+| TPM-D-P3 | Plugin Scope Hierarchical |
+
+### 10.6 建议下一步优先级
+
+1. **SKILL-P2-04**（`RLock` 改造）— 最小改动、即时收益
+2. **SKILL-P2-05**（中文错误消息统一）— 小改动、代码卫生
+3. **SKILL-P2-06**（窄接口依赖）— 架构合规、中等改动
+4. **SKILL-P2-03**（slug 唯一性）— 功能正确性
+5. **TPM-D-S3**（Skill Version CoW + Rollback）— Wave 3 关键路径
+6. **TPM-D-S1**（Skill Saga Import）— 依赖 D-S3

@@ -1,6 +1,6 @@
 # Tools 工具 — 开发计划
 
-> **版本**：5.5（2026-05-22）| **状态**：✅ 核心已实现；**Phase 4 片段编辑 ✅**；**Phase 5 工作区统一 ✅**
+> **版本**：7.0（2026-05-29）| **状态**：✅ 核心已实现；**Phase 4 片段编辑 ✅**；**Phase 5 工作区统一 ✅**；**Phase 6 架构优化 ✅**；**Round 3 P2/P3 修复 ✅**；**Phase 7 质量加固 ✅**；**Phase 8 ISP + 测试 + Knowledge ✅**
 > **需求**：[23 tools.md](./23%20tools.md) · [23 tools-fragment-edit.md](./23%20tools-fragment-edit.md) · **设计**：[23 tools.design.md](./23%20tools.design.md) · [23 tools-fragment-edit.design.md](./23%20tools-fragment-edit.design.md) · **结构**：[23 tools struct design.md](./23%20tools%20struct%20design.md)
 > **进度真相**：[execution-plan.md](../guides/execution-plan.md) · **EP**：—
 
@@ -18,7 +18,8 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | Service | `internal/service/tool.go` | ToolService：CRUD + Override + Invocation 查询 |
 | Biz | `internal/biz/tool.go` | ToolUsecase：领域逻辑 + Override + Invocation 记录 |
 | Data | `internal/data/tool.go` | ToolRepo：Ent ORM + 原生 SQL 混合 |
-| Registry | `internal/tools/toolset.go` | Registry() + Assemble()：注册表与装配 |
+| Registry | `internal/tools/toolset.go` | Registry() + Assemble() 编排调度 + 子装配器 |
+| Tags | `internal/tools/tool.go` | RegistryByTag / RegistryByCategory 查询 |
 | Adapter | `internal/tools/trpc/toolsets.go` | BuildToolsets()：ToolsetConfig → AssemblyConfig |
 | Injection | `internal/agent/trpc_build.go` | BuildTRPCLLMAgent()：工具注入入口 |
 | Assembly | `internal/agent/tool_assembly.go` | buildToolsetsForAgent + MCP + Override 配置合并 |
@@ -94,6 +95,24 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 26 | **P1** | `claude_code` 默认工作区 | ✅ Phase 5 |
 | 27 | **P2** | `workspace_exec` 仅 CodeExecutor 就绪时装配 | ✅ Phase 5.2；见 [32-codeexecutor-development.md](./32-codeexecutor-development.md) |
 | 28 | **P1** | TestTool / prompt 与工作区口径同步 | ✅ Phase 5 |
+| 29 | **P1** | ToolRepo 接口拆分（红线 #15） | ✅ Phase 6：18 方法 → 8 子接口 + ToolCatalogReader |
+| 30 | **P1** | Assemble 函数重构 | ✅ Phase 6：170 行 → 12 子装配器 |
+| 31 | **P2** | ToolRegistration Tags 字段 | ✅ Phase 6：RegistryByTag / RegistryByCategory |
+| 32 | **P2** | kanban Bridge 接口拆分（红线 #15） | ✅ Phase 6：9 方法 → 3 子接口 |
+| 33 | **P3** | 补充单元测试 | ✅ Phase 6：kanban/knowledge/mcpobserve 40+ 用例 |
+| 34 | **P3** | ResultCache LRU 驱逐 + 锁保护 | ✅ Phase 6 |
+| 35 | **P1** | data 层 errors.New/sql.ErrNoRows → kerrors | ✅ Phase 7 |
+| 36 | **P1** | Assemble 静默跳过添加 SysLogWarn | ✅ Phase 7 |
+| 37 | **P1** | KnowledgeReflect 映射补全 | ✅ Phase 7 |
+| 38 | **P1** | toolWebResChecker 线程安全 | ✅ Phase 7 |
+| 39 | **P2** | TestTool 超时控制 + 错误不吞掉 | ✅ Phase 7 |
+| 40 | **P2** | testexec knowledge_reflect 显式 case | ✅ Phase 7 |
+| 41 | **P2** | filterCache LRU + RWMutex + 可观测性 | ✅ Phase 7 |
+| 42 | **P2** | `replace_content` 走 textfile 编解码 | ✅ Round 3：`loadEditSnapshot`/`commitEditSnapshot` 替换 raw I/O |
+| 43 | **P2** | seed 同步 description + schema | ✅ Round 3：`COALESCE(NULLIF)` 模式 |
+| 44 | **P2** | `resolveWorkdir` 绝对路径校验 | ✅ Round 3：workspace 子路径包含检查 |
+| 45 | **P3** | `editFileSnapshot.Raw` 死代码 | ✅ Round 3：已删除 |
+| 46 | **P2** | `/tools/audits` 页面文档 | ✅ Round 3：`frontend-pages.md` 已补充 |
 
 > **说明**：曾起草「53 Desktop App」文档，**不实施**；Shell 工作区优化归属本模块 Phase 5，不涉及 Electron/App 打包。
 
@@ -233,6 +252,57 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 
 ---
 
+### Phase 6：架构优化（ISP 合规 + 代码质量）
+
+**目标**：从业务、用户、架构三个角度系统性优化 tools 模块，消除红线违规、降低圈复杂度、补充测试覆盖。
+
+**任务**：
+
+| ID | 任务 | 涉及文件 | 验收 |
+|----|------|----------|------|
+| TO-6-01 | ToolRepo 接口拆分 | `internal/biz/tool/tool.go` | ✅ 18 方法 → 8 子接口 + ToolCatalogReader 窄接口 |
+| TO-6-02 | 窄接口传播 | `agent_usecase.go` / `agent/prompt.go` / `team/runner.go` / `runtime/deps.go` / `wire.go` | ✅ ToolCatalogReader 全链路一致 |
+| TO-6-03 | Assemble 子装配器 | `internal/tools/toolset.go` | ✅ 170 行 → 12 个独立函数 |
+| TO-6-04 | ToolRegistration Tags | `internal/tools/tool.go` / `toolset.go` | ✅ Tags 字段 + RegistryByTag/RegistryByCategory |
+| TO-6-05 | kanban Bridge 拆分 | `internal/tools/kanban/bridge.go` | ✅ 9 方法 → BridgeReader/Writer/Lifecycle |
+| TO-6-06 | 补充单元测试 | `kanban/` / `knowledge/` / `mcpobserve/` | ✅ 40+ 用例全部通过 |
+| TO-6-07 | ResultCache LRU + 锁保护 | `internal/tools/cache/result_cache.go` | ✅ accessedAt + evictLRULocked + globalMu |
+| TO-6-08 | 修复预存编译错误 | `memory_l4_cascade.go` / `timeline_hydrate.go` / `knowledge/tool.go` | ✅ uc.store → 子字段；messageSearchReader；Search 签名 |
+
+**Phase 6 验收**：
+
+- [x] `go build ./internal/biz/... ./internal/tools/...` 编译通过
+- [x] `go test ./internal/tools/... ./internal/biz/tool/... -count=1` 全部通过（17 个包）
+- [x] aranea-review 技能审查通过，无阻断项
+- [x] ToolRepo / Bridge 子接口方法数均 ≤ 5（红线 #15 合规）
+- [x] ToolCatalogReader 窄接口从 biz → agent → team → runtime → wire 全链路传播
+
+### Phase 7：质量加固（错误处理 + 可观测性 + 并发安全）
+
+**目标**：从业务、用户、架构三个角度继续深化 tools 模块质量，消除 data 层错误处理不规范、装配静默跳过、全局变量竞态等问题。
+
+**任务**：
+
+| ID | 任务 | 涉及文件 | 验收 |
+|----|------|----------|------|
+| TO-7-01 | data 层 kerrors 迁移 | `internal/data/tool.go` / `tool_audit.go` | ✅ 19 处 errors.New/sql.ErrNoRows → kerrors |
+| TO-7-02 | Assemble 静默跳过添加日志 | `internal/tools/toolset.go` | ✅ geminifetch/google_search/Factory nil 添加 SysLogWarn |
+| TO-7-03 | KnowledgeReflect 映射补全 | `internal/tools/trpc/effective_config.go` | ✅ ToolsetConfigFromEffectiveKeys 添加映射 |
+| TO-7-04 | toolWebResChecker 线程安全 | `internal/biz/tool/tool_catalog_runtime.go` | ✅ sync.RWMutex 保护全局变量读写 |
+| TO-7-05 | TestTool 超时控制 + 错误不吞掉 | `internal/biz/tool/tool_test_invoke.go` | ✅ WithTimeout(5s) + SysLogWarn 记录失败 |
+| TO-7-06 | testexec knowledge_reflect case | `internal/tools/testexec/config.go` | ✅ 显式 case 返回 false |
+| TO-7-07 | filterCache LRU + RWMutex + 可观测性 | `internal/tools/skillruntime/filter.go` | ✅ LRU 驱逐 + atomic 计数器 + Stats() + RWMutex |
+
+**Phase 7 验收**：
+
+- [x] `go test ./internal/tools/... ./internal/biz/tool/... -count=1` 全部通过（17 个包）
+- [x] aranea-review 技能审查通过，无阻断项
+- [x] data 层所有错误返回使用 kerrors（BE1 合规）
+- [x] 全局变量均有锁保护（BC3 合规）
+- [x] 无错误被静默吞掉（BE4 合规）
+
+---
+
 ## 5. 任务清单
 
 | # | 任务 | 优先级 | Phase | 依赖 | 代码锚点 |
@@ -248,6 +318,19 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 | 9 | `edit_file` 别名迁移（可选） | P2 | 4 | #6 | ✅ → `diff_edit` |
 | 10 | 工作区统一（hostexec + schema + confirm） | **P0** | **5** | — | ✅ TW-5-01–5-10 |
 | 11 | `workspace_exec` / CodeExecutor 装配 | P2 | 5.2 | 10 | ✅ `toolset.go` registry nil |
+| 12 | ToolRepo 接口拆分 + 窄接口传播 | **P1** | **6** | — | ✅ 8 子接口 + ToolCatalogReader |
+| 13 | Assemble 子装配器重构 | P1 | 6 | — | ✅ 12 个 assembleXxx 函数 |
+| 14 | ToolRegistration Tags + 查询 | P2 | 6 | — | ✅ RegistryByTag/RegistryByCategory |
+| 15 | kanban Bridge 接口拆分 | P2 | 6 | — | ✅ BridgeReader/Writer/Lifecycle |
+| 16 | 补充单元测试 | P3 | 6 | — | ✅ 40+ 用例 |
+| 17 | ResultCache LRU + 锁保护 | P3 | 6 | — | ✅ evictLRULocked + globalMu |
+| 18 | data 层 kerrors 迁移 | **P1** | **7** | — | ✅ 19 处 errors.New/sql.ErrNoRows → kerrors |
+| 19 | Assemble 静默跳过添加日志 | P1 | 7 | — | ✅ SysLogWarn |
+| 20 | KnowledgeReflect 映射补全 | P1 | 7 | — | ✅ effective_config.go |
+| 21 | toolWebResChecker 线程安全 | P1 | 7 | — | ✅ sync.RWMutex |
+| 22 | TestTool 超时 + 错误不吞 | P2 | 7 | — | ✅ WithTimeout + SysLogWarn |
+| 23 | testexec knowledge_reflect case | P2 | 7 | — | ✅ 显式 case |
+| 24 | filterCache LRU + RWMutex + Stats | P2 | 7 | — | ✅ atomic 计数器 |
 
 ---
 
@@ -284,6 +367,94 @@ Tools 工具系统：管理 Agent 可调用的工具（内置工具 + 自定义�
 - [x] `workdir` schema 与 `working_dir` 兼容
 - [x] `exec_command` 纳入 tool_confirm
 - [x] Web 联调验收通过（不依赖 App 打包）
+
+### Phase 6（架构优化）
+
+- [x] ToolRepo 18 方法拆分为 8 子接口（红线 #15 合规）
+- [x] ToolCatalogReader 窄接口全链路传播
+- [x] Assemble 170 行拆分为 12 子装配器
+- [x] ToolRegistration Tags 字段 + RegistryByTag/RegistryByCategory
+- [x] kanban Bridge 9 方法拆分为 3 子接口
+- [x] kanban/knowledge/mcpobserve 单元测试 40+ 用例
+- [x] ResultCache LRU 驱逐 + 全局单例锁保护
+- [x] aranea-review 审查通过，无阻断项
+
+### Phase 7（质量加固）
+
+- [x] data 层 19 处 errors.New/sql.ErrNoRows → kerrors
+- [x] Assemble 静默跳过添加 SysLogWarn 日志
+- [x] KnowledgeReflect 映射补全
+- [x] toolWebResChecker 全局变量 sync.RWMutex 保护
+- [x] TestTool WithTimeout(5s) + 错误不吞掉
+- [x] testexec knowledge_reflect 显式 case
+- [x] filterCache LRU + RWMutex + atomic 计数器 + Stats()
+- [x] aranea-review 审查通过，无阻断项
+
+### Phase 7a（测试补全 + 红线修复 — 前序迭代）
+
+- [x] `channel.go:315` 裸 `go func()` 修复为 `safego.Go`（红线 #13）
+- [x] `ToolsetConfigHasAny` 全 20 分支测试覆盖
+- [x] `ToolsetConfigFromEffectiveKeys` 全 15 映射路径 + 9 filesystem 子键测试覆盖
+- [x] aranea-review 审查通过，0 阻断项
+
+### Phase 8（ISP 合规 + 测试补全 + Knowledge 增强）
+
+**目标**：完成 AgentRepository/ChannelRepo ISP 拆分、ToolFilterForPrefix 测试覆盖、Knowledge AdaptiveRouter 全链路注入、BM25 双路径搜索优化。
+
+**任务**：
+
+| ID | 任务 | 涉及文件 | 验收 |
+|----|------|----------|------|
+| TO-8-01 | ChannelRepo 14 方法 → 4 子接口 | `internal/biz/channel.go` | ✅ ChannelReader(3)/Writer(3)/CredentialRepo(3)/DeliveryRepo(4) |
+| TO-8-02 | AgentRepository 17 方法 → 4 子接口 + 2 独立 | `internal/biz/agent_usecase.go` | ✅ AgentReader(4)/Writer(3)/RuntimeSettingsRepo(2)/PromptFileRepo(5) + ListAgentCreators + ExecInTx |
+| TO-8-03 | ToolFilterForPrefix 7 用例测试 | `internal/tools/toolset_filter_test.go` | ✅ 空前缀/空白/匹配/不匹配/nil Tool/nil Declaration/TrimSpace |
+| TO-8-04 | effective_config 测试扩展 | `internal/tools/trpc/effective_config_test.go` | ✅ 15 映射路径 + 20 分支全覆盖 |
+| TO-8-05 | channel.go safego.Go 修复 | `internal/biz/channel.go` | ✅ 红 线 #9 合规 |
+| TO-8-06 | AdaptiveRouter 全链路注入 | `chat_orchestrator.go` / `runner.go` / `wire.go` | ✅ Chat + Team 双路径共用 |
+| TO-8-07 | BM25 双路径搜索 | `internal/data/knowledge.go` | ✅ tsvector + pg_trgm + mergeBM25Results |
+| TO-8-08 | RetrievalEvaluator 逻辑修正 | `internal/knowledge/retrieval_evaluator.go` | ✅ 空 chunks 先于 nil LLM 检查 |
+| TO-8-09 | RetrievalEvaluator 测试 | `internal/knowledge/retrieval_evaluator_test.go` | ✅ nil LLM/空 chunks/parseAssessment/buildChunksSummary/truncateString/parseJSONLoose |
+| TO-8-10 | HybridRetriever 清理 | `internal/knowledge/hybrid_retriever.go` | ✅ 移除未用 cosineSimilarity + math import |
+| TO-8-11 | AdaptiveRouter 简化 | `internal/knowledge/adaptive_router.go` | ✅ Search 签名简化 + nil guard + SysLogWarn |
+| TO-8-12 | biz/skill 测试补全 | `internal/biz/skill/skill_test.go` | ✅ 15 个新测试函数 |
+
+**Phase 8 验收**：
+
+- [x] `go vet ./internal/biz/...` 编译通过
+- [x] `go build ./internal/biz/...` 编译通过
+- [x] `go test ./internal/tools/ -run TestToolFilterForPrefix -count=1 -v` 7 用例全通过
+- [x] aranea-review 审查通过，0 阻断项、4 建议、1 提示
+- [x] AgentRepository / ChannelRepo 子接口方法数均 ≤ 5（红线 #15 合规）
+- [x] AdaptiveRouter 通过 RuntimeTooling + context 注入，Chat/Team 共用逻辑（BR7 合规）
+
+---
+
+## 8. 剩余工作
+
+### P1（高优先级）
+
+| # | 任务 | 说明 |
+|---|------|------|
+| 1 | `buildMCPToolSet` / `buildMCPBrokerTools` 测试 | Assemble 子装配器中 MCP 路径无测试覆盖 |
+| 2 | Ent schema 重新生成 | `internal/data/` 编译错误（Visibility/FallbackConfigJSON/FileManifestJSON/MessageID/CompressVersion 字段缺失），需 `go generate` 重新生成 |
+
+### P2（中优先级）
+
+| # | 任务 | 说明 |
+|---|------|------|
+| 3 | `custom/` 包冒烟测试 | 用户模板工具无测试 |
+| 4 | `memory/` 包测试 | 整个包无测试文件 |
+| 5 | tools 层 `fmt.Errorf` 评估 | `internal/tools/knowledge/tool.go` 13 处 `fmt.Errorf`，评估是否转为 `kerrors.BadRequest` |
+| 6 | BM25 分数归一化 | `mergeBM25Results` 直接拼接 tsvector 和 trigram 结果，分数尺度不同可能导致排序偏差 |
+| 7 | `AdaptiveRouter.Search` 签名简化 | 调用方常传 `nil` + `""`，考虑提供简化签名 |
+
+### P3（低优先级）
+
+| # | 任务 | 说明 |
+|---|------|------|
+| 8 | `BuildToolsets` 集成测试 | 核心桥接函数需 mock-heavy 测试 |
+| 9 | E2E 全链路测试 | `read_file` → `diff_edit` → shell 读同路径 |
+| 10 | `AgentPromptFileRepo` 监控 | 恰好 5 方法处于红线边界，新增方法需立即拆分 |
 
 ---
 

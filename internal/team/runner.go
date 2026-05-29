@@ -36,7 +36,10 @@ type Runner struct {
 	skillDBRepo        trpcskill.Repository
 	runs               *rt.RunRegistry
 	awaitHookProvider  func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc
-	knowledgeRetriever *knowledge.Retriever
+	knowledgeRetriever         *knowledge.Retriever
+	knowledgeRouter            *knowledge.AdaptiveRouter
+	knowledgeFederatedRetriever *knowledge.FederatedRetriever
+	knowledgeEvaluator         *knowledge.RetrievalEvaluator
 	streamOptsFactory  StreamOptsFactory
 	agentHelper        biz.TeamAgentHelper
 	codeExecFactory    *localexec.Factory
@@ -76,7 +79,7 @@ func NewRunner(
 	sessions *biz.SessionUsecase,
 	agents biz.AgentRepository,
 	agentsUC *biz.AgentUsecase,
-	toolsCatalog biz.ToolRepo,
+	toolsCatalog biz.ToolCatalogReader,
 	toolUC *biz.ToolUsecase,
 	catalog *biz.LlmProviderModelUsecase,
 	eventBus event.Bus,
@@ -121,7 +124,31 @@ func (r *Runner) SetAwaitHookProvider(fn func(runCtx context.Context, sessionID,
 }
 
 func (r *Runner) SetKnowledgeRetriever(ret *knowledge.Retriever) {
+	if r == nil {
+		return
+	}
 	r.knowledgeRetriever = ret
+}
+
+func (r *Runner) SetKnowledgeRouter(router *knowledge.AdaptiveRouter) {
+	if r == nil {
+		return
+	}
+	r.knowledgeRouter = router
+}
+
+func (r *Runner) SetKnowledgeFederatedRetriever(fr *knowledge.FederatedRetriever) {
+	if r == nil {
+		return
+	}
+	r.knowledgeFederatedRetriever = fr
+}
+
+func (r *Runner) SetKnowledgeEvaluator(ev *knowledge.RetrievalEvaluator) {
+	if r == nil {
+		return
+	}
+	r.knowledgeEvaluator = ev
 }
 
 // SetStreamOptsFactory wires the StreamConsumeOptions factory, eliminating

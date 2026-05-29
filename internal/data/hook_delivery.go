@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	bizhook "aranea-agents/internal/biz/hook"
 
 	"github.com/google/uuid"
 )
@@ -13,6 +14,8 @@ import (
 type hookDeliveryRepo struct {
 	data *Data
 }
+
+var _ bizhook.DeliveryRepo = (*hookDeliveryRepo)(nil)
 
 // NewHookDeliveryRepo implements biz.HookDeliveryRepo.
 func NewHookDeliveryRepo(data *Data) biz.HookDeliveryRepo {

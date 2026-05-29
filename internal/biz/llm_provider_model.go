@@ -2,14 +2,18 @@ package biz
 
 import (
 	"context"
-	"crypto/rand"
+	cryptorand "crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/modelcatalog"
 	"aranea-agents/pkg/outboundguard"
 
@@ -20,7 +24,7 @@ var llmRandFallback uint64
 
 func newLLMID() string {
 	buf := make([]byte, 12)
-	if _, err := rand.Read(buf); err != nil {
+	if _, err := cryptorand.Read(buf); err != nil {
 		n := atomic.AddUint64(&llmRandFallback, 1)
 		return hex.EncodeToString([]byte{byte(n >> 56), byte(n >> 48), byte(n >> 40), byte(n >> 32), byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n)})
 	}
@@ -42,6 +46,7 @@ type ProviderModel struct {
 	MetadataJSON         string
 	Capabilities         ModelCapabilities
 	CapabilitiesExplicit bool
+	PricingConfigured    bool
 	CreatedAt            string
 	UpdatedAt            string
 	DeletedAt            string
@@ -49,14 +54,14 @@ type ProviderModel struct {
 
 // ModelCapabilities is the persisted provider-model capability catalog.
 type ModelCapabilities struct {
-	Text     bool
-	Vision   bool
-	Audio    bool
-	File     bool
-	ToolCall bool
-	Cache    bool
-	Thinking bool
-	TextOnly bool
+	Text     bool `json:"text"`
+	Vision   bool `json:"vision"`
+	Audio    bool `json:"audio"`
+	File     bool `json:"file"`
+	ToolCall bool `json:"tool_call"`
+	Cache    bool `json:"cache"`
+	Thinking bool `json:"thinking"`
+	TextOnly bool `json:"text_only"`
 }
 
 // ModelPricingRule matches domain.ModelPricingRule (subset used for Upsert).
@@ -116,16 +121,32 @@ type providerCostBlock struct {
 	EmbeddingUSDPer1M  float64 `json:"embedding_usd_per_1m"`
 }
 
-// LlmProviderModelRepo is persistence + pricing upsert backing provider models catalog.
-type LlmProviderModelRepo interface {
+type LlmProviderModelReader interface {
 	ListProviderModels(ctx context.Context) ([]ProviderModel, error)
 	GetProviderModel(ctx context.Context, id string) (ProviderModel, error)
 	GetProviderModelByProviderAndModel(ctx context.Context, provider, model string) (ProviderModel, error)
+}
+
+type LlmProviderModelWriter interface {
 	CreateProviderModel(ctx context.Context, m ProviderModel) (ProviderModel, error)
 	UpdateProviderModel(ctx context.Context, m ProviderModel) (ProviderModel, error)
 	DeleteProviderModel(ctx context.Context, id string) error
+	UpdateProviderModelStatus(ctx context.Context, id string, status string) error
+}
+
+type LlmProviderModelValidator interface {
 	ValidateProviderPair(ctx context.Context, provider, model string) (bool, error)
+}
+
+type ModelPricingRepo interface {
 	UpsertModelPricingRule(ctx context.Context, rule ModelPricingRule) error
+}
+
+type LlmProviderModelRepo interface {
+	LlmProviderModelReader
+	LlmProviderModelWriter
+	LlmProviderModelValidator
+	ModelPricingRepo
 }
 
 // LLMInspectResult is the domain-level result of an LLM provider inspect.
@@ -157,22 +178,20 @@ type LLMInspector interface {
 	Run(in InspectMerge) (LLMInspectResult, error)
 }
 
-// LlmProviderModelUsecase is llm-provider-models + validate + inspect.
 type LlmProviderModelUsecase struct {
-	repo      LlmProviderModelRepo
+	reader    LlmProviderModelReader
+	writer    LlmProviderModelWriter
+	validator LlmProviderModelValidator
+	pricing   ModelPricingRepo
 	inspector LLMInspector
 }
 
-func NewLlmProviderModelUsecase(repo LlmProviderModelRepo) *LlmProviderModelUsecase {
-	return &LlmProviderModelUsecase{repo: repo}
-}
-
-func (u *LlmProviderModelUsecase) SetInspector(inspector LLMInspector) {
-	u.inspector = inspector
+func NewLlmProviderModelUsecase(reader LlmProviderModelReader, writer LlmProviderModelWriter, validator LlmProviderModelValidator, pricing ModelPricingRepo, inspector LLMInspector) *LlmProviderModelUsecase {
+	return &LlmProviderModelUsecase{reader: reader, writer: writer, validator: validator, pricing: pricing, inspector: inspector}
 }
 
 func (u *LlmProviderModelUsecase) List(ctx context.Context) ([]ProviderModel, error) {
-	items, err := u.repo.ListProviderModels(ctx)
+	items, err := u.reader.ListProviderModels(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +202,7 @@ func (u *LlmProviderModelUsecase) List(ctx context.Context) ([]ProviderModel, er
 }
 
 func (u *LlmProviderModelUsecase) Get(ctx context.Context, id string) (ProviderModel, error) {
-	m, err := u.repo.GetProviderModel(ctx, id)
+	m, err := u.reader.GetProviderModel(ctx, id)
 	if err != nil {
 		return ProviderModel{}, err
 	}
@@ -192,7 +211,7 @@ func (u *LlmProviderModelUsecase) Get(ctx context.Context, id string) (ProviderM
 
 // GetByProviderAndModel loads a catalog row by provider + model_api_id (decrypted for runtime).
 func (u *LlmProviderModelUsecase) GetByProviderAndModel(ctx context.Context, provider, model string) (ProviderModel, error) {
-	m, err := u.repo.GetProviderModelByProviderAndModel(ctx, provider, model)
+	m, err := u.reader.GetProviderModelByProviderAndModel(ctx, provider, model)
 	if err != nil {
 		return ProviderModel{}, err
 	}
@@ -219,16 +238,18 @@ func (u *LlmProviderModelUsecase) Create(ctx context.Context, in ProviderModel) 
 	if err != nil {
 		return ProviderModel{}, err
 	}
-	out, err := u.repo.CreateProviderModel(ctx, in)
+	out, err := u.writer.CreateProviderModel(ctx, in)
 	if err != nil {
 		return ProviderModel{}, err
 	}
-	_ = u.syncProviderModelPricing(ctx, out)
+	if err := u.syncProviderModelPricing(ctx, out); err != nil {
+		event.SysLogWarn("llm_provider_model.pricing_sync", "syncProviderModelPricing failed", event.P("error", err.Error()))
+	}
 	return sanitizeProviderModelForAPI(out), nil
 }
 
 func (u *LlmProviderModelUsecase) Update(ctx context.Context, id string, patch ProviderModel) (ProviderModel, error) {
-	cur, err := u.repo.GetProviderModel(ctx, id)
+	cur, err := u.reader.GetProviderModel(ctx, id)
 	if err != nil {
 		return ProviderModel{}, err
 	}
@@ -282,16 +303,18 @@ func (u *LlmProviderModelUsecase) Update(ctx context.Context, id string, patch P
 	if merged.Status == "" {
 		merged.Status = cur.Status
 	}
-	out, err := u.repo.UpdateProviderModel(ctx, merged)
+	out, err := u.writer.UpdateProviderModel(ctx, merged)
 	if err != nil {
 		return ProviderModel{}, err
 	}
-	_ = u.syncProviderModelPricing(ctx, out)
+	if err := u.syncProviderModelPricing(ctx, out); err != nil {
+		event.SysLogWarn("llm_provider_model.pricing_sync", "syncProviderModelPricing failed", event.P("error", err.Error()))
+	}
 	return sanitizeProviderModelForAPI(out), nil
 }
 
 func (u *LlmProviderModelUsecase) Delete(ctx context.Context, id string) error {
-	return u.repo.DeleteProviderModel(ctx, id)
+	return u.writer.DeleteProviderModel(ctx, id)
 }
 
 // RevealCredentials returns decrypted credentials for admin edit UI (never logged).
@@ -300,7 +323,7 @@ func (u *LlmProviderModelUsecase) RevealCredentials(ctx context.Context, id stri
 	if err != nil {
 		return ProviderCredentialsReveal{}, err
 	}
-	m, err := u.repo.GetProviderModel(ctx, id)
+	m, err := u.reader.GetProviderModel(ctx, id)
 	if err != nil {
 		return ProviderCredentialsReveal{}, err
 	}
@@ -308,7 +331,7 @@ func (u *LlmProviderModelUsecase) RevealCredentials(ctx context.Context, id stri
 }
 
 func (u *LlmProviderModelUsecase) ValidatePair(ctx context.Context, provider, model string) (bool, string, error) {
-	ok, err := u.repo.ValidateProviderPair(ctx, provider, model)
+	ok, err := u.validator.ValidateProviderPair(ctx, provider, model)
 	if err != nil {
 		return false, "", err
 	}
@@ -325,12 +348,12 @@ func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) 
 
 	if u.needInspectMerge(in) {
 		if in.ResourceID != "" {
-			row, err := u.repo.GetProviderModel(ctx, in.ResourceID)
+			row, err := u.reader.GetProviderModel(ctx, in.ResourceID)
 			if err == nil && row.ConfigJSON != "" {
 				mergeInspectConfigJSON(prepareProviderModelForRuntime(ctx, row).ConfigJSON, &in)
 			}
 		} else if in.ProviderCode != "" && in.ModelAPIID != "" {
-			row, err := u.repo.GetProviderModelByProviderAndModel(ctx, in.ProviderCode, in.ModelAPIID)
+			row, err := u.reader.GetProviderModelByProviderAndModel(ctx, in.ProviderCode, in.ModelAPIID)
 			if err == nil && row.ConfigJSON != "" {
 				mergeInspectConfigJSON(prepareProviderModelForRuntime(ctx, row).ConfigJSON, &in)
 			}
@@ -497,16 +520,20 @@ func (u *LlmProviderModelUsecase) syncProviderModelPricing(ctx context.Context, 
 	}
 	costUSD := buildCostUSD(cfg, micro)
 	rule := buildModelPricingRule(row, micro, costUSD)
-	return u.repo.UpsertModelPricingRule(ctx, rule)
+	return u.pricing.UpsertModelPricingRule(ctx, rule)
 }
 
 // RunHealthChecks probes enabled provider models and marks unhealthy rows.
+const healthCheckPoolSize = 5
+
 func (u *LlmProviderModelUsecase) RunHealthChecks(ctx context.Context) error {
-	items, err := u.repo.ListProviderModels(ctx)
+	items, err := u.reader.ListProviderModels(ctx)
 	if err != nil {
 		return err
 	}
 	client := outboundguard.NewClient(10 * time.Second)
+	sem := make(chan struct{}, healthCheckPoolSize)
+	var wg sync.WaitGroup
 	for _, row := range items {
 		if !row.Enabled || row.DeletedAt != "" {
 			continue
@@ -521,28 +548,45 @@ func (u *LlmProviderModelUsecase) RunHealthChecks(ctx context.Context) error {
 			continue
 		}
 		if err := outboundguard.ValidateURL(base); err != nil {
-			row.Status = "degraded"
-			_, _ = u.repo.UpdateProviderModel(ctx, row)
-			continue
-		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodHead, base, nil)
-		if err != nil {
-			continue
-		}
-		resp, err := client.Do(req)
-		if err != nil || resp.StatusCode >= 500 {
-			row.Status = "degraded"
-			_, _ = u.repo.UpdateProviderModel(ctx, row)
-			if resp != nil {
-				resp.Body.Close()
+			if updErr := u.writer.UpdateProviderModelStatus(ctx, row.ID, "degraded"); updErr != nil {
+				event.SysLogWarn("provider.health", "update degraded status failed", event.P("model_id", row.ID), event.P("error", updErr.Error()))
 			}
 			continue
 		}
-		resp.Body.Close()
-		if row.Status == "degraded" {
-			row.Status = "active"
-			_, _ = u.repo.UpdateProviderModel(ctx, row)
-		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(rowID, baseURL, currentStatus string) {
+			defer func() {
+				if r := recover(); r != nil {
+					event.SysLogWarn("provider.health", "health_check_panic", event.P("model_id", rowID), event.P("panic", fmt.Sprintf("%v", r)))
+				}
+				<-sem
+				wg.Done()
+			}()
+			jitter := time.Duration(rand.IntN(500)) * time.Millisecond
+			time.Sleep(jitter)
+			req, err := http.NewRequestWithContext(ctx, http.MethodHead, baseURL, nil)
+			if err != nil {
+				return
+			}
+			resp, err := client.Do(req)
+			if err != nil || resp.StatusCode >= 500 {
+				if resp != nil {
+					resp.Body.Close()
+				}
+				if updErr := u.writer.UpdateProviderModelStatus(ctx, rowID, "degraded"); updErr != nil {
+					event.SysLogWarn("provider.health", "update degraded status failed", event.P("model_id", rowID), event.P("error", updErr.Error()))
+				}
+				return
+			}
+			resp.Body.Close()
+			if currentStatus == "degraded" {
+				if updErr := u.writer.UpdateProviderModelStatus(ctx, rowID, "active"); updErr != nil {
+					event.SysLogWarn("provider.health", "update active status failed", event.P("model_id", rowID), event.P("error", updErr.Error()))
+				}
+			}
+		}(row.ID, base, row.Status)
 	}
+	wg.Wait()
 	return nil
 }

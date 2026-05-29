@@ -1,6 +1,15 @@
 package biz
 
-import "aranea-agents/internal/biz/cron"
+import (
+	"context"
+
+	"aranea-agents/internal/biz/cron"
+)
+
+type CronTriggerGateway interface {
+	TriggerCronTask(ctx context.Context, taskID string) (CronTaskRun, error)
+	GetTaskRun(ctx context.Context, id string) (CronTaskRun, error)
+}
 
 type (
 	CronTask         = cron.Task

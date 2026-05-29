@@ -141,7 +141,10 @@ export async function searchKnowledge(query: SearchKnowledgeQuery): Promise<Know
       topK: query.top_k,
       minScore: query.min_score,
       filterJson: query.filter_json,
-      rerankCandidates: undefined
+      useRerank: query.use_rerank,
+      rerankCandidates: query.rerank_candidates,
+      rewriteStrategy: query.rewrite_strategy ?? "",
+      hybridSearch: query.hybrid_search ?? ""
     })
   );
   const chunksRaw = res.chunks ?? res.Chunks;

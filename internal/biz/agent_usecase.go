@@ -33,22 +33,37 @@ func newAgentCatalogID() string {
 	return hex.EncodeToString(buf)
 }
 
-// AgentRepository persists agents, runtime settings, and prompt files.
-type AgentRepository interface {
+type AgentReader interface {
 	SearchAgents(ctx context.Context, q AgentListQuery) (AgentListResult, error)
 	GetAgentByID(ctx context.Context, id string) (Agent, error)
 	GetAgentByAgentKey(ctx context.Context, agentKey string) (Agent, error)
+	ListExtrasForAgents(ctx context.Context, agentIDs []string) (map[string]AgentListExtras, error)
+}
+
+type AgentWriter interface {
 	CreateAgent(ctx context.Context, a Agent) (Agent, error)
 	UpdateAgent(ctx context.Context, a Agent) (Agent, error)
 	DeleteAgent(ctx context.Context, id string) error
+}
+
+type AgentRuntimeSettingsRepo interface {
 	GetAgentRuntimeSettings(ctx context.Context, agentID string) (AgentRuntimeSettings, error)
 	UpsertAgentRuntimeSettings(ctx context.Context, v AgentRuntimeSettings) (AgentRuntimeSettings, error)
+}
+
+type AgentPromptFileRepo interface {
 	ListAgentPromptFiles(ctx context.Context, agentID string) ([]AgentPromptFile, error)
 	ReplaceAgentPromptFiles(ctx context.Context, agentID string, files []AgentPromptFile) ([]AgentPromptFile, error)
 	CreateAgentPromptFile(ctx context.Context, f AgentPromptFile) (AgentPromptFile, error)
 	UpdateAgentPromptFile(ctx context.Context, f AgentPromptFile) (AgentPromptFile, error)
 	DeleteAgentPromptFile(ctx context.Context, agentID, id string) error
-	ListExtrasForAgents(ctx context.Context, agentIDs []string) (map[string]AgentListExtras, error)
+}
+
+type AgentRepository interface {
+	AgentReader
+	AgentWriter
+	AgentRuntimeSettingsRepo
+	AgentPromptFileRepo
 	ListAgentCreators(ctx context.Context) ([]AgentCreator, error)
 	ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
@@ -56,12 +71,12 @@ type AgentRepository interface {
 // AgentUsecase is catalog agent CRUD + prompt preview.
 type AgentUsecase struct {
 	repo               AgentRepository
-	tools              ToolRepo
+	tools              ToolCatalogReader
 	sys                SystemSettingRepo
 	webResearchChecker WebResearchReadinessChecker
 }
 
-func NewAgentUsecase(repo AgentRepository, tools ToolRepo, sys SystemSettingRepo) *AgentUsecase {
+func NewAgentUsecase(repo AgentRepository, tools ToolCatalogReader, sys SystemSettingRepo) *AgentUsecase {
 	return &AgentUsecase{repo: repo, tools: tools, sys: sys}
 }
 

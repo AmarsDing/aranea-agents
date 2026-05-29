@@ -9,8 +9,6 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
-
-	"github.com/go-kratos/kratos/v2/errors"
 )
 
 const queryRewriteTimeout = 15 * time.Second
@@ -157,23 +155,15 @@ func (r *QueryRewriter) rewriteMultiQuery(ctx context.Context, query, provider, 
 }
 
 func (r *QueryRewriter) resolveModel(ctx context.Context) (string, string, error) {
+	var sys RefineLLMSettingsGetter
 	if r.sys != nil {
-		s, err := r.sys.Get(ctx)
-		if err == nil && strings.TrimSpace(s.DefaultRefineLLM.Provider) != "" && strings.TrimSpace(s.DefaultRefineLLM.Model) != "" {
-			return s.DefaultRefineLLM.Provider, s.DefaultRefineLLM.Model, nil
-		}
+		sys = r.sys
 	}
+	var cat LLMCatalogLister
 	if r.catalog != nil {
-		models, err := r.catalog.List(ctx)
-		if err == nil {
-			for _, m := range models {
-				if m.Provider != "" && m.Model != "" && m.Enabled {
-					return m.Provider, m.Model, nil
-				}
-			}
-		}
+		cat = r.catalog
 	}
-	return "", "", errors.ServiceUnavailable("KNOWLEDGE", "no LLM available for query rewriting; configure DefaultRefineLLM in system settings")
+	return ResolveLLM(ctx, sys, cat, "query rewriting")
 }
 
 func stripCodeFenceJSON(s string) string {

@@ -1,6 +1,6 @@
 # M55 — Chat × Channel × Cursor 对标 — 开发计划
 
-> **版本**：2026-05-23 | **状态**：🚧 Phase A–D 已交付；**Phase R**（Run 升格）已排期；UX 收口进行中  
+> **版本**：2026-05-29 | **状态**：🚧 Phase A–D 已交付；**Phase R**（Run 升格）已排期；**Phase C UX 收口 ✅ 已完成**；Phase E 部分启动  
 > **方案**：[55-chat-channel-cursor-solution.md](./55-chat-channel-cursor-solution.md)  
 > **四层解耦（DECO）**：[17-channel-development.md §14](./17-channel-development.md#14-phase-deco--四层架构解耦deco)（DECO-11/12/13/14 · 衔接 CC-A/C）
 > **蓝图**：[55-chat-channel-cursor-solution.md §9 附录](../需求/55-chat-channel-cursor-solution.md#9-附录企业级蓝图与-ai-落地指南)  
@@ -43,6 +43,13 @@
 | 思考/ReAct 互斥 UX | ✅ | CC-C-UX-01~03 · CC-WEB-REASONING-02~04 |
 | 思考流式缓存（Store vs DB） | ✅ | CC-WEB-REASONING-01~04 · `ChatReasoningPeek` live tail |
 | 飞书出站格式化（思考/正文） | ✅ | CC-CHANNEL-FMT-01~06 · [changelog](../changelog/2026-05-23-M55-Phase-R-UX-Channel-Format-Reasoning.md) |
+| TurnBlock 思考/正文视觉分离 | ✅ | CC-C-UX-04 · `turn-block__response` 分区 |
+| 圆环点击 Prompt 占比分解 | ✅ | CC-C-UX-05 · `ChatContextBreakdownPopover` + `useContextBreakdown` |
+| 上下文压缩可视化通知 | ✅ | CC-C-UX-06 · toast + `onCompressNotice` |
+| 流式脉动反馈增强 | ✅ | CC-C-UX-07 · reasoning spinner + text pulse |
+| ChatComposer 上下文压力警告 | ✅ | CC-C-UX-08 · warning/critical 双级 banner |
+| 消息反馈交互优化 | ✅ | CC-C-UX-09 · 实心图标切换 + tooltip |
+| Prompt Preview API 接入 | ✅ | CC-E-02 · `AgentDetailStore.fetchPromptPreview` → `useContextBreakdown` |
 | Channel 入站 Session 列表同步 | ✅ | CC-WEB-SESSION-01 |
 | M55 E2E 手工验收 | ⏳ | SYNC/UI/JOB ✅；Run 生命周期 M55-RUN 📋 |
 | 卡 Turn / 飞书无回复 / 工具假死 | 🟡 | CC-FIX-TOOL/CHANNEL ✅；运维 CC-FEISHU-OPS-01 📋 |
@@ -115,10 +122,15 @@ gantt
 | CC-C-05 | 虚拟列表 benchmark | ⏳ | M55-UI-01 |
 | CC-C-06 | rAF 批处理 + completion 增量 | ⏳ | `messageStoreBatch` 有 rAF；completion 仍全量 hydrate |
 | CC-C-07 | Session 顶栏 sync 诊断 | 📋 | |
-| **CC-C-UX-01** | 思考/ReAct 互斥；空 reasoning 不展示 | 🚧 | 无空「思考过程」 |
-| **CC-C-UX-02** | 流式「正在思考…」单行态 | 🚧 | 首字节前 UX |
-| **CC-C-UX-03** | 双 ToolStrip 去重/合并 | 🚧 | 单轮一条摘要 |
-| **CC-C-UX-04** | `TurnAssistantBubble` 拆分 | 📋 | |
+| **CC-C-UX-01** | 思考/ReAct 互斥；空 reasoning 不展示 | ✅ | 无空「思考过程」 |
+| **CC-C-UX-02** | 流式「正在思考…」单行态 + spinner | ✅ | 首字节前 UX + CSS spinner |
+| **CC-C-UX-03** | 双 ToolStrip 去重/合并 | ✅ | 单轮一条摘要 |
+| **CC-C-UX-04** | `TurnAssistantBubble` 拆分 | ✅ | TurnBlock 思考/正文视觉分离 |
+| **CC-C-UX-05** | 圆环点击展开 Prompt 占比分解 | ✅ | `ChatContextBreakdownPopover` + `useContextBreakdown` |
+| **CC-C-UX-06** | 上下文压缩可视化通知 | ✅ | toast + `onCompressNotice` 回调 |
+| **CC-C-UX-07** | 流式脉动反馈增强 | ✅ | reasoning spinner + text pulse |
+| **CC-C-UX-08** | ChatComposer 上下文压力警告 | ✅ | warning/critical 双级 banner + 新会话按钮 |
+| **CC-C-UX-09** | 消息反馈交互优化 | ✅ | 实心图标切换 + tooltip |
 
 ---
 
@@ -134,14 +146,14 @@ gantt
 
 ---
 
-### Phase E — Context & Apply（P2）— 📋 未启动
+### Phase E — Context & Apply（P2）— 🚧 部分启动
 
-| ID | 任务 | 状态 |
-|----|------|------|
-| CC-E-01 | Composer `@` 引用 | 📋 |
-| CC-E-02 | 上下文清单抽屉 | 📋 |
-| CC-E-03 | diff Apply 卡片 | 📋 |
-| CC-E-04 | Reasoning 侧栏模式 | 📋 |
+| ID | 任务 | 状态 | 说明 |
+|----|------|------|------|
+| CC-E-01 | Composer `@` 引用 | 📋 | 需后端配合 |
+| CC-E-02 | 上下文清单抽屉 | 🟡 | Phase 1 已实现：`ChatContextBreakdownPopover` 点击圆环展开分类占比；Phase 2 精确推送待后端扩展 `EnvelopeUsage.breakdown`；Prompt Preview API 已接入 `useContextBreakdown`（`AgentDetailStore.fetchPromptPreview` → `mapPreviewToReport`） |
+| CC-E-03 | diff Apply 卡片 | 📋 | 需后端配合 |
+| CC-E-04 | Reasoning 侧栏模式 | 📋 | |
 
 ---
 

@@ -13,6 +13,8 @@ type channelInboundReceiptRepo struct {
 	data *Data
 }
 
+var _ biz.ChannelInboundReceiptRepo = (*channelInboundReceiptRepo)(nil)
+
 // NewChannelInboundReceiptRepo implements biz.ChannelInboundReceiptRepo.
 func NewChannelInboundReceiptRepo(d *Data) biz.ChannelInboundReceiptRepo {
 	return &channelInboundReceiptRepo{data: d}

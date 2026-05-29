@@ -102,3 +102,67 @@ export type RevealProviderCredentialsResult = {
   ha_candidates: { name: string; api_key: string }[];
 };
 
+export type ModelCategory = {
+  value: string;
+  label: string;
+  tooltip: string;
+};
+
+export type CapabilityChip = {
+  key: string;
+  label: string;
+  source?: string;
+};
+
+export type ProviderConfig = {
+  provider_type?: string;
+  variant?: string;
+  provider_display_name?: string;
+  api_base_url?: string;
+  api_key?: string;
+  api_key_set?: boolean;
+  secret_id?: string;
+  secret_key?: string;
+  aws_region?: string;
+  ha_mode?: string;
+  ha_candidates?: { name: string; provider_type: string; base_url: string; api_key?: string }[];
+  ha_hedge_delay_ms?: number;
+  enable_token_tailoring?: boolean;
+  optimize_for_cache?: boolean;
+  reasoning_content_backfill?: boolean;
+  show_tool_call_delta?: boolean;
+  keep_alive_minutes?: number;
+  rate_limit_rpm?: number;
+  model_category?: ModelCategory[];
+  model_size_label?: string;
+  context_window_k?: number | string | null;
+  max_output_tokens?: number | string | null;
+  tokens_per_second?: number | string | null;
+  model_hotness_score?: number | string | null;
+  usage_call_count_30d?: number | string | null;
+  usage_total_tokens_30d?: number | string | null;
+  usage_cost_micro_usd_30d?: number | string | null;
+  success_rate_30d?: number | string | null;
+  avg_latency_ms_30d?: number | string | null;
+  input_price_micro_usd_per_1k?: number | string | null;
+  output_price_micro_usd_per_1k?: number | string | null;
+  cached_input_price_micro_usd_per_1k?: number | string | null;
+  reasoning_price_micro_usd_per_1k?: number | string | null;
+  embedding_price_micro_usd_per_1k?: number | string | null;
+  cost?: {
+    input_usd_per_1m?: number;
+    output_usd_per_1m?: number;
+    cache_read_usd_per_1m?: number;
+    cache_write_usd_per_1m?: number;
+    reasoning_usd_per_1m?: number;
+    embedding_usd_per_1m?: number;
+  };
+  capability_chips?: CapabilityChip[];
+  catalog_source?: string;
+  catalog_managed?: boolean;
+  raw_metadata_json?: string;
+  metadata_source?: string;
+  last_used_at?: string;
+  model_rating?: number | string | null;
+};
+

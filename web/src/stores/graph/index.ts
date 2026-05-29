@@ -33,8 +33,10 @@ import {
   listGraphVersions,
   rollbackGraphVersion,
   saveGraphAsTemplate,
+  listGraphExecutions,
   type GraphDefinition,
   type GraphExecution,
+  type GraphExecutionSummary,
   type GraphTemplateInfo,
   type GraphVersionInfo,
   type ValidationResult,
@@ -54,6 +56,9 @@ export const useGraphStore = defineStore("graph", () => {
   const templates = ref<GraphTemplateInfo[]>([]);
   const templatesLoading = ref(false);
   const lastValidation = ref<ValidationResult | null>(null);
+  const executionHistory = ref<GraphExecutionSummary[]>([]);
+  const executionHistoryLoading = ref(false);
+  const executionHistoryNextToken = ref("");
 
   async function loadGraphs(pageSize = 50, pageToken = "") {
     loading.value = true;
@@ -98,6 +103,27 @@ export const useGraphStore = defineStore("graph", () => {
 
   async function fetchExecution(executionId: string): Promise<GraphExecution> {
     return getGraphExecution(executionId);
+  }
+
+  async function loadExecutionHistory(
+    graphId: string,
+    pageSize = 30,
+    append = false,
+    filters?: { status?: string; startedAfter?: string },
+  ) {
+    executionHistoryLoading.value = true;
+    try {
+      const token = append ? executionHistoryNextToken.value : "";
+      const result = await listGraphExecutions(graphId, pageSize, token, filters);
+      if (append) {
+        executionHistory.value.push(...result.items);
+      } else {
+        executionHistory.value = result.items;
+      }
+      executionHistoryNextToken.value = result.nextPageToken;
+    } finally {
+      executionHistoryLoading.value = false;
+    }
   }
 
   async function cancelExecution(executionId: string) {
@@ -231,6 +257,9 @@ export const useGraphStore = defineStore("graph", () => {
     templates,
     templatesLoading,
     lastValidation,
+    executionHistory,
+    executionHistoryLoading,
+    executionHistoryNextToken,
     loadGraphs,
     fetchGraph,
     addGraph,
@@ -238,6 +267,7 @@ export const useGraphStore = defineStore("graph", () => {
     removeGraph,
     runGraph,
     fetchExecution,
+    loadExecutionHistory,
     cancelExecution,
     resumeExecution,
     validateGraphDefinition,

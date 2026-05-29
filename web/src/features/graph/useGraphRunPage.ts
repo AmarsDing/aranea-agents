@@ -2,6 +2,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue"
 import { useQuasar } from "quasar";
 import { useRoute, useRouter } from "vue-router";
 import type { CheckpointInfo, GraphDefinition, GraphExecution } from "./types";
+import { formatTime, stepIcon, stepColor } from "./utils";
 import { useGraphStore } from "../../stores/graph";
 import { useGraphTimeTravel } from "./runtime/useGraphTimeTravel";
 import { useGraphRunStream } from "./runtime/useGraphRunStream";
@@ -184,28 +185,7 @@ export function useGraphRunPage() {
     timeTravel.stepIndexInput.value = value;
   }
 
-  function stepIcon(status: string) {
-    if (status === "completed") return "check_circle";
-    if (status === "error" || status === "failed") return "error";
-    if (status === "running") return "sync";
-    return "radio_button_unchecked";
-  }
 
-  function stepColor(status: string) {
-    if (status === "completed") return "positive";
-    if (status === "error" || status === "failed") return "negative";
-    if (status === "running") return "blue";
-    return "grey";
-  }
-
-  function formatTime(ts: string) {
-    if (!ts) return "";
-    try {
-      return new Date(ts).toLocaleString();
-    } catch {
-      return ts;
-    }
-  }
 
   function goBack() {
     router.push({ name: "graphs" });

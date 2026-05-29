@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/strutil"
 )
 
@@ -57,7 +58,7 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 	anchorID := userProfileEntityID(agentID)
 	written := 0
 
-	_ = uc.repo.UpsertEntity(ctx, L4EntityWrite{
+	if err := uc.repo.UpsertEntity(ctx, L4EntityWrite{
 		ID:             anchorID,
 		ScopeType:      "agent",
 		ScopeID:        agentID,
@@ -68,14 +69,23 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 		Description:    "Consolidated user knowledge for this agent",
 		Importance:     0.8,
 		Confidence:     0.9,
-	})
+	}); err != nil {
+		event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to upsert anchor entity", event.P("anchor_id", anchorID), event.P("error", err.Error()))
+	}
 
 	if m := l4NamePattern.FindStringSubmatch(text); len(m) > 1 {
 		name := strings.TrimSpace(m[1])
 		nameNorm := strings.ToLower(name)
-		existing, _, _ := uc.repo.GetEntityByScopeKey(ctx, "agent", agentID, "person", nameNorm)
+		existing, _, err := uc.repo.GetEntityByScopeKey(ctx, "agent", agentID, "person", nameNorm)
+		if err != nil {
+			event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to get entity by scope key", event.P("agent_id", agentID), event.P("name", name), event.P("error", err.Error()))
+		}
 		if existing.ID == "" {
-			if prior, ok, _ := uc.repo.GetFirstEntityByType(ctx, "agent", agentID, "person"); ok {
+			prior, ok, err := uc.repo.GetFirstEntityByType(ctx, "agent", agentID, "person")
+			if err != nil {
+				event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to get first entity by type", event.P("agent_id", agentID), event.P("error", err.Error()))
+			}
+			if ok && prior.ID != "" {
 				existing = prior
 			}
 		}
@@ -87,7 +97,9 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 		profileName := name
 		if conflict {
 			if uc.cascade != nil {
-				_ = uc.cascade.ProposeNameConflict(ctx, agentID, entID, existing.Name, name)
+				if err := uc.cascade.ProposeNameConflict(ctx, agentID, entID, existing.Name, name); err != nil {
+					event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to propose name conflict", event.P("entity_id", entID), event.P("error", err.Error()))
+				}
 			}
 			// Gate: keep authoritative name until cascade proposal is approved.
 			prepared.Name = existing.Name
@@ -108,7 +120,7 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 			Confidence:     prepared.Confidence,
 			MetadataJSON:   meta,
 		}); err == nil {
-			_ = uc.repo.UpsertRelation(ctx, L4RelationWrite{
+			if err := uc.repo.UpsertRelation(ctx, L4RelationWrite{
 				ScopeType:    "agent",
 				ScopeID:      agentID,
 				SourceID:     anchorID,
@@ -116,9 +128,13 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 				RelationType: "knows_as",
 				Weight:       1.0,
 				Confidence:   prepared.Confidence,
-			})
+			}); err != nil {
+				event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to upsert knows_as relation", event.P("entity_id", entID), event.P("error", err.Error()))
+			}
 			cascade := uc.cascadeProfileTouch(anchorID, userID, agentID, profileName, name, conflict, now)
-			_ = uc.repo.UpsertEntity(ctx, cascade)
+			if err := uc.repo.UpsertEntity(ctx, cascade); err != nil {
+				event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to upsert cascade profile", event.P("anchor_id", anchorID), event.P("error", err.Error()))
+			}
 			written++
 		}
 	}
@@ -139,7 +155,7 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 			Confidence:     0.7,
 			MetadataJSON:   `{"source":"auto_memory"}`,
 		}); err == nil {
-			_ = uc.repo.UpsertRelation(ctx, L4RelationWrite{
+			if err := uc.repo.UpsertRelation(ctx, L4RelationWrite{
 				ScopeType:    "agent",
 				ScopeID:      agentID,
 				SourceID:     anchorID,
@@ -147,7 +163,9 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 				RelationType: "prefers",
 				Weight:       0.9,
 				Confidence:   0.7,
-			})
+			}); err != nil {
+				event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to upsert prefers relation", event.P("entity_id", entID), event.P("error", err.Error()))
+			}
 			written++
 		}
 	}
@@ -168,7 +186,10 @@ func (uc *L4GraphUsecase) RunDecayWithConfig(ctx context.Context, agentID string
 	if err != nil {
 		return L4DecayResult{}
 	}
-	archived, _ := uc.repo.ArchiveLowConfidenceEntities(ctx, "agent", agentID, 0.1)
+	archived, err := uc.repo.ArchiveLowConfidenceEntities(ctx, "agent", agentID, 0.1)
+	if err != nil {
+		event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to archive low confidence entities", event.P("agent_id", agentID), event.P("error", err.Error()))
+	}
 	return L4DecayResult{
 		Decayed:  int(decayed),
 		Archived: int(archived),
@@ -238,7 +259,9 @@ func (uc *L4GraphUsecase) runDecay(ctx context.Context, agentID string) {
 		return
 	}
 	cutoff := time.Now().UTC().Add(-l4DecayAfter).Format(time.RFC3339)
-	_, _ = uc.repo.ApplyConfidenceDecay(ctx, "agent", agentID, cutoff, l4DecayFactor)
+	if _, err := uc.repo.ApplyConfidenceDecay(ctx, "agent", agentID, cutoff, l4DecayFactor); err != nil {
+		event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to apply confidence decay", event.P("agent_id", agentID), event.P("error", err.Error()))
+	}
 }
 
 func userProfileEntityID(agentID string) string {

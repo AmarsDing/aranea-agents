@@ -15,6 +15,8 @@ type mcpServerRepo struct {
 	data *Data
 }
 
+var _ biz.MCPServerRepo = (*mcpServerRepo)(nil)
+
 func NewMCPServerRepo(d *Data) biz.MCPServerRepo {
 	return &mcpServerRepo{data: d}
 }

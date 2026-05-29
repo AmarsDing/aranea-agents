@@ -185,8 +185,13 @@ type GraphRepo interface {
 type GraphRunRepo interface {
 	SaveRun(ctx context.Context, exec *GraphExecution) error
 	GetRun(ctx context.Context, id string) (*GraphExecution, error)
-	ListRunsByGraph(ctx context.Context, graphID string, pageSize int, pageToken string) ([]*GraphExecution, string, error)
+	ListRunsByGraph(ctx context.Context, graphID string, pageSize int, pageToken string, opts ...GraphRunListOption) ([]*GraphExecution, string, error)
 	UpdateRun(ctx context.Context, exec *GraphExecution) error
+}
+
+type GraphRunListOption struct {
+	Status       string
+	StartedAfter *time.Time
 }
 
 type GraphUsecase struct {

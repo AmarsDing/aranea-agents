@@ -1,5 +1,5 @@
 import { computed, ref, toValue, type MaybeRefOrGetter } from "vue";
-import { listPlatformResources } from "../platform/api";
+import { usePlatformStore } from "../../stores/platform";
 import type { PlatformResource } from "../platform/types";
 import type { Agent } from "./types";
 
@@ -13,11 +13,12 @@ function providerContextWindowK(row: PlatformResource) {
   }
 }
 
-/** Provider model dropdown for Agent settings. */
 export function useAgentProviderModelPicker(form: MaybeRefOrGetter<Agent>) {
-  const providerModels = ref<PlatformResource[]>([]);
+  const platformStore = usePlatformStore();
   const providerModelSearch = ref("");
-  const loadingProviderModels = ref(false);
+
+  const providerModels = computed(() => platformStore.providerModels);
+  const loadingProviderModels = computed(() => platformStore.loading);
 
   const providerModelOptions = computed(() =>
     providerModels.value
@@ -51,7 +52,6 @@ export function useAgentProviderModelPicker(form: MaybeRefOrGetter<Agent>) {
     );
   });
 
-  /** Agent 有 provider/model 但目录无启用匹配行（含被禁用、误填、已删除）。 */
   const orphanProviderModel = computed(() => {
     const f = toValue(form);
     const p = String(f.provider ?? "").trim();
@@ -69,12 +69,7 @@ export function useAgentProviderModelPicker(form: MaybeRefOrGetter<Agent>) {
   });
 
   async function loadProviderModels() {
-    loadingProviderModels.value = true;
-    try {
-      providerModels.value = await listPlatformResources("llm-provider-models");
-    } finally {
-      loadingProviderModels.value = false;
-    }
+    await platformStore.loadProviderModels();
   }
 
   function selectProviderModel(value: string | null) {

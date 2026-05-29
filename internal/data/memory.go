@@ -17,6 +17,8 @@ type memoryRepo struct {
 	store map[int]*pgvector.Store
 }
 
+var _ biz.MemoryRepo = (*memoryRepo)(nil)
+
 type unavailableMemoryRepo struct{}
 
 func NewMemoryRepo(d *Data) biz.MemoryRepo {

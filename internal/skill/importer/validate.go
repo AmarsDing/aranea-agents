@@ -101,14 +101,14 @@ func ReadSkillDirFiles(dir string) (map[string][]byte, error) {
 		}
 		rel = filepath.ToSlash(rel)
 		if !isSafePath(rel) {
-			return fmt.Errorf("unsafe relative path in skill directory: %q", rel)
+			return unsafePathError(ErrUnsafeRelPath, rel)
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
 		if len(data) > 2*1024*1024 {
-			return fmt.Errorf("skill file too large: %s", rel)
+			return detailErr(ErrSkillFileTooLarge, "skill file too large: "+rel)
 		}
 		out[rel] = data
 		return nil

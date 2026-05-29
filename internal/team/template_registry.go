@@ -48,9 +48,6 @@ func (parallelReviewTemplate) BuildEdges(_ Definition, ids []string) []embeddedG
 	finish := ids[len(ids)-1]
 	out := make([]embeddedGraphEdge, 0, len(ids))
 	for _, id := range ids[1:] {
-		if id == finish {
-			continue
-		}
 		out = append(out, embeddedGraphEdge{Source: entry, Target: id, Label: "flow"})
 	}
 	for _, id := range ids {

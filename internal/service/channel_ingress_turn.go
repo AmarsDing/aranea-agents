@@ -41,7 +41,9 @@ func (h *ChannelIngress) runChatTurnWithOutcomeOnce(ctx context.Context, chRow b
 	}
 	peerKey, err := h.inboundPeerKey(chRow, ev)
 	if err != nil {
-		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "routing", "error": err.Error()}, err.Error())
+		if delErr := h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "routing", "error": err.Error()}, err.Error()); delErr != nil {
+			event.SysLogWarn("channel.ingress.delivery", "recordDelivery failed", event.P("channel_id", chRow.ID), event.P("error", delErr.Error()))
+		}
 		return biz.ChannelTurnResult{}, err
 	}
 	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
@@ -64,7 +66,9 @@ func (h *ChannelIngress) runChatTurnWithOutcomeOnce(ctx context.Context, chRow b
 		if IsTurnBusyError(err) {
 			return biz.ChannelTurnResult{Outcome: biz.TurnOutcomeFailed}, err
 		}
-		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "chat", "error": err.Error()}, err.Error())
+		if delErr := h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "chat", "error": err.Error()}, err.Error()); delErr != nil {
+			event.SysLogWarn("channel.ingress.delivery", "recordDelivery failed", event.P("channel_id", chRow.ID), event.P("error", delErr.Error()))
+		}
 		return biz.ChannelTurnResult{Outcome: biz.TurnOutcomeFailed}, err
 	}
 	return h.channelTurnResultFromNative(sessionID, result)

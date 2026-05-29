@@ -193,8 +193,8 @@ func (uc *GraphUsecase) GetExecution(ctx context.Context, executionID string) (*
 	return uc.loadExecution(ctx, executionID)
 }
 
-func (uc *GraphUsecase) ListExecutions(ctx context.Context, graphID string, pageSize int, pageToken string) ([]*GraphExecution, string, error) {
-	return uc.runRepo.ListRunsByGraph(ctx, graphID, pageSize, pageToken)
+func (uc *GraphUsecase) ListExecutions(ctx context.Context, graphID string, pageSize int, pageToken string, opts ...GraphRunListOption) ([]*GraphExecution, string, error) {
+	return uc.runRepo.ListRunsByGraph(ctx, graphID, pageSize, pageToken, opts...)
 }
 
 func (uc *GraphUsecase) CancelExecution(ctx context.Context, executionID string) error {

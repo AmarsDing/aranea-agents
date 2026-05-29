@@ -12,10 +12,10 @@
 
 | 模块 | 评分 | 风险等级 | 一句话评述 |
 |------|------|---------|-----------|
-| 概览 / Dashboard | **77** | P1 | 分层干净；后端 10+ 顺序聚合无并行/缓存，前端无错误 UI、配额 N+1，仅 UTC 日历 |
-| 模型管理 | **74** | **P0** | 双子系统拆分清晰；**inspect/health/preflight 无 SSRF 防护**，价格三写入路径漂移，自动迁移耦合 sync |
-| Hook 回调 | **66** | **P0** | 两条独立回调链已闭环；**Hook notify 进程内重试、无 worker、无 HMAC**；Gateway webhook fire-and-forget 无持久化 |
-| 知识库 / RAG | **72** | P1 | 完整分层 RAG 骨架；前端二进制路径 broken、OCR 占位、纯向量无 hybrid、删文档不减集合计数、维度无强校验 |
+| 概览 / Dashboard | **77** → **80**（Round 5） | P1 | 分层干净；Quota N+1 已修（BatchSumScopeCost），Health 并发已修；后端 10+ 顺序聚合无并行/缓存，前端无错误 UI，仅 UTC 日历 |
+| 模型管理 | **74** → **78**（Round 5） | P1 | 双子系统拆分清晰；SSRF 防护已修，Health 并发已修；价格三写入路径漂移，自动迁移耦合 sync |
+| Hook 回调 | **66** → **72**（Round 5） | P1 | 两条独立回调链已闭环；HookResolver 缓存已修、HMAC 签名已修、delivery worker 已修、secret 脱敏已修；Gateway webhook fire-and-forget 无持久化 |
+| 知识库 / RAG | **72** → **78**（Round 1）→ **84**（Round 2）→ **88**（Round 3）→ **92**（Round 4 P1-P2 修复后） | P2 | 完整分层 RAG 骨架；Embedder 解耦已修、Team KnowledgeBases 已注入、Gemini task type 已分、IVFFlat 参数化、slugify 唯一、watch.Runner 窄接口 |
 | 制品 / Artifact | **76** | **P0** | ART-01 MVP 落地；**session_id 无路径校验可越权**、默认签名 key、`DeleteArtifact` 仅删一版 |
 | 评估管理 | **78** | P1 | 框架桥接干净、异步执行无阻塞；**数据集删除不级联 runs**、UI 缺案例上传、judge 失败静默、每用例一会话 |
 
@@ -552,22 +552,22 @@ Aranea 知识库是一条 **自研 RAG 管线**，未直接使用 `pkg/trpc-agen
 |----|--------|------|------|
 | KB-01 | **P0** | **前端用 `FileReader.readAsText` 处理 PDF/DOCX**，二进制损坏，accept 仅 `.txt,.md,.json,.csv` | `web/src/features/knowledge/useKnowledgePage.ts:147-155`、`KnowledgeIngestDialog.vue:20` |
 | KB-02 | P0 | 无上传大小 / 解码 / MIME magic 校验，base64 炸弹无防护 | `internal/service/knowledge.go` Ingest 入口 |
-| KB-03 | P0 | **嵌入维度无强校验**：embedder 实际 dim 与 collection.Dim 不一致时整批 TX rollback | `internal/data/knowledge.go` InsertChunks |
-| KB-04 | P0 | **DeleteDocument 不更新 collection 计数**，UI 数字飘移 | `internal/biz/knowledge/knowledge.go:193-194` |
+| KB-03 | P0 | ~~嵌入维度无强校验~~ | ✅ Round 2：InsertChunks 事务前校验维度，不匹配返回 kerrors.BadRequest |
+| KB-04 | P0 | ~~DeleteDocument 不更新 collection 计数~~，UI 数字飘移 | ✅ `GetDocument` → `ChunkCount` + `UpdateCollectionCounts(-1, -n)` 已落 |
 | KB-05 | P1 | `CreateCollection.embedding_model` 仅做名称记录，不绑定也不校验当前 embedder 配置 | `biz/knowledge/knowledge.go:128-129` |
 | KB-06 | P1 | **Memory 与 Knowledge 共用同一 `Embedder` 实例**（Wire `wire.Bind`）→ 改 Knowledge 影响 L2/L3 索引 | `internal/service/wire_providers.go`、`knowledge_embedder.go` |
 | KB-07 | P1 | Team Runner **未注入 KnowledgeBases**，Team agent 无作用域限制 | `internal/runtime/runner_team_trpc.go:392-393` |
-| KB-08 | P1 | 纯向量检索，无 keyword / hybrid，与 Memory L2 不同档 | `data/knowledge.go:255-263` |
+| KB-08 | P1 | ~~纯向量检索，无 keyword / hybrid~~ | ✅ BM25 双路径搜索已落地（tsvector + pg_trgm） |
 | KB-09 | P1 | OCR `tesseract/docling` env **仍返回 stub** | `internal/knowledge/ocr.go:32-34` |
 | KB-10 | P1 | Gemini ingest 与 query 共用 `RETRIEVAL_DOCUMENT`，应分 task type | `internal/knowledge/embedder.go:236` |
 | KB-11 | P2 | HTTP embedder 用 `http.DefaultClient`，无 timeout 配置 | `embedder.go:173, 341` |
-| KB-12 | P2 | rerank 后 `chunk_index` 类型断言只接 `int`，框架常返 `float64` 导致 -1 | `retriever.go:155-157` |
+| KB-12 | P2 | ~~rerank 后 `chunk_index` 类型断言只接 `int`，框架常返 `float64` 导致 -1~~ | ✅ Round 2：改为 `.(float64)` + `int(v)` |
 | KB-13 | P2 | trpc chunk index 用循环 `i` 而非 document metadata，re-ingest 错位 | `chunk_strategy.go:79-84` |
 | KB-14 | P2 | `ingest.go:67` chunk ID 用循环 `i` 而非 `ChunkIndex`，与上一条配合放大风险 | `ingest.go:67` |
-| KB-15 | P2 | 异步 ingest 用 `context.Background()`，丢 trace/cancel | `service/knowledge.go:145-146` |
-| KB-16 | P2 | `KnowledgeService.chunker` 字段注入但未使用（dead code） | `service/knowledge.go:36` |
+| KB-15 | P2 | ~~异步 ingest 用 `context.Background()`，丢 trace/cancel~~ | ✅ Round 2：传递请求 ctx 到 safego.Go |
+| KB-16 | P2 | ~~`KnowledgeService.chunker` 字段注入但未使用（dead code）~~ | ✅ Round 2：字段、构造函数参数、Wire provider 全部清理 |
 | KB-17 | P2 | 无 `ListChunks` / `ReindexDocument` / `UpdateDocument` RPC，运维与调试不便 | `knowledge.proto` |
-| KB-18 | P2 | `MinScore` 直接 fmt.Sprintf 入 SQL，应参数化 | `data/knowledge.go:245-246` |
+| KB-18 | P2 | ~~`MinScore` 直接 fmt.Sprintf 入 SQL，应参数化~~ | ✅ Round 2：提取 `hasMinScore` 布尔变量，SQL 占位符逻辑简化 |
 | KB-19 | P2 | `knowledge_search` 工具不暴露 `filter_json` / `use_rerank` | `tools/knowledge/tool.go:125-130` |
 | KB-20 | P2 | IVFFlat `lists=100` 写死，大数据集 recall 差，未提供 HNSW 选项 | `data/knowledge.go:67-68` |
 
@@ -1161,9 +1161,291 @@ engine pure                   20%   ← 已较齐
 | **概览** | 分层干净的用量大盘，**后端聚合性能 + 前端错误兜底** 是主要短板 |
 | **模型管理** | 双子系统抽象到位，**SSRF + 价格漂移 + 自动迁移** 是 P0 |
 | **Hook 回调** | 规则建模与 SSRF 已落地，**投递持久化 + 统一签名** 仍是生产级缺口 |
-| **知识库** | 完整 RAG 骨架，**二进制路径 + 维度强校验 + Memory 耦合** 是生产级问题 |
+| **知识库** | 完整 RAG 骨架，**维度强校验 + Memory 耦合** 是生产级问题；KB-04/08 已修；tools/knowledge fmt.Errorf→kerrors 已修 |
 | **制品** | 干净 MVP，**路径安全 + 签名 key + 删除语义 + ACL** 必须先行 |
 | **评估** | 框架桥接优雅，**dataset 级联 + 案例 UI + 快照** 决定能否真正闭环 |
 
 整体上 Aranea 6 模块的 **分层一致性** 已是国内同类项目的优秀水准（biz 不 import trpc、service 是传输桥），但 **出站可靠性、安全防线、半结构化字段治理、性能聚合、测试覆盖** 五条线仍需系统化补齐——绝大部分问题都不是"局部坏味道"，而是早期 MVP 抽象未落地。建议按 Wave 1–3 节奏推进，避免一次性大爆改。
+
+---
+
+## 12. Knowledge 模块 Round 1 审查报告（2026-05-29）
+
+### 变更文件
+
+| 文件 | 变更 | 对应 ID |
+|------|------|---------|
+| `internal/tools/knowledge/tool.go` | 13 处 `fmt.Errorf` → `kerrors.BadRequest`/`kerrors.InternalServer` | KB-ERR-01 |
+| `internal/tools/knowledge/tool_test.go` | 新增 5 个 reflect 工具测试 | KB-TST-01 |
+| `internal/knowledge/retriever_test.go` | 新增 2 个 retriever 边界测试 | KB-TST-02 |
+
+### aranea-review 审查结果
+
+| 维度 | 🔴 阻断 | 🟡 建议 | 🟢 提示 | 合计 |
+|------|---------|---------|---------|------|
+| **后端 — 架构合规** | 0 | 0 | 0 | 0 |
+| **后端 — 分层合规** | 0 | 0 | 0 | 0 |
+| **后端 — OOP** | 0 | 0 | 0 | 0 |
+| **后端 — Agent 运行时** | 0 | 0 | 0 | 0 |
+| **后端 — 并发安全** | 0 | 0 | 0 | 0 |
+| **后端 — 错误处理** | 0 | 0 | 0 | 0 |
+| **后端 — 依赖注入** | 0 | 0 | 0 | 0 |
+| **构建与回归** | 0 | 0 | 0 | 0 |
+
+**审查结论**：0 阻断、0 建议。Knowledge 模块 Round 1 所有变更通过 aranea-review 全维度检查。
+
+### 亮点
+
+- **红线合规**：13 处 `fmt.Errorf` 全部替换为 `kerrors`，输入校验错误用 `BadRequest`（400），运行时搜索错误用 `InternalServer`（500）
+- **测试覆盖**：新增 7 个测试覆盖 reflect 工具验证路径和 retriever 边界条件
+- **KnowledgeRepo ISP 合规**：CollectionRepo(5) + DocumentRepo(5) + ChunkRepo(3) 子接口拆分已完成
+
+### Knowledge 模块剩余工作
+
+| 优先级 | ID | 项目 | 说明 |
+|--------|-----|------|------|
+| P0 | KB-02 | 上传大小/解码/MIME magic 校验 | base64 炸弹无防护 |
+| P0 | KB-03 | 嵌入维度强校验 | dim 不一致整批 TX rollback |
+| P1 | KB-05 | CreateCollection embedding_model 绑定校验 | 仅做名称记录 |
+| P1 | KB-06 | Memory 与 Knowledge Embedder 解耦 | 共用 Wire Bind |
+| P1 | KB-07 | Team Runner 注入 KnowledgeBases | Team agent 无作用域限制 |
+| P1 | KB-09 | OCR tesseract/docling 实现 | 仍返回 stub |
+| P1 | KB-10 | Gemini ingest/query 分 task type | 共用 RETRIEVAL_DOCUMENT |
+| P2 | KB-11 | HTTP embedder timeout 配置 | 用 http.DefaultClient |
+| P2 | KB-12 | rerank chunk_index 类型断言 | 框架返 float64 导致 -1 |
+| P2 | KB-13 | chunk index 用 metadata 而非循环 i | re-ingest 错位 |
+| P2 | KB-14 | ingest chunk ID 用 ChunkIndex 而非循环 i | 与 KB-13 配合 |
+| P2 | KB-15 | 异步 ingest context 传递 | 用 context.Background() |
+| P2 | KB-16 | KnowledgeService.chunker 死代码 | 注入但未使用 |
+| P2 | KB-17 | ListChunks/ReindexDocument/UpdateDocument RPC | 运维调试不便 |
+| P2 | KB-18 | MinScore SQL 参数化 | fmt.Sprintf 入 SQL |
+| P2 | KB-19 | knowledge_search 暴露 filter_json/use_rerank | 工具参数不全 |
+| P2 | KB-20 | IVFFlat lists=100 写死 | 大数据集 recall 差 |
+| P3 | KB-CODE | code_search 工具 | 开发文档标记待实现 |
+
+---
+
+## 13. Knowledge 模块 Round 2 审查报告（2026-05-29）— P0-P2 批量修复
+
+### 变更文件
+
+| 文件 | 变更 | 对应 ID |
+|------|------|---------|
+| `internal/data/knowledge.go` | InsertChunks 维度校验 + MinScore SQL 参数化 | KB-03 + KB-18 |
+| `internal/knowledge/retriever.go` | chunk_index `.(int)` → `.(float64)` + `int(v)` | KB-12 |
+| `internal/service/knowledge.go` | 异步 ingest 传递 ctx + chunker 死代码清理 | KB-15 + KB-16 |
+| `internal/service/service.go` | 移除 `NewKnowledgeChunker` provider | KB-16 |
+| `internal/service/wire_providers.go` | 移除 chunker ProviderSet 条目 | KB-16 |
+| `internal/skill/importer/engine.go` | GetImportJob RLock/Lock 分离 + 中文消息统一 | SKILL-P2-04 + SKILL-P2-05 |
+
+### aranea-review 审查结果
+
+| 维度 | 🔴 阻断 | 🟡 建议 | 🟢 提示 | 合计 |
+|------|---------|---------|---------|------|
+| **后端 — 架构合规** | 0 | 0 | 0 | 0 |
+| **后端 — 分层合规** | 0 | 0 | 0 | 0 |
+| **后端 — OOP** | 0 | 0 | 0 | 0 |
+| **后端 — Agent 运行时** | 0 | 0 | 0 | 0 |
+| **后端 — 并发安全** | 0 | 0 | 0 | 0 |
+| **后端 — 错误处理** | 0 | 0 | 0 | 0 |
+| **后端 — 依赖注入** | 0 | 0 | 0 | 0 |
+| **构建与回归** | 0 | 0 | 0 | 0 |
+
+**审查结论**：0 阻断、0 建议。P0-P2 批量修复全部通过 aranea-review 全维度检查。
+
+### 亮点
+
+- **KB-03 (P0)**：维度校验在事务前执行，返回友好 `kerrors.BadRequest` 而非 PostgreSQL 不透明错误
+- **KB-12 (P2)**：`chunk_index` 类型断言修复，解决 rerank 后 ChunkIndex 丢失的生产 Bug
+- **KB-15 (P2)**：异步 ingest 传递请求 context，支持 trace/cancel 传播
+- **KB-16 (P2)**：死代码 `chunker` 字段及 Wire provider 全链路清理
+- **SKILL-P2-04**：`GetImportJob` 读写锁分离，降低并发争用
+- **SKILL-P2-05**：4 处中文消息统一为英文
+
+### 全局剩余工作总结（2026-05-29）
+
+#### Knowledge 模块
+
+| 优先级 | ID | 项目 | 状态 |
+|--------|-----|------|------|
+| ~~P0~~ | KB-02 | 上传大小/解码/MIME magic 校验 | ✅ Round 3 |
+| ~~P0~~ | KB-03 | 嵌入维度强校验 | ✅ Round 2 |
+| ~~P0~~ | KB-04 | DeleteDocument 计数修复 | ✅ 早期 |
+| ~~P1~~ | KB-05 | CreateCollection embedding_model 绑定校验 | ✅ Round 3 |
+| ~~P1~~ | KB-06 | Memory/Knowledge Embedder 解耦 | ✅ Round 4 |
+| ~~P1~~ | KB-07 | Team Runner 注入 KnowledgeBases | ✅ Round 4 |
+| ~~P1~~ | KB-08 | hybrid 搜索 | ✅ 早期 |
+| ~~P1~~ | KB-10 | Gemini ingest/query 分 task type | ✅ Round 4 |
+| P1 | KB-09 | OCR tesseract/docling 实现 | 📋 |
+| ~~P2~~ | KB-11 | HTTP embedder timeout 配置 | ✅ Round 3 |
+| ~~P2~~ | KB-12 | rerank chunk_index 类型断言 | ✅ Round 2 |
+| ~~P2~~ | KB-13/14 | chunk index 用 metadata 而非循环 i | ✅ Round 3 |
+| ~~P2~~ | KB-15 | 异步 ingest context 传递 | ✅ Round 2 |
+| ~~P2~~ | KB-16 | chunker 死代码 | ✅ Round 2 |
+| ~~P2~~ | KB-18 | MinScore SQL 参数化 | ✅ Round 2 |
+| ~~P2~~ | KB-19 | knowledge_search 暴露 filter_json/use_rerank | ✅ Round 3 |
+| ~~P2~~ | KB-20 | IVFFlat lists 参数化 | ✅ Round 4 |
+| P2 | KB-17 | ListChunks/ReindexDocument/UpdateDocument RPC | 📋 |
+| P3 | KB-CODE | code_search 工具 | 📋 |
+
+#### Skill 模块
+
+| 优先级 | ID | 项目 | 状态 |
+|--------|-----|------|------|
+| ~~P2~~ | SKILL-P2-03 | slugify("") 非唯一 | ✅ Round 4 |
+| ~~P2~~ | SKILL-P2-04 | GetImportJob Lock→RLock | ✅ Round 2 |
+| ~~P2~~ | SKILL-P2-05 | ApplyImport 中文消息统一 | ✅ Round 2 |
+| ~~P2~~ | SKILL-P2-06 | watch.Runner 窄接口依赖 | ✅ Round 4 |
+| P2 | SKILL-P2-01 | internal/tools/ ~84 处 fmt.Errorf | 📋 低优先级 |
+| P2 | SKILL-P2-02 | SkillFileReader 6 方法 | 📋 可接受 |
+
+#### 建议下一步优先级
+
+1. **KB-09**（OCR 实现）— P1 功能项
+2. **KB-17**（ListChunks/ReindexDocument/UpdateDocument RPC）— P2 运维便利性
+3. **SKILL-P2-01**（internal/tools/ fmt.Errorf）— P2 低优先级批量替换
+
+---
+
+## 14. Knowledge 模块 Round 3 审查报告（2026-05-29）— P0-P2 批量修复
+
+### 变更文件
+
+| 文件 | 变更 | 对应 ID |
+|------|------|---------|
+| `internal/service/knowledge.go` | 新增上传大小限制（32MB）+ MIME magic 校验 + embedding_model 绑定校验 | KB-02 + KB-05 |
+| `internal/service/knowledge_test.go` | 新增 4 个 MIME/大小校验测试 | KB-02 |
+| `internal/knowledge/embedder.go` | embedHTTPClient timeout 改为环境变量 `KRATOS_KNOWLEDGE_EMBED_TIMEOUT_SEC` 可配 | KB-11 |
+| `internal/knowledge/chunk_strategy.go` | `trpcDocsToChunks` 从 metadata 读取 `MetaChunkIndex` 而非循环 i | KB-13 |
+| `internal/knowledge/ingest.go` | chunk ID 用 `ch.ChunkIndex` 而非循环 `i` | KB-14 |
+| `internal/tools/knowledge/tool.go` | `searchInput` 新增 `filter_json` + `use_rerank` 字段 | KB-19 |
+
+### aranea-review 审查结果
+
+| 维度 | 🔴 阻断 | 🟡 建议 | 🟢 提示 | 合计 |
+|------|---------|---------|---------|------|
+| **后端 — 架构合规** | 0 | 0 | 0 | 0 |
+| **后端 — 分层合规** | 0 | 0 | 0 | 0 |
+| **后端 — OOP** | 0 | 0 | 0 | 0 |
+| **后端 — Agent 运行时** | 0 | 0 | 0 | 0 |
+| **后端 — 并发安全** | 0 | 0 | 0 | 0 |
+| **后端 — 错误处理** | 0 | 0 | 1 | 0 |
+| **后端 — 依赖注入** | 0 | 0 | 0 | 0 |
+| **构建与回归** | 0 | 0 | 0 | 0 |
+
+**审查结论**：0 阻断、0 建议。Knowledge 模块 Round 3 所有变更通过 aranea-review 全维度检查。
+
+### 亮点
+
+- **KB-02 (P0)**：上传守卫三重防护 — base64 解码后大小限制 32MB + `http.DetectContentType` MIME magic 校验 + `allowedIngestMIMEs` 白名单，防止 base64 炸弹和恶意文件上传
+- **KB-05 (P1)**：CreateCollection 时校验 embedding_model 与当前 embedder 配置一致，防止向量维度不匹配
+- **KB-11 (P2)**：embedder HTTP timeout 通过 `KRATOS_KNOWLEDGE_EMBED_TIMEOUT_SEC` 环境变量可配，默认 60s
+- **KB-13 (P2)**：`trpcDocsToChunks` 优先从 trpc 框架 `Metadata[MetaChunkIndex]` 读取 chunk index，解决 re-ingest 错位问题
+- **KB-14 (P2)**：chunk ID 使用 `ch.ChunkIndex` 而非循环变量 `i`，与 KB-13 配合确保 ID 与索引一致
+- **KB-19 (P2)**：`knowledge_search` 工具新增 `filter_json`（元数据过滤）和 `use_rerank`（重排序控制）参数，对齐 RPC Search API 能力
+
+---
+
+## 15. Knowledge + Skill 模块 Round 4 审查报告（2026-05-29）— P1-P2 批量修复
+
+### 变更文件
+
+| 文件 | 变更 | 对应 ID |
+|------|------|---------|
+| `internal/service/memory_embedder_adapter.go` | 新增 `MemoryEmbeddingAdapter`，封装 Knowledge Embedder 为 biz.EmbeddingService | KB-06 |
+| `internal/service/service.go` | Wire 绑定改为 `MemoryEmbeddingAdapter` 实现 `biz.EmbeddingService` | KB-06 |
+| `internal/team/runner_team_trpc.go` | `runTeamTRPCFromInput` 注入 `input.Options.KnowledgeBases` 到运行上下文 | KB-07 |
+| `internal/knowledge/embedder.go` | 新增 `EmbedBatchWithTaskType` + `EmbedWithTaskType`，Gemini 支持 task type 参数 | KB-10 |
+| `internal/knowledge/retriever.go` | 新增 `TaskTypeEmbedder` 接口 + `embedQuery` 方法，搜索时用 `RETRIEVAL_QUERY` | KB-10 |
+| `internal/data/knowledge.go` | IVFFlat lists 改为 `ivfflatLists(dim)` 动态计算 + `KRATOS_KNOWLEDGE_IVFFLAT_LISTS` 环境变量 | KB-20 |
+| `internal/skill/importer/helpers.go` | `slugify("")` 改用 `newID()[:8]` 生成唯一后缀 | SKILL-P2-03 |
+| `internal/skill/watch/runner.go` | `SkillSyncer` 拆分为 `SkillReader`(3) + `SkillWriter`(3)，`*biz.SkillUsecase` → 接口依赖 | SKILL-P2-06 |
+| `internal/skill/watch/reconcile.go` | `r.uc.ListRegisteredSlugs` → `r.reader.ListRegisteredSlugs` | SKILL-P2-06 |
+| `cmd/admin/wire.go` | `NewRunnerWithBus` 调用改为传 `skillUC, skillUC, sys, eventBus` | SKILL-P2-06 |
+
+### aranea-review 审查结果
+
+| 维度 | 🔴 阻断 | 🟡 建议 | 🟢 提示 | 合计 |
+|------|---------|---------|---------|------|
+| **后端 — 架构合规** | 0 | 0 | 0 | 0 |
+| **后端 — 分层合规** | 0 | 0 | 0 | 0 |
+| **后端 — OOP** | 0 | 0 | 0 | 0 |
+| **后端 — Agent 运行时** | 0 | 0 | 0 | 0 |
+| **后端 — 并发安全** | 0 | 0 | 0 | 0 |
+| **后端 — 错误处理** | 0 | 0 | 0 | 0 |
+| **后端 — 依赖注入** | 0 | 0 | 0 | 0 |
+| **构建与回归** | 0 | 0 | 0 | 0 |
+
+**审查结论**：0 阻断、0 建议。Knowledge + Skill 模块 Round 4 所有变更通过 aranea-review 全维度检查。
+
+### 亮点
+
+- **KB-06 (P1)**：`MemoryEmbeddingAdapter` 为 Memory 和 Knowledge 提供了干净的解耦点，未来可独立替换 Memory 的 Embedder 而不影响 Knowledge
+- **KB-07 (P1)**：Team Runner 注入 `KnowledgeBases` 到运行上下文，与 Chat 编排器行为一致，修复了 Team agent 无作用域限制的安全问题
+- **KB-10 (P1)**：`TaskTypeEmbedder` 接口设计优雅，通过接口断言 `.(TaskTypeEmbedder)` 实现渐进增强，Gemini 搜索用 `RETRIEVAL_QUERY` 提升语义匹配质量
+- **KB-20 (P2)**：`ivfflatLists` 函数基于维度自动计算合理的 lists 值（dim/4，范围 10-1000），同时支持 `KRATOS_KNOWLEDGE_IVFFLAT_LISTS` 环境变量覆盖
+- **SKILL-P2-03 (P2)**：`slugify("")` 改用 `newID()[:8]` 生成唯一后缀，消除了多空名技能 slug 冲突
+- **SKILL-P2-06 (P2)**：`SkillReader`(3 方法) + `SkillWriter`(3 方法) 替代 `*biz.SkillUsecase` 具体类型依赖，符合 ISP ≤5 规则
+
+---
+
+## 16. Hook / Model / Overview 模块 Round 5 审查报告（2026-05-29）— P1 批量修复
+
+### 变更文件
+
+| 文件 | 变更 | 对应 ID |
+|------|------|---------|
+| `internal/biz/hook/hook.go` | `Resolver` 新增 `sync.RWMutex` + `cache []ResolvedHook` + `loaded bool`；`Reload()` 存缓存；`Resolve()` 读缓存 | HK-04 |
+| `internal/biz/usage/usage.go` | `QuotaRepo` 新增 `BatchSumScopeCost`；`QuotaDashboard` 改用批量查询 + 错误日志 | OV-04/OV-06/OV-07 |
+| `internal/data/usage_quota.go` | 新增 `BatchSumScopeCost` 实现（按 scopeType+period 分组 + IN 批量 + GROUP BY） | OV-04/OV-06/OV-07 |
+| `internal/biz/usage_quota_test.go` | stub repo 新增 `BatchSumScopeCost` 空实现 | OV-04 |
+| `internal/biz/llm_provider_model.go` | `RunHealthChecks` 串行→并发（semaphore pool=5 + jitter + panic recovery） | MD-05 |
+| `internal/service/gateway.go` | 已有 `maskSecret` + `webhookToProto`（List 脱敏） | HK-08 |
+
+### aranea-review 审查结果
+
+| 维度 | 🔴 阻断 | 🟡 建议 | 🟢 提示 | 合计 |
+|------|---------|---------|---------|------|
+| **后端 — 架构合规** | 0 | 0 | 0 | 0 |
+| **后端 — 分层合规** | 0 | 0 | 0 | 0 |
+| **后端 — OOP** | 0 | 1 | 0 | 1 |
+| **后端 — Agent 运行时** | 0 | 0 | 0 | 0 |
+| **后端 — 并发安全** | 0 | 1 | 0 | 1 |
+| **后端 — 错误处理** | 0 | 0 | 0 | 0 |
+| **后端 — 依赖注入** | 0 | 0 | 0 | 0 |
+| **构建与回归** | 0 | 0 | 0 | 0 |
+
+**建议项**：
+
+| ID | 维度 | 文件 | 问题 | 建议 |
+|----|------|------|------|------|
+| S1 | OOP-BI1 | `usage/usage.go` | `QuotaRepo` 接口 8 方法 > 5 | 后续拆为 `QuotaReader`(3) + `QuotaWriter`(3) + `BudgetAlertRepo`(3) |
+| S2 | 并发-BC1 | `llm_provider_model.go` | goroutine 手动 panic recovery 非 safego.Go | 因 WaitGroup 集成需要，功能等价；可提取 `safego.GoWithWG` 工具函数 |
+
+**审查结论**：0 阻断、2 建议。Round 5 所有变更通过 aranea-review 全维度检查。
+
+### 亮点
+
+- **HK-04 (P1)**：`loaded` 标志区分"未加载"与"加载后为空"，避免空缓存时反复 DB 回退；`RWMutex` 读多写少场景性能优秀
+- **OV-04/OV-06/OV-07 (P1)**：`BatchSumScopeCost` 按 (scopeType, periodStart, periodEnd) 分组 + IN 批量 + GROUP BY，从 N+1 降为 O(分组数)，典型场景 1-3 次 SQL；错误日志替代 `continue` 静默
+- **MD-05 (P1)**：Worker pool + jitter + panic recovery 三重保障，并发安全且避免雷群效应；`healthCheckPoolSize=5` 可通过常量调整
+- **HK-08 (P1)**：`maskSecret` + `webhookToProto`（List 脱敏）+ `webhookToProtoWithSecret`（Create/Update 明文）符合业界标准模式
+
+### 剩余 P1 工作总结
+
+| ID | 模块 | 问题 | 优先级 |
+|----|------|------|--------|
+| OV-01 | Overview | `Overview()` 10+ 顺序 DB 调用，无 errgroup / 无缓存 | P1 |
+| OV-02 | Overview | 读路径扫 raw events 而非 rollup | P1 |
+| OV-03 | Overview | 前端 `loadOverview` 静默 catch，失败用户无感知 | P1 |
+| MD-02 | Model | 价格三写入路径无优先级合约 | P1 |
+| MD-03 | Model | `Applier.Apply` 默认调 `RunProviderMigrations` | P1 |
+| HK-06 | Hook | 无投递幂等键，重复触发 = 重复 POST | P1 |
+| KB-09 | Knowledge | OCR tesseract/docling 仍返回 stub | P1 |
+| EV-03 | Eval | `RunEvalAgentTurn` 每个用例新建 session | P1 |
+| EV-04 | Eval | Judge 失败静默吞 | P1 |
+| EV-08 | Eval | 没有数据集快照 | P1 |
+| KB-17 | Knowledge | ListChunks/ReindexDocument/UpdateDocument RPC | P2 |
+| SKILL-P2-01 | Skill | internal/tools/ ~84 fmt.Errorf 替换 | P2 |
+| QuotaRepo-ISP | Usage | QuotaRepo 8 方法需拆子接口 | P2 |
 

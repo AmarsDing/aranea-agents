@@ -325,14 +325,23 @@ type SessionWriter interface {
 	UpdateSessionTitle(ctx context.Context, id, title string) (Session, error)
 	UpdateSession(ctx context.Context, id string, fields SessionUpdateFields) (Session, error)
 	RestoreSession(ctx context.Context, id string) (Session, error)
-	ArchiveSession(ctx context.Context, id string) (int, error)
 	DeleteSession(ctx context.Context, id string) (int, error)
-	DeleteSessionsByAgentID(ctx context.Context, agentID string) error
-	PinSession(ctx context.Context, id string) (Session, error)
-	UnpinSession(ctx context.Context, id string) (Session, error)
+}
+
+type SessionBatchWriter interface {
+	ArchiveSession(ctx context.Context, id string) (int, error)
 	ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
 	DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
+}
+
+type SessionPinWriter interface {
+	PinSession(ctx context.Context, id string) (Session, error)
+	UnpinSession(ctx context.Context, id string) (Session, error)
+}
+
+type SessionRevisionWriter interface {
 	BumpSessionRevision(ctx context.Context, sessionID string) (int64, error)
+	DeleteSessionsByAgentID(ctx context.Context, agentID string) error
 }
 
 type MessageReader interface {
@@ -341,6 +350,9 @@ type MessageReader interface {
 	ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error)
 	ListMessagesByStatus(ctx context.Context, sessionID, status string, limit int) ([]ChatMessage, error)
 	ListMessagesRecent(ctx context.Context, sessionID string, limit int) ([]ChatMessage, error)
+}
+
+type MessageSearchReader interface {
 	SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
 	ListMessagesByIDs(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error)
 	ListMessagesAfterRevision(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error)
@@ -365,13 +377,16 @@ type InvocationReader interface {
 	ListSkillInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]SkillInvocationView, error)
 }
 
-type SummaryRepo interface {
-	InsertSessionSummary(ctx context.Context, row SessionSummary) error
+type SummaryReader interface {
 	MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error)
 	ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error)
 	LatestSessionSummaryTime(ctx context.Context, sessionID string) (string, error)
-	UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error
 	SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error)
+}
+
+type SummaryWriter interface {
+	InsertSessionSummary(ctx context.Context, row SessionSummary) error
+	UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error
 }
 
 type StateRepo interface {
@@ -398,18 +413,20 @@ type CompressRepo interface {
 	CompressSessionInTx(ctx context.Context, sessionID string, fn func(ctx context.Context) error) error
 }
 
-// SessionRepository persists sessions and reads timeline inputs（SQLite Ent）.
-//
-// Deprecated: SessionRepository is a fat composite interface. Prefer depending on the
-// narrower sub-interfaces (SessionReader, SessionWriter, MessageReader, etc.) directly.
-type SessionRepository interface {
+type SessionRepo interface {
 	SessionReader
 	SessionWriter
+	SessionBatchWriter
+	SessionPinWriter
+	SessionRevisionWriter
 	MessageReader
+	MessageSearchReader
 	MessageWriter
+	MessageStatusWriter
 	TimelineReader
 	InvocationReader
-	SummaryRepo
+	SummaryReader
+	SummaryWriter
 	StateRepo
 	TurnRepo
 	ContextUpdater
@@ -428,43 +445,55 @@ type TeamLookup interface {
 
 // SessionUsecase handles session CRUD + timeline. Chat 写消息经 AppendChat* 等仓储方法，不经 SessionService RPC.
 type SessionUsecase struct {
-	sessionReader   SessionReader
-	sessionWriter   SessionWriter
-	messageReader   MessageReader
-	messageWriter   MessageWriter
-	timelineReader  TimelineReader
-	invocationReader InvocationReader
-	summaryRepo     SummaryRepo
-	stateRepo       StateRepo
-	turnRepo        TurnRepo
-	contextUpdater  ContextUpdater
-	compressRepo    CompressRepo
-	agents          AgentLookup
-	teams           TeamLookup
-	titleGenerator  SessionTitleGenerator
-	participants    SessionParticipantRepository
+	sessionReader       SessionReader
+	sessionWriter       SessionWriter
+	sessionBatchWriter  SessionBatchWriter
+	sessionPinWriter    SessionPinWriter
+	sessionRevWriter    SessionRevisionWriter
+	messageReader       MessageReader
+	messageSearchReader MessageSearchReader
+	messageWriter       MessageWriter
+	messageStatusWriter MessageStatusWriter
+	timelineReader      TimelineReader
+	invocationReader    InvocationReader
+	summaryReader       SummaryReader
+	summaryWriter       SummaryWriter
+	stateRepo           StateRepo
+	turnRepo            TurnRepo
+	contextUpdater      ContextUpdater
+	compressRepo        CompressRepo
+	agents              AgentLookup
+	teams               TeamLookup
+	titleGenerator      SessionTitleGenerator
+	participants        SessionParticipantRepository
 }
 
-func NewSessionUsecase(sessions SessionRepository, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository) *SessionUsecase {
+func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository) *SessionUsecase {
 	if titleGenerator == nil {
 		titleGenerator = NewNoopSessionTitleGenerator()
 	}
 	return &SessionUsecase{
-		sessionReader:    sessions,
-		sessionWriter:    sessions,
-		messageReader:    sessions,
-		messageWriter:    sessions,
-		timelineReader:   sessions,
-		invocationReader: sessions,
-		summaryRepo:      sessions,
-		stateRepo:        sessions,
-		turnRepo:         sessions,
-		contextUpdater:   sessions,
-		compressRepo:     sessions,
-		agents:           agents,
-		teams:            teams,
-		titleGenerator:   titleGenerator,
-		participants:     participants,
+		sessionReader:       sessions,
+		sessionWriter:       sessions,
+		sessionBatchWriter:  sessions,
+		sessionPinWriter:    sessions,
+		sessionRevWriter:    sessions,
+		messageReader:       sessions,
+		messageSearchReader: sessions,
+		messageWriter:       sessions,
+		messageStatusWriter: sessions,
+		timelineReader:      sessions,
+		invocationReader:    sessions,
+		summaryReader:       sessions,
+		summaryWriter:       sessions,
+		stateRepo:           sessions,
+		turnRepo:            sessions,
+		contextUpdater:      sessions,
+		compressRepo:        sessions,
+		agents:              agents,
+		teams:               teams,
+		titleGenerator:      titleGenerator,
+		participants:        participants,
 	}
 }
 
@@ -540,7 +569,7 @@ func (uc *SessionUsecase) Archive(ctx context.Context, id string) error {
 	if id == "" {
 		return validationErr("session id is required")
 	}
-	n, err := uc.sessionWriter.ArchiveSession(ctx, id)
+	n, err := uc.sessionBatchWriter.ArchiveSession(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -581,7 +610,7 @@ func (uc *SessionUsecase) DeleteByAgent(ctx context.Context, agentID string) err
 	if strings.TrimSpace(agentID) == "" {
 		return validationErr("agent_id is required")
 	}
-	return uc.sessionWriter.DeleteSessionsByAgentID(ctx, agentID)
+	return uc.sessionRevWriter.DeleteSessionsByAgentID(ctx, agentID)
 }
 
 func normalizeSessionSearch(q *SessionSearchQuery) {

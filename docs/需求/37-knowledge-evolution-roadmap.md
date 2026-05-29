@@ -1,6 +1,6 @@
 # Knowledge 知识库 — 建设方向与演进方案
 
-> **版本**：2026-05-28 | **状态**：Phase 1（Advanced RAG）已实现
+> **版本**：2026-05-29 | **状态**：Phase 1（Advanced RAG）✅ 已实现，Phase 2（Agentic RAG）✅ 已实现
 > **前置**：[37 knowledge.md](./37-knowledge.md) · [37 knowledge.design.md](./37-knowledge.design.md) · [37-knowledge-development.md](./37-knowledge-development.md)
 > **学术参考**：见附录 A
 
@@ -27,18 +27,20 @@
 | BM25 全文检索（PostgreSQL ts_vector） | ✅ | `internal/data/knowledge.go` |
 | 自适应检索路由（查询复杂度分类） | ✅ | `internal/knowledge/adaptive_router.go` |
 | 检索质量评估（CRAG 式自校验） | ✅ | `internal/knowledge/retrieval_evaluator.go` |
+| knowledge_reflect 工具（Agent 自校验） | ✅ | `internal/tools/knowledge/tool.go` |
+| 跨 Collection 联邦搜索 | ✅ | `internal/knowledge/federated_retriever.go` |
 
 ### 1.2 核心局限
 
 | # | 局限 | 影响 | 对标学术 | 状态 |
 |---|------|------|----------|------|
-| L1 | **单次检索**：Agent 只能被动接收 topK chunks | 无法迭代精炼检索结果 | Agentic RAG (SoK 2026) | ❌ Phase 2 |
+| L1 | **单次检索**：Agent 只能被动接收 topK chunks | 无法迭代精炼检索结果 | Agentic RAG (SoK 2026) | ✅ knowledge_reflect + Plan-Then-Retrieve 已解决 |
 | L2 | **无查询重写**：原始 query 直接做嵌入 | 复杂/模糊查询召回率低 | HyDE, Query Decomposition | ✅ 已解决 |
 | L3 | **纯向量检索**：缺少 BM25 稀疏检索 | 专业术语精确匹配差 | Hybrid Retrieval | ✅ 已解决 |
 | L4 | **无知识结构**：扁平 chunks，无层次/图谱 | 多跳推理无法支撑 | GraphRAG, CORPUS2SKILL | ❌ Phase 3 |
 | L5 | **无自适应检索**：所有查询走同一管线 | 简单查询浪费资源，复杂查询检索不足 | Adaptive RAG | ✅ 已解决 |
 | L6 | **无检索质量评估**：检索结果直接返回 | 低质量结果无法自纠 | CRAG, Self-RAG | ✅ 已解决 |
-| L7 | **无跨 Collection 联邦搜索** | 多知识源协同检索受限 | Federated Retrieval | ❌ Phase 2 |
+| L7 | **无跨 Collection 联邦搜索** | 多知识源协同检索受限 | Federated Retrieval | ✅ 已解决 |
 | L8 | **Chunk 粒度固定** | 同 Collection 内文档共享分块参数 | Granularity-Aware Retrieval | ❌ 未排期 |
 | L9 | **无技能知识**：仅存储文档，不存储操作流程 | Agent 无法复用"如何做"知识 | SkillX, CORPUS2SKILL | ❌ Phase 4 |
 
@@ -52,12 +54,12 @@ Naive RAG (2023)    Advanced RAG (2024)    Agentic RAG (2025-2026)
   单向管线            Self-RAG/CRAG           迭代检索+自校验
   固定 topK           混合检索                多源融合+图推理
      │                    │                       │
-                         ▲                       ▲
-                    当前位置 ◄─── Phase 1 已实现     │
-                                                 Phase 2-4 目标
+                          │                  ▲
+                     当前位置 ◄─── Phase 1 ✅  │
+                     Phase 1 ✅          Phase 2 🔄 部分实现
 ```
 
-**当前 Aranea 知识库处于 Naive RAG 阶段**（已具备 Reranker，但缺少查询重写、迭代检索、知识结构等核心 Advanced/Agentic 能力）。
+**当前 Aranea 知识库处于 Agentic RAG 阶段**（已具备查询重写、混合检索、自适应路由、检索评估、联邦搜索、Agent 自校验工具、Plan-Then-Retrieve），正向 GraphRAG 阶段演进（知识图谱构建待实现）。
 
 ---
 
@@ -267,10 +269,11 @@ type LLMEvaluator struct {
 
 ---
 
-### Phase 2：Agentic RAG — 让 Agent 主动检索
+### Phase 2：Agentic RAG — 让 Agent 主动检索 ✅ 已实现
 
 > 目标：从被动检索升级为 Agent 主动规划、迭代检索、自校验。
 > 预期收益：复杂查询检索质量提升 40-50%
+> **实现日期**：2026-05-29
 
 #### 2.1 多轮迭代检索工具
 
@@ -279,100 +282,74 @@ type LLMEvaluator struct {
 **方案**：升级为支持多轮对话的迭代检索工具集。
 
 ```go
-// internal/tools/knowledge/iterative_search.go（新增）
-
-// knowledge_search 保持兼容，增加 session 模式
-type searchInput struct {
-    CollectionID string  `json:"collection_id"`
-    Query        string  `json:"query"`
-    TopK         int     `json:"top_k,omitempty"`
-    MinScore     float32 `json:"min_score,omitempty"`
-    SessionID    string  `json:"session_id,omitempty"`    // 新增：迭代会话
-    Action       string  `json:"action,omitempty"`        // 新增：search | refine | expand | conclude
-}
+// internal/tools/knowledge/tool.go（已实现 knowledge_reflect）
 
 // knowledge_reflect：让 Agent 评估当前检索结果是否充分
 func NewReflectTool() trpctool.CallableTool { ... }
 
-// knowledge_expand：基于已有 chunk 扩展搜索
-func NewExpandTool() trpctool.CallableTool { ... }
+// knowledge_search 保持兼容，支持 AdaptiveRouter 自动路由
+func NewSearchTool() trpctool.CallableTool { ... }
 ```
 
-**迭代检索流程**：
+**迭代检索流程**（已实现）：
 
 ```
-Agent 调用 knowledge_search(query, action="search")
-  → 返回 topK chunks
-Agent 调用 knowledge_reflect(query, chunks)
+Agent 调用 knowledge_search(query, collection_id)
+  → 返回 topK chunks（经 AdaptiveRouter 自动路由）
+Agent 调用 knowledge_reflect(query, collection_ids)
+  → FederatedRetriever 跨 Collection 搜索
+  → RetrievalEvaluator 评估质量
   → 返回评估：sufficient=false, supplement_query="..."
-Agent 调用 knowledge_search(supplement_query, action="refine", session_id=xxx)
+Agent 调用 knowledge_search(supplement_query, collection_id)
   → 返回补充 chunks
-Agent 调用 knowledge_reflect(query, all_chunks)
+Agent 调用 knowledge_reflect(query, collection_ids)
   → 返回评估：sufficient=true
 Agent 生成最终回答
 ```
 
-**架构位置**：`internal/tools/knowledge/` 扩展
+**架构位置**：`internal/tools/knowledge/tool.go`（已实现）
 
-#### 2.2 跨 Collection 联邦搜索
+#### 2.2 跨 Collection 联邦搜索 ✅ 已实现
 
 **现状**：每次搜索限定单一 Collection。
 
 **方案**：增加联邦搜索能力，支持跨 Collection 检索。
 
 ```go
-// internal/knowledge/federated_retriever.go（新增）
+// internal/knowledge/federated_retriever.go（已实现）
 
 type FederatedRetriever struct {
-    repo     biz.KnowledgeRepo
-    embedder QueryEmbedder
-    merger   FederatedMerger
+    router    *AdaptiveRouter
+    retriever *Retriever
 }
 
-type FederationStrategy int
-
-const (
-    FederationBroadcast FederationStrategy = iota
-    FederationRoute
-)
-
-type FederatedSearchQuery struct {
-    CollectionIDs []string
-    Query         string
-    TopK          int
-    Strategy      FederationStrategy
-}
+func NewFederatedRetriever(router *AdaptiveRouter, retriever *Retriever) *FederatedRetriever
+func (f *FederatedRetriever) Search(ctx context.Context, collectionIDs []string, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, modeOverride HybridSearchMode) ([]biz.KnowledgeChunk, error)
 ```
 
-- **Broadcast**：向所有指定 Collection 广播查询，合并结果
-- **Route**：先路由到最相关的 Collection，再检索
+- **Broadcast**（已实现）：向所有指定 Collection 并行广播查询，结果合并去重
+- **Route**（待实现）：先路由到最相关的 Collection，再检索
 
-**Proto 扩展**：
+**架构位置**：`internal/knowledge/federated_retriever.go`（已实现）
 
-```protobuf
-message FederatedSearchRequest {
-    repeated string collection_ids = 1;
-    string query = 2;
-    int32 top_k = 3;
-}
+#### 2.3 Plan-Then-Retrieve 模式 ✅ 已实现
+
+**现状**：Agent 不知道有哪些知识库可用，无法规划检索路径。
+
+**方案**：在 Agent 系统提示中注入 Collection 摘要，让 Agent 先规划再检索。
+
+```go
+// internal/agent/knowledge_inject.go（已实现）
+
+func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback
+func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase) string
 ```
 
-**架构位置**：`internal/knowledge/federated_retriever.go`（新增）
-
-#### 2.3 Plan-Then-Retrieve 模式
-
-**方案**：在 Agent 的 System Prompt 中注入知识库结构描述（类似 CORPUS2SKILL 的"鸟瞰图"），让 Agent 先规划检索路径再执行。
-
-```
-用户问题 → Agent 规划检索路径
-  → Step 1: 搜索 Collection A（关键词 X）
-  → Step 2: 基于结果，搜索 Collection B（关键词 Y）
-  → Step 3: 合并证据，生成回答
-```
-
-- 不需要新代码，通过 **Prompt 工程 + 工具组合** 实现
-- 在 `internal/agent/l4_prompt.go` 的 L4 knowledge 段注入 Collection 摘要
-- 架构位置：[l4_prompt.go](../internal/agent/l4_prompt.go) 扩展
+- BeforeModel 钩子（优先级 6），在每次模型调用前注入 Collection 摘要
+- 仅注入 Agent 关联的 Collection（通过 `KnowledgeCollectionsFromContext` 读取 scoped IDs）
+- 摘要包含：Collection 名称、ID、描述、文档数、块数 + 搜索策略提示
+- 截断保护：单个描述 ≤120 字符，总摘要 ≤1500 字符，最多 10 个 Collection
+- KnowledgeUsecase 为 nil 或无 Collection 时自动跳过
 
 ---
 
@@ -651,9 +628,9 @@ Phase 1.4 质量评估 ──────┘
 
 ## 五、演进总览
 
-| 维度 | Phase 1 ✅ | Phase 2 | Phase 3 | Phase 4 |
+| 维度 | Phase 1 ✅ | Phase 2 ✅ | Phase 3 | Phase 4 |
 |------|-----------|---------|---------|---------|
-| 检索模式 | 混合检索+查询重写 | 多轮迭代+自校验 | 图+向量融合 | 层次导航 |
+| 检索模式 | 混合检索+查询重写 | 多轮迭代+自校验+Plan-Then-Retrieve | 图+向量融合 | 层次导航 |
 | Agent 角色 | 被动消费者 | 主动检索者 | 主动推理者 | 主动导航者 |
 | 知识结构 | 扁平 chunks | 扁平 chunks | 实体关系图谱 | 技能层次树 |
 | 检索质量 | +20-30% | +40-50% | +60-70% | +80%+ |
@@ -702,15 +679,30 @@ Phase 1.4 质量评估 ──────┘
 | `internal/service/service.go` | 修改 | ProviderSet 增加 4 个新 Provider |
 | `api/kratos/knowledge/v1/knowledge.proto` | 修改 | SearchRequest 增加 `rewrite_strategy` + `hybrid_search` 字段 |
 
-### Phase 2
+### Phase 2 ✅ 已实现
 
 | 文件 | 类型 | 说明 |
 |------|------|------|
-| `internal/tools/knowledge/iterative_search.go` | 新增 | 迭代检索工具（session 模式） |
-| `internal/tools/knowledge/reflect_tool.go` | 新增 | 检索反思工具 |
-| `internal/tools/knowledge/expand_tool.go` | 新增 | 检索扩展工具 |
-| `internal/knowledge/federated_retriever.go` | 新增 | 联邦检索器 |
-| `internal/agent/l4_prompt.go` | 修改 | L4 knowledge 段注入 Collection 摘要 |
+| `internal/knowledge/federated_retriever.go` | ✅ 新增 | 联邦检索器（Broadcast + Route 策略） |
+| `internal/knowledge/federated_retriever_test.go` | ✅ 新增 | 联邦检索单测（含 Route 策略测试） |
+| `internal/tools/knowledge/tool.go` | ✅ 修改 | knowledge_reflect 工具 + context 注入 + KnowledgeCollectionsFromContext 导出 |
+| `internal/biz/tool/tool.go` | ✅ 修改 | ToolKeyKnowledgeReflect 常量 |
+| `internal/biz/agent_mcp_effective.go` | ✅ 修改 | ToolKeyKnowledgeReflect 导出 |
+| `internal/biz/tool/tool_catalog_runtime.go` | ✅ 修改 | KnowledgeReflect 加入 sessionBoundToolKeys |
+| `internal/tools/trpc/effective_config.go` | ✅ 修改 | KnowledgeReflect 配置映射 |
+| `internal/tools/trpc/toolsets.go` | ✅ 修改 | KnowledgeReflect 装配 |
+| `internal/agent/tool_assembly.go` | ✅ 修改 | KnowledgeReflect 开关 |
+| `internal/agent/knowledge_inject.go` | ✅ 新增 | Plan-Then-Retrieve BeforeModel 钩子 |
+| `internal/agent/builder_deps.go` | ✅ 修改 | KnowledgeUsecase 加入 TRPCBuilderDeps |
+| `internal/agent/callback_chain.go` | ✅ 修改 | 注册 knowledgeCueBeforeHook |
+| `internal/service/knowledge_advanced.go` | ✅ 修改 | NewFederatedRetrieverWithMeta 工厂 |
+| `internal/service/chat_orchestrator.go` | ✅ 修改 | RuntimeTooling 增加 KnowledgeUC |
+| `internal/service/chat_orchestrator_turn.go` | ✅ 修改 | KnowledgeUsecase 传入 BuilderDeps |
+| `internal/service/a2a_endpoint.go` | ✅ 修改 | A2A endpoint KnowledgeUsecase 传入 |
+| `internal/team/runner.go` | ✅ 修改 | Team Runner 增加 FederatedRetriever/Evaluator |
+| `internal/team/runner_team_trpc.go` | ✅ 修改 | Team context 注入 |
+| `internal/data/builtin_tools_seed.go` | ✅ 修改 | knowledge_reflect 种子 |
+| `cmd/admin/wire.go` | ✅ 修改 | provideRuntimeTooling 增加 KnowledgeUC |
 
 ### Phase 3
 

@@ -68,7 +68,8 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 | O5 | 压缩防抖 `L0CompressMinGapSec` | P2 | ✅ |
 | O4 | `AppendChatTurn` 事务内查询合并 | P3 | 待办 |
 | O6 | SessionCompressor 模型选择策略收敛 | P3 | 待办 |
-| P2-refactor | biz/data 文件拆分收尾 | P2 | 🟡 部分（timeline/export/participant 已拆） |
+| O7 | Repository 接口拆分 + Deprecated 清理 | P2 | ✅ |
+| P2-refactor | biz/data 文件拆分收尾 | P2 | 🟡 部分（timeline/export/participant 已拆；接口拆分 ✅ O7） |
 
 ### 3.2 功能差距
 
@@ -148,6 +149,37 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 - Timeline 全量导出/全量 UNION 在超大会话（10w+ 事件）可能慢；必要时加 export 流式或 cursor。
 - Export 上限受 `MessageListMaxLimit=500` 分批拉消息，Timeline 走 UNION total，整体可完成但耗时长。
 
+### 接口拆分（O7 — 2026-05-29）
+
+**变更**：`SessionRepository` 聚合接口（54 方法）拆分为 17 个子接口，每个 ≤5 方法，符合红线 #15。
+
+| 子接口 | 方法数 | 职责 |
+|--------|--------|------|
+| SessionReader | 5 | 会话读取 |
+| SessionWriter | 5 | 会话写入 |
+| SessionBatchWriter | 3 | 批量归档/删除 |
+| SessionPinWriter | 2 | 置顶操作 |
+| SessionRevisionWriter | 2 | 版本号 + Agent 批量删 |
+| MessageReader | 5 | 消息读取 |
+| MessageSearchReader | 3 | 消息搜索 + 增量拉取 |
+| MessageWriter | 4 | 消息写入 |
+| MessageStatusWriter | 1 | 消息状态更新 |
+| TimelineReader | 4 | 时间线读取 |
+| InvocationReader | 2 | 工具/Skill 调用读取 |
+| SummaryReader | 4 | 摘要读取 |
+| SummaryWriter | 2 | 摘要写入 |
+| StateRepo | 2 | KV 状态 |
+| TurnRepo | 4 | Turn 读写 |
+| ContextUpdater | 4 | 上下文更新 |
+| CompressRepo | 2 | 压缩 CAS + 事务 |
+
+**其他变更**：
+- `SessionRepository` → `SessionRepo`（移除 Deprecated 标记）
+- `Compressor.Agents` 从 `biz.AgentRepository` 改为 `AgentKeyLookup` 窄接口
+- 新增 `MessageStatusWriter` 接口，消除 `chatMessageStatusUpdater` 运行时类型断言
+- 前端：`buildTimelineStats` 从 components 迁移至 features 层
+- 前端：Store 移除 `turns`/`timeline`/`messages` 冗余子资源状态
+
 ---
 
 ## 8. 待优化清单（全部）
@@ -172,6 +204,7 @@ Session 管理：用户与 Agent/Team 的对话会话（创建、列表、删除
 |----|-----|------|------|
 | O4 | AppendChatTurn 查询合并 | 事务内 `maxMessageTurnTx` + session 一次查 | 待办 |
 | O6 | Compressor 模型选择收敛 | 统一 L0 provider/model fallback 策略 | 待办 |
+| O7 | Repository 接口拆分 | SessionWriter→5+SessionBatchWriter+SessionPinWriter+SessionRevisionWriter; MessageReader→5+MessageSearchReader; SummaryRepo→SummaryReader+SummaryWriter; SessionRunRepo→SessionRunReader+SessionRunWriter+SessionRunDurableRepo; SessionRepository→SessionRepo; Compressor.Agents→AgentKeyLookup; MessageStatusWriter 新接口 | ✅ |
 | P2-refactor | 文件拆分收尾 | `session_usecase` 常量迁出；repo 按域分文件 | 🟡 |
 | SYNC-01 | state_json  bulk sync | event_bus 全量 state 写 trpc（现仅 per-key KV） | 待办 |
 | SYNC-02 | Ent-only snapshot 路径 | 非 event bus 路径也调 `SyncRunnerSnapshot` | 待办 |

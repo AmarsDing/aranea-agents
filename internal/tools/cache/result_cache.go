@@ -11,9 +11,9 @@ import (
 type entry struct {
 	result    any
 	expiresAt time.Time
+	accessedAt time.Time
 }
 
-// ResultCache is an in-process TTL cache for idempotent tool results.
 type ResultCache struct {
 	mu    sync.RWMutex
 	items map[string]entry
@@ -43,15 +43,22 @@ func (c *ResultCache) Get(toolName string, args []byte) (any, bool) {
 	if !ok {
 		return nil, false
 	}
-	if time.Now().After(e.expiresAt) {
+	now := time.Now()
+	if now.After(e.expiresAt) {
 		c.mu.Lock()
 		e2, ok2 := c.items[k]
-		if ok2 && time.Now().After(e2.expiresAt) {
+		if ok2 && now.After(e2.expiresAt) {
 			delete(c.items, k)
 		}
 		c.mu.Unlock()
 		return nil, false
 	}
+	c.mu.Lock()
+	if e3, ok3 := c.items[k]; ok3 {
+		e3.accessedAt = now
+		c.items[k] = e3
+	}
+	c.mu.Unlock()
 	return e.result, true
 }
 
@@ -60,21 +67,33 @@ func (c *ResultCache) Put(toolName string, args []byte, result any, ttl time.Dur
 		return
 	}
 	k := c.key(toolName, args)
+	now := time.Now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if len(c.items) >= c.max {
-		c.evictOneLocked()
+		c.evictExpiredLocked(now)
+		if len(c.items) >= c.max {
+			c.evictLRULocked()
+		}
 	}
-	c.items[k] = entry{result: result, expiresAt: time.Now().Add(ttl)}
+	c.items[k] = entry{result: result, expiresAt: now.Add(ttl), accessedAt: now}
 }
 
-func (c *ResultCache) evictOneLocked() {
+func (c *ResultCache) evictExpiredLocked(now time.Time) {
+	for k, e := range c.items {
+		if now.After(e.expiresAt) {
+			delete(c.items, k)
+		}
+	}
+}
+
+func (c *ResultCache) evictLRULocked() {
 	var oldestKey string
 	var oldest time.Time
 	for k, e := range c.items {
-		if oldestKey == "" || e.expiresAt.Before(oldest) {
+		if oldestKey == "" || e.accessedAt.Before(oldest) {
 			oldestKey = k
-			oldest = e.expiresAt
+			oldest = e.accessedAt
 		}
 	}
 	if oldestKey != "" {
@@ -150,6 +169,21 @@ func numberish(v any) int {
 	}
 }
 
-var globalResultCache = NewResultCache(512)
+var (
+	globalResultCache = NewResultCache(512)
+	globalMu          sync.RWMutex
+)
 
-func Global() *ResultCache { return globalResultCache }
+func Global() *ResultCache {
+	globalMu.RLock()
+	defer globalMu.RUnlock()
+	return globalResultCache
+}
+
+func SetGlobal(c *ResultCache) {
+	if c != nil {
+		globalMu.Lock()
+		globalResultCache = c
+		globalMu.Unlock()
+	}
+}

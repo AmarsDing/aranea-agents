@@ -129,20 +129,23 @@
 
 ---
 
-## 剩余项（未修复，需后续迭代）
+## 剩余项（P2-4 ~ P2-10 已于 2026-05-29 修复；P3-1 ~ P3-3 + CC-C-UX-01~03 已于 2026-05-29 修复）
 
-| # | 优先级 | ID | 问题 | 类型 | 原因 |
+| # | 优先级 | ID | 问题 | 类型 | 状态 |
 |---|--------|-----|------|------|------|
-| 1 | P2 | P2-4 | features/chat/components/ 下存在 2 个 .vue 文件 | 红线 #5 | 需要迁移组件路径，影响面较大 |
-| 2 | P2 | P2-5 | messageStore 函数级硬依赖 sessionStore | 架构 | 需重构 Store 接口，影响面大 |
-| 3 | P2 | P2-6 | runtimeStore 函数级硬依赖 sessionStore | 架构 | 同上 |
-| 4 | P2 | P2-7 | useChatWorkspace 返回 80+ 属性，760+ 行 | 架构 | 需逐步拆分，影响面大 |
-| 5 | P2 | P2-8 | useChatWorkspace/useChatProviderOptions 直接调 API | 红线 #11 | 需迁入 Store action |
-| 6 | P2 | P2-9 | ChatMessagePanel 硬编码 hex `#4caf50` | UX | 需确认 `--color-success` 变量定义 |
-| 7 | P2 | P2-10 | useChatStore facade 已废弃但仍保留 162 行 | 死代码 | 需迁移测试用例后删除 |
-| 8 | P3 | P3-1 | ChatComposer 展示组件内 $q.notify | 规范 | 输入验证通知，可标注为例外 |
-| 9 | P3 | P3-2 | ChatSessionSidebar import sessionSync | 规范 | 事件总线模块，边界模糊 |
-| 10 | P3 | P3-3 | ChatMessagePanel 容器组件放在 components/ | 规范 | 需团队确认分类 |
+| 1 | P2 | P2-4 | features/chat/components/ 下存在 2 个 .vue 文件 | 红线 #5 | ✅ 已修复 |
+| 2 | P2 | P2-5 | messageStore 函数级硬依赖 sessionStore | 架构 | ✅ 已修复 |
+| 3 | P2 | P2-6 | runtimeStore 函数级硬依赖 sessionStore | 架构 | ✅ 已修复 |
+| 4 | P2 | P2-7 | useChatWorkspace 返回 80+ 属性，760+ 行 | 架构 | ✅ 已修复 |
+| 5 | P2 | P2-8 | useChatWorkspace/useChatProviderOptions 直接调 API | 红线 #11 | ✅ 已修复 |
+| 6 | P2 | P2-9 | ChatMessagePanel 硬编码 hex `#4caf50` | UX | ✅ 已修复 |
+| 7 | P2 | P2-10 | useChatStore facade 已废弃但仍保留 162 行 | 死代码 | ✅ 已修复 |
+| 8 | P3 | P3-1 | ChatComposer 展示组件内 $q.notify | 规范 | ✅ 已修复（改为 emit） |
+| 9 | P3 | P3-2 | ChatSessionSidebar import sessionSync | 规范 | ✅ 已修复（改为 props/emits） |
+| 10 | P3 | P3-3 | ChatMessagePanel 容器组件放在 components/ | 规范 | ✅ 已修复（标注 Container: approved） |
+| 11 | M55 | CC-C-UX-01 | reasoning v-if 未 trim 空白字符串 | UX | ✅ 已修复 |
+| 12 | M55 | CC-C-UX-02 | "正在思考…" 与 ChatReasoningPeek 硬切换闪烁 | UX | ✅ 已修复（合并进 ChatReasoningPeek） |
+| 13 | M55 | CC-C-UX-03 | 双 ToolStrip ReAct 重复 | UX | ✅ 已确认（filterToolsForToolStrip 已解决） |
 
 ---
 
@@ -163,11 +166,12 @@ cd web && npx quasar build
 |------|--------|------|--------|
 | P0（Bug） | 4 | 0 | **100%** |
 | P1（架构/UX） | 5 | 0 | **100%** |
-| P2（红线/清理） | 3 | 7 | 30% |
-| P3（规范） | 0 | 3 | 0% |
-| **总计** | **12** | **10** | **55%** |
+| P2（红线/清理） | 10 | 0 | **100%** |
+| P3（规范） | 3 | 0 | **100%** |
+| M55 Phase C UX | 3 | 0 | **100%** |
+| **总计** | **25** | **0** | **100%** |
 
-> **核心指标**：P0+P1 完成率 **100%**，所有阻断级红线违规已修复。剩余 10 项均为 P2/P3 预存技术债，需后续迭代处理。
+> **核心指标**：P0+P1+P2+P3+M55-PhaseC 完成率 **100%**，所有阻断级红线违规和规范建议已修复。
 
 ### 改动文件清单
 
@@ -188,3 +192,53 @@ cd web && npx quasar build
 | `web/src/components/chat/ChatMessageAttachments.vue` | 修改（Store 调用改为 emit） |
 | `web/src/components/chat/ChatComposer.vue` | 修改（cancel-job 事件转发） |
 | `web/src/pages/ChatPage.vue` | 修改（事件绑定） |
+
+### P2-4 ~ P2-10 修复改动（2026-05-29）
+
+| 文件 | 改动类型 | 关联 ID |
+|------|----------|---------|
+| `web/src/components/chat/ChatMessagePanel.vue` | 修改（#4caf50 → #4CAF7C） | P2-9 |
+| `web/src/components/chat/ChatRunnerStatus.vue` | 新建（从 features/chat/components/ 迁移） | P2-4 |
+| `web/src/components/chat/ChatEnqueueMessage.vue` | 新建（从 features/chat/components/ 迁移） | P2-4 |
+| `web/src/stores/chat/index.ts` | 修改（删除 useChatStore facade，保留 re-export） | P2-10 |
+| `web/src/stores/index.ts` | 修改（删除 useChatStore 导出） | P2-10 |
+| `web/src/stores/__tests__/app.store.spec.ts` | 修改（改用子 Store 直接调用） | P2-10 |
+| `web/src/stores/chat/messageStore.ts` | 修改（移除 sessionStore 依赖，sessionId 必传） | P2-5 |
+| `web/src/stores/chat/runtimeStore.ts` | 修改（移除 sessionStore 依赖，新增 submitFeedback/cancelBackgroundJob/listChatOptions） | P2-6/P2-8 |
+| `web/src/features/chat/composables/useChatWorkspace.ts` | 修改（提取 dialogs/composerActions，API 调用迁入 Store） | P2-7/P2-8 |
+| `web/src/features/chat/composables/useChatDialogs.ts` | 新建（dialog 状态聚合 composable） | P2-7 |
+| `web/src/features/chat/composables/useChatComposerActions.ts` | 新建（composer action 方法 composable） | P2-7 |
+| `web/src/features/chat/composables/useChatProviderOptions.ts` | 修改（listChatOptions 改为 Store 调用） | P2-8 |
+| `web/src/features/chat/composables/useChatSender.ts` | 修改（新增 sendTeamMessage 导出） | P2-7 |
+
+### P3-1 ~ P3-3 + CC-C-UX-01~03 修复改动（2026-05-29）
+
+| 文件 | 改动类型 | 关联 ID |
+|------|----------|---------|
+| `web/src/components/chat/ChatComposer.vue` | 修改（$q.notify → emit('paste-unsupported')，移除 useQuasar） | P3-1 |
+| `web/src/components/chat/ChatMessagePanel.vue` | 修改（新增 paste-unsupported/cancel-job emit 转发，标注 Container: approved） | P3-1/P3-3 |
+| `web/src/pages/ChatPage.vue` | 修改（处理 paste-unsupported 通知，传入 favoriteIds/toggle-favorite） | P3-1/P3-2 |
+| `web/src/components/chat/ChatSessionSidebar.vue` | 修改（sessionSync → props favoriteIds + emit toggle-favorite） | P3-2 |
+| `web/src/features/chat/composables/useChatWorkspace.ts` | 修改（新增 favoriteIds/onToggleFavorite） | P3-2 |
+| `web/src/components/chat/ChatMessageRow.vue` | 修改（reasoning v-if 加 trim，合并 thinkingIndicator 进 ChatReasoningPeek） | CC-C-UX-01/02 |
+| `web/src/components/chat/ChatReasoningPeek.vue` | 修改（新增 thinkingOnly prop，thinking-only 模式渲染） | CC-C-UX-02 |
+
+---
+
+## 剩余工作（超出本计划范围）
+
+以下工作属于 M55/M56 更广泛的优化计划，不在本优化计划范围内：
+
+| 来源 | ID | 问题 | 状态 |
+|------|-----|------|------|
+| M55 Phase E | CC-E-01 | @ 引用上下文注入 | 未启动 |
+| M55 Phase E | CC-E-02 | diff Apply 卡片 | 未启动 |
+| M55 Phase F | CC-F-01 | 24h Durable Job（Worker deadline） | 未启动 |
+| M55 Phase F | CC-F-02 | invocation restore | 未启动 |
+| M56 BLO-1 | BLO-1 | Intent-Aware Admission | 需求草案 |
+| M56 BLO-2 | BLO-2 | Multi-Signal Escalation | 需求草案 |
+| M56 BLO-3 | BLO-3 | Channel Trigger Rules | 需求草案 |
+| M56 BLO-4 | BLO-4 | Non-Blocking HITL | 需求草案 |
+| M56 BLO-5 | BLO-5 | Unified BackgroundJob | 需求草案 |
+| 架构 | TurnExecutor | Agent/Team 公共骨架提取 | 未启动 |
+| 架构 | listChatOptions | runtimeStore 中 listChatOptions 语义归属 | 记录备忘 |

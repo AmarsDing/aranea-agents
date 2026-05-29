@@ -16,16 +16,28 @@ import (
 	"aranea-agents/pkg/safego"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 const debounceWindow = 2 * time.Second
 
-// Runner watches the skill root and upserts DB rows from on-disk skill packages.
+// SkillReader provides read-only skill lookups needed by the filesystem watcher.
+type SkillReader interface {
+	GetBySlug(ctx context.Context, slug string) (biz.Skill, error)
+	ListSimilaritySources(ctx context.Context) ([]biz.SkillSimilaritySource, error)
+	ListRegisteredSlugs(ctx context.Context) ([]string, error)
+}
+
+// SkillWriter provides write operations needed by the filesystem watcher.
+type SkillWriter interface {
+	MarkFilesystemMissing(ctx context.Context, slug string, missing bool) error
+	RecordInvocation(ctx context.Context, inv biz.SkillInvocationWrite) error
+	UpsertSkillFromDisk(ctx context.Context, input biz.SkillDiskSyncInput) (biz.Skill, biz.SkillDiskSyncOutcome, error)
+}
+
 type Runner struct {
-	uc        *biz.SkillUsecase
+	reader    SkillReader
+	writer    SkillWriter
 	sys       biz.SystemSettingRepo
-	log       log.Logger
 	eventBus  event.Bus
 	reporter  SyncReporter
 	alertEval AlertEvaluator
@@ -36,23 +48,19 @@ type Runner struct {
 	childWatches []string
 }
 
-// SetSyncReporter configures optional monitor/audit notifications.
-func (r *Runner) SetSyncReporter(reporter SyncReporter) {
+func SetSyncReporter(r *Runner, reporter SyncReporter) {
 	if r == nil {
 		return
 	}
 	r.reporter = reporter
 }
 
-// NewRunner returns a filesystem watcher. Pass nil logger to disable structured logs.
-// Pass nil eventBus to disable skill.reload event publishing.
-func NewRunner(uc *biz.SkillUsecase, sys biz.SystemSettingRepo, logger log.Logger) *Runner {
-	return &Runner{uc: uc, sys: sys, log: logger, pending: map[string]struct{}{}}
+func NewRunner(reader SkillReader, writer SkillWriter, sys biz.SystemSettingRepo) *Runner {
+	return &Runner{reader: reader, writer: writer, sys: sys, pending: map[string]struct{}{}}
 }
 
-// NewRunnerWithBus returns a filesystem watcher that publishes skill.reload events.
-func NewRunnerWithBus(uc *biz.SkillUsecase, sys biz.SystemSettingRepo, logger log.Logger, bus event.Bus) *Runner {
-	return &Runner{uc: uc, sys: sys, log: logger, eventBus: bus, pending: map[string]struct{}{}}
+func NewRunnerWithBus(reader SkillReader, writer SkillWriter, sys biz.SystemSettingRepo, bus event.Bus) *Runner {
+	return &Runner{reader: reader, writer: writer, sys: sys, eventBus: bus, pending: map[string]struct{}{}}
 }
 
 func (r *Runner) resolveRoot(ctx context.Context) string {
@@ -64,30 +72,29 @@ func (r *Runner) resolveRoot(ctx context.Context) string {
 	return storage.ResolveRoot()
 }
 
-// Start runs until ctx is cancelled.
 func (r *Runner) Start(ctx context.Context) {
-	if r == nil || r.uc == nil {
+	if r == nil || r.reader == nil {
 		return
 	}
 	root := r.resolveRoot(ctx)
 	if err := os.MkdirAll(root, 0o755); err != nil {
-		r.logf(log.LevelError, "skill.fs.error", "msg", "skill watch: mkdir skill root", "path", root, "err", err)
+		event.SysLogError("skill.fs.error", "skill watch: mkdir skill root", event.P("path", root), event.P("err", err))
 		return
 	}
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
-		r.logf(log.LevelError, "skill.fs.error", "msg", "skill watch: fsnotify", "err", err)
+		event.SysLogError("skill.fs.error", "skill watch: fsnotify", event.P("err", err))
 		return
 	}
 	defer func() { _ = w.Close() }()
 
 	if err := w.Add(root); err != nil {
-		r.logf(log.LevelError, "skill.fs.error", "msg", "skill watch: add root", "path", root, "err", err)
+		event.SysLogError("skill.fs.error", "skill watch: add root", event.P("path", root), event.P("err", err))
 		return
 	}
 	r.refreshChildWatches(w, root)
 
-	r.logf(log.LevelInfo, "skill.fs.scan", "msg", "skill watch: startup scan", "path", root)
+	event.SysLogInfo("skill.fs.scan", "skill watch: startup scan", event.P("path", root))
 	r.scanAll(ctx, root, biz.SkillInvocationSourceFilesystemScan)
 	r.startReconcileLoop(ctx)
 
@@ -105,18 +112,10 @@ func (r *Runner) Start(ctx context.Context) {
 				return
 			}
 			if err != nil {
-				r.logf(log.LevelWarn, "skill.fs.error", "msg", "skill watch: watcher error", "err", err)
+				event.SysLogWarn("skill.fs.error", "skill watch: watcher error", event.P("err", err))
 			}
 		}
 	}
-}
-
-func (r *Runner) logf(level log.Level, event string, kvs ...interface{}) {
-	if r.log == nil {
-		return
-	}
-	kvs = append([]interface{}{"event", event}, kvs...)
-	_ = r.log.Log(level, kvs...)
 }
 
 func (r *Runner) refreshChildWatches(w *fsnotify.Watcher, root string) {
@@ -172,7 +171,11 @@ func (r *Runner) scheduleSlug(ctx context.Context, root, slug string) {
 	if r.timer != nil {
 		r.timer.Stop()
 	}
-	r.timer = time.AfterFunc(debounceWindow, func() { r.flushPending(ctx, root) })
+	r.timer = time.AfterFunc(debounceWindow, func() {
+		safego.Go(ctx, "skill.watch.flush_pending", func() {
+			r.flushPending(ctx, root)
+		})
+	})
 }
 
 func (r *Runner) flushPending(ctx context.Context, root string) {
@@ -209,7 +212,7 @@ func slugFromEvent(root, fullPath string) string {
 func (r *Runner) scanAll(ctx context.Context, root string, source string) {
 	ents, err := os.ReadDir(root)
 	if err != nil {
-		r.logf(log.LevelError, "skill.fs.error", "msg", "skill watch: readdir", "path", root, "err", err)
+		event.SysLogError("skill.fs.error", "skill watch: readdir", event.P("path", root), event.P("err", err))
 		return
 	}
 	for _, e := range ents {
@@ -218,7 +221,7 @@ func (r *Runner) scanAll(ctx context.Context, root string, source string) {
 		}
 		r.syncSlug(ctx, root, e.Name(), source)
 	}
-	r.logf(log.LevelInfo, "skill.fs.scan", "msg", "skill watch: scan done", "path", root, "slugs", len(ents))
+	event.SysLogInfo("skill.fs.scan", "skill watch: scan done", event.P("path", root), event.P("slugs", len(ents)))
 }
 
 func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
@@ -231,9 +234,9 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 		if statErr != nil {
 			errMsg = statErr.Error()
 		}
-		_ = r.uc.MarkFilesystemMissing(ctx, slug, true)
+		_ = r.writer.MarkFilesystemMissing(ctx, slug, true)
 		dur := int(time.Since(t0).Milliseconds())
-		_ = r.uc.RecordInvocation(ctx, biz.SkillInvocationWrite{
+		_ = r.writer.RecordInvocation(ctx, biz.SkillInvocationWrite{
 			Status:       "failure",
 			DurationMS:   dur,
 			InputPreview: preview(slug + " missing"),
@@ -241,22 +244,22 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 			ErrorMessage: errMsg,
 			Source:       source,
 		})
-		r.logf(log.LevelWarn, sourceTag, "slug", slug, "status", "missing", "err", errMsg)
+		event.SysLogWarn(sourceTag, "skill filesystem missing", event.P("slug", slug), event.P("err", errMsg))
 		r.reportSync(ctx, "skill.filesystem.missing", slug, "Skill 磁盘目录缺失: "+slug, "warn")
 		return
 	}
-	_ = r.uc.MarkFilesystemMissing(ctx, slug, false)
+	_ = r.writer.MarkFilesystemMissing(ctx, slug, false)
 
 	files, err := importer.ReadSkillDirFiles(dir)
 	if err != nil {
 		r.recordFailure(ctx, slug, source, t0, "read_dir", err)
-		r.logf(log.LevelWarn, "skill.fs.error", "slug", slug, "err", err)
+		event.SysLogWarn("skill.fs.error", "skill read dir failed", event.P("slug", slug), event.P("err", err))
 		return
 	}
 	candidate, tags := importer.ValidateSkillPackage(files, slug, nil, true)
 	if mismatch := importer.DirectorySlugMismatch(slug, candidate.Slug); mismatch != nil {
 		r.recordFailure(ctx, slug, source, t0, mismatch.Type, errors.New(mismatch.Message))
-		r.logf(log.LevelWarn, "skill.fs.error", "slug", slug, "msg", mismatch.Message)
+		event.SysLogWarn("skill.fs.error", "skill slug mismatch", event.P("slug", slug), event.P("msg", mismatch.Message))
 		r.reportSync(ctx, "skill.filesystem.rejected", slug, mismatch.Message, "warn")
 		return
 	}
@@ -266,7 +269,7 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 			msg = candidate.Blocks[0].Message
 		}
 		r.recordFailure(ctx, slug, source, t0, "validate", errors.New(msg))
-		r.logf(log.LevelWarn, "skill.fs.error", "slug", slug, "msg", msg)
+		event.SysLogWarn("skill.fs.error", "skill validation failed", event.P("slug", slug), event.P("msg", msg))
 		r.reportSync(ctx, "skill.filesystem.rejected", slug, msg, "warn")
 		return
 	}
@@ -276,11 +279,11 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 	}
 	wasMissing := false
 	isNew := true
-	if existing, err := r.uc.GetBySlug(ctx, slug); err == nil {
+	if existing, err := r.reader.GetBySlug(ctx, slug); err == nil {
 		isNew = false
 		wasMissing = existing.FilesystemMissing
 	}
-	sk, outcome, err := r.uc.UpsertSkillFromDisk(ctx, biz.SkillDiskSyncInput{
+	sk, outcome, err := r.writer.UpsertSkillFromDisk(ctx, biz.SkillDiskSyncInput{
 		Name:        candidate.Name,
 		Slug:        candidate.Slug,
 		Description: candidate.Description,
@@ -291,14 +294,14 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 	dur := int(time.Since(t0).Milliseconds())
 	if err != nil {
 		r.recordFailure(ctx, slug, source, t0, "upsert", err)
-		r.logf(log.LevelError, "skill.fs.error", "slug", slug, "err", err)
+		event.SysLogError("skill.fs.error", "skill upsert failed", event.P("slug", slug), event.P("err", err))
 		return
 	}
 	ver := ""
 	if sk.CurrentVersion != nil {
 		ver = sk.CurrentVersion.Version
 	}
-	_ = r.uc.RecordInvocation(ctx, biz.SkillInvocationWrite{
+	_ = r.writer.RecordInvocation(ctx, biz.SkillInvocationWrite{
 		SkillID:       sk.ID,
 		SkillVersion:  ver,
 		Status:        "success",
@@ -307,7 +310,7 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 		OutputPreview: preview(sk.Name + " @" + sk.Slug),
 		Source:        source,
 	})
-	r.logf(log.LevelInfo, sourceTag, "slug", slug, "skill_id", sk.ID, "duration_ms", dur)
+	event.SysLogInfo(sourceTag, "skill sync success", event.P("slug", slug), event.P("skill_id", sk.ID), event.P("duration_ms", dur))
 	eventKey := "skill.filesystem.updated"
 	severity := "info"
 	message := "Skill 磁盘同步: " + sk.Name
@@ -340,7 +343,7 @@ func (r *Runner) recordFailure(ctx context.Context, slug, source string, t0 time
 	if err != nil {
 		msg = err.Error()
 	}
-	_ = r.uc.RecordInvocation(ctx, biz.SkillInvocationWrite{
+	_ = r.writer.RecordInvocation(ctx, biz.SkillInvocationWrite{
 		Status:       "failure",
 		DurationMS:   dur,
 		InputPreview: preview(slug + " sync"),
@@ -360,7 +363,7 @@ func preview(s string) string {
 }
 
 func (r *Runner) checkSimilarityAsync(slug, name string) {
-	if r == nil || r.uc == nil {
+	if r == nil || r.reader == nil {
 		return
 	}
 	name = strings.TrimSpace(name)
@@ -370,7 +373,7 @@ func (r *Runner) checkSimilarityAsync(slug, name string) {
 	slug = strings.TrimSpace(slug)
 	safego.Go(context.Background(), "skill.fs.similarity", func() {
 		ctx := context.Background()
-		sources, err := r.uc.ListSimilaritySources(ctx)
+		sources, err := r.reader.ListSimilaritySources(ctx)
 		if err != nil {
 			return
 		}

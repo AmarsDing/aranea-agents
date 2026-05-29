@@ -12,6 +12,8 @@ type channelTurnJobRepo struct {
 	data *Data
 }
 
+var _ biz.ChannelTurnJobRepo = (*channelTurnJobRepo)(nil)
+
 // NewChannelTurnJobRepo implements biz.ChannelTurnJobRepo.
 func NewChannelTurnJobRepo(d *Data) biz.ChannelTurnJobRepo {
 	return &channelTurnJobRepo{data: d}

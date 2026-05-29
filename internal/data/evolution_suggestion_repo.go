@@ -13,6 +13,8 @@ type evolutionSuggestionRepo struct {
 	data *Data
 }
 
+var _ biz.EvolutionSuggestionRepo = (*evolutionSuggestionRepo)(nil)
+
 func NewEvolutionSuggestionRepo(data *Data) biz.EvolutionSuggestionRepo {
 	return &evolutionSuggestionRepo{data: data}
 }

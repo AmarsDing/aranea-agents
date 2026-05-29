@@ -18,7 +18,7 @@ func (uc *TaskUsecase) allParentTasksComplete(ctx context.Context, childTaskID s
 		return true, nil
 	}
 	for _, pl := range parents {
-		pt, err := uc.repo.GetTask(ctx, pl.ParentTaskID)
+		pt, err := uc.reader.GetTask(ctx, pl.ParentTaskID)
 		if err != nil {
 			return false, err
 		}
@@ -29,14 +29,14 @@ func (uc *TaskUsecase) allParentTasksComplete(ctx context.Context, childTaskID s
 	return true, nil
 }
 
-// isTaskReadyForDispatch gates dispatcher claim until dependency parents are complete.
-func (uc *TaskUsecase) isTaskReadyForDispatch(ctx context.Context, task *GraphTask) bool {
+// IsTaskReadyForDispatch gates dispatcher claim until dependency parents are complete.
+func (uc *TaskUsecase) IsTaskReadyForDispatch(ctx context.Context, task *GraphTask) bool {
 	ready, err := uc.allParentTasksComplete(ctx, task.TaskID)
 	return err == nil && ready
 }
 
-// resolveDispatchAssignee picks a static assignee from task row or graph node definition.
-func (uc *TaskUsecase) resolveDispatchAssignee(ctx context.Context, task *GraphTask) string {
+// ResolveDispatchAssignee picks a static assignee from task row or graph node definition.
+func (uc *TaskUsecase) ResolveDispatchAssignee(ctx context.Context, task *GraphTask) string {
 	if task == nil {
 		return ""
 	}
@@ -46,11 +46,11 @@ func (uc *TaskUsecase) resolveDispatchAssignee(ctx context.Context, task *GraphT
 	if strings.TrimSpace(task.AssignmentMode) == "dynamic" {
 		return ""
 	}
-	exec, err := uc.graphUC.GetExecution(ctx, task.ExecutionID)
+	exec, err := uc.graph.GetExecution(ctx, task.ExecutionID)
 	if err != nil {
 		return ""
 	}
-	node := uc.graphUC.FindGraphNode(ctx, exec.GraphID, task.NodeID)
+	node := uc.graph.FindGraphNode(ctx, exec.GraphID, task.NodeID)
 	if node == nil {
 		return ""
 	}

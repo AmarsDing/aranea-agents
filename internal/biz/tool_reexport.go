@@ -25,6 +25,15 @@ type (
 	ToolAuditQuery           = tool.ToolAuditQuery
 	ToolAuditResult          = tool.ToolAuditResult
 	ToolRepo                 = tool.ToolRepo
+	ToolReader               = tool.ToolReader
+	ToolWriter               = tool.ToolWriter
+	ToolInvocationReader     = tool.ToolInvocationReader
+	ToolInvocationWriter     = tool.ToolInvocationWriter
+	ToolAuditRepo            = tool.ToolAuditRepo
+	ToolOverrideReader       = tool.ToolOverrideReader
+	ToolOverrideWriter       = tool.ToolOverrideWriter
+	ToolSyncer               = tool.ToolSyncer
+	ToolCatalogReader        = tool.ToolCatalogReader
 	ToolUsecase              = tool.ToolUsecase
 	ToolTestResult           = tool.ToolTestResult
 	ToolSettingRepo          = tool.SettingRepo

@@ -17,7 +17,10 @@
       {{ t("chat.reasoningTitle", "思考过程") }}
       <span v-if="streaming" class="chat-reasoning-peek__live" aria-hidden="true">…</span>
     </div>
-    <div ref="viewportRef" class="chat-reasoning-peek__viewport">
+    <div v-if="thinkingOnly" class="chat-reasoning-peek__thinking chat-thinking-pulse text-caption text-grey-7">
+      {{ t("chat.thinking", "正在思考…") }}
+    </div>
+    <div v-else ref="viewportRef" class="chat-reasoning-peek__viewport">
       <div
         class="chat-reasoning-peek__content chat-message-prose"
         :class="{ 'chat-message-content--dark': isDark }"
@@ -40,8 +43,8 @@ const props = defineProps<{
   messageId: string;
   reasoning: string;
   isDark: boolean;
-  /** When true, auto-tail to the latest lines on each update. */
   streaming?: boolean;
+  thinkingOnly?: boolean;
 }>();
 
 const { t } = useI18n();

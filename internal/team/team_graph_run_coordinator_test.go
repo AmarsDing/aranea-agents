@@ -2,6 +2,7 @@ package team
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -380,5 +381,196 @@ func TestTeamGraphRunCoordinator_CleanupStaleDeletesFromDB(t *testing.T) {
 
 	if _, err := sessRepo.GetSession(ctx, "exec-1"); err == nil {
 		t.Fatal("stale session should be deleted from DB after cleanup")
+	}
+}
+
+type failingResumeBackend struct {
+	inner TeamGraphExecutionBackend
+}
+
+func (b *failingResumeBackend) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, teamID, teamRunID string, cfg biz.GraphBuildConfig) error {
+	return b.inner.RegisterTeamGraphExecution(ctx, execID, sessionID, teamID, teamRunID, cfg)
+}
+func (b *failingResumeBackend) MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error {
+	return b.inner.MarkTeamGraphInterrupt(ctx, execID, nodeID, lineageID)
+}
+func (b *failingResumeBackend) ResumeExecution(context.Context, string, map[string]any) (*biz.GraphExecution, error) {
+	return nil, errors.New("resume failed")
+}
+func (b *failingResumeBackend) GetExecution(ctx context.Context, executionID string) (*biz.GraphExecution, error) {
+	return b.inner.GetExecution(ctx, executionID)
+}
+
+type succeedingResumeBackend struct {
+	inner TeamGraphExecutionBackend
+}
+
+func (b *succeedingResumeBackend) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, teamID, teamRunID string, cfg biz.GraphBuildConfig) error {
+	return b.inner.RegisterTeamGraphExecution(ctx, execID, sessionID, teamID, teamRunID, cfg)
+}
+func (b *succeedingResumeBackend) MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error {
+	return b.inner.MarkTeamGraphInterrupt(ctx, execID, nodeID, lineageID)
+}
+func (b *succeedingResumeBackend) ResumeExecution(ctx context.Context, executionID string, resumeValue map[string]any) (*biz.GraphExecution, error) {
+	exec, err := b.inner.GetExecution(ctx, executionID)
+	if err != nil {
+		return nil, err
+	}
+	exec.Status = biz.TeamRunStatusRunning
+	return exec, nil
+}
+func (b *succeedingResumeBackend) GetExecution(ctx context.Context, executionID string) (*biz.GraphExecution, error) {
+	return b.inner.GetExecution(ctx, executionID)
+}
+
+func TestShouldResumeTeamGraph(t *testing.T) {
+	if shouldResumeTeamGraph(nil, "node-1") {
+		t.Fatal("nil exec should not resume")
+	}
+	if shouldResumeTeamGraph(&biz.GraphExecution{Status: biz.TeamRunStatusWaitingHuman, InterruptNode: "node-1"}, "") {
+		t.Fatal("empty nodeID should not resume")
+	}
+	if !shouldResumeTeamGraph(&biz.GraphExecution{Status: biz.TeamRunStatusWaitingHuman, InterruptNode: "node-1"}, "node-1") {
+		t.Fatal("waiting_human + matching InterruptNode should resume")
+	}
+	if !shouldResumeTeamGraph(&biz.GraphExecution{Status: biz.TeamRunStatusWaitingHuman, CurrentNode: "node-1"}, "node-1") {
+		t.Fatal("waiting_human + matching CurrentNode should resume")
+	}
+	if shouldResumeTeamGraph(&biz.GraphExecution{Status: biz.TeamRunStatusRunning, InterruptNode: "node-1"}, "node-1") {
+		t.Fatal("running + matching InterruptNode should not resume")
+	}
+	if !shouldResumeTeamGraph(&biz.GraphExecution{GraphID: "team:abc", InterruptNode: "node-1"}, "node-1") {
+		t.Fatal("team: prefixed GraphID + matching InterruptNode should resume")
+	}
+}
+
+func TestTeamGraphRunCoordinator_HandleTaskCompleted_ResumeFail(t *testing.T) {
+	backend := newCoordTestBackend()
+	repo := &memTeamRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusWaitingHuman}}}
+	bus := event.NewBus()
+	sessRepo := newMemSessionRepo()
+	coord := NewTeamGraphRunCoordinator(&failingResumeBackend{inner: backend}, repo, bus, sessRepo)
+	cfg := biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}
+	ctx := context.Background()
+
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "team-1", "run-1", cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := coord.MarkTeamGraphInterrupt(ctx, "exec-1", "review-1", "lineage-1"); err != nil {
+		t.Fatal(err)
+	}
+	task := &biz.GraphTask{TaskID: "task-1", ExecutionID: "exec-1", NodeID: "review-1"}
+	handled, err := coord.HandleTeamGraphTaskCompleted(ctx, task, nil)
+	if !handled {
+		t.Fatal("should be handled")
+	}
+	if err == nil {
+		t.Fatal("expected error from ResumeExecution")
+	}
+	run, _ := repo.GetTeamRunByID(ctx, "run-1")
+	if run.Status != biz.TeamRunStatusFailed {
+		t.Fatalf("expected failed, got %q", run.Status)
+	}
+	if coord.session("exec-1") != nil {
+		t.Fatal("session should be evicted after resume failure")
+	}
+}
+
+func TestTeamGraphRunCoordinator_HandleTaskCompleted_ResumeSuccess(t *testing.T) {
+	backend := newCoordTestBackend()
+	repo := &memTeamRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusWaitingHuman}}}
+	bus := event.NewBus()
+	sessRepo := newMemSessionRepo()
+	coord := NewTeamGraphRunCoordinator(&succeedingResumeBackend{inner: backend}, repo, bus, sessRepo)
+	cfg := biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}
+	ctx := context.Background()
+
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "team-1", "run-1", cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := coord.MarkTeamGraphInterrupt(ctx, "exec-1", "review-1", "lineage-1"); err != nil {
+		t.Fatal(err)
+	}
+	task := &biz.GraphTask{TaskID: "task-1", ExecutionID: "exec-1", NodeID: "review-1"}
+	handled, err := coord.HandleTeamGraphTaskCompleted(ctx, task, map[string]any{"output": "done"})
+	if !handled {
+		t.Fatal("should be handled")
+	}
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	run, _ := repo.GetTeamRunByID(ctx, "run-1")
+	if run.Status != biz.TeamRunStatusRunning {
+		t.Fatalf("expected running, got %q", run.Status)
+	}
+}
+
+func TestTeamGraphRunCoordinator_RegisterExecutionIdempotent(t *testing.T) {
+	backend := newCoordTestBackend()
+	repo := &memTeamRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", Status: biz.TeamRunStatusRunning}}}
+	bus := event.NewBus()
+	sessRepo := newMemSessionRepo()
+	coord := NewTeamGraphRunCoordinator(backend, repo, bus, sessRepo)
+	cfg := biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}
+	ctx := context.Background()
+
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "team-1", "run-1", cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "team-1", "run-1", cfg); err != nil {
+		t.Fatal(err)
+	}
+	sess := coord.session("exec-1")
+	if sess == nil {
+		t.Fatal("session should exist after double register")
+	}
+	if sess.execID != "exec-1" {
+		t.Fatalf("expected exec-1, got %q", sess.execID)
+	}
+	dbSess, err := sessRepo.GetSession(ctx, "exec-1")
+	if err != nil {
+		t.Fatalf("session not in DB: %v", err)
+	}
+	if dbSess.ExecID != "exec-1" {
+		t.Fatalf("expected exec-1, got %q", dbSess.ExecID)
+	}
+}
+
+func TestTeamGraphRunCoordinator_DeferTeamRunSuccessIfHITL_NoInterrupt(t *testing.T) {
+	backend := newCoordTestBackend()
+	repo := &memTeamRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", Status: biz.TeamRunStatusRunning}}}
+	bus := event.NewBus()
+	coord := NewTeamGraphRunCoordinator(backend, repo, bus, nil)
+	cfg := biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}
+	ctx := context.Background()
+
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "team-1", "run-1", cfg); err != nil {
+		t.Fatal(err)
+	}
+	run := biz.TeamRun{ID: "run-1", Status: biz.TeamRunStatusRunning}
+	deferred, err := coord.DeferTeamRunSuccessIfHITL(ctx, "exec-1", &run)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if deferred {
+		t.Fatal("should not defer when no interrupt marked")
+	}
+}
+
+func TestTeamGraphRunCoordinator_CleanupStale_LeavesActiveSessions(t *testing.T) {
+	backend := newCoordTestBackend()
+	repo := &memTeamRepoCoord{runs: map[string]biz.TeamRun{"run-1": {ID: "run-1", TeamID: "team-1", SessionID: "sess-1", Status: biz.TeamRunStatusRunning}}}
+	bus := event.NewBus()
+	sessRepo := newMemSessionRepo()
+	coord := NewTeamGraphRunCoordinator(backend, repo, bus, sessRepo)
+	cfg := biz.GraphBuildConfig{Nodes: []biz.NodeDef{{ID: "review-1", Type: "review"}}}
+	ctx := context.Background()
+
+	if err := coord.RegisterTeamGraphExecution(ctx, "exec-1", "sess-1", "team-1", "run-1", cfg); err != nil {
+		t.Fatal(err)
+	}
+	coord.CleanupStaleSessions()
+	if _, err := sessRepo.GetSession(ctx, "exec-1"); err != nil {
+		t.Fatal("fresh session should not be cleaned up")
 	}
 }

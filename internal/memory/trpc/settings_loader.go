@@ -6,17 +6,19 @@ import (
 	"aranea-agents/internal/biz"
 )
 
-// AgentRuntimeSettingsLoader resolves per-agent runtime settings for memory tool defaults.
 type AgentRuntimeSettingsLoader interface {
 	GetAgentRuntimeSettings(ctx context.Context, agentID string) (*biz.AgentRuntimeSettings, error)
 }
 
-type agentRuntimeSettingsLoader struct {
-	agents *biz.AgentUsecase
+type AgentSettingsGetter interface {
+	Get(ctx context.Context, id string) (biz.Agent, error)
 }
 
-// NewAgentRuntimeSettingsLoader returns a loader backed by AgentUsecase. Nil agents returns nil.
-func NewAgentRuntimeSettingsLoader(agents *biz.AgentUsecase) AgentRuntimeSettingsLoader {
+type agentRuntimeSettingsLoader struct {
+	agents AgentSettingsGetter
+}
+
+func NewAgentRuntimeSettingsLoader(agents AgentSettingsGetter) AgentRuntimeSettingsLoader {
 	if agents == nil {
 		return nil
 	}

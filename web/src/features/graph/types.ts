@@ -117,6 +117,9 @@ export type GraphLayoutMetadata = Record<string, { x: number; y: number }>;
 
 export const GRAPH_LAYOUT_METADATA_KEY = "layout";
 
+export const NODE_DEFAULT_WIDTH = 180;
+export const NODE_DEFAULT_HEIGHT = 80;
+
 export type GraphStepSnapshot = {
   nodeId: string;
   stepIndex: number;

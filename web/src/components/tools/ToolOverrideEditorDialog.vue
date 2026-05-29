@@ -58,23 +58,15 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
-import { listAgents } from "../../features/agents/api";
-import type { Agent } from "../../features/agents/types";
-
-export type ToolOverrideForm = {
-  agent_id: string;
-  mode: string;
-  enabled: boolean;
-  requires_confirmation: boolean;
-  config_override_json: string;
-};
+import type { ToolOverrideForm } from "../../features/tools/useToolDetailPanel";
 
 const props = defineProps<{
   open: boolean;
   form: ToolOverrideForm;
   editing: boolean;
   saving: boolean;
+  agentOptions: { label: string; value: string }[];
+  agentsLoading?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -88,24 +80,6 @@ const modeOptions = [
   { label: "允许 (allow)", value: "allow" },
   { label: "拒绝 (deny)", value: "deny" }
 ];
-
-const agentsLoading = ref(false);
-const agentOptions = ref<{ label: string; value: string }[]>([]);
-
-onMounted(async () => {
-  agentsLoading.value = true;
-  try {
-    const agents: Agent[] = await listAgents({ limit: 200 });
-    agentOptions.value = agents.map((a) => ({
-      label: a.display_name || a.agent_key || a.id,
-      value: a.id
-    }));
-  } catch {
-    agentOptions.value = [];
-  } finally {
-    agentsLoading.value = false;
-  }
-});
 
 function emitFormPatch(patch: Partial<ToolOverrideForm>) {
   emit("update:form", { ...props.form, ...patch });

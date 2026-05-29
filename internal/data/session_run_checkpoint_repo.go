@@ -12,6 +12,8 @@ type sessionRunCheckpointRepo struct {
 	data *Data
 }
 
+var _ biz.SessionRunCheckpointRepo = (*sessionRunCheckpointRepo)(nil)
+
 // NewSessionRunCheckpointRepo implements biz.SessionRunCheckpointRepo.
 func NewSessionRunCheckpointRepo(d *Data) biz.SessionRunCheckpointRepo {
 	return &sessionRunCheckpointRepo{data: d}

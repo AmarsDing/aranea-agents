@@ -1,7 +1,7 @@
 import { computed, ref, watch, type Ref } from "vue";
 import type { SessionTimeline } from "./types";
 import { useSessionStore } from "../../stores/session";
-import { buildTimelineStats } from "../../components/sessions/sessionTimelineUi";
+import { buildTimelineStats } from "./timelineHelpers";
 
 const PAGE_SIZE = 100;
 

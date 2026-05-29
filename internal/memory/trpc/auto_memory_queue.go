@@ -5,6 +5,7 @@ package trpcmem
 // type aliases so existing call sites in this package compile unchanged.
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -12,6 +13,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/safego"
 )
 
 // Re-export biz contracts as local aliases (no copy of logic).
@@ -104,8 +106,8 @@ func NewMemoryJobQueue(size int, debounce time.Duration) *MemoryJobQueue {
 		tenantInFlight: make(map[string]int64),
 		done:           make(chan struct{}),
 	}
-	go q.drain()
-	go q.cleanupRecent()
+	safego.Go(context.Background(), "memory.job_queue.drain", q.drain)
+	safego.Go(context.Background(), "memory.job_queue.cleanup_recent", q.cleanupRecent)
 	return q
 }
 

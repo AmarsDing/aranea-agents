@@ -5,12 +5,15 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	bizusage "aranea-agents/internal/biz/usage"
 	"aranea-agents/internal/data/ent"
 )
 
 type usageRepo struct {
 	data *Data
 }
+
+var _ bizusage.Repo = (*usageRepo)(nil)
 
 // NewUsageRepo implements biz.UsageRepo (SQLite model_token_usage_events aggregates).
 func NewUsageRepo(d *Data) biz.UsageRepo {

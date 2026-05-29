@@ -51,6 +51,9 @@ func (s *stubUsageRepo) SumScopeCostInPeriod(_ context.Context, scopeType, _ str
 func (s *stubUsageRepo) ListActiveQuotas(context.Context) ([]UsageQuota, error) {
 	return nil, nil
 }
+func (s *stubUsageRepo) BatchSumScopeCost(_ context.Context, _ []UsageQuota) (map[string]int64, error) {
+	return map[string]int64{}, nil
+}
 func (s *stubUsageRepo) ListBudgetAlerts(context.Context, string, string) ([]BudgetAlert, error) {
 	return nil, nil
 }

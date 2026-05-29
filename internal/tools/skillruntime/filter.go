@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
@@ -24,31 +26,59 @@ type RuntimeSettings interface {
 
 const filterCacheMaxEntries = 512
 
+type cacheEntry struct {
+	value      map[string]bool
+	accessedAt time.Time
+}
+
 type filterCache struct {
-	mu      sync.Mutex
-	entries map[string]map[string]bool
+	mu       sync.RWMutex
+	entries  map[string]*cacheEntry
+	hits     atomic.Int64
+	misses   atomic.Int64
+	evictions atomic.Int64
 }
 
 func (c *filterCache) Load(key string) (map[string]bool, bool) {
+	c.mu.RLock()
+	e, ok := c.entries[key]
+	if !ok {
+		c.mu.RUnlock()
+		c.misses.Add(1)
+		return nil, false
+	}
+	c.mu.RUnlock()
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	v, ok := c.entries[key]
-	return v, ok
+	e.accessedAt = time.Now()
+	c.mu.Unlock()
+	c.hits.Add(1)
+	return e.value, true
 }
 
 func (c *filterCache) Store(key string, val map[string]bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.entries == nil {
-		c.entries = make(map[string]map[string]bool, filterCacheMaxEntries)
+		c.entries = make(map[string]*cacheEntry, filterCacheMaxEntries)
 	}
 	if _, exists := c.entries[key]; !exists && len(c.entries) >= filterCacheMaxEntries {
-		for k := range c.entries {
-			delete(c.entries, k)
-			break
+		var oldest string
+		var oldestTime time.Time
+		for k, e := range c.entries {
+			if oldest == "" || e.accessedAt.Before(oldestTime) {
+				oldest = k
+				oldestTime = e.accessedAt
+			}
 		}
+		delete(c.entries, oldest)
+		c.evictions.Add(1)
 	}
-	c.entries[key] = val
+	c.entries[key] = &cacheEntry{value: val, accessedAt: time.Now()}
+	c.misses.Add(1)
+}
+
+func (c *filterCache) Stats() (hits, misses, evicts int64) {
+	return c.hits.Load(), c.misses.Load(), c.evictions.Load()
 }
 
 // AgentVisibilityFilter narrows visible skills per invocation using Layer A + Layer B

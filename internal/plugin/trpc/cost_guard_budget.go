@@ -8,10 +8,17 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/safego"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
+
+type costGuardPersistEntry struct {
+	day   string
+	scope string
+	delta int
+}
 
 type CostGuardBudgetTracker struct {
 	mu       sync.Mutex
@@ -19,10 +26,46 @@ type CostGuardBudgetTracker struct {
 	tokens   int
 	repo     biz.PluginCostGuardUsageRepo
 	scopeKey string
+
+	persistCh   chan costGuardPersistEntry
+	persistDone chan struct{}
+	persistWg   sync.WaitGroup
 }
 
-func NewCostGuardBudgetTracker() *CostGuardBudgetTracker {
-	return &CostGuardBudgetTracker{scopeKey: "global"}
+type CostGuardBudgetOption func(*CostGuardBudgetTracker)
+
+func WithUsageRepo(repo biz.PluginCostGuardUsageRepo) CostGuardBudgetOption {
+	return func(t *CostGuardBudgetTracker) {
+		t.repo = repo
+	}
+}
+
+func WithScopeKey(key string) CostGuardBudgetOption {
+	return func(t *CostGuardBudgetTracker) {
+		if sk := strings.TrimSpace(key); sk != "" {
+			t.scopeKey = sk
+		}
+	}
+}
+
+const (
+	costGuardPersistChanSize = 256
+	costGuardPersistFlushMs  = 500
+	costGuardPersistBatch    = 32
+)
+
+func NewCostGuardBudgetTracker(opts ...CostGuardBudgetOption) *CostGuardBudgetTracker {
+	t := &CostGuardBudgetTracker{
+		scopeKey:    "global",
+		persistCh:   make(chan costGuardPersistEntry, costGuardPersistChanSize),
+		persistDone: make(chan struct{}),
+	}
+	for _, opt := range opts {
+		opt(t)
+	}
+	t.persistWg.Add(1)
+	safego.Go(context.Background(), "cost_guard_budget.persist_worker", t.persistWorker)
+	return t
 }
 
 func (t *CostGuardBudgetTracker) SetUsageRepo(repo biz.PluginCostGuardUsageRepo, scopeKey string) {
@@ -54,21 +97,23 @@ func (t *CostGuardBudgetTracker) TryConsume(budget, add int) bool {
 	if add <= 0 {
 		add = 1
 	}
+	var day, scope string
+	var repo biz.PluginCostGuardUsageRepo
+	consumed := false
 	t.mu.Lock()
 	t.ensureDayLocked()
-	if t.tokens+add > budget {
-		t.mu.Unlock()
-		return false
+	if t.tokens+add <= budget {
+		t.tokens += add
+		day = t.day
+		scope = t.scopeKey
+		repo = t.repo
+		consumed = true
 	}
-	t.tokens += add
-	day := t.day
-	scope := t.scopeKey
-	repo := t.repo
 	t.mu.Unlock()
-	if repo != nil {
-		t.persistAdd(day, scope, add, repo)
+	if consumed && repo != nil {
+		t.persistAdd(day, scope, add)
 	}
-	return true
+	return consumed
 }
 
 func (t *CostGuardBudgetTracker) AddOverBudget(add int) {
@@ -83,15 +128,98 @@ func (t *CostGuardBudgetTracker) AddOverBudget(add int) {
 	repo := t.repo
 	t.mu.Unlock()
 	if repo != nil {
-		t.persistAdd(day, scope, add, repo)
+		t.persistAdd(day, scope, add)
 	}
 }
 
-func (t *CostGuardBudgetTracker) persistAdd(day, scope string, delta int, repo biz.PluginCostGuardUsageRepo) {
-	if err := repo.AddTokens(context.Background(), day, scope, delta); err != nil {
-		event.SysLogWarn("system.plugin.cost_guard_persist_fail", "cost_guard 写库失败，本地累加与远端可能漂移",
-			event.P("scope", scope), event.P("day", day), event.P("delta", delta), event.P("error", err.Error()))
+func (t *CostGuardBudgetTracker) persistAdd(day, scope string, delta int) {
+	select {
+	case t.persistCh <- costGuardPersistEntry{day: day, scope: scope, delta: delta}:
+	default:
+		event.SysLogWarn("system.plugin.cost_guard_persist_drop", "cost_guard persist channel full, entry dropped",
+			event.P("scope", scope), event.P("day", day), event.P("delta", delta))
 	}
+}
+
+func (t *CostGuardBudgetTracker) Close() {
+	if t == nil {
+		return
+	}
+	close(t.persistDone)
+	t.persistWg.Wait()
+}
+
+func (t *CostGuardBudgetTracker) persistWorker() {
+	defer t.persistWg.Done()
+	ticker := time.NewTicker(time.Duration(costGuardPersistFlushMs) * time.Millisecond)
+	defer ticker.Stop()
+	buf := make([]costGuardPersistEntry, 0, costGuardPersistBatch)
+	for {
+		select {
+		case entry, ok := <-t.persistCh:
+			if !ok {
+				t.flushPersist(buf)
+				return
+			}
+			buf = append(buf, entry)
+			if len(buf) >= costGuardPersistBatch {
+				t.flushPersist(buf)
+				buf = buf[:0]
+			}
+		case <-ticker.C:
+			if len(buf) > 0 {
+				t.flushPersist(buf)
+				buf = buf[:0]
+			}
+		case <-t.persistDone:
+			t.drainPersist(buf)
+			return
+		}
+	}
+}
+
+func (t *CostGuardBudgetTracker) drainPersist(buf []costGuardPersistEntry) {
+	for {
+		select {
+		case entry, ok := <-t.persistCh:
+			if !ok {
+				t.flushPersist(buf)
+				return
+			}
+			buf = append(buf, entry)
+		default:
+			t.flushPersist(buf)
+			return
+		}
+	}
+}
+
+func (t *CostGuardBudgetTracker) flushPersist(batch []costGuardPersistEntry) {
+	if len(batch) == 0 {
+		return
+	}
+	aggr := t.aggregatePersist(batch)
+	bg := context.Background()
+	for key, delta := range aggr {
+		if err := t.repo.AddTokens(bg, key.day, key.scope, delta); err != nil {
+			event.SysLogWarn("system.plugin.cost_guard_persist_fail", "cost_guard 写库失败，本地累加与远端可能漂移",
+				event.P("scope", key.scope), event.P("day", key.day), event.P("delta", delta), event.P("error", err.Error()))
+		}
+	}
+}
+
+type persistAggrKey struct {
+	day   string
+	scope string
+}
+
+func (t *CostGuardBudgetTracker) aggregatePersist(batch []costGuardPersistEntry) map[persistAggrKey]int {
+	m := make(map[persistAggrKey]int, len(batch))
+	for _, e := range batch {
+		k := persistAggrKey{day: e.day, scope: e.scope}
+		m[k] += e.delta
+	}
+	return m
 }
 
 func (t *CostGuardBudgetTracker) ensureDayLocked() {
@@ -99,15 +227,23 @@ func (t *CostGuardBudgetTracker) ensureDayLocked() {
 	if t.day == day {
 		return
 	}
+	repo := t.repo
+	scope := t.scopeKey
 	t.day = day
 	t.tokens = 0
-	if t.repo != nil {
-		if n, err := t.repo.GetTokens(context.Background(), day, t.scopeKey); err == nil {
-			t.tokens = n
+	t.mu.Unlock()
+	var loaded int
+	if repo != nil {
+		if n, err := repo.GetTokens(context.Background(), day, scope); err == nil {
+			loaded = n
 		} else {
 			event.SysLogWarn("system.plugin.cost_guard_load_fail", "cost_guard 读取日用量失败，从 0 开始计数",
-				event.P("scope", t.scopeKey), event.P("day", day), event.P("error", err.Error()))
+				event.P("scope", scope), event.P("day", day), event.P("error", err.Error()))
 		}
+	}
+	t.mu.Lock()
+	if t.day == day {
+		t.tokens = loaded
 	}
 }
 
@@ -147,6 +283,8 @@ func costGuardShouldBlock(baseMod string, cfg CostGuardConfig, estTokens int, tr
 	return true, reason
 }
 
+// TECH-DEBT: framework-internal-access — directly accesses inv.Session.EventMu/Events.
+// Should use a framework public API for session token stats when available.
 func EstimateInvocationTokens(inv *trpcagent.Invocation) int {
 	if inv == nil {
 		return 1
@@ -177,10 +315,6 @@ func invocationPromptText(inv *trpcagent.Invocation) string {
 		return c
 	}
 	return ""
-}
-
-func estimateRequestTokens(req *trpcmodel.Request) int {
-	return estimatePromptTokens(req)
 }
 
 func estimatePromptTokens(req *trpcmodel.Request) int {

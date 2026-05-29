@@ -7,6 +7,8 @@ import (
 
 	"aranea-agents/internal/biz"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
@@ -176,10 +178,10 @@ func BuildStateGraphWithRegistry(ctx context.Context, cfg GraphBuildConfig, reg 
 
 func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *BuildDeps) (*trpcgraph.Graph, []trpcagent.Agent, error) {
 	if len(cfg.Nodes) == 0 && len(cfg.Subgraphs) == 0 {
-		return nil, nil, fmt.Errorf("graph: at least one node required")
+		return nil, nil, kerrors.BadRequest("GRAPH", "graph: at least one node required")
 	}
 	if cfg.EntryPoint == "" {
-		return nil, nil, fmt.Errorf("graph: entry point required")
+		return nil, nil, kerrors.BadRequest("GRAPH", "graph: entry point required")
 	}
 
 	var allAgents []trpcagent.Agent
@@ -214,11 +216,11 @@ func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *
 	for _, sub := range cfg.Subgraphs {
 		subGraph, subAgents, err := BuildStateGraphWithAgents(ctx, sub.BuildConfig, deps)
 		if err != nil {
-			return nil, nil, fmt.Errorf("graph: subgraph %q build failed: %w", sub.ID, err)
+			return nil, nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: subgraph %q build failed: %v", sub.ID, err))
 		}
 		subAgent, err := NewGraphAgent(sub.ID, subGraph, sub.BuildConfig.EnableCheckpoint)
 		if err != nil {
-			return nil, nil, fmt.Errorf("graph: subgraph %q agent failed: %w", sub.ID, err)
+			return nil, nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: subgraph %q agent failed: %v", sub.ID, err))
 		}
 		allAgents = append(allAgents, subAgent)
 		allAgents = append(allAgents, subAgents...)
@@ -289,7 +291,7 @@ func NewGraphAgentWithSubAgents(name string, g *trpcgraph.Graph, enableCheckpoin
 	}
 	exec, err := trpcgraph.NewExecutor(g, execOpts...)
 	if err != nil {
-		return nil, fmt.Errorf("graph agent: %w", err)
+		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph agent: %v", err))
 	}
 	return &GraphAgent{
 		graph:     g,
@@ -313,7 +315,7 @@ func NewGraphAgentWithSaver(name string, g *trpcgraph.Graph, saver trpcgraph.Che
 	}
 	exec, err := trpcgraph.NewExecutor(g, execOpts...)
 	if err != nil {
-		return nil, fmt.Errorf("graph agent: %w", err)
+		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph agent: %v", err))
 	}
 	return &GraphAgent{
 		graph:     g,
@@ -339,7 +341,7 @@ func NewGraphAgentWithEngine(name string, g *trpcgraph.Graph, enableCheckpoint b
 	}
 	exec, err := trpcgraph.NewExecutor(g, execOpts...)
 	if err != nil {
-		return nil, fmt.Errorf("graph agent: %w", err)
+		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph agent: %v", err))
 	}
 	return &GraphAgent{
 		graph:     g,

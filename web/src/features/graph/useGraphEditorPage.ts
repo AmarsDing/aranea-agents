@@ -1,11 +1,13 @@
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import type { GraphDefinition, NodeDef, ValidationError, ValidationWarning } from "./types";
+import { applyAutoLayout } from "./editor/graphLayout";
 import { useGraphStore } from "../../stores/graph";
 import { useToolsStore } from "../../stores/tools";
 import { useGraphEditorAssets } from "./useGraphEditorAssets";
 import { useGraphExecute } from "./useGraphExecute";
+import { useGraphUndoRedo } from "./useGraphUndoRedo";
 
 export function useGraphEditorPage() {
   const $q = useQuasar();
@@ -49,6 +51,7 @@ export function useGraphEditorPage() {
   });
 
   const assets = useGraphEditorAssets(graphDef, () => isNew.value);
+  const undoRedo = useGraphUndoRedo(graphDef, markDirty);
 
   const selectedNode = computed<NodeDef | null>(() => {
     if (!selectedNodeId.value) return null;
@@ -83,6 +86,7 @@ export function useGraphEditorPage() {
       const g = await graphStore.fetchGraph(id);
       Object.assign(graphDef, g);
       dirty.value = false;
+      undoRedo.clear();
       if (graphDef.id) {
         await runValidation(graphDef.id);
       }
@@ -165,6 +169,15 @@ export function useGraphEditorPage() {
     await graphExecute.executeRun(graphDef.id);
   }
 
+  function autoLayout() {
+    if (graphDef.nodes.length === 0) return;
+    const moves = applyAutoLayout(graphDef);
+    if (moves.length > 0 && undoRedo) {
+      undoRedo.pushMoveNodes(moves);
+    }
+    markDirty();
+  }
+
   function goBack() {
     router.push({ name: "graphs" });
   }
@@ -186,6 +199,34 @@ export function useGraphEditorPage() {
     await assets.onImportFile(event);
     dirty.value = false;
   }
+
+  function onGlobalKeydown(e: KeyboardEvent) {
+    if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+      e.preventDefault();
+      if (canSave.value && !saving.value) {
+        save();
+      }
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "Z") {
+      e.preventDefault();
+      undoRedo.redo();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+      e.preventDefault();
+      undoRedo.undo();
+      return;
+    }
+  }
+
+  onMounted(() => {
+    document.addEventListener("keydown", onGlobalKeydown);
+  });
+
+  onUnmounted(() => {
+    document.removeEventListener("keydown", onGlobalKeydown);
+  });
 
   onBeforeRouteLeave((_to, _from, next) => {
     if (dirty.value) {
@@ -246,5 +287,12 @@ export function useGraphEditorPage() {
     openTemplateDialog: assets.openTemplateDialog,
     saveTemplate: assets.saveTemplate,
     goBack,
+    autoLayout,
+    goToExecutions: () => router.push({ name: "graph-executions", params: { id: graphDef.value?.id ?? route.params.id } }),
+    canUndo: undoRedo.canUndo,
+    canRedo: undoRedo.canRedo,
+    undo: undoRedo.undo,
+    redo: undoRedo.redo,
+    undoRedo,
   };
 }

@@ -109,19 +109,22 @@
         />
       </details>
       <template v-else>
-        <div
-          v-if="showThinkingIndicator"
-          class="chat-thinking-line chat-thinking-pulse text-caption text-grey-7 q-mb-xs"
-        >
-          {{ row.t("chat.thinking", "正在思考…") }}
-        </div>
         <ChatReasoningPeek
-          v-if="bundle.presentation.reasoning"
+          v-if="!reasoningSidebarOpen && (bundle.presentation.reasoning?.trim() || showThinkingIndicator)"
           :message-id="message.id"
-          :reasoning="bundle.presentation.reasoning"
+          :reasoning="bundle.presentation.reasoning || ' '"
           :is-dark="isDark"
           :streaming="row.isStreaming(message)"
+          :thinking-only="showThinkingIndicator"
         />
+        <div
+          v-if="reasoningSidebarOpen && (bundle.presentation.reasoning?.trim() || showThinkingIndicator)"
+          class="chat-reasoning-inline-hint text-caption"
+          @click="emit('pin-reasoning', message.id)"
+        >
+          <q-icon name="psychology_alt" size="14px" class="q-mr-xs" />
+          {{ row.t("chat.reasoningInSidebar", "思考过程 → 侧栏") }}
+        </div>
         <ChatReactSteps
           v-if="bundle.reactStepsWithTools.length"
           :steps="bundle.reactStepsWithTools"
@@ -188,21 +191,25 @@
           dense
           round
           size="sm"
-          icon="thumb_up_off_alt"
+          :icon="userFeedback === 'positive' ? 'thumb_up' : 'thumb_up_off_alt'"
           :color="userFeedback === 'positive' ? 'primary' : undefined"
           :aria-label="row.t('chat.feedbackPositive')"
           @click="userFeedback = 'positive'; emit('feedback', { messageId: message.id, rating: 'positive' })"
-        />
+        >
+          <q-tooltip>{{ row.t("chat.feedbackPositive") }}</q-tooltip>
+        </q-btn>
         <q-btn
           flat
           dense
           round
           size="sm"
-          icon="thumb_down_off_alt"
+          :icon="userFeedback === 'negative' ? 'thumb_down' : 'thumb_down_off_alt'"
           :color="userFeedback === 'negative' ? 'negative' : undefined"
           :aria-label="row.t('chat.feedbackNegative')"
           @click="userFeedback = 'negative'; emit('feedback', { messageId: message.id, rating: 'negative' })"
-        />
+        >
+          <q-tooltip>{{ row.t("chat.feedbackNegative") }}</q-tooltip>
+        </q-btn>
       </div>
       <div
         v-if="message.role === 'user' && message.status === 'failed'"
@@ -284,6 +291,7 @@ const emit = defineEmits<{
   "attachment-deleted": [id: string];
   "download-artifact": [meta: import("../../features/artifact/types").ArtifactMeta];
   regenerate: [message: Message];
+  "pin-reasoning": [messageId: string];
 }>();
 
 const { t } = useI18n();
@@ -296,9 +304,9 @@ const props = defineProps<{
   messages: Message[];
   isDark: boolean;
   isTeamSession?: boolean;
-  /** Active agent planner_kind for presentation (react / a2ui). */
   plannerKind?: string;
   reactToolLinkIndex: ReactToolLinkIndex;
+  reasoningSidebarOpen?: boolean;
 }>();
 
 const messagesRef = computed(() => props.messages);

@@ -20,6 +20,10 @@ type ModelRouterConfig struct {
 	FallbackModel    string            `json:"fallback_model"`
 }
 
+var codeTaskMarkers = []string{"```", "function ", "def ", "class ", "import ", "bug", "refactor", "compile"}
+
+const longContextCharThreshold = 12000
+
 type ModelRouterPlugin struct {
 	base basePlugin
 	cfg  ModelRouterConfig
@@ -66,7 +70,7 @@ func ResolveModelAPI(prompt string, cfg ModelRouterConfig) string {
 	switch {
 	case cfg.CodeModel != "" && looksLikeCodeTask(promptLower):
 		target = strings.TrimSpace(cfg.CodeModel)
-	case cfg.LongContextModel != "" && len(prompt) > 12000:
+	case cfg.LongContextModel != "" && len(prompt) > longContextCharThreshold:
 		target = strings.TrimSpace(cfg.LongContextModel)
 	}
 	if target != "" {
@@ -88,8 +92,7 @@ func promptText(req *trpcmodel.Request) string {
 }
 
 func looksLikeCodeTask(prompt string) bool {
-	markers := []string{"```", "function ", "def ", "class ", "import ", "bug", "refactor", "compile"}
-	for _, m := range markers {
+	for _, m := range codeTaskMarkers {
 		if strings.Contains(prompt, m) {
 			return true
 		}

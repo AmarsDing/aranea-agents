@@ -8,6 +8,9 @@ import {
   type ToolAgentBindingSummary
 } from "../../features/tools/toolAgentBindingSummary";
 import type { Tool, ToolAgentOverride, ToolInvocation, ToolTestResult } from "../../features/tools/types";
+// TECH-DEBT: cross-domain import; move to agents Store or shared utility — issue #tools-agents-decouple
+import { listAgents } from "../../features/agents/api";
+import type { Agent } from "../../features/agents/types";
 
 export type ToolOverrideForm = {
   agent_id: string;
@@ -48,6 +51,8 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
   const configSaving = ref(false);
   const agentBindingSummary = ref<ToolAgentBindingSummary | null>(null);
   const agentBindingLoading = ref(false);
+  const agentOptions = ref<{ label: string; value: string }[]>([]);
+  const agentsLoading = ref(false);
 
   function toolKey(): string {
     return tool.value?.key?.trim() || tool.value?.id?.trim() || "";
@@ -164,6 +169,23 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
       };
     }
     overrideEditorOpen.value = true;
+    loadAgentOptions();
+  }
+
+  async function loadAgentOptions() {
+    if (agentOptions.value.length > 0) return;
+    agentsLoading.value = true;
+    try {
+      const agents: Agent[] = await listAgents({ limit: 200 });
+      agentOptions.value = agents.map((a) => ({
+        label: a.display_name || a.agent_key || a.id,
+        value: a.id
+      }));
+    } catch {
+      agentOptions.value = [];
+    } finally {
+      agentsLoading.value = false;
+    }
   }
 
   async function saveOverride() {
@@ -259,6 +281,8 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
     configSaving,
     agentBindingSummary,
     agentBindingLoading,
+    agentOptions,
+    agentsLoading,
     openDetail,
     closeDetail,
     refreshDetail,

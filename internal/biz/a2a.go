@@ -1,6 +1,16 @@
 package biz
 
-import "aranea-agents/internal/biz/a2a"
+import (
+	"context"
+	"io"
+	"net/http"
+
+	"aranea-agents/internal/biz/a2a"
+)
+
+type A2ARunnerFactory interface {
+	BuildA2ARunner(ctx context.Context, agentID, publicURL string) (io.Closer, http.Handler, error)
+}
 
 type (
 	A2ACapability               = a2a.Capability

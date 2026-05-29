@@ -2,10 +2,14 @@ package knowledge
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"unicode"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type QueryComplexity int
@@ -33,9 +37,17 @@ func (a *AdaptiveRouter) QueryRewriter() *QueryRewriter {
 	return a.rewriter
 }
 
-func (a *AdaptiveRouter) Search(ctx context.Context, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult) ([]biz.KnowledgeChunk, error) {
-	complexity := a.classify(q, rewriteResult)
-	mode := a.selectMode(complexity)
+func (a *AdaptiveRouter) Search(ctx context.Context, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, modeOverride HybridSearchMode) ([]biz.KnowledgeChunk, error) {
+	if a.hybrid == nil {
+		return nil, kerrors.ServiceUnavailable("KNOWLEDGE", "adaptive_router: hybrid retriever not configured")
+	}
+	var mode HybridSearchMode
+	if modeOverride != "" && modeOverride != HybridAuto {
+		mode = modeOverride
+	} else {
+		complexity := a.classify(q, rewriteResult)
+		mode = a.selectMode(complexity)
+	}
 
 	if rewriteResult != nil && len(rewriteResult.Queries) > 1 {
 		return a.searchMultiQuery(ctx, q, rewriteResult, mode)
@@ -129,15 +141,24 @@ func (a *AdaptiveRouter) searchMultiQuery(ctx context.Context, q biz.KnowledgeSe
 	}
 
 	allChunks := make([][]biz.KnowledgeChunk, 0, len(queries))
+	failCount := 0
 	for _, subQ := range queries {
 		searchQ := q
 		searchQ.Query = subQ
 		searchQ.TopK = perQueryTopK
 		chunks, err := a.hybrid.Search(ctx, searchQ, mode)
 		if err != nil {
+			failCount++
+			event.SysLogWarn("knowledge.adaptive.sub_query_fail", "子查询检索失败",
+				event.P("query", subQ), event.P("error", err.Error()))
 			continue
 		}
 		allChunks = append(allChunks, chunks)
+	}
+
+	if failCount == len(queries) && len(queries) > 0 {
+		event.SysLogWarn("knowledge.adaptive.all_sub_query_fail", "所有子查询均检索失败",
+			event.P("original_query", q.Query), event.P("sub_query_count", fmt.Sprint(len(queries))))
 	}
 
 	return mergeMultiQueryResults(allChunks, topK), nil

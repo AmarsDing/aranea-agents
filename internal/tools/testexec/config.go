@@ -8,10 +8,11 @@ import (
 )
 
 const (
-	toolKeyKnowledgeSearch = "knowledge_search"
-	toolKeyCallAgent       = "call_agent"
-	toolKeyMCPToolSet      = "mcp_tool_set"
-	toolKeyMCPBroker       = "mcp_broker"
+	toolKeyKnowledgeSearch  = "knowledge_search"
+	toolKeyKnowledgeReflect = "knowledge_reflect"
+	toolKeyCallAgent        = "call_agent"
+	toolKeyMCPToolSet       = "mcp_tool_set"
+	toolKeyMCPBroker        = "mcp_broker"
 )
 
 // AssemblyForCatalogKey returns an AssemblyConfig for a single catalog tool_key.
@@ -22,6 +23,8 @@ func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresea
 	}
 	switch key {
 	case toolKeyKnowledgeSearch, toolKeyCallAgent, toolKeyMCPToolSet, toolKeyMCPBroker:
+		return tools.AssemblyConfig{}, false
+	case toolKeyKnowledgeReflect:
 		return tools.AssemblyConfig{}, false
 	case "read_file", "read_multiple_files", "save_file", "list_file", "search_file", "search_content", "replace_content", "diff_edit", "patch_file":
 		cfg := tools.AssemblyConfig{EnabledTools: []string{"file"}}

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	bizplugin "aranea-agents/internal/biz/plugin"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformplugin"
 
@@ -16,6 +17,8 @@ import (
 type pluginRepo struct {
 	data *Data
 }
+
+var _ bizplugin.Repo = (*pluginRepo)(nil)
 
 func NewPluginRepo(d *Data) biz.PluginRepo {
 	return &pluginRepo{data: d}

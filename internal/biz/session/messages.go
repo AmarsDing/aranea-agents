@@ -3,9 +3,11 @@ package session
 import (
 	"context"
 	"strings"
+
+	"aranea-agents/internal/event"
 )
 
-type chatMessageStatusUpdater interface {
+type MessageStatusWriter interface {
 	UpdateChatMessageStatus(ctx context.Context, sessionID, messageID, status, errorMessage string) error
 }
 
@@ -20,7 +22,7 @@ func (uc *SessionUsecase) SearchMessages(ctx context.Context, q MessageSearchQue
 	if strings.TrimSpace(q.Keyword) == "" {
 		return MessageSearchResult{}, validationErr("keyword is required")
 	}
-	return uc.messageReader.SearchMessages(ctx, q)
+	return uc.messageSearchReader.SearchMessages(ctx, q)
 }
 
 func (uc *SessionUsecase) ListMessages(ctx context.Context, sessionID string) ([]ChatMessage, error) {
@@ -85,7 +87,9 @@ func (uc *SessionUsecase) AppendChatTurn(ctx context.Context, sessionID string, 
 		return err
 	}
 	if strings.EqualFold(strings.TrimSpace(user.Role), "user") {
-		_ = uc.maybeAutoTitleFromUserMessage(ctx, sessionID, user.ContentMarkdown)
+		if err := uc.maybeAutoTitleFromUserMessage(ctx, sessionID, user.ContentMarkdown); err != nil {
+			event.SysLogWarn("session.auto_title", "maybeAutoTitleFromUserMessage failed", event.P("session_id", sessionID), event.P("error", err.Error()))
+		}
 	}
 	return nil
 }
@@ -96,7 +100,9 @@ func (uc *SessionUsecase) AppendChatMessage(ctx context.Context, sessionID strin
 		return err
 	}
 	if strings.EqualFold(strings.TrimSpace(msg.Role), "user") {
-		_ = uc.maybeAutoTitleFromUserMessage(ctx, sessionID, msg.ContentMarkdown)
+		if err := uc.maybeAutoTitleFromUserMessage(ctx, sessionID, msg.ContentMarkdown); err != nil {
+			event.SysLogWarn("session.auto_title", "maybeAutoTitleFromUserMessage failed", event.P("session_id", sessionID), event.P("error", err.Error()))
+		}
 	}
 	return nil
 }
@@ -111,11 +117,7 @@ func (uc *SessionUsecase) UpdateChatMessageStatus(ctx context.Context, sessionID
 	if status == "" {
 		return validationErr("status is required")
 	}
-	updater, ok := uc.messageWriter.(chatMessageStatusUpdater)
-	if !ok {
-		return nil
-	}
-	return updater.UpdateChatMessageStatus(ctx, sessionID, messageID, status, strings.TrimSpace(errorMessage))
+	return uc.messageStatusWriter.UpdateChatMessageStatus(ctx, sessionID, messageID, status, strings.TrimSpace(errorMessage))
 }
 
 // UpdateMessageFeedback records thumbs up/down on an assistant message (options_json.feedback).
@@ -141,7 +143,7 @@ func (uc *SessionUsecase) ListMessagesAfterRevision(ctx context.Context, session
 	if _, err := uc.sessionReader.GetSessionByID(ctx, sessionID); err != nil {
 		return nil, err
 	}
-	return uc.messageReader.ListMessagesAfterRevision(ctx, sessionID, afterRevision)
+	return uc.messageSearchReader.ListMessagesAfterRevision(ctx, sessionID, afterRevision)
 }
 
 // BumpSessionRevision atomically increments session_revision after a completed turn.
@@ -150,7 +152,7 @@ func (uc *SessionUsecase) BumpSessionRevision(ctx context.Context, sessionID str
 	if sessionID == "" {
 		return 0, validationErr("session id is required")
 	}
-	return uc.sessionWriter.BumpSessionRevision(ctx, sessionID)
+	return uc.sessionRevWriter.BumpSessionRevision(ctx, sessionID)
 }
 
 // GetSessionRevision returns the current session_revision counter.

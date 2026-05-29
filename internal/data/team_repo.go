@@ -21,6 +21,8 @@ type teamRepo struct {
 	data *Data
 }
 
+var _ biz.TeamRepository = (*teamRepo)(nil)
+
 // NewTeamRepo implements biz.TeamRepository.
 func NewTeamRepo(d *Data) biz.TeamRepository {
 	return &teamRepo{data: d}

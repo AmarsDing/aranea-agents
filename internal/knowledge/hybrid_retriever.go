@@ -2,11 +2,11 @@ package knowledge
 
 import (
 	"context"
-	"fmt"
-	"math"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 const defaultRRF_K = 60
@@ -72,10 +72,10 @@ func NewHybridRetriever(retriever *Retriever, sparse SparseSearcher) *HybridRetr
 
 func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery, mode HybridSearchMode) ([]biz.KnowledgeChunk, error) {
 	if h.embedder == nil {
-		return nil, fmt.Errorf("hybrid_retriever: embedder is nil")
+		return nil, kerrors.ServiceUnavailable("KNOWLEDGE", "hybrid_retriever: embedder is nil")
 	}
 	if h.dense == nil {
-		return nil, fmt.Errorf("hybrid_retriever: dense repo is nil")
+		return nil, kerrors.ServiceUnavailable("KNOWLEDGE", "hybrid_retriever: dense repo is nil")
 	}
 
 	topK := q.TopK
@@ -98,7 +98,7 @@ func (h *HybridRetriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery
 	default:
 		vec, err := h.embedder.Embed(ctx, q.Query)
 		if err != nil {
-			return nil, fmt.Errorf("hybrid_retriever embed: %w", err)
+			return nil, kerrors.InternalServer("KNOWLEDGE", "hybrid_retriever embed failed: "+err.Error())
 		}
 		searchQ := q
 		searchQ.TopK = topK
@@ -125,12 +125,12 @@ func (h *HybridRetriever) selectMode(q biz.KnowledgeSearchQuery) HybridSearchMod
 
 func (h *HybridRetriever) searchSparse(ctx context.Context, q biz.KnowledgeSearchQuery, topK int) ([]biz.KnowledgeChunk, error) {
 	if h.sparse == nil {
-		return nil, fmt.Errorf("hybrid_retriever: sparse searcher not configured")
+		return nil, kerrors.ServiceUnavailable("KNOWLEDGE", "hybrid_retriever: sparse searcher not configured")
 	}
 	q.TopK = topK
 	chunks, err := h.sparse.SearchChunksBM25(ctx, q)
 	if err != nil {
-		return nil, fmt.Errorf("hybrid_retriever sparse: %w", err)
+		return nil, kerrors.InternalServer("KNOWLEDGE", "hybrid_retriever sparse failed: "+err.Error())
 	}
 	return trimChunks(chunks, topK), nil
 }
@@ -138,7 +138,7 @@ func (h *HybridRetriever) searchSparse(ctx context.Context, q biz.KnowledgeSearc
 func (h *HybridRetriever) searchRRF(ctx context.Context, q biz.KnowledgeSearchQuery, topK int) ([]biz.KnowledgeChunk, error) {
 	vec, err := h.embedder.Embed(ctx, q.Query)
 	if err != nil {
-		return nil, fmt.Errorf("hybrid_retriever embed: %w", err)
+		return nil, kerrors.InternalServer("KNOWLEDGE", "hybrid_retriever embed failed: "+err.Error())
 	}
 
 	overfetch := topK * 3
@@ -224,22 +224,6 @@ func sortChunksByRRFScoreDesc(chunks []biz.KnowledgeChunk) {
 			chunks[j], chunks[j-1] = chunks[j-1], chunks[j]
 		}
 	}
-}
-
-func cosineSimilarity(a, b []float32) float32 {
-	if len(a) != len(b) {
-		return 0
-	}
-	var dot, normA, normB float64
-	for i := range a {
-		dot += float64(a[i]) * float64(b[i])
-		normA += float64(a[i]) * float64(a[i])
-		normB += float64(b[i]) * float64(b[i])
-	}
-	if normA == 0 || normB == 0 {
-		return 0
-	}
-	return float32(dot / (math.Sqrt(normA) * math.Sqrt(normB)))
 }
 
 func MergeSearchResults(primary, supplement []biz.KnowledgeChunk, topK int) []biz.KnowledgeChunk {

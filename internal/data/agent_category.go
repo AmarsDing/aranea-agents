@@ -17,6 +17,8 @@ type agentCategoryRepo struct {
 	data *Data
 }
 
+var _ biz.AgentCategoryRepo = (*agentCategoryRepo)(nil)
+
 // NewAgentCategoryRepo registers agent category persistence.
 func NewAgentCategoryRepo(d *Data) biz.AgentCategoryRepo {
 	return &agentCategoryRepo{data: d}

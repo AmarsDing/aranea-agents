@@ -217,6 +217,8 @@
       :form="overrideForm"
       :editing="Boolean(editingOverride)"
       :saving="overrideSaving"
+      :agent-options="agentOptions"
+      :agents-loading="agentsLoading"
       @update:open="$emit('update:overrideEditorOpen', $event)"
       @update:form="$emit('update:overrideForm', $event)"
       @save="$emit('save-override')"
@@ -256,6 +258,8 @@ defineProps<{
   configSaving: boolean;
   agentBindingSummary: ToolAgentBindingSummary | null;
   agentBindingLoading: boolean;
+  agentOptions: { label: string; value: string }[];
+  agentsLoading?: boolean;
 }>();
 
 const policyChip = TOOL_POLICY_CHIP_COPY;

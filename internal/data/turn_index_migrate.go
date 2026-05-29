@@ -3,10 +3,10 @@ package data
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/internal/event"
 )
 
 func entColumnExists(ctx context.Context, client *ent.Client, table, column string) (bool, error) {
@@ -62,7 +62,7 @@ func RunTurnIndexToTurnIDMigration(ctx context.Context, client *ent.Client) erro
 	if applied {
 		return nil
 	}
-	log.Println("[migration] turn_index → turn_id/turn_number/seq_in_turn: starting")
+	event.SysLogInfo("migration.turn_index", "turn_index -> turn_id/turn_number/seq_in_turn: starting")
 
 	if err := entAddColumnIfMissing(ctx, client, "messages", "turn_id",
 		`ALTER TABLE messages ADD COLUMN turn_id VARCHAR(256) NOT NULL DEFAULT ''`); err != nil {
@@ -95,7 +95,7 @@ FROM session_turns st
 WHERE st.session_id = m.session_id
   AND st.turn_index = m.turn_index
 `, stCol)); err != nil {
-			log.Printf("[migration] turn_index: backfill from session_turns failed (may be expected on fresh DB): %v", err)
+			event.SysLogWarn("migration.turn_index", "backfill from session_turns failed (may be expected on fresh DB)", event.P("error", err.Error()))
 		}
 
 		if _, err := client.ExecContext(ctx, `
@@ -110,20 +110,20 @@ SET seq_in_turn = r.rn
 FROM ranked r
 WHERE m.id = r.id
 `); err != nil {
-			log.Printf("[migration] turn_index: seq_in_turn backfill failed (may be expected on fresh DB): %v", err)
+			event.SysLogWarn("migration.turn_index", "seq_in_turn backfill failed (may be expected on fresh DB)", event.P("error", err.Error()))
 		}
 	}
 
 	if hasSTOldIndex {
 		if _, err := client.ExecContext(ctx,
 			`ALTER TABLE session_turns RENAME COLUMN turn_index TO turn_number`); err != nil {
-			log.Printf("[migration] turn_index: rename session_turns.turn_index failed (may be expected if already renamed): %v", err)
+			event.SysLogWarn("migration.turn_index", "rename session_turns.turn_index failed (may be expected if already renamed)", event.P("error", err.Error()))
 		}
 	}
 
 	if err := recordMigrationApplied(ctx, client, MigrationTurnIndexToTurnID, migrationNameTurnIndexToTurnID); err != nil {
 		return fmt.Errorf("turn_index migration: record: %w", err)
 	}
-	log.Println("[migration] turn_index → turn_id/turn_number/seq_in_turn: done")
+	event.SysLogInfo("migration.turn_index", "turn_index -> turn_id/turn_number/seq_in_turn: done")
 	return nil
 }

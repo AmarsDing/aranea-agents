@@ -47,6 +47,7 @@ type TRPCMemoryKnowledgeDeps struct {
 	MemoryL3Recall        biz.MemoryL3Recaller
 	MemoryCompositeRecall biz.MemoryCompositeRecaller
 	KnowledgeRetriever    *knowledge.Retriever
+	KnowledgeUsecase      *biz.KnowledgeUsecase
 }
 
 // TRPCPluginDeps documents plugin/callback chain on TRPCBuilderDeps.
@@ -89,6 +90,7 @@ type TRPCBuilderDeps struct {
 	MemoryL3Recall        biz.MemoryL3Recaller
 	MemoryCompositeRecall biz.MemoryCompositeRecaller
 	KnowledgeRetriever    *knowledge.Retriever
+	KnowledgeUsecase      *biz.KnowledgeUsecase
 	// TRPCPluginDeps
 	Plugins       []trpcplugin.Plugin
 	PluginManager *plugintrpc.Manager

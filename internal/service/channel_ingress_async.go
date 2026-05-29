@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	cronv1 "aranea-agents/api/kratos/cron/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/event"
@@ -74,14 +73,12 @@ func (h *ChannelIngress) dispatchAsyncInbound(
 	case ltCfg.AsyncCronTaskID != "" && h.cron != nil:
 		targetType = "cron"
 		targetID = ltCfg.AsyncCronTaskID
-		run, cerr := h.cron.TriggerCronTask(ctx, &cronv1.TriggerCronTaskRequest{Id: targetID})
+		run, cerr := h.cron.TriggerCronTask(ctx, targetID)
 		if cerr != nil {
 			h.markTurnJob(ctx, biz.ChannelTurnJobStatusFailed, cerr.Error(), "", "")
 			return cerr
 		}
-		if run != nil {
-			asyncID = strings.TrimSpace(run.GetId())
-		}
+		asyncID = strings.TrimSpace(run.ID)
 	default:
 		h.markTurnJob(ctx, biz.ChannelTurnJobStatusFailed, "async target not configured", "", "")
 		return kerrors.BadRequest("CHANNEL", "no graph_id or cron_task_id configured")
@@ -96,11 +93,13 @@ func (h *ChannelIngress) dispatchAsyncInbound(
 	if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), msg, ev.OutboundMeta, ackIdempotencyKey(platform, ev, "async")); err != nil {
 		return err
 	}
-	_ = h.recordDelivery(ctx, chRow.ID, "async_queued", map[string]any{
+	if delErr := h.recordDelivery(ctx, chRow.ID, "async_queued", map[string]any{
 		"target_type": targetType,
 		"target_id":   asyncID,
 		"session_id":  sessionID,
-	}, "")
+	}, ""); delErr != nil {
+		event.SysLogWarn("channel.ingress.delivery", "recordDelivery failed", event.P("channel_id", chRow.ID), event.P("error", delErr.Error()))
+	}
 
 	switch targetType {
 	case "graph", "team_graph":
@@ -222,7 +221,9 @@ func (h *ChannelIngress) completeAsyncTargetWatch(ctx context.Context, chRow biz
 			)
 		}
 	}
-	_ = h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), summary, ev.OutboundMeta, ackIdempotencyKey(platform, ev, "async_done"))
+	if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), summary, ev.OutboundMeta, ackIdempotencyKey(platform, ev, "async_done")); err != nil {
+		event.SysLogWarn("channel.async.reply", "enqueueOutboundReply failed", event.P("error", err.Error()))
+	}
 }
 
 func (h *ChannelIngress) failAsyncTargetWatch(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform, jobID, targetID, targetType string, cause error) {
@@ -237,7 +238,9 @@ func (h *ChannelIngress) failAsyncTargetWatch(ctx context.Context, chRow biz.Cha
 			)
 		}
 	}
-	_ = h.deliverTurnErrorReply(ctx, chRow, ev, platform, cause)
+	if err := h.deliverTurnErrorReply(ctx, chRow, ev, platform, cause); err != nil {
+		event.SysLogWarn("channel.async.error_reply", "deliverTurnErrorReply failed", event.P("error", err.Error()))
+	}
 	event.SysLogWarn(flowStepChannelTurnDone, "Channel 异步任务失败",
 		event.P("target_type", targetType),
 		event.P("target_id", targetID),
@@ -267,7 +270,9 @@ func (h *ChannelIngress) finishAsyncTargetWatch(ctx context.Context, chRow biz.C
 			)
 		}
 	}
-	_ = h.deliverTurnErrorReply(ctx, chRow, ev, platform, watchErr)
+	if err := h.deliverTurnErrorReply(ctx, chRow, ev, platform, watchErr); err != nil {
+		event.SysLogWarn("channel.async.error_reply", "deliverTurnErrorReply failed", event.P("error", err.Error()))
+	}
 	event.SysLogWarn(flowStepChannelTurnDone, "Channel 异步任务监听结束",
 		event.P("target_type", targetType),
 		event.P("target_id", targetID),

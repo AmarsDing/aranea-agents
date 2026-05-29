@@ -1,10 +1,11 @@
 package service
 
 import (
-	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 func graphExecutionFinishErr(exec *biz.GraphExecution) error {
@@ -14,9 +15,9 @@ func graphExecutionFinishErr(exec *biz.GraphExecution) error {
 	switch strings.TrimSpace(exec.Status) {
 	case "failed", "cancelled":
 		if msg := strings.TrimSpace(exec.ErrorMessage); msg != "" {
-			return fmt.Errorf("%s", msg)
+			return kerrors.InternalServer("GRAPH", msg)
 		}
-		return fmt.Errorf("graph execution %s", exec.Status)
+		return kerrors.InternalServer("GRAPH", "graph execution "+exec.Status)
 	default:
 		return nil
 	}

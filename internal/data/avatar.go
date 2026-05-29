@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	bizavatar "aranea-agents/internal/biz/avatar"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/avatarasset"
 	"aranea-agents/internal/data/ent/predicate"
@@ -19,6 +20,8 @@ import (
 type avatarRepo struct {
 	data *Data
 }
+
+var _ bizavatar.Repo = (*avatarRepo)(nil)
 
 func NewAvatarRepo(d *Data) biz.AvatarRepo {
 	return &avatarRepo{data: d}

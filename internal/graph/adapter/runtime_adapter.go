@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	graphtrpc "aranea-agents/internal/graph/trpc"
@@ -75,7 +77,7 @@ func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any)
 		event.SysLogError("system.graph.runtime_run_fail", "graph runtime run failed",
 			event.P("session_id", r.sessionID), event.P("graph_id", r.graphID),
 			event.P("execution_id", r.execID), event.P("error", err.Error()))
-		return nil, fmt.Errorf("graph runtime run: %w", err)
+		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph runtime run: %v", err))
 	}
 
 	out := make(chan biz.GraphRuntimeEvent, 64)
@@ -120,7 +122,7 @@ func (r *trpcGraphRuntime) Resume(ctx context.Context, lineageID string, resumeV
 		event.SysLogError("system.graph.runtime_resume_fail", "graph runtime resume failed",
 			event.P("session_id", r.sessionID), event.P("graph_id", r.graphID),
 			event.P("execution_id", r.execID), event.P("error", err.Error()))
-		return nil, fmt.Errorf("graph runtime resume: %w", err)
+		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph runtime resume: %v", err))
 	}
 
 	out := make(chan biz.GraphRuntimeEvent, 64)
@@ -151,7 +153,7 @@ func (r *trpcGraphRuntime) Cancel() error {
 func (r *trpcGraphRuntime) TimeTravelGetState(ctx context.Context, lineageID, checkpointID, namespace string) (any, error) {
 	tt, err := r.agent.TimeTravel()
 	if err != nil {
-		return nil, fmt.Errorf("time travel not available: %w", err)
+		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("time travel not available: %v", err))
 	}
 	ref := trpcgraph.CheckpointRef{
 		LineageID:    lineageID,
@@ -164,7 +166,7 @@ func (r *trpcGraphRuntime) TimeTravelGetState(ctx context.Context, lineageID, ch
 func (r *trpcGraphRuntime) TimeTravelHistory(ctx context.Context, lineageID, namespace string, limit int) (any, error) {
 	tt, err := r.agent.TimeTravel()
 	if err != nil {
-		return nil, fmt.Errorf("time travel not available: %w", err)
+		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("time travel not available: %v", err))
 	}
 	return tt.History(ctx, lineageID, namespace, limit)
 }
@@ -172,7 +174,7 @@ func (r *trpcGraphRuntime) TimeTravelHistory(ctx context.Context, lineageID, nam
 func (r *trpcGraphRuntime) TimeTravelEditState(ctx context.Context, lineageID, checkpointID, namespace string, patch map[string]any) (any, error) {
 	tt, err := r.agent.TimeTravel()
 	if err != nil {
-		return nil, fmt.Errorf("time travel not available: %w", err)
+		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("time travel not available: %v", err))
 	}
 	base := trpcgraph.CheckpointRef{
 		LineageID:    lineageID,
@@ -185,7 +187,7 @@ func (r *trpcGraphRuntime) TimeTravelEditState(ctx context.Context, lineageID, c
 func (r *trpcGraphRuntime) ListCheckpoints(ctx context.Context, lineageID, namespace string, limit int) (any, error) {
 	tt, err := r.agent.TimeTravel()
 	if err != nil {
-		return nil, fmt.Errorf("time travel not available: %w", err)
+		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("time travel not available: %v", err))
 	}
 	return tt.History(ctx, lineageID, namespace, limit)
 }
@@ -409,7 +411,7 @@ func (f *trpcGraphBuilderFactory) Visualize(ctx context.Context, cfg biz.GraphBu
 	trpcCfg := bizCfgToTrpc(cfg)
 	g, _, err := graphtrpc.BuildStateGraphWithRegistry(ctx, trpcCfg, f.registry, f.resolvers.ToBuildDepsPtr())
 	if err != nil {
-		return nil, fmt.Errorf("build state graph for visualization: %w", err)
+		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("build state graph for visualization: %v", err))
 	}
 	dot := g.DOT()
 	vg := graphtrpc.ParseDOTToVisualGraph(dot, trpcCfg.Nodes, trpcCfg.ConditionalEdges)

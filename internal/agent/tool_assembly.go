@@ -45,6 +45,7 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		}
 
 		cfg.KnowledgeSearch = eff[biz.ToolKeyKnowledgeSearch]
+		cfg.KnowledgeReflect = eff[biz.ToolKeyKnowledgeReflect]
 		cfg.CallAgent = eff[biz.ToolKeyCallAgent]
 		cfg.AwaitHook = deps.AwaitHook
 	}

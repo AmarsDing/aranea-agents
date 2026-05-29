@@ -40,6 +40,7 @@
 <script setup lang="ts">
 import { useQuasar } from "quasar";
 import type { GraphVersionInfo } from "../../features/graph/types";
+import { formatTime } from "../../features/graph/utils";
 
 const $q = useQuasar();
 
@@ -66,9 +67,5 @@ function confirmRollback(version: number) {
   });
 }
 
-function formatTime(value: string) {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-}
+
 </script>

@@ -2,7 +2,7 @@
  * Chat message store — manages per-session message state, revision tracking,
  * and message merge logic. Split from the monolithic useChatStore.
  */
-import { computed, ref } from "vue";
+import { ref } from "vue";
 import { defineStore } from "pinia";
 import {
   listSessionChatMessages as listMessages,
@@ -13,7 +13,6 @@ import {
   mergeIncrementalSessionMessages,
   mergeSessionMessages,
 } from "../../features/chat/mergeSessionMessages";
-import { useChatSessionStore } from "./sessionStore";
 
 export const useChatMessageStore = defineStore("chatMessage", () => {
   const messagesBySession = ref<Record<string, Message[]>>({});
@@ -28,10 +27,8 @@ export const useChatMessageStore = defineStore("chatMessage", () => {
     messagesBySession.value[sessionId] = rows;
   }
 
-  function clearSessionMessages(sessionId?: string) {
-    const session = useChatSessionStore();
-    const sid = sessionId ?? session.currentSessionId();
-    if (sid) messagesBySession.value[sid] = [];
+  function clearSessionMessages(sessionId: string) {
+    if (sessionId) messagesBySession.value[sessionId] = [];
   }
 
   function clearAllMessages() {
@@ -40,34 +37,19 @@ export const useChatMessageStore = defineStore("chatMessage", () => {
     }
   }
 
-  /** Convenience computed for the currently active session's messages. */
-  const messages = computed({
-    get(): Message[] {
-      const session = useChatSessionStore();
-      const sid = session.currentSessionId();
-      return sid ? (messagesBySession.value[sid] ?? []) : [];
-    },
-    set(rows: Message[]) {
-      const session = useChatSessionStore();
-      const sid = session.currentSessionId();
-      if (sid) messagesBySession.value[sid] = rows;
-    },
-  });
-
-  async function loadMessages(opts?: {
-    sessionId?: string;
+  async function loadMessages(opts: {
+    sessionId: string;
     replace?: boolean;
     afterRevision?: number;
     dropStaleInFlight?: boolean;
   }) {
-    const session = useChatSessionStore();
-    const sid = opts?.sessionId ?? session.currentSessionId();
+    const sid = opts.sessionId;
     if (!sid) return;
 
     const local = getMessages(sid);
-    const mergeOpts = opts?.dropStaleInFlight ? { dropStaleInFlight: true } : undefined;
+    const mergeOpts = opts.dropStaleInFlight ? { dropStaleInFlight: true } : undefined;
 
-    if (opts?.afterRevision != null && opts.afterRevision > 0) {
+    if (opts.afterRevision != null && opts.afterRevision > 0) {
       const { items, currentRevision } = await listSessionChatMessagesAfterRevision(
         sid,
         opts.afterRevision
@@ -85,7 +67,7 @@ export const useChatMessageStore = defineStore("chatMessage", () => {
 
     const { items: server, currentRevision } = await listMessages(sid);
     sessionRevisionBySession.value[sid] = currentRevision;
-    if (opts?.replace || local.length === 0) {
+    if (opts.replace || local.length === 0) {
       setMessages(sid, mergeSessionMessages(server, [], mergeOpts));
       return;
     }
@@ -101,7 +83,6 @@ export const useChatMessageStore = defineStore("chatMessage", () => {
     messagesBySession,
     sessionRevisionBySession,
     lastIntentPass,
-    messages,
     getMessages,
     setMessages,
     clearSessionMessages,

@@ -7,9 +7,16 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 const defaultEmbedBatchSize = 32
+
+const (
+	DefaultChunkSize    = 512
+	DefaultChunkOverlap = 64
+)
 
 // IngestParams holds inputs for the chunk-and-embed pipeline.
 type IngestParams struct {
@@ -22,6 +29,15 @@ type IngestParams struct {
 	ChunkOverlap int
 }
 
+func (p *IngestParams) ApplyDefaults() {
+	if p.ChunkSize <= 0 {
+		p.ChunkSize = DefaultChunkSize
+	}
+	if p.ChunkOverlap < 0 {
+		p.ChunkOverlap = DefaultChunkOverlap
+	}
+}
+
 // NormalizeMetadataJSON validates document-level metadata for chunk storage.
 func NormalizeMetadataJSON(raw string) (string, error) {
 	s := strings.TrimSpace(raw)
@@ -29,7 +45,7 @@ func NormalizeMetadataJSON(raw string) (string, error) {
 		return "{}", nil
 	}
 	if !json.Valid([]byte(s)) {
-		return "", fmt.Errorf("metadata_json must be valid JSON")
+		return "", kerrors.BadRequest("KNOWLEDGE", "metadata_json must be valid JSON")
 	}
 	return s, nil
 }
@@ -37,7 +53,7 @@ func NormalizeMetadataJSON(raw string) (string, error) {
 // BuildIndexedChunks splits text, embeds each chunk, and returns rows ready for persistence.
 func BuildIndexedChunks(ctx context.Context, embedder QueryEmbedder, p IngestParams) ([]biz.KnowledgeChunk, error) {
 	if embedder == nil {
-		return nil, fmt.Errorf("ingest: embedder is nil")
+		return nil, kerrors.BadRequest("KNOWLEDGE", "ingest: embedder is nil")
 	}
 	meta, err := NormalizeMetadataJSON(p.MetadataJSON)
 	if err != nil {
@@ -49,7 +65,7 @@ func BuildIndexedChunks(ctx context.Context, embedder QueryEmbedder, p IngestPar
 		return nil, err
 	}
 	if len(chunks) == 0 {
-		return nil, fmt.Errorf("ingest: no chunks produced")
+		return nil, kerrors.InternalServer("KNOWLEDGE", "ingest: no chunks produced")
 	}
 
 	texts := make([]string, len(chunks))
@@ -64,7 +80,7 @@ func BuildIndexedChunks(ctx context.Context, embedder QueryEmbedder, p IngestPar
 	out := make([]biz.KnowledgeChunk, 0, len(chunks))
 	for i, ch := range chunks {
 		out = append(out, biz.KnowledgeChunk{
-			ID:           fmt.Sprintf("%s-ch-%d", p.DocID, i),
+			ID:           fmt.Sprintf("%s-ch-%d", p.DocID, ch.ChunkIndex),
 			DocID:        p.DocID,
 			CollectionID: p.CollectionID,
 			Content:      ch.Content,
@@ -84,7 +100,7 @@ func embedTexts(ctx context.Context, embedder QueryEmbedder, texts []string) ([]
 	for i, t := range texts {
 		vec, err := embedder.Embed(ctx, t)
 		if err != nil {
-			return nil, fmt.Errorf("embed chunk %d: %w", i, err)
+			return nil, kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("embed chunk %d failed: %s", i, err.Error()))
 		}
 		out[i] = vec
 	}

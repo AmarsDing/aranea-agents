@@ -19,6 +19,11 @@ type graphRepo struct {
 	data *Data
 }
 
+var (
+	_ biz.GraphRepo    = (*graphRepo)(nil)
+	_ biz.GraphRunRepo = (*graphRunRepo)(nil)
+)
+
 func NewGraphRepo(data *Data) biz.GraphRepo {
 	return &graphRepo{data: data}
 }
@@ -240,11 +245,22 @@ func (r *graphRunRepo) GetRun(ctx context.Context, id string) (*biz.GraphExecuti
 	return entGraphRunToBiz(row), nil
 }
 
-func (r *graphRunRepo) ListRunsByGraph(ctx context.Context, graphID string, pageSize int, pageToken string) ([]*biz.GraphExecution, string, error) {
+func (r *graphRunRepo) ListRunsByGraph(ctx context.Context, graphID string, pageSize int, pageToken string, opts ...biz.GraphRunListOption) ([]*biz.GraphExecution, string, error) {
 	client := r.data.Ent()
 	query := client.GraphExecution.Query().
 		Where(graphexecution.GraphIDEQ(graphID)).
 		Order(ent.Desc(graphexecution.FieldStartedAt))
+
+	var opt biz.GraphRunListOption
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
+	if opt.Status != "" {
+		query = query.Where(graphexecution.StatusEQ(opt.Status))
+	}
+	if opt.StartedAfter != nil {
+		query = query.Where(graphexecution.StartedAtGTE(*opt.StartedAfter))
+	}
 
 	if pageSize <= 0 {
 		pageSize = 20

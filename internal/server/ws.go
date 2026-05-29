@@ -128,7 +128,7 @@ type WSServer struct {
 	eventBuffer           *event.Buffer
 	canceller             RunCanceller
 	sender                ChatSender
-	turnGateway           biz.TurnGateway
+	turnGateway           biz.TurnExecutorGateway
 	serverConf            *conf.Server
 	upgrader              websocket.Upgrader
 	closed                bool
@@ -146,7 +146,7 @@ func NewWSServer(c *conf.Server, eventBus event.Bus, eventBuffer *event.Buffer, 
 }
 
 // NewWSServerFromInfra uses session bus for chat envelopes and monitor bus for flow_log (P0).
-func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnGateway biz.TurnGateway) *WSServer {
+func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnGateway biz.TurnExecutorGateway) *WSServer {
 	if c == nil || c.GetWs() == nil || !c.GetWs().GetEnable() {
 		return nil
 	}
@@ -708,7 +708,7 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 	sessionID := wc.sessionID
 	requestID := strings.TrimSpace(up.RequestID)
 
-	// Prefer biz.TurnGateway when available (Phase B2: unified turn entry point).
+	// Prefer biz.TurnExecutorGateway when available (Phase B2: unified turn entry point).
 	if s.turnGateway != nil {
 		input := biz.TurnInput{
 			SessionID: sessionID,

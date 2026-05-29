@@ -26,6 +26,7 @@ type ToolRegistration struct {
 	ToolSetFactory       func(ctx context.Context) (ToolSet, error)
 	EnabledByDefault     bool
 	Category             string
+	Tags                 []string
 	RiskLevel            string
 	RequiresConfirmation bool
 	SupportsStreaming    bool
@@ -59,4 +60,35 @@ func ConfigString(m map[string]any, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+func RegistryByTag(tag string) []*ToolRegistration {
+	tag = strings.TrimSpace(strings.ToLower(tag))
+	if tag == "" {
+		return nil
+	}
+	var out []*ToolRegistration
+	for _, reg := range Registry() {
+		for _, t := range reg.Tags {
+			if strings.EqualFold(t, tag) {
+				out = append(out, reg)
+				break
+			}
+		}
+	}
+	return out
+}
+
+func RegistryByCategory(category string) []*ToolRegistration {
+	category = strings.TrimSpace(strings.ToLower(category))
+	if category == "" {
+		return nil
+	}
+	var out []*ToolRegistration
+	for _, reg := range Registry() {
+		if strings.EqualFold(reg.Category, category) {
+			out = append(out, reg)
+		}
+	}
+	return out
 }

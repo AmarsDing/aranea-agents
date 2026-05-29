@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/reranker"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/reranker/cohere"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/reranker/infinity"
@@ -57,7 +58,7 @@ func NewRerankerFromEnv() (reranker.Reranker, error) {
 		}
 		return infinity.New(opts...)
 	default:
-		return nil, fmt.Errorf("knowledge reranker: unknown KRATOS_KNOWLEDGE_RERANKER %q", kind)
+		return nil, kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("knowledge reranker: unknown KRATOS_KNOWLEDGE_RERANKER %q", kind))
 	}
 }
 

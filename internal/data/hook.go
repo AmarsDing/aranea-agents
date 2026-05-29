@@ -5,6 +5,7 @@ import (
 	"database/sql"
 
 	"aranea-agents/internal/biz"
+	bizhook "aranea-agents/internal/biz/hook"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformhook"
 
@@ -14,6 +15,8 @@ import (
 type hookRepo struct {
 	data *Data
 }
+
+var _ bizhook.Repo = (*hookRepo)(nil)
 
 // NewHookRepo implements biz.HookRepo for table hooks.
 func NewHookRepo(d *Data) biz.HookRepo {

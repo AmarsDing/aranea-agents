@@ -35,6 +35,8 @@ func (b *EventBridge) Consume(ctx context.Context, eventCh <-chan *trpcevent.Eve
 		env := b.convertEvent(e)
 		if env != nil {
 			b.eventBus.Publish(ctx, *env)
+		} else {
+			event.SysLogWarn("graph.event_bridge", "unhandled event dropped", event.P("object", fmt.Sprintf("%v", e.Object)))
 		}
 	}
 }
@@ -244,7 +246,9 @@ func extractNodeMeta(e *trpcevent.Event) trpcgraph.NodeExecutionMetadata {
 	if !ok || len(raw) == 0 {
 		return meta
 	}
-	_ = json.Unmarshal(raw, &meta)
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		event.SysLogWarn("graph.event_bridge", "node meta unmarshal failed", event.P("error", err.Error()))
+	}
 	return meta
 }
 
@@ -257,7 +261,9 @@ func extractPregelMeta(e *trpcevent.Event) trpcgraph.PregelStepMetadata {
 	if !ok || len(raw) == 0 {
 		return meta
 	}
-	_ = json.Unmarshal(raw, &meta)
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		event.SysLogWarn("graph.event_bridge", "pregel meta unmarshal failed", event.P("error", err.Error()))
+	}
 	return meta
 }
 
@@ -270,7 +276,9 @@ func extractStateUpdateMeta(e *trpcevent.Event) trpcgraph.StateUpdateMetadata {
 	if !ok || len(raw) == 0 {
 		return meta
 	}
-	_ = json.Unmarshal(raw, &meta)
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		event.SysLogWarn("graph.event_bridge", "state update meta unmarshal failed", event.P("error", err.Error()))
+	}
 	return meta
 }
 
@@ -283,7 +291,9 @@ func extractCompletionMeta(e *trpcevent.Event) trpcgraph.CompletionMetadata {
 	if !ok || len(raw) == 0 {
 		return meta
 	}
-	_ = json.Unmarshal(raw, &meta)
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		event.SysLogWarn("graph.event_bridge", "completion meta unmarshal failed", event.P("error", err.Error()))
+	}
 	return meta
 }
 
@@ -296,7 +306,9 @@ func extractNodeCustomMeta(e *trpcevent.Event) trpcgraph.NodeCustomEventMetadata
 	if !ok || len(raw) == 0 {
 		return meta
 	}
-	_ = json.Unmarshal(raw, &meta)
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		event.SysLogWarn("graph.event_bridge", "node custom meta unmarshal failed", event.P("error", err.Error()))
+	}
 	return meta
 }
 

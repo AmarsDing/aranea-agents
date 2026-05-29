@@ -269,9 +269,13 @@ func detectUnsafeIntent(input string) (trpcunsafereview.Category, string) {
 	return "", ""
 }
 
+// chainedPromptInjectionReviewer chains a rule-based reviewer with an optional deep reviewer.
+// NOTE: Cannot be unified with chainedUnsafeIntentReviewer via generics because
+// trpcpromptreview.Reviewer and trpcunsafereview.Reviewer are distinct framework interfaces
+// with different Request/Decision types.
 type chainedPromptInjectionReviewer struct {
-	rule  trpcpromptreview.Reviewer
-	deep  trpcpromptreview.Reviewer
+	rule trpcpromptreview.Reviewer
+	deep trpcpromptreview.Reviewer
 }
 
 var _ trpcpromptreview.Reviewer = (*chainedPromptInjectionReviewer)(nil)
@@ -290,9 +294,11 @@ func (c *chainedPromptInjectionReviewer) Review(ctx context.Context, req *trpcpr
 	return dec, nil
 }
 
+// chainedUnsafeIntentReviewer chains a rule-based reviewer with an optional deep reviewer.
+// Same pattern as chainedPromptInjectionReviewer — cannot unify due to distinct framework interfaces.
 type chainedUnsafeIntentReviewer struct {
-	rule  trpcunsafereview.Reviewer
-	deep  trpcunsafereview.Reviewer
+	rule trpcunsafereview.Reviewer
+	deep trpcunsafereview.Reviewer
 }
 
 var _ trpcunsafereview.Reviewer = (*chainedUnsafeIntentReviewer)(nil)
@@ -311,6 +317,14 @@ func (c *chainedUnsafeIntentReviewer) Review(ctx context.Context, req *trpcunsaf
 	return dec, nil
 }
 
+func newChainedPromptInjectionReviewer(rule, deep trpcpromptreview.Reviewer) *chainedPromptInjectionReviewer {
+	return &chainedPromptInjectionReviewer{rule: rule, deep: deep}
+}
+
+func newChainedUnsafeIntentReviewer(rule, deep trpcunsafereview.Reviewer) *chainedUnsafeIntentReviewer {
+	return &chainedUnsafeIntentReviewer{rule: rule, deep: deep}
+}
+
 type GuardrailReviewers struct {
 	PromptInjectionDeep trpcpromptreview.Reviewer
 	UnsafeIntentDeep    trpcunsafereview.Reviewer
@@ -319,18 +333,12 @@ type GuardrailReviewers struct {
 func BuildGuardrailPluginWithReviewers(reviewers *GuardrailReviewers) (*trpcguardrail.Plugin, error) {
 	piReviewer := trpcpromptreview.Reviewer(&ruleBasedPromptInjectionReviewer{})
 	if reviewers != nil && reviewers.PromptInjectionDeep != nil {
-		piReviewer = &chainedPromptInjectionReviewer{
-			rule: &ruleBasedPromptInjectionReviewer{},
-			deep: reviewers.PromptInjectionDeep,
-		}
+		piReviewer = newChainedPromptInjectionReviewer(&ruleBasedPromptInjectionReviewer{}, reviewers.PromptInjectionDeep)
 	}
 
 	uiReviewer := trpcunsafereview.Reviewer(&ruleBasedUnsafeIntentReviewer{})
 	if reviewers != nil && reviewers.UnsafeIntentDeep != nil {
-		uiReviewer = &chainedUnsafeIntentReviewer{
-			rule: &ruleBasedUnsafeIntentReviewer{},
-			deep: reviewers.UnsafeIntentDeep,
-		}
+		uiReviewer = newChainedUnsafeIntentReviewer(&ruleBasedUnsafeIntentReviewer{}, reviewers.UnsafeIntentDeep)
 	}
 
 	piPlugin, err := trpcpromptinjection.New(

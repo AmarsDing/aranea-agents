@@ -22,6 +22,8 @@ type agentRepo struct {
 	data *Data
 }
 
+var _ biz.AgentRepository = (*agentRepo)(nil)
+
 // NewAgentRepo implements biz.AgentRepository.
 func NewAgentRepo(d *Data) biz.AgentRepository {
 	return &agentRepo{data: d}

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+
 	"aranea-agents/internal/biz"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 
@@ -26,23 +28,23 @@ func NewCatalogFunctionResolver(tools *biz.ToolUsecase) *CatalogFunctionResolver
 
 func (r *CatalogFunctionResolver) ResolveFunction(ctx context.Context, funcRef string) (trpctool.CallableTool, error) {
 	if r == nil || r.Tools == nil {
-		return nil, fmt.Errorf("graph: tool catalog not configured for function resolution")
+		return nil, kerrors.InternalServer("GRAPH", "graph: tool catalog not configured for function resolution")
 	}
 	key := strings.TrimSpace(funcRef)
 	if key == "" {
-		return nil, fmt.Errorf("graph: function func_ref is required")
+		return nil, kerrors.BadRequest("GRAPH", "graph: function func_ref is required")
 	}
 	row, err := r.Tools.GetTool(ctx, key)
 	if err != nil {
-		return nil, fmt.Errorf("graph: function %q: %w", key, err)
+		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: function %q: %v", key, err))
 	}
 	callable, _, err := callableFromBizTool(ctx, row)
 	if err != nil {
-		return nil, fmt.Errorf("graph: function %q: %w", key, err)
+		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: function %q: %v", key, err))
 	}
 	ct, ok := callable.(trpctool.CallableTool)
 	if !ok {
-		return nil, fmt.Errorf("graph: function %q: tool is not callable", key)
+		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: function %q: tool is not callable", key))
 	}
 	return ct, nil
 }

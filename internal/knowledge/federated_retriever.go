@@ -1,0 +1,231 @@
+package knowledge
+
+import (
+	"context"
+	"fmt"
+	"sort"
+	"strings"
+	"sync"
+
+	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
+	"aranea-agents/pkg/safego"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+)
+
+type FederationStrategy int
+
+const (
+	FederationBroadcast FederationStrategy = iota
+	FederationRoute
+)
+
+type CollectionMetaFetcher interface {
+	ListCollections(ctx context.Context, workspace string, limit, offset int) ([]biz.KnowledgeCollection, int, error)
+}
+
+type FederatedSearchOptions struct {
+	Strategy       FederationStrategy
+	RouteTopN      int
+	RouteMinScore  float32
+}
+
+func DefaultFederatedSearchOptions() FederatedSearchOptions {
+	return FederatedSearchOptions{
+		Strategy:      FederationBroadcast,
+		RouteTopN:     3,
+		RouteMinScore: 0.3,
+	}
+}
+
+type FederatedRetriever struct {
+	router    *AdaptiveRouter
+	retriever *Retriever
+	meta      CollectionMetaFetcher
+}
+
+func NewFederatedRetriever(router *AdaptiveRouter, retriever *Retriever) *FederatedRetriever {
+	return &FederatedRetriever{router: router, retriever: retriever}
+}
+
+func NewFederatedRetrieverWithMeta(router *AdaptiveRouter, retriever *Retriever, meta CollectionMetaFetcher) *FederatedRetriever {
+	return &FederatedRetriever{router: router, retriever: retriever, meta: meta}
+}
+
+func (f *FederatedRetriever) Search(ctx context.Context, collectionIDs []string, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, modeOverride HybridSearchMode) ([]biz.KnowledgeChunk, error) {
+	if len(collectionIDs) == 0 {
+		return nil, kerrors.BadRequest("KNOWLEDGE", "federated_retriever: at least one collection_id required")
+	}
+	if len(collectionIDs) == 1 {
+		q.CollectionID = collectionIDs[0]
+		if f.router != nil {
+			return f.router.Search(ctx, q, rewriteResult, modeOverride)
+		}
+		return f.retriever.Search(ctx, q)
+	}
+
+	return f.searchBroadcast(ctx, collectionIDs, q, rewriteResult, modeOverride)
+}
+
+func (f *FederatedRetriever) SearchWithOptions(ctx context.Context, collectionIDs []string, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, modeOverride HybridSearchMode, opts FederatedSearchOptions) ([]biz.KnowledgeChunk, error) {
+	if len(collectionIDs) == 0 {
+		return nil, kerrors.BadRequest("KNOWLEDGE", "federated_retriever: at least one collection_id required")
+	}
+	if len(collectionIDs) == 1 {
+		q.CollectionID = collectionIDs[0]
+		if f.router != nil {
+			return f.router.Search(ctx, q, rewriteResult, modeOverride)
+		}
+		return f.retriever.Search(ctx, q)
+	}
+
+	if opts.Strategy == FederationRoute && f.meta != nil {
+		routed, err := f.routeCollections(ctx, collectionIDs, q.Query, opts)
+		if err != nil {
+			event.SysLogWarn("knowledge.federated.route_fail", "路由策略失败，降级广播",
+				event.P("error", err.Error()))
+		} else if len(routed) > 0 {
+			return f.searchBroadcast(ctx, routed, q, rewriteResult, modeOverride)
+		}
+	}
+
+	return f.searchBroadcast(ctx, collectionIDs, q, rewriteResult, modeOverride)
+}
+
+func (f *FederatedRetriever) routeCollections(ctx context.Context, collectionIDs []string, query string, opts FederatedSearchOptions) ([]string, error) {
+	collections, _, err := f.meta.ListCollections(ctx, "", len(collectionIDs), 0)
+	if err != nil {
+		return nil, err
+	}
+
+	idSet := make(map[string]struct{}, len(collectionIDs))
+	for _, id := range collectionIDs {
+		idSet[id] = struct{}{}
+	}
+
+	type scored struct {
+		id    string
+		score float32
+	}
+	var ranked []scored
+	queryLower := strings.ToLower(query)
+	queryTerms := splitTerms(queryLower)
+
+	for _, col := range collections {
+		if _, ok := idSet[col.ID]; !ok {
+			continue
+		}
+		s := collectionRelevanceScore(col, queryLower, queryTerms)
+		if s >= opts.RouteMinScore {
+			ranked = append(ranked, scored{id: col.ID, score: s})
+		}
+	}
+
+	sort.Slice(ranked, func(i, j int) bool {
+		return ranked[i].score > ranked[j].score
+	})
+
+	topN := opts.RouteTopN
+	if topN <= 0 {
+		topN = 3
+	}
+	if topN > len(ranked) {
+		topN = len(ranked)
+	}
+
+	result := make([]string, 0, topN)
+	for i := 0; i < topN; i++ {
+		result = append(result, ranked[i].id)
+	}
+
+	if len(result) == 0 {
+		return collectionIDs, nil
+	}
+
+	return result, nil
+}
+
+func collectionRelevanceScore(col biz.KnowledgeCollection, queryLower string, queryTerms []string) float32 {
+	var score float32
+
+	nameLower := strings.ToLower(col.Name)
+	descLower := strings.ToLower(col.Description)
+
+	for _, term := range queryTerms {
+		if strings.Contains(nameLower, term) {
+			score += 0.4
+		}
+		if strings.Contains(descLower, term) {
+			score += 0.2
+		}
+	}
+
+	if strings.Contains(nameLower, queryLower) {
+		score += 0.5
+	}
+	if strings.Contains(descLower, queryLower) {
+		score += 0.3
+	}
+
+	return score
+}
+
+func splitTerms(s string) []string {
+	var terms []string
+	for _, w := range strings.Fields(s) {
+		w = strings.TrimSpace(w)
+		if w != "" {
+			terms = append(terms, w)
+		}
+	}
+	return terms
+}
+
+func (f *FederatedRetriever) searchBroadcast(ctx context.Context, collectionIDs []string, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, modeOverride HybridSearchMode) ([]biz.KnowledgeChunk, error) {
+	type collResult struct {
+		chunks []biz.KnowledgeChunk
+		err    error
+	}
+
+	results := make([]collResult, len(collectionIDs))
+	var wg sync.WaitGroup
+	wg.Add(len(collectionIDs))
+
+	for i, cid := range collectionIDs {
+		idx := i
+		collQ := q
+		collQ.CollectionID = cid
+		safego.Go(ctx, "knowledge-federated-search", func() {
+			defer wg.Done()
+			if f.router != nil {
+				chunks, err := f.router.Search(ctx, collQ, rewriteResult, modeOverride)
+				results[idx] = collResult{chunks: chunks, err: err}
+				return
+			}
+			chunks, err := f.retriever.Search(ctx, collQ)
+			results[idx] = collResult{chunks: chunks, err: err}
+		})
+	}
+
+	wg.Wait()
+
+	var allChunks []biz.KnowledgeChunk
+	var firstErr error
+	for i, r := range results {
+		if r.err != nil {
+			event.SysLogWarn("knowledge.federated_retriever", fmt.Sprintf("collection %s search failed", collectionIDs[i]), event.P("error", r.err.Error()))
+			if firstErr == nil {
+				firstErr = r.err
+			}
+			continue
+		}
+		allChunks = append(allChunks, r.chunks...)
+	}
+
+	if len(allChunks) == 0 && firstErr != nil {
+		return nil, kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("federated_retriever: all collections failed: %v", firstErr))
+	}
+
+	return MergeSearchResults(nil, allChunks, q.TopK), nil
+}

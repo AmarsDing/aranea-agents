@@ -26,6 +26,7 @@
 import { computed } from "vue";
 import type { Task } from "../../features/graph/types";
 import { TASK_STATUS_COLORS, TASK_STATUS_LABELS } from "../../features/graph/types";
+import { truncate } from "../../features/graph/utils";
 
 const props = defineProps<{
   task: Task;
@@ -38,7 +39,5 @@ defineEmits<{ select: [] }>();
 const statusLabel = computed(() => TASK_STATUS_LABELS[props.task.status] ?? props.task.status);
 const statusColor = computed(() => TASK_STATUS_COLORS[props.task.status] ?? "grey");
 
-function truncate(text: string, max = 120) {
-  return text.length > max ? `${text.slice(0, max)}…` : text;
-}
+
 </script>

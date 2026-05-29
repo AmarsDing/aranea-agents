@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"strings"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/testexec"
@@ -27,7 +30,7 @@ func NewCatalogToolResolver(tools *biz.ToolUsecase) *CatalogToolResolver {
 
 func (r *CatalogToolResolver) ResolveTools(ctx context.Context, toolNames []string) (map[string]trpctool.Tool, error) {
 	if r == nil || r.Tools == nil {
-		return nil, fmt.Errorf("graph: tool catalog not configured")
+		return nil, kerrors.InternalServer("GRAPH", "graph: tool catalog not configured")
 	}
 	out := make(map[string]trpctool.Tool)
 	for _, name := range toolNames {
@@ -37,16 +40,16 @@ func (r *CatalogToolResolver) ResolveTools(ctx context.Context, toolNames []stri
 		}
 		row, err := r.Tools.GetTool(ctx, key)
 		if err != nil {
-			return nil, fmt.Errorf("graph: tool %q: %w", key, err)
+			return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: tool %q: %v", key, err))
 		}
 		callable, resolvedKey, err := callableFromBizTool(ctx, row)
 		if err != nil {
-			return nil, fmt.Errorf("graph: tool %q: %w", key, err)
+			return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: tool %q: %v", key, err))
 		}
 		out[resolvedKey] = callable
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("graph: at least one tool name required for tool nodes")
+		return nil, kerrors.BadRequest("GRAPH", "graph: at least one tool name required for tool nodes")
 	}
 	return out, nil
 }
@@ -57,7 +60,7 @@ func callableFromBizTool(ctx context.Context, row biz.Tool) (trpctool.Tool, stri
 	if !ok {
 		spec, ok := openAPISpecFromBizTool(row)
 		if !ok {
-			return nil, "", fmt.Errorf("unsupported catalog tool %q", row.Key)
+			return nil, "", kerrors.InternalServer("GRAPH", fmt.Sprintf("unsupported catalog tool %q", row.Key))
 		}
 		asm = tools.AssemblyConfig{
 			EnabledTools: []string{"openapi"},
@@ -83,17 +86,21 @@ func callableFromBizTool(ctx context.Context, row biz.Tool) (trpctool.Tool, stri
 			}
 		}
 	}
-	return nil, "", fmt.Errorf("callable tool %q not found after assembly", row.Key)
+	return nil, "", kerrors.NotFound("GRAPH", fmt.Sprintf("callable tool %q not found after assembly", row.Key))
 }
 
 func mergeToolConfigJSON(configJSON, defaultJSON string) map[string]any {
 	out := map[string]any{}
 	if strings.TrimSpace(defaultJSON) != "" {
-		_ = json.Unmarshal([]byte(defaultJSON), &out)
+		if err := json.Unmarshal([]byte(defaultJSON), &out); err != nil {
+			event.SysLogWarn("graph.resolver_tool", "default tool config json unmarshal failed", event.P("error", err.Error()))
+		}
 	}
 	if strings.TrimSpace(configJSON) != "" {
 		var overlay map[string]any
-		if json.Unmarshal([]byte(configJSON), &overlay) == nil {
+		if err := json.Unmarshal([]byte(configJSON), &overlay); err != nil {
+			event.SysLogWarn("graph.resolver_tool", "tool config json unmarshal failed, using defaults", event.P("error", err.Error()))
+		} else {
 			for k, v := range overlay {
 				out[k] = v
 			}
@@ -105,7 +112,9 @@ func mergeToolConfigJSON(configJSON, defaultJSON string) map[string]any {
 func openAPISpecFromBizTool(row biz.Tool) (tools.OpenAPISpecConfig, bool) {
 	var meta map[string]any
 	if strings.TrimSpace(row.MetadataJSON) != "" {
-		_ = json.Unmarshal([]byte(row.MetadataJSON), &meta)
+		if err := json.Unmarshal([]byte(row.MetadataJSON), &meta); err != nil {
+			event.SysLogWarn("graph.resolver_tool", "tool metadata json unmarshal failed", event.P("error", err.Error()), event.P("tool_key", row.Key))
+		}
 	}
 	if spec, ok := meta["openapi_spec"].(map[string]any); ok {
 		b, _ := json.Marshal(spec)

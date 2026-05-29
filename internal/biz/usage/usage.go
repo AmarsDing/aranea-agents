@@ -15,6 +15,7 @@ import (
 	"github.com/go-kratos/kratos/v2/errors"
 
 	"aranea-agents/internal/biz/shared"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/modelcatalog"
 	"aranea-agents/pkg/safego"
 )
@@ -276,6 +277,7 @@ type QuotaRepo interface {
 	SetQuota(ctx context.Context, quota Quota) (Quota, error)
 	SumScopeCostInPeriod(ctx context.Context, scopeType, scopeID, periodStart, periodEnd string) (int64, error)
 	ListActiveQuotas(ctx context.Context) ([]Quota, error)
+	BatchSumScopeCost(ctx context.Context, quotas []Quota) (map[string]int64, error)
 	ListBudgetAlerts(ctx context.Context, scopeType, scopeID string) ([]BudgetAlert, error)
 	SetBudgetAlert(ctx context.Context, alert BudgetAlert) (BudgetAlert, error)
 	UpdateBudgetAlertLastFired(ctx context.Context, id, firedAt string) error
@@ -819,13 +821,21 @@ func (u *Usecase) QuotaDashboard(ctx context.Context) (QuotaDashboard, error) {
 		return QuotaDashboard{}, err
 	}
 	var dash QuotaDashboard
+	if len(quotas) == 0 {
+		return dash, nil
+	}
+	spentMap, batchErr := u.repo.BatchSumScopeCost(ctx, quotas)
+	if batchErr != nil {
+		event.SysLogWarn("system.usage", "quota_dashboard.batch_failed", event.P("error", batchErr.Error()))
+	}
 	var maxUtil float64
 	for _, q := range quotas {
 		if q.MonthlyMicroUSD <= 0 {
 			continue
 		}
-		spent, err := u.repo.SumScopeCostInPeriod(ctx, q.ScopeType, q.ScopeID, q.PeriodStart, q.PeriodEnd)
-		if err != nil {
+		key := q.ScopeType + ":" + q.ScopeID
+		spent, ok := spentMap[key]
+		if !ok && batchErr != nil {
 			continue
 		}
 		dash.ConfiguredCount++

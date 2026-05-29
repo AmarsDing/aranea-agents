@@ -36,6 +36,7 @@ import SystemSettingsPage from "../pages/SystemSettingsPage.vue";
 import GraphsPage from "../pages/GraphsPage.vue";
 import GraphEditorPage from "../pages/GraphEditorPage.vue";
 import GraphRunPage from "../pages/GraphRunPage.vue";
+import GraphExecutionsPage from "../pages/GraphExecutionsPage.vue";
 import TeamRunObservatoryPage from "../pages/TeamRunObservatoryPage.vue";
 import TeamOrchestratePage from "../pages/TeamOrchestratePage.vue";
 import ThemePreviewPage from "../pages/ThemePreviewPage.vue";
@@ -70,6 +71,7 @@ export const routes: RouteRecordRaw[] = [
       { path: "graphs/new", name: "graph-editor-new", component: GraphEditorPage },
       { path: "graphs/:id", name: "graph-editor", component: GraphEditorPage },
       { path: "graphs/:id/run/:execId", name: "graph-run", component: GraphRunPage },
+      { path: "graphs/:id/executions", name: "graph-executions", component: GraphExecutionsPage },
       {
         path: "models",
         name: "models",

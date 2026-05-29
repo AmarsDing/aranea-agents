@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 )
 
 // WebResearchPlatformFields holds platform-level defaults for web_research.
@@ -74,7 +75,7 @@ var registryBackedToolKeys = map[string]struct{}{
 
 // sessionBoundToolKeys need a live agent/session to execute even when globally enabled.
 var sessionBoundToolKeys = map[string]struct{}{
-	ToolKeyKnowledgeSearch: {}, ToolKeyCallAgent: {},
+	ToolKeyKnowledgeSearch: {}, ToolKeyKnowledgeReflect: {}, ToolKeyCallAgent: {},
 	"mcp_tool_set": {}, ToolKeyMCPBroker: {},
 	"memory_search": {}, "memory_get": {},
 	"skill_search": {}, "use_skill": {},
@@ -152,9 +153,8 @@ func catalogConfigReady(t Tool, platform *WebResearchSetting) bool {
 // webResearchCatalogReady delegates to the injected checker when available,
 // otherwise falls back to a simple key-presence check.
 func webResearchCatalogReady(agentMap map[string]any, platform *WebResearchPlatformFields) bool {
-	// Use global checker set via SetWebResearchChecker on ToolUsecase
-	if toolWebResChecker != nil {
-		return toolWebResChecker.CatalogReady(agentMap, platform)
+	if c := getGlobalWebResearchChecker(); c != nil {
+		return c.CatalogReady(agentMap, platform)
 	}
 	// Fallback: simple key-presence check
 	if platform != nil && (platform.HasAPIKey || strings.TrimSpace(platform.APIKey) != "") {
@@ -166,12 +166,21 @@ func webResearchCatalogReady(agentMap map[string]any, platform *WebResearchPlatf
 	return platform != nil && platform.HasAPIKey
 }
 
-// toolWebResChecker is set by SetWebResearchChecker for catalog readiness checks.
-var toolWebResChecker WebResearchReadinessChecker
+var (
+	toolWebResChecker   WebResearchReadinessChecker
+	toolWebResCheckerMu sync.RWMutex
+)
 
-// SetGlobalWebResearchChecker sets the package-level checker used by catalogConfigReady.
-func SetGlobalWebResearchChecker(checker WebResearchReadinessChecker) {
-	toolWebResChecker = checker
+func SetGlobalWebResearchChecker(c WebResearchReadinessChecker) {
+	toolWebResCheckerMu.Lock()
+	toolWebResChecker = c
+	toolWebResCheckerMu.Unlock()
+}
+
+func getGlobalWebResearchChecker() WebResearchReadinessChecker {
+	toolWebResCheckerMu.RLock()
+	defer toolWebResCheckerMu.RUnlock()
+	return toolWebResChecker
 }
 
 func hasOpenAPIMetadata(raw string) bool {

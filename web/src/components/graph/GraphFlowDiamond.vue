@@ -1,6 +1,8 @@
 <template>
   <div
     :class="['graph-flow-diamond', `graph-flow-diamond--${data.nodeType}`, { 'graph-flow-diamond--selected': selected, 'graph-flow-diamond--running': data.execStatus === 'running' }]"
+    role="group"
+    :aria-label="data.label || data.nodeId"
     :style="diamondStyle"
   >
     <Handle type="target" :position="Position.Top" :style="{ left: '50%', top: '0' }" />

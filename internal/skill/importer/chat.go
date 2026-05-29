@@ -24,11 +24,14 @@ func providerModelHasCredentials(cfgJSON string) bool {
 	var cfg struct {
 		APIBaseURL string `json:"api_base_url"`
 		APIKey     string `json:"api_key"`
+		APIKeySet  bool   `json:"api_key_set"`
 	}
 	if err := json.Unmarshal([]byte(cfgJSON), &cfg); err != nil {
 		return false
 	}
-	return strings.TrimSpace(cfg.APIBaseURL) != "" && strings.TrimSpace(cfg.APIKey) != ""
+	hasBase := strings.TrimSpace(cfg.APIBaseURL) != ""
+	hasKey := strings.TrimSpace(cfg.APIKey) != "" || cfg.APIKeySet
+	return hasBase && hasKey
 }
 
 func (e *Engine) resolveChatModel(ctx context.Context, provider, model string) (chatModelCfg, error) {
@@ -57,17 +60,23 @@ func (e *Engine) resolveChatModel(ctx context.Context, provider, model string) (
 		if !providerModelHasCredentials(row.ConfigJSON) {
 			continue
 		}
+		resolved, err := e.llm.GetByProviderAndModel(ctx, row.Provider, row.Model)
+		if err != nil {
+			continue
+		}
 		var cfg struct {
 			ProviderType string `json:"provider_type"`
 			APIBaseURL   string `json:"api_base_url"`
 			APIKey       string `json:"api_key"`
 		}
-		_ = json.Unmarshal([]byte(row.ConfigJSON), &cfg)
+		if err := json.Unmarshal([]byte(resolved.ConfigJSON), &cfg); err != nil {
+			continue
+		}
 		return chatModelCfg{
 			ProviderType: cfg.ProviderType,
 			APIBaseURL:   strings.TrimSpace(cfg.APIBaseURL),
 			APIKey:       strings.TrimSpace(cfg.APIKey),
-			ModelAPIID:   strings.TrimSpace(row.Model),
+			ModelAPIID:   strings.TrimSpace(resolved.Model),
 		}, nil
 	}
 	return chatModelCfg{}, ErrNoChatModelConfigured
@@ -135,7 +144,7 @@ func completeOpenAICompatible(ctx context.Context, client *http.Client, cfg chat
 		return "", err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("chat completion failed: %s %s", resp.Status, strings.TrimSpace(string(respBody)))
+		return "", detailErr(ErrChatCompletionFailed, "chat completion failed: "+resp.Status+" "+strings.TrimSpace(string(respBody)))
 	}
 	var out struct {
 		Choices []struct {
@@ -148,7 +157,7 @@ func completeOpenAICompatible(ctx context.Context, client *http.Client, cfg chat
 		return "", err
 	}
 	if len(out.Choices) == 0 || strings.TrimSpace(out.Choices[0].Message.Content) == "" {
-		return "", fmt.Errorf("empty chat completion response")
+		return "", ErrEmptyChatResponse
 	}
 	return out.Choices[0].Message.Content, nil
 }
@@ -182,7 +191,7 @@ func completeAnthropic(ctx context.Context, client *http.Client, cfg chatModelCf
 		return "", err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("anthropic messages failed: %s %s", resp.Status, strings.TrimSpace(string(respBody)))
+		return "", detailErr(ErrAnthropicFailed, "anthropic messages failed: "+resp.Status+" "+strings.TrimSpace(string(respBody)))
 	}
 	var out struct {
 		Content []struct {
@@ -193,7 +202,7 @@ func completeAnthropic(ctx context.Context, client *http.Client, cfg chatModelCf
 		return "", err
 	}
 	if len(out.Content) == 0 || strings.TrimSpace(out.Content[0].Text) == "" {
-		return "", fmt.Errorf("empty anthropic response")
+		return "", ErrEmptyAnthropicResponse
 	}
 	return out.Content[0].Text, nil
 }
@@ -238,7 +247,7 @@ func parseRefineResult(raw string) (biz.SkillRefineResult, error) {
 		return out, err
 	}
 	if strings.TrimSpace(out.MergedName) == "" || strings.TrimSpace(out.MergedBody) == "" {
-		return out, fmt.Errorf("model refine result missing merged_name or merged_body")
+		return out, ErrRefineResultInvalid
 	}
 	return out, nil
 }

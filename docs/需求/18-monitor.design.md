@@ -4,6 +4,7 @@
 > 遵循规范：`AI-DEVELOPMENT-SPECIFICATION.md`
 > 2026-05-20 更新：Logs Tab 拆分为 **流程日志** / **进程日志** 二级 Tab；共享 `LogStreamHub`（单 WS）；legacy `EnvelopeTypeLog` 重复发射点迁移至 `flow_log`。
 > 2026-05-21 更新：对齐代码 — **6 Tab**（含 Alerts）、`GetRunnerMetrics` / 告警规则 API、方案 C Phase 1d ✅（[changelog](../changelog/2026-05-20-Monitor-Phase1d-PlanC.md)）。
+> 2026-05-29 更新：MON-OPT-01~06 ✅（FlowLog Bus 分离、告警冷却持久化、评估批量化、WS 反压、Trace 写入回路、告警注册表）；LOG-01/TRACE-01/DIAG-01/02 ✅（文件落盘、诊断包、根因引擎）；Latency P50/P95/P99 ✅；LOG-03 P0/P1/P2 ✅（红线修复、路径补全、fmt.Errorf 清理）；REDLINE ✅；QUALITY ✅（27 项质量修复）。
 
 ---
 

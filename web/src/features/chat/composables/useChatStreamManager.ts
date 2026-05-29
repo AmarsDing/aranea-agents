@@ -29,6 +29,7 @@ export type StreamManagerDeps = {
   onRunStatus: (env: Envelope) => void;
   touchRunActivity: () => void;
   refreshRunStatus: (sessionId?: string) => Promise<void>;
+  onCompressNotice?: (sessionId: string, prevRatio: number, newRatio: number) => void;
 };
 
 export function useChatStreamManager(deps: StreamManagerDeps) {
@@ -94,6 +95,9 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     return {
       onSessionContextPatch: (sid: string, patch: Parameters<typeof deps.sessionStore.patchSessionMetricsLocal>[1]) => {
         deps.sessionStore.patchSessionMetricsLocal(sid, patch);
+      },
+      onCompressNotice: (sid: string, prevRatio: number, newRatio: number) => {
+        deps.onCompressNotice?.(sid, prevRatio, newRatio);
       },
       getSessionMetrics: (sid: string) => {
         const row = deps.sessionStore.findSessionById(sid);

@@ -7,10 +7,31 @@
         :thickness="0.3"
         :color="ringColor"
         class="chat-header-usage__ring"
-        :class="{ 'chat-header-usage__ring--dark': isDark }"
+        :class="{
+          'chat-header-usage__ring--dark': isDark,
+          'chat-header-usage__ring--clickable': hasBreakdown,
+        }"
+        @click="onRingClick"
       >
         <div class="chat-header-usage__ring-value">{{ pctLabel }}</div>
       </q-circular-progress>
+      <q-menu
+        v-if="hasBreakdown"
+        v-model="popoverOpen"
+        anchor="bottom left"
+        self="top left"
+        :offset="[0, 8]"
+        transition-show="jump-down"
+        transition-hide="jump-up"
+        class="ctx-breakdown-menu"
+      >
+        <ChatContextBreakdownPopover
+          :breakdown="breakdown"
+          :context-status="contextStatus"
+          :total-cost-micro-usd="usageSnapshot?.totalCostMicroUsd"
+          :is-dark="isDark"
+        />
+      </q-menu>
     </div>
     <div v-if="usageParts.length" class="chat-header-usage__metrics row items-center no-wrap">
       <span v-for="(part, idx) in usageParts" :key="idx" class="chat-header-usage__chip">{{ part }}</span>
@@ -22,13 +43,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   composerContextColor,
   composerUsageParts,
   type ComposerUsageSnapshot,
 } from "../../features/chat/composerUsageMetrics";
+import type { PromptBreakdown } from "../../features/chat/contextBreakdown";
+import ChatContextBreakdownPopover from "./ChatContextBreakdownPopover.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -36,15 +59,17 @@ const props = withDefaults(
     contextStatus?: string;
     usageSnapshot?: ComposerUsageSnapshot | null;
     isDark?: boolean;
+    breakdown?: PromptBreakdown | null;
   }>(),
   { isDark: false },
 );
 
 const { t } = useI18n();
 
+const popoverOpen = ref(false);
+
 const clampedRatio = computed(() => Math.min(1, Math.max(0, props.contextRatio ?? 0)));
 const pctLabel = computed(() => `${Math.round(clampedRatio.value * 100)}%`);
-/** Header ring uses accent for contrast; status only shifts at high pressure. */
 const ringColor = computed(() => {
   const status = props.contextStatus?.trim();
   if (status) return composerContextColor(status);
@@ -55,6 +80,16 @@ const ringColor = computed(() => {
 const usageParts = computed(() =>
   props.usageSnapshot ? composerUsageParts(props.usageSnapshot) : [],
 );
+
+const hasBreakdown = computed(() =>
+  props.breakdown != null && props.breakdown.categories.length > 0,
+);
+
+function onRingClick() {
+  if (hasBreakdown.value) {
+    popoverOpen.value = !popoverOpen.value;
+  }
+}
 
 const ariaLabel = computed(() => {
   const detail = usageParts.value.join(" · ");

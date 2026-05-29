@@ -37,3 +37,21 @@ func NewKnowledgeRetrievalEvaluator(llm biz.LLMCaller, sys *biz.SystemSettingUse
 	}
 	return knowledge.NewRetrievalEvaluator(llm, sys, catalog)
 }
+
+func NewKnowledgeFederatedRetriever(router *knowledge.AdaptiveRouter, retriever *knowledge.Retriever, uc *biz.KnowledgeUsecase) *knowledge.FederatedRetriever {
+	if router == nil && retriever == nil {
+		return nil
+	}
+	if uc != nil {
+		return knowledge.NewFederatedRetrieverWithMeta(router, retriever, uc)
+	}
+	return knowledge.NewFederatedRetriever(router, retriever)
+}
+
+func ProvideKnowledgeSearchDeps(retriever *knowledge.Retriever, router *knowledge.AdaptiveRouter, evaluator *knowledge.RetrievalEvaluator) KnowledgeSearchDeps {
+	return KnowledgeSearchDeps{
+		Retriever: retriever,
+		Router:    router,
+		Evaluator: evaluator,
+	}
+}

@@ -8,18 +8,36 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/internal/knowledge"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
-// contextKey is the key used to store the retriever in context.
 type contextKey struct{}
 
-// WithRetriever attaches a Retriever to the context for use by SearchTool.
+type routerKey struct{}
+
+type federatedKey struct{}
+
+type evaluatorKey struct{}
+
 func WithRetriever(ctx context.Context, r *knowledge.Retriever) context.Context {
 	return context.WithValue(ctx, contextKey{}, r)
+}
+
+func WithAdaptiveRouter(ctx context.Context, router *knowledge.AdaptiveRouter) context.Context {
+	return context.WithValue(ctx, routerKey{}, router)
+}
+
+func WithFederatedRetriever(ctx context.Context, fr *knowledge.FederatedRetriever) context.Context {
+	return context.WithValue(ctx, federatedKey{}, fr)
+}
+
+func WithRetrievalEvaluator(ctx context.Context, ev *knowledge.RetrievalEvaluator) context.Context {
+	return context.WithValue(ctx, evaluatorKey{}, ev)
 }
 
 type collectionsKey struct{}
@@ -44,10 +62,28 @@ func knowledgeCollectionsFromContext(ctx context.Context) []string {
 	return raw
 }
 
-// RetrieverFromContext extracts the Retriever from ctx.
+func KnowledgeCollectionsFromContext(ctx context.Context) []string {
+	return knowledgeCollectionsFromContext(ctx)
+}
+
 func RetrieverFromContext(ctx context.Context) *knowledge.Retriever {
 	r, _ := ctx.Value(contextKey{}).(*knowledge.Retriever)
 	return r
+}
+
+func AdaptiveRouterFromContext(ctx context.Context) *knowledge.AdaptiveRouter {
+	r, _ := ctx.Value(routerKey{}).(*knowledge.AdaptiveRouter)
+	return r
+}
+
+func FederatedRetrieverFromContext(ctx context.Context) *knowledge.FederatedRetriever {
+	fr, _ := ctx.Value(federatedKey{}).(*knowledge.FederatedRetriever)
+	return fr
+}
+
+func RetrievalEvaluatorFromContext(ctx context.Context) *knowledge.RetrievalEvaluator {
+	ev, _ := ctx.Value(evaluatorKey{}).(*knowledge.RetrievalEvaluator)
+	return ev
 }
 
 // searchInput is the JSON schema for the knowledge_search tool.
@@ -56,6 +92,8 @@ type searchInput struct {
 	Query        string  `json:"query" jsonschema:"description=Natural-language search query,required"`
 	TopK         int     `json:"top_k,omitempty" jsonschema:"description=Maximum number of results to return"`
 	MinScore     float32 `json:"min_score,omitempty" jsonschema:"description=Minimum similarity score threshold"`
+	FilterJSON   string  `json:"filter_json,omitempty" jsonschema:"description=JSON metadata filter, e.g. {\"category\":\"tech\"}"`
+	UseRerank    *bool   `json:"use_rerank,omitempty" jsonschema:"description=Whether to rerank results for improved relevance"`
 }
 
 // searchOutput is the structured result returned to the model.
@@ -77,9 +115,9 @@ func NewSearchTool() trpctool.CallableTool {
 			if scoped := knowledgeCollectionsFromContext(ctx); len(scoped) == 1 {
 				in.CollectionID = scoped[0]
 			} else if len(scoped) > 1 {
-				return searchOutput{}, fmt.Errorf("knowledge_search: collection_id is required when multiple knowledge_bases are scoped")
+				return searchOutput{}, kerrors.BadRequest("KNOWLEDGE", "knowledge_search: collection_id is required when multiple knowledge_bases are scoped")
 			} else {
-				return searchOutput{}, fmt.Errorf("knowledge_search: collection_id is required")
+				return searchOutput{}, kerrors.BadRequest("KNOWLEDGE", "knowledge_search: collection_id is required")
 			}
 		}
 		if scoped := knowledgeCollectionsFromContext(ctx); len(scoped) > 0 {
@@ -91,29 +129,37 @@ func NewSearchTool() trpctool.CallableTool {
 				}
 			}
 			if !allowed {
-				return searchOutput{}, fmt.Errorf("knowledge_search: collection_id %q is not in scoped knowledge_bases", in.CollectionID)
+				return searchOutput{}, kerrors.BadRequest("KNOWLEDGE", fmt.Sprintf("knowledge_search: collection_id %q is not in scoped knowledge_bases", in.CollectionID))
 			}
 		}
 		if in.Query == "" {
-			return searchOutput{}, fmt.Errorf("knowledge_search: query is required")
+			return searchOutput{}, kerrors.BadRequest("KNOWLEDGE", "knowledge_search: query is required")
 		}
 		if in.TopK <= 0 {
 			in.TopK = 5
 		}
 
-		ret := RetrieverFromContext(ctx)
-		if ret == nil {
-			return searchOutput{}, fmt.Errorf("knowledge_search: retriever not configured in context")
-		}
-
-		chunks, err := ret.Search(ctx, biz.KnowledgeSearchQuery{
+		q := biz.KnowledgeSearchQuery{
 			CollectionID: in.CollectionID,
 			Query:        in.Query,
 			TopK:         in.TopK,
 			MinScore:     in.MinScore,
-		})
+			FilterJSON:   in.FilterJSON,
+			UseRerank:    in.UseRerank,
+		}
+
+		var chunks []biz.KnowledgeChunk
+		var err error
+
+		if router := AdaptiveRouterFromContext(ctx); router != nil {
+			chunks, err = router.Search(ctx, q, nil, "")
+		} else if ret := RetrieverFromContext(ctx); ret != nil {
+			chunks, err = ret.Search(ctx, q)
+		} else {
+			return searchOutput{}, kerrors.BadRequest("KNOWLEDGE", "knowledge_search: retriever not configured in context")
+		}
 		if err != nil {
-			return searchOutput{}, fmt.Errorf("knowledge_search: %w", err)
+			return searchOutput{}, kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("knowledge_search: %s", err.Error()))
 		}
 
 		out := searchOutput{Chunks: make([]chunkSummary, 0, len(chunks))}
@@ -130,6 +176,114 @@ func NewSearchTool() trpctool.CallableTool {
 	return function.NewFunctionTool(
 		execute,
 		function.WithName("knowledge_search"),
-		function.WithDescription("Search a knowledge collection for relevant text chunks using semantic similarity."),
+		function.WithDescription("Search a knowledge collection for relevant text chunks using semantic similarity. Supports hybrid search (dense + sparse) and adaptive routing when available."),
+	)
+}
+
+type reflectInput struct {
+	CollectionIDs []string `json:"collection_ids" jsonschema:"description=List of collection IDs to search across,required"`
+	Query         string   `json:"query" jsonschema:"description=The original user query to reflect on,required"`
+	TopK          int      `json:"top_k,omitempty" jsonschema:"description=Maximum number of results to return per collection"`
+}
+
+type reflectOutput struct {
+	Sufficient       bool           `json:"sufficient"`
+	Confidence       float32        `json:"confidence"`
+	SupplementQuery  string         `json:"supplement_query,omitempty"`
+	Chunks           []chunkSummary `json:"chunks"`
+}
+
+func NewReflectTool() trpctool.CallableTool {
+	execute := func(ctx context.Context, in reflectInput) (reflectOutput, error) {
+		if len(in.CollectionIDs) == 0 {
+			if scoped := knowledgeCollectionsFromContext(ctx); len(scoped) > 0 {
+				in.CollectionIDs = scoped
+			} else {
+				return reflectOutput{}, kerrors.BadRequest("KNOWLEDGE", "knowledge_reflect: collection_ids is required")
+			}
+		}
+		if scoped := knowledgeCollectionsFromContext(ctx); len(scoped) > 0 {
+			for _, id := range in.CollectionIDs {
+				allowed := false
+				for _, sid := range scoped {
+					if id == sid {
+						allowed = true
+						break
+					}
+				}
+				if !allowed {
+					return reflectOutput{}, kerrors.BadRequest("KNOWLEDGE", fmt.Sprintf("knowledge_reflect: collection_id %q is not in scoped knowledge_bases", id))
+				}
+			}
+		}
+		if in.Query == "" {
+			return reflectOutput{}, kerrors.BadRequest("KNOWLEDGE", "knowledge_reflect: query is required")
+		}
+		if in.TopK <= 0 {
+			in.TopK = 5
+		}
+
+		q := biz.KnowledgeSearchQuery{
+			Query:    in.Query,
+			TopK:     in.TopK,
+		}
+
+		var chunks []biz.KnowledgeChunk
+		var err error
+
+		if fr := FederatedRetrieverFromContext(ctx); fr != nil {
+			chunks, err = fr.Search(ctx, in.CollectionIDs, q, nil, "")
+		} else if router := AdaptiveRouterFromContext(ctx); router != nil {
+			if len(in.CollectionIDs) == 1 {
+				q.CollectionID = in.CollectionIDs[0]
+				chunks, err = router.Search(ctx, q, nil, "")
+			} else {
+				return reflectOutput{}, kerrors.BadRequest("KNOWLEDGE", "knowledge_reflect: federated retriever not configured for multi-collection search")
+			}
+		} else if ret := RetrieverFromContext(ctx); ret != nil {
+			if len(in.CollectionIDs) == 1 {
+				q.CollectionID = in.CollectionIDs[0]
+				chunks, err = ret.Search(ctx, q)
+			} else {
+				return reflectOutput{}, kerrors.BadRequest("KNOWLEDGE", "knowledge_reflect: federated retriever not configured for multi-collection search")
+			}
+		} else {
+			return reflectOutput{}, kerrors.BadRequest("KNOWLEDGE", "knowledge_reflect: retriever not configured in context")
+		}
+		if err != nil {
+			return reflectOutput{}, kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("knowledge_reflect: %s", err.Error()))
+		}
+
+		out := reflectOutput{
+			Sufficient: true,
+			Confidence: 1.0,
+			Chunks:     make([]chunkSummary, 0, len(chunks)),
+		}
+
+		if ev := RetrievalEvaluatorFromContext(ctx); ev != nil && len(chunks) > 0 {
+			assessment, evalErr := ev.Evaluate(ctx, in.Query, chunks)
+			if evalErr == nil {
+				out.Sufficient = assessment.Sufficient
+				out.Confidence = assessment.Confidence
+				out.SupplementQuery = assessment.SupplementQuery
+			} else {
+				event.SysLogWarn("knowledge_reflect.eval_fail", fmt.Sprintf("evaluation failed: %v", evalErr))
+			}
+		}
+
+		for _, ch := range chunks {
+			out.Chunks = append(out.Chunks, chunkSummary{
+				ID:      ch.ID,
+				Content: ch.Content,
+				Score:   ch.Score,
+				DocID:   ch.DocID,
+			})
+		}
+		return out, nil
+	}
+	return function.NewFunctionTool(
+		execute,
+		function.WithName("knowledge_reflect"),
+		function.WithDescription("Reflect on knowledge search results across multiple collections. Evaluates retrieval quality, determines if results are sufficient, and suggests supplementary queries if needed. Use this after knowledge_search when you need to verify result quality or search across multiple knowledge bases."),
 	)
 }

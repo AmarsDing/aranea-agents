@@ -42,14 +42,19 @@ func NewExecutionSummaryTracker(executionID, graphID string) *ExecutionSummaryTr
 	}
 }
 
+const (
+	NodeExecStatusSuccess = "success"
+	NodeExecStatusError  = "error"
+)
+
 func (t *ExecutionSummaryTracker) RecordNodeComplete(meta trpcgraph.NodeExecutionMetadata) {
 	if t == nil {
 		return
 	}
-	status := "success"
+	status := NodeExecStatusSuccess
 	errMsg := meta.Error
 	if errMsg != "" {
-		status = "error"
+		status = NodeExecStatusError
 	}
 	durMS := meta.Duration.Milliseconds()
 	t.mu.Lock()

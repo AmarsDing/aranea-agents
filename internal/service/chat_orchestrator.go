@@ -24,6 +24,7 @@ import (
 	"aranea-agents/pkg/safego"
 
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
+	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 )
 
 const (
@@ -32,7 +33,7 @@ const (
 )
 
 type timestampedEntry struct {
-	value     interface{}
+	value     any
 	createdAt time.Time
 }
 
@@ -41,12 +42,16 @@ type timestampedEntry struct {
 // ChatOrchestratorDeps reduces the Wire parameter count and makes the
 // responsibility boundary explicit.
 type RuntimeTooling struct {
-	PluginRT           *plugintrpc.Runtime
-	PluginManager      *plugintrpc.Manager
-	SkillDBRepo        trpcskill.Repository
-	KnowledgeRetriever *knowledge.Retriever
-	CodeExecFactory    *localexec.Factory
-	KanbanBridge       kanbanpkg.Bridge
+	PluginRT                   *plugintrpc.Runtime
+	PluginManager              *plugintrpc.Manager
+	SkillDBRepo                trpcskill.Repository
+	KnowledgeRetriever         *knowledge.Retriever
+	KnowledgeRouter            *knowledge.AdaptiveRouter
+	KnowledgeFederatedRetriever *knowledge.FederatedRetriever
+	KnowledgeEvaluator         *knowledge.RetrievalEvaluator
+	KnowledgeUC                *biz.KnowledgeUsecase
+	CodeExecFactory            *localexec.Factory
+	KanbanBridge               kanbanpkg.Bridge
 }
 
 // TeamOrchestrationDeps groups team execution and graph compilation dependencies.
@@ -151,6 +156,9 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 
 	if deps.Team.TeamsNative != nil {
 		deps.Team.TeamsNative.SetKnowledgeRetriever(deps.RT.KnowledgeRetriever)
+		deps.Team.TeamsNative.SetKnowledgeRouter(deps.RT.KnowledgeRouter)
+		deps.Team.TeamsNative.SetKnowledgeFederatedRetriever(deps.RT.KnowledgeFederatedRetriever)
+		deps.Team.TeamsNative.SetKnowledgeEvaluator(deps.RT.KnowledgeEvaluator)
 		deps.Team.TeamsNative.SetAwaitHookProvider(func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc {
 			return o.makeAwaitReplyFunc(runCtx, sessionID, runID)
 		})
@@ -188,10 +196,12 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 
 // Compile-time interface assertions.
 var (
-	_ biz.TurnExecutor       = (*ChatOrchestrator)(nil)
-	_ biz.NativeTurnGateway  = (*ChatService)(nil)
-	_ biz.TurnGateway        = (*ChatService)(nil)
-	_ biz.TurnControlGateway = (*ChatService)(nil)
+	_ biz.TurnExecutor        = (*ChatOrchestrator)(nil)
+	_ biz.NativeTurnGateway   = (*ChatService)(nil)
+	_ biz.TurnExecutorGateway = (*ChatService)(nil)
+	_ biz.TurnRunControlGateway = (*ChatService)(nil)
+	_ biz.TurnGateway         = (*ChatService)(nil)
+	_ biz.TurnControlGateway  = (*ChatService)(nil)
 )
 
 // Execute implements biz.TurnExecutor — the shared entry point for all turn
@@ -315,7 +325,7 @@ func (o *ChatOrchestrator) GetRunStatus(ctx context.Context, sessionID string) (
 }
 
 // ActiveRunner returns the active runner for a session, if any.
-func (o *ChatOrchestrator) ActiveRunner(sessionID string) (runner interface{}, requestID string, active bool) {
+func (o *ChatOrchestrator) ActiveRunner(sessionID string) (runner trpcrunner.Runner, requestID string, active bool) {
 	return o.runs.ActiveRunner(sessionID)
 }
 
@@ -540,25 +550,25 @@ func (o *ChatOrchestrator) sweepLoop() {
 
 func (o *ChatOrchestrator) sweepStaleMaps() {
 	now := time.Now()
-	o.awaitMetaCache.Range(func(key, value interface{}) bool {
+	o.awaitMetaCache.Range(func(key, value any) bool {
 		if te, ok := value.(timestampedEntry); ok && now.Sub(te.createdAt) > orchMapMaxIdle {
 			o.awaitMetaCache.Delete(key)
 		}
 		return true
 	})
-	o.pendingMergeFollowup.Range(func(key, value interface{}) bool {
+	o.pendingMergeFollowup.Range(func(key, value any) bool {
 		if te, ok := value.(timestampedEntry); ok && now.Sub(te.createdAt) > orchMapMaxIdle {
 			o.pendingMergeFollowup.Delete(key)
 		}
 		return true
 	})
-	o.resumeInFlight.Range(func(key, value interface{}) bool {
+	o.resumeInFlight.Range(func(key, value any) bool {
 		if te, ok := value.(timestampedEntry); ok && now.Sub(te.createdAt) > orchMapMaxIdle {
 			o.resumeInFlight.Delete(key)
 		}
 		return true
 	})
-	o.sessionRunBindings.Range(func(key, value interface{}) bool {
+	o.sessionRunBindings.Range(func(key, value any) bool {
 		if te, ok := value.(timestampedEntry); ok && now.Sub(te.createdAt) > orchMapMaxIdle {
 			o.sessionRunBindings.Delete(key)
 		}

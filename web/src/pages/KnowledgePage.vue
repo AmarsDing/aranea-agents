@@ -63,6 +63,9 @@
               <knowledge-search-panel
                 v-model:query="searchQuery"
                 v-model:top-k="searchTopK"
+                v-model:hybrid-mode="searchHybridMode"
+                v-model:rewrite-strategy="searchRewriteStrategy"
+                v-model:use-rerank="searchUseRerank"
                 :results="searchResults"
                 :loading="searchLoading"
                 :searched="searchRan"
@@ -132,6 +135,9 @@ const {
   ingestFile,
   searchQuery,
   searchTopK,
+  searchHybridMode,
+  searchRewriteStrategy,
+  searchUseRerank,
   searchResults,
   searchLoading,
   searchRan,

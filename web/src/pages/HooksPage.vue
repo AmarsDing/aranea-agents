@@ -61,7 +61,7 @@
     </div>
 
     <q-dialog v-model="editorOpen" persistent maximized>
-      <q-card>
+      <q-card class="app-dialog-card">
         <q-card-section class="row items-center justify-between">
           <div class="text-h6">{{ editingId ? "编辑 Hook" : "新建 Hook" }}</div>
           <q-btn flat round dense icon="close" v-close-popup />

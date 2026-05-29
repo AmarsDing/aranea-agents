@@ -21,6 +21,12 @@ import (
 )
 
 // HookNotifier queues and delivers Hook notify webhooks.
+const (
+	hookDefaultMaxAttempts = 3
+	hookDefaultTimeoutSec  = 8
+	hookRetryBackoffBase   = 500 * time.Millisecond
+)
+
 type HookNotifier struct {
 	repo biz.HookDeliveryRepo
 }
@@ -68,7 +74,13 @@ func (n *HookNotifier) EnqueueNotify(ctx context.Context, rh biz.ResolvedHook, p
 		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
 	}
 	safego.Go(ctx, "hook.notify.enqueue."+rh.Hook.Key, func() {
-		bg := context.Background()
+		maxAttempts := opts.MaxAttempts
+		if maxAttempts <= 0 {
+			maxAttempts = hookDefaultMaxAttempts
+		}
+		maxRetryDuration := time.Duration(maxAttempts)*hookRetryBackoffBase + time.Duration(opts.TimeoutSec)*time.Second + 5*time.Second
+		bg, cancel := context.WithTimeout(context.Background(), maxRetryDuration)
+		defer cancel()
 		if err := n.repo.Insert(bg, d); err != nil {
 			getHookLogger().Warn("hook.notify: enqueue failed", "hook", rh.Hook.Key, "error", err)
 			if ferr := deliverHookWebhook(url, body, opts.WebhookSecret, opts.TimeoutSec); ferr != nil {
@@ -96,7 +108,7 @@ func (n *HookNotifier) processDeliveryFrom(ctx context.Context, d biz.HookDelive
 	}
 	max := d.MaxAttempts
 	if max <= 0 {
-		max = 3
+		max = hookDefaultMaxAttempts
 	}
 	if startAttempt <= 0 {
 		startAttempt = 1
@@ -123,7 +135,11 @@ func (n *HookNotifier) processDeliveryFrom(ctx context.Context, d biz.HookDelive
 			event.SysLogWarn("system.hook.delivery_fail", "hook.notify: UpdateResult(pending) failed", event.P("id", d.ID), event.P("attempt", attempt), event.P("error", uerr.Error()))
 		}
 		if attempt < max {
-			time.Sleep(time.Duration(attempt) * 500 * time.Millisecond)
+			select {
+			case <-time.After(time.Duration(attempt) * hookRetryBackoffBase):
+			case <-ctx.Done():
+				return
+			}
 		}
 	}
 	if uerr := n.repo.UpdateResult(ctx, d.ID, biz.HookDeliveryFailed, max, lastErr); uerr != nil {
@@ -137,7 +153,7 @@ func deliverHookWebhook(url string, body []byte, secret string, timeoutSec int) 
 		return err
 	}
 	if timeoutSec <= 0 {
-		timeoutSec = 8
+		timeoutSec = hookDefaultTimeoutSec
 	}
 	client := webhookurl.NewOutboundHTTPClient(time.Duration(timeoutSec) * time.Second)
 	reqCtx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)

@@ -2,34 +2,30 @@ package biz
 
 import "context"
 
-// TurnGateway is the narrow interface for turn lifecycle operations that
-// consumers (Channel ingress, Cron runner, A2A endpoint, WS handler) need.
-// It splits the monolithic ChatService into focused interfaces so that
-// consumers only depend on what they actually use.
-//
-// Implementations live in internal/service (ChatOrchestrator implements this).
-// Wire binding happens in internal/service.
-type TurnGateway interface {
-	// ExecuteTurn runs a single turn and returns the classified result.
+// TurnExecutorGateway is the narrow interface for turn execution operations.
+// Consumers that only need to execute turns (e.g. WSServer) depend on this
+// instead of the full TurnGateway.
+type TurnExecutorGateway interface {
 	ExecuteTurn(ctx context.Context, input TurnInput) (TurnResult, error)
-
-	// RunNativeTurn executes a synchronous agent/team turn and returns user + assistant messages.
 	RunNativeTurn(ctx context.Context, input TurnInput) (ChatMessage, ChatMessage, error)
-
-	// RunNativeTurnWithOutcome returns an explicit outcome (completed / queued / failed) for Channel ingress.
 	RunNativeTurnWithOutcome(ctx context.Context, input TurnInput) (NativeTurnResult, error)
+}
 
-	// HasActiveRun reports whether a session has an in-flight run.
+// TurnRunControlGateway is the narrow interface for run lifecycle control.
+// Consumers that only need to check/cancel runs (e.g. DurableWorker) depend
+// on this instead of the full TurnGateway.
+type TurnRunControlGateway interface {
 	HasActiveRun(sessionID string) bool
-
-	// CancelRun stops the active run for a session.
 	CancelRun(ctx context.Context, sessionID string) bool
-
-	// SetRunStatus atomically updates the run status and publishes a WS envelope.
 	SetRunStatus(ctx context.Context, sessionID, runID, status, errMsg string)
-
-	// LastPendingMessageID returns the most recently enqueued pending message ID.
 	LastPendingMessageID(sessionID string) string
+}
+
+// TurnGateway composes TurnExecutorGateway + TurnRunControlGateway for
+// consumers that need both execution and run control (e.g. NativeTurnGateway).
+type TurnGateway interface {
+	TurnExecutorGateway
+	TurnRunControlGateway
 }
 
 // TurnControlGateway extends TurnGateway with run control operations needed
@@ -52,6 +48,10 @@ type TurnControlGateway interface {
 
 // PendingMessageGateway is the narrow interface for pending message operations.
 // Split from ChatService so that consumers only depend on what they need.
+type DurableResumeGateway interface {
+	ResumeDurableSessionRun(ctx context.Context, sessionRunID string) error
+}
+
 type PendingMessageGateway interface {
 	// EnqueueUserMessage adds a user message to the pending queue.
 	EnqueueUserMessage(ctx context.Context, sessionID, content string) (accepted bool, pendingID string, rejectReason string, err error)

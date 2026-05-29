@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	bizmonitor "aranea-agents/internal/biz/monitor"
 
 	"github.com/google/uuid"
 )
@@ -18,6 +19,8 @@ type monitorRepo struct {
 	data           *Data
 	firingColsOnce sync.Once // H-04: run schema migration only once per process
 }
+
+var _ bizmonitor.Repo = (*monitorRepo)(nil)
 
 func NewMonitorRepo(d *Data) biz.MonitorRepo {
 	return &monitorRepo{data: d}

@@ -221,14 +221,13 @@
                 → 能力 Tab 配置。
               </q-banner>
 
-              <q-table
+              <AppRegistryTable
                 v-if="detailStore.agentBindingSummary?.rows.length"
+                :shell="false"
+                :data-shell="true"
                 :rows="detailStore.agentBindingSummary.rows"
                 :columns="agentBindingColumns"
-                flat
-                dense
                 row-key="agent_id"
-                class="q-mb-md"
                 hide-pagination
                 :pagination="{ rowsPerPage: 0 }"
               >
@@ -247,7 +246,7 @@
                     <span class="text-caption">{{ props.row.reason }}</span>
                   </q-td>
                 </template>
-              </q-table>
+              </AppRegistryTable>
 
               <div class="text-subtitle2 q-mb-xs">显式覆盖（tool_agent_overrides）</div>
             </template>
@@ -294,6 +293,8 @@
       :form="detailStore.overrideForm"
       :editing="Boolean(detailStore.editingOverride)"
       :saving="detailStore.overrideSaving"
+      :agent-options="detailStore.agentOptions"
+      :agents-loading="detailStore.agentsLoading"
       @update:open="detailStore.overrideEditorOpen = $event"
       @update:form="detailStore.overrideForm = $event"
       @save="detailStore.saveOverride()"
@@ -303,13 +304,14 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { QTableColumn } from "quasar";
 import { useToolDetailStore } from "../../stores/tools/toolDetail";
 import { useToolEditorStore } from "../../stores/tools/toolEditor";
 import { useToolToggle } from "../../features/tools/useToolEditor";
 import { TOOL_POLICY_CHIP_COPY } from "../../features/tools/toolEditorCopy";
 import type { ToolAgentBindingRow } from "../../features/tools/toolAgentBindingSummary";
+import { registryCol, REGISTRY_COL_W } from "../../features/ui/registryTableColumns";
 import { riskLabel, riskQuasarColor, runtimeStatusLabel, prettyJSON } from "./toolUi";
+import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import ToolDetailConfigPanel from "./ToolDetailConfigPanel.vue";
 import ToolJsonBlock from "./ToolJsonBlock.vue";
 import ToolOverrideEditorDialog from "./ToolOverrideEditorDialog.vue";
@@ -367,10 +369,10 @@ const hasResultSchema = computed(() => {
   return raw && raw.trim() !== "{}";
 });
 
-const agentBindingColumns: QTableColumn<ToolAgentBindingRow>[] = [
-  { name: "agent_name", label: "Agent", field: "agent_name", align: "left", sortable: true },
-  { name: "state", label: "生效状态", field: "effective_state", align: "left" },
-  { name: "reason", label: "来源 / 原因", field: "reason", align: "left" }
+const agentBindingColumns = [
+  registryCol<ToolAgentBindingRow>("agent_name", "Agent", "agent_name", "left", REGISTRY_COL_W.name),
+  registryCol<ToolAgentBindingRow>("state", "生效状态", "effective_state", "left", REGISTRY_COL_W.status),
+  registryCol<ToolAgentBindingRow>("reason", "来源 / 原因", "reason", "left", REGISTRY_COL_W.desc)
 ];
 
 function onDrawerUpdate(val: boolean) {

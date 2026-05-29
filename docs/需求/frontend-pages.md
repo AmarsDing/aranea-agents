@@ -396,6 +396,15 @@ Store：`stores/graph`（含 validate/template/checkpoint/task actions）；API�
 
 - 筛选与表格：`ToolRunsTable`。
 
+#### Tool 调用审计 `/tools/audits`
+
+- **结构化审计**：追溯谁在何时调用了什么工具，默认保留 90 天。
+- **筛选**：tool_key、agent_id、user_id、status（success / error / blocked / timeout 等）。
+- **数据**：`tool_invocation_audit` 表；API `GET /v1/tools/audits`。
+- **组件**：`ToolAuditsFilters`（筛选栏）+ `ToolAuditsTable`（审计表格）+ `ToolHeroSection`（页头）。
+- **编排**：`features/tools/useToolAuditsPage.ts`；Store：`stores/tools`（`loadToolAudits` action）。
+- **入口**：Tools 页「调用审计」链接。
+
 #### 定时任务 `/cron`
 
 - Cron 任务 CRUD：cron 表达式、绑定 Agent、启用、最近执行摘要。

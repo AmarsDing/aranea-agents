@@ -613,6 +613,19 @@ func resolveWorkdir(
 		return filepath.Join(baseDir, s), nil
 	}
 	if filepath.IsAbs(s) {
+		if baseDir != "" {
+			absBase, err := filepath.Abs(baseDir)
+			if err != nil {
+				return "", fmt.Errorf("resolving base directory: %w", err)
+			}
+			rel, err := filepath.Rel(absBase, s)
+			if err != nil {
+				return "", fmt.Errorf("workdir must be within workspace root")
+			}
+			if strings.HasPrefix(rel, "..") {
+				return "", fmt.Errorf("workdir must be within workspace root: %s escapes %s", s, baseDir)
+			}
+		}
 		return s, nil
 	}
 	return filepath.Abs(s)

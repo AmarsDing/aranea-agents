@@ -48,6 +48,7 @@ func Registry() []*ToolRegistration {
 				Name:        "file",
 				Description: "File operation ToolSet (read, write, search, replace, list)",
 				Category:    "filesystem",
+				Tags:        []string{"filesystem", "read", "write", "search"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
 					return nil, nil
 				},
@@ -59,6 +60,7 @@ func Registry() []*ToolRegistration {
 				Name:        "hostexec",
 				Description: "Host command execution ToolSet (shell, bash, powershell)",
 				Category:    "execution",
+				Tags:        []string{"shell", "exec", "command"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
 					return nil, nil
 				},
@@ -70,6 +72,7 @@ func Registry() []*ToolRegistration {
 				Name:        "httpfetch",
 				Description: "HTTP web page fetch tool",
 				Category:    "web",
+				Tags:        []string{"web", "fetch", "http"},
 				Factory: func(ctx context.Context) (Tool, error) {
 					return trpchttpfetch.NewTool(), nil
 				},
@@ -80,6 +83,7 @@ func Registry() []*ToolRegistration {
 				Name:        "claudefetch",
 				Description: "Claude web fetch tool (Claude-powered page extraction) — framework stub, not yet implemented",
 				Category:    "web",
+				Tags:        []string{"web", "fetch", "claude"},
 				Factory: func(ctx context.Context) (Tool, error) {
 					return nil, nil
 				},
@@ -90,8 +94,8 @@ func Registry() []*ToolRegistration {
 				Name:        "geminifetch",
 				Description: "Gemini web fetch tool (Gemini-powered page extraction)",
 				Category:    "web",
+				Tags:        []string{"web", "fetch", "gemini"},
 				Factory: func(ctx context.Context) (Tool, error) {
-					// Instantiated in Assemble when AssemblyConfig.GeminiModel is set.
 					return nil, nil
 				},
 				EnabledByDefault: false,
@@ -101,6 +105,7 @@ func Registry() []*ToolRegistration {
 				Name:        "duckduckgo",
 				Description: "DuckDuckGo web search tool",
 				Category:    "search",
+				Tags:        []string{"search", "web"},
 				Factory: func(ctx context.Context) (Tool, error) {
 					return trpcduckduckgo.NewTool(), nil
 				},
@@ -111,8 +116,8 @@ func Registry() []*ToolRegistration {
 				Name:        "google_search",
 				Description: "Google Custom Search ToolSet",
 				Category:    "search",
+				Tags:        []string{"search", "web", "google"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					// Instantiated in Assemble when AssemblyConfig has API key + engine ID.
 					return nil, nil
 				},
 				EnabledByDefault: false,
@@ -122,6 +127,7 @@ func Registry() []*ToolRegistration {
 				Name:        "arxiv_search",
 				Description: "ArXiv paper search ToolSet",
 				Category:    "search",
+				Tags:        []string{"search", "academic", "paper"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
 					return trpcarxivsearch.NewToolSet()
 				},
@@ -132,6 +138,7 @@ func Registry() []*ToolRegistration {
 				Name:        "wikipedia",
 				Description: "Wikipedia search ToolSet",
 				Category:    "search",
+				Tags:        []string{"search", "encyclopedia"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
 					return trpcwikipedia.NewToolSet()
 				},
@@ -142,6 +149,7 @@ func Registry() []*ToolRegistration {
 				Name:        "email",
 				Description: "Email sending ToolSet",
 				Category:    "communication",
+				Tags:        []string{"email", "send", "smtp"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
 					return trpcemail.NewToolSet()
 				},
@@ -153,6 +161,7 @@ func Registry() []*ToolRegistration {
 				Name:        "todo",
 				Description: "Todo management tool",
 				Category:    "productivity",
+				Tags:        []string{"todo", "task", "manage"},
 				Factory: func(ctx context.Context) (Tool, error) {
 					return trpctodo.New(), nil
 				},
@@ -163,6 +172,7 @@ func Registry() []*ToolRegistration {
 				Name:        "await_user_reply",
 				Description: "Mark agent as waiting for user reply",
 				Category:    "interaction",
+				Tags:        []string{"interaction", "reply", "await"},
 				Factory: func(ctx context.Context) (Tool, error) {
 					return trpcawaitreply.New(), nil
 				},
@@ -173,6 +183,7 @@ func Registry() []*ToolRegistration {
 				Name:        "claudecode",
 				Description: "Claude Code ToolSet (bash, edit, read, write, glob, grep, etc.)",
 				Category:    "coding",
+				Tags:        []string{"coding", "ide", "claude"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
 					return nil, nil
 				},
@@ -184,8 +195,8 @@ func Registry() []*ToolRegistration {
 				Name:        "workspace_exec",
 				Description: "Workspace execution tools (exec, write_stdin, kill_session)",
 				Category:    "execution",
+				Tags:        []string{"exec", "workspace", "code"},
 				Factory: func(ctx context.Context) (Tool, error) {
-					// Mounted by llmagent when WithCodeExecutor is wired; not via catalog assembly alone.
 					return nil, nil
 				},
 				EnabledByDefault:     false,
@@ -196,6 +207,7 @@ func Registry() []*ToolRegistration {
 				Name:        "openapi",
 				Description: "OpenAPI spec ToolSet (dynamic REST API tools from spec)",
 				Category:    "integration",
+				Tags:        []string{"api", "rest", "openapi"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
 					return nil, fmt.Errorf("openapi requires spec configuration")
 				},
@@ -206,6 +218,7 @@ func Registry() []*ToolRegistration {
 				Name:             "agent",
 				Description:      "Agent-as-Tool: wrap an Agent as a callable Tool for delegation/composition",
 				Category:         "composition",
+				Tags:             []string{"agent", "delegation", "composition"},
 				EnabledByDefault: false,
 				RiskLevel:        "medium",
 			},
@@ -213,6 +226,7 @@ func Registry() []*ToolRegistration {
 				Name:             "mcp",
 				Description:      "MCP ToolSet: connect to MCP servers (stdio/sse/streamable_http) and expose their tools",
 				Category:         "integration",
+				Tags:             []string{"mcp", "integration", "protocol"},
 				EnabledByDefault: false,
 				RiskLevel:        "medium",
 			},
@@ -220,6 +234,7 @@ func Registry() []*ToolRegistration {
 				Name:             "mcpbroker",
 				Description:      "MCP Broker: runtime MCP discovery tools (mcp_list_servers, mcp_list_tools, mcp_inspect_tools, mcp_call)",
 				Category:         "integration",
+				Tags:             []string{"mcp", "broker", "discovery"},
 				EnabledByDefault: false,
 				RiskLevel:        "medium",
 			},
@@ -328,6 +343,10 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 			}
 			if ts != nil {
 				out.ToolSets = append(out.ToolSets, ts)
+			} else {
+				event.SysLogWarn("system.tool_assembly_skip", "tools.assemble.factory_nil",
+					event.P("tool", reg.Name),
+					event.P("reason", "factory returned nil without error"))
 			}
 		} else if reg.Factory != nil {
 			t, err := reg.Factory(ctx)
@@ -336,6 +355,10 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 			}
 			if t != nil {
 				out.Tools = append(out.Tools, t)
+			} else {
+				event.SysLogWarn("system.tool_assembly_skip", "tools.assemble.factory_nil",
+					event.P("tool", reg.Name),
+					event.P("reason", "factory returned nil without error"))
 			}
 		}
 	}
@@ -371,6 +394,9 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 				return nil, fmt.Errorf("geminifetch: %w", err)
 			}
 			out.Tools = append(out.Tools, t)
+		} else {
+			event.SysLogWarn("system.tool_assembly_skip", "tools.assemble.geminifetch_no_model",
+				event.P("reason", "gemini_model config is empty"))
 		}
 	}
 
@@ -386,6 +412,9 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 				return nil, fmt.Errorf("google search: %w", err)
 			}
 			out.ToolSets = append(out.ToolSets, ts)
+		} else {
+			event.SysLogWarn("system.tool_assembly_skip", "tools.assemble.google_search_no_config",
+				event.P("reason", "api_key or cx is empty"))
 		}
 	}
 

@@ -15,9 +15,6 @@
           :status-color="statusColor"
           :stream-connected="streamConnected"
           :is-dark="isDark"
-          :format-time="formatTime"
-          :step-icon="stepIcon"
-          :step-color="stepColor"
           embedded
         />
       </q-tab-panel>
@@ -80,9 +77,6 @@ const props = defineProps<{
   statusColor: string;
   streamConnected: boolean;
   isDark: boolean;
-  formatTime: (ts: string) => string;
-  stepIcon: (status: string) => string;
-  stepColor: (status: string) => string;
   checkpoints: CheckpointInfo[];
   checkpointsLoading: boolean;
   selectedCheckpoint: CheckpointInfo | null;

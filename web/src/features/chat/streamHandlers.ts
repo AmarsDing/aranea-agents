@@ -7,7 +7,7 @@ import { patchStreamingMessage } from "./streamContentPatch";
 import { createMessageBatchWriter } from "./messageStoreBatch";
 import { shouldSessionWsSkipEnvelope } from "./inboundSyncRouting";
 import type { IntentPassResult } from "./types";
-import { sessionContextPatchFromEnvelope } from "./sessionContextPatch";
+import { sessionContextPatchFromEnvelope, isSessionCompressNotice } from "./sessionContextPatch";
 import type { SessionContextPatch } from "./sessionContextPatch";
 
 import { originFromId } from "./messageOrigin";
@@ -55,6 +55,7 @@ export type StreamHandlerCtx = {
   onOrchestrationNotice?: (message: string) => void;
   onReloadAfterCompletion: (sessionId: string) => Promise<void>;
   onSessionContextPatch?: (sessionId: string, patch: SessionContextPatch) => void;
+  onCompressNotice?: (sessionId: string, prevRatio: number, newRatio: number) => void;
   getSessionMetrics?: (
     sessionId: string
   ) => Pick<Session, "total_tokens" | "max_context_used_ratio" | "input_tokens" | "output_tokens"> | undefined;
@@ -168,11 +169,16 @@ export function bindStreamHandlers(
   }
 
   function applySessionContextPatch(sessionId: string, env: Envelope) {
-    if (!ctx.onSessionContextPatch) return;
+    if (!ctx.onSessionContextPatch && !ctx.onCompressNotice) return;
     const prev = ctx.getSessionMetrics?.(sessionId);
     const patch = sessionContextPatchFromEnvelope(env, prev);
     if (patch) {
-      ctx.onSessionContextPatch(sessionId, patch);
+      ctx.onSessionContextPatch?.(sessionId, patch);
+    }
+    if (isSessionCompressNotice(env) && ctx.onCompressNotice) {
+      const prevRatio = prev?.max_context_used_ratio ?? 0;
+      const newRatio = patch?.context_used_ratio ?? 0;
+      ctx.onCompressNotice(sessionId, prevRatio, newRatio);
     }
   }
 

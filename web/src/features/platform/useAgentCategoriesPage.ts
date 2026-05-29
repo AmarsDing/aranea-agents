@@ -1,6 +1,7 @@
 import { computed, onMounted, reactive, ref } from "vue";
 import { useQuasar } from "quasar";
 import type { PlatformResourceInput, PlatformResourceTreeNode } from "./types";
+import { errorMessage } from "./providerUtils";
 import { usePlatformStore } from "../../stores/platform";
 import {
   categoryTreeStats,
@@ -188,14 +189,6 @@ export function useAgentCategoriesPage() {
     const parentPart = form.parent_id ? form.parent_id.replace(/[^a-z0-9]+/gi, "").slice(-8).toLowerCase() : "root";
     const entropy = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
     return `${level}-${parentPart}-${ascii || "node"}-${entropy}`;
-  }
-
-  function errorMessage(error: unknown) {
-    if (typeof error === "object" && error && "response" in error) {
-      const response = (error as { response?: { data?: { error?: string } } }).response;
-      return response?.data?.error;
-    }
-    return error instanceof Error ? error.message : "";
   }
 
   onMounted(loadTree);

@@ -51,19 +51,31 @@ type SessionRun struct {
 
 const DefaultDurableResumeClaimStaleSec = 300
 
-type SessionRunRepo interface {
+type SessionRunReader interface {
+	Get(ctx context.Context, id string) (SessionRun, error)
+	GetActiveForSession(ctx context.Context, sessionID string) (SessionRun, error)
+	ListBySession(ctx context.Context, sessionID string, limit, offset int) ([]SessionRun, int, error)
+	ListForJobs(ctx context.Context, q SessionRunListQuery) ([]SessionRun, error)
+	ListByPhase(ctx context.Context, phase string, limit int) ([]SessionRun, error)
+}
+
+type SessionRunWriter interface {
 	Create(ctx context.Context, run SessionRun) (string, error)
 	UpdatePhase(ctx context.Context, id, phase string) error
 	UpdateCheckpointID(ctx context.Context, id, checkpointID string) error
 	MarkTerminal(ctx context.Context, id, phase, errMsg string) error
-	Get(ctx context.Context, id string) (SessionRun, error)
-	GetActiveForSession(ctx context.Context, sessionID string) (SessionRun, error)
-	ListByPhase(ctx context.Context, phase string, limit int) ([]SessionRun, error)
-	ListForJobs(ctx context.Context, q SessionRunListQuery) ([]SessionRun, error)
-	ListBySession(ctx context.Context, sessionID string, limit, offset int) ([]SessionRun, int, error)
+}
+
+type SessionRunDurableRepo interface {
 	TryClaimDurableResume(ctx context.Context, id, staleBefore string) (bool, error)
 	ClearResumeClaim(ctx context.Context, id string) error
 	MarkOrphanedRunsCancelled(ctx context.Context) (int, error)
+}
+
+type SessionRunRepo interface {
+	SessionRunReader
+	SessionRunWriter
+	SessionRunDurableRepo
 }
 
 type SessionRunListQuery struct {

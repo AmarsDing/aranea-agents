@@ -5,10 +5,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	"aranea-agents/internal/biz"
+	bizknowledge "aranea-agents/internal/biz/knowledge"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/pgvector/pgvector-go"
 )
 
@@ -22,7 +26,30 @@ func NewKnowledgeRepo(db *sql.DB) biz.KnowledgeRepo {
 	return &knowledgeRepo{db: db}
 }
 
-var _ biz.KnowledgeSparseSearcher = (*knowledgeRepo)(nil)
+func ivfflatLists(dim int) int {
+	if v := os.Getenv("KRATOS_KNOWLEDGE_IVFFLAT_LISTS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	if dim <= 0 {
+		return 100
+	}
+	lists := dim / 4
+	if lists < 10 {
+		lists = 10
+	}
+	if lists > 1000 {
+		lists = 1000
+	}
+	return lists
+}
+
+var (
+	_ biz.KnowledgeRepo           = (*knowledgeRepo)(nil)
+	_ biz.KnowledgeSparseSearcher = (*knowledgeRepo)(nil)
+	_ bizknowledge.Repo           = (*knowledgeRepo)(nil)
+)
 
 // EnsureKnowledgeSchema creates the knowledge tables and indexes when they do not exist.
 func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int) error {
@@ -31,6 +58,7 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int) error {
 	}
 	stmts := []string{
 		`CREATE EXTENSION IF NOT EXISTS vector`,
+		`CREATE EXTENSION IF NOT EXISTS pg_trgm`,
 		`CREATE TABLE IF NOT EXISTS knowledge_collections (
 			id              TEXT PRIMARY KEY,
 			name            TEXT NOT NULL,
@@ -67,15 +95,17 @@ func EnsureKnowledgeSchema(ctx context.Context, db *sql.DB, dim int) error {
 			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)`, dim),
 		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS knowledge_chunks_embedding_idx
-			ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)`),
+			ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = %d)`, ivfflatLists(dim)),
 		`CREATE INDEX IF NOT EXISTS knowledge_chunks_collection_idx
 			ON knowledge_chunks(collection_id)`,
 		`CREATE INDEX IF NOT EXISTS knowledge_chunks_content_tsvector_idx
 			ON knowledge_chunks USING GIN (to_tsvector('simple', content))`,
+		`CREATE INDEX IF NOT EXISTS knowledge_chunks_content_trgm_idx
+			ON knowledge_chunks USING GIN (content gin_trgm_ops)`,
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
-			return fmt.Errorf("knowledge schema: %w", err)
+			return kerrors.InternalServer("KNOWLEDGE", "knowledge schema: "+err.Error())
 		}
 	}
 	return nil
@@ -257,6 +287,20 @@ func (r *knowledgeRepo) DeleteDocument(ctx context.Context, id string) error {
 // --- Chunk operations ---
 
 func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.KnowledgeChunk) error {
+	if len(chunks) == 0 {
+		return nil
+	}
+	var expectedDim int
+	err := r.db.QueryRowContext(ctx,
+		"SELECT dim FROM knowledge_collections WHERE id = $1", chunks[0].CollectionID).Scan(&expectedDim)
+	if err != nil {
+		return kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("failed to query collection dimension: %s", err.Error()))
+	}
+	for _, ch := range chunks {
+		if expectedDim > 0 && len(ch.Embedding) != expectedDim {
+			return kerrors.BadRequest("KNOWLEDGE", fmt.Sprintf("embedding dimension mismatch: collection expects %d, chunk %q has %d", expectedDim, ch.ID, len(ch.Embedding)))
+		}
+	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -289,19 +333,26 @@ func (r *knowledgeRepo) DeleteChunksByDocument(ctx context.Context, docID string
 
 func (r *knowledgeRepo) SearchChunks(ctx context.Context, q biz.KnowledgeSearchQuery, queryEmbedding []float32) ([]biz.KnowledgeChunk, error) {
 	if len(queryEmbedding) == 0 {
-		return nil, fmt.Errorf("knowledge search: embedding is empty")
+		return nil, kerrors.BadRequest("KNOWLEDGE", "embedding is empty")
 	}
 	vec := pgvector.NewVector(queryEmbedding)
 	scoreFilter := ""
-	if q.MinScore > 0 {
-		scoreFilter = fmt.Sprintf("AND (1 - (embedding <=> $1::vector)) >= %g", q.MinScore)
+	hasMinScore := q.MinScore > 0
+	if hasMinScore {
+		scoreFilter = "AND (1 - (embedding <=> $1::vector)) >= "
 	}
-	// filter_json support (basic metadata match via @> operator)
 	filterClause := ""
 	filterArg := json.RawMessage("{}")
 	if q.FilterJSON != "" {
 		filterClause = "AND metadata @> $4::jsonb"
 		filterArg = json.RawMessage(q.FilterJSON)
+	}
+	if hasMinScore {
+		if filterClause != "" {
+			scoreFilter += "$5"
+		} else {
+			scoreFilter += "$4"
+		}
 	}
 	raw := fmt.Sprintf(`
 SELECT id, doc_id, collection_id, content, metadata::text, chunk_index,
@@ -315,9 +366,14 @@ LIMIT $3`, scoreFilter, filterClause)
 
 	var rows *sql.Rows
 	var err error
-	if filterClause != "" {
+	switch {
+	case filterClause != "" && q.MinScore > 0:
+		rows, err = r.db.QueryContext(ctx, raw, vec, q.CollectionID, q.TopK, filterArg, q.MinScore)
+	case filterClause != "":
 		rows, err = r.db.QueryContext(ctx, raw, vec, q.CollectionID, q.TopK, filterArg)
-	} else {
+	case q.MinScore > 0:
+		rows, err = r.db.QueryContext(ctx, raw, vec, q.CollectionID, q.TopK, q.MinScore)
+	default:
 		rows, err = r.db.QueryContext(ctx, raw, vec, q.CollectionID, q.TopK)
 	}
 	if err != nil {
@@ -338,11 +394,31 @@ LIMIT $3`, scoreFilter, filterClause)
 
 func (r *knowledgeRepo) SearchChunksBM25(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error) {
 	filterClause := ""
+	filterArgIdx := 3
 	filterArg := json.RawMessage("{}")
 	if q.FilterJSON != "" {
-		filterClause = "AND metadata @> $3::jsonb"
+		filterClause = fmt.Sprintf("AND metadata @> $%d::jsonb", filterArgIdx)
 		filterArg = json.RawMessage(q.FilterJSON)
+		filterArgIdx++
 	}
+
+	trgmResults, trgmErr := r.searchChunksTrigram(ctx, q, filterClause, filterArg, filterArgIdx)
+	tsResults, tsErr := r.searchChunksTsvector(ctx, q, filterClause, filterArg, filterArgIdx)
+
+	if trgmErr != nil && tsErr != nil {
+		return nil, trgmErr
+	}
+	if trgmErr != nil {
+		return tsResults, nil
+	}
+	if tsErr != nil {
+		return trgmResults, nil
+	}
+
+	return mergeBM25Results(tsResults, trgmResults, q.TopK), nil
+}
+
+func (r *knowledgeRepo) searchChunksTsvector(ctx context.Context, q biz.KnowledgeSearchQuery, filterClause string, filterArg json.RawMessage, nextArgIdx int) ([]biz.KnowledgeChunk, error) {
 	raw := fmt.Sprintf(`
 SELECT id, doc_id, collection_id, content, metadata::text, chunk_index,
        ts_rank(to_tsvector('simple', content), plainto_tsquery('simple', $1)) AS score
@@ -351,7 +427,7 @@ WHERE collection_id = $2
   AND to_tsvector('simple', content) @@ plainto_tsquery('simple', $1)
   %s
 ORDER BY score DESC
-LIMIT $4`, filterClause)
+LIMIT $%d`, filterClause, nextArgIdx)
 
 	var rows *sql.Rows
 	var err error
@@ -364,7 +440,57 @@ LIMIT $4`, filterClause)
 		return nil, err
 	}
 	defer rows.Close()
+	return scanChunks(rows)
+}
 
+func (r *knowledgeRepo) searchChunksTrigram(ctx context.Context, q biz.KnowledgeSearchQuery, filterClause string, filterArg json.RawMessage, nextArgIdx int) ([]biz.KnowledgeChunk, error) {
+	raw := fmt.Sprintf(`
+SELECT id, doc_id, collection_id, content, metadata::text, chunk_index,
+       similarity(content, $1) AS score
+FROM knowledge_chunks
+WHERE collection_id = $2
+  AND content %% $1
+  %s
+ORDER BY score DESC
+LIMIT $%d`, filterClause, nextArgIdx)
+
+	var rows *sql.Rows
+	var err error
+	if filterClause != "" {
+		rows, err = r.db.QueryContext(ctx, raw, q.Query, q.CollectionID, filterArg, q.TopK)
+	} else {
+		rows, err = r.db.QueryContext(ctx, raw, q.Query, q.CollectionID, q.TopK)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanChunks(rows)
+}
+
+func mergeBM25Results(tsResults, trgmResults []biz.KnowledgeChunk, topK int) []biz.KnowledgeChunk {
+	seen := make(map[string]struct{}, len(tsResults)+len(trgmResults))
+	merged := make([]biz.KnowledgeChunk, 0, len(tsResults)+len(trgmResults))
+	for _, ch := range tsResults {
+		if _, ok := seen[ch.ID]; !ok {
+			seen[ch.ID] = struct{}{}
+			merged = append(merged, ch)
+		}
+	}
+	for _, ch := range trgmResults {
+		if _, ok := seen[ch.ID]; ok {
+			continue
+		}
+		seen[ch.ID] = struct{}{}
+		merged = append(merged, ch)
+	}
+	if topK > 0 && len(merged) > topK {
+		merged = merged[:topK]
+	}
+	return merged
+}
+
+func scanChunks(rows *sql.Rows) ([]biz.KnowledgeChunk, error) {
 	var out []biz.KnowledgeChunk
 	for rows.Next() {
 		var ch biz.KnowledgeChunk

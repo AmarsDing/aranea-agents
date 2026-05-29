@@ -8,12 +8,14 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	bizevaluation "aranea-agents/internal/biz/evaluation"
 )
 
-// evalRepo implements biz.EvalRepo using raw SQL against SQLite or PostgreSQL.
 type evalRepo struct {
 	db *sql.DB
 }
+
+var _ bizevaluation.Repo = (*evalRepo)(nil)
 
 // NewEvalRepo returns a biz.EvalRepo backed by the provided *sql.DB.
 func NewEvalRepo(db *sql.DB) biz.EvalRepo {

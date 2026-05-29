@@ -27,6 +27,8 @@ type adminRepo struct {
 	data *Data
 }
 
+var _ biz.AdminRepo = (*adminRepo)(nil)
+
 // NewAdminRepo creates a new AdminRepo instance.
 func NewAdminRepo(data *Data) biz.AdminRepo {
 	return &adminRepo{

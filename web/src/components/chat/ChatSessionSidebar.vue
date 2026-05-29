@@ -220,7 +220,6 @@ import {
   toneToQuasarColor,
 } from "../../domain/conversationPresentation";
 import { sortSessionsForDisplay } from "../../features/session/sessionSort";
-import { isFavoriteSession, toggleFavoriteSession } from "../../stores/sessionSync";
 
 const props = defineProps<{
   open: boolean;
@@ -228,6 +227,7 @@ const props = defineProps<{
   inboxSessions?: ConversationSession[];
   selectedSessionId?: string | null;
   isDark: boolean;
+  favoriteIds?: Set<string>;
 }>();
 
 const emit = defineEmits<{
@@ -240,6 +240,7 @@ const emit = defineEmits<{
   archive: [id: string];
   detail: [id: string];
   "toggle-pin": [payload: { id: string; pinned: boolean }];
+  "toggle-favorite": [id: string];
 }>();
 
 const { t } = useI18n();
@@ -306,7 +307,7 @@ function isPinned(session: SessionView) {
 }
 
 function isFavorite(id: string) {
-  return isFavoriteSession(id);
+  return props.favoriteIds?.has(id) ?? false;
 }
 
 function togglePin(session: SessionView) {
@@ -314,7 +315,7 @@ function togglePin(session: SessionView) {
 }
 
 function toggleFavorite(id: string) {
-  toggleFavoriteSession(id);
+  emit("toggle-favorite", id);
 }
 
 function sessionProgressColor(sessionId: string) {

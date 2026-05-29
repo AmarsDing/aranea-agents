@@ -122,29 +122,22 @@
       </q-card-section>
     </q-card>
 
-    <q-dialog v-model="runDialogOpen" persistent>
-      <q-card :class="['graph-run-dialog app-dialog-card app-dialog-card--sm app-glass-dialog', { 'is-dark': isDark }]">
-        <q-card-section class="app-glass-dialog__head">
-          <div class="app-glass-dialog__title">执行 Graph</div>
-          <div class="app-glass-dialog__subtitle">为 {{ runDialogGraph?.name }} 启动一次执行</div>
-        </q-card-section>
-        <q-separator />
-        <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md">
-          <q-input v-model="runSessionId" class="app-field-md" dense outlined label="Session ID" hint="关联的会话 ID" />
-          <q-input v-model="runInitialState" class="app-field-long" dense outlined autogrow type="textarea" label="初始状态 (JSON)" hint="可选，JSON 格式的初始状态" />
-        </q-card-section>
-        <q-separator />
-        <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-          <q-btn flat rounded label="取消" @click="runDialogOpen = false" />
-          <q-btn class="graphs-page__create-btn" rounded unelevated label="执行" :loading="runLoading" @click="executeRun" />
-        </q-card-actions>
-      </q-card>
-    </q-dialog>
+    <GraphRunDialog
+      v-model="runDialogOpen"
+      :graph-name="runDialogGraph?.name"
+      :session-id="runSessionId"
+      :initial-state="runInitialState"
+      :loading="runLoading"
+      @update:session-id="runSessionId = $event"
+      @update:initial-state="runInitialState = $event"
+      @submit="executeRun"
+    />
   </q-page>
 </template>
 
 <script setup lang="ts">
 import AppPageHero from "../components/layout/AppPageHero.vue";
+import GraphRunDialog from "../components/graph/GraphRunDialog.vue";
 import { useGraphsPage } from "../features/graph/useGraphsPage";
 
 const {

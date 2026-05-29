@@ -185,6 +185,9 @@ func (m *batchSessionRepo) CompressSessionInTx(ctx context.Context, _ string, fn
 func (m *batchSessionRepo) SessionSummaryExists(context.Context, string, int, int) (bool, error) {
 	return false, nil
 }
+func (m *batchSessionRepo) UpdateChatMessageStatus(context.Context, string, string, string, string) error {
+	return nil
+}
 
 func TestSessionService_BatchPreviewSessions_validation(t *testing.T) {
 	uc := biz.NewSessionUsecase(&batchSessionRepo{sessions: map[string]biz.Session{}}, nil, nil, nil, nil)

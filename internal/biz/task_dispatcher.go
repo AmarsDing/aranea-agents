@@ -15,20 +15,27 @@ type TaskDispatchAgentRunner interface {
 	DispatchTask(ctx context.Context, task *GraphTask, agentKey string) error
 }
 
-// TaskDispatcher periodically scans pending tasks and auto-claims static assignments.
-type TaskDispatcher struct {
-	tasks    *TaskUsecase
-	runner   TaskDispatchAgentRunner
-	interval time.Duration
-	stop     chan struct{}
+type TaskDispatchReader interface {
+	CheckTimeouts(ctx context.Context) error
+	ListPendingTasks(ctx context.Context, limit int) ([]*GraphTask, error)
+	IsTaskReadyForDispatch(ctx context.Context, task *GraphTask) bool
+	ResolveDispatchAssignee(ctx context.Context, task *GraphTask) string
+	ClaimTask(ctx context.Context, taskID string, agentKey string) (*GraphTask, error)
+	ReleaseClaim(ctx context.Context, taskID string)
 }
 
-func NewTaskDispatcher(tasks *TaskUsecase, runner TaskDispatchAgentRunner) *TaskDispatcher {
+type TaskDispatcher struct {
+	tasks    TaskDispatchReader
+	runner   TaskDispatchAgentRunner
+	interval time.Duration
+	cancel   context.CancelFunc
+}
+
+func NewTaskDispatcher(tasks TaskDispatchReader, runner TaskDispatchAgentRunner) *TaskDispatcher {
 	return &TaskDispatcher{
 		tasks:    tasks,
 		runner:   runner,
 		interval: defaultDispatchInterval,
-		stop:     make(chan struct{}),
 	}
 }
 
@@ -36,34 +43,37 @@ func (d *TaskDispatcher) Start() {
 	if d == nil || d.tasks == nil {
 		return
 	}
-	safego.Go(context.Background(), "task_dispatcher.loop", d.loop)
+	if d.cancel != nil {
+		return
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	d.cancel = cancel
+	safego.Go(context.Background(), "task_dispatcher.loop", func() { d.loop(ctx) })
 }
 
 func (d *TaskDispatcher) Stop() {
 	if d == nil {
 		return
 	}
-	select {
-	case <-d.stop:
-	default:
-		close(d.stop)
+	if d.cancel != nil {
+		d.cancel()
 	}
 }
 
-func (d *TaskDispatcher) loop() {
+func (d *TaskDispatcher) loop(ctx context.Context) {
 	ticker := time.NewTicker(d.interval)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-d.stop:
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
-			if err := d.tick(ctx); err != nil {
+			tickCtx, tickCancel := context.WithTimeout(ctx, 25*time.Second)
+			if err := d.tick(tickCtx); err != nil {
 				event.SysLogWarn("system.task.dispatcher_tick_fail", "task dispatcher tick failed",
 					event.P("error", err.Error()))
 			}
-			cancel()
+			tickCancel()
 		}
 	}
 }
@@ -84,10 +94,10 @@ func (d *TaskDispatcher) tick(ctx context.Context) error {
 		if task == nil {
 			continue
 		}
-		if !d.tasks.isTaskReadyForDispatch(ctx, task) {
+		if !d.tasks.IsTaskReadyForDispatch(ctx, task) {
 			continue
 		}
-		agentKey := d.tasks.resolveDispatchAssignee(ctx, task)
+		agentKey := d.tasks.ResolveDispatchAssignee(ctx, task)
 		if agentKey == "" {
 			continue
 		}

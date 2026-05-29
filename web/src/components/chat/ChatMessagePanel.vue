@@ -19,6 +19,7 @@
           :context-ratio="contextRatio"
           :context-status="contextStatus"
           :usage-snapshot="usageSnapshot"
+          :breakdown="contextBreakdown"
           :is-dark="isDark"
         />
         <ChatHeaderPromptBar
@@ -49,11 +50,24 @@
           <q-btn flat round dense icon="bolt" aria-label="Session events" @click="emit('open-events')">
             <q-tooltip>会话事件</q-tooltip>
           </q-btn>
+          <q-btn
+            v-if="reasoningSidebarActive"
+            flat
+            round
+            dense
+            :icon="reasoningSidebarOpen ? 'psychology' : 'psychology_alt'"
+            :color="reasoningSidebarOpen ? 'primary' : undefined"
+            aria-label="思考面板"
+            @click="emit('toggle-reasoning-sidebar')"
+          >
+            <q-tooltip>思考面板</q-tooltip>
+          </q-btn>
         </div>
       </div>
     </q-card-section>
     <ChatTeamMemberStrip v-if="isTeamSession" :members="teamMemberLanes" />
     <q-separator class="cream-sep" />
+    <div class="col row no-wrap chat-messages-area" style="min-height: 0">
     <div :key="sessionKey" class="chat-messages col column no-wrap" style="min-height: 0">
       <div
         v-if="!props.messages.length"
@@ -229,22 +243,34 @@
       @paste-file="emit('paste-file', $event)"
       @focus-turn="emit('focus-turn', $event)"
       @navigate="emit('navigate', $event)"
+      @cancel-job="emit('cancel-job', $event)"
+      @paste-unsupported="emit('paste-unsupported')"
+      @new-session="emit('new-session')"
     />
+    <ChatReasoningDrawer
+      :open="Boolean(reasoningSidebarOpen)"
+      :active-reasoning="reasoningSidebarActive ?? null"
+      :is-dark="isDark"
+      @close="emit('close-reasoning-sidebar')"
+    />
+    </div>
   </q-card>
 </template>
 
 <script setup lang="ts">
+// Container: approved — orchestrates virtual scroll, TurnBlock grouping, scroll anchoring, and composable wiring
 import { computed, nextTick, onMounted, ref, toRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type { QVirtualScroll } from "quasar";
 import ChatMessageRow from "./ChatMessageRow.vue";
 import TurnBlock from "./TurnBlock.vue";
-import ChatRunnerStatus from "../../features/chat/components/ChatRunnerStatus.vue";
+import ChatRunnerStatus from "./ChatRunnerStatus.vue";
 import ChatTeamMemberStrip, { type TeamMemberLane } from "./ChatTeamMemberStrip.vue";
 import ChatPendingQueue from "./ChatPendingQueue.vue";
 import ChatComposer from "./ChatComposer.vue";
 import ChatHeaderUsagePanel from "./ChatHeaderUsagePanel.vue";
 import ChatHeaderPromptBar from "./ChatHeaderPromptBar.vue";
+import ChatReasoningDrawer from "./ChatReasoningDrawer.vue";
 import type { RunStatusValue } from "../../features/chat/types";
 import { useChatMessageRow } from "../../features/chat/useChatMessageRow";
 import {
@@ -261,6 +287,7 @@ import { useChatScrollTitle } from "../../features/chat/useChatScrollTitle";
 import type { A2UIUserActionPayload } from "../../features/chat/a2uiUserAction";
 import type { Message, ReactToolLinkIndex } from "../../features/chat/types";
 import type { ComposerUsageSnapshot } from "../../features/chat/composerUsageMetrics";
+import type { PromptBreakdown } from "../../features/chat/contextBreakdown";
 import type { ArtifactMeta } from "../../features/artifact/types";
 import type { ChatAttachment } from "./types";
 
@@ -279,6 +306,7 @@ const props = defineProps<{
   contextRatio: number;
   contextStatus?: string;
   usageSnapshot?: ComposerUsageSnapshot | null;
+  contextBreakdown?: PromptBreakdown | null;
   sessionTotalTokens?: number | null;
   knowledgeBaseOptions?: Option[];
   selectedKnowledgeBases?: string[];
@@ -309,6 +337,8 @@ const props = defineProps<{
   showBackgroundJobs?: boolean;
   agentId?: string;
   jobsRefreshNonce?: number;
+  reasoningSidebarOpen?: boolean;
+  reasoningSidebarActive?: { messageId: string; reasoning: string; streaming: boolean } | null;
 }>();
 
 const emit = defineEmits<{
@@ -339,6 +369,12 @@ const emit = defineEmits<{
   "attachment-deleted": [id: string];
   "download-artifact": [meta: import("../../features/artifact/types").ArtifactMeta];
   regenerate: [message: Message];
+  "cancel-job": [job: { id: string; source: string }];
+  "paste-unsupported": [];
+  "new-session": [];
+  "toggle-reasoning-sidebar": [];
+  "pin-reasoning-message": [messageId: string];
+  "close-reasoning-sidebar": [];
 }>();
 
 const { t } = useI18n();
@@ -452,7 +488,7 @@ onMounted(() => {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--color-success, #4caf50);
-  opacity: 0.6;
+  background: var(--color-success);
+  opacity: 60%;
 }
 </style>

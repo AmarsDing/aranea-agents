@@ -14,6 +14,8 @@ type channelRuntimeLeaseRepo struct {
 	db *sql.DB
 }
 
+var _ biz.ChannelRuntimeLeaseRepo = (*channelRuntimeLeaseRepo)(nil)
+
 func NewChannelRuntimeLeaseRepo(d *Data) biz.ChannelRuntimeLeaseRepo {
 	if d == nil {
 		return &channelRuntimeLeaseRepo{}

@@ -2,7 +2,7 @@ package data
 
 import (
 	"context"
-	"errors"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -11,7 +11,7 @@ import (
 func (r *toolRepo) RecordToolInvocationAudit(ctx context.Context, in biz.ToolInvocationAuditWrite) error {
 	client := r.data.Ent()
 	if client == nil {
-		return errors.New("ent client unavailable")
+		return kerrors.InternalServer("TOOL", "ent client unavailable")
 	}
 	toolKey := strings.TrimSpace(in.ToolKey)
 	if toolKey == "" {
@@ -50,7 +50,7 @@ func (r *toolRepo) RecordToolInvocationAudit(ctx context.Context, in biz.ToolInv
 func (r *toolRepo) SearchToolInvocationAudits(ctx context.Context, q biz.ToolAuditQuery) (biz.ToolAuditResult, error) {
 	client := r.data.Ent()
 	if client == nil {
-		return biz.ToolAuditResult{}, errors.New("ent client unavailable")
+		return biz.ToolAuditResult{}, kerrors.InternalServer("TOOL", "ent client unavailable")
 	}
 	where := []string{"1 = 1"}
 	args := []any{}
@@ -117,7 +117,7 @@ func (r *toolRepo) SearchToolInvocationAudits(ctx context.Context, q biz.ToolAud
 func (r *toolRepo) PurgeToolInvocationAuditsBefore(ctx context.Context, cutoffRFC3339 string) (int64, error) {
 	client := r.data.Ent()
 	if client == nil {
-		return 0, errors.New("ent client unavailable")
+		return 0, kerrors.InternalServer("TOOL", "ent client unavailable")
 	}
 	cutoffRFC3339 = strings.TrimSpace(cutoffRFC3339)
 	if cutoffRFC3339 == "" {

@@ -51,7 +51,7 @@ func (c *CostGuardPlugin) beforeModel(ctx context.Context, args *trpcmodel.Befor
 	}
 	budget := c.budget(ctx)
 	model := modelNameFromContext(ctx)
-	est := estimateRequestTokens(args.Request)
+	est := estimatePromptTokens(args.Request)
 	if block, reason := costGuardShouldBlock(model, c.cfg, est, budget); block {
 		// TPM-P1-03: Fallback bypass — only for daily_budget reason.
 		// daily_budget is a soft limit: the fallback model is the agreed escape

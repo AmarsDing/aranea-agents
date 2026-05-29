@@ -225,9 +225,20 @@ export async function getGraphExecution(executionId: string): Promise<GraphExecu
   };
 }
 
-export async function listGraphExecutions(graphId: string, pageSize = 30, pageToken = ""): Promise<{ items: GraphExecutionSummary[]; nextPageToken: string }> {
+export async function listGraphExecutions(
+  graphId: string,
+  pageSize = 30,
+  pageToken = "",
+  filters?: { status?: string; startedAfter?: string },
+): Promise<{ items: GraphExecutionSummary[]; nextPageToken: string }> {
   const svc = createGraphService();
-  const res = await svc.ListGraphExecutions({ graphId, pageSize, pageToken });
+  const res = await svc.ListGraphExecutions({
+    graphId,
+    pageSize,
+    pageToken,
+    status: filters?.status || undefined,
+    startedAfter: filters?.startedAfter || undefined,
+  });
   return {
     items: (res.items ?? []).map(wireExecSummary),
     nextPageToken: res.nextPageToken ?? "",

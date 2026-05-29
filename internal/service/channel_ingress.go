@@ -27,7 +27,7 @@ type ChannelIngress struct {
 	chat            biz.NativeTurnGateway
 	flowBuffer      *event.Buffer
 	graphs          biz.GraphExecutor
-	cron            *CronService
+	cron            biz.CronTriggerGateway
 	eventBus        event.Bus
 	http            *http.Client
 	inboundInflight inboundInflightSet
@@ -52,7 +52,7 @@ func NewChannelIngress(
 	chat biz.NativeTurnGateway,
 	flowBuffer *event.Buffer,
 	graphs biz.GraphExecutor,
-	cron *CronService,
+	cron biz.CronTriggerGateway,
 	eventBus event.Bus,
 ) *ChannelIngress {
 	return &ChannelIngress{

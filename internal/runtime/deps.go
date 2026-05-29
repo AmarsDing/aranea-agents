@@ -19,7 +19,7 @@ import (
 type Catalog struct {
 	Agents   biz.AgentRepository
 	AgentsUC *biz.AgentUsecase
-	Tools    biz.ToolRepo
+	Tools    biz.ToolCatalogReader
 	ToolUC   *biz.ToolUsecase
 	LLM      *biz.LlmProviderModelUsecase
 	SkillUC  *biz.SkillUsecase

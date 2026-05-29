@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 )
 
@@ -42,7 +44,7 @@ func (r *Registry) GetNodeFunc(name string) (trpcgraph.NodeFunc, error) {
 	defer r.mu.RUnlock()
 	factory, ok := r.nodeFuncs[name]
 	if !ok {
-		return nil, fmt.Errorf("graph registry: node func %q not found", name)
+		return nil, kerrors.NotFound("GRAPH", fmt.Sprintf("graph registry: node func %q not found", name))
 	}
 	return factory()
 }
@@ -64,7 +66,7 @@ func (r *Registry) GetCondFunc(name string) (any, error) {
 	defer r.mu.RUnlock()
 	factory, ok := r.condFuncs[name]
 	if !ok {
-		return nil, fmt.Errorf("graph registry: cond func %q not found", name)
+		return nil, kerrors.NotFound("GRAPH", fmt.Sprintf("graph registry: cond func %q not found", name))
 	}
 	return factory()
 }
@@ -94,11 +96,11 @@ func (r *Registry) ResolveNodeDef(n NodeDef) (NodeDef, error) {
 		return n, nil
 	}
 	if n.FuncRef == "" {
-		return n, fmt.Errorf("graph registry: node %q has no Func and no FuncRef", n.ID)
+		return n, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph registry: node %q has no Func and no FuncRef", n.ID))
 	}
 	fn, err := r.GetNodeFunc(n.FuncRef)
 	if err != nil {
-		return n, fmt.Errorf("graph registry: node %q: %w", n.ID, err)
+		return n, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph registry: node %q: %v", n.ID, err))
 	}
 	resolved := n
 	resolved.Func = fn
@@ -110,11 +112,11 @@ func (r *Registry) ResolveConditionalEdgeDef(ce ConditionalEdgeDef) (Conditional
 		return ce, nil
 	}
 	if ce.CondFuncRef == "" {
-		return ce, fmt.Errorf("graph registry: conditional edge from %q has no CondFunc and no CondFuncRef", ce.From)
+		return ce, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph registry: conditional edge from %q has no CondFunc and no CondFuncRef", ce.From))
 	}
 	fn, err := r.GetCondFunc(ce.CondFuncRef)
 	if err != nil {
-		return ce, fmt.Errorf("graph registry: conditional edge from %q: %w", ce.From, err)
+		return ce, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph registry: conditional edge from %q: %v", ce.From, err))
 	}
 	resolved := ce
 	resolved.CondFunc = fn
@@ -143,7 +145,7 @@ func (r *Registry) ResolveBuildConfig(cfg GraphBuildConfig) (GraphBuildConfig, e
 	for i, sub := range resolved.Subgraphs {
 		resolvedSub, err := r.ResolveBuildConfig(sub.BuildConfig)
 		if err != nil {
-			return cfg, fmt.Errorf("graph registry: subgraph %q: %w", sub.ID, err)
+			return cfg, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph registry: subgraph %q: %v", sub.ID, err))
 		}
 		resolved.Subgraphs[i].BuildConfig = resolvedSub
 	}

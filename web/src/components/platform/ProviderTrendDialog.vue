@@ -76,7 +76,8 @@
 import { computed, ref, watch } from "vue";
 import { graphic, type EChartsCoreOption } from "echarts/core";
 import type { ModelUsageOverview } from "../../features/usage/types";
-import type { PlatformResource } from "../../features/platform/types";
+import type { PlatformResource, ProviderConfig } from "../../features/platform/types";
+import { toNullableNumber } from "../../features/platform/providerUtils";
 import { baseChartOption, usageChartPalette } from "../../features/usage/usageEcharts";
 import { useUsageChart } from "../../features/usage/useUsageChart";
 import {
@@ -85,15 +86,16 @@ import {
   trendMetricYAxisName,
   type UsageTrendMetric
 } from "../../features/usage/usageTrendMetrics";
-
-type ProviderConfig = {
-  provider_display_name?: string;
-  context_window_k?: number | string | null;
-  max_output_tokens?: number | string | null;
-  tokens_per_second?: number | string | null;
-  model_hotness_score?: number | string | null;
-  last_used_at?: string;
-};
+import {
+  formatTps,
+  formatContextWindow,
+  formatCount,
+  formatMicroUsd,
+  formatPercent,
+  formatLatency,
+  formatCompact,
+  getProviderConfig
+} from "./providerModelUi";
 
 const props = defineProps<{
   modelValue: boolean;
@@ -109,7 +111,7 @@ const emit = defineEmits<{
   "update:metric": [value: UsageTrendMetric];
 }>();
 
-const config = computed(() => (props.row ? getConfig(props.row) : {}));
+const config = computed(() => (props.row ? getProviderConfig(props.row) : {}));
 const chartEl = ref<HTMLElement | null>(null);
 
 const trends = computed(() => props.overview?.trends ?? []);
@@ -141,7 +143,7 @@ const detailItems = computed(() => [
 function buildChartOption(): EChartsCoreOption {
   const palette = usageChartPalette();
   const cs = getComputedStyle(document.documentElement);
-  const accent = palette.series[2] ?? (cs.getPropertyValue("--color-accent").trim() || "#00e5ff");
+  const accent = palette.series[2] ?? (cs.getPropertyValue("--color-accent").trim() || "#E9A23B");
   const glassElevated = cs.getPropertyValue("--glass-elevated").trim() || "rgba(15, 23, 42, 0.92)";
   const textPrimary = cs.getPropertyValue("--color-text-primary").trim() || "#e2e8f0";
   const onAccent = cs.getPropertyValue("--color-on-accent").trim() || "#fff";
@@ -217,66 +219,8 @@ function colorMix(color: string, alpha: number): string {
     const b = parseInt(color.slice(5, 7), 16);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
-  return `rgba(0, 229, 255, ${alpha})`;
+  return `rgba(233, 162, 59, ${alpha})`;
 }
 
 useUsageChart(chartEl, buildChartOption, () => [trends.value, props.metric, props.loading]);
-
-function getConfig(row: PlatformResource): ProviderConfig {
-  if (!row.config_json) return {};
-  try {
-    const value = JSON.parse(row.config_json) as ProviderConfig;
-    return value && typeof value === "object" ? value : {};
-  } catch {
-    return {};
-  }
-}
-
-function formatTps(value: unknown) {
-  const numberValue = toNullableNumber(value);
-  if (numberValue === null) return "—";
-  const rounded = numberValue >= 100 ? Math.round(numberValue) : Math.round(numberValue * 10) / 10;
-  return `${rounded} tok/s`;
-}
-
-function formatContextWindow(value: ProviderConfig["context_window_k"]) {
-  const numberValue = toNullableNumber(value);
-  return numberValue === null ? "—" : `${numberValue}K`;
-}
-
-function formatCount(value: unknown) {
-  const numberValue = toNullableNumber(value);
-  if (numberValue === null) return "—";
-  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 }).format(numberValue);
-}
-
-function formatCompact(value: number) {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 10_000) return `${(value / 1_000).toFixed(0)}k`;
-  return String(value);
-}
-
-function formatMicroUsd(value: unknown) {
-  const numberValue = toNullableNumber(value);
-  if (numberValue === null) return "—";
-  return `$${(numberValue / 1_000_000).toFixed(4)}`;
-}
-
-function formatPercent(value: unknown) {
-  const numberValue = toNullableNumber(value);
-  if (numberValue === null) return "—";
-  return `${Math.round(numberValue * 100)}%`;
-}
-
-function formatLatency(value: unknown) {
-  const numberValue = toNullableNumber(value);
-  if (numberValue === null) return "—";
-  return `${Math.round(numberValue)} ms`;
-}
-
-function toNullableNumber(value: unknown) {
-  if (value === "" || value === null || value === undefined) return null;
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) ? numberValue : null;
-}
 </script>

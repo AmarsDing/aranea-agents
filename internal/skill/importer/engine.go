@@ -21,10 +21,20 @@ import (
 
 const MaxZipBytes = 20 * 1024 * 1024
 
-// Engine holds in-memory import jobs and executes zip inspection / LLM similarity (OpenAI-compatible + Anthropic messages).
+type SkillImportRepo interface {
+	CreateSkillWithVersion(ctx context.Context, in biz.SkillCreateInput) (biz.Skill, error)
+	DeleteSkill(ctx context.Context, id string) error
+	ListSkillSimilaritySources(ctx context.Context) ([]biz.SkillSimilaritySource, error)
+}
+
+type llmLister interface {
+	List(ctx context.Context) ([]biz.ProviderModel, error)
+	GetByProviderAndModel(ctx context.Context, provider, model string) (biz.ProviderModel, error)
+}
+
 type Engine struct {
-	repo biz.SkillRepo
-	llm  *biz.LlmProviderModelUsecase
+	repo SkillImportRepo
+	llm  llmLister
 	sys  biz.SystemSettingRepo
 
 	jobsMu sync.RWMutex
@@ -48,7 +58,7 @@ type candidateState struct {
 }
 
 // NewEngine constructs the skill ZIP importer. Skill storage root resolves via skillstorage + system settings.
-func NewEngine(repo biz.SkillRepo, llm *biz.LlmProviderModelUsecase, sys biz.SystemSettingRepo) *Engine {
+func NewEngine(repo SkillImportRepo, llm llmLister, sys biz.SystemSettingRepo) *Engine {
 	return &Engine{
 		repo:   repo,
 		llm:    llm,
@@ -56,6 +66,10 @@ func NewEngine(repo biz.SkillRepo, llm *biz.LlmProviderModelUsecase, sys biz.Sys
 		jobs:   make(map[string]*jobState),
 		jobTTL: defaultJobTTL,
 	}
+}
+
+func ProvideLLMLister(uc *biz.LlmProviderModelUsecase) llmLister {
+	return uc
 }
 
 func (e *Engine) resolveRoot(ctx context.Context) string {
@@ -128,14 +142,19 @@ func (e *Engine) Import(ctx context.Context, file multipart.File, header *multip
 }
 
 func (e *Engine) GetImportJob(jobID string) (biz.SkillImportJob, error) {
-	e.jobsMu.Lock()
-	e.evictExpiredLocked()
-	job := e.jobs[strings.TrimSpace(jobID)]
-	if job != nil && time.Since(job.createdAt) > e.jobTTL {
-		delete(e.jobs, jobID)
+	trimmed := strings.TrimSpace(jobID)
+	e.jobsMu.RLock()
+	job := e.jobs[trimmed]
+	expired := job != nil && time.Since(job.createdAt) > e.jobTTL
+	e.jobsMu.RUnlock()
+
+	if expired {
+		e.jobsMu.Lock()
+		delete(e.jobs, trimmed)
+		e.jobsMu.Unlock()
 		job = nil
 	}
-	e.jobsMu.Unlock()
+
 	if job == nil {
 		return biz.SkillImportJob{}, ErrImportJobNotFound
 	}
@@ -228,7 +247,7 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 		return biz.SkillImportApplyResult{
 			CreatedSkillIDs:     []string{},
 			SkippedCandidateIDs: result.SkippedCandidateIDs,
-			Message:             fmt.Sprintf("导入失败并已回滚: %s", err.Error()),
+			Message:             fmt.Sprintf("import failed and rolled back: %s", err.Error()),
 		}, err
 	}
 
@@ -237,10 +256,10 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 		case "import_passed":
 			candidate, ok := job.candidates[decision.CandidateID]
 			if !ok {
-				return partialErr(fmt.Errorf("candidate %s not found", decision.CandidateID))
+				return partialErr(detailErr(ErrCandidateNotFound, "candidate "+decision.CandidateID+" not found"))
 			}
 			if candidate.public.ValidationStatus != "pass" {
-				return partialErr(fmt.Errorf("candidate %s is not pass", decision.CandidateID))
+				return partialErr(detailErr(ErrCandidateNotPass, "candidate "+decision.CandidateID+" is not pass"))
 			}
 			created, dir, err := e.createImportedSkill(ctx, candidate.public.Name, candidate.public.Slug, candidate.public.Description, candidate.body, candidate.tags, candidate.files)
 			if err != nil {
@@ -251,10 +270,10 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 		case "approve_risky_import":
 			candidate, ok := job.candidates[decision.CandidateID]
 			if !ok {
-				return partialErr(fmt.Errorf("candidate %s not found", decision.CandidateID))
+				return partialErr(detailErr(ErrCandidateNotFound, "candidate "+decision.CandidateID+" not found"))
 			}
 			if !candidateRequiresRiskApproval(candidate.public) {
-				return partialErr(fmt.Errorf("candidate %s does not require high risk approval", decision.CandidateID))
+				return partialErr(detailErr(ErrRiskApprovalRequired, "candidate "+decision.CandidateID+" does not require high risk approval"))
 			}
 			created, dir, err := e.createImportedSkill(ctx, candidate.public.Name, candidate.public.Slug, candidate.public.Description, candidate.body, candidate.tags, candidate.files)
 			if err != nil {
@@ -284,10 +303,10 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 				result.SkippedCandidateIDs = append(result.SkippedCandidateIDs, id)
 			}
 		default:
-			return partialErr(fmt.Errorf("unsupported import action: %s", decision.Action))
+			return partialErr(detailErr(ErrUnsupportedAction, "unsupported import action: "+decision.Action))
 		}
 	}
-	result.Message = "导入完成"
+	result.Message = "import completed"
 	return result, nil
 }
 
@@ -328,7 +347,7 @@ func (e *Engine) createImportedSkill(ctx context.Context, name string, slug stri
 	// TPM-P1-07: full zipslip protection — verify joined path stays inside targetDir.
 	absTarget, err := filepath.Abs(targetDir)
 	if err != nil {
-		return biz.Skill{}, "", fmt.Errorf("resolve target dir: %w", err)
+		return biz.Skill{}, "", detailErr(ErrResolveTargetDir, err.Error())
 	}
 	for fname, data := range files {
 		if err := ensurePathWithin(absTarget, fname); err != nil {
@@ -359,7 +378,7 @@ func (e *Engine) updateCandidateWarning(job *jobState, candidateID string, metri
 		job.public.Candidates[i].StatusIcon = "merge_suggested"
 		job.public.Candidates[i].Warnings = append(job.public.Candidates[i].Warnings, biz.SkillImportIssue{
 			Type:    "similarity",
-			Message: fmt.Sprintf("??????? %d%%?????", int(metrics.SimilarityScore*100+0.5)),
+			Message: fmt.Sprintf("similarity score capped at %d%%", int(metrics.SimilarityScore*100+0.5)),
 		})
 		state := job.candidates[candidateID]
 		state.public = job.public.Candidates[i]
@@ -381,14 +400,14 @@ func (e *Engine) inspectSkillZip(ctx context.Context, data []byte, job *jobState
 			continue
 		}
 		if filepath.IsAbs(file.Name) || strings.HasPrefix(name, "/") || strings.HasPrefix(name, "\\") {
-			return fmt.Errorf("unsafe zip path (absolute): %s", file.Name)
+			return unsafePathError(ErrUnsafePathAbsolute, file.Name)
 		}
 		cleaned := filepath.ToSlash(filepath.Clean(name))
 		if cleaned == ".." || strings.HasPrefix(cleaned, "../") || strings.Contains(cleaned, "/..") {
-			return fmt.Errorf("unsafe zip path (traversal): %s", file.Name)
+			return unsafePathError(ErrUnsafePathTraversal, file.Name)
 		}
 		if strings.Contains(name, "..") {
-			return fmt.Errorf("unsafe zip path (dotdot): %s", file.Name)
+			return unsafePathError(ErrUnsafePathDotDot, file.Name)
 		}
 		if file.FileInfo().IsDir() {
 			continue
@@ -403,7 +422,7 @@ func (e *Engine) inspectSkillZip(ctx context.Context, data []byte, job *jobState
 			return err
 		}
 		if len(content) > 2*1024*1024 {
-			return fmt.Errorf("skill file too large: %s", name)
+			return detailErr(ErrSkillFileTooLarge, "skill file too large: "+name)
 		}
 		dir, relativeName := skillZipGroupPath(name)
 		if _, ok := filesByDir[dir]; !ok {
@@ -463,7 +482,7 @@ func (e *Engine) inspectSimilarity(ctx context.Context, job *jobState, existing 
 		state := job.candidates[candidate.CandidateID]
 		for _, source := range existing {
 			if llmCalls >= maxSimilarityLLMCalls {
-				event.SysLogWarn("system.skill.similarity_cap", "inspectSimilarity LLM 调用达到上限，跳过剩余比较",
+				event.SysLogWarn("system.skill.similarity_cap", "inspectSimilarity LLM call limit reached, skipping remaining comparisons",
 					event.P("cap", maxSimilarityLLMCalls))
 				return nil
 			}

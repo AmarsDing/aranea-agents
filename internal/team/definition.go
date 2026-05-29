@@ -21,26 +21,26 @@ type Definition struct {
 	RuntimeEngine      string            `json:"runtime_engine,omitempty"`
 	TeamGraphRuntime   bool              `json:"team_graph_runtime,omitempty"`
 	CriticLoop         *CriticLoopConfig `json:"critic_loop,omitempty"`
-	IntentAnchorAgentID string           `json:"intent_anchor_agent_id,omitempty"`
-	Swarm              *SwarmConfigDef   `json:"swarm,omitempty"`
-	MemberTool         *MemberToolDef    `json:"member_tool_config,omitempty"`
-	FailurePolicy      *biz.TeamFailurePolicy `json:"failure_policy,omitempty"`
+	IntentAnchorAgentID string                `json:"intent_anchor_agent_id,omitempty"`
+	Swarm               *SwarmConfigDef        `json:"swarm,omitempty"`
+	MemberTool          *MemberToolDef         `json:"member_tool_config,omitempty"`
+	FailurePolicy       *biz.TeamFailurePolicy `json:"failure_policy,omitempty"`
 }
 
 type SwarmConfigDef struct {
-	MaxHandoffs               int  `json:"max_handoffs"`
-	NodeTimeoutSeconds        int  `json:"node_timeout_seconds"`
-	RepetitiveHandoffWindow   int  `json:"repetitive_handoff_window"`
-	RepetitiveHandoffMinUnique int `json:"repetitive_handoff_min_unique"`
-	CrossRequestTransfer      bool `json:"cross_request_transfer"`
+	MaxHandoffs                int  `json:"max_handoffs"`
+	NodeTimeoutSeconds         int  `json:"node_timeout_seconds"`
+	RepetitiveHandoffWindow    int  `json:"repetitive_handoff_window"`
+	RepetitiveHandoffMinUnique int  `json:"repetitive_handoff_min_unique"`
+	CrossRequestTransfer       bool `json:"cross_request_transfer"`
 }
 
 type MemberToolDef struct {
-	StreamInner      bool   `json:"stream_inner"`
-	InnerTextMode    string `json:"inner_text_mode"`
-	SkipSummarization bool  `json:"skip_summarization"`
-	HistoryScope     string `json:"history_scope"`
-	ToolSetName      string `json:"tool_set_name"`
+	StreamInner       bool   `json:"stream_inner"`
+	InnerTextMode     string `json:"inner_text_mode"`
+	SkipSummarization bool   `json:"skip_summarization"`
+	HistoryScope      string `json:"history_scope"`
+	ToolSetName       string `json:"tool_set_name"`
 }
 
 // CriticLoopConfig matches frontend critic_loop JSON (score_threshold reserved for future routing).

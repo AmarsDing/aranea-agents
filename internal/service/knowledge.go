@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/base64"
+	"net/http"
 	"strings"
 
 	v1 "aranea-agents/api/kratos/knowledge/v1"
@@ -17,6 +18,25 @@ import (
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
+const maxIngestBytes = 32 << 20
+
+var allowedIngestMIMEs = map[string]bool{
+	"text/plain":         true,
+	"text/markdown":      true,
+	"text/csv":           true,
+	"text/html":          true,
+	"text/xml":           true,
+	"application/json":   true,
+	"application/xml":    true,
+	"application/pdf":    true,
+	"application/msword": true,
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":   true,
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":         true,
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation": true,
+	"image/png":  true,
+	"image/jpeg": true,
+}
+
 var (
 	knowledgeIngestTotal = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "aranea_knowledge_ingest_documents_total",
@@ -30,21 +50,29 @@ var (
 )
 
 // KnowledgeService implements kratos knowledge.v1.
+type KnowledgeSearchDeps struct {
+	Retriever *knowledge.Retriever
+	Router    *knowledge.AdaptiveRouter
+	Evaluator *knowledge.RetrievalEvaluator
+}
+
 type KnowledgeService struct {
 	v1.UnimplementedKnowledgeServiceServer
 	uc            *biz.KnowledgeUsecase
-	chunker       *knowledge.Chunker
 	embedder      *knowledge.Embedder
-	retriever     *knowledge.Retriever
-	router        *knowledge.AdaptiveRouter
-	evaluator     *knowledge.RetrievalEvaluator
+	search        KnowledgeSearchDeps
 	bus           event.Bus
 	systemSetting biz.SystemSettingRepo
 }
 
-// NewKnowledgeService constructs a KnowledgeService.
-func NewKnowledgeService(uc *biz.KnowledgeUsecase, chunker *knowledge.Chunker, embedder *knowledge.Embedder, retriever *knowledge.Retriever, router *knowledge.AdaptiveRouter, evaluator *knowledge.RetrievalEvaluator, bus event.Bus, systemSetting biz.SystemSettingRepo) *KnowledgeService {
-	return &KnowledgeService{uc: uc, chunker: chunker, embedder: embedder, retriever: retriever, router: router, evaluator: evaluator, bus: bus, systemSetting: systemSetting}
+func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder *knowledge.Embedder, searchDeps KnowledgeSearchDeps, bus event.Bus, systemSetting biz.SystemSettingRepo) *KnowledgeService {
+	return &KnowledgeService{
+		uc:            uc,
+		embedder:      embedder,
+		search:        searchDeps,
+		bus:           bus,
+		systemSetting: systemSetting,
+	}
 }
 
 // CreateCollection creates a new vector collection.
@@ -56,6 +84,12 @@ func (s *KnowledgeService) CreateCollection(ctx context.Context, req *v1.CreateC
 	}
 	if model == "" {
 		return nil, kerrors.BadRequest("KNOWLEDGE", "embedding_model is required")
+	}
+	if s.embedder != nil {
+		_, _, embedderModel, _, configured, _ := s.embedder.Config()
+		if configured && embedderModel != "" && embedderModel != model {
+			return nil, kerrors.BadRequest("KNOWLEDGE", "embedding_model does not match current embedder model "+embedderModel)
+		}
 	}
 	c, err := s.uc.CreateCollection(ctx, biz.KnowledgeCollection{
 		Name:           name,
@@ -105,6 +139,13 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 	if len(raw) == 0 {
 		return nil, kerrors.BadRequest("KNOWLEDGE", "content is empty")
 	}
+	if len(raw) > maxIngestBytes {
+		return nil, kerrors.BadRequest("KNOWLEDGE", "file too large: max 32MB")
+	}
+	detected := http.DetectContentType(raw[:min(512, len(raw))])
+	if !isAllowedIngestMIME(detected) {
+		return nil, kerrors.BadRequest("KNOWLEDGE", "unsupported content type: "+detected)
+	}
 	col, err := s.uc.GetCollection(ctx, req.GetCollectionId())
 	if err != nil {
 		return nil, err
@@ -132,45 +173,50 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 		return nil, kerrors.BadRequest("KNOWLEDGE", "document contains no extractable text")
 	}
 
-	chunkSize := int(req.GetChunkSize())
-	if chunkSize <= 0 {
-		chunkSize = 512
-	}
-	chunkOverlap := int(req.GetChunkOverlap())
-	if chunkOverlap < 0 {
-		chunkOverlap = 64
-	}
 	strategy := knowledge.ParseChunkStrategy(req.GetChunkStrategy())
 	embedder := s.embedder
 	uc := s.uc
 
-	safego.Go(context.Background(), "knowledge-ingest", func() {
-		bgCtx := context.Background()
-		_ = uc.UpdateDocumentStatus(bgCtx, doc.ID, "indexing", "", 0)
+	params := knowledge.IngestParams{
+		DocID:        doc.ID,
+		CollectionID: col.ID,
+		Text:         text,
+		MetadataJSON: metaJSON,
+		Strategy:     strategy,
+		ChunkSize:    int(req.GetChunkSize()),
+		ChunkOverlap: int(req.GetChunkOverlap()),
+	}
+	params.ApplyDefaults()
+
+	ingestCtx := ctx
+	safego.Go(ingestCtx, "knowledge-ingest", func() {
+		if err := uc.UpdateDocumentStatus(ingestCtx, doc.ID, "indexing", "", 0); err != nil {
+			event.SysLogError("knowledge.ingest.status_fail", "failed to update document status to indexing", event.P("doc_id", doc.ID), event.P("error", err.Error()))
+		}
 		s.publishKnowledgeIngest(col.ID, doc.ID, "indexing", "", 0)
 
-		bizChunks, err := knowledge.BuildIndexedChunks(bgCtx, embedder, knowledge.IngestParams{
-			DocID:        doc.ID,
-			CollectionID: col.ID,
-			Text:         text,
-			MetadataJSON: metaJSON,
-			Strategy:     strategy,
-			ChunkSize:    chunkSize,
-			ChunkOverlap: chunkOverlap,
-		})
+		bizChunks, err := knowledge.BuildIndexedChunks(ingestCtx, embedder, params)
 		if err != nil {
-			_ = uc.UpdateDocumentStatus(bgCtx, doc.ID, "error", err.Error(), 0)
+			if statusErr := uc.UpdateDocumentStatus(ingestCtx, doc.ID, "error", err.Error(), 0); statusErr != nil {
+				event.SysLogError("knowledge.ingest.status_fail", "failed to update document status to error", event.P("doc_id", doc.ID), event.P("status_error", statusErr.Error()), event.P("original_error", err.Error()))
+			}
 			s.publishKnowledgeIngest(col.ID, doc.ID, "error", err.Error(), 0)
 			return
 		}
 
-		if err := uc.InsertChunks(bgCtx, bizChunks); err != nil {
-			_ = uc.UpdateDocumentStatus(bgCtx, doc.ID, "error", err.Error(), 0)
+		if err := uc.InsertChunks(ingestCtx, bizChunks); err != nil {
+			if statusErr := uc.UpdateDocumentStatus(ingestCtx, doc.ID, "error", err.Error(), 0); statusErr != nil {
+				event.SysLogError("knowledge.ingest.status_fail", "failed to update document status to error", event.P("doc_id", doc.ID), event.P("status_error", statusErr.Error()), event.P("original_error", err.Error()))
+			}
 			s.publishKnowledgeIngest(col.ID, doc.ID, "error", err.Error(), 0)
 			return
 		}
-		_ = uc.UpdateDocumentStatus(bgCtx, doc.ID, "indexed", "", len(bizChunks))
-		_ = uc.UpdateCollectionCounts(bgCtx, col.ID, 1, len(bizChunks))
+		if err := uc.UpdateDocumentStatus(ingestCtx, doc.ID, "indexed", "", len(bizChunks)); err != nil {
+			event.SysLogError("knowledge.ingest.status_fail", "failed to update document status to indexed", event.P("doc_id", doc.ID), event.P("error", err.Error()))
+		}
+		if err := uc.UpdateCollectionCounts(ingestCtx, col.ID, 1, len(bizChunks)); err != nil {
+			event.SysLogError("knowledge.ingest.counts_fail", "failed to update collection counts", event.P("col_id", col.ID), event.P("error", err.Error()))
+		}
 		s.publishKnowledgeIngest(col.ID, doc.ID, "indexed", "", len(bizChunks))
 		knowledgeIngestTotal.Inc()
 	})
@@ -206,7 +252,7 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 		return nil, kerrors.BadRequest("KNOWLEDGE", "query is required")
 	}
 
-	if s.retriever == nil {
+	if s.search.Retriever == nil {
 		return nil, kerrors.ServiceUnavailable("KNOWLEDGE", "knowledge retriever not configured")
 	}
 	q := biz.KnowledgeSearchQuery{
@@ -225,34 +271,36 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 	var chunks []biz.KnowledgeChunk
 	var err error
 
-	if s.router != nil {
+	if s.search.Router != nil {
 		var rewriteResult *knowledge.QueryRewriteResult
 		strategy := knowledge.ParseRewriteStrategy(req.GetRewriteStrategy())
 		if strategy != knowledge.RewriteNone {
-			rewriter := s.router.QueryRewriter()
+			rewriter := s.search.Router.QueryRewriter()
 			if rewriter != nil {
-				rewriteResult, _ = rewriter.Rewrite(ctx, query, strategy)
+				rr, rewriteErr := rewriter.Rewrite(ctx, query, strategy)
+				if rewriteErr != nil {
+					event.SysLogWarn("knowledge.search.rewrite_fail", "query rewrite failed, using original query", event.P("error", rewriteErr.Error()))
+				} else {
+					rewriteResult = rr
+				}
 			}
 		}
-		chunks, err = s.router.Search(ctx, q, rewriteResult)
+		modeOverride := knowledge.ParseHybridSearchMode(req.GetHybridSearch())
+		chunks, err = s.search.Router.Search(ctx, q, rewriteResult, modeOverride)
 	} else {
-		chunks, err = s.retriever.Search(ctx, q)
+		chunks, err = s.search.Retriever.Search(ctx, q)
 	}
 	if err != nil {
-		return nil, kerrors.InternalServer("KNOWLEDGE", err.Error())
+		return nil, kerrors.FromError(err)
 	}
 
-	if s.evaluator != nil && len(chunks) > 0 {
-		assessment, evalErr := s.evaluator.Evaluate(ctx, query, chunks)
-		if evalErr == nil && !assessment.Sufficient && assessment.SupplementQuery != "" {
-			supQ := q
-			supQ.Query = assessment.SupplementQuery
-			supQ.TopK = q.TopK
-			supChunks, supErr := s.retriever.Search(ctx, supQ)
-			if supErr == nil && len(supChunks) > 0 {
-				chunks = knowledge.MergeSearchResults(chunks, supChunks, q.TopK)
-			}
-		}
+	var assessor knowledge.ChunkAssessor
+	if s.search.Evaluator != nil {
+		assessor = s.search.Evaluator
+	}
+	chunks, err = knowledge.SearchWithEvaluation(ctx, s.search.Retriever, assessor, query, q, chunks)
+	if err != nil {
+		return nil, kerrors.FromError(err)
 	}
 
 	out := make([]*v1.KnowledgeChunk, 0, len(chunks))
@@ -271,14 +319,12 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 }
 
 // GetEmbedderConfig returns redacted embedder settings (EP-KN-01).
-func (s *KnowledgeService) GetEmbedderConfig(ctx context.Context, _ *v1.GetEmbedderConfigRequest) (*v1.EmbedderConfig, error) {
-	_ = ctx
+func (s *KnowledgeService) GetEmbedderConfig(_ context.Context, _ *v1.GetEmbedderConfigRequest) (*v1.EmbedderConfig, error) {
 	return s.embedderConfigProto(), nil
 }
 
 // UpdateEmbedderConfig applies runtime embedder settings from admin UI.
 func (s *KnowledgeService) UpdateEmbedderConfig(ctx context.Context, req *v1.UpdateEmbedderConfigRequest) (*v1.UpdateEmbedderConfigResponse, error) {
-	_ = ctx
 	if s.embedder == nil {
 		return nil, kerrors.InternalServer("KNOWLEDGE", "embedder not configured")
 	}
@@ -389,4 +435,11 @@ func isExtractSupported(mimeType string) bool {
 		return true
 	}
 	return strings.HasPrefix(m, "text/")
+}
+
+func isAllowedIngestMIME(detected string) bool {
+	if allowedIngestMIMEs[detected] {
+		return true
+	}
+	return strings.HasPrefix(detected, "text/")
 }

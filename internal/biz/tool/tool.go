@@ -10,12 +10,13 @@ import (
 
 // Tool key constants (mirrored from biz for subpackage independence).
 const (
-	ToolKeyMCPToolSet      = "mcp_tool_set"
-	ToolKeyMCPBroker       = "mcp_broker"
-	ToolKeyKnowledgeSearch = "knowledge_search"
-	ToolKeyWebResearch     = "web_research"
-	ToolKeyKanban          = "kanban"
-	ToolKeyCallAgent       = "call_agent"
+	ToolKeyMCPToolSet       = "mcp_tool_set"
+	ToolKeyMCPBroker        = "mcp_broker"
+	ToolKeyKnowledgeSearch  = "knowledge_search"
+	ToolKeyKnowledgeReflect = "knowledge_reflect"
+	ToolKeyWebResearch      = "web_research"
+	ToolKeyKanban           = "kanban"
+	ToolKeyCallAgent        = "call_agent"
 )
 
 // Tool is capability catalog row + aggregates.
@@ -256,25 +257,62 @@ type ToolAuditResult struct {
 	Offset int
 }
 
-type ToolRepo interface {
+type ToolReader interface {
 	SearchTools(ctx context.Context, q ToolListQuery) (ToolListResult, error)
 	GetTool(ctx context.Context, idOrKey string) (Tool, error)
+}
+
+type ToolWriter interface {
 	CreateTool(ctx context.Context, in ToolUpsertInput) (Tool, error)
 	UpdateTool(ctx context.Context, idOrKey string, in ToolUpsertInput) (Tool, error)
 	DeleteTool(ctx context.Context, idOrKey string) error
 	UpdateToolEnabled(ctx context.Context, idOrKey string, enabled bool) (Tool, error)
 	UpdateToolConfig(ctx context.Context, idOrKey string, configJSON string) (Tool, error)
+}
+
+type ToolInvocationReader interface {
 	SearchToolInvocations(ctx context.Context, q ToolRunQuery) (ToolRunResult, error)
+	GetToolInvocationParams(ctx context.Context, invocationID string) (ToolInvocationParam, error)
+}
+
+type ToolInvocationWriter interface {
 	RecordToolInvocation(ctx context.Context, in ToolInvocationWrite) error
+}
+
+type ToolAuditRepo interface {
 	RecordToolInvocationAudit(ctx context.Context, in ToolInvocationAuditWrite) error
 	SearchToolInvocationAudits(ctx context.Context, q ToolAuditQuery) (ToolAuditResult, error)
 	PurgeToolInvocationAuditsBefore(ctx context.Context, cutoffRFC3339 string) (int64, error)
-	SyncBuiltinTools(ctx context.Context) error
-	GetToolInvocationParams(ctx context.Context, invocationID string) (ToolInvocationParam, error)
+}
+
+type ToolOverrideReader interface {
 	ListToolAgentOverrides(ctx context.Context, toolKey string) ([]ToolAgentOverride, error)
 	ListToolAgentOverridesByAgent(ctx context.Context, agentID string) ([]ToolAgentOverride, error)
+}
+
+type ToolOverrideWriter interface {
 	UpsertToolAgentOverride(ctx context.Context, in ToolAgentOverrideInput, toolID string) (ToolAgentOverride, error)
 	DeleteToolAgentOverride(ctx context.Context, toolKey string, agentID string) error
+}
+
+type ToolSyncer interface {
+	SyncBuiltinTools(ctx context.Context) error
+}
+
+type ToolCatalogReader interface {
+	ToolReader
+	ToolOverrideReader
+}
+
+type ToolRepo interface {
+	ToolReader
+	ToolWriter
+	ToolInvocationReader
+	ToolInvocationWriter
+	ToolAuditRepo
+	ToolOverrideReader
+	ToolOverrideWriter
+	ToolSyncer
 }
 
 // SettingRepo provides read access to system settings needed by tool usecase.

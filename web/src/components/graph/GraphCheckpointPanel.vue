@@ -35,6 +35,7 @@
 
 <script setup lang="ts">
 import type { CheckpointInfo } from "../../features/graph/types";
+import { formatTime } from "../../features/graph/utils";
 
 defineProps<{
   checkpoints: CheckpointInfo[];
@@ -47,12 +48,5 @@ defineEmits<{
   select: [checkpoint: CheckpointInfo];
 }>();
 
-function formatTime(ts: string) {
-  if (!ts) return "—";
-  try {
-    return new Date(ts).toLocaleString();
-  } catch {
-    return ts;
-  }
-}
+
 </script>

@@ -45,6 +45,7 @@ import (
 	"aranea-agents/internal/server"
 	"aranea-agents/internal/service"
 	araneasession "aranea-agents/internal/session"
+	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/skill/watch"
 	"aranea-agents/internal/team"
 	"aranea-agents/internal/tools/testexec"
@@ -103,15 +104,15 @@ func provideCronRunner(deps cronrunner.Deps) *cronrunner.Runner {
 	return cronrunner.NewRunner(deps)
 }
 
-func provideSkillWatchRunner(skillUC *biz.SkillUsecase, sys biz.SystemSettingRepo, logger log.Logger, eventBus event.Bus, mon *biz.MonitorUsecase) *watch.Runner {
+func provideSkillWatchRunner(skillReader watch.SkillReader, skillWriter watch.SkillWriter, sys biz.SystemSettingRepo, eventBus event.Bus, mon *biz.MonitorUsecase) *watch.Runner {
 	if strings.TrimSpace(os.Getenv("SKILL_WATCH_DISABLED")) == "1" {
 		return nil
 	}
-	r := watch.NewRunnerWithBus(skillUC, sys, logger, eventBus)
+	r := watch.NewRunnerWithBus(skillReader, skillWriter, sys, eventBus)
 	if r != nil {
-		r.SetSyncReporter(watch.NewMonitorSyncReporter(mon, eventBus))
+		watch.SetSyncReporter(r, watch.NewMonitorSyncReporter(mon, eventBus))
 		if mon != nil {
-			r.SetAlertEvaluator(mon)
+			watch.SetAlertEvaluator(r, mon)
 		}
 	}
 	return r
@@ -220,9 +221,7 @@ func (llmInspectorAdapter) Run(in biz.InspectMerge) (biz.LLMInspectResult, error
 func provideLLMInspector() biz.LLMInspector { return llmInspectorAdapter{} }
 
 func provideLlmProviderModelUsecaseWithDeps(repo biz.LlmProviderModelRepo, inspector biz.LLMInspector) *biz.LlmProviderModelUsecase {
-	uc := biz.NewLlmProviderModelUsecase(repo)
-	uc.SetInspector(inspector)
-	return uc
+	return biz.NewLlmProviderModelUsecase(repo, repo, repo, repo, inspector)
 }
 
 // webResearchReadinessAdapter wraps internal/tools/webresearch to implement biztool.WebResearchReadinessChecker.
@@ -287,7 +286,7 @@ func provideBizWebResearchReadinessChecker() biz.WebResearchReadinessChecker {
 	return bizWebResearchReadinessAdapter{}
 }
 
-func provideAgentUsecaseWithDeps(repo biz.AgentRepository, tools biz.ToolRepo, sys biz.SystemSettingRepo, checker biz.WebResearchReadinessChecker) *biz.AgentUsecase {
+func provideAgentUsecaseWithDeps(repo biz.AgentRepository, tools biz.ToolCatalogReader, sys biz.SystemSettingRepo, checker biz.WebResearchReadinessChecker) *biz.AgentUsecase {
 	uc := biz.NewAgentUsecase(repo, tools, sys)
 	uc.SetWebResearchChecker(checker)
 	return uc
@@ -362,19 +361,15 @@ func provideChannelRunEscalationNotifier(channels *biz.ChannelUsecase, sessions 
 	return service.NewChannelRunEscalationNotifier(channels, sessions)
 }
 
-func provideSessionRunDurableWorker(sessionRuns *biz.SessionRunUsecase, chat *service.ChatService) *service.SessionRunDurableWorker {
-	return service.NewSessionRunDurableWorker(sessionRuns, chat)
+func provideSessionRunDurableWorker(sessionRuns *biz.SessionRunUsecase, runCtrl biz.TurnRunControlGateway, resumer biz.DurableResumeGateway) *service.SessionRunDurableWorker {
+	return service.NewSessionRunDurableWorker(sessionRuns, runCtrl, resumer)
 }
 
 func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, eventBus event.Bus) biz.AlertNotifier {
 	return service.NewMonitorAlertNotifier(channels, eventBus)
 }
 
-func provideMonitorUsecase(repo biz.MonitorRepo, notifier biz.AlertNotifier, skillUC *biz.SkillUsecase) *biz.MonitorUsecase {
-	var fsHealth biz.FilesystemHealthReader
-	if skillUC != nil {
-		fsHealth = monitorSkillHealthAdapter{skills: skillUC}
-	}
+func provideMonitorUsecase(repo biz.MonitorRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader) *biz.MonitorUsecase {
 	rb := monitor.NewMetricRingBuffer()
 	uc := biz.NewMonitorUsecase(repo, notifier,
 		biz.WithFilesystemHealthReader(fsHealth),
@@ -384,8 +379,8 @@ func provideMonitorUsecase(repo biz.MonitorRepo, notifier biz.AlertNotifier, ski
 	uc.SetEvalWorker(w)
 	reg := monitor.NewAlertMetricRegistry()
 	reg.Register(monitor.NewRunnerErrorRateMetric(repo, rb))
-	if skillUC != nil {
-		reg.Register(monitor.NewSkillFilesystemMissingMetric(monitorSkillHealthAdapter{skills: skillUC}))
+	if fsHealth != nil {
+		reg.Register(monitor.NewSkillFilesystemMissingMetric(fsHealth))
 	}
 	uc.SetRegistry(reg)
 	return uc
@@ -428,16 +423,24 @@ func provideRuntimeTooling(
 	pluginMgr *plugintrpc.Manager,
 	skillDBRepo trpcskill.Repository,
 	knowledgeRetriever *knowledge.Retriever,
+	knowledgeRouter *knowledge.AdaptiveRouter,
+	knowledgeFederatedRetriever *knowledge.FederatedRetriever,
+	knowledgeEvaluator *knowledge.RetrievalEvaluator,
+	knowledgeUC *biz.KnowledgeUsecase,
 	codeExecFactory *localexec.Factory,
 	kanbanBridge *service.KanbanToolBridge,
 ) service.RuntimeTooling {
 	return service.RuntimeTooling{
-		PluginRT:           pluginRT,
-		PluginManager:      pluginMgr,
-		SkillDBRepo:        skillDBRepo,
-		KnowledgeRetriever: knowledgeRetriever,
-		CodeExecFactory:    codeExecFactory,
-		KanbanBridge:       kanbanBridge,
+		PluginRT:                    pluginRT,
+		PluginManager:               pluginMgr,
+		SkillDBRepo:                 skillDBRepo,
+		KnowledgeRetriever:          knowledgeRetriever,
+		KnowledgeRouter:             knowledgeRouter,
+		KnowledgeFederatedRetriever: knowledgeFederatedRetriever,
+		KnowledgeEvaluator:          knowledgeEvaluator,
+		KnowledgeUC:                 knowledgeUC,
+		CodeExecFactory:             codeExecFactory,
+		KanbanBridge:                kanbanBridge,
 	}
 }
 
@@ -480,7 +483,7 @@ func provideChatServiceDeps(
 	sessions *biz.SessionUsecase,
 	agents biz.AgentRepository,
 	agentsUC *biz.AgentUsecase,
-	toolsCatalog biz.ToolRepo,
+	toolsCatalog biz.ToolCatalogReader,
 	toolUC *biz.ToolUsecase,
 	llmCatalog *biz.LlmProviderModelUsecase,
 	skillUC *biz.SkillUsecase,
@@ -1096,6 +1099,10 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		wire.Bind(new(biz.LLMCaller), new(*chatagent.DynamicLLMCaller)),
 		biz.NewPromptRefiner,
 		wire.Bind(new(biz.UsageQuotaRepo), new(biz.UsageRepo)),
+		wire.Bind(new(biz.ToolCatalogReader), new(biz.ToolRepo)),
+		wire.Bind(new(araneasession.AgentKeyLookup), new(biz.AgentRepository)),
+		wire.Bind(new(biz.TaskGraphResolver), new(*biz.GraphUsecase)),
+		wire.Bind(new(importer.SkillImportRepo), new(biz.SkillRepo)),
 		newApp,
 		provideWireOut,
 	))

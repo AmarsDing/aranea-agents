@@ -9,12 +9,13 @@ import (
 
 // Tool key constants are now defined in the tool subpackage; re-exported here for backward compatibility.
 const (
-	ToolKeyMCPToolSet      = tool.ToolKeyMCPToolSet
-	ToolKeyMCPBroker       = tool.ToolKeyMCPBroker
-	ToolKeyKnowledgeSearch = tool.ToolKeyKnowledgeSearch
-	ToolKeyWebResearch     = tool.ToolKeyWebResearch
-	ToolKeyKanban          = tool.ToolKeyKanban
-	ToolKeyCallAgent       = tool.ToolKeyCallAgent
+	ToolKeyMCPToolSet       = tool.ToolKeyMCPToolSet
+	ToolKeyMCPBroker        = tool.ToolKeyMCPBroker
+	ToolKeyKnowledgeSearch  = tool.ToolKeyKnowledgeSearch
+	ToolKeyKnowledgeReflect = tool.ToolKeyKnowledgeReflect
+	ToolKeyWebResearch      = tool.ToolKeyWebResearch
+	ToolKeyKanban           = tool.ToolKeyKanban
+	ToolKeyCallAgent        = tool.ToolKeyCallAgent
 )
 
 // EffectiveMCPServer is a biz DTO for one enabled MCP server row — no ADK imports.

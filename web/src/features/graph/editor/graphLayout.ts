@@ -1,5 +1,6 @@
+import dagre from "dagre";
 import type { GraphDefinition, GraphLayoutMetadata } from "../types";
-import { GRAPH_LAYOUT_METADATA_KEY } from "../types";
+import { GRAPH_LAYOUT_METADATA_KEY, NODE_DEFAULT_WIDTH, NODE_DEFAULT_HEIGHT } from "../types";
 
 export function readGraphLayout(graphDef: GraphDefinition): GraphLayoutMetadata {
   const raw = graphDef.metadata?.[GRAPH_LAYOUT_METADATA_KEY];
@@ -41,72 +42,62 @@ export function hasSavedLayout(graphDef: GraphDefinition): boolean {
   return graphDef.nodes.some((node) => Boolean(layout[node.id]));
 }
 
-/** Layered left-to-right layout for workflow graphs without saved positions. */
-export function applyAutoLayout(graphDef: GraphDefinition): void {
-  if (graphDef.nodes.length === 0) return;
+export type NodeMoveInfo = {
+  nodeId: string;
+  oldPos: { x: number; y: number };
+  newPos: { x: number; y: number };
+};
 
-  const nodeIds = new Set(graphDef.nodes.map((node) => node.id));
-  const inDegree = new Map<string, number>();
-  const adjacency = new Map<string, string[]>();
+export function applyAutoLayout(graphDef: GraphDefinition): NodeMoveInfo[] {
+  if (graphDef.nodes.length === 0) return [];
 
-  for (const id of nodeIds) {
-    inDegree.set(id, 0);
-    adjacency.set(id, []);
+  const oldLayout = readGraphLayout(graphDef);
+
+  const g = new dagre.graphlib.Graph();
+  g.setDefaultEdgeLabel(() => ({}));
+  g.setGraph({
+    rankdir: "LR",
+    nodesep: 60,
+    ranksep: 120,
+    marginx: 40,
+    marginy: 40,
+  });
+
+  for (const node of graphDef.nodes) {
+    g.setNode(node.id, { width: NODE_DEFAULT_WIDTH, height: NODE_DEFAULT_HEIGHT });
   }
 
+  const nodeIds = new Set(graphDef.nodes.map((n) => n.id));
   for (const edge of graphDef.edges) {
-    if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) continue;
-    if (edge.from === edge.to) continue;
-    adjacency.get(edge.from)?.push(edge.to);
-    inDegree.set(edge.to, (inDegree.get(edge.to) ?? 0) + 1);
+    if (nodeIds.has(edge.from) && nodeIds.has(edge.to) && edge.from !== edge.to) {
+      g.setEdge(edge.from, edge.to);
+    }
   }
 
-  const maxLayer = nodeIds.size;
-  const entry =
-    graphDef.entryPoint && nodeIds.has(graphDef.entryPoint)
-      ? graphDef.entryPoint
-      : graphDef.nodes.find((node) => (inDegree.get(node.id) ?? 0) === 0)?.id ?? graphDef.nodes[0]?.id;
-
-  const layer = new Map<string, number>();
-  if (entry) {
-    const queue = [entry];
-    layer.set(entry, 0);
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-      const currentLayer = layer.get(current) ?? 0;
-      if (currentLayer >= maxLayer) continue;
-      for (const next of adjacency.get(current) ?? []) {
-        const nextLayer = currentLayer + 1;
-        if (nextLayer > maxLayer) continue;
-        const prior = layer.get(next);
-        if (prior === undefined || prior < nextLayer) {
-          layer.set(next, nextLayer);
-          queue.push(next);
-        }
+  for (const ce of graphDef.conditionalEdges) {
+    if (!nodeIds.has(ce.from)) continue;
+    const targets = Object.values(ce.pathMap ?? {});
+    for (const target of targets) {
+      if (nodeIds.has(target) && ce.from !== target) {
+        g.setEdge(ce.from, target);
       }
     }
   }
 
+  dagre.layout(g);
+
+  const moves: NodeMoveInfo[] = [];
   for (const node of graphDef.nodes) {
-    if (!layer.has(node.id)) {
-      layer.set(node.id, 0);
+    const pos = g.node(node.id);
+    if (pos) {
+      const newPos = {
+        x: pos.x - (pos.width ?? NODE_DEFAULT_WIDTH) / 2,
+        y: pos.y - (pos.height ?? NODE_DEFAULT_HEIGHT) / 2,
+      };
+      const oldPos = oldLayout[node.id] ?? { x: 0, y: 0 };
+      writeGraphNodePosition(graphDef, node.id, newPos);
+      moves.push({ nodeId: node.id, oldPos, newPos });
     }
   }
-
-  const byLayer = new Map<number, string[]>();
-  for (const [id, depth] of layer.entries()) {
-    const bucket = byLayer.get(depth) ?? [];
-    bucket.push(id);
-    byLayer.set(depth, bucket);
-  }
-
-  for (const [depth, ids] of byLayer.entries()) {
-    ids.sort((a, b) => a.localeCompare(b));
-    ids.forEach((id, index) => {
-      writeGraphNodePosition(graphDef, id, {
-        x: 80 + depth * 300,
-        y: 80 + index * 180,
-      });
-    });
-  }
+  return moves;
 }

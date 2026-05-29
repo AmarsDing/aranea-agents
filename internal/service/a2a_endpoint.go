@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"strings"
 
@@ -15,24 +16,32 @@ import (
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 )
 
-// A2AEndpointBuilder builds cached A2A HTTP handlers for enabled catalog agents.
 type A2AEndpointBuilder struct {
-	chat   *ChatService
-	a2aUC  *biz.A2AUsecase
-	agents biz.AgentRepository
+	factory biz.A2ARunnerFactory
 }
 
-// NewA2AEndpointBuilder constructs the builder used by the public A2A registry.
-func NewA2AEndpointBuilder(chat *ChatService, a2aUC *biz.A2AUsecase, agents biz.AgentRepository) *A2AEndpointBuilder {
-	return &A2AEndpointBuilder{chat: chat, a2aUC: a2aUC, agents: agents}
+func NewA2AEndpointBuilder(factory biz.A2ARunnerFactory) *A2AEndpointBuilder {
+	return &A2AEndpointBuilder{factory: factory}
 }
 
-// BuildHandler implements trpc.EndpointBuilder.
 func (b *A2AEndpointBuilder) BuildHandler(ctx context.Context, agentID, publicURL string) (http.Handler, func(), error) {
-	if b == nil || b.chat == nil || b.agents == nil {
+	if b == nil || b.factory == nil {
 		return nil, nil, biz.ErrNotFound
 	}
-	ag, err := b.agents.GetAgentByID(ctx, agentID)
+	closer, handler, err := b.factory.BuildA2ARunner(ctx, agentID, publicURL)
+	if err != nil {
+		return nil, nil, err
+	}
+	return handler, func() { closer.Close() }, nil
+}
+
+var _ a2atrpc.EndpointBuilder = (*A2AEndpointBuilder)(nil)
+
+func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL string) (io.Closer, http.Handler, error) {
+	if s == nil || s.orch == nil {
+		return nil, nil, biz.ErrNotFound
+	}
+	ag, err := s.orch.td.Catalog.Agents.GetAgentByID(ctx, agentID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -40,7 +49,10 @@ func (b *A2AEndpointBuilder) BuildHandler(ctx context.Context, agentID, publicUR
 	if biz.IsA2AProxyAgent(ag) {
 		return nil, nil, biz.ErrNotFound
 	}
-	card, err := b.a2aUC.GetAgentCard(ctx, agentID)
+	if s.orch.a2aUC == nil {
+		return nil, nil, biz.ErrNotFound
+	}
+	card, err := s.orch.a2aUC.GetAgentCard(ctx, agentID)
 	if err != nil || !card.Enabled {
 		return nil, nil, biz.ErrNotFound
 	}
@@ -48,33 +60,33 @@ func (b *A2AEndpointBuilder) BuildHandler(ctx context.Context, agentID, publicUR
 	prov := strings.TrimSpace(ag.Provider)
 	mod := strings.TrimSpace(ag.Model)
 	deps := chatagent.TRPCBuilderDeps{
-		Catalog:            b.chat.orch.td.Catalog.LLM,
-		AgentUC:            b.chat.orch.td.Catalog.AgentsUC,
-		Agents:             b.chat.orch.td.Catalog.Agents,
-		RT:                 b.chat.orch.td.RoundTrip(),
-		SkillUC:            b.chat.orch.td.Catalog.SkillUC,
-		MCPTooling:         b.chat.orch.td.Persist.AgentMCP,
-		ToolUC:             b.chat.orch.td.Catalog.ToolUC,
-		Sessions:           b.chat.orch.td.Sessions,
-		Sys:                b.chat.orch.td.Catalog.Settings,
-		Provider:           prov,
-		Model:              mod,
-		SkillDBRepo:        b.chat.orch.rt.SkillDBRepo,
-		HasMemory:          b.chat.orch.td.Persist.Memory.Available(),
-		PluginManager:      b.chat.orch.rt.PluginManager,
-		MemoryAdmin:        b.chat.orch.td.Persist.Memory.Admin,
-		MemoryL2Recall:        b.chat.orch.td.Persist.Memory.L2Recall,
-		MemoryL3Recall:        b.chat.orch.td.Persist.Memory.L3Recall,
-		MemoryCompositeRecall: b.chat.orch.td.Persist.Memory.CompositeRecall,
-		KnowledgeRetriever: b.chat.orch.rt.KnowledgeRetriever,
-		CodeExecFactory:    b.chat.orch.rt.CodeExecFactory,
-		KanbanBridge:       b.chat.orch.rt.KanbanBridge,
+		Catalog:                s.orch.td.Catalog.LLM,
+		AgentUC:                s.orch.td.Catalog.AgentsUC,
+		Agents:                 s.orch.td.Catalog.Agents,
+		RT:                     s.orch.td.RoundTrip(),
+		SkillUC:                s.orch.td.Catalog.SkillUC,
+		MCPTooling:             s.orch.td.Persist.AgentMCP,
+		ToolUC:                 s.orch.td.Catalog.ToolUC,
+		Sessions:               s.orch.td.Sessions,
+		Sys:                    s.orch.td.Catalog.Settings,
+		Provider:               prov,
+		Model:                  mod,
+		SkillDBRepo:            s.orch.rt.SkillDBRepo,
+		HasMemory:              s.orch.td.Persist.Memory.Available(),
+		PluginManager:          s.orch.rt.PluginManager,
+		MemoryAdmin:            s.orch.td.Persist.Memory.Admin,
+		MemoryL2Recall:         s.orch.td.Persist.Memory.L2Recall,
+		MemoryL3Recall:         s.orch.td.Persist.Memory.L3Recall,
+		MemoryCompositeRecall:  s.orch.td.Persist.Memory.CompositeRecall,
+		KnowledgeRetriever:     s.orch.rt.KnowledgeRetriever,
+		CodeExecFactory:        s.orch.rt.CodeExecFactory,
+		KanbanBridge:           s.orch.rt.KanbanBridge,
 	}
 	var plugins []trpcplugin.Plugin
-	if b.chat.orch.rt.PluginManager != nil {
-		plugins = b.chat.orch.rt.PluginManager.RunnerPluginsForAgent(ag.ID)
-	} else if b.chat.orch.rt.PluginRT != nil {
-		plugins = b.chat.orch.rt.PluginRT.PluginsForAgent(ag.ID)
+	if s.orch.rt.PluginManager != nil {
+		plugins = s.orch.rt.PluginManager.RunnerPluginsForAgent(ag.ID)
+	} else if s.orch.rt.PluginRT != nil {
+		plugins = s.orch.rt.PluginRT.PluginsForAgent(ag.ID)
 	}
 	deps.Plugins = plugins
 
@@ -91,7 +103,7 @@ func (b *A2AEndpointBuilder) BuildHandler(ctx context.Context, agentID, publicUR
 		event.CtxFlowLogWarn(ctx, "a2a.runner.ralph_loop", "Ralph Loop 配置无效，已跳过",
 			event.P("agent_id", ag.ID), event.P("error", rl.SkipErr.Error()))
 	}
-	runner, err := b.chat.orch.td.CoalesceRunnerManager().NewTurnRunner(root, rt.TurnRunnerSpec{
+	runner, err := s.orch.td.CoalesceRunnerManager().NewTurnRunner(root, rt.TurnRunnerSpec{
 		Plugins:          plugins,
 		BuilderDeps:      deps,
 		AgentFactoryKeys: []string{ag.AgentKey},
@@ -107,8 +119,7 @@ func (b *A2AEndpointBuilder) BuildHandler(ctx context.Context, agentID, publicUR
 		runner.Close()
 		return nil, nil, err
 	}
-	closeFn := func() { runner.Close() }
-	return handler, closeFn, nil
+	return runner, handler, nil
 }
 
-var _ a2atrpc.EndpointBuilder = (*A2AEndpointBuilder)(nil)
+var _ biz.A2ARunnerFactory = (*ChatService)(nil)

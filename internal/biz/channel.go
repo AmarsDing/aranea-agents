@@ -8,6 +8,8 @@ import (
 
 	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
+
+	"aranea-agents/pkg/safego"
 )
 
 // Channel mirrors legacy PlatformResource for resource "channels".
@@ -102,20 +104,36 @@ func (f ChannelLiveTesterFunc) TestLive(ctx context.Context, configJSON string, 
 	return f(ctx, configJSON, credentials)
 }
 
-type ChannelRepo interface {
+type ChannelReader interface {
 	List(ctx context.Context) ([]Channel, error)
 	Get(ctx context.Context, id string) (Channel, error)
 	GetByKey(ctx context.Context, channelKey string) (Channel, error)
+}
+
+type ChannelWriter interface {
 	Create(ctx context.Context, row Channel) (Channel, error)
 	Update(ctx context.Context, row Channel) (Channel, error)
 	Delete(ctx context.Context, id string) error
+}
+
+type ChannelCredentialRepo interface {
 	ListCredentials(ctx context.Context, channelID string) ([]ChannelCredential, error)
 	UpsertCredential(ctx context.Context, cred ChannelCredential) (ChannelCredential, error)
 	DeleteCredential(ctx context.Context, channelID, credentialKey string) error
+}
+
+type ChannelDeliveryRepo interface {
 	ListDeliveries(ctx context.Context, channelID string, limit int) ([]ChannelDelivery, error)
 	AddDelivery(ctx context.Context, d ChannelDelivery) (ChannelDelivery, error)
 	ListPendingDeliveries(ctx context.Context, limit int) ([]ChannelDelivery, error)
 	UpdateDelivery(ctx context.Context, d ChannelDelivery) error
+}
+
+type ChannelRepo interface {
+	ChannelReader
+	ChannelWriter
+	ChannelCredentialRepo
+	ChannelDeliveryRepo
 }
 
 type ChannelUsecase struct {
@@ -312,7 +330,8 @@ func (u *ChannelUsecase) RunHealthChecks(ctx context.Context) error {
 		}
 		sem <- struct{}{}
 		wg.Add(1)
-		go func(ch Channel) {
+		ch := row
+		safego.Go(ctx, "channel.EvaluateTestAll", func() {
 			defer wg.Done()
 			defer func() { <-sem }()
 			credentials, err := u.repo.ListCredentials(ctx, ch.ID)
@@ -326,7 +345,7 @@ func (u *ChannelUsecase) RunHealthChecks(ctx context.Context) error {
 			mu.Lock()
 			_, _ = u.updateTestMetadata(ctx, ch, result)
 			mu.Unlock()
-		}(row)
+		})
 	}
 	wg.Wait()
 	return nil

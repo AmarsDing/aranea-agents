@@ -2,13 +2,15 @@
 
 > 对标 `pkg/trpc-agent-go/knowledge` 包，实现 RAG 知识库能力。
 >
-> **2026-05-21 现状对齐**：
+> **2026-05-29 现状对齐**：
 > - ✅ Collection/Document/Chunk CRUD + 语义搜索 API 已上线（HTTP + gRPC）。
 > - ✅ `knowledge_search` 工具经 `buildToolsetsForAgent` + `ToolKeyKnowledgeSearch` 进入 Agent 装配链（需 Agent 工具开关启用）。
 > - ✅ 前端 Knowledge 管理页 + Store + API；文档入库 WS 进度（`useKnowledgeIngestWs` / `knowledge_ingest` 事件）。
 > - ✅ `EnsureKnowledgeSchema` 在 `NewData()` Postgres 就绪后启动调用（EP-DATA-01）；无 PG 时 `ErrKnowledgeUnavailable` fail-fast。
 > - ✅ Embedder：env `KRATOS_KNOWLEDGE_EMBED_*` > `system_settings.knowledge_embed_*` > 运行时 Knowledge API/UI（EP-KN-01）。
 > - ✅ 检索 Reranker（`KRATOS_KNOWLEDGE_RERANKER`：topk/cohere/infinity，KN-01）；Search 支持 `use_rerank` / `rerank_candidates`。
+> - ✅ **Advanced RAG（Phase 5）**：查询重写（HyDE/Decomposition/MultiQuery）+ 混合检索（Dense+BM25+RRF）+ 自适应路由 + 检索质量评估（CRAG）。
+> - ✅ **Agentic RAG（Phase 6）**：`knowledge_reflect` 工具（Agent 自校验检索质量）+ 跨 Collection 联邦搜索（`FederatedRetriever`）+ Plan-Then-Retrieve（BeforeModel 钩子注入 Collection 摘要）+ 联邦搜索 Route 策略。
 > - ❌ AgenticFilter / OCR / 多租户隔离 / code_search 未实现。
 >
 > 进度以 `guides/execution-plan.md` 与 [37-knowledge-development.md](./37-knowledge-development.md) 为准。
@@ -91,6 +93,37 @@
 - 向量存储按租户分区。
 - 跨租户搜索返回空结果。
 
+### US-9：Agent 自校验检索质量（knowledge_reflect）
+
+**作为** Agent，**我希望**在搜索知识库后评估检索结果是否充分，**以便**在结果不足时自动发起补充检索，提升回答质量。
+
+**验收标准**：
+- Agent 启用 `knowledge_reflect` 工具开关后，工具自动装配到 Agent 工具集。
+- 工具接收 `collection_ids`（支持多个集合）、`query`、`top_k` 参数。
+- 返回结构化评估结果：`sufficient`（是否充分）、`confidence`（置信度）、`supplement_query`（补充查询建议）、`chunks`（检索片段）。
+- 当 `FederatedRetriever` 可用时，自动跨多个 Collection 并行搜索。
+- 当 `RetrievalEvaluator` 可用时，自动评估检索质量。
+
+### US-10：跨 Collection 联邦搜索
+
+**作为**用户/Agent，**我希望**同时搜索多个知识集合，**以便**从不同知识源获取综合信息。
+
+**验收标准**：
+- `knowledge_reflect` 工具支持传入多个 `collection_ids`。
+- 多 Collection 搜索并行执行，结果合并去重。
+- 单 Collection 搜索时自动降级为标准检索路径。
+- 部分集合搜索失败时不阻塞其他集合的结果返回。
+
+### US-11：查询重写与混合检索
+
+**作为**用户，**我希望**搜索时自动优化查询并使用混合检索策略，**以便**复杂查询也能获得高召回率结果。
+
+**验收标准**：
+- Search API 支持 `rewrite_strategy` 参数（hyde / decomposition / multi_query）。
+- Search API 支持 `hybrid_search` 参数（auto / dense / sparse / rrf）。
+- 自适应路由根据查询复杂度自动选择检索模式。
+- 检索质量评估（CRAG）在结果不足时自动触发补充检索。
+
 ---
 
 ## 2. 功能规格
@@ -124,6 +157,11 @@
 | TopK 限制 | 默认 5 | ✅ |
 | Reranker | topk / cohere / infinity（env + SearchRequest 覆盖） | ✅ |
 | 重排候选 oversample | `rerank_candidates` 或默认 topK×3（上限 50） | ✅ |
+| 查询重写 | HyDE / Decomposition / MultiQuery（`rewrite_strategy` 参数） | ✅ |
+| 混合检索 | Dense + BM25 + RRF 融合（`hybrid_search` 参数） | ✅ |
+| 自适应路由 | 查询复杂度分类 → 自动选择检索模式 | ✅ |
+| 检索质量评估 | CRAG 式自校验，不足时自动补充检索 | ✅ |
+| BM25 全文检索 | PostgreSQL ts_vector + GIN 索引 | ✅ |
 
 ### 2.4 分块策略
 
@@ -149,6 +187,7 @@
 | 功能 | 说明 | 状态 |
 |------|------|------|
 | knowledge_search 工具 | Agent 可调用搜索知识库 | ✅ |
+| knowledge_reflect 工具 | Agent 可评估检索质量 + 跨 Collection 搜索 | ✅ |
 | 工具开关 | Agent 工具配置中启用/禁用 | ✅ |
 | AgenticFilter | LLM 动态生成过滤条件 | ❌ |
 | code_search 工具 | 代码语义搜索 | ❌ |
@@ -162,6 +201,8 @@
 | SourceSync | 数据源增量同步 | ❌ |
 | 多租户隔离 | 租户间知识库完全隔离 | ❌ |
 | Extractor | 格式转换（PDF/图片 → 文本/Markdown） | ❌ |
+| 跨 Collection 联邦搜索 | 多集合并行搜索 + 结果合并（Broadcast + Route 策略） | ✅ |
+| Plan-Then-Retrieve | Agent 系统提示注入 Collection 摘要 | ✅ |
 
 ---
 
@@ -265,7 +306,7 @@ llmagent.New("agent",
 | POST | `/v1/knowledge/documents` | 摄入文档（异步索引） | ✅ |
 | GET | `/v1/knowledge/documents` | 列出文档 | ✅ |
 | DELETE | `/v1/knowledge/documents/{id}` | 删除文档 + 块 | ✅ |
-| POST | `/v1/knowledge/search` | 语义搜索 | ✅ |
+| POST | `/v1/knowledge/search` | 语义搜索（支持 rewrite_strategy / hybrid_search） | ✅ |
 | GET | `/v1/knowledge/embedder-config` | 获取 Embedder 配置（脱敏） | ✅ |
 | PUT | `/v1/knowledge/embedder-config` | 运行时更新 Embedder | ✅ |
 
@@ -285,6 +326,14 @@ llmagent.New("agent",
 | 8 | 多租户知识库隔离 | ❌ |
 | 9 | 摄取进度前端可观测（WS / 文档 status） | ✅ |
 | 10 | Embedder 配置从 conf/env 注入 + Admin 运行时更新 | ✅ |
+| 11 | 查询重写（HyDE/Decomposition/MultiQuery）可按请求指定 | ✅ |
+| 12 | 混合检索（Dense+BM25+RRF）可按请求指定模式 | ✅ |
+| 13 | 自适应路由根据查询复杂度自动选择检索策略 | ✅ |
+| 14 | 检索质量评估（CRAG）在结果不足时自动补充检索 | ✅ |
+| 15 | Agent 可调用 `knowledge_reflect` 工具评估检索质量 | ✅ |
+| 16 | 跨 Collection 联邦搜索（多集合并行 + 结果合并） | ✅ |
+| 17 | Plan-Then-Retrieve（Agent 系统提示注入 Collection 摘要） | ✅ |
+| 18 | 联邦搜索 Route 策略（基于相关性智能路由） | ✅ |
 
 ---
 
@@ -303,10 +352,21 @@ Knowledge 模块添加基于 pgvector 的 RAG（检索增强生成）管道。Ag
                            │ biz.KnowledgeUsecase
               ┌────────────┴────────────┐
               │                         │
-     chunker.go                   knowledge.go (pgvector)
-     embedder.go                  ├── knowledge_collections
-     retriever.go                 ├── knowledge_documents
-              │                   └── knowledge_chunks (vector)
+     chunker.go                   AdaptiveRouter ← QueryRewriter
+     embedder.go                       │
+     retriever.go                 HybridRetriever
+              │                   ├── Dense (pgvector)
+              │                   ├── Sparse (BM25/ts_vector)
+              │                   └── RRF Fusion
+              │                        │
+              │                   RetrievalEvaluator (CRAG)
+              │                        │
+              │                   FederatedRetriever (跨 Collection)
+              │                        │
+     knowledge.go (pgvector)          │
+     ├── knowledge_collections        │
+     ├── knowledge_documents          │
+     └── knowledge_chunks (vector)    │
               └────────────────────────►
 ```
 
@@ -320,8 +380,15 @@ Knowledge 模块添加基于 pgvector 的 RAG（检索增强生成）管道。Ag
 | Chunker | `internal/knowledge/chunker.go` | 文本分割（字符/Token 策略） |
 | Embedder | `internal/knowledge/embedder.go` | OpenAI 兼容 + Ollama 嵌入 API |
 | Retriever | `internal/knowledge/retriever.go` | 嵌入查询 → 调用 `SearchChunks` |
-| Tool | `internal/tools/knowledge/tool.go` | `knowledge_search` trpc 工具 |
+| QueryRewriter | `internal/knowledge/query_rewriter.go` | 查询重写（HyDE/Decomposition/MultiQuery） |
+| HybridRetriever | `internal/knowledge/hybrid_retriever.go` | 混合检索（Dense+Sparse+RRF） |
+| AdaptiveRouter | `internal/knowledge/adaptive_router.go` | 自适应检索路由 |
+| RetrievalEvaluator | `internal/knowledge/retrieval_evaluator.go` | 检索质量评估（CRAG） |
+| FederatedRetriever | `internal/knowledge/federated_retriever.go` | 跨 Collection 联邦搜索 |
+| SearchHelpers | `internal/knowledge/search_helpers.go` | 检索评估辅助（`SearchWithEvaluation`） |
+| Tool | `internal/tools/knowledge/tool.go` | `knowledge_search` + `knowledge_reflect` 工具 |
 | Service | `internal/service/knowledge.go` | Kratos 服务适配器 |
+| Advanced Wire | `internal/service/knowledge_advanced.go` | Advanced RAG 组件 Wire 工厂 |
 | Wire | `internal/service/knowledge_embedder.go` | Embedder 工厂（env，EP-KN-01） |
 | Retriever Wire | `internal/service/knowledge_retriever.go` | Retriever + env Reranker（KN-01） |
 | Reranker | `internal/knowledge/reranker_factory.go` | topk/cohere/infinity |
@@ -370,14 +437,28 @@ knowledge_chunks        (id, doc_id, collection_id, content, embedding vector(N)
 | `openai`（默认） | `POST /v1/embeddings` | 兼容任何 OpenAI-API 服务器 |
 | `ollama` | `POST /api/embeddings` | 本地 Ollama 实例 |
 
-### 6.8 Agent 工具：`knowledge_search`
+### 6.8 Agent 工具：`knowledge_search` / `knowledge_reflect`
 
-工具通过 `buildToolsetsForAgent` 装配链注入，需 Agent 工具配置中启用 `knowledge_search` 开关。Retriever 经 context 注入；全局 Reranker 配置时工具搜索自动受益（可通过 Search API `use_rerank=false` 关闭）。
+**knowledge_search** 工具通过 `buildToolsetsForAgent` 装配链注入，需 Agent 工具配置中启用 `knowledge_search` 开关。Retriever/AdaptiveRouter 经 context 注入；全局 Reranker 配置时工具搜索自动受益（可通过 Search API `use_rerank=false` 关闭）。
 
 模型可调用：
 
 ```json
 { "collection_id": "abc123", "query": "What is the refund policy?", "top_k": 5 }
+```
+
+**knowledge_reflect** 工具通过 `ToolKeyKnowledgeReflect` 装配链注入，需 Agent 工具配置中启用 `knowledge_reflect` 开关。FederatedRetriever/RetrievalEvaluator 经 context 注入。
+
+模型可调用：
+
+```json
+{ "collection_ids": ["abc123", "def456"], "query": "What is the refund policy?", "top_k": 5 }
+```
+
+返回结构化评估：
+
+```json
+{ "sufficient": false, "confidence": 0.6, "supplement_query": "refund processing time", "chunks": [...] }
 ```
 
 ### 6.9 Embedder 配置（EP-KN-01）
@@ -425,3 +506,6 @@ Search RPC 可选 `use_rerank`、`rerank_candidates` 覆盖单次请求行为。
 - 嵌入维度每个集合固定；更改需重建集合。
 - 文档内容必须可文本解码（PDF/图像提取不在当前范围；OCR 待 Phase 4）。
 - 文档级 `metadata_json` 写入每个 Chunk 的 JSONB 列，供 `filter_json` 检索过滤。
+- 查询重写和检索评估依赖 LLM 调用，无可用 LLM 时自动降级（透传原始查询 / 跳过评估）。
+- 联邦搜索支持 Broadcast 和 Route 两种策略，Route 策略基于 Collection 名称/描述相关性评分。
+- Plan-Then-Retrieve 通过 BeforeModel 钩子注入 Collection 摘要，高频场景下可能增加延迟。

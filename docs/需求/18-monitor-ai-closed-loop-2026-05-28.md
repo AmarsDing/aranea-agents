@@ -1,7 +1,7 @@
 # Monitor AI 闭环追踪方案
 
 > **关联**：[`18 monitor.md`](./18%20monitor.md) · [`18-monitor-optimization-2026-05-26.md`](./18-monitor-optimization-2026-05-26.md) · [`52-flow-logger.design.md`](./52-flow-logger.design.md) · 代码 Review [`2026-05-26-Monitor-Code-Review.md`](../review/2026-05-26-Monitor-Code-Review.md)
-> **状态**：🟡 Phase A~D 部分落地（LOG-01 ✅ TRACE-01 ✅ DIAG-01 ✅ DIAG-02 ✅）；LOG-02/LOG-03/LOOP-01 待实施
+> **状态**：🟡 Phase A~D 部分落地（LOG-01 ✅ TRACE-01 ✅ DIAG-01 ✅ DIAG-02 ✅ LOG-03 ✅ P0/P1/P2）；LOG-02（跨 pkg）、LOOP-01（P3）待实施
 > **创建**：2026-05-28
 
 ---

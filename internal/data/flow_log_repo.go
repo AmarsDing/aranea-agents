@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	bizflowlog "aranea-agents/internal/biz/flowlog"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/flowlogevent"
 
@@ -15,6 +16,8 @@ import (
 type flowLogRepo struct {
 	data *Data
 }
+
+var _ bizflowlog.Repo = (*flowLogRepo)(nil)
 
 func NewFlowLogRepo(d *Data) biz.FlowLogRepo {
 	return &flowLogRepo{data: d}

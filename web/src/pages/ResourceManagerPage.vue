@@ -7,6 +7,18 @@
         </template>
       </AppPageHero>
 
+      <q-banner
+        v-if="credentialEncryptionAvailable === false"
+        dense
+        rounded
+        class="app-banner-warning q-mx-md q-mt-sm"
+      >
+        <template #avatar>
+          <q-icon name="lock_open" color="warning" />
+        </template>
+        凭据加密密钥未配置，API 密钥将以明文存储。请在「系统设置」中初始化加密密钥，或设置 ARANEA_CREDENTIAL_KEY 环境变量。
+      </q-banner>
+
       <q-card flat bordered class="app-entity-glass-panel provider-card">
         <q-card-section class="app-page-toolbar__body">
           <q-input
@@ -697,6 +709,7 @@ const {
   trendMetricOptions,
   providerCodeRule,
   getCategories,
-  metadataLabel
+  metadataLabel,
+  credentialEncryptionAvailable
 } = useResourceManagerPage();
 </script>

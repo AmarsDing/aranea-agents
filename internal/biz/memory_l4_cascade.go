@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/jsonutil"
+	"aranea-agents/pkg/strutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -17,23 +19,39 @@ var ErrCascadeUnavailable = kerrors.BadRequest("MEMORY", "cascade store not avai
 
 var ErrCascadeSagaInProgress = kerrors.Conflict("MEMORY", "cascade saga already in progress")
 
-type CascadeGraphStore interface {
+type CascadeProposalStore interface {
 	InsertCascadeProposal(ctx context.Context, in CascadeProposalInsert) ([]byte, error)
 	ListCascadeProposalRows(ctx context.Context, agentID, status string, limit int32) ([][]byte, error)
 	GetCascadeProposalRow(ctx context.Context, id string) ([]byte, error)
 	UpdateCascadeProposalStatus(ctx context.Context, id, status, reviewedBy, reviewNote string) ([]byte, error)
+}
+
+type CascadeGraphReader interface {
 	NeighborhoodJSON(ctx context.Context, centerID string, hops, maxNodes int32, queryAtRFC3339 string) ([]byte, error)
 	GetEntityRow(ctx context.Context, id string) ([]byte, error)
+}
+
+type CascadeFactMutator interface {
 	ReplaceNameInAgentFacts(ctx context.Context, agentID, oldName, newName string) ([][]byte, int, error)
+	SaveCascadeOriginalStatements(ctx context.Context, agentID, oldName string, factIDs []string) error
+	RevertCascadeFactStatements(ctx context.Context, agentID string) (int, error)
+	ListCascadeFactDiffs(ctx context.Context, agentID, oldName, newName string, limit int) ([]map[string]any, error)
+	MarkFactsIndexStaleByAgent(ctx context.Context, agentID string) (int64, error)
+}
+
+type CascadeSagaStore interface {
 	InitCascadeSagaSteps(ctx context.Context, proposalID string, steps []CascadeSagaStep) error
 	GetCascadeSagaSteps(ctx context.Context, proposalID string) ([]CascadeSagaStep, error)
 	UpdateSagaStepState(ctx context.Context, stepID int64, state, errMsg string) error
 	UpdateSagaStepResult(ctx context.Context, stepID int64, resultJSON string) error
 	HasCascadeSaga(ctx context.Context, proposalID string) (bool, error)
-	SaveCascadeOriginalStatements(ctx context.Context, agentID, oldName string, factIDs []string) error
-	RevertCascadeFactStatements(ctx context.Context, agentID string) (int, error)
-	ListCascadeFactDiffs(ctx context.Context, agentID, oldName, newName string, limit int) ([]map[string]any, error)
-	MarkFactsIndexStaleByAgent(ctx context.Context, agentID string) (int64, error)
+}
+
+type CascadeGraphStore interface {
+	CascadeProposalStore
+	CascadeGraphReader
+	CascadeFactMutator
+	CascadeSagaStore
 }
 
 type CascadeSagaStep struct {
@@ -103,26 +121,38 @@ const (
 )
 
 type L4CascadeUsecase struct {
-	store     CascadeGraphStore
+	proposals CascadeProposalStore
+	reader    CascadeGraphReader
+	mutator   CascadeFactMutator
+	saga      CascadeSagaStore
 	graph     L4GraphRepo
 	indexSync MemoryFactIndexSyncer
+	indexMu   sync.RWMutex
 }
 
 func NewL4CascadeUsecase(store CascadeGraphStore, graph L4GraphRepo) *L4CascadeUsecase {
 	if store == nil {
 		return nil
 	}
-	return &L4CascadeUsecase{store: store, graph: graph}
+	return &L4CascadeUsecase{
+		proposals: store,
+		reader:    store,
+		mutator:   store,
+		saga:      store,
+		graph:     graph,
+	}
 }
 
 func (uc *L4CascadeUsecase) SetIndexSync(sync MemoryFactIndexSyncer) {
 	if uc != nil {
+		uc.indexMu.Lock()
 		uc.indexSync = sync
+		uc.indexMu.Unlock()
 	}
 }
 
 func (uc *L4CascadeUsecase) ProposeNameConflict(ctx context.Context, agentID, entityID, oldName, newName string) error {
-	if uc == nil || uc.store == nil {
+	if uc == nil || uc.proposals == nil {
 		return nil
 	}
 	agentID = strings.TrimSpace(agentID)
@@ -138,7 +168,7 @@ func (uc *L4CascadeUsecase) ProposeNameConflict(ctx context.Context, agentID, en
 	if err != nil {
 		return err
 	}
-	_, err = uc.store.InsertCascadeProposal(ctx, CascadeProposalInsert{
+	_, err = uc.proposals.InsertCascadeProposal(ctx, CascadeProposalInsert{
 		AgentID:           agentID,
 		TriggerEntityID:   entityID,
 		TriggerEntityName: strings.TrimSpace(newName),
@@ -165,7 +195,7 @@ func cascadeRiskLevel(affectedCount int) string {
 }
 
 func (uc *L4CascadeUsecase) collectAffected(ctx context.Context, centerID string, hops, maxNodes int) ([]CascadeAffectedEntity, error) {
-	raw, err := uc.store.NeighborhoodJSON(ctx, centerID, int32(hops), int32(maxNodes), "")
+	raw, err := uc.reader.NeighborhoodJSON(ctx, centerID, int32(hops), int32(maxNodes), "")
 	if err != nil {
 		return nil, err
 	}
@@ -208,17 +238,17 @@ func cascadeEntityHops(ent map[string]any) int {
 }
 
 func (uc *L4CascadeUsecase) ListRows(ctx context.Context, agentID, status string, limit int32) ([][]byte, error) {
-	if uc == nil || uc.store == nil {
+	if uc == nil || uc.proposals == nil {
 		return nil, nil
 	}
-	return uc.store.ListCascadeProposalRows(ctx, agentID, status, limit)
+	return uc.proposals.ListCascadeProposalRows(ctx, agentID, status, limit)
 }
 
 func (uc *L4CascadeUsecase) Preview(ctx context.Context, id string) (*CascadePreview, error) {
-	if uc == nil || uc.store == nil {
+	if uc == nil || uc.proposals == nil {
 		return nil, ErrCascadeUnavailable
 	}
-	raw, err := uc.store.GetCascadeProposalRow(ctx, id)
+	raw, err := uc.proposals.GetCascadeProposalRow(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +266,9 @@ func (uc *L4CascadeUsecase) Preview(ctx context.Context, id string) (*CascadePre
 	var affected []CascadeAffectedEntity
 	rawAffected := jsonutil.IfaceStr(row, "affected_json")
 	if rawAffected != "" && rawAffected != "[]" {
-		_ = json.Unmarshal([]byte(rawAffected), &affected)
+		if err := json.Unmarshal([]byte(rawAffected), &affected); err != nil {
+			event.SysLogWarn("system.auto_memory.cascade_fail", "Cascade: failed to unmarshal affected entities", event.P("raw", strutil.TruncateBytes(rawAffected, 80)), event.P("error", err.Error()))
+		}
 	}
 	preview.AffectedEntitiesCount = len(affected)
 	preview.EntityRenames = []CascadeEntityRename{{
@@ -247,7 +279,7 @@ func (uc *L4CascadeUsecase) Preview(ctx context.Context, id string) (*CascadePre
 	}}
 
 	if oldName != "" && newName != "" {
-		diffs, err := uc.store.ListCascadeFactDiffs(ctx, agentID, oldName, newName, 50)
+		diffs, err := uc.mutator.ListCascadeFactDiffs(ctx, agentID, oldName, newName, 50)
 		if err != nil {
 			return nil, err
 		}
@@ -272,10 +304,10 @@ func (uc *L4CascadeUsecase) Preview(ctx context.Context, id string) (*CascadePre
 }
 
 func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([]byte, error) {
-	if uc == nil || uc.store == nil || uc.graph == nil {
+	if uc == nil || uc.proposals == nil || uc.graph == nil {
 		return nil, ErrCascadeUnavailable
 	}
-	raw, err := uc.store.GetCascadeProposalRow(ctx, id)
+	raw, err := uc.proposals.GetCascadeProposalRow(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +323,7 @@ func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([
 		return raw, nil
 	}
 
-	hasSaga, err := uc.store.HasCascadeSaga(ctx, id)
+	hasSaga, err := uc.saga.HasCascadeSaga(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +334,7 @@ func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([
 	newName := jsonutil.IfaceStr(row, "new_value")
 
 	if !hasSaga {
-		entRaw, err := uc.store.GetEntityRow(ctx, entityID)
+		entRaw, err := uc.reader.GetEntityRow(ctx, entityID)
 		if err != nil {
 			return nil, err
 		}
@@ -316,12 +348,12 @@ func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([
 			{StepName: SagaStepReplaceFacts, IsCritical: true, PayloadJSON: string(replacePayload)},
 			{StepName: SagaStepSyncIndex, IsCritical: false, PayloadJSON: string(syncPayload)},
 		}
-		if err := uc.store.InitCascadeSagaSteps(ctx, id, steps); err != nil {
+		if err := uc.saga.InitCascadeSagaSteps(ctx, id, steps); err != nil {
 			return nil, err
 		}
 	}
 
-	sagaSteps, err := uc.store.GetCascadeSagaSteps(ctx, id)
+	sagaSteps, err := uc.saga.GetCascadeSagaSteps(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -346,20 +378,20 @@ func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([
 	}
 
 	if allSucceeded {
-		return uc.store.UpdateCascadeProposalStatus(ctx, id, "applied", reviewer, "")
+		return uc.proposals.UpdateCascadeProposalStatus(ctx, id, "applied", reviewer, "")
 	}
 	if anyFailed {
 		note := "saga partial failure"
-		if _, err := uc.store.UpdateCascadeProposalStatus(ctx, id, "partial", reviewer, note); err != nil {
+		if _, err := uc.proposals.UpdateCascadeProposalStatus(ctx, id, "partial", reviewer, note); err != nil {
 			return nil, err
 		}
-		return uc.store.GetCascadeProposalRow(ctx, id)
+		return uc.proposals.GetCascadeProposalRow(ctx, id)
 	}
-	return uc.store.GetCascadeProposalRow(ctx, id)
+	return uc.proposals.GetCascadeProposalRow(ctx, id)
 }
 
 func (uc *L4CascadeUsecase) executeSagaStep(ctx context.Context, step *CascadeSagaStep, row map[string]any) error {
-	if err := uc.store.UpdateSagaStepState(ctx, step.ID, "running", ""); err != nil {
+	if err := uc.saga.UpdateSagaStepState(ctx, step.ID, "running", ""); err != nil {
 		return err
 	}
 
@@ -378,20 +410,20 @@ func (uc *L4CascadeUsecase) executeSagaStep(ctx context.Context, step *CascadeSa
 	}
 
 	if execErr != nil {
-		if err := uc.store.UpdateSagaStepState(ctx, step.ID, "failed", execErr.Error()); err != nil {
+		if err := uc.saga.UpdateSagaStepState(ctx, step.ID, "failed", execErr.Error()); err != nil {
 			event.SysLogWarn("system.memory.saga_step_fail", "failed to mark saga step as failed",
 				event.P("step_id", step.ID), event.P("error", err.Error()))
 		}
 		return execErr
 	}
-	return uc.store.UpdateSagaStepState(ctx, step.ID, "succeeded", "")
+	return uc.saga.UpdateSagaStepState(ctx, step.ID, "succeeded", "")
 }
 
 func (uc *L4CascadeUsecase) execUpsertEntity(ctx context.Context, row map[string]any) error {
 	entityID := jsonutil.IfaceStr(row, "trigger_entity_id")
 	agentID := jsonutil.IfaceStr(row, "agent_id")
 	newName := jsonutil.IfaceStr(row, "new_value")
-	entRaw, err := uc.store.GetEntityRow(ctx, entityID)
+	entRaw, err := uc.reader.GetEntityRow(ctx, entityID)
 	if err != nil {
 		return err
 	}
@@ -427,7 +459,7 @@ func (uc *L4CascadeUsecase) execReplaceFacts(ctx context.Context, row map[string
 	if oldName == "" || newName == "" {
 		return nil
 	}
-	diffs, err := uc.store.ListCascadeFactDiffs(ctx, agentID, oldName, newName, 50)
+	diffs, err := uc.mutator.ListCascadeFactDiffs(ctx, agentID, oldName, newName, 50)
 	if err != nil {
 		return err
 	}
@@ -440,18 +472,24 @@ func (uc *L4CascadeUsecase) execReplaceFacts(ctx context.Context, row map[string
 			factIDs = append(factIDs, fid)
 		}
 	}
-	if err := uc.store.SaveCascadeOriginalStatements(ctx, agentID, oldName, factIDs); err != nil {
+	if err := uc.mutator.SaveCascadeOriginalStatements(ctx, agentID, oldName, factIDs); err != nil {
 		event.SysLogWarn("system.auto_memory.l4_fail", "save_cascade_original_statements_failed", event.P("error", err.Error()))
 	}
-	updatedRows, _, err := uc.store.ReplaceNameInAgentFacts(ctx, agentID, oldName, newName)
+	updatedRows, _, err := uc.mutator.ReplaceNameInAgentFacts(ctx, agentID, oldName, newName)
 	if err != nil {
 		return err
 	}
 	resultJSON, _ := json.Marshal(map[string]any{"updated_count": len(updatedRows)})
-	sagaSteps, _ := uc.store.GetCascadeSagaSteps(ctx, jsonutil.IfaceStr(row, "id"))
+	sagaSteps, err := uc.saga.GetCascadeSagaSteps(ctx, jsonutil.IfaceStr(row, "id"))
+	if err != nil {
+		event.SysLogWarn("system.auto_memory.cascade_fail", "Cascade: failed to get saga steps for replace facts", event.P("proposal_id", jsonutil.IfaceStr(row, "id")), event.P("error", err.Error()))
+		return nil
+	}
 	for _, s := range sagaSteps {
 		if s.StepName == SagaStepReplaceFacts && s.State == "running" {
-			_ = uc.store.UpdateSagaStepResult(ctx, s.ID, string(resultJSON))
+			if err := uc.saga.UpdateSagaStepResult(ctx, s.ID, string(resultJSON)); err != nil {
+				event.SysLogWarn("system.auto_memory.cascade_fail", "Cascade: failed to update saga step result", event.P("step_id", s.ID), event.P("error", err.Error()))
+			}
 			break
 		}
 	}
@@ -460,18 +498,27 @@ func (uc *L4CascadeUsecase) execReplaceFacts(ctx context.Context, row map[string
 
 func (uc *L4CascadeUsecase) execSyncIndex(ctx context.Context, row map[string]any) error {
 	agentID := jsonutil.IfaceStr(row, "agent_id")
-	if agentID == "" || uc.indexSync == nil {
+	uc.indexMu.RLock()
+	syncer := uc.indexSync
+	uc.indexMu.RUnlock()
+	if agentID == "" || syncer == nil {
 		return nil
 	}
-	marked, err := uc.store.MarkFactsIndexStaleByAgent(ctx, agentID)
+	marked, err := uc.mutator.MarkFactsIndexStaleByAgent(ctx, agentID)
 	if err != nil {
 		return err
 	}
 	resultJSON, _ := json.Marshal(map[string]any{"stale_marked": marked})
-	sagaSteps, _ := uc.store.GetCascadeSagaSteps(ctx, jsonutil.IfaceStr(row, "id"))
+	sagaSteps, err := uc.saga.GetCascadeSagaSteps(ctx, jsonutil.IfaceStr(row, "id"))
+	if err != nil {
+		event.SysLogWarn("system.auto_memory.cascade_fail", "Cascade: failed to get saga steps for sync index", event.P("proposal_id", jsonutil.IfaceStr(row, "id")), event.P("error", err.Error()))
+		return nil
+	}
 	for _, s := range sagaSteps {
 		if s.StepName == SagaStepSyncIndex && s.State == "running" {
-			_ = uc.store.UpdateSagaStepResult(ctx, s.ID, string(resultJSON))
+			if err := uc.saga.UpdateSagaStepResult(ctx, s.ID, string(resultJSON)); err != nil {
+				event.SysLogWarn("system.auto_memory.cascade_fail", "Cascade: failed to update saga step result for sync index", event.P("step_id", s.ID), event.P("error", err.Error()))
+			}
 			break
 		}
 	}
@@ -492,7 +539,9 @@ func (uc *L4CascadeUsecase) compensateCompletedSteps(ctx context.Context, steps 
 		case SagaStepSyncIndex:
 			uc.compensateSyncIndex(ctx, s)
 		}
-		_ = uc.store.UpdateSagaStepState(ctx, s.ID, "compensated", "")
+		if err := uc.saga.UpdateSagaStepState(ctx, s.ID, "compensated", ""); err != nil {
+			event.SysLogWarn("system.auto_memory.cascade_fail", "Cascade: failed to update saga step state to compensated", event.P("step_id", s.ID), event.P("error", err.Error()))
+		}
 	}
 }
 
@@ -503,7 +552,7 @@ func (uc *L4CascadeUsecase) compensateReplaceFacts(ctx context.Context, step Cas
 	if err := json.Unmarshal([]byte(step.PayloadJSON), &payload); err != nil || payload.AgentID == "" {
 		return
 	}
-	reverted, err := uc.store.RevertCascadeFactStatements(ctx, payload.AgentID)
+	reverted, err := uc.mutator.RevertCascadeFactStatements(ctx, payload.AgentID)
 	if err != nil {
 		event.SysLogWarn("system.auto_memory.l4_fail", "compensate_replace_facts_failed", event.P("error", err.Error()))
 		return
@@ -522,7 +571,7 @@ func (uc *L4CascadeUsecase) compensateSyncIndex(ctx context.Context, step Cascad
 	if err := json.Unmarshal([]byte(step.PayloadJSON), &payload); err != nil || payload.AgentID == "" {
 		return
 	}
-	marked, err := uc.store.MarkFactsIndexStaleByAgent(ctx, payload.AgentID)
+	marked, err := uc.mutator.MarkFactsIndexStaleByAgent(ctx, payload.AgentID)
 	if err != nil {
 		event.SysLogWarn("system.auto_memory.l4_fail", "compensate_sync_index_failed", event.P("error", err.Error()))
 		return
@@ -531,33 +580,33 @@ func (uc *L4CascadeUsecase) compensateSyncIndex(ctx context.Context, step Cascad
 }
 
 func (uc *L4CascadeUsecase) GetSagaSteps(ctx context.Context, proposalID string) ([]CascadeSagaStep, error) {
-	if uc == nil || uc.store == nil {
+	if uc == nil || uc.saga == nil {
 		return nil, ErrCascadeUnavailable
 	}
-	return uc.store.GetCascadeSagaSteps(ctx, proposalID)
+	return uc.saga.GetCascadeSagaSteps(ctx, proposalID)
 }
 
 func (uc *L4CascadeUsecase) Retry(ctx context.Context, id, reviewer string) ([]byte, error) {
-	if uc == nil || uc.store == nil || uc.graph == nil {
+	if uc == nil || uc.proposals == nil || uc.graph == nil {
 		return nil, ErrCascadeUnavailable
 	}
 	return uc.Approve(ctx, id, reviewer)
 }
 
 func (uc *L4CascadeUsecase) Compensate(ctx context.Context, id, reviewer string) ([]byte, error) {
-	if uc == nil || uc.store == nil {
+	if uc == nil || uc.saga == nil || uc.proposals == nil {
 		return nil, ErrCascadeUnavailable
 	}
-	sagaSteps, err := uc.store.GetCascadeSagaSteps(ctx, id)
+	sagaSteps, err := uc.saga.GetCascadeSagaSteps(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	uc.compensateCompletedSteps(ctx, sagaSteps)
-	return uc.store.UpdateCascadeProposalStatus(ctx, id, "failed", reviewer, "manual compensate")
+	return uc.proposals.UpdateCascadeProposalStatus(ctx, id, "failed", reviewer, "manual compensate")
 }
 
 func (uc *L4CascadeUsecase) touchAffectedEntities(ctx context.Context, row map[string]any, triggerID, newName string) error {
-	if uc == nil || uc.graph == nil || uc.store == nil {
+	if uc == nil || uc.graph == nil || uc.reader == nil {
 		return nil
 	}
 	rawAffected := jsonutil.IfaceStr(row, "affected_json")
@@ -574,7 +623,7 @@ func (uc *L4CascadeUsecase) touchAffectedEntities(ctx context.Context, row map[s
 		if id == "" || id == triggerID {
 			continue
 		}
-		entRaw, err := uc.store.GetEntityRow(ctx, id)
+		entRaw, err := uc.reader.GetEntityRow(ctx, id)
 		if err != nil {
 			failedIDs = append(failedIDs, id)
 			continue
@@ -632,14 +681,14 @@ func mergeCascadeLinkedMeta(base, triggerID, newName string) string {
 }
 
 func (uc *L4CascadeUsecase) Reject(ctx context.Context, id, reviewer, reason string) ([]byte, error) {
-	if uc == nil || uc.store == nil {
+	if uc == nil || uc.proposals == nil {
 		return nil, ErrCascadeUnavailable
 	}
 	note := strings.TrimSpace(reason)
 	if note == "" {
 		note = "rejected"
 	}
-	return uc.store.UpdateCascadeProposalStatus(ctx, id, "rejected", reviewer, note)
+	return uc.proposals.UpdateCascadeProposalStatus(ctx, id, "rejected", reviewer, note)
 }
 
 func cascadeNowRFC3339() string {

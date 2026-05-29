@@ -650,58 +650,168 @@ type SessionSummary struct {
 文件：`internal/biz/session_usecase.go`
 
 ```go
-type SessionRepository interface {
+type SessionRepo interface {
+    SessionReader
+    SessionWriter
+    SessionBatchWriter
+    SessionPinWriter
+    SessionRevisionWriter
+    MessageReader
+    MessageSearchReader
+    MessageWriter
+    MessageStatusWriter
+    TimelineReader
+    InvocationReader
+    SummaryReader
+    SummaryWriter
+    StateRepo
+    TurnRepo
+    ContextUpdater
+    CompressRepo
+}
+
+type SessionReader interface {
     SearchSessions(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
-    CreateSession(ctx context.Context, s Session) (Session, error)
     GetSessionByID(ctx context.Context, id string) (Session, error)
+    GetSessionRevision(ctx context.Context, sessionID string) (int64, error)
+    ListSessionsForBatch(ctx context.Context, q SessionSearchQuery) ([]Session, error)
+    ListSessionsByIDs(ctx context.Context, ids []string) ([]Session, error)
+}
+
+type SessionWriter interface {
+    CreateSession(ctx context.Context, s Session) (Session, error)
     UpdateSessionTitle(ctx context.Context, id, title string) (Session, error)
     UpdateSession(ctx context.Context, id string, fields SessionUpdateFields) (Session, error)
     RestoreSession(ctx context.Context, id string) (Session, error)
-    ArchiveSession(ctx context.Context, id string) error
-    DeleteSession(ctx context.Context, id string) error
+    DeleteSession(ctx context.Context, id string) (int, error)
+}
+
+type SessionBatchWriter interface {
+    ArchiveSession(ctx context.Context, id string) (int, error)
+    ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
+    DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
+}
+
+type SessionPinWriter interface {
+    PinSession(ctx context.Context, id string) (Session, error)
+    UnpinSession(ctx context.Context, id string) (Session, error)
+}
+
+type SessionRevisionWriter interface {
+    BumpSessionRevision(ctx context.Context, sessionID string) (int64, error)
     DeleteSessionsByAgentID(ctx context.Context, agentID string) error
+}
+
+type MessageReader interface {
     CountMessagesBySession(ctx context.Context, sessionID string) (int, error)
     ListMessagesBySession(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
     ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error)
     ListMessagesByStatus(ctx context.Context, sessionID, status string, limit int) ([]ChatMessage, error)
     ListMessagesRecent(ctx context.Context, sessionID string, limit int) ([]ChatMessage, error)
-    ListToolInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]ToolInvocationView, error)
-    ListSkillInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]SkillInvocationView, error)
+}
+
+type MessageSearchReader interface {
+    SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
+    ListMessagesByIDs(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error)
+    ListMessagesAfterRevision(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error)
+}
+
+type MessageWriter interface {
     AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
     AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
-    UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error
-    UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, completionTokens, contextWindow int) error
-    UpdateSessionContextAfterCompression(ctx context.Context, sessionID string, estimatedPromptTokens int, contextWindow int) error
-    InsertSessionSummary(ctx context.Context, row SessionSummary) error
+    UpdateMessageFeedbackJSON(ctx context.Context, sessionID, messageID, rating, comment string) error
+    UpsertChatActivityMessage(ctx context.Context, sessionID string, msg ChatMessage) error
+}
+
+type MessageStatusWriter interface {
+    UpdateChatMessageStatus(ctx context.Context, sessionID, messageID, status, errorMessage string) error
+}
+
+type TimelineReader interface {
+    ListTimelineEventRefsPaged(ctx context.Context, sessionID string, q TimelineQuery) ([]TimelineEventRef, int, error)
+    ListToolInvocationsByIDs(ctx context.Context, sessionID string, ids []string) ([]ToolInvocationView, error)
+    ListSkillInvocationsByIDs(ctx context.Context, sessionID string, ids []string) ([]SkillInvocationView, error)
+    LookupAgentDisplayNames(ctx context.Context, agentIDs []string) (map[string]string, error)
+}
+
+type InvocationReader interface {
+    ListToolInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]ToolInvocationView, error)
+    ListSkillInvocationsBySession(ctx context.Context, sessionID string, limit int) ([]SkillInvocationView, error)
+}
+
+type SummaryReader interface {
     MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error)
     ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error)
     LatestSessionSummaryTime(ctx context.Context, sessionID string) (string, error)
+    SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error)
+}
+
+type SummaryWriter interface {
+    InsertSessionSummary(ctx context.Context, row SessionSummary) error
     UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error
+}
+
+type StateRepo interface {
     GetSessionState(ctx context.Context, sessionID string) (map[string]string, error)
     SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error
+}
+
+type TurnRepo interface {
     CreateSessionTurn(ctx context.Context, turn SessionTurn) (SessionTurn, error)
     UpdateSessionTurn(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)
     ListSessionTurns(ctx context.Context, sessionID string, limit, offset int) (SessionTurnListResult, error)
     GetSessionTurn(ctx context.Context, id string) (SessionTurn, error)
-    SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
+}
+
+type ContextUpdater interface {
+    UpdateRunnerSnapshotJSON(ctx context.Context, sessionID string, snapshotJSON string) error
+    UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, completionTokens, contextWindow int) error
+    UpdateSessionContextAfterCompression(ctx context.Context, sessionID string, estimatedPromptTokens int, contextWindow int) error
     IncrementInvocationCounts(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error
-    ListSessionsForBatch(ctx context.Context, q SessionSearchQuery) ([]Session, error)
-    ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
-    DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
+}
+
+type CompressRepo interface {
+    TryIncrementCompressVersion(ctx context.Context, sessionID string) (oldVersion int64, err error)
+    CompressSessionInTx(ctx context.Context, sessionID string, fn func(ctx context.Context) error) error
 }
 ```
 
 ### 3.3 Usecase 方法
 
 ```go
-type SessionUsecase struct {
-    sessions       SessionRepository
-    agents         AgentRepository
-    teams          TeamRepository
-    titleGenerator SessionTitleGenerator
+type AgentLookup interface {
+    GetAgentByID(ctx context.Context, id string) (struct{}, error)
 }
 
-func NewSessionUsecase(sessions SessionRepository, agents AgentRepository, teams TeamRepository, titleGenerator SessionTitleGenerator) *SessionUsecase
+type TeamLookup interface {
+    GetTeamByID(ctx context.Context, id string) (struct{}, error)
+}
+
+type SessionUsecase struct {
+    sessionReader       SessionReader
+    sessionWriter       SessionWriter
+    sessionBatchWriter  SessionBatchWriter
+    sessionPinWriter    SessionPinWriter
+    sessionRevWriter    SessionRevisionWriter
+    messageReader       MessageReader
+    messageSearchReader MessageSearchReader
+    messageWriter       MessageWriter
+    messageStatusWriter MessageStatusWriter
+    timelineReader      TimelineReader
+    invocationReader    InvocationReader
+    summaryReader       SummaryReader
+    summaryWriter       SummaryWriter
+    stateRepo           StateRepo
+    turnRepo            TurnRepo
+    contextUpdater      ContextUpdater
+    compressRepo        CompressRepo
+    agents              AgentLookup
+    teams               TeamLookup
+    titleGenerator      SessionTitleGenerator
+    participants        SessionParticipantRepository
+}
+
+func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository) *SessionUsecase
 
 func (uc *SessionUsecase) Search(ctx context.Context, q SessionSearchQuery) (SessionListResult, error)
 func (uc *SessionUsecase) Get(ctx context.Context, id string) (Session, error)

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	"aranea-agents/internal/biz"
@@ -10,6 +9,7 @@ import (
 
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -87,7 +87,15 @@ func (s *GraphService) GetGraphExecution(ctx context.Context, req *graphv1.GetGr
 }
 
 func (s *GraphService) ListGraphExecutions(ctx context.Context, req *graphv1.ListGraphExecutionsRequest) (*graphv1.ListGraphExecutionsResponse, error) {
-	execs, nextToken, err := s.uc.ListExecutions(ctx, req.GraphId, int(req.PageSize), req.PageToken)
+	var opts []biz.GraphRunListOption
+	if req.Status != nil && *req.Status != "" {
+		opts = append(opts, biz.GraphRunListOption{Status: *req.Status})
+	}
+	if req.StartedAfter != nil {
+		t := req.StartedAfter.AsTime()
+		opts = append(opts, biz.GraphRunListOption{StartedAfter: &t})
+	}
+	execs, nextToken, err := s.uc.ListExecutions(ctx, req.GraphId, int(req.PageSize), req.PageToken, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +207,7 @@ func (s *GraphService) ListCheckpoints(ctx context.Context, req *graphv1.ListChe
 	}
 	cpList, ok := checkpoints.([]trpcgraph.CheckpointInfo)
 	if !ok {
-		return nil, fmt.Errorf("list checkpoints: unexpected result type")
+		return nil, kerrors.InternalServer("GRAPH", "list checkpoints: unexpected result type")
 	}
 	items := make([]*graphv1.CheckpointInfo, len(cpList))
 	for i, cp := range cpList {
@@ -264,7 +272,7 @@ func (s *GraphService) EditState(ctx context.Context, req *graphv1.EditStateRequ
 	}
 	ref, ok := result.(trpcgraph.CheckpointRef)
 	if !ok {
-		return nil, fmt.Errorf("edit state: unexpected result type")
+		return nil, kerrors.InternalServer("GRAPH", "edit state: unexpected result type")
 	}
 	return &graphv1.EditStateResponse{
 		NewCheckpointId: ref.CheckpointID,

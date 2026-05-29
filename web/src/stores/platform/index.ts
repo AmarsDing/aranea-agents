@@ -10,6 +10,7 @@ import {
   validateModel,
   inspectProviderModel
 } from "../../features/platform/api";
+import { getSystemSettings } from "../../features/system-settings/api";
 import type {
   PlatformResource,
   PlatformResourceTreeNode,
@@ -23,6 +24,7 @@ export const usePlatformStore = defineStore("platform", () => {
   const providerModels = ref<PlatformResource[]>([]);
   const categoryTree = ref<PlatformResourceTreeNode[]>([]);
   const loading = ref(false);
+  const credentialEncryptionAvailable = ref<boolean | null>(null);
 
   async function loadProviderModels() {
     loading.value = true;
@@ -65,10 +67,20 @@ export const usePlatformStore = defineStore("platform", () => {
     return inspectProviderModel(payload);
   }
 
+  async function loadCredentialStatus() {
+    try {
+      const settings = await getSystemSettings();
+      credentialEncryptionAvailable.value = settings.credentialEncryptionKeyConfigured ?? false;
+    } catch {
+      credentialEncryptionAvailable.value = null;
+    }
+  }
+
   return {
     providerModels,
     categoryTree,
     loading,
+    credentialEncryptionAvailable,
     loadProviderModels,
     loadCategoryTree,
     loadResource,
@@ -77,6 +89,7 @@ export const usePlatformStore = defineStore("platform", () => {
     removeResource,
     checkModel,
     revealCredentials,
-    inspectModel
+    inspectModel,
+    loadCredentialStatus
   };
 });

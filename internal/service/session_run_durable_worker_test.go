@@ -121,7 +121,7 @@ func TestSessionRunDurableWorker_skipsUnclaimedDuplicate(t *testing.T) {
 	}
 	uc := biz.NewSessionRunUsecase(repo, cps)
 	chat := &ChatService{orch: &ChatOrchestrator{chTurn: ChannelTurnDeps{SessionRuns: uc}, runs: nil}}
-	w := NewSessionRunDurableWorker(uc, chat)
+	w := NewSessionRunDurableWorker(uc, chat, chat)
 	w.processOnce(context.Background())
 	if repo.runs["run-1"].ResumeStartedAt == "" {
 		t.Fatal("expected claim on first process")

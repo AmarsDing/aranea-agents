@@ -8,20 +8,17 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
-
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 const defaultReconcileInterval = 5 * time.Minute
 
-// AlertEvaluator runs monitor alert rules (optional).
 type AlertEvaluator interface {
 	EvaluateAlerts(ctx context.Context)
 }
 
-// SetAlertEvaluator configures optional alert evaluation after reconcile.
-func (r *Runner) SetAlertEvaluator(eval AlertEvaluator) {
+func SetAlertEvaluator(r *Runner, eval AlertEvaluator) {
 	if r == nil {
 		return
 	}
@@ -60,16 +57,16 @@ func (r *Runner) startReconcileLoop(ctx context.Context) {
 			}
 		}
 	})
-	r.logf(log.LevelInfo, "skill.fs.reconcile", "msg", "skill reconcile ticker started", "interval", interval.String())
+	event.SysLogInfo("skill.fs.reconcile", "skill reconcile ticker started", event.P("interval", interval.String()))
 }
 
 func (r *Runner) reconcile(ctx context.Context) {
 	root := r.resolveRoot(ctx)
-	r.logf(log.LevelInfo, "skill.fs.reconcile", "msg", "skill reconcile scan", "path", root)
+	event.SysLogInfo("skill.fs.reconcile", "skill reconcile scan", event.P("path", root))
 	r.scanAll(ctx, root, biz.SkillInvocationSourceFilesystemReconcile)
-	slugs, err := r.uc.ListRegisteredSlugs(ctx)
+	slugs, err := r.reader.ListRegisteredSlugs(ctx)
 	if err != nil {
-		r.logf(log.LevelWarn, "skill.fs.error", "msg", "skill reconcile: list slugs", "err", err)
+		event.SysLogWarn("skill.fs.error", "skill reconcile: list slugs", event.P("err", err))
 		return
 	}
 	for _, slug := range slugs {

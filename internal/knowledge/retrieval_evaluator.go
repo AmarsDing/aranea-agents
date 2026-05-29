@@ -9,6 +9,8 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 const evalTimeout = 10 * time.Second
@@ -30,13 +32,21 @@ func NewRetrievalEvaluator(llm biz.LLMCaller, sys *biz.SystemSettingUsecase, cat
 }
 
 func (e *RetrievalEvaluator) Evaluate(ctx context.Context, query string, chunks []biz.KnowledgeChunk) (*RetrievalAssessment, error) {
-	if e.llm == nil {
-		return &RetrievalAssessment{Sufficient: true, Confidence: 1.0}, nil
-	}
 	if len(chunks) == 0 {
 		return &RetrievalAssessment{Sufficient: false, Confidence: 0, SupplementQuery: query}, nil
 	}
 
+	// Degradation strategy 1 (conservative): when no LLM is configured, assume
+	// existing results are sufficient. The caller can still decide to do a
+	// follow-up search based on domain heuristics.
+	if e.llm == nil {
+		return &RetrievalAssessment{Sufficient: true, Confidence: 1.0}, nil
+	}
+
+	// Degradation strategy 2 (conservative): when the LLM model cannot be
+	// resolved (e.g. no evaluation model configured in system settings), treat
+	// existing results as sufficient rather than triggering unnecessary
+	// supplementary searches that would waste tokens and latency.
 	provider, model, err := e.resolveModel(ctx)
 	if err != nil {
 		return &RetrievalAssessment{Sufficient: true, Confidence: 0.5}, nil
@@ -68,32 +78,28 @@ func (e *RetrievalEvaluator) Evaluate(ctx context.Context, query string, chunks 
 		User:     user,
 	})
 	if err != nil {
-		event.SysLogWarn("knowledge.retrieval_eval.fail", "检索质量评估失败",
+		event.SysLogWarn("knowledge.retrieval_eval.fail", "检索质量评估失败，降级为需要补充检索",
 			event.P("error", err.Error()))
-		return &RetrievalAssessment{Sufficient: true, Confidence: 0.5}, nil
+		// Degradation strategy 3 (safe): when the LLM call itself fails, we
+		// cannot confirm the results are sufficient, so mark as insufficient
+		// with the original query as supplement. This errs on the side of
+		// recall — the caller may perform a supplementary search.
+		return &RetrievalAssessment{Sufficient: false, Confidence: 0, SupplementQuery: query}, nil
 	}
 
 	return parseAssessment(text)
 }
 
 func (e *RetrievalEvaluator) resolveModel(ctx context.Context) (string, string, error) {
+	var sys RefineLLMSettingsGetter
 	if e.sys != nil {
-		s, err := e.sys.Get(ctx)
-		if err == nil && strings.TrimSpace(s.DefaultRefineLLM.Provider) != "" && strings.TrimSpace(s.DefaultRefineLLM.Model) != "" {
-			return s.DefaultRefineLLM.Provider, s.DefaultRefineLLM.Model, nil
-		}
+		sys = e.sys
 	}
+	var cat LLMCatalogLister
 	if e.catalog != nil {
-		models, err := e.catalog.List(ctx)
-		if err == nil {
-			for _, m := range models {
-				if m.Provider != "" && m.Model != "" && m.Enabled {
-					return m.Provider, m.Model, nil
-				}
-			}
-		}
+		cat = e.catalog
 	}
-	return "", "", fmt.Errorf("no LLM available for retrieval evaluation")
+	return ResolveLLM(ctx, sys, cat, "retrieval evaluation")
 }
 
 func buildChunksSummary(chunks []biz.KnowledgeChunk, maxChars int) string {
@@ -140,11 +146,9 @@ func parseJSONLoose(s string, v any) error {
 	start := strings.Index(s, "{")
 	end := strings.LastIndex(s, "}")
 	if start < 0 || end < 0 || end <= start {
-		return fmt.Errorf("no JSON object found")
+		return kerrors.InternalServer("KNOWLEDGE", "no JSON object found in LLM response")
 	}
-	return jsonUnmarshal([]byte(s[start:end+1]), v)
+	return json.Unmarshal([]byte(s[start:end+1]), v)
 }
 
-func jsonUnmarshal(data []byte, v any) error {
-	return json.Unmarshal(data, v)
-}
+

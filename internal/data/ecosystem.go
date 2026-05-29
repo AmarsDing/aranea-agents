@@ -8,11 +8,14 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	bizecosystem "aranea-agents/internal/biz/ecosystem"
 )
 
 type ecosystemRepo struct {
 	data *Data
 }
+
+var _ bizecosystem.Repo = (*ecosystemRepo)(nil)
 
 func NewEcosystemRepo(data *Data) biz.EcosystemRepo {
 	return &ecosystemRepo{data: data}

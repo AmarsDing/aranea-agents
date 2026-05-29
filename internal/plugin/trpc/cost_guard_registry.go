@@ -38,7 +38,25 @@ func (r *CostGuardBudgetRegistry) Reset() {
 		return
 	}
 	r.mu.Lock()
+	for _, tracker := range r.byScope {
+		if tracker != nil {
+			tracker.Close()
+		}
+	}
 	r.byScope = make(map[string]*CostGuardBudgetTracker)
+	r.mu.Unlock()
+}
+
+func (r *CostGuardBudgetRegistry) Close() {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	for _, tracker := range r.byScope {
+		if tracker != nil {
+			tracker.Close()
+		}
+	}
 	r.mu.Unlock()
 }
 
@@ -66,11 +84,12 @@ func (r *CostGuardBudgetRegistry) TrackerForScope(scope string) *CostGuardBudget
 	if t, ok := r.byScope[key]; ok && t != nil {
 		return t
 	}
-	t := NewCostGuardBudgetTracker()
-	t.scopeKey = key
+	var opts []CostGuardBudgetOption
+	opts = append(opts, WithScopeKey(key))
 	if r.repo != nil {
-		t.SetUsageRepo(r.repo, key)
+		opts = append(opts, WithUsageRepo(r.repo))
 	}
+	t := NewCostGuardBudgetTracker(opts...)
 	r.byScope[key] = t
 	return t
 }

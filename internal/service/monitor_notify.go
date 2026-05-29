@@ -15,6 +15,8 @@ import (
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/metrics"
 	"aranea-agents/pkg/safego"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // MonitorAlertNotifier sends monitor alerts via webhook and optional platform channel webhook URL.
@@ -61,7 +63,7 @@ func (n *MonitorAlertNotifier) notifyViaChannel(ctx context.Context, channelID s
 		return err
 	}
 	if !ch.Enabled {
-		return fmt.Errorf("channel disabled")
+		return kerrors.BadRequest("MONITOR", "channel disabled")
 	}
 	creds, err := n.channels.ListCredentialsRaw(ctx, channelID)
 	if err != nil {
@@ -69,7 +71,7 @@ func (n *MonitorAlertNotifier) notifyViaChannel(ctx context.Context, channelID s
 	}
 	webhookURL, err := resolveCredentialPlain(ctx, creds, "webhook_url")
 	if err != nil || webhookURL == "" {
-		return fmt.Errorf("channel has no webhook_url credential")
+		return kerrors.BadRequest("MONITOR", "channel has no webhook_url credential")
 	}
 	metricKey := rule.MetricKey
 	if metricKey == "" {
@@ -120,24 +122,24 @@ var alertWebhookClient = &http.Client{
 
 func postAlertWebhook(rawURL string, payload map[string]any) error {
 	if !strings.HasPrefix(rawURL, "https://") && !strings.HasPrefix(rawURL, "http://") {
-		return fmt.Errorf("postAlertWebhook: invalid URL scheme, must be http:// or https://: %q", rawURL)
+		return kerrors.BadRequest("MONITOR", "invalid URL scheme, must be http:// or https://: "+rawURL)
 	}
 	// SSRF protection: reject URLs pointing to private/internal networks.
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return fmt.Errorf("postAlertWebhook: invalid URL: %w", err)
+		return kerrors.BadRequest("MONITOR", "invalid URL: "+err.Error())
 	}
 	host := parsed.Hostname()
 	if host == "" {
-		return fmt.Errorf("postAlertWebhook: URL has no host")
+		return kerrors.BadRequest("MONITOR", "URL has no host")
 	}
 	ips, err := net.LookupIP(host)
 	if err != nil {
-		return fmt.Errorf("postAlertWebhook: DNS lookup failed for %q: %w", host, err)
+		return kerrors.InternalServer("MONITOR", "DNS lookup failed for "+host+": "+err.Error())
 	}
 	for _, ip := range ips {
 		if ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-			return fmt.Errorf("postAlertWebhook: host %q resolves to internal/reserved IP %s — SSRF blocked", host, ip)
+			return kerrors.BadRequest("MONITOR", "host "+host+" resolves to internal/reserved IP "+ip.String()+" — SSRF blocked")
 		}
 	}
 	body, err := json.Marshal(payload)
@@ -157,7 +159,7 @@ func postAlertWebhook(rawURL string, payload map[string]any) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("webhook status %d", resp.StatusCode)
+		return kerrors.InternalServer("MONITOR", fmt.Sprintf("webhook status %d", resp.StatusCode))
 	}
 	return nil
 }

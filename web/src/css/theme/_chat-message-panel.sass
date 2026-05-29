@@ -98,6 +98,24 @@ body.body--dark .chat-header-usage__ring-value
 .chat-header-usage__chip--muted
   opacity: 0.75
 
+.chat-header-usage__ring--clickable
+  cursor: pointer
+  transition: filter 0.2s ease, transform 0.15s ease
+
+  &:hover
+    filter: brightness(1.15)
+    transform: scale(1.06)
+
+  &:active
+    transform: scale(0.97)
+
+.ctx-breakdown-menu
+  background: transparent !important
+  box-shadow: none !important
+
+  .q-menu
+    background: transparent
+
 .chat-header-prompt
   min-width: 0
   width: 100%
@@ -631,6 +649,39 @@ body.body--dark .message-send-tags:not(.message-send-tags--sent)
     opacity: 0.55
   50%
     opacity: 1
+
+// ===== Context compress notification =====
+.chat-compress-banner
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--glass-surface)) !important
+  color: var(--color-text-primary) !important
+  border: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--glass-border)) !important
+  border-radius: 12px
+  animation: chat-compress-slide 0.35s cubic-bezier(0.22, 1, 0.36, 1)
+
+@keyframes chat-compress-slide
+  from
+    opacity: 0
+    transform: translateY(-8px)
+  to
+    opacity: 1
+    transform: translateY(0)
+
+// ===== Reasoning streaming spinner =====
+.chat-reasoning-peek--streaming .chat-reasoning-peek__label::after
+  content: ""
+  display: inline-block
+  width: 12px
+  height: 12px
+  margin-left: 6px
+  vertical-align: middle
+  border: 2px solid color-mix(in srgb, var(--color-accent) 40%, transparent)
+  border-top-color: var(--color-accent)
+  border-radius: 50%
+  animation: chat-reasoning-spin 0.8s linear infinite
+
+@keyframes chat-reasoning-spin
+  to
+    transform: rotate(360deg)
 
 // ===== Scroll-to-bottom button =====
 .chat-scroll-bottom

@@ -3,11 +3,11 @@ package knowledge
 
 import (
 	"context"
-	"fmt"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/document"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/reranker"
 )
@@ -18,6 +18,13 @@ const maxRerankOverfetch = 50
 // QueryEmbedder embeds search queries.
 type QueryEmbedder interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
+}
+
+// TaskTypeEmbedder extends QueryEmbedder with task-type-aware embedding.
+// Providers like Gemini benefit from distinguishing RETRIEVAL_DOCUMENT vs RETRIEVAL_QUERY.
+type TaskTypeEmbedder interface {
+	QueryEmbedder
+	EmbedWithTaskType(ctx context.Context, text string, taskType string) ([]float32, error)
 }
 
 // Retriever orchestrates embedding + search (+ optional rerank) for a collection.
@@ -40,19 +47,19 @@ func (r *Retriever) HasReranker() bool {
 // Search embeds the query, retrieves candidates, optionally reranks, and returns top-k chunks.
 func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]biz.KnowledgeChunk, error) {
 	if r.embedder == nil {
-		return nil, fmt.Errorf("retriever: embedder is nil")
+		return nil, kerrors.ServiceUnavailable("KNOWLEDGE", "retriever: embedder is nil")
 	}
 	if r.repo == nil {
-		return nil, fmt.Errorf("retriever: repo is nil")
+		return nil, kerrors.ServiceUnavailable("KNOWLEDGE", "retriever: repo is nil")
 	}
 	topK := q.TopK
 	if topK <= 0 {
 		topK = 5
 	}
 
-	vec, err := r.embedder.Embed(ctx, q.Query)
+	vec, err := r.embedQuery(ctx, q.Query)
 	if err != nil {
-		return nil, fmt.Errorf("retriever embed: %w", err)
+		return nil, kerrors.InternalServer("KNOWLEDGE", "retriever embed failed: "+err.Error())
 	}
 
 	searchQ := q
@@ -87,6 +94,13 @@ func (r *Retriever) shouldRerank(q biz.KnowledgeSearchQuery) bool {
 		return false
 	}
 	return true
+}
+
+func (r *Retriever) embedQuery(ctx context.Context, query string) ([]float32, error) {
+	if te, ok := r.embedder.(TaskTypeEmbedder); ok {
+		return te.EmbedWithTaskType(ctx, query, "RETRIEVAL_QUERY")
+	}
+	return r.embedder.Embed(ctx, query)
 }
 
 func rerankCandidateLimit(q biz.KnowledgeSearchQuery, topK int) int {
@@ -152,8 +166,8 @@ func rerankerResultsToChunks(results []*reranker.Result, topK int) []biz.Knowled
 			if v, ok := res.Document.Metadata["collection_id"].(string); ok {
 				ch.CollectionID = v
 			}
-			if v, ok := res.Document.Metadata["chunk_index"].(int); ok {
-				ch.ChunkIndex = v
+			if v, ok := res.Document.Metadata["chunk_index"].(float64); ok {
+				ch.ChunkIndex = int(v)
 			}
 		}
 		out = append(out, ch)

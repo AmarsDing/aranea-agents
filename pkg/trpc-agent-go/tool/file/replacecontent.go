@@ -6,14 +6,12 @@
 //
 // trpc-agent-go is licensed under the Apache License Version 2.0.
 //
-//
 
 package file
 
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"trpc.group/trpc-go/trpc-agent-go/internal/fileref"
@@ -21,27 +19,19 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
-// replaceContentRequest represents the input for the replace content
-// operation.
 type replaceContentRequest struct {
 	FileName string `json:"file_name" jsonschema:"description=Relative file path under base_directory to modify"`
-	// OldString is replaced by NewString. It can be multi-line.
 	OldString string `json:"old_string" jsonschema:"description=Existing text to replace; supports multi-line content"`
-	// NewString is inserted in place of OldString. It can be multi-line.
 	NewString string `json:"new_string" jsonschema:"description=Replacement text; supports multi-line content"`
-	// NumReplacements limits replacements (default 1). Negative means all.
 	NumReplacements int `json:"num_replacements,omitempty" jsonschema:"description=Optional replacement limit; 0 means 1 and negative means replace all matches"`
 }
 
-// replaceContentResponse represents the output from the replace content
-// operation.
 type replaceContentResponse struct {
 	BaseDirectory string `json:"base_directory"`
 	FileName      string `json:"file_name"`
 	Message       string `json:"message"`
 }
 
-// replaceContent performs the replace content operation.
 func (f *fileToolSet) replaceContent(
 	ctx context.Context,
 	req *replaceContentRequest,
@@ -65,7 +55,6 @@ func (f *fileToolSet) replaceContent(
 			ref.Scheme,
 		)
 	}
-	// Validate old string.
 	if req.OldString == "" {
 		rsp.Message = "Error: old_string cannot be empty"
 		return rsp, fmt.Errorf("old_string cannot be empty")
@@ -74,43 +63,20 @@ func (f *fileToolSet) replaceContent(
 		rsp.Message = "old_string equals new_string; no changes made"
 		return rsp, nil
 	}
-	// Resolve path and ensure it's a regular file.
-	filePath, err := f.resolvePath(req.FileName)
+	snap, err := f.loadEditSnapshot(ctx, req.FileName, nil)
 	if err != nil {
 		rsp.Message = fmt.Sprintf("Error: %v", err)
 		return rsp, err
 	}
-	st, err := os.Stat(filePath)
-	if err != nil {
+	if !snap.Exists {
 		rsp.Message = fmt.Sprintf(
-			"Error: cannot access file '%s': %v. %s",
+			"Error: file '%s' not found. %s",
 			req.FileName,
-			err,
 			f.missingFileHint(),
 		)
-		return rsp, fmt.Errorf(
-			"accessing file '%s' under base directory '%s': %w",
-			req.FileName,
-			f.baseDir,
-			err,
-		)
+		return rsp, fmt.Errorf("file '%s' not found", req.FileName)
 	}
-	if st.IsDir() {
-		rsp.Message = fmt.Sprintf(
-			"Error: '%s' is a directory, not a file",
-			req.FileName,
-		)
-		return rsp, fmt.Errorf("target path '%s' is a directory", req.FileName)
-	}
-	// Read file.
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		rsp.Message = fmt.Sprintf("Error: reading file '%s': %v", req.FileName, err)
-		return rsp, fmt.Errorf("reading file '%s': %w", req.FileName, err)
-	}
-	content := string(data)
-	// Check if old string is found.
-	totalCount := strings.Count(content, req.OldString)
+	totalCount := strings.Count(snap.Content, req.OldString)
 	if totalCount == 0 {
 		rsp.Message = fmt.Sprintf(
 			"'%s' not found in '%s'",
@@ -119,7 +85,6 @@ func (f *fileToolSet) replaceContent(
 		)
 		return rsp, nil
 	}
-	// Calculate number of replacements.
 	numReplacements := req.NumReplacements
 	if numReplacements == 0 {
 		numReplacements = 1
@@ -127,20 +92,16 @@ func (f *fileToolSet) replaceContent(
 	if numReplacements < 0 || numReplacements > totalCount {
 		numReplacements = totalCount
 	}
-	// Replace old string with new string.
 	newContent := strings.Replace(
-		content,
+		snap.Content,
 		req.OldString,
 		req.NewString,
 		numReplacements,
 	)
-	// Write back preserving permissions.
-	err = os.WriteFile(filePath, []byte(newContent), st.Mode())
-	if err != nil {
-		rsp.Message = fmt.Sprintf("Error: writing file '%s': %v", req.FileName, err)
-		return rsp, fmt.Errorf("writing file '%s': %w", req.FileName, err)
+	if err := f.commitEditSnapshot(ctx, snap, newContent); err != nil {
+		rsp.Message = fmt.Sprintf("Error: %v", err)
+		return rsp, err
 	}
-	storeSaveFileView(ctx, filePath, newContent, st.Mode())
 	rsp.Message = fmt.Sprintf(
 		"Successfully replaced %d of %d in '%s'",
 		numReplacements,
@@ -150,7 +111,6 @@ func (f *fileToolSet) replaceContent(
 	return rsp, nil
 }
 
-// replaceContentTool returns a callable tool for replacing content in a file.
 func (f *fileToolSet) replaceContentTool() tool.CallableTool {
 	return function.NewFunctionTool(
 		f.replaceContent,

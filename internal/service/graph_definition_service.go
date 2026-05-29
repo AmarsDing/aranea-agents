@@ -2,12 +2,12 @@ package service
 
 import (
 	"context"
-	"fmt"
 
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	"aranea-agents/internal/biz"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -189,7 +189,7 @@ func (s *GraphService) ListGraphTemplates(ctx context.Context, req *graphv1.List
 	templates := s.uc.ListGraphTemplates(ctx)
 	tmplList, ok := templates.([]graphtrpc.GraphTemplate)
 	if !ok {
-		return nil, fmt.Errorf("list templates: unexpected result type")
+		return nil, kerrors.InternalServer("GRAPH", "list templates: unexpected result type")
 	}
 	resp := &graphv1.ListGraphTemplatesResponse{
 		Templates: make([]*graphv1.GraphTemplateInfo, 0, len(tmplList)),
@@ -299,7 +299,7 @@ func (s *GraphService) VisualizeGraph(ctx context.Context, req *graphv1.Visualiz
 	}
 	vg, ok := result.(*graphtrpc.VisualGraph)
 	if !ok {
-		return nil, fmt.Errorf("visualize: unexpected result type")
+		return nil, kerrors.InternalServer("GRAPH", "visualize: unexpected result type")
 	}
 	format := req.Format
 	if format == "" {

@@ -270,7 +270,7 @@ func (o *ChatOrchestrator) RunAgentTurn(ctx context.Context, agentID, input stri
 		return "", err
 	}
 	if tr.Outcome != biz.TurnOutcomeCompleted {
-		return "", fmt.Errorf("a2a turn outcome: %s", tr.Outcome)
+		return "", kerrors.InternalServer("CHAT", "a2a turn outcome: "+string(tr.Outcome))
 	}
 	return tr.AssistantMsg.ContentMarkdown, nil
 }
@@ -278,12 +278,12 @@ func (o *ChatOrchestrator) RunAgentTurn(ctx context.Context, agentID, input stri
 // RunEvalAgentTurn runs an evaluation agent turn.
 func (o *ChatOrchestrator) RunEvalAgentTurn(ctx context.Context, agentID, input string) (string, error) {
 	if o == nil || o.td.Sessions == nil {
-		return "", fmt.Errorf("eval: chat service not configured")
+		return "", kerrors.InternalServer("CHAT", "eval: chat service not configured")
 	}
 	agentID = strings.TrimSpace(agentID)
 	input = strings.TrimSpace(input)
 	if agentID == "" || input == "" {
-		return "", fmt.Errorf("eval: agent_id and input are required")
+		return "", kerrors.BadRequest("CHAT", "eval: agent_id and input are required")
 	}
 	sess, err := o.td.Sessions.Create(ctx, biz.Session{
 		ID:        uuid.NewString(),
@@ -293,7 +293,7 @@ func (o *ChatOrchestrator) RunEvalAgentTurn(ctx context.Context, agentID, input 
 		UserID:    "1",
 	})
 	if err != nil {
-		return "", fmt.Errorf("eval: create session: %w", err)
+		return "", kerrors.InternalServer("CHAT", "eval: create session: "+err.Error())
 	}
 	_, asst, err := o.RunNativeAgentTurnFromInput(ctx, biz.TurnInput{
 		SessionID: sess.ID,
@@ -567,6 +567,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		MemoryL3Recall:        o.td.Persist.Memory.L3Recall,
 		MemoryCompositeRecall: o.td.Persist.Memory.CompositeRecall,
 		KnowledgeRetriever:    o.rt.KnowledgeRetriever,
+		KnowledgeUsecase:      o.rt.KnowledgeUC,
 		CodeExecFactory:       o.rt.CodeExecFactory,
 		CustomTools:           o.cliAdminTools(ctx, ag),
 		KanbanBridge:          o.rt.KanbanBridge,
@@ -763,6 +764,15 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	runCtx = o.injectA2AContext(runCtx, ag.ID)
 	if o.rt.KnowledgeRetriever != nil {
 		runCtx = knowledgetool.WithRetriever(runCtx, o.rt.KnowledgeRetriever)
+	}
+	if o.rt.KnowledgeRouter != nil {
+		runCtx = knowledgetool.WithAdaptiveRouter(runCtx, o.rt.KnowledgeRouter)
+	}
+	if o.rt.KnowledgeFederatedRetriever != nil {
+		runCtx = knowledgetool.WithFederatedRetriever(runCtx, o.rt.KnowledgeFederatedRetriever)
+	}
+	if o.rt.KnowledgeEvaluator != nil {
+		runCtx = knowledgetool.WithRetrievalEvaluator(runCtx, o.rt.KnowledgeEvaluator)
 	}
 	if len(input.Options.KnowledgeBases) > 0 {
 		runCtx = knowledgetool.WithKnowledgeCollections(runCtx, input.Options.KnowledgeBases)

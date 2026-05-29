@@ -8,11 +8,14 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	bizplugin "aranea-agents/internal/biz/plugin"
 )
 
 type pluginCostGuardUsageRepo struct {
 	data *Data
 }
+
+var _ bizplugin.CostGuardUsageRepo = (*pluginCostGuardUsageRepo)(nil)
 
 func NewPluginCostGuardUsageRepo(data *Data) biz.PluginCostGuardUsageRepo {
 	return &pluginCostGuardUsageRepo{data: data}

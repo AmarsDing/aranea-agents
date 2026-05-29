@@ -128,5 +128,5 @@ func IsRecentReconnect(lastReconnectAt string) bool {
 	if err != nil {
 		return false
 	}
-	return time.Since(t) < RecentReconnectWindow
+	return time.Since(t) >= 0 && time.Since(t) < RecentReconnectWindow
 }

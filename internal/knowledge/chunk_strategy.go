@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"strings"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcchunk "trpc.group/trpc-go/trpc-agent-go/knowledge/chunking"
 	trpcdoc "trpc.group/trpc-go/trpc-agent-go/knowledge/document"
+	trpcsource "trpc.group/trpc-go/trpc-agent-go/knowledge/source"
 )
 
 const (
@@ -32,10 +34,10 @@ func SplitWithStrategy(strategy ChunkStrategy, text string, size, overlap int) (
 		return nil, nil
 	}
 	if size <= 0 {
-		size = 512
+		size = DefaultChunkSize
 	}
 	if overlap < 0 {
-		overlap = 64
+		overlap = DefaultChunkOverlap
 	}
 
 	switch strategy {
@@ -65,7 +67,7 @@ func splitWithTrpcStrategy(strategy ChunkStrategy, text string, size, overlap in
 			trpcchunk.WithRecursiveOverlap(overlap),
 		)
 	default:
-		return nil, fmt.Errorf("unsupported chunk strategy %q", strategy)
+		return nil, kerrors.BadRequest("KNOWLEDGE", fmt.Sprintf("unsupported chunk strategy %q", strategy))
 	}
 	docs, err := strat.Chunk(doc)
 	if err != nil {
@@ -80,7 +82,17 @@ func trpcDocsToChunks(docs []*trpcdoc.Document) []Chunk {
 		if d == nil || strings.TrimSpace(d.Content) == "" {
 			continue
 		}
-		out = append(out, Chunk{Content: d.Content, ChunkIndex: i})
+		chunkIndex := i
+		if d.Metadata != nil {
+			if v, ok := d.Metadata[trpcsource.MetaChunkIndex]; ok {
+				if idx, ok := v.(int); ok && idx >= 0 {
+					chunkIndex = idx
+				} else if f, ok := v.(float64); ok && f >= 0 {
+					chunkIndex = int(f)
+				}
+			}
+		}
+		out = append(out, Chunk{Content: d.Content, ChunkIndex: chunkIndex})
 	}
 	return out
 }

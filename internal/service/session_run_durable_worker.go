@@ -14,15 +14,16 @@ const sessionRunWorkerPollInterval = 5 * time.Second
 
 // SessionRunDurableWorker resumes agent turns from durable checkpoints (CC-R-03).
 type SessionRunDurableWorker struct {
-	runs *biz.SessionRunUsecase
-	chat *ChatService
+	runs     *biz.SessionRunUsecase
+	runCtrl  biz.TurnRunControlGateway
+	resumer  biz.DurableResumeGateway
 }
 
-func NewSessionRunDurableWorker(runs *biz.SessionRunUsecase, chat *ChatService) *SessionRunDurableWorker {
-	if runs == nil || chat == nil {
+func NewSessionRunDurableWorker(runs *biz.SessionRunUsecase, runCtrl biz.TurnRunControlGateway, resumer biz.DurableResumeGateway) *SessionRunDurableWorker {
+	if runs == nil || runCtrl == nil || resumer == nil {
 		return nil
 	}
-	return &SessionRunDurableWorker{runs: runs, chat: chat}
+	return &SessionRunDurableWorker{runs: runs, runCtrl: runCtrl, resumer: resumer}
 }
 
 func (w *SessionRunDurableWorker) Start(ctx context.Context) {
@@ -58,9 +59,11 @@ func (w *SessionRunDurableWorker) processOnce(ctx context.Context) {
 		if strings.TrimSpace(run.CheckpointID) == "" {
 			continue
 		}
-		if w.chat.orch.HasActiveRun(run.SessionID) {
+		if w.runCtrl.HasActiveRun(run.SessionID) {
 			continue
 		}
-		_ = w.chat.ResumeDurableSessionRun(ctx, run.ID)
+		if err := w.resumer.ResumeDurableSessionRun(ctx, run.ID); err != nil {
+			event.SysLogWarn("session.durable_worker", "resume failed", event.P("run_id", run.ID), event.P("error", err.Error()))
+		}
 	}
 }

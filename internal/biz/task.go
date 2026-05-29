@@ -82,34 +82,65 @@ type TaskEvent struct {
 	Timestamp   time.Time
 }
 
-type TaskRepo interface {
-	SaveTask(ctx context.Context, task *GraphTask) error
+type TaskReader interface {
 	GetTask(ctx context.Context, taskID string) (*GraphTask, error)
 	GetActiveTaskByExecutionNode(ctx context.Context, executionID, nodeID string) (*GraphTask, error)
 	ListTasksByExecution(ctx context.Context, executionID string, status TaskStatus, pageSize int, pageToken string) ([]*GraphTask, string, error)
 	ListTasksByStatuses(ctx context.Context, statuses []TaskStatus, limit int) ([]*GraphTask, error)
-	UpdateTask(ctx context.Context, task *GraphTask) error
+}
 
+type TaskWriter interface {
+	SaveTask(ctx context.Context, task *GraphTask) error
+	UpdateTask(ctx context.Context, task *GraphTask) error
+}
+
+type TaskCommentStore interface {
 	SaveTaskComment(ctx context.Context, comment *TaskComment) error
 	ListTaskComments(ctx context.Context, taskID string) ([]*TaskComment, error)
+}
 
+type TaskLogStore interface {
 	SaveTaskLog(ctx context.Context, log *TaskLog) error
 	ListTaskLogs(ctx context.Context, taskID string, stream string, level string, pageSize int) ([]*TaskLog, error)
+}
 
+type TaskRunStore interface {
 	SaveTaskRun(ctx context.Context, run *TaskRun) error
 	ListTaskRuns(ctx context.Context, taskID string) ([]*TaskRun, error)
+}
 
+type TaskEventStore interface {
 	SaveTaskEvent(ctx context.Context, event *TaskEvent) error
 	ListTaskEvents(ctx context.Context, executionID string, taskID string, eventType string, pageSize int) ([]*TaskEvent, error)
+}
+
+type TaskRepo interface {
+	TaskReader
+	TaskWriter
+	TaskCommentStore
+	TaskLogStore
+	TaskRunStore
+	TaskEventStore
 }
 
 type AgentRoleChecker func(ctx context.Context, agentKey string, role string) bool
 type AgentListerByRole func(ctx context.Context, role string) ([]string, error)
 
+type TaskGraphResolver interface {
+	GetExecution(ctx context.Context, executionID string) (*GraphExecution, error)
+	FindGraphNode(ctx context.Context, graphID string, nodeID string) *NodeDef
+	FindNodeDef(ctx context.Context, graphID string, nodeID string) *NodeDefInfo
+}
+
 type TaskUsecase struct {
-	repo              TaskRepo
+	reader            TaskReader
+	writer            TaskWriter
+	comments          TaskCommentStore
+	logs              TaskLogStore
+	runs              TaskRunStore
+	events            TaskEventStore
 	linkRepo          TaskLinkRepo
-	graphUC           *GraphUsecase
+	graph             TaskGraphResolver
 	roleChecker       AgentRoleChecker
 	agentLister       AgentListerByRole
 	statusPublisher   TaskStatusPublisher
@@ -119,13 +150,18 @@ type TaskUsecase struct {
 	leaseDeadline     map[string]time.Time
 }
 
-func NewTaskUsecase(repo TaskRepo, graphUC *GraphUsecase, agents AgentRepository) *TaskUsecase {
+func NewTaskUsecase(repo TaskRepo, graphUC TaskGraphResolver, agents AgentRepository) *TaskUsecase {
 	return &TaskUsecase{
-		repo:          repo,
-		graphUC:       graphUC,
-		roleChecker:   ProvideAgentRoleChecker(agents),
-		agentLister:   ProvideAgentListerByRole(agents),
-		heartbeats:    make(map[string]time.Time),
+		reader:      repo,
+		writer:      repo,
+		comments:    repo,
+		logs:        repo,
+		runs:        repo,
+		events:      repo,
+		graph:       graphUC,
+		roleChecker: ProvideAgentRoleChecker(agents),
+		agentLister: ProvideAgentListerByRole(agents),
+		heartbeats:  make(map[string]time.Time),
 		leaseDeadline: make(map[string]time.Time),
 	}
 }
@@ -152,12 +188,14 @@ func (uc *TaskUsecase) afterTaskMutation(ctx context.Context, task *GraphTask, e
 	}
 	uc.promoteReadyChildren(ctx, task)
 	if uc.completionHandler != nil {
-		_ = uc.completionHandler.OnTaskCompleted(ctx, task)
+		if err := uc.completionHandler.OnTaskCompleted(ctx, task); err != nil {
+			event.SysLogWarn("task.completion_handler", "OnTaskCompleted failed", event.P("error", err.Error()))
+		}
 	}
 }
 
 func (uc *TaskUsecase) CreateTask(ctx context.Context, nodeID string, executionID string, requiredRole string, assignmentMode string, assignmentStrategy string, input string, contextStr string) (*GraphTask, error) {
-	if existing, err := uc.repo.GetActiveTaskByExecutionNode(ctx, executionID, nodeID); err == nil && existing != nil {
+	if existing, err := uc.reader.GetActiveTaskByExecutionNode(ctx, executionID, nodeID); err == nil && existing != nil {
 		return existing, nil
 	}
 	task := &GraphTask{
@@ -180,7 +218,7 @@ func (uc *TaskUsecase) CreateTask(ctx context.Context, nodeID string, executionI
 		}
 	}
 
-	if err := uc.repo.SaveTask(ctx, task); err != nil {
+	if err := uc.writer.SaveTask(ctx, task); err != nil {
 		return nil, kerrors.InternalServer("TASK", fmt.Sprintf("task usecase create: %s", err.Error()))
 	}
 
@@ -190,15 +228,15 @@ func (uc *TaskUsecase) CreateTask(ctx context.Context, nodeID string, executionI
 }
 
 func (uc *TaskUsecase) GetTask(ctx context.Context, taskID string) (*GraphTask, error) {
-	return uc.repo.GetTask(ctx, taskID)
+	return uc.reader.GetTask(ctx, taskID)
 }
 
 func (uc *TaskUsecase) ListTasks(ctx context.Context, executionID string, status TaskStatus, pageSize int, pageToken string) ([]*GraphTask, string, error) {
-	return uc.repo.ListTasksByExecution(ctx, executionID, status, pageSize, pageToken)
+	return uc.reader.ListTasksByExecution(ctx, executionID, status, pageSize, pageToken)
 }
 
 func (uc *TaskUsecase) ListPendingTasks(ctx context.Context, limit int) ([]*GraphTask, error) {
-	return uc.repo.ListTasksByStatuses(ctx, []TaskStatus{TaskStatusPending, TaskStatusPendingAssignment}, limit)
+	return uc.reader.ListTasksByStatuses(ctx, []TaskStatus{TaskStatusPending, TaskStatusPendingAssignment}, limit)
 }
 
 func (uc *TaskUsecase) SaveTaskRun(ctx context.Context, run *TaskRun) error {
@@ -208,11 +246,11 @@ func (uc *TaskUsecase) SaveTaskRun(ctx context.Context, run *TaskRun) error {
 	if run.RunID == "" {
 		run.RunID = uuid.New().String()
 	}
-	return uc.repo.SaveTaskRun(ctx, run)
+	return uc.runs.SaveTaskRun(ctx, run)
 }
 
 func (uc *TaskUsecase) ClaimTask(ctx context.Context, taskID string, agentKey string) (*GraphTask, error) {
-	task, err := uc.repo.GetTask(ctx, taskID)
+	task, err := uc.reader.GetTask(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +266,7 @@ func (uc *TaskUsecase) ClaimTask(ctx context.Context, taskID string, agentKey st
 	task.Assignee = agentKey
 	task.Status = TaskStatusClaimed
 	task.ClaimedAt = &now
-	if err := uc.repo.UpdateTask(ctx, task); err != nil {
+	if err := uc.writer.UpdateTask(ctx, task); err != nil {
 		return nil, err
 	}
 	uc.mu.Lock()
@@ -241,7 +279,7 @@ func (uc *TaskUsecase) ClaimTask(ctx context.Context, taskID string, agentKey st
 }
 
 func (uc *TaskUsecase) SubmitTaskResult(ctx context.Context, taskID string, output string, summary string, metadata string) (*GraphTask, error) {
-	task, err := uc.repo.GetTask(ctx, taskID)
+	task, err := uc.reader.GetTask(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +298,7 @@ func (uc *TaskUsecase) SubmitTaskResult(ctx context.Context, taskID string, outp
 	} else {
 		task.Status = TaskStatusComplete
 	}
-	if err := uc.repo.UpdateTask(ctx, task); err != nil {
+	if err := uc.writer.UpdateTask(ctx, task); err != nil {
 		return nil, err
 	}
 	uc.recordTaskEvent(ctx, taskID, "task_completed", task.NodeID, "task result submitted")
@@ -269,7 +307,7 @@ func (uc *TaskUsecase) SubmitTaskResult(ctx context.Context, taskID string, outp
 }
 
 func (uc *TaskUsecase) Heartbeat(ctx context.Context, taskID string, agentKey string, metadata string) (bool, int32, error) {
-	task, err := uc.repo.GetTask(ctx, taskID)
+	task, err := uc.reader.GetTask(ctx, taskID)
 	if err != nil {
 		return false, 0, err
 	}
@@ -295,7 +333,7 @@ func (uc *TaskUsecase) Heartbeat(ctx context.Context, taskID string, agentKey st
 }
 
 func (uc *TaskUsecase) ReportBlocked(ctx context.Context, taskID string, reason string, metadata string) (*GraphTask, error) {
-	task, err := uc.repo.GetTask(ctx, taskID)
+	task, err := uc.reader.GetTask(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +342,7 @@ func (uc *TaskUsecase) ReportBlocked(ctx context.Context, taskID string, reason 
 	}
 	task.Status = TaskStatusBlocked
 	task.Metadata = metadata
-	if err := uc.repo.UpdateTask(ctx, task); err != nil {
+	if err := uc.writer.UpdateTask(ctx, task); err != nil {
 		return nil, err
 	}
 	uc.recordTaskEvent(ctx, taskID, "task_blocked", task.NodeID, reason)
@@ -313,7 +351,7 @@ func (uc *TaskUsecase) ReportBlocked(ctx context.Context, taskID string, reason 
 }
 
 func (uc *TaskUsecase) UnblockTask(ctx context.Context, taskID string, comment string) (*GraphTask, error) {
-	task, err := uc.repo.GetTask(ctx, taskID)
+	task, err := uc.reader.GetTask(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -323,7 +361,7 @@ func (uc *TaskUsecase) UnblockTask(ctx context.Context, taskID string, comment s
 	task.Status = TaskStatusPending
 	task.Assignee = ""
 	task.ClaimedAt = nil
-	if err := uc.repo.UpdateTask(ctx, task); err != nil {
+	if err := uc.writer.UpdateTask(ctx, task); err != nil {
 		return nil, err
 	}
 	if comment != "" {
@@ -365,30 +403,30 @@ func (uc *TaskUsecase) AddTaskComment(ctx context.Context, taskID string, author
 		Type:      commentType,
 		CreatedAt: time.Now(),
 	}
-	if err := uc.repo.SaveTaskComment(ctx, comment); err != nil {
+	if err := uc.comments.SaveTaskComment(ctx, comment); err != nil {
 		return nil, err
 	}
 	return comment, nil
 }
 
 func (uc *TaskUsecase) ListTaskComments(ctx context.Context, taskID string) ([]*TaskComment, error) {
-	return uc.repo.ListTaskComments(ctx, taskID)
+	return uc.comments.ListTaskComments(ctx, taskID)
 }
 
 func (uc *TaskUsecase) ListTaskLogs(ctx context.Context, taskID string, stream string, level string, pageSize int) ([]*TaskLog, error) {
-	return uc.repo.ListTaskLogs(ctx, taskID, stream, level, pageSize)
+	return uc.logs.ListTaskLogs(ctx, taskID, stream, level, pageSize)
 }
 
 func (uc *TaskUsecase) ListTaskRuns(ctx context.Context, taskID string) ([]*TaskRun, error) {
-	return uc.repo.ListTaskRuns(ctx, taskID)
+	return uc.runs.ListTaskRuns(ctx, taskID)
 }
 
 func (uc *TaskUsecase) ListTaskEvents(ctx context.Context, executionID string, taskID string, eventType string, pageSize int) ([]*TaskEvent, error) {
-	return uc.repo.ListTaskEvents(ctx, executionID, taskID, eventType, pageSize)
+	return uc.events.ListTaskEvents(ctx, executionID, taskID, eventType, pageSize)
 }
 
 func (uc *TaskUsecase) ReviewTask(ctx context.Context, taskID string, reviewerAgent string, approved bool, comment string) (*GraphTask, error) {
-	task, err := uc.repo.GetTask(ctx, taskID)
+	task, err := uc.reader.GetTask(ctx, taskID)
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +438,7 @@ func (uc *TaskUsecase) ReviewTask(ctx context.Context, taskID string, reviewerAg
 	} else {
 		task.Status = TaskStatusClaimed
 	}
-	if err := uc.repo.UpdateTask(ctx, task); err != nil {
+	if err := uc.writer.UpdateTask(ctx, task); err != nil {
 		return nil, err
 	}
 	commentType := "approval"
@@ -439,13 +477,13 @@ func (uc *TaskUsecase) CheckTimeouts(ctx context.Context) error {
 	}
 	uc.mu.Unlock()
 	for _, e := range expired {
-		task, err := uc.repo.GetTask(ctx, e.taskID)
+		task, err := uc.reader.GetTask(ctx, e.taskID)
 		if err != nil {
 			continue
 		}
 		if task.Status == TaskStatusClaimed {
 			task.Status = TaskStatusTimedOut
-			if err := uc.repo.UpdateTask(ctx, task); err != nil {
+			if err := uc.writer.UpdateTask(ctx, task); err != nil {
 				event.SysLogError("system.task.timeout_update_fail", "timeout update task failed",
 					event.P("task_id", e.taskID), event.P("error", err.Error()))
 				continue
@@ -458,16 +496,11 @@ func (uc *TaskUsecase) CheckTimeouts(ctx context.Context) error {
 }
 
 func (uc *TaskUsecase) findNodeDef(ctx context.Context, task *GraphTask) *NodeDefInfo {
-	exec, err := uc.graphUC.GetExecution(ctx, task.ExecutionID)
+	exec, err := uc.graph.GetExecution(ctx, task.ExecutionID)
 	if err != nil {
 		return nil
 	}
-	def, err := uc.graphUC.GetGraph(ctx, exec.GraphID)
-	if err != nil {
-		return nil
-	}
-	cfg := defToBuildConfig(def)
-	return uc.graphUC.factory.FindNodeDef(cfg, task.NodeID)
+	return uc.graph.FindNodeDef(ctx, exec.GraphID, task.NodeID)
 }
 
 func (uc *TaskUsecase) ReleaseClaim(ctx context.Context, taskID string) {
@@ -475,14 +508,14 @@ func (uc *TaskUsecase) ReleaseClaim(ctx context.Context, taskID string) {
 	delete(uc.leaseDeadline, taskID)
 	delete(uc.heartbeats, taskID)
 	uc.mu.Unlock()
-	task, err := uc.repo.GetTask(ctx, taskID)
+	task, err := uc.reader.GetTask(ctx, taskID)
 	if err != nil {
 		return
 	}
 	task.Status = TaskStatusPending
 	task.Assignee = ""
 	task.ClaimedAt = nil
-	if err := uc.repo.UpdateTask(ctx, task); err != nil {
+	if err := uc.writer.UpdateTask(ctx, task); err != nil {
 		event.SysLogWarn("system.task.release_claim_fail", "release claim update failed",
 			event.P("task_id", taskID), event.P("error", err.Error()))
 	}
@@ -491,7 +524,7 @@ func (uc *TaskUsecase) ReleaseClaim(ctx context.Context, taskID string) {
 }
 
 func (uc *TaskUsecase) recordTaskEvent(ctx context.Context, taskID string, eventType string, sourceNode string, description string) {
-	event := &TaskEvent{
+	evt := &TaskEvent{
 		EventID:     uuid.New().String(),
 		TaskID:      taskID,
 		EventType:   eventType,
@@ -499,5 +532,7 @@ func (uc *TaskUsecase) recordTaskEvent(ctx context.Context, taskID string, event
 		Description: description,
 		Timestamp:   time.Now(),
 	}
-	_ = uc.repo.SaveTaskEvent(ctx, event)
+	if err := uc.events.SaveTaskEvent(ctx, evt); err != nil {
+		event.SysLogWarn("task.event_save", "SaveTaskEvent failed", event.P("error", err.Error()))
+	}
 }

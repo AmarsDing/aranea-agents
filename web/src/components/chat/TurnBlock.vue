@@ -33,34 +33,36 @@
       :react-tool-link-index="reactToolLinkIndex"
       @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
     />
-    <ChatMessageRow
-      v-if="block.assistant"
-      :message="block.assistant"
-      :index="1"
-      :messages="allMessages"
-      :is-dark="isDark"
-      :is-team-session="isTeamSession"
-      :planner-kind="plannerKind"
-      :react-tool-link-index="reactToolLinkIndex"
-      @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
-      @feedback="(p) => emit('feedback', p)"
-      @regenerate="(msg) => emit('regenerate', msg)"
-    />
-    <ChatMessageRow
-      v-for="(member, mIdx) in block.members"
-      :key="member.id"
-      :message="member"
-      :index="mIdx + 2"
-      :messages="allMessages"
-      :is-dark="isDark"
-      :is-team-session="isTeamSession"
-      :planner-kind="plannerKind"
-      :react-tool-link-index="reactToolLinkIndex"
-      @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
-      @retry="(id) => emit('retry', id)"
-      @dismiss-failed="(id) => emit('dismiss-failed', id)"
-      @regenerate="(msg) => emit('regenerate', msg)"
-    />
+    <div v-if="block.assistant || block.members.length" class="turn-block__response">
+      <ChatMessageRow
+        v-if="block.assistant"
+        :message="block.assistant"
+        :index="1"
+        :messages="allMessages"
+        :is-dark="isDark"
+        :is-team-session="isTeamSession"
+        :planner-kind="plannerKind"
+        :react-tool-link-index="reactToolLinkIndex"
+        @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
+        @feedback="(p) => emit('feedback', p)"
+        @regenerate="(msg) => emit('regenerate', msg)"
+      />
+      <ChatMessageRow
+        v-for="(member, mIdx) in block.members"
+        :key="member.id"
+        :message="member"
+        :index="mIdx + 2"
+        :messages="allMessages"
+        :is-dark="isDark"
+        :is-team-session="isTeamSession"
+        :planner-kind="plannerKind"
+        :react-tool-link-index="reactToolLinkIndex"
+        @a2ui-user-action="(p) => emit('a2ui-user-action', p)"
+        @retry="(id) => emit('retry', id)"
+        @dismiss-failed="(id) => emit('dismiss-failed', id)"
+        @regenerate="(msg) => emit('regenerate', msg)"
+      />
+    </div>
   </article>
 </template>
 
@@ -132,5 +134,12 @@ const visibleTools = computed(() =>
   border-radius: 8px;
   background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   color: var(--color-text-secondary);
+}
+
+.turn-block__response {
+  position: relative;
+  padding-top: var(--space-1);
+  margin-top: var(--space-1);
+  border-top: 1px solid color-mix(in srgb, var(--glass-border) 50%, transparent);
 }
 </style>

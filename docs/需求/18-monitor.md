@@ -22,23 +22,25 @@
 | 系统最近发生了哪些管理操作？ | 活动日志 Audit | `audit_logs` / `/api/v1/monitor/audit` | ✅ 已实现 |
 | Team / Agent 运行时现在正在发生什么？ | 实时事件 Events | `/v1/ws`（`team_run_*`、`alert.fired` 等） | ✅ 基础已实现；Phase 1d 收窄 Chat `runner.completion` 列表展示 |
 | 刚才那轮对话是否成功结束？耗时/Token 多少？ | **Runs（Traces Tab）** | `model_token_usage_events`（`recordTurnUsage`） | ✅ 已实现；Phase 1d 增强关联与跳转 |
-| Runner 窗口内成功率/错误率？ | Usage → **Runner 指标** | `GET /v1/monitor/runner-metrics` | ✅ 已实现；点击下钻 Runs |
+| Runner 窗口内成功率/错误率？ | Usage → **Runner 指标** | `GET /v1/monitor/runner-metrics` | ✅ 已实现；点击下钻 Runs；Latency P50/P95/P99 |
 | 哪些模型调用慢、失败、成本高？ | Usage 总览 + **Runs** | `model_token_usage_events` 聚合 + 单次运行列表 | ✅ 已实现 |
-| 错误率超阈如何告警？ | **Alerts** 规则 | `monitor_alert_rules` + `alert.fired` + Webhook/Channel | ✅ 已实现 |
+| 错误率超阈如何告警？ | **Alerts** 规则 | `monitor_alert_rules` + `alert.fired` + Webhook/Channel | ✅ 已实现；冷却持久化 + 评估批量化 |
 | 某次对话为什么失败？ | **Runs 详情**（原 Trace 详情） | Summary + Flow（trace_id）+ Waterfall + Span | ✅ 已实现 |
-| 某次对话/Team 执行卡在哪一步？ | Logs → **流程日志** | WS `flow_log`（`TraceEmitter`） | ✅ 已实现 |
+| 某次对话/Team 执行卡在哪一步？ | Logs → **流程日志** | WS `flow_log`（`TraceEmitter`） | ✅ 已实现；文件落盘 + gzip |
 | Gateway / 插件底层 stderr 是否正常？ | Logs → **进程日志** | WS `log` + `enable_log` | ✅ 已实现 |
+| 能否自动诊断问题根因？ | **AI 诊断** | `GenerateDiagnosticBundle` + `RootCauseEngine` | ✅ 已实现 |
 
 ### 0.2 模块实现状态
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
 | Audit | ✅ 已实现 | 表格、刷新、分页（limit/offset）、事件类型/实体类型/操作者/关键字筛选、详情弹窗、扩展字段（actor/ip/user_agent/severity/metadata_json） |
-| Alerts | ✅ 已实现 | `MonitorAlertRules`：规则 CRUD、`runner.error_rate`、Webhook/Channel 出站、`cooldown_minutes` |
+| Alerts | ✅ 已实现 | `MonitorAlertRules`：规则 CRUD、`runner.error_rate`、Webhook/Channel 出站、`cooldown_minutes`；MON-OPT-02 冷却持久化 + firing 状态机；MON-OPT-03 评估批量化 + RingBuffer；MON-OPT-06 告警注册表 |
 | Events | ✅ 已实现 | WS 实时流 + `alert.fired`；**方案 C**：已关联 Runs 的 Chat `runner.completion` 默认不出现在主列表 |
-| Runs（路由 Tab 名 `traces`，列表标题 Runs） | ✅ 单次运行真相源 | `ListUsageEvents` 列表 + 详情（Flow/Waterfall/Span/JSONL 导出）；「打开会话」+ `usage_event_id` 深链 |
-| Usage | ✅ 已实现 | `MonitorRunnerMetrics` + `MonitorUsageDashboardLink`（完整大盘在 `/overview`）；Runner 下钻 Traces |
-| Logs | ✅ 已实现 | **二级 Tab**：流程日志（默认连接）+ 进程日志（`process_log_enabled`）；共享一条 WS；流程 Tab 可暂停/清除；进程 Tab 切离丢弃入站、切回恢复 |
+| Runs（路由 Tab 名 `traces`，列表标题 Runs） | ✅ 单次运行真相源 | `ListUsageEvents` 列表 + 详情（Flow/Waterfall/Span/JSONL 导出）；「打开会话」+ `usage_event_id` 深链；MON-OPT-05 Trace 写入回路 + 历史回填 |
+| Usage | ✅ 已实现 | `MonitorRunnerMetrics` + `MonitorUsageDashboardLink`（完整大盘在 `/overview`）；Runner 下钻 Traces；Latency P50/P95/P99 |
+| Logs | ✅ 已实现 | **二级 Tab**：流程日志（默认连接）+ 进程日志（`process_log_enabled`）；共享一条 WS；流程 Tab 可暂停/清除；进程 Tab 切离丢弃入站、切回恢复；LOG-01 文件落盘 + gzip + 30 天清理 |
+| AI 诊断 | ✅ 已实现 | DIAG-01 诊断包 + DIAG-02 根因分析引擎（5 条内置规则 + 置信度评分） |
 
 ### 0.3 非目标
 
@@ -433,4 +435,4 @@ Tab 与深链 query（刷新可保留）：
 
 ---
 
-*文档版本：2026-05-21 — 对齐代码：6 Tab（含 Alerts）、Runner 指标、方案 C Phase 1d ✅、Logs 流程/进程二级 Tab。实现差距见 [18-monitor-development.md](./18-monitor-development.md)。*
+*文档版本：2026-05-29 — 对齐代码：6 Tab（含 Alerts）、Runner 指标、方案 C Phase 1d ✅、Logs 流程/进程二级 Tab、MON-OPT-01~06 ✅、LOG-01/TRACE-01/DIAG-01/02 ✅、Latency P50/P95/P99 ✅、LOG-03 P0/P1/P2 ✅、REDLINE ✅、QUALITY ✅。实现差距见 [18-monitor-development.md](./18-monitor-development.md)。*

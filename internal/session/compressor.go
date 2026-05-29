@@ -21,15 +21,19 @@ type MemoryResync interface {
 	DeleteSessionEventEntities(ctx context.Context, sessionID string) error
 }
 
-// Compressor runs asynchronous session-context compression and syncs snapshots to trpc session state.
+type AgentKeyLookup interface {
+	GetAgentByID(ctx context.Context, id string) (biz.Agent, error)
+}
+
 type Compressor struct {
 	sessionReader  biz.SessionReader
 	messageReader  biz.MessageReader
 	messageWriter  biz.MessageWriter
-	summaryRepo    biz.SummaryRepo
+	summaryReader  biz.SummaryReader
+	summaryWriter  biz.SummaryWriter
 	contextUpdater biz.ContextUpdater
 	compressRepo   biz.CompressRepo
-	Agents         biz.AgentRepository
+	agents         AgentKeyLookup
 	Runtime        *Runtime
 	Compress       compress.Compressor
 	Memory         MemoryResync
@@ -42,8 +46,8 @@ var _ biz.NativeTurnCompressor = (*Compressor)(nil)
 var _ biz.DurableTurnCompressor = (*Compressor)(nil)
 
 func NewCompressor(
-	sessions biz.SessionRepository,
-	agents biz.AgentRepository,
+	sessions biz.SessionRepo,
+	agents AgentKeyLookup,
 	runtime *Runtime,
 	memory MemoryResync,
 	comp compress.Compressor,
@@ -53,10 +57,11 @@ func NewCompressor(
 		sessionReader:  sessions,
 		messageReader:  sessions,
 		messageWriter:  sessions,
-		summaryRepo:    sessions,
+		summaryReader:  sessions,
+		summaryWriter:  sessions,
 		contextUpdater: sessions,
 		compressRepo:   sessions,
-		Agents:         agents,
+		agents:         agents,
 		Runtime:        runtime,
 		Memory:         memory,
 		Compress:       comp,
@@ -123,14 +128,14 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 
 	if !skipMinGap && !atFullContextUsage(sess) {
 		minGap := compressMinGapFromAgent(ag)
-		if ts, err := c.summaryRepo.LatestSessionSummaryTime(ctx, sessionID); err == nil {
+		if ts, err := c.summaryReader.LatestSessionSummaryTime(ctx, sessionID); err == nil {
 			if compressDebounceActive(ts, minGap, time.Now()) {
 				return nil
 			}
 		}
 	}
 
-	maxSummarized, err := c.summaryRepo.MaxSessionSummaryToTurn(ctx, sessionID)
+	maxSummarized, err := c.summaryReader.MaxSessionSummaryToTurn(ctx, sessionID)
 	if err != nil {
 		return err
 	}
@@ -217,7 +222,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		return nil
 	}
 
-	exists, existsErr := c.summaryRepo.SessionSummaryExists(ctx, sessionID, fromTurn, toTurn)
+	exists, existsErr := c.summaryReader.SessionSummaryExists(ctx, sessionID, fromTurn, toTurn)
 	if existsErr != nil && c.EventBus != nil {
 		event.SessionSysLogWarn(ctx, sessionID, "system.session.compress", "幂等检查失败",
 			event.P("error", existsErr.Error()))
@@ -239,11 +244,11 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 			TokenEstimate:   roughTokenEstimate(md),
 			CreatedAt:       time.Now().UTC().Format(time.RFC3339),
 		}
-		if err := c.summaryRepo.InsertSessionSummary(txCtx, row); err != nil {
+		if err := c.summaryWriter.InsertSessionSummary(txCtx, row); err != nil {
 			return err
 		}
 
-		allRows, err := c.summaryRepo.ListSessionSummaries(txCtx, sessionID)
+		allRows, err := c.summaryReader.ListSessionSummaries(txCtx, sessionID)
 		if err != nil {
 			return err
 		}
@@ -256,8 +261,8 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		}
 
 		author := strings.TrimSpace(ag.AgentKey)
-		if c.Agents != nil && strings.TrimSpace(sess.AgentID) != "" {
-			if a, e := c.Agents.GetAgentByID(txCtx, sess.AgentID); e == nil {
+		if c.agents != nil && strings.TrimSpace(sess.AgentID) != "" {
+			if a, e := c.agents.GetAgentByID(txCtx, sess.AgentID); e == nil {
 				if k := strings.TrimSpace(a.AgentKey); k != "" {
 					author = k
 				}
@@ -286,7 +291,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 
 		preview := firstSummaryLine(txMerged)
 		if preview != "" {
-			if err := c.summaryRepo.UpdateSessionListSummary(txCtx, sessionID, preview); err != nil {
+			if err := c.summaryWriter.UpdateSessionListSummary(txCtx, sessionID, preview); err != nil {
 				event.SysLogWarn("session.compress", "update list summary failed", event.P("session_id", sessionID), event.P("error", err.Error()))
 			}
 		}
@@ -299,8 +304,8 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 
 	if c.Runtime != nil {
 		author := strings.TrimSpace(ag.AgentKey)
-		if c.Agents != nil && strings.TrimSpace(sess.AgentID) != "" {
-			if a, e := c.Agents.GetAgentByID(ctx, sess.AgentID); e == nil {
+		if c.agents != nil && strings.TrimSpace(sess.AgentID) != "" {
+			if a, e := c.agents.GetAgentByID(ctx, sess.AgentID); e == nil {
 				if k := strings.TrimSpace(a.AgentKey); k != "" {
 					author = k
 				}

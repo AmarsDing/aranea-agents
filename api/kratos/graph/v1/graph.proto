@@ -252,6 +252,8 @@ message ListGraphExecutionsRequest {
   string graph_id = 1 [(google.api.field_behavior) = REQUIRED];
   int32 page_size = 2;
   string page_token = 3;
+  optional string status = 4;
+  optional google.protobuf.Timestamp started_after = 5;
 }
 
 message GraphExecutionSummary {

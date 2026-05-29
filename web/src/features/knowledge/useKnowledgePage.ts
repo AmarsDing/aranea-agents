@@ -21,6 +21,9 @@ export function useKnowledgePage() {
   const ingestFile = ref<File | null>(null);
   const searchQuery = ref("");
   const searchTopK = ref(5);
+  const searchHybridMode = ref("auto");
+  const searchRewriteStrategy = ref("");
+  const searchUseRerank = ref(false);
   const searchResults = ref<KnowledgeChunk[]>([]);
   const searchLoading = ref(false);
   const searchRan = ref(false);
@@ -294,7 +297,10 @@ export function useKnowledgePage() {
       searchResults.value = await knowledgeStore.search({
         collection_id: selectedId.value,
         query: searchQuery.value.trim(),
-        top_k: searchTopK.value
+        top_k: searchTopK.value,
+        hybrid_search: searchHybridMode.value || undefined,
+        rewrite_strategy: searchRewriteStrategy.value || undefined,
+        use_rerank: searchUseRerank.value ? true : undefined
       });
     } catch (e) {
       $q.notify({ type: "negative", message: friendlyError(e) || "检索失败" });
@@ -364,6 +370,9 @@ export function useKnowledgePage() {
     ingestFile,
     searchQuery,
     searchTopK,
+    searchHybridMode,
+    searchRewriteStrategy,
+    searchUseRerank,
     searchResults,
     searchLoading,
     searchRan,

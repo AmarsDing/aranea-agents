@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -31,7 +30,7 @@ func slugify(value string) string {
 	value = regexp.MustCompile(`[^a-z0-9\-_]+`).ReplaceAllString(value, "-")
 	value = strings.Trim(value, "-_")
 	if value == "" {
-		value = fmt.Sprintf("skill-%d", len(value))
+		value = "skill-" + newID()[:8]
 	}
 	return value
 }
@@ -88,23 +87,23 @@ func validationError(msg string) error {
 // path-traversal escapes after filepath.Clean). TPM-P1-07.
 func ensurePathWithin(absBase, relName string) error {
 	if filepath.IsAbs(relName) {
-		return fmt.Errorf("unsafe skill file path (absolute): %s", relName)
+		return unsafePathError(ErrUnsafePathAbsolute, relName)
 	}
 	cleaned := filepath.Clean(relName)
 	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) || strings.Contains(cleaned, "..") {
-		return fmt.Errorf("unsafe skill file path (traversal): %s", relName)
+		return unsafePathError(ErrUnsafePathTraversal, relName)
 	}
 	joined := filepath.Join(absBase, cleaned)
 	absJoined, err := filepath.Abs(joined)
 	if err != nil {
-		return fmt.Errorf("resolve skill file path: %w", err)
+		return detailErr(ErrResolvePath, err.Error())
 	}
 	rel, err := filepath.Rel(absBase, absJoined)
 	if err != nil {
-		return fmt.Errorf("rel skill file path: %w", err)
+		return detailErr(ErrRelPath, err.Error())
 	}
 	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("unsafe skill file path (escapes base): %s", relName)
+		return unsafePathError(ErrUnsafePathEscapes, relName)
 	}
 	return nil
 }

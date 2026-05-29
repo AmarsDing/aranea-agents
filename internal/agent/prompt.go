@@ -12,7 +12,7 @@ import (
 type Deps struct {
 	Agents       biz.AgentRepository
 	AgentUC      *biz.AgentUsecase
-	ToolsCatalog biz.ToolRepo // optional; with Agents, used when AgentUC is nil to still resolve GetEffectiveTools
+	ToolsCatalog biz.ToolCatalogReader // optional; with Agents, used when AgentUC is nil to still resolve GetEffectiveTools
 	// SQLiteSessionMemory reflects whether Runner memory persists session entities (SessionMemoryStore wired).
 	SQLiteSessionMemory bool
 	// AgentCategory resolves 岗位职责 for preview. PGO-1.

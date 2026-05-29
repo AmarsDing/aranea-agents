@@ -66,6 +66,10 @@ export type SearchKnowledgeQuery = {
   top_k?: number;
   min_score?: number;
   filter_json?: string;
+  use_rerank?: boolean;
+  rerank_candidates?: number;
+  rewrite_strategy?: string;
+  hybrid_search?: string;
 };
 
 export type EmbedderConfig = {

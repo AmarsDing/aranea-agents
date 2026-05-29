@@ -12,6 +12,8 @@ type teamGraphSessionRepo struct {
 	data *Data
 }
 
+var _ biz.TeamGraphSessionRepo = (*teamGraphSessionRepo)(nil)
+
 func NewTeamGraphSessionRepo(d *Data) biz.TeamGraphSessionRepo {
 	return &teamGraphSessionRepo{data: d}
 }

@@ -1,21 +1,24 @@
 /**
  * Chat runtime store — manages WS connection state, run status,
- * await-reply, and stop-generation. Split from the monolithic useChatStore.
+ * await-reply, stop-generation, and chat API gateway.
+ * Split from the monolithic useChatStore.
  */
-import { computed, ref } from "vue";
+import { ref } from "vue";
 import { defineStore } from "pinia";
 import {
   awaitUserReply,
+  cancelChatBackgroundJob,
   cancelPendingMessage,
   enqueueMessage,
   getPendingMessages,
   getRunStatus,
+  listChatOptions as apiListChatOptions,
   stopGeneration,
+  submitMessageFeedback as apiSubmitFeedback,
   updatePendingMessage,
   type PendingMessage,
 } from "../../features/chat/api";
-import type { RunStatus } from "../../features/chat/types";
-import { useChatSessionStore } from "./sessionStore";
+import type { ChatOption, RunStatus } from "../../features/chat/types";
 
 export const useChatRuntimeStore = defineStore("chatRuntime", () => {
   const wsConnectedBySession = ref<Record<string, boolean>>({});
@@ -24,11 +27,9 @@ export const useChatRuntimeStore = defineStore("chatRuntime", () => {
     wsConnectedBySession.value[sessionId] = connected;
   }
 
-  const wsConnected = computed(() => {
-    const session = useChatSessionStore();
-    const sid = session.currentSessionId();
-    return sid ? (wsConnectedBySession.value[sid] ?? false) : false;
-  });
+  function isWsConnected(sessionId: string): boolean {
+    return wsConnectedBySession.value[sessionId] ?? false;
+  }
 
   async function fetchRunStatus(sessionId: string): Promise<RunStatus> {
     return getRunStatus(sessionId);
@@ -58,13 +59,29 @@ export const useChatRuntimeStore = defineStore("chatRuntime", () => {
     return updatePendingMessage(sessionId, pendingId, content);
   }
 
+  async function submitFeedback(payload: {
+    session_id: string;
+    message_id: string;
+    rating: "positive" | "negative";
+  }) {
+    return apiSubmitFeedback(payload);
+  }
+
+  async function cancelBackgroundJob(id: string, source: string): Promise<boolean> {
+    return cancelChatBackgroundJob(id, source);
+  }
+
+  async function listChatOptions(type?: string): Promise<ChatOption[]> {
+    return apiListChatOptions(type);
+  }
+
   function deleteSessionRuntime(sessionId: string) {
     delete wsConnectedBySession.value[sessionId];
   }
 
   return {
     wsConnectedBySession,
-    wsConnected,
+    isWsConnected,
     setWsConnected,
     fetchRunStatus,
     submitAwaitReply,
@@ -73,6 +90,9 @@ export const useChatRuntimeStore = defineStore("chatRuntime", () => {
     fetchPendingMessages,
     cancelPending,
     updatePending,
+    submitFeedback,
+    cancelBackgroundJob,
+    listChatOptions,
     deleteSessionRuntime,
   };
 });

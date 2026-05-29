@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	bizskill "aranea-agents/internal/biz/skill"
 	dataent "aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/agent"
 	"aranea-agents/internal/data/ent/platformskill"
@@ -25,6 +26,8 @@ import (
 type skillRepo struct {
 	data *Data
 }
+
+var _ bizskill.Repo = (*skillRepo)(nil)
 
 // NewSkillRepo implements biz.SkillRepo via Ent (pkg-backend-to-kratos §2.2 — only entClient, no parallel sqlite pool).
 func NewSkillRepo(d *Data) biz.SkillRepo {
