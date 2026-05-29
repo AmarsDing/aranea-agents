@@ -1,6 +1,6 @@
 <template>
   <q-dialog :model-value="modelValue" @update:model-value="$emit('update:modelValue', $event)">
-    <q-card class="provider-trend-dialog app-dialog-card app-dialog-card--lg">
+    <q-card class="provider-trend-dialog app-dialog-card app-dialog-card--lg app-glass-dialog">
       <q-card-section class="app-glass-dialog__head row items-start justify-between">
         <div class="col min-width-0">
           <div class="app-glass-dialog__title">模型历史趋势</div>
@@ -13,6 +13,7 @@
 
       <q-separator />
 
+      <div class="app-glass-dialog__scroll">
       <q-card-section v-if="row" class="app-glass-dialog__body provider-trend-dialog__body">
         <q-inner-loading :showing="loading">
           <q-spinner color="primary" size="32px" />
@@ -68,6 +69,7 @@
           </div>
         </div>
       </q-card-section>
+      </div>
     </q-card>
   </q-dialog>
 </template>
@@ -78,7 +80,7 @@ import { graphic, type EChartsCoreOption } from "echarts/core";
 import type { ModelUsageOverview } from "../../features/usage/types";
 import type { PlatformResource, ProviderConfig } from "../../features/platform/types";
 import { toNullableNumber } from "../../features/platform/providerUtils";
-import { baseChartOption, usageChartPalette } from "../../features/usage/usageEcharts";
+import { baseChartOption, readCssVar, usageChartPalette } from "../../features/usage/usageEcharts";
 import { useUsageChart } from "../../features/usage/useUsageChart";
 import {
   formatTrendLabel,
@@ -142,11 +144,10 @@ const detailItems = computed(() => [
 
 function buildChartOption(): EChartsCoreOption {
   const palette = usageChartPalette();
-  const cs = getComputedStyle(document.documentElement);
-  const accent = palette.series[2] ?? (cs.getPropertyValue("--color-accent").trim() || "#E9A23B");
-  const glassElevated = cs.getPropertyValue("--glass-elevated").trim() || "rgba(15, 23, 42, 0.92)";
-  const textPrimary = cs.getPropertyValue("--color-text-primary").trim() || "#e2e8f0";
-  const onAccent = cs.getPropertyValue("--color-on-accent").trim() || "#fff";
+  const accent = palette.series[2] ?? readCssVar("--color-accent", "#E9A23B");
+  const glassElevated = readCssVar("--glass-elevated", "rgba(15, 23, 42, 0.92)");
+  const textPrimary = readCssVar("--color-text-primary", "#e2e8f0");
+  const onAccent = readCssVar("--color-on-accent", "#fff");
   const points = trends.value;
   const labels = points.map((p) => formatTrendLabel(p.date_key, false));
   const isCost = props.metric === "cost";

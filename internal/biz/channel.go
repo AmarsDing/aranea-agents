@@ -2,6 +2,7 @@ package biz
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"strings"
 	"sync"
@@ -137,12 +138,23 @@ type ChannelRepo interface {
 }
 
 type ChannelUsecase struct {
-	repo   ChannelRepo
-	crypto *CredentialCrypto
+	repo             ChannelRepo
+	peers            ChannelPeerSessionRepo
+	inboundReceipts  ChannelInboundReceiptRepo
+	agents           AgentRepository
+	teams            TeamRepository
+	crypto           *CredentialCrypto
 }
 
-func NewChannelUsecase(repo ChannelRepo, crypto *CredentialCrypto) *ChannelUsecase {
-	return &ChannelUsecase{repo: repo, crypto: crypto}
+func NewChannelUsecase(
+	repo ChannelRepo,
+	peers ChannelPeerSessionRepo,
+	inboundReceipts ChannelInboundReceiptRepo,
+	agents AgentRepository,
+	teams TeamRepository,
+	crypto *CredentialCrypto,
+) *ChannelUsecase {
+	return &ChannelUsecase{repo: repo, peers: peers, inboundReceipts: inboundReceipts, agents: agents, teams: teams, crypto: crypto}
 }
 
 func (u *ChannelUsecase) Catalog() []ChannelCatalogItem {
@@ -451,6 +463,62 @@ func (u *ChannelUsecase) updateTestMetadata(ctx context.Context, row Channel, re
 
 func (ch Channel) ParseConfig() (ChannelConfig, error) {
 	return parseChannelConfig(ch.ConfigJSON)
+}
+
+func (u *ChannelUsecase) DeletePeerBindingsByChannelID(ctx context.Context, channelID string) (int, error) {
+	if u.peers == nil {
+		return 0, nil
+	}
+	return u.peers.DeleteByChannelID(ctx, channelID)
+}
+
+func (u *ChannelUsecase) GetPeerSession(ctx context.Context, channelID, peerKey string) (ChannelPeerSession, error) {
+	if u.peers == nil {
+		return ChannelPeerSession{}, sql.ErrNoRows
+	}
+	return u.peers.GetByChannelAndPeer(ctx, channelID, peerKey)
+}
+
+func (u *ChannelUsecase) CreatePeerSession(ctx context.Context, row ChannelPeerSession) (ChannelPeerSession, error) {
+	if u.peers == nil {
+		return ChannelPeerSession{}, nil
+	}
+	return u.peers.Create(ctx, row)
+}
+
+func (u *ChannelUsecase) UpdatePeerSessionID(ctx context.Context, channelID, peerKey, sessionID string) (ChannelPeerSession, error) {
+	if u.peers == nil {
+		return ChannelPeerSession{}, nil
+	}
+	return u.peers.UpdateSessionID(ctx, channelID, peerKey, sessionID)
+}
+
+func (u *ChannelUsecase) TryClaimInbound(ctx context.Context, channelID, platform, messageKey, peerID, text string) (bool, error) {
+	return TryClaimInbound(ctx, u.inboundReceipts, channelID, platform, messageKey, peerID, text)
+}
+
+func (u *ChannelUsecase) ResolveChannelTarget(ctx context.Context, routing ChannelRouting, peerID string) (string, string, string, error) {
+	return ResolveChannelTarget(ctx, u.agents, u.teams, routing, peerID)
+}
+
+func (u *ChannelUsecase) GetTeamByID(ctx context.Context, teamID string) (Team, error) {
+	if u.teams == nil {
+		return Team{}, errors.InternalServer("CHANNEL", "team repository not configured")
+	}
+	return u.teams.GetTeamByID(ctx, teamID)
+}
+
+func (u *ChannelUsecase) AgentKeyResolver(ctx context.Context) func(agentID string) string {
+	if u.agents == nil {
+		return nil
+	}
+	return func(agentID string) string {
+		ag, err := u.agents.GetAgentByID(ctx, strings.TrimSpace(agentID))
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(ag.AgentKey)
+	}
 }
 
 func (ch Channel) ParseMetadata() (map[string]any, error) {

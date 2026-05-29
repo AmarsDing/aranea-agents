@@ -1,10 +1,9 @@
 import { onMounted, ref } from "vue";
 import { storeToRefs } from "pinia";
 import { useQuasar } from "quasar";
-import type { A2AAgentCard, A2AInvokeResult, A2ARuntimeConfig, RegisterRemoteAgentInput, DiscoverRemoteInput } from "./types";
+import type { A2AAgentCard, A2AInvokeResult, RegisterRemoteAgentInput, DiscoverRemoteInput } from "./types";
 import { useA2AStore } from "../../stores/a2a";
 
-import { getA2AConfig } from "./api";
 import {
   A2A_AUDIT_TABLE_COLUMNS,
   A2A_CARD_TABLE_COLUMNS,
@@ -14,16 +13,16 @@ import {
 export function useA2APage() {
   const $q = useQuasar();
   const a2aStore = useA2AStore();
-  const { agentCards: agents, auditLog: auditRows, remoteAgents, loading } = storeToRefs(a2aStore);
+  const { agentCards: agents, auditLog: auditRows, auditTotal, remoteAgents, loading, runtimeConfig } = storeToRefs(a2aStore);
 
   const tab = ref("discover");
   const auditLoading = ref(false);
   const invokeLoading = ref(false);
   const remoteLoading = ref(false);
   const remoteDiscoverLoading = ref(false);
+  const remoteRegisterLoading = ref(false);
   const error = ref("");
   const invokeResult = ref<A2AInvokeResult | null>(null);
-  const runtimeConfig = ref<A2ARuntimeConfig | null>(null);
   const remotePreview = ref<A2AAgentCard | null>(null);
 
   const discoverWorkspace = ref("");
@@ -117,7 +116,7 @@ export function useA2APage() {
       $q.notify({ type: "warning", message: "请填写远程 URL" });
       return;
     }
-    remoteLoading.value = true;
+    remoteRegisterLoading.value = true;
     try {
       await a2aStore.registerRemote(input);
       remotePreview.value = null;
@@ -127,7 +126,7 @@ export function useA2APage() {
     } catch (e) {
       $q.notify({ type: "negative", message: e instanceof Error ? e.message : "注册失败" });
     } finally {
-      remoteLoading.value = false;
+      remoteRegisterLoading.value = false;
     }
   }
 
@@ -165,18 +164,20 @@ export function useA2APage() {
     if (tab.value === "discover") void loadDiscover();
     else if (tab.value === "audit") void loadAudit();
     else if (tab.value === "remote") void loadRemote();
+    else if (tab.value === "invoke") void loadDiscover();
   }
 
   onMounted(() => {
     void loadDiscover();
     void loadAudit();
     void loadRemote();
-    getA2AConfig().then((c) => { runtimeConfig.value = c; }).catch(() => {});
+    void a2aStore.loadRuntimeConfig();
   });
 
   return {
     agents,
     auditRows,
+    auditTotal,
     remoteAgents,
     loading,
     tab,
@@ -184,6 +185,7 @@ export function useA2APage() {
     invokeLoading,
     remoteLoading,
     remoteDiscoverLoading,
+    remoteRegisterLoading,
     error,
     invokeResult,
     remotePreview,

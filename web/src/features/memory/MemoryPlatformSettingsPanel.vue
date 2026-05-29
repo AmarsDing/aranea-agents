@@ -1,4 +1,4 @@
-// Container: platform memory worker / policy toggles (persisted to system_settings).
+// Container: approved — platform memory policy toggles (persisted to system_settings).
 <template>
   <q-card flat bordered class="memory-card">
     <q-card-section class="row items-center justify-between">

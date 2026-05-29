@@ -275,6 +275,7 @@ export function subscribeMonitorRuntimeEventsWs(
 
 export async function listMonitorTraceEvents(query: ModelUsageQuery = {}): Promise<MonitorTraceEvent[]> {
   const rows = await listModelUsageEvents(query);
+  // Safe cast: tokenEventFromUnknown covers all fields and MonitorTraceEvent extends ModelTokenUsageEvent
   return rows as MonitorTraceEvent[];
 }
 
@@ -329,7 +330,11 @@ export async function getRunnerMetrics(windowMinutes = 60): Promise<RunnerMetric
     total_runs: Number(r.total_runs ?? r.totalRuns ?? 0),
     error_runs: Number(r.error_runs ?? r.errorRuns ?? 0),
     error_rate: Number(r.error_rate ?? r.errorRate ?? 0),
-    success_rate: Number(r.success_rate ?? r.successRate ?? 0)
+    success_rate: Number(r.success_rate ?? r.successRate ?? 0),
+    avg_duration_ms: r.avg_duration_ms != null ? Number(r.avg_duration_ms ?? r.avgDurationMs) : undefined,
+    p50_duration_ms: r.p50_duration_ms != null ? Number(r.p50_duration_ms ?? r.p50DurationMs) : undefined,
+    p95_duration_ms: r.p95_duration_ms != null ? Number(r.p95_duration_ms ?? r.p95DurationMs) : undefined,
+    p99_duration_ms: r.p99_duration_ms != null ? Number(r.p99_duration_ms ?? r.p99DurationMs) : undefined
   };
 }
 

@@ -1,4 +1,3 @@
-// Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
   <div class="artifact-preview">
     <div v-if="loading" class="row justify-center q-py-lg">
@@ -42,7 +41,8 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { previewArtifact } from "./api";
+import { useArtifactStore } from "../../stores/artifact";
+import { formatBytes } from "../../shared/format";
 import type { ArtifactMeta, ArtifactPreview } from "./types";
 
 const props = defineProps<{
@@ -55,6 +55,7 @@ defineEmits<{
   download: [meta: ArtifactMeta];
 }>();
 
+const artifactStore = useArtifactStore();
 const preview = ref<ArtifactPreview | null>(null);
 const loading = ref(false);
 const error = ref("");
@@ -78,13 +79,6 @@ const pdfSrc = computed(() => {
   return `data:application/pdf;base64,${preview.value.data_base64}`;
 });
 
-function formatBytes(n: number) {
-  if (!n) return "0 B";
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 async function loadPreview() {
   if (!props.artifactId) {
     preview.value = null;
@@ -93,7 +87,7 @@ async function loadPreview() {
   loading.value = true;
   error.value = "";
   try {
-    preview.value = await previewArtifact(props.artifactId, props.version);
+    preview.value = await artifactStore.loadPreview(props.artifactId, props.version);
   } catch (e) {
     error.value = e instanceof Error ? e.message : "加载预览失败";
     preview.value = null;

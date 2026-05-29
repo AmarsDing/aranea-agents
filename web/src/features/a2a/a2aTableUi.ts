@@ -6,6 +6,17 @@ import {
   registryColActions
 } from "../ui/registryTableColumns";
 
+export const A2A_AUTH_TYPE_LABELS: Record<string, string> = {
+  none: "无",
+  api_key: "API Key",
+  bearer: "Bearer",
+  mtls: "mTLS"
+};
+
+export function a2aAuthTypeLabel(type: string) {
+  return A2A_AUTH_TYPE_LABELS[type] ?? type ?? "—";
+}
+
 /** A2A Discover 卡片列表 */
 export const A2A_CARD_TABLE_COLUMNS: QTableColumn<A2AAgentCard>[] = [
   registryCol<A2AAgentCard>("agent_id", "Agent ID", "agent_id", "left", REGISTRY_COL_W.agent),

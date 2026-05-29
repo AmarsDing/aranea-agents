@@ -41,7 +41,7 @@
           class="monitor-log-toolbar-btn"
           icon="delete_sweep"
           label="清除"
-          @click="confirmClear"
+          @click="$emit('clear')"
         />
       </div>
     </q-card-section>
@@ -68,12 +68,14 @@
 
 <script setup lang="ts">
 import { computed, inject, ref } from "vue";
-import { useQuasar } from "quasar";
 import type { MonitorLogHub } from "../../features/monitor/useLogStreamHub";
 import type { MonitorLogLine, StreamState } from "../../features/monitor/types";
 import LogLevelToggle, { type LogLevel } from "./LogLevelToggle.vue";
 
-const $q = useQuasar();
+const props = defineProps<{ }>();
+const emit = defineEmits<{
+  clear: [];
+}>();
 
 const _hub = inject<MonitorLogHub>("monitorLogHub");
 if (!_hub) {
@@ -133,16 +135,5 @@ function lineClass(line: MonitorLogLine): string {
 
 function togglePause() {
   hub.setFlowPaused(!hub.flowPaused.value);
-}
-
-function confirmClear() {
-  $q.dialog({
-    title: "清除日志",
-    message: "确定清除所有流程日志？此操作不可撤销。",
-    cancel: true,
-    persistent: true
-  }).onOk(() => {
-    hub.clearFlow();
-  });
 }
 </script>

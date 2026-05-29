@@ -329,20 +329,19 @@ func TestEnsureChannelSessionRebindsStalePeerBind(t *testing.T) {
 	agents := ingressAgentRepo{id: agentID}
 	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil)
 	h := &ChannelIngress{
-		peers:    peerRepo,
+		channels: biz.NewChannelUsecase(nil, peerRepo, nil, agents, nil, nil),
 		sessions: sessions,
-		agents:   agents,
 	}
 	ch := biz.Channel{
 		ID:         channelID,
 		Key:        "feishu_main",
 		ConfigJSON: `{"type":"feishu","routing":{"default_agent_id":"` + agentID + `"}}`,
 	}
-	req, err := h.prepareChannelChatRequest(context.Background(), ch, "feishu", peerKey, peerKey, "hello")
+	input, err := h.prepareChannelChatRequest(context.Background(), ch, "feishu", peerKey, peerKey, "hello", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := strings.TrimSpace(req.GetSessionId())
+	got := strings.TrimSpace(input.SessionID)
 	if got == "" || got == staleID {
 		t.Fatalf("session id = %q, want new session (not stale %q)", got, staleID)
 	}
@@ -383,20 +382,19 @@ func TestEnsureChannelSessionReusesLivePeerBind(t *testing.T) {
 	agents := ingressAgentRepo{id: agentID}
 	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil)
 	h := &ChannelIngress{
-		peers:    peerRepo,
+		channels: biz.NewChannelUsecase(nil, peerRepo, nil, agents, nil, nil),
 		sessions: sessions,
-		agents:   agents,
 	}
 	ch := biz.Channel{
 		ID:         channelID,
 		Key:        "feishu_main",
 		ConfigJSON: `{"type":"feishu","routing":{"default_agent_id":"` + agentID + `"}}`,
 	}
-	req, err := h.prepareChannelChatRequest(context.Background(), ch, "feishu", peerKey, peerKey, "hello")
+	input, err := h.prepareChannelChatRequest(context.Background(), ch, "feishu", peerKey, peerKey, "hello", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(req.GetSessionId()); got != liveID {
+	if got := strings.TrimSpace(input.SessionID); got != liveID {
 		t.Fatalf("session id = %q, want %q", got, liveID)
 	}
 	if sessRepo.created != 0 {

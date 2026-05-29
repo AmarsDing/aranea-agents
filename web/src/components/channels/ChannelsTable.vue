@@ -20,7 +20,7 @@
           <div class="min-width-0">
             <div class="row items-center no-wrap q-gutter-xs">
               <q-icon v-if="isChannelConnected(props.row)" name="circle" color="positive" size="10px">
-                <q-tooltip>连接正常</q-tooltip>
+                <q-tooltip>{{ t('channelsPage.statusConnected') }}</q-tooltip>
               </q-icon>
               <div class="app-registry-cell-primary ellipsis">{{ props.row.name }}</div>
             </div>
@@ -83,7 +83,7 @@
             icon="link"
             @click="$emit('copyWebhook', props.row)"
           >
-            <q-tooltip>复制 Webhook URL</q-tooltip>
+            <q-tooltip>{{ t('channelsPage.copyWebhook') }}</q-tooltip>
           </q-btn>
           <q-btn
             flat
@@ -93,7 +93,7 @@
             icon="work_history"
             @click="$emit('ops', props.row)"
           >
-            <q-tooltip>查看 Job / Delivery</q-tooltip>
+            <q-tooltip>{{ t('channelsPage.viewOps') }}</q-tooltip>
           </q-btn>
           <q-btn
             flat
@@ -104,13 +104,13 @@
             :loading="testingId === props.row.id"
             @click="$emit('testConnection', props.row)"
           >
-            <q-tooltip>测试连接</q-tooltip>
+            <q-tooltip>{{ t('channelsPage.testConnection') }}</q-tooltip>
           </q-btn>
           <q-btn flat dense round class="channel-icon-btn" icon="edit" @click="$emit('edit', props.row)">
-            <q-tooltip>编辑</q-tooltip>
+            <q-tooltip>{{ t('channelsPage.edit') }}</q-tooltip>
           </q-btn>
           <q-btn flat dense round class="channel-icon-btn channel-icon-btn--danger" icon="delete" @click="$emit('remove', props.row)">
-            <q-tooltip>删除</q-tooltip>
+            <q-tooltip>{{ t('channelsPage.delete') }}</q-tooltip>
           </q-btn>
         </div>
       </q-td>
@@ -119,13 +119,14 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
 import ChannelPlatformAvatar from "./ChannelPlatformAvatar.vue";
 import type { ChannelCatalogItem, ChannelRow } from "../../features/channels/types";
 
 import {
-  CHANNEL_TABLE_COLUMNS,
+  channelTableColumns,
   catalogLabelForType,
   channelExternalID,
   channelMetadata,
@@ -137,6 +138,10 @@ import {
   receiveMode,
   statusQuasarColor
 } from "./channelUi";
+
+const { t } = useI18n();
+
+const CHANNEL_TABLE_COLUMNS = channelTableColumns(t);
 
 defineProps<{
   rows: ChannelRow[];

@@ -132,11 +132,10 @@ func TestExecuteAsyncGraphTarget_teamGraph(t *testing.T) {
 	defJSON := `{"version":1,"mode":"sequential","linked_graph_id":"linked-g-1","members":[{"agent_id":"agent-1","sort_order":1}]}`
 	exec := &stubGraphExecutor{}
 	h := &ChannelIngress{
-		teams: stubTeamRepo{team: biz.Team{
+		channels: biz.NewChannelUsecase(nil, nil, nil, channelTestAgentRepo{key: "worker-key"}, stubTeamRepo{team: biz.Team{
 			ID:             "team-42",
 			DefinitionJSON: defJSON,
-		}},
-		agents: channelTestAgentRepo{key: "worker-key"},
+		}}, nil),
 		graphs: exec,
 	}
 	target := biz.ChannelAsyncGraphTarget{TargetType: "team_graph", TeamID: "team-42"}
@@ -162,11 +161,10 @@ func TestExecuteAsyncGraphTarget_teamGraphFallbackGraphID(t *testing.T) {
 	defJSON := `{"version":1,"mode":"sequential","members":[{"agent_id":"agent-1","sort_order":1}]}`
 	exec := &stubGraphExecutor{}
 	h := &ChannelIngress{
-		teams: stubTeamRepo{team: biz.Team{
+		channels: biz.NewChannelUsecase(nil, nil, nil, channelTestAgentRepo{key: "k1"}, stubTeamRepo{team: biz.Team{
 			ID:             "team-7",
 			DefinitionJSON: defJSON,
-		}},
-		agents: channelTestAgentRepo{key: "k1"},
+		}}, nil),
 		graphs: exec,
 	}
 	target := biz.ChannelAsyncGraphTarget{TargetType: "team_graph", TeamID: "team-7"}

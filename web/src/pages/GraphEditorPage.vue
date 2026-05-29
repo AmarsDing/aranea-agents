@@ -66,8 +66,11 @@
         :undo-redo="undoRedo"
         @select-node="onSelectNode"
         @update-graph="markDirty"
+        @request-auto-layout="autoLayout"
+        @focus-property-panel="handleFocusPropertyPanel"
       />
       <GraphPropertyPanel
+        ref="propertyPanelRef"
         :selected-node="selectedNode"
         :graph-def="graphDef"
         :available-tools="availableTools"
@@ -124,12 +127,15 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from "vue";
 import GraphNodePalette from "../components/graph/GraphNodePalette.vue";
 import GraphEditorCanvas from "../components/graph/GraphEditorCanvas.vue";
 import GraphPropertyPanel from "../components/graph/GraphPropertyPanel.vue";
 import GraphVersionPanel from "../components/graph/GraphVersionPanel.vue";
 import GraphRunDialog from "../components/graph/GraphRunDialog.vue";
 import { useGraphEditorPage } from "../features/graph/useGraphEditorPage";
+
+const propertyPanelRef = ref<InstanceType<typeof GraphPropertyPanel> | null>(null);
 
 const {
   isDark,
@@ -162,6 +168,7 @@ const {
   selectedNode,
   canSave,
   onSelectNode,
+  onFocusPropertyPanel,
   markDirty,
   save,
   canUndo,
@@ -184,4 +191,8 @@ const {
   autoLayout,
   goToExecutions,
 } = useGraphEditorPage();
+
+function handleFocusPropertyPanel(nodeId: string) {
+  onFocusPropertyPanel(nodeId, propertyPanelRef.value?.$el ?? null);
+}
 </script>

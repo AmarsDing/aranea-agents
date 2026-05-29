@@ -37,7 +37,7 @@
         <span>状态预览</span>
       </div>
       <div class="graph-checkpoint-panel__json">{{ snapshotJson }}</div>
-      <div v-if="nextNodes.length" class="graph-checkpoint-panel__next q-mt-xs">
+      <div v-if="nextNodes?.length" class="graph-checkpoint-panel__next q-mt-xs">
         <span class="text-caption">下一步节点：</span>
         <q-badge v-for="n in nextNodes" :key="n" rounded color="primary" :label="n" class="q-mr-xs" />
       </div>

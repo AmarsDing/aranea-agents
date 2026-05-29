@@ -164,6 +164,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
       const created = await createSession({ agent_id: agentId, title, ...options });
       sessions.value.unshift(created);
       selectedSession.value = created;
+      emitSessionMutation({ type: "update", id: created.id, session: created });
       return created;
     } catch (e: any) {
       error.value = e?.message ?? String(e);
@@ -189,6 +190,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
         ...(teamSessions.value[teamId] ?? []),
       ];
       teamSelectedSessionId.value = created.id;
+      emitSessionMutation({ type: "update", id: created.id, session: created });
       return created;
     } catch (e: any) {
       error.value = e?.message ?? String(e);

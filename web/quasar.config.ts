@@ -11,7 +11,14 @@ export default configure(() => {
         browser: ["es2022", "firefox115", "chrome115", "safari14"]
       },
       vueRouterMode: "history",
-      distDir: "dist"
+      distDir: "dist",
+      rollupOptions: {
+        external: []
+      },
+      extendViteConf(viteConf) {
+        viteConf.resolve = viteConf.resolve || {};
+        viteConf.resolve.alias = viteConf.resolve.alias || {};
+      }
     },
     devServer: {
       // 勿与 configs/config.yaml 中 server.grpc.addr (:9000) 共用端口；前端开发固定 9001。

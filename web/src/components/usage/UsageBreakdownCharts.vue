@@ -35,6 +35,7 @@ import type { EChartsCoreOption } from "echarts/core";
 import type { ModelUsageBreakdownRow } from "../../features/usage/types";
 import { baseChartOption, usageChartPalette } from "../../features/usage/usageEcharts";
 import { useUsageChart } from "../../features/usage/useUsageChart";
+import { formatUsdCompact } from "../../features/usage/moneyFormat";
 import {
   USAGE_BREAKDOWN_TOP_N,
   buildModelCostSlices,
@@ -60,7 +61,7 @@ function pieOption(slices: UsageBreakdownSlice[]): EChartsCoreOption {
   const palette = usageChartPalette();
   return {
     textStyle: { color: palette.text, fontFamily: "inherit" },
-    tooltip: { trigger: "item", valueFormatter: (v: number) => `$${Number(v).toFixed(4)}` },
+    tooltip: { trigger: "item", valueFormatter: (v: number) => formatUsdCompact(v * 1_000_000) },
     legend: { orient: "vertical", right: 0, top: "middle", textStyle: { color: palette.text } },
     series: [
       {

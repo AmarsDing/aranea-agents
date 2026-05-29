@@ -44,7 +44,12 @@ export function useGraphTimeTravel(executionId: Ref<string>) {
     if (!executionId.value || !selectedCheckpoint.value) return null;
     editLoading.value = true;
     try {
-      const patch = JSON.parse(statePatchJson.value) as Record<string, unknown>;
+      let patch: Record<string, unknown>;
+      try {
+        patch = JSON.parse(statePatchJson.value) as Record<string, unknown>;
+      } catch {
+        throw new Error("状态 JSON 格式无效，请检查编辑内容");
+      }
       return await graphStore.editStateSnapshot(
         executionId.value,
         selectedCheckpoint.value.checkpointId,

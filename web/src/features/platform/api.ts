@@ -67,6 +67,7 @@ function agentCategoryWireToPlatform(raw: unknown): PlatformResource {
     agent_id: "",
     provider: "",
     model: "",
+    is_system: pickBool(r, "is_system", "isSystem"),
     config_json: pickStr(r, "config_json", "configJson") || "{}",
     metadata_json: pickStr(r, "metadata_json", "metadataJson") || "{}",
     created_at: pickStr(r, "created_at", "createdAt"),
@@ -101,6 +102,7 @@ function llmProviderWireToPlatform(raw: unknown): PlatformResource {
     agent_id: "",
     provider: pickStr(r, "provider", "provider"),
     model: pickStr(r, "model", "model"),
+    is_system: false,
     config_json: pickStr(r, "config_json", "configJson") || "{}",
     metadata_json: pickStr(r, "metadata_json", "metadataJson") || "{}",
     capabilities: {
@@ -136,6 +138,7 @@ function hookWireToPlatform(raw: unknown): PlatformResource {
     agent_id: "",
     provider: "",
     model: "",
+    is_system: false,
     config_json: pickStr(r, "config_json", "configJson") || "{}",
     metadata_json: pickStr(r, "metadata_json", "metadataJson") || "{}",
     created_at: pickStr(r, "created_at", "createdAt"),
@@ -160,6 +163,7 @@ function channelWireToPlatform(raw: unknown): PlatformResource {
     agent_id: pickStr(r, "agent_id", "agentId"),
     provider: pickStr(r, "provider", "provider"),
     model: pickStr(r, "model", "model"),
+    is_system: false,
     config_json: pickStr(r, "config_json", "configJson") || "{}",
     metadata_json: pickStr(r, "metadata_json", "metadataJson") || "{}",
     created_at: pickStr(r, "created_at", "createdAt"),
@@ -184,6 +188,7 @@ function cronWireToPlatform(raw: unknown): PlatformResource {
     agent_id: pickStr(r, "agent_id", "agentId"),
     provider: "",
     model: "",
+    is_system: false,
     config_json: pickStr(r, "config_json", "configJson") || "{}",
     metadata_json: pickStr(r, "metadata_json", "metadataJson") || "{}",
     created_at: pickStr(r, "created_at", "createdAt"),
@@ -211,6 +216,7 @@ function monitorEventWireToPlatform(raw: unknown): PlatformResource {
     agent_id: pickStr(r, "agent_id", "agentId"),
     provider: pickStr(r, "provider", "provider"),
     model: pickStr(r, "model", "model"),
+    is_system: false,
     config_json: pickStr(r, "config_json", "configJson") || "{}",
     metadata_json: pickStr(r, "metadata_json", "metadataJson") || "{}",
     created_at: pickStr(r, "created_at", "createdAt"),
@@ -235,6 +241,7 @@ function usageEventToPlatformTrace(e: ModelTokenUsageEvent): PlatformResource {
     agent_id: e.agent_id,
     provider: e.provider_code,
     model: e.model_api_id,
+    is_system: false,
     config_json: JSON.stringify({
       session_id: e.session_id,
       latency_ms: e.latency_ms,
@@ -263,6 +270,7 @@ function skillToPlatform(s: Skill): PlatformResource {
     agent_id: s.last_agent_id ?? "",
     provider: "",
     model: "",
+    is_system: false,
     config_json: JSON.stringify({
       tags: s.tags,
       extends_skill_id: s.extends_skill_id,
@@ -307,6 +315,7 @@ function avatarAssetToPlatform(row: {
     agent_id: "",
     provider: "",
     model: "",
+    is_system: row.is_system ?? false,
     config_json: JSON.stringify({
       mime_type: row.mime_type,
       workspace_id: row.workspace_id,
@@ -534,19 +543,21 @@ export async function updatePlatformResource(
     case "agent-categories": {
       const svc = createAgentCategoryService();
       const cur = await svc.GetAgentCategory({ id });
+      const curIsSystem = pickBool(asRecord(cur), "is_system", "isSystem");
+      const curEnabled = pickBool(asRecord(cur), "enabled", "enabled");
       const merged = {
         id: cur.id,
         key: payload.key ?? cur.key,
         name: payload.name ?? cur.name,
         description: payload.description ?? cur.description,
         status: payload.status ?? cur.status,
-        enabled: payload.enabled ?? cur.enabled,
+        enabled: payload.enabled ?? curEnabled,
         sortOrder: payload.sort_order ?? cur.sortOrder,
         parentId: payload.parent_id !== undefined ? payload.parent_id || undefined : cur.parentId,
         level: payload.level ?? cur.level,
         workspaceId: cur.workspaceId,
         ownerUserId: cur.ownerUserId,
-        isSystem: cur.isSystem,
+        isSystem: curIsSystem,
         configJson: payload.config_json ?? cur.configJson,
         metadataJson: payload.metadata_json ?? cur.metadataJson,
         createdAt: cur.createdAt,

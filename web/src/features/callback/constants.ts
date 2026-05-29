@@ -1,6 +1,17 @@
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import type { HookCallbackPoint } from "../hooks/types";
 
-/** Canonical lifecycle points shared by Hooks UI and Plugin run audit filters. */
+export const CALLBACK_POINT_VALUES: HookCallbackPoint[] = [
+  "before_agent",
+  "after_agent",
+  "before_model",
+  "after_model",
+  "before_tool",
+  "after_tool",
+  "on_event"
+];
+
 export const CALLBACK_POINT_OPTIONS: { label: string; value: HookCallbackPoint }[] = [
   { label: "Before Agent", value: "before_agent" },
   { label: "After Agent", value: "after_agent" },
@@ -11,13 +22,32 @@ export const CALLBACK_POINT_OPTIONS: { label: string; value: HookCallbackPoint }
   { label: "On Event", value: "on_event" }
 ];
 
+const CALLBACK_POINT_I18N_KEYS: Record<HookCallbackPoint, string> = {
+  before_agent: "hooksPage.callbackPoints.beforeAgent",
+  after_agent: "hooksPage.callbackPoints.afterAgent",
+  before_model: "hooksPage.callbackPoints.beforeModel",
+  after_model: "hooksPage.callbackPoints.afterModel",
+  before_tool: "hooksPage.callbackPoints.beforeTool",
+  after_tool: "hooksPage.callbackPoints.afterTool",
+  on_event: "hooksPage.callbackPoints.onEvent"
+};
+
+export function useCallbackPointOptions() {
+  const { t } = useI18n();
+  return computed(() =>
+    CALLBACK_POINT_VALUES.map((v) => ({
+      label: t(CALLBACK_POINT_I18N_KEYS[v]),
+      value: v
+    }))
+  );
+}
+
 export const PLUGIN_RUN_STATUS_OPTIONS = [
   { label: "成功", value: "success" },
   { label: "阻断", value: "blocked" },
   { label: "错误", value: "error" }
 ] as const;
 
-/** Common plugin_key values for audit filters (includes hook: prefix rows). */
 export const PLUGIN_RUN_KEY_PRESETS = [
   { label: "audit_log", value: "audit_log" },
   { label: "permission_guard", value: "permission_guard" },
@@ -34,6 +64,8 @@ export function pluginRunsQueryFromRoute(query: Record<string, unknown>) {
     plugin_key: str("plugin_key"),
     agent_id: str("agent_id"),
     callback_point: str("callback_point"),
-    status: str("status")
+    status: str("status"),
+    from: str("from"),
+    to: str("to")
   };
 }

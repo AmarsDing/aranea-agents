@@ -17,7 +17,7 @@ func TestAgentRuntimeSettings_DomainAccessors(t *testing.T) {
 		ToolsRetryMaxAttempts:    3,
 		SkillRuntimeJSON:         `{"allow":["*"]}`,
 		IntentPassEnabled:        true,
-		SelfEvolve:               true,
+		EvolutionSelfEvolve:      true,
 		EvolutionSkillEvolve:     true,
 		ContextCompactionEnabled: true,
 		PlannerKind:              "react",

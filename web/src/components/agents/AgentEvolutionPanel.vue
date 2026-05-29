@@ -171,7 +171,7 @@
                 <q-tooltip>拒绝</q-tooltip>
               </q-btn>
             </div>
-            <q-badge v-else :color="s.status === 'applied' ? 'positive' : 'grey'" :label="s.status" />
+            <q-badge v-else :color="s.status === 'applied' ? 'positive' : 'grey'" :label="suggestionStatusLabel(s.status)" />
           </q-item-section>
         </q-item>
       </q-list>
@@ -262,6 +262,19 @@ function suggestionTypeColor(type: string): string {
       return "teal";
     default:
       return "grey";
+  }
+}
+
+function suggestionStatusLabel(status: string): string {
+  switch (status) {
+    case "applied":
+      return "已应用";
+    case "rejected":
+      return "已拒绝";
+    case "pending":
+      return "待处理";
+    default:
+      return status;
   }
 }
 

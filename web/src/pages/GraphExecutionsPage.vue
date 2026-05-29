@@ -83,15 +83,12 @@
 </template>
 
 <script setup lang="ts">
-import { useQuasar } from "quasar";
 import { useGraphExecutionsPage } from "../features/graph/useGraphExecutionsPage";
 import { formatTime, execDuration } from "../features/graph/utils";
 import { STATUS_FILTER_OPTIONS, TIME_RANGE_OPTIONS, statusColor, statusLabel } from "../features/graph/graphExecutionsUi";
 
-const $q = useQuasar();
-const isDark = $q.dark.isActive;
-
 const {
+  isDark,
   graphName,
   executionHistory,
   filteredHistory,

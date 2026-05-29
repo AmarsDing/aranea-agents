@@ -112,36 +112,39 @@ export function channelExternalID(row: ChannelRow): string {
 
 export async function copyChannelWebhookURL(row: ChannelRow): Promise<string> {
   const url = channelWebhookURL(row);
-  if (!url) throw new Error("Webhook URL 不可用");
+  if (!url) throw new Error("Webhook URL not available");
   if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(url);
   }
   return url;
 }
 
-/** ChannelsTable 列定义 */
-export const CHANNEL_TABLE_COLUMNS: QTableColumn<ChannelRow>[] = [
-  registryCol<ChannelRow>("name", "名称", "name", "left", REGISTRY_COL_W.name),
-  registryCol<ChannelRow>("type", "平台", "config_json", "left", "15%"),
-  registryCol<ChannelRow>("external_id", "外部 ID", "metadata_json", "left", "16%"),
-  registryCol<ChannelRow>("status", "连接状态", "status", "left", "12%"),
-  registryColEnabled<ChannelRow>(),
-  registryCol<ChannelRow>("updated", "最近更新", "updated_at", "left", REGISTRY_COL_W.time),
-  registryColActions<ChannelRow>("80px")
-];
+export function channelTableColumns(t: (key: string) => string): QTableColumn<ChannelRow>[] {
+  return [
+    registryCol<ChannelRow>("name", t("channelsPage.colName"), "name", "left", REGISTRY_COL_W.name),
+    registryCol<ChannelRow>("type", t("channelsPage.colType"), "config_json", "left", "15%"),
+    registryCol<ChannelRow>("external_id", t("channelsPage.colExternalId"), "metadata_json", "left", "16%"),
+    registryCol<ChannelRow>("status", t("channelsPage.colStatus"), "status", "left", "12%"),
+    registryColEnabled<ChannelRow>(),
+    registryCol<ChannelRow>("updated", t("channelsPage.colUpdated"), "updated_at", "left", REGISTRY_COL_W.time),
+    registryColActions<ChannelRow>("80px")
+  ];
+}
 
-/** Channel Turn Jobs 面板列 */
-export const CHANNEL_TURN_JOBS_TABLE_COLUMNS = [
-  registryCol("status", "status", "status", "left", REGISTRY_COL_W.status),
-  registryCol("peer_id", "peer_id", "peer_id", "left", REGISTRY_COL_W.name),
-  registryCol("session_id", "session_id", "session_id", "left", REGISTRY_COL_W.name),
-  registryCol("updated_at", "updated_at", "updated_at", "left", REGISTRY_COL_W.time)
-];
+export function channelTurnJobsColumns(t: (key: string) => string) {
+  return [
+    registryCol("status", t("channelsPage.colStatus"), "status", "left", REGISTRY_COL_W.status),
+    registryCol("peer_id", t("channelsPage.colPeerId"), "peer_id", "left", REGISTRY_COL_W.name),
+    registryCol("session_id", t("channelsPage.colSessionId"), "session_id", "left", REGISTRY_COL_W.name),
+    registryCol("updated_at", t("channelsPage.colUpdated"), "updated_at", "left", REGISTRY_COL_W.time)
+  ];
+}
 
-/** Channel Delivery 面板列 */
-export const CHANNEL_DELIVERIES_TABLE_COLUMNS: QTableColumn<ChannelDeliveryRow>[] = [
-  registryCol<ChannelDeliveryRow>("status", "status", "status", "left", REGISTRY_COL_W.status),
-  registryCol<ChannelDeliveryRow>("agent_id", "agent_id", "agent_id", "left", REGISTRY_COL_W.name),
-  registryCol<ChannelDeliveryRow>("payload", "payload", "payload_json", "left", REGISTRY_COL_W.name),
-  registryCol<ChannelDeliveryRow>("updated_at", "updated_at", "updated_at", "left", REGISTRY_COL_W.time)
-];
+export function channelDeliveriesColumns(t: (key: string) => string): QTableColumn<ChannelDeliveryRow>[] {
+  return [
+    registryCol<ChannelDeliveryRow>("status", t("channelsPage.colStatus"), "status", "left", REGISTRY_COL_W.status),
+    registryCol<ChannelDeliveryRow>("agent_id", t("channelsPage.colAgentId"), "agent_id", "left", REGISTRY_COL_W.name),
+    registryCol<ChannelDeliveryRow>("payload", t("channelsPage.colPayload"), "payload_json", "left", REGISTRY_COL_W.name),
+    registryCol<ChannelDeliveryRow>("updated_at", t("channelsPage.colUpdated"), "updated_at", "left", REGISTRY_COL_W.time)
+  ];
+}

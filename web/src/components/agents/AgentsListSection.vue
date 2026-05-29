@@ -74,7 +74,7 @@
       </template>
       <template #body-cell-status="props">
         <q-td :props="props">
-          <q-badge rounded :color="props.row.status === 'active' ? 'positive' : 'grey'">{{ props.row.status }}</q-badge>
+          <q-badge rounded :color="props.row.status === 'active' ? 'positive' : 'grey'">{{ statusLabel(props.row.status) }}</q-badge>
         </q-td>
       </template>
       <template #body-cell-actions="props">
@@ -102,7 +102,7 @@ import type { Agent } from "../../features/agents/types";
 import AgentCard from "./AgentCard.vue";
 import AgentAvatarQ from "../avatar/AgentAvatarQ.vue";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import { formatLastRunContext, isAgentEvolving } from "./agentUi";
+import { formatLastRunContext, isAgentEvolving, statusLabel } from "./agentUi";
 
 type ViewMode = "grid" | "list";
 

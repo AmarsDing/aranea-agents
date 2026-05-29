@@ -13,7 +13,7 @@
       <q-select v-model="category" class="app-page-toolbar__field" dense outlined emit-value map-options label="分类" :options="categoryOptions" />
       <template #actions>
         <q-btn flat rounded no-caps :icon="paused ? 'play_arrow' : 'pause'" :label="paused ? '恢复' : '暂停'" @click="toggleStream" />
-        <q-btn flat rounded no-caps icon="delete_sweep" label="清除" @click="confirmClearEvents" />
+        <q-btn flat rounded no-caps icon="delete_sweep" label="清除" @click="$emit('clear')" />
       </template>
     </AppPageToolbar>
 
@@ -99,19 +99,22 @@
   </q-card>
 
   <q-dialog v-model="detailOpen">
-    <q-card class="monitor-detail-card app-dialog-card app-dialog-card--lg">
-      <q-card-section class="row items-start justify-between">
+    <q-card class="app-dialog-card app-dialog-card--lg app-glass-dialog">
+      <q-card-section class="app-glass-dialog__head row items-start justify-between">
         <div>
-          <div class="text-h6">事件详情</div>
-          <div class="text-caption text-grey-7">{{ selected?.type }}</div>
+          <div class="app-glass-dialog__title">事件详情</div>
+          <div class="app-glass-dialog__subtitle">{{ selected?.type }}</div>
         </div>
         <q-btn flat round dense icon="close" v-close-popup />
       </q-card-section>
       <q-separator />
-      <q-card-section>
-        <pre class="monitor-json app-code-block">{{ selectedJSON }}</pre>
-      </q-card-section>
-      <q-card-actions align="right" class="app-actions-bar">
+      <div class="app-glass-dialog__scroll">
+        <q-card-section class="app-glass-dialog__body">
+          <pre class="monitor-json app-code-block">{{ selectedJSON }}</pre>
+        </q-card-section>
+      </div>
+      <q-separator />
+      <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
         <q-btn flat no-caps label="复制 JSON" icon="content_copy" @click="copyJSON" />
       </q-card-actions>
     </q-card>
@@ -120,7 +123,6 @@
 
 <script setup lang="ts">
 import { computed, ref, toRef, watch } from "vue";
-import { useQuasar } from "quasar";
 import AppPageToolbar from "../layout/AppPageToolbar.vue";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
@@ -130,11 +132,13 @@ import type { PlatformResource, MonitorTraceEvent } from "../../features/monitor
 import { useMonitorRealtimeEvents, type MonitorViewEvent } from "../../features/monitor/useMonitorRealtimeEvents";
 import { MONITOR_EVENTS_TABLE_COLUMNS } from "./monitorTableUi";
 
-const $q = useQuasar();
-
 const props = defineProps<{
   persistedEvents: PlatformResource[];
   traces?: MonitorTraceEvent[];
+}>();
+
+defineEmits<{
+  clear: [];
 }>();
 
 const {
@@ -156,17 +160,6 @@ const {
   copyJSON,
   eventColor
 } = useMonitorRealtimeEvents(toRef(() => props.persistedEvents), toRef(() => props.traces));
-
-function confirmClearEvents() {
-  $q.dialog({
-    title: "清除事件",
-    message: "确定清除所有实时事件？此操作不可撤销。",
-    cancel: true,
-    persistent: true
-  }).onOk(() => {
-    clearRuntimeEvents();
-  });
-}
 
 const page = ref(1);
 const pageSize = ref(12);

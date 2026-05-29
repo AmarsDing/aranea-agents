@@ -152,7 +152,9 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 		var payload biz.ChannelOutboundPayload
 		if err := json.Unmarshal([]byte(row.PayloadJSON), &payload); err != nil {
 			arametrics.ChannelDeliveryTotal.WithLabelValues("unknown", "invalid").Inc()
-			_, _ = w.channels.MarkOutboundAttempt(ctx, row, err)
+			if _, markErr := w.channels.MarkOutboundAttempt(ctx, row, err); markErr != nil {
+				event.SysLogWarn("channel.delivery.mark_attempt_failed", "标记投递尝试失败", event.P("error", markErr.Error()))
+			}
 			continue
 		}
 		platform := strings.ToLower(strings.TrimSpace(payload.Platform))
@@ -161,25 +163,36 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 		}
 		if payload.Kind != "" && payload.Kind != biz.ChannelOutboundTextKind && payload.Kind != biz.ChannelOutboundCardKind {
 			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "invalid").Inc()
-			_, _ = w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", fmt.Sprintf("unsupported delivery kind %q", payload.Kind)))
+			if _, markErr := w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", fmt.Sprintf("unsupported delivery kind %q", payload.Kind))); markErr != nil {
+				event.SysLogWarn("channel.delivery.mark_attempt_failed", "标记投递尝试失败", event.P("error", markErr.Error()))
+			}
 			continue
 		}
 		if payload.Kind == biz.ChannelOutboundCardKind && strings.TrimSpace(payload.CardJSON) == "" && strings.TrimSpace(payload.Text) == "" {
 			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "invalid").Inc()
-			_, _ = w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", "outbound_card missing card_json"))
+			if _, markErr := w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", "outbound_card missing card_json")); markErr != nil {
+				event.SysLogWarn("channel.delivery.mark_attempt_failed", "标记投递尝试失败", event.P("error", markErr.Error()))
+			}
 			continue
 		}
 		if payload.Kind == "" || payload.Kind == biz.ChannelOutboundTextKind {
 			if strings.TrimSpace(payload.Text) == "" {
 				arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "invalid").Inc()
-				_, _ = w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", "outbound_text missing text"))
+				if _, markErr := w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", "outbound_text missing text")); markErr != nil {
+					event.SysLogWarn("channel.delivery.mark_attempt_failed", "标记投递尝试失败", event.P("error", markErr.Error()))
+				}
 				continue
 			}
 		}
 		start := time.Now()
 		sendErr := w.ingress.sendOutboundPayload(ctx, row.ChannelID, payload)
 		arametrics.ChannelDeliveryDuration.WithLabelValues(platform).Observe(time.Since(start).Seconds())
-		deadLetter, _ := w.channels.MarkOutboundAttempt(ctx, row, sendErr)
+		deadLetter, markErr := w.channels.MarkOutboundAttempt(ctx, row, sendErr)
+		if markErr != nil {
+			event.SysLogWarn("channel.delivery.mark_attempt_failed", "标记投递尝试失败",
+				event.P("error", markErr.Error()),
+			)
+		}
 		switch {
 		case sendErr == nil:
 			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "delivered").Inc()

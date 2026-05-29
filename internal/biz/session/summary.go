@@ -64,5 +64,5 @@ func (uc *SessionUsecase) CompressSessionInTx(ctx context.Context, sessionID str
 }
 
 func (uc *SessionUsecase) SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error) {
-	return uc.summaryReader.SessionSummaryExists(ctx, sessionID, fromTurn, toTurn)
+	return uc.summaryWriter.SessionSummaryExists(ctx, sessionID, fromTurn, toTurn)
 }

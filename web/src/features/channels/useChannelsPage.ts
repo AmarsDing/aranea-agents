@@ -69,7 +69,7 @@ export function useChannelsPage() {
   async function loadAll() {
     error.value = "";
     try {
-      await Promise.all([channelsStore.loadCatalog(), channelsStore.loadChannels()]);
+      await channelsStore.loadAll();
     } catch (err) {
       error.value = err instanceof Error ? err.message : t("channelsPage.loadFailed");
     }
@@ -88,9 +88,7 @@ export function useChannelsPage() {
   }
 
   function onSaved(row: ChannelRow) {
-    const index = rows.value.findIndex((item) => item.id === row.id);
-    if (index >= 0) rows.value[index] = row;
-    else rows.value.unshift(row);
+    channelsStore.upsertChannel(row);
   }
 
   function openOps(row: ChannelRow) {
@@ -146,11 +144,15 @@ export function useChannelsPage() {
       cancel: true,
       persistent: true
     }).onOk(async () => {
-      await channelsStore.removeChannel(row.id);
-      if (opsChannelId.value === row.id) {
-        closeOps();
+      try {
+        await channelsStore.removeChannel(row.id);
+        if (opsChannelId.value === row.id) {
+          closeOps();
+        }
+        $q.notify({ type: "positive", message: t("channelsPage.deleteOk") });
+      } catch (err) {
+        $q.notify({ type: "negative", message: err instanceof Error ? err.message : t("channelsPage.deleteFailed") });
       }
-      $q.notify({ type: "positive", message: t("channelsPage.deleteOk") });
     });
   }
 

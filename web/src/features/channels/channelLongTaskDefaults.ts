@@ -36,26 +36,26 @@ export const CHANNEL_LONG_TASK_DEFAULTS: Record<string, string | number | boolea
 };
 
 export const TURN_TIMEOUT_OPTIONS = [
-  { label: "300 秒（5 分钟）", value: "300" },
-  { label: "600 秒（10 分钟，推荐）", value: "600" },
-  { label: "900 秒（15 分钟）", value: "900" },
-  { label: "1800 秒（30 分钟）", value: "1800" }
+  { label: "channelEditor.timeoutOptions.300", value: "300" },
+  { label: "channelEditor.timeoutOptions.600", value: "600" },
+  { label: "channelEditor.timeoutOptions.900", value: "900" },
+  { label: "channelEditor.timeoutOptions.1800", value: "1800" }
 ];
 
 export const FIRST_BYTE_TIMEOUT_OPTIONS = [
-  { label: "30 秒（默认）", value: "30" },
-  { label: "45 秒", value: "45" },
-  { label: "60 秒", value: "60" },
-  { label: "120 秒（重工具推荐）", value: "120" }
+  { label: "channelEditor.firstByteOptions.30", value: "30" },
+  { label: "channelEditor.firstByteOptions.45", value: "45" },
+  { label: "channelEditor.firstByteOptions.60", value: "60" },
+  { label: "channelEditor.firstByteOptions.120", value: "120" }
 ];
 
 export const PROGRESS_QUIET_OPTIONS = [
-  { label: "0（关闭心跳）", value: "0" },
-  { label: "15 秒", value: "15" },
-  { label: "20 秒（默认）", value: "20" },
-  { label: "30 秒", value: "30" },
-  { label: "45 秒", value: "45" },
-  { label: "60 秒", value: "60" }
+  { label: "channelEditor.quietOptions.0", value: "0" },
+  { label: "channelEditor.quietOptions.15", value: "15" },
+  { label: "channelEditor.quietOptions.20", value: "20" },
+  { label: "channelEditor.quietOptions.30", value: "30" },
+  { label: "channelEditor.quietOptions.45", value: "45" },
+  { label: "channelEditor.quietOptions.60", value: "60" }
 ];
 
 export function applyLongTaskFormDefaults(

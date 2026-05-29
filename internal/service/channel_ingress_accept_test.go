@@ -10,12 +10,6 @@ import (
 	"aranea-agents/internal/channel/port"
 )
 
-type ingressReceiptStub struct{}
-
-func (ingressReceiptStub) TryClaim(_ context.Context, _, _, _, _ string) (bool, error) {
-	return true, nil
-}
-
 type ingressChannelRepo struct {
 	streamChannelRepo
 	deliveries int
@@ -28,10 +22,9 @@ func (r *ingressChannelRepo) AddDelivery(_ context.Context, _ biz.ChannelDeliver
 
 func TestAcceptInboundReturnsExecuteSync(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, biz.NewCredentialCrypto(nil))
+	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil))
 	h := &ChannelIngress{
-		channels:        uc,
-		inboundReceipts: ingressReceiptStub{},
+		channels: uc,
 	}
 	ch := biz.Channel{
 		ID:         "ch-1",
@@ -58,10 +51,9 @@ func TestAcceptInboundReturnsExecuteSync(t *testing.T) {
 
 func TestAcceptInboundDefersAckWhenStreaming(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, biz.NewCredentialCrypto(nil))
+	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil))
 	h := &ChannelIngress{
-		channels:        uc,
-		inboundReceipts: ingressReceiptStub{},
+		channels: uc,
 	}
 	ch := biz.Channel{
 		ID:         "ch-1",
@@ -87,10 +79,9 @@ func TestAcceptInboundDefersAckWhenStreaming(t *testing.T) {
 
 func TestAcceptInboundReturnsDispatchAsync(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, biz.NewCredentialCrypto(nil))
+	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil))
 	h := &ChannelIngress{
-		channels:        uc,
-		inboundReceipts: ingressReceiptStub{},
+		channels: uc,
 	}
 	ch := biz.Channel{
 		ID:         "ch-1",
@@ -114,10 +105,9 @@ func TestAcceptInboundReturnsDispatchAsync(t *testing.T) {
 
 func TestAcceptInboundSkipsDuplicateInbound(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, biz.NewCredentialCrypto(nil))
+	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil))
 	h := &ChannelIngress{
-		channels:        uc,
-		inboundReceipts: ingressReceiptStub{},
+		channels: uc,
 	}
 	ch := biz.Channel{ID: "ch-1", ConfigJSON: `{"type":"feishu","config":{}}`}
 	ev := port.InboundEvent{
@@ -140,10 +130,9 @@ func TestAcceptInboundSkipsDuplicateInbound(t *testing.T) {
 
 func TestProcessInboundHTTPResponds200(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, biz.NewCredentialCrypto(nil))
+	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil))
 	h := &ChannelIngress{
-		channels:        uc,
-		inboundReceipts: ingressReceiptStub{},
+		channels: uc,
 	}
 	ch := biz.Channel{
 		ID:         "ch-1",

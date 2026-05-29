@@ -84,7 +84,7 @@
       <q-td :props="props">
         <div class="app-registry-cell-actions">
         <q-btn
-          v-if="props.row.status === 'draft'"
+          v-if="props.row.status !== 'published'"
           flat
           dense
           round

@@ -133,7 +133,6 @@ func (u *AgentCategoryUsecase) Create(ctx context.Context, in AgentCategory) (Ag
 	if in.Status == "" {
 		in.Status = "active"
 	}
-	in.Enabled = true
 	if err := u.normalizeAgentCategory(ctx, &in); err != nil {
 		return AgentCategory{}, err
 	}

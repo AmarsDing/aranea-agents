@@ -39,11 +39,11 @@ func (h *ChannelIngress) resolveCancelInboundTurn(ctx context.Context, chRow biz
 	if err != nil {
 		return true, "", err
 	}
-	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
+	input, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text, false)
 	if err != nil {
 		return true, "", err
 	}
-	sessionID := strings.TrimSpace(req.GetSessionId())
+	sessionID := strings.TrimSpace(input.SessionID)
 	reply = channelCancelReplyNoActiveRun
 	cancelled := false
 	if h.chat != nil && sessionID != "" {
@@ -61,7 +61,7 @@ func (h *ChannelIngress) resolveCancelInboundTurn(ctx context.Context, chRow biz
 		event.P("peer_id", ev.PeerID),
 		event.P("cancelled", cancelled),
 	)
-	_ = h.recordDelivery(ctx, chRow.ID, "cancel", map[string]any{
+	h.recordDelivery(ctx, chRow.ID, "cancel", map[string]any{
 		"peer_id":    ev.PeerID,
 		"session_id": sessionID,
 		"cancelled":  cancelled,

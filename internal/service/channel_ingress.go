@@ -18,12 +18,8 @@ import (
 // ChannelIngress bridges external channel webhooks to in-process chat turns.
 type ChannelIngress struct {
 	channels        *biz.ChannelUsecase
-	peers           biz.ChannelPeerSessionRepo
-	inboundReceipts biz.ChannelInboundReceiptRepo
 	turnJobs        *biz.ChannelTurnJobUsecase
 	sessions        *biz.SessionUsecase
-	agents          biz.AgentRepository
-	teams           biz.TeamRepository
 	chat            biz.NativeTurnGateway
 	flowBuffer      *event.Buffer
 	graphs          biz.GraphExecutor
@@ -43,12 +39,8 @@ type ChannelIngress struct {
 // Chat concrete internals (Phase B1: port-first).
 func NewChannelIngress(
 	channels *biz.ChannelUsecase,
-	peers biz.ChannelPeerSessionRepo,
-	inboundReceipts biz.ChannelInboundReceiptRepo,
 	turnJobs *biz.ChannelTurnJobUsecase,
 	sessions *biz.SessionUsecase,
-	agents biz.AgentRepository,
-	teams biz.TeamRepository,
 	chat biz.NativeTurnGateway,
 	flowBuffer *event.Buffer,
 	graphs biz.GraphExecutor,
@@ -57,12 +49,8 @@ func NewChannelIngress(
 ) *ChannelIngress {
 	return &ChannelIngress{
 		channels:        channels,
-		peers:           peers,
-		inboundReceipts: inboundReceipts,
 		turnJobs:        turnJobs,
 		sessions:        sessions,
-		agents:          agents,
-		teams:           teams,
 		chat:            chat,
 		flowBuffer:      flowBuffer,
 		graphs:          graphs,
@@ -85,7 +73,7 @@ func (h *ChannelIngress) writeJSON(w http.ResponseWriter, status int, v any) {
 // FeishuWebhookHTTP returns a handler for POST /webhooks/{channel_key}.
 func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 	return func(kctx khttp.Context) error {
-		if h == nil || h.channels == nil || h.chat == nil || h.peers == nil || h.sessions == nil || h.agents == nil || h.teams == nil {
+		if h == nil || h.channels == nil || h.chat == nil || h.sessions == nil {
 			return kerrors.InternalServer("CHANNEL", "ingress not configured")
 		}
 		r := kctx.Request()
@@ -258,13 +246,11 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 		}
 		ev, ok, rejectReason := lark.InboundEventFromWebhook(parsed)
 		if !ok {
-			if dErr := h.recordDelivery(r.Context(), chRow.ID, "skipped_"+rejectReason, map[string]any{
+			h.recordDelivery(r.Context(), chRow.ID, "skipped_"+rejectReason, map[string]any{
 				"message_id": parsed.MessageID,
 				"peer_id":    ingressFirstNonEmpty(parsed.SenderOpenID, parsed.ChatID),
 				"via":        "webhook",
-			}, ""); dErr != nil {
-				event.SysLogWarn("system.monitor.alert_channel_fail", "recordDelivery failed", event.P("channel_id", chRow.ID), event.P("status", "skipped_"+rejectReason), event.P("error", dErr.Error()))
-			}
+			}, "")
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}
@@ -297,13 +283,11 @@ func channelReceiveModeFromConfig(configJSON string) string {
 	return strings.TrimSpace(strings.ToLower(env.ReceiveMode))
 }
 
-func (h *ChannelIngress) recordDelivery(ctx context.Context, channelID, status string, payload map[string]any, errMsg string) error {
+func (h *ChannelIngress) recordDelivery(ctx context.Context, channelID, status string, payload map[string]any, errMsg string) {
 	b, _ := json.Marshal(payload)
 	if err := h.channels.AddInboundDelivery(ctx, channelID, status, string(b), errMsg); err != nil {
 		event.SysLogWarn("system.monitor.alert_channel_fail", "recordDelivery failed", event.P("channel_id", channelID), event.P("status", status), event.P("error", err.Error()))
-		return err
 	}
-	return nil
 }
 
 func ingressFirstNonEmpty(parts ...string) string {
@@ -323,9 +307,15 @@ func resolveCredentialPlain(ctx context.Context, channels *biz.ChannelUsecase, c
 		}
 		ref := strings.TrimSpace(c.SecretRef)
 		if ref == "" {
+			event.SysLogWarn("channel.credential.empty_ref", "凭证 secret_ref 为空",
+				event.P("key", key),
+			)
 			return "", nil
 		}
 		return ResolveSecretRef(ctx, channels, ref)
 	}
+	event.SysLogWarn("channel.credential.not_found", "凭证 key 未找到",
+		event.P("key", key),
+	)
 	return "", nil
 }

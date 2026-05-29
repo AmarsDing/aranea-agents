@@ -60,10 +60,10 @@
         />
       </q-tab-panel>
       <q-tab-panel name="audit">
-        <AuditTable :rows="auditRows" :total="auditTotal" :loading="loadingAudit" @reload="loadAudit" />
+        <AuditTable :rows="auditRows" :loading="loadingAudit" @reload="loadAudit" @notify="onChildNotify" />
       </q-tab-panel>
       <q-tab-panel name="events">
-        <RealtimeEvents :persisted-events="events" :traces="traces" />
+        <RealtimeEvents :persisted-events="events" :traces="traces" @clear="confirmClearEvents" />
       </q-tab-panel>
       <q-tab-panel name="traces">
         <TraceList
@@ -71,10 +71,11 @@
           :loading="loadingTraces"
           :highlight-usage-event-id="highlightUsageEventId"
           @reload="loadTraces"
+          @notify="onChildNotify"
         />
       </q-tab-panel>
       <q-tab-panel name="logs" class="monitor-logs-panel">
-        <LogStreamPanel />
+        <LogStreamPanel @clear-flow="confirmClearFlow" />
       </q-tab-panel>
     </q-tab-panels>
     </div>
@@ -94,12 +95,16 @@ import MonitorRunnerMetrics from "../components/monitor/MonitorRunnerMetrics.vue
 import MonitorAlertRules from "../components/monitor/MonitorAlertRules.vue";
 import { useMonitorAlertRules } from "../features/monitor/useMonitorAlertRules";
 import { useMonitorPage } from "../features/monitor/useMonitorPage";
+import { useQuasar } from "quasar";
+import { useMonitorStore } from "../stores/monitor";
+
+const $q = useQuasar();
+const monitorStore = useMonitorStore();
 
 const {
   tab,
   highlightUsageEventId,
   auditRows,
-  auditTotal,
   events,
   traces,
   loadingAudit,
@@ -121,4 +126,30 @@ const {
   load: loadAlertRules,
   save: saveAlertRules
 } = useMonitorAlertRules();
+
+function onChildNotify(payload: { message: string; type: "positive" | "negative" | "warning" }) {
+  $q.notify({ message: payload.message, type: payload.type, position: "top" });
+}
+
+function confirmClearEvents() {
+  $q.dialog({
+    title: "清除事件",
+    message: "确定清除所有实时事件？此操作不可撤销。",
+    cancel: true,
+    persistent: true
+  }).onOk(() => {
+    monitorStore.clearRuntimeEvents();
+  });
+}
+
+function confirmClearFlow() {
+  $q.dialog({
+    title: "清除日志",
+    message: "确定清除所有流程日志？此操作不可撤销。",
+    cancel: true,
+    persistent: true
+  }).onOk(() => {
+    monitorStore.clearFlowLogs();
+  });
+}
 </script>

@@ -59,9 +59,9 @@ func (h *ChannelIngress) createTurnJob(ctx context.Context, chRow biz.Channel, e
 		peerKey = strings.TrimSpace(ev.PeerKey)
 	}
 	sessionID := ""
-	if h.peers != nil && h.sessions != nil {
-		if req, perr := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text); perr == nil {
-			sessionID = strings.TrimSpace(req.GetSessionId())
+	if h.channels != nil && h.sessions != nil {
+		if input, perr := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text, false); perr == nil {
+			sessionID = strings.TrimSpace(input.SessionID)
 		}
 	}
 	now := biz.ChannelTurnJobNow()

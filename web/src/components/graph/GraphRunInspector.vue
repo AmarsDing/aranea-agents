@@ -23,8 +23,11 @@
           :checkpoints="checkpoints"
           :loading="checkpointsLoading"
           :selected-checkpoint-id="selectedCheckpoint?.checkpointId"
+          :state-snapshot="stateSnapshot"
+          :restoring="restoringCheckpoint"
           @refresh="$emit('refreshCheckpoints')"
           @select="$emit('selectCheckpoint', $event)"
+          @restore="$emit('restoreCheckpoint', $event)"
         />
         <GraphTimeTravelPanel
           :selected-checkpoint="selectedCheckpoint"
@@ -80,6 +83,7 @@ const props = defineProps<{
   checkpoints: CheckpointInfo[];
   checkpointsLoading: boolean;
   selectedCheckpoint: CheckpointInfo | null;
+  stateSnapshot: Record<string, unknown> | null;
   statePatchJson: string;
   snapshotLoading: boolean;
   editLoading: boolean;
@@ -89,12 +93,14 @@ const props = defineProps<{
   tasksLoading: boolean;
   selectedTaskId?: string | null;
   tab: string;
+  restoringCheckpoint?: boolean;
 }>();
 
 const emit = defineEmits<{
   "update:tab": [value: string];
   refreshCheckpoints: [];
   selectCheckpoint: [checkpoint: CheckpointInfo];
+  restoreCheckpoint: [checkpoint: CheckpointInfo];
   "update:statePatchJson": [value: string];
   "update:stepIndex": [value: number];
   timeTravel: [];
@@ -109,5 +115,9 @@ const tab = computed({
   set: (value: string) => emit("update:tab", value),
 });
 
-const maxStep = computed(() => Math.max(0, props.checkpoints.length - 1));
+const maxStep = computed(() => {
+  const fromSteps = props.execution?.steps?.length ?? 0;
+  const fromCheckpoints = props.checkpoints.length;
+  return Math.max(0, Math.max(fromSteps, fromCheckpoints) - 1);
+});
 </script>

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 )
 
 type sessionRunRepo struct {
@@ -322,6 +323,9 @@ WHERE phase IN ('interactive','escalating','durable') AND (finished_at IS NULL O
 	if err != nil {
 		return 0, err
 	}
-	n, _ := res.RowsAffected()
+	n, rowsErr := res.RowsAffected()
+	if rowsErr != nil {
+		event.SysLogWarn("session_run.repo", "rows affected error", event.P("error", rowsErr.Error()))
+	}
 	return int(n), nil
 }

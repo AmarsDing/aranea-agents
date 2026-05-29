@@ -85,7 +85,7 @@ func TestL4GraphUsecase_WriteFromUserText_NameConflictGate(t *testing.T) {
 		entityOk:   true,
 	}
 	uc := NewL4GraphUsecase(repo)
-	uc.SetCascade(NewL4CascadeUsecase(&cascadeGraphStoreMock{}, nil))
+	uc.SetCascade(NewL4CascadeUsecase(&cascadeGraphStoreMock{}, &cascadeGraphStoreMock{}, &cascadeGraphStoreMock{}, &cascadeGraphStoreMock{}, nil))
 	n, err := uc.WriteFromUserText(context.Background(), "ag1", "u1", "My name is Bob")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

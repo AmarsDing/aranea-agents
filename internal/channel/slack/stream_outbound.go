@@ -127,7 +127,9 @@ func (s *StreamSender) updateMessageLocked(ctx context.Context, channelID, ts, t
 		OK    bool   `json:"ok"`
 		Error string `json:"error"`
 	}
-	_ = json.Unmarshal(raw, &out)
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return fmt.Errorf("slack stream update: parse response: %w", err)
+	}
 	if !out.OK {
 		desc := strings.ToLower(strings.TrimSpace(out.Error))
 		if desc == "message_not_changed" {

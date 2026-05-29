@@ -45,12 +45,12 @@ func (h *ChannelIngress) dispatchAsyncInbound(
 		h.markTurnJob(ctx, biz.ChannelTurnJobStatusFailed, err.Error(), "", "")
 		return err
 	}
-	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
+	turnInput, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text, false)
 	if err != nil {
 		h.markTurnJob(ctx, biz.ChannelTurnJobStatusFailed, err.Error(), "", "")
 		return err
 	}
-	sessionID := strings.TrimSpace(req.GetSessionId())
+	sessionID := strings.TrimSpace(turnInput.SessionID)
 	input := strings.TrimSpace(ev.Text)
 	if strings.HasPrefix(strings.ToLower(input), "/async") {
 		input = strings.TrimSpace(input[len("/async"):])
@@ -93,13 +93,11 @@ func (h *ChannelIngress) dispatchAsyncInbound(
 	if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), msg, ev.OutboundMeta, ackIdempotencyKey(platform, ev, "async")); err != nil {
 		return err
 	}
-	if delErr := h.recordDelivery(ctx, chRow.ID, "async_queued", map[string]any{
+	h.recordDelivery(ctx, chRow.ID, "async_queued", map[string]any{
 		"target_type": targetType,
 		"target_id":   asyncID,
 		"session_id":  sessionID,
-	}, ""); delErr != nil {
-		event.SysLogWarn("channel.ingress.delivery", "recordDelivery failed", event.P("channel_id", chRow.ID), event.P("error", delErr.Error()))
-	}
+	}, "")
 
 	switch targetType {
 	case "graph", "team_graph":
@@ -155,7 +153,7 @@ func (h *ChannelIngress) watchAsyncGraphCompletion(ctx context.Context, chRow bi
 					h.failAsyncTargetWatch(asyncWatchPersistCtx(), chCopy, evCopy, platform, jobID, execID, "graph", errors.New(errMsg))
 					return
 				}
-				summary := "Graph 任务已完成。"
+				summary := channelAsyncGraphDoneSummary
 				if env.Content != nil && strings.TrimSpace(env.Content.Text) != "" {
 					summary = strings.TrimSpace(env.Content.Text)
 				}
@@ -201,7 +199,7 @@ func (h *ChannelIngress) watchAsyncCronCompletion(ctx context.Context, chRow biz
 					h.failAsyncTargetWatch(asyncWatchPersistCtx(), chCopy, evCopy, platform, jobID, runID, "cron", watchErr)
 					return
 				case "skipped":
-					h.completeAsyncTargetWatch(asyncWatchPersistCtx(), chCopy, evCopy, platform, jobID, "Cron 任务已跳过。")
+					h.completeAsyncTargetWatch(asyncWatchPersistCtx(), chCopy, evCopy, platform, jobID, channelAsyncCronSkippedSummary)
 					return
 				}
 			}

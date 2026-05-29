@@ -3,12 +3,16 @@ export function hasPricingConfigured(prices: {
   outputPrice?: number;
   inputPriceCached?: number;
   outputPriceReasoning?: number;
+  embeddingPrice?: number;
+  cacheWritePrice?: number;
 }): boolean {
   const vals = [
     prices.inputPrice,
     prices.outputPrice,
     prices.inputPriceCached,
-    prices.outputPriceReasoning
+    prices.outputPriceReasoning,
+    prices.embeddingPrice,
+    prices.cacheWritePrice
   ];
   return vals.some((v) => typeof v === "number" && v > 0);
 }

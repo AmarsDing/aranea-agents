@@ -57,6 +57,8 @@
       />
     </section>
 
+    <q-inner-loading :showing="loading && rows.length === 0" />
+
     <section class="graphs-grid q-mt-md">
       <q-card
         v-for="graph in filteredRows"
@@ -76,7 +78,7 @@
               <span
                 v-if="count"
                 class="graph-card__chip"
-                :style="{ borderColor: (NODE_TYPE_STYLES as any)[type]?.borderColor, color: (NODE_TYPE_STYLES as any)[type]?.borderColor }"
+                :style="{ borderColor: nodeTypeBorderColor(type as string), color: nodeTypeBorderColor(type as string) }"
               >{{ (NODE_TYPE_EMOJI as any)[type] }}×{{ count }}</span>
             </template>
           </div>
@@ -151,7 +153,7 @@ const {
   SORT_OPTIONS,
   ENGINE_FILTER_OPTIONS,
   NODE_TYPE_EMOJI,
-  NODE_TYPE_STYLES,
+  nodeTypeBorderColor,
   countNodesByType,
   relativeTime,
   runDialogOpen,

@@ -1,9 +1,11 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useQuasar } from "quasar";
+import { useI18n } from "vue-i18n";
 import { defaultHookRuleConfig, parseHookConfig, type HookRow, type HookRuleConfig } from "../hooks/types";
 import { useHooksStore } from "../../stores/hooks";
 
 export function useAgentHooksPanel(agentId: () => string, agentKey: () => string) {
+  const { t } = useI18n();
   const $q = useQuasar();
   const hooksStore = useHooksStore();
   const loading = ref(false);
@@ -59,18 +61,19 @@ export function useAgentHooksPanel(agentId: () => string, agentKey: () => string
   }
 
   async function createScopedHook() {
-    const key = `${agentKey() || agentId()}-hook-${Date.now()}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const prefix = agentKey() || agentId() || "hook";
+    const key = `${prefix}-hook-${Date.now()}`.replace(/[^a-zA-Z0-9_-]/g, "_");
     saving.value = true;
     try {
       await hooksStore.addHook({
         key,
-        name: `${agentKey() || agentId()} callback`,
+        name: `${prefix} callback`,
         enabled: true,
         sort_order: draftSort.value,
         rule: draftRule.value
       });
       await loadRows();
-      $q.notify({ type: "positive", message: "Hook 已创建" });
+      $q.notify({ type: "positive", message: t("hooksPage.agentPanel.notifyCreated") });
       resetDraft();
     } catch (e) {
       $q.notify({ type: "negative", message: e instanceof Error ? e.message : String(e) });
@@ -93,7 +96,7 @@ export function useAgentHooksPanel(agentId: () => string, agentKey: () => string
       await hooksStore.saveHook(editRow.value.id, { sort_order: editSort.value, rule: editRule.value });
       editOpen.value = false;
       await loadRows();
-      $q.notify({ type: "positive", message: "已保存" });
+      $q.notify({ type: "positive", message: t("hooksPage.agentPanel.notifySaved") });
     } catch (e) {
       $q.notify({ type: "negative", message: e instanceof Error ? e.message : String(e) });
     } finally {

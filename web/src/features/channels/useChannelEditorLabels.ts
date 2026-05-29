@@ -19,9 +19,10 @@ export function useChannelEditorLabels(selectedCatalog: ComputedRef<ChannelCatal
   }
 
   function sectionHint(section: ChannelPlatformSection): string {
-    const key = `channelEditor.section.${section.id}.hint`;
-    if (te(key)) return t(key);
-    return section.hint ?? "";
+    const raw = section.hint ?? "";
+    if (!raw) return "";
+    if (te(raw)) return t(raw);
+    return raw;
   }
 
   function fieldLabel(field: ChannelPlatformField): string {
@@ -31,15 +32,18 @@ export function useChannelEditorLabels(selectedCatalog: ComputedRef<ChannelCatal
 
   function fieldHelp(field: ChannelPlatformField): ChannelFieldHelp | undefined {
     const descKey = `channelEditor.fields.${field.museKey}.help`;
-    if (!te(descKey)) {
-      if (field.hint) return { description: field.hint };
-      return undefined;
+    if (te(descKey)) {
+      const exampleKey = `channelEditor.fields.${field.museKey}.example`;
+      return {
+        description: t(descKey),
+        example: te(exampleKey) ? t(exampleKey) : undefined
+      };
     }
-    const exampleKey = `channelEditor.fields.${field.museKey}.example`;
-    return {
-      description: t(descKey),
-      example: te(exampleKey) ? t(exampleKey) : undefined
-    };
+    if (field.hint) {
+      const hint = te(field.hint) ? t(field.hint) : field.hint;
+      return { description: hint };
+    }
+    return undefined;
   }
 
   function fieldStatusLabel(statusKey: string): string {
@@ -58,10 +62,18 @@ export function useChannelEditorLabels(selectedCatalog: ComputedRef<ChannelCatal
     if (field.options?.length) {
       return field.options.map((opt) => {
         const i18nKey = `channelEditor.fields.${field.museKey}.options.${opt.value}`;
-        return { label: te(i18nKey) ? t(i18nKey) : opt.label, value: opt.value };
+        if (te(i18nKey)) return { label: t(i18nKey), value: opt.value };
+        if (te(opt.label)) return { label: t(opt.label), value: opt.value };
+        return { label: opt.label, value: opt.value };
       });
     }
     return [];
+  }
+
+  function fieldPlaceholder(field: ChannelPlatformField): string {
+    if (!field.placeholder) return "";
+    if (te(field.placeholder)) return t(field.placeholder);
+    return field.placeholder;
   }
 
   return {
@@ -71,6 +83,7 @@ export function useChannelEditorLabels(selectedCatalog: ComputedRef<ChannelCatal
     fieldLabel,
     fieldHelp,
     fieldStatusLabel,
+    fieldPlaceholder,
     selectOptions,
     t,
     te

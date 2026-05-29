@@ -2,7 +2,7 @@
 
 > **关联**：[`memory.md`](./memory.md) · [`memory.design.md`](./memory.design.md) · [`memory-development.md`](./memory-development.md) · 代码 Review [2026-05-26-Memory-Code-Review](../../review/2026-05-26-Memory-Code-Review.md)
 > **作者范围**：本文聚焦 **业务逻辑** 层面（用户/Agent 实际感受得到的能力差异）的优化。仅涉及代码结构、命名、格式的"代码质量"问题已收敛在 review 文档 P3，本文不重复。
-> **状态**：🟢 Sprint A 已落地（MEM-OPT-01 Phase 0–3 + MEM-OPT-03 优先级/Dead-Letter/Replay） · 🟢 Sprint B 已落地（MEM-OPT-02 Worker + 强化因子） · 🟢 Sprint C 已落地（Dead-Letter 前端 + PII block 模式） · 🟢 Sprint D 已落地（MEM-OPT-06 Saga + Dry-Run + 前端 Cascade Tab 升级 + L4 置信度/衰减 UI + PII 策略配置 UI）
+> **状态**：🟢 Sprint A 已落地（MEM-OPT-01 Phase 0–3 + MEM-OPT-03 优先级/Dead-Letter/Replay） · 🟢 Sprint B 已落地（MEM-OPT-02 Worker + 强化因子） · 🟢 Sprint C 已落地（Dead-Letter 前端 + PII block 模式） · 🟢 Sprint D 已落地（MEM-OPT-06 Saga + Dry-Run + 前端 Cascade Tab 升级 + L4 置信度/衰减 UI + PII 策略配置 UI） · 🟢 代码质量优化轮已落地（接口隔离 + 数据依赖修复 + 前端数据流合规 + 常量提取）
 
 ---
 
@@ -713,6 +713,7 @@ Memory Center → Cascade Tab：
 | Sprint C（2 周） | OPT-05 function call schema 双轨 + OPT-04 PII block 模式 + Dead-Letter 前端 | M | ✅ 已落地 |
 | Sprint D（3 周） | OPT-06 Saga + Dry-Run + 前端 Cascade Tab 升级 + L4 置信度/衰减 UI + PII 策略配置 UI | L | ✅ 已落地 |
 | Sprint E（2 周） | OPT-04 PII review 工作流 + 前端审核 Tab + OPT-02 用户反馈强化打通 | M | 📐 待开始 |
+| 代码质量优化轮 | 接口隔离 + 数据依赖修复 + 前端数据流合规 + 常量提取（详见 §11） | S | ✅ 已落地 |
 
 ---
 
@@ -734,3 +735,98 @@ Memory Center → Cascade Tab：
 - 进度跟踪（本方案落地后追加章节）：[`memory-development.md`](./memory-development.md)
 - 代码 Review（问题来源）：[`2026-05-26-Memory-Code-Review.md`](../../review/2026-05-26-Memory-Code-Review.md)
 - 历史 Review：[`memory-review.md`](../../review/memory-review.md)
+
+---
+
+## 11. 代码质量优化轮（2026-05-29）
+
+> Sprint A–D 业务功能落地后，代码审查发现多项架构合规与代码质量问题。本轮为纯代码质量优化，不影响业务功能。
+
+### 11.1 后端优化
+
+#### 11.1.1 接口隔离（ISP 合规）
+
+| 变更 | 说明 |
+|------|------|
+| `CascadeGraphStore` 构造拆分 | `NewL4CascadeUsecase` 从接收聚合接口 `CascadeGraphStore`（16 方法）改为接收 4 个子接口：`CascadeProposalStore`、`CascadeGraphReader`、`CascadeFactMutator`、`CascadeSagaStore` |
+| `CascadeGraphStore` 标记 Deprecated | 聚合接口保留用于 Wire 绑定便利，但标记 `// Deprecated:` 提示消费者使用子接口 |
+| `L4GraphRepo` → `L4EntityWriter` 收窄 | `L4CascadeUsecase` 仅使用 `UpsertEntity`，将 `graph L4GraphRepo`（9 方法）依赖收窄为 `entityWriter L4EntityWriter`（2 方法） |
+
+**代码锚点**：
+
+| 文件 | 说明 |
+|------|------|
+| `internal/biz/memory_l4_cascade.go` | `NewL4CascadeUsecase` 签名变更 + `CascadeGraphStore` Deprecated + `L4EntityWriter` 新端口 |
+| `internal/biz/memory_l4.go` | `CascadeProposalStore`/`CascadeGraphReader`/`CascadeFactMutator`/`CascadeSagaStore` 子接口定义 |
+| `cmd/admin/wire.go` | `provideL4CascadeUsecase` 适配新构造函数 |
+| `internal/biz/memory_l4_cascade_test.go` | 测试适配 |
+| `internal/biz/memory_l4_usecase_test.go` | 测试适配 |
+
+#### 11.1.2 Service 层数据依赖修复（红线 #1 合规）
+
+| 变更 | 说明 |
+|------|------|
+| `MemoryService.memStore` 移除 | Service 层不再直接持有 `*sessionmemory.Store`（data 层类型） |
+| 新增 `biz.MemoryDebugRecaller` 端口 | 定义 `RecallL2EpisodesDebug`/`RecallL3FactsDebug`/`CompositeSearchMemoriesDebug` + DTO `RecallDebugRow`/`RecallScoreBreakdown` |
+| 新增 `biz.MemoryFactIndexCounter` 端口 | 定义 `CountFactsByIndexStatus` |
+| 新增 `data/memory_debug_recall.go` 适配器 | `memoryDebugRecallAdapter` + `memoryFactIndexCounterAdapter` 实现 biz 端口 |
+| `memory_recall.go` 重写 | 所有 `s.memStore.X()` → `s.debugRecaller.X()` / `s.factIndexCounter.X()` |
+
+**代码锚点**：
+
+| 文件 | 说明 |
+|------|------|
+| `internal/biz/memory_debug_recall.go` | 新 biz 端口接口 + DTO |
+| `internal/data/memory_debug_recall.go` | data 层适配器 |
+| `internal/service/memory.go` | `MemoryService` 构造函数签名变更 |
+| `internal/service/memory_recall.go` | 全面重写，消除 data 层依赖 |
+| `cmd/admin/wire.go` | `provideMemoryService` 适配新构造函数 |
+
+#### 11.1.3 错误处理合规（红线 #10 合规）
+
+| 变更 | 说明 |
+|------|------|
+| `store_cascade_saga.go` 常量提取 | 7 处内联 `errors.New("session memory store not wired")` → 包级 `errStoreNotWired` |
+| `memory_l4_cascade.go` kerrors 替换 | `fmt.Sprintf("unknown saga step: %s", step.StepName)` → `kerrors.BadRequest("MEMORY", "unknown saga step")` |
+
+### 11.2 前端优化
+
+#### 11.2.1 展示组件迁移（红线 #5 合规）
+
+6 个纯展示组件从 `features/memory/` 迁移至 `components/memory/`：
+
+| 组件 | 说明 |
+|------|------|
+| `MemoryHero.vue` | 页面标题区 |
+| `MemoryMetricCards.vue` | 指标卡片 |
+| `MemoryOverviewPanel.vue` | 概览面板 |
+| `MemoryEvolutionPanel.vue` | 演化面板 |
+| `MemorySettingsStatusPanel.vue` | 设置状态面板 |
+| `MemoryWorkerStatusPanel.vue` | Worker 状态面板（同时修复数据流违规） |
+
+#### 11.2.2 数据流修复（红线 #1/#2 合规）
+
+| 变更 | 说明 |
+|------|------|
+| `MemoryWorkerStatusPanel.vue` | 移除直接 API 调用 `getMemoryWorkerStatus`，改为 `props(status, loading)` + `emit(refresh)` |
+| `useMemoryCenterPage.ts` | 新增 `workerStatus`/`loadingWorkerStatus` 状态 + `loadWorkerStatus()` 函数 |
+| `MemoryCenterPage.vue` | 传递 composable 状态给 `MemoryWorkerStatusPanel` |
+
+### 11.3 aranea-review 审计结果
+
+| 级别 | 编号 | 内容 | 状态 |
+|------|------|------|------|
+| ✅ 已修复 | S-01 | `L4GraphRepo` 依赖收窄为 `L4EntityWriter` | ✅ |
+| ✅ 已修复 | S-02 | `CascadeGraphStore` 标记 Deprecated | ✅ |
+| 📋 TECH-DEBT | S-03 | `NewMemoryService` 8 参数构造函数可合并 | 延后 |
+| 📋 TECH-DEBT | S-04 | `useMemoryCenterPage.ts` 直接 import API 绕过 Store | 延后 |
+| 📋 TECH-DEBT | S-05 | `useMemoryCenterPage.ts` 509 行过长，应拆子域 | 延后 |
+
+### 11.4 验证
+
+| 验证项 | 结果 |
+|--------|------|
+| `go build ./internal/biz/...` | ✅ |
+| `make wire && go build ./cmd/admin` | ✅ |
+| `pnpm build` | ✅ |
+| aranea-review 阻断项 | 0 |

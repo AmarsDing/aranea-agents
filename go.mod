@@ -1,8 +1,6 @@
 module aranea-agents
 
-go 1.25.0
-
-toolchain go1.26.1
+go 1.26.1
 
 // Agent runtime migrations must resolve to the vendored framework source.
 replace trpc.group/trpc-go/trpc-agent-go => ./pkg/trpc-agent-go

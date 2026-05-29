@@ -14,12 +14,14 @@ import type {
   L0AssemblySnapshot,
   L1Task,
   MemoryEntity,
-  MemoryFact
+  MemoryFact,
+  MemoryWorkerStatus
 } from "./types";
 import {
   buildMemoryAssemblyTableColumns,
   buildMemoryFactTableColumns
 } from "./memoryTableUi";
+import { replayMemoryDeadLetter, abandonMemoryDeadLetter, getMemoryWorkerStatus } from "./api"; // TECH-DEBT: bypass store for dead-letter admin actions
 import { useAgentsCatalogStore } from "../../stores/agents/catalog";
 import { useSessionStore } from "../../stores/session";
 import { useMemoryStore } from "../../stores/memory";
@@ -41,7 +43,6 @@ export function useMemoryCenterPage() {
   } = storeToRefs(memoryStore);
 
   const tab = ref("overview");
-  const showGraphTab = true;
   const agents = ref<Agent[]>([]);
   const sessions = ref<Session[]>([]);
   const facts = storeFacts;
@@ -70,6 +71,7 @@ export function useMemoryCenterPage() {
   const loadingCascade = storeLoadingCascade;
   const cascadeActingId = ref<string | null>(null);
   const factsEndpointReady = ref(true);
+  const factsTotal = ref(0);
   const snapshotDrawer = ref(false);
   const factDrawer = ref(false);
   const cascadePreviewOpen = ref(false);
@@ -77,6 +79,8 @@ export function useMemoryCenterPage() {
   const cascadePreviewProposalId = ref<string | null>(null);
   const cascadeSagaProposalId = ref<string | null>(null);
   const error = ref("");
+  const workerStatus = ref<MemoryWorkerStatus | null>(null);
+  const loadingWorkerStatus = ref(false);
 
   const loading = computed(
     () =>
@@ -106,7 +110,7 @@ export function useMemoryCenterPage() {
     return [
       { label: "上下文风险", value: riskySessions, hint: `平均占用 ${formatPercent(avgContext)}`, icon: "speed", color: contextRatioColor(avgContext) },
       { label: "活跃任务", value: activeTasks, hint: "L1 working memory tasks", icon: "assignment", color: "primary" },
-      { label: "长期知识", value: facts.value.length, hint: factsEndpointReady.value ? "已加载 L3 facts" : "L3 facts 暂不可用", icon: "psychology", color: "deep-purple" },
+      { label: "长期知识", value: factsTotal.value, hint: factsEndpointReady.value ? "已加载 L3 facts" : "L3 facts 暂不可用", icon: "psychology", color: "deep-purple" },
       { label: "图谱实体", value: entities.value.length, hint: "L4 entities", icon: "device_hub", color: "teal" },
       { label: "Prompt 快照", value: snapshots.value.length, hint: "最近 L0 assembly snapshots", icon: "preview", color: "blue-grey" }
     ];
@@ -195,10 +199,6 @@ export function useMemoryCenterPage() {
 
   watch(selectedSessionId, () => {
     void loadSessionMemory();
-  });
-
-  watch([factKeyword, factScope, factStatus], () => {
-    void loadFacts();
   });
 
   async function loadAll() {
@@ -339,9 +339,11 @@ export function useMemoryCenterPage() {
         status: factStatus.value || undefined,
         limit: 50
       });
+      factsTotal.value = result.total;
       factsEndpointReady.value = true;
     } catch {
       memoryStore.clearFacts();
+      factsTotal.value = 0;
       factsEndpointReady.value = false;
     } finally {
       loadingFacts.value = false;
@@ -419,6 +421,25 @@ export function useMemoryCenterPage() {
     return date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
   }
 
+  async function handleDeadLetterReplay(id: number) {
+    await replayMemoryDeadLetter(id);
+  }
+
+  async function handleDeadLetterAbandon(id: number) {
+    await abandonMemoryDeadLetter(id);
+  }
+
+  async function loadWorkerStatus() {
+    loadingWorkerStatus.value = true;
+    try {
+      workerStatus.value = await getMemoryWorkerStatus();
+    } catch {
+      workerStatus.value = null;
+    } finally {
+      loadingWorkerStatus.value = false;
+    }
+  }
+
   return {
     tab,
     selectedAgentId,
@@ -479,6 +500,11 @@ export function useMemoryCenterPage() {
     resetFactFilters,
     openSnapshot,
     openFact,
-    loadEvolution
+    loadEvolution,
+    handleDeadLetterReplay,
+    handleDeadLetterAbandon,
+    workerStatus,
+    loadingWorkerStatus,
+    loadWorkerStatus
   };
 }

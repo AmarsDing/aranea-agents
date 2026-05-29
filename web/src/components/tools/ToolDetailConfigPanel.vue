@@ -32,6 +32,16 @@
         <q-banner v-if="schemaParseError" rounded class="settings-warning-banner q-mt-sm">
           {{ schemaParseError }}
         </q-banner>
+        <q-btn
+          v-if="schemaEditDirty && !schemaParseError"
+          flat
+          dense
+          no-caps
+          icon="save"
+          label="应用 Schema 变更"
+          class="app-registry-accent-btn q-mt-sm"
+          @click="$emit('update:configSchemaJson', schemaEditJson)"
+        />
       </div>
     </q-expansion-item>
 
@@ -104,7 +114,7 @@ const props = defineProps<{
   saving: boolean;
 }>();
 
-defineEmits<{ save: []; "update:configJson": [value: string] }>();
+defineEmits<{ save: []; "update:configJson": [value: string]; "update:configSchemaJson": [value: string] }>();
 
 const hasConfigSchema = computed(() => {
   try {
@@ -141,4 +151,12 @@ function onSchemaEdit(val: string) {
     schemaParseError.value = err instanceof Error ? err.message : "JSON 格式错误";
   }
 }
+
+const schemaEditDirty = computed(() => {
+  try {
+    return schemaEditJson.value.trim() !== "" && schemaEditJson.value.trim() !== prettySchemaJson.value.trim();
+  } catch {
+    return false;
+  }
+});
 </script>

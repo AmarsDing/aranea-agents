@@ -1,4 +1,4 @@
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
 import type { GraphDefinition, NodeDef, ValidationError, ValidationWarning } from "./types";
@@ -60,7 +60,7 @@ export function useGraphEditorPage() {
     return graphDef.nodes.find((n) => n.id === selectedNodeId.value) ?? null;
   });
 
-  const canSave = computed(() => Boolean(graphDef.name && graphDef.nodes.length > 0));
+  const canSave = computed(() => Boolean(graphDef.name && graphDef.nodes.length > 0 && dirty.value));
 
   const mergedValidationErrors = computed<ValidationError[]>(() => {
     const serverKeys = new Set(validationErrors.value.map((e) => `${e.code}:${e.nodeId}:${e.field}`));
@@ -129,6 +129,19 @@ export function useGraphEditorPage() {
     selectedNodeId.value = nodeId;
   }
 
+  function onFocusPropertyPanel(nodeId: string, panelEl?: HTMLElement | null) {
+    selectedNodeId.value = nodeId;
+    nextTick(() => {
+      const panel = panelEl ?? document.querySelector(".graph-property-panel");
+      if (panel) {
+        const firstInput = panel.querySelector("input, textarea, select") as HTMLElement | null;
+        if (firstInput) {
+          firstInput.focus();
+        }
+      }
+    });
+  }
+
   function markDirty() {
     dirty.value = true;
   }
@@ -174,6 +187,7 @@ export function useGraphEditorPage() {
         await runValidation(created.id);
       }
       dirty.value = false;
+      undoRedo.clear();
       $q.notify({ type: "positive", message: "已从模板创建 Graph" });
       router.replace({ name: "graph-editor", params: { id: created.id } });
     } catch (err) {
@@ -194,10 +208,12 @@ export function useGraphEditorPage() {
   function autoLayout() {
     if (graphDef.nodes.length === 0) return;
     const moves = applyAutoLayout(graphDef);
-    if (moves.length > 0 && undoRedo) {
-      undoRedo.pushMoveNodes(moves);
+    if (moves.length > 0) {
+      if (undoRedo) {
+        undoRedo.pushMoveNodes(moves);
+      }
+      markDirty();
     }
-    markDirty();
   }
 
   function goBack() {
@@ -211,6 +227,7 @@ export function useGraphEditorPage() {
   async function rollbackVersion(version: number) {
     await assets.rollbackVersion(version, async () => {
       dirty.value = false;
+      undoRedo.clear();
       if (graphDef.id) {
         await runValidation(graphDef.id);
       }
@@ -220,9 +237,19 @@ export function useGraphEditorPage() {
   async function onImportFile(event: Event) {
     await assets.onImportFile(event);
     dirty.value = false;
+    undoRedo.clear();
+  }
+
+  function isEditableTarget(el: EventTarget | null): boolean {
+    if (!el || !(el instanceof HTMLElement)) return false;
+    const tag = el.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+    if (el.isContentEditable) return true;
+    return false;
   }
 
   function onGlobalKeydown(e: KeyboardEvent) {
+    if (isEditableTarget(e.target)) return;
     if ((e.ctrlKey || e.metaKey) && e.key === "s") {
       e.preventDefault();
       if (canSave.value && !saving.value) {
@@ -298,6 +325,7 @@ export function useGraphEditorPage() {
     selectedNode,
     canSave,
     onSelectNode,
+    onFocusPropertyPanel,
     markDirty,
     save,
     requestTemplates,
@@ -313,7 +341,7 @@ export function useGraphEditorPage() {
     saveTemplate: assets.saveTemplate,
     goBack,
     autoLayout,
-    goToExecutions: () => router.push({ name: "graph-executions", params: { id: graphDef.value?.id ?? route.params.id } }),
+    goToExecutions: () => router.push({ name: "graph-executions", params: { id: graphDef.id || route.params.id } }),
     canUndo: undoRedo.canUndo,
     canRedo: undoRedo.canRedo,
     undo: undoRedo.undo,

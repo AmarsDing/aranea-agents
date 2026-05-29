@@ -1,11 +1,16 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { createHook, deleteHook, listHooks, updateHook } from "../../features/hooks/api";
+import { listHookDeliveries, type HookDeliveryListQuery, type HookDeliveryRow } from "../../features/hooks/deliveries";
 import type { HookRow, HookRuleConfig } from "../../features/hooks/types";
 
 export const useHooksStore = defineStore("hooks", () => {
   const hooks = ref<HookRow[]>([]);
   const loading = ref(false);
+
+  const deliveries = ref<HookDeliveryRow[]>([]);
+  const deliveriesTotal = ref(0);
+  const deliveriesLoading = ref(false);
 
   async function loadHooks(): Promise<HookRow[]> {
     loading.value = true;
@@ -46,5 +51,17 @@ export const useHooksStore = defineStore("hooks", () => {
     hooks.value = hooks.value.filter((row) => row.id !== id);
   }
 
-  return { hooks, loading, loadHooks, addHook, saveHook, removeHook };
+  async function loadDeliveries(query: HookDeliveryListQuery = {}): Promise<{ items: HookDeliveryRow[]; total: number }> {
+    deliveriesLoading.value = true;
+    try {
+      const data = await listHookDeliveries(query);
+      deliveries.value = data.items;
+      deliveriesTotal.value = data.total;
+      return data;
+    } finally {
+      deliveriesLoading.value = false;
+    }
+  }
+
+  return { hooks, loading, loadHooks, addHook, saveHook, removeHook, deliveries, deliveriesTotal, deliveriesLoading, loadDeliveries };
 });

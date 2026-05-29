@@ -23,7 +23,7 @@ export function emitSessionMutation(mutation: SessionMutation): void {
   for (const handler of listeners) {
     try {
       handler(mutation);
-    } catch { /* subscriber error should not break emitter */ }
+    } catch (e) { console.warn("[sessionSync] subscriber error:", e) }
   }
 }
 

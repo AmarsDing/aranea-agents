@@ -11,12 +11,12 @@
       <q-banner v-else-if="loadError" rounded class="bg-negative text-white">
         {{ loadError }}
         <template #action>
-          <q-btn flat color="white" label="重试" @click="reload" />
+          <q-btn flat color="white" :label="t('agentSettings.retry')" @click="reload" />
         </template>
       </q-banner>
 
       <div v-else-if="refs.length === 0" class="text-grey-7 q-pa-sm">
-        暂无关联通道
+        {{ t("agentSettings.noChannelRefs") }}
       </div>
 
       <q-list v-else dense separator>

@@ -83,11 +83,11 @@
   </q-card>
 
   <q-dialog v-model="detailOpen" maximized @hide="stopFlowStream">
-    <q-card class="monitor-trace-dialog">
-      <q-card-section class="row items-start justify-between">
+    <q-card class="app-dialog-card app-glass-dialog monitor-trace-dialog">
+      <q-card-section class="app-glass-dialog__head row items-start justify-between">
         <div>
-          <div class="text-h6">Trace 详情</div>
-          <div class="text-caption text-grey-7">
+          <div class="app-glass-dialog__title">Trace 详情</div>
+          <div class="app-glass-dialog__subtitle">
             {{ detail?.agent_key || detail?.agent_id }} / {{ detail?.provider_code }} / {{ detail?.model_api_id }}
           </div>
           <div v-if="activeCorrelation.traceId" class="text-caption text-grey-6 q-mt-xs">
@@ -105,84 +105,88 @@
             color="primary"
             @click="openChatSession(activeCorrelation.sessionId)"
           />
-          <flow-log-export-button :trace-id="activeCorrelation.traceId" :lines="flowLines" />
+          <flow-log-export-button :trace-id="activeCorrelation.traceId" :lines="flowLines" @export="onExportFlow" />
           <q-btn flat icon="content_copy" label="复制 JSON" @click="copyDetail" />
           <q-btn flat round dense icon="close" v-close-popup />
         </div>
       </q-card-section>
       <q-separator />
-      <q-card-section class="row q-col-gutter-md">
-        <div class="col-12 col-md-4">
-          <q-card flat bordered class="monitor-card">
-            <q-card-section>
-              <div class="text-subtitle1 text-weight-bold">概要</div>
-              <q-list dense>
-                <q-item>
-                  <q-item-section>状态</q-item-section>
-                  <q-item-section side>
-                    <q-badge :color="statusColor(detail?.status)">{{ detail?.status || "unknown" }}</q-badge>
-                  </q-item-section>
-                </q-item>
-                <q-item>
-                  <q-item-section>Agent</q-item-section>
-                  <q-item-section side>{{ detail?.agent_key || detail?.agent_id || "-" }}</q-item-section>
-                </q-item>
-                <q-item>
-                  <q-item-section>Provider / 模型</q-item-section>
-                  <q-item-section side>{{ detail?.provider_code || "-" }} / {{ detail?.model_api_id || "-" }}</q-item-section>
-                </q-item>
-                <q-item>
-                  <q-item-section>Token 数</q-item-section>
-                  <q-item-section side>{{ formatCount(detail?.input_tokens) }} / {{ formatCount(detail?.output_tokens) }}</q-item-section>
-                </q-item>
-                <q-item>
-                  <q-item-section>延迟</q-item-section>
-                  <q-item-section side>{{ formatLatency(detail?.latency_ms) }}</q-item-section>
-                </q-item>
-                <q-item>
-                  <q-item-section>费用</q-item-section>
-                  <q-item-section side>{{ formatMoney(detail?.total_cost_micro_usd) }}</q-item-section>
-                </q-item>
-              </q-list>
-            </q-card-section>
-          </q-card>
-        </div>
-        <div class="col-12 col-md-8">
-          <q-card flat bordered class="monitor-card">
-            <q-card-section>
-              <q-tabs v-model="detailTab" dense align="left" active-color="primary">
-                <q-tab name="flow" label="流程" icon="timeline" />
-                <q-tab name="waterfall" label="瀑布图" icon="waterfall_chart" />
-                <q-tab name="tree" label="Span 树" icon="account_tree" />
-              </q-tabs>
-              <q-separator class="q-mt-sm" />
-              <q-tab-panels v-model="detailTab" animated class="q-mt-md">
-                <q-tab-panel name="flow" class="q-pa-none">
-                  <div class="row items-center q-mb-sm q-gutter-sm">
-                    <q-badge outline color="teal">{{ flowLines.length }} 流程日志</q-badge>
-                    <span class="text-caption text-grey-7">Live capture while detail is open (filtered by trace_id)</span>
-                  </div>
-                  <flow-trace-panel :lines="flowLines" />
-                </q-tab-panel>
-                <q-tab-panel name="waterfall" class="q-pa-none">
-                  <trace-waterfall :spans="spanList" />
-                </q-tab-panel>
-                <q-tab-panel name="tree" class="q-pa-none">
-                  <q-tree :nodes="spanNodes" node-key="id" default-expand-all />
-                </q-tab-panel>
-              </q-tab-panels>
-            </q-card-section>
-          </q-card>
-        </div>
-        <div class="col-12">
-          <q-card flat bordered class="monitor-card">
-            <q-card-section>
-              <div class="text-subtitle1 text-weight-bold">原始 JSON</div>
-              <pre class="monitor-json">{{ detailJSON }}</pre>
-            </q-card-section>
-          </q-card>
-        </div>
-      </q-card-section>
+      <div class="app-glass-dialog__scroll">
+        <q-card-section class="app-glass-dialog__body">
+          <div class="row q-col-gutter-md">
+            <div class="col-12 col-md-4">
+              <q-card flat bordered class="monitor-card">
+                <q-card-section>
+                  <div class="text-subtitle1 text-weight-bold">概要</div>
+                  <q-list dense>
+                    <q-item>
+                      <q-item-section>状态</q-item-section>
+                      <q-item-section side>
+                        <q-badge :color="statusColor(detail?.status)">{{ detail?.status || "unknown" }}</q-badge>
+                      </q-item-section>
+                    </q-item>
+                    <q-item>
+                      <q-item-section>Agent</q-item-section>
+                      <q-item-section side>{{ detail?.agent_key || detail?.agent_id || "-" }}</q-item-section>
+                    </q-item>
+                    <q-item>
+                      <q-item-section>Provider / 模型</q-item-section>
+                      <q-item-section side>{{ detail?.provider_code || "-" }} / {{ detail?.model_api_id || "-" }}</q-item-section>
+                    </q-item>
+                    <q-item>
+                      <q-item-section>Token 数</q-item-section>
+                      <q-item-section side>{{ formatCount(detail?.input_tokens) }} / {{ formatCount(detail?.output_tokens) }}</q-item-section>
+                    </q-item>
+                    <q-item>
+                      <q-item-section>延迟</q-item-section>
+                      <q-item-section side>{{ formatLatency(detail?.latency_ms) }}</q-item-section>
+                    </q-item>
+                    <q-item>
+                      <q-item-section>费用</q-item-section>
+                      <q-item-section side>{{ formatMoney(detail?.total_cost_micro_usd) }}</q-item-section>
+                    </q-item>
+                  </q-list>
+                </q-card-section>
+              </q-card>
+            </div>
+            <div class="col-12 col-md-8">
+              <q-card flat bordered class="monitor-card">
+                <q-card-section>
+                  <q-tabs v-model="detailTab" dense align="left" active-color="primary">
+                    <q-tab name="flow" label="流程" icon="timeline" />
+                    <q-tab name="waterfall" label="瀑布图" icon="waterfall_chart" />
+                    <q-tab name="tree" label="Span 树" icon="account_tree" />
+                  </q-tabs>
+                  <q-separator class="q-mt-sm" />
+                  <q-tab-panels v-model="detailTab" animated class="q-mt-md">
+                    <q-tab-panel name="flow" class="q-pa-none">
+                      <div class="row items-center q-mb-sm q-gutter-sm">
+                        <q-badge outline color="teal">{{ flowLines.length }} 流程日志</q-badge>
+                        <span class="text-caption text-grey-7">实时捕获（按 trace_id 过滤，详情打开期间持续接收）</span>
+                      </div>
+                      <flow-trace-panel :lines="flowLines" />
+                    </q-tab-panel>
+                    <q-tab-panel name="waterfall" class="q-pa-none">
+                      <trace-waterfall :spans="spanList" />
+                    </q-tab-panel>
+                    <q-tab-panel name="tree" class="q-pa-none">
+                      <q-tree :nodes="spanNodes" node-key="id" default-expand-all />
+                    </q-tab-panel>
+                  </q-tab-panels>
+                </q-card-section>
+              </q-card>
+            </div>
+            <div class="col-12">
+              <q-card flat bordered class="monitor-card">
+                <q-card-section>
+                  <div class="text-subtitle1 text-weight-bold">原始 JSON</div>
+                  <pre class="monitor-json">{{ detailJSON }}</pre>
+                </q-card-section>
+              </q-card>
+            </div>
+          </div>
+        </q-card-section>
+      </div>
     </q-card>
   </q-dialog>
 </template>
@@ -191,9 +195,10 @@
 import { computed, ref, watch } from "vue";
 import { useMonitorRunNavigation } from "../../features/monitor/useMonitorRunNavigation";
 import { useMonitorTraceFlow } from "../../features/monitor/useMonitorTraceFlow";
-import { copyToClipboard, Notify } from "quasar";
+import { copyToClipboard } from "quasar";
 import type { MonitorTraceEvent } from "../../features/monitor/types";
 import { compactJSON, formatCount, formatDate, formatLatency, formatMoney, parseJSON } from "../../features/monitor/utils";
+import { downloadFlowDiagnosticJsonl } from "../../features/monitor/flow";
 import TraceWaterfall from "./TraceWaterfall.vue";
 import FlowTracePanel from "./FlowTracePanel.vue";
 import FlowLogExportButton from "./FlowLogExportButton.vue";
@@ -216,8 +221,9 @@ const props = defineProps<{
   highlightUsageEventId?: string;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   reload: [];
+  notify: [payload: { message: string; type: "positive" | "negative" | "warning" }];
 }>();
 
 const { openChatSession } = useMonitorRunNavigation();
@@ -285,7 +291,7 @@ function tryOpenHighlightedRun() {
 }
 
 watch(() => props.highlightUsageEventId, tryOpenHighlightedRun);
-watch(() => props.rows, tryOpenHighlightedRun, { deep: true });
+watch(() => props.rows.length, tryOpenHighlightedRun);
 
 function spanToNode(span: unknown, index: number): TreeNode {
   const row = (span && typeof span === "object" ? span : {}) as Record<string, unknown>;
@@ -300,7 +306,16 @@ function spanToNode(span: unknown, index: number): TreeNode {
 
 async function copyDetail() {
   await copyToClipboard(detailJSON.value);
-  Notify.create({ message: "已复制", color: "positive", position: "top" });
+  emit("notify", { message: "已复制", type: "positive" });
+}
+
+function onExportFlow() {
+  if (!flowLines.value.length) {
+    emit("notify", { message: "暂无流程日志可导出", type: "warning" });
+    return;
+  }
+  downloadFlowDiagnosticJsonl(activeCorrelation.value.traceId, flowLines.value);
+  emit("notify", { message: "已下载流程诊断 JSONL", type: "positive" });
 }
 
 function statusColor(status?: string) {

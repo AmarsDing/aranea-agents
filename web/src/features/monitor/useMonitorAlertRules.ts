@@ -2,6 +2,7 @@ import { onMounted } from "vue";
 import { storeToRefs } from "pinia";
 import { useQuasar } from "quasar";
 import { useMonitorStore } from "../../stores/monitor/index";
+import type { MonitorAlertRule } from "./types";
 
 export function useMonitorAlertRules() {
   const $q = useQuasar();
@@ -16,9 +17,9 @@ export function useMonitorAlertRules() {
     }
   }
 
-  async function save() {
+  async function save(rules: MonitorAlertRule[]) {
     try {
-      await monitorStore.saveAlertRules(alertRules.value);
+      await monitorStore.saveAlertRules(rules);
       $q.notify({ type: "positive", message: "告警规则已保存" });
     } catch (e) {
       $q.notify({ type: "negative", message: e instanceof Error ? e.message : "保存失败" });

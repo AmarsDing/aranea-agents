@@ -55,6 +55,7 @@
         :checkpoints="checkpoints"
         :checkpoints-loading="checkpointsLoading"
         :selected-checkpoint="selectedCheckpoint"
+        :state-snapshot="stateSnapshot"
         :state-patch-json="statePatchJson"
         :snapshot-loading="snapshotLoading"
         :edit-loading="editLoading"
@@ -64,9 +65,11 @@
         :tasks-loading="tasksLoading"
         :selected-task-id="selectedTaskId"
         :tab="inspectorTab"
+        :restoring-checkpoint="editLoading"
         @update:tab="inspectorTab = $event"
         @refresh-checkpoints="timeTravelLoadCheckpoints"
         @select-checkpoint="onSelectCheckpoint"
+        @restore-checkpoint="onRestoreCheckpoint"
         @update:state-patch-json="updateStatePatchJson"
         @update:step-index="updateStepIndex"
         @time-travel="onTimeTravel"
@@ -106,7 +109,6 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
 import GraphEditorCanvas from "../components/graph/GraphEditorCanvas.vue";
 import GraphRunInspector from "../components/graph/GraphRunInspector.vue";
 import GraphHitlDialog from "../components/graph/GraphHitlDialog.vue";
@@ -141,6 +143,7 @@ const {
   checkpoints,
   checkpointsLoading,
   selectedCheckpoint,
+  stateSnapshot,
   statePatchJson,
   snapshotLoading,
   editLoading,
@@ -148,12 +151,12 @@ const {
   stepIndex,
   onSelectNode,
   confirmCancelExec,
-  cancelExec,
   resumeExec,
   submitHitlResume,
   onSelectCheckpoint,
   onTimeTravel,
   onApplyEditState,
+  onRestoreCheckpoint,
   loadTasks,
   timeTravelLoadCheckpoints,
   updateStatePatchJson,
@@ -167,62 +170,13 @@ const {
   onAddTaskComment,
   onKanbanAdminAction,
   inspectorTab,
-  stepIcon,
-  stepColor,
-  formatTime,
   goBack,
+  progressCompleted,
+  progressRunning,
+  progressWaiting,
+  progressPercent,
+  progressStepLabel,
+  progressDurationSec,
+  showProgressBar,
 } = useGraphRunPage();
-
-const progressCompleted = computed(() => {
-  let count = 0;
-  for (const state of execNodeStates.value.values()) {
-    if (state.status === "completed") count++;
-  }
-  return count;
-});
-
-const progressRunning = computed(() => {
-  let count = 0;
-  for (const state of execNodeStates.value.values()) {
-    if (state.status === "running") count++;
-  }
-  return count;
-});
-
-const progressWaiting = computed(() => {
-  let count = 0;
-  for (const state of execNodeStates.value.values()) {
-    if (state.status === "waiting" || state.status === "idle") count++;
-  }
-  return count;
-});
-
-const progressTotal = computed(() => {
-  const fromStates = execNodeStates.value.size;
-  const fromDef = graphDef.nodes?.length ?? 0;
-  return Math.max(fromStates, fromDef);
-});
-
-const progressPercent = computed(() => {
-  if (progressTotal.value === 0) return 0;
-  return Math.round((progressCompleted.value / progressTotal.value) * 100);
-});
-
-const progressStepLabel = computed(() => {
-  if (executionSummary.value?.totalSteps) {
-    return `Step ${progressCompleted.value}/${executionSummary.value.totalSteps}`;
-  }
-  if (progressTotal.value > 0) {
-    return `Step ${progressCompleted.value}/${progressTotal.value}`;
-  }
-  return "";
-});
-
-const progressDurationSec = computed(() => {
-  const ms = executionSummary.value?.durationMs;
-  if (ms && ms > 0) return (ms / 1000).toFixed(1);
-  return "";
-});
-
-const showProgressBar = computed(() => execNodeStates.value.size > 0);
 </script>

@@ -288,6 +288,7 @@ func toProtoArtifactMeta(a biz.Artifact) *v1.ArtifactMeta {
 		Size:        a.Size,
 		Sha256:      a.SHA256,
 		StorageKind: a.StorageKind,
+		StorageUri:  a.StorageURI,
 		Version:     int32(a.Version),
 		CreatedAt:   a.CreatedAt,
 	}

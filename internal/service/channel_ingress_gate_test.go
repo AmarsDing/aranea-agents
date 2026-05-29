@@ -13,10 +13,9 @@ import (
 
 func TestGateInboundBeforeTurnDeniesAccess(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, biz.NewCredentialCrypto(nil))
+	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil))
 	h := &ChannelIngress{
-		channels:        uc,
-		inboundReceipts: ingressReceiptStub{},
+		channels: uc,
 	}
 	ch := biz.Channel{
 		ID:         "ch-1",

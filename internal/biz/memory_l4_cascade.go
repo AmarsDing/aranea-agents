@@ -47,11 +47,26 @@ type CascadeSagaStore interface {
 	HasCascadeSaga(ctx context.Context, proposalID string) (bool, error)
 }
 
+// CascadeGraphStore is a convenience aggregate for Wire binding.
+// Deprecated: consumers should depend on individual sub-interfaces (CascadeProposalStore, CascadeGraphReader, CascadeFactMutator, CascadeSagaStore).
 type CascadeGraphStore interface {
 	CascadeProposalStore
 	CascadeGraphReader
 	CascadeFactMutator
 	CascadeSagaStore
+}
+
+func NewL4CascadeUsecase(proposals CascadeProposalStore, reader CascadeGraphReader, mutator CascadeFactMutator, saga CascadeSagaStore, entityWriter L4EntityWriter) *L4CascadeUsecase {
+	if proposals == nil {
+		return nil
+	}
+	return &L4CascadeUsecase{
+		proposals:    proposals,
+		reader:       reader,
+		mutator:      mutator,
+		saga:         saga,
+		entityWriter: entityWriter,
+	}
 }
 
 type CascadeSagaStep struct {
@@ -121,26 +136,13 @@ const (
 )
 
 type L4CascadeUsecase struct {
-	proposals CascadeProposalStore
-	reader    CascadeGraphReader
-	mutator   CascadeFactMutator
-	saga      CascadeSagaStore
-	graph     L4GraphRepo
-	indexSync MemoryFactIndexSyncer
+	proposals     CascadeProposalStore
+	reader        CascadeGraphReader
+	mutator       CascadeFactMutator
+	saga          CascadeSagaStore
+	entityWriter  L4EntityWriter
+	indexSync     MemoryFactIndexSyncer
 	indexMu   sync.RWMutex
-}
-
-func NewL4CascadeUsecase(store CascadeGraphStore, graph L4GraphRepo) *L4CascadeUsecase {
-	if store == nil {
-		return nil
-	}
-	return &L4CascadeUsecase{
-		proposals: store,
-		reader:    store,
-		mutator:   store,
-		saga:      store,
-		graph:     graph,
-	}
 }
 
 func (uc *L4CascadeUsecase) SetIndexSync(sync MemoryFactIndexSyncer) {
@@ -304,7 +306,7 @@ func (uc *L4CascadeUsecase) Preview(ctx context.Context, id string) (*CascadePre
 }
 
 func (uc *L4CascadeUsecase) Approve(ctx context.Context, id, reviewer string) ([]byte, error) {
-	if uc == nil || uc.proposals == nil || uc.graph == nil {
+	if uc == nil || uc.proposals == nil || uc.entityWriter == nil {
 		return nil, ErrCascadeUnavailable
 	}
 	raw, err := uc.proposals.GetCascadeProposalRow(ctx, id)
@@ -406,7 +408,7 @@ func (uc *L4CascadeUsecase) executeSagaStep(ctx context.Context, step *CascadeSa
 	case SagaStepSyncIndex:
 		execErr = uc.execSyncIndex(ctx, row)
 	default:
-		execErr = kerrors.BadRequest("MEMORY", fmt.Sprintf("unknown saga step: %s", step.StepName))
+		execErr = kerrors.BadRequest("MEMORY", "unknown saga step")
 	}
 
 	if execErr != nil {
@@ -431,7 +433,7 @@ func (uc *L4CascadeUsecase) execUpsertEntity(ctx context.Context, row map[string
 	if err := json.Unmarshal(entRaw, &ent); err != nil {
 		return err
 	}
-	return uc.graph.UpsertEntity(ctx, L4EntityWrite{
+	return uc.entityWriter.UpsertEntity(ctx, L4EntityWrite{
 		ID:             entityID,
 		ScopeType:      "agent",
 		ScopeID:        agentID,
@@ -440,8 +442,8 @@ func (uc *L4CascadeUsecase) execUpsertEntity(ctx context.Context, row map[string
 		Name:           newName,
 		NameNormalized: strings.ToLower(newName),
 		Description:    jsonutil.IfaceStr(ent, "description"),
-		Importance:     0.85,
-		Confidence:     0.8,
+		Importance:     l4CascadeEntImportance,
+		Confidence:     l4CascadeEntConfidence,
 		MetadataJSON:   mergeCascadeAppliedMeta(jsonutil.IfaceStr(ent, "metadata_json"), newName),
 	})
 }
@@ -587,7 +589,7 @@ func (uc *L4CascadeUsecase) GetSagaSteps(ctx context.Context, proposalID string)
 }
 
 func (uc *L4CascadeUsecase) Retry(ctx context.Context, id, reviewer string) ([]byte, error) {
-	if uc == nil || uc.proposals == nil || uc.graph == nil {
+	if uc == nil || uc.proposals == nil || uc.entityWriter == nil {
 		return nil, ErrCascadeUnavailable
 	}
 	return uc.Approve(ctx, id, reviewer)
@@ -606,7 +608,7 @@ func (uc *L4CascadeUsecase) Compensate(ctx context.Context, id, reviewer string)
 }
 
 func (uc *L4CascadeUsecase) touchAffectedEntities(ctx context.Context, row map[string]any, triggerID, newName string) error {
-	if uc == nil || uc.graph == nil || uc.reader == nil {
+	if uc == nil || uc.entityWriter == nil || uc.reader == nil {
 		return nil
 	}
 	rawAffected := jsonutil.IfaceStr(row, "affected_json")
@@ -633,7 +635,7 @@ func (uc *L4CascadeUsecase) touchAffectedEntities(ctx context.Context, row map[s
 			failedIDs = append(failedIDs, id)
 			continue
 		}
-		if err := uc.graph.UpsertEntity(ctx, L4EntityWrite{
+		if err := uc.entityWriter.UpsertEntity(ctx, L4EntityWrite{
 			ID:             id,
 			ScopeType:      "agent",
 			ScopeID:        jsonutil.IfaceStr(row, "agent_id"),
@@ -642,8 +644,8 @@ func (uc *L4CascadeUsecase) touchAffectedEntities(ctx context.Context, row map[s
 			Name:           jsonutil.IfaceStr(ent, "name"),
 			NameNormalized: jsonutil.IfaceStr(ent, "name_normalized"),
 			Description:    jsonutil.IfaceStr(ent, "description"),
-			Importance:     0.5,
-			Confidence:     0.7,
+			Importance:     l4CascadeTouchImportance,
+			Confidence:     l4CascadeTouchConfidence,
 			MetadataJSON:   mergeCascadeLinkedMeta(jsonutil.IfaceStr(ent, "metadata_json"), triggerID, newName),
 		}); err != nil {
 			failedIDs = append(failedIDs, id)

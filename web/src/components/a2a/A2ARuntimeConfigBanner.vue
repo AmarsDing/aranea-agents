@@ -20,10 +20,11 @@ const props = defineProps<{
 
 const sourceLabel = computed(() => {
   const s = props.config?.public_base_url_source;
+  if (!s) return "未配置";
   if (s === "env") return "环境变量";
   if (s === "db") return "系统设置";
   if (s === "config") return "配置文件";
   if (s === "derived") return "推导（开发默认）";
-  return s || "—";
+  return s;
 });
 </script>

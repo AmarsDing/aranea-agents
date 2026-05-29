@@ -63,7 +63,6 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { useQuasar } from "quasar";
 import type { Skill, SkillFile, SkillFileContent } from "../../features/skills/types";
 
 const props = defineProps<{
@@ -73,13 +72,15 @@ const props = defineProps<{
   listSkillFiles: (id: string) => Promise<SkillFile[]>;
   readSkillFile: (id: string, path: string) => Promise<SkillFileContent>;
   updateSkillFile: (id: string, path: string, content: string) => Promise<SkillFileContent>;
+  /** 由 composable 注入通知函数，展示层不直接 useQuasar */
+  notify: (opts: { type: string; message: string }) => void;
+  /** 由 composable 注入确认对话框函数，展示层不直接 useQuasar */
+  confirm: (opts: { title: string; message: string; okLabel?: string; cancelLabel?: string; okColor?: string }) => Promise<boolean>;
 }>();
 
 const emit = defineEmits<{
   "update:modelValue": [value: boolean];
 }>();
-
-const $q = useQuasar();
 const files = ref<SkillFile[]>([]);
 const selectedFile = ref<SkillFile | null>(null);
 const content = ref("");
@@ -113,7 +114,7 @@ async function loadFiles() {
       await selectFile(preferred.path);
     }
   } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "加载 Skill 文件失败" });
+    props.notify({ type: "negative", message: err instanceof Error ? err.message : "加载 Skill 文件失败" });
   } finally {
     filesLoading.value = false;
   }
@@ -121,6 +122,16 @@ async function loadFiles() {
 
 async function selectFile(path: string) {
   if (!props.skill) return;
+  if (hasChanges.value) {
+    const confirmed = await props.confirm({
+      title: "未保存的更改",
+      message: "当前文件有未保存的修改，切换文件将丢失更改，确定继续？",
+      okLabel: "放弃更改",
+      okColor: "negative",
+      cancelLabel: "留在当前文件"
+    });
+    if (!confirmed) return;
+  }
   const file = files.value.find((item) => item.path === path);
   if (!file) return;
   selectedFile.value = file;
@@ -130,7 +141,7 @@ async function selectFile(path: string) {
     content.value = data.content;
     originalContent.value = data.content;
   } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "读取文件失败" });
+    props.notify({ type: "negative", message: err instanceof Error ? err.message : "读取文件失败" });
   } finally {
     readingFile.value = false;
   }
@@ -143,9 +154,9 @@ async function saveFile() {
     const data = await props.updateSkillFile(props.skill.id, selectedFile.value.path, content.value);
     content.value = data.content;
     originalContent.value = data.content;
-    $q.notify({ type: "positive", message: "文件已保存" });
+    props.notify({ type: "positive", message: "文件已保存" });
   } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "保存文件失败" });
+    props.notify({ type: "negative", message: err instanceof Error ? err.message : "保存文件失败" });
   } finally {
     savingFile.value = false;
   }
@@ -171,14 +182,14 @@ function fileIcon(language: string) {
 
 function tryClose() {
   if (hasChanges.value) {
-    $q.dialog({
+    void props.confirm({
       title: "未保存的更改",
       message: "当前文件有未保存的修改，确定要关闭吗？",
-      cancel: { label: "继续编辑", flat: true, noCaps: true },
-      ok: { label: "放弃更改", noCaps: true, color: "negative" },
-      persistent: true,
-    }).onOk(() => {
-      emit("update:modelValue", false);
+      okLabel: "放弃更改",
+      okColor: "negative",
+      cancelLabel: "继续编辑"
+    }).then((ok) => {
+      if (ok) emit("update:modelValue", false);
     });
   } else {
     emit("update:modelValue", false);

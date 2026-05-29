@@ -160,25 +160,30 @@ func (fixedSessionRepo) SessionSummaryExists(context.Context, string, int, int) 
 func (fixedSessionRepo) UpdateChatMessageStatus(context.Context, string, string, string, string) error {
 	return nil
 }
+func (fixedSessionRepo) TryIncrementCompressVersion(context.Context, string) (int64, error) {
+	return 0, nil
+}
+func (fixedSessionRepo) CompressSessionInTx(ctx context.Context, _ string, fn func(context.Context) error) error {
+	return fn(ctx)
+}
 
 var _ sessionsess.SessionRepo = fixedSessionRepo{}
 
 var (
-	_ sessionsess.SessionReader        = fixedSessionRepo{}
-	_ sessionsess.SessionWriter        = fixedSessionRepo{}
-	_ sessionsess.SessionBatchWriter   = fixedSessionRepo{}
-	_ sessionsess.SessionPinWriter     = fixedSessionRepo{}
-	_ sessionsess.SessionRevisionWriter = fixedSessionRepo{}
-	_ sessionsess.MessageReader        = fixedSessionRepo{}
-	_ sessionsess.MessageSearchReader  = fixedSessionRepo{}
-	_ sessionsess.MessageWriter        = fixedSessionRepo{}
-	_ sessionsess.MessageStatusWriter  = fixedSessionRepo{}
-	_ sessionsess.TimelineReader       = fixedSessionRepo{}
-	_ sessionsess.InvocationReader     = fixedSessionRepo{}
-	_ sessionsess.SummaryReader        = fixedSessionRepo{}
-	_ sessionsess.SummaryWriter        = fixedSessionRepo{}
-	_ sessionsess.StateRepo            = fixedSessionRepo{}
-	_ sessionsess.TurnRepo             = fixedSessionRepo{}
-	_ sessionsess.ContextUpdater       = fixedSessionRepo{}
-	_ sessionsess.CompressRepo         = fixedSessionRepo{}
+	_ sessionsess.SessionReader       = fixedSessionRepo{}
+	_ sessionsess.SessionWriter       = fixedSessionRepo{}
+	_ sessionsess.SessionMutator      = fixedSessionRepo{}
+	_ sessionsess.SessionBatchMutator = fixedSessionRepo{}
+	_ sessionsess.MessageReader       = fixedSessionRepo{}
+	_ sessionsess.MessageSearchReader = fixedSessionRepo{}
+	_ sessionsess.MessageWriter       = fixedSessionRepo{}
+	_ sessionsess.MessageStatusWriter = fixedSessionRepo{}
+	_ sessionsess.TimelineReader      = fixedSessionRepo{}
+	_ sessionsess.InvocationReader    = fixedSessionRepo{}
+	_ sessionsess.SummaryReader       = fixedSessionRepo{}
+	_ sessionsess.SummaryWriter       = fixedSessionRepo{}
+	_ sessionsess.StateRepo           = fixedSessionRepo{}
+	_ sessionsess.TurnRepo            = fixedSessionRepo{}
+	_ sessionsess.ContextUpdater      = fixedSessionRepo{}
+	_ sessionsess.CompressRepo        = fixedSessionRepo{}
 )

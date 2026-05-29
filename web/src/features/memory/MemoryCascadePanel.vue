@@ -47,6 +47,11 @@
             <q-badge :color="riskColor(props.row.risk_level)" :label="props.row.risk_level || 'unknown'" />
           </q-td>
         </template>
+        <template #body-cell-affected="props">
+          <q-td :props="props">
+            <q-chip dense square color="blue-grey" text-color="white">{{ props.row.affected_entities?.length ?? 0 }}</q-chip>
+          </q-td>
+        </template>
         <template #body-cell-actions="props">
           <q-td :props="props">
             <div class="app-registry-cell-actions">

@@ -8,6 +8,7 @@
       v-model:nodes="internalNodes"
       v-model:edges="internalEdges"
       :node-types="nodeTypes"
+      :edge-types="edgeTypes"
       :default-edge-options="defaultEdgeOptions"
       :connection-line-style="connectionLineStyle"
       :fit-view-on-init="true"
@@ -21,7 +22,7 @@
       :edges-deletable="!readOnly"
       :elements-selectable="true"
       :selection-mode="SelectionMode.Partial"
-      :delete-key-code="readOnly ? null : 'Delete'"
+      :delete-key-code="null"
       @node-click="onNodeClick"
       @pane-click="onPaneClick"
       @pane-contextmenu="onPaneContextMenu"
@@ -103,6 +104,7 @@ import "@vue-flow/controls/dist/style.css";
 import "@vue-flow/minimap/dist/style.css";
 import GraphFlowNode from "./GraphFlowNode.vue";
 import GraphFlowDiamond from "./GraphFlowDiamond.vue";
+import GraphFlowEdge from "./GraphFlowEdge.vue";
 import GraphContextMenu from "./GraphContextMenu.vue";
 import type { ContextMenuItem } from "./GraphContextMenu.vue";
 import GraphNodeSearch from "./GraphNodeSearch.vue";
@@ -145,6 +147,8 @@ const resolvedExecNodeStates = computed(() => props.execNodeStates ?? EMPTY_EXEC
 const emit = defineEmits<{
   selectNode: [nodeId: string | null];
   updateGraph: [];
+  requestAutoLayout: [];
+  focusPropertyPanel: [nodeId: string];
 }>();
 
 const { project, fitView, getSelectedNodes, onViewportChange, zoomTo, getNodes } = useVueFlow();
@@ -196,10 +200,14 @@ const nodeTypes: Record<string, any> = {
   join: GraphFlowDiamond,
 };
 
+const edgeTypes: Record<string, any> = {
+  flowEdge: GraphFlowEdge,
+};
+
 const readOnly = computed(() => props.readOnly ?? false);
 
 const defaultEdgeOptions = {
-  type: "smoothstep",
+  type: "flowEdge",
   animated: false,
   style: { stroke: "var(--graph-edge-normal)", strokeWidth: 1 },
 };
@@ -295,9 +303,10 @@ function buildEdges(): Edge[] {
       id: `e-${e.from}-${e.to}`,
       source: e.from,
       target: e.to,
-      type: "smoothstep",
+      type: "flowEdge",
       animated: isTransfer,
       class: edgeClass,
+      data: { edgeClass },
       style: { stroke: "var(--graph-edge-normal)", strokeWidth: 1 },
       label: edgeKindLabel(e.kind) ?? (isTransfer ? "移交" : isDispatch ? "分派" : undefined),
       labelStyle: { fill: "var(--graph-ctx-text)", fontSize: 10, fontWeight: 600 },
@@ -313,8 +322,9 @@ function buildEdges(): Edge[] {
         id: `ce-${ce.from}-${target}-${label}`,
         source: ce.from,
         target,
-        type: "smoothstep",
+        type: "flowEdge",
         class: "graph-edge--conditional",
+        data: { edgeClass: "graph-edge--conditional" },
         label,
         labelStyle: { fill: "var(--graph-edge-conditional)", fontSize: 10, fontWeight: 600 },
         labelBgStyle: { fill: "var(--graph-ctx-bg)", fillOpacity: 0.9, stroke: "var(--graph-cond-edge-label-stroke)", strokeWidth: 0.5 },
@@ -444,27 +454,39 @@ function onPaneClick() {
 
 function onPaneContextMenu(event: MouseEvent) {
   event.preventDefault();
-  const selected = getSelectedNodes.value;
-  if (selected.length > 1) {
-    paneMenuX.value = event.clientX;
-    paneMenuY.value = event.clientY;
-    paneMenuVisible.value = true;
-  }
+  paneMenuX.value = event.clientX;
+  paneMenuY.value = event.clientY;
+  paneMenuVisible.value = true;
 }
 
 const paneMenuItems = computed<ContextMenuItem[]>(() => {
   const count = getSelectedNodes.value.length;
-  return [{ icon: "✕", label: `删除选中 ${count} 个节点`, shortcut: "Del", danger: true, action: "deleteSelected" }];
+  const items: ContextMenuItem[] = [];
+  if (!readOnly.value) {
+    items.push({ icon: "⊞", label: "自动布局", action: "autoLayout" });
+  }
+  items.push({ icon: "▣", label: "全选节点", shortcut: "Ctrl+A", action: "selectAll" });
+  if (count > 1 && !readOnly.value) {
+    items.push({ icon: "✕", label: `删除选中 ${count} 个节点`, shortcut: "Del", danger: true, action: "deleteSelected" });
+  }
+  return items;
 });
 
-const ctxMenuItems = computed<ContextMenuItem[]>(() => [
-  { icon: "✎", label: "编辑属性", shortcut: "Enter", action: "edit" },
-  { icon: "⧉", label: "复制节点", shortcut: "Ctrl+D", action: "duplicate" },
-  { icon: "✕", label: "删除节点", shortcut: "Del", danger: true, action: "delete" },
-  { icon: "⟂", label: "断开所有连线", action: "disconnect" },
-  { icon: "▷", label: "设为入口节点", success: true, action: "setEntry" },
-  { icon: "◻", label: "设为结束节点", danger: true, action: "setFinish" },
-]);
+const ctxMenuItems = computed<ContextMenuItem[]>(() => {
+  const items: ContextMenuItem[] = [
+    { icon: "✎", label: "查看属性", shortcut: "Enter", action: "edit" },
+  ];
+  if (!readOnly.value) {
+    items.push(
+      { icon: "⧉", label: "复制节点", shortcut: "Ctrl+D", action: "duplicate" },
+      { icon: "✕", label: "删除节点", shortcut: "Del", danger: true, action: "delete" },
+      { icon: "⟂", label: "断开所有连线", action: "disconnect" },
+      { icon: "▷", label: "设为入口节点", success: true, action: "setEntry" },
+      { icon: "◻", label: "设为结束节点", danger: true, action: "setFinish" },
+    );
+  }
+  return items;
+});
 
 const searchMatches = computed(() => {
   if (!searchQuery.value.trim()) return [];
@@ -496,7 +518,7 @@ function onCtxMenuSelect(action: string) {
 
   switch (action) {
     case "edit":
-      emit("selectNode", nodeId);
+      emit("focusPropertyPanel", nodeId);
       break;
     case "duplicate":
       duplicateNode(nodeId);
@@ -532,8 +554,18 @@ function onCtxMenuClose() {
 
 function onPaneMenuSelect(action: string) {
   paneMenuVisible.value = false;
-  if (action === "deleteSelected") {
-    deleteSelectedNodes();
+  switch (action) {
+    case "deleteSelected":
+      deleteSelectedNodes();
+      break;
+    case "selectAll":
+      for (const node of getNodes.value) {
+        node.selected = true;
+      }
+      break;
+    case "autoLayout":
+      emit("requestAutoLayout");
+      break;
   }
 }
 
@@ -890,14 +922,32 @@ function onNodeDragStop({ node }: { node: Node }) {
   }
 }
 
+function isEditableTarget(el: EventTarget | null): boolean {
+  if (!el || !(el instanceof HTMLElement)) return false;
+  const tag = el.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (el.isContentEditable) return true;
+  return false;
+}
+
 function onCanvasKeydown(e: KeyboardEvent) {
   if (e.key === "Escape") {
     ctxMenuVisible.value = false;
     return;
   }
+  if (isEditableTarget(e.target)) return;
   if ((e.ctrlKey || e.metaKey) && e.key === "f") {
     e.preventDefault();
     searchVisible.value = !searchVisible.value;
+    return;
+  }
+  if (!readOnly.value && e.key === "Delete") {
+    const selected = getSelectedNodes.value;
+    if (selected.length === 1) {
+      deleteNode(selected[0].id);
+    } else if (selected.length > 1) {
+      deleteSelectedNodes();
+    }
     return;
   }
   if (readOnly.value) return;

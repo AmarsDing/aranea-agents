@@ -3,6 +3,8 @@ package data
 import (
 	"context"
 	"database/sql"
+
+	"aranea-agents/internal/event"
 )
 
 func ensureSessionRunCheckpointSchema(ctx context.Context, db *sql.DB) error {
@@ -35,7 +37,9 @@ func ensureSessionRunColumnPatches(ctx context.Context, db *sql.DB) error {
 		`ALTER TABLE session_runs ADD COLUMN resume_started_at TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, q := range patches {
-		_, _ = db.ExecContext(ctx, q)
+		if _, execErr := db.ExecContext(ctx, q); execErr != nil {
+			event.SysLogDebug("session_run.schema_patch", "ddl patch skipped", event.P("query", q), event.P("error", execErr.Error()))
+		}
 	}
 	return nil
 }

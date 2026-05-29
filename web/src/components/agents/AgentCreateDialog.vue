@@ -237,7 +237,7 @@ function onCategoryPick(value: string | null) {
 const avatarPickerOpen = ref(false);
 
 const agentKindOptions = [
-  { label: "LLM Agent", value: "llm" },
+  { label: "LLM 智能体", value: "llm" },
   { label: "A2A 远程代理", value: "a2a_proxy" }
 ];
 

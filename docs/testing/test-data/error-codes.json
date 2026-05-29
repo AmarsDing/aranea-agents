@@ -1,0 +1,26 @@
+{
+  "error_codes": [
+    { "domain": "AGENT", "type": "BadRequest", "message": "agent_key is required", "http_code": 400, "test_scenario": "Create agent without agent_key" },
+    { "domain": "AGENT", "type": "BadRequest", "message": "agent_key format invalid", "http_code": 400, "test_scenario": "Create agent with invalid characters in agent_key" },
+    { "domain": "AGENT_KEY_CONFLICT", "type": "BadRequest", "message": "agent_key already in use", "http_code": 400, "test_scenario": "Create agent with duplicate agent_key" },
+    { "domain": "AGENT", "type": "NotFound", "message": "agent not found", "http_code": 404, "test_scenario": "Get non-existent agent" },
+    { "domain": "SESSION", "type": "BadRequest", "message": "session_id is required", "http_code": 400, "test_scenario": "Send chat without session_id" },
+    { "domain": "SESSION", "type": "NotFound", "message": "session not found", "http_code": 404, "test_scenario": "Send chat to non-existent session" },
+    { "domain": "CHAT_NATIVE", "type": "BadRequest", "message": "content is required", "http_code": 400, "test_scenario": "Send chat with empty content" },
+    { "domain": "CHAT_QUEUE_FULL", "type": "BadRequest", "message": "pending message queue is full", "http_code": 400, "test_scenario": "Send 33rd message while 32 queued" },
+    { "domain": "CHAT_RUN_ENDED", "type": "Conflict", "message": "run has already ended", "http_code": 409, "test_scenario": "Cancel a completed run" },
+    { "domain": "TEAM", "type": "BadRequest", "message": "team_key is required", "http_code": 400, "test_scenario": "Create team without team_key" },
+    { "domain": "TEAM", "type": "NotFound", "message": "team not found", "http_code": 404, "test_scenario": "Run non-existent team" },
+    { "domain": "TOOL", "type": "BadRequest", "message": "tool_key is required", "http_code": 400, "test_scenario": "Register tool without key" },
+    { "domain": "TOOL", "type": "NotFound", "message": "tool not found", "http_code": 404, "test_scenario": "Get non-existent tool" },
+    { "domain": "MEMORY", "type": "Forbidden", "message": "fact blocked by PII policy", "http_code": 403, "test_scenario": "Write memory containing PII" },
+    { "domain": "MEMORY", "type": "Conflict", "message": "cascade saga already in progress", "http_code": 409, "test_scenario": "Concurrent cascade delete" },
+    { "domain": "KNOWLEDGE", "type": "ServiceUnavailable", "message": "knowledge retriever not configured", "http_code": 503, "test_scenario": "Query knowledge without retriever" },
+    { "domain": "GRAPH", "type": "BadRequest", "message": "entry_point is required", "http_code": 400, "test_scenario": "Create graph without entry_point" },
+    { "domain": "CHANNEL", "type": "BadRequest", "message": "platform not supported", "http_code": 400, "test_scenario": "Create channel with unknown platform" },
+    { "domain": "MCP_SERVER", "type": "NotFound", "message": "mcp server not found", "http_code": 404, "test_scenario": "Connect to non-existent MCP server" },
+    { "domain": "PROVIDER", "type": "InternalServer", "message": "LLM response error", "http_code": 500, "test_scenario": "LLM provider returns error" }
+  ],
+  "run_status_values": ["idle", "pending", "running", "awaiting_user", "completed", "failed", "cancelled"],
+  "task_status_values": ["TASK_PENDING", "TASK_CLAIMED", "TASK_COMPLETE", "TASK_BLOCKED", "TASK_REVIEW_REQUIRED", "TASK_FAILED", "TASK_TIMED_OUT", "TASK_CANCELLED", "TASK_CRASHED", "TASK_PENDING_ASSIGNMENT"]
+}

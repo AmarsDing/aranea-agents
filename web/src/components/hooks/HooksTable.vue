@@ -23,11 +23,11 @@
 
     <template #body-cell-rule="props">
       <q-td :props="props">
-        <AppRegistryHoverTip :text="hookConditionHint(props.row)" empty-label="">
+        <AppRegistryHoverTip :text="hookConditionHint(props.row, t)" :empty-label="t('hooksPage.noDescription')">
           <div class="app-registry-chip-wrap hooks-data-table__rule-tags">
             <span class="hook-tag hook-tag--point">{{ hookRuleOf(props.row).callback_point }}</span>
             <span :class="actionTagClass(hookRuleOf(props.row).action.type)">
-              {{ actionTypeLabel(hookRuleOf(props.row).action.type) }}
+              {{ actionTypeLabel(hookRuleOf(props.row).action.type, t) }}
             </span>
           </div>
         </AppRegistryHoverTip>
@@ -65,10 +65,10 @@
             icon="history"
             :to="hookRunsTo(props.row)"
           >
-            <q-tooltip>查看阻断/错误记录</q-tooltip>
+            <q-tooltip>{{ t('hooksPage.tooltipViewRuns') }}</q-tooltip>
           </q-btn>
           <q-btn flat dense round class="app-registry-icon-btn" color="primary" icon="edit" @click="$emit('edit', props.row)">
-            <q-tooltip>编辑</q-tooltip>
+            <q-tooltip>{{ t('hooksPage.tooltipEdit') }}</q-tooltip>
           </q-btn>
           <q-btn
             v-if="variant === 'page'"
@@ -80,7 +80,7 @@
             icon="delete"
             @click="$emit('remove', props.row)"
           >
-            <q-tooltip>删除</q-tooltip>
+            <q-tooltip>{{ t('hooksPage.tooltipDelete') }}</q-tooltip>
           </q-btn>
         </div>
       </q-td>
@@ -90,17 +90,20 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
 import type { HookRow } from "../../features/hooks/types";
 import { actionTagClass, actionTypeLabel } from "./callbackEditorUi";
 import {
-  HOOKS_AGENT_TABLE_COLUMNS,
-  HOOKS_TABLE_COLUMNS,
+  createHooksAgentTableColumns,
+  createHooksTableColumns,
   hookConditionHint,
   hookRuleOf,
   hookRunsTo
 } from "./hookTableUi";
+
+const { t } = useI18n();
 
 const props = withDefaults(
   defineProps<{
@@ -124,7 +127,7 @@ defineEmits<{
 }>();
 
 const tableColumns = computed(() =>
-  props.variant === "agent" ? HOOKS_AGENT_TABLE_COLUMNS : HOOKS_TABLE_COLUMNS
+  props.variant === "agent" ? createHooksAgentTableColumns(t) : createHooksTableColumns(t)
 );
 
 const columnPersistKey = computed(() =>

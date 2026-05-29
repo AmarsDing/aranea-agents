@@ -2,7 +2,7 @@
   <section class="settings-section">
     <div class="section-heading">
       <div>
-        <div class="text-subtitle1 text-weight-bold">A2A Endpoint</div>
+        <div class="text-subtitle1 text-weight-bold">A2A 端点</div>
         <div class="text-caption text-grey-7">将本 Agent 暴露为 A2A 服务，供同工作区 call_agent 或外部客户端调用。</div>
       </div>
     </div>

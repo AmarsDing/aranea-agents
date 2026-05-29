@@ -2,10 +2,10 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import { ARTIFACT_TABLE_COLUMNS } from "./artifactTableUi";
 import type { ArtifactMeta } from "./types";
-import { listArtifactVersions } from "./api";
 import { useArtifactStore } from "../../stores/artifact";
 import { validateArtifactFileSize, artifactMaxSizeHint } from "./limits";
 import { readFileAsBase64 } from "./fileBase64";
+import { formatBytes, formatDate } from "../../shared/format";
 
 export function useArtifactsPage() {
   const $q = useQuasar();
@@ -40,18 +40,6 @@ export function useArtifactsPage() {
     { label: "PDF", value: "application/pdf" },
     { label: "JSON", value: "application/json" }
   ];
-
-  function formatBytes(n: number) {
-    if (!n) return "0 B";
-    const units = ["B", "KB", "MB", "GB"];
-    let v = n;
-    let i = 0;
-    while (v >= 1024 && i < units.length - 1) {
-      v /= 1024;
-      i++;
-    }
-    return `${v.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-  }
 
   async function loadRows() {
     loading.value = true;
@@ -132,7 +120,7 @@ export function useArtifactsPage() {
     detailVersion.value = row.version;
     detailVersions.value = [];
     detailOpen.value = true;
-    void listArtifactVersions(row.id)
+    void artifactStore.listVersions(row.id)
       .then((items) => {
         detailVersions.value = items;
       })
@@ -186,6 +174,11 @@ export function useArtifactsPage() {
     void loadRows();
   }
 
+  function onSessionFilterChange() {
+    page.value = 1;
+    void loadRows();
+  }
+
   function resetFilters() {
     sessionFilter.value = "";
     search.value = "";
@@ -198,12 +191,7 @@ export function useArtifactsPage() {
     void loadRows();
   });
 
-  watch(sessionFilter, () => {
-    page.value = 1;
-    void loadRows();
-  });
-
-  watch([mimeFilter], () => {
+  watch(mimeFilter, () => {
     page.value = 1;
     void loadRows();
   });
@@ -233,8 +221,10 @@ export function useArtifactsPage() {
     pageMax,
     columns,
     formatBytes,
+    formatDate,
     loadRows,
     onSearchChange,
+    onSessionFilterChange,
     resetFilters,
     onUploadFile,
     submitUpload,

@@ -1038,6 +1038,17 @@ body.body--dark .agent-categories-page .category-tree-panel .q-tree__node-header
   border-color: color-mix(in srgb, var(--color-link) 28%, var(--glass-border))
   background: color-mix(in srgb, var(--color-info-soft) 42%, var(--glass-surface))
 
+.position-card--disabled
+  opacity: 0.6
+
+.position-card--disabled .position-card__accent
+  background: linear-gradient(180deg, var(--color-text-tertiary), color-mix(in srgb, var(--color-text-tertiary) 40%, transparent))
+
+.position-card__status-off
+  background: color-mix(in srgb, var(--color-text-tertiary) 12%, var(--glass-elevated))
+  color: var(--color-text-secondary)
+  font-weight: 700
+
 .position-card__accent
   flex: 0 0 3px
   background: linear-gradient(180deg, var(--color-link), color-mix(in srgb, var(--color-link) 40%, transparent))

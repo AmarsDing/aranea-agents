@@ -69,7 +69,7 @@ func (uc *SessionUsecase) ListMessagesByStatus(ctx context.Context, sessionID, s
 	if sessionID == "" {
 		return nil, validationErr("session id is required")
 	}
-	return uc.messageReader.ListMessagesByStatus(ctx, sessionID, status, limit)
+	return uc.messageSearchReader.ListMessagesByStatus(ctx, sessionID, status, limit)
 }
 
 // ListMessagesRecent loads the latest N messages in chronological order (timeline / cron).
@@ -152,7 +152,7 @@ func (uc *SessionUsecase) BumpSessionRevision(ctx context.Context, sessionID str
 	if sessionID == "" {
 		return 0, validationErr("session id is required")
 	}
-	return uc.sessionRevWriter.BumpSessionRevision(ctx, sessionID)
+	return uc.sessionWriter.BumpSessionRevision(ctx, sessionID)
 }
 
 // GetSessionRevision returns the current session_revision counter.

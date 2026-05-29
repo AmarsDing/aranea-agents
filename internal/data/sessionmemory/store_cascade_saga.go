@@ -57,11 +57,11 @@ VALUES (?, ?, ?, 'pending', ?, 0, ?)`,
 
 func (st *Store) GetCascadeSagaSteps(ctx context.Context, proposalID string) ([]CascadeSagaStep, error) {
 	if st == nil || st.client == nil {
-		return nil, errors.New("session memory store not wired")
+		return nil, errStoreNotWired
 	}
 	proposalID = strings.TrimSpace(proposalID)
 	if proposalID == "" {
-		return nil, errors.New("proposal_id is required")
+		return nil, errProposalIDRequired
 	}
 	rows, err := st.client.QueryContext(ctx, `
 SELECT id, proposal_id, step_index, step_name, state, is_critical, attempts,
@@ -91,7 +91,7 @@ ORDER BY step_index`, proposalID)
 
 func (st *Store) UpdateSagaStepState(ctx context.Context, stepID int64, state, errMsg string) error {
 	if st == nil || st.client == nil {
-		return errors.New("session memory store not wired")
+		return errStoreNotWired
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	switch state {
@@ -127,7 +127,7 @@ WHERE id = ?`, now, stepID)
 
 func (st *Store) UpdateSagaStepResult(ctx context.Context, stepID int64, resultJSON string) error {
 	if st == nil || st.client == nil {
-		return errors.New("session memory store not wired")
+		return errStoreNotWired
 	}
 	_, err := st.client.ExecContext(ctx, `
 UPDATE cascade_saga_steps SET result_json = ? WHERE id = ?`,
@@ -137,7 +137,7 @@ UPDATE cascade_saga_steps SET result_json = ? WHERE id = ?`,
 
 func (st *Store) HasCascadeSaga(ctx context.Context, proposalID string) (bool, error) {
 	if st == nil || st.client == nil {
-		return false, errors.New("session memory store not wired")
+		return false, errStoreNotWired
 	}
 	proposalID = strings.TrimSpace(proposalID)
 	if proposalID == "" {
@@ -161,7 +161,7 @@ func (st *Store) HasCascadeSaga(ctx context.Context, proposalID string) (bool, e
 
 func (st *Store) SaveCascadeOriginalStatements(ctx context.Context, agentID, oldName string, factIDs []string) error {
 	if st == nil || st.client == nil {
-		return errors.New("session memory store not wired")
+		return errStoreNotWired
 	}
 	if len(factIDs) == 0 {
 		return nil
@@ -191,7 +191,7 @@ WHERE id = ? AND deleted_at = '' AND last_cascade_original_statement = ''`, stmt
 
 func (st *Store) RevertCascadeFactStatements(ctx context.Context, agentID string) (int, error) {
 	if st == nil || st.client == nil {
-		return 0, errors.New("session memory store not wired")
+		return 0, errStoreNotWired
 	}
 	rows, err := st.client.QueryContext(ctx, `
 SELECT id, last_cascade_original_statement FROM memory_facts
@@ -233,7 +233,7 @@ WHERE id = ? AND deleted_at = ''`,
 
 func (st *Store) ListCascadeFactDiffs(ctx context.Context, agentID, oldName, newName string, limit int) ([]map[string]any, error) {
 	if st == nil || st.client == nil {
-		return nil, errors.New("session memory store not wired")
+		return nil, errStoreNotWired
 	}
 	if limit <= 0 || limit > 50 {
 		limit = 50
@@ -282,7 +282,7 @@ LIMIT ?`, agentID, like, limit)
 
 func (st *Store) MarkFactsIndexStaleByAgent(ctx context.Context, agentID string) (int64, error) {
 	if st == nil || st.client == nil {
-		return 0, errors.New("session memory store not wired")
+		return 0, errStoreNotWired
 	}
 	res, err := st.client.ExecContext(ctx, `
 UPDATE memory_facts SET index_status = 'stale'

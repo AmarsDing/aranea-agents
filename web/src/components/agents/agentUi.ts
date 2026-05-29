@@ -31,9 +31,13 @@ export const descriptionTemplates = [
 ];
 
 export const statusOptions = [
-  { label: "Active", value: "active" },
-  { label: "Inactive", value: "inactive" }
+  { label: "活跃", value: "active" },
+  { label: "停用", value: "inactive" }
 ];
+
+export function statusLabel(value: string) {
+  return statusOptions.find((opt) => opt.value === value)?.label ?? value;
+}
 
 export const toolOptions = ["browser", "replace_content", "list_file", "read_file", "save_file", "create_image", "create_video", "stt"];
 
@@ -87,7 +91,7 @@ export function tokenText(value: string) {
   return count > 0 ? `估计 ${count} token` : "空";
 }
 
-export function formatContext(value: number) {
+export function formatContext(value?: number) {
   if (!value) return "默认 ctx";
   if (value >= 1_000_000) return `${Math.round(value / 1_000_000)}M ctx`;
   if (value >= 1000) return `${Math.round(value / 1000)}K ctx`;

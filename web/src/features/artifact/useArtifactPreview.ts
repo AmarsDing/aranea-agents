@@ -1,6 +1,7 @@
 import { computed, ref, watch } from "vue";
 import type { ArtifactMeta, ArtifactPreview } from "./types";
 import { useArtifactStore } from "../../stores/artifact";
+import { formatBytes } from "../../shared/format";
 
 export function useArtifactPreview(artifactId: () => string, version?: () => number | undefined) {
   const artifactStore = useArtifactStore();
@@ -26,13 +27,6 @@ export function useArtifactPreview(artifactId: () => string, version?: () => num
     if (!preview.value || !preview.value.data_base64) return "";
     return `data:application/pdf;base64,${preview.value.data_base64}`;
   });
-
-  function formatBytes(n: number) {
-    if (!n) return "0 B";
-    if (n < 1024) return `${n} B`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-  }
 
   async function loadPreview() {
     const id = artifactId();

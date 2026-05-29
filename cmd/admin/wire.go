@@ -561,7 +561,7 @@ func provideChatSender(svc *service.ChatService) server.ChatSender {
 	return svc
 }
 
-func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, cascade *biz.L4CascadeUsecase, memStore *sessionmemory.Store, sysUC *biz.SystemSettingUsecase, deadLetterRepo biz.MemoryDeadLetterAdminRepo, queue memtrpc.AutoMemoryQueue, queueStats *memtrpc.MemoryJobQueue) *service.MemoryService {
+func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, cascade *biz.L4CascadeUsecase, sysUC *biz.SystemSettingUsecase, deadLetterRepo biz.MemoryDeadLetterAdminRepo, queue memtrpc.AutoMemoryQueue, queueStats *memtrpc.MemoryJobQueue, memStore *sessionmemory.Store) *service.MemoryService {
 	enqueue := func(ctx context.Context, id int64) error {
 		return deadLetterRepo.ReplayDeadLetterIntoQueue(ctx, id, func(sessionID, appName, userID, feedbackMsgID string, priority biz.MemoryJobPriority) {
 			queue.Enqueue(memtrpc.AutoMemoryJobRequest{
@@ -573,7 +573,7 @@ func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, fac
 			})
 		})
 	}
-	return service.NewMemoryService(biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec, factSync), cascade, memStore, sysUC, deadLetterRepo, enqueue, queueStats)
+	return service.NewMemoryService(biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec, factSync), cascade, sysUC, deadLetterRepo, data.NewMemoryDebugRecaller(memStore), data.NewMemoryFactIndexCounter(memStore), enqueue, queueStats)
 }
 
 func provideL4CascadeUsecase(memStore *sessionmemory.Store, factSync biz.MemoryFactIndexSyncer) *biz.L4CascadeUsecase {
@@ -581,7 +581,8 @@ func provideL4CascadeUsecase(memStore *sessionmemory.Store, factSync biz.MemoryF
 		return nil
 	}
 	repo := data.NewL4GraphRepo(memStore)
-	uc := biz.NewL4CascadeUsecase(data.NewCascadeGraphStore(memStore), repo)
+	cgs := data.NewCascadeGraphStore(memStore)
+	uc := biz.NewL4CascadeUsecase(cgs, cgs, cgs, cgs, repo)
 	if uc != nil {
 		uc.SetIndexSync(factSync)
 	}

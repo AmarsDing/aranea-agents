@@ -25,7 +25,7 @@ body:not(.body--dark)
     min-height: 100%
     color: $cream-text
     // 与参考图一致的暖色渐变底
-    background: linear-gradient(160deg, #FFF8E7 0%, $cream-page 40%, $cream-page-alt 100%)
+    background: linear-gradient(160deg, #FFFDF5 0%, $cream-page 40%, $cream-page-alt 100%)
 
   .app-page-container
     padding: 0 0 1rem
@@ -216,6 +216,104 @@ body.body--dark
   .q-field--focused .q-field__control
     border-color: var(--color-accent) !important
 
+// ── QSelect / QMenu 下拉面板全局主题 ──
+body:not(.body--dark)
+  .q-menu
+    background: rgba(255, 253, 248, 0.92) !important
+    border: 1px solid var(--glass-border) !important
+    border-radius: 14px !important
+    box-shadow: 0 8px 32px rgba(93, 64, 55, 0.1), 0 2px 8px rgba(93, 64, 55, 0.06) !important
+    backdrop-filter: blur(var(--glass-blur-default))
+    -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+  .q-menu .q-item
+    border-radius: 8px
+    margin: 2px 4px
+    padding: 8px 12px
+    min-height: 36px
+    color: var(--color-text-primary)
+
+  .q-menu .q-item:hover,
+  .q-menu .q-item.q-manual-focusable--focused
+    background: var(--interaction-surface-hover) !important
+    color: var(--color-text-primary)
+
+  .q-menu .q-item.q-item--active,
+  .q-menu .q-item.q-item--selected
+    background: color-mix(in srgb, var(--color-accent) 12%, var(--glass-surface)) !important
+    color: var(--color-accent) !important
+
+  .q-select__dropdown-icon
+    color: var(--color-icon-muted)
+
+  .q-field--outlined .q-field__control::before
+    border-color: var(--glass-border)
+
+  .q-field--outlined .q-field__control:hover::before
+    border-color: color-mix(in srgb, var(--color-accent) 35%, var(--glass-border))
+
+  .q-field--outlined.q-field--focused .q-field__control::after
+    border-color: var(--color-accent)
+
+body.body--dark
+  .q-menu
+    background: color-mix(in srgb, var(--glass-surface) 94%, transparent) !important
+    border: 1px solid var(--glass-border) !important
+    border-radius: 14px !important
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.32), 0 2px 8px rgba(0, 0, 0, 0.18) !important
+    backdrop-filter: blur(var(--glass-blur-elevated))
+    -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
+
+  .q-menu .q-item
+    border-radius: 8px
+    margin: 2px 4px
+    padding: 8px 12px
+    min-height: 36px
+    color: var(--color-text-primary)
+
+  .q-menu .q-item:hover,
+  .q-menu .q-item.q-manual-focusable--focused
+    background: var(--glass-surface-hover) !important
+    color: var(--color-text-primary)
+
+  .q-menu .q-item.q-item--active,
+  .q-menu .q-item.q-item--selected
+    background: color-mix(in srgb, var(--color-accent) 14%, var(--glass-surface)) !important
+    color: var(--color-accent) !important
+
+  .q-select__dropdown-icon
+    color: var(--color-icon-muted)
+
+  .q-field--outlined .q-field__control::before
+    border-color: var(--glass-border)
+
+  .q-field--outlined .q-field__control:hover::before
+    border-color: color-mix(in srgb, var(--color-accent) 35%, var(--glass-border))
+
+  .q-field--outlined.q-field--focused .q-field__control::after
+    border-color: var(--color-accent)
+
+// ── QTable 全局滚动条主题 ──
+.q-table__middle
+  scrollbar-width: thin
+  scrollbar-color: var(--table-scrollbar-thumb, rgba(100, 116, 139, 0.18)) transparent
+
+  &::-webkit-scrollbar
+    height: 6px
+    width: 6px
+
+  &::-webkit-scrollbar-track
+    background: transparent
+
+  &::-webkit-scrollbar-thumb
+    border-radius: 4px
+    border: 1px solid transparent
+    background-clip: content-box
+    background-color: var(--table-scrollbar-thumb, rgba(100, 116, 139, 0.18))
+
+  &::-webkit-scrollbar-thumb:hover
+    background-color: var(--table-scrollbar-thumb-hover, rgba(100, 116, 139, 0.35))
+
 // 与旧类名兼容
 .panel-scroll
   overflow-y: auto
@@ -232,7 +330,7 @@ body:not(.body--dark) .dashboard-side-toggle .dashboard-sell
 
 // --- Theme Preview（dev 验收页）---
 body:not(.body--dark) .theme-preview-page
-  background: linear-gradient(160deg, #FFF8E7 0%, var(--canvas-base) 42%, #F0E6D8 100%)
+  background: linear-gradient(160deg, #FFFDF5 0%, var(--canvas-base) 42%, #F0E6D8 100%)
 
 body.body--dark .theme-preview-page
   background: linear-gradient(165deg, var(--canvas-base) 0%, #0c1220 48%, #151b28 100%)
@@ -566,14 +664,14 @@ body:not(.body--dark)
       border: 1px solid rgba(141, 110, 99, 0.1)
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62)
     .chat-input.q-field--focused .q-field__control
-      border-color: rgba(212, 137, 26, 0.6)
-      box-shadow: 0 0 0 2px rgba(212, 137, 26, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.7)
+      border-color: rgba(220, 160, 62, 0.6)
+      box-shadow: 0 0 0 2px rgba(220, 160, 62, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.7)
     .chat-toolbar-field .q-field__control
       background: rgba(255, 255, 255, 0.68)
       border-color: rgba(141, 110, 99, 0.16)
     .chat-toolbar-field.q-field--focused .q-field__control
-      border-color: rgba(212, 137, 26, 0.5)
-      box-shadow: 0 0 0 1px rgba(212, 137, 26, 0.2)
+      border-color: rgba(220, 160, 62, 0.5)
+      box-shadow: 0 0 0 1px rgba(220, 160, 62, 0.2)
     .chat-context-pill
       color: $cream-text-light
       background: rgba(255, 255, 255, 0.58)
@@ -903,7 +1001,7 @@ body:not(.body--dark) .chat-page
     color: var(--color-text-secondary)
   .chat-message-bubble--sent
     background: var(--color-accent)
-    border: 1px solid rgba(212, 137, 26, 0.42)
+    border: 1px solid rgba(220, 160, 62, 0.42)
     box-shadow: var(--glass-inner-highlight)
     color: var(--color-on-accent)
   .chat-message-bubble--sent .message-name,
@@ -924,12 +1022,12 @@ body:not(.body--dark) .chat-page
     color: var(--color-text-heading)
   .chat-message-content a
     color: var(--color-accent)
-    border-bottom-color: rgba(212, 137, 26, 0.45)
+    border-bottom-color: rgba(220, 160, 62, 0.45)
   .chat-message-content a:hover
     color: var(--color-accent-hover)
   .chat-message-content th
     color: var(--color-text-primary)
-    background: rgba(212, 137, 26, 0.1)
+    background: rgba(220, 160, 62, 0.1)
   .chat-tool-details__summary-text
     color: var(--color-text-primary)
 
@@ -2390,15 +2488,13 @@ body.body--dark .overview-stat-card__bar
   display: grid
   gap: 20px
   grid-template-columns: 1fr
+  align-items: stretch
 
   @media (min-width: 900px)
-    grid-template-columns: 2fr 1fr
+    grid-template-columns: 1fr 1fr 1fr
 
-.overview-mid-row__left
-  min-width: 0
-
-.overview-mid-row__right
-  min-width: 0
+  > *
+    min-width: 0
 
 // Top 模型 + Top Agent
 .overview-ranks
@@ -2595,15 +2691,20 @@ body.body--dark .overview-page .q-field--focused .q-field__control
 // ═══════════════════════════════════════════════════════════════
 
 .overview-alert-stack
+  display: flex
+  flex-direction: column
+  gap: 20px
+
+.overview-alert-stack__row
   display: grid
   gap: 20px
   grid-template-columns: 1fr
 
   @media (min-width: 900px)
-    grid-template-columns: 1fr 1fr 1fr
+    grid-template-columns: 1fr 1fr
 
-.overview-alert-stack > *
-  min-width: 0
+  > *
+    min-width: 0
 
 // ═══════════════════════════════════════════════════════════════
 //  Token 构成图
@@ -2664,18 +2765,7 @@ body.body--dark .overview-page .q-field--focused .q-field__control
   font-size: 0.76rem
   color: var(--color-text-secondary)
 
-// ── 健康状态圆点 ──
-.health-dot
-  display: inline-block
-  width: 8px
-  height: 8px
-  border-radius: 50%
-
-.health-dot--ok
-  background: var(--color-success)
-
-.health-dot--degraded
-  background: var(--color-warning)
+// ── 健康状态圆点（完整定义见 theme/_page-patterns.sass） ──
 
 // ═══════════════════════════════════════════════════════════════
 //  趋势条形图（旧版保留 — 当 ECharts 不可用时回退）

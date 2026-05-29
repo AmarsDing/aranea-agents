@@ -1,16 +1,22 @@
-/**
- * PGO-3: API client for POST /v1/ai/refine.
- * Provides a typed wrapper around the unified AI refinement endpoint.
- */
 import type { FieldScope } from './fieldGuides'
+import { createAIRefineService } from '../../services'
+import type { RefineScope, RefineRequest as KratosRefineRequest, RefineResponse as KratosRefineResponse } from '../../services/kratos/ai_refine/v1/index'
+
+const fieldScopeToRefineScope: Record<FieldScope, RefineScope> = {
+  'category.industry': 'REFINE_SCOPE_CATEGORY_INDUSTRY',
+  'category.department': 'REFINE_SCOPE_CATEGORY_DEPT',
+  'category.position': 'REFINE_SCOPE_CATEGORY_POSITION',
+  'agent.description': 'REFINE_SCOPE_AGENT_DESCRIPTION',
+  'agent.file': 'REFINE_SCOPE_AGENT_FILE',
+}
 
 export interface RefineRequest {
   scope: FieldScope
-  resourceId?: string   // agent_id or category_id
-  fileName?: string     // only for scope='agent.file'
+  resourceId?: string
+  fileName?: string
   originalText: string
-  userHint?: string     // optional user instruction
-  targetMode?: string   // complete | task | minimized
+  userHint?: string
+  targetMode?: string
 }
 
 export interface RefineResponse {
@@ -23,37 +29,23 @@ export interface RefineResponse {
   source: 'agent_model' | 'system_default' | 'catalog_first' | string
 }
 
-/** POST /v1/ai/refine */
 export async function refinePromptField(req: RefineRequest): Promise<RefineResponse> {
-  const body = {
-    scope: req.scope,
-    resource_id: req.resourceId ?? '',
-    file_name: req.fileName ?? '',
-    original_text: req.originalText,
-    user_hint: req.userHint ?? '',
-    target_mode: req.targetMode ?? 'complete',
-  }
-
-  const response = await fetch('/v1/ai/refine', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+  const client = createAIRefineService()
+  const res: KratosRefineResponse = await client.Refine({
+    scope: fieldScopeToRefineScope[req.scope],
+    resourceId: req.resourceId ?? '',
+    fileName: req.fileName ?? '',
+    originalText: req.originalText,
+    userHint: req.userHint ?? '',
+    targetMode: req.targetMode ?? 'complete',
   })
-
-  if (!response.ok) {
-    const errBody = await response.json().catch(() => ({}))
-    const msg = (errBody as { message?: string }).message ?? `AI refine failed (${response.status})`
-    throw new Error(msg)
-  }
-
-  const data = await response.json()
   return {
-    refined: data.refined ?? '',
-    diff: data.diff ?? '',
-    tokensBefore: data.tokens_before ?? 0,
-    tokensAfter: data.tokens_after ?? 0,
-    provider: data.provider ?? '',
-    model: data.model ?? '',
-    source: data.source ?? '',
+    refined: res.refined ?? '',
+    diff: res.diff ?? '',
+    tokensBefore: res.tokensBefore ?? 0,
+    tokensAfter: res.tokensAfter ?? 0,
+    provider: res.provider ?? '',
+    model: res.model ?? '',
+    source: res.source ?? '',
   }
 }

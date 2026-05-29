@@ -48,7 +48,7 @@ type FallbackEvent = {
 
 const events = computed<FallbackEvent[]>(() => {
   return props.anomalies
-    .filter((e) => e.status === "failed" || e.status === "timeout" || e.retry_count > 0)
+    .filter((e) => e.status === "failed" || e.status === "timeout" || (e.retry_count ?? 0) > 0)
     .slice(0, 10)
     .map((e) => {
       const isRetry = (e.retry_count ?? 0) > 0;
@@ -58,7 +58,7 @@ const events = computed<FallbackEvent[]>(() => {
         iconColor: isRetry ? "warning" : "negative",
         label: `${e.provider_code} / ${e.model_display_name || e.model_api_id}`,
         detail: isRetry
-          ? `重试 ${e.retry_count} 次 · ${e.agent_key || "未知 Agent"}`
+          ? `重试 ${e.retry_count ?? 0} 次 · ${e.agent_key || "未知 Agent"}`
           : `${e.status} · ${e.error_message?.slice(0, 60) || "无错误信息"}`,
         time: formatTime(e.occurred_at)
       };

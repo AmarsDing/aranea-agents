@@ -185,7 +185,11 @@ func (s *TeamService) ListTeams(ctx context.Context, _ *v1.ListTeamsRequest) (*v
 	}
 	out := &v1.ListTeamsResponse{Items: make([]*v1.Team, 0, len(items))}
 	for i := range items {
-		out.Items = append(out.Items, toProtoTeam(items[i]))
+		pb := toProtoTeam(items[i])
+		if active, aerr := s.uc.HasActiveRun(ctx, items[i].ID); aerr == nil {
+			pb.HasActiveRun = active
+		}
+		out.Items = append(out.Items, pb)
 	}
 	return out, nil
 }

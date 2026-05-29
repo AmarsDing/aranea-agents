@@ -53,7 +53,7 @@ export function useGraphsPage() {
       list = list.filter(
         (g) =>
           g.name.toLowerCase().includes(q) ||
-          g.description.toLowerCase().includes(q),
+          (g.description ?? "").toLowerCase().includes(q),
       );
     }
     if (engineFilter.value) {
@@ -80,6 +80,10 @@ export function useGraphsPage() {
       counts[node.type] = (counts[node.type] ?? 0) + 1;
     }
     return counts;
+  }
+
+  function nodeTypeBorderColor(type: string): string {
+    return (NODE_TYPE_STYLES as Record<string, { borderColor: string }>)[type]?.borderColor ?? "var(--color-accent)";
   }
 
 
@@ -168,7 +172,7 @@ export function useGraphsPage() {
     SORT_OPTIONS,
     ENGINE_FILTER_OPTIONS,
     NODE_TYPE_EMOJI,
-    NODE_TYPE_STYLES,
+    nodeTypeBorderColor,
     countNodesByType,
     relativeTime,
     runDialogOpen: graphExecute.runDialogOpen,

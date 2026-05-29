@@ -5,7 +5,7 @@
       <div class="row items-center q-gutter-xs no-wrap">
         <span class="category-tree-node__label ellipsis">{{ node.name }}</span>
         <q-chip
-          v-if="showSystemChip && node.level === 'industry'"
+          v-if="showSystemChip"
           dense
           square
           size="sm"

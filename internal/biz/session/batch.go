@@ -227,7 +227,7 @@ func (uc *SessionUsecase) BatchArchive(ctx context.Context, ids []string, olderT
 			Truncated:       truncated,
 		}, nil
 	}
-	processed, failed, err := uc.sessionBatchWriter.ArchiveSessionsByIDs(ctx, matched)
+	processed, failed, err := uc.sessionBatchMutator.ArchiveSessionsByIDs(ctx, matched)
 	if err != nil {
 		return SessionBatchResult{}, err
 	}
@@ -254,7 +254,7 @@ func (uc *SessionUsecase) BatchDelete(ctx context.Context, ids []string, olderTh
 			Truncated:       truncated,
 		}, nil
 	}
-	processed, failed, err := uc.sessionBatchWriter.DeleteSessionsByIDs(ctx, matched)
+	processed, failed, err := uc.sessionBatchMutator.DeleteSessionsByIDs(ctx, matched)
 	if err != nil {
 		return SessionBatchResult{}, err
 	}

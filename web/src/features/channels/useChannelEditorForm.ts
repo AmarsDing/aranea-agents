@@ -1,8 +1,7 @@
 import { computed, reactive, ref, watch, type Ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
-import { listAgents } from "../agents/api";
 import type { Agent } from "../agents/types";
-import { listTeams } from "../teams/api";
 import type { Team } from "../teams/types";
 import {
   CHANNEL_LONG_TASK_PRESETS,
@@ -31,9 +30,8 @@ import {
   type LongTaskFormKey
 } from "./channelLongTaskDefaults";
 import { isImPreviewFormKey } from "./channelImPreviewDefaults";
-import { channelWebhookURL } from "../../components/channels/channelUi";
 import { buildChannelWebhookURL, isLocalhostOrigin } from "./publicWebhookOrigin";
-import { createChannel, testChannel, updateChannel } from "./api";
+import { useChannelsStore } from "../../stores/channels";
 import { useAgentModelValidation } from "../agents/useAgentModelValidation";
 import type { ChannelCatalogItem, ChannelConfig, ChannelCredential, ChannelCredentialInput, ChannelMetadata, ChannelRow } from "./types";
 
@@ -49,6 +47,8 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
   (e: "update:modelValue", value: boolean): void;
 }) {
   const $q = useQuasar();
+  const { t, te } = useI18n();
+  const channelsStore = useChannelsStore();
   const saving = ref(false);
   const testing = ref(false);
   const selectedType = ref("");
@@ -92,6 +92,9 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
   );
   const platformSections = computed(() => buildPlatformSections(selectedType.value, selectedCatalog.value));
   const credentialKeys = computed(() => selectedCatalog.value?.credential_schema?.required ?? []);
+  function jsonError(value: string) {
+    try { JSON.parse(value || "{}"); return ""; } catch (err) { return err instanceof Error ? err.message : t("channelEditor.jsonFormatError"); }
+  }
   const configError = computed(() => jsonError(configExtraText.value));
   const metadataError = computed(() => jsonError(metadataExtraText.value));
   const feishuSecretReady = computed(() => {
@@ -236,7 +239,11 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
   }
 
   const longTaskPresetOptions = computed(() =>
-    CHANNEL_LONG_TASK_PRESETS.map((p) => ({ label: p.label, value: p.id, description: p.description }))
+    CHANNEL_LONG_TASK_PRESETS.map((p) => ({
+      label: te(p.label) ? t(p.label) : p.label,
+      value: p.id,
+      description: te(p.description) ? t(p.description) : p.description
+    }))
   );
 
   function resolveLongTaskPreset(cfg: ChannelConfig, metadata: ChannelMetadata) {
@@ -446,7 +453,7 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
 
   async function persistChannel() {
     const payload = buildPayload();
-    return props.row ? updateChannel(props.row.id, payload) : createChannel(payload);
+    return props.row ? channelsStore.editChannel(props.row.id, payload) : channelsStore.addChannel(payload);
   }
 
   async function save() {
@@ -455,9 +462,9 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
       const saved = await persistChannel();
       emit("saved", saved);
       emit("update:modelValue", false);
-      $q.notify({ type: "positive", message: "Channel 已保存" });
+      $q.notify({ type: "positive", message: t("channelEditor.saved") });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "保存失败" });
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : t("channelEditor.saveFailed") });
     } finally {
       saving.value = false;
     }
@@ -468,60 +475,44 @@ export function useChannelEditorForm(props: EditorProps, modelOpen: Ref<boolean>
     try {
       const saved = await persistChannel();
       emit("saved", saved);
-      const result = await testChannel(saved.id);
+      const result = await channelsStore.testConnection(saved.id);
       emit("tested");
       emit("update:modelValue", false);
       $q.notify({ type: result.ok ? "positive" : "warning", message: result.message || result.status });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "保存或测试失败" });
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : t("channelEditor.saveOrTestFailed") });
     } finally {
       testing.value = false;
     }
   }
 
   async function copyWebhookPreview() {
-    const previewRow: ChannelRow = {
-      id: props.row?.id || "",
-      key: form.key.trim(),
-      name: form.name.trim(),
-      config_json: JSON.stringify({ type: selectedType.value, receive_mode: receiveMode.value, webhook: { path: webhookPath.value } }),
-      metadata_json: "{}",
-      enabled: form.enabled,
-      status: props.row?.status || "active",
-      resource: "channels",
-      description: "",
-      sort_order: 0,
-      parent_id: "",
-      level: "",
-      agent_id: "",
-      provider: "",
-      model: "",
-      created_at: "",
-      updated_at: "",
-      deleted_at: ""
-    };
+    const url = webhookPreview.value;
+    if (!url) {
+      $q.notify({ type: "negative", message: t("channelEditor.webhookNotAvailable") });
+      return;
+    }
     try {
-      const url = webhookPreview.value || channelWebhookURL(previewRow);
       if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(url);
       }
-      $q.notify({ type: "positive", message: `已复制 Webhook URL：${url}` });
+      $q.notify({ type: "positive", message: t("channelEditor.webhookCopied", { url }) });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "复制失败" });
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : t("channelEditor.copyFailed") });
     }
   }
 
   async function loadRoutingOptions() {
     routingOptionsLoading.value = true;
     try {
-      const [agents, teams] = await Promise.all([listAgents({ limit: 200 }), listTeams()]);
+      const { agents, teams } = await channelsStore.loadRoutingOptions();
       routingAgents.value = agents;
       routingTeams.value = teams;
       reconcileRoutingSelection(agents, teams);
     } catch (err) {
       $q.notify({
         type: "warning",
-        message: err instanceof Error ? err.message : "加载 Agent / Team 列表失败"
+        message: err instanceof Error ? err.message : t("channelEditor.routingLoadFailed")
       });
     } finally {
       routingOptionsLoading.value = false;
@@ -559,9 +550,7 @@ function defaultConfigFor(item: ChannelCatalogItem): Record<string, unknown> {
   return base;
 }
 
-function jsonError(value: string) {
-  try { JSON.parse(value || "{}"); return ""; } catch (err) { return err instanceof Error ? err.message : "JSON 格式错误"; }
-}
+
 
 function parseJSON<T>(value: string | undefined, fallback: T): T {
   if (!value) return fallback;

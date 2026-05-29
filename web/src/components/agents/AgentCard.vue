@@ -18,7 +18,7 @@
         </div>
         <button class="agent-handle" @click="$emit('copy-key', agent.agent_key)">{{ agent.agent_key }}</button>
       </div>
-      <q-badge rounded :class="['agent-card__status', agent.status === 'active' ? 'is-active' : '']">{{ agent.status }}</q-badge>
+      <q-badge rounded :class="['agent-card__status', agent.status === 'active' ? 'is-active' : '']">{{ statusLabel(agent.status) }}</q-badge>
     </q-card-section>
 
     <q-card-section class="q-pt-none">
@@ -58,6 +58,7 @@ import { computed } from "vue";
 import { useQuasar } from "quasar";
 import type { Agent } from "../../features/agents/types";
 import AgentAvatarQ from "../avatar/AgentAvatarQ.vue";
+import { statusLabel } from "./agentUi";
 
 const props = defineProps<{
   agent: Agent;

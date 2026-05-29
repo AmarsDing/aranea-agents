@@ -15,7 +15,7 @@ const flowStepChannelCardAction = "channel.card.action"
 // HandleFeishuCardAction processes card.action.trigger for session run escalation (CC-R-02).
 func (h *ChannelIngress) HandleFeishuCardAction(ctx context.Context, chRow biz.Channel, action lark.CardActionPayload) *lark.CardActionHTTPResponse {
 	if h == nil || h.chat == nil {
-		return lark.NewCardActionToast("服务未就绪")
+		return lark.NewCardActionToast(channelCardActionServiceUnavailable)
 	}
 	action.Action = strings.TrimSpace(strings.ToLower(action.Action))
 	switch action.Action {
@@ -24,7 +24,7 @@ func (h *ChannelIngress) HandleFeishuCardAction(ctx context.Context, chRow biz.C
 	case lark.CardActionCancel:
 		return h.handleFeishuCardCancel(ctx, chRow, action)
 	default:
-		return lark.NewCardActionToast("未知操作")
+		return lark.NewCardActionToast(channelCardActionUnknownOperation)
 	}
 }
 
@@ -44,7 +44,7 @@ func (h *ChannelIngress) handleFeishuCardBackground(ctx context.Context, chRow b
 			event.P("session_run_id", sessionRunID),
 			event.P("error", err.Error()),
 		)
-		return lark.NewCardActionToast("操作失败，请稍后重试")
+		return lark.NewCardActionToast(channelCardActionFailedRetry)
 	}
 	event.SysLogInfo(flowStepChannelCardAction, "飞书卡片后台继续",
 		event.P("channel_id", chRow.ID),
@@ -52,7 +52,7 @@ func (h *ChannelIngress) handleFeishuCardBackground(ctx context.Context, chRow b
 		event.P("session_id", sessionID),
 		event.P("operator_open_id", action.OperatorOpenID),
 	)
-	_ = h.recordDelivery(ctx, chRow.ID, "card_action", map[string]any{
+	h.recordDelivery(ctx, chRow.ID, "card_action", map[string]any{
 		"action":         action.Action,
 		"session_run_id": sessionRunID,
 		"session_id":     sessionID,
@@ -78,7 +78,7 @@ func (h *ChannelIngress) handleFeishuCardCancel(ctx context.Context, chRow biz.C
 		event.P("session_run_id", sessionRunID),
 		event.P("operator_open_id", action.OperatorOpenID),
 	)
-	_ = h.recordDelivery(ctx, chRow.ID, "card_action", map[string]any{
+	h.recordDelivery(ctx, chRow.ID, "card_action", map[string]any{
 		"action":         action.Action,
 		"session_id":     sessionID,
 		"session_run_id": sessionRunID,
@@ -102,7 +102,7 @@ func (h *ChannelIngress) resolveCardActionSessionID(ctx context.Context, chRow b
 }
 
 func (h *ChannelIngress) resolvePeerSessionID(ctx context.Context, chRow biz.Channel, action lark.CardActionPayload) (string, bool) {
-	if h == nil || h.peers == nil {
+	if h == nil || h.channels == nil {
 		return "", false
 	}
 	// Align with message inbound: operator open_id before chat_id (DM peer bind uses ou_*, not oc_*).
@@ -122,7 +122,7 @@ func (h *ChannelIngress) resolvePeerSessionID(ctx context.Context, chRow biz.Cha
 		if perr != nil {
 			continue
 		}
-		bind, err := h.peers.GetByChannelAndPeer(ctx, chRow.ID, peerKey)
+		bind, err := h.channels.GetPeerSession(ctx, chRow.ID, peerKey)
 		if err != nil || strings.TrimSpace(bind.SessionID) == "" {
 			continue
 		}

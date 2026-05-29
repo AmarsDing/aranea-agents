@@ -5,7 +5,7 @@
  * 在未配置 Postgres 的环境下，接口会返回明确错误，前端应做 "服务不可用" 降级提示。
  */
 import { createKnowledgeService } from "../../services";
-import { asRecord, pickBool, pickI32, pickNum, pickStr, pickStrArray } from "../../shared/wireJson";
+import { asRecord, pickBool, pickI32, pickNum, pickStr } from "../../shared/wireJson";
 import type {
   CreateCollectionInput,
   IngestDocumentInput,
@@ -50,7 +50,10 @@ function mapDocument(raw: unknown): KnowledgeDocument {
     status: pickStr(r, "status", "status"),
     error_message: pickStr(r, "error_message", "errorMessage"),
     created_at: pickStr(r, "created_at", "createdAt"),
-    updated_at: pickStr(r, "updated_at", "updatedAt")
+    updated_at: pickStr(r, "updated_at", "updatedAt"),
+    extract_supported: r.extract_supported !== undefined || r.extractSupported !== undefined
+      ? Boolean(r.extract_supported ?? r.extractSupported)
+      : undefined
   };
 }
 

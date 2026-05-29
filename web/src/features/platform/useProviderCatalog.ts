@@ -1,6 +1,6 @@
 import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 import { useQuasar } from "quasar";
-import type { ModelCategory, CapabilityChip } from "./types";
+import type { ProviderForm } from "./types";
 import { errorMessage } from "./providerUtils";
 import type { ProviderPreset, ProviderModelPreset } from "../../config/providerPresets";
 import {
@@ -12,54 +12,14 @@ import {
   applyCatalogProviderFields,
   catalogModelToCost,
 } from "../model-catalog/applyCatalog";
+// TECH-DEBT: direct API calls; move to store — issue #catalog-bypass
+// useProviderCatalog 直接调用 listCatalogProviders / listCatalogModels，
+// 绕过了 Store 层。长期应将 catalog 状态和加载逻辑移至专用 Store，
+// composable 只组合 Store。当前保留是因为 catalog 数据仅在向导对话框内使用，
+// 不需要跨页面共享，且重构涉及 Store 拆分设计。
 import { listCatalogModels, listCatalogProviders } from "../model-catalog/api";
 import { ensureProviderMigrationMap } from "../model-catalog/providerMigration";
 import type { CatalogModelSummary, CatalogProviderSummary } from "../../services/kratos/model_catalog/v1/index";
-
-type ProviderForm = {
-  provider_type: string;
-  variant: string;
-  model_api_id: string;
-  provider_code: string;
-  provider_display_name: string;
-  model_display_name: string;
-  api_base_url: string;
-  api_key: string;
-  api_key_set: boolean;
-  secret_id: string;
-  secret_key: string;
-  aws_region: string;
-  enabled: boolean;
-  model_category: ModelCategory[];
-  model_size_label: string;
-  context_window_k: number | null;
-  max_output_tokens: number;
-  model_rating: number;
-  input_price_micro_usd_per_1k: number;
-  output_price_micro_usd_per_1k: number;
-  cached_input_price_micro_usd_per_1k: number;
-  reasoning_price_micro_usd_per_1k: number;
-  embedding_price_micro_usd_per_1k: number;
-  input_price_usd_per_1m: number;
-  output_price_usd_per_1m: number;
-  cache_read_usd_per_1m: number;
-  cache_write_usd_per_1m: number;
-  reasoning_price_usd_per_1m: number;
-  embedding_price_usd_per_1m: number;
-  capability_chips: CapabilityChip[];
-  catalog_managed: boolean;
-  catalog_source: string;
-  raw_metadata_json: string;
-  metadata_source: string;
-  sort_order: number;
-  description: string;
-  enable_token_tailoring: boolean;
-  optimize_for_cache: boolean;
-  reasoning_backfill: boolean;
-  show_tool_call_delta: boolean;
-  keep_alive_minutes: number;
-  rate_limit_rpm: number;
-};
 
 export function useProviderCatalog(deps: {
   providerForm: ProviderForm;

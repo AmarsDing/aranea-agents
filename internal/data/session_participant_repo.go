@@ -8,6 +8,7 @@ import (
 	"time"
 
 	bizsess "aranea-agents/internal/biz/session"
+	"aranea-agents/internal/event"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -138,7 +139,9 @@ func participantFromMessage(msg bizsess.ChatMessage, sess bizsess.Session) (pTyp
 		} `json:"team_member"`
 	}
 	if msg.OptionsJSON != "" {
-		_ = json.Unmarshal([]byte(msg.OptionsJSON), &opts)
+		if err := json.Unmarshal([]byte(msg.OptionsJSON), &opts); err != nil {
+		event.SysLogWarn("session.participant", "options json unmarshal failed", event.P("error", err.Error()))
+	}
 	}
 	if opts.TeamMember.AgentID != "" || opts.TeamMember.Name != "" {
 		pID = firstNonEmpty(opts.TeamMember.AgentID, opts.Agent.ID, opts.AgentID, sess.AgentID)

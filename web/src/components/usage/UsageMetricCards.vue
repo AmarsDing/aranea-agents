@@ -28,7 +28,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { ModelUsageOverview } from "../../features/usage/types";
-import { formatUsdFromMicro } from "../../features/usage/moneyFormat";
+import { formatUsdFromMicro, formatCount } from "../../features/usage/moneyFormat";
 
 const props = defineProps<{
   overview: ModelUsageOverview | null;
@@ -117,7 +117,7 @@ const cards = computed<StatCard[]>(() => {
 });
 
 function fmtCount(v?: number) {
-  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 }).format(v ?? 0);
+  return formatCount(v);
 }
 function fmtMoney(v?: number) {
   return formatUsdFromMicro(v);
@@ -125,7 +125,8 @@ function fmtMoney(v?: number) {
 function fmtDelta(cur?: number, prev?: number) {
   const p = prev ?? 0;
   const n = cur ?? 0;
-  if (p === 0) return n > 0 ? "+100%" : "0%";
+  if (p === 0 && n === 0) return "0%";
+  if (p === 0) return "新增";
   const d = ((n - p) / p) * 100;
   return `${d >= 0 ? "+" : ""}${d.toFixed(1)}%`;
 }

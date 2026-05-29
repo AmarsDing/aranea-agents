@@ -1,0 +1,101 @@
+{
+  "graph_definitions": [
+    {
+      "name": "Simple Sequential Graph",
+      "description": "A basic 3-node sequential workflow",
+      "entry_point": "node-1",
+      "finish_point": "node-3",
+      "state_fields": [
+        { "name": "user_input", "type": "string", "required": true },
+        { "name": "analysis_result", "type": "string", "reducer": "last" },
+        { "name": "final_output", "type": "string", "reducer": "last" }
+      ],
+      "nodes": [
+        {
+          "id": "node-1",
+          "type": "agent",
+          "instruction": "Analyze the user input and provide insights",
+          "agent_name": "analyst",
+          "destinations": ["node-2"]
+        },
+        {
+          "id": "node-2",
+          "type": "agent",
+          "instruction": "Based on the analysis, create a detailed report",
+          "agent_name": "writer",
+          "destinations": ["node-3"]
+        },
+        {
+          "id": "node-3",
+          "type": "agent",
+          "instruction": "Review and finalize the report",
+          "agent_name": "reviewer"
+        }
+      ],
+      "edges": [
+        { "from": "node-1", "to": "node-2" },
+        { "from": "node-2", "to": "node-3" }
+      ],
+      "enable_checkpoint": false
+    },
+    {
+      "name": "Conditional Branch Graph",
+      "description": "A graph with conditional branching",
+      "entry_point": "router",
+      "state_fields": [
+        { "name": "query", "type": "string", "required": true },
+        { "name": "category", "type": "string", "reducer": "last" },
+        { "name": "response", "type": "string", "reducer": "last" }
+      ],
+      "nodes": [
+        {
+          "id": "router",
+          "type": "agent",
+          "instruction": "Classify the query into technical or creative",
+          "agent_name": "classifier"
+        },
+        {
+          "id": "tech-handler",
+          "type": "agent",
+          "instruction": "Handle technical queries",
+          "agent_name": "tech-agent"
+        },
+        {
+          "id": "creative-handler",
+          "type": "agent",
+          "instruction": "Handle creative queries",
+          "agent_name": "creative-agent"
+        }
+      ],
+      "edges": [],
+      "conditional_edges": [
+        {
+          "from": "router",
+          "cond_func_ref": "classify_route",
+          "path_map": {
+            "technical": "tech-handler",
+            "creative": "creative-handler"
+          }
+        }
+      ],
+      "enable_checkpoint": true
+    }
+  ],
+  "failure_policy_test": {
+    "description": "Graph with failure policy configuration",
+    "failure_policy": {
+      "default_policy": "retry",
+      "parallel_fail": "fail_fast",
+      "retry": {
+        "max_attempts": 3,
+        "initial_interval_ms": 1000,
+        "backoff_factor": 2.0,
+        "max_interval_ms": 10000
+      },
+      "circuit_breaker": {
+        "failure_threshold": 5,
+        "reset_timeout_seconds": 60
+      }
+    }
+  }
+}

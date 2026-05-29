@@ -1,7 +1,6 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import type { Skill, SkillFilesystemHealth } from "./types";
-import { getSkillFilesystemHealth } from "./api";
 import { useSkillsStore } from "../../stores/skills";
 
 export function useSkillsPage() {
@@ -31,13 +30,29 @@ export function useSkillsPage() {
 
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 
+  function notify(opts: { type: string; message: string }) {
+    $q.notify(opts);
+  }
+
+  async function confirm(opts: { title: string; message: string; okLabel?: string; cancelLabel?: string; okColor?: string }): Promise<boolean> {
+    return new Promise((resolve) => {
+      $q.dialog({
+        title: opts.title,
+        message: opts.message,
+        cancel: opts.cancelLabel ? { label: opts.cancelLabel, flat: true, noCaps: true } : true,
+        ok: { label: opts.okLabel ?? "确定", noCaps: true, color: opts.okColor ?? "primary" },
+        persistent: true,
+      }).onOk(() => resolve(true)).onCancel(() => resolve(false));
+    });
+  }
+
   function openUpload() {
     uploadRef.value?.openDialog();
   }
 
   async function loadFilesystemHealth() {
     try {
-      filesystemHealth.value = await getSkillFilesystemHealth();
+      filesystemHealth.value = await skillsStore.loadFilesystemHealth();
     } catch {
       filesystemHealth.value = null;
     }
@@ -135,7 +150,7 @@ export function useSkillsPage() {
       $q.notify({ type: "positive", message: "Skill 已删除" });
       await loadRows();
       if (rows.value.length === 0 && page.value > 1) {
-        page.value -= 1;
+        page.value = Math.max(1, page.value - 1);
         await loadRows();
       }
     } catch (err) {
@@ -146,8 +161,11 @@ export function useSkillsPage() {
   }
 
   watch([search, enabled, status, syncOrigin, filesystemMissing], () => {
-    page.value = 1;
-    void loadRows();
+    if (page.value === 1) {
+      void loadRows();
+    } else {
+      page.value = 1;
+    }
   });
   watch([page, pageSize], () => {
     void loadRows();
@@ -193,6 +211,8 @@ export function useSkillsPage() {
     applySkillImport: skillsStore.applySkillImport,
     listSkillFiles: skillsStore.listSkillFiles,
     readSkillFile: skillsStore.readSkillFile,
-    updateSkillFile: skillsStore.updateSkillFile
+    updateSkillFile: skillsStore.updateSkillFile,
+    notify,
+    confirm
   };
 }

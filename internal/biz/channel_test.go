@@ -134,7 +134,7 @@ func TestChannelUpsertCredentialsStoresEncryptedRef(t *testing.T) {
 			ConfigJSON: `{"type":"feishu","receive_mode":"webhook","config":{"app_id":"cli_test"},"webhook":{"path":"/webhooks/feishu-demo"}}`,
 		}},
 	}
-	uc := NewChannelUsecase(repo, NewCredentialCrypto(nil))
+	uc := NewChannelUsecase(repo, nil, nil, nil, nil, NewCredentialCrypto(nil))
 	items, err := uc.UpsertCredentials(context.Background(), "ch-1", []ChannelCredentialInput{{
 		CredentialKey: "app_secret",
 		Secret:        "super-secret",
@@ -213,7 +213,7 @@ func TestChannelRunHealthChecksUpdatesStatus(t *testing.T) {
 			}},
 		},
 	}
-	uc := NewChannelUsecase(repo, NewCredentialCrypto(nil))
+	uc := NewChannelUsecase(repo, nil, nil, nil, nil, NewCredentialCrypto(nil))
 	if err := uc.RunHealthChecks(context.Background()); err != nil {
 		t.Fatal(err)
 	}

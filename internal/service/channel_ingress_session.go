@@ -6,7 +6,6 @@ import (
 	"errors"
 	"strings"
 
-	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	arametrics "aranea-agents/internal/metrics"
@@ -55,13 +54,13 @@ func (h *ChannelIngress) ensureChannelSession(
 	peerID string,
 	routing biz.ChannelRouting,
 ) (string, error) {
-	ownerType, agentID, teamID, err := biz.ResolveChannelTarget(ctx, h.agents, h.teams, routing, peerID)
+	ownerType, agentID, teamID, err := h.channels.ResolveChannelTarget(ctx, routing, peerID)
 	if err != nil {
 		return "", err
 	}
 	platform = strings.TrimSpace(platform)
 
-	bind, err := h.peers.GetByChannelAndPeer(ctx, chRow.ID, peerKey)
+	bind, err := h.channels.GetPeerSession(ctx, chRow.ID, peerKey)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", err
 	}
@@ -76,7 +75,7 @@ func (h *ChannelIngress) ensureChannelSession(
 			if cerr != nil {
 				return "", cerr
 			}
-			if _, uerr := h.peers.UpdateSessionID(ctx, chRow.ID, peerKey, sessionID); uerr != nil {
+			if _, uerr := h.channels.UpdatePeerSessionID(ctx, chRow.ID, peerKey, sessionID); uerr != nil {
 				return "", uerr
 			}
 			return sessionID, nil
@@ -87,14 +86,13 @@ func (h *ChannelIngress) ensureChannelSession(
 	if cerr != nil {
 		return "", cerr
 	}
-	if _, cerr = h.peers.Create(ctx, biz.ChannelPeerSession{
+	if _, cerr = h.channels.CreatePeerSession(ctx, biz.ChannelPeerSession{
 		ID:        uuid.NewString(),
 		ChannelID: chRow.ID,
 		PeerKey:   peerKey,
 		SessionID: sessionID,
 	}); cerr != nil {
-		// Handle unique constraint race: another request may have created the binding.
-		if existing, gerr := h.peers.GetByChannelAndPeer(ctx, chRow.ID, peerKey); gerr == nil && existing.SessionID != "" {
+		if existing, gerr := h.channels.GetPeerSession(ctx, chRow.ID, peerKey); gerr == nil && existing.SessionID != "" {
 			if _, verr := h.sessions.Get(ctx, existing.SessionID); verr == nil {
 				return existing.SessionID, nil
 			}
@@ -111,43 +109,32 @@ func (h *ChannelIngress) prepareChannelChatRequest(
 	peerKey string,
 	peerID string,
 	content string,
-) (*chatv1.SendChatMessageRequest, error) {
+	allowQueue bool,
+) (biz.TurnInput, error) {
 	routing, err := biz.ParseChannelRouting(chRow.ConfigJSON)
 	if err != nil {
-		return nil, err
+		return biz.TurnInput{}, err
 	}
 	sessionID, err := h.ensureChannelSession(ctx, chRow, titlePrefix, platformFromTitlePrefix(titlePrefix), peerKey, peerID, routing)
 	if err != nil {
-		return nil, err
+		return biz.TurnInput{}, err
 	}
-	req := &chatv1.SendChatMessageRequest{SessionId: sessionID, Content: content}
-	ownerType, _, teamID, err := biz.ResolveChannelTarget(ctx, h.agents, h.teams, routing, peerID)
+	ownerType, _, teamID, err := h.channels.ResolveChannelTarget(ctx, routing, peerID)
 	if err != nil {
-		return nil, err
-	}
-	if ownerType == "team" && teamID != "" {
-		tid := teamID
-		req.TeamId = &tid
-	}
-	return req, nil
-}
-
-func channelChatRequestToTurnInput(req *chatv1.SendChatMessageRequest, allowQueue bool) biz.TurnInput {
-	if req == nil {
-		return biz.TurnInput{}
+		return biz.TurnInput{}, err
 	}
 	input := biz.TurnInput{
-		SessionID: strings.TrimSpace(req.GetSessionId()),
-		Content:   strings.TrimSpace(req.GetContent()),
+		SessionID: strings.TrimSpace(sessionID),
+		Content:   strings.TrimSpace(content),
 		EntryConfig: biz.TurnEntryPointConfig{
 			EntryPoint: biz.EntryPointChannel,
 			AllowQueue: allowQueue,
 		},
 	}
-	if tid := strings.TrimSpace(req.GetTeamId()); tid != "" {
-		input.TeamID = tid
+	if ownerType == "team" && teamID != "" {
+		input.TeamID = teamID
 	}
-	return input
+	return input, nil
 }
 
 func recordStreamUpdate(platform, phase string, err error) {
@@ -166,11 +153,11 @@ func (h *ChannelIngress) resolveInboundSessionID(ctx context.Context, chRow biz.
 	if err != nil {
 		return ""
 	}
-	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
+	input, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text, false)
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(req.GetSessionId())
+	return strings.TrimSpace(input.SessionID)
 }
 
 func (h *ChannelIngress) shouldSkipTurnErrorReply(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, platform string, execErr error) bool {

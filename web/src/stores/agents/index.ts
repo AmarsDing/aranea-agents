@@ -7,6 +7,7 @@ import {
   listAgentCreators,
   listAgentTemplates,
   listAgentsPaged,
+  toggleAgentFavorite as toggleAgentFavoriteApi,
   updateAgent
 } from "../../features/agents/api";
 import type { Agent, AgentCreatorOption, AgentTemplatePreset } from "../../features/agents/types";
@@ -106,7 +107,7 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
     const previous = agent.is_favorite;
     agent.is_favorite = !previous;
     try {
-      const updated = await updateAgent(id, { ...agent, is_favorite: agent.is_favorite });
+      const updated = await toggleAgentFavoriteApi(id);
       agents.value = agents.value.map((item) => (item.id === id ? updated : item));
       useAppStore().upsertAgent(updated);
     } catch (error) {

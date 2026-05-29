@@ -143,6 +143,14 @@ export const useMonitorStore = defineStore("monitor", () => {
     }
   }
 
+  function clearRuntimeEvents() {
+    events.value = [];
+  }
+
+  function clearFlowLogs() {
+    logSnapshot.value = null;
+  }
+
   return {
     auditLogs,
     auditTotal,
@@ -167,6 +175,8 @@ export const useMonitorStore = defineStore("monitor", () => {
     alertChannelOptions,
     loadAlertChannelOptions,
     loadAlertRules,
-    saveAlertRules
+    saveAlertRules,
+    clearRuntimeEvents,
+    clearFlowLogs
   };
 });

@@ -1,6 +1,7 @@
 /** Parsed artifact attachment refs from user message options_json (ART-01). */
 
 import type { MessageAttachmentRef } from "../../domain/types";
+import { formatBytes as _formatBytes } from "../../shared/format";
 
 export type { MessageAttachmentRef };
 
@@ -46,7 +47,5 @@ export function attachmentMimeIcon(mime: string): string {
 
 export function formatAttachmentBytes(n?: number): string {
   if (!n) return "";
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return _formatBytes(n);
 }

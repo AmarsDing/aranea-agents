@@ -325,36 +325,33 @@ type SessionWriter interface {
 	UpdateSessionTitle(ctx context.Context, id, title string) (Session, error)
 	UpdateSession(ctx context.Context, id string, fields SessionUpdateFields) (Session, error)
 	RestoreSession(ctx context.Context, id string) (Session, error)
-	DeleteSession(ctx context.Context, id string) (int, error)
+	BumpSessionRevision(ctx context.Context, sessionID string) (int64, error)
 }
 
-type SessionBatchWriter interface {
+type SessionMutator interface {
 	ArchiveSession(ctx context.Context, id string) (int, error)
-	ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
-	DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
-}
-
-type SessionPinWriter interface {
+	DeleteSession(ctx context.Context, id string) (int, error)
+	DeleteSessionsByAgentID(ctx context.Context, agentID string) error
 	PinSession(ctx context.Context, id string) (Session, error)
 	UnpinSession(ctx context.Context, id string) (Session, error)
 }
 
-type SessionRevisionWriter interface {
-	BumpSessionRevision(ctx context.Context, sessionID string) (int64, error)
-	DeleteSessionsByAgentID(ctx context.Context, agentID string) error
+type SessionBatchMutator interface {
+	ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
+	DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
 }
 
 type MessageReader interface {
 	CountMessagesBySession(ctx context.Context, sessionID string) (int, error)
 	ListMessagesBySession(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
 	ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error)
-	ListMessagesByStatus(ctx context.Context, sessionID, status string, limit int) ([]ChatMessage, error)
 	ListMessagesRecent(ctx context.Context, sessionID string, limit int) ([]ChatMessage, error)
+	ListMessagesByIDs(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error)
 }
 
 type MessageSearchReader interface {
+	ListMessagesByStatus(ctx context.Context, sessionID, status string, limit int) ([]ChatMessage, error)
 	SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
-	ListMessagesByIDs(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error)
 	ListMessagesAfterRevision(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error)
 }
 
@@ -381,12 +378,12 @@ type SummaryReader interface {
 	MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error)
 	ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error)
 	LatestSessionSummaryTime(ctx context.Context, sessionID string) (string, error)
-	SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error)
 }
 
 type SummaryWriter interface {
 	InsertSessionSummary(ctx context.Context, row SessionSummary) error
 	UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error
+	SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error)
 }
 
 type StateRepo interface {
@@ -418,9 +415,8 @@ type CompressRepo interface {
 type SessionRepo interface {
 	SessionReader
 	SessionWriter
-	SessionBatchWriter
-	SessionPinWriter
-	SessionRevisionWriter
+	SessionMutator
+	SessionBatchMutator
 	MessageReader
 	MessageSearchReader
 	MessageWriter
@@ -449,9 +445,8 @@ type TeamLookup interface {
 type SessionUsecase struct {
 	sessionReader       SessionReader
 	sessionWriter       SessionWriter
-	sessionBatchWriter  SessionBatchWriter
-	sessionPinWriter    SessionPinWriter
-	sessionRevWriter    SessionRevisionWriter
+	sessionMutator      SessionMutator
+	sessionBatchMutator SessionBatchMutator
 	messageReader       MessageReader
 	messageSearchReader MessageSearchReader
 	messageWriter       MessageWriter
@@ -477,9 +472,8 @@ func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLooku
 	return &SessionUsecase{
 		sessionReader:       sessions,
 		sessionWriter:       sessions,
-		sessionBatchWriter:  sessions,
-		sessionPinWriter:    sessions,
-		sessionRevWriter:    sessions,
+		sessionMutator:      sessions,
+		sessionBatchMutator: sessions,
 		messageReader:       sessions,
 		messageSearchReader: sessions,
 		messageWriter:       sessions,
@@ -571,7 +565,7 @@ func (uc *SessionUsecase) Archive(ctx context.Context, id string) error {
 	if id == "" {
 		return validationErr("session id is required")
 	}
-	n, err := uc.sessionBatchWriter.ArchiveSession(ctx, id)
+	n, err := uc.sessionMutator.ArchiveSession(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -592,7 +586,7 @@ func (uc *SessionUsecase) Delete(ctx context.Context, id string) error {
 	if id == "" {
 		return validationErr("session id is required")
 	}
-	n, err := uc.sessionWriter.DeleteSession(ctx, id)
+	n, err := uc.sessionMutator.DeleteSession(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -612,7 +606,7 @@ func (uc *SessionUsecase) DeleteByAgent(ctx context.Context, agentID string) err
 	if strings.TrimSpace(agentID) == "" {
 		return validationErr("agent_id is required")
 	}
-	return uc.sessionRevWriter.DeleteSessionsByAgentID(ctx, agentID)
+	return uc.sessionMutator.DeleteSessionsByAgentID(ctx, agentID)
 }
 
 func normalizeSessionSearch(q *SessionSearchQuery) {

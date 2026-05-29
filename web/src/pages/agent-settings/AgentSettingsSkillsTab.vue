@@ -241,12 +241,9 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { useQuasar } from "quasar";
 import AgentToolsSection from "../../components/agents/AgentToolsSection.vue";
 import type { CodeExecutorCapability } from "../../features/monitor/types";
 import type { AgentRuntimeConfigForm } from "../../features/agents/agentRuntimeConfig";
-
-const $q = useQuasar();
 
 const baseExecutorOptions = [
   { label: "Local（子进程，开发用）", value: "local" },
@@ -283,14 +280,7 @@ const emit = defineEmits<{
 }>();
 
 function confirmReset() {
-  $q.dialog({
-    title: "恢复默认",
-    message: "确定恢复默认 Skill 配置？当前自定义设置将被覆盖。",
-    cancel: true,
-    persistent: true
-  }).onOk(() => {
-    emit("reset-skill-defaults");
-  });
+  emit("reset-skill-defaults");
 }
 
 const capabilityByType = computed(() => {

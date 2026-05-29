@@ -27,6 +27,11 @@
           <span class="overview-provider-health__label">降级</span>
           <span class="overview-provider-health__value overview-provider-health__value--danger">{{ degradedCount }}</span>
         </div>
+        <div v-if="otherCount > 0" class="overview-provider-health__stat">
+          <span class="health-dot health-dot--other" />
+          <span class="overview-provider-health__label">其他</span>
+          <span class="overview-provider-health__value">{{ otherCount }}</span>
+        </div>
         <div class="overview-provider-health__stat">
           <span class="overview-provider-health__label">总计</span>
           <span class="overview-provider-health__value">{{ models.length }}</span>
@@ -43,32 +48,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
-import { usePlatformStore } from "../../stores/platform";
+import { computed } from "vue";
 import type { PlatformResource } from "../../features/platform/types";
 
-const platformStore = usePlatformStore();
-const router = useRouter();
-const loading = ref(true);
+const props = defineProps<{
+  models: PlatformResource[];
+  loading: boolean;
+}>();
 
-onMounted(async () => {
-  try {
-    await platformStore.loadProviderModels();
-  } catch {
-    // silent
-  } finally {
-    loading.value = false;
-  }
-});
-
-const models = computed<PlatformResource[]>(() => platformStore.providerModels ?? []);
-
-const activeCount = computed(() => models.value.filter((m) => m.status === "active" || !m.status).length);
-const degradedCount = computed(() => models.value.filter((m) => m.status === "degraded").length);
+const activeCount = computed(() => props.models.filter((m) => m.status === "active" || !m.status).length);
+const degradedCount = computed(() => props.models.filter((m) => m.status === "degraded").length);
+const otherCount = computed(() => props.models.length - activeCount.value - degradedCount.value);
 
 const degradedModels = computed(() =>
-  models.value
+  props.models
     .filter((m) => m.status === "degraded")
     .slice(0, 5)
 );

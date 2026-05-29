@@ -194,7 +194,7 @@ export async function listTeamRuns(teamID?: string, limit = 50): Promise<TeamRun
 const ACTIVE_RUN_STATUSES = new Set(["running", "pending"]);
 
 export async function findActiveTeamRun(teamID: string): Promise<TeamRun | null> {
-  const runs = await listTeamRuns(teamID, 20);
+  const runs = await listTeamRuns(teamID, 50);
   return runs.find((run) => ACTIVE_RUN_STATUSES.has(run.status)) ?? null;
 }
 

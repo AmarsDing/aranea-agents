@@ -168,7 +168,7 @@ func (m *memGraphRunRepoCoord) GetRun(_ context.Context, id string) (*biz.GraphE
 	return nil, biz.ErrNotFound
 }
 
-func (m *memGraphRunRepoCoord) ListRunsByGraph(context.Context, string, int, string) ([]*biz.GraphExecution, string, error) {
+func (m *memGraphRunRepoCoord) ListRunsByGraph(context.Context, string, int, string, ...biz.GraphRunListOption) ([]*biz.GraphExecution, string, error) {
 	return nil, "", nil
 }
 

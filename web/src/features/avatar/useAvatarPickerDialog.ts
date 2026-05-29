@@ -9,9 +9,9 @@ export type AvatarPickerScope = "agent" | "channel";
 
 function filterByScope(assets: AvatarAsset[], scope: AvatarPickerScope): AvatarAsset[] {
   if (scope === "channel") {
-    return assets.filter((a) => String(a.key || a.id || "").startsWith("channel_"));
+    return assets.filter((a) => a.category === "channel");
   }
-  return assets.filter((a) => !String(a.key || a.id || "").startsWith("channel_"));
+  return assets.filter((a) => a.category !== "channel");
 }
 
 /** 头像选择弹层：组合 Store + 本地 UI 状态；供 AgentAvatarPicker / ChannelIconPicker 使用 */

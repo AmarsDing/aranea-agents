@@ -27,7 +27,9 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 
 	jobID, ctx, err := h.createTurnJob(ctx, chRow, ev, platform)
 	if err != nil {
-		_ = h.deliverTurnErrorReply(ctx, chRow, ev, platform, err)
+		if replyErr := h.deliverTurnErrorReply(ctx, chRow, ev, platform, err); replyErr != nil {
+			event.SysLogWarn("channel.async.reply_failed", "异步回复投递失败", event.P("error", replyErr.Error()))
+		}
 		return err
 	}
 	h.markTurnJob(ctx, biz.ChannelTurnJobStatusRunning, "", "", "")
@@ -78,7 +80,9 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 		}
 		h.logTurnFlow(ctx, sessionID, step, "Channel Turn 执行失败", execErr,
 			event.P("channel_id", chRow.ID), event.P("job_id", jobID))
-		_ = h.deliverTurnErrorReply(ctx, chRow, ev, platform, execErr)
+		if replyErr := h.deliverTurnErrorReply(ctx, chRow, ev, platform, execErr); replyErr != nil {
+			event.SysLogWarn("channel.async.reply_failed", "异步回复投递失败", event.P("error", replyErr.Error()))
+		}
 		h.publishChannelTurnRunStatus(ctx, sessionID, jobID, "failed", formatChannelTurnErrorMessage(execErr))
 	}()
 
@@ -119,11 +123,11 @@ func (h *ChannelIngress) resolveTurnSessionID(ctx context.Context, chRow biz.Cha
 	if err != nil {
 		return ""
 	}
-	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
+	input, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text, false)
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(req.GetSessionId())
+	return strings.TrimSpace(input.SessionID)
 }
 
 func (h *ChannelIngress) attachChannelTurnContext(ctx context.Context, ltCfg biz.ChannelLongTaskConfig) (context.Context, context.CancelFunc) {
@@ -163,10 +167,10 @@ func (h *ChannelIngress) processInboundUnaryWithOutcome(ctx context.Context, chR
 	switch result.Outcome {
 	case biz.TurnOutcomeQueued:
 		if err := h.sendInboundQueuedAck(ctx, chRow, ev, platform, ltCfg, result.PendingID); err != nil {
-			_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "queued_ack", "error": err.Error()}, err.Error())
+			h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "queued_ack", "error": err.Error()}, err.Error())
 			return "", "", false, err
 		}
-		_ = h.recordDelivery(ctx, chRow.ID, "queued", map[string]any{"peer_id": ev.PeerID, "pending_id": result.PendingID}, "")
+		h.recordDelivery(ctx, chRow.ID, "queued", map[string]any{"peer_id": ev.PeerID, "pending_id": result.PendingID}, "")
 		return "", "", true, nil
 	case biz.TurnOutcomeCompleted:
 		reply := strings.TrimSpace(result.Reply)
@@ -177,7 +181,7 @@ func (h *ChannelIngress) processInboundUnaryWithOutcome(ctx context.Context, chR
 			if previewID := strings.TrimSpace(previewCoord.PreviewMessageID()); previewID != "" {
 				_ = previewCoord.FlushFinalText(ctx, reply)
 				preview := truncateForLog(reply, 200)
-				_ = h.recordDelivery(ctx, chRow.ID, "streamed", map[string]any{
+				h.recordDelivery(ctx, chRow.ID, "streamed", map[string]any{
 					"peer_id":    ev.PeerID,
 					"platform":   platform,
 					"preview_id": previewID,
@@ -200,10 +204,10 @@ func (h *ChannelIngress) deliverUnaryReply(ctx context.Context, chRow biz.Channe
 		idempotency = platform + ":" + ev.PeerID
 	}
 	if err := h.enqueueOutboundReply(ctx, chRow, platform, recipient, reply, ev.OutboundMeta, idempotency); err != nil {
-		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "enqueue", "error": err.Error()}, err.Error())
+		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "enqueue", "error": err.Error()}, err.Error())
 		return err
 	}
-	_ = h.recordDelivery(ctx, chRow.ID, "queued", map[string]any{"peer_id": ev.PeerID}, "")
+	h.recordDelivery(ctx, chRow.ID, "queued", map[string]any{"peer_id": ev.PeerID}, "")
 	return nil
 }
 

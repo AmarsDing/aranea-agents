@@ -31,7 +31,8 @@ func TestValidateRalphLoopSettings(t *testing.T) {
 		t.Fatal("expected error without promise or verify command")
 	}
 	if err := biz.ValidateRalphLoopSettings(&biz.AgentRuntimeSettings{
-		RalphLoopVerifyCommand: "go test ./...",
+		RalphLoopVerifyCommand:   "go test ./...",
+		RalphLoopMaxIterations:   1,
 	}); err != nil {
 		t.Fatalf("verify only: %v", err)
 	}

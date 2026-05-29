@@ -8,7 +8,7 @@
         dense
         no-caps
         icon="refresh"
-        :label="t('channelEditor.turnJobsRefresh')"
+        :label="t('channelEditor.deliveriesRefresh')"
         :loading="loading"
         @click="load"
       />
@@ -31,12 +31,12 @@
       </template>
       <template #body-cell-agent_id="props">
         <q-td :props="props">
-          <span class="app-registry-cell-primary ellipsis">{{ props.row.agent_id || "—" }}</span>
+          <span class="app-registry-cell-primary ellipsis">{{ agentNameById(props.row.agent_id) }}</span>
         </q-td>
       </template>
       <template #body-cell-payload="props">
         <q-td :props="props">
-          <AppRegistryHoverTip :text="props.row.error_message || props.row.payload_json" empty-label="暂无内容">
+          <AppRegistryHoverTip :text="props.row.error_message || props.row.payload_json" :empty-label="t('channelEditor.noContent')">
             <span class="app-registry-cell-sub ellipsis">{{ payloadPreview(props.row.payload_json) }}</span>
           </AppRegistryHoverTip>
         </q-td>
@@ -59,8 +59,9 @@ import AppRegistryHoverTip from "../../components/layout/AppRegistryHoverTip.vue
 import { deliveryStatusFromChannelStatus } from "../../domain/conversation";
 import { presentDeliveryStatus, toneToQuasarColor } from "../../domain/conversationPresentation";
 import { useChannelsStore } from "../../stores/channels";
-import { CHANNEL_DELIVERIES_TABLE_COLUMNS } from "../../components/channels/channelUi";
+import { channelDeliveriesColumns } from "../../components/channels/channelUi";
 import type { ChannelDeliveryRow } from "./types";
+import type { Agent } from "../agents/types";
 
 const props = defineProps<{ channelId: string }>();
 
@@ -69,7 +70,14 @@ const channelsStore = useChannelsStore();
 const loading = ref(false);
 const error = ref("");
 const rows = ref<ChannelDeliveryRow[]>([]);
-const columns = CHANNEL_DELIVERIES_TABLE_COLUMNS;
+const columns = channelDeliveriesColumns(t);
+const agentCache = ref<Agent[]>([]);
+
+function agentNameById(id: string): string {
+  if (!id) return "—";
+  const agent = agentCache.value.find((a) => a.id === id);
+  return agent ? (agent.display_name || agent.agent_key || id) : id;
+}
 
 function presentation(status: string) {
   return presentDeliveryStatus(deliveryStatusFromChannelStatus(status));
@@ -93,9 +101,16 @@ async function load() {
   loading.value = true;
   error.value = "";
   try {
-    rows.value = await channelsStore.loadDeliveries(props.channelId, 30);
+    const [deliveries, { agents }] = await Promise.all([
+      channelsStore.loadDeliveries(props.channelId, 30),
+      channelsStore.routingAgents.length > 0
+        ? Promise.resolve({ agents: channelsStore.routingAgents })
+        : channelsStore.loadRoutingOptions()
+    ]);
+    rows.value = deliveries;
+    agentCache.value = agents;
   } catch (err) {
-    error.value = err instanceof Error ? err.message : "load failed";
+    error.value = err instanceof Error ? err.message : t("channelEditor.loadFailed");
   } finally {
     loading.value = false;
   }

@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/base64"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -43,7 +44,7 @@ func TestMaxIngestBytesLimit(t *testing.T) {
 func TestDetectContentTypeText(t *testing.T) {
 	raw := []byte("hello world this is plain text")
 	detected := http.DetectContentType(raw)
-	if detected != "text/plain" {
+	if !strings.HasPrefix(detected, "text/plain") {
 		t.Errorf("expected text/plain for plain text, got %q", detected)
 	}
 }

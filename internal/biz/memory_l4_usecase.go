@@ -22,6 +22,22 @@ const (
 	l4DecayFactor = 0.92
 	l4ConflictMeta = `{"source":"auto_memory","conflict":true}`
 	l4CascadeMeta  = `{"source":"auto_memory","cascade":true}`
+
+	l4AnchorImportance    = 0.8
+	l4AnchorConfidence    = 0.9
+	l4PersonImportance    = 0.85
+	l4PrefImportance      = 0.7
+	l4PrefConfidence      = 0.7
+	l4PrefRelWeight       = 0.9
+	l4PrefRelConfidence   = 0.7
+	l4ArchiveThreshold    = 0.1
+	l4ConflictBaseConf    = 0.75
+	l4ConflictConfStep    = 0.05
+	l4ConflictConfCap     = 0.95
+	l4CascadeEntImportance = 0.85
+	l4CascadeEntConfidence = 0.8
+	l4CascadeTouchImportance = 0.5
+	l4CascadeTouchConfidence = 0.7
 )
 
 type L4GraphUsecase struct {
@@ -67,8 +83,8 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 		Name:           "User profile",
 		NameNormalized: "user profile",
 		Description:    "Consolidated user knowledge for this agent",
-		Importance:     0.8,
-		Confidence:     0.9,
+		Importance:     l4AnchorImportance,
+		Confidence:     l4AnchorConfidence,
 	}); err != nil {
 		event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to upsert anchor entity", event.P("anchor_id", anchorID), event.P("error", err.Error()))
 	}
@@ -116,7 +132,7 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 			Name:           prepared.Name,
 			NameNormalized: prepared.NameNormalized,
 			Description:    prepared.Description,
-			Importance:     0.85,
+			Importance:     l4PersonImportance,
 			Confidence:     prepared.Confidence,
 			MetadataJSON:   meta,
 		}); err == nil {
@@ -151,8 +167,8 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 			Name:           strutil.TruncateBytes(pref, 80),
 		NameNormalized: strings.ToLower(strutil.TruncateBytes(pref, 80)),
 			Description:    text,
-			Importance:     0.7,
-			Confidence:     0.7,
+			Importance:     l4PrefImportance,
+			Confidence:     l4PrefConfidence,
 			MetadataJSON:   `{"source":"auto_memory"}`,
 		}); err == nil {
 			if err := uc.repo.UpsertRelation(ctx, L4RelationWrite{
@@ -161,8 +177,8 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 				SourceID:     anchorID,
 				TargetID:     entID,
 				RelationType: "prefers",
-				Weight:       0.9,
-				Confidence:   0.7,
+				Weight:       l4PrefRelWeight,
+				Confidence:   l4PrefRelConfidence,
 			}); err != nil {
 				event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to upsert prefers relation", event.P("entity_id", entID), event.P("error", err.Error()))
 			}
@@ -186,7 +202,7 @@ func (uc *L4GraphUsecase) RunDecayWithConfig(ctx context.Context, agentID string
 	if err != nil {
 		return L4DecayResult{}
 	}
-	archived, err := uc.repo.ArchiveLowConfidenceEntities(ctx, "agent", agentID, 0.1)
+	archived, err := uc.repo.ArchiveLowConfidenceEntities(ctx, "agent", agentID, l4ArchiveThreshold)
 	if err != nil {
 		event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to archive low confidence entities", event.P("agent_id", agentID), event.P("error", err.Error()))
 	}
@@ -212,11 +228,11 @@ func (uc *L4GraphUsecase) preparePersonUpsert(existing L4EntitySnapshot, newName
 		conflict = true
 		meta = l4ConflictMeta
 	}
-	conf := 0.75
+	conf := l4ConflictBaseConf
 	if existing.ID != "" && !conflict {
 		conf = existing.Confidence
-		if conf < 0.95 {
-			conf += 0.05
+		if conf < l4ConflictConfCap {
+			conf += l4ConflictConfStep
 		}
 	}
 	return L4EntityWrite{
@@ -248,8 +264,8 @@ func (uc *L4GraphUsecase) cascadeProfileTouch(anchorID, userID, agentID, personN
 		Name:           "User profile",
 		NameNormalized: "user profile",
 		Description:    desc,
-		Importance:     0.8,
-		Confidence:     0.9,
+		Importance:     l4AnchorImportance,
+		Confidence:     l4AnchorConfidence,
 		MetadataJSON:   meta,
 	}
 }

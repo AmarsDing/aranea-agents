@@ -28,7 +28,12 @@ export function useGraphExecute(router: Router) {
     try {
       let initialState: Record<string, unknown> | undefined;
       if (runInitialState.value.trim()) {
-        initialState = JSON.parse(runInitialState.value);
+        try {
+          initialState = JSON.parse(runInitialState.value);
+        } catch {
+          $q.notify({ type: "negative", message: "初始状态 JSON 格式无效，请检查输入" });
+          return;
+        }
       }
       const result = await graphStore.runGraph(id, runSessionId.value, initialState);
       runDialogOpen.value = false;

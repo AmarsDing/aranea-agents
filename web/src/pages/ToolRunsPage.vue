@@ -30,12 +30,12 @@
 
     <tool-runs-table :rows="rows" :loading="loading" />
 
-    <skill-pagination v-model:page="page" v-model:page-size="pageSize" :page-max="pageMax" :total="total" :loading="loading" label="条调用记录" />
+    <app-registry-pagination v-model:page="page" v-model:page-size="pageSize" :page-max="pageMax" :total="total" :loading="loading" label="条调用记录" />
   </q-page>
 </template>
 
 <script setup lang="ts">
-import SkillPagination from "../components/skills/SkillPagination.vue";
+import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
 import ToolHeroSection from "../components/tools/ToolHeroSection.vue";
 import ToolRunsFilters from "../components/tools/ToolRunsFilters.vue";
 import ToolRunsTable from "../components/tools/ToolRunsTable.vue";

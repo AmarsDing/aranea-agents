@@ -1,6 +1,7 @@
 import { ref } from "vue";
 import type { ArtifactMeta } from "./types";
 import { useArtifactStore } from "../../stores/artifact";
+import { formatBytes } from "../../shared/format";
 
 export function useArtifactList() {
   const artifactStore = useArtifactStore();
@@ -18,13 +19,6 @@ export function useArtifactList() {
     if (m.startsWith("audio/")) return "audiotrack";
     if (m.includes("zip") || m.includes("tar") || m.includes("gzip") || m.includes("compressed")) return "folder_zip";
     return "insert_drive_file";
-  }
-
-  function formatBytes(n: number) {
-    if (!n) return "0 B";
-    if (n < 1024) return `${n} B`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
   }
 
   function openPreview(item: ArtifactMeta, onOpen?: (id: string) => void) {

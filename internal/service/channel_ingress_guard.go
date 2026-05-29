@@ -37,7 +37,7 @@ func (h *ChannelIngress) shouldProcessInbound(ctx context.Context, chRow biz.Cha
 		recordIngressIntentMetric("dedupe")
 		return false, "duplicate_message_ttl", nil
 	}
-	claimed, err := biz.TryClaimInbound(ctx, h.inboundReceipts, chRow.ID, platform, ev.IdempotencyKey, ev.PeerID, ev.Text)
+	claimed, err := h.channels.TryClaimInbound(ctx, chRow.ID, platform, ev.IdempotencyKey, ev.PeerID, ev.Text)
 	if err != nil {
 		return false, "", err
 	}

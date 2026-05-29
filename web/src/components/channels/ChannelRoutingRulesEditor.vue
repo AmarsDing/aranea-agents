@@ -100,8 +100,8 @@ const rules = ref<ChannelRoutingRuleRow[]>([]);
 const agentOptions = computed(() => channelAgentSelectOptions(props.agents));
 const teamOptions = computed(() => channelTeamSelectOptions(props.teams));
 const targetTypeOptions = [
-  { label: "Agent", value: "agent" },
-  { label: "Team", value: "team" }
+  { label: t("channelEditor.routingRulesTargetTypeAgent"), value: "agent" },
+  { label: t("channelEditor.routingRulesTargetTypeTeam"), value: "team" }
 ];
 
 function syncFromProps() {

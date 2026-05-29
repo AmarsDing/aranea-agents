@@ -66,7 +66,9 @@ func (s *TextSender) SendText(ctx context.Context, openID, text string) error {
 		ErrCode int    `json:"errcode"`
 		ErrMsg  string `json:"errmsg"`
 	}
-	_ = json.Unmarshal(raw, &out)
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return fmt.Errorf("wechat outbound: parse response: %w", err)
+	}
 	if out.ErrCode != 0 {
 		return fmt.Errorf("wechat outbound: %s", strings.TrimSpace(out.ErrMsg))
 	}

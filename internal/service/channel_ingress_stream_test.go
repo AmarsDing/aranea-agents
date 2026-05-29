@@ -11,7 +11,7 @@ import (
 
 func TestProcessInboundStreamingUnsupportedPlatformUnaryFallback(t *testing.T) {
 	repo := &streamChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, biz.NewCredentialCrypto(nil))
+	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil))
 	h := &ChannelIngress{channels: uc}
 	ch := biz.Channel{ID: "ch1", ConfigJSON: `{"type":"dingtalk","config":{"streaming_enabled":true}}`}
 	ev := port.InboundEvent{PlatformType: "dingtalk", PeerID: "p1", Text: "hi"}

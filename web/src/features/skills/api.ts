@@ -70,7 +70,7 @@ function mapSkill(row: unknown): Skill {
     invoke_count: n("invoke_count", "invokeCount"),
     success_count: n("success_count", "successCount"),
     failure_count: n("failure_count", "failureCount"),
-    usage_count_7d: n("usage_count_7d", "usageCount7d") || undefined,
+    usage_count_7d: n("usage_count_7d", "usageCount7d") || 0,
     avg_duration_ms,
     last_agent_id: s("last_agent_id", "lastAgentId") || undefined,
     last_agent_display_name: s("last_agent_display_name", "lastAgentDisplayName") || undefined,

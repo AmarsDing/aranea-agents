@@ -232,7 +232,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		return nil
 	}
 
-	exists, existsErr := c.summaryReader.SessionSummaryExists(ctx, sessionID, fromTurn, toTurn)
+	exists, existsErr := c.summaryWriter.SessionSummaryExists(ctx, sessionID, fromTurn, toTurn)
 	if existsErr != nil && c.EventBus != nil {
 		event.SessionSysLogWarn(ctx, sessionID, "system.session.compress", "幂等检查失败",
 			event.P("error", existsErr.Error()))

@@ -6,30 +6,35 @@ export function hookRuleOf(row: HookRow): HookRuleConfig {
   return parseHookConfig(row.config_json);
 }
 
-/** Hooks 管理页表格列（修改列宽改此处） */
-export const HOOKS_TABLE_COLUMNS: QTableColumn<HookRow>[] = [
-  registryCol<HookRow>("name", "名称", "name", "left", REGISTRY_COL_W.nameWide),
-  registryCol<HookRow>("rule", "规则", "config_json", "left", REGISTRY_COL_W.desc),
-  registryCol<HookRow>("sort", "排序", "sort_order", "center", REGISTRY_COL_W.narrow),
-  registryCol<HookRow>("enabled", "启用", "enabled", "center", REGISTRY_COL_W.enabled, { sortable: false }),
-  registryColActions<HookRow>(REGISTRY_COL_W.actionsWide)
-];
+type I18nT = (key: string) => string;
 
-/** Agent 设置内嵌 Hook 列表 */
-export const HOOKS_AGENT_TABLE_COLUMNS: QTableColumn<HookRow>[] = [
-  registryCol<HookRow>("name", "名称", "name", "left", REGISTRY_COL_W.nameWide),
-  registryCol<HookRow>("rule", "规则", "config_json", "left", REGISTRY_COL_W.desc),
-  registryColActions<HookRow>()
-];
+export function createHooksTableColumns(t: I18nT): QTableColumn<HookRow>[] {
+  return [
+    registryCol<HookRow>("name", t("hooksPage.colName"), "name", "left", REGISTRY_COL_W.nameWide),
+    registryCol<HookRow>("rule", t("hooksPage.colRule"), "config_json", "left", REGISTRY_COL_W.desc),
+    registryCol<HookRow>("sort", t("hooksPage.colSort"), "sort_order", "center", REGISTRY_COL_W.narrow),
+    registryCol<HookRow>("enabled", t("hooksPage.colEnabled"), "enabled", "center", REGISTRY_COL_W.enabled, { sortable: false }),
+    registryColActions<HookRow>(REGISTRY_COL_W.actionsWide)
+  ];
+}
 
-/** HookDeliveriesPage 列定义 */
-export const HOOK_DELIVERY_TABLE_COLUMNS = [
-  registryCol("created_at", "时间", "created_at", "left", REGISTRY_COL_W.time),
-  registryCol("hook_key", "Hook", "hook_key", "left", REGISTRY_COL_W.desc),
-  registryCol("status", "状态", "status", "left", REGISTRY_COL_W.status),
-  registryCol("attempt_count", "尝试", "attempt_count", "right", REGISTRY_COL_W.metric),
-  registryCol("max_attempts", "上限", "max_attempts", "right", REGISTRY_COL_W.metric)
-];
+export function createHooksAgentTableColumns(t: I18nT): QTableColumn<HookRow>[] {
+  return [
+    registryCol<HookRow>("name", t("hooksPage.colName"), "name", "left", REGISTRY_COL_W.nameWide),
+    registryCol<HookRow>("rule", t("hooksPage.colRule"), "config_json", "left", REGISTRY_COL_W.desc),
+    registryColActions<HookRow>()
+  ];
+}
+
+export function createHookDeliveryTableColumns(t: I18nT) {
+  return [
+    registryCol("created_at", t("hooksPage.deliveries.colTime"), "created_at", "left", REGISTRY_COL_W.time),
+    registryCol("hook_key", t("hooksPage.deliveries.colHook"), "hook_key", "left", REGISTRY_COL_W.desc),
+    registryCol("status", t("hooksPage.deliveries.colStatus"), "status", "left", REGISTRY_COL_W.status),
+    registryCol("attempt_count", t("hooksPage.deliveries.colAttempts"), "attempt_count", "right", REGISTRY_COL_W.metric),
+    registryCol("max_attempts", t("hooksPage.deliveries.colMaxAttempts"), "max_attempts", "right", REGISTRY_COL_W.metric)
+  ];
+}
 
 export function hookRunsTo(row: HookRow) {
   const rule = hookRuleOf(row);
@@ -42,11 +47,11 @@ export function hookRunsTo(row: HookRow) {
   };
 }
 
-export function hookConditionHint(row: HookRow) {
+export function hookConditionHint(row: HookRow, t?: (key: string) => string) {
   const rule = hookRuleOf(row);
   const parts: string[] = [];
-  if (rule.condition.agent_id?.trim()) parts.push(`Agent: ${rule.condition.agent_id.trim()}`);
-  if (rule.condition.tool_name?.trim()) parts.push(`Tool: ${rule.condition.tool_name.trim()}`);
-  if (rule.condition.event_type?.trim()) parts.push(`Event: ${rule.condition.event_type.trim()}`);
+  if (rule.condition.agent_id?.trim()) parts.push(`${t ? t("hooksPage.conditionAgent") : "Agent"}: ${rule.condition.agent_id.trim()}`);
+  if (rule.condition.tool_name?.trim()) parts.push(`${t ? t("hooksPage.conditionTool") : "Tool"}: ${rule.condition.tool_name.trim()}`);
+  if (rule.condition.event_type?.trim()) parts.push(`${t ? t("hooksPage.conditionEvent") : "Event"}: ${rule.condition.event_type.trim()}`);
   return parts.length ? parts.join("\n") : "";
 }

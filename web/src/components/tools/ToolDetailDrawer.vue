@@ -48,7 +48,7 @@
           {{ policyChip.supports_concurrency.label }}
           <q-tooltip>{{ policyChip.supports_concurrency.tooltip }}</q-tooltip>
         </q-chip>
-        <q-chip dense outline>{{ runtimeStatusLabel(tool.runtime_status) }}</q-chip>
+        <q-chip dense outline :color="runtimeStatusColor(tool.runtime_status)">{{ runtimeStatusLabel(tool.runtime_status) }}</q-chip>
       </div>
 
       <q-tabs
@@ -205,6 +205,7 @@
               :config-json="configJson"
               :saving="configSaving"
               @update:config-json="$emit('update:configJson', $event)"
+              @update:config-schema-json="$emit('update:configSchemaJson', $event)"
               @save="$emit('save-config')"
             />
           </q-tab-panel>
@@ -262,7 +263,7 @@
                     <q-icon :name="o.enabled ? 'check_circle' : 'cancel'" :color="o.enabled ? 'positive' : 'negative'" size="sm" />
                   </q-item-section>
                   <q-item-section>
-                    <q-item-label>{{ o.agent_id }}</q-item-label>
+                    <q-item-label>{{ agentNameById(o.agent_id) }}</q-item-label>
                     <q-item-label caption>
                       模式：{{ modeLabel(o.mode) }}<span v-if="o.requires_confirmation"> · 需确认</span>
                     </q-item-label>
@@ -309,9 +310,9 @@ import { TOOL_POLICY_CHIP_COPY } from "../../features/tools/toolEditorCopy";
 import { bindingSummaryLine } from "../../features/tools/toolAgentBindingSummary";
 import type { ToolAgentBindingRow, ToolAgentBindingSummary } from "../../features/tools/toolAgentBindingSummary";
 import type { Tool, ToolAgentOverride, ToolInvocation, ToolTestResult } from "../../features/tools/types";
-import type { ToolOverrideForm } from "../../features/tools/useToolDetailPanel";
+import type { ToolOverrideForm } from "../../stores/tools/toolDetail";
 import { registryCol, REGISTRY_COL_W } from "../../features/ui/registryTableColumns";
-import { riskLabel, riskQuasarColor, runtimeStatusLabel, prettyJSON } from "./toolUi";
+import { riskLabel, riskQuasarColor, runtimeStatusLabel, runtimeStatusColor, prettyJSON } from "./toolUi";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import ToolDetailConfigPanel from "./ToolDetailConfigPanel.vue";
 import ToolJsonBlock from "./ToolJsonBlock.vue";
@@ -349,6 +350,7 @@ const emit = defineEmits<{
   "update:testTimeoutSec": [value: number];
   "run-test": [];
   "update:configJson": [value: string];
+  "update:configSchemaJson": [value: string];
   "save-config": [];
   "edit-override": [row: ToolAgentOverride | null];
   "delete-override": [row: ToolAgentOverride];
@@ -373,6 +375,11 @@ function modeLabel(mode: string): string {
   return m ? m.label : mode;
 }
 
+function agentNameById(id: string): string {
+  const found = props.agentOptions.find((o) => o.value === id);
+  return found ? found.label : id;
+}
+
 function runStatusIcon(status: string): string {
   if (status === "success") return "check_circle";
   if (status === "error") return "error";
@@ -389,14 +396,14 @@ function runStatusColor(status: string): string {
 
 const successRate = computed(() => {
   const t = props.tool;
-  if (!t || t.invoke_count === 0) return "—";
-  return ((t.success_count / t.invoke_count) * 100).toFixed(1) + "%";
+  if (!t || (t.success_count + t.failure_count) === 0) return "—";
+  return ((t.success_count / (t.success_count + t.failure_count)) * 100).toFixed(1) + "%";
 });
 
 const successRateClass = computed(() => {
   const t = props.tool;
-  if (!t || t.invoke_count === 0) return "";
-  const rate = t.success_count / t.invoke_count;
+  if (!t || (t.success_count + t.failure_count) === 0) return "";
+  const rate = t.success_count / (t.success_count + t.failure_count);
   if (rate >= 0.95) return "text-positive";
   if (rate >= 0.8) return "text-warning";
   return "text-negative";

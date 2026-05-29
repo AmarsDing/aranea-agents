@@ -9,6 +9,7 @@ export function useSkillRunsPage() {
   const agentId = ref("");
   const status = ref("");
   const from = ref("");
+  const to = ref("");
   const page = ref(1);
   const pageSize = ref(20);
   const rows = ref<SkillInvocation[]>([]);
@@ -18,7 +19,8 @@ export function useSkillRunsPage() {
 
   const statusOptions = [
     { label: "成功", value: "success" },
-    { label: "失败", value: "failure" }
+    { label: "失败", value: "failure" },
+    { label: "执行中", value: "pending" }
   ];
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 
@@ -31,6 +33,7 @@ export function useSkillRunsPage() {
         agent_id: agentId.value,
         status: status.value,
         from: from.value,
+        to: to.value,
         page: page.value,
         page_size: pageSize.value
       });
@@ -48,13 +51,17 @@ export function useSkillRunsPage() {
     agentId.value = "";
     status.value = "";
     from.value = "";
+    to.value = "";
     page.value = 1;
     void loadRows();
   }
 
-  watch([skillId, agentId, status, from], () => {
-    page.value = 1;
-    void loadRows();
+  watch([skillId, agentId, status, from, to], () => {
+    if (page.value === 1) {
+      void loadRows();
+    } else {
+      page.value = 1;
+    }
   });
   watch([page, pageSize], () => {
     void loadRows();
@@ -67,6 +74,7 @@ export function useSkillRunsPage() {
     agentId,
     status,
     from,
+    to,
     page,
     pageSize,
     rows,

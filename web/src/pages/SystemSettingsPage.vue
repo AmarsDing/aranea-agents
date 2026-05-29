@@ -3,9 +3,9 @@
     <div class="app-page-shell">
       <AppPageHero
         class="q-mb-md"
-        :kicker="t('settingsPage.kicker', 'System')"
+        :kicker="t('settingsPage.kicker')"
         :title="t('settingsPage.title')"
-        :subtitle="t('settingsPage.subtitle', '全局路径、A2A、配额与嵌入模型配置。')"
+        :subtitle="t('settingsPage.subtitle')"
       />
 
       <q-card flat class="app-settings-shell">
@@ -140,24 +140,22 @@
                     <div class="section-heading__main">
                       <div class="section-title">
                         <q-icon name="rate_review" size="sm" color="primary" />
-                        <span class="section-title__text">评估 LLM（UserSim / Judge）</span>
+                        <span class="section-title__text">{{ t("settingsPage.evalLLM.title") }}</span>
                       </div>
-                      <p class="settings-section__hint">
-                        持久化到 system_settings；运行时 env（KRATOS_EVAL_SIM_* / KRATOS_EVAL_JUDGE_*）优先。Judge 未填时回退 Sim。
-                      </p>
+                      <p class="settings-section__hint">{{ t("settingsPage.evalLLM.hint") }}</p>
                     </div>
                   </div>
                   <div class="app-form-field-grid app-form-field-grid--2col">
-                    <q-input v-model="evalLLMForm.simProvider" label="UserSim Provider" outlined dense />
-                    <q-input v-model="evalLLMForm.simModel" label="UserSim Model" outlined dense />
-                    <q-input v-model="evalLLMForm.judgeProvider" label="Judge Provider（可选）" outlined dense />
-                    <q-input v-model="evalLLMForm.judgeModel" label="Judge Model（可选）" outlined dense />
+                    <q-input v-model="evalLLMForm.simProvider" :label="t('settingsPage.evalLLM.simProvider')" outlined dense />
+                    <q-input v-model="evalLLMForm.simModel" :label="t('settingsPage.evalLLM.simModel')" outlined dense />
+                    <q-input v-model="evalLLMForm.judgeProvider" :label="t('settingsPage.evalLLM.judgeProvider')" outlined dense />
+                    <q-input v-model="evalLLMForm.judgeModel" :label="t('settingsPage.evalLLM.judgeModel')" outlined dense />
                   </div>
                   <q-banner v-if="evalLLMConfigured" dense rounded class="settings-info-banner q-mt-md">
                     <template #avatar>
                       <q-icon name="check_circle" color="positive" />
                     </template>
-                    评估 LLM 已配置
+                    {{ t("settingsPage.evalLLM.configured") }}
                   </q-banner>
                 </section>
               </div>

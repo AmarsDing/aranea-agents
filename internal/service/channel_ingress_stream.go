@@ -35,11 +35,10 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 	if err != nil {
 		return err
 	}
-	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
+	turnInput, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text, channelAllowQueueFromConfig(chRow.ConfigJSON))
 	if err != nil {
 		return err
 	}
-	turnInput := channelChatRequestToTurnInput(req, channelAllowQueueFromConfig(chRow.ConfigJSON))
 	if sessionID == "" {
 		sessionID = strings.TrimSpace(turnInput.SessionID)
 	}
@@ -57,16 +56,16 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 				pendingID = h.chat.LastPendingMessageID(sessionID)
 			}
 			if err := h.sendInboundQueuedAck(ctx, chRow, ev, platform, ltCfg, pendingID); err != nil {
-				_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "queued_ack", "error": err.Error()}, err.Error())
+				h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "queued_ack", "error": err.Error()}, err.Error())
 				return err
 			}
-			_ = h.recordDelivery(ctx, chRow.ID, "queued", map[string]any{"peer_id": ev.PeerID, "pending_id": pendingID}, "")
+			h.recordDelivery(ctx, chRow.ID, "queued", map[string]any{"peer_id": ev.PeerID, "pending_id": pendingID}, "")
 			if turnQueued != nil {
 				*turnQueued = true
 			}
 			return nil
 		}
-		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "stream", "error": err.Error()}, err.Error())
+		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "stream", "error": err.Error()}, err.Error())
 		return err
 	}
 	if result.Outcome == biz.NativeTurnOutcomeQueued {
@@ -75,10 +74,10 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 			pendingID = h.chat.LastPendingMessageID(sessionID)
 		}
 		if err := h.sendInboundQueuedAck(ctx, chRow, ev, platform, ltCfg, pendingID); err != nil {
-			_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "queued_ack", "error": err.Error()}, err.Error())
+			h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "queued_ack", "error": err.Error()}, err.Error())
 			return err
 		}
-		_ = h.recordDelivery(ctx, chRow.ID, "queued", map[string]any{"peer_id": ev.PeerID, "pending_id": pendingID}, "")
+		h.recordDelivery(ctx, chRow.ID, "queued", map[string]any{"peer_id": ev.PeerID, "pending_id": pendingID}, "")
 		if turnQueued != nil {
 			*turnQueued = true
 		}
@@ -93,14 +92,14 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 	if rendered == "" {
 		if previewCoord.PreviewMessageID() != "" {
 			if err := previewCoord.FlushFinalText(ctx, channelStreamEmptyPreviewMsg); err != nil {
-				_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "stream_empty_fallback", "error": err.Error()}, err.Error())
+				h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "stream_empty_fallback", "error": err.Error()}, err.Error())
 				return err
 			}
 		} else if err := h.deliverUnaryReply(ctx, chRow, ev, platform, channelStreamEmptyPreviewMsg); err != nil {
-			_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "stream_empty_fallback", "error": err.Error()}, err.Error())
+			h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "stream_empty_fallback", "error": err.Error()}, err.Error())
 			return err
 		}
-		_ = h.recordDelivery(ctx, chRow.ID, "streamed", map[string]any{"peer_id": ev.PeerID, "platform": platform, "fallback": true}, "")
+		h.recordDelivery(ctx, chRow.ID, "streamed", map[string]any{"peer_id": ev.PeerID, "platform": platform, "fallback": true}, "")
 		return nil
 	}
 	if contentPreview != nil {
@@ -111,7 +110,7 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 	}
 	if err := previewCoord.Flush(ctx, true); err != nil {
 		recordStreamUpdate(platform, "flush", err)
-		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{
+		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{
 			"phase":    "stream_flush",
 			"error":    err.Error(),
 			"fallback": "outbox",
@@ -119,7 +118,7 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 		if fallbackErr := h.deliverStreamFlushFallback(ctx, chRow, ev, platform, rendered); fallbackErr != nil {
 			return fallbackErr
 		}
-		_ = h.recordDelivery(ctx, chRow.ID, "streamed", map[string]any{
+		h.recordDelivery(ctx, chRow.ID, "streamed", map[string]any{
 			"peer_id":  ev.PeerID,
 			"platform": platform,
 			"fallback": "outbox",
@@ -127,6 +126,6 @@ func (h *ChannelIngress) processInboundStreaming(ctx context.Context, chRow biz.
 		return nil
 	}
 	recordStreamUpdate(platform, "flush", nil)
-	_ = h.recordDelivery(ctx, chRow.ID, "streamed", map[string]any{"peer_id": ev.PeerID, "platform": platform}, "")
+	h.recordDelivery(ctx, chRow.ID, "streamed", map[string]any{"peer_id": ev.PeerID, "platform": platform}, "")
 	return nil
 }

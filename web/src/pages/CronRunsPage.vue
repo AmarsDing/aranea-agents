@@ -58,12 +58,10 @@
       >
         <template #body-cell-task="props">
           <q-td :props="props">
-            <AppRegistryHoverTip :text="props.row.error_message">
-              <div class="min-width-0">
-                <div class="app-registry-cell-primary">{{ props.row.task_name || taskLabel(props.row.task_id) }}</div>
-                <div class="app-registry-cell-sub">{{ props.row.task_id }}</div>
-              </div>
-            </AppRegistryHoverTip>
+            <div class="min-width-0">
+              <div class="app-registry-cell-primary">{{ props.row.task_name || taskLabel(props.row.task_id) }}</div>
+              <div class="app-registry-cell-sub">{{ props.row.task_id }}</div>
+            </div>
           </q-td>
         </template>
         <template #body-cell-time="props">
@@ -74,13 +72,21 @@
         </template>
         <template #body-cell-status="props">
           <q-td :props="props">
-            <q-badge :color="runStatusColor(props.row.status)">{{ props.row.status }}</q-badge>
+            <q-badge :color="runStatusColor(props.row.status)">{{ runStatusLabel(props.row.status) }}</q-badge>
+            <div v-if="props.row.error_message" class="app-registry-cell-sub ellipsis q-mt-xs" :title="props.row.error_message">{{ props.row.error_message }}</div>
+          </q-td>
+        </template>
+        <template #body-cell-trigger="props">
+          <q-td :props="props">
+            <q-badge outline :color="triggerColor(props.row.trigger)">{{ triggerLabel(props.row.trigger) }}</q-badge>
           </q-td>
         </template>
         <template #body-cell-run="props">
           <q-td :props="props">
-            <span v-if="props.row.run_id" class="app-registry-cell-sub">{{ props.row.run_id }}</span>
-            <span v-else>—</span>
+            <router-link v-if="props.row.run_id" :to="{ name: 'session-detail', params: { sessionId: props.row.run_id } }" class="app-registry-cell-link">
+              {{ props.row.run_id.slice(0, 8) }}
+            </router-link>
+            <span v-else class="app-registry-cell-sub">—</span>
           </q-td>
         </template>
       </AppRegistryTable>
@@ -99,11 +105,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
 import AppPageHero from "../components/layout/AppPageHero.vue";
 import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
 import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../components/layout/AppRegistryHoverTip.vue";
 import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
 import { useCronRunsPage } from "../features/cron/useCronRunsPage";
 
@@ -116,23 +120,18 @@ const {
   statusOptions,
   columns,
   runs,
+  page,
+  pageSize,
+  pageMax,
+  pagedRuns,
   loadRuns,
   resetFilters,
   syncQueryAndLoad,
   taskLabel,
+  runStatusLabel,
   runStatusColor,
+  triggerLabel,
+  triggerColor,
   formatDate
 } = useCronRunsPage();
-
-const page = ref(1);
-const pageSize = ref(15);
-const pageMax = computed(() => Math.max(1, Math.ceil(runs.value.length / pageSize.value)));
-const pagedRuns = computed(() => {
-  const start = (page.value - 1) * pageSize.value;
-  return runs.value.slice(start, start + pageSize.value);
-});
-
-watch(runs, () => {
-  page.value = 1;
-});
 </script>

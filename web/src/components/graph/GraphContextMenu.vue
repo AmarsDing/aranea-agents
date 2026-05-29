@@ -2,6 +2,7 @@
   <Teleport to="body">
     <div
       v-if="visible"
+      ref="menuRef"
       class="graph-ctx-menu"
       role="menu"
       aria-label="节点操作菜单"
@@ -34,7 +35,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from "vue";
+import { ref, onMounted, onUnmounted } from "vue";
 
 export type ContextMenuItem = {
   icon: string;
@@ -57,6 +58,8 @@ const emit = defineEmits<{
   close: [];
 }>();
 
+const menuRef = ref<HTMLElement | null>(null);
+
 function onSelect(action: string) {
   emit("select", action);
   emit("close");
@@ -73,8 +76,7 @@ function onPress(e: MouseEvent) {
 }
 
 function onDocClick(e: MouseEvent) {
-  const menu = document.querySelector(".graph-ctx-menu");
-  if (menu && !menu.contains(e.target as Node)) {
+  if (menuRef.value && !menuRef.value.contains(e.target as Node)) {
     emit("close");
   }
 }

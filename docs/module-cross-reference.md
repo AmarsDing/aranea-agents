@@ -86,16 +86,16 @@
 
 ---
 
-### 1.4 记忆服务 (`internal/memory/`)
+### 1.4 记忆服务 (`internal/memory/` + `internal/service/memory*.go`)
 
-**职责**：5 层记忆系统适配器，提供记忆 CRUD + 6 个记忆工具 + 自动提取。
+**职责**：5 层记忆系统适配器，提供记忆 CRUD + 6 个记忆工具 + 自动提取 + Memory 管理 API 传输桥点。
 
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | `biz`（Memory 类型）、`pkg/trpc-agent-go/memory`（框架记忆 API） |
-| **下游影响** | `agent`（MemoryService.Tools() 注入记忆工具）、`service/chat`（记忆管理 API）、`service/memory`（L4 级联管理） |
-| **核心导出** | `NewSQLiteMemoryService()`、`Service.Tools()`、`Service.EnqueueAutoMemoryJob()` |
-| **共享类型** | `trpcmemory.Service` 接口（被 agent 和 service 共享） |
+| **上游依赖** | `biz`（Memory 类型 + `MemoryDebugRecaller`/`MemoryFactIndexCounter` 端口）、`pkg/trpc-agent-go/memory`（框架记忆 API）、`data`（`memoryDebugRecallAdapter`/`memoryFactIndexCounterAdapter` 适配器） |
+| **下游影响** | `agent`（MemoryService.Tools() 注入记忆工具）、`service/chat`（记忆管理 API）、`service/memory`（L4 级联管理 + Debug Recall + Worker Status） |
+| **核心导出** | `NewSQLiteMemoryService()`、`Service.Tools()`、`Service.EnqueueAutoMemoryJob()`、`NewMemoryService()`（含 `debugRecaller`/`factIndexCounter` biz 端口） |
+| **共享类型** | `trpcmemory.Service` 接口（被 agent 和 service 共享）、`biz.RecallDebugRow`/`biz.RecallScoreBreakdown`（debug recall DTO） |
 | **事件生产** | 无直接生产（记忆提取通过 EventBus 异步触发） |
 | **事件消费** | 记忆提取 Worker 消费 `runner_completion` 事件 |
 | **数据库** | SQLite（memory_facts/memory_entities/memory_l4_graph）+ PostgreSQL（embedding 向量） |
@@ -105,6 +105,9 @@
 - 记忆写入必须经 broker/async 异步写（红线 #3），禁止在 plugin 回调中直接写库
 - 记忆工具通过 `service.Tools()` 注入，不手动构造
 - 修改记忆层级结构时，需同步更新前端 MemoryCenterPage 的 5 个 Tab
+- **Service 层禁止直接依赖 `*sessionmemory.Store`**（data 层类型），需通过 biz 端口接口（`MemoryDebugRecaller`/`MemoryFactIndexCounter`）+ data 层适配器桥接
+- `L4CascadeUsecase` 构造函数接收 4 个子接口（`CascadeProposalStore`/`CascadeGraphReader`/`CascadeFactMutator`/`CascadeSagaStore`）+ `L4EntityWriter`，不使用聚合接口 `CascadeGraphStore`（已 Deprecated）
+- 新增 biz 端口接口时，需同步创建 data 层适配器 + 更新 `cmd/admin/wire.go` 绑定
 
 ---
 
@@ -155,19 +158,21 @@
 
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | `biz`（Channel 类型、NativeTurnGateway/TurnControlGateway 端口、GraphExecutor 端口）、`event`（Infra） |
+| **上游依赖** | `biz`（Channel 类型、NativeTurnGateway/TurnControlGateway 端口、GraphExecutor 端口、CronTriggerGateway 端口）、`event`（Infra） |
 | **下游影响** | 无（Channel 是终端消费者，不被其他模块依赖） |
 | **核心导出** | `Runner`/`OutboundText`/`InboundHandler` 接口、各平台适配器 |
 | **消费接口** | `NativeTurnGateway`（执行 Turn）、`TurnControlGateway`（卡片操作）、`GraphExecutor`（Graph 执行）、`CronTriggerGateway`（触发定时任务） |
-| **共享类型** | `InboundEvent`、`OutboundMessage`、`port.Meta` |
+| **共享类型** | `InboundEvent`、`OutboundMessage`、`port.Meta`、`biz.TurnInput`（入站 Turn 输入，Phase K 起 ChannelIngress 直接使用） |
 | **事件生产** | `channel_inbound`、`channel_outbound`、`channel_delivery` |
 | **事件消费** | 无 |
-| **数据库** | 通过 biz ChannelUsecase 访问（channels/channel_credentials/channel_deliveries/channel_turn_jobs） |
+| **数据库** | 通过 biz ChannelUsecase 访问（channels/channel_credentials/channel_deliveries/channel_turn_jobs/channel_peer_sessions/channel_inbound_receipts）；Service 层不直接持有任何 Repo 接口（Phase K 修复 K-09；Phase L 修复 J-10） |
 | **前端对应** | ChannelsPage（渠道管理） |
 
 **⚠️ 开发注意**：
 - 新增平台适配器时，在 `channel/all/all.go` 注册，实现 `Runner` + `OutboundText` 接口
 - Channel 不持有 `*ChatService` 具体类型，通过 `biz.NativeTurnGateway` 端口交互
+- ChannelIngress 不 import proto 包（`chatv1`/`cronv1`），入站 Turn 输入使用 `biz.TurnInput`（Phase K 修复 K-06）
+- `ChannelService`/`ChannelIngress` 不直接持有任何 biz Repo 接口（`ChannelPeerSessionRepo`/`ChannelInboundReceiptRepo`/`AgentRepository`/`TeamRepository`），全部通过 `ChannelUsecase` Facade 方法访问（Phase K 修复 K-09；Phase L 修复 J-10）
 - 入站消息处理链：`ProcessInbound` → 路由匹配 → `ExecuteTurn` → 事件流 → 出站投递
 
 ---
@@ -458,6 +463,10 @@
 | `GraphExecutor` | Channel/Cron | `internal/service/channel_ingress.go` + `internal/service/cron.go` |
 | `GraphBuilderFactory` | GraphUsecase + Team | `internal/biz/graph.go` + `internal/team/` |
 | `AgentIDExistenceChecker` | TeamUsecase | `internal/biz/team_usecase.go` |
+| `MemoryDebugRecaller` | MemoryService | `internal/service/memory_recall.go` + `internal/data/memory_debug_recall.go` 适配器 + `cmd/admin/wire.go` |
+| `MemoryFactIndexCounter` | MemoryService | `internal/service/memory_recall.go` + `internal/data/memory_debug_recall.go` 适配器 + `cmd/admin/wire.go` |
+| `CascadeProposalStore`/`CascadeGraphReader`/`CascadeFactMutator`/`CascadeSagaStore` | L4CascadeUsecase | `internal/biz/memory_l4_cascade.go` + `cmd/admin/wire.go` |
+| `L4EntityWriter` | L4CascadeUsecase | `internal/biz/memory_l4_cascade.go` + `cmd/admin/wire.go` |
 
 ### 3.2 修改共享类型时
 
@@ -472,6 +481,7 @@
 | `Tool` | `biz/tool/tool.go` | ToolUsecase、ChatOrchestrator、前端 |
 | `GraphDefinition` | `biz/graph.go` | GraphUsecase、GraphService、Team、前端 |
 | `TeamDefinition` | `biz/team_types.go` | TeamUsecase、TeamService、前端 |
+| `RecallDebugRow`/`RecallScoreBreakdown` | `biz/memory_debug_recall.go` | MemoryService、data 适配器、前端（debug recall 面板） |
 
 ### 3.3 修改事件类型时
 

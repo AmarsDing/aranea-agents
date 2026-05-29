@@ -29,6 +29,7 @@ func (AvatarAsset) Fields() []ent.Field {
 		field.String("workspace_id").Default(""),
 		field.String("owner_user_id").Default(""),
 		field.String("source").Default("system"),
+		field.String("category").Default("agent"),
 		field.Bool("is_system").Default(false),
 		field.Int("file_size_bytes").Default(0),
 		field.Int("width_px").Default(0),

@@ -27,6 +27,7 @@ function mcpRowToPlatform(raw: unknown): PlatformResource {
     agent_id: "",
     provider: "",
     model: "",
+    is_system: false,
     config_json: pickStr(r, "config_json", "configJson"),
     metadata_json: pickStr(r, "metadata_json", "metadataJson"),
     created_at: pickStr(r, "created_at", "createdAt"),

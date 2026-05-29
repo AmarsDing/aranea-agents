@@ -6,7 +6,7 @@ import type { Agent } from "../agents/types";
 import type { Team, TeamDefinition, TeamRun, TeamRunEvent, TeamRunStep, TeamRunSummary } from "./types";
 import { findActiveTeamRun } from "./api";
 import { useTeamsPageStore } from "../../stores/teams/page";
-import { buildGraphFromDefinition, defaultDefinition, definitionFromTemplate, definitionToJSON, groupTeamsByIndustry, industryOptionsFromTree, parseDefinition, type TeamTemplateKey } from "../../components/teams/teamUtils";
+import { buildGraphFromDefinition, defaultDefinition, definitionFromTemplate, definitionToJSON, groupTeamsByIndustry, industryOptionsFromTree, parseDefinition, resetDefinition, type TeamTemplateKey } from "../../components/teams/teamUtils";
 import { usePlatformStore } from "../../stores/platform";
 import type { PlatformResourceTreeNode } from "../platform/types";
 
@@ -125,7 +125,7 @@ function openCreate() {
   editingId.value = "";
   selectedTeamTemplateKey.value = null;
   Object.assign(form, { team_key: "", display_name: "", status: "active", app_name: "" });
-  Object.assign(definition, defaultDefinition());
+  resetDefinition(definition);
   editorOpen.value = true;
 }
 
@@ -181,6 +181,7 @@ function applyTemplate(template: TeamTemplateKey) {
     selectedTeamTemplateKey.value = null;
     return;
   }
+  resetDefinition(definition);
   Object.assign(definition, definitionFromTemplate(template, agents.value));
   $q.notify({ type: "positive", message: "Team 模板已应用" });
 }
@@ -249,6 +250,7 @@ async function openRuns(team: Team) {
   selectedTeam.value = team;
   runsOpen.value = true;
   summariesByRun.value = {};
+  stepsByRun.value = {};
   await loadRuns();
   openRunEvents(team.id);
 }

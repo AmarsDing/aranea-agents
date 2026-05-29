@@ -107,6 +107,10 @@ export type RunnerMetricsSummary = {
   error_runs: number;
   error_rate: number;
   success_rate: number;
+  avg_duration_ms?: number;
+  p50_duration_ms?: number;
+  p95_duration_ms?: number;
+  p99_duration_ms?: number;
 };
 
 export type CodeExecutorCapability = {

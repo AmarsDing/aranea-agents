@@ -59,13 +59,13 @@ func (h *ChannelIngress) rejectInboundAccess(ctx context.Context, chRow biz.Chan
 	if idempotency == "" {
 		idempotency = platform + ":" + ev.PeerID
 	}
-	_ = h.recordDelivery(ctx, chRow.ID, "access_denied", map[string]any{
+	h.recordDelivery(ctx, chRow.ID, "access_denied", map[string]any{
 		"peer_id": ev.PeerID,
 		"reason":  reason,
 	}, reason)
-	text := "暂无使用权限，请联系管理员。"
+	text := channelAccessDeniedDefault
 	if strings.TrimSpace(reason) != "" {
-		text = "暂无使用权限：" + reason
+		text = channelAccessDeniedWithReason + reason
 	}
 	return h.enqueueOutboundReply(ctx, chRow, platform, recipient, text, ev.OutboundMeta, idempotency+":deny")
 }

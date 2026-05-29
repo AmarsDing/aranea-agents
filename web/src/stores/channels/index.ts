@@ -18,11 +18,18 @@ import {
   type ChannelDeliveryRow,
   type ChannelTurnJobRow
 } from "../../features/channels/api";
+import { listAgents } from "../../features/agents/api";
+import type { Agent } from "../../features/agents/types";
+import { listTeams } from "../../features/teams/api";
+import type { Team } from "../../features/teams/types";
 
 export const useChannelsStore = defineStore("channels", () => {
   const channels = ref<ChannelRow[]>([]);
   const catalog = ref<ChannelCatalogItem[]>([]);
   const loading = ref(false);
+  const routingAgents = ref<Agent[]>([]);
+  const routingTeams = ref<Team[]>([]);
+  const routingOptionsLoading = ref(false);
 
   async function loadChannels() {
     loading.value = true;
@@ -35,6 +42,17 @@ export const useChannelsStore = defineStore("channels", () => {
 
   async function loadCatalog() {
     catalog.value = await listChannelCatalog();
+  }
+
+  async function loadAll() {
+    loading.value = true;
+    try {
+      const [catalogData, channelsData] = await Promise.all([listChannelCatalog(), listChannels()]);
+      catalog.value = catalogData;
+      channels.value = channelsData;
+    } finally {
+      loading.value = false;
+    }
   }
 
   async function addChannel(payload: ChannelResourceInput) {
@@ -52,6 +70,12 @@ export const useChannelsStore = defineStore("channels", () => {
   async function removeChannel(id: string) {
     await deleteChannel(id);
     channels.value = channels.value.filter((c) => c.id !== id);
+  }
+
+  function upsertChannel(row: ChannelRow) {
+    const index = channels.value.findIndex((c) => c.id === row.id);
+    if (index >= 0) channels.value[index] = row;
+    else channels.value.unshift(row);
   }
 
   async function toggle(id: string, enabled: boolean) {
@@ -78,19 +102,37 @@ export const useChannelsStore = defineStore("channels", () => {
     return data.items;
   }
 
+  async function loadRoutingOptions() {
+    routingOptionsLoading.value = true;
+    try {
+      const [agents, teams] = await Promise.all([listAgents({ limit: 200 }), listTeams()]);
+      routingAgents.value = agents;
+      routingTeams.value = teams;
+      return { agents, teams };
+    } finally {
+      routingOptionsLoading.value = false;
+    }
+  }
+
   return {
     channels,
     catalog,
     loading,
+    routingAgents,
+    routingTeams,
+    routingOptionsLoading,
     loadChannels,
     loadCatalog,
+    loadAll,
     addChannel,
     editChannel,
     removeChannel,
+    upsertChannel,
     toggle,
     fetchCredentials,
     testConnection,
     loadTurnJobs,
-    loadDeliveries
+    loadDeliveries,
+    loadRoutingOptions
   };
 });

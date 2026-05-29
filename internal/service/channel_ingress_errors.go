@@ -23,10 +23,10 @@ func (h *ChannelIngress) deliverTurnErrorReply(ctx context.Context, chRow biz.Ch
 	}
 	idempotency := ackIdempotencyKey(platform, ev, "error")
 	if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), text, ev.OutboundMeta, idempotency); err != nil {
-		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "turn_error_reply", "error": err.Error()}, err.Error())
+		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "turn_error_reply", "error": err.Error()}, err.Error())
 		return err
 	}
-	_ = h.recordDelivery(ctx, chRow.ID, "turn_error", map[string]any{
+	h.recordDelivery(ctx, chRow.ID, "turn_error", map[string]any{
 		"peer_id": ev.PeerID,
 		"cause":   truncateForLog(execErr.Error(), 200),
 	}, execErr.Error())

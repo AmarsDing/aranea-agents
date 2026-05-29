@@ -2,7 +2,6 @@ import { ref } from "vue";
 import { useQuasar } from "quasar";
 import type { Task, TaskComment, TaskEvent, TaskLog, TaskRun } from "./types";
 import { useGraphStore } from "../../stores/graph";
-import { listTaskEvents } from "./api";
 
 export function useGraphRunTasks(
   executionId: () => string,
@@ -51,7 +50,7 @@ export function useGraphRunTasks(
         graphStore.fetchTaskComments(taskId),
         graphStore.fetchTaskLogs(taskId),
         graphStore.fetchTaskRuns(taskId),
-        execId ? listTaskEvents(execId, taskId) : Promise.resolve([]),
+        execId ? graphStore.fetchTaskEvents(execId, taskId) : Promise.resolve([]),
       ]);
       taskComments.value = comments;
       taskLogs.value = logs;

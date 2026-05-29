@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
 )
 
@@ -14,7 +15,7 @@ const defaultChannelPassiveQueuedReply = "当前有任务进行中，请稍后�
 // processInboundCore runs a synchronous turn and returns reply text for platforms that
 // must embed the assistant reply in the webhook HTTP body (e.g. WeChat passive mode).
 func (h *ChannelIngress) processInboundCore(ctx context.Context, chRow biz.Channel, ev port.InboundEvent) (reply string, err error) {
-	if h == nil || h.chat == nil || h.peers == nil || h.sessions == nil {
+	if h == nil || h.chat == nil || h.channels == nil || h.sessions == nil {
 		return "", nil
 	}
 	platform := inboundPlatform(chRow, ev)
@@ -79,8 +80,10 @@ func (h *ChannelIngress) processInboundNow(ctx context.Context, chRow biz.Channe
 				defer release()
 			}
 			if err := h.dispatchAsyncInbound(procCtx, chRow, ev, platform, ltCfg); err != nil {
-				_ = h.deliverTurnErrorReply(procCtx, chRow, ev, platform, err)
+			if replyErr := h.deliverTurnErrorReply(procCtx, chRow, ev, platform, err); replyErr != nil {
+				event.SysLogWarn("channel.async.reply_failed", "异步回复投递失败", event.P("error", replyErr.Error()))
 			}
+		}
 		})
 		return nil
 	}

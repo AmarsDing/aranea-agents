@@ -1,5 +1,5 @@
 import { computed, onMounted, ref, watch } from "vue";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import {
   CALLBACK_POINT_OPTIONS,
   PLUGIN_RUN_KEY_PRESETS,
@@ -13,6 +13,7 @@ import { usePluginsStore } from "../../stores/plugins";
 
 export function usePluginRunsPage() {
   const route = useRoute();
+  const router = useRouter();
   const pluginsStore = usePluginsStore();
 
   const pluginKey = ref("");
@@ -82,8 +83,23 @@ export function usePluginRunsPage() {
   }
 
   function onFilterChange() {
-    page.value = 1;
-    void loadRows(1, pageSize.value);
+    if (page.value === 1) {
+      void loadRows(1, pageSize.value);
+    } else {
+      page.value = 1;
+    }
+    syncQueryToRoute();
+  }
+
+  function syncQueryToRoute() {
+    const query: Record<string, string> = {};
+    if (pluginKey.value) query.plugin_key = pluginKey.value;
+    if (agentId.value) query.agent_id = agentId.value;
+    if (callbackPoint.value) query.callback_point = callbackPoint.value;
+    if (status.value) query.status = status.value;
+    if (from.value) query.from = from.value;
+    if (to.value) query.to = to.value;
+    void router.replace({ query });
   }
 
   function resetFilters() {
@@ -94,6 +110,7 @@ export function usePluginRunsPage() {
     from.value = "";
     to.value = "";
     page.value = 1;
+    void router.replace({ query: {} });
     void loadRows(1, pageSize.value);
   }
 
@@ -112,6 +129,14 @@ export function usePluginRunsPage() {
     if (q.agent_id) agentId.value = q.agent_id;
     if (q.callback_point) callbackPoint.value = q.callback_point;
     if (q.status) status.value = q.status;
+    if (q.from) from.value = toDatetimeLocal(q.from);
+    if (q.to) to.value = toDatetimeLocal(q.to);
+  }
+
+  function toDatetimeLocal(iso: string): string {
+    if (!iso) return "";
+    const match = iso.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
+    return match ? match[0] : iso.slice(0, 16);
   }
 
   watch([page, pageSize], () => void loadRows());

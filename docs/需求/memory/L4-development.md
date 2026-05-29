@@ -16,7 +16,7 @@
 | 冲突/衰减元数据 | 🟡 |
 | Evolution API proto | ✅ |
 | Evolution/Graph 前端 | 🟡 占位 / feature flag |
-| 级联 BFS + Proposal | ❌ |
+| 级联 BFS + Proposal | ✅ Saga 化 |
 | bi-temporal 边 | ❌ |
 | LLM 实体抽取 | ❌ |
 
@@ -27,7 +27,7 @@
 | # | 任务 | 状态 |
 |---|------|------|
 | L4-1 | LLM 实体/关系抽取 | ❌ P2 |
-| L4-2 | CascadeProposal RPC + BFS | ❌ P2 |
+| L4-2 | CascadeProposal RPC + BFS | ✅ Saga 化 |
 | L4-3 | valid_from/valid_to 迁移 | ❌ P2 |
 | L4-4 | Evolution 审核 UI 闭环 | ❌ |
 | L4-5 | Graph Tab 生产就绪 | 🟡 |
@@ -38,9 +38,14 @@
 ## 代码锚点
 
 - `internal/biz/memory_l4_usecase.go` · `memory_l4*.go`
+- `internal/biz/memory_l4_cascade.go`（`NewL4CascadeUsecase` 接收 4 子接口 + `L4EntityWriter`）
+- `internal/biz/memory_l4.go`（`CascadeProposalStore`/`CascadeGraphReader`/`CascadeFactMutator`/`CascadeSagaStore`/`L4EntityWriter` 子接口）
+- `internal/biz/memory_debug_recall.go`（`MemoryDebugRecaller`/`MemoryFactIndexCounter` 端口）
 - `internal/data/memory_l4.go`
+- `internal/data/memory_debug_recall.go`（data 层适配器）
 - `internal/agent/l4_prompt.go`
 - `internal/cronrunner/jobs/auto_memory.go`
+- `cmd/admin/wire.go`（`provideL4CascadeUsecase` + `provideMemoryService`）
 
 ---
 

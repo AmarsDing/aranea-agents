@@ -495,6 +495,9 @@ func seedInitialData(entClient *ent.Client, c *conf.Data) error {
 	if err := ensureChannelPlatformAvatars(context.Background(), entClient); err != nil {
 		return err
 	}
+	if err := ensureAgentAvatars(context.Background(), entClient); err != nil {
+		return err
+	}
 	// Seed system admin agent and built-in CLI admin tools (idempotent).
 	if err := SeedSystemAdminAgent(context.Background(), entClient); err != nil {
 		return err

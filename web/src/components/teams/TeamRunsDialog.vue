@@ -112,6 +112,7 @@ function stepStatusColor(status: string) {
   if (normalized === "running" || normalized === "pending") return "info";
   if (normalized === "success" || normalized === "ok" || normalized === "completed") return "positive";
   if (normalized === "failed" || normalized === "error") return "negative";
+  if (normalized === "cancelled" || normalized === "canceled") return "warning";
   return "grey";
 }
 
@@ -124,6 +125,7 @@ function runStatusIcon(status: string) {
   if (normalized === "running" || normalized === "pending") return "sync";
   if (normalized === "success" || normalized === "ok" || normalized === "completed") return "check";
   if (normalized === "failed" || normalized === "error") return "error";
+  if (normalized === "cancelled" || normalized === "canceled") return "cancel";
   return "schedule";
 }
 </script>

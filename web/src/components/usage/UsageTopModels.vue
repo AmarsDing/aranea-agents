@@ -32,21 +32,13 @@
 
 <script setup lang="ts">
 import type { ModelUsageBreakdownRow } from "../../features/usage/types";
-import { formatUsdFromMicro } from "../../features/usage/moneyFormat";
+import { formatUsdFromMicro, formatCount, formatTps } from "../../features/usage/moneyFormat";
 
 defineProps<{
   rows: ModelUsageBreakdownRow[];
 }>();
 
-function formatCount(value: number) {
-  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 }).format(value);
-}
-
-function formatMoney(value: number) {
+function formatMoney(value?: number) {
   return formatUsdFromMicro(value);
-}
-
-function formatTps(value: number) {
-  return `${value.toFixed(1)} tok/s`;
 }
 </script>

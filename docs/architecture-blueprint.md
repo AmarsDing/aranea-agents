@@ -139,7 +139,7 @@ Aranea-Agents 是基于 **trpc-agent-go** 的多智能体编排平台。以 **Kr
 | **TeamUsecase** | Team CRUD、定义验证（6 种模式）、Run 管理 | `TeamRepository`、`AgentIDExistenceChecker` |
 | **GraphUsecase** | Graph 定义/执行/缓存、任务协调、GC | `GraphRepo`、`GraphRunRepo`、`GraphBuilderFactory` |
 | **SessionUsecase** | 会话 CRUD、消息持久化、Turn 记录、压缩 | `SessionRepo`、`SessionRunRepo` |
-| **ChannelUsecase** | 渠道 CRUD、入站路由、出站投递 | `ChannelRepo`、`NativeTurnGateway`、`GraphExecutor` |
+| **ChannelUsecase** | 渠道 CRUD、入站路由、出站投递、Peer 绑定管理、入站去重、路由解析、Agent/Team 查询 | `ChannelRepo`、`ChannelPeerSessionRepo`、`ChannelInboundReceiptRepo`、`AgentRepository`、`TeamRepository`、`CredentialCrypto` |
 | **CronUsecase** | 定时任务 CRUD、调度 | `CronRepo`、`NativeTurnGateway` |
 | **MemoryUsecase** | 记忆 CRUD、PII 检测、策略执行 | `MemoryRepo`、`EmbeddingService` |
 | **MonitorUsecase** | 告警规则、Flow Log、Trace 投影 | `MonitorRepo`、`UsageRepo` |
@@ -520,10 +520,11 @@ ChannelIngress.ProcessInbound(channel, InboundEvent)
   │
   ├── 1. 消息解析 + 去重（InboundReceiptRepo）
   ├── 2. 路由匹配（ChannelRoutingRules）
-  ├── 3. Turn 执行：NativeTurnGateway.ExecuteTurn()
+  ├── 3. 构建 biz.TurnInput（prepareChannelChatRequest）
+  ├── 4. Turn 执行：NativeTurnGateway.ExecuteTurn(TurnInput)
   │     → 复用 Chat Turn 完整流程
-  ├── 4. 事件流 → 出站投递队列
-  └── 5. ChannelDeliveryWorker 轮询 → OutboundText.SendText()
+  ├── 5. 事件流 → 出站投递队列
+  └── 6. ChannelDeliveryWorker 轮询 → OutboundText.SendText()
 ```
 
 ### 5.3 Team 编排流程

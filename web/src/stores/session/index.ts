@@ -80,6 +80,7 @@ export const useSessionStore = defineStore("session", () => {
       const s = await createSession({ ...payload, title: payload.title ?? "" });
       sessions.value.unshift(s);
       activeSession.value = s;
+      emitSessionMutation({ type: "update", id: s.id, session: s });
       return s;
     } catch (e: any) {
       error.value = e?.message ?? String(e);
@@ -205,6 +206,7 @@ export const useSessionStore = defineStore("session", () => {
     error.value = null;
     try {
       const result = await restoreSession(id);
+      emitSessionMutation({ type: "update", id, session: result });
       return result;
     } catch (e: any) {
       error.value = e?.message ?? String(e);

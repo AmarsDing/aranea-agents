@@ -86,6 +86,7 @@
       @run-test="detailStore.runToolTest()"
       @update:config-json="detailStore.configJson = $event"
       @save-config="detailStore.saveConfig()"
+      @update:config-schema-json="detailStore.saveConfigSchema($event)"
       @edit-override="detailStore.openOverrideEditor($event)"
       @delete-override="detailStore.confirmRemoveOverride($event)"
       @update:override-editor-open="detailStore.overrideEditorOpen = $event"
@@ -130,8 +131,8 @@ import {
 } from "../components/tools/toolUi";
 import { useToolDetailStore } from "../stores/tools/toolDetail";
 import { useToolEditorStore } from "../stores/tools/toolEditor";
-import { useToolToggle } from "../features/tools/useToolEditor";
-import { patchToolForm } from "../features/tools/toolFormPatch";
+import { useToolToggle } from "../features/tools/useToolToggle";
+import { patchToolForm, toolToUpsertInput } from "../features/tools/toolFormPatch";
 import type { Tool } from "../features/tools/types";
 import { useToolsStore } from "../stores/tools";
 
@@ -212,25 +213,7 @@ async function updateRisk(tool: Tool, value: string) {
 
 async function doUpdateRisk(tool: Tool, value: string) {
   try {
-    await toolsStore.editTool(tool.id || tool.key, {
-      key: tool.key,
-      display_name: tool.display_name,
-      description: tool.description,
-      category: tool.category,
-      source: tool.source,
-      risk_level: value,
-      enabled: tool.enabled,
-      readonly: tool.readonly,
-      requires_confirmation: tool.requires_confirmation,
-      supports_streaming: tool.supports_streaming,
-      supports_concurrency: tool.supports_concurrency,
-      parameters_schema_json: tool.parameters_schema_json || "{}",
-      result_schema_json: tool.result_schema_json || "{}",
-      config_schema_json: tool.config_schema_json || "{}",
-      config_json: tool.config_json || "{}",
-      default_config_json: tool.default_config_json || "{}",
-      metadata_json: tool.metadata_json || "{}"
-    });
+    await toolsStore.editTool(tool.id || tool.key, toolToUpsertInput(tool, { risk_level: value }));
     $q.notify({ type: "positive", message: "风险级别已更新" });
     await loadRows();
   } catch (err) {

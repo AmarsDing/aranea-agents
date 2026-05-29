@@ -27,6 +27,7 @@ function wireCronTask(t: WireCronTask | null | undefined): PlatformResource {
     agent_id: t?.agentId ?? "",
     provider: "",
     model: "",
+    is_system: false,
     config_json: t?.configJson ?? "",
     metadata_json: t?.metadataJson ?? "",
     created_at: t?.createdAt ?? "",
@@ -72,25 +73,17 @@ export async function createCronTask(payload: PlatformResourceInput): Promise<Pl
 }
 
 export async function updateCronTask(id: string, payload: Partial<PlatformResourceInput>): Promise<PlatformResource> {
-  const cur = await cron.GetCronTask({ id });
-  const row = await cron.UpdateCronTask({
-    id,
-    task: {
-      id,
-      taskKey: payload.key ?? cur.taskKey,
-      name: payload.name ?? cur.name,
-      description: payload.description ?? cur.description,
-      status: payload.status ?? cur.status,
-      enabled: payload.enabled ?? cur.enabled,
-      sortOrder: payload.sort_order ?? cur.sortOrder,
-      agentId: payload.agent_id ?? cur.agentId,
-      configJson: payload.config_json ?? cur.configJson,
-      metadataJson: payload.metadata_json ?? cur.metadataJson,
-      createdAt: cur.createdAt,
-      updatedAt: cur.updatedAt,
-      deletedAt: cur.deletedAt
-    }
-  });
+  const task: Record<string, unknown> = { id };
+  if (payload.key !== undefined) task.taskKey = payload.key;
+  if (payload.name !== undefined) task.name = payload.name;
+  if (payload.description !== undefined) task.description = payload.description;
+  if (payload.status !== undefined) task.status = payload.status;
+  if (payload.enabled !== undefined) task.enabled = payload.enabled;
+  if (payload.sort_order !== undefined) task.sortOrder = payload.sort_order;
+  if (payload.agent_id !== undefined) task.agentId = payload.agent_id;
+  if (payload.config_json !== undefined) task.configJson = payload.config_json;
+  if (payload.metadata_json !== undefined) task.metadataJson = payload.metadata_json;
+  const row = await cron.UpdateCronTask({ id, task });
   return wireCronTask(row);
 }
 

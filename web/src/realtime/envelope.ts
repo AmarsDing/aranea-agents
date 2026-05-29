@@ -42,6 +42,8 @@ export type EnvelopeType =
   | "knowledge_ingest"
   | "user_feedback"
   | "mcp.session.reconnect"
+  | "mcp.health.alert"
+  | "orchestration_agent_status"
   | "alert.notify";
 
 export type EnvelopeContent = {

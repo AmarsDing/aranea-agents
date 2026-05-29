@@ -106,35 +106,38 @@
     </q-card>
 
     <q-dialog v-model="detailOpen">
-      <q-card class="monitor-detail-card app-dialog-card app-dialog-card--lg">
-        <q-card-section class="row items-start justify-between">
+      <q-card class="app-dialog-card app-dialog-card--lg app-glass-dialog">
+        <q-card-section class="app-glass-dialog__head row items-start justify-between">
           <div>
-            <div class="text-h6">Audit 详情</div>
-            <div class="text-caption text-grey-7">{{ selected?.action }}.{{ selected?.resource }}</div>
+            <div class="app-glass-dialog__title">Audit 详情</div>
+            <div class="app-glass-dialog__subtitle">{{ selected?.action }}.{{ selected?.resource }}</div>
           </div>
           <q-btn flat round dense icon="close" v-close-popup />
         </q-card-section>
         <q-separator />
-        <q-card-section>
-          <q-list dense>
-            <q-item v-if="selected?.actor">
-              <q-item-section>操作者</q-item-section>
-              <q-item-section side>{{ selected?.actor }}</q-item-section>
-            </q-item>
-            <q-item v-if="selected?.ip">
-              <q-item-section>IP</q-item-section>
-              <q-item-section side>{{ selected?.ip }}</q-item-section>
-            </q-item>
-            <q-item v-if="selected?.severity">
-              <q-item-section>严重级别</q-item-section>
-              <q-item-section side>
-                <q-badge :color="severityColor(selected!.severity)">{{ selected?.severity }}</q-badge>
-              </q-item-section>
-            </q-item>
-          </q-list>
-          <pre class="monitor-json app-code-block">{{ selectedJSON }}</pre>
-        </q-card-section>
-        <q-card-actions align="right" class="app-actions-bar">
+        <div class="app-glass-dialog__scroll">
+          <q-card-section class="app-glass-dialog__body">
+            <q-list dense>
+              <q-item v-if="selected?.actor">
+                <q-item-section>操作者</q-item-section>
+                <q-item-section side>{{ selected?.actor }}</q-item-section>
+              </q-item>
+              <q-item v-if="selected?.ip">
+                <q-item-section>IP</q-item-section>
+                <q-item-section side>{{ selected?.ip }}</q-item-section>
+              </q-item>
+              <q-item v-if="selected?.severity">
+                <q-item-section>严重级别</q-item-section>
+                <q-item-section side>
+                  <q-badge :color="severityColor(selected!.severity)">{{ selected?.severity }}</q-badge>
+                </q-item-section>
+              </q-item>
+            </q-list>
+            <pre class="monitor-json app-code-block">{{ selectedJSON }}</pre>
+          </q-card-section>
+        </div>
+        <q-separator />
+        <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
           <q-btn flat no-caps label="复制 JSON" icon="content_copy" @click="copyJSON" />
         </q-card-actions>
       </q-card>
@@ -144,7 +147,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { copyToClipboard, Notify } from "quasar";
+import { copyToClipboard } from "quasar";
 import AppPageToolbar from "../layout/AppPageToolbar.vue";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
@@ -156,12 +159,12 @@ import { AUDIT_TABLE_COLUMNS } from "./monitorTableUi";
 
 const props = defineProps<{
   rows: AuditLog[];
-  total: number;
   loading: boolean;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   reload: [];
+  notify: [payload: { message: string; type: "positive" | "negative" | "warning" }];
 }>();
 
 const keyword = ref("");
@@ -244,7 +247,7 @@ function severityColor(severity: string) {
 
 async function copyJSON() {
   await copyToClipboard(selectedJSON.value);
-  Notify.create({ message: "已复制", color: "positive", position: "top" });
+  emit("notify", { message: "已复制", type: "positive" });
 }
 </script>
 

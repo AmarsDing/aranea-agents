@@ -12,6 +12,15 @@ import (
 
 const channelOutboundEmptyFallback = "（暂无文本回复）"
 
+// TECH-DEBT: notification content assembly (phase/source guards, message matching in
+// assistantReplyPartsForRun, error message fallback selection) should be extracted to
+// biz-layer helper functions. The Service layer should only orchestrate: call biz
+// helpers for content assembly → call preview for IM formatting → call channel for
+// delivery. Blocked by: preview package coupling (internal/channel/preview is a
+// presentation concern that must not be imported from biz) and the cross-cutting
+// nature of enqueueForSession which inherently mixes biz data queries with channel
+// service calls. Tracked in issue TBD.
+
 // SessionRunEscalationNotifier sends IM notices when a run hits soft/hard budgets (CC-R-02).
 type SessionRunEscalationNotifier interface {
 	NotifySoftBudget(ctx context.Context, run biz.SessionRun, autoEscalate bool) error

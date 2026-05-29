@@ -18,6 +18,7 @@ import PluginsPage from "../pages/PluginsPage.vue";
 import PluginRunsPage from "../pages/PluginRunsPage.vue";
 import HooksPage from "../pages/HooksPage.vue";
 import HookDeliveriesPage from "../pages/HookDeliveriesPage.vue";
+import WebhooksPage from "../pages/WebhooksPage.vue";
 import KnowledgePage from "../pages/KnowledgePage.vue";
 import ArtifactsPage from "../pages/ArtifactsPage.vue";
 import EvaluationPage from "../pages/EvaluationPage.vue";
@@ -123,6 +124,11 @@ export const routes: RouteRecordRaw[] = [
         path: "hooks/deliveries",
         name: "hook-deliveries",
         component: HookDeliveriesPage
+      },
+      {
+        path: "webhooks",
+        name: "webhooks",
+        component: WebhooksPage
       },
       {
         path: "knowledge",

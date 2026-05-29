@@ -108,4 +108,17 @@ function onDiscover() {
 function onRegister() {
   emit("register", payload());
 }
+
+function resetForm() {
+  form.workspace = "";
+  form.remote_url = "";
+  form.display_name = "";
+  form.auth_type = "none";
+  authSecret.value = "";
+  mtls.cert_file = "";
+  mtls.key_file = "";
+  mtls.ca_file = "";
+}
+
+defineExpose({ resetForm });
 </script>

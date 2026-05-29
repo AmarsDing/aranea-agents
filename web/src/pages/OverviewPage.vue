@@ -1,27 +1,51 @@
 <template>
   <q-page class="app-standard-page overview-page">
     <div class="overview-page__shell">
-      <OverviewPageHero>
+      <CommandCenterHero
+        :username="username"
+        :active-agent-count="agentStats.active"
+        :today-session-count="sessionActiveCount"
+        :today-token-count="overview?.today?.total_tokens ?? 0"
+      >
         <template #actions>
           <OverviewMonitorQuickLinks />
+          <q-btn
+            outline
+            no-caps
+            class="overview-primary-btn"
+            icon="warning_amber"
+            :label="t('overviewPage.btnAlerts')"
+            @click="scrollToAlerts"
+          />
           <q-btn
             unelevated
             no-caps
             class="overview-primary-btn"
             icon="receipt_long"
-            label="查看明细"
-            :to="{ path: '/usage/events', query: { range: filters.range || '30d' } }"
+            :label="t('overviewPage.btnDetails')"
+            :to="eventsPageQuery"
           />
         </template>
-      </OverviewPageHero>
+      </CommandCenterHero>
+
+      <CommandCenterQuickActions />
+
+      <CommandCenterStatusPanels
+        :agent-stats="agentStats"
+        :session-active-count="sessionActiveCount"
+        :session-sparkline="sessionSparkline"
+        :provider-health="providerHealthSummary"
+        :runner-stats="runnerStats"
+        :loading="loading"
+      />
 
       <div class="overview-filter-bar">
         <div class="overview-filter-bar__inner">
-          <q-select v-model="filters.range" dense outlined emit-value map-options label="时间范围" :options="rangeOptions" class="overview-filter-field" @update:model-value="loadOverview" />
-          <q-input v-model="filters.provider_code" dense outlined clearable label="Provider" debounce="300" class="overview-filter-field" @update:model-value="loadOverview" />
-          <q-input v-model="filters.model_api_id" dense outlined clearable label="模型" debounce="300" class="overview-filter-field" @update:model-value="loadOverview" />
-          <q-select v-model="filters.status" dense outlined clearable emit-value map-options label="状态" :options="statusOptions" class="overview-filter-field" @update:model-value="loadOverview" />
-          <q-select v-model="trendGranularity" dense outlined emit-value map-options label="趋势粒度" :options="granularityOptions" class="overview-filter-field" @update:model-value="loadOverview" />
+          <q-select v-model="filters.range" dense outlined emit-value map-options :label="t('overviewPage.filterRange')" :options="rangeOptions" class="overview-filter-field" @update:model-value="loadOverview" />
+          <q-select v-model="filters.provider_code" dense outlined clearable emit-value map-options :label="t('overviewPage.filterProvider')" :options="providerOptions" class="overview-filter-field" @update:model-value="onProviderChange" />
+          <q-select v-model="filters.model_api_id" dense outlined clearable emit-value map-options :label="t('overviewPage.filterModel')" :options="modelOptions" class="overview-filter-field" @update:model-value="loadOverview" />
+          <q-select v-model="filters.status" dense outlined clearable emit-value map-options :label="t('overviewPage.filterStatus')" :options="statusOptions" class="overview-filter-field" @update:model-value="loadOverview" />
+          <q-select v-model="trendGranularity" dense outlined emit-value map-options :label="t('overviewPage.filterGranularity')" :options="granularityOptions" class="overview-filter-field" @update:model-value="loadOverview" />
         </div>
       </div>
 
@@ -32,8 +56,8 @@
 
         <q-banner v-if="error" class="bg-negative text-white overview-error" rounded>
           <template #avatar><q-icon name="error" /></template>
-          加载概览数据失败：{{ error }}
-          <template #action><q-btn flat label="重试" @click="loadOverview" /></template>
+          {{ t('overviewPage.errorBanner') }}：{{ error }}
+          <template #action><q-btn flat :label="t('overviewPage.btnRetry')" @click="loadOverview" /></template>
         </q-banner>
 
         <UsageMetricCards :overview="overview" />
@@ -45,33 +69,33 @@
           <div class="overview-chart-row__side">
             <q-card flat class="overview-panel overview-summary-panel">
               <q-card-section>
-                <div class="overview-section-title">区间摘要</div>
-                <div class="overview-section-caption">当前筛选总量</div>
+                <div class="overview-section-title">{{ t('overviewPage.sectionSummary') }}</div>
+                <div class="overview-section-caption">{{ t('overviewPage.summaryCaption') }}</div>
               </q-card-section>
               <q-separator class="overview-separator" />
               <q-card-section class="q-py-sm">
                 <div class="overview-summary-grid">
                   <div class="overview-summary-item">
-                    <div class="overview-summary-item__label">总调用</div>
+                    <div class="overview-summary-item__label">{{ t('overviewPage.totalCalls') }}</div>
                     <div class="overview-summary-item__value">{{ formatCount(overview?.range.call_count) }}</div>
                   </div>
                   <div class="overview-summary-item">
-                    <div class="overview-summary-item__label">总 Token</div>
+                    <div class="overview-summary-item__label">{{ t('overviewPage.totalTokens') }}</div>
                     <div class="overview-summary-item__value">{{ formatCount(overview?.range.total_tokens) }}</div>
                   </div>
                   <div class="overview-summary-item">
-                    <div class="overview-summary-item__label">总费用</div>
+                    <div class="overview-summary-item__label">{{ t('overviewPage.totalCost') }}</div>
                     <div class="overview-summary-item__value overview-summary-item__value--accent">{{ formatMoney(overview?.range.total_cost_micro_usd) }}</div>
                   </div>
                   <div class="overview-summary-item">
-                    <div class="overview-summary-item__label">成功率</div>
+                    <div class="overview-summary-item__label">{{ t('overviewPage.successRate') }}</div>
                     <div class="overview-summary-item__value">{{ formatPercent(overview?.range.success_rate) }}</div>
                   </div>
                 </div>
               </q-card-section>
               <q-separator class="overview-separator" />
               <q-card-section>
-                <div class="overview-section-title" style="font-size:0.85rem">Token 构成</div>
+                <div class="overview-section-title" style="font-size:0.85rem">{{ t('overviewPage.tokenComposition') }}</div>
                 <UsageTokenComposition :summary="overview?.range" />
               </q-card-section>
             </q-card>
@@ -79,12 +103,9 @@
         </div>
 
         <div class="overview-mid-row">
-          <div class="overview-mid-row__left">
-            <UsageBreakdownCharts :top-models="overview?.top_models ?? []" />
-          </div>
-          <div class="overview-mid-row__right">
-            <OverviewProviderHealth />
-          </div>
+          <UsageModelCostPie :top-models="overview?.top_models ?? []" />
+          <UsageProviderCostPie :top-models="overview?.top_models ?? []" />
+          <OverviewProviderHealth :models="providerModels" :loading="providerHealthLoading" />
         </div>
 
         <div class="overview-ranks">
@@ -93,13 +114,22 @@
         </div>
 
         <div class="overview-section">
-          <OverviewRunnerMetrics />
+          <OverviewRunnerMetrics
+            :metrics="runnerMetrics"
+            :loading="runnerLoading"
+            :window-minutes="runnerWindowMinutes"
+            @update:window-minutes="runnerWindowMinutes = $event; reloadRunnerMetrics()"
+            @refresh="reloadRunnerMetrics()"
+            @drill="openRunsTab({ tab: 'traces' })"
+          />
         </div>
 
-        <div class="overview-alert-stack">
+        <div class="overview-alert-stack" ref="alertStackRef">
           <UsageInefficientModels v-if="(overview?.inefficient_models?.length ?? 0) > 0" :rows="overview?.inefficient_models ?? []" />
-          <UsageAnomalyList :rows="overview?.anomalies ?? []" />
-          <UsageFallbackEvents :anomalies="overview?.anomalies ?? []" />
+          <div class="overview-alert-stack__row">
+            <UsageAnomalyList :rows="overview?.anomalies ?? []" />
+            <UsageFallbackEvents :anomalies="overview?.anomalies ?? []" />
+          </div>
         </div>
       </div>
     </div>
@@ -107,9 +137,11 @@
 </template>
 
 <script setup lang="ts">
-import { defineAsyncComponent, onMounted } from "vue";
+import { computed, defineAsyncComponent, onMounted, ref } from "vue";
 import { useOverviewPage } from "../features/usage/useOverviewPage";
-import OverviewPageHero from "../components/usage/OverviewPageHero.vue";
+import CommandCenterHero from "../components/usage/CommandCenterHero.vue";
+import CommandCenterStatusPanels from "../components/usage/CommandCenterStatusPanels.vue";
+import CommandCenterQuickActions from "../components/usage/CommandCenterQuickActions.vue";
 import OverviewMonitorQuickLinks from "../components/usage/OverviewMonitorQuickLinks.vue";
 import OverviewRunnerMetrics from "../components/usage/OverviewRunnerMetrics.vue";
 import OverviewProviderHealth from "../components/usage/OverviewProviderHealth.vue";
@@ -121,15 +153,38 @@ import UsageTokenComposition from "../components/usage/UsageTokenComposition.vue
 import UsageTopAgents from "../components/usage/UsageTopAgents.vue";
 import UsageTopModels from "../components/usage/UsageTopModels.vue";
 
+import UsageModelCostPie from "../components/usage/UsageModelCostPie.vue";
+import UsageProviderCostPie from "../components/usage/UsageProviderCostPie.vue";
+
 const UsageTrendChart = defineAsyncComponent(() => import("../components/usage/UsageTrendChart.vue"));
-const UsageBreakdownCharts = defineAsyncComponent(() => import("../components/usage/UsageBreakdownCharts.vue"));
 
 const {
+  t,
   overview, loading, error,
   trendGranularity, filters,
   rangeOptions, statusOptions, granularityOptions,
-  loadOverview, formatCount, formatMoney, formatPercent
+  providerOptions, modelOptions, onProviderChange,
+  loadOverview, formatCount, formatMoney, formatPercent,
+  providerModels, providerHealthLoading,
+  runnerMetrics, runnerLoading, runnerWindowMinutes,
+  reloadRunnerMetrics, openRunsTab,
+  agentStats, username, providerHealthSummary,
+  sessionActiveCount, sessionSparkline, runnerStats
 } = useOverviewPage();
+
+const alertStackRef = ref<HTMLElement | null>(null);
+
+function scrollToAlerts() {
+  alertStackRef.value?.scrollIntoView({ behavior: "smooth" });
+}
+
+const eventsPageQuery = computed(() => {
+  const query: Record<string, string> = { range: filters.range || "30d" };
+  if (filters.provider_code) query.provider_code = filters.provider_code;
+  if (filters.model_api_id) query.model_api_id = filters.model_api_id;
+  if (filters.status) query.status = filters.status;
+  return { path: "/usage/events", query };
+});
 
 onMounted(() => void loadOverview());
 </script>

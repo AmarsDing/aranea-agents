@@ -33,7 +33,7 @@ Graph 工作流引擎：基于 trpc-agent-go `graph` 包，构建"LangGraph for 
 | Proto 定义 | `api/kratos/graph/v1/graph.proto` | ✅ 28 个 RPC 端点 |
 | 前端类型 | `web/src/features/graph/types.ts` | ✅ 完整类型定义（含 Task 类型） |
 | 前端 API | `web/src/features/graph/api.ts` | ✅ 完整 API 客户端（含 Task API） |
-| 前端组件 | `web/src/components/graph/` | ✅ Vue Flow 画布 + 节点面板 + 属性面板 |
+| 前端组件 | `web/src/components/graph/` | ✅ Vue Flow 画布 + 节点面板 + 属性面板 + 右键菜单 + 搜索/筛选/排序 + 进度统计 |
 
 ### 1.3 本期设计目标
 

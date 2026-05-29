@@ -218,6 +218,12 @@ export async function deleteAgent(id: string): Promise<void> {
   await svc.DeleteAgent({ id });
 }
 
+export async function toggleAgentFavorite(id: string): Promise<Agent> {
+  const svc = createAgentService();
+  const res = await svc.ToggleFavorite({ id });
+  return normalizeAgentFromService(res);
+}
+
 export async function getAgentEvolutionMetrics(
   agentId: string,
   timeRange: string = "30d"

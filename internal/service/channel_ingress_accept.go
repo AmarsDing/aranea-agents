@@ -70,7 +70,7 @@ func (h *ChannelIngress) acceptInboundGuard(ctx context.Context, chRow biz.Chann
 	}
 	if !ok {
 		h.inboundInflight.release(dedupKey)
-		_ = h.recordDelivery(ctx, chRow.ID, "skipped_"+skipReason, map[string]any{
+		h.recordDelivery(ctx, chRow.ID, "skipped_"+skipReason, map[string]any{
 			"peer_id":         ev.PeerID,
 			"idempotency_key": ev.IdempotencyKey,
 			"ingress_source":  strings.TrimSpace(ev.OutboundMeta["ingress_source"]),
@@ -83,7 +83,7 @@ func (h *ChannelIngress) acceptInboundGuard(ctx context.Context, chRow biz.Chann
 	allowed, reason, err := h.checkInboundAccess(ctx, chRow, ev)
 	if err != nil {
 		h.inboundInflight.release(dedupKey)
-		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "access", "error": err.Error()}, err.Error())
+		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "access", "error": err.Error()}, err.Error())
 		return false, err
 	}
 	if !allowed {
@@ -130,14 +130,16 @@ func (h *ChannelIngress) routeInboundAsync(ctx context.Context, chRow biz.Channe
 		recordIngressIntentMetric("concurrent_limit")
 		h.inboundInflight.release(dedupKey)
 		idempotency := ackIdempotencyKey(platform, ev, "concurrent_busy")
-		_ = h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), channelTurnErrorBusyMsg, ev.OutboundMeta, idempotency)
+		if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), channelTurnErrorBusyMsg, ev.OutboundMeta, idempotency); err != nil {
+			event.SysLogWarn("channel.async.reply_failed", "异步回复投递失败", event.P("error", err.Error()))
+		}
 		return noop, nil
 	}
 	if !isPureAsyncExecutionMode(ltCfg) {
 		if err := h.sendInboundAckIfNeeded(ctx, chRow, ev, platform, ltCfg); err != nil {
 			release()
 			h.inboundInflight.release(dedupKey)
-			_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "ack", "error": err.Error()}, err.Error())
+			h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "ack", "error": err.Error()}, err.Error())
 			return noop, err
 		}
 	}
@@ -156,13 +158,15 @@ func (h *ChannelIngress) routeInboundSync(ctx context.Context, chRow biz.Channel
 		recordIngressIntentMetric("concurrent_limit")
 		h.inboundInflight.release(dedupKey)
 		idempotency := ackIdempotencyKey(platform, ev, "concurrent_busy")
-		_ = h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), channelTurnErrorBusyMsg, ev.OutboundMeta, idempotency)
+		if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), channelTurnErrorBusyMsg, ev.OutboundMeta, idempotency); err != nil {
+			event.SysLogWarn("channel.async.reply_failed", "异步回复投递失败", event.P("error", err.Error()))
+		}
 		return noop, nil
 	}
 	if err := h.sendInboundAckIfNeeded(ctx, chRow, ev, platform, ltCfg); err != nil {
 		release()
 		h.inboundInflight.release(dedupKey)
-		_ = h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "ack", "error": err.Error()}, err.Error())
+		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "ack", "error": err.Error()}, err.Error())
 		return noop, err
 	}
 	event.SysLogInfo(flowStepChannelInboundAccept, "Channel 入站 ACK 已发送",

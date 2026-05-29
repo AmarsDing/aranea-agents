@@ -76,6 +76,10 @@ export async function deleteArtifact(id: string): Promise<void> {
   await svc.DeleteArtifact({ id });
 }
 
+export async function deleteArtifactVersion(id: string, version: number): Promise<void> {
+  await svc.DeleteArtifactVersion({ id, version });
+}
+
 export type SignDownloadUrlResult = {
   url: string;
   expires_at: string;

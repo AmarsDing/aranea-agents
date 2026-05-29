@@ -41,12 +41,9 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { useQuasar } from "quasar";
 import type { AgentFile } from "./agentUi";
 import { tokenEstimateFor, tokenText } from "./agentUi";
 import AiRefineButton from "./AIRefineButton.vue";
-
-const $q = useQuasar();
 
 const props = defineProps<{
   files: AgentFile[];
@@ -74,19 +71,13 @@ const emit = defineEmits<{
   "update:activeFile": [value: string];
   "update:splitter": [value: number];
   "update-file-body": [fileName: string, body: string];
+  "confirm-reload": [];
   reload: [];
   save: [];
 }>();
 
 function confirmReload() {
-  $q.dialog({
-    title: "重新召唤",
-    message: "未保存的更改将丢失，确定重新召唤？",
-    cancel: true,
-    persistent: true
-  }).onOk(() => {
-    emit("reload");
-  });
+  emit("confirm-reload");
 }
 
 const splitterModel = computed({

@@ -46,7 +46,9 @@
           dense
           outlined
           autogrow
-          @update:model-value="emitFormPatch({ config_override_json: String($event ?? '{}') })"
+          :error="Boolean(configJsonError)"
+          :error-message="configJsonError"
+          @update:model-value="onConfigJsonInput(String($event ?? '{}'))"
         />
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
@@ -58,7 +60,8 @@
 </template>
 
 <script setup lang="ts">
-import type { ToolOverrideForm } from "../../features/tools/useToolDetailPanel";
+import { ref } from "vue";
+import type { ToolOverrideForm } from "../../stores/tools/toolDetail";
 
 const props = defineProps<{
   open: boolean;
@@ -81,7 +84,19 @@ const modeOptions = [
   { label: "拒绝 (deny)", value: "deny" }
 ];
 
+const configJsonError = ref("");
+
 function emitFormPatch(patch: Partial<ToolOverrideForm>) {
   emit("update:form", { ...props.form, ...patch });
+}
+
+function onConfigJsonInput(val: string) {
+  try {
+    JSON.parse(val || "{}");
+    configJsonError.value = "";
+  } catch (err) {
+    configJsonError.value = err instanceof Error ? err.message : "JSON 格式错误";
+  }
+  emitFormPatch({ config_override_json: val });
 }
 </script>

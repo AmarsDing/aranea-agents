@@ -46,6 +46,7 @@ export const sideNavGroups: NavGroup[] = [
       { to: "/skills", icon: "psychology", labelKey: "menu.skills" },
       { to: "/plugins", icon: "tune", labelKey: "menu.plugins" },
       { to: "/hooks", icon: "link", labelKey: "menu.hooks" },
+      { to: "/webhooks", icon: "webhook", labelKey: "menu.webhooks" },
       { to: "/a2a", icon: "swap_horiz", labelKey: "menu.a2a" }
     ]
   },

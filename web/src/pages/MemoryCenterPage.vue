@@ -77,6 +77,7 @@
           :snapshot-columns="snapshotColumns"
           :loading-snapshots="loadingSnapshots"
           :task-rows="taskRows"
+          :loading-tasks="loadingTasks"
           @refresh-sessions="loadSessions"
           @refresh-memory="loadSessionMemory"
           @open-snapshot="openSnapshot"
@@ -91,8 +92,8 @@
       <q-tab-panel name="settings">
         <div class="column q-gutter-md">
           <memory-platform-settings-panel />
-          <memory-worker-status-panel />
-          <memory-dead-letter-panel />
+          <memory-worker-status-panel :status="workerStatus" :loading="loadingWorkerStatus" @refresh="loadWorkerStatus" />
+          <memory-dead-letter-panel ref="deadLetterPanelRef" @replay="onDeadLetterReplay" @abandon="onDeadLetterAbandon" />
           <memory-recall-tester-panel :agent-id="selectedAgentId" :session-id="selectedSessionId" />
           <memory-settings-status-panel :items="settingChecklist" />
         </div>
@@ -105,22 +106,25 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from "vue";
 import MemoryDeadLetterPanel from "../features/memory/MemoryDeadLetterPanel.vue";
 import MemoryPlatformSettingsPanel from "../features/memory/MemoryPlatformSettingsPanel.vue";
 import MemoryGraphExplorer from "../features/memory/MemoryGraphExplorer.vue";
 import MemoryRecallTesterPanel from "../features/memory/MemoryRecallTesterPanel.vue";
-import MemoryWorkerStatusPanel from "../features/memory/MemoryWorkerStatusPanel.vue";
+import MemoryWorkerStatusPanel from "../components/memory/MemoryWorkerStatusPanel.vue";
 import MemoryCascadePanel from "../features/memory/MemoryCascadePanel.vue";
-import MemoryEvolutionPanel from "../features/memory/MemoryEvolutionPanel.vue";
+import MemoryEvolutionPanel from "../components/memory/MemoryEvolutionPanel.vue";
 import MemoryFactDrawer from "../features/memory/MemoryFactDrawer.vue";
-import MemoryHero from "../features/memory/MemoryHero.vue";
+import MemoryHero from "../components/memory/MemoryHero.vue";
 import MemoryKnowledgePanel from "../features/memory/MemoryKnowledgePanel.vue";
-import MemoryMetricCards from "../features/memory/MemoryMetricCards.vue";
-import MemoryOverviewPanel from "../features/memory/MemoryOverviewPanel.vue";
+import MemoryMetricCards from "../components/memory/MemoryMetricCards.vue";
+import MemoryOverviewPanel from "../components/memory/MemoryOverviewPanel.vue";
 import MemorySessionsPanel from "../features/memory/MemorySessionsPanel.vue";
-import MemorySettingsStatusPanel from "../features/memory/MemorySettingsStatusPanel.vue";
+import MemorySettingsStatusPanel from "../components/memory/MemorySettingsStatusPanel.vue";
 import MemorySnapshotDrawer from "../features/memory/MemorySnapshotDrawer.vue";
 import { useMemoryCenterPage } from "../features/memory/useMemoryCenterPage";
+
+const deadLetterPanelRef = ref<InstanceType<typeof MemoryDeadLetterPanel> | null>(null);
 
 const {
   tab,
@@ -138,6 +142,7 @@ const {
   loadingFacts,
   loadingSessions,
   loadingSnapshots,
+  loadingTasks,
   agentOptions,
   sessionRows,
   factRows,
@@ -181,8 +186,23 @@ const {
   resetFactFilters,
   openSnapshot,
   openFact,
-  loadEvolution
+  loadEvolution,
+  handleDeadLetterReplay,
+  handleDeadLetterAbandon,
+  workerStatus,
+  loadingWorkerStatus,
+  loadWorkerStatus
 } = useMemoryCenterPage();
+
+async function onDeadLetterReplay(id: number) {
+  await handleDeadLetterReplay(id);
+  deadLetterPanelRef.value?.load();
+}
+
+async function onDeadLetterAbandon(id: number) {
+  await handleDeadLetterAbandon(id);
+  deadLetterPanelRef.value?.load();
+}
 </script>
 
 <style>

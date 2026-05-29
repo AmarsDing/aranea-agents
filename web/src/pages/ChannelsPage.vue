@@ -69,7 +69,7 @@
       :page-max="pageMax"
       :total="filteredRows.length"
       :loading="loading"
-      label="个 Channel"
+      :label="t('channelsPage.paginationUnit')"
     />
 
     <section v-if="opsChannel" ref="opsSectionRef" class="channel-ops-section">

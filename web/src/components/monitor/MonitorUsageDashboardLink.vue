@@ -12,7 +12,7 @@
       <q-btn
         unelevated
         no-caps
-        color="primary"
+        class="app-accent-btn"
         icon="open_in_new"
         label="打开概览"
         :to="overviewTo"

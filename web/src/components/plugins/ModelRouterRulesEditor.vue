@@ -74,7 +74,6 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { useQuasar } from "quasar";
 
 export type ModelRouterRule = {
   id: string;
@@ -97,7 +96,6 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const $q = useQuasar();
 const rules = ref<ModelRouterRule[]>([]);
 
 function newRuleId() {
@@ -139,7 +137,6 @@ function regexError(rule: ModelRouterRule): string {
 
 function emitRules() {
   if (rules.value.some((rule) => regexError(rule))) {
-    $q.notify({ type: "warning", message: "正则表达式有误，规则未保存" });
     return;
   }
   emit(
@@ -163,7 +160,6 @@ function addRule() {
     min_chars: 0,
     priority: 0,
   });
-  emitRules();
 }
 
 function removeRule(id: string) {
