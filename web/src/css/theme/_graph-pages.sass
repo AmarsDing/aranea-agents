@@ -3,60 +3,60 @@
 :root
   --graph-node-function-fill: color-mix(in srgb, #a78bfa 8%, var(--glass-elevated))
   --graph-node-function-border: #a78bfa
-  --graph-node-llm-fill: color-mix(in srgb, #22d3ee 8%, var(--glass-elevated))
-  --graph-node-llm-border: #22d3ee
+  --graph-node-llm-fill: color-mix(in srgb, #93c5fd 8%, var(--glass-elevated))
+  --graph-node-llm-border: #93c5fd
   --graph-node-tool-fill: color-mix(in srgb, #fbbf24 8%, var(--glass-elevated))
   --graph-node-tool-border: #fbbf24
   --graph-node-agent-fill: color-mix(in srgb, #34d399 8%, var(--glass-elevated))
   --graph-node-agent-border: #34d399
-  --graph-node-router-fill: color-mix(in srgb, #f472b6 8%, var(--glass-elevated))
-  --graph-node-router-border: #f472b6
-  --graph-node-join-fill: color-mix(in srgb, #94a3b8 8%, var(--glass-elevated))
-  --graph-node-join-border: #94a3b8
+  --graph-node-router-fill: color-mix(in srgb, #94a3b8 8%, var(--glass-elevated))
+  --graph-node-router-border: #94a3b8
+  --graph-node-join-fill: color-mix(in srgb, #a78bfa 8%, var(--glass-elevated))
+  --graph-node-join-border: #a78bfa
   --graph-node-hitl-fill: color-mix(in srgb, #fb923c 8%, var(--glass-elevated))
   --graph-node-hitl-border: #fb923c
-  --graph-edge-normal: #22d3ee
-  --graph-edge-conditional: #f472b6
-  --graph-edge-transfer: #fbbf24
-  --graph-edge-dispatch: #34d399
+  --graph-edge-normal: #93c5fd
+  --graph-edge-conditional: #f9a8d4
+  --graph-edge-transfer: #fde68a
+  --graph-edge-dispatch: #6ee7b7
   --graph-status-running: #0891b2
   --graph-status-completed: #059669
   --graph-status-failed: #db2777
   --graph-status-interrupted: #d97706
   --graph-progress-from: #059669
   --graph-progress-to: #0891b2
-  --graph-ctx-bg: rgba(255,253,245,0.97)
-  --graph-ctx-border: rgba(212,137,26,0.18)
+  --graph-ctx-bg: rgba(255,253,245,0.95)
+  --graph-ctx-border: rgba(34,211,238,0.12)
   --graph-ctx-text: #3A322C
-  --graph-ctx-accent: #D4891A
+  --graph-ctx-accent: #0891b2
   --graph-ctx-danger: #E55C5C
   --graph-ctx-success: #4CAF7C
-  --graph-ctx-glow: rgba(212,137,26,0.4)
+  --graph-ctx-glow: rgba(8,145,178,0.4)
   --graph-ctx-danger-glow: rgba(229,92,92,0.4)
   --graph-ctx-success-glow: rgba(76,175,124,0.4)
-  --graph-cond-edge-label-stroke: rgba(244,114,182,0.15)
+  --graph-cond-edge-label-stroke: rgba(249,168,212,0.15)
 
 body.body--dark
   --graph-node-function-fill: color-mix(in srgb, #a78bfa 12%, var(--glass-surface))
   --graph-node-function-border: #a78bfa
-  --graph-node-llm-fill: color-mix(in srgb, #22d3ee 12%, var(--glass-surface))
-  --graph-node-llm-border: #22d3ee
+  --graph-node-llm-fill: color-mix(in srgb, #93c5fd 12%, var(--glass-surface))
+  --graph-node-llm-border: #93c5fd
   --graph-node-tool-fill: color-mix(in srgb, #fbbf24 12%, var(--glass-surface))
   --graph-node-tool-border: #fbbf24
   --graph-node-agent-fill: color-mix(in srgb, #34d399 12%, var(--glass-surface))
   --graph-node-agent-border: #34d399
-  --graph-node-router-fill: color-mix(in srgb, #f472b6 12%, var(--glass-surface))
-  --graph-node-router-border: #f472b6
-  --graph-node-join-fill: color-mix(in srgb, #94a3b8 12%, var(--glass-surface))
-  --graph-node-join-border: #94a3b8
+  --graph-node-router-fill: color-mix(in srgb, #94a3b8 12%, var(--glass-surface))
+  --graph-node-router-border: #94a3b8
+  --graph-node-join-fill: color-mix(in srgb, #a78bfa 12%, var(--glass-surface))
+  --graph-node-join-border: #a78bfa
   --graph-node-hitl-fill: color-mix(in srgb, #fb923c 12%, var(--glass-surface))
   --graph-node-hitl-border: #fb923c
-  --graph-status-running: #22d3ee
+  --graph-status-running: #93c5fd
   --graph-status-completed: #34d399
-  --graph-status-failed: #f472b6
+  --graph-status-failed: #f87171
   --graph-status-interrupted: #fbbf24
   --graph-progress-from: #34d399
-  --graph-progress-to: #22d3ee
+  --graph-progress-to: #93c5fd
   --graph-ctx-bg: rgba(3,7,18,0.97)
   --graph-ctx-border: rgba(34,211,238,0.12)
   --graph-ctx-text: #a5f3fc
@@ -524,10 +524,25 @@ body.body--dark
   color: var(--color-text-secondary)
 
 .graph-property-panel__group
-  border-left: 3px solid var(--node-accent, var(--color-accent))
+  border-left: 3px solid var(--group-accent, var(--node-accent, var(--color-accent)))
   margin: 4px 0
   border-radius: 0 8px 8px 0
   overflow: hidden
+
+.graph-property-panel__group--basic
+  --group-accent: var(--graph-node-llm-border)
+
+.graph-property-panel__group--conditional
+  --group-accent: var(--graph-edge-conditional)
+
+.graph-property-panel__group--model
+  --group-accent: var(--graph-node-agent-border)
+
+.graph-property-panel__group--interrupt
+  --group-accent: var(--graph-node-hitl-border)
+
+.graph-property-panel__group--advanced
+  --group-accent: var(--graph-node-router-border)
 
 .graph-property-panel__group-header
   font-size: 11px !important
@@ -559,6 +574,32 @@ body.body--dark
 
 .graph-checkpoint-panel__item--active
   background: color-mix(in srgb, var(--color-warning) 12%, transparent)
+
+.graph-checkpoint-panel__preview
+  border-top: 1px solid var(--glass-border)
+  padding-top: 8px
+
+.graph-checkpoint-panel__preview-title
+  font-size: 11px
+  font-weight: 700
+  text-transform: uppercase
+  letter-spacing: 0.06em
+  color: var(--color-text-secondary)
+
+.graph-checkpoint-panel__json
+  font-family: ui-monospace, 'Cascadia Code', monospace
+  font-size: 11px
+  max-height: 160px
+  overflow: auto
+  background: var(--glass-surface)
+  border: 1px solid var(--glass-border)
+  border-radius: 8px
+  padding: 8px
+  white-space: pre-wrap
+  margin-top: 4px
+
+.graph-checkpoint-panel__next
+  font-size: 11px
 
 .graph-validation-panel__title,
 .graph-checkpoint-panel__title,
@@ -632,13 +673,20 @@ body.body--dark
 .graph-run-progress__dot
   position: absolute
   top: 50%
-  width: 10px
-  height: 10px
+  width: 8px
+  height: 8px
   border-radius: 50%
   background: var(--graph-progress-to)
-  box-shadow: 0 0 6px color-mix(in srgb, var(--graph-progress-to) 60%, transparent), 0 0 14px color-mix(in srgb, var(--graph-progress-to) 30%, transparent)
+  box-shadow: 0 0 4px var(--graph-progress-to), 0 0 10px color-mix(in srgb, var(--graph-progress-to) 60%, transparent), 0 0 20px color-mix(in srgb, var(--graph-progress-to) 30%, transparent)
   transform: translate(-50%, -50%)
   transition: left 400ms ease
+  animation: graph-progress-dot-pulse 2s ease-in-out infinite
+
+@keyframes graph-progress-dot-pulse
+  0%, 100%
+    box-shadow: 0 0 4px var(--graph-progress-to), 0 0 10px color-mix(in srgb, var(--graph-progress-to) 60%, transparent), 0 0 20px color-mix(in srgb, var(--graph-progress-to) 30%, transparent)
+  50%
+    box-shadow: 0 0 6px var(--graph-progress-to), 0 0 16px color-mix(in srgb, var(--graph-progress-to) 80%, transparent), 0 0 32px color-mix(in srgb, var(--graph-progress-to) 40%, transparent)
 
 .graph-run-progress__stats
   display: flex
@@ -748,15 +796,45 @@ body.body--dark
 
 .graph-edge--conditional .vue-flow__edge-path
   stroke: var(--graph-edge-conditional)
+  stroke-dasharray: 6 4
   filter: drop-shadow(0 0 2px color-mix(in srgb, var(--graph-edge-conditional) 40%, transparent))
+  animation: graph-edge-flow-conditional 1.6s linear infinite
 
 .graph-edge--transfer .vue-flow__edge-path
   stroke: var(--graph-edge-transfer)
+  stroke-dasharray: 4 3
   filter: drop-shadow(0 0 2px color-mix(in srgb, var(--graph-edge-transfer) 40%, transparent))
+  animation: graph-edge-flow-transfer 1.8s linear infinite
 
 .graph-edge--dispatch .vue-flow__edge-path
   stroke: var(--graph-edge-dispatch)
+  stroke-dasharray: 8 6
   filter: drop-shadow(0 0 2px color-mix(in srgb, var(--graph-edge-dispatch) 40%, transparent))
+  animation: graph-edge-flow-dispatch 1.4s linear infinite
+
+@keyframes graph-edge-flow-normal
+  from
+    stroke-dashoffset: 24
+  to
+    stroke-dashoffset: 0
+
+@keyframes graph-edge-flow-conditional
+  from
+    stroke-dashoffset: 40
+  to
+    stroke-dashoffset: 0
+
+@keyframes graph-edge-flow-transfer
+  from
+    stroke-dashoffset: 28
+  to
+    stroke-dashoffset: 0
+
+@keyframes graph-edge-flow-dispatch
+  from
+    stroke-dashoffset: 56
+  to
+    stroke-dashoffset: 0
 
 .graph-editor-canvas .vue-flow__controls
   border: 1px solid var(--glass-border)

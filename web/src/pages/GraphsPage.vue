@@ -124,12 +124,10 @@
 
     <GraphRunDialog
       v-model="runDialogOpen"
+      v-model:session-id="runSessionId"
+      v-model:initial-state="runInitialState"
       :graph-name="runDialogGraph?.name"
-      :session-id="runSessionId"
-      :initial-state="runInitialState"
       :loading="runLoading"
-      @update:session-id="runSessionId = $event"
-      @update:initial-state="runInitialState = $event"
       @submit="executeRun"
     />
   </q-page>

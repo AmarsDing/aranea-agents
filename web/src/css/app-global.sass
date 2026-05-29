@@ -274,8 +274,17 @@ body.body--dark .theme-preview-page
 
 .chat-composer
   flex: 0 0 auto
-  border-top: 1px solid color-mix(in srgb, var(--glass-border) 60%, transparent)
+  position: relative
   border-radius: 0 0 16px 16px
+  &::before
+    content: ""
+    position: absolute
+    top: -24px
+    left: 0
+    right: 0
+    height: 24px
+    pointer-events: none
+    z-index: 1
 
 .chat-side
   flex-shrink: 0
@@ -332,6 +341,13 @@ body.body--dark .theme-preview-page
   height: 0
   overflow: hidden
   position: relative
+
+.chat-messages-main
+  flex: 1 1 0
+  min-width: 0
+  min-height: 0
+  display: flex
+  flex-direction: column
 
 .chat-messages__viewport
   min-height: 0
@@ -531,7 +547,12 @@ body:not(.body--dark)
     .chat-messages
       background: linear-gradient(180deg, rgba(255, 251, 242, 0.65), rgba(254, 253, 245, 0.95))
     .chat-composer
-      background: linear-gradient(180deg, rgba(255, 248, 231, 0.82), rgba(255, 251, 242, 0.96))
+      background: linear-gradient(180deg, rgba(255, 251, 242, 0.72), rgba(255, 248, 231, 0.92))
+      backdrop-filter: blur(var(--glass-blur-default))
+      -webkit-backdrop-filter: blur(var(--glass-blur-default))
+      border-top: 1px solid color-mix(in srgb, var(--glass-border) 55%, transparent)
+      &::before
+        background: linear-gradient(180deg, transparent, rgba(255, 251, 242, 0.72))
     .chat-side
       background: var(--glass-surface)
       border: 1px solid var(--glass-border)
@@ -617,8 +638,12 @@ body.body--dark
     .chat-messages
       background: var(--chat-canvas-dark)
     .chat-composer
-      background: rgba(15, 23, 42, 0.96)
-      border-top-color: rgba(148, 163, 184, 0.14)
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.72), rgba(15, 23, 42, 0.96))
+      backdrop-filter: blur(var(--glass-blur-default))
+      -webkit-backdrop-filter: blur(var(--glass-blur-default))
+      border-top-color: rgba(148, 163, 184, 0.12)
+      &::before
+        background: linear-gradient(180deg, transparent, rgba(15, 23, 42, 0.72))
     .chat-side
       background: var(--glass-surface)
       border: 1px solid var(--glass-border)
@@ -2074,123 +2099,133 @@ body.body--dark
   .monitor-json
     border-color: var(--glass-border)
 
-// --- 概览页（Usage Overview）— 背景由 .app-standard-page 统一 ---
+// ═══════════════════════════════════════════════════════════════
+//  概览页（Usage Overview）— Linear/Vercel 风格干净排版
+// ═══════════════════════════════════════════════════════════════
+
 .overview-page
   color: var(--color-text-primary)
 
 .overview-page__shell
   max-width: 1440px
   margin: 0 auto
-  padding: 8px 12px 28px
+  padding: 8px 16px 40px
   @media (min-width: 1024px)
-    padding: 12px 24px 36px
+    padding: 12px 28px 48px
 
-// ── 筛选栏：横排紧凑 ──
+// ── 筛选栏 ──
 .overview-filter-bar
-  margin-bottom: var(--space-4)
+  margin-bottom: 24px
 
 .overview-filter-bar__inner
   display: flex
   flex-wrap: wrap
-  gap: var(--space-3)
+  gap: 10px
   align-items: flex-end
-  padding: var(--space-3) var(--space-4)
-  border-radius: 14px
-  background: var(--glass-surface)
-  border: 1px solid var(--glass-border)
-  backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  padding: 12px 16px
+  border-radius: 12px
+  background: var(--color-background-elevated, rgba(128, 128, 128, 0.06))
+  border: 1px solid rgba(128, 128, 128, 0.10)
+
+body.body--dark .overview-filter-bar__inner
+  background: rgba(255, 255, 255, 0.03)
+  border-color: rgba(255, 255, 255, 0.06)
 
 .overview-filter-field
-  min-width: 130px
+  min-width: 128px
   flex: 1 1 140px
-  max-width: 200px
+  max-width: 192px
 
 // ── 内容区 ──
+.overview-content
+  position: relative
+  min-height: 160px
+  display: flex
+  flex-direction: column
+  gap: 28px
+
+.overview-content--loading
+  opacity: 0.45
+  pointer-events: none
+
+.overview-error
+  margin-bottom: 8px
+
 .overview-section
-  margin-top: 16px
+  margin-top: 4px
 
 .overview-section-group
-  margin-top: var(--space-5)
+  margin-top: 24px
 
 .overview-section-group--alert
-  margin-top: var(--space-4)
+  margin-top: 20px
 
 .overview-metrics-row
   margin-bottom: 4px
 
-.overview-content
-  position: relative
-  min-height: 120px
-
 .overview-section-title
   color: var(--color-text-primary)
   font-weight: 600
+  font-size: 0.92rem
+  letter-spacing: -0.01em
 
 .overview-section-caption,
 .overview-section-label,
 .overview-item-caption
   color: var(--color-text-secondary) !important
+  font-size: 0.76rem
 
-// ── 面板 / 卡片通用玻璃材质 ──
-.overview-filter-card,
+// ── 通用面板 ──
 .overview-panel,
 .overview-metric-card
-  border-radius: 18px !important
-  background: var(--glass-surface) !important
-  border: 1px solid var(--glass-border) !important
-  box-shadow: var(--glass-inner-highlight) !important
-  backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
-  transition: background 0.18s ease, border-color 0.18s ease
+  border-radius: 14px !important
+  background: var(--color-background-elevated, rgba(128, 128, 128, 0.04)) !important
+  border: 1px solid rgba(128, 128, 128, 0.08) !important
+  box-shadow: none !important
+  transition: border-color 0.18s ease, background 0.18s ease
 
-body:not(.body--dark) .overview-filter-card:hover,
-body:not(.body--dark) .overview-panel:hover,
-body:not(.body--dark) .overview-metric-card:hover
-  background: var(--glass-surface-hover) !important
+body.body--dark .overview-panel,
+body.body--dark .overview-metric-card
+  background: rgba(255, 255, 255, 0.025) !important
+  border-color: rgba(255, 255, 255, 0.05) !important
 
-body.body--dark .overview-filter-card:hover,
+.overview-panel:hover,
+.overview-metric-card:hover
+  border-color: rgba(128, 128, 128, 0.16) !important
+
 body.body--dark .overview-panel:hover,
 body.body--dark .overview-metric-card:hover
-  background: var(--glass-surface-hover) !important
-  border-color: var(--glass-border-hover) !important
+  border-color: rgba(255, 255, 255, 0.10) !important
 
-// ── 警示面板变体 ──
+// ── 警示面板 ──
 .overview-panel--warning
-  border-color: rgba(240, 155, 84, 0.35) !important
+  border-left: 3px solid var(--color-warning) !important
 
 body.body--dark .overview-panel--warning
-  border-color: rgba(255, 175, 77, 0.28) !important
+  border-left-color: rgba(255, 175, 77, 0.55) !important
 
 .overview-panel--danger
-  border-color: rgba(229, 92, 92, 0.35) !important
+  border-left: 3px solid var(--color-danger) !important
 
 body.body--dark .overview-panel--danger
-  border-color: rgba(255, 94, 122, 0.28) !important
+  border-left-color: rgba(255, 94, 122, 0.45) !important
 
 .overview-panel__alert-icon
-  font-size: 22px
+  font-size: 20px
   color: var(--color-warning)
+  opacity: 0.85
 
 .overview-panel__alert-icon--danger
   color: var(--color-danger)
 
-// ── 指标卡分层 ──
-.overview-metrics-tier
-  margin-bottom: var(--space-4)
+// ═══════════════════════════════════════════════════════════════
+//  Stats Row — 4 卡等宽网格
+// ═══════════════════════════════════════════════════════════════
 
-.overview-metric-card--budget
-  margin-bottom: var(--space-3)
-  border-color: rgba(240, 155, 84, 0.3) !important
-
-body.body--dark .overview-metric-card--budget
-  border-color: rgba(255, 175, 77, 0.22) !important
-
-.overview-metrics-primary
+.overview-stats-row
   display: grid
-  gap: var(--space-3)
+  gap: 16px
   grid-template-columns: repeat(4, minmax(0, 1fr))
-  margin-bottom: var(--space-3)
 
   @media (width <= 1023px)
     grid-template-columns: repeat(2, minmax(0, 1fr))
@@ -2198,125 +2233,208 @@ body.body--dark .overview-metric-card--budget
   @media (width <= 479px)
     grid-template-columns: 1fr
 
-.overview-metrics-secondary
-  display: grid
-  gap: var(--space-3)
-  grid-template-columns: repeat(2, minmax(0, 1fr))
+// ── 单张 Stat Card ──
+.overview-stat-card
+  border-radius: 14px
+  background: var(--color-background-elevated, rgba(128, 128, 128, 0.04))
+  border: 1px solid rgba(128, 128, 128, 0.08)
+  padding: 20px 22px
+  display: flex
+  flex-direction: column
+  gap: 10px
+  transition: border-color 0.2s ease, background 0.2s ease
 
-  @media (width <= 479px)
-    grid-template-columns: 1fr
+body.body--dark .overview-stat-card
+  background: rgba(255, 255, 255, 0.025)
+  border-color: rgba(255, 255, 255, 0.05)
 
-.overview-metric-card--secondary
-  opacity: 0.88
+.overview-stat-card:hover
+  border-color: rgba(128, 128, 128, 0.18)
 
-.overview-metric-card__body
-  padding: 14px 16px !important
+body.body--dark .overview-stat-card:hover
+  border-color: rgba(255, 255, 255, 0.12)
 
-.overview-metric-card__icon-row
+.overview-stat-card__header
   display: flex
   align-items: center
-  gap: var(--space-2)
-  margin-bottom: var(--space-1)
+  gap: 10px
 
-.overview-metric-card__icon
-  font-size: 18px
+.overview-stat-card__icon-wrap
+  width: 34px
+  height: 34px
+  border-radius: 10px
+  display: flex
+  align-items: center
+  justify-content: center
+  color: var(--color-text-secondary)
+  background: rgba(128, 128, 128, 0.10)
+
+body.body--dark .overview-stat-card__icon-wrap
+  background: rgba(255, 255, 255, 0.06)
+
+.overview-stat-card__icon-wrap--accent
+  color: #fff
+  background: var(--color-accent)
+
+body.body--dark .overview-stat-card__icon-wrap--accent
   color: var(--color-accent)
+  background: rgba(77, 216, 232, 0.14)
 
-.overview-metric-card__label
-  font-size: 0.75rem
-  font-weight: 600
+.overview-stat-card__icon-wrap--warn
+  color: var(--color-warning)
+  background: rgba(240, 155, 84, 0.12)
+
+.overview-stat-card__icon-wrap--danger
+  color: var(--color-danger)
+  background: rgba(229, 92, 92, 0.10)
+
+.overview-stat-card__label
+  font-size: 0.78rem
+  font-weight: 500
   color: var(--color-text-secondary)
+  letter-spacing: -0.01em
 
-.overview-metric-card__value
-  font-size: clamp(1.25rem, 2vw, 1.5rem)
-  font-weight: 800
-  line-height: 1.2
-  margin: 6px 0 4px
-  color: var(--color-text-primary)
+.overview-stat-card__body
+  display: flex
+  align-items: baseline
+  gap: 10px
 
-.overview-metric-card__value--lg
-  font-size: clamp(1.5rem, 2.5vw, 2rem)
-
-.overview-metric-card__value--sm
-  font-size: clamp(1rem, 1.5vw, 1.25rem)
+.overview-stat-card__value
+  font-size: 1.72rem
   font-weight: 700
+  line-height: 1.15
+  color: var(--color-text-primary)
+  letter-spacing: -0.02em
+  font-variant-numeric: tabular-nums
 
-.overview-metric-card__caption
-  font-size: 0.75rem
+.overview-stat-card__delta
+  font-size: 0.74rem
+  font-weight: 600
+  padding: 2px 8px
+  border-radius: 5px
+  letter-spacing: -0.01em
+
+.overview-stat-card__delta--up
+  color: var(--color-success)
+  background: var(--color-success-soft)
+
+.overview-stat-card__delta--down
+  color: var(--color-danger)
+  background: var(--color-danger-soft)
+
+.overview-stat-card__footer
+  font-size: 0.73rem
   color: var(--color-text-secondary)
+  line-height: 1.45
+  display: flex
+  flex-direction: column
+  gap: 8px
+  margin-top: auto
 
-.overview-metric-card__caption--up
-  color: var(--color-success) !important
-
-.overview-metric-card__caption--down
-  color: var(--color-danger) !important
-
-.overview-metric-card__caption--warn
-  color: var(--color-warning) !important
-
-.overview-metric-card__caption--danger
-  color: var(--color-danger) !important
-
-// ── 预算进度条 ──
-.overview-metric-card__bar
-  height: 4px
-  border-radius: 2px
-  background: var(--glass-border)
-  margin-top: var(--space-2)
+// ── 进度条 ──
+.overview-stat-card__bar
+  height: 6px
+  border-radius: 999px
+  background: rgba(128, 128, 128, 0.10)
   overflow: hidden
 
-.overview-metric-card__bar-fill
-  height: 100%
-  border-radius: 2px
-  transition: width 0.4s ease
+body.body--dark .overview-stat-card__bar
+  background: rgba(255, 255, 255, 0.06)
 
-.overview-metric-card__bar-fill--ok
+.overview-stat-card__bar-fill
+  height: 100%
+  border-radius: 999px
+  transition: width 0.6s cubic-bezier(0.22, 0.61, 0.36, 1)
+
+.overview-stat-card__bar-fill--ok
   background: var(--color-success)
 
-.overview-metric-card__bar-fill--warn
+.overview-stat-card__bar-fill--warn
   background: var(--color-warning)
 
-.overview-metric-card__bar-fill--danger
+.overview-stat-card__bar-fill--danger
   background: var(--color-danger)
 
-// ── 主按钮 ──
-.overview-primary-btn
-  background: var(--color-accent) !important
-  color: var(--color-on-accent, #fff) !important
-  border-radius: 12px
-  font-weight: 600
+// ── 预测行 ──
+.overview-stat-card__forecast
+  display: inline-flex
+  align-items: center
+  gap: 5px
+  font-size: 0.71rem
+  color: var(--color-text-secondary)
 
-body:not(.body--dark) .overview-primary-btn:hover
-  background: var(--color-accent-hover) !important
+.overview-stat-card__forecast--danger
+  color: var(--color-danger)
 
-body.body--dark .overview-primary-btn
-  border: 1px solid var(--color-accent) !important
-  background: rgba(77, 216, 232, 0.14) !important
-  color: var(--color-accent) !important
-  box-shadow: 0 0 14px rgba(77, 216, 232, 0.2)
+// ═══════════════════════════════════════════════════════════════
+//  布局分栏
+// ═══════════════════════════════════════════════════════════════
 
-// ── 区间摘要网格 ──
+// 趋势图 + 区间摘要
+.overview-chart-row
+  display: grid
+  gap: 20px
+  grid-template-columns: 1fr
+
+  @media (min-width: 900px)
+    grid-template-columns: 2fr 1fr
+
+.overview-chart-row__main
+  min-width: 0
+
+.overview-chart-row__side
+  min-width: 0
+
+// 饼图 + Provider 健康
+.overview-mid-row
+  display: grid
+  gap: 20px
+  grid-template-columns: 1fr
+
+  @media (min-width: 900px)
+    grid-template-columns: 2fr 1fr
+
+.overview-mid-row__left
+  min-width: 0
+
+.overview-mid-row__right
+  min-width: 0
+
+// Top 模型 + Top Agent
+.overview-ranks
+  display: grid
+  gap: 20px
+  grid-template-columns: 1fr
+
+  @media (min-width: 900px)
+    grid-template-columns: 1fr 1fr
+
+// ═══════════════════════════════════════════════════════════════
+//  区间摘要
+// ═══════════════════════════════════════════════════════════════
+
 .overview-summary-panel
-  min-height: 100%
+  height: 100%
 
 .overview-summary-grid
   display: grid
   grid-template-columns: 1fr 1fr
-  gap: var(--space-3) var(--space-4)
+  gap: 14px 18px
 
 .overview-summary-item
-  padding: var(--space-2) 0
+  padding: 6px 0
 
 .overview-summary-item__label
-  font-size: 0.75rem
-  font-weight: 600
+  font-size: 0.72rem
+  font-weight: 500
   color: var(--color-text-secondary)
-  margin-bottom: 2px
+  margin-bottom: 3px
 
 .overview-summary-item__value
-  font-size: 1.1rem
+  font-size: 1.05rem
   font-weight: 700
   color: var(--color-text-primary)
+  font-variant-numeric: tabular-nums
 
 .overview-summary-item__value--accent
   color: var(--color-accent)
@@ -2331,15 +2449,238 @@ body.body--dark .overview-primary-btn
   font-weight: 700
   color: var(--color-text-primary)
 
+// ═══════════════════════════════════════════════════════════════
+//  通用工具类
+// ═══════════════════════════════════════════════════════════════
+
 .overview-separator
-  background: var(--glass-border) !important
+  background: rgba(128, 128, 128, 0.08) !important
+
+body.body--dark .overview-separator
+  background: rgba(255, 255, 255, 0.05) !important
 
 .overview-chip
   color: var(--color-accent) !important
-  border: 1px solid var(--glass-border) !important
+  border: 1px solid rgba(128, 128, 128, 0.12) !important
   background: var(--color-info-soft) !important
 
-// ── 趋势条形图（旧版保留） ──
+// 主按钮
+.overview-primary-btn
+  background: var(--color-accent) !important
+  color: var(--color-on-accent, #fff) !important
+  border-radius: 10px
+  font-weight: 600
+  font-size: 0.82rem
+
+body:not(.body--dark) .overview-primary-btn:hover
+  background: var(--color-accent-hover) !important
+
+body.body--dark .overview-primary-btn
+  border: 1px solid var(--color-accent) !important
+  background: rgba(77, 216, 232, 0.13) !important
+  color: var(--color-accent) !important
+
+// ── 空状态 ──
+.overview-empty
+  min-height: 180px
+  display: grid
+  place-items: center
+  color: var(--color-text-secondary)
+  font-size: 0.85rem
+
+.overview-empty--compact
+  min-height: 80px
+
+.overview-empty-inline
+  color: var(--color-text-secondary)
+
+// ═══════════════════════════════════════════════════════════════
+//  排行列表
+// ═══════════════════════════════════════════════════════════════
+
+.overview-rank-value
+  font-weight: 700
+  color: var(--color-text-primary)
+
+.overview-rank-index
+  min-width: 28px !important
+  padding-right: 0 !important
+
+.overview-rank-badge
+  display: inline-flex
+  align-items: center
+  justify-content: center
+  width: 24px
+  height: 24px
+  border-radius: 7px
+  font-size: 0.7rem
+  font-weight: 700
+  color: var(--color-text-secondary)
+  background: rgba(128, 128, 128, 0.10)
+
+body.body--dark .overview-rank-badge
+  background: rgba(255, 255, 255, 0.06)
+
+.overview-rank-badge--top
+  color: var(--color-on-accent, #fff)
+  background: var(--color-accent)
+
+body.body--dark .overview-rank-badge--top
+  color: var(--canvas-base)
+  background: var(--color-accent)
+
+// ── Agent 头像 ──
+.overview-agent-avatar
+  background: var(--color-info-soft) !important
+  color: var(--color-accent) !important
+
+body.body--dark .overview-agent-avatar
+  border: 1px solid rgba(255, 255, 255, 0.06)
+
+// ═══════════════════════════════════════════════════════════════
+//  异常表格
+// ═══════════════════════════════════════════════════════════════
+
+.overview-anomaly-table
+  background: transparent !important
+
+.overview-anomaly-table thead th
+  color: var(--color-text-secondary)
+  font-weight: 600
+  font-size: 0.73rem
+  border-bottom: 1px solid rgba(128, 128, 128, 0.08)
+
+body.body--dark .overview-anomaly-table thead th
+  border-bottom-color: rgba(255, 255, 255, 0.05)
+
+.overview-anomaly-table tbody td
+  color: var(--color-text-primary)
+  font-size: 0.82rem
+  border-bottom: 1px solid rgba(128, 128, 128, 0.05)
+
+body.body--dark .overview-anomaly-table tbody td
+  border-bottom-color: rgba(255, 255, 255, 0.03)
+
+.overview-anomaly-error
+  max-width: 280px
+  color: var(--color-text-secondary)
+
+.overview-status-badge--error
+  color: var(--color-danger) !important
+  border-color: rgba(229, 92, 92, 0.45) !important
+  background: var(--color-danger-soft) !important
+
+.overview-flag-chip
+  color: var(--color-warning) !important
+  border-color: rgba(240, 155, 84, 0.40) !important
+  background: var(--color-warning-soft) !important
+
+// ═══════════════════════════════════════════════════════════════
+//  筛选栏输入框样式
+// ═══════════════════════════════════════════════════════════════
+
+body:not(.body--dark) .overview-page .q-field--outlined .q-field__control
+  background: rgba(255, 253, 245, 0.50)
+
+body.body--dark .overview-page .q-field--outlined .q-field__control
+  background: rgba(30, 41, 59, 0.40)
+  border-color: rgba(255, 255, 255, 0.06) !important
+
+body.body--dark .overview-page .q-field--focused .q-field__control
+  border-color: var(--color-accent) !important
+  box-shadow: 0 0 0 2px rgba(77, 216, 232, 0.15)
+
+// ═══════════════════════════════════════════════════════════════
+//  警示区堆叠
+// ═══════════════════════════════════════════════════════════════
+
+.overview-alert-stack
+  display: grid
+  gap: 20px
+  grid-template-columns: 1fr
+
+  @media (min-width: 900px)
+    grid-template-columns: 1fr 1fr 1fr
+
+.overview-alert-stack > *
+  min-width: 0
+
+// ═══════════════════════════════════════════════════════════════
+//  Token 构成图
+// ═══════════════════════════════════════════════════════════════
+
+.overview-token-comp
+  min-height: 120px
+
+.overview-token-comp__chart
+  width: 100%
+  height: 140px
+
+// ═══════════════════════════════════════════════════════════════
+//  Provider 健康卡
+// ═══════════════════════════════════════════════════════════════
+
+.overview-provider-health__icon
+  font-size: 20px
+
+.overview-provider-health__icon--ok
+  color: var(--color-success)
+
+.overview-provider-health__icon--warn
+  color: var(--color-warning)
+
+.overview-provider-health__stats
+  display: flex
+  gap: 24px
+  align-items: center
+
+.overview-provider-health__stat
+  display: flex
+  align-items: center
+  gap: 6px
+
+.overview-provider-health__label
+  font-size: 0.78rem
+  color: var(--color-text-secondary)
+
+.overview-provider-health__value
+  font-size: 1.05rem
+  font-weight: 700
+  color: var(--color-text-primary)
+
+.overview-provider-health__value--danger
+  color: var(--color-danger) !important
+
+.overview-provider-health__degraded-list
+  margin-top: 8px
+  display: flex
+  flex-direction: column
+  gap: 4px
+
+.overview-provider-health__degraded-item
+  display: flex
+  align-items: center
+  gap: 6px
+  font-size: 0.76rem
+  color: var(--color-text-secondary)
+
+// ── 健康状态圆点 ──
+.health-dot
+  display: inline-block
+  width: 8px
+  height: 8px
+  border-radius: 50%
+
+.health-dot--ok
+  background: var(--color-success)
+
+.health-dot--degraded
+  background: var(--color-warning)
+
+// ═══════════════════════════════════════════════════════════════
+//  趋势条形图（旧版保留 — 当 ECharts 不可用时回退）
+// ═══════════════════════════════════════════════════════════════
+
 .overview-trend-grid
   align-items: end
   display: grid
@@ -2371,101 +2712,11 @@ body.body--dark .overview-primary-btn
   min-height: 4px
 
 body:not(.body--dark) .overview-trend-bar__fill
-  background: linear-gradient(180deg, var(--color-accent-hover), var(--color-accent))
+  background: var(--color-accent)
 
 body.body--dark .overview-trend-bar__fill
-  background: linear-gradient(180deg, var(--color-neon-violet), var(--color-neon-cyan))
+  background: var(--color-accent)
 
 .overview-trend-bar__label
   color: var(--color-text-secondary)
   font-size: 0.7rem
-
-// ── 空状态 ──
-.overview-empty
-  min-height: 180px
-  display: grid
-  place-items: center
-  color: var(--color-text-secondary)
-
-.overview-empty--compact
-  min-height: 80px
-
-.overview-empty-inline
-  color: var(--color-text-secondary)
-
-// ── 排行列表 ──
-.overview-rank-value
-  font-weight: 700
-  color: var(--color-text-primary)
-
-.overview-rank-index
-  min-width: 28px !important
-  padding-right: 0 !important
-
-.overview-rank-badge
-  display: inline-flex
-  align-items: center
-  justify-content: center
-  width: 24px
-  height: 24px
-  border-radius: 8px
-  font-size: 0.7rem
-  font-weight: 700
-  color: var(--color-text-secondary)
-  background: var(--glass-border)
-
-.overview-rank-badge--top
-  color: var(--color-on-accent, #fff)
-  background: var(--color-accent)
-
-body.body--dark .overview-rank-badge--top
-  color: var(--canvas-base)
-  background: var(--color-accent)
-
-// ── Agent 头像 ──
-.overview-agent-avatar
-  background: var(--color-info-soft) !important
-  color: var(--color-accent) !important
-
-body.body--dark .overview-agent-avatar
-  border: 1px solid var(--glass-border)
-
-// ── 异常表格 ──
-.overview-anomaly-table
-  background: transparent !important
-
-.overview-anomaly-table thead th
-  color: var(--color-text-secondary)
-  font-weight: 600
-  font-size: 0.75rem
-  border-bottom: 1px solid var(--glass-border)
-
-.overview-anomaly-table tbody td
-  color: var(--color-text-primary)
-  border-bottom: 1px solid var(--glass-border)
-
-.overview-anomaly-error
-  max-width: 280px
-  color: var(--color-text-secondary)
-
-.overview-status-badge--error
-  color: var(--color-danger) !important
-  border-color: rgba(229, 92, 92, 0.45) !important
-  background: var(--color-danger-soft) !important
-
-.overview-flag-chip
-  color: var(--color-warning) !important
-  border-color: rgba(240, 155, 84, 0.45) !important
-  background: var(--color-warning-soft) !important
-
-// ── 筛选栏输入框 ──
-body:not(.body--dark) .overview-page .q-field--outlined .q-field__control
-  background: rgba(255, 253, 245, 0.65)
-
-body.body--dark .overview-page .q-field--outlined .q-field__control
-  background: rgba(30, 41, 59, 0.55)
-  border-color: var(--glass-border) !important
-
-body.body--dark .overview-page .q-field--focused .q-field__control
-  border-color: var(--color-accent) !important
-  box-shadow: 0 0 0 2px rgba(77, 216, 232, 0.18)

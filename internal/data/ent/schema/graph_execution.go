@@ -39,5 +39,6 @@ func (GraphExecution) Indexes() []ent.Index {
 		index.Fields("graph_id"),
 		index.Fields("lineage_id"),
 		index.Fields("status"),
+		index.Fields("graph_id", "status", "started_at"),
 	}
 }

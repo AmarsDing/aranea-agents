@@ -15,13 +15,19 @@
         expand-separator
         label="基本信息"
         default-opened
-        class="graph-property-panel__group"
+        class="graph-property-panel__group graph-property-panel__group--basic"
         header-class="graph-property-panel__group-header"
       >
         <div class="graph-property-panel__group-body q-gutter-sm">
           <q-input :model-value="selectedNode.id" dense outlined label="节点 ID" disable />
           <q-select :model-value="selectedNode.type" dense outlined emit-value map-options label="节点类型" :options="nodeTypeOptions" @update:model-value="(v: string) => updateNodeField('type', v as NodeType)" />
-          <q-input :model-value="selectedNode.instruction" dense outlined autogrow type="textarea" label="指令" @update:model-value="(v: string) => updateNodeField('instruction', v)" />
+          <GraphVariablePicker
+            :model-value="selectedNode.instruction"
+            label="指令"
+            :nodes="allNodes"
+            :state-fields="stateFields"
+            @update:model-value="(v: string) => updateNodeField('instruction', v)"
+          />
           <q-input :model-value="selectedNode.funcRef" dense outlined label="函数引用 (funcRef)" v-if="selectedNode.type === 'function' || selectedNode.type === 'router'" @update:model-value="(v: string) => updateNodeField('funcRef', v)" />
         </div>
       </q-expansion-item>
@@ -32,7 +38,7 @@
         expand-separator
         label="条件路由"
         default-opened
-        class="graph-property-panel__group"
+        class="graph-property-panel__group graph-property-panel__group--conditional"
         header-class="graph-property-panel__group-header"
       >
         <div class="graph-property-panel__group-body q-gutter-sm">
@@ -59,7 +65,7 @@
         expand-separator
         label="模型与 Agent"
         default-opened
-        class="graph-property-panel__group"
+        class="graph-property-panel__group graph-property-panel__group--model"
         header-class="graph-property-panel__group-header"
       >
         <div class="graph-property-panel__group-body q-gutter-sm">
@@ -83,7 +89,7 @@
         dense
         expand-separator
         label="中断与审批"
-        class="graph-property-panel__group"
+        class="graph-property-panel__group graph-property-panel__group--interrupt"
         header-class="graph-property-panel__group-header"
       >
         <div class="graph-property-panel__group-body q-gutter-sm">
@@ -96,7 +102,7 @@
         dense
         expand-separator
         label="高级选项"
-        class="graph-property-panel__group"
+        class="graph-property-panel__group graph-property-panel__group--advanced"
         header-class="graph-property-panel__group-header"
       >
         <div class="graph-property-panel__group-body q-gutter-sm">
@@ -249,10 +255,11 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import GraphValidationPanel from "./GraphValidationPanel.vue";
-import type { NodeDef, GraphDefinition, ReducerType, NodeType, ValidationError, ValidationWarning } from "../../features/graph/types";
+import type { NodeDef, GraphDefinition, ReducerType, NodeType, ValidationError, ValidationWarning, StateFieldDef } from "../../features/graph/types";
 import { NODE_TYPE_STYLES, REDUCER_OPTIONS, STATE_FIELD_TYPE_OPTIONS, ENGINE_OPTIONS, FAILURE_ACTION_OPTIONS } from "../../features/graph/types";
 import type { useGraphUndoRedo } from "../../features/graph/useGraphUndoRedo";
 import { useConditionalRoutes } from "../../features/graph/useConditionalRoutes";
+import GraphVariablePicker from "./GraphVariablePicker.vue";
 
 const props = defineProps<{
   selectedNode: NodeDef | null;
@@ -263,6 +270,8 @@ const props = defineProps<{
   validationWarnings?: ValidationWarning[];
   validationValid?: boolean;
   undoRedo?: ReturnType<typeof useGraphUndoRedo>;
+  allNodes?: NodeDef[];
+  stateFields?: StateFieldDef[];
 }>();
 
 const emit = defineEmits<{

@@ -22,7 +22,7 @@ export interface ChatDialogsDeps {
 export function useChatDialogs(deps: ChatDialogsDeps) {
   const { deleteFlow, settingsDialog, onSaveSettings } = deps;
 
-  return reactive({
+  const result = reactive({
     settingsOpen: settingsDialog.settingsOpen,
     settingsMode: settingsDialog.settingsMode,
     settingsId: settingsDialog.settingsId,
@@ -53,4 +53,6 @@ export function useChatDialogs(deps: ChatDialogsDeps) {
     selectedProviderModel: deps.selectedProviderModel,
     fileSupported: deps.fileSupported,
   });
+
+  return result;
 }

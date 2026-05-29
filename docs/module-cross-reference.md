@@ -197,7 +197,7 @@
 
 ### 1.9 Graph 图编排 (`internal/graph/`)
 
-**职责**：可视化图定义 + 执行引擎 + HITL + 检查点 + 时间旅行。
+**职责**：可视化图定义 + 执行引擎 + HITL + 检查点 + 时间旅行 + 模板系统。
 
 | 维度 | 内容 |
 |------|------|
@@ -205,16 +205,19 @@
 | **下游影响** | `service/graph`（GraphService 调用 Builder）、`team`（Graph 编译路径）、`biz/graph.go`（GraphUsecase） |
 | **核心导出** | `Builder`、`BuildAndRun()`、`BuildRuntime()`、`Visualize()`、`Validate()`、`ListTemplates()` |
 | **实现接口** | `biz.GraphBuilderFactory`（被 GraphUsecase 和 Team 消费） |
-| **共享类型** | `GraphDefinition`、`GraphExecution`、`NodeDef`、`EdgeDef`、`Task` |
+| **共享类型** | `GraphDefinition`、`GraphExecution`、`NodeDef`、`EdgeDef`、`ConditionalEdgeDef`、`StateFieldDef`、`Task`、`CheckpointInfo`、`GraphBuildConfig`、`GraphValidationResult` |
 | **事件生产** | `graph_node_start`、`graph_node_end`、`graph_node_error`、`graph_step`、`graph_execution_done`、`graph_task_status`、`checkpoint` |
 | **事件消费** | 无 |
 | **数据库** | 通过 biz GraphUsecase 访问（graph_executions/graph_tasks/graph_task_events） |
 | **前端对应** | GraphsPage、GraphEditorPage、GraphRunPage、GraphExecutionsPage |
+| **测试覆盖** | biz 层 47 个测试用例（R15-4）：ShouldCreateTaskForNode/ShouldCreateTeamGraphTaskNode/GraphTaskInputFromNode/BuildConfigFromGraphDefinition/compactNodesForVersion/ReadUserTemplateMeta/WriteUserTemplateMeta/upsertGraphStep/evictIfNeeded/ApplyFailurePolicy/ApplyCircuitBreakerPolicy/FinalizeGraphFailurePolicy/parallelBranchNodeIDs/normalizeFailureDefault；service 层和 adapter 层待补 |
 
 **⚠️ 开发注意**：
 - Graph 执行引擎同时被 **GraphService**（直接执行）和 **Team**（编译路径）消费
 - 修改节点类型时，需同步更新前端 `GraphEditorCanvas` 的节点组件
 - HITL 任务节点产生的 `Task` 被前端 `GraphRunPage` 消费
+- 前端实时校验（`useGraphLocalValidation`）8 种规则与后端校验合并去重
+- `GraphVariablePicker` 支持 `{{nodeId.field}}` 变量引用，修改 `NodeDef` 字段时需同步 VariablePicker
 
 ---
 
@@ -378,18 +381,22 @@
 
 ### 2.3 Graph 域
 
-**涉及文件**：`features/graph/api.ts`、`stores/graph/`、`components/graph/`（18 组件）
+**涉及文件**：`features/graph/api.ts`、`stores/graph/`、`components/graph/`（22 组件）
 
 | 维度 | 内容 |
 |------|------|
-| **Store** | `useGraphStore`（图列表 + 编辑 + 执行 + 检查点 + 任务） |
+| **Store** | `useGraphStore`（图列表 + 编辑 + 执行 + 检查点 + 任务 + 模板） |
+| **Composable** | `useGraphEditorPage`（编辑器编排 + 合并校验）、`useGraphRunPage`（运行态编排）、`useGraphExecutionsPage`（执行历史 + 服务端过滤）、`useGraphLocalValidation`（8 种前端实时校验，区分 error/warning）、`useGraphUndoRedo`（22 种命令双栈撤销重做）、`useSnapGuide`（节点拖拽对齐）、`useConditionalRoutes`（条件边路由）、`useGraphExecutionStream`（WS 事件流）、`useGraphRunTasks`（任务看板）、`useGraphRunHitl`（HITL 交互）、`useGraphTimeTravel`（检查点时间旅行） |
 | **WS 事件消费** | graph_node_start/end/error、graph_step、graph_execution_done、graph_task_status、checkpoint |
-| **后端对应** | GraphService（CRUD + 执行 + 任务） |
-| **共享类型** | `GraphDefinition`、`GraphExecution`、`NodeDef`、`Task` |
+| **后端对应** | GraphService（CRUD + 执行 + 任务 + 检查点 + 模板） |
+| **共享类型** | `GraphDefinition`、`GraphExecution`、`NodeDef`、`EdgeDef`、`ConditionalEdgeDef`、`StateFieldDef`、`Task`、`CheckpointInfo`、`ValidationError`、`ValidationWarning` |
 
 **⚠️ 开发注意**：
 - Graph 编辑器使用 Vue Flow 库，节点组件在 `components/graph/`
 - 修改后端 `NodeDef` 类型时，需同步前端节点组件的 props
+- 前端实时校验（`useGraphLocalValidation`）与后端校验结果在 `useGraphEditorPage` 中合并去重（key=`code:nodeId:field`）
+- `GraphVariablePicker` 支持 `{{nodeId.field}}` 变量引用插入，集成在 `GraphPropertyPanel` instruction 字段
+- `GraphCheckpointPanel` 提供状态快照预览 + 回退确认，通过 emit 上抛 restore 操作
 
 ---
 
@@ -504,7 +511,7 @@
 | ChatService | chat/v1 | createChatService | useChatSessionStore + useChatMessageStore + useChatRuntimeStore + useChatConversationStore | ChatPage |
 | AgentService | agent/v1 | createAgentService | useAppStore + useAgentsPageStore + useAgentDetailStore | AgentsPage + AgentSettingsPage |
 | TeamService | team/v1 | createTeamService | useTeamsStore + useTeamsPageStore | TeamsPage + TeamOrchestratePage |
-| GraphService | graph/v1 | createGraphService | useGraphStore | GraphsPage + GraphEditorPage + GraphRunPage |
+| GraphService | graph/v1 | createGraphService | useGraphStore | GraphsPage + GraphEditorPage + GraphRunPage + GraphExecutionsPage |
 | SessionService | session/v1 | createSessionService | useSessionStore | SessionsPage |
 | ChannelService | channel/v1 | createChannelService | useChannelsStore | ChannelsPage |
 | ToolService | tool/v1 | createToolService | useToolsStore + useToolDetailStore + useToolEditorStore | ToolsPage |

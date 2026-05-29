@@ -284,12 +284,15 @@ GraphRuntime            ← Graph 消费（运行时端口）
 #### Graph 图编排 (`internal/graph/`)
 
 **核心能力**：
-- 可视化图定义（节点 + 边）
+- 可视化图定义（节点 + 边 + 条件边 + 状态字段）
 - 执行引擎（支持条件分支、并行、循环）
 - 人工任务节点（HITL：Claim/Submit/Review）
-- 检查点 + 时间旅行
-- 模板系统
-- 版本管理 + 回滚
+- 检查点 + 时间旅行（前端 GraphCheckpointPanel 快照预览 + 回退确认）
+- 模板系统（用户模板 + 系统模板）
+- 版本管理 + 回滚（compactNodesForVersion 精简存储）
+- 前端实时校验（useGraphLocalValidation：8 种规则，区分 error/warning）
+- 变量引用（GraphVariablePicker：`{{nodeId.field}}` 格式）
+- 失败策略（Skip/RetryThenBlock/FailFast + CircuitBreakerPolicy）
 
 **端口接口**：
 - `GraphExecutor`：Channel/Cron 消费的执行入口
@@ -381,7 +384,7 @@ services/index.ts (25 个 createXxxService)
 | **useChatRuntimeStore** | wsConnectedBySession{} | fetchRunStatus、stop、enqueue、submitFeedback | getRunStatus、stopGeneration、enqueueMessage |
 | **useChatConversationStore** | currentTarget、sessionsById{} | setCurrentTarget、upsertSession、applyProjection | 无（纯 WS 投影） |
 | **useAgentsPageStore** | keyword、filters、agents[] | loadAgentList、toggleAgentFavorite、copyAgent | listAgentsPaged、duplicateAgent |
-| **useGraphStore** | graphs[]、activeGraph、executionHistory | loadGraphs、runGraph、validateGraphDefinition | 全部 Graph API |
+| **useGraphStore** | graphs[]、activeGraph、executionHistory、checkpoints[]、templates[] | loadGraphs、runGraph、validateGraphDefinition、saveCheckpoint、loadTemplates、rollbackGraph | 全部 Graph API |
 | **useTeamsStore** | teams[]、activeTeam | loadTeams、addTeam、editTeam | listTeams、createTeam、updateTeam |
 | **useToolsStore** | tools[]、activeTool | loadTools、fetchCatalog、saveOverride | 全部 Tool API |
 | **useMonitorStore** | auditLogs[]、events[]、alertRules[] | loadAuditLogs、startRuntimeEventsStream | 全部 Monitor API |
@@ -433,6 +436,9 @@ dispatcher.ts            ← EnvelopeDispatcher: 按 type/channel/sessionId/team
 | `/agents/:id/settings` | AgentSettingsPage | Agent 设置（Prompt/工具/模型/记忆） |
 | `/team` | TeamsPage | Team 列表 + 编排 |
 | `/graphs` | GraphsPage | Graph 列表 + 编辑器 |
+| `/graphs/:id/edit` | GraphEditorPage | Graph 可视化编辑（Vue Flow 画布 + 属性面板 + 实时校验 + 撤销重做） |
+| `/graphs/:id/run` | GraphRunPage | Graph 执行态（步骤时间线 + 任务看板 + HITL + 检查点回退） |
+| `/graphs/executions` | GraphExecutionsPage | Graph 执行历史（服务端过滤 + 状态/时间范围筛选） |
 | `/models` | ResourceManagerPage | LLM Provider/Model 管理 |
 | `/channels` | ChannelsPage | 渠道管理 |
 | `/tools` | ToolsPage | 工具目录 |
@@ -543,6 +549,11 @@ TeamService.RunTeam()
 用户创建 Graph（节点 + 边定义）
   │
   ▼
+前端实时校验（useGraphLocalValidation）
+  ├── 8 种规则：no_entry_point / duplicate_node / edge_source_missing / edge_target_missing / unreachable_node / loop_no_exit（无条件循环=error） / conditional_loop（条件循环=warning） / orphan_node
+  └── 与后端校验结果合并去重（key=code:nodeId:field）
+  │
+  ▼
 GraphService.ExecuteGraph()
   │
   ├── 1. GraphBuilderFactory.BuildAndRun(definition)
@@ -556,6 +567,7 @@ GraphService.ExecuteGraph()
   │     └── 子 Graph 节点：递归执行
   │
   ├── 3. 检查点：每个节点完成后保存快照
+  │     → 前端 GraphCheckpointPanel 查看快照 + 确认回退
   │
   └── 4. 事件流 → WebSocket → 前端实时可视化
 ```

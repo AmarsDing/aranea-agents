@@ -69,8 +69,8 @@
       </div>
     </q-card-section>
     <ChatTeamMemberStrip v-if="isTeamSession" :members="teamMemberLanes" />
-    <q-separator class="cream-sep" />
     <div class="col row no-wrap chat-messages-area" style="min-height: 0">
+    <div class="col column no-wrap chat-messages-main" style="min-height: 0">
     <ChatMessageList
       ref="messageListRef"
       :session-key="sessionKey"
@@ -103,7 +103,6 @@
       @update-pending="(id, content) => emit('update-pending', id, content)"
     />
 
-    <q-separator class="cream-sep" />
     <ChatComposer
       :model-value="modelValue"
       :attachments="attachments"
@@ -154,6 +153,7 @@
       @paste-unsupported="emit('paste-unsupported')"
       @new-session="emit('new-session')"
     />
+    </div>
     <ChatReasoningDrawer
       :open="Boolean(reasoningSidebarOpen)"
       :active-reasoning="reasoningSidebarActive ?? null"

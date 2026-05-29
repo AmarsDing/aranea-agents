@@ -57,17 +57,17 @@
 
 ### P1
 
-| ID | 问题 | 建议修复 |
-|----|------|---------|
-| GRAPH-P1-01 | `internal/data.go` 绑定 trpc graph checkpoint — data 层运行时耦合 | `provideGraphCheckpointSaver` 上移到 Wire |
-| GRAPH-P1-02 | Agent 节点（按 catalog AgentName 动态创建）未实现；Router 节点无独立 builder 分支 | 在 `node_wiring.go` 中增加 `case "agent"` / `case "router"` |
-| GRAPH-P1-03 | `internal/biz/graph.go`（583 行）和 `internal/service/graph.go`（940 行）均无专项测试 | 补 biz/service 层 graph 测试 |
+| ID | 问题 | 建议修复 | 状态 |
+|----|------|---------|------|
+| GRAPH-P1-01 | `internal/data.go` 绑定 trpc graph checkpoint — data 层运行时耦合 | `provideGraphCheckpointSaver` 上移到 Wire | ✅ R13-2：改为接收 `*sql.DB` 窄依赖 |
+| GRAPH-P1-02 | Agent 节点（按 catalog AgentName 动态创建）未实现；Router 节点无独立 builder 分支 | 在 `node_wiring.go` 中增加 `case "agent"` / `case "router"` | ✅ 已实现：`case "agent"` 完整支持 catalog 动态装配 + fallback |
+| GRAPH-P1-03 | `internal/biz/graph.go`（583 行）和 `internal/service/graph.go`（940 行）均无专项测试 | 补 biz/service 层 graph 测试 | 🟡 R15-4：biz 层 47 个新测试用例已补全；service 层待补 |
 
 ### P2
 
 | ID | 问题 | 建议修复 |
 |----|------|---------|
-| GRAPH-P2-01 | Checkpoint 产品化：用户无法从 UI 查看/恢复检查点 | 规划 Checkpoint 管理 UI |
+| GRAPH-P2-01 | Checkpoint 产品化：用户无法从 UI 查看/恢复检查点 | 规划 Checkpoint 管理 UI | 🟡 R15-3：状态快照预览+回退确认已实现；完整管理面板待补 |
 | GRAPH-P2-02 | HITL 节点：需定义 `await_user_reply` 在 Graph 中的配置和 UX | 与 Chat AwaitUserReply 复用 |
 | GRAPH-P2-03 | Function 节点（自定义代码）需与 CodeExecutor 集成 | 规划 FunctionNode → CodeExecutor 接线 |
 | GRAPH-P2-04 | Graph 适配层无专项测试 | 补 Aranea 侧适配层测试 |
@@ -79,21 +79,38 @@
 ```
 GraphsPage.vue — 列表 + 进入
 GraphEditorPage.vue — Vue Flow 画布
-    ├─ GraphEditorCanvas.vue — 拖拽编辑
-    ├─ GraphNodePalette.vue — 节点类型选择
-    └─ GraphPropertyPanel.vue — 属性配置
+    ├─ GraphEditorCanvas.vue — 拖拽编辑 + 条件边/传输边样式
+    ├─ GraphNodePalette.vue — 节点类型选择 + 拖拽 ghost
+    ├─ GraphNodeSearch.vue — Ctrl+F 搜索
+    ├─ GraphPropertyPanel.vue — 属性配置 + GraphVariablePicker 变量引用
+    ├─ GraphValidationPanel.vue — 校验结果展示（合并前端+后端）
+    ├─ GraphContextMenu.vue — 右键菜单（赛博青主题）
+    ├─ GraphFlowNode.vue / GraphFlowDiamond.vue — 节点组件（ARIA）
+    └─ useGraphUndoRedo / useSnapGuide — 撤销重做 + 对齐辅助
 GraphRunPage.vue — 执行态 + ExecutionSummary
+    ├─ GraphRunSidebar.vue — 步骤时间线 + 错误高亮
+    ├─ GraphRunInspector.vue — 节点详情
+    ├─ GraphCheckpointPanel.vue — 检查点快照预览 + 回退确认
+    ├─ GraphTaskKanban.vue — 任务看板
+    └─ GraphRunDialog.vue — 运行配置（defineModel）
+GraphExecutionsPage.vue — 执行历史（服务端过滤 + 状态/时间范围筛选）
 stores/graph — 状态管理
 features/graph/api.ts — HTTP 门面
+features/graph/useGraphLocalValidation.ts — 前端实时校验（8 种规则）
+features/graph/useGraphEditorPage.ts — 编辑器编排 + 合并校验
+features/graph/useGraphExecutionsPage.ts — 执行历史 + 服务端过滤
 ```
 
-**状态**：前端框架完整；节点属性面板是最大缺口。
+**状态**：前端框架完整；实时校验 + 变量引用 + 检查点管理已实现；Schema 驱动属性面板和模板市场是下一阶段重点。
 
 ---
 
 ## 建议优化路径
 
-1. 将 Graph checkpoint provider 从 data.go 上移到 Wire（P1 架构修复）。
+1. ~~将 Graph checkpoint provider 从 data.go 上移到 Wire（P1 架构修复）~~。✅ R13-2：已改为 `provideSQLiteRawDB` + `*sql.DB` 窄依赖。
 2. 实现 Agent 节点（`case "agent"` + catalog 动态装配）和 Router 节点（P1）。
-3. 补 biz/service/adapter 层测试（P1）。
-4. 规划 Checkpoint 管理 UI 和 HITL 节点配置（P2）。
+3. ~~补 biz/service/adapter 层测试（P1）~~。🟡 R15-4：biz 层 47 个测试用例已补全；service 层和 adapter 层待补。
+4. ~~规划 Checkpoint 管理 UI 和 HITL 节点配置（P2）~~。🟡 R15-3：Checkpoint 快照预览+回退确认已实现；HITL 节点配置待补。
+5. Graph 模板市场（P2）：用户模板浏览 + 一键创建。
+6. Schema 驱动属性面板（P3）：动态表单替代硬编码属性面板。
+7. 熔断策略实现（P2）：CircuitBreakerPolicy 连续失败达阈值暂停分支。

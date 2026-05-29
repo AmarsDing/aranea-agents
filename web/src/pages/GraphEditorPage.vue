@@ -14,7 +14,7 @@
         <q-tooltip>重做 (Ctrl+Shift+Z)</q-tooltip>
       </q-btn>
       <q-chip v-if="dirty" dense square class="graph-workbench__dirty-chip">未保存</q-chip>
-      <q-chip v-if="!validationValid" dense square color="negative" text-color="white">校验未通过</q-chip>
+      <q-chip v-if="!mergedValidationValid" dense square color="negative" text-color="white">校验未通过</q-chip>
       <q-btn v-if="!isNew" flat dense icon="more_vert">
         <q-menu anchor="bottom right" self="top right">
           <q-list dense style="min-width: 180px">
@@ -72,10 +72,12 @@
         :graph-def="graphDef"
         :available-tools="availableTools"
         :is-dark="isDark"
-        :validation-errors="validationErrors"
-        :validation-warnings="validationWarnings"
-        :validation-valid="validationValid"
+        :validation-errors="mergedValidationErrors"
+        :validation-warnings="mergedValidationWarnings"
+        :validation-valid="mergedValidationValid"
         :undo-redo="undoRedo"
+        :all-nodes="graphDef.nodes"
+        :state-fields="graphDef.stateFields"
         @deselect="onSelectNode(null)"
         @select-node="onSelectNode"
         @change="markDirty"
@@ -84,12 +86,10 @@
 
     <GraphRunDialog
       v-model="runDialogOpen"
+      v-model:session-id="runSessionId"
+      v-model:initial-state="runInitialState"
       :graph-name="graphDef.name"
-      :session-id="runSessionId"
-      :initial-state="runInitialState"
       :loading="runLoading"
-      @update:session-id="runSessionId = $event"
-      @update:initial-state="runInitialState = $event"
       @submit="executeRun"
     />
 
@@ -144,6 +144,9 @@ const {
   validationErrors,
   validationWarnings,
   validationValid,
+  mergedValidationErrors,
+  mergedValidationWarnings,
+  mergedValidationValid,
   versionDialogOpen,
   versions,
   versionsLoading,

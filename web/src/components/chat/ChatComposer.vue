@@ -1,5 +1,5 @@
 <template>
-  <q-card-section class="chat-composer q-pa-sm q-pa-md-sm">
+  <q-card-section class="chat-composer q-px-md q-py-sm">
     <q-banner
       v-if="isAwaitingUser && awaitKind === AWAIT_KIND_TOOL_CONFIRM"
       rounded

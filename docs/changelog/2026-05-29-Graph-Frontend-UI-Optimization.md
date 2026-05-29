@@ -1,4 +1,4 @@
-# Graph UI 优化（第二轮 ~ 第十二轮）
+# Graph UI 优化（第二轮 ~ 第十四轮）
 
 **日期**：2026-05-29  
 **模块**：Graph (36) · 前端 + 后端  
@@ -6,7 +6,7 @@
 
 ## 变更摘要
 
-七轮迭代优化 Graph UI：修复亮色模式适配、数据流合规、watch 性能、撤销/重做系统、无障碍访问、交互增强（Ctrl+S/Ctrl+Z/Ctrl+F/连线高亮/拖拽预览）、动画与响应式布局、SASS 拆分、共享工具函数提取、PropertyPanel 全面 undo 集成、画布缩放指示器、条件路由可视化编辑、边/节点删除 undo 集成、composable 拆分、硬编码颜色提取、批量节点操作、执行历史列表页、composable 全面响应式改造。第八轮：执行历史页面增强（状态筛选+执行时长）、批量节点移动 undoRedo 集成。第九轮：代码质量重构（P5 建议项全部修复）+ 执行历史时间范围筛选。第十轮：画布框选 + Ctrl+A 全选 + 边重连 undoRedo + 执行历史服务端筛选准备。第十一轮：后端服务端筛选实现 + 节点对齐辅助线 + 步骤详情展开/折叠/错误高亮 + Dagre 自动布局。第十二轮：代码质量优化 + UX 增强——节点尺寸常量统一提取、useSnapGuide 变量声明顺序修复、自动布局 undoRedo 集成、小地图执行状态着色、执行 Dialog 共享组件抽取、GraphRunSidebar 优化（formatJson 截断 + reactive Set + 纯函数直接 import）。
+七轮迭代优化 Graph UI：修复亮色模式适配、数据流合规、watch 性能、撤销/重做系统、无障碍访问、交互增强（Ctrl+S/Ctrl+Z/Ctrl+F/连线高亮/拖拽预览）、动画与响应式布局、SASS 拆分、共享工具函数提取、PropertyPanel 全面 undo 集成、画布缩放指示器、条件路由可视化编辑、边/节点删除 undo 集成、composable 拆分、硬编码颜色提取、批量节点操作、执行历史列表页、composable 全面响应式改造。第八轮：执行历史页面增强（状态筛选+执行时长）、批量节点移动 undoRedo 集成。第九轮：代码质量重构（P5 建议项全部修复）+ 执行历史时间范围筛选。第十轮：画布框选 + Ctrl+A 全选 + 边重连 undoRedo + 执行历史服务端筛选准备。第十一轮：后端服务端筛选实现 + 节点对齐辅助线 + 步骤详情展开/折叠/错误高亮 + Dagre 自动布局。第十二轮：代码质量优化 + UX 增强——节点尺寸常量统一提取、useSnapGuide 变量声明顺序修复、自动布局 undoRedo 集成、小地图执行状态着色、执行 Dialog 共享组件抽取、GraphRunSidebar 优化（formatJson 截断 + reactive Set + 纯函数直接 import）。第十三轮：架构优化——Ent 复合索引优化服务端筛选查询性能、Checkpoint Wire 解耦消除 data 层上帝对象依赖、GraphRunDialog defineModel 简化双向绑定。第十四轮：Brainstorm 视觉对齐——节点配色修正（Router→灰色、Join→紫色、LLM→蓝色）、4种边线流动光点动画+条件边虚线、右键菜单赛博青风格统一、属性面板5分组色彩边框、运行页进度条发光指示点呼吸动画。
 
 ## 第二轮优化
 
@@ -383,13 +383,239 @@
 - [x] 硬编码颜色已全部提取为 CSS 变量（FU1）
 - [x] 构建验证通过（pnpm build 成功）
 
+## 第十三轮优化
+
+### P1 — 架构优化
+
+| 项 | 变更 |
+|----|------|
+| R13-1 | **Ent 复合索引优化**：`graph_executions` 表新增 `(graph_id, status, started_at)` 复合索引，优化 R11 服务端筛选的组合查询性能；前导列 `graph_id` 同时覆盖原有单列查询；`go generate ./internal/data/ent` 已执行 |
+| R13-2 | **Checkpoint Wire 解耦**：新增 `provideSQLiteRawDB` Wire provider 从 `*data.Data` 提取 `*sql.DB`；`provideTRPCSessionService` 和 `provideGraphCheckpointSaver` 改为直接接收 `*sql.DB` 窄依赖，消除对 `*data.Data` 上帝对象的依赖；`make wire` 已执行 |
+
+### P3 — 代码质量
+
+| 项 | 变更 |
+|----|------|
+| R13-3 | **GraphRunDialog defineModel 优化**：`sessionId`/`initialState` 从 props+emits 手动双向绑定改为 `defineModel<string>("sessionId")`/`defineModel<string>("initialState")`；父组件 `GraphsPage.vue`/`GraphEditorPage.vue` 从 `:session-id` + `@update:session-id` 简化为 `v-model:session-id`，各减少 2 行事件绑定代码 |
+
+## 修改文件
+
+| 文件 | 变更 |
+|------|------|
+| `internal/data/ent/schema/graph_execution.go` | 新增 `index.Fields("graph_id", "status", "started_at")` 复合索引 |
+| `cmd/admin/wire.go` | 新增 `provideSQLiteRawDB`；`provideTRPCSessionService`/`provideGraphCheckpointSaver` 改为接收 `*sql.DB`；Wire provider 列表新增 `provideSQLiteRawDB` |
+| `web/src/components/graph/GraphRunDialog.vue` | `sessionId`/`initialState` 改为 `defineModel` 双向绑定 |
+| `web/src/pages/GraphsPage.vue` | `v-model:session-id`/`v-model:initial-state` 替代 props+emits |
+| `web/src/pages/GraphEditorPage.vue` | `v-model:session-id`/`v-model:initial-state` 替代 props+emits |
+
+## 代码审查（aranea-review 第十三轮）
+
+### 概要
+
+| 维度 | 🔴 阻断 | 🟡 建议 | 🟢 提示 | 合计 |
+|------|---------|---------|---------|------|
+| **后端 — 架构合规** | 0 | 0 | 0 | 0 |
+| **后端 — 分层合规** | 0 | 0 | 0 | 0 |
+| **后端 — 依赖注入** | 0 | 0 | 0 | 0 |
+| **前端 — 数据流合规** | 0 | 0 | 0 | 0 |
+| **前端 — 组件分层** | 0 | 0 | 0 | 0 |
+| **前端 — UX 主题** | 0 | 0 | 0 | 0 |
+| **构建与回归** | 0 | 0 | 0 | 0 |
+
+### 合规性清单
+
+- [x] 依赖方向向内（biz 不 import data/service/trpc-agent-go/proto）
+- [x] 构造函数接收窄依赖（`*sql.DB` 而非 `*data.Data`）
+- [x] Wire 改动后 `make wire` 已执行
+- [x] Ent Schema 变更后 `go generate` 已执行
+- [x] 展示组件无 Store/API import（红线 #1/#2）
+- [x] Dialog emit 而非内部调 API（红线 #4）
+- [x] Dialog 用 app-dialog-card（FU4）
+- [x] 构建验证通过（go build + pnpm build）
+
+### 亮点
+
+- ✅ Checkpoint Wire 解耦：从 `*data.Data` 上帝对象依赖改为 `*sql.DB` 窄依赖，符合 BL8 原则
+- ✅ Ent 复合索引：直接优化 R11 服务端筛选查询，前导列覆盖原有单列查询
+- ✅ defineModel 简化：GraphRunDialog 双向绑定更简洁，两个父组件各减少 2 行代码
+
+## 第十四轮优化
+
+### Brainstorm 视觉对齐
+
+> 依据 `.superpowers/brainstorm/` 中的设计提案 v1/v2/v3 + ctx-menu-v7，修正当前实现与 brainstorm 定义的视觉差距。
+
+| 项 | 变更 |
+|----|------|
+| R14-1a | **节点配色修正**：LLM 从 `#22d3ee`（青）→ `#93c5fd`（蓝）；Router 从 `#f472b6`（粉）→ `#94a3b8`（灰）；Join 从 `#94a3b8`（灰）→ `#a78bfa`（紫）。亮色/暗色模式同步更新 |
+| R14-1b | **边线配色修正**：Normal 从 `#22d3ee` → `#93c5fd`（蓝）；Conditional 从 `#f472b6` → `#f9a8d4`（浅粉）；Transfer 从 `#fbbf24` → `#fde68a`（浅黄）；Dispatch 从 `#34d399` → `#6ee7b7`（浅绿） |
+| R14-1c | **条件边虚线**：CSS `.graph-edge--conditional .vue-flow__edge-path` 添加 `stroke-dasharray: 6 4`，移除内联 `strokeDasharray` |
+| R14-1d | **边线流动光点动画**：4 种边线各有 `stroke-dasharray` + `stroke-dashoffset` 动画——Normal 24px/1.6s、Conditional 40px/1.6s、Transfer 28px/1.8s、Dispatch 56px/1.4s |
+| R14-1e | **边线样式统一到 CSS**：移除 `buildEdges()` 中的内联 `strokeDasharray`，所有边线 dasharray 由 CSS 控制 |
+| R14-2 | **右键菜单赛博青风格**：亮色模式 accent 从 `#D4891A`（暖金）→ `#0891b2`（深青），border/glow 同步更新，与暗色模式 `#22d3ee`（霓虹青）同色系 |
+| R14-3 | **属性面板分组色彩边框**：5 个分组各有独立色彩——basic=LLM蓝、conditional=条件边粉、model=Agent绿、interrupt=HITL橙、advanced=Router灰；使用 `--group-accent` CSS 变量优雅覆盖 |
+| R14-4 | **运行页进度条发光指示点**：8px 微型指示点 + 3 层 box-shadow 发光 + `graph-progress-dot-pulse` 2s 呼吸动画 |
+| R14-1f | **暗色模式状态色修正**：running `#22d3ee` → `#93c5fd`（蓝）；failed `#f472b6` → `#f87171`（红）；progress-to `#22d3ee` → `#93c5fd` |
+
+## 修改文件
+
+| 文件 | 变更 |
+|------|------|
+| `web/src/css/theme/_graph-pages.sass` | 节点/边线/状态/菜单 CSS 变量配色修正；条件边虚线 + 4种边线流动动画；属性面板分组色彩；进度条发光指示点动画 |
+| `web/src/components/graph/GraphEditorCanvas.vue` | `buildEdges()` 移除内联 strokeDasharray，边线样式统一到 CSS |
+| `web/src/components/graph/GraphPropertyPanel.vue` | 5 个 q-expansion-item 添加分组色彩修饰类 |
+
+## 代码审查（aranea-review 第十四轮）
+
+### 概要
+
+| 维度 | 🔴 阻断 | 🟡 建议 | 🟢 提示 | 合计 |
+|------|---------|---------|---------|------|
+| **前端 — 数据流合规** | 0 | 0 | 0 | 0 |
+| **前端 — 组件分层** | 0 | 0 | 0 | 0 |
+| **前端 — UX 主题** | 0 | 1 | 0 | 1 |
+| **构建与回归** | 0 | 0 | 0 | 0 |
+
+### 合规性清单
+
+- [x] 展示组件无 Store/API import
+- [x] Page 无直接 API import
+- [x] Dialog emit 而非内部调 API
+- [x] 浮层 backdrop-filter 成对
+- [x] 主按钮用 --color-accent
+- [x] 无硬编码 hex（组件中）
+- [x] 构建验证通过
+
+### 亮点
+
+- ✅ 配色体系完全对齐 brainstorm v2 定义
+- ✅ 边线流动动画实现 brainstorm v3 的"流动光点"效果
+- ✅ 属性面板分组色彩使用 `--group-accent` CSS 变量，零逻辑改动
+
+## 第十五轮优化
+
+### P1 — 前端实时校验 + 后端测试补全
+
+| 项 | 变更 |
+|----|------|
+| R15-1 | **前端实时校验 composable**：新建 `useGraphLocalValidation.ts`，提供 `localErrors`/`localWarnings`/`localValid` computed 属性；校验规则包括 no_entry_point、duplicate_node、edge_source_missing、edge_target_missing、unreachable_node、loop_no_exit（无条件循环=error）、conditional_loop（条件循环=warning）、orphan_node；集成到 `useGraphEditorPage.ts`，与后端校验结果合并去重（key=`code:nodeId:field`） |
+| R15-2 | **GraphVariablePicker 组件**：新建 `GraphVariablePicker.vue`，支持在 instruction/mapper 字段插入 `{{nodeId.field}}` 变量引用；光标位置感知插入；集成到 `GraphPropertyPanel.vue` instruction 字段 |
+| R15-3 | **Checkpoint 管理 UI 产品化**：`GraphCheckpointPanel.vue` 增强状态快照预览（JSON 展示）、下一节点显示（Badge）、回退确认对话框（`$q.dialog`）；新增 `stateSnapshot`/`nextNodes`/`restoring` props + `restore` emit |
+| R15-4 | **Biz 层测试补全**：新增 4 个测试文件 + 扩展 1 个现有测试文件，共 47 个新测试用例。覆盖 `ShouldCreateTaskForNode`/`ShouldCreateTeamGraphTaskNode`（15+10 case）、`GraphTaskInputFromNode`/`nodeDefFromConfig`（4+3 case）、`BuildConfigFromGraphDefinition`/`GraphDefinitionFromBuildConfig`/`compactNodesForVersion`/`ReadUserTemplateMeta`/`WriteUserTemplateMeta`/`GraphValidationResult`/`graphStepSnapshotToJSON`（2+3+1+5+3+5+1 case）、`upsertGraphStep`/`evictIfNeeded`（4+2 case）、`ApplyFailurePolicy`/`ApplySkipNodeSemantics`/`ApplyCircuitBreakerPolicy`/`FinalizeGraphFailurePolicy`/`parallelBranchNodeIDs`/`normalizeFailureDefault`（4+3+4+2+3+8 case） |
+
+### 审查修复
+
+| 项 | 变更 |
+|----|------|
+| R15-F1 | **循环检测误报修复**：区分无条件循环（error，`loop_no_exit`）和条件循环（warning，`conditional_loop`），条件边回退不再误报为死循环 |
+| R15-F2 | **边源节点缺失检测**：新增 `edge_source_missing` 错误码，检测边/条件边的 from 节点不存在 |
+| R15-F3 | **合并去重 key 细化**：从 `code:nodeId` 改为 `code:nodeId:field`，避免不同 field 的同 code 同 nodeId 错误被过度去重 |
+
+## 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `web/src/features/graph/useGraphLocalValidation.ts` | 前端实时校验 composable（8 种校验规则，区分 error/warning） |
+| `web/src/components/graph/GraphVariablePicker.vue` | 变量引用插入组件（光标位置感知，`{{nodeId.field}}` 格式） |
+| `internal/biz/graph_node_task_test.go` | ShouldCreateTaskForNode/ShouldCreateTeamGraphTaskNode 测试（25 case） |
+| `internal/biz/graph_task_input_test.go` | GraphTaskInputFromNode/nodeDefFromConfig 测试（7 case） |
+| `internal/biz/graph_build_config_test.go` | BuildConfigFrom/compactNodes/UserTemplate/ValidationResult/StepSnapshot 测试（20 case） |
+| `internal/biz/graph_step_test.go` | upsertGraphStep/evictIfNeeded 测试（6 case） |
+
+## 修改文件
+
+| 文件 | 变更 |
+|------|------|
+| `web/src/features/graph/useGraphEditorPage.ts` | 集成 localValidation + 合并去重（key=`code:nodeId:field`） |
+| `web/src/pages/GraphEditorPage.vue` | 使用 mergedValidation* 替代 validation* |
+| `web/src/components/graph/GraphPropertyPanel.vue` | 集成 GraphVariablePicker + 新增 allNodes/stateFields props |
+| `web/src/components/graph/GraphCheckpointPanel.vue` | 状态快照预览 + 下一节点显示 + 回退确认对话框 |
+| `web/src/css/theme/_graph-pages.sass` | Checkpoint 预览样式 |
+| `internal/biz/failure_policy_test.go` | 新增 13 个测试函数（ApplyFailurePolicy nil/skip/override、ApplySkipNodeSemanticsExtended、ApplyCircuitBreakerPolicy、FinalizeGraphFailurePolicy、parallelBranchNodeIDs 边界、normalizeFailureDefault） |
+
+## 代码审查（aranea-review 第十五轮）
+
+### 概要
+
+| 维度 | 🔴 阻断 | 🟡 建议 | 🟢 提示 | 合计 |
+|------|---------|---------|---------|------|
+| **后端 — 架构合规** | 0 | 0 | 0 | 0 |
+| **后端 — 分层合规** | 0 | 0 | 0 | 0 |
+| **后端 — OOP** | 0 | 0 | 0 | 0 |
+| **前端 — 数据流合规** | 0 | 0 | 0 | 0 |
+| **前端 — 组件分层** | 0 | 0 | 0 | 0 |
+| **前端 — 业务逻辑归属** | 0 | 2 | 0 | 2 |
+| **前端 — UX 主题** | 0 | 0 | 0 | 0 |
+| **构建与回归** | 0 | 0 | 0 | 0 |
+
+### 已修复的建议项
+
+| ID | 维度 | 文件 | 问题描述 | 修复 |
+|----|------|------|----------|------|
+| S1 | FB2 | useGraphLocalValidation.ts | 循环检测不区分无条件/条件循环，条件回退误报为死循环 | ✅ 区分 unconditionalAdj/fullAdj，条件循环降级为 warning |
+| S2 | FB2 | useGraphLocalValidation.ts | 边源节点缺失未检测 | ✅ 新增 edge_source_missing 错误码 |
+| S3 | FB2 | useGraphEditorPage.ts | 合并去重 key 过粗（`code:nodeId`），不同 field 的错误被过度去重 | ✅ key 改为 `code:nodeId:field` |
+
+### 合规性清单
+
+- [x] 依赖方向向内（biz 不 import data/service/trpc-agent-go/proto）
+- [x] 展示组件无 Store/API import（红线 #1/#2）
+- [x] Page 无直接 API import（红线 #11）
+- [x] Dialog/浮层 emit 而非内部调 API（红线 #4）
+- [x] 新 HTTP 调用在 api.ts（红线 #7）
+- [x] 聊天消息分组用堆栈模型（红线 #14）
+- [x] 构建验证通过（go build + go test + pnpm build）
+
+### 亮点
+
+- ✅ 前端实时校验：8 种规则 + 区分 error/warning，编辑时即时反馈，无需等待后端保存
+- ✅ 循环检测精确化：无条件循环=error，条件循环=warning，消除合法回退的误报
+- ✅ Biz 层测试覆盖：47 个新测试用例覆盖 17 个核心函数，包括边界场景（nil、空值、大小写、覆盖优先级）
+- ✅ VariablePicker 光标位置感知：在输入框光标处插入变量，而非追加到末尾
+- ✅ Checkpoint 回退确认：`$q.dialog` 二次确认，防止误操作
+
 ## 剩余工作
 
 | 优先级 | 项目 | 说明 | 复杂度 |
 |--------|------|------|--------|
-| P3 | Graph 运行页子图嵌套展示 | 步骤时间线支持子图步骤缩进/折叠展示（需后端 WS 事件增加 subgraph_id 字段） | 高 |
-| P3 | Ent 复合索引优化 | 为 `(graph_id, status, started_at)` 添加复合索引优化组合查询 | 低 |
 | P2 | Graph 模板市场 | 预置模板浏览 + 一键创建 | 中 |
+| P3 | Graph 运行页子图嵌套展示 | 步骤时间线支持子图步骤缩进/折叠展示（需后端 WS 事件增加 subgraph_id 字段） | 高 |
+| P2 | HITL 节点配置与 UX | 定义 await_user_reply 在 Graph 中的配置和 UX | 中 |
+| P2 | 熔断策略实现 | CircuitBreakerPolicy（Proto 已定义），连续失败达阈值暂停分支 | 中 |
+| P3 | Schema 驱动属性面板 | 借鉴 Flowise InputParam[] 动态表单，替代硬编码属性面板 | 高 |
+| P3 | 连接校验增强 | 环/悬空/类型/handle 校验，扩展 ValidationPanel + validator.go（`ValidationErrOrphanNode` unused） | 中 |
+| P1 | Graph 适配层测试 | internal/graph/trpc/ 测试薄弱 | 高 |
+
+### 已完成（第十五轮 — P1-P3 优化 + 审查修复）
+
+| 优先级 | 项目 | 说明 |
+|--------|------|------|
+| ~~P1~~ | ~~前端实时校验~~ | ✅ R15-1：`useGraphLocalValidation` composable，8 种校验规则 + 区分 error/warning |
+| ~~P3~~ | ~~VariablePicker~~ | ✅ R15-2：`GraphVariablePicker.vue`，光标位置感知插入 `{{nodeId.field}}` |
+| ~~P2~~ | ~~Checkpoint 管理 UI 产品化~~ | ✅ R15-3：状态快照预览 + 下一节点显示 + 回退确认对话框 |
+| ~~P1~~ | ~~Biz 层测试补全~~ | ✅ R15-4：47 个新测试用例覆盖 17 个核心函数 |
+| ~~P3~~ | ~~循环检测误报~~ | ✅ R15-F1：区分无条件循环(error)与条件循环(warning) |
+| ~~P3~~ | ~~边源节点缺失检测~~ | ✅ R15-F2：新增 `edge_source_missing` 错误码 |
+| ~~P3~~ | ~~合并去重 key 过粗~~ | ✅ R15-F3：key 从 `code:nodeId` 改为 `code:nodeId:field` |
+
+### 已完成（第十四轮 — Brainstorm 视觉对齐）
+
+| 优先级 | 项目 | 说明 |
+|--------|------|------|
+| ~~P1~~ | ~~节点配色修正~~ | ✅ R14-1a：Router→灰色、Join→紫色、LLM→蓝色，对齐 brainstorm v2 |
+| ~~P1~~ | ~~条件边虚线~~ | ✅ R14-1c：CSS stroke-dasharray: 6 4，对齐 brainstorm v3 |
+| ~~P1~~ | ~~边线流动光点动画~~ | ✅ R14-1d：4种边线各有 stroke-dashoffset 动画，对齐 brainstorm v3 |
+| ~~P2~~ | ~~右键菜单赛博青风格~~ | ✅ R14-2：亮色模式 accent 改为深青，对齐 ctx-menu-v7 |
+| ~~P2~~ | ~~属性面板分组色彩边框~~ | ✅ R14-3：5分组独立色彩，对齐 brainstorm v2 |
+| ~~P2~~ | ~~运行页进度条发光指示点~~ | ✅ R14-4：8px 微型点 + 3层发光 + 呼吸动画，对齐 brainstorm v3 |
+
+### 已完成（第十三轮）
+
+| 优先级 | 项目 | 说明 |
+|--------|------|------|
+| ~~P3~~ | ~~Ent 复合索引优化~~ | ✅ R13-1：`(graph_id, status, started_at)` 复合索引已添加 |
+| ~~P1~~ | ~~Data 层 Checkpoint 耦合~~ | ✅ R13-2：`provideGraphCheckpointSaver`/`provideTRPCSessionService` 改为接收 `*sql.DB` 窄依赖 |
+| ~~P3~~ | ~~GraphRunDialog defineModel 优化~~ | ✅ R13-3：`sessionId`/`initialState` 改为 `defineModel` 双向绑定 |
 
 ### 已完成（第十二轮）
 

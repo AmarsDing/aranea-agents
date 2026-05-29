@@ -298,11 +298,7 @@ function buildEdges(): Edge[] {
       type: "smoothstep",
       animated: isTransfer,
       class: edgeClass,
-      style: isTransfer
-        ? { stroke: "var(--graph-edge-transfer)", strokeWidth: 1, strokeDasharray: "4 3" }
-        : isDispatch
-          ? { stroke: "var(--graph-edge-dispatch)", strokeWidth: 1, strokeDasharray: "8 6" }
-          : { stroke: "var(--graph-edge-normal)", strokeWidth: 1 },
+      style: { stroke: "var(--graph-edge-normal)", strokeWidth: 1 },
       label: edgeKindLabel(e.kind) ?? (isTransfer ? "移交" : isDispatch ? "分派" : undefined),
       labelStyle: { fill: "var(--graph-ctx-text)", fontSize: 10, fontWeight: 600 },
       labelBgStyle: { fill: "var(--graph-ctx-bg)", fillOpacity: 0.9, stroke: "var(--graph-ctx-border)", strokeWidth: 0.5 },
@@ -324,7 +320,7 @@ function buildEdges(): Edge[] {
         labelBgStyle: { fill: "var(--graph-ctx-bg)", fillOpacity: 0.9, stroke: "var(--graph-cond-edge-label-stroke)", strokeWidth: 0.5 },
         labelBgPadding: [6, 4],
         labelBgBorderRadius: 6,
-        style: { stroke: "var(--graph-edge-conditional)", strokeWidth: 1, strokeDasharray: "6 5" },
+        style: { stroke: "var(--graph-edge-conditional)", strokeWidth: 1 },
       });
     }
   }

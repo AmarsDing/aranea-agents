@@ -30,23 +30,74 @@
         </q-item-section>
       </q-item>
     </q-list>
+
+    <div v-if="stateSnapshot" class="graph-checkpoint-panel__preview q-mt-md">
+      <div class="graph-checkpoint-panel__preview-title row items-center q-gutter-xs">
+        <q-icon name="visibility" size="16px" />
+        <span>状态预览</span>
+      </div>
+      <div class="graph-checkpoint-panel__json">{{ snapshotJson }}</div>
+      <div v-if="nextNodes.length" class="graph-checkpoint-panel__next q-mt-xs">
+        <span class="text-caption">下一步节点：</span>
+        <q-badge v-for="n in nextNodes" :key="n" rounded color="primary" :label="n" class="q-mr-xs" />
+      </div>
+      <q-btn
+        dense
+        flat
+        rounded
+        color="accent"
+        icon="restore"
+        label="回退至此检查点"
+        class="q-mt-sm"
+        :loading="restoring"
+        @click="confirmRestore"
+      />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed, ref } from "vue";
+import { useQuasar } from "quasar";
 import type { CheckpointInfo } from "../../features/graph/types";
 import { formatTime } from "../../features/graph/utils";
 
-defineProps<{
+const props = defineProps<{
   checkpoints: CheckpointInfo[];
   loading: boolean;
   selectedCheckpointId?: string | null;
+  stateSnapshot?: Record<string, unknown> | null;
+  nextNodes?: string[];
+  restoring?: boolean;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   refresh: [];
   select: [checkpoint: CheckpointInfo];
+  restore: [checkpoint: CheckpointInfo];
 }>();
 
+const $q = useQuasar();
 
+const snapshotJson = computed(() => {
+  if (!props.stateSnapshot) return "";
+  try {
+    return JSON.stringify(props.stateSnapshot, null, 2);
+  } catch {
+    return String(props.stateSnapshot);
+  }
+});
+
+function confirmRestore() {
+  const cp = props.checkpoints.find((c) => c.checkpointId === props.selectedCheckpointId);
+  if (!cp) return;
+  $q.dialog({
+    title: "确认回退",
+    message: `将回退至检查点 ${cp.checkpointId}（step ${cp.step}），当前执行状态将被替换。确定继续？`,
+    cancel: true,
+    persistent: true,
+  }).onOk(() => {
+    emit("restore", cp);
+  });
+}
 </script>

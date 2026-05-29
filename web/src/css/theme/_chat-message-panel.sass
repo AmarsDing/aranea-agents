@@ -8,9 +8,9 @@
 // ===== Header =====
 .chat-message-header
   position: relative
-  min-height: 56px
-  padding-top: 10px
-  padding-bottom: 10px
+  min-height: 48px
+  padding-top: 8px
+  padding-bottom: 8px
   background: linear-gradient(180deg, var(--chat-header-bg-top) 0%, var(--chat-header-bg-bottom) 100%)
   backdrop-filter: blur(8px)
   -webkit-backdrop-filter: blur(8px)
@@ -200,6 +200,18 @@ body.body--dark .chat-header-prompt__box
   background: var(--chat-canvas-light)
   overflow-x: hidden
   box-sizing: border-box
+  &::after
+    content: ""
+    position: sticky
+    bottom: 0
+    left: 0
+    right: 0
+    height: 28px
+    display: block
+    background: linear-gradient(180deg, transparent, var(--chat-canvas-fade-to, rgba(254, 253, 245, 0.92)))
+    pointer-events: none
+    z-index: 1
+    margin: -28px calc(-1 * var(--chat-edge-gutter)) 0
 
 .chat-messages__viewport
   scroll-behavior: smooth

@@ -7,7 +7,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"database/sql"
 	stdlog "log"
 	"net/http"
 	"os"
@@ -588,22 +588,23 @@ func provideL4CascadeUsecase(memStore *sessionmemory.Store, factSync biz.MemoryF
 	return uc
 }
 
-func provideTRPCSessionService(d *data.Data) trpcsession.Service {
+func provideSQLiteRawDB(d *data.Data) *sql.DB {
 	if d == nil {
-		return rt.NewTRPCSessionService(nil)
+		return nil
 	}
-	return rt.NewTRPCSessionService(d.RawDB())
+	return d.RawDB()
+}
+
+func provideTRPCSessionService(rawDB *sql.DB) trpcsession.Service {
+	return rt.NewTRPCSessionService(rawDB)
 }
 
 func provideSessionMemoryResync(persist rt.PersistenceSet) araneasession.MemoryResync {
 	return persist.Memory.Admin
 }
 
-func provideGraphCheckpointSaver(d *data.Data) (*graphtrpc.SQLiteCheckpointSaver, error) {
-	if d == nil {
-		return nil, fmt.Errorf("data is nil")
-	}
-	return rt.NewGraphCheckpointSaver(d.RawDB())
+func provideGraphCheckpointSaver(rawDB *sql.DB) (*graphtrpc.SQLiteCheckpointSaver, error) {
+	return rt.NewGraphCheckpointSaver(rawDB)
 }
 
 func provideGraphBuildDeps(
@@ -1061,6 +1062,7 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideChatSender,
 		provideArtifactRuntimeService,
 		provideMemoryService,
+		provideSQLiteRawDB,
 		provideTRPCSessionService,
 		provideGraphCheckpointSaver,
 		wire.Bind(new(trpcgraph.CheckpointSaver), new(*graphtrpc.SQLiteCheckpointSaver)),

@@ -47,7 +47,12 @@
 | 设计模式模板 | ✅ | 6 种内置模板 + `CreateGraphFromTemplate` |
 | 任务系统 | ✅ | `TaskUsecase` + 状态机 + Claim/Submit/Heartbeat/Review |
 | 可视化 | ✅ | DOT 解析 + 结构化 JSON + `VisualizeGraph` API |
-| 前端编辑器 | ✅ | Vue Flow 画布 + 节点面板 + 属性面板 |
+| 前端编辑器 | ✅ | Vue Flow 画布 + 节点面板 + 属性面板 + 撤销重做 + 对齐辅助 |
+| 前端实时校验 | ✅ | useGraphLocalValidation（8 种规则，区分 error/warning） |
+| 变量引用 | ✅ | GraphVariablePicker（`{{nodeId.field}}` 格式，光标位置感知插入） |
+| Checkpoint 管理 UI | 🟡 | GraphCheckpointPanel 快照预览 + 回退确认；完整管理面板待补 |
+| 用户自定义模板 | 🟡 | ReadUserTemplateMeta/WriteUserTemplateMeta 已实现；模板市场待补 |
+| 失败策略 | 🟡 | Skip/RetryThenBlock/FailFast + CircuitBreakerPolicy Proto 定义；熔断实现待补 |
 | LLM 节点 | ❌ | `AddLLMNode` 未在 builder 中接线 |
 | Tool 节点 | ❌ | `AddToolNode` 未在 builder 中接线 |
 | Agent 节点 InputMapper/OutputMapper | ❌ | `NodeDef` 有字段但 builder 未接线 |
@@ -56,8 +61,6 @@
 | ExecutionSummary | ❌ | 无 Proto 消息和 API |
 | Graph 版本管理 | ❌ | 无版本化存储 |
 | 导入/导出 | ❌ | 无 JSON 导入导出 API |
-| 用户自定义模板 | ❌ | 仅内置模板 |
-| 熔断策略 | ❌ | 仅 Proto 定义，无实现 |
 
 ---
 

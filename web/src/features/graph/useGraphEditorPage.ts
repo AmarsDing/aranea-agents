@@ -8,6 +8,7 @@ import { useToolsStore } from "../../stores/tools";
 import { useGraphEditorAssets } from "./useGraphEditorAssets";
 import { useGraphExecute } from "./useGraphExecute";
 import { useGraphUndoRedo } from "./useGraphUndoRedo";
+import { useGraphLocalValidation } from "./useGraphLocalValidation";
 
 export function useGraphEditorPage() {
   const $q = useQuasar();
@@ -52,6 +53,7 @@ export function useGraphEditorPage() {
 
   const assets = useGraphEditorAssets(graphDef, () => isNew.value);
   const undoRedo = useGraphUndoRedo(graphDef, markDirty);
+  const localValidation = useGraphLocalValidation(computed(() => graphDef));
 
   const selectedNode = computed<NodeDef | null>(() => {
     if (!selectedNodeId.value) return null;
@@ -59,6 +61,26 @@ export function useGraphEditorPage() {
   });
 
   const canSave = computed(() => Boolean(graphDef.name && graphDef.nodes.length > 0));
+
+  const mergedValidationErrors = computed<ValidationError[]>(() => {
+    const serverKeys = new Set(validationErrors.value.map((e) => `${e.code}:${e.nodeId}:${e.field}`));
+    const filtered = localValidation.localErrors.value.filter(
+      (e) => !serverKeys.has(`${e.code}:${e.nodeId}:${e.field}`)
+    );
+    return [...validationErrors.value, ...filtered];
+  });
+
+  const mergedValidationWarnings = computed<ValidationWarning[]>(() => {
+    const serverKeys = new Set(validationWarnings.value.map((w) => `${w.code}:${w.nodeId}:${w.field}`));
+    const filtered = localValidation.localWarnings.value.filter(
+      (w) => !serverKeys.has(`${w.code}:${w.nodeId}:${w.field}`)
+    );
+    return [...validationWarnings.value, ...filtered];
+  });
+
+  const mergedValidationValid = computed(
+    () => validationValid.value && localValidation.localValid.value
+  );
 
   async function loadToolOptions() {
     try {
@@ -258,6 +280,9 @@ export function useGraphEditorPage() {
     validationErrors,
     validationWarnings,
     validationValid,
+    mergedValidationErrors,
+    mergedValidationWarnings,
+    mergedValidationValid,
     versionDialogOpen: assets.versionDialogOpen,
     versions: assets.versions,
     versionsLoading: assets.versionsLoading,
