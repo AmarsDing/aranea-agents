@@ -77,6 +77,15 @@ var ProviderSet = wire.NewSet(
 	NewWebhookRepo,
 	NewMemoryJobDeadLetterRepo,
 	NewTeamGraphSessionRepo,
+	NewIndustryRepo,
+	NewDepartmentRepo,
+	NewPositionRepo,
+	NewMemoryConsolidationWriterAdapter,
+	NewMemoryFactIndexMaintainerAdapter,
+	NewMemoryEpisodeDecayerAdapter,
+	NewMemoryFactDecayerAdapter,
+	NewMemoryEpisodeBackfillReaderAdapter,
+	NewMemoryLegacyMigratorAdapter,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.

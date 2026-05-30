@@ -81,6 +81,18 @@ func (r *usageRepo) RecordTokenUsageEvent(ctx context.Context, e biz.TokenUsageE
 	return e, nil
 }
 
+func (r *usageRepo) PurgeUsageEventsOlderThan(ctx context.Context, retainDays int) (int64, error) {
+	result, err := r.ent().ExecContext(ctx,
+		`DELETE FROM model_token_usage_events WHERE date_key < date('now', '-'||?||' days')`,
+		retainDays,
+	)
+	if err != nil {
+		return 0, err
+	}
+	affected, _ := result.RowsAffected()
+	return affected, nil
+}
+
 type execer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (stdsql.Result, error)
 }

@@ -148,6 +148,13 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
     page.value = 1;
   }
 
+  function reorderAgents(ids: string[]) {
+    const map = new Map(agents.value.map((a) => [a.id, a]));
+    const reordered = ids.map((id) => map.get(id)).filter(Boolean) as Agent[];
+    const remaining = agents.value.filter((a) => !ids.includes(a.id));
+    agents.value = [...reordered, ...remaining];
+  }
+
   return {
     keyword,
     selectedStatus,
@@ -178,7 +185,8 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
     resetListFiltersAfterCreate,
     verifyAgentKey,
     fetchAgentTemplates,
-    copyAgent
+    copyAgent,
+    reorderAgents
   };
 });
 

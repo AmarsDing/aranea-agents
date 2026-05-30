@@ -448,6 +448,9 @@ func provideRuntimeTooling(
 	knowledgeUC *biz.KnowledgeUsecase,
 	codeExecFactory *localexec.Factory,
 	kanbanBridge *service.KanbanToolBridge,
+	industryUC *biz.IndustryUsecase,
+	departmentUC *biz.DepartmentUsecase,
+	positionUC *biz.PositionUsecase,
 ) service.RuntimeTooling {
 	return service.RuntimeTooling{
 		PluginRT:                    pluginRT,
@@ -460,6 +463,9 @@ func provideRuntimeTooling(
 		KnowledgeUC:                 knowledgeUC,
 		CodeExecFactory:             codeExecFactory,
 		KanbanBridge:                kanbanBridge,
+		IndustryUC:                  industryUC,
+		DepartmentUC:                departmentUC,
+		PositionUC:                  positionUC,
 	}
 }
 
@@ -646,14 +652,14 @@ func provideArtifactRuntimeService(uc *biz.ArtifactUsecase) trpcartifact.Service
 func provideAutoMemoryWorker(
 	sessions *biz.SessionUsecase,
 	agents *biz.AgentUsecase,
-	memStore *sessionmemory.Store,
+	writer biz.MemoryConsolidationWriter,
 	l4 biz.L4GraphWriter,
 	factSync biz.MemoryFactIndexSyncer,
 	episodeSync biz.EpisodeIndexSyncer,
 	extractor biz.MemoryTextExtractor,
 	queue memtrpc.AutoMemoryQueue,
 ) (*jobs.AutoMemoryWorker, error) {
-	return jobs.NewAutoMemoryWorker(0, sessions, agents, memStore, factSync, episodeSync, l4, biz.DefaultMemoryConsolidator(extractor), queue)
+	return jobs.NewAutoMemoryWorker(0, sessions, agents, writer, factSync, episodeSync, l4, biz.DefaultMemoryConsolidator(extractor), queue)
 }
 
 func provideL4GraphWriter(memStore *sessionmemory.Store, cascade *biz.L4CascadeUsecase) biz.L4GraphWriter {
@@ -695,32 +701,32 @@ func provideChannelRuntime(channels *biz.ChannelUsecase, ingress *service.Channe
 	return service.NewChannelRuntime(channels, ingress, leases)
 }
 
-func provideMemoryL2DecayWorker(store *sessionmemory.Store, agents *biz.AgentUsecase, logger log.Logger) *jobs.MemoryL2DecayWorker {
+func provideMemoryL2DecayWorker(decayer biz.MemoryEpisodeDecayer, agents *biz.AgentUsecase, logger log.Logger) *jobs.MemoryL2DecayWorker {
 	if jobs.MemoryL2DecayDisabled() {
 		return nil
 	}
-	return jobs.NewMemoryL2DecayWorker(0, store, agents, logger)
+	return jobs.NewMemoryL2DecayWorker(0, decayer, agents, logger)
 }
 
-func provideMemoryEpisodeBackfillWorker(store *sessionmemory.Store, episodeSync biz.EpisodeIndexSyncer, sys biz.SystemSettingRepo, logger log.Logger) *jobs.MemoryEpisodeBackfillWorker {
+func provideMemoryEpisodeBackfillWorker(reader biz.MemoryEpisodeBackfillReader, episodeSync biz.EpisodeIndexSyncer, sys biz.SystemSettingRepo, logger log.Logger) *jobs.MemoryEpisodeBackfillWorker {
 	if biz.ResolveEpisodeBackfillDisabled(context.Background(), sys) {
 		return nil
 	}
-	return jobs.NewMemoryEpisodeBackfillWorker(0, store, episodeSync, sys, logger)
+	return jobs.NewMemoryEpisodeBackfillWorker(0, reader, episodeSync, sys, logger)
 }
 
-func provideMemoryDataMigrationWorker(store *sessionmemory.Store, logger log.Logger) *jobs.MemoryDataMigrationWorker {
+func provideMemoryDataMigrationWorker(migrator biz.MemoryLegacyMigrator, logger log.Logger) *jobs.MemoryDataMigrationWorker {
 	if jobs.MemoryDataMigrationDisabled() {
 		return nil
 	}
-	return jobs.NewMemoryDataMigrationWorker(store, logger)
+	return jobs.NewMemoryDataMigrationWorker(migrator, logger)
 }
 
-func provideMemoryL3DecayWorker(store *sessionmemory.Store, agents *biz.AgentUsecase, logger log.Logger) *jobs.MemoryL3DecayWorker {
+func provideMemoryL3DecayWorker(decayer biz.MemoryFactDecayer, agents *biz.AgentUsecase, logger log.Logger) *jobs.MemoryL3DecayWorker {
 	if jobs.MemoryL3DecayDisabled() {
 		return nil
 	}
-	return jobs.NewMemoryL3DecayWorker(0, store, agents, logger)
+	return jobs.NewMemoryL3DecayWorker(0, decayer, agents, logger)
 }
 
 func provideMemoryL4DecayWorker(l4 biz.L4GraphWriter, agents *biz.AgentUsecase, logger log.Logger) *jobs.MemoryL4DecayWorker {
@@ -730,11 +736,11 @@ func provideMemoryL4DecayWorker(l4 biz.L4GraphWriter, agents *biz.AgentUsecase, 
 	return jobs.NewMemoryL4DecayWorker(0, l4, agents, logger)
 }
 
-func provideMemoryFactIndexReconciler(store *sessionmemory.Store, factSync biz.MemoryFactIndexSyncer, logger log.Logger) *jobs.MemoryFactIndexReconciler {
+func provideMemoryFactIndexReconciler(maintainer biz.MemoryFactIndexMaintainer, factSync biz.MemoryFactIndexSyncer, logger log.Logger) *jobs.MemoryFactIndexReconciler {
 	if jobs.MemoryIndexReconcileDisabled() {
 		return nil
 	}
-	return jobs.NewMemoryFactIndexReconciler(0, store, factSync, logger)
+	return jobs.NewMemoryFactIndexReconciler(0, maintainer, factSync, logger)
 }
 
 func provideMemoryDeadLetterReplayer(repo biz.MemoryDeadLetterAdminRepo, queue memtrpc.AutoMemoryQueue, logger log.Logger) *jobs.MemoryDeadLetterReplayer {

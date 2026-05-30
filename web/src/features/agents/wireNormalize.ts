@@ -223,6 +223,9 @@ export function normalizeAgentFromService(raw: unknown): Agent {
     is_favorite: pickBool(w, "isFavorite", "is_favorite", false),
     icon: pickStr(w, "icon", "icon"),
     agent_description: pickStr(w, "agentDescription", "agent_description"),
+    position_key: pickStrOpt(w, "positionKey", "position_key"),
+    agent_variant: pickStrOpt(w, "agentVariant", "agent_variant"),
+    variant_description: pickStrOpt(w, "variantDescription", "variant_description"),
     category_position_id: pickStr(w, "categoryPositionId", "category_position_id"),
     system_prompt_mode: pickStr(w, "systemPromptMode", "system_prompt_mode", "complete"),
     context_window: pickNum(w, "contextWindow", "context_window", 0),
@@ -238,6 +241,7 @@ export function normalizeAgentFromService(raw: unknown): Agent {
     last_run_status: pickStrOpt(w, "lastRunStatus", "last_run_status"),
     last_run_at: pickStrOpt(w, "lastRunAt", "last_run_at"),
     pending_evolution_count: pickNum(w, "pendingEvolutionCount", "pending_evolution_count", 0),
+    readonly: pickBool(w, "readonly", "readonly", false),
     settings: normalizeRuntimeSettingsFromWire(w.settings),
     files
   };
@@ -385,6 +389,9 @@ export function partialAgentToWire(payload: Partial<Agent>): KratosAgentWire {
   if (payload.is_favorite !== undefined) o.isFavorite = payload.is_favorite;
   if (payload.icon !== undefined) o.icon = payload.icon;
   if (payload.agent_description !== undefined) o.agentDescription = payload.agent_description;
+  if (payload.position_key !== undefined) o.positionKey = payload.position_key;
+  if (payload.agent_variant !== undefined) o.agentVariant = payload.agent_variant;
+  if (payload.variant_description !== undefined) o.variantDescription = payload.variant_description;
   if (payload.category_position_id !== undefined) o.categoryPositionId = payload.category_position_id;
   if (payload.system_prompt_mode !== undefined) o.systemPromptMode = payload.system_prompt_mode;
   if (payload.context_window !== undefined) o.contextWindow = payload.context_window;

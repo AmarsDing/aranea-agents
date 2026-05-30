@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
 
@@ -22,25 +21,25 @@ const (
 // MemoryL3DecayWorker periodically reduces stored fact importance for stale L3 rows.
 type MemoryL3DecayWorker struct {
 	interval time.Duration
-	store    *sessionmemory.Store
+	decayer  biz.MemoryFactDecayer
 	agents   *biz.AgentUsecase
 	log      *log.Helper
 }
 
-func NewMemoryL3DecayWorker(interval time.Duration, store *sessionmemory.Store, agents *biz.AgentUsecase, logger log.Logger) *MemoryL3DecayWorker {
+func NewMemoryL3DecayWorker(interval time.Duration, decayer biz.MemoryFactDecayer, agents *biz.AgentUsecase, logger log.Logger) *MemoryL3DecayWorker {
 	if interval <= 0 {
 		interval = memoryL3DecayDefaultInterval
 	}
 	return &MemoryL3DecayWorker{
 		interval: interval,
-		store:    store,
+		decayer:  decayer,
 		agents:   agents,
 		log:      log.NewHelper(logger),
 	}
 }
 
 func (w *MemoryL3DecayWorker) Start(ctx context.Context) {
-	if w == nil || w.store == nil {
+	if w == nil || w.decayer == nil {
 		return
 	}
 	ticker := time.NewTicker(w.interval)
@@ -77,7 +76,7 @@ func (w *MemoryL3DecayWorker) runOnce(ctx context.Context) {
 					intervalHours = 24
 				}
 				cutoff := time.Now().UTC().Add(-time.Duration(intervalHours) * time.Hour).Format(time.RFC3339Nano)
-				n, err := w.store.ApplyAgentFactImportanceDecay(ctx, t.AgentID, cutoff, memoryL3DecayBatchFactor)
+				n, err := w.decayer.ApplyAgentFactImportanceDecay(ctx, t.AgentID, cutoff, memoryL3DecayBatchFactor)
 				if err != nil {
 					event.SysLogWarn("memory.l3_decay", "L3 fact importance decay failed", event.P("agent_id", t.AgentID), event.P("error", err))
 					continue
@@ -90,7 +89,7 @@ func (w *MemoryL3DecayWorker) runOnce(ctx context.Context) {
 			return
 		}
 		cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339Nano)
-		n, err := w.store.ApplyAllFactImportanceDecay(ctx, cutoff, memoryL3DecayBatchFactor)
+		n, err := w.decayer.ApplyAllFactImportanceDecay(ctx, cutoff, memoryL3DecayBatchFactor)
 		if err != nil {
 			event.SysLogWarn("memory.l3_decay", "L3 fact importance decay failed", event.P("error", err))
 			if w.log != nil {

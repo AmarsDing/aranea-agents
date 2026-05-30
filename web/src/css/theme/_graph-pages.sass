@@ -1130,18 +1130,19 @@ body.body--dark
   opacity: 0.5
   background: var(--q-primary)
 
-// Graph 右键上下文菜单（从 scoped 迁移至全局，支持亮/暗模式）
+// Graph 右键上下文菜单 — v7 设计稿对齐（赛博青色系 + 顶部/底部光线条 + 左侧发光条）
 .graph-ctx-menu
   position: fixed
   z-index: 9999
-  min-width: 210px
+  width: 234px
   background: var(--graph-ctx-bg)
   backdrop-filter: blur(28px)
   -webkit-backdrop-filter: blur(28px)
   border: 1px solid var(--graph-ctx-border)
   border-radius: 10px
-  box-shadow: 0 0 20px color-mix(in srgb, var(--graph-ctx-accent) 8%, transparent), 0 0 60px color-mix(in srgb, var(--graph-ctx-accent) 4%, transparent), 0 8px 32px rgba(0, 0, 0, 0.3)
-  padding: 4px 0
+  box-shadow: 0 0 32px color-mix(in srgb, var(--graph-ctx-accent) 5%, transparent), 0 12px 48px rgba(0, 0, 0, 0.8)
+  padding: 6px 0
+  overflow: hidden
   animation: ctx-menu-in 0.12s ease-out
 
 @keyframes ctx-menu-in
@@ -1152,95 +1153,110 @@ body.body--dark
     opacity: 1
     transform: scale(1) translateY(0)
 
-.graph-ctx-menu__top-line,
-.graph-ctx-menu__bottom-line
+// 顶部 / 底部光线条（v7 规范）
+.graph-ctx-menu__glow-top,
+.graph-ctx-menu__glow-bottom
+  position: absolute
+  left: 0
+  right: 0
   height: 1px
+  pointer-events: none
+
+.graph-ctx-menu__glow-top
+  top: 0
   background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--graph-ctx-accent) 50%, transparent), transparent)
-  margin: 0 8px
 
-.graph-ctx-menu__top-line
-  margin-bottom: 4px
+.graph-ctx-menu__glow-bottom
+  bottom: 0
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--graph-ctx-accent) 30%, transparent), transparent)
 
-.graph-ctx-menu__bottom-line
-  margin-top: 4px
-
+// 菜单项（v7 规范：flex 布局 + 左侧发光条 + 悬停内发光）
 .graph-ctx-menu__item
   display: flex
   align-items: center
   gap: 10px
   padding: 9px 14px
-  margin: 2px 4px
+  margin: 2px 5px
   border-radius: 4px
   cursor: pointer
   position: relative
-  transition: background 0.1s, transform 0.08s
+  transition: background 0.1s, transform 0.08s, box-shadow 0.1s
 
-.graph-ctx-menu__item::before
-  content: ""
+// 左侧发光条（悬停时显示，颜色跟随语义类型）
+.graph-ctx-menu__accent
   position: absolute
   left: 0
-  top: 4px
-  bottom: 4px
+  top: 3px
+  bottom: 3px
   width: 2px
-  border-radius: 1px
+  border-radius: 0 1px 1px 0
   background: var(--graph-ctx-accent)
   opacity: 0
   transition: opacity 0.12s
-  box-shadow: 0 0 6px var(--graph-ctx-glow)
+  box-shadow: 0 0 6px var(--graph-ctx-glow), 0 0 14px color-mix(in srgb, var(--graph-ctx-glow) 40%, transparent)
 
+// 悬停态：背景着色 + 内发光 + 左条显现 + 图标投影
 .graph-ctx-menu__item:hover
   background: color-mix(in srgb, var(--graph-ctx-accent) 6%, transparent)
+  box-shadow: inset 0 0 16px color-mix(in srgb, var(--graph-ctx-accent) 3%, transparent)
 
-.graph-ctx-menu__item:hover::before
+.graph-ctx-menu__item:hover .graph-ctx-menu__accent
   opacity: 1
 
+// 按压态：缩放 + 加深背景
 .graph-ctx-menu__item:active
+  transform: scale(0.97)
   background: color-mix(in srgb, var(--graph-ctx-accent) 12%, transparent)
 
-.graph-ctx-menu__item--danger::before
+// 危险操作项（赛博粉 #f472b6）
+.graph-ctx-menu__item--danger .graph-ctx-menu__accent
   background: var(--graph-ctx-danger)
-  box-shadow: 0 0 6px var(--graph-ctx-danger-glow)
+  box-shadow: 0 0 6px var(--graph-ctx-danger-glow), 0 0 14px color-mix(in srgb, var(--graph-ctx-danger-glow) 40%, transparent)
 
 .graph-ctx-menu__item--danger:hover
   background: color-mix(in srgb, var(--graph-ctx-danger) 6%, transparent)
+  box-shadow: inset 0 0 16px color-mix(in srgb, var(--graph-ctx-danger) 3%, transparent)
 
 .graph-ctx-menu__item--danger:active
   background: color-mix(in srgb, var(--graph-ctx-danger) 12%, transparent)
 
-.graph-ctx-menu__item--success::before
+// 成功操作项（翡翠绿 #34d399）
+.graph-ctx-menu__item--success .graph-ctx-menu__accent
   background: var(--graph-ctx-success)
-  box-shadow: 0 0 6px var(--graph-ctx-success-glow)
+  box-shadow: 0 0 6px var(--graph-ctx-success-glow), 0 0 14px color-mix(in srgb, var(--graph-ctx-success-glow) 40%, transparent)
 
 .graph-ctx-menu__item--success:hover
   background: color-mix(in srgb, var(--graph-ctx-success) 6%, transparent)
+  box-shadow: inset 0 0 16px color-mix(in srgb, var(--graph-ctx-success) 3%, transparent)
 
 .graph-ctx-menu__item--success:active
   background: color-mix(in srgb, var(--graph-ctx-success) 12%, transparent)
 
+// 禁用态
+.graph-ctx-menu__item--disabled
+  opacity: 0.35
+  pointer-events: none
+
+// 图标（等宽 + 悬停投影）
 .graph-ctx-menu__icon
-  width: 20px
+  width: 18px
   text-align: center
-  font-size: 16px
-  color: var(--graph-ctx-accent)
-  font-weight: 700
+  font-size: 13px
   flex-shrink: 0
+  padding-left: 2px
   transition: filter 0.12s
+  color: var(--graph-ctx-text)
 
 .graph-ctx-menu__item:hover .graph-ctx-menu__icon
   filter: drop-shadow(0 0 4px var(--graph-ctx-glow))
 
-.graph-ctx-menu__item--danger .graph-ctx-menu__icon
-  color: var(--graph-ctx-danger)
-
 .graph-ctx-menu__item--danger:hover .graph-ctx-menu__icon
   filter: drop-shadow(0 0 4px var(--graph-ctx-danger-glow))
-
-.graph-ctx-menu__item--success .graph-ctx-menu__icon
-  color: var(--graph-ctx-success)
 
 .graph-ctx-menu__item--success:hover .graph-ctx-menu__icon
   filter: drop-shadow(0 0 4px var(--graph-ctx-success-glow))
 
+// 标签文字
 .graph-ctx-menu__label
   flex: 1
   color: var(--graph-ctx-text)
@@ -1249,6 +1265,7 @@ body.body--dark
   letter-spacing: 0.03em
   white-space: nowrap
 
+// 快捷键徽章（等宽字体 + 边框）
 .graph-ctx-menu__shortcut
   padding: 1px 5px
   border-radius: 3px

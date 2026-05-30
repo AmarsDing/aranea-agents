@@ -395,6 +395,19 @@ function upsertRunStep(step: TeamRunStep) {
   stepsByRun.value = { ...stepsByRun.value, [step.run_id]: next };
 }
 
+// TECH-DEBT: reorder is local-only; add backend persistence API — issue #xxx
+function reorderTeams(ids: string[]) {
+  const idIndex = new Map(ids.map((id, i) => [id, i]));
+  rows.value = [...rows.value].sort((a, b) => {
+    const ai = idIndex.get(a.id);
+    const bi = idIndex.get(b.id);
+    if (ai !== undefined && bi !== undefined) return ai - bi;
+    if (ai !== undefined) return -1;
+    if (bi !== undefined) return 1;
+    return 0;
+  });
+}
+
   return {
     isDark, rows, agents, loading, saving, error, search, modeFilter, statusFilter, industryFilter,
     categoryTree, industryOptions, teamIndustryGroups,
@@ -403,6 +416,7 @@ function upsertRunStep(step: TeamRunStep) {
     summariesByRun, summariesLoading, testOpen, testTeam, testLoading, testError, testReply, testRun,
     form, definition, agentOptions, definitionJSON, canSave, filteredTeams,
     loadRows, openCreate, openEdit, addMember, removeMember, applyTemplate, save, duplicate, confirmRemove,
-    copyKey, openRuns, openRunTest, executeRunTest, loadRunSummary, openRunObservatory, openTeamObservatory, loadRuns, loadRunSteps
+    copyKey, openRuns, openRunTest, executeRunTest, loadRunSummary, openRunObservatory, openTeamObservatory, loadRuns, loadRunSteps,
+    reorderTeams
   };
 }

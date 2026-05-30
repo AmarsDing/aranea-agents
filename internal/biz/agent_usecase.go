@@ -341,6 +341,9 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 	if err != nil {
 		return Agent{}, err
 	}
+	if current.Readonly {
+		return Agent{}, kerrors.Forbidden("AGENT", "cannot update a readonly agent")
+	}
 	HydrateAgentKind(&patch)
 	HydrateAgentKind(&current)
 	if strings.TrimSpace(patch.Kind) != "" && NormalizeAgentKind(patch.Kind) != NormalizeAgentKind(current.Kind) {
@@ -397,6 +400,13 @@ func (u *AgentUsecase) Delete(ctx context.Context, id string) error {
 	id, err := requireNonEmpty(id, "AGENT", "id")
 	if err != nil {
 		return err
+	}
+	current, err := u.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if current.Readonly {
+		return kerrors.Forbidden("AGENT", "cannot delete a readonly agent")
 	}
 	return u.repo.DeleteAgent(ctx, id)
 }

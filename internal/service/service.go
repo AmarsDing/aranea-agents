@@ -97,6 +97,7 @@ var ProviderSet = wire.NewSet(
 	ProvideWebResearchTester,
 	// PGO-3: AI prompt refinement service.
 	NewAIRefineService,
+	NewIndustryService,
 )
 
 func ProvideSkillResolveRootFn(sys biz.SystemSettingRepo) func(ctx context.Context) string {

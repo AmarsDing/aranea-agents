@@ -29,6 +29,7 @@
       @copy-key="copyAgentKey"
       @delete="confirmDelete"
       @duplicate="duplicateListedAgent"
+      @reorder="onReorder"
     />
 
     <agents-pagination-bar v-model:page="page" v-model:rows-per-page="rowsPerPage" :total="total" :page-max="pageMax" />
@@ -37,6 +38,10 @@
       v-model="createOpen"
       v-model:self-evolve="selfEvolve"
       v-model:agent-kind="agentKind"
+      v-model:industry-key="industryKey"
+      v-model:department-key="departmentKey"
+      v-model:position-key="positionKey"
+      v-model:variant="variant"
       :form="form"
       :a2a-proxy="a2aProxy"
       :isA2AProxy="isA2AProxyCreate"
@@ -53,6 +58,14 @@
       :can-create="canCreate"
       :creating="creating"
       :checking-model="checkingModel"
+      :industries="industries"
+      :departments="departments"
+      :positions="positions"
+      :loading-industries="loadingIndustries"
+      :loading-departments="loadingDepartments"
+      :loading-positions="loadingPositions"
+      :variant-options="variantOptions"
+      :prompt-result="promptResult"
       @apply-template="applyTemplate"
       @check-model="checkModel"
       @create="onCreate"
@@ -146,6 +159,18 @@ const {
   toggleFavorite,
   copyAgentKey,
   openCreate,
-  categoryLabel
+  categoryLabel,
+  industryKey,
+  departmentKey,
+  positionKey,
+  variant,
+  industries,
+  departments,
+  positions,
+  loadingIndustries,
+  loadingDepartments,
+  loadingPositions,
+  variantOptions,
+  promptResult,
 } = useAgentsPage();
 </script>

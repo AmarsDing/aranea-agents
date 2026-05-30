@@ -4,7 +4,8 @@ import {
   exportUsageEventsCsv,
   getModelUsageOverview,
   listModelUsageEvents,
-  listModelUsageTrends
+  listModelUsageTrends,
+  purgeUsageEvents
 } from "../../features/usage/api";
 import type { ModelTokenUsageEvent, ModelUsageOverview, ModelUsageQuery, ModelUsageTrendPoint } from "../../features/usage/types";
 
@@ -69,6 +70,11 @@ export const useUsageStore = defineStore("usage", () => {
     }
   }
 
+  async function purgeEvents(retainDays: number): Promise<number> {
+    const result = await purgeUsageEvents(retainDays);
+    return result.deleted_count;
+  }
+
   return {
     overview,
     trends,
@@ -82,6 +88,7 @@ export const useUsageStore = defineStore("usage", () => {
     fetchOverview,
     loadTrends,
     loadEvents,
-    exportEventsCsv
+    exportEventsCsv,
+    purgeEvents
   };
 });

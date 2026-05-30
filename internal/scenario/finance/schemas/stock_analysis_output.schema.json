@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "StockAnalysisOutput",
+  "type": "object",
+  "required": ["stock_code", "stock_name", "analysis_date", "technical_score", "fundamental_score", "money_flow_score", "sentiment_score", "overall_rating", "analysis_summary", "key_levels", "risk_warning", "disclaimer"],
+  "properties": {
+    "stock_code": {
+      "type": "string",
+      "description": "股票代码，如 600519.SH"
+    },
+    "stock_name": {
+      "type": "string",
+      "description": "股票名称"
+    },
+    "analysis_date": {
+      "type": "string",
+      "format": "date",
+      "description": "分析日期"
+    },
+    "technical_score": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "技术面评分（1-10）"
+    },
+    "fundamental_score": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "基本面评分（1-10）"
+    },
+    "money_flow_score": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "资金面评分（1-10）"
+    },
+    "sentiment_score": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10,
+      "description": "情绪面评分（1-10）"
+    },
+    "overall_rating": {
+      "type": "string",
+      "enum": ["strong_buy", "buy", "hold", "sell", "strong_sell"],
+      "description": "综合评级"
+    },
+    "analysis_summary": {
+      "type": "string",
+      "description": "分析摘要"
+    },
+    "key_levels": {
+      "type": "object",
+      "properties": {
+        "support_levels": {
+          "type": "array",
+          "items": { "type": "number" },
+          "description": "支撑位列表"
+        },
+        "resistance_levels": {
+          "type": "array",
+          "items": { "type": "number" },
+          "description": "阻力位列表"
+        },
+        "stop_loss": {
+          "type": "number",
+          "description": "止损位"
+        },
+        "target_price": {
+          "type": "number",
+          "description": "目标价"
+        }
+      },
+      "required": ["support_levels", "resistance_levels"]
+    },
+    "risk_warning": {
+      "type": "string",
+      "description": "风险提示"
+    },
+    "disclaimer": {
+      "type": "string",
+      "description": "免责声明"
+    }
+  }
+}

@@ -454,6 +454,7 @@ function onPaneClick() {
 
 function onPaneContextMenu(event: MouseEvent) {
   event.preventDefault();
+  ctxMenuVisible.value = false;
   paneMenuX.value = event.clientX;
   paneMenuY.value = event.clientY;
   paneMenuVisible.value = true;
@@ -504,6 +505,7 @@ const searchMatchCount = computed(() => searchMatches.value.length);
 
 function onNodeContextMenu({ event, node }: { event: MouseEvent; node: Node }) {
   event.preventDefault();
+  paneMenuVisible.value = false;
   ctxMenuNodeId.value = node.id;
   ctxMenuX.value = event.clientX;
   ctxMenuY.value = event.clientY;
@@ -814,7 +816,7 @@ function onDragOver(event: DragEvent) {
 function onDrop(event: DragEvent) {
   if (readOnly.value) return;
   const type = event.dataTransfer?.getData("application/graph-node-type") as NodeType | undefined;
-  if (!type) return;
+  if (!type || !NODE_TYPE_STYLES[type]) return;
 
   const id = `${type}_${Date.now()}`;
   const newNode: NodeDef = {
@@ -853,24 +855,7 @@ function onDrop(event: DragEvent) {
   const index = props.graphDef.nodes.length;
   props.graphDef.nodes.push(newNode);
 
-  internalNodes.value.push({
-    id,
-    type,
-    position: dropPosition,
-    data: {
-      nodeId: id,
-      nodeType: type as NodeType,
-      label: id,
-      instruction: "",
-      execStatus: undefined,
-    },
-    style: (type === "router" || type === "join")
-      ? {}
-      : {
-          background: NODE_TYPE_STYLES[type].fillColor,
-          borderColor: NODE_TYPE_STYLES[type].borderColor,
-        },
-  });
+  writeGraphNodePosition(props.graphDef, id, dropPosition);
 
   if (props.undoRedo) {
     props.undoRedo.pushAddNode(newNode, index);

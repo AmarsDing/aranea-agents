@@ -1,12 +1,23 @@
 package session
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 func (uc *SessionUsecase) GetSessionState(ctx context.Context, sessionID string) (map[string]string, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil, validationErr("session id is required")
+	}
 	return uc.stateRepo.GetSessionState(ctx, sessionID)
 }
 
 func (uc *SessionUsecase) SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return validationErr("session id is required")
+	}
 	return uc.stateRepo.SaveSessionState(ctx, sessionID, state)
 }
 

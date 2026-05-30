@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NovelChapterOutput",
+  "type": "object",
+  "required": ["chapter_summary", "body_markdown", "emotion_curve"],
+  "properties": {
+    "chapter_summary": {
+      "type": "string",
+      "maxLength": 100,
+      "description": "本章概要，50字以内"
+    },
+    "body_markdown": {
+      "type": "string",
+      "description": "正文内容，Markdown格式"
+    },
+    "foreshadowing_tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "伏笔标注列表，格式如 '伏笔:xxx'"
+    },
+    "emotion_curve": {
+      "type": "string",
+      "enum": ["rising", "climax", "falling", "tension", "calm"],
+      "description": "情感曲线标记"
+    },
+    "word_count": {
+      "type": "integer",
+      "minimum": 2200,
+      "maximum": 2800,
+      "description": "章节字数，控制在2200-2800区间"
+    },
+    "hook_opening": {
+      "type": "string",
+      "description": "开头钩子内容"
+    },
+    "hook_ending": {
+      "type": "string",
+      "description": "尾巴钩子内容"
+    },
+    "character_appearances": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "action": { "type": "string" },
+          "emotion": { "type": "string" }
+        },
+        "required": ["name"]
+      },
+      "description": "本章出场角色列表"
+    }
+  }
+}

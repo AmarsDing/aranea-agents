@@ -52,6 +52,9 @@ type RuntimeTooling struct {
 	KnowledgeUC                *biz.KnowledgeUsecase
 	CodeExecFactory            *localexec.Factory
 	KanbanBridge               kanbanpkg.Bridge
+	IndustryUC                 *biz.IndustryUsecase
+	DepartmentUC               *biz.DepartmentUsecase
+	PositionUC                 *biz.PositionUsecase
 }
 
 // TeamOrchestrationDeps groups team execution and graph compilation dependencies.

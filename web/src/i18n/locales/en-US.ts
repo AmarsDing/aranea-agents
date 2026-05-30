@@ -286,6 +286,7 @@ export default {
     cronRuns: "Cron run history",
     monitor: "Monitoring",
     shop: "Marketplace",
+    industryMarket: "Industry Templates",
     settings: "System settings"
   },
   settingsPage: {
@@ -942,8 +943,8 @@ export default {
     successRate: "Success rate",
     tokenComposition: "Token composition",
     statActiveAgents: "Active Agents",
-    statProviders: "Providers",
-    statCategories: "Categories",
+    statProviders: "Model Providers",
+    statCategories: "Industries",
     statTeams: "Teams",
     statTodayChats: "Today Chats",
     statTodayTokens: "Today Tokens",

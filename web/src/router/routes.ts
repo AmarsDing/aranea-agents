@@ -41,6 +41,8 @@ import GraphExecutionsPage from "../pages/GraphExecutionsPage.vue";
 import TeamRunObservatoryPage from "../pages/TeamRunObservatoryPage.vue";
 import TeamOrchestratePage from "../pages/TeamOrchestratePage.vue";
 import ThemePreviewPage from "../pages/ThemePreviewPage.vue";
+import IndustryMarketPage from "../pages/industries/IndustryMarketPage.vue";
+import IndustryDetailPage from "../pages/industries/IndustryDetailPage.vue";
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -173,6 +175,8 @@ export const routes: RouteRecordRaw[] = [
       { path: "cron/runs", name: "cron-runs", component: CronRunsPage },
       { path: "monitor/logs", name: "monitor-logs", component: MonitorPage },
       { path: "shop", name: "shop", component: EcosystemPage },
+      { path: "industries", name: "industry-market", component: IndustryMarketPage },
+      { path: "industries/:key", name: "industry-detail", component: IndustryDetailPage },
       { path: "settings", name: "settings", component: SystemSettingsPage, meta: { titleKey: "menu.settings" } },
       ...(import.meta.env.DEV
         ? [{ path: "dev/theme-preview", name: "theme-preview", component: ThemePreviewPage }]

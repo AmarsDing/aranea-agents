@@ -11,7 +11,6 @@ import (
 	"unicode/utf8"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/internal/event"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	servmetrics "aranea-agents/internal/metrics"
@@ -34,7 +33,7 @@ type AutoMemoryWorker struct {
 	interval     time.Duration
 	sessions     *biz.SessionUsecase
 	agents       *biz.AgentUsecase
-	memStore     *sessionmemory.Store
+	writer       biz.MemoryConsolidationWriter
 	indexSync    biz.MemoryFactIndexSyncer
 	episodeSync  biz.EpisodeIndexSyncer
 	l4           biz.L4GraphWriter
@@ -47,7 +46,7 @@ func NewAutoMemoryWorker(
 	interval time.Duration,
 	sessions *biz.SessionUsecase,
 	agents *biz.AgentUsecase,
-	memStore *sessionmemory.Store,
+	writer biz.MemoryConsolidationWriter,
 	indexSync biz.MemoryFactIndexSyncer,
 	episodeSync biz.EpisodeIndexSyncer,
 	l4 biz.L4GraphWriter,
@@ -67,7 +66,7 @@ func NewAutoMemoryWorker(
 		interval:     interval,
 		sessions:     sessions,
 		agents:       agents,
-		memStore:     memStore,
+		writer:       writer,
 		indexSync:    indexSync,
 		episodeSync:  episodeSync,
 		l4:           l4,
@@ -146,8 +145,8 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 	if sid == "" {
 		return nil
 	}
-	if w.sessions == nil || w.memStore == nil || w.consolidator == nil {
-		event.SysLogDebug("system.auto_memory.extract_fail", "自动记忆跳过：未注入 sessions/memStore/consolidator", event.P("session_id", sid))
+	if w.sessions == nil || w.writer == nil || w.consolidator == nil {
+		event.SysLogDebug("system.auto_memory.extract_fail", "自动记忆跳过：未注入 sessions/writer/consolidator", event.P("session_id", sid))
 		return nil
 	}
 
@@ -208,7 +207,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 
 	lastUserMsgID := lastUserMessageID(msgs)
 	msgIDsWithL3 := make(map[string]struct{})
-	var factInputs []sessionmemory.MemoryFactUpsert
+	var factInputs []biz.MemoryFactWrite
 	if memoryPolicy.WriteL3Facts {
 		for _, p := range proposals {
 			stmt := strings.TrimSpace(p.Statement)
@@ -222,7 +221,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 			if msgID != "" {
 				msgIDsWithL3[msgID] = struct{}{}
 			}
-			factInputs = append(factInputs, sessionmemory.MemoryFactUpsert{
+			factInputs = append(factInputs, biz.MemoryFactWrite{
 				ScopeType:       "agent",
 				ScopeID:         appName,
 				UserID:          userID,
@@ -242,7 +241,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 		}
 	}
 
-	var ep *sessionmemory.EpisodeInsert
+	var ep *biz.EpisodeWrite
 	if memoryPolicy.WriteL2Episode && len(factInputs) > 0 {
 		added := len(factInputs)
 		title := "Auto-memory consolidation"
@@ -250,7 +249,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 			title = previewText(factInputs[0].Statement, 120)
 		}
 		summary := previewText(buildEpisodeSummary(proposals, added), 500)
-		ep = &sessionmemory.EpisodeInsert{
+		ep = &biz.EpisodeWrite{
 			SessionID:      sid,
 			AgentID:        agentID,
 			UserID:         userID,
@@ -263,7 +262,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 		}
 	}
 
-	writeResult, err := w.memStore.UpsertFactsAndEpisodeBatch(ctx, factInputs, ep)
+	writeResult, err := w.writer.UpsertFactsAndEpisodeBatch(ctx, factInputs, ep)
 	if err != nil {
 		event.SessionSysLogWarn(ctx, sid, "system.auto_memory.extract_fail", "自动记忆巩固写入失败",
 			event.P("error", err))
@@ -330,8 +329,8 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 	if sid == "" || msgID == "" || rating == "" {
 		return nil
 	}
-	if w.sessions == nil || w.memStore == nil || w.feedback == nil {
-		event.SysLogDebug("system.auto_memory.feedback_skip", "反馈记忆跳过：未注入 sessions/memStore", event.P("session_id", sid))
+	if w.sessions == nil || w.writer == nil || w.feedback == nil {
+		event.SysLogDebug("system.auto_memory.feedback_skip", "反馈记忆跳过：未注入 sessions/writer", event.P("session_id", sid))
 		return nil
 	}
 	sess, err := w.sessions.Get(ctx, sid)
@@ -369,13 +368,13 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 	if err != nil {
 		return err
 	}
-	var facts []sessionmemory.MemoryFactUpsert
+	var facts []biz.MemoryFactWrite
 	for _, p := range proposals {
 		stmt := strings.TrimSpace(p.Statement)
 		if stmt == "" {
 			continue
 		}
-		facts = append(facts, sessionmemory.MemoryFactUpsert{
+		facts = append(facts, biz.MemoryFactWrite{
 			ScopeType:       "agent",
 			ScopeID:         appName,
 			UserID:          userID,
@@ -396,7 +395,7 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 	if len(facts) == 0 {
 		return nil
 	}
-	writeResult, err := w.memStore.UpsertFactsAndEpisodeBatch(ctx, facts, nil)
+	writeResult, err := w.writer.UpsertFactsAndEpisodeBatch(ctx, facts, nil)
 	if err != nil {
 		return err
 	}

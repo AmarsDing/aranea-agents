@@ -399,6 +399,9 @@ func fromProtoAgent(pb *v1.Agent) biz.Agent {
 		Icon:               pb.GetIcon(),
 		AgentDescription:   pb.GetAgentDescription(),
 		CategoryPositionID: pb.GetCategoryPositionId(),
+		PositionKey:        pb.GetPositionKey(),
+		AgentVariant:       pb.GetAgentVariant(),
+		VariantDescription: pb.GetVariantDescription(),
 		SystemPromptMode:   pb.GetSystemPromptMode(),
 		ContextWindow:      int(pb.GetContextWindow()),
 		BudgetMonthlyCents: int(pb.GetBudgetMonthlyCents()),
@@ -408,6 +411,7 @@ func fromProtoAgent(pb *v1.Agent) biz.Agent {
 		DeletedAt:          pb.GetDeletedAt(),
 		Kind:               pb.GetAgentKind(),
 		A2AProxy:           fromProtoA2AProxy(pb.GetA2AProxyConfig()),
+		Readonly:           pb.GetReadonly(),
 	}
 	biz.HydrateAgentKind(&a)
 	if s := fromProtoRuntime(pb.GetSettings()); s != nil {
@@ -433,6 +437,9 @@ func toProtoAgent(b biz.Agent) *v1.Agent {
 		Icon:               b.Icon,
 		AgentDescription:   b.AgentDescription,
 		CategoryPositionId: b.CategoryPositionID,
+		PositionKey:        b.PositionKey,
+		AgentVariant:       b.AgentVariant,
+		VariantDescription: b.VariantDescription,
 		SystemPromptMode:   b.SystemPromptMode,
 		ContextWindow:      int32(b.ContextWindow),
 		BudgetMonthlyCents: int32(b.BudgetMonthlyCents),
@@ -448,6 +455,7 @@ func toProtoAgent(b biz.Agent) *v1.Agent {
 		LastRunAt:             b.LastRunAt,
 		PendingEvolutionCount: int32(b.PendingEvolutionCount),
 		CreatedBy:             b.CreatedBy,
+		Readonly:              b.Readonly,
 	}
 	for i := range b.Files {
 		out.Files = append(out.Files, toProtoFile(b.Files[i]))
@@ -467,6 +475,9 @@ func fromProtoCreate(req *v1.CreateAgentRequest) biz.Agent {
 		Icon:               req.GetIcon(),
 		AgentDescription:   req.GetAgentDescription(),
 		CategoryPositionID: req.GetCategoryPositionId(),
+		PositionKey:        req.GetPositionKey(),
+		AgentVariant:       req.GetAgentVariant(),
+		VariantDescription: req.GetVariantDescription(),
 		SystemPromptMode:   req.GetSystemPromptMode(),
 		ContextWindow:      int(req.GetContextWindow()),
 		BudgetMonthlyCents: int(req.GetBudgetMonthlyCents()),

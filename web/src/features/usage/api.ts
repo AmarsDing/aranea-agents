@@ -363,3 +363,8 @@ export async function recordModelTokenUsageEvent(e: ModelTokenUsageEvent): Promi
   });
   return tokenEventFromUnknown(data);
 }
+
+export async function purgeUsageEvents(retainDays: number): Promise<{ deleted_count: number }> {
+  const { data } = await kratosApi.post<{ deleted_count?: number }>("/v1/usage/events/purge", { retain_days: retainDays });
+  return { deleted_count: data.deleted_count ?? 0 };
+}

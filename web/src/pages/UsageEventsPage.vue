@@ -11,16 +11,17 @@
     </AppPageHero>
 
     <AppPageToolbar>
-      <q-select v-model="filters.range" class="app-page-toolbar__field" dense outlined emit-value map-options label="范围" :options="rangeOptions" />
-      <q-input v-model="filters.provider_code" class="app-page-toolbar__field" dense outlined clearable label="Provider" />
-      <q-input v-model="filters.model_api_id" class="app-page-toolbar__field" dense outlined clearable label="模型" />
-      <q-input v-model="filters.agent_id" class="app-page-toolbar__field" dense outlined clearable label="Agent ID" />
-      <q-input v-model="filters.team_id" class="app-page-toolbar__field" dense outlined clearable label="Team ID" />
-      <q-select v-model="filters.usage_kind" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="来源" :options="usageKindOptions" />
-      <q-select v-model="filters.status" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="状态" :options="statusOptions" />
+      <q-select v-model="filters.range" class="app-page-toolbar__field" dense outlined emit-value map-options label="范围" :options="rangeOptions" @update:model-value="onFilterChange" />
+      <q-input v-model="filters.provider_code" class="app-page-toolbar__field" dense outlined clearable label="Provider" @clear="onFilterChange" />
+      <q-input v-model="filters.model_api_id" class="app-page-toolbar__field" dense outlined clearable label="模型" @clear="onFilterChange" />
+      <q-input v-model="filters.agent_id" class="app-page-toolbar__field" dense outlined clearable label="Agent ID" @clear="onFilterChange" />
+      <q-input v-model="filters.team_id" class="app-page-toolbar__field" dense outlined clearable label="Team ID" @clear="onFilterChange" />
+      <q-select v-model="filters.usage_kind" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="来源" :options="usageKindOptions" @update:model-value="onFilterChange" />
+      <q-select v-model="filters.status" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="状态" :options="statusOptions" @update:model-value="onFilterChange" />
       <template #actions>
         <q-btn flat rounded no-caps label="重置" icon="restart_alt" @click="onResetFilters" />
         <q-btn flat rounded no-caps label="查询" icon="manage_search" :loading="loading" @click="load" />
+        <q-btn flat rounded no-caps label="删除记录" icon="delete_outline" :loading="purging" @click="onPurgeConfirm" />
       </template>
     </AppPageToolbar>
 
@@ -76,6 +77,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import { useQuasar } from "quasar";
 import AppPageHero from "../components/layout/AppPageHero.vue";
 import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
 import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
@@ -84,6 +86,8 @@ import AppRegistryPagination from "../components/layout/AppRegistryPagination.vu
 import { useUsageEventsPage } from "../features/usage/useUsageEventsPage";
 import type { ModelTokenUsageEvent } from "../features/usage/types";
 import { type RegistryTableColumn } from "../features/ui/registryTableColumns";
+
+const $q = useQuasar();
 
 const {
   events,
@@ -94,12 +98,16 @@ const {
   rangeOptions,
   statusOptions,
   usageKindOptions,
+  retainDays,
   load,
   exportCsv,
+  purgeEvents,
   resetFilters,
   formatMoney,
   truncate
 } = useUsageEventsPage();
+
+const purging = ref(false);
 
 const page = ref(1);
 const pageSize = ref(20);
@@ -124,6 +132,32 @@ async function onExportCsv() {
   } catch {
     // error surfaced via store
   }
+}
+
+function onFilterChange() {
+  page.value = 1;
+  void load();
+}
+
+function onPurgeConfirm() {
+  const days = retainDays.value;
+  $q.dialog({
+    title: "确认删除",
+    message: `将只保留最近 ${days} 天的数据，其他用量事件将全部删除。此操作不可撤销，确认继续？`,
+    cancel: { label: "取消", flat: true, rounded: true, noCaps: true },
+    ok: { label: "确认删除", color: "negative", flat: true, rounded: true, noCaps: true },
+    persistent: true
+  }).onOk(async () => {
+    purging.value = true;
+    try {
+      const deleted = await purgeEvents();
+      $q.notify({ type: "positive", message: `已删除 ${deleted} 条用量事件` });
+    } catch {
+      $q.notify({ type: "negative", message: "删除用量事件失败" });
+    } finally {
+      purging.value = false;
+    }
+  });
 }
 
 watch(events, () => {

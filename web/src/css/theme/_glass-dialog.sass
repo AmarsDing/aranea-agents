@@ -67,6 +67,11 @@ body:not(.body--dark) .q-dialog:has(.app-glass-dialog) > .q-dialog__backdrop
   width: 980px
   max-width: min(980px, 94vw)
 
+.app-dialog-card--2xl
+  width: 1180px !important
+  min-width: min(1180px, 94vw) !important
+  max-width: min(1180px, 94vw) !important
+
 // 900px：须在 .q-dialog 内声明，防止 q-card 随内容收缩
 .q-dialog .q-card.app-dialog-card--900
   +app-dialog-fixed-width(900px, 96vw)

@@ -81,11 +81,15 @@ func entAgentToBiz(a *ent.Agent) biz.Agent {
 		Icon:               a.Icon,
 		AgentDescription:   a.AgentDescription,
 		CategoryPositionID: a.CategoryPositionID,
+		PositionKey:        a.PositionKey,
+		AgentVariant:       a.AgentVariant,
+		VariantDescription: a.VariantDescription,
 		SystemPromptMode:   a.SystemPromptMode,
 		ContextWindow:      a.ContextWindow,
 		BudgetMonthlyCents: a.BudgetMonthlyCents,
 		ConfigJSON:         a.ConfigJSON,
 		CreatedBy:          a.CreatedBy,
+		Readonly:           a.Readonly,
 		CreatedAt:          a.CreatedAt,
 		UpdatedAt:          a.UpdatedAt,
 		DeletedAt:          a.DeletedAt,
@@ -589,11 +593,15 @@ func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetIcon(a.Icon).
 		SetAgentDescription(a.AgentDescription).
 		SetCategoryPositionID(a.CategoryPositionID).
+		SetPositionKey(a.PositionKey).
+		SetAgentVariant(a.AgentVariant).
+		SetVariantDescription(a.VariantDescription).
 		SetSystemPromptMode(a.SystemPromptMode).
 		SetContextWindow(a.ContextWindow).
 		SetBudgetMonthlyCents(a.BudgetMonthlyCents).
 		SetConfigJSON(a.ConfigJSON).
 		SetCreatedBy(a.CreatedBy).
+		SetReadonly(a.Readonly).
 		SetCreatedAt(a.CreatedAt).
 		SetUpdatedAt(a.UpdatedAt).
 		SetDeletedAt(a.DeletedAt).
@@ -639,10 +647,14 @@ func (r *agentRepo) UpdateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetIcon(a.Icon).
 		SetAgentDescription(a.AgentDescription).
 		SetCategoryPositionID(a.CategoryPositionID).
+		SetPositionKey(a.PositionKey).
+		SetAgentVariant(a.AgentVariant).
+		SetVariantDescription(a.VariantDescription).
 		SetSystemPromptMode(a.SystemPromptMode).
 		SetContextWindow(a.ContextWindow).
 		SetBudgetMonthlyCents(a.BudgetMonthlyCents).
 		SetConfigJSON(a.ConfigJSON).
+		SetReadonly(a.Readonly).
 		SetUpdatedAt(a.UpdatedAt).
 		Save(ctx)
 	if err != nil {

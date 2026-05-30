@@ -2424,6 +2424,18 @@ body.body--dark .overview-stat-card
 body.body--dark .overview-stat-card:hover
   border-color: rgba(255, 255, 255, 0.12)
 
+.overview-stat-card--clickable
+  cursor: pointer
+
+.overview-stat-card--clickable:hover
+  border-color: var(--color-accent)
+  transform: translateY(-1px)
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08)
+
+body.body--dark .overview-stat-card--clickable:hover
+  border-color: var(--color-accent)
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3)
+
 .overview-stat-card__header
   display: flex
   align-items: center

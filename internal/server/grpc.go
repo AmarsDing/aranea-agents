@@ -6,6 +6,7 @@ import (
 	agentv1 "aranea-agents/api/kratos/agent/v1"
 	agentcategoryv1 "aranea-agents/api/kratos/agent_category/v1"
 	airefinev1 "aranea-agents/api/kratos/ai_refine/v1"
+	industryv1 "aranea-agents/api/kratos/industry/v1"
 	artifactv1 "aranea-agents/api/kratos/artifact/v1"
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
 	channelv1 "aranea-agents/api/kratos/channel/v1"
@@ -92,5 +93,6 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry) *grpc.Server {
 	ecosystemv1.RegisterEcosystemServiceServer(srv, s.Ecosystem)
 	eventv1.RegisterEventServiceServer(srv, s.Event)
 	gatewayv1.RegisterGatewayServiceServer(srv, s.Gateway)
+	industryv1.RegisterIndustryServiceServer(srv, s.Industry)
 	return srv
 }

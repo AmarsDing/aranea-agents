@@ -1,31 +1,35 @@
 <template>
-  <q-card flat bordered :class="['agent-card full-height', { 'agent-card--dark': isDark }]">
+  <q-card flat bordered :class="['agent-card full-height', { 'agent-card--dark': isDark, 'agent-card--builtin': isBuiltin }]">
     <q-card-section class="agent-card__header">
-      <agent-avatar-q :icon="agent.icon" :alt="agent.display_name" size="56px" avatar-class="agent-card__avatar" />
+      <agent-avatar-q :icon="agent.icon" :alt="agent.display_name" size="40px" avatar-class="agent-card__avatar" />
       <div class="col min-width-0">
         <div class="row items-center no-wrap q-gutter-xs">
           <q-btn
+            v-if="!isBuiltin"
             flat
             dense
             round
-            size="sm"
+            size="xs"
             :aria-label="favorite ? '取消收藏' : '收藏 Agent'"
             :color="favorite ? 'amber-8' : 'grey-5'"
             :icon="favorite ? 'star' : 'star_border'"
             @click="$emit('toggle-favorite', agent.id)"
           />
-          <div class="agent-card__name text-subtitle1 text-weight-bold ellipsis">{{ agent.display_name }}</div>
+          <div class="agent-card__name text-subtitle2 text-weight-bold ellipsis">{{ agent.display_name }}</div>
+          <q-badge rounded :class="['agent-card__status', agent.status === 'active' ? 'is-active' : '']">{{ statusLabel(agent.status) }}</q-badge>
         </div>
-        <button class="agent-handle" @click="$emit('copy-key', agent.agent_key)">{{ agent.agent_key }}</button>
+        <div class="row items-center q-gutter-x-sm q-mt-xxs">
+          <button class="agent-handle" @click="$emit('copy-key', agent.agent_key)">{{ agent.agent_key }}</button>
+          <span class="agent-card__model"><q-icon name="memory" size="12px" />{{ agent.provider }} / {{ agent.model }}</span>
+        </div>
       </div>
-      <q-badge rounded :class="['agent-card__status', agent.status === 'active' ? 'is-active' : '']">{{ statusLabel(agent.status) }}</q-badge>
     </q-card-section>
 
-    <q-card-section class="q-pt-none">
-      <div class="agent-card__model"><q-icon name="memory" size="14px" />{{ agent.provider }} / {{ agent.model }}</div>
-      <p class="agent-description">{{ agent.agent_description || "暂无描述，可在设置中补充能力边界与使用场景。" }}</p>
+    <q-card-section class="agent-card__body q-pt-none">
+      <p class="agent-description">{{ agent.agent_description || "暂无描述" }}<q-tooltip v-if="agent.agent_description" max-width="280px" :delay="400">{{ agent.agent_description }}</q-tooltip></p>
       <div class="row q-gutter-xs">
-        <q-chip dense square class="agent-card__chip">{{ categoryLabel }}</q-chip>
+        <q-chip v-if="isBuiltin" dense square class="agent-card__chip is-system" icon="lock">系统</q-chip>
+        <q-chip v-else dense square class="agent-card__chip">{{ categoryLabel }}</q-chip>
         <q-chip v-if="evolving" dense square class="agent-card__chip is-evolving" icon="auto_awesome">进化中</q-chip>
         <q-chip v-if="agent.agent_kind === 'a2a_proxy'" dense square class="agent-card__chip is-a2a-proxy" icon="sync_alt">A2A ↗</q-chip>
         <q-chip
@@ -41,14 +45,17 @@
     </q-card-section>
 
     <q-space />
-    <q-separator />
-    <q-card-actions align="between" class="agent-card__actions">
+    <q-card-actions v-if="!isBuiltin" align="between" class="agent-card__actions">
       <span class="agent-card__context">{{ contextLabel }}</span>
       <div class="q-gutter-xs">
         <q-btn flat dense rounded color="primary" label="设置" :to="`/agents/${agent.id}/settings`" />
         <q-btn flat dense rounded color="secondary" label="复制" @click="$emit('duplicate', agent)" />
-        <q-btn flat dense rounded color="negative" icon="delete" label="删除" @click="$emit('delete', agent)" />
+        <q-btn flat dense rounded color="negative" icon="delete" @click="$emit('delete', agent)" />
       </div>
+    </q-card-actions>
+    <q-card-actions v-else align="between" class="agent-card__actions agent-card__actions--readonly">
+      <span class="agent-card__context">{{ contextLabel }}</span>
+      <q-chip dense square class="agent-card__readonly-chip" icon="verified_user">内置</q-chip>
     </q-card-actions>
   </q-card>
 </template>
@@ -77,4 +84,5 @@ defineEmits<{
 
 const $q = useQuasar();
 const isDark = computed(() => $q.dark.isActive);
+const isBuiltin = computed(() => props.agent.readonly === true);
 </script>

@@ -285,6 +285,7 @@ export default {
     cronRuns: "Cron 执行历史",
     monitor: "监控",
     shop: "商城",
+    industryMarket: "行业模板库",
     settings: "系统设置"
   },
   settingsPage: {
@@ -940,9 +941,9 @@ export default {
     successRate: "成功率",
     tokenComposition: "Token 构成",
     statActiveAgents: "活跃 Agent",
-    statProviders: "Provider",
-    statCategories: "行业",
-    statTeams: "Team",
+    statProviders: "模型提供商",
+    statCategories: "行业数量",
+    statTeams: "团队数量",
     statTodayChats: "今日对话",
     statTodayTokens: "今日 Token",
     tokenTrendTitle: "Token 消费趋势",

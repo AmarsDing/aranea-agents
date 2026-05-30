@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RiskAssessmentOutput",
+  "type": "object",
+  "required": ["assessment_id", "assessment_date", "risk_level", "risk_factors", "max_loss_estimate", "hedging_suggestions", "disclaimer"],
+  "properties": {
+    "assessment_id": {
+      "type": "string",
+      "description": "风险评估唯一标识"
+    },
+    "assessment_date": {
+      "type": "string",
+      "format": "date",
+      "description": "评估日期"
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "extreme"],
+      "description": "风险等级"
+    },
+    "risk_factors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["factor_name", "sensitivity", "contribution"],
+        "properties": {
+          "factor_name": {
+            "type": "string",
+            "description": "风险因子名称"
+          },
+          "factor_type": {
+            "type": "string",
+            "enum": ["market", "credit", "liquidity", "operational", "systemic"],
+            "description": "风险因子类型"
+          },
+          "sensitivity": {
+            "type": "number",
+            "description": "敏感度"
+          },
+          "contribution": {
+            "type": "number",
+            "description": "风险贡献比例"
+          },
+          "trend": {
+            "type": "string",
+            "enum": ["increasing", "stable", "decreasing"],
+            "description": "风险趋势"
+          }
+        }
+      },
+      "description": "风险因子列表"
+    },
+    "max_loss_estimate": {
+      "type": "object",
+      "required": ["normal_scenario", "stress_scenario"],
+      "properties": {
+        "normal_scenario": {
+          "type": "object",
+          "properties": {
+            "var_95": { "type": "number", "description": "95% VaR" },
+            "cvar_95": { "type": "number", "description": "95% CVaR" },
+            "max_drawdown": { "type": "number", "description": "预估最大回撤" }
+          }
+        },
+        "stress_scenario": {
+          "type": "object",
+          "properties": {
+            "scenario_name": { "type": "string", "description": "压力情景名称" },
+            "estimated_loss": { "type": "number", "description": "预估损失" },
+            "recovery_time": { "type": "string", "description": "预估恢复时间" }
+          }
+        }
+      }
+    },
+    "hedging_suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "hedging_instrument": { "type": "string", "description": "对冲工具" },
+          "hedging_ratio": { "type": "number", "description": "对冲比例" },
+          "hedging_cost": { "type": "number", "description": "对冲成本（年化）" },
+          "effectiveness": { "type": "number", "description": "对冲有效性" }
+        }
+      },
+      "description": "对冲建议"
+    },
+    "disclaimer": {
+      "type": "string",
+      "description": "免责声明"
+    }
+  }
+}

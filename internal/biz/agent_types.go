@@ -18,6 +18,9 @@ type Agent struct {
 	Icon               string
 	AgentDescription   string
 	CategoryPositionID string
+	PositionKey       string
+	AgentVariant      string
+	VariantDescription string
 	SystemPromptMode   string
 	ContextWindow      int
 	BudgetMonthlyCents int
@@ -31,6 +34,7 @@ type Agent struct {
 	LastRunAt            string
 	PendingEvolutionCount int
 	CreatedBy            string
+	Readonly             bool
 	CreatedAt            string
 	UpdatedAt          string
 	DeletedAt          string

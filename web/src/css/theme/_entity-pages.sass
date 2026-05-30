@@ -16,11 +16,6 @@ body.body--dark .app-entity-page:not(.app-standard-page)
   grid-template-columns: repeat(auto-fit, minmax(360px, 1fr))
   gap: 18px
 
-.teams-page .app-entity-grid
-  grid-template-columns: repeat(3, minmax(0, 1fr))
-  gap: 18px
-  align-items: stretch
-
 .teams-industry-section__head
   display: flex
   align-items: center
@@ -38,14 +33,6 @@ body.body--dark .app-entity-page:not(.app-standard-page)
   background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-elevated))
   color: var(--color-text-secondary)
   font-weight: 700
-
-@media (width <= 1199px)
-  .teams-page .app-entity-grid
-    grid-template-columns: repeat(2, minmax(0, 1fr))
-
-@media (width <= 767px)
-  .teams-page .app-entity-grid
-    grid-template-columns: minmax(0, 1fr)
 
 .app-entity-empty
   border: 1px solid var(--glass-border)
@@ -159,61 +146,71 @@ body.body--dark .app-entity-stat
 .create-agent-card
   overflow: hidden
 
+.q-dialog .q-card.create-agent-card.create-agent-card--tall
+  max-height: min(92vh, 1020px)
+
+.create-agent-card__subtitle
+  color: var(--color-text-secondary)
+
 .create-agent-card__toolbar
-  padding: 22px 26px
+  padding: 24px 30px
   background: var(--glass-elevated)
   border-bottom: 1px solid var(--glass-border)
 
 .create-agent-card__body
-  padding: 22px 24px 18px
+  padding: 24px 30px 20px
 
-.create-agent-layout
-  padding-top: 4px
+.agent-kind-row
+  .q-btn-toggle
+    border: 1px solid var(--glass-border)
+    border-radius: 12px
+    background: var(--glass-surface)
 
-.create-agent-card .avatar-column
-  width: 190px
-  padding: 18px 16px
-  border: 1px solid var(--glass-border)
-  border-radius: 24px
-  background: var(--glass-surface)
-  backdrop-filter: blur(var(--glass-blur-default))
-  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+    .q-btn
+      font-weight: 600
+      min-height: 40px
 
-.create-agent-card .avatar-picker-hit
-  display: inline-block
-  line-height: 0
-
-.create-agent-card .avatar-picker
-  border: 4px solid var(--color-on-accent)
-  box-shadow: 0 18px 40px color-mix(in srgb, var(--color-accent) 24%, transparent)
+.create-agent-card .avatar-picker--toolbar
+  border: 2px solid var(--color-on-accent)
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-accent) 14%, transparent)
   transition: transform 180ms ease, box-shadow 180ms ease
 
-.create-agent-card .avatar-picker:hover
-  transform: translateY(-2px) scale(1.01)
-  box-shadow: 0 22px 50px color-mix(in srgb, var(--color-accent) 30%, transparent)
+.create-agent-card .avatar-picker--toolbar:hover
+  transform: scale(1.08)
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--color-accent) 22%, transparent)
 
-.create-agent-card .avatar-change-btn
-  width: 100%
-  min-height: 38px
-  font-weight: 700
+.create-agent-grid
+  display: grid
+  gap: 16px 20px
+  grid-template-columns: repeat(3, minmax(0, 1fr))
 
-.create-agent-card .avatar-column__hint
-  margin-top: 10px
-  color: var(--color-text-tertiary)
-  font-size: 12px
-  line-height: 1.55
-  text-align: center
+  @media (width <= 899px)
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+
+  @media (width <= 599px)
+    grid-template-columns: 1fr
+
+.create-agent-grid__span-full
+  grid-column: 1 / -1
 
 .create-agent-card .form-panel
-  padding: 2px 0 0
+  padding: 4px 0 0
 
-.create-agent-card .model-check-btn
-  min-height: 44px
-  font-weight: 700
+.create-agent-inline-actions
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 20px
+  padding-bottom: 4px
+
+  .model-check-btn
+    min-height: 40px
+    padding: 0 20px
+    font-weight: 700
 
 .create-agent-card .description-block
-  margin-top: 20px
-  padding: 18px 18px 14px
+  margin-top: 22px
+  padding: 20px 22px 16px
   border: 1px solid var(--glass-border)
   border-radius: 24px
   background: linear-gradient(180deg, var(--color-on-accent), var(--color-page-tint)), radial-gradient(circle at top left, color-mix(in srgb, var(--color-accent) 5%, transparent), transparent 35%)
@@ -233,25 +230,34 @@ body.body--dark .app-entity-stat
   background: var(--color-status-warning-bg-alt)
   color: var(--color-status-warning-text)
 
-.create-agent-card .self-evolve-card
-  margin-top: 18px
-  border-color: color-mix(in srgb, var(--color-warning) 18%, var(--glass-border))
-  border-radius: 22px
-  background: linear-gradient(135deg, var(--color-status-warning-bg-warm), var(--color-page-tint-blue))
-  box-shadow: var(--shadow-entity-panel)
-
 .create-agent-card__actions
-  padding: 14px 22px 20px
+  padding: 16px 30px 22px
 
 .create-agent-card__actions .q-btn
-  min-height: 40px
-  padding: 0 18px
+  min-height: 42px
+  padding: 0 22px
   font-weight: 700
 
-.create-agent-card.create-agent-card--dark .create-agent-card__toolbar,
-.create-agent-card.create-agent-card--dark .avatar-column
+.create-agent-card.create-agent-card--dark .create-agent-card__toolbar
   background: var(--glass-surface)
   border-color: var(--glass-border)
+
+.create-agent-card.create-agent-card--dark .create-agent-card__subtitle
+  color: var(--color-text-secondary)
+
+.create-agent-card.create-agent-card--dark .agent-kind-row .q-btn-toggle
+  border-color: var(--glass-border)
+  background: color-mix(in srgb, var(--glass-elevated) 78%, transparent)
+
+.create-agent-card.create-agent-card--dark .description-block
+  border-color: color-mix(in srgb, var(--glass-border) 80%, transparent)
+  background: color-mix(in srgb, var(--glass-elevated) 72%, transparent)
+
+.create-agent-card.create-agent-card--dark .description-block .q-chip
+  background: color-mix(in srgb, var(--glass-elevated) 78%, transparent)
+
+.create-agent-card.create-agent-card--dark .description-block .q-chip:hover
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-elevated))
 
 .app-dialog-scroll--import
   max-height: min(68vh, 640px)
@@ -346,10 +352,6 @@ body.body--dark .app-entity-stat
   line-height: 1.35
   color: var(--color-text-secondary)
 
-@media (width <= 767px)
-  .create-agent-card .avatar-column
-    width: 100%
-
 .app-entity-toolbar--offset
   margin-top: 22px
 
@@ -357,36 +359,78 @@ body.body--dark .app-entity-stat
 .agent-card
   display: flex
   flex-direction: column
+  height: 260px
   border: 1px solid var(--glass-border)
-  border-radius: 24px
+  border-radius: 18px
   background: var(--glass-surface)
   overflow: hidden
   box-shadow: var(--shadow-entity-panel)
   backdrop-filter: blur(16px)
   -webkit-backdrop-filter: blur(16px)
-  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, opacity 180ms ease
+  cursor: grab
+
+  &:active
+    cursor: grabbing
 
   &:hover
     transform: translateY(-2px)
     border-color: color-mix(in srgb, var(--color-accent) 32%, var(--glass-border))
     box-shadow: 0 22px 56px color-mix(in srgb, var(--color-text-primary) 10%, transparent)
 
+.agent-card.agent-card--builtin
+  cursor: default
+
+  &:active
+    cursor: default
+
+.agent-card--ghost
+  opacity: 0.4
+  border: 2px dashed var(--color-accent)
+  border-radius: 18px
+
+.agent-card--chosen
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--color-accent) 18%, transparent)
+
+.agent-card--dragging
+  opacity: 0.92
+  transform: rotate(2deg) scale(1.03)
+  box-shadow: 0 24px 64px color-mix(in srgb, var(--color-accent) 22%, transparent)
+  z-index: 9999
+
+.agents-draggable-grid
+  display: grid
+  grid-template-columns: repeat(3, minmax(0, 1fr))
+  gap: 16px
+  align-items: stretch
+  min-height: 0
+
+@media (width <= 1199px)
+  .agents-draggable-grid
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+
+@media (width <= 767px)
+  .agents-draggable-grid
+    grid-template-columns: minmax(0, 1fr)
+
 .agent-card__header
   display: flex
   align-items: flex-start
-  gap: 16px
+  gap: 12px
   flex-wrap: nowrap
+  padding: 14px 16px 8px
 
 .agent-card__avatar
-  box-shadow: 0 12px 28px color-mix(in srgb, var(--color-accent) 20%, transparent)
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--color-accent) 14%, transparent)
 
 .agent-card__name
   color: var(--color-text-heading)
 
 .agent-card__status
-  padding: 4px 8px
+  padding: 2px 7px
   background: var(--color-status-info-bg)
   color: var(--color-text-tertiary)
+  font-size: 11px
   font-weight: 700
   text-transform: capitalize
 
@@ -394,20 +438,25 @@ body.body--dark .app-entity-stat
   background: var(--color-status-success-bg)
   color: var(--color-accent-green)
 
+.q-mt-xxs
+  margin-top: 2px
+
 .agent-card__model
   display: inline-flex
   align-items: center
-  gap: 6px
+  gap: 4px
   color: var(--color-text-tertiary)
-  font-size: 12px
+  font-size: 11px
   font-weight: 600
 
+.agent-card__body
+  padding: 0 16px 6px
+
 .agent-description
-  min-height: 52px
-  margin: 12px 0
-  color: var(--color-text-tertiary)
-  font-size: 13px
-  line-height: 1.6
+  margin: 0 0 6px
+  color: var(--color-text-secondary)
+  font-size: 12px
+  line-height: 1.5
   display: -webkit-box
   overflow: hidden
   -webkit-line-clamp: 2
@@ -416,8 +465,13 @@ body.body--dark .app-entity-stat
 .agent-card__chip
   border: 1px solid var(--glass-border)
   background: var(--color-surface-soft)
-  color: var(--color-text-tertiary)
+  color: var(--color-text-secondary)
   font-weight: 600
+
+.agent-card__chip.is-system
+  border-color: color-mix(in srgb, var(--color-link) 22%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-link) 8%, var(--glass-elevated))
+  color: var(--color-link)
 
 .agent-card__chip.is-evolving
   border-color: color-mix(in srgb, var(--color-warning) 22%, var(--glass-border))
@@ -434,19 +488,39 @@ body.body--dark .app-entity-stat
   padding: 0
   border: 0
   background: transparent
-  color: var(--color-text-tertiary)
+  color: var(--color-text-secondary)
   cursor: pointer
   font-size: 12px
   font-weight: 600
+  transition: color 160ms ease
+
+  &:hover
+    color: var(--color-accent)
 
 .agent-card__actions
-  padding: 12px 16px
+  padding: 8px 16px 10px
   background: color-mix(in srgb, var(--glass-elevated) 72%, transparent)
+
+.agent-card__actions--readonly
+  background: color-mix(in srgb, var(--color-link) 4%, var(--glass-elevated) 72%)
 
 .agent-card__context
   color: var(--color-text-tertiary)
   font-size: 12px
   font-weight: 700
+
+.agent-card__readonly-chip
+  border: 1px solid color-mix(in srgb, var(--color-link) 18%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-link) 6%, var(--glass-elevated))
+  color: var(--color-link)
+  font-weight: 700
+
+.agent-card.agent-card--builtin
+  border-color: color-mix(in srgb, var(--color-link) 16%, var(--glass-border))
+
+.agent-card.agent-card--builtin:hover
+  border-color: color-mix(in srgb, var(--color-link) 36%, var(--glass-border))
+  box-shadow: 0 18px 44px color-mix(in srgb, var(--color-link) 8%, transparent)
 
 .agent-card.agent-card--dark
   border-color: var(--glass-border)
@@ -469,15 +543,22 @@ body.body--dark .app-entity-stat
   color: var(--color-text-heading)
 
 .agent-card.agent-card--dark .agent-card__model,
-.agent-card.agent-card--dark .agent-description,
-.agent-card.agent-card--dark .agent-handle,
 .agent-card.agent-card--dark .agent-card__context
+  color: var(--color-text-tertiary)
+
+.agent-card.agent-card--dark .agent-description,
+.agent-card.agent-card--dark .agent-handle
   color: var(--color-text-secondary)
 
 .agent-card.agent-card--dark .agent-card__chip
   border-color: var(--glass-border)
   background: color-mix(in srgb, var(--glass-elevated) 78%, transparent)
   color: var(--color-text-secondary)
+
+.agent-card.agent-card--dark .agent-card__chip.is-system
+  border-color: color-mix(in srgb, var(--color-accent) 24%, transparent)
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-elevated))
+  color: var(--color-accent)
 
 .agent-card.agent-card--dark .agent-card__chip.is-evolving
   border-color: color-mix(in srgb, var(--color-warning) 28%, var(--glass-border))
@@ -492,6 +573,21 @@ body.body--dark .app-entity-stat
 
 .agent-card.agent-card--dark .agent-card__actions
   background: color-mix(in srgb, var(--glass-elevated) 74%, transparent)
+
+.agent-card.agent-card--dark .agent-card__actions--readonly
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--glass-elevated) 74%)
+
+.agent-card.agent-card--dark .agent-card__readonly-chip
+  border-color: color-mix(in srgb, var(--color-accent) 24%, transparent)
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-elevated))
+  color: var(--color-accent)
+
+.agent-card.agent-card--dark.agent-card--builtin
+  border-color: color-mix(in srgb, var(--color-accent) 18%, var(--glass-border))
+
+.agent-card.agent-card--dark.agent-card--builtin:hover
+  border-color: color-mix(in srgb, var(--color-accent) 38%, var(--glass-border))
+  box-shadow: 0 18px 44px color-mix(in srgb, var(--color-accent) 10%, transparent)
 
 .empty-agent-card,
 .agents-table
@@ -585,7 +681,7 @@ body.body--dark .app-entity-stat
 .team-card
   display: flex
   flex-direction: column
-  height: 100%
+  height: 230px
   overflow: hidden
   border: 1px solid var(--glass-border)
   border-radius: 18px
@@ -593,6 +689,45 @@ body.body--dark .app-entity-stat
   box-shadow: var(--shadow-entity-panel)
   backdrop-filter: blur(16px)
   -webkit-backdrop-filter: blur(16px)
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, opacity 180ms ease
+  cursor: grab
+
+  &:active
+    cursor: grabbing
+
+  &:hover
+    transform: translateY(-2px)
+    border-color: color-mix(in srgb, var(--color-accent) 32%, var(--glass-border))
+    box-shadow: 0 22px 56px color-mix(in srgb, var(--color-text-primary) 10%, transparent)
+
+.team-card--ghost
+  opacity: 0.4
+  border: 2px dashed var(--color-accent)
+  border-radius: 18px
+
+.team-card--chosen
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--color-accent) 18%, transparent)
+
+.team-card--dragging
+  opacity: 0.92
+  transform: rotate(2deg) scale(1.03)
+  box-shadow: 0 24px 64px color-mix(in srgb, var(--color-accent) 22%, transparent)
+  z-index: 9999
+
+.teams-draggable-grid
+  display: grid
+  grid-template-columns: repeat(3, minmax(0, 1fr))
+  gap: 18px
+  align-items: stretch
+  min-height: 0
+
+@media (width <= 1199px)
+  .teams-draggable-grid
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+
+@media (width <= 767px)
+  .teams-draggable-grid
+    grid-template-columns: minmax(0, 1fr)
 
 .team-card__inner
   display: flex
@@ -600,7 +735,7 @@ body.body--dark .app-entity-stat
   flex-direction: column
   gap: 10px
   min-height: 0
-  height: 100%
+  overflow: hidden
   padding: 14px 16px 12px
 
 .team-card__head
@@ -662,8 +797,8 @@ body.body--dark .app-entity-stat
 
 .team-card__members
   flex: 1
-  min-height: 120px
-  max-height: 220px
+  min-height: 0
+  max-height: 80px
   overflow-y: auto
   scrollbar-width: none
   -ms-overflow-style: none
@@ -1182,6 +1317,24 @@ body.body--dark .agent-categories-page .category-tree-department
   border-radius: 14px
   background: var(--color-on-accent)
 
+.position-item--ghost
+  opacity: 0.4
+  border: 2px dashed var(--color-accent)
+
+.position-item--chosen
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--color-accent) 18%, transparent)
+
+.position-item--dragging
+  transform: rotate(2deg) scale(1.03)
+  box-shadow: 0 24px 64px color-mix(in srgb, var(--color-accent) 22%, transparent)
+  z-index: 9999
+
+.position-item .q-item
+  cursor: grab
+
+  &:active
+    cursor: grabbing
+
 .position-path
   line-height: 1.35
 
@@ -1434,3 +1587,82 @@ body.body--dark .resource-manager-page.is-dark .empty-state
 
   .position-list
     padding-left: 14px
+
+// Workflow Kanban Board
+.workflow-kanban-board__columns
+  display: grid
+  grid-template-columns: repeat(3, 1fr)
+  gap: 16px
+
+@media (width <= 1199px)
+  .workflow-kanban-board__columns
+    grid-template-columns: repeat(2, 1fr)
+
+@media (width <= 767px)
+  .workflow-kanban-board__columns
+    grid-template-columns: 1fr
+
+.workflow-kanban-board__column
+  display: flex
+  flex-direction: column
+  min-width: 0
+
+.workflow-kanban-board__column-head
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 8px
+  padding: 10px 12px
+  border: 1px solid var(--glass-border)
+  border-radius: 14px 14px 0 0
+  background: var(--glass-elevated)
+
+.workflow-kanban-board__column-title
+  color: var(--color-text-heading)
+  font-size: 13px
+  font-weight: 700
+
+.workflow-kanban-board__column-count
+  min-width: 22px
+  padding: 1px 7px
+  border-radius: 999px
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--glass-elevated))
+  color: var(--color-text-secondary)
+  font-size: 11px
+  font-weight: 700
+  text-align: center
+
+.workflow-kanban-board__column-body
+  flex: 1
+  min-height: 60px
+  padding: 8px
+  border: 1px solid var(--glass-border)
+  border-top: none
+  border-radius: 0 0 14px 14px
+  background: color-mix(in srgb, var(--glass-surface) 80%, transparent)
+
+.workflow-kanban-board__card-list
+  display: flex
+  flex-direction: column
+  gap: 6px
+  min-height: 0
+
+.workflow-kanban-board__empty
+  padding: 16px 8px
+  color: var(--color-text-tertiary)
+  font-size: 12px
+  text-align: center
+
+.workflow-kanban-card--ghost
+  opacity: 0.4
+  border: 2px dashed var(--color-accent) !important
+  border-radius: 12px
+
+.workflow-kanban-card--chosen
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--color-accent) 18%, transparent)
+
+.workflow-kanban-card--dragging
+  opacity: 0.92
+  transform: rotate(2deg) scale(1.03)
+  box-shadow: 0 24px 64px color-mix(in srgb, var(--color-accent) 22%, transparent)
+  z-index: 9999

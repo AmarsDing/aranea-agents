@@ -23,6 +23,7 @@ func (Agent) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("deleted_at"),
 		index.Fields("deleted_at", "status"),
+		index.Fields("position_key", "agent_variant").Unique(),
 	}
 }
 
@@ -51,5 +52,8 @@ func (Agent) Fields() []ent.Field {
 		// CLI-20: system admin agent support.
 		field.Bool("readonly").Default(false).Comment("system agents cannot be deleted"),
 		field.Enum("kind").Values("user", "system").Default("user").Comment("agent kind: user | system"),
+		field.String("position_key").Default("").Comment("FK to positions.key"),
+		field.String("agent_variant").Default("general").Comment("variant within position: general/code_review/architect/..."),
+		field.Text("variant_description").Default("").Comment("human-readable description of this variant"),
 	}
 }

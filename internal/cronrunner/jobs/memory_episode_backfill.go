@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/safego"
 
@@ -17,21 +16,21 @@ const memoryEpisodeBackfillInterval = 6 * time.Hour
 // MemoryEpisodeBackfillWorker embeds historical episodes missing embedding_blob.
 type MemoryEpisodeBackfillWorker struct {
 	interval    time.Duration
-	store       *sessionmemory.Store
+	reader      biz.MemoryEpisodeBackfillReader
 	episodeSync biz.EpisodeIndexSyncer
 	sys         biz.SystemSettingRepo
 	log         *log.Helper
 }
 
-func NewMemoryEpisodeBackfillWorker(interval time.Duration, store *sessionmemory.Store, episodeSync biz.EpisodeIndexSyncer, sys biz.SystemSettingRepo, logger log.Logger) *MemoryEpisodeBackfillWorker {
+func NewMemoryEpisodeBackfillWorker(interval time.Duration, reader biz.MemoryEpisodeBackfillReader, episodeSync biz.EpisodeIndexSyncer, sys biz.SystemSettingRepo, logger log.Logger) *MemoryEpisodeBackfillWorker {
 	if interval <= 0 {
 		interval = memoryEpisodeBackfillInterval
 	}
-	return &MemoryEpisodeBackfillWorker{interval: interval, store: store, episodeSync: episodeSync, sys: sys, log: log.NewHelper(logger)}
+	return &MemoryEpisodeBackfillWorker{interval: interval, reader: reader, episodeSync: episodeSync, sys: sys, log: log.NewHelper(logger)}
 }
 
 func (w *MemoryEpisodeBackfillWorker) Start(ctx context.Context) {
-	if w == nil || w.store == nil || w.episodeSync == nil {
+	if w == nil || w.reader == nil || w.episodeSync == nil {
 		return
 	}
 	ticker := time.NewTicker(w.interval)
@@ -52,7 +51,7 @@ func (w *MemoryEpisodeBackfillWorker) runOnce(ctx context.Context) {
 		return
 	}
 	safego.Go(ctx, "memory.episode_backfill", func() {
-		cands, err := w.store.ListEpisodesPendingEmbedding(ctx, 48)
+		cands, err := w.reader.ListEpisodesPendingEmbedding(ctx, 48)
 		if err != nil {
 			event.SysLogWarn("memory.episode_backfill", "list pending episodes failed", event.P("error", err))
 			return

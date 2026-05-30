@@ -141,3 +141,11 @@ func (s *UsageService) ExportUsageEvents(ctx context.Context, in *v1.UsageQuery)
 	}
 	return &v1.ExportUsageEventsResponse{Csv: csv}, nil
 }
+
+func (s *UsageService) PurgeUsageEvents(ctx context.Context, req *v1.PurgeUsageEventsRequest) (*v1.PurgeUsageEventsResponse, error) {
+	deleted, err := s.uc.PurgeEvents(ctx, int(req.GetRetainDays()))
+	if err != nil {
+		return nil, err
+	}
+	return &v1.PurgeUsageEventsResponse{DeletedCount: deleted}, nil
+}

@@ -273,6 +273,7 @@ type AnalyticsRepo interface {
 type WriteRepo interface {
 	RecordTokenUsageEvent(ctx context.Context, event TokenUsageEvent) (TokenUsageEvent, error)
 	GetActiveModelPricing(ctx context.Context, providerCode, modelAPIID string) (ModelPricingSnapshot, bool, error)
+	PurgeUsageEventsOlderThan(ctx context.Context, retainDays int) (int64, error)
 }
 
 // QuotaRepo manages caps, spend sums, and budget alerts.
@@ -501,6 +502,14 @@ func (u *Usecase) TopAgents(ctx context.Context, query Query) ([]BreakdownRow, e
 // Events returns raw usage events.
 func (u *Usecase) Events(ctx context.Context, query Query) ([]TokenUsageEvent, error) {
 	return u.repo.ListModelUsageEvents(ctx, u.normalizeQuery(query, u.now()))
+}
+
+// PurgeEvents deletes usage events older than retainDays and returns the count of deleted rows.
+func (u *Usecase) PurgeEvents(ctx context.Context, retainDays int) (int64, error) {
+	if retainDays < 1 {
+		return 0, errors.BadRequest("USAGE", "retain_days must be >= 1")
+	}
+	return u.repo.PurgeUsageEventsOlderThan(ctx, retainDays)
 }
 
 // RecordTokenUsageEvent inserts one usage row, updates session aggregates, and upserts daily rollup.

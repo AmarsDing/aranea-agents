@@ -1,0 +1,138 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ContentPlanOutput",
+  "type": "object",
+  "required": ["plan_period", "content_items", "platforms"],
+  "properties": {
+    "plan_period": {
+      "type": "object",
+      "required": ["start_date", "end_date", "type"],
+      "properties": {
+        "start_date": {
+          "type": "string",
+          "format": "date",
+          "description": "计划开始日期"
+        },
+        "end_date": {
+          "type": "string",
+          "format": "date",
+          "description": "计划结束日期"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["weekly", "monthly", "quarterly"],
+          "description": "计划周期类型"
+        }
+      }
+    },
+    "content_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "content_type", "publish_date", "platform"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "内容标题"
+          },
+          "content_type": {
+            "type": "string",
+            "enum": ["video_short", "video_long", "article", "image_text", "live_stream", "novel_chapter"],
+            "description": "内容类型"
+          },
+          "publish_date": {
+            "type": "string",
+            "format": "date",
+            "description": "发布日期"
+          },
+          "publish_time": {
+            "type": "string",
+            "pattern": "^[0-9]{2}:[0-9]{2}$",
+            "description": "发布时间，格式 HH:MM"
+          },
+          "platform": {
+            "type": "string",
+            "enum": ["douyin", "bilibili", "xiaohongshu", "weixin_official", "weixin_channels", "kuaishou", "weibo", "qidian", "fanqie", "jjwxc"],
+            "description": "发布平台"
+          },
+          "topic_tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "话题标签"
+          },
+          "hot_topic": {
+            "type": "boolean",
+            "default": false,
+            "description": "是否为热点内容"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["planned", "in_progress", "review", "published"],
+            "default": "planned",
+            "description": "内容状态"
+          },
+          "responsible_role": {
+            "type": "string",
+            "description": "负责角色/岗位"
+          },
+          "notes": {
+            "type": "string",
+            "description": "备注"
+          }
+        }
+      },
+      "description": "内容条目列表"
+    },
+    "platforms": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "覆盖平台列表"
+    },
+    "content_ratio": {
+      "type": "object",
+      "properties": {
+        "hot_content_percent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "热点内容占比百分比"
+        },
+        "evergreen_content_percent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "常青内容占比百分比"
+        },
+        "promotional_content_percent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "推广内容占比百分比"
+        }
+      },
+      "description": "内容类型配比"
+    },
+    "kpi_targets": {
+      "type": "object",
+      "properties": {
+        "total_impressions": {
+          "type": "integer",
+          "description": "总曝光目标"
+        },
+        "total_engagement": {
+          "type": "integer",
+          "description": "总互动目标"
+        },
+        "follower_growth": {
+          "type": "integer",
+          "description": "粉丝增长目标"
+        }
+      },
+      "description": "KPI目标"
+    }
+  }
+}

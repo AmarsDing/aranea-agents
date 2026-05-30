@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package kratos.industry.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+
+option go_package = "aranea-agents/api/kratos/industry/v1;v1";
+
+message Industry {
+  string id = 1;
+  string key = 2;
+  string name = 3;
+  string icon = 4;
+  string description = 5;
+  string scenario_key = 6;
+  bool enabled = 7;
+  int32 sort_order = 8;
+}
+
+message Department {
+  string id = 1;
+  string key = 2;
+  string name = 3;
+  string industry_key = 4;
+  string description = 5;
+  string responsibilities_json = 6;
+  int32 sort_order = 7;
+}
+
+message Position {
+  string id = 1;
+  string key = 2;
+  string name = 3;
+  string department_key = 4;
+  string description = 5;
+  string responsibilities_json = 6;
+  string skills_required_json = 7;
+  string seniority_level = 8;
+  int32 sort_order = 9;
+}
+
+message ListIndustriesRequest {}
+
+message ListIndustriesResponse {
+  repeated Industry items = 1;
+  int32 total = 2;
+}
+
+message GetIndustryRequest {
+  string key = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListDepartmentsRequest {
+  string industry_key = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListDepartmentsResponse {
+  repeated Department items = 1;
+  int32 total = 2;
+}
+
+message ListPositionsRequest {
+  string industry_key = 1;
+  string department_key = 2;
+}
+
+message ListPositionsResponse {
+  repeated Position items = 1;
+  int32 total = 2;
+}
+
+message GetPositionPromptRequest {
+  string industry_key = 1;
+  string position_key = 2;
+  string variant = 3;
+}
+
+message GetPositionPromptResponse {
+  string prompt_content = 1;
+  string variant = 2;
+  string position_name = 3;
+  string department_name = 4;
+  string industry_name = 5;
+  string industry_description = 6;
+  string department_description = 7;
+  string position_description = 8;
+  string responsibilities_json = 9;
+  string variant_description = 10;
+}
+
+message ListPositionVariantsRequest {
+  string industry_key = 1 [(google.api.field_behavior) = REQUIRED];
+  string position_key = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ListPositionVariantsResponse {
+  repeated string variants = 1;
+}
+
+service IndustryService {
+  rpc ListIndustries (ListIndustriesRequest) returns (ListIndustriesResponse) {
+    option (google.api.http) = { get: "/v1/industries" };
+  }
+  rpc GetIndustry (GetIndustryRequest) returns (Industry) {
+    option (google.api.http) = { get: "/v1/industries/{key}" };
+  }
+  rpc ListDepartments (ListDepartmentsRequest) returns (ListDepartmentsResponse) {
+    option (google.api.http) = { get: "/v1/industries/{industry_key}/departments" };
+  }
+  rpc ListPositions (ListPositionsRequest) returns (ListPositionsResponse) {
+    option (google.api.http) = { get: "/v1/industries/{industry_key}/positions" };
+  }
+  rpc GetPositionPrompt(GetPositionPromptRequest) returns (GetPositionPromptResponse) {
+    option (google.api.http) = { get: "/v1/industries/{industry_key}/positions/{position_key}/prompt" };
+  }
+  rpc ListPositionVariants(ListPositionVariantsRequest) returns (ListPositionVariantsResponse) {
+    option (google.api.http) = { get: "/v1/industries/{industry_key}/positions/{position_key}/variants" };
+  }
+}

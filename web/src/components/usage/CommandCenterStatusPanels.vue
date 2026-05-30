@@ -104,18 +104,23 @@ defineProps<{
     color: var(--color-text-secondary)
 
   &__big-value
-    font-size: 1.72rem
-    font-weight: 700
-    line-height: 1.15
+    font-size: 2.25rem
+    font-weight: 800
+    line-height: 1.1
     text-align: center
-    color: var(--color-text-primary)
-    letter-spacing: -0.02em
+    background: linear-gradient(135deg, #00E5FF, #A78BFA)
+    -webkit-background-clip: text
+    -webkit-text-fill-color: transparent
+    background-clip: text
+    filter: drop-shadow(0 0 12px rgba(0, 229, 255, 0.35))
+    letter-spacing: -0.03em
     font-variant-numeric: tabular-nums
 
   &__caption
     font-size: 0.73rem
     color: var(--color-text-secondary)
     text-align: center
+    margin-top: 12px
     margin-bottom: 8px
     flex-direction: column
     box-sizing: content-box

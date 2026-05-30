@@ -23,7 +23,7 @@
           <div class="command-center-hero__stat-label">{{ t('overviewPage.statActiveAgents') }}</div>
         </div>
       </router-link>
-      <router-link to="/platform/llm-provider-models" class="command-center-hero__stat command-center-hero__stat--link">
+      <router-link to="/models" class="command-center-hero__stat command-center-hero__stat--link">
         <div class="command-center-hero__stat-icon command-center-hero__stat-icon--provider">
           <q-icon name="dns" size="20px" />
         </div>
@@ -32,7 +32,7 @@
           <div class="command-center-hero__stat-label">{{ t('overviewPage.statProviders') }}</div>
         </div>
       </router-link>
-      <router-link to="/platform/agent-categories" class="command-center-hero__stat command-center-hero__stat--link">
+      <router-link to="/settings/agent-categories" class="command-center-hero__stat command-center-hero__stat--link">
         <div class="command-center-hero__stat-icon command-center-hero__stat-icon--category">
           <q-icon name="category" size="20px" />
         </div>
@@ -41,7 +41,7 @@
           <div class="command-center-hero__stat-label">{{ t('overviewPage.statCategories') }}</div>
         </div>
       </router-link>
-      <router-link to="/teams" class="command-center-hero__stat command-center-hero__stat--link">
+      <router-link to="/team" class="command-center-hero__stat command-center-hero__stat--link">
         <div class="command-center-hero__stat-icon command-center-hero__stat-icon--team">
           <q-icon name="groups" size="20px" />
         </div>
@@ -59,7 +59,7 @@
           <div class="command-center-hero__stat-label">{{ t('overviewPage.statTodayChats') }}</div>
         </div>
       </router-link>
-      <a class="command-center-hero__stat command-center-hero__stat--link" @click.prevent="$emit('openTokenTrend')">
+      <a class="command-center-hero__stat command-center-hero__stat--link" @click.prevent="$emit('navigate', 'tokens')">
         <div class="command-center-hero__stat-icon command-center-hero__stat-icon--token">
           <q-icon name="data_usage" size="20px" />
         </div>
@@ -90,7 +90,7 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  openTokenTrend: [];
+  navigate: [action: string];
 }>();
 
 const formattedTokenCount = computed(() => {

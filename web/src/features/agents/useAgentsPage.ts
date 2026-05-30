@@ -8,6 +8,7 @@ import { descriptionTemplates, statusOptions } from "../../components/agents/age
 import { useAgentsPageStore } from "../../stores/agents";
 import { useAppStore } from "../../stores/app";
 import { useAvatarCatalogStore } from "../../stores/avatar";
+import { useIndustryWizard } from "../industries/useIndustryWizard";
 
 export type CreateAgentForm = {
   agent_key: string;
@@ -16,6 +17,9 @@ export type CreateAgentForm = {
   model: string;
   icon: string;
   agent_description: string;
+  position_key: string;
+  agent_variant: string;
+  variant_description: string;
   category_position_id: string;
 };
 
@@ -29,6 +33,7 @@ export function useAgentsPage() {
   const appStore = useAppStore();
   const avatarCatalog = useAvatarCatalogStore();
   const pageStore = useAgentsPageStore();
+  const wizard = useIndustryWizard();
 
   const {
     agents,
@@ -77,6 +82,9 @@ export function useAgentsPage() {
     model: "gpt-4.1-mini",
     icon: "smart_toy",
     agent_description: "",
+    position_key: "",
+    agent_variant: "",
+    variant_description: "",
     category_position_id: ""
   });
 
@@ -166,11 +174,18 @@ export function useAgentsPage() {
             }
           })
           .catch(() => {
-            /* 查重失败不阻塞创建，提交时后端仍会校验 */
           });
       }, 500);
     }
   );
+
+  watch(() => wizard.promptResult.value, (result) => {
+    if (!result) return
+    form.agent_description = result.promptContent
+    form.position_key = wizard.selectedPositionKey.value
+    form.agent_variant = result.variant
+    form.variant_description = result.variantDescription
+  });
 
   onMounted(async () => {
     try {
@@ -203,8 +218,9 @@ export function useAgentsPage() {
   async function openCreate() {
     clearCreateFieldErrors();
     modelCheckPassed.value = false;
+    wizard.reset();
     try {
-      await pageStore.loadAgentsDependencies();
+      await Promise.all([pageStore.loadAgentsDependencies(), wizard.loadIndustries()]);
     } catch (error) {
       $q.notify({ type: "negative", message: error instanceof Error ? error.message : "依赖数据加载失败" });
       return;
@@ -233,6 +249,9 @@ export function useAgentsPage() {
       model: "gpt-4.1-mini",
       icon: avatars.value[0]?.id ?? "smart_toy",
       agent_description: "",
+      position_key: "",
+      agent_variant: "",
+      variant_description: "",
       category_position_id: ""
     });
     selectedTemplateKey.value = "";
@@ -241,6 +260,7 @@ export function useAgentsPage() {
     selfEvolve.value = true;
     agentKind.value = "llm";
     Object.assign(a2aProxy, { remote_url: "", enable_streaming: true, timeout_seconds: 30 });
+    wizard.reset();
   }
 
   async function onCreate() {
@@ -355,6 +375,10 @@ export function useAgentsPage() {
     $q.notify({ type: "positive", message: "Agent 标识已复制" });
   }
 
+  function onReorder(ids: string[]) {
+    pageStore.reorderAgents(ids);
+  }
+
   return {
     isDark,
     agents,
@@ -406,6 +430,19 @@ export function useAgentsPage() {
     applyTemplate,
     confirmDelete,
     deleteAgentTarget,
-    duplicateListedAgent
+    duplicateListedAgent,
+    onReorder,
+    industryKey: wizard.selectedIndustryKey,
+    departmentKey: wizard.selectedDepartmentKey,
+    positionKey: wizard.selectedPositionKey,
+    variant: wizard.selectedVariant,
+    industries: wizard.industries,
+    departments: wizard.departments,
+    positions: wizard.positions,
+    loadingIndustries: wizard.loadingIndustries,
+    loadingDepartments: wizard.loadingDepartments,
+    loadingPositions: wizard.loadingPositions,
+    variantOptions: wizard.availableVariants,
+    promptResult: wizard.promptResult,
   };
 }

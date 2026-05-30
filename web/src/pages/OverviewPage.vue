@@ -9,7 +9,7 @@
         :team-count="teamCount"
         :today-session-count="sessionActiveCount"
         :today-token-count="overview?.today?.total_tokens ?? 0"
-        @open-token-trend="openTokenTrendDialog"
+        @navigate="onMetricNavigate"
       >
         <template #actions>
           <OverviewMonitorQuickLinks />
@@ -64,7 +64,7 @@
           <template #action><q-btn flat :label="t('overviewPage.btnRetry')" @click="loadOverview" /></template>
         </q-banner>
 
-        <UsageMetricCards :overview="overview" />
+        <UsageMetricCards :overview="overview" @navigate="onMetricNavigate" />
 
         <div class="overview-chart-row">
           <div class="overview-chart-row__main">
@@ -138,15 +138,12 @@
       </div>
     </div>
 
-    <TokenTrendDialog
-      v-model:open="tokenTrendDialogOpen"
-      :trend-points="overview?.trends ?? []"
-    />
   </q-page>
 </template>
 
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
 import { useOverviewPage } from "../features/usage/useOverviewPage";
 import CommandCenterHero from "../components/usage/CommandCenterHero.vue";
 import CommandCenterStatusPanels from "../components/usage/CommandCenterStatusPanels.vue";
@@ -163,7 +160,6 @@ import UsageTopAgents from "../components/usage/UsageTopAgents.vue";
 import UsageTopModels from "../components/usage/UsageTopModels.vue";
 import UsageModelCostPie from "../components/usage/UsageModelCostPie.vue";
 import UsageProviderCostPie from "../components/usage/UsageProviderCostPie.vue";
-import TokenTrendDialog from "../components/usage/TokenTrendDialog.vue";
 
 const UsageTrendChart = defineAsyncComponent(() => import("../components/usage/UsageTrendChart.vue"));
 
@@ -178,15 +174,22 @@ const {
   runnerMetrics, runnerLoading, runnerWindowMinutes,
   reloadRunnerMetrics, openRunsTab,
   agentStats, providerCount, categoryCount, teamCount,
-  tokenTrendDialogOpen, openTokenTrendDialog,
   username, providerHealthSummary,
   sessionActiveCount, sessionSparkline, runnerStats
 } = useOverviewPage();
 
 const alertStackRef = ref<HTMLElement | null>(null);
 
+const router = useRouter();
+
 function scrollToAlerts() {
   alertStackRef.value?.scrollIntoView({ behavior: "smooth" });
+}
+
+function onMetricNavigate(action: string) {
+  if (action === "tokens") {
+    router.push(eventsPageQuery.value);
+  }
 }
 
 const eventsPageQuery = computed(() => {

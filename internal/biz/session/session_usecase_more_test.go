@@ -20,6 +20,35 @@ type testRepo struct {
 	appendChatMessageFn         func(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
 	updateChatMessageStatusFn   func(ctx context.Context, sessionID, messageID, status, errorMessage string) error
 	updateMessageFeedbackJSONFn func(ctx context.Context, sessionID, messageID, rating, comment string) error
+	listTimelineEventRefsPagedFn func(ctx context.Context, sessionID string, q TimelineQuery) ([]TimelineEventRef, int, error)
+	countMessagesBySessionFn     func(ctx context.Context, sessionID string) (int, error)
+	listMessagesBySessionFn      func(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
+	listMessagesByIDsFn          func(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error)
+	listToolInvocationsByIDsFn   func(ctx context.Context, sessionID string, ids []string) ([]ToolInvocationView, error)
+	listSkillInvocationsByIDsFn  func(ctx context.Context, sessionID string, ids []string) ([]SkillInvocationView, error)
+	lookupAgentDisplayNamesFn    func(ctx context.Context, agentIDs []string) (map[string]string, error)
+	createSessionTurnFn          func(ctx context.Context, turn SessionTurn) (SessionTurn, error)
+	listSessionTurnsFn           func(ctx context.Context, sessionID string, limit, offset int) (SessionTurnListResult, error)
+	incrementInvocationCountsFn  func(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error
+	insertSessionSummaryFn       func(ctx context.Context, row SessionSummary) error
+	listSessionSummariesFn       func(ctx context.Context, sessionID string) ([]SessionSummary, error)
+	getSessionStateFn            func(ctx context.Context, sessionID string) (map[string]string, error)
+	saveSessionStateFn           func(ctx context.Context, sessionID string, state map[string]string) error
+	listSessionsByIDsFn          func(ctx context.Context, ids []string) ([]Session, error)
+	listSessionsForBatchFn       func(ctx context.Context, q SessionSearchQuery) ([]Session, error)
+	archiveSessionsByIDsFn       func(ctx context.Context, ids []string) (int, []string, error)
+	deleteSessionsByIDsFn        func(ctx context.Context, ids []string) (int, []string, error)
+	compressSessionInTxFn        func(ctx context.Context, sessionID string, fn func(ctx context.Context) error) error
+	tryIncrementCompressVersionFn func(ctx context.Context, sessionID string) (int64, error)
+	sessionSummaryExistsFn       func(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error)
+	deleteSessionsByAgentIDFn    func(ctx context.Context, agentID string) error
+	bumpSessionRevisionFn        func(ctx context.Context, sessionID string) (int64, error)
+	getSessionRevisionFn         func(ctx context.Context, sessionID string) (int64, error)
+	updateSessionTurnFn          func(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)
+	upsertChatActivityMessageFn  func(ctx context.Context, sessionID string, msg ChatMessage) error
+	listMessagesAfterTurnFn      func(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error)
+	listMessagesRecentFn         func(ctx context.Context, sessionID string, limit int) ([]ChatMessage, error)
+	listMessagesAfterRevisionFn  func(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error)
 }
 
 var _ SessionRepo = (*testRepo)(nil)
@@ -92,6 +121,34 @@ func (r *testRepo) UpdateMessageFeedbackJSON(ctx context.Context, sessionID, mes
 		return r.updateMessageFeedbackJSONFn(ctx, sessionID, messageID, rating, comment)
 	}
 	return r.mockSessionRepo.UpdateMessageFeedbackJSON(ctx, sessionID, messageID, rating, comment)
+}
+
+func (r *testRepo) ListSessionsByIDs(ctx context.Context, ids []string) ([]Session, error) {
+	if r.listSessionsByIDsFn != nil {
+		return r.listSessionsByIDsFn(ctx, ids)
+	}
+	return r.mockSessionRepo.ListSessionsByIDs(ctx, ids)
+}
+
+func (r *testRepo) ListSessionsForBatch(ctx context.Context, q SessionSearchQuery) ([]Session, error) {
+	if r.listSessionsForBatchFn != nil {
+		return r.listSessionsForBatchFn(ctx, q)
+	}
+	return r.mockSessionRepo.ListSessionsForBatch(ctx, q)
+}
+
+func (r *testRepo) ArchiveSessionsByIDs(ctx context.Context, ids []string) (int, []string, error) {
+	if r.archiveSessionsByIDsFn != nil {
+		return r.archiveSessionsByIDsFn(ctx, ids)
+	}
+	return r.mockSessionRepo.ArchiveSessionsByIDs(ctx, ids)
+}
+
+func (r *testRepo) DeleteSessionsByIDs(ctx context.Context, ids []string) (int, []string, error) {
+	if r.deleteSessionsByIDsFn != nil {
+		return r.deleteSessionsByIDsFn(ctx, ids)
+	}
+	return r.mockSessionRepo.DeleteSessionsByIDs(ctx, ids)
 }
 
 func newTestUc(repo *testRepo) *SessionUsecase {
