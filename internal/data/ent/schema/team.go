@@ -27,6 +27,7 @@ func (Team) Fields() []ent.Field {
 		field.Bool("is_default").Default(false),
 		field.Text("definition_json").Default(""),
 		field.String("adk_app_name").Default(""),
+		field.String("category_industry_id").Default(""),
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("deleted_at").Default(""),

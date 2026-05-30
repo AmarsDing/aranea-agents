@@ -35,3 +35,11 @@ func recordMigrationApplied(ctx context.Context, client *ent.Client, version int
 		Save(ctx)
 	return err
 }
+
+func IsSeedApplied(ctx context.Context, client *ent.Client, version int) (bool, error) {
+	return isMigrationApplied(ctx, client, version)
+}
+
+func MarkSeedApplied(ctx context.Context, client *ent.Client, version int, name string) error {
+	return recordMigrationApplied(ctx, client, version, name)
+}

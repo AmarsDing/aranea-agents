@@ -5,6 +5,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // SkillInvocation maps table skill_invocation (incl. legacy columns from ensureLegacyColumns).
@@ -42,5 +43,11 @@ func (SkillInvocation) Fields() []ent.Field {
 		field.String("source").Default("runtime").MaxLen(64),
 		field.String("activation_id").Default("").MaxLen(256),
 		field.String("message_id").Default("").MaxLen(256),
+	}
+}
+
+func (SkillInvocation) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("skill_id", "created_at").StorageKey("idx_skill_invocation_skill"),
 	}
 }

@@ -12,11 +12,14 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
+	"aranea-agents/internal/data"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/mcp/health"
 	"aranea-agents/internal/server"
+	"aranea-agents/internal/service"
 	"aranea-agents/internal/telemetry"
 	"aranea-agents/pkg/auth"
+	"aranea-agents/pkg/safego"
 
 	_ "aranea-agents/internal/channel/all"
 
@@ -56,6 +59,10 @@ func newApp(
 	eventInfra *event.Infra,
 	sessionLogWriter biz.SessionLogWriter,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
+	agentUC *biz.AgentUsecase,
+	teamUC *biz.TeamUsecase,
+	positionUC *biz.PositionUsecase,
+	d *data.Data,
 ) *kratos.App {
 	// EP-OBS-03: WSServer implements transport.Server (Start/Stop); register it so
 	// kratos.App orchestrates its lifecycle and Stop triggers broadcastShutdown.
@@ -95,6 +102,11 @@ func newApp(
 				memoryDataMigration.Start(startCtx)
 				logger.Log(log.LevelInfo, "msg", "memory data migration worker started")
 			}
+			safego.Go(startCtx, "seed.industry_agents", func() {
+				logger.Log(log.LevelInfo, "msg", "industry agent seed started")
+				service.SeedBuiltinIndustryAgents(startCtx, agentUC, teamUC, positionUC, biz.ScenarioDir(), d)
+				logger.Log(log.LevelInfo, "msg", "industry agent seed completed")
+			})
 			return nil
 		}),
 		kratos.AfterStop(func(context.Context) error {
@@ -312,9 +324,13 @@ func main() {
 		logger.Log(log.LevelInfo, "msg", "memory dead letter replayer started", "interval", "30m")
 	}
 
-	if out.ModelCatalogRunner != nil {
-		out.ModelCatalogRunner.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "model catalog sync runner started", "interval", "1h")
+	if out.ModelRegistrySyncAgent != nil {
+		safego.Go(cronCtx, "modelregistry.cron_seed", func() {
+			if err := biz.SeedModelRegistryCronTask(cronCtx, out.CronRepo); err != nil {
+				event.SysLogWarn("modelregistry.cron_seed", "Failed to seed model registry cron task", event.P("error", err))
+			}
+		})
+		logger.Log(log.LevelInfo, "msg", "model registry sync agent registered", "schedule", "via CronRunner")
 	}
 
 	if err := out.App.Run(); err != nil {

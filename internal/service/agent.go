@@ -21,16 +21,16 @@ import (
 type AgentService struct {
 	v1.UnimplementedAgentServiceServer
 
-	uc       *biz.AgentUsecase
-	evoUC    *biz.EvolutionUsecase
-	mon      *biz.MonitorUsecase
-	a2aUC    *biz.A2AUsecase
-	promptAI *PromptFileAIEditor
+	uc              *biz.AgentUsecase
+	evoUC           *biz.EvolutionUsecase
+	mon             *biz.MonitorUsecase
+	a2aUC           *biz.A2AUsecase
+	promptAI        *PromptFileAIEditor
+	agentTemplateUC *biz.AgentTemplateUsecase
 }
 
-// NewAgentService constructs the service.
-func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase, mon *biz.MonitorUsecase, a2aUC *biz.A2AUsecase, promptAI *PromptFileAIEditor) *AgentService {
-	return &AgentService{uc: uc, evoUC: evoUC, mon: mon, a2aUC: a2aUC, promptAI: promptAI}
+func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase, mon *biz.MonitorUsecase, a2aUC *biz.A2AUsecase, promptAI *PromptFileAIEditor, agentTemplateUC *biz.AgentTemplateUsecase) *AgentService {
+	return &AgentService{uc: uc, evoUC: evoUC, mon: mon, a2aUC: a2aUC, promptAI: promptAI, agentTemplateUC: agentTemplateUC}
 }
 
 func fromProtoRuntime(pb *v1.AgentRuntimeSettings) *biz.AgentRuntimeSettings {
@@ -824,8 +824,10 @@ func (s *AgentService) EditPromptFileByAI(ctx context.Context, req *v1.EditPromp
 
 // ListAgentTemplates implements GET /v1/agent-templates.
 func (s *AgentService) ListAgentTemplates(ctx context.Context, _ *emptypb.Empty) (*v1.ListAgentTemplatesResponse, error) {
-	_ = ctx
-	items := biz.ListAgentTemplates()
+	items, err := s.agentTemplateUC.List(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := &v1.ListAgentTemplatesResponse{Items: make([]*v1.AgentTemplate, 0, len(items))}
 	for _, t := range items {
 		out.Items = append(out.Items, &v1.AgentTemplate{

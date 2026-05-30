@@ -95,6 +95,7 @@ message GraphDefinition {
   google.protobuf.Timestamp created_at = 16;
   google.protobuf.Timestamp updated_at = 17;
   int32 version = 18;
+  int32 sort_order = 19;
 }
 
 // --- CreateGraph ---
@@ -175,6 +176,14 @@ message DeleteGraphRequest {
 message DeleteGraphResponse {
   bool deleted = 1;
 }
+
+// --- ReorderGraphs ---
+
+message ReorderGraphsRequest {
+  repeated string ids = 1;
+}
+
+message ReorderGraphsResponse {}
 
 // --- ExecuteGraph ---
 
@@ -792,6 +801,12 @@ service GraphService {
   }
   rpc DeleteGraph(DeleteGraphRequest) returns (DeleteGraphResponse) {
     option (google.api.http) = {delete: "/v1/graphs/{id}"};
+  }
+  rpc ReorderGraphs(ReorderGraphsRequest) returns (ReorderGraphsResponse) {
+    option (google.api.http) = {
+      put: "/v1/graphs:reorder"
+      body: "*"
+    };
   }
   rpc ExecuteGraph(ExecuteGraphRequest) returns (ExecuteGraphResponse) {
     option (google.api.http) = {

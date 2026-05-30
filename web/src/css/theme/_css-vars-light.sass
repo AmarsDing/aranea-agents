@@ -1,6 +1,8 @@
 // 白昼 CSS 变量（:root）；与 UX.md §2.1 对齐
 // stylelint-disable color-no-hex -- 主题变量定义文件，必须使用 hex 值
 \:root
+  --q-primary: #4F46E5
+  --q-secondary: #475569
   --canvas-base: #FEFBF4
   --glass-surface: rgba(255, 253, 245, 0.65)
   --glass-surface-hover: rgba(255, 253, 245, 0.78)
@@ -265,3 +267,7 @@
   --color-diff-added-bg: rgba(34, 197, 94, 0.08)
   --table-scrollbar-thumb: rgba(141, 110, 99, 0.18)
   --table-scrollbar-thumb-hover: rgba(141, 110, 99, 0.35)
+  --toggle-track-off: rgba(141, 110, 99, 0.22)
+  --toggle-track-on: color-mix(in srgb, var(--color-accent) 68%, var(--glass-surface))
+  --toggle-thumb-on: var(--color-accent)
+  --toggle-label-color: var(--color-text-primary)

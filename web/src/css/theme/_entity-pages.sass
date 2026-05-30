@@ -146,6 +146,23 @@ body.body--dark .app-entity-stat
 .create-agent-card
   overflow: hidden
 
+body:not(.body--dark) .create-agent-card
+  --q-primary: var(--color-accent)
+
+body:not(.body--dark) .create-agent-card .text-primary,
+body:not(.body--dark) .create-agent-card .q-toggle__inner--truthy,
+body:not(.body--dark) .create-agent-card .model-check-btn
+  color: #5A5A5A
+
+body:not(.body--dark) .create-agent-card .model-check-btn
+  border-color: #8A8A8A
+
+body:not(.body--dark) .create-agent-card .q-toggle__track
+  background: #B0B0B0
+
+body:not(.body--dark) .create-agent-card .q-toggle__inner--truthy .q-toggle__track
+  background: #6B6B6B
+
 .q-dialog .q-card.create-agent-card.create-agent-card--tall
   max-height: min(92vh, 1020px)
 
@@ -162,13 +179,31 @@ body.body--dark .app-entity-stat
 
 .agent-kind-row
   .q-btn-toggle
+    display: inline-flex
     border: 1px solid var(--glass-border)
     border-radius: 12px
     background: var(--glass-surface)
+    overflow: hidden
 
     .q-btn
       font-weight: 600
       min-height: 40px
+      padding: 0 24px
+      background: color-mix(in srgb, #000 8%, var(--glass-elevated))
+      color: var(--color-text-secondary)
+      transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease
+
+      &:hover
+        background: color-mix(in srgb, #000 12%, var(--glass-elevated))
+        color: var(--color-text-primary)
+
+    .q-btn[aria-pressed="true"]
+      background: var(--color-success)
+      color: var(--color-on-accent)
+      box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--color-success) 70%, #000)
+
+      &:hover
+        background: color-mix(in srgb, var(--color-success) 85%, #000)
 
 .create-agent-card .avatar-picker--toolbar
   border: 2px solid var(--color-on-accent)
@@ -196,6 +231,17 @@ body.body--dark .app-entity-stat
 .create-agent-card .form-panel
   padding: 4px 0 0
 
+.create-agent-card .form-panel .q-field--outlined .q-field__label
+  color: var(--color-text-secondary)
+  font-weight: 600
+
+.create-agent-card .form-panel .q-field--outlined .q-field__native,
+.create-agent-card .form-panel .q-field--outlined .q-field__input
+  color: var(--color-text-primary)
+
+.create-agent-card .form-panel .q-field--outlined .q-field__bottom .q-field__messages
+  color: var(--color-text-secondary)
+
 .create-agent-inline-actions
   display: flex
   align-items: center
@@ -209,26 +255,43 @@ body.body--dark .app-entity-stat
     font-weight: 700
 
 .create-agent-card .description-block
-  margin-top: 22px
-  padding: 20px 22px 16px
+  margin-top: 20px
+  padding: 20px 22px 18px
   border: 1px solid var(--glass-border)
-  border-radius: 24px
-  background: linear-gradient(180deg, var(--color-on-accent), var(--color-page-tint)), radial-gradient(circle at top left, color-mix(in srgb, var(--color-accent) 5%, transparent), transparent 35%)
+  border-radius: 18px
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 4%, var(--color-on-accent)), color-mix(in srgb, var(--color-accent) 2%, var(--color-page-tint))), radial-gradient(circle at top left, color-mix(in srgb, var(--color-accent) 5%, transparent), transparent 35%)
   box-shadow: var(--shadow-entity-panel)
+
+.create-agent-card .description-block .text-subtitle2
+  color: var(--color-text-heading)
+  font-weight: 700
+
+.create-agent-card .description-block .q-field--outlined .q-field__label
+  color: var(--color-text-secondary)
+  font-weight: 600
+
+.create-agent-card .description-block .q-field--outlined .q-field__native
+  color: var(--color-text-primary)
+
+.create-agent-card .description-block .q-field--outlined .q-field__bottom .q-field__messages
+  color: var(--color-text-secondary)
 
 .create-agent-card .description-block .q-chip
   font-weight: 700
-  background: var(--color-on-accent)
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-on-accent))
+  color: var(--color-text-primary)
+  border-color: color-mix(in srgb, var(--color-accent) 18%, var(--glass-border))
   transition: background 160ms ease, border-color 160ms ease, transform 160ms ease
 
 .create-agent-card .description-block .q-chip:hover
   transform: translateY(-1px)
-  background: var(--color-info-soft)
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-on-accent))
+  border-color: color-mix(in srgb, var(--color-accent) 30%, var(--glass-border))
 
 .create-agent-card .template-chip--active
-  border-color: color-mix(in srgb, var(--color-warning) 36%, var(--glass-border))
-  background: var(--color-status-warning-bg-alt)
-  color: var(--color-status-warning-text)
+  border-color: color-mix(in srgb, var(--color-accent) 50%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-accent) 16%, var(--color-on-accent))
+  color: var(--color-accent-hover)
 
 .create-agent-card__actions
   padding: 16px 30px 22px
@@ -248,6 +311,22 @@ body.body--dark .app-entity-stat
 .create-agent-card.create-agent-card--dark .agent-kind-row .q-btn-toggle
   border-color: var(--glass-border)
   background: color-mix(in srgb, var(--glass-elevated) 78%, transparent)
+
+  .q-btn
+    background: color-mix(in srgb, #fff 8%, transparent)
+    color: var(--color-text-secondary)
+
+    &:hover
+      background: color-mix(in srgb, #fff 12%, transparent)
+      color: var(--color-text-primary)
+
+  .q-btn[aria-pressed="true"]
+    background: var(--color-success)
+    color: var(--color-on-accent)
+    box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--color-success) 70%, #000)
+
+    &:hover
+      background: color-mix(in srgb, var(--color-success) 90%, #fff)
 
 .create-agent-card.create-agent-card--dark .description-block
   border-color: color-mix(in srgb, var(--glass-border) 80%, transparent)
@@ -399,18 +478,19 @@ body.body--dark .app-entity-stat
   z-index: 9999
 
 .agents-draggable-grid
-  display: grid
+  display: contents
+
+.agents-page .app-entity-grid
   grid-template-columns: repeat(3, minmax(0, 1fr))
   gap: 16px
   align-items: stretch
-  min-height: 0
 
 @media (width <= 1199px)
-  .agents-draggable-grid
+  .agents-page .app-entity-grid
     grid-template-columns: repeat(2, minmax(0, 1fr))
 
 @media (width <= 767px)
-  .agents-draggable-grid
+  .agents-page .app-entity-grid
     grid-template-columns: minmax(0, 1fr)
 
 .agent-card__header
@@ -461,6 +541,26 @@ body.body--dark .app-entity-stat
   overflow: hidden
   -webkit-line-clamp: 2
   -webkit-box-orient: vertical
+
+.agent-desc-tooltip
+  border: 1px solid var(--glass-border) !important
+  border-radius: 14px !important
+  background: color-mix(in srgb, var(--glass-surface) 92%, var(--glass-elevated, #fff)) !important
+  backdrop-filter: blur(var(--glass-blur-default)) !important
+  -webkit-backdrop-filter: blur(var(--glass-blur-default)) !important
+  box-shadow: var(--glass-inner-highlight), 0 12px 32px color-mix(in srgb, var(--color-shadow, #000) 18%, transparent) !important
+  color: var(--color-text-primary) !important
+  font-size: 15px !important
+  line-height: 1.6 !important
+  font-weight: 500 !important
+  max-width: min(480px, 86vw) !important
+  padding: 14px 18px !important
+  white-space: pre-wrap !important
+  word-break: break-word !important
+  text-align: left !important
+
+body.body--dark .agent-desc-tooltip
+  background: color-mix(in srgb, var(--glass-elevated) 78%, transparent) !important
 
 .agent-card__chip
   border: 1px solid var(--glass-border)
@@ -1273,10 +1373,10 @@ body.body--dark .agent-categories-page .category-tree-department
   justify-content: space-between
   gap: 14px
   padding: 18px
-  background: linear-gradient(180deg, color-mix(in srgb, var(--color-on-accent) 98%, transparent), color-mix(in srgb, var(--color-page-tint-blue) 92%, transparent)), radial-gradient(circle at top right, rgba(25, 118, 210, 0.08), transparent 34%)
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-on-accent) 98%, transparent), color-mix(in srgb, var(--color-page-tint-blue) 92%, transparent)), radial-gradient(circle at top right, color-mix(in srgb, var(--color-link) 8%, transparent), transparent 34%)
 
 .industry-avatar
-  box-shadow: 0 14px 34px rgba(25, 118, 210, 0.2)
+  box-shadow: 0 14px 34px color-mix(in srgb, var(--color-link) 20%, transparent)
 
 .system-chip,
 .custom-chip
@@ -1350,7 +1450,7 @@ body.body--dark .agent-categories-page .category-tree-department
   align-self: center
 
 .category-empty
-  background: radial-gradient(circle at center 26%, rgba(25, 118, 210, 0.08), transparent 22%), linear-gradient(180deg, var(--color-on-accent), var(--color-page-tint))
+  background: radial-gradient(circle at center 26%, color-mix(in srgb, var(--color-link) 8%, transparent), transparent 22%), linear-gradient(180deg, var(--color-on-accent), var(--color-page-tint))
 
 .category-empty .q-card__section
   min-height: 250px
@@ -1535,7 +1635,8 @@ body.body--dark .resource-manager-page.is-dark .resource-dialog-card
   box-shadow: var(--shadow-entity-panel-dark)
 
 body.body--dark .resource-manager-page.is-dark .provider-dialog .q-field__control
-  background: color-mix(in srgb, var(--glass-surface) 82%, transparent)
+  background: color-mix(in srgb, var(--glass-elevated) 55%, transparent)
+  border-color: var(--glass-border)
 
 body.body--dark .resource-manager-page.is-dark .provider-dialog .q-field__native,
 body.body--dark .resource-manager-page.is-dark .provider-dialog .q-field__input

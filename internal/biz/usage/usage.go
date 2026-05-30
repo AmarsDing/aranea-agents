@@ -16,7 +16,7 @@ import (
 
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/internal/event"
-	"aranea-agents/internal/modelcatalog"
+	"aranea-agents/internal/modelregistry"
 	"aranea-agents/pkg/safego"
 )
 
@@ -594,32 +594,32 @@ func applyPricingUSDToEvent(e *TokenUsageEvent, snap ModelPricingSnapshot) {
 	e.EmbeddingPriceUSDPer1M = snap.EmbeddingPriceUSDPer1M
 	// Micro columns remain for DB persistence; derived from USD/1M when available.
 	if snap.InputPriceUSDPer1M > 0 {
-		e.InputPriceMicroUSDPer1K = modelcatalog.USDPer1MToMicroPer1K(snap.InputPriceUSDPer1M)
+		e.InputPriceMicroUSDPer1K = modelregistry.USDPer1MToMicroPer1K(snap.InputPriceUSDPer1M)
 	} else if snap.InputPriceMicroUSDPer1K > 0 {
 		e.InputPriceMicroUSDPer1K = snap.InputPriceMicroUSDPer1K
 	}
 	if snap.OutputPriceUSDPer1M > 0 {
-		e.OutputPriceMicroUSDPer1K = modelcatalog.USDPer1MToMicroPer1K(snap.OutputPriceUSDPer1M)
+		e.OutputPriceMicroUSDPer1K = modelregistry.USDPer1MToMicroPer1K(snap.OutputPriceUSDPer1M)
 	} else if snap.OutputPriceMicroUSDPer1K > 0 {
 		e.OutputPriceMicroUSDPer1K = snap.OutputPriceMicroUSDPer1K
 	}
 	if snap.CacheReadPriceUSDPer1M > 0 {
-		e.CachedInputPriceMicroUSDPer1K = modelcatalog.USDPer1MToMicroPer1K(snap.CacheReadPriceUSDPer1M)
+		e.CachedInputPriceMicroUSDPer1K = modelregistry.USDPer1MToMicroPer1K(snap.CacheReadPriceUSDPer1M)
 	} else if snap.CachedInputPriceMicroUSDPer1K > 0 {
 		e.CachedInputPriceMicroUSDPer1K = snap.CachedInputPriceMicroUSDPer1K
 	}
 	if snap.CacheWritePriceUSDPer1M > 0 {
-		e.CacheWritePriceMicroUSDPer1K = modelcatalog.USDPer1MToMicroPer1K(snap.CacheWritePriceUSDPer1M)
+		e.CacheWritePriceMicroUSDPer1K = modelregistry.USDPer1MToMicroPer1K(snap.CacheWritePriceUSDPer1M)
 	} else if snap.CacheWritePriceMicroUSDPer1K > 0 {
 		e.CacheWritePriceMicroUSDPer1K = snap.CacheWritePriceMicroUSDPer1K
 	}
 	if snap.ReasoningPriceUSDPer1M > 0 {
-		e.ReasoningPriceMicroUSDPer1K = modelcatalog.USDPer1MToMicroPer1K(snap.ReasoningPriceUSDPer1M)
+		e.ReasoningPriceMicroUSDPer1K = modelregistry.USDPer1MToMicroPer1K(snap.ReasoningPriceUSDPer1M)
 	} else if snap.ReasoningPriceMicroUSDPer1K > 0 {
 		e.ReasoningPriceMicroUSDPer1K = snap.ReasoningPriceMicroUSDPer1K
 	}
 	if snap.EmbeddingPriceUSDPer1M > 0 {
-		e.EmbeddingPriceMicroUSDPer1K = modelcatalog.USDPer1MToMicroPer1K(snap.EmbeddingPriceUSDPer1M)
+		e.EmbeddingPriceMicroUSDPer1K = modelregistry.USDPer1MToMicroPer1K(snap.EmbeddingPriceUSDPer1M)
 	} else if snap.EmbeddingPriceMicroUSDPer1K > 0 {
 		e.EmbeddingPriceMicroUSDPer1K = snap.EmbeddingPriceMicroUSDPer1K
 	}
@@ -677,7 +677,7 @@ func usageCostMicro(tokens int, microPer1K int64, usdPer1M float64) int64 {
 		return 0
 	}
 	if usdPer1M > 0 && !math.IsNaN(usdPer1M) {
-		return modelcatalog.CostMicroUSDFromUSDPer1M(tokens, usdPer1M)
+		return modelregistry.CostMicroUSDFromUSDPer1M(tokens, usdPer1M)
 	}
 	if microPer1K > 0 {
 		return int64(tokens) * microPer1K / 1000

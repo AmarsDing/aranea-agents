@@ -28,6 +28,8 @@ message Team {
   bool has_active_run = 12;
   // Strong-typed OrchestrationSpec v2 (parallel to definition_json; M53 TG-CMP-V2).
   OrchestrationSpec orchestration_spec = 13;
+  // Industry category node ID for team grouping.
+  string category_industry_id = 14;
 }
 
 message TeamRun {
@@ -299,6 +301,7 @@ message CreateTeamRequest {
   string status = 3;
   string definition_json = 4;
   string adk_app_name = 5;
+  string category_industry_id = 6;
 }
 
 message GetTeamRequest {

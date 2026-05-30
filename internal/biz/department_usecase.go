@@ -22,11 +22,12 @@ type DepartmentRepository interface {
 }
 
 type DepartmentUsecase struct {
-	repo DepartmentRepository
+	repo  DepartmentRepository
+	catUC *AgentCategoryUsecase
 }
 
-func NewDepartmentUsecase(repo DepartmentRepository) *DepartmentUsecase {
-	return &DepartmentUsecase{repo: repo}
+func NewDepartmentUsecase(repo DepartmentRepository, catUC *AgentCategoryUsecase) *DepartmentUsecase {
+	return &DepartmentUsecase{repo: repo, catUC: catUC}
 }
 
 func (u *DepartmentUsecase) ListByIndustry(ctx context.Context, industryKey string) (DepartmentListResult, error) {
@@ -41,4 +42,8 @@ func (u *DepartmentUsecase) UpsertByKey(ctx context.Context, d Department) (Depa
 		return Department{}, kerrors.BadRequest("DEPARTMENT", "key and industry_key are required")
 	}
 	return u.repo.UpsertDepartmentByKey(ctx, d)
+}
+
+func (u *DepartmentUsecase) ListByParentID(ctx context.Context, parentID string) ([]AgentCategory, error) {
+	return u.catUC.ListByParentID(ctx, parentID)
 }

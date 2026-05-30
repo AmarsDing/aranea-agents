@@ -34,6 +34,7 @@ func (GraphDefinition) Fields() []ent.Field {
 		field.Text("interrupt_before").Default("[]"),
 		field.Text("interrupt_after").Default("[]"),
 		field.Text("metadata").Default("{}"),
+		field.Int("sort_order").Default(0),
 		field.Time("created_at"),
 		field.Time("updated_at"),
 	}

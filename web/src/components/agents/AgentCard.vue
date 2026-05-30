@@ -26,7 +26,7 @@
     </q-card-section>
 
     <q-card-section class="agent-card__body q-pt-none">
-      <p class="agent-description">{{ agent.agent_description || "暂无描述" }}<q-tooltip v-if="agent.agent_description" max-width="280px" :delay="400">{{ agent.agent_description }}</q-tooltip></p>
+      <p class="agent-description">{{ agent.agent_description || "暂无描述" }}<q-tooltip v-if="agent.agent_description" class="agent-desc-tooltip" max-width="480px" :delay="300">{{ agent.agent_description }}</q-tooltip></p>
       <div class="row q-gutter-xs">
         <q-chip v-if="isBuiltin" dense square class="agent-card__chip is-system" icon="lock">系统</q-chip>
         <q-chip v-else dense square class="agent-card__chip">{{ categoryLabel }}</q-chip>

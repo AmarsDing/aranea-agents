@@ -94,8 +94,13 @@ message ListPositionVariantsRequest {
   string position_key = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
+message VariantInfo {
+  string key = 1;
+  string label = 2;
+}
+
 message ListPositionVariantsResponse {
-  repeated string variants = 1;
+  repeated VariantInfo variants = 1;
 }
 
 service IndustryService {

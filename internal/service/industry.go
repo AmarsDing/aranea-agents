@@ -137,5 +137,9 @@ func (s *IndustryService) ListPositionVariants(ctx context.Context, req *pb.List
 	if err != nil {
 		return nil, err
 	}
-	return &pb.ListPositionVariantsResponse{Variants: variants}, nil
+	items := make([]*pb.VariantInfo, 0, len(variants))
+	for _, v := range variants {
+		items = append(items, &pb.VariantInfo{Key: v.Key, Label: v.Label})
+	}
+	return &pb.ListPositionVariantsResponse{Variants: items}, nil
 }

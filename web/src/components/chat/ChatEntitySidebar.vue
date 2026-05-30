@@ -20,145 +20,65 @@
 
       <q-scroll-area class="col">
         <div class="chat-side__content">
-          <q-item-label header class="chat-section-label text-cream-muted text-caption">
-            {{ t("chat.groupAgents") }}
-          </q-item-label>
-          <div v-for="group in agentGroups" :key="group.key" class="chat-entity-group">
-            <div class="chat-entity-group__label">
-              <q-icon name="account_tree" size="14px" />
-              <span>{{ group.label }}</span>
-              <q-badge rounded color="primary" :label="group.items.length" />
+          <ChatSectionHeader
+            icon="smart_toy"
+            :label="t('chat.groupAgents')"
+            :count="filteredAgents.length"
+            :collapsed="collapse.sectionCollapsed.agents"
+            @update:collapsed="collapse.toggleSection('agents')"
+          />
+          <template v-if="!collapse.sectionCollapsed.agents">
+            <ChatEntityGroup
+              v-for="group in agentGroups"
+              :key="group.key"
+              :items="group.items"
+              :label="group.label"
+              icon="account_tree"
+              :collapsed="collapse.isGroupCollapsed(group.key)"
+              :active-id="selectedKind === 'agent' ? selectedAgentId : null"
+              :pinned-id="pinnedAgentId"
+              settings-aria-label="设置"
+              delete-aria-label="删除"
+              @update:collapsed="collapse.toggleGroup(group.key)"
+              @select="$emit('select-agent', $event as Agent)"
+              @settings="$emit('settings', 'agent', $event)"
+              @delete="$emit('delete', 'agent', $event)"
+              @reorder="onAgentGroupReorder(group.key, $event)"
+            />
+            <div v-if="agentGroups.length === 0" class="chat-side-hint text-caption text-cream-muted">
+              没有匹配的 Agent
             </div>
-            <div class="column">
-              <q-item
-                v-for="agent in group.items"
-                :key="agent.id"
-                clickable
-                :active="selectedKind === 'agent' && selectedAgentId === agent.id"
-                active-class="app-sidebar-item--active"
-                class="chat-entity-item rounded-borders q-mb-sm"
-                :class="{ 'chat-entity-item--active': selectedKind === 'agent' && selectedAgentId === agent.id }"
-                @click="$emit('select-agent', agent)"
-              >
-                <q-item-section side class="chat-status-icon">
-                  <q-icon
-                    :name="isAgentWorking(agent) ? 'bolt' : 'task_alt'"
-                    :color="isAgentWorking(agent) ? 'negative' : 'positive'"
-                    size="xs"
-                    dense
-                  />
-                </q-item-section>
-                <q-item-section class="chat-entity-main">
-                  <q-item-label class="chat-entity-name" lines="1">
-                    {{ agent.display_name }}
-                  </q-item-label>
-                  <q-item-label caption class="chat-entity-meta">
-                    <span class="chat-status-pill" :class="statusClass(agentStatus(agent))">
-                      {{ statusLabel(agentStatus(agent)) }}
-                    </span>
-                  </q-item-label>
-                </q-item-section>
-                <q-item-section side class="chat-entity-actions">
-                  <div class="chat-action-stack entity-actions">
-                    <q-btn
-                      dense
-                      round
-                      flat
-                      size="sm"
-                      icon="settings"
-                      class="chat-action-btn"
-                      :aria-label="t('chat.settings')"
-                      @click.stop="$emit('settings', 'agent', agent.id)"
-                    />
-                    <q-btn
-                      dense
-                      round
-                      flat
-                      size="sm"
-                      color="negative"
-                      icon="delete"
-                      class="chat-action-btn chat-danger-btn"
-                      :aria-label="t('chat.remove')"
-                      @click.stop="$emit('delete', 'agent', agent.id)"
-                    />
-                  </div>
-                </q-item-section>
-              </q-item>
-            </div>
-          </div>
-          <div v-if="agentGroups.length === 0" class="chat-side-hint text-caption text-cream-muted">
-            没有匹配的 Agent
-          </div>
+          </template>
 
-          <q-item-label header class="text-cream-muted text-caption q-pt-md">
-            {{ t("chat.groupTeams") }}
-          </q-item-label>
-          <div v-for="group in teamGroups" :key="group.key" class="chat-entity-group">
-            <div class="chat-entity-group__label">
-              <q-icon name="groups" size="14px" />
-              <span>{{ group.label }}</span>
-              <q-badge rounded color="primary" :label="group.items.length" />
+          <ChatSectionHeader
+            icon="groups"
+            :label="t('chat.groupTeams')"
+            :count="filteredTeams.length"
+            :collapsed="collapse.sectionCollapsed.teams"
+            class="q-pt-md"
+            @update:collapsed="collapse.toggleSection('teams')"
+          />
+          <template v-if="!collapse.sectionCollapsed.teams">
+            <ChatEntityGroup
+              v-for="group in teamGroups"
+              :key="group.key"
+              :items="group.items"
+              :label="group.label"
+              icon="groups"
+              :collapsed="collapse.isGroupCollapsed(group.key)"
+              :active-id="selectedKind === 'team' ? selectedTeamId : null"
+              settings-aria-label="设置"
+              delete-aria-label="删除"
+              @update:collapsed="collapse.toggleGroup(group.key)"
+              @select="$emit('select-team', $event as TeamRow)"
+              @settings="$emit('settings', 'team', $event)"
+              @delete="$emit('delete', 'team', $event)"
+              @reorder="onTeamGroupReorder(group.key, $event)"
+            />
+            <div v-if="teamGroups.length === 0" class="chat-side-hint text-caption text-cream-muted">
+              没有匹配的 Team
             </div>
-            <div class="column">
-              <q-item
-                v-for="team in group.items"
-                :key="team.id"
-                clickable
-                :active="selectedKind === 'team' && selectedTeamId === team.id"
-                active-class="app-sidebar-item--active"
-                class="chat-entity-item rounded-borders q-mb-sm"
-                :class="{ 'chat-entity-item--active': selectedKind === 'team' && selectedTeamId === team.id }"
-                @click="$emit('select-team', team)"
-              >
-                <q-item-section side class="chat-status-icon">
-                  <q-icon
-                    :name="team.isWorking ? 'bolt' : 'task_alt'"
-                    :color="team.isWorking ? 'negative' : 'positive'"
-                    size="xs"
-                    dense
-                  />
-                </q-item-section>
-                <q-item-section class="chat-entity-main">
-                  <q-item-label class="chat-entity-name" lines="1">
-                    {{ team.display_name }}
-                  </q-item-label>
-                  <q-item-label caption class="chat-entity-meta">
-                    <span class="chat-status-pill" :class="statusClass(teamStatus(team))">
-                      {{ statusLabel(teamStatus(team)) }}
-                    </span>
-                  </q-item-label>
-                </q-item-section>
-                <q-item-section side class="chat-entity-actions">
-                  <div class="chat-action-stack entity-actions">
-                    <q-btn
-                      dense
-                      round
-                      flat
-                      size="sm"
-                      icon="settings"
-                      class="chat-action-btn"
-                      :aria-label="t('chat.settings')"
-                      @click.stop="$emit('settings', 'team', team.id)"
-                    />
-                    <q-btn
-                      dense
-                      round
-                      flat
-                      size="sm"
-                      color="negative"
-                      icon="delete"
-                      class="chat-action-btn chat-danger-btn"
-                      :aria-label="t('chat.remove')"
-                      @click.stop="$emit('delete', 'team', team.id)"
-                    />
-                  </div>
-                </q-item-section>
-              </q-item>
-            </div>
-          </div>
-          <div v-if="teamGroups.length === 0" class="chat-side-hint text-caption text-cream-muted">
-            没有匹配的 Team
-          </div>
+          </template>
         </div>
       </q-scroll-area>
     </aside>
@@ -166,11 +86,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import ChatSectionHeader from "./ChatSectionHeader.vue";
+import ChatEntityGroup from "./ChatEntityGroup.vue";
 import type { ChatEntityKind, DeleteKind, TeamRow } from "./types";
 import type { Agent } from "../../features/agents/types";
 import type { PlatformResourceTreeNode } from "../../features/platform/types";
+import { useChatEntityCollapse } from "../../features/chat/composables/useChatEntityCollapse";
+import { loadGroupOrder } from "../../features/chat/composables/chatWorkspaceUtils";
 
 type EntityGroup<T> = {
   key: string;
@@ -190,7 +114,7 @@ const props = defineProps<{
   isDark: boolean;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   "update:search": [value: string];
   "update:agents": [value: Agent[]];
   "update:teams": [value: TeamRow[]];
@@ -200,9 +124,16 @@ defineEmits<{
   "select-team": [team: TeamRow];
   settings: [kind: ChatEntityKind, id: string];
   delete: [kind: DeleteKind, id: string];
+  "group-reorder": [groupKey: string, ids: string[]];
 }>();
 
 const { t } = useI18n();
+const collapse = useChatEntityCollapse();
+
+const pinnedAgentId = computed(() => {
+  const pinned = props.agents.find((a) => a.is_default);
+  return pinned?.id ?? null;
+});
 
 const agentCategoryMap = computed(() => {
   const result = new Map<string, string>();
@@ -215,9 +146,6 @@ const agentCategoryMap = computed(() => {
   }
   return result;
 });
-
-const agentGroups = computed(() => groupEntities(props.agents.filter(agentMatches), agentGroupLabel));
-const teamGroups = computed(() => groupEntities(props.teams.filter(teamMatches), teamGroupLabel));
 
 function normalizedSearch() {
   return props.search.trim().toLowerCase();
@@ -235,34 +163,18 @@ function teamMatches(team: TeamRow) {
   return team.display_name.toLowerCase().includes(s);
 }
 
-function isAgentWorking(agent: Agent) {
-  return /work|run|busy|ing/i.test(agent.status || "");
-}
+const filteredAgents = computed(() => props.agents.filter(agentMatches));
+const filteredTeams = computed(() => props.teams.filter(teamMatches));
 
-function agentStatus(agent: Agent) {
-  if (isAgentWorking(agent)) return "working";
-  if (/inactive|disabled|stop|pause/i.test(agent.status || "")) return "inactive";
-  return "idle";
-}
+const agentGroups = computed(() => {
+  const groups = groupEntities(filteredAgents.value, agentGroupLabel);
+  return groups.map((g) => ({
+    ...g,
+    items: loadGroupOrder(g.items as Agent[], g.key, pinnedAgentId.value) as Agent[],
+  }));
+});
 
-function teamStatus(team: TeamRow) {
-  if (team.isWorking || /work|run|busy|ing/i.test(team.status || "")) return "working";
-  if (/inactive|disabled|stop|pause/i.test(team.status || "")) return "inactive";
-  return "idle";
-}
-
-function statusLabel(status: string) {
-  const labels: Record<string, string> = {
-    working: "工作中",
-    idle: "空闲",
-    inactive: "已停用"
-  };
-  return labels[status] ?? status;
-}
-
-function statusClass(status: string) {
-  return `is-${status}`;
-}
+const teamGroups = computed(() => groupEntities(filteredTeams.value, teamGroupLabel));
 
 function groupEntities<T extends { id: string }>(items: T[], labelFor: (item: T) => string): Array<EntityGroup<T>> {
   const groups = new Map<string, EntityGroup<T>>();
@@ -295,6 +207,21 @@ function parseTeamDefinition(raw?: string) {
     return {};
   }
 }
+
+function onAgentGroupReorder(groupKey: string, ids: string[]) {
+  emit("group-reorder", groupKey, ids);
+  emit("agent-reorder-end");
+}
+
+function onTeamGroupReorder(_groupKey: string, _ids: string[]) {
+  emit("team-reorder-end");
+}
+
+watch(normalizedSearch, (s) => {
+  if (s) {
+    collapse.expandAllGroups();
+  }
+});
 </script>
 
 <style scoped>
@@ -303,200 +230,6 @@ function parseTeamDefinition(raw?: string) {
   min-width: min(var(--chat-side-left-width, 280px), 100%);
   flex: 0 0 var(--chat-side-left-width, 280px);
   overflow: hidden;
-}
-
-.chat-entity-group {
-  margin-bottom: var(--space-3);
-}
-
-.chat-entity-group__label {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: 28px;
-  padding: 0 var(--space-2);
-  color: var(--color-text-secondary);
-  font-size: var(--text-xs);
-  font-weight: 800;
-  letter-spacing: 0.06em;
-}
-
-.chat-entity-group__label span {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-entity-item {
-  align-items: center;
-  min-height: 56px;
-  padding: var(--space-2);
-  color: var(--color-text-primary);
-  overflow: hidden;
-}
-
-.chat-entity-name {
-  display: block;
-  max-width: 100%;
-  overflow: hidden;
-  color: inherit;
-  font-size: var(--text-base);
-  font-weight: 600;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-entity-item--active,
-:global(.body--dark) .chat-entity-item--active {
-  color: var(--chat-text-active, var(--color-on-accent));
-}
-
-.chat-status-icon {
-  min-width: 22px;
-  padding-right: var(--space-1);
-}
-
-.chat-entity-main {
-  min-width: 0;
-  flex: 1 1 auto;
-  padding-right: var(--space-1);
-}
-
-.chat-entity-actions {
-  flex: 0 0 auto;
-  min-width: 54px;
-  padding-left: 2px;
-}
-
-.chat-action-stack {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.entity-actions {
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.q-item:hover .entity-actions {
-  opacity: 1;
-}
-
-.chat-entity-item--active .entity-actions {
-  opacity: 1;
-}
-
-.chat-action-btn {
-  width: 24px;
-  height: 24px;
-  min-height: 24px;
-  border-radius: 10px;
-  background: var(--glass-elevated);
-}
-
-:global(.body--dark) .chat-action-btn {
-  color: var(--color-text-primary);
-  background: var(--glass-surface-hover);
-}
-
-.chat-entity-item--active .chat-action-btn {
-  color: var(--color-on-accent);
-  background: var(--glass-surface);
-}
-
-.chat-entity-meta {
-  margin-top: 3px;
-}
-
-.chat-status-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 20px;
-  padding: 2px var(--space-2);
-  border: 1px solid var(--glass-border);
-  border-radius: 999px;
-  background: var(--glass-elevated);
-  color: var(--color-text-secondary);
-  font-size: var(--text-xs);
-  font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: 0.02em;
-}
-
-.chat-status-pill.is-working {
-  border-color: color-mix(in srgb, var(--color-danger) 28%, transparent);
-  background: var(--color-danger-soft);
-  color: var(--color-danger-text);
-}
-
-.chat-status-pill.is-idle {
-  border-color: color-mix(in srgb, var(--color-success) 28%, transparent);
-  background: color-mix(in srgb, var(--color-success) 10%, var(--glass-surface));
-  color: var(--color-accent-green);
-}
-
-.chat-status-pill.is-inactive {
-  border-color: color-mix(in srgb, var(--color-text-secondary) 24%, transparent);
-  background: color-mix(in srgb, var(--glass-surface) 96%, transparent);
-  color: var(--color-text-secondary);
-}
-
-:global(.body--dark) .chat-status-pill.is-working {
-  border-color: color-mix(in srgb, var(--color-danger) 42%, transparent);
-  background: color-mix(in srgb, var(--color-danger) 20%, var(--glass-surface));
-  color: var(--color-danger-text);
-}
-
-:global(.body--dark) .chat-status-pill.is-idle {
-  border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
-  background: color-mix(in srgb, var(--color-success) 18%, var(--glass-surface));
-  color: var(--color-accent-green);
-}
-
-:global(.body--dark) .chat-status-pill.is-inactive {
-  border-color: var(--glass-border);
-  background: color-mix(in srgb, var(--glass-surface) 92%, transparent);
-  color: var(--color-text-primary);
-}
-
-.chat-entity-item--active .chat-status-pill.is-idle {
-  border-color: color-mix(in srgb, var(--color-success) 45%, transparent);
-  background: color-mix(in srgb, var(--color-accent-green) 72%, var(--canvas-base));
-  color: var(--color-on-accent);
-}
-
-.chat-entity-item--active .chat-status-pill.is-working {
-  border-color: color-mix(in srgb, var(--color-danger) 45%, transparent);
-  background: color-mix(in srgb, var(--color-danger) 55%, var(--canvas-base));
-  color: var(--color-on-accent);
-}
-
-.chat-entity-item--active .chat-status-pill.is-inactive {
-  border-color: color-mix(in srgb, var(--color-text-secondary) 35%, transparent);
-  background: color-mix(in srgb, var(--glass-surface-hover) 88%, var(--canvas-base));
-  color: var(--color-on-accent);
-}
-
-:global(.body--dark) .chat-entity-item--active .chat-status-pill.is-idle {
-  border-color: color-mix(in srgb, var(--color-success) 55%, transparent);
-  background: color-mix(in srgb, var(--color-success) 32%, var(--canvas-base));
-  color: var(--color-text-primary);
-}
-
-:global(.body--dark) .chat-entity-item--active .chat-status-pill.is-working {
-  border-color: color-mix(in srgb, var(--color-danger) 55%, transparent);
-  background: color-mix(in srgb, var(--color-danger) 35%, var(--canvas-base));
-  color: var(--color-text-primary);
-}
-
-:global(.body--dark) .chat-entity-item--active .chat-status-pill.is-inactive {
-  border-color: var(--glass-border-hover);
-  background: color-mix(in srgb, var(--glass-surface-hover) 90%, var(--canvas-base));
-  color: var(--color-text-primary);
 }
 
 :global(.body--dark) .chat-side-hint {

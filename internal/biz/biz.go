@@ -52,6 +52,7 @@ var ProviderSet = wire.NewSet(
 	NewEventStoreUsecase,
 	NewWebhookUsecase,
 	NewWebhookDispatcher,
+	NewAgentTemplateUsecase,
 	ProvideAgentExistenceChecker,
 	ProvideAgentIDExistenceChecker,
 )

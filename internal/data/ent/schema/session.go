@@ -21,7 +21,9 @@ func (Session) Annotations() []schema.Annotation {
 
 func (Session) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("deleted_at", "agent_id"),
+		index.Fields("agent_id", "deleted_at", "updated_at").StorageKey("idx_sessions_agent"),
+		index.Fields("team_id", "deleted_at", "updated_at").StorageKey("idx_sessions_team"),
+		index.Fields("last_message_at").StorageKey("idx_sessions_last_message"),
 		index.Fields("deleted_at", "user_id"),
 		index.Fields("deleted_at", "status"),
 	}

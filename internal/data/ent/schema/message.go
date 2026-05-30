@@ -23,6 +23,7 @@ func (Message) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("session_id"),
 		index.Fields("session_id", "turn_id"),
+		index.Fields("session_id", "turn_number").StorageKey("idx_messages_session_turn"),
 		index.Fields("session_id", "status"),
 	}
 }

@@ -22,7 +22,7 @@ func NewPositionRepo(d *Data) biz.PositionRepository {
 	return &positionRepo{data: d}
 }
 
-const posCols = "id, key, name, department_key, description, responsibilities_json, skills_required_json, seniority_level, sort_order, created_at, updated_at, deleted_at"
+const posCols = "id, key, name, department_key, description, responsibilities_json, skills_required, seniority_level, sort_order, created_at, updated_at, deleted_at"
 
 type positionRow struct {
 	ID                   string
@@ -136,7 +136,7 @@ func (r *positionRepo) UpsertPositionByKey(ctx context.Context, p biz.Position) 
 			skillsJSON = []byte("[]")
 		}
 		_, updateErr := r.data.RawDB().ExecContext(ctx,
-			"UPDATE positions SET name=?, description=?, responsibilities_json=?, skills_required_json=?, seniority_level=?, sort_order=?, updated_at=? WHERE id=?",
+			"UPDATE positions SET name=?, description=?, responsibilities_json=?, skills_required=?, seniority_level=?, sort_order=?, updated_at=? WHERE id=?",
 			p.Name, p.Description, p.ResponsibilitiesJSON, string(skillsJSON), p.SeniorityLevel, p.SortOrder, now, existing.ID,
 		)
 		if updateErr != nil {
@@ -151,7 +151,7 @@ func (r *positionRepo) UpsertPositionByKey(ctx context.Context, p biz.Position) 
 
 func (r *positionRepo) GetPositionWithAncestors(ctx context.Context, positionKey string) (biz.PositionAncestors, error) {
 	query := `SELECT
-		p.id, p.key, p.name, p.department_key, p.description, p.responsibilities_json, p.skills_required_json, p.seniority_level, p.sort_order, p.created_at, p.updated_at, p.deleted_at,
+		p.id, p.key, p.name, p.department_key, p.description, p.responsibilities_json, p.skills_required, p.seniority_level, p.sort_order, p.created_at, p.updated_at, p.deleted_at,
 		d.id, d.key, d.name, d.industry_key, d.description, d.responsibilities_json, d.sort_order, d.created_at, d.updated_at, d.deleted_at,
 		i.id, i.key, i.name, i.icon, i.description, i.scenario_key, i.enabled, i.sort_order, i.created_at, i.updated_at, i.deleted_at
 	FROM positions p

@@ -1,7 +1,9 @@
 import { onBeforeUnmount, ref, type Ref } from "vue";
+import { storeToRefs } from "pinia";
 import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
 import { createEnvelopeStream } from "../../realtime/useEnvelopeStream";
 import type { Envelope } from "../../realtime/envelope";
+import { useMonitorStore } from "../../stores/monitor/index";
 import { monitorLogLineFromFlowEnvelope } from "./flow";
 import type { MonitorLogLine, StreamState } from "./types";
 
@@ -37,11 +39,16 @@ function processLineFromEnvelope(env: Envelope): MonitorLogLine {
   };
 }
 
-export function createMonitorLogHub(): MonitorLogHub {
+export type MonitorLogHubPausedRefs = {
+  flowPaused: Ref<boolean>;
+  processPaused: Ref<boolean>;
+  setFlowPaused: (paused: boolean) => void;
+  setProcessPaused: (paused: boolean) => void;
+};
+
+export function createMonitorLogHub(paused: MonitorLogHubPausedRefs): MonitorLogHub {
   const flowState = ref<StreamState>("connecting");
   const processState = ref<StreamState>("paused");
-  const flowPaused = ref(false);
-  const processPaused = ref(true);
   const processEnabled = ref(false);
   const flowLines = ref<MonitorLogLine[]>([]);
   const processLines = ref<MonitorLogLine[]>([]);
@@ -50,7 +57,7 @@ export function createMonitorLogHub(): MonitorLogHub {
   let wsConnected = false;
 
   function refreshFlowState() {
-    if (flowPaused.value) {
+    if (paused.flowPaused.value) {
       flowState.value = "paused";
       return;
     }
@@ -66,7 +73,7 @@ export function createMonitorLogHub(): MonitorLogHub {
       processState.value = "paused";
       return;
     }
-    if (processPaused.value) {
+    if (paused.processPaused.value) {
       processState.value = "paused";
       return;
     }
@@ -89,13 +96,13 @@ export function createMonitorLogHub(): MonitorLogHub {
     },
     onDisconnected: () => {
       wsConnected = false;
-      if (!flowPaused.value) flowState.value = "error";
-      if (processEnabled.value && !processPaused.value) processState.value = "error";
+      if (!paused.flowPaused.value) flowState.value = "error";
+      if (processEnabled.value && !paused.processPaused.value) processState.value = "error";
     },
   });
 
   stream.onType("flow_log", (env: Envelope) => {
-    if (flowPaused.value) return;
+    if (paused.flowPaused.value) return;
     const line = monitorLogLineFromFlowEnvelope(env);
     if (!line) return;
     hasFlowLine = true;
@@ -104,7 +111,7 @@ export function createMonitorLogHub(): MonitorLogHub {
   });
 
   stream.onType("log", (env: Envelope) => {
-    if (!processEnabled.value || processPaused.value) return;
+    if (!processEnabled.value || paused.processPaused.value) return;
     if (env.metadata?.flow_step || env.metadata?.schema_version === "flow_log/v1") {
       return;
     }
@@ -114,8 +121,8 @@ export function createMonitorLogHub(): MonitorLogHub {
   });
 
   stream.onType("error", () => {
-    if (!flowPaused.value) flowState.value = "error";
-    if (processEnabled.value && !processPaused.value) processState.value = "error";
+    if (!paused.flowPaused.value) flowState.value = "error";
+    if (processEnabled.value && !paused.processPaused.value) processState.value = "error";
   });
 
   function connect(): void {
@@ -132,35 +139,23 @@ export function createMonitorLogHub(): MonitorLogHub {
     processState.value = "paused";
   }
 
-  function setFlowPaused(paused: boolean): void {
-    flowPaused.value = paused;
-    refreshFlowState();
-  }
-
-  function setProcessPaused(paused: boolean): void {
-    processPaused.value = paused;
-    refreshProcessState();
-  }
-
-  function setProcessEnabled(enabled: boolean): void {
-    processEnabled.value = enabled;
-    stream.enableLog(enabled);
-    refreshProcessState();
-  }
-
   return {
     flowState,
     processState,
-    flowPaused,
-    processPaused,
+    flowPaused: paused.flowPaused,
+    processPaused: paused.processPaused,
     processEnabled,
     flowLines,
     processLines,
     connect,
     disconnect,
-    setFlowPaused,
-    setProcessPaused,
-    setProcessEnabled,
+    setFlowPaused: paused.setFlowPaused,
+    setProcessPaused: paused.setProcessPaused,
+    setProcessEnabled: (enabled: boolean) => {
+      processEnabled.value = enabled;
+      stream.enableLog(enabled);
+      refreshProcessState();
+    },
     clearFlow: () => {
       flowLines.value = [];
       hasFlowLine = false;
@@ -175,7 +170,14 @@ export function createMonitorLogHub(): MonitorLogHub {
 }
 
 export function useMonitorLogHub(): MonitorLogHub {
-  const hub = createMonitorLogHub();
+  const store = useMonitorStore();
+  const { flowPaused, processPaused } = storeToRefs(store);
+  const hub = createMonitorLogHub({
+    flowPaused,
+    processPaused,
+    setFlowPaused: store.setFlowPaused,
+    setProcessPaused: store.setProcessPaused,
+  });
   onBeforeUnmount(() => hub.disconnect());
   return hub;
 }

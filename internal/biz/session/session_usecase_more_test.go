@@ -34,6 +34,7 @@ type testRepo struct {
 	listSessionSummariesFn       func(ctx context.Context, sessionID string) ([]SessionSummary, error)
 	getSessionStateFn            func(ctx context.Context, sessionID string) (map[string]string, error)
 	saveSessionStateFn           func(ctx context.Context, sessionID string, state map[string]string) error
+	patchSessionStateFn          func(ctx context.Context, sessionID string, sets map[string]string, deletes []string) error
 	listSessionsByIDsFn          func(ctx context.Context, ids []string) ([]Session, error)
 	listSessionsForBatchFn       func(ctx context.Context, q SessionSearchQuery) ([]Session, error)
 	archiveSessionsByIDsFn       func(ctx context.Context, ids []string) (int, []string, error)

@@ -8,7 +8,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/model_catalog/v1"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/modelcatalog"
+	"aranea-agents/internal/modelregistry"
 
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -16,10 +16,10 @@ import (
 
 type ModelCatalogService struct {
 	v1.UnimplementedModelCatalogServiceServer
-	uc *biz.ModelCatalogUsecase
+	uc *biz.ModelRegistryUsecase
 }
 
-func NewModelCatalogService(uc *biz.ModelCatalogUsecase) *ModelCatalogService {
+func NewModelCatalogService(uc *biz.ModelRegistryUsecase) *ModelCatalogService {
 	return &ModelCatalogService{uc: uc}
 }
 
@@ -40,7 +40,7 @@ func (s *ModelCatalogService) GetModelCatalogPolicy(ctx context.Context, _ *empt
 }
 
 func (s *ModelCatalogService) UpdateModelCatalogPolicy(ctx context.Context, req *v1.UpdateModelCatalogPolicyRequest) (*v1.ModelCatalogPolicy, error) {
-	p, err := s.uc.UpdatePolicy(ctx, modelcatalog.Policy{
+	p, err := s.uc.UpdatePolicy(ctx, modelregistry.Policy{
 		SourceURL:         req.GetSourceUrl(),
 		SyncPolicy:        req.GetSyncPolicy(),
 		SyncIntervalHours: int(req.GetSyncIntervalHours()),
@@ -138,10 +138,10 @@ func (s *ModelCatalogService) SearchCatalogRaw(ctx context.Context, req *v1.Sear
 		return nil, err
 	}
 	return &v1.SearchCatalogRawResponse{
-		Lines:      lines,
-		Total:      int32(total),
-		Offset:     req.GetOffset(),
-		Truncated:  truncated,
+		Lines:     lines,
+		Total:     int32(total),
+		Offset:    req.GetOffset(),
+		Truncated: truncated,
 	}, nil
 }
 
@@ -226,7 +226,7 @@ func (s *ModelCatalogService) GetCatalogProviderLogo(ctx context.Context, req *v
 func (s *ModelCatalogService) GetProviderMigrationRules(ctx context.Context, _ *emptypb.Empty) (*v1.ProviderMigrationRulesResponse, error) {
 	cp, _ := s.uc.GetMigrationCheckpoint(ctx)
 	out := &v1.ProviderMigrationRulesResponse{
-		Version:       modelcatalog.ProviderMigrationVersion,
+		Version:       modelregistry.ProviderMigrationVersion,
 		LastAppliedAt: cp.AppliedAt,
 	}
 	for _, rule := range s.uc.ListProviderMigrationRules() {
@@ -262,7 +262,7 @@ func (s *ModelCatalogService) ApplyProviderMigration(ctx context.Context, _ *emp
 	return resp, nil
 }
 
-func toProtoCatalogPolicy(p modelcatalog.Policy) *v1.ModelCatalogPolicy {
+func toProtoCatalogPolicy(p modelregistry.Policy) *v1.ModelCatalogPolicy {
 	return &v1.ModelCatalogPolicy{
 		SourceUrl:         p.SourceURL,
 		SyncPolicy:        p.SyncPolicy,
@@ -271,7 +271,7 @@ func toProtoCatalogPolicy(p modelcatalog.Policy) *v1.ModelCatalogPolicy {
 	}
 }
 
-func toProtoCatalogStatus(view biz.ModelCatalogStatusView) *v1.ModelCatalogStatus {
+func toProtoCatalogStatus(view biz.ModelRegistryStatusView) *v1.ModelCatalogStatus {
 	st := &v1.ModelCatalogStatus{
 		Policy:          toProtoCatalogPolicy(view.Policy),
 		LastSyncStatus:  view.LastSyncStatus,
@@ -280,7 +280,7 @@ func toProtoCatalogStatus(view biz.ModelCatalogStatusView) *v1.ModelCatalogStatu
 		ProviderCount:   int32(view.Meta.ProviderCount),
 		ModelCount:      int32(view.Meta.ModelCount),
 		CatalogBytes:    view.Meta.Bytes,
-		CatalogLoaded:   view.CatalogLoaded,
+		CatalogLoaded:   view.DirectoryLoaded,
 		LocalPath:       view.LocalPath,
 	}
 	if t := parseCatalogTS(view.Meta.SyncedAt); t != nil {

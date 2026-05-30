@@ -8,7 +8,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	stdlog "log"
 	"net/http"
 	"os"
 	"strings"
@@ -27,6 +26,7 @@ import (
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/cronrunner/jobs"
 	"aranea-agents/internal/data"
+	"aranea-agents/internal/modelregistry"
 	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/internal/event"
 	graphadapter "aranea-agents/internal/graph/adapter"
@@ -38,7 +38,7 @@ import (
 	mcpmetadata "aranea-agents/internal/mcp/metadata"
 	mcpprobe "aranea-agents/internal/mcp/probe"
 	memtrpc "aranea-agents/internal/memory/trpc"
-	"aranea-agents/internal/modelcatalog"
+	"aranea-agents/internal/agent"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
 	rt "aranea-agents/internal/runtime"
@@ -86,14 +86,16 @@ func provideCronRunnerDeps(
 	agents biz.AgentRepository,
 	eventBus event.Bus,
 	chat *service.ChatService,
+	registrySyncAgent cronrunner.CronRegistrySyncAgent,
 ) cronrunner.Deps {
 	return cronrunner.Deps{
-		Cron:     cron,
-		Session:  session,
-		Teams:    teams,
-		Agents:   agents,
-		EventBus: eventBus,
-		Chat:     chat,
+		Cron:              cron,
+		Session:           session,
+		Teams:             teams,
+		Agents:            agents,
+		EventBus:          eventBus,
+		Chat:              chat,
+		RegistrySyncAgent: registrySyncAgent,
 	}
 }
 
@@ -417,19 +419,17 @@ func provideSystemSettingUsecase(repo biz.SystemSettingRepo, quota biz.UsageQuot
 	return uc
 }
 
-func provideModelCatalogRunner(sys biz.SystemSettingRepo, llm biz.LlmProviderModelRepo, d *data.Data) *modelcatalog.Runner {
-	storeProv := biz.NewModelCatalogStoreProvider(biz.NewSystemSettingRootAdapter(sys))
-	runner := modelcatalog.NewRunner(storeProv, stdlog.Default())
-	backend := data.NewModelCatalogApplyBackend(d, llm)
-	runner.SetApplier(modelcatalog.NewApplier(backend))
-	return runner
+func provideModelRegistryApplyBackend(llm biz.LlmProviderModelRepo, d *data.Data) modelregistry.ApplyBackend {
+	return data.NewModelRegistryApplyBackend(d, llm)
 }
 
-func provideModelCatalogUsecase(sys biz.SystemSettingRepo, runner *modelcatalog.Runner, llm biz.LlmProviderModelRepo, d *data.Data) *biz.ModelCatalogUsecase {
-	uc := biz.NewModelCatalogUsecase(biz.NewSystemSettingRootAdapter(sys))
-	uc.SetRunner(runner)
-	backend := data.NewModelCatalogApplyBackend(d, llm)
-	uc.SetApplyBackend(backend)
+func provideModelRegistrySyncAgent(sys biz.SystemSettingRepo, backend modelregistry.ApplyBackend) (*agent.ModelRegistrySyncAgent, error) {
+	storeProv := biz.NewModelRegistryStoreProvider(biz.NewSystemSettingRootAdapter(sys))
+	return agent.BuildModelRegistrySyncAgent(storeProv, backend)
+}
+
+func provideModelRegistryUsecase(sys biz.SystemSettingRepo, backend modelregistry.ApplyBackend) *biz.ModelRegistryUsecase {
+	uc := biz.NewModelRegistryUsecase(biz.NewSystemSettingRootAdapter(sys), backend)
 	return uc
 }
 
@@ -916,7 +916,8 @@ type wireOut struct {
 	MemoryDataMigration         *jobs.MemoryDataMigrationWorker
 	MemoryFactIndexReconciler   *jobs.MemoryFactIndexReconciler
 	MemoryDeadLetterReplayer    *jobs.MemoryDeadLetterReplayer
-	ModelCatalogRunner          *modelcatalog.Runner
+	ModelRegistrySyncAgent      *agent.ModelRegistrySyncAgent
+	CronRepo                    biz.CronRepo
 }
 
 func provideWireOut(
@@ -946,7 +947,8 @@ func provideWireOut(
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
 	memoryFactIndexReconciler *jobs.MemoryFactIndexReconciler,
 	memoryDeadLetterReplayer *jobs.MemoryDeadLetterReplayer,
-	modelCatalogRunner *modelcatalog.Runner,
+	modelRegistrySyncAgent *agent.ModelRegistrySyncAgent,
+	cronRepo biz.CronRepo,
 ) wireOut {
 	return wireOut{
 		App: app, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -961,7 +963,8 @@ func provideWireOut(
 		MemoryDataMigration:       memoryDataMigration,
 		MemoryFactIndexReconciler: memoryFactIndexReconciler,
 		MemoryDeadLetterReplayer:  memoryDeadLetterReplayer,
-		ModelCatalogRunner:        modelCatalogRunner,
+		ModelRegistrySyncAgent:     modelRegistrySyncAgent,
+		CronRepo:                   cronRepo,
 	}
 }
 
@@ -1118,8 +1121,10 @@ func wireApp(*conf.Server, *conf.Data, log.Logger) (wireOut, func(), error) {
 		provideMonitorUsecase,
 		provideUsageUsecase,
 		provideSystemSettingUsecase,
-		provideModelCatalogRunner,
-		provideModelCatalogUsecase,
+		provideModelRegistryApplyBackend,
+		provideModelRegistrySyncAgent,
+		wire.Bind(new(cronrunner.CronRegistrySyncAgent), new(*agent.ModelRegistrySyncAgent)),
+		provideModelRegistryUsecase,
 		provideA2APublicBaseInput,
 		providePublicBaseURLStore,
 		provideA2AEndpointRegistry,

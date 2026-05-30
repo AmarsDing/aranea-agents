@@ -52,7 +52,8 @@ const form = reactive({
   team_key: "",
   display_name: "",
   status: "active",
-  app_name: ""
+  app_name: "",
+  category_industry_id: ""
 });
 
 const definition = reactive<TeamDefinition>({
@@ -124,7 +125,7 @@ function openRouteEdit() {
 function openCreate() {
   editingId.value = "";
   selectedTeamTemplateKey.value = null;
-  Object.assign(form, { team_key: "", display_name: "", status: "active", app_name: "" });
+  Object.assign(form, { team_key: "", display_name: "", status: "active", app_name: "", category_industry_id: "" });
   resetDefinition(definition);
   editorOpen.value = true;
 }
@@ -132,7 +133,7 @@ function openCreate() {
 function openEdit(team: Team) {
   editingId.value = team.id;
   selectedTeamTemplateKey.value = null;
-  Object.assign(form, { team_key: team.team_key, display_name: team.display_name, status: team.status, app_name: team.app_name });
+  Object.assign(form, { team_key: team.team_key, display_name: team.display_name, status: team.status, app_name: team.app_name, category_industry_id: team.category_industry_id || "" });
   Object.assign(definition, parseDefinition(team));
   editorOpen.value = true;
 }
@@ -199,7 +200,8 @@ async function save() {
       display_name: form.display_name,
       status: form.status,
       app_name: form.app_name || form.team_key,
-      definition_json: definitionJSON.value
+      definition_json: definitionJSON.value,
+      category_industry_id: form.category_industry_id || ""
     };
     const saved = editingId.value ? await teamsPageStore.editTeam(editingId.value, payload) : await teamsPageStore.addTeam(payload);
     rows.value = editingId.value ? rows.value.map((row) => (row.id === saved.id ? saved : row)) : [saved, ...rows.value];

@@ -391,6 +391,9 @@ function teamDefinitionExtras(team: Team) {
 
 /** 根据成员 Agent 所属行业投票；无成员时回退 definition 中的 category / industry_id。 */
 export function inferTeamIndustryId(team: Team, agents: Agent[], categoryTree: PlatformResourceTreeNode[]): string {
+  if (team.category_industry_id && findIndustryNode(categoryTree, team.category_industry_id)) {
+    return team.category_industry_id;
+  }
   const extras = teamDefinitionExtras(team);
   if (extras.industry_id && findIndustryNode(categoryTree, extras.industry_id)) {
     return extras.industry_id;

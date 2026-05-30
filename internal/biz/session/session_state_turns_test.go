@@ -87,8 +87,8 @@ func (r *testRepo) ListMessagesAfterRevision(ctx context.Context, sessionID stri
 
 func TestApplyStateDelta_GetError(t *testing.T) {
 	repo := &testRepo{
-		getSessionStateFn: func(_ context.Context, _ string) (map[string]string, error) {
-			return nil, errors.New("db error")
+		patchSessionStateFn: func(_ context.Context, _ string, _ map[string]string, _ []string) error {
+			return errors.New("db error")
 		},
 	}
 	uc := newTestUc(repo)
@@ -100,10 +100,7 @@ func TestApplyStateDelta_GetError(t *testing.T) {
 
 func TestApplyStateDelta_SaveError(t *testing.T) {
 	repo := &testRepo{
-		getSessionStateFn: func(_ context.Context, _ string) (map[string]string, error) {
-			return map[string]string{}, nil
-		},
-		saveSessionStateFn: func(_ context.Context, _ string, _ map[string]string) error {
+		patchSessionStateFn: func(_ context.Context, _ string, _ map[string]string, _ []string) error {
 			return errors.New("db error")
 		},
 	}

@@ -6,6 +6,7 @@
       subtitle="安排定期 Agent 任务，查看最近执行、失败次数和下一次触发时间。"
     >
       <template #actions>
+        <q-btn flat rounded no-caps icon="history" label="执行历史" @click="openRuns()" />
         <q-btn color="orange" text-color="white" rounded unelevated no-caps icon="add" label="新建任务" @click="openCreate" />
       </template>
     </AppPageHero>
@@ -161,6 +162,28 @@
       :server-error="formServerError"
       @submit="onFormSubmit"
     />
+
+    <CronRunsDialog
+      v-model="runsOpen"
+      :loading="runsLoading"
+      :error="runsError"
+      :paged-runs="runsPaged"
+      :columns="runsColumns"
+      :task-id="runsTaskId"
+      :task-options="runsTaskOptions"
+      :status="runsStatus"
+      :status-options="runsStatusOptions"
+      :page="runsPage"
+      :page-size="runsPageSize"
+      :page-max="runsPageMax"
+      :total="runs.length"
+      @update:task-id="runsTaskId = $event; void loadRuns()"
+      @update:status="runsStatus = $event; void loadRuns()"
+      @update:page="runsPage = $event"
+      @update:page-size="runsPageSize = $event"
+      @load="loadRuns"
+      @reset="resetRunsFilters"
+    />
   </q-page>
 </template>
 
@@ -170,6 +193,7 @@ import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
 import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
 import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
 import CronTaskFormDialog from "../components/cron/CronTaskFormDialog.vue";
+import CronRunsDialog from "../components/cron/CronRunsDialog.vue";
 import { useCronTasksPage } from "../features/cron/useCronTasksPage";
 
 const {
@@ -206,7 +230,22 @@ const {
   targetLabel,
   statusColor,
   metadata,
-  formatDate
+  formatDate,
+  runsOpen,
+  runs,
+  runsTaskId,
+  runsStatus,
+  runsLoading,
+  runsError,
+  runsColumns,
+  runsTaskOptions,
+  runsStatusOptions,
+  runsPage,
+  runsPageSize,
+  runsPageMax,
+  runsPaged,
+  loadRuns,
+  resetRunsFilters
 } = useCronTasksPage();
 
 function resetFilters() {

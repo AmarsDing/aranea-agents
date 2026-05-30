@@ -5,6 +5,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // PlatformChannelDelivery maps table `channel_delivery`.
@@ -28,5 +29,11 @@ func (PlatformChannelDelivery) Fields() []ent.Field {
 		field.Text("error_message").Default(""),
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
+	}
+}
+
+func (PlatformChannelDelivery) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("channel_id", "created_at").StorageKey("idx_channel_delivery_channel"),
 	}
 }

@@ -54,15 +54,16 @@
         <template #prepend><q-icon name="alt_route" /></template>
       </q-select>
     </div>
-    <div v-if="positionDescription" class="q-mt-sm text-caption text-grey-7">
-      {{ positionDescription }}
+    <div v-if="previewSummary" class="industry-position-picker__preview q-mt-sm">
+      <q-icon name="info" size="xs" class="q-mr-xs" />
+      <span class="text-caption">{{ previewSummary }}</span>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue"
-import type { Industry, Department, Position } from "../../features/industries/types"
+import type { Industry, Department, Position, PositionPromptResult } from "../../features/industries/types"
 
 const props = defineProps<{
   industryKey: string
@@ -76,6 +77,7 @@ const props = defineProps<{
   loadingDepartments: boolean
   loadingPositions: boolean
   variantOptions: Array<{ label: string; value: string }>
+  promptResult: PositionPromptResult | null
 }>()
 
 const emit = defineEmits<{
@@ -112,8 +114,22 @@ const positionOptions = computed(() =>
   props.positions.map(p => ({ label: p.name, value: p.key }))
 )
 
-const positionDescription = computed(() => {
+const previewSummary = computed(() => {
+  if (!props.positionKey) return ""
+  const ind = props.industries.find(i => i.key === props.industryKey)
+  const dept = props.departments.find(d => d.key === props.departmentKey)
   const pos = props.positions.find(p => p.key === props.positionKey)
-  return pos?.description ?? ""
+  const parts: string[] = []
+  if (ind) parts.push(ind.name)
+  if (dept) parts.push(dept.name)
+  if (pos) parts.push(pos.name)
+  const variantLabel = props.variantOptions.find(v => v.value === props.variant)?.label
+  if (variantLabel && variantLabel !== "通用") parts.push(variantLabel)
+  const breadcrumb = parts.join(" / ")
+  if (!props.promptResult) return breadcrumb
+  const desc = props.promptResult.positionDescription || props.promptResult.departmentDescription || props.promptResult.industryDescription
+  if (!desc) return breadcrumb
+  const short = desc.length > 80 ? desc.slice(0, 80) + "…" : desc
+  return `${breadcrumb} — ${short}`
 })
 </script>

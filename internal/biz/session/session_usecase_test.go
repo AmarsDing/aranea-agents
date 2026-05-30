@@ -204,6 +204,10 @@ func (m *mockSessionRepo) SaveSessionState(_ context.Context, _ string, _ map[st
 	return nil
 }
 
+func (m *mockSessionRepo) PatchSessionState(_ context.Context, _ string, _ map[string]string, _ []string) error {
+	return nil
+}
+
 func (m *mockSessionRepo) CreateSessionTurn(_ context.Context, _ SessionTurn) (SessionTurn, error) {
 	return SessionTurn{}, nil
 }

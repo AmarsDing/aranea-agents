@@ -1,7 +1,13 @@
 import type { Ref } from "vue";
 import type { TeamRow } from "../../../components/chat/types";
 import type { Agent } from "../../agents/types";
-import { LS_AG_ORDER, LS_TM_ORDER, loadAgentOrder, loadTeamOrder } from "./chatWorkspaceUtils";
+import {
+  LS_AG_ORDER,
+  LS_TM_ORDER,
+  loadAgentOrder,
+  loadTeamOrder,
+  saveGroupOrder,
+} from "./chatWorkspaceUtils";
 
 export function useChatSidebarOrder(
   displayAgents: Ref<Agent[]>,
@@ -37,10 +43,20 @@ export function useChatSidebarOrder(
     }
   }
 
+  function onGroupReorder(groupKey: string, ids: string[]) {
+    saveGroupOrder(groupKey, ids);
+    try {
+      localStorage.setItem(LS_AG_ORDER, JSON.stringify(displayAgents.value.map((agent) => agent.id)));
+    } catch {
+      /* ignore */
+    }
+  }
+
   return {
     loadAgentOrder,
     loadTeamOrder,
     onEndAgent,
     onEndTeam,
+    onGroupReorder,
   };
 }

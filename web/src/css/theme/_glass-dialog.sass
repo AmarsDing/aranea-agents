@@ -8,14 +8,14 @@
   max-width: min($px, $viewport) !important
 
 body:not(.body--dark)
-  --app-dialog-shell-bg: rgba(252, 251, 249, 0.22)
-  --app-dialog-chrome-bg: rgba(248, 247, 247, 0.26)
-  --app-dialog-body-bg: rgba(255, 255, 255, 0.3)
+  --app-dialog-shell-bg: color-mix(in srgb, var(--glass-surface) 34%, transparent)
+  --app-dialog-chrome-bg: color-mix(in srgb, var(--glass-elevated) 36%, transparent)
+  --app-dialog-body-bg: color-mix(in srgb, var(--glass-elevated) 42%, transparent)
 
 body.body--dark
-  --app-dialog-shell-bg: rgba(10, 16, 26, 0.48)
-  --app-dialog-chrome-bg: rgba(18, 26, 40, 0.58)
-  --app-dialog-body-bg: rgba(14, 22, 34, 0.42)
+  --app-dialog-shell-bg: color-mix(in srgb, var(--glass-surface) 71%, transparent)
+  --app-dialog-chrome-bg: color-mix(in srgb, var(--glass-elevated) 74%, transparent)
+  --app-dialog-body-bg: color-mix(in srgb, var(--glass-surface) 62%, transparent)
 
 // 压过 app-global 页面内 .q-card 实色底（仅 Dialog 内）
 body:not(.body--dark) .q-dialog .q-card.app-dialog-card,
@@ -75,6 +75,25 @@ body:not(.body--dark) .q-dialog:has(.app-glass-dialog) > .q-dialog__backdrop
 // 900px：须在 .q-dialog 内声明，防止 q-card 随内容收缩
 .q-dialog .q-card.app-dialog-card--900
   +app-dialog-fixed-width(900px, 96vw)
+
+// ── Glass dialog 内表单控件背景对齐 ──
+// 避免实色白底刺眼：所有 app-dialog-card 内的 q-field__control 统一半透明玻璃底
+.q-dialog .q-card.app-dialog-card:not(.app-maximized-dialog) .q-field__control
+  background: color-mix(in srgb, var(--glass-elevated) 82%, transparent)
+  border-color: var(--glass-border)
+
+body.body--dark .q-dialog .q-card.app-dialog-card:not(.app-maximized-dialog) .q-field__control
+  background: color-mix(in srgb, var(--glass-elevated) 55%, transparent)
+  border-color: var(--glass-border)
+
+// 保留 canvas 风格控件的原有背景（cron-field 等）
+.q-dialog .q-card.app-dialog-card:not(.app-maximized-dialog) .cron-field .q-field__control,
+.q-dialog .q-card.app-dialog-card:not(.app-maximized-dialog) .app-glass-control--canvas .q-field__control
+  background: color-mix(in srgb, var(--canvas-base) 55%, transparent)
+
+body.body--dark .q-dialog .q-card.app-dialog-card:not(.app-maximized-dialog) .cron-field .q-field__control,
+body.body--dark .q-dialog .q-card.app-dialog-card:not(.app-maximized-dialog) .app-glass-control--canvas .q-field__control
+  background: rgb(22 28 40 / 45%)
 
 // ── 分区布局（头 / 滚动区 / 底栏）──
 .app-glass-dialog .q-card__section,
@@ -291,6 +310,17 @@ body.body--dark .q-dialog .q-card.app-maximized-dialog
   grid-template-columns: repeat(auto-fill, minmax(96px, 1fr))
   gap: 14px
   min-height: 188px
+
+.avatar-group
+  & + &
+    margin-top: 8px
+
+.avatar-group__label
+  padding: 0 4px 6px
+  color: var(--color-text-secondary)
+  font-size: 13px
+  font-weight: 700
+  letter-spacing: 0.02em
 
 .avatar-option
   position: relative

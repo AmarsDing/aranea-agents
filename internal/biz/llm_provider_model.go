@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/event"
-	"aranea-agents/internal/modelcatalog"
+	"aranea-agents/internal/modelregistry"
 	"aranea-agents/pkg/outboundguard"
 	"aranea-agents/pkg/safego"
 
@@ -471,8 +471,8 @@ func costBlockHasValue(c providerCostBlock) bool {
 		c.CacheWriteUSDPer1M > 0 || c.ReasoningUSDPer1M > 0 || c.EmbeddingUSDPer1M > 0
 }
 
-func costBlockToCostUSD(c providerCostBlock) modelcatalog.CostUSDPer1M {
-	return modelcatalog.CostUSDPer1M{
+func costBlockToCostUSD(c providerCostBlock) modelregistry.CostUSDPer1M {
+	return modelregistry.CostUSDPer1M{
 		Input:      c.InputUSDPer1M,
 		Output:     c.OutputUSDPer1M,
 		CacheRead:  c.CacheReadUSDPer1M,
@@ -482,8 +482,8 @@ func costBlockToCostUSD(c providerCostBlock) modelcatalog.CostUSDPer1M {
 	}
 }
 
-func buildMicroPricing(cfg providerPricingConfig) modelcatalog.MicroPricing {
-	micro := modelcatalog.MicroPricing{
+func buildMicroPricing(cfg providerPricingConfig) modelregistry.MicroPricing {
+	micro := modelregistry.MicroPricing{
 		Input:     cfg.InputPriceMicroUSDPer1K,
 		Output:    cfg.OutputPriceMicroUSDPer1K,
 		CacheRead: cfg.CachedInputPriceMicroUSDPer1K,
@@ -491,31 +491,31 @@ func buildMicroPricing(cfg providerPricingConfig) modelcatalog.MicroPricing {
 		Embedding: cfg.EmbeddingPriceMicroUSDPer1K,
 	}
 	if costBlockHasValue(cfg.Cost) {
-		micro = modelcatalog.MicroPricingFromCostBlock(costBlockToCostUSD(cfg.Cost))
+		micro = modelregistry.MicroPricingFromCostBlock(costBlockToCostUSD(cfg.Cost))
 	}
 	return micro
 }
 
-func isValidPricing(micro modelcatalog.MicroPricing) bool {
+func isValidPricing(micro modelregistry.MicroPricing) bool {
 	return micro.Input != 0 || micro.Output != 0 || micro.CacheRead != 0 ||
 		micro.CacheWrite != 0 || micro.Reasoning != 0 || micro.Embedding != 0
 }
 
-func buildCostUSD(cfg providerPricingConfig, micro modelcatalog.MicroPricing) modelcatalog.CostUSDPer1M {
+func buildCostUSD(cfg providerPricingConfig, micro modelregistry.MicroPricing) modelregistry.CostUSDPer1M {
 	if costBlockHasValue(cfg.Cost) {
 		return costBlockToCostUSD(cfg.Cost)
 	}
-	return modelcatalog.CostUSDPer1M{
-		Input:      modelcatalog.MicroPer1KToUSDPer1M(micro.Input),
-		Output:     modelcatalog.MicroPer1KToUSDPer1M(micro.Output),
-		CacheRead:  modelcatalog.MicroPer1KToUSDPer1M(micro.CacheRead),
-		CacheWrite: modelcatalog.MicroPer1KToUSDPer1M(micro.CacheWrite),
-		Reasoning:  modelcatalog.MicroPer1KToUSDPer1M(micro.Reasoning),
-		Embedding:  modelcatalog.MicroPer1KToUSDPer1M(micro.Embedding),
+	return modelregistry.CostUSDPer1M{
+		Input:      modelregistry.MicroPer1KToUSDPer1M(micro.Input),
+		Output:     modelregistry.MicroPer1KToUSDPer1M(micro.Output),
+		CacheRead:  modelregistry.MicroPer1KToUSDPer1M(micro.CacheRead),
+		CacheWrite: modelregistry.MicroPer1KToUSDPer1M(micro.CacheWrite),
+		Reasoning:  modelregistry.MicroPer1KToUSDPer1M(micro.Reasoning),
+		Embedding:  modelregistry.MicroPer1KToUSDPer1M(micro.Embedding),
 	}
 }
 
-func buildModelPricingRule(row ProviderModel, micro modelcatalog.MicroPricing, costUSD modelcatalog.CostUSDPer1M) ModelPricingRule {
+func buildModelPricingRule(row ProviderModel, micro modelregistry.MicroPricing, costUSD modelregistry.CostUSDPer1M) ModelPricingRule {
 	return ModelPricingRule{
 		ProviderCode:                  row.Provider,
 		ModelAPIID:                    row.Model,

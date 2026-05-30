@@ -1,86 +1,7 @@
 import { ref, computed, watch } from "vue"
 // TECH-DEBT: direct API calls; acceptable for wizard composable scoped to create dialog — issue #industry-wizard
 import { listIndustries, listDepartments, listPositions, getPositionPrompt, listPositionVariants } from "./api"
-import type { Industry, Department, Position, PositionPromptResult } from "./types"
-
-const VARIANT_LABELS: Record<string, string> = {
-  general: "通用",
-  code_review: "代码审查",
-  architect: "架构设计",
-  drafting: "正文起草",
-  polishing: "润色修饰",
-  data_driven: "数据驱动",
-  ghostwriting: "代笔",
-  factor: "因子研究",
-  backtest: "回测执行",
-  portfolio: "组合构建",
-  ml_alpha: "ML Alpha",
-  gameplay: "Gameplay",
-  performance: "性能优化",
-  network: "网络同步",
-  ux_auditor: "UX 审计",
-  type_system: "类型系统",
-  migration: "迁移",
-  optimization: "优化",
-  audit: "审计",
-  implementation: "实现",
-  outline: "大纲设计",
-  pacing: "节奏控制",
-  creation: "角色创建",
-  consistency: "一致性维护",
-  review: "审核",
-  compliance: "合规",
-  engagement: "互动运营",
-  planning: "策划",
-  storyboard: "分镜",
-  scriptwriting: "脚本编写",
-  platform_adapt: "平台适配",
-  editing: "剪辑",
-  effects: "特效",
-  template: "模板",
-  motion: "动效",
-  branding: "品牌",
-  design: "设计",
-  execution_algo: "执行算法",
-  market_making: "做市",
-  kernel_tuning: "内核调优",
-  network_opt: "网络优化",
-  research_platform: "研究平台",
-  data_pipeline: "数据管道",
-  trading_system: "交易系统",
-  operations: "运维",
-  premarket: "盘前",
-  intraday: "盘中",
-  bond_analysis: "债券分析",
-  credit_rating: "信用评级",
-  futures_strategy: "期货策略",
-  options_pricing: "期权定价",
-  regulatory: "合规审查",
-  market_risk: "市场风险",
-  credit_risk: "信用风险",
-  anti_money_laundering: "反洗钱",
-  strategic_allocation: "战略配置",
-  client_profiling: "客户画像",
-  portfolio_advice: "投资建议",
-  wealth_profiling: "财富画像",
-  product_design: "产品设计",
-  crypto_analysis: "加密分析",
-  hosting: "主持",
-  interaction: "互动",
-  script: "脚本",
-  analytics: "分析",
-  content: "内容",
-  growth: "增长",
-  planting: "种草",
-  seo: "SEO",
-  strategy: "策略",
-  revenue: "变现",
-  adapt: "适配",
-  sync: "同步",
-  course: "课程",
-  magic_system: "魔法体系",
-  geography_history: "地理历史",
-}
+import type { Industry, Department, Position, PositionPromptResult, VariantInfo } from "./types"
 
 export function useIndustryWizard() {
   const industries = ref<Industry[]>([])
@@ -96,7 +17,7 @@ export function useIndustryWizard() {
   const loadingPositions = ref(false)
   const loadingPrompt = ref(false)
   const loadingVariants = ref(false)
-  const variantList = ref<string[]>([])
+  const variantList = ref<VariantInfo[]>([])
 
   async function loadIndustries() {
     loadingIndustries.value = true
@@ -146,14 +67,14 @@ export function useIndustryWizard() {
 
   async function loadVariants() {
     if (!selectedIndustryKey.value || !selectedPositionKey.value) {
-      variantList.value = ["general"]
+      variantList.value = [{ key: "general", label: "通用" }]
       return
     }
     loadingVariants.value = true
     try {
       variantList.value = await listPositionVariants(selectedIndustryKey.value, selectedPositionKey.value)
     } catch {
-      variantList.value = ["general"]
+      variantList.value = [{ key: "general", label: "通用" }]
     } finally {
       loadingVariants.value = false
     }
@@ -166,7 +87,7 @@ export function useIndustryWizard() {
     promptResult.value = null
     departments.value = []
     positions.value = []
-    variantList.value = ["general"]
+    variantList.value = [{ key: "general", label: "通用" }]
     loadDepartments()
   })
 
@@ -175,17 +96,21 @@ export function useIndustryWizard() {
     selectedVariant.value = "general"
     promptResult.value = null
     positions.value = []
-    variantList.value = ["general"]
+    variantList.value = [{ key: "general", label: "通用" }]
     loadPositions()
   })
 
-  watch(selectedPositionKey, () => {
+  watch(selectedPositionKey, async () => {
     selectedVariant.value = "general"
     promptResult.value = null
-    loadVariants()
+    await loadVariants()
+    if (selectedPositionKey.value) {
+      loadPrompt()
+    }
   })
 
-  watch([selectedPositionKey, selectedVariant], () => {
+  watch(selectedVariant, () => {
+    if (!selectedPositionKey.value) return
     promptResult.value = null
     loadPrompt()
   })
@@ -193,8 +118,8 @@ export function useIndustryWizard() {
   const availableVariants = computed(() => {
     if (!selectedPositionKey.value) return []
     return variantList.value.map(v => ({
-      label: VARIANT_LABELS[v] ?? v,
-      value: v,
+      label: v.label || v.key,
+      value: v.key,
     }))
   })
 
@@ -208,7 +133,10 @@ export function useIndustryWizard() {
     selectedPositionKey.value = ""
     selectedVariant.value = "general"
     promptResult.value = null
-    variantList.value = ["general"]
+    variantList.value = [{ key: "general", label: "通用" }]
+    industries.value = []
+    departments.value = []
+    positions.value = []
   }
 
   return {

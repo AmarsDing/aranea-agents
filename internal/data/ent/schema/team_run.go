@@ -7,6 +7,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // TeamRun maps legacy table team_runs.
@@ -43,5 +44,13 @@ func (TeamRun) Fields() []ent.Field {
 		field.String("graph_execution_id").Default(""),
 		field.Text("definition_snapshot_json").Default(""),
 		field.String("trace_id").Default("").MaxLen(128),
+	}
+}
+
+func (TeamRun) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("team_id", "created_at").StorageKey("idx_team_runs_team_created"),
+		index.Fields("session_id", "created_at").StorageKey("idx_team_runs_session"),
+		index.Fields("trace_id", "created_at").StorageKey("idx_team_runs_trace"),
 	}
 }

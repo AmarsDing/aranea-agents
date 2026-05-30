@@ -42,7 +42,15 @@ export async function getPositionPrompt(industryKey: string, positionKey: string
   }
 }
 
-export async function listPositionVariants(industryKey: string, positionKey: string): Promise<string[]> {
+export interface VariantInfo {
+  key: string
+  label: string
+}
+
+export async function listPositionVariants(industryKey: string, positionKey: string): Promise<VariantInfo[]> {
   const { data } = await kratosApi.get(`${BASE}/${industryKey}/positions/${positionKey}/variants`)
-  return data.variants ?? []
+  return (data.variants ?? []).map((v: any) => ({
+    key: v.key ?? v.Key ?? "",
+    label: v.label ?? v.Label ?? v.key ?? v.Key ?? "",
+  }))
 }

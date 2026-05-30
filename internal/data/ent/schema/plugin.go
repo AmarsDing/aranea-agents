@@ -5,6 +5,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // PlatformPlugin maps legacy table plugins (Ent type cannot be named Plugin — clashes with Go plugin).
@@ -43,5 +44,11 @@ func (PlatformPlugin) Fields() []ent.Field {
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("deleted_at").Default(""),
+	}
+}
+
+func (PlatformPlugin) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("enabled", "sort_order").StorageKey("idx_plugins_enabled_order"),
 	}
 }

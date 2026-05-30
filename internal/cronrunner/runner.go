@@ -61,14 +61,17 @@ type SessionRunControl interface {
 
 // Deps wires cron execution to Ent repos + session create + chat HTTP POST.
 type Deps struct {
-	Cron     biz.CronRepo
-	Session  *biz.SessionUsecase
-	Teams    biz.TeamRepository
-	Agents   biz.AgentRepository
-	EventBus event.Bus
-	// Chat, when non-nil, dispatches cron turns in-process via RunCronTurn
-	// instead of the legacy HTTP POST fallback (EP-RT-07).
-	Chat CronChatRunner
+	Cron              biz.CronRepo
+	Session           *biz.SessionUsecase
+	Teams             biz.TeamRepository
+	Agents            biz.AgentRepository
+	EventBus          event.Bus
+	Chat              CronChatRunner
+	RegistrySyncAgent CronRegistrySyncAgent
+}
+
+type CronRegistrySyncAgent interface {
+	RunSync(ctx context.Context) error
 }
 
 // Runner executes due cron_task rows on an interval (ported from pkg/backend CronRunner).
@@ -250,6 +253,14 @@ type cronDispatchResult struct {
 func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cronTaskConfig) (cronDispatchResult, error) {
 	targetType := cronTargetType(cfg)
 	switch targetType {
+	case "model_registry_sync":
+		if r.deps.RegistrySyncAgent == nil {
+			return cronDispatchResult{}, validationErr("model registry sync agent not available")
+		}
+		if err := r.deps.RegistrySyncAgent.RunSync(ctx); err != nil {
+			return cronDispatchResult{}, err
+		}
+		return cronDispatchResult{}, nil
 	case "team":
 		teamID := strings.TrimSpace(cfg.TeamID)
 		if teamID == "" {

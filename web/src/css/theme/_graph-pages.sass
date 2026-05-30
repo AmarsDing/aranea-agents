@@ -90,11 +90,9 @@ body.body--dark
   min-width: 130px
 
 .graphs-grid
-  @extend .app-entity-grid
-
-.graphs-page .app-entity-grid
-  grid-template-columns: repeat(2, 1fr)
-  gap: 12px
+  display: grid
+  grid-template-columns: repeat(3, 1fr)
+  gap: 14px
   align-items: start
 
 .graph-card
@@ -110,6 +108,11 @@ body.body--dark
   animation: graph-card-in 0.3s ease-out both
   position: relative
 
+body:not(.body--dark) .graph-card
+  background: rgba(255, 252, 243, 0.88)
+  border-color: rgba(200, 178, 148, 0.52)
+  box-shadow: 0 2px 8px rgba(93, 64, 55, 0.07), 0 8px 24px rgba(93, 64, 55, 0.04)
+
 .graph-card::before
   content: ""
   position: absolute
@@ -121,11 +124,20 @@ body.body--dark
   opacity: 0.6
   border-radius: 18px 18px 0 0
 
+body:not(.body--dark) .graph-card::before
+  height: 4px
+  opacity: 0.85
+
 .graph-card:hover
   transform: translateY(-1px)
   background: var(--glass-surface-hover)
   border-color: color-mix(in srgb, var(--color-accent) 28%, var(--glass-border))
   box-shadow: 0 0 12px color-mix(in srgb, var(--color-accent) 8%, transparent), var(--shadow-entity-panel)
+
+body:not(.body--dark) .graph-card:hover
+  background: rgba(255, 250, 238, 0.95)
+  border-color: rgba(220, 160, 62, 0.45)
+  box-shadow: 0 4px 16px rgba(220, 160, 62, 0.12), 0 2px 8px rgba(93, 64, 55, 0.06)
 
 .graph-card__inner
   display: flex
@@ -172,6 +184,10 @@ body.body--dark
   line-height: 1.4
   white-space: nowrap
 
+body:not(.body--dark) .graph-card__chip
+  background: rgba(255, 255, 255, 0.72)
+  border-color: color-mix(in srgb, currentColor 22%, rgba(200, 178, 148, 0.4))
+
 .graph-card__summary
   flex-shrink: 0
   color: var(--color-text-tertiary)
@@ -196,6 +212,11 @@ body.body--dark
   line-height: 1.2
   white-space: nowrap
 
+body:not(.body--dark) .graph-card__tag
+  background: rgba(220, 160, 62, 0.1)
+  border-color: rgba(220, 160, 62, 0.32)
+  color: #8A6A3A
+
 .graph-card__foot
   display: flex
   align-items: center
@@ -203,6 +224,9 @@ body.body--dark
   gap: 0
   padding-top: 6px
   border-top: 1px solid var(--glass-border)
+
+body:not(.body--dark) .graph-card__foot
+  border-top-color: rgba(200, 178, 148, 0.35)
 
 .graph-card--add
   cursor: pointer
@@ -214,9 +238,17 @@ body.body--dark
   min-height: 120px
   transition: border-color 160ms ease, background 160ms ease
 
+body:not(.body--dark) .graph-card--add
+  border-color: rgba(200, 178, 148, 0.45)
+  background: rgba(255, 252, 243, 0.4)
+
 .graph-card--add:hover
   border-color: var(--color-accent)
   background: color-mix(in srgb, var(--color-accent) 4%, var(--glass-elevated))
+
+body:not(.body--dark) .graph-card--add:hover
+  background: rgba(220, 160, 62, 0.08)
+  border-color: rgba(220, 160, 62, 0.55)
 
 .graph-card--add__label
   margin-top: 4px
@@ -231,6 +263,21 @@ body.body--dark
   to
     opacity: 1
     transform: translateY(0)
+
+.graph-card--ghost
+  opacity: 0.4
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--glass-surface))
+  border-color: var(--color-accent)
+  box-shadow: none
+
+.graph-card--chosen
+  border-color: var(--color-accent)
+  box-shadow: 0 0 16px color-mix(in srgb, var(--color-accent) 14%, transparent)
+
+.graph-card--dragging
+  opacity: 0.9
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 0 16px color-mix(in srgb, var(--color-accent) 12%, transparent)
+  transform: rotate(1deg)
 
 .graphs-empty
   @extend .app-entity-empty

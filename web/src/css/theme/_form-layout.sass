@@ -535,9 +535,9 @@ body.body--dark
 
 // ── Channel 编辑 Dialog（布局；宽度 app-dialog-card--900，毛玻璃见 _glass-dialog.sass）──
 body:not(.body--dark) .q-dialog .q-card.channel-editor-dialog
-  --app-dialog-shell-bg: rgba(252, 251, 249, 0.18)
-  --app-dialog-chrome-bg: rgba(248, 247, 247, 0.22)
-  --app-dialog-body-bg: rgba(255, 255, 255, 0.26)
+  --app-dialog-shell-bg: color-mix(in srgb, var(--glass-surface) 28%, transparent)
+  --app-dialog-chrome-bg: color-mix(in srgb, var(--glass-elevated) 31%, transparent)
+  --app-dialog-body-bg: color-mix(in srgb, var(--glass-elevated) 36%, transparent)
 
 .channel-editor-dialog .app-glass-dialog__body
   padding-top: var(--space-4)
@@ -780,9 +780,6 @@ body:not(.body--dark) .q-dialog .q-card.channel-editor-dialog
   backdrop-filter: blur(var(--glass-blur-default))
   -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
-.channel-editor-dialog .q-toggle__inner--truthy
-  color: color-mix(in srgb, var(--color-accent) 68%, var(--glass-surface)) !important
-
 .channel-dialog-save
   @extend .provider-dialog-save
 
@@ -952,9 +949,6 @@ body:not(.body--dark) .q-dialog .q-card.channel-editor-dialog
 .provider-dialog .app-form-field-grid
   gap: 12px
 
-.provider-dialog .q-toggle__inner--truthy
-  color: color-mix(in srgb, var(--color-accent) 68%, var(--glass-surface)) !important
-
 .provider-rating-slider .q-slider__track-container--h .q-slider__track
   background: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border))
 
@@ -1070,9 +1064,6 @@ body:not(.body--dark) .chat-composer .q-banner.bg-amber-1
 
 .team-editor-dialog .app-form-field-grid
   gap: 12px
-
-.team-editor-dialog .q-toggle__inner--truthy
-  color: color-mix(in srgb, var(--color-accent) 68%, var(--glass-surface)) !important
 
 .team-editor-expansion
   margin-bottom: var(--space-4)

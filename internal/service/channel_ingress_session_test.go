@@ -195,6 +195,9 @@ func (m *ingressSessionRepo) GetSessionState(context.Context, string) (map[strin
 func (m *ingressSessionRepo) SaveSessionState(context.Context, string, map[string]string) error {
 	return nil
 }
+func (m *ingressSessionRepo) PatchSessionState(context.Context, string, map[string]string, []string) error {
+	return nil
+}
 func (m *ingressSessionRepo) CreateSessionTurn(context.Context, biz.SessionTurn) (biz.SessionTurn, error) {
 	return biz.SessionTurn{}, nil
 }

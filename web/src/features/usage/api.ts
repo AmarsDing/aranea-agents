@@ -365,6 +365,6 @@ export async function recordModelTokenUsageEvent(e: ModelTokenUsageEvent): Promi
 }
 
 export async function purgeUsageEvents(retainDays: number): Promise<{ deleted_count: number }> {
-  const { data } = await kratosApi.post<{ deleted_count?: number }>("/v1/usage/events/purge", { retain_days: retainDays });
-  return { deleted_count: data.deleted_count ?? 0 };
+  const raw = await usage.PurgeUsageEvents({ retainDays });
+  return { deleted_count: num((raw as Record<string, unknown>).deletedCount ?? (raw as Record<string, unknown>).deleted_count) };
 }

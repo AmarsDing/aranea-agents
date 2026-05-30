@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch, type Ref } from "vue";
 import { copyToClipboard, Notify } from "quasar";
+import { storeToRefs } from "pinia";
 import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
 import { useMonitorStore } from "../../stores/monitor/index";
 import type { PlatformResource, StreamState, TeamRunEvent, MonitorTraceEvent } from "./types";
@@ -38,10 +39,10 @@ export function useMonitorRealtimeEvents(
 ) {
   const { openChatSession, openRunsTab } = useMonitorRunNavigation();
   const monitorStore = useMonitorStore();
+  const { eventsPaused: paused } = storeToRefs(monitorStore);
 
   const category = ref("all");
   const state = ref<StreamState>("connecting");
-  const paused = ref(false);
   const runtimeEvents = ref<MonitorViewEvent[]>([]);
   const selected = ref<MonitorViewEvent | null>(null);
   const detailOpen = ref(false);
@@ -207,7 +208,7 @@ export function useMonitorRealtimeEvents(
   }
 
   function toggleStream() {
-    paused.value = !paused.value;
+    monitorStore.setEventsPaused(!paused.value);
   }
 
   function clearRuntimeEvents() {

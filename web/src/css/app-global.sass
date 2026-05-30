@@ -35,17 +35,18 @@ body:not(.body--dark)
   // 外框大玻璃 + 内层卡片
   .dashboard-glass-shell
     border-radius: 24px
-    background: rgba(255, 255, 255, 0.5)
-    border: 1px solid $cream-border-soft
-    box-shadow: 0 12px 40px $cream-shadow-soft, 0 2px 8px $cream-shadow
-    backdrop-filter: blur(14px)
-    -webkit-backdrop-filter: blur(14px)
+    background: var(--glass-surface)
+    border: 1px solid var(--glass-border)
+    box-shadow: var(--glass-inner-highlight)
+    backdrop-filter: blur(var(--glass-blur-default))
+    -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
   .dashboard-glass-card
     min-height: 0
     border-radius: 20px !important
-    background: rgba(254, 253, 245, 0.88) !important
-    box-shadow: 0 2px 16px $cream-shadow-soft !important
+    background: var(--glass-elevated) !important
+    border: 1px solid var(--glass-border) !important
+    box-shadow: var(--glass-inner-highlight) !important
 
   .dashboard-glass-card--fill
     display: flex
@@ -53,20 +54,21 @@ body:not(.body--dark)
     height: 100%
 
   .q-separator.cream-sep
-    background: $cream-border-soft
+    background: var(--glass-border)
     min-height: 1px
-    color: $cream-border-soft
+    color: var(--glass-border)
 
-  // 页面内卡片：白底 + 轻玻璃感 + 大圆角 + 软阴影；概览内 .dashboard-glass-card 另有覆盖
+  // 页面内卡片：玻璃材质 + 大圆角 + 内高光；与 Dialog 同系 token
   .q-card
-    background: rgba(255, 255, 255, 0.94)
-    border: 1px solid $cream-border-soft
+    background: var(--glass-surface)
+    border: 1px solid var(--glass-border)
     border-radius: 16px
-    box-shadow: 0 2px 16px $cream-shadow-soft, 0 1px 3px $cream-shadow
-    backdrop-filter: blur(6px)
+    box-shadow: var(--glass-inner-highlight)
+    backdrop-filter: blur(var(--glass-blur-default))
+    -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
   .q-separator
-    background: $cream-border-soft
+    background: var(--glass-border)
 
   // 表头/工具条上的次级文字
   .text-grey-7
@@ -186,6 +188,18 @@ body:not(.body--dark)
   .bg-primary
     background: var(--color-accent) !important
 
+  .q-toggle__track
+    background: var(--toggle-track-off) !important
+
+  .q-toggle__inner--truthy
+    color: var(--toggle-track-on) !important
+
+  .q-toggle__thumb--truthy
+    color: var(--toggle-thumb-on) !important
+
+  .q-toggle__label
+    color: var(--toggle-label-color)
+
 body.body--dark
   .q-btn.bg-primary:not(.q-btn--outline):not(.q-btn--flat)
     background: color-mix(in srgb, var(--color-accent) 28%, transparent) !important
@@ -209,9 +223,17 @@ body.body--dark
     color: var(--color-accent) !important
     border: 1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)
 
-  .q-toggle__track--truthy,
+  .q-toggle__track
+    background: var(--toggle-track-off) !important
+
+  .q-toggle__inner--truthy
+    color: var(--toggle-track-on) !important
+
   .q-toggle__thumb--truthy
-    color: var(--color-accent) !important
+    color: var(--toggle-thumb-on) !important
+
+  .q-toggle__label
+    color: var(--toggle-label-color)
 
   .q-field--focused .q-field__control
     border-color: var(--color-accent) !important
@@ -1267,7 +1289,7 @@ body:not(.body--dark)
       border-radius: 12px
 
     .q-field__control
-      background: rgba(255, 255, 255, 0.5)
+      background: color-mix(in srgb, var(--glass-elevated) 82%, transparent)
       border-radius: 14px
       backdrop-filter: blur(8px)
       -webkit-backdrop-filter: blur(8px)
@@ -1793,7 +1815,7 @@ body:not(.body--dark)
     color: var(--color-warning)
 
   .session-timeline__filter .q-field__control
-    background: rgba(255, 255, 255, 0.5)
+    background: color-mix(in srgb, var(--glass-elevated) 82%, transparent)
     border-radius: 14px
     backdrop-filter: blur(8px)
     -webkit-backdrop-filter: blur(8px)
@@ -1831,11 +1853,11 @@ body.body--dark
 body:not(.body--dark) .dashboard-pos-table
   font-size: 0.8rem
   th
-    color: $cream-text-light
+    color: var(--color-text-secondary)
   tbody tr
-    background: rgba(255, 255, 255, 0.35) !important
+    background: color-mix(in srgb, var(--glass-surface) 55%, transparent) !important
   tbody tr:hover
-    background: rgba(255, 255, 255, 0.6) !important
+    background: var(--glass-surface-hover) !important
 
 // ----- Monitor：Audit / Events / Traces / Logs（子组件共用 monitor-* 工具类） -----
 .monitor-card
@@ -1849,6 +1871,7 @@ body:not(.body--dark) .dashboard-pos-table
 body:not(.body--dark) .monitor-trace-dialog
   background: var(--glass-surface)
   border: 1px solid var(--glass-border)
+  box-shadow: var(--glass-inner-highlight)
   backdrop-filter: blur(var(--glass-blur-elevated))
   -webkit-backdrop-filter: blur(var(--glass-blur-elevated))
 
@@ -1985,6 +2008,7 @@ body:not(.body--dark) .monitor-log-banner
   background: var(--glass-surface)
   border: 1px solid var(--glass-border)
   color: var(--color-text-primary)
+  box-shadow: var(--glass-inner-highlight)
   backdrop-filter: blur(var(--glass-blur-default))
   -webkit-backdrop-filter: blur(var(--glass-blur-default))
 
@@ -2006,8 +2030,9 @@ body.body--dark .monitor-log-banner
   color: inherit
 
 body:not(.body--dark) .monitor-alert-rule-row
-  background: var(--interaction-surface-hover, var(--glass-elevated))
+  background: var(--glass-elevated)
   border: 1px solid var(--glass-border)
+  box-shadow: var(--glass-inner-highlight)
 
 body.body--dark .monitor-info-banner
   background: rgb(30 58 138 / 35%)
@@ -2033,9 +2058,6 @@ body.body--dark .monitor-alert-rules .q-field__input
 
 body.body--dark .monitor-alert-rules .q-field__label
   color: var(--color-text-secondary)
-
-body.body--dark .monitor-alert-rules .q-toggle__label
-  color: var(--color-text-primary)
 
 .monitor-log-console
   background: color-mix(in srgb, var(--canvas-base) 6%, #0f172a)

@@ -78,6 +78,9 @@ func (s *stubUsageRepo) ListTopModelUsageFromDaily(context.Context, UsageQuery) 
 func (s *stubUsageRepo) ListTopAgentUsageFromDaily(context.Context, UsageQuery) ([]UsageBreakdownRow, error) {
 	panic("not implemented")
 }
+func (s *stubUsageRepo) PurgeUsageEventsOlderThan(context.Context, int) (int64, error) {
+	return 0, nil
+}
 
 func TestCheckQuota_noConfigAllowed(t *testing.T) {
 	uc := NewUsageUsecase(&stubUsageRepo{hasQuota: false})

@@ -5,6 +5,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // LlmProviderModel maps table llm_provider_models (legacy platform "llm-provider-models").
@@ -43,5 +44,11 @@ func (LlmProviderModel) Fields() []ent.Field {
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("deleted_at").Default(""),
+	}
+}
+
+func (LlmProviderModel) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("provider", "enabled", "sort_order").StorageKey("idx_provider_models_provider"),
 	}
 }

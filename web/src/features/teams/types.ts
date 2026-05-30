@@ -13,6 +13,7 @@ export type Team = {
   app_name: string;
   linked_graph_id: string;
   has_active_run: boolean;
+  category_industry_id: string;
   created_at: string;
   updated_at: string;
   deleted_at: string;

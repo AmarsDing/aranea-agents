@@ -1,6 +1,9 @@
 package biz
 
-// AgentTemplate is a preset for agent creation (AGT-06).
+import (
+	"context"
+)
+
 type AgentTemplate struct {
 	Key         string
 	Label       string
@@ -11,7 +14,29 @@ type AgentTemplate struct {
 	Model       string
 }
 
-// ListAgentTemplates returns built-in creation templates with default provider/model.
+type AgentTemplateRepo interface {
+	ListAgentTemplates(ctx context.Context) ([]AgentTemplate, error)
+}
+
+type AgentTemplateUsecase struct {
+	repo AgentTemplateRepo
+}
+
+func NewAgentTemplateUsecase(repo AgentTemplateRepo) *AgentTemplateUsecase {
+	return &AgentTemplateUsecase{repo: repo}
+}
+
+func (u *AgentTemplateUsecase) List(ctx context.Context) ([]AgentTemplate, error) {
+	items, err := u.repo.ListAgentTemplates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) > 0 {
+		return items, nil
+	}
+	return ListAgentTemplates(), nil
+}
+
 func ListAgentTemplates() []AgentTemplate {
 	return []AgentTemplate{
 		{Key: "fox", Label: "小狐", Icon: "pets", DisplayName: "小狐助手", Provider: "openrouter", Model: "gpt-4.1-mini", Description: "温柔、敏捷，擅长把复杂问题拆成清晰步骤。"},

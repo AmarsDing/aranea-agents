@@ -19,7 +19,6 @@ type agentCategoryRepo struct {
 
 var _ biz.AgentCategoryRepo = (*agentCategoryRepo)(nil)
 
-// NewAgentCategoryRepo registers agent category persistence.
 func NewAgentCategoryRepo(d *Data) biz.AgentCategoryRepo {
 	return &agentCategoryRepo{data: d}
 }
@@ -38,6 +37,7 @@ func entToBizCat(e *ent.AgentCategory) biz.AgentCategory {
 		SortOrder:    e.SortOrder,
 		ParentID:     e.ParentID,
 		Level:        e.Level,
+		ScenarioKey:  e.ScenarioKey,
 		WorkspaceID:  e.WorkspaceID,
 		OwnerUserID:  e.OwnerUserID,
 		IsSystem:     e.IsSystem,
@@ -83,6 +83,58 @@ func (r *agentCategoryRepo) GetAgentCategory(ctx context.Context, id string) (bi
 	return entToBizCat(row), nil
 }
 
+func (r *agentCategoryRepo) GetAgentCategoryByKey(ctx context.Context, key string) (biz.AgentCategory, error) {
+	row, err := r.data.entClient.AgentCategory.Query().
+		Where(
+			agentcategory.CategoryKeyEQ(key),
+			agentcategory.DeletedAtEQ(""),
+		).
+		Only(ctx)
+	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.AgentCategory{}, sql.ErrNoRows
+		}
+		return biz.AgentCategory{}, err
+	}
+	return entToBizCat(row), nil
+}
+
+func (r *agentCategoryRepo) ListAgentCategoriesByParentID(ctx context.Context, parentID string) ([]biz.AgentCategory, error) {
+	rows, err := r.data.entClient.AgentCategory.Query().
+		Where(
+			agentcategory.ParentIDEQ(parentID),
+			agentcategory.DeletedAtEQ(""),
+		).
+		Order(agentcategory.BySortOrder()).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.AgentCategory, 0, len(rows))
+	for _, e := range rows {
+		out = append(out, entToBizCat(e))
+	}
+	return out, nil
+}
+
+func (r *agentCategoryRepo) ListAgentCategoriesByLevel(ctx context.Context, level string) ([]biz.AgentCategory, error) {
+	rows, err := r.data.entClient.AgentCategory.Query().
+		Where(
+			agentcategory.LevelEQ(level),
+			agentcategory.DeletedAtEQ(""),
+		).
+		Order(agentcategory.BySortOrder()).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.AgentCategory, 0, len(rows))
+	for _, e := range rows {
+		out = append(out, entToBizCat(e))
+	}
+	return out, nil
+}
+
 func (r *agentCategoryRepo) CreateAgentCategory(ctx context.Context, c biz.AgentCategory) (biz.AgentCategory, error) {
 	now := nowRFC3339()
 	if c.CreatedAt == "" {
@@ -99,6 +151,7 @@ func (r *agentCategoryRepo) CreateAgentCategory(ctx context.Context, c biz.Agent
 		SetSortOrder(c.SortOrder).
 		SetParentID(c.ParentID).
 		SetLevel(c.Level).
+		SetScenarioKey(c.ScenarioKey).
 		SetWorkspaceID(c.WorkspaceID).
 		SetOwnerUserID(c.OwnerUserID).
 		SetIsSystem(c.IsSystem).
@@ -125,6 +178,7 @@ func (r *agentCategoryRepo) UpdateAgentCategory(ctx context.Context, c biz.Agent
 		SetSortOrder(c.SortOrder).
 		SetParentID(c.ParentID).
 		SetLevel(c.Level).
+		SetScenarioKey(c.ScenarioKey).
 		SetWorkspaceID(c.WorkspaceID).
 		SetOwnerUserID(c.OwnerUserID).
 		SetIsSystem(c.IsSystem).

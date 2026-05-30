@@ -1,19 +1,17 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
-import { useRouter } from "vue-router";
 import { useQuasar } from "quasar";
 
 import { parseCronConfig, parseCronMetadata } from "./api";
 import type { PlatformResourceInput } from "../platform/types";
 import type { CronFailureSummary, CronTaskConfig, CronTaskMetadata, CronTaskRow } from "./types";
-import { CRON_TASK_TABLE_COLUMNS } from "./cronTableUi";
+import { CRON_TASK_TABLE_COLUMNS, CRON_RUN_TABLE_COLUMNS } from "./cronTableUi";
 import { useCronStore } from "../../stores/cron";
 
 export function useCronTasksPage() {
   const $q = useQuasar();
-  const router = useRouter();
   const cronStore = useCronStore();
-  const { tasks: rows, agents, teams } = storeToRefs(cronStore);
+  const { tasks: rows, agents, teams, runs } = storeToRefs(cronStore);
 
   const loading = ref(false);
   const error = ref("");
@@ -132,8 +130,59 @@ export function useCronTasksPage() {
     });
   }
 
-  function openRuns(row: CronTaskRow, status = "") {
-    void router.push({ name: "cron-runs", query: { cron_task_id: row.id, status } });
+  const runsOpen = ref(false);
+  const runsTaskId = ref("");
+  const runsStatus = ref("");
+  const runsLoading = ref(false);
+  const runsError = ref("");
+  const runsPage = ref(1);
+  const runsPageSize = ref(15);
+
+  const runsColumns = CRON_RUN_TABLE_COLUMNS;
+  const runsTaskOptions = computed(() => rows.value.map((task) => ({ label: task.name, value: task.id })));
+  const runsStatusOptions = [
+    { label: "成功", value: "success" },
+    { label: "失败", value: "failure" },
+    { label: "跳过", value: "skipped" },
+    { label: "待执行", value: "pending" }
+  ];
+  const runsPageMax = computed(() => Math.max(1, Math.ceil(runs.value.length / runsPageSize.value)));
+  const runsPaged = computed(() => {
+    const start = (runsPage.value - 1) * runsPageSize.value;
+    return runs.value.slice(start, start + runsPageSize.value);
+  });
+
+  watch(runs, () => {
+    runsPage.value = 1;
+  });
+
+  function openRuns(row?: CronTaskRow, status = "") {
+    runsTaskId.value = row?.id || "";
+    runsStatus.value = status;
+    runsOpen.value = true;
+    void loadRuns();
+  }
+
+  async function loadRuns() {
+    runsLoading.value = true;
+    runsError.value = "";
+    try {
+      await cronStore.loadRuns({
+        cron_task_id: runsTaskId.value || undefined,
+        status: runsStatus.value || undefined,
+        limit: 200
+      });
+    } catch (err) {
+      runsError.value = err instanceof Error ? err.message : "加载执行历史失败";
+    } finally {
+      runsLoading.value = false;
+    }
+  }
+
+  function resetRunsFilters() {
+    runsTaskId.value = "";
+    runsStatus.value = "";
+    void loadRuns();
   }
 
   async function resetDeadTask(row: CronTaskRow) {
@@ -255,6 +304,21 @@ export function useCronTasksPage() {
     statusColor,
     recentFailures,
     metadata,
-    formatDate
+    formatDate,
+    runsOpen,
+    runs,
+    runsTaskId,
+    runsStatus,
+    runsLoading,
+    runsError,
+    runsColumns,
+    runsTaskOptions,
+    runsStatusOptions,
+    runsPage,
+    runsPageSize,
+    runsPageMax,
+    runsPaged,
+    loadRuns,
+    resetRunsFilters
   };
 }

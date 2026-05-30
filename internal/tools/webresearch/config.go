@@ -21,6 +21,7 @@ type Config struct {
 	HTTPProxy         string
 	// TavilySearchURL overrides the Tavily API endpoint (tests only).
 	TavilySearchURL string
+	SerpAPIBaseURL  string
 }
 
 const (

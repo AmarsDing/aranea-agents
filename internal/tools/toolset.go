@@ -238,6 +238,14 @@ func Registry() []*ToolRegistration {
 				EnabledByDefault: false,
 				RiskLevel:        "medium",
 			},
+			{
+				Name:             "model_registry_sync",
+				Description:      "Model registry sync tools (fetch_model_directory, migrate_provider_bindings, apply_model_directory, sync_provider_logos)",
+				Category:         "system",
+				Tags:             []string{"model", "registry", "sync", "system"},
+				EnabledByDefault: false,
+				RiskLevel:        "medium",
+			},
 		}
 	})
 	return registry

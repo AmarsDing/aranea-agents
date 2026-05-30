@@ -77,6 +77,7 @@
       :definition="definition"
       :definition-json="definitionJSON"
       :agent-options="agentOptions"
+      :industry-options="industryOptions"
       :saving="saving"
       :can-save="canSave"
       :is-dark="isDark"

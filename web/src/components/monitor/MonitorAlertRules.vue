@@ -43,7 +43,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, toRaw } from "vue";
 import type { MonitorAlertRule } from "../../features/monitor/types";
 
 const props = defineProps<{
@@ -61,7 +61,7 @@ const emit = defineEmits<{
 const editableRules = ref<MonitorAlertRule[]>([]);
 
 watch(() => props.rules, (newRules) => {
-  editableRules.value = structuredClone(newRules);
+  editableRules.value = newRules.map(r => ({ ...toRaw(r) }));
 }, { immediate: true });
 
 function addRule() {
@@ -84,6 +84,6 @@ function removeRule(idx: number) {
 }
 
 function onSave() {
-  emit("save", structuredClone(editableRules.value));
+  emit("save", editableRules.value.map(r => ({ ...toRaw(r) })));
 }
 </script>

@@ -39,9 +39,11 @@ func main() {
 	indRepo := data.NewIndustryRepo(store)
 	depRepo := data.NewDepartmentRepo(store)
 	posRepo := data.NewPositionRepo(store)
-	indUC := biz.NewIndustryUsecase(indRepo)
-	depUC := biz.NewDepartmentUsecase(depRepo)
-	posUC := biz.NewPositionUsecase(posRepo)
+	catRepo := data.NewAgentCategoryRepo(store)
+	catUC := biz.NewAgentCategoryUsecase(catRepo)
+	indUC := biz.NewIndustryUsecase(indRepo, catUC)
+	depUC := biz.NewDepartmentUsecase(depRepo, catUC)
+	posUC := biz.NewPositionUsecase(posRepo, catUC)
 
 	industries := []biz.Industry{
 		{Key: "softwaredev", Name: "软件开发", Icon: "💻", Description: "覆盖系统软件、Web 应用、移动 App、游戏（含 UE 引擎）的全栈软件开发行业。从需求分析、架构设计、编码实现、质量保障到运维部署的完整软件生命周期。", ScenarioKey: "softwaredev", Enabled: true, SortOrder: 1},

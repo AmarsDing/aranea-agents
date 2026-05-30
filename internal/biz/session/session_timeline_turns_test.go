@@ -106,34 +106,41 @@ func (r *testRepo) SaveSessionState(ctx context.Context, sessionID string, state
 	return r.mockSessionRepo.SaveSessionState(ctx, sessionID, state)
 }
 
+func (r *testRepo) PatchSessionState(ctx context.Context, sessionID string, sets map[string]string, deletes []string) error {
+	if r.patchSessionStateFn != nil {
+		return r.patchSessionStateFn(ctx, sessionID, sets, deletes)
+	}
+	return r.mockSessionRepo.PatchSessionState(ctx, sessionID, sets, deletes)
+}
+
 func TestTimeline(t *testing.T) {
 	tests := []struct {
-		name        string
-		id          string
-		query       TimelineQuery
-		getFn       func(ctx context.Context, id string) (Session, error)
-		countFn     func(ctx context.Context, sessionID string) (int, error)
-		listMsgFn   func(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
-		listRefsFn  func(ctx context.Context, sessionID string, q TimelineQuery) ([]TimelineEventRef, int, error)
+		name         string
+		id           string
+		query        TimelineQuery
+		getFn        func(ctx context.Context, id string) (Session, error)
+		countFn      func(ctx context.Context, sessionID string) (int, error)
+		listMsgFn    func(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
+		listRefsFn   func(ctx context.Context, sessionID string, q TimelineQuery) ([]TimelineEventRef, int, error)
 		listMsgIDsFn func(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error)
-		listToolFn  func(ctx context.Context, sessionID string, ids []string) ([]ToolInvocationView, error)
-		listSkillFn func(ctx context.Context, sessionID string, ids []string) ([]SkillInvocationView, error)
-		lookupFn    func(ctx context.Context, agentIDs []string) (map[string]string, error)
-		wantErr     bool
-		wantMsg     string
-		checkResult func(t *testing.T, got SessionTimeline)
+		listToolFn   func(ctx context.Context, sessionID string, ids []string) ([]ToolInvocationView, error)
+		listSkillFn  func(ctx context.Context, sessionID string, ids []string) ([]SkillInvocationView, error)
+		lookupFn     func(ctx context.Context, agentIDs []string) (map[string]string, error)
+		wantErr      bool
+		wantMsg      string
+		checkResult  func(t *testing.T, got SessionTimeline)
 	}{
 		{
-			name:  "empty session_id returns error",
-			id:    "",
-			query: TimelineQuery{KindFilter: "message"},
+			name:    "empty session_id returns error",
+			id:      "",
+			query:   TimelineQuery{KindFilter: "message"},
 			wantErr: true,
 			wantMsg: "session id is required",
 		},
 		{
-			name:  "whitespace session_id returns error",
-			id:    "   ",
-			query: TimelineQuery{KindFilter: "message"},
+			name:    "whitespace session_id returns error",
+			id:      "   ",
+			query:   TimelineQuery{KindFilter: "message"},
 			wantErr: true,
 			wantMsg: "session id is required",
 		},
@@ -625,11 +632,11 @@ func TestIncrementInvocationCounts(t *testing.T) {
 
 func TestInsertSessionSummary(t *testing.T) {
 	tests := []struct {
-		name    string
-		row     SessionSummary
+		name     string
+		row      SessionSummary
 		insertFn func(ctx context.Context, row SessionSummary) error
-		wantErr bool
-		wantMsg string
+		wantErr  bool
+		wantMsg  string
 	}{
 		{
 			name: "valid insert",
@@ -894,59 +901,50 @@ func TestSaveSessionState(t *testing.T) {
 
 func TestApplyStateDelta(t *testing.T) {
 	tests := []struct {
-		name      string
-		sessionID string
-		delta     StateDelta
-		existing  map[string]string
-		wantState map[string]string
-		wantErr   bool
+		name        string
+		sessionID   string
+		delta       StateDelta
+		wantSets    map[string]string
+		wantDeletes []string
+		wantErr     bool
 	}{
 		{
-			name:      "set operation",
-			sessionID: "sess-1",
-			delta:     StateDelta{Operation: "set", Path: "key1", ValueJSON: `"value1"`},
-			existing:  map[string]string{},
-			wantState: map[string]string{"key1": `"value1"`},
+			name:        "set operation",
+			sessionID:   "sess-1",
+			delta:       StateDelta{Operation: "set", Path: "key1", ValueJSON: `"value1"`},
+			wantSets:    map[string]string{"key1": `"value1"`},
+			wantDeletes: nil,
 		},
 		{
-			name:      "append operation",
-			sessionID: "sess-1",
-			delta:     StateDelta{Operation: "append", Path: "key1", ValueJSON: "_more"},
-			existing:  map[string]string{"key1": "val"},
-			wantState: map[string]string{"key1": "val_more"},
+			name:        "delete operation",
+			sessionID:   "sess-1",
+			delta:       StateDelta{Operation: "delete", Path: "key1"},
+			wantSets:    nil,
+			wantDeletes: []string{"key1"},
 		},
 		{
-			name:      "delete operation",
-			sessionID: "sess-1",
-			delta:     StateDelta{Operation: "delete", Path: "key1"},
-			existing:  map[string]string{"key1": "val", "key2": "val2"},
-			wantState: map[string]string{"key2": "val2"},
-		},
-		{
-			name:      "default operation sets value",
-			sessionID: "sess-1",
-			delta:     StateDelta{Operation: "unknown", Path: "key1", ValueJSON: `"value1"`},
-			existing:  map[string]string{},
-			wantState: map[string]string{"key1": `"value1"`},
+			name:        "default operation sets value",
+			sessionID:   "sess-1",
+			delta:       StateDelta{Operation: "unknown", Path: "key1", ValueJSON: `"value1"`},
+			wantSets:    map[string]string{"key1": `"value1"`},
+			wantDeletes: nil,
 		},
 		{
 			name:      "empty path returns nil",
 			sessionID: "sess-1",
 			delta:     StateDelta{Path: ""},
-			existing:  map[string]string{},
 			wantErr:   false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var savedState map[string]string
+			var patchSets map[string]string
+			var patchDeletes []string
 			repo := &testRepo{
-				getSessionStateFn: func(_ context.Context, _ string) (map[string]string, error) {
-					return tt.existing, nil
-				},
-				saveSessionStateFn: func(_ context.Context, _ string, state map[string]string) error {
-					savedState = state
+				patchSessionStateFn: func(_ context.Context, _ string, sets map[string]string, deletes []string) error {
+					patchSets = sets
+					patchDeletes = deletes
 					return nil
 				},
 			}
@@ -964,15 +962,27 @@ func TestApplyStateDelta(t *testing.T) {
 			if tt.delta.Path == "" {
 				return
 			}
-			if savedState == nil {
-				t.Fatal("expected state to be saved")
+			if patchSets == nil && tt.wantSets != nil {
+				t.Fatal("expected sets to be patched")
 			}
-			if len(savedState) != len(tt.wantState) {
-				t.Fatalf("expected %d keys, got %d", len(tt.wantState), len(savedState))
+			if tt.wantSets != nil {
+				if len(patchSets) != len(tt.wantSets) {
+					t.Fatalf("expected %d set keys, got %d", len(tt.wantSets), len(patchSets))
+				}
+				for k, v := range tt.wantSets {
+					if patchSets[k] != v {
+						t.Fatalf("expected set key %s=%s, got %s=%s", k, v, k, patchSets[k])
+					}
+				}
 			}
-			for k, v := range tt.wantState {
-				if savedState[k] != v {
-					t.Fatalf("expected key %s=%s, got key %s=%s", k, v, k, savedState[k])
+			if tt.wantDeletes != nil {
+				if len(patchDeletes) != len(tt.wantDeletes) {
+					t.Fatalf("expected %d delete keys, got %d", len(tt.wantDeletes), len(patchDeletes))
+				}
+				for i, k := range tt.wantDeletes {
+					if patchDeletes[i] != k {
+						t.Fatalf("expected delete key[%d]=%s, got %s", i, k, patchDeletes[i])
+					}
 				}
 			}
 		})

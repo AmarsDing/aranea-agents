@@ -129,16 +129,17 @@ func NormalizeTokenUsageStatus(status string) string {
 }
 
 type Team struct {
-	ID             string
-	TeamKey        string
-	DisplayName    string
-	Status         string
-	IsDefault      bool
-	DefinitionJSON string
-	ADKAppName     string
-	CreatedAt      string
-	UpdatedAt      string
-	DeletedAt      string
+	ID                  string
+	TeamKey             string
+	DisplayName         string
+	Status              string
+	IsDefault           bool
+	DefinitionJSON      string
+	ADKAppName          string
+	CategoryIndustryID  string
+	CreatedAt           string
+	UpdatedAt           string
+	DeletedAt           string
 }
 
 type TeamRun struct {

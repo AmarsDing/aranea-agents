@@ -1,3 +1,8 @@
+export interface VariantInfo {
+  key: string
+  label: string
+}
+
 export interface Industry {
   id: string
   key: string

@@ -59,18 +59,22 @@ export function useGraphsPage() {
     if (engineFilter.value) {
       list = list.filter((g) => g.executionEngine === engineFilter.value);
     }
-    const dir = sortOrder.value === "asc" ? 1 : -1;
-    list.sort((a, b) => {
-      switch (sortKey.value) {
-        case "name":
-          return dir * a.name.localeCompare(b.name);
-        case "nodes":
-          return dir * ((a.nodes?.length ?? 0) - (b.nodes?.length ?? 0));
-        case "updatedAt":
-        default:
-          return dir * (new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime());
-      }
-    });
+    if (sortKey.value === "updatedAt" && sortOrder.value === "desc") {
+      list.sort((a, b) => a.sortOrder - b.sortOrder || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    } else {
+      const dir = sortOrder.value === "asc" ? 1 : -1;
+      list.sort((a, b) => {
+        switch (sortKey.value) {
+          case "name":
+            return dir * a.name.localeCompare(b.name);
+          case "nodes":
+            return dir * ((a.nodes?.length ?? 0) - (b.nodes?.length ?? 0));
+          case "updatedAt":
+          default:
+            return dir * (new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime());
+        }
+      });
+    }
     return list;
   });
 
@@ -159,6 +163,14 @@ export function useGraphsPage() {
     }
   }
 
+  async function reorderGraphs(ids: string[]) {
+    try {
+      await graphStore.reorderGraphList(ids);
+    } catch (err) {
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "排序保存失败" });
+    }
+  }
+
   return {
     isDark,
     rows,
@@ -187,5 +199,6 @@ export function useGraphsPage() {
     executeRun,
     duplicateGraph,
     confirmRemoveGraph,
+    reorderGraphs,
   };
 }

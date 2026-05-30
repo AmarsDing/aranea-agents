@@ -142,6 +142,7 @@ function onFilterChange() {
 function onPurgeConfirm() {
   const days = retainDays.value;
   $q.dialog({
+    class: "app-dialog-card app-dialog-card--sm",
     title: "确认删除",
     message: `将只保留最近 ${days} 天的数据，其他用量事件将全部删除。此操作不可撤销，确认继续？`,
     cancel: { label: "取消", flat: true, rounded: true, noCaps: true },

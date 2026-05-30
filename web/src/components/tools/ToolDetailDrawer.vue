@@ -1,4 +1,13 @@
 <template>
+  <teleport to=".q-layout">
+    <transition name="drawer-backdrop">
+      <div
+        v-if="open"
+        class="tool-detail-backdrop"
+        @click="$emit('close')"
+      />
+    </transition>
+  </teleport>
   <q-drawer
     :model-value="open"
     :width="640"

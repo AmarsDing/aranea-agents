@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/modelcatalog"
+	"aranea-agents/internal/modelregistry"
 
 	stdsql "database/sql"
 )
@@ -23,7 +23,7 @@ func (r *usageRepo) RecordTokenUsageEvent(ctx context.Context, e biz.TokenUsageE
 		streamEnabled = 1
 	}
 	if strings.TrimSpace(e.CanonicalProviderCode) == "" {
-		e.CanonicalProviderCode = modelcatalog.MigrateProviderCode(e.ProviderCode)
+		e.CanonicalProviderCode = modelregistry.MigrateProviderCode(e.ProviderCode)
 	}
 
 	_, err = c.ExecContext(ctx,

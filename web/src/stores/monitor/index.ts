@@ -38,6 +38,9 @@ export const useMonitorStore = defineStore("monitor", () => {
   const alertRulesLoading = ref(false);
   const alertRulesSaving = ref(false);
   const alertChannelOptions = ref<{ label: string; value: string }[]>([]);
+  const flowPaused = ref(false);
+  const processPaused = ref(true);
+  const eventsPaused = ref(false);
 
   async function loadAuditLogs(query: AuditQuery = {}) {
     loading.value = true;
@@ -147,6 +150,18 @@ export const useMonitorStore = defineStore("monitor", () => {
     events.value = [];
   }
 
+  function setFlowPaused(paused: boolean) {
+    flowPaused.value = paused;
+  }
+
+  function setProcessPaused(paused: boolean) {
+    processPaused.value = paused;
+  }
+
+  function setEventsPaused(paused: boolean) {
+    eventsPaused.value = paused;
+  }
+
   function clearFlowLogs() {
     logSnapshot.value = null;
   }
@@ -177,6 +192,12 @@ export const useMonitorStore = defineStore("monitor", () => {
     loadAlertRules,
     saveAlertRules,
     clearRuntimeEvents,
-    clearFlowLogs
+    clearFlowLogs,
+    flowPaused,
+    processPaused,
+    eventsPaused,
+    setFlowPaused,
+    setProcessPaused,
+    setEventsPaused
   };
 });

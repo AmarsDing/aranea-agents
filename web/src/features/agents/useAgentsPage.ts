@@ -4,11 +4,10 @@ import { copyToClipboard, useQuasar } from "quasar";
 import { mapAgentCreateFieldErrors, parseKratosApiError } from "../../utils/kratosError";
 import type { Agent, AgentKind, A2AProxyConfig, AgentTemplatePreset } from "./types";
 import type { PlatformResource } from "../platform/types";
-import { descriptionTemplates, statusOptions } from "../../components/agents/agentUi";
+import { statusOptions } from "../../components/agents/agentUi";
 import { useAgentsPageStore } from "../../stores/agents";
 import { useAppStore } from "../../stores/app";
 import { useAvatarCatalogStore } from "../../stores/avatar";
-import { useIndustryWizard } from "../industries/useIndustryWizard";
 
 export type CreateAgentForm = {
   agent_key: string;
@@ -33,7 +32,6 @@ export function useAgentsPage() {
   const appStore = useAppStore();
   const avatarCatalog = useAvatarCatalogStore();
   const pageStore = useAgentsPageStore();
-  const wizard = useIndustryWizard();
 
   const {
     agents,
@@ -89,15 +87,7 @@ export function useAgentsPage() {
   });
 
   const selectedTemplateKey = ref("");
-  const createTemplates = ref<AgentTemplatePreset[]>(
-    descriptionTemplates.map((t) => ({
-      key: t.key,
-      label: t.label,
-      icon: t.icon,
-      description: t.text,
-      text: t.text
-    }))
-  );
+  const createTemplates = ref<AgentTemplatePreset[]>([]);
   const agentKeyServerError = ref("");
   const displayNameError = ref("");
   const providerModelError = ref("");
@@ -179,22 +169,11 @@ export function useAgentsPage() {
     }
   );
 
-  watch(() => wizard.promptResult.value, (result) => {
-    if (!result) return
-    form.agent_description = result.promptContent
-    form.position_key = wizard.selectedPositionKey.value
-    form.agent_variant = result.variant
-    form.variant_description = result.variantDescription
-  });
-
   onMounted(async () => {
     try {
       const remote = await pageStore.fetchAgentTemplates();
-      if (remote.length) {
-        createTemplates.value = remote;
-      }
+      createTemplates.value = remote;
     } catch {
-      // Keep local descriptionTemplates fallback.
     }
     try {
       await Promise.all([runLoadList(), pageStore.loadAgentsDependencies()]);
@@ -218,9 +197,8 @@ export function useAgentsPage() {
   async function openCreate() {
     clearCreateFieldErrors();
     modelCheckPassed.value = false;
-    wizard.reset();
     try {
-      await Promise.all([pageStore.loadAgentsDependencies(), wizard.loadIndustries()]);
+      await pageStore.loadAgentsDependencies();
     } catch (error) {
       $q.notify({ type: "negative", message: error instanceof Error ? error.message : "依赖数据加载失败" });
       return;
@@ -260,7 +238,6 @@ export function useAgentsPage() {
     selfEvolve.value = true;
     agentKind.value = "llm";
     Object.assign(a2aProxy, { remote_url: "", enable_streaming: true, timeout_seconds: 30 });
-    wizard.reset();
   }
 
   async function onCreate() {
@@ -320,9 +297,7 @@ export function useAgentsPage() {
 
   function applyTemplate(template: AgentTemplatePreset) {
     selectedTemplateKey.value = template.key;
-    if (!form.display_name.trim()) {
-      form.display_name = template.display_name?.trim() || template.label;
-    }
+    form.display_name = template.display_name?.trim() || template.label;
     if (!isA2AProxyCreate.value) {
       if (template.provider?.trim()) {
         form.provider = template.provider.trim();
@@ -334,11 +309,7 @@ export function useAgentsPage() {
     }
     const text = template.description?.trim() || "";
     if (!text) return;
-    if (form.agent_description.trim()) {
-      form.agent_description = `${form.agent_description}\n\n${text}`;
-    } else {
-      form.agent_description = text;
-    }
+    form.agent_description = text;
   }
 
   function confirmDelete(agent: Agent) {
@@ -432,17 +403,5 @@ export function useAgentsPage() {
     deleteAgentTarget,
     duplicateListedAgent,
     onReorder,
-    industryKey: wizard.selectedIndustryKey,
-    departmentKey: wizard.selectedDepartmentKey,
-    positionKey: wizard.selectedPositionKey,
-    variant: wizard.selectedVariant,
-    industries: wizard.industries,
-    departments: wizard.departments,
-    positions: wizard.positions,
-    loadingIndustries: wizard.loadingIndustries,
-    loadingDepartments: wizard.loadingDepartments,
-    loadingPositions: wizard.loadingPositions,
-    variantOptions: wizard.availableVariants,
-    promptResult: wizard.promptResult,
   };
 }

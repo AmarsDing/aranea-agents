@@ -78,6 +78,7 @@ export type GraphDefinition = {
   interruptAfter: string[];
   metadata: Record<string, unknown>;
   version: number;
+  sortOrder: number;
   createdAt: string;
   updatedAt: string;
 };

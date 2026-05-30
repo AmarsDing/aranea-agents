@@ -76,6 +76,7 @@ function wireGraph(g: Record<string, unknown> | null | undefined): GraphDefiniti
     interruptAfter: (g?.interruptAfter as string[]) ?? [],
     metadata: (g?.metadata as Record<string, unknown>) ?? {},
     version: (g?.version as number) ?? 0,
+    sortOrder: (g?.sortOrder as number) ?? 0,
     createdAt: (g?.createdAt as string) ?? "",
     updatedAt: (g?.updatedAt as string) ?? "",
   };
@@ -518,4 +519,9 @@ export async function saveGraphAsTemplate(
       finishPoint: t?.finishPoint ?? "",
     },
   };
+}
+
+export async function reorderGraphs(ids: string[]): Promise<void> {
+  const svc = createGraphService();
+  await svc.ReorderGraphs({ ids });
 }

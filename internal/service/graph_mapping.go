@@ -85,6 +85,7 @@ func toProtoGraph(def *biz.GraphDefinition) (*graphv1.GraphDefinition, error) {
 		InterruptBefore:  def.InterruptBefore,
 		InterruptAfter:   def.InterruptAfter,
 		Version:          int32(biz.GraphVersion(def)),
+		SortOrder:        int32(def.SortOrder),
 		CreatedAt:        timestamppb.New(def.CreatedAt),
 		UpdatedAt:        timestamppb.New(def.UpdatedAt),
 	}

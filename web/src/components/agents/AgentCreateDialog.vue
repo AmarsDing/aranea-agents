@@ -23,13 +23,10 @@
           <div class="text-subtitle2 q-mb-sm">Agent 类型</div>
           <q-btn-toggle
             v-model="agentKindModel"
-            spread
             no-caps
             rounded
             unelevated
-            toggle-color="primary"
-            :color="isDark ? 'dark' : 'grey-3'"
-            :text-color="isDark ? 'grey-4' : 'grey-9'"
+            class="agent-kind-toggle"
             :options="agentKindOptions"
           />
         </div>
@@ -63,23 +60,6 @@
             label="业务分类"
             placeholder="选择行业 / 部门 / 职位"
             @update:model-value="onCategoryPick"
-          />
-          <industry-position-picker
-            :industry-key="industryKey"
-            :department-key="departmentKey"
-            :position-key="positionKey"
-            :variant="variant"
-            :industries="industries"
-            :departments="departments"
-            :positions="positions"
-            :loading-industries="loadingIndustries"
-            :loading-departments="loadingDepartments"
-            :loading-positions="loadingPositions"
-            :variant-options="variantOptions"
-            @update:industry-key="v => emit('update:industryKey', v)"
-            @update:department-key="v => emit('update:departmentKey', v)"
-            @update:position-key="v => emit('update:positionKey', v)"
-            @update:variant="v => emit('update:variant', v)"
           />
           <template v-if="isA2AProxy">
             <q-input
@@ -127,8 +107,8 @@
         </div>
 
         <section v-if="!isA2AProxy" class="description-block">
-          <div class="text-subtitle2">描述您的 Agent</div>
-          <div class="row q-gutter-xs q-mt-sm">
+          <div class="row items-center q-gutter-xs">
+            <div class="text-subtitle2">描述您的 Agent</div>
             <q-chip
               v-for="template in templates"
               :key="template.key"
@@ -136,6 +116,7 @@
               outline
               color="primary"
               :icon="template.icon"
+              size="md"
               :class="{ 'template-chip--active': selectedTemplateKey === template.key }"
               @click="$emit('apply-template', template)"
             >
@@ -147,9 +128,9 @@
             class="agent-dialog-control q-mt-sm"
             outlined
             type="textarea"
-            rows="7"
-            label="描述您的 Agent"
-            hint="AI 将根据此描述自动生成 Agent 的上下文文件。留空则使用模板。"
+            rows="6"
+            label="Agent 描述"
+            hint="AI 将根据此描述自动生成上下文文件。留空则使用模板。"
           />
         </section>
       </q-card-section>
@@ -169,11 +150,8 @@ import { useQuasar } from "quasar";
 import AgentAvatarPicker from "../avatar/AgentAvatarPicker.vue";
 import AgentAvatarQ from "../avatar/AgentAvatarQ.vue";
 import AgentCategoryPicker from "./AgentCategoryPicker.vue";
-import IndustryPositionPicker from "../industries/IndustryPositionPicker.vue";
-import { descriptionTemplates } from "./agentUi";
 import type { AgentKind, AgentTemplatePreset, A2AProxyConfig } from "../../features/agents/types";
 import type { PlatformResourceTreeNode } from "../../features/platform/types";
-import type { Industry, Department, Position, PositionPromptResult } from "../../features/industries/types";
 
 type CreateForm = {
   agent_key: string;
@@ -208,31 +186,15 @@ const props = defineProps<{
   creating: boolean;
   checkingModel: boolean;
   templates?: AgentTemplatePreset[];
-  industryKey: string;
-  departmentKey: string;
-  positionKey: string;
-  variant: string;
-  industries: Industry[];
-  departments: Department[];
-  positions: Position[];
-  loadingIndustries: boolean;
-  loadingDepartments: boolean;
-  loadingPositions: boolean;
-  variantOptions: Array<{ label: string; value: string }>;
-  promptResult: PositionPromptResult | null;
 }>();
 
-const templates = computed<AgentTemplatePreset[]>(() => props.templates ?? descriptionTemplates.map((t) => ({ ...t, description: t.text ?? "" })));
+const templates = computed<AgentTemplatePreset[]>(() => props.templates ?? []);
 
 const emit = defineEmits<{
   "update:modelValue": [value: boolean];
   "update:selfEvolve": [value: boolean];
   "update:agentKind": [value: AgentKind];
   "update:a2aProxy": [value: A2AProxyConfig];
-  "update:industryKey": [value: string];
-  "update:departmentKey": [value: string];
-  "update:positionKey": [value: string];
-  "update:variant": [value: string];
   "apply-template": [template: AgentTemplatePreset];
   "check-model": [];
   create: [];
@@ -251,7 +213,7 @@ const selfEvolveModel = computed({
 });
 
 function onCategoryPick(value: string | null) {
-  props.form.category_position_id = value ?? "";
+  props.form.category_position_id = value ?? ""
 }
 
 const avatarPickerOpen = ref(false);

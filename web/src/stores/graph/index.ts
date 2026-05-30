@@ -38,6 +38,7 @@ import {
   rollbackGraphVersion,
   saveGraphAsTemplate,
   listGraphExecutions,
+  reorderGraphs,
   type GraphDefinition,
   type GraphExecution,
   type GraphExecutionSummary,
@@ -98,6 +99,15 @@ export const useGraphStore = defineStore("graph", () => {
     await deleteGraph(id);
     graphs.value = graphs.value.filter((g) => g.id !== id);
     if (activeGraph.value?.id === id) activeGraph.value = null;
+  }
+
+  async function reorderGraphList(ids: string[]) {
+    await reorderGraphs(ids);
+    const idIndex = new Map(ids.map((id, i) => [id, i + 1]));
+    graphs.value = graphs.value.map((g) => {
+      const newOrder = idIndex.get(g.id);
+      return newOrder !== undefined ? { ...g, sortOrder: newOrder } : g;
+    });
   }
 
   async function runGraph(id: string, sessionId: string, initialState?: Record<string, unknown>) {
@@ -283,6 +293,7 @@ export const useGraphStore = defineStore("graph", () => {
     addGraph,
     editGraph,
     removeGraph,
+    reorderGraphList,
     runGraph,
     fetchExecution,
     loadExecutionHistory,

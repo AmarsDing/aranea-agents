@@ -31,7 +31,6 @@ import SessionDetailPage from "../pages/SessionDetailPage.vue";
 import ChannelsPage from "../pages/ChannelsPage.vue";
 import McpServersPage from "../pages/McpServersPage.vue";
 import CronTasksPage from "../pages/CronTasksPage.vue";
-import CronRunsPage from "../pages/CronRunsPage.vue";
 import MemoryCenterPage from "../pages/MemoryCenterPage.vue";
 import SystemSettingsPage from "../pages/SystemSettingsPage.vue";
 import GraphsPage from "../pages/GraphsPage.vue";
@@ -172,7 +171,6 @@ export const routes: RouteRecordRaw[] = [
         name: "cron",
         component: CronTasksPage
       },
-      { path: "cron/runs", name: "cron-runs", component: CronRunsPage },
       { path: "monitor/logs", name: "monitor-logs", component: MonitorPage },
       { path: "shop", name: "shop", component: EcosystemPage },
       { path: "industries", name: "industry-market", component: IndustryMarketPage },

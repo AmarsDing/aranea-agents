@@ -23,11 +23,12 @@ type IndustryRepository interface {
 }
 
 type IndustryUsecase struct {
-	repo IndustryRepository
+	repo  IndustryRepository
+	catUC *AgentCategoryUsecase
 }
 
-func NewIndustryUsecase(repo IndustryRepository) *IndustryUsecase {
-	return &IndustryUsecase{repo: repo}
+func NewIndustryUsecase(repo IndustryRepository, catUC *AgentCategoryUsecase) *IndustryUsecase {
+	return &IndustryUsecase{repo: repo, catUC: catUC}
 }
 
 func (u *IndustryUsecase) List(ctx context.Context, q IndustryListQuery) (IndustryListResult, error) {
@@ -46,4 +47,12 @@ func (u *IndustryUsecase) UpsertByKey(ctx context.Context, ind Industry) (Indust
 		return Industry{}, kerrors.BadRequest("INDUSTRY", "key is required")
 	}
 	return u.repo.UpsertIndustryByKey(ctx, ind)
+}
+
+func (u *IndustryUsecase) ListByLevel(ctx context.Context, level string) ([]AgentCategory, error) {
+	return u.catUC.ListByLevel(ctx, level)
+}
+
+func (u *IndustryUsecase) GetCategoryByKey(ctx context.Context, key string) (AgentCategory, error) {
+	return u.catUC.GetByKey(ctx, key)
 }

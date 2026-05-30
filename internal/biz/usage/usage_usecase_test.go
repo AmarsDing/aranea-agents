@@ -32,6 +32,7 @@ type mockUsageRepo struct {
 	listBudgetAlertsFn              func(context.Context, string, string) ([]BudgetAlert, error)
 	setBudgetAlertFn                func(context.Context, BudgetAlert) (BudgetAlert, error)
 	updateBudgetAlertLastFiredFn    func(context.Context, string, string) error
+	purgeUsageEventsOlderThanFn    func(context.Context, int) (int64, error)
 }
 
 func (m *mockUsageRepo) GetModelUsageSummary(ctx context.Context, q Query) (Summary, error) {
@@ -172,6 +173,13 @@ func (m *mockUsageRepo) UpdateBudgetAlertLastFired(ctx context.Context, id, fire
 		return m.updateBudgetAlertLastFiredFn(ctx, id, firedAt)
 	}
 	return nil
+}
+
+func (m *mockUsageRepo) PurgeUsageEventsOlderThan(ctx context.Context, retainDays int) (int64, error) {
+	if m.purgeUsageEventsOlderThanFn != nil {
+		return m.purgeUsageEventsOlderThanFn(ctx, retainDays)
+	}
+	return 0, nil
 }
 
 var fixedNow = time.Date(2025, 3, 15, 12, 0, 0, 0, time.UTC)

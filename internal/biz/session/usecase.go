@@ -389,6 +389,7 @@ type SummaryWriter interface {
 type StateRepo interface {
 	GetSessionState(ctx context.Context, sessionID string) (map[string]string, error)
 	SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error
+	PatchSessionState(ctx context.Context, sessionID string, sets map[string]string, deletes []string) error
 }
 
 type TurnRepo interface {

@@ -80,6 +80,7 @@ var ProviderSet = wire.NewSet(
 	NewIndustryRepo,
 	NewDepartmentRepo,
 	NewPositionRepo,
+	NewAgentTemplateRepo,
 	NewMemoryConsolidationWriterAdapter,
 	NewMemoryFactIndexMaintainerAdapter,
 	NewMemoryEpisodeDecayerAdapter,
@@ -286,7 +287,8 @@ func initSQLite(c *conf.Data) (*ent.Client, *sql.DB, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed opening sqlite raw db: %w", err)
 	}
-	rawDB.SetMaxOpenConns(4)
+	rawDB.SetMaxOpenConns(1)
+	rawDB.SetMaxIdleConns(1)
 
 	drv := entsql.OpenDB(driverName, rawDB)
 	entClient := ent.NewClient(ent.Driver(drv))
@@ -295,7 +297,8 @@ func initSQLite(c *conf.Data) (*ent.Client, *sql.DB, error) {
 		for _, pragma := range []string{
 			"PRAGMA foreign_keys=ON",
 			"PRAGMA journal_mode=WAL",
-			"PRAGMA busy_timeout=10000",
+			"PRAGMA busy_timeout=5000",
+			"PRAGMA synchronous=NORMAL",
 		} {
 			if _, pragmaErr := rawDB.ExecContext(context.Background(), pragma); pragmaErr != nil {
 				rawDB.Close()
@@ -514,6 +517,16 @@ func seedInitialData(entClient *ent.Client, c *conf.Data) error {
 	if err := SeedBuiltinCLIAdminTools(context.Background(), entClient); err != nil {
 		return err
 	}
+	if err := SeedBuiltinIndustries(context.Background(), entClient); err != nil {
+		return err
+	}
+	scenarioDir := biz.ScenarioDir()
+	if err := SeedBuiltinAgentCategories(context.Background(), entClient, scenarioDir); err != nil {
+		return err
+	}
+	if err := SeedAgentTemplates(context.Background(), entClient, scenarioDir); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -570,11 +583,13 @@ func OpenSQLiteEntClient(dsn string) (*ent.Client, *sql.DB, func(), error) {
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("open sqlite: %w", err)
 	}
-	rawDB.SetMaxOpenConns(4)
+	rawDB.SetMaxOpenConns(1)
+	rawDB.SetMaxIdleConns(1)
 	for _, pragma := range []string{
 		"PRAGMA foreign_keys=ON",
 		"PRAGMA journal_mode=WAL",
-		"PRAGMA busy_timeout=10000",
+		"PRAGMA busy_timeout=5000",
+		"PRAGMA synchronous=NORMAL",
 	} {
 		if _, err := rawDB.ExecContext(context.Background(), pragma); err != nil {
 			rawDB.Close()
