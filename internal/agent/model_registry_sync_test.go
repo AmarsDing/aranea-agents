@@ -214,7 +214,6 @@ func TestModelRegistrySyncAgent_Run_EventsFlow(t *testing.T) {
 
 	var phaseStarts []string
 	var phaseResults []string
-	var hasCompletion bool
 	for _, evt := range events {
 		if evt.Tag == "phase_start" {
 			phase, ok := evt.Extensions["phase"]
@@ -232,9 +231,6 @@ func TestModelRegistrySyncAgent_Run_EventsFlow(t *testing.T) {
 				phaseResults = append(phaseResults, name)
 			}
 		}
-		if evt.Done && evt.Object == "runner.completion" {
-			hasCompletion = true
-		}
 	}
 
 	if len(phaseStarts) == 0 {
@@ -242,9 +238,6 @@ func TestModelRegistrySyncAgent_Run_EventsFlow(t *testing.T) {
 	}
 	if len(phaseResults) == 0 {
 		t.Fatal("expected at least one phase result event")
-	}
-	if !hasCompletion {
-		t.Fatal("expected a completion event")
 	}
 
 	expectedPhases := []string{"fetch", "migrate", "apply"}
@@ -290,16 +283,16 @@ func TestModelRegistrySyncAgent_Run_StoreDirNotExists(t *testing.T) {
 		events = append(events, evt)
 	}
 	if len(events) == 0 {
-		t.Fatal("expected events from Run")
+		t.Fatal("expected events from Run even when store has no saved data")
 	}
 
-	var hasCompletion bool
+	hasPhaseEvent := false
 	for _, evt := range events {
-		if evt.Done && evt.Object == "runner.completion" {
-			hasCompletion = true
+		if evt.Tag == "phase_start" || evt.Tag == "phase_succeeded" || evt.Tag == "phase_failed" || evt.Tag == "phase_skipped" {
+			hasPhaseEvent = true
 		}
 	}
-	if !hasCompletion {
-		t.Fatal("expected a completion event even when store has no saved data")
+	if !hasPhaseEvent {
+		t.Fatal("expected at least one phase event even when store has no saved data")
 	}
 }

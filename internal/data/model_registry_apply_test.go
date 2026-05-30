@@ -36,9 +36,9 @@ func seedAgent(t *testing.T, d *Data, id, agentKey, displayName, provider string
 	t.Helper()
 	ctx := context.Background()
 	_, err := d.RawDB().ExecContext(ctx,
-		`INSERT INTO agents (id, agent_key, display_name, provider, model, status, kind, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, '', 'active', 'user', datetime('now'), datetime('now'))`,
-		id, agentKey, displayName, provider,
+		`INSERT INTO agents (id, agent_key, display_name, provider, model, status, kind, position_key, agent_variant, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, '', 'active', 'user', ?, 'general', datetime('now'), datetime('now'))`,
+		id, agentKey, displayName, provider, agentKey,
 	)
 	if err != nil {
 		t.Fatalf("seed agent %s: %v", id, err)
@@ -243,5 +243,157 @@ func TestBatchMigrate_PartialSkip(t *testing.T) {
 	}
 	if providerB != "new_b" {
 		t.Errorf("old_b should be migrated to new_b, got %q", providerB)
+	}
+}
+
+func TestBatchApply_PricingInsert(t *testing.T) {
+	d := openTestDataWithRawDB(t)
+	ctx := context.Background()
+
+	backend := &modelRegistryApplyBackend{data: d, llm: nil}
+	pricing := []modelregistry.PricingUpsert{
+		{
+			Provider: "openai",
+			Model:    "gpt-4o",
+			Micro:    modelregistry.MicroPricing{Input: 2500, Output: 10000},
+			Source:   "models.dev-sync",
+		},
+	}
+	result := backend.BatchApply(ctx, nil, pricing)
+	if result.PricingUpdated != 1 {
+		t.Errorf("expected 1 pricing updated, got %d", result.PricingUpdated)
+	}
+	if len(result.Errors) != 0 {
+		t.Errorf("unexpected errors: %v", result.Errors)
+	}
+
+	var count int
+	if err := d.RawDB().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM model_pricing_rules WHERE provider_code = ? AND model_api_id = ?`,
+		"openai", "gpt-4o",
+	).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Errorf("expected 1 pricing rule, got %d", count)
+	}
+
+	var inputMicro int64
+	if err := d.RawDB().QueryRowContext(ctx,
+		`SELECT input_price_micro_usd_per_1k FROM model_pricing_rules WHERE provider_code = ? AND model_api_id = ?`,
+		"openai", "gpt-4o",
+	).Scan(&inputMicro); err != nil {
+		t.Fatal(err)
+	}
+	if inputMicro != 2500 {
+		t.Errorf("expected input_price_micro_usd_per_1k=2500, got %d", inputMicro)
+	}
+}
+
+func TestBatchApply_PricingUpsert(t *testing.T) {
+	d := openTestDataWithRawDB(t)
+	ctx := context.Background()
+
+	backend := &modelRegistryApplyBackend{data: d, llm: nil}
+	pricing1 := []modelregistry.PricingUpsert{
+		{
+			Provider: "openai",
+			Model:    "gpt-4o",
+			Micro:    modelregistry.MicroPricing{Input: 2500, Output: 10000},
+			Source:   "models.dev-sync",
+		},
+	}
+	result1 := backend.BatchApply(ctx, nil, pricing1)
+	if result1.PricingUpdated != 1 {
+		t.Fatalf("first insert: expected 1 pricing updated, got %d", result1.PricingUpdated)
+	}
+
+	pricing2 := []modelregistry.PricingUpsert{
+		{
+			Provider: "openai",
+			Model:    "gpt-4o",
+			Micro:    modelregistry.MicroPricing{Input: 3000, Output: 12000},
+			Source:   "models.dev-sync",
+		},
+	}
+	result2 := backend.BatchApply(ctx, nil, pricing2)
+	if result2.PricingUpdated != 1 {
+		t.Fatalf("upsert: expected 1 pricing updated, got %d", result2.PricingUpdated)
+	}
+
+	var count int
+	if err := d.RawDB().QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM model_pricing_rules WHERE provider_code = ? AND model_api_id = ?`,
+		"openai", "gpt-4o",
+	).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Errorf("upsert should keep 1 row, got %d", count)
+	}
+
+	var inputMicro int64
+	if err := d.RawDB().QueryRowContext(ctx,
+		`SELECT input_price_micro_usd_per_1k FROM model_pricing_rules WHERE provider_code = ? AND model_api_id = ?`,
+		"openai", "gpt-4o",
+	).Scan(&inputMicro); err != nil {
+		t.Fatal(err)
+	}
+	if inputMicro != 3000 {
+		t.Errorf("upsert should update input_price to 3000, got %d", inputMicro)
+	}
+}
+
+func TestBatchApply_EmptyInputs(t *testing.T) {
+	d := openTestDataWithRawDB(t)
+	ctx := context.Background()
+
+	backend := &modelRegistryApplyBackend{data: d, llm: nil}
+	result := backend.BatchApply(ctx, nil, nil)
+	if result.RowsUpdated != 0 {
+		t.Errorf("expected 0 rows updated for empty input, got %d", result.RowsUpdated)
+	}
+	if result.PricingUpdated != 0 {
+		t.Errorf("expected 0 pricing updated for empty input, got %d", result.PricingUpdated)
+	}
+	if len(result.Errors) != 0 {
+		t.Errorf("unexpected errors: %v", result.Errors)
+	}
+}
+
+func TestBatchApply_PatchesAndPricingTogether(t *testing.T) {
+	d := openTestDataWithRawDB(t)
+	ctx := context.Background()
+
+	_, err := d.RawDB().ExecContext(ctx,
+		`INSERT INTO llm_provider_models (id, provider, model_key, name, model, enabled, config_json, metadata_json, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+		"pm-1", "openai", "openai:gpt-4o", "GPT-4o", "gpt-4o", true, `{"catalog_managed":true}`, `{}`,
+	)
+	if err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	backend := &modelRegistryApplyBackend{data: d, llm: nil}
+	patches := []modelregistry.ApplyRow{
+		{ID: "pm-1", Key: "openai:gpt-4o", Name: "GPT-4o Updated", Provider: "openai", Model: "gpt-4o", Enabled: true, ConfigJSON: `{"catalog_managed":true}`, MetadataJSON: `{}`},
+	}
+	pricing := []modelregistry.PricingUpsert{
+		{
+			Provider: "openai",
+			Model:    "gpt-4o",
+			Micro:    modelregistry.MicroPricing{Input: 2500, Output: 10000},
+			Source:   "models.dev-sync",
+		},
+	}
+	result := backend.BatchApply(ctx, patches, pricing)
+	if result.RowsUpdated != 1 {
+		t.Errorf("expected 1 row updated, got %d", result.RowsUpdated)
+	}
+	if result.PricingUpdated != 1 {
+		t.Errorf("expected 1 pricing updated, got %d", result.PricingUpdated)
+	}
+	if len(result.Errors) != 0 {
+		t.Errorf("unexpected errors: %v", result.Errors)
 	}
 }

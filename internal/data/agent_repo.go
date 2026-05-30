@@ -191,6 +191,8 @@ func fromEntMemory(e *ent.AgentRuntimeSetting) biz.MemoryCfg {
 		L4GraphMaxHops:           e.L4GraphMaxHops,
 		L4IdentityInject:         e.L4IdentityInject,
 		L4StrategyInject:         e.L4StrategyInject,
+		L4DecayIntervalHours:     e.L4DecayIntervalHours,
+		L4DecayOverridesJSON:     e.L4DecayOverridesJSON,
 	}
 }
 
@@ -346,6 +348,8 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetL4GraphMaxHops(v.L4GraphMaxHops).
 		SetL4IdentityInject(v.L4IdentityInject).
 		SetL4StrategyInject(v.L4StrategyInject).
+		SetL4DecayIntervalHours(v.L4DecayIntervalHours).
+		SetL4DecayOverridesJSON(v.L4DecayOverridesJSON).
 		SetEvoEnabled(v.EvoEnabled).
 		SetEvoAutoApply(v.EvoAutoApply).
 		SetEvoMinEpisodes(v.EvoMinEpisodes).

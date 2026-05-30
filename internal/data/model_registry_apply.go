@@ -248,14 +248,18 @@ func (b *modelRegistryApplyBackend) BatchApply(
 	now := nowRFC3339()
 
 	for _, p := range patches {
-		if _, err := tx.ExecContext(ctx,
+		res, err := tx.ExecContext(ctx,
 			`UPDATE llm_provider_models SET provider=?, model_key=?, name=?, enabled=?, config_json=?, metadata_json=?, updated_at=? WHERE id=?`,
 			p.Provider, p.Key, p.Name, p.Enabled, p.ConfigJSON, p.MetadataJSON, now, p.ID,
-		); err != nil {
+		)
+		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("save %s/%s: %v", p.Provider, p.Model, err))
 			continue
 		}
-		result.RowsUpdated++
+		n, _ := res.RowsAffected()
+		if n > 0 {
+			result.RowsUpdated++
+		}
 	}
 
 	for _, p := range pricing {
@@ -306,7 +310,7 @@ func (b *modelRegistryApplyBackend) upsertPricingInTx(ctx context.Context, tx *s
 		ruleID, p.Provider, p.Model,
 		p.Micro.Input, p.Micro.Output, p.Micro.CacheRead, p.Micro.CacheWrite, p.Micro.Reasoning, p.Micro.Embedding,
 		cost.Input, cost.Output, cost.CacheRead, cost.CacheWrite, cost.Reasoning, cost.Embedding,
-		p.Source, now, now,
+		now, p.Source, now, now,
 	)
 	return err
 }

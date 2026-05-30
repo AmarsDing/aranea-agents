@@ -121,6 +121,17 @@ internal/cronrunner     ← 定时任务
 
 **框架真相源**：`pkg/trpc-agent-go` 是 Agent 框架的唯一真相源。先查框架 API 后再实现，不复制框架内部逻辑。
 
+**Agent 运行时集成铁律**：
+
+| # | 铁律 | 正确做法 |
+|---|------|----------|
+| A1 | 所有 Agent 必须实现 `agent.Agent` 接口（5 方法） | `Run/Tools/Info/SubAgents/FindSubAgent` |
+| A2 | 事件发射必须走 `agent.EmitEvent(ctx, inv, ch, evt)` | 禁止 `event.EmitEvent(context.Background(), ch, evt)` |
+| A3 | Agent.Run() 内部不得发射 `ObjectTypeRunnerCompletion` | Runner 层统一发射完成事件 |
+| A4 | 后台/定时 Agent 必须通过 `Runner.Run()` 调用 | 参考框架 `openclaw/internal/cron/service.go` 模式 |
+| A5 | 工具构建使用 `function.NewFunctionTool[I, O]` | 禁止手动实现 `CallableTool` 接口 |
+| A6 | 程序化 Agent（非 LLM 驱动）也必须走 Runner | Runner 管理 Session/Invocation/事件流生命周期 |
+
 **工具装配**：新增工具先在 `Registry()` 注册 `ToolRegistration` + `builtin_tools_seed.go` 种子，Chat/Team 共用同一 `BuildToolsets` 逻辑。
 
 **记忆系统**：记忆工具通过 `memory.Service.Tools()` 注入，记忆写入经 broker/async 异步写。
@@ -151,10 +162,12 @@ services/index.ts (createXxxService)
 新增业务逻辑        → internal/biz（模型 + Repo 接口 + Usecase）
 新增数据库表/查询   → internal/data/ent/schema → go generate → internal/data
 新增 LLM Agent 能力 → internal/agent（BuildLLMAgent 扩展）
+新增程序化 Agent    → internal/agent（实现 agent.Agent 接口 + Runner 包装）
 新增工具           → internal/tools（Registry 注册 + Assemble 装配）
 新增 Team 工作流   → internal/team（BuildWorkflowRoot）
 新增 LLM 厂商      → internal/provider（实现 model.LLM）
 新增记忆能力       → internal/memory（适配器 → trpcmemory.Service）
+新增定时同步任务   → internal/agent（Agent）→ internal/cronrunner（调度）→ cmd/admin/wire.go（装配）
 新增横切关注点     → internal/server + pkg/auth
 ```
 

@@ -22,7 +22,11 @@ func TestRecallKeywordFromMessages_IntentHints(t *testing.T) {
 func TestRecallKeywordFromMessages_UserFallback(t *testing.T) {
 	long := strings.Repeat("x", 200)
 	kw := RecallKeywordFromMessages([]trpcmodel.Message{trpcmodel.NewUserMessage(long)})
-	if len([]rune(kw)) != 120 {
-		t.Fatalf("expected 120 runes, got %d", len([]rune(kw)))
+	runes := []rune(kw)
+	if len(runes) != 121 {
+		t.Fatalf("expected 121 runes (120 truncated + ellipsis), got %d", len(runes))
+	}
+	if !strings.HasSuffix(kw, "…") {
+		t.Fatalf("expected truncation ellipsis, got %q", kw)
 	}
 }

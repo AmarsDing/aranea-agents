@@ -92,6 +92,8 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.Int("l4_graph_max_hops").Default(2),
 		field.Bool("l4_identity_inject").Default(true),
 		field.Bool("l4_strategy_inject").Default(false),
+		field.Int("l4_decay_interval_hours").Default(48),
+		field.String("l4_decay_overrides_json").Default("{}"),
 		field.Bool("evo_enabled").Default(false),
 		field.Bool("evo_auto_apply").Default(false),
 		field.Int("evo_min_episodes").Default(20),

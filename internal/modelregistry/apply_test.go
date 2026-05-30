@@ -115,3 +115,102 @@ func TestApplier_skipsCustom(t *testing.T) {
 		t.Fatalf("custom row should skip: saved=%d", len(backend.saved))
 	}
 }
+
+func TestApplier_ApplyWithMigration(t *testing.T) {
+	backend := &stubApplyBackend{
+		rows: []ApplyRow{{
+			ID:         "1",
+			Key:        "openai:gpt-4o",
+			Provider:   "openai",
+			Model:      "gpt-4o",
+			Enabled:    true,
+			ConfigJSON: `{"catalog_managed":true,"catalog_source":"models.dev"}`,
+		}},
+		migrate: map[string]ApplyMigrationStats{
+			"gemini->google": {Agents: 3, Sessions: 1},
+		},
+	}
+	cat := Directory{
+		"openai": {
+			ID:   "openai",
+			Name: "OpenAI",
+			Models: map[string]Model{
+				"gpt-4o": {ID: "gpt-4o", Name: "GPT-4o"},
+			},
+		},
+	}
+	res := NewApplier(backend).ApplyWithMigration(context.Background(), cat, "metadata_and_pricing")
+	if res.LLMRowsUpdated != 1 {
+		t.Errorf("expected 1 LLM row updated, got %d", res.LLMRowsUpdated)
+	}
+	if res.Migration.Agents == 0 {
+		t.Error("expected migration stats to be populated")
+	}
+}
+
+func TestApplier_ApplyWithMigration_noneMode(t *testing.T) {
+	backend := &stubApplyBackend{
+		rows: []ApplyRow{{
+			ID:         "1",
+			Provider:   "openai",
+			Model:      "gpt-4o",
+			ConfigJSON: `{"catalog_managed":true}`,
+		}},
+	}
+	cat := Directory{"openai": {ID: "openai", Models: map[string]Model{"gpt-4o": {ID: "gpt-4o"}}}}
+	res := NewApplier(backend).ApplyWithMigration(context.Background(), cat, "none")
+	if res.LLMRowsUpdated != 0 {
+		t.Errorf("none mode should skip apply, got %d", res.LLMRowsUpdated)
+	}
+}
+
+func TestApplier_Apply_emptyDirectory(t *testing.T) {
+	backend := &stubApplyBackend{}
+	res := NewApplier(backend).Apply(context.Background(), nil, "metadata_and_pricing")
+	if res.LLMRowsUpdated != 0 {
+		t.Errorf("empty directory should produce 0 updates, got %d", res.LLMRowsUpdated)
+	}
+}
+
+func TestApplier_Apply_noneMode(t *testing.T) {
+	backend := &stubApplyBackend{
+		rows: []ApplyRow{{ID: "1", Provider: "openai", Model: "gpt-4o", ConfigJSON: `{}`}},
+	}
+	cat := Directory{"openai": {ID: "openai", Models: map[string]Model{"gpt-4o": {ID: "gpt-4o"}}}}
+	res := NewApplier(backend).Apply(context.Background(), cat, "")
+	if res.LLMRowsUpdated != 0 {
+		t.Errorf("empty mode should skip, got %d", res.LLMRowsUpdated)
+	}
+}
+
+func TestApplier_Apply_deprecatedModel(t *testing.T) {
+	backend := &stubApplyBackend{
+		rows: []ApplyRow{{
+			ID:         "1",
+			Key:        "openai:gpt-3.5",
+			Provider:   "openai",
+			Model:      "gpt-3.5",
+			Enabled:    true,
+			ConfigJSON: `{"catalog_managed":true,"catalog_source":"models.dev"}`,
+		}},
+	}
+	cat := Directory{
+		"openai": {
+			ID:   "openai",
+			Name: "OpenAI",
+			Models: map[string]Model{
+				"gpt-3.5": {ID: "gpt-3.5", Name: "GPT-3.5", Status: "deprecated"},
+			},
+		},
+	}
+	res := NewApplier(backend).Apply(context.Background(), cat, "metadata_and_pricing")
+	if res.LLMRowsDisabled != 1 {
+		t.Errorf("deprecated model should be disabled, got %d", res.LLMRowsDisabled)
+	}
+	if len(backend.saved) != 1 {
+		t.Fatal("deprecated model should still be saved (with enabled=false)")
+	}
+	if backend.saved[0].Enabled {
+		t.Error("deprecated model should have enabled=false")
+	}
+}

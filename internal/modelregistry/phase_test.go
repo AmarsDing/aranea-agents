@@ -3,6 +3,9 @@ package modelregistry
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -204,6 +207,144 @@ func TestApplyPhase_SkipEmptyDirectory(t *testing.T) {
 	result := p.Run(pc)
 	if result.Status != PhaseSkipped {
 		t.Fatalf("expected skipped, got %q", result.Status)
+	}
+}
+
+func TestMigratePhase_LoadCheckpointError(t *testing.T) {
+	dir := t.TempDir()
+	st := NewStore(dir)
+	if err := os.MkdirAll(st.MigrationCheckpointPath(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	backend := &stubMigrateBackend{stats: ApplyMigrationStats{Agents: 1}}
+	p := NewMigratePhase(backend)
+	pc := &PhaseContext{
+		Ctx:   context.Background(),
+		Store: st,
+	}
+	result := p.Run(pc)
+	if result.Status != PhaseFailed {
+		t.Fatalf("expected failed, got %q", result.Status)
+	}
+	found := false
+	for _, e := range result.Errors {
+		if strings.Contains(e, "load checkpoint") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected error containing 'load checkpoint', got %v", result.Errors)
+	}
+}
+
+func TestMigratePhase_SaveCheckpointError(t *testing.T) {
+	dir := t.TempDir()
+	st := NewStore(dir)
+
+	if err := st.SaveMigrationCheckpoint(MigrationCheckpoint{}); err != nil {
+		t.Fatal(err)
+	}
+	cpPath := st.MigrationCheckpointPath()
+	if err := os.Chmod(cpPath, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(cpPath, 0o644)
+
+	backend := &stubMigrateBackend{stats: ApplyMigrationStats{Agents: 1}}
+	p := NewMigratePhase(backend)
+	pc := &PhaseContext{
+		Ctx:   context.Background(),
+		Store: st,
+	}
+	result := p.Run(pc)
+	if result.Status != PhaseSucceeded {
+		t.Fatalf("expected succeeded, got %q errors=%v", result.Status, result.Errors)
+	}
+	found := false
+	for _, e := range result.Errors {
+		if strings.Contains(e, "save checkpoint") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected error containing 'save checkpoint', got %v", result.Errors)
+	}
+}
+
+func TestStore_MigrationCheckpointRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	st := NewStore(dir)
+
+	cp := MigrationCheckpoint{
+		CompletedRules: []string{"gemini->google", "aliyun-qwen->alibaba-cn"},
+	}
+	if err := st.SaveMigrationCheckpoint(cp); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := st.LoadMigrationCheckpoint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.CompletedRules) != len(cp.CompletedRules) {
+		t.Fatalf("expected %d completed rules, got %d", len(cp.CompletedRules), len(loaded.CompletedRules))
+	}
+	for i, r := range cp.CompletedRules {
+		if loaded.CompletedRules[i] != r {
+			t.Fatalf("rule[%d]: expected %q, got %q", i, r, loaded.CompletedRules[i])
+		}
+	}
+}
+
+func TestStore_LoadMigrationCheckpoint_NoFile(t *testing.T) {
+	dir := t.TempDir()
+	st := NewStore(dir)
+
+	cp, err := st.LoadMigrationCheckpoint()
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if len(cp.CompletedRules) != 0 {
+		t.Fatalf("expected empty completed rules, got %v", cp.CompletedRules)
+	}
+}
+
+func TestStore_LoadMigrationCheckpoint_BadJSON(t *testing.T) {
+	dir := t.TempDir()
+	st := NewStore(dir)
+
+	if err := os.MkdirAll(filepath.Dir(st.MigrationCheckpointPath()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(st.MigrationCheckpointPath(), []byte("{{{bad json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cp, err := st.LoadMigrationCheckpoint()
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if len(cp.CompletedRules) != 0 {
+		t.Fatalf("expected empty completed rules, got %v", cp.CompletedRules)
+	}
+}
+
+func TestNewCheckpoint(t *testing.T) {
+	rules := []string{"gemini->google", "aliyun-qwen->alibaba-cn"}
+	cp := NewCheckpoint(rules)
+	if cp == nil {
+		t.Fatal("expected non-nil checkpoint")
+	}
+	if len(cp.CompletedRules) != len(rules) {
+		t.Fatalf("expected %d rules, got %d", len(rules), len(cp.CompletedRules))
+	}
+	for i, r := range rules {
+		if cp.CompletedRules[i] != r {
+			t.Fatalf("rule[%d]: expected %q, got %q", i, r, cp.CompletedRules[i])
+		}
 	}
 }
 
