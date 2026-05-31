@@ -1,0 +1,124 @@
+syntax = "proto3";
+
+package kratos.learning_loop.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "aranea-agents/api/kratos/learning_loop/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.learning_loop.v1";
+
+message Observation {
+  string id = 1;
+  string agent_id = 2;
+  string session_id = 3;
+  string kind = 4;
+  string content = 5;
+  string metadata = 6;
+  string observed_at = 7;
+}
+
+message Pattern {
+  string id = 1;
+  string agent_id = 2;
+  string kind = 3;
+  string description = 4;
+  int32  frequency = 5;
+  double confidence = 6;
+  string evidence = 7;
+  string status = 8;
+  string detected_at = 9;
+}
+
+message KnowledgeProposal {
+  string id = 1;
+  string agent_id = 2;
+  string pattern_id = 3;
+  string title = 4;
+  string content = 5;
+  string kind = 6;
+  string status = 7;
+  string validated_at = 8;
+  string approved_by = 9;
+  string created_at = 10;
+  string updated_at = 11;
+}
+
+message ListProposalsRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string status = 2;
+}
+
+message ListProposalsResponse {
+  repeated KnowledgeProposal items = 1;
+}
+
+message ListPatternsRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string status = 2;
+}
+
+message ListPatternsResponse {
+  repeated Pattern items = 1;
+}
+
+message ListObservationsRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string since = 2;
+}
+
+message ListObservationsResponse {
+  repeated Observation items = 1;
+}
+
+message ApproveProposalRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message RejectProposalRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string id = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+message RunLoopRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+service LearningLoopService {
+  rpc ListProposals(ListProposalsRequest) returns (ListProposalsResponse) {
+    option (google.api.http) = {
+      get: "/v1/agents/{agent_id}/learning/proposals"
+    };
+  }
+  rpc ListPatterns(ListPatternsRequest) returns (ListPatternsResponse) {
+    option (google.api.http) = {
+      get: "/v1/agents/{agent_id}/learning/patterns"
+    };
+  }
+  rpc ListObservations(ListObservationsRequest) returns (ListObservationsResponse) {
+    option (google.api.http) = {
+      get: "/v1/agents/{agent_id}/learning/observations"
+    };
+  }
+  rpc ApproveProposal(ApproveProposalRequest) returns (KnowledgeProposal) {
+    option (google.api.http) = {
+      post: "/v1/agents/{agent_id}/learning/proposals/{id}/approve"
+      body: "*"
+    };
+  }
+  rpc RejectProposal(RejectProposalRequest) returns (KnowledgeProposal) {
+    option (google.api.http) = {
+      post: "/v1/agents/{agent_id}/learning/proposals/{id}/reject"
+      body: "*"
+    };
+  }
+  rpc RunLoop(RunLoopRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {
+      post: "/v1/agents/{agent_id}/learning/run"
+      body: "*"
+    };
+  }
+}

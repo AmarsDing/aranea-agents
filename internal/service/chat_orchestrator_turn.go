@@ -15,6 +15,7 @@ import (
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
+	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
 	rt "aranea-agents/internal/runtime"
@@ -351,11 +352,17 @@ func (o *ChatOrchestrator) makeAwaitReplyFunc(runCtx context.Context, sessionID,
 			}
 		}
 		o.setRunStatusWithAwait(toolCtx, sessionID, runID, "awaiting_user", "", &awaitMeta)
+		if awaitMeta.Kind == biz.ChatAwaitKindToolConfirm {
+			o.transitionSessionStatus(toolCtx, sessionID, sessstatus.SessionStatusAwaitingConfirmation, sessstatus.StatusReasonToolConfirmation)
+		} else {
+			o.transitionSessionStatus(toolCtx, sessionID, sessstatus.SessionStatusAwaitingConfirmation, sessstatus.StatusReasonAgentAwaitingReply)
+		}
 		o.persistAwaitMarkers(toolCtx, sessionID, runID, awaitMeta, true)
 		defer func() {
 			o.chatUC.DeleteAwaitChannel(sessionID)
 			o.clearAwaitMetaCache(sessionID)
 			o.setRunStatus(toolCtx, sessionID, runID, "running", "")
+			o.transitionSessionStatus(toolCtx, sessionID, sessstatus.SessionStatusRunning, "")
 		}()
 		select {
 		case r, ok := <-ch:

@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	entsession "aranea-agents/internal/data/ent/session"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -25,7 +25,7 @@ func (r *sessionRepo) GetSessionState(ctx context.Context, sessionID string) (ma
 	state := map[string]string{}
 	if row.StateJSON != "" {
 		if err := json.Unmarshal([]byte(row.StateJSON), &state); err != nil {
-			event.SysLogWarn("session.state", "state json unmarshal failed", event.P("error", err.Error()))
+			loggateway.Global().Warn("state json unmarshal failed", loggateway.StepID("session.state"), loggateway.Err(err))
 		}
 	}
 	return state, nil

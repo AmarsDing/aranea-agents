@@ -120,7 +120,7 @@ func buildResumeSessionContext(defJSON, inputPreview string) (
 ) {
 	def, err := ParseDefinition(defJSON)
 	if err != nil {
-		event.SysLogWarn("team.intent.merge_fail", "buildResumeSessionContext: ParseDefinition failed", event.P("error", err.Error()))
+		loggateway.Global().Warn("buildResumeSessionContext: ParseDefinition failed", loggateway.StepID("team.intent.merge_fail"), loggateway.Err(err))
 		return biz.OrchestrationRegistry{}, nil, nil
 	}
 	reg = BuildOrchestrationRegistry(def,

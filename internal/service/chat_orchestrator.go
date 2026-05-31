@@ -10,17 +10,20 @@ import (
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/chatactivity"
+	"aranea-agents/internal/debug"
 	"aranea-agents/internal/event"
 	graphadapter "aranea-agents/internal/graph/adapter"
 	"aranea-agents/internal/knowledge"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	araneasession "aranea-agents/internal/session"
+	sessstatus "aranea-agents/internal/biz/session"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/runtime/turn"
 	"aranea-agents/internal/team"
 	tooltrpc "aranea-agents/internal/tools/trpc"
 	"aranea-agents/pkg/ctxuser"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
@@ -52,9 +55,7 @@ type RuntimeTooling struct {
 	KnowledgeUC                *biz.KnowledgeUsecase
 	CodeExecFactory            *localexec.Factory
 	KanbanBridge               kanbanpkg.Bridge
-	IndustryUC                 *biz.IndustryUsecase
-	DepartmentUC               *biz.DepartmentUsecase
-	PositionUC                 *biz.PositionUsecase
+	DebugRecorder              *debug.RecorderFactory
 }
 
 // TeamOrchestrationDeps groups team execution and graph compilation dependencies.
@@ -334,6 +335,25 @@ func (o *ChatOrchestrator) ActiveRunner(sessionID string) (runner trpcrunner.Run
 	return o.runs.ActiveRunner(sessionID)
 }
 
+func (o *ChatOrchestrator) transitionSessionStatus(ctx context.Context, sessionID string, targetStatus sessstatus.SessionStatus, reason sessstatus.SessionStatusReason) {
+	if o == nil || o.td.Sessions == nil {
+		return
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return
+	}
+	if err := o.td.Sessions.TransitionStatus(ctx, sessionID, targetStatus, reason); err != nil {
+		loggateway.Global().Warn("session status transition failed",
+			loggateway.StepID("chat.transition_status"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("target_status", string(targetStatus)),
+			loggateway.Str("reason", string(reason)),
+			loggateway.Err(err),
+		)
+	}
+}
+
 // cancelActiveRun cancels the active run for a session.
 func (o *ChatOrchestrator) cancelActiveRun(ctx context.Context, sessionID string) bool {
 	if o == nil || sessionID == "" {
@@ -344,10 +364,12 @@ func (o *ChatOrchestrator) cancelActiveRun(ctx context.Context, sessionID string
 		return false
 	}
 	o.setRunStatus(ctx, sessionID, runID, "cancelled", "")
+	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonUserCancelled)
 	if _, err := chatactivity.CancelRunningActivityMessages(ctx, o.td.Sessions, sessionID); err != nil {
-		event.CtxFlowLogWarn(ctx, "chat.activity.cancel", "取消执行卡片查询失败",
-			event.P("session_id", sessionID),
-			event.P("error", err.Error()),
+		loggateway.Global().Warn("取消执行卡片查询失败",
+			loggateway.StepID("chat.activity.cancel"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("error", err.Error()),
 		)
 	}
 	return true

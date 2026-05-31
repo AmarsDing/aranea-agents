@@ -274,7 +274,7 @@ func resolveMCPServers(ctx context.Context, deps TRPCBuilderDeps, agentID string
 		}
 		sc, err := mcpconfig.ParseServerConfigJSON(cfgJSON)
 		if err != nil {
-			event.SysLogWarn("system.agent.tool_build", "MCP server config parse failed", event.P("server_key", key), event.P("error", err.Error()))
+			loggateway.Global().Warn("MCP server config parse failed", loggateway.StepID("system.agent.tool_build"), loggateway.Str("server_key", key), loggateway.Err(err))
 			continue
 		}
 		out = append(out, tooltrpc.MCPServerConfig{

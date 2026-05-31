@@ -1,0 +1,55 @@
+package session
+
+import (
+	"fmt"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+)
+
+var validTransitions = map[SessionStatus][]SessionStatus{
+	SessionStatusIdle:                 {SessionStatusRunning},
+	SessionStatusRunning:              {SessionStatusCompleted, SessionStatusInterrupted, SessionStatusAwaitingConfirmation},
+	SessionStatusCompleted:            {SessionStatusRunning},
+	SessionStatusInterrupted:          {SessionStatusRunning},
+	SessionStatusAwaitingConfirmation: {SessionStatusRunning, SessionStatusInterrupted},
+}
+
+type SessionStatusMachine struct {
+	status       SessionStatus
+	statusReason SessionStatusReason
+	changedAt    string
+}
+
+func NewSessionStatusMachine(status SessionStatus, reason SessionStatusReason, changedAt string) *SessionStatusMachine {
+	return &SessionStatusMachine{
+		status:       status,
+		statusReason: reason,
+		changedAt:    changedAt,
+	}
+}
+
+func (m *SessionStatusMachine) TransitionTo(target SessionStatus, reason SessionStatusReason) error {
+	if !m.CanTransitionTo(target) {
+		return kerrors.BadRequest("SESSION", fmt.Sprintf("cannot transition session status from %s to %s", m.status, target))
+	}
+	m.status = target
+	m.statusReason = reason
+	return nil
+}
+
+func (m *SessionStatusMachine) CanTransitionTo(target SessionStatus) bool {
+	allowed, ok := validTransitions[m.status]
+	if !ok {
+		return false
+	}
+	for _, s := range allowed {
+		if s == target {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *SessionStatusMachine) Status() SessionStatus            { return m.status }
+func (m *SessionStatusMachine) StatusReason() SessionStatusReason { return m.statusReason }
+func (m *SessionStatusMachine) ChangedAt() string                { return m.changedAt }
