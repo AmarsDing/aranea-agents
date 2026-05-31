@@ -10,6 +10,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/scenario/loader"
+	"aranea-agents/pkg/loggateway"
 )
 
 func SeedIndustryAgentsRawSQL(ctx context.Context, rawDB *sql.DB, scenarioDir string) error {
@@ -130,7 +131,8 @@ func SeedIndustryAgentsRawSQL(ctx context.Context, rawDB *sql.DB, scenarioDir st
 	}
 	committed = true
 
-	startupLog.Printf("[startup] industry agent seed: %d agents, %d teams", len(allAgents), len(allTeams))
+	loggateway.Global().Info("industry agent seed completed",
+		loggateway.StepID("system.startup"), loggateway.Int("agents", len(allAgents)), loggateway.Int("teams", len(allTeams)))
 	return nil
 }
 
@@ -299,7 +301,7 @@ func insertAgentRuntimeSettings(ctx context.Context, tx *sql.Tx, agentID string,
 		ph[i] = "?"
 	}
 	skipOnConflict := map[string]bool{
-		"agent_id":  true,
+		"agent_id":   true,
 		"created_at": true,
 	}
 	var onConflictSets []string

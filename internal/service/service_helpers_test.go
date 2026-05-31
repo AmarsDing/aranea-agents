@@ -73,7 +73,7 @@ func TestPickTitleModel(t *testing.T) {
 		{
 			"matching flash",
 			[]biz.ProviderModel{
-				{Model: "gemini-pro"},
+				{Model: "claude-3-opus"},
 				{Model: "gemini-2.0-flash"},
 			},
 			"gemini-2.0-flash",

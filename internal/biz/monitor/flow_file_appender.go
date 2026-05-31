@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -61,7 +62,11 @@ func (rf *rotatingFile) shouldRotate() bool {
 
 func NewFlowFileAppender(dir string, lg loggateway.Logger) *FlowFileAppender {
 	if dir == "" {
-		dir = "/var/log/aranea"
+		if runtime.GOOS == "windows" {
+			dir = "./logs"
+		} else {
+			dir = "/var/log/aranea"
+		}
 	}
 	return &FlowFileAppender{
 		dir:           dir,

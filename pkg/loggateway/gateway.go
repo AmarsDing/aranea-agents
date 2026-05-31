@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -15,11 +16,13 @@ import (
 )
 
 type Gateway struct {
-	core      zapcore.Core
-	sugar     *zap.SugaredLogger
-	hook      *busHook
-	kratosAdp *KratosAdapter
-	base      []Field
+	core       zapcore.Core
+	logger     *zap.Logger
+	sugar      *zap.SugaredLogger
+	hook       *busHook
+	kratosAdp  *KratosAdapter
+	base       []Field
+	outputDir  string
 }
 
 var (
@@ -91,12 +94,15 @@ func New(c *conf.Logging) *Gateway {
 		hook: hook,
 	}
 
-	sugar := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
+	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
+	sugar := logger.Sugar()
 	g := &Gateway{
 		core:      core,
+		logger:    logger,
 		sugar:     sugar,
 		hook:      hook,
 		kratosAdp: &KratosAdapter{sugar: sugar},
+		outputDir: outputDir,
 	}
 
 	globalMu.Lock()
@@ -118,15 +124,24 @@ func SetGlobal(g *Gateway) {
 	global = g
 }
 
+func (g *Gateway) OutputDir() string {
+	if g == nil {
+		return defaultOutputDir()
+	}
+	return g.outputDir
+}
+
 func NewNoop() *Gateway {
 	core := zapcore.NewCore(
 		zapcore.NewJSONEncoder(zapcore.EncoderConfig{}),
 		zapcore.AddSync(io.Discard),
 		zapcore.DebugLevel,
 	)
-	sugar := zap.New(core).Sugar()
+	logger := zap.New(core)
+	sugar := logger.Sugar()
 	return &Gateway{
 		core:      core,
+		logger:    logger,
 		sugar:     sugar,
 		hook:      &busHook{},
 		kratosAdp: &KratosAdapter{sugar: sugar},
@@ -135,22 +150,22 @@ func NewNoop() *Gateway {
 
 func (g *Gateway) Debug(msg string, fields ...Field) {
 	all := g.withBase(fields)
-	g.sugar.Debugw(msg, toInterfaces(all)...)
+	g.logger.Debug(msg, all...)
 }
 
 func (g *Gateway) Info(msg string, fields ...Field) {
 	all := g.withBase(fields)
-	g.sugar.Infow(msg, toInterfaces(all)...)
+	g.logger.Info(msg, all...)
 }
 
 func (g *Gateway) Warn(msg string, fields ...Field) {
 	all := g.withBase(fields)
-	g.sugar.Warnw(msg, toInterfaces(all)...)
+	g.logger.Warn(msg, all...)
 }
 
 func (g *Gateway) Error(msg string, fields ...Field) {
 	all := g.withBase(fields)
-	g.sugar.Errorw(msg, toInterfaces(all)...)
+	g.logger.Error(msg, all...)
 }
 
 func (g *Gateway) With(fields ...Field) Logger {
@@ -220,15 +235,10 @@ func defaultOutputDir() string {
 	if dir := os.Getenv("MONITOR_FLOW_LOG_DIR"); dir != "" {
 		return dir
 	}
-	return "/var/log/aranea"
-}
-
-func toInterfaces(fields []Field) []interface{} {
-	out := make([]interface{}, 0, len(fields)*2)
-	for _, f := range fields {
-		out = append(out, f.Key, f.Interface)
+	if runtime.GOOS == "windows" {
+		return "./logs"
 	}
-	return out
+	return "/var/log/aranea"
 }
 
 type EnvelopeLog struct {

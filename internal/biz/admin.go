@@ -47,23 +47,35 @@ func NewAdminUsecase(repo AdminRepo, lg loggateway.Logger) *AdminUsecase {
 func (uc *AdminUsecase) LoginByUsername(ctx context.Context, username, password string) (*Admin, error) {
 	user, err := uc.admin.FindByName(ctx, username)
 	if err != nil {
+		uc.lg.Warn("admin login failed: user not found",
+			loggateway.StepID("system.admin.login_failed"), loggateway.Str("method", "username"), loggateway.Str("username", username))
 		return nil, err
 	}
 	if user.Password != password {
+		uc.lg.Warn("admin login failed: invalid credentials",
+			loggateway.StepID("system.admin.login_failed"), loggateway.Str("method", "username"), loggateway.Str("admin_name", user.Name))
 		return nil, errors.Unauthorized("AUTH", "invalid credentials")
 	}
+	uc.lg.Info("admin logged in",
+		loggateway.StepID("system.admin.login"), loggateway.Str("method", "username"), loggateway.Str("admin_name", user.Name))
 	return user, nil
 }
 
 // LoginByEmail logs in a user by email and password.
-func (uc *AdminUsecase) LoginByEmail(ctx context.Context, username, password string) (*Admin, error) {
-	user, err := uc.admin.FindByEmail(ctx, username)
+func (uc *AdminUsecase) LoginByEmail(ctx context.Context, email, password string) (*Admin, error) {
+	user, err := uc.admin.FindByEmail(ctx, email)
 	if err != nil {
+		uc.lg.Warn("admin login failed: user not found",
+			loggateway.StepID("system.admin.login_failed"), loggateway.Str("method", "email"), loggateway.Str("email", email))
 		return nil, err
 	}
 	if user.Password != password {
+		uc.lg.Warn("admin login failed: invalid credentials",
+			loggateway.StepID("system.admin.login_failed"), loggateway.Str("method", "email"), loggateway.Str("admin_name", user.Name))
 		return nil, errors.Unauthorized("AUTH", "invalid credentials")
 	}
+	uc.lg.Info("admin logged in",
+		loggateway.StepID("system.admin.login"), loggateway.Str("method", "email"), loggateway.Str("admin_name", user.Name))
 	return user, nil
 }
 

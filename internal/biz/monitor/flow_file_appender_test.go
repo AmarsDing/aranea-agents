@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -32,8 +33,12 @@ func TestNewFlowFileAppender_EmptyDir(t *testing.T) {
 	if a == nil {
 		t.Fatal("NewFlowFileAppender returned nil")
 	}
-	if a.Dir() != "/var/log/aranea" {
-		t.Errorf("Dir() = %q, want /var/log/aranea", a.Dir())
+	want := "/var/log/aranea"
+	if runtime.GOOS == "windows" {
+		want = "./logs"
+	}
+	if a.Dir() != want {
+		t.Errorf("Dir() = %q, want %q", a.Dir(), want)
 	}
 }
 
@@ -401,7 +406,7 @@ func TestFlowFileAppender_CompressOldFiles_ZeroCompressAge(t *testing.T) {
 	a.SetCompressAge(0)
 
 	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
-	oldPath := filepath.Join(dir, "flow-" + oldDate + ".jsonl")
+	oldPath := filepath.Join(dir, "flow-"+oldDate+".jsonl")
 	if err := os.WriteFile(oldPath, []byte("data"), 0644); err != nil {
 		t.Fatalf("write error: %v", err)
 	}
@@ -482,7 +487,7 @@ func TestFlowFileAppender_PurgeExpiredFiles_ZeroRetention(t *testing.T) {
 	a.SetRetentionDays(0)
 
 	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
-	oldPath := filepath.Join(dir, "flow-" + oldDate + ".jsonl.gz")
+	oldPath := filepath.Join(dir, "flow-"+oldDate+".jsonl.gz")
 	if err := os.WriteFile(oldPath, []byte("old"), 0644); err != nil {
 		t.Fatalf("write error: %v", err)
 	}

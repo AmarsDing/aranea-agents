@@ -1,14 +1,16 @@
 package service
 
 import (
-	"context"
-	"crypto/md5"
-	"encoding/hex"
-	"time"
-
 	v1 "aranea-agents/api/kratos/admin/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/auth"
+	"aranea-agents/pkg/loggateway"
+	"context"
+	"crypto/md5"
+	"encoding/hex"
+	"fmt"
+	"time"
+
 	"github.com/go-kratos/kratos/v2/errors"
 
 	"go.einride.tech/aip/fieldmask"
@@ -41,11 +43,11 @@ type AdminService struct {
 	v1.UnimplementedAdminServiceServer
 
 	uc *biz.AdminUsecase
+	lg loggateway.Logger
 }
 
-// NewAdminService new a greeter service.
-func NewAdminService(uc *biz.AdminUsecase) *AdminService {
-	return &AdminService{uc: uc}
+func NewAdminService(uc *biz.AdminUsecase, lg loggateway.Logger) *AdminService {
+	return &AdminService{uc: uc, lg: lg}
 }
 
 // Current implements auth current admin retrieval.
@@ -64,24 +66,31 @@ func (s *AdminService) Current(ctx context.Context, req *emptypb.Empty) (*v1.Adm
 // Login implements auth login.
 func (s *AdminService) Login(ctx context.Context, req *v1.LoginRequest) (*v1.Admin, error) {
 	var (
-		err   error
-		admin *biz.Admin
+		err    error
+		admin  *biz.Admin
+		method string
 	)
 	switch v := req.Identity.(type) {
 	case *v1.LoginRequest_Username:
+		method = "username"
 		admin, err = s.uc.LoginByUsername(ctx, v.Username, encodePassword(req.Password))
 		if err != nil {
 			return nil, err
 		}
 	case *v1.LoginRequest_Email:
+		method = "email"
 		admin, err = s.uc.LoginByEmail(ctx, v.Email, encodePassword(req.Password))
 		if err != nil {
 			return nil, err
 		}
 	default:
+		s.lg.Warn("admin login failed: unsupported identity type",
+			loggateway.StepID("system.admin.login_failed"))
 		return nil, errors.BadRequest("AUTH", "unsupported identity type")
 	}
 	if err := auth.SetCookie(ctx, admin.ID, admin.Access, time.Now().Add(7*24*time.Hour)); err != nil {
+		s.lg.Warn("admin login: set cookie failed",
+			loggateway.StepID("system.admin.login"), loggateway.Str("method", method), loggateway.Str("admin_name", admin.Name), loggateway.Err(err))
 		return nil, err
 	}
 	return convertAdmin(admin), nil
@@ -125,6 +134,8 @@ func (s *AdminService) CreateAdmin(ctx context.Context, req *v1.CreateAdminReque
 	if err != nil {
 		return nil, err
 	}
+	s.lg.Info("admin created",
+		loggateway.StepID("system.admin.create"), loggateway.Str("operator_id", fmt.Sprintf("%d", a.UserID)), loggateway.Str("target", admin.Name))
 	return convertAdmin(admin), nil
 }
 
@@ -157,6 +168,8 @@ func (s *AdminService) UpdateAdmin(ctx context.Context, req *v1.UpdateAdminReque
 	if err != nil {
 		return nil, err
 	}
+	s.lg.Info("admin updated",
+		loggateway.StepID("system.admin.update"), loggateway.Str("operator_id", fmt.Sprintf("%d", a.UserID)), loggateway.Str("target", admin.Name))
 	return convertAdmin(updated), nil
 }
 
@@ -172,6 +185,8 @@ func (s *AdminService) DeleteAdmin(ctx context.Context, req *v1.DeleteAdminReque
 	if err := s.uc.DeleteAdmin(ctx, req.Id); err != nil {
 		return nil, err
 	}
+	s.lg.Info("admin deleted",
+		loggateway.StepID("system.admin.delete"), loggateway.Str("operator_id", fmt.Sprintf("%d", a.UserID)), loggateway.Str("target_id", fmt.Sprintf("%d", req.Id)))
 	return &emptypb.Empty{}, nil
 }
 

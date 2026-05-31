@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/admin"
 	authpkg "aranea-agents/pkg/auth"
+	"aranea-agents/pkg/loggateway"
 )
 
 // DevBypassAdminPassword is the plaintext password for the seeded id=1 admin when KRATOS_HTTP_AUTH_DISABLED is set.
@@ -30,6 +31,8 @@ func ensureDevBypassAdminIfEnabled(ctx context.Context, client *ent.Client) erro
 	wantPwd := adminPwdMD5(DevBypassAdminPassword)
 	if existing != nil {
 		if existing.Name == "dev" && existing.Password == wantPwd {
+			loggateway.Global().Info("dev admin already exists and up-to-date",
+				loggateway.StepID("system.admin.dev_seed"))
 			return nil
 		}
 		_, err = client.Admin.UpdateOneID(1).
@@ -41,6 +44,8 @@ func ensureDevBypassAdminIfEnabled(ctx context.Context, client *ent.Client) erro
 		if err != nil {
 			return fmt.Errorf("sync dev admin: %w", err)
 		}
+		loggateway.Global().Info("dev admin synced (bypass mode)",
+			loggateway.StepID("system.admin.dev_seed"))
 		return nil
 	}
 	_, err = client.Admin.Create().
@@ -54,5 +59,7 @@ func ensureDevBypassAdminIfEnabled(ctx context.Context, client *ent.Client) erro
 	if err != nil {
 		return fmt.Errorf("seed dev admin: %w", err)
 	}
+	loggateway.Global().Info("dev admin seeded (bypass mode)",
+		loggateway.StepID("system.admin.dev_seed"))
 	return nil
 }

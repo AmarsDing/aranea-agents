@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"aranea-agents/internal/data/ent/migrate"
 	"aranea-agents/internal/data/pgvector"
 	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/pkg/loggateway"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -263,15 +263,14 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 	return st, cleanup, nil
 }
 
-var startupLog = log.New(os.Stdout, "", log.LstdFlags)
-
 func runStartupStep(name string, fn func() error) error {
 	start := time.Now()
 	err := fn()
 	if err != nil {
 		return err
 	}
-	startupLog.Printf("[startup] %s done in %s", name, time.Since(start).Round(time.Millisecond))
+	loggateway.Global().Info("startup step completed",
+		loggateway.StepID("system.startup"), loggateway.Str("step", name), loggateway.Duration(time.Since(start).Milliseconds()))
 	return nil
 }
 
@@ -445,9 +444,11 @@ func runPendingDataMigrations(entClient *ent.Client) error {
 		return fmt.Errorf("legacy trpc memory backfill: %w", err)
 	}
 	if skipped {
-		startupLog.Printf("[startup] legacy trpc memory backfill skipped (migration %d applied)", MigrationLegacyTRPCMemoryFacts)
+		loggateway.Global().Info("legacy trpc memory backfill skipped",
+			loggateway.StepID("system.startup"), loggateway.Int("migration", MigrationLegacyTRPCMemoryFacts))
 	} else if migrated > 0 {
-		startupLog.Printf("[startup] legacy trpc memory backfill migrated=%d", migrated)
+		loggateway.Global().Info("legacy trpc memory backfill migrated",
+			loggateway.StepID("system.startup"), loggateway.Int("migrated", migrated))
 	}
 	if err := RunTurnIndexToTurnIDMigration(ctx, entClient); err != nil {
 		return fmt.Errorf("turn_index migration: %w", err)

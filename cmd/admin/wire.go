@@ -808,6 +808,11 @@ func provideTraceProjector(repo biz.MonitorRepo, infra *event.Infra, lg loggatew
 
 func provideFlowFileAppender(lg loggateway.Logger) *monitor.FlowFileAppender {
 	dir := strings.TrimSpace(os.Getenv("MONITOR_FLOW_LOG_DIR"))
+	if dir == "" {
+		if gw, ok := lg.(*loggateway.Gateway); ok {
+			dir = gw.OutputDir()
+		}
+	}
 	return monitor.NewFlowFileAppender(dir, lg)
 }
 
