@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 )
 
@@ -43,13 +43,14 @@ const (
 type L4GraphUsecase struct {
 	repo    L4GraphRepo
 	cascade *L4CascadeUsecase
+	lg      loggateway.Logger
 }
 
-func NewL4GraphUsecase(repo L4GraphRepo) *L4GraphUsecase {
+func NewL4GraphUsecase(repo L4GraphRepo, lg loggateway.Logger) *L4GraphUsecase {
 	if repo == nil {
 		return nil
 	}
-	return &L4GraphUsecase{repo: repo}
+	return &L4GraphUsecase{repo: repo, lg: lg}
 }
 
 func (uc *L4GraphUsecase) SetCascade(c *L4CascadeUsecase) {
@@ -86,7 +87,7 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 		Importance:     l4AnchorImportance,
 		Confidence:     l4AnchorConfidence,
 	}); err != nil {
-		event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to upsert anchor entity", event.P("anchor_id", anchorID), event.P("error", err.Error()))
+		uc.lg.Warn("L4Graph: failed to upsert anchor entity", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("anchor_id", anchorID), loggateway.Err(err))
 	}
 
 	if m := l4NamePattern.FindStringSubmatch(text); len(m) > 1 {
@@ -94,12 +95,12 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 		nameNorm := strings.ToLower(name)
 		existing, _, err := uc.repo.GetEntityByScopeKey(ctx, "agent", agentID, "person", nameNorm)
 		if err != nil {
-			event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to get entity by scope key", event.P("agent_id", agentID), event.P("name", name), event.P("error", err.Error()))
+			uc.lg.Warn("L4Graph: failed to get entity by scope key", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("agent_id", agentID), loggateway.Str("name", name), loggateway.Err(err))
 		}
 		if existing.ID == "" {
 			prior, ok, err := uc.repo.GetFirstEntityByType(ctx, "agent", agentID, "person")
 			if err != nil {
-				event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to get first entity by type", event.P("agent_id", agentID), event.P("error", err.Error()))
+				uc.lg.Warn("L4Graph: failed to get first entity by type", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("agent_id", agentID), loggateway.Err(err))
 			}
 			if ok && prior.ID != "" {
 				existing = prior
@@ -114,7 +115,7 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 		if conflict {
 			if uc.cascade != nil {
 				if err := uc.cascade.ProposeNameConflict(ctx, agentID, entID, existing.Name, name); err != nil {
-					event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to propose name conflict", event.P("entity_id", entID), event.P("error", err.Error()))
+					uc.lg.Warn("L4Graph: failed to propose name conflict", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("entity_id", entID), loggateway.Err(err))
 				}
 			}
 			// Gate: keep authoritative name until cascade proposal is approved.
@@ -145,11 +146,11 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 				Weight:       1.0,
 				Confidence:   prepared.Confidence,
 			}); err != nil {
-				event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to upsert knows_as relation", event.P("entity_id", entID), event.P("error", err.Error()))
+				uc.lg.Warn("L4Graph: failed to upsert knows_as relation", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("entity_id", entID), loggateway.Err(err))
 			}
 			cascade := uc.cascadeProfileTouch(anchorID, userID, agentID, profileName, name, conflict, now)
 			if err := uc.repo.UpsertEntity(ctx, cascade); err != nil {
-				event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to upsert cascade profile", event.P("anchor_id", anchorID), event.P("error", err.Error()))
+				uc.lg.Warn("L4Graph: failed to upsert cascade profile", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("anchor_id", anchorID), loggateway.Err(err))
 			}
 			written++
 		}
@@ -180,7 +181,7 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 				Weight:       l4PrefRelWeight,
 				Confidence:   l4PrefRelConfidence,
 			}); err != nil {
-				event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to upsert prefers relation", event.P("entity_id", entID), event.P("error", err.Error()))
+				uc.lg.Warn("L4Graph: failed to upsert prefers relation", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("entity_id", entID), loggateway.Err(err))
 			}
 			written++
 		}
@@ -204,7 +205,7 @@ func (uc *L4GraphUsecase) RunDecayWithConfig(ctx context.Context, agentID string
 	}
 	archived, err := uc.repo.ArchiveLowConfidenceEntities(ctx, "agent", agentID, l4ArchiveThreshold)
 	if err != nil {
-		event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to archive low confidence entities", event.P("agent_id", agentID), event.P("error", err.Error()))
+		uc.lg.Warn("L4Graph: failed to archive low confidence entities", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("agent_id", agentID), loggateway.Err(err))
 	}
 	return L4DecayResult{
 		Decayed:  int(decayed),
@@ -276,7 +277,7 @@ func (uc *L4GraphUsecase) runDecay(ctx context.Context, agentID string) {
 	}
 	cutoff := time.Now().UTC().Add(-l4DecayAfter).Format(time.RFC3339)
 	if _, err := uc.repo.ApplyConfidenceDecay(ctx, "agent", agentID, cutoff, l4DecayFactor); err != nil {
-		event.SysLogWarn("system.auto_memory.l4_fail", "L4Graph: failed to apply confidence decay", event.P("agent_id", agentID), event.P("error", err.Error()))
+		uc.lg.Warn("L4Graph: failed to apply confidence decay", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("agent_id", agentID), loggateway.Err(err))
 	}
 }
 

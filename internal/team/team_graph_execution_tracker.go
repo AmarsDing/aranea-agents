@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -60,8 +61,9 @@ func StartTeamGraphExecutionTracker(ctx context.Context, bus event.Bus, cfg Team
 				}
 				lineageID := trackerMetaString(env.Metadata, "lineage_id")
 				if markErr := cfg.Registry.MarkTeamGraphInterrupt(procCtx, execID, nodeID, lineageID); markErr != nil {
-					event.CtxFlowLogWarn(procCtx, "team.graph.interrupt_mark_fail", "MarkTeamGraphInterrupt failed",
-						event.P("exec_id", execID), event.P("node_id", nodeID), event.P("error", markErr.Error()))
+					loggateway.Global().Warn("MarkTeamGraphInterrupt failed",
+					loggateway.StepID("team.graph.interrupt_mark_fail"),
+					loggateway.Str("exec_id", execID), loggateway.Str("node_id", nodeID), loggateway.Str("error", markErr.Error()))
 				}
 			}
 		}

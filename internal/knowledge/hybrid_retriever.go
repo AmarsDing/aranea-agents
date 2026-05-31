@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -153,8 +153,10 @@ func (h *HybridRetriever) searchRRF(ctx context.Context, q biz.KnowledgeSearchQu
 	denseQ.TopK = overfetch
 	denseChunks, err := h.dense.SearchChunks(ctx, denseQ, vec)
 	if err != nil {
-		event.SysLogWarn("knowledge.hybrid.dense_fail", "RRF 密集检索失败，回退稀疏",
-			event.P("error", err.Error()), event.P("collection_id", q.CollectionID))
+		loggateway.Global().Warn("RRF 密集检索失败，回退稀疏",
+			loggateway.StepID("knowledge.hybrid.dense_fail"),
+			loggateway.Err(err),
+			loggateway.Str("collection_id", q.CollectionID))
 		return h.searchSparse(ctx, q, topK)
 	}
 
@@ -166,8 +168,10 @@ func (h *HybridRetriever) searchRRF(ctx context.Context, q biz.KnowledgeSearchQu
 	sparseQ.TopK = overfetch
 	sparseChunks, err := h.sparse.SearchChunksBM25(ctx, sparseQ)
 	if err != nil {
-		event.SysLogWarn("knowledge.hybrid.sparse_fail", "RRF 稀疏检索失败，回退密集",
-			event.P("error", err.Error()), event.P("collection_id", q.CollectionID))
+		loggateway.Global().Warn("RRF 稀疏检索失败，回退密集",
+			loggateway.StepID("knowledge.hybrid.sparse_fail"),
+			loggateway.Err(err),
+			loggateway.Str("collection_id", q.CollectionID))
 		return trimChunks(denseChunks, topK), nil
 	}
 

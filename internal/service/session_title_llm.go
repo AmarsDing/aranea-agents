@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -31,8 +31,7 @@ func (g *LLMSessionTitleGenerator) Generate(ctx context.Context, userMessage str
 
 	m, err := g.resolveModel(ctx)
 	if err != nil {
-		event.CtxFlowLogWarn(ctx, "system.session.title_fail", "session title: resolve model failed",
-			event.P("error", err.Error()))
+		loggateway.Global().Warn("session title: resolve model failed", loggateway.StepID("system.session.title_fail"), loggateway.Str("error", err.Error()))
 		return "", kerrors.InternalServer("SESSION", "session title: resolve model: "+err.Error())
 	}
 
@@ -48,16 +47,14 @@ func (g *LLMSessionTitleGenerator) Generate(ctx context.Context, userMessage str
 
 	ch, err := m.GenerateContent(ctx, req)
 	if err != nil {
-		event.CtxFlowLogWarn(ctx, "system.session.title_fail", "session title: llm call failed",
-			event.P("error", err.Error()))
+		loggateway.Global().Warn("session title: llm call failed", loggateway.StepID("system.session.title_fail"), loggateway.Str("error", err.Error()))
 		return "", kerrors.InternalServer("SESSION", "session title: llm call: "+err.Error())
 	}
 
 	var sb strings.Builder
 	for resp := range ch {
 		if resp.Error != nil {
-			event.CtxFlowLogWarn(ctx, "system.session.title_fail", "session title: llm error",
-				event.P("error", resp.Error.Message))
+			loggateway.Global().Warn("session title: llm error", loggateway.StepID("system.session.title_fail"), loggateway.Str("error", resp.Error.Message))
 			return "", kerrors.InternalServer("SESSION", "session title: llm error: "+resp.Error.Message)
 		}
 		for _, c := range resp.Choices {

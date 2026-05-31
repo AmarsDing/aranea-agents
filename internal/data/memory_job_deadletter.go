@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 // MemoryJobDeadLetterRepo persists dropped AutoMemory jobs for later replay.
@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS memory_job_deadletter (
                      CHECK(state IN ('pending','replayed','abandoned'))
 )`)
 	if err != nil {
-		event.SysLogWarn("system.auto_memory.extract_fail", "ensureTable: CREATE TABLE memory_job_deadletter failed", event.P("error", err.Error()))
+		loggateway.Global().Warn("ensureTable: CREATE TABLE memory_job_deadletter failed", loggateway.StepID("system.auto_memory.extract_fail"), loggateway.Err(err))
 		return
 	}
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_memory_job_dl_state_enq ON memory_job_deadletter(state, enqueued_at)`)
@@ -106,7 +106,7 @@ VALUES (?,?,?,?,?,?,?,?,?,0,?,'pending')`,
 		string(payload), string(reason), int(req.Priority), lastErr,
 	)
 	if err != nil {
-		event.SysLogWarn("system.auto_memory.extract_fail", "WriteMemoryDeadLetter: insert failed", event.P("reason", string(reason)), event.P("error", err.Error()))
+		loggateway.Global().Warn("WriteMemoryDeadLetter: insert failed", loggateway.StepID("system.auto_memory.extract_fail"), loggateway.Str("reason", string(reason)), loggateway.Err(err))
 	}
 }
 

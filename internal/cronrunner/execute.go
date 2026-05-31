@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
 )
@@ -77,7 +77,7 @@ func (r *Runner) finalizeRun(
 	}
 	outJSON := mustMarshalJSON(output)
 	if err := r.deps.Cron.UpdateCronTaskRun(ctx, runID, outcome.status, finished, outJSON, outcome.errMsg); err != nil {
-		event.SysLogWarn("system.cron.finalize", "update cron_task_run failed", event.P("task_id", task.ID), event.P("run_id", runID), event.P("error", err))
+		r.lg.Warn("update cron_task_run failed", loggateway.Str("task_id", task.ID), loggateway.Str("run_id", runID), loggateway.Err(err))
 	}
 	cronJobRunsTotal.WithLabelValues(task.ID, outcome.status).Inc()
 
@@ -110,7 +110,7 @@ func (r *Runner) finalizeRun(
 				task.Status = "dead"
 				task.Enabled = false
 				cronJobDeadTotal.WithLabelValues(task.ID).Inc()
-				event.SysLogWarn("system.cron.job_dead", "定时任务进入死信", event.P("job_id", task.ID), event.P("task_key", task.TaskKey), event.P("failure_count", meta.FailureCount))
+				r.lg.Warn("定时任务进入死信", loggateway.Str("job_id", task.ID), loggateway.Str("task_key", task.TaskKey), loggateway.Int("failure_count", meta.FailureCount))
 				r.publishDeadLetterEvent(ctx, task)
 			}
 		}
@@ -130,12 +130,12 @@ func (r *Runner) finalizeRun(
 
 	rawMeta, err := json.Marshal(meta)
 	if err != nil {
-		event.SysLogWarn("system.cron.finalize", "marshal metadata failed", event.P("task_id", task.ID), event.P("error", err))
+		r.lg.Warn("marshal metadata failed", loggateway.Str("task_id", task.ID), loggateway.Err(err))
 		return
 	}
 	task.MetadataJSON = string(rawMeta)
 	if _, err := r.deps.Cron.UpdateCronTask(ctx, task); err != nil {
-		event.SysLogWarn("system.cron.finalize", "update cron_task failed", event.P("task_id", task.ID), event.P("error", err))
+		r.lg.Warn("update cron_task failed", loggateway.Str("task_id", task.ID), loggateway.Err(err))
 	}
 }
 
@@ -149,7 +149,7 @@ func (r *Runner) finishTaskRun(
 	if err != nil {
 		finished := time.Now().UTC().Format(time.RFC3339)
 		_ = r.deps.Cron.UpdateCronTaskRun(ctx, runID, "failure", finished, "{}", err.Error())
-		event.SysLogWarn("system.cron.finalize", "reload task before finalize failed", event.P("task_id", taskID), event.P("run_id", runID), event.P("error", err))
+		r.lg.Warn("reload task before finalize failed", loggateway.Str("task_id", taskID), loggateway.Str("run_id", runID), loggateway.Err(err))
 		return
 	}
 	meta := parseCronTaskMetadata(task.MetadataJSON)
@@ -201,7 +201,7 @@ func (r *Runner) recordPreExecuteOutcome(ctx context.Context, task biz.CronTask,
 
 	runID, started, ok := r.insertPendingRun(ctx, task.ID, "schedule", now)
 	if !ok {
-		event.SysLogWarn("system.cron.pre_execute", "insert cron_task_run failed", event.P("task_id", task.ID), event.P("status", status), event.P("error", message))
+		r.lg.Warn("insert cron_task_run failed", loggateway.Str("task_id", task.ID), loggateway.Str("status", status), loggateway.Str("error", message))
 		return
 	}
 	r.finishTaskRun(ctx, task.ID, runID, started, "schedule", cfg, runOutcome{status: status, errMsg: message})

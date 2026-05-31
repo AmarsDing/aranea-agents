@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -80,8 +81,11 @@ func StartTeamGraphTaskBridge(ctx context.Context, bus event.Bus, cfg TeamGraphT
 					continue
 				}
 				if err := cfg.Creator.CreateGraphTask(procCtx, execID, sessionID, node); err != nil {
-					event.CtxFlowLogWarn(procCtx, "team.graph.task.bridge", "创建 Kanban 任务失败",
-						event.P("execution_id", execID), event.P("node_id", nodeID), event.P("error", err.Error()))
+					loggateway.Global().Warn("创建 Kanban 任务失败",
+					loggateway.StepID("team.graph.task.bridge"),
+					loggateway.Str("execution_id", execID),
+					loggateway.Str("node_id", nodeID),
+					loggateway.Err(err))
 					continue
 				}
 				created[nodeID] = struct{}{}

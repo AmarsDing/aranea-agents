@@ -12,8 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/modelregistry"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/outboundguard"
 	"aranea-agents/pkg/safego"
 
@@ -202,10 +202,11 @@ type LlmProviderModelUsecase struct {
 	pricing   ModelPricingRepo
 	inspector LLMInspector
 	crypto    *CredentialCrypto
+	lg        loggateway.Logger
 }
 
-func NewLlmProviderModelUsecase(reader LlmProviderModelReader, writer LlmProviderModelWriter, validator LlmProviderModelValidator, pricing ModelPricingRepo, inspector LLMInspector, crypto *CredentialCrypto) *LlmProviderModelUsecase {
-	return &LlmProviderModelUsecase{reader: reader, writer: writer, validator: validator, pricing: pricing, inspector: inspector, crypto: crypto}
+func NewLlmProviderModelUsecase(reader LlmProviderModelReader, writer LlmProviderModelWriter, validator LlmProviderModelValidator, pricing ModelPricingRepo, inspector LLMInspector, crypto *CredentialCrypto, lg loggateway.Logger) *LlmProviderModelUsecase {
+	return &LlmProviderModelUsecase{reader: reader, writer: writer, validator: validator, pricing: pricing, inspector: inspector, crypto: crypto, lg: lg}
 }
 
 func (u *LlmProviderModelUsecase) List(ctx context.Context) ([]ProviderModel, error) {
@@ -261,7 +262,7 @@ func (u *LlmProviderModelUsecase) Create(ctx context.Context, in ProviderModel) 
 		return ProviderModel{}, err
 	}
 	if err := u.syncProviderModelPricing(ctx, out); err != nil {
-		event.SysLogWarn("llm_provider_model.pricing_sync", "syncProviderModelPricing failed", event.P("error", err.Error()))
+		u.lg.Warn("syncProviderModelPricing failed", loggateway.StepID("llm_provider_model.pricing_sync"), loggateway.Err(err))
 	}
 	return sanitizeProviderModelForAPI(out), nil
 }
@@ -326,7 +327,7 @@ func (u *LlmProviderModelUsecase) Update(ctx context.Context, id string, patch P
 		return ProviderModel{}, err
 	}
 	if err := u.syncProviderModelPricing(ctx, out); err != nil {
-		event.SysLogWarn("llm_provider_model.pricing_sync", "syncProviderModelPricing failed", event.P("error", err.Error()))
+		u.lg.Warn("syncProviderModelPricing failed", loggateway.StepID("llm_provider_model.pricing_sync"), loggateway.Err(err))
 	}
 	return sanitizeProviderModelForAPI(out), nil
 }
@@ -370,7 +371,7 @@ func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) 
 			if err == nil && row.ConfigJSON != "" {
 				prepared, decErr := u.crypto.PrepareProviderModelForRuntime(ctx, row)
 				if decErr != nil {
-					event.SysLogWarn("llm_provider_model.inspect", "解密 config_json 失败", event.P("error", decErr.Error()))
+					u.lg.Warn("解密 config_json 失败", loggateway.StepID("llm_provider_model.inspect"), loggateway.Err(decErr))
 				} else {
 					mergeInspectConfigJSON(prepared.ConfigJSON, &in)
 				}
@@ -380,7 +381,7 @@ func (u *LlmProviderModelUsecase) Inspect(ctx context.Context, in InspectMerge) 
 			if err == nil && row.ConfigJSON != "" {
 				prepared, decErr := u.crypto.PrepareProviderModelForRuntime(ctx, row)
 				if decErr != nil {
-					event.SysLogWarn("llm_provider_model.inspect", "解密 config_json 失败", event.P("error", decErr.Error()))
+					u.lg.Warn("解密 config_json 失败", loggateway.StepID("llm_provider_model.inspect"), loggateway.Err(decErr))
 				} else {
 					mergeInspectConfigJSON(prepared.ConfigJSON, &in)
 				}
@@ -568,7 +569,7 @@ func (u *LlmProviderModelUsecase) RunHealthChecks(ctx context.Context) error {
 		}
 		cfg, decErr := u.crypto.PrepareProviderModelForRuntime(ctx, row)
 		if decErr != nil {
-			event.SysLogWarn("provider.health", "解密 config_json 失败", event.P("model_id", row.ID), event.P("error", decErr.Error()))
+			u.lg.Warn("解密 config_json 失败", loggateway.StepID("provider.health"), loggateway.Str("model_id", row.ID), loggateway.Err(decErr))
 			continue
 		}
 		var c struct {
@@ -582,7 +583,7 @@ func (u *LlmProviderModelUsecase) RunHealthChecks(ctx context.Context) error {
 		if err := outboundguard.ValidateURL(base); err != nil {
 			writeCtx := context.WithoutCancel(ctx)
 			if updErr := u.writer.UpdateProviderModelStatus(writeCtx, row.ID, "degraded"); updErr != nil {
-				event.SysLogWarn("provider.health", "update degraded status failed", event.P("model_id", row.ID), event.P("error", updErr.Error()))
+				u.lg.Warn("update degraded status failed", loggateway.StepID("provider.health"), loggateway.Str("model_id", row.ID), loggateway.Err(updErr))
 			}
 			continue
 		}
@@ -609,14 +610,14 @@ func (u *LlmProviderModelUsecase) RunHealthChecks(ctx context.Context) error {
 					resp.Body.Close()
 				}
 				if updErr := u.writer.UpdateProviderModelStatus(writeCtx, checkRowID, "degraded"); updErr != nil {
-					event.SysLogWarn("provider.health", "update degraded status failed", event.P("model_id", checkRowID), event.P("error", updErr.Error()))
+					u.lg.Warn("update degraded status failed", loggateway.StepID("provider.health"), loggateway.Str("model_id", checkRowID), loggateway.Err(updErr))
 				}
 				return
 			}
 			resp.Body.Close()
 			if checkCurrentStatus == "degraded" {
 				if updErr := u.writer.UpdateProviderModelStatus(writeCtx, checkRowID, "active"); updErr != nil {
-					event.SysLogWarn("provider.health", "update active status failed", event.P("model_id", checkRowID), event.P("error", updErr.Error()))
+					u.lg.Warn("update active status failed", loggateway.StepID("provider.health"), loggateway.Str("model_id", checkRowID), loggateway.Err(updErr))
 				}
 			}
 		})

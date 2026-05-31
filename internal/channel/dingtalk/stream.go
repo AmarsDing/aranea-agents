@@ -9,7 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/runtime"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/client"
@@ -40,8 +40,9 @@ func RunStream(
 		}
 		ev.PlatformType = "dingtalk"
 		if err := handler.ProcessInbound(ctx, chRow, ev); err != nil {
-			event.SysLogWarn("channel.dingtalk.inbound_failed", "钉钉入站处理失败",
-				event.P("error", err.Error()),
+			loggateway.Global().Warn("钉钉入站处理失败",
+				loggateway.StepID("channel.dingtalk.inbound_failed"),
+				loggateway.Err(err),
 			)
 		}
 		return nil, nil

@@ -56,6 +56,9 @@ type RuntimeTooling struct {
 	CodeExecFactory            *localexec.Factory
 	KanbanBridge               kanbanpkg.Bridge
 	DebugRecorder              *debug.RecorderFactory
+	IndustryUC                 *biz.IndustryUsecase
+	DepartmentUC               *biz.DepartmentUsecase
+	PositionUC                 *biz.PositionUsecase
 }
 
 // TeamOrchestrationDeps groups team execution and graph compilation dependencies.
@@ -94,6 +97,7 @@ type ChatOrchestrator struct {
 	mcpServers *biz.MCPServerUsecase
 	runs       *rt.RunRegistry
 	chatUC     *biz.ChatUsecase
+	lg         loggateway.Logger
 
 	sessionRunBindings   sync.Map
 	awaitMetaCache       sync.Map
@@ -122,6 +126,7 @@ type ChatOrchestratorDeps struct {
 	Artifacts    *biz.ArtifactUsecase
 	A2AUC        *biz.A2AUsecase
 	MCPServers   *biz.MCPServerUsecase
+	LG           loggateway.Logger
 }
 
 func coalesceRunRegistry(r *rt.RunRegistry) *rt.RunRegistry {
@@ -155,6 +160,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		mcpServers: deps.MCPServers,
 		runs:       runs,
 		chatUC:     NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Sessions, deps.Pipeline.Bus),
+		lg:         deps.LG,
 	}
 	o.admitGate = newTurnAdmissionGate(turn.RunRegistryAdapter{Registry: runs}, o.chatUC, o.sessionPendingMergeFollowup)
 

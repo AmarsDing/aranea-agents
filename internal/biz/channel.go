@@ -10,6 +10,7 @@ import (
 	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -144,6 +145,7 @@ type ChannelUsecase struct {
 	agents           AgentRepository
 	teams            TeamRepository
 	crypto           *CredentialCrypto
+	lg               loggateway.Logger
 }
 
 func NewChannelUsecase(
@@ -153,8 +155,9 @@ func NewChannelUsecase(
 	agents AgentRepository,
 	teams TeamRepository,
 	crypto *CredentialCrypto,
+	lg loggateway.Logger,
 ) *ChannelUsecase {
-	return &ChannelUsecase{repo: repo, peers: peers, inboundReceipts: inboundReceipts, agents: agents, teams: teams, crypto: crypto}
+	return &ChannelUsecase{repo: repo, peers: peers, inboundReceipts: inboundReceipts, agents: agents, teams: teams, crypto: crypto, lg: lg}
 }
 
 func (u *ChannelUsecase) Catalog() []ChannelCatalogItem {

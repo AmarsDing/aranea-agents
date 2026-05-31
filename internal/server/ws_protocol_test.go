@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestCountGlobalMonitorConnsExcludesProbe(t *testing.T) {
@@ -252,6 +253,7 @@ func TestWSUpstreamTurnGatewayErrorDoesNotPublishRawDuplicate(t *testing.T) {
 		nil,
 		stubChatSender{},
 		stubTurnGateway{err: errors.New("provider raw error")},
+		loggateway.NewNoop(),
 	)
 	wc := &wsConn{
 		sessionID: "sess-turn",

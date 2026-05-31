@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 func ensureSessionRunCheckpointSchema(ctx context.Context, db *sql.DB) error {
@@ -38,7 +38,11 @@ func ensureSessionRunColumnPatches(ctx context.Context, db *sql.DB) error {
 	}
 	for _, q := range patches {
 		if _, execErr := db.ExecContext(ctx, q); execErr != nil {
-			event.SysLogDebug("session_run.schema_patch", "ddl patch skipped", event.P("query", q), event.P("error", execErr.Error()))
+			loggateway.Global().Debug("ddl patch skipped",
+				loggateway.StepID("session_run.schema_patch"),
+				loggateway.Str("query", q),
+				loggateway.Err(execErr),
+			)
 		}
 	}
 	return nil

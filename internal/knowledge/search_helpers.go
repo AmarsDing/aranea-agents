@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 type ChunkSearcher interface {
@@ -21,8 +21,10 @@ func SearchWithEvaluation(ctx context.Context, searcher ChunkSearcher, assessor 
 	}
 	assessment, evalErr := assessor.Evaluate(ctx, query, chunks)
 	if evalErr != nil {
-		event.SysLogWarn("knowledge.eval.assessment_fail", "检索评估失败，使用原始结果",
-			event.P("error", evalErr.Error()), event.P("collection_id", q.CollectionID))
+		loggateway.Global().Warn("检索评估失败，使用原始结果",
+			loggateway.StepID("knowledge.eval.assessment_fail"),
+			loggateway.Err(evalErr),
+			loggateway.Str("collection_id", q.CollectionID))
 		return chunks, nil
 	}
 	if assessment.Sufficient || assessment.SupplementQuery == "" {
@@ -33,8 +35,11 @@ func SearchWithEvaluation(ctx context.Context, searcher ChunkSearcher, assessor 
 	supQ.TopK = q.TopK
 	supChunks, supErr := searcher.Search(ctx, supQ)
 	if supErr != nil {
-		event.SysLogWarn("knowledge.eval.supplement_fail", "补充检索失败，使用原始结果",
-			event.P("error", supErr.Error()), event.P("supplement_query", assessment.SupplementQuery), event.P("collection_id", q.CollectionID))
+		loggateway.Global().Warn("补充检索失败，使用原始结果",
+			loggateway.StepID("knowledge.eval.supplement_fail"),
+			loggateway.Err(supErr),
+			loggateway.Str("supplement_query", assessment.SupplementQuery),
+			loggateway.Str("collection_id", q.CollectionID))
 		return chunks, nil
 	}
 	if len(supChunks) == 0 {

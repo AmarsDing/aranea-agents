@@ -5,7 +5,7 @@
         <div class="row items-center q-gutter-sm wrap">
           <div class="app-registry-cell-primary text-h6">{{ session.title || "未命名会话" }}</div>
           <q-chip dense :color="ownerChipColor(session.owner_type)" text-color="white">{{ ownerLabel(session.owner_type) }}</q-chip>
-          <q-badge :color="statusBadgeColor(session.status)">{{ session.status }}</q-badge>
+          <SessionStatusBadge :status="session.status" :status-reason="session.status_reason" :status-changed-at="session.status_changed_at" />
           <q-chip v-if="isSessionPinned(session)" dense icon="push_pin" color="primary" text-color="white">置顶</q-chip>
         </div>
         <div class="app-registry-cell-sub q-mt-xs">
@@ -36,7 +36,7 @@
           :label="isSessionPinned(session) ? '取消置顶' : '置顶'"
           @click="$emit('toggle-pin')"
         />
-        <q-btn flat rounded no-caps icon="archive" label="归档" :disable="session.status === 'archived'" @click="$emit('archive')" />
+        <q-btn flat rounded no-caps icon="archive" label="归档" :disable="!!session.archived_at" @click="$emit('archive')" />
       </div>
     </q-card-section>
     <q-separator />
@@ -86,9 +86,9 @@ import {
   isSessionPinned,
   ownerChipColor,
   ownerLabel,
-  ratioValue,
-  statusBadgeColor
+  ratioValue
 } from "./sessionUi";
+import SessionStatusBadge from "./SessionStatusBadge.vue";
 
 withDefaults(
   defineProps<{

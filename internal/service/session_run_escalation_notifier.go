@@ -7,7 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/preview"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 const channelOutboundEmptyFallback = "（暂无文本回复）"
@@ -57,10 +57,11 @@ func (n *channelRunEscalationNotifier) NotifySoftBudget(ctx context.Context, run
 	}
 	cardJSON := ""
 	if card, err := preview.BuildFeishuEscalateCardJSON(run.ID, run.SessionID, ""); err != nil {
-		event.SysLogWarn(flowStepChannelOutbound, "Channel escalate card build failed",
-			event.P("session_run_id", run.ID),
-			event.P("session_id", run.SessionID),
-			event.P("error", err.Error()),
+		loggateway.Global().Warn("Channel escalate card build failed",
+			loggateway.StepID(flowStepChannelOutbound),
+			loggateway.Str("session_run_id", run.ID),
+			loggateway.Str("session_id", run.SessionID),
+			loggateway.Err(err),
 		)
 	} else {
 		cardJSON = card
@@ -260,11 +261,12 @@ func (n *channelRunEscalationNotifier) enqueueForSession(
 	if !skipFormat {
 		text = preview.FormatAssistantReplyForIM(platform, text)
 		if strings.TrimSpace(text) == "" && strings.TrimSpace(cardJSON) == "" {
-			event.SysLogWarn(flowStepChannelOutbound, "Channel session outbound empty after format",
-				event.P("session_id", sessionID),
-				event.P("platform", platform),
-				event.P("idempotency_key", idempotencyKey),
-			)
+			loggateway.Global().Warn("Channel session outbound empty after format",
+			loggateway.StepID(flowStepChannelOutbound),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("platform", platform),
+			loggateway.Str("idempotency_key", idempotencyKey),
+		)
 			return nil
 		}
 	}

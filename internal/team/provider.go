@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"github.com/google/wire"
@@ -13,8 +14,8 @@ import (
 
 // ProvideTeamGraphRunCoordinator wires a singleton coordinator for team graph HITL/resume
 // and starts a background ticker that evicts sessions older than sessionMaxAge.
-func ProvideTeamGraphRunCoordinator(graphs *biz.GraphUsecase, teams biz.TeamRepository, bus event.Bus, sessionRepo biz.TeamGraphSessionRepo) *TeamGraphRunCoordinator {
-	coord := NewTeamGraphRunCoordinator(graphs, teams, bus, sessionRepo)
+func ProvideTeamGraphRunCoordinator(graphs *biz.GraphUsecase, teams biz.TeamRepository, bus event.Bus, sessionRepo biz.TeamGraphSessionRepo, lg loggateway.Logger) *TeamGraphRunCoordinator {
+	coord := NewTeamGraphRunCoordinator(graphs, teams, bus, sessionRepo, lg)
 	interval := coord.cfg.CleanupInterval
 	if interval <= 0 {
 		interval = defaultCleanupInterval

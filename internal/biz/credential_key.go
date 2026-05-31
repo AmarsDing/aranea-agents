@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 
+	"aranea-agents/pkg/loggateway"
+
 	"github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -20,10 +22,11 @@ const invalidCredentialKeyMsg = "ARANEA_CREDENTIAL_KEY must be 32-byte hex or ba
 
 type CredentialCrypto struct {
 	resolver CredentialKeyResolver
+	lg       loggateway.Logger
 }
 
-func NewCredentialCrypto(resolver CredentialKeyResolver) *CredentialCrypto {
-	return &CredentialCrypto{resolver: resolver}
+func NewCredentialCrypto(resolver CredentialKeyResolver, lg loggateway.Logger) *CredentialCrypto {
+	return &CredentialCrypto{resolver: resolver, lg: lg}
 }
 
 func (c *CredentialCrypto) IsAvailable() bool {

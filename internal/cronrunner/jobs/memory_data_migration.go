@@ -7,24 +7,22 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 const memoryDataMigrationTimeout = 30 * time.Second
 
 type MemoryDataMigrationWorker struct {
 	migrator biz.MemoryLegacyMigrator
-	log      *log.Helper
+	lg       loggateway.Logger
 }
 
-func NewMemoryDataMigrationWorker(migrator biz.MemoryLegacyMigrator, logger log.Logger) *MemoryDataMigrationWorker {
+func NewMemoryDataMigrationWorker(migrator biz.MemoryLegacyMigrator, lg loggateway.Logger) *MemoryDataMigrationWorker {
 	if migrator == nil {
 		return nil
 	}
-	return &MemoryDataMigrationWorker{migrator: migrator, log: log.NewHelper(logger)}
+	return &MemoryDataMigrationWorker{migrator: migrator, lg: lg}
 }
 
 func MemoryDataMigrationDisabled() bool {
@@ -41,20 +39,15 @@ func (w *MemoryDataMigrationWorker) Start(ctx context.Context) {
 		defer cancel()
 		migrated, skipped, err := w.migrator.RunLegacyMigration(runCtx)
 		if err != nil {
-			event.SysLogWarn("memory.data_migration", "legacy trpc memory migration failed", event.P("error", err))
-			if w.log != nil {
-				w.log.Warnf("memory data migration failed: %v", err)
-			}
+			w.lg.Warn("legacy trpc memory migration failed", loggateway.Err(err))
 			return
 		}
 		if skipped {
-			if w.log != nil {
-				w.log.Infof("memory data migration skipped (version %d applied)", w.migrator.LegacyMigrationVersion())
-			}
+			w.lg.Info("memory data migration skipped", loggateway.Int("version", w.migrator.LegacyMigrationVersion()))
 			return
 		}
-		if migrated > 0 && w.log != nil {
-			w.log.Infof("memory data migration: migrated=%d legacy trpc_memory entities", migrated)
+		if migrated > 0 {
+			w.lg.Info("memory data migration completed", loggateway.Int("migrated", migrated))
 		}
 	})
 }

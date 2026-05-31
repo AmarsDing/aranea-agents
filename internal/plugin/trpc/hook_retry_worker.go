@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -26,15 +26,17 @@ const (
 type HookDeliveryRetryWorker struct {
 	repo     biz.HookDeliveryRepo
 	notifier *HookNotifier
+	lg       loggateway.Logger
 	stop     chan struct{}
 }
 
 // NewHookDeliveryRetryWorker creates a retry worker. notifier must be the same
 // HookNotifier used for new deliveries so that retry logic is identical.
-func NewHookDeliveryRetryWorker(repo biz.HookDeliveryRepo, notifier *HookNotifier) *HookDeliveryRetryWorker {
+func NewHookDeliveryRetryWorker(repo biz.HookDeliveryRepo, notifier *HookNotifier, lg loggateway.Logger) *HookDeliveryRetryWorker {
 	return &HookDeliveryRetryWorker{
 		repo:     repo,
 		notifier: notifier,
+		lg:       lg,
 		stop:     make(chan struct{}),
 	}
 }
@@ -74,7 +76,7 @@ func (w *HookDeliveryRetryWorker) retryStale() {
 
 	stale, err := w.repo.ListStalePending(ctx, time.Now().UTC().Add(-hookRetryStaleAfter), hookRetryBatchSize)
 	if err != nil {
-		event.SysLogWarn("system.hook.delivery_retry", "hook.delivery.retry_worker: ListStalePending failed", event.P("error", err.Error()))
+		w.lg.Warn("hook.delivery.retry_worker: ListStalePending failed", loggateway.StepID("system.hook.delivery_retry"), loggateway.Err(err))
 		return
 	}
 	for _, d := range stale {
@@ -94,19 +96,23 @@ func (w *HookDeliveryRetryWorker) retryOne(d biz.HookDelivery) {
 
 	claimed, err := w.repo.TryClaimForRetry(ctx, d.ID, d.AttemptCount)
 	if err != nil {
-		event.SysLogWarn("system.hook.delivery_retry", "hook.delivery.retry_worker: TryClaimForRetry failed",
-			event.P("id", d.ID), event.P("error", err.Error()))
+		w.lg.Warn("hook.delivery.retry_worker: TryClaimForRetry failed",
+			loggateway.StepID("system.hook.delivery_retry"),
+			loggateway.Str("id", d.ID),
+			loggateway.Err(err),
+		)
 		return
 	}
 	if !claimed {
 		return // another instance already claimed this delivery
 	}
 
-	event.SysLogInfo("system.hook.delivery_retry", "hook.delivery.retry_worker: retrying stale delivery",
-		event.P("id", d.ID),
-		event.P("hook_key", d.HookKey),
-		event.P("attempt_count", d.AttemptCount+1),
-		event.P("max_attempts", d.MaxAttempts),
+	w.lg.Info("hook.delivery.retry_worker: retrying stale delivery",
+		loggateway.StepID("system.hook.delivery_retry"),
+		loggateway.Str("id", d.ID),
+		loggateway.Str("hook_key", d.HookKey),
+		loggateway.Int("attempt_count", d.AttemptCount+1),
+		loggateway.Int("max_attempts", d.MaxAttempts),
 	)
 
 	// TryClaimForRetry already incremented attempt_count by 1, so the next

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/loggateway"
+
 	"github.com/google/uuid"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -30,7 +32,7 @@ func NewDiagBundleGenerator(repo Repo) *DiagBundleGenerator {
 	if repo == nil {
 		return nil
 	}
-	return &DiagBundleGenerator{repo: repo, engine: NewRootCauseEngine()}
+	return &DiagBundleGenerator{repo: repo, engine: NewRootCauseEngine(loggateway.Global())}
 }
 
 func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, runID, stepID, triggerType string, contextMinutes int32) (*DiagBundle, error) {

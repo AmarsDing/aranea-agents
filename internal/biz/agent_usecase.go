@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -65,6 +65,7 @@ type AgentRepository interface {
 	AgentRuntimeSettingsRepo
 	AgentPromptFileRepo
 	ListAgentCreators(ctx context.Context) ([]AgentCreator, error)
+	ReorderAgents(ctx context.Context, ids []string) error
 	ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
@@ -74,10 +75,11 @@ type AgentUsecase struct {
 	tools              ToolCatalogReader
 	sys                SystemSettingRepo
 	webResearchChecker WebResearchReadinessChecker
+	lg                 loggateway.Logger
 }
 
-func NewAgentUsecase(repo AgentRepository, tools ToolCatalogReader, sys SystemSettingRepo) *AgentUsecase {
-	return &AgentUsecase{repo: repo, tools: tools, sys: sys}
+func NewAgentUsecase(repo AgentRepository, tools ToolCatalogReader, sys SystemSettingRepo, lg loggateway.Logger) *AgentUsecase {
+	return &AgentUsecase{repo: repo, tools: tools, sys: sys, lg: lg}
 }
 
 func (u *AgentUsecase) SetWebResearchChecker(checker WebResearchReadinessChecker) {
@@ -184,7 +186,7 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 		if !stderrors.Is(err, sql.ErrNoRows) {
 			return Agent{}, err
 		}
-		event.SysLogWarn("system.agent.db_resolve", "agent runtime settings not found, migrating from legacy config_json", event.P("agent_id", agent.ID))
+		u.lg.Warn("agent runtime settings not found, migrating from legacy config_json", loggateway.StepID("system.agent.db_resolve"), loggateway.Str("agent_id", agent.ID))
 		settings = u.migrateLegacySettings(ctx, agent)
 	}
 	files, err := u.repo.ListAgentPromptFiles(ctx, agent.ID)
@@ -192,7 +194,7 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 		return Agent{}, err
 	}
 	if len(files) == 0 {
-		event.SysLogWarn("system.agent.skill_build", "agent prompt files not found, migrating from legacy config_json", event.P("agent_id", agent.ID))
+		u.lg.Warn("agent prompt files not found, migrating from legacy config_json", loggateway.StepID("system.agent.skill_build"), loggateway.Str("agent_id", agent.ID))
 		files = u.migrateLegacyFiles(ctx, agent)
 	}
 	agent.Settings = &settings
@@ -495,6 +497,10 @@ func (u *AgentUsecase) DeletePromptFile(ctx context.Context, agentID, id string)
 	return nil
 }
 
+func (u *AgentUsecase) ReorderAgents(ctx context.Context, ids []string) error {
+	return u.repo.ReorderAgents(ctx, ids)
+}
+
 // EstimateTokens returns an approximate token count for all prompt files of an agent.
 func (u *AgentUsecase) EstimateTokens(ctx context.Context, agentID string) (FileTokenEstimates, error) {
 	agentID = strings.TrimSpace(agentID)
@@ -574,7 +580,7 @@ func mergeAgentCatalog(current, patch Agent) Agent {
 	out.IsFavorite = patch.IsFavorite
 	out.Icon = patch.Icon
 	out.AgentDescription = patch.AgentDescription
-	out.CategoryPositionID = patch.CategoryPositionID
+	out.TaxonomyPositionID = patch.TaxonomyPositionID
 	out.SystemPromptMode = patch.SystemPromptMode
 	out.ContextWindow = patch.ContextWindow
 	out.BudgetMonthlyCents = patch.BudgetMonthlyCents

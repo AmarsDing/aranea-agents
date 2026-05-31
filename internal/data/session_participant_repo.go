@@ -8,7 +8,7 @@ import (
 	"time"
 
 	bizsess "aranea-agents/internal/biz/session"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -140,7 +140,7 @@ func participantFromMessage(msg bizsess.ChatMessage, sess bizsess.Session) (pTyp
 	}
 	if msg.OptionsJSON != "" {
 		if err := json.Unmarshal([]byte(msg.OptionsJSON), &opts); err != nil {
-		event.SysLogWarn("session.participant", "options json unmarshal failed", event.P("error", err.Error()))
+		loggateway.Global().Warn("options json unmarshal failed", loggateway.StepID("session.participant"), loggateway.Err(err))
 	}
 	}
 	if opts.TeamMember.AgentID != "" || opts.TeamMember.Name != "" {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -29,13 +29,15 @@ type TaskDispatcher struct {
 	runner   TaskDispatchAgentRunner
 	interval time.Duration
 	cancel   context.CancelFunc
+	lg       loggateway.Logger
 }
 
-func NewTaskDispatcher(tasks TaskDispatchReader, runner TaskDispatchAgentRunner) *TaskDispatcher {
+func NewTaskDispatcher(tasks TaskDispatchReader, runner TaskDispatchAgentRunner, lg loggateway.Logger) *TaskDispatcher {
 	return &TaskDispatcher{
 		tasks:    tasks,
 		runner:   runner,
 		interval: defaultDispatchInterval,
+		lg:       lg,
 	}
 }
 
@@ -70,8 +72,8 @@ func (d *TaskDispatcher) loop(ctx context.Context) {
 		case <-ticker.C:
 			tickCtx, tickCancel := context.WithTimeout(ctx, 25*time.Second)
 			if err := d.tick(tickCtx); err != nil {
-				event.SysLogWarn("system.task.dispatcher_tick_fail", "task dispatcher tick failed",
-					event.P("error", err.Error()))
+				d.lg.Warn("task dispatcher tick failed",
+					loggateway.StepID("system.task.dispatcher_tick_fail"), loggateway.Err(err))
 			}
 			tickCancel()
 		}
@@ -83,8 +85,8 @@ func (d *TaskDispatcher) tick(ctx context.Context) error {
 		return nil
 	}
 	if err := d.tasks.CheckTimeouts(ctx); err != nil {
-		event.SysLogWarn("system.task.check_timeout_fail", "task check timeouts failed",
-			event.P("error", err.Error()))
+		d.lg.Warn("task check timeouts failed",
+			loggateway.StepID("system.task.check_timeout_fail"), loggateway.Err(err))
 	}
 	items, err := d.tasks.ListPendingTasks(ctx, 50)
 	if err != nil {
@@ -103,8 +105,8 @@ func (d *TaskDispatcher) tick(ctx context.Context) error {
 		}
 		claimed, err := d.tasks.ClaimTask(ctx, task.TaskID, agentKey)
 		if err != nil {
-			event.SysLogWarn("system.task.claim_fail", "task dispatch claim failed",
-				event.P("task_id", task.TaskID), event.P("agent", agentKey), event.P("error", err.Error()))
+			d.lg.Warn("task dispatch claim failed",
+				loggateway.StepID("system.task.claim_fail"), loggateway.Str("task_id", task.TaskID), loggateway.Str("agent", agentKey), loggateway.Err(err))
 			continue
 		}
 		if claimed == nil {
@@ -112,8 +114,8 @@ func (d *TaskDispatcher) tick(ctx context.Context) error {
 		}
 		if d.runner != nil {
 			if err := d.runner.DispatchTask(ctx, claimed, agentKey); err != nil {
-				event.SysLogWarn("system.task.dispatch_run_fail", "task dispatch run failed",
-					event.P("task_id", claimed.TaskID), event.P("agent", agentKey), event.P("error", err.Error()))
+				d.lg.Warn("task dispatch run failed",
+					loggateway.StepID("system.task.dispatch_run_fail"), loggateway.Str("task_id", claimed.TaskID), loggateway.Str("agent", agentKey), loggateway.Err(err))
 				d.tasks.ReleaseClaim(ctx, claimed.TaskID)
 			}
 		}

@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/channel/preview"
 	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -30,6 +31,7 @@ type TurnPreviewCoordinator struct {
 	platform  string
 	policy    biz.ChannelIMRenderPolicy
 	ltCfg     biz.ChannelLongTaskConfig
+	lg        loggateway.Logger
 
 	transcript *preview.Transcript
 	mu         sync.Mutex
@@ -60,6 +62,7 @@ type turnPreviewParams struct {
 	Delivery   *turnPreviewDelivery
 	SessionID  string
 	CardOpts   preview.ToolCardBuildOpts
+	Lg         loggateway.Logger
 }
 
 func newTurnPreviewCoordinator(p turnPreviewParams) *TurnPreviewCoordinator {
@@ -70,6 +73,7 @@ func newTurnPreviewCoordinator(p turnPreviewParams) *TurnPreviewCoordinator {
 		platform:   strings.TrimSpace(p.Platform),
 		policy:     p.Policy,
 		ltCfg:      p.LtCfg,
+		lg:         p.Lg,
 		transcript: preview.NewTranscript(),
 		started:    time.Now(),
 		initialAck: strings.TrimSpace(p.InitialAck),
@@ -291,9 +295,10 @@ func (c *TurnPreviewCoordinator) patchLocked(ctx context.Context, text string, f
 		}
 	}
 	recordPreviewPatch(c.platform, nil)
-	event.SysLogInfo(flowStepChannelPreview, "Channel preview PATCH",
-		event.P("platform", c.platform),
-		event.P("text_len", len(text)),
+	c.lg.Info("Channel preview PATCH",
+		loggateway.StepID(flowStepChannelPreview),
+		loggateway.Str("platform", c.platform),
+		loggateway.Int("text_len", len(text)),
 	)
 	return nil
 }
@@ -400,11 +405,12 @@ func (c *TurnPreviewCoordinator) maybeSendToolCard(ctx context.Context, toolID s
 	msgID, err := c.delivery.UpsertToolCard(ctx, toolID, existingMsgID, cardJSON)
 	if err != nil {
 		recordToolCard(c.platform, "send", err)
-		event.SysLogWarn(flowStepChannelToolCard, "Channel tool card upsert failed",
-			event.P("platform", c.platform),
-			event.P("tool_id", toolID),
-			event.P("existing_message_id", existingMsgID),
-			event.P("error", err.Error()),
+		c.lg.Warn("Channel tool card upsert failed",
+			loggateway.StepID(flowStepChannelToolCard),
+			loggateway.Str("platform", c.platform),
+			loggateway.Str("tool_id", toolID),
+			loggateway.Str("existing_message_id", existingMsgID),
+			loggateway.Str("error", err.Error()),
 		)
 		return
 	}
@@ -499,6 +505,7 @@ func (h *ChannelIngress) startTurnPreview(
 			SessionID: sessionID,
 			WebOrigin: biz.ResolveChannelWebOrigin(chRow.MetadataJSON),
 		},
+		Lg: h.lg,
 	})
 	cancel := coord.Start(ctx, sessionID)
 	if h != nil && h.previewRegistry != nil {
@@ -519,6 +526,7 @@ func (h *ChannelIngress) startTurnPreviewAccumulate(
 		Platform: platform,
 		Policy:   policy,
 		LtCfg:    ltCfg,
+		Lg:       h.lg,
 	})
 	cancel := coord.Start(ctx, sessionID)
 	if h != nil && h.previewRegistry != nil {

@@ -3,7 +3,7 @@ package agent
 import (
 	"context"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
@@ -30,13 +30,13 @@ func (ing *BizSessionIngestor) IngestSession(ctx context.Context, sess *trpcsess
 		return nil
 	}
 	io := resolveIngestOptions(opts)
-	event.CtxFlowLogDone(ctx, "system.session.ingest", "会话摄入 hook",
-		event.P("session_id", sess.ID),
-		event.P("app", sess.AppName),
-		event.P("user_id", sess.UserID),
-		event.P("run_id", io.RunID),
-		event.P("agent_id", io.AgentID),
-		event.P("metadata_keys", len(io.Metadata)),
+	loggateway.Global().Info("会话摄入 hook", loggateway.StepID("system.session.ingest"), loggateway.Phase("done"),
+		loggateway.Str("session_id", sess.ID),
+		loggateway.Str("app", sess.AppName),
+		loggateway.Str("user_id", sess.UserID),
+		loggateway.Str("run_id", io.RunID),
+		loggateway.Str("agent_id", io.AgentID),
+		loggateway.Int("metadata_keys", len(io.Metadata)),
 	)
 	// External backends (mem0, etc.) can extend this type; auto-memory stays on
 	// runner.enqueueAutoMemoryJob → EnqueueAutoMemoryJob.

@@ -4,22 +4,29 @@ import (
 	"context"
 	"errors"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
+
+type L3FactWriter interface {
+	DeleteFactRow(ctx context.Context, factID string) error
+	DeleteFactRowsByIDs(ctx context.Context, factIDs []string) (int, error)
+}
 
 type MemoryAdminUsecase struct {
 	admin     SessionAdminStore
 	vec       *MemoryUsecase
 	indexSync MemoryFactIndexSyncer
+	factWriter L3FactWriter
+	lg        loggateway.Logger
 }
 
-func NewMemoryAdminUsecase(admin SessionAdminStore, vec *MemoryUsecase, indexSync MemoryFactIndexSyncer) *MemoryAdminUsecase {
+func NewMemoryAdminUsecase(admin SessionAdminStore, vec *MemoryUsecase, indexSync MemoryFactIndexSyncer, factWriter L3FactWriter, lg loggateway.Logger) *MemoryAdminUsecase {
 	if admin == nil && vec == nil {
 		return nil
 	}
-	return &MemoryAdminUsecase{admin: admin, vec: vec, indexSync: indexSync}
+	return &MemoryAdminUsecase{admin: admin, vec: vec, indexSync: indexSync, factWriter: factWriter, lg: lg}
 }
 
 func (uc *MemoryAdminUsecase) Vector() *MemoryUsecase { return uc.vec }
@@ -132,7 +139,7 @@ func (uc *MemoryAdminUsecase) syncFactIndexBestEffort(ctx context.Context, raw [
 		return
 	}
 	if err := syncer.SyncFactIndexFromRow(ctx, raw); err != nil && !errors.Is(err, ErrMemoryUnavailable) {
-		event.SysLogWarn("system.auto_memory.l4_fail", "syncFactIndexBestEffort failed", event.P("error", err.Error()))
+		uc.lg.Warn("syncFactIndexBestEffort failed", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("error", err.Error()))
 	}
 }
 
@@ -148,4 +155,18 @@ func (uc *MemoryAdminUsecase) DeleteSessionEventEntities(ctx context.Context, se
 		return err
 	}
 	return uc.admin.DeleteSessionEventEntities(ctx, sessionID)
+}
+
+func (uc *MemoryAdminUsecase) DeleteFactRow(ctx context.Context, factID string) error {
+	if uc == nil || uc.factWriter == nil {
+		return kerrors.InternalServer("MEMORY", "fact writer not wired")
+	}
+	return uc.factWriter.DeleteFactRow(ctx, factID)
+}
+
+func (uc *MemoryAdminUsecase) DeleteFactRowsByIDs(ctx context.Context, factIDs []string) (int, error) {
+	if uc == nil || uc.factWriter == nil {
+		return 0, kerrors.InternalServer("MEMORY", "fact writer not wired")
+	}
+	return uc.factWriter.DeleteFactRowsByIDs(ctx, factIDs)
 }

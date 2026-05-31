@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/data/ent"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 func entColumnExists(ctx context.Context, client *ent.Client, table, column string) (bool, error) {
@@ -62,7 +62,7 @@ func RunTurnIndexToTurnIDMigration(ctx context.Context, client *ent.Client) erro
 	if applied {
 		return nil
 	}
-	event.SysLogInfo("migration.turn_index", "turn_index -> turn_id/turn_number/seq_in_turn: starting")
+	loggateway.Global().Info("turn_index -> turn_id/turn_number/seq_in_turn: starting", loggateway.StepID("migration.turn_index"))
 
 	if err := entAddColumnIfMissing(ctx, client, "messages", "turn_id",
 		`ALTER TABLE messages ADD COLUMN turn_id VARCHAR(256) NOT NULL DEFAULT ''`); err != nil {
@@ -95,7 +95,7 @@ FROM session_turns st
 WHERE st.session_id = m.session_id
   AND st.turn_index = m.turn_index
 `, stCol)); err != nil {
-			event.SysLogWarn("migration.turn_index", "backfill from session_turns failed (may be expected on fresh DB)", event.P("error", err.Error()))
+			loggateway.Global().Warn("backfill from session_turns failed (may be expected on fresh DB)", loggateway.StepID("migration.turn_index"), loggateway.Err(err))
 		}
 
 		if _, err := client.ExecContext(ctx, `
@@ -110,20 +110,20 @@ SET seq_in_turn = r.rn
 FROM ranked r
 WHERE m.id = r.id
 `); err != nil {
-			event.SysLogWarn("migration.turn_index", "seq_in_turn backfill failed (may be expected on fresh DB)", event.P("error", err.Error()))
+			loggateway.Global().Warn("seq_in_turn backfill failed (may be expected on fresh DB)", loggateway.StepID("migration.turn_index"), loggateway.Err(err))
 		}
 	}
 
 	if hasSTOldIndex {
 		if _, err := client.ExecContext(ctx,
 			`ALTER TABLE session_turns RENAME COLUMN turn_index TO turn_number`); err != nil {
-			event.SysLogWarn("migration.turn_index", "rename session_turns.turn_index failed (may be expected if already renamed)", event.P("error", err.Error()))
+			loggateway.Global().Warn("rename session_turns.turn_index failed (may be expected if already renamed)", loggateway.StepID("migration.turn_index"), loggateway.Err(err))
 		}
 	}
 
 	if err := recordMigrationApplied(ctx, client, MigrationTurnIndexToTurnID, migrationNameTurnIndexToTurnID); err != nil {
 		return fmt.Errorf("turn_index migration: record: %w", err)
 	}
-	event.SysLogInfo("migration.turn_index", "turn_index -> turn_id/turn_number/seq_in_turn: done")
+	loggateway.Global().Info("turn_index -> turn_id/turn_number/seq_in_turn: done", loggateway.StepID("migration.turn_index"))
 	return nil
 }

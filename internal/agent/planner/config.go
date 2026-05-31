@@ -11,6 +11,10 @@ type builtinConfigJSON struct {
 	ThinkingTokens  *int    `json:"thinking_tokens"`
 }
 
+type A2UIResult struct {
+	PlannerKind string
+}
+
 type a2uiConfigJSON struct {
 	Instruction                            string `json:"instruction"`
 	ServerToClientWithStandardCatalogJSON  string `json:"server_to_client_with_standard_catalog_schema_json"`

@@ -2,12 +2,11 @@ package knowledge
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"unicode"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -149,16 +148,20 @@ func (a *AdaptiveRouter) searchMultiQuery(ctx context.Context, q biz.KnowledgeSe
 		chunks, err := a.hybrid.Search(ctx, searchQ, mode)
 		if err != nil {
 			failCount++
-			event.SysLogWarn("knowledge.adaptive.sub_query_fail", "子查询检索失败",
-				event.P("query", subQ), event.P("error", err.Error()))
+			loggateway.Global().Warn("子查询检索失败",
+				loggateway.StepID("knowledge.adaptive.sub_query_fail"),
+				loggateway.Str("query", subQ),
+				loggateway.Err(err))
 			continue
 		}
 		allChunks = append(allChunks, chunks)
 	}
 
 	if failCount == len(queries) && len(queries) > 0 {
-		event.SysLogWarn("knowledge.adaptive.all_sub_query_fail", "所有子查询均检索失败",
-			event.P("original_query", q.Query), event.P("sub_query_count", fmt.Sprint(len(queries))))
+		loggateway.Global().Warn("所有子查询均检索失败",
+			loggateway.StepID("knowledge.adaptive.all_sub_query_fail"),
+			loggateway.Str("original_query", q.Query),
+			loggateway.Int("sub_query_count", len(queries)))
 	}
 
 	return mergeMultiQueryResults(allChunks, topK), nil

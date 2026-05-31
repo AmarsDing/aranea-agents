@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -136,9 +138,10 @@ func (o *ChatOrchestrator) onSessionRunSoftBudget(ctx context.Context, run biz.S
 				return
 			}
 			if cur.Phase != biz.SessionRunPhaseEscalating {
-				event.SysLogWarn("session-run-auto-escalate", "skipping auto-escalate, run no longer escalating",
-					event.P("session_run_id", runID),
-					event.P("current_phase", cur.Phase),
+				o.lg.Warn("skipping auto-escalate, run no longer escalating",
+					loggateway.StepID("session-run-auto-escalate"),
+					loggateway.Str("session_run_id", runID),
+					loggateway.Any("current_phase", cur.Phase),
 				)
 				return
 			}
@@ -159,9 +162,10 @@ func (o *ChatOrchestrator) escalateSessionRunToDurable(ctx context.Context, sess
 	bind, hasBind := o.sessionRunBinding(sessionID)
 	run, err := o.chTurn.SessionRuns.Get(ctx, sessionRunID)
 	if err != nil || run.ID == "" {
-		event.SysLogWarn(flowStepRunEscalate, "session run not found for escalate",
-			event.P("session_run_id", sessionRunID),
-			event.P("session_id", sessionID),
+		o.lg.Warn("session run not found for escalate",
+			loggateway.StepID(flowStepRunEscalate),
+			loggateway.Str("session_run_id", sessionRunID),
+			loggateway.Str("session_id", sessionID),
 		)
 		return
 	}
@@ -209,28 +213,32 @@ func (o *ChatOrchestrator) escalateSessionRunToDurable(ctx context.Context, sess
 		TrpcInvocationID: firstNonEmptyString(runtimeRunID, run.RuntimeRunID),
 	})
 	if err != nil || cp.ID == "" {
-		event.SysLogWarn(flowStepRunEscalate, "durable checkpoint create failed",
-			event.P("session_run_id", sessionRunID),
-			event.P("session_id", sessionID),
-			event.P("error", errString(err)),
+		o.lg.Warn("durable checkpoint create failed",
+			loggateway.StepID(flowStepRunEscalate),
+			loggateway.Str("session_run_id", sessionRunID),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("error", errString(err)),
 		)
 		return
 	}
 	if err := o.chTurn.SessionRuns.MarkPhase(ctx, sessionRunID, biz.SessionRunPhaseDurable); err != nil {
-		event.SysLogWarn(flowStepRunEscalate, "session run mark durable failed",
-			event.P("session_run_id", sessionRunID),
-			event.P("error", err.Error()),
+		o.lg.Warn("session run mark durable failed",
+			loggateway.StepID(flowStepRunEscalate),
+			loggateway.Str("session_run_id", sessionRunID),
+			loggateway.Err(err),
 		)
 		return
 	}
 	o.cancelActiveRun(ctx, sessionID)
+	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonBudgetEscalated)
 	run.Phase = biz.SessionRunPhaseDurable
 	run.CheckpointID = cp.ID
 	if o.chTurn.RunEscalation != nil {
 		if err := o.chTurn.RunEscalation.NotifyDurableEscalated(ctx, run); err != nil {
-			event.SysLogWarn(flowStepRunEscalate, "durable escalation notify failed",
-				event.P("session_run_id", sessionRunID),
-				event.P("error", err.Error()),
+			o.lg.Warn("durable escalation notify failed",
+				loggateway.StepID(flowStepRunEscalate),
+				loggateway.Str("session_run_id", sessionRunID),
+				loggateway.Err(err),
 			)
 		}
 	}

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	session "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/predicate"
 	entsession "aranea-agents/internal/data/ent/session"
@@ -74,13 +75,13 @@ func (r *sessionRepo) ListSessionsForBatch(ctx context.Context, q biz.SessionSea
 
 func (r *sessionRepo) ArchiveSessionsByIDs(ctx context.Context, ids []string) (int, []string, error) {
 	return r.batchUpdateSessions(ctx, ids, "archive", func(upd *ent.SessionUpdate, now string) *ent.SessionUpdate {
-		return upd.SetStatus("archived").SetArchivedAt(now).SetUpdatedAt(now)
+		return upd.SetArchivedAt(now).SetUpdatedAt(now)
 	})
 }
 
 func (r *sessionRepo) DeleteSessionsByIDs(ctx context.Context, ids []string) (int, []string, error) {
 	return r.batchUpdateSessions(ctx, ids, "delete", func(upd *ent.SessionUpdate, now string) *ent.SessionUpdate {
-		return upd.SetStatus("deleted").SetDeletedAt(now).SetUpdatedAt(now)
+		return upd.SetDeletedAt(now).SetUpdatedAt(now)
 	})
 }
 
@@ -88,10 +89,11 @@ func batchUpdateWheres(mode string, chunk []string) []predicate.Session {
 	wheres := []predicate.Session{
 		entsession.IDIn(chunk...),
 		entsession.DeletedAtEQ(""),
-		entsession.StatusNEQ("running"),
+		entsession.StatusNEQ(string(session.SessionStatusRunning)),
+		entsession.StatusNEQ(string(session.SessionStatusAwaitingConfirmation)),
 	}
 	if mode == "archive" {
-		wheres = append(wheres, entsession.StatusNEQ("archived"))
+		wheres = append(wheres, entsession.ArchivedAtEQ(""))
 	}
 	return wheres
 }
@@ -144,7 +146,16 @@ func sessionSearchWheres(q biz.SessionSearchQuery) []predicate.Session {
 		wheres = append(wheres, entsession.UserIDEQ(q.UserID))
 	}
 	if q.Status != "" {
-		wheres = append(wheres, entsession.StatusEQ(q.Status))
+		switch q.Status {
+		case "active":
+			wheres = append(wheres, entsession.ArchivedAtEQ(""), entsession.DeletedAtEQ(""))
+		case "archived":
+			wheres = append(wheres, entsession.ArchivedAtNEQ(""))
+		case "deleted":
+			wheres = append(wheres, entsession.DeletedAtNEQ(""))
+		default:
+			wheres = append(wheres, entsession.StatusEQ(q.Status))
+		}
 	}
 	if q.ContextStatus != "" {
 		wheres = append(wheres, entsession.ContextStatusEQ(q.ContextStatus))

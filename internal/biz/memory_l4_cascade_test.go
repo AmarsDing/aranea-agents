@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type cascadeGraphStoreMock struct {
@@ -85,7 +87,7 @@ func (m *cascadeGraphStoreMock) MarkFactsIndexStaleByAgent(_ context.Context, _ 
 
 func TestL4CascadeUsecase_ProposeNameConflict(t *testing.T) {
 	store := &cascadeGraphStoreMock{}
-	uc := NewL4CascadeUsecase(store, store, store, store, nil)
+	uc := NewL4CascadeUsecase(store, store, store, store, nil, loggateway.Global())
 	if err := uc.ProposeNameConflict(context.Background(), "ag1", "ent1", "Alice", "Bob"); err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +105,7 @@ func TestL4CascadeUsecase_ProposeNameConflict(t *testing.T) {
 
 func TestL4CascadeUsecase_ProposeNameConflict_SkipSameName(t *testing.T) {
 	store := &cascadeGraphStoreMock{}
-	uc := NewL4CascadeUsecase(store, store, store, store, nil)
+	uc := NewL4CascadeUsecase(store, store, store, store, nil, loggateway.Global())
 	if err := uc.ProposeNameConflict(context.Background(), "ag1", "ent1", "Alice", "alice"); err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +191,7 @@ func TestL4CascadeUsecase_Approve(t *testing.T) {
 			"affected_json":"[{\"entity_id\":\"n1\",\"entity_name\":\"Neighbor\",\"entity_type\":\"person\",\"relation_type\":\"knows_as\",\"hops\":1}]"
 		}`),
 	}
-	uc := NewL4CascadeUsecase(store, store, store, store, repo)
+	uc := NewL4CascadeUsecase(store, store, store, store, repo, loggateway.Global())
 	raw, err := uc.Approve(context.Background(), "cp1", "reviewer-1")
 	if err != nil {
 		t.Fatal(err)

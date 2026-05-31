@@ -55,7 +55,7 @@ export function useSessionDetailPage() {
   async function handleArchive() {
     if (!session.value) return;
     const prev = session.value;
-    session.value = { ...session.value, status: "archived" };
+    session.value = { ...session.value, archived_at: new Date().toISOString() };
     try {
       await sessionStore.archive(prev.id);
       $q.notify({ type: "positive", message: "已归档" });

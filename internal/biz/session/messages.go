@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 type MessageStatusWriter interface {
@@ -88,7 +88,7 @@ func (uc *SessionUsecase) AppendChatTurn(ctx context.Context, sessionID string, 
 	}
 	if strings.EqualFold(strings.TrimSpace(user.Role), "user") {
 		if err := uc.maybeAutoTitleFromUserMessage(ctx, sessionID, user.ContentMarkdown); err != nil {
-			event.SysLogWarn("session.auto_title", "maybeAutoTitleFromUserMessage failed", event.P("session_id", sessionID), event.P("error", err.Error()))
+			uc.lg.Warn("maybeAutoTitleFromUserMessage failed", loggateway.StepID("session.auto_title"), loggateway.SessionID(sessionID), loggateway.Err(err))
 		}
 	}
 	return nil
@@ -101,7 +101,7 @@ func (uc *SessionUsecase) AppendChatMessage(ctx context.Context, sessionID strin
 	}
 	if strings.EqualFold(strings.TrimSpace(msg.Role), "user") {
 		if err := uc.maybeAutoTitleFromUserMessage(ctx, sessionID, msg.ContentMarkdown); err != nil {
-			event.SysLogWarn("session.auto_title", "maybeAutoTitleFromUserMessage failed", event.P("session_id", sessionID), event.P("error", err.Error()))
+			uc.lg.Warn("maybeAutoTitleFromUserMessage failed", loggateway.StepID("session.auto_title"), loggateway.SessionID(sessionID), loggateway.Err(err))
 		}
 	}
 	return nil

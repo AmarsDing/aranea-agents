@@ -5,6 +5,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/pkg/loggateway"
 )
 
 type l4GraphRepo struct {
@@ -165,7 +166,7 @@ func (a *l4GraphWriterAdapter) RecordEntityReinforcement(ctx context.Context, en
 
 func NewL4GraphUsecaseFromStore(store *sessionmemory.Store, cascade *biz.L4CascadeUsecase) *biz.L4GraphUsecase {
 	repo := NewL4GraphRepo(store)
-	uc := biz.NewL4GraphUsecase(repo)
+	uc := biz.NewL4GraphUsecase(repo, loggateway.Global())
 	if cascade != nil {
 		uc.SetCascade(cascade)
 	}

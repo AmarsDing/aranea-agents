@@ -4,7 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
+	"time"
+
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -29,6 +33,8 @@ type Session struct {
 	LastModel                  string
 	LastContextWindowTokens    int
 	Status                     string
+	StatusReason               string
+	StatusChangedAt            string
 	Visibility                 string
 	MessageCount               int
 	RunCount                   int
@@ -220,6 +226,9 @@ type SessionUpdateFields struct {
 	DialogMode      *string
 	DefaultProvider *string
 	DefaultModel    *string
+	Status          *string
+	StatusReason    *string
+	StatusChangedAt *string
 }
 
 // TimelineQuery holds optional pagination and filter parameters for timeline.
@@ -336,6 +345,10 @@ type SessionMutator interface {
 	UnpinSession(ctx context.Context, id string) (Session, error)
 }
 
+type SessionStatusTransitioner interface {
+	TransitionStatus(ctx context.Context, id string, status string) error
+}
+
 type SessionBatchMutator interface {
 	ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
 	DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
@@ -442,6 +455,12 @@ type TeamLookup interface {
 	GetTeamByID(ctx context.Context, id string) (struct{}, error)
 }
 
+// SessionStatusPublisher emits session status change events to realtime observers (WS).
+// Implemented in service layer; set via SetStatusPublisher after construction.
+type SessionStatusPublisher interface {
+	PublishSessionStatusChanged(sessionID string, status string, statusReason string, statusChangedAt string)
+}
+
 // SessionUsecase handles session CRUD + timeline. Chat 写消息经 AppendChat* 等仓储方法，不经 SessionService RPC.
 type SessionUsecase struct {
 	sessionReader       SessionReader
@@ -464,6 +483,8 @@ type SessionUsecase struct {
 	teams               TeamLookup
 	titleGenerator      SessionTitleGenerator
 	participants        SessionParticipantRepository
+	lg                  loggateway.Logger
+	statusPublisher     SessionStatusPublisher
 }
 
 func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository) *SessionUsecase {
@@ -492,6 +513,42 @@ func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLooku
 		titleGenerator:      titleGenerator,
 		participants:        participants,
 	}
+}
+
+func (uc *SessionUsecase) SetStatusPublisher(publisher SessionStatusPublisher) {
+	uc.statusPublisher = publisher
+}
+
+func (uc *SessionUsecase) TransitionStatus(ctx context.Context, sessionID string, target SessionStatus, reason SessionStatusReason) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return validationErr("session id is required")
+	}
+	current, err := uc.sessionReader.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	machine := NewSessionStatusMachine(SessionStatus(current.Status), SessionStatusReason(current.StatusReason), current.StatusChangedAt)
+	if err := machine.TransitionTo(target, reason); err != nil {
+		return err
+	}
+	newStatus := string(machine.Status())
+	newReason := string(machine.StatusReason())
+	changedAt := machine.ChangedAt()
+	if changedAt == "" {
+		changedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	if _, err := uc.sessionWriter.UpdateSession(ctx, sessionID, SessionUpdateFields{
+		Status:          &newStatus,
+		StatusReason:    &newReason,
+		StatusChangedAt: &changedAt,
+	}); err != nil {
+		return err
+	}
+	if uc.statusPublisher != nil {
+		uc.statusPublisher.PublishSessionStatusChanged(sessionID, newStatus, newReason, changedAt)
+	}
+	return nil
 }
 
 func (uc *SessionUsecase) Search(ctx context.Context, q SessionSearchQuery) (SessionListResult, error) {
@@ -566,20 +623,18 @@ func (uc *SessionUsecase) Archive(ctx context.Context, id string) error {
 	if id == "" {
 		return validationErr("session id is required")
 	}
-	n, err := uc.sessionMutator.ArchiveSession(ctx, id)
+	sess, err := uc.sessionReader.GetSessionByID(ctx, id)
 	if err != nil {
 		return err
 	}
-	if n == 0 {
-		sess, getErr := uc.sessionReader.GetSessionByID(ctx, id)
-		if getErr != nil {
-			return getErr
-		}
-		if sess.Status == "running" {
-			return validationErr("running session cannot be archived")
-		}
+	if IsProtectedStatus(SessionStatus(sess.Status)) {
+		return kerrors.BadRequest("SESSION", fmt.Sprintf("session is %s, cannot archive", sess.Status))
 	}
-	return nil
+	n, err := uc.sessionMutator.ArchiveSession(ctx, id)
+	if n == 0 {
+		return kerrors.NotFound("SESSION", id)
+	}
+	return err
 }
 
 func (uc *SessionUsecase) Delete(ctx context.Context, id string) error {
@@ -587,20 +642,18 @@ func (uc *SessionUsecase) Delete(ctx context.Context, id string) error {
 	if id == "" {
 		return validationErr("session id is required")
 	}
-	n, err := uc.sessionMutator.DeleteSession(ctx, id)
+	sess, err := uc.sessionReader.GetSessionByID(ctx, id)
 	if err != nil {
 		return err
 	}
-	if n == 0 {
-		sess, getErr := uc.sessionReader.GetSessionByID(ctx, id)
-		if getErr != nil {
-			return getErr
-		}
-		if sess.Status == "running" {
-			return validationErr("running session cannot be deleted")
-		}
+	if IsProtectedStatus(SessionStatus(sess.Status)) {
+		return kerrors.BadRequest("SESSION", fmt.Sprintf("session is %s, cannot delete", sess.Status))
 	}
-	return nil
+	n, err := uc.sessionMutator.DeleteSession(ctx, id)
+	if n == 0 {
+		return kerrors.NotFound("SESSION", id)
+	}
+	return err
 }
 
 func (uc *SessionUsecase) DeleteByAgent(ctx context.Context, agentID string) error {

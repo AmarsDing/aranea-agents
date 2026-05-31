@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 // ModelRouterRule is one configurable routing rule (rules[] in model_router config).
@@ -24,8 +24,12 @@ func (r *ModelRouterRule) compile() {
 		if re, err := regexp.Compile(pat); err == nil {
 			r.compiledRegex = re
 		} else {
-			event.SysLogWarn("plugin.model_router.compile_fail", "model_router rule regex compile failed",
-				event.P("model", r.Model), event.P("regex", pat), event.P("error", err.Error()))
+			loggateway.Global().Warn("model_router rule regex compile failed",
+				loggateway.StepID("plugin.model_router.compile_fail"),
+				loggateway.Str("model", r.Model),
+				loggateway.Str("regex", pat),
+				loggateway.Err(err),
+			)
 		}
 	}
 }

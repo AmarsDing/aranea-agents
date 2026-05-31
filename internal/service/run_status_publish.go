@@ -7,6 +7,7 @@ import (
 	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 // PublishRunStatus emits a run_status envelope for WS subscribers.
@@ -80,9 +81,42 @@ func CancelSessionRunSideEffects(ctx context.Context, bus event.Bus, sessions *b
 	}
 	PublishRunStatus(bus, sessionID, runID, "cancelled", "")
 	if _, err := chatactivity.CancelRunningActivityMessages(ctx, sessions, sessionID); err != nil {
-		event.CtxFlowLogWarn(ctx, "chat.activity.cancel", "取消执行卡片查询失败",
-			event.P("session_id", sessionID),
-			event.P("error", err.Error()),
+		loggateway.Global().Warn("取消执行卡片查询失败",
+			loggateway.StepID("chat.activity.cancel"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("error", err.Error()),
 		)
 	}
+}
+
+// PublishSessionStatusChanged emits a session.status_changed envelope for WS subscribers.
+func PublishSessionStatusChanged(bus event.Bus, sessionID, status, statusReason, statusChangedAt string) {
+	if bus == nil || strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	env := event.NewEnvelope(event.EnvelopeTypeSessionStatusChanged, "session-service", sessionID)
+	env.Channel = event.RouteChannel(env)
+	env.Metadata = map[string]any{
+		"session_id":        sessionID,
+		"status":            status,
+		"status_reason":     statusReason,
+		"status_changed_at": statusChangedAt,
+	}
+	bus.Publish(context.Background(), env)
+}
+
+type sessionStatusPublisher struct {
+	bus event.Bus
+}
+
+func (p *sessionStatusPublisher) PublishSessionStatusChanged(sessionID, status, statusReason, statusChangedAt string) {
+	PublishSessionStatusChanged(p.bus, sessionID, status, statusReason, statusChangedAt)
+}
+
+// WireSessionStatusPublisher injects the service-layer WS publisher into SessionUsecase.
+func WireSessionStatusPublisher(uc *biz.SessionUsecase, infra *event.Infra) *SessionStatusGuard {
+	if uc != nil && infra != nil {
+		uc.SetStatusPublisher(&sessionStatusPublisher{bus: infra.SessionBus})
+	}
+	return NewSessionStatusGuard(uc, loggateway.Global())
 }

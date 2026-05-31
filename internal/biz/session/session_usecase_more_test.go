@@ -285,60 +285,58 @@ func TestArchive(t *testing.T) {
 		{
 			name: "valid archive",
 			id:   "sess-1",
+			getFn: func(_ context.Context, _ string) (Session, error) {
+				return Session{ID: "sess-1", Status: "idle"}, nil
+			},
 			archiveFn: func(_ context.Context, _ string) (int, error) {
 				return 1, nil
 			},
 		},
 		{
-			name: "already archived session",
+			name: "already archived session returns not found",
 			id:   "sess-1",
+			getFn: func(_ context.Context, _ string) (Session, error) {
+				return Session{ID: "sess-1", Status: "idle", ArchivedAt: "2025-01-01T00:00:00Z"}, nil
+			},
 			archiveFn: func(_ context.Context, _ string) (int, error) {
 				return 0, nil
 			},
-			getFn: func(_ context.Context, _ string) (Session, error) {
-				return Session{ID: "sess-1", Status: "archived", ArchivedAt: "2025-01-01T00:00:00Z"}, nil
-			},
+			wantErr: true,
 		},
 		{
 			name: "running session cannot be archived",
 			id:   "sess-1",
-			archiveFn: func(_ context.Context, _ string) (int, error) {
-				return 0, nil
-			},
 			getFn: func(_ context.Context, _ string) (Session, error) {
 				return Session{ID: "sess-1", Status: "running"}, nil
 			},
 			wantErr: true,
-			wantMsg: "running session cannot be archived",
+			wantMsg: "session is running, cannot archive",
 		},
 		{
-			name:    "empty session_id returns error",
-			id:      "",
-			wantErr: true,
-			wantMsg: "session id is required",
-		},
-		{
-			name:    "whitespace session_id returns error",
-			id:      "   ",
-			wantErr: true,
-			wantMsg: "session id is required",
-		},
-		{
-			name: "repo error propagated",
+			name: "awaiting_confirmation session cannot be archived",
 			id:   "sess-1",
-			archiveFn: func(_ context.Context, _ string) (int, error) {
-				return 0, errors.New("db error")
+			getFn: func(_ context.Context, _ string) (Session, error) {
+				return Session{ID: "sess-1", Status: "awaiting_confirmation"}, nil
 			},
 			wantErr: true,
+			wantMsg: "session is awaiting_confirmation, cannot archive",
 		},
 		{
-			name: "get session error when n is zero",
+			name: "get session error propagated",
 			id:   "sess-1",
-			archiveFn: func(_ context.Context, _ string) (int, error) {
-				return 0, nil
-			},
 			getFn: func(_ context.Context, _ string) (Session, error) {
 				return Session{}, kerrors.NotFound("SESSION", "session not found")
+			},
+			wantErr: true,
+		},
+		{
+			name: "archive repo error propagated",
+			id:   "sess-1",
+			getFn: func(_ context.Context, _ string) (Session, error) {
+				return Session{ID: "sess-1", Status: "idle"}, nil
+			},
+			archiveFn: func(_ context.Context, _ string) (int, error) {
+				return 0, errors.New("db error")
 			},
 			wantErr: true,
 		},
@@ -453,54 +451,58 @@ func TestDelete(t *testing.T) {
 		{
 			name: "valid delete",
 			id:   "sess-1",
+			getFn: func(_ context.Context, _ string) (Session, error) {
+				return Session{ID: "sess-1", Status: "idle"}, nil
+			},
 			deleteFn: func(_ context.Context, _ string) (int, error) {
 				return 1, nil
 			},
 		},
 		{
-			name: "already deleted session",
+			name: "already deleted session returns not found",
 			id:   "sess-1",
+			getFn: func(_ context.Context, _ string) (Session, error) {
+				return Session{ID: "sess-1", Status: "idle", DeletedAt: "2025-01-01T00:00:00Z"}, nil
+			},
 			deleteFn: func(_ context.Context, _ string) (int, error) {
 				return 0, nil
 			},
-			getFn: func(_ context.Context, _ string) (Session, error) {
-				return Session{ID: "sess-1", Status: "deleted"}, nil
-			},
+			wantErr: true,
 		},
 		{
 			name: "running session cannot be deleted",
 			id:   "sess-1",
-			deleteFn: func(_ context.Context, _ string) (int, error) {
-				return 0, nil
-			},
 			getFn: func(_ context.Context, _ string) (Session, error) {
 				return Session{ID: "sess-1", Status: "running"}, nil
 			},
 			wantErr: true,
-			wantMsg: "running session cannot be deleted",
+			wantMsg: "session is running, cannot delete",
 		},
 		{
-			name:    "empty session_id returns error",
-			id:      "",
-			wantErr: true,
-			wantMsg: "session id is required",
-		},
-		{
-			name: "repo error propagated",
+			name: "awaiting_confirmation session cannot be deleted",
 			id:   "sess-1",
-			deleteFn: func(_ context.Context, _ string) (int, error) {
-				return 0, errors.New("db error")
+			getFn: func(_ context.Context, _ string) (Session, error) {
+				return Session{ID: "sess-1", Status: "awaiting_confirmation"}, nil
 			},
 			wantErr: true,
+			wantMsg: "session is awaiting_confirmation, cannot delete",
 		},
 		{
-			name: "get session error when n is zero",
+			name: "get session error propagated",
 			id:   "sess-1",
-			deleteFn: func(_ context.Context, _ string) (int, error) {
-				return 0, nil
-			},
 			getFn: func(_ context.Context, _ string) (Session, error) {
 				return Session{}, kerrors.NotFound("SESSION", "session not found")
+			},
+			wantErr: true,
+		},
+		{
+			name: "delete repo error propagated",
+			id:   "sess-1",
+			getFn: func(_ context.Context, _ string) (Session, error) {
+				return Session{ID: "sess-1", Status: "idle"}, nil
+			},
+			deleteFn: func(_ context.Context, _ string) (int, error) {
+				return 0, errors.New("db error")
 			},
 			wantErr: true,
 		},

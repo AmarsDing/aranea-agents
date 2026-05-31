@@ -6,7 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -81,7 +81,10 @@ func (h *ChannelIngress) processInboundNow(ctx context.Context, chRow biz.Channe
 			}
 			if err := h.dispatchAsyncInbound(procCtx, chRow, ev, platform, ltCfg); err != nil {
 			if replyErr := h.deliverTurnErrorReply(procCtx, chRow, ev, platform, err); replyErr != nil {
-				event.SysLogWarn("channel.async.reply_failed", "异步回复投递失败", event.P("error", replyErr.Error()))
+				h.lg.Warn("异步回复投递失败",
+					loggateway.StepID("channel.async.reply_failed"),
+					loggateway.Str("error", replyErr.Error()),
+				)
 			}
 		}
 		})

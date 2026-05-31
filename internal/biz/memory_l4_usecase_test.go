@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type mockL4GraphRepo struct {
@@ -85,7 +87,7 @@ func TestL4GraphUsecase_WriteFromUserText_NameConflictGate(t *testing.T) {
 		entityOk:   true,
 	}
 	uc := NewL4GraphUsecase(repo)
-	uc.SetCascade(NewL4CascadeUsecase(&cascadeGraphStoreMock{}, &cascadeGraphStoreMock{}, &cascadeGraphStoreMock{}, &cascadeGraphStoreMock{}, nil))
+	uc.SetCascade(NewL4CascadeUsecase(&cascadeGraphStoreMock{}, &cascadeGraphStoreMock{}, &cascadeGraphStoreMock{}, &cascadeGraphStoreMock{}, nil, loggateway.Global()))
 	n, err := uc.WriteFromUserText(context.Background(), "ag1", "u1", "My name is Bob")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

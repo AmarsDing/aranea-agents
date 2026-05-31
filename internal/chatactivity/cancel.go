@@ -6,7 +6,7 @@ import (
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 // CancelRunningActivityMessages marks in-flight tool_running cards as cancelled when the user stops generation.
@@ -32,11 +32,11 @@ func CancelRunningActivityMessages(ctx context.Context, sessions *biz.SessionUse
 			continue
 		}
 		if err := sessions.UpsertChatActivityMessage(ctx, sessionID, next); err != nil {
-			event.CtxFlowLogWarn(ctx, "chat.activity.cancel", "取消执行卡片落库失败",
-				event.P("session_id", sessionID),
-				event.P("message_id", next.ID),
-				event.P("error", err.Error()),
-			)
+			loggateway.Global().Warn("取消执行卡片落库失败",
+				loggateway.StepID("chat.activity.cancel"),
+				loggateway.Str("session_id", sessionID),
+				loggateway.Str("message_id", next.ID),
+				loggateway.Err(err))
 			continue
 		}
 		cancelled++

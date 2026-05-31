@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -78,8 +78,9 @@ func (e *RetrievalEvaluator) Evaluate(ctx context.Context, query string, chunks 
 		User:     user,
 	})
 	if err != nil {
-		event.SysLogWarn("knowledge.retrieval_eval.fail", "检索质量评估失败，降级为需要补充检索",
-			event.P("error", err.Error()))
+		loggateway.Global().Warn("检索质量评估失败，降级为需要补充检索",
+			loggateway.StepID("knowledge.retrieval_eval.fail"),
+			loggateway.Err(err))
 		// Degradation strategy 3 (safe): when the LLM call itself fails, we
 		// cannot confirm the results are sufficient, so mark as insufficient
 		// with the original query as supplement. This errs on the side of

@@ -5,7 +5,8 @@ type SessionMutation =
   | { type: "remove"; id: string }
   | { type: "update"; id: string; session: Session }
   | { type: "archive"; id: string }
-  | { type: "refresh" };
+  | { type: "refresh" }
+  | { type: "status_changed"; id: string; status: string; statusReason: string; statusChangedAt: string };
 
 type MutationHandler = (mutation: SessionMutation) => void;
 

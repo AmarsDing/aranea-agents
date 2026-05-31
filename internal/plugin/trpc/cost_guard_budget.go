@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -136,8 +136,12 @@ func (t *CostGuardBudgetTracker) persistAdd(day, scope string, delta int) {
 	select {
 	case t.persistCh <- costGuardPersistEntry{day: day, scope: scope, delta: delta}:
 	default:
-		event.SysLogWarn("system.plugin.cost_guard_persist_drop", "cost_guard persist channel full, entry dropped",
-			event.P("scope", scope), event.P("day", day), event.P("delta", delta))
+		loggateway.Global().Warn("cost_guard persist channel full, entry dropped",
+			loggateway.StepID("system.plugin.cost_guard_persist_drop"),
+			loggateway.Str("scope", scope),
+			loggateway.Str("day", day),
+			loggateway.Int("delta", delta),
+		)
 	}
 }
 
@@ -202,8 +206,13 @@ func (t *CostGuardBudgetTracker) flushPersist(batch []costGuardPersistEntry) {
 	bg := context.Background()
 	for key, delta := range aggr {
 		if err := t.repo.AddTokens(bg, key.day, key.scope, delta); err != nil {
-			event.SysLogWarn("system.plugin.cost_guard_persist_fail", "cost_guard 写库失败，本地累加与远端可能漂移",
-				event.P("scope", key.scope), event.P("day", key.day), event.P("delta", delta), event.P("error", err.Error()))
+			loggateway.Global().Warn("cost_guard 写库失败，本地累加与远端可能漂移",
+				loggateway.StepID("system.plugin.cost_guard_persist_fail"),
+				loggateway.Str("scope", key.scope),
+				loggateway.Str("day", key.day),
+				loggateway.Int("delta", delta),
+				loggateway.Err(err),
+			)
 		}
 	}
 }
@@ -237,8 +246,11 @@ func (t *CostGuardBudgetTracker) ensureDayLocked() {
 		if n, err := repo.GetTokens(context.Background(), day, scope); err == nil {
 			loaded = n
 		} else {
-			event.SysLogWarn("system.plugin.cost_guard_load_fail", "cost_guard 读取日用量失败，从 0 开始计数",
-				event.P("scope", scope), event.P("day", day), event.P("error", err.Error()))
+			loggateway.Global().Warn("cost_guard 读取日用量失败，从 0 开始计数",
+				loggateway.StepID("system.plugin.cost_guard_load_fail"),
+				loggateway.Str("scope", scope),
+				loggateway.Str("day", day),
+				loggateway.Err(err))
 		}
 	}
 	t.mu.Lock()

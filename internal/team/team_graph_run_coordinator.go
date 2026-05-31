@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -61,6 +62,7 @@ type TeamGraphRunCoordinator struct {
 	finisher       TeamGraphRunFinisher
 	sessionRepo    biz.TeamGraphSessionRepo
 	cfg            CoordinatorConfig
+	lg             loggateway.Logger
 
 	mu       sync.RWMutex
 	sessions map[string]*teamGraphRunSession
@@ -90,7 +92,7 @@ const (
 	graphWatchStepsAndFinalize
 )
 
-func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teams biz.TeamRepository, bus event.Bus, sessionRepo biz.TeamGraphSessionRepo) *TeamGraphRunCoordinator {
+func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teams biz.TeamRepository, bus event.Bus, sessionRepo biz.TeamGraphSessionRepo, lg loggateway.Logger) *TeamGraphRunCoordinator {
 	return &TeamGraphRunCoordinator{
 		graphs:         graphs,
 		teams:          teams,
@@ -98,6 +100,7 @@ func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teams biz.Team
 		sessionRepo:    sessionRepo,
 		sessions:       make(map[string]*teamGraphRunSession),
 		cfg:            DefaultCoordinatorConfig(),
+		lg:             lg,
 	}
 }
 
@@ -212,8 +215,9 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 					run.ErrorMessage = fmt.Sprintf("ResumeExecution failed: %s", err.Error())
 					run.FinishedAt = agent.RFC3339Now()
 					if uerr := c.teams.UpdateTeamRun(ctx, run); uerr != nil {
-						event.CtxFlowLogWarn(ctx, "team.graph.resume_fail_update", "UpdateTeamRun failed after ResumeExecution error",
-							event.P("team_run_id", run.ID), event.P("update_error", uerr.Error()))
+						c.lg.Warn("UpdateTeamRun failed after ResumeExecution error",
+						loggateway.StepID("team.graph.resume_fail_update"),
+						loggateway.Str("team_run_id", run.ID), loggateway.Str("update_error", uerr.Error()))
 					}
 				}
 				if c.bus != nil {
@@ -225,8 +229,10 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 			}
 		}
 		c.evictSession(sess.execID)
-		event.SysLogError("team.graph.resume_fail", "HandleTeamGraphTaskCompleted: ResumeExecution failed",
-			event.P("execution_id", task.ExecutionID), event.P("error", err.Error()))
+		c.lg.Error("HandleTeamGraphTaskCompleted: ResumeExecution failed",
+			loggateway.StepID("team.graph.resume_fail"),
+			loggateway.Str("execution_id", task.ExecutionID),
+			loggateway.Err(err))
 		return true, err
 	}
 	run, err := c.teams.GetTeamRunByID(ctx, sess.teamRunID)
@@ -235,12 +241,18 @@ func (c *TeamGraphRunCoordinator) HandleTeamGraphTaskCompleted(ctx context.Conte
 	}
 	if run.Status == biz.TeamRunStatusWaitingHuman {
 		if !biz.ValidateTeamRunTransition(run.Status, biz.TeamRunStatusRunning) {
-			event.SysLogWarn("team.transition_invalid", "HandleTeamGraphTaskCompleted: invalid transition",
-				event.P("team_run_id", run.ID), event.P("from", run.Status), event.P("to", biz.TeamRunStatusRunning))
+			c.lg.Warn("HandleTeamGraphTaskCompleted: invalid transition",
+				loggateway.StepID("team.transition_invalid"),
+				loggateway.Str("team_run_id", run.ID),
+				loggateway.Str("from", run.Status),
+				loggateway.Str("to", biz.TeamRunStatusRunning))
 		} else {
 			run.Status = biz.TeamRunStatusRunning
 			if err := c.teams.UpdateTeamRun(ctx, run); err != nil {
-				event.SysLogWarn("team.usage_record_fail", "HandleTeamGraphTaskCompleted: UpdateTeamRun failed", event.P("team_run_id", run.ID), event.P("error", err.Error()))
+				c.lg.Warn("HandleTeamGraphTaskCompleted: UpdateTeamRun failed",
+					loggateway.StepID("team.usage_record_fail"),
+					loggateway.Str("team_run_id", run.ID),
+					loggateway.Err(err))
 			}
 			c.updateSessionStatus(ctx, sess.execID, biz.TeamRunStatusRunning)
 		}
@@ -296,9 +308,12 @@ func (c *TeamGraphRunCoordinator) startGraphWatch(ctx context.Context, sess *tea
 					sessRun, runErr := c.teams.GetTeamRunByID(watchCtx, sess.teamRunID)
 					if runErr == nil && sessRun.Status == biz.TeamRunStatusWaitingHuman && hitlExtensions < maxHITLSLAExtensions {
 						hitlExtensions++
-						event.SysLogWarn("team.hitl_sla_expired", "HITL SLA expired, extending deadline for manual resolution",
-							event.P("exec_id", sess.execID), event.P("hitl_sla", hitlSLA.String()),
-							event.P("extension", hitlExtensions), event.P("max_extensions", maxHITLSLAExtensions))
+					c.lg.Warn("HITL SLA expired, extending deadline for manual resolution",
+						loggateway.StepID("team.hitl_sla_expired"),
+						loggateway.Str("exec_id", sess.execID),
+						loggateway.Str("hitl_sla", hitlSLA.String()),
+						loggateway.Int("extension", hitlExtensions),
+						loggateway.Int("max_extensions", maxHITLSLAExtensions))
 						deadline = time.After(hitlSLA)
 						continue
 					}
@@ -444,8 +459,9 @@ func (c *TeamGraphRunCoordinator) finalizeTeamRun(ctx context.Context, sess *tea
 		run.Status = biz.TeamRunStatusSuccess
 	}
 	if err := c.teams.UpdateTeamRun(ctx, run); err != nil {
-		event.CtxFlowLogWarn(ctx, "team.graph.finalize_update_fail", "UpdateTeamRun failed in finalizeTeamRun",
-			event.P("team_run_id", run.ID), event.P("update_error", err.Error()))
+		c.lg.Warn("UpdateTeamRun failed in finalizeTeamRun",
+			loggateway.StepID("team.graph.finalize_update_fail"),
+			loggateway.Str("team_run_id", run.ID), loggateway.Str("update_error", err.Error()))
 	}
 	if c.bus != nil {
 		typ := event.EnvelopeTypeTeamRunFinished
@@ -488,7 +504,10 @@ func (c *TeamGraphRunCoordinator) CleanupStaleSessions() {
 			}
 			delete(c.sessions, id)
 			c.deleteSessionFromDB(id)
-			event.SysLogWarn("team.session.stale_evicted", "CleanupStaleSessions: evicted stale session", event.P("exec_id", id), event.P("age", now.Sub(sess.registeredAt).String()))
+			c.lg.Warn("CleanupStaleSessions: evicted stale session",
+				loggateway.StepID("team.session.stale_evicted"),
+				loggateway.Str("exec_id", id),
+				loggateway.Str("age", now.Sub(sess.registeredAt).String()))
 		}
 	}
 }
@@ -535,8 +554,10 @@ func (c *TeamGraphRunCoordinator) persistSession(ctx context.Context, sess *team
 		dbSess.CreatedAt = now
 	}
 	if err := c.sessionRepo.SaveSession(ctx, dbSess); err != nil {
-		event.SysLogWarn("team.session.persist_fail", "persistSession: SaveSession failed",
-			event.P("exec_id", sess.execID), event.P("error", err.Error()))
+		c.lg.Warn("persistSession: SaveSession failed",
+			loggateway.StepID("team.session.persist_fail"),
+			loggateway.Str("exec_id", sess.execID),
+			loggateway.Err(err))
 	}
 }
 
@@ -545,8 +566,11 @@ func (c *TeamGraphRunCoordinator) updateSessionStatus(ctx context.Context, execI
 		return
 	}
 	if err := c.sessionRepo.UpdateSessionStatus(ctx, execID, status); err != nil {
-		event.SysLogWarn("team.session.update_fail", "updateSessionStatus failed",
-			event.P("exec_id", execID), event.P("status", status), event.P("error", err.Error()))
+		c.lg.Warn("updateSessionStatus failed",
+			loggateway.StepID("team.session.update_fail"),
+			loggateway.Str("exec_id", execID),
+			loggateway.Str("status", status),
+			loggateway.Err(err))
 	}
 }
 
@@ -557,8 +581,10 @@ func (c *TeamGraphRunCoordinator) deleteSessionFromDB(execID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := c.sessionRepo.DeleteSession(ctx, execID); err != nil {
-		event.SysLogWarn("team.session.delete_fail", "deleteSessionFromDB failed",
-			event.P("exec_id", execID), event.P("error", err.Error()))
+		c.lg.Warn("deleteSessionFromDB failed",
+			loggateway.StepID("team.session.delete_fail"),
+			loggateway.Str("exec_id", execID),
+			loggateway.Err(err))
 	}
 }
 
@@ -571,17 +597,20 @@ func (c *TeamGraphRunCoordinator) RecoverSessions(ctx context.Context) {
 	}
 	cancelled, err := c.sessionRepo.MarkOrphanedSessionsTerminal(ctx)
 	if err != nil {
-		event.SysLogWarn("team.session.recover_fail", "RecoverSessions: MarkOrphanedSessionsTerminal failed",
-			event.P("error", err.Error()))
+		c.lg.Warn("RecoverSessions: MarkOrphanedSessionsTerminal failed",
+			loggateway.StepID("team.session.recover_fail"),
+			loggateway.Err(err))
 	}
 	if cancelled > 0 {
-		event.SysLogWarn("team.session.orphan_cancelled", "RecoverSessions: cancelled orphaned running sessions",
-			event.P("count", cancelled))
+		c.lg.Warn("RecoverSessions: cancelled orphaned running sessions",
+			loggateway.StepID("team.session.orphan_cancelled"),
+			loggateway.Int("count", cancelled))
 	}
 	active, err := c.sessionRepo.ListActiveSessions(ctx)
 	if err != nil {
-		event.SysLogWarn("team.session.recover_fail", "RecoverSessions: ListActiveSessions failed",
-			event.P("error", err.Error()))
+		c.lg.Warn("RecoverSessions: ListActiveSessions failed",
+			loggateway.StepID("team.session.recover_fail"),
+			loggateway.Err(err))
 		return
 	}
 	if len(active) == 0 {
@@ -612,8 +641,9 @@ func (c *TeamGraphRunCoordinator) RecoverSessions(ctx context.Context) {
 		}
 		recovered++
 	}
-	event.SysLogWarn("team.session.recovered", "RecoverSessions: recovered sessions from DB",
-		event.P("recovered", recovered))
+	c.lg.Warn("RecoverSessions: recovered sessions from DB",
+		loggateway.StepID("team.session.recovered"),
+		loggateway.Int("recovered", recovered))
 }
 
 // BuildTaskResumeValue builds the resume payload for graph checkpoint continuation.

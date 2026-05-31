@@ -4,12 +4,11 @@ import (
 	"context"
 	"strings"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/biz"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/provider"
-
-	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -33,13 +32,14 @@ func PluginCostGuardSelector(
 		}
 		m, err := provider.TRPCModelForProviderModel(ctx, catalog, rt, baseProv, target)
 		if err != nil {
-			event.CtxFlowLogWarn(ctx, "plugin.cost_guard.fallback", "费用保护回退到基础模型",
-				event.P("provider", baseProv), event.P("target", target), event.P("base", baseMod), event.P("error", err))
+			loggateway.Global().Warn("费用保护回退到基础模型",
+				loggateway.StepID("plugin.cost_guard.fallback"),
+				loggateway.Str("provider", baseProv), loggateway.Str("target", target), loggateway.Str("base", baseMod), loggateway.Err(err))
 			metrics.ModelRouterFallbackTotal.WithLabelValues("cost_guard_catalog").Inc()
 			return nil, nil
 		}
-		event.CtxFlowLogDone(ctx, "plugin.cost_guard.fallback", "费用保护切换模型",
-			event.P("provider", baseProv), event.P("target", target), event.P("base", baseMod), event.P("est_tokens", est))
+		loggateway.Global().Info("费用保护切换模型", loggateway.StepID("plugin.cost_guard.fallback"), loggateway.Phase("done"),
+			loggateway.Str("provider", baseProv), loggateway.Str("target", target), loggateway.Str("base", baseMod), loggateway.Int("est_tokens", est))
 		return m, nil
 	}
 }
@@ -80,8 +80,9 @@ func PluginModelSelector(
 		}
 		m, err := provider.TRPCModelForProviderModel(ctx, catalog, rt, baseProv, target)
 		if err != nil {
-			event.CtxFlowLogWarn(ctx, "plugin.model_router.route", "模型路由回退到基础模型",
-				event.P("provider", baseProv), event.P("target", target), event.P("base", baseMod), event.P("error", err))
+			loggateway.Global().Warn("模型路由回退到基础模型",
+				loggateway.StepID("plugin.model_router.route"),
+				loggateway.Str("provider", baseProv), loggateway.Str("target", target), loggateway.Str("base", baseMod), loggateway.Err(err))
 			metrics.ModelRouterFallbackTotal.WithLabelValues("catalog_lookup").Inc()
 			return nil, nil
 		}

@@ -8,6 +8,7 @@ import "google/protobuf/duration.proto";
 message Bootstrap {
   Server server = 1;
   Data data = 2;
+  Logging logging = 3;
 }
 
 message Server {
@@ -29,15 +30,39 @@ message Server {
   HTTP http = 1;
   GRPC grpc = 2;
   WS ws = 4;
-  // Public base URL for A2A endpoints (no trailing slash), e.g. https://host/v1/a2a/public
-  // Override via env A2A_PUBLIC_BASE_URL. Required in production behind TLS/reverse proxy.
   string a2a_public_base_url = 5;
   Monitor monitor = 6;
+  OpenAI openai = 7;
+}
+
+message OpenAI {
+  bool enable = 1;
+  string addr = 2;
+  string base_path = 3;
+  string model_name = 4;
+  string default_agent_key = 5;
 }
 
 message Monitor {
   // Gateway process log (EnvelopeTypeLog) pushed on WS when true. Default in config.yaml: true.
   bool process_log_enabled = 1;
+}
+
+message Logging {
+  string level = 1;
+  string hook_level = 2;
+  string output_dir = 3;
+  int32 max_size_mb = 4;
+  int32 max_backups = 5;
+  int32 max_age_days = 6;
+  bool compress = 7;
+  bool stdout_enabled = 8;
+}
+
+message DebugRecorder {
+  bool enable = 1;
+  string dir = 2;
+  string mode = 3;
 }
 
 message Data {

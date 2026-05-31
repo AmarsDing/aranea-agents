@@ -81,7 +81,7 @@ func (m *memCronExecRepo) UpdateCronTaskRun(_ context.Context, id, status, finis
 
 func TestFinishTaskRun_ReloadsMetadataBeforeFinalize(t *testing.T) {
 	repo := newMemCronExecRepo()
-	r := &Runner{deps: Deps{Cron: repo}}
+	r := &Runner{deps: Deps{Cron: repo}, lg: testCronLG}
 	cfg, err := parseCronTaskConfig(repo.tasks["t1"].ConfigJSON)
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +114,7 @@ func TestFinishTaskRun_ReloadsMetadataBeforeFinalize(t *testing.T) {
 
 func TestFinalizeRun_SkippedDoesNotIncrementFailureCount(t *testing.T) {
 	repo := newMemCronExecRepo()
-	r := &Runner{deps: Deps{Cron: repo}}
+	r := &Runner{deps: Deps{Cron: repo}, lg: testCronLG}
 	cfg, _ := parseCronTaskConfig(repo.tasks["t1"].ConfigJSON)
 	meta := parseCronTaskMetadata(repo.tasks["t1"].MetadataJSON)
 
@@ -138,7 +138,7 @@ func TestFinalizeRun_SkippedDoesNotIncrementFailureCount(t *testing.T) {
 
 func TestRecordScheduleFailure_CreatesRunAndIncrementsFailure(t *testing.T) {
 	repo := newMemCronExecRepo()
-	r := &Runner{deps: Deps{Cron: repo}}
+	r := &Runner{deps: Deps{Cron: repo}, lg: testCronLG}
 	now := time.Now().UTC()
 	cfg, _ := parseCronTaskConfig(`{"message":"","schedule_type":"interval","interval_seconds":60}`)
 
@@ -175,7 +175,7 @@ func TestFinalizeRun_ManualFailureDoesNotIncrementDeadCounter(t *testing.T) {
 		ConfigJSON:   `{"message":"hi","schedule_type":"interval","interval_seconds":60}`,
 		MetadataJSON: `{"failure_count":2}`,
 	}
-	r := &Runner{deps: Deps{Cron: repo}}
+	r := &Runner{deps: Deps{Cron: repo}, lg: testCronLG}
 	cfg, _ := parseCronTaskConfig(repo.tasks["t1"].ConfigJSON)
 	meta := parseCronTaskMetadata(repo.tasks["t1"].MetadataJSON)
 

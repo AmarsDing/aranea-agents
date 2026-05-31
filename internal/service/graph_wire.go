@@ -1,8 +1,10 @@
 package service
 
-import "aranea-agents/internal/biz"
+import (
+	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
+)
 
-// ProvideGraphUsecase wires the graph execution observer from the service layer into biz.
 func ProvideGraphUsecase(
 	repo biz.GraphRepo,
 	runRepo biz.GraphRunRepo,
@@ -11,5 +13,5 @@ func ProvideGraphUsecase(
 	orchProjector *GraphOrchestrationProjector,
 ) *biz.GraphUsecase {
 	observer := compositeGraphExecutionObserver{telemetry, orchProjector}
-	return biz.NewGraphUsecase(repo, runRepo, factory, observer)
+	return biz.NewGraphUsecase(repo, runRepo, factory, observer, loggateway.Global())
 }

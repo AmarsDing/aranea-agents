@@ -9,7 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/runtime"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -57,8 +57,9 @@ func RunPolling(
 			}
 			ev.PlatformType = "telegram"
 			if err := handler.ProcessInbound(ctx, ch, ev); err != nil {
-				event.SysLogWarn("channel.telegram.inbound_failed", "Telegram 入站处理失败",
-					event.P("error", err.Error()),
+				loggateway.Global().Warn("Telegram 入站处理失败",
+					loggateway.StepID("channel.telegram.inbound_failed"),
+					loggateway.Err(err),
 				)
 			}
 		}

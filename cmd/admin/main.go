@@ -19,6 +19,7 @@ import (
 	"aranea-agents/internal/service"
 	"aranea-agents/internal/telemetry"
 	"aranea-agents/pkg/auth"
+	loggateway "aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	_ "aranea-agents/internal/channel/all"
@@ -51,6 +52,7 @@ func init() {
 
 func newApp(
 	logger log.Logger,
+	lg loggateway.Logger,
 	gs *grpc.Server,
 	hs *http.Server,
 	wsSrv *server.WSServer,
@@ -63,6 +65,7 @@ func newApp(
 	teamUC *biz.TeamUsecase,
 	positionUC *biz.PositionUsecase,
 	d *data.Data,
+	guard *service.SessionStatusGuard,
 ) *kratos.App {
 	// EP-OBS-03: WSServer implements transport.Server (Start/Stop); register it so
 	// kratos.App orchestrates its lifecycle and Stop triggers broadcastShutdown.
@@ -86,7 +89,10 @@ func newApp(
 		kratos.Metadata(map[string]string{}),
 		kratos.Logger(logger),
 		kratos.Server(srv...),
-		kratos.BeforeStart(func(context.Context) error {
+		kratos.BeforeStart(func(ctx context.Context) error {
+			if err := guard.OnStartup(ctx); err != nil {
+				logger.Log(log.LevelWarn, "msg", "session status guard startup failed", "error", err.Error())
+			}
 			consumer.Start(consumerCtx)
 			if sideConsumers != nil {
 				sideConsumers.Start(consumerCtx)
@@ -109,7 +115,10 @@ func newApp(
 			})
 			return nil
 		}),
-		kratos.AfterStop(func(context.Context) error {
+		kratos.AfterStop(func(ctx context.Context) error {
+			if err := guard.OnShutdown(ctx); err != nil {
+				logger.Log(log.LevelWarn, "msg", "session status guard shutdown failed", "error", err.Error())
+			}
 			consumerCancel()
 			return nil
 		}),
@@ -153,7 +162,13 @@ func main() {
 	shutdownTelemetry := telemetry.Init(Name, Version)
 	defer func() { _ = shutdownTelemetry(context.Background()) }()
 
-	out, cleanup, err := wireApp(bc.Server, bc.Data, logger)
+	var lg loggateway.Logger = loggateway.NewNoop()
+	if bc.Logging != nil {
+		lg = loggateway.New(bc.Logging)
+	}
+	loggateway.SetGlobal(lg.(*loggateway.Gateway))
+
+	out, cleanup, err := wireApp(bc.Server, bc.Data, nil, logger, lg)
 	if err != nil {
 		panic(err)
 	}
@@ -237,6 +252,11 @@ func main() {
 	if out.EvolutionScanner != nil {
 		go out.EvolutionScanner.Start(cronCtx)
 		logger.Log(log.LevelInfo, "msg", "evolution scanner started", "interval", "30m")
+	}
+
+	if out.LearningLoopScanner != nil {
+		go out.LearningLoopScanner.Start(cronCtx)
+		logger.Log(log.LevelInfo, "msg", "learning loop scanner started", "interval", "30m")
 	}
 
 	if out.ProviderHealthScanner != nil {

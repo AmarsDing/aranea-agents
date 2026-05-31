@@ -53,6 +53,8 @@ func (Session) Fields() []ent.Field {
 		field.Int("last_context_window_tokens").Default(0),
 
 		field.String("status").Default("active"),
+		field.String("status_reason").Default(""),
+		field.String("status_changed_at").Default(""),
 		field.String("visibility").Default("private"),
 
 		field.Int("message_count").Default(0),

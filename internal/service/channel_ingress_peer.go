@@ -7,7 +7,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/lark"
 	"aranea-agents/internal/channel/port"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 const flowStepChannelReaction = "channel.feishu.reaction"
@@ -107,20 +107,22 @@ func (h *ChannelIngress) startFeishuProcessingReaction(ctx context.Context, chRo
 	}
 	reactionID, err := rc.Add(ctx, msgID)
 	if err != nil {
-		event.SysLogWarn(flowStepChannelReaction, "飞书处理中 Reaction 添加失败",
-			event.P("channel_id", chRow.ID),
-			event.P("message_id", msgID),
-			event.P("error", err.Error()),
+		h.lg.Warn("飞书处理中 Reaction 添加失败",
+			loggateway.StepID(flowStepChannelReaction),
+			loggateway.Str("channel_id", chRow.ID),
+			loggateway.Str("message_id", msgID),
+			loggateway.Err(err),
 		)
 		return func() {}
 	}
 	return func() {
 		if err := rc.Remove(context.WithoutCancel(ctx), msgID, reactionID); err != nil {
-			event.SysLogWarn(flowStepChannelReaction, "飞书处理中 Reaction 移除失败",
-				event.P("channel_id", chRow.ID),
-				event.P("message_id", msgID),
-				event.P("reaction_id", reactionID),
-				event.P("error", err.Error()),
+			h.lg.Warn("飞书处理中 Reaction 移除失败",
+				loggateway.StepID(flowStepChannelReaction),
+				loggateway.Str("channel_id", chRow.ID),
+				loggateway.Str("message_id", msgID),
+				loggateway.Str("reaction_id", reactionID),
+				loggateway.Err(err),
 			)
 		}
 	}

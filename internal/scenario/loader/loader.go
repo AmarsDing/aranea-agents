@@ -65,7 +65,7 @@ func seedAgents(ctx context.Context, d Deps, spec *IndustrySpec, dryRun bool) (i
 	count := 0
 	for i := range spec.Agents {
 		as := &spec.Agents[i]
-		agent, err := buildBizAgent(ctx, d, spec, as)
+		agent, err := BuildBizAgentFromSpec(ctx, d, spec, as)
 		if err != nil {
 			return count, fmt.Errorf("agent %s: %w", as.Key, err)
 		}
@@ -108,7 +108,7 @@ func seedTeams(ctx context.Context, d Deps, spec *IndustrySpec, dryRun bool) (in
 	count := 0
 	for i := range spec.Teams {
 		ts := &spec.Teams[i]
-		team, err := buildBizTeam(spec, ts, agentKeyToID)
+		team, err := BuildBizTeamFromSpec(spec, ts, agentKeyToID)
 		if err != nil {
 			return count, fmt.Errorf("team %s: %w", ts.Key, err)
 		}
@@ -130,7 +130,7 @@ func seedTeams(ctx context.Context, d Deps, spec *IndustrySpec, dryRun bool) (in
 	return count, nil
 }
 
-func buildBizAgent(ctx context.Context, d Deps, spec *IndustrySpec, as *AgentSpec) (biz.Agent, error) {
+func BuildBizAgentFromSpec(ctx context.Context, d Deps, spec *IndustrySpec, as *AgentSpec) (biz.Agent, error) {
 	posName := as.DisplayName
 	posDesc := as.Description
 	if as.PositionKey != "" {
@@ -244,7 +244,7 @@ func buildBizAgent(ctx context.Context, d Deps, spec *IndustrySpec, as *AgentSpe
 	}, nil
 }
 
-func buildBizTeam(spec *IndustrySpec, ts *TeamSpec, keyToID map[string]string) (biz.Team, error) {
+func BuildBizTeamFromSpec(spec *IndustrySpec, ts *TeamSpec, keyToID map[string]string) (biz.Team, error) {
 	members := make([]biz.OrchestrationMember, 0, len(ts.Members))
 	for _, m := range ts.Members {
 		agentID, ok := keyToID[m.AgentKey]

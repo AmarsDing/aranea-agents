@@ -15,7 +15,7 @@ import (
 	"github.com/go-kratos/kratos/v2/errors"
 
 	"aranea-agents/internal/biz/shared"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/webhookurl"
 )
 
@@ -451,11 +451,12 @@ type Resolver struct {
 	mu     sync.RWMutex
 	cache  []ResolvedHook
 	loaded bool
+	lg     loggateway.Logger
 }
 
 // NewResolver creates a resolver backed by HookUsecase.
-func NewResolver(uc *Usecase) *Resolver {
-	return &Resolver{uc: uc}
+func NewResolver(uc *Usecase, lg loggateway.Logger) *Resolver {
+	return &Resolver{uc: uc, lg: lg}
 }
 
 // Reload refreshes the in-memory hook snapshot (enabled + active only).
@@ -509,7 +510,7 @@ func (r *Resolver) Resolve(agentID, agentKey string) []ResolvedHook {
 	r.mu.RUnlock()
 	if !wasLoaded {
 		if err := r.Reload(context.Background()); err != nil {
-			event.SysLogWarn("system.hook", "resolver.fallback_reload_failed", event.P("error", err.Error()))
+			r.lg.Warn("resolver.fallback_reload_failed", loggateway.StepID("system.hook"), loggateway.Err(err))
 			return nil
 		}
 		r.mu.RLock()

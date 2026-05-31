@@ -72,6 +72,8 @@ func entSessionToBiz(e *ent.Session) biz.Session {
 		LastModel:                  e.LastModel,
 		LastContextWindowTokens:    e.LastContextWindowTokens,
 		Status:                     e.Status,
+		StatusReason:               e.StatusReason,
+		StatusChangedAt:            e.StatusChangedAt,
 		Visibility:                 e.Visibility,
 		MessageCount:               e.MessageCount,
 		RunCount:                   e.RunCount,
@@ -276,6 +278,15 @@ func (r *sessionRepo) UpdateSession(ctx context.Context, id string, fields biz.S
 	if fields.DefaultModel != nil {
 		upd = upd.SetDefaultModel(*fields.DefaultModel)
 	}
+	if fields.Status != nil {
+		upd = upd.SetStatus(*fields.Status)
+	}
+	if fields.StatusReason != nil {
+		upd = upd.SetStatusReason(*fields.StatusReason)
+	}
+	if fields.StatusChangedAt != nil {
+		upd = upd.SetStatusChangedAt(*fields.StatusChangedAt)
+	}
 	_, err := upd.Save(ctx)
 	if err != nil {
 		return biz.Session{}, err
@@ -285,12 +296,15 @@ func (r *sessionRepo) UpdateSession(ctx context.Context, id string, fields biz.S
 
 func (r *sessionRepo) RestoreSession(ctx context.Context, id string) (biz.Session, error) {
 	c := r.txClient(ctx)
+	now := nowRFC3339()
 	_, err := c.Session.Update().
 		Where(entsession.IDEQ(id)).
 		SetStatus("active").
+		SetStatusReason("").
+		SetStatusChangedAt(now).
 		SetArchivedAt("").
 		SetDeletedAt("").
-		SetUpdatedAt(nowRFC3339()).
+		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
 		return biz.Session{}, err
@@ -342,6 +356,8 @@ func (r *sessionRepo) ArchiveSession(ctx context.Context, id string) (int, error
 	n, err := c.Session.Update().
 		Where(entsession.IDEQ(id), entsession.DeletedAtEQ(""), entsession.StatusNEQ("running"), entsession.StatusNEQ("archived")).
 		SetStatus("archived").
+		SetStatusReason("manual_override").
+		SetStatusChangedAt(now).
 		SetArchivedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
@@ -358,6 +374,8 @@ func (r *sessionRepo) DeleteSession(ctx context.Context, id string) (int, error)
 		Where(entsession.IDEQ(id), entsession.DeletedAtEQ(""), entsession.StatusNEQ("running")).
 		SetDeletedAt(now).
 		SetStatus("deleted").
+		SetStatusReason("manual_override").
+		SetStatusChangedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
@@ -377,6 +395,8 @@ func (r *sessionRepo) DeleteSessionsByAgentID(ctx context.Context, agentID strin
 		Where(entsession.AgentIDEQ(agentID), entsession.DeletedAtEQ("")).
 		SetDeletedAt(now).
 		SetStatus("deleted").
+		SetStatusReason("manual_override").
+		SetStatusChangedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
 	return err

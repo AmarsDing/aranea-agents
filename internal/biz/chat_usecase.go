@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -98,6 +98,7 @@ type ChatUsecase struct {
 	publisher  ChatEventPublisher
 	awaitChans sync.Map
 	bgCancel   context.CancelFunc
+	lg         loggateway.Logger
 }
 
 func NewChatUsecase(
@@ -106,6 +107,7 @@ func NewChatUsecase(
 	pending ChatPendingQueue,
 	persist ChatRunStatusPersister,
 	publisher ChatEventPublisher,
+	lg loggateway.Logger,
 ) *ChatUsecase {
 	return &ChatUsecase{
 		runs:      runs,
@@ -113,6 +115,7 @@ func NewChatUsecase(
 		pending:   pending,
 		persist:   persist,
 		publisher: publisher,
+		lg:        lg,
 	}
 }
 
@@ -130,7 +133,7 @@ func (uc *ChatUsecase) CancelRun(sessionID string) (bool, string) {
 
 func (uc *ChatUsecase) SetRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) {
 	if err := uc.persist.PersistRunStatus(ctx, sessionID, runID, status, errMsg); err != nil {
-		event.SysLogError("chat.persist_run_status", "persist run status failed", event.P("session_id", sessionID), event.P("run_id", runID), event.P("error", err.Error()))
+		uc.lg.Error("persist run status failed", loggateway.StepID("chat.persist_run_status"), loggateway.SessionID(sessionID), loggateway.Str("run_id", runID), loggateway.Err(err))
 	}
 	uc.runs.SetStatus(sessionID, runID, status, errMsg)
 	uc.publisher.PublishRunStatus(sessionID, runID, status, errMsg)
@@ -245,7 +248,7 @@ func (uc *ChatUsecase) StartBackgroundGoroutines() {
 					}
 					entry, ok := val.(awaitChanEntry)
 					if ok && now.Sub(entry.createdAt) > awaitChanMaxAge {
-						event.SysLogWarn("system.session.compress", "await channel expired, cleaning up", event.P("session_id", sid), event.P("age", now.Sub(entry.createdAt).Round(time.Second).String()))
+						uc.lg.Warn("await channel expired, cleaning up", loggateway.StepID("system.session.compress"), loggateway.SessionID(sid), loggateway.Str("age", now.Sub(entry.createdAt).Round(time.Second).String()))
 						close(entry.ch)
 						uc.awaitChans.Delete(key)
 					}

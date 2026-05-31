@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/lark"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
@@ -31,6 +32,7 @@ type ChannelIngress struct {
 	peerDebouncer   *ingressPeerDebouncer
 	previewRegistry *turnPreviewRegistry
 	concurrentGate  *channelConcurrentGate
+	lg              loggateway.Logger
 }
 
 // NewChannelIngress wires channel runtime ingress.
@@ -46,6 +48,7 @@ func NewChannelIngress(
 	graphs biz.GraphExecutor,
 	cron biz.CronTriggerGateway,
 	eventBus event.Bus,
+	lg loggateway.Logger,
 ) *ChannelIngress {
 	return &ChannelIngress{
 		channels:        channels,
@@ -56,6 +59,7 @@ func NewChannelIngress(
 		graphs:          graphs,
 		cron:            cron,
 		eventBus:        eventBus,
+		lg:              lg,
 		http:            lark.DefaultHTTPClient(),
 		messageDedupe:   newIngressMessageDedupe(defaultMessageDedupeTTL),
 		peerDebouncer:   newIngressPeerDebouncer(defaultIngressDebounce),
@@ -100,81 +104,91 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 		switch channelType {
 		case "dingtalk":
 			if err := h.handleDingTalkWebhook(w, r, chRow); err != nil {
-				event.SysLogWarn("channel.webhook.dingtalk_failed", "钉钉 Webhook 处理失败",
-					event.P("error", err.Error()),
-					event.P("channel_id", chRow.ID),
+				h.lg.Warn("钉钉 Webhook 处理失败",
+					loggateway.StepID("channel.webhook.dingtalk_failed"),
+					loggateway.Str("error", err.Error()),
+					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
 			return nil
 		case "wecom", "wecom-app":
 			if err := h.handleWeComWebhook(w, r, chRow); err != nil {
-				event.SysLogWarn("channel.webhook.wecom_failed", "企微 Webhook 处理失败",
-					event.P("error", err.Error()),
-					event.P("channel_id", chRow.ID),
+				h.lg.Warn("企微 Webhook 处理失败",
+					loggateway.StepID("channel.webhook.wecom_failed"),
+					loggateway.Str("error", err.Error()),
+					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
 			return nil
 		case "slack":
 			if err := h.handleSlackWebhook(w, r, chRow); err != nil {
-				event.SysLogWarn("channel.webhook.slack_failed", "Slack Webhook 处理失败",
-					event.P("error", err.Error()),
-					event.P("channel_id", chRow.ID),
+				h.lg.Warn("Slack Webhook 处理失败",
+					loggateway.StepID("channel.webhook.slack_failed"),
+					loggateway.Str("error", err.Error()),
+					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
 			return nil
 		case "telegram":
 			if err := h.handleTelegramWebhook(w, r, chRow); err != nil {
-				event.SysLogWarn("channel.webhook.telegram_failed", "Telegram Webhook 处理失败",
-					event.P("error", err.Error()),
-					event.P("channel_id", chRow.ID),
+				h.lg.Warn("Telegram Webhook 处理失败",
+					loggateway.StepID("channel.webhook.telegram_failed"),
+					loggateway.Str("error", err.Error()),
+					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
 			return nil
 		case "wechat":
 			if err := h.handleWeChatWebhook(w, r, chRow); err != nil {
-				event.SysLogWarn("channel.webhook.wechat_failed", "微信 Webhook 处理失败",
-					event.P("error", err.Error()),
-					event.P("channel_id", chRow.ID),
+				h.lg.Warn("微信 Webhook 处理失败",
+					loggateway.StepID("channel.webhook.wechat_failed"),
+					loggateway.Str("error", err.Error()),
+					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
 			return nil
 		case "personal_qq":
 			if err := h.handleOneBotWebhook(w, r, chRow); err != nil {
-				event.SysLogWarn("channel.webhook.onebot_failed", "OneBot Webhook 处理失败",
-					event.P("error", err.Error()),
-					event.P("channel_id", chRow.ID),
+				h.lg.Warn("OneBot Webhook 处理失败",
+					loggateway.StepID("channel.webhook.onebot_failed"),
+					loggateway.Str("error", err.Error()),
+					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
 			return nil
 		case "qq":
 			if err := h.handleQQWebhook(w, r, chRow); err != nil {
-				event.SysLogWarn("channel.webhook.qq_failed", "QQ Webhook 处理失败",
-					event.P("error", err.Error()),
-					event.P("channel_id", chRow.ID),
+				h.lg.Warn("QQ Webhook 处理失败",
+					loggateway.StepID("channel.webhook.qq_failed"),
+					loggateway.Str("error", err.Error()),
+					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
 			return nil
 		case "line":
 			if err := h.handleLINEWebhook(w, r, chRow); err != nil {
-				event.SysLogWarn("channel.webhook.line_failed", "LINE Webhook 处理失败",
-					event.P("error", err.Error()),
-					event.P("channel_id", chRow.ID),
+				h.lg.Warn("LINE Webhook 处理失败",
+					loggateway.StepID("channel.webhook.line_failed"),
+					loggateway.Str("error", err.Error()),
+					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
 			return nil
 		case "mattermost":
 			if err := h.handleMattermostWebhook(w, r, chRow); err != nil {
-				event.SysLogWarn("channel.webhook.mattermost_failed", "Mattermost Webhook 处理失败",
-					event.P("error", err.Error()),
-					event.P("channel_id", chRow.ID),
+				h.lg.Warn("Mattermost Webhook 处理失败",
+					loggateway.StepID("channel.webhook.mattermost_failed"),
+					loggateway.Str("error", err.Error()),
+					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
 			return nil
 		case "teams":
 			if err := h.handleTeamsWebhook(w, r, chRow); err != nil {
-				event.SysLogWarn("channel.webhook.teams_failed", "Teams Webhook 处理失败",
-					event.P("error", err.Error()),
-					event.P("channel_id", chRow.ID),
+				h.lg.Warn("Teams Webhook 处理失败",
+					loggateway.StepID("channel.webhook.teams_failed"),
+					loggateway.Str("error", err.Error()),
+					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
 			return nil
@@ -197,9 +211,10 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 		}
 		encryptKey, encErr := resolveCredentialPlain(r.Context(), h.channels, creds, "encrypt_key")
 		if encErr != nil {
-			event.SysLogWarn("channel.credential.resolve_failed", "凭证解析失败",
-				event.P("key", "encrypt_key"),
-				event.P("error", encErr.Error()),
+			h.lg.Warn("凭证解析失败",
+				loggateway.StepID("channel.credential.resolve_failed"),
+				loggateway.Str("key", "encrypt_key"),
+				loggateway.Str("error", encErr.Error()),
 			)
 		}
 		raw, err = lark.UnwrapEncryptedWebhookBody(encryptKey, raw)
@@ -213,9 +228,10 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 		}
 		verTok, verErr := resolveCredentialPlain(r.Context(), h.channels, creds, "verification_token")
 		if verErr != nil {
-			event.SysLogWarn("channel.credential.resolve_failed", "凭证解析失败",
-				event.P("key", "verification_token"),
-				event.P("error", verErr.Error()),
+			h.lg.Warn("凭证解析失败",
+				loggateway.StepID("channel.credential.resolve_failed"),
+				loggateway.Str("key", "verification_token"),
+				loggateway.Str("error", verErr.Error()),
 			)
 		}
 		parsed, err := lark.ParseWebhookPost(raw, verTok)
@@ -264,8 +280,9 @@ func channelTypeFromConfig(configJSON string) string {
 		Type string `json:"type"`
 	}
 	if err := json.Unmarshal([]byte(configJSON), &env); err != nil {
-		event.SysLogWarn("channel.config.parse_failed", "渠道配置 JSON 解析失败",
-			event.P("error", err.Error()),
+		loggateway.Global().Warn("渠道配置 JSON 解析失败",
+			loggateway.StepID("channel.config.parse_failed"),
+			loggateway.Str("error", err.Error()),
 		)
 	}
 	return strings.TrimSpace(strings.ToLower(env.Type))
@@ -276,8 +293,9 @@ func channelReceiveModeFromConfig(configJSON string) string {
 		ReceiveMode string `json:"receive_mode"`
 	}
 	if err := json.Unmarshal([]byte(configJSON), &env); err != nil {
-		event.SysLogWarn("channel.config.parse_failed", "渠道配置 JSON 解析失败",
-			event.P("error", err.Error()),
+		loggateway.Global().Warn("渠道配置 JSON 解析失败",
+			loggateway.StepID("channel.config.parse_failed"),
+			loggateway.Str("error", err.Error()),
 		)
 	}
 	return strings.TrimSpace(strings.ToLower(env.ReceiveMode))
@@ -286,7 +304,12 @@ func channelReceiveModeFromConfig(configJSON string) string {
 func (h *ChannelIngress) recordDelivery(ctx context.Context, channelID, status string, payload map[string]any, errMsg string) {
 	b, _ := json.Marshal(payload)
 	if err := h.channels.AddInboundDelivery(ctx, channelID, status, string(b), errMsg); err != nil {
-		event.SysLogWarn("system.monitor.alert_channel_fail", "recordDelivery failed", event.P("channel_id", channelID), event.P("status", status), event.P("error", err.Error()))
+		h.lg.Warn("recordDelivery failed",
+			loggateway.StepID("system.monitor.alert_channel_fail"),
+			loggateway.Str("channel_id", channelID),
+			loggateway.Str("status", status),
+			loggateway.Str("error", err.Error()),
+		)
 	}
 }
 
@@ -307,15 +330,17 @@ func resolveCredentialPlain(ctx context.Context, channels *biz.ChannelUsecase, c
 		}
 		ref := strings.TrimSpace(c.SecretRef)
 		if ref == "" {
-			event.SysLogWarn("channel.credential.empty_ref", "凭证 secret_ref 为空",
-				event.P("key", key),
+			loggateway.Global().Warn("凭证 secret_ref 为空",
+				loggateway.StepID("channel.credential.empty_ref"),
+				loggateway.Str("key", key),
 			)
 			return "", nil
 		}
 		return ResolveSecretRef(ctx, channels, ref)
 	}
-	event.SysLogWarn("channel.credential.not_found", "凭证 key 未找到",
-		event.P("key", key),
+	loggateway.Global().Warn("凭证 key 未找到",
+		loggateway.StepID("channel.credential.not_found"),
+		loggateway.Str("key", key),
 	)
 	return "", nil
 }

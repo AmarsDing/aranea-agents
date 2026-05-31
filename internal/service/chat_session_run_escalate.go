@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 const (
@@ -58,10 +58,11 @@ func (s *ChatService) EscalateSessionRun(ctx context.Context, sessionRunID, expe
 		return channelBackgroundReplyNoActiveRun, nil
 	}
 	if expectedSessionID != "" && run.SessionID != expectedSessionID {
-		event.SysLogWarn(flowStepRunEscalate, "session run ownership denied",
-			event.P("session_run_id", sessionRunID),
-			event.P("expected_session_id", expectedSessionID),
-			event.P("run_session_id", run.SessionID),
+		loggateway.Global().Warn("session run ownership denied",
+			loggateway.StepID(flowStepRunEscalate),
+			loggateway.Str("session_run_id", sessionRunID),
+			loggateway.Str("expected_session_id", expectedSessionID),
+			loggateway.Str("run_session_id", run.SessionID),
 		)
 		return channelBackgroundReplyDenied, nil
 	}

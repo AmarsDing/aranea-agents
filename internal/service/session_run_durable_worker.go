@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -17,13 +17,14 @@ type SessionRunDurableWorker struct {
 	runs     *biz.SessionRunUsecase
 	runCtrl  biz.TurnRunControlGateway
 	resumer  biz.DurableResumeGateway
+	lg       loggateway.Logger
 }
 
-func NewSessionRunDurableWorker(runs *biz.SessionRunUsecase, runCtrl biz.TurnRunControlGateway, resumer biz.DurableResumeGateway) *SessionRunDurableWorker {
+func NewSessionRunDurableWorker(runs *biz.SessionRunUsecase, runCtrl biz.TurnRunControlGateway, resumer biz.DurableResumeGateway, lg loggateway.Logger) *SessionRunDurableWorker {
 	if runs == nil || runCtrl == nil || resumer == nil {
 		return nil
 	}
-	return &SessionRunDurableWorker{runs: runs, runCtrl: runCtrl, resumer: resumer}
+	return &SessionRunDurableWorker{runs: runs, runCtrl: runCtrl, resumer: resumer, lg: lg}
 }
 
 func (w *SessionRunDurableWorker) Start(ctx context.Context) {
@@ -32,9 +33,15 @@ func (w *SessionRunDurableWorker) Start(ctx context.Context) {
 	}
 	// Clean up zombie runs from a previous process crash/restart.
 	if n, err := w.runs.CleanupOrphanedRuns(context.Background()); err != nil {
-		event.SysLogWarn("session.durable_worker", "orphan cleanup failed", event.P("error", err.Error()))
+		w.lg.Warn("orphan cleanup failed",
+			loggateway.StepID("session.durable_worker"),
+			loggateway.Str("error", err.Error()),
+		)
 	} else if n > 0 {
-		event.SysLogInfo("session.durable_worker", "orphaned runs cleaned up", event.P("count", n))
+		w.lg.Info("orphaned runs cleaned up",
+			loggateway.StepID("session.durable_worker"),
+			loggateway.Int("count", n),
+		)
 	}
 	safego.Go(ctx, "session-run-durable-worker", func() {
 		ticker := time.NewTicker(sessionRunWorkerPollInterval)
@@ -63,7 +70,11 @@ func (w *SessionRunDurableWorker) processOnce(ctx context.Context) {
 			continue
 		}
 		if err := w.resumer.ResumeDurableSessionRun(ctx, run.ID); err != nil {
-			event.SysLogWarn("session.durable_worker", "resume failed", event.P("run_id", run.ID), event.P("error", err.Error()))
+			w.lg.Warn("resume failed",
+				loggateway.StepID("session.durable_worker"),
+				loggateway.Str("run_id", run.ID),
+				loggateway.Str("error", err.Error()),
+			)
 		}
 	}
 }

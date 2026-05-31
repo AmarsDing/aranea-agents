@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	v1 "aranea-agents/api/kratos/hook/v1"
 	"aranea-agents/internal/biz"
@@ -36,7 +36,10 @@ func (s *HookService) reloadHooks(ctx context.Context) {
 	}
 	safego.Go(ctx, "hook.reload", func() {
 		if err := s.mgr.ReloadHooks(context.Background()); err != nil {
-			event.SysLogWarn("system.hook.reload_fail", "Hook 重载失败", event.P("error", err))
+			loggateway.Global().Warn("Hook 重载失败",
+				loggateway.StepID("system.hook.reload_fail"),
+				loggateway.Err(err),
+			)
 		}
 	})
 }

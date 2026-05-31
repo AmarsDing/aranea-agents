@@ -8,7 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/runtime"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"github.com/slack-go/slack"
@@ -75,8 +75,9 @@ func RunSocketMode(
 					}
 					ev.PlatformType = "slack"
 					if err := handler.ProcessInbound(ctx, chRow, ev); err != nil {
-						event.SysLogWarn("channel.slack.inbound_failed", "Slack 入站处理失败",
-							event.P("error", err.Error()),
+						loggateway.Global().Warn("Slack 入站处理失败",
+							loggateway.StepID("channel.slack.inbound_failed"),
+							loggateway.Err(err),
 						)
 					}
 				}

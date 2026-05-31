@@ -1,7 +1,7 @@
 package biz
 
 import (
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"context"
 	"fmt"
 	"strings"
@@ -148,9 +148,10 @@ type TaskUsecase struct {
 	mu                sync.RWMutex
 	heartbeats        map[string]time.Time
 	leaseDeadline     map[string]time.Time
+	lg                loggateway.Logger
 }
 
-func NewTaskUsecase(repo TaskRepo, graphUC TaskGraphResolver, agents AgentRepository) *TaskUsecase {
+func NewTaskUsecase(repo TaskRepo, graphUC TaskGraphResolver, agents AgentRepository, lg loggateway.Logger) *TaskUsecase {
 	return &TaskUsecase{
 		reader:      repo,
 		writer:      repo,
@@ -163,6 +164,7 @@ func NewTaskUsecase(repo TaskRepo, graphUC TaskGraphResolver, agents AgentReposi
 		agentLister: ProvideAgentListerByRole(agents),
 		heartbeats:  make(map[string]time.Time),
 		leaseDeadline: make(map[string]time.Time),
+		lg:          lg,
 	}
 }
 
@@ -189,7 +191,7 @@ func (uc *TaskUsecase) afterTaskMutation(ctx context.Context, task *GraphTask, e
 	uc.promoteReadyChildren(ctx, task)
 	if uc.completionHandler != nil {
 		if err := uc.completionHandler.OnTaskCompleted(ctx, task); err != nil {
-			event.SysLogWarn("task.completion_handler", "OnTaskCompleted failed", event.P("error", err.Error()))
+			uc.lg.Warn("OnTaskCompleted failed", loggateway.StepID("task.completion_handler"), loggateway.Err(err))
 		}
 	}
 }
@@ -484,8 +486,9 @@ func (uc *TaskUsecase) CheckTimeouts(ctx context.Context) error {
 		if task.Status == TaskStatusClaimed {
 			task.Status = TaskStatusTimedOut
 			if err := uc.writer.UpdateTask(ctx, task); err != nil {
-				event.SysLogError("system.task.timeout_update_fail", "timeout update task failed",
-					event.P("task_id", e.taskID), event.P("error", err.Error()))
+				uc.lg.Error("timeout update task failed",
+					loggateway.StepID("system.task.timeout_update_fail"),
+					loggateway.Str("task_id", e.taskID), loggateway.Err(err))
 				continue
 			}
 			uc.recordTaskEvent(ctx, e.taskID, "task_timed_out", task.NodeID, "task timed out")
@@ -516,8 +519,9 @@ func (uc *TaskUsecase) ReleaseClaim(ctx context.Context, taskID string) {
 	task.Assignee = ""
 	task.ClaimedAt = nil
 	if err := uc.writer.UpdateTask(ctx, task); err != nil {
-		event.SysLogWarn("system.task.release_claim_fail", "release claim update failed",
-			event.P("task_id", taskID), event.P("error", err.Error()))
+		uc.lg.Warn("release claim update failed",
+			loggateway.StepID("system.task.release_claim_fail"),
+			loggateway.Str("task_id", taskID), loggateway.Err(err))
 	}
 	uc.recordTaskEvent(ctx, taskID, "task_claim_released", task.NodeID, "claim released after dispatch failure")
 	uc.publishTaskStatus(ctx, task, nil)
@@ -533,6 +537,6 @@ func (uc *TaskUsecase) recordTaskEvent(ctx context.Context, taskID string, event
 		Timestamp:   time.Now(),
 	}
 	if err := uc.events.SaveTaskEvent(ctx, evt); err != nil {
-		event.SysLogWarn("task.event_save", "SaveTaskEvent failed", event.P("error", err.Error()))
+		uc.lg.Warn("SaveTaskEvent failed", loggateway.StepID("task.event_save"), loggateway.Err(err))
 	}
 }

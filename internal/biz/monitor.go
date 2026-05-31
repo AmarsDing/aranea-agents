@@ -36,6 +36,7 @@ var (
 	WithRingBuffer                  = monitor.WithRingBuffer
 	WithEvalWorker                  = monitor.WithEvalWorker
 	WithRegistry                    = monitor.WithRegistry
+	WithLogger                      = monitor.WithLogger
 	NewTraceProjector               = monitor.NewTraceProjector
 	NewFlowFileAppender             = monitor.NewFlowFileAppender
 	NewAlertMetricRegistry          = monitor.NewAlertMetricRegistry

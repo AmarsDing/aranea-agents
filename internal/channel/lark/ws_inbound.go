@@ -7,7 +7,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/runtime"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 const (
@@ -26,20 +26,22 @@ func HandleWSInbound(
 ) {
 	defer func() {
 		if r := recover(); r != nil {
-			event.SysLogError(flowStepFeishuWSPanic, "飞书 WebSocket 入站 panic",
-				event.P("channel_id", ch.ID),
-				event.P("channel_key", ch.Key),
-				event.P("recover", r),
-			)
+			loggateway.Global().Error("飞书 WebSocket 入站 panic",
+			loggateway.StepID(flowStepFeishuWSPanic),
+			loggateway.Str("channel_id", ch.ID),
+			loggateway.Str("channel_key", ch.Key),
+			loggateway.Any("recover", r),
+		)
 		}
 	}()
 	procCtx := context.WithoutCancel(parentCtx)
 	if err := handler.ProcessInbound(procCtx, ch, ev); err != nil {
-		event.SysLogWarn(flowStepFeishuWSInboundErr, "飞书 WebSocket 入站失败",
-			event.P("channel_id", ch.ID),
-			event.P("channel_key", ch.Key),
-			event.P("peer_id", ev.PeerID),
-			event.P("error", err.Error()),
+		loggateway.Global().Warn("飞书 WebSocket 入站失败",
+			loggateway.StepID(flowStepFeishuWSInboundErr),
+			loggateway.Str("channel_id", ch.ID),
+			loggateway.Str("channel_key", ch.Key),
+			loggateway.Str("peer_id", ev.PeerID),
+			loggateway.Err(err),
 		)
 		notifyFeishuInboundError(procCtx, ch, creds, lookup, ev, err)
 	}
@@ -77,8 +79,8 @@ func notifyFeishuInboundError(
 		AppSecret:     strings.TrimSpace(appSecret),
 		ReceiveIDType: ReceiveIDTypeFromMeta(ev.OutboundMeta),
 	}).SendText(ctx, recipient, msg); sendErr != nil {
-		event.SysLogWarn("channel.lark.error_notify_failed", "飞书错误通知发送失败",
-			event.P("error", sendErr.Error()),
+		loggateway.Global().Warn("飞书错误通知发送失败",
+			loggateway.Err(sendErr),
 		)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 type basePlugin struct {
@@ -16,7 +17,7 @@ func newBasePlugin(name string, stats StatsRecorder, bus event.Bus) basePlugin {
 	return basePlugin{
 		name:   name,
 		stats:  stats,
-		logger: NewPluginSafeLogger(name, bus),
+		logger: NewPluginSafeLogger(name, bus, loggateway.Global()),
 	}
 }
 

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -57,16 +57,16 @@ func (r *Runner) startReconcileLoop(ctx context.Context) {
 			}
 		}
 	})
-	event.SysLogInfo("skill.fs.reconcile", "skill reconcile ticker started", event.P("interval", interval.String()))
+	r.lg.Info("skill reconcile ticker started", loggateway.StepID("skill.fs.reconcile"), loggateway.Str("interval", interval.String()))
 }
 
 func (r *Runner) reconcile(ctx context.Context) {
 	root := r.resolveRoot(ctx)
-	event.SysLogInfo("skill.fs.reconcile", "skill reconcile scan", event.P("path", root))
+	r.lg.Info("skill reconcile scan", loggateway.StepID("skill.fs.reconcile"), loggateway.Str("path", root))
 	r.scanAll(ctx, root, biz.SkillInvocationSourceFilesystemReconcile)
 	slugs, err := r.reader.ListRegisteredSlugs(ctx)
 	if err != nil {
-		event.SysLogWarn("skill.fs.error", "skill reconcile: list slugs", event.P("err", err))
+		r.lg.Warn("skill reconcile: list slugs", loggateway.StepID("skill.fs.error"), loggateway.Err(err))
 		return
 	}
 	for _, slug := range slugs {

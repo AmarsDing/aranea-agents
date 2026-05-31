@@ -7,7 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 const flowStepChannelInbound = "channel.inbound.receive"
@@ -58,20 +58,22 @@ func (h *ChannelIngress) logInboundAccepted(ctx context.Context, chRow biz.Chann
 		platform = channelTypeFromConfig(chRow.ConfigJSON)
 	}
 	if issues := port.ValidateOutboundMeta(platform, ev.OutboundMeta); len(issues) > 0 {
-		event.SysLogInfo(flowStepChannelInbound, "Channel OutboundMeta 契约告警",
-			event.P("channel_id", chRow.ID),
-			event.P("platform", platform),
-			event.P("local_key", port.LocalKeyFromMeta(platform, ev.OutboundMeta)),
-			event.P("meta_issues", strings.Join(issues, "; ")),
+		h.lg.Info("Channel OutboundMeta 契约告警",
+			loggateway.StepID(flowStepChannelInbound),
+			loggateway.Str("channel_id", chRow.ID),
+			loggateway.Str("platform", platform),
+			loggateway.Str("local_key", port.LocalKeyFromMeta(platform, ev.OutboundMeta)),
+			loggateway.Str("meta_issues", strings.Join(issues, "; ")),
 		)
 	}
-	event.SysLogInfo(flowStepChannelInbound, "Channel 入站受理",
-		event.P("channel_id", chRow.ID),
-		event.P("channel_key", chRow.Key),
-		event.P("platform", strings.TrimSpace(ev.PlatformType)),
-		event.P("ingress_source", source),
-		event.P("idempotency_key", ev.IdempotencyKey),
-		event.P("peer_id", ev.PeerID),
-		event.P("text_len", len(strings.TrimSpace(ev.Text))),
+	h.lg.Info("Channel 入站受理",
+		loggateway.StepID(flowStepChannelInbound),
+		loggateway.Str("channel_id", chRow.ID),
+		loggateway.Str("channel_key", chRow.Key),
+		loggateway.Str("platform", strings.TrimSpace(ev.PlatformType)),
+		loggateway.Str("ingress_source", source),
+		loggateway.Str("idempotency_key", ev.IdempotencyKey),
+		loggateway.Str("peer_id", ev.PeerID),
+		loggateway.Int("text_len", len(strings.TrimSpace(ev.Text))),
 	)
 }

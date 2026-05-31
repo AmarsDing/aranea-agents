@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"net/http"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/outboundguard"
 	"strings"
 	"time"
-
-	"aranea-agents/internal/biz"
-	"aranea-agents/pkg/outboundguard"
 
 	"google.golang.org/genai"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -30,17 +29,17 @@ func TRPCModelForProviderModel(ctx context.Context, catalog *biz.LlmProviderMode
 	}
 	pm, err := catalog.GetByProviderAndModel(ctx, strings.TrimSpace(prov), strings.TrimSpace(modelAPI))
 	if err != nil {
-		event.CtxFlowLogError(ctx, "system.provider.catalog_fail", "模型目录查询失败", event.P("provider", prov), event.P("model", modelAPI), event.P("error", err))
+		loggateway.Global().Error("模型目录查询失败", loggateway.StepID("system.provider.catalog_fail"), loggateway.Str("provider", prov), loggateway.Str("model", modelAPI), loggateway.Err(err))
 		return nil, err
 	}
 	cfg, err := CatalogFromModel(ModelCatalogInput{Model: pm.Model, ConfigJSON: pm.ConfigJSON})
 	if err != nil {
-		event.CtxFlowLogError(ctx, "system.provider.catalog_fail", "模型目录配置解析失败", event.P("provider", prov), event.P("model", modelAPI), event.P("error", err))
+		loggateway.Global().Error("模型目录配置解析失败", loggateway.StepID("system.provider.catalog_fail"), loggateway.Str("provider", prov), loggateway.Str("model", modelAPI), loggateway.Err(err))
 		return nil, err
 	}
 	cfg = MergeCatalogConfig(cfg, pm.ConfigJSON)
-	event.CtxFlowLogDone(ctx, "system.provider.config_resolved", "模型配置已解析",
-		event.P("provider", prov), event.P("model", modelAPI), event.P("provider_type", cfg.ProviderType), event.P("ha_mode", cfg.HAMode))
+	loggateway.Global().Info("模型配置已解析", loggateway.StepID("system.provider.config_resolved"), loggateway.Phase("done"),
+		loggateway.Str("provider", prov), loggateway.Str("model", modelAPI), loggateway.Str("provider_type", cfg.ProviderType), loggateway.Str("ha_mode", cfg.HAMode))
 	return trpcModelFromCatalogConfig(ctx, cfg, rt)
 }
 
@@ -64,11 +63,11 @@ func trpcModelFromCatalogConfig(ctx context.Context, cfg CatalogConfig, rt *Roun
 			client := outboundguard.NewClient(15 * time.Second)
 			resp, err := client.Do(probeReq)
 			if err != nil {
-				event.CtxFlowLogError(ctx, "system.provider.preflight_fail", "模型 API 预检失败", event.P("url", baseURL), event.P("error", err))
+				loggateway.Global().Error("模型 API 预检失败", loggateway.StepID("system.provider.preflight_fail"), loggateway.Str("url", baseURL), loggateway.Err(err))
 				return nil, fmt.Errorf("LLM API unreachable (%s): %w", baseURL, err)
 			}
 			resp.Body.Close()
-			event.CtxFlowLogDone(ctx, "system.provider.preflight_ok", "模型 API 预检通过", event.P("url", baseURL), event.P("status", resp.StatusCode))
+			loggateway.Global().Info("模型 API 预检通过", loggateway.StepID("system.provider.preflight_ok"), loggateway.Phase("done"), loggateway.Str("url", baseURL), loggateway.Int("status", resp.StatusCode))
 		}
 	}
 
@@ -409,11 +408,12 @@ func wrapFailover(cfg CatalogConfig, rt *RoundTrip, primary trpcmodel.Model) (tr
 			if err != nil {
 				errMsg = err.Error()
 			}
-			event.CtxFlowLogWarn(ctx, "system.provider.ha_failover", "HA 故障切换",
-				event.P("ha_mode", "failover"),
-				event.P("from_candidate", from),
-				event.P("to_candidate", to),
-				event.P("error", errMsg),
+			loggateway.Global().Warn("HA 故障切换",
+				loggateway.StepID("system.provider.ha_failover"),
+				loggateway.Str("ha_mode", "failover"),
+				loggateway.Str("from_candidate", from),
+				loggateway.Str("to_candidate", to),
+				loggateway.Str("error", errMsg),
 			)
 		}),
 	)
@@ -438,10 +438,11 @@ func wrapHedge(cfg CatalogConfig, rt *RoundTrip, primary trpcmodel.Model) (trpcm
 	hedgeOpts := []trpchedge.Option{
 		trpchedge.WithCandidates(candidates...),
 		trpchedge.WithSwitchCallback(func(ctx context.Context, from, to string, err error) {
-			event.CtxFlowLogWarn(ctx, "system.provider.ha_hedge", "HA 对冲切换",
-				event.P("ha_mode", "hedge"),
-				event.P("primary_candidate", from),
-				event.P("winner_candidate", to),
+			loggateway.Global().Warn("HA 对冲切换",
+				loggateway.StepID("system.provider.ha_hedge"),
+				loggateway.Str("ha_mode", "hedge"),
+				loggateway.Str("primary_candidate", from),
+				loggateway.Str("winner_candidate", to),
 			)
 		}),
 	}

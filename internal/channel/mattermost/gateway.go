@@ -12,7 +12,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/runtime"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"github.com/gorilla/websocket"
@@ -57,8 +57,9 @@ func RunWebSocket(
 		return fmt.Errorf("mattermost websocket: dial: %w", err)
 	}
 	defer conn.Close()
-	event.SysLogInfo("channel.mattermost.ws.connected", "Mattermost WebSocket 连接成功",
-		event.P("server_url", serverURL))
+	loggateway.Global().Info("Mattermost WebSocket 连接成功",
+		loggateway.StepID("channel.mattermost.ws.connected"),
+		loggateway.Str("server_url", serverURL))
 
 	chRow := ch
 	readErr := make(chan error, 1)
@@ -66,8 +67,9 @@ func RunWebSocket(
 		for {
 			_, message, err := conn.ReadMessage()
 			if err != nil {
-				event.SysLogWarn("channel.mattermost.ws.read_failed", "Mattermost WebSocket 读取失败",
-					event.P("error", err.Error()))
+				loggateway.Global().Warn("Mattermost WebSocket 读取失败",
+					loggateway.StepID("channel.mattermost.ws.read_failed"),
+					loggateway.Err(err))
 				readErr <- err
 				return
 			}
@@ -77,9 +79,10 @@ func RunWebSocket(
 			}
 			ev.PlatformType = "mattermost"
 			if err := handler.ProcessInbound(ctx, chRow, ev); err != nil {
-				event.SysLogWarn("channel.mattermost.inbound_failed", "Mattermost 入站处理失败",
-					event.P("error", err.Error()),
-					event.P("channel_id", chRow.ID),
+				loggateway.Global().Warn("Mattermost 入站处理失败",
+					loggateway.StepID("channel.mattermost.inbound_failed"),
+					loggateway.Err(err),
+					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
 		}

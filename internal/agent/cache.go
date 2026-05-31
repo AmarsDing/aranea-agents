@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/internal/agent/planner"
 	"aranea-agents/internal/biz"
 	arametrics "aranea-agents/internal/metrics"
-
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
 
@@ -28,6 +28,7 @@ type buildCacheEntry struct {
 	expiresAt time.Time
 	key       string
 	elem      *list.Element
+	a2ui      *planner.A2UIResult
 }
 
 // BuildCache is a thread-safe LRU cache for built trpc LLMAgents.
@@ -73,18 +74,31 @@ func (c *BuildCache) get(key string) trpcagent.Agent {
 	return entry.agent
 }
 
+func (c *BuildCache) getA2UI(key string) *planner.A2UIResult {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.items[key]
+	if !ok {
+		return nil
+	}
+	if time.Now().After(entry.expiresAt) {
+		return nil
+	}
+	return entry.a2ui
+}
+
 // put stores an agent under the given key, evicting LRU entries if over capacity.
-func (c *BuildCache) put(key string, ag trpcagent.Agent) {
+func (c *BuildCache) put(key string, ag trpcagent.Agent, a2uiResult *planner.A2UIResult) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if e, ok := c.items[key]; ok {
 		c.lruList.MoveToFront(e.elem)
 		e.expiresAt = time.Now().Add(c.ttl)
 		e.agent = ag
+		e.a2ui = a2uiResult
 		return
 	}
 	for len(c.items) >= c.cap {
-		// Evict least-recently-used (back of the list).
 		back := c.lruList.Back()
 		if back == nil {
 			break
@@ -95,6 +109,7 @@ func (c *BuildCache) put(key string, ag trpcagent.Agent) {
 		key:       key,
 		agent:     ag,
 		expiresAt: time.Now().Add(c.ttl),
+		a2ui:      a2uiResult,
 	}
 	entry.elem = c.lruList.PushFront(entry)
 	c.items[key] = entry
@@ -171,15 +186,26 @@ func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilder
 	key := BuildCacheKey(ag, deps, deps.ToolVersionHash, deps.SkillVersionHash, deps.MCPVersionHash)
 	if cached := globalBuildCache.get(key); cached != nil {
 		arametrics.AgentBuildCacheHits.Inc()
-		event.CtxFlowLogDone(ctx, "system.agent.cache_hit", "Agent 构建缓存命中", event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey), event.P("cache_key", key))
+		loggateway.Global().Info("Agent 构建缓存命中", loggateway.StepID("system.agent.cache_hit"), loggateway.Phase("done"), loggateway.Str("agent_id", ag.ID), loggateway.Str("agent_key", ag.AgentKey), loggateway.Str("cache_key", key))
 		return cached, nil
 	}
 	arametrics.AgentBuildCacheMisses.Inc()
-	event.CtxFlowLogDone(ctx, "system.agent.cache_miss", "Agent 构建缓存未命中", event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey), event.P("cache_key", key))
+	loggateway.Global().Info("Agent 构建缓存未命中", loggateway.StepID("system.agent.cache_miss"), loggateway.Phase("done"), loggateway.Str("agent_id", ag.ID), loggateway.Str("agent_key", ag.AgentKey), loggateway.Str("cache_key", key))
 	built, err := BuildTRPCLLMAgent(ctx, ag, deps)
 	if err != nil {
 		return nil, err
 	}
-	globalBuildCache.put(key, built)
+	globalBuildCache.put(key, built, nil)
 	return built, nil
+}
+
+func LookupA2UIByAgentKey(agentKey string) *planner.A2UIResult {
+	globalBuildCache.mu.Lock()
+	defer globalBuildCache.mu.Unlock()
+	for _, entry := range globalBuildCache.items {
+		if entry.a2ui != nil {
+			return entry.a2ui
+		}
+	}
+	return nil
 }

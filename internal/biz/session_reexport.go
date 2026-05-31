@@ -31,8 +31,9 @@ type (
 	SessionRepo            = session.SessionRepo
 	SessionReader           = session.SessionReader
 	SessionWriter           = session.SessionWriter
-	SessionMutator          = session.SessionMutator
-	SessionBatchMutator     = session.SessionBatchMutator
+	SessionMutator              = session.SessionMutator
+	SessionStatusTransitioner   = session.SessionStatusTransitioner
+	SessionBatchMutator         = session.SessionBatchMutator
 	MessageReader           = session.MessageReader
 	MessageSearchReader     = session.MessageSearchReader
 	MessageWriter           = session.MessageWriter
@@ -55,8 +56,9 @@ type (
 
 // Session interfaces for dependency injection.
 type (
-	SessionAgentLookup = session.AgentLookup
-	SessionTeamLookup  = session.TeamLookup
+	SessionAgentLookup       = session.AgentLookup
+	SessionTeamLookup        = session.TeamLookup
+	SessionStatusPublisher   = session.SessionStatusPublisher
 )
 
 const (

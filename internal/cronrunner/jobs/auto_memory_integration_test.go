@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	sessionsess "aranea-agents/internal/biz/session"
 	memtrpc "aranea-agents/internal/memory/trpc"
+	"aranea-agents/pkg/loggateway"
 )
 
 type memoryTestAgentRepo struct {
@@ -84,6 +85,7 @@ func (r *memoryTestAgentRepo) DeleteAgentPromptFile(context.Context, string, str
 func (r *memoryTestAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }
+func (r *memoryTestAgentRepo) ReorderAgents(context.Context, []string) error { return nil }
 
 type fakeConsolidationWriter struct {
 	mu      sync.Mutex
@@ -138,7 +140,7 @@ func TestAutoMemoryWorker_ExtractChain(t *testing.T) {
 	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil, nil)
 	agentsUC := newMemoryEnabledAgentsUC(agentID)
 	q := memtrpc.NewMemoryJobQueue(4, 0)
-	w, err := NewAutoMemoryWorker(0, sessionsUC, agentsUC, writer, nil, nil, nil, biz.NewHeuristicConsolidator(), q)
+	w, err := NewAutoMemoryWorker(0, sessionsUC, agentsUC, writer, nil, nil, nil, biz.NewHeuristicConsolidator(), q, loggateway.Global())
 	if err != nil {
 		t.Fatalf("NewAutoMemoryWorker: %v", err)
 	}
@@ -181,7 +183,7 @@ func TestAutoMemoryWorker_DrainUsesInjectedQueue(t *testing.T) {
 	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil, nil)
 	agentsUC := newMemoryEnabledAgentsUC("agent-q-1")
 	q := memtrpc.NewMemoryJobQueue(4, 0)
-	w, err := NewAutoMemoryWorker(0, sessionsUC, agentsUC, writer, nil, nil, nil, biz.NewHeuristicConsolidator(), q)
+	w, err := NewAutoMemoryWorker(0, sessionsUC, agentsUC, writer, nil, nil, nil, biz.NewHeuristicConsolidator(), q, loggateway.Global())
 	if err != nil {
 		t.Fatalf("NewAutoMemoryWorker: %v", err)
 	}

@@ -13,7 +13,7 @@ export const ownerFilterOptions = [
   { label: "Team", value: "team" }
 ];
 
-export const statusFilterOptions = ["active", "running", "completed", "failed", "archived"].map((value) => ({
+export const statusFilterOptions = ["idle", "running", "completed", "interrupted", "awaiting_confirmation", "archived"].map((value) => ({
   label: value,
   value
 }));
@@ -45,7 +45,7 @@ export const sessionsTableColumns = [
 ];
 
 export function buildSessionsSummaryCards(rows: Session[], total: number): SessionsSummaryCard[] {
-  const active = rows.filter((item) => item.status === "active" || item.status === "running").length;
+  const active = rows.filter((item) => !item.archived_at && !item.deleted_at).length;
   const pinned = rows.filter((item) => isSessionPinned(item)).length;
   const avgContext = rows.length
     ? rows.reduce((sum, item) => sum + (item.context_used_ratio || 0), 0) / rows.length
@@ -74,7 +74,11 @@ export function ownerChipColor(value: string) {
 }
 
 export function statusBadgeColor(value: string) {
-  return value === "failed" ? "negative" : value === "archived" ? "grey" : value === "running" ? "primary" : "positive";
+  if (value === "interrupted") return "warning";
+  if (value === "running") return "primary";
+  if (value === "awaiting_confirmation") return "info";
+  if (value === "idle") return "grey";
+  return "positive";
 }
 
 export function contextProgressColor(value: string) {

@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/tools"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	tooltrpc "aranea-agents/internal/tools/trpc"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )

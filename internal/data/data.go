@@ -87,6 +87,9 @@ var ProviderSet = wire.NewSet(
 	NewMemoryFactDecayerAdapter,
 	NewMemoryEpisodeBackfillReaderAdapter,
 	NewMemoryLegacyMigratorAdapter,
+	NewObservationRepo,
+	NewPatternRepo,
+	NewProposalRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -448,6 +451,9 @@ func runPendingDataMigrations(entClient *ent.Client) error {
 	}
 	if err := RunTurnIndexToTurnIDMigration(ctx, entClient); err != nil {
 		return fmt.Errorf("turn_index migration: %w", err)
+	}
+	if err := RunSessionStatusIdleMigration(ctx, entClient); err != nil {
+		return fmt.Errorf("session status migration: %w", err)
 	}
 	return nil
 }

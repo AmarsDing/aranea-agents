@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"github.com/go-kratos/kratos/v2/errors"
@@ -206,9 +207,10 @@ type GraphUsecase struct {
 	defs             map[string]*GraphDefinition
 	executions       map[string]*GraphExecution
 	teamBuildConfigs map[string]GraphBuildConfig
+	lg               loggateway.Logger
 }
 
-func NewGraphUsecase(repo GraphRepo, runRepo GraphRunRepo, factory GraphBuilderFactory, observer GraphExecutionObserver) *GraphUsecase {
+func NewGraphUsecase(repo GraphRepo, runRepo GraphRunRepo, factory GraphBuilderFactory, observer GraphExecutionObserver, lg loggateway.Logger) *GraphUsecase {
 	uc := &GraphUsecase{
 		repo:         repo,
 		runRepo:      runRepo,
@@ -216,6 +218,7 @@ func NewGraphUsecase(repo GraphRepo, runRepo GraphRunRepo, factory GraphBuilderF
 		execObserver: observer,
 		defs:         make(map[string]*GraphDefinition),
 		executions:   make(map[string]*GraphExecution),
+		lg:           lg,
 	}
 	safego.Go(context.Background(), "graph-gc-loop", func() { uc.gcLoop() })
 	return uc

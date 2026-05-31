@@ -29,6 +29,7 @@ export type SessionView = {
   timeline_at?: string;
   agent_id?: string;
   status?: string;
+  archived_at?: string;
   pinned_at?: string;
   metadata_json?: string;
 };

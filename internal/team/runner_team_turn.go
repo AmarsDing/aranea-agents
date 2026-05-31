@@ -13,6 +13,7 @@ import (
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -51,8 +52,9 @@ func (r *Runner) resolveAnchorAndAttachments(
 			}
 		}
 		if !found {
-			event.CtxFlowLogWarn(ctx, "team.intent_anchor_fallback", "团队意图锚点不在成员列表，使用首个成员",
-				event.P("intent_anchor_agent_id", want))
+			loggateway.Global().Warn("团队意图锚点不在成员列表，使用首个成员",
+				loggateway.StepID("team.intent_anchor_fallback"),
+				loggateway.Str("intent_anchor_agent_id", want))
 		}
 	}
 	firstAg, err := r.catalogAgent(ctx, anchorMem.AgentID)
@@ -138,7 +140,7 @@ func (r *Runner) prepareUserTurnOptions(
 			if strings.TrimSpace(intRes.RawJSON) != "" {
 				merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)
 				if merr != nil {
-					event.CtxFlowLogWarn(ctx, "team.intent.merge_fail", "团队意图合并失败，将继续执行", event.P("error", merr))
+					loggateway.Global().Warn("团队意图合并失败，将继续执行", loggateway.StepID("team.intent.merge_fail"), loggateway.Err(merr))
 				} else {
 					userOpts = merged
 				}
@@ -194,8 +196,9 @@ func (r *Runner) finalizeTeamRun(
 	run.OutputPreview = preview(assistantMsg.ContentMarkdown, 512)
 	run.FinishedAt = agent.RFC3339Now()
 	if err := r.teams.UpdateTeamRun(ctx, *run); err != nil {
-		event.CtxFlowLogWarn(ctx, "team.run.finish_update_fail", "UpdateTeamRun failed in finalizeTeamRun",
-			event.P("team_run_id", run.ID), event.P("update_error", err.Error()))
+		loggateway.Global().Warn("UpdateTeamRun failed in finalizeTeamRun",
+			loggateway.StepID("team.run.finish_update_fail"),
+			loggateway.Str("team_run_id", run.ID), loggateway.Str("update_error", err.Error()))
 	}
 
 	r.recordTeamRunUsage(ctx, *run, teamRow.ID, ar.agent, promptTok, completionTok, ar.prov, ar.mod, dialogMode)

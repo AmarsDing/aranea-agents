@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -22,7 +22,10 @@ func ResolveLLM(ctx context.Context, sys RefineLLMSettingsGetter, catalog LLMCat
 	if sys != nil {
 		s, err := sys.Get(ctx)
 		if err != nil {
-			event.SysLogWarn("knowledge.resolve_llm", "系统设置获取失败", event.P("purpose", purpose), event.P("error", err.Error()))
+			loggateway.Global().Warn("系统设置获取失败",
+			loggateway.StepID("knowledge.resolve_llm"),
+			loggateway.Str("purpose", purpose),
+			loggateway.Err(err))
 		} else if strings.TrimSpace(s.DefaultRefineLLM.Provider) != "" && strings.TrimSpace(s.DefaultRefineLLM.Model) != "" {
 			return s.DefaultRefineLLM.Provider, s.DefaultRefineLLM.Model, nil
 		}
@@ -30,7 +33,10 @@ func ResolveLLM(ctx context.Context, sys RefineLLMSettingsGetter, catalog LLMCat
 	if catalog != nil {
 		models, err := catalog.List(ctx)
 		if err != nil {
-			event.SysLogWarn("knowledge.resolve_llm", "模型目录获取失败", event.P("purpose", purpose), event.P("error", err.Error()))
+			loggateway.Global().Warn("模型目录获取失败",
+			loggateway.StepID("knowledge.resolve_llm"),
+			loggateway.Str("purpose", purpose),
+			loggateway.Err(err))
 		} else {
 			for _, m := range models {
 				if m.Provider != "" && m.Model != "" && m.Enabled {

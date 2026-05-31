@@ -8,10 +8,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 const (
@@ -21,21 +19,21 @@ const (
 )
 
 type MemoryFactIndexReconciler struct {
-	interval  time.Duration
+	interval   time.Duration
 	maintainer biz.MemoryFactIndexMaintainer
-	indexSync biz.MemoryFactIndexSyncer
-	log       *log.Helper
+	indexSync  biz.MemoryFactIndexSyncer
+	lg         loggateway.Logger
 }
 
-func NewMemoryFactIndexReconciler(interval time.Duration, maintainer biz.MemoryFactIndexMaintainer, indexSync biz.MemoryFactIndexSyncer, logger log.Logger) *MemoryFactIndexReconciler {
+func NewMemoryFactIndexReconciler(interval time.Duration, maintainer biz.MemoryFactIndexMaintainer, indexSync biz.MemoryFactIndexSyncer, lg loggateway.Logger) *MemoryFactIndexReconciler {
 	if interval <= 0 {
 		interval = memoryIndexReconcileDefaultInterval
 	}
 	return &MemoryFactIndexReconciler{
-		interval:  interval,
+		interval:   interval,
 		maintainer: maintainer,
-		indexSync: indexSync,
-		log:       log.NewHelper(logger),
+		indexSync:  indexSync,
+		lg:         lg,
 	}
 }
 
@@ -60,10 +58,7 @@ func (w *MemoryFactIndexReconciler) runOnce(ctx context.Context) {
 	safego.Go(ctx, "memory.index_reconcile", func() {
 		rows, err := w.maintainer.ListStaleIndexFacts(ctx, memoryIndexReconcileMaxAttempts, memoryIndexReconcileBatchSize)
 		if err != nil {
-			event.SysLogWarn("memory.index_reconcile", "list stale facts failed", event.P("error", err))
-			if w.log != nil {
-				w.log.Warnf("memory index reconcile: list stale: %v", err)
-			}
+			w.lg.Warn("list stale facts failed", loggateway.Err(err))
 			return
 		}
 		if len(rows) == 0 {
@@ -81,8 +76,7 @@ func (w *MemoryFactIndexReconciler) runOnce(ctx context.Context) {
 					if jsonErr := json.Unmarshal(raw, &row); jsonErr == nil && row.IndexAttempts >= memoryIndexReconcileMaxAttempts-1 {
 						if disableErr := w.maintainer.MarkFactIndexDisabled(ctx, factID); disableErr == nil {
 							disabled++
-							event.SysLogWarn("memory.index_reconcile", "fact index permanently disabled after max attempts",
-								event.P("fact_id", factID), event.P("attempts", row.IndexAttempts))
+							w.lg.Warn("fact index permanently disabled after max attempts", loggateway.Str("fact_id", factID), loggateway.Int("attempts", row.IndexAttempts))
 						}
 					}
 				}
@@ -90,9 +84,7 @@ func (w *MemoryFactIndexReconciler) runOnce(ctx context.Context) {
 			}
 			synced++
 		}
-		if w.log != nil {
-			w.log.Infof("memory index reconcile: synced=%d failed=%d disabled=%d total=%d", synced, failed, disabled, len(rows))
-		}
+		w.lg.Info("memory index reconcile completed", loggateway.Int("synced", synced), loggateway.Int("failed", failed), loggateway.Int("disabled", disabled), loggateway.Int("total", len(rows)))
 	})
 }
 

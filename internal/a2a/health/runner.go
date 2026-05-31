@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -34,10 +34,11 @@ type Deps struct {
 type Runner struct {
 	deps Deps
 	mu   sync.Mutex
+	lg   loggateway.Logger
 }
 
-func NewRunner(deps Deps) *Runner {
-	return &Runner{deps: deps}
+func NewRunner(deps Deps, lg loggateway.Logger) *Runner {
+	return &Runner{deps: deps, lg: lg}
 }
 
 func DefaultInterval() time.Duration {
@@ -80,7 +81,7 @@ func (r *Runner) probeAll(ctx context.Context) {
 
 	agents, err := r.deps.A2A.ListRemoteAgents(ctx, "")
 	if err != nil {
-		event.SysLogError("system.a2a.health_list_fail", "A2A 远程网关列表失败", event.P("error", err))
+		r.lg.Error("A2A 远程网关列表失败", loggateway.StepID("system.a2a.health_list_fail"), loggateway.Err(err))
 		return
 	}
 	for _, ag := range agents {
@@ -123,7 +124,10 @@ func (r *Runner) probeOne(ctx context.Context, ag biz.A2ARemoteAgent) {
 		errMsg = err.Error()
 	}
 	if persistErr := r.deps.A2A.PersistRemoteHealth(ctx, ag.ID, ok, errMsg); persistErr != nil {
-		event.SysLogError("system.a2a.health_persist_fail", "A2A 健康状态保存失败",
-			event.P("registry_id", ag.ID), event.P("error", persistErr))
+		r.lg.Error("A2A 健康状态保存失败",
+			loggateway.StepID("system.a2a.health_persist_fail"),
+			loggateway.Str("registry_id", ag.ID),
+			loggateway.Err(persistErr),
+		)
 	}
 }

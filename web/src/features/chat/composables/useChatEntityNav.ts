@@ -285,7 +285,7 @@ export function useChatEntityNav(deps: EntityNavDeps) {
         const teamId = deps.sessionStore.selectedTeamId;
         const sessions = deps.sessionStore.teamSessions[teamId] ?? [];
         deps.sessionStore.teamSessions[teamId] = sessions.map((s) =>
-          s.id === sessionId ? { ...s, status: "active" } : s
+          s.id === sessionId ? { ...s, archived_at: "" } : s
         );
       }
     } catch (err) {
@@ -301,7 +301,7 @@ export function useChatEntityNav(deps: EntityNavDeps) {
         const teamId = deps.sessionStore.selectedTeamId;
         const sessions = deps.sessionStore.teamSessions[teamId] ?? [];
         deps.sessionStore.teamSessions[teamId] = sessions.map((s) =>
-          s.id === sessionId ? { ...s, status: "archived" } : s
+          s.id === sessionId ? { ...s, archived_at: new Date().toISOString() } : s
         );
       }
     } catch (err) {

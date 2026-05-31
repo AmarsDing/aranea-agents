@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"aranea-agents/pkg/loggateway"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -13,7 +15,7 @@ func newTestOutputPolicy(cfg outputPolicyConfig) *OutputPolicyPlugin {
 	return &OutputPolicyPlugin{
 		base: basePlugin{
 			name:   "output_policy",
-			logger: NewPluginSafeLogger("output_policy", nil),
+			logger: NewPluginSafeLogger("output_policy", nil, loggateway.Global()),
 		},
 		cfg: cfg,
 	}

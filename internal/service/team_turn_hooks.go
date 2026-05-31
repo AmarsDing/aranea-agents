@@ -6,6 +6,7 @@ import (
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
 
 	"github.com/google/uuid"
@@ -52,6 +53,7 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 	teamCtx, teamCancel := context.WithCancel(ctx)
 	o.runs.StoreCancelable(sessionID, runID, teamCancel)
 	o.setRunStatus(ctx, sessionID, runID, biz.TeamRunStatusRunning, "")
+	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusRunning, "")
 	if unlock != nil {
 		unlock()
 	}
@@ -64,11 +66,13 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 	userMsg, assistantMsg, err = o.team.TeamsNative.RunTurnFromInput(teamCtx, sess, input)
 	if err != nil {
 		o.setRunStatus(ctx, sessionID, runID, biz.TeamRunStatusFailed, err.Error())
+		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 		return userMsg, assistantMsg, err
 	}
 
 	o.setRunStatus(ctx, sessionID, runID, "completed", "")
+	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")
 	o.recordTeamSessionTurn(ctx, sessionID, strings.TrimSpace(sess.TeamID),
 		userMsg.ID, assistantMsg.ID, "", "",
 		assistantMsg.TokenIn, assistantMsg.TokenOut, assistantMsg.ContentMarkdown)

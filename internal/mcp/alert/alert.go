@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/mcp"
 	"aranea-agents/internal/mcp/metadata"
 	"aranea-agents/internal/metrics"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -73,8 +74,11 @@ func (p *Publisher) MaybeEmitAfterHealth(ctx context.Context, srv biz.MCPServer,
 	p.bus.Publish(ctx, env)
 	if p.uc != nil {
 		if err := p.uc.MarkHealthAlertEmitted(ctx, srv.ID, now); err != nil {
-			event.SysLogWarn("system.mcp.health_alert_persist_fail", "MCP 健康告警持久化失败",
-				event.P("server_key", srv.Key), event.P("error", err.Error()))
+			loggateway.Global().Warn("MCP 健康告警持久化失败",
+				loggateway.StepID("system.mcp.health_alert_persist_fail"),
+				loggateway.Str("server_key", srv.Key),
+				loggateway.Err(err),
+			)
 		}
 	}
 }

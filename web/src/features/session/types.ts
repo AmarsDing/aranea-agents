@@ -1,5 +1,26 @@
 import type { PromptTokenBreakdown } from "../../realtime/envelope";
 
+export type SessionStatus =
+  | 'idle'
+  | 'running'
+  | 'completed'
+  | 'interrupted'
+  | 'awaiting_confirmation'
+
+export type SessionStatusReason =
+  | 'user_cancelled'
+  | 'timeout'
+  | 'budget_escalated'
+  | 'error'
+  | 'context_overflow'
+  | 'server_shutdown'
+  | 'unexpected_shutdown'
+  | 'confirmation_timeout'
+  | 'tool_confirmation'
+  | 'agent_awaiting_reply'
+  | 'manual_override'
+  | ''
+
 export type Session = {
   id: string;
   owner_type: string;
@@ -13,7 +34,9 @@ export type Session = {
   dialog_mode: string;
   provider: string;
   model: string;
-  status: string;
+  status: SessionStatus;
+  status_reason: SessionStatusReason;
+  status_changed_at: string;
   message_count: number;
   run_count: number;
   model_call_count: number;

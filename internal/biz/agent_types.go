@@ -18,6 +18,7 @@ type Agent struct {
 	Icon               string
 	AgentDescription   string
 	CategoryPositionID string
+	TaxonomyPositionID string
 	PositionKey       string
 	AgentVariant      string
 	VariantDescription string

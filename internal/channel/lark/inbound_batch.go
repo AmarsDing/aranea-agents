@@ -8,7 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 const (
@@ -62,8 +62,9 @@ func (b *TextInboundBatcher) flush(ctx context.Context, handler port.InboundHand
 	b.mu.Unlock()
 	if handler != nil {
 		if err := handler.ProcessInbound(ctx, ch, ev); err != nil {
-			event.SysLogWarn("channel.lark.inbound_failed", "飞书入站处理失败",
-				event.P("error", err.Error()),
+			loggateway.Global().Warn("飞书入站处理失败",
+				loggateway.StepID("channel.lark.inbound_failed"),
+				loggateway.Err(err),
 			)
 		}
 	}
@@ -78,8 +79,9 @@ func (b *TextInboundBatcher) Submit(
 	if b == nil {
 		if handler != nil {
 			if err := handler.ProcessInbound(ctx, ch, ev); err != nil {
-				event.SysLogWarn("channel.lark.inbound_failed", "飞书入站处理失败",
-					event.P("error", err.Error()),
+				loggateway.Global().Warn("飞书入站处理失败",
+					loggateway.StepID("channel.lark.inbound_failed"),
+					loggateway.Err(err),
 				)
 			}
 		}
@@ -91,8 +93,9 @@ func (b *TextInboundBatcher) Submit(
 	text := strings.TrimSpace(ev.Text)
 	if text == "" {
 		if err := handler.ProcessInbound(ctx, ch, ev); err != nil {
-			event.SysLogWarn("channel.lark.inbound_failed", "飞书入站处理失败",
-				event.P("error", err.Error()),
+			loggateway.Global().Warn("飞书入站处理失败",
+				loggateway.StepID("channel.lark.inbound_failed"),
+				loggateway.Err(err),
 			)
 		}
 		return

@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestInefficientModels_flagsHighCostLowTPS(t *testing.T) {
@@ -17,7 +19,7 @@ func TestInefficientModels_flagsHighCostLowTPS(t *testing.T) {
 		AvgTokensPerSecond: 2.0,
 		SuccessRate:        0.95,
 	}}
-	uc := NewUsageUsecase(repo)
+	uc := NewUsageUsecase(repo, loggateway.Global())
 	items, err := uc.InefficientModels(context.Background(), UsageQuery{Range: "7d"})
 	if err != nil {
 		t.Fatal(err)

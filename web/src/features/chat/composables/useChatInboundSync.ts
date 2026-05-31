@@ -332,6 +332,16 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       }
     }
 
+    if (env.type === "session.status_changed" && env.metadata) {
+      const md = env.metadata as Record<string, unknown>;
+      const status = typeof md.status === "string" ? md.status : "";
+      const statusReason = typeof md.status_reason === "string" ? md.status_reason : "";
+      const statusChangedAt = typeof md.status_changed_at === "string" ? md.status_changed_at : "";
+      if (status) {
+        deps.sessionStore.patchSessionStatus(sessionId, status, statusReason, statusChangedAt);
+      }
+    }
+
     const envRev = projection?.revision || envelopeSessionRevision(env);
     const localRev = deps.messageStore.sessionRevisionBySession[sessionId] ?? 0;
     const inboundSource = projection?.source ?? envelopeSource(env);

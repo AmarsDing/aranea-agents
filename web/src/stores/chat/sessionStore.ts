@@ -91,6 +91,9 @@ export const useChatSessionStore = defineStore("chatSession", () => {
           loadAgentSessions(_currentAgentId, { refreshOnly: true });
         }
         break;
+      case "status_changed":
+        patchSessionStatus(mutation.id, mutation.status, mutation.statusReason, mutation.statusChangedAt);
+        break;
     }
   });
 
@@ -333,6 +336,40 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     }
   }
 
+  function patchSessionStatus(sessionId: string, status: string, statusReason: string, statusChangedAt: string) {
+    const id = sessionId.trim();
+    if (!id) return;
+
+    let changed = false;
+    const next = sessions.value.map((session) => {
+      if (session.id !== id) return session;
+      changed = true;
+      return { ...session, status: status as Session["status"], status_reason: statusReason as Session["status_reason"], status_changed_at: statusChangedAt };
+    });
+    if (changed) sessions.value = next;
+
+    let teamChanged = false;
+    const out: Record<string, TeamSessionRow[]> = {};
+    for (const [teamId, rows] of Object.entries(teamSessions.value)) {
+      const nextRows = rows.map((session) => {
+        if (session.id !== id) return session;
+        teamChanged = true;
+        return { ...session, status: status as Session["status"], status_reason: statusReason as Session["status_reason"], status_changed_at: statusChangedAt };
+      });
+      out[teamId] = nextRows;
+    }
+    if (teamChanged) teamSessions.value = out;
+
+    if (selectedSession.value?.id === id) {
+      selectedSession.value = {
+        ...selectedSession.value,
+        status: status as Session["status"],
+        status_reason: statusReason as Session["status_reason"],
+        status_changed_at: statusChangedAt,
+      };
+    }
+  }
+
   function reconcileFromServer(sessionId: string, serverSession: Session) {
     const id = sessionId.trim();
     if (!id) return;
@@ -414,6 +451,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     clearTeamSessions,
     findSessionById,
     patchSessionMetricsLocal,
+    patchSessionStatus,
     reconcileFromServer,
     fetchAndReconcileSession,
     removeSessionById,

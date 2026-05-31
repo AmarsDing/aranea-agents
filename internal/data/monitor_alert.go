@@ -9,7 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/monitor"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
 )
@@ -21,7 +21,7 @@ func (r *monitorRepo) ensureMonitorAlertFiringStateCols(ctx context.Context) {
 		db := r.data.RawDB()
 		rows, err := db.QueryContext(ctx, `PRAGMA table_info(monitor_alert_rules)`)
 		if err != nil {
-			event.SysLogWarn("system.monitor.alert_count_fail", "ensureMonitorAlertFiringStateCols: PRAGMA failed", event.P("error", err.Error()))
+			loggateway.Global().Warn("ensureMonitorAlertFiringStateCols: PRAGMA failed", loggateway.StepID("system.monitor.alert_count_fail"), loggateway.Err(err))
 			return
 		}
 		existing := map[string]bool{}
@@ -50,7 +50,7 @@ func (r *monitorRepo) ensureMonitorAlertFiringStateCols(ctx context.Context) {
 				continue
 			}
 			if _, err := db.ExecContext(ctx, alters[i]); err != nil {
-				event.SysLogWarn("system.monitor.alert_count_fail", "ensureMonitorAlertFiringStateCols: ALTER TABLE failed", event.P("col", col), event.P("error", err.Error()))
+				loggateway.Global().Warn("ensureMonitorAlertFiringStateCols: ALTER TABLE failed", loggateway.StepID("system.monitor.alert_count_fail"), loggateway.Str("col", col), loggateway.Err(err))
 			}
 		}
 	})

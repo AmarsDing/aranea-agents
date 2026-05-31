@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/runtime"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -138,6 +139,7 @@ func NewChatUsecaseFromDeps(
 		NewPendingQueueAdapter(pending),
 		NewChatRunStatusPersister(sessions),
 		NewChatEventPublisher(bus),
+		loggateway.Global(),
 	)
 	uc.StartBackgroundGoroutines()
 	return uc
@@ -151,26 +153,18 @@ func persistRunStatusToSession(sessions *biz.SessionUsecase, ctx context.Context
 	if sessionID == "" {
 		return nil
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
 	bg, bgCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer bgCancel()
 
 	if terminalRunStatus(status) {
 		return sessions.PatchSessionState(bg, sessionID,
-			map[string]string{
-				stateKeyRunStatus:    strings.TrimSpace(status),
-				stateKeyRunError:     strings.TrimSpace(errMsg),
-				stateKeyRunUpdatedAt: now,
-			},
+			map[string]string{},
 			[]string{stateKeyRunID, stateKeyAwaitRunID, stateKeyAwaitSince},
 		)
 	}
 	return sessions.PatchSessionState(bg, sessionID,
 		map[string]string{
-			stateKeyRunID:        strings.TrimSpace(runID),
-			stateKeyRunStatus:    strings.TrimSpace(status),
-			stateKeyRunError:     strings.TrimSpace(errMsg),
-			stateKeyRunUpdatedAt: now,
+			stateKeyRunID: strings.TrimSpace(runID),
 		},
 		nil,
 	)
@@ -208,7 +202,7 @@ func persistAwaitMarkersToSession(sessions *biz.SessionUsecase, ctx context.Cont
 
 	patch := func(bg context.Context) {
 		if err := sessions.PatchSessionState(bg, sessionID, sets, deletes); err != nil {
-			event.SysLogWarn("chat.persist_await_markers", "PatchSessionState failed", event.P("error", err.Error()), event.P("session_id", sessionID))
+			loggateway.Global().Warn("PatchSessionState failed", loggateway.StepID("chat.persist_await_markers"), loggateway.Err(err), loggateway.Str("session_id", sessionID))
 		}
 	}
 	if syncWrite {
@@ -240,7 +234,7 @@ func clearAwaitingRunStateFromSession(sessions *biz.SessionUsecase, ctx context.
 			stateKeyAwaitRunID, stateKeyAwaitSince, stateKeyAwaitKind,
 			stateKeyAwaitToolKey, stateKeyAwaitToolCallID,
 		}); err != nil {
-			event.SysLogWarn("chat.clear_await_state", "PatchSessionState failed", event.P("error", err.Error()), event.P("session_id", sessionID))
+			loggateway.Global().Warn("PatchSessionState failed", loggateway.StepID("chat.clear_await_state"), loggateway.Err(err), loggateway.Str("session_id", sessionID))
 		}
 	})
 }

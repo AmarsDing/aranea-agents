@@ -3,7 +3,7 @@ package codeexecutor
 import (
 	"context"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagentcodeexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 )
@@ -31,9 +31,9 @@ func (d *dockerRuntimeFallback) ExecuteCode(ctx context.Context, input trpcagent
 	if err == nil {
 		return result, nil
 	}
-	event.CtxFlowLogWarn(ctx, "system.codeexec.docker_runtime_fallback",
-		"Docker 执行失败，回退到 local 执行器",
-		event.P("error", err.Error()))
+	loggateway.Global().Warn("Docker 执行失败，回退到 local 执行器",
+		loggateway.StepID("system.codeexec.docker_runtime_fallback"),
+		loggateway.Str("error", err.Error()))
 	ResetDockerProbe()
 	return d.factory.getLocal(d.workDir).ExecuteCode(ctx, input)
 }

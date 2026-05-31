@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -12,7 +12,10 @@ import (
 func buildToolFilter(s *biz.AgentRuntimeSettings) trpctool.FilterFunc {
 	denyList, err := biz.JSONStringList(s.ToolsDenyJSON)
 	if err != nil {
-		event.SysLogWarn("system.agent.tool_build", "json string list parse failed", event.P("error", err.Error()))
+		loggateway.Global().Warn("json string list parse failed",
+			loggateway.StepID("system.agent.tool_build"),
+			loggateway.Err(err),
+		)
 		return nil
 	}
 	if len(denyList) == 0 {

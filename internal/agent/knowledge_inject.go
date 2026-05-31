@@ -7,8 +7,8 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	knowledgetool "aranea-agents/internal/tools/knowledge"
+	"aranea-agents/pkg/loggateway"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
@@ -44,8 +44,7 @@ func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase) string {
 
 	collections, _, err := uc.ListCollections(ctx, "", knowledgeCueMaxCollections, 0)
 	if err != nil {
-		event.CtxFlowLogWarn(ctx, "knowledge.cue.list_fail", "知识库摘要注入失败",
-			event.P("error", err.Error()))
+		loggateway.Global().Warn("知识库摘要注入失败", loggateway.StepID("knowledge.cue.list_fail"), loggateway.Str("error", err.Error()))
 		return ""
 	}
 

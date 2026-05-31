@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -97,7 +97,7 @@ func (u *ChannelUsecase) hasOutboundIdempotency(ctx context.Context, channelID, 
 		return false, err
 	}
 	if len(items) >= 100 {
-		event.SysLogWarn("system.monitor.alert_channel_fail", "hasOutboundIdempotency scanned max deliveries without finding match; consider DB unique index for idempotency_key", event.P("channel_id", channelID), event.P("key", key))
+		u.lg.Warn("hasOutboundIdempotency scanned max deliveries without finding match; consider DB unique index for idempotency_key", loggateway.StepID("system.monitor.alert_channel_fail"), loggateway.Str("channel_id", channelID), loggateway.Str("key", key))
 	}
 	for _, item := range items {
 		if item.Status != ChannelDeliveryStatusPending &&

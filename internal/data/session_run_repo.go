@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 type sessionRunRepo struct {
@@ -325,7 +325,7 @@ WHERE phase IN ('interactive','escalating','durable') AND (finished_at IS NULL O
 	}
 	n, rowsErr := res.RowsAffected()
 	if rowsErr != nil {
-		event.SysLogWarn("session_run.repo", "rows affected error", event.P("error", rowsErr.Error()))
+		loggateway.Global().Warn("rows affected error", loggateway.StepID("session_run.repo"), loggateway.Err(rowsErr))
 	}
 	return int(n), nil
 }

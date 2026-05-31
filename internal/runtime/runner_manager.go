@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	chatagent "aranea-agents/internal/agent"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
@@ -78,7 +78,7 @@ func (m *RunnerManager) NewTurnRunner(root trpcagent.Agent, spec TurnRunnerSpec)
 	if key := strings.TrimSpace(spec.RegistryKey); key != "" {
 		if prev, ok := m.registry.Replace(key, mr); ok && prev != nil {
 			if err := prev.Close(); err != nil {
-				event.SysLogWarn("runner_manager", "close prev runner", event.P("key", key), event.P("error", err.Error()))
+				loggateway.Global().Warn("close prev runner", loggateway.Str("key", key), loggateway.Err(err))
 			}
 		}
 	}

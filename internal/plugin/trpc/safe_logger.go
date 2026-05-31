@@ -7,17 +7,18 @@ import (
 	"sync"
 
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
 var (
 	hookLoggerMu sync.RWMutex
-	hookLogger   = NewPluginSafeLogger("hook", nil)
+	hookLogger   = NewPluginSafeLogger("hook", nil, loggateway.Global())
 )
 
 func InitHookLogger(bus event.Bus) {
 	hookLoggerMu.Lock()
-	hookLogger = NewPluginSafeLogger("hook", bus)
+	hookLogger = NewPluginSafeLogger("hook", bus, loggateway.Global())
 	hookLoggerMu.Unlock()
 }
 
@@ -31,10 +32,11 @@ func getHookLogger() *PluginSafeLogger {
 type PluginSafeLogger struct {
 	pluginName string
 	bus        event.Bus
+	lg         loggateway.Logger
 }
 
-func NewPluginSafeLogger(pluginName string, bus event.Bus) *PluginSafeLogger {
-	return &PluginSafeLogger{pluginName: pluginName, bus: bus}
+func NewPluginSafeLogger(pluginName string, bus event.Bus, lg loggateway.Logger) *PluginSafeLogger {
+	return &PluginSafeLogger{pluginName: pluginName, bus: bus, lg: lg}
 }
 
 func (l *PluginSafeLogger) Info(msg string, attrs ...any) {
@@ -54,22 +56,25 @@ func (l *PluginSafeLogger) Debug(msg string, attrs ...any) {
 }
 
 func (l *PluginSafeLogger) write(level, msg string, attrs ...any) {
-	pairs := make([]event.Pair, 0, len(attrs)/2)
+	stepID := "plugin." + l.pluginName
+	allFields := make([]loggateway.Field, 0, 1+len(attrs)/2)
+	allFields = append(allFields, loggateway.StepID(stepID))
 	for i := 0; i+1 < len(attrs); i += 2 {
 		key, _ := attrs[i].(string)
 		if key != "" {
-			pairs = append(pairs, event.P(key, attrs[i+1]))
+			allFields = append(allFields, loggateway.Any(key, attrs[i+1]))
 		}
 	}
 
-	stepID := "plugin." + l.pluginName
 	switch level {
 	case "ERROR":
-		event.SysLogError(stepID, msg, pairs...)
+		l.lg.Error(msg, allFields...)
 	case "WARN":
-		event.SysLogWarn(stepID, msg, pairs...)
+		l.lg.Warn(msg, allFields...)
+	case "DEBUG":
+		l.lg.Debug(msg, allFields...)
 	default:
-		event.SysLogInfo(stepID, msg, pairs...)
+		l.lg.Info(msg, allFields...)
 	}
 
 	if l.bus != nil {

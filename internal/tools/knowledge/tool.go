@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/knowledge"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -267,7 +267,7 @@ func NewReflectTool() trpctool.CallableTool {
 				out.Confidence = assessment.Confidence
 				out.SupplementQuery = assessment.SupplementQuery
 			} else {
-				event.SysLogWarn("knowledge_reflect.eval_fail", fmt.Sprintf("evaluation failed: %v", evalErr))
+				loggateway.Global().Warn(fmt.Sprintf("evaluation failed: %v", evalErr), loggateway.StepID("knowledge_reflect.eval_fail"))
 			}
 		}
 

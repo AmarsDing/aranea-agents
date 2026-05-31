@@ -4,14 +4,20 @@ import (
 	"context"
 
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 func (h *ChannelIngress) logTurnFlow(ctx context.Context, sessionID, step, message string, err error, pairs ...event.Pair) {
 	if sessionID == "" || h == nil {
 		if err != nil {
-			event.SysLogWarn(step, message, pairs...)
+			h.lg.Warn(message,
+				loggateway.StepID(step),
+				loggateway.Str("error", err.Error()),
+			)
 		} else {
-			event.SysLogInfo(step, message, pairs...)
+			h.lg.Info(message,
+				loggateway.StepID(step),
+			)
 		}
 		return
 	}

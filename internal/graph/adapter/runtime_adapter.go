@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	graphtrpc "aranea-agents/internal/graph/trpc"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -27,6 +28,7 @@ type trpcGraphRuntime struct {
 	sessionID string
 	graphID   string
 	execID    string
+	lg        loggateway.Logger
 
 	cancelMu  sync.Mutex
 	runCancel context.CancelFunc
@@ -74,9 +76,13 @@ func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any)
 	eventCh, err := r.agent.Run(runCtx, inv)
 	if err != nil {
 		r.clearRunCancel()
-		event.SysLogError("system.graph.runtime_run_fail", "graph runtime run failed",
-			event.P("session_id", r.sessionID), event.P("graph_id", r.graphID),
-			event.P("execution_id", r.execID), event.P("error", err.Error()))
+		r.lg.Error("graph runtime run failed",
+			loggateway.StepID("system.graph.runtime_run_fail"),
+			loggateway.Str("session_id", r.sessionID),
+			loggateway.Str("graph_id", r.graphID),
+			loggateway.Str("execution_id", r.execID),
+			loggateway.Err(err),
+		)
 		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph runtime run: %v", err))
 	}
 
@@ -119,9 +125,13 @@ func (r *trpcGraphRuntime) Resume(ctx context.Context, lineageID string, resumeV
 	eventCh, err := r.agent.Run(runCtx, inv)
 	if err != nil {
 		r.clearRunCancel()
-		event.SysLogError("system.graph.runtime_resume_fail", "graph runtime resume failed",
-			event.P("session_id", r.sessionID), event.P("graph_id", r.graphID),
-			event.P("execution_id", r.execID), event.P("error", err.Error()))
+		r.lg.Error("graph runtime resume failed",
+			loggateway.StepID("system.graph.runtime_resume_fail"),
+			loggateway.Str("session_id", r.sessionID),
+			loggateway.Str("graph_id", r.graphID),
+			loggateway.Str("execution_id", r.execID),
+			loggateway.Err(err),
+		)
 		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph runtime resume: %v", err))
 	}
 
@@ -246,6 +256,7 @@ type trpcGraphBuilderFactory struct {
 	eventBus     event.Bus
 	agentChecker biz.AgentExistenceCheckerFunc
 	resolvers    graphtrpc.GraphNodeResolverSet
+	lg           loggateway.Logger
 }
 
 var _ biz.GraphBuilderFactory = (*trpcGraphBuilderFactory)(nil)
@@ -256,6 +267,7 @@ func NewGraphBuilderFactory(
 	eventBus event.Bus,
 	agentChecker biz.AgentExistenceCheckerFunc,
 	resolvers graphtrpc.GraphNodeResolverSet,
+	lg loggateway.Logger,
 ) biz.GraphBuilderFactory {
 	RegisterCriticLoopCondFunc(registry, DefaultCriticLoopThreshold)
 	return &trpcGraphBuilderFactory{
@@ -264,6 +276,7 @@ func NewGraphBuilderFactory(
 		eventBus:     eventBus,
 		agentChecker: agentChecker,
 		resolvers:    resolvers,
+		lg:           lg,
 	}
 }
 
@@ -375,7 +388,7 @@ func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.Grap
 	}
 	return &trpcGraphRuntime{
 		agent: graphAgent, graph: g, lineageID: lineageID, eventBus: f.eventBus,
-		sessionID: sessionID, graphID: graphID, execID: execID,
+		sessionID: sessionID, graphID: graphID, execID: execID, lg: f.lg,
 	}, nil
 }
 

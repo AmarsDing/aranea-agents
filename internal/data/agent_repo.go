@@ -80,7 +80,7 @@ func entAgentToBiz(a *ent.Agent) biz.Agent {
 		IsFavorite:         a.IsFavorite,
 		Icon:               a.Icon,
 		AgentDescription:   a.AgentDescription,
-		CategoryPositionID: a.CategoryPositionID,
+		TaxonomyPositionID: a.CategoryPositionID,
 		PositionKey:        a.PositionKey,
 		AgentVariant:       a.AgentVariant,
 		VariantDescription: a.VariantDescription,
@@ -596,7 +596,7 @@ func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetIsFavorite(a.IsFavorite).
 		SetIcon(a.Icon).
 		SetAgentDescription(a.AgentDescription).
-		SetCategoryPositionID(a.CategoryPositionID).
+		SetCategoryPositionID(a.TaxonomyPositionID).
 		SetPositionKey(a.PositionKey).
 		SetAgentVariant(a.AgentVariant).
 		SetVariantDescription(a.VariantDescription).
@@ -650,7 +650,7 @@ func (r *agentRepo) UpdateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetIsFavorite(a.IsFavorite).
 		SetIcon(a.Icon).
 		SetAgentDescription(a.AgentDescription).
-		SetCategoryPositionID(a.CategoryPositionID).
+		SetCategoryPositionID(a.TaxonomyPositionID).
 		SetPositionKey(a.PositionKey).
 		SetAgentVariant(a.AgentVariant).
 		SetVariantDescription(a.VariantDescription).
@@ -842,4 +842,8 @@ func (r *agentRepo) txClient(ctx context.Context) *ent.Client {
 
 func (r *agentRepo) ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error {
 	return r.data.ExecInTx(ctx, fn)
+}
+
+func (r *agentRepo) ReorderAgents(ctx context.Context, ids []string) error {
+	return nil
 }

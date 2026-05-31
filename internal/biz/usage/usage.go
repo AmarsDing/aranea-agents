@@ -15,8 +15,8 @@ import (
 	"github.com/go-kratos/kratos/v2/errors"
 
 	"aranea-agents/internal/biz/shared"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/modelregistry"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -306,13 +306,18 @@ type Usecase struct {
 	alertNotifier AlertNotifier
 	alertFired    map[string]time.Time
 	alertFiredMu  sync.Mutex
+	lg            loggateway.Logger
 }
 
 // NewUsecase constructs a UsageUsecase.
-func NewUsecase(repo Repo) *Usecase {
+func NewUsecase(repo Repo, lg loggateway.Logger) *Usecase {
+	if lg == nil {
+		lg = loggateway.Global()
+	}
 	return &Usecase{
 		repo: repo,
 		now:  func() time.Time { return time.Now().UTC() },
+		lg:   lg,
 	}
 }
 
@@ -875,7 +880,7 @@ func (u *Usecase) QuotaDashboard(ctx context.Context) (QuotaDashboard, error) {
 	}
 	spentMap, batchErr := u.repo.BatchSumScopeCost(ctx, quotas)
 	if batchErr != nil {
-		event.SysLogWarn("system.usage", "quota_dashboard.batch_failed", event.P("error", batchErr.Error()))
+		u.lg.Warn("quota_dashboard.batch_failed", loggateway.StepID("system.usage"), loggateway.Err(batchErr))
 	}
 	var maxUtil float64
 	for _, q := range quotas {

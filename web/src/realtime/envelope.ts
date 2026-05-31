@@ -44,7 +44,8 @@ export type EnvelopeType =
   | "mcp.session.reconnect"
   | "mcp.health.alert"
   | "orchestration_agent_status"
-  | "alert.notify";
+  | "alert.notify"
+  | "session.status_changed";
 
 export type EnvelopeContent = {
   text: string;

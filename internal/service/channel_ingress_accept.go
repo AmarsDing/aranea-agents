@@ -6,7 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 const flowStepChannelInboundAccept = "channel.inbound.accept"
@@ -106,9 +106,10 @@ func (h *ChannelIngress) routeInboundSyncOrAsync(ctx context.Context, chRow biz.
 		ltCfg.AsyncCronTaskID = ""
 	}
 	if ltCfg.SuggestDurableRun(ev.Text) && !ltCfg.ShouldRunAsync(ev.Text) {
-		event.SysLogInfo(flowStepChannelInboundAccept, "长任务关键词建议（Interactive Run，不路由 Graph）",
-			event.P("channel_id", chRow.ID),
-			event.P("peer_id", ev.PeerID),
+		h.lg.Info("长任务关键词建议（Interactive Run，不路由 Graph）",
+			loggateway.StepID(flowStepChannelInboundAccept),
+			loggateway.Str("channel_id", chRow.ID),
+			loggateway.Str("peer_id", ev.PeerID),
 		)
 	}
 	routePolicy := ResolveChannelAcceptRoute(ev.Text, ltCfg, allowQueue)
@@ -131,7 +132,10 @@ func (h *ChannelIngress) routeInboundAsync(ctx context.Context, chRow biz.Channe
 		h.inboundInflight.release(dedupKey)
 		idempotency := ackIdempotencyKey(platform, ev, "concurrent_busy")
 		if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), channelTurnErrorBusyMsg, ev.OutboundMeta, idempotency); err != nil {
-			event.SysLogWarn("channel.async.reply_failed", "异步回复投递失败", event.P("error", err.Error()))
+			h.lg.Warn("异步回复投递失败",
+				loggateway.StepID("channel.async.reply_failed"),
+				loggateway.Str("error", err.Error()),
+			)
 		}
 		return noop, nil
 	}
@@ -143,10 +147,11 @@ func (h *ChannelIngress) routeInboundAsync(ctx context.Context, chRow biz.Channe
 			return noop, err
 		}
 	}
-	event.SysLogInfo(flowStepChannelInboundAccept, "Channel 入站 ACK 已发送",
-		event.P("channel_id", chRow.ID),
-		event.P("peer_id", ev.PeerID),
-		event.P("async", true),
+	h.lg.Info("Channel 入站 ACK 已发送",
+		loggateway.StepID(flowStepChannelInboundAccept),
+		loggateway.Str("channel_id", chRow.ID),
+		loggateway.Str("peer_id", ev.PeerID),
+		loggateway.Str("async", "true"),
 	)
 	return inboundAcceptOutcome{DispatchAsync: true, releaseConcurrent: release}, nil
 }
@@ -159,7 +164,10 @@ func (h *ChannelIngress) routeInboundSync(ctx context.Context, chRow biz.Channel
 		h.inboundInflight.release(dedupKey)
 		idempotency := ackIdempotencyKey(platform, ev, "concurrent_busy")
 		if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), channelTurnErrorBusyMsg, ev.OutboundMeta, idempotency); err != nil {
-			event.SysLogWarn("channel.async.reply_failed", "异步回复投递失败", event.P("error", err.Error()))
+			h.lg.Warn("异步回复投递失败",
+				loggateway.StepID("channel.async.reply_failed"),
+				loggateway.Str("error", err.Error()),
+			)
 		}
 		return noop, nil
 	}
@@ -169,9 +177,10 @@ func (h *ChannelIngress) routeInboundSync(ctx context.Context, chRow biz.Channel
 		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "ack", "error": err.Error()}, err.Error())
 		return noop, err
 	}
-	event.SysLogInfo(flowStepChannelInboundAccept, "Channel 入站 ACK 已发送",
-		event.P("channel_id", chRow.ID),
-		event.P("peer_id", ev.PeerID),
+	h.lg.Info("Channel 入站 ACK 已发送",
+		loggateway.StepID(flowStepChannelInboundAccept),
+		loggateway.Str("channel_id", chRow.ID),
+		loggateway.Str("peer_id", ev.PeerID),
 	)
 	out := channelAcceptOutcomeFromRoute(routePolicy)
 	out.releaseConcurrent = release

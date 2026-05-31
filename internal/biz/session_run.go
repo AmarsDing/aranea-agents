@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -104,10 +104,11 @@ type SessionRunCheckpointRepo interface {
 type SessionRunUsecase struct {
 	repo SessionRunRepo
 	cps  SessionRunCheckpointRepo
+	lg   loggateway.Logger
 }
 
-func NewSessionRunUsecase(repo SessionRunRepo, cps SessionRunCheckpointRepo) *SessionRunUsecase {
-	return &SessionRunUsecase{repo: repo, cps: cps}
+func NewSessionRunUsecase(repo SessionRunRepo, cps SessionRunCheckpointRepo, lg loggateway.Logger) *SessionRunUsecase {
+	return &SessionRunUsecase{repo: repo, cps: cps, lg: lg}
 }
 
 func NormalizeSessionRunPhase(phase string) string {
@@ -197,7 +198,7 @@ func (u *SessionRunUsecase) Fail(ctx context.Context, id, errMsg string) error {
 		return err
 	}
 	if err := u.repo.ClearResumeClaim(ctx, id); err != nil {
-		event.SysLogWarn("session_run", "clear resume claim failed", event.P("id", id), event.P("error", err.Error()))
+		u.lg.Warn("clear resume claim failed", loggateway.StepID("session_run"), loggateway.Str("id", id), loggateway.Err(err))
 	}
 	return nil
 }

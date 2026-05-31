@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"aranea-agents/internal/event"
 	"aranea-agents/pkg/auth"
+	"aranea-agents/pkg/loggateway"
 )
 
 // RecordAdminAudit writes a best-effort audit_logs row for admin mutations.
@@ -26,6 +26,6 @@ func RecordAdminAudit(ctx context.Context, mon *MonitorUsecase, action, resource
 		Actor:      actor,
 		Severity:   "info",
 	}); err != nil {
-		event.SysLogWarn("system.monitor.audit_log_fail", "RecordAdminAudit failed", event.P("action", action), event.P("error", err.Error()))
+		loggateway.Global().Warn("RecordAdminAudit failed", loggateway.StepID("system.monitor.audit_log_fail"), loggateway.Str("action", action), loggateway.Err(err))
 	}
 }

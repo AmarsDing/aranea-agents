@@ -3,7 +3,7 @@ package session
 import (
 	"database/sql"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
@@ -15,7 +15,7 @@ func NewTRPCSessionService(rawDB *sql.DB) trpcsession.Service {
 	}
 	svc, err := NewSQLiteSessionService(rawDB)
 	if err != nil {
-		event.SysLogWarn("session.factory", "trpc SQLite session service unavailable, using in-memory fallback", event.P("error", err.Error()))
+		loggateway.Global().Warn("trpc SQLite session service unavailable, using in-memory fallback", loggateway.StepID("session.factory"), loggateway.Err(err))
 		return NewInMemorySessionService()
 	}
 	return svc

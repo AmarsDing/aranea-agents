@@ -7,6 +7,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/metrics"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -74,7 +75,7 @@ func (r *Runner) compileTeamRuntime(
 		return strings.TrimSpace(ag.AgentKey)
 	}, r.graphLoader)
 	if cerr != nil {
-		event.CtxFlowLogWarn(ctx, "team.graph_runtime.compile", "Graph 编译失败", event.P("error", cerr.Error()))
+		loggateway.Global().Warn("Graph 编译失败", loggateway.StepID("team.graph_runtime.compile"), loggateway.Str("error", cerr.Error()))
 		metrics.TeamGraphRuntimeTotal.WithLabelValues("graph", "compile_error").Inc()
 		if nRoot, nLookup, nOk, nErr := r.tryNativeFallback(ctx, def, teamDeps, "native_fallback"); nOk {
 			return nRoot, nLookup, "", biz.GraphBuildConfig{}, nil
@@ -88,7 +89,7 @@ func (r *Runner) compileTeamRuntime(
 	compiledGraphCfg = cfg
 	groot, gerr := r.graphRoot.BuildTeamGraphRoot(ctx, cfg)
 	if gerr != nil {
-		event.CtxFlowLogWarn(ctx, "team.graph_runtime.build", "GraphAgent 构建失败", event.P("error", gerr.Error()))
+		loggateway.Global().Warn("GraphAgent 构建失败", loggateway.StepID("team.graph_runtime.build"), loggateway.Str("error", gerr.Error()))
 		metrics.TeamGraphRuntimeTotal.WithLabelValues("graph", "build_error").Inc()
 		if nRoot, nLookup, nOk, nErr := r.tryNativeFallback(ctx, def, teamDeps, "native_fallback"); nOk {
 			return nRoot, nLookup, "", biz.GraphBuildConfig{}, nil
@@ -106,7 +107,7 @@ func (r *Runner) compileTeamRuntime(
 	}
 	if r.teamGraphCoord != nil {
 		if regErr := r.teamGraphCoord.RegisterTeamGraphExecution(ctx, graphExecID, sess.ID, teamRow.ID, runID, compiledGraphCfg); regErr != nil {
-			event.CtxFlowLogWarn(ctx, "team.graph_runtime.register", "graph execution 注册失败", event.P("error", regErr.Error()))
+			loggateway.Global().Warn("graph execution 注册失败", loggateway.StepID("team.graph_runtime.register"), loggateway.Str("error", regErr.Error()))
 		}
 	}
 	if teamEmitter != nil {

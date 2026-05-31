@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"google.golang.org/genai"
@@ -53,6 +53,7 @@ type Embedder struct {
 	APIKey   string
 	Model    string
 	Dim      int
+	lg       loggateway.Logger
 }
 
 // NewEmbedder creates an Embedder with the given configuration.
@@ -83,6 +84,7 @@ func NewEmbedder(provider, baseURL, apiKey, model string, dim int) *Embedder {
 		APIKey:   apiKey,
 		Model:    model,
 		Dim:      dim,
+		lg:       loggateway.Global(),
 	}
 }
 
@@ -220,13 +222,11 @@ func (e *Embedder) embedOpenAIBatch(ctx context.Context, baseURL, apiKey, model 
 		}
 		var r resp
 		if err := json.Unmarshal(body, &r); err != nil {
-			event.SysLogError("system.knowledge.embed_fail", "knowledge embedder openai parse failed",
-				event.P("error", err.Error()))
+			e.lg.Error("knowledge embedder openai parse failed", loggateway.StepID("system.knowledge.embed_fail"), loggateway.Err(err))
 			return nil, kerrors.InternalServer("KNOWLEDGE", "embedder openai parse failed: "+err.Error())
 		}
 		if len(r.Data) != len(batch) {
-			event.SysLogError("system.knowledge.embed_fail", "knowledge embedder openai count mismatch",
-				event.P("expected", fmt.Sprint(len(batch))), event.P("got", fmt.Sprint(len(r.Data))))
+			e.lg.Error("knowledge embedder openai count mismatch", loggateway.StepID("system.knowledge.embed_fail"), loggateway.Int("expected", len(batch)), loggateway.Int("got", len(r.Data)))
 			return nil, kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("embedder openai: expected %d embeddings, got %d", len(batch), len(r.Data)))
 		}
 		ordered := make([][]float32, len(batch))
@@ -260,13 +260,12 @@ func (e *Embedder) embedOllamaBatch(ctx context.Context, baseURL, model string, 
 
 func (e *Embedder) embedGeminiBatch(ctx context.Context, apiKey, model string, dim int, texts []string, taskType string) ([][]float32, error) {
 	if apiKey == "" {
-		event.SysLogError("system.knowledge.embed_fail", "knowledge embedder gemini API key required")
+		e.lg.Error("knowledge embedder gemini API key required", loggateway.StepID("system.knowledge.embed_fail"))
 		return nil, kerrors.BadRequest("KNOWLEDGE", "embedder gemini: API key required")
 	}
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{APIKey: apiKey})
 	if err != nil {
-		event.SysLogError("system.knowledge.embed_fail", "knowledge embedder gemini client failed",
-			event.P("error", err.Error()))
+		e.lg.Error("knowledge embedder gemini client failed", loggateway.StepID("system.knowledge.embed_fail"), loggateway.Err(err))
 		return nil, kerrors.InternalServer("KNOWLEDGE", "embedder gemini client failed: "+err.Error())
 	}
 	model = strings.TrimPrefix(model, "models/")
@@ -291,8 +290,7 @@ func (e *Embedder) embedGeminiBatch(ctx context.Context, apiKey, model string, d
 		}
 		resp, err := client.Models.EmbedContent(ctx, model, contents, cfg)
 		if err != nil {
-			event.SysLogError("system.knowledge.embed_fail", "knowledge embedder gemini API failed",
-				event.P("error", err.Error()))
+			e.lg.Error("knowledge embedder gemini API failed", loggateway.StepID("system.knowledge.embed_fail"), loggateway.Err(err))
 			return nil, kerrors.InternalServer("KNOWLEDGE", "embedder gemini API failed: "+err.Error())
 		}
 		if len(resp.Embeddings) != len(batch) {

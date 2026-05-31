@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/evaluation"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/loggateway"
 
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/usersimulation"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
@@ -35,6 +36,6 @@ func NewEvaluationRunner(
 	if sim, err := evaluation.NewLLMUserSimulator(catalog, rt, sys); err == nil {
 		llmUserSim = sim
 	}
-	framework := evaluation.NewFrameworkBridge(runFactory, judge, llmUserSim)
+	framework := evaluation.NewFrameworkBridge(runFactory, judge, llmUserSim, evaluation.DefaultMultiRunConfig(), loggateway.Global())
 	return evaluation.NewRunner(uc, agentRunner, judge, framework)
 }

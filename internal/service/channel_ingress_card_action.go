@@ -7,7 +7,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/lark"
 	"aranea-agents/internal/channel/port"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 const flowStepChannelCardAction = "channel.card.action"
@@ -39,18 +39,20 @@ func (h *ChannelIngress) handleFeishuCardBackground(ctx context.Context, chRow b
 	}
 	reply, err := h.chat.EscalateSessionRun(ctx, sessionRunID, sessionID)
 	if err != nil {
-		event.SysLogWarn(flowStepChannelCardAction, "飞书卡片回调失败",
-			event.P("channel_id", chRow.ID),
-			event.P("session_run_id", sessionRunID),
-			event.P("error", err.Error()),
+		h.lg.Warn("飞书卡片回调失败",
+			loggateway.StepID(flowStepChannelCardAction),
+			loggateway.Str("channel_id", chRow.ID),
+			loggateway.Str("session_run_id", sessionRunID),
+			loggateway.Str("error", err.Error()),
 		)
 		return lark.NewCardActionToast(channelCardActionFailedRetry)
 	}
-	event.SysLogInfo(flowStepChannelCardAction, "飞书卡片后台继续",
-		event.P("channel_id", chRow.ID),
-		event.P("session_run_id", sessionRunID),
-		event.P("session_id", sessionID),
-		event.P("operator_open_id", action.OperatorOpenID),
+	h.lg.Info("飞书卡片后台继续",
+		loggateway.StepID(flowStepChannelCardAction),
+		loggateway.Str("channel_id", chRow.ID),
+		loggateway.Str("session_run_id", sessionRunID),
+		loggateway.Str("session_id", sessionID),
+		loggateway.Str("operator_open_id", action.OperatorOpenID),
 	)
 	h.recordDelivery(ctx, chRow.ID, "card_action", map[string]any{
 		"action":         action.Action,
@@ -72,11 +74,12 @@ func (h *ChannelIngress) handleFeishuCardCancel(ctx context.Context, chRow biz.C
 	if !cancelled {
 		return lark.NewCardActionToast(reply)
 	}
-	event.SysLogInfo(flowStepChannelCardAction, "飞书卡片取消执行",
-		event.P("channel_id", chRow.ID),
-		event.P("session_id", sessionID),
-		event.P("session_run_id", sessionRunID),
-		event.P("operator_open_id", action.OperatorOpenID),
+	h.lg.Info("飞书卡片取消执行",
+		loggateway.StepID(flowStepChannelCardAction),
+		loggateway.Str("channel_id", chRow.ID),
+		loggateway.Str("session_id", sessionID),
+		loggateway.Str("session_run_id", sessionRunID),
+		loggateway.Str("operator_open_id", action.OperatorOpenID),
 	)
 	h.recordDelivery(ctx, chRow.ID, "card_action", map[string]any{
 		"action":         action.Action,

@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
+	"aranea-agents/pkg/loggateway"
 )
 
 const flowStepChannelTurnExecute = "channel.turn.execute"
@@ -28,7 +29,10 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 	jobID, ctx, err := h.createTurnJob(ctx, chRow, ev, platform)
 	if err != nil {
 		if replyErr := h.deliverTurnErrorReply(ctx, chRow, ev, platform, err); replyErr != nil {
-			event.SysLogWarn("channel.async.reply_failed", "异步回复投递失败", event.P("error", replyErr.Error()))
+			h.lg.Warn("异步回复投递失败",
+				loggateway.StepID("channel.async.reply_failed"),
+				loggateway.Str("error", replyErr.Error()),
+			)
 		}
 		return err
 	}
@@ -81,7 +85,10 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 		h.logTurnFlow(ctx, sessionID, step, "Channel Turn 执行失败", execErr,
 			event.P("channel_id", chRow.ID), event.P("job_id", jobID))
 		if replyErr := h.deliverTurnErrorReply(ctx, chRow, ev, platform, execErr); replyErr != nil {
-			event.SysLogWarn("channel.async.reply_failed", "异步回复投递失败", event.P("error", replyErr.Error()))
+			h.lg.Warn("异步回复投递失败",
+				loggateway.StepID("channel.async.reply_failed"),
+				loggateway.Str("error", replyErr.Error()),
+			)
 		}
 		h.publishChannelTurnRunStatus(ctx, sessionID, jobID, "failed", formatChannelTurnErrorMessage(execErr))
 	}()

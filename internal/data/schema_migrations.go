@@ -14,6 +14,8 @@ const (
 	migrationNameLegacyTRPCMemoryFacts = "legacy_trpc_memory_facts"
 	MigrationTurnIndexToTurnID         = 20260528
 	migrationNameTurnIndexToTurnID     = "turn_index_to_turn_id"
+	MigrationSessionStatusIdle         = 20260531
+	migrationNameSessionStatusIdle     = "session_status_active_to_idle"
 )
 
 func isMigrationApplied(ctx context.Context, client *ent.Client, version int) (bool, error) {

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
@@ -131,7 +131,7 @@ func (f *AgentVisibilityFilter) allowedSlugs(ctx context.Context) map[string]boo
 		}
 	}
 	if err != nil {
-		event.SysLogWarn("system.skillruntime.resolve_failed", "ResolveSkillSlugs failed; hiding all skills (fail-closed)", event.P("error", err))
+		loggateway.Global().Warn("ResolveSkillSlugs failed; hiding all skills (fail-closed)", loggateway.StepID("system.skillruntime.resolve_failed"), loggateway.Err(err))
 	}
 	f.cache.Store(cacheKey, set)
 	return set

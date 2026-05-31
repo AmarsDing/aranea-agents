@@ -2,8 +2,8 @@ package service
 
 import (
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/knowledge"
+	"aranea-agents/pkg/loggateway"
 )
 
 // NewKnowledgeRetriever wires embedder, repo, and optional env-configured reranker (KN-01).
@@ -13,8 +13,10 @@ func NewKnowledgeRetriever(emb *knowledge.Embedder, repo biz.KnowledgeRepo) *kno
 	}
 	rr, err := knowledge.NewRerankerFromEnv()
 	if err != nil {
-		event.SysLogWarn("knowledge.reranker.config", "重排器配置无效，已禁用",
-			event.P("error", err.Error()))
+		loggateway.Global().Warn("重排器配置无效，已禁用",
+			loggateway.StepID("knowledge.reranker.config"),
+			loggateway.Err(err),
+		)
 		rr = nil
 	}
 	return knowledge.NewRetriever(emb, repo, rr)

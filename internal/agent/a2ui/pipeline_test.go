@@ -2,20 +2,7 @@ package a2ui
 
 import (
 	"testing"
-
-	"aranea-agents/pkg/loggateway"
 )
-
-type nopLogger struct{}
-
-func (nopLogger) Debug(string, ...loggateway.Field) {}
-func (nopLogger) Info(string, ...loggateway.Field)  {}
-func (nopLogger) Warn(string, ...loggateway.Field)  {}
-func (nopLogger) Error(string, ...loggateway.Field) {}
-func (n nopLogger) With(...loggateway.Field) loggateway.Logger { return n }
-func (n nopLogger) BeginStep(string, string, ...loggateway.Field) *loggateway.Step { return nil }
-
-var testLG loggateway.Logger = nopLogger{}
 
 func TestStrPtr(t *testing.T) {
 	p := StrPtr("hello")
@@ -39,7 +26,7 @@ func TestBoolPtr(t *testing.T) {
 }
 
 func TestPipeline_NextSurfaceID_Increments(t *testing.T) {
-	p := NewPipeline(testLG)
+	p := NewPipeline()
 	id1 := p.NextSurfaceID()
 	id2 := p.NextSurfaceID()
 	if id1 == id2 {
@@ -48,7 +35,7 @@ func TestPipeline_NextSurfaceID_Increments(t *testing.T) {
 }
 
 func TestPipeline_StorePlan_GetPlan(t *testing.T) {
-	p := NewPipeline(testLG)
+	p := NewPipeline()
 	plan := &Plan{ID: "p1", Goal: "test", Steps: []PlanStep{{ID: "s1", Name: "step1"}}}
 	p.StorePlan(plan)
 	got, ok := p.GetPlan("p1")
@@ -64,7 +51,7 @@ func TestPipeline_StorePlan_GetPlan(t *testing.T) {
 }
 
 func TestPipeline_GetPlan_NotFound(t *testing.T) {
-	p := NewPipeline(testLG)
+	p := NewPipeline()
 	_, ok := p.GetPlan("nonexistent")
 	if ok {
 		t.Fatal("should not find nonexistent plan")
@@ -72,7 +59,7 @@ func TestPipeline_GetPlan_NotFound(t *testing.T) {
 }
 
 func TestPipeline_GetPlan_DefensiveCopy(t *testing.T) {
-	p := NewPipeline(testLG)
+	p := NewPipeline()
 	plan := &Plan{ID: "p1", Goal: "g", Steps: []PlanStep{{ID: "s1"}}}
 	p.StorePlan(plan)
 	got, _ := p.GetPlan("p1")
@@ -84,7 +71,7 @@ func TestPipeline_GetPlan_DefensiveCopy(t *testing.T) {
 }
 
 func TestPipeline_GetPlan_DependenciesCopy(t *testing.T) {
-	p := NewPipeline(testLG)
+	p := NewPipeline()
 	plan := &Plan{ID: "p1", Dependencies: map[string][]string{"s1": {"s2"}}}
 	p.StorePlan(plan)
 	got, _ := p.GetPlan("p1")
@@ -96,7 +83,7 @@ func TestPipeline_GetPlan_DependenciesCopy(t *testing.T) {
 }
 
 func TestPipeline_IsApproval(t *testing.T) {
-	p := NewPipeline(testLG)
+	p := NewPipeline()
 	action := &UserAction{Name: "approve", Context: map[string]any{"planId": "p1"}}
 	if !p.IsApproval(action) {
 		t.Fatal("should be approval")
@@ -104,7 +91,7 @@ func TestPipeline_IsApproval(t *testing.T) {
 }
 
 func TestPipeline_IsRejection(t *testing.T) {
-	p := NewPipeline(testLG)
+	p := NewPipeline()
 	action := &UserAction{Name: "reject", Context: map[string]any{"planId": "p1"}}
 	if !p.IsRejection(action) {
 		t.Fatal("should be rejection")
@@ -112,7 +99,7 @@ func TestPipeline_IsRejection(t *testing.T) {
 }
 
 func TestPipeline_ActionPlanID(t *testing.T) {
-	p := NewPipeline(testLG)
+	p := NewPipeline()
 	action := &UserAction{Name: "approve", Context: map[string]any{"planId": "plan_123"}}
 	if got := p.ActionPlanID(action); got != "plan_123" {
 		t.Fatalf("got %q", got)
@@ -120,7 +107,7 @@ func TestPipeline_ActionPlanID(t *testing.T) {
 }
 
 func TestPipeline_ActionPlanID_Missing(t *testing.T) {
-	p := NewPipeline(testLG)
+	p := NewPipeline()
 	action := &UserAction{Name: "approve", Context: map[string]any{}}
 	if got := p.ActionPlanID(action); got != "" {
 		t.Fatalf("expected empty, got %q", got)
