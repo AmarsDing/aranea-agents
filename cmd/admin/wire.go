@@ -108,11 +108,11 @@ func provideCronRunner(deps cronrunner.Deps, lg loggateway.Logger) *cronrunner.R
 	return cronrunner.NewRunner(deps, lg)
 }
 
-func provideSkillWatchRunner(skillReader watch.SkillReader, skillWriter watch.SkillWriter, sys biz.SystemSettingRepo, eventBus event.Bus, mon *biz.MonitorUsecase) *watch.Runner {
+func provideSkillWatchRunner(skillReader watch.SkillReader, skillWriter watch.SkillWriter, sys biz.SystemSettingRepo, eventBus event.Bus, mon *biz.MonitorUsecase, lg loggateway.Logger) *watch.Runner {
 	if strings.TrimSpace(os.Getenv("SKILL_WATCH_DISABLED")) == "1" {
 		return nil
 	}
-	r := watch.NewRunnerWithBus(skillReader, skillWriter, sys, eventBus)
+	r := watch.NewRunnerWithBus(skillReader, skillWriter, sys, eventBus, lg)
 	if r != nil {
 		watch.SetSyncReporter(r, watch.NewMonitorSyncReporter(mon, eventBus))
 		if mon != nil {

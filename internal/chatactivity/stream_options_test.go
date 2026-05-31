@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 type stubToolRepo struct {
@@ -38,7 +39,7 @@ func TestCatalogActivityMetaResolver(t *testing.T) {
 	resolver := newCatalogActivityMetaResolver(
 		biz.NewToolUsecase(&stubToolRepo{display: map[string]string{
 			"save_file": "保存文件",
-		}}, nil),
+		}}, nil, loggateway.NewNoop()),
 		&stubAgentRepo{
 			names: map[string]string{"worker-a": "Worker A"},
 			ids:   map[string]string{"worker-a": "ag-worker-a"},

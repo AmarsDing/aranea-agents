@@ -1,9 +1,12 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"time"
+
+	"aranea-agents/pkg/safego"
 )
 
 // StopFunc stops a spinner when called.
@@ -19,11 +22,10 @@ func (u UI) Spinner(label string) StopFunc {
 	}
 
 	done := make(chan struct{})
-	go func() {
+	safego.Go(context.Background(), "cli.spinner", func() {
 		frames := []string{"|", "/", "-", "\\"}
 		i := 0
 		start := time.Now()
-		// Wait 200ms before showing spinner.
 		select {
 		case <-done:
 			return
@@ -36,7 +38,6 @@ func (u UI) Spinner(label string) StopFunc {
 		for {
 			select {
 			case <-done:
-				// Clear spinner line.
 				fmt.Fprintf(u.Err, "\r\033[K")
 				return
 			case <-ticker.C:
@@ -50,7 +51,7 @@ func (u UI) Spinner(label string) StopFunc {
 				i++
 			}
 		}
-	}()
+	})
 
 	return func() {
 		close(done)

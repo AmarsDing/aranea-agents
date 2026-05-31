@@ -158,15 +158,14 @@ func main() {
 		panic(err)
 	}
 
-	// EP-OBS-02: initialise OTel tracer + meter providers; noop when endpoint not set.
-	shutdownTelemetry := telemetry.Init(Name, Version)
-	defer func() { _ = shutdownTelemetry(context.Background()) }()
-
 	var lg loggateway.Logger = loggateway.NewNoop()
 	if bc.Logging != nil {
 		lg = loggateway.New(bc.Logging)
 	}
 	loggateway.SetGlobal(lg.(*loggateway.Gateway))
+
+	shutdownTelemetry := telemetry.Init(Name, Version)
+	defer func() { _ = shutdownTelemetry(context.Background()) }()
 
 	out, cleanup, err := wireApp(bc.Server, bc.Data, nil, logger, lg)
 	if err != nil {

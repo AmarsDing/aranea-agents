@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/sessionmemory"
 	trpcmem "aranea-agents/internal/memory/trpc"
+	"aranea-agents/pkg/loggateway"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -179,7 +180,7 @@ func TestSQLiteMemoryService_DeleteAndClear(t *testing.T) {
 }
 
 func TestMemoryAdminUsecase_RequireAdminWhenStoreMissing(t *testing.T) {
-	uc := biz.NewMemoryAdminUsecase(nil, &biz.MemoryUsecase{}, nil)
+	uc := biz.NewMemoryAdminUsecase(nil, &biz.MemoryUsecase{}, nil, nil, loggateway.NewNoop())
 	if uc == nil {
 		t.Fatal("expected vec-only usecase")
 	}

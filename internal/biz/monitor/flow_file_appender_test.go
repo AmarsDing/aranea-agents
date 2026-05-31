@@ -13,11 +13,12 @@ import (
 
 	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestNewFlowFileAppender_NonEmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	if a == nil {
 		t.Fatal("NewFlowFileAppender returned nil")
 	}
@@ -27,7 +28,7 @@ func TestNewFlowFileAppender_NonEmptyDir(t *testing.T) {
 }
 
 func TestNewFlowFileAppender_EmptyDir(t *testing.T) {
-	a := monitor.NewFlowFileAppender("")
+	a := monitor.NewFlowFileAppender("", loggateway.NewNoop())
 	if a == nil {
 		t.Fatal("NewFlowFileAppender returned nil")
 	}
@@ -38,7 +39,7 @@ func TestNewFlowFileAppender_EmptyDir(t *testing.T) {
 
 func TestNewFlowFileAppender_StartCancelledContext(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	a.Start(ctx)
@@ -52,7 +53,7 @@ func TestNewFlowFileAppender_StartNilAppender(t *testing.T) {
 
 func TestFlowFileAppender_OnEnvelope_FlowLog(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	env := contract.Envelope{
@@ -102,7 +103,7 @@ func TestFlowFileAppender_OnEnvelope_FlowLog(t *testing.T) {
 
 func TestFlowFileAppender_OnEnvelope_SystemLog(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	env := contract.Envelope{
@@ -128,7 +129,7 @@ func TestFlowFileAppender_OnEnvelope_SystemLog(t *testing.T) {
 
 func TestFlowFileAppender_OnEnvelope_AlertNotify(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	env := contract.Envelope{
@@ -153,7 +154,7 @@ func TestFlowFileAppender_OnEnvelope_AlertNotify(t *testing.T) {
 
 func TestFlowFileAppender_OnEnvelope_MCPHealthAlert(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	env := contract.Envelope{
@@ -178,7 +179,7 @@ func TestFlowFileAppender_OnEnvelope_MCPHealthAlert(t *testing.T) {
 
 func TestFlowFileAppender_OnEnvelope_RunnerCompletion(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	env := contract.Envelope{
@@ -203,7 +204,7 @@ func TestFlowFileAppender_OnEnvelope_RunnerCompletion(t *testing.T) {
 
 func TestFlowFileAppender_OnEnvelope_NilMetadata(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	env := contract.Envelope{
@@ -237,7 +238,7 @@ func TestFlowFileAppender_OnEnvelope_NilAppender(t *testing.T) {
 
 func TestFlowFileAppender_OnEnvelope_UnknownType(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	env := contract.Envelope{
@@ -261,7 +262,7 @@ func TestFlowFileAppender_OnEnvelope_UnknownType(t *testing.T) {
 
 func TestFlowFileAppender_OnEnvelope_RoutesToCorrectFiles(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	envs := []contract.Envelope{
@@ -294,7 +295,7 @@ func TestFlowFileAppender_OnEnvelope_RoutesToCorrectFiles(t *testing.T) {
 
 func TestFlowFileAppender_CompressOldFiles(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetCompressAge(1 * time.Millisecond)
 
 	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
@@ -356,7 +357,7 @@ func TestFlowFileAppender_CompressOldFiles(t *testing.T) {
 
 func TestFlowFileAppender_CompressOldFiles_SkipExistingGz(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetCompressAge(1 * time.Millisecond)
 
 	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
@@ -385,7 +386,7 @@ func TestFlowFileAppender_CompressOldFiles_SkipExistingGz(t *testing.T) {
 
 func TestFlowFileAppender_CompressOldFiles_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetCompressAge(1 * time.Millisecond)
 
 	compressed := a.CompressOldFilesExposed()
@@ -396,7 +397,7 @@ func TestFlowFileAppender_CompressOldFiles_EmptyDir(t *testing.T) {
 
 func TestFlowFileAppender_CompressOldFiles_ZeroCompressAge(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetCompressAge(0)
 
 	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
@@ -413,7 +414,7 @@ func TestFlowFileAppender_CompressOldFiles_ZeroCompressAge(t *testing.T) {
 
 func TestFlowFileAppender_PurgeExpiredFiles(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetRetentionDays(1)
 
 	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
@@ -450,7 +451,7 @@ func TestFlowFileAppender_PurgeExpiredFiles(t *testing.T) {
 
 func TestFlowFileAppender_PurgeExpiredFiles_JsonlToo(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetRetentionDays(1)
 
 	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
@@ -477,7 +478,7 @@ func TestFlowFileAppender_PurgeExpiredFiles_JsonlToo(t *testing.T) {
 
 func TestFlowFileAppender_PurgeExpiredFiles_ZeroRetention(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetRetentionDays(0)
 
 	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
@@ -494,7 +495,7 @@ func TestFlowFileAppender_PurgeExpiredFiles_ZeroRetention(t *testing.T) {
 
 func TestFlowFileAppender_PurgeExpiredFiles_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetRetentionDays(1)
 
 	purged := a.PurgeExpiredFilesExposed()
@@ -505,7 +506,7 @@ func TestFlowFileAppender_PurgeExpiredFiles_EmptyDir(t *testing.T) {
 
 func TestFlowFileAppender_PurgeExpiredFiles_NonJsonlIgnored(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetRetentionDays(1)
 
 	oldDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
@@ -531,7 +532,7 @@ func TestFlowFileAppender_PurgeExpiredFiles_NonJsonlIgnored(t *testing.T) {
 
 func TestFlowFileAppender_PurgeTmpFiles(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 
 	tmpPath := filepath.Join(dir, "flow-2025-01-01.jsonl.gz.tmp")
 	if err := os.WriteFile(tmpPath, []byte("tmp data"), 0644); err != nil {
@@ -556,14 +557,14 @@ func TestFlowFileAppender_PurgeTmpFiles(t *testing.T) {
 
 func TestFlowFileAppender_PurgeTmpFiles_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 
 	a.PurgeTmpFilesExposed()
 }
 
 func TestFlowFileAppender_PurgeTmpFiles_MultipleTmpFiles(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 
 	tmp1 := filepath.Join(dir, "flow-2025-01-01.jsonl.gz.tmp")
 	tmp2 := filepath.Join(dir, "alert-2025-01-01.jsonl.gz.tmp")
@@ -586,7 +587,7 @@ func TestFlowFileAppender_PurgeTmpFiles_MultipleTmpFiles(t *testing.T) {
 
 func TestFlowFileAppender_SyncOpenFiles(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	env := contract.Envelope{
@@ -603,14 +604,14 @@ func TestFlowFileAppender_SyncOpenFiles(t *testing.T) {
 
 func TestFlowFileAppender_SyncOpenFiles_NoOpenFiles(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 
 	a.SyncOpenFilesExposed()
 }
 
 func TestFlowFileAppender_Maintenance(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	a.SetCompressAge(1 * time.Millisecond)
 	a.SetRetentionDays(1)
 	defer a.CloseAllFiles()
@@ -638,7 +639,7 @@ func TestFlowFileAppender_Maintenance(t *testing.T) {
 
 func TestFlowFileAppender_MultipleEnvelopes(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	for i := 0; i < 5; i++ {
@@ -676,7 +677,7 @@ func TestFlowFileAppender_MultipleEnvelopes(t *testing.T) {
 
 func TestFlowFileAppender_OnEnvelope_ContentFields(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	ts := "2025-06-15T10:30:00Z"
@@ -730,7 +731,7 @@ func TestFlowFileAppender_OnEnvelope_ContentFields(t *testing.T) {
 
 func TestFlowFileAppender_OnEnvelope_NilContent(t *testing.T) {
 	dir := t.TempDir()
-	a := monitor.NewFlowFileAppender(dir)
+	a := monitor.NewFlowFileAppender(dir, loggateway.NewNoop())
 	defer a.CloseAllFiles()
 
 	env := contract.Envelope{

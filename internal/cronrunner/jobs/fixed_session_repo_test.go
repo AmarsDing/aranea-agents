@@ -166,6 +166,9 @@ func (fixedSessionRepo) TryIncrementCompressVersion(context.Context, string) (in
 func (fixedSessionRepo) CompressSessionInTx(ctx context.Context, _ string, fn func(context.Context) error) error {
 	return fn(ctx)
 }
+func (fixedSessionRepo) PatchSessionState(_ context.Context, _ string, _ map[string]string, _ []string) error {
+	return nil
+}
 
 var _ sessionsess.SessionRepo = fixedSessionRepo{}
 

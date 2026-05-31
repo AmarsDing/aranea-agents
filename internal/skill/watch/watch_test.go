@@ -3,6 +3,8 @@ package watch
 import (
 	"context"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestSlugFromEvent_Basic(t *testing.T) {
@@ -78,14 +80,14 @@ func TestSetAlertEvaluator_NilRunner(t *testing.T) {
 }
 
 func TestNewRunner(t *testing.T) {
-	r := NewRunner(nil, nil, nil, nil)
+	r := NewRunner(nil, nil, nil, loggateway.NewNoop())
 	if r == nil {
 		t.Fatal("expected non-nil runner")
 	}
 }
 
 func TestNewRunnerWithBus(t *testing.T) {
-	r := NewRunnerWithBus(nil, nil, nil, nil, nil)
+	r := NewRunnerWithBus(nil, nil, nil, nil, loggateway.NewNoop())
 	if r == nil {
 		t.Fatal("expected non-nil runner")
 	}
@@ -102,6 +104,6 @@ func TestRunner_reportSync_NilRunner(t *testing.T) {
 }
 
 func TestRunner_reportSync_NilReporter(t *testing.T) {
-	r := NewRunner(nil, nil, nil, nil)
+	r := NewRunner(nil, nil, nil, loggateway.NewNoop())
 	r.reportSync(context.Background(), "test", "slug", "msg", "info")
 }

@@ -22,7 +22,7 @@ func newMemoryEnabledAgentsUC(ids ...string) *biz.AgentUsecase {
 	for _, id := range ids {
 		repo.ids[id] = struct{}{}
 	}
-	return biz.NewAgentUsecase(repo, nil, nil)
+	return biz.NewAgentUsecase(repo, nil, nil, loggateway.NewNoop())
 }
 
 func (r *memoryTestAgentRepo) SearchAgents(context.Context, biz.AgentListQuery) (biz.AgentListResult, error) {

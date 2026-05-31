@@ -57,12 +57,12 @@ func SetSyncReporter(r *Runner, reporter SyncReporter) {
 	r.reporter = reporter
 }
 
-func NewRunner(reader SkillReader, writer SkillWriter, sys biz.SystemSettingRepo) *Runner {
-	return &Runner{reader: reader, writer: writer, sys: sys, lg: loggateway.Global(), pending: map[string]struct{}{}}
+func NewRunner(reader SkillReader, writer SkillWriter, sys biz.SystemSettingRepo, lg loggateway.Logger) *Runner {
+	return &Runner{reader: reader, writer: writer, sys: sys, lg: lg, pending: map[string]struct{}{}}
 }
 
-func NewRunnerWithBus(reader SkillReader, writer SkillWriter, sys biz.SystemSettingRepo, bus event.Bus) *Runner {
-	return &Runner{reader: reader, writer: writer, sys: sys, eventBus: bus, lg: loggateway.Global(), pending: map[string]struct{}{}}
+func NewRunnerWithBus(reader SkillReader, writer SkillWriter, sys biz.SystemSettingRepo, bus event.Bus, lg loggateway.Logger) *Runner {
+	return &Runner{reader: reader, writer: writer, sys: sys, eventBus: bus, lg: lg, pending: map[string]struct{}{}}
 }
 
 func (r *Runner) resolveRoot(ctx context.Context) string {

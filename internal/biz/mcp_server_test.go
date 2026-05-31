@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type stubMCPRepo struct {
@@ -67,7 +69,7 @@ func TestRecordReconnectMetadata_PersistsCountAndTimestamp(t *testing.T) {
 		Key:          "my-server",
 		MetadataJSON: `{"reconnect_count":2}`,
 	}}}
-	uc := NewMCPServerUsecase(repo, NewCredentialCrypto(nil))
+	uc := NewMCPServerUsecase(repo, NewCredentialCrypto(nil, loggateway.NewNoop()))
 	uc.SetMetadataEditor(testMCPMetadataEditor{})
 	at := time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC)
 	if err := uc.RecordReconnectMetadata(context.Background(), "my-server", at); err != nil {

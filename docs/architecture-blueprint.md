@@ -108,7 +108,7 @@ Aranea-Agents 是基于 **trpc-agent-go** 的多智能体编排平台。以 **Kr
 | **AgentService** | agent/v1 | AgentUsecase | 无（纯 CRUD） |
 | **TeamService** | team/v1 | TeamUsecase | 无（纯 CRUD） |
 | **GraphService** | graph/v1 | GraphUsecase + GraphBuilderFactory | 实现 `biz.GraphExecutor` |
-| **SessionService** | session/v1 | SessionUsecase | 无 |
+| **SessionService** | session/v1 | SessionUsecase | `SessionStatusGuard`（Kratos 生命周期钩子） |
 | **ChannelService** | channel/v1 | ChannelUsecase | 无 |
 | **CronService** | cron/v1 | CronUsecase | 无 |
 | **PluginService** | plugin/v1 | PluginUsecase | 无 |
@@ -138,7 +138,7 @@ Aranea-Agents 是基于 **trpc-agent-go** 的多智能体编排平台。以 **Kr
 | **ChatUsecase** | 聊天 Turn 生命周期、Run 状态、待处理队列、Await-Reply | `ChatRunGateway`、`ChatSessionLocker`、`ChatPendingQueue` |
 | **TeamUsecase** | Team CRUD、定义验证（6 种模式）、Run 管理 | `TeamRepository`、`AgentIDExistenceChecker` |
 | **GraphUsecase** | Graph 定义/执行/缓存、任务协调、GC | `GraphRepo`、`GraphRunRepo`、`GraphBuilderFactory` |
-| **SessionUsecase** | 会话 CRUD、消息持久化、Turn 记录、压缩 | `SessionRepo`、`SessionRunRepo` |
+| **SessionUsecase** | 会话 CRUD、消息持久化、Turn 记录、压缩、**状态转换（5 态状态机）**、**删除保护** | `SessionRepo`、`SessionRunRepo`、`SessionStatusPublisher`（端口） |
 | **ChannelUsecase** | 渠道 CRUD、入站路由、出站投递、Peer 绑定管理、入站去重、路由解析、Agent/Team 查询 | `ChannelRepo`、`ChannelPeerSessionRepo`、`ChannelInboundReceiptRepo`、`AgentRepository`、`TeamRepository`、`CredentialCrypto` |
 | **CronUsecase** | 定时任务 CRUD、调度 | `CronRepo`、`NativeTurnGateway` |
 | **MemoryUsecase** | 记忆 CRUD、PII 检测、策略执行 | `MemoryRepo`、`EmbeddingService` |
@@ -259,6 +259,32 @@ GraphRuntime            ← Graph 消费（运行时端口）
 #### 会话存储 (`internal/session/`)
 
 适配 `trpcsession.Service`，提供会话快照读写。通过 `SQLiteSessionService` 实现。
+
+#### 会话状态监控 (`internal/biz/session/status*.go` + `internal/service/session_status_guard.go`)
+
+**5 种执行状态**：
+
+| 状态 | 含义 | 可转换到 |
+|------|------|---------|
+| `idle` | 空闲（默认） | `running` |
+| `running` | 执行中 | `completed`/`interrupted`/`awaiting_confirmation` |
+| `completed` | 正常完成 | `running` |
+| `interrupted` | 非正常中断 | `running` |
+| `awaiting_confirmation` | 等待确认（工具/Agent） | `running`/`interrupted` |
+
+**11 种状态原因**：`user_cancelled`/`timeout`/`budget_escalated`/`error`/`context_overflow`/`server_shutdown`/`unexpected_shutdown`/`confirmation_timeout`/`tool_confirmation`/`agent_awaiting_reply`/`manual_override`
+
+**删除保护**：`running` 和 `awaiting_confirmation` 状态禁止删除/归档。
+
+**状态机**：`SessionStatusMachine` 校验合法转换，非法转换返回 `kerrors.BadRequest`。
+
+**端口接口**：`SessionStatusPublisher`（biz 定义，service 实现）—— 发布 `session.status_changed` WS Envelope。
+
+**生命周期守卫**：`SessionStatusGuard` 注册到 Kratos 生命周期钩子：
+- `OnStartup`：恢复孤儿 running 会话（标记 `interrupted` + `unexpected_shutdown`）
+- `OnShutdown`：批量将 running 会话标记为 `interrupted` + `server_shutdown`
+
+**数据迁移**：`active → idle`，通过 `schema_migrations` 版本门控保证幂等。
 
 #### 技能系统 (`internal/skill/`)
 
@@ -388,7 +414,7 @@ services/index.ts (25 个 createXxxService)
 | **useTeamsStore** | teams[]、activeTeam | loadTeams、addTeam、editTeam | listTeams、createTeam、updateTeam |
 | **useToolsStore** | tools[]、activeTool | loadTools、fetchCatalog、saveOverride | 全部 Tool API |
 | **useMonitorStore** | auditLogs[]、events[]、alertRules[] | loadAuditLogs、startRuntimeEventsStream | 全部 Monitor API |
-| **useSessionStore** | sessions[]、activeSession | loadSessions、searchPage、batchArchive | 全部 Session API |
+| **useSessionStore** | sessions[]、activeSession | loadSessions、searchPage、batchArchive、**patchSessionStatus** | 全部 Session API |
 
 ### 4.3 实时通信层
 
@@ -413,13 +439,13 @@ dispatcher.ts            ← EnvelopeDispatcher: 按 type/channel/sessionId/team
   └── features/orchestration/useOrchestrationStream.ts
 ```
 
-**46 种 Envelope 类型**：text_delta、tool_call、tool_result、runner_completion、context_usage、graph_node_start/end、team_run_started/finished、alert.notify 等。
+**47 种 Envelope 类型**：text_delta、tool_call、tool_result、runner_completion、context_usage、graph_node_start/end、team_run_started/finished、alert.notify、**session.status_changed** 等。
 
 ### 4.4 跨 Store 通信
 
 | 机制 | 生产者 | 消费者 | 说明 |
 |------|--------|--------|------|
-| **sessionSync 事件总线** | ChatSessionStore、SessionStore | ChatSessionStore | 会话变更通知（remove/update/archive/refresh） |
+| **sessionSync 事件总线** | ChatSessionStore、SessionStore | ChatSessionStore | 会话变更通知（remove/update/archive/refresh/**status_changed**） |
 | **AppStore → ChatStore** | AppStore | ChatSessionStore、ChatMessageStore | Agent 切换时重置会话和消息 |
 | **InboundNotificationStore** | WS 事件 | InboundNotificationBell | 通知铃铛 |
 | **MonitorStore → channels/api** | MonitorStore | — | 告警渠道选项加载 |
@@ -501,6 +527,7 @@ ChatService → ChatOrchestrator.ExecuteTurn(TurnInput)
   │
   └── 7. Turn 完成后处理：
         ├── SetRunStatus("completed")
+        ├── TransitionSessionStatus → completed / interrupted / awaiting_confirmation
         ├── 记忆提取（异步 EventBus → TurnMemoryWorker）
         ├── 会话压缩（超阈值时 LLM 摘要）
         ├── 用量记录
@@ -642,7 +669,7 @@ WS 事件流：
 | 表 | Ent Schema | 用途 |
 |----|-----------|------|
 | agents | ✅ | Agent 定义（key/name/prompt/settings） |
-| sessions | ✅ | 会话记录 |
+| sessions | ✅ | 会话记录（status: idle/running/completed/interrupted/awaiting_confirmation + status_reason + status_changed_at） |
 | messages | ✅ | 聊天消息 |
 | session_turns | ✅ | Turn 记录 |
 | session_runs | ✅ | Run 记录 |
@@ -682,7 +709,7 @@ cmd/admin/wire.go
   ├── biz.ProviderSet       — ~35 个 Usecase
   ├── event.ProviderSet     — 事件基础设施
   ├── session.ProviderSet   — 会话运行时
-  └── service.ProviderSet   — ~25 个 Service + Wire 接口绑定
+  └── service.ProviderSet   — ~25 个 Service + Wire 接口绑定（含 `WireSessionStatusPublisher` → `SessionStatusGuard` + `SessionStatusPublisher` 注入）
 ```
 
 ### 8.2 关键 Wire 绑定（在 service.go）

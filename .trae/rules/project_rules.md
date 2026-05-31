@@ -62,7 +62,7 @@ internal/data           ← Repo 实现（Ent ORM + SQLite）
 | 7 | 跨模块调用不得持有对方 Service 具体类型 | 通过 biz 级窄接口（端口）交互，Wire 绑定在 Service 层 |
 | 8 | 框架 plugin 回调不得直接写数据库 | 经 broker/async 异步写 |
 | 9 | 所有 `go func()` 必须走 `pkg/safego` | 禁止裸 `go func()` 不处理 panic |
-| 10 | 禁止使用 `log/slog` 记录日志 | 统一使用 `internal/event` 的 `FlowLog` |
+| 10 | 禁止使用 `log/slog` 记录日志 | 统一使用 `pkg/loggateway.Logger`（`lg.Info/Warn/Error` + `loggateway.StepID/Err/Str`） |
 | 11 | 不得在 `NewData` 外另开 SQLite 连接 | 仅通过 `d.Ent()` 访问 SQLite |
 | 12 | 不得新增已无调用者的 deprecated 方法 | 死代码即删 |
 | 13 | Service 层不得直接依赖 Repo 接口 | 通过 Usecase 层访问，Repo 接口只在 biz/data 层出现 |

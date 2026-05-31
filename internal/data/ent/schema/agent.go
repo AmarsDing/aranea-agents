@@ -40,7 +40,6 @@ func (Agent) Fields() []ent.Field {
 		field.String("icon").Default(""),
 		field.Text("agent_description").Default(""),
 		field.String("category_position_id").Default(""),
-		field.String("taxonomy_position_id").Default(""),
 		field.String("system_prompt_mode").Default(""),
 		field.Int("context_window").Default(0),
 		field.Int("budget_monthly_cents").Default(0),
@@ -54,6 +53,7 @@ func (Agent) Fields() []ent.Field {
 		field.Bool("readonly").Default(false).Comment("system agents cannot be deleted"),
 		field.Enum("kind").Values("user", "system").Default("user").Comment("agent kind: user | system"),
 		field.String("position_key").Default("").Comment("FK to positions.key"),
+		field.String("taxonomy_position_id").Default("").Comment("FK to taxonomy positions"),
 		field.String("agent_variant").Default("general").Comment("variant within position: general/code_review/architect/..."),
 		field.Text("variant_description").Default("").Comment("human-readable description of this variant"),
 	}

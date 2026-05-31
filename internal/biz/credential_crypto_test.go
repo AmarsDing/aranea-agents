@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestMergeConfigJSONForUpdate_PreservesEncryptedAPIKey(t *testing.T) {
@@ -38,7 +40,7 @@ func TestProcessConfigJSONForStorage_EncryptsAPIKey(t *testing.T) {
 	}
 	_ = os.Setenv(envCredentialKey, hex.EncodeToString(key))
 	defer os.Unsetenv(envCredentialKey)
-	c := NewCredentialCrypto(nil)
+	c := NewCredentialCrypto(nil, loggateway.NewNoop())
 
 	out, err := c.ProcessConfigJSONForStorage(context.Background(), `{"api_key":"sk-test","provider_type":"openai"}`)
 	if err != nil {

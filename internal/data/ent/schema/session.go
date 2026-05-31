@@ -52,7 +52,7 @@ func (Session) Fields() []ent.Field {
 		field.String("last_model").Default(""),
 		field.Int("last_context_window_tokens").Default(0),
 
-		field.String("status").Default("active"),
+		field.String("status").Default("idle"),
 		field.String("status_reason").Default(""),
 		field.String("status_changed_at").Default(""),
 		field.String("visibility").Default("private"),

@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/pkg/loggateway"
 )
 
 type ingressChannelRepo struct {
@@ -25,6 +26,7 @@ func TestAcceptInboundReturnsExecuteSync(t *testing.T) {
 	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
 	h := &ChannelIngress{
 		channels: uc,
+		lg:       loggateway.NewNoop(),
 	}
 	ch := biz.Channel{
 		ID:         "ch-1",
@@ -54,6 +56,7 @@ func TestAcceptInboundDefersAckWhenStreaming(t *testing.T) {
 	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
 	h := &ChannelIngress{
 		channels: uc,
+		lg:       loggateway.NewNoop(),
 	}
 	ch := biz.Channel{
 		ID:         "ch-1",
@@ -82,6 +85,7 @@ func TestAcceptInboundReturnsDispatchAsync(t *testing.T) {
 	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
 	h := &ChannelIngress{
 		channels: uc,
+		lg:       loggateway.NewNoop(),
 	}
 	ch := biz.Channel{
 		ID:         "ch-1",
@@ -105,9 +109,10 @@ func TestAcceptInboundReturnsDispatchAsync(t *testing.T) {
 
 func TestAcceptInboundSkipsDuplicateInbound(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil))
+	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
 	h := &ChannelIngress{
 		channels: uc,
+		lg:       loggateway.NewNoop(),
 	}
 	ch := biz.Channel{ID: "ch-1", ConfigJSON: `{"type":"feishu","config":{}}`}
 	ev := port.InboundEvent{
@@ -130,9 +135,10 @@ func TestAcceptInboundSkipsDuplicateInbound(t *testing.T) {
 
 func TestProcessInboundHTTPResponds200(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil))
+	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
 	h := &ChannelIngress{
 		channels: uc,
+		lg:       loggateway.NewNoop(),
 	}
 	ch := biz.Channel{
 		ID:         "ch-1",

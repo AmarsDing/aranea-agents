@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/session"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/agent"
 	"aranea-agents/internal/data/ent/platformskill"
@@ -168,7 +169,7 @@ func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Se
 	in.CreatedAt = now
 	in.UpdatedAt = now
 	if in.Status == "" {
-		in.Status = "active"
+		in.Status = "idle"
 	}
 	if in.ContextStatus == "" {
 		in.ContextStatus = llmcontext.ContextStatusForRatio(in.ContextUsedRatio)
@@ -299,7 +300,7 @@ func (r *sessionRepo) RestoreSession(ctx context.Context, id string) (biz.Sessio
 	now := nowRFC3339()
 	_, err := c.Session.Update().
 		Where(entsession.IDEQ(id)).
-		SetStatus("active").
+		SetStatus("idle").
 		SetStatusReason("").
 		SetStatusChangedAt(now).
 		SetArchivedAt("").
@@ -354,10 +355,7 @@ func (r *sessionRepo) ArchiveSession(ctx context.Context, id string) (int, error
 	c := r.txClient(ctx)
 	now := nowRFC3339()
 	n, err := c.Session.Update().
-		Where(entsession.IDEQ(id), entsession.DeletedAtEQ(""), entsession.StatusNEQ("running"), entsession.StatusNEQ("archived")).
-		SetStatus("archived").
-		SetStatusReason("manual_override").
-		SetStatusChangedAt(now).
+		Where(entsession.IDEQ(id), entsession.DeletedAtEQ(""), entsession.ArchivedAtEQ(""), entsession.StatusNEQ(string(session.SessionStatusRunning)), entsession.StatusNEQ(string(session.SessionStatusAwaitingConfirmation))).
 		SetArchivedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
@@ -371,11 +369,8 @@ func (r *sessionRepo) DeleteSession(ctx context.Context, id string) (int, error)
 	c := r.txClient(ctx)
 	now := nowRFC3339()
 	n, err := c.Session.Update().
-		Where(entsession.IDEQ(id), entsession.DeletedAtEQ(""), entsession.StatusNEQ("running")).
+		Where(entsession.IDEQ(id), entsession.DeletedAtEQ(""), entsession.StatusNEQ(string(session.SessionStatusRunning)), entsession.StatusNEQ(string(session.SessionStatusAwaitingConfirmation))).
 		SetDeletedAt(now).
-		SetStatus("deleted").
-		SetStatusReason("manual_override").
-		SetStatusChangedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {

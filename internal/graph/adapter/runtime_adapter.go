@@ -209,7 +209,7 @@ func (r *trpcGraphRuntime) GetLineageID() string {
 func convertTrpcEvent(e *trpcevent.Event, bus event.Bus, sessionID, graphID, execID string) biz.GraphRuntimeEvent {
 	var bridge *graphtrpc.EventBridge
 	if bus != nil {
-		bridge = graphtrpc.NewEventBridge(bus, sessionID, graphID, execID)
+		bridge = graphtrpc.NewEventBridge(bus, sessionID, graphID, execID, nil)
 	}
 
 	if bridge != nil {

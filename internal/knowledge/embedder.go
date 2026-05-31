@@ -57,7 +57,7 @@ type Embedder struct {
 }
 
 // NewEmbedder creates an Embedder with the given configuration.
-func NewEmbedder(provider, baseURL, apiKey, model string, dim int) *Embedder {
+func NewEmbedder(provider, baseURL, apiKey, model string, dim int, lg loggateway.Logger) *Embedder {
 	if dim <= 0 {
 		dim = 1536
 	}
@@ -84,7 +84,7 @@ func NewEmbedder(provider, baseURL, apiKey, model string, dim int) *Embedder {
 		APIKey:   apiKey,
 		Model:    model,
 		Dim:      dim,
-		lg:       loggateway.Global(),
+		lg:       lg,
 	}
 }
 

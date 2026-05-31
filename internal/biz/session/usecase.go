@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"aranea-agents/pkg/loggateway"
 
@@ -345,10 +344,6 @@ type SessionMutator interface {
 	UnpinSession(ctx context.Context, id string) (Session, error)
 }
 
-type SessionStatusTransitioner interface {
-	TransitionStatus(ctx context.Context, id string, status string) error
-}
-
 type SessionBatchMutator interface {
 	ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
 	DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
@@ -535,9 +530,6 @@ func (uc *SessionUsecase) TransitionStatus(ctx context.Context, sessionID string
 	newStatus := string(machine.Status())
 	newReason := string(machine.StatusReason())
 	changedAt := machine.ChangedAt()
-	if changedAt == "" {
-		changedAt = time.Now().UTC().Format(time.RFC3339)
-	}
 	if _, err := uc.sessionWriter.UpdateSession(ctx, sessionID, SessionUpdateFields{
 		Status:          &newStatus,
 		StatusReason:    &newReason,

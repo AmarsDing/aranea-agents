@@ -99,13 +99,13 @@ func TestValidateSpec_MissingAgentDisplayName(t *testing.T) {
 	}
 }
 
-func TestValidateSpec_InvalidTaxonomyPosition(t *testing.T) {
+func TestValidateSpec_InvalidCategoryPosition(t *testing.T) {
 	spec := &Spec{
 		Spec: SpecBody{
 			Agents: []AgentSpec{{
 				Key:              "bot-1",
 				DisplayName:      "Bot",
-				TaxonomyPosition: "nonexistent/path",
+				CategoryPosition: "nonexistent/path",
 			}},
 		},
 	}
@@ -168,7 +168,7 @@ func TestValidateSpec_ValidSpec(t *testing.T) {
 			Agents: []AgentSpec{{
 				Key:              "bot-1",
 				DisplayName:      "Bot",
-				TaxonomyPosition: "tech/eng/dev",
+				CategoryPosition: "tech/eng/dev",
 			}},
 			Teams: []TeamSpec{{
 				Key:  "team-1",

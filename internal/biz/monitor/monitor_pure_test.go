@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestRecoveryThreshold_DefaultFactor(t *testing.T) {
@@ -312,7 +313,7 @@ func TestNewUsecase_WithOptions(t *testing.T) {
 
 func TestUsecase_SetEvalWorker(t *testing.T) {
 	u := monitor.NewUsecase(nil, nil)
-	w := monitor.NewAlertEvalWorker(u, monitor.NewMetricRingBuffer())
+	w := monitor.NewAlertEvalWorker(u, monitor.NewMetricRingBuffer(), loggateway.NewNoop())
 	u.SetEvalWorker(w)
 	if u.EvalWorker() != w {
 		t.Error("SetEvalWorker did not set the worker")

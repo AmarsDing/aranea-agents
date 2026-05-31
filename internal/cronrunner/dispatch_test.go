@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 type mockRegistrySyncAgent struct {
@@ -18,7 +19,7 @@ func (m *mockRegistrySyncAgent) RunSync(_ context.Context) error {
 
 func TestDispatchCronTask_ModelRegistrySync_Success(t *testing.T) {
 	agent := &mockRegistrySyncAgent{err: nil}
-	r := NewRunner(Deps{RegistrySyncAgent: agent})
+	r := NewRunner(Deps{RegistrySyncAgent: agent}, loggateway.NewNoop())
 	task := biz.CronTask{ID: "t1", ConfigJSON: `{"target_type":"model_registry_sync","message":"sync"}`}
 	cfg := cronTaskConfig{TargetType: "model_registry_sync", Message: "sync"}
 	res, err := r.dispatchCronTask(context.Background(), task, cfg)
@@ -33,7 +34,7 @@ func TestDispatchCronTask_ModelRegistrySync_Success(t *testing.T) {
 func TestDispatchCronTask_ModelRegistrySync_Error(t *testing.T) {
 	syncErr := errors.New("sync failed")
 	agent := &mockRegistrySyncAgent{err: syncErr}
-	r := NewRunner(Deps{RegistrySyncAgent: agent})
+	r := NewRunner(Deps{RegistrySyncAgent: agent}, loggateway.NewNoop())
 	task := biz.CronTask{ID: "t2", ConfigJSON: `{"target_type":"model_registry_sync","message":"sync"}`}
 	cfg := cronTaskConfig{TargetType: "model_registry_sync", Message: "sync"}
 	res, err := r.dispatchCronTask(context.Background(), task, cfg)
@@ -49,7 +50,7 @@ func TestDispatchCronTask_ModelRegistrySync_Error(t *testing.T) {
 }
 
 func TestDispatchCronTask_ModelRegistrySync_NilAgent(t *testing.T) {
-	r := NewRunner(Deps{})
+	r := NewRunner(Deps{}, loggateway.NewNoop())
 	task := biz.CronTask{ID: "t3", ConfigJSON: `{"target_type":"model_registry_sync","message":"sync"}`}
 	cfg := cronTaskConfig{TargetType: "model_registry_sync", Message: "sync"}
 	res, err := r.dispatchCronTask(context.Background(), task, cfg)

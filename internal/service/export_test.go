@@ -139,4 +139,8 @@ var (
 	FormatChannelTurnErrorMessage = formatChannelTurnErrorMessage
 	TurnErrorIsCanceled           = turnErrorIsCanceled
 	TurnErrorIsTimeout            = turnErrorIsTimeout
+	ToProtoTaxonomy               = toProtoTaxonomy
+	FromProtoTaxonomy             = fromProtoTaxonomy
+	ToTaxonomyTreeNode            = toTaxonomyTreeNode
+	ToTaxonomyTree                = toTaxonomyTree
 )

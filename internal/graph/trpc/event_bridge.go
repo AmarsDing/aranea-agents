@@ -22,14 +22,14 @@ type EventBridge struct {
 	lg        loggateway.Logger
 }
 
-func NewEventBridge(eventBus event.Bus, sessionID, graphID, execID string) *EventBridge {
+func NewEventBridge(eventBus event.Bus, sessionID, graphID, execID string, lg loggateway.Logger) *EventBridge {
 	return &EventBridge{
 		eventBus:  eventBus,
 		sessionID: sessionID,
 		graphID:   graphID,
 		execID:    execID,
 		summary:   NewExecutionSummaryTracker(execID, graphID),
-		lg:        loggateway.Global(),
+		lg:        lg,
 	}
 }
 

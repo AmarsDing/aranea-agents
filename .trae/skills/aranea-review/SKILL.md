@@ -158,8 +158,8 @@ grep -rn "fmt.Errorf" internal/service/
 
 | # | 检查项 | 严重级别 | 判定标准 |
 |---|--------|----------|----------|
-| BLG1 | 是否使用 `log/slog` | 🔴 阻断 | 统一使用 `internal/event` 的 `FlowLog` |
-| BLG2 | 是否有 `fmt.Println` / `log.Println` 调试残留 | 🟡 建议 | 清理或替换为 FlowLog |
+| BLG1 | 是否使用 `log/slog` | 🔴 阻断 | 统一使用 `pkg/loggateway.Logger`（`event.SysLog*` 已废弃） |
+| BLG2 | 是否有 `fmt.Println` / `log.Println` 调试残留 | 🟡 建议 | 清理或替换为 `loggateway.Logger` |
 
 ---
 
@@ -361,7 +361,7 @@ grep -rn "backdrop-filter" web/src/ --include="*.vue" --include="*.sass" | grep 
 - [ ] 无工具生成代码的手动修改
 - [ ] goroutine 走 safego
 - [ ] 业务错误用 kerrors
-- [ ] 日志用 FlowLog
+- [ ] 日志用 loggateway.Logger
 - [ ] 共享状态有锁保护
 - [ ] 无上帝对象注入
 - [ ] 接口方法 ≤ 5
@@ -410,7 +410,8 @@ grep -rn "backdrop-filter" web/src/ --include="*.vue" --include="*.sass" | grep 
            → 吞错误？ → 是 → 🔴 必须处理
            → wrap 丢上下文？ → 是 → 🟡 加 %w
 
-发现日志 → log/slog？ → 是 → 🔴 改 FlowLog
+发现日志 → log/slog？ → 是 → 🔴 改 loggateway.Logger
+         → event.SysLog*？ → 是 → 🔴 改 loggateway.Logger
 
 发现 Wire → 手动改 wire_gen.go？ → 是 → 🔴 阻断
           → wire.go 全局副作用？ → 是 → 🔴 阻断

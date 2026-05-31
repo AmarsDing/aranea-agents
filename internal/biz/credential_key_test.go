@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestParseCredentialKeyMaterial_InvalidEnv(t *testing.T) {
@@ -33,7 +35,7 @@ func TestParseProviderConfigJSON_Invalid(t *testing.T) {
 }
 
 func TestProcessConfigJSONForStorage_InvalidJSON(t *testing.T) {
-	c := NewCredentialCrypto(nil)
+	c := NewCredentialCrypto(nil, loggateway.NewNoop())
 	_, err := c.ProcessConfigJSONForStorage(context.Background(), `{invalid`)
 	if err == nil {
 		t.Fatal("expected error for invalid config_json")
@@ -49,7 +51,7 @@ func TestMergeConfigJSONForUpdate_InvalidPatch(t *testing.T) {
 
 func TestProcessConfigJSONForStorage_RejectsPlaintextWithoutKey(t *testing.T) {
 	_ = os.Unsetenv(envCredentialKey)
-	c := NewCredentialCrypto(nil)
+	c := NewCredentialCrypto(nil, loggateway.NewNoop())
 
 	_, err := c.ProcessConfigJSONForStorage(context.Background(), `{"api_key":"sk-test","provider_type":"openai"}`)
 	if err == nil {
@@ -59,7 +61,7 @@ func TestProcessConfigJSONForStorage_RejectsPlaintextWithoutKey(t *testing.T) {
 
 func TestProcessConfigJSONForStorage_AllowsMetadataWithoutKey(t *testing.T) {
 	_ = os.Unsetenv(envCredentialKey)
-	c := NewCredentialCrypto(nil)
+	c := NewCredentialCrypto(nil, loggateway.NewNoop())
 
 	out, err := c.ProcessConfigJSONForStorage(context.Background(), `{"provider_type":"openai","api_base_url":"https://api.example.com"}`)
 	if err != nil {
@@ -77,7 +79,7 @@ func TestProcessConfigJSONForStorage_EncryptsWithEnvKey(t *testing.T) {
 	}
 	_ = os.Setenv(envCredentialKey, hex.EncodeToString(key))
 	defer os.Unsetenv(envCredentialKey)
-	c := NewCredentialCrypto(nil)
+	c := NewCredentialCrypto(nil, loggateway.NewNoop())
 
 	out, err := c.ProcessConfigJSONForStorage(context.Background(), `{"api_key":"sk-test","provider_type":"openai"}`)
 	if err != nil {
@@ -90,13 +92,13 @@ func TestProcessConfigJSONForStorage_EncryptsWithEnvKey(t *testing.T) {
 
 func TestCredentialCrypto_IsAvailable(t *testing.T) {
 	_ = os.Unsetenv(envCredentialKey)
-	c := NewCredentialCrypto(nil)
+	c := NewCredentialCrypto(nil, loggateway.NewNoop())
 	if c.IsAvailable() {
 		t.Fatal("expected IsAvailable=false with no resolver and no env")
 	}
 
 	resolver := func(ctx context.Context) ([]byte, error) { return nil, nil }
-	c2 := NewCredentialCrypto(resolver)
+	c2 := NewCredentialCrypto(resolver, loggateway.NewNoop())
 	if !c2.IsAvailable() {
 		t.Fatal("expected IsAvailable=true with resolver")
 	}

@@ -6,12 +6,13 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestNewRootCauseEngine(t *testing.T) {
-	e := monitor.NewRootCauseEngine()
+	e := monitor.NewRootCauseEngine(loggateway.NewNoop())
 	if e == nil {
-		t.Fatal("NewRootCauseEngine() = nil, want non-nil")
+		t.Fatal("NewRootCauseEngine(loggateway.NewNoop()) = nil, want non-nil")
 	}
 }
 
@@ -24,7 +25,7 @@ func TestRootCauseEngine_Evaluate_NilReceiver(t *testing.T) {
 }
 
 func TestRootCauseEngine_Evaluate_BuiltinRules(t *testing.T) {
-	e := monitor.NewRootCauseEngine()
+	e := monitor.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 
 	tests := []struct {
@@ -203,7 +204,7 @@ func TestRootCauseEngine_Evaluate_BuiltinRules(t *testing.T) {
 }
 
 func TestRootCauseEngine_Evaluate_Confidence(t *testing.T) {
-	e := monitor.NewRootCauseEngine()
+	e := monitor.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 
 	results := e.Evaluate(ctx, "llm.call", "error", map[string]any{"error_code": "429"})
@@ -221,7 +222,7 @@ func TestRootCauseEngine_Evaluate_Confidence(t *testing.T) {
 }
 
 func TestRootCauseEngine_Evaluate_MultipleMatches(t *testing.T) {
-	e := monitor.NewRootCauseEngine()
+	e := monitor.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 
 	results := e.Evaluate(ctx, "llm.call", "error", map[string]any{
@@ -234,7 +235,7 @@ func TestRootCauseEngine_Evaluate_MultipleMatches(t *testing.T) {
 }
 
 func TestRootCauseEngine_Evaluate_MetadataPassedThrough(t *testing.T) {
-	e := monitor.NewRootCauseEngine()
+	e := monitor.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 	meta := map[string]any{"error_code": "429", "detail": "test"}
 
@@ -248,7 +249,7 @@ func TestRootCauseEngine_Evaluate_MetadataPassedThrough(t *testing.T) {
 }
 
 func TestRootCauseEngine_Evaluate_WildcardStepID(t *testing.T) {
-	e := monitor.NewRootCauseEngine()
+	e := monitor.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 
 	tests := []struct {
@@ -276,7 +277,7 @@ func TestRootCauseEngine_Evaluate_WildcardStepID(t *testing.T) {
 }
 
 func TestRootCauseEngine_Evaluate_ErrorCodeFallback(t *testing.T) {
-	e := monitor.NewRootCauseEngine()
+	e := monitor.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 
 	results := e.Evaluate(ctx, "llm.call", "error", map[string]any{
@@ -294,7 +295,7 @@ func TestRootCauseEngine_Evaluate_ErrorCodeFallback(t *testing.T) {
 }
 
 func TestRootCauseEngine_Evaluate_ErrorMessageFallback(t *testing.T) {
-	e := monitor.NewRootCauseEngine()
+	e := monitor.NewRootCauseEngine(loggateway.NewNoop())
 	ctx := context.Background()
 
 	results := e.Evaluate(ctx, "llm.call", "error", map[string]any{

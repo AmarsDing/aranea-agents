@@ -26,7 +26,7 @@ const statusConfig: Record<SessionStatus, { icon: string; label: string; color: 
   running: { icon: "", label: "执行中", color: "accent" },
   completed: { icon: "check_circle", label: "已完成", color: "positive" },
   interrupted: { icon: "cancel", label: "已中断", color: "warning" },
-  awaiting_confirmation: { icon: "pause_circle", label: "等待确认", color: "info" },
+  awaiting_confirmation: { icon: "pause_circle", label: "等待确认", color: "accent" },
 };
 
 const reasonLabels: Record<Exclude<SessionStatusReason, "">, string> = {
@@ -103,9 +103,9 @@ const tooltipContent = computed(() => {
   background: color-mix(in srgb, var(--color-warning) 8%, var(--glass-surface))
 
 .session-status-badge--awaiting_confirmation
-  color: var(--q-primary)
-  border-color: color-mix(in srgb, var(--q-primary) 25%, var(--glass-border))
-  background: color-mix(in srgb, var(--q-primary) 8%, var(--glass-surface))
+  color: var(--color-accent)
+  border-color: color-mix(in srgb, var(--color-accent) 25%, var(--glass-border))
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--glass-surface))
 
 .session-status-badge__label
   letter-spacing: 0.02em

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"aranea-agents/pkg/loggateway"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -110,7 +111,7 @@ func TestUpdateToolConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			got, err := uc.UpdateToolConfig(ctx, tt.id, tt.configJSON)
 			if tt.wantErr {
 				if err == nil {
@@ -253,7 +254,7 @@ func TestUpsertToolAgentOverride(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			_, err := uc.UpsertToolAgentOverride(ctx, tt.input)
 			if tt.wantErr {
 				if err == nil {
@@ -343,7 +344,7 @@ func TestDeleteToolAgentOverride(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			err := uc.DeleteToolAgentOverride(ctx, tt.toolIDOrKey, tt.agentID)
 			if tt.wantErr {
 				if err == nil {
@@ -423,7 +424,7 @@ func TestListToolAgentOverrides(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			got, err := uc.ListToolAgentOverrides(ctx, tt.toolIDOrKey)
 			if tt.wantErr {
 				if err == nil {
@@ -495,7 +496,7 @@ func TestListToolAgentOverridesByAgent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			got, err := uc.ListToolAgentOverridesByAgent(ctx, tt.agentID)
 			if tt.wantErr {
 				if err == nil {
@@ -655,7 +656,7 @@ func TestRequiresConfirmationForAgent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			got := uc.RequiresConfirmationForAgent(ctx, tt.agentID, tt.toolKey)
 			if got != tt.wantResult {
 				t.Fatalf("expected %v, got %v", tt.wantResult, got)
@@ -748,7 +749,7 @@ func TestListRuns(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			got, err := uc.ListRuns(ctx, tt.query)
 			if tt.wantErr {
 				if err == nil {
@@ -836,7 +837,7 @@ func TestListRunsForTool(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			got, err := uc.ListRunsForTool(ctx, tt.toolIDOrKey, tt.query)
 			if tt.wantErr {
 				if err == nil {
@@ -904,7 +905,7 @@ func TestRecordToolInvocationAudit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			err := uc.RecordToolInvocationAudit(ctx, tt.input)
 			if tt.wantErr {
 				if err == nil {
@@ -1002,7 +1003,7 @@ func TestListInvocationAudits(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			got, err := uc.ListInvocationAudits(ctx, tt.query)
 			if tt.wantErr {
 				if err == nil {
@@ -1068,7 +1069,7 @@ func TestPurgeOldInvocationAudits(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			got, err := uc.PurgeOldInvocationAudits(ctx)
 			if tt.wantErr {
 				if err == nil {
@@ -1143,7 +1144,7 @@ func TestGetToolInvocationParams(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			got, err := uc.GetToolInvocationParams(ctx, tt.invocationID)
 			if tt.wantErr {
 				if err == nil {
@@ -1234,7 +1235,7 @@ func TestRecordToolInvocation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			err := uc.RecordToolInvocation(ctx, tt.input)
 			if tt.wantErr {
 				if err == nil {
@@ -1280,7 +1281,7 @@ func TestSyncBuiltinTools(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			err := uc.SyncBuiltinTools(ctx)
 			if tt.wantErr {
 				if err == nil {
@@ -1431,7 +1432,7 @@ func TestTestTool(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			if tt.tester != nil {
 				uc.SetToolTester(tt.tester)
 			}

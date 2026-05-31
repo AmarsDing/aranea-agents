@@ -41,6 +41,7 @@ import {
 } from "../channelInboundSession";
 import { noteChannelWsEnvelope } from "../channelWsCursor";
 import { projectConversationEnvelope } from "../conversationEventDispatcher";
+import { emitSessionMutation } from "../../../stores/sessionSync";
 
 export type ChatInboundSyncDeps = {
   appStore: ReturnType<typeof useAppStore>;
@@ -338,7 +339,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       const statusReason = typeof md.status_reason === "string" ? md.status_reason : "";
       const statusChangedAt = typeof md.status_changed_at === "string" ? md.status_changed_at : "";
       if (status) {
-        deps.sessionStore.patchSessionStatus(sessionId, status, statusReason, statusChangedAt);
+        emitSessionMutation({ type: "status_changed", id: sessionId, status, statusReason, statusChangedAt });
       }
     }
 

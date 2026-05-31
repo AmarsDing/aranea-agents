@@ -270,7 +270,7 @@ func NewUsecase(repo Repo, notifier AlertNotifier, opts ...UsecaseOption) *Useca
 		opt(uc)
 	}
 	if uc.lg == nil {
-		uc.lg = loggateway.Global()
+		uc.lg = loggateway.NewNoop()
 	}
 	return uc
 }

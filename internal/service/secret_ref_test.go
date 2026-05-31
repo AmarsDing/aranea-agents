@@ -22,12 +22,12 @@ func withCredentialKey(t *testing.T) {
 func TestResolveSecretRefEncRoundTrip(t *testing.T) {
 	withCredentialKey(t)
 	ctx := context.Background()
-	crypto := biz.NewCredentialCrypto(nil)
+	crypto := biz.NewCredentialCrypto(nil, nil)
 	ref, err := crypto.EncryptChannelSecretRef(ctx, "token-123")
 	if err != nil {
 		t.Fatal(err)
 	}
-	uc := biz.NewChannelUsecase(nil, nil, nil, nil, nil, crypto)
+	uc := biz.NewChannelUsecase(nil, nil, nil, nil, nil, crypto, nil)
 	got, err := ResolveSecretRef(ctx, uc, ref)
 	if err != nil {
 		t.Fatal(err)
@@ -38,8 +38,8 @@ func TestResolveSecretRefEncRoundTrip(t *testing.T) {
 }
 
 func TestResolveSecretRefEnv(t *testing.T) {
-	crypto := biz.NewCredentialCrypto(nil)
-	uc := biz.NewChannelUsecase(nil, nil, nil, nil, nil, crypto)
+	crypto := biz.NewCredentialCrypto(nil, nil)
+	uc := biz.NewChannelUsecase(nil, nil, nil, nil, nil, crypto, nil)
 	_ = os.Setenv("TEST_CHANNEL_SECRET", "abc")
 	t.Cleanup(func() { _ = os.Unsetenv("TEST_CHANNEL_SECRET") })
 	got, err := ResolveSecretRef(context.Background(), uc, "env:TEST_CHANNEL_SECRET")
@@ -52,8 +52,8 @@ func TestResolveSecretRefEnv(t *testing.T) {
 }
 
 func TestResolveSecretRefLocalDeprecated(t *testing.T) {
-	crypto := biz.NewCredentialCrypto(nil)
-	uc := biz.NewChannelUsecase(nil, nil, nil, nil, nil, crypto)
+	crypto := biz.NewCredentialCrypto(nil, nil)
+	uc := biz.NewChannelUsecase(nil, nil, nil, nil, nil, crypto, nil)
 	_, err := ResolveSecretRef(context.Background(), uc, "local:deadbeef")
 	if err == nil {
 		t.Fatal("expected error")

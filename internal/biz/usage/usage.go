@@ -312,7 +312,7 @@ type Usecase struct {
 // NewUsecase constructs a UsageUsecase.
 func NewUsecase(repo Repo, lg loggateway.Logger) *Usecase {
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	return &Usecase{
 		repo: repo,

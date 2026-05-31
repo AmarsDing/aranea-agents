@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type batchAgentRepo struct {
@@ -57,10 +59,11 @@ func (r *batchAgentRepo) ListAgentCreators(context.Context) ([]AgentCreator, err
 func (r *batchAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }
+func (r *batchAgentRepo) ReorderAgents(context.Context, []string) error { return nil }
 
 func TestBatchUpdateAgents_Status(t *testing.T) {
 	repo := &batchAgentRepo{agents: map[string]Agent{"a1": {ID: "a1", Status: "active"}}}
-	uc := NewAgentUsecase(repo, nil, nil)
+	uc := NewAgentUsecase(repo, nil, nil, loggateway.NewNoop())
 	n, err := uc.BatchUpdateAgents(context.Background(), AgentBatchUpdateInput{IDs: []string{"a1"}, Status: "inactive"})
 	if err != nil || n != 1 {
 		t.Fatalf("n=%d err=%v", n, err)

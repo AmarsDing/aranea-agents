@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"aranea-agents/pkg/loggateway"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -175,14 +177,14 @@ func TestSaveAndLoadRuns(t *testing.T) {
 }
 
 func TestNewService_EmptyStateDir(t *testing.T) {
-	_, err := NewService("", nil)
+	_, err := NewService("", nil, loggateway.NewNoop())
 	if err == nil {
 		t.Fatal("expected error for empty state dir")
 	}
 }
 
 func TestNewService_NilRunner(t *testing.T) {
-	_, err := NewService(t.TempDir(), nil)
+	_, err := NewService(t.TempDir(), nil, loggateway.NewNoop())
 	if err == nil {
 		t.Fatal("expected error for nil runner")
 	}
@@ -197,7 +199,7 @@ func TestService_ListForUser_NilService(t *testing.T) {
 
 func TestService_GetForUser_NotFound(t *testing.T) {
 	dir := t.TempDir()
-	svc, err := NewService(dir, &stubRunner{})
+	svc, err := NewService(dir, &stubRunner{}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +212,7 @@ func TestService_GetForUser_NotFound(t *testing.T) {
 
 func TestService_CancelForUser_NotFound(t *testing.T) {
 	dir := t.TempDir()
-	svc, err := NewService(dir, &stubRunner{})
+	svc, err := NewService(dir, &stubRunner{}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +233,7 @@ func TestService_Spawn_NilService(t *testing.T) {
 
 func TestService_Spawn_NotStarted(t *testing.T) {
 	dir := t.TempDir()
-	svc, err := NewService(dir, &stubRunner{})
+	svc, err := NewService(dir, &stubRunner{}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +245,7 @@ func TestService_Spawn_NotStarted(t *testing.T) {
 
 func TestService_Spawn_EmptyOwner(t *testing.T) {
 	dir := t.TempDir()
-	svc, err := NewService(dir, &stubRunner{})
+	svc, err := NewService(dir, &stubRunner{}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +258,7 @@ func TestService_Spawn_EmptyOwner(t *testing.T) {
 
 func TestService_Spawn_EmptyParentSession(t *testing.T) {
 	dir := t.TempDir()
-	svc, err := NewService(dir, &stubRunner{})
+	svc, err := NewService(dir, &stubRunner{}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +271,7 @@ func TestService_Spawn_EmptyParentSession(t *testing.T) {
 
 func TestService_Spawn_EmptyTask(t *testing.T) {
 	dir := t.TempDir()
-	svc, err := NewService(dir, &stubRunner{})
+	svc, err := NewService(dir, &stubRunner{}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}

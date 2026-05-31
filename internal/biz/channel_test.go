@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"os"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type channelRepoStub struct {
@@ -98,7 +100,7 @@ func TestChannelCredentialEncryptRoundTrip(t *testing.T) {
 	}
 	_ = os.Setenv(envCredentialKey, hex.EncodeToString(key))
 	defer os.Unsetenv(envCredentialKey)
-	c := NewCredentialCrypto(nil)
+	c := NewCredentialCrypto(nil, loggateway.NewNoop())
 
 	ref, err := c.EncryptChannelSecretRef(context.Background(), "app-secret-value")
 	if err != nil {
@@ -134,7 +136,7 @@ func TestChannelUpsertCredentialsStoresEncryptedRef(t *testing.T) {
 			ConfigJSON: `{"type":"feishu","receive_mode":"webhook","config":{"app_id":"cli_test"},"webhook":{"path":"/webhooks/feishu-demo"}}`,
 		}},
 	}
-	uc := NewChannelUsecase(repo, nil, nil, nil, nil, NewCredentialCrypto(nil))
+	uc := NewChannelUsecase(repo, nil, nil, nil, nil, NewCredentialCrypto(nil, loggateway.NewNoop()), loggateway.NewNoop())
 	items, err := uc.UpsertCredentials(context.Background(), "ch-1", []ChannelCredentialInput{{
 		CredentialKey: "app_secret",
 		Secret:        "super-secret",
@@ -213,7 +215,7 @@ func TestChannelRunHealthChecksUpdatesStatus(t *testing.T) {
 			}},
 		},
 	}
-	uc := NewChannelUsecase(repo, nil, nil, nil, nil, NewCredentialCrypto(nil))
+	uc := NewChannelUsecase(repo, nil, nil, nil, nil, NewCredentialCrypto(nil, loggateway.NewNoop()), loggateway.NewNoop())
 	if err := uc.RunHealthChecks(context.Background()); err != nil {
 		t.Fatal(err)
 	}

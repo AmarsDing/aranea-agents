@@ -9,6 +9,8 @@ message Bootstrap {
   Server server = 1;
   Data data = 2;
   Logging logging = 3;
+  DebugRecorder debug_recorder = 4;
+  Langfuse langfuse = 5;
 }
 
 message Server {
@@ -50,19 +52,27 @@ message Monitor {
 
 message Logging {
   string level = 1;
-  string hook_level = 2;
-  string output_dir = 3;
-  int32 max_size_mb = 4;
-  int32 max_backups = 5;
-  int32 max_age_days = 6;
-  bool compress = 7;
-  bool stdout_enabled = 8;
+  string output_dir = 2;
+  int32 max_size_mb = 3;
+  int32 max_backups = 4;
+  int32 max_age_days = 5;
+  bool compress = 6;
+  bool stdout_enabled = 7;
+  string hook_level = 8;
 }
 
 message DebugRecorder {
   bool enable = 1;
   string dir = 2;
   string mode = 3;
+}
+
+message Langfuse {
+  bool enable = 1;
+  string public_key = 2;
+  string secret_key = 3;
+  string base_url = 4;
+  int64 flush_interval_ms = 5;
 }
 
 message Data {

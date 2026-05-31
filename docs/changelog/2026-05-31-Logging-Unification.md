@@ -1,7 +1,7 @@
 # 日志体系统一迁移方案
 
 > 日期：2026-05-31
-> 状态：P0 ✅ | P1 ✅ | P2 待实施 | P3 待实施
+> 状态：P0 ✅ | P1 ✅ | P2 ✅ | P3 待实施
 
 ---
 
@@ -149,10 +149,15 @@ step.Error("模型调用超时", loggateway.Err(err))
 - 范围：`internal/cronrunner/jobs/` + `internal/service/` 中的 `log.NewHelper`
 - 方式：替换为 `loggateway.Logger`，旧接口标记 `// Deprecated`
 
-### P2：迁移 FlowLog SysLog*（262 处）
+### P2：迁移 FlowLog SysLog*（262 处） ✅
 
 - 范围：`event.SysLog*` / `event.SessionSysLog*` 全部调用点
 - 方式：替换为 `loggateway.Logger`，保留 step_id 语义
+- 结果：220+ 处调用已迁移，`event.SysLog*` / `event.SessionSysLog*` 调用归零
+- 涉及层级：biz / service / agent / session / channel / graph / plugin / cronrunner / knowledge / skill / data / tools / memory / team / mcp / artifact / runtime
+- Wire 重新生成：`make wire` 已执行，`wire_gen.go` 已更新
+- 结构体新增 `lg loggateway.Logger` 字段：20+ 个核心结构体（Usecase / SessionUsecase / AgentUsecase / ChannelIngress / ChatOrchestrator / WSServer / Manager / TraceProjector / Embedder / Runner 等）
+- 独立函数使用 `loggateway.Global()` 或 `loggateway.NewNoop()`
 - 注意：SysLog* 内部的节流逻辑迁移到 BusHook
 
 ### P3：迁移 CtxFlowLog* + TraceEmitter（154 处）

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 type stubTeamRepo struct {
@@ -106,6 +107,7 @@ func (s channelTestAgentRepo) ListExtrasForAgents(context.Context, []string) (ma
 func (s channelTestAgentRepo) ListAgentCreators(context.Context) ([]biz.AgentCreator, error) {
 	return nil, nil
 }
+func (s channelTestAgentRepo) ReorderAgents(context.Context, []string) error { return nil }
 func (s channelTestAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }
@@ -137,6 +139,7 @@ func TestExecuteAsyncGraphTarget_teamGraph(t *testing.T) {
 			DefinitionJSON: defJSON,
 		}}, nil, nil),
 		graphs: exec,
+		lg:     loggateway.NewNoop(),
 	}
 	target := biz.ChannelAsyncGraphTarget{TargetType: "team_graph", TeamID: "team-42"}
 	tt, gid, asyncID, err := h.executeAsyncGraphTarget(context.Background(), target, "sess-99", map[string]any{"input": "hi"})
@@ -166,6 +169,7 @@ func TestExecuteAsyncGraphTarget_teamGraphFallbackGraphID(t *testing.T) {
 			DefinitionJSON: defJSON,
 		}}, nil, nil),
 		graphs: exec,
+		lg:     loggateway.NewNoop(),
 	}
 	target := biz.ChannelAsyncGraphTarget{TargetType: "team_graph", TeamID: "team-7"}
 	_, gid, _, err := h.executeAsyncGraphTarget(context.Background(), target, "sess-1", nil)

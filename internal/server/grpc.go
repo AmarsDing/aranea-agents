@@ -4,7 +4,7 @@ import (
 	a2av1 "aranea-agents/api/kratos/a2a/v1"
 	adminv1 "aranea-agents/api/kratos/admin/v1"
 	agentv1 "aranea-agents/api/kratos/agent/v1"
-	taxonomyv1 "aranea-agents/api/kratos/taxonomy/v1"
+	agentcategoryv1 "aranea-agents/api/kratos/agent_category/v1"
 	airefinev1 "aranea-agents/api/kratos/ai_refine/v1"
 	artifactv1 "aranea-agents/api/kratos/artifact/v1"
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
@@ -18,7 +18,6 @@ import (
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
 	knowledgev1 "aranea-agents/api/kratos/knowledge/v1"
-	learningloopv1 "aranea-agents/api/kratos/learning_loop/v1"
 	llmprovidermodelv1 "aranea-agents/api/kratos/llm_provider_model/v1"
 	mcpserverv1 "aranea-agents/api/kratos/mcp_server/v1"
 	memoryv1 "aranea-agents/api/kratos/memory/v1"
@@ -65,7 +64,7 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry) *grpc.Server {
 	adminv1.RegisterAdminServiceServer(srv, s.Admin)
 	avatarv1.RegisterAvatarServiceServer(srv, s.Avatar)
 	agentv1.RegisterAgentServiceServer(srv, s.Agents)
-	taxonomyv1.RegisterTaxonomyServiceServer(srv, s.Taxonomy)
+	agentcategoryv1.RegisterAgentCategoryServiceServer(srv, s.AgentCat)
 	if s.AIRefine != nil {
 		airefinev1.RegisterAIRefineServiceServer(srv, s.AIRefine)
 	}
@@ -93,6 +92,5 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry) *grpc.Server {
 	ecosystemv1.RegisterEcosystemServiceServer(srv, s.Ecosystem)
 	eventv1.RegisterEventServiceServer(srv, s.Event)
 	gatewayv1.RegisterGatewayServiceServer(srv, s.Gateway)
-	learningloopv1.RegisterLearningLoopServiceServer(srv, s.LearningLoop)
 	return srv
 }

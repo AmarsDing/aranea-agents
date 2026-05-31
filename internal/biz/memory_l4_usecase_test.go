@@ -53,7 +53,7 @@ func (m *mockL4GraphRepo) ArchiveLowConfidenceEntities(_ context.Context, _, _ s
 }
 
 func TestL4GraphUsecase_WriteFromUserText_NilRepo(t *testing.T) {
-	uc := NewL4GraphUsecase(nil)
+	uc := NewL4GraphUsecase(nil, loggateway.NewNoop())
 	n, err := uc.WriteFromUserText(context.Background(), "ag1", "u1", "My name is Alice")
 	if err != nil || n != 0 {
 		t.Fatalf("nil repo: n=%d err=%v", n, err)
@@ -62,7 +62,7 @@ func TestL4GraphUsecase_WriteFromUserText_NilRepo(t *testing.T) {
 
 func TestL4GraphUsecase_WriteFromUserText_NameExtraction(t *testing.T) {
 	repo := &mockL4GraphRepo{}
-	uc := NewL4GraphUsecase(repo)
+	uc := NewL4GraphUsecase(repo, loggateway.NewNoop())
 	n, err := uc.WriteFromUserText(context.Background(), "ag1", "u1", "My name is Alice")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -86,8 +86,8 @@ func TestL4GraphUsecase_WriteFromUserText_NameConflictGate(t *testing.T) {
 		entitySnap: L4EntitySnapshot{ID: "e1", Name: "Alice", Confidence: 0.8},
 		entityOk:   true,
 	}
-	uc := NewL4GraphUsecase(repo)
-	uc.SetCascade(NewL4CascadeUsecase(&cascadeGraphStoreMock{}, &cascadeGraphStoreMock{}, &cascadeGraphStoreMock{}, &cascadeGraphStoreMock{}, nil, loggateway.Global()))
+	uc := NewL4GraphUsecase(repo, loggateway.NewNoop())
+	uc.SetCascade(NewL4CascadeUsecase(&cascadeGraphStoreMock{}, &cascadeGraphStoreMock{}, &cascadeGraphStoreMock{}, &cascadeGraphStoreMock{}, nil, loggateway.NewNoop()))
 	n, err := uc.WriteFromUserText(context.Background(), "ag1", "u1", "My name is Bob")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -104,7 +104,7 @@ func TestL4GraphUsecase_WriteFromUserText_NameConflictGate(t *testing.T) {
 
 func TestL4GraphUsecase_WriteFromUserText_PreferenceExtraction(t *testing.T) {
 	repo := &mockL4GraphRepo{}
-	uc := NewL4GraphUsecase(repo)
+	uc := NewL4GraphUsecase(repo, loggateway.NewNoop())
 	n, err := uc.WriteFromUserText(context.Background(), "ag1", "u1", "I prefer dark mode")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

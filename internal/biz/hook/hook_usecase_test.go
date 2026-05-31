@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"aranea-agents/pkg/loggateway"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -430,7 +431,7 @@ func TestResolver(t *testing.T) {
 			},
 		}
 		uc := NewUsecase(repo)
-		r := NewResolver(uc)
+		r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {
 			t.Fatalf("Reload returned error: %v", err)
@@ -451,7 +452,7 @@ func TestResolver(t *testing.T) {
 			},
 		}
 		uc := NewUsecase(repo)
-		r := NewResolver(uc)
+		r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {
 			t.Fatalf("Reload returned error: %v", err)
@@ -475,7 +476,7 @@ func TestResolver(t *testing.T) {
 			},
 		}
 		uc := NewUsecase(repo)
-		r := NewResolver(uc)
+		r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {
 			t.Fatalf("Reload returned error: %v", err)
@@ -496,7 +497,7 @@ func TestResolver(t *testing.T) {
 			},
 		}
 		uc := NewUsecase(repo)
-		r := NewResolver(uc)
+		r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {
 			t.Fatalf("Reload returned error: %v", err)
@@ -517,7 +518,7 @@ func TestResolver(t *testing.T) {
 			},
 		}
 		uc := NewUsecase(repo)
-		r := NewResolver(uc)
+		r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {
 			t.Fatalf("Reload returned error: %v", err)
@@ -540,7 +541,7 @@ func TestResolver(t *testing.T) {
 			},
 		}
 		uc := NewUsecase(repo)
-		r := NewResolver(uc)
+		r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {
 			t.Fatalf("Reload returned error: %v", err)
@@ -563,7 +564,7 @@ func TestResolver(t *testing.T) {
 			},
 		}
 		uc := NewUsecase(repo)
-		r := NewResolver(uc)
+		r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {
 			t.Fatalf("Reload returned error: %v", err)
@@ -583,7 +584,7 @@ func TestResolver(t *testing.T) {
 			},
 		}
 		uc := NewUsecase(repo)
-		r := NewResolver(uc)
+		r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {
 			t.Fatalf("Reload returned error: %v", err)
@@ -605,7 +606,7 @@ func TestResolver(t *testing.T) {
 			},
 		}
 		uc := NewUsecase(repo)
-		r := NewResolver(uc)
+		r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {
 			t.Fatalf("Reload returned error: %v", err)

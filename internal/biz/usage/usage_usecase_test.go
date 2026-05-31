@@ -186,7 +186,7 @@ func (m *mockUsageRepo) PurgeUsageEventsOlderThan(ctx context.Context, retainDay
 var fixedNow = time.Date(2025, 3, 15, 12, 0, 0, 0, time.UTC)
 
 func newTestUsecase(repo Repo) *Usecase {
-	u := NewUsecase(repo, loggateway.Global())
+	u := NewUsecase(repo, loggateway.NewNoop())
 	u.now = func() time.Time { return fixedNow }
 	return u
 }

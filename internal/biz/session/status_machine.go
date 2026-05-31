@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"time"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -34,6 +35,7 @@ func (m *SessionStatusMachine) TransitionTo(target SessionStatus, reason Session
 	}
 	m.status = target
 	m.statusReason = reason
+	m.changedAt = time.Now().UTC().Format(time.RFC3339)
 	return nil
 }
 

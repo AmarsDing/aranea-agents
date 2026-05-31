@@ -60,6 +60,7 @@ func (m *memAgentRepo) DeleteAgentPromptFile(context.Context, string, string) er
 func (m *memAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }
+func (m *memAgentRepo) ReorderAgents(context.Context, []string) error { return nil }
 
 func TestResolveBizAgentByKey(t *testing.T) {
 	repo := &memAgentRepo{byKey: map[string]biz.Agent{

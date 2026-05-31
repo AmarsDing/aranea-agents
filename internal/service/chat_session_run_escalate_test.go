@@ -96,7 +96,7 @@ func TestEscalateSessionRun_ownershipDenied(t *testing.T) {
 	svc := &ChatService{
 		orch: &ChatOrchestrator{
 			chTurn: ChannelTurnDeps{
-				SessionRuns: biz.NewSessionRunUsecase(repo, nil),
+				SessionRuns: biz.NewSessionRunUsecase(repo, nil, nil),
 			},
 		},
 	}
@@ -125,7 +125,7 @@ func TestEscalateSessionRun_ownershipAllowed(t *testing.T) {
 	svc := &ChatService{
 		orch: &ChatOrchestrator{
 			chTurn: ChannelTurnDeps{
-				SessionRuns: biz.NewSessionRunUsecase(repo, cps),
+				SessionRuns: biz.NewSessionRunUsecase(repo, cps, nil),
 			},
 		},
 	}

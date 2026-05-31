@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"aranea-agents/pkg/loggateway"
+
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -230,7 +232,7 @@ func TestCreate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			got, err := uc.Create(ctx, tt.input)
 			if tt.wantErr {
 				if err == nil {
@@ -329,7 +331,7 @@ func TestUpdate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			got, err := uc.Update(ctx, tt.id, tt.input)
 			if tt.wantErr {
 				if err == nil {
@@ -406,7 +408,7 @@ func TestDelete(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			err := uc.Delete(ctx, tt.id)
 			if tt.wantErr {
 				if err == nil {
@@ -538,7 +540,7 @@ func TestToggleEnabled(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			got, err := uc.ToggleEnabled(ctx, tt.id, tt.enabled, tt.confirmKey...)
 			if tt.wantErr {
 				if err == nil {
@@ -641,7 +643,7 @@ func TestListTools(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			got, err := uc.ListTools(ctx, tt.query)
 			if tt.wantErr {
 				if err == nil {
@@ -718,7 +720,7 @@ func TestGetTool(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewToolUsecase(tt.repo, nil)
+			uc := NewToolUsecase(tt.repo, nil, loggateway.NewNoop())
 			got, err := uc.GetTool(ctx, tt.id)
 			if tt.wantErr {
 				if err == nil {

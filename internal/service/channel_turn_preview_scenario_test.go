@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/preview"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestTurnPreviewCoordinator_deferredAck(t *testing.T) {
@@ -23,6 +24,7 @@ func TestTurnPreviewCoordinator_deferredAck(t *testing.T) {
 		Policy:     biz.ParseChannelIMRenderPolicy(cfg, lt),
 		LtCfg:      lt,
 		InitialAck: "收到，正在处理…",
+		Lg:         loggateway.NewNoop(),
 	})
 	ctx := context.Background()
 	stop := coord.Start(ctx, "sess-ack")
@@ -42,6 +44,7 @@ func TestTurnPreviewCoordinator_textToolTextOrder(t *testing.T) {
 			Mode:       biz.ChannelIMRenderModeTranscript,
 			ToolDetail: biz.ChannelIMToolDetailLabelSummary,
 		},
+		Lg: loggateway.NewNoop(),
 	})
 	ctx := context.Background()
 
@@ -94,6 +97,7 @@ func TestTurnPreviewCoordinator_splitOverflow(t *testing.T) {
 				return nil
 			},
 		},
+		Lg: loggateway.NewNoop(),
 	})
 	coord.transcript.SetSystem("ack")
 	longBody := strings.Repeat("段落内容。\n\n", 3000)
@@ -143,6 +147,7 @@ func TestTurnPreviewCoordinator_toolCardHook(t *testing.T) {
 				return existing, nil
 			},
 		},
+		Lg: loggateway.NewNoop(),
 	})
 	ctx := context.Background()
 

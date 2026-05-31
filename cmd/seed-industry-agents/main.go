@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/scenario/loader"
+	"aranea-agents/pkg/loggateway"
 )
 
 func main() {
@@ -37,7 +38,7 @@ func main() {
 	positionRepo := data.NewPositionRepo(store)
 	catRepo := data.NewAgentCategoryRepo(store)
 	catUC := biz.NewAgentCategoryUsecase(catRepo)
-	agentUC := biz.NewAgentUsecase(agentRepo, nil, nil)
+	agentUC := biz.NewAgentUsecase(agentRepo, nil, nil, loggateway.NewNoop())
 	teamUC := biz.NewTeamUsecase(teamRepo, nil)
 	positionUC := biz.NewPositionUsecase(positionRepo, catUC)
 

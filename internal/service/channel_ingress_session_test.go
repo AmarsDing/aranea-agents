@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
 )
@@ -307,6 +308,7 @@ func (s ingressAgentRepo) ListExtrasForAgents(context.Context, []string) (map[st
 func (s ingressAgentRepo) ListAgentCreators(context.Context) ([]biz.AgentCreator, error) {
 	return nil, nil
 }
+func (s ingressAgentRepo) ReorderAgents(context.Context, []string) error { return nil }
 func (s ingressAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }
@@ -332,8 +334,9 @@ func TestEnsureChannelSessionRebindsStalePeerBind(t *testing.T) {
 	agents := ingressAgentRepo{id: agentID}
 	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil)
 	h := &ChannelIngress{
-		channels: biz.NewChannelUsecase(nil, peerRepo, nil, agents, nil, nil),
+		channels: biz.NewChannelUsecase(nil, peerRepo, nil, agents, nil, nil, nil),
 		sessions: sessions,
+		lg:       loggateway.NewNoop(),
 	}
 	ch := biz.Channel{
 		ID:         channelID,
@@ -385,8 +388,9 @@ func TestEnsureChannelSessionReusesLivePeerBind(t *testing.T) {
 	agents := ingressAgentRepo{id: agentID}
 	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil)
 	h := &ChannelIngress{
-		channels: biz.NewChannelUsecase(nil, peerRepo, nil, agents, nil, nil),
+		channels: biz.NewChannelUsecase(nil, peerRepo, nil, agents, nil, nil, nil),
 		sessions: sessions,
+		lg:       loggateway.NewNoop(),
 	}
 	ch := biz.Channel{
 		ID:         channelID,

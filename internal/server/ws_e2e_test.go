@@ -10,7 +10,6 @@ import (
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
-	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
 
 	"github.com/gorilla/websocket"
@@ -51,7 +50,7 @@ func TestWSE2E_UserMessageStream(t *testing.T) {
 	const sessionID = "sess-e2e"
 	bus := event.NewBus()
 	sender := &e2eChatSender{bus: bus, sessionID: sessionID}
-	srv := NewWSServer(&conf.Server{Ws: &conf.Server_WS{Enable: true}}, bus, event.NewBuffer(), nil, sender)
+	srv := newTestWSServer(bus, event.NewBuffer(), nil, sender)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/ws", srv.handleWS)

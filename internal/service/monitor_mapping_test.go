@@ -494,8 +494,8 @@ func TestNotFoundMonitor(t *testing.T) {
 				if ke.Reason != "MONITOR_NOT_FOUND" {
 					t.Errorf("Reason = %q, want %q", ke.Reason, "MONITOR_NOT_FOUND")
 				}
-				if ke.StatusCode != 404 {
-					t.Errorf("StatusCode = %d, want 404", ke.StatusCode)
+				if ke.Code != 404 {
+					t.Errorf("Code = %d, want 404", ke.Code)
 				}
 				return
 			}

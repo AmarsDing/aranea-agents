@@ -475,9 +475,9 @@ func TestBuildBizTeam(t *testing.T) {
 			},
 		}
 
-		team, err := buildBizTeam(spec, ts, keyToID)
+		team, err := BuildBizTeamFromSpec(spec, ts, keyToID)
 		if err != nil {
-			t.Fatalf("buildBizTeam() error = %v", err)
+			t.Fatalf("BuildBizTeamFromSpec() error = %v", err)
 		}
 		if team.TeamKey != "risk-team" {
 			t.Errorf("TeamKey = %q, want %q", team.TeamKey, "risk-team")
@@ -509,9 +509,9 @@ func TestBuildBizTeam(t *testing.T) {
 			},
 		}
 
-		team, err := buildBizTeam(spec, ts, keyToID)
+		team, err := BuildBizTeamFromSpec(spec, ts, keyToID)
 		if err != nil {
-			t.Fatalf("buildBizTeam() error = %v", err)
+			t.Fatalf("BuildBizTeamFromSpec() error = %v", err)
 		}
 
 		var ospec biz.OrchestrationSpec
@@ -537,9 +537,9 @@ func TestBuildBizTeam(t *testing.T) {
 			},
 		}
 
-		_, err := buildBizTeam(spec, ts, keyToID)
+		_, err := BuildBizTeamFromSpec(spec, ts, keyToID)
 		if err == nil {
-			t.Error("buildBizTeam() expected error for missing agent key, got nil")
+			t.Error("BuildBizTeamFromSpec() expected error for missing agent key, got nil")
 		}
 	})
 }

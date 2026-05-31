@@ -7,12 +7,13 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/lark"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestProcessInboundStreamingUnsupportedPlatformUnaryFallback(t *testing.T) {
 	repo := &streamChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil))
-	h := &ChannelIngress{channels: uc}
+	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
+	h := &ChannelIngress{channels: uc, lg: loggateway.NewNoop()}
 	ch := biz.Channel{ID: "ch1", ConfigJSON: `{"type":"dingtalk","config":{"streaming_enabled":true}}`}
 	ev := port.InboundEvent{PlatformType: "dingtalk", PeerID: "p1", Text: "hi"}
 	ltCfg := biz.ParseChannelLongTaskConfig(ch.ConfigJSON)

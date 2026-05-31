@@ -32,7 +32,6 @@ type (
 	SessionReader           = session.SessionReader
 	SessionWriter           = session.SessionWriter
 	SessionMutator              = session.SessionMutator
-	SessionStatusTransitioner   = session.SessionStatusTransitioner
 	SessionBatchMutator         = session.SessionBatchMutator
 	MessageReader           = session.MessageReader
 	MessageSearchReader     = session.MessageSearchReader

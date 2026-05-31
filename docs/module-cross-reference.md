@@ -128,6 +128,23 @@
 
 ---
 
+### 1.5b 会话状态监控 (`internal/biz/session/status*.go` + `internal/service/session_status_guard.go`)
+
+**职责**：Session 执行状态管理——5 态状态机、删除保护、WS 实时推送、优雅退出/异常恢复。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz/session`（SessionUsecase、SessionRepo）、`event`（Envelope 发布）、`loggateway`（日志） |
+| **下游影响** | `service/chat`（ChatOrchestrator 调用 TransitionStatus）、`service/team`（TeamTurnHooks 调用 TransitionStatus）、`cmd/admin/wire.go`（SessionStatusGuard 注册到 Kratos 生命周期） |
+| **核心导出** | `SessionStatus`/`SessionStatusReason` 常量、`IsProtectedStatus`、`SessionStatusMachine`、`SessionStatusPublisher`（端口接口）、`SessionStatusTransitioner`（端口接口）、`SessionStatusGuard` |
+| **共享类型** | `SessionStatus`（5 枚举值）、`SessionStatusReason`（11 枚举值） |
+| **事件生产** | `session.status_changed`（通过 `SessionStatusPublisher` → WS Envelope） |
+| **事件消费** | 无 |
+| **数据库** | SQLite sessions 表（status/status_reason/status_changed_at 三列）；**生命周期由 `archived_at`/`deleted_at` 时间戳判断，status 列仅存执行状态** |
+| **前端对应** | `SessionStatusBadge.vue`（5 种状态徽章）、`sessionSync.ts`（status_changed 变体，WS → emitSessionMutation → sessionSync 总线）、`useChatInboundSync.ts`（session.status_changed → emitSessionMutation） |
+
+---
+
 ### 1.6 Chat 服务 (`internal/service/chat*.go`)
 
 **职责**：Chat 传输桥点 + Runner 装配入口。实现所有 Turn 相关端口接口。
@@ -268,7 +285,7 @@
 |------|------|
 | **上游依赖** | 无（基础设施层，不依赖业务模块） |
 | **下游影响** | **所有模块**：chat/channel/team/graph/monitor/memory/plugin 都依赖 EventBus |
-| **核心导出** | `Infra`（双总线）、`Bus` 接口、`Buffer`、`Envelope`、`EnvelopeType`（30+ 事件类型常量）、`FlowLog`、`SysLog*`/`SessionSysLog*` |
+| **核心导出** | `Infra`（双总线）、`Bus` 接口、`Buffer`、`Envelope`、`EnvelopeType`（30+ 事件类型常量）、`FlowLog`、`SysLog*`/`SessionSysLog*`（⚠️ 已废弃，迁移至 `pkg/loggateway.Logger`） |
 | **共享类型** | `Envelope`（所有事件消费者共享）、`EnvelopeType`（事件类型枚举） |
 | **事件生产** | 不生产业务事件（只提供基础设施） |
 | **事件消费** | 不消费业务事件（Bus 本身是传输层） |
@@ -467,6 +484,8 @@
 | `MemoryFactIndexCounter` | MemoryService | `internal/service/memory_recall.go` + `internal/data/memory_debug_recall.go` 适配器 + `cmd/admin/wire.go` |
 | `CascadeProposalStore`/`CascadeGraphReader`/`CascadeFactMutator`/`CascadeSagaStore` | L4CascadeUsecase | `internal/biz/memory_l4_cascade.go` + `cmd/admin/wire.go` |
 | `L4EntityWriter` | L4CascadeUsecase | `internal/biz/memory_l4_cascade.go` + `cmd/admin/wire.go` |
+| `SessionStatusPublisher` | SessionUsecase | `internal/service/run_status_publish.go`（sessionStatusPublisher 适配器）+ `cmd/admin/wire.go`（WireSessionStatusPublisher） |
+| `SessionStatusTransitioner` | SessionUsecase | `internal/biz/session/usecase.go`（SessionUsecase 自身实现）+ `internal/service/chat_orchestrator*.go`/`team_turn_hooks.go`（调用方） |
 
 ### 3.2 修改共享类型时
 
@@ -480,6 +499,8 @@
 | `Agent` | `biz/agent_types.go` | AgentUsecase、ChatOrchestrator、Team、A2A、前端 |
 | `Tool` | `biz/tool/tool.go` | ToolUsecase、ChatOrchestrator、前端 |
 | `GraphDefinition` | `biz/graph.go` | GraphUsecase、GraphService、Team、前端 |
+| `SessionStatus` | `biz/session/status.go` | SessionUsecase、SessionRepo、ChatOrchestrator、TeamTurnHooks、SessionStatusGuard、前端 `types.ts` + `SessionStatusBadge.vue` |
+| `SessionStatusReason` | `biz/session/status.go` | SessionUsecase、ChatOrchestrator、TeamTurnHooks、SessionStatusGuard、前端 `SessionStatusBadge.vue` |
 | `TeamDefinition` | `biz/team_types.go` | TeamUsecase、TeamService、前端 |
 | `RecallDebugRow`/`RecallScoreBreakdown` | `biz/memory_debug_recall.go` | MemoryService、data 适配器、前端（debug recall 面板） |
 
@@ -494,13 +515,14 @@
 | `team_run_*` | Team Runner | WS 推送 | TeamsStore 更新运行状态 |
 | `alert_notify` | Monitor | WS 推送 + Channel 通知 | InboundNotificationStore |
 | `flow_log` | 任意模块 | MonitorBus → FlowLogRepo | MonitorPage 日志展示 |
+| `session.status_changed` | SessionStatusPublisher（service 层） | WS 推送 | SessionStore.patchSessionStatus + SessionStatusBadge |
 
 ### 3.4 修改数据库 Schema 时
 
 | 修改的表 | Ent Schema | 影响的 Repo | 影响的 Usecase | 影响的前端 |
 |---------|-----------|------------|---------------|-----------|
 | agents | ✅ | AgentRepo | AgentUsecase | AgentsPage |
-| sessions | ✅ | SessionRepo | SessionUsecase | ChatPage/SessionsPage |
+| sessions | ✅ | SessionRepo | SessionUsecase | ChatPage/SessionsPage（+ SessionStatusBadge） |
 | messages | ✅ | SessionRepo | SessionUsecase | ChatPage |
 | teams | ✅ | TeamRepo | TeamUsecase | TeamsPage |
 | tools | ✅ | ToolRepo | ToolUsecase | ToolsPage |
@@ -606,3 +628,25 @@
 | 5. 验证所有入口 | 全栈 | HTTP Chat + WS Chat + Channel + Cron + A2A |
 
 **关联模块**：biz → service/chat + channel + cron + a2a + server/ws → 前端 ChatPage
+
+### 场景 6：修改 Session 状态枚举
+
+| 步骤 | 模块 | 文件 |
+|------|------|------|
+| 1. 修改 SessionStatus/SessionStatusReason 常量 | biz | `internal/biz/session/status.go` |
+| 2. 更新状态机合法转换 | biz | `internal/biz/session/status_machine.go` + `_test.go` |
+| 3. 更新 IsProtectedStatus | biz | `internal/biz/session/status.go` |
+| 4. 更新 SessionUsecase 转换逻辑 | biz | `internal/biz/session/usecase.go` + `recovery.go` |
+| 5. 更新 SessionRepo 状态查询/写入 | data | `internal/data/session_repo.go` + `session_repo_batch.go` |
+| 6. 更新 Ent Schema 默认值/字段 | data | `internal/data/ent/schema/session.go` → `go generate` |
+| 7. 更新 ChatOrchestrator 调用点 | service | `internal/service/chat_orchestrator*.go` |
+| 8. 更新 TeamTurnHooks 调用点 | service | `internal/service/team_turn_hooks.go` |
+| 9. 更新 SessionStatusGuard | service | `internal/service/session_status_guard.go` |
+| 10. 更新 SessionStatusPublisher | service | `internal/service/run_status_publish.go` |
+| 11. 更新 Proto 定义 | api | `api/kratos/session/v1/session.proto` → `make api` |
+| 12. 更新前端类型 | 前端 | `web/src/features/session/types.ts` |
+| 13. 更新 SessionStatusBadge | 前端 | `web/src/components/sessions/SessionStatusBadge.vue` |
+| 14. 更新删除保护 UI | 前端 | `web/src/components/sessions/SessionsTableSection.vue` |
+| 15. 验证全链路 | 全栈 | 状态机测试 + 编译 + 前端 lint + E2E |
+
+**关联模块**：biz/session → data → service/chat + team → event → api → 前端 types + SessionStatusBadge + sessionSync

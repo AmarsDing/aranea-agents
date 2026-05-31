@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type stubHookRepo struct {
@@ -38,7 +40,7 @@ func TestHookResolver_Resolve_filtersAgent(t *testing.T) {
 			ConfigJSON: `{"callback_point":"before_agent","action":{"type":"log"}}`,
 		},
 	}}
-	r := NewHookResolver(NewHookUsecase(repo))
+	r := NewHookResolver(NewHookUsecase(repo), loggateway.NewNoop())
 	if err := r.Reload(context.Background()); err != nil {
 		t.Fatal(err)
 	}
