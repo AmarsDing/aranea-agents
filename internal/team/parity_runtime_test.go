@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	graphtrpc "aranea-agents/internal/graph/trpc"
+	"aranea-agents/pkg/loggateway"
 )
 
 func stubParityCatalogAgent(_ context.Context, id string) (biz.Agent, error) {
@@ -21,7 +22,7 @@ func stubParityCatalogAgent(_ context.Context, id string) (biz.Agent, error) {
 
 func buildRuntimeGraphFromDef(t *testing.T, def Definition) int {
 	t.Helper()
-	cfg, err := CompileToGraphRuntimeConfig(def, compileAgentKey)
+	cfg, err := CompileToGraphRuntimeConfig(def, compileAgentKey, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("CompileToGraphRuntimeConfig: %v", err)
 	}
@@ -83,7 +84,7 @@ func TestParityNativeVsGraph_RuntimeBuildAllModes(t *testing.T) {
 				t.Fatalf("native keys: got %d want %d", len(nativeKeys), wantAgents)
 			}
 
-			cfg, err := CompileToGraphRuntimeConfig(def, compileAgentKey)
+			cfg, err := CompileToGraphRuntimeConfig(def, compileAgentKey, loggateway.NewNoop())
 			if err != nil {
 				t.Fatalf("CompileToGraphRuntimeConfig: %v", err)
 			}

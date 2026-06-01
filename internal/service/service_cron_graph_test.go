@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/service"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -311,7 +312,7 @@ func TestToProtoGraph(t *testing.T) {
 			{ID: "sub1"},
 		},
 	}
-	got, err := service.ToProtoGraph(def)
+	got, err := service.ToProtoGraph(def, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -350,7 +351,7 @@ func TestToProtoGraph_Minimal(t *testing.T) {
 		ID: "g2", Name: "minimal",
 		CreatedAt: now, UpdatedAt: now,
 	}
-	got, err := service.ToProtoGraph(def)
+	got, err := service.ToProtoGraph(def, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -370,7 +371,7 @@ func TestToProtoStateField(t *testing.T) {
 		Name: "items", Type: "list", Reducer: "append",
 		Required: true, DisableDeepCopy: true,
 	}
-	got := service.ToProtoStateField(sf)
+	got := service.ToProtoStateField(sf, loggateway.NewNoop())
 	if got.Name != "items" {
 		t.Errorf("Name = %q, want %q", got.Name, "items")
 	}
@@ -426,7 +427,7 @@ func TestUserTemplateToProto(t *testing.T) {
 			{Name: "state", Type: "string"},
 		},
 	}
-	got := service.UserTemplateToProto(def, meta)
+	got := service.UserTemplateToProto(def, meta, loggateway.NewNoop())
 	if got.Id != "tmpl1" {
 		t.Errorf("Id = %q, want %q", got.Id, "tmpl1")
 	}
@@ -464,7 +465,7 @@ func TestTemplateToProto(t *testing.T) {
 			{Name: "state", Type: "string", Reducer: graphtrpc.ReducerType("last"), Required: true},
 		},
 	}
-	got := service.TemplateToProto(tmpl)
+	got := service.TemplateToProto(tmpl, loggateway.NewNoop())
 	if got.Id != "builtin1" {
 		t.Errorf("Id = %q, want %q", got.Id, "builtin1")
 	}

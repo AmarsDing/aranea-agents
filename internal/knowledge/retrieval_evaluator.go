@@ -25,10 +25,11 @@ type RetrievalEvaluator struct {
 	llm     biz.LLMCaller
 	sys     *biz.SystemSettingUsecase
 	catalog *biz.LlmProviderModelUsecase
+	lg      loggateway.Logger
 }
 
-func NewRetrievalEvaluator(llm biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase) *RetrievalEvaluator {
-	return &RetrievalEvaluator{llm: llm, sys: sys, catalog: catalog}
+func NewRetrievalEvaluator(llm biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) *RetrievalEvaluator {
+	return &RetrievalEvaluator{llm: llm, sys: sys, catalog: catalog, lg: lg}
 }
 
 func (e *RetrievalEvaluator) Evaluate(ctx context.Context, query string, chunks []biz.KnowledgeChunk) (*RetrievalAssessment, error) {
@@ -78,7 +79,7 @@ func (e *RetrievalEvaluator) Evaluate(ctx context.Context, query string, chunks 
 		User:     user,
 	})
 	if err != nil {
-		loggateway.Global().Warn("检索质量评估失败，降级为需要补充检索",
+		e.lg.Warn("检索质量评估失败，降级为需要补充检索",
 			loggateway.StepID("knowledge.retrieval_eval.fail"),
 			loggateway.Err(err))
 		// Degradation strategy 3 (safe): when the LLM call itself fails, we
@@ -100,7 +101,7 @@ func (e *RetrievalEvaluator) resolveModel(ctx context.Context) (string, string, 
 	if e.catalog != nil {
 		cat = e.catalog
 	}
-	return ResolveLLM(ctx, sys, cat, "retrieval evaluation")
+	return ResolveLLM(ctx, sys, cat, "retrieval evaluation", e.lg)
 }
 
 func buildChunksSummary(chunks []biz.KnowledgeChunk, maxChars int) string {

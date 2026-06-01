@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformchannelpeersession"
+	"aranea-agents/pkg/loggateway"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -111,6 +112,7 @@ func (r *channelPeerSessionRepo) DeleteByChannelID(ctx context.Context, channelI
 		Where(platformchannelpeersession.ChannelIDEQ(channelID)).
 		Exec(ctx)
 	if err != nil {
+		r.data.lg.Warn("delete channel peer sessions by channel failed", loggateway.StepID("data.channel_peer_session.delete_by_channel"), loggateway.Err(err))
 		return 0, err
 	}
 	return n, nil
@@ -125,6 +127,7 @@ func (r *channelPeerSessionRepo) DeleteBySessionID(ctx context.Context, sessionI
 		Where(platformchannelpeersession.SessionIDEQ(sessionID)).
 		Exec(ctx)
 	if err != nil {
+		r.data.lg.Warn("delete channel peer sessions by session failed", loggateway.StepID("data.channel_peer_session.delete_by_session"), loggateway.Err(err))
 		return 0, err
 	}
 	return n, nil

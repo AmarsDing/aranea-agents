@@ -2,6 +2,8 @@ package team
 
 import (
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestCompileToGraphBuildConfig_sequential(t *testing.T) {
@@ -13,7 +15,7 @@ func TestCompileToGraphBuildConfig_sequential(t *testing.T) {
 			{AgentID: "a3", Role: "synthesizer", SortOrder: 3},
 		},
 	}
-	cfg, err := CompileToGraphBuildConfig(def, func(id string) string { return "key-" + id })
+	cfg, err := CompileToGraphBuildConfig(def, func(id string) string { return "key-" + id }, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +43,7 @@ func TestCompileToGraphBuildConfig_parallel(t *testing.T) {
 			{AgentID: "synth", Role: "synthesizer", SortOrder: 3},
 		},
 	}
-	cfg, err := CompileToGraphBuildConfig(def, nil)
+	cfg, err := CompileToGraphBuildConfig(def, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +67,7 @@ func TestCompileToGraphBuildConfig_coordinator(t *testing.T) {
 			{AgentID: "w2", SortOrder: 3},
 		},
 	}
-	cfg, err := CompileToGraphBuildConfig(def, nil)
+	cfg, err := CompileToGraphBuildConfig(def, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +103,7 @@ func TestCompileToGraphBuildConfig_coordinator_noSelfLoopOnFinish(t *testing.T) 
 			{AgentID: "report", SortOrder: 90, Role: "synthesizer"},
 		},
 	}
-	cfg, err := CompileToGraphBuildConfig(def, nil)
+	cfg, err := CompileToGraphBuildConfig(def, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +122,7 @@ func TestCompileToGraphBuildConfig_criticLoop(t *testing.T) {
 			{AgentID: "crit", SortOrder: 2, Role: "critic"},
 		},
 	}
-	cfg, err := CompileToGraphBuildConfig(def, nil)
+	cfg, err := CompileToGraphBuildConfig(def, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +142,7 @@ func TestCompileToGraphBuildConfig_adaptive(t *testing.T) {
 			{AgentID: "b", SortOrder: 2},
 		},
 	}
-	cfg, err := CompileToGraphBuildConfig(def, nil)
+	cfg, err := CompileToGraphBuildConfig(def, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +164,7 @@ func TestCompileToGraphBuildConfig_adaptive(t *testing.T) {
 }
 
 func TestCompileToGraphBuildConfig_noMembers(t *testing.T) {
-	_, err := CompileToGraphBuildConfig(Definition{Mode: "sequential"}, nil)
+	_, err := CompileToGraphBuildConfig(Definition{Mode: "sequential"}, nil, loggateway.NewNoop())
 	if err == nil {
 		t.Fatal("expected error")
 	}

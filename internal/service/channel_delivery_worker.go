@@ -155,7 +155,7 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 			if _, markErr := w.channels.MarkOutboundAttempt(ctx, row, err); markErr != nil {
 				w.lg.Warn("标记投递尝试失败",
 					loggateway.StepID("channel.delivery.mark_attempt_failed"),
-					loggateway.Str("error", markErr.Error()),
+					loggateway.Err(markErr),
 				)
 			}
 			continue
@@ -169,7 +169,7 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 			if _, markErr := w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", fmt.Sprintf("unsupported delivery kind %q", payload.Kind))); markErr != nil {
 				w.lg.Warn("标记投递尝试失败",
 					loggateway.StepID("channel.delivery.mark_attempt_failed"),
-					loggateway.Str("error", markErr.Error()),
+					loggateway.Err(markErr),
 				)
 			}
 			continue
@@ -179,7 +179,7 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 			if _, markErr := w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", "outbound_card missing card_json")); markErr != nil {
 				w.lg.Warn("标记投递尝试失败",
 					loggateway.StepID("channel.delivery.mark_attempt_failed"),
-					loggateway.Str("error", markErr.Error()),
+					loggateway.Err(markErr),
 				)
 			}
 			continue
@@ -190,7 +190,7 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 				if _, markErr := w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", "outbound_text missing text")); markErr != nil {
 					w.lg.Warn("标记投递尝试失败",
 						loggateway.StepID("channel.delivery.mark_attempt_failed"),
-						loggateway.Str("error", markErr.Error()),
+						loggateway.Err(markErr),
 					)
 				}
 				continue
@@ -203,7 +203,7 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 		if markErr != nil {
 			w.lg.Warn("标记投递尝试失败",
 				loggateway.StepID("channel.delivery.mark_attempt_failed"),
-				loggateway.Str("error", markErr.Error()),
+				loggateway.Err(markErr),
 			)
 		}
 		switch {
@@ -212,12 +212,12 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 		case deadLetter:
 			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "dead_letter").Inc()
 			w.lg.Warn("channel delivery dead-letter",
-				loggateway.StepID("system.channel.dead_letter"),
+				loggateway.StepID("channel.dead_letter"),
 				loggateway.Str("channel_id", row.ChannelID),
 				loggateway.Str("delivery_id", row.ID),
 				loggateway.Str("platform", payload.Platform),
 				loggateway.Str("attempts", fmt.Sprint(payload.Attempts+1)),
-				loggateway.Str("error", sendErr.Error()),
+				loggateway.Err(sendErr),
 			)
 		default:
 			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "retry").Inc()
@@ -230,13 +230,15 @@ func telegramChatRecipient(chatID int64) string {
 	return strconv.FormatInt(chatID, 10)
 }
 
-func oneBotHTTPServer(configJSON string) string {
+func oneBotHTTPServer(configJSON string, lg loggateway.Logger) string {
 	var env struct {
 		Config struct {
 			HTTPServer string `json:"onebot_http_server"`
 		} `json:"config"`
 	}
-	_ = json.Unmarshal([]byte(configJSON), &env)
+	if err := json.Unmarshal([]byte(configJSON), &env); err != nil {
+		lg.Warn("onebot http server config json unmarshal failed", loggateway.StepID("channel.delivery.onebot_config"), loggateway.Err(err))
+	}
 	return strings.TrimSpace(env.Config.HTTPServer)
 }
 
@@ -246,7 +248,9 @@ func wechatAppCreds(configJSON string, creds []biz.ChannelCredential, ctx contex
 			AppID string `json:"app_id"`
 		} `json:"config"`
 	}
-	_ = json.Unmarshal([]byte(configJSON), &env)
+	if err := json.Unmarshal([]byte(configJSON), &env); err != nil {
+		lg.Warn("wechat app creds config json unmarshal failed", loggateway.StepID("channel.delivery.wechat_config"), loggateway.Err(err))
+	}
 	appID = strings.TrimSpace(env.Config.AppID)
 	appSecret, _ = resolveCredentialPlain(ctx, channels, creds, "app_secret", lg)
 	return appID, strings.TrimSpace(appSecret)

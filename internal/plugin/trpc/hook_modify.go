@@ -4,17 +4,19 @@ import (
 	"encoding/json"
 	"strings"
 
+	"aranea-agents/pkg/loggateway"
+
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 // ApplyModelModifyPatch merges modify_patch into a model request before invocation.
-func ApplyModelModifyPatch(req *trpcmodel.Request, patch map[string]any) {
+func ApplyModelModifyPatch(req *trpcmodel.Request, patch map[string]any, lg loggateway.Logger) {
 	if req == nil || len(patch) == 0 {
 		return
 	}
 	if raw, ok := patch["generation_config"]; ok && raw != nil {
-		overlay := decodeGenerationOverlay(raw)
+		overlay := decodeGenerationOverlay(raw, lg)
 		mergeGenerationConfig(&req.GenerationConfig, overlay)
 	}
 	if sys := strings.TrimSpace(stringField(patch, "append_system")); sys != "" {
@@ -40,20 +42,22 @@ func ApplyModelModifyPatch(req *trpcmodel.Request, patch map[string]any) {
 }
 
 // ApplyToolModifyPatch returns modified tool arguments when modify_patch is set.
-func ApplyToolModifyPatch(args *trpctool.BeforeToolArgs, patch map[string]any) []byte {
+func ApplyToolModifyPatch(args *trpctool.BeforeToolArgs, patch map[string]any, lg loggateway.Logger) []byte {
 	if args == nil || len(patch) == 0 {
 		return nil
 	}
-	return mergeToolArgumentsJSON(args.Arguments, patch)
+	return mergeToolArgumentsJSON(args.Arguments, patch, lg)
 }
 
-func decodeGenerationOverlay(raw any) trpcmodel.GenerationConfig {
+func decodeGenerationOverlay(raw any, lg loggateway.Logger) trpcmodel.GenerationConfig {
 	b, err := json.Marshal(raw)
 	if err != nil {
 		return trpcmodel.GenerationConfig{}
 	}
 	var overlay trpcmodel.GenerationConfig
-	_ = json.Unmarshal(b, &overlay)
+	if err := json.Unmarshal(b, &overlay); err != nil {
+		lg.Warn("解析 generation overlay 失败", loggateway.StepID("plugin.trpc.hook_modify"), loggateway.Err(err))
+	}
 	return overlay
 }
 

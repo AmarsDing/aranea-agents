@@ -31,13 +31,13 @@ type sessionLogWriterAdapter struct {
 	lg loggateway.Logger
 }
 
-func (a sessionLogWriterAdapter) SessionSysLogWarn(ctx context.Context, sessionID, stepID, message string, pairs ...biz.LogPair) {
+func (a sessionLogWriterAdapter) LogSessionWarn(ctx context.Context, sessionID, stepID, message string, pairs ...biz.LogPair) {
 	a.lg.With(loggateway.SessionID(sessionID)).Warn(message,
 		loggateway.StepID(stepID),
 	)
 }
 
-func (a sessionLogWriterAdapter) SessionSysLogError(ctx context.Context, sessionID, stepID, message string, pairs ...biz.LogPair) {
+func (a sessionLogWriterAdapter) LogSessionError(ctx context.Context, sessionID, stepID, message string, pairs ...biz.LogPair) {
 	a.lg.With(loggateway.SessionID(sessionID)).Error(message,
 		loggateway.StepID(stepID),
 	)
@@ -53,13 +53,13 @@ type systemLogWriterAdapter struct {
 	lg loggateway.Logger
 }
 
-func (a systemLogWriterAdapter) SysLogWarn(stepID, message string, pairs ...biz.LogPair) {
+func (a systemLogWriterAdapter) LogWarn(stepID, message string, pairs ...biz.LogPair) {
 	a.lg.Warn(message,
 		loggateway.StepID(stepID),
 	)
 }
 
-func (a systemLogWriterAdapter) SysLogError(stepID, message string, pairs ...biz.LogPair) {
+func (a systemLogWriterAdapter) LogError(stepID, message string, pairs ...biz.LogPair) {
 	a.lg.Error(message,
 		loggateway.StepID(stepID),
 	)

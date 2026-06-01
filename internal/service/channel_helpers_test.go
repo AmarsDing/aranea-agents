@@ -150,7 +150,7 @@ func TestOneBotHTTPServer(t *testing.T) {
 		{`{}`, ""},
 	}
 	for _, tc := range cases {
-		got := oneBotHTTPServer(tc.configJSON)
+		got := oneBotHTTPServer(tc.configJSON, loggateway.NewNoop())
 		if got != tc.want {
 			t.Errorf("oneBotHTTPServer(%q) = %q, want %q", tc.configJSON, got, tc.want)
 		}
@@ -168,7 +168,7 @@ func TestQqAppID(t *testing.T) {
 		{`{"config":{"app_id":"  abc  "}}`, "abc"},
 	}
 	for _, tc := range cases {
-		got := qqAppID(tc.configJSON)
+		got := qqAppID(tc.configJSON, loggateway.NewNoop())
 		if got != tc.want {
 			t.Errorf("qqAppID(%q) = %q, want %q", tc.configJSON, got, tc.want)
 		}

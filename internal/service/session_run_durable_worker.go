@@ -35,7 +35,7 @@ func (w *SessionRunDurableWorker) Start(ctx context.Context) {
 	if n, err := w.runs.CleanupOrphanedRuns(context.Background()); err != nil {
 		w.lg.Warn("orphan cleanup failed",
 			loggateway.StepID("session.durable_worker"),
-			loggateway.Str("error", err.Error()),
+			loggateway.Err(err),
 		)
 	} else if n > 0 {
 		w.lg.Info("orphaned runs cleaned up",
@@ -73,7 +73,7 @@ func (w *SessionRunDurableWorker) processOnce(ctx context.Context) {
 			w.lg.Warn("resume failed",
 				loggateway.StepID("session.durable_worker"),
 				loggateway.Str("run_id", run.ID),
-				loggateway.Str("error", err.Error()),
+				loggateway.Err(err),
 			)
 		}
 	}

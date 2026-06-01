@@ -7,6 +7,7 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/toolresultblob"
 	"aranea-agents/internal/data/ent/toolresultreplacement"
+	"aranea-agents/pkg/loggateway"
 )
 
 type ToolResultBlobRepo struct {
@@ -32,6 +33,9 @@ func (r *ToolResultBlobRepo) SaveBlob(ctx context.Context, blob *biz.ToolResultB
 		SetContentSizeChars(blob.ContentSizeChars).
 		SetCreatedAt(blob.CreatedAt).
 		Save(ctx)
+	if err != nil {
+		r.data.lg.Warn("tool result blob save failed", loggateway.StepID("data.tool.blob_save"), loggateway.Err(err))
+	}
 	return err
 }
 
@@ -83,6 +87,9 @@ func (r *ToolResultReplacementRepo) SaveReplacement(ctx context.Context, rep *bi
 		SetPreviewText(rep.PreviewText).
 		SetReplacedAt(rep.ReplacedAt).
 		Save(ctx)
+	if err != nil {
+		r.data.lg.Warn("tool result replacement save failed", loggateway.StepID("data.tool.replacement_save"), loggateway.Err(err))
+	}
 	return err
 }
 

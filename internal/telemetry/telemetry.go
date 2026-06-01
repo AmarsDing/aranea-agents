@@ -29,10 +29,10 @@ const (
 
 // Init configures OTLP tracer and meter providers from environment variables.
 // When OTEL_EXPORTER_OTLP_ENDPOINT is unset, providers remain noop and shutdown is a no-op.
-func Init(serviceName, serviceVersion string) func(context.Context) error {
+func Init(serviceName, serviceVersion string, lg loggateway.Logger) func(context.Context) error {
 	endpoint := strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
 	if endpoint == "" {
-		loggateway.Global().Debug("OTEL_EXPORTER_OTLP_ENDPOINT 未配置，使用 noop 提供者", loggateway.StepID("system.telemetry.noop"))
+		lg.Debug("OTEL_EXPORTER_OTLP_ENDPOINT 未配置，使用 noop 提供者", loggateway.StepID("telemetry.noop"))
 		return func(context.Context) error { return nil }
 	}
 
@@ -44,12 +44,12 @@ func Init(serviceName, serviceVersion string) func(context.Context) error {
 	ctx := context.Background()
 	tpShutdown, err := initTracerProvider(ctx, serviceName, serviceVersion, endpoint, protocol)
 	if err != nil {
-		loggateway.Global().Error("OTel Tracer 初始化失败", loggateway.StepID("system.telemetry.error"), loggateway.Str("protocol", protocol), loggateway.Err(err))
+		lg.Error("OTel Tracer 初始化失败", loggateway.StepID("telemetry.error"), loggateway.Str("protocol", protocol), loggateway.Err(err))
 		return func(context.Context) error { return nil }
 	}
 
 	if err := initMeterProvider(ctx, serviceName, serviceVersion, endpoint, protocol); err != nil {
-		loggateway.Global().Warn("OTel Meter 初始化失败，指标使用 noop", loggateway.StepID("system.telemetry.error"), loggateway.Err(err))
+		lg.Warn("OTel Meter 初始化失败，指标使用 noop", loggateway.StepID("telemetry.error"), loggateway.Err(err))
 	}
 
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
@@ -57,8 +57,8 @@ func Init(serviceName, serviceVersion string) func(context.Context) error {
 		propagation.Baggage{},
 	))
 
-	loggateway.Global().Info("遥测已初始化",
-		loggateway.StepID("system.telemetry.init"),
+	lg.Info("遥测已初始化",
+		loggateway.StepID("telemetry.init"),
 		loggateway.Str("endpoint", endpoint),
 		loggateway.Str("protocol", protocol),
 		loggateway.Str("service", serviceName),

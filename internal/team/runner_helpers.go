@@ -48,13 +48,14 @@ func extractOptsFromInput(input biz.TurnInput) (dialogMode, prov, mod string, at
 		len(artifactbiz.NormalizeAttachmentIDs(input.Options.AttachmentIDs))
 }
 
-func mergeTeamUserTurnMetaJSON(userOpts string, displayContent, sendText string) (string, error) {
+func mergeTeamUserTurnMetaJSON(userOpts string, displayContent, sendText string, lg loggateway.Logger) (string, error) {
 	displayContent = strings.TrimSpace(displayContent)
 	sendText = strings.TrimSpace(sendText)
 	var opts map[string]any
 	if strings.TrimSpace(userOpts) == "" {
 		opts = map[string]any{}
 	} else if err := json.Unmarshal([]byte(userOpts), &opts); err != nil {
+		lg.Warn("解析 team user turn meta 失败", loggateway.StepID("team.runner_helpers"), loggateway.Err(err))
 		return userOpts, err
 	}
 	sendLen := len([]rune(sendText))
@@ -119,7 +120,7 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 		r.td.Pipeline.Bus.Publish(ctx, failEnv)
 	}
 	r.publishTeamRunSummary(ctx, *run)
-	loggateway.Global().With(loggateway.SessionID(strings.TrimSpace(run.SessionID))).Warn(msg, loggateway.StepID("team.run.finish"), loggateway.Str("team_id", run.TeamID), loggateway.Str("run_id", run.ID))
+	r.lg.With(loggateway.SessionID(strings.TrimSpace(run.SessionID))).Warn(msg, loggateway.StepID("team.run.finish"), loggateway.Str("team_id", run.TeamID), loggateway.Str("run_id", run.ID))
 }
 
 func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRun) {

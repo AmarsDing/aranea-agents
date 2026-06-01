@@ -24,14 +24,16 @@ type ModelRegistrySyncAgent struct {
 	tools     []trpctool.Tool
 	storeProv modelregistry.StoreProvider
 	backend   modelregistry.ApplyBackend
+	lg        loggateway.Logger
 	runner    trpcrunner.Runner
 }
 
 func BuildModelRegistrySyncAgent(
 	storeProv modelregistry.StoreProvider,
 	backend modelregistry.ApplyBackend,
+	lg loggateway.Logger,
 ) (*ModelRegistrySyncAgent, error) {
-	phases := modelsync.BuildPhases(backend)
+	phases := modelsync.BuildPhases(backend, lg)
 	tools := modelsync.RegisterAll(modelsync.Deps{
 		Phases:        phases,
 		StoreProvider: storeProv,
@@ -44,6 +46,7 @@ func BuildModelRegistrySyncAgent(
 		tools:     tools,
 		storeProv: storeProv,
 		backend:   backend,
+		lg:        lg,
 	}
 
 	ag.runner = trpcrunner.NewRunner("model-registry-sync", ag)
@@ -79,7 +82,7 @@ func (a *ModelRegistrySyncAgent) Run(ctx context.Context, inv *trpcagent.Invocat
 			Writer:   a.backend,
 			Migrator: a.backend,
 			Policy:   policy,
-			Lg:       loggateway.NewNoop(),
+			Lg:       a.lg,
 		}
 
 		for _, phase := range a.phases {

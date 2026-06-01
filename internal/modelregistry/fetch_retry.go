@@ -42,10 +42,10 @@ func isRetryableFetchErr(err error) bool {
 		strings.Contains(msg, "i/o timeout")
 }
 
-func fetchCatalogWithRetry(ctx context.Context, sourceURL, ifNoneMatch string) (FetchResult, error) {
+func fetchCatalogWithRetry(ctx context.Context, sourceURL, ifNoneMatch string, lg loggateway.Logger) (FetchResult, error) {
 	return attemptCatalogFetch(ctx, func() (FetchResult, error) {
 		return fetchCatalogHTTPOnce(ctx, sourceURL, ifNoneMatch)
-	}, loggateway.Global())
+	}, lg)
 }
 
 func attemptCatalogFetch(ctx context.Context, fetch func() (FetchResult, error), lg loggateway.Logger) (FetchResult, error) {

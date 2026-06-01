@@ -39,7 +39,7 @@ func NewAuditLogPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, lg logg
 	cfg.LogToolArgs = true
 	cfg.MaxContentLength = 500
 	cfg.RedactSensitive = true
-	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
 	if cfg.MaxContentLength <= 0 {
 		cfg.MaxContentLength = 500
 	}

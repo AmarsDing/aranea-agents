@@ -11,7 +11,8 @@ func ProvideGraphUsecase(
 	factory biz.GraphBuilderFactory,
 	telemetry *GraphExecutionTelemetry,
 	orchProjector *GraphOrchestrationProjector,
+	lg loggateway.Logger,
 ) *biz.GraphUsecase {
 	observer := compositeGraphExecutionObserver{telemetry, orchProjector}
-	return biz.NewGraphUsecase(repo, runRepo, factory, observer, loggateway.Global())
+	return biz.NewGraphUsecase(repo, runRepo, factory, observer, lg)
 }

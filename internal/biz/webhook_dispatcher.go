@@ -57,7 +57,7 @@ func (d *WebhookDispatcher) Dispatch(ctx context.Context, eventType, runID, sess
 		configs, err := d.repo.ListEnabled(bg)
 		if err != nil {
 			if d.logger != nil {
-				d.logger.SessionSysLogWarn(bg, sessionID, "gateway.webhook.list_fail", "出站 Webhook 配置加载失败",
+				d.logger.LogSessionWarn(bg, sessionID, "gateway.webhook.list_fail", "出站 Webhook 配置加载失败",
 					LogPair{Key: "event_type", Value: eventType},
 					LogPair{Key: "error", Value: err.Error()},
 				)
@@ -75,7 +75,7 @@ func (d *WebhookDispatcher) Dispatch(ctx context.Context, eventType, runID, sess
 		body, err := json.Marshal(payload)
 		if err != nil {
 			if d.logger != nil {
-				d.logger.SessionSysLogWarn(bg, sessionID, "gateway.webhook.marshal_fail", "出站 Webhook 载荷序列化失败",
+				d.logger.LogSessionWarn(bg, sessionID, "gateway.webhook.marshal_fail", "出站 Webhook 载荷序列化失败",
 					LogPair{Key: "event_type", Value: eventType},
 					LogPair{Key: "error", Value: err.Error()},
 				)
@@ -95,7 +95,7 @@ func (d *WebhookDispatcher) postOne(ctx context.Context, sessionID string, cfg W
 	target := strings.TrimSpace(cfg.URL)
 	if err := webhookurl.ValidateNotifyURL(target); err != nil {
 		if d.logger != nil {
-			d.logger.SessionSysLogWarn(ctx, sessionID, "gateway.webhook.url_rejected", "出站 Webhook URL 被拒绝",
+			d.logger.LogSessionWarn(ctx, sessionID, "gateway.webhook.url_rejected", "出站 Webhook URL 被拒绝",
 				LogPair{Key: "webhook_id", Value: cfg.ID},
 				LogPair{Key: "url", Value: target},
 				LogPair{Key: "error", Value: err.Error()},
@@ -110,7 +110,7 @@ func (d *WebhookDispatcher) postOne(ctx context.Context, sessionID string, cfg W
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
 		if err != nil {
 			if d.logger != nil {
-				d.logger.SessionSysLogWarn(ctx, sessionID, "gateway.webhook.request_fail", "出站 Webhook 请求构建失败",
+				d.logger.LogSessionWarn(ctx, sessionID, "gateway.webhook.request_fail", "出站 Webhook 请求构建失败",
 					LogPair{Key: "webhook_id", Value: cfg.ID},
 					LogPair{Key: "url", Value: cfg.URL},
 					LogPair{Key: "error", Value: err.Error()},
@@ -144,7 +144,7 @@ func (d *WebhookDispatcher) postOne(ctx context.Context, sessionID string, cfg W
 		// Do not retry on 4xx client errors — same result expected on retry.
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
 			if d.logger != nil {
-				d.logger.SessionSysLogWarn(ctx, sessionID, "gateway.webhook.delivery_fail", "出站 Webhook 客户端错误（不重试）",
+				d.logger.LogSessionWarn(ctx, sessionID, "gateway.webhook.delivery_fail", "出站 Webhook 客户端错误（不重试）",
 					LogPair{Key: "webhook_id", Value: cfg.ID},
 					LogPair{Key: "url", Value: cfg.URL},
 					LogPair{Key: "status_code", Value: resp.StatusCode},
@@ -158,7 +158,7 @@ func (d *WebhookDispatcher) postOne(ctx context.Context, sessionID string, cfg W
 		}
 	}
 	if d.logger != nil {
-		d.logger.SessionSysLogWarn(ctx, sessionID, "gateway.webhook.delivery_fail", "出站 Webhook 投递失败（已重试）",
+		d.logger.LogSessionWarn(ctx, sessionID, "gateway.webhook.delivery_fail", "出站 Webhook 投递失败（已重试）",
 			LogPair{Key: "webhook_id", Value: cfg.ID},
 			LogPair{Key: "url", Value: cfg.URL},
 			LogPair{Key: "attempts", Value: maxAttempts},

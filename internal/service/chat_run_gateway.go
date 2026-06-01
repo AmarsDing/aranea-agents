@@ -90,6 +90,7 @@ func NewPendingQueueAdapter(q *runtime.PendingMessageQueue) biz.ChatPendingQueue
 
 type chatRunStatusPersister struct {
 	sessions *biz.SessionUsecase
+	lg       loggateway.Logger
 }
 
 func (p *chatRunStatusPersister) PersistRunStatus(ctx context.Context, sessionID, runID, status, errMsg string) error {
@@ -97,15 +98,15 @@ func (p *chatRunStatusPersister) PersistRunStatus(ctx context.Context, sessionID
 }
 
 func (p *chatRunStatusPersister) PersistAwaitMarkers(ctx context.Context, sessionID, runID string, meta biz.ChatAwaitMeta) {
-	persistAwaitMarkersToSession(p.sessions, ctx, sessionID, runID, meta, false)
+	persistAwaitMarkersToSession(p.sessions, ctx, sessionID, runID, meta, false, p.lg)
 }
 
 func (p *chatRunStatusPersister) ClearAwaitingRunState(ctx context.Context, sessionID string) {
-	clearAwaitingRunStateFromSession(p.sessions, ctx, sessionID)
+	clearAwaitingRunStateFromSession(p.sessions, ctx, sessionID, p.lg)
 }
 
-func NewChatRunStatusPersister(sessions *biz.SessionUsecase) biz.ChatRunStatusPersister {
-	return &chatRunStatusPersister{sessions: sessions}
+func NewChatRunStatusPersister(sessions *biz.SessionUsecase, lg loggateway.Logger) biz.ChatRunStatusPersister {
+	return &chatRunStatusPersister{sessions: sessions, lg: lg}
 }
 
 type chatEventPublisher struct {
@@ -132,14 +133,15 @@ func NewChatUsecaseFromDeps(
 	locks *sessionLockManager,
 	sessions *biz.SessionUsecase,
 	bus event.Bus,
+	lg loggateway.Logger,
 ) *biz.ChatUsecase {
 	uc := biz.NewChatUsecase(
 		NewRunGatewayAdapter(runs),
 		NewSessionLockerAdapter(locks),
 		NewPendingQueueAdapter(pending),
-		NewChatRunStatusPersister(sessions),
+		NewChatRunStatusPersister(sessions, lg),
 		NewChatEventPublisher(bus),
-		loggateway.Global(),
+		lg,
 	)
 	uc.StartBackgroundGoroutines()
 	return uc
@@ -170,7 +172,7 @@ func persistRunStatusToSession(sessions *biz.SessionUsecase, ctx context.Context
 	)
 }
 
-func persistAwaitMarkersToSession(sessions *biz.SessionUsecase, ctx context.Context, sessionID, runID string, await biz.ChatAwaitMeta, syncWrite bool) {
+func persistAwaitMarkersToSession(sessions *biz.SessionUsecase, ctx context.Context, sessionID, runID string, await biz.ChatAwaitMeta, syncWrite bool, lg loggateway.Logger) {
 	if sessions == nil {
 		return
 	}
@@ -202,7 +204,7 @@ func persistAwaitMarkersToSession(sessions *biz.SessionUsecase, ctx context.Cont
 
 	patch := func(bg context.Context) {
 		if err := sessions.PatchSessionState(bg, sessionID, sets, deletes); err != nil {
-			loggateway.Global().Warn("PatchSessionState failed", loggateway.StepID("chat.persist_await_markers"), loggateway.Err(err), loggateway.Str("session_id", sessionID))
+			lg.Warn("PatchSessionState failed", loggateway.StepID("chat.persist_await_markers"), loggateway.Err(err), loggateway.Str("session_id", sessionID))
 		}
 	}
 	if syncWrite {
@@ -218,7 +220,7 @@ func persistAwaitMarkersToSession(sessions *biz.SessionUsecase, ctx context.Cont
 	})
 }
 
-func clearAwaitingRunStateFromSession(sessions *biz.SessionUsecase, ctx context.Context, sessionID string) {
+func clearAwaitingRunStateFromSession(sessions *biz.SessionUsecase, ctx context.Context, sessionID string, lg loggateway.Logger) {
 	if sessions == nil {
 		return
 	}
@@ -234,7 +236,7 @@ func clearAwaitingRunStateFromSession(sessions *biz.SessionUsecase, ctx context.
 			stateKeyAwaitRunID, stateKeyAwaitSince, stateKeyAwaitKind,
 			stateKeyAwaitToolKey, stateKeyAwaitToolCallID,
 		}); err != nil {
-			loggateway.Global().Warn("PatchSessionState failed", loggateway.StepID("chat.clear_await_state"), loggateway.Err(err), loggateway.Str("session_id", sessionID))
+			lg.Warn("PatchSessionState failed", loggateway.StepID("chat.clear_await_state"), loggateway.Err(err), loggateway.Str("session_id", sessionID))
 		}
 	})
 }

@@ -4,15 +4,18 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type ApplyPhase struct {
 	reader ApplyReader
 	writer ApplyWriter
+	lg     loggateway.Logger
 }
 
-func NewApplyPhase(reader ApplyReader, writer ApplyWriter) *ApplyPhase {
-	return &ApplyPhase{reader: reader, writer: writer}
+func NewApplyPhase(reader ApplyReader, writer ApplyWriter, lg loggateway.Logger) *ApplyPhase {
+	return &ApplyPhase{reader: reader, writer: writer, lg: lg}
 }
 
 func (p *ApplyPhase) Name() string         { return "apply" }
@@ -39,7 +42,9 @@ func (p *ApplyPhase) Run(pc *PhaseContext) PhaseResult {
 
 	for _, row := range rows {
 		var cfgProbe map[string]any
-		_ = json.Unmarshal([]byte(row.ConfigJSON), &cfgProbe)
+		if err := json.Unmarshal([]byte(row.ConfigJSON), &cfgProbe); err != nil {
+			p.lg.Warn("解析 provider model config 失败", loggateway.StepID("modelregistry.apply_phase"), loggateway.Err(err))
+		}
 		if shouldSkipDirectoryApply(cfgProbe, row.MetadataJSON) {
 			continue
 		}
@@ -65,9 +70,9 @@ func (p *ApplyPhase) Run(pc *PhaseContext) PhaseResult {
 			patch.Key = providerID + ":" + row.Model
 		}
 
-		baseURL := extractAPIBaseURL(row.ConfigJSON)
-		cfg, cfgChanged := mergeCatalogIntoConfig(row.ConfigJSON, prov, model, mode, baseURL)
-		meta, metaChanged := mergeCatalogMetadata(row.MetadataJSON, prov, model)
+		baseURL := extractAPIBaseURL(p.lg, row.ConfigJSON)
+		cfg, cfgChanged := mergeCatalogIntoConfig(p.lg, row.ConfigJSON, prov, model, mode, baseURL)
+		meta, metaChanged := mergeCatalogMetadata(p.lg, row.MetadataJSON, prov, model)
 		if cfgChanged {
 			patch.ConfigJSON = cfg
 		}
@@ -75,7 +80,7 @@ func (p *ApplyPhase) Run(pc *PhaseContext) PhaseResult {
 			patch.MetadataJSON = meta
 		}
 
-		if strings.EqualFold(model.Status, "deprecated") && isDirectoryManaged(patch.ConfigJSON) {
+		if strings.EqualFold(model.Status, "deprecated") && isDirectoryManaged(p.lg, patch.ConfigJSON) {
 			if patch.Enabled {
 				patch.Enabled = false
 				llmRowsDisabled++
@@ -91,7 +96,9 @@ func (p *ApplyPhase) Run(pc *PhaseContext) PhaseResult {
 		var wrap struct {
 			Cost CostUSDPer1M `json:"cost"`
 		}
-		_ = json.Unmarshal([]byte(pricingJSON), &wrap)
+		if err := json.Unmarshal([]byte(pricingJSON), &wrap); err != nil {
+			p.lg.Warn("解析 pricing config 失败", loggateway.StepID("modelregistry.apply_phase.pricing"), loggateway.Err(err))
+		}
 		micro := MicroPricingFromCostBlock(wrap.Cost)
 		if micro.Input == 0 && micro.Output == 0 && model.Cost != nil {
 			_, micro = MicroPricingFromModelCost(model.Cost)

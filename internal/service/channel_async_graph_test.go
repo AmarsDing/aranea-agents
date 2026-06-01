@@ -59,6 +59,9 @@ func (s stubTeamRepo) UpdateTeamRunSummaryJSON(context.Context, string, string) 
 func (s stubTeamRepo) CreateTeamRunStep(context.Context, biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return biz.TeamRunStep{}, nil
 }
+func (s stubTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 
 type channelTestAgentRepo struct {
 	key string

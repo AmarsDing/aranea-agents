@@ -96,7 +96,7 @@ func (h *ChannelIngress) markTurnJob(ctx context.Context, status, errMsg, previe
 			loggateway.StepID("channel.job.status_update_failed"),
 			loggateway.Str("job_id", jobID),
 			loggateway.Str("status", status),
-			loggateway.Str("error", err.Error()),
+			loggateway.Err(err),
 		)
 	}
 	h.publishBackgroundJobRefresh(ctx, jobID, sessionID, status)

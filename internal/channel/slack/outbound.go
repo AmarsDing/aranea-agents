@@ -9,12 +9,15 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 // TextSender posts replies via Slack chat.postMessage.
 type TextSender struct {
 	BotToken string
 	HTTP     *http.Client
+	Lg       loggateway.Logger
 }
 
 // ID implements channel.Identified.
@@ -55,7 +58,9 @@ func (s *TextSender) SendText(ctx context.Context, channelID, text string) error
 		OK    bool   `json:"ok"`
 		Error string `json:"error"`
 	}
-	_ = json.Unmarshal(raw, &out)
+	if err := json.Unmarshal(raw, &out); err != nil {
+		s.Lg.Warn("解析 slack outbound 响应失败", loggateway.StepID("channel.slack.outbound"), loggateway.Err(err))
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 || !out.OK {
 		msg := strings.TrimSpace(out.Error)
 		if msg == "" {
@@ -67,7 +72,7 @@ func (s *TextSender) SendText(ctx context.Context, channelID, text string) error
 }
 
 // AuthTest calls auth.test for connection checks.
-func AuthTest(ctx context.Context, client *http.Client, botToken string) error {
+func AuthTest(ctx context.Context, client *http.Client, botToken string, lg loggateway.Logger) error {
 	botToken = strings.TrimSpace(botToken)
 	if botToken == "" {
 		return fmt.Errorf("slack: bot_token required")
@@ -90,7 +95,9 @@ func AuthTest(ctx context.Context, client *http.Client, botToken string) error {
 		OK    bool   `json:"ok"`
 		Error string `json:"error"`
 	}
-	_ = json.Unmarshal(raw, &out)
+	if err := json.Unmarshal(raw, &out); err != nil {
+		lg.Warn("解析 slack auth.test 响应失败", loggateway.StepID("channel.slack.auth_test"), loggateway.Err(err))
+	}
 	if !out.OK {
 		if out.Error != "" {
 			return fmt.Errorf("slack auth.test: %s", out.Error)

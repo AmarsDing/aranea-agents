@@ -30,7 +30,7 @@ func (r *sessionRepo) UpdateMessageFeedbackJSON(ctx context.Context, sessionID, 
 	opts := map[string]any{}
 	if raw := strings.TrimSpace(row.OptionsJSON); raw != "" {
 		if err := json.Unmarshal([]byte(raw), &opts); err != nil {
-		loggateway.Global().Warn("options json unmarshal failed", loggateway.StepID("session.feedback"), loggateway.Err(err))
+		r.data.lg.Warn("message feedback json unmarshal failed", loggateway.StepID("data.session_message_feedback"), loggateway.Err(err))
 	}
 	}
 	fb := map[string]any{

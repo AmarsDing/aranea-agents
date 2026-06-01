@@ -72,9 +72,9 @@ func (r *Runner) recordMemberUsage(
 	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
 	defer cancel()
 	if _, err := r.usage.RecordTokenUsageEvent(recCtx, ev); err != nil {
-		loggateway.Global().Warn("团队成员用量落库失败",
+		r.lg.Warn("团队成员用量落库失败",
 			loggateway.StepID("team.usage_record_fail"),
-			loggateway.Str("error", err.Error()),
+			loggateway.Err(err),
 			loggateway.Str("agent_id", ag.ID),
 			loggateway.Str("team_id", teamID),
 			loggateway.Str("step_id", stepID),
@@ -128,9 +128,9 @@ func (r *Runner) recordTeamRunUsage(
 	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
 	defer cancel()
 	if _, err := r.usage.RecordTokenUsageEvent(recCtx, ev); err != nil {
-		loggateway.Global().Warn("团队轮次用量落库失败",
+		r.lg.Warn("团队轮次用量落库失败",
 			loggateway.StepID("team.usage_record_fail"),
-			loggateway.Str("error", err.Error()),
+			loggateway.Err(err),
 			loggateway.Str("team_id", teamID),
 			loggateway.Str("run_id", run.ID),
 			loggateway.Str("usage_kind", biz.UsageKindTeamTurn),

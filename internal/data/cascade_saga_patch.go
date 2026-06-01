@@ -4,20 +4,21 @@ import (
 	"context"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/loggateway"
 )
 
-func ensureCascadeSagaPatches(ctx context.Context, c *ent.Client) error {
+func ensureCascadeSagaPatches(ctx context.Context, c *ent.Client, lg loggateway.Logger) error {
 	if c == nil {
 		return nil
 	}
-	if err := ensureCascadeSagaStepsTable(ctx, c); err != nil {
+	if err := ensureCascadeSagaStepsTable(ctx, c, lg); err != nil {
 		return err
 	}
-	return ensureCascadeOriginalStatementColumn(ctx, c)
+	return ensureCascadeOriginalStatementColumn(ctx, c, lg)
 }
 
-func ensureCascadeSagaStepsTable(ctx context.Context, c *ent.Client) error {
-	has, err := sqliteTableExists(ctx, c, "cascade_saga_steps")
+func ensureCascadeSagaStepsTable(ctx context.Context, c *ent.Client, lg loggateway.Logger) error {
+	has, err := sqliteTableExists(ctx, c, lg, "cascade_saga_steps")
 	if err != nil {
 		return err
 	}
@@ -49,15 +50,15 @@ CREATE TABLE cascade_saga_steps (
 	return err
 }
 
-func ensureCascadeOriginalStatementColumn(ctx context.Context, c *ent.Client) error {
-	hasTable, err := sqliteTableExists(ctx, c, "memory_facts")
+func ensureCascadeOriginalStatementColumn(ctx context.Context, c *ent.Client, lg loggateway.Logger) error {
+	hasTable, err := sqliteTableExists(ctx, c, lg, "memory_facts")
 	if err != nil {
 		return err
 	}
 	if !hasTable {
 		return nil
 	}
-	has, err := sqliteColumnExists(ctx, c, "memory_facts", "last_cascade_original_statement")
+	has, err := sqliteColumnExists(ctx, c, lg, "memory_facts", "last_cascade_original_statement")
 	if err != nil {
 		return err
 	}

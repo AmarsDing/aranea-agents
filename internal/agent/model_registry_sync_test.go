@@ -90,7 +90,7 @@ func TestBuildModelRegistrySyncAgent(t *testing.T) {
 	sp := &mockStoreProvider{store: store}
 	backend := &mockApplyBackend{}
 
-	agent, err := BuildModelRegistrySyncAgent(sp, backend)
+	agent, err := BuildModelRegistrySyncAgent(sp, backend, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("BuildModelRegistrySyncAgent: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestModelRegistrySyncAgent_Info(t *testing.T) {
 	sp := &mockStoreProvider{store: store}
 	backend := &mockApplyBackend{}
 
-	agent, _ := BuildModelRegistrySyncAgent(sp, backend)
+	agent, _ := BuildModelRegistrySyncAgent(sp, backend, loggateway.NewNoop())
 	info := agent.Info()
 	if info.Name != "model-registry-sync" {
 		t.Fatalf("expected name model-registry-sync, got %s", info.Name)
@@ -128,7 +128,7 @@ func TestModelRegistrySyncAgent_Tools(t *testing.T) {
 	sp := &mockStoreProvider{store: store}
 	backend := &mockApplyBackend{}
 
-	agent, _ := BuildModelRegistrySyncAgent(sp, backend)
+	agent, _ := BuildModelRegistrySyncAgent(sp, backend, loggateway.NewNoop())
 	tools := agent.Tools()
 	if len(tools) != 4 {
 		t.Fatalf("expected 4 tools, got %d", len(tools))
@@ -153,7 +153,7 @@ func TestModelRegistrySyncAgent_SubAgents(t *testing.T) {
 	sp := &mockStoreProvider{store: store}
 	backend := &mockApplyBackend{}
 
-	agent, _ := BuildModelRegistrySyncAgent(sp, backend)
+	agent, _ := BuildModelRegistrySyncAgent(sp, backend, loggateway.NewNoop())
 	if agent.SubAgents() != nil {
 		t.Fatal("expected nil SubAgents")
 	}
@@ -166,7 +166,7 @@ func TestModelRegistrySyncAgent_Run_StoreError(t *testing.T) {
 	sp := &mockStoreProvider{err: errors.New("store unavailable")}
 	backend := &mockApplyBackend{}
 
-	agent, _ := BuildModelRegistrySyncAgent(sp, backend)
+	agent, _ := BuildModelRegistrySyncAgent(sp, backend, loggateway.NewNoop())
 	ch, err := agent.Run(context.Background(), &trpcagent.Invocation{})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -199,7 +199,7 @@ func TestModelRegistrySyncAgent_Run_EventsFlow(t *testing.T) {
 	sp := &mockStoreProvider{store: store}
 	backend := &mockApplyBackend{}
 
-	agent, _ := BuildModelRegistrySyncAgent(sp, backend)
+	agent, _ := BuildModelRegistrySyncAgent(sp, backend, loggateway.NewNoop())
 	ch, err := agent.Run(context.Background(), &trpcagent.Invocation{})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
@@ -262,7 +262,7 @@ func TestModelRegistrySyncAgent_ImplementsAgent(t *testing.T) {
 	backend := &mockApplyBackend{}
 
 	var _ trpcagent.Agent = (*ModelRegistrySyncAgent)(nil)
-	agent, _ := BuildModelRegistrySyncAgent(sp, backend)
+	agent, _ := BuildModelRegistrySyncAgent(sp, backend, loggateway.NewNoop())
 	_ = agent
 }
 
@@ -273,7 +273,7 @@ func TestModelRegistrySyncAgent_Run_StoreDirNotExists(t *testing.T) {
 	sp := &mockStoreProvider{store: store}
 	backend := &mockApplyBackend{}
 
-	agent, _ := BuildModelRegistrySyncAgent(sp, backend)
+	agent, _ := BuildModelRegistrySyncAgent(sp, backend, loggateway.NewNoop())
 	ch, err := agent.Run(context.Background(), &trpcagent.Invocation{})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)

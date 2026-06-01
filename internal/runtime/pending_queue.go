@@ -49,7 +49,7 @@ func NewPendingMessageQueueWithDir(dir string) *PendingMessageQueue {
 
 func NewPendingMessageQueueWithDirAndLogger(dir string, lg loggateway.Logger) *PendingMessageQueue {
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	q := &PendingMessageQueue{
 		queues:   make(map[string][]PendingMessage),
@@ -228,7 +228,11 @@ func (q *PendingMessageQueue) saveSnapshot() {
 		q.lg.Warn("pending queue snapshot write failed", loggateway.StepID("runtime.pending_queue.snapshot"), loggateway.Err(err))
 		return
 	}
-	_ = os.Rename(tmp, filepath.Join(q.dir, pendingSnapshotFile))
+	dst := filepath.Join(q.dir, pendingSnapshotFile)
+	if err := os.Rename(tmp, dst); err != nil {
+		q.lg.Warn("pending queue snapshot rename failed", loggateway.StepID("runtime.pending_queue.snapshot"), loggateway.Err(err))
+		_ = os.Remove(tmp)
+	}
 }
 
 func (q *PendingMessageQueue) restore() {

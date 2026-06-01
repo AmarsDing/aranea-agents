@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent/evolutionsuggestion"
 	entsession "aranea-agents/internal/data/ent/session"
+	"aranea-agents/pkg/loggateway"
 
 	"entgo.io/ent/dialect/sql"
 )
@@ -52,7 +53,7 @@ func (r *agentRepo) ListExtrasForAgents(ctx context.Context, agentIDs []string) 
 		if ex.LastRunAt == "" {
 			ex.LastRunAt = strings.TrimSpace(sess.UpdatedAt)
 		}
-		if st := runStatusFromStateJSON(sess.StateJSON); st != "" {
+		if st := runStatusFromStateJSON(r.data.lg, sess.StateJSON); st != "" {
 			ex.LastRunStatus = st
 		} else if ex.LastRunAt != "" {
 			ex.LastRunStatus = "idle"
@@ -82,13 +83,14 @@ func (r *agentRepo) ListExtrasForAgents(ctx context.Context, agentIDs []string) 
 	return out, nil
 }
 
-func runStatusFromStateJSON(raw string) string {
+func runStatusFromStateJSON(lg loggateway.Logger, raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == "{}" {
 		return ""
 	}
 	state := map[string]string{}
-	if json.Unmarshal([]byte(raw), &state) != nil {
+	if err := json.Unmarshal([]byte(raw), &state); err != nil {
+		lg.Warn("unmarshal agent state_json failed", loggateway.StepID("data.agent_list_extras"), loggateway.Err(err))
 		return ""
 	}
 	return strings.TrimSpace(state[biz.SessionStateRunStatus])

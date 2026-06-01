@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data"
+	"aranea-agents/pkg/loggateway"
 )
 
 func main() {
@@ -35,7 +36,7 @@ func main() {
 	}
 	_ = entClient
 
-	store := data.NewCLIData(entClient, rawDB)
+	store := data.NewCLIData(entClient, rawDB, loggateway.NewNoop())
 	indRepo := data.NewIndustryRepo(store)
 	depRepo := data.NewDepartmentRepo(store)
 	posRepo := data.NewPositionRepo(store)

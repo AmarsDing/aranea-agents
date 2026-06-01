@@ -45,7 +45,7 @@ func NewRetryAndReflectPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, 
 	cfg.MaxRetries = 3
 	cfg.TrackingScope = "invocation"
 	cfg.HighRiskToolsNeedConfirm = true
-	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
 	if cfg.MaxRetries <= 0 {
 		cfg.MaxRetries = 3
 	}

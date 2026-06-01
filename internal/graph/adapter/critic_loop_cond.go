@@ -6,6 +6,7 @@ import (
 	"unicode"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -22,7 +23,7 @@ func criticLoopCondFunc(threshold float64) trpcgraph.ConditionalFunc {
 		lastMsg := msgs[len(msgs)-1]
 		for _, tc := range lastMsg.ToolCalls {
 			if tc.Function.Name == biz.OrchestrationControlToolName {
-				d, err := biz.ParseOrchestrationDecision(tc.Function.Arguments)
+				d, err := biz.ParseOrchestrationDecision(tc.Function.Arguments, loggateway.NewNoop())
 				if err == nil {
 					if biz.IsApprovedDecision(d, threshold) {
 						return "approved", nil

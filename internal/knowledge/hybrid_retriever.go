@@ -40,6 +40,7 @@ type HybridRetriever struct {
 	sparse   SparseSearcher
 	reranker rerankerForHybrid
 	rrfK     int
+	lg       loggateway.Logger
 }
 
 type rerankerForHybrid interface {
@@ -59,7 +60,7 @@ func (a *retrieverAdapter) searchWithRerank(ctx context.Context, q biz.Knowledge
 	return a.Retriever.Search(ctx, q)
 }
 
-func NewHybridRetriever(retriever *Retriever, sparse SparseSearcher) *HybridRetriever {
+func NewHybridRetriever(retriever *Retriever, sparse SparseSearcher, lg loggateway.Logger) *HybridRetriever {
 	rrfK := defaultRRF_K
 	return &HybridRetriever{
 		embedder: retriever.embedder,
@@ -67,6 +68,7 @@ func NewHybridRetriever(retriever *Retriever, sparse SparseSearcher) *HybridRetr
 		sparse:   sparse,
 		reranker: &retrieverAdapter{retriever},
 		rrfK:     rrfK,
+		lg:       lg,
 	}
 }
 
@@ -153,7 +155,7 @@ func (h *HybridRetriever) searchRRF(ctx context.Context, q biz.KnowledgeSearchQu
 	denseQ.TopK = overfetch
 	denseChunks, err := h.dense.SearchChunks(ctx, denseQ, vec)
 	if err != nil {
-		loggateway.Global().Warn("RRF 密集检索失败，回退稀疏",
+		h.lg.Warn("RRF 密集检索失败，回退稀疏",
 			loggateway.StepID("knowledge.hybrid.dense_fail"),
 			loggateway.Err(err),
 			loggateway.Str("collection_id", q.CollectionID))
@@ -168,7 +170,7 @@ func (h *HybridRetriever) searchRRF(ctx context.Context, q biz.KnowledgeSearchQu
 	sparseQ.TopK = overfetch
 	sparseChunks, err := h.sparse.SearchChunksBM25(ctx, sparseQ)
 	if err != nil {
-		loggateway.Global().Warn("RRF 稀疏检索失败，回退密集",
+		h.lg.Warn("RRF 稀疏检索失败，回退密集",
 			loggateway.StepID("knowledge.hybrid.sparse_fail"),
 			loggateway.Err(err),
 			loggateway.Str("collection_id", q.CollectionID))

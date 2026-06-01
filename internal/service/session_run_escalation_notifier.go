@@ -32,17 +32,18 @@ type SessionRunEscalationNotifier interface {
 type channelRunEscalationNotifier struct {
 	channels *biz.ChannelUsecase
 	sessions *biz.SessionUsecase
+	lg       loggateway.Logger
 }
 
 type channelOutboundEnqueueOpts struct {
 	skipFormat bool
 }
 
-func NewChannelRunEscalationNotifier(channels *biz.ChannelUsecase, sessions *biz.SessionUsecase) SessionRunEscalationNotifier {
+func NewChannelRunEscalationNotifier(channels *biz.ChannelUsecase, sessions *biz.SessionUsecase, lg loggateway.Logger) SessionRunEscalationNotifier {
 	if channels == nil || sessions == nil {
 		return nil
 	}
-	return &channelRunEscalationNotifier{channels: channels, sessions: sessions}
+	return &channelRunEscalationNotifier{channels: channels, sessions: sessions, lg: lg}
 }
 
 func (n *channelRunEscalationNotifier) NotifySoftBudget(ctx context.Context, run biz.SessionRun, autoEscalate bool) error {
@@ -57,7 +58,7 @@ func (n *channelRunEscalationNotifier) NotifySoftBudget(ctx context.Context, run
 	}
 	cardJSON := ""
 	if card, err := preview.BuildFeishuEscalateCardJSON(run.ID, run.SessionID, ""); err != nil {
-		loggateway.Global().Warn("Channel escalate card build failed",
+		n.lg.Warn("Channel escalate card build failed",
 			loggateway.StepID(flowStepChannelOutbound),
 			loggateway.Str("session_run_id", run.ID),
 			loggateway.Str("session_id", run.SessionID),
@@ -261,7 +262,7 @@ func (n *channelRunEscalationNotifier) enqueueForSession(
 	if !skipFormat {
 		text = preview.FormatAssistantReplyForIM(platform, text)
 		if strings.TrimSpace(text) == "" && strings.TrimSpace(cardJSON) == "" {
-			loggateway.Global().Warn("Channel session outbound empty after format",
+			n.lg.Warn("Channel session outbound empty after format",
 			loggateway.StepID(flowStepChannelOutbound),
 			loggateway.Str("session_id", sessionID),
 			loggateway.Str("platform", platform),

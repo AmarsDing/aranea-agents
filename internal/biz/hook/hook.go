@@ -182,6 +182,7 @@ func ParseConfig(configJSON string) (Config, error) {
 	}
 	var cfg Config
 	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		loggateway.Global().Warn("解析 hook config 失败", loggateway.StepID("hook.parse_config"), loggateway.Err(err))
 		return Config{}, err
 	}
 	cfg.CallbackPoint = NormalizeCallbackPoint(cfg.CallbackPoint)
@@ -510,7 +511,7 @@ func (r *Resolver) Resolve(agentID, agentKey string) []ResolvedHook {
 	r.mu.RUnlock()
 	if !wasLoaded {
 		if err := r.Reload(context.Background()); err != nil {
-			r.lg.Warn("resolver.fallback_reload_failed", loggateway.StepID("system.hook"), loggateway.Err(err))
+			r.lg.Warn("resolver.fallback_reload_failed", loggateway.StepID("hook"), loggateway.Err(err))
 			return nil
 		}
 		r.mu.RLock()

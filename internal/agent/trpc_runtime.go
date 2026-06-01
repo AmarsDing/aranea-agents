@@ -41,7 +41,7 @@ func NewTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, opts ...trpcrunner
 	}
 	lg := deps.LG
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	lg.Info("TRPC Runner 创建", loggateway.StepID("agent.runner_create"), loggateway.Str("app_name", appName))
 	if deps.SessionService != nil {
@@ -96,7 +96,7 @@ func RunTRPCUserTurn(
 		return nil, errors.New("trpc runtime: session id is required")
 	}
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	lg.Info("TRPC 用户 Turn 启动", loggateway.StepID("agent.user_turn"), loggateway.Str("session_id", sessionID), loggateway.Str("user_id", userID))
 	ch, err := r.Run(ctx, userID, sessionID, trpcmodel.NewUserMessage(content), opts...)

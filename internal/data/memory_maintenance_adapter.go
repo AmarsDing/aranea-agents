@@ -5,17 +5,19 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/pkg/loggateway"
 )
 
 type memoryConsolidationWriterAdapter struct {
 	store *sessionmemory.Store
+	lg    loggateway.Logger
 }
 
-func NewMemoryConsolidationWriterAdapter(store *sessionmemory.Store) biz.MemoryConsolidationWriter {
+func NewMemoryConsolidationWriterAdapter(store *sessionmemory.Store, lg loggateway.Logger) biz.MemoryConsolidationWriter {
 	if store == nil {
 		return nil
 	}
-	return &memoryConsolidationWriterAdapter{store: store}
+	return &memoryConsolidationWriterAdapter{store: store, lg: lg}
 }
 
 func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx context.Context, facts []biz.MemoryFactWrite, ep *biz.EpisodeWrite) (*biz.ConsolidationResult, error) {
@@ -29,6 +31,7 @@ func (a *memoryConsolidationWriterAdapter) UpsertFactsAndEpisodeBatch(ctx contex
 	}
 	result, err := a.store.UpsertFactsAndEpisodeBatch(ctx, dataFacts, dataEp)
 	if err != nil {
+		a.lg.Warn("upsert facts and episode batch failed", loggateway.StepID("memory.consolidation_fail"), loggateway.Err(err))
 		return nil, err
 	}
 	return &biz.ConsolidationResult{
@@ -129,17 +132,18 @@ func (a *memoryEpisodeBackfillReaderAdapter) ListEpisodesPendingEmbedding(ctx co
 
 type memoryLegacyMigratorAdapter struct {
 	store *sessionmemory.Store
+	lg    loggateway.Logger
 }
 
-func NewMemoryLegacyMigratorAdapter(store *sessionmemory.Store) biz.MemoryLegacyMigrator {
+func NewMemoryLegacyMigratorAdapter(store *sessionmemory.Store, lg loggateway.Logger) biz.MemoryLegacyMigrator {
 	if store == nil {
 		return nil
 	}
-	return &memoryLegacyMigratorAdapter{store: store}
+	return &memoryLegacyMigratorAdapter{store: store, lg: lg}
 }
 
 func (a *memoryLegacyMigratorAdapter) RunLegacyMigration(ctx context.Context) (int, bool, error) {
-	return RunLegacyTRPCMemoryMigration(ctx, a.store)
+	return RunLegacyTRPCMemoryMigration(ctx, a.store, a.lg)
 }
 
 func (a *memoryLegacyMigratorAdapter) LegacyMigrationVersion() int {

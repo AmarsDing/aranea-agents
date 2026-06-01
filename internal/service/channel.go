@@ -329,7 +329,9 @@ func (s *ChannelService) TestChannel(ctx context.Context, req *v1.TestChannelReq
 	var env struct {
 		Type string `json:"type"`
 	}
-	_ = json.Unmarshal([]byte(row.ConfigJSON), &env)
+	if err := json.Unmarshal([]byte(row.ConfigJSON), &env); err != nil {
+		s.lg.Warn("channel test config json unmarshal failed", loggateway.StepID("channel.test.config_parse"), loggateway.Err(err))
+	}
 	channelType := strings.TrimSpace(strings.ToLower(env.Type))
 	if result.OK && channelType != "" {
 		if tester, ok := s.testers[channelType]; ok {
@@ -456,7 +458,7 @@ func (s *ChannelService) testSlackLive(ctx context.Context, configJSON string, c
 	if terr != nil || strings.TrimSpace(token) == "" {
 		return biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: "bot_token not configured"}
 	}
-	if err := slack.AuthTest(ctx, lark.DefaultHTTPClient(), token); err != nil {
+	if err := slack.AuthTest(ctx, lark.DefaultHTTPClient(), token, s.lg); err != nil {
 		return biz.ChannelTestResult{OK: false, Status: "error", Message: err.Error()}
 	}
 	return biz.ChannelTestResult{OK: true, Status: "ok", Message: "slack auth.test ok"}
@@ -468,7 +470,7 @@ func (s *ChannelService) testTelegramLive(ctx context.Context, configJSON string
 	if terr != nil || strings.TrimSpace(token) == "" {
 		return biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: "bot_token not configured"}
 	}
-	if err := telegram.GetMe(ctx, lark.DefaultHTTPClient(), token); err != nil {
+	if err := telegram.GetMe(ctx, lark.DefaultHTTPClient(), token, s.lg); err != nil {
 		return biz.ChannelTestResult{OK: false, Status: "error", Message: err.Error()}
 	}
 	return biz.ChannelTestResult{OK: true, Status: "ok", Message: "telegram getMe ok"}

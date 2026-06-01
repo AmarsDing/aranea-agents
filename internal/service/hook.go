@@ -24,10 +24,11 @@ type HookService struct {
 	uc         *biz.HookUsecase
 	deliveries *biz.HookDeliveryUsecase
 	mgr        *plugintrpc.Manager
+	lg         loggateway.Logger
 }
 
-func NewHookService(uc *biz.HookUsecase, deliveries *biz.HookDeliveryUsecase, mgr *plugintrpc.Manager) *HookService {
-	return &HookService{uc: uc, deliveries: deliveries, mgr: mgr}
+func NewHookService(uc *biz.HookUsecase, deliveries *biz.HookDeliveryUsecase, mgr *plugintrpc.Manager, lg loggateway.Logger) *HookService {
+	return &HookService{uc: uc, deliveries: deliveries, mgr: mgr, lg: lg}
 }
 
 func (s *HookService) reloadHooks(ctx context.Context) {
@@ -36,8 +37,8 @@ func (s *HookService) reloadHooks(ctx context.Context) {
 	}
 	safego.Go(ctx, "hook.reload", func() {
 		if err := s.mgr.ReloadHooks(context.Background()); err != nil {
-			loggateway.Global().Warn("Hook 重载失败",
-				loggateway.StepID("system.hook.reload_fail"),
+			s.lg.Warn("Hook 重载失败",
+				loggateway.StepID("hook.reload_fail"),
 				loggateway.Err(err),
 			)
 		}

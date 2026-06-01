@@ -67,6 +67,7 @@ type RuntimeTooling struct {
 // is triggered from the chat orchestrator.
 type TeamOrchestrationDeps struct {
 	Teams          biz.TeamRepository
+	TeamUC         *biz.TeamUsecase
 	TeamsNative    *team.Runner
 	GraphFactory   biz.GraphBuilderFactory
 	Graphs         *biz.GraphUsecase
@@ -98,8 +99,11 @@ type ChatOrchestrator struct {
 	mcpServers      *biz.MCPServerUsecase
 	runs            *rt.RunRegistry
 	chatUC          *biz.ChatUsecase
-	spiritAssembler *SpiritTeamAssembler
 	lg              loggateway.Logger
+	spiritAssembler *SpiritTeamAssembler
+	spiritSynthesis *SpiritSynthesisService
+	orchCache       *biz.OrchestrationCache
+	teamStarter     biz.TeamStarterPort
 
 	sessionRunBindings   sync.Map
 	awaitMetaCache       sync.Map
@@ -128,8 +132,10 @@ type ChatOrchestratorDeps struct {
 	Artifacts       *biz.ArtifactUsecase
 	A2AUC           *biz.A2AUsecase
 	MCPServers      *biz.MCPServerUsecase
-	SpiritAssembler *SpiritTeamAssembler
 	LG              loggateway.Logger
+	SpiritAssembler *SpiritTeamAssembler
+	SpiritSynthesis *SpiritSynthesisService
+	OrchCache       *biz.OrchestrationCache
 }
 
 func coalesceRunRegistry(r *rt.RunRegistry) *rt.RunRegistry {
@@ -162,9 +168,11 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		a2aUC:           deps.A2AUC,
 		mcpServers:      deps.MCPServers,
 		runs:            runs,
-		chatUC:          NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Sessions, deps.Pipeline.Bus),
-		spiritAssembler: deps.SpiritAssembler,
+		chatUC:          NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Sessions, deps.Pipeline.Bus, deps.LG),
 		lg:              deps.LG,
+		spiritAssembler: deps.SpiritAssembler,
+		spiritSynthesis: deps.SpiritSynthesis,
+		orchCache:       deps.OrchCache,
 	}
 	o.admitGate = newTurnAdmissionGate(turn.RunRegistryAdapter{Registry: runs}, o.chatUC, o.sessionPendingMergeFollowup)
 
@@ -354,7 +362,7 @@ func (o *ChatOrchestrator) transitionSessionStatus(ctx context.Context, sessionI
 		return
 	}
 	if err := o.td.Sessions.TransitionStatus(ctx, sessionID, targetStatus, reason); err != nil {
-		loggateway.Global().Warn("session status transition failed",
+		o.lg.Warn("session status transition failed",
 			loggateway.StepID("chat.transition_status"),
 			loggateway.Str("session_id", sessionID),
 			loggateway.Str("target_status", string(targetStatus)),
@@ -375,11 +383,11 @@ func (o *ChatOrchestrator) cancelActiveRun(ctx context.Context, sessionID string
 	}
 	o.setRunStatus(ctx, sessionID, runID, "cancelled", "")
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonUserCancelled)
-	if _, err := chatactivity.CancelRunningActivityMessages(ctx, o.td.Sessions, sessionID); err != nil {
-		loggateway.Global().Warn("取消执行卡片查询失败",
+	if _, err := chatactivity.CancelRunningActivityMessages(ctx, o.td.Sessions, sessionID, o.lg); err != nil {
+		o.lg.Warn("取消执行卡片查询失败",
 			loggateway.StepID("chat.activity.cancel"),
 			loggateway.Str("session_id", sessionID),
-			loggateway.Str("error", err.Error()),
+			loggateway.Err(err),
 		)
 	}
 	return true
@@ -461,7 +469,7 @@ func (o *ChatOrchestrator) hydrateRunStatusFromSession(ctx context.Context, sess
 
 func (o *ChatOrchestrator) persistAwaitMarkers(ctx context.Context, sessionID, runID string, await AwaitStatusMeta, syncWrite bool) {
 	o.setAwaitMetaCache(sessionID, await)
-	persistAwaitMarkersToSession(o.td.Sessions, ctx, sessionID, runID, await, syncWrite)
+	persistAwaitMarkersToSession(o.td.Sessions, ctx, sessionID, runID, await, syncWrite, o.lg)
 }
 
 func (o *ChatOrchestrator) setAwaitMetaCache(sessionID string, meta biz.ChatAwaitMeta) {
@@ -536,7 +544,7 @@ func (o *ChatOrchestrator) clearAwaitingRunStateSync(ctx context.Context, sessio
 
 func (o *ChatOrchestrator) clearAwaitingRunState(ctx context.Context, sessionID string) {
 	o.clearAwaitMetaCache(sessionID)
-	clearAwaitingRunStateFromSession(o.td.Sessions, ctx, sessionID)
+	clearAwaitingRunStateFromSession(o.td.Sessions, ctx, sessionID, o.lg)
 }
 
 // tryBeginResume guards against concurrent await resumes.

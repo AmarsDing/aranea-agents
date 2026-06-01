@@ -72,6 +72,9 @@ func (m *memTeamRepoCoord) ListTaskDeadLetters(context.Context, biz.TaskDeadLett
 func (m *memTeamRepoCoord) ResolveTaskDeadLetter(context.Context, string) (biz.TaskDeadLetter, error) {
 	return biz.TaskDeadLetter{}, nil
 }
+func (m *memTeamRepoCoord) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 
 type memSessionRepo struct {
 	sessions map[string]biz.TeamGraphSession

@@ -43,7 +43,7 @@ func (h *ChannelIngress) handleFeishuCardBackground(ctx context.Context, chRow b
 			loggateway.StepID(flowStepChannelCardAction),
 			loggateway.Str("channel_id", chRow.ID),
 			loggateway.Str("session_run_id", sessionRunID),
-			loggateway.Str("error", err.Error()),
+			loggateway.Err(err),
 		)
 		return lark.NewCardActionToast(channelCardActionFailedRetry)
 	}

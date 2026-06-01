@@ -62,6 +62,9 @@ const (
 	EnvelopeTypeSpiritTeamAssembled         = contract.EnvelopeTypeSpiritTeamAssembled
 	EnvelopeTypeSpiritTeamCompleted         = contract.EnvelopeTypeSpiritTeamCompleted
 	EnvelopeTypeSpiritTeamFailed            = contract.EnvelopeTypeSpiritTeamFailed
+	EnvelopeTypeSpiritTeamProgress          = contract.EnvelopeTypeSpiritTeamProgress
+	EnvelopeTypeSpiritTeamsAllCompleted     = contract.EnvelopeTypeSpiritTeamsAllCompleted
+	EnvelopeTypeSpiritSynthesisCompleted    = contract.EnvelopeTypeSpiritSynthesisCompleted
 )
 
 // Re-export functions.

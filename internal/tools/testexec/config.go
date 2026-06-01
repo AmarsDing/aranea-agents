@@ -17,7 +17,7 @@ const (
 )
 
 // AssemblyForCatalogKey returns an AssemblyConfig for a single catalog tool_key.
-func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresearchpkg.PlatformFields) (tools.AssemblyConfig, bool) {
+func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresearchpkg.PlatformFields, lg loggateway.Logger) (tools.AssemblyConfig, bool) {
 	key = strings.TrimSpace(key)
 	if key == "" {
 		return tools.AssemblyConfig{}, false
@@ -40,7 +40,7 @@ func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresea
 		if !wcfg.Ready() {
 			return tools.AssemblyConfig{}, false
 		}
-		t, err := webresearchpkg.NewTool(wcfg, loggateway.Global())
+		t, err := webresearchpkg.NewTool(wcfg, lg)
 		if err != nil {
 			return tools.AssemblyConfig{}, false
 		}

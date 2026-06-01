@@ -29,7 +29,7 @@ var _ trpcplugin.Plugin = (*PermissionGuardPlugin)(nil)
 
 func NewPermissionGuardPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, resolveAgent AgentKeyResolver, lg loggateway.Logger) *PermissionGuardPlugin {
 	var cfg permissionGuardConfig
-	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
 	return &PermissionGuardPlugin{
 		base: newBasePlugin(p.Key, stats, bus, lg), cfg: cfg,
 		resolveAgent: resolveAgent,

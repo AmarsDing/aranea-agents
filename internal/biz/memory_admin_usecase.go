@@ -139,7 +139,7 @@ func (uc *MemoryAdminUsecase) syncFactIndexBestEffort(ctx context.Context, raw [
 		return
 	}
 	if err := syncer.SyncFactIndexFromRow(ctx, raw); err != nil && !errors.Is(err, ErrMemoryUnavailable) {
-		uc.lg.Warn("syncFactIndexBestEffort failed", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("error", err.Error()))
+		uc.lg.Warn("syncFactIndexBestEffort failed", loggateway.StepID("memory.l4_fail"), loggateway.Err(err))
 	}
 }
 

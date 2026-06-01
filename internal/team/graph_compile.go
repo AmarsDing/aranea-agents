@@ -17,20 +17,20 @@ type CompileAgentKey func(agentID string) string
 // CompileToGraphBuildConfig maps a team definition to a graph build config for observability
 // and future unified runtime. Topology mirrors web buildGraphFromDefinition() unless
 // definition.graph embeds agent nodes (OrchestrationSpec custom/preset edits).
-func CompileToGraphBuildConfig(def Definition, agentKey CompileAgentKey) (biz.GraphBuildConfig, error) {
-	return compileToGraphBuildConfig(def, "", agentKey)
+func CompileToGraphBuildConfig(def Definition, agentKey CompileAgentKey, lg loggateway.Logger) (biz.GraphBuildConfig, error) {
+	return compileToGraphBuildConfig(def, "", agentKey, lg)
 }
 
 // CompileToGraphBuildConfigFromJSON is like CompileToGraphBuildConfig but reads embedded graph from raw JSON.
-func CompileToGraphBuildConfigFromJSON(def Definition, rawDefinitionJSON string, agentKey CompileAgentKey) (biz.GraphBuildConfig, error) {
-	return compileToGraphBuildConfig(def, rawDefinitionJSON, agentKey)
+func CompileToGraphBuildConfigFromJSON(def Definition, rawDefinitionJSON string, agentKey CompileAgentKey, lg loggateway.Logger) (biz.GraphBuildConfig, error) {
+	return compileToGraphBuildConfig(def, rawDefinitionJSON, agentKey, lg)
 }
 
-func compileToGraphBuildConfig(def Definition, rawDefinitionJSON string, agentKey CompileAgentKey) (biz.GraphBuildConfig, error) {
-	return compileToGraphBuildConfigWithLoader(context.Background(), def, rawDefinitionJSON, agentKey, nil)
+func compileToGraphBuildConfig(def Definition, rawDefinitionJSON string, agentKey CompileAgentKey, lg loggateway.Logger) (biz.GraphBuildConfig, error) {
+	return compileToGraphBuildConfigWithLoader(context.Background(), def, rawDefinitionJSON, agentKey, nil, lg)
 }
 
-func compileToGraphBuildConfigWithLoader(ctx context.Context, def Definition, rawDefinitionJSON string, agentKey CompileAgentKey, loader GraphBuildConfigLoader) (biz.GraphBuildConfig, error) {
+func compileToGraphBuildConfigWithLoader(ctx context.Context, def Definition, rawDefinitionJSON string, agentKey CompileAgentKey, loader GraphBuildConfigLoader, lg loggateway.Logger) (biz.GraphBuildConfig, error) {
 	if spec, ok := parseEmbeddedGraph(rawDefinitionJSON); ok {
 		cfg, err := compileFromEmbeddedGraph(ctx, def, spec, agentKey, loader)
 		if err != nil {
@@ -45,7 +45,7 @@ func compileToGraphBuildConfigWithLoader(ctx context.Context, def Definition, ra
 	}
 
 	mode := normalizeCompileMode(def.Mode)
-	spec := generateGraphSpecFromMode(ctx, def, mode)
+	spec := generateGraphSpecFromMode(ctx, def, mode, lg)
 	cfg, err := compileFromEmbeddedGraph(ctx, def, spec, agentKey, loader)
 	if err != nil {
 		return biz.GraphBuildConfig{}, err
@@ -66,7 +66,7 @@ func normalizeCompileMode(mode string) string {
 	}
 }
 
-func generateGraphSpecFromMode(ctx context.Context, def Definition, mode string) *embeddedGraphSpec {
+func generateGraphSpecFromMode(ctx context.Context, def Definition, mode string, lg loggateway.Logger) *embeddedGraphSpec {
 	members := EnabledMembers(def)
 	if len(members) == 0 {
 		return nil
@@ -85,7 +85,7 @@ func generateGraphSpecFromMode(ctx context.Context, def Definition, mode string)
 	}
 	nodes = append(nodes, embeddedGraphNode{ID: "end", Type: "end", Label: "End"})
 
-	edges := generateModeEdges(ctx, mode, def, nodes)
+	edges := generateModeEdges(ctx, mode, def, nodes, lg)
 
 	return &embeddedGraphSpec{
 		Version: 1,
@@ -95,7 +95,7 @@ func generateGraphSpecFromMode(ctx context.Context, def Definition, mode string)
 	}
 }
 
-func generateModeEdges(ctx context.Context, mode string, def Definition, nodes []embeddedGraphNode) []embeddedGraphEdge {
+func generateModeEdges(ctx context.Context, mode string, def Definition, nodes []embeddedGraphNode, lg loggateway.Logger) []embeddedGraphEdge {
 	if len(nodes) == 0 {
 		return nil
 	}
@@ -121,7 +121,7 @@ func generateModeEdges(ctx context.Context, mode string, def Definition, nodes [
 	}
 	trimmed := countTransferEdges(modeEdges) > maxAdaptiveTransferEdges
 	if trimmed {
-		loggateway.Global().Warn("transfer edges trimmed due to member count exceeding limit",
+		lg.Warn("transfer edges trimmed due to member count exceeding limit",
 			loggateway.StepID("team.compile.adaptive_trimmed"),
 			loggateway.Int("member_count", len(agentIDs)),
 			loggateway.Int("max_transfer_edges", maxAdaptiveTransferEdges),

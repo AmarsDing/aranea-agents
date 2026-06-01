@@ -4,13 +4,14 @@ import (
 	"context"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/loggateway"
 )
 
-func ensureSessionRevisionPatches(ctx context.Context, c *ent.Client) error {
+func ensureSessionRevisionPatches(ctx context.Context, c *ent.Client, lg loggateway.Logger) error {
 	if c == nil {
 		return nil
 	}
-	if err := ensureSessionColumn(ctx, c, "session_revision", `ALTER TABLE sessions ADD COLUMN session_revision INTEGER NOT NULL DEFAULT 0`); err != nil {
+	if err := ensureSessionColumn(ctx, c, lg, "session_revision", `ALTER TABLE sessions ADD COLUMN session_revision INTEGER NOT NULL DEFAULT 0`); err != nil {
 		return err
 	}
 	_, err := c.ExecContext(ctx, `
@@ -20,8 +21,8 @@ UPDATE sessions SET session_revision = (
 	return err
 }
 
-func ensureSessionColumn(ctx context.Context, c *ent.Client, column, ddl string) error {
-	has, err := sqliteColumnExists(ctx, c, "sessions", column)
+func ensureSessionColumn(ctx context.Context, c *ent.Client, lg loggateway.Logger, column, ddl string) error {
+	has, err := sqliteColumnExists(ctx, c, lg, "sessions", column)
 	if err != nil {
 		return err
 	}

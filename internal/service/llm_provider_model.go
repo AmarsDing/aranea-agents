@@ -20,10 +20,11 @@ type LlmProviderModelService struct {
 	v1.UnimplementedLlmProviderModelServiceServer
 
 	uc *biz.LlmProviderModelUsecase
+	lg loggateway.Logger
 }
 
-func NewLlmProviderModelService(uc *biz.LlmProviderModelUsecase) *LlmProviderModelService {
-	return &LlmProviderModelService{uc: uc}
+func NewLlmProviderModelService(uc *biz.LlmProviderModelUsecase, lg loggateway.Logger) *LlmProviderModelService {
+	return &LlmProviderModelService{uc: uc, lg: lg}
 }
 
 func toProtoPM(m biz.ProviderModel) *v1.ProviderModel {
@@ -155,13 +156,13 @@ func (s *LlmProviderModelService) RevealProviderModelCredentials(ctx context.Con
 	resourceID := req.GetId()
 	out, err := s.uc.RevealCredentials(ctx, resourceID)
 	if err != nil {
-		logRevealCredentialsDenied(ctx, resourceID, err)
+		logRevealCredentialsDenied(ctx, resourceID, err, s.lg)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, kerrors.NotFound("LLM_PROVIDER_MODEL", "provider model not found")
 		}
 		return nil, err
 	}
-	loggateway.Global().Warn("管理员查看 Provider 模型凭据明文",
+	s.lg.Warn("管理员查看 Provider 模型凭据明文",
 		loggateway.StepID("admin.provider.credentials_reveal"),
 		loggateway.Str("resource_id", resourceID),
 		loggateway.Any("has_api_key", out.HasAPIKey),
@@ -256,7 +257,7 @@ func (s *LlmProviderModelService) ValidateProviderPair(ctx context.Context, req 
 	return &v1.ValidateProviderPairResponse{Ok: ok, Message: msg}, nil
 }
 
-func logRevealCredentialsDenied(ctx context.Context, resourceID string, err error) {
+func logRevealCredentialsDenied(ctx context.Context, resourceID string, err error, lg loggateway.Logger) {
 	reason := "error"
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
@@ -271,10 +272,10 @@ func logRevealCredentialsDenied(ctx context.Context, resourceID string, err erro
 			}
 		}
 	}
-	loggateway.Global().Warn("Provider 凭据查看被拒绝或失败",
+	lg.Warn("Provider 凭据查看被拒绝或失败",
 		loggateway.StepID("admin.provider.credentials_reveal_denied"),
 		loggateway.Str("resource_id", resourceID),
 		loggateway.Str("reason", reason),
-		loggateway.Str("error", err.Error()),
+		loggateway.Err(err),
 	)
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestCancelSessionRunForCard_ownershipDenied(t *testing.T) {
@@ -16,6 +17,7 @@ func TestCancelSessionRunForCard_ownershipDenied(t *testing.T) {
 		},
 	}
 	svc := &ChatService{
+		lg: loggateway.NewNoop(),
 		orch: &ChatOrchestrator{
 			chTurn: ChannelTurnDeps{
 				SessionRuns: biz.NewSessionRunUsecase(repo, nil, nil),

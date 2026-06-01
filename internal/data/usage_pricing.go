@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/modelregistry"
+	"aranea-agents/pkg/loggateway"
 )
 
 type providerModelPricingJSON struct {
@@ -134,7 +135,8 @@ func (r *usageRepo) pricingFromProviderModelConfig(ctx context.Context, provider
 		return biz.ModelPricingSnapshot{}, false, err
 	}
 	var cfg providerModelPricingJSON
-	if json.Unmarshal([]byte(cfgJSON), &cfg) != nil {
+	if err := json.Unmarshal([]byte(cfgJSON), &cfg); err != nil {
+		r.data.lg.Warn("unmarshal provider model pricing config failed", loggateway.StepID("data.usage_pricing"), loggateway.Err(err))
 		return biz.ModelPricingSnapshot{}, false, nil
 	}
 	snap := snapshotFromProviderConfig(cfg)

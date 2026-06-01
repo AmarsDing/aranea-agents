@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	trpcevalset "trpc.group/trpc-go/trpc-agent-go/evaluation/evalset"
 	"trpc.group/trpc-go/trpc-agent-go/evaluation/usersimulation"
@@ -16,10 +17,10 @@ type scriptedSimulator struct {
 	scripts map[string][]string
 }
 
-func newScriptedSimulator(cases []biz.EvalCase) usersimulation.Simulator {
+func newScriptedSimulator(cases []biz.EvalCase, lg loggateway.Logger) usersimulation.Simulator {
 	scripts := make(map[string][]string)
 	for _, c := range cases {
-		meta := ParseCaseMetadata(c.MetadataJSON)
+		meta := ParseCaseMetadata(c.MetadataJSON, lg)
 		if meta.HasScriptedSimulation() {
 			scripts[c.ID] = meta.UserSimulation.Script
 		}
@@ -73,9 +74,9 @@ func buildConversationScenario(meta CaseMetadata, startingPrompt string) *trpcev
 	}
 }
 
-func casesNeedUserSimulation(cases []biz.EvalCase) bool {
+func casesNeedUserSimulation(cases []biz.EvalCase, lg loggateway.Logger) bool {
 	for _, c := range cases {
-		if ParseCaseMetadata(c.MetadataJSON).HasUserSimulation() {
+		if ParseCaseMetadata(c.MetadataJSON, lg).HasUserSimulation() {
 			return true
 		}
 	}

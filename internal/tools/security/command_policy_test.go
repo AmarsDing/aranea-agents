@@ -1,9 +1,13 @@
 package security
 
-import "testing"
+import (
+	"testing"
+
+	"aranea-agents/pkg/loggateway"
+)
 
 func TestCommandSafetyPolicy_ProtectedPath(t *testing.T) {
-	policy := NewCommandSafetyPolicy()
+	policy := NewCommandSafetyPolicy(loggateway.NewNoop())
 	violation := policy.Evaluate("exec_command", []byte(`{"command": "cat ~/.ssh/id_rsa"}`))
 	if violation == nil {
 		t.Fatal("expected violation for accessing .ssh/id_rsa")
@@ -14,7 +18,7 @@ func TestCommandSafetyPolicy_ProtectedPath(t *testing.T) {
 }
 
 func TestCommandSafetyPolicy_SSHGlobPattern(t *testing.T) {
-	policy := NewCommandSafetyPolicy()
+	policy := NewCommandSafetyPolicy(loggateway.NewNoop())
 	violation := policy.Evaluate("exec_command", []byte(`{"command": "cat ~/.ssh/authorized_keys"}`))
 	if violation == nil {
 		t.Fatal("expected violation for accessing .ssh/authorized_keys (glob .ssh/*)")
@@ -26,7 +30,7 @@ func TestCommandSafetyPolicy_SSHGlobPattern(t *testing.T) {
 }
 
 func TestCommandSafetyPolicy_RecursiveGlobEnv(t *testing.T) {
-	policy := NewCommandSafetyPolicy()
+	policy := NewCommandSafetyPolicy(loggateway.NewNoop())
 	violation := policy.Evaluate("file", []byte(`{"path": "/home/user/project/.env"}`))
 	if violation == nil {
 		t.Fatal("expected violation for **/.env pattern")
@@ -38,7 +42,7 @@ func TestCommandSafetyPolicy_RecursiveGlobEnv(t *testing.T) {
 }
 
 func TestCommandSafetyPolicy_RecursiveGlobCredentials(t *testing.T) {
-	policy := NewCommandSafetyPolicy()
+	policy := NewCommandSafetyPolicy(loggateway.NewNoop())
 	violation := policy.Evaluate("file", []byte(`{"path": "/opt/secrets/credentials.json"}`))
 	if violation == nil {
 		t.Fatal("expected violation for **/credentials.json pattern")
@@ -50,7 +54,7 @@ func TestCommandSafetyPolicy_RecursiveGlobCredentials(t *testing.T) {
 }
 
 func TestCommandSafetyPolicy_AllowedPath(t *testing.T) {
-	policy := NewCommandSafetyPolicy()
+	policy := NewCommandSafetyPolicy(loggateway.NewNoop())
 	violation := policy.Evaluate("exec_command", []byte(`{"command": "cat /etc/hosts"}`))
 	if violation != nil {
 		t.Fatalf("unexpected violation: %v", violation)
@@ -58,7 +62,7 @@ func TestCommandSafetyPolicy_AllowedPath(t *testing.T) {
 }
 
 func TestCommandSafetyPolicy_NoFalsePositiveOnDescription(t *testing.T) {
-	policy := NewCommandSafetyPolicy()
+	policy := NewCommandSafetyPolicy(loggateway.NewNoop())
 	violation := policy.Evaluate("exec_command", []byte(`{"command": "echo copy the .environment variables guide"}`))
 	if violation != nil {
 		t.Fatalf("expected no violation for non-path .env mention, got: %v", violation)
@@ -66,7 +70,7 @@ func TestCommandSafetyPolicy_NoFalsePositiveOnDescription(t *testing.T) {
 }
 
 func TestCommandSafetyPolicy_NoFalsePositiveOnBashrcInDescription(t *testing.T) {
-	policy := NewCommandSafetyPolicy()
+	policy := NewCommandSafetyPolicy(loggateway.NewNoop())
 	violation := policy.Evaluate("exec_command", []byte(`{"command": "echo how to set up bashrc aliases"}`))
 	if violation != nil {
 		t.Fatalf("expected no violation for non-path .bashrc mention, got: %v", violation)
@@ -74,7 +78,7 @@ func TestCommandSafetyPolicy_NoFalsePositiveOnBashrcInDescription(t *testing.T) 
 }
 
 func TestCommandSafetyPolicy_UnprotectedTool(t *testing.T) {
-	policy := NewCommandSafetyPolicy()
+	policy := NewCommandSafetyPolicy(loggateway.NewNoop())
 	violation := policy.Evaluate("web_research", []byte(`{"query": ".ssh/id_rsa"}`))
 	if violation != nil {
 		t.Fatalf("unexpected violation for unprotected tool: %v", violation)
@@ -82,7 +86,7 @@ func TestCommandSafetyPolicy_UnprotectedTool(t *testing.T) {
 }
 
 func TestCommandSafetyPolicy_AWSCredentials(t *testing.T) {
-	policy := NewCommandSafetyPolicy()
+	policy := NewCommandSafetyPolicy(loggateway.NewNoop())
 	violation := policy.Evaluate("file", []byte(`{"file_path": "/home/user/.aws/credentials"}`))
 	if violation == nil {
 		t.Fatal("expected violation for accessing .aws/credentials")
@@ -90,7 +94,7 @@ func TestCommandSafetyPolicy_AWSCredentials(t *testing.T) {
 }
 
 func TestCommandSafetyPolicy_KubeConfig(t *testing.T) {
-	policy := NewCommandSafetyPolicy()
+	policy := NewCommandSafetyPolicy(loggateway.NewNoop())
 	violation := policy.Evaluate("shell_exec", []byte(`{"command": "cat ~/.kube/config"}`))
 	if violation == nil {
 		t.Fatal("expected violation for accessing .kube/config")
@@ -98,7 +102,7 @@ func TestCommandSafetyPolicy_KubeConfig(t *testing.T) {
 }
 
 func TestCommandSafetyPolicy_IsProtectedTool(t *testing.T) {
-	policy := NewCommandSafetyPolicy()
+	policy := NewCommandSafetyPolicy(loggateway.NewNoop())
 	if !policy.IsProtectedTool("exec_command") {
 		t.Fatal("exec_command should be a protected tool")
 	}
@@ -112,6 +116,7 @@ func TestCommandSafetyPolicy_IsProtectedTool(t *testing.T) {
 
 func TestCommandSafetyPolicyWithConfig(t *testing.T) {
 	policy := NewCommandSafetyPolicyWithConfig(
+		loggateway.NewNoop(),
 		[]string{"custom_secret_dir/*"},
 		map[string]bool{"custom_tool": true},
 	)

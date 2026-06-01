@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/loggateway"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -56,7 +57,7 @@ VALUES (?, 'sess-1', 'agent-1', ?, ?, ?, 'consolidated', 1, ?, ?, ?)`,
 			t.Fatal(err)
 		}
 	}
-	return NewStore(client)
+	return NewStore(client, loggateway.NewNoop())
 }
 
 func TestRecallL2Episodes_KeywordRerank(t *testing.T) {

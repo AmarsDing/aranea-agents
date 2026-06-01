@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/loggateway"
 )
 
 type txClientKey struct{}
@@ -14,14 +15,20 @@ func (d *Data) ExecInTx(ctx context.Context, fn func(ctx context.Context) error)
 	}
 	tx, err := d.entClient.Tx(ctx)
 	if err != nil {
+		d.lg.Error("transaction begin failed", loggateway.StepID("data.tx"), loggateway.Err(err))
 		return err
 	}
 	txCtx := context.WithValue(ctx, txClientKey{}, tx.Client())
 	if err := fn(txCtx); err != nil {
 		_ = tx.Rollback()
+		d.lg.Warn("transaction rolled back", loggateway.StepID("data.tx"), loggateway.Err(err))
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		d.lg.Error("transaction commit failed", loggateway.StepID("data.tx"), loggateway.Err(err))
+		return err
+	}
+	return nil
 }
 
 func (d *Data) clientFromCtx(ctx context.Context) *ent.Client {

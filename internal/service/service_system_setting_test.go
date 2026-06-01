@@ -90,7 +90,7 @@ func TestToProtoWebResearch(t *testing.T) {
 	tests := []struct {
 		name string
 		row  biz.WebResearchSetting
-		want v1.WebResearchSettings
+		want *v1.WebResearchSettings
 	}{
 		{
 			name: "configured",
@@ -103,7 +103,7 @@ func TestToProtoWebResearch(t *testing.T) {
 				TimeoutSec:  60,
 				HTTPProxy:   "http://proxy:8080",
 			},
-			want: v1.WebResearchSettings{
+			want: &v1.WebResearchSettings{
 				Provider:    "tavily",
 				HasApiKey:   true,
 				MaxResults:  10,
@@ -117,7 +117,7 @@ func TestToProtoWebResearch(t *testing.T) {
 		{
 			name: "empty",
 			row:  biz.WebResearchSetting{},
-			want: v1.WebResearchSettings{},
+			want: &v1.WebResearchSettings{},
 		},
 	}
 

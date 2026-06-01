@@ -72,7 +72,7 @@ func (d *TaskDispatcher) loop(ctx context.Context) {
 			tickCtx, tickCancel := context.WithTimeout(ctx, 25*time.Second)
 			if err := d.tick(tickCtx); err != nil {
 				d.lg.Warn("task dispatcher tick failed",
-					loggateway.StepID("system.task.dispatcher_tick_fail"), loggateway.Err(err))
+					loggateway.StepID("task.dispatcher_tick_fail"), loggateway.Err(err))
 			}
 			tickCancel()
 		}
@@ -85,7 +85,7 @@ func (d *TaskDispatcher) tick(ctx context.Context) error {
 	}
 	if err := d.tasks.CheckTimeouts(ctx); err != nil {
 		d.lg.Warn("task check timeouts failed",
-			loggateway.StepID("system.task.check_timeout_fail"), loggateway.Err(err))
+			loggateway.StepID("task.check_timeout_fail"), loggateway.Err(err))
 	}
 	items, err := d.tasks.ListPendingTasks(ctx, 50)
 	if err != nil {
@@ -110,7 +110,7 @@ func (d *TaskDispatcher) tick(ctx context.Context) error {
 		claimed, err := d.tasks.ClaimTask(ctx, task.TaskID, agentKey)
 		if err != nil {
 			d.lg.Warn("task dispatch claim failed",
-				loggateway.StepID("system.task.claim_fail"), loggateway.Str("task_id", task.TaskID), loggateway.Str("agent", agentKey), loggateway.Err(err))
+				loggateway.StepID("task.claim_fail"), loggateway.Str("task_id", task.TaskID), loggateway.Str("agent", agentKey), loggateway.Err(err))
 			continue
 		}
 		if claimed == nil {
@@ -119,7 +119,7 @@ func (d *TaskDispatcher) tick(ctx context.Context) error {
 		if d.runner != nil {
 			if err := d.runner.DispatchTask(ctx, claimed, agentKey); err != nil {
 				d.lg.Warn("task dispatch run failed",
-					loggateway.StepID("system.task.dispatch_run_fail"), loggateway.Str("task_id", claimed.TaskID), loggateway.Str("agent", agentKey), loggateway.Err(err))
+					loggateway.StepID("task.dispatch_run_fail"), loggateway.Str("task_id", claimed.TaskID), loggateway.Str("agent", agentKey), loggateway.Err(err))
 				d.tasks.ReleaseClaim(ctx, claimed.TaskID)
 				continue
 			}
@@ -133,7 +133,7 @@ func (d *TaskDispatcher) tick(ctx context.Context) error {
 		}
 	}
 	d.lg.Info("task dispatcher tick completed",
-		loggateway.StepID("system.task.dispatcher_tick"),
+		loggateway.StepID("task.dispatcher_tick"),
 		loggateway.Int("pending_count", len(items)),
 		loggateway.Int("ready_count", readyCount),
 		loggateway.Int("dispatched_count", dispatched))

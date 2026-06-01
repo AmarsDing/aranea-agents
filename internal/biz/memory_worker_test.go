@@ -39,8 +39,8 @@ func (e *testAutoMemoryEnqueuer) lastJob() (appName, sessionID string, ok bool) 
 
 type noopSessionLogWriter struct{}
 
-func (noopSessionLogWriter) SessionSysLogWarn(_ context.Context, _, _, _ string, _ ...LogPair)  {}
-func (noopSessionLogWriter) SessionSysLogError(_ context.Context, _, _, _ string, _ ...LogPair) {}
+func (noopSessionLogWriter) LogSessionWarn(_ context.Context, _, _, _ string, _ ...LogPair)  {}
+func (noopSessionLogWriter) LogSessionError(_ context.Context, _, _, _ string, _ ...LogPair) {}
 
 func TestTurnMemoryWorker_OnRunnerCompletion_EnqueuesJob(t *testing.T) {
 	enqueuer := &testAutoMemoryEnqueuer{}

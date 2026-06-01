@@ -81,6 +81,9 @@ func (r *observatoryTeamRepo) ResolveTaskDeadLetter(_ context.Context, _ string)
 func (r *observatoryTeamRepo) CreateTeamRunStep(context.Context, biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return biz.TeamRunStep{}, nil
 }
+func (r *observatoryTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 
 func TestGetTeamRunObservatory(t *testing.T) {
 	repo := &observatoryTeamRepo{

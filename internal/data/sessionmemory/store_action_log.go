@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/loggateway"
+
 	"github.com/google/uuid"
 )
 
@@ -54,7 +56,10 @@ func (st *Store) insertMemoryActionLogOn(ctx context.Context, db sqlRunner, in M
 	}
 	if turnID := strings.TrimSpace(in.TurnID); turnID != "" {
 		var m map[string]any
-		if err := json.Unmarshal([]byte(meta), &m); err != nil || m == nil {
+		if err := json.Unmarshal([]byte(meta), &m); err != nil {
+			st.lg.Warn("session memory json unmarshal failed", loggateway.StepID("data.sessionmemory"), loggateway.Err(err))
+			m = map[string]any{}
+		} else if m == nil {
 			m = map[string]any{}
 		}
 		m["turn_id"] = turnID

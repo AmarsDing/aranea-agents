@@ -85,7 +85,7 @@ import { computed } from "vue";
 import SessionStatusBadge from "../sessions/SessionStatusBadge.vue";
 import ChatExecutionCard from "../chat/ChatExecutionCard.vue";
 import { renderChatMarkdown } from "../../features/chat/chatMessageMarkdown";
-import type { SpiritTeam } from "../../features/spirit/api";
+import type { SpiritTeam } from "../../features/spirit/types";
 import type { Message, ToolUseEvent } from "../../features/chat/types";
 
 const props = defineProps<{

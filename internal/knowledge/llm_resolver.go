@@ -18,11 +18,11 @@ type LLMCatalogLister interface {
 	List(ctx context.Context) ([]biz.ProviderModel, error)
 }
 
-func ResolveLLM(ctx context.Context, sys RefineLLMSettingsGetter, catalog LLMCatalogLister, purpose string) (string, string, error) {
+func ResolveLLM(ctx context.Context, sys RefineLLMSettingsGetter, catalog LLMCatalogLister, purpose string, lg loggateway.Logger) (string, string, error) {
 	if sys != nil {
 		s, err := sys.Get(ctx)
 		if err != nil {
-			loggateway.Global().Warn("系统设置获取失败",
+			lg.Warn("系统设置获取失败",
 			loggateway.StepID("knowledge.resolve_llm"),
 			loggateway.Str("purpose", purpose),
 			loggateway.Err(err))
@@ -33,7 +33,7 @@ func ResolveLLM(ctx context.Context, sys RefineLLMSettingsGetter, catalog LLMCat
 	if catalog != nil {
 		models, err := catalog.List(ctx)
 		if err != nil {
-			loggateway.Global().Warn("模型目录获取失败",
+			lg.Warn("模型目录获取失败",
 			loggateway.StepID("knowledge.resolve_llm"),
 			loggateway.Str("purpose", purpose),
 			loggateway.Err(err))

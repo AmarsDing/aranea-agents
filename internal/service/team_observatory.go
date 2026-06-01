@@ -8,6 +8,7 @@ import (
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/team"
+	"aranea-agents/pkg/loggateway"
 )
 
 func compileSnapshotToProto(snap team.CompileSnapshot) *v1.CompileTeamGraphResponse {
@@ -158,7 +159,9 @@ func (s *TeamService) GetTeamRunObservatoryTimeline(ctx context.Context, req *v1
 	for _, step := range steps {
 		var snap biz.ActivitySnapshot
 		if raw := strings.TrimSpace(step.ActivitySnapshotJSON); raw != "" {
-			_ = json.Unmarshal([]byte(raw), &snap)
+			if err := json.Unmarshal([]byte(raw), &snap); err != nil {
+				s.lg.Warn("activity snapshot json unmarshal failed", loggateway.StepID("team.observatory.snapshot"), loggateway.Err(err))
+			}
 		}
 		resp.Rows = append(resp.Rows, &v1.ActivityTimelineRow{
 			NodeId:       step.NodeID,

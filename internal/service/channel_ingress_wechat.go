@@ -64,7 +64,7 @@ func (h *ChannelIngress) handleWeChatWebhook(w http.ResponseWriter, r *http.Requ
 			"to_user":   parsed.ToUser,
 		},
 	}
-	if wechat.ActiveModeFromConfig(chRow.ConfigJSON) {
+	if wechat.ActiveModeFromConfig(chRow.ConfigJSON, h.lg) {
 		writeInboundHTTPResponse(w, h.processInboundHTTP(r, chRow, ev))
 		return nil
 	}

@@ -21,6 +21,7 @@ import (
 
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/pkg/loggateway"
 )
 
 func main() {
@@ -60,7 +61,8 @@ func runLegacyTRPCFacts(args []string) {
 	defer cleanup()
 
 	ctx := context.Background()
-	status, err := data.GetLegacyTRPCMigrationStatus(ctx, store)
+	lg := loggateway.NewNoop()
+	status, err := data.GetLegacyTRPCMigrationStatus(ctx, store, lg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "status: %v\n", err)
 		os.Exit(1)
@@ -73,7 +75,7 @@ func runLegacyTRPCFacts(args []string) {
 	if *dryRun {
 		return
 	}
-	migrated, skipped, err := data.RunLegacyTRPCMemoryMigration(ctx, store)
+	migrated, skipped, err := data.RunLegacyTRPCMemoryMigration(ctx, store, lg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "apply: %v\n", err)
 		os.Exit(1)
@@ -91,7 +93,7 @@ func openProjectStore() (*sessionmemory.Store, func(), error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return sessionmemory.NewStore(client), cleanup, nil
+	return sessionmemory.NewStore(client, loggateway.NewNoop()), cleanup, nil
 }
 
 func defaultSQLiteDSN() string {

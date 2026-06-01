@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformtool"
+	"aranea-agents/pkg/loggateway"
 )
 
 type toolRepo struct {
@@ -186,6 +187,7 @@ func (r *toolRepo) SearchTools(ctx context.Context, q biz.ToolListQuery) (biz.To
 	where, args := toolWhereClause(q)
 	var total int
 	if err := entQueryRowScan(client, ctx, `SELECT COUNT(1) FROM tools t WHERE `+where, args, &total); err != nil {
+		r.data.lg.Warn("tool search count query failed", loggateway.StepID("data.tool.search"), loggateway.Err(err))
 		return biz.ToolListResult{}, err
 	}
 	listArgs := append([]any{cutoff}, args...)
@@ -203,15 +205,18 @@ func (r *toolRepo) SearchTools(ctx context.Context, q biz.ToolListQuery) (biz.To
 	}
 	rows, err := client.QueryContext(ctx, toolSelectSQL()+` WHERE `+where+` ORDER BY `+orderBy+` LIMIT ? OFFSET ?`, listArgs...)
 	if err != nil {
+		r.data.lg.Warn("tool search list query failed", loggateway.StepID("data.tool.search"), loggateway.Err(err))
 		return biz.ToolListResult{}, err
 	}
 	defer rows.Close()
 	items, err := scanBizTool(rows)
 	if err != nil {
+		r.data.lg.Warn("tool search scan failed", loggateway.StepID("data.tool.search"), loggateway.Err(err))
 		return biz.ToolListResult{}, err
 	}
 	summary, err := r.computeToolSummary(ctx, client, q)
 	if err != nil {
+		r.data.lg.Warn("tool search summary failed", loggateway.StepID("data.tool.search"), loggateway.Err(err))
 		return biz.ToolListResult{}, err
 	}
 	return biz.ToolListResult{Items: items, Total: total, Limit: q.Limit, Offset: q.Offset, Summary: summary}, nil
@@ -453,6 +458,7 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 	whereSQL := strings.Join(where, " AND ")
 	var total int
 	if err := entQueryRowScan(client, ctx, `SELECT COUNT(1) FROM tool_invocations ti WHERE `+whereSQL, args, &total); err != nil {
+		r.data.lg.Warn("tool invocation search count failed", loggateway.StepID("data.tool.invocation_search"), loggateway.Err(err))
 		return biz.ToolRunResult{}, err
 	}
 	listArgs := append([]any{}, args...)
@@ -568,6 +574,7 @@ func (r *toolRepo) RecordToolInvocation(ctx context.Context, in biz.ToolInvocati
 		return nil
 	}
 	if !ent.IsConstraintError(err) {
+		r.data.lg.Error("tool invocation write failed", loggateway.StepID("data.tool.invocation_write"), loggateway.Err(err))
 		return err
 	}
 	_, err = client.ToolInvocation.UpdateOneID(id).
@@ -592,6 +599,9 @@ func (r *toolRepo) RecordToolInvocation(ctx context.Context, in biz.ToolInvocati
 		SetChunkCount(in.ChunkCount).
 		SetMetadataJSON(invocationMetaJSON(in)).
 		Save(ctx)
+	if err != nil {
+		r.data.lg.Error("tool invocation fallback update failed", loggateway.StepID("data.tool.invocation_write"), loggateway.Err(err))
+	}
 	return err
 }
 
@@ -629,7 +639,7 @@ func invocationMetaJSON(in biz.ToolInvocationWrite) string {
 }
 
 func (r *toolRepo) SyncBuiltinTools(ctx context.Context) error {
-	return syncBuiltinToolsFromRegistry(ctx, r.data.Ent())
+	return syncBuiltinToolsFromRegistry(ctx, r.data.Ent(), r.data.lg)
 }
 
 func (r *toolRepo) ListToolAgentOverridesByAgent(ctx context.Context, agentID string) ([]biz.ToolAgentOverride, error) {
@@ -709,10 +719,12 @@ func (r *toolRepo) UpsertToolAgentOverride(ctx context.Context, in biz.ToolAgent
 		now, now,
 	)
 	if err != nil {
+		r.data.lg.Warn("tool agent override upsert failed", loggateway.StepID("data.tool.override_upsert"), loggateway.Err(err))
 		return biz.ToolAgentOverride{}, err
 	}
 	overrides, err := r.ListToolAgentOverrides(ctx, in.ToolKey)
 	if err != nil {
+		r.data.lg.Warn("tool agent override list after upsert failed", loggateway.StepID("data.tool.override_upsert"), loggateway.Err(err))
 		return biz.ToolAgentOverride{}, err
 	}
 	for _, o := range overrides {

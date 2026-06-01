@@ -117,7 +117,7 @@ func (f *Factory) Resolve(ctx context.Context, agentType, workDir string) trpcag
 	case TypeDocker:
 		lg := f.lg
 		if lg == nil {
-			lg = loggateway.Global()
+			lg = loggateway.NewNoop()
 		}
 		return wrapMetrics(newDockerRuntimeFallback(f.getDocker(), f, workDir, lg), TypeDocker)
 	case TypeE2B:

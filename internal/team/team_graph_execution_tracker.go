@@ -24,7 +24,7 @@ type TeamGraphExecutionTrackerConfig struct {
 }
 
 // StartTeamGraphExecutionTracker marks waiting_human when graph checkpoint interrupts fire.
-func StartTeamGraphExecutionTracker(ctx context.Context, bus event.Bus, cfg TeamGraphExecutionTrackerConfig) context.CancelFunc {
+func StartTeamGraphExecutionTracker(ctx context.Context, bus event.Bus, cfg TeamGraphExecutionTrackerConfig, lg loggateway.Logger) context.CancelFunc {
 	if bus == nil || cfg.Registry == nil {
 		return func() {}
 	}
@@ -61,9 +61,9 @@ func StartTeamGraphExecutionTracker(ctx context.Context, bus event.Bus, cfg Team
 				}
 				lineageID := trackerMetaString(env.Metadata, "lineage_id")
 				if markErr := cfg.Registry.MarkTeamGraphInterrupt(procCtx, execID, nodeID, lineageID); markErr != nil {
-					loggateway.Global().Warn("MarkTeamGraphInterrupt failed",
+					lg.Warn("MarkTeamGraphInterrupt failed",
 					loggateway.StepID("team.graph.interrupt_mark_fail"),
-					loggateway.Str("exec_id", execID), loggateway.Str("node_id", nodeID), loggateway.Str("error", markErr.Error()))
+					loggateway.Str("exec_id", execID), loggateway.Str("node_id", nodeID), loggateway.Err(markErr))
 				}
 			}
 		}

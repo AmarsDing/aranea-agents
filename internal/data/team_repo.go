@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -12,6 +13,7 @@ import (
 	"aranea-agents/internal/data/ent/team"
 	"aranea-agents/internal/data/ent/teamrun"
 	"aranea-agents/internal/data/ent/teamrunstep"
+	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -28,7 +30,7 @@ func NewTeamRepo(d *Data) biz.TeamRepository {
 	return &teamRepo{data: d}
 }
 
-func entTeamToBiz(e *ent.Team) biz.Team {
+func entTeamToBiz(e *ent.Team, lg loggateway.Logger) biz.Team {
 	if e == nil {
 		return biz.Team{}
 	}
@@ -44,6 +46,10 @@ func entTeamToBiz(e *ent.Team) biz.Team {
 		SpiritSessionID:    e.SpiritSessionID,
 		TaskDescription:    e.TaskDescription,
 		AutoCreated:        e.AutoCreated,
+		DagNodeID:          e.DagNodeID,
+		DependsOn:          parseDependsOnJSON(e.DependsOnJSON, lg),
+		ParallelConfigJSON: e.ParallelConfigJSON,
+		Topology:           e.Topology,
 		CreatedAt:          e.CreatedAt,
 		UpdatedAt:          e.UpdatedAt,
 		DeletedAt:          e.DeletedAt,
@@ -117,7 +123,7 @@ func (r *teamRepo) ListTeams(ctx context.Context) ([]biz.Team, error) {
 	}
 	out := make([]biz.Team, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, entTeamToBiz(row))
+		out = append(out, entTeamToBiz(row, r.data.lg))
 	}
 	return out, nil
 }
@@ -131,7 +137,7 @@ func (r *teamRepo) GetTeamByID(ctx context.Context, id string) (biz.Team, error)
 		}
 		return biz.Team{}, err
 	}
-	return entTeamToBiz(row), nil
+	return entTeamToBiz(row, r.data.lg), nil
 }
 
 func (r *teamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error) {
@@ -158,6 +164,10 @@ func (r *teamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 		SetSpiritSessionID(t.SpiritSessionID).
 		SetTaskDescription(t.TaskDescription).
 		SetAutoCreated(t.AutoCreated).
+		SetDagNodeID(t.DagNodeID).
+		SetDependsOnJSON(formatDependsOnJSON(t.DependsOn)).
+		SetParallelConfigJSON(t.ParallelConfigJSON).
+		SetTopology(t.Topology).
 		SetCreatedAt(t.CreatedAt).
 		SetUpdatedAt(t.UpdatedAt).
 		SetDeletedAt(t.DeletedAt).
@@ -188,7 +198,11 @@ func (r *teamRepo) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 		SetSpiritSessionID(t.SpiritSessionID).
 		SetTaskDescription(t.TaskDescription).
 		SetAutoCreated(t.AutoCreated).
-		SetUpdatedAt(t.UpdatedAt).
+		SetDagNodeID(t.DagNodeID).
+		SetDependsOnJSON(formatDependsOnJSON(t.DependsOn)).
+		SetParallelConfigJSON(t.ParallelConfigJSON).
+		SetTopology(t.Topology).
+		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -210,6 +224,25 @@ func (r *teamRepo) DeleteTeam(ctx context.Context, id string) error {
 		SetUpdatedAt(now).
 		Save(ctx)
 	return err
+}
+
+func (r *teamRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]biz.Team, error) {
+	spiritSessionID = strings.TrimSpace(spiritSessionID)
+	if spiritSessionID == "" {
+		return nil, nil
+	}
+	rows, err := r.data.entClient.Team.Query().
+		Where(team.SpiritSessionIDEQ(spiritSessionID), team.DeletedAtEQ("")).
+		Order(team.ByCreatedAt(entsql.OrderDesc())).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.Team, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entTeamToBiz(row, r.data.lg))
+	}
+	return out, nil
 }
 
 func (r *teamRepo) ListTeamRuns(ctx context.Context, teamID string, limit int) ([]biz.TeamRun, error) {
@@ -592,4 +625,27 @@ func entOrchestrationStepToBiz(e *ent.OrchestrationStep) biz.OrchestrationStep {
 		FinishedAt:           e.FinishedAt,
 		CreatedAt:            e.CreatedAt,
 	}
+}
+
+func parseDependsOnJSON(jsonStr string, lg loggateway.Logger) []string {
+	if jsonStr == "" {
+		return nil
+	}
+	var ids []string
+	if err := json.Unmarshal([]byte(jsonStr), &ids); err != nil {
+		lg.Warn("team json unmarshal failed", loggateway.StepID("data.team"), loggateway.Err(err))
+		return nil
+	}
+	return ids
+}
+
+func formatDependsOnJSON(ids []string) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	b, err := json.Marshal(ids)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }

@@ -197,7 +197,7 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 			s.lg.Error("failed to update document status to indexing",
 				loggateway.StepID("knowledge.ingest.status_fail"),
 				loggateway.Str("doc_id", doc.ID),
-				loggateway.Str("error", err.Error()),
+				loggateway.Err(err),
 			)
 		}
 		s.publishKnowledgeIngest(col.ID, doc.ID, "indexing", "", 0)
@@ -208,7 +208,7 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 				s.lg.Error("failed to update document status to error",
 					loggateway.StepID("knowledge.ingest.status_fail"),
 					loggateway.Str("doc_id", doc.ID),
-					loggateway.Str("status_error", statusErr.Error()),
+					loggateway.Err(statusErr),
 					loggateway.Str("original_error", err.Error()),
 				)
 			}
@@ -221,7 +221,7 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 				s.lg.Error("failed to update document status to error",
 					loggateway.StepID("knowledge.ingest.status_fail"),
 					loggateway.Str("doc_id", doc.ID),
-					loggateway.Str("status_error", statusErr.Error()),
+					loggateway.Err(statusErr),
 					loggateway.Str("original_error", err.Error()),
 				)
 			}
@@ -232,14 +232,14 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 			s.lg.Error("failed to update document status to indexed",
 				loggateway.StepID("knowledge.ingest.status_fail"),
 				loggateway.Str("doc_id", doc.ID),
-				loggateway.Str("error", err.Error()),
+				loggateway.Err(err),
 			)
 		}
 		if err := uc.UpdateCollectionCounts(ingestCtx, col.ID, 1, len(bizChunks)); err != nil {
 			s.lg.Error("failed to update collection counts",
 				loggateway.StepID("knowledge.ingest.counts_fail"),
 				loggateway.Str("col_id", col.ID),
-				loggateway.Str("error", err.Error()),
+				loggateway.Err(err),
 			)
 		}
 		s.publishKnowledgeIngest(col.ID, doc.ID, "indexed", "", len(bizChunks))
@@ -305,9 +305,9 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 				rr, rewriteErr := rewriter.Rewrite(ctx, query, strategy)
 				if rewriteErr != nil {
 					s.lg.Warn("query rewrite failed, using original query",
-						loggateway.StepID("knowledge.search.rewrite_fail"),
-						loggateway.Str("error", rewriteErr.Error()),
-					)
+					loggateway.StepID("knowledge.search.rewrite_fail"),
+					loggateway.Err(rewriteErr),
+				)
 				} else {
 					rewriteResult = rr
 				}
@@ -326,7 +326,7 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 	if s.search.Evaluator != nil {
 		assessor = s.search.Evaluator
 	}
-	chunks, err = knowledge.SearchWithEvaluation(ctx, s.search.Retriever, assessor, query, q, chunks)
+	chunks, err = knowledge.SearchWithEvaluation(ctx, s.search.Retriever, assessor, query, q, chunks, s.lg)
 	if err != nil {
 		return nil, kerrors.FromError(err)
 	}
@@ -366,7 +366,7 @@ func (s *KnowledgeService) UpdateEmbedderConfig(ctx context.Context, req *v1.Upd
 	if err := PersistKnowledgeEmbed(ctx, s.systemSetting, p, baseURL, strings.TrimSpace(req.GetApiKey()), model, dim); err != nil {
 		s.lg.Warn("写入 system_settings 失败",
 			loggateway.StepID("knowledge.embedder.persist"),
-			loggateway.Str("error", err.Error()),
+			loggateway.Err(err),
 		)
 	}
 	return &v1.UpdateEmbedderConfigResponse{Config: s.embedderConfigProto()}, nil

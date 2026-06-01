@@ -72,7 +72,8 @@ var builtinPlatformToolSeeds = []platformToolSeed{
 	{key: "memory_search", displayName: "Memory 搜索", description: "搜索 Agent 长期记忆。", category: "memory", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}`},
 	{key: "memory_get", displayName: "Memory 读取", description: "读取指定 memory 内容。", category: "memory", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}`},
 	{key: "read_image", displayName: "图片理解", description: "分析图片内容。", category: "media", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}`},
-	{key: "read_document", displayName: "文档理解", description: "分析 PDF、Office、CSV 等文档。", category: "media", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}`},
+	{key: "read_document", displayName: "文档理解", description: "分析 PDF、Office、CSV 等文档。", category: "media", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}`, registryName: "read_document"},
+	{key: "read_spreadsheet", displayName: "表格读取", description: "读取 XLSX、CSV 等表格文件，支持行范围选择和工作表切换。", category: "media", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"path":{"type":"string"},"sheet":{"type":"string"},"row":{"type":"integer"},"start_row":{"type":"integer"},"end_row":{"type":"integer"},"max_chars":{"type":"integer"}},"required":["path"]}`, registryName: "read_spreadsheet"},
 	{key: "create_image", displayName: "图片生成", description: "根据文本提示生成图片。", category: "media", riskLevel: "medium", enabled: false, paramsSchema: `{"type":"object","properties":{"prompt":{"type":"string"},"size":{"type":"string"}},"required":["prompt"]}`},
 	{key: "tts", displayName: "文本转语音", description: "将文本转换成语音文件。", category: "media", riskLevel: "medium", enabled: false, paramsSchema: `{"type":"object","properties":{"text":{"type":"string"},"voice":{"type":"string"}},"required":["text"]}`},
 	{key: "shell_exec", displayName: "Shell 命令", description: "执行本地 shell 命令。", category: "runtime", riskLevel: "critical", enabled: false, reqConfirm: true, paramsSchema: `{"type":"object","properties":{"command":{"type":"string"},"workdir":{"type":"string","description":"Optional working directory relative to workspace root"}},"required":["command"]}`, registryName: "hostexec"},
@@ -95,9 +96,15 @@ var builtinPlatformToolSeeds = []platformToolSeed{
 	{key: "model_registry_sync", displayName: "模型目录同步", description: "模型目录同步工具集（fetch_model_directory / migrate_provider_bindings / apply_model_directory / sync_provider_logos）。", category: "system", riskLevel: "medium", enabled: false, readonly: true, paramsSchema: `{"type":"object","properties":{}}`, registryName: "model_registry_sync"},
 	{key: "browser", displayName: "浏览器自动化", description: "通过 Playwright MCP 实现浏览器自动化操作（导航、截图、点击、输入等）。", category: "browser", riskLevel: "critical", enabled: false, reqConfirm: true, paramsSchema: `{"type":"object","properties":{}}`, configSchema: `{"type":"object","properties":{"command":{"type":"string","description":"MCP 启动命令","default":"npx"},"args":{"type":"array","items":{"type":"string"},"description":"MCP 启动参数"},"transport":{"type":"string","enum":["stdio","sse","streamable"],"description":"MCP 传输协议","default":"stdio"},"headless":{"type":"boolean","description":"无头模式","default":true},"vision":{"type":"boolean","description":"启用视觉能力","default":false},"isolated":{"type":"boolean","description":"隔离模式","default":true},"timeout_sec":{"type":"integer","description":"MCP 连接超时（秒）"}}}`, registryName: "browser"},
 	{key: "read_tool_result", displayName: "读取工具结果", description: "通过 blob_id 检索之前持久化的工具结果完整内容。当对话中的工具结果被截断时，使用此工具获取完整输出。", category: "system", riskLevel: "low", enabled: true, readonly: true, registryName: "read_tool_result"},
+	{key: "assemble_team", displayName: "组建团队", description: "当用户需求复杂、需要多 Agent 协作时，组建任务团队。", category: "spirit", source: "builtin", riskLevel: "low", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"agent_keys":{"type":"array","items":{"type":"string"},"description":"参与团队的 Agent key 列表"},"mode":{"type":"string","enum":["coordinator","sequential","parallel"],"description":"团队编排模式"},"task_prompt":{"type":"string","description":"任务描述"}},"required":["task_prompt"]}`},
+	{key: "list_butlers", displayName: "列出管家", description: "列出可用的管家列表。", category: "spirit", source: "builtin", riskLevel: "low", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{},"required":[]}`},
+	{key: "query_butler_status", displayName: "查询管家状态", description: "查询指定管家的当前状态和活跃任务数。", category: "spirit", source: "builtin", riskLevel: "low", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"butler_name":{"type":"string","description":"管家名称"}},"required":["butler_name"]}`},
+	{key: "check_team_progress", displayName: "查询团队进度", description: "查询当前精灵会话下所有团队的执行进度。", category: "spirit", source: "builtin", riskLevel: "low", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{},"required":[]}`},
+	{key: "cancel_team", displayName: "取消团队", description: "取消正在运行的团队，释放并行团队配额。", category: "spirit", source: "builtin", riskLevel: "medium", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"team_id":{"type":"string","description":"要取消的团队 ID"}},"required":["team_id"]}`},
+	{key: "synthesize_results", displayName: "合成团队结果", description: "将所有已完成团队的执行结果合成为综合报告。", category: "spirit", source: "builtin", riskLevel: "low", enabled: true, readonly: true, paramsSchema: `{"type":"object","properties":{"strategy":{"type":"string","description":"合成策略","enum":["template","llm","hybrid"]}}}`},
 }
 
-func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client) error {
+func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
@@ -123,14 +130,15 @@ func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client) error {
 			now, now,
 		)
 		if err != nil {
+			lg.Warn("seed step failed", loggateway.StepID("data.seed.builtin_tools"), loggateway.Str("tool_key", row.key), loggateway.Err(err))
 			return fmt.Errorf("ensure builtin tools: seed %q: %w", row.key, err)
 		}
 	}
-	if err := syncBuiltinToolsFromRegistry(ctx, client); err != nil {
-		loggateway.Global().Warn("内置工具批量同步失败", loggateway.StepID("system.data.builtin_tool_sync"), loggateway.Err(err))
+	if err := syncBuiltinToolsFromRegistry(ctx, client, lg); err != nil {
+		lg.Warn("内置工具批量同步失败", loggateway.StepID("data.builtin_tool_sync"), loggateway.Err(err))
 	}
 	if err := syncBuiltinWebToolCatalogPatches(ctx, client); err != nil {
-		loggateway.Global().Warn("内置 Web 工具元数据同步失败", loggateway.StepID("system.data.builtin_tool_sync"), loggateway.Err(err))
+		lg.Warn("内置 Web 工具元数据同步失败", loggateway.StepID("data.builtin_tool_sync"), loggateway.Err(err))
 	}
 	return nil
 }
@@ -178,7 +186,7 @@ func syncBuiltinWebToolCatalogPatches(ctx context.Context, client *ent.Client) e
 	return nil
 }
 
-func syncBuiltinToolsFromRegistry(ctx context.Context, client *ent.Client) error {
+func syncBuiltinToolsFromRegistry(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
@@ -218,7 +226,7 @@ func syncBuiltinToolsFromRegistry(ctx context.Context, client *ent.Client) error
 			now, seed.key,
 		)
 		if err != nil {
-			loggateway.Global().Warn("内置工具同步失败", loggateway.StepID("system.data.builtin_tool_sync"), loggateway.Str("tool_key", seed.key), loggateway.Str("registry_name", regName), loggateway.Err(err))
+			lg.Warn("内置工具同步失败", loggateway.StepID("data.builtin_tool_sync"), loggateway.Str("tool_key", seed.key), loggateway.Str("registry_name", regName), loggateway.Err(err))
 		}
 	}
 	return nil

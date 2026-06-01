@@ -49,7 +49,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { SpiritMember } from "../../features/spirit/api";
+import type { SpiritMember } from "../../features/spirit/types";
 
 const props = defineProps<{
   status: "assembling" | "assembled" | "completed" | "failed";

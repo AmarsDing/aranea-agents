@@ -1,6 +1,10 @@
 package biz
 
-import "testing"
+import (
+	"testing"
+
+	"aranea-agents/pkg/loggateway"
+)
 
 func TestNormalizeAgentKind(t *testing.T) {
 	if got := NormalizeAgentKind(""); got != AgentKindLLM {
@@ -13,7 +17,7 @@ func TestNormalizeAgentKind(t *testing.T) {
 
 func TestEmbedAndHydrateAgentKind(t *testing.T) {
 	cfg := &A2AProxyConfig{RemoteURL: "http://localhost:8087/"}
-	raw := EmbedAgentKindInConfigJSON("{}", AgentKindA2AProxy, cfg)
+	raw := EmbedAgentKindInConfigJSON("{}", AgentKindA2AProxy, cfg, loggateway.NewNoop())
 	var ag Agent
 	ag.ConfigJSON = raw
 	HydrateAgentKind(&ag)

@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/pkg/loggateway"
 )
 
 type ingressPeerKey struct {
@@ -26,15 +27,20 @@ type ingressPeerDebouncer struct {
 	delay   time.Duration
 	mu      sync.Mutex
 	pending map[ingressPeerKey]*ingressPeerBatch
+	lg      loggateway.Logger
 }
 
-func newIngressPeerDebouncer(delay time.Duration) *ingressPeerDebouncer {
+func newIngressPeerDebouncer(delay time.Duration, lg loggateway.Logger) *ingressPeerDebouncer {
 	if delay <= 0 {
 		delay = defaultIngressDebounce
+	}
+	if lg == nil {
+		lg = loggateway.NewNoop()
 	}
 	return &ingressPeerDebouncer{
 		delay:   delay,
 		pending: make(map[ingressPeerKey]*ingressPeerBatch),
+		lg:      lg,
 	}
 }
 
@@ -46,7 +52,9 @@ func (b *ingressPeerDebouncer) submit(ctx context.Context, ch biz.Channel, ev po
 	}
 	text := strings.TrimSpace(ev.Text)
 	if text == "" {
-		_ = run(ctx, ch, ev)
+		if err := run(ctx, ch, ev); err != nil {
+			b.lg.Warn("ingress debounce immediate run failed", loggateway.StepID("ingress.debounce.run"), loggateway.Err(err))
+		}
 		return
 	}
 	peerKey := strings.TrimSpace(ev.PeerKey)
@@ -94,7 +102,9 @@ func (b *ingressPeerDebouncer) flush(ctx context.Context, key ingressPeerKey, ru
 	}
 	ch, ev := entry.ch, entry.ev
 	b.mu.Unlock()
-	_ = run(ctx, ch, ev)
+	if err := run(ctx, ch, ev); err != nil {
+		b.lg.Warn("ingress debounce flush run failed", loggateway.StepID("ingress.debounce.flush"), loggateway.Err(err))
+	}
 }
 
 func mergeIngressIdempotencyKeys(keys []string) string {

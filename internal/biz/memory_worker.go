@@ -35,8 +35,8 @@ func (f AutoMemoryEnqueuerFunc) EnqueueAutoMemory(appName, sessionID string, enq
 // SessionLogWriter abstracts session-scoped log writing so biz does not
 // depend on internal/event directly for logging helpers.
 type SessionLogWriter interface {
-	SessionSysLogWarn(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair)
-	SessionSysLogError(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair)
+	LogSessionWarn(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair)
+	LogSessionError(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair)
 }
 
 // SessionLogWriterFunc is a function adapter for SessionLogWriter.
@@ -46,11 +46,11 @@ type SessionLogWriterFunc struct {
 	ErrorFn func(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair)
 }
 
-func (a SessionLogWriterFunc) SessionSysLogWarn(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair) {
+func (a SessionLogWriterFunc) LogSessionWarn(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair) {
 	a.WarnFn(ctx, sessionID, stepID, message, pairs...)
 }
 
-func (a SessionLogWriterFunc) SessionSysLogError(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair) {
+func (a SessionLogWriterFunc) LogSessionError(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair) {
 	a.ErrorFn(ctx, sessionID, stepID, message, pairs...)
 }
 
@@ -69,8 +69,8 @@ type EnvelopeBuffer interface {
 // SystemLogWriter abstracts system-domain (non-session-scoped) log writing
 // so biz does not depend on internal/event.SysLogWarn/Error directly.
 type SystemLogWriter interface {
-	SysLogWarn(stepID, message string, pairs ...LogPair)
-	SysLogError(stepID, message string, pairs ...LogPair)
+	LogWarn(stepID, message string, pairs ...LogPair)
+	LogError(stepID, message string, pairs ...LogPair)
 }
 
 // SystemLogWriterFunc is a function adapter for SystemLogWriter.
@@ -79,11 +79,11 @@ type SystemLogWriterFunc struct {
 	ErrorFn func(stepID, message string, pairs ...LogPair)
 }
 
-func (a SystemLogWriterFunc) SysLogWarn(stepID, message string, pairs ...LogPair) {
+func (a SystemLogWriterFunc) LogWarn(stepID, message string, pairs ...LogPair) {
 	a.WarnFn(stepID, message, pairs...)
 }
 
-func (a SystemLogWriterFunc) SysLogError(stepID, message string, pairs ...LogPair) {
+func (a SystemLogWriterFunc) LogError(stepID, message string, pairs ...LogPair) {
 	a.ErrorFn(stepID, message, pairs...)
 }
 
@@ -109,7 +109,7 @@ func (w *TurnMemoryWorker) OnRunnerCompletion(ctx context.Context, de DomainEven
 		w.enqueuer.EnqueueAutoMemory(strings.TrimSpace(de.Author), sid, time.Now().UTC())
 	}
 	if w.logger != nil {
-		w.logger.SessionSysLogWarn(ctx, sid, "system.memory_worker.enqueue", "自动记忆任务已入队")
+		w.logger.LogSessionWarn(ctx, sid, "system.memory_worker.enqueue", "自动记忆任务已入队")
 	}
 }
 
@@ -125,7 +125,7 @@ func (w *TurnMemoryWorker) OnUserFeedback(ctx context.Context, sessionID, messag
 		w.feedbackEnqueuer.EnqueueFeedbackMemory(sessionID, messageID, rating, comment, time.Now().UTC())
 	}
 	if w.logger != nil {
-		w.logger.SessionSysLogWarn(ctx, sessionID, "system.memory_worker.feedback_enqueue", "反馈偏好记忆任务已入队",
+		w.logger.LogSessionWarn(ctx, sessionID, "system.memory_worker.feedback_enqueue", "反馈偏好记忆任务已入队",
 			LogPair{Key: "message_id", Value: messageID}, LogPair{Key: "rating", Value: rating})
 	}
 }

@@ -10,11 +10,12 @@ import (
 	"testing"
 
 	"aranea-agents/internal/data/artifactfs"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestFSArtifactRepo_SaveAndLoad(t *testing.T) {
 	dir := t.TempDir()
-	repo := artifactfs.NewFSArtifactRepoAt(dir)
+	repo := artifactfs.NewFSArtifactRepoAt(dir, loggateway.NewNoop())
 	ctx := context.Background()
 
 	payload := []byte("hello artifact")
@@ -46,7 +47,7 @@ func TestFSArtifactRepo_SaveAndLoad(t *testing.T) {
 
 func TestFSArtifactRepo_MultiVersion(t *testing.T) {
 	dir := t.TempDir()
-	repo := artifactfs.NewFSArtifactRepoAt(dir)
+	repo := artifactfs.NewFSArtifactRepoAt(dir, loggateway.NewNoop())
 	ctx := context.Background()
 
 	_, _ = repo.Save(ctx, "sess1", "file.bin", "application/octet-stream", []byte("v0"))
@@ -66,7 +67,7 @@ func TestFSArtifactRepo_MultiVersion(t *testing.T) {
 
 func TestFSArtifactRepo_List(t *testing.T) {
 	dir := t.TempDir()
-	repo := artifactfs.NewFSArtifactRepoAt(dir)
+	repo := artifactfs.NewFSArtifactRepoAt(dir, loggateway.NewNoop())
 	ctx := context.Background()
 
 	_, _ = repo.Save(ctx, "sess2", "a.txt", "text/plain", []byte("a"))
@@ -83,7 +84,7 @@ func TestFSArtifactRepo_List(t *testing.T) {
 
 func TestFSArtifactRepo_ListAllSessions(t *testing.T) {
 	dir := t.TempDir()
-	repo := artifactfs.NewFSArtifactRepoAt(dir)
+	repo := artifactfs.NewFSArtifactRepoAt(dir, loggateway.NewNoop())
 	ctx := context.Background()
 
 	_, _ = repo.Save(ctx, "sess-a", "a.txt", "text/plain", []byte("a"))
@@ -100,7 +101,7 @@ func TestFSArtifactRepo_ListAllSessions(t *testing.T) {
 
 func TestFSArtifactRepo_StorageBytes(t *testing.T) {
 	dir := t.TempDir()
-	repo := artifactfs.NewFSArtifactRepoAt(dir)
+	repo := artifactfs.NewFSArtifactRepoAt(dir, loggateway.NewNoop())
 	ctx := context.Background()
 
 	_, _ = repo.Save(ctx, "sess1", "a.bin", "application/octet-stream", []byte("12345"))
@@ -115,7 +116,7 @@ func TestFSArtifactRepo_StorageBytes(t *testing.T) {
 
 func TestFSArtifactRepo_Delete(t *testing.T) {
 	dir := t.TempDir()
-	repo := artifactfs.NewFSArtifactRepoAt(dir)
+	repo := artifactfs.NewFSArtifactRepoAt(dir, loggateway.NewNoop())
 	ctx := context.Background()
 
 	saved, _ := repo.Save(ctx, "sess3", "del.txt", "text/plain", []byte("bye"))
@@ -133,7 +134,7 @@ func TestFSArtifactRepo_Delete(t *testing.T) {
 // session ID can write/read files anywhere the process has permission to.
 func TestFSArtifactRepo_RejectsTraversalSessionID(t *testing.T) {
 	dir := t.TempDir()
-	repo := artifactfs.NewFSArtifactRepoAt(dir)
+	repo := artifactfs.NewFSArtifactRepoAt(dir, loggateway.NewNoop())
 	ctx := context.Background()
 
 	bad := []string{
@@ -159,7 +160,7 @@ func TestFSArtifactRepo_RejectsTraversalSessionID(t *testing.T) {
 // relative URI internally.
 func TestFSArtifactRepo_StorageURIIsRelative(t *testing.T) {
 	dir := t.TempDir()
-	repo := artifactfs.NewFSArtifactRepoAt(dir)
+	repo := artifactfs.NewFSArtifactRepoAt(dir, loggateway.NewNoop())
 	ctx := context.Background()
 
 	saved, err := repo.Save(ctx, "sess-rel", "foo.txt", "text/plain", []byte("hi"))
@@ -189,7 +190,7 @@ func TestFSArtifactRepo_StorageURIIsRelative(t *testing.T) {
 
 func TestFSArtifactRepo_LegacyStorageURIWithRoot(t *testing.T) {
 	dir := t.TempDir()
-	repo := artifactfs.NewFSArtifactRepoAt(dir)
+	repo := artifactfs.NewFSArtifactRepoAt(dir, loggateway.NewNoop())
 	ctx := context.Background()
 
 	saved, err := repo.Save(ctx, "sess-legacy", "bar.txt", "text/plain", []byte("legacy"))

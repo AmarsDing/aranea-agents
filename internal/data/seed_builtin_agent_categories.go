@@ -7,13 +7,14 @@ import (
 
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/scenario/loader"
+	"aranea-agents/pkg/loggateway"
 )
 
-func SeedBuiltinAgentCategories(ctx context.Context, client *ent.Client, scenarioDir string) error {
+func SeedBuiltinAgentCategories(ctx context.Context, client *ent.Client, scenarioDir string, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
-	applied, err := isMigrationApplied(ctx, client, SeedCategoriesV2)
+	applied, err := isMigrationApplied(ctx, client, SeedCategoriesV2, lg)
 	if err != nil {
 		return fmt.Errorf("check seed categories v2: %w", err)
 	}
@@ -35,6 +36,7 @@ func SeedBuiltinAgentCategories(ctx context.Context, client *ent.Client, scenari
 			VALUES (?, ?, ?, ?, 'active', 1, ?, ?, 'industry', '', '', 1, '', '', ?, ?, '')
 			ON CONFLICT(category_key) DO UPDATE SET name=excluded.name, description=excluded.description, sort_order=excluded.sort_order, parent_id=excluded.parent_id, level=excluded.level, is_system=excluded.is_system, updated_at=excluded.updated_at`
 		if _, err := client.ExecContext(ctx, q, indID, indCategoryKey, ind.Name, ind.Description, ind.SortOrder, "", now, now); err != nil {
+			lg.Warn("seed step failed", loggateway.StepID("data.seed.categories.industry"), loggateway.Str("key", indCategoryKey), loggateway.Err(err))
 			return fmt.Errorf("seed industry category %q: %w", indCategoryKey, err)
 		}
 
@@ -45,6 +47,7 @@ func SeedBuiltinAgentCategories(ctx context.Context, client *ent.Client, scenari
 				VALUES (?, ?, ?, ?, 'active', 1, ?, ?, 'department', '', '', 1, '', '', ?, ?, '')
 				ON CONFLICT(category_key) DO UPDATE SET name=excluded.name, description=excluded.description, sort_order=excluded.sort_order, parent_id=excluded.parent_id, level=excluded.level, is_system=excluded.is_system, updated_at=excluded.updated_at`
 			if _, err := client.ExecContext(ctx, qDept, deptID, deptCategoryKey, dept.Name, dept.Description, dept.SortOrder, indID, now, now); err != nil {
+				lg.Warn("seed step failed", loggateway.StepID("data.seed.categories.department"), loggateway.Str("key", deptCategoryKey), loggateway.Err(err))
 				return fmt.Errorf("seed department category %q: %w", deptCategoryKey, err)
 			}
 
@@ -55,13 +58,15 @@ func SeedBuiltinAgentCategories(ctx context.Context, client *ent.Client, scenari
 					VALUES (?, ?, ?, ?, 'active', 1, ?, ?, 'position', '', '', 1, '', '', ?, ?, '')
 					ON CONFLICT(category_key) DO UPDATE SET name=excluded.name, description=excluded.description, sort_order=excluded.sort_order, parent_id=excluded.parent_id, level=excluded.level, is_system=excluded.is_system, updated_at=excluded.updated_at`
 				if _, err := client.ExecContext(ctx, qPos, posID, posCategoryKey, pos.Name, pos.Description, pos.SortOrder, deptID, now, now); err != nil {
+					lg.Warn("seed step failed", loggateway.StepID("data.seed.categories.position"), loggateway.Str("key", posCategoryKey), loggateway.Err(err))
 					return fmt.Errorf("seed position category %q: %w", posCategoryKey, err)
 				}
 			}
 		}
 	}
 
-	if err := recordMigrationApplied(ctx, client, SeedCategoriesV2, "categories_v2"); err != nil {
+	if err := recordMigrationApplied(ctx, client, SeedCategoriesV2, "categories_v2", lg); err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.categories.record"), loggateway.Err(err))
 		return fmt.Errorf("record seed categories v2: %w", err)
 	}
 	return nil

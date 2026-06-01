@@ -353,7 +353,7 @@ func (uc *GraphUsecase) UpdateGraph(ctx context.Context, def *GraphDefinition) (
 	if err != nil {
 		return nil, err
 	}
-	appendVersionHistory(def, previous)
+	appendVersionHistory(def, previous, uc.lg)
 	now := time.Now()
 	def.UpdatedAt = now
 	syncVersionMetadata(def)
@@ -415,7 +415,7 @@ func (uc *GraphUsecase) CreateGraphFromTemplate(ctx context.Context, templateID 
 		if ReadUserTemplateMeta(src) == nil {
 			return nil, ErrGraphTemplateNotFound
 		}
-		def := cloneGraphDefinition(src)
+		def := cloneGraphDefinition(src, uc.lg)
 		def.ID = ""
 		def.Name = name
 		def.Description = description
@@ -439,7 +439,7 @@ func (uc *GraphUsecase) ExportGraph(ctx context.Context, graphID string) ([]byte
 	if err != nil {
 		return nil, nil, err
 	}
-	export := cloneGraphDefinition(def)
+	export := cloneGraphDefinition(def, uc.lg)
 	syncVersionMetadata(export)
 	raw, err := json.Marshal(export)
 	if err != nil {
@@ -495,11 +495,11 @@ func (uc *GraphUsecase) RollbackGraphVersion(ctx context.Context, graphID string
 	if err != nil {
 		return nil, err
 	}
-	snapshot := FindGraphVersionSnapshot(current, version)
+	snapshot := FindGraphVersionSnapshot(current, version, uc.lg)
 	if snapshot == nil {
 		return nil, errors.NotFound("GRAPH", "graph version not found")
 	}
-	restored := cloneGraphDefinition(snapshot)
+	restored := cloneGraphDefinition(snapshot, uc.lg)
 	restored.ID = graphID
 	restored.CreatedAt = current.CreatedAt
 	return uc.UpdateGraph(ctx, restored)

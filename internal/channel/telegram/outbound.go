@@ -10,12 +10,15 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 // TextSender posts replies via Telegram sendMessage.
 type TextSender struct {
 	BotToken string
 	HTTP     *http.Client
+	Lg       loggateway.Logger
 }
 
 // ID implements channel.Identified.
@@ -60,7 +63,9 @@ func (s *TextSender) SendText(ctx context.Context, chatID, text string) error {
 		OK          bool   `json:"ok"`
 		Description string `json:"description"`
 	}
-	_ = json.Unmarshal(raw, &out)
+	if err := json.Unmarshal(raw, &out); err != nil {
+		s.Lg.Warn("解析 telegram outbound 响应失败", loggateway.StepID("channel.telegram.outbound"), loggateway.Err(err))
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 || !out.OK {
 		msg := strings.TrimSpace(out.Description)
 		if msg == "" {
@@ -72,7 +77,7 @@ func (s *TextSender) SendText(ctx context.Context, chatID, text string) error {
 }
 
 // GetMe calls getMe for connection checks.
-func GetMe(ctx context.Context, client *http.Client, botToken string) error {
+func GetMe(ctx context.Context, client *http.Client, botToken string, lg loggateway.Logger) error {
 	botToken = strings.TrimSpace(botToken)
 	if botToken == "" {
 		return fmt.Errorf("telegram: bot_token required")
@@ -95,7 +100,9 @@ func GetMe(ctx context.Context, client *http.Client, botToken string) error {
 		OK          bool   `json:"ok"`
 		Description string `json:"description"`
 	}
-	_ = json.Unmarshal(raw, &out)
+	if err := json.Unmarshal(raw, &out); err != nil {
+		lg.Warn("解析 telegram getMe 响应失败", loggateway.StepID("channel.telegram.get_me"), loggateway.Err(err))
+	}
 	if !out.OK {
 		if out.Description != "" {
 			return fmt.Errorf("telegram getMe: %s", out.Description)

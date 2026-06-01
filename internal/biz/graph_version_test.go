@@ -3,6 +3,8 @@ package biz
 import (
 	"testing"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestAppendVersionHistoryIncrementsVersion(t *testing.T) {
@@ -15,7 +17,7 @@ func TestAppendVersionHistoryIncrementsVersion(t *testing.T) {
 		UpdatedAt: time.Now(),
 	}
 	next := &GraphDefinition{ID: "g1", Name: "demo-v3"}
-	appendVersionHistory(next, previous)
+	appendVersionHistory(next, previous, loggateway.NewNoop())
 	if next.Version != 3 {
 		t.Fatalf("version=%d want 3", next.Version)
 	}
@@ -35,7 +37,7 @@ func TestFindGraphVersionSnapshot(t *testing.T) {
 			}},
 		},
 	}
-	found := FindGraphVersionSnapshot(def, 1)
+	found := FindGraphVersionSnapshot(def, 1, loggateway.NewNoop())
 	if found == nil || found.Name != "old" {
 		t.Fatalf("found=%+v", found)
 	}

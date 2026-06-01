@@ -93,10 +93,10 @@ Aranea-Agents 是基于 **trpc-agent-go** 的多智能体编排平台。以 **Kr
 |------|------|
 | `http.go` | HTTP Server 创建，注册所有 `RegisterXxxHTTPServer`，中间件链：recovery → tracing → logging → auth → cors |
 | `grpc.go` | gRPC Server 创建，注册所有 `RegisterXxxServiceServer` |
-| `ws.go` | WebSocket Server，处理 `/v1/ws` 连接，消息路由到 `TurnExecutorGateway`，事件推送到前端 |
+| `ws.go` | WebSocket Server，处理 `/v1/ws` 连接，使用本地 `WSTurnInput`/`WSTurnOptions`/`WSTurnExecutor` 类型（通过 Wire `wsTurnExecutorAdapter` 桥接 `biz.TurnExecutorGateway`），事件推送到前端 |
 | `server.go` | 统一 Server 工厂 |
 
-**关键约束**：Server 层不得 new `runner.Runner` 或 `llmagent.New`（红线 #1）。
+**关键约束**：Server 层不得 new `runner.Runner` 或 `llmagent.New`（红线 #1）；Server 层不得 import `internal/biz`（通过 Wire adapter 桥接端口接口）。
 
 #### Service 层 (`internal/service/`)
 
@@ -125,6 +125,8 @@ Aranea-Agents 是基于 **trpc-agent-go** 的多智能体编排平台。以 **Kr
 3. Runner 创建（`NewTRPCRunner`）
 4. Turn 执行（`RunTRPCUserTurn`）
 5. 事件流处理（投影为 Envelope → EventBus → WebSocket）
+
+**依赖边界**：Service 层不得直接 import `internal/data`（红线 #13）。所有数据访问通过 biz 端口接口（如 `SeedVersionRepo`），由 data 层实现、Wire 绑定。
 
 #### Biz 层 (`internal/biz/`)
 
@@ -163,6 +165,7 @@ CronTriggerGateway      ← ChannelIngress 消费（触发定时任务）
 GraphExecutor           ← Channel/Cron 消费（执行 Graph）
 GraphBuildConfig        ← Team 消费（Graph 编译配置）
 GraphRuntime            ← Graph 消费（运行时端口）
+SeedVersionRepo         ← IndustryAgentSeed 消费（查询种子版本号）
 ```
 
 #### Data 层 (`internal/data/`)
@@ -197,7 +200,7 @@ GraphRuntime            ← Graph 消费（运行时端口）
 - `TRPCCatalogDeps`：Agent/Tool/LLM/Skill/Settings 仓库
 - `TRPCModelRouteDeps`：Provider/Model 路由
 - `TRPCToolAssemblyDeps`：工具装配
-- `TRPCMemoryKnowledgeDeps`：记忆 + 知识检索
+- `TRPCMemoryKnowledgeDeps`：记忆 + 知识检索（含 `MemoryService trpcmemory.Service`，提供 `Service.Tools()` 统一注入路径）
 - `TRPCPluginDeps`：插件回调
 - `TRPCSkillDeps`：技能系统
 
@@ -229,6 +232,8 @@ GraphRuntime            ← Graph 消费（运行时端口）
 
 **装配顺序**：Registry 注册 → 配置覆盖 → OpenAPI → workspace_exec → AgentTool → MCP ToolSet → MCP Broker → CustomTools
 
+**MemoryTools 注入**：`AssemblyConfig.MemoryTools` 优先于 `memorytool.DefaultTools()`。Service 层从 `Persist.Memory.TRPC` 获取 `MemoryService`，调用 `Service.Tools()` 过滤（移除 `memory_clear`）后注入 `MemoryTools`。
+
 #### LLM Provider (`internal/provider/`)
 
 **核心函数**：`TRPCModelForProviderModel(provider, model, uc, opts) → trpcmodel.Model`
@@ -243,7 +248,7 @@ GraphRuntime            ← Graph 消费（运行时端口）
 
 | 模式 | 行为 | 接入方式 |
 |------|------|---------|
-| Agentic | Agent 主动调用 memory_add/search 等工具 | `llmagent.WithMemoryService(service)` |
+| Agentic | Agent 主动调用 memory_add/search 等工具 | `Service.Tools()` → 过滤（移除 memory_clear）→ `AssemblyConfig.MemoryTools` + `llmagent.WithMemoryService(service)` |
 | Auto | 对话结束后 LLM 自动提取记忆 | `service.EnqueueAutoMemoryJob(ctx, session)` |
 
 **5 层记忆架构**：
@@ -384,6 +389,18 @@ Plugin 生命周期管理：注册 → 配置 → 热加载 → 回调链（audi
 #### 模型目录 (`internal/modelcatalog/`)
 
 LLM 模型目录同步：从 Provider API 拉取模型列表 → 定价同步 → 搜索/筛选 → Logo 管理。
+
+#### 错误处理规范
+
+统一使用 `kerrors`，禁止 `fmt.Errorf` 返回业务错误：
+
+```go
+kerrors.BadRequest("AGENT", "id is required")
+kerrors.NotFound("AGENT", "agent not found")
+kerrors.InternalServer("AGENT", err.Error())
+```
+
+**错误吞没禁止**：所有无法返回给调用方的 error 必须通过 `loggateway.Logger` 记录（`lg.Warn`/`lg.Error`），禁止静默丢弃。禁止使用 `log.Printf`/`log/slog`。
 
 ---
 
@@ -635,18 +652,19 @@ WS 事件流：
 | Cron → Chat | Service 层 | 同步调用 | `NativeTurnGateway` |
 | A2A → Chat | Service 层 | 同步调用 | `A2ARunnerFactory` |
 | DurableWorker → Chat | Service 层 | 同步调用 | `TurnRunControlGateway` + `DurableResumeGateway` |
-| WSServer → Chat | Service 层 | 同步调用 | `TurnExecutorGateway` |
+| WSServer → Chat | Wire adapter | 同步调用 | `TurnExecutorGateway`（通过 `wsTurnExecutorAdapter` 桥接） |
 | Graph → Agent | 直接 import | 同步调用 | `BuildTRPCAgent` |
 | Team → Agent | 直接 import | 同步调用 | `BuildTRPCAgent` |
 | Team → Graph | 直接 import | 同步调用 | `GraphBuildConfig` |
 | Chat → Agent | 直接 import | 同步调用 | `BuildTRPCAgent` |
 | Chat → Tools | 直接 import | 同步调用 | `Assemble` |
 | Chat → Provider | 直接 import | 同步调用 | `TRPCModelForProviderModel` |
-| Chat → Memory | 直接 import | 同步调用 | `MemoryService.Tools()` |
+| Chat → Memory | 直接 import | 同步调用 | `MemoryService.Tools()` → 过滤 → `AssemblyConfig.MemoryTools` |
 | Chat → Event | 直接 import | 异步事件 | `Infra.Publish` |
 | Channel → Event | 直接 import | 异步事件 | `Infra.Publish` |
 | Monitor → Event | 异步消费 | 异步事件 | Bus Consumer |
 | Memory → Event | 异步消费 | 异步事件 | Bus Consumer |
+| 所有模块 → LogGateway | 直接 import | 同步调用 | `loggateway.Logger` |
 
 ### 6.2 前端模块依赖关系
 
@@ -711,6 +729,8 @@ cmd/admin/wire.go
   ├── session.ProviderSet   — 会话运行时
   └── service.ProviderSet   — ~25 个 Service + Wire 接口绑定（含 `WireSessionStatusPublisher` → `SessionStatusGuard` + `SessionStatusPublisher` 注入）
 ```
+
+**Wire adapter 模式**：当 Server 层需要消费 biz 端口接口但不得 import `internal/biz` 时，在 `cmd/admin/wire.go` 中定义 adapter（如 `wsTurnExecutorAdapter` 将 `biz.TurnExecutorGateway` 转换为 `server.WSTurnExecutor`）。
 
 ### 8.2 关键 Wire 绑定（在 service.go）
 

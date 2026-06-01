@@ -92,7 +92,7 @@ type AgentVisibilityFilter struct {
 
 func NewAgentVisibilityFilter(skillUC SkillResolver, runtime RuntimeSettings, lg loggateway.Logger) trpcskill.VisibilityFilter {
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	f := &AgentVisibilityFilter{skillUC: skillUC, runtime: runtime, lg: lg}
 	return f.allow

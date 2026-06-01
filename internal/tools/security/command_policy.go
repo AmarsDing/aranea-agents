@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"strings"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 var DefaultProtectedPaths = []string{
@@ -32,21 +34,28 @@ var DefaultProtectedPaths = []string{
 }
 
 var DefaultProtectedTools = map[string]bool{
-	"exec_command": true,
-	"shell_exec":   true,
-	"hostexec":     true,
-	"file":         true,
+	"exec_command":    true,
+	"shell_exec":      true,
+	"hostexec":        true,
+	"file":            true,
+	"read_document":   true,
+	"read_spreadsheet": true,
 }
 
 type CommandSafetyPolicy struct {
 	protectedPaths []string
 	protectedTools map[string]bool
+	lg             loggateway.Logger
 }
 
-func NewCommandSafetyPolicy() *CommandSafetyPolicy {
+func NewCommandSafetyPolicy(lg loggateway.Logger) *CommandSafetyPolicy {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	p := &CommandSafetyPolicy{
 		protectedPaths: make([]string, len(DefaultProtectedPaths)),
 		protectedTools: make(map[string]bool, len(DefaultProtectedTools)),
+		lg:             lg,
 	}
 	copy(p.protectedPaths, DefaultProtectedPaths)
 	for k, v := range DefaultProtectedTools {
@@ -55,10 +64,14 @@ func NewCommandSafetyPolicy() *CommandSafetyPolicy {
 	return p
 }
 
-func NewCommandSafetyPolicyWithConfig(protectedPaths []string, protectedTools map[string]bool) *CommandSafetyPolicy {
+func NewCommandSafetyPolicyWithConfig(lg loggateway.Logger, protectedPaths []string, protectedTools map[string]bool) *CommandSafetyPolicy {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	p := &CommandSafetyPolicy{
 		protectedPaths: make([]string, len(DefaultProtectedPaths)),
 		protectedTools: make(map[string]bool, len(DefaultProtectedTools)),
+		lg:             lg,
 	}
 	copy(p.protectedPaths, DefaultProtectedPaths)
 	for k, v := range DefaultProtectedTools {
@@ -81,7 +94,7 @@ func (p *CommandSafetyPolicy) Evaluate(toolName string, args []byte) *PolicyViol
 	if !p.IsProtectedTool(toolName) {
 		return nil
 	}
-	paths := extractPathsFromArgs(args)
+	paths := extractPathsFromArgs(p.lg, args)
 	for _, path := range paths {
 		if violation := p.checkPath(toolName, path); violation != nil {
 			return violation
@@ -105,12 +118,16 @@ func (p *CommandSafetyPolicy) checkPath(toolName, path string) *PolicyViolation 
 	return nil
 }
 
-func extractPathsFromArgs(args []byte) []string {
+func extractPathsFromArgs(lg loggateway.Logger, args []byte) []string {
 	if len(args) == 0 {
 		return nil
 	}
 	var m map[string]any
 	if err := json.Unmarshal(args, &m); err != nil {
+		lg.Warn("failed to unmarshal tool args as JSON, falling back to token extraction",
+			loggateway.StepID("tool.safety.extract_paths"),
+			loggateway.Err(err),
+		)
 		return extractPathTokens(string(args))
 	}
 	var paths []string

@@ -484,7 +484,7 @@ func (uc *TaskUsecase) CheckTimeouts(ctx context.Context) error {
 		return nil
 	}
 	uc.lg.Info("task timeout check: expired leases found",
-		loggateway.StepID("system.task.timeout_check"),
+		loggateway.StepID("task.timeout_check"),
 		loggateway.Int("expired_count", len(expired)))
 	expiredIDs := make([]string, 0, len(expired))
 	for _, e := range expired {
@@ -493,7 +493,7 @@ func (uc *TaskUsecase) CheckTimeouts(ctx context.Context) error {
 	tasks, err := uc.reader.GetTasksByIDs(ctx, expiredIDs)
 	if err != nil {
 		uc.lg.Error("task timeout check: batch get failed",
-			loggateway.StepID("system.task.timeout_check"),
+			loggateway.StepID("task.timeout_check"),
 			loggateway.Int("expired_count", len(expiredIDs)), loggateway.Err(err))
 		return err
 	}
@@ -508,18 +508,18 @@ func (uc *TaskUsecase) CheckTimeouts(ctx context.Context) error {
 	}
 	if len(timedOutIDs) == 0 {
 		uc.lg.Info("task timeout check: no claimed tasks among expired",
-			loggateway.StepID("system.task.timeout_check"),
+			loggateway.StepID("task.timeout_check"),
 			loggateway.Int("expired_count", len(expiredIDs)))
 		return nil
 	}
 	if err := uc.writer.BatchUpdateTaskStatus(ctx, timedOutIDs, TaskStatusTimedOut); err != nil {
 		uc.lg.Error("batch timeout update failed",
-			loggateway.StepID("system.task.batch_timeout_fail"),
+			loggateway.StepID("task.batch_timeout_fail"),
 			loggateway.Int("count", len(timedOutIDs)), loggateway.Err(err))
 		return err
 	}
 	uc.lg.Info("task timeout check: batch update succeeded",
-		loggateway.StepID("system.task.timeout_check"),
+		loggateway.StepID("task.timeout_check"),
 		loggateway.Int("timed_out_count", len(timedOutIDs)))
 	for _, task := range timedOutTasks {
 		uc.recordTaskEvent(ctx, task.TaskID, "task_timed_out", task.NodeID, "task timed out")
@@ -550,7 +550,7 @@ func (uc *TaskUsecase) ReleaseClaim(ctx context.Context, taskID string) {
 	task.ClaimedAt = nil
 	if err := uc.writer.UpdateTask(ctx, task); err != nil {
 		uc.lg.Warn("release claim update failed",
-			loggateway.StepID("system.task.release_claim_fail"),
+			loggateway.StepID("task.release_claim_fail"),
 			loggateway.Str("task_id", taskID), loggateway.Err(err))
 	}
 	uc.recordTaskEvent(ctx, taskID, "task_claim_released", task.NodeID, "claim released after dispatch failure")

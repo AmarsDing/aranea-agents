@@ -100,7 +100,7 @@ func (c *flowLogPersistConsumer) handle(ctx context.Context, env contract.Envelo
 	}
 	if err := c.flowLogs.Save(ctx, rec); err != nil {
 		if c.logger != nil {
-			c.logger.SessionSysLogWarn(ctx, rec.SessionID, "flow_log.persist", "流程日志落库失败",
+			c.logger.LogSessionWarn(ctx, rec.SessionID, "flow_log.persist", "流程日志落库失败",
 				LogPair{Key: "step_id", Value: rec.StepID}, LogPair{Key: "error", Value: err})
 		}
 	}

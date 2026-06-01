@@ -32,11 +32,12 @@ type Retriever struct {
 	embedder QueryEmbedder
 	repo     biz.KnowledgeRepo
 	reranker reranker.Reranker
+	lg       loggateway.Logger
 }
 
 // NewRetriever creates a Retriever bound to the given embedder, repo, and optional reranker.
-func NewRetriever(embedder QueryEmbedder, repo biz.KnowledgeRepo, rr reranker.Reranker) *Retriever {
-	return &Retriever{embedder: embedder, repo: repo, reranker: rr}
+func NewRetriever(embedder QueryEmbedder, repo biz.KnowledgeRepo, rr reranker.Reranker, lg loggateway.Logger) *Retriever {
+	return &Retriever{embedder: embedder, repo: repo, reranker: rr, lg: lg}
 }
 
 // HasReranker reports whether a reranker is configured globally.
@@ -79,7 +80,7 @@ func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]b
 	results := chunksToRerankerResults(chunks)
 	reranked, err := r.reranker.Rerank(ctx, &reranker.Query{Text: q.Query, FinalQuery: q.Query}, results)
 	if err != nil {
-		loggateway.Global().Warn("重排失败，使用向量排序",
+		r.lg.Warn("重排失败，使用向量排序",
 			loggateway.StepID("knowledge.rerank.fallback"),
 			loggateway.Err(err),
 			loggateway.Str("collection_id", q.CollectionID))

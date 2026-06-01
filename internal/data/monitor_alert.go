@@ -21,7 +21,7 @@ func (r *monitorRepo) ensureMonitorAlertFiringStateCols(ctx context.Context) {
 		db := r.data.RawDB()
 		rows, err := db.QueryContext(ctx, `PRAGMA table_info(monitor_alert_rules)`)
 		if err != nil {
-			loggateway.Global().Warn("ensureMonitorAlertFiringStateCols: PRAGMA failed", loggateway.StepID("system.monitor.alert_count_fail"), loggateway.Err(err))
+			r.data.lg.Warn("ensureMonitorAlertFiringStateCols: PRAGMA failed", loggateway.StepID("monitor.alert_count_fail"), loggateway.Err(err))
 			return
 		}
 		existing := map[string]bool{}
@@ -50,7 +50,7 @@ func (r *monitorRepo) ensureMonitorAlertFiringStateCols(ctx context.Context) {
 				continue
 			}
 			if _, err := db.ExecContext(ctx, alters[i]); err != nil {
-				loggateway.Global().Warn("ensureMonitorAlertFiringStateCols: ALTER TABLE failed", loggateway.StepID("system.monitor.alert_count_fail"), loggateway.Str("col", col), loggateway.Err(err))
+				r.data.lg.Warn("ensureMonitorAlertFiringStateCols: ALTER TABLE failed", loggateway.StepID("monitor.alert_count_fail"), loggateway.Str("col", col), loggateway.Err(err))
 			}
 		}
 	})

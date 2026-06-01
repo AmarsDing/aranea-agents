@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"aranea-agents/pkg/loggateway"
+
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -17,7 +19,7 @@ func TestApplyModelModifyPatch_generationAndSystem(t *testing.T) {
 		"generation_config": map[string]any{"temperature": temp, "max_tokens": 128},
 		"append_system":     "be concise",
 	}
-	ApplyModelModifyPatch(req, patch)
+	ApplyModelModifyPatch(req, patch, loggateway.NewNoop())
 	if req.Temperature == nil || *req.Temperature != temp {
 		t.Fatalf("temperature=%v", req.Temperature)
 	}
@@ -37,7 +39,7 @@ func TestApplyToolModifyPatch_mergeArguments(t *testing.T) {
 	patch := map[string]any{
 		"merge_arguments": map[string]any{"limit": 5},
 	}
-	out := ApplyToolModifyPatch(args, patch)
+	out := ApplyToolModifyPatch(args, patch, loggateway.NewNoop())
 	var m map[string]any
 	if err := json.Unmarshal(out, &m); err != nil {
 		t.Fatal(err)

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 const sqlEntityCols = `
@@ -82,7 +84,7 @@ func (st *Store) ListEntityRows(ctx context.Context, scopeType, scopeID, workspa
 	defer rows.Close()
 	var out [][]byte
 	for rows.Next() {
-		b, err := scanEntityRowJSON(rows)
+		b, err := scanEntityRowJSON(rows, st.lg)
 		if err != nil {
 			return nil, int32(total), err
 		}
@@ -91,7 +93,7 @@ func (st *Store) ListEntityRows(ctx context.Context, scopeType, scopeID, workspa
 	return out, int32(total), rows.Err()
 }
 
-func scanEntityRowJSON(rows *sql.Rows) ([]byte, error) {
+func scanEntityRowJSON(rows *sql.Rows, lg loggateway.Logger) ([]byte, error) {
 	var (
 		id, scopeType, scopeID, wid, uid, etype, name, nnorm, aliases, desc, attr string
 		imp, conf                                                                 float64
@@ -112,7 +114,7 @@ func scanEntityRowJSON(rows *sql.Rows) ([]byte, error) {
 	); err != nil {
 		return nil, err
 	}
-	aliasesArr := decodeJSONStringSlice(aliases)
+	aliasesArr := decodeJSONStringSlice(aliases, lg)
 	m := map[string]any{
 		"id": id, "scope_type": scopeType, "scope_id": scopeID,
 		"workspace_id": wid, "user_id": uid,
@@ -142,7 +144,7 @@ func (st *Store) getEntityJSON(ctx context.Context, id string) ([]byte, error) {
 	if !rows.Next() {
 		return nil, sql.ErrNoRows
 	}
-	return scanEntityRowJSON(rows)
+	return scanEntityRowJSON(rows, st.lg)
 }
 
 func (st *Store) listRelationsForNode(ctx context.Context, nodeID, queryAt string, limit int) ([][]byte, error) {
@@ -171,6 +173,7 @@ func (st *Store) listRelationsForNode(ctx context.Context, nodeID, queryAt strin
 		}
 		var rel map[string]any
 		if err := json.Unmarshal(b, &rel); err != nil {
+			st.lg.Warn("session memory json unmarshal failed", loggateway.StepID("data.sessionmemory"), loggateway.Err(err))
 			continue
 		}
 		vf, _ := rel["valid_from"].(string)
@@ -241,6 +244,7 @@ func (st *Store) NeighborhoodJSON(ctx context.Context, centerID string, hops, ma
 	}
 	var centerObj map[string]any
 	if err := json.Unmarshal(centerRaw, &centerObj); err != nil {
+		st.lg.Warn("session memory json unmarshal failed", loggateway.StepID("data.sessionmemory"), loggateway.Err(err))
 		return nil, err
 	}
 
@@ -260,6 +264,7 @@ func (st *Store) NeighborhoodJSON(ctx context.Context, centerID string, hops, ma
 			for _, raw := range rels {
 				var rel map[string]any
 				if err := json.Unmarshal(raw, &rel); err != nil {
+					st.lg.Warn("session memory json unmarshal failed", loggateway.StepID("data.sessionmemory"), loggateway.Err(err))
 					continue
 				}
 				rid, _ := rel["id"].(string)
@@ -290,6 +295,7 @@ func (st *Store) NeighborhoodJSON(ctx context.Context, centerID string, hops, ma
 				}
 				var entObj map[string]any
 				if err := json.Unmarshal(entRaw, &entObj); err != nil {
+					st.lg.Warn("session memory json unmarshal failed", loggateway.StepID("data.sessionmemory"), loggateway.Err(err))
 					continue
 				}
 				entObj["hop"] = hop
@@ -348,20 +354,19 @@ func (st *Store) AgentIdentityJSON(ctx context.Context, agentID string) ([]byte,
 	m := map[string]any{
 		"agent_id":          aid,
 		"persona":           persona,
-		"values":            decodeJSONStringSlice(vals),
+		"values":            decodeJSONStringSlice(vals, st.lg),
 		"tone":              tone,
-		"domains":           decodeJSONStringSlice(doms),
+		"domains":           decodeJSONStringSlice(doms, st.lg),
 		"user_expectations": ue,
 		"current_phase":     phase,
 		"version":           ver,
 	}
 	if meta != "" && meta != "{}" {
-		m["metadata"] = decodeJSONObject(meta)
+		m["metadata"] = decodeJSONObject(meta, st.lg)
 	}
 	return json.Marshal(m)
 }
 
-// AgentStrategyJSON returns JSON for **GET …/strategy**.
 func (st *Store) AgentStrategyJSON(ctx context.Context, agentID string) ([]byte, error) {
 	if agentID == "" {
 		return nil, errors.New("agent id is required")
@@ -405,17 +410,17 @@ func (st *Store) AgentStrategyJSON(ctx context.Context, agentID string) ([]byte,
 		"conciseness":         co,
 		"caution":             ca,
 		"delegation":          de,
-		"tool_preference":     decodeJSONFloatMap(toolPref),
-		"tool_blacklist":      decodeJSONStringSlice(toolBL),
-		"provider_preference": decodeJSONFloatMap(provPref),
-		"model_preference":    decodeJSONFloatMap(modelPref),
+		"tool_preference":     decodeJSONFloatMap(toolPref, st.lg),
+		"tool_blacklist":      decodeJSONStringSlice(toolBL, st.lg),
+		"provider_preference": decodeJSONFloatMap(provPref, st.lg),
+		"model_preference":    decodeJSONFloatMap(modelPref, st.lg),
 		"version":             ver,
 	}
 	if statsRaw != "" && statsRaw != "{}" {
-		m["stats"] = decodeJSONObject(statsRaw)
+		m["stats"] = decodeJSONObject(statsRaw, st.lg)
 	}
 	if metaRaw != "" && metaRaw != "{}" {
-		m["metadata"] = decodeJSONObject(metaRaw)
+		m["metadata"] = decodeJSONObject(metaRaw, st.lg)
 	}
 	return json.Marshal(m)
 }

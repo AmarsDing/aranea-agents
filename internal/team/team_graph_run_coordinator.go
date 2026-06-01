@@ -124,7 +124,7 @@ func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context
 		if run, err := c.teams.GetTeamRunByID(ctx, sess.teamRunID); err == nil {
 			sess.inputPreview = strings.TrimSpace(run.InputPreview)
 			sess.definitionJSON = strings.TrimSpace(run.DefinitionSnapshotJSON)
-			reg, memberByNode, stepSortIndex := buildResumeSessionContext(run.DefinitionSnapshotJSON, sess.inputPreview)
+			reg, memberByNode, stepSortIndex := buildResumeSessionContext(run.DefinitionSnapshotJSON, sess.inputPreview, c.lg)
 			sess.obsReg = reg
 			sess.obsStore = biz.NewOrchestrationStatusStore(reg)
 			sess.memberByNode = memberByNode
@@ -628,7 +628,7 @@ func (c *TeamGraphRunCoordinator) RecoverSessions(ctx context.Context) {
 			stepDedup:      newGraphStepDedup(),
 			registeredAt:   time.Now(),
 		}
-		reg, memberByNode, stepSortIndex := buildResumeSessionContext(dbSess.DefinitionJSON, dbSess.InputPreview)
+		reg, memberByNode, stepSortIndex := buildResumeSessionContext(dbSess.DefinitionJSON, dbSess.InputPreview, c.lg)
 		sess.obsReg = reg
 		sess.obsStore = biz.NewOrchestrationStatusStore(reg)
 		sess.memberByNode = memberByNode

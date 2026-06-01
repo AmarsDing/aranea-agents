@@ -129,7 +129,7 @@ func TestNormalizeLoadedRuns_ZeroTimes(t *testing.T) {
 }
 
 func TestLoadRuns_MissingFile(t *testing.T) {
-	runs, err := loadRuns(filepath.Join(t.TempDir(), "missing.json"))
+	runs, err := loadRuns(filepath.Join(t.TempDir(), "missing.json"), loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestLoadRuns_EmptyFile(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "runs.json")
 	os.WriteFile(p, []byte{}, 0o644)
-	runs, err := loadRuns(p)
+	runs, err := loadRuns(p, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestSaveAndLoadRuns(t *testing.T) {
 	if err := saveRuns(p, runs); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := loadRuns(p)
+	loaded, err := loadRuns(p, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,14 +335,14 @@ func TestReplyAccumulator_NilEvent(t *testing.T) {
 }
 
 func TestDecodeRunIDArgs_InvalidJSON(t *testing.T) {
-	_, _, err := decodeRunIDArgs(context.Background(), []byte(`not json`))
+	_, _, err := decodeRunIDArgs(context.Background(), []byte(`not json`), loggateway.NewNoop())
 	if err == nil {
 		t.Fatal("expected error for invalid json")
 	}
 }
 
 func TestDecodeRunIDArgs_EmptyID(t *testing.T) {
-	_, _, err := decodeRunIDArgs(context.Background(), []byte(`{"id":""}`))
+	_, _, err := decodeRunIDArgs(context.Background(), []byte(`{"id":""}`), loggateway.NewNoop())
 	if err == nil {
 		t.Fatal("expected error for empty id")
 	}

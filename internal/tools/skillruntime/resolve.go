@@ -35,7 +35,7 @@ func ResolveSkillSlugs(ctx context.Context, skillUC SkillResolver, opts *SkillTo
 
 func ResolveSkillSlugsDetailed(ctx context.Context, skillUC SkillResolver, opts *SkillToolsetOptions, lg loggateway.Logger) (*ResolveResult, error) {
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	candidates, err := skillUC.ListEnabledPublishedSkillCandidates(ctx)
 	if err != nil {

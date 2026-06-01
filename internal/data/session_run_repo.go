@@ -99,6 +99,9 @@ func (r *sessionRunRepo) UpdatePhase(ctx context.Context, id, phase string) erro
 UPDATE session_runs SET phase=?, phase_changed_at=?, updated_at=? WHERE id=?`,
 		biz.NormalizeSessionRunPhase(phase), now, now, strings.TrimSpace(id),
 	)
+	if err != nil {
+		r.data.lg.Warn("update phase failed", loggateway.StepID("data.session_run.update_phase"), loggateway.Err(err))
+	}
 	return err
 }
 
@@ -112,6 +115,9 @@ func (r *sessionRunRepo) MarkTerminal(ctx context.Context, id, phase, errMsg str
 UPDATE session_runs SET phase=?, error_message=?, finished_at=?, phase_changed_at=?, updated_at=?, resume_started_at='' WHERE id=?`,
 		biz.NormalizeSessionRunPhase(phase), errMsg, now, now, now, strings.TrimSpace(id),
 	)
+	if err != nil {
+		r.data.lg.Warn("mark terminal failed", loggateway.StepID("data.session_run.mark_terminal"), loggateway.Err(err))
+	}
 	return err
 }
 
@@ -125,6 +131,9 @@ func (r *sessionRunRepo) UpdateCheckpointID(ctx context.Context, id, checkpointI
 UPDATE session_runs SET checkpoint_id=?, updated_at=? WHERE id=?`,
 		strings.TrimSpace(checkpointID), now, strings.TrimSpace(id),
 	)
+	if err != nil {
+		r.data.lg.Warn("update checkpoint id failed", loggateway.StepID("data.session_run.update_checkpoint"), loggateway.Err(err))
+	}
 	return err
 }
 
@@ -147,6 +156,7 @@ WHERE id=? AND phase='durable'
 		now, now, id, strings.TrimSpace(staleBefore),
 	)
 	if err != nil {
+		r.data.lg.Error("claim durable resume failed", loggateway.StepID("data.session_run.claim_durable"), loggateway.Err(err))
 		return false, err
 	}
 	n, err := res.RowsAffected()
@@ -168,6 +178,9 @@ func (r *sessionRunRepo) ClearResumeClaim(ctx context.Context, id string) error 
 	now := biz.ChannelTurnJobNow()
 	_, err := db.ExecContext(ctx, `
 UPDATE session_runs SET resume_started_at='', updated_at=? WHERE id=?`, now, id)
+	if err != nil {
+		r.data.lg.Warn("clear resume claim failed", loggateway.StepID("data.session_run.clear_resume"), loggateway.Err(err))
+	}
 	return err
 }
 
@@ -321,11 +334,12 @@ WHERE phase IN ('interactive','escalating','durable') AND (finished_at IS NULL O
 		now, now, nowStr,
 	)
 	if err != nil {
+		r.data.lg.Error("mark orphaned runs cancelled failed", loggateway.StepID("data.session_run.orphan_cleanup"), loggateway.Err(err))
 		return 0, err
 	}
 	n, rowsErr := res.RowsAffected()
 	if rowsErr != nil {
-		loggateway.Global().Warn("rows affected error", loggateway.StepID("session_run.repo"), loggateway.Err(rowsErr))
+		r.data.lg.Warn("rows affected error", loggateway.StepID("session_run.repo"), loggateway.Err(rowsErr))
 	}
 	return int(n), nil
 }

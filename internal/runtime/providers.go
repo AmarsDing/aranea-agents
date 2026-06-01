@@ -23,7 +23,7 @@ func NewGraphCheckpointSaver(rawDB *sql.DB, lg loggateway.Logger) (*graphtrpc.SQ
 		return nil, fmt.Errorf("runtime: sqlite raw db is nil")
 	}
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	return graphtrpc.NewSQLiteCheckpointSaver(rawDB, lg)
 }

@@ -2,6 +2,8 @@ package team
 
 import (
 	"sync"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 // GraphRunStepContext is the public DTO for graph run step persistence (ARCH-01).
@@ -65,8 +67,8 @@ func (s *teamGraphRunSession) stepContext() *GraphRunStepContext {
 	}
 }
 
-func buildGraphRunStepContext(defJSON, inputPreview, teamRunID, teamID, sessionID string) *GraphRunStepContext {
-	_, memberByNode, stepSortIndex := buildResumeSessionContext(defJSON, inputPreview)
+func buildGraphRunStepContext(defJSON, inputPreview, teamRunID, teamID, sessionID string, lg loggateway.Logger) *GraphRunStepContext {
+	_, memberByNode, stepSortIndex := buildResumeSessionContext(defJSON, inputPreview, lg)
 	return &GraphRunStepContext{
 		TeamRunID:     teamRunID,
 		TeamID:        teamID,

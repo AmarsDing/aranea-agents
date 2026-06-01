@@ -6,16 +6,20 @@ import (
 	"regexp"
 	"strings"
 
+	"aranea-agents/pkg/loggateway"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
 
-func parsePluginConfig(configJSON, defaultJSON string, dest any) {
+func parsePluginConfig(configJSON, defaultJSON string, dest any, lg loggateway.Logger) {
 	if dest == nil {
 		return
 	}
 	merged := map[string]any{}
 	if strings.TrimSpace(defaultJSON) != "" && defaultJSON != "{}" {
-		_ = json.Unmarshal([]byte(defaultJSON), &merged)
+		if err := json.Unmarshal([]byte(defaultJSON), &merged); err != nil {
+			lg.Warn("解析 plugin default config 失败", loggateway.StepID("plugin.trpc.config"), loggateway.Err(err))
+		}
 	}
 	if strings.TrimSpace(configJSON) != "" && configJSON != "{}" {
 		var overlay map[string]any
@@ -32,7 +36,9 @@ func parsePluginConfig(configJSON, defaultJSON string, dest any) {
 	if err != nil {
 		return
 	}
-	_ = json.Unmarshal(b, dest)
+	if err := json.Unmarshal(b, dest); err != nil {
+		lg.Warn("解析 plugin merged config 失败", loggateway.StepID("plugin.trpc.config"), loggateway.Err(err))
+	}
 }
 
 func truncateString(s string, max int) string {

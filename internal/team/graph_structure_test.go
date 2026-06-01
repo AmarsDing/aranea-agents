@@ -1,6 +1,10 @@
 package team
 
-import "testing"
+import (
+	"testing"
+
+	"aranea-agents/pkg/loggateway"
+)
 
 func TestExportStructureSnapshot_sequential(t *testing.T) {
 	def := Definition{
@@ -10,7 +14,7 @@ func TestExportStructureSnapshot_sequential(t *testing.T) {
 			{AgentID: "a2", SortOrder: 2, Name: "Worker B"},
 		},
 	}
-	snap, err := ExportStructureSnapshot("demo", "Demo Team", def, nil)
+	snap, err := ExportStructureSnapshot("demo", "Demo Team", def, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}

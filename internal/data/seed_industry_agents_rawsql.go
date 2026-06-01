@@ -13,7 +13,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-func SeedIndustryAgentsRawSQL(ctx context.Context, rawDB *sql.DB, scenarioDir string) error {
+func SeedIndustryAgentsRawSQL(ctx context.Context, rawDB *sql.DB, scenarioDir string, lg loggateway.Logger) error {
 	industries := []string{"softwaredev", "selfmedia", "finance"}
 	deps := loader.Deps{ScenarioDir: scenarioDir}
 
@@ -31,6 +31,7 @@ func SeedIndustryAgentsRawSQL(ctx context.Context, rawDB *sql.DB, scenarioDir st
 	for _, ind := range industries {
 		spec, specErr := loader.LoadIndustrySpec(scenarioDir, ind)
 		if specErr != nil {
+			lg.Warn("load industry spec failed", loggateway.StepID("data.seed.industry_agents.load_spec"), loggateway.Str("industry", ind), loggateway.Err(specErr))
 			return fmt.Errorf("load industry spec %s: %w", ind, specErr)
 		}
 		specCache[ind] = spec
@@ -39,6 +40,7 @@ func SeedIndustryAgentsRawSQL(ctx context.Context, rawDB *sql.DB, scenarioDir st
 			as := &spec.Agents[i]
 			agent, buildErr := loader.BuildBizAgentFromSpec(ctx, deps, spec, as)
 			if buildErr != nil {
+				lg.Warn("build agent failed", loggateway.StepID("data.seed.industry_agents.build_agent"), loggateway.Str("industry", ind), loggateway.Str("agent_key", as.Key), loggateway.Err(buildErr))
 				return fmt.Errorf("build agent %s/%s: %w", ind, as.Key, buildErr)
 			}
 			id := fmt.Sprintf("agent_%s", agent.AgentKey)
@@ -56,6 +58,7 @@ func SeedIndustryAgentsRawSQL(ctx context.Context, rawDB *sql.DB, scenarioDir st
 			ts := &spec.Teams[i]
 			team, buildErr := loader.BuildBizTeamFromSpec(spec, ts, agentKeyToID)
 			if buildErr != nil {
+				lg.Warn("build team failed", loggateway.StepID("data.seed.industry_agents.build_team"), loggateway.Str("industry", ind), loggateway.Str("team_key", ts.Key), loggateway.Err(buildErr))
 				return fmt.Errorf("build team %s/%s: %w", ind, ts.Key, buildErr)
 			}
 			allTeams = append(allTeams, team)
@@ -64,6 +67,7 @@ func SeedIndustryAgentsRawSQL(ctx context.Context, rawDB *sql.DB, scenarioDir st
 
 	tx, txErr := rawDB.BeginTx(ctx, nil)
 	if txErr != nil {
+		lg.Warn("industry agent seed begin tx failed", loggateway.StepID("data.seed.industry_agents.begin_tx"), loggateway.Err(txErr))
 		return fmt.Errorf("industry agent seed begin tx: %w", txErr)
 	}
 	committed := false
@@ -77,6 +81,7 @@ func SeedIndustryAgentsRawSQL(ctx context.Context, rawDB *sql.DB, scenarioDir st
 	if qErr := tx.QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM schema_migrations WHERE version = ?", SeedIndustryAgentsV1,
 	).Scan(&exists); qErr != nil {
+		lg.Warn("industry agent seed version check failed", loggateway.StepID("data.seed.industry_agents.version_check"), loggateway.Err(qErr))
 		return fmt.Errorf("industry agent seed version check: %w", qErr)
 	}
 	if exists > 0 {
@@ -100,11 +105,13 @@ func SeedIndustryAgentsRawSQL(ctx context.Context, rawDB *sql.DB, scenarioDir st
 		}
 
 		if err := insertAgent(ctx, tx, id, agent, rolesJSON, now); err != nil {
+			lg.Warn("seed step failed", loggateway.StepID("data.seed.industry_agents.insert_agent"), loggateway.Str("agent_key", agent.AgentKey), loggateway.Err(err))
 			return fmt.Errorf("insert agent %s: %w", agent.AgentKey, err)
 		}
 
 		if agent.Settings != nil {
 			if err := insertAgentRuntimeSettings(ctx, tx, id, agent.Settings, now); err != nil {
+				lg.Warn("seed step failed", loggateway.StepID("data.seed.industry_agents.insert_settings"), loggateway.Str("agent_key", agent.AgentKey), loggateway.Err(err))
 				return fmt.Errorf("insert agent_runtime_settings %s: %w", agent.AgentKey, err)
 			}
 		}
@@ -113,6 +120,7 @@ func SeedIndustryAgentsRawSQL(ctx context.Context, rawDB *sql.DB, scenarioDir st
 	for _, team := range allTeams {
 		teamID := fmt.Sprintf("team_%s", team.TeamKey)
 		if err := insertTeam(ctx, tx, teamID, team, now); err != nil {
+			lg.Warn("seed step failed", loggateway.StepID("data.seed.industry_agents.insert_team"), loggateway.Str("team_key", team.TeamKey), loggateway.Err(err))
 			return fmt.Errorf("insert team %s: %w", team.TeamKey, err)
 		}
 	}
@@ -123,16 +131,18 @@ func SeedIndustryAgentsRawSQL(ctx context.Context, rawDB *sql.DB, scenarioDir st
 		ON CONFLICT(version) DO NOTHING
 	`, SeedIndustryAgentsV1, "industry_agents_v1", now)
 	if execErr != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.industry_agents.mark_version"), loggateway.Err(execErr))
 		return fmt.Errorf("mark seed version: %w", execErr)
 	}
 
 	if err := tx.Commit(); err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.industry_agents.commit"), loggateway.Err(err))
 		return fmt.Errorf("industry agent seed commit: %w", err)
 	}
 	committed = true
 
-	loggateway.Global().Info("industry agent seed completed",
-		loggateway.StepID("system.startup"), loggateway.Int("agents", len(allAgents)), loggateway.Int("teams", len(allTeams)))
+	lg.Info("industry agent seed completed",
+		loggateway.StepID("data.startup"), loggateway.Int("agents", len(allAgents)), loggateway.Int("teams", len(allTeams)))
 	return nil
 }
 

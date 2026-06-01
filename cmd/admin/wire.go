@@ -19,6 +19,7 @@ import (
 	"aranea-agents/internal/agent"
 	chatagent "aranea-agents/internal/agent"
 	localexec "aranea-agents/internal/agent/codeexecutor"
+	"aranea-agents/internal/artifact"
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/monitor"
@@ -311,9 +312,11 @@ func provideAgentUsecaseWithDeps(repo biz.AgentRepository, tools biz.ToolCatalog
 }
 
 // toolTesterAdapter wraps internal/tools/testexec to implement biztool.ToolTester.
-type toolTesterAdapter struct{}
+type toolTesterAdapter struct {
+	lg loggateway.Logger
+}
 
-func (toolTesterAdapter) Execute(ctx context.Context, tool biztool.ToolTestInput, argumentsJSON string, timeoutSec int, platform *biztool.WebResearchPlatformFields) (biztool.ToolTestResult, error) {
+func (a toolTesterAdapter) Execute(ctx context.Context, tool biztool.ToolTestInput, argumentsJSON string, timeoutSec int, platform *biztool.WebResearchPlatformFields) (biztool.ToolTestResult, error) {
 	var pf *webresearchpkg.PlatformFields
 	if platform != nil {
 		pf = &webresearchpkg.PlatformFields{
@@ -333,7 +336,7 @@ func (toolTesterAdapter) Execute(ctx context.Context, tool biztool.ToolTestInput
 		ConfigJSON:        tool.ConfigJSON,
 		DefaultConfigJSON: tool.DefaultConfigJSON,
 		MetadataJSON:      tool.MetadataJSON,
-	}, argumentsJSON, timeoutSec, pf)
+	}, argumentsJSON, timeoutSec, pf, a.lg)
 	if err != nil {
 		return biztool.ToolTestResult{}, err
 	}
@@ -345,7 +348,7 @@ func (toolTesterAdapter) Execute(ctx context.Context, tool biztool.ToolTestInput
 	}, nil
 }
 
-func provideToolTester() biztool.ToolTester { return toolTesterAdapter{} }
+func provideToolTester(lg loggateway.Logger) biztool.ToolTester { return toolTesterAdapter{lg: lg} }
 
 func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, tester biztool.ToolTester, checker biztool.WebResearchReadinessChecker, lg loggateway.Logger) *biztool.ToolUsecase {
 	uc := biztool.NewToolUsecase(repo, sys, lg)
@@ -375,8 +378,8 @@ func provideCodeExecutorFactory() *localexec.Factory {
 	return localexec.NewFactory()
 }
 
-func provideChannelRunEscalationNotifier(channels *biz.ChannelUsecase, sessions *biz.SessionUsecase) service.SessionRunEscalationNotifier {
-	return service.NewChannelRunEscalationNotifier(channels, sessions)
+func provideChannelRunEscalationNotifier(channels *biz.ChannelUsecase, sessions *biz.SessionUsecase, lg loggateway.Logger) service.SessionRunEscalationNotifier {
+	return service.NewChannelRunEscalationNotifier(channels, sessions, lg)
 }
 
 func provideSessionRunDurableWorker(sessionRuns *biz.SessionRunUsecase, runCtrl biz.TurnRunControlGateway, resumer biz.DurableResumeGateway, lg loggateway.Logger) *service.SessionRunDurableWorker {
@@ -428,13 +431,13 @@ func provideModelRegistryApplyBackend(llm biz.LlmProviderModelRepo, d *data.Data
 	return data.NewModelRegistryApplyBackend(d, llm)
 }
 
-func provideModelRegistrySyncAgent(sys biz.SystemSettingRepo, backend modelregistry.ApplyBackend) (*agent.ModelRegistrySyncAgent, error) {
-	storeProv := biz.NewModelRegistryStoreProvider(biz.NewSystemSettingRootAdapter(sys))
-	return agent.BuildModelRegistrySyncAgent(storeProv, backend)
+func provideModelRegistrySyncAgent(sys biz.SystemSettingRepo, backend modelregistry.ApplyBackend, lg loggateway.Logger) (*agent.ModelRegistrySyncAgent, error) {
+	storeProv := biz.NewModelRegistryStoreProvider(biz.NewSystemSettingRootAdapter(sys), lg)
+	return agent.BuildModelRegistrySyncAgent(storeProv, backend, lg)
 }
 
-func provideModelRegistryUsecase(sys biz.SystemSettingRepo, backend modelregistry.ApplyBackend) *biz.ModelRegistryUsecase {
-	uc := biz.NewModelRegistryUsecase(biz.NewSystemSettingRootAdapter(sys), backend)
+func provideModelRegistryUsecase(sys biz.SystemSettingRepo, backend modelregistry.ApplyBackend, lg loggateway.Logger) *biz.ModelRegistryUsecase {
+	uc := biz.NewModelRegistryUsecase(biz.NewSystemSettingRootAdapter(sys), backend, lg)
 	return uc
 }
 
@@ -526,6 +529,9 @@ func provideChatServiceDeps(
 	artifacts *biz.ArtifactUsecase,
 	mcpUC *biz.MCPServerUsecase,
 	mon *biz.MonitorUsecase,
+	spiritAssembler *service.SpiritTeamAssembler,
+	spiritSynthesis *service.SpiritSynthesisService,
+	orchCache *biz.OrchestrationCache,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	return service.ChatOrchestratorDeps{
@@ -559,6 +565,9 @@ func provideChatServiceDeps(
 		A2AUC:        a2aUC,
 		MCPServers:   mcpUC,
 		LG:           lg,
+		SpiritAssembler: spiritAssembler,
+		SpiritSynthesis: spiritSynthesis,
+		OrchCache:       orchCache,
 	}
 }
 
@@ -568,6 +577,36 @@ func provideRunCanceller(svc *service.ChatService) server.RunCanceller {
 
 func provideChatSender(svc *service.ChatService) server.ChatSender {
 	return svc
+}
+
+func provideWSTurnExecutor(gateway biz.TurnExecutorGateway) server.WSTurnExecutor {
+	return &wsTurnExecutorAdapter{gateway: gateway}
+}
+
+type wsTurnExecutorAdapter struct {
+	gateway biz.TurnExecutorGateway
+}
+
+func (a *wsTurnExecutorAdapter) ExecuteTurn(ctx context.Context, input server.WSTurnInput) error {
+	bizInput := biz.TurnInput{
+		SessionID: input.SessionID,
+		Content:   input.Content,
+		AgentKey:  input.AgentKey,
+		TeamID:    input.TeamID,
+		Options: biz.TurnOptions{
+			DialogMode:    input.Options.DialogMode,
+			Provider:      input.Options.Provider,
+			Model:         input.Options.Model,
+			AttachmentIDs: input.Options.AttachmentIDs,
+		},
+		EntryConfig: biz.TurnEntryPointConfig{
+			EntryPoint:  biz.EntryPointWS,
+			AllowQueue:  input.AllowQueue,
+			AllowStream: input.AllowStream,
+		},
+	}
+	_, err := a.gateway.ExecuteTurn(ctx, bizInput)
+	return err
 }
 
 func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, cascade *biz.L4CascadeUsecase, sysUC *biz.SystemSettingUsecase, deadLetterRepo biz.MemoryDeadLetterAdminRepo, queue memtrpc.AutoMemoryQueue, queueStats *memtrpc.MemoryJobQueue, memStore *sessionmemory.Store, lg loggateway.Logger) *service.MemoryService {
@@ -639,9 +678,9 @@ func provideGraphBuildDeps(
 	}
 	return graphtrpc.GraphNodeResolverSet{
 		Models:    graphadapter.NewCatalogModelResolver(catalog, rtTrip, lg),
-		Tools:     graphadapter.NewCatalogToolResolver(toolUC),
+		Tools:     graphadapter.NewCatalogToolResolver(toolUC, lg),
 		Agents:    graphadapter.NewCatalogAgentResolver(builderDeps, lg),
-		Functions: graphadapter.NewCatalogFunctionResolver(toolUC),
+		Functions: graphadapter.NewCatalogFunctionResolver(toolUC, lg),
 	}
 }
 
@@ -650,6 +689,10 @@ func provideArtifactRuntimeService(uc *biz.ArtifactUsecase) trpcartifact.Service
 		return nil
 	}
 	return artifacttrpc.NewServiceAdapter(uc)
+}
+
+func provideArtifactSigner(lg loggateway.Logger) *artifact.Signer {
+	return artifact.NewSigner(lg)
 }
 
 // provideAutoMemoryWorker wires the cron auto-memory extraction worker.
@@ -667,11 +710,11 @@ func provideAutoMemoryWorker(
 	return jobs.NewAutoMemoryWorker(0, sessions, agents, writer, factSync, episodeSync, l4, biz.DefaultMemoryConsolidator(extractor), queue, lg)
 }
 
-func provideL4GraphWriter(memStore *sessionmemory.Store, cascade *biz.L4CascadeUsecase) biz.L4GraphWriter {
+func provideL4GraphWriter(memStore *sessionmemory.Store, cascade *biz.L4CascadeUsecase, lg loggateway.Logger) biz.L4GraphWriter {
 	if memStore == nil {
 		return nil
 	}
-	return data.NewL4GraphWriterAdapter(data.NewL4GraphUsecaseFromStore(memStore, cascade))
+	return data.NewL4GraphWriterAdapter(data.NewL4GraphUsecaseFromStore(memStore, cascade, lg))
 }
 
 func provideEvolutionScanner(evo *biz.EvolutionUsecase, logger log.Logger) *jobs.EvolutionScanner {
@@ -755,7 +798,7 @@ func provideMemoryFactIndexReconciler(maintainer biz.MemoryFactIndexMaintainer, 
 	return jobs.NewMemoryFactIndexReconciler(0, maintainer, factSync, lg)
 }
 
-func provideMemoryDeadLetterReplayer(repo biz.MemoryDeadLetterAdminRepo, queue memtrpc.AutoMemoryQueue, logger log.Logger) *jobs.MemoryDeadLetterReplayer {
+func provideMemoryDeadLetterReplayer(repo biz.MemoryDeadLetterAdminRepo, queue memtrpc.AutoMemoryQueue, logger log.Logger, lg loggateway.Logger) *jobs.MemoryDeadLetterReplayer {
 	if jobs.MemoryDeadLetterReplayDisabled() {
 		return nil
 	}
@@ -768,7 +811,7 @@ func provideMemoryDeadLetterReplayer(repo biz.MemoryDeadLetterAdminRepo, queue m
 			Priority:          priority,
 		})
 	}
-	return jobs.NewMemoryDeadLetterReplayer(0, repo, enqueue, logger)
+	return jobs.NewMemoryDeadLetterReplayer(0, repo, enqueue, logger, lg)
 }
 
 func provideEventStoreCleanup(store *biz.EventStoreUsecase, lg loggateway.Logger) *jobs.EventStoreCleanup {
@@ -823,8 +866,8 @@ func provideMonitorTraceBackfillWorker(repo biz.MonitorRepo, lg loggateway.Logge
 	return jobs.NewMonitorTraceBackfillWorker(repo, lg)
 }
 
-func provideDiagBundleGenerator(repo biz.MonitorRepo) *biz.DiagBundleGenerator {
-	return biz.NewDiagBundleGenerator(repo)
+func provideDiagBundleGenerator(repo biz.MonitorRepo, lg loggateway.Logger) *biz.DiagBundleGenerator {
+	return biz.NewDiagBundleGenerator(repo, lg)
 }
 
 func provideChannelDeliveryScanner(worker *service.ChannelDeliveryWorker, logger log.Logger) *jobs.ChannelDeliveryWorker {
@@ -906,6 +949,7 @@ func agentKeyToID(agents biz.AgentRepository) plugintrpc.AgentKeyResolver {
 // wireOut is non-cleanup inject outputs (cleanup must be a top-level injector return for Wire).
 type wireOut struct {
 	App                     *kratos.App
+	Data                    *data.Data
 	CronRunner              *cronrunner.Runner
 	SkillWatch              *watch.Runner
 	AutoMemory              *jobs.AutoMemoryWorker
@@ -938,6 +982,7 @@ type wireOut struct {
 
 func provideWireOut(
 	app *kratos.App,
+	dataData *data.Data,
 	runner *cronrunner.Runner,
 	skillWatch *watch.Runner,
 	autoMem *jobs.AutoMemoryWorker,
@@ -968,7 +1013,7 @@ func provideWireOut(
 	cronRepo biz.CronRepo,
 ) wireOut {
 	return wireOut{
-		App: app, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
+		App: app, Data: dataData, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
 		MCPHealthProbe: mcpHealth, A2AGatewayHealthProbe: a2aHealth, EvolutionScanner: evoScan, LearningLoopScanner: learningLoop, ProviderHealthScanner: providerHealth,
 		ChannelHealthScanner: channelHealth, ChannelDeliveryScanner: channelDelivery,
 		SessionRunDurableWorker: sessionRunDurable,
@@ -1086,6 +1131,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideRunCanceller,
 		provideChatSender,
 		provideArtifactRuntimeService,
+		provideArtifactSigner,
 		provideMemoryService,
 		provideSQLiteRawDB,
 		provideTRPCSessionService,
@@ -1160,6 +1206,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		wire.Bind(new(biz.TaskGraphResolver), new(*biz.GraphUsecase)),
 		wire.Bind(new(importer.SkillImportRepo), new(biz.SkillRepo)),
 		wire.Bind(new(biz.MCPServerReader), new(biz.MCPServerRepo)),
+		provideWSTurnExecutor,
 		newApp,
 		provideWireOut,
 	))

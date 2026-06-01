@@ -3,6 +3,7 @@ package service
 import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/evaluation"
+	"aranea-agents/pkg/loggateway"
 )
 
 // ProvideChatService constructs ChatService with a noop AfterTurn hook (real hook attached by ProvideEvaluationRunner).
@@ -18,11 +19,12 @@ func ProvideEvaluationRunner(
 	evalUC *biz.EvalUsecase,
 	catalog *biz.LlmProviderModelUsecase,
 	sys biz.SystemSettingRepo,
+	lg loggateway.Logger,
 ) *evaluation.Runner {
 	if chat == nil || turns == nil || evalUC == nil || catalog == nil || sys == nil {
 		return nil
 	}
-	runner := NewEvaluationRunner(evalUC, turns, catalog, sys)
+	runner := NewEvaluationRunner(evalUC, turns, catalog, sys, lg)
 	chat.AttachNativeTurnAfterHook(NewEvaluationAfterTurnTrigger(evalUC, runner))
 	return runner
 }

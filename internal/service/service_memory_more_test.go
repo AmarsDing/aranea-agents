@@ -16,7 +16,7 @@ func TestBizDeadLetterEntryToProto(t *testing.T) {
 	tests := []struct {
 		name string
 		e    biz.MemoryDeadLetterEntry
-		want v1.MemoryDeadLetterEntry
+		want *v1.MemoryDeadLetterEntry
 	}{
 		{
 			name: "full_entry",
@@ -32,7 +32,7 @@ func TestBizDeadLetterEntryToProto(t *testing.T) {
 				State:      "pending",
 				LastError:  "context deadline exceeded",
 			},
-			want: v1.MemoryDeadLetterEntry{
+			want: &v1.MemoryDeadLetterEntry{
 				Id:         42,
 				EnqueuedAt: now.Format(time.RFC3339),
 				FailedAt:   failedAt.Format(time.RFC3339),
@@ -48,7 +48,7 @@ func TestBizDeadLetterEntryToProto(t *testing.T) {
 		{
 			name: "zero_entry",
 			e:    biz.MemoryDeadLetterEntry{},
-			want: v1.MemoryDeadLetterEntry{
+			want: &v1.MemoryDeadLetterEntry{
 				EnqueuedAt: time.Time{}.Format(time.RFC3339),
 				FailedAt:   time.Time{}.Format(time.RFC3339),
 			},

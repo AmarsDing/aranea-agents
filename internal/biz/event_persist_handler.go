@@ -47,7 +47,7 @@ func (h *eventPersistHandler) Start(ctx context.Context) {
 			case rec := <-h.jobs:
 				if err := h.store.SaveRecord(context.Background(), rec); err != nil {
 					if h.logger != nil {
-						h.logger.SessionSysLogWarn(context.Background(), rec.SessionID, "event_store.persist", "事件持久化失败",
+						h.logger.LogSessionWarn(context.Background(), rec.SessionID, "event_store.persist", "事件持久化失败",
 							LogPair{Key: "type", Value: rec.Type}, LogPair{Key: "error", Value: err})
 					}
 				}
@@ -63,7 +63,7 @@ func (h *eventPersistHandler) Handle(ctx context.Context, env contract.Envelope)
 	rec, ok := envelopeToStoreRecord(env)
 	if !ok {
 		if h.logger != nil {
-			h.logger.SessionSysLogWarn(ctx, env.SessionID, "event_store.persist", "事件序列化失败",
+			h.logger.LogSessionWarn(ctx, env.SessionID, "event_store.persist", "事件序列化失败",
 				LogPair{Key: "type", Value: string(env.Type)}, LogPair{Key: "id", Value: env.ID})
 		}
 		return
@@ -72,7 +72,7 @@ func (h *eventPersistHandler) Handle(ctx context.Context, env contract.Envelope)
 	case h.jobs <- rec:
 	default:
 		if h.logger != nil {
-			h.logger.SessionSysLogWarn(ctx, env.SessionID, "event_store.persist", "持久化队列已满，丢弃事件",
+			h.logger.LogSessionWarn(ctx, env.SessionID, "event_store.persist", "持久化队列已满，丢弃事件",
 				LogPair{Key: "type", Value: string(env.Type)}, LogPair{Key: "id", Value: env.ID})
 		}
 	}

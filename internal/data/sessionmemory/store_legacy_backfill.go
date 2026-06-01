@@ -7,6 +7,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 const (
@@ -53,7 +55,7 @@ ORDER BY created_at ASC`, legacyScopeTRPC, legacyEntityStatusMigrated, legacyEnt
 			skipped++
 			continue
 		}
-		tags := legacyEntityTopicsJSON(row.meta)
+		tags := legacyEntityTopicsJSON(row.meta, st.lg)
 		metaJSON, err := json.Marshal(map[string]string{
 			"source":           "legacy_trpc_backfill",
 			"legacy_entity_id": row.id,
@@ -123,13 +125,14 @@ WHERE scope_type = ? AND entity_type = 'memory_fact' AND deleted_at = '' AND sta
 	return n, err
 }
 
-func legacyEntityTopicsJSON(meta string) string {
+func legacyEntityTopicsJSON(meta string, lg loggateway.Logger) string {
 	meta = strings.TrimSpace(meta)
 	if meta == "" || meta == "{}" {
 		return "[]"
 	}
 	var m map[string]any
 	if err := json.Unmarshal([]byte(meta), &m); err != nil {
+		lg.Warn("session memory json unmarshal failed", loggateway.StepID("data.sessionmemory"), loggateway.Err(err))
 		return "[]"
 	}
 	if t, ok := m["topics"]; ok {

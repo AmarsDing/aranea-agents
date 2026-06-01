@@ -77,10 +77,16 @@ func (b *TextInboundBatcher) Submit(
 	handler port.InboundHandler,
 	ch biz.Channel,
 	ev port.InboundEvent,
+	lg loggateway.Logger,
 ) {
 	if b == nil {
 		if handler != nil {
-			_ = handler.ProcessInbound(ctx, ch, ev)
+			if err := handler.ProcessInbound(ctx, ch, ev); err != nil {
+				lg.Warn("飞书入站处理失败",
+					loggateway.StepID("channel.feishu.inbound_failed"),
+					loggateway.Err(err),
+				)
+			}
 		}
 		return
 	}

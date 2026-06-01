@@ -4,11 +4,12 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 // ExportStructureSnapshot builds API structure export from compiled graph topology.
-func ExportStructureSnapshot(teamKey, displayName string, def Definition, agentKey CompileAgentKey) (*biz.TeamStructureSnapshot, error) {
-	cfg, err := CompileToGraphBuildConfig(def, agentKey)
+func ExportStructureSnapshot(teamKey, displayName string, def Definition, agentKey CompileAgentKey, lg loggateway.Logger) (*biz.TeamStructureSnapshot, error) {
+	cfg, err := CompileToGraphBuildConfig(def, agentKey, lg)
 	if err != nil {
 		return nil, err
 	}

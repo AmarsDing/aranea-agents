@@ -45,7 +45,7 @@ func (c *userFeedbackConsumer) handle(ctx context.Context, env contract.Envelope
 		return
 	}
 	if err := RecordUserFeedbackMonitor(ctx, c.monitor, sessionID, messageID, rating, comment); err != nil && c.logger != nil {
-		c.logger.SessionSysLogWarn(ctx, sessionID, "event_bus.feedback.monitor", "反馈监控事件写入失败",
+		c.logger.LogSessionWarn(ctx, sessionID, "event_bus.feedback.monitor", "反馈监控事件写入失败",
 			LogPair{Key: "message_id", Value: messageID}, LogPair{Key: "error", Value: err})
 	}
 	if c.memWorker != nil {

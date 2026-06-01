@@ -4,11 +4,10 @@ import (
 	"context"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/loggateway"
 )
 
-// ensureHookDeliveryPatches applies incremental column additions to hook_deliveries
-// for existing installs where the table was created before these columns existed.
-func ensureHookDeliveryPatches(ctx context.Context, c *ent.Client) error {
+func ensureHookDeliveryPatches(ctx context.Context, c *ent.Client, lg loggateway.Logger) error {
 	if c == nil {
 		return nil
 	}
@@ -20,7 +19,7 @@ func ensureHookDeliveryPatches(ctx context.Context, c *ent.Client) error {
 		{"idempotency_key", `ALTER TABLE hook_deliveries ADD COLUMN idempotency_key TEXT NOT NULL DEFAULT ''`},
 	}
 	for _, p := range patches {
-		has, err := sqliteColumnExists(ctx, c, "hook_deliveries", p.col)
+		has, err := sqliteColumnExists(ctx, c, lg, "hook_deliveries", p.col)
 		if err != nil {
 			return err
 		}
@@ -41,7 +40,7 @@ func ensureHookDeliveryPatches(ctx context.Context, c *ent.Client) error {
 		},
 	}
 	for _, p := range indexPatches {
-		has, err := sqliteIndexExists(ctx, c, "hook_deliveries", p.name)
+		has, err := sqliteIndexExists(ctx, c, lg, "hook_deliveries", p.name)
 		if err != nil {
 			return err
 		}

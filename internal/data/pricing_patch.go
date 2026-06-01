@@ -4,9 +4,10 @@ import (
 	"context"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/loggateway"
 )
 
-func ensurePricingRulePatches(ctx context.Context, c *ent.Client) error {
+func ensurePricingRulePatches(ctx context.Context, c *ent.Client, lg loggateway.Logger) error {
 	if c == nil {
 		return nil
 	}
@@ -23,7 +24,7 @@ func ensurePricingRulePatches(ctx context.Context, c *ent.Client) error {
 		{"cache_write_price_usd_per_1m", `ALTER TABLE model_pricing_rules ADD COLUMN cache_write_price_usd_per_1m REAL NOT NULL DEFAULT 0`},
 	}
 	for _, p := range patches {
-		has, err := sqliteColumnExists(ctx, c, "model_pricing_rules", p.col)
+		has, err := sqliteColumnExists(ctx, c, lg, "model_pricing_rules", p.col)
 		if err != nil {
 			return err
 		}
@@ -34,10 +35,10 @@ func ensurePricingRulePatches(ctx context.Context, c *ent.Client) error {
 			return err
 		}
 	}
-	return ensureUsageEventPricingPatches(ctx, c)
+	return ensureUsageEventPricingPatches(ctx, c, lg)
 }
 
-func ensureUsageEventPricingPatches(ctx context.Context, c *ent.Client) error {
+func ensureUsageEventPricingPatches(ctx context.Context, c *ent.Client, lg loggateway.Logger) error {
 	patches := []struct {
 		col string
 		ddl string
@@ -48,7 +49,7 @@ func ensureUsageEventPricingPatches(ctx context.Context, c *ent.Client) error {
 		{"canonical_provider_code", `ALTER TABLE model_token_usage_events ADD COLUMN canonical_provider_code TEXT NOT NULL DEFAULT ''`},
 	}
 	for _, p := range patches {
-		has, err := sqliteColumnExists(ctx, c, "model_token_usage_events", p.col)
+		has, err := sqliteColumnExists(ctx, c, lg, "model_token_usage_events", p.col)
 		if err != nil {
 			return err
 		}

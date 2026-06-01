@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/scenario/loader"
 )
@@ -16,10 +15,10 @@ func SeedBuiltinIndustryAgents(
 	teamUC *biz.TeamUsecase,
 	positionUC *biz.PositionUsecase,
 	scenarioDir string,
-	d *data.Data,
+	seedRepo biz.SeedVersionRepo,
 ) {
-	if d != nil && d.Ent() != nil {
-		applied, err := data.IsSeedApplied(ctx, d.Ent(), data.SeedIndustryAgentsV1)
+	if seedRepo != nil {
+		applied, err := seedRepo.IsApplied(ctx, biz.SeedVersionIndustryAgentsV1)
 		if err != nil {
 			event.CtxFlowLogError(ctx, "seed.industry_agents", "版本门控查询失败",
 				event.P("error", err.Error()))
@@ -56,8 +55,8 @@ func SeedBuiltinIndustryAgents(
 			event.P("teams", fmt.Sprintf("%d", totalTeams)))
 	}
 
-	if d != nil && d.Ent() != nil {
-		if err := data.MarkSeedApplied(ctx, d.Ent(), data.SeedIndustryAgentsV1, "industry_agents_v1"); err != nil {
+	if seedRepo != nil {
+		if err := seedRepo.MarkApplied(ctx, biz.SeedVersionIndustryAgentsV1, "industry_agents_v1"); err != nil {
 			event.CtxFlowLogError(ctx, "seed.industry_agents", "版本标记失败",
 				event.P("error", err.Error()))
 		}

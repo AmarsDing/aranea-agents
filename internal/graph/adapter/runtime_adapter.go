@@ -77,7 +77,7 @@ func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any)
 	if err != nil {
 		r.clearRunCancel()
 		r.lg.Error("graph runtime run failed",
-			loggateway.StepID("system.graph.runtime_run_fail"),
+			loggateway.StepID("graph.runtime_run_fail"),
 			loggateway.Str("session_id", r.sessionID),
 			loggateway.Str("graph_id", r.graphID),
 			loggateway.Str("execution_id", r.execID),
@@ -126,7 +126,7 @@ func (r *trpcGraphRuntime) Resume(ctx context.Context, lineageID string, resumeV
 	if err != nil {
 		r.clearRunCancel()
 		r.lg.Error("graph runtime resume failed",
-			loggateway.StepID("system.graph.runtime_resume_fail"),
+			loggateway.StepID("graph.runtime_resume_fail"),
 			loggateway.Str("session_id", r.sessionID),
 			loggateway.Str("graph_id", r.graphID),
 			loggateway.Str("execution_id", r.execID),

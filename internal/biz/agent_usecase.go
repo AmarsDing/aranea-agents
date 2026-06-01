@@ -186,7 +186,7 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 		if !stderrors.Is(err, sql.ErrNoRows) {
 			return Agent{}, err
 		}
-		u.lg.Warn("agent runtime settings not found, migrating from legacy config_json", loggateway.StepID("system.agent.db_resolve"), loggateway.Str("agent_id", agent.ID))
+		u.lg.Warn("agent runtime settings not found, migrating from legacy config_json", loggateway.StepID("agent.db_resolve"), loggateway.Str("agent_id", agent.ID))
 		settings = u.migrateLegacySettings(ctx, agent)
 	}
 	files, err := u.repo.ListAgentPromptFiles(ctx, agent.ID)
@@ -194,7 +194,7 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 		return Agent{}, err
 	}
 	if len(files) == 0 {
-		u.lg.Warn("agent prompt files not found, migrating from legacy config_json", loggateway.StepID("system.agent.skill_build"), loggateway.Str("agent_id", agent.ID))
+		u.lg.Warn("agent prompt files not found, migrating from legacy config_json", loggateway.StepID("agent.skill_build"), loggateway.Str("agent_id", agent.ID))
 		files = u.migrateLegacyFiles(ctx, agent)
 	}
 	agent.Settings = &settings
@@ -204,8 +204,8 @@ func (u *AgentUsecase) hydrate(ctx context.Context, agent Agent) (Agent, error) 
 	if err != nil {
 		return Agent{}, err
 	}
-	computed = EmbedAgentKindInConfigJSON(computed, agent.Kind, agent.A2AProxy)
-	agent.ConfigJSON = mergeEvaluationFromLegacy(computed, agent.ConfigJSON)
+	computed = EmbedAgentKindInConfigJSON(computed, agent.Kind, agent.A2AProxy, u.lg)
+	agent.ConfigJSON = mergeEvaluationFromLegacy(computed, agent.ConfigJSON, u.lg)
 	if extras, err := u.repo.ListExtrasForAgents(ctx, []string{agent.ID}); err == nil {
 		if ex, ok := extras[agent.ID]; ok {
 			agent.LastRunStatus = ex.LastRunStatus
@@ -305,7 +305,7 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 		}
 		in.ConfigJSON = configJSON
 	}
-	in.ConfigJSON = EmbedAgentKindInConfigJSON(in.ConfigJSON, in.Kind, in.A2AProxy)
+	in.ConfigJSON = EmbedAgentKindInConfigJSON(in.ConfigJSON, in.Kind, in.A2AProxy, u.lg)
 	in.Status = strings.TrimSpace(in.Status)
 	if in.Status == "" {
 		in.Status = "active"
@@ -384,7 +384,7 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 			return Agent{}, kerrors.BadRequest("AGENT", "a2a_proxy remote_url is required")
 		}
 	}
-	merged.ConfigJSON = EmbedAgentKindInConfigJSON(merged.ConfigJSON, merged.Kind, merged.A2AProxy)
+	merged.ConfigJSON = EmbedAgentKindInConfigJSON(merged.ConfigJSON, merged.Kind, merged.A2AProxy, u.lg)
 	if _, err := u.repo.UpdateAgent(ctx, merged); err != nil {
 		return Agent{}, err
 	}
@@ -536,17 +536,18 @@ func (u *AgentUsecase) computeConfigJSON(ctx context.Context, id string) (string
 		return "", err
 	}
 	HydrateAgentKind(&a)
-	cj = EmbedAgentKindInConfigJSON(cj, a.Kind, a.A2AProxy)
-	cj = mergeEvaluationFromLegacy(cj, a.ConfigJSON)
+	cj = EmbedAgentKindInConfigJSON(cj, a.Kind, a.A2AProxy, u.lg)
+	cj = mergeEvaluationFromLegacy(cj, a.ConfigJSON, u.lg)
 	return cj, nil
 }
 
-func mergeEvaluationFromLegacy(computed, legacy string) string {
+func mergeEvaluationFromLegacy(computed, legacy string, lg loggateway.Logger) string {
 	if strings.TrimSpace(legacy) == "" {
 		return computed
 	}
 	var leg map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(legacy), &leg); err != nil {
+		lg.Warn("解析 legacy config_json 失败", loggateway.StepID("agent.merge_eval"), loggateway.Err(err))
 		return computed
 	}
 	evalRaw, ok := leg["evaluation"]
@@ -555,10 +556,12 @@ func mergeEvaluationFromLegacy(computed, legacy string) string {
 	}
 	var comp map[string]any
 	if err := json.Unmarshal([]byte(computed), &comp); err != nil {
+		lg.Warn("解析 computed config_json 失败", loggateway.StepID("agent.merge_eval"), loggateway.Err(err))
 		return computed
 	}
 	var eval any
 	if err := json.Unmarshal(evalRaw, &eval); err != nil {
+		lg.Warn("解析 evaluation 字段失败", loggateway.StepID("agent.merge_eval"), loggateway.Err(err))
 		return computed
 	}
 	comp["evaluation"] = eval

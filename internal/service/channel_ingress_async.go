@@ -150,7 +150,7 @@ func (h *ChannelIngress) watchAsyncGraphCompletion(ctx context.Context, chRow bi
 				if strings.TrimSpace(metaID) != "" && metaID != execID {
 					continue
 				}
-				if failed, errMsg := graphExecutionSummaryFailed(env); failed {
+				if failed, errMsg := graphExecutionSummaryFailed(env, h.lg); failed {
 					h.failAsyncTargetWatch(asyncWatchPersistCtx(), chCopy, evCopy, platform, jobID, execID, "graph", errors.New(errMsg))
 					return
 				}
@@ -217,14 +217,14 @@ func (h *ChannelIngress) completeAsyncTargetWatch(ctx context.Context, chRow biz
 			h.lg.Warn("异步任务状态更新失败",
 				loggateway.StepID("channel.async.job_status_update_failed"),
 				loggateway.Str("job_id", jobID),
-				loggateway.Str("error", err.Error()),
+				loggateway.Err(err),
 			)
 		}
 	}
 	if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), summary, ev.OutboundMeta, ackIdempotencyKey(platform, ev, "async_done")); err != nil {
 		h.lg.Warn("enqueueOutboundReply failed",
 			loggateway.StepID("channel.async.reply"),
-			loggateway.Str("error", err.Error()),
+			loggateway.Err(err),
 		)
 	}
 }
@@ -238,14 +238,14 @@ func (h *ChannelIngress) failAsyncTargetWatch(ctx context.Context, chRow biz.Cha
 			h.lg.Warn("异步任务状态更新失败",
 				loggateway.StepID("channel.async.job_status_update_failed"),
 				loggateway.Str("job_id", jobID),
-				loggateway.Str("error", err.Error()),
+				loggateway.Err(err),
 			)
 		}
 	}
 	if err := h.deliverTurnErrorReply(ctx, chRow, ev, platform, cause); err != nil {
 		h.lg.Warn("deliverTurnErrorReply failed",
 			loggateway.StepID("channel.async.error_reply"),
-			loggateway.Str("error", err.Error()),
+			loggateway.Err(err),
 		)
 	}
 	h.lg.Warn("Channel 异步任务失败",
@@ -253,7 +253,7 @@ func (h *ChannelIngress) failAsyncTargetWatch(ctx context.Context, chRow biz.Cha
 		loggateway.Str("target_type", targetType),
 		loggateway.Str("target_id", targetID),
 		loggateway.Str("job_id", jobID),
-		loggateway.Str("error", cause.Error()),
+		loggateway.Err(cause),
 	)
 }
 
@@ -275,14 +275,14 @@ func (h *ChannelIngress) finishAsyncTargetWatch(ctx context.Context, chRow biz.C
 			h.lg.Warn("异步任务状态更新失败",
 				loggateway.StepID("channel.async.job_status_update_failed"),
 				loggateway.Str("job_id", jobID),
-				loggateway.Str("error", err.Error()),
+				loggateway.Err(err),
 			)
 		}
 	}
 	if err := h.deliverTurnErrorReply(ctx, chRow, ev, platform, watchErr); err != nil {
 		h.lg.Warn("deliverTurnErrorReply failed",
 			loggateway.StepID("channel.async.error_reply"),
-			loggateway.Str("error", err.Error()),
+			loggateway.Err(err),
 		)
 	}
 	h.lg.Warn("Channel 异步任务监听结束",
@@ -290,7 +290,7 @@ func (h *ChannelIngress) finishAsyncTargetWatch(ctx context.Context, chRow biz.C
 		loggateway.Str("target_type", targetType),
 		loggateway.Str("target_id", targetID),
 		loggateway.Str("job_id", jobID),
-		loggateway.Str("error", cause.Error()),
+		loggateway.Err(cause),
 	)
 }
 
@@ -304,7 +304,7 @@ func graphNodeErrorMessage(env event.Envelope) error {
 	return errors.New("graph node error")
 }
 
-func graphExecutionSummaryFailed(env event.Envelope) (bool, string) {
+func graphExecutionSummaryFailed(env event.Envelope, lg loggateway.Logger) (bool, string) {
 	raw, ok := env.Metadata["execution_summary"]
 	if !ok || raw == nil {
 		return false, ""
@@ -320,6 +320,7 @@ func graphExecutionSummaryFailed(env event.Envelope) (bool, string) {
 		} `json:"nodes"`
 	}
 	if err := json.Unmarshal(data, &summary); err != nil {
+		lg.Warn("graph execution summary unmarshal failed", loggateway.StepID("channel.ingress_async.graph_summary"), loggateway.Err(err))
 		return false, ""
 	}
 	for _, node := range summary.Nodes {

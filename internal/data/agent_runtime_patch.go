@@ -5,11 +5,12 @@ import (
 	"strings"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/loggateway"
 )
 
 // ensureAgentRuntimePatches applies SQLite-safe ALTERs for columns introduced after first DB creation.
 // Ent Schema.Create does not migrate existing SQLite rows for new fields.
-func ensureAgentRuntimePatches(ctx context.Context, c *ent.Client) error {
+func ensureAgentRuntimePatches(ctx context.Context, c *ent.Client, lg loggateway.Logger) error {
 	if c == nil {
 		return nil
 	}
@@ -54,21 +55,23 @@ func ensureAgentRuntimePatches(ctx context.Context, c *ent.Client) error {
 		{"compress_llm_cache_ttl_sec", `ALTER TABLE agent_runtime_settings ADD COLUMN compress_llm_cache_ttl_sec INTEGER NOT NULL DEFAULT 600`},
 	}
 	for _, p := range patches {
-		has, err := sqliteColumnExists(ctx, c, "agent_runtime_settings", p.col)
+		has, err := sqliteColumnExists(ctx, c, lg, "agent_runtime_settings", p.col)
 		if err != nil {
+			lg.Error("runtime patch column check failed", loggateway.StepID("data.startup.runtime_patch"), loggateway.Err(err))
 			return err
 		}
 		if has {
 			continue
 		}
 		if _, err := c.ExecContext(ctx, p.ddl); err != nil {
+			lg.Error("runtime patch alter table failed", loggateway.StepID("data.startup.runtime_patch"), loggateway.Str("column", p.col), loggateway.Err(err))
 			return err
 		}
 	}
 	return nil
 }
 
-func sqliteTableExists(ctx context.Context, c *ent.Client, table string) (bool, error) {
+func sqliteTableExists(ctx context.Context, c *ent.Client, lg loggateway.Logger, table string) (bool, error) {
 	table = strings.TrimSpace(table)
 	if table == "" {
 		return false, nil
@@ -76,6 +79,7 @@ func sqliteTableExists(ctx context.Context, c *ent.Client, table string) (bool, 
 	rows, err := c.QueryContext(ctx,
 		`SELECT COUNT(1) FROM sqlite_master WHERE type IN ('table','view') AND name = ?`, table)
 	if err != nil {
+		lg.Warn("sqlite table exists check failed", loggateway.StepID("data.startup.sqlite_check"), loggateway.Err(err))
 		return false, err
 	}
 	defer rows.Close()
@@ -89,7 +93,7 @@ func sqliteTableExists(ctx context.Context, c *ent.Client, table string) (bool, 
 	return n > 0, rows.Err()
 }
 
-func sqliteColumnExists(ctx context.Context, c *ent.Client, table, column string) (bool, error) {
+func sqliteColumnExists(ctx context.Context, c *ent.Client, lg loggateway.Logger, table, column string) (bool, error) {
 	table = strings.TrimSpace(table)
 	column = strings.TrimSpace(column)
 	if table == "" || column == "" {
@@ -97,6 +101,7 @@ func sqliteColumnExists(ctx context.Context, c *ent.Client, table, column string
 	}
 	rows, err := c.QueryContext(ctx, `SELECT 1 FROM pragma_table_info(?) WHERE name = ? LIMIT 1`, table, column)
 	if err != nil {
+		lg.Warn("sqlite column exists check failed", loggateway.StepID("data.startup.sqlite_check"), loggateway.Err(err))
 		return false, err
 	}
 	defer rows.Close()
@@ -110,13 +115,14 @@ func sqliteColumnExists(ctx context.Context, c *ent.Client, table, column string
 	return true, nil
 }
 
-func sqliteIndexExists(ctx context.Context, c *ent.Client, table, indexName string) (bool, error) {
+func sqliteIndexExists(ctx context.Context, c *ent.Client, lg loggateway.Logger, table, indexName string) (bool, error) {
 	indexName = strings.TrimSpace(indexName)
 	if indexName == "" {
 		return false, nil
 	}
 	rows, err := c.QueryContext(ctx, `SELECT 1 FROM pragma_index_list(?) WHERE name = ? LIMIT 1`, table, indexName)
 	if err != nil {
+		lg.Warn("sqlite index exists check failed", loggateway.StepID("data.startup.sqlite_check"), loggateway.Err(err))
 		return false, err
 	}
 	defer rows.Close()

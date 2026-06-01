@@ -7,17 +7,18 @@ import (
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestCancelRunningActivityMessages_NilSessions(t *testing.T) {
-	n, err := CancelRunningActivityMessages(context.Background(), nil, "sess1")
+	n, err := CancelRunningActivityMessages(context.Background(), nil, "sess1", loggateway.Global())
 	if err != nil || n != 0 {
 		t.Fatalf("expected 0,nil got %d,%v", n, err)
 	}
 }
 
 func TestCancelRunningActivityMessages_EmptySessionID(t *testing.T) {
-	n, err := CancelRunningActivityMessages(context.Background(), nil, "  ")
+	n, err := CancelRunningActivityMessages(context.Background(), nil, "  ", loggateway.Global())
 	if err != nil || n != 0 {
 		t.Fatalf("expected 0,nil got %d,%v", n, err)
 	}

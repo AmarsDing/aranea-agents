@@ -3,12 +3,16 @@ package modelregistry
 import (
 	"encoding/json"
 	"strings"
+
+	"aranea-agents/pkg/loggateway"
 )
 
-func mergeCatalogIntoConfig(existingJSON string, prov Provider, model Model, autoApply string, preserveBaseURL string) (string, bool) {
+func mergeCatalogIntoConfig(lg loggateway.Logger, existingJSON string, prov Provider, model Model, autoApply string, preserveBaseURL string) (string, bool) {
 	cfg := map[string]any{}
 	if strings.TrimSpace(existingJSON) != "" {
-		_ = json.Unmarshal([]byte(existingJSON), &cfg)
+		if err := json.Unmarshal([]byte(existingJSON), &cfg); err != nil {
+			lg.Warn("解析 catalog config 失败", loggateway.StepID("modelregistry.config_merge"), loggateway.Err(err))
+		}
 	}
 	if shouldSkipDirectoryApply(cfg, "") {
 		return existingJSON, false
@@ -114,10 +118,12 @@ func shouldSkipDirectoryApply(cfg map[string]any, metadataJSON string) bool {
 	return false
 }
 
-func mergeCatalogMetadata(existingJSON string, prov Provider, model Model) (string, bool) {
+func mergeCatalogMetadata(lg loggateway.Logger, existingJSON string, prov Provider, model Model) (string, bool) {
 	meta := map[string]any{}
 	if strings.TrimSpace(existingJSON) != "" {
-		_ = json.Unmarshal([]byte(existingJSON), &meta)
+		if err := json.Unmarshal([]byte(existingJSON), &meta); err != nil {
+			lg.Warn("解析 catalog metadata 失败", loggateway.StepID("modelregistry.config_merge.metadata"), loggateway.Err(err))
+		}
 	}
 	if src, _ := meta["catalog_source"].(string); strings.EqualFold(strings.TrimSpace(src), "custom") {
 		return existingJSON, false
@@ -165,11 +171,13 @@ func mergeCatalogMetadata(existingJSON string, prov Provider, model Model) (stri
 	return string(b), true
 }
 
-func extractAPIBaseURL(configJSON string) string {
+func extractAPIBaseURL(lg loggateway.Logger, configJSON string) string {
 	var cfg struct {
 		APIBaseURL string `json:"api_base_url"`
 	}
-	_ = json.Unmarshal([]byte(configJSON), &cfg)
+	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		lg.Warn("解析 api_base_url config 失败", loggateway.StepID("modelregistry.config_merge.base_url"), loggateway.Err(err))
+	}
 	return cfg.APIBaseURL
 }
 

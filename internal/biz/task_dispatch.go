@@ -55,7 +55,7 @@ func (uc *TaskUsecase) BatchResolveReadiness(ctx context.Context, tasks []*Graph
 		links, err := uc.linkRepo.ListParentLinksByChildren(ctx, taskIDs)
 		if err != nil {
 			uc.lg.Warn("batch resolve readiness: ListParentLinksByChildren failed",
-				loggateway.StepID("system.task.batch_readiness"),
+				loggateway.StepID("task.batch_readiness"),
 				loggateway.Int("task_count", len(taskIDs)), loggateway.Err(err))
 			for _, t := range tasks {
 				if t != nil {
@@ -81,7 +81,7 @@ func (uc *TaskUsecase) BatchResolveReadiness(ctx context.Context, tasks []*Graph
 			parentTasks, err := uc.reader.GetTasksByIDs(ctx, allParentIDs)
 			if err != nil {
 				uc.lg.Warn("batch resolve readiness: GetTasksByIDs for parents failed",
-					loggateway.StepID("system.task.batch_readiness"),
+					loggateway.StepID("task.batch_readiness"),
 					loggateway.Int("parent_count", len(allParentIDs)), loggateway.Err(err))
 				for _, t := range tasks {
 					if t != nil {
@@ -124,7 +124,7 @@ func (uc *TaskUsecase) BatchResolveReadiness(ctx context.Context, tasks []*Graph
 		}
 	}
 	uc.lg.Info("batch resolve readiness completed",
-		loggateway.StepID("system.task.batch_readiness"),
+		loggateway.StepID("task.batch_readiness"),
 		loggateway.Int("task_count", len(taskIDs)),
 		loggateway.Int("ready_count", readyCount),
 		loggateway.Int("with_deps_count", len(readyMap)-len(noDeps)),

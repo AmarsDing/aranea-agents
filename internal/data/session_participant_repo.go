@@ -71,7 +71,7 @@ func (r *sessionParticipantRepo) SyncFromSession(ctx context.Context, sess bizse
 	}
 
 	for _, msg := range messages {
-		pType, pID, name, role := participantFromMessage(msg, sess)
+		pType, pID, name, role := participantFromMessage(msg, sess, r.data.lg)
 		if pID == "" {
 			continue
 		}
@@ -95,11 +95,13 @@ func (r *sessionParticipantRepo) SyncFromSession(ctx context.Context, sess bizse
 	now := time.Now().UTC().Format(time.RFC3339)
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
+		r.data.lg.Error("tx begin failed", loggateway.StepID("data.session_participant.sync.tx_begin"), loggateway.Err(err))
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM session_participants WHERE session_id=?`, sessionID); err != nil {
+		r.data.lg.Error("delete participants in tx failed", loggateway.StepID("data.session_participant.sync.delete"), loggateway.Err(err))
 		return err
 	}
 	for _, row := range aggs {
@@ -115,13 +117,18 @@ INSERT INTO session_participants (
 			0, "{}", now, now,
 		)
 		if err != nil {
+			r.data.lg.Error("insert participants in tx failed", loggateway.StepID("data.session_participant.sync.insert"), loggateway.Err(err))
 			return err
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		r.data.lg.Error("tx commit failed", loggateway.StepID("data.session_participant.sync.commit"), loggateway.Err(err))
+		return err
+	}
+	return nil
 }
 
-func participantFromMessage(msg bizsess.ChatMessage, sess bizsess.Session) (pType, pID, name, role string) {
+func participantFromMessage(msg bizsess.ChatMessage, sess bizsess.Session, lg loggateway.Logger) (pType, pID, name, role string) {
 	if strings.EqualFold(strings.TrimSpace(msg.Role), "user") {
 		return "user", "user", "User", "owner"
 	}
@@ -140,8 +147,8 @@ func participantFromMessage(msg bizsess.ChatMessage, sess bizsess.Session) (pTyp
 	}
 	if msg.OptionsJSON != "" {
 		if err := json.Unmarshal([]byte(msg.OptionsJSON), &opts); err != nil {
-		loggateway.Global().Warn("options json unmarshal failed", loggateway.StepID("session.participant"), loggateway.Err(err))
-	}
+			lg.Warn("options json unmarshal failed", loggateway.StepID("data.session_participant"), loggateway.Err(err))
+		}
 	}
 	if opts.TeamMember.AgentID != "" || opts.TeamMember.Name != "" {
 		pID = firstNonEmpty(opts.TeamMember.AgentID, opts.Agent.ID, opts.AgentID, sess.AgentID)

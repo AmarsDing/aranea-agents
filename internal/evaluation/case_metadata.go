@@ -3,6 +3,8 @@ package evaluation
 import (
 	"encoding/json"
 	"strings"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 // EvalTurn is one message in a multi-turn eval case (metadata_json.turns).
@@ -35,13 +37,15 @@ type UserSimMetadata struct {
 }
 
 // ParseCaseMetadata unmarshals metadata_json; invalid JSON yields zero value.
-func ParseCaseMetadata(raw string) CaseMetadata {
+func ParseCaseMetadata(raw string, lg loggateway.Logger) CaseMetadata {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == "{}" {
 		return CaseMetadata{}
 	}
 	var m CaseMetadata
-	_ = json.Unmarshal([]byte(raw), &m)
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		lg.Warn("解析 eval case metadata 失败", loggateway.StepID("evaluation.case_metadata"), loggateway.Err(err))
+	}
 	return m
 }
 

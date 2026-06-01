@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/graphdefinition"
 	"aranea-agents/internal/data/ent/graphexecution"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/go-kratos/kratos/v2/errors"
 )
@@ -74,7 +75,7 @@ func (r *graphRepo) SaveDefinition(ctx context.Context, def *biz.GraphDefinition
 	if err != nil {
 		return nil, fmt.Errorf("graph repo save: %w", err)
 	}
-	return entGraphToBiz(saved), nil
+	return entGraphToBiz(saved, r.data.lg), nil
 }
 
 func (r *graphRepo) GetDefinition(ctx context.Context, id string) (*biz.GraphDefinition, error) {
@@ -86,7 +87,7 @@ func (r *graphRepo) GetDefinition(ctx context.Context, id string) (*biz.GraphDef
 		}
 		return nil, fmt.Errorf("graph repo get: %w", err)
 	}
-	return entGraphToBiz(row), nil
+	return entGraphToBiz(row, r.data.lg), nil
 }
 
 func (r *graphRepo) ListDefinitions(ctx context.Context, pageSize int, pageToken string) ([]*biz.GraphDefinition, string, error) {
@@ -110,7 +111,7 @@ func (r *graphRepo) ListDefinitions(ctx context.Context, pageSize int, pageToken
 	}
 	result := make([]*biz.GraphDefinition, len(rows))
 	for i, row := range rows {
-		result[i] = entGraphToBiz(row)
+		result[i] = entGraphToBiz(row, r.data.lg)
 	}
 	return result, nextToken, nil
 }
@@ -173,10 +174,10 @@ func (r *graphRepo) UpdateDefinition(ctx context.Context, def *biz.GraphDefiniti
 		}
 		return nil, fmt.Errorf("graph repo update: %w", err)
 	}
-	return entGraphToBiz(saved), nil
+	return entGraphToBiz(saved, r.data.lg), nil
 }
 
-func entGraphToBiz(row *ent.GraphDefinition) *biz.GraphDefinition {
+func entGraphToBiz(row *ent.GraphDefinition, lg loggateway.Logger) *biz.GraphDefinition {
 	def := &biz.GraphDefinition{
 		ID:               row.ID,
 		Name:             row.Name,
@@ -189,14 +190,30 @@ func entGraphToBiz(row *ent.GraphDefinition) *biz.GraphDefinition {
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,
 	}
-	_ = json.Unmarshal([]byte(row.StateFields), &def.StateFields)
-	_ = json.Unmarshal([]byte(row.Nodes), &def.Nodes)
-	_ = json.Unmarshal([]byte(row.Edges), &def.Edges)
-	_ = json.Unmarshal([]byte(row.ConditionalEdges), &def.ConditionalEdges)
-	_ = json.Unmarshal([]byte(row.Subgraphs), &def.Subgraphs)
-	_ = json.Unmarshal([]byte(row.InterruptBefore), &def.InterruptBefore)
-	_ = json.Unmarshal([]byte(row.InterruptAfter), &def.InterruptAfter)
-	_ = json.Unmarshal([]byte(row.Metadata), &def.Metadata)
+	if err := json.Unmarshal([]byte(row.StateFields), &def.StateFields); err != nil {
+		lg.Warn("graph json unmarshal failed", loggateway.StepID("data.graph"), loggateway.Err(err))
+	}
+	if err := json.Unmarshal([]byte(row.Nodes), &def.Nodes); err != nil {
+		lg.Warn("graph json unmarshal failed", loggateway.StepID("data.graph"), loggateway.Err(err))
+	}
+	if err := json.Unmarshal([]byte(row.Edges), &def.Edges); err != nil {
+		lg.Warn("graph json unmarshal failed", loggateway.StepID("data.graph"), loggateway.Err(err))
+	}
+	if err := json.Unmarshal([]byte(row.ConditionalEdges), &def.ConditionalEdges); err != nil {
+		lg.Warn("graph json unmarshal failed", loggateway.StepID("data.graph"), loggateway.Err(err))
+	}
+	if err := json.Unmarshal([]byte(row.Subgraphs), &def.Subgraphs); err != nil {
+		lg.Warn("graph json unmarshal failed", loggateway.StepID("data.graph"), loggateway.Err(err))
+	}
+	if err := json.Unmarshal([]byte(row.InterruptBefore), &def.InterruptBefore); err != nil {
+		lg.Warn("graph json unmarshal failed", loggateway.StepID("data.graph"), loggateway.Err(err))
+	}
+	if err := json.Unmarshal([]byte(row.InterruptAfter), &def.InterruptAfter); err != nil {
+		lg.Warn("graph json unmarshal failed", loggateway.StepID("data.graph"), loggateway.Err(err))
+	}
+	if err := json.Unmarshal([]byte(row.Metadata), &def.Metadata); err != nil {
+		lg.Warn("graph json unmarshal failed", loggateway.StepID("data.graph"), loggateway.Err(err))
+	}
 	def.Version = biz.GraphVersion(def)
 	return def
 }
@@ -258,7 +275,7 @@ func (r *graphRunRepo) GetRun(ctx context.Context, id string) (*biz.GraphExecuti
 		}
 		return nil, fmt.Errorf("graph run repo get: %w", err)
 	}
-	return entGraphRunToBiz(row), nil
+	return entGraphRunToBiz(row, r.data.lg), nil
 }
 
 func (r *graphRunRepo) ListRunsByGraph(ctx context.Context, graphID string, pageSize int, pageToken string, opts ...biz.GraphRunListOption) ([]*biz.GraphExecution, string, error) {
@@ -297,7 +314,7 @@ func (r *graphRunRepo) ListRunsByGraph(ctx context.Context, graphID string, page
 	}
 	result := make([]*biz.GraphExecution, len(rows))
 	for i, row := range rows {
-		result[i] = entGraphRunToBiz(row)
+		result[i] = entGraphRunToBiz(row, r.data.lg)
 	}
 	return result, nextToken, nil
 }
@@ -328,7 +345,7 @@ func (r *graphRunRepo) UpdateRun(ctx context.Context, exec *biz.GraphExecution) 
 	return nil
 }
 
-func entGraphRunToBiz(row *ent.GraphExecution) *biz.GraphExecution {
+func entGraphRunToBiz(row *ent.GraphExecution, lg loggateway.Logger) *biz.GraphExecution {
 	exec := &biz.GraphExecution{
 		ID:           row.ID,
 		GraphID:      row.GraphID,
@@ -343,7 +360,11 @@ func entGraphRunToBiz(row *ent.GraphExecution) *biz.GraphExecution {
 		fa := *row.FinishedAt
 		exec.FinishedAt = &fa
 	}
-	_ = json.Unmarshal([]byte(row.CurrentStateJSON), &exec.CurrentState)
-	_ = json.Unmarshal([]byte(row.StepsJSON), &exec.Steps)
+	if err := json.Unmarshal([]byte(row.CurrentStateJSON), &exec.CurrentState); err != nil {
+		lg.Warn("graph json unmarshal failed", loggateway.StepID("data.graph"), loggateway.Err(err))
+	}
+	if err := json.Unmarshal([]byte(row.StepsJSON), &exec.Steps); err != nil {
+		lg.Warn("graph json unmarshal failed", loggateway.StepID("data.graph"), loggateway.Err(err))
+	}
 	return exec
 }

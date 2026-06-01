@@ -223,7 +223,7 @@ func buildSkillDeps(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (tr
 	if factory == nil {
 		factory = localexec.NewFactory()
 	}
-	exec := skilltrpc.NewExecutorForAgent(ctx, factory, execType, rootDir)
+	exec := skilltrpc.NewExecutorForAgent(ctx, factory, execType, rootDir, deps.LG)
 	event.CtxFlowLogDone(ctx, "agent.skill_build", "技能构建完成", event.P("slug_count", len(slugs)), event.P("repo_type", fmt.Sprintf("%T", repo)))
 	return repo, filter, exec, nil
 }
@@ -309,13 +309,16 @@ func shouldInjectCategoryResponsibility(ag biz.Agent) bool {
 	return !ag.SkipCategoryResponsibility()
 }
 
-func ParseVariablesJSON(raw string) map[string]any {
+func ParseVariablesJSON(raw string, lg loggateway.Logger) map[string]any {
 	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == "{}" {
 		return nil
 	}
 	var m map[string]string
 	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		if lg != nil {
+			lg.Warn("VariablesJSON 解析失败", loggateway.Err(err), loggateway.Str("raw", strutil.TruncateRunes(raw, 128)))
+		}
 		return nil
 	}
 	if len(m) == 0 {

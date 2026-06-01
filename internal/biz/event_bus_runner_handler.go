@@ -107,6 +107,6 @@ func (h *runnerCompletionHandler) Handle(ctx context.Context, de DomainEvent) {
 
 func (h *runnerCompletionHandler) logError(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair) {
 	if h.logger != nil {
-		h.logger.SessionSysLogError(ctx, sessionID, stepID, message, pairs...)
+		h.logger.LogSessionError(ctx, sessionID, stepID, message, pairs...)
 	}
 }

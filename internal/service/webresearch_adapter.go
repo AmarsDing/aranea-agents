@@ -9,7 +9,9 @@ import (
 )
 
 // webResearchTesterAdapter adapts internal/tools/webresearch to biz.WebResearchTester.
-type webResearchTesterAdapter struct{}
+type webResearchTesterAdapter struct {
+	lg loggateway.Logger
+}
 
 func (a webResearchTesterAdapter) ConfigFromSetting(provider, apiKey string, maxResults, fetchTop int, searchDepth string, timeoutSec int, httpProxy string) biz.WebResearchTestConfig {
 	cfg := webresearchpkg.ConfigFromSetting(provider, apiKey, maxResults, fetchTop, searchDepth, timeoutSec, httpProxy)
@@ -31,7 +33,7 @@ func (a webResearchTesterAdapter) IsReady(cfg biz.WebResearchTestConfig) bool {
 
 func (a webResearchTesterAdapter) TestConnection(ctx context.Context, cfg biz.WebResearchTestConfig) (biz.WebResearchTestProbeResult, error) {
 	wc := a.toWebresearchConfig(cfg)
-	raw, err := webresearchpkg.TestConnection(ctx, wc, loggateway.Global())
+	raw, err := webresearchpkg.TestConnection(ctx, wc, a.lg)
 	out := biz.WebResearchTestProbeResult{
 		OK:           raw.OK,
 		Message:      raw.Message,
@@ -53,6 +55,6 @@ func (a webResearchTesterAdapter) toWebresearchConfig(cfg biz.WebResearchTestCon
 }
 
 // ProvideWebResearchTester creates a biz.WebResearchTester backed by internal/tools/webresearch.
-func ProvideWebResearchTester() biz.WebResearchTester {
-	return webResearchTesterAdapter{}
+func ProvideWebResearchTester(lg loggateway.Logger) biz.WebResearchTester {
+	return webResearchTesterAdapter{lg: lg}
 }

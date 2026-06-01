@@ -48,6 +48,7 @@ type Runner struct {
 	graphLoader        GraphBuildConfigLoader
 	teamGraphTasks     TeamGraphTaskCreator
 	teamGraphCoord     *TeamGraphRunCoordinator
+	lg                 loggateway.Logger
 }
 
 // SetGraphBuildConfigLoader wires linked_graph_id resolution for GraphAgent runtime (M53 P2).
@@ -92,6 +93,7 @@ func NewRunner(
 	pluginManager *plugintrpc.Manager,
 	skillDBRepo trpcskill.Repository,
 	codeExecFactory *localexec.Factory,
+	lg loggateway.Logger,
 ) *Runner {
 	return &Runner{
 		teams:           teams,
@@ -100,6 +102,7 @@ func NewRunner(
 		pluginManager:   pluginManager,
 		skillDBRepo:     skillDBRepo,
 		codeExecFactory: codeExecFactory,
+		lg:              lg,
 		td: rt.TurnDeps{
 			Catalog: rt.Catalog{
 				Agents:   agents,
@@ -115,7 +118,7 @@ func NewRunner(
 			LLMHTTP:   &http.Client{Timeout: 0},
 			Sessions:  sessions,
 			Compress:  compress,
-			RunnerMgr: rt.NewRunnerManagerFromPersist(persist, loggateway.Global()),
+			RunnerMgr: rt.NewRunnerManagerFromPersist(persist, lg),
 		},
 	}
 }

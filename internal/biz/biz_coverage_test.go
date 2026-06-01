@@ -48,6 +48,9 @@ func (m *memTeamRepoB) DeleteTeam(_ context.Context, id string) error {
 	delete(m.items, id)
 	return nil
 }
+func (m *memTeamRepoB) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 func (m *memTeamRepoB) ListTeamRuns(_ context.Context, _ string, _ int) ([]biz.TeamRun, error) {
 	return nil, nil
 }

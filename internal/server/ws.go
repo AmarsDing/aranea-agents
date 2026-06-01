@@ -12,7 +12,6 @@ import (
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
-	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/auth"
@@ -23,6 +22,27 @@ import (
 	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
 	"github.com/gorilla/websocket"
 )
+
+type WSTurnInput struct {
+	SessionID   string
+	Content     string
+	AgentKey    string
+	TeamID      string
+	Options     WSTurnOptions
+	AllowQueue  bool
+	AllowStream bool
+}
+
+type WSTurnOptions struct {
+	DialogMode    string
+	Provider      string
+	Model         string
+	AttachmentIDs []string
+}
+
+type WSTurnExecutor interface {
+	ExecuteTurn(ctx context.Context, input WSTurnInput) error
+}
 
 var _ transport.Server = (*WSServer)(nil)
 
@@ -129,7 +149,7 @@ type WSServer struct {
 	eventBuffer           *event.Buffer
 	canceller             RunCanceller
 	sender                ChatSender
-	turnGateway           biz.TurnExecutorGateway
+	turnExecutor          WSTurnExecutor
 	serverConf            *conf.Server
 	upgrader              websocket.Upgrader
 	closed                bool
@@ -148,7 +168,7 @@ func NewWSServer(c *conf.Server, eventBus event.Bus, eventBuffer *event.Buffer, 
 }
 
 // NewWSServerFromInfra uses session bus for chat envelopes and monitor bus for flow_log (P0).
-func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnGateway biz.TurnExecutorGateway, lg loggateway.Logger) *WSServer {
+func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnExecutor WSTurnExecutor, lg loggateway.Logger) *WSServer {
 	if c == nil || c.GetWs() == nil || !c.GetWs().GetEnable() {
 		return nil
 	}
@@ -166,7 +186,7 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 		eventBuffer:           infra.Buffer,
 		canceller:             canceller,
 		sender:                sender,
-		turnGateway:           turnGateway,
+		turnExecutor:          turnExecutor,
 		serverConf:            c,
 		maxSessionConns:       envInt("WS_MAX_SESSION_CONNS", defaultMaxSessionConns),
 		maxGlobalMonitorConns: envInt("WS_MAX_GLOBAL_MONITOR_CONNS", defaultMaxGlobalMonitorConns),
@@ -311,7 +331,7 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		s.lg.Warn("WebSocket 升级失败", loggateway.StepID("system.ws.upgrade_failed"), loggateway.Err(err))
+		s.lg.Warn("WebSocket 升级失败", loggateway.StepID("ws.upgrade_failed"), loggateway.Err(err))
 		return
 	}
 
@@ -578,7 +598,7 @@ func (s *WSServer) readPump(wc *wsConn, eventCh <-chan event.Envelope) {
 		_, message, err := wc.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
-				s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket 读错误", loggateway.StepID("system.ws.read_error"), loggateway.Err(err))
+				s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket 读错误", loggateway.StepID("ws.read_error"), loggateway.Err(err))
 			}
 			return
 		}
@@ -614,7 +634,7 @@ func (s *WSServer) eventPump(wc *wsConn, eventCh <-chan event.Envelope) {
 		prio := wsEnvelopePriority(env.Type)
 		if ok := wc.queues.enqueue(prio, data); !ok {
 			s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket 高优先级队列超时，关闭连接",
-				loggateway.StepID("system.ws.high_queue_timeout"), loggateway.Any("type", env.Type))
+				loggateway.StepID("ws.high_queue_timeout"), loggateway.Any("type", env.Type))
 			close(wc.send) // signal writePump to exit
 			return
 		}
@@ -625,7 +645,7 @@ func (s *WSServer) eventPump(wc *wsConn, eventCh <-chan event.Envelope) {
 func (s *WSServer) handleUpstream(wc *wsConn, raw []byte) {
 	var up wsUpstream
 	if err := json.Unmarshal(raw, &up); err != nil {
-		s.lg.Warn("WebSocket 上行消息解析失败", loggateway.StepID("system.ws.parse_error"), loggateway.Err(err))
+		s.lg.Warn("WebSocket 上行消息解析失败", loggateway.StepID("ws.parse_error"), loggateway.Err(err))
 		return
 	}
 	if up.Direction != "client_to_server" {
@@ -711,15 +731,12 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 	requestID := strings.TrimSpace(up.RequestID)
 
 	// Prefer biz.TurnExecutorGateway when available (Phase B2: unified turn entry point).
-	if s.turnGateway != nil {
-		input := biz.TurnInput{
-			SessionID: sessionID,
-			Content:   strings.TrimSpace(content),
-			EntryConfig: biz.TurnEntryPointConfig{
-				EntryPoint:  biz.EntryPointWS,
-				AllowQueue:  true,
-				AllowStream: true,
-			},
+	if s.turnExecutor != nil {
+		input := WSTurnInput{
+			SessionID:   sessionID,
+			Content:     strings.TrimSpace(content),
+			AllowQueue:  true,
+			AllowStream: true,
 		}
 		if agentKey, _ := payload["agent_key"].(string); agentKey != "" {
 			input.AgentKey = agentKey
@@ -728,19 +745,14 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 			input.TeamID = teamID
 		}
 		if opts, ok := payload["options"].(map[string]any); ok {
-			input.Options = buildBizTurnOptions(opts)
+			input.Options = buildWSTurnOptions(opts)
 		}
-		// COR-03: derive turn context from the connection context so disconnecting
-		// the WebSocket also cancels in-flight agent turns for this connection.
 		connCtx := wc.contextOrBackground()
 		safego.Go(context.Background(), "ws-user-message", func() {
 			ctx, cancel := context.WithTimeout(connCtx, defaultWSTurnTimeout)
 			defer cancel()
-			_, err := s.turnGateway.ExecuteTurn(ctx, input)
-			if err != nil {
-				s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("system.ws.send_failed"), loggateway.Err(err))
-				// ExecuteTurn publishes user-facing failures through the turn projector.
-				// Avoid a second raw ws-handler error that can leak provider details.
+			if err := s.turnExecutor.ExecuteTurn(ctx, input); err != nil {
+				s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
 			}
 		})
 		return
@@ -769,7 +781,7 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 		defer cancel()
 		_, err := s.sender.SendChatMessage(ctx, req)
 		if err != nil {
-			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("system.ws.send_failed"), loggateway.Err(err))
+			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
 			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
 			env.RequestID = requestID
 			env.Error = &event.EnvelopeError{
@@ -807,7 +819,7 @@ func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 		defer cancel()
 		resp, err := s.sender.EnqueueUserMessage(ctx, req)
 		if err != nil {
-			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 入队消息发送失败", loggateway.StepID("system.ws.send_failed"), loggateway.Err(err))
+			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 入队消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
 			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
 			env.RequestID = requestID
 			env.Error = &event.EnvelopeError{
@@ -854,8 +866,8 @@ func buildChatOptions(opts map[string]any) *chatv1.SendMessageOptions {
 
 // buildBizTurnOptions builds a biz.TurnOptions from WS payload options.
 // Used by the TurnGateway path (Phase B2).
-func buildBizTurnOptions(opts map[string]any) biz.TurnOptions {
-	result := biz.TurnOptions{}
+func buildWSTurnOptions(opts map[string]any) WSTurnOptions {
+	result := WSTurnOptions{}
 	if dm, _ := opts["dialog_mode"].(string); dm != "" {
 		result.DialogMode = dm
 	}

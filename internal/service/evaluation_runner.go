@@ -20,6 +20,7 @@ func NewEvaluationRunner(
 	turns EvalTurnGateway,
 	catalog *biz.LlmProviderModelUsecase,
 	sys biz.SystemSettingRepo,
+	lg loggateway.Logger,
 ) *evaluation.Runner {
 	rt := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
 	agentRunner := func(ctx context.Context, agentID, input string) (string, error) {
@@ -28,14 +29,14 @@ func NewEvaluationRunner(
 		}
 		return turns.RunEvalAgentTurn(ctx, agentID, input)
 	}
-	judge := evaluation.NewLLMJudge(catalog, rt, sys, loggateway.Global())
+	judge := evaluation.NewLLMJudge(catalog, rt, sys, lg)
 	runFactory := func(agentID string) (runner.Runner, error) {
 		return evaluation.NewChatRunnerAdapter(agentID, agentRunner), nil
 	}
 	var llmUserSim usersimulation.Simulator
-	if sim, err := evaluation.NewLLMUserSimulator(catalog, rt, sys, loggateway.Global()); err == nil {
+	if sim, err := evaluation.NewLLMUserSimulator(catalog, rt, sys, lg); err == nil {
 		llmUserSim = sim
 	}
-	framework := evaluation.NewFrameworkBridge(runFactory, judge, llmUserSim, evaluation.DefaultMultiRunConfig(), loggateway.Global())
-	return evaluation.NewRunner(uc, agentRunner, judge, framework, loggateway.Global())
+	framework := evaluation.NewFrameworkBridge(runFactory, judge, llmUserSim, evaluation.DefaultMultiRunConfig(), lg)
+	return evaluation.NewRunner(uc, agentRunner, judge, framework, lg)
 }

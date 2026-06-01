@@ -41,7 +41,7 @@ func NewSensitiveDataMaskPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus
 	cfg.MaskPhone = true
 	cfg.MaskSecret = true
 	cfg.BlockLeakOutput = true
-	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
 	var compiled []compiledCustomPattern
 	for _, c := range cfg.CustomPatterns {
 		pat := strings.TrimSpace(c.Pattern)

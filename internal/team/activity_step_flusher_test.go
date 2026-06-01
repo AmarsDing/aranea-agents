@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 type memStepRepo struct {
@@ -61,11 +62,14 @@ func (m *memStepRepo) ListTaskDeadLetters(_ context.Context, _ biz.TaskDeadLette
 func (m *memStepRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
 	return biz.TaskDeadLetter{}, nil
 }
+func (m *memStepRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 
 func TestActivityStepFlusher_BatchFlush(t *testing.T) {
 	t.Setenv("ARANEA_OBS_PERSIST", "1")
 	repo := &memStepRepo{}
-	flusher := NewActivityStepFlusher(repo, "run-1", "gex-1")
+	flusher := NewActivityStepFlusher(repo, "run-1", "gex-1", loggateway.NewNoop())
 	if flusher == nil {
 		t.Fatal("expected flusher")
 	}

@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/data/ent/message"
 	entsession "aranea-agents/internal/data/ent/session"
 	entsessionturn "aranea-agents/internal/data/ent/sessionturn"
+	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -244,6 +245,7 @@ func (r *sessionRepo) AppendChatTurn(ctx context.Context, sessionID string, user
 	}
 	tx, err := r.txClient(ctx).Tx(ctx)
 	if err != nil {
+		r.data.lg.Error("tx begin failed", loggateway.StepID("data.session.append_turn.tx_begin"), loggateway.Err(err))
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
@@ -294,7 +296,11 @@ func (r *sessionRepo) AppendChatTurn(ctx context.Context, sessionID string, user
 	if _, err = upd.Save(ctx); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		r.data.lg.Error("tx commit failed", loggateway.StepID("data.session.append_turn.commit"), loggateway.Err(err))
+		return err
+	}
+	return nil
 }
 
 // UpsertChatActivityMessage still uses manual Tx instead of ExecInTx + txClient.
@@ -310,6 +316,7 @@ func (r *sessionRepo) UpsertChatActivityMessage(ctx context.Context, sessionID s
 	}
 	tx, err := r.txClient(ctx).Tx(ctx)
 	if err != nil {
+		r.data.lg.Error("tx begin failed", loggateway.StepID("data.session.upsert_msg.tx_begin"), loggateway.Err(err))
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
@@ -342,7 +349,11 @@ func (r *sessionRepo) UpsertChatActivityMessage(ctx context.Context, sessionID s
 			Save(ctx); err != nil {
 			return err
 		}
-		return tx.Commit()
+		if err := tx.Commit(); err != nil {
+			r.data.lg.Error("tx commit failed", loggateway.StepID("data.session.upsert_msg.commit"), loggateway.Err(err))
+			return err
+		}
+		return nil
 	}
 	lastAt := msg.CreatedAt
 	if strings.TrimSpace(lastAt) == "" {
@@ -372,7 +383,11 @@ func (r *sessionRepo) UpsertChatActivityMessage(ctx context.Context, sessionID s
 		Save(ctx); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		r.data.lg.Error("tx commit failed", loggateway.StepID("data.session.upsert_msg.commit"), loggateway.Err(err))
+		return err
+	}
+	return nil
 }
 
 func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, msg biz.ChatMessage, bumpModelCall bool) error {
@@ -382,6 +397,7 @@ func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, m
 	}
 	tx, err := r.txClient(ctx).Tx(ctx)
 	if err != nil {
+		r.data.lg.Error("tx begin failed", loggateway.StepID("data.session.append_msg.tx_begin"), loggateway.Err(err))
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
@@ -415,7 +431,11 @@ func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, m
 	if _, err = upd.Save(ctx); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		r.data.lg.Error("tx commit failed", loggateway.StepID("data.session.append_msg.commit"), loggateway.Err(err))
+		return err
+	}
+	return nil
 }
 
 func (r *sessionRepo) UpdateChatMessageStatus(ctx context.Context, sessionID, messageID, status, errorMessage string) error {

@@ -17,7 +17,6 @@ import (
 	knowledgetool "aranea-agents/internal/tools/knowledge"
 	"aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/internal/tools/skillruntime"
-	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -124,6 +123,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		DialogMode:            dialogMode,
 		SkillDBRepo:           r.skillDBRepo,
 		HasMemory:             r.td.Persist.Memory.Available(),
+		MemoryService:         r.td.Persist.Memory.TRPC,
 		PluginManager:         r.pluginManager,
 		MemoryAdmin:           r.td.Persist.Memory.Admin,
 		MemoryL2Recall:        r.td.Persist.Memory.L2Recall,
@@ -302,7 +302,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	var contextUsagePatched bool
 	defer func() {
 		if !contextUsagePatched && turnStatus != biz.TeamMemberStepStatusOK && streamPromptTok > 0 {
-			sessctx.PatchContextFromLLMUsage(ctx, r.td.Sessions, r.td.Compress, r.teamLLMCatalog(), sess.ID, sess, ar.agent, ar.prov, ar.mod, streamPromptTok, streamCompletionTok, loggateway.Global())
+			sessctx.PatchContextFromLLMUsage(ctx, r.td.Sessions, r.td.Compress, r.teamLLMCatalog(), sess.ID, sess, ar.agent, ar.prov, ar.mod, streamPromptTok, streamCompletionTok, r.lg)
 		}
 	}()
 
@@ -320,7 +320,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		Source:           event.EnvelopeSourceFromContext(ctx),
 	}
 	streamOpts := r.newStreamConsumeOptions()
-	result, streamErr := agent.ConsumeWithFirstByteGuard(runCtx, agent.DefaultFirstByteTimeout, events, r.td.Pipeline.Bus, projectMeta, streamOpts, loggateway.Global())
+	result, streamErr := agent.ConsumeWithFirstByteGuard(runCtx, agent.DefaultFirstByteTimeout, events, r.td.Pipeline.Bus, projectMeta, streamOpts, r.lg)
 	streamPromptTok = result.PromptTok
 	streamCompletionTok = result.CompletionTok
 	if streamErr != nil {
@@ -428,6 +428,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		run.ID,
 		userMsg.ID,
 		event.EnvelopeSourceFromContext(ctx),
+		r.lg,
 	)
 
 	if graphExecID != "" && r.teamGraphCoord != nil {
@@ -466,7 +467,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 
 	r.finalizeTeamRun(ctx, &run, teamRow, ar, assistantMsg, promptTok, completionTok, dialogMode, graphExecID, t0, teamEmitter)
 
-	sessctx.PatchContextFromLLMUsage(ctx, r.td.Sessions, r.td.Compress, r.teamLLMCatalog(), sess.ID, sess, ar.agent, ar.prov, ar.mod, promptTok, completionTok, loggateway.Global())
+	sessctx.PatchContextFromLLMUsage(ctx, r.td.Sessions, r.td.Compress, r.teamLLMCatalog(), sess.ID, sess, ar.agent, ar.prov, ar.mod, promptTok, completionTok, r.lg)
 	contextUsagePatched = true
 
 	return userMsg, assistantMsg, nil

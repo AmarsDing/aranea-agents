@@ -42,8 +42,8 @@ func TestTextInboundBatcher_mergesMessages(t *testing.T) {
 	ctx := context.Background()
 	handler := batchCapture{cap: cap}
 
-	batcher.Submit(ctx, handler, ch, port.InboundEvent{Text: "hello", PeerID: "p1"})
-	batcher.Submit(ctx, handler, ch, port.InboundEvent{Text: "world", PeerID: "p1"})
+	batcher.Submit(ctx, handler, ch, port.InboundEvent{Text: "hello", PeerID: "p1"}, loggateway.NewNoop())
+	batcher.Submit(ctx, handler, ch, port.InboundEvent{Text: "world", PeerID: "p1"}, loggateway.NewNoop())
 	time.Sleep(150 * time.Millisecond)
 
 	cap.mu.Lock()
@@ -62,8 +62,8 @@ func TestTextInboundBatcher_mergedIdempotencyKey(t *testing.T) {
 	ctx := context.Background()
 	handler := batchCapture{cap: cap}
 
-	batcher.Submit(ctx, handler, ch, port.InboundEvent{Text: "a", PeerID: "p1", IdempotencyKey: "feishu:om_1"})
-	batcher.Submit(ctx, handler, ch, port.InboundEvent{Text: "b", PeerID: "p1", IdempotencyKey: "feishu:om_2"})
+	batcher.Submit(ctx, handler, ch, port.InboundEvent{Text: "a", PeerID: "p1", IdempotencyKey: "feishu:om_1"}, loggateway.NewNoop())
+	batcher.Submit(ctx, handler, ch, port.InboundEvent{Text: "b", PeerID: "p1", IdempotencyKey: "feishu:om_2"}, loggateway.NewNoop())
 	time.Sleep(150 * time.Millisecond)
 
 	cap.mu.Lock()

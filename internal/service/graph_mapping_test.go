@@ -7,6 +7,7 @@ import (
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	"aranea-agents/internal/biz"
 	graphtrpc "aranea-agents/internal/graph/trpc"
+	"aranea-agents/pkg/loggateway"
 
 	"google.golang.org/protobuf/types/known/structpb"
 )
@@ -192,7 +193,7 @@ func TestToProtoStateField(t *testing.T) {
 			Reducer:  biz.ReducerDefault,
 			Required: true,
 		}
-		got := toProtoStateField(sf)
+		got := toProtoStateField(sf, loggateway.NewNoop())
 		if got.Name != "count" {
 			t.Errorf("Name = %q", got.Name)
 		}
@@ -211,7 +212,7 @@ func TestToProtoStateField(t *testing.T) {
 			Reducer:      biz.ReducerAppend,
 			DefaultValue: "hello",
 		}
-		got := toProtoStateField(sf)
+		got := toProtoStateField(sf, loggateway.NewNoop())
 		if got.DefaultValue == nil {
 			t.Fatal("DefaultValue should not be nil")
 		}
@@ -254,7 +255,7 @@ func TestToProtoGraph(t *testing.T) {
 		},
 	}
 
-	pb, err := toProtoGraph(def)
+	pb, err := toProtoGraph(def, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("toProtoGraph error: %v", err)
 	}
@@ -313,15 +314,15 @@ func TestToProtoGraph(t *testing.T) {
 
 func TestToProtoGraph_WithMetadata(t *testing.T) {
 	def := &biz.GraphDefinition{
-		ID:         "g1",
-		Name:       "meta",
-		EntryPoint: "start",
+		ID:          "g1",
+		Name:        "meta",
+		EntryPoint:  "start",
 		FinishPoint: "end",
-		Metadata:   map[string]any{"key": "value"},
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		Metadata:    map[string]any{"key": "value"},
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
-	pb, err := toProtoGraph(def)
+	pb, err := toProtoGraph(def, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("toProtoGraph error: %v", err)
 	}
@@ -332,14 +333,14 @@ func TestToProtoGraph_WithMetadata(t *testing.T) {
 
 func TestToProtoGraph_NilSlices(t *testing.T) {
 	def := &biz.GraphDefinition{
-		ID:         "g1",
-		Name:       "empty",
-		EntryPoint: "start",
+		ID:          "g1",
+		Name:        "empty",
+		EntryPoint:  "start",
 		FinishPoint: "end",
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
-	pb, err := toProtoGraph(def)
+	pb, err := toProtoGraph(def, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("toProtoGraph error: %v", err)
 	}
@@ -394,7 +395,7 @@ func TestToProtoStep(t *testing.T) {
 
 func TestUserTemplateToProto(t *testing.T) {
 	def := &biz.GraphDefinition{
-		EntryPoint: "start",
+		EntryPoint:  "start",
 		FinishPoint: "end",
 		Nodes: []biz.NodeDef{
 			{ID: "start", Type: "llm", Description: "begin"},
@@ -414,7 +415,7 @@ func TestUserTemplateToProto(t *testing.T) {
 		Category:    "pipeline",
 	}
 
-	got := userTemplateToProto(def, meta)
+	got := userTemplateToProto(def, meta, loggateway.NewNoop())
 	if got.Id != "tmpl-1" {
 		t.Errorf("Id = %q", got.Id)
 	}
@@ -467,7 +468,7 @@ func TestTemplateToProto(t *testing.T) {
 		},
 	}
 
-	got := templateToProto(tmpl)
+	got := templateToProto(tmpl, loggateway.NewNoop())
 	if got.Id != "builtin-1" {
 		t.Errorf("Id = %q", got.Id)
 	}
@@ -509,21 +510,21 @@ func TestToProtoTask(t *testing.T) {
 	completedAt := now
 
 	task := &biz.GraphTask{
-		TaskID:             "task-1",
-		NodeID:             "node-1",
-		ExecutionID:        "exec-1",
-		Assignee:           "user-1",
-		Status:             biz.TaskStatusComplete,
-		Context:            "do something",
-		Input:              "input data",
-		Output:             "output data",
-		Summary:            "done",
-		Metadata:           "meta",
-		RequiredRole:       "admin",
-		AssignmentMode:     "static",
-		CreatedAt:          now,
-		ClaimedAt:          &claimedAt,
-		CompletedAt:        &completedAt,
+		TaskID:         "task-1",
+		NodeID:         "node-1",
+		ExecutionID:    "exec-1",
+		Assignee:       "user-1",
+		Status:         biz.TaskStatusComplete,
+		Context:        "do something",
+		Input:          "input data",
+		Output:         "output data",
+		Summary:        "done",
+		Metadata:       "meta",
+		RequiredRole:   "admin",
+		AssignmentMode: "static",
+		CreatedAt:      now,
+		ClaimedAt:      &claimedAt,
+		CompletedAt:    &completedAt,
 	}
 
 	got := toProtoTask(task)

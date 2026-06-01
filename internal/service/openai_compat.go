@@ -139,6 +139,7 @@ func (s *ChatService) BuildOpenAIRunner(ctx context.Context, agentKey string) (t
 		Model:                 mod,
 		SkillDBRepo:           s.orch.rt.SkillDBRepo,
 		HasMemory:             s.orch.td.Persist.Memory.Available(),
+		MemoryService:         s.orch.td.Persist.Memory.TRPC,
 		PluginManager:         s.orch.rt.PluginManager,
 		MemoryAdmin:           s.orch.td.Persist.Memory.Admin,
 		MemoryL2Recall:        s.orch.td.Persist.Memory.L2Recall,
@@ -166,9 +167,9 @@ func (s *ChatService) BuildOpenAIRunner(ctx context.Context, agentKey string) (t
 	}
 	rl := chatagent.ResolveRalphLoopTurn(ag.Settings)
 	if rl.SkipErr != nil {
-		loggateway.Global().Warn("Ralph Loop 配置无效，已跳过",
+		s.lg.Warn("Ralph Loop 配置无效，已跳过",
 			loggateway.StepID("openai.runner.ralph_loop"),
-			loggateway.Str("agent_id", ag.ID), loggateway.Str("error", rl.SkipErr.Error()))
+			loggateway.Str("agent_id", ag.ID), loggateway.Err(rl.SkipErr))
 	}
 	runner, err := s.orch.td.CoalesceRunnerManager().NewTurnRunner(root, rt.TurnRunnerSpec{
 		Plugins:          plugins,

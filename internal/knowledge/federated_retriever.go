@@ -43,14 +43,15 @@ type FederatedRetriever struct {
 	router    *AdaptiveRouter
 	retriever *Retriever
 	meta      CollectionMetaFetcher
+	lg        loggateway.Logger
 }
 
-func NewFederatedRetriever(router *AdaptiveRouter, retriever *Retriever) *FederatedRetriever {
-	return &FederatedRetriever{router: router, retriever: retriever}
+func NewFederatedRetriever(router *AdaptiveRouter, retriever *Retriever, lg loggateway.Logger) *FederatedRetriever {
+	return &FederatedRetriever{router: router, retriever: retriever, lg: lg}
 }
 
-func NewFederatedRetrieverWithMeta(router *AdaptiveRouter, retriever *Retriever, meta CollectionMetaFetcher) *FederatedRetriever {
-	return &FederatedRetriever{router: router, retriever: retriever, meta: meta}
+func NewFederatedRetrieverWithMeta(router *AdaptiveRouter, retriever *Retriever, meta CollectionMetaFetcher, lg loggateway.Logger) *FederatedRetriever {
+	return &FederatedRetriever{router: router, retriever: retriever, meta: meta, lg: lg}
 }
 
 func (f *FederatedRetriever) Search(ctx context.Context, collectionIDs []string, q biz.KnowledgeSearchQuery, rewriteResult *QueryRewriteResult, modeOverride HybridSearchMode) ([]biz.KnowledgeChunk, error) {
@@ -83,7 +84,7 @@ func (f *FederatedRetriever) SearchWithOptions(ctx context.Context, collectionID
 	if opts.Strategy == FederationRoute && f.meta != nil {
 		routed, err := f.routeCollections(ctx, collectionIDs, q.Query, opts)
 		if err != nil {
-			loggateway.Global().Warn("路由策略失败，降级广播",
+			f.lg.Warn("路由策略失败，降级广播",
 				loggateway.StepID("knowledge.federated.route_fail"),
 				loggateway.Err(err))
 		} else if len(routed) > 0 {
@@ -215,7 +216,7 @@ func (f *FederatedRetriever) searchBroadcast(ctx context.Context, collectionIDs 
 	var firstErr error
 	for i, r := range results {
 		if r.err != nil {
-			loggateway.Global().Warn(fmt.Sprintf("collection %s search failed", collectionIDs[i]),
+			f.lg.Warn(fmt.Sprintf("collection %s search failed", collectionIDs[i]),
 				loggateway.StepID("knowledge.federated_retriever"),
 				loggateway.Err(r.err))
 			if firstErr == nil {

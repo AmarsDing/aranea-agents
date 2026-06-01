@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/team"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -30,6 +31,7 @@ type TeamService struct {
 	teamRunner *team.Runner
 	runs       *rt.RunRegistry
 	eventBus   event.Bus
+	lg         loggateway.Logger
 }
 
 func NewTeamService(
@@ -40,31 +42,35 @@ func NewTeamService(
 	teamRunner *team.Runner,
 	runs *rt.RunRegistry,
 	eventBus event.Bus,
+	lg loggateway.Logger,
 ) *TeamService {
 	return &TeamService{
 		uc: uc, graphUC: graphUC, agents: agents, sessions: sessions,
-		teamRunner: teamRunner, runs: runs, eventBus: eventBus,
+		teamRunner: teamRunner, runs: runs, eventBus: eventBus, lg: lg,
 	}
 }
 
 func toProtoTeam(t biz.Team) *v1.Team {
 	return &v1.Team{
-		Id:                t.ID,
-		TeamKey:           t.TeamKey,
-		DisplayName:       t.DisplayName,
-		Status:            t.Status,
-		IsDefault:         t.IsDefault,
-		DefinitionJson:    t.DefinitionJSON,
-		OrchestrationSpec: toProtoOrchestrationSpec(t.DefinitionJSON),
-		AdkAppName:        t.ADKAppName,
-		CreatedAt:         t.CreatedAt,
-		UpdatedAt:         t.UpdatedAt,
-		DeletedAt:          t.DeletedAt,
-		LinkedGraphId:      team.LinkedGraphIDFromDefinition(t.DefinitionJSON),
-		CategoryIndustryId: t.CategoryIndustryID,
-		SpiritSessionId:    t.SpiritSessionID,
-		TaskDescription:    t.TaskDescription,
-		AutoCreated:        t.AutoCreated,
+		Id:                  t.ID,
+		TeamKey:             t.TeamKey,
+		DisplayName:         t.DisplayName,
+		Status:              t.Status,
+		IsDefault:           t.IsDefault,
+		DefinitionJson:      t.DefinitionJSON,
+		OrchestrationSpec:   toProtoOrchestrationSpec(t.DefinitionJSON),
+		AdkAppName:          t.ADKAppName,
+		CreatedAt:           t.CreatedAt,
+		UpdatedAt:           t.UpdatedAt,
+		DeletedAt:           t.DeletedAt,
+		LinkedGraphId:       team.LinkedGraphIDFromDefinition(t.DefinitionJSON),
+		CategoryIndustryId:  t.CategoryIndustryID,
+		SpiritSessionId:     t.SpiritSessionID,
+		TaskDescription:     t.TaskDescription,
+		AutoCreated:         t.AutoCreated,
+		DagNodeId:           t.DagNodeID,
+		DependsOn:           t.DependsOn,
+		ParallelConfigJson:  t.ParallelConfigJSON,
 	}
 }
 
@@ -312,7 +318,7 @@ func (s *TeamService) CancelTeamRun(ctx context.Context, req *v1.CancelTeamRunRe
 		if entry, ok := s.runs.GetStatus(r.SessionID); ok && strings.TrimSpace(entry.RunID) != "" {
 			runID = entry.RunID
 		}
-		CancelSessionRunSideEffects(ctx, s.eventBus, s.sessions, r.SessionID, runID)
+		CancelSessionRunSideEffects(ctx, s.eventBus, s.sessions, r.SessionID, runID, s.lg)
 	}
 	now := agent.RFC3339Now()
 	r.Status = biz.TeamRunStatusCancelled

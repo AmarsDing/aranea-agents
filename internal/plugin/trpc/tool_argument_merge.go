@@ -2,6 +2,8 @@ package plugintrpc
 
 import (
 	"encoding/json"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 // mergeToolArgumentsJSON applies modify_patch to current tool arguments.
@@ -10,7 +12,7 @@ import (
 //   - "arguments": replaces the entire argument object when marshaling succeeds.
 //   - "merge_arguments": deep-merges into the current object; nested maps merge recursively;
 //     scalars and arrays from the patch replace the destination value.
-func mergeToolArgumentsJSON(current []byte, patch map[string]any) []byte {
+func mergeToolArgumentsJSON(current []byte, patch map[string]any, lg loggateway.Logger) []byte {
 	if len(patch) == 0 {
 		return nil
 	}
@@ -25,7 +27,9 @@ func mergeToolArgumentsJSON(current []byte, patch map[string]any) []byte {
 	}
 	base := map[string]any{}
 	if len(current) > 0 {
-		_ = json.Unmarshal(current, &base)
+		if err := json.Unmarshal(current, &base); err != nil {
+			lg.Warn("解析 tool arguments 失败", loggateway.StepID("plugin.trpc.tool_merge"), loggateway.Err(err))
+		}
 	}
 	deepMergeMap(base, mergeMap)
 	b, err := json.Marshal(base)

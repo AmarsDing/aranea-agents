@@ -48,16 +48,16 @@ func (uc *AdminUsecase) LoginByUsername(ctx context.Context, username, password 
 	user, err := uc.admin.FindByName(ctx, username)
 	if err != nil {
 		uc.lg.Warn("admin login failed: user not found",
-			loggateway.StepID("system.admin.login_failed"), loggateway.Str("method", "username"), loggateway.Str("username", username))
+			loggateway.StepID("admin.login_failed"), loggateway.Str("method", "username"), loggateway.Str("username", username))
 		return nil, err
 	}
 	if user.Password != password {
 		uc.lg.Warn("admin login failed: invalid credentials",
-			loggateway.StepID("system.admin.login_failed"), loggateway.Str("method", "username"), loggateway.Str("admin_name", user.Name))
+			loggateway.StepID("admin.login_failed"), loggateway.Str("method", "username"), loggateway.Str("admin_name", user.Name))
 		return nil, errors.Unauthorized("AUTH", "invalid credentials")
 	}
 	uc.lg.Info("admin logged in",
-		loggateway.StepID("system.admin.login"), loggateway.Str("method", "username"), loggateway.Str("admin_name", user.Name))
+		loggateway.StepID("admin.login"), loggateway.Str("method", "username"), loggateway.Str("admin_name", user.Name))
 	return user, nil
 }
 
@@ -66,16 +66,16 @@ func (uc *AdminUsecase) LoginByEmail(ctx context.Context, email, password string
 	user, err := uc.admin.FindByEmail(ctx, email)
 	if err != nil {
 		uc.lg.Warn("admin login failed: user not found",
-			loggateway.StepID("system.admin.login_failed"), loggateway.Str("method", "email"), loggateway.Str("email", email))
+			loggateway.StepID("admin.login_failed"), loggateway.Str("method", "email"), loggateway.Str("email", email))
 		return nil, err
 	}
 	if user.Password != password {
 		uc.lg.Warn("admin login failed: invalid credentials",
-			loggateway.StepID("system.admin.login_failed"), loggateway.Str("method", "email"), loggateway.Str("admin_name", user.Name))
+			loggateway.StepID("admin.login_failed"), loggateway.Str("method", "email"), loggateway.Str("admin_name", user.Name))
 		return nil, errors.Unauthorized("AUTH", "invalid credentials")
 	}
 	uc.lg.Info("admin logged in",
-		loggateway.StepID("system.admin.login"), loggateway.Str("method", "email"), loggateway.Str("admin_name", user.Name))
+		loggateway.StepID("admin.login"), loggateway.Str("method", "email"), loggateway.Str("admin_name", user.Name))
 	return user, nil
 }
 
@@ -86,7 +86,7 @@ func (uc *AdminUsecase) Logout(ctx context.Context, adminID int64) error {
 		return err
 	}
 	uc.lg.Info("admin logged out",
-		loggateway.StepID("system.admin.logout"), loggateway.Str("admin_name", admin.Name))
+		loggateway.StepID("admin.logout"), loggateway.Str("admin_name", admin.Name))
 	return nil
 }
 

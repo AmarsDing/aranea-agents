@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 type stubTaskCreator struct {
@@ -40,7 +41,7 @@ func TestStartTeamGraphTaskBridge_createsTaskOnce(t *testing.T) {
 	nodes := map[string]biz.NodeDef{"review-1": {ID: "review-1", Type: "review"}}
 	stop := StartTeamGraphTaskBridge(ctx, bus, TeamGraphTaskBridgeConfig{
 		SessionID: "sess-1", GraphExecutionID: "exec-1", Nodes: nodes, Creator: creator,
-	})
+	}, loggateway.NewNoop())
 	defer stop()
 
 	env := event.NewEnvelope(event.EnvelopeTypeGraphNodeStart, "system", "sess-1")
@@ -59,7 +60,7 @@ func TestStartTeamGraphExecutionTracker_marksInterrupt(t *testing.T) {
 	reg := &stubExecRegistry{}
 	stop := StartTeamGraphExecutionTracker(ctx, bus, TeamGraphExecutionTrackerConfig{
 		SessionID: "sess-1", GraphExecutionID: "exec-1", Registry: reg,
-	})
+	}, loggateway.NewNoop())
 	defer stop()
 
 	env := event.NewEnvelope(event.EnvelopeTypeCheckpoint, "system", "sess-1")
@@ -82,7 +83,7 @@ func TestStartTeamGraphTaskBridge_logsCreateError(t *testing.T) {
 	stop := StartTeamGraphTaskBridge(ctx, bus, TeamGraphTaskBridgeConfig{
 		SessionID: "sess-1", GraphExecutionID: "exec-1",
 		Nodes: map[string]biz.NodeDef{"t1": {ID: "t1", Type: "task"}}, Creator: creator,
-	})
+	}, loggateway.NewNoop())
 	defer stop()
 	env := event.NewEnvelope(event.EnvelopeTypeGraphNodeStart, "system", "sess-1")
 	env.Metadata = map[string]any{"execution_id": "exec-1", "node_id": "t1"}

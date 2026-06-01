@@ -19,10 +19,11 @@ type PluginService struct {
 
 	uc      *biz.PluginUsecase
 	runtime *plugintrpc.Runtime
+	lg      loggateway.Logger
 }
 
-func NewPluginService(uc *biz.PluginUsecase, runtime *plugintrpc.Runtime) *PluginService {
-	return &PluginService{uc: uc, runtime: runtime}
+func NewPluginService(uc *biz.PluginUsecase, runtime *plugintrpc.Runtime, lg loggateway.Logger) *PluginService {
+	return &PluginService{uc: uc, runtime: runtime, lg: lg}
 }
 
 // Bootstrap seeds built-in plugins and hot-reloads runtime (call once at process start).
@@ -34,8 +35,8 @@ func (s *PluginService) Bootstrap(ctx context.Context) {
 }
 
 // NewPluginServiceWithBootstrap constructs PluginService and runs one-time bootstrap.
-func NewPluginServiceWithBootstrap(uc *biz.PluginUsecase, runtime *plugintrpc.Runtime) *PluginService {
-	s := NewPluginService(uc, runtime)
+func NewPluginServiceWithBootstrap(uc *biz.PluginUsecase, runtime *plugintrpc.Runtime, lg loggateway.Logger) *PluginService {
+	s := NewPluginService(uc, runtime, lg)
 	s.Bootstrap(context.Background())
 	return s
 }
@@ -50,16 +51,16 @@ func (s *PluginService) seedBuiltinPlugins(ctx context.Context) {
 			continue
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
-			loggateway.Global().Warn("插件种子查询失败",
-				loggateway.StepID("system.plugin.seed_fail"),
+			s.lg.Warn("插件种子查询失败",
+				loggateway.StepID("plugin.seed_fail"),
 				loggateway.Str("key", def.Key),
 				loggateway.Err(err),
 			)
 			continue
 		}
 		if _, err := s.uc.Create(ctx, def.ToBizPlugin()); err != nil {
-			loggateway.Global().Warn("插件种子创建失败",
-				loggateway.StepID("system.plugin.seed_fail"),
+			s.lg.Warn("插件种子创建失败",
+				loggateway.StepID("plugin.seed_fail"),
 				loggateway.Str("key", def.Key),
 				loggateway.Err(err),
 			)
@@ -76,8 +77,8 @@ func (s *PluginService) reloadRuntime(ctx context.Context) {
 	safego.Go(ctx, "plugin.reloadRuntime", func() {
 		result, err := s.uc.List(context.Background(), biz.PluginListQuery{Enabled: "true", Limit: 200})
 		if err != nil {
-			loggateway.Global().Warn("插件运行时重载列表失败",
-				loggateway.StepID("system.plugin.reload_fail"),
+			s.lg.Warn("插件运行时重载列表失败",
+				loggateway.StepID("plugin.reload_fail"),
 				loggateway.Err(err),
 			)
 			return

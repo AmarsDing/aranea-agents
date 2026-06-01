@@ -9,7 +9,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-func ensureInitialAdminFromConfig(ctx context.Context, client *ent.Client, d *conf.Data) error {
+func ensureInitialAdminFromConfig(ctx context.Context, client *ent.Client, d *conf.Data, lg loggateway.Logger) error {
 	if client == nil || d == nil {
 		return nil
 	}
@@ -24,11 +24,12 @@ func ensureInitialAdminFromConfig(ctx context.Context, client *ent.Client, d *co
 	}
 	count, err := client.Admin.Query().Count(ctx)
 	if err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.admin_count"), loggateway.Err(err))
 		return fmt.Errorf("initial admin count: %w", err)
 	}
 	if count > 0 {
-		loggateway.Global().Info("initial admin skipped: admins already exist",
-			loggateway.StepID("system.admin.seed"), loggateway.Int("count", count))
+		lg.Info("initial admin skipped: admins already exist",
+			loggateway.StepID("admin.seed"), loggateway.Int("count", count))
 		return nil
 	}
 	_, err = client.Admin.Create().
@@ -39,9 +40,10 @@ func ensureInitialAdminFromConfig(ctx context.Context, client *ent.Client, d *co
 		SetPassword(adminPwdMD5(pwd)).
 		Save(ctx)
 	if err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.admin_create"), loggateway.Err(err))
 		return fmt.Errorf("seed initial admin: %w", err)
 	}
-	loggateway.Global().Info("initial admin seeded from config",
-		loggateway.StepID("system.admin.seed"), loggateway.Str("admin_name", name))
+	lg.Info("initial admin seeded from config",
+		loggateway.StepID("admin.seed"), loggateway.Str("admin_name", name))
 	return nil
 }

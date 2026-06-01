@@ -53,7 +53,7 @@ type toolCallCache struct {
 
 func NewEventProjector(eventBus event.Bus, lg loggateway.Logger) *EventProjector {
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	return &EventProjector{eventBus: eventBus, lg: lg}
 }

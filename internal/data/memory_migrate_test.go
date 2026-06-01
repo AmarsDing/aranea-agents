@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/data"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestRunLegacyTRPCMemoryMigration_versionGate(t *testing.T) {
@@ -29,7 +30,7 @@ INSERT INTO memory_entities (
 		t.Fatal(err)
 	}
 
-	migrated, skipped, err := data.RunLegacyTRPCMemoryMigration(ctx, store)
+	migrated, skipped, err := data.RunLegacyTRPCMemoryMigration(ctx, store, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +41,7 @@ INSERT INTO memory_entities (
 		t.Fatalf("expected migrated=1, got %d", migrated)
 	}
 
-	migrated, skipped, err = data.RunLegacyTRPCMemoryMigration(ctx, store)
+	migrated, skipped, err = data.RunLegacyTRPCMemoryMigration(ctx, store, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +75,7 @@ INSERT INTO memory_entities (
 		t.Fatal(err)
 	}
 
-	migrated, skipped, err := data.RunLegacyTRPCMemoryMigration(ctx, store)
+	migrated, skipped, err := data.RunLegacyTRPCMemoryMigration(ctx, store, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +86,7 @@ INSERT INTO memory_entities (
 		t.Fatalf("expected migrated=0, got %d", migrated)
 	}
 
-	migrated, skipped, err = data.RunLegacyTRPCMemoryMigration(ctx, store)
+	migrated, skipped, err = data.RunLegacyTRPCMemoryMigration(ctx, store, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}

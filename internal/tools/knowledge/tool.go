@@ -195,7 +195,7 @@ type reflectOutput struct {
 
 func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	execute := func(ctx context.Context, in reflectInput) (reflectOutput, error) {
 		if len(in.CollectionIDs) == 0 {

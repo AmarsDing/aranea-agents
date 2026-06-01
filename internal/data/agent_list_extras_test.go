@@ -5,14 +5,16 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestRunStatusFromStateJSON(t *testing.T) {
+	lg := loggateway.Global()
 	raw, _ := json.Marshal(map[string]string{biz.SessionStateRunStatus: "failed"})
-	if got := runStatusFromStateJSON(string(raw)); got != "failed" {
+	if got := runStatusFromStateJSON(lg, string(raw)); got != "failed" {
 		t.Fatalf("got %q want failed", got)
 	}
-	if runStatusFromStateJSON("{}") != "" {
+	if runStatusFromStateJSON(lg, "{}") != "" {
 		t.Fatal("empty object should yield empty status")
 	}
 }

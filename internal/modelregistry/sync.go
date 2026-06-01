@@ -52,7 +52,7 @@ func (s *Syncer) Sync(ctx context.Context, in SyncInput) (SyncOutput, error) {
 	s.lg.Info("Model registry sync started", loggateway.StepID("model_registry.sync"), loggateway.Str("log_id", logID), loggateway.Str("source_url", policy.SourceURL), loggateway.Str("dry_run", fmt.Sprintf("%v", in.DryRun)))
 
 	prevMeta, _ := s.store.LoadMeta()
-	fetch, err := FetchDirectory(ctx, policy.SourceURL, prevMeta.ETag)
+	fetch, err := FetchDirectory(ctx, policy.SourceURL, prevMeta.ETag, s.lg)
 	if err != nil {
 		entry.Status = "failed"
 		entry.Message = err.Error()
@@ -79,7 +79,7 @@ func (s *Syncer) Sync(ctx context.Context, in SyncInput) (SyncOutput, error) {
 		}, nil
 	}
 
-	cat, err := ParseDirectory(fetch.Body)
+	cat, err := ParseDirectory(fetch.Body, s.lg)
 	if err != nil {
 		entry.Status = "failed"
 		entry.Message = err.Error()

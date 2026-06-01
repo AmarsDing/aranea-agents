@@ -22,10 +22,11 @@ const (
 type AdaptiveRouter struct {
 	hybrid   *HybridRetriever
 	rewriter *QueryRewriter
+	lg       loggateway.Logger
 }
 
-func NewAdaptiveRouter(hybrid *HybridRetriever, rewriter *QueryRewriter) *AdaptiveRouter {
-	return &AdaptiveRouter{hybrid: hybrid, rewriter: rewriter}
+func NewAdaptiveRouter(hybrid *HybridRetriever, rewriter *QueryRewriter, lg loggateway.Logger) *AdaptiveRouter {
+	return &AdaptiveRouter{hybrid: hybrid, rewriter: rewriter, lg: lg}
 }
 
 func (a *AdaptiveRouter) Hybrid() *HybridRetriever {
@@ -148,7 +149,7 @@ func (a *AdaptiveRouter) searchMultiQuery(ctx context.Context, q biz.KnowledgeSe
 		chunks, err := a.hybrid.Search(ctx, searchQ, mode)
 		if err != nil {
 			failCount++
-			loggateway.Global().Warn("子查询检索失败",
+			a.lg.Warn("子查询检索失败",
 				loggateway.StepID("knowledge.adaptive.sub_query_fail"),
 				loggateway.Str("query", subQ),
 				loggateway.Err(err))
@@ -158,7 +159,7 @@ func (a *AdaptiveRouter) searchMultiQuery(ctx context.Context, q biz.KnowledgeSe
 	}
 
 	if failCount == len(queries) && len(queries) > 0 {
-		loggateway.Global().Warn("所有子查询均检索失败",
+		a.lg.Warn("所有子查询均检索失败",
 			loggateway.StepID("knowledge.adaptive.all_sub_query_fail"),
 			loggateway.Str("original_query", q.Query),
 			loggateway.Int("sub_query_count", len(queries)))

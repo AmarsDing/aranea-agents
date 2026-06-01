@@ -15,12 +15,12 @@ OpenClaw 的工具体系分为两层：**Tool（能力器官）** + **Skill（�
 
 | Tool | 功能 | 对标 Aranea |
 |------|------|------------|
-| `browser` | 真实 Chromium 浏览器自动化（25+ action） | ⚠️ Aranea 仅 MCP 配置 |
-| `exec_command` | Shell 命令执行（前台/后台/PTY/超时/环境注入） | ⚠️ Aranea 有 `hostexec` 但 Factory 为 nil |
-| `read_document` | 读取 PDF/DOCX/纯文本上传文件 | ❌ Aranea 无此工具 |
-| `read_spreadsheet` | 读取 XLSX/CSV 上传文件 | ❌ Aranea 无此工具 |
-| `write_stdin` | 向运行中进程写入 stdin | ❌ Aranea 无此工具 |
-| `kill_session` | 终止运行中的 exec_command 会话 | ❌ Aranea 无此工具 |
+| `browser` | 真实 Chromium 浏览器自动化（25+ action） | ⚠️ Aranea MCP + Playwright MVP 已实现 |
+| `exec_command` | Shell 命令执行（前台/后台/PTY/超时/环境注入） | ✅ Aranea hostexec 已实现（含输出脱敏） |
+| `read_document` | 读取 PDF/DOCX/纯文本上传文件 | ✅ Aranea 已实现 |
+| `read_spreadsheet` | 读取 XLSX/CSV 上传文件 | ✅ Aranea 已实现 |
+| `write_stdin` | 向运行中进程写入 stdin | ✅ Aranea hostexec ToolSet 已包含 |
+| `kill_session` | 终止运行中的 exec_command 会话 | ✅ Aranea hostexec ToolSet 已包含 |
 
 #### Skill 层（55 个内置 Skills，按需加载）
 
@@ -92,25 +92,27 @@ Hermes 的工具体系按 toolset 组织，共 **~70 个工具**：
 | # | 名称 | 类别 | 风险 | 默认启用 | Factory | 差距 |
 |---|------|------|------|----------|---------|------|
 | 1 | `file` | filesystem | low | ✅ | ✅ | — |
-| 2 | `hostexec` | execution | critical | ❌ | **nil** | 🔴 需实现 |
+| 2 | `hostexec` | execution | critical | ❌ | ✅ | ✅ 已实现（含输出脱敏） |
 | 3 | `httpfetch` | web | medium | ❌ | ✅ | — |
 | 4 | `claudefetch` | web | medium | ❌ | **nil** | 🟡 stub |
-| 5 | `geminifetch` | web | medium | ❌ | **nil** | 🟡 需配置 |
+| 5 | `geminifetch` | web | medium | ❌ | ✅ | — |
 | 6 | `duckduckgo` | search | medium | ❌ | ✅ | — |
 | 7 | `google_search` | search | medium | ❌ | **nil** | 🟡 需配置 |
 | 8 | `arxiv_search` | search | low | ❌ | ✅ | — |
 | 9 | `wikipedia` | search | low | ❌ | ✅ | — |
 | 10 | `email` | communication | high | ❌ | ✅ | — |
-| 11 | `message` | communication | high | ❌ | **nil** | 🔴 需实现 |
+| 11 | `message` | communication | high | ❌ | ✅ | — |
 | 12 | `todo` | productivity | low | ❌ | ✅ | — |
 | 13 | `await_user_reply` | interaction | low | ❌ | ✅ | — |
 | 14 | `claudecode` | coding | critical | ❌ | ✅ | — |
-| 15 | `workspace_exec` | execution | critical | ❌ | **nil** | 🔴 需实现 |
+| 15 | `workspace_exec` | execution | critical | ❌ | **nil** | 🟡 需实现 |
 | 16 | `openapi` | integration | medium | ❌ | ✅(err) | 🟡 需配置 |
-| 17 | `browser` | browser | critical | ❌ | **nil** | 🔴 需实现 |
-| 18 | `mcp` | integration | medium | ❌ | 动态 | — |
-| 19 | `mcpbroker` | integration | medium | ❌ | 动态 | — |
-| 20 | `subagents_*` | composition | medium | ❌ | 动态 | — |
+| 17 | `browser` | browser | critical | ❌ | ✅(MCP) | ✅ MCP MVP 已实现 |
+| 18 | `read_document` | media | medium | ✅ | ✅ | ✅ 已实现 |
+| 19 | `read_spreadsheet` | media | medium | ✅ | ✅ | ✅ 已实现 |
+| 20 | `mcp` | integration | medium | ❌ | 动态 | — |
+| 21 | `mcpbroker` | integration | medium | ❌ | 动态 | — |
+| 22 | `subagents_*` | composition | medium | ❌ | 动态 | — |
 | Custom | `knowledge_search/reflect` | knowledge | low | — | ✅ | — |
 | Custom | `web_research` | web | medium | — | ✅ | — |
 | Custom | `call_agent` | a2a | medium | — | ✅ | — |
@@ -121,10 +123,10 @@ Hermes 的工具体系按 toolset 组织，共 **~70 个工具**：
 
 | 差距 | 严重度 | OpenClaw | Hermes | Aranea 现状 |
 |------|--------|----------|--------|------------|
-| **浏览器自动化** | 🔴 P0 | 25+ action + 双驱动 | 10+ action + CDP | 仅 MCP 配置 |
-| **Shell 执行** | 🔴 P0 | exec_command + write_stdin + kill_session | terminal + process | hostexec Factory nil |
-| **文档读取** | 🔴 P0 | read_document + read_spreadsheet | file.read | 无专用文档工具 |
-| **消息发送** | 🟠 P1 | message(多渠道) | messaging(多平台) | message Factory nil |
+| **浏览器自动化** | 🟠 P1 | 25+ action + 双驱动 | 10+ action + CDP | ✅ MCP+Playwright MVP |
+| **Shell 执行** | ✅ P0 | exec_command + write_stdin + kill_session | terminal + process | ✅ hostexec + 输出脱敏 |
+| **文档读取** | ✅ P0 | read_document + read_spreadsheet | file.read | ✅ read_document + read_spreadsheet |
+| **消息发送** | 🟠 P1 | message(多渠道) | messaging(多平台) | ✅ outbound.Router |
 | **图像生成** | 🟠 P1 | openai-image-gen + nano-banana-pro | image_generate | 无 |
 | **语音 TTS/STT** | 🟠 P1 | sag + whisper + sherpa-onnx-tts | text_to_speech | 无 |
 | **视觉分析** | 🟠 P1 | browser_vision | vision_analyze | 无 |
@@ -146,89 +148,87 @@ Hermes 的工具体系按 toolset 组织，共 **~70 个工具**：
 
 ### 3.2 P0 — 核心工具（对标竞品必备能力）
 
-#### P0-1：Shell 执行工具组（exec_command + write_stdin + kill_session）
+#### P0-1：Shell 执行工具组（exec_command + write_stdin + kill_session） ✅ 已实现
 
 **对标**：OpenClaw `openclaw/internal/octool/`
 
-**实现方案**：移植 OpenClaw 的 octool 三件套
+**实现方案**：基于框架 `pkg/trpc-agent-go/tool/hostexec` ToolSet + 输出脱敏装饰器
 
 | 工具 | 功能 | 实现方式 |
 |------|------|---------|
-| `exec_command` | Shell 命令执行（前台/后台/PTY/超时/环境注入） | 移植 `octool/exec_command`，适配 Kratos kerrors + safego |
-| `write_stdin` | 向运行中进程写入 stdin | 移植 `octool/write_stdin` |
-| `kill_session` | 终止运行中 exec_command 会话 | 移植 `octool/kill_session` |
+| `exec_command` | Shell 命令执行（前台/后台/PTY/超时） | 框架 `hostexec` ToolSet 自带 |
+| `write_stdin` | 向运行中进程写入 stdin | 框架 `hostexec` ToolSet 自带 |
+| `kill_session` | 终止运行中 exec_command 会话 | 框架 `hostexec` ToolSet 自带 |
 
-**安全策略**（必须同步移植）：
+**安全策略**（已实现）：
 
 | 策略 | 来源 | 说明 |
 |------|------|------|
-| `CommandPolicy` | `octool/policy.go` | 阻止访问 `.ssh/`、`.aws/credentials`、`.kube/config` 等敏感路径 |
-| `OutputRedactor` | `octool/redaction.go` | 从输出中移除敏感值 |
-| 环境变量注入 | `octool/tools.go` | 注入 `OPENCLAW_SESSION_UPLOADS_DIR` 等 16 个环境变量 |
+| `OutputRedactor` | 移植 `octool/redaction.go` | 从输出中移除敏感环境变量值 |
+| `CommandPolicy` | `tools/security/command_policy.go` | 阻止访问敏感路径（覆盖 hostexec + read_document + read_spreadsheet） |
+| 参数规范化 | `tools/hostexecnorm/` | `working_dir` → `workdir` 参数映射 |
 
-**涉及文件**：
+**涉及文件**（已实现）：
 
 ```
 internal/tools/hostexec/
-  ├── service.go          ← 移植 octool/manager.go + session.go
-  ├── exec_command.go     ← 移植 octool NewExecCommandTool
-  ├── write_stdin.go      ← 移植 octool NewWriteStdinTool
-  ├── kill_session.go     ← 移植 octool NewKillSessionTool
-  ├── policy.go           ← 移植 octool/policy.go
-  └── redaction.go        ← 移植 octool/redaction.go
+  ├── redaction.go        ← 输出脱敏（移植自 octool/redaction.go）
+  └── toolset.go          ← BuildHostexecToolSet 工厂 + redactingToolSet 装饰器
 ```
 
 **验收标准**：
-- [ ] 可执行 Shell 命令（前台/后台模式）
-- [ ] 可向运行中进程写入 stdin
-- [ ] 可终止运行中会话
-- [ ] 敏感路径访问被阻止
-- [ ] 输出中敏感值被脱敏
-- [ ] 上传文件路径自动注入环境变量
+- [x] 可执行 Shell 命令（前台/后台模式）
+- [x] 可向运行中进程写入 stdin
+- [x] 可终止运行中会话
+- [x] 敏感路径访问被阻止（CommandPolicy）
+- [x] 输出中敏感值被脱敏（OutputRedactor）
+- [ ] 上传文件路径自动注入环境变量（待实现）
 
 ---
 
-#### P0-2：文档读取工具组（read_document + read_spreadsheet）
+#### P0-2：文档读取工具组（read_document + read_spreadsheet） ✅ 已实现
 
 **对标**：OpenClaw `octool/read_document` + `octool/read_spreadsheet`
 
-**实现方案**：基于框架已有的 `knowledge/document/reader/pdf` 扩展
+**实现方案**：基于框架 `knowledge/document/reader` + `excelize` 库
 
 | 工具 | 功能 | 实现方式 |
 |------|------|---------|
-| `read_document` | 读取 PDF/DOCX/纯文本上传文件 | 使用框架 `pdf` reader + 扩展 DOCX/TXT |
-| `read_spreadsheet` | 读取 XLSX/CSV 上传文件 | 新建，使用 `excelize` 库 |
+| `read_document` | 读取 PDF/DOCX/纯文本文件 | 框架 `pdf` reader + `docx` reader + os.ReadFile |
+| `read_spreadsheet` | 读取 XLSX/CSV 文件 | `excelize/v2` + `encoding/csv` |
 
-**涉及文件**：
+**涉及文件**（已实现）：
 
 ```
 internal/tools/document/
-  ├── service.go          ← 文档读取服务
-  ├── read_document.go    ← PDF/DOCX/TXT 读取工具
-  └── read_spreadsheet.go ← XLSX/CSV 读取工具
+  ├── helpers.go            ← 共享辅助函数（truncateText/normalizedPositive/minInt）
+  ├── read_document.go      ← PDF/DOCX/TXT 读取工具
+  └── read_spreadsheet.go   ← XLSX/CSV 读取工具
 ```
 
 **验收标准**：
-- [ ] 可读取 PDF 文件（含分页）
-- [ ] 可读取 DOCX 文件
-- [ ] 可读取 XLSX/CSV 文件（含按行/范围读取）
-- [ ] 上传文件自动关联到当前会话
+- [x] 可读取 PDF 文件（含分页）
+- [x] 可读取 DOCX 文件
+- [x] 可读取 XLSX/CSV 文件（含按行/范围读取）
+- [ ] 上传文件自动关联到当前会话（待实现）
 
 ---
 
-#### P0-3：浏览器工具
+#### P0-3：浏览器工具 ✅ MVP 已实现
 
 **对标**：OpenClaw `openclaw/internal/browser/`（25+ action）
 
 **实现方案**：分两阶段
 
-**阶段 1**（MVP）：集成框架 MCP toolset + Playwright MCP
+**阶段 1**（MVP ✅ 已实现）：集成框架 MCP toolset + Playwright MCP
 
 ```
 internal/tools/browser/
-  ├── config.go           ← 已有，PlaywrightMCPConfig
-  └── mcp_driver.go       ← MCP Profile Driver 实现
+  └── config.go           ← PlaywrightMCPConfig（已有）
 ```
+
+MVP 通过 `Assemble()` 中的 `cfg.Browser` 配置自动将 Playwright MCP Server 挂载为 ToolSet，
+支持 navigate/click/type/screenshot/snapshot 等基础浏览器操作。
 
 **阶段 2**（完整）：移植 OpenClaw 浏览器工具
 
@@ -242,7 +242,7 @@ internal/tools/browser/
 ```
 
 **验收标准**：
-- [ ] MVP：通过 MCP 连接 Playwright，支持 navigate/click/type/screenshot
+- [x] MVP：通过 MCP 连接 Playwright，支持 navigate/click/type/screenshot
 - [ ] 完整：25+ action，双驱动，导航安全策略
 
 ---
@@ -618,13 +618,13 @@ web/src/components/memory/
 
 ## 五、实施路线图
 
-### Sprint 1（P0 核心工具）
+### Sprint 1（P0 核心工具） ✅ 已完成
 
-| 任务 | 工作量 | 依赖 |
-|------|--------|------|
-| Shell 执行工具组（exec_command + write_stdin + kill_session） | 大 | 无 |
-| 文档读取工具组（read_document + read_spreadsheet） | 中 | 无 |
-| 浏览器工具 MVP（MCP + Playwright） | 中 | 无 |
+| 任务 | 状态 | 说明 |
+|------|------|------|
+| Shell 执行工具组（hostexec + 输出脱敏） | ✅ 已完成 | 基于框架 hostexec ToolSet + redactingToolSet 装饰器 |
+| 文档读取工具组（read_document + read_spreadsheet） | ✅ 已完成 | PDF/DOCX/TXT + XLSX/CSV |
+| 浏览器工具 MVP（MCP + Playwright） | ✅ 已完成 | PlaywrightMCPConfig → MCP ToolSet |
 
 ### Sprint 2（P0 可视化 + P1 工具）
 

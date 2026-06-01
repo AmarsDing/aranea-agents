@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 // parityFixture builds a minimal team definition for each orchestration mode.
@@ -59,7 +60,7 @@ func TestParityNativeVsGraph_CompileAllModes(t *testing.T) {
 				t.Fatalf("graph runtime should be enabled for mode %q", mode)
 			}
 
-			buildCfg, err := CompileToGraphBuildConfig(def, compileAgentKey)
+			buildCfg, err := CompileToGraphBuildConfig(def, compileAgentKey, loggateway.NewNoop())
 			if err != nil {
 				t.Fatalf("CompileToGraphBuildConfig: %v", err)
 			}
@@ -71,7 +72,7 @@ func TestParityNativeVsGraph_CompileAllModes(t *testing.T) {
 				t.Fatalf("agent nodes: got %d want %d", got, wantAgents)
 			}
 
-			runtimeCfg, err := CompileToGraphRuntimeConfig(def, compileAgentKey)
+			runtimeCfg, err := CompileToGraphRuntimeConfig(def, compileAgentKey, loggateway.NewNoop())
 			if err != nil {
 				t.Fatalf("CompileToGraphRuntimeConfig: %v", err)
 			}
@@ -91,7 +92,7 @@ func TestParityCompileSnapshot_AllModes(t *testing.T) {
 		mode := mode
 		t.Run(mode, func(t *testing.T) {
 			def := parityFixture(mode)
-			snap := BuildCompileSnapshot(def, "", compileAgentKey)
+			snap := BuildCompileSnapshot(def, "", compileAgentKey, loggateway.NewNoop())
 			if !snap.Valid {
 				t.Fatalf("compile snapshot invalid: %s", snap.CompileError)
 			}

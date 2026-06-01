@@ -20,7 +20,7 @@ func (s *ChatService) CancelSessionRunForCard(ctx context.Context, sessionRunID,
 			return false, channelBackgroundReplyNoActiveRun
 		}
 		if expectedSessionID != "" && run.SessionID != expectedSessionID {
-			loggateway.Global().Warn("session run cancel ownership denied",
+			s.lg.Warn("session run cancel ownership denied",
 				loggateway.StepID(flowStepRunEscalate),
 				loggateway.Str("session_run_id", sessionRunID),
 				loggateway.Str("expected_session_id", expectedSessionID),

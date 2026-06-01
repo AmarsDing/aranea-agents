@@ -3,6 +3,8 @@ package modelregistry
 import (
 	"encoding/json"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestUSDPer1MToMicroPer1K(t *testing.T) {
@@ -20,7 +22,7 @@ func TestMergeCatalogIntoConfig(t *testing.T) {
 		Cost:     &ModelCost{Input: 2.5, Output: 10},
 		Limit:    ModelLimit{Context: 128000, Output: 16384},
 	}
-	out, changed := mergeCatalogIntoConfig("{}", prov, model, "metadata_and_pricing", "")
+	out, changed := mergeCatalogIntoConfig(loggateway.NewNoop(), "{}", prov, model, "metadata_and_pricing", "")
 	if !changed {
 		t.Fatal("expected change")
 	}
@@ -38,7 +40,7 @@ func TestMergeCatalogIntoConfig(t *testing.T) {
 }
 
 func TestShouldSkipCustom(t *testing.T) {
-	out, changed := mergeCatalogIntoConfig(`{"catalog_source":"custom"}`, Provider{}, Model{}, "full_spec", "")
+	out, changed := mergeCatalogIntoConfig(loggateway.NewNoop(), `{"catalog_source":"custom"}`, Provider{}, Model{}, "full_spec", "")
 	if changed {
 		t.Fatalf("should skip custom, got %s", out)
 	}

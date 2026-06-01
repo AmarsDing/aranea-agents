@@ -8,6 +8,7 @@ import (
 	v1 "aranea-agents/api/kratos/plugin/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/service"
+	"aranea-agents/pkg/loggateway"
 )
 
 // memPluginRepo is an in-memory PluginRepo.
@@ -112,7 +113,7 @@ func (m *memPluginRepo) IncrementStats(_ context.Context, pluginKey string, delt
 func newPluginService() *service.PluginService {
 	repo := newMemPluginRepo()
 	repo.items["p1"] = biz.Plugin{ID: "p1", Key: "test-plugin", Name: "Test Plugin", Enabled: false}
-	return service.NewPluginService(biz.NewPluginUsecase(repo, nil, nil), nil)
+	return service.NewPluginService(biz.NewPluginUsecase(repo, nil, nil), nil, loggateway.NewNoop())
 }
 
 func TestPluginService_List(t *testing.T) {

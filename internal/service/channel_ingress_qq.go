@@ -94,12 +94,14 @@ func (h *ChannelIngress) handleQQWebhook(w http.ResponseWriter, r *http.Request,
 	return nil
 }
 
-func qqAppID(configJSON string) string {
+func qqAppID(configJSON string, lg loggateway.Logger) string {
 	var env struct {
 		Config struct {
 			AppID string `json:"app_id"`
 		} `json:"config"`
 	}
-	_ = json.Unmarshal([]byte(configJSON), &env)
+	if err := json.Unmarshal([]byte(configJSON), &env); err != nil {
+		lg.Warn("qq app id config json unmarshal failed", loggateway.StepID("channel.ingress.qq_config"), loggateway.Err(err))
+	}
 	return strings.TrimSpace(env.Config.AppID)
 }

@@ -62,7 +62,7 @@ func NewChannelIngress(
 		lg:              lg,
 		http:            lark.DefaultHTTPClient(),
 		messageDedupe:   newIngressMessageDedupe(defaultMessageDedupeTTL),
-		peerDebouncer:   newIngressPeerDebouncer(defaultIngressDebounce),
+		peerDebouncer:   newIngressPeerDebouncer(defaultIngressDebounce, lg),
 		previewRegistry: newTurnPreviewRegistry(),
 		concurrentGate:  newChannelConcurrentGate(),
 	}
@@ -106,7 +106,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			if err := h.handleDingTalkWebhook(w, r, chRow); err != nil {
 				h.lg.Warn("钉钉 Webhook 处理失败",
 					loggateway.StepID("channel.webhook.dingtalk_failed"),
-					loggateway.Str("error", err.Error()),
+					loggateway.Err(err),
 					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
@@ -115,7 +115,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			if err := h.handleWeComWebhook(w, r, chRow); err != nil {
 				h.lg.Warn("企微 Webhook 处理失败",
 					loggateway.StepID("channel.webhook.wecom_failed"),
-					loggateway.Str("error", err.Error()),
+					loggateway.Err(err),
 					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
@@ -124,7 +124,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			if err := h.handleSlackWebhook(w, r, chRow); err != nil {
 				h.lg.Warn("Slack Webhook 处理失败",
 					loggateway.StepID("channel.webhook.slack_failed"),
-					loggateway.Str("error", err.Error()),
+					loggateway.Err(err),
 					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
@@ -133,7 +133,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			if err := h.handleTelegramWebhook(w, r, chRow); err != nil {
 				h.lg.Warn("Telegram Webhook 处理失败",
 					loggateway.StepID("channel.webhook.telegram_failed"),
-					loggateway.Str("error", err.Error()),
+					loggateway.Err(err),
 					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
@@ -142,7 +142,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			if err := h.handleWeChatWebhook(w, r, chRow); err != nil {
 				h.lg.Warn("微信 Webhook 处理失败",
 					loggateway.StepID("channel.webhook.wechat_failed"),
-					loggateway.Str("error", err.Error()),
+					loggateway.Err(err),
 					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
@@ -151,7 +151,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			if err := h.handleOneBotWebhook(w, r, chRow); err != nil {
 				h.lg.Warn("OneBot Webhook 处理失败",
 					loggateway.StepID("channel.webhook.onebot_failed"),
-					loggateway.Str("error", err.Error()),
+					loggateway.Err(err),
 					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
@@ -160,7 +160,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			if err := h.handleQQWebhook(w, r, chRow); err != nil {
 				h.lg.Warn("QQ Webhook 处理失败",
 					loggateway.StepID("channel.webhook.qq_failed"),
-					loggateway.Str("error", err.Error()),
+					loggateway.Err(err),
 					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
@@ -169,7 +169,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			if err := h.handleLINEWebhook(w, r, chRow); err != nil {
 				h.lg.Warn("LINE Webhook 处理失败",
 					loggateway.StepID("channel.webhook.line_failed"),
-					loggateway.Str("error", err.Error()),
+					loggateway.Err(err),
 					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
@@ -178,7 +178,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			if err := h.handleMattermostWebhook(w, r, chRow); err != nil {
 				h.lg.Warn("Mattermost Webhook 处理失败",
 					loggateway.StepID("channel.webhook.mattermost_failed"),
-					loggateway.Str("error", err.Error()),
+					loggateway.Err(err),
 					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
@@ -187,7 +187,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			if err := h.handleTeamsWebhook(w, r, chRow); err != nil {
 				h.lg.Warn("Teams Webhook 处理失败",
 					loggateway.StepID("channel.webhook.teams_failed"),
-					loggateway.Str("error", err.Error()),
+					loggateway.Err(err),
 					loggateway.Str("channel_id", chRow.ID),
 				)
 			}
@@ -214,7 +214,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			h.lg.Warn("凭证解析失败",
 				loggateway.StepID("channel.credential.resolve_failed"),
 				loggateway.Str("key", "encrypt_key"),
-				loggateway.Str("error", encErr.Error()),
+				loggateway.Err(encErr),
 			)
 		}
 		raw, err = lark.UnwrapEncryptedWebhookBody(encryptKey, raw)
@@ -236,7 +236,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			h.lg.Warn("凭证解析失败",
 				loggateway.StepID("channel.credential.resolve_failed"),
 				loggateway.Str("key", "verification_token"),
-				loggateway.Str("error", verErr.Error()),
+				loggateway.Err(verErr),
 			)
 		}
 		parsed, err := lark.ParseWebhookPost(raw, verTok)
@@ -287,7 +287,7 @@ func channelTypeFromConfig(configJSON string, lg loggateway.Logger) string {
 	if err := json.Unmarshal([]byte(configJSON), &env); err != nil {
 		lg.Warn("渠道配置 JSON 解析失败",
 			loggateway.StepID("channel.config.parse_failed"),
-			loggateway.Str("error", err.Error()),
+			loggateway.Err(err),
 		)
 	}
 	return strings.TrimSpace(strings.ToLower(env.Type))
@@ -300,7 +300,7 @@ func channelReceiveModeFromConfig(configJSON string, lg loggateway.Logger) strin
 	if err := json.Unmarshal([]byte(configJSON), &env); err != nil {
 		lg.Warn("渠道配置 JSON 解析失败",
 			loggateway.StepID("channel.config.parse_failed"),
-			loggateway.Str("error", err.Error()),
+			loggateway.Err(err),
 		)
 	}
 	return strings.TrimSpace(strings.ToLower(env.ReceiveMode))
@@ -310,10 +310,10 @@ func (h *ChannelIngress) recordDelivery(ctx context.Context, channelID, status s
 	b, _ := json.Marshal(payload)
 	if err := h.channels.AddInboundDelivery(ctx, channelID, status, string(b), errMsg); err != nil {
 		h.lg.Warn("recordDelivery failed",
-			loggateway.StepID("system.monitor.alert_channel_fail"),
+			loggateway.StepID("monitor.alert_channel_fail"),
 			loggateway.Str("channel_id", channelID),
 			loggateway.Str("status", status),
-			loggateway.Str("error", err.Error()),
+			loggateway.Err(err),
 		)
 	}
 }

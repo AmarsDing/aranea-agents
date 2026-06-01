@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/data/ent/agentpromptfile"
 	"aranea-agents/internal/data/ent/agentruntimesetting"
 	"aranea-agents/internal/data/ent/predicate"
+	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -29,7 +30,7 @@ func NewAgentRepo(d *Data) biz.AgentRepository {
 	return &agentRepo{data: d}
 }
 
-func normalizeJSONList(value string) string {
+func normalizeJSONList(value string, lg loggateway.Logger) string {
 	if strings.TrimSpace(value) == "" {
 		return "[]"
 	}
@@ -38,6 +39,7 @@ func normalizeJSONList(value string) string {
 	}
 	b, err := json.Marshal([]string{value})
 	if err != nil {
+		lg.Warn("normalize json list marshal failed", loggateway.StepID("data.agent.normalize_json"), loggateway.Err(err))
 		return "[]"
 	}
 	return string(b)
@@ -65,7 +67,7 @@ func sanitizePromptFileID(value string) string {
 	return strings.Trim(value, "_")
 }
 
-func entAgentToBiz(a *ent.Agent) biz.Agent {
+func entAgentToBiz(a *ent.Agent, lg loggateway.Logger) biz.Agent {
 	if a == nil {
 		return biz.Agent{}
 	}
@@ -94,7 +96,9 @@ func entAgentToBiz(a *ent.Agent) biz.Agent {
 		UpdatedAt:          a.UpdatedAt,
 		DeletedAt:          a.DeletedAt,
 	}
-	_ = json.Unmarshal([]byte(a.RolesJSON), &agent.Roles)
+	if err := json.Unmarshal([]byte(a.RolesJSON), &agent.Roles); err != nil {
+		lg.Warn("agent roles json unmarshal failed", loggateway.StepID("data.agent"), loggateway.Err(err))
+	}
 	return agent
 }
 
@@ -286,7 +290,7 @@ func entPromptToBiz(e *ent.AgentPromptFile) biz.AgentPromptFile {
 	}
 }
 
-func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntimeSettings) {
+func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntimeSettings, lg loggateway.Logger) {
 	b.SetSelfEvolve(v.SelfEvolve).
 		SetSubagentsEnabled(v.SubagentsEnabled).
 		SetSubagentsMaxConcurrency(v.SubagentsMaxConcurrency).
@@ -298,9 +302,9 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetToolsEnabled(v.ToolsEnabled).
 		SetToolsProfile(v.ToolsProfile).
 		SetToolsToolCallPrefix(v.ToolsToolCallPrefix).
-		SetToolsAllowJSON(normalizeJSONList(v.ToolsAllowJSON)).
-		SetToolsDenyJSON(normalizeJSONList(v.ToolsDenyJSON)).
-		SetToolsConcurrentAllowJSON(normalizeJSONList(v.ToolsConcurrentAllowJSON)).
+		SetToolsAllowJSON(normalizeJSONList(v.ToolsAllowJSON, lg)).
+		SetToolsDenyJSON(normalizeJSONList(v.ToolsDenyJSON, lg)).
+		SetToolsConcurrentAllowJSON(normalizeJSONList(v.ToolsConcurrentAllowJSON, lg)).
 		SetMemoryEnabled(v.MemoryEnabled).
 		SetMemoryMaxChunkLength(v.MemoryMaxChunkLength).
 		SetMemoryMaxResults(v.MemoryMaxResults).
@@ -347,7 +351,7 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetL3Enabled(v.L3Enabled).
 		SetL3RecallTopK(v.L3RecallTopK).
 		SetL3RecallMinScore(v.L3RecallMinScore).
-		SetL3RecallScopesJSON(normalizeJSONList(v.L3RecallScopesJSON)).
+		SetL3RecallScopesJSON(normalizeJSONList(v.L3RecallScopesJSON, lg)).
 		SetL3EmbeddingModel(v.L3EmbeddingModel).
 		SetL3DecayIntervalHours(v.L3DecayIntervalHours).
 		SetL3ArchiveThreshold(v.L3ArchiveThreshold).
@@ -529,7 +533,7 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 	}
 	items := make([]biz.Agent, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, entAgentToBiz(row))
+		items = append(items, entAgentToBiz(row, r.data.lg))
 	}
 	return biz.AgentListResult{Items: items, Total: total, Limit: q.Limit, Offset: q.Offset}, nil
 }
@@ -575,7 +579,7 @@ func (r *agentRepo) GetAgentByID(ctx context.Context, id string) (biz.Agent, err
 		}
 		return biz.Agent{}, err
 	}
-	return entAgentToBiz(row), nil
+	return entAgentToBiz(row, r.data.lg), nil
 }
 
 func (r *agentRepo) GetAgentByAgentKey(ctx context.Context, agentKey string) (biz.Agent, error) {
@@ -590,7 +594,7 @@ func (r *agentRepo) GetAgentByAgentKey(ctx context.Context, agentKey string) (bi
 		}
 		return biz.Agent{}, err
 	}
-	return entAgentToBiz(row), nil
+	return entAgentToBiz(row, r.data.lg), nil
 }
 
 func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, error) {
@@ -721,7 +725,7 @@ func (r *agentRepo) UpsertAgentRuntimeSettings(ctx context.Context, v biz.AgentR
 	}
 	v.UpdatedAt = now
 	b := r.txClient(ctx).AgentRuntimeSetting.Create().SetID(v.AgentID)
-	applyBizRuntimeToCreate(b, v)
+	applyBizRuntimeToCreate(b, v, r.data.lg)
 	if err := b.OnConflict(
 		entsql.ConflictColumns(agentruntimesetting.FieldID),
 		entsql.ResolveWithNewValues(),

@@ -14,6 +14,7 @@ type TeamRepository interface {
 	CreateTeam(ctx context.Context, t Team) (Team, error)
 	UpdateTeam(ctx context.Context, t Team) (Team, error)
 	DeleteTeam(ctx context.Context, id string) error
+	ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]Team, error)
 	ListTeamRuns(ctx context.Context, teamID string, limit int) ([]TeamRun, error)
 	HasActiveTeamRun(ctx context.Context, teamID string) (bool, error)
 	GetTeamRunByID(ctx context.Context, id string) (TeamRun, error)
@@ -167,6 +168,10 @@ func (u *TeamUsecase) validateTeamMembersExist(ctx context.Context, raw string) 
 
 func (u *TeamUsecase) List(ctx context.Context) ([]Team, error) {
 	return u.repo.ListTeams(ctx)
+}
+
+func (u *TeamUsecase) ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]Team, error) {
+	return u.repo.ListBySpiritSessionID(ctx, spiritSessionID)
 }
 
 func (u *TeamUsecase) Get(ctx context.Context, id string) (Team, error) {

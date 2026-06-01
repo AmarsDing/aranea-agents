@@ -3,10 +3,11 @@ package data
 import (
 	"context"
 	"database/sql"
+
+	"aranea-agents/pkg/loggateway"
 )
 
-// EnsureSessionParticipantSchema creates session_participants (F6).
-func EnsureSessionParticipantSchema(ctx context.Context, db *sql.DB) error {
+func EnsureSessionParticipantSchema(ctx context.Context, db *sql.DB, lg loggateway.Logger) error {
 	if db == nil {
 		return nil
 	}
@@ -34,5 +35,8 @@ CREATE TABLE IF NOT EXISTS session_participants (
 CREATE INDEX IF NOT EXISTS idx_session_participants_session
   ON session_participants(session_id);
 `)
+	if err != nil {
+		lg.Error("create session_participants table failed", loggateway.StepID("data.session_participant.schema.create"), loggateway.Err(err))
+	}
 	return err
 }

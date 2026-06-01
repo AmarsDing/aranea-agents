@@ -20,19 +20,20 @@ func adminPwdMD5(plain string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func ensureDevBypassAdminIfEnabled(ctx context.Context, client *ent.Client) error {
+func ensureDevBypassAdminIfEnabled(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
 	if !authpkg.HTTPAuthBypassEnabled() || client == nil {
 		return nil
 	}
 	existing, err := client.Admin.Query().Where(admin.ID(1)).Only(ctx)
 	if err != nil && !ent.IsNotFound(err) {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.dev_admin_lookup"), loggateway.Err(err))
 		return fmt.Errorf("dev admin lookup: %w", err)
 	}
 	wantPwd := adminPwdMD5(DevBypassAdminPassword)
 	if existing != nil {
 		if existing.Name == "dev" && existing.Password == wantPwd {
-			loggateway.Global().Info("dev admin already exists and up-to-date",
-				loggateway.StepID("system.admin.dev_seed"))
+			lg.Info("dev admin already exists and up-to-date",
+				loggateway.StepID("admin.dev_seed"))
 			return nil
 		}
 		_, err = client.Admin.UpdateOneID(1).
@@ -42,10 +43,11 @@ func ensureDevBypassAdminIfEnabled(ctx context.Context, client *ent.Client) erro
 			SetPassword(wantPwd).
 			Save(ctx)
 		if err != nil {
+			lg.Warn("seed step failed", loggateway.StepID("data.seed.dev_admin_sync"), loggateway.Err(err))
 			return fmt.Errorf("sync dev admin: %w", err)
 		}
-		loggateway.Global().Info("dev admin synced (bypass mode)",
-			loggateway.StepID("system.admin.dev_seed"))
+		lg.Info("dev admin synced (bypass mode)",
+			loggateway.StepID("admin.dev_seed"))
 		return nil
 	}
 	_, err = client.Admin.Create().
@@ -57,9 +59,10 @@ func ensureDevBypassAdminIfEnabled(ctx context.Context, client *ent.Client) erro
 		SetPassword(adminPwdMD5(DevBypassAdminPassword)).
 		Save(ctx)
 	if err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.dev_admin_create"), loggateway.Err(err))
 		return fmt.Errorf("seed dev admin: %w", err)
 	}
-	loggateway.Global().Info("dev admin seeded (bypass mode)",
-		loggateway.StepID("system.admin.dev_seed"))
+	lg.Info("dev admin seeded (bypass mode)",
+		loggateway.StepID("admin.dev_seed"))
 	return nil
 }

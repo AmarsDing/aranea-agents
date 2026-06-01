@@ -93,6 +93,7 @@ var ProviderSet = wire.NewSet(
 	NewSkillDBRepository,
 	NewMemoryLLMExtractor,
 	wire.Bind(new(biz.MemoryTextExtractor), new(*MemoryLLMExtractor)),
+	wire.Bind(new(biz.TeamStarterPort), new(*TeamStarter)),
 	// Phase 3 decoupling adapters: biz interfaces → event/webresearch implementations
 	ProvideEnvelopeBuffer,
 	ProvideSessionLogWriter,
@@ -103,6 +104,8 @@ var ProviderSet = wire.NewSet(
 	NewIndustryService,
 	WireSessionStatusPublisher,
 	NewSpiritTeamAssembler,
+	NewSpiritSynthesisService,
+	NewTeamStarter,
 )
 
 func ProvideSkillResolveRootFn(sys biz.SystemSettingRepo) func(ctx context.Context) string {

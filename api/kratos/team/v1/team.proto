@@ -33,6 +33,9 @@ message Team {
   string spirit_session_id = 15;
   string task_description = 16;
   bool auto_created = 17;
+  string dag_node_id = 18;
+  repeated string depends_on = 19;
+  string parallel_config_json = 20;
 }
 
 message TeamRun {

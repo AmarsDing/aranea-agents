@@ -38,7 +38,7 @@ type RunnerManager struct {
 
 func NewRunnerManager(factory RunnerFactoryDeps, lg loggateway.Logger) *RunnerManager {
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	return &RunnerManager{
 		factory:  factory,

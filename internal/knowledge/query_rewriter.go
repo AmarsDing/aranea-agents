@@ -41,10 +41,11 @@ type QueryRewriter struct {
 	llm     biz.LLMCaller
 	sys     *biz.SystemSettingUsecase
 	catalog *biz.LlmProviderModelUsecase
+	lg      loggateway.Logger
 }
 
-func NewQueryRewriter(llm biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase) *QueryRewriter {
-	return &QueryRewriter{llm: llm, sys: sys, catalog: catalog}
+func NewQueryRewriter(llm biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) *QueryRewriter {
+	return &QueryRewriter{llm: llm, sys: sys, catalog: catalog, lg: lg}
 }
 
 func (r *QueryRewriter) Rewrite(ctx context.Context, query string, strategy RewriteStrategy) (*QueryRewriteResult, error) {
@@ -57,7 +58,7 @@ func (r *QueryRewriter) Rewrite(ctx context.Context, query string, strategy Rewr
 
 	provider, model, err := r.resolveModel(ctx)
 	if err != nil {
-		loggateway.Global().Warn("查询重写跳过：无可用 LLM",
+		r.lg.Warn("查询重写跳过：无可用 LLM",
 			loggateway.StepID("knowledge.query_rewrite.skip"),
 			loggateway.Err(err))
 		return &QueryRewriteResult{Queries: []string{query}, Used: RewriteNone}, nil
@@ -88,7 +89,7 @@ func (r *QueryRewriter) rewriteHyDE(ctx context.Context, query, provider, model 
 		User:     query,
 	})
 	if err != nil {
-		loggateway.Global().Warn("HyDE 重写失败",
+		r.lg.Warn("HyDE 重写失败",
 			loggateway.StepID("knowledge.query_rewrite.hyde.fail"),
 			loggateway.Err(err))
 		return &QueryRewriteResult{Queries: []string{query}, Used: RewriteNone}, nil
@@ -110,7 +111,7 @@ func (r *QueryRewriter) rewriteDecomposition(ctx context.Context, query, provide
 		User:     query,
 	})
 	if err != nil {
-		loggateway.Global().Warn("查询分解失败",
+		r.lg.Warn("查询分解失败",
 			loggateway.StepID("knowledge.query_rewrite.decomposition.fail"),
 			loggateway.Err(err))
 		return &QueryRewriteResult{Queries: []string{query}, Used: RewriteNone}, nil
@@ -120,7 +121,7 @@ func (r *QueryRewriter) rewriteDecomposition(ctx context.Context, query, provide
 	text = strings.TrimSpace(text)
 	text = stripCodeFenceJSON(text)
 	if err := json.Unmarshal([]byte(text), &subQueries); err != nil || len(subQueries) == 0 {
-		loggateway.Global().Warn("查询分解结果解析失败",
+		r.lg.Warn("查询分解结果解析失败",
 			loggateway.StepID("knowledge.query_rewrite.decomposition.parse_fail"),
 			loggateway.Str("raw", text))
 		return &QueryRewriteResult{Queries: []string{query}, Used: RewriteNone}, nil
@@ -138,7 +139,7 @@ func (r *QueryRewriter) rewriteMultiQuery(ctx context.Context, query, provider, 
 		User:     query,
 	})
 	if err != nil {
-		loggateway.Global().Warn("多查询改写失败",
+		r.lg.Warn("多查询改写失败",
 			loggateway.StepID("knowledge.query_rewrite.multi_query.fail"),
 			loggateway.Err(err))
 		return &QueryRewriteResult{Queries: []string{query}, Used: RewriteNone}, nil
@@ -148,7 +149,7 @@ func (r *QueryRewriter) rewriteMultiQuery(ctx context.Context, query, provider, 
 	text = strings.TrimSpace(text)
 	text = stripCodeFenceJSON(text)
 	if err := json.Unmarshal([]byte(text), &variants); err != nil || len(variants) == 0 {
-		loggateway.Global().Warn("多查询改写结果解析失败",
+		r.lg.Warn("多查询改写结果解析失败",
 			loggateway.StepID("knowledge.query_rewrite.multi_query.parse_fail"),
 			loggateway.Str("raw", text))
 		return &QueryRewriteResult{Queries: []string{query}, Used: RewriteNone}, nil
@@ -169,7 +170,7 @@ func (r *QueryRewriter) resolveModel(ctx context.Context) (string, string, error
 	if r.catalog != nil {
 		cat = r.catalog
 	}
-	return ResolveLLM(ctx, sys, cat, "query rewriting")
+	return ResolveLLM(ctx, sys, cat, "query rewriting", r.lg)
 }
 
 func stripCodeFenceJSON(s string) string {

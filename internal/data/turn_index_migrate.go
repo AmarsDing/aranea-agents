@@ -36,11 +36,11 @@ func entAddColumnIfMissing(ctx context.Context, client *ent.Client, table, colum
 	return nil
 }
 
-func ensureMessagesTurnNumberPatch(ctx context.Context, client *ent.Client) error {
+func ensureMessagesTurnNumberPatch(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
-	hasTable, err := sqliteTableExists(ctx, client, "messages")
+	hasTable, err := sqliteTableExists(ctx, client, lg, "messages")
 	if err != nil {
 		return err
 	}
@@ -51,18 +51,18 @@ func ensureMessagesTurnNumberPatch(ctx context.Context, client *ent.Client) erro
 		`ALTER TABLE messages ADD COLUMN turn_number INTEGER NOT NULL DEFAULT 0`)
 }
 
-func RunTurnIndexToTurnIDMigration(ctx context.Context, client *ent.Client) error {
+func RunTurnIndexToTurnIDMigration(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
 	if client == nil {
 		return fmt.Errorf("turn_index migration: ent client required")
 	}
-	applied, err := isMigrationApplied(ctx, client, MigrationTurnIndexToTurnID)
+	applied, err := isMigrationApplied(ctx, client, MigrationTurnIndexToTurnID, lg)
 	if err != nil {
 		return fmt.Errorf("turn_index migration: check gate: %w", err)
 	}
 	if applied {
 		return nil
 	}
-	loggateway.Global().Info("turn_index -> turn_id/turn_number/seq_in_turn: starting", loggateway.StepID("migration.turn_index"))
+	lg.Info("turn_index -> turn_id/turn_number/seq_in_turn: starting", loggateway.StepID("migration.turn_index"))
 
 	if err := entAddColumnIfMissing(ctx, client, "messages", "turn_id",
 		`ALTER TABLE messages ADD COLUMN turn_id VARCHAR(256) NOT NULL DEFAULT ''`); err != nil {
@@ -95,7 +95,7 @@ FROM session_turns st
 WHERE st.session_id = m.session_id
   AND st.turn_index = m.turn_index
 `, stCol)); err != nil {
-			loggateway.Global().Warn("backfill from session_turns failed (may be expected on fresh DB)", loggateway.StepID("migration.turn_index"), loggateway.Err(err))
+			lg.Warn("backfill from session_turns failed (may be expected on fresh DB)", loggateway.StepID("migration.turn_index"), loggateway.Err(err))
 		}
 
 		if _, err := client.ExecContext(ctx, `
@@ -110,20 +110,20 @@ SET seq_in_turn = r.rn
 FROM ranked r
 WHERE m.id = r.id
 `); err != nil {
-			loggateway.Global().Warn("seq_in_turn backfill failed (may be expected on fresh DB)", loggateway.StepID("migration.turn_index"), loggateway.Err(err))
+			lg.Warn("seq_in_turn backfill failed (may be expected on fresh DB)", loggateway.StepID("migration.turn_index"), loggateway.Err(err))
 		}
 	}
 
 	if hasSTOldIndex {
 		if _, err := client.ExecContext(ctx,
 			`ALTER TABLE session_turns RENAME COLUMN turn_index TO turn_number`); err != nil {
-			loggateway.Global().Warn("rename session_turns.turn_index failed (may be expected if already renamed)", loggateway.StepID("migration.turn_index"), loggateway.Err(err))
+			lg.Warn("rename session_turns.turn_index failed (may be expected if already renamed)", loggateway.StepID("migration.turn_index"), loggateway.Err(err))
 		}
 	}
 
-	if err := recordMigrationApplied(ctx, client, MigrationTurnIndexToTurnID, migrationNameTurnIndexToTurnID); err != nil {
+	if err := recordMigrationApplied(ctx, client, MigrationTurnIndexToTurnID, migrationNameTurnIndexToTurnID, lg); err != nil {
 		return fmt.Errorf("turn_index migration: record: %w", err)
 	}
-	loggateway.Global().Info("turn_index -> turn_id/turn_number/seq_in_turn: done", loggateway.StepID("migration.turn_index"))
+	lg.Info("turn_index -> turn_id/turn_number/seq_in_turn: done", loggateway.StepID("migration.turn_index"))
 	return nil
 }

@@ -22,7 +22,7 @@ func TestBuiltin_AllKeysConstruct(t *testing.T) {
 
 func TestConfirmationGuard_MatchPolicy(t *testing.T) {
 	var cfg ConfirmationGuardConfig
-	parsePluginConfig(`{"confirm_tools":["delete_file"],"default_action":"reject"}`, "{}", &cfg)
+	parsePluginConfig(`{"confirm_tools":["delete_file"],"default_action":"reject"}`, "{}", &cfg, loggateway.NewNoop())
 	if !MatchConfirmationGuard(cfg, "delete_file", []byte(`{}`)) {
 		t.Fatal("expected confirm for delete_file")
 	}

@@ -11,6 +11,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	bizmonitor "aranea-agents/internal/biz/monitor"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
 )
@@ -327,7 +328,7 @@ func (r *monitorRepo) patchRunnerCompletionByDualKey(ctx context.Context, sessio
 	if err != nil {
 		return false, err
 	}
-	merged, err := mergeJSONMetadata(existing, patchJSON)
+	merged, err := mergeJSONMetadata(r.data.lg, existing, patchJSON)
 	if err != nil {
 		return false, err
 	}
@@ -361,7 +362,7 @@ func (r *monitorRepo) patchRunnerCompletionByKey(ctx context.Context, sessionID,
 	if err != nil {
 		return false, err
 	}
-	merged, err := mergeJSONMetadata(existing, patchJSON)
+	merged, err := mergeJSONMetadata(r.data.lg, existing, patchJSON)
 	if err != nil {
 		return false, err
 	}
@@ -377,15 +378,17 @@ func (r *monitorRepo) patchRunnerCompletionByKey(ctx context.Context, sessionID,
 	return n > 0, nil
 }
 
-func mergeJSONMetadata(existing, patch string) (string, error) {
+func mergeJSONMetadata(lg loggateway.Logger, existing, patch string) (string, error) {
 	base := map[string]any{}
 	if strings.TrimSpace(existing) != "" {
 		if err := json.Unmarshal([]byte(existing), &base); err != nil {
+			lg.Warn("unmarshal existing metadata failed, resetting base", loggateway.StepID("data.monitor"), loggateway.Err(err))
 			base = map[string]any{}
 		}
 	}
 	delta := map[string]any{}
 	if err := json.Unmarshal([]byte(patch), &delta); err != nil {
+		lg.Warn("unmarshal patch metadata failed", loggateway.StepID("data.monitor"), loggateway.Err(err))
 		return existing, err
 	}
 	for k, v := range delta {

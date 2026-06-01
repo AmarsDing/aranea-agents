@@ -8,6 +8,7 @@ import (
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/team"
+	"aranea-agents/pkg/loggateway"
 )
 
 type compileTeamRepo struct {
@@ -24,8 +25,10 @@ func (r *compileTeamRepo) GetTeamByID(_ context.Context, id string) (biz.Team, e
 func (r *compileTeamRepo) CreateTeam(context.Context, biz.Team) (biz.Team, error) {
 	return biz.Team{}, nil
 }
-func (r *compileTeamRepo) UpdateTeam(context.Context, biz.Team) (biz.Team, error) { return biz.Team{}, nil }
-func (r *compileTeamRepo) DeleteTeam(context.Context, string) error             { return nil }
+func (r *compileTeamRepo) UpdateTeam(context.Context, biz.Team) (biz.Team, error) {
+	return biz.Team{}, nil
+}
+func (r *compileTeamRepo) DeleteTeam(context.Context, string) error { return nil }
 func (r *compileTeamRepo) ListTeamRuns(context.Context, string, int) ([]biz.TeamRun, error) {
 	return nil, nil
 }
@@ -55,7 +58,9 @@ func (r *compileTeamRepo) BatchCreateOrchestrationSteps(context.Context, []biz.O
 func (r *compileTeamRepo) ListOrchestrationSteps(context.Context, string, string, int) ([]biz.OrchestrationStep, error) {
 	return nil, nil
 }
-func (r *compileTeamRepo) CreateTaskDeadLetter(_ context.Context, _ biz.TaskDeadLetter) error { return nil }
+func (r *compileTeamRepo) CreateTaskDeadLetter(_ context.Context, _ biz.TaskDeadLetter) error {
+	return nil
+}
 func (r *compileTeamRepo) ListTaskDeadLetters(_ context.Context, _ biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
 	return nil, nil
 }
@@ -65,13 +70,16 @@ func (r *compileTeamRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (bi
 func (r *compileTeamRepo) CreateTeamRunStep(context.Context, biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return biz.TeamRunStep{}, nil
 }
+func (r *compileTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 
 func TestCompileTeamGraph_sequential(t *testing.T) {
 	repo := &compileTeamRepo{team: biz.Team{
-		ID: "t1",
+		ID:             "t1",
 		DefinitionJSON: `{"version":1,"mode":"sequential","members":[{"agent_id":"a1","role":"worker","sort_order":1,"enabled":true},{"agent_id":"a2","role":"worker","sort_order":2,"enabled":true}]}`,
 	}}
-	svc := NewTeamService(biz.NewTeamUsecase(repo, nil), nil, nil, nil, nil, nil, nil)
+	svc := NewTeamService(biz.NewTeamUsecase(repo, nil), nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	resp, err := svc.CompileTeamGraph(context.Background(), &v1.CompileTeamGraphRequest{TeamId: "t1"})
 	if err != nil {
 		t.Fatal(err)

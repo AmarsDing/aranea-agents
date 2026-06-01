@@ -12,6 +12,7 @@ import (
 	tooltrpc "aranea-agents/internal/tools/trpc"
 	"aranea-agents/pkg/loggateway"
 
+	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -45,6 +46,7 @@ type TRPCToolAssemblyDeps struct {
 // TRPCMemoryKnowledgeDeps documents memory/knowledge ports on TRPCBuilderDeps.
 type TRPCMemoryKnowledgeDeps struct {
 	HasMemory             bool
+	MemoryService         trpcmemory.Service
 	MemoryAdmin           biz.SessionAdminStore
 	MemoryL2Recall        biz.MemoryL2Recaller
 	MemoryL3Recall        biz.MemoryL3Recaller
@@ -88,6 +90,7 @@ type TRPCBuilderDeps struct {
 	KanbanBridge kanbanpkg.Bridge
 	// TRPCMemoryKnowledgeDeps
 	HasMemory             bool
+	MemoryService         trpcmemory.Service
 	MemoryAdmin           biz.SessionAdminStore
 	MemoryL2Recall        biz.MemoryL2Recaller
 	MemoryL3Recall        biz.MemoryL3Recaller
@@ -135,5 +138,5 @@ func (d TRPCBuilderDeps) Logger() loggateway.Logger {
 	if d.LG != nil {
 		return d.LG
 	}
-	return loggateway.Global()
+	return loggateway.NewNoop()
 }

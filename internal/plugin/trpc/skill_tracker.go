@@ -35,7 +35,7 @@ func NewSkillUsageTrackerPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus
 	cfg.CaptureInputPreview = true
 	cfg.CaptureOutputPreview = true
 	cfg.MaxPreviewLength = 500
-	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
 	if cfg.MaxPreviewLength <= 0 {
 		cfg.MaxPreviewLength = 500
 	}

@@ -73,7 +73,7 @@ func fromProtoSubgraph(sub *graphv1.SubgraphDef) biz.SubgraphDef {
 	}
 }
 
-func toProtoGraph(def *biz.GraphDefinition) (*graphv1.GraphDefinition, error) {
+func toProtoGraph(def *biz.GraphDefinition, lg loggateway.Logger) (*graphv1.GraphDefinition, error) {
 	pb := &graphv1.GraphDefinition{
 		Id:               def.ID,
 		Name:             def.Name,
@@ -92,7 +92,7 @@ func toProtoGraph(def *biz.GraphDefinition) (*graphv1.GraphDefinition, error) {
 	if def.StateFields != nil {
 		pb.StateFields = make([]*graphv1.StateFieldDef, len(def.StateFields))
 		for i, sf := range def.StateFields {
-			pb.StateFields[i] = toProtoStateField(sf)
+			pb.StateFields[i] = toProtoStateField(sf, lg)
 		}
 	}
 	if def.Nodes != nil {
@@ -166,7 +166,7 @@ func toProtoGraph(def *biz.GraphDefinition) (*graphv1.GraphDefinition, error) {
 	return pb, nil
 }
 
-func toProtoStateField(sf biz.StateFieldDef) *graphv1.StateFieldDef {
+func toProtoStateField(sf biz.StateFieldDef, lg loggateway.Logger) *graphv1.StateFieldDef {
 	pb := &graphv1.StateFieldDef{
 		Name:            sf.Name,
 		Type:            sf.Type,
@@ -177,7 +177,7 @@ func toProtoStateField(sf biz.StateFieldDef) *graphv1.StateFieldDef {
 	if sf.DefaultValue != nil {
 		v, err := structpb.NewValue(sf.DefaultValue)
 		if err != nil {
-			loggateway.Global().Warn("structpb.NewValue failed for state field default", loggateway.StepID("graph.mapping"), loggateway.Str("field", sf.Name), loggateway.Err(err))
+			lg.Warn("structpb.NewValue failed for state field default", loggateway.StepID("graph.mapping"), loggateway.Str("field", sf.Name), loggateway.Err(err))
 		} else {
 			pb.DefaultValue = v
 		}
@@ -205,7 +205,7 @@ func toProtoStep(step biz.GraphStepSnapshot) *graphv1.GraphStepSnapshot {
 	return pb
 }
 
-func userTemplateToProto(def *biz.GraphDefinition, meta *biz.UserTemplateMeta) *graphv1.GraphTemplateInfo {
+func userTemplateToProto(def *biz.GraphDefinition, meta *biz.UserTemplateMeta, lg loggateway.Logger) *graphv1.GraphTemplateInfo {
 	info := &graphv1.GraphTemplateInfo{
 		Id:          meta.TemplateID,
 		Name:        meta.Name,
@@ -230,12 +230,12 @@ func userTemplateToProto(def *biz.GraphDefinition, meta *biz.UserTemplateMeta) *
 		})
 	}
 	for _, sf := range def.StateFields {
-		info.StateFields = append(info.StateFields, toProtoStateField(sf))
+		info.StateFields = append(info.StateFields, toProtoStateField(sf, lg))
 	}
 	return info
 }
 
-func templateToProto(t graphtrpc.GraphTemplate) *graphv1.GraphTemplateInfo {
+func templateToProto(t graphtrpc.GraphTemplate, lg loggateway.Logger) *graphv1.GraphTemplateInfo {
 	info := &graphv1.GraphTemplateInfo{
 		Id:          t.ID,
 		Name:        t.Name,
@@ -271,7 +271,7 @@ func templateToProto(t graphtrpc.GraphTemplate) *graphv1.GraphTemplateInfo {
 			DefaultValue:    sf.DefaultValue,
 			Required:        sf.Required,
 			DisableDeepCopy: sf.DisableDeepCopy,
-		})
+		}, lg)
 	}
 	return info
 }

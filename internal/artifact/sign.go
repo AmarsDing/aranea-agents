@@ -47,7 +47,15 @@ func isDevEnv() bool {
 // Returns ErrSignKeyMissing when no env key is configured AND the process is
 // NOT in an explicit dev/local/test environment, so callers can fail closed
 // instead of issuing forgeable tokens. Staging / pre-prod are also fail-closed.
-func SignKey() ([]byte, error) {
+type Signer struct {
+	lg loggateway.Logger
+}
+
+func NewSigner(lg loggateway.Logger) *Signer {
+	return &Signer{lg: lg}
+}
+
+func (s *Signer) SignKey() ([]byte, error) {
 	if v := strings.TrimSpace(os.Getenv("KRATOS_ARTIFACT_SIGN_KEY")); v != "" {
 		return []byte(v), nil
 	}
@@ -56,8 +64,8 @@ func SignKey() ([]byte, error) {
 	}
 	if isDevEnv() {
 		devSignKeyOnce.Do(func() {
-			loggateway.Global().Warn("artifact: no signing key configured (KRATOS_ARTIFACT_SIGN_KEY / KRATOS_AUTH_SECRET); using insecure dev key — set a strong key before going to production",
-				loggateway.StepID("system.auth.bypass_warn"),
+			s.lg.Warn("artifact: no signing key configured (KRATOS_ARTIFACT_SIGN_KEY / KRATOS_AUTH_SECRET); using insecure dev key — set a strong key before going to production",
+				loggateway.StepID("auth.bypass_warn"),
 			)
 		})
 		return []byte("aranea-artifact-dev-key"), nil
@@ -65,11 +73,8 @@ func SignKey() ([]byte, error) {
 	return nil, ErrSignKeyMissing
 }
 
-// DownloadToken builds an HMAC-SHA256 token for artifact download.
-// payload: id|version|expiresUnix
-// Returns ErrSignKeyMissing in production when no signing key is configured.
-func DownloadToken(id string, version int, expires time.Time) (string, error) {
-	key, err := SignKey()
+func (s *Signer) DownloadToken(id string, version int, expires time.Time) (string, error) {
+	key, err := s.SignKey()
 	if err != nil {
 		return "", err
 	}
@@ -79,17 +84,14 @@ func DownloadToken(id string, version int, expires time.Time) (string, error) {
 	return hex.EncodeToString(mac.Sum(nil)), nil
 }
 
-// VerifyDownloadToken checks token validity for the given artifact and expiry.
-// Returns (false, ErrSignKeyMissing) in production when no signing key is set,
-// so the HTTP handler can return 503 rather than silently rejecting every token.
-func VerifyDownloadToken(id string, version int, expiresUnix int64, token string) (bool, error) {
+func (s *Signer) VerifyDownloadToken(id string, version int, expiresUnix int64, token string) (bool, error) {
 	if strings.TrimSpace(id) == "" || strings.TrimSpace(token) == "" {
 		return false, nil
 	}
 	if time.Now().Unix() > expiresUnix {
 		return false, nil
 	}
-	expected, err := DownloadToken(id, version, time.Unix(expiresUnix, 0))
+	expected, err := s.DownloadToken(id, version, time.Unix(expiresUnix, 0))
 	if err != nil {
 		return false, err
 	}

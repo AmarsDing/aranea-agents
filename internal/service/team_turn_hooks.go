@@ -8,14 +8,12 @@ import (
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
-	"github.com/google/uuid"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"github.com/google/uuid"
 )
 
-// executeTeamTurnViaHooks runs a team session turn through the TurnExecutor lifecycle hooks (DECO-15).
-// Build → Run → Persist → Project events are delegated to TeamsNative while admission/registry
-// remain in ChatOrchestrator.
 func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 	ctx context.Context,
 	sess biz.Session,
@@ -62,19 +60,33 @@ func (o *ChatOrchestrator) executeTeamTurnViaHooks(
 		o.processPendingQueue(sessionID, sess, biz.Agent{}, "", "", "")
 	}()
 
-	// Hook: Build + Run (TeamsNative encapsulates team runtime build/project/persist).
 	userMsg, assistantMsg, err = o.team.TeamsNative.RunTurnFromInput(teamCtx, sess, input)
 	if err != nil {
 		o.setRunStatus(ctx, sessionID, runID, biz.TeamRunStatusFailed, err.Error())
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
+		if sess.ParentSessionID != "" && strings.TrimSpace(sess.TeamID) != "" {
+			o.teamStarter.HandleTeamTurnResult(ctx, sess.ParentSessionID, strings.TrimSpace(sess.TeamID), "failed", err.Error())
+		}
 		return userMsg, assistantMsg, err
 	}
 
 	o.setRunStatus(ctx, sessionID, runID, "completed", "")
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")
+	if sess.ParentSessionID != "" && strings.TrimSpace(sess.TeamID) != "" {
+		o.teamStarter.HandleTeamTurnResult(ctx, sess.ParentSessionID, strings.TrimSpace(sess.TeamID), "completed", "")
+	}
 	o.recordTeamSessionTurn(ctx, sessionID, strings.TrimSpace(sess.TeamID),
 		userMsg.ID, assistantMsg.ID, "", "",
 		assistantMsg.TokenIn, assistantMsg.TokenOut, assistantMsg.ContentMarkdown)
 	return userMsg, assistantMsg, nil
+}
+
+func containsString(slice []string, s string) bool {
+	for _, v := range slice {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }

@@ -32,7 +32,7 @@ func RunStream(
 		loggateway.StepID("channel.dingtalk.stream.start"),
 		loggateway.Str("channel_id", ch.ID),
 	)
-	clientID, clientSecret, err := dingStreamCreds(ctx, ch, creds, lookup)
+	clientID, clientSecret, err := dingStreamCreds(ctx, ch, creds, lookup, lg)
 	if err != nil {
 		lg.Error("钉钉 Stream 凭据获取失败",
 			loggateway.StepID("channel.dingtalk.stream.creds_fail"),
@@ -43,7 +43,7 @@ func RunStream(
 	}
 	chRow := ch
 	onChat := func(ctx context.Context, message *chatbot.BotCallbackDataModel) ([]byte, error) {
-		ev, ok := parseStreamMessage(message)
+		ev, ok := parseStreamMessage(message, lg)
 		if !ok {
 			return nil, nil
 		}
@@ -65,13 +65,15 @@ func RunStream(
 	return streamClient.Start(ctx)
 }
 
-func dingStreamCreds(ctx context.Context, ch biz.Channel, creds []biz.ChannelCredential, lookup runtime.CredentialLookup) (string, string, error) {
+func dingStreamCreds(ctx context.Context, ch biz.Channel, creds []biz.ChannelCredential, lookup runtime.CredentialLookup, lg loggateway.Logger) (string, string, error) {
 	var cfg struct {
 		Config struct {
 			ClientID string `json:"client_id"`
 		} `json:"config"`
 	}
-	_ = json.Unmarshal([]byte(ch.ConfigJSON), &cfg)
+	if err := json.Unmarshal([]byte(ch.ConfigJSON), &cfg); err != nil {
+		lg.Warn("解析 dingtalk config 失败", loggateway.StepID("channel.dingtalk.creds"), loggateway.Err(err))
+	}
 	clientID := strings.TrimSpace(cfg.Config.ClientID)
 	if clientID == "" {
 		s, _ := lookup(ctx, creds, "client_id")
@@ -85,7 +87,7 @@ func dingStreamCreds(ctx context.Context, ch biz.Channel, creds []biz.ChannelCre
 	return clientID, secret, err
 }
 
-func parseStreamMessage(message *chatbot.BotCallbackDataModel) (port.InboundEvent, bool) {
+func parseStreamMessage(message *chatbot.BotCallbackDataModel, lg loggateway.Logger) (port.InboundEvent, bool) {
 	if message == nil {
 		return port.InboundEvent{}, false
 	}
@@ -98,7 +100,9 @@ func parseStreamMessage(message *chatbot.BotCallbackDataModel) (port.InboundEven
 		ConversationId string `json:"conversationId"`
 		SessionWebhook string `json:"sessionWebhook"`
 	}
-	_ = json.Unmarshal(raw, &generic)
+	if err := json.Unmarshal(raw, &generic); err != nil {
+		lg.Warn("解析 dingtalk stream message 失败", loggateway.StepID("channel.dingtalk.parse"), loggateway.Err(err))
+	}
 	text := strings.TrimSpace(generic.Text.Content)
 	if text == "" {
 		return port.InboundEvent{}, false

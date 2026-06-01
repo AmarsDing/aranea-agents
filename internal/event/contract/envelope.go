@@ -54,6 +54,9 @@ const (
 	EnvelopeTypeSpiritTeamAssembled         EnvelopeType = "spirit_team_assembled"
 	EnvelopeTypeSpiritTeamCompleted         EnvelopeType = "spirit_team_completed"
 	EnvelopeTypeSpiritTeamFailed            EnvelopeType = "spirit_team_failed"
+	EnvelopeTypeSpiritTeamProgress          EnvelopeType = "spirit_team_progress"
+	EnvelopeTypeSpiritTeamsAllCompleted     EnvelopeType = "spirit_teams_all_completed"
+	EnvelopeTypeSpiritSynthesisCompleted    EnvelopeType = "spirit_synthesis_completed"
 )
 
 // Envelope is the universal event carrier.
@@ -193,7 +196,7 @@ func RouteChannel(env Envelope) string {
 		return "monitor"
 	case EnvelopeTypeSessionStatusChanged:
 		return "chat"
-	case EnvelopeTypeSpiritTeamAssembled, EnvelopeTypeSpiritTeamCompleted, EnvelopeTypeSpiritTeamFailed:
+	case EnvelopeTypeSpiritTeamAssembled, EnvelopeTypeSpiritTeamCompleted, EnvelopeTypeSpiritTeamFailed, EnvelopeTypeSpiritTeamProgress, EnvelopeTypeSpiritTeamsAllCompleted, EnvelopeTypeSpiritSynthesisCompleted:
 		return "chat"
 	default:
 		if env.TeamID != "" {

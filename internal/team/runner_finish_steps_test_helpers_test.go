@@ -1,6 +1,10 @@
 package team
 
-import "context"
+import (
+	"context"
+
+	"aranea-agents/pkg/loggateway"
+)
 
 // persistGraphMemberStepsFromResultTestOnly is a test-harness helper used by parity_run_e2e_test.go
 // to simulate the per-member step writes that the coordinator watch performs via PersistGraphRunStep
@@ -9,7 +13,7 @@ func (r *Runner) persistGraphMemberStepsFromResultTestOnly(ctx context.Context, 
 	if r == nil || in.GraphExecID == "" {
 		return
 	}
-	stepCtx := buildGraphRunStepContext(in.DefinitionJSON, in.Content, in.Run.ID, in.TeamID, in.Run.SessionID)
+	stepCtx := buildGraphRunStepContext(in.DefinitionJSON, in.Content, in.Run.ID, in.TeamID, in.Run.SessionID, loggateway.NewNoop())
 	if stepCtx == nil {
 		return
 	}

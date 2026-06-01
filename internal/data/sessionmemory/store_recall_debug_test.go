@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/loggateway"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -64,7 +65,7 @@ INSERT INTO memory_episodes (id, session_id, agent_id, title, outcome_summary, i
 VALUES ('ep-dark', 'sess-1', 'agent-1', 'Dark mode preference', 'User prefers dark mode UI', 0.95, 'consolidated', 1, ?, ?, ?)`, now, now, now); err != nil {
 		t.Fatal(err)
 	}
-	return NewStore(client), client
+	return NewStore(client, loggateway.NewNoop()), client
 }
 
 func TestRecallL2EpisodesScored_ReturnsNonZeroTotals(t *testing.T) {

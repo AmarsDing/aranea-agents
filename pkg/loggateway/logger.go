@@ -25,5 +25,7 @@ func Source(v string) Field        { return zap.String("source", v) }
 func Err(v error) Field            { return zap.Error(v) }
 func Str(k, v string) Field        { return zap.String(k, v) }
 func Int(k string, v int) Field    { return zap.Int(k, v) }
+func Int64(k string, v int64) Field { return zap.Int64(k, v) }
+func Float64(k string, v float64) Field { return zap.Float64(k, v) }
 func Bool(k string, v bool) Field  { return zap.Bool(k, v) }
 func Any(k string, v interface{}) Field { return zap.Any(k, v) }

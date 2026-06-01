@@ -54,31 +54,32 @@ func resolveUserSimulator(
 	cases []biz.EvalCase,
 	cfg RunConfig,
 	llmSim usersimulation.Simulator,
+	lg loggateway.Logger,
 ) usersimulation.Simulator {
-	if !cfg.UseUserSimulation && !casesNeedUserSimulation(cases) {
+	if !cfg.UseUserSimulation && !casesNeedUserSimulation(cases, lg) {
 		return nil
 	}
-	if casesNeedScriptedSimulation(cases) {
-		return newScriptedSimulator(cases)
+	if casesNeedScriptedSimulation(cases, lg) {
+		return newScriptedSimulator(cases, lg)
 	}
-	if llmSim != nil && (cfg.UseUserSimulation || casesNeedLLMSimulation(cases)) {
+	if llmSim != nil && (cfg.UseUserSimulation || casesNeedLLMSimulation(cases, lg)) {
 		return llmSim
 	}
 	return nil
 }
 
-func casesNeedScriptedSimulation(cases []biz.EvalCase) bool {
+func casesNeedScriptedSimulation(cases []biz.EvalCase, lg loggateway.Logger) bool {
 	for _, c := range cases {
-		if ParseCaseMetadata(c.MetadataJSON).HasScriptedSimulation() {
+		if ParseCaseMetadata(c.MetadataJSON, lg).HasScriptedSimulation() {
 			return true
 		}
 	}
 	return false
 }
 
-func casesNeedLLMSimulation(cases []biz.EvalCase) bool {
+func casesNeedLLMSimulation(cases []biz.EvalCase, lg loggateway.Logger) bool {
 	for _, c := range cases {
-		meta := ParseCaseMetadata(c.MetadataJSON)
+		meta := ParseCaseMetadata(c.MetadataJSON, lg)
 		if meta.HasLLMSimulation() {
 			return true
 		}
@@ -87,8 +88,8 @@ func casesNeedLLMSimulation(cases []biz.EvalCase) bool {
 }
 
 // enrichConversationScenario ensures LLM sim cases have a ConversationScenario plan.
-func enrichConversationScenario(c *biz.EvalCase, ec *trpcevalset.EvalCase) {
-	meta := ParseCaseMetadata(c.MetadataJSON)
+func enrichConversationScenario(c *biz.EvalCase, ec *trpcevalset.EvalCase, lg loggateway.Logger) {
+	meta := ParseCaseMetadata(c.MetadataJSON, lg)
 	if ec.ConversationScenario != nil {
 		return
 	}

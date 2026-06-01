@@ -10,7 +10,7 @@ import (
 )
 
 // CancelRunningActivityMessages marks in-flight tool_running cards as cancelled when the user stops generation.
-func CancelRunningActivityMessages(ctx context.Context, sessions *biz.SessionUsecase, sessionID string) (int, error) {
+func CancelRunningActivityMessages(ctx context.Context, sessions *biz.SessionUsecase, sessionID string, lg loggateway.Logger) (int, error) {
 	if sessions == nil {
 		return 0, nil
 	}
@@ -32,7 +32,7 @@ func CancelRunningActivityMessages(ctx context.Context, sessions *biz.SessionUse
 			continue
 		}
 		if err := sessions.UpsertChatActivityMessage(ctx, sessionID, next); err != nil {
-			loggateway.Global().Warn("取消执行卡片落库失败",
+			lg.Warn("取消执行卡片落库失败",
 				loggateway.StepID("chat.activity.cancel"),
 				loggateway.Str("session_id", sessionID),
 				loggateway.Str("message_id", next.ID),

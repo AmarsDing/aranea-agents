@@ -29,9 +29,10 @@ type ActivityStepFlusher struct {
 	stop             chan struct{}
 	done             chan struct{}
 	once             sync.Once
+	lg               loggateway.Logger
 }
 
-func NewActivityStepFlusher(repo biz.TeamRepository, runID, graphExecutionID string) *ActivityStepFlusher {
+func NewActivityStepFlusher(repo biz.TeamRepository, runID, graphExecutionID string, lg loggateway.Logger) *ActivityStepFlusher {
 	if repo == nil || strings.TrimSpace(runID) == "" || !obsPersistEnabled() {
 		return nil
 	}
@@ -42,6 +43,7 @@ func NewActivityStepFlusher(repo biz.TeamRepository, runID, graphExecutionID str
 		ch:               make(chan biz.OrchestrationStep, 64),
 		stop:             make(chan struct{}),
 		done:             make(chan struct{}),
+		lg:               lg,
 	}
 	safego.Go(context.Background(), "orchestration.activity.flusher", f.loop)
 	return f
@@ -103,7 +105,7 @@ func (f *ActivityStepFlusher) loop() {
 		pending = pending[:0]
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if berr := f.repo.BatchCreateOrchestrationSteps(ctx, batch); berr != nil {
-			loggateway.Global().Warn("BatchCreateOrchestrationSteps failed",
+			f.lg.Warn("BatchCreateOrchestrationSteps failed",
 				loggateway.StepID("team.step.batch_fail"),
 				loggateway.Int("batch_size", len(batch)),
 				loggateway.Err(berr))

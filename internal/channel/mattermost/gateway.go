@@ -58,7 +58,7 @@ func RunWebSocket(
 		return fmt.Errorf("mattermost websocket: server_url and bot_token required")
 	}
 
-	botUserID, err := fetchBotUserID(ctx, serverURL, botToken)
+	botUserID, err := fetchBotUserID(ctx, serverURL, botToken, lg)
 	if err != nil {
 		return fmt.Errorf("mattermost websocket: get user: %w", err)
 	}
@@ -119,7 +119,7 @@ func RunWebSocket(
 	}
 }
 
-func fetchBotUserID(ctx context.Context, serverURL, token string) (string, error) {
+func fetchBotUserID(ctx context.Context, serverURL, token string, lg loggateway.Logger) (string, error) {
 	base := strings.TrimRight(strings.TrimSpace(serverURL), "/")
 	client := &http.Client{Timeout: 15 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/api/v4/users/me", nil)
@@ -139,7 +139,9 @@ func fetchBotUserID(ctx context.Context, serverURL, token string) (string, error
 	var user struct {
 		ID string `json:"id"`
 	}
-	_ = json.Unmarshal(raw, &user)
+	if err := json.Unmarshal(raw, &user); err != nil {
+		lg.Warn("解析 mattermost user id 失败", loggateway.StepID("channel.mattermost.fetch_bot_user"), loggateway.Err(err))
+	}
 	return strings.TrimSpace(user.ID), nil
 }
 

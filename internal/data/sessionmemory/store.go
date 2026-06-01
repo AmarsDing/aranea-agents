@@ -9,20 +9,23 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/loggateway"
 )
 
-// Store reads SQLite session-memory rows via Ent's shared connection (**no second sql.Open**).
 type Store struct {
 	client *ent.Client
 	policy *biz.MemoryPolicyEngine
+	lg     loggateway.Logger
 }
 
-// NewStore wires session-memory queries to the same SQLite handle as Ent CRUD.
-func NewStore(client *ent.Client) *Store {
+func NewStore(client *ent.Client, lg loggateway.Logger) *Store {
 	if client == nil {
 		return nil
 	}
-	return &Store{client: client}
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	return &Store{client: client, lg: lg}
 }
 
 // Client returns the shared Ent client (SQLite).

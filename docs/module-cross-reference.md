@@ -25,11 +25,11 @@
 
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | `biz`（Agent/Tool/Memory/Skill 类型）、`provider`（LLM 模型）、`tools`（工具装配）、`skill/trpc`（技能过滤）、`plugin/trpc`（插件回调）、`knowledge`（知识检索）、`event`（日志）、`session`（会话服务）、`memory/trpc`（记忆服务） |
+| **上游依赖** | `biz`（Agent/Tool/Memory/Skill 类型）、`provider`（LLM 模型）、`tools`（工具装配）、`skill/trpc`（技能过滤）、`plugin/trpc`（插件回调）、`knowledge`（知识检索）、`event`（日志）、`session`（会话服务）、`memory/trpc`（记忆服务，含 `MemoryService trpcmemory.Service` 注入 `Service.Tools()` 统一路径） |
 | **下游影响** | `service/chat`（ChatOrchestrator 调用 BuildTRPCAgent）、`team`（BuildTeamMemberAgents 调用 BuildTRPCAgent）、`a2a`（A2A invoker 构建 Agent） |
 | **核心导出** | `BuildTRPCLLMAgent()`、`NewTRPCRunner()`、`RunTRPCUserTurn()`、`TRPCBuilderDeps`、`TRPCRunnerDeps` |
 | **实现接口** | 无（直接被 Service 层调用，不实现 biz 端口） |
-| **共享类型** | `TRPCBuilderDeps`（6 组子依赖 DTO，被 service/chat 和 team 共享） |
+| **共享类型** | `TRPCBuilderDeps`（6 组子依赖 DTO，被 service/chat 和 team 共享；`TRPCMemoryKnowledgeDeps` 含 `MemoryService trpcmemory.Service`） |
 | **事件生产** | 不直接生产事件（Runner 产出的事件由 Service 层投递到 EventBus） |
 | **事件消费** | 无 |
 | **数据库** | 无直接访问（通过 biz Repo 间接访问） |
@@ -51,7 +51,7 @@
 | **上游依赖** | `biz`（Tool/Agent 类型）、`pkg/trpc-agent-go/tool`（框架工具 API） |
 | **下游影响** | `agent`（BuildTRPCAgent 调用 Assemble 获取工具列表）、`service/chat`（工具策略解析）、`team`（Team 成员工具装配） |
 | **核心导出** | `Registry()`、`Assemble()`、`AssemblyConfig`、`ToolRegistration`、`builtin_tools_seed.go` |
-| **共享类型** | `AssemblyConfig`（被 agent 和 service/chat 共享）、`AssembledToolsets` |
+| **共享类型** | `AssemblyConfig`（被 agent 和 service/chat 共享，含 `MemoryTools []Tool` 字段）、`AssembledToolsets` |
 | **事件生产** | 无 |
 | **事件消费** | 无 |
 | **数据库** | 无直接访问（工具配置通过 biz ToolUsecase 获取） |
@@ -60,7 +60,7 @@
 **⚠️ 开发注意**：
 - 新增工具必须先在 `Registry()` 注册 `ToolRegistration` + `builtin_tools_seed.go` 添加种子
 - Chat 和 Team 共用同一 `BuildToolsets` 逻辑，新增工具必须验证两处生效
-- 修改 `AssemblyConfig` 结构体时，同步更新 `tools/trpc/toolsets.go` 的适配层
+- 修改 `AssemblyConfig` 结构体时，同步更新 `tools/trpc/toolsets.go` 的适配层（含 `MemoryTools` 字段和 `ToolsetConfig.MemoryTools`）
 
 ---
 
@@ -93,7 +93,7 @@
 | 维度 | 内容 |
 |------|------|
 | **上游依赖** | `biz`（Memory 类型 + `MemoryDebugRecaller`/`MemoryFactIndexCounter` 端口）、`pkg/trpc-agent-go/memory`（框架记忆 API）、`data`（`memoryDebugRecallAdapter`/`memoryFactIndexCounterAdapter` 适配器） |
-| **下游影响** | `agent`（MemoryService.Tools() 注入记忆工具）、`service/chat`（记忆管理 API）、`service/memory`（L4 级联管理 + Debug Recall + Worker Status） |
+| **下游影响** | `agent`（MemoryService.Tools() 注入记忆工具，统一路径：`Service.Tools()` → 过滤 → `AssemblyConfig.MemoryTools`）、`service/chat`（记忆管理 API）、`service/memory`（L4 级联管理 + Debug Recall + Worker Status） |
 | **核心导出** | `NewSQLiteMemoryService()`、`Service.Tools()`、`Service.EnqueueAutoMemoryJob()`、`NewMemoryService()`（含 `debugRecaller`/`factIndexCounter` biz 端口） |
 | **共享类型** | `trpcmemory.Service` 接口（被 agent 和 service 共享）、`biz.RecallDebugRow`/`biz.RecallScoreBreakdown`（debug recall DTO） |
 | **事件生产** | 无直接生产（记忆提取通过 EventBus 异步触发） |
@@ -103,7 +103,7 @@
 
 **⚠️ 开发注意**：
 - 记忆写入必须经 broker/async 异步写（红线 #3），禁止在 plugin 回调中直接写库
-- 记忆工具通过 `service.Tools()` 注入，不手动构造
+- 记忆工具通过 `Service.Tools()` 注入（统一路径），不手动构造，不使用 `memorytool.DefaultTools()`
 - 修改记忆层级结构时，需同步更新前端 MemoryCenterPage 的 5 个 Tab
 - **Service 层禁止直接依赖 `*sessionmemory.Store`**（data 层类型），需通过 biz 端口接口（`MemoryDebugRecaller`/`MemoryFactIndexCounter`）+ data 层适配器桥接
 - `L4CascadeUsecase` 构造函数接收 4 个子接口（`CascadeProposalStore`/`CascadeGraphReader`/`CascadeFactMutator`/`CascadeSagaStore`）+ `L4EntityWriter`，不使用聚合接口 `CascadeGraphStore`（已 Deprecated）
@@ -151,7 +151,7 @@
 
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | `biz`（全部 Turn/Session/Agent/Channel 端口接口）、`agent`（BuildTRPCAgent/NewTRPCRunner）、`tools`（Assemble）、`provider`（Model）、`runtime`（TurnDeps）、`team`（TeamOrchestrationDeps）、`event`（Infra）、`memory`（MemoryService）、`session`（SessionService）、`knowledge`（检索）、`plugin/trpc`（Manager）、`skill/trpc`（Filter） |
+| **上游依赖** | `biz`（全部 Turn/Session/Agent/Channel 端口接口 + `SeedVersionRepo`）、`agent`（BuildTRPCAgent/NewTRPCRunner）、`tools`（Assemble）、`provider`（Model）、`runtime`（TurnDeps）、`team`（TeamOrchestrationDeps）、`event`（Infra）、`memory`（MemoryService，`Service.Tools()` → 过滤 → `AssemblyConfig.MemoryTools`）、`session`（SessionService）、`knowledge`（检索）、`plugin/trpc`（Manager）、`skill/trpc`（Filter） |
 | **下游影响** | **几乎所有模块**：Channel/Cron/A2A/WS/DurableWorker 通过端口接口依赖 ChatService |
 | **核心导出** | `ChatService`（实现 7 个 biz 端口接口）、`ChatOrchestrator`（实现 `biz.TurnExecutor`） |
 | **实现接口** | `NativeTurnGateway`、`TurnExecutorGateway`、`TurnRunControlGateway`、`TurnGateway`、`TurnControlGateway`、`DurableResumeGateway`、`A2ARunnerFactory` |
@@ -456,7 +456,7 @@
 |------|------|
 | **核心导出** | `createEnvelopeStream()`、`useEnvelopeStream()`、`EnvelopeDispatcher`、`Envelope` 类型、46 种 `EnvelopeType` |
 | **消费方** | Chat（会话流）、Monitor（日志流）、Teams（运行流）、Graph（执行流）、Orchestration（编排流） |
-| **后端对应** | WSServer (`internal/server/ws.go`) + EventBus (`internal/event/`) |
+| **后端对应** | WSServer (`internal/server/ws.go`，使用本地 `WSTurnInput`/`WSTurnOptions`/`WSTurnExecutor` 类型，通过 Wire `wsTurnExecutorAdapter` 桥接 `biz.TurnExecutorGateway`) + EventBus (`internal/event/`) |
 
 **⚠️ 开发注意**：
 - 新增 `EnvelopeType` 时，必须同时更新：后端 `internal/event/envelope.go` + 前端 `realtime/envelope.ts`
@@ -470,7 +470,7 @@
 
 | 修改的接口 | 影响的模块 | 需要同步更新 |
 |-----------|-----------|-------------|
-| `TurnExecutorGateway` | WSServer | `internal/server/ws.go` 字段类型 + 测试 stub |
+| `TurnExecutorGateway` | WSServer | `internal/server/ws.go` 本地 `WSTurnExecutor` 类型 + `cmd/admin/wire.go` `wsTurnExecutorAdapter` 适配 |
 | `TurnRunControlGateway` | DurableWorker | `internal/service/session_run_durable_worker.go` + `cmd/admin/wire.go` |
 | `TurnControlGateway` | ChannelIngress | `internal/service/channel_ingress.go` |
 | `NativeTurnGateway` | Channel/Cron | `internal/service/channel_ingress.go` + `internal/service/cron.go` |
@@ -486,12 +486,13 @@
 | `L4EntityWriter` | L4CascadeUsecase | `internal/biz/memory_l4_cascade.go` + `cmd/admin/wire.go` |
 | `SessionStatusPublisher` | SessionUsecase | `internal/service/run_status_publish.go`（sessionStatusPublisher 适配器）+ `cmd/admin/wire.go`（WireSessionStatusPublisher） |
 | `SessionStatusTransitioner` | SessionUsecase | `internal/biz/session/usecase.go`（SessionUsecase 自身实现）+ `internal/service/chat_orchestrator*.go`/`team_turn_hooks.go`（调用方） |
+| `SeedVersionRepo` | IndustryAgentSeed | `internal/biz/seed_version.go`（接口定义）+ `internal/data/seed_version_repo.go`（实现）+ `cmd/admin/wire.go`（绑定） |
 
 ### 3.2 修改共享类型时
 
 | 修改的类型 | 定义位置 | 影响的模块 |
 |-----------|---------|-----------|
-| `TurnInput` | `biz/turn_input.go` | ChatService、ChannelIngress、CronService、A2AService、WSServer |
+| `TurnInput` | `biz/turn_input.go` | ChatService、ChannelIngress、CronService、A2AService、WSServer（通过 `WSTurnInput` 本地类型 + adapter 转换） |
 | `TurnResult` | `biz/turn_input.go` | ChatOrchestrator、ChannelIngress |
 | `NativeTurnResult` | `biz/native_turn_result.go` | ChatOrchestrator、ChannelIngress |
 | `Envelope` | `event/envelope.go` | 所有事件生产者/消费者 + 前端 `realtime/envelope.ts` |
@@ -623,7 +624,7 @@
 |------|------|------|
 | 1. 修改 biz 类型定义 | biz | `internal/biz/turn_input.go` TurnInput |
 | 2. 更新所有调用方 | service | ChatService、ChannelIngress、CronService、A2AService |
-| 3. 更新 WS 协议 | server | `internal/server/ws.go` buildBizTurnOptions |
+| 3. 更新 WS 协议 | server | `internal/server/ws.go` 本地 `WSTurnInput`/`WSTurnOptions` 类型 + `cmd/admin/wire.go` `wsTurnExecutorAdapter` |
 | 4. 更新前端 WS 发送 | 前端 | ChatComposer 的 WS message 构建 |
 | 5. 验证所有入口 | 全栈 | HTTP Chat + WS Chat + Channel + Cron + A2A |
 

@@ -22,7 +22,7 @@ var _ trpcplugin.Plugin = (*ConfirmationGuardPlugin)(nil)
 func NewConfirmationGuardPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, lg loggateway.Logger) *ConfirmationGuardPlugin {
 	var cfg ConfirmationGuardConfig
 	cfg.DefaultAction = "reject"
-	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
 	return &ConfirmationGuardPlugin{base: newBasePlugin(p.Key, stats, bus, lg), cfg: cfg}
 }
 

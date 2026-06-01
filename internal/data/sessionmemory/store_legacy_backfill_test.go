@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/pkg/loggateway"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -135,7 +136,7 @@ func openLegacyBackfillStore(t *testing.T) *sessionmemory.Store {
 			t.Fatal(err)
 		}
 	}
-	return sessionmemory.NewStore(client)
+	return sessionmemory.NewStore(client, loggateway.NewNoop())
 }
 
 func insertLegacyEntity(t *testing.T, store *sessionmemory.Store, id, scopeID, userID, desc, meta string, importance float64) {

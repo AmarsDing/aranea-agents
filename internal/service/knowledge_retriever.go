@@ -7,17 +7,17 @@ import (
 )
 
 // NewKnowledgeRetriever wires embedder, repo, and optional env-configured reranker (KN-01).
-func NewKnowledgeRetriever(emb *knowledge.Embedder, repo biz.KnowledgeRepo) *knowledge.Retriever {
+func NewKnowledgeRetriever(emb *knowledge.Embedder, repo biz.KnowledgeRepo, lg loggateway.Logger) *knowledge.Retriever {
 	if emb == nil || repo == nil {
 		return nil
 	}
 	rr, err := knowledge.NewRerankerFromEnv()
 	if err != nil {
-		loggateway.Global().Warn("重排器配置无效，已禁用",
+		lg.Warn("重排器配置无效，已禁用",
 			loggateway.StepID("knowledge.reranker.config"),
 			loggateway.Err(err),
 		)
 		rr = nil
 	}
-	return knowledge.NewRetriever(emb, repo, rr)
+	return knowledge.NewRetriever(emb, repo, rr, lg)
 }

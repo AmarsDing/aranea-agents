@@ -12,7 +12,7 @@ import (
 func TestNewRootCauseEngine(t *testing.T) {
 	e := monitor.NewRootCauseEngine(loggateway.NewNoop())
 	if e == nil {
-		t.Fatal("NewRootCauseEngine(loggateway.NewNoop()) = nil, want non-nil")
+		t.Fatal("NewRootCauseEngine() = nil, want non-nil")
 	}
 }
 

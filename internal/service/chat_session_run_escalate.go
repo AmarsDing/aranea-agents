@@ -58,7 +58,7 @@ func (s *ChatService) EscalateSessionRun(ctx context.Context, sessionRunID, expe
 		return channelBackgroundReplyNoActiveRun, nil
 	}
 	if expectedSessionID != "" && run.SessionID != expectedSessionID {
-		loggateway.Global().Warn("session run ownership denied",
+		s.lg.Warn("session run ownership denied",
 			loggateway.StepID(flowStepRunEscalate),
 			loggateway.Str("session_run_id", sessionRunID),
 			loggateway.Str("expected_session_id", expectedSessionID),

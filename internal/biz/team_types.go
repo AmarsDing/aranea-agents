@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 const (
@@ -57,9 +59,10 @@ type OrchestrationDecision struct {
 	Reason string  `json:"reason"`
 }
 
-func ParseOrchestrationDecision(args []byte) (OrchestrationDecision, error) {
+func ParseOrchestrationDecision(args []byte, lg loggateway.Logger) (OrchestrationDecision, error) {
 	var d OrchestrationDecision
 	if err := json.Unmarshal(args, &d); err != nil {
+		lg.Warn("解析 orchestration decision 失败", loggateway.StepID("team.orchestration_decision"), loggateway.Err(err))
 		return d, err
 	}
 	return d, nil
@@ -140,6 +143,10 @@ type Team struct {
 	SpiritSessionID     string
 	TaskDescription     string
 	AutoCreated         bool
+	DagNodeID           string
+	DependsOn           []string
+	ParallelConfigJSON  string
+	Topology            string
 	CreatedAt           string
 	UpdatedAt           string
 	DeletedAt           string

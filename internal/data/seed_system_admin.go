@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -19,14 +20,11 @@ const systemAdminAgentKey = "__system_admin__"
 // ent schema extension in internal/data/ent/schema/agent.go. After editing that
 // file you must regenerate: go generate ./internal/data/ent/...
 // and run the corresponding SQL migration before calling this seed.
-func SeedSystemAdminAgent(ctx context.Context, client *ent.Client) error {
+func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	// Insert only if the agent_key doesn't already exist.
-	// We don't use ent-generated setters because the readonly/kind columns may
-	// not yet exist in all deployment environments (pending migration).
 	const q = `INSERT INTO agents (
 		id, agent_key, display_name, provider, model, status,
 		is_default, is_favorite, icon, agent_description,
@@ -40,6 +38,7 @@ func SeedSystemAdminAgent(ctx context.Context, client *ent.Client) error {
 		?, ?, '', 1, 'system'
 	) ON CONFLICT(agent_key) DO NOTHING`
 	if _, err := client.ExecContext(ctx, q, systemAdminAgentKey, now, now); err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.system_admin_agent"), loggateway.Err(err))
 		return kerrors.InternalServer("SEED", "seed system admin agent: "+err.Error())
 	}
 	return nil
@@ -48,7 +47,7 @@ func SeedSystemAdminAgent(ctx context.Context, client *ent.Client) error {
 // SeedSpiritAgent upserts the built-in spirit (butler) agent.
 // The spirit agent is the single chat entry point for users; it auto-assembles
 // teams via the assemble_team tool and delegates work to team members.
-func SeedSpiritAgent(ctx context.Context, client *ent.Client) error {
+func SeedSpiritAgent(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
@@ -66,6 +65,7 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client) error {
 		?, ?, '', 1, 'system'
 	) ON CONFLICT(agent_key) DO NOTHING`
 	if _, err := client.ExecContext(ctx, q, biz.SpiritAgentKey, now, now); err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_agent"), loggateway.Err(err))
 		return kerrors.InternalServer("SEED", "seed spirit agent: "+err.Error())
 	}
 	return nil
@@ -73,7 +73,7 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client) error {
 
 // SeedBuiltinCLIAdminTools seeds the cli_admin_* tool records in the tools table.
 // The actual implementations are registered in internal/tools/cli_admin.
-func SeedBuiltinCLIAdminTools(ctx context.Context, client *ent.Client) error {
+func SeedBuiltinCLIAdminTools(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
@@ -106,6 +106,7 @@ func SeedBuiltinCLIAdminTools(ctx context.Context, client *ent.Client) error {
 	for _, t := range tools {
 		id := "tool_" + t.key
 		if _, err := client.ExecContext(ctx, q, id, t.key, t.name, t.desc, now, now); err != nil {
+			lg.Warn("seed step failed", loggateway.StepID("data.seed.cli_admin_tools"), loggateway.Str("tool_key", t.key), loggateway.Err(err))
 			return kerrors.InternalServer("SEED", "seed cli_admin tool "+t.key+": "+err.Error())
 		}
 	}

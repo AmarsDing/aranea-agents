@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/predicate"
 	entsession "aranea-agents/internal/data/ent/session"
+	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -122,6 +123,11 @@ func (r *sessionRepo) batchUpdateSessions(
 			Where(entsession.And(batchUpdateWheres(mode, chunk)...)).
 			Save(ctx)
 		if err != nil {
+			r.data.lg.Warn("batch update sessions chunk failed",
+				loggateway.StepID("data.session.batch"),
+				loggateway.Err(err),
+				loggateway.Str("mode", mode),
+				loggateway.Int("chunk_size", len(chunk)))
 			failed = append(failed, chunk...)
 			continue
 		}

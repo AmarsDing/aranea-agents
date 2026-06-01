@@ -142,7 +142,7 @@ func (r *Runner) runDue(ctx context.Context) {
 			r.recordScheduleFailure(ctx, task, badCfg, now, strutil.FirstNonEmpty(errString(err), "cron message is required"))
 			continue
 		}
-		meta := parseCronTaskMetadata(task.MetadataJSON)
+		meta := parseCronTaskMetadata(task.MetadataJSON, r.lg)
 		dueAt, due, err := cronTaskDueAt(task.UpdatedAt, cfg, meta, now)
 		if err != nil {
 			r.recordScheduleFailure(ctx, task, cfg, now, err.Error())
@@ -208,7 +208,7 @@ func (r *Runner) dispatchWithRetry(ctx context.Context, task biz.CronTask, cfg c
 		if attempt < len(backoff) {
 			delay := backoff[attempt]
 			r.lg.Warn("定时任务重试",
-				loggateway.StepID("system.cron.retry"),
+				loggateway.StepID("cron.retry"),
 				loggateway.Str("job_id", task.ID),
 				loggateway.Int("attempt", attempt+1),
 				loggateway.Str("delay", delay.String()),
@@ -229,7 +229,7 @@ func (r *Runner) dispatchSafe(ctx context.Context, task biz.CronTask, cfg cronTa
 		if rec := recover(); rec != nil {
 			retErr = fmt.Errorf("cron panic: %v", rec)
 			r.lg.Error("定时任务 panic",
-				loggateway.StepID("system.cron.panic"),
+				loggateway.StepID("cron.panic"),
 				loggateway.Str("job_id", task.ID),
 				loggateway.Any("panic", rec))
 		}
@@ -438,6 +438,7 @@ func (r *Runner) postChat(ctx context.Context, in sendMessagePayload) (cronDispa
 		} `json:"agent_message"`
 	}
 	if err := json.Unmarshal(respBody, &out); err != nil {
+		r.lg.Warn("解析 cron dispatch 响应失败", loggateway.StepID("cron.dispatch"), loggateway.Err(err))
 		return cronDispatchResult{}, err
 	}
 	return cronDispatchResult{
@@ -456,7 +457,7 @@ func (r *Runner) sessionBusyErr(sessionID string) error {
 		return nil
 	}
 	r.lg.With(loggateway.SessionID(sessionID)).Warn("定时任务跳过：会话有活跃 Run",
-		loggateway.StepID("system.cron.dispatch_skipped"))
+		loggateway.StepID("cron.dispatch_skipped"))
 	return biz.ErrCronSessionBusy
 }
 

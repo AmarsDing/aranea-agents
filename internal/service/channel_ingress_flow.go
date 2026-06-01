@@ -12,7 +12,7 @@ func (h *ChannelIngress) logTurnFlow(ctx context.Context, sessionID, step, messa
 		if err != nil {
 			h.lg.Warn(message,
 				loggateway.StepID(step),
-				loggateway.Str("error", err.Error()),
+				loggateway.Err(err),
 			)
 		} else {
 			h.lg.Info(message,

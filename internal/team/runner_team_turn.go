@@ -52,7 +52,7 @@ func (r *Runner) resolveAnchorAndAttachments(
 			}
 		}
 		if !found {
-			loggateway.Global().Warn("团队意图锚点不在成员列表，使用首个成员",
+			r.lg.Warn("团队意图锚点不在成员列表，使用首个成员",
 				loggateway.StepID("team.intent_anchor_fallback"),
 				loggateway.Str("intent_anchor_agent_id", want))
 		}
@@ -140,7 +140,7 @@ func (r *Runner) prepareUserTurnOptions(
 			if strings.TrimSpace(intRes.RawJSON) != "" {
 				merged, merr := intent.MergeIntoUserOptionsJSON(userOpts, intRes.RawJSON)
 				if merr != nil {
-					loggateway.Global().Warn("团队意图合并失败，将继续执行", loggateway.StepID("team.intent.merge_fail"), loggateway.Err(merr))
+					r.lg.Warn("团队意图合并失败，将继续执行", loggateway.StepID("team.intent.merge_fail"), loggateway.Err(merr))
 				} else {
 					userOpts = merged
 				}
@@ -196,7 +196,7 @@ func (r *Runner) finalizeTeamRun(
 	run.OutputPreview = preview(assistantMsg.ContentMarkdown, 512)
 	run.FinishedAt = agent.RFC3339Now()
 	if err := r.teams.UpdateTeamRun(ctx, *run); err != nil {
-		loggateway.Global().Warn("UpdateTeamRun failed in finalizeTeamRun",
+		r.lg.Warn("UpdateTeamRun failed in finalizeTeamRun",
 			loggateway.StepID("team.run.finish_update_fail"),
 			loggateway.Str("team_run_id", run.ID), loggateway.Str("update_error", err.Error()))
 	}

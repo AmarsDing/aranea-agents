@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/reranker/topk"
 )
@@ -65,7 +66,7 @@ func TestRetrieverSearchWithTopKRerank(t *testing.T) {
 			{ID: "e", Content: "epsilon", Score: 0.5, DocID: "d5"},
 		},
 	}
-	ret := NewRetriever(stubEmbedder{}, repo, topk.New(topk.WithK(2)))
+	ret := NewRetriever(stubEmbedder{}, repo, topk.New(topk.WithK(2)), loggateway.Global())
 
 	out, err := ret.Search(context.Background(), biz.KnowledgeSearchQuery{
 		CollectionID: "col",
@@ -90,7 +91,7 @@ func TestRetrieverSearchDisableRerank(t *testing.T) {
 	repo := &stubKnowledgeRepo{
 		chunks: []biz.KnowledgeChunk{{ID: "only", Content: "x", Score: 1}},
 	}
-	ret := NewRetriever(stubEmbedder{}, repo, topk.New(topk.WithK(1)))
+	ret := NewRetriever(stubEmbedder{}, repo, topk.New(topk.WithK(1)), loggateway.Global())
 	off := false
 	_, err := ret.Search(context.Background(), biz.KnowledgeSearchQuery{
 		CollectionID: "col",

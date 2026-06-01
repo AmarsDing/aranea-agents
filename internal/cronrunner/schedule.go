@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 )
 
@@ -79,9 +80,11 @@ func parseCronTaskConfig(raw string) (cronTaskConfig, error) {
 	return cfg, nil
 }
 
-func parseCronTaskMetadata(raw string) cronTaskMetadata {
+func parseCronTaskMetadata(raw string, lg loggateway.Logger) cronTaskMetadata {
 	var meta cronTaskMetadata
-	_ = json.Unmarshal([]byte(defaultJSON(raw)), &meta)
+	if err := json.Unmarshal([]byte(defaultJSON(raw)), &meta); err != nil {
+		lg.Warn("解析 cron task metadata 失败", loggateway.StepID("cron.schedule.metadata"), loggateway.Err(err))
+	}
 	return meta
 }
 

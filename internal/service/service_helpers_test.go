@@ -1,4 +1,4 @@
-package service
+package service_test
 
 import (
 	"errors"
@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
+	"aranea-agents/internal/service"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -25,7 +26,7 @@ func TestFirstNonEmptyString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := firstNonEmptyString(tt.args...); got != tt.want {
+			if got := service.FirstNonEmptyString(tt.args...); got != tt.want {
 				t.Errorf("firstNonEmptyString() = %q, want %q", got, tt.want)
 			}
 		})
@@ -40,12 +41,12 @@ func TestTruncateObservatoryPayload(t *testing.T) {
 	}{
 		{"empty string", "", ""},
 		{"under limit", "hello", "hello"},
-		{"at limit", string(make([]byte, observatoryPayloadMaxBytes)), string(make([]byte, observatoryPayloadMaxBytes))},
-		{"over limit", string(make([]byte, observatoryPayloadMaxBytes+10)), string(make([]byte, observatoryPayloadMaxBytes)) + "…[truncated]"},
+		{"at limit", string(make([]byte, service.ObservatoryPayloadMaxBytes)), string(make([]byte, service.ObservatoryPayloadMaxBytes))},
+		{"over limit", string(make([]byte, service.ObservatoryPayloadMaxBytes+10)), string(make([]byte, service.ObservatoryPayloadMaxBytes)) + "…[truncated]"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := truncateObservatoryPayload(tt.s); got != tt.want {
+			if got := service.TruncateObservatoryPayload(tt.s); got != tt.want {
 				if len(got) > 80 {
 					t.Errorf("truncateObservatoryPayload() len=%d, want len=%d", len(got), len(tt.want))
 				} else {
@@ -112,7 +113,7 @@ func TestPickTitleModel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := pickTitleModel(tt.models)
+			got := service.PickTitleModel(tt.models)
 			if got.Model != tt.want {
 				t.Errorf("pickTitleModel() = %q, want %q", got.Model, tt.want)
 			}
@@ -131,7 +132,7 @@ func TestErrString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := errString(tt.err); got != tt.want {
+			if got := service.ErrString(tt.err); got != tt.want {
 				t.Errorf("errString() = %q, want %q", got, tt.want)
 			}
 		})
@@ -156,10 +157,10 @@ func TestChatIngressRecording(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("CHAT_RECORD_USAGE_INGRESS", tt.envVal)
-			if got := chatIngressRecordingEnabled(); got != tt.enabled {
+			if got := service.ChatIngressRecordingEnabled(); got != tt.enabled {
 				t.Errorf("chatIngressRecordingEnabled() = %v, want %v", got, tt.enabled)
 			}
-			if got := chatIngressRecordingDisabled(); got != !tt.enabled {
+			if got := service.ChatIngressRecordingDisabled(); got != !tt.enabled {
 				t.Errorf("chatIngressRecordingDisabled() = %v, want %v", got, !tt.enabled)
 			}
 		})
@@ -183,7 +184,7 @@ func TestEnvInt(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("TEST_ENV_INT_KEY", tt.envVal)
-			if got := envInt("TEST_ENV_INT_KEY", tt.def); got != tt.want {
+			if got := service.EnvInt("TEST_ENV_INT_KEY", tt.def); got != tt.want {
 				t.Errorf("envInt() = %d, want %d", got, tt.want)
 			}
 		})
@@ -217,7 +218,7 @@ func TestHasFileAttachment(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := hasFileAttachment(tt.refs); got != tt.want {
+			if got := service.HasFileAttachment(tt.refs); got != tt.want {
 				t.Errorf("hasFileAttachment() = %v, want %v", got, tt.want)
 			}
 		})
@@ -241,7 +242,7 @@ func TestGraphExecutionFinishErr(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := graphExecutionFinishErr(tt.exec)
+			err := service.GraphExecutionFinishErr(tt.exec)
 			if tt.wantNil {
 				if err != nil {
 					t.Errorf("graphExecutionFinishErr() = %v, want nil", err)

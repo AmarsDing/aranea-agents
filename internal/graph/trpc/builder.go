@@ -183,7 +183,7 @@ func BuildStateGraphWithRegistryAndLogger(ctx context.Context, cfg GraphBuildCon
 
 func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *BuildDeps, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, error) {
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	if len(cfg.Nodes) == 0 && len(cfg.Subgraphs) == 0 {
 		return nil, nil, kerrors.BadRequest("GRAPH", "graph: at least one node required")

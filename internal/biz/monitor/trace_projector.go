@@ -75,7 +75,7 @@ func (p *TraceProjector) Start(ctx context.Context) {
 		return
 	}
 	if err := p.repo.EnsureTraceSchema(ctx); err != nil {
-		p.lg.Warn("EnsureTraceSchema failed", loggateway.StepID("system.monitor.trace_schema_fail"), loggateway.Err(err))
+		p.lg.Warn("EnsureTraceSchema failed", loggateway.StepID("monitor.trace_schema_fail"), loggateway.Err(err))
 	}
 	opts := contract.SubscribeOptions{
 		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeFlowLog},
@@ -225,7 +225,7 @@ func (p *TraceProjector) handle(ctx context.Context, env contract.Envelope) {
 
 	if err := p.repo.UpsertMonitorTraceSpan(ctx, sw); err != nil {
 		p.lg.Warn("UpsertMonitorTraceSpan failed",
-			loggateway.StepID("system.monitor.trace_span_upsert_fail"), loggateway.Str("trace_id", traceID), loggateway.Str("span_id", spanID), loggateway.Err(err))
+			loggateway.StepID("monitor.trace_span_upsert_fail"), loggateway.Str("trace_id", traceID), loggateway.Str("span_id", spanID), loggateway.Err(err))
 	}
 
 	p.mu.Lock()
@@ -282,7 +282,7 @@ func (p *TraceProjector) OnRunnerCompletion(ctx context.Context, traceID, status
 
 	if err := p.repo.UpdateMonitorTraceCompletion(ctx, traceID, status, durationMs, spanCount, errCount, tokens, costUsd); err != nil {
 		p.lg.Warn("UpdateMonitorTraceCompletion failed",
-			loggateway.StepID("system.monitor.trace_completion_fail"), loggateway.Str("trace_id", traceID), loggateway.Err(err))
+			loggateway.StepID("monitor.trace_completion_fail"), loggateway.Str("trace_id", traceID), loggateway.Err(err))
 	}
 }
 
@@ -315,7 +315,7 @@ func (p *TraceProjector) ensureTrace(ctx context.Context, traceID, sessionID, ru
 	}
 	if err := p.repo.InsertMonitorTrace(ctx, tw); err != nil {
 		p.lg.Warn("InsertMonitorTrace failed",
-			loggateway.StepID("system.monitor.trace_insert_fail"), loggateway.Str("trace_id", traceID), loggateway.Err(err))
+			loggateway.StepID("monitor.trace_insert_fail"), loggateway.Str("trace_id", traceID), loggateway.Err(err))
 	}
 }
 
@@ -400,7 +400,7 @@ func (w *traceProjectorWorker) Offer(ctx context.Context, env contract.Envelope)
 		w.dropCount.Add(1)
 		if w.dropCount.Load()%100 == 1 {
 			w.lg.Warn("TraceProjector queue full, dropping envelope",
-				loggateway.StepID("system.monitor.trace_projector_queue_full"), loggateway.Str("worker", w.name), loggateway.Str("total_drops", fmt.Sprint(w.dropCount.Load())))
+				loggateway.StepID("monitor.trace_projector_queue_full"), loggateway.Str("worker", w.name), loggateway.Str("total_drops", fmt.Sprint(w.dropCount.Load())))
 		}
 	}
 }

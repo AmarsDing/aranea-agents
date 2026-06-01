@@ -4,11 +4,10 @@ import (
 	"context"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/loggateway"
 )
 
-// ensureLlmProviderModelCapabilityPatches adds capability columns for existing
-// SQLite installs created before the catalog carried first-class capabilities.
-func ensureLlmProviderModelCapabilityPatches(ctx context.Context, c *ent.Client) error {
+func ensureLlmProviderModelCapabilityPatches(ctx context.Context, c *ent.Client, lg loggateway.Logger) error {
 	if c == nil {
 		return nil
 	}
@@ -27,7 +26,7 @@ func ensureLlmProviderModelCapabilityPatches(ctx context.Context, c *ent.Client)
 		{"capabilities_explicit", `ALTER TABLE llm_provider_models ADD COLUMN capabilities_explicit INTEGER NOT NULL DEFAULT 0`},
 	}
 	for _, p := range patches {
-		has, err := sqliteColumnExists(ctx, c, "llm_provider_models", p.col)
+		has, err := sqliteColumnExists(ctx, c, lg, "llm_provider_models", p.col)
 		if err != nil {
 			return err
 		}

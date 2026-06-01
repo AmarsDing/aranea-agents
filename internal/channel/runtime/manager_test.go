@@ -21,11 +21,11 @@ func (s *stubHandler) ProcessInbound(ctx context.Context, ch biz.Channel, ev por
 
 func TestNeedsRuntimeConnector(t *testing.T) {
 	ch := biz.Channel{Enabled: true, ConfigJSON: `{"type":"feishu","receive_mode":"websocket"}`}
-	if !runtime.NeedsRuntimeConnector(ch) {
+	if !runtime.NeedsRuntimeConnector(ch, loggateway.NewNoop()) {
 		t.Fatal("feishu websocket should need runtime")
 	}
 	ch.ConfigJSON = `{"type":"feishu","receive_mode":"webhook"}`
-	if runtime.NeedsRuntimeConnector(ch) {
+	if runtime.NeedsRuntimeConnector(ch, loggateway.NewNoop()) {
 		t.Fatal("feishu webhook should not need runtime")
 	}
 }

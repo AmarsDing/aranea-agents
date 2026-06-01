@@ -591,7 +591,7 @@ func (s *AgentService) CreateAgent(ctx context.Context, req *v1.CreateAgentReque
 	if err != nil {
 		return nil, err
 	}
-	biz.RecordAdminAudit(ctx, s.mon, "agent.create", "agent", created.ID, fmt.Sprintf("key=%s", created.AgentKey))
+	s.mon.RecordAdminAudit(ctx, "agent.create", "agent", created.ID, fmt.Sprintf("key=%s", created.AgentKey))
 	return s.toProtoAgentEnriched(ctx, created), nil
 }
 
@@ -620,7 +620,7 @@ func (s *AgentService) UpdateAgent(ctx context.Context, req *v1.UpdateAgentReque
 		}
 		return nil, err
 	}
-	biz.RecordAdminAudit(ctx, s.mon, "agent.update", "agent", a.ID, fmt.Sprintf("key=%s", a.AgentKey))
+	s.mon.RecordAdminAudit(ctx, "agent.update", "agent", a.ID, fmt.Sprintf("key=%s", a.AgentKey))
 	invalidateAgentBuildCache(a.ID)
 	return s.toProtoAgentEnriched(ctx, a), nil
 }
@@ -631,7 +631,7 @@ func (s *AgentService) DeleteAgent(ctx context.Context, req *v1.DeleteAgentReque
 		return nil, err
 	}
 	invalidateAgentBuildCache(req.GetId())
-	biz.RecordAdminAudit(ctx, s.mon, "agent.delete", "agent", req.GetId(), "")
+	s.mon.RecordAdminAudit(ctx, "agent.delete", "agent", req.GetId(), "")
 	return &emptypb.Empty{}, nil
 }
 

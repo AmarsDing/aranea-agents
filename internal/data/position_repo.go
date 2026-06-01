@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -45,10 +46,12 @@ func scanPositionRow(row scanner) (positionRow, error) {
 	return v, err
 }
 
-func posRowToBiz(v positionRow) biz.Position {
+func posRowToBiz(lg loggateway.Logger, v positionRow) biz.Position {
 	var skills []string
 	if v.SkillsRequiredJSON != "" && v.SkillsRequiredJSON != "[]" {
-		_ = json.Unmarshal([]byte(v.SkillsRequiredJSON), &skills) // unmarshal failure: skills default to empty slice
+		if err := json.Unmarshal([]byte(v.SkillsRequiredJSON), &skills); err != nil {
+			lg.Warn("unmarshal position skills_required failed", loggateway.StepID("data.position"), loggateway.Err(err))
+		}
 	}
 	return biz.Position{
 		ID:                   v.ID,
@@ -88,7 +91,7 @@ func (r *positionRepo) ListPositions(ctx context.Context, q biz.PositionListQuer
 		if err != nil {
 			return biz.PositionListResult{}, kerrors.InternalServer("POSITION", err.Error())
 		}
-		items = append(items, posRowToBiz(v))
+		items = append(items, posRowToBiz(r.data.lg, v))
 	}
 	return biz.PositionListResult{Items: items, Total: total}, nil
 }
@@ -104,7 +107,7 @@ func (r *positionRepo) GetPositionByKey(ctx context.Context, key, departmentKey 
 	if err != nil {
 		return biz.Position{}, kerrors.InternalServer("POSITION", err.Error())
 	}
-	return posRowToBiz(v), nil
+	return posRowToBiz(r.data.lg, v), nil
 }
 
 func (r *positionRepo) CreatePosition(ctx context.Context, p biz.Position) (biz.Position, error) {
@@ -181,7 +184,7 @@ func (r *positionRepo) GetPositionWithAncestors(ctx context.Context, positionKey
 		return biz.PositionAncestors{}, kerrors.InternalServer("POSITION", err.Error())
 	}
 	return biz.PositionAncestors{
-		Position:   posRowToBiz(pRow),
+		Position:   posRowToBiz(r.data.lg, pRow),
 		Department: biz.Department{ID: dID, Key: dKey, Name: dName, IndustryKey: dIndKey, Description: dDesc, ResponsibilitiesJSON: dRespJSON, SortOrder: dSort, CreatedAt: dCreatedAt, UpdatedAt: dUpdatedAt, DeletedAt: dDeletedAt},
 		Industry:   biz.Industry{ID: iID, Key: iKey, Name: iName, Icon: iIcon, Description: iDesc, ScenarioKey: iScenarioKey, Enabled: iEnabled, SortOrder: iSort, CreatedAt: iCreatedAt, UpdatedAt: iUpdatedAt, DeletedAt: iDeletedAt},
 	}, nil

@@ -26,6 +26,7 @@ type dbSkillEntry struct {
 type DBRepositoryAdapter struct {
 	uc  *biz.SkillUsecase
 	ttl time.Duration
+	lg  loggateway.Logger
 
 	mu      sync.RWMutex
 	entries []dbSkillEntry
@@ -37,13 +38,14 @@ var _ trpcskill.Repository = (*DBRepositoryAdapter)(nil)
 
 // NewDBRepositoryAdapter creates a DB-backed skill repository.
 // ttl controls how long cached summaries are retained before a re-fetch.
-func NewDBRepositoryAdapter(uc *biz.SkillUsecase, ttl time.Duration) *DBRepositoryAdapter {
+func NewDBRepositoryAdapter(uc *biz.SkillUsecase, ttl time.Duration, lg loggateway.Logger) *DBRepositoryAdapter {
 	if ttl <= 0 {
 		ttl = 2 * time.Minute
 	}
 	return &DBRepositoryAdapter{
 		uc:    uc,
 		ttl:   ttl,
+		lg:    lg,
 		index: make(map[string]int),
 	}
 }
@@ -126,8 +128,8 @@ func (r *DBRepositoryAdapter) refreshIfStale(ctx context.Context) {
 func (r *DBRepositoryAdapter) reload(ctx context.Context) {
 	candidates, err := r.uc.ListEnabledPublishedCandidates(ctx)
 	if err != nil {
-		loggateway.Global().Warn("skill 缓存刷新失败，保留陈旧数据",
-			loggateway.StepID("system.skill.reload_fail"),
+		r.lg.Warn("skill 缓存刷新失败，保留陈旧数据",
+			loggateway.StepID("skill.reload_fail"),
 			loggateway.Err(err))
 		return
 	}
@@ -171,16 +173,16 @@ func (r *DBRepositoryAdapter) reload(ctx context.Context) {
 func (r *DBRepositoryAdapter) loadBody(ctx context.Context, entry dbSkillEntry) string {
 	sk, err := r.uc.GetBySlug(ctx, entry.slug)
 	if err != nil {
-		loggateway.Global().Warn("skill body 加载失败",
-			loggateway.StepID("system.skill.load_body_fail"),
+		r.lg.Warn("skill body 加载失败",
+			loggateway.StepID("skill.load_body_fail"),
 			loggateway.Str("slug", entry.slug),
 			loggateway.Err(err))
 		return ""
 	}
 	body, err := r.uc.GetLatestMarkdown(ctx, sk.ID)
 	if err != nil {
-		loggateway.Global().Warn("skill markdown 加载失败",
-			loggateway.StepID("system.skill.load_markdown_fail"),
+		r.lg.Warn("skill markdown 加载失败",
+			loggateway.StepID("skill.load_markdown_fail"),
 			loggateway.Str("slug", entry.slug),
 			loggateway.Str("skill_id", sk.ID),
 			loggateway.Err(err))

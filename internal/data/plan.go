@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -55,6 +56,7 @@ func (r *planRepo) Get(ctx context.Context, id string) (*biz.Plan, error) {
 	}
 	p.Status = biz.PlanStatus(status)
 	if err := json.Unmarshal([]byte(stepsJSON), &p.Steps); err != nil {
+		r.data.lg.Warn("unmarshal plan steps failed", loggateway.StepID("data.plan"), loggateway.Err(err))
 		return nil, kerrors.InternalServer("PLAN", "unmarshal steps: "+err.Error())
 	}
 	cat, err := time.Parse(time.RFC3339, createdAt)
@@ -102,6 +104,7 @@ func (r *planRepo) ListBySession(ctx context.Context, sessionID string) ([]*biz.
 		}
 		p.Status = biz.PlanStatus(status)
 		if err := json.Unmarshal([]byte(stepsJSON), &p.Steps); err != nil {
+			r.data.lg.Warn("unmarshal plan steps failed", loggateway.StepID("data.plan"), loggateway.Err(err))
 			return nil, kerrors.InternalServer("PLAN", "unmarshal steps: "+err.Error())
 		}
 		cat, err := time.Parse(time.RFC3339, createdAt)

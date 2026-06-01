@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestCompileToGraphBuildConfig_embeddedGraph(t *testing.T) {
@@ -32,7 +33,7 @@ func TestCompileToGraphBuildConfig_embeddedGraph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := CompileToGraphBuildConfigFromJSON(def, raw, func(id string) string { return "key-" + id })
+	cfg, err := CompileToGraphBuildConfigFromJSON(def, raw, func(id string) string { return "key-" + id }, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +51,7 @@ func TestCompileToGraphBuildConfig_embeddedGraph(t *testing.T) {
 func TestBuildCompileSnapshot_embeddedGraph(t *testing.T) {
 	raw := `{"mode":"sequential","members":[{"agent_id":"a1","sort_order":1}],"graph":{"nodes":[{"id":"member-1","type":"agent","agent_id":"a1"}],"edges":[]}}`
 	def, _ := ParseDefinition(raw)
-	snap := BuildCompileSnapshot(def, raw, nil)
+	snap := BuildCompileSnapshot(def, raw, nil, loggateway.NewNoop())
 	if !snap.Valid || snap.EntryPoint != "member-1" {
 		t.Fatalf("snap=%+v", snap)
 	}
@@ -76,7 +77,7 @@ func TestCompileToGraphBuildConfig_embeddedTaskNode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := CompileToGraphBuildConfigFromJSON(def, raw, nil)
+	cfg, err := CompileToGraphBuildConfigFromJSON(def, raw, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +116,7 @@ func TestCompileToGraphBuildConfig_embeddedSubgraph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := compileToGraphBuildConfigWithLoader(context.Background(), def, raw, nil, loader)
+	cfg, err := compileToGraphBuildConfigWithLoader(context.Background(), def, raw, nil, loader, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +184,7 @@ func TestCompileToGraphBuildConfig_embeddedParallelJoin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := CompileToGraphBuildConfigFromJSON(def, raw, nil)
+	cfg, err := CompileToGraphBuildConfigFromJSON(def, raw, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +194,7 @@ func TestCompileToGraphBuildConfig_embeddedParallelJoin(t *testing.T) {
 	if len(cfg.ParallelBranchIDs) != 2 {
 		t.Fatalf("branchIDs=%v", cfg.ParallelBranchIDs)
 	}
-	runtimeCfg, err := CompileToGraphRuntimeConfigFromJSON(context.Background(), def, raw, nil, nil)
+	runtimeCfg, err := CompileToGraphRuntimeConfigFromJSON(context.Background(), def, raw, nil, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}

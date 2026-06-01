@@ -31,7 +31,7 @@ func main() {
 	}
 	defer cleanup()
 
-	store := data.NewCLIData(entClient, rawDB)
+	store := data.NewCLIData(entClient, rawDB, loggateway.NewNoop())
 
 	agentRepo := data.NewAgentRepo(store)
 	teamRepo := data.NewTeamRepo(store)

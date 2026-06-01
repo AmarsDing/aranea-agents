@@ -18,10 +18,10 @@ type commandSafetyBeforeHook struct {
 
 func newCommandSafetyBeforeHook(lg loggateway.Logger) *commandSafetyBeforeHook {
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	return &commandSafetyBeforeHook{
-		policy: security.NewCommandSafetyPolicy(),
+		policy: security.NewCommandSafetyPolicy(lg),
 		lg:     lg,
 	}
 }

@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/knowledge"
+	"aranea-agents/pkg/loggateway"
 )
 
 type mockQueryEmbedder struct {
@@ -78,7 +79,7 @@ func TestSearchTool_SuccessWithRetriever(t *testing.T) {
 		},
 	}
 	embedder := &mockQueryEmbedder{}
-	ret := knowledge.NewRetriever(embedder, repo, nil)
+	ret := knowledge.NewRetriever(embedder, repo, nil, loggateway.Global())
 
 	tool := NewSearchTool()
 	ctx := WithRetriever(context.Background(), ret)
@@ -118,7 +119,7 @@ func TestSearchTool_TopKDefault(t *testing.T) {
 		},
 	}
 	embedder := &mockQueryEmbedder{}
-	ret := knowledge.NewRetriever(embedder, repo, nil)
+	ret := knowledge.NewRetriever(embedder, repo, nil, loggateway.Global())
 
 	tool := NewSearchTool()
 	ctx := WithRetriever(context.Background(), ret)
@@ -145,7 +146,7 @@ func TestSearchTool_CollectionIDFromScopedContext(t *testing.T) {
 		},
 	}
 	embedder := &mockQueryEmbedder{}
-	ret := knowledge.NewRetriever(embedder, repo, nil)
+	ret := knowledge.NewRetriever(embedder, repo, nil, loggateway.Global())
 
 	tool := NewSearchTool()
 	ctx := WithRetriever(context.Background(), ret)
@@ -194,9 +195,9 @@ func TestSearchTool_SuccessWithAdaptiveRouter(t *testing.T) {
 		},
 	}
 	embedder := &mockQueryEmbedder{}
-	ret := knowledge.NewRetriever(embedder, repo, nil)
-	hybrid := knowledge.NewHybridRetriever(ret, nil)
-	router := knowledge.NewAdaptiveRouter(hybrid, nil)
+	ret := knowledge.NewRetriever(embedder, repo, nil, loggateway.Global())
+	hybrid := knowledge.NewHybridRetriever(ret, nil, loggateway.Global())
+	router := knowledge.NewAdaptiveRouter(hybrid, nil, loggateway.Global())
 
 	tool := NewSearchTool()
 	ctx := WithAdaptiveRouter(context.Background(), router)
@@ -233,8 +234,8 @@ func TestReflectTool_SuccessWithFederatedRetriever(t *testing.T) {
 		},
 	}
 	embedder := &mockQueryEmbedder{}
-	ret := knowledge.NewRetriever(embedder, repo, nil)
-	fr := knowledge.NewFederatedRetriever(nil, ret)
+	ret := knowledge.NewRetriever(embedder, repo, nil, loggateway.Global())
+	fr := knowledge.NewFederatedRetriever(nil, ret, loggateway.Global())
 
 	tool := NewReflectTool(nil)
 	ctx := WithFederatedRetriever(context.Background(), fr)
@@ -274,8 +275,8 @@ func TestReflectTool_TopKDefault(t *testing.T) {
 		},
 	}
 	embedder := &mockQueryEmbedder{}
-	ret := knowledge.NewRetriever(embedder, repo, nil)
-	fr := knowledge.NewFederatedRetriever(nil, ret)
+	ret := knowledge.NewRetriever(embedder, repo, nil, loggateway.Global())
+	fr := knowledge.NewFederatedRetriever(nil, ret, loggateway.Global())
 
 	tool := NewReflectTool(nil)
 	ctx := WithFederatedRetriever(context.Background(), fr)
@@ -304,9 +305,9 @@ func TestReflectTool_WithEvaluator(t *testing.T) {
 		},
 	}
 	embedder := &mockQueryEmbedder{}
-	ret := knowledge.NewRetriever(embedder, repo, nil)
-	fr := knowledge.NewFederatedRetriever(nil, ret)
-	ev := knowledge.NewRetrievalEvaluator(nil, nil, nil)
+	ret := knowledge.NewRetriever(embedder, repo, nil, loggateway.Global())
+	fr := knowledge.NewFederatedRetriever(nil, ret, loggateway.Global())
+	ev := knowledge.NewRetrievalEvaluator(nil, nil, nil, loggateway.Global())
 
 	tool := NewReflectTool(nil)
 	ctx := WithFederatedRetriever(context.Background(), fr)
@@ -341,8 +342,8 @@ func TestReflectTool_CollectionIDsFromScopedContext(t *testing.T) {
 		},
 	}
 	embedder := &mockQueryEmbedder{}
-	ret := knowledge.NewRetriever(embedder, repo, nil)
-	fr := knowledge.NewFederatedRetriever(nil, ret)
+	ret := knowledge.NewRetriever(embedder, repo, nil, loggateway.Global())
+	fr := knowledge.NewFederatedRetriever(nil, ret, loggateway.Global())
 
 	tool := NewReflectTool(nil)
 	ctx := WithFederatedRetriever(context.Background(), fr)
@@ -454,7 +455,7 @@ func TestReflectTool_WithRetriever_SingleCollection(t *testing.T) {
 		},
 	}
 	embedder := &mockQueryEmbedder{}
-	ret := knowledge.NewRetriever(embedder, repo, nil)
+	ret := knowledge.NewRetriever(embedder, repo, nil, loggateway.Global())
 
 	tool := NewReflectTool(nil)
 	ctx := WithRetriever(context.Background(), ret)
@@ -479,7 +480,7 @@ func TestReflectTool_WithRetriever_SingleCollection(t *testing.T) {
 }
 
 func TestReflectTool_WithRetriever_MultiCollection_Error(t *testing.T) {
-	ret := knowledge.NewRetriever(&mockQueryEmbedder{}, &mockKnowledgeRepo{}, nil)
+	ret := knowledge.NewRetriever(&mockQueryEmbedder{}, &mockKnowledgeRepo{}, nil, loggateway.Global())
 
 	tool := NewReflectTool(nil)
 	ctx := WithRetriever(context.Background(), ret)

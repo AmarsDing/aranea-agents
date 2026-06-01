@@ -3,6 +3,8 @@ package biz
 import (
 	"encoding/json"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 const (
@@ -72,18 +74,20 @@ func syncVersionMetadata(def *GraphDefinition) {
 	def.Metadata[GraphMetadataVersionKey] = def.Version
 }
 
-func cloneGraphDefinition(def *GraphDefinition) *GraphDefinition {
+func cloneGraphDefinition(def *GraphDefinition, lg loggateway.Logger) *GraphDefinition {
 	if def == nil {
 		return nil
 	}
 	raw, _ := json.Marshal(def)
 	var copy GraphDefinition
-	_ = json.Unmarshal(raw, &copy)
+	if err := json.Unmarshal(raw, &copy); err != nil {
+		lg.Warn("克隆 GraphDefinition 失败", loggateway.StepID("graph_version.clone"), loggateway.Err(err))
+	}
 	return &copy
 }
 
-func snapshotForVersion(def *GraphDefinition) *GraphDefinition {
-	snap := cloneGraphDefinition(def)
+func snapshotForVersion(def *GraphDefinition, lg loggateway.Logger) *GraphDefinition {
+	snap := cloneGraphDefinition(def, lg)
 	if snap == nil {
 		return nil
 	}
@@ -115,7 +119,7 @@ func compactNodesForVersion(nodes []NodeDef) []NodeDef {
 	return out
 }
 
-func appendVersionHistory(def *GraphDefinition, previous *GraphDefinition) {
+func appendVersionHistory(def *GraphDefinition, previous *GraphDefinition, lg loggateway.Logger) {
 	if def == nil || previous == nil {
 		return
 	}
@@ -127,7 +131,7 @@ func appendVersionHistory(def *GraphDefinition, previous *GraphDefinition) {
 		Version:  GraphVersion(previous),
 		SavedAt:  previous.UpdatedAt,
 		Name:     previous.Name,
-		Snapshot: snapshotForVersion(previous),
+		Snapshot: snapshotForVersion(previous, lg),
 	}
 	if entry.SavedAt.IsZero() {
 		entry.SavedAt = time.Now()
@@ -167,10 +171,10 @@ func ListGraphVersionEntries(def *GraphDefinition) []GraphVersionEntry {
 	return readVersionHistory(def.Metadata)
 }
 
-func FindGraphVersionSnapshot(def *GraphDefinition, version int) *GraphDefinition {
+func FindGraphVersionSnapshot(def *GraphDefinition, version int, lg loggateway.Logger) *GraphDefinition {
 	for _, entry := range ListGraphVersionEntries(def) {
 		if entry.Version == version && entry.Snapshot != nil {
-			return cloneGraphDefinition(entry.Snapshot)
+			return cloneGraphDefinition(entry.Snapshot, lg)
 		}
 	}
 	return nil

@@ -117,11 +117,11 @@ func (m *Manager) Reload(ctx context.Context) error {
 	want := map[string]string{}
 	appIDOwners := map[string]string{}
 	for _, ch := range items {
-		if !NeedsRuntimeConnector(ch) {
+		if !NeedsRuntimeConnector(ch, m.lg) {
 			continue
 		}
-		cfg := ParseInstanceConfig(ch.ConfigJSON)
-		mode := EffectiveReceiveMode(ch)
+		cfg := ParseInstanceConfig(ch.ConfigJSON, m.lg)
+		mode := EffectiveReceiveMode(ch, m.lg)
 		if _, ok := lookupStarter(cfg.Type, mode); !ok {
 			continue
 		}
@@ -182,8 +182,8 @@ func (m *Manager) Reload(ctx context.Context) error {
 		m.mu.Unlock()
 
 		chCopy := ch
-		cfg := ParseInstanceConfig(chCopy.ConfigJSON)
-		mode := EffectiveReceiveMode(chCopy)
+		cfg := ParseInstanceConfig(chCopy.ConfigJSON, m.lg)
+		mode := EffectiveReceiveMode(chCopy, m.lg)
 		st, _ := lookupStarter(cfg.Type, mode)
 		platform := cfg.Type
 		if !m.acquireLease(ctx, chCopy.ID, platform) {

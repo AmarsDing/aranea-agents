@@ -203,7 +203,7 @@ func TestMigratePhase_AllFail(t *testing.T) {
 func TestApplyPhase_SkipEmptyDirectory(t *testing.T) {
 	reader := &stubApplyReader{}
 	writer := &stubApplyWriter{}
-	p := NewApplyPhase(reader, writer)
+	p := NewApplyPhase(reader, writer, loggateway.NewNoop())
 	pc := &PhaseContext{
 		Ctx:       context.Background(),
 		Directory: nil,
@@ -359,7 +359,7 @@ func TestNewCheckpoint(t *testing.T) {
 func TestApplyPhase_SkipNonePolicy(t *testing.T) {
 	reader := &stubApplyReader{}
 	writer := &stubApplyWriter{}
-	p := NewApplyPhase(reader, writer)
+	p := NewApplyPhase(reader, writer, loggateway.NewNoop())
 	pc := &PhaseContext{
 		Ctx:       context.Background(),
 		Directory: Directory{"openai": {ID: "openai", Models: map[string]Model{"gpt-4o": {ID: "gpt-4o"}}}},
@@ -387,7 +387,7 @@ func TestApplyPhase_BatchApply(t *testing.T) {
 	writer := &stubApplyWriter{
 		result: BatchApplyResult{RowsUpdated: 1},
 	}
-	p := NewApplyPhase(reader, writer)
+	p := NewApplyPhase(reader, writer, loggateway.NewNoop())
 	cat := Directory{
 		"openai": {
 			ID:   "openai",

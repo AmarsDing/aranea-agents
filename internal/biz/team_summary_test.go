@@ -60,3 +60,6 @@ func (r *runSummaryRepo) GetTeamRunByID(_ context.Context, id string) (TeamRun, 
 func (r *runSummaryRepo) ListTeamRunSteps(_ context.Context, runID string) ([]TeamRunStep, error) {
 	return r.steps[runID], nil
 }
+func (r *runSummaryRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]Team, error) {
+	return nil, nil
+}

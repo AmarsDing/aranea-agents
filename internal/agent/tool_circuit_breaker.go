@@ -63,7 +63,7 @@ func categoryForTool(toolName string) string {
 
 func newCircuitBreakerBeforeHook(registry *biztool.CircuitBreakerRegistry, lg loggateway.Logger) *circuitBreakerBeforeHook {
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	return &circuitBreakerBeforeHook{registry: registry, lg: lg}
 }
@@ -94,7 +94,7 @@ func (h *circuitBreakerBeforeHook) HandleBeforeTool(ctx context.Context, args *t
 
 func newCircuitBreakerAfterHook(registry *biztool.CircuitBreakerRegistry, lg loggateway.Logger) *circuitBreakerAfterHook {
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	return &circuitBreakerAfterHook{registry: registry, lg: lg}
 }

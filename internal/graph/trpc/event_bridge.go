@@ -335,7 +335,7 @@ func (b *EventBridge) extractNodeCustomMeta(e *trpcevent.Event) trpcgraph.NodeCu
 
 func ExtractNodeMeta(e *trpcevent.Event, lg loggateway.Logger) trpcgraph.NodeExecutionMetadata {
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	b := &EventBridge{lg: lg}
 	return b.extractNodeMeta(e)
@@ -343,7 +343,7 @@ func ExtractNodeMeta(e *trpcevent.Event, lg loggateway.Logger) trpcgraph.NodeExe
 
 func ExtractPregelMeta(e *trpcevent.Event, lg loggateway.Logger) trpcgraph.PregelStepMetadata {
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	b := &EventBridge{lg: lg}
 	return b.extractPregelMeta(e)

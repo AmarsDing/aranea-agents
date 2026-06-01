@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/pkg/loggateway"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -40,7 +41,7 @@ func TestMemoryFactIndexSync_DualWrite(t *testing.T) {
 	repo := &mockFactVectorRepo{}
 	vec := biz.NewMemoryUsecase(repo, mockFactEmbedder{})
 	client, store := openFactEmbedTestStore(t)
-	sync := NewMemoryFactIndexSync(vec, store)
+	sync := NewMemoryFactIndexSync(vec, store, loggateway.Global())
 	if err := sync.SyncFactIndex(context.Background(), "agent-1", "u1", "fact-1", "User prefers dark mode"); err != nil {
 		t.Fatal(err)
 	}
@@ -101,5 +102,5 @@ INSERT INTO memory_facts (id, scope_type, scope_id, agent_id, user_id, statement
 VALUES ('fact-1', 'agent', 'agent-1', 'agent-1', 'u1', 'User prefers dark mode', 'user prefers dark mode', 'fp1', 'active', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
-	return client, sessionmemory.NewStore(client)
+	return client, sessionmemory.NewStore(client, loggateway.NewNoop())
 }

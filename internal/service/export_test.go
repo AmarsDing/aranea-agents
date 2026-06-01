@@ -143,4 +143,15 @@ var (
 	FromProtoTaxonomy             = fromProtoTaxonomy
 	ToTaxonomyTreeNode            = toTaxonomyTreeNode
 	ToTaxonomyTree                = toTaxonomyTree
+
+	FirstNonEmptyString           = firstNonEmptyString
+	ObservatoryPayloadMaxBytes    = observatoryPayloadMaxBytes
+	TruncateObservatoryPayload    = truncateObservatoryPayload
+	PickTitleModel                = pickTitleModel
+	ErrString                     = errString
+	ChatIngressRecordingEnabled   = chatIngressRecordingEnabled
+	ChatIngressRecordingDisabled  = chatIngressRecordingDisabled
+	EnvInt                        = envInt
+	HasFileAttachment             = hasFileAttachment
+	GraphExecutionFinishErr       = graphExecutionFinishErr
 )

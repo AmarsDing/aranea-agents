@@ -4,10 +4,11 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestRetrievalEvaluator_NilLLM(t *testing.T) {
-	e := NewRetrievalEvaluator(nil, nil, nil)
+	e := NewRetrievalEvaluator(nil, nil, nil, loggateway.Global())
 	assessment, err := e.Evaluate(nil, "test query", []biz.KnowledgeChunk{
 		{ID: "1", Content: "some content", Score: 0.9},
 	})

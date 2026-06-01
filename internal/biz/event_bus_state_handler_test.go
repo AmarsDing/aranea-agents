@@ -38,12 +38,12 @@ type recordingSessionLogger struct {
 	errors []string
 }
 
-func (l *recordingSessionLogger) SessionSysLogError(_ context.Context, _ string, stepID, message string, _ ...LogPair) {
+func (l *recordingSessionLogger) LogSessionError(_ context.Context, _ string, stepID, message string, _ ...LogPair) {
 	l.errors = append(l.errors, stepID+":"+message)
 }
-func (l *recordingSessionLogger) SessionSysLogWarn(context.Context, string, string, string, ...LogPair)  {}
-func (l *recordingSessionLogger) SessionSysLogInfo(context.Context, string, string, string, ...LogPair)  {}
-func (l *recordingSessionLogger) SessionSysLogDebug(context.Context, string, string, string, ...LogPair) {}
+func (l *recordingSessionLogger) LogSessionWarn(context.Context, string, string, string, ...LogPair)  {}
+func (l *recordingSessionLogger) LogSessionInfo(context.Context, string, string, string, ...LogPair)  {}
+func (l *recordingSessionLogger) LogSessionDebug(context.Context, string, string, string, ...LogPair) {}
 
 func TestStateDeltaHandler_syncRunnerSnapshot(t *testing.T) {
 	sync := &stubRunnerSnapshotSync{}

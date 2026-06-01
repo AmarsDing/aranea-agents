@@ -26,6 +26,7 @@ import (
 	knowledgetool "aranea-agents/internal/tools/knowledge"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/internal/tools/skillruntime"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
 
@@ -152,11 +153,6 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 	if err := enforceChatTurnQuotas(ctx, o.usage, agentID, chatagent.UserIDFromCtx(ctx)); err != nil {
 		unlock()
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
-	}
-
-	if ag.AgentKey == biz.SpiritAgentKey && o.spiritAssembler != nil {
-		flow.LogStart("chat.spirit.route", "精灵路由：构建精灵 Team", event.P("agent_key", ag.AgentKey))
-		return o.executeSpiritTeamTurn(ctx, sess, input, ag, flow, unlock)
 	}
 
 	dialogMode := strings.TrimSpace(input.Options.DialogMode)
@@ -411,14 +407,14 @@ func (o *ChatOrchestrator) resumeAwaitAfterRestart(ctx context.Context, sessionI
 
 // checkTeamMemberQuotas rejects the turn when any enabled team member exceeds agent scope quota.
 func (o *ChatOrchestrator) checkTeamMemberQuotas(ctx context.Context, teamID string) error {
-	if o == nil || o.team.Teams == nil {
+	if o == nil || o.team.TeamUC == nil {
 		return nil
 	}
 	teamID = strings.TrimSpace(teamID)
 	if teamID == "" {
 		return nil
 	}
-	t, err := o.team.Teams.GetTeamByID(ctx, teamID)
+	t, err := o.team.TeamUC.Get(ctx, teamID)
 	if err != nil {
 		return err
 	}
@@ -447,6 +443,7 @@ func (o *ChatOrchestrator) bumpSessionRevisionAndPublish(ctx context.Context, se
 		runID,
 		turnID,
 		event.EnvelopeSourceFromContext(ctx),
+		o.lg,
 	)
 }
 
@@ -463,6 +460,7 @@ func (o *ChatOrchestrator) bumpSessionRevisionSyncAndPublish(ctx context.Context
 		runID,
 		turnID,
 		event.EnvelopeSourceFromContext(ctx),
+		o.lg,
 	)
 }
 
@@ -511,7 +509,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	mod = durableCtx.model
 	if durableCtx.active {
 		if comp, ok := o.td.Compress.(biz.DurableTurnCompressor); ok {
-			_ = comp.BeforeDurableTurn(ctx, sessionID, ag)
+			if err := comp.BeforeDurableTurn(ctx, sessionID, ag); err != nil {
+				o.lg.Warn("BeforeDurableTurn failed", loggateway.StepID("chat.turn.before_durable"), loggateway.Err(err))
+			}
 		}
 	}
 	turnStart := time.Now()
@@ -573,6 +573,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		SkillDBRepo:           o.rt.SkillDBRepo,
 		AwaitHook:             o.makeAwaitReplyFunc(ctx, sessionID, runID),
 		HasMemory:             o.td.Persist.Memory.Available(),
+		MemoryService:         o.td.Persist.Memory.TRPC,
 		PluginManager:         o.rt.PluginManager,
 		MemoryAdmin:           o.td.Persist.Memory.Admin,
 		MemoryL2Recall:        o.td.Persist.Memory.L2Recall,
@@ -588,6 +589,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		PositionUC:            o.rt.PositionUC,
 		ToolResultGate:        o.rt.ToolResultGate,
 	}
+	deps.CustomTools = append(deps.CustomTools, o.spiritCustomTools(ag)...)
 	root, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps, o.lg)
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
@@ -768,7 +770,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	}
 	runOpts = append(runOpts, intentRunOpts...)
 	if ag.Settings != nil {
-		if vars := chatagent.ParseVariablesJSON(ag.Settings.VariablesJSON); vars != nil {
+		if vars := chatagent.ParseVariablesJSON(ag.Settings.VariablesJSON, o.lg); vars != nil {
 			runOpts = append(runOpts, trpcagent.MergeRuntimeState(vars))
 		}
 	}
@@ -1008,12 +1010,26 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 		var err error
 		if strings.EqualFold(strings.TrimSpace(sess.OwnerType), "team") {
 			_, _, err = o.team.TeamsNative.RunTurnFromInput(bgCtx, sess, pendingInput)
+			spiritSessionID := strings.TrimSpace(sess.ParentSessionID)
+			teamID := strings.TrimSpace(sess.TeamID)
+			if err != nil {
+				o.publishTurnFailure(sessionID, "", "pending-queue", err, pendingEntryID)
+				if spiritSessionID != "" && teamID != "" {
+					o.publishSpiritTeamLifecycleEvent(bgCtx, spiritSessionID, teamID, "failed", err.Error())
+				}
+			} else {
+				if spiritSessionID != "" && teamID != "" {
+					o.publishSpiritTeamLifecycleEvent(bgCtx, spiritSessionID, teamID, "completed", "")
+				}
+			}
 		} else {
 			_, _, err = o.runSingleAgentViaTRPC(bgCtx, sess, pendingInput, ag, dialogMode, prov, mod)
+			if err != nil {
+				o.publishTurnFailure(sessionID, "", "pending-queue", err, pendingEntryID)
+			}
 		}
 		if err != nil {
 			pendingEmitter.LogError("chat.pending_dequeue", "排队消息处理失败", event.P("entry_id", pendingEntryID), event.P("error", err.Error()))
-			o.publishTurnFailure(sessionID, "", "pending-queue", err, pendingEntryID)
 		} else {
 			pendingEmitter.LogDone("chat.pending_dequeue", "排队消息处理完成", event.P("entry_id", pendingEntryID))
 		}

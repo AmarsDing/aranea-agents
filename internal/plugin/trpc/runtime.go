@@ -56,7 +56,18 @@ func (rt *Runtime) SetHookDeliveryRepo(repo biz.HookDeliveryRepo) {
 	rt.notifier = NewHookNotifier(repo, rt.lg)
 	if repo != nil {
 		rt.retryWorker = NewHookDeliveryRetryWorker(repo, rt.notifier, rt.lg)
-		rt.retryWorker.Start()
+	}
+}
+
+func (rt *Runtime) StartBackgroundWorkers() {
+	if rt == nil {
+		return
+	}
+	rt.mu.RLock()
+	w := rt.retryWorker
+	rt.mu.RUnlock()
+	if w != nil {
+		w.Start()
 	}
 }
 

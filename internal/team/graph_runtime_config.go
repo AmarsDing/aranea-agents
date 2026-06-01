@@ -5,12 +5,13 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 // CompileToGraphRuntimeConfig builds a graph config for GraphAgent team runtime execution.
 // When linked_graph_id is set, loads the persisted graph asset before mode/embedded compile.
-func CompileToGraphRuntimeConfig(def Definition, agentKey CompileAgentKey) (biz.GraphBuildConfig, error) {
-	return CompileToGraphRuntimeConfigFromJSON(context.Background(), def, "", agentKey, nil)
+func CompileToGraphRuntimeConfig(def Definition, agentKey CompileAgentKey, lg loggateway.Logger) (biz.GraphBuildConfig, error) {
+	return CompileToGraphRuntimeConfigFromJSON(context.Background(), def, "", agentKey, nil, lg)
 }
 
 // CompileToGraphRuntimeConfigFromJSON applies linked graph, embedded graph, and failure policy.
@@ -20,6 +21,7 @@ func CompileToGraphRuntimeConfigFromJSON(
 	rawDefinitionJSON string,
 	agentKey CompileAgentKey,
 	linked GraphBuildConfigLoader,
+	lg loggateway.Logger,
 ) (biz.GraphBuildConfig, error) {
 	raw := strings.TrimSpace(rawDefinitionJSON)
 	if raw != "" && linked != nil {
@@ -29,7 +31,7 @@ func CompileToGraphRuntimeConfigFromJSON(
 			}
 		}
 	}
-	cfg, err := compileToGraphBuildConfigWithLoader(ctx, def, raw, agentKey, linked)
+	cfg, err := compileToGraphBuildConfigWithLoader(ctx, def, raw, agentKey, linked, lg)
 	if err != nil {
 		return cfg, err
 	}

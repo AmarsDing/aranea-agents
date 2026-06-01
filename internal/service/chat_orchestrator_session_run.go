@@ -217,7 +217,7 @@ func (o *ChatOrchestrator) escalateSessionRunToDurable(ctx context.Context, sess
 			loggateway.StepID(flowStepRunEscalate),
 			loggateway.Str("session_run_id", sessionRunID),
 			loggateway.Str("session_id", sessionID),
-			loggateway.Str("error", errString(err)),
+			loggateway.Err(err),
 		)
 		return
 	}

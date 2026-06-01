@@ -29,8 +29,8 @@ func provideMemoryPolicyEngine(store *sessionmemory.Store, sys biz.SystemSetting
 	})
 }
 
-func provideFactIndexSync(vec *biz.MemoryUsecase, store *sessionmemory.Store) biz.MemoryFactIndexSyncer {
-	return data.NewMemoryFactIndexSync(vec, store)
+func provideFactIndexSync(vec *biz.MemoryUsecase, store *sessionmemory.Store, lg loggateway.Logger) biz.MemoryFactIndexSyncer {
+	return data.NewMemoryFactIndexSync(vec, store, lg)
 }
 
 func provideEpisodeIndexSync(vec *biz.MemoryUsecase, store *sessionmemory.Store) biz.EpisodeIndexSyncer {

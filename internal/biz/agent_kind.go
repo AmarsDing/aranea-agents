@@ -3,6 +3,8 @@ package biz
 import (
 	"encoding/json"
 	"strings"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 const (
@@ -107,11 +109,13 @@ func HydrateAgentKind(a *Agent) {
 }
 
 // EmbedAgentKindInConfigJSON merges agent_kind and a2a_proxy into config_json.
-func EmbedAgentKindInConfigJSON(configJSON, kind string, proxy *A2AProxyConfig) string {
+func EmbedAgentKindInConfigJSON(configJSON, kind string, proxy *A2AProxyConfig, lg loggateway.Logger) string {
 	kind = NormalizeAgentKind(kind)
 	var m map[string]any
 	if strings.TrimSpace(configJSON) != "" {
-		_ = json.Unmarshal([]byte(configJSON), &m)
+		if err := json.Unmarshal([]byte(configJSON), &m); err != nil {
+		lg.Warn("解析 config_json 失败", loggateway.StepID("agent_kind.embed"), loggateway.Err(err))
+	}
 	}
 	if m == nil {
 		m = map[string]any{}

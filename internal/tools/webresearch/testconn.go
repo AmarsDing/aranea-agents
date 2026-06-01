@@ -52,7 +52,7 @@ func TestConnection(ctx context.Context, cfg Config, lg loggateway.Logger) (Test
 		return TestResult{}, fmt.Errorf("web_research: api_key is required")
 	}
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	provider, err := newSearchProvider(cfg, lg)
 	if err != nil {

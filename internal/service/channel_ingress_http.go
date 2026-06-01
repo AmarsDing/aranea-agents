@@ -51,7 +51,7 @@ func (h *ChannelIngress) scheduleInboundBackground(r *http.Request, chRow biz.Ch
 				if replyErr := h.deliverTurnErrorReply(procCtx, chCopy, evCopy, platform, err); replyErr != nil {
 					h.lg.Warn("异步回复投递失败",
 						loggateway.StepID("channel.async.reply_failed"),
-						loggateway.Str("error", replyErr.Error()),
+						loggateway.Err(replyErr),
 					)
 				}
 				h.recordDelivery(procCtx, chCopy.ID, "error", map[string]any{"phase": "async_dispatch", "error": err.Error()}, err.Error())

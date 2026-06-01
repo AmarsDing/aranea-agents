@@ -28,11 +28,11 @@ type DiagBundleGenerator struct {
 	engine *RootCauseEngine
 }
 
-func NewDiagBundleGenerator(repo Repo) *DiagBundleGenerator {
+func NewDiagBundleGenerator(repo Repo, lg loggateway.Logger) *DiagBundleGenerator {
 	if repo == nil {
 		return nil
 	}
-	return &DiagBundleGenerator{repo: repo, engine: NewRootCauseEngine(loggateway.Global())}
+	return &DiagBundleGenerator{repo: repo, engine: NewRootCauseEngine(lg)}
 }
 
 func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, runID, stepID, triggerType string, contextMinutes int32) (*DiagBundle, error) {

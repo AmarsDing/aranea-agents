@@ -5,9 +5,9 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
-// Team maps legacy table teams.
 type Team struct {
 	ent.Schema
 }
@@ -31,8 +31,18 @@ func (Team) Fields() []ent.Field {
 		field.String("spirit_session_id").Default("").MaxLen(256),
 		field.Text("task_description").Default(""),
 		field.Bool("auto_created").Default(false),
+		field.String("dag_node_id").Default("").MaxLen(256),
+		field.Text("depends_on_json").Default(""),
+		field.Text("parallel_config_json").Default(""),
+		field.String("topology").Default("").MaxLen(64),
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("deleted_at").Default(""),
+	}
+}
+
+func (Team) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("spirit_session_id", "deleted_at").StorageKey("idx_teams_spirit_session"),
 	}
 }

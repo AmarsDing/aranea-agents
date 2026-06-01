@@ -71,7 +71,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import SessionStatusBadge from "../sessions/SessionStatusBadge.vue";
-import type { SpiritTeam } from "../../features/spirit/api";
+import type { SpiritTeam } from "../../features/spirit/types";
 
 const props = defineProps<{
   team: SpiritTeam;

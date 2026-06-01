@@ -211,3 +211,68 @@ M59 的业务定位清晰——"精灵为唯一入口，用户只需描述需求
 ## 八、核心结论
 
 M59 的架构分层和模块划分是合理的，但**最关键的业务逻辑——精灵何时组建团队——当前实现与需求设计存在根本性偏差**（S1）。需求设计是"精灵 LLM 自主判断后调用工具"，实现是"路由层无条件拦截"。这会导致简单对话也触发 Team 组装，与 US-02 的"简单对话精灵直接回复"直接矛盾。建议优先修正此逻辑，使精灵路由回归到"工具调用触发"而非"AgentKey 匹配触发"。
+
+---
+
+## 九、修复记录（2026-06-01）
+
+> **修复范围**：S1 / S2 / S3 / M1 / M2 / M3 / M4 / M5 / M6 / M8
+
+### S1 ✅ 已修复：移除路由层拦截，实现 assemble_team 工具
+
+**修复方案**：方案 A（框架原生模式）
+
+| 变更 | 文件 | 说明 |
+|------|------|------|
+| 移除路由拦截 | `chat_orchestrator_turn.go` | 删除 `AgentKey == "__spirit__"` 条件分支，精灵走 `runSingleAgentViaTRPC` |
+| 移除 spiritAssembler 字段 | `chat_orchestrator.go` | 从 `ChatOrchestrator` / `ChatOrchestratorDeps` 中移除 |
+| 删除旧方法 | `spirit_team.go` | 删除 `executeSpiritTeamTurn` / `buildSpiritTeam` |
+| 新增 assemble_team 工具 | `tools/spirit_tools.go` | `NewAssembleTeamTool` + `NewListButlersTool` + `NewQueryButlerStatusTool` |
+| 新增 spirit profile | `agent_effective_tools.go` | `toolProfiles["spirit"]` = assemble_team + list_butlers + query_butler_status + memory_search + datetime |
+| 新增 GetActiveTeam | `spirit_team_usecase.go` | 查询精灵会话下是否有活跃 Team，有则复用 |
+| 新增 ListBySpiritSessionID | `team_usecase.go` + `team_repo.go` | TeamRepository 接口新增方法 |
+
+**核心逻辑变更**：精灵 Agent 现在作为普通 LLMAgent 运行，LLM 自主决定是否调用 `assemble_team` 工具。简单对话直接回复，复杂任务才组建团队。
+
+### S2 ✅ 已修复：panelMode undefined 时 Composer 渲染
+
+**修复**：`ChatMessagePanel.vue` 中 `v-if="panelMode === 'spirit'"` → `v-if="!panelMode || panelMode === 'spirit'"`
+
+### S3 ✅ 已修复：SpiritTeamCompleted/Failed 事件发射
+
+**修复**：`team_turn_hooks.go` 中新增 `publishSpiritTeamLifecycleEvent` 方法，在 Team Run 完成/失败时检测 `AutoCreated=true` 的精灵 Team，发射对应事件。
+
+### M1 ✅ 已修复：appendChildSessionID 并发保护
+
+**修复**：随 M2 一起移除了 `appendChildSessionID` 方法，消除了并发问题。
+
+### M2 ✅ 已修复：child_session_ids 冗余
+
+**修复**：移除 `appendChildSessionID` 方法及其调用。子 Session 通过 `ParentSessionID` 反查即可。
+
+### M3 ✅ 已修复：spiritAssembler 静默降级
+
+**修复**：随 S1 一起移除了 `spiritAssembler` 字段和路由拦截逻辑，问题不再存在。
+
+### M4 ✅ 已修复：SpiritTeam 类型约束
+
+**修复**：`types.ts` 中新增 `SpiritTeamStatus` 和 `SpiritTeamMode` 联合类型，`SpiritTeam.status` 和 `SpiritTeam.mode` 使用联合类型。
+
+### M5 ✅ 已修复：类型导入红线
+
+**修复**：所有展示组件从 `features/spirit/types.ts` 导入类型，移除 `api.ts` 中的 re-export。
+
+### M6 ✅ 已修复：API 双键名兼容
+
+**修复**：`api.ts` 中统一使用 camelCase 单键，移除 `raw.xxx ?? raw.yyy_snake_case` 回退模式和 `data?.items ?? data?.teams` 回退。
+
+### M8 ✅ 已修复：Team Ent Schema 索引
+
+**修复**：`team.go` 新增 `Indexes()` 方法，定义 `(spirit_session_id, deleted_at)` 复合索引。
+
+### 未修复项
+
+| 编号 | 原因 |
+|------|------|
+| M7 | `ListSpiritTeams` RPC 归属需要 Proto 变更，属于 P1 范畴 |
+| L1-L9 | 轻微问题，不影响核心功能，后续迭代清理 |

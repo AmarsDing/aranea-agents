@@ -25,6 +25,7 @@ type ToolsetConfig struct {
 	FilesystemDir    string
 	ShellExec        bool
 	ShellExecDir     string
+	ShellExecEnv     map[string]string
 	WebFetch         bool
 	WebSearch        bool
 	WebResearch      bool
@@ -54,8 +55,11 @@ type ToolsetConfig struct {
 	Kanban           bool
 	KanbanBridge     kanbanpkg.Bridge
 	MemoryEnabled    bool
+	MemoryTools      []trpctool.Tool
 	DeferredTools    []string
 	BlobReader       biz.ToolResultBlobReader
+	ReadDocument     bool
+	ReadSpreadsheet  bool
 }
 
 type AgentToolConfig = tools.AgentToolConfig
@@ -70,7 +74,7 @@ type AssembledToolsets = tools.AssembledToolsets
 
 func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger) (*AssembledToolsets, error) {
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	enabled := []string{}
 	if cfg.Filesystem {
@@ -122,6 +126,12 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 	}
 	if cfg.MCPBroker != nil {
 		enabled = append(enabled, "mcpbroker")
+	}
+	if cfg.ReadDocument {
+		enabled = append(enabled, "read_document")
+	}
+	if cfg.ReadSpreadsheet {
+		enabled = append(enabled, "read_spreadsheet")
 	}
 
 	openAPISpecs := make([]tools.OpenAPISpecConfig, len(cfg.OpenAPISpecs))
@@ -185,6 +195,7 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 		DeferredTools: cfg.DeferredTools,
 		FilesystemDir: cfg.FilesystemDir,
 		ShellExecDir:  cfg.ShellExecDir,
+		ShellExecEnv:  cfg.ShellExecEnv,
 		GeminiModel:   cfg.GeminiModel,
 		GoogleAPIKey:  cfg.GoogleAPIKey,
 		GoogleCX:      cfg.GoogleCX,
@@ -194,8 +205,10 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 		MCPServers:    mcpServers,
 		MCPBroker:     mcpBroker,
 		MemoryEnabled: cfg.MemoryEnabled,
+		MemoryTools:   cfg.MemoryTools,
 		CustomTools:   customTools,
 		BlobReader:    cfg.BlobReader,
+		Lg:            lg,
 	})
 	if err != nil {
 		return nil, err

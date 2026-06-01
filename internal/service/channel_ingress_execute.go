@@ -31,7 +31,7 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 		if replyErr := h.deliverTurnErrorReply(ctx, chRow, ev, platform, err); replyErr != nil {
 			h.lg.Warn("异步回复投递失败",
 				loggateway.StepID("channel.async.reply_failed"),
-				loggateway.Str("error", replyErr.Error()),
+				loggateway.Err(replyErr),
 			)
 		}
 		return err
@@ -87,7 +87,7 @@ func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Chann
 		if replyErr := h.deliverTurnErrorReply(ctx, chRow, ev, platform, execErr); replyErr != nil {
 			h.lg.Warn("异步回复投递失败",
 				loggateway.StepID("channel.async.reply_failed"),
-				loggateway.Str("error", replyErr.Error()),
+				loggateway.Err(replyErr),
 			)
 		}
 		h.publishChannelTurnRunStatus(ctx, sessionID, jobID, "failed", formatChannelTurnErrorMessage(execErr))
@@ -186,7 +186,9 @@ func (h *ChannelIngress) processInboundUnaryWithOutcome(ctx context.Context, chR
 				reply = rendered
 			}
 			if previewID := strings.TrimSpace(previewCoord.PreviewMessageID()); previewID != "" {
-				_ = previewCoord.FlushFinalText(ctx, reply)
+				if err := previewCoord.FlushFinalText(ctx, reply); err != nil {
+					h.lg.Warn("preview flush final text failed", loggateway.StepID("channel.turn.preview_flush"), loggateway.Err(err))
+				}
 				preview := truncateForLog(reply, 200)
 				h.recordDelivery(ctx, chRow.ID, "streamed", map[string]any{
 					"peer_id":    ev.PeerID,

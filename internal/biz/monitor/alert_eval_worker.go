@@ -73,7 +73,7 @@ func (w *AlertEvalWorker) rebuildFromDB(ctx context.Context) {
 		if rebuilt > 0 {
 			w.ready.Store(true)
 		} else {
-			w.lg.Warn("AlertEvalWorker: RebuildRingBuffer rebuilt 0 buckets, will retry on next tick", loggateway.StepID("system.monitor.alert_eval_rebuild_fail"))
+			w.lg.Warn("AlertEvalWorker: RebuildRingBuffer rebuilt 0 buckets, will retry on next tick", loggateway.StepID("monitor.alert_eval_rebuild_fail"))
 			w.ready.Store(true)
 		}
 	})

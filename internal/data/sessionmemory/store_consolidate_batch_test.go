@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/pkg/loggateway"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -79,7 +80,7 @@ func openConsolidateBatchStoreTables(t *testing.T, withActionLog bool) *sessionm
 			t.Fatal(err)
 		}
 	}
-	return sessionmemory.NewStore(client)
+	return sessionmemory.NewStore(client, loggateway.NewNoop())
 }
 
 func TestUpsertFactsAndEpisodeBatch_LinksProvenance(t *testing.T) {

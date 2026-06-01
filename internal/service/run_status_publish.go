@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/event"
-	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -74,17 +74,17 @@ func PublishBackgroundJobRefresh(bus event.Bus, sessionID, jobID, status string)
 }
 
 // CancelSessionRunSideEffects publishes cancelled run_status and marks running activity cards cancelled.
-func CancelSessionRunSideEffects(ctx context.Context, bus event.Bus, sessions *biz.SessionUsecase, sessionID, runID string) {
+func CancelSessionRunSideEffects(ctx context.Context, bus event.Bus, sessions *biz.SessionUsecase, sessionID, runID string, lg loggateway.Logger) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return
 	}
 	PublishRunStatus(bus, sessionID, runID, "cancelled", "")
-	if _, err := chatactivity.CancelRunningActivityMessages(ctx, sessions, sessionID); err != nil {
-		loggateway.Global().Warn("取消执行卡片查询失败",
+	if _, err := chatactivity.CancelRunningActivityMessages(ctx, sessions, sessionID, lg); err != nil {
+		lg.Warn("取消执行卡片查询失败",
 			loggateway.StepID("chat.activity.cancel"),
 			loggateway.Str("session_id", sessionID),
-			loggateway.Str("error", err.Error()),
+			loggateway.Err(err),
 		)
 	}
 }
@@ -114,9 +114,9 @@ func (p *sessionStatusPublisher) PublishSessionStatusChanged(sessionID, status, 
 }
 
 // WireSessionStatusPublisher injects the service-layer WS publisher into SessionUsecase.
-func WireSessionStatusPublisher(uc *biz.SessionUsecase, infra *event.Infra) *SessionStatusGuard {
+func WireSessionStatusPublisher(uc *biz.SessionUsecase, infra *event.Infra, lg loggateway.Logger) *SessionStatusGuard {
 	if uc != nil && infra != nil {
 		uc.SetStatusPublisher(&sessionStatusPublisher{bus: infra.SessionBus})
 	}
-	return NewSessionStatusGuard(uc, loggateway.Global())
+	return NewSessionStatusGuard(uc, lg)
 }

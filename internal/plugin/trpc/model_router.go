@@ -34,7 +34,7 @@ var _ trpcplugin.Plugin = (*ModelRouterPlugin)(nil)
 
 func NewModelRouterPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, lg loggateway.Logger) *ModelRouterPlugin {
 	var cfg ModelRouterConfig
-	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
 	compileModelRouterRules(cfg.Rules, lg)
 	return &ModelRouterPlugin{base: newBasePlugin(p.Key, stats, bus, lg), cfg: cfg}
 }

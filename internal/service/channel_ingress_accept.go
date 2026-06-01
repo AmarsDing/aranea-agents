@@ -134,7 +134,7 @@ func (h *ChannelIngress) routeInboundAsync(ctx context.Context, chRow biz.Channe
 		if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), channelTurnErrorBusyMsg, ev.OutboundMeta, idempotency); err != nil {
 			h.lg.Warn("异步回复投递失败",
 				loggateway.StepID("channel.async.reply_failed"),
-				loggateway.Str("error", err.Error()),
+				loggateway.Err(err),
 			)
 		}
 		return noop, nil
@@ -166,7 +166,7 @@ func (h *ChannelIngress) routeInboundSync(ctx context.Context, chRow biz.Channel
 		if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), channelTurnErrorBusyMsg, ev.OutboundMeta, idempotency); err != nil {
 			h.lg.Warn("异步回复投递失败",
 				loggateway.StepID("channel.async.reply_failed"),
-				loggateway.Str("error", err.Error()),
+				loggateway.Err(err),
 			)
 		}
 		return noop, nil

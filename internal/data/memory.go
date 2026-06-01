@@ -8,6 +8,7 @@ import (
 	dataent "aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/userembeddingsetting"
 	"aranea-agents/internal/data/pgvector"
+	"aranea-agents/pkg/loggateway"
 )
 
 type memoryRepo struct {
@@ -71,6 +72,7 @@ func (r *memoryRepo) storeFor(ctx context.Context, dim int) (*pgvector.Store, er
 		return s, nil
 	}
 	if err := pgvector.EnsureDimensionTable(ctx, r.data.Postgres(), dim); err != nil {
+		r.data.lg.Warn("ensure dimension table failed", loggateway.StepID("memory.pgvector_init_fail"), loggateway.Err(err))
 		return nil, err
 	}
 	s := pgvector.NewStore(r.data.Postgres(), dim)

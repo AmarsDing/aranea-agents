@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/schemamigration"
+	"aranea-agents/pkg/loggateway"
 )
 
 const (
@@ -18,14 +19,14 @@ const (
 	migrationNameSessionStatusIdle     = "session_status_active_to_idle"
 )
 
-func isMigrationApplied(ctx context.Context, client *ent.Client, version int) (bool, error) {
+func isMigrationApplied(ctx context.Context, client *ent.Client, version int, lg loggateway.Logger) (bool, error) {
 	if client == nil {
 		return false, fmt.Errorf("schema migrations: ent client required")
 	}
 	return client.SchemaMigration.Query().Where(schemamigration.ID(version)).Exist(ctx)
 }
 
-func recordMigrationApplied(ctx context.Context, client *ent.Client, version int, name string) error {
+func recordMigrationApplied(ctx context.Context, client *ent.Client, version int, name string, lg loggateway.Logger) error {
 	if client == nil {
 		return fmt.Errorf("schema migrations: ent client required")
 	}
@@ -35,13 +36,16 @@ func recordMigrationApplied(ctx context.Context, client *ent.Client, version int
 		SetName(name).
 		SetAppliedAt(now).
 		Save(ctx)
+	if err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.migration.record"), loggateway.Int("version", version), loggateway.Err(err))
+	}
 	return err
 }
 
-func IsSeedApplied(ctx context.Context, client *ent.Client, version int) (bool, error) {
-	return isMigrationApplied(ctx, client, version)
+func IsSeedApplied(ctx context.Context, client *ent.Client, version int, lg loggateway.Logger) (bool, error) {
+	return isMigrationApplied(ctx, client, version, lg)
 }
 
-func MarkSeedApplied(ctx context.Context, client *ent.Client, version int, name string) error {
-	return recordMigrationApplied(ctx, client, version, name)
+func MarkSeedApplied(ctx context.Context, client *ent.Client, version int, name string, lg loggateway.Logger) error {
+	return recordMigrationApplied(ctx, client, version, name, lg)
 }

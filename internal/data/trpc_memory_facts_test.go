@@ -70,7 +70,7 @@ func openTestSessionMemoryStore(t *testing.T) *sessionmemory.Store {
 			t.Fatal(err)
 		}
 	}
-	return sessionmemory.NewStore(client)
+	return sessionmemory.NewStore(client, loggateway.NewNoop())
 }
 
 func TestSQLiteMemoryService_AddMemoryWritesFactVisibleToAdmin(t *testing.T) {

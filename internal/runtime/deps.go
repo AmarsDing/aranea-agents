@@ -84,7 +84,7 @@ func (d *TurnDeps) CoalesceRunnerManager() *RunnerManager {
 	}
 	lg := d.lg
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	d.RunnerMgr = NewRunnerManagerFromPersist(d.Persist, lg)
 	return d.RunnerMgr
@@ -96,7 +96,7 @@ func (d *TurnDeps) SetLogger(lg loggateway.Logger) {
 
 func (d *TurnDeps) Logger() loggateway.Logger {
 	if d.lg == nil {
-		return loggateway.Global()
+		return loggateway.NewNoop()
 	}
 	return d.lg
 }

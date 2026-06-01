@@ -75,7 +75,7 @@ func (u *ToolUsecase) TestTool(ctx context.Context, toolID, argumentsJSON string
 	defer cancel()
 	if err := u.RecordToolInvocation(recordCtx, write); err != nil {
 		u.lg.Warn("tools.test.record_invocation_failed",
-			loggateway.StepID("system.tool_test_record_fail"),
+			loggateway.StepID("tool.test_record_fail"),
 			loggateway.Str("tool_key", write.ToolKey),
 			loggateway.Err(err))
 	}

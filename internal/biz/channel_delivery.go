@@ -97,7 +97,7 @@ func (u *ChannelUsecase) hasOutboundIdempotency(ctx context.Context, channelID, 
 		return false, err
 	}
 	if len(items) >= 100 {
-		u.lg.Warn("hasOutboundIdempotency scanned max deliveries without finding match; consider DB unique index for idempotency_key", loggateway.StepID("system.monitor.alert_channel_fail"), loggateway.Str("channel_id", channelID), loggateway.Str("key", key))
+		u.lg.Warn("hasOutboundIdempotency scanned max deliveries without finding match; consider DB unique index for idempotency_key", loggateway.StepID("channel.alert_channel_fail"), loggateway.Str("channel_id", channelID), loggateway.Str("key", key))
 	}
 	for _, item := range items {
 		if item.Status != ChannelDeliveryStatusPending &&
@@ -125,6 +125,7 @@ func (u *ChannelUsecase) ListPendingOutboundDeliveries(ctx context.Context, limi
 func (u *ChannelUsecase) MarkOutboundAttempt(ctx context.Context, row ChannelDelivery, sendErr error) (deadLetter bool, err error) {
 	var payload ChannelOutboundPayload
 	if err := json.Unmarshal([]byte(defaultJSON(row.PayloadJSON)), &payload); err != nil {
+		u.lg.Warn("解析 outbound payload 失败", loggateway.StepID("channel.delivery"), loggateway.Err(err))
 		return false, err
 	}
 	payload.Attempts++

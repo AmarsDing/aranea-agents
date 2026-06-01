@@ -35,6 +35,7 @@ type Engine struct {
 	repo SkillImportRepo
 	llm  llmLister
 	sys  biz.SystemSettingRepo
+	lg   loggateway.Logger
 
 	jobsMu sync.RWMutex
 	jobs   map[string]*jobState
@@ -57,11 +58,12 @@ type candidateState struct {
 }
 
 // NewEngine constructs the skill ZIP importer. Skill storage root resolves via skillstorage + system settings.
-func NewEngine(repo SkillImportRepo, llm llmLister, sys biz.SystemSettingRepo) *Engine {
+func NewEngine(repo SkillImportRepo, llm llmLister, sys biz.SystemSettingRepo, lg loggateway.Logger) *Engine {
 	return &Engine{
 		repo:   repo,
 		llm:    llm,
 		sys:    sys,
+		lg:     lg,
 		jobs:   make(map[string]*jobState),
 		jobTTL: defaultJobTTL,
 	}
@@ -227,14 +229,14 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 		cCtx := context.Background()
 		for _, r := range committed {
 			if err := e.repo.DeleteSkill(cCtx, r.id); err != nil {
-				loggateway.Global().Warn("skill.import.compensate_db_delete_fail",
-					loggateway.StepID("system.plugin.seed_fail"),
+				e.lg.Warn("skill.import.compensate_db_delete_fail",
+					loggateway.StepID("skill.seed_fail"),
 					loggateway.Str("skill_id", r.id),
 					loggateway.Err(err))
 			}
 			if err := os.RemoveAll(r.storageDir); err != nil {
-				loggateway.Global().Warn("skill.import.compensate_dir_remove_fail",
-					loggateway.StepID("system.plugin.seed_fail"),
+				e.lg.Warn("skill.import.compensate_dir_remove_fail",
+					loggateway.StepID("skill.seed_fail"),
 					loggateway.Str("storage_dir", r.storageDir),
 					loggateway.Err(err))
 			}
@@ -485,8 +487,8 @@ func (e *Engine) inspectSimilarity(ctx context.Context, job *jobState, existing 
 		state := job.candidates[candidate.CandidateID]
 		for _, source := range existing {
 			if llmCalls >= maxSimilarityLLMCalls {
-				loggateway.Global().Warn("inspectSimilarity LLM call limit reached, skipping remaining comparisons",
-					loggateway.StepID("system.skill.similarity_cap"),
+				e.lg.Warn("inspectSimilarity LLM call limit reached, skipping remaining comparisons",
+					loggateway.StepID("skill.similarity_cap"),
 					loggateway.Int("cap", maxSimilarityLLMCalls))
 				return nil
 			}

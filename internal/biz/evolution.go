@@ -2,11 +2,12 @@ package biz
 
 import (
 	"context"
-	"log"
 	"strings"
 	"time"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type EvolutionMetrics struct {
@@ -55,17 +56,20 @@ type EvolutionUsecase struct {
 	metricsRepo    EvolutionMetricsRepo
 	suggestionRepo EvolutionSuggestionRepo
 	agents         AgentRepository
+	lg             loggateway.Logger
 }
 
 func NewEvolutionUsecase(
 	metricsRepo EvolutionMetricsRepo,
 	suggestionRepo EvolutionSuggestionRepo,
 	agents AgentRepository,
+	lg loggateway.Logger,
 ) *EvolutionUsecase {
 	return &EvolutionUsecase{
 		metricsRepo:    metricsRepo,
 		suggestionRepo: suggestionRepo,
 		agents:         agents,
+		lg:             lg,
 	}
 }
 
@@ -77,19 +81,19 @@ func (uc *EvolutionUsecase) GetEvolutionMetrics(ctx context.Context, agentID str
 	since := timeRangeToSince(timeRange)
 	toolRate, toolSeries, err := uc.metricsRepo.GetToolSuccessRate(ctx, agentID, since)
 	if err != nil {
-		log.Printf("[EVOLUTION] GetToolSuccessRate agent=%s err=%v", agentID, err)
+		uc.lg.Warn("GetToolSuccessRate failed", loggateway.StepID("evolution.get_tool_success_rate"), loggateway.Err(err))
 	}
 	retrievalRate, retrievalSeries, err := uc.metricsRepo.GetRetrievalQuality(ctx, agentID, since)
 	if err != nil {
-		log.Printf("[EVOLUTION] GetRetrievalQuality agent=%s err=%v", agentID, err)
+		uc.lg.Warn("GetRetrievalQuality failed", loggateway.StepID("evolution.get_retrieval_quality"), loggateway.Err(err))
 	}
 	episodes, err := uc.metricsRepo.GetEpisodeCount(ctx, agentID, since)
 	if err != nil {
-		log.Printf("[EVOLUTION] GetEpisodeCount agent=%s err=%v", agentID, err)
+		uc.lg.Warn("GetEpisodeCount failed", loggateway.StepID("evolution.get_episode_count"), loggateway.Err(err))
 	}
 	negFeedback, err := uc.metricsRepo.GetNegativeFeedbackCount(ctx, agentID, since)
 	if err != nil {
-		log.Printf("[EVOLUTION] GetNegativeFeedbackCount agent=%s err=%v", agentID, err)
+		uc.lg.Warn("GetNegativeFeedbackCount failed", loggateway.StepID("evolution.get_negative_feedback_count"), loggateway.Err(err))
 	}
 	return EvolutionMetrics{
 		AgentID:                agentID,

@@ -18,10 +18,11 @@ type ModelRegistryRootResolver interface {
 
 type ModelRegistryStoreProvider struct {
 	roots ModelRegistryRootResolver
+	lg    loggateway.Logger
 }
 
-func NewModelRegistryStoreProvider(roots ModelRegistryRootResolver) *ModelRegistryStoreProvider {
-	return &ModelRegistryStoreProvider{roots: roots}
+func NewModelRegistryStoreProvider(roots ModelRegistryRootResolver, lg loggateway.Logger) *ModelRegistryStoreProvider {
+	return &ModelRegistryStoreProvider{roots: roots, lg: lg}
 }
 
 func (p *ModelRegistryStoreProvider) Store(ctx context.Context) (*modelregistry.Store, error) {
@@ -29,20 +30,22 @@ func (p *ModelRegistryStoreProvider) Store(ctx context.Context) (*modelregistry.
 	if err != nil {
 		return nil, err
 	}
-	return modelregistry.NewStore(root, loggateway.Global()), nil
+	return modelregistry.NewStore(root, p.lg), nil
 }
 
 type ModelRegistryUsecase struct {
 	roots        ModelRegistryRootResolver
 	storeProv    *ModelRegistryStoreProvider
 	applyBackend modelregistry.ApplyBackend
+	lg           loggateway.Logger
 }
 
-func NewModelRegistryUsecase(roots ModelRegistryRootResolver, backend modelregistry.ApplyBackend) *ModelRegistryUsecase {
+func NewModelRegistryUsecase(roots ModelRegistryRootResolver, backend modelregistry.ApplyBackend, lg loggateway.Logger) *ModelRegistryUsecase {
 	return &ModelRegistryUsecase{
 		roots:        roots,
-		storeProv:    NewModelRegistryStoreProvider(roots),
+		storeProv:    NewModelRegistryStoreProvider(roots, lg),
 		applyBackend: backend,
+		lg:           lg,
 	}
 }
 
@@ -169,7 +172,7 @@ func (u *ModelRegistryUsecase) Sync(ctx context.Context, dryRun bool) (modelregi
 	if stErr != nil {
 		return modelregistry.SyncOutput{}, stErr
 	}
-	syncer := modelregistry.NewSyncer(st, loggateway.Global())
+	syncer := modelregistry.NewSyncer(st, u.lg)
 	out, err := syncer.Sync(ctx, modelregistry.SyncInput{DryRun: dryRun})
 	if err != nil || dryRun || u.applyBackend == nil {
 		return u.finalizeSyncOutput(out, err)
@@ -183,7 +186,7 @@ func (u *ModelRegistryUsecase) Sync(ctx context.Context, dryRun bool) (modelregi
 		out.Log.Errors = append(out.Log.Errors, "load directory after sync: "+loadErr.Error())
 		return u.finalizeSyncOutput(out, kerrors.InternalServer("MODEL_REGISTRY", fmt.Sprintf("load directory after sync: %s", loadErr.Error())))
 	}
-	applier := modelregistry.NewApplier(u.applyBackend)
+	applier := modelregistry.NewApplier(u.applyBackend, u.lg)
 	applyRes := applier.ApplyWithMigration(ctx, dir, out.Policy.AutoApply)
 	out.Apply = applyRes
 	out.Log.Stats.LLMRowsUpdated = applyRes.LLMRowsUpdated

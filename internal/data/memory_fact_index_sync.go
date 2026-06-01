@@ -13,19 +13,20 @@ import (
 type memoryFactIndexSync struct {
 	vec   *biz.MemoryUsecase
 	store *sessionmemory.Store
+	lg    loggateway.Logger
 }
 
 // NewMemoryFactIndexSync dual-writes L3 fact vectors to pgvector (optional) and SQLite embedding_blob.
 var _ biz.MemoryFactIndexSyncer = (*memoryFactIndexSync)(nil)
 
-func NewMemoryFactIndexSync(vec *biz.MemoryUsecase, store *sessionmemory.Store) biz.MemoryFactIndexSyncer {
+func NewMemoryFactIndexSync(vec *biz.MemoryUsecase, store *sessionmemory.Store, lg loggateway.Logger) biz.MemoryFactIndexSyncer {
 	if vec == nil {
 		return nil
 	}
 	if store == nil {
 		return vec
 	}
-	return &memoryFactIndexSync{vec: vec, store: store}
+	return &memoryFactIndexSync{vec: vec, store: store, lg: lg}
 }
 
 // SyncFactIndex embeds the statement and writes vectors to pgvector + SQLite.
@@ -40,26 +41,29 @@ func (s *memoryFactIndexSync) SyncFactIndex(ctx context.Context, agentID, userID
 			return
 		}
 		if serr := s.store.MarkFactIndexStale(ctx, factID, reason.Error()); serr != nil {
-			loggateway.Global().Warn("failed to mark fact index stale", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(serr))
+			s.lg.Warn("failed to mark fact index stale", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(serr))
 		}
 	}
 	embedding, err := s.vec.EmbedText(ctx, statement)
 	if err != nil {
+		s.lg.Warn("embed text failed", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(err))
 		markStale(err)
 		return err
 	}
 	if err := s.vec.UpsertFactVector(ctx, agentID, userID, factID, statement, embedding); err != nil {
+		s.lg.Warn("upsert fact vector failed", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(err))
 		markStale(err)
 		return err
 	}
 	if err := s.syncSQLiteBlob(ctx, factID, embedding); err != nil {
+		s.lg.Warn("sync sqlite blob failed", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(err))
 		markStale(err)
 		return err
 	}
 	// Mark fresh on full success.
 	if s.store != nil {
 		if serr := s.store.MarkFactIndexSynced(ctx, factID); serr != nil {
-			loggateway.Global().Warn("failed to mark fact index synced", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(serr))
+			s.lg.Warn("failed to mark fact index synced", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(serr))
 		}
 	}
 	return nil
@@ -71,6 +75,7 @@ func (s *memoryFactIndexSync) SyncFactIndexFromRow(ctx context.Context, raw []by
 	}
 	var m map[string]any
 	if err := json.Unmarshal(raw, &m); err != nil {
+		s.lg.Warn("fact index sync json parse failed", loggateway.StepID("memory.index_sync_parse_fail"), loggateway.Err(err))
 		return err
 	}
 	agentID := jsonutil.IfaceStr(m, "agent_id")

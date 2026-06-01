@@ -51,7 +51,7 @@ func main() {
 	}
 	defer cleanup()
 
-	store := data.NewCLIData(entClient, rawDB)
+	store := data.NewCLIData(entClient, rawDB, loggateway.NewNoop())
 
 	if *teamsOnly || *dryRun {
 		if *dryRun && !*teamsOnly {

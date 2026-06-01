@@ -60,7 +60,7 @@ func (w *asyncEnvelopeWorker) Offer(ctx context.Context, env contract.Envelope) 
 	case w.jobs <- env:
 	default:
 		if w.logger != nil {
-			w.logger.SessionSysLogWarn(ctx, env.SessionID, "event_bus.queue_full", "侧效消费者队列已满，丢弃事件",
+			w.logger.LogSessionWarn(ctx, env.SessionID, "event_bus.queue_full", "侧效消费者队列已满，丢弃事件",
 				LogPair{Key: "consumer", Value: w.name}, LogPair{Key: "type", Value: string(env.Type)}, LogPair{Key: "id", Value: env.ID})
 		}
 	}

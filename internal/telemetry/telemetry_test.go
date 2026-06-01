@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"aranea-agents/pkg/loggateway"
 	"context"
 	"testing"
 )
@@ -8,7 +9,7 @@ import (
 func TestInitNoopWhenEndpointUnset(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
 
-	shutdown := Init("aranea-test", "test")
+	shutdown := Init("aranea-test", "test", loggateway.NewNoop())
 	if shutdown == nil {
 		t.Fatal("expected shutdown func")
 	}

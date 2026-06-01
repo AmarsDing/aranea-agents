@@ -222,11 +222,11 @@ func (e *Embedder) embedOpenAIBatch(ctx context.Context, baseURL, apiKey, model 
 		}
 		var r resp
 		if err := json.Unmarshal(body, &r); err != nil {
-			e.lg.Error("knowledge embedder openai parse failed", loggateway.StepID("system.knowledge.embed_fail"), loggateway.Err(err))
+			e.lg.Error("knowledge embedder openai parse failed", loggateway.StepID("knowledge.embed_fail"), loggateway.Err(err))
 			return nil, kerrors.InternalServer("KNOWLEDGE", "embedder openai parse failed: "+err.Error())
 		}
 		if len(r.Data) != len(batch) {
-			e.lg.Error("knowledge embedder openai count mismatch", loggateway.StepID("system.knowledge.embed_fail"), loggateway.Int("expected", len(batch)), loggateway.Int("got", len(r.Data)))
+			e.lg.Error("knowledge embedder openai count mismatch", loggateway.StepID("knowledge.embed_fail"), loggateway.Int("expected", len(batch)), loggateway.Int("got", len(r.Data)))
 			return nil, kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("embedder openai: expected %d embeddings, got %d", len(batch), len(r.Data)))
 		}
 		ordered := make([][]float32, len(batch))
@@ -260,12 +260,12 @@ func (e *Embedder) embedOllamaBatch(ctx context.Context, baseURL, model string, 
 
 func (e *Embedder) embedGeminiBatch(ctx context.Context, apiKey, model string, dim int, texts []string, taskType string) ([][]float32, error) {
 	if apiKey == "" {
-		e.lg.Error("knowledge embedder gemini API key required", loggateway.StepID("system.knowledge.embed_fail"))
+		e.lg.Error("knowledge embedder gemini API key required", loggateway.StepID("knowledge.embed_fail"))
 		return nil, kerrors.BadRequest("KNOWLEDGE", "embedder gemini: API key required")
 	}
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{APIKey: apiKey})
 	if err != nil {
-		e.lg.Error("knowledge embedder gemini client failed", loggateway.StepID("system.knowledge.embed_fail"), loggateway.Err(err))
+		e.lg.Error("knowledge embedder gemini client failed", loggateway.StepID("knowledge.embed_fail"), loggateway.Err(err))
 		return nil, kerrors.InternalServer("KNOWLEDGE", "embedder gemini client failed: "+err.Error())
 	}
 	model = strings.TrimPrefix(model, "models/")
@@ -290,7 +290,7 @@ func (e *Embedder) embedGeminiBatch(ctx context.Context, apiKey, model string, d
 		}
 		resp, err := client.Models.EmbedContent(ctx, model, contents, cfg)
 		if err != nil {
-			e.lg.Error("knowledge embedder gemini API failed", loggateway.StepID("system.knowledge.embed_fail"), loggateway.Err(err))
+			e.lg.Error("knowledge embedder gemini API failed", loggateway.StepID("knowledge.embed_fail"), loggateway.Err(err))
 			return nil, kerrors.InternalServer("KNOWLEDGE", "embedder gemini API failed: "+err.Error())
 		}
 		if len(resp.Embeddings) != len(batch) {
@@ -335,6 +335,7 @@ func (e *Embedder) embedHuggingFaceBatch(ctx context.Context, baseURL string, di
 		}
 		var data [][]float64
 		if err := json.Unmarshal(body, &data); err != nil {
+			e.lg.Warn("解析 huggingface embed 响应失败", loggateway.StepID("knowledge.embed_fail"), loggateway.Err(err))
 			return nil, kerrors.InternalServer("KNOWLEDGE", "embedder huggingface parse failed: "+err.Error())
 		}
 		if len(data) != len(batch) {
@@ -371,6 +372,7 @@ func (e *Embedder) embedOllamaWith(ctx context.Context, baseURL, model, text str
 	}
 	var r resp
 	if err := json.Unmarshal(body, &r); err != nil {
+		e.lg.Warn("解析 ollama embed 响应失败", loggateway.StepID("knowledge.embed_fail"), loggateway.Err(err))
 		return nil, kerrors.InternalServer("KNOWLEDGE", "embedder ollama parse failed: "+err.Error())
 	}
 	return r.Embedding, nil

@@ -47,7 +47,7 @@ type ServiceTool struct {
 
 func New(lg loggateway.Logger) trpctool.CallableTool {
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	return &ServiceTool{lg: lg}
 }

@@ -19,6 +19,7 @@ import (
 	"aranea-agents/internal/data/ent/predicate"
 	"aranea-agents/internal/data/ent/skillinvocation"
 	"aranea-agents/internal/data/ent/skillversion"
+	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -157,7 +158,7 @@ func normalizeSkillTags(tags []biz.SkillTag) []biz.SkillTag {
 	return result
 }
 
-func parseTaxonomyPathsFromJSON(blob string) []string {
+func parseTaxonomyPathsFromJSON(lg loggateway.Logger, blob string) []string {
 	blob = strings.TrimSpace(blob)
 	if blob == "" {
 		return nil
@@ -165,7 +166,11 @@ func parseTaxonomyPathsFromJSON(blob string) []string {
 	var wrap struct {
 		TaxonomyPaths []string `json:"taxonomy_paths"`
 	}
-	if err := json.Unmarshal([]byte(blob), &wrap); err != nil || len(wrap.TaxonomyPaths) == 0 {
+	if err := json.Unmarshal([]byte(blob), &wrap); err != nil {
+		lg.Warn("unmarshal taxonomy_paths failed", loggateway.StepID("data.skill"), loggateway.Err(err))
+		return nil
+	}
+	if len(wrap.TaxonomyPaths) == 0 {
 		return nil
 	}
 	out := make([]string, 0, len(wrap.TaxonomyPaths))
@@ -181,9 +186,9 @@ func parseTaxonomyPathsFromJSON(blob string) []string {
 	return out
 }
 
-func mergeTaxonomyPaths(meta, cfg string) []string {
-	a := parseTaxonomyPathsFromJSON(meta)
-	b := parseTaxonomyPathsFromJSON(cfg)
+func mergeTaxonomyPaths(lg loggateway.Logger, meta, cfg string) []string {
+	a := parseTaxonomyPathsFromJSON(lg, meta)
+	b := parseTaxonomyPathsFromJSON(lg, cfg)
 	if len(a) == 0 {
 		return b
 	}
@@ -214,7 +219,7 @@ func (r *skillRepo) enrichSkill(ctx context.Context, e *dataent.PlatformSkill) (
 		Status:            normalizeSkillStatus(e.Status),
 		Enabled:           e.Enabled,
 		FilesystemMissing: e.FilesystemMissing,
-		SyncOrigin:        parseSkillMetadata(e.MetadataJSON).SyncOrigin,
+		SyncOrigin:        parseSkillMetadata(r.data.lg, e.MetadataJSON).SyncOrigin,
 		Visibility:        e.Visibility,
 		DefaultConfigJSON: e.FallbackConfigJSON,
 		CreatedAt:         e.CreatedAt,
@@ -566,6 +571,7 @@ func (r *skillRepo) GetSkillStorageDir(ctx context.Context, id string) (string, 
 		StorageDir string `json:"storage_dir"`
 	}
 	if err := json.Unmarshal([]byte(e.MetadataJSON), &metadata); err != nil {
+		r.data.lg.Warn("unmarshal skill metadata failed", loggateway.StepID("data.skill"), loggateway.Err(err))
 		return "", err
 	}
 	if strings.TrimSpace(metadata.StorageDir) == "" {
@@ -814,7 +820,7 @@ func (r *skillRepo) ListEnabledPublishedSkillCandidates(ctx context.Context) ([]
 			Name:          row.Name,
 			Description:   row.Description,
 			Tags:          tags,
-			TaxonomyPaths: mergeTaxonomyPaths(row.MetadataJSON, row.ConfigJSON),
+			TaxonomyPaths: mergeTaxonomyPaths(r.data.lg, row.MetadataJSON, row.ConfigJSON),
 		})
 	}
 	return out, nil
@@ -947,9 +953,11 @@ func encodeSkillMetadata(tags []biz.SkillTag, storageDir, syncOrigin string) (st
 	return string(b), nil
 }
 
-func parseSkillMetadata(raw string) skillMetadataEnvelope {
+func parseSkillMetadata(lg loggateway.Logger, raw string) skillMetadataEnvelope {
 	var md skillMetadataEnvelope
-	_ = json.Unmarshal([]byte(raw), &md)
+	if err := json.Unmarshal([]byte(raw), &md); err != nil {
+		lg.Warn("unmarshal skill metadata envelope failed", loggateway.StepID("data.skill"), loggateway.Err(err))
+	}
 	return md
 }
 
@@ -976,7 +984,7 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 		upd.SetDescription(strings.TrimSpace(patch.Description))
 	}
 	if patch.HasTags {
-		md := parseSkillMetadata(e.MetadataJSON)
+		md := parseSkillMetadata(r.data.lg, e.MetadataJSON)
 		md.Tags = normalizeSkillTags(patch.Tags)
 		metaJSON, jerr := json.Marshal(md)
 		if jerr != nil {
@@ -1008,7 +1016,7 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 		if err != nil {
 			return biz.Skill{}, err
 		}
-		md := parseSkillMetadata(fresh.MetadataJSON)
+		md := parseSkillMetadata(r.data.lg, fresh.MetadataJSON)
 		dir := strings.TrimSpace(md.StorageDir)
 		if dir == "" {
 			return biz.Skill{}, errors.New("skill storage directory is not configured")

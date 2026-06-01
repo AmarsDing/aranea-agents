@@ -50,7 +50,7 @@ func (r *Runner) startObservers(
 			return strings.TrimSpace(ag.DisplayName)
 		},
 	)
-	setup.activityFlusher = NewActivityStepFlusher(r.teams, run.ID, graphExecID)
+	setup.activityFlusher = NewActivityStepFlusher(r.teams, run.ID, graphExecID, r.lg)
 	failureOnError := ""
 	if def.FailurePolicy != nil {
 		failureOnError = def.FailurePolicy.OnError
@@ -72,7 +72,7 @@ func (r *Runner) startObservers(
 				GraphExecutionID: graphExecID,
 				Nodes:            taskNodes,
 				Creator:          r.teamGraphTasks,
-			})
+			}, r.lg)
 		}
 	}
 	if r.teamGraphCoord != nil && graphExecID != "" {
@@ -80,7 +80,7 @@ func (r *Runner) startObservers(
 			SessionID:        sess.ID,
 			GraphExecutionID: graphExecID,
 			Registry:         r.teamGraphCoord,
-		})
+		}, r.lg)
 		setup.stopGraphStepWatch = r.teamGraphCoord.StartGraphStepWatch(ctx, graphExecID)
 	}
 	return setup

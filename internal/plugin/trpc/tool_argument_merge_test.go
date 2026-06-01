@@ -3,6 +3,8 @@ package plugintrpc
 import (
 	"encoding/json"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestMergeToolArgumentsJSON_replaceArguments(t *testing.T) {
@@ -10,7 +12,7 @@ func TestMergeToolArgumentsJSON_replaceArguments(t *testing.T) {
 	patch := map[string]any{
 		"arguments": map[string]any{"q": "replaced", "limit": 3},
 	}
-	out := mergeToolArgumentsJSON(cur, patch)
+	out := mergeToolArgumentsJSON(cur, patch, loggateway.NewNoop())
 	var m map[string]any
 	if err := json.Unmarshal(out, &m); err != nil {
 		t.Fatal(err)
@@ -25,13 +27,13 @@ func TestMergeToolArgumentsJSON_deepMergeNested(t *testing.T) {
 	patch := map[string]any{
 		"merge_arguments": map[string]any{
 			"opts": map[string]any{
-				"page": 2,
+				"page":  2,
 				"extra": true,
 			},
 			"limit": 5,
 		},
 	}
-	out := mergeToolArgumentsJSON(cur, patch)
+	out := mergeToolArgumentsJSON(cur, patch, loggateway.NewNoop())
 	var m map[string]any
 	if err := json.Unmarshal(out, &m); err != nil {
 		t.Fatal(err)
@@ -58,7 +60,7 @@ func TestMergeToolArgumentsJSON_argumentsWinsOverMerge(t *testing.T) {
 		"arguments":       map[string]any{"only": "replace"},
 		"merge_arguments": map[string]any{"q": "ignored"},
 	}
-	out := mergeToolArgumentsJSON(cur, patch)
+	out := mergeToolArgumentsJSON(cur, patch, loggateway.NewNoop())
 	var m map[string]any
 	if err := json.Unmarshal(out, &m); err != nil {
 		t.Fatal(err)
@@ -72,7 +74,7 @@ func TestMergeToolArgumentsJSON_emptyCurrent(t *testing.T) {
 	patch := map[string]any{
 		"merge_arguments": map[string]any{"k": "v"},
 	}
-	out := mergeToolArgumentsJSON(nil, patch)
+	out := mergeToolArgumentsJSON(nil, patch, loggateway.NewNoop())
 	var m map[string]any
 	if err := json.Unmarshal(out, &m); err != nil {
 		t.Fatal(err)

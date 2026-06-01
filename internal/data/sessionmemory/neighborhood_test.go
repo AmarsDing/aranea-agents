@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/loggateway"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -48,7 +49,7 @@ func openNeighborhoodTestStore(t *testing.T) *Store {
 			t.Fatal(err)
 		}
 	}
-	st := NewStore(client)
+	st := NewStore(client, loggateway.NewNoop())
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	expired := time.Now().UTC().Add(-48 * time.Hour).Format(time.RFC3339Nano)
 	for _, q := range []struct {

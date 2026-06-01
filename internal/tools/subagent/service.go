@@ -121,7 +121,7 @@ func NewService(stateDir string, r trpcrunner.Runner, lg loggateway.Logger) (*Se
 		subagentDirName,
 		subagentRunsFileName,
 	)
-	runs, err := loadRuns(path)
+	runs, err := loadRuns(path, lg)
 	if err != nil {
 		return nil, kerrors.InternalServer("SUBAGENT", "load runs: "+err.Error())
 	}
@@ -480,7 +480,7 @@ func (s *Service) finishRun(runID string, output string, runErr error) {
 
 	if err := s.persist(); err != nil {
 		s.lg.Warn("subagent.finishRun",
-			loggateway.StepID("system.subagent_persist_fail"),
+			loggateway.StepID("tool.subagent_persist_fail"),
 			loggateway.Str("run_id", runID),
 			loggateway.Err(err))
 	}
@@ -580,7 +580,10 @@ func normalizeLoadedRuns(runs map[string]*runRecord, now time.Time) bool {
 	return changed
 }
 
-func loadRuns(path string) (map[string]*runRecord, error) {
+func loadRuns(path string, lg loggateway.Logger) (map[string]*runRecord, error) {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	runs := make(map[string]*runRecord)
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -594,6 +597,10 @@ func loadRuns(path string) (map[string]*runRecord, error) {
 	}
 	var sf storeFile
 	if err := json.Unmarshal(data, &sf); err != nil {
+		lg.Warn("failed to unmarshal subagent store file",
+			loggateway.StepID("tool.subagent.load_runs"),
+			loggateway.Err(err),
+		)
 		return nil, err
 	}
 	for i := range sf.Runs {
@@ -784,6 +791,10 @@ func (t *spawnTool) Call(ctx context.Context, args []byte) (any, error) {
 
 	var in spawnInput
 	if err := json.Unmarshal(args, &in); err != nil {
+		t.svc.lg.Warn("failed to unmarshal spawn arguments",
+			loggateway.StepID("tool.subagent.spawn"),
+			loggateway.Err(err),
+		)
 		return nil, kerrors.BadRequest("SUBAGENT", "invalid arguments: "+err.Error())
 	}
 
@@ -823,6 +834,10 @@ func (t *listTool) Call(ctx context.Context, args []byte) (any, error) {
 		strings.TrimSpace(string(args)) != "{}" {
 		var ignored map[string]any
 		if err := json.Unmarshal(args, &ignored); err != nil {
+			t.svc.lg.Warn("failed to unmarshal list arguments",
+				loggateway.StepID("tool.subagent.list"),
+				loggateway.Err(err),
+			)
 			return nil, kerrors.BadRequest("SUBAGENT", "invalid arguments: "+err.Error())
 		}
 	}
@@ -863,7 +878,7 @@ func (t *getTool) Call(ctx context.Context, args []byte) (any, error) {
 	if t == nil || t.svc == nil {
 		return nil, kerrors.InternalServer("SUBAGENT", "service unavailable")
 	}
-	runID, userID, err := decodeRunIDArgs(ctx, args)
+	runID, userID, err := decodeRunIDArgs(ctx, args, t.svc.lg)
 	if err != nil {
 		return nil, err
 	}
@@ -892,7 +907,7 @@ func (t *cancelTool) Call(ctx context.Context, args []byte) (any, error) {
 	if t == nil || t.svc == nil {
 		return nil, kerrors.InternalServer("SUBAGENT", "service unavailable")
 	}
-	runID, userID, err := decodeRunIDArgs(ctx, args)
+	runID, userID, err := decodeRunIDArgs(ctx, args, t.svc.lg)
 	if err != nil {
 		return nil, err
 	}
@@ -903,9 +918,16 @@ func (t *cancelTool) Call(ctx context.Context, args []byte) (any, error) {
 	return run, nil
 }
 
-func decodeRunIDArgs(ctx context.Context, args []byte) (string, string, error) {
+func decodeRunIDArgs(ctx context.Context, args []byte, lg loggateway.Logger) (string, string, error) {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	var in runIDInput
 	if err := json.Unmarshal(args, &in); err != nil {
+		lg.Warn("failed to unmarshal run_id arguments",
+			loggateway.StepID("tool.subagent.decode_run_id"),
+			loggateway.Err(err),
+		)
 		return "", "", kerrors.BadRequest("SUBAGENT", "invalid arguments: "+err.Error())
 	}
 	userID, _, err := currentContext(ctx)

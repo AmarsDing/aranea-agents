@@ -37,7 +37,7 @@ func TaskNodesFromBuildConfig(cfg biz.GraphBuildConfig) map[string]biz.NodeDef {
 }
 
 // StartTeamGraphTaskBridge subscribes to session graph_node_start and creates tasks for configured nodes.
-func StartTeamGraphTaskBridge(ctx context.Context, bus event.Bus, cfg TeamGraphTaskBridgeConfig) context.CancelFunc {
+func StartTeamGraphTaskBridge(ctx context.Context, bus event.Bus, cfg TeamGraphTaskBridgeConfig, lg loggateway.Logger) context.CancelFunc {
 	if bus == nil || cfg.Creator == nil || len(cfg.Nodes) == 0 {
 		return func() {}
 	}
@@ -81,7 +81,7 @@ func StartTeamGraphTaskBridge(ctx context.Context, bus event.Bus, cfg TeamGraphT
 					continue
 				}
 				if err := cfg.Creator.CreateGraphTask(procCtx, execID, sessionID, node); err != nil {
-					loggateway.Global().Warn("创建 Kanban 任务失败",
+					lg.Warn("创建 Kanban 任务失败",
 					loggateway.StepID("team.graph.task.bridge"),
 					loggateway.Str("execution_id", execID),
 					loggateway.Str("node_id", nodeID),

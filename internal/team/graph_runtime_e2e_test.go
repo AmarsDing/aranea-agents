@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	graphtrpc "aranea-agents/internal/graph/trpc"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
@@ -43,7 +44,7 @@ func TestCompileToGraphRuntimeConfig_adaptiveStripsTransferEdges(t *testing.T) {
 			{AgentID: "c", SortOrder: 3},
 		},
 	}
-	preview, err := CompileToGraphBuildConfig(def, nil)
+	preview, err := CompileToGraphBuildConfig(def, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +58,7 @@ func TestCompileToGraphRuntimeConfig_adaptiveStripsTransferEdges(t *testing.T) {
 		t.Fatal("preview should include transfer overlay edges")
 	}
 
-	runtime, err := CompileToGraphRuntimeConfig(def, nil)
+	runtime, err := CompileToGraphRuntimeConfig(def, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +84,7 @@ func TestCompileToGraphRuntimeConfig_failurePolicyRetry(t *testing.T) {
 			Retry:   biz.TeamRetryPolicy{MaxAttempts: 4},
 		},
 	}
-	cfg, err := CompileToGraphRuntimeConfig(def, nil)
+	cfg, err := CompileToGraphRuntimeConfig(def, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +108,7 @@ func TestCompileToGraphRuntimeConfig_parallelFailContinue(t *testing.T) {
 			ParallelFail: biz.ParallelFailContinue,
 		},
 	}
-	cfg, err := CompileToGraphRuntimeConfig(def, nil)
+	cfg, err := CompileToGraphRuntimeConfig(def, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +144,7 @@ func TestGraphRuntimeE2E_buildSequentialTeamGraph(t *testing.T) {
 			Retry:   biz.TeamRetryPolicy{MaxAttempts: 2},
 		},
 	}
-	cfg, err := CompileToGraphRuntimeConfig(def, func(id string) string { return "key-" + id })
+	cfg, err := CompileToGraphRuntimeConfig(def, func(id string) string { return "key-" + id }, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +190,7 @@ func TestGraphRuntimeE2E_buildCoordinatorTeamGraph(t *testing.T) {
 			{AgentID: "w2", SortOrder: 3},
 		},
 	}
-	cfg, err := CompileToGraphRuntimeConfig(def, nil)
+	cfg, err := CompileToGraphRuntimeConfig(def, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}

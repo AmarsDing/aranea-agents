@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/gatewaywebhook"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
 )
@@ -23,13 +24,15 @@ func NewWebhookRepo(d *Data) biz.WebhookRepository {
 	return &webhookRepo{data: d}
 }
 
-func entToWebhook(e *ent.GatewayWebhook) biz.WebhookConfig {
+func entToWebhook(lg loggateway.Logger, e *ent.GatewayWebhook) biz.WebhookConfig {
 	if e == nil {
 		return biz.WebhookConfig{}
 	}
 	headers := map[string]string{}
 	if raw := strings.TrimSpace(e.HeadersJSON); raw != "" && raw != "{}" {
-		_ = json.Unmarshal([]byte(raw), &headers)
+		if err := json.Unmarshal([]byte(raw), &headers); err != nil {
+			lg.Warn("unmarshal webhook headers failed", loggateway.StepID("data.webhook"), loggateway.Err(err))
+		}
 	}
 	return biz.WebhookConfig{
 		ID:             e.ID,
@@ -78,7 +81,7 @@ func (r *webhookRepo) Create(ctx context.Context, w biz.WebhookConfig) (biz.Webh
 	if err != nil {
 		return biz.WebhookConfig{}, err
 	}
-	return entToWebhook(row), nil
+	return entToWebhook(r.data.lg, row), nil
 }
 
 func (r *webhookRepo) Get(ctx context.Context, id string) (biz.WebhookConfig, error) {
@@ -89,7 +92,7 @@ func (r *webhookRepo) Get(ctx context.Context, id string) (biz.WebhookConfig, er
 		}
 		return biz.WebhookConfig{}, err
 	}
-	return entToWebhook(row), nil
+	return entToWebhook(r.data.lg, row), nil
 }
 
 func (r *webhookRepo) List(ctx context.Context) ([]biz.WebhookConfig, error) {
@@ -99,7 +102,7 @@ func (r *webhookRepo) List(ctx context.Context) ([]biz.WebhookConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	return entRowsToWebhooks(rows), nil
+	return entRowsToWebhooks(r.data.lg, rows), nil
 }
 
 func (r *webhookRepo) ListEnabled(ctx context.Context) ([]biz.WebhookConfig, error) {
@@ -110,13 +113,13 @@ func (r *webhookRepo) ListEnabled(ctx context.Context) ([]biz.WebhookConfig, err
 	if err != nil {
 		return nil, err
 	}
-	return entRowsToWebhooks(rows), nil
+	return entRowsToWebhooks(r.data.lg, rows), nil
 }
 
-func entRowsToWebhooks(rows []*ent.GatewayWebhook) []biz.WebhookConfig {
+func entRowsToWebhooks(lg loggateway.Logger, rows []*ent.GatewayWebhook) []biz.WebhookConfig {
 	out := make([]biz.WebhookConfig, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, entToWebhook(row))
+		out = append(out, entToWebhook(lg, row))
 	}
 	return out
 }
@@ -134,7 +137,7 @@ func (r *webhookRepo) Update(ctx context.Context, w biz.WebhookConfig) (biz.Webh
 	if err != nil {
 		return biz.WebhookConfig{}, err
 	}
-	return entToWebhook(row), nil
+	return entToWebhook(r.data.lg, row), nil
 }
 
 func (r *webhookRepo) Delete(ctx context.Context, id string) error {

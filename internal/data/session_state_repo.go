@@ -25,7 +25,7 @@ func (r *sessionRepo) GetSessionState(ctx context.Context, sessionID string) (ma
 	state := map[string]string{}
 	if row.StateJSON != "" {
 		if err := json.Unmarshal([]byte(row.StateJSON), &state); err != nil {
-			loggateway.Global().Warn("state json unmarshal failed", loggateway.StepID("session.state"), loggateway.Err(err))
+			r.data.lg.Warn("session state json unmarshal failed", loggateway.StepID("data.session_state"), loggateway.Err(err))
 		}
 	}
 	return state, nil

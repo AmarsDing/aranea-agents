@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 // sessionIDPattern is the allowed shape for an artifact session ID at the FS layer.
@@ -89,17 +90,16 @@ func (m artifactMeta) toBiz() biz.Artifact {
 //	<root>/<session_id>/<artifact_id>-v<version>.json (meta sidecar)
 type FSArtifactRepo struct {
 	root string
+	lg   loggateway.Logger
 	mu   sync.Mutex
 }
 
-// NewFSArtifactRepo creates a new FSArtifactRepo.
-func NewFSArtifactRepo() *FSArtifactRepo {
-	return &FSArtifactRepo{root: artifactStorageRoot()}
+func NewFSArtifactRepo(lg loggateway.Logger) *FSArtifactRepo {
+	return &FSArtifactRepo{root: artifactStorageRoot(), lg: lg}
 }
 
-// NewFSArtifactRepoAt creates a new FSArtifactRepo with a custom root (tests).
-func NewFSArtifactRepoAt(root string) *FSArtifactRepo {
-	return &FSArtifactRepo{root: root}
+func NewFSArtifactRepoAt(root string, lg loggateway.Logger) *FSArtifactRepo {
+	return &FSArtifactRepo{root: root, lg: lg}
 }
 
 var _ biz.ArtifactRepo = (*FSArtifactRepo)(nil)
@@ -371,6 +371,7 @@ func (r *FSArtifactRepo) listSessionMetas(sessionID string) ([]artifactMeta, err
 		}
 		var m artifactMeta
 		if err := json.Unmarshal(raw, &m); err != nil {
+			r.lg.Warn("artifact json unmarshal failed", loggateway.StepID("data.artifactfs"), loggateway.Err(err))
 			continue
 		}
 		metas = append(metas, m)
@@ -403,6 +404,7 @@ func (r *FSArtifactRepo) findMeta(id string, version int) (artifactMeta, error) 
 			}
 			var m artifactMeta
 			if err := json.Unmarshal(raw, &m); err != nil {
+				r.lg.Warn("artifact json unmarshal failed", loggateway.StepID("data.artifactfs"), loggateway.Err(err))
 				continue
 			}
 			if version > 0 && m.Version != version {
@@ -436,6 +438,7 @@ func (r *FSArtifactRepo) nextVersion(dir, name string) int {
 		}
 		var m artifactMeta
 		if err := json.Unmarshal(raw, &m); err != nil {
+			r.lg.Warn("artifact json unmarshal failed", loggateway.StepID("data.artifactfs"), loggateway.Err(err))
 			continue
 		}
 		if m.Name == name && m.Version > max {

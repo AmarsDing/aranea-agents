@@ -8,25 +8,25 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-func RunSessionStatusIdleMigration(ctx context.Context, client *ent.Client) error {
+func RunSessionStatusIdleMigration(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
 	if client == nil {
 		return fmt.Errorf("session status migration: ent client required")
 	}
-	applied, err := isMigrationApplied(ctx, client, MigrationSessionStatusIdle)
+	applied, err := isMigrationApplied(ctx, client, MigrationSessionStatusIdle, lg)
 	if err != nil {
 		return fmt.Errorf("session status migration: check gate: %w", err)
 	}
 	if applied {
 		return nil
 	}
-	loggateway.Global().Info("session status: active→idle + NULL defaults: starting", loggateway.StepID("migration.session_status"))
+	lg.Info("session status: active→idle + NULL defaults: starting", loggateway.StepID("migration.session_status"))
 
-	hasTable, err := sqliteTableExists(ctx, client, "sessions")
+	hasTable, err := sqliteTableExists(ctx, client, lg, "sessions")
 	if err != nil {
 		return fmt.Errorf("session status migration: check table: %w", err)
 	}
 	if !hasTable {
-		if err := recordMigrationApplied(ctx, client, MigrationSessionStatusIdle, migrationNameSessionStatusIdle); err != nil {
+		if err := recordMigrationApplied(ctx, client, MigrationSessionStatusIdle, migrationNameSessionStatusIdle, lg); err != nil {
 			return fmt.Errorf("session status migration: record: %w", err)
 		}
 		return nil
@@ -47,9 +47,9 @@ func RunSessionStatusIdleMigration(ctx context.Context, client *ent.Client) erro
 		return fmt.Errorf("session status migration: status_changed_at NULL→empty: %w", err)
 	}
 
-	if err := recordMigrationApplied(ctx, client, MigrationSessionStatusIdle, migrationNameSessionStatusIdle); err != nil {
+	if err := recordMigrationApplied(ctx, client, MigrationSessionStatusIdle, migrationNameSessionStatusIdle, lg); err != nil {
 		return fmt.Errorf("session status migration: record: %w", err)
 	}
-	loggateway.Global().Info("session status: active→idle + NULL defaults: done", loggateway.StepID("migration.session_status"))
+	lg.Info("session status: active→idle + NULL defaults: done", loggateway.StepID("migration.session_status"))
 	return nil
 }

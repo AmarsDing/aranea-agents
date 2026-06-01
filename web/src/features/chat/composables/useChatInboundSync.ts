@@ -42,6 +42,7 @@ import {
 import { noteChannelWsEnvelope } from "../channelWsCursor";
 import { projectConversationEnvelope } from "../conversationEventDispatcher";
 import { emitSessionMutation } from "../../../stores/sessionSync";
+import { useSpiritTeamStore } from "../../../stores/spirit";
 
 export type ChatInboundSyncDeps = {
   appStore: ReturnType<typeof useAppStore>;
@@ -341,6 +342,11 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       if (status) {
         emitSessionMutation({ type: "status_changed", id: sessionId, status, statusReason, statusChangedAt });
       }
+    }
+
+    if (env.type.startsWith("spirit_team") || env.type === "spirit_synthesis_completed") {
+      const spiritStore = useSpiritTeamStore();
+      spiritStore.handleSpiritEnvelope(env);
     }
 
     const envRev = projection?.revision || envelopeSessionRevision(env);

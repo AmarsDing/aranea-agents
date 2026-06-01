@@ -23,7 +23,7 @@ func NewBizSessionIngestor(memory trpcmemory.Service, lg loggateway.Logger) trpc
 		return nil
 	}
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	return &BizSessionIngestor{memory: memory, lg: lg}
 }

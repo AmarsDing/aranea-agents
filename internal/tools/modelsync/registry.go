@@ -2,6 +2,7 @@ package modelsync
 
 import (
 	"aranea-agents/internal/modelregistry"
+	"aranea-agents/pkg/loggateway"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -19,11 +20,11 @@ type Phases struct {
 	logoPhase    modelregistry.Phase
 }
 
-func BuildPhases(backend modelregistry.ApplyBackend) *Phases {
+func BuildPhases(backend modelregistry.ApplyBackend, lg loggateway.Logger) *Phases {
 	return &Phases{
 		fetchPhase:   modelregistry.NewFetchPhase(),
 		migratePhase: modelregistry.NewMigratePhase(backend),
-		applyPhase:   modelregistry.NewApplyPhase(backend, backend),
+		applyPhase:   modelregistry.NewApplyPhase(backend, backend, lg),
 		logoPhase:    modelregistry.NewLogoPhase(),
 	}
 }

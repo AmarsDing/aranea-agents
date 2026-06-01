@@ -7,13 +7,14 @@ import (
 
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/scenario/loader"
+	"aranea-agents/pkg/loggateway"
 )
 
-func SeedBuiltinTaxonomy(ctx context.Context, client *ent.Client, scenarioDir string) error {
+func SeedBuiltinTaxonomy(ctx context.Context, client *ent.Client, scenarioDir string, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
-	applied, err := isMigrationApplied(ctx, client, SeedTaxonomyV1)
+	applied, err := isMigrationApplied(ctx, client, SeedTaxonomyV1, lg)
 	if err != nil {
 		return fmt.Errorf("check seed taxonomy v1: %w", err)
 	}
@@ -35,6 +36,7 @@ func SeedBuiltinTaxonomy(ctx context.Context, client *ent.Client, scenarioDir st
 			VALUES (?, ?, ?, ?, 'active', 1, ?, ?, 'industry', '', '', 1, '', '', ?, ?, '')
 			ON CONFLICT(taxonomy_key) DO UPDATE SET name=excluded.name, description=excluded.description, sort_order=excluded.sort_order, parent_id=excluded.parent_id, level=excluded.level, is_system=excluded.is_system, updated_at=excluded.updated_at`
 		if _, err := client.ExecContext(ctx, q, indID, indTaxonomyKey, ind.Name, ind.Description, ind.SortOrder, "", now, now); err != nil {
+			lg.Warn("seed step failed", loggateway.StepID("data.seed.taxonomy.industry"), loggateway.Str("key", indTaxonomyKey), loggateway.Err(err))
 			return fmt.Errorf("seed industry node %q: %w", indTaxonomyKey, err)
 		}
 
@@ -45,6 +47,7 @@ func SeedBuiltinTaxonomy(ctx context.Context, client *ent.Client, scenarioDir st
 				VALUES (?, ?, ?, ?, 'active', 1, ?, ?, 'department', '', '', 1, '', '', ?, ?, '')
 				ON CONFLICT(taxonomy_key) DO UPDATE SET name=excluded.name, description=excluded.description, sort_order=excluded.sort_order, parent_id=excluded.parent_id, level=excluded.level, is_system=excluded.is_system, updated_at=excluded.updated_at`
 			if _, err := client.ExecContext(ctx, qDept, deptID, deptTaxonomyKey, dept.Name, dept.Description, dept.SortOrder, indID, now, now); err != nil {
+				lg.Warn("seed step failed", loggateway.StepID("data.seed.taxonomy.department"), loggateway.Str("key", deptTaxonomyKey), loggateway.Err(err))
 				return fmt.Errorf("seed department node %q: %w", deptTaxonomyKey, err)
 			}
 
@@ -55,13 +58,15 @@ func SeedBuiltinTaxonomy(ctx context.Context, client *ent.Client, scenarioDir st
 					VALUES (?, ?, ?, ?, 'active', 1, ?, ?, 'position', '', '', 1, '', '', ?, ?, '')
 					ON CONFLICT(taxonomy_key) DO UPDATE SET name=excluded.name, description=excluded.description, sort_order=excluded.sort_order, parent_id=excluded.parent_id, level=excluded.level, is_system=excluded.is_system, updated_at=excluded.updated_at`
 				if _, err := client.ExecContext(ctx, qPos, posID, posTaxonomyKey, pos.Name, pos.Description, pos.SortOrder, deptID, now, now); err != nil {
+					lg.Warn("seed step failed", loggateway.StepID("data.seed.taxonomy.position"), loggateway.Str("key", posTaxonomyKey), loggateway.Err(err))
 					return fmt.Errorf("seed position node %q: %w", posTaxonomyKey, err)
 				}
 			}
 		}
 	}
 
-	if err := recordMigrationApplied(ctx, client, SeedTaxonomyV1, "taxonomy_v1"); err != nil {
+	if err := recordMigrationApplied(ctx, client, SeedTaxonomyV1, "taxonomy_v1", lg); err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.taxonomy.record"), loggateway.Err(err))
 		return fmt.Errorf("record seed taxonomy v1: %w", err)
 	}
 	return nil

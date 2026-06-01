@@ -32,7 +32,7 @@ func newTestUsecase(t *testing.T) (*biz.ModelRegistryUsecase, string) {
 	t.Helper()
 	dir := t.TempDir()
 	roots := &stubRootResolver{dir: dir}
-	uc := biz.NewModelRegistryUsecase(roots, nil)
+	uc := biz.NewModelRegistryUsecase(roots, nil, loggateway.NewNoop())
 	return uc, dir
 }
 
@@ -251,7 +251,7 @@ func TestModelCatalogService_SyncModelCatalog_Success(t *testing.T) {
 
 func TestModelCatalogService_SyncModelCatalog_Error(t *testing.T) {
 	roots := &stubRootResolver{err: errors.New("root directory unavailable")}
-	uc := biz.NewModelRegistryUsecase(roots, nil)
+	uc := biz.NewModelRegistryUsecase(roots, nil, loggateway.NewNoop())
 	svc := NewModelCatalogService(uc)
 
 	resp, err := svc.SyncModelCatalog(context.Background(), &v1.SyncModelCatalogRequest{})
@@ -645,7 +645,7 @@ func TestParseCatalogTS(t *testing.T) {
 
 func TestModelCatalogService_GetModelCatalogStatus_RootError(t *testing.T) {
 	roots := &stubRootResolver{err: errors.New("unavailable")}
-	uc := biz.NewModelRegistryUsecase(roots, nil)
+	uc := biz.NewModelRegistryUsecase(roots, nil, loggateway.NewNoop())
 	svc := NewModelCatalogService(uc)
 
 	_, err := svc.GetModelCatalogStatus(context.Background(), &emptypb.Empty{})
@@ -981,7 +981,7 @@ func TestParseCatalogTS_EmptyString(t *testing.T) {
 
 func TestModelCatalogService_SyncModelCatalog_ErrorPath_ErrorMessage(t *testing.T) {
 	roots := &stubRootResolver{err: fmt.Errorf("root dir error")}
-	uc := biz.NewModelRegistryUsecase(roots, nil)
+	uc := biz.NewModelRegistryUsecase(roots, nil, loggateway.NewNoop())
 	svc := NewModelCatalogService(uc)
 
 	resp, err := svc.SyncModelCatalog(context.Background(), &v1.SyncModelCatalogRequest{})

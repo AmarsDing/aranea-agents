@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type ApplyRow struct {
@@ -80,10 +82,11 @@ type ApplyResult struct {
 
 type Applier struct {
 	backend ApplyBackend
+	lg      loggateway.Logger
 }
 
-func NewApplier(backend ApplyBackend) *Applier {
-	return &Applier{backend: backend}
+func NewApplier(backend ApplyBackend, lg loggateway.Logger) *Applier {
+	return &Applier{backend: backend, lg: lg}
 }
 
 func (a *Applier) Apply(ctx context.Context, cat Directory, autoApply string) ApplyResult {
@@ -104,7 +107,9 @@ func (a *Applier) Apply(ctx context.Context, cat Directory, autoApply string) Ap
 
 	for _, row := range rows {
 		var cfgProbe map[string]any
-		_ = json.Unmarshal([]byte(row.ConfigJSON), &cfgProbe)
+		if err := json.Unmarshal([]byte(row.ConfigJSON), &cfgProbe); err != nil {
+			a.lg.Warn("解析 provider model config 失败", loggateway.StepID("modelregistry.apply"), loggateway.Err(err))
+		}
 		if shouldSkipDirectoryApply(cfgProbe, row.MetadataJSON) {
 			continue
 		}
@@ -131,9 +136,9 @@ func (a *Applier) Apply(ctx context.Context, cat Directory, autoApply string) Ap
 			patch.Key = providerID + ":" + row.Model
 		}
 
-		baseURL := extractAPIBaseURL(row.ConfigJSON)
-		cfg, cfgChanged := mergeCatalogIntoConfig(row.ConfigJSON, prov, model, mode, baseURL)
-		meta, metaChanged := mergeCatalogMetadata(row.MetadataJSON, prov, model)
+		baseURL := extractAPIBaseURL(a.lg, row.ConfigJSON)
+		cfg, cfgChanged := mergeCatalogIntoConfig(a.lg, row.ConfigJSON, prov, model, mode, baseURL)
+		meta, metaChanged := mergeCatalogMetadata(a.lg, row.MetadataJSON, prov, model)
 		if cfgChanged {
 			patch.ConfigJSON = cfg
 		}
@@ -141,7 +146,7 @@ func (a *Applier) Apply(ctx context.Context, cat Directory, autoApply string) Ap
 			patch.MetadataJSON = meta
 		}
 
-		if strings.EqualFold(model.Status, "deprecated") && isDirectoryManaged(patch.ConfigJSON) {
+		if strings.EqualFold(model.Status, "deprecated") && isDirectoryManaged(a.lg, patch.ConfigJSON) {
 			if patch.Enabled {
 				patch.Enabled = false
 				res.LLMRowsDisabled++
@@ -160,7 +165,9 @@ func (a *Applier) Apply(ctx context.Context, cat Directory, autoApply string) Ap
 		var wrap struct {
 			Cost CostUSDPer1M `json:"cost"`
 		}
-		_ = json.Unmarshal([]byte(pricingJSON), &wrap)
+		if err := json.Unmarshal([]byte(pricingJSON), &wrap); err != nil {
+			a.lg.Warn("解析 pricing config 失败", loggateway.StepID("modelregistry.apply.pricing"), loggateway.Err(err))
+		}
 		micro := MicroPricingFromCostBlock(wrap.Cost)
 		if micro.Input == 0 && micro.Output == 0 && model.Cost != nil {
 			_, micro = MicroPricingFromModelCost(model.Cost)
@@ -198,11 +205,13 @@ func (a *Applier) ApplyWithMigration(ctx context.Context, cat Directory, autoApp
 	return res
 }
 
-func isDirectoryManaged(configJSON string) bool {
+func isDirectoryManaged(lg loggateway.Logger, configJSON string) bool {
 	var cfg struct {
 		CatalogManaged bool   `json:"catalog_managed"`
 		CatalogSource  string `json:"catalog_source"`
 	}
-	_ = json.Unmarshal([]byte(configJSON), &cfg)
+	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
+		lg.Warn("解析 catalog managed config 失败", loggateway.StepID("modelregistry.apply.directory_managed"), loggateway.Err(err))
+	}
 	return cfg.CatalogManaged || strings.EqualFold(cfg.CatalogSource, "models.dev")
 }

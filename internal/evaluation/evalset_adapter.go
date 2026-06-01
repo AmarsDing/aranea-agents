@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	trpcevalset "trpc.group/trpc-go/trpc-agent-go/evaluation/evalset"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -23,23 +24,23 @@ func FrameworkMetricNames() []string {
 	return []string{MetricExactMatch, MetricContainsMatch, MetricLLMAsJudge, MetricToolCallAccuracy}
 }
 
-func BizCasesToEvalSet(dataset biz.EvalDataset, cases []biz.EvalCase) *trpcevalset.EvalSet {
+func BizCasesToEvalSet(dataset biz.EvalDataset, cases []biz.EvalCase, lg loggateway.Logger) *trpcevalset.EvalSet {
 	es := &trpcevalset.EvalSet{
 		EvalSetID: dataset.ID,
 		Name:      dataset.Name,
 	}
 	for _, c := range cases {
-		es.EvalCases = append(es.EvalCases, bizCaseToEvalCase(c))
+		es.EvalCases = append(es.EvalCases, bizCaseToEvalCase(c, lg))
 	}
 	return es
 }
 
-func bizCaseToEvalCase(c biz.EvalCase) *trpcevalset.EvalCase {
+func bizCaseToEvalCase(c biz.EvalCase, lg loggateway.Logger) *trpcevalset.EvalCase {
 	evalID := c.ID
 	if evalID == "" {
 		evalID = fmt.Sprintf("case-%s", c.DatasetID)
 	}
-	meta := ParseCaseMetadata(c.MetadataJSON)
+	meta := ParseCaseMetadata(c.MetadataJSON, lg)
 	ec := &trpcevalset.EvalCase{
 		EvalID:       evalID,
 		Conversation: invocationsFromCase(c, meta),
@@ -47,7 +48,7 @@ func bizCaseToEvalCase(c biz.EvalCase) *trpcevalset.EvalCase {
 	if scenario := buildConversationScenario(meta, c.Input); scenario != nil {
 		ec.ConversationScenario = scenario
 	}
-	enrichEvalCase(c, ec)
+	enrichEvalCase(c, ec, lg)
 	return ec
 }
 

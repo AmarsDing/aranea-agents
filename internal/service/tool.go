@@ -179,7 +179,7 @@ func (s *ToolService) CreateTool(ctx context.Context, req *v1.CreateToolRequest)
 	if err != nil {
 		return nil, err
 	}
-	biz.RecordAdminAudit(ctx, s.mon, "tool.create", "tool", t.ID, fmt.Sprintf("key=%s", t.Key))
+	s.mon.RecordAdminAudit(ctx, "tool.create", "tool", t.ID, fmt.Sprintf("key=%s", t.Key))
 	return bizToolToProto(t), nil
 }
 
@@ -210,7 +210,7 @@ func (s *ToolService) UpdateTool(ctx context.Context, req *v1.UpdateToolRequest)
 		}
 		return nil, err
 	}
-	biz.RecordAdminAudit(ctx, s.mon, "tool.update", "tool", t.ID, fmt.Sprintf("key=%s", t.Key))
+	s.mon.RecordAdminAudit(ctx, "tool.update", "tool", t.ID, fmt.Sprintf("key=%s", t.Key))
 	return bizToolToProto(t), nil
 }
 
@@ -222,7 +222,7 @@ func (s *ToolService) DeleteTool(ctx context.Context, req *v1.DeleteToolRequest)
 		}
 		return nil, err
 	}
-	biz.RecordAdminAudit(ctx, s.mon, "tool.delete", "tool", req.GetId(), "")
+	s.mon.RecordAdminAudit(ctx, "tool.delete", "tool", req.GetId(), "")
 	return &emptypb.Empty{}, nil
 }
 

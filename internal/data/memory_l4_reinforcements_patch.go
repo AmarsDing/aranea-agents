@@ -4,9 +4,10 @@ import (
 	"context"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/loggateway"
 )
 
-func ensureEntityReinforcementsSchema(ctx context.Context, c *ent.Client) error {
+func ensureEntityReinforcementsSchema(ctx context.Context, c *ent.Client, lg loggateway.Logger) error {
 	if c == nil {
 		return nil
 	}
@@ -19,6 +20,7 @@ CREATE TABLE IF NOT EXISTS entity_reinforcements (
   source TEXT NOT NULL DEFAULT ''
 )`)
 	if err != nil {
+		lg.Warn("entity reinforcements create table failed", loggateway.StepID("memory.schema_init_fail"), loggateway.Err(err))
 		return err
 	}
 	c.ExecContext(ctx, `

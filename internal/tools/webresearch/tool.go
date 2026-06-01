@@ -44,7 +44,7 @@ func NewTool(cfg Config, lg loggateway.Logger) (trpctool.CallableTool, error) {
 		return nil, fmt.Errorf("web_research: api_key is required (tool config or TAVILY_API_KEY / SERPAPI_API_KEY)")
 	}
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	provider, err := newSearchProvider(cfg, lg)
 	if err != nil {

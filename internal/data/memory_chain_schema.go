@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/loggateway"
 )
 
 //go:embed sql/memory_chain.sql
@@ -14,7 +15,7 @@ var memoryChainDDL string
 
 // EnsureSessionMemorySchema creates session-memory chain tables (L0–L4, evolution) if missing.
 // Safe on existing DBs (**CREATE IF NOT EXISTS**). FTS virtual tables are omitted (list APIs use LIKE).
-func EnsureSessionMemorySchema(ctx context.Context, client *ent.Client) error {
+func EnsureSessionMemorySchema(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
 	}
@@ -25,6 +26,7 @@ func EnsureSessionMemorySchema(ctx context.Context, client *ent.Client) error {
 			continue
 		}
 		if _, err := client.ExecContext(ctx, stmt); err != nil {
+			lg.Warn("session memory ddl failed", loggateway.StepID("memory.schema_init_fail"), loggateway.Err(err))
 			return fmt.Errorf("sessionmemory ddl: %w\n---\n%s\n---", err, memoryChainSnippet(stmt, 500))
 		}
 	}

@@ -56,7 +56,7 @@ func NewRootCauseEngine(lg loggateway.Logger) *RootCauseEngine {
 				rules[i].Condition.compiledPattern = re
 			} else {
 				lg.Error("NewRootCauseEngine: regexp.Compile failed",
-					loggateway.StepID("system.monitor.root_cause_regex_fail"),
+					loggateway.StepID("monitor.root_cause_regex_fail"),
 					loggateway.Str("rule_id", rules[i].ID), loggateway.Str("pattern", p), loggateway.Err(err))
 			}
 		}

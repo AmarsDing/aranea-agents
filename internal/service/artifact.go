@@ -22,12 +22,13 @@ import (
 // ArtifactService implements kratos artifact.v1.
 type ArtifactService struct {
 	v1.UnimplementedArtifactServiceServer
-	uc *biz.ArtifactUsecase
+	uc     *biz.ArtifactUsecase
+	signer *artifact.Signer
 }
 
 // NewArtifactService constructs an ArtifactService.
-func NewArtifactService(uc *biz.ArtifactUsecase) *ArtifactService {
-	s := &ArtifactService{uc: uc}
+func NewArtifactService(uc *biz.ArtifactUsecase, signer *artifact.Signer) *ArtifactService {
+	s := &ArtifactService{uc: uc, signer: signer}
 	s.refreshStorageGauge(context.Background())
 	return s
 }
@@ -218,7 +219,7 @@ func (s *ArtifactService) SignDownloadUrl(ctx context.Context, req *v1.SignDownl
 		ttl = 24 * time.Hour
 	}
 	expires := time.Now().UTC().Add(ttl)
-	token, err := artifact.DownloadToken(id, version, expires)
+	token, err := s.signer.DownloadToken(id, version, expires)
 	if err != nil {
 		// OUT-05 / ART-02: prod environments without a configured key must
 		// fail closed; never hand out a forgeable URL signed with the dev key.
@@ -248,7 +249,7 @@ func (s *ArtifactService) ServeSignedDownload(w http.ResponseWriter, r *http.Req
 		http.Error(w, "invalid expires", http.StatusBadRequest)
 		return
 	}
-	ok, verr := artifact.VerifyDownloadToken(id, version, expiresUnix, token)
+	ok, verr := s.signer.VerifyDownloadToken(id, version, expiresUnix, token)
 	if verr != nil {
 		// OUT-05 / ART-02: surface a clear 503 instead of a 403 storm when prod
 		// is missing its key — operators see misconfig, not a generic auth error.

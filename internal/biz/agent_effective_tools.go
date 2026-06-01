@@ -40,10 +40,10 @@ type AgentToolPolicyInput struct {
 	Deny         []string
 }
 
-func jsonStringList(raw string) []string {
+func jsonStringList(raw string, lg loggateway.Logger) []string {
 	list, err := JSONStringList(raw)
 	if err != nil {
-		loggateway.Global().Warn("json string list parse failed", loggateway.StepID("system.agent.tools"), loggateway.Err(err))
+		lg.Warn("json string list parse failed", loggateway.StepID("agent.tools"), loggateway.Err(err))
 		return nil
 	}
 	return list
@@ -53,7 +53,7 @@ var toolGroupsFilesystem = []string{"read_file", "read_multiple_files", "save_fi
 var toolGroupsWeb = []string{ToolKeyWebResearch, "web_fetch", "duckduckgo_search", "gemini_web_fetch", "google_search", "arxiv_search", "wikipedia_search"}
 var toolGroupsMemory = []string{"memory_search", "memory_get"}
 var toolGroupsSkill = []string{"skill_search", "use_skill"}
-var toolGroupsMedia = []string{"read_image", "read_document", "create_image", "tts"}
+var toolGroupsMedia = []string{"read_image", "read_document", "read_spreadsheet", "create_image", "tts"}
 var toolGroupsRuntime = []string{"shell_exec", "claude_code", "workspace_exec"}
 var toolGroupsMessaging = []string{"send_email"}
 var toolGroupsSession = []string{"await_user_reply", "todo_write"}
@@ -188,6 +188,7 @@ var toolProfiles = map[string][]string{
 	"minimal":      {},
 	"safe":         {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
 	"system_admin": {"group:cli_admin", "web_fetch", "datetime"},
+	"spirit":       {"assemble_team", "list_butlers", "query_butler_status", "check_team_progress", "cancel_team", "synthesize_results", "memory_search", "datetime"},
 }
 
 func canonicalToolProfile(profile string) string {
@@ -281,9 +282,9 @@ func computeEffectiveToolState(settings AgentRuntimeSettings, tool Tool, prof st
 	return state, reason, enabled
 }
 
-func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool) AgentEffectiveTools {
-	allow := jsonStringList(settings.ToolsAllowJSON)
-	deny := jsonStringList(settings.ToolsDenyJSON)
+func buildAgentEffectiveTools(settings AgentRuntimeSettings, catalog []Tool, lg loggateway.Logger) AgentEffectiveTools {
+	allow := jsonStringList(settings.ToolsAllowJSON, lg)
+	deny := jsonStringList(settings.ToolsDenyJSON, lg)
 
 	prof := strings.TrimSpace(settings.ToolsProfile)
 	allowedSet := computePolicyAllowedSet(prof, allow, catalog)
@@ -383,7 +384,7 @@ func (u *AgentUsecase) GetEffectiveTools(ctx context.Context, agentID string) (A
 	for i := range all.Items {
 		EnrichToolCatalogRuntimeWithPlatform(&all.Items[i], platform)
 	}
-	eff := buildAgentEffectiveTools(settings, all.Items)
+	eff := buildAgentEffectiveTools(settings, all.Items, u.lg)
 	var overrides []ToolAgentOverride
 	if o, oerr := u.tools.ListToolAgentOverridesByAgent(ctx, agentID); oerr == nil {
 		overrides = o
@@ -444,7 +445,7 @@ func (u *AgentUsecase) UpdateAgentToolPolicy(ctx context.Context, agentID string
 	for i := range all.Items {
 		EnrichToolCatalogRuntimeWithPlatform(&all.Items[i], platform)
 	}
-	eff := buildAgentEffectiveTools(settings, all.Items)
+	eff := buildAgentEffectiveTools(settings, all.Items, u.lg)
 	var overrides []ToolAgentOverride
 	if o, oerr := u.tools.ListToolAgentOverridesByAgent(ctx, agentID); oerr == nil {
 		overrides = o

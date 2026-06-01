@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 func (r *toolRepo) RecordToolInvocationAudit(ctx context.Context, in biz.ToolInvocationAuditWrite) error {
@@ -44,6 +45,9 @@ func (r *toolRepo) RecordToolInvocationAudit(ctx context.Context, in biz.ToolInv
 		strings.TrimSpace(in.AgentID), strings.TrimSpace(in.UserID), strings.TrimSpace(in.SessionID),
 		action, summary, status, source, now,
 	)
+	if err != nil {
+		r.data.lg.Error("tool invocation audit write failed", loggateway.StepID("data.tool.audit_write"), loggateway.Err(err))
+	}
 	return err
 }
 

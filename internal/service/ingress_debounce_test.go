@@ -49,7 +49,7 @@ func TestMergeIngressIdempotencyKeys(t *testing.T) {
 }
 
 func TestIngressPeerDebouncer_mergesMessages(t *testing.T) {
-	b := newIngressPeerDebouncer(50 * time.Millisecond)
+	b := newIngressPeerDebouncer(50*time.Millisecond, nil)
 	done := make(chan port.InboundEvent, 1)
 	ch := biz.Channel{ID: "ch-1"}
 	b.submit(context.Background(), ch, port.InboundEvent{PeerID: "p1", Text: "hi", IdempotencyKey: "m1", PlatformType: "slack"}, func(_ context.Context, _ biz.Channel, ev port.InboundEvent) error {

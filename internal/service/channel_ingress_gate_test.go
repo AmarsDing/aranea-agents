@@ -49,7 +49,7 @@ func TestGraphExecutionSummaryFailed(t *testing.T) {
 			map[string]any{"status": "success"},
 			map[string]any{"status": "error", "error": "node boom"},
 		},
-	}))
+	}), loggateway.NewNoop())
 	if !failed || msg != "node boom" {
 		t.Fatalf("failed=%v msg=%q", failed, msg)
 	}

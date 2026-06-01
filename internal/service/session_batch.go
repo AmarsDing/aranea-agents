@@ -79,7 +79,7 @@ func (s *SessionService) BatchArchiveSessions(ctx context.Context, req *v1.Batch
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}
-	biz.RecordAdminAudit(ctx, s.mon, "archive.session.batch", "session", "",
+	s.mon.RecordAdminAudit(ctx, "archive.session.batch", "session", "",
 		fmt.Sprintf("matched=%d processed=%d skipped_running=%d skipped_not_found=%d truncated=%v",
 			out.Matched, out.Processed, out.SkippedRunning, out.SkippedNotFound, out.Truncated))
 	return toProtoBatchResult(out), nil
@@ -93,7 +93,7 @@ func (s *SessionService) BatchDeleteSessions(ctx context.Context, req *v1.BatchD
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}
-	biz.RecordAdminAudit(ctx, s.mon, "delete.session.batch", "session", "",
+	s.mon.RecordAdminAudit(ctx, "delete.session.batch", "session", "",
 		fmt.Sprintf("matched=%d processed=%d skipped_running=%d skipped_not_found=%d truncated=%v include_archived=%v",
 			out.Matched, out.Processed, out.SkippedRunning, out.SkippedNotFound, out.Truncated, req.GetIncludeArchived()))
 	return toProtoBatchResult(out), nil

@@ -59,7 +59,7 @@ func (s *GraphService) CreateGraph(ctx context.Context, req *graphv1.CreateGraph
 	if err != nil {
 		return nil, err
 	}
-	pb, err := toProtoGraph(saved)
+	pb, err := toProtoGraph(saved, s.lg)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func (s *GraphService) GetGraph(ctx context.Context, req *graphv1.GetGraphReques
 	if err != nil {
 		return nil, err
 	}
-	pb, err := toProtoGraph(def)
+	pb, err := toProtoGraph(def, s.lg)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +85,7 @@ func (s *GraphService) ListGraphs(ctx context.Context, req *graphv1.ListGraphsRe
 	}
 	items := make([]*graphv1.GraphDefinition, len(defs))
 	for i, def := range defs {
-		pb, err := toProtoGraph(def)
+		pb, err := toProtoGraph(def, s.lg)
 		if err != nil {
 			return nil, err
 		}
@@ -143,7 +143,7 @@ func (s *GraphService) UpdateGraph(ctx context.Context, req *graphv1.UpdateGraph
 	if err != nil {
 		return nil, err
 	}
-	pb, err := toProtoGraph(saved)
+	pb, err := toProtoGraph(saved, s.lg)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +206,7 @@ func (s *GraphService) ListGraphTemplates(ctx context.Context, req *graphv1.List
 		Templates: make([]*graphv1.GraphTemplateInfo, 0, len(tmplList)),
 	}
 	for _, t := range tmplList {
-		resp.Templates = append(resp.Templates, templateToProto(t))
+		resp.Templates = append(resp.Templates, templateToProto(t, s.lg))
 	}
 	userDefs, err := s.uc.ListUserTemplateGraphs(ctx)
 	if err != nil {
@@ -217,7 +217,7 @@ func (s *GraphService) ListGraphTemplates(ctx context.Context, req *graphv1.List
 		if meta == nil {
 			continue
 		}
-		resp.Templates = append(resp.Templates, userTemplateToProto(def, meta))
+		resp.Templates = append(resp.Templates, userTemplateToProto(def, meta, s.lg))
 	}
 	return resp, nil
 }
@@ -227,7 +227,7 @@ func (s *GraphService) CreateGraphFromTemplate(ctx context.Context, req *graphv1
 	if err != nil {
 		return nil, err
 	}
-	pb, err := toProtoGraph(saved)
+	pb, err := toProtoGraph(saved, s.lg)
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +239,7 @@ func (s *GraphService) ExportGraph(ctx context.Context, req *graphv1.ExportGraph
 	if err != nil {
 		return nil, err
 	}
-	pb, err := toProtoGraph(def)
+	pb, err := toProtoGraph(def, s.lg)
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +251,7 @@ func (s *GraphService) ImportGraph(ctx context.Context, req *graphv1.ImportGraph
 	if err != nil {
 		return nil, err
 	}
-	pb, err := toProtoGraph(saved)
+	pb, err := toProtoGraph(saved, s.lg)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +281,7 @@ func (s *GraphService) RollbackGraphVersion(ctx context.Context, req *graphv1.Ro
 	if err != nil {
 		return nil, err
 	}
-	pb, err := toProtoGraph(saved)
+	pb, err := toProtoGraph(saved, s.lg)
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +299,7 @@ func (s *GraphService) SaveGraphAsTemplate(ctx context.Context, req *graphv1.Sav
 	}
 	return &graphv1.SaveGraphAsTemplateResponse{
 		TemplateId: meta.TemplateID,
-		Template:   userTemplateToProto(def, meta),
+		Template:   userTemplateToProto(def, meta, s.lg),
 	}, nil
 }
 

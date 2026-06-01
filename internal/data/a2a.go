@@ -117,7 +117,7 @@ func (r *a2aRepo) UpsertAgentCard(ctx context.Context, card biz.A2AAgentCard) (b
 func (r *a2aRepo) GetAgentCard(ctx context.Context, agentID string) (biz.A2AAgentCard, error) {
 	row := r.db.QueryRowContext(ctx,
 		`SELECT agent_id,display_name,workspace,enabled,capabilities,updated_at FROM a2a_agent_cards WHERE agent_id=?`, agentID)
-	card, err := scanA2ACard(row)
+	card, err := scanA2ACard(row, r.lg)
 	if err == sql.ErrNoRows {
 		return biz.A2AAgentCard{}, biz.ErrNotFound
 	}
@@ -135,7 +135,7 @@ func (r *a2aRepo) ListEnabledCards(ctx context.Context, workspace, capability st
 	defer rows.Close()
 	var out []biz.A2AAgentCard
 	for rows.Next() {
-		card, err := scanA2ACard(rows)
+		card, err := scanA2ACard(rows, r.lg)
 		if err != nil {
 			return nil, err
 		}
@@ -323,7 +323,7 @@ func (r *a2aRepo) ListRemoteAgents(ctx context.Context, workspace string) ([]biz
 	defer rows.Close()
 	var out []biz.A2ARemoteAgent
 	for rows.Next() {
-		item, err := scanRemoteAgent(rows)
+		item, err := scanRemoteAgent(rows, r.lg)
 		if err != nil {
 			return nil, err
 		}
@@ -352,7 +352,7 @@ func (r *a2aRepo) GetRemoteAgent(ctx context.Context, id string) (biz.A2ARemoteA
 		`SELECT id,workspace,display_name,remote_url,agent_card_url,auth_type,auth_config_json,enabled,card_json,
 		 COALESCE(last_health_at,''),COALESCE(last_health_ok,0),COALESCE(last_health_error,''),created_at,updated_at
 		 FROM a2a_remote_agents WHERE id=?`, id)
-	agent, err := scanRemoteAgent(row)
+	agent, err := scanRemoteAgent(row, r.lg)
 	if err == sql.ErrNoRows {
 		return biz.A2ARemoteAgent{}, biz.ErrNotFound
 	}
@@ -378,7 +378,7 @@ func (r *a2aRepo) UpdateRemoteAgentHealth(ctx context.Context, id string, ok boo
 	return err
 }
 
-func scanRemoteAgent(row scannable) (biz.A2ARemoteAgent, error) {
+func scanRemoteAgent(row scannable, lg loggateway.Logger) (biz.A2ARemoteAgent, error) {
 	var agent biz.A2ARemoteAgent
 	var enabled int
 	var healthOK int
@@ -390,7 +390,9 @@ func scanRemoteAgent(row scannable) (biz.A2ARemoteAgent, error) {
 	}
 	agent.Enabled = enabled == 1
 	agent.LastHealthOK = healthOK == 1
-	_ = json.Unmarshal([]byte(cardJSON), &agent.DiscoveredCard)
+	if err := json.Unmarshal([]byte(cardJSON), &agent.DiscoveredCard); err != nil {
+		lg.Warn("a2a json unmarshal failed", loggateway.StepID("data.a2a"), loggateway.Err(err))
+	}
 	if agent.DiscoveredCard.AgentID == "" {
 		agent.DiscoveredCard.AgentID = agent.ID
 	}
@@ -399,7 +401,7 @@ func scanRemoteAgent(row scannable) (biz.A2ARemoteAgent, error) {
 
 // --- helpers ---
 
-func scanA2ACard(row scannable) (biz.A2AAgentCard, error) {
+func scanA2ACard(row scannable, lg loggateway.Logger) (biz.A2AAgentCard, error) {
 	var card biz.A2AAgentCard
 	var capJSON string
 	var enabled int
@@ -407,6 +409,8 @@ func scanA2ACard(row scannable) (biz.A2AAgentCard, error) {
 		return biz.A2AAgentCard{}, err
 	}
 	card.Enabled = enabled == 1
-	_ = json.Unmarshal([]byte(capJSON), &card.Capabilities)
+	if err := json.Unmarshal([]byte(capJSON), &card.Capabilities); err != nil {
+		lg.Warn("a2a json unmarshal failed", loggateway.StepID("data.a2a"), loggateway.Err(err))
+	}
 	return card, nil
 }

@@ -22,13 +22,14 @@ type MonitorService struct {
 	uc     *biz.MonitorUsecase
 	server *conf.Server
 	diag   *biz.DiagBundleGenerator
+	lg     loggateway.Logger
 
 	flowLogSvc  *FlowLogService
 	codeExecSvc *CodeExecutorService
 }
 
-func NewMonitorService(uc *biz.MonitorUsecase, server *conf.Server, flowLogSvc *FlowLogService, codeExecSvc *CodeExecutorService, diag *biz.DiagBundleGenerator) *MonitorService {
-	return &MonitorService{uc: uc, server: server, flowLogSvc: flowLogSvc, codeExecSvc: codeExecSvc, diag: diag}
+func NewMonitorService(uc *biz.MonitorUsecase, server *conf.Server, flowLogSvc *FlowLogService, codeExecSvc *CodeExecutorService, diag *biz.DiagBundleGenerator, lg loggateway.Logger) *MonitorService {
+	return &MonitorService{uc: uc, server: server, flowLogSvc: flowLogSvc, codeExecSvc: codeExecSvc, diag: diag, lg: lg}
 }
 
 func bizAuditToProto(a biz.AuditLog) *v1.AuditLog {
@@ -48,7 +49,7 @@ func bizAuditToProto(a biz.AuditLog) *v1.AuditLog {
 	}
 }
 
-func bizMonitorRowToProto(row biz.MonitorPlatformRow) *v1.MonitorPlatformRow {
+func bizMonitorRowToProto(row biz.MonitorPlatformRow, lg loggateway.Logger) *v1.MonitorPlatformRow {
 	return &v1.MonitorPlatformRow{
 		Id:           row.ID,
 		Resource:     row.Resource,
@@ -63,8 +64,8 @@ func bizMonitorRowToProto(row biz.MonitorPlatformRow) *v1.MonitorPlatformRow {
 		AgentId:      row.AgentID,
 		Provider:     row.Provider,
 		Model:        row.Model,
-		ConfigJson:   sanitizeJSONString(row.ConfigJSON),
-		MetadataJson: sanitizeJSONString(row.MetadataJSON),
+		ConfigJson:   sanitizeJSONString(row.ConfigJSON, lg),
+		MetadataJson: sanitizeJSONString(row.MetadataJSON, lg),
 		CreatedAt:    row.CreatedAt,
 		UpdatedAt:    row.UpdatedAt,
 		DeletedAt:    row.DeletedAt,
@@ -110,7 +111,7 @@ func (s *MonitorService) ListMonitorEvents(ctx context.Context, in *v1.ListMonit
 	}
 	out := make([]*v1.MonitorPlatformRow, 0, len(result.Items))
 	for _, row := range result.Items {
-		out = append(out, bizMonitorRowToProto(row))
+		out = append(out, bizMonitorRowToProto(row, s.lg))
 	}
 	return &v1.ListMonitorEventsResponse{Items: out, Total: result.Total}, nil
 }
@@ -120,7 +121,7 @@ func (s *MonitorService) GetMonitorEvent(ctx context.Context, in *v1.GetMonitorE
 	if err != nil {
 		return nil, notFoundMonitor(err)
 	}
-	return bizMonitorRowToProto(row), nil
+	return bizMonitorRowToProto(row, s.lg), nil
 }
 
 func (s *MonitorService) ListMonitorTraces(ctx context.Context, in *v1.ListMonitorTracesRequest) (*v1.ListMonitorTracesResponse, error) {
@@ -137,7 +138,7 @@ func (s *MonitorService) ListMonitorTraces(ctx context.Context, in *v1.ListMonit
 	}
 	out := make([]*v1.MonitorPlatformRow, 0, len(result.Items))
 	for _, row := range result.Items {
-		out = append(out, bizMonitorRowToProto(row))
+		out = append(out, bizMonitorRowToProto(row, s.lg))
 	}
 	return &v1.ListMonitorTracesResponse{Items: out, Total: result.Total}, nil
 }
@@ -147,12 +148,12 @@ func (s *MonitorService) GetMonitorTrace(ctx context.Context, in *v1.GetMonitorT
 	if err != nil {
 		return nil, notFoundMonitor(err)
 	}
-	cfg := parseJSONMap(row.ConfigJSON)
+	cfg := parseJSONMap(row.ConfigJSON, s.lg)
 	spans := traceSpansRaw(cfg)
 	spansJSON, _ := json.Marshal(spans)
-	cfgSanitized := sanitizeJSONString(row.ConfigJSON)
-	metaSanitized := sanitizeJSONString(row.MetadataJSON)
-	tr := bizMonitorRowToProto(row)
+	cfgSanitized := sanitizeJSONString(row.ConfigJSON, s.lg)
+	metaSanitized := sanitizeJSONString(row.MetadataJSON, s.lg)
+	tr := bizMonitorRowToProto(row, s.lg)
 	return &v1.MonitorTraceDetail{
 		Trace:        tr,
 		ConfigJson:   cfgSanitized,
@@ -202,8 +203,8 @@ func (s *MonitorService) ListMonitorAlertRules(ctx context.Context, _ *v1.GetMon
 	if len(rules) == 0 {
 		defaults := defaultAlertRules()
 		if err := s.uc.ReplaceAlertRules(ctx, defaults); err != nil {
-			loggateway.Global().Warn("ListMonitorAlertRules: ReplaceAlertRules failed",
-				loggateway.StepID("system.monitor.alert_rules_replace_fail"),
+			s.lg.Warn("ListMonitorAlertRules: ReplaceAlertRules failed",
+				loggateway.StepID("monitor.alert_rules_replace_fail"),
 				loggateway.Err(err),
 			)
 		}
@@ -312,8 +313,8 @@ func parseFlowLogTimeBounds(sinceRaw, untilRaw string) (since, until time.Time, 
 	return since, until, nil
 }
 
-func sanitizeJSONString(raw string) string {
-	parsed := parseJSONMap(raw)
+func sanitizeJSONString(raw string, lg loggateway.Logger) string {
+	parsed := parseJSONMap(raw, lg)
 	if len(parsed) == 0 {
 		return raw
 	}
@@ -325,13 +326,14 @@ func sanitizeJSONString(raw string) string {
 	return string(out)
 }
 
-func parseJSONMap(raw string) map[string]any {
+func parseJSONMap(raw string, lg loggateway.Logger) map[string]any {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return map[string]any{}
 	}
 	var parsed map[string]any
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		lg.Warn("json map unmarshal failed", loggateway.StepID("monitor.parse_json_map"), loggateway.Err(err))
 		return map[string]any{}
 	}
 	return sanitizeJSONValue(parsed).(map[string]any)

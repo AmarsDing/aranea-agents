@@ -80,7 +80,7 @@ func hookToCallback(rh biz.ResolvedHook, agentID, agentKey string, stats StatsRe
 			if err := executeHookAction(ctx, stats, notifier, rh, "before_tool", agentID, agentKey, toolName, args, lg); err != nil {
 				return nil, err
 			}
-			mod := ApplyToolModifyPatch(args, rh.Rule.Action.ModifyPatch)
+			mod := ApplyToolModifyPatch(args, rh.Rule.Action.ModifyPatch, lg)
 			res := &trpctool.BeforeToolResult{Context: ctx}
 			if len(mod) > 0 {
 				res.ModifiedArguments = mod
@@ -205,7 +205,7 @@ func executeHookAction(ctx context.Context, stats StatsRecorder, notifier *HookN
 		case "before_model":
 			args, _ := hookCtx.(*trpcmodel.BeforeModelArgs)
 			if args != nil && args.Request != nil {
-				ApplyModelModifyPatch(args.Request, rh.Rule.Action.ModifyPatch)
+				ApplyModelModifyPatch(args.Request, rh.Rule.Action.ModifyPatch, lg)
 			}
 		case "before_tool":
 			// ModifiedArguments returned by caller after executeHookAction.

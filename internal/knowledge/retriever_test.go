@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -21,7 +22,7 @@ func (emptyErrEmbedder) Embed(_ context.Context, text string) ([]float32, error)
 
 func TestRetriever_Search_EmptyQuery(t *testing.T) {
 	repo := &stubKnowledgeRepo{chunks: nil}
-	ret := NewRetriever(emptyErrEmbedder{}, repo, nil)
+	ret := NewRetriever(emptyErrEmbedder{}, repo, nil, loggateway.Global())
 
 	_, err := ret.Search(context.Background(), biz.KnowledgeSearchQuery{
 		CollectionID: "col-1",
@@ -40,7 +41,7 @@ func TestRetriever_Search_EmptyQuery(t *testing.T) {
 
 func TestRetriever_Search_InvalidCollectionID(t *testing.T) {
 	repo := &stubKnowledgeRepo{chunks: nil}
-	ret := NewRetriever(stubEmbedder{}, repo, nil)
+	ret := NewRetriever(stubEmbedder{}, repo, nil, loggateway.Global())
 
 	out, err := ret.Search(context.Background(), biz.KnowledgeSearchQuery{
 		CollectionID: "nonexistent-col",

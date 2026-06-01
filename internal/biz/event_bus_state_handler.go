@@ -72,6 +72,6 @@ func (h *stateDeltaHandler) syncRunnerSnapshot(ctx context.Context, sessionID, s
 
 func (h *stateDeltaHandler) logError(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair) {
 	if h.logger != nil {
-		h.logger.SessionSysLogError(ctx, sessionID, stepID, message, pairs...)
+		h.logger.LogSessionError(ctx, sessionID, stepID, message, pairs...)
 	}
 }

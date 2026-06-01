@@ -18,6 +18,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (*tooltrpc.AssembledToolsets, error) {
@@ -75,6 +76,9 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 
 	if deps.HasMemory && biz.ResolveMemoryRuntimePolicy(ag.Settings).MasterEnabled {
 		cfg.MemoryEnabled = true
+		if deps.MemoryService != nil {
+			cfg.MemoryTools = filterMemoryTools(deps.MemoryService.Tools())
+		}
 	}
 
 	if deps.ToolResultGate != nil {
@@ -408,4 +412,15 @@ func normalizeMCPServerTimeout(sec int) int {
 		return tools.DefaultMCPServerTimeoutSec
 	}
 	return sec
+}
+
+func filterMemoryTools(tools []trpctool.Tool) []trpctool.Tool {
+	filtered := make([]trpctool.Tool, 0, len(tools))
+	for _, t := range tools {
+		if d := t.Declaration(); d != nil && d.Name == "memory_clear" {
+			continue
+		}
+		filtered = append(filtered, t)
+	}
+	return filtered
 }

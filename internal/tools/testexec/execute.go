@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/tools"
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -39,7 +40,7 @@ type CatalogTool struct {
 
 // Execute runs one tool call for catalog / OpenAPI-backed tools (admin test harness).
 // platform supplies system_settings for web_research when agent config has no API key.
-func Execute(ctx context.Context, tool CatalogTool, argumentsJSON string, timeoutSec int, platform *webresearchpkg.PlatformFields) (Result, error) {
+func Execute(ctx context.Context, tool CatalogTool, argumentsJSON string, timeoutSec int, platform *webresearchpkg.PlatformFields, lg loggateway.Logger) (Result, error) {
 	key := strings.TrimSpace(tool.Key)
 	if key == "" {
 		return Result{}, kerrors.BadRequest("TOOL", "tool key is required")
@@ -59,12 +60,13 @@ func Execute(ctx context.Context, tool CatalogTool, argumentsJSON string, timeou
 
 	started := time.Now().UTC()
 	merged := mergeConfigJSON(tool.ConfigJSON, tool.DefaultConfigJSON)
-	asmCfg, ok := AssemblyForCatalogKey(key, merged, platform)
+	asmCfg, ok := AssemblyForCatalogKey(key, merged, platform, lg)
 	if !ok {
 		if spec, ok := openAPISpecFromCatalogTool(tool); ok {
 			asmCfg = tools.AssemblyConfig{
 				EnabledTools: []string{"openapi"},
 				OpenAPISpecs: []tools.OpenAPISpecConfig{spec},
+				Lg:           lg,
 			}
 		} else {
 			return Result{}, kerrors.BadRequest("TOOL", fmt.Sprintf("tool %q is not supported for online test yet", key))

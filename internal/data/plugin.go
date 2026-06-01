@@ -10,6 +10,7 @@ import (
 	bizplugin "aranea-agents/internal/biz/plugin"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/platformplugin"
+	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -24,12 +25,14 @@ func NewPluginRepo(d *Data) biz.PluginRepo {
 	return &pluginRepo{data: d}
 }
 
-func entToBizPlugin(e *ent.PlatformPlugin) biz.Plugin {
+func entToBizPlugin(lg loggateway.Logger, e *ent.PlatformPlugin) biz.Plugin {
 	if e == nil {
 		return biz.Plugin{}
 	}
 	var cbs []string
-	_ = json.Unmarshal([]byte(e.CallbackPointsJSON), &cbs)
+	if err := json.Unmarshal([]byte(e.CallbackPointsJSON), &cbs); err != nil {
+		lg.Warn("unmarshal plugin callback_points failed", loggateway.StepID("data.plugin"), loggateway.Err(err))
+	}
 	return biz.Plugin{
 		ID:                e.ID,
 		Key:               e.PluginKey,
@@ -100,7 +103,7 @@ func (r *pluginRepo) SearchPlugins(ctx context.Context, q biz.PluginListQuery) (
 	}
 	items := make([]biz.Plugin, 0, len(rows))
 	for _, e := range rows {
-		items = append(items, entToBizPlugin(e))
+		items = append(items, entToBizPlugin(r.data.lg, e))
 	}
 	return biz.PluginListResult{
 		Items:  items,
@@ -120,7 +123,7 @@ func (r *pluginRepo) GetByKey(ctx context.Context, key string) (biz.Plugin, erro
 		}
 		return biz.Plugin{}, err
 	}
-	return entToBizPlugin(row), nil
+	return entToBizPlugin(r.data.lg, row), nil
 }
 
 func (r *pluginRepo) CreatePlugin(ctx context.Context, p biz.Plugin) (biz.Plugin, error) {
@@ -162,7 +165,7 @@ func (r *pluginRepo) CreatePlugin(ctx context.Context, p biz.Plugin) (biz.Plugin
 	if err != nil {
 		return biz.Plugin{}, err
 	}
-	return entToBizPlugin(row), nil
+	return entToBizPlugin(r.data.lg, row), nil
 }
 
 func (r *pluginRepo) GetPlugin(ctx context.Context, id string) (biz.Plugin, error) {
@@ -175,7 +178,7 @@ func (r *pluginRepo) GetPlugin(ctx context.Context, id string) (biz.Plugin, erro
 		}
 		return biz.Plugin{}, err
 	}
-	return entToBizPlugin(row), nil
+	return entToBizPlugin(r.data.lg, row), nil
 }
 
 func (r *pluginRepo) UpdatePluginEnabled(ctx context.Context, id string, enabled bool) (biz.Plugin, error) {

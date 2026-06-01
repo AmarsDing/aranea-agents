@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/pkg/loggateway"
 )
 
 // LegacyTRPCMigrationStatus reports pending legacy rows and whether the version gate passed.
@@ -14,7 +15,7 @@ type LegacyTRPCMigrationStatus struct {
 }
 
 // GetLegacyTRPCMigrationStatus returns counts of unmigrated trpc_memory entities and gate state.
-func GetLegacyTRPCMigrationStatus(ctx context.Context, store *sessionmemory.Store) (LegacyTRPCMigrationStatus, error) {
+func GetLegacyTRPCMigrationStatus(ctx context.Context, store *sessionmemory.Store, lg loggateway.Logger) (LegacyTRPCMigrationStatus, error) {
 	var out LegacyTRPCMigrationStatus
 	if store == nil {
 		return out, fmt.Errorf("legacy trpc migration: store required")
@@ -23,7 +24,7 @@ func GetLegacyTRPCMigrationStatus(ctx context.Context, store *sessionmemory.Stor
 	if client == nil {
 		return out, fmt.Errorf("legacy trpc migration: ent client required")
 	}
-	applied, err := isMigrationApplied(ctx, client, MigrationLegacyTRPCMemoryFacts)
+	applied, err := isMigrationApplied(ctx, client, MigrationLegacyTRPCMemoryFacts, lg)
 	if err != nil {
 		return out, err
 	}
@@ -39,8 +40,7 @@ func GetLegacyTRPCMigrationStatus(ctx context.Context, store *sessionmemory.Stor
 	return out, nil
 }
 
-// RunLegacyTRPCMemoryMigration backfills legacy trpc_memory entities once (schema_migrations gate).
-func RunLegacyTRPCMemoryMigration(ctx context.Context, store *sessionmemory.Store) (migrated int, skipped bool, err error) {
+func RunLegacyTRPCMemoryMigration(ctx context.Context, store *sessionmemory.Store, lg loggateway.Logger) (migrated int, skipped bool, err error) {
 	if store == nil {
 		return 0, false, fmt.Errorf("legacy trpc migration: store required")
 	}
@@ -48,7 +48,7 @@ func RunLegacyTRPCMemoryMigration(ctx context.Context, store *sessionmemory.Stor
 	if client == nil {
 		return 0, false, fmt.Errorf("legacy trpc migration: ent client required")
 	}
-	applied, err := isMigrationApplied(ctx, client, MigrationLegacyTRPCMemoryFacts)
+	applied, err := isMigrationApplied(ctx, client, MigrationLegacyTRPCMemoryFacts, lg)
 	if err != nil {
 		return 0, false, err
 	}
@@ -66,7 +66,7 @@ func RunLegacyTRPCMemoryMigration(ctx context.Context, store *sessionmemory.Stor
 	if remaining > 0 {
 		return migrated, false, fmt.Errorf("legacy trpc migration: %d entities still pending after backfill", remaining)
 	}
-	if err := recordMigrationApplied(ctx, client, MigrationLegacyTRPCMemoryFacts, migrationNameLegacyTRPCMemoryFacts); err != nil {
+	if err := recordMigrationApplied(ctx, client, MigrationLegacyTRPCMemoryFacts, migrationNameLegacyTRPCMemoryFacts, lg); err != nil {
 		return migrated, false, err
 	}
 	return migrated, false, nil

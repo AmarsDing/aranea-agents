@@ -7,7 +7,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-func ensureSessionRunCheckpointSchema(ctx context.Context, db *sql.DB) error {
+func ensureSessionRunCheckpointSchema(ctx context.Context, db *sql.DB, lg loggateway.Logger) error {
 	if db == nil {
 		return nil
 	}
@@ -24,10 +24,13 @@ CREATE TABLE IF NOT EXISTS session_run_checkpoints (
 CREATE INDEX IF NOT EXISTS idx_session_run_checkpoints_run
   ON session_run_checkpoints(session_run_id);
 `)
+	if err != nil {
+		lg.Error("create session_run_checkpoints table failed", loggateway.StepID("data.session_run_checkpoint.schema.create"), loggateway.Err(err))
+	}
 	return err
 }
 
-func ensureSessionRunColumnPatches(ctx context.Context, db *sql.DB) error {
+func ensureSessionRunColumnPatches(ctx context.Context, db *sql.DB, lg loggateway.Logger) error {
 	if db == nil {
 		return nil
 	}
@@ -38,7 +41,7 @@ func ensureSessionRunColumnPatches(ctx context.Context, db *sql.DB) error {
 	}
 	for _, q := range patches {
 		if _, execErr := db.ExecContext(ctx, q); execErr != nil {
-			loggateway.Global().Debug("ddl patch skipped",
+			lg.Debug("ddl patch skipped",
 				loggateway.StepID("session_run.schema_patch"),
 				loggateway.Str("query", q),
 				loggateway.Err(execErr),

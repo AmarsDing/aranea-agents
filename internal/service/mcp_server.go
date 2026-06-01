@@ -87,7 +87,7 @@ func (s *MCPServerService) CreateMCPServer(ctx context.Context, req *v1.CreateMC
 	if err != nil {
 		return nil, err
 	}
-	biz.RecordAdminAudit(ctx, s.mon, "mcp_server.create", "mcp_server", out.ID, fmt.Sprintf("key=%s", out.Key))
+	s.mon.RecordAdminAudit(ctx, "mcp_server.create", "mcp_server", out.ID, fmt.Sprintf("key=%s", out.Key))
 	return toProtoMCP(out), nil
 }
 
@@ -113,7 +113,7 @@ func (s *MCPServerService) UpdateMCPServer(ctx context.Context, req *v1.UpdateMC
 		}
 		return nil, err
 	}
-	biz.RecordAdminAudit(ctx, s.mon, "mcp_server.update", "mcp_server", out.ID, fmt.Sprintf("key=%s", out.Key))
+	s.mon.RecordAdminAudit(ctx, "mcp_server.update", "mcp_server", out.ID, fmt.Sprintf("key=%s", out.Key))
 	return toProtoMCP(out), nil
 }
 
@@ -121,7 +121,7 @@ func (s *MCPServerService) DeleteMCPServer(ctx context.Context, req *v1.DeleteMC
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, err
 	}
-	biz.RecordAdminAudit(ctx, s.mon, "mcp_server.delete", "mcp_server", req.GetId(), "")
+	s.mon.RecordAdminAudit(ctx, "mcp_server.delete", "mcp_server", req.GetId(), "")
 	return &emptypb.Empty{}, nil
 }
 

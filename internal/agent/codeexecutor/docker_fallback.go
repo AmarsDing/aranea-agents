@@ -21,7 +21,7 @@ func newDockerRuntimeFallback(docker trpcagentcodeexec.CodeExecutor, factory *Fa
 		return docker
 	}
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	return &dockerRuntimeFallback{docker: docker, factory: factory, workDir: workDir, lg: lg}
 }

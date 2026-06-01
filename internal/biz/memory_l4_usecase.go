@@ -87,7 +87,7 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 		Importance:     l4AnchorImportance,
 		Confidence:     l4AnchorConfidence,
 	}); err != nil {
-		uc.lg.Warn("L4Graph: failed to upsert anchor entity", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("anchor_id", anchorID), loggateway.Err(err))
+		uc.lg.Warn("L4Graph: failed to upsert anchor entity", loggateway.StepID("memory.l4_fail"), loggateway.Str("anchor_id", anchorID), loggateway.Err(err))
 	}
 
 	if m := l4NamePattern.FindStringSubmatch(text); len(m) > 1 {
@@ -95,12 +95,12 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 		nameNorm := strings.ToLower(name)
 		existing, _, err := uc.repo.GetEntityByScopeKey(ctx, "agent", agentID, "person", nameNorm)
 		if err != nil {
-			uc.lg.Warn("L4Graph: failed to get entity by scope key", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("agent_id", agentID), loggateway.Str("name", name), loggateway.Err(err))
+			uc.lg.Warn("L4Graph: failed to get entity by scope key", loggateway.StepID("memory.l4_fail"), loggateway.Str("agent_id", agentID), loggateway.Str("name", name), loggateway.Err(err))
 		}
 		if existing.ID == "" {
 			prior, ok, err := uc.repo.GetFirstEntityByType(ctx, "agent", agentID, "person")
 			if err != nil {
-				uc.lg.Warn("L4Graph: failed to get first entity by type", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("agent_id", agentID), loggateway.Err(err))
+				uc.lg.Warn("L4Graph: failed to get first entity by type", loggateway.StepID("memory.l4_fail"), loggateway.Str("agent_id", agentID), loggateway.Err(err))
 			}
 			if ok && prior.ID != "" {
 				existing = prior
@@ -115,7 +115,7 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 		if conflict {
 			if uc.cascade != nil {
 				if err := uc.cascade.ProposeNameConflict(ctx, agentID, entID, existing.Name, name); err != nil {
-					uc.lg.Warn("L4Graph: failed to propose name conflict", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("entity_id", entID), loggateway.Err(err))
+					uc.lg.Warn("L4Graph: failed to propose name conflict", loggateway.StepID("memory.l4_fail"), loggateway.Str("entity_id", entID), loggateway.Err(err))
 				}
 			}
 			// Gate: keep authoritative name until cascade proposal is approved.
@@ -123,7 +123,7 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 			prepared.NameNormalized = strings.ToLower(strings.TrimSpace(existing.Name))
 			profileName = existing.Name
 		}
-		meta := mergeConflictMetadata(prepared.MetadataJSON, conflict, existing.Name, name)
+		meta := mergeConflictMetadata(prepared.MetadataJSON, conflict, existing.Name, name, uc.lg)
 		if err := uc.repo.UpsertEntity(ctx, L4EntityWrite{
 			ID:             entID,
 			ScopeType:      "agent",
@@ -146,11 +146,11 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 				Weight:       1.0,
 				Confidence:   prepared.Confidence,
 			}); err != nil {
-				uc.lg.Warn("L4Graph: failed to upsert knows_as relation", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("entity_id", entID), loggateway.Err(err))
+				uc.lg.Warn("L4Graph: failed to upsert knows_as relation", loggateway.StepID("memory.l4_fail"), loggateway.Str("entity_id", entID), loggateway.Err(err))
 			}
 			cascade := uc.cascadeProfileTouch(anchorID, userID, agentID, profileName, name, conflict, now)
 			if err := uc.repo.UpsertEntity(ctx, cascade); err != nil {
-				uc.lg.Warn("L4Graph: failed to upsert cascade profile", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("anchor_id", anchorID), loggateway.Err(err))
+				uc.lg.Warn("L4Graph: failed to upsert cascade profile", loggateway.StepID("memory.l4_fail"), loggateway.Str("anchor_id", anchorID), loggateway.Err(err))
 			}
 			written++
 		}
@@ -181,7 +181,7 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 				Weight:       l4PrefRelWeight,
 				Confidence:   l4PrefRelConfidence,
 			}); err != nil {
-				uc.lg.Warn("L4Graph: failed to upsert prefers relation", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("entity_id", entID), loggateway.Err(err))
+				uc.lg.Warn("L4Graph: failed to upsert prefers relation", loggateway.StepID("memory.l4_fail"), loggateway.Str("entity_id", entID), loggateway.Err(err))
 			}
 			written++
 		}
@@ -205,7 +205,7 @@ func (uc *L4GraphUsecase) RunDecayWithConfig(ctx context.Context, agentID string
 	}
 	archived, err := uc.repo.ArchiveLowConfidenceEntities(ctx, "agent", agentID, l4ArchiveThreshold)
 	if err != nil {
-		uc.lg.Warn("L4Graph: failed to archive low confidence entities", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("agent_id", agentID), loggateway.Err(err))
+		uc.lg.Warn("L4Graph: failed to archive low confidence entities", loggateway.StepID("memory.l4_fail"), loggateway.Str("agent_id", agentID), loggateway.Err(err))
 	}
 	return L4DecayResult{
 		Decayed:  int(decayed),
@@ -277,7 +277,7 @@ func (uc *L4GraphUsecase) runDecay(ctx context.Context, agentID string) {
 	}
 	cutoff := time.Now().UTC().Add(-l4DecayAfter).Format(time.RFC3339)
 	if _, err := uc.repo.ApplyConfidenceDecay(ctx, "agent", agentID, cutoff, l4DecayFactor); err != nil {
-		uc.lg.Warn("L4Graph: failed to apply confidence decay", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("agent_id", agentID), loggateway.Err(err))
+		uc.lg.Warn("L4Graph: failed to apply confidence decay", loggateway.StepID("memory.l4_fail"), loggateway.Str("agent_id", agentID), loggateway.Err(err))
 	}
 }
 
@@ -294,12 +294,15 @@ func slugEntityName(s string) string {
 	return s
 }
 
-func mergeConflictMetadata(base string, conflict bool, priorName, pendingName string) string {
+func mergeConflictMetadata(base string, conflict bool, priorName, pendingName string, lg loggateway.Logger) string {
 	if !conflict {
 		return base
 	}
 	var m map[string]any
 	if err := json.Unmarshal([]byte(base), &m); err != nil || m == nil {
+		if err != nil {
+			lg.Warn("解析 conflict metadata 失败", loggateway.StepID("memory.l4.merge_conflict"), loggateway.Err(err))
+		}
 		m = map[string]any{}
 	}
 	m["conflict"] = true

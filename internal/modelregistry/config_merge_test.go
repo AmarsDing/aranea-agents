@@ -3,6 +3,8 @@ package modelregistry
 import (
 	"encoding/json"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestMergeCatalogMetadata_envAndDates(t *testing.T) {
@@ -19,7 +21,7 @@ func TestMergeCatalogMetadata_envAndDates(t *testing.T) {
 		ReleaseDate: "2024-05-13",
 		LastUpdated: "2025-01-01",
 	}
-	out, changed := mergeCatalogMetadata("", prov, model)
+	out, changed := mergeCatalogMetadata(loggateway.NewNoop(), "", prov, model)
 	if !changed {
 		t.Fatal("expected metadata change")
 	}
@@ -37,7 +39,7 @@ func TestMergeCatalogMetadata_envAndDates(t *testing.T) {
 }
 
 func TestMergeCatalogMetadata_skipsCustom(t *testing.T) {
-	_, changed := mergeCatalogMetadata(`{"catalog_source":"custom"}`, Provider{ID: "x"}, Model{ID: "m"})
+	_, changed := mergeCatalogMetadata(loggateway.NewNoop(), `{"catalog_source":"custom"}`, Provider{ID: "x"}, Model{ID: "m"})
 	if changed {
 		t.Fatal("custom metadata should skip")
 	}

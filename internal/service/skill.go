@@ -31,7 +31,7 @@ type SkillService struct {
 
 func NewSkillService(uc *biz.SkillUsecase, agentUC *biz.AgentUsecase, fs biz.SkillFilesystem, importEng *importer.Engine, lg loggateway.Logger) *SkillService {
 	if lg == nil {
-		lg = loggateway.Global()
+		lg = loggateway.NewNoop()
 	}
 	return &SkillService{uc: uc, agentUC: agentUC, fs: fs, import_: importEng, lg: lg}
 }

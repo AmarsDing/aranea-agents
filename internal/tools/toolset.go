@@ -16,7 +16,8 @@ import (
 	"aranea-agents/internal/tools/browser"
 	"aranea-agents/internal/tools/custom"
 	"aranea-agents/internal/tools/deferred"
-	"aranea-agents/internal/tools/hostexecnorm"
+	documentpkg "aranea-agents/internal/tools/document"
+	hostexecpkg "aranea-agents/internal/tools/hostexec"
 	"aranea-agents/internal/tools/mcpobserve"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -33,7 +34,6 @@ import (
 	memorytool "aranea-agents/internal/tools/memory"
 	subagenttool "aranea-agents/internal/tools/subagent"
 
-	trpchostexec "trpc.group/trpc-go/trpc-agent-go/tool/hostexec"
 	trpcmcp "trpc.group/trpc-go/trpc-agent-go/tool/mcp"
 	trpcmcpbroker "trpc.group/trpc-go/trpc-agent-go/tool/mcpbroker"
 	trpcopenapi "trpc.group/trpc-go/trpc-agent-go/tool/openapi"
@@ -354,6 +354,30 @@ func Registry() []*ToolRegistration {
 				RequiresConfirmation: true,
 			},
 			{
+				Name:        "read_document",
+				Description: "Read a document from a local path (PDF, DOCX, plain text). Use instead of exec_command to inspect documents.",
+				Category:    "media",
+				Tags:        []string{"document", "pdf", "docx", "read"},
+				Factory: func(ctx context.Context) (Tool, error) {
+					return documentpkg.NewReadDocumentTool(), nil
+				},
+				EnabledByDefault: true,
+				RiskLevel:        "medium",
+				SupportsConcurrency: true,
+			},
+			{
+				Name:        "read_spreadsheet",
+				Description: "Read tabular files (XLSX, CSV). Use instead of exec_command when the user asks for rows, sheets, or table excerpts.",
+				Category:    "media",
+				Tags:        []string{"spreadsheet", "xlsx", "csv", "read"},
+				Factory: func(ctx context.Context) (Tool, error) {
+					return documentpkg.NewReadSpreadsheetTool(), nil
+				},
+				EnabledByDefault: true,
+				RiskLevel:        "medium",
+				SupportsConcurrency: true,
+			},
+			{
 				Name:        "read_tool_result",
 				Description: "Retrieve the full content of a previously persisted tool result by its blob_id",
 				Category:    "system",
@@ -426,6 +450,7 @@ type AssemblyConfig struct {
 	DeferredTools  []string
 	FilesystemDir  string
 	ShellExecDir   string
+	ShellExecEnv   map[string]string
 	GeminiModel    string
 	GoogleAPIKey   string
 	GoogleCX       string
@@ -440,11 +465,13 @@ type AssemblyConfig struct {
 	MCPServers            []MCPServerConfig
 	MCPBroker             *MCPBrokerConfig
 	MemoryEnabled         bool
+	MemoryTools           []Tool
 	CustomTools           []Tool
 	OutboundRouter *outbound.Router
 	SubAgentService *subagenttool.Service
 	Browser         *browser.PlaywrightMCPConfig
 	BlobReader      biz.ToolResultBlobReader
+	Lg              loggateway.Logger
 }
 
 type OpenAPISpecConfig struct {
@@ -460,7 +487,10 @@ type AssembledToolsets struct {
 }
 
 func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, error) {
-	lg := loggateway.Global()
+	lg := cfg.Lg
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	lg.Info("tools.Assemble started",
 		loggateway.StepID("tool.assemble.start"),
 		loggateway.Int("enabled_tools", len(cfg.EnabledTools)),
@@ -528,15 +558,11 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 	}
 
 	if enabled["hostexec"] {
-		var opts []trpchostexec.Option
-		if cfg.ShellExecDir != "" {
-			opts = append(opts, trpchostexec.WithBaseDir(cfg.ShellExecDir))
-		}
-		ts, err := trpchostexec.NewToolSet(opts...)
+		ts, err := hostexecpkg.BuildHostexecToolSet(cfg.ShellExecDir, cfg.ShellExecEnv)
 		if err != nil {
 			return nil, fmt.Errorf("hostexec toolset: %w", err)
 		}
-		out.ToolSets = append(out.ToolSets, hostexecnorm.WrapToolSet(ts))
+		out.ToolSets = append(out.ToolSets, ts)
 	}
 
 	if enabled["geminifetch"] {
@@ -658,7 +684,9 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 		out.Tools = append(out.Tools, brokerTools...)
 	}
 
-	if cfg.MemoryEnabled {
+	if len(cfg.MemoryTools) > 0 {
+		out.Tools = append(out.Tools, cfg.MemoryTools...)
+	} else if cfg.MemoryEnabled {
 		out.Tools = append(out.Tools, memorytool.DefaultTools()...)
 	}
 

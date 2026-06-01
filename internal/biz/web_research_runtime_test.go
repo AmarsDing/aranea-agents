@@ -1,6 +1,10 @@
 package biz
 
-import "testing"
+import (
+	"testing"
+
+	"aranea-agents/pkg/loggateway"
+)
 
 // stubWebResearchChecker is a test double for WebResearchReadinessChecker.
 type stubWebResearchChecker struct {
@@ -30,7 +34,7 @@ func TestApplyWebResearchEffectiveGate_missingKey(t *testing.T) {
 		Source:      "builtin",
 	}}
 	settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "research"}
-	eff := buildAgentEffectiveTools(settings, catalog)
+	eff := buildAgentEffectiveTools(settings, catalog, loggateway.NewNoop())
 	checker := stubWebResearchChecker{}
 	applyWebResearchEffectiveGate(checker, &eff, catalog, &WebResearchSetting{Provider: "tavily"}, nil)
 	var wr *EffectiveAgentTool

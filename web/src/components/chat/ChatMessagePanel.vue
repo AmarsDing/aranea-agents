@@ -120,7 +120,7 @@
     />
 
     <ChatComposer
-      v-if="panelMode === 'spirit'"
+      v-if="!panelMode || panelMode === 'spirit'"
       :model-value="modelValue"
       :attachments="attachments"
       :dialog-mode="dialogMode"
@@ -209,7 +209,7 @@ import type { ComposerUsageSnapshot } from "../../features/chat/composerUsageMet
 import type { PromptBreakdown } from "../../features/chat/contextBreakdown";
 import type { ArtifactMeta } from "../../features/artifact/types";
 import type { ChatAttachment } from "./types";
-import type { SpiritTeam } from "../../features/spirit/api";
+import type { SpiritTeam } from "../../features/spirit/types";
 
 type Option = { label: string; value: string; caption?: string };
 

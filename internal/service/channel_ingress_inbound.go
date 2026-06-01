@@ -83,7 +83,7 @@ func (h *ChannelIngress) processInboundNow(ctx context.Context, chRow biz.Channe
 			if replyErr := h.deliverTurnErrorReply(procCtx, chRow, ev, platform, err); replyErr != nil {
 				h.lg.Warn("异步回复投递失败",
 					loggateway.StepID("channel.async.reply_failed"),
-					loggateway.Str("error", replyErr.Error()),
+					loggateway.Err(replyErr),
 				)
 			}
 		}

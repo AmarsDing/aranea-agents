@@ -164,9 +164,9 @@ func (a *l4GraphWriterAdapter) RecordEntityReinforcement(ctx context.Context, en
 	return a.uc.RecordEntityReinforcement(ctx, entityID, signal, source)
 }
 
-func NewL4GraphUsecaseFromStore(store *sessionmemory.Store, cascade *biz.L4CascadeUsecase) *biz.L4GraphUsecase {
+func NewL4GraphUsecaseFromStore(store *sessionmemory.Store, cascade *biz.L4CascadeUsecase, lg loggateway.Logger) *biz.L4GraphUsecase {
 	repo := NewL4GraphRepo(store)
-	uc := biz.NewL4GraphUsecase(repo, loggateway.Global())
+	uc := biz.NewL4GraphUsecase(repo, lg)
 	if cascade != nil {
 		uc.SetCascade(cascade)
 	}

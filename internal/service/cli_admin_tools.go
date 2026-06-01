@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/cli_admin"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -91,6 +92,25 @@ func (o *ChatOrchestrator) cliAdminTools(ctx context.Context, ag biz.Agent) []tr
 		APIBaseURL: cliAdminAPIBaseURL(ctx, o.td.Catalog.Settings),
 		APIToken:   cliAdminAPIToken(),
 	})
+}
+
+func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
+	if o == nil || o.spiritAssembler == nil {
+		return nil
+	}
+	if strings.TrimSpace(ag.AgentKey) != biz.SpiritAgentKey {
+		return nil
+	}
+	var out []trpctool.Tool
+	out = append(out, tools.NewAssembleTeamTool(o.spiritAssembler, o.spiritAssembler, o.lg))
+	out = append(out, tools.NewListButlersTool())
+	out = append(out, tools.NewQueryButlerStatusTool())
+	out = append(out, tools.NewCheckTeamProgressTool(o.spiritAssembler))
+	out = append(out, tools.NewCancelTeamTool(o.spiritAssembler))
+	if o.spiritSynthesis != nil {
+		out = append(out, tools.NewSynthesizeResultsTool(o.spiritSynthesis))
+	}
+	return out
 }
 
 func skillItemFromBiz(s biz.Skill) cli_admin.SkillItem {

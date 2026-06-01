@@ -1,6 +1,10 @@
 package biz
 
-import "testing"
+import (
+	"testing"
+
+	"aranea-agents/pkg/loggateway"
+)
 
 func TestComputePolicyAllowedSet_googleSearchAlias(t *testing.T) {
 	m := computePolicyAllowedSet("read_only", []string{"google_search"}, nil)
@@ -44,7 +48,7 @@ func TestBuildAgentEffectiveTools_syntheticShellWhenMissingFromCatalog(t *testin
 	cat := []Tool{
 		{Key: "read_file", DisplayName: "读取文件", Category: "filesystem", Source: "builtin", Enabled: true},
 	}
-	eff := buildAgentEffectiveTools(settings, cat)
+	eff := buildAgentEffectiveTools(settings, cat, loggateway.NewNoop())
 	var shell *EffectiveAgentTool
 	for i := range eff.Items {
 		if eff.Items[i].ToolKey == "shell_exec" {
@@ -71,7 +75,7 @@ func TestBuildAgentEffectiveTools_catalogDisableBlocksDefaultEnabledTool(t *test
 			Enabled:     false,
 		},
 	}
-	eff := buildAgentEffectiveTools(settings, cat)
+	eff := buildAgentEffectiveTools(settings, cat, loggateway.NewNoop())
 	for _, it := range eff.Items {
 		if it.ToolKey != "gemini_web_fetch" {
 			continue
@@ -90,7 +94,7 @@ func TestBuildAgentEffectiveTools_catalogDisableBlocksDefaultEnabledTool(t *test
 func TestBuildAgentEffectiveTools_noSyntheticShellWhenNotInPolicy(t *testing.T) {
 	settings := AgentRuntimeSettings{ToolsEnabled: true, ToolsProfile: "read_only"}
 	cat := []Tool{{Key: "read_file", DisplayName: "读取文件", Category: "filesystem", Source: "builtin", Enabled: true}}
-	eff := buildAgentEffectiveTools(settings, cat)
+	eff := buildAgentEffectiveTools(settings, cat, loggateway.NewNoop())
 	for _, it := range eff.Items {
 		if it.ToolKey == "shell_exec" {
 			t.Fatalf("did not expect shell_exec in items without runtime in policy, got %#v", it)

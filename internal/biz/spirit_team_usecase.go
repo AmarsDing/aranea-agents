@@ -3,18 +3,37 @@ package biz
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"unicode/utf8"
 
+	"aranea-agents/internal/biz/session"
+	"aranea-agents/pkg/loggateway"
+
 	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"github.com/google/uuid"
 )
 
-type SpiritTeamParams struct {
-	SpiritSessionID string
-	TaskDescription string
-	AgentIDs        []string
-	Mode            string
+type TeamStarterPort interface {
+	StartTeamTurn(ctx context.Context, sessionID string, content string) error
+	HandleTeamTurnResult(ctx context.Context, spiritSessionID, teamID, status, errMsg string)
 }
+
+type SpiritTeamParams struct {
+	SpiritSessionID    string
+	TaskDescription    string
+	AgentKeys          []string
+	Mode               string
+	DagNodeID          string
+	TeamName           string
+	TaskSummary        string
+	DependsOn          []string
+	ParallelConfigJSON string
+	TopologyReason     string
+	AutoStart          bool
+}
+
+var ErrNoCompletedTeams = kerrors.BadRequest("SPIRIT", "no completed teams to synthesize")
 
 type SpiritTeamResult struct {
 	Team    Team
@@ -24,10 +43,12 @@ type SpiritTeamResult struct {
 type SpiritTeamUsecase struct {
 	teamUC    *TeamUsecase
 	sessionUC *SessionUsecase
+	agentUC   *AgentUsecase
+	lg        loggateway.Logger
 }
 
-func NewSpiritTeamUsecase(teamUC *TeamUsecase, sessionUC *SessionUsecase) *SpiritTeamUsecase {
-	return &SpiritTeamUsecase{teamUC: teamUC, sessionUC: sessionUC}
+func NewSpiritTeamUsecase(teamUC *TeamUsecase, sessionUC *SessionUsecase, agentUC *AgentUsecase, lg loggateway.Logger) *SpiritTeamUsecase {
+	return &SpiritTeamUsecase{teamUC: teamUC, sessionUC: sessionUC, agentUC: agentUC, lg: lg}
 }
 
 func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamParams) (SpiritTeamResult, error) {
@@ -44,16 +65,25 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 		mode = "coordinator"
 	}
 
-	defJSON := buildSpiritTeamDefinitionJSON(mode, params.AgentIDs)
+	defJSON := buildSpiritTeamDefinitionJSON(mode, params.AgentKeys, u.lg, params.ParallelConfigJSON)
+
+	initialStatus := "active"
+	if len(params.DependsOn) > 0 {
+		initialStatus = "waiting_deps"
+	}
 
 	team, err := u.teamUC.Create(ctx, Team{
-		TeamKey:         "spirit_" + spiritSessionID,
-		DisplayName:     TruncateRunes(taskDesc, 64),
-		Status:          "active",
-		SpiritSessionID: spiritSessionID,
-		TaskDescription: taskDesc,
-		AutoCreated:     true,
-		DefinitionJSON:  defJSON,
+		TeamKey:           fmt.Sprintf("spirit_%s_%s", spiritSessionID, uuid.New().String()[:8]),
+		DisplayName:       TruncateRunes(taskDesc, 64),
+		Status:            initialStatus,
+		SpiritSessionID:   spiritSessionID,
+		TaskDescription:   taskDesc,
+		AutoCreated:       true,
+		DefinitionJSON:    defJSON,
+		DagNodeID:         params.DagNodeID,
+		DependsOn:         params.DependsOn,
+		ParallelConfigJSON: params.ParallelConfigJSON,
+		Topology:          mode,
 	})
 	if err != nil {
 		return SpiritTeamResult{}, kerrors.InternalServer("SPIRIT", "create team: "+err.Error())
@@ -71,68 +101,263 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 		return SpiritTeamResult{}, kerrors.InternalServer("SPIRIT", "create team session: "+err.Error())
 	}
 
-	if err := u.appendChildSessionID(ctx, spiritSessionID, teamSession.ID); err != nil {
-		return SpiritTeamResult{}, err
-	}
-
 	return SpiritTeamResult{Team: team, Session: teamSession}, nil
 }
 
-func (u *SpiritTeamUsecase) appendChildSessionID(ctx context.Context, spiritSessionID, childSessionID string) error {
-	sess, err := u.sessionUC.Get(ctx, spiritSessionID)
-	if err != nil {
-		return err
+func (u *SpiritTeamUsecase) GetTeam(ctx context.Context, teamID string) (Team, error) {
+	return u.teamUC.Get(ctx, teamID)
+}
+
+func (u *SpiritTeamUsecase) ListActiveTeams(ctx context.Context, spiritSessionID string) ([]Team, error) {
+	spiritSessionID = strings.TrimSpace(spiritSessionID)
+	if spiritSessionID == "" {
+		return nil, kerrors.BadRequest("SPIRIT", "spirit_session_id is required")
 	}
-	var meta map[string]any
-	if strings.TrimSpace(sess.MetadataJSON) != "" {
-		if err := json.Unmarshal([]byte(sess.MetadataJSON), &meta); err != nil {
-			meta = make(map[string]any)
+	teams, err := u.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
+	if err != nil {
+		return nil, err
+	}
+	var active []Team
+	for i := range teams {
+		s := teams[i].Status
+		if s == "active" || s == "running" || s == "assembled" {
+			active = append(active, teams[i])
 		}
 	}
-	if meta == nil {
-		meta = make(map[string]any)
+	return active, nil
+}
+
+func (u *SpiritTeamUsecase) ListAllTeams(ctx context.Context, spiritSessionID string) ([]Team, error) {
+	spiritSessionID = strings.TrimSpace(spiritSessionID)
+	if spiritSessionID == "" {
+		return nil, kerrors.BadRequest("SPIRIT", "spirit_session_id is required")
 	}
-	var children []string
-	if raw, ok := meta["child_session_ids"]; ok {
-		if arr, ok := raw.([]any); ok {
-			for _, v := range arr {
-				if s, ok := v.(string); ok {
-					children = append(children, s)
-				}
+	return u.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
+}
+
+func (u *SpiritTeamUsecase) ListCompletedAndFailedTeams(ctx context.Context, spiritSessionID string) ([]Team, error) {
+	spiritSessionID = strings.TrimSpace(spiritSessionID)
+	if spiritSessionID == "" {
+		return nil, kerrors.BadRequest("SPIRIT", "spirit_session_id is required")
+	}
+	teams, err := u.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
+	if err != nil {
+		return nil, err
+	}
+	var out []Team
+	for i := range teams {
+		if teams[i].Status == "completed" || teams[i].Status == "failed" {
+			out = append(out, teams[i])
+		}
+	}
+	return out, nil
+}
+
+func (u *SpiritTeamUsecase) BuildCascadeBlockedResults(ctx context.Context, teams []Team) []TeamSynthesisResult {
+	var results []TeamSynthesisResult
+	for i := range teams {
+		t := teams[i]
+		summary, keyFindings, extractErr := u.ExtractTeamOutput(ctx, t.ID)
+		if extractErr != nil {
+			u.lg.Warn("提取团队输出失败",
+				loggateway.StepID("spirit.extract_output_err"),
+				loggateway.Str("team_id", t.ID),
+				loggateway.Err(extractErr),
+			)
+		}
+		result := TeamSynthesisResult{
+			TeamID:      t.ID,
+			TeamName:    t.DisplayName,
+			TaskName:    t.TaskDescription,
+			Status:      t.Status,
+			Summary:     summary,
+			KeyFindings: keyFindings,
+		}
+		if t.Status == "failed" {
+			result.Summary = "[执行失败] " + result.Summary
+		}
+		results = append(results, result)
+	}
+	failedDagNodes := make(map[string]string)
+	for i := range teams {
+		if teams[i].Status == "failed" && teams[i].DagNodeID != "" {
+			failedDagNodes[teams[i].DagNodeID] = teams[i].DisplayName
+		}
+	}
+	for i := range teams {
+		if teams[i].Status != "waiting_deps" {
+			continue
+		}
+		for _, depID := range teams[i].DependsOn {
+			if failedName, ok := failedDagNodes[depID]; ok {
+				results = append(results, TeamSynthesisResult{
+					TeamID:   teams[i].ID,
+					TeamName: teams[i].DisplayName,
+					TaskName: teams[i].TaskDescription,
+					Status:   "blocked",
+					Summary:  fmt.Sprintf("被失败团队 %s 阻塞", failedName),
+				})
+				break
 			}
 		}
 	}
-	children = append(children, childSessionID)
-	meta["child_session_ids"] = children
-	updated, err := json.Marshal(meta)
-	if err != nil {
-		return err
-	}
-	metaStr := string(updated)
-	_, err = u.sessionUC.Update(ctx, spiritSessionID, SessionUpdateFields{
-		MetadataJSON: &metaStr,
-	})
-	return err
+	return results
 }
 
-func buildSpiritTeamDefinitionJSON(mode string, agentIDs []string) string {
-	type member struct {
-		AgentID string `json:"agent_id"`
-		Role    string `json:"role"`
-		Enabled *bool  `json:"enabled"`
+func (u *SpiritTeamUsecase) GetMaxParallelTeams(ctx context.Context, spiritSessionID string) int {
+	cfg := u.resolveParallelConfig(ctx, spiritSessionID)
+	return cfg.MaxConcurrentTeams
+}
+
+func (u *SpiritTeamUsecase) resolveParallelConfig(ctx context.Context, spiritSessionID string) ParallelConfig {
+	if u.agentUC == nil {
+		return DefaultParallelConfig()
 	}
-	members := make([]member, 0, len(agentIDs))
-	for i, id := range agentIDs {
+	agents, err := u.agentUC.List(ctx, AgentListQuery{Keyword: SpiritAgentKey, Limit: 1})
+	if err != nil {
+		u.lg.Warn("查询精灵 Agent 失败，使用默认并行配置",
+			loggateway.StepID("spirit.parallel_config"),
+			loggateway.Err(err),
+		)
+		return DefaultParallelConfig()
+	}
+	if len(agents.Items) == 0 {
+		return DefaultParallelConfig()
+	}
+	ag := agents.Items[0]
+	return ParseParallelConfig(ag.MetadataJSON, u.lg)
+}
+
+func (u *SpiritTeamUsecase) CancelTeam(ctx context.Context, teamID string) error {
+	if strings.TrimSpace(teamID) == "" {
+		return kerrors.BadRequest("SPIRIT", "team_id is required")
+	}
+	t, err := u.teamUC.Get(ctx, teamID)
+	if err != nil {
+		return kerrors.NotFound("SPIRIT", "team not found")
+	}
+	if t.Status != "active" && t.Status != "waiting_deps" {
+		return kerrors.BadRequest("SPIRIT", "only active or waiting teams can be cancelled")
+	}
+	_, err = u.teamUC.Update(ctx, teamID, Team{Status: "cancelled"})
+	if err != nil {
+		return kerrors.InternalServer("SPIRIT", "cancel team: "+err.Error())
+	}
+	return nil
+}
+
+type TeamProgress struct {
+	TeamID      string  `json:"team_id"`
+	TeamName    string  `json:"team_name"`
+	Status      string  `json:"status"`
+	ProgressPct float64 `json:"progress_pct"`
+	CurrentStep string  `json:"current_step"`
+	DurationMs  int64   `json:"duration_ms"`
+}
+
+func (u *SpiritTeamUsecase) ExtractTeamOutput(ctx context.Context, teamID string) (summary string, keyFindings string, err error) {
+	result, searchErr := u.sessionUC.Search(ctx, SessionSearchQuery{TeamID: teamID, Limit: 1})
+	if searchErr != nil {
+		u.lg.Warn("搜索团队 session 失败",
+			loggateway.StepID("spirit.extract_output.search_err"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Err(searchErr),
+		)
+		return "", "", searchErr
+	}
+	if len(result.Items) == 0 {
+		return "", "", nil
+	}
+	teamSession := result.Items[0]
+	messages, msgErr := u.sessionUC.ListMessagesRecent(ctx, teamSession.ID, 10)
+	if msgErr != nil {
+		u.lg.Warn("获取团队消息失败",
+			loggateway.StepID("spirit.extract_output.msg_err"),
+			loggateway.Str("team_id", teamID),
+			loggateway.Err(msgErr),
+		)
+		return "", "", msgErr
+	}
+	if len(messages) == 0 {
+		return "", "", nil
+	}
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "assistant" {
+			content := messages[i].ContentMarkdown
+			summary = TruncateRunes(content, 500)
+			keyFindings = extractKeyFindings(content)
+			return summary, keyFindings, nil
+		}
+	}
+	return "", "", nil
+}
+
+func extractKeyFindings(content string) string {
+	var findings []string
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") || strings.HasPrefix(trimmed, "> ") {
+			if len(findings) < 5 {
+				findings = append(findings, trimmed)
+			}
+		}
+	}
+	return strings.Join(findings, "\n")
+}
+
+func (u *SpiritTeamUsecase) CheckTeamProgress(ctx context.Context, spiritSessionID string) ([]TeamProgress, error) {
+	spiritSessionID = strings.TrimSpace(spiritSessionID)
+	if spiritSessionID == "" {
+		return nil, kerrors.BadRequest("SPIRIT", "spirit_session_id is required")
+	}
+	teams, err := u.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]TeamProgress, 0, len(teams))
+	for i := range teams {
+		tp := TeamProgress{
+			TeamID:   teams[i].ID,
+			TeamName: teams[i].DisplayName,
+			Status:   teams[i].Status,
+		}
+		runs, runErr := u.teamUC.ListRuns(ctx, teams[i].ID, 1)
+		if runErr == nil && len(runs) > 0 {
+			tp.DurationMs = int64(runs[0].DurationMS)
+			if runs[0].Status == "success" {
+				tp.ProgressPct = 100
+			}
+		}
+		out = append(out, tp)
+	}
+	return out, nil
+}
+
+func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggateway.Logger, parallelCfgJSON ...string) string {
+	type member struct {
+		AgentKey string `json:"agent_key"`
+		Role     string `json:"role"`
+		Enabled  *bool  `json:"enabled"`
+	}
+	members := make([]member, 0, len(agentKeys))
+	for i, key := range agentKeys {
 		role := "worker"
 		enabled := true
 		if i == 0 && mode == "coordinator" {
 			role = "synthesizer"
 		}
 		members = append(members, member{
-			AgentID: strings.TrimSpace(id),
-			Role:    role,
-			Enabled: &enabled,
+			AgentKey: strings.TrimSpace(key),
+			Role:     role,
+			Enabled:  &enabled,
 		})
+	}
+	maxConcurrency := 2
+	if len(parallelCfgJSON) > 0 && parallelCfgJSON[0] != "" {
+		cfg := ParseParallelConfig(parallelCfgJSON[0], lg)
+		if cfg.MaxConcurrentTeams > 0 {
+			maxConcurrency = cfg.MaxConcurrentTeams
+		}
 	}
 	def := map[string]any{
 		"version":            2,
@@ -140,7 +365,7 @@ func buildSpiritTeamDefinitionJSON(mode string, agentIDs []string) string {
 		"runtime_engine":     "graph",
 		"team_graph_runtime": true,
 		"members":            members,
-		"max_concurrency":    2,
+		"max_concurrency":    maxConcurrency,
 		"timeout_seconds":    600,
 	}
 	out, err := json.Marshal(def)
@@ -156,4 +381,21 @@ func TruncateRunes(s string, maxLen int) string {
 	}
 	runes := []rune(s)
 	return string(runes[:maxLen-3]) + "..."
+}
+
+func (u *SpiritTeamUsecase) SearchSessions(ctx context.Context, q session.SessionSearchQuery) (session.SessionListResult, error) {
+	return u.sessionUC.Search(ctx, q)
+}
+
+func (u *SpiritTeamUsecase) GetSpiritQuery(ctx context.Context, spiritSessionID string) string {
+	messages, err := u.sessionUC.ListMessagesRecent(ctx, spiritSessionID, 5)
+	if err != nil || len(messages) == 0 {
+		return ""
+	}
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "user" {
+			return TruncateRunes(messages[i].ContentMarkdown, 500)
+		}
+	}
+	return ""
 }

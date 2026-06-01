@@ -55,7 +55,7 @@ func (a *eventBusAdapter) SubscribeDomainEvents() (<-chan DomainEvent, func()) {
 					case out <- *de:
 					default:
 						if a.sysLog != nil {
-							a.sysLog.SysLogWarn("domain_event.adapter.drop", "DomainEvent 输出缓冲满，丢弃事件",
+							a.sysLog.LogWarn("domain_event.adapter.drop", "DomainEvent 输出缓冲满，丢弃事件",
 								LogPair{Key: "type", Value: string(de.Type)}, LogPair{Key: "session_id", Value: de.SessionID})
 						}
 					}

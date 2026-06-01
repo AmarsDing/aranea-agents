@@ -310,7 +310,7 @@ func (u *Usecase) RecordAuditLog(ctx context.Context, entry AuditLog) error {
 		entry.ID = uuid.NewString()
 	}
 	if err := u.repo.InsertAuditLog(ctx, entry); err != nil {
-		u.lg.Warn("RecordAuditLog failed", loggateway.StepID("system.monitor.audit_log_fail"), loggateway.Str("action", entry.Action), loggateway.Str("resource_id", entry.ResourceID), loggateway.Err(err))
+		u.lg.Warn("RecordAuditLog failed", loggateway.StepID("monitor.audit_log_fail"), loggateway.Str("action", entry.Action), loggateway.Str("resource_id", entry.ResourceID), loggateway.Err(err))
 		return err
 	}
 	return nil
@@ -322,7 +322,7 @@ func (u *Usecase) RecordMonitorEvent(ctx context.Context, ev EventWrite) error {
 		return nil
 	}
 	if err := u.repo.InsertMonitorEvent(ctx, ev); err != nil {
-		u.lg.Warn("RecordMonitorEvent failed", loggateway.StepID("system.monitor.event_persist_fail"), loggateway.Str("event_key", ev.EventKey), loggateway.Err(err))
+		u.lg.Warn("RecordMonitorEvent failed", loggateway.StepID("monitor.event_persist_fail"), loggateway.Str("event_key", ev.EventKey), loggateway.Err(err))
 		return err
 	}
 	return nil
@@ -360,7 +360,7 @@ func (u *Usecase) ReplaceAlertRules(ctx context.Context, rules []AlertRule) erro
 
 	oldRules, listErr := u.repo.ListAlertRules(ctx)
 	if listErr != nil {
-		u.lg.Warn("ReplaceAlertRules: ListAlertRules failed", loggateway.StepID("system.monitor.alert_rules_list_fail"), loggateway.Err(listErr))
+		u.lg.Warn("ReplaceAlertRules: ListAlertRules failed", loggateway.StepID("monitor.alert_rules_list_fail"), loggateway.Err(listErr))
 	}
 	oldIDs := make(map[string]struct{}, len(oldRules))
 	for _, r := range oldRules {
@@ -409,7 +409,7 @@ func (u *Usecase) EvaluateAlerts(ctx context.Context) {
 				value, err := m.Evaluate(ctx, window)
 				if err != nil {
 					u.lg.Warn("EvaluateAlerts: metric evaluation failed",
-					loggateway.StepID("system.monitor.alert_eval_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Str("metric_key", metricKey), loggateway.Err(err))
+					loggateway.StepID("monitor.alert_eval_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Str("metric_key", metricKey), loggateway.Err(err))
 					continue
 				}
 				u.evaluateMetricValue(ctx, rule, value)
@@ -461,7 +461,7 @@ func (u *Usecase) evaluateMetricValue(ctx context.Context, rule AlertRule, value
 		Status:      strings.TrimSpace(rule.Severity), MetadataJSON: string(meta),
 	}); err != nil {
 		u.lg.Warn("RecordMonitorEvent for alert.fired failed",
-			loggateway.StepID("system.monitor.alert_fired_persist_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
+			loggateway.StepID("monitor.alert_fired_persist_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
 	}
 	payload := map[string]any{
 		"rule_id": rule.ID, "name": rule.Name, "metric_key": rule.MetricKey,
@@ -484,7 +484,7 @@ func (u *Usecase) cachedAlertRules(ctx context.Context) []AlertRule {
 
 	rules, err := u.repo.ListAlertRules(ctx)
 	if err != nil {
-		u.lg.Warn("cachedAlertRules: ListAlertRules failed", loggateway.StepID("system.monitor.alert_rules_load_fail"), loggateway.Err(err))
+		u.lg.Warn("cachedAlertRules: ListAlertRules failed", loggateway.StepID("monitor.alert_rules_load_fail"), loggateway.Err(err))
 		return nil
 	}
 
@@ -517,13 +517,13 @@ func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {
 		var errTotal error
 		total, errTotal = u.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since, "")
 		if errTotal != nil {
-			u.lg.Warn("EvaluateAlerts: CountMonitorEventsSince(total) failed", loggateway.StepID("system.monitor.alert_count_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(errTotal))
+			u.lg.Warn("EvaluateAlerts: CountMonitorEventsSince(total) failed", loggateway.StepID("monitor.alert_count_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(errTotal))
 			return
 		}
 		var errErrors error
 		errors, errErrors = u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since, "")
 		if errErrors != nil {
-			u.lg.Warn("EvaluateAlerts: CountMonitorEventsSince(errors) failed", loggateway.StepID("system.monitor.alert_count_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(errErrors))
+			u.lg.Warn("EvaluateAlerts: CountMonitorEventsSince(errors) failed", loggateway.StepID("monitor.alert_count_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(errErrors))
 			return
 		}
 	}
@@ -544,7 +544,7 @@ func (u *Usecase) evaluateSkillFilesystemMissingCount(ctx context.Context, rule 
 	}
 	missing, _, err := u.fsHealth.FilesystemHealthStats(ctx)
 	if err != nil {
-		u.lg.Warn("EvaluateAlerts: FilesystemHealthStats failed", loggateway.StepID("system.monitor.fs_health_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
+		u.lg.Warn("EvaluateAlerts: FilesystemHealthStats failed", loggateway.StepID("monitor.fs_health_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
 		return
 	}
 	u.evaluateMetricValue(ctx, rule, float64(missing))
@@ -605,7 +605,7 @@ func (u *Usecase) MarkAlertFiredPersistent(ctx context.Context, rule AlertRule, 
 	}
 	u.lastFired.Store(rule.ID, now)
 	if err := u.repo.UpdateAlertFiringState(ctx, rule.ID, AlertFiringStateFiring, &now, metricValue, nil); err != nil {
-		u.lg.Warn("MarkAlertFiredPersistent: DB update failed", loggateway.StepID("system.monitor.mark_fired_db_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
+		u.lg.Warn("MarkAlertFiredPersistent: DB update failed", loggateway.StepID("monitor.mark_fired_db_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
 	}
 	// Invalidate rules cache so next evaluation round reads fresh DB state.
 	u.rulesMu.Lock()
@@ -619,7 +619,7 @@ func (u *Usecase) MarkAlertRecovered(ctx context.Context, rule AlertRule, now ti
 		return
 	}
 	if err := u.repo.UpdateAlertFiringState(ctx, rule.ID, AlertFiringStateRecovered, rule.LastFiredAt, rule.LastFiredValue, &now); err != nil {
-		u.lg.Warn("MarkAlertRecovered: DB update failed", loggateway.StepID("system.monitor.mark_recovered_db_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
+		u.lg.Warn("MarkAlertRecovered: DB update failed", loggateway.StepID("monitor.mark_recovered_db_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
 	}
 	u.rulesMu.Lock()
 	u.rulesExpire = time.Time{}

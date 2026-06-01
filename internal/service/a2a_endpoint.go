@@ -73,6 +73,7 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 		Model:                  mod,
 		SkillDBRepo:            s.orch.rt.SkillDBRepo,
 		HasMemory:              s.orch.td.Persist.Memory.Available(),
+		MemoryService:          s.orch.td.Persist.Memory.TRPC,
 		PluginManager:          s.orch.rt.PluginManager,
 		MemoryAdmin:            s.orch.td.Persist.Memory.Admin,
 		MemoryL2Recall:         s.orch.td.Persist.Memory.L2Recall,

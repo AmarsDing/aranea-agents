@@ -152,7 +152,7 @@ func (r *Runner) finishTaskRun(
 		r.lg.Warn("reload task before finalize failed", loggateway.Str("task_id", taskID), loggateway.Str("run_id", runID), loggateway.Err(err))
 		return
 	}
-	meta := parseCronTaskMetadata(task.MetadataJSON)
+	meta := parseCronTaskMetadata(task.MetadataJSON, r.lg)
 	r.finalizeRun(ctx, runID, task, cfg, meta, started, trigger, outcome)
 }
 

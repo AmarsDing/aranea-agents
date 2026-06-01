@@ -35,6 +35,9 @@ func (r *stepBusRepo) ListTaskDeadLetters(_ context.Context, _ biz.TaskDeadLette
 func (r *stepBusRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (biz.TaskDeadLetter, error) {
 	return biz.TaskDeadLetter{}, nil
 }
+func (r *stepBusRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 
 func TestPersistStep_EmitsStartedAndFinished(t *testing.T) {
 	bus := event.NewBus()

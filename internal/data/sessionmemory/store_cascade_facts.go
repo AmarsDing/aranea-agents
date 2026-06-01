@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 // ReplaceNameInAgentFacts rewrites whole-word occurrences of oldName to newName for one agent scope.
@@ -47,6 +49,7 @@ func (st *Store) ReplaceNameInAgentFacts(ctx context.Context, agentID, oldName, 
 		}
 		var row map[string]any
 		if err := json.Unmarshal(raw, &row); err != nil {
+			st.lg.Warn("session memory json unmarshal failed", loggateway.StepID("data.sessionmemory"), loggateway.Err(err))
 			return nil, 0, err
 		}
 		id, _ := row["id"].(string)
@@ -65,7 +68,7 @@ func (st *Store) ReplaceNameInAgentFacts(ctx context.Context, agentID, oldName, 
 		}
 		pending = append(pending, pendingUpdate{
 			id: id, stmt: newStmt, details: newDetails,
-			meta: mergeCascadeFactMeta(jsonStrMap(row, "metadata_json"), oldName, newName),
+			meta: mergeCascadeFactMeta(jsonStrMap(row, "metadata_json"), oldName, newName, st.lg),
 			sessionID: jsonStrMap(row, "source_session_id"),
 			messageID: jsonStrMap(row, "source_message_id"),
 		})
@@ -148,9 +151,12 @@ func jsonStrMap(m map[string]any, key string) string {
 	return ""
 }
 
-func mergeCascadeFactMeta(base, oldName, newName string) string {
+func mergeCascadeFactMeta(base, oldName, newName string, lg loggateway.Logger) string {
 	var m map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(base)), &m); err != nil || m == nil {
+	if err := json.Unmarshal([]byte(strings.TrimSpace(base)), &m); err != nil {
+		lg.Warn("session memory json unmarshal failed", loggateway.StepID("data.sessionmemory"), loggateway.Err(err))
+		m = map[string]any{}
+	} else if m == nil {
 		m = map[string]any{}
 	}
 	m["cascade_renamed_from"] = oldName

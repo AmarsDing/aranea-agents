@@ -196,9 +196,9 @@ func mapHistoryScope(s string) trpcteam.HistoryScope {
 	}
 }
 
-func buildEscalationFunc(clc *CriticLoopConfig) func(ev *trpcevent.Event) bool {
+func buildEscalationFunc(clc *CriticLoopConfig, lg loggateway.Logger) func(ev *trpcevent.Event) bool {
 	if clc == nil || clc.ScoreThreshold <= 0 {
-		return defaultEscalationFunc
+		return defaultEscalationFunc(lg)
 	}
 	threshold := clc.ScoreThreshold
 	return func(ev *trpcevent.Event) bool {
@@ -208,7 +208,7 @@ func buildEscalationFunc(clc *CriticLoopConfig) func(ev *trpcevent.Event) bool {
 		for _, ch := range ev.Choices {
 			for _, tc := range ch.Message.ToolCalls {
 				if tc.Function.Name == biz.OrchestrationControlToolName {
-					d, err := biz.ParseOrchestrationDecision(tc.Function.Arguments)
+					d, err := biz.ParseOrchestrationDecision(tc.Function.Arguments, lg)
 					if err == nil && biz.IsApprovedDecision(d, threshold) {
 						return true
 					}
@@ -251,7 +251,8 @@ const OrchestrationControlToolSchema = `{
   }
 }`
 
-func defaultEscalationFunc(ev *trpcevent.Event) bool {
+func defaultEscalationFunc(lg loggateway.Logger) func(ev *trpcevent.Event) bool {
+	return func(ev *trpcevent.Event) bool {
 	if ev == nil || ev.Response == nil {
 		return false
 	}

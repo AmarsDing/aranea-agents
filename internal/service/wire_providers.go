@@ -5,6 +5,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	skilltrpc "aranea-agents/internal/skill/trpc"
+	"aranea-agents/pkg/loggateway"
 
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
@@ -13,6 +14,6 @@ import (
 
 // NewEvaluationRunner is defined in evaluation_runner.go (EP-RT-08).
 
-func NewSkillDBRepository(uc *biz.SkillUsecase) trpcskill.Repository {
-	return skilltrpc.NewDBRepositoryAdapter(uc, 2*time.Minute)
+func NewSkillDBRepository(uc *biz.SkillUsecase, lg loggateway.Logger) trpcskill.Repository {
+	return skilltrpc.NewDBRepositoryAdapter(uc, 2*time.Minute, lg)
 }

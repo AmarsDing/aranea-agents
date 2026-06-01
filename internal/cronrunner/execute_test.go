@@ -116,7 +116,7 @@ func TestFinalizeRun_SkippedDoesNotIncrementFailureCount(t *testing.T) {
 	repo := newMemCronExecRepo()
 	r := &Runner{deps: Deps{Cron: repo}, lg: loggateway.NewNoop()}
 	cfg, _ := parseCronTaskConfig(repo.tasks["t1"].ConfigJSON)
-	meta := parseCronTaskMetadata(repo.tasks["t1"].MetadataJSON)
+	meta := parseCronTaskMetadata(repo.tasks["t1"].MetadataJSON, loggateway.NewNoop())
 
 	r.finalizeRun(context.Background(), "run-skipped", repo.tasks["t1"], cfg, meta, "2026-01-01T00:00:00Z", "schedule", runOutcome{
 		status: "skipped",
@@ -177,7 +177,7 @@ func TestFinalizeRun_ManualFailureDoesNotIncrementDeadCounter(t *testing.T) {
 	}
 	r := &Runner{deps: Deps{Cron: repo}, lg: loggateway.NewNoop()}
 	cfg, _ := parseCronTaskConfig(repo.tasks["t1"].ConfigJSON)
-	meta := parseCronTaskMetadata(repo.tasks["t1"].MetadataJSON)
+	meta := parseCronTaskMetadata(repo.tasks["t1"].MetadataJSON, loggateway.NewNoop())
 
 	r.finalizeRun(context.Background(), "run-1", repo.tasks["t1"], cfg, meta, "2026-01-01T00:00:00Z", "manual", runOutcome{
 		status: "failure",

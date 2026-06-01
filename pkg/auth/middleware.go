@@ -69,7 +69,7 @@ func Middleware() httpm.FilterFunc {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if HTTPAuthBypassEnabled() {
 				loggateway.Global().Warn("auth bypass active: injecting dev principal",
-					loggateway.StepID("system.auth.bypass"), loggateway.Str("path", r.URL.Path))
+					loggateway.StepID("auth.bypass"), loggateway.Str("path", r.URL.Path))
 				next.ServeHTTP(w, r.WithContext(NewContext(r.Context(), DevBypassPrincipal())))
 				return
 			}
@@ -87,7 +87,7 @@ func Middleware() httpm.FilterFunc {
 			if strings.HasPrefix(r.URL.Path, "/webhooks/") {
 				if !isRegisteredWebhookPath(r.URL.Path) {
 					loggateway.Global().Warn("webhook rejected: unregistered path",
-						loggateway.StepID("system.auth.webhook"), loggateway.Str("path", r.URL.Path))
+						loggateway.StepID("auth.webhook"), loggateway.Str("path", r.URL.Path))
 					http.Error(w, "Forbidden: unregistered webhook path", http.StatusForbidden)
 					return
 				}
@@ -101,14 +101,14 @@ func Middleware() httpm.FilterFunc {
 			tokenStr := TokenFromHTTPRequest(r)
 			if tokenStr == "" {
 				loggateway.Global().Info("auth rejected: no token",
-					loggateway.StepID("system.auth.no_token"), loggateway.Str("path", r.URL.Path))
+					loggateway.StepID("auth.no_token"), loggateway.Str("path", r.URL.Path))
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
 			auth, err := ParseToken(tokenStr, authSecretKey)
 			if err != nil {
 				loggateway.Global().Warn("auth rejected: token parse failed",
-					loggateway.StepID("system.auth.token_invalid"), loggateway.Str("path", r.URL.Path), loggateway.Err(err))
+					loggateway.StepID("auth.token_invalid"), loggateway.Str("path", r.URL.Path), loggateway.Err(err))
 				ec := errors.FromError(err)
 				http.Error(w, ec.Message, int(ec.Code))
 				return

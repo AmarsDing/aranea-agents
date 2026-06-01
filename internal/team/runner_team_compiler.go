@@ -27,7 +27,7 @@ func (r *Runner) tryNativeFallback(
 	if !envTeamNativeForced() {
 		return nil, nil, false, nil
 	}
-	root, memberLookup, err = BuildTRPCTeam(ctx, def, teamDeps, r.catalogAgent, loggateway.Global())
+	root, memberLookup, err = BuildTRPCTeam(ctx, def, teamDeps, r.catalogAgent, r.lg)
 	if err != nil {
 		return nil, nil, false, err
 	}
@@ -73,9 +73,9 @@ func (r *Runner) compileTeamRuntime(
 			return ""
 		}
 		return strings.TrimSpace(ag.AgentKey)
-	}, r.graphLoader)
+	}, r.graphLoader, r.lg)
 	if cerr != nil {
-		loggateway.Global().Warn("Graph 编译失败", loggateway.StepID("team.graph_runtime.compile"), loggateway.Str("error", cerr.Error()))
+		r.lg.Warn("Graph 编译失败", loggateway.StepID("team.graph_runtime.compile"), loggateway.Err(cerr))
 		metrics.TeamGraphRuntimeTotal.WithLabelValues("graph", "compile_error").Inc()
 		if nRoot, nLookup, nOk, nErr := r.tryNativeFallback(ctx, def, teamDeps, "native_fallback"); nOk {
 			return nRoot, nLookup, "", biz.GraphBuildConfig{}, nil
@@ -89,7 +89,7 @@ func (r *Runner) compileTeamRuntime(
 	compiledGraphCfg = cfg
 	groot, gerr := r.graphRoot.BuildTeamGraphRoot(ctx, cfg)
 	if gerr != nil {
-		loggateway.Global().Warn("GraphAgent 构建失败", loggateway.StepID("team.graph_runtime.build"), loggateway.Str("error", gerr.Error()))
+		r.lg.Warn("GraphAgent 构建失败", loggateway.StepID("team.graph_runtime.build"), loggateway.Err(gerr))
 		metrics.TeamGraphRuntimeTotal.WithLabelValues("graph", "build_error").Inc()
 		if nRoot, nLookup, nOk, nErr := r.tryNativeFallback(ctx, def, teamDeps, "native_fallback"); nOk {
 			return nRoot, nLookup, "", biz.GraphBuildConfig{}, nil
@@ -101,13 +101,13 @@ func (r *Runner) compileTeamRuntime(
 	}
 
 	root = groot
-	_, memberLookup, err = BuildTeamMemberAgents(ctx, def, teamDeps, r.catalogAgent, loggateway.Global())
+	_, memberLookup, err = BuildTeamMemberAgents(ctx, def, teamDeps, r.catalogAgent, r.lg)
 	if err != nil {
 		return
 	}
 	if r.teamGraphCoord != nil {
 		if regErr := r.teamGraphCoord.RegisterTeamGraphExecution(ctx, graphExecID, sess.ID, teamRow.ID, runID, compiledGraphCfg); regErr != nil {
-			loggateway.Global().Warn("graph execution 注册失败", loggateway.StepID("team.graph_runtime.register"), loggateway.Str("error", regErr.Error()))
+			r.lg.Warn("graph execution 注册失败", loggateway.StepID("team.graph_runtime.register"), loggateway.Err(regErr))
 		}
 	}
 	if teamEmitter != nil {

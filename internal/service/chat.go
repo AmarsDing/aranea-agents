@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/tools/mcpobserve"
+	"aranea-agents/pkg/loggateway"
 
 	trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
 
@@ -25,11 +26,12 @@ type ChatService struct {
 
 	orch         *ChatOrchestrator
 	turnPipeline *TurnPipeline
+	lg           loggateway.Logger
 }
 
 func NewChatService(deps ChatOrchestratorDeps) *ChatService {
 	orch := NewChatOrchestrator(deps)
-	svc := &ChatService{orch: orch}
+	svc := &ChatService{orch: orch, lg: deps.LG}
 	if deps.Sessions != nil {
 		svc.turnPipeline = &TurnPipeline{
 			Service:  NewPersistentTurnService(deps.Sessions),

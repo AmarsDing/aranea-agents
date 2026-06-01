@@ -14,6 +14,7 @@ import (
 	skillinvocationpkg "aranea-agents/internal/data/ent/skillinvocation"
 	toolinvocationpkg "aranea-agents/internal/data/ent/toolinvocation"
 	"aranea-agents/internal/llmcontext"
+	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -393,7 +394,9 @@ func (r *sessionRepo) DeleteSession(ctx context.Context, id string) (int, error)
 	if n == 0 {
 		return 0, nil
 	}
-	_, _ = NewChannelPeerSessionRepo(r.data).DeleteBySessionID(ctx, id)
+	if _, err := NewChannelPeerSessionRepo(r.data).DeleteBySessionID(ctx, id); err != nil {
+		r.data.lg.Warn("delete channel peer sessions by session id failed", loggateway.StepID("data.session.delete_peer"), loggateway.Err(err))
+	}
 	return n, nil
 }
 
@@ -408,6 +411,9 @@ func (r *sessionRepo) DeleteSessionsByAgentID(ctx context.Context, agentID strin
 		SetStatusChangedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
+	if err != nil {
+		r.data.lg.Error("batch delete sessions by agent failed", loggateway.StepID("data.session.delete_by_agent"), loggateway.Err(err))
+	}
 	return err
 }
 
@@ -583,6 +589,9 @@ func (r *sessionRepo) UpdateRunnerSnapshotJSON(ctx context.Context, sessionID st
 		SetRunnerSnapshotJSON(snapshotJSON).
 		SetUpdatedAt(nowRFC3339()).
 		Save(ctx)
+	if err != nil {
+		r.data.lg.Warn("update runner snapshot failed", loggateway.StepID("data.session.runner_snapshot"), loggateway.Err(err))
+	}
 	return err
 }
 
@@ -610,6 +619,9 @@ func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sess
 		contextWindow, contextWindow,
 		now, sessionID,
 	)
+	if err != nil {
+		r.data.lg.Warn("update session context from llm usage failed", loggateway.StepID("data.session.context_from_llm"), loggateway.Err(err))
+	}
 	return err
 }
 
@@ -633,6 +645,9 @@ func (r *sessionRepo) UpdateSessionContextAfterCompression(ctx context.Context, 
 		SetContextStatus(llmcontext.ContextStatusForRatio(ratio)).
 		SetUpdatedAt(nowRFC3339()).
 		Save(ctx)
+	if err != nil {
+		r.data.lg.Warn("update session context after compression failed", loggateway.StepID("data.session.context_after_compress"), loggateway.Err(err))
+	}
 	return err
 }
 
@@ -693,6 +708,7 @@ func (r *sessionRepo) BumpSessionRevision(ctx context.Context, sessionID string)
 		&rev,
 	)
 	if err != nil {
+		r.data.lg.Warn("bump session revision failed", loggateway.StepID("data.session.bump_revision"), loggateway.Err(err))
 		return 0, err
 	}
 	return rev, nil
@@ -721,6 +737,9 @@ func (r *sessionRepo) TryIncrementCompressVersion(ctx context.Context, sessionID
 	err := entQueryRowScan(r.txClient(ctx), ctx,
 		`UPDATE sessions SET compress_version = compress_version + 1, updated_at = ? WHERE id = ? AND deleted_at = '' RETURNING compress_version - 1`,
 		[]any{nowRFC3339(), sessionID}, &old)
+	if err != nil {
+		r.data.lg.Error("cas increment compress version failed", loggateway.StepID("data.session.compress_version.cas"), loggateway.Err(err))
+	}
 	return old, err
 }
 

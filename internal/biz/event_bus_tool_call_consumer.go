@@ -102,7 +102,7 @@ func (c *toolCallConsumer) handle(ctx context.Context, env contract.Envelope) {
 	}
 	if err := c.tools.RecordToolInvocation(ctx, write); err != nil {
 		if c.logger != nil {
-			c.logger.SessionSysLogWarn(ctx, env.SessionID, "system.tool.record_fail", "工具调用记录失败（EventBus）",
+			c.logger.LogSessionWarn(ctx, env.SessionID, "system.tool.record_fail", "工具调用记录失败（EventBus）",
 				LogPair{Key: "tool", Value: toolKey}, LogPair{Key: "error", Value: err})
 		}
 	}

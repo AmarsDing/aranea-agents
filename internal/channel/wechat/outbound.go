@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func ReplyXML(toUser, fromUser, content string) string {
@@ -129,12 +131,14 @@ func (s *TextSender) accessToken(ctx context.Context) (string, error) {
 	return out.AccessToken, nil
 }
 
-func ActiveModeFromConfig(configJSON string) bool {
+func ActiveModeFromConfig(configJSON string, lg loggateway.Logger) bool {
 	var env struct {
 		Config struct {
 			ActiveMode bool `json:"active_mode"`
 		} `json:"config"`
 	}
-	_ = json.Unmarshal([]byte(configJSON), &env)
+	if err := json.Unmarshal([]byte(configJSON), &env); err != nil {
+		lg.Warn("解析 wechat config 失败", loggateway.StepID("channel.wechat.active_mode"), loggateway.Err(err))
+	}
 	return env.Config.ActiveMode
 }

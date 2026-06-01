@@ -8,7 +8,6 @@ import (
 	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
-	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
@@ -137,7 +136,7 @@ func TestWSUpstreamBadDirectionIgnored(t *testing.T) {
 	srv := newTestWSServer(event.NewBus(), event.NewBuffer(), nil, nil)
 	wc := &wsConn{
 		channels: map[string]bool{"system": true},
-		send:      make(chan []byte, 1),
+		send:     make(chan []byte, 1),
 	}
 	raw, _ := json.Marshal(wsUpstream{
 		Direction: "server_to_client",
@@ -195,20 +194,12 @@ func (stubChatSender) EnqueueUserMessage(_ context.Context, req *chatv1.EnqueueU
 	return &chatv1.EnqueueUserMessageResponse{Accepted: true}, nil
 }
 
-type stubTurnGateway struct {
+type stubTurnExecutor struct {
 	err error
 }
 
-func (s stubTurnGateway) ExecuteTurn(_ context.Context, _ biz.TurnInput) (biz.TurnResult, error) {
-	return biz.TurnResult{}, s.err
-}
-
-func (stubTurnGateway) RunNativeTurn(_ context.Context, _ biz.TurnInput) (biz.ChatMessage, biz.ChatMessage, error) {
-	return biz.ChatMessage{}, biz.ChatMessage{}, nil
-}
-
-func (s stubTurnGateway) RunNativeTurnWithOutcome(_ context.Context, _ biz.TurnInput) (biz.NativeTurnResult, error) {
-	return biz.NativeTurnResult{}, s.err
+func (s stubTurnExecutor) ExecuteTurn(_ context.Context, _ WSTurnInput) error {
+	return s.err
 }
 
 func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
@@ -260,7 +251,7 @@ func TestWSUpstreamTurnGatewayErrorDoesNotPublishRawDuplicate(t *testing.T) {
 		&event.Infra{SessionBus: bus, MonitorBus: bus, Buffer: event.NewBuffer()},
 		nil,
 		stubChatSender{},
-		stubTurnGateway{err: errors.New("provider raw error")},
+		stubTurnExecutor{err: errors.New("provider raw error")},
 		loggateway.NewNoop(),
 	)
 	wc := &wsConn{

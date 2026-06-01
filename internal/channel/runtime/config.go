@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 // InstanceConfig is parsed from channel.config_json for runtime decisions.
@@ -13,12 +14,14 @@ type InstanceConfig struct {
 	ReceiveMode string
 }
 
-func ParseInstanceConfig(configJSON string) InstanceConfig {
+func ParseInstanceConfig(configJSON string, lg loggateway.Logger) InstanceConfig {
 	var env struct {
 		Type        string `json:"type"`
 		ReceiveMode string `json:"receive_mode"`
 	}
-	_ = json.Unmarshal([]byte(configJSON), &env)
+	if err := json.Unmarshal([]byte(configJSON), &env); err != nil {
+		lg.Warn("解析 instance config 失败", loggateway.StepID("channel.runtime.config"), loggateway.Err(err))
+	}
 	return InstanceConfig{
 		Type:        strings.TrimSpace(strings.ToLower(env.Type)),
 		ReceiveMode: strings.TrimSpace(strings.ToLower(env.ReceiveMode)),
@@ -26,11 +29,11 @@ func ParseInstanceConfig(configJSON string) InstanceConfig {
 }
 
 // NeedsRuntimeConnector reports whether this channel instance requires a long-running goroutine.
-func NeedsRuntimeConnector(ch biz.Channel) bool {
+func NeedsRuntimeConnector(ch biz.Channel, lg loggateway.Logger) bool {
 	if !ch.Enabled || strings.TrimSpace(ch.DeletedAt) != "" {
 		return false
 	}
-	cfg := ParseInstanceConfig(ch.ConfigJSON)
+	cfg := ParseInstanceConfig(ch.ConfigJSON, lg)
 	mode := cfg.ReceiveMode
 	if mode == "" {
 		mode = defaultReceiveMode(cfg.Type)
@@ -70,8 +73,8 @@ func defaultReceiveMode(channelType string) string {
 	}
 }
 
-func EffectiveReceiveMode(ch biz.Channel) string {
-	cfg := ParseInstanceConfig(ch.ConfigJSON)
+func EffectiveReceiveMode(ch biz.Channel, lg loggateway.Logger) string {
+	cfg := ParseInstanceConfig(ch.ConfigJSON, lg)
 	if cfg.ReceiveMode != "" {
 		return cfg.ReceiveMode
 	}

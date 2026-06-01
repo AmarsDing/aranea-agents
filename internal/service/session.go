@@ -199,7 +199,7 @@ func (s *SessionService) CreateSession(ctx context.Context, req *v1.CreateSessio
 	if err != nil {
 		return nil, err
 	}
-	biz.RecordAdminAudit(ctx, s.mon, "create.session", "session", created.ID, "title="+created.Title)
+	s.mon.RecordAdminAudit(ctx, "create.session", "session", created.ID, "title="+created.Title)
 	return toProtoSession(created), nil
 }
 
@@ -248,7 +248,7 @@ func (s *SessionService) UpdateSession(ctx context.Context, req *v1.UpdateSessio
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}
-	biz.RecordAdminAudit(ctx, s.mon, "update.session", "session", req.GetId(), "fields updated")
+	s.mon.RecordAdminAudit(ctx, "update.session", "session", req.GetId(), "fields updated")
 	return toProtoSession(out), nil
 }
 
@@ -257,7 +257,7 @@ func (s *SessionService) DeleteSession(ctx context.Context, req *v1.DeleteSessio
 	if err := s.uc.Delete(ctx, req.GetId()); err != nil {
 		return nil, mapSessionErr(err)
 	}
-	biz.RecordAdminAudit(ctx, s.mon, "delete.session", "session", req.GetId(), "single delete")
+	s.mon.RecordAdminAudit(ctx, "delete.session", "session", req.GetId(), "single delete")
 	return &emptypb.Empty{}, nil
 }
 
@@ -266,7 +266,7 @@ func (s *SessionService) ArchiveSession(ctx context.Context, req *v1.ArchiveSess
 	if err := s.uc.Archive(ctx, req.GetId()); err != nil {
 		return nil, mapSessionErr(err)
 	}
-	biz.RecordAdminAudit(ctx, s.mon, "archive.session", "session", req.GetId(), "single archive")
+	s.mon.RecordAdminAudit(ctx, "archive.session", "session", req.GetId(), "single archive")
 	return &emptypb.Empty{}, nil
 }
 
@@ -285,7 +285,7 @@ func (s *SessionService) PinSession(ctx context.Context, req *v1.PinSessionReque
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}
-	biz.RecordAdminAudit(ctx, s.mon, "pin.session", "session", req.GetId(), "pin")
+	s.mon.RecordAdminAudit(ctx, "pin.session", "session", req.GetId(), "pin")
 	return toProtoSession(out), nil
 }
 
@@ -295,7 +295,7 @@ func (s *SessionService) UnpinSession(ctx context.Context, req *v1.UnpinSessionR
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}
-	biz.RecordAdminAudit(ctx, s.mon, "unpin.session", "session", req.GetId(), "unpin")
+	s.mon.RecordAdminAudit(ctx, "unpin.session", "session", req.GetId(), "unpin")
 	return toProtoSession(out), nil
 }
 

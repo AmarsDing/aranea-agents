@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/channel/discord"
 	"aranea-agents/internal/channel/dingtalk"
+	"aranea-agents/internal/channel/discord"
 	"aranea-agents/internal/channel/lark"
 	"aranea-agents/internal/channel/line"
 	"aranea-agents/internal/channel/mattermost"
@@ -103,7 +103,7 @@ func outboundSlack(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds 
 	if err != nil {
 		return err
 	}
-	return (&slack.TextSender{BotToken: token, HTTP: h.http}).SendText(ctx, payload.Recipient, payload.Text)
+	return (&slack.TextSender{BotToken: token, HTTP: h.http, Lg: h.lg}).SendText(ctx, payload.Recipient, payload.Text)
 }
 
 func outboundTelegram(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
@@ -111,7 +111,7 @@ func outboundTelegram(ctx context.Context, h *ChannelIngress, _ biz.Channel, cre
 	if err != nil {
 		return err
 	}
-	return (&telegram.TextSender{BotToken: token, HTTP: h.http}).SendText(ctx, payload.Recipient, payload.Text)
+	return (&telegram.TextSender{BotToken: token, HTTP: h.http, Lg: h.lg}).SendText(ctx, payload.Recipient, payload.Text)
 }
 
 func outboundDiscord(ctx context.Context, h *ChannelIngress, _ biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
@@ -124,7 +124,7 @@ func outboundDiscord(ctx context.Context, h *ChannelIngress, _ biz.Channel, cred
 
 func outboundPersonalQQ(ctx context.Context, h *ChannelIngress, chRow biz.Channel, creds []biz.ChannelCredential, payload biz.ChannelOutboundPayload) error {
 	sendToken, _ := resolveCredentialPlain(ctx, h.channels, creds, "send_token", h.lg)
-	httpServer := oneBotHTTPServer(chRow.ConfigJSON)
+	httpServer := oneBotHTTPServer(chRow.ConfigJSON, h.lg)
 	return (&onebot.TextSender{
 		HTTPServer: httpServer,
 		SendToken:  sendToken,
@@ -147,7 +147,7 @@ func outboundQQ(ctx context.Context, h *ChannelIngress, chRow biz.Channel, creds
 		return err
 	}
 	return (&qq.TextSender{
-		AppID:     qqAppID(chRow.ConfigJSON),
+		AppID:     qqAppID(chRow.ConfigJSON, h.lg),
 		AppSecret: appSecret,
 	}).SendText(ctx, payload.Recipient, payload.Text, payload.Extra)
 }

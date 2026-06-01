@@ -3,6 +3,8 @@ package testexec
 import (
 	"context"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestClampTimeout(t *testing.T) {
@@ -128,46 +130,46 @@ func TestCatalogToolNames(t *testing.T) {
 
 func TestMergeConfigJSON(t *testing.T) {
 	tests := []struct {
-		name      string
-		base      string
-		deflt     string
-		want      map[string]any
+		name  string
+		base  string
+		deflt string
+		want  map[string]any
 	}{
 		{
-			name:      "both empty",
-			base:      "",
-			deflt:     "",
-			want:      map[string]any{},
+			name:  "both empty",
+			base:  "",
+			deflt: "",
+			want:  map[string]any{},
 		},
 		{
-			name:      "base only",
-			base:      `{"a":"1"}`,
-			deflt:     "",
-			want:      map[string]any{"a": "1"},
+			name:  "base only",
+			base:  `{"a":"1"}`,
+			deflt: "",
+			want:  map[string]any{"a": "1"},
 		},
 		{
-			name:      "default only",
-			base:      "",
-			deflt:     `{"b":"2"}`,
-			want:      map[string]any{"b": "2"},
+			name:  "default only",
+			base:  "",
+			deflt: `{"b":"2"}`,
+			want:  map[string]any{"b": "2"},
 		},
 		{
-			name:      "both present default overwrites",
-			base:      `{"a":"1"}`,
-			deflt:     `{"a":"2","c":"3"}`,
-			want:      map[string]any{"a": "2", "c": "3"},
+			name:  "both present default overwrites",
+			base:  `{"a":"1"}`,
+			deflt: `{"a":"2","c":"3"}`,
+			want:  map[string]any{"a": "2", "c": "3"},
 		},
 		{
-			name:      "invalid base json",
-			base:      `{bad`,
-			deflt:     `{"b":"2"}`,
-			want:      map[string]any{"b": "2"},
+			name:  "invalid base json",
+			base:  `{bad`,
+			deflt: `{"b":"2"}`,
+			want:  map[string]any{"b": "2"},
 		},
 		{
-			name:      "empty object literal",
-			base:      `{}`,
-			deflt:     `{"b":"2"}`,
-			want:      map[string]any{"b": "2"},
+			name:  "empty object literal",
+			base:  `{}`,
+			deflt: `{"b":"2"}`,
+			want:  map[string]any{"b": "2"},
 		},
 	}
 
@@ -188,12 +190,12 @@ func TestMergeConfigJSON(t *testing.T) {
 
 func TestOpenAPISpecFromCatalogTool(t *testing.T) {
 	tests := []struct {
-		name      string
-		tool      CatalogTool
-		wantOK    bool
-		wantName  string
-		wantURL   string
-		wantData  string
+		name     string
+		tool     CatalogTool
+		wantOK   bool
+		wantName string
+		wantURL  string
+		wantData string
 	}{
 		{
 			name:   "empty metadata",
@@ -282,11 +284,11 @@ func TestOpenAPISpecFromCatalogTool(t *testing.T) {
 
 func TestAssemblyForCatalogKey_moreCases(t *testing.T) {
 	tests := []struct {
-		name       string
-		key        string
-		merged     map[string]any
-		wantOK     bool
-		wantTool   string
+		name     string
+		key      string
+		merged   map[string]any
+		wantOK   bool
+		wantTool string
 	}{
 		{name: "empty key", key: "", merged: nil, wantOK: false},
 		{name: "whitespace key", key: "  ", merged: nil, wantOK: false},
@@ -320,7 +322,7 @@ func TestAssemblyForCatalogKey_moreCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg, ok := AssemblyForCatalogKey(tt.key, tt.merged, nil)
+			cfg, ok := AssemblyForCatalogKey(tt.key, tt.merged, nil, loggateway.NewNoop())
 			if ok != tt.wantOK {
 				t.Fatalf("ok=%v wantOK=%v", ok, tt.wantOK)
 			}
@@ -339,9 +341,9 @@ func TestAssemblyForCatalogKey_moreCases(t *testing.T) {
 
 func TestAssemblyForCatalogKey_googleSearchKeys(t *testing.T) {
 	cfg, ok := AssemblyForCatalogKey("google_search", map[string]any{
-		"google_api_key": "gkey",
+		"google_api_key":   "gkey",
 		"search_engine_id": "scx",
-	}, nil)
+	}, nil, loggateway.NewNoop())
 	if !ok {
 		t.Fatal("expected ok")
 	}
@@ -356,7 +358,7 @@ func TestAssemblyForCatalogKey_googleSearchKeys(t *testing.T) {
 func TestAssemblyForCatalogKey_claudeCodeDir(t *testing.T) {
 	cfg, ok := AssemblyForCatalogKey("claude_code", map[string]any{
 		"claude_code_dir": "/my/dir",
-	}, nil)
+	}, nil, loggateway.NewNoop())
 	if !ok {
 		t.Fatal("expected ok")
 	}
@@ -368,7 +370,7 @@ func TestAssemblyForCatalogKey_claudeCodeDir(t *testing.T) {
 func TestAssemblyForCatalogKey_geminiModel(t *testing.T) {
 	cfg, ok := AssemblyForCatalogKey("gemini_web_fetch", map[string]any{
 		"model": "gemini-pro",
-	}, nil)
+	}, nil, loggateway.NewNoop())
 	if !ok {
 		t.Fatal("expected ok")
 	}
@@ -392,7 +394,7 @@ func TestAssemblyForCatalogKey_filesystemDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg, ok := AssemblyForCatalogKey(tt.key, tt.merged, nil)
+			cfg, ok := AssemblyForCatalogKey(tt.key, tt.merged, nil, loggateway.NewNoop())
 			if !ok {
 				t.Fatal("expected ok")
 			}
@@ -418,7 +420,7 @@ func TestAssemblyForCatalogKey_shellExecDir(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg, ok := AssemblyForCatalogKey("shell_exec", tt.merged, nil)
+			cfg, ok := AssemblyForCatalogKey("shell_exec", tt.merged, nil, loggateway.NewNoop())
 			if !ok {
 				t.Fatal("expected ok")
 			}
@@ -469,7 +471,7 @@ func TestExecute_validation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := Execute(context.Background(), tt.tool, "{}", 30, nil)
+			_, err := Execute(context.Background(), tt.tool, "{}", 30, nil, loggateway.NewNoop())
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("err=%v wantErr=%v", err, tt.wantErr)
 			}
@@ -541,10 +543,10 @@ func TestPreviewValue_truncation(t *testing.T) {
 
 func TestAssemblyForCatalogKey_googleSearchAlternativeKeys(t *testing.T) {
 	cfg, ok := AssemblyForCatalogKey("google_search", map[string]any{
-		"api_key":    "ak",
-		"engine_id":  "ei",
-		"google_cx":  "gcx",
-	}, nil)
+		"api_key":   "ak",
+		"engine_id": "ei",
+		"google_cx": "gcx",
+	}, nil, loggateway.NewNoop())
 	if !ok {
 		t.Fatal("expected ok")
 	}
@@ -573,7 +575,7 @@ func TestOpenAPISpecFromCatalogTool_dataFallback(t *testing.T) {
 func TestAssemblyForCatalogKey_claudeCodeAlternativeDirKeys(t *testing.T) {
 	cfg, ok := AssemblyForCatalogKey("claude_code", map[string]any{
 		"working_dir": "/alt/dir",
-	}, nil)
+	}, nil, loggateway.NewNoop())
 	if !ok {
 		t.Fatal("expected ok")
 	}
@@ -583,7 +585,7 @@ func TestAssemblyForCatalogKey_claudeCodeAlternativeDirKeys(t *testing.T) {
 }
 
 func TestExecute_unsupportedTool(t *testing.T) {
-	_, err := Execute(context.Background(), CatalogTool{Key: "totally_unknown_tool"}, "{}", 30, nil)
+	_, err := Execute(context.Background(), CatalogTool{Key: "totally_unknown_tool"}, "{}", 30, nil, loggateway.NewNoop())
 	if err == nil {
 		t.Fatal("expected error for unsupported tool")
 	}

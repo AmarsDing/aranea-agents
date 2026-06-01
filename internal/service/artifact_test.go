@@ -7,9 +7,11 @@ import (
 	"testing"
 
 	v1 "aranea-agents/api/kratos/artifact/v1"
+	"aranea-agents/internal/artifact"
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/service"
+	"aranea-agents/pkg/loggateway"
 )
 
 // memArtifactRepo is an in-memory ArtifactRepo for service tests.
@@ -85,7 +87,8 @@ func (m *memArtifactRepo) ListBySessionAndName(_ context.Context, sessionID, nam
 func newArtifactService() *service.ArtifactService {
 	repo := newMemArtifactRepo()
 	uc := biz.NewArtifactUsecase(repo)
-	return service.NewArtifactService(uc)
+	signer := artifact.NewSigner(loggateway.NewNoop())
+	return service.NewArtifactService(uc, signer)
 }
 
 func TestArtifactService_Upload_Get_Delete(t *testing.T) {

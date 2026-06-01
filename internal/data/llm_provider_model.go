@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/llmprovidermodel"
 	"aranea-agents/internal/data/ent/modelpricingrule"
+	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
 )
@@ -27,7 +28,7 @@ func NewLlmProviderModelRepo(d *Data) biz.LlmProviderModelRepo {
 	return &llmProviderModelRepo{data: d}
 }
 
-func entToBizPM(e *ent.LlmProviderModel) biz.ProviderModel {
+func entToBizPM(lg loggateway.Logger, e *ent.LlmProviderModel) biz.ProviderModel {
 	if e == nil {
 		return biz.ProviderModel{}
 	}
@@ -54,7 +55,7 @@ func entToBizPM(e *ent.LlmProviderModel) biz.ProviderModel {
 			TextOnly: e.CapabilityTextOnly,
 		},
 		CapabilitiesExplicit: e.CapabilitiesExplicit,
-		PricingConfigured:    configJSONHasPricing(e.ConfigJSON),
+		PricingConfigured:    configJSONHasPricing(lg, e.ConfigJSON),
 		CreatedAt:            e.CreatedAt,
 		UpdatedAt:            e.UpdatedAt,
 		DeletedAt:            e.DeletedAt,
@@ -74,7 +75,7 @@ func (r *llmProviderModelRepo) ListProviderModels(ctx context.Context) ([]biz.Pr
 	}
 	out := make([]biz.ProviderModel, 0, len(rows))
 	for _, e := range rows {
-		out = append(out, entToBizPM(e))
+		out = append(out, entToBizPM(r.data.lg, e))
 	}
 	return out, nil
 }
@@ -89,7 +90,7 @@ func (r *llmProviderModelRepo) GetProviderModel(ctx context.Context, id string) 
 		}
 		return biz.ProviderModel{}, err
 	}
-	return entToBizPM(row), nil
+	return entToBizPM(r.data.lg, row), nil
 }
 
 func (r *llmProviderModelRepo) GetProviderModelByProviderAndModel(ctx context.Context, provider, model string) (biz.ProviderModel, error) {
@@ -107,7 +108,7 @@ func (r *llmProviderModelRepo) GetProviderModelByProviderAndModel(ctx context.Co
 		}
 		return biz.ProviderModel{}, err
 	}
-	return entToBizPM(row), nil
+	return entToBizPM(r.data.lg, row), nil
 }
 
 func (r *llmProviderModelRepo) ValidateProviderPair(ctx context.Context, provider, model string) (bool, error) {
@@ -159,7 +160,7 @@ func (r *llmProviderModelRepo) CreateProviderModel(ctx context.Context, m biz.Pr
 	if err != nil {
 		return biz.ProviderModel{}, err
 	}
-	return entToBizPM(saved), nil
+	return entToBizPM(r.data.lg, saved), nil
 }
 
 func (r *llmProviderModelRepo) UpdateProviderModel(ctx context.Context, m biz.ProviderModel) (biz.ProviderModel, error) {
@@ -309,7 +310,7 @@ func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule 
 	return tx.Commit()
 }
 
-func configJSONHasPricing(cfg string) bool {
+func configJSONHasPricing(lg loggateway.Logger, cfg string) bool {
 	cfg = strings.TrimSpace(cfg)
 	if cfg == "" || cfg == "{}" {
 		return false
@@ -329,7 +330,8 @@ func configJSONHasPricing(cfg string) bool {
 			EmbeddingUSDPer1M  float64 `json:"embedding_usd_per_1m"`
 		} `json:"cost"`
 	}
-	if json.Unmarshal([]byte(cfg), &m) != nil {
+	if err := json.Unmarshal([]byte(cfg), &m); err != nil {
+		lg.Warn("unmarshal provider model config failed", loggateway.StepID("data.llm_provider_model"), loggateway.Err(err))
 		return false
 	}
 	if m.InputPriceMicroUSDPer1K > 0 || m.OutputPriceMicroUSDPer1K > 0 ||

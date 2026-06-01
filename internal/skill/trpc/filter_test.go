@@ -3,6 +3,8 @@ package trpc
 import (
 	"testing"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestCanonicalSlug(t *testing.T) {
@@ -18,21 +20,21 @@ func TestCanonicalSlug(t *testing.T) {
 }
 
 func TestNewDBRepositoryAdapter_DefaultTTL(t *testing.T) {
-	adapter := NewDBRepositoryAdapter(nil, 0)
+	adapter := NewDBRepositoryAdapter(nil, 0, loggateway.NewNoop())
 	if adapter.ttl != 2*time.Minute {
 		t.Fatalf("expected 2m default TTL, got %v", adapter.ttl)
 	}
 }
 
 func TestNewDBRepositoryAdapter_CustomTTL(t *testing.T) {
-	adapter := NewDBRepositoryAdapter(nil, 5*time.Minute)
+	adapter := NewDBRepositoryAdapter(nil, 5*time.Minute, loggateway.NewNoop())
 	if adapter.ttl != 5*time.Minute {
 		t.Fatalf("expected 5m TTL, got %v", adapter.ttl)
 	}
 }
 
 func TestDBRepositoryAdapter_Invalidate(t *testing.T) {
-	adapter := NewDBRepositoryAdapter(nil, time.Minute)
+	adapter := NewDBRepositoryAdapter(nil, time.Minute, loggateway.NewNoop())
 	now := time.Now()
 	adapter.loaded = now
 	adapter.Invalidate()
@@ -52,7 +54,7 @@ func TestNewFSRepositoryAdapter_InvalidRoot(t *testing.T) {
 }
 
 func TestWrapWithArtifactSave_Nil(t *testing.T) {
-	result := WrapWithArtifactSave(nil)
+	result := WrapWithArtifactSave(nil, loggateway.Global())
 	if result != nil {
 		t.Fatal("expected nil for nil input")
 	}

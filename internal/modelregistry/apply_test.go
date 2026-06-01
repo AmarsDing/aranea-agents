@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type stubApplyBackend struct {
@@ -77,7 +79,7 @@ func TestApplier_metadataAndPricing(t *testing.T) {
 			},
 		},
 	}
-	res := NewApplier(backend).Apply(context.Background(), cat, "metadata_and_pricing")
+	res := NewApplier(backend, loggateway.NewNoop()).Apply(context.Background(), cat, "metadata_and_pricing")
 	if res.LLMRowsUpdated != 1 {
 		t.Fatalf("expected 1 update, got %d errors=%v", res.LLMRowsUpdated, res.Errors)
 	}
@@ -110,7 +112,7 @@ func TestApplier_skipsCustom(t *testing.T) {
 		}},
 	}
 	cat := Directory{"openai": {ID: "openai", Models: map[string]Model{"gpt-4o": {ID: "gpt-4o"}}}}
-	res := NewApplier(backend).Apply(context.Background(), cat, "metadata_and_pricing")
+	res := NewApplier(backend, loggateway.NewNoop()).Apply(context.Background(), cat, "metadata_and_pricing")
 	if res.LLMRowsUpdated != 0 || len(backend.saved) != 0 {
 		t.Fatalf("custom row should skip: saved=%d", len(backend.saved))
 	}
@@ -139,7 +141,7 @@ func TestApplier_ApplyWithMigration(t *testing.T) {
 			},
 		},
 	}
-	res := NewApplier(backend).ApplyWithMigration(context.Background(), cat, "metadata_and_pricing")
+	res := NewApplier(backend, loggateway.NewNoop()).ApplyWithMigration(context.Background(), cat, "metadata_and_pricing")
 	if res.LLMRowsUpdated != 1 {
 		t.Errorf("expected 1 LLM row updated, got %d", res.LLMRowsUpdated)
 	}
@@ -158,7 +160,7 @@ func TestApplier_ApplyWithMigration_noneMode(t *testing.T) {
 		}},
 	}
 	cat := Directory{"openai": {ID: "openai", Models: map[string]Model{"gpt-4o": {ID: "gpt-4o"}}}}
-	res := NewApplier(backend).ApplyWithMigration(context.Background(), cat, "none")
+	res := NewApplier(backend, loggateway.NewNoop()).ApplyWithMigration(context.Background(), cat, "none")
 	if res.LLMRowsUpdated != 0 {
 		t.Errorf("none mode should skip apply, got %d", res.LLMRowsUpdated)
 	}
@@ -166,7 +168,7 @@ func TestApplier_ApplyWithMigration_noneMode(t *testing.T) {
 
 func TestApplier_Apply_emptyDirectory(t *testing.T) {
 	backend := &stubApplyBackend{}
-	res := NewApplier(backend).Apply(context.Background(), nil, "metadata_and_pricing")
+	res := NewApplier(backend, loggateway.NewNoop()).Apply(context.Background(), nil, "metadata_and_pricing")
 	if res.LLMRowsUpdated != 0 {
 		t.Errorf("empty directory should produce 0 updates, got %d", res.LLMRowsUpdated)
 	}
@@ -177,7 +179,7 @@ func TestApplier_Apply_noneMode(t *testing.T) {
 		rows: []ApplyRow{{ID: "1", Provider: "openai", Model: "gpt-4o", ConfigJSON: `{}`}},
 	}
 	cat := Directory{"openai": {ID: "openai", Models: map[string]Model{"gpt-4o": {ID: "gpt-4o"}}}}
-	res := NewApplier(backend).Apply(context.Background(), cat, "")
+	res := NewApplier(backend, loggateway.NewNoop()).Apply(context.Background(), cat, "")
 	if res.LLMRowsUpdated != 0 {
 		t.Errorf("empty mode should skip, got %d", res.LLMRowsUpdated)
 	}
@@ -203,7 +205,7 @@ func TestApplier_Apply_deprecatedModel(t *testing.T) {
 			},
 		},
 	}
-	res := NewApplier(backend).Apply(context.Background(), cat, "metadata_and_pricing")
+	res := NewApplier(backend, loggateway.NewNoop()).Apply(context.Background(), cat, "metadata_and_pricing")
 	if res.LLMRowsDisabled != 1 {
 		t.Errorf("deprecated model should be disabled, got %d", res.LLMRowsDisabled)
 	}

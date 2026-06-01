@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/loggateway"
+
 	"github.com/google/uuid"
 )
 
@@ -158,7 +160,7 @@ func (st *Store) UpdateCascadeProposalStatus(ctx context.Context, id, status, re
 			var row map[string]any
 			if json.Unmarshal(raw, &row) == nil {
 				meta := anyStr(row["metadata_json"])
-				merged := mergeCascadeReviewNote(meta, status, note)
+				merged := mergeCascadeReviewNote(meta, status, note, st.lg)
 				_, _ = st.client.ExecContext(ctx,
 					`UPDATE memory_cascade_proposals SET metadata_json = ? WHERE id = ?`,
 					merged, id)
@@ -183,9 +185,12 @@ func (st *Store) UpdateCascadeProposalStatus(ctx context.Context, id, status, re
 	return st.GetCascadeProposalRow(ctx, id)
 }
 
-func mergeCascadeReviewNote(metaJSON, status, note string) string {
+func mergeCascadeReviewNote(metaJSON, status, note string, lg loggateway.Logger) string {
 	var m map[string]any
-	if err := json.Unmarshal([]byte(strings.TrimSpace(metaJSON)), &m); err != nil || m == nil {
+	if err := json.Unmarshal([]byte(strings.TrimSpace(metaJSON)), &m); err != nil {
+		lg.Warn("session memory json unmarshal failed", loggateway.StepID("data.sessionmemory"), loggateway.Err(err))
+		m = map[string]any{}
+	} else if m == nil {
 		m = map[string]any{}
 	}
 	m["review_status"] = status

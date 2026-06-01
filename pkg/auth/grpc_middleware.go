@@ -26,21 +26,21 @@ func GRPCMiddleware() middleware.Middleware {
 			// Bypass mode: inject dev principal and continue.
 			if HTTPAuthBypassEnabled() {
 				loggateway.Global().Warn("auth bypass active: injecting dev principal (gRPC)",
-					loggateway.StepID("system.auth.bypass"))
+					loggateway.StepID("auth.bypass"))
 				return handler(NewContext(ctx, DevBypassPrincipal()), req)
 			}
 
 			token := grpcBearerToken(ctx)
 			if token == "" {
 				loggateway.Global().Info("gRPC request without credentials (internal-only)",
-					loggateway.StepID("system.grpc.unauthenticated"))
+					loggateway.StepID("grpc.unauthenticated"))
 				return handler(ctx, req)
 			}
 
 			auth, err := ParseToken(token, authSecretKey)
 			if err != nil {
 				loggateway.Global().Warn("gRPC auth rejected: token parse failed",
-					loggateway.StepID("system.grpc.token_invalid"), loggateway.Err(err))
+					loggateway.StepID("grpc.token_invalid"), loggateway.Err(err))
 				return nil, ErrUnauthorized
 			}
 			return handler(NewContext(ctx, auth), req)

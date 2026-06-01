@@ -97,7 +97,7 @@ func TestCredentialCrypto_IsAvailable(t *testing.T) {
 		t.Fatal("expected IsAvailable=false with no resolver and no env")
 	}
 
-	resolver := func(ctx context.Context) ([]byte, error) { return nil, nil }
+	resolver := CredentialKeyResolver(func(ctx context.Context) ([]byte, error) { return nil, nil })
 	c2 := NewCredentialCrypto(resolver, loggateway.NewNoop())
 	if !c2.IsAvailable() {
 		t.Fatal("expected IsAvailable=true with resolver")

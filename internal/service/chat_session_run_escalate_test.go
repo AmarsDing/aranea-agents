@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 type escalateSessionRunRepoStub struct {
@@ -94,6 +95,7 @@ func TestEscalateSessionRun_ownershipDenied(t *testing.T) {
 		},
 	}
 	svc := &ChatService{
+		lg: loggateway.NewNoop(),
 		orch: &ChatOrchestrator{
 			chTurn: ChannelTurnDeps{
 				SessionRuns: biz.NewSessionRunUsecase(repo, nil, nil),
@@ -123,6 +125,7 @@ func TestEscalateSessionRun_ownershipAllowed(t *testing.T) {
 	}
 	cps := &escalateCheckpointRepoStub{cps: map[string]biz.SessionRunCheckpoint{}}
 	svc := &ChatService{
+		lg: loggateway.NewNoop(),
 		orch: &ChatOrchestrator{
 			chTurn: ChannelTurnDeps{
 				SessionRuns: biz.NewSessionRunUsecase(repo, cps, nil),

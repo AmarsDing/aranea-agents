@@ -29,7 +29,7 @@ var _ trpcplugin.Plugin = (*CostGuardPlugin)(nil)
 
 func NewCostGuardPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime, lg loggateway.Logger) *CostGuardPlugin {
 	var cfg CostGuardConfig
-	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
 	return &CostGuardPlugin{base: newBasePlugin(p.Key, stats, bus, lg), cfg: cfg, rt: rt}
 }
 

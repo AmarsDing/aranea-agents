@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	trpcevalset "trpc.group/trpc-go/trpc-agent-go/evaluation/evalset"
 )
@@ -33,10 +34,10 @@ func expectedToolsFromMeta(meta CaseMetadata) []*trpcevalset.Tool {
 	return out
 }
 
-func enrichEvalCase(c biz.EvalCase, ec *trpcevalset.EvalCase) {
-	meta := ParseCaseMetadata(c.MetadataJSON)
+func enrichEvalCase(c biz.EvalCase, ec *trpcevalset.EvalCase, lg loggateway.Logger) {
+	meta := ParseCaseMetadata(c.MetadataJSON, lg)
 	if ec.ConversationScenario == nil && meta.HasLLMSimulation() {
-		enrichConversationScenario(&c, ec)
+		enrichConversationScenario(&c, ec, lg)
 	}
 	if len(ec.Conversation) > 0 {
 		attachExpectedTools(ec.Conversation[len(ec.Conversation)-1], meta)

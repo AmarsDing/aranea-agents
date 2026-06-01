@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/modelregistry"
+	"aranea-agents/pkg/loggateway"
 )
 
 type stubBackend struct {
@@ -12,7 +13,7 @@ type stubBackend struct {
 
 func TestBuildPhases_ReturnsAllPhases(t *testing.T) {
 	backend := &stubBackend{}
-	phases := BuildPhases(backend)
+	phases := BuildPhases(backend, loggateway.NewNoop())
 	if phases == nil {
 		t.Fatal("expected non-nil phases")
 	}
@@ -32,7 +33,7 @@ func TestBuildPhases_ReturnsAllPhases(t *testing.T) {
 
 func TestPhases_List_ReturnsThreePhases(t *testing.T) {
 	backend := &stubBackend{}
-	phases := BuildPhases(backend)
+	phases := BuildPhases(backend, loggateway.NewNoop())
 	list := phases.List()
 	if len(list) != 3 {
 		t.Errorf("expected 3 phases in List, got %d", len(list))
@@ -41,7 +42,7 @@ func TestPhases_List_ReturnsThreePhases(t *testing.T) {
 
 func TestPhases_LogoPhase(t *testing.T) {
 	backend := &stubBackend{}
-	phases := BuildPhases(backend)
+	phases := BuildPhases(backend, loggateway.NewNoop())
 	logo := phases.LogoPhase()
 	if logo == nil {
 		t.Fatal("expected logo phase")
@@ -53,7 +54,7 @@ func TestPhases_LogoPhase(t *testing.T) {
 
 func TestRegisterAll_ReturnsFourTools(t *testing.T) {
 	backend := &stubBackend{}
-	phases := BuildPhases(backend)
+	phases := BuildPhases(backend, loggateway.NewNoop())
 	deps := Deps{
 		Phases:        phases,
 		StoreProvider: nil,
@@ -67,7 +68,7 @@ func TestRegisterAll_ReturnsFourTools(t *testing.T) {
 
 func TestPhaseNames(t *testing.T) {
 	backend := &stubBackend{}
-	phases := BuildPhases(backend)
+	phases := BuildPhases(backend, loggateway.NewNoop())
 
 	if phases.fetchPhase.Name() != "fetch" {
 		t.Errorf("expected fetch phase name 'fetch', got %q", phases.fetchPhase.Name())
@@ -85,7 +86,7 @@ func TestPhaseNames(t *testing.T) {
 
 func TestPhaseTimeouts(t *testing.T) {
 	backend := &stubBackend{}
-	phases := BuildPhases(backend)
+	phases := BuildPhases(backend, loggateway.NewNoop())
 
 	if phases.fetchPhase.Timeout() <= 0 {
 		t.Error("fetch phase should have positive timeout")

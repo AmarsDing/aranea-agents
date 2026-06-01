@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/loggateway"
 )
 
 // ensureMemoryFactsIndexStatusPatches adds the MEM-OPT-01 Phase 0 columns to
@@ -13,17 +14,15 @@ import (
 // consistency so the read path and a future MemoryFactIndexReconciler cron can
 // detect and re-sync stale facts after Cascade Approve / fact updates that
 // fail to propagate to the index.
-func ensureMemoryFactsIndexStatusPatches(ctx context.Context, c *ent.Client) error {
+func ensureMemoryFactsIndexStatusPatches(ctx context.Context, c *ent.Client, lg loggateway.Logger) error {
 	if c == nil {
 		return nil
 	}
-	hasTable, err := sqliteTableExists(ctx, c, "memory_facts")
+	hasTable, err := sqliteTableExists(ctx, c, lg, "memory_facts")
 	if err != nil {
 		return err
 	}
 	if !hasTable {
-		// Fresh or legacy DBs without memory chain tables: memory_chain.sql creates
-		// memory_facts (with index_status columns) on the next EnsureSessionMemorySchema step.
 		return nil
 	}
 	patches := []struct {
@@ -36,19 +35,22 @@ func ensureMemoryFactsIndexStatusPatches(ctx context.Context, c *ent.Client) err
 		{"index_last_error", `ALTER TABLE memory_facts ADD COLUMN index_last_error TEXT NOT NULL DEFAULT ''`},
 	}
 	for _, p := range patches {
-		has, err := sqliteColumnExists(ctx, c, "memory_facts", p.column)
+		has, err := sqliteColumnExists(ctx, c, lg, "memory_facts", p.column)
 		if err != nil {
+			lg.Warn("memory facts index status patch check failed", loggateway.StepID("memory.schema_patch_fail"), loggateway.Err(err))
 			return err
 		}
 		if has {
 			continue
 		}
 		if _, err := c.ExecContext(ctx, p.ddl); err != nil {
+			lg.Warn("memory facts index status patch ddl failed", loggateway.StepID("memory.schema_patch_fail"), loggateway.Str("column", p.column), loggateway.Err(err))
 			return err
 		}
 	}
 	if _, err := c.ExecContext(ctx,
 		`CREATE INDEX IF NOT EXISTS idx_memory_facts_index_status ON memory_facts(index_status, index_synced_at)`); err != nil {
+		lg.Warn("memory facts index status index create failed", loggateway.StepID("memory.schema_patch_fail"), loggateway.Err(err))
 		return err
 	}
 
@@ -60,14 +62,16 @@ func ensureMemoryFactsIndexStatusPatches(ctx context.Context, c *ent.Client) err
 		{"quality_score", `ALTER TABLE memory_facts ADD COLUMN quality_score REAL NOT NULL DEFAULT 0`},
 	}
 	for _, p := range extraPatches {
-		has, err := sqliteColumnExists(ctx, c, "memory_facts", p.column)
+		has, err := sqliteColumnExists(ctx, c, lg, "memory_facts", p.column)
 		if err != nil {
+			lg.Warn("memory facts extra patch check failed", loggateway.StepID("memory.schema_patch_fail"), loggateway.Err(err))
 			return err
 		}
 		if has {
 			continue
 		}
 		if _, err := c.ExecContext(ctx, p.ddl); err != nil {
+			lg.Warn("memory facts extra patch ddl failed", loggateway.StepID("memory.schema_patch_fail"), loggateway.Str("column", p.column), loggateway.Err(err))
 			return err
 		}
 	}

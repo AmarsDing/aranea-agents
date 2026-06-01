@@ -34,7 +34,7 @@ func NewOutputPolicyPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, lg 
 	var cfg outputPolicyConfig
 	cfg.DangerousCommandCheck = true
 	cfg.BlockOnViolation = true
-	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
 	return &OutputPolicyPlugin{
 		base: newBasePlugin(p.Key, stats, bus, lg),
 		cfg:  cfg,

@@ -78,7 +78,7 @@ func (b *FrameworkBridge) Execute(
 	if _, err := evalSetMgr.Create(ctx, AppName, evalSetID); err != nil {
 		return nil, nil, 0, 0, fmt.Errorf("create eval set: %w", err)
 	}
-	es := BizCasesToEvalSet(dataset, cases)
+	es := BizCasesToEvalSet(dataset, cases, b.lg)
 	for _, c := range es.EvalCases {
 		if err := evalSetMgr.AddCase(ctx, AppName, evalSetID, c); err != nil {
 			return nil, nil, 0, 0, fmt.Errorf("add eval case: %w", err)
@@ -95,7 +95,7 @@ func (b *FrameworkBridge) Execute(
 		trpceval.WithRegistry(reg),
 	}
 	opts = append(opts, mrc.ToOptions()...)
-	if sim := resolveUserSimulator(cases, cfg, b.llmUserSim); sim != nil {
+	if sim := resolveUserSimulator(cases, cfg, b.llmUserSim, b.lg); sim != nil {
 		opts = append(opts, trpceval.WithUserSimulator(sim))
 	}
 

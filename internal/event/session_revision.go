@@ -36,23 +36,23 @@ type SessionRevisionReader interface {
 }
 
 // BumpAndPublishSessionRevision bumps revision after a completed turn (status=completed).
-func BumpAndPublishSessionRevision(ctx context.Context, bumper SessionRevisionBumper, bus Bus, sessionID, runID, turnID, source string) {
-	bumpAndPublishSessionRevision(ctx, bumper, bus, sessionID, runID, turnID, source, SessionRunStatusCompleted)
+func BumpAndPublishSessionRevision(ctx context.Context, bumper SessionRevisionBumper, bus Bus, sessionID, runID, turnID, source string, lg loggateway.Logger) {
+	bumpAndPublishSessionRevision(ctx, bumper, bus, sessionID, runID, turnID, source, SessionRunStatusCompleted, lg)
 }
 
 // BumpAndPublishSessionRevisionSync bumps revision after user message persist (status=sync).
 // Web clients must hydrate incrementally without treating this as turn completion.
-func BumpAndPublishSessionRevisionSync(ctx context.Context, bumper SessionRevisionBumper, bus Bus, sessionID, runID, turnID, source string) {
-	bumpAndPublishSessionRevision(ctx, bumper, bus, sessionID, runID, turnID, source, SessionRunStatusSync)
+func BumpAndPublishSessionRevisionSync(ctx context.Context, bumper SessionRevisionBumper, bus Bus, sessionID, runID, turnID, source string, lg loggateway.Logger) {
+	bumpAndPublishSessionRevision(ctx, bumper, bus, sessionID, runID, turnID, source, SessionRunStatusSync, lg)
 }
 
-func bumpAndPublishSessionRevision(ctx context.Context, bumper SessionRevisionBumper, bus Bus, sessionID, runID, turnID, source, status string) {
+func bumpAndPublishSessionRevision(ctx context.Context, bumper SessionRevisionBumper, bus Bus, sessionID, runID, turnID, source, status string, lg loggateway.Logger) {
 	if bumper == nil || bus == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
 	rev, err := bumper.BumpSessionRevision(ctx, sessionID)
 	if err != nil {
-		loggateway.Global().Warn("session_revision bump failed",
+		lg.Warn("session_revision bump failed",
 			loggateway.StepID("session.revision.bump"),
 			loggateway.Str("session_id", sessionID),
 			loggateway.Err(err))

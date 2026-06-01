@@ -62,7 +62,7 @@ func (r *monitorSyncReporter) ReportFilesystemSync(ctx context.Context, report S
 			Status:       severity,
 			MetadataJSON: string(meta),
 		})
-		biz.RecordAdminAudit(ctx, r.mon, "skill.filesystem.sync", "skill", slug, message)
+		r.mon.RecordAdminAudit(ctx, "skill.filesystem.sync", "skill", slug, message)
 	}
 	if r.bus != nil {
 		env := event.NewEnvelope(contract.EnvelopeType(eventKey), "skill.watch", "")

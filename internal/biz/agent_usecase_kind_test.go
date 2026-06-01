@@ -65,7 +65,7 @@ func TestAgentUsecase_UpdateRejectsKindChange(t *testing.T) {
 			ID:         "agent-1",
 			AgentKey:   "demo",
 			Kind:       AgentKindLLM,
-			ConfigJSON: EmbedAgentKindInConfigJSON("{}", AgentKindLLM, nil),
+			ConfigJSON: EmbedAgentKindInConfigJSON("{}", AgentKindLLM, nil, loggateway.NewNoop()),
 		},
 	}
 	uc := NewAgentUsecase(repo, nil, nil, loggateway.NewNoop())

@@ -4,9 +4,10 @@ import (
 	"context"
 
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/loggateway"
 )
 
-func ensureA2ARemoteHealthPatches(ctx context.Context, c *ent.Client) error {
+func ensureA2ARemoteHealthPatches(ctx context.Context, c *ent.Client, lg loggateway.Logger) error {
 	if c == nil {
 		return nil
 	}
@@ -19,7 +20,7 @@ func ensureA2ARemoteHealthPatches(ctx context.Context, c *ent.Client) error {
 		{"last_health_error", `ALTER TABLE a2a_remote_agents ADD COLUMN last_health_error TEXT NOT NULL DEFAULT ''`},
 	}
 	for _, p := range patches {
-		has, err := sqliteColumnExists(ctx, c, "a2a_remote_agents", p.col)
+		has, err := sqliteColumnExists(ctx, c, lg, "a2a_remote_agents", p.col)
 		if err != nil {
 			return err
 		}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 // CompileSnapshot is a backend compile result for Observatory / API responses.
@@ -21,13 +22,13 @@ type CompileSnapshot struct {
 }
 
 // BuildCompileSnapshot compiles OrchestrationSpec JSON to graph topology (embedded graph aware).
-func BuildCompileSnapshot(def Definition, rawDefinitionJSON string, agentKey CompileAgentKey) CompileSnapshot {
+func BuildCompileSnapshot(def Definition, rawDefinitionJSON string, agentKey CompileAgentKey, lg loggateway.Logger) CompileSnapshot {
 	mode := normalizeCompileMode(def.Mode)
 	snap := CompileSnapshot{
 		TemplateID: CompileTemplateID(def.Mode),
 		Mode:       mode,
 	}
-	cfg, err := compileToGraphBuildConfig(def, rawDefinitionJSON, agentKey)
+	cfg, err := compileToGraphBuildConfig(def, rawDefinitionJSON, agentKey, lg)
 	if err != nil {
 		snap.Valid = false
 		snap.CompileError = err.Error()

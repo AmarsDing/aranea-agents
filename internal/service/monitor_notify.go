@@ -44,7 +44,7 @@ func (n *MonitorAlertNotifier) Notify(ctx context.Context, rule biz.MonitorAlert
 			if err := postAlertWebhook(url, payload); err != nil {
 				webhookStatus = "error"
 				n.lg.Warn("告警 Webhook 发送失败",
-					loggateway.StepID("system.monitor.alert_webhook_fail"),
+					loggateway.StepID("monitor.alert_webhook_fail"),
 					loggateway.Str("rule_id", rule.ID),
 					loggateway.Err(err),
 				)
@@ -56,7 +56,7 @@ func (n *MonitorAlertNotifier) Notify(ctx context.Context, rule biz.MonitorAlert
 			if err := n.notifyViaChannel(bg, chID, rule, payload); err != nil {
 				channelStatus = "error"
 				n.lg.Warn("告警通道发送失败",
-					loggateway.StepID("system.monitor.alert_channel_fail"),
+					loggateway.StepID("monitor.alert_channel_fail"),
 					loggateway.Str("rule_id", rule.ID),
 					loggateway.Str("channel_id", chID),
 					loggateway.Err(err),

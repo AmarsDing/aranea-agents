@@ -6,6 +6,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/team/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 type deadLetterTeamRepo struct {
@@ -42,6 +43,9 @@ func (r *deadLetterTeamRepo) UpdateTeamRunTraceID(context.Context, string, strin
 func (r *deadLetterTeamRepo) UpdateTeamRunSummaryJSON(context.Context, string, string) error { return nil }
 func (r *deadLetterTeamRepo) CreateTeamRunStep(context.Context, biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return biz.TeamRunStep{}, nil
+}
+func (r *deadLetterTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
 }
 func (r *deadLetterTeamRepo) BatchCreateOrchestrationSteps(context.Context, []biz.OrchestrationStep) error {
 	return nil
@@ -80,7 +84,7 @@ func (r *deadLetterTeamRepo) ResolveTaskDeadLetter(_ context.Context, id string)
 }
 
 func TestTeamService_ListTaskDeadLetters_requiresScope(t *testing.T) {
-	svc := NewTeamService(biz.NewTeamUsecase(&deadLetterTeamRepo{}, nil), nil, nil, nil, nil, nil, nil)
+	svc := NewTeamService(biz.NewTeamUsecase(&deadLetterTeamRepo{}, nil), nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	_, err := svc.ListTaskDeadLetters(context.Background(), &v1.ListTaskDeadLettersRequest{})
 	if err == nil {
 		t.Fatal("expected validation error")
@@ -91,7 +95,7 @@ func TestTeamService_ListAndResolveTaskDeadLetters(t *testing.T) {
 	repo := &deadLetterTeamRepo{items: []biz.TaskDeadLetter{{
 		ID: "dl-1", SessionID: "sess-1", Status: biz.TaskDeadLetterStatusPending, SourceType: "team_run",
 	}}}
-	svc := NewTeamService(biz.NewTeamUsecase(repo, nil), nil, nil, nil, nil, nil, nil)
+	svc := NewTeamService(biz.NewTeamUsecase(repo, nil), nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 	resp, err := svc.ListTaskDeadLetters(context.Background(), &v1.ListTaskDeadLettersRequest{
 		SessionId: "sess-1",
 		Status:    biz.TaskDeadLetterStatusPending,

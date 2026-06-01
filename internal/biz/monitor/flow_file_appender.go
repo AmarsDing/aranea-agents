@@ -81,7 +81,7 @@ func (a *FlowFileAppender) Start(ctx context.Context, buses ...contract.Bus) {
 		return
 	}
 	if err := os.MkdirAll(a.dir, 0755); err != nil {
-		a.lg.Warn("FlowFileAppender: mkdir failed", loggateway.StepID("system.monitor.flow_file.mkdir_fail"), loggateway.Str("dir", a.dir), loggateway.Err(err))
+		a.lg.Warn("FlowFileAppender: mkdir failed", loggateway.StepID("monitor.flow_file.mkdir_fail"), loggateway.Str("dir", a.dir), loggateway.Err(err))
 		return
 	}
 	opts := contract.SubscribeOptions{
@@ -141,7 +141,7 @@ func (a *FlowFileAppender) maintenance() {
 	a.purgeTmpFiles()
 	if compressed > 0 || purged > 0 {
 		a.lg.Info("FlowFileAppender maintenance completed",
-			loggateway.StepID("system.monitor.flow_file.maintenance"),
+			loggateway.StepID("monitor.flow_file.maintenance"),
 			loggateway.Str("compressed", fmt.Sprint(compressed)), loggateway.Str("purged", fmt.Sprint(purged)))
 	}
 }
@@ -335,7 +335,7 @@ func (a *FlowFileAppender) ensureFile(slot **rotatingFile, prefix string) *rotat
 	fullPath := filepath.Join(a.dir, path)
 	f, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		a.lg.Warn("FlowFileAppender: open failed", loggateway.StepID("system.monitor.flow_file.open_fail"), loggateway.Str("path", fullPath), loggateway.Err(err))
+		a.lg.Warn("FlowFileAppender: open failed", loggateway.StepID("monitor.flow_file.open_fail"), loggateway.Str("path", fullPath), loggateway.Err(err))
 		return nil
 	}
 	rf := &rotatingFile{
@@ -356,7 +356,7 @@ func (a *FlowFileAppender) writeRowLocked(rf *rotatingFile, row map[string]any) 
 		return
 	}
 	if err := rf.encoder.Encode(row); err != nil {
-		a.lg.Warn("FlowFileAppender: write failed", loggateway.StepID("system.monitor.flow_file.write_fail"), loggateway.Str("path", rf.path), loggateway.Err(err))
+		a.lg.Warn("FlowFileAppender: write failed", loggateway.StepID("monitor.flow_file.write_fail"), loggateway.Str("path", rf.path), loggateway.Err(err))
 		return
 	}
 }

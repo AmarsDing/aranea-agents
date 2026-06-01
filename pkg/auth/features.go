@@ -19,18 +19,18 @@ func HTTPAuthBypassEnabled() bool {
 	}
 	if deployEnv == "" {
 		loggateway.Global().Warn("auth bypass refused: KRATOS_HTTP_AUTH_DISABLED set but DEPLOY_ENV unset",
-			loggateway.StepID("system.auth.bypass_refused"))
+			loggateway.StepID("auth.bypass_refused"))
 		return false
 	}
 	loggateway.Global().Warn("auth bypass refused: KRATOS_HTTP_AUTH_DISABLED set but DEPLOY_ENV not dev",
-		loggateway.StepID("system.auth.bypass_refused"), loggateway.Str("deploy_env", deployEnv))
+		loggateway.StepID("auth.bypass_refused"), loggateway.Str("deploy_env", deployEnv))
 	return false
 }
 
 func WarnIfBypassEnabled() {
 	if HTTPAuthBypassEnabled() {
 		loggateway.Global().Warn("AUTH BYPASS ACTIVE: all requests as UserID=1 (admin); DO NOT use in production",
-			loggateway.StepID("system.auth.bypass_active"))
+			loggateway.StepID("auth.bypass_active"))
 	}
 }
 

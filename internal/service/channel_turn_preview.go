@@ -410,7 +410,7 @@ func (c *TurnPreviewCoordinator) maybeSendToolCard(ctx context.Context, toolID s
 			loggateway.Str("platform", c.platform),
 			loggateway.Str("tool_id", toolID),
 			loggateway.Str("existing_message_id", existingMsgID),
-			loggateway.Str("error", err.Error()),
+			loggateway.Err(err),
 		)
 		return
 	}

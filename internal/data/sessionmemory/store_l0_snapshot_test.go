@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/loggateway"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -43,7 +44,7 @@ func openL0SnapshotTestStore(t *testing.T) *Store {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewStore(client)
+	return NewStore(client, loggateway.NewNoop())
 }
 
 func TestInsertAndUpdateL0AssemblySnapshot(t *testing.T) {

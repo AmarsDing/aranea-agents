@@ -49,7 +49,7 @@ func RunWebSocket(
 		}
 		ev.PlatformType = "feishu"
 		safego.Go(ctx, "channel.feishu.ws.inbound", func() {
-			batcher.Submit(ctx, wsInboundBridge{ctx: ctx, ch: chRow, creds: creds, lookup: lookup, handler: handler, lg: lg}, chRow, ev)
+			batcher.Submit(ctx, wsInboundBridge{ctx: ctx, ch: chRow, creds: creds, lookup: lookup, handler: handler, lg: lg}, chRow, ev, lg)
 		})
 		return nil
 	}

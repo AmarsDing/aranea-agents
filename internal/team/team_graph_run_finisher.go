@@ -114,14 +114,14 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 	}
 }
 
-func buildResumeSessionContext(defJSON, inputPreview string) (
+func buildResumeSessionContext(defJSON, inputPreview string, lg loggateway.Logger) (
 	reg biz.OrchestrationRegistry,
 	memberByNode map[string]MemberDef,
 	stepSortIndex map[string]int,
 ) {
 	def, err := ParseDefinition(defJSON)
 	if err != nil {
-		loggateway.Global().Warn("buildResumeSessionContext: ParseDefinition failed", loggateway.StepID("team.intent.merge_fail"), loggateway.Err(err))
+		lg.Warn("buildResumeSessionContext: ParseDefinition failed", loggateway.StepID("team.intent.merge_fail"), loggateway.Err(err))
 		return biz.OrchestrationRegistry{}, nil, nil
 	}
 	reg = BuildOrchestrationRegistry(def,

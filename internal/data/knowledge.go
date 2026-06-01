@@ -11,19 +11,19 @@ import (
 
 	"aranea-agents/internal/biz"
 	bizknowledge "aranea-agents/internal/biz/knowledge"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/pgvector/pgvector-go"
 )
 
-// knowledgeRepo implements biz.KnowledgeRepo using raw SQL against PostgreSQL + pgvector.
 type knowledgeRepo struct {
 	db *sql.DB
+	lg loggateway.Logger
 }
 
-// NewKnowledgeRepo returns a KnowledgeRepo backed by the provided *sql.DB (Postgres).
-func NewKnowledgeRepo(db *sql.DB) biz.KnowledgeRepo {
-	return &knowledgeRepo{db: db}
+func NewKnowledgeRepo(db *sql.DB, lg loggateway.Logger) biz.KnowledgeRepo {
+	return &knowledgeRepo{db: db, lg: lg}
 }
 
 func ivfflatLists(dim int) int {
@@ -248,6 +248,7 @@ func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, 
 func (r *knowledgeRepo) DeleteDocument(ctx context.Context, id string) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
+		r.lg.Warn("delete document begin tx failed", loggateway.StepID("knowledge.tx_fail"), loggateway.Err(err))
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
@@ -278,13 +279,16 @@ func (r *knowledgeRepo) DeleteDocument(ctx context.Context, id string) error {
 			     chunk_count    = GREATEST(chunk_count    - $3, 0),
 			     updated_at     = NOW()
 			 WHERE id = $1`, collectionID, docDelta, chunkCount); err != nil {
+			r.lg.Warn("delete document counter update failed", loggateway.StepID("knowledge.counter_drift"), loggateway.Err(err))
 			return err
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		r.lg.Error("delete document commit failed", loggateway.StepID("knowledge.tx_commit"), loggateway.Err(err))
+		return err
+	}
+	return nil
 }
-
-// --- Chunk operations ---
 
 func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.KnowledgeChunk) error {
 	if len(chunks) == 0 {
@@ -303,6 +307,7 @@ func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.Knowledge
 	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
+		r.lg.Warn("insert chunks begin tx failed", loggateway.StepID("knowledge.tx_fail"), loggateway.Err(err))
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
@@ -320,10 +325,15 @@ func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.Knowledge
 		}
 		vec := pgvector.NewVector(ch.Embedding)
 		if _, err := stmt.ExecContext(ctx, ch.ID, ch.DocID, ch.CollectionID, ch.Content, vec, meta, ch.ChunkIndex); err != nil {
+			r.lg.Warn("chunk insert failed", loggateway.StepID("knowledge.chunk_insert_fail"), loggateway.Err(err))
 			return err
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		r.lg.Error("insert chunks commit failed", loggateway.StepID("knowledge.tx_commit"), loggateway.Err(err))
+		return err
+	}
+	return nil
 }
 
 func (r *knowledgeRepo) DeleteChunksByDocument(ctx context.Context, docID string) error {

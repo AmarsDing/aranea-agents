@@ -82,7 +82,7 @@ import { useI18n } from "vue-i18n";
 import ChatSectionHeader from "./ChatSectionHeader.vue";
 import SpiritEntry from "../spirit/SpiritEntry.vue";
 import TeamTaskCard from "../spirit/TeamTaskCard.vue";
-import type { SpiritTeam } from "../../features/spirit/api";
+import type { SpiritTeam } from "../../features/spirit/types";
 import { useChatEntityCollapse } from "../../features/chat/composables/useChatEntityCollapse";
 
 const props = defineProps<{

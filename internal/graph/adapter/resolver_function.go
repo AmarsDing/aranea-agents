@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	graphtrpc "aranea-agents/internal/graph/trpc"
+	"aranea-agents/pkg/loggateway"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -18,12 +19,13 @@ import (
 // the full Agent lifecycle.
 type CatalogFunctionResolver struct {
 	Tools *biz.ToolUsecase
+	lg    loggateway.Logger
 }
 
 var _ graphtrpc.FunctionResolver = (*CatalogFunctionResolver)(nil)
 
-func NewCatalogFunctionResolver(tools *biz.ToolUsecase) *CatalogFunctionResolver {
-	return &CatalogFunctionResolver{Tools: tools}
+func NewCatalogFunctionResolver(tools *biz.ToolUsecase, lg loggateway.Logger) *CatalogFunctionResolver {
+	return &CatalogFunctionResolver{Tools: tools, lg: lg}
 }
 
 func (r *CatalogFunctionResolver) ResolveFunction(ctx context.Context, funcRef string) (trpctool.CallableTool, error) {
@@ -38,7 +40,7 @@ func (r *CatalogFunctionResolver) ResolveFunction(ctx context.Context, funcRef s
 	if err != nil {
 		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: function %q: %v", key, err))
 	}
-	callable, _, err := callableFromBizTool(ctx, row)
+	callable, _, err := callableFromBizTool(ctx, row, r.lg)
 	if err != nil {
 		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: function %q: %v", key, err))
 	}

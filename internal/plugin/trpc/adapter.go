@@ -63,15 +63,15 @@ func adapt(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime, lg log
 	switch key {
 	case "model_router":
 		var cfg ModelRouterConfig
-		parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+		parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
 		ap.modelRouter = &cfg
 	case "cost_guard":
 		var cfg CostGuardConfig
-		parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+		parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
 		ap.costGuard = &cfg
 	case "confirmation_guard":
 		var cfg ConfirmationGuardConfig
-		parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
+		parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg, lg)
 		ap.confirmationGuard = &cfg
 	}
 	return ap

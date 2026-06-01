@@ -3,10 +3,11 @@ package data
 import (
 	"context"
 	"database/sql"
+
+	"aranea-agents/pkg/loggateway"
 )
 
-// EnsureSessionRunSchema creates session_runs for M55 Run lifecycle (CC-R-01).
-func EnsureSessionRunSchema(ctx context.Context, db *sql.DB) error {
+func EnsureSessionRunSchema(ctx context.Context, db *sql.DB, lg loggateway.Logger) error {
 	if db == nil {
 		return nil
 	}
@@ -36,5 +37,8 @@ CREATE INDEX IF NOT EXISTS idx_session_runs_session_created
 CREATE INDEX IF NOT EXISTS idx_session_runs_turn
   ON session_runs(session_id, turn_id);
 `)
+	if err != nil {
+		lg.Error("create session_runs table failed", loggateway.StepID("data.session_run.schema.create"), loggateway.Err(err))
+	}
 	return err
 }

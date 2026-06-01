@@ -45,7 +45,13 @@ export type EnvelopeType =
   | "mcp.health.alert"
   | "orchestration_agent_status"
   | "alert.notify"
-  | "session.status_changed";
+  | "session.status_changed"
+  | "spirit_team_assembled"
+  | "spirit_team_completed"
+  | "spirit_team_failed"
+  | "spirit_team_progress"
+  | "spirit_teams_all_completed"
+  | "spirit_synthesis_completed";
 
 export type EnvelopeContent = {
   text: string;

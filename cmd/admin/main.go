@@ -90,6 +90,13 @@ func newApp(
 		kratos.Logger(logger),
 		kratos.Server(srv...),
 		kratos.BeforeStart(func(ctx context.Context) error {
+			if d != nil {
+				if gate := d.Readiness(); gate != nil {
+					if err := gate.Wait(ctx); err != nil {
+						lg.Warn("BeforeStart: data readiness wait failed", loggateway.StepID("startup.gate"), loggateway.Err(err))
+					}
+				}
+			}
 			if err := guard.OnStartup(ctx); err != nil {
 				logger.Log(log.LevelWarn, "msg", "session status guard startup failed", "error", err.Error())
 			}
@@ -110,7 +117,7 @@ func newApp(
 			}
 			safego.Go(startCtx, "seed.industry_agents", func() {
 				logger.Log(log.LevelInfo, "msg", "industry agent seed started")
-				service.SeedBuiltinIndustryAgents(startCtx, agentUC, teamUC, positionUC, biz.ScenarioDir(), d)
+				service.SeedBuiltinIndustryAgents(startCtx, agentUC, teamUC, positionUC, biz.ScenarioDir(), data.NewSeedVersionRepo(d))
 				logger.Log(log.LevelInfo, "msg", "industry agent seed completed")
 			})
 			return nil
@@ -164,7 +171,7 @@ func main() {
 	}
 	loggateway.SetGlobal(lg.(*loggateway.Gateway))
 
-	shutdownTelemetry := telemetry.Init(Name, Version)
+	shutdownTelemetry := telemetry.Init(Name, Version, lg)
 	defer func() { _ = shutdownTelemetry(context.Background()) }()
 
 	out, cleanup, err := wireApp(bc.Server, bc.Data, nil, logger, lg)
@@ -181,12 +188,29 @@ func main() {
 		if out.ChannelRuntime != nil {
 			out.ChannelRuntime.Stop()
 		}
-		// Stop the HookDeliveryRetryWorker goroutine started by plugin Runtime (OUT-02 / P0-4).
 		if out.PluginRuntime != nil {
 			out.PluginRuntime.Close()
 		}
 	}
 	defer stopBackgroundWorkers()
+
+	waitDataReady := func() {
+		if out.Data != nil {
+			if gate := out.Data.Readiness(); gate != nil {
+				if err := gate.Wait(cronCtx); err != nil {
+					lg.Warn("background worker: data readiness wait failed", loggateway.StepID("startup.gate"), loggateway.Err(err))
+					return
+				}
+			}
+		}
+	}
+
+	goAfterReady := func(name string, fn func()) {
+		go func() {
+			waitDataReady()
+			fn()
+		}()
+	}
 
 	// Windows / IDE terminals sometimes fail to deliver Ctrl+C to kratos App.Run. On first
 	// interrupt we stop background workers and call App.Stop explicitly; keep listening so
@@ -220,133 +244,136 @@ func main() {
 
 	if out.CronRunner != nil {
 		interval := cronrunner.DefaultInterval()
-		go out.CronRunner.Start(cronCtx, interval)
-		logger.Log(log.LevelInfo, "msg", "cron runner started", "interval", interval.String())
+		goAfterReady("cron", func() { out.CronRunner.Start(cronCtx, interval) })
+		logger.Log(log.LevelInfo, "msg", "cron runner scheduled", "interval", interval.String())
 	}
 
 	if out.SkillWatch != nil {
-		go out.SkillWatch.Start(watchCtx)
-		logger.Log(log.LevelInfo, "msg", "skill filesystem watcher started")
+		goAfterReady("skill_watch", func() { out.SkillWatch.Start(watchCtx) })
+		logger.Log(log.LevelInfo, "msg", "skill filesystem watcher scheduled")
 	}
 
-	// EP-RT-03: start auto-memory extraction worker.
 	if out.AutoMemory != nil {
-		go out.AutoMemory.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "auto-memory worker started")
+		goAfterReady("auto_memory", func() { out.AutoMemory.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "auto-memory worker scheduled")
 	}
 
-	// MCP health probe: periodically probes all enabled MCP servers.
 	if out.MCPHealthProbe != nil {
 		mcpInterval := health.DefaultInterval()
-		go out.MCPHealthProbe.Start(cronCtx, mcpInterval)
-		logger.Log(log.LevelInfo, "msg", "mcp health probe started", "interval", mcpInterval.String())
+		goAfterReady("mcp_health", func() { out.MCPHealthProbe.Start(cronCtx, mcpInterval) })
+		logger.Log(log.LevelInfo, "msg", "mcp health probe scheduled", "interval", mcpInterval.String())
 	}
 
 	if out.A2AGatewayHealthProbe != nil {
 		a2aInterval := a2ahealth.DefaultInterval()
-		go out.A2AGatewayHealthProbe.Start(cronCtx, a2aInterval)
-		logger.Log(log.LevelInfo, "msg", "a2a gateway health probe started", "interval", a2aInterval.String())
+		goAfterReady("a2a_health", func() { out.A2AGatewayHealthProbe.Start(cronCtx, a2aInterval) })
+		logger.Log(log.LevelInfo, "msg", "a2a gateway health probe scheduled", "interval", a2aInterval.String())
 	}
 
 	if out.EvolutionScanner != nil {
-		go out.EvolutionScanner.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "evolution scanner started", "interval", "30m")
+		goAfterReady("evolution", func() { out.EvolutionScanner.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "evolution scanner scheduled", "interval", "30m")
 	}
 
 	if out.LearningLoopScanner != nil {
-		go out.LearningLoopScanner.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "learning loop scanner started", "interval", "30m")
+		goAfterReady("learning_loop", func() { out.LearningLoopScanner.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "learning loop scanner scheduled", "interval", "30m")
 	}
 
 	if out.ProviderHealthScanner != nil {
-		go out.ProviderHealthScanner.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "provider health scanner started", "interval", "5m")
+		goAfterReady("provider_health", func() { out.ProviderHealthScanner.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "provider health scanner scheduled", "interval", "5m")
 	}
 
 	if out.ChannelHealthScanner != nil {
-		go out.ChannelHealthScanner.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "channel health scanner started", "interval", "10m")
+		goAfterReady("channel_health", func() { out.ChannelHealthScanner.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "channel health scanner scheduled", "interval", "10m")
 	}
 
 	if out.ChannelDeliveryScanner != nil {
-		go out.ChannelDeliveryScanner.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "channel delivery worker started", "interval", "5s")
+		goAfterReady("channel_delivery", func() { out.ChannelDeliveryScanner.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "channel delivery worker scheduled", "interval", "5s")
 	}
 
 	if out.SessionRunDurableWorker != nil {
-		out.SessionRunDurableWorker.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "session run durable worker started", "interval", "5s")
+		goAfterReady("session_run_durable", func() { out.SessionRunDurableWorker.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "session run durable worker scheduled", "interval", "5s")
+	}
+
+	if out.PluginRuntime != nil {
+		goAfterReady("plugin_bg", func() { out.PluginRuntime.StartBackgroundWorkers() })
+		logger.Log(log.LevelInfo, "msg", "plugin background workers scheduled")
 	}
 
 	if out.ChannelRuntime != nil {
-		out.ChannelRuntime.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "channel runtime manager started")
+		goAfterReady("channel_runtime", func() { out.ChannelRuntime.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "channel runtime manager scheduled")
 	}
 
 	if out.EventStoreCleanup != nil {
-		go out.EventStoreCleanup.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "event store cleanup started", "interval", "1h")
+		goAfterReady("event_store_cleanup", func() { out.EventStoreCleanup.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "event store cleanup scheduled", "interval", "1h")
 	}
 
 	if out.ToolAuditCleanup != nil {
-		go out.ToolAuditCleanup.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "tool audit cleanup started", "interval", "24h", "retention_days", biz.ToolAuditRetentionDays)
+		goAfterReady("tool_audit_cleanup", func() { out.ToolAuditCleanup.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "tool audit cleanup scheduled", "interval", "24h", "retention_days", biz.ToolAuditRetentionDays)
 	}
 
 	if out.FlowLogCleanup != nil {
-		go out.FlowLogCleanup.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "flow log cleanup started", "interval", "1h")
+		goAfterReady("flow_log_cleanup", func() { out.FlowLogCleanup.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "flow log cleanup scheduled", "interval", "1h")
 	}
 
 	if out.MonitorAlertCooldownCleanup != nil {
-		go out.MonitorAlertCooldownCleanup.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "monitor alert cooldown cleanup started", "interval", "1h", "maxAge", "24h")
+		goAfterReady("monitor_alert_cooldown", func() { out.MonitorAlertCooldownCleanup.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "monitor alert cooldown cleanup scheduled", "interval", "1h", "maxAge", "24h")
 	}
 
 	if out.MonitorAlertEvalWorker != nil {
-		go out.MonitorAlertEvalWorker.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "monitor alert eval worker started", "interval", "30s")
+		goAfterReady("monitor_alert_eval", func() { out.MonitorAlertEvalWorker.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "monitor alert eval worker scheduled", "interval", "30s")
 	}
 
 	if out.MonitorTraceBackfillWorker != nil {
-		go out.MonitorTraceBackfillWorker.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "monitor trace backfill worker started", "interval", "6h")
+		goAfterReady("monitor_trace_backfill", func() { out.MonitorTraceBackfillWorker.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "monitor trace backfill worker scheduled", "interval", "6h")
 	}
 
 	if out.MemoryL2Decay != nil {
-		go out.MemoryL2Decay.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "memory l2 decay worker started", "interval", "24h")
+		goAfterReady("memory_l2_decay", func() { out.MemoryL2Decay.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "memory l2 decay worker scheduled", "interval", "24h")
 	}
 
 	if out.MemoryL3Decay != nil {
-		go out.MemoryL3Decay.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "memory l3 decay worker started", "interval", "24h")
+		goAfterReady("memory_l3_decay", func() { out.MemoryL3Decay.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "memory l3 decay worker scheduled", "interval", "24h")
 	}
 
 	if out.MemoryL4Decay != nil {
-		go out.MemoryL4Decay.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "memory l4 decay worker started", "interval", "24h")
+		goAfterReady("memory_l4_decay", func() { out.MemoryL4Decay.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "memory l4 decay worker scheduled", "interval", "24h")
 	}
 
 	if out.MemoryEpisodeBackfill != nil {
-		go out.MemoryEpisodeBackfill.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "memory episode backfill worker started", "interval", "6h")
+		goAfterReady("memory_episode_backfill", func() { out.MemoryEpisodeBackfill.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "memory episode backfill worker scheduled", "interval", "6h")
 	}
 
 	if out.MemoryFactIndexReconciler != nil {
-		go out.MemoryFactIndexReconciler.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "memory fact index reconciler started", "interval", "6h")
+		goAfterReady("memory_fact_index", func() { out.MemoryFactIndexReconciler.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "memory fact index reconciler scheduled", "interval", "6h")
 	}
 
 	if out.MemoryDeadLetterReplayer != nil {
-		go out.MemoryDeadLetterReplayer.Start(cronCtx)
-		logger.Log(log.LevelInfo, "msg", "memory dead letter replayer started", "interval", "30m")
+		goAfterReady("memory_dead_letter", func() { out.MemoryDeadLetterReplayer.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "memory dead letter replayer scheduled", "interval", "30m")
 	}
 
 	if out.ModelRegistrySyncAgent != nil {
 		safego.Go(cronCtx, "modelregistry.cron_seed", func() {
 			if err := biz.SeedModelRegistryCronTask(cronCtx, out.CronRepo); err != nil {
-				event.SysLogWarn("modelregistry.cron_seed", "Failed to seed model registry cron task", event.P("error", err))
+				lg.Warn("Failed to seed model registry cron task", loggateway.StepID("modelregistry.cron_seed"), loggateway.Err(err))
 			}
 		})
 		logger.Log(log.LevelInfo, "msg", "model registry sync agent registered", "schedule", "via CronRunner")

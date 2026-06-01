@@ -75,7 +75,7 @@ func (h *ChannelIngress) executeAsyncGraphTarget(
 			return "", "", "", perr
 		}
 		agentKey := h.channels.AgentKeyResolver(ctx)
-		cfg, cerr := team.CompileToGraphRuntimeConfigFromJSON(ctx, def, teamRow.DefinitionJSON, agentKey, nil)
+		cfg, cerr := team.CompileToGraphRuntimeConfigFromJSON(ctx, def, teamRow.DefinitionJSON, agentKey, nil, h.lg)
 		if cerr != nil {
 			return "", "", "", cerr
 		}

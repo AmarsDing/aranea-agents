@@ -35,6 +35,8 @@ var ProviderSet = wire.NewSet(
 	NewSessionAgentLookup,
 	NewSessionTeamLookup,
 	NewSpiritTeamUsecase,
+	NewSynthesisEngine,
+	NewOrchestrationCache,
 	NewToolSettingRepo,
 	NewChannelUsecase,
 	NewChannelTurnJobUsecase,

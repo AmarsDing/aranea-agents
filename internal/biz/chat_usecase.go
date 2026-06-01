@@ -248,7 +248,7 @@ func (uc *ChatUsecase) StartBackgroundGoroutines() {
 					}
 					entry, ok := val.(awaitChanEntry)
 					if ok && now.Sub(entry.createdAt) > awaitChanMaxAge {
-						uc.lg.Warn("await channel expired, cleaning up", loggateway.StepID("system.session.compress"), loggateway.SessionID(sid), loggateway.Str("age", now.Sub(entry.createdAt).Round(time.Second).String()))
+						uc.lg.Warn("await channel expired, cleaning up", loggateway.StepID("session.compress"), loggateway.SessionID(sid), loggateway.Str("age", now.Sub(entry.createdAt).Round(time.Second).String()))
 						close(entry.ch)
 						uc.awaitChans.Delete(key)
 					}

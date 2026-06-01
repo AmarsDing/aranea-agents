@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/pkg/loggateway"
 )
 
 type cancelTeamRunRepo struct {
@@ -62,6 +63,9 @@ func (r *cancelTeamRunRepo) ResolveTaskDeadLetter(_ context.Context, _ string) (
 func (r *cancelTeamRunRepo) CreateTeamRunStep(_ context.Context, step biz.TeamRunStep) (biz.TeamRunStep, error) {
 	return step, nil
 }
+func (r *cancelTeamRunRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 
 func TestCancelTeamRun_PublishesCancelledRunStatus(t *testing.T) {
 	bus := event.NewBus()
@@ -75,7 +79,7 @@ func TestCancelTeamRun_PublishesCancelledRunStatus(t *testing.T) {
 	repo := &cancelTeamRunRepo{runs: map[string]biz.TeamRun{
 		"tr-1": {ID: "tr-1", SessionID: "sess-team-1", Status: biz.TeamRunStatusRunning},
 	}}
-	svc := NewTeamService(biz.NewTeamUsecase(repo, nil), nil, nil, nil, nil, reg, bus)
+	svc := NewTeamService(biz.NewTeamUsecase(repo, nil), nil, nil, nil, nil, reg, bus, loggateway.NewNoop())
 
 	resp, err := svc.CancelTeamRun(context.Background(), &v1.CancelTeamRunRequest{Id: "tr-1"})
 	if err != nil {

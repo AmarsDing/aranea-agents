@@ -36,7 +36,7 @@ func (s *TeamService) CompileTeamGraph(ctx context.Context, req *v1.CompileTeamG
 
 func (s *TeamService) buildCompileTeamGraphResponse(ctx context.Context, def team.Definition, rawDefinitionJSON string) (*v1.CompileTeamGraphResponse, error) {
 	agentKey := s.compileAgentKeyResolver(ctx)
-	cfg, compileErr := team.CompileToGraphBuildConfigFromJSON(def, rawDefinitionJSON, agentKey)
+	cfg, compileErr := team.CompileToGraphBuildConfigFromJSON(def, rawDefinitionJSON, agentKey, s.lg)
 	resp := &v1.CompileTeamGraphResponse{
 		TemplateId: team.CompileTemplateID(def.Mode),
 		Mode:       strings.ToLower(strings.TrimSpace(def.Mode)),
@@ -122,5 +122,5 @@ func (s *TeamService) exportStructureViaCompiler(ctx context.Context, teamID str
 	if err != nil {
 		return nil, kerrors.BadRequest("TEAM", "invalid definition_json")
 	}
-	return team.ExportStructureSnapshot(t.TeamKey, t.DisplayName, def, s.compileAgentKeyResolver(ctx))
+	return team.ExportStructureSnapshot(t.TeamKey, t.DisplayName, def, s.compileAgentKeyResolver(ctx), s.lg)
 }

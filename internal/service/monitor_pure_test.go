@@ -7,9 +7,11 @@ import (
 	"time"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
+
+	"aranea-agents/pkg/loggateway"
 )
 
-func containsString(s, sub string) bool {
+func containsSubstr(s, sub string) bool {
 	return strings.Contains(s, sub)
 }
 
@@ -111,7 +113,7 @@ func TestParseFlowLogTimeBounds(t *testing.T) {
 			if ke == nil {
 				t.Fatalf("expected kerrors, got %T: %v", err, err)
 			}
-			if tc.errMsg != "" && !containsString(ke.Message, tc.errMsg) {
+			if tc.errMsg != "" && !containsSubstr(ke.Message, tc.errMsg) {
 				t.Fatalf("message = %q, want containing %q", ke.Message, tc.errMsg)
 			}
 				return
@@ -248,7 +250,7 @@ func TestSanitizeJSONString(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := sanitizeJSONString(tc.raw)
+			got := sanitizeJSONString(tc.raw, loggateway.Global())
 			if tc.name == "invalid_json" || tc.name == "empty_string" || tc.name == "whitespace_only" {
 				if got != tc.want {
 					t.Fatalf("got %q, want %q", got, tc.want)
@@ -310,7 +312,7 @@ func TestParseJSONMap(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := parseJSONMap(tc.raw)
+			got := parseJSONMap(tc.raw, loggateway.NewNoop())
 			gotJSON, _ := json.Marshal(got)
 			wantJSON, _ := json.Marshal(tc.want)
 			if string(gotJSON) != string(wantJSON) {

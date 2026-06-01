@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/pkg/loggateway"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -50,7 +51,7 @@ func openCascadeFactsStore(t *testing.T) *sessionmemory.Store {
  id TEXT PRIMARY KEY, action TEXT NOT NULL, target_kind TEXT NOT NULL, target_id TEXT NOT NULL,
  reason TEXT NOT NULL DEFAULT '', policy_version TEXT NOT NULL DEFAULT 'consolidate_v1',
  source_event_ids_json TEXT NOT NULL DEFAULT '[]', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL)`)
-	return sessionmemory.NewStore(client)
+	return sessionmemory.NewStore(client, loggateway.NewNoop())
 }
 
 func TestReplaceNameInAgentFacts_WholeWordOnly(t *testing.T) {

@@ -575,7 +575,9 @@ func (u *LlmProviderModelUsecase) RunHealthChecks(ctx context.Context) error {
 		var c struct {
 			APIBaseURL string `json:"api_base_url"`
 		}
-		_ = json.Unmarshal([]byte(cfg.ConfigJSON), &c)
+		if err := json.Unmarshal([]byte(cfg.ConfigJSON), &c); err != nil {
+			u.lg.Warn("解析 config_json 失败", loggateway.StepID("provider.health"), loggateway.Err(err))
+		}
 		base := strings.TrimSpace(c.APIBaseURL)
 		if base == "" {
 			continue

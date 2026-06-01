@@ -115,7 +115,7 @@ func (c *Compressor) AfterNativeTurn(ctx context.Context, sessionID string, ag b
 		runCtx, cancel := context.WithTimeout(context.Background(), compressRunTimeout)
 		defer cancel()
 		if err := c.runCompress(runCtx, sid, trpcUserID, ag, false); err != nil && c.EventBus != nil {
-			c.lg.Warn("会话压缩失败", loggateway.StepID("system.session.compress"), loggateway.SessionID(sid), loggateway.Err(err))
+			c.lg.Warn("会话压缩失败", loggateway.StepID("session.compress"), loggateway.SessionID(sid), loggateway.Err(err))
 		}
 	})
 }
@@ -135,7 +135,7 @@ func (c *Compressor) BeforeDurableTurn(ctx context.Context, sessionID string, ag
 	runCtx, cancel := context.WithTimeout(ctx, compressRunTimeout)
 	defer cancel()
 	if err := c.runCompress(runCtx, sid, TRPCUserKey(ctx), ag, true); err != nil && c.EventBus != nil {
-		c.lg.Warn("Durable turn 前压缩失败", loggateway.StepID("system.session.compress"), loggateway.SessionID(sid), loggateway.Err(err))
+		c.lg.Warn("Durable turn 前压缩失败", loggateway.StepID("session.compress"), loggateway.SessionID(sid), loggateway.Err(err))
 	}
 	return nil
 }
@@ -291,7 +291,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		}
 		if c.EventBus != nil {
 			c.lg.Info("会话压缩完成",
-				loggateway.StepID("system.session.compress"),
+				loggateway.StepID("session.compress"),
 				loggateway.SessionID(sessionID),
 				loggateway.Str("compress_provider", res.Provider),
 				loggateway.Str("compress_model", res.Model),
@@ -304,7 +304,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 	}
 	if strategy == "drop_oldest" && c.EventBus != nil {
 		c.lg.Info("会话压缩完成（drop_oldest）",
-			loggateway.StepID("system.session.compress"),
+			loggateway.StepID("session.compress"),
 			loggateway.SessionID(sessionID),
 			loggateway.Str("truncate_strategy", strategy))
 	}
@@ -324,7 +324,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 	exists, existsErr := c.summaryWriter.SessionSummaryExists(ctx, sessionID, fromTurn, toTurn)
 	if existsErr != nil && c.EventBus != nil {
 		c.lg.Warn("幂等检查失败",
-			loggateway.StepID("system.session.compress"),
+			loggateway.StepID("session.compress"),
 			loggateway.SessionID(sessionID),
 			loggateway.Err(existsErr))
 	}
@@ -399,7 +399,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		if snapErr == nil {
 			if syncErr := c.Runtime.SyncRunnerSnapshot(ctx, trpcUserID, sessionID, raw, txMerged); syncErr != nil && c.EventBus != nil {
 				c.lg.Warn("trpc 快照同步失败",
-					loggateway.StepID("system.session.compress"),
+					loggateway.StepID("session.compress"),
 					loggateway.SessionID(sessionID),
 					loggateway.Err(syncErr),
 					loggateway.Str("user_id", trpcUserID))

@@ -26,9 +26,10 @@ type MemoryDeadLetterReplayer struct {
 	repo        biz.MemoryDeadLetterAdminRepo
 	enqueueFunc DeadLetterEnqueueFunc
 	log         *log.Helper
+	lg          loggateway.Logger
 }
 
-func NewMemoryDeadLetterReplayer(interval time.Duration, repo biz.MemoryDeadLetterAdminRepo, enqueueFunc DeadLetterEnqueueFunc, logger log.Logger) *MemoryDeadLetterReplayer {
+func NewMemoryDeadLetterReplayer(interval time.Duration, repo biz.MemoryDeadLetterAdminRepo, enqueueFunc DeadLetterEnqueueFunc, logger log.Logger, lg loggateway.Logger) *MemoryDeadLetterReplayer {
 	if interval <= 0 {
 		interval = memoryDeadLetterReplayDefaultInterval
 	}
@@ -37,6 +38,7 @@ func NewMemoryDeadLetterReplayer(interval time.Duration, repo biz.MemoryDeadLett
 		repo:        repo,
 		enqueueFunc: enqueueFunc,
 		log:         log.NewHelper(logger),
+		lg:          lg,
 	}
 }
 
@@ -61,7 +63,7 @@ func (w *MemoryDeadLetterReplayer) runOnce(ctx context.Context) {
 	safego.Go(ctx, "memory.dead_letter_replay", func() {
 		entries, err := w.repo.ListDeadLetters(ctx, "pending", memoryDeadLetterReplayBatchSize)
 		if err != nil {
-			loggateway.Global().Warn("list pending dead letters failed", loggateway.Err(err))
+			w.lg.Warn("list pending dead letters failed", loggateway.Err(err))
 			if w.log != nil {
 				w.log.Warnf("dead letter replay: list: %v", err)
 			}
@@ -75,14 +77,14 @@ func (w *MemoryDeadLetterReplayer) runOnce(ctx context.Context) {
 			if e.Attempts >= memoryDeadLetterMaxAttempts {
 				if abandonErr := w.repo.MarkDeadLetterAbandoned(ctx, e.ID, "max_attempts_exceeded"); abandonErr == nil {
 					abandoned++
-					loggateway.Global().Warn("abandoned after max attempts",
+					w.lg.Warn("abandoned after max attempts",
 						loggateway.Any("id", e.ID), loggateway.Int("attempts", e.Attempts))
 				}
 				continue
 			}
 			if err := w.repo.ReplayDeadLetterIntoQueue(ctx, e.ID, w.enqueueFunc); err != nil {
 				failed++
-				loggateway.Global().Warn("replay failed",
+				w.lg.Warn("replay failed",
 					loggateway.Any("id", e.ID), loggateway.Err(err))
 				continue
 			}

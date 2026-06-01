@@ -81,7 +81,7 @@ func (c *messageStoreConsumer) handle(ctx context.Context, env contract.Envelope
 	}
 	if err := c.sessions.AppendChatMessage(ctx, env.SessionID, msg, false); err != nil {
 		if c.logger != nil {
-			c.logger.SessionSysLogWarn(ctx, env.SessionID, "event_bus.message.store", "团队成员消息落库失败",
+			c.logger.LogSessionWarn(ctx, env.SessionID, "event_bus.message.store", "团队成员消息落库失败",
 				LogPair{Key: "author", Value: author}, LogPair{Key: "error", Value: err})
 		}
 	}
