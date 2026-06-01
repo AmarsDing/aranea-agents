@@ -185,6 +185,11 @@ message Agent {
   int32 pending_evolution_count = 26;
   // Creator user id (stringified auth UserID).
   string created_by = 27;
+  // readonly: system agents cannot be modified or deleted.
+  bool readonly = 28;
+  string position_key = 29;
+  string agent_variant = 30;
+  string variant_description = 31;
 }
 
 message ListAgentsRequest {
@@ -231,6 +236,9 @@ message CreateAgentRequest {
   repeated AgentPromptFile files = 13;
   string agent_kind = 14;
   A2AProxyConfig a2a_proxy_config = 15;
+  string position_key = 16;
+  string agent_variant = 17;
+  string variant_description = 18;
 }
 
 message GetAgentRequest {

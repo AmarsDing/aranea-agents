@@ -23,3 +23,12 @@ data:
     email: dev@local.invalid
     password: dev
     access: admin
+logging:
+  level: info
+  output_dir: "./logs"
+  max_size_mb: 100
+  max_backups: 10
+  max_age_days: 30
+  compress: true
+  stdout_enabled: true
+  hook_level: info

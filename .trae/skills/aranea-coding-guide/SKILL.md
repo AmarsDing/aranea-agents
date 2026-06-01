@@ -114,7 +114,7 @@ internal/data           ← Repo 实现（Ent ORM + pgvector）
 | 13 | 所有 `go func()` 必须走 `pkg/safego.Go` / `pkg/safego.GoRecover` | 禁止裸 `go func()` 不处理 panic |
 | 14 | 不得在 biz 层使用 `fmt.Errorf` 返回业务错误 | 统一使用 `kerrors.BadRequest/NotFound/InternalServer` |
 | 15 | 非 Service 层不得 import `api/*/v1` proto 包 | proto 映射只在 Service 层；biz 定义端口接口 |
-| 16 | 禁止使用 `log/slog` 记录日志 | 统一使用 `internal/event` 的 `FlowLog`（`event.SysLog*` / `event.SessionSysLog*`） |
+| 16 | 禁止使用 `log/slog` 记录日志 | 统一使用 `pkg/loggateway.Logger`（`lg.Info/Warn/Error` + `loggateway.StepID/Err/Str`）；`event.SysLog*` / `event.SessionSysLog*` 已废弃 |
 | 17 | 跨模块调用不得持有对方 Service 具体类型 | 通过 biz 级窄接口（端口）交互，Wire 绑定在 Service 层 |
 | 18 | Graph 运行时类型不得泄漏到 biz | biz 暴露 `GraphBuildConfig`/`GraphRuntime`/`GraphExecutor` 端口 |
 | 19 | 不得新增已无调用者的 deprecated 方法 | 死代码即删，不保留 Deprecated 标记 |
@@ -587,10 +587,12 @@ func NewSystemSettingRepo(d *Data) biz.SystemSettingRepo {
 
 ### 7.4 日志（项目约束）
 
-**禁止 `log/slog`**，统一使用 `internal/event` 的 `FlowLog`：
+**禁止 `log/slog`**，统一使用 `pkg/loggateway.Logger`：
 
-- `event.SysLog*` — 系统级日志
-- `event.SessionSysLog*` — 会话级日志
+- `x.lg.Info/Warn/Error(msg, loggateway.StepID("..."), loggateway.Err(err))` — 结构化日志
+- `x.lg.With(loggateway.SessionID(sid))` — 绑定会话上下文
+- `loggateway.Global()` — 独立函数使用全局 Logger
+- `event.SysLog*` / `event.SessionSysLog*` — **已废弃**，禁止新增调用
 
 ### 7.5 命名（项目补充）
 
@@ -767,7 +769,7 @@ cmd/admin/wire.go                         ← Wire 注入
 - [ ] **记忆工具**：通过 `memory.Service.Tools()` 注入，不手动构造
 - [ ] **MCP Broker**：`AllowAdHocHTTP` 默认 false，安全边界明确
 - [ ] **错误处理**：使用 `kerrors`，不用 `fmt.Errorf`
-- [ ] **日志**：使用 `FlowLog`，不用 `log/slog`
+- [ ] **日志**：使用 `loggateway.Logger`，不用 `log/slog`，不用 `event.SysLog*`
 - [ ] **goroutine**：走 `pkg/safego`，无裸 `go func()`
 - [ ] **OOP 合规**：见 `go-oop-guide` SKILL（接口方法 ≤ 5、接口定义在使用方、返回具体类型参数接收接口、无上帝对象注入）
 

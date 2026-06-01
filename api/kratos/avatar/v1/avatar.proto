@@ -26,6 +26,7 @@ message AvatarAsset {
   int32 height_px = 12;
   int32 sort_order = 13;
   string created_at = 14;
+  string category = 15;
 }
 
 message ListAvatarAssetsRequest {

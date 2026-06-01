@@ -33,4 +33,13 @@ data:
     addr: 127.0.0.1:6379
     read_timeout: 0.2s
     write_timeout: 0.2s
+logging:
+  level: info
+  output_dir: "./logs"
+  max_size_mb: 100
+  max_backups: 10
+  max_age_days: 30
+  compress: true
+  stdout_enabled: true
+  hook_level: info
 

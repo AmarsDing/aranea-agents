@@ -235,6 +235,14 @@ message CheckUsageQuotaResponse {
   string reason = 5;
 }
 
+message PurgeUsageEventsRequest {
+  int32 retain_days = 1;
+}
+
+message PurgeUsageEventsResponse {
+  int64 deleted_count = 1;
+}
+
 service UsageService {
   rpc GetUsageOverview(UsageQuery) returns (UsageOverview) {
     option (google.api.http) = {get: "/v1/usage/overview"};
@@ -281,5 +289,11 @@ service UsageService {
   }
   rpc ExportUsageEvents(UsageQuery) returns (ExportUsageEventsResponse) {
     option (google.api.http) = {get: "/v1/usage/events/export"};
+  }
+  rpc PurgeUsageEvents(PurgeUsageEventsRequest) returns (PurgeUsageEventsResponse) {
+    option (google.api.http) = {
+      post: "/v1/usage/events/purge"
+      body: "*"
+    };
   }
 }

@@ -28,6 +28,7 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/agentcategory"
 	"aranea-agents/internal/data/ent/llmprovidermodel"
+	"aranea-agents/pkg/loggateway"
 )
 
 func main() {
@@ -74,7 +75,7 @@ func main() {
 	catRepo := data.NewAgentCategoryRepo(store)
 	agentRepo := data.NewAgentRepo(store)
 	catUC := biz.NewAgentCategoryUsecase(catRepo)
-	agentUC := biz.NewAgentUsecase(agentRepo, nil, nil)
+	agentUC := biz.NewAgentUsecase(agentRepo, nil, nil, loggateway.NewNoop())
 
 	idByKey := map[string]string{}
 	now := time.Now().UTC().Format(time.RFC3339)
