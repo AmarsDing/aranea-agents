@@ -4,13 +4,14 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
 func TestBuildEscalationFunc_ToolCallApprove(t *testing.T) {
-	fn := buildEscalationFunc(&CriticLoopConfig{ScoreThreshold: 0.8})
+	fn := buildEscalationFunc(&CriticLoopConfig{ScoreThreshold: 0.8}, loggateway.NewNoop())
 	ev := &trpcevent.Event{
 		Response: &trpcmodel.Response{
 			Choices: []trpcmodel.Choice{{
@@ -31,7 +32,7 @@ func TestBuildEscalationFunc_ToolCallApprove(t *testing.T) {
 }
 
 func TestBuildEscalationFunc_ToolCallScoreAboveThreshold(t *testing.T) {
-	fn := buildEscalationFunc(&CriticLoopConfig{ScoreThreshold: 0.7})
+	fn := buildEscalationFunc(&CriticLoopConfig{ScoreThreshold: 0.7}, loggateway.NewNoop())
 	ev := &trpcevent.Event{
 		Response: &trpcmodel.Response{
 			Choices: []trpcmodel.Choice{{
@@ -66,7 +67,7 @@ func TestDefaultEscalationFunc_ToolCallApprove(t *testing.T) {
 			}},
 		},
 	}
-	if !defaultEscalationFunc(ev) {
+	if !defaultEscalationFunc(loggateway.NewNoop())(ev) {
 		t.Fatal("expected escalation via tool call approve in default func")
 	}
 }
@@ -81,7 +82,7 @@ func TestDefaultEscalationFunc_FallbackString(t *testing.T) {
 			}},
 		},
 	}
-	if !defaultEscalationFunc(ev) {
+	if !defaultEscalationFunc(loggateway.NewNoop())(ev) {
 		t.Fatal("expected escalation via string fallback")
 	}
 }

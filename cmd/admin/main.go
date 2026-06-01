@@ -66,6 +66,7 @@ func newApp(
 	positionUC *biz.PositionUsecase,
 	d *data.Data,
 	guard *service.SessionStatusGuard,
+	orchCache *biz.OrchestrationCache,
 ) *kratos.App {
 	// EP-OBS-03: WSServer implements transport.Server (Start/Stop); register it so
 	// kratos.App orchestrates its lifecycle and Stop triggers broadcastShutdown.
@@ -99,6 +100,9 @@ func newApp(
 			}
 			if err := guard.OnStartup(ctx); err != nil {
 				logger.Log(log.LevelWarn, "msg", "session status guard startup failed", "error", err.Error())
+			}
+			if orchCache != nil {
+				orchCache.InitFromRepo(ctx)
 			}
 			consumer.Start(consumerCtx)
 			if sideConsumers != nil {

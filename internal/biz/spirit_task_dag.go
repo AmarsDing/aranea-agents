@@ -3,6 +3,7 @@ package biz
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -277,6 +278,64 @@ func (d *TaskDAG) computeMaxWidth() int {
 		}
 	}
 	return maxWidth
+}
+
+func (d *TaskDAG) ToTextDiagram() string {
+	if d == nil || len(d.Nodes) == 0 {
+		return ""
+	}
+	depthMap := d.calcDepthMap()
+	levelGroups := make(map[int][]*TaskNode)
+	for id, depth := range depthMap {
+		node := d.Nodes[id]
+		if node != nil {
+			levelGroups[depth] = append(levelGroups[depth], node)
+		}
+	}
+
+	maxDepth := 0
+	for _, depth := range depthMap {
+		if depth > maxDepth {
+			maxDepth = depth
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString("任务依赖图:\n")
+	for level := 1; level <= maxDepth; level++ {
+		nodes := levelGroups[level]
+		if len(nodes) == 0 {
+			continue
+		}
+		for i, node := range nodes {
+			prefix := "  ├─ "
+			if i == len(nodes)-1 {
+				prefix = "  └─ "
+			}
+			name := node.TaskName
+			if name == "" {
+				name = string(node.ID)
+			}
+			sb.WriteString(prefix + name)
+			if len(node.DependsOn) > 0 {
+				depNames := make([]string, 0, len(node.DependsOn))
+				for _, depID := range node.DependsOn {
+					if depNode, ok := d.Nodes[depID]; ok {
+						depName := depNode.TaskName
+						if depName == "" {
+							depName = string(depID)
+						}
+						depNames = append(depNames, depName)
+					}
+				}
+				if len(depNames) > 0 {
+					sb.WriteString(" ← " + strings.Join(depNames, ", "))
+				}
+			}
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
 }
 
 func InferTopologyFromTeam(team Team, lg loggateway.Logger) TopologyType {

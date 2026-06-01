@@ -34,7 +34,7 @@ func (r *sessionRepo) ListSessionsByIDs(ctx context.Context, ids []string) ([]bi
 	if len(unique) == 0 {
 		return nil, nil
 	}
-	rows, err := r.data.entClient.Session.Query().
+	rows, err := r.readClient(ctx).Session.Query().
 		Where(entsession.IDIn(unique...), entsession.DeletedAtEQ("")).
 		All(ctx)
 	if err != nil {
@@ -48,7 +48,7 @@ func (r *sessionRepo) ListSessionsByIDs(ctx context.Context, ids []string) ([]bi
 }
 
 func (r *sessionRepo) ListSessionsForBatch(ctx context.Context, q biz.SessionSearchQuery) ([]biz.Session, error) {
-	c := r.data.entClient
+	c := r.readClient(ctx)
 	limit := q.Limit
 	if limit <= 0 {
 		limit = biz.SessionBatchPageSize

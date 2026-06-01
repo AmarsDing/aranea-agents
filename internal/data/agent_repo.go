@@ -202,24 +202,24 @@ func fromEntMemory(e *ent.AgentRuntimeSetting) biz.MemoryCfg {
 
 func fromEntTools(e *ent.AgentRuntimeSetting) biz.ToolsCfg {
 	return biz.ToolsCfg{
-		Enabled:                e.ToolsEnabled,
-		Profile:                e.ToolsProfile,
-		ToolCallPrefix:         e.ToolsToolCallPrefix,
-		AllowJSON:              e.ToolsAllowJSON,
-		DenyJSON:               e.ToolsDenyJSON,
-		ConcurrentAllowJSON:    e.ToolsConcurrentAllowJSON,
-		RetryEnabled:           e.ToolsRetryEnabled,
-		RetryMaxAttempts:       e.ToolsRetryMaxAttempts,
-		RetryInitialIntervalMs: e.ToolsRetryInitialIntervalMs,
-		RetryBackoffFactor:     e.ToolsRetryBackoffFactor,
-		RetryMaxIntervalMs:     e.ToolsRetryMaxIntervalMs,
-		RetryJitter:            e.ToolsRetryJitter,
-		ParallelEnabled:        e.ToolsParallelEnabled,
-		StreamingEnabled:       e.ToolsStreamingEnabled,
-		CircuitBreakerEnabled:         e.ToolsCircuitBreakerEnabled,
-		CircuitBreakerOverridesJSON:   e.ToolsCircuitBreakerOverridesJSON,
-		DeferredJSON:                  e.ToolsDeferredJSON,
-		CommandSafetyEnabled:          e.ToolsCommandSafetyEnabled,
+		Enabled:                     e.ToolsEnabled,
+		Profile:                     e.ToolsProfile,
+		ToolCallPrefix:              e.ToolsToolCallPrefix,
+		AllowJSON:                   e.ToolsAllowJSON,
+		DenyJSON:                    e.ToolsDenyJSON,
+		ConcurrentAllowJSON:         e.ToolsConcurrentAllowJSON,
+		RetryEnabled:                e.ToolsRetryEnabled,
+		RetryMaxAttempts:            e.ToolsRetryMaxAttempts,
+		RetryInitialIntervalMs:      e.ToolsRetryInitialIntervalMs,
+		RetryBackoffFactor:          e.ToolsRetryBackoffFactor,
+		RetryMaxIntervalMs:          e.ToolsRetryMaxIntervalMs,
+		RetryJitter:                 e.ToolsRetryJitter,
+		ParallelEnabled:             e.ToolsParallelEnabled,
+		StreamingEnabled:            e.ToolsStreamingEnabled,
+		CircuitBreakerEnabled:       e.ToolsCircuitBreakerEnabled,
+		CircuitBreakerOverridesJSON: e.ToolsCircuitBreakerOverridesJSON,
+		DeferredJSON:                e.ToolsDeferredJSON,
+		CommandSafetyEnabled:        e.ToolsCommandSafetyEnabled,
 	}
 }
 
@@ -260,18 +260,18 @@ func fromEntEvolution(e *ent.AgentRuntimeSetting) biz.EvolutionCfg {
 
 func fromEntContext(e *ent.AgentRuntimeSetting) biz.ContextCfg {
 	return biz.ContextCfg{
-		CompactionEnabled:     e.ContextCompactionEnabled,
-		MicroCompactEnabled:   e.MicroCompactEnabled,
-		MemoryCompactEnabled:  e.MemoryCompactEnabled,
-		ToolResultGateEnabled: e.ToolResultGateEnabled,
+		CompactionEnabled:          e.ContextCompactionEnabled,
+		MicroCompactEnabled:        e.MicroCompactEnabled,
+		MemoryCompactEnabled:       e.MemoryCompactEnabled,
+		ToolResultGateEnabled:      e.ToolResultGateEnabled,
 		CompressLLMCacheEnabled:    e.CompressLlmCacheEnabled,
 		CompressLLMCacheMaxEntries: e.CompressLlmCacheMaxEntries,
 		CompressLLMCacheTTLSec:     e.CompressLlmCacheTTLSec,
-		SessionSummaryEnabled: e.SessionSummaryEnabled,
-		OutputSchemaJSON:      e.OutputSchemaJSON,
-		ModelSelector:         e.ModelSelector,
-		PlannerKind:           e.PlannerKind,
-		PlannerConfigJSON:     e.PlannerConfigJSON,
+		SessionSummaryEnabled:      e.SessionSummaryEnabled,
+		OutputSchemaJSON:           e.OutputSchemaJSON,
+		ModelSelector:              e.ModelSelector,
+		PlannerKind:                e.PlannerKind,
+		PlannerConfigJSON:          e.PlannerConfigJSON,
 	}
 }
 
@@ -423,7 +423,7 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 	if categoryID == "" {
 		return nil, nil
 	}
-	node, err := r.txClient(ctx).AgentCategory.Query().
+	node, err := r.readClient(ctx).AgentCategory.Query().
 		Where(
 			agentcategory.IDEQ(categoryID),
 			agentcategory.DeletedAtEQ(""),
@@ -439,7 +439,7 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 	case "position":
 		return []string{node.ID}, nil
 	case "department":
-		return r.txClient(ctx).AgentCategory.Query().
+		return r.readClient(ctx).AgentCategory.Query().
 			Where(
 				agentcategory.ParentIDEQ(categoryID),
 				agentcategory.LevelEQ("position"),
@@ -447,7 +447,7 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 			).
 			IDs(ctx)
 	case "industry":
-		deptIDs, err := r.txClient(ctx).AgentCategory.Query().
+		deptIDs, err := r.readClient(ctx).AgentCategory.Query().
 			Where(
 				agentcategory.ParentIDEQ(categoryID),
 				agentcategory.LevelEQ("department"),
@@ -460,7 +460,7 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 		if len(deptIDs) == 0 {
 			return []string{}, nil
 		}
-		return r.txClient(ctx).AgentCategory.Query().
+		return r.readClient(ctx).AgentCategory.Query().
 			Where(
 				agentcategory.ParentIDIn(deptIDs...),
 				agentcategory.LevelEQ("position"),
@@ -518,7 +518,7 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 		preds = append(preds, agent.RolesJSONContains(role))
 	}
 	where := agent.And(preds...)
-	c := r.txClient(ctx)
+	c := r.readClient(ctx)
 	total, err := c.Agent.Query().Where(where).Count(ctx)
 	if err != nil {
 		return biz.AgentListResult{}, err
@@ -539,7 +539,7 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 }
 
 func (r *agentRepo) ListAgentCreators(ctx context.Context) ([]biz.AgentCreator, error) {
-	rows, err := r.txClient(ctx).Agent.Query().
+	rows, err := r.readClient(ctx).Agent.Query().
 		Where(agent.DeletedAtEQ(""), agent.CreatedByNEQ("")).
 		Select(agent.FieldCreatedBy).
 		GroupBy(agent.FieldCreatedBy).
@@ -572,7 +572,7 @@ func creatorLabel(userID string) string {
 }
 
 func (r *agentRepo) GetAgentByID(ctx context.Context, id string) (biz.Agent, error) {
-	row, err := r.txClient(ctx).Agent.Query().Where(agent.IDEQ(id), agent.DeletedAtEQ("")).Only(ctx)
+	row, err := r.readClient(ctx).Agent.Query().Where(agent.IDEQ(id), agent.DeletedAtEQ("")).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.Agent{}, sql.ErrNoRows
@@ -587,7 +587,7 @@ func (r *agentRepo) GetAgentByAgentKey(ctx context.Context, agentKey string) (bi
 	if agentKey == "" {
 		return biz.Agent{}, sql.ErrNoRows
 	}
-	row, err := r.txClient(ctx).Agent.Query().Where(agent.AgentKeyEQ(agentKey), agent.DeletedAtEQ("")).Only(ctx)
+	row, err := r.readClient(ctx).Agent.Query().Where(agent.AgentKeyEQ(agentKey), agent.DeletedAtEQ("")).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.Agent{}, sql.ErrNoRows
@@ -705,7 +705,7 @@ func (r *agentRepo) DeleteAgent(ctx context.Context, id string) error {
 }
 
 func (r *agentRepo) GetAgentRuntimeSettings(ctx context.Context, agentID string) (biz.AgentRuntimeSettings, error) {
-	row, err := r.txClient(ctx).AgentRuntimeSetting.Get(ctx, agentID)
+	row, err := r.readClient(ctx).AgentRuntimeSetting.Get(ctx, agentID)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.AgentRuntimeSettings{}, sql.ErrNoRows
@@ -740,7 +740,7 @@ func (r *agentRepo) UpsertAgentRuntimeSettings(ctx context.Context, v biz.AgentR
 }
 
 func (r *agentRepo) ListAgentPromptFiles(ctx context.Context, agentID string) ([]biz.AgentPromptFile, error) {
-	rows, err := r.txClient(ctx).AgentPromptFile.Query().
+	rows, err := r.readClient(ctx).AgentPromptFile.Query().
 		Where(agentpromptfile.AgentIDEQ(agentID)).
 		Order(agentpromptfile.BySortOrder(), agentpromptfile.ByFileName()).
 		All(ctx)
@@ -862,6 +862,13 @@ func (r *agentRepo) txClient(ctx context.Context) *ent.Client {
 		return nil
 	}
 	return r.data.entClient
+}
+
+func (r *agentRepo) readClient(ctx context.Context) *ent.Client {
+	if c, ok := ctx.Value(txClientKey{}).(*ent.Client); ok {
+		return c
+	}
+	return r.data.ReadEnt()
 }
 
 func (r *agentRepo) ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error {

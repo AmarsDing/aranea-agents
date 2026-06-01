@@ -73,6 +73,7 @@ type TeamOrchestrationDeps struct {
 	Graphs         *biz.GraphUsecase
 	Tasks          *biz.TaskUsecase
 	TeamGraphCoord *team.TeamGraphRunCoordinator
+	SpiritUC       *biz.SpiritTeamUsecase
 }
 
 // ChannelTurnDeps groups channel turn job tracking and session run management.
@@ -136,6 +137,7 @@ type ChatOrchestratorDeps struct {
 	SpiritAssembler *SpiritTeamAssembler
 	SpiritSynthesis *SpiritSynthesisService
 	OrchCache       *biz.OrchestrationCache
+	TeamStarter     biz.TeamStarterPort
 }
 
 func coalesceRunRegistry(r *rt.RunRegistry) *rt.RunRegistry {
@@ -173,6 +175,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		spiritAssembler: deps.SpiritAssembler,
 		spiritSynthesis: deps.SpiritSynthesis,
 		orchCache:       deps.OrchCache,
+		teamStarter:     deps.TeamStarter,
 	}
 	o.admitGate = newTurnAdmissionGate(turn.RunRegistryAdapter{Registry: runs}, o.chatUC, o.sessionPendingMergeFollowup)
 

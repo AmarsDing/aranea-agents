@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -22,15 +23,16 @@ var (
 )
 
 type TeamStarter struct {
-	sessions  *biz.SessionUsecase
-	team      TeamOrchestrationDeps
-	bus       event.Bus
-	orchCache *biz.OrchestrationCache
-	lg        loggateway.Logger
+	sessions       *biz.SessionUsecase
+	team           TeamOrchestrationDeps
+	bus            event.Bus
+	orchCache      *biz.OrchestrationCache
+	evolutionSugg  biz.EvolutionSuggestionRepo
+	lg             loggateway.Logger
 }
 
-func NewTeamStarter(sessions *biz.SessionUsecase, team TeamOrchestrationDeps, bus event.Bus, orchCache *biz.OrchestrationCache, lg loggateway.Logger) *TeamStarter {
-	return &TeamStarter{sessions: sessions, team: team, bus: bus, orchCache: orchCache, lg: lg}
+func NewTeamStarter(sessions *biz.SessionUsecase, team TeamOrchestrationDeps, bus event.Bus, orchCache *biz.OrchestrationCache, evolutionSugg biz.EvolutionSuggestionRepo, lg loggateway.Logger) *TeamStarter {
+	return &TeamStarter{sessions: sessions, team: team, bus: bus, orchCache: orchCache, evolutionSugg: evolutionSugg, lg: lg}
 }
 
 func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, content string) error {
@@ -53,12 +55,24 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 
 	spiritSessionID := strings.TrimSpace(sess.ParentSessionID)
 	teamID := strings.TrimSpace(sess.TeamID)
+
+	if teamID != "" {
+		if _, updateErr := s.team.TeamUC.Update(ctx, teamID, biz.Team{Status: "running"}); updateErr != nil {
+			s.lg.Warn("更新团队状态为 running 失败",
+				loggateway.StepID("spirit.team.running_err"),
+				loggateway.Str("team_id", teamID),
+				loggateway.Err(updateErr),
+			)
+		}
+	}
+
 	if s.bus != nil && teamID != "" && spiritSessionID != "" {
 		env := event.NewEnvelope(event.EnvelopeTypeSpiritTeamProgress, "team-starter", spiritSessionID)
 		env.TeamID = teamID
 		env.Metadata = map[string]any{
-			"team_id": teamID,
-			"status":  "running",
+			"team_id":      teamID,
+			"status":       "running",
+			"progress_pct": 0,
 		}
 		s.bus.Publish(ctx, env)
 	}
@@ -67,7 +81,18 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 		SessionID: sessionID,
 		Content:   content,
 	}
-	_, _, err = s.team.TeamsNative.RunTurnFromInput(ctx, sess, input)
+
+	turnCtx := ctx
+	if spiritSessionID != "" && s.team.SpiritUC != nil {
+		resolvedCfg := s.team.SpiritUC.GetParallelConfig(ctx, spiritSessionID)
+		if timeout := resolvedCfg.TeamTimeout(); timeout > 0 {
+			var cancel context.CancelFunc
+			turnCtx, cancel = context.WithTimeout(ctx, timeout)
+			defer cancel()
+		}
+	}
+
+	_, _, err = s.team.TeamsNative.RunTurnFromInput(turnCtx, sess, input)
 
 	if err != nil {
 		_ = s.sessions.TransitionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
@@ -127,6 +152,20 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		}
 		env.Metadata = meta
 		s.bus.Publish(ctx, env)
+
+		progressPct := 100.0
+		if status == "failed" {
+			progressPct = 0
+		}
+		progressEnv := event.NewEnvelope(event.EnvelopeTypeSpiritTeamProgress, "spirit-lifecycle", spiritSessionID)
+		progressEnv.TeamID = teamID
+		progressEnv.Metadata = map[string]any{
+			"team_id":      teamID,
+			"status":       status,
+			"progress_pct": progressPct,
+			"duration_ms":  durationMs,
+		}
+		s.bus.Publish(ctx, progressEnv)
 	}
 
 	s.checkAllTeamsCompleted(ctx, spiritSessionID)
@@ -151,6 +190,30 @@ func (s *TeamStarter) recordTeamCompletion(ctx context.Context, team biz.Team, d
 		loggateway.Str("task_pattern", taskPattern),
 		loggateway.Float64("dq_score", dqScore),
 	)
+
+	if dqScore < 0.5 && s.evolutionSugg != nil && team.SpiritSessionID != "" {
+		altTopology, altFound := s.orchCache.SuggestBestAlternativeTopology(team.TaskDescription, topology)
+		content := fmt.Sprintf("团队 %q 的 DQ Score 为 %.2f（低于阈值 0.5），当前拓扑 %s 执行效果不佳。", team.DisplayName, dqScore, topology)
+		if altFound {
+			content += fmt.Sprintf("建议尝试 %s 拓扑。", altTopology)
+		} else {
+			content += "暂无历史数据推荐替代拓扑，建议调整任务描述或减少团队数量。"
+		}
+		_, suggErr := s.evolutionSugg.Create(ctx, biz.EvolutionSuggestion{
+			AgentID: team.SpiritSessionID,
+			Type:    "orchestration_optimization",
+			Title:   fmt.Sprintf("编排优化建议: %s", biz.TruncateRunes(team.TaskDescription, 40)),
+			Content: content,
+			Status:  "pending",
+		})
+		if suggErr != nil {
+			s.lg.Warn("创建编排优化建议失败",
+				loggateway.StepID("spirit.evolution_suggestion_err"),
+				loggateway.Str("team_id", team.ID),
+				loggateway.Err(suggErr),
+			)
+		}
+	}
 }
 
 func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionID string, completedTeam biz.Team) {
@@ -474,46 +537,9 @@ func (a *SpiritTeamAssembler) publishSpiritTeamAssembled(ctx context.Context, sp
 		"depends_on":      team.DependsOn,
 		"topology_reason": topologyReason,
 		"duration_ms":     0,
+		"total_steps":     1,
 	}
 	a.bus.Publish(ctx, env)
 }
 
-func (a *SpiritTeamAssembler) PublishSpiritTeamCompleted(ctx context.Context, spiritSessionID string, team biz.Team) {
-	if a.bus == nil {
-		return
-	}
-	env := event.NewEnvelope(event.EnvelopeTypeSpiritTeamCompleted, "spirit-team-assembler", spiritSessionID)
-	env.TeamID = team.ID
-	env.Metadata = map[string]any{
-		"team_id":   team.ID,
-		"team_name": team.DisplayName,
-		"status":    team.Status,
-	}
-	a.bus.Publish(ctx, env)
-}
 
-func (a *SpiritTeamAssembler) PublishSpiritTeamFailed(ctx context.Context, spiritSessionID string, team biz.Team, errMsg string) {
-	if a.bus == nil {
-		return
-	}
-	env := event.NewEnvelope(event.EnvelopeTypeSpiritTeamFailed, "spirit-team-assembler", spiritSessionID)
-	env.TeamID = team.ID
-	env.Metadata = map[string]any{
-		"team_id":   team.ID,
-		"team_name": team.DisplayName,
-		"error":     errMsg,
-	}
-	a.bus.Publish(ctx, env)
-}
-
-func (a *SpiritTeamAssembler) PublishSpiritTeamsAllCompleted(ctx context.Context, spiritSessionID string, teamIDs []string) {
-	if a.bus == nil {
-		return
-	}
-	env := event.NewEnvelope(event.EnvelopeTypeSpiritTeamsAllCompleted, "spirit-team-assembler", spiritSessionID)
-	env.Metadata = map[string]any{
-		"spirit_session_id": spiritSessionID,
-		"team_ids":          teamIDs,
-	}
-	a.bus.Publish(ctx, env)
-}

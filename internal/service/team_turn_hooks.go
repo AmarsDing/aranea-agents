@@ -8,7 +8,6 @@ import (
 	"aranea-agents/internal/biz"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
-	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"

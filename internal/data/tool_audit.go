@@ -52,7 +52,7 @@ func (r *toolRepo) RecordToolInvocationAudit(ctx context.Context, in biz.ToolInv
 }
 
 func (r *toolRepo) SearchToolInvocationAudits(ctx context.Context, q biz.ToolAuditQuery) (biz.ToolAuditResult, error) {
-	client := r.data.Ent()
+	client := r.readClient(ctx)
 	if client == nil {
 		return biz.ToolAuditResult{}, kerrors.InternalServer("TOOL", "ent client unavailable")
 	}

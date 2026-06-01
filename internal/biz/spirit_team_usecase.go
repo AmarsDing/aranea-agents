@@ -209,6 +209,10 @@ func (u *SpiritTeamUsecase) GetMaxParallelTeams(ctx context.Context, spiritSessi
 	return cfg.MaxConcurrentTeams
 }
 
+func (u *SpiritTeamUsecase) GetParallelConfig(ctx context.Context, spiritSessionID string) ParallelConfig {
+	return u.resolveParallelConfig(ctx, spiritSessionID)
+}
+
 func (u *SpiritTeamUsecase) resolveParallelConfig(ctx context.Context, spiritSessionID string) ParallelConfig {
 	if u.agentUC == nil {
 		return DefaultParallelConfig()
@@ -321,11 +325,39 @@ func (u *SpiritTeamUsecase) CheckTeamProgress(ctx context.Context, spiritSession
 			TeamName: teams[i].DisplayName,
 			Status:   teams[i].Status,
 		}
-		runs, runErr := u.teamUC.ListRuns(ctx, teams[i].ID, 1)
+		switch teams[i].Status {
+		case "completed":
+			tp.ProgressPct = 100
+			tp.CurrentStep = "已完成"
+		case "failed":
+			tp.ProgressPct = 0
+			tp.CurrentStep = "执行失败"
+		case "cancelled":
+			tp.ProgressPct = 0
+			tp.CurrentStep = "已取消"
+		case "waiting_deps":
+			tp.ProgressPct = 0
+			tp.CurrentStep = "等待依赖完成"
+		default:
+		}
+		runs, runErr := u.teamUC.ListRuns(ctx, teams[i].ID, 10)
 		if runErr == nil && len(runs) > 0 {
-			tp.DurationMs = int64(runs[0].DurationMS)
-			if runs[0].Status == "success" {
-				tp.ProgressPct = 100
+			latestRun := runs[0]
+			tp.DurationMs = int64(latestRun.DurationMS)
+			if tp.Status == "running" || tp.Status == "active" || tp.Status == "assembled" {
+				completedRuns := 0
+				for _, r := range runs {
+					if r.Status == "success" {
+						completedRuns++
+					}
+				}
+				if len(runs) > 0 {
+					tp.ProgressPct = float64(completedRuns) / float64(len(runs)) * 100
+				}
+				if tp.ProgressPct >= 100 {
+					tp.ProgressPct = 99
+				}
+				tp.CurrentStep = fmt.Sprintf("执行中 (已完成 %d/%d 轮)", completedRuns, len(runs))
 			}
 		}
 		out = append(out, tp)

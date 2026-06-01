@@ -42,6 +42,7 @@ func ensureSystemSettingPatches(ctx context.Context, c *ent.Client) error {
 		{"refine_llm_model", `ALTER TABLE system_settings ADD COLUMN refine_llm_model TEXT NOT NULL DEFAULT ''`},
 		{"refine_llm_base_url", `ALTER TABLE system_settings ADD COLUMN refine_llm_base_url TEXT NOT NULL DEFAULT ''`},
 		{"refine_llm_api_key", `ALTER TABLE system_settings ADD COLUMN refine_llm_api_key TEXT NOT NULL DEFAULT ''`},
+		{"orchestration_cache_json", `ALTER TABLE system_settings ADD COLUMN orchestration_cache_json TEXT NOT NULL DEFAULT ''`},
 	}
 	for _, p := range patches {
 		has, err := sqliteTableHasColumn(ctx, c, "system_settings", p.col)

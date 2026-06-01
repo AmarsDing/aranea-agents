@@ -28,6 +28,7 @@ type AssembleTeamOutput struct {
 	SessionID      string `json:"session_id"`
 	TeamName       string `json:"team_name"`
 	TopologyReason string `json:"topology_reason,omitempty"`
+	DAGDiagram     string `json:"dag_diagram,omitempty"`
 }
 
 type TeamProgressView struct {
@@ -126,6 +127,8 @@ func NewAssembleTeamTool(assembler SpiritTeamAssemblerPort, query SpiritTeamQuer
 					return AssembleTeamOutput{}, kerrors.InternalServer("SPIRIT", "assemble dag teams: "+err.Error())
 				}
 				if len(outputs) > 0 {
+					outputs[0].DAGDiagram = dag.ToTextDiagram()
+					outputs[0].TopologyReason = topologyReason
 					return outputs[0], nil
 				}
 				return AssembleTeamOutput{}, kerrors.InternalServer("SPIRIT", "no teams created from dag")

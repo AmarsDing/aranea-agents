@@ -25,7 +25,7 @@ func (r *sessionRepo) ListTimelineEventRefsPaged(ctx context.Context, sessionID 
 		return nil, 0, nil
 	}
 
-	client := r.data.entClient
+	client := r.readClient(ctx)
 	var total int
 	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM (%s)", unionSQL)
 	if err := entQueryRowScan(client, ctx, countSQL, args, &total); err != nil {
@@ -124,7 +124,7 @@ func (r *sessionRepo) ListMessagesByIDs(ctx context.Context, sessionID string, i
 	if sessionID == "" || len(ids) == 0 {
 		return nil, nil
 	}
-	rows, err := r.data.entClient.Message.Query().
+	rows, err := r.readClient(ctx).Message.Query().
 		Where(message.SessionIDEQ(sessionID), message.IDIn(ids...)).
 		All(ctx)
 	if err != nil {
@@ -149,7 +149,7 @@ func (r *sessionRepo) ListToolInvocationsByIDs(ctx context.Context, sessionID st
 	if sessionID == "" || len(ids) == 0 {
 		return nil, nil
 	}
-	c := r.data.entClient
+	c := r.readClient(ctx)
 	rows, err := c.ToolInvocation.Query().
 		Where(toolinvocationpkg.SessionIDEQ(sessionID), toolinvocationpkg.IDIn(ids...)).
 		All(ctx)
@@ -179,7 +179,7 @@ func (r *sessionRepo) ListSkillInvocationsByIDs(ctx context.Context, sessionID s
 	if sessionID == "" || len(ids) == 0 {
 		return nil, nil
 	}
-	c := r.data.entClient
+	c := r.readClient(ctx)
 	rows, err := c.SkillInvocation.Query().
 		Where(skillinvocationpkg.SessionIDEQ(sessionID), skillinvocationpkg.IDIn(ids...)).
 		All(ctx)
@@ -262,7 +262,7 @@ func (r *sessionRepo) LookupAgentDisplayNames(ctx context.Context, agentIDs []st
 	if len(agentIDs) == 0 {
 		return map[string]string{}, nil
 	}
-	agents, err := r.data.entClient.Agent.Query().Where(agent.IDIn(agentIDs...), agent.DeletedAtEQ("")).All(ctx)
+	agents, err := r.readClient(ctx).Agent.Query().Where(agent.IDIn(agentIDs...), agent.DeletedAtEQ("")).All(ctx)
 	if err != nil {
 		return nil, err
 	}

@@ -70,12 +70,12 @@ func TestInboundTextPreview(t *testing.T) {
 		got := inboundTextPreview(tc.text)
 		if got != tc.want {
 			t.Errorf("inboundTextPreview(%q) = %q (len=%d), want %q (len=%d)",
-				tc.text[:min(len(tc.text), 30)], got, len(got), tc.want[:min(len(tc.want), 30)], len(tc.want))
+				tc.text[:minInt(len(tc.text), 30)], got, len(got), tc.want[:minInt(len(tc.want), 30)], len(tc.want))
 		}
 	}
 }
 
-func min(a, b int) int {
+func minInt(a, b int) int {
 	if a < b {
 		return a
 	}

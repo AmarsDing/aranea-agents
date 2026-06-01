@@ -1,13 +1,17 @@
 package biz
 
-import "testing"
+import (
+	"testing"
+
+	"aranea-agents/pkg/loggateway"
+)
 
 func TestParseHookConfig_andMatch(t *testing.T) {
 	cfg, err := ParseHookConfig(`{
 		"callback_point": "before_tool",
 		"condition": {"agent_id": "ag-1", "tool_name": "search"},
 		"action": {"type": "block", "message": "denied"}
-	}`)
+	}`, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}

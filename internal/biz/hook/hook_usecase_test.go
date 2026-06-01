@@ -172,7 +172,7 @@ func TestUsecase_Create(t *testing.T) {
 					return h, nil
 				},
 			}
-			uc := NewUsecase(repo)
+			uc := NewUsecase(repo, loggateway.NewNoop())
 			_, err := uc.Create(context.Background(), tt.input)
 			if tt.wantErr {
 				if err == nil {
@@ -389,7 +389,7 @@ func TestUsecase_Update(t *testing.T) {
 					return h, nil
 				},
 			}
-			uc := NewUsecase(repo)
+			uc := NewUsecase(repo, loggateway.NewNoop())
 			_, err := uc.Update(context.Background(), tt.id, tt.patch)
 			if tt.wantErr {
 				if err == nil {
@@ -430,8 +430,8 @@ func TestResolver(t *testing.T) {
 				}, nil
 			},
 		}
-		uc := NewUsecase(repo)
-		r := NewResolver(uc, loggateway.NewNoop())
+		uc := NewUsecase(repo, loggateway.NewNoop())
+	r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {
 			t.Fatalf("Reload returned error: %v", err)
@@ -451,7 +451,7 @@ func TestResolver(t *testing.T) {
 				}, nil
 			},
 		}
-		uc := NewUsecase(repo)
+		uc := NewUsecase(repo, loggateway.NewNoop())
 		r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {
@@ -475,7 +475,7 @@ func TestResolver(t *testing.T) {
 				}, nil
 			},
 		}
-		uc := NewUsecase(repo)
+		uc := NewUsecase(repo, loggateway.NewNoop())
 		r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {
@@ -496,7 +496,7 @@ func TestResolver(t *testing.T) {
 				}, nil
 			},
 		}
-		uc := NewUsecase(repo)
+		uc := NewUsecase(repo, loggateway.NewNoop())
 		r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {
@@ -517,7 +517,7 @@ func TestResolver(t *testing.T) {
 				}, nil
 			},
 		}
-		uc := NewUsecase(repo)
+		uc := NewUsecase(repo, loggateway.NewNoop())
 		r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {
@@ -540,7 +540,7 @@ func TestResolver(t *testing.T) {
 				}, nil
 			},
 		}
-		uc := NewUsecase(repo)
+		uc := NewUsecase(repo, loggateway.NewNoop())
 		r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {
@@ -563,7 +563,7 @@ func TestResolver(t *testing.T) {
 				}, nil
 			},
 		}
-		uc := NewUsecase(repo)
+		uc := NewUsecase(repo, loggateway.NewNoop())
 		r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {
@@ -583,7 +583,7 @@ func TestResolver(t *testing.T) {
 				}, nil
 			},
 		}
-		uc := NewUsecase(repo)
+		uc := NewUsecase(repo, loggateway.NewNoop())
 		r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {
@@ -605,7 +605,7 @@ func TestResolver(t *testing.T) {
 				}, nil
 			},
 		}
-		uc := NewUsecase(repo)
+		uc := NewUsecase(repo, loggateway.NewNoop())
 		r := NewResolver(uc, loggateway.NewNoop())
 		err := r.Reload(context.Background())
 		if err != nil {

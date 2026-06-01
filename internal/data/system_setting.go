@@ -15,6 +15,13 @@ type systemSettingRepo struct {
 
 var _ biz.SystemSettingRepo = (*systemSettingRepo)(nil)
 
+func (r *systemSettingRepo) readClient(ctx context.Context) *ent.Client {
+	if c, ok := ctx.Value(txClientKey{}).(*ent.Client); ok {
+		return c
+	}
+	return r.data.ReadEnt()
+}
+
 // NewSystemSettingRepo implements biz.SystemSettingRepo and registers DB-backed credential key resolution.
 func NewSystemSettingRepo(d *Data) biz.SystemSettingRepo {
 	repo := &systemSettingRepo{data: d}
@@ -86,7 +93,7 @@ func entToEvalLLM(e *ent.SystemSetting) biz.EvalLLMSetting {
 }
 
 func (r *systemSettingRepo) Get(ctx context.Context) (biz.SystemSetting, error) {
-	row, err := r.data.entClient.SystemSetting.Get(ctx, systemSettingSingletonID)
+	row, err := r.readClient(ctx).SystemSetting.Get(ctx, systemSettingSingletonID)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.SystemSetting{}, sql.ErrNoRows
@@ -107,7 +114,7 @@ func (r *systemSettingRepo) Get(ctx context.Context) (biz.SystemSetting, error) 
 // getRefineLLMRedacted loads refine_llm_* columns without the api_key field.
 // Used by Get() to populate biz.SystemSetting.DefaultRefineLLM safely.
 func (r *systemSettingRepo) getRefineLLMRedacted(ctx context.Context) (biz.RefineLLMSetting, error) {
-	rows, err := r.data.entClient.QueryContext(ctx,
+	rows, err := r.readClient(ctx).QueryContext(ctx,
 		`SELECT refine_llm_provider, refine_llm_model, refine_llm_base_url
 		 FROM system_settings WHERE id = ? LIMIT 1`, systemSettingSingletonID)
 	if err != nil {
@@ -146,7 +153,7 @@ func (r *systemSettingRepo) Update(ctx context.Context, rootDir, workDir string,
 }
 
 func (r *systemSettingRepo) GetKnowledgeEmbed(ctx context.Context) (biz.KnowledgeEmbedSetting, error) {
-	row, err := r.data.entClient.SystemSetting.Get(ctx, systemSettingSingletonID)
+	row, err := r.readClient(ctx).SystemSetting.Get(ctx, systemSettingSingletonID)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.KnowledgeEmbedSetting{}, sql.ErrNoRows
@@ -178,7 +185,7 @@ func (r *systemSettingRepo) UpdateKnowledgeEmbed(ctx context.Context, patch biz.
 }
 
 func (r *systemSettingRepo) GetWebResearch(ctx context.Context) (biz.WebResearchSetting, error) {
-	row, err := r.data.entClient.SystemSetting.Get(ctx, systemSettingSingletonID)
+	row, err := r.readClient(ctx).SystemSetting.Get(ctx, systemSettingSingletonID)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.WebResearchSetting{}, sql.ErrNoRows
@@ -267,7 +274,7 @@ func (r *systemSettingRepo) UpdateEvalLLM(ctx context.Context, patch biz.EvalLLM
 // GetRefineLLM returns the stored platform default LLM for AI refinement (API key included).
 // Uses raw SQL because the ent generator cannot be run due to a tablewriter version conflict.
 func (r *systemSettingRepo) GetRefineLLM(ctx context.Context) (biz.RefineLLMSetting, error) {
-	rows, err := r.data.entClient.QueryContext(ctx,
+	rows, err := r.readClient(ctx).QueryContext(ctx,
 		`SELECT refine_llm_provider, refine_llm_model, refine_llm_base_url, refine_llm_api_key
 		 FROM system_settings WHERE id = ? LIMIT 1`, systemSettingSingletonID)
 	if err != nil {

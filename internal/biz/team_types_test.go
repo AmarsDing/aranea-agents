@@ -1,6 +1,10 @@
 package biz
 
-import "testing"
+import (
+	"testing"
+
+	"aranea-agents/pkg/loggateway"
+)
 
 func TestIsTeamRunTerminalStatus(t *testing.T) {
 	terminal := []string{TeamRunStatusSuccess, TeamRunStatusFailed, TeamRunStatusCancelled}
@@ -55,7 +59,7 @@ func TestValidateTeamRunTransition(t *testing.T) {
 }
 
 func TestParseOrchestrationDecision(t *testing.T) {
-	d, err := ParseOrchestrationDecision([]byte(`{"action":"approve","score":0.9,"reason":"good"}`))
+	d, err := ParseOrchestrationDecision([]byte(`{"action":"approve","score":0.9,"reason":"good"}`), loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}

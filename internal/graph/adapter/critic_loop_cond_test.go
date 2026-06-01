@@ -5,13 +5,14 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
 func TestCriticLoopCondFunc_ToolCallApprove(t *testing.T) {
-	fn := criticLoopCondFunc(0.8)
+	fn := criticLoopCondFunc(0.8, loggateway.NewNoop())
 	state := trpcgraph.State{
 		trpcgraph.StateKeyMessages: []trpcmodel.Message{
 			{Role: trpcmodel.RoleAssistant, ToolCalls: []trpcmodel.ToolCall{
@@ -32,7 +33,7 @@ func TestCriticLoopCondFunc_ToolCallApprove(t *testing.T) {
 }
 
 func TestCriticLoopCondFunc_ToolCallRetry(t *testing.T) {
-	fn := criticLoopCondFunc(0.8)
+	fn := criticLoopCondFunc(0.8, loggateway.NewNoop())
 	state := trpcgraph.State{
 		trpcgraph.StateKeyMessages: []trpcmodel.Message{
 			{Role: trpcmodel.RoleAssistant, ToolCalls: []trpcmodel.ToolCall{
@@ -53,7 +54,7 @@ func TestCriticLoopCondFunc_ToolCallRetry(t *testing.T) {
 }
 
 func TestCriticLoopCondFunc_ToolCallScoreAboveThreshold(t *testing.T) {
-	fn := criticLoopCondFunc(0.7)
+	fn := criticLoopCondFunc(0.7, loggateway.NewNoop())
 	state := trpcgraph.State{
 		trpcgraph.StateKeyMessages: []trpcmodel.Message{
 			{Role: trpcmodel.RoleAssistant, ToolCalls: []trpcmodel.ToolCall{
@@ -74,7 +75,7 @@ func TestCriticLoopCondFunc_ToolCallScoreAboveThreshold(t *testing.T) {
 }
 
 func TestCriticLoopCondFunc_FallbackStringApproved(t *testing.T) {
-	fn := criticLoopCondFunc(0.8)
+	fn := criticLoopCondFunc(0.8, loggateway.NewNoop())
 	state := trpcgraph.State{
 		trpcgraph.StateKeyMessages: []trpcmodel.Message{
 			{Role: trpcmodel.RoleAssistant, Content: "I have reviewed the work and it is approved."},
@@ -90,7 +91,7 @@ func TestCriticLoopCondFunc_FallbackStringApproved(t *testing.T) {
 }
 
 func TestCriticLoopCondFunc_FallbackStringScore(t *testing.T) {
-	fn := criticLoopCondFunc(0.7)
+	fn := criticLoopCondFunc(0.7, loggateway.NewNoop())
 	state := trpcgraph.State{
 		trpcgraph.StateKeyMessages: []trpcmodel.Message{
 			{Role: trpcmodel.RoleAssistant, Content: `{"score": 0.8}`},
@@ -106,7 +107,7 @@ func TestCriticLoopCondFunc_FallbackStringScore(t *testing.T) {
 }
 
 func TestCriticLoopCondFunc_NoMessages(t *testing.T) {
-	fn := criticLoopCondFunc(0.8)
+	fn := criticLoopCondFunc(0.8, loggateway.NewNoop())
 	result, err := fn(context.Background(), trpcgraph.State{})
 	if err != nil {
 		t.Fatal(err)
@@ -117,7 +118,7 @@ func TestCriticLoopCondFunc_NoMessages(t *testing.T) {
 }
 
 func TestCriticLoopCondFunc_OtherToolCallIgnored(t *testing.T) {
-	fn := criticLoopCondFunc(0.8)
+	fn := criticLoopCondFunc(0.8, loggateway.NewNoop())
 	state := trpcgraph.State{
 		trpcgraph.StateKeyMessages: []trpcmodel.Message{
 			{Role: trpcmodel.RoleAssistant, Content: "needs work", ToolCalls: []trpcmodel.ToolCall{

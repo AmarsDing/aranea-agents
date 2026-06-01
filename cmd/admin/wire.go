@@ -480,6 +480,7 @@ func provideTeamOrchestrationDeps(
 	graphs *biz.GraphUsecase,
 	tasks *biz.TaskUsecase,
 	teamGraphCoord *team.TeamGraphRunCoordinator,
+	spiritUC *biz.SpiritTeamUsecase,
 ) service.TeamOrchestrationDeps {
 	return service.TeamOrchestrationDeps{
 		Teams:          teams,
@@ -488,6 +489,7 @@ func provideTeamOrchestrationDeps(
 		Graphs:         graphs,
 		Tasks:          tasks,
 		TeamGraphCoord: teamGraphCoord,
+		SpiritUC:       spiritUC,
 	}
 }
 
@@ -532,6 +534,7 @@ func provideChatServiceDeps(
 	spiritAssembler *service.SpiritTeamAssembler,
 	spiritSynthesis *service.SpiritSynthesisService,
 	orchCache *biz.OrchestrationCache,
+	teamStarter biz.TeamStarterPort,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	return service.ChatOrchestratorDeps{
@@ -568,6 +571,7 @@ func provideChatServiceDeps(
 		SpiritAssembler: spiritAssembler,
 		SpiritSynthesis: spiritSynthesis,
 		OrchCache:       orchCache,
+		TeamStarter:     teamStarter,
 	}
 }
 

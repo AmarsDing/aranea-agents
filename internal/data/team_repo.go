@@ -113,8 +113,15 @@ func entTeamRunStepToBiz(e *ent.TeamRunStep) biz.TeamRunStep {
 	}
 }
 
+func (r *teamRepo) readClient(ctx context.Context) *ent.Client {
+	if c, ok := ctx.Value(txClientKey{}).(*ent.Client); ok {
+		return c
+	}
+	return r.data.ReadEnt()
+}
+
 func (r *teamRepo) ListTeams(ctx context.Context) ([]biz.Team, error) {
-	c := r.data.entClient
+	c := r.readClient(ctx)
 	rows, err := c.Team.Query().Where(team.DeletedAtEQ("")).
 		Order(team.ByIsDefault(entsql.OrderDesc()), team.ByCreatedAt(entsql.OrderDesc())).
 		All(ctx)
@@ -129,7 +136,7 @@ func (r *teamRepo) ListTeams(ctx context.Context) ([]biz.Team, error) {
 }
 
 func (r *teamRepo) GetTeamByID(ctx context.Context, id string) (biz.Team, error) {
-	c := r.data.entClient
+	c := r.readClient(ctx)
 	row, err := c.Team.Query().Where(team.IDEQ(id), team.DeletedAtEQ("")).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -231,7 +238,7 @@ func (r *teamRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionID st
 	if spiritSessionID == "" {
 		return nil, nil
 	}
-	rows, err := r.data.entClient.Team.Query().
+	rows, err := r.readClient(ctx).Team.Query().
 		Where(team.SpiritSessionIDEQ(spiritSessionID), team.DeletedAtEQ("")).
 		Order(team.ByCreatedAt(entsql.OrderDesc())).
 		All(ctx)
@@ -249,7 +256,7 @@ func (r *teamRepo) ListTeamRuns(ctx context.Context, teamID string, limit int) (
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	q := r.data.entClient.TeamRun.Query().Order(teamrun.ByCreatedAt(entsql.OrderDesc()))
+	q := r.readClient(ctx).TeamRun.Query().Order(teamrun.ByCreatedAt(entsql.OrderDesc()))
 	if teamID != "" {
 		q = q.Where(teamrun.TeamIDEQ(teamID))
 	}
@@ -265,7 +272,7 @@ func (r *teamRepo) ListTeamRuns(ctx context.Context, teamID string, limit int) (
 }
 
 func (r *teamRepo) HasActiveTeamRun(ctx context.Context, teamID string) (bool, error) {
-	count, err := r.data.entClient.TeamRun.Query().
+	count, err := r.readClient(ctx).TeamRun.Query().
 		Where(
 			teamrun.TeamIDEQ(teamID),
 			teamrun.StatusIn(biz.TeamRunStatusRunning, biz.TeamRunStatusPending),
@@ -279,7 +286,7 @@ func (r *teamRepo) HasActiveTeamRun(ctx context.Context, teamID string) (bool, e
 }
 
 func (r *teamRepo) GetTeamRunByID(ctx context.Context, id string) (biz.TeamRun, error) {
-	row, err := r.data.entClient.TeamRun.Get(ctx, id)
+	row, err := r.readClient(ctx).TeamRun.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.TeamRun{}, sql.ErrNoRows
@@ -290,7 +297,7 @@ func (r *teamRepo) GetTeamRunByID(ctx context.Context, id string) (biz.TeamRun, 
 }
 
 func (r *teamRepo) ListTeamRunSteps(ctx context.Context, runID string) ([]biz.TeamRunStep, error) {
-	rows, err := r.data.entClient.TeamRunStep.Query().
+	rows, err := r.readClient(ctx).TeamRunStep.Query().
 		Where(teamrunstep.RunIDEQ(runID)).
 		Order(teamrunstep.BySortOrder(entsql.OrderAsc()), teamrunstep.ByCreatedAt(entsql.OrderAsc())).
 		All(ctx)
@@ -492,7 +499,7 @@ func (r *teamRepo) ListOrchestrationSteps(ctx context.Context, teamRunID, nodeID
 	if limit <= 0 {
 		limit = 100
 	}
-	q := r.data.entClient.OrchestrationStep.Query().
+	q := r.readClient(ctx).OrchestrationStep.Query().
 		Where(orchestrationstep.TeamRunIDEQ(teamRunID)).
 		Order(orchestrationstep.ByCreatedAt(entsql.OrderAsc())).
 		Limit(limit)
@@ -536,7 +543,7 @@ func (r *teamRepo) CreateTaskDeadLetter(ctx context.Context, dl biz.TaskDeadLett
 }
 
 func (r *teamRepo) ListTaskDeadLetters(ctx context.Context, filter biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
-	q := r.data.entClient.TaskDeadLetter.Query()
+	q := r.readClient(ctx).TaskDeadLetter.Query()
 	if sid := strings.TrimSpace(filter.SessionID); sid != "" {
 		q = q.Where(taskdeadletter.SessionIDEQ(sid))
 	}
@@ -569,7 +576,7 @@ func (r *teamRepo) ResolveTaskDeadLetter(ctx context.Context, id string) (biz.Ta
 	if id == "" {
 		return biz.TaskDeadLetter{}, kerrors.BadRequest("TASK_DEAD_LETTER", "task dead letter id is required")
 	}
-	existing, err := r.data.entClient.TaskDeadLetter.Get(ctx, id)
+	existing, err := r.readClient(ctx).TaskDeadLetter.Get(ctx, id)
 	if err != nil {
 		return biz.TaskDeadLetter{}, err
 	}

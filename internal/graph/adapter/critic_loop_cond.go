@@ -14,7 +14,7 @@ import (
 
 const DefaultCriticLoopThreshold = 0.0
 
-func criticLoopCondFunc(threshold float64) trpcgraph.ConditionalFunc {
+func criticLoopCondFunc(threshold float64, lg loggateway.Logger) trpcgraph.ConditionalFunc {
 	return func(ctx context.Context, state trpcgraph.State) (string, error) {
 		msgs, ok := state[trpcgraph.StateKeyMessages].([]trpcmodel.Message)
 		if !ok || len(msgs) == 0 {
@@ -23,7 +23,7 @@ func criticLoopCondFunc(threshold float64) trpcgraph.ConditionalFunc {
 		lastMsg := msgs[len(msgs)-1]
 		for _, tc := range lastMsg.ToolCalls {
 			if tc.Function.Name == biz.OrchestrationControlToolName {
-				d, err := biz.ParseOrchestrationDecision(tc.Function.Arguments, loggateway.NewNoop())
+				d, err := biz.ParseOrchestrationDecision(tc.Function.Arguments, lg)
 				if err == nil {
 					if biz.IsApprovedDecision(d, threshold) {
 						return "approved", nil
@@ -66,8 +66,8 @@ func isAlphaNum(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r)
 }
 
-func RegisterCriticLoopCondFunc(reg RegistryRegistrar, threshold float64) {
-	reg.RegisterCondFuncInstance(biz.CriticLoopCondFuncRef, criticLoopCondFunc(threshold))
+func RegisterCriticLoopCondFunc(reg RegistryRegistrar, threshold float64, lg loggateway.Logger) {
+	reg.RegisterCondFuncInstance(biz.CriticLoopCondFuncRef, criticLoopCondFunc(threshold, lg))
 }
 
 type RegistryRegistrar interface {

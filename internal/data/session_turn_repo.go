@@ -174,7 +174,7 @@ func (r *sessionRepo) ListSessionTurns(ctx context.Context, sessionID string, li
 	if sessionID == "" {
 		return biz.SessionTurnListResult{}, kerrors.BadRequest("SESSION_TURN", "session_id is required")
 	}
-	c := r.data.entClient
+	c := r.readClient(ctx)
 	where := entsessionturn.SessionIDEQ(sessionID)
 	total, err := c.SessionTurn.Query().Where(where).Count(ctx)
 	if err != nil {
@@ -197,7 +197,7 @@ func (r *sessionRepo) ListSessionTurns(ctx context.Context, sessionID string, li
 }
 
 func (r *sessionRepo) GetSessionTurn(ctx context.Context, id string) (biz.SessionTurn, error) {
-	c := r.data.entClient
+	c := r.readClient(ctx)
 	row, err := c.SessionTurn.Get(ctx, id)
 	if err != nil {
 		return biz.SessionTurn{}, err

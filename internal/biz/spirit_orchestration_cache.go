@@ -13,26 +13,54 @@ import (
 )
 
 type OrchestrationCacheEntry struct {
-	TaskPattern  string     `json:"task_pattern"`
-	Topology     TopologyType `json:"topology"`
-	DQScore      float64    `json:"dq_score"`
-	TeamCount    int        `json:"team_count"`
-	AvgDurationMs int64     `json:"avg_duration_ms"`
-	UpdatedAt    string     `json:"updated_at"`
+	TaskPattern   string       `json:"task_pattern"`
+	Topology      TopologyType `json:"topology"`
+	DQScore       float64      `json:"dq_score"`
+	TeamCount     int          `json:"team_count"`
+	AvgDurationMs int64        `json:"avg_duration_ms"`
+	UpdatedAt     string       `json:"updated_at"`
 }
 
-// TECH-DEBT: OrchestrationCache 仅内存存储，服务重启后所有历史 DQ Score 丢失。
-// 应在启动时从数据库加载缓存，或在 RecordCompletion 时持久化到 SystemSetting。
+type OrchestrationCacheRepo interface {
+	LoadCacheJSON(ctx context.Context) (string, error)
+	SaveCacheJSON(ctx context.Context, jsonStr string) error
+}
+
 type OrchestrationCache struct {
 	mu      sync.RWMutex
 	entries map[string]*OrchestrationCacheEntry
+	repo    OrchestrationCacheRepo
 	lg      loggateway.Logger
 }
 
-func NewOrchestrationCache(lg loggateway.Logger) *OrchestrationCache {
-	return &OrchestrationCache{
+func NewOrchestrationCache(lg loggateway.Logger, repo OrchestrationCacheRepo) *OrchestrationCache {
+	c := &OrchestrationCache{
 		entries: make(map[string]*OrchestrationCacheEntry),
 		lg:      lg,
+	}
+	if repo != nil {
+		c.repo = repo
+	}
+	return c
+}
+
+func (c *OrchestrationCache) InitFromRepo(ctx context.Context) {
+	if c.repo == nil {
+		return
+	}
+	jsonStr, err := c.repo.LoadCacheJSON(ctx)
+	if err != nil {
+		c.lg.Warn("从数据库加载编排缓存失败",
+			loggateway.StepID("spirit.orchestration_cache.load"),
+			loggateway.Err(err),
+		)
+		return
+	}
+	if err := c.LoadFromJSON(jsonStr); err != nil {
+		c.lg.Warn("解析编排缓存 JSON 失败",
+			loggateway.StepID("spirit.orchestration_cache.parse"),
+			loggateway.Err(err),
+		)
 	}
 }
 
@@ -100,18 +128,59 @@ func ComputeDQScore(teamResult TeamSynthesisResult, durationMs int64) float64 {
 	if teamResult.Status != "completed" {
 		return 0.0
 	}
-	baseScore := 1.0
+	breakdown := ComputeDQScoreBreakdown(teamResult, durationMs)
+	return breakdown.Overall()
+}
+
+type DQScoreBreakdown struct {
+	Validity    float64 `json:"validity"`
+	Specificity float64 `json:"specificity"`
+	Correctness float64 `json:"correctness"`
+	DurationMs  int64   `json:"duration_ms"`
+}
+
+func (b DQScoreBreakdown) Overall() float64 {
+	score := b.Validity*0.4 + b.Specificity*0.3 + b.Correctness*0.3
+	if score < 0.1 {
+		return 0.1
+	}
+	return score
+}
+
+func ComputeDQScoreBreakdown(teamResult TeamSynthesisResult, durationMs int64) DQScoreBreakdown {
+	b := DQScoreBreakdown{DurationMs: durationMs}
+
+	if teamResult.Status == "completed" {
+		b.Validity = 1.0
+	} else {
+		b.Validity = 0.0
+	}
+
+	if teamResult.Summary != "" {
+		b.Specificity = 0.7
+		if len(teamResult.Summary) > 100 {
+			b.Specificity = 1.0
+		} else if len(teamResult.Summary) > 50 {
+			b.Specificity = 0.85
+		}
+	}
+	if teamResult.KeyFindings != "" {
+		b.Specificity = min(b.Specificity+0.15, 1.0)
+	}
+
+	b.Correctness = 1.0
 	if durationMs > 0 {
 		timePenalty := float64(durationMs) / 60000.0
 		if timePenalty > 5.0 {
 			timePenalty = 5.0
 		}
-		baseScore -= timePenalty * 0.1
+		b.Correctness -= timePenalty * 0.1
 	}
-	if baseScore < 0.1 {
-		baseScore = 0.1
+	if b.Correctness < 0.1 {
+		b.Correctness = 0.1
 	}
-	return baseScore
+
+	return b
 }
 
 func (c *OrchestrationCache) RecordCompletion(ctx context.Context, taskPattern string, topology TopologyType, dqScore float64, teamCount int, avgDurationMs int64) {
@@ -126,6 +195,27 @@ func (c *OrchestrationCache) RecordCompletion(ctx context.Context, taskPattern s
 		TeamCount:     teamCount,
 		AvgDurationMs: avgDurationMs,
 	})
+	c.persistToRepo(ctx)
+}
+
+func (c *OrchestrationCache) persistToRepo(ctx context.Context) {
+	if c.repo == nil {
+		return
+	}
+	jsonStr, err := c.ToJSON()
+	if err != nil {
+		c.lg.Warn("序列化编排缓存失败",
+			loggateway.StepID("spirit.orchestration_cache.marshal"),
+			loggateway.Err(err),
+		)
+		return
+	}
+	if saveErr := c.repo.SaveCacheJSON(ctx, jsonStr); saveErr != nil {
+		c.lg.Warn("持久化编排缓存失败",
+			loggateway.StepID("spirit.orchestration_cache.save"),
+			loggateway.Err(saveErr),
+		)
+	}
 }
 
 func (c *OrchestrationCache) SuggestTopology(taskDescription string) (TopologyType, bool) {

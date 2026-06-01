@@ -269,7 +269,7 @@ func NewGraphBuilderFactory(
 	resolvers graphtrpc.GraphNodeResolverSet,
 	lg loggateway.Logger,
 ) biz.GraphBuilderFactory {
-	RegisterCriticLoopCondFunc(registry, DefaultCriticLoopThreshold)
+	RegisterCriticLoopCondFunc(registry, DefaultCriticLoopThreshold, lg)
 	return &trpcGraphBuilderFactory{
 		registry:     registry,
 		saver:        saver,

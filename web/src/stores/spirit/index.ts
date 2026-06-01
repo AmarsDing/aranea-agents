@@ -132,7 +132,7 @@ export const useSpiritTeamStore = defineStore("spiritTeam", () => {
             mode: String(md.mode ?? "coordinator"),
             memberAvatars: [],
             completedSteps: 0,
-            totalSteps: 0,
+            totalSteps: Number(md.total_steps ?? 1),
             durationMs: Number(md.duration_ms ?? 0),
             spiritSessionId: env.session_id ?? "",
             teamSessionId: String(md.session_id ?? ""),
@@ -192,7 +192,7 @@ export const useSpiritTeamStore = defineStore("spiritTeam", () => {
         allTeamsCompleted.value = false;
         {
           const rawResults = Array.isArray(env.metadata?.team_results)
-            ? env.metadata.team_results as Array<{ team_id: string; team_name: string; status: string }>
+            ? env.metadata.team_results as Array<{ team_id: string; team_name: string; task_name: string; status: string; summary: string; key_findings: string }>
             : [];
           synthesisResult.value = {
             strategy: String(env.metadata?.strategy ?? "template") as SynthesisOutput["strategy"],
@@ -200,10 +200,10 @@ export const useSpiritTeamStore = defineStore("spiritTeam", () => {
             teamResults: rawResults.map((r) => ({
               teamId: String(r.team_id ?? ""),
               teamName: String(r.team_name ?? ""),
-              taskName: "",
+              taskName: String(r.task_name ?? ""),
               status: String(r.status ?? ""),
-              summary: "",
-              keyFindings: "",
+              summary: String(r.summary ?? ""),
+              keyFindings: String(r.key_findings ?? ""),
             })),
             synthesizedAt: new Date().toISOString(),
           };

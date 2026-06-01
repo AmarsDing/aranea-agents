@@ -62,8 +62,15 @@ func entToBizPM(lg loggateway.Logger, e *ent.LlmProviderModel) biz.ProviderModel
 	}
 }
 
+func (r *llmProviderModelRepo) readClient(ctx context.Context) *ent.Client {
+	if c, ok := ctx.Value(txClientKey{}).(*ent.Client); ok {
+		return c
+	}
+	return r.data.ReadEnt()
+}
+
 func (r *llmProviderModelRepo) ListProviderModels(ctx context.Context) ([]biz.ProviderModel, error) {
-	rows, err := r.data.entClient.LlmProviderModel.Query().
+	rows, err := r.readClient(ctx).LlmProviderModel.Query().
 		Where(llmprovidermodel.DeletedAtEQ("")).
 		Order(
 			llmprovidermodel.BySortOrder(),
@@ -81,7 +88,7 @@ func (r *llmProviderModelRepo) ListProviderModels(ctx context.Context) ([]biz.Pr
 }
 
 func (r *llmProviderModelRepo) GetProviderModel(ctx context.Context, id string) (biz.ProviderModel, error) {
-	row, err := r.data.entClient.LlmProviderModel.Query().
+	row, err := r.readClient(ctx).LlmProviderModel.Query().
 		Where(llmprovidermodel.IDEQ(id), llmprovidermodel.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -94,7 +101,7 @@ func (r *llmProviderModelRepo) GetProviderModel(ctx context.Context, id string) 
 }
 
 func (r *llmProviderModelRepo) GetProviderModelByProviderAndModel(ctx context.Context, provider, model string) (biz.ProviderModel, error) {
-	row, err := r.data.entClient.LlmProviderModel.Query().
+	row, err := r.readClient(ctx).LlmProviderModel.Query().
 		Where(
 			llmprovidermodel.ProviderEQ(provider),
 			llmprovidermodel.ModelEQ(model),
@@ -115,7 +122,7 @@ func (r *llmProviderModelRepo) ValidateProviderPair(ctx context.Context, provide
 	if strings.TrimSpace(provider) == "" || strings.TrimSpace(model) == "" {
 		return false, nil
 	}
-	n, err := r.data.entClient.LlmProviderModel.Query().
+	n, err := r.readClient(ctx).LlmProviderModel.Query().
 		Where(
 			llmprovidermodel.ProviderEQ(strings.TrimSpace(provider)),
 			llmprovidermodel.ModelEQ(strings.TrimSpace(model)),

@@ -8,6 +8,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/monitor/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -203,7 +204,7 @@ func TestBizMonitorRowToProto(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := bizMonitorRowToProto(tc.in)
+			got := bizMonitorRowToProto(tc.in, loggateway.NewNoop())
 			if got.Id != tc.want.Id {
 				t.Errorf("Id = %q, want %q", got.Id, tc.want.Id)
 			}

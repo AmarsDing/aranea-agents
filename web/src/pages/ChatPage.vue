@@ -38,6 +38,7 @@
         v-model:model-provider="composer.modelProvider"
         :panel-mode="spiritStore.activePanelMode"
         :spirit-team="spiritStore.activeTeam"
+        :synthesis-result="spiritStore.synthesisResult"
         :messages="session.displayMessages"
         :attachments="composer.attachments"
         :mode-options="composer.modeOpts"

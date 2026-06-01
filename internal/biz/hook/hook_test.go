@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestParseConfig(t *testing.T) {
 	t.Run("valid JSON", func(t *testing.T) {
 		input := `{"callback_point":"before_tool","condition":{"agent_id":"a1"},"action":{"type":"notify","webhook_url":"https://example.com"}}`
-		cfg, err := ParseConfig(input)
+		cfg, err := ParseConfig(input, loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -25,7 +27,7 @@ func TestParseConfig(t *testing.T) {
 	})
 
 	t.Run("empty string", func(t *testing.T) {
-		cfg, err := ParseConfig("")
+		cfg, err := ParseConfig("", loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -35,7 +37,7 @@ func TestParseConfig(t *testing.T) {
 	})
 
 	t.Run("whitespace only", func(t *testing.T) {
-		cfg, err := ParseConfig("   ")
+		cfg, err := ParseConfig("   ", loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -45,7 +47,7 @@ func TestParseConfig(t *testing.T) {
 	})
 
 	t.Run("invalid JSON", func(t *testing.T) {
-		_, err := ParseConfig("{not json}")
+		_, err := ParseConfig("{not json}", loggateway.NewNoop())
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -53,7 +55,7 @@ func TestParseConfig(t *testing.T) {
 
 	t.Run("normalizes callback_point", func(t *testing.T) {
 		input := `{"callback_point":"BeforeTool"}`
-		cfg, err := ParseConfig(input)
+		cfg, err := ParseConfig(input, loggateway.NewNoop())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

@@ -22,15 +22,15 @@ func (s *stubHookRepo) DeleteHook(context.Context, string) error       { return 
 func TestHookResolver_Resolve_filtersAgent(t *testing.T) {
 	repo := &stubHookRepo{items: []Hook{
 		{
-			Key:     "h1",
-			Enabled: true,
-			Status:  "active",
+			Key:        "h1",
+			Enabled:    true,
+			Status:     "active",
 			ConfigJSON: `{"callback_point":"before_agent","condition":{"agent_id":"a1"},"action":{"type":"log"}}`,
 		},
 		{
-			Key:     "h2",
-			Enabled: true,
-			Status:  "active",
+			Key:        "h2",
+			Enabled:    true,
+			Status:     "active",
 			ConfigJSON: `{"callback_point":"before_model","action":{"type":"log"}}`,
 		},
 		{
@@ -40,7 +40,7 @@ func TestHookResolver_Resolve_filtersAgent(t *testing.T) {
 			ConfigJSON: `{"callback_point":"before_agent","action":{"type":"log"}}`,
 		},
 	}}
-	r := NewHookResolver(NewHookUsecase(repo), loggateway.NewNoop())
+	r := NewHookResolver(NewHookUsecase(repo, loggateway.NewNoop()), loggateway.NewNoop())
 	if err := r.Reload(context.Background()); err != nil {
 		t.Fatal(err)
 	}

@@ -89,7 +89,7 @@ func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps
 		if def.CriticLoop != nil && def.CriticLoop.MaxIterations > 0 {
 			maxIter = def.CriticLoop.MaxIterations
 		}
-		escFn := buildEscalationFunc(def.CriticLoop)
+		escFn := buildEscalationFunc(def.CriticLoop, lg)
 		return cycleagent.New("team-critic-loop",
 			cycleagent.WithSubAgents(memberAgents),
 			cycleagent.WithMaxIterations(maxIter),
@@ -253,23 +253,24 @@ const OrchestrationControlToolSchema = `{
 
 func defaultEscalationFunc(lg loggateway.Logger) func(ev *trpcevent.Event) bool {
 	return func(ev *trpcevent.Event) bool {
-	if ev == nil || ev.Response == nil {
-		return false
-	}
-	for _, ch := range ev.Choices {
-		for _, tc := range ch.Message.ToolCalls {
-			if tc.Function.Name == biz.OrchestrationControlToolName {
-				d, err := biz.ParseOrchestrationDecision(tc.Function.Arguments)
-				if err == nil && d.Action == "approve" {
-					return true
+		if ev == nil || ev.Response == nil {
+			return false
+		}
+		for _, ch := range ev.Choices {
+			for _, tc := range ch.Message.ToolCalls {
+				if tc.Function.Name == biz.OrchestrationControlToolName {
+					d, err := biz.ParseOrchestrationDecision(tc.Function.Arguments, lg)
+					if err == nil && d.Action == "approve" {
+						return true
+					}
 				}
 			}
+			if strings.Contains(strings.ToLower(ch.Message.Content), "approved") {
+				return true
+			}
 		}
-		if strings.Contains(strings.ToLower(ch.Message.Content), "approved") {
-			return true
-		}
+		return false
 	}
-	return false
 }
 
 func defaultSwarmHandoffInput(ctx context.Context, args trpcteam.SwarmHandoffInputArgs) (trpcmodel.Message, error) {

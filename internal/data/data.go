@@ -95,6 +95,7 @@ var ProviderSet = wire.NewSet(
 	NewToolResultBlobRepo,
 	NewToolResultReplacementRepo,
 	NewSeedVersionRepo,
+	NewOrchestrationCacheRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -143,6 +144,13 @@ func (d *Data) ReadEnt() *ent.Client {
 	return d.readClient
 }
 
+func (d *Data) ReadClient(ctx context.Context) *ent.Client {
+	if c, ok := ctx.Value(txClientKey{}).(*ent.Client); ok {
+		return c
+	}
+	return d.ReadEnt()
+}
+
 // Postgres returns the Postgres DB handle for vectors, or nil if not configured.
 func (d *Data) Postgres() *sql.DB {
 	if d == nil {
@@ -171,6 +179,32 @@ func (d *Data) IsReady() bool {
 		return true
 	}
 	return d.readiness.IsReady()
+}
+
+const sqliteWriteRetryMax = 3
+
+func isSQLiteBusyErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "database is locked") || strings.Contains(msg, "SQLITE_BUSY")
+}
+
+func retryOnBusy(fn func() error) error {
+	var lastErr error
+	for i := 0; i < sqliteWriteRetryMax; i++ {
+		if err := fn(); err != nil {
+			if isSQLiteBusyErr(err) {
+				lastErr = err
+				time.Sleep(time.Duration(100*(i+1)) * time.Millisecond)
+				continue
+			}
+			return err
+		}
+		return nil
+	}
+	return lastErr
 }
 
 func (d *Data) SeedLazy(ctx context.Context, name string) error {
@@ -431,6 +465,7 @@ func initSQLite(c *conf.Data, lg loggateway.Logger) (*ent.Client, *sql.DB, *ent.
 	}
 	rawDB.SetMaxOpenConns(1)
 	rawDB.SetMaxIdleConns(1)
+	rawDB.SetConnMaxIdleTime(5 * time.Minute)
 
 	drv := entsql.OpenDB(driverName, rawDB)
 	entClient := ent.NewClient(ent.Driver(drv))
@@ -439,7 +474,7 @@ func initSQLite(c *conf.Data, lg loggateway.Logger) (*ent.Client, *sql.DB, *ent.
 		for _, pragma := range []string{
 			"PRAGMA foreign_keys=ON",
 			"PRAGMA journal_mode=WAL",
-			"PRAGMA busy_timeout=15000",
+			"PRAGMA busy_timeout=30000",
 			"PRAGMA synchronous=NORMAL",
 		} {
 			if _, pragmaErr := rawDB.ExecContext(context.Background(), pragma); pragmaErr != nil {
@@ -472,11 +507,12 @@ func initSQLite(c *conf.Data, lg loggateway.Logger) (*ent.Client, *sql.DB, *ent.
 	}
 	readDB.SetMaxOpenConns(2)
 	readDB.SetMaxIdleConns(2)
+	readDB.SetConnMaxIdleTime(5 * time.Minute)
 	if driverName == dialect.SQLite {
 		for _, pragma := range []string{
 			"PRAGMA foreign_keys=ON",
 			"PRAGMA journal_mode=WAL",
-			"PRAGMA busy_timeout=15000",
+			"PRAGMA busy_timeout=30000",
 			"PRAGMA synchronous=NORMAL",
 		} {
 			if _, pragmaErr := readDB.ExecContext(context.Background(), pragma); pragmaErr != nil {

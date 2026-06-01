@@ -1014,12 +1014,14 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 			teamID := strings.TrimSpace(sess.TeamID)
 			if err != nil {
 				o.publishTurnFailure(sessionID, "", "pending-queue", err, pendingEntryID)
+				o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 				if spiritSessionID != "" && teamID != "" {
-					o.publishSpiritTeamLifecycleEvent(bgCtx, spiritSessionID, teamID, "failed", err.Error())
+					o.teamStarter.HandleTeamTurnResult(bgCtx, spiritSessionID, teamID, "failed", err.Error())
 				}
 			} else {
+				o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusCompleted, "")
 				if spiritSessionID != "" && teamID != "" {
-					o.publishSpiritTeamLifecycleEvent(bgCtx, spiritSessionID, teamID, "completed", "")
+					o.teamStarter.HandleTeamTurnResult(bgCtx, spiritSessionID, teamID, "completed", "")
 				}
 			}
 		} else {

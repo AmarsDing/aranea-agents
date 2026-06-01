@@ -52,17 +52,23 @@ func (s *SpiritSynthesisService) SynthesizeResults(ctx context.Context, spiritSe
 		return nil, err
 	}
 	if s.eventBus != nil {
-		type slimResult struct {
-			TeamID   string `json:"team_id"`
-			TeamName string `json:"team_name"`
-			Status   string `json:"status"`
+		type richResult struct {
+			TeamID      string `json:"team_id"`
+			TeamName    string `json:"team_name"`
+			TaskName    string `json:"task_name"`
+			Status      string `json:"status"`
+			Summary     string `json:"summary"`
+			KeyFindings string `json:"key_findings,omitempty"`
 		}
-		slimResults := make([]slimResult, 0, len(teamResults))
+		richResults := make([]richResult, 0, len(teamResults))
 		for _, r := range teamResults {
-			slimResults = append(slimResults, slimResult{
-				TeamID:   r.TeamID,
-				TeamName: r.TeamName,
-				Status:   r.Status,
+			richResults = append(richResults, richResult{
+				TeamID:      r.TeamID,
+				TeamName:    r.TeamName,
+				TaskName:    r.TaskName,
+				Status:      r.Status,
+				Summary:     r.Summary,
+				KeyFindings: r.KeyFindings,
 			})
 		}
 		env := event.NewEnvelope(contract.EnvelopeTypeSpiritSynthesisCompleted, "spirit-synthesis", spiritSessionID)
@@ -71,7 +77,7 @@ func (s *SpiritSynthesisService) SynthesizeResults(ctx context.Context, spiritSe
 			"strategy":          string(output.Strategy),
 			"team_count":        len(teamResults),
 			"content":           output.Content,
-			"team_results":      slimResults,
+			"team_results":      richResults,
 		}
 		s.eventBus.Publish(ctx, env)
 	}

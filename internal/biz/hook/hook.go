@@ -60,11 +60,12 @@ type Repo interface {
 // Usecase implements hook CRUD workflows.
 type Usecase struct {
 	repo Repo
+	lg   loggateway.Logger
 }
 
 // NewUsecase constructs a HookUsecase.
-func NewUsecase(repo Repo) *Usecase {
-	return &Usecase{repo: repo}
+func NewUsecase(repo Repo, lg loggateway.Logger) *Usecase {
+	return &Usecase{repo: repo, lg: lg}
 }
 
 // List returns all hooks.
@@ -93,7 +94,7 @@ func (u *Usecase) Create(ctx context.Context, in Hook) (Hook, error) {
 	if in.Status == "" {
 		in.Status = "active"
 	}
-	if err := ValidateConfigForSave(in.ConfigJSON); err != nil {
+	if err := ValidateConfigForSave(in.ConfigJSON, u.lg); err != nil {
 		return Hook{}, err
 	}
 	return u.repo.CreateHook(ctx, in)
@@ -132,7 +133,7 @@ func (u *Usecase) Update(ctx context.Context, id string, patch Hook) (Hook, erro
 	if merged.Status == "" {
 		merged.Status = cur.Status
 	}
-	if err := ValidateConfigForSave(merged.ConfigJSON); err != nil {
+	if err := ValidateConfigForSave(merged.ConfigJSON, u.lg); err != nil {
 		return Hook{}, err
 	}
 	return u.repo.UpdateHook(ctx, merged)
@@ -175,14 +176,14 @@ type Action struct {
 }
 
 // ParseConfig unmarshals ConfigJSON; empty config is valid but has no point.
-func ParseConfig(configJSON string) (Config, error) {
+func ParseConfig(configJSON string, lg loggateway.Logger) (Config, error) {
 	raw := strings.TrimSpace(configJSON)
 	if raw == "" {
 		return Config{}, nil
 	}
 	var cfg Config
 	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
-		loggateway.Global().Warn("解析 hook config 失败", loggateway.StepID("hook.parse_config"), loggateway.Err(err))
+		lg.Warn("解析 hook config 失败", loggateway.StepID("hook.parse_config"), loggateway.Err(err))
 		return Config{}, err
 	}
 	cfg.CallbackPoint = NormalizeCallbackPoint(cfg.CallbackPoint)
@@ -191,7 +192,7 @@ func ParseConfig(configJSON string) (Config, error) {
 
 // CallbackPoint returns the normalized lifecycle point from config_json.
 func (h Hook) CallbackPoint() string {
-	cfg, err := ParseConfig(h.ConfigJSON)
+	cfg, err := ParseConfig(h.ConfigJSON, loggateway.NewNoop())
 	if err != nil {
 		return ""
 	}
@@ -200,7 +201,7 @@ func (h Hook) CallbackPoint() string {
 
 // ConditionFromConfig returns condition fields from config_json.
 func (h Hook) ConditionFromConfig() Condition {
-	cfg, err := ParseConfig(h.ConfigJSON)
+	cfg, err := ParseConfig(h.ConfigJSON, loggateway.NewNoop())
 	if err != nil {
 		return Condition{}
 	}
@@ -209,7 +210,7 @@ func (h Hook) ConditionFromConfig() Condition {
 
 // ActionFromConfig returns action fields from config_json.
 func (h Hook) ActionFromConfig() Action {
-	cfg, err := ParseConfig(h.ConfigJSON)
+	cfg, err := ParseConfig(h.ConfigJSON, loggateway.NewNoop())
 	if err != nil {
 		return Action{}
 	}
@@ -262,8 +263,8 @@ func AppliesToTool(cond Condition, toolName string) bool {
 // ── Hook validation ───────────────────────────────────────────────────────────
 
 // ValidateConfigForSave checks config_json before Hook CRUD persistence.
-func ValidateConfigForSave(configJSON string) error {
-	cfg, err := ParseConfig(configJSON)
+func ValidateConfigForSave(configJSON string, lg loggateway.Logger) error {
+	cfg, err := ParseConfig(configJSON, lg)
 	if err != nil {
 		return errors.BadRequest("HOOK", "invalid config_json: "+err.Error())
 	}
@@ -474,7 +475,7 @@ func (r *Resolver) Reload(ctx context.Context) error {
 		if !hookRuleActive(h) {
 			continue
 		}
-		cfg, err := ParseConfig(h.ConfigJSON)
+		cfg, err := ParseConfig(h.ConfigJSON, r.lg)
 		if err != nil || cfg.CallbackPoint == "" {
 			continue
 		}

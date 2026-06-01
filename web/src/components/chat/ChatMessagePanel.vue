@@ -119,6 +119,12 @@
       @update-pending="(id, content) => emit('update-pending', id, content)"
     />
 
+    <SynthesisResultCard
+      v-if="synthesisResult && (!panelMode || panelMode === 'spirit')"
+      :result="synthesisResult"
+      class="q-mx-md q-mb-sm"
+    />
+
     <ChatComposer
       v-if="!panelMode || panelMode === 'spirit'"
       :model-value="modelValue"
@@ -195,6 +201,7 @@ import ChatHeaderUsagePanel from "./ChatHeaderUsagePanel.vue";
 import ChatHeaderPromptBar from "./ChatHeaderPromptBar.vue";
 import ChatReasoningDrawer from "./ChatReasoningDrawer.vue";
 import TaskExecutionPanel from "../spirit/TaskExecutionPanel.vue";
+import SynthesisResultCard from "../spirit/SynthesisResultCard.vue";
 import type { RunStatusValue } from "../../features/chat/types";
 import { useChatTimeline, type TimelineItem } from "../../features/chat/composables/useChatTimeline";
 import {
@@ -209,13 +216,14 @@ import type { ComposerUsageSnapshot } from "../../features/chat/composerUsageMet
 import type { PromptBreakdown } from "../../features/chat/contextBreakdown";
 import type { ArtifactMeta } from "../../features/artifact/types";
 import type { ChatAttachment } from "./types";
-import type { SpiritTeam } from "../../features/spirit/types";
+import type { SpiritTeam, SynthesisOutput } from "../../features/spirit/types";
 
 type Option = { label: string; value: string; caption?: string };
 
 const props = defineProps<{
   panelMode?: "spirit" | "team" | "member";
   spiritTeam?: SpiritTeam | null;
+  synthesisResult?: SynthesisOutput | null;
   modelValue: string;
   messages: Message[];
   attachments: ChatAttachment[];

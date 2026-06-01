@@ -36,6 +36,8 @@
       <span class="text-caption">所有团队已完成</span>
     </div>
 
+    <SynthesisResultCard v-if="synthesisResult" :result="synthesisResult" class="q-mb-sm" />
+
     <div class="parallel-team-overview__cards">
       <TeamProgressCard
         v-for="team in teams"
@@ -51,12 +53,14 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import TeamProgressCard from "./TeamProgressCard.vue";
-import type { SpiritTeam } from "../../features/spirit/types";
+import SynthesisResultCard from "./SynthesisResultCard.vue";
+import type { SpiritTeam, SynthesisOutput } from "../../features/spirit/types";
 
 const props = defineProps<{
   teams: SpiritTeam[];
   maxParallel: number;
   allCompleted: boolean;
+  synthesisResult?: SynthesisOutput | null;
 }>();
 
 defineEmits<{

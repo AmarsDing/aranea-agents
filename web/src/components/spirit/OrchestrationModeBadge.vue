@@ -27,7 +27,7 @@ const topologyLabel = computed(() => {
 
 const topologyIcon = computed(() => {
   const icons: Record<TopologyType, string> = {
-    parallel: "vertical_align_center",
+    parallel: "view_column",
     sequential: "format_list_numbered",
     hybrid: "account_tree",
     coordinator: "hub",

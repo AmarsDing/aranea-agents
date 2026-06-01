@@ -38,7 +38,7 @@ func TestManager_MergeChain_addsHookCallbacks(t *testing.T) {
 		SortOrder:  1,
 		ConfigJSON: `{"callback_point":"after_agent","action":{"type":"log"}}`,
 	}}}
-	resolver := biz.NewHookResolver(biz.NewHookUsecase(repo), loggateway.NewNoop())
+	resolver := biz.NewHookResolver(biz.NewHookUsecase(repo, loggateway.NewNoop()), loggateway.NewNoop())
 	mgr := NewManager(NewRuntime(nil, loggateway.NewNoop()), resolver, loggateway.NewNoop())
 
 	base := callbacks.NewChain(callbacks.NewBeforeAgentHook(0, nil))
