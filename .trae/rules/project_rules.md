@@ -224,7 +224,68 @@ kerrors.InternalServer("AGENT", err.Error())
 
 ---
 
-## 六、模块间通信
+## 六、数据库编码规范（SQLite + Ent ORM）
+
+> 源自 `docs/sqlite问题和解决方案.md` 的核心设计原则，所有 data 层开发必须遵守。
+
+### 6.1 Schema 管理
+
+- **单一 Schema 真相源**：所有表必须进 Ent Schema，`go generate` 是唯一的 Schema 演进方式
+- **禁止野生表**：不得在 Ent Schema 之外通过 Raw SQL 创建新表
+- **Ent 不支持的特性**（FTS5、pgvector、`BEGIN IMMEDIATE`）：在 Ent Schema 中标注 `Annotations`，用 Raw Query 补充但不另建表
+- **新增数据库表/查询**：`internal/data/ent/schema` → `go generate ./internal/data/ent` → `internal/data`
+
+### 6.2 数据访问模式
+
+**Raw SQL → Ent Repo 迁移策略**：
+
+| 场景 | 方案 |
+|------|------|
+| 简单 CRUD | 直接替换为 Ent API |
+| 复杂查询 | 保留 `ent.Client.QueryContext()`，但用 Ent 生成的类型做结果映射 |
+| SQLite 特有语法 | 通过 Ent 的 Raw Query + 类型映射保留 |
+
+**Ent 无法覆盖的场景**：
+
+| 场景 | 方案 |
+|------|------|
+| `ON CONFLICT DO UPDATE WHERE` | Ent 的 `OnConflictColumns` + `UpdateSet` |
+| `INSERT OR IGNORE` | Ent 的 `OnConflictColumns` + 不更新 |
+| `json_set()`/`json_remove()` | 保留 Raw SQL，但封装为 Repo 方法 |
+| FTS5 全文搜索 | 保留 Raw SQL（Ent 不支持 FTS5） |
+| pgvector 向量搜索 | 保留 Raw SQL（Ent 不支持向量） |
+| `BEGIN IMMEDIATE` | 保留 Raw SQL（Ent 不支持事务隔离级别） |
+| 50+ 列大表 | Ent 生成后用 `SetXxx()` 链式调用 |
+
+### 6.3 Repo 接口规范
+
+- **方法数上限**：每个 Repo 接口 ≤ 5 方法（红线 #15）
+- **拆分维度**：按读写职责拆分（`XxxReader`/`XxxWriter`），或按业务子域拆分（`TeamRunRepo`/`OrchestrationStepRepo`）
+- **Wire 绑定**：按需注入窄接口，消费方只看到自己需要的方法
+- **接口定义位置**：biz 层定义接口，data 层实现
+
+### 6.4 事务管理
+
+- **统一事务接口**：一套 `TransactionManager` 覆盖 Ent + Raw SQL，通过 context 传播事务对象
+- **Raw SQL Repo 从 ctx 获取事务**：优先使用 `ctx.Value(rawTxKey{})` 获取已开启的事务，无事务时回退到 `d.RawDB()`
+- **压缩操作**：必须通过 CAS + 事务保证原子性（`TryIncrementCompressVersion` + `CompressSessionInTx`）
+
+### 6.5 读写分离
+
+- **SQLite 双连接**：写连接 `entClient`（`MaxOpenConns=1`），读连接 `readClient`（`MaxOpenConns=2`）
+- **Ent Repo**：`readClient(ctx)` 读、`txClient(ctx)` 写
+- **Raw SQL Repo**：读操作用 `d.ReadDB()`，写操作用 `d.RawDB()`
+- **连接收口**：不得在 `NewData` 外另开 SQLite 连接（红线 #11）
+
+### 6.6 Schema 迁移
+
+- **框架化迁移**：所有 Schema 变更（包括 `ALTER TABLE ADD COLUMN`）纳入统一迁移框架
+- **迁移要素**：有版本号、有依赖顺序、可回滚
+- **禁止散落 patch**：不得新增 `*_patch.go` 模式的迁移，统一走迁移框架
+
+---
+
+## 七、模块间通信
 
 | 方式 | 正确 | 错误 |
 |------|------|------|
@@ -236,7 +297,7 @@ kerrors.InternalServer("AGENT", err.Error())
 
 ---
 
-## 七、验证
+## 八、验证
 
 | 改动类型 | 最小验证 |
 |----------|----------|
@@ -249,7 +310,7 @@ kerrors.InternalServer("AGENT", err.Error())
 
 ---
 
-## 八、代码审查纪律
+## 九、代码审查纪律
 
 - 代码审查**必须使用项目 SKILL**（`go-oop-review` / `aranea-frontend-review`），不可仅依赖内置通用审查
 - 通用审查（如 `TRAE-code-review`）只能作为补充，项目红线和业务规则检查以 SKILL 为准
@@ -258,13 +319,13 @@ kerrors.InternalServer("AGENT", err.Error())
 
 ---
 
-## 九、任务执行纪律
+## 十、任务执行纪律
 
 - 有任务 ID 时：只读对应 development.md / blueprint 中该 ID 块
 - 列假设 → 编码 → 分级验证 → 通过后再扩 scope
 - 只改与任务直接相关的文件；不顺带 refactor 相邻模块
 
-### 9.1 OpenSpec + Superpowers 工作流（推荐）
+### 10.1 OpenSpec + Superpowers 工作流（推荐）
 
 **新变更必须走 OpenSpec 流程**，开发纪律由 Superpowers 强制执行：
 
@@ -304,18 +365,18 @@ kerrors.InternalServer("AGENT", err.Error())
 
 ---
 
-## 十、模块关联强制读取（违反即停）
+## 十一、模块关联强制读取（违反即停）
 
 > **任何模块开发前必须先读关联文档。** 模块不是孤岛，改一处必知影响面。
 
-### 10.1 文档索引
+### 11.1 文档索引
 
 | 文档 | 路径 | 定位 |
 |------|------|------|
 | **架构蓝图** | `docs/architecture-blueprint.md` | "每个模块是什么"（静态结构、全貌） |
 | **模块交叉参考** | `docs/module-cross-reference.md` | "改模块 X 时必须注意谁"（动态关联、影响面） |
 
-### 10.2 强制读取规则
+### 11.2 强制读取规则
 
 **开发任何后端/前端模块时，AI 必须：**
 
@@ -341,7 +402,7 @@ kerrors.InternalServer("AGENT", err.Error())
 | 修改 TurnInput/TurnResult | §五·场景演练 #5（最大影响面 8 模块） |
 | 前端新增 Store/Page/组件 | §三·前端模块上下文卡 + §六·前后端对齐表 |
 
-### 10.3 违反后果
+### 11.3 违反后果
 
 - **未读交叉参考即编码** → 导致遗漏同步修改 → 编译失败 / 运行时 panic / 前后端不一致
 - **典型遗漏案例**：

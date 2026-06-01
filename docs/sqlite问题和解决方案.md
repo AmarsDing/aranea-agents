@@ -1,436 +1,265 @@
-# SQLite 读写业务逻辑深度分析报告
+# SQLite 读写业务逻辑深度分析与解决方案
 
 > 分析日期：2026-06-02
-> 分析范围：`internal/data/` 全部 Repo 实现 + `internal/biz/` 全部 Repo 接口
+> 分析范围：`internal/data/` 全部 Repo 实现 + `internal/biz/` 全部 Repo 接口 + 核心业务流
+> 视角：架构 + 设计 + 业务场景 + 业务需求 四维一体
 
 ---
 
-## 一、全局概览
+## 第一部分：业务场景与数据流全景
 
-### 1.1 数据层规模
+### 1.1 核心业务场景识别
 
-| 维度 | 数量 |
-|------|------|
-| Ent Schema | 54 个 |
-| biz Repo 接口 | 117 个（含组合接口 17 个） |
-| data Repo 实现 | 39 个 struct 实现 43 个接口 |
-| 纯 Ent ORM 实现 | 18 个 (~46%) |
-| 纯 Raw SQL 实现 | 10 个 (~26%) |
-| Ent + Raw SQL 混合 | 2 个 (~5%) |
-| sessionmemory.Store 适配器 | 6 个 (~15%) |
-| Pgvector / PostgreSQL | 3 个 (~8%) |
-| 文件系统 | 1 个 (~3%) |
+Aranea-Agents 的数据访问围绕 **6 大核心业务场景** 展开：
 
-### 1.2 双数据库架构
+| 场景 | 频率 | 一致性要求 | 延迟敏感度 | 涉及的表 |
+|------|------|-----------|-----------|----------|
+| **对话轮次执行** | 极高（每次对话） | 强一致 | 极高（用户等待） | sessions, messages, session_runs, session_turns |
+| **Token 用量记录** | 极高（每次 LLM 调用） | 强一致 | 中（异步可接受） | model_token_usage_events, model_token_usage_daily/hourly, sessions |
+| **记忆提取与同步** | 高（每轮对话后） | 最终一致 | 低（后台异步） | memory_facts, memory_entities, memory_relations, pgvector |
+| **渠道消息投递** | 中（外部平台触发） | 幂等一致 | 中（用户等待） | channel_turn_jobs, channel_inbound_receipts, channel_runtime_lease |
+| **监控与审计** | 高（全链路） | Best-effort | 低（后台异步） | audit_logs, monitor_events, monitor_traces, flow_log_events |
+| **配置与元数据** | 低（管理操作） | 强一致 | 低 | agents, teams, tools, system_settings, llm_provider_models |
 
-项目采用 **SQLite（主库）+ PostgreSQL（向量库）** 双数据库架构：
-
-- **SQLite**：所有 CRUD 业务数据，通过 Ent ORM + 原生 SQL 访问
-- **PostgreSQL**：仅用于 pgvector 向量存储（Agent 记忆、知识库向量搜索）
-- **读写分离**：SQLite 有写连接（`entClient`, `MaxOpenConns=1`）和读连接（`readClient`, `MaxOpenConns=2`）
-
-### 1.3 数据访问模式分布
-
-| 模式 | 占比 | 典型模块 |
-|------|------|----------|
-| 纯 Ent ORM | ~46% | Agent、Admin、Channel(PeerSession)、Webhook、AgentCategory、MCPServer、EventStore |
-| Ent + Raw SQL 混合 | ~5% | Session、Tool、SystemSetting、LlmProviderModel |
-| 纯 Raw SQL | ~26% | Monitor、Channel(RuntimeLease/TurnJob/InboundReceipt)、A2A、Evaluation、Ecosystem、LearningLoop、Industry、Department、Position |
-| sessionmemory.Store 适配器 | ~15% | L0/L2/L3/L4/Cascade/Composite 记忆子系统 |
-| Pgvector | ~8% | Memory(向量)、Knowledge(向量+全文)、FactIndexSync |
-| 文件系统 | ~3% | Artifact |
-
----
-
-## 二、逐业务模块分析
-
-### 2.1 Agent 领域 — 基本合规
-
-**实现**：`internal/data/agent_repo.go` — 纯 Ent ORM
-
-**接口**：`AgentRepository` = `AgentReader`(4) + `AgentWriter`(3) + `AgentRuntimeSettingsRepo`(2) + `AgentPromptFileRepo`(5) + 自有(3) = 17 方法
-
-**业务逻辑正确性**：
-- ✅ 读写分离：`readClient(ctx)` 读、`txClient(ctx)` 写
-- ✅ 事务支持：`ExecInTx` 用于 Agent+RuntimeSettings 联合操作
-- ✅ 接口拆分遵循红线 #15（子接口均 ≤5 方法）
-- ⚠️ `normalizeJSONList` / `sanitizePromptFileID` 等辅助函数放在 data 层，属于业务逻辑应移至 biz 层
-
-### 2.2 Session 领域 — 存在设计问题
-
-**实现**：`internal/data/session_repo.go` — Ent + Raw SQL 混合
-
-**接口**：`SessionRepo` = 17 个子接口组合 = **52 方法**（最大组合接口）
-
-**业务逻辑正确性**：
-- ✅ 读写分离做得好：`readClient(ctx)` / `txClient(ctx)`
-- ✅ 压缩操作走 CAS + 事务（`TryIncrementCompressVersion` + `CompressSessionInTx`）
-- ⚠️ `PatchSessionState` 使用 `json_set()`/`json_remove()` 原生 SQL，绕过 Ent 类型安全
-- ⚠️ `UpdateSessionContextFromLLMUsage` 使用 `MAX()` + `CASE WHEN` 原生 SQL
-- ⚠️ 52 方法的组合接口虽然子接口合规，但整体过于庞大
-
-### 2.3 Memory 领域 — 架构最复杂
-
-**实现**：涉及 6 个适配器 + `sessionmemory.Store` + `pgvector.Store`
-
-**核心问题**：
-- `sessionmemory.Store` 是一个 **"影子数据层"**，直接持有 `*ent.Client` 执行原生 SQL，绕过了标准 Repo 模式
-- 记忆系统的 18+ 张表全部不在 Ent Schema 中，通过 `EnsurePatches` 手动 DDL 管理
-- Schema 迁移散落在 `schema.go`、`store_cascade_saga.go`、`store_fact_embedding.go` 等多个文件
-- `memoryFactIndexSync` 存在 **双写**（pgvector 向量 + SQLite embedding_blob），失败时标记 `stale`，但缺乏补偿机制
-
-### 2.4 Usage 领域 — Raw SQL 比重过大
-
-**实现**：`internal/data/usage_write.go` — 几乎全 Raw SQL
-
-**核心问题**：
-- `model_token_usage_events` 表有 50+ 列，用 Ent builder 极其冗长，因此全部走原生 SQL
-- `upsertModelTokenUsageDaily`/`Hourly` 使用 `ON CONFLICT DO UPDATE` 加权平均计算，Ent 无法表达
-- 事务内同时写 events + 更新 sessions 计数器 + upsert daily/hourly 聚合，**4 个写操作在一个事务中**，对 SQLite 单写连接压力大
-
-### 2.5 Channel 领域 — 全 Raw SQL，无 Ent Schema
-
-**实现**：4 个 Repo 中 3 个使用 `d.RawDB()` 原生 SQL
-
-- `channelRuntimeLeaseRepo`：需要 `ON CONFLICT ... WHERE` 条件 upsert（分布式租约）
-- `channelTurnJobRepo`：需要 `CASE WHEN` 条件 upsert
-- `channelInboundReceiptRepo`：需要 `ON CONFLICT DO NOTHING`（幂等去重）
-- `channelPeerSessionRepo`：纯 Ent（唯一走 Ent 的渠道 Repo）
-
-**核心问题**：渠道核心表不在 Ent Schema 中，Schema 通过独立 `EnsureXxxSchema()` 函数管理
-
-### 2.6 Monitor 领域 — 严重违规
-
-**实现**：`internal/data/monitor.go` — 全 Raw SQL
-
-**接口**：`monitor.Repo` = **20 方法**（未拆分，违反红线 #15）
-
-**核心问题**：
-- 3 张表（`audit_logs`、`monitor_events`、`monitor_traces`）不在 Ent Schema 中
-- 使用 `json_extract()` 查询 JSON 字段内部值
-- `monitor_alert.go` 使用 `BEGIN IMMEDIATE` 事务防并发
-- `monitor_trace.go` 使用 `GENERATED ALWAYS AS ... VIRTUAL` 生成列
-- **20 方法的单体接口未按红线 #15 拆分**
-
-### 2.7 Team 领域 — 接口违规
-
-**实现**：`internal/data/team_repo.go` — Ent + 部分 Raw SQL
-
-**接口**：`TeamRepository` = **21 方法**（未拆分，违反红线 #15）
-
-**核心问题**：
-- 混合了 Team CRUD + TeamRun CRUD + TeamRunStep + OrchestrationStep + TaskDeadLetter 五个职责域
-- 应拆分为 `TeamReader`/`TeamWriter`/`TeamRunRepo`/`OrchestrationStepRepo`/`TaskDeadLetterRepo`
-
-### 2.8 A2A / Evaluation / Ecosystem / Learning Loop — 全 Raw SQL
-
-这些模块完全绕过 Ent，直接持有 `*sql.DB`，自建 DDL 和 CRUD：
-- A2A：4 张表，14 方法
-- Evaluation：4 张表，含级联删除事务
-- Ecosystem：2 张表
-- Learning Loop：3 张表
-
----
-
-## 三、架构和设计问题汇总
-
-### 问题 1：双轨 Schema 管理（严重 🔴）
-
-**现状**：54 张表走 Ent Schema 自动迁移，~25 张表走手动 DDL + `ALTER TABLE ADD COLUMN` 补丁。
-
-**影响**：
-- Schema 变更无法通过 `go generate` 统一管理
-- 20+ 个 `*_patch.go` / `*_schema.go` 文件散落各处
-- `PRAGMA table_info` 列检查 + `ALTER TABLE` 增量迁移模式重复出现 15+ 次
-- 无法生成类型安全的 CRUD 代码
-
-**涉及文件**：
-
-| 文件 | 操作的表 | 迁移类型 |
-|------|---------|----------|
-| `sessionmemory/schema.go` | `tool_invocation_params` | ALTER TABLE ADD COLUMN |
-| `memory_facts_index_patch.go` | `memory_facts` | ALTER TABLE + CREATE INDEX |
-| `memory_l4_reinforcements_patch.go` | L4 增强表 | ALTER TABLE |
-| `agent_runtime_patch.go` | `agent_runtime_settings` | ALTER TABLE |
-| `hook_delivery_patch.go` | `hook_deliveries` | ALTER TABLE |
-| `cascade_saga_patch.go` | `cascade_sagas` | ALTER TABLE |
-| `pricing_patch.go` | `model_pricing_rules` | ALTER TABLE |
-| `llm_provider_model_patch.go` | `llm_provider_models` | ALTER TABLE |
-| `a2a_remote_patch.go` | `a2a_remote_agents` | ALTER TABLE |
-| `system_setting_patch.go` | `system_settings` | ALTER TABLE |
-| `team_run_patch.go` | `team_runs` | ALTER TABLE |
-| `session_patch.go` | `sessions` | ALTER TABLE |
-| `session_run_schema.go` | `session_runs` | CREATE TABLE |
-| `session_run_schema_patch.go` | `session_runs` | ALTER TABLE |
-| `session_participant_schema.go` | `session_participants` | CREATE TABLE |
-| `team_graph_session_schema.go` | `team_graph_sessions` | CREATE TABLE |
-| `channel_turn_job_schema.go` | `channel_turn_job` | CREATE TABLE |
-| `channel_inbound_schema.go` | `channel_inbound_receipt` | CREATE TABLE |
-| `message_fts_schema.go` | `messages_fts` | CREATE TABLE (FTS5) |
-| `memory_chain_schema.go` | 记忆链表 | CREATE TABLE |
-
-### 问题 2：Raw SQL 泛滥（严重 🔴）
-
-**现状**：~40 个文件使用原生 SQL，占 data 层文件的 ~60%。
-
-**根因分类**：
-
-| 根因 | 占比 | 说明 |
-|------|------|------|
-| 表不在 Ent Schema | ~55% | 25 张表未进 Ent |
-| SQLite 特有语法 | ~20% | `ON CONFLICT`、`json_set()`、`INSERT OR IGNORE` 等 |
-| 复杂 SQL 表达式 | ~15% | 聚合、CASE WHEN、动态 IN |
-| 大表（50+ 列） | ~10% | Ent builder 过于冗长 |
-
-**Raw SQL 使用场景详细分类**：
-
-| 场景 | 涉及文件数 | 典型语法 |
-|------|-----------|----------|
-| 非 Ent 表的完整 CRUD | ~25 | 全部 SQL 操作 |
-| `ON CONFLICT DO UPDATE WHERE` | 3 | 条件 upsert（租约、TurnJob） |
-| `INSERT OR IGNORE` / `INSERT OR REPLACE` | 4 | 幂等写入 |
-| `json_set()` / `json_remove()` | 2 | 原子 JSON Patch |
-| `json_extract()` | 3 | JSON 字段查询 |
-| FTS5 `MATCH` / `bm25()` / `snippet()` | 1 | 全文搜索 |
-| `BEGIN IMMEDIATE` | 1 | 事务隔离级别 |
-| `GENERATED ALWAYS AS ... VIRTUAL` | 1 | 生成列 |
-| `PRAGMA table_info` | 5 | Schema 检查 |
-| 聚合 + 加权平均 | 3 | `COALESCE`、`NULLIF`、`GROUP BY` |
-| 动态 WHERE 条件拼接 | 8 | 字符串拼接 SQL |
-| 跨表批量 UPDATE | 2 | Provider 迁移 |
-| 50+ 列 INSERT | 2 | `model_token_usage_events`、`agent_runtime_settings` |
-
-### 问题 3：接口拆分不彻底（中等 🟡）
-
-**违反红线 #15 的接口**：
-
-| 接口 | 方法数 | 应拆分为 |
-|------|--------|----------|
-| `TeamRepository` | 21 | `TeamReader` + `TeamWriter` + `TeamRunRepo` + `OrchestrationStepRepo` + `TaskDeadLetterRepo` |
-| `monitor.Repo` | 20 | `AuditReader` + `AuditWriter` + `EventReader` + `EventWriter` + `TraceReader` + `TraceWriter` + `AlertRepo` |
-| `SessionAdminStore` | 20 | `L0AdminStore` + `L1AdminReader` + `L2RecallStore` + `L3FactAdminStore` + `L4GraphAdminStore`（已拆分子接口但组合接口仍暴露） |
-| `a2a.Repo` | 14 | `CardRepo` + `InvocationRepo` + `AuditRepo` + `RemoteAgentRepo` |
-| `SystemSettingRepo` | 11 | `SettingReader` + `SettingWriter` + `CredentialKeyRepo` |
-
-### 问题 4：事务管理不统一（中等 🟡）
-
-**现状**：4 种事务模式并存
-
-| 模式 | 使用位置 | 机制 |
-|------|---------|------|
-| `d.ExecInTx()` | Ent Repo | context 传播 `txClientKey{}` → `tx.Client()` |
-| `d.RawDB().BeginTx()` | Raw SQL Repo | 独立 `*sql.Tx` |
-| `sqlRunner` 接口 | sessionmemory.Store | 第三种事务抽象 |
-| `r.ent().BeginTx()` | usage_write.go | 第四种模式 |
-
-**影响**：跨 Repo 事务无法协调，同一事务内 Ent 操作和 Raw SQL 操作无法原子提交
-
-### 问题 5：读写分离不一致（轻微 🟢）
-
-**现状**：
-- Ent Repo 有 `readClient(ctx)` / `txClient(ctx)` 双 client
-- Raw SQL Repo 直接用 `d.RawDB()`，无读副本
-- `monitorRepo` 用 `d.RawDB()` 写、`d.RawDB()` 读，无读写分离
-
-### 问题 6：sessionmemory.Store 架构定位模糊（严重 🔴）
-
-**现状**：`sessionmemory.Store` 是一个 1000+ 行的"影子数据层"，直接操作 18+ 张表，绕过了 biz 层的 Repo 接口定义。
-
-**影响**：
-- 记忆系统的数据访问没有经过 biz 层接口抽象
-- 无法替换存储后端（如测试时 mock）
-- 与标准 Repo 模式不一致，增加理解成本
-
-**涉及的表**：
-
-| 表名 | 用途 |
-|------|------|
-| `memory_l0_assembly_snapshots` | L0 上下文装配快照 |
-| `memory_l2_episodes` | L2 情景记忆 |
-| `memory_l2_episode_index` | L2 情景嵌入索引 |
-| `memory_l3_facts` | L3 事实记忆 |
-| `memory_entities` | L4 实体 |
-| `memory_relations` | L4 关系 |
-| `memory_action_log` | 记忆操作日志 |
-| `memory_facts` | 事实存储（与 Ent schema 重叠） |
-| `cascade_proposals` | 级联提案 |
-| `cascade_sagas` | 级联 Saga |
-| `memory_l4_reinforcement_paths` | L4 增强路径 |
-
-### 问题 7：SQLite 写瓶颈（架构性 🟡）
-
-**现状**：写连接 `MaxOpenConns=1`，所有写操作串行化。
-
-**影响**：
-- Usage 写入（4 个写操作/事务）在高并发下成为瓶颈
-- `retryOnBusy` 仅重试 3 次，间隔 100-300ms，可能不够
-- 渠道租约、Hook 投递等高频写操作互相阻塞
-
----
-
-## 四、完整改进方案
-
-### 阶段一：统一 Schema 管理（优先级：P0）
-
-**目标**：将所有 25 张"野生"表纳入 Ent Schema 管理。
-
-**方案**：
+### 1.2 一次 Chat Turn 的完整数据写入时序
 
 ```
-1. 为每张野生表创建 Ent Schema：
-   internal/data/ent/schema/
-   ├── a2a_agent_card.go          ← 新增
-   ├── a2a_invocation.go          ← 新增
-   ├── a2a_audit.go               ← 新增
-   ├── a2a_remote_agent.go        ← 新增
-   ├── audit_log.go               ← 新增
-   ├── monitor_event.go           ← 新增
-   ├── monitor_trace.go           ← 新增
-   ├── monitor_trace_span.go      ← 新增
-   ├── monitor_alert_rule.go      ← 新增
-   ├── channel_runtime_lease.go   ← 新增
-   ├── channel_turn_job.go        ← 新增
-   ├── channel_inbound_receipt.go ← 新增
-   ├── session_run.go             ← 新增
-   ├── session_run_checkpoint.go  ← 新增
-   ├── session_participant.go     ← 新增
-   ├── team_graph_session.go      ← 新增
-   ├── eval_dataset.go            ← 新增
-   ├── ecosystem_product.go       ← 新增
-   ├── learning_observation.go    ← 新增
-   ├── plugin_run.go              ← 新增
-   ├── plugin_cost_guard_usage.go ← 新增
-   ├── hook_delivery.go           ← 新增
-   ├── memory_job_deadletter.go   ← 新增
-   ├── position.go                ← 新增
-   └── industry.go / department.go ← 新增
-
-2. 运行 go generate ./internal/data/ent 生成类型安全代码
-
-3. 逐步迁移 Raw SQL Repo → Ent Repo：
-   - 简单 CRUD：直接替换为 Ent API
-   - 复杂查询：保留 ent.Client.QueryContext()，但用 Ent 生成的类型做结果映射
-   - SQLite 特有语法：通过 Ent 的 Raw Query + 类型映射保留
+用户发送消息
+    │
+    ├─[同步·用户等待] Session 状态更新
+    │   └─ sessions 表: status='running', updated_at
+    │
+    ├─[同步·用户等待] 消息写入
+    │   └─ messages 表: INSERT user message
+    │   └─ sessions 表: message_count += 1, 自动标题
+    │
+    Runner 执行中
+    │
+    ├─[异步·后台] 工具调用记录
+    │   └─ tool_invocations 表: INSERT
+    │
+    ├─[异步·后台] 流程日志
+    │   └─ flow_log_events 表: INSERT
+    │
+    ├─[同步·用户等待] Token 用量记录
+    │   └─ [单事务] INSERT model_token_usage_events
+    │   └─ [单事务] UPDATE sessions (聚合递增)
+    │   └─ [单事务] UPSERT model_token_usage_daily
+    │   └─ [单事务] UPSERT model_token_usage_hourly
+    │
+    Runner 完成
+    │
+    ├─[同步·用户等待] 消息写入
+    │   └─ messages 表: INSERT assistant message
+    │
+    ├─[同步·用户等待] Session 状态更新
+    │   └─ sessions 表: status='idle', context_used_ratio, session_revision += 1
+    │
+    ├─[同步·用户等待] Runner 完成监控
+    │   └─ monitor_events 表: INSERT (幂等)
+    │
+    ├─[异步·后台] 记忆任务入队
+    │   └─ → 记忆队列 → L3 Fact 提取 → L4 Graph 写入 → 索引双写
+    │
+    ├─[异步·后台] Webhook 派发
+    │   └─ hook_deliveries 表: INSERT + 外部 HTTP
+    │
+    └─[异步·后台] 预算告警评估
+        └─ budget_alerts 表: UPDATE
 ```
 
-**对于 Ent 无法覆盖的场景**，采用以下策略：
+### 1.3 一致性保证体系
 
-| 场景 | 方案 |
-|------|------|
-| `ON CONFLICT DO UPDATE WHERE` | Ent 的 `OnConflictColumns` + `UpdateSet` |
-| `INSERT OR IGNORE` | Ent 的 `OnConflictColumns` + 不更新 |
-| `json_set()`/`json_remove()` | 保留 Raw SQL，但封装为 Repo 方法 |
-| FTS5 全文搜索 | 保留 Raw SQL（Ent 不支持 FTS5） |
-| pgvector 向量搜索 | 保留 Raw SQL（Ent 不支持向量） |
-| `BEGIN IMMEDIATE` | 保留 Raw SQL（Ent 不支持事务隔离级别） |
-| 50+ 列大表 | Ent 生成后用 `SetXxx()` 链式调用 |
+| 层级 | 机制 | 适用场景 | 当前实现 |
+|------|------|----------|----------|
+| **强一致** | SQLite 单事务多表写入 | Usage 4 表原子写入、Session 压缩 CAS | ✅ 已实现 |
+| **幂等写入** | exists 检查 + patch | RunnerCompletion 去重 | ✅ 已实现 |
+| **原子递增** | `UPDATE SET x = x + ?` | Session 聚合、日/小时汇总 | ✅ 已实现 |
+| **进程内互斥** | `locker.Lock(sessionID)` | 同一 Session 消息串行化 | ✅ 已实现 |
+| **竞态桥接** | `TurnCompletionBridge` | Usage 先于 Completion 到达 | ✅ 已实现 |
+| **最终一致** | EventBus + asyncEnvelopeWorker | 工具调用、FlowLog、Webhook | ✅ 已实现 |
+| **Best-effort** | 失败仅日志 | 监控事件、审计日志 | ✅ 已实现 |
 
-### 阶段二：接口拆分合规化（优先级：P0）
+---
 
-**目标**：所有 Repo 接口方法数 ≤ 5。
+## 第二部分：问题诊断（业务驱动视角）
 
-**拆分方案**：
+### 问题 1：对话主路径写入放大 🔴
+
+**业务场景**：一次 Chat Turn 在同步路径上需要写 sessions 表 **3~4 次**（状态→消息→用量聚合→上下文更新），加上异步路径的 tool_invocations、flow_log、monitor_events 等。
+
+**根因**：Session 表被设计为"超级表"，既存储会话元数据，又承载实时聚合计数器（message_count, model_call_count, tool_call_count, input_tokens, total_cost_micro_usd 等），还存储运行时状态（status, context_used_ratio, runner_snapshot_json, state_json）。
+
+**影响**：
+- SQLite 单写连接下，所有 Session 更新串行化，高并发时成为瓶颈
+- Usage 记录事务内同时写 4 张表 + 更新 sessions 聚合，事务持有时间长
+- `context_used_ratio` 和 `status` 更新频率极高但与核心业务无关
+
+**业务需求**：用户发送消息后应在 200ms 内收到响应，但 SQLite 写入串行化可能使单次 Turn 的同步写入耗时超过 100ms。
+
+### 问题 2：双轨 Schema 管理导致演进困难 🔴
+
+**业务场景**：新增渠道（如企业微信）需要 `channel_turn_jobs` 表增加 `retry_count` 列。当前需要：① 手写 ALTER TABLE ② 新建 `*_patch.go` ③ 在 `ensureSchemaDDL` 中注册 ④ 手动写 CRUD SQL。
+
+**根因**：25 张表未纳入 Ent Schema，Schema 变更无法通过 `go generate` 统一管理。
+
+**影响**：
+- 新增字段的开发周期是 Ent Schema 表的 3~5 倍
+- 20+ 个 `*_patch.go` 文件散落各处，`PRAGMA table_info` + `ALTER TABLE` 模式重复 15+ 次
+- 无法生成类型安全的 CRUD 代码，Raw SQL 中字段名拼写错误只能在运行时发现
+- 表结构文档（`docs/sql/`）与实际代码可能不同步
+
+**业务需求**：快速迭代新功能（新渠道、新监控指标、新记忆层级）需要 Schema 变更的敏捷性。
+
+### 问题 3：记忆子系统数据访问绕过标准架构 🟡
+
+**业务场景**：记忆系统是 Agent "越用越懂你" 的核心能力，涉及 L0~L4 五个层级。当前 `sessionmemory.Store` 直接操作 18+ 张表，绕过了 biz 层的 Repo 接口。
+
+**根因**：记忆子系统在项目早期作为独立模块开发，未遵循标准的 biz→data 分层模式。
+
+**影响**：
+- 无法在测试中 mock 记忆存储（必须启动真实 SQLite）
+- 记忆子系统的数据访问逻辑散落在 `sessionmemory/` 子包中，biz 层无法控制
+- 新增记忆层级（如 L5 长期规划记忆）需要在 `Store` 中增加方法，违反开闭原则
+
+**业务需求**：记忆系统需要持续演进（新增层级、调整策略、A/B 测试），架构必须支持灵活扩展。
+
+### 问题 4：接口拆分不彻底导致依赖污染 🟡
+
+**业务场景**：Channel 模块只需要 `TeamRunRepo` 来查询 Team 运行状态，但当前必须依赖整个 `TeamRepository`（21 方法），引入了对 Team CRUD、OrchestrationStep、TaskDeadLetter 的不必要依赖。
+
+**根因**：`TeamRepository`、`monitor.Repo`、`a2a.Repo` 等接口未按红线 #15 拆分。
+
+**影响**：
+- Wire 注入时构造了不需要的依赖
+- 接口变更影响面大（改 Team CRUD 影响只读 TeamRun 的消费方）
+- 测试时需要 mock 整个大接口
+
+**业务需求**：模块间应松耦合，渠道模块不应因 Team CRUD 变更而重新编译。
+
+### 问题 5：事务管理不统一导致跨 Repo 操作无法原子化 🟡
+
+**业务场景**：Usage 记录需要在同一事务中写 `model_token_usage_events` + 更新 `sessions` 聚合 + upsert 日/小时汇总。当前通过 `r.ent().BeginTx()` 实现，但如果未来需要在同一事务中写入 `hook_deliveries`（Raw SQL 表），则无法协调。
+
+**根因**：4 种事务模式并存（Ent ExecInTx、RawDB BeginTx、sqlRunner、ent BeginTx），无法跨模式共享事务。
+
+**影响**：
+- 跨 Ent 表和 Raw SQL 表的操作无法原子化
+- 渠道场景中 `channel_turn_jobs`（Raw SQL）+ `sessions`（Ent）的状态更新不是原子的
+
+**业务需求**：渠道消息的"任务创建→Session 创建→任务关联"应保证原子性，否则可能出现孤儿任务。
+
+### 问题 6：Raw SQL 泛滥降低可维护性 🟡
+
+**业务场景**：开发者新增一个 `monitor_trace_spans` 表的查询，需要手写 SQL、手写 Scan 逻辑、手写 WHERE 条件拼接、手写分页。Ent 表的同类操作只需 3 行代码。
+
+**根因**：55% 的 Raw SQL 源于表未进 Ent，20% 源于 SQLite 特有语法需求。
+
+**影响**：
+- 代码量是 Ent 实现的 3~5 倍
+- SQL 注入风险（动态 WHERE 拼接）
+- 字段映射错误只能在运行时发现
+- 重构时无法使用 IDE 的"查找引用"功能
+
+**业务需求**：降低新功能开发成本，减少运行时 bug。
+
+### 问题 7：SQLite 写瓶颈 🟢
+
+**业务场景**：10 个并发用户同时对话，每个 Turn 触发 3~4 次同步 Session 写入 + 1 次 Usage 4 表事务。SQLite 单写连接下这些操作串行执行。
+
+**根因**：SQLite WAL 模式允许并发读，但写仍然是单线程的。`MaxOpenConns=1` 确保了安全但限制了吞吐。
+
+**影响**：
+- 当前用户规模（<50 并发）下可接受
+- 随着用户增长，写入延迟将成为瓶颈
+- `retryOnBusy` 仅 3 次，极端情况下可能写入失败
+
+**业务需求**：支持 100+ 并发用户的流畅对话体验。
+
+---
+
+## 第三部分：解决方案（四维一体）
+
+### 维度一：架构层面 — 分离关注点
+
+#### 方案 1.1：Session 表冷热分离
+
+**解决问题**：对话主路径写入放大（问题 1）
+
+**核心思路**：将 Session 表的"实时热字段"与"冷元数据"分离，减少同步路径的写入量。
+
+```
+当前 sessions 表（一表多用）：
+├── 冷元数据（创建时写入，几乎不变）
+│   id, workspace_id, user_id, agent_id, team_id, title, summary,
+│   tags_json, dialog_mode, default_provider, default_model, ...
+├── 实时聚合（每次 Turn 更新）
+│   message_count, run_count, model_call_count, tool_call_count,
+│   input_tokens, output_tokens, total_tokens, total_cost_micro_usd,
+│   avg_latency_ms, error_count
+├── 运行时状态（每次 Turn 更新 2~3 次）
+│   status, status_reason, context_used_tokens, context_used_ratio,
+│   max_context_used_ratio, context_status, runner_snapshot_json, state_json
+└── 时间戳
+    created_at, updated_at, last_message_at, last_run_at
+```
+
+**改造方案**：
+
+```
+sessions 表（冷元数据 + 时间戳）：
+  id, workspace_id, user_id, agent_id, team_id, title, summary,
+  tags_json, dialog_mode, default_provider, default_model,
+  created_at, updated_at, first_message_at, last_message_at,
+  last_run_at, archived_at, deleted_at, pinned_at, session_revision
+
+session_metrics 表（实时聚合，每次 Turn 写 1 次）：
+  session_id, message_count, run_count, model_call_count,
+  tool_call_count, skill_call_count, mcp_call_count,
+  input_tokens, output_tokens, total_tokens, total_cost_micro_usd,
+  avg_latency_ms, error_count, updated_at
+
+session_runtime_state 表（运行时状态，每次 Turn 写 2~3 次）：
+  session_id, status, status_reason, context_used_tokens,
+  context_used_ratio, max_context_used_ratio, context_status,
+  runner_snapshot_json, state_json, compress_version, updated_at
+```
+
+**收益**：
+- 对话主路径的同步写入从 sessions 表 3~4 次降为 1 次（runtime_state）+ 1 次（metrics）
+- 每次写入的行更窄，SQLite 锁持有时间更短
+- 聚合查询（如"列出所有会话的 Token 用量"）可独立读 `session_metrics`，不影响主表
+- `session_runtime_state` 可考虑未来迁移到内存 + 定期快照模式
+
+**实施路径**：
+
+```
+Phase 1: 新建 Ent Schema（session_metrics, session_runtime_state）
+Phase 2: 数据迁移（从 sessions 复制字段到新表）
+Phase 3: 读写切换（读走新表，写走新表）
+Phase 4: 清理 sessions 表中的冗余字段
+```
+
+#### 方案 1.2：统一事务管理器
+
+**解决问题**：跨 Repo 操作无法原子化（问题 5）
+
+**核心思路**：建立统一的 `TransactionManager` 接口，通过 context 同时传播 Ent TX 和 Raw SQL TX。
 
 ```go
-// ─── TeamRepository 拆分 ───
-
-type TeamReader interface {
-    ListTeams(ctx) ([]Team, error)
-    GetTeamByID(ctx, id) (Team, error)
-    ListBySpiritSessionID(ctx, sid) ([]Team, error)
-}
-
-type TeamWriter interface {
-    CreateTeam(ctx, Team) (Team, error)
-    UpdateTeam(ctx, Team) (Team, error)
-    DeleteTeam(ctx, id) error
-}
-
-type TeamRunRepo interface {
-    ListTeamRuns(ctx, teamID, limit) ([]TeamRun, error)
-    HasActiveTeamRun(ctx, teamID) (bool, error)
-    GetTeamRunByID(ctx, id) (TeamRun, error)
-    CreateTeamRun(ctx, TeamRun) (TeamRun, error)
-    UpdateTeamRun(ctx, TeamRun) error
-}
-
-type OrchestrationStepRepo interface {
-    BatchCreateOrchestrationSteps(ctx, []OrchestrationStep) error
-    ListOrchestrationSteps(ctx, teamRunID, nodeID, limit) ([]OrchestrationStep, error)
-}
-
-type TaskDeadLetterRepo interface {
-    CreateTaskDeadLetter(ctx, TaskDeadLetter) error
-    ListTaskDeadLetters(ctx, filter) ([]TaskDeadLetter, error)
-    ResolveTaskDeadLetter(ctx, id) (TaskDeadLetter, error)
-}
-
-// TeamRepository = TeamReader + TeamWriter + TeamRunRepo
-//                   + OrchestrationStepRepo + TaskDeadLetterRepo
-// Wire 绑定时按需注入窄接口
-
-// ─── monitor.Repo 拆分 ───
-
-type AuditLogReader interface { /* ListAuditLogs */ }
-type AuditLogWriter interface { /* InsertAuditLog */ }
-type MonitorEventReader interface { /* ListMonitorEvents, GetMonitorEvent */ }
-type MonitorEventWriter interface { /* InsertMonitorEvent */ }
-type MonitorTraceReader interface { /* ListMonitorTraces, GetMonitorTrace */ }
-type MonitorTraceWriter interface { /* InsertMonitorTrace, UpsertMonitorTraceSpan, UpdateMonitorTraceCompletion */ }
-type AlertRuleRepo interface { /* ListAlertRules, ReplaceAlertRules, UpdateAlertFiringState */ }
-type MonitorCompletionRepo interface { /* CountMonitorEventsSince, AvgRunnerCompletionDurationMsSince, ... */ }
-
-// monitor.Repo = 上述所有子接口组合
-
-// ─── a2a.Repo 拆分 ───
-
-type A2ACardRepo interface {
-    UpsertAgentCard(ctx, AgentCard) (AgentCard, error)
-    GetAgentCard(ctx, agentID) (AgentCard, error)
-    ListEnabledCards(ctx, workspace, capability) ([]AgentCard, error)
-    MapEndpointEnabled(ctx, agentIDs) (map[string]bool, error)
-}
-
-type A2AInvocationRepo interface {
-    CreateInvocation(ctx, Invocation) (Invocation, error)
-    UpdateInvocation(ctx, Invocation) error
-}
-
-type A2AAuditRepo interface {
-    InsertAudit(ctx, AuditEntry) error
-    ListAudit(ctx, callerID, calleeID, limit, offset) ([]AuditEntry, int, error)
-}
-
-type A2ARemoteRepo interface {
-    CreateRemoteAgent(ctx, RemoteAgent) (RemoteAgent, error)
-    ListRemoteAgents(ctx, workspace) ([]RemoteAgent, error)
-    DeleteRemoteAgent(ctx, id) error
-    GetRemoteAgent(ctx, id) (RemoteAgent, error)
-    DiscoverRemoteCard(ctx, RemoteCardDiscoverInput) (AgentCard, error)
-    UpdateRemoteAgentHealth(ctx, id, ok, errMsg) error
-}
-```
-
-### 阶段三：统一事务管理（优先级：P1）
-
-**目标**：一套事务机制覆盖 Ent + Raw SQL。
-
-**方案**：
-
-```go
-// 统一事务接口
 type TransactionManager interface {
     ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
-// Data 实现 TransactionManager
+type rawTxKey struct{}
+
 func (d *Data) ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error {
     tx, err := d.entClient.Tx(ctx)
     if err != nil {
         return err
     }
     txCtx := context.WithValue(ctx, txClientKey{}, tx.Client())
-    txCtx = context.WithValue(txCtx, rawTxKey{}, tx)  // 同时传播 raw TX
+    txCtx = context.WithValue(txCtx, rawTxKey{}, tx)
     if err := fn(txCtx); err != nil {
         _ = tx.Rollback()
         return err
@@ -438,66 +267,259 @@ func (d *Data) ExecInTx(ctx context.Context, fn func(ctx context.Context) error)
     return tx.Commit()
 }
 
-// Raw SQL Repo 从 ctx 获取事务
-func (r *someRawSQLRepo) dbFromCtx(ctx context.Context) DBOperations {
+// Raw SQL Repo 从 context 获取共享事务
+func (r *someRawSQLRepo) execerFromCtx(ctx context.Context) execer {
     if tx, ok := ctx.Value(rawTxKey{}).(*ent.Tx); ok {
-        return tx.Client()  // 共享同一事务
+        return tx.Client()
     }
     return r.data.RawDB()
 }
 ```
 
-### 阶段四：sessionmemory.Store 重构（优先级：P1）
+**收益**：
+- 渠道场景的"任务创建→Session 创建→任务关联"可原子化
+- Usage 记录可在同一事务中写入 Ent 表和 Raw SQL 表
+- 所有 Repo 共享同一事务语义
 
-**目标**：将 `sessionmemory.Store` 的数据访问收口到 biz 层 Repo 接口。
-
-**方案**：
+**实施路径**：
 
 ```
-1. 在 biz 层定义记忆子系统的 Repo 接口（已有部分）：
-   - L0SnapshotRepo
-   - L2EpisodeRepo
-   - L3FactRepo
-   - L4EntityRepo / L4RelationRepo
-   - CascadeProposalRepo / CascadeSagaRepo
-   - ActionLogRepo
-
-2. sessionmemory.Store 拆分为多个独立 Repo 实现：
-   internal/data/sessionmemory/
-   ├── l0_snapshot_repo.go     ← 实现 biz.L0SnapshotRepo
-   ├── l2_episode_repo.go      ← 实现 biz.L2EpisodeRepo
-   ├── l3_fact_repo.go         ← 实现 biz.L3FactRepo
-   ├── l4_entity_repo.go       ← 实现 biz.L4EntityRepo
-   ├── cascade_repo.go         ← 实现 biz.CascadeProposalRepo + CascadeSagaRepo
-   └── schema.go               ← 保留 DDL 管理
-
-3. biz 层 MemoryUsecase 只依赖窄接口，不直接依赖 Store
+Phase 1: 定义 TransactionManager 接口 + Data 实现
+Phase 2: 逐步迁移 Raw SQL Repo 使用 execerFromCtx()
+Phase 3: 废弃 Raw SQL Repo 中独立的 BeginTx() 调用
+Phase 4: biz 层 Usecase 通过 TransactionManager 编排跨 Repo 事务
 ```
 
-### 阶段五：Schema 迁移框架化（优先级：P2）
+#### 方案 1.3：记忆子系统数据访问收口
 
-**目标**：替代散落的 `*_patch.go` 模式，建立统一迁移框架。
+**解决问题**：sessionmemory.Store 绕过标准架构（问题 3）
 
-**方案**：
+**核心思路**：将 `sessionmemory.Store` 拆分为独立 Repo，每个 Repo 实现 biz 层定义的窄接口。
+
+```
+当前：
+  biz 层 → sessionmemory.Store（影子数据层）→ 18+ 张表
+
+改造后：
+  biz 层 → L0SnapshotRepo → memory_l0_assembly_snapshots 表
+        → L2EpisodeRepo → memory_l2_episodes + memory_l2_episode_index 表
+        → L3FactRepo → memory_l3_facts + memory_facts 表
+        → L4EntityRepo → memory_entities + memory_relations 表
+        → CascadeRepo → cascade_proposals + cascade_sagas 表
+        → ActionLogRepo → memory_action_log 表
+```
+
+**收益**：
+- 记忆子系统可独立测试（mock Repo 接口）
+- 新增记忆层级只需新增 Repo 接口 + 实现，不影响已有层级
+- biz 层 MemoryUsecase 只依赖窄接口，符合依赖倒置原则
+
+**实施路径**：
+
+```
+Phase 1: 在 biz 层定义记忆子系统的 Repo 接口（部分已有）
+Phase 2: 将 sessionmemory.Store 的方法拆分到独立 Repo struct
+Phase 3: Wire 绑定新 Repo，替换 Store 的直接注入
+Phase 4: 废弃 sessionmemory.Store 的聚合方法
+```
+
+---
+
+### 维度二：设计层面 — 消除技术债务
+
+#### 方案 2.1：野生表纳入 Ent Schema
+
+**解决问题**：双轨 Schema 管理（问题 2）、Raw SQL 泛滥（问题 6）
+
+**核心思路**：将 25 张野生表全部纳入 Ent Schema，对 Ent 不支持的特性用 Raw Query + Ent 类型映射保留。
+
+**分批实施计划**：
+
+**第一批（高频表，立即执行）**：
+
+| 表 | 当前访问方式 | 迁移后 | 预期收益 |
+|----|------------|--------|----------|
+| `channel_turn_jobs` | 纯 Raw SQL | Ent + 条件 upsert 保留 Raw | 类型安全 + 可生成 |
+| `channel_inbound_receipts` | 纯 Raw SQL | Ent CRUD | 消除手写 SQL |
+| `session_runs` | 纯 Raw SQL | Ent + 乐观锁保留 Raw | 类型安全 |
+| `session_run_checkpoints` | 纯 Raw SQL | Ent CRUD | 消除手写 SQL |
+| `hook_deliveries` | 纯 Raw SQL | Ent + 乐观锁保留 Raw | 类型安全 |
+| `monitor_alert_rules` | 纯 Raw SQL | Ent + BEGIN IMMEDIATE 保留 Raw | 类型安全 |
+
+**第二批（中频表，短期执行）**：
+
+| 表 | 当前访问方式 | 迁移后 |
+|----|------------|--------|
+| `audit_logs` | 纯 Raw SQL | Ent CRUD |
+| `monitor_events` | 纯 Raw SQL | Ent + json_extract 保留 Raw |
+| `monitor_traces` / `monitor_trace_spans` | 纯 Raw SQL | Ent + 生成列保留 Raw |
+| `plugin_runs` | 纯 Raw SQL | Ent CRUD |
+| `plugin_cost_guard_usage` | 纯 Raw SQL | Ent + ON CONFLICT 保留 Raw |
+| `team_graph_sessions` | 纯 Raw SQL | Ent CRUD |
+
+**第三批（低频表，中期执行）**：
+
+| 表 | 当前访问方式 | 迁移后 |
+|----|------------|--------|
+| `a2a_agent_cards` 等 4 张 | 纯 Raw SQL | Ent CRUD |
+| `eval_datasets` 等 4 张 | 纯 Raw SQL | Ent CRUD |
+| `ecosystem_products` 等 2 张 | 纯 Raw SQL | Ent CRUD |
+| `learning_observations` 等 3 张 | 纯 Raw SQL | Ent CRUD |
+| `positions` / `industries` / `departments` | 纯 Raw SQL | Ent CRUD + JOIN 保留 Raw |
+
+**Ent 不支持的特性保留策略**：
+
+| 特性 | 保留方式 | 示例 |
+|------|---------|------|
+| `ON CONFLICT DO UPDATE WHERE` | `ent.Client.ExecContext()` + Ent 类型映射 | 渠道租约 |
+| `INSERT OR IGNORE` | Ent `OnConflictColumns` + 不更新 | 幂等去重 |
+| `json_set()`/`json_remove()` | 封装为 Repo 方法，内部 Raw SQL | Session State Patch |
+| FTS5 `MATCH`/`bm25()` | 保留 Raw SQL（Ent 不支持 FTS5） | 消息全文搜索 |
+| pgvector 向量搜索 | 保留 Raw SQL（Ent 不支持向量） | 记忆向量检索 |
+| `BEGIN IMMEDIATE` | 保留 Raw SQL | 告警规则替换 |
+| `GENERATED ALWAYS AS` | Ent Schema `Annotations` + Raw DDL | Trace Span 索引 |
+| 50+ 列 INSERT | Ent `SetXxx()` 链式调用 | Usage 事件 |
+
+#### 方案 2.2：接口拆分合规化
+
+**解决问题**：接口拆分不彻底（问题 4）
+
+**拆分方案**：
 
 ```go
-// internal/data/migration/registry.go
+// ─── TeamRepository 拆分 ───
+
+type TeamReader interface {
+    ListTeams(ctx context.Context) ([]Team, error)
+    GetTeamByID(ctx context.Context, id string) (Team, error)
+    ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]Team, error)
+}
+
+type TeamWriter interface {
+    CreateTeam(ctx context.Context, t Team) (Team, error)
+    UpdateTeam(ctx context.Context, t Team) (Team, error)
+    DeleteTeam(ctx context.Context, id string) error
+}
+
+type TeamRunReader interface {
+    ListTeamRuns(ctx context.Context, teamID string, limit int) ([]TeamRun, error)
+    HasActiveTeamRun(ctx context.Context, teamID string) (bool, error)
+    GetTeamRunByID(ctx context.Context, id string) (TeamRun, error)
+}
+
+type TeamRunWriter interface {
+    CreateTeamRun(ctx context.Context, r TeamRun) (TeamRun, error)
+    UpdateTeamRun(ctx context.Context, r TeamRun) error
+    UpdateTeamRunGraphExecutionID(ctx context.Context, runID, graphExecutionID string) error
+    UpdateTeamRunTraceID(ctx context.Context, runID, traceID string) error
+    UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error
+}
+
+type OrchestrationStepRepo interface {
+    BatchCreateOrchestrationSteps(ctx context.Context, steps []OrchestrationStep) error
+    ListOrchestrationSteps(ctx context.Context, teamRunID, nodeID string, limit int) ([]OrchestrationStep, error)
+}
+
+type TaskDeadLetterRepo interface {
+    CreateTaskDeadLetter(ctx context.Context, dl TaskDeadLetter) error
+    ListTaskDeadLetters(ctx context.Context, filter TaskDeadLetterListFilter) ([]TaskDeadLetter, error)
+    ResolveTaskDeadLetter(ctx context.Context, id string) (TaskDeadLetter, error)
+}
+
+// TeamRepository = 上述所有子接口组合
+// Wire 绑定时按需注入窄接口
+
+// ─── monitor.Repo 拆分 ───
+
+type AuditLogReader interface {
+    ListAuditLogs(ctx context.Context, query AuditQuery) (AuditListResult, error)
+}
+type AuditLogWriter interface {
+    InsertAuditLog(ctx context.Context, entry AuditLog) error
+}
+type MonitorEventReader interface {
+    ListMonitorEvents(ctx context.Context, query EventsQuery) (ListResult, error)
+    GetMonitorEvent(ctx context.Context, id string) (PlatformRow, error)
+    CountMonitorEventsSince(ctx context.Context, eventKey, status, since, until string) (int32, error)
+}
+type MonitorEventWriter interface {
+    InsertMonitorEvent(ctx context.Context, ev EventWrite) error
+}
+type MonitorTraceReader interface {
+    ListMonitorTraces(ctx context.Context, query TracesQuery) (ListResult, error)
+    GetMonitorTrace(ctx context.Context, id string) (PlatformRow, error)
+}
+type MonitorTraceWriter interface {
+    InsertMonitorTrace(ctx context.Context, tw TraceWrite) error
+    UpsertMonitorTraceSpan(ctx context.Context, sw TraceSpanWrite) error
+    UpdateMonitorTraceCompletion(ctx context.Context, traceID string, status string, durationMs int64, spanCount, errorCount int, totalTokens int64, totalCostUsd float64) error
+}
+type AlertRuleRepo interface {
+    ListAlertRules(ctx context.Context) ([]AlertRule, error)
+    ReplaceAlertRules(ctx context.Context, rules []AlertRule) error
+    UpdateAlertFiringState(ctx context.Context, id string, state AlertFiringState, lastFiredAt *time.Time, lastFiredValue float64, recoveredAt *time.Time) error
+}
+type MonitorCompletionRepo interface {
+    AvgRunnerCompletionDurationMsSince(ctx context.Context, sinceRFC3339 string) (float64, error)
+    LatencyPercentilesSince(ctx context.Context, sinceRFC3339 string) (p50, p95, p99 float64, err error)
+    ExistsRunnerCompletion(ctx context.Context, sessionID, invocationID string) (bool, error)
+    PatchRunnerCompletionMetadata(ctx context.Context, sessionID, runID, invocationID, patchJSON string) (bool, error)
+    ListRecentRunnerCompletions(ctx context.Context, since time.Duration, limit int) ([]RunnerCompletionRow, error)
+}
+
+// ─── a2a.Repo 拆分 ───
+
+type A2ACardRepo interface {
+    UpsertAgentCard(ctx context.Context, card AgentCard) (AgentCard, error)
+    GetAgentCard(ctx context.Context, agentID string) (AgentCard, error)
+    ListEnabledCards(ctx context.Context, workspace, capability string) ([]AgentCard, error)
+    MapEndpointEnabled(ctx context.Context, agentIDs []string) (map[string]bool, error)
+}
+type A2AInvocationRepo interface {
+    CreateInvocation(ctx context.Context, inv Invocation) (Invocation, error)
+    UpdateInvocation(ctx context.Context, inv Invocation) error
+}
+type A2AAuditRepo interface {
+    InsertAudit(ctx context.Context, entry AuditEntry) error
+    ListAudit(ctx context.Context, callerID, calleeID string, limit, offset int) ([]AuditEntry, int, error)
+}
+type A2ARemoteRepo interface {
+    CreateRemoteAgent(ctx context.Context, agent RemoteAgent) (RemoteAgent, error)
+    ListRemoteAgents(ctx context.Context, workspace string) ([]RemoteAgent, error)
+    DeleteRemoteAgent(ctx context.Context, id string) error
+    GetRemoteAgent(ctx context.Context, id string) (RemoteAgent, error)
+    DiscoverRemoteCard(ctx context.Context, in RemoteCardDiscoverInput) (AgentCard, error)
+    UpdateRemoteAgentHealth(ctx context.Context, id string, ok bool, errMsg string) error
+}
+```
+
+#### 方案 2.3：Schema 迁移框架化
+
+**解决问题**：散落的 `*_patch.go` 模式（问题 2 的一部分）
+
+**核心思路**：建立统一迁移框架，替代 20+ 个 `*_patch.go` 文件。
+
+```go
 type Migration struct {
     Version      int
     Name         string
     Up           func(ctx context.Context, client *ent.Client) error
-    Down         func(ctx context.Context, client *ent.Client) error  // 可选
-    Dependencies []int  // 依赖的迁移版本
+    Dependencies []int
 }
 
 var registry = []Migration{
-    {Version: 20260524, Name: "legacy_trpc_memory_facts", Up: migrateLegacyTRPCMemoryFacts},
-    {Version: 20260528, Name: "turn_index_to_turn_id", Up: migrateTurnIndexToTurnID},
-    {Version: 20260531, Name: "session_status_active_to_idle", Up: migrateSessionStatusIdle},
-    // 将所有 *_patch.go 中的 ALTER TABLE 迁移纳入此处
+    {Version: 20260601, Name: "add_channel_turn_job_retry_count",
+     Up: func(ctx context.Context, c *ent.Client) error {
+         if has, _ := sqliteColumnExists(ctx, c, "channel_turn_jobs", "retry_count"); has {
+             return nil
+         }
+         _, err := c.ExecContext(ctx, "ALTER TABLE channel_turn_jobs ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0")
+         return err
+     }},
+    // ... 所有 *_patch.go 中的迁移纳入此处
 }
 
-func RunMigrations(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
+func RunPendingMigrations(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
     for _, m := range registry {
         applied, err := isMigrationApplied(ctx, client, m.Version, lg)
         if err != nil {
@@ -517,144 +539,248 @@ func RunMigrations(ctx context.Context, client *ent.Client, lg loggateway.Logger
 }
 ```
 
-### 阶段六：读写分离增强（优先级：P2）
+**收益**：
+- 所有 Schema 变更有版本号、有依赖顺序
+- 新增字段只需在 `registry` 中添加一条记录
+- 可生成迁移报告（哪些已应用、哪些待应用）
+- 消除 20+ 个 `*_patch.go` 文件
 
-**目标**：Raw SQL Repo 也支持读写分离。
+---
 
-**方案**：
+### 维度三：业务场景层面 — 优化关键路径
+
+#### 方案 3.1：对话主路径写入优化
+
+**解决问题**：对话主路径写入放大（问题 1）
+
+**核心思路**：减少同步路径的写入次数，将非关键写入推迟到异步。
+
+**当前同步路径写入（4~5 次/Turn）**：
+
+```
+1. sessions: status='running'           ← 必须同步
+2. messages: INSERT user message         ← 必须同步
+3. sessions: message_count += 1          ← 可异步
+4. [Usage 事务: 4 表写入]                ← 可异步
+5. messages: INSERT assistant message    ← 必须同步
+6. sessions: status='idle', context_*    ← 必须同步
+7. sessions: session_revision += 1       ← 必须同步
+```
+
+**优化后同步路径写入（3 次/Turn）**：
+
+```
+1. messages: INSERT user message         ← 必须同步
+2. messages: INSERT assistant message    ← 必须同步
+3. session_runtime_state: status + context + revision ← 必须同步（窄行）
+
+异步路径：
+- session_metrics: 聚合递增              ← 异步（EventBus 消费者）
+- model_token_usage_events + 聚合表      ← 异步（EventBus 消费者）
+- sessions.title 自动标题                ← 异步（已有机制）
+```
+
+**关键变更**：
+- Session 聚合字段（message_count, token 统计等）从同步写入改为异步更新
+- Usage 记录从同步事务改为异步 EventBus 消费者
+- `session_revision` 仍同步递增（前端增量同步依赖）
+
+**一致性影响**：
+- 聚合字段有短暂不一致（异步延迟 ~100ms），对业务可接受
+- 前端通过 `session_revision` 做增量同步，revision 变更后触发聚合字段刷新
+
+#### 方案 3.2：Usage 记录异步化
+
+**解决问题**：Usage 4 表事务持有 SQLite 写锁时间过长（问题 1、问题 7）
+
+**核心思路**：将 Usage 记录从同步路径移到异步 EventBus 消费者。
+
+```
+当前：
+  Chat Turn 同步路径 → RecordTokenUsageEvent() → [SQLite 事务: 4 表写入]
+
+改造后：
+  Chat Turn 同步路径 → EventBus.Publish(EnvelopeTypeTokenUsage, event)
+                     → asyncConsumer → RecordTokenUsageEvent() → [SQLite 事务: 4 表写入]
+```
+
+**关键保证**：
+- EventBus 使用 `Reliable: true` 注册，保证事件不丢失
+- Usage 事件包含完整的 `sessionID` + `messageID`，可事后关联
+- `TurnCompletionBridge` 机制保留，用于关联 Usage 和 Completion
+
+**降级策略**：
+- 异步消费者队列满时，回退到同步写入（保证用量不丢失）
+- 监控异步写入延迟，超过阈值时告警
+
+#### 方案 3.3：渠道场景原子化
+
+**解决问题**：渠道消息的"任务创建→Session 创建→任务关联"非原子（问题 5）
+
+**核心思路**：使用统一事务管理器，将渠道场景的多步操作包装在单个事务中。
 
 ```go
-// Data 增加读 DB 访问方法（已有 ReadDB()）
-// Raw SQL Repo 统一模式
-type someRawSQLRepo struct {
-    writeDB *sql.DB  // d.RawDB()
-    readDB  *sql.DB  // d.ReadDB()
+func (uc *ChannelTurnJobUsecase) CreateAndBindSession(ctx context.Context, ...) error {
+    return uc.txManager.ExecInTx(ctx, func(txCtx context.Context) error {
+        // 1. 创建渠道任务（Raw SQL 表）
+        job, err := uc.turnJobRepo.CreateAccepted(txCtx, ...)
+        if err != nil {
+            return err
+        }
+        // 2. 创建 Session（Ent 表）
+        sess, err := uc.sessionRepo.CreateSession(txCtx, ...)
+        if err != nil {
+            return err
+        }
+        // 3. 关联任务与 Session（Raw SQL 表）
+        return uc.turnJobRepo.UpdateAsyncTarget(txCtx, job.ID, "session", sess.ID)
+    })
 }
-
-func (r *someRawSQLRepo) ListXxx(ctx) {
-    // 读操作用 readDB
-    r.readDB.QueryContext(ctx, ...)
-}
-
-func (r *someRawSQLRepo) CreateXxx(ctx) {
-    // 写操作用 writeDB
-    r.writeDB.ExecContext(ctx, ...)
-}
-```
-
-### 阶段七：SQLite 写性能优化（优先级：P3）
-
-**目标**：缓解单写连接瓶颈。
-
-**方案**：
-
-```
-1. 批量写入优化：
-   - Usage 事件写入改为批量 INSERT（攒批后一次写入）
-   - Hook 投递记录批量插入
-
-2. 异步写入扩展：
-   - 已有 Broker/EventBus 异步模式（用于记忆写入）
-   - 扩展到 Usage 事件写入：先写内存队列 → 异步批量入库
-
-3. WAL 模式调优：
-   - 当前 PRAGMA: journal_mode=WAL, synchronous=NORMAL
-   - 考虑 PRAGMA wal_autocheckpoint=1000 减少检查点频率
-
-4. 长期：评估是否需要迁移到 PostgreSQL 作为主库
 ```
 
 ---
 
-## 五、实施优先级路线图
+### 维度四：业务需求层面 — 面向未来演进
+
+#### 方案 4.1：记忆系统可扩展架构
+
+**业务需求**：记忆系统需要持续演进（新增 L5 长期规划记忆、调整策略、A/B 测试记忆层级效果）。
+
+**当前问题**：新增记忆层级需要在 `sessionmemory.Store` 中增加方法，违反开闭原则。
+
+**解决方案**：基于 Repo 接口的插件化记忆架构。
+
+```go
+// biz 层定义记忆层级端口
+type MemoryLayer interface {
+    LayerName() string
+    OnTurnComplete(ctx context.Context, input MemoryTurnInput) error
+    Recall(ctx context.Context, query MemoryRecallQuery) ([]MemoryRecallResult, error)
+}
+
+// 具体层级实现
+type L3FactLayer struct { repo L3FactRepo; consolidator MemoryConsolidator }
+type L4GraphLayer struct { repo L4EntityRepo; decayer L4Decayer }
+type L5PlanningLayer struct { repo L5PlanRepo }  // 未来新增
+
+// MemoryUsecase 持有层级列表
+type MemoryUsecase struct {
+    layers []MemoryLayer  // 按优先级排序
+    ...
+}
+```
+
+**收益**：
+- 新增记忆层级只需实现 `MemoryLayer` 接口 + 注册到 `layers`
+- A/B 测试：动态调整 `layers` 列表，观察不同层级组合的效果
+- 可独立禁用某个层级（如 L4 出问题时只保留 L3）
+
+#### 方案 4.2：多租户数据隔离
+
+**业务需求**：企业客户要求数据隔离（不同 workspace 的数据不可互访）。
+
+**当前问题**：部分 Raw SQL 查询缺少 `workspace_id` 过滤条件，存在数据泄漏风险。
+
+**解决方案**：
+
+1. **Ent 层**：通过 Ent 的 `Privacy Policy` 自动注入 `workspace_id` 过滤
+2. **Raw SQL 层**：建立 `WorkspaceScope` 中间件，自动在 WHERE 条件中追加 `workspace_id = ?`
+3. **审计**：定期扫描 Raw SQL 查询，确保所有涉及 workspace 数据的查询都有过滤
+
+#### 方案 4.3：主库迁移 PostgreSQL 评估
+
+**业务需求**：支持 1000+ 并发用户的流畅对话体验。
+
+**当前瓶颈**：SQLite 单写连接在 100+ 并发时成为瓶颈。
+
+**评估维度**：
+
+| 维度 | SQLite | PostgreSQL |
+|------|--------|------------|
+| 并发写入 | 单线程串行 | 多连接并行 |
+| 事务隔离 | BEGIN IMMEDIATE | READ COMMITTED / SERIALIZABLE |
+| 运维复杂度 | 零（文件数据库） | 中（需独立部署） |
+| 部署成本 | 零 | 中（云 RDS 或自建） |
+| 向量搜索 | 不支持 | pgvector 原生支持 |
+| 全文搜索 | FTS5 | tsvector + GIN 索引 |
+| JSON 操作 | json_extract/json_set | jsonb 操作符 |
+| 备份恢复 | 文件复制 | pg_dump / PITR |
+
+**迁移策略**：
 
 ```
-P0（立即）────────────────────────────────────────
-  ├─ 接口拆分：TeamRepository / monitor.Repo / a2a.Repo
-  ├─ 野生表纳入 Ent Schema（先做高频使用的表）
-  └─ 统一事务管理接口
+Phase 0（当前）: SQLite 主库 + PostgreSQL 向量库
+Phase 1: 高频写入表迁移到 PostgreSQL（usage, monitor, hook_delivery）
+Phase 2: 核心业务表迁移（sessions, messages, agents）
+Phase 3: 全量迁移，SQLite 仅用于单机开发/测试
+```
 
-P1（短期）────────────────────────────────────────
+**Phase 1 的优先迁移表**（写入频率高、对并发敏感）：
+
+| 表 | 写入频率 | 迁移收益 |
+|----|---------|----------|
+| `model_token_usage_events` | 每次 LLM 调用 | 消除 4 表事务瓶颈 |
+| `model_token_usage_daily/hourly` | 每次 LLM 调用 | 并行 UPSERT |
+| `monitor_events` | 每轮对话 | 并行 INSERT |
+| `hook_deliveries` | 每轮对话 | 并行 INSERT + 乐观锁 |
+| `flow_log_events` | 每轮对话 | 并行 INSERT |
+
+---
+
+## 第四部分：实施路线图
+
+### 总体优先级
+
+```
+P0（立即·1~2 周）────────────────────────────────────
+  ├─ 接口拆分：TeamRepository → 5 个子接口
+  ├─ 接口拆分：monitor.Repo → 7 个子接口
+  ├─ 接口拆分：a2a.Repo → 4 个子接口
+  └─ 统一事务管理器：定义接口 + Data 实现
+
+P1（短期·2~4 周）────────────────────────────────────
+  ├─ 第一批野生表纳入 Ent Schema（6 张高频表）
+  ├─ Session 表冷热分离（新建 session_metrics + session_runtime_state）
   ├─ sessionmemory.Store 拆分为独立 Repo
-  ├─ 剩余野生表纳入 Ent Schema
+  └─ Schema 迁移框架化
+
+P2（中期·1~2 月）────────────────────────────────────
+  ├─ 第二批野生表纳入 Ent Schema（6 张中频表）
+  ├─ Usage 记录异步化
+  ├─ 对话主路径写入优化（聚合字段异步更新）
   └─ Raw SQL Repo 读写分离
 
-P2（中期）────────────────────────────────────────
-  ├─ Schema 迁移框架化
-  ├─ 消除 data 层的业务逻辑函数
-  └─ 统一错误处理模式
-
-P3（长期）────────────────────────────────────────
-  ├─ SQLite 写性能优化（批量写入、异步化）
-  └─ 评估主库迁移 PostgreSQL
+P3（长期·2~3 月）────────────────────────────────────
+  ├─ 第三批野生表纳入 Ent Schema（7 张低频表）
+  ├─ 记忆系统插件化架构
+  ├─ 多租户数据隔离审计
+  └─ 评估高频表迁移 PostgreSQL
 ```
 
----
+### 风险与缓解
 
-## 六、核心设计原则
-
-如果重新设计，核心原则是：
-
-1. **单一 Schema 真相源**：所有表必须进 Ent Schema，`go generate` 是唯一的 Schema 演进方式。对 Ent 不支持的特性（FTS5、pgvector、`BEGIN IMMEDIATE`），在 Ent Schema 中标注 `Annotations`，用 Raw Query 补充但不另建表。
-
-2. **接口隔离到方法级**：每个 Repo 接口 ≤5 方法，按读写/职责域拆分。Wire 绑定时按需注入窄接口，消费方只看到自己需要的方法。
-
-3. **统一事务传播**：一套 `TransactionManager` 覆盖 Ent + Raw SQL，通过 context 传播事务对象。
-
-4. **数据访问收口**：`sessionmemory.Store` 拆分为独立 Repo，每个 Repo 只负责一张表或一个紧密关联的表组。biz 层定义接口，data 层实现。
-
-5. **读写分离一致**：所有 Repo（Ent 和 Raw SQL）统一使用 `readDB`/`writeDB` 分离读操作和写操作。
-
-6. **迁移框架化**：所有 Schema 变更（包括 `ALTER TABLE ADD COLUMN`）纳入统一迁移框架，有版本号、有依赖顺序、可回滚。
+| 风险 | 影响 | 缓解措施 |
+|------|------|----------|
+| Session 冷热分离导致查询性能回退 | 前端列表页变慢 | 保留 sessions 表的冗余聚合字段，异步同步到 session_metrics |
+| 接口拆分导致 Wire 绑定变更量大 | 编译错误 | 逐模块拆分，每拆一个模块跑全量测试 |
+| 野生表纳入 Ent 后 DDL 行为变化 | 数据丢失 | Ent Schema 使用 `WithDropIndex(true)` + 人工 review 生成代码 |
+| Usage 异步化导致聚合延迟 | 前端显示不一致 | 前端通过 session_revision 轮询刷新，延迟 <500ms |
+| sessionmemory.Store 拆分影响记忆管线 | 记忆提取失败 | 先并行运行新旧实现，对比结果一致后再切换 |
 
 ---
 
-## 附录：Raw SQL 使用全景图
+## 第五部分：核心设计原则
 
-### A.1 直接 Raw SQL 文件（完全绕过 Ent）
+1. **业务驱动**：每个架构变更必须有明确的业务场景支撑，不为技术而技术。
 
-| 文件 | 操作的表 | 使用原因 |
-|------|---------|----------|
-| `a2a.go` | `a2a_agent_cards` 等 4 张 | 非 Ent 表 |
-| `evaluation.go` | `eval_datasets` 等 4 张 | 非 Ent 表 |
-| `knowledge.go` | `knowledge_collections` 等 3 张 | PostgreSQL + pgvector |
-| `pgvector/store.go` | `agent_memory_<dim>` | 动态表名 + 向量 |
-| `channel_runtime_lease.go` | `channel_runtime_lease` | 条件 upsert |
-| `position_repo.go` | `positions` | 非 Ent 表 + 多表 JOIN |
-| `industry_repo.go` | `industries` | 非 Ent 表 |
-| `department_repo.go` | `departments` | 非 Ent 表 |
-| `monitor.go` | `audit_logs` 等 3 张 | 非 Ent 表 + json_extract |
-| `monitor_alert.go` | `monitor_alert_rules` | BEGIN IMMEDIATE |
-| `monitor_trace.go` | `monitor_traces` 等 2 张 | 生成列 |
-| `memory_job_deadletter.go` | `memory_job_deadletter` | 条件 upsert |
-| `memory_fact_reader.go` | `memory_facts` | 简单 SELECT |
-| `hook_delivery.go` | `hook_deliveries` | 乐观锁 |
-| `learning_loop.go` | 3 张学习循环表 | 非 Ent 表 |
-| `model_registry_apply.go` | 多张 Ent 表 | 跨表批量 UPDATE |
-| `session_run_repo.go` | `session_runs` | 条件 UPDATE + 乐观锁 |
-| `session_participant_repo.go` | `session_participants` | 全量替换 |
-| `session_run_checkpoint_repo.go` | `session_run_checkpoints` | 非 Ent 表 |
-| `team_graph_session_repo.go` | `team_graph_sessions` | INSERT OR REPLACE |
-| `channel_turn_job.go` | `channel_turn_job` | 条件 upsert |
-| `channel_inbound_receipt.go` | `channel_inbound_receipt` | 幂等去重 |
-| `ecosystem.go` | 2 张生态表 | 非 Ent 表 |
-| `plugin_run.go` | `plugin_runs` | 非 Ent 表 |
-| `plugin_cost_guard_usage.go` | `plugin_cost_guard_usage` | 原子累加 |
-| `message_search.go` | `messages_fts` | FTS5 全文搜索 |
+2. **渐进演进**：不搞大重构，每个 Phase 独立可交付，可回滚。
 
-### A.2 Ent 代理 Raw SQL 文件（通过 ent.Client 执行）
+3. **单一 Schema 真相源**：所有表必须进 Ent Schema，`go generate` 是唯一的 Schema 演进方式。对 Ent 不支持的特性，在 Ent Schema 中标注 `Annotations`，用 Raw Query 补充但不另建表。
 
-| 文件 | 操作的表 | 使用原因 |
-|------|---------|----------|
-| `usage_write.go` | `model_token_usage_events` 等 | 50+ 列 + 加权平均 |
-| `usage_daily.go` | `model_token_usage_daily` | 复杂聚合 |
-| `usage_quota.go` | `model_token_usage_events` | 批量费用汇总 |
-| `session_repo.go` (部分) | `sessions` | MAX + CASE WHEN |
-| `session_state_repo.go` | `sessions` | json_set/json_remove |
-| `session_repo_summaries.go` | `sessions` | 特定 SQL 构造 |
-| `session_timeline.go` | 多张 | 时间线查询 |
-| `tool_audit.go` | `tool_invocation_audit` | 非 Ent 表 |
-| `tool.go` (部分) | 多张 | 复杂联表查询 |
-| `team_repo.go` (部分) | 多张 | 批量删除 |
-| `system_setting.go` (部分) | `system_settings` | 特定查询 |
-| `sessionmemory/` (18 文件) | 18+ 记忆表 | 全部原生 SQL |
+4. **接口隔离到方法级**：每个 Repo 接口 ≤5 方法，按读写/职责域拆分。Wire 绑定时按需注入窄接口，消费方只看到自己需要的方法。
+
+5. **同步路径最小化**：对话主路径只做必须同步的写入（消息 + 状态），聚合、监控、用量等全部异步化。
+
+6. **最终一致优先**：除核心业务（消息、状态、用量）外，监控、审计、记忆等采用最终一致性，通过 EventBus + 死信队列保证可靠投递。
+
+7. **数据访问收口**：所有数据访问必须经过 biz 层 Repo 接口，禁止"影子数据层"直接操作数据库。
