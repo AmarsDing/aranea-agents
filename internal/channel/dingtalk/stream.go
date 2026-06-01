@@ -17,19 +17,28 @@ import (
 )
 
 func init() {
-	runtime.RegisterStarter("dingtalk", "stream", RunStream)
+	runtime.RegisterStarterWithLogger("dingtalk", "stream", RunStream)
 }
 
-// RunStream uses DingTalk Stream SDK (MuseBot StartDingRobot).
 func RunStream(
 	ctx context.Context,
 	ch biz.Channel,
 	creds []biz.ChannelCredential,
 	lookup runtime.CredentialLookup,
 	handler port.InboundHandler,
+	lg loggateway.Logger,
 ) error {
+	lg.Info("钉钉 Stream 连接器启动",
+		loggateway.StepID("channel.dingtalk.stream.start"),
+		loggateway.Str("channel_id", ch.ID),
+	)
 	clientID, clientSecret, err := dingStreamCreds(ctx, ch, creds, lookup)
 	if err != nil {
+		lg.Error("钉钉 Stream 凭据获取失败",
+			loggateway.StepID("channel.dingtalk.stream.creds_fail"),
+			loggateway.Str("channel_id", ch.ID),
+			loggateway.Err(err),
+		)
 		return err
 	}
 	chRow := ch
@@ -40,7 +49,7 @@ func RunStream(
 		}
 		ev.PlatformType = "dingtalk"
 		if err := handler.ProcessInbound(ctx, chRow, ev); err != nil {
-			loggateway.Global().Warn("钉钉入站处理失败",
+			lg.Warn("钉钉入站处理失败",
 				loggateway.StepID("channel.dingtalk.inbound_failed"),
 				loggateway.Err(err),
 			)

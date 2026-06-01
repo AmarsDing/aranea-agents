@@ -33,12 +33,17 @@ type TurnRunnerSpec struct {
 type RunnerManager struct {
 	factory  RunnerFactoryDeps
 	registry *RunnerInstanceRegistry
+	lg       loggateway.Logger
 }
 
-func NewRunnerManager(factory RunnerFactoryDeps) *RunnerManager {
+func NewRunnerManager(factory RunnerFactoryDeps, lg loggateway.Logger) *RunnerManager {
+	if lg == nil {
+		lg = loggateway.Global()
+	}
 	return &RunnerManager{
 		factory:  factory,
 		registry: NewRunnerInstanceRegistry(),
+		lg:       lg,
 	}
 }
 
@@ -78,7 +83,7 @@ func (m *RunnerManager) NewTurnRunner(root trpcagent.Agent, spec TurnRunnerSpec)
 	if key := strings.TrimSpace(spec.RegistryKey); key != "" {
 		if prev, ok := m.registry.Replace(key, mr); ok && prev != nil {
 			if err := prev.Close(); err != nil {
-				loggateway.Global().Warn("close prev runner", loggateway.Str("key", key), loggateway.Err(err))
+				m.lg.Warn("close prev runner", loggateway.StepID("runtime.runner_manager"), loggateway.Str("key", key), loggateway.Err(err))
 			}
 		}
 	}

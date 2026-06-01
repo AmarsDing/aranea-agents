@@ -26,7 +26,19 @@ func (s *stubTaskRepo) ListTasksByExecution(context.Context, string, TaskStatus,
 func (s *stubTaskRepo) ListTasksByStatuses(context.Context, []TaskStatus, int) ([]*GraphTask, error) {
 	return nil, nil
 }
+func (s *stubTaskRepo) GetTasksByIDs(_ context.Context, ids []string) ([]*GraphTask, error) {
+	var result []*GraphTask
+	for _, id := range ids {
+		if t, ok := s.tasks[id]; ok {
+			result = append(result, t)
+		}
+	}
+	return result, nil
+}
 func (s *stubTaskRepo) UpdateTask(context.Context, *GraphTask) error { return nil }
+func (s *stubTaskRepo) BatchUpdateTaskStatus(context.Context, []string, TaskStatus) error {
+	return nil
+}
 func (s *stubTaskRepo) SaveTaskComment(context.Context, *TaskComment) error { return nil }
 func (s *stubTaskRepo) ListTaskComments(context.Context, string) ([]*TaskComment, error) {
 	return nil, nil
@@ -55,6 +67,13 @@ func (s *stubTaskLinkRepo) ListParentLinks(_ context.Context, childTaskID string
 }
 func (s *stubTaskLinkRepo) ListChildLinks(context.Context, string) ([]*TaskLink, error) {
 	return nil, nil
+}
+func (s *stubTaskLinkRepo) ListParentLinksByChildren(_ context.Context, childIDs []string) ([]*TaskLink, error) {
+	var result []*TaskLink
+	for _, id := range childIDs {
+		result = append(result, s.parents[id]...)
+	}
+	return result, nil
 }
 
 func errTaskNotFound(id string) error {

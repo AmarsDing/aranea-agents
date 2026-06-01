@@ -5,11 +5,13 @@ import (
 	"fmt"
 
 	"aranea-agents/internal/a2a"
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/tools"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	knowledgepkg "aranea-agents/internal/tools/knowledge"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -52,6 +54,8 @@ type ToolsetConfig struct {
 	Kanban           bool
 	KanbanBridge     kanbanpkg.Bridge
 	MemoryEnabled    bool
+	DeferredTools    []string
+	BlobReader       biz.ToolResultBlobReader
 }
 
 type AgentToolConfig = tools.AgentToolConfig
@@ -64,7 +68,10 @@ type OpenAPISpecConfig = tools.OpenAPISpecConfig
 
 type AssembledToolsets = tools.AssembledToolsets
 
-func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, error) {
+func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger) (*AssembledToolsets, error) {
+	if lg == nil {
+		lg = loggateway.Global()
+	}
 	enabled := []string{}
 	if cfg.Filesystem {
 		enabled = append(enabled, "file")
@@ -150,10 +157,10 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, 
 		customTools = append(customTools, knowledgepkg.NewSearchTool())
 	}
 	if cfg.KnowledgeReflect {
-		customTools = append(customTools, knowledgepkg.NewReflectTool())
+		customTools = append(customTools, knowledgepkg.NewReflectTool(lg))
 	}
 	if cfg.WebResearch {
-		t, err := webresearchpkg.NewTool(cfg.WebResearchCfg)
+		t, err := webresearchpkg.NewTool(cfg.WebResearchCfg, lg)
 		if err != nil {
 			return nil, kerrors.BadRequest("TOOL", fmt.Sprintf("web_research: %s", err.Error()))
 		}
@@ -165,7 +172,7 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, 
 	if cfg.AwaitReply && cfg.AwaitHook != nil {
 		// EP-RT-02: use the service-integrated tool that blocks mid-turn so the
 		// user reply is delivered back to the agent via the awaitChans channel.
-		customTools = append(customTools, serviceawaitreply.New())
+		customTools = append(customTools, serviceawaitreply.New(lg))
 	}
 	if cfg.Kanban {
 		for _, t := range kanbanpkg.NewToolset(cfg.KanbanBridge) {
@@ -175,6 +182,7 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, 
 
 	assembled, err := tools.Assemble(ctx, tools.AssemblyConfig{
 		EnabledTools:  enabled,
+		DeferredTools: cfg.DeferredTools,
 		FilesystemDir: cfg.FilesystemDir,
 		ShellExecDir:  cfg.ShellExecDir,
 		GeminiModel:   cfg.GeminiModel,
@@ -187,6 +195,7 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig) (*AssembledToolsets, 
 		MCPBroker:     mcpBroker,
 		MemoryEnabled: cfg.MemoryEnabled,
 		CustomTools:   customTools,
+		BlobReader:    cfg.BlobReader,
 	})
 	if err != nil {
 		return nil, err

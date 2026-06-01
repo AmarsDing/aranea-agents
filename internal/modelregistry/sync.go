@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type SyncInput struct {
@@ -24,15 +26,17 @@ type SyncOutput struct {
 type Syncer struct {
 	store *Store
 	now   func() time.Time
+	lg    loggateway.Logger
 }
 
-func NewSyncer(store *Store) *Syncer {
-	return &Syncer{store: store, now: time.Now}
+func NewSyncer(store *Store, lg loggateway.Logger) *Syncer {
+	return &Syncer{store: store, now: time.Now, lg: lg}
 }
 
 func (s *Syncer) Sync(ctx context.Context, in SyncInput) (SyncOutput, error) {
 	policy, err := s.store.LoadPolicy()
 	if err != nil {
+		s.lg.Error("Model registry load policy failed", loggateway.StepID("model_registry.sync.policy_fail"), loggateway.Err(err))
 		return SyncOutput{}, err
 	}
 	started := s.now().UTC()
@@ -45,6 +49,8 @@ func (s *Syncer) Sync(ctx context.Context, in SyncInput) (SyncOutput, error) {
 		Status:    "running",
 	}
 
+	s.lg.Info("Model registry sync started", loggateway.StepID("model_registry.sync"), loggateway.Str("log_id", logID), loggateway.Str("source_url", policy.SourceURL), loggateway.Str("dry_run", fmt.Sprintf("%v", in.DryRun)))
+
 	prevMeta, _ := s.store.LoadMeta()
 	fetch, err := FetchDirectory(ctx, policy.SourceURL, prevMeta.ETag)
 	if err != nil {
@@ -52,6 +58,7 @@ func (s *Syncer) Sync(ctx context.Context, in SyncInput) (SyncOutput, error) {
 		entry.Message = err.Error()
 		entry.FinishedAt = s.now().UTC().Format(time.RFC3339)
 		_ = AppendSyncLog(s.store, entry)
+		s.lg.Error("Model registry fetch directory failed", loggateway.StepID("model_registry.sync.fetch_fail"), loggateway.Str("source_url", policy.SourceURL), loggateway.Err(err))
 		return SyncOutput{Log: entry, Status: "failed", Message: err.Error(), Policy: policy}, err
 	}
 	if fetch.NotModified {
@@ -78,6 +85,7 @@ func (s *Syncer) Sync(ctx context.Context, in SyncInput) (SyncOutput, error) {
 		entry.Message = err.Error()
 		entry.FinishedAt = s.now().UTC().Format(time.RFC3339)
 		_ = AppendSyncLog(s.store, entry)
+		s.lg.Error("Model registry parse directory failed", loggateway.StepID("model_registry.sync.parse_fail"), loggateway.Err(err))
 		return SyncOutput{Log: entry, Status: "failed", Message: err.Error(), Policy: policy}, err
 	}
 
@@ -113,6 +121,7 @@ func (s *Syncer) Sync(ctx context.Context, in SyncInput) (SyncOutput, error) {
 		entry.Message = err.Error()
 		entry.FinishedAt = s.now().UTC().Format(time.RFC3339)
 		_ = AppendSyncLog(s.store, entry)
+		s.lg.Error("Model registry save directory failed", loggateway.StepID("model_registry.sync.save_fail"), loggateway.Err(err))
 		return SyncOutput{Log: entry, Status: "failed", Message: err.Error(), Policy: policy}, err
 	}
 
@@ -120,6 +129,8 @@ func (s *Syncer) Sync(ctx context.Context, in SyncInput) (SyncOutput, error) {
 	entry.Message = fmt.Sprintf("synced %d providers, %d models", pCount, mCount)
 	entry.FinishedAt = s.now().UTC().Format(time.RFC3339)
 	_ = AppendSyncLog(s.store, entry)
+
+	s.lg.Info("Model registry sync completed", loggateway.StepID("model_registry.sync"), loggateway.Int("providers", pCount), loggateway.Int("models", mCount))
 
 	return SyncOutput{
 		Log:     entry,
@@ -133,6 +144,7 @@ func (s *Syncer) Sync(ctx context.Context, in SyncInput) (SyncOutput, error) {
 func (s *Syncer) NeedsScheduledSync() (bool, Policy, error) {
 	policy, err := s.store.LoadPolicy()
 	if err != nil {
+		s.lg.Warn("Model registry load policy for scheduled sync failed", loggateway.StepID("model_registry.scheduled_sync.policy_fail"), loggateway.Err(err))
 		return false, policy, err
 	}
 	if strings.ToLower(strings.TrimSpace(policy.SyncPolicy)) != "scheduled" {

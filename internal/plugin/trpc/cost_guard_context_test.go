@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -14,7 +15,7 @@ import (
 func TestBudgetTrackerForContext_PerAgentIsolation(t *testing.T) {
 	t.Parallel()
 	rt := &Runtime{
-		budgets: NewCostGuardBudgetRegistry(),
+		budgets: NewCostGuardBudgetRegistry(loggateway.NewNoop()),
 		active: []runtimeEntry{
 			{key: "cost_guard", scope: "global", costGuard: &CostGuardConfig{}},
 		},
@@ -58,7 +59,7 @@ func TestRetryReflect_SkipsHighRiskConfirmTools(t *testing.T) {
 	p := NewRetryAndReflectPlugin(biz.Plugin{
 		Key:        "retry_and_reflect",
 		ConfigJSON: `{"high_risk_tools_need_confirm":true}`,
-	}, nil, nil, rt)
+	}, nil, nil, rt, loggateway.NewNoop())
 	ctx := contextWithAgent("my-agent")
 	result, err := p.afterTool(ctx, &trpctool.AfterToolArgs{
 		ToolName: "delete_file",
@@ -81,7 +82,7 @@ func TestRetryReflect_SkipsCatalogConfirmTools(t *testing.T) {
 	p := NewRetryAndReflectPlugin(biz.Plugin{
 		Key:        "retry_and_reflect",
 		ConfigJSON: `{"high_risk_tools_need_confirm":true}`,
-	}, nil, nil, rt)
+	}, nil, nil, rt, loggateway.NewNoop())
 	ctx := contextWithAgent("my-agent")
 	result, err := p.afterTool(ctx, &trpctool.AfterToolArgs{
 		ToolName: "bash",

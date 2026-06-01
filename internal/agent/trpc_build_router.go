@@ -6,30 +6,30 @@ import (
 	"aranea-agents/internal/a2a/trpc"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
 
-// BuildTRPCAgent selects llmagent or a2aagent based on catalog agent kind.
-func BuildTRPCAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (trpcagent.Agent, error) {
+func BuildTRPCAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, lg loggateway.Logger) (trpcagent.Agent, error) {
 	biz.HydrateAgentKind(&ag)
 	kind := biz.NormalizeAgentKind(ag.Kind)
-	event.CtxFlowLogDone(ctx, "system.agent.build", "Agent 构建开始",
+	event.CtxFlowLogDone(ctx, "agent.build", "Agent 构建开始",
 		event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey), event.P("agent_kind", kind))
-	root, err := buildTRPCAgent(ctx, ag, deps, kind)
+	root, err := buildTRPCAgent(ctx, ag, deps, kind, lg)
 	if err != nil {
-		event.CtxFlowLogError(ctx, "system.agent.build", "Agent 构建失败",
+		event.CtxFlowLogError(ctx, "agent.build", "Agent 构建失败",
 			event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey), event.P("agent_kind", kind), event.P("error", err))
 		return nil, err
 	}
-	event.CtxFlowLogDone(ctx, "system.agent.build", "Agent 构建完成",
+	event.CtxFlowLogDone(ctx, "agent.build", "Agent 构建完成",
 		event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey), event.P("agent_kind", kind))
 	return root, nil
 }
 
-func buildTRPCAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, kind string) (trpcagent.Agent, error) {
+func buildTRPCAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, kind string, lg loggateway.Logger) (trpcagent.Agent, error) {
 	switch kind {
 	case biz.AgentKindA2AProxy:
 		cfg := ag.A2AProxy
@@ -38,15 +38,14 @@ func buildTRPCAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, kin
 		}
 		return trpc.BuildTRPCA2AAgent(ctx, ag, *cfg)
 	default:
-		return BuildTRPCLLMAgent(ctx, ag, deps)
+		return BuildTRPCLLMAgent(ctx, ag, deps, lg)
 	}
 }
 
-// BuildTRPCAgentCached wraps BuildTRPCAgent with LRU cache for LLM agents only.
-func BuildTRPCAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (trpcagent.Agent, error) {
+func BuildTRPCAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, lg loggateway.Logger) (trpcagent.Agent, error) {
 	biz.HydrateAgentKind(&ag)
 	if biz.IsA2AProxyAgent(ag) {
-		return BuildTRPCAgent(ctx, ag, deps)
+		return BuildTRPCAgent(ctx, ag, deps, lg)
 	}
-	return BuildTRPCLLMAgentCached(ctx, ag, deps)
+	return BuildTRPCLLMAgentCached(ctx, ag, deps, lg)
 }

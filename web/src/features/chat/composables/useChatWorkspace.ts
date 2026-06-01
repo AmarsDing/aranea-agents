@@ -38,7 +38,7 @@ import { useChatSettingsDialog } from "./useChatSettingsDialog";
 import { useChatDialogs } from "./useChatDialogs";
 import { useChatComposerActions } from "./useChatComposerActions";
 import { favoriteSessionIDs, toggleFavoriteSession } from "../../../stores/sessionSync";
-import { hydrateAgentSettings } from "../agentPlannerSettings";
+import { agentNeedsSettingsHydration, hydrateAgentSettings } from "../agentPlannerSettings";
 import { parseChannelSessionMeta } from "../channelSessionMeta";
 import { useKnowledgeStore } from "../../../stores/knowledge";
 import { useArtifactStore } from "../../../stores/artifact";
@@ -205,6 +205,7 @@ export function useChatWorkspace() {
   const jobsRefreshNonce = ref(0);
   const inboundHydrateError = ref("");
   const sessionLoading = ref(false);
+  const coreReady = ref(false);
   const focusTurnId = ref<string | undefined>(undefined);
 
   function focusSessionTurn(turnId: string) {
@@ -278,9 +279,23 @@ export function useChatWorkspace() {
     { immediate: true }
   );
 
-  watch(selectedAgentId, (id) => {
+  watch(selectedAgentId, async (id) => {
     if (id) {
       void loadPromptPreviewForAgent(id);
+      if (sessionStore.entityKind === "agent") {
+        const agent = appStore.selectedAgent;
+        if (agent) {
+          if (agentNeedsSettingsHydration(agent)) {
+            const hydrated = await hydrateAgentSettings(agent);
+            appStore.selectedAgent = hydrated;
+            appStore.upsertAgent(hydrated);
+          }
+          await sessionStore.loadAgentSessions(id);
+          if (!sessionStore.selectedSession) {
+            sessionStore.selectedSession = sessionStore.sessions[0] ?? null;
+          }
+        }
+      }
     } else {
       promptPreviewData.value = null;
     }
@@ -663,44 +678,43 @@ export function useChatWorkspace() {
 
   onMounted(async () => {
     document.addEventListener("visibilitychange", onPageVisible);
-    await Promise.all([loadChatOptions(), entityNav.loadCategoryTree(), entityNav.loadTeams()]);
-    try {
-      const knowledgeStore = useKnowledgeStore();
-      const cols = await knowledgeStore.loadCollections({ limit: 50 });
-      knowledgeBaseOptions.value = cols.items.map((c) => ({
-        label: c.name || c.id,
-        value: c.id,
-      }));
-    } catch {
-      knowledgeBaseOptions.value = [];
-    }
-    await appStore.loadAgents();
+
+    await Promise.all([loadChatOptions(), appStore.loadAgents()]);
+
     defaultAgentId.value = appStore.agents[0]?.id ?? null;
     displayAgents.value = loadAgentOrder(appStore.agents, defaultAgentId.value);
-    displayTeams.value = loadTeamOrder([...displayTeams.value], defaultTeamId.value);
+    coreReady.value = true;
 
-    const routeTeamID = typeof route.query.team === "string" ? route.query.team : "";
-    const routeTeam = routeTeamID ? displayTeams.value.find((team) => team.id === routeTeamID) : undefined;
-    if (routeTeam) {
-      await entityNav.selectTeam(routeTeam);
-    } else if (appStore.selectedAgent) {
-      const hydrated = await hydrateAgentSettings(appStore.selectedAgent);
-      appStore.selectedAgent = hydrated;
-      appStore.upsertAgent(hydrated);
-      await sessionStore.loadAgentSessions(hydrated.id);
-      sessionStore.selectedSession = sessionStore.sessions[0] ?? null;
-      if (sessionStore.selectedSession) {
-        messageStore.clearSessionMessages(sessionStore.selectedSession.id);
+    void Promise.all([
+      entityNav.loadCategoryTree(),
+      entityNav.loadTeams(),
+      (async () => {
+        try {
+          const knowledgeStore = useKnowledgeStore();
+          const cols = await knowledgeStore.loadCollections({ limit: 50 });
+          knowledgeBaseOptions.value = cols.items.map((c) => ({
+            label: c.name || c.id,
+            value: c.id,
+          }));
+        } catch {
+          knowledgeBaseOptions.value = [];
+        }
+      })(),
+    ]).then(() => {
+      displayTeams.value = loadTeamOrder([...displayTeams.value], defaultTeamId.value);
+      const routeTeamID = typeof route.query.team === "string" ? route.query.team : "";
+      const routeTeam = routeTeamID ? displayTeams.value.find((team) => team.id === routeTeamID) : undefined;
+      if (routeTeam) {
+        void entityNav.selectTeam(routeTeam);
+      } else if (!appStore.agents[0] && displayTeams.value[0]) {
+        void entityNav.selectTeam(displayTeams.value[0]!);
       }
-    } else if (appStore.agents[0]) {
-      await entityNav.selectAgent(appStore.agents[0]);
-    } else if (displayTeams.value[0]) {
-      await entityNav.selectTeam(displayTeams.value[0]!);
-    }
+    });
+
     const routeSession = typeof route.query.session === "string" ? route.query.session.trim() : "";
     if (routeSession) {
       const routeAgent = typeof route.query.agent === "string" ? route.query.agent.trim() : "";
-      await entityNav.focusSessionById(routeSession, routeAgent || undefined);
+      void entityNav.focusSessionById(routeSession, routeAgent || undefined);
     }
   });
 
@@ -715,6 +729,7 @@ export function useChatWorkspace() {
   );
 
   return {
+    coreReady,
     fileRef,
     layout: reactive({
       t,
@@ -790,6 +805,7 @@ export function useChatWorkspace() {
       onNewSession: entityNav.onNewSession,
       openSessionTrace,
       openSessionEvents,
+      compactSessionAction: sessionStore.compactSessionAction,
     }),
     composer: reactive({
       inputText,

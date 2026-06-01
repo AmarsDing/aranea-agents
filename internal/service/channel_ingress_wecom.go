@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/wecom"
+	"aranea-agents/pkg/loggateway"
 )
 
 func (h *ChannelIngress) handleWeComWebhook(w http.ResponseWriter, r *http.Request, chRow biz.Channel) error {
@@ -21,8 +22,13 @@ func (h *ChannelIngress) handleWeComWebhook(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	token, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "token")
+	token, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "token", h.lg)
 	if err := wecom.VerifySignature(token, r.URL.Query().Get("timestamp"), r.URL.Query().Get("nonce"), r.URL.Query().Get("msg_signature")); err != nil {
+		h.lg.Warn("WeCom Webhook 签名验证失败",
+			loggateway.StepID("channel.wecom.webhook.verify_fail"),
+			loggateway.Str("channel_id", chRow.ID),
+			loggateway.Err(err),
+		)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil
 	}

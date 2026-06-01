@@ -6,17 +6,18 @@ import (
 	"sync"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
-// CostGuardBudgetRegistry tracks daily token usage per scope bucket.
 type CostGuardBudgetRegistry struct {
 	mu      sync.RWMutex
 	repo    biz.PluginCostGuardUsageRepo
 	byScope map[string]*CostGuardBudgetTracker
+	lg      loggateway.Logger
 }
 
-func NewCostGuardBudgetRegistry() *CostGuardBudgetRegistry {
-	return &CostGuardBudgetRegistry{byScope: make(map[string]*CostGuardBudgetTracker)}
+func NewCostGuardBudgetRegistry(lg loggateway.Logger) *CostGuardBudgetRegistry {
+	return &CostGuardBudgetRegistry{byScope: make(map[string]*CostGuardBudgetTracker), lg: lg}
 }
 
 func (r *CostGuardBudgetRegistry) SetUsageRepo(repo biz.PluginCostGuardUsageRepo) {
@@ -70,7 +71,7 @@ func normalizeCostGuardScopeKey(scope string) string {
 
 func (r *CostGuardBudgetRegistry) TrackerForScope(scope string) *CostGuardBudgetTracker {
 	if r == nil {
-		return NewCostGuardBudgetTracker()
+		return NewCostGuardBudgetTracker(loggateway.NewNoop())
 	}
 	key := normalizeCostGuardScopeKey(scope)
 	r.mu.RLock()
@@ -89,7 +90,7 @@ func (r *CostGuardBudgetRegistry) TrackerForScope(scope string) *CostGuardBudget
 	if r.repo != nil {
 		opts = append(opts, WithUsageRepo(r.repo))
 	}
-	t := NewCostGuardBudgetTracker(opts...)
+	t := NewCostGuardBudgetTracker(r.lg, opts...)
 	r.byScope[key] = t
 	return t
 }
@@ -129,12 +130,11 @@ func (rt *Runtime) CostGuardScopeForAgent(agentID string) string {
 // BudgetTrackerForContext returns the scope-aware tracker for the current invocation agent.
 func (rt *Runtime) BudgetTrackerForContext(ctx context.Context) *CostGuardBudgetTracker {
 	if rt == nil || rt.budgets == nil {
-		return NewCostGuardBudgetTracker()
+		return NewCostGuardBudgetTracker(loggateway.NewNoop())
 	}
 	return rt.budgets.TrackerForScope(rt.CostGuardScopeForAgent(rt.platformAgentIDFromContext(ctx)))
 }
 
-// ToolRequiresConfirmation reports whether a tool needs user approval (plugin rules or catalog).
 func (rt *Runtime) ToolRequiresConfirmation(ctx context.Context, toolName string, args []byte) bool {
 	if rt == nil {
 		return false
@@ -180,7 +180,7 @@ func (rt *Runtime) platformAgentIDFromContext(ctx context.Context) string {
 // CostGuardBudgetTrackerForAgent returns the scope-aware tracker for cost_guard.
 func (rt *Runtime) CostGuardBudgetTrackerForAgent(agentID string) *CostGuardBudgetTracker {
 	if rt == nil || rt.budgets == nil {
-		return NewCostGuardBudgetTracker()
+		return NewCostGuardBudgetTracker(loggateway.NewNoop())
 	}
 	return rt.budgets.TrackerForScope(rt.CostGuardScopeForAgent(agentID))
 }

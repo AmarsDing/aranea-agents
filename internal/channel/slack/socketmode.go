@@ -17,23 +17,37 @@ import (
 )
 
 func init() {
-	runtime.RegisterStarter("slack", "socket_mode", RunSocketMode)
+	runtime.RegisterStarterWithLogger("slack", "socket_mode", RunSocketMode)
 }
 
-// RunSocketMode listens via Slack Socket Mode (MuseBot StartSlackRobot).
 func RunSocketMode(
 	ctx context.Context,
 	ch biz.Channel,
 	creds []biz.ChannelCredential,
 	lookup runtime.CredentialLookup,
 	handler port.InboundHandler,
+	lg loggateway.Logger,
 ) error {
+	lg.Info("Slack Socket Mode 连接器启动",
+		loggateway.StepID("channel.slack.socketmode.start"),
+		loggateway.Str("channel_id", ch.ID),
+	)
 	botToken, err := lookup(ctx, creds, "bot_token")
 	if err != nil {
+		lg.Error("Slack 凭据获取失败",
+			loggateway.StepID("channel.slack.socketmode.creds_fail"),
+			loggateway.Str("channel_id", ch.ID),
+			loggateway.Err(err),
+		)
 		return err
 	}
 	appToken, err := lookup(ctx, creds, "app_token")
 	if err != nil {
+		lg.Error("Slack 凭据获取失败",
+			loggateway.StepID("channel.slack.socketmode.creds_fail"),
+			loggateway.Str("channel_id", ch.ID),
+			loggateway.Err(err),
+		)
 		return err
 	}
 	botToken = strings.TrimSpace(botToken)
@@ -75,10 +89,10 @@ func RunSocketMode(
 					}
 					ev.PlatformType = "slack"
 					if err := handler.ProcessInbound(ctx, chRow, ev); err != nil {
-						loggateway.Global().Warn("Slack 入站处理失败",
-							loggateway.StepID("channel.slack.inbound_failed"),
-							loggateway.Err(err),
-						)
+					lg.Warn("Slack 入站处理失败",
+						loggateway.StepID("channel.slack.inbound_failed"),
+						loggateway.Err(err),
+					)
 					}
 				}
 			}

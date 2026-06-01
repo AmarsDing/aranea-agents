@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestBuiltin_AllKeysConstruct(t *testing.T) {
@@ -13,7 +14,7 @@ func TestBuiltin_AllKeysConstruct(t *testing.T) {
 	}
 	for _, key := range keys {
 		p := biz.Plugin{Key: key, Enabled: true, ConfigJSON: "{}"}
-		if builtin(p, nil, nil, NewRuntime(nil)) == nil {
+		if builtin(p, nil, nil, NewRuntime(nil, loggateway.NewNoop()), loggateway.NewNoop()) == nil {
 			t.Fatalf("expected plugin for key %q", key)
 		}
 	}

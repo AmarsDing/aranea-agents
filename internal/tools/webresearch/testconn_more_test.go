@@ -105,7 +105,7 @@ func TestTestConnection(t *testing.T) {
 				}
 			}
 
-			result, err := webresearch.TestConnection(context.Background(), tt.cfg)
+			result, err := webresearch.TestConnection(context.Background(), tt.cfg, nil)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("error = %v, wantErr %v", err, tt.wantErr)
 			}

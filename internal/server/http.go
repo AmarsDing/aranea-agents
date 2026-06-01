@@ -48,7 +48,11 @@ import (
 	kratoshttp "github.com/go-kratos/kratos/v2/transport/http"
 )
 
-func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer) *kratoshttp.Server {
+type ReadinessProbe interface {
+	IsReady() bool
+}
+
+func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, readiness ReadinessProbe) *kratoshttp.Server {
 	var opts = []kratoshttp.ServerOption{
 		kratoshttp.Filter(
 			CorsDevFilter(),
@@ -77,7 +81,7 @@ func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer) *kratosh
 	// patterns (e.g. /v1/artifacts/{id}).
 	registerCustomRoutes(srv, s.ChannelIngress, s.Skill, s.Artifact, s.A2APublic, s.SystemSetting)
 	registerProtoServices(srv, s)
-	registerInfrastructureRoutes(srv)
+	registerInfrastructureRoutes(srv, readiness)
 	wsSrv.RegisterOnKratos(srv)
 
 	return srv
@@ -159,10 +163,17 @@ func registerCustomRoutes(
 	}
 }
 
-func registerInfrastructureRoutes(srv *kratoshttp.Server) {
+func registerInfrastructureRoutes(srv *kratoshttp.Server, readiness ReadinessProbe) {
 	srv.Route("/").GET("/healthz", func(ctx kratoshttp.Context) error {
 		w := ctx.Response()
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if readiness != nil && !readiness.IsReady() {
+			w.WriteHeader(nethttp.StatusServiceUnavailable)
+			return json.NewEncoder(w).Encode(map[string]string{
+				"status":    "starting",
+				"auth_mode": auth.HealthAuthInfo().AuthMode,
+			})
+		}
 		w.WriteHeader(nethttp.StatusOK)
 		return json.NewEncoder(w).Encode(auth.HealthAuthInfo())
 	})

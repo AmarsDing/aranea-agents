@@ -34,14 +34,16 @@ type inboundBatchEntry struct {
 type TextInboundBatcher struct {
 	debounce     time.Duration
 	longDebounce time.Duration
+	lg           loggateway.Logger
 	mu           sync.Mutex
 	pending      map[inboundBatchKey]*inboundBatchEntry
 }
 
-func NewTextInboundBatcher() *TextInboundBatcher {
+func NewTextInboundBatcher(lg loggateway.Logger) *TextInboundBatcher {
 	return &TextInboundBatcher{
 		debounce:     defaultInboundDebounce,
 		longDebounce: defaultInboundLongDebounce,
+		lg:           lg,
 		pending:      map[inboundBatchKey]*inboundBatchEntry{},
 	}
 }
@@ -62,8 +64,8 @@ func (b *TextInboundBatcher) flush(ctx context.Context, handler port.InboundHand
 	b.mu.Unlock()
 	if handler != nil {
 		if err := handler.ProcessInbound(ctx, ch, ev); err != nil {
-			loggateway.Global().Warn("飞书入站处理失败",
-				loggateway.StepID("channel.lark.inbound_failed"),
+			b.lg.Warn("飞书入站处理失败",
+				loggateway.StepID("channel.feishu.inbound_failed"),
 				loggateway.Err(err),
 			)
 		}
@@ -78,12 +80,7 @@ func (b *TextInboundBatcher) Submit(
 ) {
 	if b == nil {
 		if handler != nil {
-			if err := handler.ProcessInbound(ctx, ch, ev); err != nil {
-				loggateway.Global().Warn("飞书入站处理失败",
-					loggateway.StepID("channel.lark.inbound_failed"),
-					loggateway.Err(err),
-				)
-			}
+			_ = handler.ProcessInbound(ctx, ch, ev)
 		}
 		return
 	}
@@ -93,8 +90,8 @@ func (b *TextInboundBatcher) Submit(
 	text := strings.TrimSpace(ev.Text)
 	if text == "" {
 		if err := handler.ProcessInbound(ctx, ch, ev); err != nil {
-			loggateway.Global().Warn("飞书入站处理失败",
-				loggateway.StepID("channel.lark.inbound_failed"),
+			b.lg.Warn("飞书入站处理失败",
+				loggateway.StepID("channel.feishu.inbound_failed"),
 				loggateway.Err(err),
 			)
 		}

@@ -10,7 +10,7 @@ import (
 )
 
 func TestManager_RunnerPlugins_includesEventBridge(t *testing.T) {
-	mgr := NewManager(NewRuntime(nil), nil)
+	mgr := NewManager(NewRuntime(nil, loggateway.NewNoop()), nil, loggateway.NewNoop())
 	plugins := mgr.RunnerPlugins()
 	names := make(map[string]bool, len(plugins))
 	for _, p := range plugins {
@@ -39,7 +39,7 @@ func TestManager_MergeChain_addsHookCallbacks(t *testing.T) {
 		ConfigJSON: `{"callback_point":"after_agent","action":{"type":"log"}}`,
 	}}}
 	resolver := biz.NewHookResolver(biz.NewHookUsecase(repo), loggateway.NewNoop())
-	mgr := NewManager(NewRuntime(nil), resolver)
+	mgr := NewManager(NewRuntime(nil, loggateway.NewNoop()), resolver, loggateway.NewNoop())
 
 	base := callbacks.NewChain(callbacks.NewBeforeAgentHook(0, nil))
 	merged := mgr.MergeChain(context.Background(), "aid", "akey", base)

@@ -3,6 +3,8 @@ package serviceawaitreply
 import (
 	"context"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestWithReplyFunc_RoundTrip(t *testing.T) {
@@ -41,7 +43,7 @@ func TestReplyFuncFromContext_WrongType(t *testing.T) {
 }
 
 func TestNew_ReturnsNonNil(t *testing.T) {
-	tool := New()
+	tool := New(loggateway.NewNoop())
 	if tool == nil {
 		t.Fatal("New() returned nil")
 	}

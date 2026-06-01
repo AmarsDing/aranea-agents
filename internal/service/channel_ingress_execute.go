@@ -16,7 +16,7 @@ const flowStepChannelTurnExecute = "channel.turn.execute"
 
 // executeInboundTurn runs the agent turn and outbound delivery after acceptInbound.
 func (h *ChannelIngress) executeInboundTurn(ctx context.Context, chRow biz.Channel, ev port.InboundEvent) error {
-	platform := inboundPlatform(chRow, ev)
+	platform := inboundPlatform(chRow, ev, h.lg)
 	defer h.releaseInboundInflight(ev, platform)
 
 	ltCfg := biz.ParseChannelLongTaskConfig(chRow.ConfigJSON)

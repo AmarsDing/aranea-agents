@@ -199,6 +199,28 @@
 - [ ] `WithEndsMap` 在 builder 中正确接线
 - [ ] Command.GoTo 事件通过 WS `graph_node_custom` 推送
 
+### 4.2a 动态任务节点插入（BabyAGI 启发，P2）
+
+> 来源：BabyAGI Task Creation Agent（GitHub 22k+ stars），竞品分析差距 #8
+> 对应需求：`docs/competitive-gap-requirements-2026-05-31.md` P2-7
+
+**用户故事**：作为工作流设计者，我希望 Agent 节点执行完后能根据结果动态插入新任务节点到 DAG，以便处理执行时才能发现的子任务。
+
+**背景**：当前 Graph 工作流的 DAG 是预定义的，Agent 节点只能在预定义路径中选择。BabyAGI 的 Task Creation Agent 展示了一种更自主的模式——Agent 执行完一个任务后，根据结果动态生成新任务并插入队列。将此能力引入 Graph，可实现"预定义骨架 + 运行时动态扩展"的混合编排。
+
+**功能规格**：
+- Agent 节点执行完后可 emit `DynamicNodeInsert` 事件，携带新节点定义（AgentKey/Input/Dependencies）
+- Graph Executor 接收事件后动态插入新节点到 DAG，自动建立边连接
+- 动态插入的节点在 `TaskStatus` 中标记为 `dynamic_spawn`
+- 前端 Graph 执行监控中动态渲染新增节点（虚线边 + `dynamic_spawn` 标签）
+- 动态节点受 `SessionRun` 预算控制——预算不足时拒绝插入
+
+**验收标准**：
+- [ ] Agent 节点可通过事件动态插入新节点
+- [ ] 动态节点在 Graph 可视化中标注为 `dynamic_spawn`
+- [ ] 动态节点受预算控制
+- [ ] 动态节点执行结果自动沉淀为记忆（L2 语义召回）
+
 ### 4.3 全局共享工作流状态（✅ 已实现）
 
 **用户故事**：作为工作流设计者，我希望所有节点共享同一个 Graph State，以便无感传递上下文。

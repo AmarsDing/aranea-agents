@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -27,7 +28,7 @@ type SkillUsageTrackerPlugin struct {
 
 var _ trpcplugin.Plugin = (*SkillUsageTrackerPlugin)(nil)
 
-func NewSkillUsageTrackerPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus) *SkillUsageTrackerPlugin {
+func NewSkillUsageTrackerPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, lg loggateway.Logger) *SkillUsageTrackerPlugin {
 	var cfg skillUsageConfig
 	cfg.TrackSuccess = true
 	cfg.TrackFailure = true
@@ -39,7 +40,7 @@ func NewSkillUsageTrackerPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus
 		cfg.MaxPreviewLength = 500
 	}
 	return &SkillUsageTrackerPlugin{
-		base: newBasePlugin(p.Key, stats, bus),
+		base: newBasePlugin(p.Key, stats, bus, lg),
 		cfg:  cfg,
 	}
 }

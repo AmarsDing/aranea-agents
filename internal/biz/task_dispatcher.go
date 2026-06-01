@@ -10,7 +10,6 @@ import (
 
 const defaultDispatchInterval = 30 * time.Second
 
-// TaskDispatchAgentRunner claims pending tasks and notifies assignees (Hermes dispatcher subset).
 type TaskDispatchAgentRunner interface {
 	DispatchTask(ctx context.Context, task *GraphTask, agentKey string) error
 }
@@ -18,7 +17,7 @@ type TaskDispatchAgentRunner interface {
 type TaskDispatchReader interface {
 	CheckTimeouts(ctx context.Context) error
 	ListPendingTasks(ctx context.Context, limit int) ([]*GraphTask, error)
-	IsTaskReadyForDispatch(ctx context.Context, task *GraphTask) bool
+	BatchResolveReadiness(ctx context.Context, tasks []*GraphTask) map[string]bool
 	ResolveDispatchAssignee(ctx context.Context, task *GraphTask) string
 	ClaimTask(ctx context.Context, taskID string, agentKey string) (*GraphTask, error)
 	ReleaseClaim(ctx context.Context, taskID string)
@@ -92,11 +91,16 @@ func (d *TaskDispatcher) tick(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if len(items) == 0 {
+		return nil
+	}
+	readyMap := d.tasks.BatchResolveReadiness(ctx, items)
+	dispatched := 0
 	for _, task := range items {
 		if task == nil {
 			continue
 		}
-		if !d.tasks.IsTaskReadyForDispatch(ctx, task) {
+		if !readyMap[task.TaskID] {
 			continue
 		}
 		agentKey := d.tasks.ResolveDispatchAssignee(ctx, task)
@@ -117,8 +121,21 @@ func (d *TaskDispatcher) tick(ctx context.Context) error {
 				d.lg.Warn("task dispatch run failed",
 					loggateway.StepID("system.task.dispatch_run_fail"), loggateway.Str("task_id", claimed.TaskID), loggateway.Str("agent", agentKey), loggateway.Err(err))
 				d.tasks.ReleaseClaim(ctx, claimed.TaskID)
+				continue
 			}
 		}
+		dispatched++
 	}
+	readyCount := 0
+	for _, ready := range readyMap {
+		if ready {
+			readyCount++
+		}
+	}
+	d.lg.Info("task dispatcher tick completed",
+		loggateway.StepID("system.task.dispatcher_tick"),
+		loggateway.Int("pending_count", len(items)),
+		loggateway.Int("ready_count", readyCount),
+		loggateway.Int("dispatched_count", dispatched))
 	return nil
 }

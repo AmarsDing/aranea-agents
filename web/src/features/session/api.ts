@@ -355,6 +355,30 @@ export async function clearAgentSessions(agentID: string): Promise<void> {
   await sessionApi.DeleteSessionsByAgent({ agentId: agentID });
 }
 
+export interface CompactSessionResult {
+  compacted: boolean;
+  from_turn: number;
+  to_turn: number;
+  estimated_tokens_before: number;
+  estimated_tokens_after: number;
+  compression_level: string;
+}
+
+export async function compactSession(sessionId: string, preserveInstruction?: string): Promise<CompactSessionResult> {
+  const data = await sessionApi.CompactSession({
+    sessionId,
+    preserveInstruction: preserveInstruction || undefined
+  });
+  return {
+    compacted: data.compacted ?? false,
+    from_turn: data.fromTurn ?? 0,
+    to_turn: data.toTurn ?? 0,
+    estimated_tokens_before: data.estimatedTokensBefore ?? 0,
+    estimated_tokens_after: data.estimatedTokensAfter ?? 0,
+    compression_level: data.compressionLevel ?? ""
+  };
+}
+
 function kratosChatRowToMessage(row: ChatMessageRow): Message {
   return {
     id: row.id ?? "",

@@ -1,6 +1,10 @@
 package plugintrpc
 
-import "testing"
+import (
+	"testing"
+
+	"aranea-agents/pkg/loggateway"
+)
 
 func TestResolveModelFromRules_Priority(t *testing.T) {
 	rules := []ModelRouterRule{
@@ -20,7 +24,7 @@ func TestResolveModelAPI_RulesBeforeHeuristic(t *testing.T) {
 		},
 		CodeModel: "code-model",
 	}
-	compileModelRouterRules(cfg.Rules)
+	compileModelRouterRules(cfg.Rules, loggateway.NewNoop())
 	got := ResolveModelAPI("please translate this ``` code", cfg)
 	if got != "rule-model" {
 		t.Fatalf("expected rule-model, got %q", got)

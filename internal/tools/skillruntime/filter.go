@@ -87,10 +87,14 @@ type AgentVisibilityFilter struct {
 	skillUC SkillResolver
 	runtime RuntimeSettings
 	cache   filterCache
+	lg      loggateway.Logger
 }
 
-func NewAgentVisibilityFilter(skillUC SkillResolver, runtime RuntimeSettings) trpcskill.VisibilityFilter {
-	f := &AgentVisibilityFilter{skillUC: skillUC, runtime: runtime}
+func NewAgentVisibilityFilter(skillUC SkillResolver, runtime RuntimeSettings, lg loggateway.Logger) trpcskill.VisibilityFilter {
+	if lg == nil {
+		lg = loggateway.Global()
+	}
+	f := &AgentVisibilityFilter{skillUC: skillUC, runtime: runtime, lg: lg}
 	return f.allow
 }
 
@@ -120,10 +124,10 @@ func (f *AgentVisibilityFilter) allowedSlugs(ctx context.Context) map[string]boo
 		return v
 	}
 	opts := &SkillToolsetOptions{Runtime: f.runtime, UserQuery: TurnQueryFromContext(ctx)}
-	slugs, err := ResolveSkillSlugs(ctx, f.skillUC, opts)
+	slugs, err := ResolveSkillSlugsDetailed(ctx, f.skillUC, opts, f.lg)
 	set := map[string]bool{}
 	if err == nil {
-		for _, slug := range slugs {
+		for _, slug := range slugs.Slugs {
 			s := strings.TrimSpace(strings.ToLower(slug))
 			if s != "" {
 				set[s] = true
@@ -131,7 +135,9 @@ func (f *AgentVisibilityFilter) allowedSlugs(ctx context.Context) map[string]boo
 		}
 	}
 	if err != nil {
-		loggateway.Global().Warn("ResolveSkillSlugs failed; hiding all skills (fail-closed)", loggateway.StepID("system.skillruntime.resolve_failed"), loggateway.Err(err))
+		f.lg.Warn("ResolveSkillSlugs failed; hiding all skills (fail-closed)",
+			loggateway.StepID("tool.skillruntime.resolve_fail"),
+			loggateway.Err(err))
 	}
 	f.cache.Store(cacheKey, set)
 	return set

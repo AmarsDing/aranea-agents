@@ -8,6 +8,7 @@ import (
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 // Request is the minimal input for one summarization call (no session DB).
@@ -40,21 +41,23 @@ type Compressor interface {
 type LLMService struct {
 	Catalog    *biz.LlmProviderModelUsecase
 	HTTPClient *http.Client
+	lg         loggateway.Logger
 }
 
 // NewLLMService builds a compressor; httpClient must be non-nil for outbound calls.
-func NewLLMService(catalog *biz.LlmProviderModelUsecase, httpClient *http.Client) *LLMService {
-	return &LLMService{Catalog: catalog, HTTPClient: httpClient}
+func NewLLMService(catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, lg loggateway.Logger) *LLMService {
+	return &LLMService{Catalog: catalog, HTTPClient: httpClient, lg: lg}
 }
 
 var _ Compressor = (*LLMService)(nil)
 
 // Compress implements [Compressor].
 func (s *LLMService) Compress(ctx context.Context, req Request) (Result, error) {
-	out := Result{Provider: strings.TrimSpace(req.Provider), Model: strings.TrimSpace(req.Model), PromptVersion: PromptVersion}
 	if s == nil || s.Catalog == nil {
-		return out, ErrCatalogRequired
+		return Result{}, ErrCatalogRequired
 	}
+	s.lg.Info("L1 压缩开始", loggateway.StepID("compress.start"), loggateway.Str("provider", req.Provider), loggateway.Str("model", req.Model))
+	out := Result{Provider: strings.TrimSpace(req.Provider), Model: strings.TrimSpace(req.Model), PromptVersion: PromptVersion}
 	if s.HTTPClient == nil {
 		return out, ErrHTTPClientRequired
 	}
@@ -68,6 +71,7 @@ func (s *LLMService) Compress(ctx context.Context, req Request) (Result, error) 
 
 	row, err := s.Catalog.GetByProviderAndModel(ctx, out.Provider, out.Model)
 	if err != nil {
+		s.lg.Error("L2 压缩模型查询失败", loggateway.StepID("compress.catalog_fail"), loggateway.Str("provider", out.Provider), loggateway.Str("model", out.Model), loggateway.Err(err))
 		return out, err
 	}
 	var cfg chatagent.ProviderAPIConfig
@@ -98,6 +102,7 @@ func (s *LLMService) Compress(ctx context.Context, req Request) (Result, error) 
 
 	text, _, ptok, ctok, err := chatagent.CallOpenAICompatChat(callCtx, s.HTTPClient, cfg, out.Model, msgs)
 	if err != nil {
+		s.lg.Error("L4 压缩 LLM 调用失败", loggateway.StepID("compress.llm_call_fail"), loggateway.Str("provider", out.Provider), loggateway.Str("model", out.Model), loggateway.Err(err))
 		return out, err
 	}
 	out.Markdown = strings.TrimSpace(text)

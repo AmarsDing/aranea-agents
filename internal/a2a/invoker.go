@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -73,7 +74,7 @@ func ValidateSameWorkspace(callerWS, calleeWS string) error {
 }
 
 // NewInvoker returns an invokerFunc wired to exec with workspace and capability checks.
-func NewInvoker(exec AgentTurnRunner, uc *biz.A2AUsecase, agents biz.AgentRepository) InvokerFunc {
+func NewInvoker(exec AgentTurnRunner, uc *biz.A2AUsecase, agents biz.AgentRepository, lg loggateway.Logger) InvokerFunc {
 	return func(ctx context.Context, calleeAgentID, capability, payloadJSON string, timeoutSec int) (string, error) {
 		calleeAgentID = strings.TrimSpace(calleeAgentID)
 		capability = strings.TrimSpace(capability)
@@ -84,39 +85,47 @@ func NewInvoker(exec AgentTurnRunner, uc *biz.A2AUsecase, agents biz.AgentReposi
 			return "", kerrors.BadRequest("A2A", "capability is required")
 		}
 
+		lg.Info("A2A invoke started", loggateway.StepID("a2a.invoke"), loggateway.Str("callee_agent_id", calleeAgentID), loggateway.Str("capability", capability))
+
 		if callerID := callerAgentIDFromContext(ctx); callerID != "" {
 			callerWS := agentWorkspace(ctx, uc, agents, callerID)
 			calleeWS := resolveCalleeWorkspace(ctx, uc, agents, calleeAgentID)
 			if err := ValidateSameWorkspace(callerWS, calleeWS); err != nil {
+				lg.Warn("A2A workspace validation failed", loggateway.StepID("a2a.invoke.workspace_fail"), loggateway.Str("caller_agent_id", callerID), loggateway.Str("callee_agent_id", calleeAgentID), loggateway.Err(err))
 				return "", err
 			}
 		}
 
 		target, err := ResolveInvokeTarget(ctx, uc, calleeAgentID)
 		if err != nil {
+			lg.Warn("A2A resolve invoke target failed", loggateway.StepID("a2a.invoke.resolve_fail"), loggateway.Str("callee_agent_id", calleeAgentID), loggateway.Err(err))
 			return "", err
 		}
 		switch target.Kind {
 		case InvokeTargetLocal:
 			if err := CheckCalleeCard(target.Local, nil, capability); err != nil {
+				lg.Warn("A2A callee card check failed", loggateway.StepID("a2a.invoke.card_check_fail"), loggateway.Str("callee_agent_id", calleeAgentID), loggateway.Str("capability", capability), loggateway.Err(err))
 				return "", err
 			}
-			return invokeLocal(exec, ctx, calleeAgentID, capability, payloadJSON, timeoutSec)
+			return invokeLocal(exec, ctx, calleeAgentID, capability, payloadJSON, timeoutSec, lg)
 		case InvokeTargetRemote:
-			return InvokeRemoteRegistry(ctx, target.Remote, capability, payloadJSON, timeoutSec)
+			return InvokeRemoteRegistry(ctx, target.Remote, capability, payloadJSON, timeoutSec, lg)
 		default:
 			return "", kerrors.InternalServer("A2A", "unknown invoke target")
 		}
 	}
 }
 
-func invokeLocal(exec AgentTurnRunner, ctx context.Context, calleeAgentID, capability, payloadJSON string, timeoutSec int) (string, error) {
+func invokeLocal(exec AgentTurnRunner, ctx context.Context, calleeAgentID, capability, payloadJSON string, timeoutSec int, lg loggateway.Logger) (string, error) {
 	if exec == nil {
-		return "", kerrors.InternalServer("A2A", "agent turn runner not configured")
+		err := kerrors.InternalServer("A2A", "agent turn runner not configured")
+		lg.Warn("A2A local invoke failed", loggateway.StepID("a2a.invoke.local_fail"), loggateway.Str("callee_agent_id", calleeAgentID), loggateway.Err(err))
+		return "", err
 	}
 	input := PayloadToInput(payloadJSON, capability)
 	out, err := exec.RunAgentTurn(ctx, calleeAgentID, input, timeoutSec)
 	if err != nil {
+		lg.Warn("A2A local invoke failed", loggateway.StepID("a2a.invoke.local_fail"), loggateway.Str("callee_agent_id", calleeAgentID), loggateway.Err(err))
 		return "", err
 	}
 	result, err := json.Marshal(map[string]any{

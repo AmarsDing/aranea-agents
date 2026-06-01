@@ -103,7 +103,7 @@ func TestCallTool_EmptyCollectionID_NoScopedCollections_ReturnsError(t *testing.
 }
 
 func TestNewReflectTool_ReturnsCallableTool(t *testing.T) {
-	tool := NewReflectTool()
+	tool := NewReflectTool(nil)
 	if tool == nil {
 		t.Fatal("NewReflectTool returned nil")
 	}
@@ -120,7 +120,7 @@ func TestNewReflectTool_ReturnsCallableTool(t *testing.T) {
 }
 
 func TestReflectTool_MissingCollectionIDs(t *testing.T) {
-	tool := NewReflectTool()
+	tool := NewReflectTool(nil)
 	ctx := context.Background()
 
 	args, _ := json.Marshal(reflectInput{
@@ -135,7 +135,7 @@ func TestReflectTool_MissingCollectionIDs(t *testing.T) {
 }
 
 func TestReflectTool_MissingQuery(t *testing.T) {
-	tool := NewReflectTool()
+	tool := NewReflectTool(nil)
 	ctx := context.Background()
 
 	args, _ := json.Marshal(reflectInput{
@@ -150,7 +150,7 @@ func TestReflectTool_MissingQuery(t *testing.T) {
 }
 
 func TestReflectTool_UnscopedCollectionID(t *testing.T) {
-	tool := NewReflectTool()
+	tool := NewReflectTool(nil)
 	ctx := context.Background()
 	ctx = WithKnowledgeCollections(ctx, []string{"col-1", "col-2"})
 

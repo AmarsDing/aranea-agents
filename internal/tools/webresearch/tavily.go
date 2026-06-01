@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 const tavilySearchURL = "https://api.tavily.com/search"
@@ -19,12 +21,12 @@ type tavilyProvider struct {
 	cfg    Config
 }
 
-func newTavilyProvider(cfg Config) (*tavilyProvider, error) {
+func newTavilyProvider(cfg Config, lg loggateway.Logger) (*tavilyProvider, error) {
 	if strings.TrimSpace(cfg.APIKey) == "" {
 		return nil, fmt.Errorf("web_research: tavily api_key is required (tool config or TAVILY_API_KEY)")
 	}
 	return &tavilyProvider{
-		client: buildHTTPClient(cfg),
+		client: buildHTTPClient(cfg, lg),
 		apiKey: strings.TrimSpace(cfg.APIKey),
 		cfg:    cfg,
 	}, nil

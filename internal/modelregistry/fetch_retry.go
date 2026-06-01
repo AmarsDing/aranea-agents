@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 const (
@@ -43,14 +45,15 @@ func isRetryableFetchErr(err error) bool {
 func fetchCatalogWithRetry(ctx context.Context, sourceURL, ifNoneMatch string) (FetchResult, error) {
 	return attemptCatalogFetch(ctx, func() (FetchResult, error) {
 		return fetchCatalogHTTPOnce(ctx, sourceURL, ifNoneMatch)
-	})
+	}, loggateway.Global())
 }
 
-func attemptCatalogFetch(ctx context.Context, fetch func() (FetchResult, error)) (FetchResult, error) {
+func attemptCatalogFetch(ctx context.Context, fetch func() (FetchResult, error), lg loggateway.Logger) (FetchResult, error) {
 	var lastErr error
 	for attempt := 0; attempt < maxFetchAttempts; attempt++ {
 		if attempt > 0 {
 			delay := fetchRetryBase * time.Duration(1<<(attempt-1))
+			lg.Warn("Model registry fetch retry", loggateway.StepID("model_registry.fetch.retry"), loggateway.Int("attempt", attempt+1), loggateway.Duration(int64(delay/time.Millisecond)), loggateway.Err(lastErr))
 			select {
 			case <-ctx.Done():
 				return FetchResult{}, ctx.Err()

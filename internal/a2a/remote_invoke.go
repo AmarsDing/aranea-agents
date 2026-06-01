@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -15,7 +16,7 @@ import (
 )
 
 // InvokeRemoteRegistry calls an external A2A service registered in the workspace catalog.
-func InvokeRemoteRegistry(ctx context.Context, remote biz.A2ARemoteAgent, capability, payloadJSON string, timeoutSec int) (string, error) {
+func InvokeRemoteRegistry(ctx context.Context, remote biz.A2ARemoteAgent, capability, payloadJSON string, timeoutSec int, lg loggateway.Logger) (string, error) {
 	if !remote.Enabled {
 		return "", kerrors.Forbidden("A2A", "remote agent is disabled")
 	}
@@ -33,13 +34,17 @@ func InvokeRemoteRegistry(ctx context.Context, remote biz.A2ARemoteAgent, capabi
 		timeoutSec = 30
 	}
 
+	lg.Info("A2A remote invoke started", loggateway.StepID("a2a.invoke.remote"), loggateway.Str("remote_url", targetURL), loggateway.Str("capability", capability))
+
 	opts, err := ClientAuthOptions(remote.AuthType, remote.AuthConfigJSON)
 	if err != nil {
+		lg.Warn("A2A remote auth options failed", loggateway.StepID("a2a.invoke.remote_auth_fail"), loggateway.Str("remote_url", targetURL), loggateway.Err(err))
 		return "", err
 	}
 	opts = append(opts, a2aclient.WithTimeout(time.Duration(timeoutSec)*time.Second))
 	client, err := a2aclient.NewA2AClient(targetURL, opts...)
 	if err != nil {
+		lg.Warn("A2A remote client creation failed", loggateway.StepID("a2a.invoke.remote_connect_fail"), loggateway.Str("remote_url", targetURL), loggateway.Err(err))
 		return "", kerrors.BadRequest("A2A", "connect remote a2a: "+err.Error())
 	}
 
@@ -56,6 +61,7 @@ func InvokeRemoteRegistry(ctx context.Context, remote biz.A2ARemoteAgent, capabi
 		},
 	})
 	if err != nil {
+		lg.Error("A2A remote invoke call failed", loggateway.StepID("a2a.invoke.remote_call_fail"), loggateway.Str("remote_url", targetURL), loggateway.Err(err))
 		return "", kerrors.InternalServer("A2A", "remote invoke failed: "+err.Error())
 	}
 	text := messageResultText(result)

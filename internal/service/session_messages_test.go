@@ -40,7 +40,7 @@ func TestSessionService_ListSessionMessages_afterRevision(t *testing.T) {
 		},
 	}
 	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil)
-	svc := service.NewSessionService(uc, nil, nil)
+	svc := service.NewSessionService(uc, nil, nil, nil)
 
 	after := int64(1)
 	resp, err := svc.ListSessionMessages(context.Background(), &v1.ListSessionMessagesRequest{

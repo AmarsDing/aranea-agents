@@ -81,7 +81,7 @@ func (r *Runner) probeAll(ctx context.Context) {
 
 	agents, err := r.deps.A2A.ListRemoteAgents(ctx, "")
 	if err != nil {
-		r.lg.Error("A2A 远程网关列表失败", loggateway.StepID("system.a2a.health_list_fail"), loggateway.Err(err))
+		r.lg.Error("A2A 远程网关列表失败", loggateway.StepID("a2a.health_list_fail"), loggateway.Err(err))
 		return
 	}
 	for _, ag := range agents {
@@ -125,7 +125,7 @@ func (r *Runner) probeOne(ctx context.Context, ag biz.A2ARemoteAgent) {
 	}
 	if persistErr := r.deps.A2A.PersistRemoteHealth(ctx, ag.ID, ok, errMsg); persistErr != nil {
 		r.lg.Error("A2A 健康状态保存失败",
-			loggateway.StepID("system.a2a.health_persist_fail"),
+			loggateway.StepID("a2a.health_persist_fail"),
 			loggateway.Str("registry_id", ag.ID),
 			loggateway.Err(persistErr),
 		)

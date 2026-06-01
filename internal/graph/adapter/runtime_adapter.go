@@ -93,7 +93,7 @@ func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any)
 			close(out)
 		}()
 		for e := range eventCh {
-			runtimeEvt := convertTrpcEvent(e, r.eventBus, r.sessionID, r.graphID, r.execID)
+			runtimeEvt := convertTrpcEvent(e, r.eventBus, r.sessionID, r.graphID, r.execID, r.lg)
 			out <- runtimeEvt
 		}
 	})
@@ -142,7 +142,7 @@ func (r *trpcGraphRuntime) Resume(ctx context.Context, lineageID string, resumeV
 			close(out)
 		}()
 		for e := range eventCh {
-			runtimeEvt := convertTrpcEvent(e, r.eventBus, r.sessionID, r.graphID, r.execID)
+			runtimeEvt := convertTrpcEvent(e, r.eventBus, r.sessionID, r.graphID, r.execID, r.lg)
 			out <- runtimeEvt
 		}
 	})
@@ -206,7 +206,7 @@ func (r *trpcGraphRuntime) GetLineageID() string {
 	return r.lineageID
 }
 
-func convertTrpcEvent(e *trpcevent.Event, bus event.Bus, sessionID, graphID, execID string) biz.GraphRuntimeEvent {
+func convertTrpcEvent(e *trpcevent.Event, bus event.Bus, sessionID, graphID, execID string, lg loggateway.Logger) biz.GraphRuntimeEvent {
 	var bridge *graphtrpc.EventBridge
 	if bus != nil {
 		bridge = graphtrpc.NewEventBridge(bus, sessionID, graphID, execID, nil)
@@ -225,23 +225,23 @@ func convertTrpcEvent(e *trpcevent.Event, bus event.Bus, sessionID, graphID, exe
 
 	switch e.Object {
 	case trpcgraph.ObjectTypeGraphNodeStart:
-		meta := graphtrpc.ExtractNodeMeta(e)
+		meta := graphtrpc.ExtractNodeMeta(e, lg)
 		runtimeEvt.Type = biz.DomainEventGraphNodeStart
 		runtimeEvt.NodeID = meta.NodeID
 		runtimeEvt.StepNumber = meta.StepNumber
 	case trpcgraph.ObjectTypeGraphNodeComplete:
-		meta := graphtrpc.ExtractNodeMeta(e)
+		meta := graphtrpc.ExtractNodeMeta(e, lg)
 		runtimeEvt.Type = biz.DomainEventGraphNodeEnd
 		runtimeEvt.NodeID = meta.NodeID
 		runtimeEvt.StepNumber = meta.StepNumber
 	case trpcgraph.ObjectTypeGraphNodeError:
-		meta := graphtrpc.ExtractNodeMeta(e)
+		meta := graphtrpc.ExtractNodeMeta(e, lg)
 		runtimeEvt.Type = biz.DomainEventGraphNodeError
 		runtimeEvt.NodeID = meta.NodeID
 		runtimeEvt.Error = meta.Error
 		runtimeEvt.StepNumber = meta.StepNumber
 	case trpcgraph.ObjectTypeGraphCheckpointInterrupt:
-		meta := graphtrpc.ExtractNodeMeta(e)
+		meta := graphtrpc.ExtractNodeMeta(e, lg)
 		runtimeEvt.Type = biz.DomainEventGraphInterrupt
 		runtimeEvt.NodeID = meta.NodeID
 		runtimeEvt.StepNumber = meta.StepNumber
@@ -377,7 +377,7 @@ func trpcCfgToBiz(cfg graphtrpc.GraphBuildConfig) biz.GraphBuildConfig {
 
 func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID, lineageID string) (*trpcGraphRuntime, error) {
 	trpcCfg := bizCfgToTrpc(cfg)
-	g, subAgents, err := graphtrpc.BuildStateGraphWithRegistry(ctx, trpcCfg, f.registry, f.resolvers.ToBuildDepsPtr())
+	g, subAgents, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, trpcCfg, f.registry, f.resolvers.ToBuildDepsPtr(), f.lg)
 	if err != nil {
 		return nil, err
 	}
@@ -422,7 +422,7 @@ func (f *trpcGraphBuilderFactory) BuildAndResume(ctx context.Context, cfg biz.Gr
 
 func (f *trpcGraphBuilderFactory) Visualize(ctx context.Context, cfg biz.GraphBuildConfig) (any, error) {
 	trpcCfg := bizCfgToTrpc(cfg)
-	g, _, err := graphtrpc.BuildStateGraphWithRegistry(ctx, trpcCfg, f.registry, f.resolvers.ToBuildDepsPtr())
+	g, _, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, trpcCfg, f.registry, f.resolvers.ToBuildDepsPtr(), f.lg)
 	if err != nil {
 		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("build state graph for visualization: %v", err))
 	}

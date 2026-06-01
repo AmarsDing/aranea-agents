@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -147,11 +148,15 @@ func resolveFieldType(typeName string) reflect.Type {
 }
 
 func BuildStateGraph(ctx context.Context, cfg GraphBuildConfig, deps *BuildDeps) (*trpcgraph.Graph, error) {
-	g, _, err := BuildStateGraphWithAgents(ctx, cfg, deps)
+	g, _, err := BuildStateGraphWithAgents(ctx, cfg, deps, nil)
 	return g, err
 }
 
 func BuildStateGraphWithRegistry(ctx context.Context, cfg GraphBuildConfig, reg *Registry, deps *BuildDeps) (*trpcgraph.Graph, []trpcagent.Agent, error) {
+	return BuildStateGraphWithRegistryAndLogger(ctx, cfg, reg, deps, nil)
+}
+
+func BuildStateGraphWithRegistryAndLogger(ctx context.Context, cfg GraphBuildConfig, reg *Registry, deps *BuildDeps, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, error) {
 	local := GraphBuildConfig{
 		Nodes:            append([]NodeDef(nil), cfg.Nodes...),
 		Edges:            append([]EdgeDef(nil), cfg.Edges...),
@@ -173,16 +178,27 @@ func BuildStateGraphWithRegistry(ctx context.Context, cfg GraphBuildConfig, reg 
 		}
 		local = resolved
 	}
-	return BuildStateGraphWithAgents(ctx, local, deps)
+	return BuildStateGraphWithAgents(ctx, local, deps, lg)
 }
 
-func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *BuildDeps) (*trpcgraph.Graph, []trpcagent.Agent, error) {
+func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *BuildDeps, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, error) {
+	if lg == nil {
+		lg = loggateway.Global()
+	}
 	if len(cfg.Nodes) == 0 && len(cfg.Subgraphs) == 0 {
 		return nil, nil, kerrors.BadRequest("GRAPH", "graph: at least one node required")
 	}
 	if cfg.EntryPoint == "" {
 		return nil, nil, kerrors.BadRequest("GRAPH", "graph: entry point required")
 	}
+
+	lg.Info("graph.BuildStateGraph started",
+		loggateway.StepID("graph.build.start"),
+		loggateway.Str("entry_point", cfg.EntryPoint),
+		loggateway.Int("nodes", len(cfg.Nodes)),
+		loggateway.Int("edges", len(cfg.Edges)),
+		loggateway.Bool("checkpoint", cfg.EnableCheckpoint),
+	)
 
 	var allAgents []trpcagent.Agent
 
@@ -214,7 +230,7 @@ func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *
 	}
 
 	for _, sub := range cfg.Subgraphs {
-		subGraph, subAgents, err := BuildStateGraphWithAgents(ctx, sub.BuildConfig, deps)
+		subGraph, subAgents, err := BuildStateGraphWithAgents(ctx, sub.BuildConfig, deps, lg)
 		if err != nil {
 			return nil, nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: subgraph %q build failed: %v", sub.ID, err))
 		}
@@ -262,8 +278,16 @@ func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *
 
 	compiled, err := sg.Compile()
 	if err != nil {
+		lg.Error("graph.BuildStateGraph compile failed",
+			loggateway.StepID("graph.build.compile_fail"),
+			loggateway.Err(err),
+		)
 		return nil, nil, err
 	}
+	lg.Info("graph.BuildStateGraph completed",
+		loggateway.StepID("graph.build.complete"),
+		loggateway.Str("entry_point", cfg.EntryPoint),
+	)
 	return compiled, allAgents, nil
 }
 

@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func allowLocalProviderInspect(t *testing.T) {
@@ -40,7 +42,7 @@ func TestInspectOllamaModel(t *testing.T) {
 		ProviderType: "ollama",
 		ModelAPIID:   "llama3:latest",
 		APIBaseURL:   srv.URL,
-	})
+	}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +88,7 @@ func TestInspectGeminiModel(t *testing.T) {
 		ModelAPIID:   "gemini-1.5-flash",
 		APIBaseURL:   srv.URL + "/v1beta",
 		APIKey:       "test-key",
-	})
+	}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}

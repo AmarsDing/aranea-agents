@@ -3,6 +3,8 @@ package modelregistry
 import (
 	"context"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type PhaseStatus string
@@ -38,6 +40,7 @@ type PhaseContext struct {
 	Directory  Directory
 	Policy     Policy
 	Checkpoint *MigrationCheckpoint
+	Lg         loggateway.Logger
 }
 
 type phaseCtxKey struct{}

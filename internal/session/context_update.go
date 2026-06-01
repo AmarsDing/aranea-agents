@@ -38,14 +38,15 @@ func PatchContextFromLLMUsage(
 	ag biz.Agent,
 	prov, mod string,
 	promptTok, completionTok int,
+	lg loggateway.Logger,
 ) {
 	if sessions == nil || strings.TrimSpace(sessionID) == "" {
 		return
 	}
 	win := ResolveContextWindowTokens(ctx, catalog, sess, ag, prov, mod)
 	if err := sessions.UpdateSessionContextFromLLMUsage(ctx, sessionID, promptTok, completionTok, win); err != nil {
-		loggateway.Global().Warn("更新会话上下文用量失败",
-			loggateway.StepID("context.usage"),
+		lg.Warn("更新会话上下文用量失败",
+			loggateway.StepID("session.context_usage"),
 			loggateway.SessionID(sessionID),
 			loggateway.Err(err),
 			loggateway.Int("prompt_tokens", promptTok),

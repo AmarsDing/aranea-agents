@@ -15,7 +15,7 @@ func newTestOutputPolicy(cfg outputPolicyConfig) *OutputPolicyPlugin {
 	return &OutputPolicyPlugin{
 		base: basePlugin{
 			name:   "output_policy",
-			logger: NewPluginSafeLogger("output_policy", nil, loggateway.Global()),
+			logger: NewPluginSafeLogger("output_policy", nil, loggateway.NewNoop()),
 		},
 		cfg: cfg,
 	}

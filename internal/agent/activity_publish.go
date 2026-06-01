@@ -13,7 +13,7 @@ import (
 const stuckToolResultReason = "turn completed without tool result"
 
 // PublishActivityEnvelopes persists chat.activity rows after WS publish (orchestration lives outside EventProjector).
-func PublishActivityEnvelopes(ctx context.Context, meta ProjectMeta, persister ActivityPersister, envelopes []event.Envelope) {
+func PublishActivityEnvelopes(ctx context.Context, meta ProjectMeta, persister ActivityPersister, envelopes []event.Envelope, lg loggateway.Logger) {
 	if persister == nil || len(envelopes) == 0 {
 		return
 	}
@@ -25,12 +25,12 @@ func PublishActivityEnvelopes(ctx context.Context, meta ProjectMeta, persister A
 			continue
 		}
 		if err := persister.UpsertActivity(ctx, meta, *env.ToolCall); err != nil {
-			loggateway.Global().Warn("执行卡片落库失败",
-				loggateway.StepID("chat.activity.persist"),
+			lg.Warn("执行卡片落库失败",
+				loggateway.StepID("agent.activity.persist"),
 				loggateway.Str("session_id", meta.SessionID),
 				loggateway.Str("tool_call_id", env.ToolCall.ID),
 				loggateway.Str("tool_name", env.ToolCall.Name),
-				loggateway.Str("error", err.Error()),
+				loggateway.Err(err),
 			)
 		}
 	}
@@ -72,19 +72,19 @@ func PublishStuckToolResultEnvelopes(ctx context.Context, meta ProjectMeta, bus 
 }
 
 // FinalizeStuckToolActivities marks in-flight tool cards as failed when a turn ends without tool_result.
-func FinalizeStuckToolActivities(ctx context.Context, meta ProjectMeta, persister ActivityPersister, pending map[string]event.EnvelopeToolCall) {
+func FinalizeStuckToolActivities(ctx context.Context, meta ProjectMeta, persister ActivityPersister, pending map[string]event.EnvelopeToolCall, lg loggateway.Logger) {
 	if persister == nil || len(pending) == 0 {
 		return
 	}
 	for _, tc := range pending {
 		stuck := stuckToolCallPatch(tc)
 		if err := persister.UpsertActivity(ctx, meta, stuck); err != nil {
-			loggateway.Global().Warn("未完成工具卡片落库失败",
-				loggateway.StepID("chat.activity.finalize_stuck"),
+			lg.Warn("未完成工具卡片落库失败",
+				loggateway.StepID("agent.activity.finalize_stuck"),
 				loggateway.Str("session_id", meta.SessionID),
 				loggateway.Str("tool_call_id", stuck.ID),
 				loggateway.Str("tool_name", stuck.Name),
-				loggateway.Str("error", err.Error()),
+				loggateway.Err(err),
 			)
 		}
 	}

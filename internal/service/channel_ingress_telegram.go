@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/telegram"
+	"aranea-agents/pkg/loggateway"
 )
 
 func (h *ChannelIngress) handleTelegramWebhook(w http.ResponseWriter, r *http.Request, chRow biz.Channel) error {
@@ -21,8 +22,13 @@ func (h *ChannelIngress) handleTelegramWebhook(w http.ResponseWriter, r *http.Re
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	webhookSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "webhook_secret")
+	webhookSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "webhook_secret", h.lg)
 	if err := telegram.VerifySecretToken(r.Header.Get("X-Telegram-Bot-Api-Secret-Token"), webhookSecret); err != nil {
+		h.lg.Warn("Telegram Webhook 签名验证失败",
+			loggateway.StepID("channel.telegram.webhook.verify_fail"),
+			loggateway.Str("channel_id", chRow.ID),
+			loggateway.Err(err),
+		)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil
 	}

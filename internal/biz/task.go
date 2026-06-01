@@ -84,6 +84,7 @@ type TaskEvent struct {
 
 type TaskReader interface {
 	GetTask(ctx context.Context, taskID string) (*GraphTask, error)
+	GetTasksByIDs(ctx context.Context, taskIDs []string) ([]*GraphTask, error)
 	GetActiveTaskByExecutionNode(ctx context.Context, executionID, nodeID string) (*GraphTask, error)
 	ListTasksByExecution(ctx context.Context, executionID string, status TaskStatus, pageSize int, pageToken string) ([]*GraphTask, string, error)
 	ListTasksByStatuses(ctx context.Context, statuses []TaskStatus, limit int) ([]*GraphTask, error)
@@ -92,6 +93,7 @@ type TaskReader interface {
 type TaskWriter interface {
 	SaveTask(ctx context.Context, task *GraphTask) error
 	UpdateTask(ctx context.Context, task *GraphTask) error
+	BatchUpdateTaskStatus(ctx context.Context, taskIDs []string, status TaskStatus) error
 }
 
 type TaskCommentStore interface {
@@ -478,22 +480,50 @@ func (uc *TaskUsecase) CheckTimeouts(ctx context.Context) error {
 		}
 	}
 	uc.mu.Unlock()
+	if len(expired) == 0 {
+		return nil
+	}
+	uc.lg.Info("task timeout check: expired leases found",
+		loggateway.StepID("system.task.timeout_check"),
+		loggateway.Int("expired_count", len(expired)))
+	expiredIDs := make([]string, 0, len(expired))
 	for _, e := range expired {
-		task, err := uc.reader.GetTask(ctx, e.taskID)
-		if err != nil {
-			continue
-		}
+		expiredIDs = append(expiredIDs, e.taskID)
+	}
+	tasks, err := uc.reader.GetTasksByIDs(ctx, expiredIDs)
+	if err != nil {
+		uc.lg.Error("task timeout check: batch get failed",
+			loggateway.StepID("system.task.timeout_check"),
+			loggateway.Int("expired_count", len(expiredIDs)), loggateway.Err(err))
+		return err
+	}
+	var timedOutIDs []string
+	var timedOutTasks []*GraphTask
+	for _, task := range tasks {
 		if task.Status == TaskStatusClaimed {
+			timedOutIDs = append(timedOutIDs, task.TaskID)
 			task.Status = TaskStatusTimedOut
-			if err := uc.writer.UpdateTask(ctx, task); err != nil {
-				uc.lg.Error("timeout update task failed",
-					loggateway.StepID("system.task.timeout_update_fail"),
-					loggateway.Str("task_id", e.taskID), loggateway.Err(err))
-				continue
-			}
-			uc.recordTaskEvent(ctx, e.taskID, "task_timed_out", task.NodeID, "task timed out")
-			uc.publishTaskStatus(ctx, task, nil)
+			timedOutTasks = append(timedOutTasks, task)
 		}
+	}
+	if len(timedOutIDs) == 0 {
+		uc.lg.Info("task timeout check: no claimed tasks among expired",
+			loggateway.StepID("system.task.timeout_check"),
+			loggateway.Int("expired_count", len(expiredIDs)))
+		return nil
+	}
+	if err := uc.writer.BatchUpdateTaskStatus(ctx, timedOutIDs, TaskStatusTimedOut); err != nil {
+		uc.lg.Error("batch timeout update failed",
+			loggateway.StepID("system.task.batch_timeout_fail"),
+			loggateway.Int("count", len(timedOutIDs)), loggateway.Err(err))
+		return err
+	}
+	uc.lg.Info("task timeout check: batch update succeeded",
+		loggateway.StepID("system.task.timeout_check"),
+		loggateway.Int("timed_out_count", len(timedOutIDs)))
+	for _, task := range timedOutTasks {
+		uc.recordTaskEvent(ctx, task.TaskID, "task_timed_out", task.NodeID, "task timed out")
+		uc.publishTaskStatus(ctx, task, nil)
 	}
 	return nil
 }

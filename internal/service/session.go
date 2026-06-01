@@ -19,17 +19,19 @@ import (
 type SessionService struct {
 	v1.UnimplementedSessionServiceServer
 
-	uc    *biz.SessionUsecase
-	mon   *biz.MonitorUsecase
-	runs  *biz.SessionRunUsecase
+	uc       *biz.SessionUsecase
+	mon      *biz.MonitorUsecase
+	runs     *biz.SessionRunUsecase
+	compress biz.ManualCompressor
 }
 
 func NewSessionService(
 	uc *biz.SessionUsecase,
 	mon *biz.MonitorUsecase,
 	runs *biz.SessionRunUsecase,
+	compress biz.ManualCompressor,
 ) *SessionService {
-	return &SessionService{uc: uc, mon: mon, runs: runs}
+	return &SessionService{uc: uc, mon: mon, runs: runs, compress: compress}
 }
 
 func toProtoSession(s biz.Session) *v1.Session {
@@ -81,6 +83,9 @@ func toProtoSession(s biz.Session) *v1.Session {
 		RunnerSnapshotJson:         s.RunnerSnapshotJSON,
 		MetadataJson:               s.MetadataJSON,
 		StateJson:                  s.StateJSON,
+		ParentSessionId:            s.ParentSessionID,
+		RootSessionId:              s.RootSessionID,
+		AgentDepth:                 int32(s.AgentDepth),
 	}
 }
 
@@ -434,4 +439,25 @@ func (s *SessionService) ListSessionTurns(ctx context.Context, req *v1.ListSessi
 		items = append(items, toProtoSessionTurn(res.Items[i]))
 	}
 	return &v1.ListSessionTurnsResponse{Items: items, Total: int32(res.Total)}, nil
+}
+
+func (s *SessionService) CompactSession(ctx context.Context, req *v1.CompactSessionRequest) (*v1.CompactSessionResponse, error) {
+	if req.GetSessionId() == "" {
+		return nil, kerrors.BadRequest("SESSION", "session_id is required")
+	}
+	result, err := s.compress.CompactSession(ctx, req.GetSessionId(), req.GetPreserveInstruction())
+	if err != nil {
+		return nil, err
+	}
+	if result == nil || !result.Compacted {
+		return &v1.CompactSessionResponse{Compacted: false}, nil
+	}
+	return &v1.CompactSessionResponse{
+		Compacted:            true,
+		FromTurn:             int32(result.FromTurn),
+		ToTurn:               int32(result.ToTurn),
+		EstimatedTokensBefore: int32(result.EstimatedTokensBefore),
+		EstimatedTokensAfter:  int32(result.EstimatedTokensAfter),
+		CompressionLevel:      result.CompressionLevel,
+	}, nil
 }

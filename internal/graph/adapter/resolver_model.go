@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/loggateway"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
@@ -19,15 +20,16 @@ import (
 type CatalogModelResolver struct {
 	Catalog *biz.LlmProviderModelUsecase
 	RT      *provider.RoundTrip
+	lg      loggateway.Logger
 }
 
 var _ graphtrpc.ModelResolver = (*CatalogModelResolver)(nil)
 
-func NewCatalogModelResolver(catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip) *CatalogModelResolver {
+func NewCatalogModelResolver(catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip, lg loggateway.Logger) *CatalogModelResolver {
 	if rt == nil {
 		rt = &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
 	}
-	return &CatalogModelResolver{Catalog: catalog, RT: rt}
+	return &CatalogModelResolver{Catalog: catalog, RT: rt, lg: lg}
 }
 
 func (r *CatalogModelResolver) ResolveModel(ctx context.Context, modelName string) (trpcmodel.Model, error) {
@@ -38,7 +40,7 @@ func (r *CatalogModelResolver) ResolveModel(ctx context.Context, modelName strin
 	if err != nil {
 		return nil, err
 	}
-	return provider.TRPCModelForProviderModel(ctx, r.Catalog, r.RT, prov, api)
+	return provider.TRPCModelForProviderModel(ctx, r.Catalog, r.RT, prov, api, r.lg)
 }
 
 func parseModelRef(ctx context.Context, catalog *biz.LlmProviderModelUsecase, modelName string) (prov, api string, err error) {

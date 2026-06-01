@@ -38,12 +38,30 @@ func sessionCompressEnabled(ag biz.Agent) bool {
 	if ag.Settings == nil {
 		return true
 	}
-	// Primary gate since snapshot persistence split from compression (see assembly.md §2.7).
 	if ag.Settings.ContextCompactionEnabled {
 		return true
 	}
-	// Legacy: native compression followed l0_snapshot_mode before observe_v1 snapshots shipped.
 	return strings.ToLower(strings.TrimSpace(ag.Settings.L0SnapshotMode)) != "off"
+}
+
+func microCompactEnabled(ag biz.Agent) bool {
+	if !sessionCompressEnabled(ag) {
+		return false
+	}
+	if ag.Settings == nil {
+		return true
+	}
+	return ag.Settings.MicroCompactEnabled
+}
+
+func memoryCompactEnabled(ag biz.Agent) bool {
+	if !sessionCompressEnabled(ag) {
+		return false
+	}
+	if ag.Settings == nil {
+		return true
+	}
+	return ag.Settings.MemoryCompactEnabled
 }
 
 func sessionCompressThreshold(ag biz.Agent) float64 {

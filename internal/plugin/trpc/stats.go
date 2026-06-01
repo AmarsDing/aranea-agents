@@ -49,19 +49,21 @@ type RepoStatsRecorder struct {
 	runs         biz.PluginRunRepo
 	resolveAgent AgentKeyResolver
 	resolveMu    sync.RWMutex
+	lg           loggateway.Logger
 
 	ch   chan CallbackEvent
 	done chan struct{}
 	wg   sync.WaitGroup
 }
 
-func NewRepoStatsRecorder(repo biz.PluginRepo, runs biz.PluginRunRepo) *RepoStatsRecorder {
+func NewRepoStatsRecorder(repo biz.PluginRepo, runs biz.PluginRunRepo, lg loggateway.Logger) *RepoStatsRecorder {
 	if repo == nil {
 		return nil
 	}
 	r := &RepoStatsRecorder{
 		repo: repo,
 		runs: runs,
+		lg:   lg,
 		ch:   make(chan CallbackEvent, statsChanSize),
 		done: make(chan struct{}),
 	}
@@ -250,8 +252,11 @@ func (r *RepoStatsRecorder) persistRun(bg context.Context, ev CallbackEvent) {
 		DetailJSON:    string(detail),
 		CreatedAt:     time.Now().UTC().Format(time.RFC3339),
 	}); err != nil {
-		loggateway.Global().Warn("PluginRun 写入失败",
-			loggateway.Str("plugin", pluginKey), loggateway.Str("point", ev.Point), loggateway.Err(err))
+		r.lg.Warn("PluginRun persist failed",
+			loggateway.StepID("plugin.stats.persist_fail"),
+			loggateway.Str("plugin", pluginKey),
+			loggateway.Str("point", ev.Point),
+			loggateway.Err(err))
 	}
 }
 

@@ -29,7 +29,7 @@ func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		cue := buildKnowledgeCue(ctx, deps.KnowledgeUsecase)
+		cue := buildKnowledgeCue(ctx, deps.KnowledgeUsecase, deps.LG)
 		if cue == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
@@ -39,12 +39,12 @@ func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 	})
 }
 
-func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase) string {
+func buildKnowledgeCue(ctx context.Context, uc *biz.KnowledgeUsecase, lg loggateway.Logger) string {
 	scopedIDs := knowledgetool.KnowledgeCollectionsFromContext(ctx)
 
 	collections, _, err := uc.ListCollections(ctx, "", knowledgeCueMaxCollections, 0)
 	if err != nil {
-		loggateway.Global().Warn("知识库摘要注入失败", loggateway.StepID("knowledge.cue.list_fail"), loggateway.Str("error", err.Error()))
+		lg.Warn("知识库摘要注入失败", loggateway.StepID("agent.knowledge.cue_fail"), loggateway.Err(err))
 		return ""
 	}
 

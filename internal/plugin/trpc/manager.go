@@ -41,6 +41,7 @@ type Manager struct {
 	hooks          *biz.HookResolver
 	resolveAgentID AgentKeyResolver
 	resolveMu      sync.RWMutex
+	lg             loggateway.Logger
 
 	guardrailOnce sync.Once
 	guardrail     *trpcguardrail.Plugin
@@ -50,12 +51,13 @@ type Manager struct {
 	identity     *trpcidentity.Plugin
 }
 
-// NewManager wires Runtime + HookResolver and loads hooks from the DB.
-func NewManager(rt *Runtime, hooks *biz.HookResolver) *Manager {
-	m := &Manager{rt: rt, hooks: hooks}
+func NewManager(rt *Runtime, hooks *biz.HookResolver, lg loggateway.Logger) *Manager {
+	m := &Manager{rt: rt, hooks: hooks, lg: lg}
 	if hooks != nil {
 		if err := hooks.Reload(context.Background()); err != nil {
-			loggateway.Global().Warn("Hook 规则加载失败，Hook 通知将不可用", loggateway.Err(err))
+			lg.Warn("Hook rules load failed, hook notifications unavailable",
+				loggateway.StepID("plugin.manager.hook_reload_fail"),
+				loggateway.Err(err))
 		}
 	}
 	return m
@@ -72,7 +74,7 @@ func (m *Manager) ConfirmationGuardConfigForAgent(agentID string) (ConfirmationG
 // CostGuardBudgetTrackerForAgent returns scope-aware cost_guard budget tracker.
 func (m *Manager) CostGuardBudgetTrackerForAgent(agentID string) *CostGuardBudgetTracker {
 	if m == nil || m.rt == nil {
-		return NewCostGuardBudgetTracker()
+		return NewCostGuardBudgetTracker(m.lg)
 	}
 	return m.rt.CostGuardBudgetTrackerForAgent(agentID)
 }
@@ -80,7 +82,7 @@ func (m *Manager) CostGuardBudgetTrackerForAgent(agentID string) *CostGuardBudge
 // CostGuardBudgetTracker returns the global budget tracker.
 func (m *Manager) CostGuardBudgetTracker() *CostGuardBudgetTracker {
 	if m == nil || m.rt == nil {
-		return NewCostGuardBudgetTracker()
+		return NewCostGuardBudgetTracker(m.lg)
 	}
 	return m.rt.CostGuardBudgetTracker()
 }
@@ -135,7 +137,7 @@ func (m *Manager) MergeChain(ctx context.Context, agentID, agentKey string, base
 			stats = m.rt.stats
 			notifier = m.rt.HookNotifier()
 		}
-		entries = append(entries, wrapResilientHooks(HookCallbacks(resolved, agentID, agentKey, stats, notifier))...)
+		entries = append(entries, wrapResilientHooks(HookCallbacks(resolved, agentID, agentKey, stats, notifier, m.lg))...)
 	}
 
 	if len(entries) == 0 {

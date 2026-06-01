@@ -1,7 +1,6 @@
 package webresearch
 
 import (
-	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -10,7 +9,7 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-func buildHTTPClient(cfg Config) *http.Client {
+func buildHTTPClient(cfg Config, lg loggateway.Logger) *http.Client {
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = defaultTimeoutSec * time.Second
@@ -20,7 +19,10 @@ func buildHTTPClient(cfg Config) *http.Client {
 		if u, err := url.Parse(proxyURL); err == nil {
 			transport.Proxy = http.ProxyURL(u)
 		} else {
-			loggateway.Global().Warn(fmt.Sprintf("failed to parse proxy URL %q: %v", proxyURL, err), loggateway.StepID("webresearch.proxy_parse"))
+			lg.Warn("failed to parse proxy URL",
+				loggateway.StepID("tool.webresearch.proxy_parse_fail"),
+				loggateway.Str("proxy_url", proxyURL),
+				loggateway.Err(err))
 		}
 	}
 	return &http.Client{

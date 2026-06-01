@@ -11,13 +11,15 @@ type basePlugin struct {
 	name   string
 	stats  StatsRecorder
 	logger *PluginSafeLogger
+	lg     loggateway.Logger
 }
 
-func newBasePlugin(name string, stats StatsRecorder, bus event.Bus) basePlugin {
+func newBasePlugin(name string, stats StatsRecorder, bus event.Bus, lg loggateway.Logger) basePlugin {
 	return basePlugin{
 		name:   name,
 		stats:  stats,
-		logger: NewPluginSafeLogger(name, bus, loggateway.Global()),
+		logger: NewPluginSafeLogger(name, bus, lg),
+		lg:     lg,
 	}
 }
 

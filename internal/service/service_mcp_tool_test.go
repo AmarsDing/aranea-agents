@@ -35,7 +35,8 @@ func TestToProtoMCP(t *testing.T) {
 			want: mcpv1.MCPServer{},
 		},
 	}
-	for _, tt := range tests {
+	for i := range tests {
+		tt := &tests[i]
 		t.Run(tt.name, func(t *testing.T) {
 			got := service.ToProtoMCP(tt.in)
 			if got.Id != tt.want.Id {

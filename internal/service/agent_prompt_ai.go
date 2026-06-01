@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -37,10 +38,11 @@ const promptFileAIEditSystem = `你是 Agent 提示文件编辑助手。根据�
 type PromptFileAIEditor struct {
 	catalog *biz.LlmProviderModelUsecase
 	rt      *provider.RoundTrip
+	lg      loggateway.Logger
 }
 
-func NewPromptFileAIEditor(catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip) *PromptFileAIEditor {
-	return &PromptFileAIEditor{catalog: catalog, rt: rt}
+func NewPromptFileAIEditor(catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip, lg loggateway.Logger) *PromptFileAIEditor {
+	return &PromptFileAIEditor{catalog: catalog, rt: rt, lg: lg}
 }
 
 func (e *PromptFileAIEditor) Revise(ctx context.Context, providerName, modelName, fileName, currentBody, instruction string) (string, error) {
@@ -114,5 +116,5 @@ func (e *PromptFileAIEditor) resolveModel(ctx context.Context, providerName, mod
 	if picked.Provider == "" {
 		return nil, kerrors.BadRequest("AGENT_FILE", "no matching model in catalog")
 	}
-	return provider.TRPCModelForProviderModel(ctx, e.catalog, e.rt, picked.Provider, picked.Model)
+	return provider.TRPCModelForProviderModel(ctx, e.catalog, e.rt, picked.Provider, picked.Model, e.lg)
 }

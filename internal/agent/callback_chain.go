@@ -5,6 +5,7 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
+	biztool "aranea-agents/internal/biz/tool"
 
 	trpcllmagent "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -12,10 +13,13 @@ import (
 
 // buildCallbackChainOptions wires product-layer Callback Chain into LLMAgent.
 // Runner-level plugins (WithPlugins) handle DB builtins and OnEvent; see plugintrpc/orchestration.go.
-func buildCallbackChainOptions(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) []trpcllmagent.Option {
-	chain := buildProductCallbackChain(ctx, ag, deps)
+func buildCallbackChainOptions(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) ([]trpcllmagent.Option, *biztool.CircuitBreakerRegistry) {
+	chain, cbRegistry := productCallbackChainWithRegistry(ctx, ag, deps)
 	if chain == nil {
-		return nil
+		return nil, nil
+	}
+	if deps.PluginManager != nil {
+		chain = deps.PluginManager.MergeChain(ctx, ag.ID, ag.AgentKey, chain)
 	}
 	var opts []trpcllmagent.Option
 	if chain.HasAgentHooks() {
@@ -27,20 +31,17 @@ func buildCallbackChainOptions(ctx context.Context, ag biz.Agent, deps TRPCBuild
 	if chain.HasToolHooks() {
 		opts = append(opts, trpcllmagent.WithToolCallbacks(chain.AdaptToolCallbacks()))
 	}
-	return opts
-}
-
-// buildProductCallbackChain assembles the product chain plus optional hook rules from PluginManager.
-func buildProductCallbackChain(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) *callbacks.Chain {
-	chain := productCallbackChain(ctx, ag, deps)
-	if deps.PluginManager != nil {
-		chain = deps.PluginManager.MergeChain(ctx, ag.ID, ag.AgentKey, chain)
-	}
-	return chain
+	return opts, cbRegistry
 }
 
 func productCallbackChain(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) *callbacks.Chain {
+	chain, _ := productCallbackChainWithRegistry(ctx, ag, deps)
+	return chain
+}
+
+func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (*callbacks.Chain, *biztool.CircuitBreakerRegistry) {
 	var entries []callbacks.Callback
+	lg := deps.Logger()
 	entries = append(entries, productChainLifecycleMetrics()...)
 
 	if hook := newRuntimeCueBeforeHook(ag, deps); hook != nil {
@@ -50,6 +51,9 @@ func productCallbackChain(ctx context.Context, ag biz.Agent, deps TRPCBuilderDep
 		entries = append(entries, hook)
 	}
 	if hook := newMemoryInjectBeforeHook(ag, deps); hook != nil {
+		entries = append(entries, hook)
+	}
+	if hook := newToolResultGateBeforeHook(deps.ToolResultGate, ag, lg); hook != nil {
 		entries = append(entries, hook)
 	}
 	if hook := newKnowledgeCueBeforeHook(ag, deps); hook != nil {
@@ -62,6 +66,7 @@ func productCallbackChain(ctx context.Context, ag biz.Agent, deps TRPCBuilderDep
 		entries = append(entries, hook)
 	}
 
+	var cbRegistry *biztool.CircuitBreakerRegistry
 	if ag.Settings != nil && ag.Settings.ToolsEnabled {
 		entries = append(entries, newToolArgsGuardBeforeHook())
 		entries = append(entries, newToolResultCacheBeforeHook(deps))
@@ -74,10 +79,18 @@ func productCallbackChain(ctx context.Context, ag biz.Agent, deps TRPCBuilderDep
 			return &trpctool.AfterToolResult{}, nil
 		}))
 		entries = append(entries, newToolResultCacheAfterHook(deps))
+		if ag.Settings.ToolsCircuitBreakerEnabled {
+			cbRegistry = buildCircuitBreakerRegistry(ag.Settings, lg)
+			entries = append(entries, newCircuitBreakerBeforeHook(cbRegistry, lg))
+			entries = append(entries, newCircuitBreakerAfterHook(cbRegistry, lg))
+		}
+		if ag.Settings.ToolsCommandSafetyEnabled {
+			entries = append(entries, newCommandSafetyBeforeHook(lg))
+		}
 	}
 
 	if len(entries) == 0 {
-		return nil
+		return nil, nil
 	}
-	return callbacks.NewChain(entries...)
+	return callbacks.NewChain(entries...), cbRegistry
 }

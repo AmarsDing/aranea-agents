@@ -15,6 +15,7 @@ import (
 	"aranea-agents/internal/skill/storage"
 	skilltrpc "aranea-agents/internal/skill/trpc"
 	"aranea-agents/internal/tools/skillruntime"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -26,7 +27,7 @@ import (
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
 
-func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (trpcagent.Agent, error) {
+func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, lg loggateway.Logger) (trpcagent.Agent, error) {
 	if strings.TrimSpace(ag.AgentKey) == "" {
 		return nil, kerrors.BadRequest("AGENT", "agent_key required")
 	}
@@ -36,8 +37,11 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 		return nil, kerrors.BadRequest("AGENT", "provider and model required")
 	}
 
-	m, err := provider.TRPCModelForProviderModel(ctx, deps.Catalog, deps.RT, prov, mod)
+	lg.Info("Agent 构建", loggateway.StepID("agent.build"), loggateway.Str("agent_id", ag.ID), loggateway.Str("agent_key", ag.AgentKey), loggateway.Str("provider", prov), loggateway.Str("model", mod))
+
+	m, err := provider.TRPCModelForProviderModel(ctx, deps.Catalog, deps.RT, prov, mod, lg)
 	if err != nil {
+		lg.Error("Agent 构建失败：模型解析", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Str("provider", prov), loggateway.Str("model", mod), loggateway.Err(err))
 		return nil, err
 	}
 
@@ -45,6 +49,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 	if len(files) == 0 && deps.Agents != nil {
 		files, err = deps.Agents.ListAgentPromptFiles(ctx, ag.ID)
 		if err != nil {
+			lg.Error("Agent 构建失败：提示文件加载", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
 			return nil, err
 		}
 	}
@@ -76,13 +81,13 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 		if routerCfg, ok := deps.PluginManager.ModelRouterConfigForAgent(ag.ID); ok {
 			hasPluginModelRouter = true
 			modelSelectors = append(modelSelectors,
-				PluginModelSelector(prov, mod, deps.Catalog, deps.RT, routerCfg),
+				PluginModelSelector(prov, mod, deps.Catalog, deps.RT, routerCfg, lg),
 			)
 		}
 		if cgCfg, ok := deps.PluginManager.CostGuardConfigForAgent(ag.ID); ok {
 			hasPluginCostGuard = true
 			modelSelectors = append(modelSelectors,
-				PluginCostGuardSelector(prov, mod, deps.Catalog, deps.RT, cgCfg, deps.PluginManager.CostGuardBudgetTrackerForAgent(ag.ID)),
+				PluginCostGuardSelector(prov, mod, deps.Catalog, deps.RT, cgCfg, deps.PluginManager.CostGuardBudgetTrackerForAgent(ag.ID), lg),
 			)
 		}
 	}
@@ -103,6 +108,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 	if deps.SkillUC != nil {
 		repo, filter, exec, err := buildSkillDeps(ctx, ag, deps)
 		if err != nil {
+			lg.Error("Agent 构建失败：技能依赖", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
 			return nil, err
 		}
 		if repo != nil {
@@ -122,6 +128,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 	}
 
 	if ts, err := buildToolsetsForAgent(ctx, ag, deps); err != nil {
+		lg.Error("Agent 构建失败：工具构建", loggateway.StepID("agent.build_fail"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
 		return nil, fmt.Errorf("tool build failed: %w", err)
 	} else if ts != nil {
 		if len(ts.ToolSets) > 0 {
@@ -130,23 +137,29 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 		if len(ts.Tools) > 0 {
 			opts = append(opts, trpcllmagent.WithTools(ts.Tools))
 		}
+		if ts.DeferredManager != nil {
+			deps.DeferredManager = ts.DeferredManager
+		}
 	}
 
 	if biz.ResolveMemoryRuntimePolicy(ag.Settings).MasterEnabled {
 		if !deps.HasMemory {
-			event.CtxFlowLogWarn(ctx, "system.agent.memory_disabled", "Agent 已启用记忆但未配置 MemoryService，记忆工具已禁用",
+			event.CtxFlowLogWarn(ctx, "agent.memory_disabled", "Agent 已启用记忆但未配置 MemoryService，记忆工具已禁用",
 				event.P("agent_id", ag.ID))
 		}
 	}
 
-	if chainOpts := buildCallbackChainOptions(ctx, ag, deps); len(chainOpts) > 0 {
+	if chainOpts, cbRegistry := buildCallbackChainOptions(ctx, ag, deps); len(chainOpts) > 0 {
 		opts = append(opts, chainOpts...)
+		if cbRegistry != nil {
+			deps.CircuitBreakerRegistry = cbRegistry
+		}
 	}
 
 	if ag.Settings != nil {
 		opts = append(opts, buildTRPCRuntimeOptions(ag.Settings, hasPluginModelRouter || hasPluginCostGuard)...)
 
-		if toolFilter := buildToolFilter(ag.Settings); toolFilter != nil {
+		if toolFilter := buildToolFilter(ag.Settings, deps.DeferredManager, lg); toolFilter != nil {
 			opts = append(opts, trpcllmagent.WithToolFilter(toolFilter))
 		}
 
@@ -170,10 +183,10 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 func buildSkillDeps(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (trpcskill.Repository, trpcskill.VisibilityFilter, codeexecutor.CodeExecutor, error) {
 	slugs, err := deps.SkillUC.ListEnabledPublishedSkillKeys(ctx)
 	if err != nil || len(slugs) == 0 {
-		event.CtxFlowLogWarn(ctx, "system.agent.skill_build", "技能构建：无可用技能", event.P("error", err), event.P("slug_count", len(slugs)))
+		event.CtxFlowLogWarn(ctx, "agent.skill_build", "技能构建：无可用技能", event.P("error", err), event.P("slug_count", len(slugs)))
 		return nil, nil, nil, err
 	}
-	event.CtxFlowLogDone(ctx, "system.agent.skill_build", "技能构建：解析中", event.P("slug_count", len(slugs)))
+	event.CtxFlowLogDone(ctx, "agent.skill_build", "技能构建：解析中", event.P("slug_count", len(slugs)))
 
 	// Always resolve rootDir so the executor has a valid path regardless of
 	// which repo backend is selected.
@@ -200,7 +213,7 @@ func buildSkillDeps(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (tr
 	if ag.Settings != nil {
 		runtime = ag.Settings
 	}
-	filter := skillruntime.NewAgentVisibilityFilter(deps.SkillUC, runtime)
+	filter := skillruntime.NewAgentVisibilityFilter(deps.SkillUC, runtime, deps.LG)
 
 	execType := ""
 	if runtime != nil {
@@ -211,7 +224,7 @@ func buildSkillDeps(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (tr
 		factory = localexec.NewFactory()
 	}
 	exec := skilltrpc.NewExecutorForAgent(ctx, factory, execType, rootDir)
-	event.CtxFlowLogDone(ctx, "system.agent.skill_build", "技能构建完成", event.P("slug_count", len(slugs)), event.P("repo_type", fmt.Sprintf("%T", repo)))
+	event.CtxFlowLogDone(ctx, "agent.skill_build", "技能构建完成", event.P("slug_count", len(slugs)), event.P("repo_type", fmt.Sprintf("%T", repo)))
 	return repo, filter, exec, nil
 }
 

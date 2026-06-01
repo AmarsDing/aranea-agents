@@ -20,63 +20,54 @@
 
       <q-scroll-area class="col">
         <div class="chat-side__content">
-          <ChatSectionHeader
-            icon="smart_toy"
-            :label="t('chat.groupAgents')"
-            :count="filteredAgents.length"
-            :collapsed="collapse.sectionCollapsed.agents"
-            @update:collapsed="collapse.toggleSection('agents')"
+          <SpiritEntry
+            :active="selectedKind === 'spirit'"
+            @click="$emit('select-spirit')"
           />
-          <template v-if="!collapse.sectionCollapsed.agents">
-            <ChatEntityGroup
-              v-for="group in agentGroups"
-              :key="group.key"
-              :items="group.items"
-              :label="group.label"
-              icon="account_tree"
-              :collapsed="collapse.isGroupCollapsed(group.key)"
-              :active-id="selectedKind === 'agent' ? selectedAgentId : null"
-              :pinned-id="pinnedAgentId"
-              settings-aria-label="设置"
-              delete-aria-label="删除"
-              @update:collapsed="collapse.toggleGroup(group.key)"
-              @select="$emit('select-agent', $event as Agent)"
-              @settings="$emit('settings', 'agent', $event)"
-              @delete="$emit('delete', 'agent', $event)"
-              @reorder="onAgentGroupReorder(group.key, $event)"
+
+          <ChatSectionHeader
+            icon="groups"
+            :label="t('chat.groupActiveTeams', '进行中')"
+            :count="activeTeamList.length"
+            :collapsed="collapse.sectionCollapsed.activeTeams"
+            class="q-pt-md"
+            @update:collapsed="collapse.toggleSection('activeTeams')"
+          />
+          <template v-if="!collapse.sectionCollapsed.activeTeams">
+            <TeamTaskCard
+              v-for="team in activeTeamList"
+              :key="team.id"
+              :team="team"
+              :expanded="expandedTeamIds.has(team.id)"
+              :active="selectedTeamId === team.id"
+              @click="$emit('select-spirit-team', team.id)"
+              @toggle-expand="$emit('toggle-team-expand', team.id)"
             />
-            <div v-if="agentGroups.length === 0" class="chat-side-hint text-caption text-cream-muted">
-              没有匹配的 Agent
+            <div v-if="activeTeamList.length === 0" class="chat-side-hint text-caption text-cream-muted">
+              暂无进行中的团队
             </div>
           </template>
 
           <ChatSectionHeader
-            icon="groups"
-            :label="t('chat.groupTeams')"
-            :count="filteredTeams.length"
-            :collapsed="collapse.sectionCollapsed.teams"
+            icon="check_circle"
+            :label="t('chat.groupCompletedTeams', '已完成')"
+            :count="completedTeamList.length"
+            :collapsed="collapse.sectionCollapsed.completedTeams"
             class="q-pt-md"
-            @update:collapsed="collapse.toggleSection('teams')"
+            @update:collapsed="collapse.toggleSection('completedTeams')"
           />
-          <template v-if="!collapse.sectionCollapsed.teams">
-            <ChatEntityGroup
-              v-for="group in teamGroups"
-              :key="group.key"
-              :items="group.items"
-              :label="group.label"
-              icon="groups"
-              :collapsed="collapse.isGroupCollapsed(group.key)"
-              :active-id="selectedKind === 'team' ? selectedTeamId : null"
-              settings-aria-label="设置"
-              delete-aria-label="删除"
-              @update:collapsed="collapse.toggleGroup(group.key)"
-              @select="$emit('select-team', $event as TeamRow)"
-              @settings="$emit('settings', 'team', $event)"
-              @delete="$emit('delete', 'team', $event)"
-              @reorder="onTeamGroupReorder(group.key, $event)"
+          <template v-if="!collapse.sectionCollapsed.completedTeams">
+            <TeamTaskCard
+              v-for="team in completedTeamList"
+              :key="team.id"
+              :team="team"
+              :expanded="expandedTeamIds.has(team.id)"
+              :active="selectedTeamId === team.id"
+              @click="$emit('select-spirit-team', team.id)"
+              @toggle-expand="$emit('toggle-team-expand', team.id)"
             />
-            <div v-if="teamGroups.length === 0" class="chat-side-hint text-caption text-cream-muted">
-              没有匹配的 Team
+            <div v-if="completedTeamList.length === 0" class="chat-side-hint text-caption text-cream-muted">
+              暂无已完成的团队
             </div>
           </template>
         </div>
@@ -86,142 +77,41 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from "vue";
+import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import ChatSectionHeader from "./ChatSectionHeader.vue";
-import ChatEntityGroup from "./ChatEntityGroup.vue";
-import type { ChatEntityKind, DeleteKind, TeamRow } from "./types";
-import type { Agent } from "../../features/agents/types";
-import type { PlatformResourceTreeNode } from "../../features/platform/types";
+import SpiritEntry from "../spirit/SpiritEntry.vue";
+import TeamTaskCard from "../spirit/TeamTaskCard.vue";
+import type { SpiritTeam } from "../../features/spirit/api";
 import { useChatEntityCollapse } from "../../features/chat/composables/useChatEntityCollapse";
-import { loadGroupOrder } from "../../features/chat/composables/chatWorkspaceUtils";
-
-type EntityGroup<T> = {
-  key: string;
-  label: string;
-  items: T[];
-};
 
 const props = defineProps<{
   open: boolean;
   search: string;
-  agents: Agent[];
-  teams: TeamRow[];
-  categoryTree: PlatformResourceTreeNode[];
-  selectedKind: ChatEntityKind;
-  selectedAgentId?: string | null;
+  spiritTeams: SpiritTeam[];
+  expandedTeamIds: Set<string>;
+  selectedKind: string;
   selectedTeamId?: string | null;
   isDark: boolean;
 }>();
 
-const emit = defineEmits<{
+defineEmits<{
   "update:search": [value: string];
-  "update:agents": [value: Agent[]];
-  "update:teams": [value: TeamRow[]];
-  "agent-reorder-end": [];
-  "team-reorder-end": [];
-  "select-agent": [agent: Agent];
-  "select-team": [team: TeamRow];
-  settings: [kind: ChatEntityKind, id: string];
-  delete: [kind: DeleteKind, id: string];
-  "group-reorder": [groupKey: string, ids: string[]];
+  "select-spirit": [];
+  "select-spirit-team": [teamId: string];
+  "toggle-team-expand": [teamId: string];
 }>();
 
 const { t } = useI18n();
 const collapse = useChatEntityCollapse();
 
-const pinnedAgentId = computed(() => {
-  const pinned = props.agents.find((a) => a.is_default);
-  return pinned?.id ?? null;
-});
+const activeTeamList = computed(() =>
+  props.spiritTeams.filter((t) => t.status !== "completed")
+);
 
-const agentCategoryMap = computed(() => {
-  const result = new Map<string, string>();
-  for (const industry of props.categoryTree) {
-    for (const department of industry.children ?? []) {
-      for (const position of department.children ?? []) {
-        result.set(position.id, `${industry.name} / ${department.name}`);
-      }
-    }
-  }
-  return result;
-});
-
-function normalizedSearch() {
-  return props.search.trim().toLowerCase();
-}
-
-function agentMatches(agent: Agent) {
-  const s = normalizedSearch();
-  if (!s) return true;
-  return agent.display_name.toLowerCase().includes(s) || agent.agent_key.toLowerCase().includes(s);
-}
-
-function teamMatches(team: TeamRow) {
-  const s = normalizedSearch();
-  if (!s) return true;
-  return team.display_name.toLowerCase().includes(s);
-}
-
-const filteredAgents = computed(() => props.agents.filter(agentMatches));
-const filteredTeams = computed(() => props.teams.filter(teamMatches));
-
-const agentGroups = computed(() => {
-  const groups = groupEntities(filteredAgents.value, agentGroupLabel);
-  return groups.map((g) => ({
-    ...g,
-    items: loadGroupOrder(g.items as Agent[], g.key, pinnedAgentId.value) as Agent[],
-  }));
-});
-
-const teamGroups = computed(() => groupEntities(filteredTeams.value, teamGroupLabel));
-
-function groupEntities<T extends { id: string }>(items: T[], labelFor: (item: T) => string): Array<EntityGroup<T>> {
-  const groups = new Map<string, EntityGroup<T>>();
-  for (const item of items) {
-    const label = labelFor(item);
-    const key = label.toLowerCase();
-    if (!groups.has(key)) {
-      groups.set(key, { key, label, items: [] });
-    }
-    groups.get(key)!.items.push(item);
-  }
-  return Array.from(groups.values());
-}
-
-function agentGroupLabel(agent: Agent) {
-  if (!agent.category_position_id) return "未分类 Agent";
-  return agentCategoryMap.value.get(agent.category_position_id) ?? "未分类 Agent";
-}
-
-function teamGroupLabel(team: TeamRow) {
-  if (team.isDefault) return "默认 Team";
-  const parsed = parseTeamDefinition(team.definition_json);
-  return parsed.category || parsed.group || "自建 Team";
-}
-
-function parseTeamDefinition(raw?: string) {
-  try {
-    return JSON.parse(raw || "{}") as { category?: string; group?: string };
-  } catch {
-    return {};
-  }
-}
-
-function onAgentGroupReorder(groupKey: string, ids: string[]) {
-  emit("group-reorder", groupKey, ids);
-  emit("agent-reorder-end");
-}
-
-function onTeamGroupReorder(_groupKey: string, _ids: string[]) {
-  emit("team-reorder-end");
-}
-
-watch(normalizedSearch, (s) => {
-  if (s) {
-    collapse.expandAllGroups();
-  }
-});
+const completedTeamList = computed(() =>
+  props.spiritTeams.filter((t) => t.status === "completed")
+);
 </script>
 
 <style scoped>

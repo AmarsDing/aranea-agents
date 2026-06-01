@@ -48,7 +48,10 @@ func TestEntRuntimeToBizFieldCoverage(t *testing.T) {
 	bizFields := structFields(bizType)
 
 	knownRenames := map[string]string{
-		"ID": "AgentID",
+		"ID":                        "AgentID",
+		"CompressLlmCacheEnabled":   "CompressLLMCacheEnabled",
+		"CompressLlmCacheMaxEntries": "CompressLLMCacheMaxEntries",
+		"CompressLlmCacheTTLSec":    "CompressLLMCacheTTLSec",
 	}
 
 	skipBizFields := map[string]bool{

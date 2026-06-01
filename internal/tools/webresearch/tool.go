@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"aranea-agents/pkg/loggateway"
+
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -37,11 +39,14 @@ type researchOutput struct {
 }
 
 // NewTool returns a web_research CallableTool. cfg must include a valid API key.
-func NewTool(cfg Config) (trpctool.CallableTool, error) {
+func NewTool(cfg Config, lg loggateway.Logger) (trpctool.CallableTool, error) {
 	if !cfg.Ready() {
 		return nil, fmt.Errorf("web_research: api_key is required (tool config or TAVILY_API_KEY / SERPAPI_API_KEY)")
 	}
-	provider, err := newSearchProvider(cfg)
+	if lg == nil {
+		lg = loggateway.Global()
+	}
+	provider, err := newSearchProvider(cfg, lg)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +65,7 @@ func NewTool(cfg Config) (trpctool.CallableTool, error) {
 		}
 
 		hits := append([]Hit(nil), resp.Results...)
-		warnings, enrichErr := enrichHits(runCtx, hits, cfg.FetchTop, cfg)
+		warnings, enrichErr := enrichHits(runCtx, hits, cfg.FetchTop, cfg, lg)
 		partial := enrichErr != nil || len(warnings) > 0
 		if enrichErr != nil {
 			warnings = append(warnings, enrichErr.Error())

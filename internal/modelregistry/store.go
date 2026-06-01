@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 const (
@@ -20,10 +22,11 @@ const (
 
 type Store struct {
 	root string
+	lg   loggateway.Logger
 }
 
-func NewStore(rootDir string) *Store {
-	return &Store{root: strings.TrimSpace(rootDir)}
+func NewStore(rootDir string, lg loggateway.Logger) *Store {
+	return &Store{root: strings.TrimSpace(rootDir), lg: lg}
 }
 
 func (s *Store) Dir() string {
@@ -52,6 +55,7 @@ func (s *Store) LoadMigrationCheckpoint() (MigrationCheckpoint, error) {
 		if os.IsNotExist(err) {
 			return cp, nil
 		}
+		s.lg.Warn("Model registry read migration checkpoint failed", loggateway.StepID("model_registry.store.read_checkpoint_fail"), loggateway.Err(err))
 		return cp, err
 	}
 	if json.Unmarshal(b, &cp) != nil {
@@ -62,13 +66,18 @@ func (s *Store) LoadMigrationCheckpoint() (MigrationCheckpoint, error) {
 
 func (s *Store) SaveMigrationCheckpoint(cp MigrationCheckpoint) error {
 	if err := s.ensureDir(); err != nil {
+		s.lg.Warn("Model registry ensure dir for migration checkpoint failed", loggateway.StepID("model_registry.store.ensure_dir_fail"), loggateway.Err(err))
 		return err
 	}
 	b, err := json.MarshalIndent(cp, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.MigrationCheckpointPath(), b, 0o644)
+	if err := os.WriteFile(s.MigrationCheckpointPath(), b, 0o644); err != nil {
+		s.lg.Warn("Model registry write migration checkpoint failed", loggateway.StepID("model_registry.store.write_checkpoint_fail"), loggateway.Err(err))
+		return err
+	}
+	return nil
 }
 
 func (s *Store) LogosDir() string {
@@ -111,6 +120,7 @@ func (s *Store) LoadPolicy() (Policy, error) {
 		if os.IsNotExist(err) {
 			return p, nil
 		}
+		s.lg.Warn("Model registry read policy file failed", loggateway.StepID("model_registry.store.read_policy_fail"), loggateway.Err(err))
 		return p, err
 	}
 	if json.Unmarshal(b, &p) != nil {
@@ -133,13 +143,18 @@ func (s *Store) LoadPolicy() (Policy, error) {
 
 func (s *Store) SavePolicy(p Policy) error {
 	if err := s.ensureDir(); err != nil {
+		s.lg.Warn("Model registry ensure dir for policy failed", loggateway.StepID("model_registry.store.ensure_dir_fail"), loggateway.Err(err))
 		return err
 	}
 	b, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.PolicyPath(), b, 0o644)
+	if err := os.WriteFile(s.PolicyPath(), b, 0o644); err != nil {
+		s.lg.Warn("Model registry write policy file failed", loggateway.StepID("model_registry.store.write_policy_fail"), loggateway.Err(err))
+		return err
+	}
+	return nil
 }
 
 func (s *Store) LoadDirectory() (Directory, Meta, error) {
@@ -147,6 +162,7 @@ func (s *Store) LoadDirectory() (Directory, Meta, error) {
 	var meta Meta
 	b, err := os.ReadFile(s.CurrentPath())
 	if err != nil {
+		s.lg.Warn("Model registry read catalog file failed", loggateway.StepID("model_registry.store.read_catalog_fail"), loggateway.Err(err))
 		return nil, meta, err
 	}
 	if json.Unmarshal(b, &dir) != nil {
@@ -177,6 +193,7 @@ func (s *Store) LoadMeta() (Meta, error) {
 
 func (s *Store) SaveDirectory(dir Directory, meta Meta) error {
 	if err := s.ensureDir(); err != nil {
+		s.lg.Warn("Model registry ensure dir for catalog failed", loggateway.StepID("model_registry.store.ensure_dir_fail"), loggateway.Err(err))
 		return err
 	}
 	body, err := json.Marshal(dir)
@@ -184,6 +201,7 @@ func (s *Store) SaveDirectory(dir Directory, meta Meta) error {
 		return err
 	}
 	if err := os.WriteFile(s.CurrentPath(), body, 0o644); err != nil {
+		s.lg.Warn("Model registry write catalog file failed", loggateway.StepID("model_registry.store.write_catalog_fail"), loggateway.Err(err))
 		return err
 	}
 	meta.Bytes = int64(len(body))
@@ -191,7 +209,11 @@ func (s *Store) SaveDirectory(dir Directory, meta Meta) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.MetaPath(), mb, 0o644)
+	if err := os.WriteFile(s.MetaPath(), mb, 0o644); err != nil {
+		s.lg.Warn("Model registry write meta file failed", loggateway.StepID("model_registry.store.write_meta_fail"), loggateway.Err(err))
+		return err
+	}
+	return nil
 }
 
 func (s *Store) LoadRawPretty() (string, int64, error) {

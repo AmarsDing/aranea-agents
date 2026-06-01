@@ -37,7 +37,7 @@ func NewAdminRepo(data *Data) biz.AdminRepo {
 }
 
 func (r *adminRepo) FindByID(ctx context.Context, id int64) (*biz.Admin, error) {
-	po, err := r.data.entClient.Admin.Get(ctx, id)
+	po, err := r.data.ReadEnt().Admin.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil, biz.ErrAdminNotFound
@@ -48,7 +48,7 @@ func (r *adminRepo) FindByID(ctx context.Context, id int64) (*biz.Admin, error) 
 }
 
 func (r *adminRepo) FindByName(ctx context.Context, name string) (*biz.Admin, error) {
-	po, err := r.data.entClient.Admin.Query().Where(admin.NameEQ(name)).Only(ctx)
+	po, err := r.data.ReadEnt().Admin.Query().Where(admin.NameEQ(name)).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil, biz.ErrAdminNotFound
@@ -59,7 +59,7 @@ func (r *adminRepo) FindByName(ctx context.Context, name string) (*biz.Admin, er
 }
 
 func (r *adminRepo) FindByEmail(ctx context.Context, email string) (*biz.Admin, error) {
-	po, err := r.data.entClient.Admin.Query().Where(admin.EmailEQ(email)).Only(ctx)
+	po, err := r.data.ReadEnt().Admin.Query().Where(admin.EmailEQ(email)).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil, biz.ErrAdminNotFound

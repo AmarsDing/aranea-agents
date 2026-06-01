@@ -3,6 +3,8 @@ package modelregistry
 import (
 	"os"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestSafeProviderLogoID(t *testing.T) {
@@ -15,7 +17,7 @@ func TestSafeProviderLogoID(t *testing.T) {
 }
 
 func TestStoreProviderLogoRoundTrip(t *testing.T) {
-	st := NewStore(t.TempDir())
+	st := NewStore(t.TempDir(), loggateway.NewNoop())
 	if err := st.ensureLogosDir(); err != nil {
 		t.Fatal(err)
 	}

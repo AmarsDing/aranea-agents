@@ -2,10 +2,12 @@ package data
 
 import (
 	"context"
-	"fmt"
 	"time"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 const systemAdminAgentKey = "__system_admin__"
@@ -38,7 +40,33 @@ func SeedSystemAdminAgent(ctx context.Context, client *ent.Client) error {
 		?, ?, '', 1, 'system'
 	) ON CONFLICT(agent_key) DO NOTHING`
 	if _, err := client.ExecContext(ctx, q, systemAdminAgentKey, now, now); err != nil {
-		return fmt.Errorf("seed system admin agent: %w", err)
+		return kerrors.InternalServer("SEED", "seed system admin agent: "+err.Error())
+	}
+	return nil
+}
+
+// SeedSpiritAgent upserts the built-in spirit (butler) agent.
+// The spirit agent is the single chat entry point for users; it auto-assembles
+// teams via the assemble_team tool and delegates work to team members.
+func SeedSpiritAgent(ctx context.Context, client *ent.Client) error {
+	if client == nil {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	const q = `INSERT INTO agents (
+		id, agent_key, display_name, provider, model, status,
+		is_default, is_favorite, icon, agent_description,
+		category_position_id, system_prompt_mode, context_window,
+		budget_monthly_cents, config_json, roles_json, created_by,
+		created_at, updated_at, deleted_at, readonly, kind
+	) VALUES (
+		'agent___spirit__', ?, '精灵管家', 'openrouter', 'gpt-4.1-mini',
+		'active', 0, 0, '', '系统内置总管家，用户唯一对话入口',
+		'', 'complete', 0, 0, '{"tools_profile":"spirit"}', '[]', 'system',
+		?, ?, '', 1, 'system'
+	) ON CONFLICT(agent_key) DO NOTHING`
+	if _, err := client.ExecContext(ctx, q, biz.SpiritAgentKey, now, now); err != nil {
+		return kerrors.InternalServer("SEED", "seed spirit agent: "+err.Error())
 	}
 	return nil
 }
@@ -78,7 +106,7 @@ func SeedBuiltinCLIAdminTools(ctx context.Context, client *ent.Client) error {
 	for _, t := range tools {
 		id := "tool_" + t.key
 		if _, err := client.ExecContext(ctx, q, id, t.key, t.name, t.desc, now, now); err != nil {
-			return fmt.Errorf("seed cli_admin tool %q: %w", t.key, err)
+			return kerrors.InternalServer("SEED", "seed cli_admin tool "+t.key+": "+err.Error())
 		}
 	}
 	return nil

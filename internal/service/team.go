@@ -62,6 +62,9 @@ func toProtoTeam(t biz.Team) *v1.Team {
 		DeletedAt:          t.DeletedAt,
 		LinkedGraphId:      team.LinkedGraphIDFromDefinition(t.DefinitionJSON),
 		CategoryIndustryId: t.CategoryIndustryID,
+		SpiritSessionId:    t.SpiritSessionID,
+		TaskDescription:    t.TaskDescription,
+		AutoCreated:        t.AutoCreated,
 	}
 }
 
@@ -164,6 +167,9 @@ func teamFromProto(pb *v1.Team) biz.Team {
 		DefinitionJSON:     pb.GetDefinitionJson(),
 		ADKAppName:         pb.GetAdkAppName(),
 		CategoryIndustryID: pb.GetCategoryIndustryId(),
+		SpiritSessionID:    pb.GetSpiritSessionId(),
+		TaskDescription:    pb.GetTaskDescription(),
+		AutoCreated:        pb.GetAutoCreated(),
 		CreatedAt:          pb.GetCreatedAt(),
 		UpdatedAt:          pb.GetUpdatedAt(),
 		DeletedAt:          pb.GetDeletedAt(),

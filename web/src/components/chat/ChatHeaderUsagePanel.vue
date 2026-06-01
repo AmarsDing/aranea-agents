@@ -41,12 +41,28 @@
     <span v-else class="chat-header-usage__chip chat-header-usage__chip--muted">
       {{ t("chat.contextUsageEmpty", "暂无用量数据") }}
     </span>
+    <q-btn
+      v-if="showCompactBtn"
+      flat
+      round
+      dense
+      icon="o_compress"
+      size="sm"
+      :loading="compactLoading"
+      :disable="compactLoading"
+      class="chat-header-usage__compact-btn"
+      :class="{ 'chat-header-usage__compact-btn--dark': isDark }"
+      @click="onCompactClick"
+    >
+      <q-tooltip :delay="400">{{ t("chat.compactSession", "压缩上下文") }}</q-tooltip>
+    </q-btn>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { useQuasar } from "quasar";
 import {
   composerContextColor,
   composerUsageParts,
@@ -62,15 +78,23 @@ const props = withDefaults(
     usageSnapshot?: ComposerUsageSnapshot | null;
     isDark?: boolean;
     breakdown?: PromptBreakdown | null;
+    sessionId?: string | null;
   }>(),
   { isDark: false },
 );
 
+const emit = defineEmits<{
+  compact: [sessionId: string];
+}>();
+
 const { t } = useI18n();
+const $q = useQuasar();
 
 const popoverOpen = ref(false);
+const compactLoading = ref(false);
 
 const clampedRatio = computed(() => Math.min(1, Math.max(0, props.contextRatio ?? 0)));
+const showCompactBtn = computed(() => props.sessionId && clampedRatio.value >= 0.4);
 const pctLabel = computed(() => `${Math.round(clampedRatio.value * 100)}%`);
 const ringColor = computed(() => {
   const status = props.contextStatus?.trim();
@@ -98,6 +122,18 @@ function onRingClick() {
   }
 }
 
+async function onCompactClick() {
+  if (!props.sessionId || compactLoading.value) return;
+  compactLoading.value = true;
+  try {
+    emit("compact", props.sessionId);
+  } finally {
+    setTimeout(() => {
+      compactLoading.value = false;
+    }, 2000);
+  }
+}
+
 const ariaLabel = computed(() => {
   const detail = usageParts.value.join(" · ");
   return detail
@@ -105,3 +141,14 @@ const ariaLabel = computed(() => {
     : `${t("chat.contextPromptUse")} ${pctLabel.value}`;
 });
 </script>
+
+<style lang="sass">
+.chat-header-usage__compact-btn
+  margin-left: 4px
+  opacity: 0.5
+  transition: opacity 0.2s
+  &:hover
+    opacity: 1
+  &--dark
+    color: var(--color-accent)
+</style>

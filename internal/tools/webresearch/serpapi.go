@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 const serpAPIBaseURL = "https://serpapi.com/search.json"
@@ -19,12 +21,12 @@ type serpAPIProvider struct {
 	cfg    Config
 }
 
-func newSerpAPIProvider(cfg Config) (*serpAPIProvider, error) {
+func newSerpAPIProvider(cfg Config, lg loggateway.Logger) (*serpAPIProvider, error) {
 	if strings.TrimSpace(cfg.APIKey) == "" {
 		return nil, fmt.Errorf("web_research: serpapi api_key is required (tool config or SERPAPI_API_KEY)")
 	}
 	return &serpAPIProvider{
-		client: buildHTTPClient(cfg),
+		client: buildHTTPClient(cfg, lg),
 		apiKey: strings.TrimSpace(cfg.APIKey),
 		cfg:    cfg,
 	}, nil

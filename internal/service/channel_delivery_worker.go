@@ -28,7 +28,7 @@ func (h *ChannelIngress) runChatTurn(
 	ev := port.InboundEvent{PeerID: peerID, PeerKey: peerKey, Text: content}
 	platform := strings.TrimSpace(titlePrefix)
 	if platform == "" {
-		platform = channelTypeFromConfig(chRow.ConfigJSON)
+		platform = channelTypeFromConfig(chRow.ConfigJSON, h.lg)
 	}
 	result, err := h.runChatTurnWithOutcome(ctx, chRow, platform, ev)
 	if err != nil {
@@ -240,7 +240,7 @@ func oneBotHTTPServer(configJSON string) string {
 	return strings.TrimSpace(env.Config.HTTPServer)
 }
 
-func wechatAppCreds(configJSON string, creds []biz.ChannelCredential, ctx context.Context, channels *biz.ChannelUsecase) (appID, appSecret string) {
+func wechatAppCreds(configJSON string, creds []biz.ChannelCredential, ctx context.Context, channels *biz.ChannelUsecase, lg loggateway.Logger) (appID, appSecret string) {
 	var env struct {
 		Config struct {
 			AppID string `json:"app_id"`
@@ -248,6 +248,6 @@ func wechatAppCreds(configJSON string, creds []biz.ChannelCredential, ctx contex
 	}
 	_ = json.Unmarshal([]byte(configJSON), &env)
 	appID = strings.TrimSpace(env.Config.AppID)
-	appSecret, _ = resolveCredentialPlain(ctx, channels, creds, "app_secret")
+	appSecret, _ = resolveCredentialPlain(ctx, channels, creds, "app_secret", lg)
 	return appID, strings.TrimSpace(appSecret)
 }

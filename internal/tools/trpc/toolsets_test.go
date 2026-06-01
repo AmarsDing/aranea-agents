@@ -8,7 +8,7 @@ import (
 )
 
 func TestBuildToolsets_EmptyConfig(t *testing.T) {
-	out, err := trpc.BuildToolsets(context.Background(), trpc.ToolsetConfig{})
+	out, err := trpc.BuildToolsets(context.Background(), trpc.ToolsetConfig{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -26,7 +26,7 @@ func TestBuildToolsets_EmptyConfig(t *testing.T) {
 func TestBuildToolsets_TodoEnabled(t *testing.T) {
 	out, err := trpc.BuildToolsets(context.Background(), trpc.ToolsetConfig{
 		Todo: true,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestBuildToolsets_TodoEnabled(t *testing.T) {
 func TestBuildToolsets_WebSearchEnabled(t *testing.T) {
 	out, err := trpc.BuildToolsets(context.Background(), trpc.ToolsetConfig{
 		WebSearch: true,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestBuildToolsets_WebSearchEnabled(t *testing.T) {
 func TestBuildToolsets_AwaitReplyNoHook(t *testing.T) {
 	out, err := trpc.BuildToolsets(context.Background(), trpc.ToolsetConfig{
 		AwaitReply: true,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestBuildToolsets_AwaitReplyWithHook(t *testing.T) {
 	out, err := trpc.BuildToolsets(context.Background(), trpc.ToolsetConfig{
 		AwaitReply: true,
 		AwaitHook:  hook,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestBuildToolsets_AwaitReplyWithHook(t *testing.T) {
 func TestBuildToolsets_CustomTools(t *testing.T) {
 	out, err := trpc.BuildToolsets(context.Background(), trpc.ToolsetConfig{
 		CustomTools: nil,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestBuildToolsets_CustomTools(t *testing.T) {
 func TestBuildToolsets_KnowledgeSearchEnabled(t *testing.T) {
 	out, err := trpc.BuildToolsets(context.Background(), trpc.ToolsetConfig{
 		KnowledgeSearch: true,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -141,7 +141,7 @@ func TestBuildToolsets_KnowledgeSearchEnabled(t *testing.T) {
 func TestBuildToolsets_KnowledgeReflectEnabled(t *testing.T) {
 	out, err := trpc.BuildToolsets(context.Background(), trpc.ToolsetConfig{
 		KnowledgeReflect: true,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestBuildToolsets_KnowledgeReflectEnabled(t *testing.T) {
 func TestBuildToolsets_CallAgentEnabled(t *testing.T) {
 	out, err := trpc.BuildToolsets(context.Background(), trpc.ToolsetConfig{
 		CallAgent: true,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestBuildToolsets_CallAgentEnabled(t *testing.T) {
 func TestBuildToolsets_MemoryEnabled(t *testing.T) {
 	out, err := trpc.BuildToolsets(context.Background(), trpc.ToolsetConfig{
 		MemoryEnabled: true,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestBuildToolsets_MemoryEnabled(t *testing.T) {
 func TestBuildToolsets_WebResearchNotReady(t *testing.T) {
 	_, err := trpc.BuildToolsets(context.Background(), trpc.ToolsetConfig{
 		WebResearch: true,
-	})
+	}, nil)
 	if err == nil {
 		t.Fatal("expected error when WebResearch=true but config not ready")
 	}
@@ -213,7 +213,7 @@ func TestBuildToolsets_MultipleFlags(t *testing.T) {
 		Todo:      true,
 		WebSearch: true,
 		Email:     true,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestBuildToolsets_MultipleFlags(t *testing.T) {
 func TestBuildToolsets_ArxivSearchEnabled(t *testing.T) {
 	out, err := trpc.BuildToolsets(context.Background(), trpc.ToolsetConfig{
 		ArxivSearch: true,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -237,7 +237,7 @@ func TestBuildToolsets_ArxivSearchEnabled(t *testing.T) {
 func TestBuildToolsets_WikipediaEnabled(t *testing.T) {
 	out, err := trpc.BuildToolsets(context.Background(), trpc.ToolsetConfig{
 		Wikipedia: true,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

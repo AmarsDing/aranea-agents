@@ -34,12 +34,14 @@ type Runtime struct {
 	budgets        *CostGuardBudgetRegistry
 	resolveAgent   AgentKeyResolver
 	catalogConfirm CatalogConfirmChecker
+	lg             loggateway.Logger
 }
 
-func NewRuntime(stats StatsRecorder) *Runtime {
+func NewRuntime(stats StatsRecorder, lg loggateway.Logger) *Runtime {
 	return &Runtime{
 		stats:   stats,
-		budgets: NewCostGuardBudgetRegistry(),
+		budgets: NewCostGuardBudgetRegistry(lg),
+		lg:      lg,
 	}
 }
 
@@ -51,9 +53,9 @@ func (rt *Runtime) SetHookDeliveryRepo(repo biz.HookDeliveryRepo) {
 	}
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	rt.notifier = NewHookNotifier(repo)
+	rt.notifier = NewHookNotifier(repo, rt.lg)
 	if repo != nil {
-		rt.retryWorker = NewHookDeliveryRetryWorker(repo, rt.notifier, loggateway.Global())
+		rt.retryWorker = NewHookDeliveryRetryWorker(repo, rt.notifier, rt.lg)
 		rt.retryWorker.Start()
 	}
 }
@@ -115,7 +117,7 @@ func (rt *Runtime) SetToolUsecase(tools *biz.ToolUsecase) {
 // CostGuardBudgetTracker returns the global budget tracker (legacy; prefer CostGuardBudgetTrackerForAgent).
 func (rt *Runtime) CostGuardBudgetTracker() *CostGuardBudgetTracker {
 	if rt == nil || rt.budgets == nil {
-		return NewCostGuardBudgetTracker()
+		return NewCostGuardBudgetTracker(rt.lg)
 	}
 	return rt.budgets.TrackerForScope("global")
 }
@@ -124,7 +126,7 @@ func (rt *Runtime) SetBus(bus event.Bus) {
 	rt.mu.Lock()
 	rt.bus = bus
 	rt.mu.Unlock()
-	InitHookLogger(bus)
+	InitHookLogger(bus, rt.lg)
 }
 
 func (rt *Runtime) Apply(_ context.Context, plugins []biz.Plugin) {
@@ -137,7 +139,7 @@ func (rt *Runtime) Apply(_ context.Context, plugins []biz.Plugin) {
 		if !p.Enabled {
 			continue
 		}
-		ap := adapt(p, stats, bus, rt)
+		ap := adapt(p, stats, bus, rt, rt.lg)
 		if ap == nil {
 			continue
 		}

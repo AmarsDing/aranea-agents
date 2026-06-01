@@ -41,7 +41,7 @@ func TestChoiceStreamContent_partialReasoningDelta(t *testing.T) {
 
 func TestEventProjector_partialDeltaPreservesSpace(t *testing.T) {
 	bus := event.NewBus()
-	p := NewEventProjector(bus)
+	p := NewEventProjector(bus, nil)
 	meta := ProjectMeta{SessionID: "sess-1"}
 
 	ev := &trpcevent.Event{

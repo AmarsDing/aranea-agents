@@ -5,6 +5,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
+	"aranea-agents/pkg/loggateway"
 )
 
 // webResearchTesterAdapter adapts internal/tools/webresearch to biz.WebResearchTester.
@@ -30,7 +31,7 @@ func (a webResearchTesterAdapter) IsReady(cfg biz.WebResearchTestConfig) bool {
 
 func (a webResearchTesterAdapter) TestConnection(ctx context.Context, cfg biz.WebResearchTestConfig) (biz.WebResearchTestProbeResult, error) {
 	wc := a.toWebresearchConfig(cfg)
-	raw, err := webresearchpkg.TestConnection(ctx, wc)
+	raw, err := webresearchpkg.TestConnection(ctx, wc, loggateway.Global())
 	out := biz.WebResearchTestProbeResult{
 		OK:           raw.OK,
 		Message:      raw.Message,

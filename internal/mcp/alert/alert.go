@@ -27,10 +27,11 @@ const DefaultSustainedErrorAfter = mcp.DefaultSustainedErrorAfter
 type Publisher struct {
 	bus event.Bus
 	uc  *biz.MCPServerUsecase
+	lg  loggateway.Logger
 }
 
-func NewPublisher(bus event.Bus, uc *biz.MCPServerUsecase) *Publisher {
-	return &Publisher{bus: bus, uc: uc}
+func NewPublisher(bus event.Bus, uc *biz.MCPServerUsecase, lg loggateway.Logger) *Publisher {
+	return &Publisher{bus: bus, uc: uc, lg: lg}
 }
 
 func SustainedErrorAfter() time.Duration {
@@ -74,8 +75,8 @@ func (p *Publisher) MaybeEmitAfterHealth(ctx context.Context, srv biz.MCPServer,
 	p.bus.Publish(ctx, env)
 	if p.uc != nil {
 		if err := p.uc.MarkHealthAlertEmitted(ctx, srv.ID, now); err != nil {
-			loggateway.Global().Warn("MCP 健康告警持久化失败",
-				loggateway.StepID("system.mcp.health_alert_persist_fail"),
+			p.lg.Warn("MCP 健康告警持久化失败",
+				loggateway.StepID("mcp.health_alert_persist_fail"),
 				loggateway.Str("server_key", srv.Key),
 				loggateway.Err(err),
 			)

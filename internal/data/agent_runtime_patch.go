@@ -49,6 +49,9 @@ func ensureAgentRuntimePatches(ctx context.Context, c *ent.Client) error {
 		{"ralph_loop_verify_work_dir", `ALTER TABLE agent_runtime_settings ADD COLUMN ralph_loop_verify_work_dir TEXT NOT NULL DEFAULT ''`},
 		{"l4_decay_interval_hours", `ALTER TABLE agent_runtime_settings ADD COLUMN l4_decay_interval_hours INTEGER NOT NULL DEFAULT 0`},
 		{"l4_decay_overrides_json", `ALTER TABLE agent_runtime_settings ADD COLUMN l4_decay_overrides_json TEXT NOT NULL DEFAULT ''`},
+		{"compress_llm_cache_enabled", `ALTER TABLE agent_runtime_settings ADD COLUMN compress_llm_cache_enabled INTEGER NOT NULL DEFAULT 1`},
+		{"compress_llm_cache_max_entries", `ALTER TABLE agent_runtime_settings ADD COLUMN compress_llm_cache_max_entries INTEGER NOT NULL DEFAULT 256`},
+		{"compress_llm_cache_ttl_sec", `ALTER TABLE agent_runtime_settings ADD COLUMN compress_llm_cache_ttl_sec INTEGER NOT NULL DEFAULT 600`},
 	}
 	for _, p := range patches {
 		has, err := sqliteColumnExists(ctx, c, "agent_runtime_settings", p.col)

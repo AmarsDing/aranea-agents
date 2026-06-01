@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/dingtalk"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/pkg/loggateway"
 )
 
 func (h *ChannelIngress) handleDingTalkWebhook(w http.ResponseWriter, r *http.Request, chRow biz.Channel) error {
@@ -22,8 +23,13 @@ func (h *ChannelIngress) handleDingTalkWebhook(w http.ResponseWriter, r *http.Re
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	secret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "secret")
+	secret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "secret", h.lg)
 	if err := dingtalk.VerifySign(r.URL.Query().Get("timestamp"), r.URL.Query().Get("sign"), secret); err != nil {
+		h.lg.Warn("钉钉 Webhook 签名验证失败",
+			loggateway.StepID("channel.dingtalk.webhook.verify_fail"),
+			loggateway.Str("channel_id", chRow.ID),
+			loggateway.Err(err),
+		)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil
 	}

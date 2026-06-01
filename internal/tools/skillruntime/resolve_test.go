@@ -353,7 +353,7 @@ func TestResolveSkillSlugsDetailed_EmptyCandidates(t *testing.T) {
 		Runtime:   &mockRuntime{json: "{}"},
 		UserQuery: "test",
 	}
-	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts)
+	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -373,7 +373,7 @@ func TestResolveSkillSlugsDetailed_LayerADeny(t *testing.T) {
 		Runtime:   &mockRuntime{json: `{"denied_slugs":["skill-b"]}`},
 		UserQuery: "",
 	}
-	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts)
+	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -397,7 +397,7 @@ func TestResolveSkillSlugsDetailed_LayerAAllow(t *testing.T) {
 		Runtime:   &mockRuntime{json: `{"allowed_slugs":["skill-a","skill-c"]}`},
 		UserQuery: "",
 	}
-	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts)
+	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -422,7 +422,7 @@ func TestResolveSkillSlugsDetailed_IntentRouting(t *testing.T) {
 		Runtime:   &mockRuntime{json: `{"intent_routing_enabled":true,"intent_max_paths":3}`},
 		UserQuery: "读取表格文件",
 	}
-	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts)
+	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -445,7 +445,7 @@ func TestResolveSkillSlugsDetailed_TagFiltering(t *testing.T) {
 		Runtime:   &mockRuntime{json: `{"allowed_tags":["file_type:xlsx"],"intent_routing_enabled":false}`},
 		UserQuery: "",
 	}
-	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts)
+	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -472,7 +472,7 @@ func TestResolveSkillSlugsDetailed_MaxSkillsCap(t *testing.T) {
 		Runtime:   &mockRuntime{json: `{"max_skills_in_toolset":2,"intent_routing_enabled":false}`},
 		UserQuery: "",
 	}
-	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts)
+	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -506,7 +506,7 @@ func TestResolveSkillSlugsDetailed_EmbeddingScoring(t *testing.T) {
 		Runtime:   &mockRuntime{json: `{"embedding_scoring_enabled":true,"embedding_score_weight":0.5,"intent_routing_enabled":false}`},
 		UserQuery: "test query",
 	}
-	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts)
+	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -533,7 +533,7 @@ func TestResolveSkillSlugsDetailed_EmbeddingError(t *testing.T) {
 		Runtime:   &mockRuntime{json: `{"embedding_scoring_enabled":true,"embedding_score_weight":0.5,"intent_routing_enabled":false}`},
 		UserQuery: "test query",
 	}
-	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts)
+	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -548,7 +548,7 @@ func TestResolveSkillSlugsDetailed_NilOpts(t *testing.T) {
 			makeCandidate("skill-a", "A", "desc a", nil, nil),
 		},
 	}
-	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, nil)
+	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -679,7 +679,7 @@ func TestResolveSkillSlugsDetailed_IntentRoutingNoNarrowingWhenNoMatch(t *testin
 		Runtime:   &mockRuntime{json: `{"intent_routing_enabled":true,"intent_max_paths":3}`},
 		UserQuery: "读取表格文件",
 	}
-	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts)
+	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -698,7 +698,7 @@ func TestResolveSkillSlugsDetailed_TagFilterNoNarrowingWhenNoMatch(t *testing.T)
 		Runtime:   &mockRuntime{json: `{"allowed_tags":["file_type:xlsx"],"intent_routing_enabled":false}`},
 		UserQuery: "",
 	}
-	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts)
+	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -729,7 +729,7 @@ func TestResolveSkillSlugsDetailed_EmbeddingBoostsLowerScored(t *testing.T) {
 		}`},
 		UserQuery: "情感分析邮件",
 	}
-	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts)
+	result, err := ResolveSkillSlugsDetailed(context.Background(), resolver, opts, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

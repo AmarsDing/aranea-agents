@@ -1,10 +1,14 @@
 package plugintrpc
 
-import "testing"
+import (
+	"testing"
+
+	"aranea-agents/pkg/loggateway"
+)
 
 func TestCostGuardBudgetRegistry_ScopeIsolation(t *testing.T) {
 	t.Parallel()
-	reg := NewCostGuardBudgetRegistry()
+	reg := NewCostGuardBudgetRegistry(loggateway.NewNoop())
 	a := reg.TrackerForScope("agent-a")
 	b := reg.TrackerForScope("agent-b")
 	if a == b {
@@ -25,7 +29,7 @@ func TestCostGuardBudgetRegistry_ScopeIsolation(t *testing.T) {
 func TestCostGuardScopeForAgent_GlobalPluginPerAgent(t *testing.T) {
 	t.Parallel()
 	rt := &Runtime{
-		budgets: NewCostGuardBudgetRegistry(),
+		budgets: NewCostGuardBudgetRegistry(loggateway.NewNoop()),
 		active: []runtimeEntry{
 			{key: "cost_guard", scope: "global", costGuard: &CostGuardConfig{}},
 		},

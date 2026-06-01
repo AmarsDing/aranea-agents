@@ -32,7 +32,7 @@ func newPromptSnapshotBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.C
 		callIndex := promptSnapshotCallIndex(ctx)
 		report := analyzePromptRequest(args.Request.Messages)
 		if promptSnapshotEnabled() {
-			loggateway.Global().Info("Prompt 组成快照", loggateway.StepID("chat.prompt.compose"), loggateway.Phase("done"),
+			deps.Logger().Info("Prompt 组成快照", loggateway.StepID("agent.prompt.compose"), loggateway.Phase("done"),
 				loggateway.Int("model_call_index", callIndex),
 				loggateway.Int("est_tokens", report.EstTokens),
 				loggateway.Int("system_chars", report.SystemChars),

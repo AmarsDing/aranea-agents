@@ -16,18 +16,18 @@ import (
 )
 
 type Gateway struct {
-	core       zapcore.Core
-	logger     *zap.Logger
-	sugar      *zap.SugaredLogger
-	hook       *busHook
-	kratosAdp  *KratosAdapter
-	base       []Field
-	outputDir  string
+	core      zapcore.Core
+	logger    *zap.Logger
+	sugar     *zap.SugaredLogger
+	hook      *busHook
+	kratosAdp *KratosAdapter
+	base      []Field
+	outputDir string
 }
 
 var (
 	globalMu sync.RWMutex
-	global   *Gateway
+	global   = NewNoop()
 )
 
 func New(c *conf.Logging) *Gateway {
@@ -149,26 +149,41 @@ func NewNoop() *Gateway {
 }
 
 func (g *Gateway) Debug(msg string, fields ...Field) {
+	if g == nil {
+		return
+	}
 	all := g.withBase(fields)
 	g.logger.Debug(msg, all...)
 }
 
 func (g *Gateway) Info(msg string, fields ...Field) {
+	if g == nil {
+		return
+	}
 	all := g.withBase(fields)
 	g.logger.Info(msg, all...)
 }
 
 func (g *Gateway) Warn(msg string, fields ...Field) {
+	if g == nil {
+		return
+	}
 	all := g.withBase(fields)
 	g.logger.Warn(msg, all...)
 }
 
 func (g *Gateway) Error(msg string, fields ...Field) {
+	if g == nil {
+		return
+	}
 	all := g.withBase(fields)
 	g.logger.Error(msg, all...)
 }
 
 func (g *Gateway) With(fields ...Field) Logger {
+	if g == nil {
+		return noopLogger{}
+	}
 	newBase := make([]Field, 0, len(g.base)+len(fields))
 	newBase = append(newBase, g.base...)
 	newBase = append(newBase, fields...)
@@ -176,6 +191,9 @@ func (g *Gateway) With(fields ...Field) Logger {
 }
 
 func (g *Gateway) BeginStep(stepID, msg string, fields ...Field) *Step {
+	if g == nil {
+		return &Step{g: g, stepID: stepID, start: time.Now()}
+	}
 	all := make([]Field, 0, len(g.base)+len(fields)+2)
 	all = append(all, g.base...)
 	all = append(all, StepID(stepID), Phase("start"))
@@ -185,22 +203,37 @@ func (g *Gateway) BeginStep(stepID, msg string, fields ...Field) *Step {
 }
 
 func (g *Gateway) KratosLogger(kv ...interface{}) *KratosAdapter {
+	if g == nil {
+		return &KratosAdapter{}
+	}
 	return g.kratosAdp.WithFields(kv...)
 }
 
 func (g *Gateway) ZapSugar() *zap.SugaredLogger {
+	if g == nil {
+		return zap.NewNop().Sugar()
+	}
 	return g.sugar
 }
 
 func (g *Gateway) SetBusPublish(fn func(env EnvelopeLog)) {
+	if g == nil {
+		return
+	}
 	g.hook.setPublisher(fn)
 }
 
 func (g *Gateway) SetHookLevel(level string) {
+	if g == nil {
+		return
+	}
 	g.hook.setLevel(parseLevel(level, zapcore.InfoLevel))
 }
 
 func (g *Gateway) withBase(fields []Field) []Field {
+	if g == nil {
+		return fields
+	}
 	if len(g.base) == 0 {
 		return fields
 	}
@@ -283,4 +316,15 @@ func (l *loggerWith) BeginStep(stepID, msg string, fields ...Field) *Step {
 	all = append(all, fields...)
 	l.Info(msg, all...)
 	return &Step{g: l.g, stepID: stepID, start: time.Now()}
+}
+
+type noopLogger struct{}
+
+func (noopLogger) Debug(string, ...Field) {}
+func (noopLogger) Info(string, ...Field)  {}
+func (noopLogger) Warn(string, ...Field)  {}
+func (noopLogger) Error(string, ...Field) {}
+func (noopLogger) With(...Field) Logger   { return noopLogger{} }
+func (noopLogger) BeginStep(stepID, _ string, _ ...Field) *Step {
+	return &Step{stepID: stepID, start: time.Now()}
 }

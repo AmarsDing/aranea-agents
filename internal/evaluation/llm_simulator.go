@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/loggateway"
 
 	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	trpcevalset "trpc.group/trpc-go/trpc-agent-go/evaluation/evalset"
@@ -21,11 +22,11 @@ Stop when the plan objective is satisfied.`
 
 // NewLLMUserSimulator builds trpc usersimulation.Simulator backed by catalog LLM (Phase 5).
 // Precedence: env KRATOS_EVAL_SIM_* → system_settings → env KRATOS_EVAL_JUDGE_* → catalog mini/flash.
-func NewLLMUserSimulator(catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip, sys EvalLLMSettingsReader) (usersimulation.Simulator, error) {
+func NewLLMUserSimulator(catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip, sys EvalLLMSettingsReader, lg loggateway.Logger) (usersimulation.Simulator, error) {
 	if catalog == nil || rt == nil {
 		return nil, fmt.Errorf("llm user simulator: catalog or round trip nil")
 	}
-	m, err := resolveSimModel(context.Background(), catalog, rt, sys)
+	m, err := resolveSimModel(context.Background(), catalog, rt, sys, lg)
 	if err != nil {
 		return nil, err
 	}

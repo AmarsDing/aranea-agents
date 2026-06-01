@@ -12,6 +12,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/tools/skillruntime"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -25,10 +26,14 @@ type SkillService struct {
 	agentUC *biz.AgentUsecase
 	fs      biz.SkillFilesystem
 	import_ *importer.Engine
+	lg      loggateway.Logger
 }
 
-func NewSkillService(uc *biz.SkillUsecase, agentUC *biz.AgentUsecase, fs biz.SkillFilesystem, importEng *importer.Engine) *SkillService {
-	return &SkillService{uc: uc, agentUC: agentUC, fs: fs, import_: importEng}
+func NewSkillService(uc *biz.SkillUsecase, agentUC *biz.AgentUsecase, fs biz.SkillFilesystem, importEng *importer.Engine, lg loggateway.Logger) *SkillService {
+	if lg == nil {
+		lg = loggateway.Global()
+	}
+	return &SkillService{uc: uc, agentUC: agentUC, fs: fs, import_: importEng, lg: lg}
 }
 
 func (s *SkillService) GetSkillFilesystemHealth(ctx context.Context, _ *emptypb.Empty) (*v1.SkillFilesystemHealth, error) {
@@ -333,7 +338,7 @@ func (s *SkillService) PreviewSkillRuntime(ctx context.Context, req *v1.PreviewS
 			return nil, err
 		}
 		opts := &skillruntime.SkillToolsetOptions{Runtime: &runtime, UserQuery: userQuery}
-		result, err := skillruntime.ResolveSkillSlugsDetailed(ctx, s.uc, opts)
+		result, err := skillruntime.ResolveSkillSlugsDetailed(ctx, s.uc, opts, s.lg)
 		if err != nil {
 			return nil, err
 		}

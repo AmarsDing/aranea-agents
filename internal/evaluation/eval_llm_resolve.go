@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/loggateway"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
@@ -70,12 +71,12 @@ func resolveSimProviderModel(ctx context.Context, sys EvalLLMSettingsReader) (st
 	return "", ""
 }
 
-func resolveJudgeModel(ctx context.Context, catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip, sys EvalLLMSettingsReader) (trpcmodel.Model, error) {
+func resolveJudgeModel(ctx context.Context, catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip, sys EvalLLMSettingsReader, lg loggateway.Logger) (trpcmodel.Model, error) {
 	if rt == nil {
 		rt = &provider.RoundTrip{}
 	}
 	if prov, mod := resolveJudgeProviderModel(ctx, sys); prov != "" && mod != "" {
-		return provider.TRPCModelForProviderModel(ctx, catalog, rt, prov, mod)
+		return provider.TRPCModelForProviderModel(ctx, catalog, rt, prov, mod, lg)
 	}
 	models, err := catalog.List(ctx)
 	if err != nil {
@@ -85,12 +86,12 @@ func resolveJudgeModel(ctx context.Context, catalog *biz.LlmProviderModelUsecase
 		return nil, fmt.Errorf("no models in catalog")
 	}
 	pm := pickJudgeModel(models)
-	return provider.TRPCModelForProviderModel(ctx, catalog, rt, pm.Provider, pm.Model)
+	return provider.TRPCModelForProviderModel(ctx, catalog, rt, pm.Provider, pm.Model, lg)
 }
 
-func resolveSimModel(ctx context.Context, catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip, sys EvalLLMSettingsReader) (trpcmodel.Model, error) {
+func resolveSimModel(ctx context.Context, catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip, sys EvalLLMSettingsReader, lg loggateway.Logger) (trpcmodel.Model, error) {
 	if prov, mod := resolveSimProviderModel(ctx, sys); prov != "" && mod != "" {
-		return provider.TRPCModelForProviderModel(ctx, catalog, rt, prov, mod)
+		return provider.TRPCModelForProviderModel(ctx, catalog, rt, prov, mod, lg)
 	}
-	return resolveJudgeModel(ctx, catalog, rt, sys)
+	return resolveJudgeModel(ctx, catalog, rt, sys, lg)
 }

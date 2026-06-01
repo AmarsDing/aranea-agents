@@ -1380,3 +1380,187 @@ body:not(.body--dark) .graph-card--add:hover
   border-radius: 16px
   backdrop-filter: blur(var(--glass-blur-default))
   -webkit-backdrop-filter: blur(var(--glass-blur-default))
+
+.graphs-page__body
+  display: flex
+  gap: 0
+  min-height: 0
+  flex: 1
+
+.graphs-page__list
+  flex: 1
+  min-width: 0
+
+.graph-card--selected
+  border-color: var(--color-accent) !important
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 30%, transparent), 0 0 16px color-mix(in srgb, var(--color-accent) 12%, transparent), var(--shadow-entity-panel) !important
+
+body:not(.body--dark) .graph-card--selected
+  border-color: rgba(220, 160, 62, 0.7) !important
+  box-shadow: 0 0 0 1px rgba(220, 160, 62, 0.25), 0 0 16px rgba(220, 160, 62, 0.1), 0 2px 8px rgba(93, 64, 55, 0.07) !important
+
+.graph-detail-panel
+  width: 320px
+  flex-shrink: 0
+  border-left: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+  backdrop-filter: blur(var(--glass-blur-default))
+  -webkit-backdrop-filter: blur(var(--glass-blur-default))
+  display: flex
+  flex-direction: column
+  overflow-y: auto
+  transition: width 200ms ease
+
+.graph-detail-panel.is-dark
+  background: color-mix(in srgb, var(--glass-surface) 65%, transparent)
+
+.graph-detail-panel__header
+  display: flex
+  align-items: center
+  justify-content: space-between
+  padding: 14px 14px 10px
+  border-bottom: 1px solid var(--glass-border)
+
+.graph-detail-panel__title
+  font-size: 14px
+  font-weight: 800
+  color: var(--color-text-heading)
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+  min-width: 0
+
+.graph-detail-panel__body
+  padding: 12px 14px
+  display: flex
+  flex-direction: column
+  gap: 4px
+
+.graph-detail-panel__desc
+  color: var(--color-text-secondary)
+  font-size: 12px
+  line-height: 1.5
+  margin-bottom: 4px
+
+.graph-detail-panel__section
+  display: flex
+  flex-direction: column
+  gap: 6px
+  padding: 10px 0
+  border-top: 1px solid var(--glass-border)
+
+.graph-detail-panel__section-title
+  font-size: 11px
+  font-weight: 800
+  letter-spacing: 0.06em
+  text-transform: uppercase
+  color: var(--color-text-secondary)
+
+.graph-detail-panel__field
+  display: flex
+  align-items: baseline
+  justify-content: space-between
+  gap: 8px
+
+.graph-detail-panel__label
+  font-size: 11px
+  color: var(--color-text-tertiary)
+  flex-shrink: 0
+
+.graph-detail-panel__value
+  font-size: 12px
+  color: var(--color-text-primary)
+  text-align: right
+  min-width: 0
+  overflow: hidden
+  text-overflow: ellipsis
+  white-space: nowrap
+
+.graph-detail-panel__value--mono
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace
+  font-size: 11px
+
+.graph-detail-panel__stats
+  display: flex
+  flex-wrap: wrap
+  gap: 4px
+
+.graph-detail-panel__stat-chip
+  display: inline-flex
+  align-items: center
+  padding: 2px 7px
+  border: 1px solid var(--glass-border)
+  border-radius: 999px
+  background: color-mix(in srgb, var(--glass-elevated) 60%, transparent)
+  font-size: 10px
+  font-weight: 700
+  line-height: 1.4
+  white-space: nowrap
+
+.graph-detail-panel__state-row
+  display: flex
+  align-items: center
+  gap: 6px
+  padding: 4px 8px
+  border: 1px solid var(--glass-border)
+  border-radius: 8px
+  background: color-mix(in srgb, var(--glass-elevated) 40%, transparent)
+
+.graph-detail-panel__state-name
+  font-size: 11px
+  font-weight: 700
+  color: var(--color-text-primary)
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace
+
+.graph-detail-panel__state-type
+  font-size: 10px
+  color: var(--color-text-tertiary)
+
+.graph-detail-panel__state-reducer
+  font-size: 10px
+  color: var(--color-text-secondary)
+  margin-left: auto
+
+.graph-detail-panel__actions
+  display: flex
+  flex-wrap: wrap
+  gap: 4px
+  padding-top: 10px
+  border-top: 1px solid var(--glass-border)
+
+.graph-detail-panel__action-btn
+  background: var(--color-accent)
+  color: var(--color-on-accent)
+
+.graph-detail-panel__action-btn:hover
+  background: var(--color-accent-hover)
+
+.graph-detail-panel__empty
+  display: flex
+  flex-direction: column
+  align-items: center
+  justify-content: center
+  height: 100%
+  min-height: 240px
+  text-align: center
+  padding: 32px 16px
+  gap: 8px
+
+.graph-detail-panel__empty-text
+  font-size: 13px
+  font-weight: 600
+  color: var(--color-text-secondary)
+
+.graph-detail-panel__empty-hint
+  font-size: 11px
+  color: var(--color-text-tertiary)
+
+@media (max-width: 1024px)
+  .graphs-page__body
+    flex-direction: column
+
+  .graph-detail-panel
+    width: 100%
+    border-left: none
+    border-top: 1px solid var(--glass-border)
+    max-height: 50vh

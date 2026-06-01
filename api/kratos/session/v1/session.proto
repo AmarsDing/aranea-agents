@@ -58,6 +58,9 @@ message Session {
   string pinned_at = 47;
   string status_reason = 48;
   string status_changed_at = 49;
+  string parent_session_id = 50;
+  string root_session_id = 51;
+  int32 agent_depth = 52;
 }
 
 message SessionTimelineSummary {
@@ -398,6 +401,20 @@ message BatchSessionsResponse {
   bool truncated = 6;
 }
 
+message CompactSessionRequest {
+  string session_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string preserve_instruction = 2;
+}
+
+message CompactSessionResponse {
+  bool compacted = 1;
+  int32 from_turn = 2;
+  int32 to_turn = 3;
+  int32 estimated_tokens_before = 4;
+  int32 estimated_tokens_after = 5;
+  string compression_level = 6;
+}
+
 service SessionService {
   rpc SearchSessions(SearchSessionsRequest) returns (SearchSessionsResponse) {
     option (google.api.http) = {get: "/v1/sessions"};
@@ -483,6 +500,12 @@ service SessionService {
   rpc BatchDeleteSessions(BatchDeleteSessionsRequest) returns (BatchSessionsResponse) {
     option (google.api.http) = {
       post: "/v1/sessions:batchDelete"
+      body: "*"
+    };
+  }
+  rpc CompactSession(CompactSessionRequest) returns (CompactSessionResponse) {
+    option (google.api.http) = {
+      post: "/v1/sessions:compact"
       body: "*"
     };
   }

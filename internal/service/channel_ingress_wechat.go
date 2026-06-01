@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/channel/onebot"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/wechat"
+	"aranea-agents/pkg/loggateway"
 )
 
 func (h *ChannelIngress) handleWeChatWebhook(w http.ResponseWriter, r *http.Request, chRow biz.Channel) error {
@@ -19,10 +20,15 @@ func (h *ChannelIngress) handleWeChatWebhook(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	token, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "token")
+	token, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "token", h.lg)
 	if r.Method == http.MethodGet {
 		echo, err := wechat.VerifyURL(token, q.Get("timestamp"), q.Get("nonce"), q.Get("echostr"), q.Get("signature"))
 		if err != nil {
+			h.lg.Warn("WeChat Webhook URL 验证失败",
+				loggateway.StepID("channel.wechat.webhook.verify_fail"),
+				loggateway.Str("channel_id", chRow.ID),
+				loggateway.Err(err),
+			)
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return nil
 		}
@@ -35,6 +41,11 @@ func (h *ChannelIngress) handleWeChatWebhook(w http.ResponseWriter, r *http.Requ
 		return nil
 	}
 	if err := wechat.VerifyPOST(token, q.Get("timestamp"), q.Get("nonce"), q.Get("signature")); err != nil {
+		h.lg.Warn("WeChat Webhook POST 签名验证失败",
+			loggateway.StepID("channel.wechat.webhook.verify_fail"),
+			loggateway.Str("channel_id", chRow.ID),
+			loggateway.Err(err),
+		)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil
 	}
@@ -82,8 +93,13 @@ func (h *ChannelIngress) handleOneBotWebhook(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	receiveToken, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "receive_token")
+	receiveToken, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "receive_token", h.lg)
 	if err := onebot.VerifySignature(receiveToken, raw, r.Header.Get("X-Signature")); err != nil {
+		h.lg.Warn("OneBot Webhook 签名验证失败",
+			loggateway.StepID("channel.onebot.webhook.verify_fail"),
+			loggateway.Str("channel_id", chRow.ID),
+			loggateway.Err(err),
+		)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil
 	}

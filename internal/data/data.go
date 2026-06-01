@@ -16,6 +16,7 @@ import (
 	"aranea-agents/internal/data/pgvector"
 	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/safego"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -90,15 +91,24 @@ var ProviderSet = wire.NewSet(
 	NewObservationRepo,
 	NewPatternRepo,
 	NewProposalRepo,
+	NewMemoryFactReader,
+	NewToolResultBlobRepo,
+	NewToolResultReplacementRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
 // 复杂原生 SQL 走 *ent.Client 上的 QueryContext（见 sqlite_db.go），不另开 sql.DB。
 type Data struct {
-	entClient *ent.Client // SQLite — Ent schema（admin / avatar_assets / embedding 偏好等）
-	rawDB     *sql.DB     // SQLite — 底层 *sql.DB，Ent 与 trpc 适配器共用同一连接池
-	pg        *sql.DB     // Postgres — agent_memory 向量列
-	vectorDim int
+	entClient   *ent.Client
+	readClient  *ent.Client
+	rawDB       *sql.DB
+	readDB      *sql.DB
+	pg          *sql.DB
+	vectorDim   int
+	readiness   *ReadinessGate
+	lazySeeders map[string]*LazySeeder
+	p1Cancel    context.CancelFunc
+	p1Done      chan struct{}
 }
 
 // Ent returns the SQLite-backed Ent client.
@@ -117,6 +127,20 @@ func (d *Data) RawDB() *sql.DB {
 	return d.rawDB
 }
 
+func (d *Data) ReadDB() *sql.DB {
+	if d == nil {
+		return nil
+	}
+	return d.readDB
+}
+
+func (d *Data) ReadEnt() *ent.Client {
+	if d == nil {
+		return nil
+	}
+	return d.readClient
+}
+
 // Postgres returns the Postgres DB handle for vectors, or nil if not configured.
 func (d *Data) Postgres() *sql.DB {
 	if d == nil {
@@ -131,6 +155,31 @@ func (d *Data) VectorDim() int {
 		return defaultVectorDim
 	}
 	return d.vectorDim
+}
+
+func (d *Data) Readiness() *ReadinessGate {
+	if d == nil {
+		return nil
+	}
+	return d.readiness
+}
+
+func (d *Data) IsReady() bool {
+	if d == nil || d.readiness == nil {
+		return true
+	}
+	return d.readiness.IsReady()
+}
+
+func (d *Data) SeedLazy(ctx context.Context, name string) error {
+	if d == nil || d.lazySeeders == nil {
+		return nil
+	}
+	seeder, ok := d.lazySeeders[name]
+	if !ok {
+		return nil
+	}
+	return seeder.SeedIfNeeded(ctx)
 }
 
 const defaultVectorDim = 1536
@@ -196,33 +245,48 @@ func entSQLDebugEnabled() bool {
 func NewData(c *conf.Data) (*Data, func(), error) {
 	var entClient *ent.Client
 	var rawDB *sql.DB
+	var readClient *ent.Client
+	var readDB *sql.DB
 	var pg *sql.DB
 	var pgOpened bool
+	var st *Data
 
 	cleanup := func() {
+		if st != nil {
+			if st.p1Cancel != nil {
+				st.p1Cancel()
+			}
+			if st.p1Done != nil {
+				select {
+				case <-st.p1Done:
+				case <-time.After(5 * time.Second):
+					loggateway.Global().Warn("P1 startup goroutine did not finish in time",
+						loggateway.StepID("system.startup.p1_shutdown"))
+				}
+			}
+		}
 		if entClient != nil {
 			_ = entClient.Close()
 		}
-		if pgOpened && pg != nil {
-			pg.Close()
+		if readClient != nil {
+			_ = readClient.Close()
 		}
 		if rawDB != nil {
 			rawDB.Close()
+		}
+		if readDB != nil {
+			readDB.Close()
+		}
+		if pgOpened && pg != nil {
+			pg.Close()
 		}
 	}
 
 	if err := runStartupStep("initSQLite", func() error {
 		var stepErr error
-		entClient, rawDB, stepErr = initSQLite(c)
+		entClient, rawDB, readClient, readDB, stepErr = initSQLite(c)
 		return stepErr
 	}); err != nil {
-		return nil, nil, err
-	}
-
-	if err := runStartupStep("ensureSchemaDDL", func() error {
-		return ensureSchemaDDL(rawDB, entClient)
-	}); err != nil {
-		cleanup()
 		return nil, nil, err
 	}
 
@@ -236,29 +300,100 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 		return nil, nil, err
 	}
 
+	if err := runStartupStep("seedAdminUsers", func() error {
+		ctx := context.Background()
+		if err := ensureInitialAdminFromConfig(ctx, entClient, c); err != nil {
+			return err
+		}
+		return ensureDevBypassAdminIfEnabled(ctx, entClient)
+	}); err != nil {
+		cleanup()
+		return nil, nil, err
+	}
+
 	vdim := vectorDimFromConf(c)
-	st := &Data{entClient: entClient, rawDB: rawDB, pg: pg, vectorDim: vdim}
+	p1Ctx, p1Cancel := context.WithCancel(context.Background())
+	p1Done := make(chan struct{})
+	st = &Data{entClient: entClient, rawDB: rawDB, readClient: readClient, readDB: readDB, pg: pg, vectorDim: vdim, readiness: newReadinessGate(), p1Cancel: p1Cancel, p1Done: p1Done}
 
-	if err := runStartupStep("ensurePostgresSchemas", func() error {
-		return ensurePostgresSchemas(pg, vdim)
-	}); err != nil {
-		cleanup()
-		return nil, nil, err
-	}
+	safego.Go(context.Background(), "startup.p1", func() {
+		defer close(p1Done)
+		defer st.readiness.MarkReady()
 
-	if err := runStartupStep("dataMigrations", func() error {
-		return runPendingDataMigrations(entClient)
-	}); err != nil {
-		cleanup()
-		return nil, nil, err
-	}
+		if err := runStartupStep("ensureSchemaDDL", func() error {
+			return ensureSchemaDDL(rawDB, entClient)
+		}); err != nil {
+			if p1Ctx.Err() != nil {
+				return
+			}
+			loggateway.Global().Warn("P1 startup step failed",
+				loggateway.StepID("system.startup.p1"), loggateway.Str("step", "ensureSchemaDDL"), loggateway.Err(err))
+			return
+		}
 
-	if err := runStartupStep("seedInitialData", func() error {
-		return seedInitialData(entClient, c)
-	}); err != nil {
-		cleanup()
-		return nil, nil, err
-	}
+		if err := runStartupStep("ensurePostgresSchemas", func() error {
+			return ensurePostgresSchemas(pg, vdim)
+		}); err != nil {
+			if p1Ctx.Err() != nil {
+				return
+			}
+			loggateway.Global().Warn("P1 startup step failed",
+				loggateway.StepID("system.startup.p1"), loggateway.Str("step", "ensurePostgresSchemas"), loggateway.Err(err))
+			return
+		}
+
+		if err := runStartupStep("dataMigrations", func() error {
+			return runPendingDataMigrations(entClient)
+		}); err != nil {
+			if p1Ctx.Err() != nil {
+				return
+			}
+			loggateway.Global().Warn("P1 startup step failed",
+				loggateway.StepID("system.startup.p1"), loggateway.Str("step", "dataMigrations"), loggateway.Err(err))
+			return
+		}
+
+		if err := runStartupStep("seedP1Data", func() error {
+			return seedP1Data(entClient, c, st)
+		}); err != nil {
+			if p1Ctx.Err() != nil {
+				return
+			}
+			loggateway.Global().Warn("P1 startup step failed",
+				loggateway.StepID("system.startup.p1"), loggateway.Str("step", "seedP1Data"), loggateway.Err(err))
+			return
+		}
+	})
+
+	safego.Go(context.Background(), "startup.lazy_seeds", func() {
+		if err := st.readiness.Wait(p1Ctx); err != nil {
+			if p1Ctx.Err() != nil {
+				return
+			}
+			loggateway.Global().Warn("lazy seeds: readiness wait failed",
+				loggateway.StepID("system.startup.lazy"), loggateway.Err(err))
+			return
+		}
+		select {
+		case <-p1Ctx.Done():
+			return
+		case <-time.After(3 * time.Second):
+		}
+		for name := range st.lazySeeders {
+			if p1Ctx.Err() != nil {
+				return
+			}
+			if err := st.SeedLazy(p1Ctx, name); err != nil {
+				if p1Ctx.Err() != nil {
+					return
+				}
+				loggateway.Global().Warn("lazy seed failed",
+					loggateway.StepID("system.startup.lazy"), loggateway.Str("seed", name), loggateway.Err(err))
+			}
+		}
+		loggateway.Global().Info("lazy seeds completed",
+			loggateway.StepID("system.startup.lazy"))
+	})
 
 	return st, cleanup, nil
 }
@@ -276,18 +411,18 @@ func runStartupStep(name string, fn func() error) error {
 
 // initSQLite opens the SQLite database, configures Ent, applies PRAGMAs,
 // and runs migration.
-func initSQLite(c *conf.Data) (*ent.Client, *sql.DB, error) {
+func initSQLite(c *conf.Data) (*ent.Client, *sql.DB, *ent.Client, *sql.DB, error) {
 	driverName, dsn, err := entSQLiteDriverAndDSN(c)
 	if err != nil {
-		return nil, nil, fmt.Errorf("sqlite (ent): %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("sqlite (ent): %w", err)
 	}
 	if err := ensureSQLiteParentDir(dsn); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	rawDB, err := sql.Open(driverName, dsn)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed opening sqlite raw db: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("failed opening sqlite raw db: %w", err)
 	}
 	rawDB.SetMaxOpenConns(1)
 	rawDB.SetMaxIdleConns(1)
@@ -299,12 +434,12 @@ func initSQLite(c *conf.Data) (*ent.Client, *sql.DB, error) {
 		for _, pragma := range []string{
 			"PRAGMA foreign_keys=ON",
 			"PRAGMA journal_mode=WAL",
-			"PRAGMA busy_timeout=5000",
+			"PRAGMA busy_timeout=15000",
 			"PRAGMA synchronous=NORMAL",
 		} {
 			if _, pragmaErr := rawDB.ExecContext(context.Background(), pragma); pragmaErr != nil {
 				rawDB.Close()
-				return nil, nil, fmt.Errorf("sqlite %s: %w", pragma, pragmaErr)
+				return nil, nil, nil, nil, fmt.Errorf("sqlite %s: %w", pragma, pragmaErr)
 			}
 		}
 	}
@@ -314,13 +449,38 @@ func initSQLite(c *conf.Data) (*ent.Client, *sql.DB, error) {
 		entClient, err = migrateDev(ctxEnt, entClient, "sqlite(ent)")
 		if err != nil {
 			rawDB.Close()
-			return nil, nil, err
+			return nil, nil, nil, nil, err
 		}
 	} else if err = entClient.Schema.Create(ctxEnt); err != nil {
 		rawDB.Close()
-		return nil, nil, fmt.Errorf("ent schema create (sqlite): %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("ent schema create (sqlite): %w", err)
 	}
-	return entClient, rawDB, nil
+
+	readDB, err := sql.Open(driverName, dsn)
+	if err != nil {
+		rawDB.Close()
+		return nil, nil, nil, nil, fmt.Errorf("failed opening sqlite read db: %w", err)
+	}
+	readDB.SetMaxOpenConns(2)
+	readDB.SetMaxIdleConns(2)
+	if driverName == dialect.SQLite {
+		for _, pragma := range []string{
+			"PRAGMA foreign_keys=ON",
+			"PRAGMA journal_mode=WAL",
+			"PRAGMA busy_timeout=15000",
+			"PRAGMA synchronous=NORMAL",
+		} {
+			if _, pragmaErr := readDB.ExecContext(context.Background(), pragma); pragmaErr != nil {
+				rawDB.Close()
+				readDB.Close()
+				return nil, nil, nil, nil, fmt.Errorf("sqlite read %s: %w", pragma, pragmaErr)
+			}
+		}
+	}
+	readDrv := entsql.OpenDB(driverName, readDB)
+	readClient := ent.NewClient(ent.Driver(readDrv))
+
+	return entClient, rawDB, readClient, readDB, nil
 }
 
 // ensureSchemaDDL applies Ent and raw SQL schema patches (DDL only; no data migrations).
@@ -517,8 +677,10 @@ func seedInitialData(entClient *ent.Client, c *conf.Data) error {
 	if err := ensureAgentAvatars(context.Background(), entClient); err != nil {
 		return err
 	}
-	// Seed system admin agent and built-in CLI admin tools (idempotent).
 	if err := SeedSystemAdminAgent(context.Background(), entClient); err != nil {
+		return err
+	}
+	if err := SeedSpiritAgent(context.Background(), entClient); err != nil {
 		return err
 	}
 	if err := SeedBuiltinCLIAdminTools(context.Background(), entClient); err != nil {
@@ -534,6 +696,39 @@ func seedInitialData(entClient *ent.Client, c *conf.Data) error {
 	if err := SeedAgentTemplates(context.Background(), entClient, scenarioDir); err != nil {
 		return err
 	}
+	return nil
+}
+
+func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
+	if err := ensureChannelPlatformAvatars(context.Background(), entClient); err != nil {
+		return err
+	}
+	if err := ensureAgentAvatars(context.Background(), entClient); err != nil {
+		return err
+	}
+	if err := SeedSystemAdminAgent(context.Background(), entClient); err != nil {
+		return err
+	}
+	if err := SeedSpiritAgent(context.Background(), entClient); err != nil {
+		return err
+	}
+	if err := SeedBuiltinCLIAdminTools(context.Background(), entClient); err != nil {
+		return err
+	}
+	if err := SeedBuiltinIndustries(context.Background(), entClient); err != nil {
+		return err
+	}
+
+	scenarioDir := biz.ScenarioDir()
+	d.lazySeeders = map[string]*LazySeeder{
+		"agent_categories": NewLazySeeder(entClient, func(ctx context.Context, client *ent.Client) error {
+			return SeedBuiltinAgentCategories(ctx, client, scenarioDir)
+		}),
+		"agent_templates": NewLazySeeder(entClient, func(ctx context.Context, client *ent.Client) error {
+			return SeedAgentTemplates(ctx, client, scenarioDir)
+		}),
+	}
+
 	return nil
 }
 
@@ -570,11 +765,11 @@ func NewEvalRepoFromData(d *Data) biz.EvalRepo {
 	return NewEvalRepo(d.RawDB())
 }
 
-func NewA2ARepoFromData(d *Data) biz.A2ARepo {
+func NewA2ARepoFromData(d *Data, lg loggateway.Logger) biz.A2ARepo {
 	if d == nil || d.RawDB() == nil {
 		return nil
 	}
-	return NewA2ARepo(d.RawDB())
+	return NewA2ARepo(d.RawDB(), lg)
 }
 
 // NewCLIData wraps SQLite handles opened by OpenSQLiteEntClient for offline maintenance CLIs.

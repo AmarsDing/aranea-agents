@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+const SpiritAgentKey = "__spirit__"
+
 // Agent is the catalog agent aggregate (legacy agents table + hydrated runtime state).
 type Agent struct {
 	ID                 string
@@ -177,6 +179,14 @@ type AgentRuntimeSettings struct {
 	ModelInstructionsJSON string
 	// ContextCompactionEnabled enables automatic context compaction when tokens approach the limit.
 	ContextCompactionEnabled bool
+	// MicroCompactEnabled enables L1 MicroCompact (zero-API tool result clearing) as the first compression tier.
+	MicroCompactEnabled bool
+	// MemoryCompactEnabled enables L2 Memory Compact (reuse extracted memory facts) as the second compression tier.
+	MemoryCompactEnabled bool
+	ToolResultGateEnabled bool
+	CompressLLMCacheEnabled    bool
+	CompressLLMCacheMaxEntries int
+	CompressLLMCacheTTLSec     int
 	// SessionSummaryEnabled enables session summary injection so new sessions can inherit old context.
 	SessionSummaryEnabled bool
 	// SkillLoadMode controls skill loading strategy: "auto" | "manual" | "none".
@@ -203,6 +213,10 @@ type AgentRuntimeSettings struct {
 	ToolsParallelEnabled bool
 	// ToolsStreamingEnabled enables StreamableTool support for tools that implement StreamableCall.
 	ToolsStreamingEnabled bool
+	ToolsCircuitBreakerEnabled       bool
+	ToolsCircuitBreakerOverridesJSON string
+	ToolsDeferredJSON                string
+	ToolsCommandSafetyEnabled        bool
 	// PlannerKind selects the planning strategy: "" | "builtin" | "react" | "a2ui".
 	// Empty string inherits the legacy dialog-mode based selection (builtin when dialogMode="plan").
 	PlannerKind string
@@ -315,6 +329,10 @@ func (s *AgentRuntimeSettings) GetTools() ToolsCfg {
 		RetryJitter:            s.ToolsRetryJitter,
 		ParallelEnabled:        s.ToolsParallelEnabled,
 		StreamingEnabled:       s.ToolsStreamingEnabled,
+		CircuitBreakerEnabled:  s.ToolsCircuitBreakerEnabled,
+		CircuitBreakerOverridesJSON: s.ToolsCircuitBreakerOverridesJSON,
+		DeferredJSON:          s.ToolsDeferredJSON,
+		CommandSafetyEnabled:  s.ToolsCommandSafetyEnabled,
 	}
 }
 
@@ -374,12 +392,18 @@ func (s *AgentRuntimeSettings) GetEvolution() EvolutionCfg {
 // GetContext returns the Context domain view.
 func (s *AgentRuntimeSettings) GetContext() ContextCfg {
 	return ContextCfg{
-		CompactionEnabled:     s.ContextCompactionEnabled,
-		SessionSummaryEnabled: s.SessionSummaryEnabled,
-		OutputSchemaJSON:      s.OutputSchemaJSON,
-		ModelSelector:         s.ModelSelector,
-		PlannerKind:           s.PlannerKind,
-		PlannerConfigJSON:     s.PlannerConfigJSON,
+		CompactionEnabled:          s.ContextCompactionEnabled,
+		MicroCompactEnabled:        s.MicroCompactEnabled,
+		MemoryCompactEnabled:       s.MemoryCompactEnabled,
+		ToolResultGateEnabled:      s.ToolResultGateEnabled,
+		CompressLLMCacheEnabled:    s.CompressLLMCacheEnabled,
+		CompressLLMCacheMaxEntries: s.CompressLLMCacheMaxEntries,
+		CompressLLMCacheTTLSec:     s.CompressLLMCacheTTLSec,
+		SessionSummaryEnabled:      s.SessionSummaryEnabled,
+		OutputSchemaJSON:           s.OutputSchemaJSON,
+		ModelSelector:              s.ModelSelector,
+		PlannerKind:                s.PlannerKind,
+		PlannerConfigJSON:          s.PlannerConfigJSON,
 	}
 }
 

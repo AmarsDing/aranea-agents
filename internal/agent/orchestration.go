@@ -66,7 +66,7 @@ func buildSubAgents(ctx context.Context, keys []string, deps TRPCBuilderDeps) ([
 		if err != nil {
 			return nil, kerrors.NotFound("AGENT", "sub agent "+key+" not found: "+err.Error())
 		}
-		built, err := BuildTRPCLLMAgentCached(ctx, ag, deps)
+		built, err := BuildTRPCLLMAgentCached(ctx, ag, deps, deps.Logger())
 		if err != nil {
 			return nil, kerrors.NotFound("AGENT", "sub agent "+key+" build failed: "+err.Error())
 		}

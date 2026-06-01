@@ -24,6 +24,11 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 | `aranea-frontend-guide` | 前端项目编码指南（详细版） | 编写 Vue 3/Quasar/Pinia/TS 代码 |
 | `vue-frontend-guide` | 通用 Vue 3 编程指导 | 组件/Composable/TypeScript 设计 |
 | `aranea-frontend-review` | 前端代码审查 | 审查前端数据流/分层/UX 合规 |
+| `openspec-explore` | OpenSpec 探索模式 | 需求探索、问题分析、方案对比 |
+| `openspec-propose` | OpenSpec 提案创建 | 新增变更提案（proposal+design+tasks） |
+| `openspec-apply-change` | OpenSpec 实施执行 | 按 tasks.md 逐步实施变更 |
+| `openspec-archive-change` | OpenSpec 归档 | 变更完成后归档、同步主规格 |
+| `superpowers-workflow` | 开发纪律强制 | 实施阶段：TDD+两阶段审查+验证前置 |
 
 > 本文件为精简速查，SKILLs 为完整规范。内容冲突时以 SKILL 为准。
 
@@ -258,6 +263,44 @@ kerrors.InternalServer("AGENT", err.Error())
 - 有任务 ID 时：只读对应 development.md / blueprint 中该 ID 块
 - 列假设 → 编码 → 分级验证 → 通过后再扩 scope
 - 只改与任务直接相关的文件；不顺带 refactor 相邻模块
+
+### 9.1 OpenSpec + Superpowers 工作流（推荐）
+
+**新变更必须走 OpenSpec 流程**，开发纪律由 Superpowers 强制执行：
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                  OpenSpec + Superpowers 工作流               │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  1. EXPLORE  → openspec-explore 技能                        │
+│     需求探索、问题分析、方案对比（只思考不编码）              │
+│     ↓                                                        │
+│  2. PROPOSE  → openspec-propose 技能                        │
+│     生成 proposal.md + design.md + tasks.md                  │
+│     ↓                                                        │
+│  3. APPLY    → openspec-apply-change + superpowers-workflow  │
+│     TDD 强制：RED → GREEN → REFACTOR                        │
+│     两阶段审查：规格合规 → 代码质量                          │
+│     验证前置：提供证据才能声明完成                           │
+│     ↓                                                        │
+│  4. ARCHIVE  → openspec-archive-change 技能                 │
+│     归档变更、同步主规格库                                   │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**目录约定**：
+- 活跃变更：`openspec/changes/<change-name>/`
+- 主规格库：`openspec/specs/`
+- 已归档：`openspec/changes/archive/`
+- CLI 命令：`openspec list` / `openspec status` / `openspec new change <name>`
+
+**Superpowers 纪律**（实施阶段强制）：
+1. **TDD 强制**：先写失败测试 → 最小实现 → 重构（hotfix/typo/CSS 除外）
+2. **两阶段审查**：先过规格合规（是否满足 proposal+design+specs），再过代码质量（红线+OOP+分层）
+3. **验证前置**：测试通过 + lint 通过 + build 通过 + 无红线违反 = 才能声明完成
+4. **DoD 模板**：每个 task 必须有 Definition of Done
 
 ---
 

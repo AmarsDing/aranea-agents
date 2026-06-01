@@ -7,6 +7,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/slack"
+	"aranea-agents/pkg/loggateway"
 )
 
 func (h *ChannelIngress) handleSlackWebhook(w http.ResponseWriter, r *http.Request, chRow biz.Channel) error {
@@ -20,8 +21,13 @@ func (h *ChannelIngress) handleSlackWebhook(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	signingSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "signing_secret")
+	signingSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "signing_secret", h.lg)
 	if err := slack.VerifyRequest(r.Header.Get("X-Slack-Request-Timestamp"), r.Header.Get("X-Slack-Signature"), signingSecret, raw); err != nil {
+		h.lg.Warn("Slack Webhook 签名验证失败",
+			loggateway.StepID("channel.slack.webhook.verify_fail"),
+			loggateway.Str("channel_id", chRow.ID),
+			loggateway.Err(err),
+		)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil
 	}

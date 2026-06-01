@@ -24,10 +24,11 @@ import (
 type MonitorAlertNotifier struct {
 	channels *biz.ChannelUsecase
 	bus      event.Bus
+	lg       loggateway.Logger
 }
 
-func NewMonitorAlertNotifier(channels *biz.ChannelUsecase, bus event.Bus) *MonitorAlertNotifier {
-	return &MonitorAlertNotifier{channels: channels, bus: bus}
+func NewMonitorAlertNotifier(channels *biz.ChannelUsecase, bus event.Bus, lg loggateway.Logger) *MonitorAlertNotifier {
+	return &MonitorAlertNotifier{channels: channels, bus: bus, lg: lg}
 }
 
 func (n *MonitorAlertNotifier) Notify(ctx context.Context, rule biz.MonitorAlertRule, payload map[string]any) {
@@ -42,7 +43,7 @@ func (n *MonitorAlertNotifier) Notify(ctx context.Context, rule biz.MonitorAlert
 			webhookStatus = "ok"
 			if err := postAlertWebhook(url, payload); err != nil {
 				webhookStatus = "error"
-				loggateway.Global().Warn("告警 Webhook 发送失败",
+				n.lg.Warn("告警 Webhook 发送失败",
 					loggateway.StepID("system.monitor.alert_webhook_fail"),
 					loggateway.Str("rule_id", rule.ID),
 					loggateway.Err(err),
@@ -54,7 +55,7 @@ func (n *MonitorAlertNotifier) Notify(ctx context.Context, rule biz.MonitorAlert
 			channelStatus = "ok"
 			if err := n.notifyViaChannel(bg, chID, rule, payload); err != nil {
 				channelStatus = "error"
-				loggateway.Global().Warn("告警通道发送失败",
+				n.lg.Warn("告警通道发送失败",
 					loggateway.StepID("system.monitor.alert_channel_fail"),
 					loggateway.Str("rule_id", rule.ID),
 					loggateway.Str("channel_id", chID),
@@ -79,7 +80,7 @@ func (n *MonitorAlertNotifier) notifyViaChannel(ctx context.Context, channelID s
 	if err != nil {
 		return err
 	}
-	webhookURL, err := resolveCredentialPlain(ctx, n.channels, creds, "webhook_url")
+	webhookURL, err := resolveCredentialPlain(ctx, n.channels, creds, "webhook_url", n.lg)
 	if err != nil || webhookURL == "" {
 		return kerrors.BadRequest("MONITOR", "channel has no webhook_url credential")
 	}

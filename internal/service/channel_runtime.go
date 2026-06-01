@@ -18,16 +18,16 @@ const defaultRuntimeReloadInterval = 2 * time.Minute
 // ChannelRuntime supervises long-lived channel connectors (MuseBot StartRobot equivalent).
 type ChannelRuntime struct {
 	mgr    *runtime.Manager
+	lg     loggateway.Logger
 	cancel context.CancelFunc
 }
 
-// NewChannelRuntime wires runtime.Manager to ChannelIngress.
 func NewChannelRuntime(channels *biz.ChannelUsecase, ingress *ChannelIngress, leases biz.ChannelRuntimeLeaseRepo, lg loggateway.Logger) *ChannelRuntime {
 	if channels == nil || ingress == nil {
 		return nil
 	}
 	lookup := func(ctx context.Context, creds []biz.ChannelCredential, key string) (string, error) {
-		return resolveCredentialPlain(ctx, channels, creds, key)
+		return resolveCredentialPlain(ctx, channels, creds, key, lg)
 	}
 	mgr := runtime.NewManager(channels, ingress, lookup, lg)
 	if leases != nil {
@@ -35,6 +35,7 @@ func NewChannelRuntime(channels *biz.ChannelUsecase, ingress *ChannelIngress, le
 	}
 	return &ChannelRuntime{
 		mgr: mgr,
+		lg:  lg,
 	}
 }
 
@@ -77,7 +78,7 @@ func (r *ChannelRuntime) Start(parent context.Context) {
 	r.cancel = cancel
 	safego.Go(ctx, "channel_runtime.reload_loop", func() {
 		if err := r.mgr.Reload(ctx); err != nil {
-			loggateway.Global().Warn("渠道运行时 Reload 失败",
+			r.lg.Warn("渠道运行时 Reload 失败",
 				loggateway.StepID("channel.runtime.reload_failed"),
 				loggateway.Err(err),
 			)
@@ -95,7 +96,7 @@ func (r *ChannelRuntime) Start(parent context.Context) {
 				return
 			case <-ticker.C:
 				if err := r.mgr.Reload(ctx); err != nil {
-					loggateway.Global().Warn("渠道运行时 Reload 失败",
+					r.lg.Warn("渠道运行时 Reload 失败",
 						loggateway.StepID("channel.runtime.reload_failed"),
 						loggateway.Err(err),
 					)
@@ -111,7 +112,7 @@ func (r *ChannelRuntime) Reload(ctx context.Context) {
 		return
 	}
 	if err := r.mgr.Reload(ctx); err != nil {
-		loggateway.Global().Warn("渠道运行时 Reload 失败",
+		r.lg.Warn("渠道运行时 Reload 失败",
 			loggateway.StepID("channel.runtime.reload_failed"),
 			loggateway.Err(err),
 		)

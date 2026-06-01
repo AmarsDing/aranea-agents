@@ -93,7 +93,7 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 	}
 	deps.Plugins = plugins
 
-	root, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps)
+	root, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps, s.orch.lg)
 	if err != nil {
 		return nil, nil, err
 	}

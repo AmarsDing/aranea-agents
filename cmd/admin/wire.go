@@ -122,20 +122,20 @@ func provideSkillWatchRunner(skillReader watch.SkillReader, skillWriter watch.Sk
 	return r
 }
 
-func providePromptFileAIEditor(catalog *biz.LlmProviderModelUsecase, _ rt.PersistenceSet) *service.PromptFileAIEditor {
+func providePromptFileAIEditor(catalog *biz.LlmProviderModelUsecase, _ rt.PersistenceSet, lg loggateway.Logger) *service.PromptFileAIEditor {
 	if catalog == nil {
 		return nil
 	}
 	httpClient := &http.Client{Timeout: 90 * time.Second}
-	return service.NewPromptFileAIEditor(catalog, &provider.RoundTrip{HTTP: httpClient})
+	return service.NewPromptFileAIEditor(catalog, &provider.RoundTrip{HTTP: httpClient}, lg)
 }
 
-func provideSessionTitleGenerator(catalog *biz.LlmProviderModelUsecase, _ rt.PersistenceSet) biz.SessionTitleGenerator {
+func provideSessionTitleGenerator(catalog *biz.LlmProviderModelUsecase, _ rt.PersistenceSet, lg loggateway.Logger) biz.SessionTitleGenerator {
 	if catalog == nil {
 		return biz.NewNoopSessionTitleGenerator()
 	}
 	httpClient := &http.Client{Timeout: 15 * time.Second}
-	return service.NewLLMSessionTitleGenerator(catalog, &provider.RoundTrip{HTTP: httpClient})
+	return service.NewLLMSessionTitleGenerator(catalog, &provider.RoundTrip{HTTP: httpClient}, lg)
 }
 
 // provideSessionLogWriter moved to service.ProvideSessionLogWriter (Phase 3 decoupling).
@@ -180,9 +180,11 @@ func (mcpMetadataAdapter) MarkHealthAlert(m map[string]any, at time.Time) {
 func provideMCPMetadataEditor() biz.MCPMetadataEditor { return mcpMetadataAdapter{} }
 
 // llmInspectorAdapter wraps internal/llminspect to implement biz.LLMInspector.
-type llmInspectorAdapter struct{}
+type llmInspectorAdapter struct {
+	lg loggateway.Logger
+}
 
-func (llmInspectorAdapter) Run(in biz.InspectMerge) (biz.LLMInspectResult, error) {
+func (a llmInspectorAdapter) Run(in biz.InspectMerge) (biz.LLMInspectResult, error) {
 	r, err := llminspect.Run(llminspect.Input{
 		ResourceID:   in.ResourceID,
 		ProviderCode: in.ProviderCode,
@@ -194,7 +196,7 @@ func (llmInspectorAdapter) Run(in biz.InspectMerge) (biz.LLMInspectResult, error
 		SecretID:     in.SecretID,
 		SecretKey:    in.SecretKey,
 		AWSRegion:    in.AWSRegion,
-	})
+	}, a.lg)
 	if err != nil {
 		return biz.LLMInspectResult{}, err
 	}
@@ -222,7 +224,7 @@ func (llmInspectorAdapter) Run(in biz.InspectMerge) (biz.LLMInspectResult, error
 	}, nil
 }
 
-func provideLLMInspector() biz.LLMInspector { return llmInspectorAdapter{} }
+func provideLLMInspector(lg loggateway.Logger) biz.LLMInspector { return llmInspectorAdapter{lg: lg} }
 
 func provideCredentialCrypto(sys biz.SystemSettingRepo, lg loggateway.Logger) *biz.CredentialCrypto {
 	var keyRepo biz.SystemSettingCredentialKeyRepo = sys
@@ -231,7 +233,7 @@ func provideCredentialCrypto(sys biz.SystemSettingRepo, lg loggateway.Logger) *b
 	}
 	cc := biz.NewCredentialCrypto(resolver, lg)
 	if !cc.IsAvailable() {
-		event.SysLogWarn("credential.encryption", "凭据加密密钥未配置，API 密钥将以明文存储。请设置 ARANEA_CREDENTIAL_KEY 环境变量或在系统设置中初始化加密密钥。")
+		lg.Warn("凭据加密密钥未配置，API 密钥将以明文存储。请设置 ARANEA_CREDENTIAL_KEY 环境变量或在系统设置中初始化加密密钥。", loggateway.Str("reason", "credential.encryption"))
 	}
 	return cc
 }
@@ -365,8 +367,8 @@ func provideRunRegistry() *rt.RunRegistry {
 	return rt.NewRunRegistry()
 }
 
-func providePendingMessageQueue() *rt.PendingMessageQueue {
-	return rt.NewPendingMessageQueue()
+func providePendingMessageQueue(lg loggateway.Logger) *rt.PendingMessageQueue {
+	return rt.NewPendingMessageQueueWithDirAndLogger("", lg)
 }
 
 func provideCodeExecutorFactory() *localexec.Factory {
@@ -381,8 +383,8 @@ func provideSessionRunDurableWorker(sessionRuns *biz.SessionRunUsecase, runCtrl 
 	return service.NewSessionRunDurableWorker(sessionRuns, runCtrl, resumer, lg)
 }
 
-func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, eventBus event.Bus) biz.AlertNotifier {
-	return service.NewMonitorAlertNotifier(channels, eventBus)
+func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, eventBus event.Bus, lg loggateway.Logger) biz.AlertNotifier {
+	return service.NewMonitorAlertNotifier(channels, eventBus, lg)
 }
 
 func provideMonitorUsecase(repo biz.MonitorRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, lg loggateway.Logger) *biz.MonitorUsecase {
@@ -544,7 +546,7 @@ func provideChatServiceDeps(
 			SessionRT: sessionRT,
 			Compress:  compress,
 			AfterTurn: biz.NoopNativeTurnAfter{},
-			RunnerMgr: rt.NewRunnerManagerFromPersist(persist),
+			RunnerMgr: rt.NewRunnerManagerFromPersist(persist, lg),
 		},
 		Runs:         runs,
 		PendingQueue: pendingQueue,
@@ -603,16 +605,16 @@ func provideSQLiteRawDB(d *data.Data) *sql.DB {
 	return d.RawDB()
 }
 
-func provideTRPCSessionService(rawDB *sql.DB) trpcsession.Service {
-	return rt.NewTRPCSessionService(rawDB)
+func provideTRPCSessionService(rawDB *sql.DB, lg loggateway.Logger) trpcsession.Service {
+	return rt.NewTRPCSessionService(rawDB, lg)
 }
 
 func provideSessionMemoryResync(persist rt.PersistenceSet) araneasession.MemoryResync {
 	return persist.Memory.Admin
 }
 
-func provideGraphCheckpointSaver(rawDB *sql.DB) (*graphtrpc.SQLiteCheckpointSaver, error) {
-	return rt.NewGraphCheckpointSaver(rawDB)
+func provideGraphCheckpointSaver(rawDB *sql.DB, lg loggateway.Logger) (*graphtrpc.SQLiteCheckpointSaver, error) {
+	return rt.NewGraphCheckpointSaver(rawDB, lg)
 }
 
 func provideGraphBuildDeps(
@@ -621,6 +623,7 @@ func provideGraphBuildDeps(
 	agentUC *biz.AgentUsecase,
 	agents biz.AgentRepository,
 	sys biz.SystemSettingRepo,
+	lg loggateway.Logger,
 ) graphtrpc.GraphNodeResolverSet {
 	if catalog == nil || toolUC == nil {
 		return graphtrpc.GraphNodeResolverSet{}
@@ -635,9 +638,9 @@ func provideGraphBuildDeps(
 		Sys:     sys,
 	}
 	return graphtrpc.GraphNodeResolverSet{
-		Models:    graphadapter.NewCatalogModelResolver(catalog, rtTrip),
+		Models:    graphadapter.NewCatalogModelResolver(catalog, rtTrip, lg),
 		Tools:     graphadapter.NewCatalogToolResolver(toolUC),
-		Agents:    graphadapter.NewCatalogAgentResolver(builderDeps),
+		Agents:    graphadapter.NewCatalogAgentResolver(builderDeps, lg),
 		Functions: graphadapter.NewCatalogFunctionResolver(toolUC),
 	}
 }
@@ -831,11 +834,11 @@ func provideChannelDeliveryScanner(worker *service.ChannelDeliveryWorker, logger
 	return jobs.NewChannelDeliveryWorker(0, worker, logger)
 }
 
-func provideMCPHealthRunnerDeps(mcpRepo biz.MCPServerReader, mcpUC *biz.MCPServerUsecase, bus event.Bus) health.Deps {
+func provideMCPHealthRunnerDeps(mcpRepo biz.MCPServerReader, mcpUC *biz.MCPServerUsecase, bus event.Bus, lg loggateway.Logger) health.Deps {
 	return health.Deps{
 		MCP:    mcpRepo,
 		UC:     mcpUC,
-		Alerts: alert.NewPublisher(bus, mcpUC),
+		Alerts: alert.NewPublisher(bus, mcpUC, lg),
 	}
 }
 
@@ -857,8 +860,8 @@ func provideA2AGatewayHealthRunner(deps a2ahealth.Deps, lg loggateway.Logger) *a
 	return a2ahealth.NewRunner(deps, lg)
 }
 
-func providePluginRuntime(stats plugintrpc.StatsRecorder, usage biz.PluginCostGuardUsageRepo, tools *biz.ToolUsecase, deliveries biz.HookDeliveryRepo) *plugintrpc.Runtime {
-	rt := plugintrpc.NewRuntime(stats)
+func providePluginRuntime(stats plugintrpc.StatsRecorder, usage biz.PluginCostGuardUsageRepo, tools *biz.ToolUsecase, deliveries biz.HookDeliveryRepo, lg loggateway.Logger) *plugintrpc.Runtime {
+	rt := plugintrpc.NewRuntime(stats, lg)
 	if usage != nil {
 		rt.SetCostGuardUsageRepo(usage)
 	}
@@ -873,16 +876,16 @@ func providePluginRuntime(stats plugintrpc.StatsRecorder, usage biz.PluginCostGu
 	return rt
 }
 
-func providePluginStatsRecorder(repo biz.PluginRepo, runs biz.PluginRunRepo, agents biz.AgentRepository) plugintrpc.StatsRecorder {
-	rec := plugintrpc.NewRepoStatsRecorder(repo, runs)
+func providePluginStatsRecorder(repo biz.PluginRepo, runs biz.PluginRunRepo, agents biz.AgentRepository, lg loggateway.Logger) plugintrpc.StatsRecorder {
+	rec := plugintrpc.NewRepoStatsRecorder(repo, runs, lg)
 	if rec != nil {
 		rec.SetAgentKeyResolver(agentKeyToID(agents))
 	}
 	return rec
 }
 
-func providePluginManager(rt *plugintrpc.Runtime, hooks *biz.HookResolver, agents biz.AgentRepository) *plugintrpc.Manager {
-	m := plugintrpc.NewManager(rt, hooks)
+func providePluginManager(rt *plugintrpc.Runtime, hooks *biz.HookResolver, agents biz.AgentRepository, lg loggateway.Logger) *plugintrpc.Manager {
+	m := plugintrpc.NewManager(rt, hooks, lg)
 	m.SetAgentKeyResolver(agentKeyToID(agents))
 	return m
 }
@@ -1015,8 +1018,8 @@ func providePublicBaseURLStore(input a2apkg.PublicBaseURLInput, sys biz.SystemSe
 	return a2apkg.NewPublicBaseURLStore(result)
 }
 
-func provideA2AEndpointRegistry(builder *service.A2AEndpointBuilder, uc *biz.A2AUsecase, store *a2apkg.PublicBaseURLStore) *a2atrpc.EndpointRegistry {
-	return a2atrpc.NewEndpointRegistry(builder, uc, store)
+func provideA2AEndpointRegistry(builder *service.A2AEndpointBuilder, uc *biz.A2AUsecase, store *a2apkg.PublicBaseURLStore, lg loggateway.Logger) *a2atrpc.EndpointRegistry {
+	return a2atrpc.NewEndpointRegistry(builder, uc, store, lg)
 }
 
 func provideA2APublicBaseReloader(store *a2apkg.PublicBaseURLStore, reg *a2atrpc.EndpointRegistry, input a2apkg.PublicBaseURLInput) *service.A2APublicBaseReloader {
@@ -1029,8 +1032,9 @@ func provideA2AService(
 	agents biz.AgentRepository,
 	reg *a2atrpc.EndpointRegistry,
 	store *a2apkg.PublicBaseURLStore,
+	lg loggateway.Logger,
 ) *service.A2AService {
-	return service.NewA2AService(uc, chat, agents, reg, store)
+	return service.NewA2AService(uc, chat, agents, reg, store, lg)
 }
 
 // wireApp init kratos application.
@@ -1151,10 +1155,11 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		wire.Bind(new(biz.UsageQuotaRepo), new(biz.UsageRepo)),
 		wire.Bind(new(biz.ToolCatalogReader), new(biz.ToolRepo)),
 		wire.Bind(new(araneasession.AgentKeyLookup), new(biz.AgentRepository)),
+		wire.Bind(new(araneasession.CompressorDeps), new(biz.SessionRepo)),
+		wire.Bind(new(server.ReadinessProbe), new(*data.Data)),
 		wire.Bind(new(biz.TaskGraphResolver), new(*biz.GraphUsecase)),
 		wire.Bind(new(importer.SkillImportRepo), new(biz.SkillRepo)),
 		wire.Bind(new(biz.MCPServerReader), new(biz.MCPServerRepo)),
-		wire.Bind(new(araneasession.CompressorDeps), new(biz.SessionRepo)),
 		newApp,
 		provideWireOut,
 	))

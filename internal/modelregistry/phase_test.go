@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type stubMigrateBackend struct {
@@ -113,7 +115,7 @@ func TestMigratePhase_Timeout(t *testing.T) {
 
 func TestMigratePhase_WithCheckpoint(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	allRules := ListProviderMigrationRules()
 	if len(allRules) < 2 {
 		t.Skip("need at least 2 migration rules")
@@ -131,6 +133,7 @@ func TestMigratePhase_WithCheckpoint(t *testing.T) {
 	pc := &PhaseContext{
 		Ctx:   context.Background(),
 		Store: st,
+		Lg:    loggateway.NewNoop(),
 	}
 	result := p.Run(pc)
 	if result.Status != PhaseSucceeded {
@@ -145,7 +148,7 @@ func TestMigratePhase_WithCheckpoint(t *testing.T) {
 
 func TestMigratePhase_PartialFailure(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	allRules := ListProviderMigrationRules()
 	if len(allRules) < 2 {
 		t.Skip("need at least 2 migration rules")
@@ -161,6 +164,7 @@ func TestMigratePhase_PartialFailure(t *testing.T) {
 	pc := &PhaseContext{
 		Ctx:   context.Background(),
 		Store: st,
+		Lg:    loggateway.NewNoop(),
 	}
 	result := p.Run(pc)
 	if result.Status != PhaseSucceeded {
@@ -173,7 +177,7 @@ func TestMigratePhase_PartialFailure(t *testing.T) {
 
 func TestMigratePhase_AllFail(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	allRules := ListProviderMigrationRules()
 	failedRules := make([]string, len(allRules))
 	for i, r := range allRules {
@@ -188,6 +192,7 @@ func TestMigratePhase_AllFail(t *testing.T) {
 	pc := &PhaseContext{
 		Ctx:   context.Background(),
 		Store: st,
+		Lg:    loggateway.NewNoop(),
 	}
 	result := p.Run(pc)
 	if result.Status != PhaseFailed {
@@ -203,6 +208,7 @@ func TestApplyPhase_SkipEmptyDirectory(t *testing.T) {
 		Ctx:       context.Background(),
 		Directory: nil,
 		Policy:    Policy{AutoApply: "metadata_and_pricing"},
+		Lg:        loggateway.NewNoop(),
 	}
 	result := p.Run(pc)
 	if result.Status != PhaseSkipped {
@@ -212,7 +218,7 @@ func TestApplyPhase_SkipEmptyDirectory(t *testing.T) {
 
 func TestMigratePhase_LoadCheckpointError(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	if err := os.MkdirAll(st.MigrationCheckpointPath(), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -222,6 +228,7 @@ func TestMigratePhase_LoadCheckpointError(t *testing.T) {
 	pc := &PhaseContext{
 		Ctx:   context.Background(),
 		Store: st,
+		Lg:    loggateway.NewNoop(),
 	}
 	result := p.Run(pc)
 	if result.Status != PhaseFailed {
@@ -241,7 +248,7 @@ func TestMigratePhase_LoadCheckpointError(t *testing.T) {
 
 func TestMigratePhase_SaveCheckpointError(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 
 	if err := st.SaveMigrationCheckpoint(MigrationCheckpoint{}); err != nil {
 		t.Fatal(err)
@@ -257,6 +264,7 @@ func TestMigratePhase_SaveCheckpointError(t *testing.T) {
 	pc := &PhaseContext{
 		Ctx:   context.Background(),
 		Store: st,
+		Lg:    loggateway.NewNoop(),
 	}
 	result := p.Run(pc)
 	if result.Status != PhaseSucceeded {
@@ -276,7 +284,7 @@ func TestMigratePhase_SaveCheckpointError(t *testing.T) {
 
 func TestStore_MigrationCheckpointRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 
 	cp := MigrationCheckpoint{
 		CompletedRules: []string{"gemini->google", "aliyun-qwen->alibaba-cn"},
@@ -301,7 +309,7 @@ func TestStore_MigrationCheckpointRoundTrip(t *testing.T) {
 
 func TestStore_LoadMigrationCheckpoint_NoFile(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 
 	cp, err := st.LoadMigrationCheckpoint()
 	if err != nil {
@@ -314,7 +322,7 @@ func TestStore_LoadMigrationCheckpoint_NoFile(t *testing.T) {
 
 func TestStore_LoadMigrationCheckpoint_BadJSON(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 
 	if err := os.MkdirAll(filepath.Dir(st.MigrationCheckpointPath()), 0o755); err != nil {
 		t.Fatal(err)
@@ -356,6 +364,7 @@ func TestApplyPhase_SkipNonePolicy(t *testing.T) {
 		Ctx:       context.Background(),
 		Directory: Directory{"openai": {ID: "openai", Models: map[string]Model{"gpt-4o": {ID: "gpt-4o"}}}},
 		Policy:    Policy{AutoApply: "none"},
+		Lg:        loggateway.NewNoop(),
 	}
 	result := p.Run(pc)
 	if result.Status != PhaseSkipped {
@@ -399,6 +408,7 @@ func TestApplyPhase_BatchApply(t *testing.T) {
 		Ctx:       context.Background(),
 		Directory: cat,
 		Policy:    Policy{AutoApply: "metadata_and_pricing"},
+		Lg:        loggateway.NewNoop(),
 	}
 	result := p.Run(pc)
 	if result.Status != PhaseSucceeded {
@@ -417,6 +427,7 @@ func TestLogoPhase_SkipEmptyDirectory(t *testing.T) {
 	pc := &PhaseContext{
 		Ctx:       context.Background(),
 		Directory: nil,
+		Lg:        loggateway.NewNoop(),
 	}
 	result := p.Run(pc)
 	if result.Status != PhaseSkipped {
@@ -434,7 +445,8 @@ func TestLogoPhase_Name(t *testing.T) {
 func TestPhaseFromCtx(t *testing.T) {
 	pc := &PhaseContext{
 		Ctx:   context.Background(),
-		Store: NewStore(t.TempDir()),
+		Store: NewStore(t.TempDir(), loggateway.NewNoop()),
+		Lg:    loggateway.NewNoop(),
 	}
 	ctx := WithPhaseCtx(context.Background(), pc)
 	got := PhaseFromCtx(ctx)
@@ -449,7 +461,7 @@ func TestPhaseFromCtx(t *testing.T) {
 
 func TestFetchPhase_RunSuccess(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	if err := st.SavePolicy(DefaultPolicy()); err != nil {
 		t.Fatal(err)
 	}
@@ -479,7 +491,7 @@ func TestFetchPhase_RunSuccess(t *testing.T) {
 	}
 
 	p := NewFetchPhase()
-	pc := &PhaseContext{Ctx: context.Background(), Store: st}
+	pc := &PhaseContext{Ctx: context.Background(), Store: st, Lg: loggateway.NewNoop()}
 	result := p.Run(pc)
 	if result.Status != PhaseSucceeded {
 		t.Fatalf("expected succeeded, got %q errors=%v", result.Status, result.Errors)
@@ -491,7 +503,7 @@ func TestFetchPhase_RunSuccess(t *testing.T) {
 
 func TestFetchPhase_RunNotModified(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	if err := st.SavePolicy(DefaultPolicy()); err != nil {
 		t.Fatal(err)
 	}
@@ -513,7 +525,7 @@ func TestFetchPhase_RunNotModified(t *testing.T) {
 	}
 
 	p := NewFetchPhase()
-	pc := &PhaseContext{Ctx: context.Background(), Store: st}
+	pc := &PhaseContext{Ctx: context.Background(), Store: st, Lg: loggateway.NewNoop()}
 	result := p.Run(pc)
 	if result.Status != PhaseSkipped {
 		t.Fatalf("expected skipped, got %q", result.Status)

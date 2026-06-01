@@ -504,3 +504,23 @@ Agent 运行时对「需要目录」的工具共用 **单一工作区根** `work
 | 多渠道通知 | P2 | 统一通知接口（邮件/IM/Webhook） |
 | 数据库查询工具 | P3 | 安全 SQL 查询（只读，白名单表） |
 | 工作流编排工具 | P3 | 与 Graph Workflow 模块对齐 |
+| **工具依赖图管理** | **P2** | **BabyAGI 启发——`ToolRegistration` 增加 Dependencies 字段，Assemble 拓扑排序，前端依赖图可视化** |
+| **工具自构建与自进化** | **P2** | **BabyAGI 启发——Agent 运行时动态工具生成 + 持久化为 Skill + 安全审查** |
+
+### 10.1 BabyAGI 启发：工具依赖图与自构建
+
+> 来源：BabyAGI functionz 框架（GitHub 22k+ stars），竞品分析差距 #8
+> 对应需求：`docs/competitive-gap-requirements-2026-05-31.md` P2-8/P2-9
+
+BabyAGI 的 `functionz` 框架以图结构追踪函数间的 import/依赖/密钥关系，并实现了自构建能力（`process_user_input` + `self_build`）。这两个设计思想对 Tools 模块有直接启发：
+
+**依赖图管理**（P2-9）：
+- 当前 `ToolRegistration` 已有 `Category/Tags/RiskLevel`，但无 `Dependencies` 字段
+- 工具间依赖关系是隐式的（如 `email` 依赖 `httpfetch` 获取附件），`Assemble()` 按顺序装配但不保证依赖顺序
+- 借鉴 BabyAGI 的做法：`ToolRegistration` 增加 `Dependencies []string` 字段，`Assemble()` 时自动拓扑排序
+- 前端增加工具依赖图可视化视图（类似 BabyAGI functionz Dashboard）
+
+**工具自构建**（P2-8）：
+- 当前工具通过 `Registry()` 静态注册 + `Assemble()` 装配，运行时工具集固定
+- 借鉴 BabyAGI 的 `process_user_input`：Agent 运行时检测到工具缺口后，通过 LLM 生成新工具代码（`function.NewFunctionTool[I, O]`），注册到 `Registry` 并持久化为 Skill
+- 动态生成的工具必须经过风险分级 + 人工审批（不可自动启用），与 Skill 自创建（P2-2）共享审批流程

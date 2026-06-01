@@ -51,6 +51,9 @@ const (
 	EnvelopeTypeOrchestrationAgentStatus    EnvelopeType = "orchestration_agent_status"
 	EnvelopeTypeUserFeedback                EnvelopeType = "user_feedback"
 	EnvelopeTypeSessionStatusChanged        EnvelopeType = "session.status_changed"
+	EnvelopeTypeSpiritTeamAssembled         EnvelopeType = "spirit_team_assembled"
+	EnvelopeTypeSpiritTeamCompleted         EnvelopeType = "spirit_team_completed"
+	EnvelopeTypeSpiritTeamFailed            EnvelopeType = "spirit_team_failed"
 )
 
 // Envelope is the universal event carrier.
@@ -189,6 +192,8 @@ func RouteChannel(env Envelope) string {
 	case EnvelopeTypeMCPSessionReconnect, EnvelopeTypeMCPHealthAlert, EnvelopeTypeAlertNotify:
 		return "monitor"
 	case EnvelopeTypeSessionStatusChanged:
+		return "chat"
+	case EnvelopeTypeSpiritTeamAssembled, EnvelopeTypeSpiritTeamCompleted, EnvelopeTypeSpiritTeamFailed:
 		return "chat"
 	default:
 		if env.TeamID != "" {

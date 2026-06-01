@@ -14,19 +14,28 @@ import (
 )
 
 func init() {
-	runtime.RegisterStarter("discord", "gateway", RunGateway)
+	runtime.RegisterStarterWithLogger("discord", "gateway", RunGateway)
 }
 
-// RunGateway connects via discordgo Gateway (MuseBot StartDiscordRobot).
 func RunGateway(
 	ctx context.Context,
 	ch biz.Channel,
 	creds []biz.ChannelCredential,
 	lookup runtime.CredentialLookup,
 	handler port.InboundHandler,
+	lg loggateway.Logger,
 ) error {
+	lg.Info("Discord Gateway 连接器启动",
+		loggateway.StepID("channel.discord.gateway.start"),
+		loggateway.Str("channel_id", ch.ID),
+	)
 	token, err := lookup(ctx, creds, "bot_token")
 	if err != nil {
+		lg.Error("Discord 凭据获取失败",
+			loggateway.StepID("channel.discord.gateway.creds_fail"),
+			loggateway.Str("channel_id", ch.ID),
+			loggateway.Err(err),
+		)
 		return err
 	}
 	token = strings.TrimSpace(token)
@@ -66,7 +75,7 @@ func RunGateway(
 			},
 		}
 		if err := handler.ProcessInbound(ctx, chRow, ev); err != nil {
-			loggateway.Global().Warn("Discord 入站处理失败",
+			lg.Warn("Discord 入站处理失败",
 				loggateway.StepID("channel.discord.inbound_failed"),
 				loggateway.Err(err),
 			)

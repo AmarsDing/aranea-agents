@@ -29,7 +29,7 @@ var webhookRateLimitsLastCleaned atomic.Int64
 
 const webhookRateLimitsCleanupInterval = 5 * time.Minute
 
-func allowWebhookRequest(channelKey string) bool {
+func allowWebhookRequest(channelKey string, lg loggateway.Logger) bool {
 	channelKey = trimKey(channelKey)
 	if channelKey == "" {
 		return true
@@ -51,7 +51,7 @@ func allowWebhookRequest(channelKey string) bool {
 		rl.count = 0
 	}
 	if rl.count >= rl.limit {
-		loggateway.Global().Warn("Channel Webhook 入站限流",
+		lg.Warn("Channel Webhook 入站限流",
 			loggateway.StepID(flowStepChannelWebhookRateLimit),
 			loggateway.Str("channel_key", channelKey),
 			loggateway.Int("limit_per_min", rl.limit),

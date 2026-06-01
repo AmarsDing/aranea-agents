@@ -15,19 +15,28 @@ import (
 )
 
 func init() {
-	runtime.RegisterStarter("telegram", "polling", RunPolling)
+	runtime.RegisterStarterWithLogger("telegram", "polling", RunPolling)
 }
 
-// RunPolling listens via getUpdates (MuseBot StartTelegramRobot).
 func RunPolling(
 	ctx context.Context,
 	ch biz.Channel,
 	creds []biz.ChannelCredential,
 	lookup runtime.CredentialLookup,
 	handler port.InboundHandler,
+	lg loggateway.Logger,
 ) error {
+	lg.Info("Telegram Polling 连接器启动",
+		loggateway.StepID("channel.telegram.polling.start"),
+		loggateway.Str("channel_id", ch.ID),
+	)
 	token, err := lookup(ctx, creds, "bot_token")
 	if err != nil {
+		lg.Error("Telegram 凭据获取失败",
+			loggateway.StepID("channel.telegram.polling.creds_fail"),
+			loggateway.Str("channel_id", ch.ID),
+			loggateway.Err(err),
+		)
 		return err
 	}
 	token = strings.TrimSpace(token)
@@ -57,7 +66,7 @@ func RunPolling(
 			}
 			ev.PlatformType = "telegram"
 			if err := handler.ProcessInbound(ctx, ch, ev); err != nil {
-				loggateway.Global().Warn("Telegram 入站处理失败",
+				lg.Warn("Telegram 入站处理失败",
 					loggateway.StepID("channel.telegram.inbound_failed"),
 					loggateway.Err(err),
 				)

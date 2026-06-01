@@ -236,7 +236,7 @@ func TestReflectTool_SuccessWithFederatedRetriever(t *testing.T) {
 	ret := knowledge.NewRetriever(embedder, repo, nil)
 	fr := knowledge.NewFederatedRetriever(nil, ret)
 
-	tool := NewReflectTool()
+	tool := NewReflectTool(nil)
 	ctx := WithFederatedRetriever(context.Background(), fr)
 
 	args, _ := json.Marshal(reflectInput{
@@ -277,7 +277,7 @@ func TestReflectTool_TopKDefault(t *testing.T) {
 	ret := knowledge.NewRetriever(embedder, repo, nil)
 	fr := knowledge.NewFederatedRetriever(nil, ret)
 
-	tool := NewReflectTool()
+	tool := NewReflectTool(nil)
 	ctx := WithFederatedRetriever(context.Background(), fr)
 
 	args, _ := json.Marshal(reflectInput{
@@ -308,7 +308,7 @@ func TestReflectTool_WithEvaluator(t *testing.T) {
 	fr := knowledge.NewFederatedRetriever(nil, ret)
 	ev := knowledge.NewRetrievalEvaluator(nil, nil, nil)
 
-	tool := NewReflectTool()
+	tool := NewReflectTool(nil)
 	ctx := WithFederatedRetriever(context.Background(), fr)
 	ctx = WithRetrievalEvaluator(ctx, ev)
 
@@ -344,8 +344,9 @@ func TestReflectTool_CollectionIDsFromScopedContext(t *testing.T) {
 	ret := knowledge.NewRetriever(embedder, repo, nil)
 	fr := knowledge.NewFederatedRetriever(nil, ret)
 
-	tool := NewReflectTool()
+	tool := NewReflectTool(nil)
 	ctx := WithFederatedRetriever(context.Background(), fr)
+	ctx = WithRetrievalEvaluator(ctx, nil)
 	ctx = WithKnowledgeCollections(ctx, []string{"col-1", "col-2"})
 
 	args, _ := json.Marshal(reflectInput{
@@ -455,7 +456,7 @@ func TestReflectTool_WithRetriever_SingleCollection(t *testing.T) {
 	embedder := &mockQueryEmbedder{}
 	ret := knowledge.NewRetriever(embedder, repo, nil)
 
-	tool := NewReflectTool()
+	tool := NewReflectTool(nil)
 	ctx := WithRetriever(context.Background(), ret)
 
 	args, _ := json.Marshal(reflectInput{
@@ -480,7 +481,7 @@ func TestReflectTool_WithRetriever_SingleCollection(t *testing.T) {
 func TestReflectTool_WithRetriever_MultiCollection_Error(t *testing.T) {
 	ret := knowledge.NewRetriever(&mockQueryEmbedder{}, &mockKnowledgeRepo{}, nil)
 
-	tool := NewReflectTool()
+	tool := NewReflectTool(nil)
 	ctx := WithRetriever(context.Background(), ret)
 
 	args, _ := json.Marshal(reflectInput{

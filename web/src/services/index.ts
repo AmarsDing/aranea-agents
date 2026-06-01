@@ -147,3 +147,15 @@ export function createGatewayService() {
 }
 
 export { kratosApi, requestHandler, syncHttpClients } from "./axiosHandler";
+
+export function createSpiritService() {
+  const basePath = "/v1/spirit";
+  return {
+    listTeams(spiritSessionId: string) {
+      return kratosApi.get(`${basePath}/${encodeURIComponent(spiritSessionId)}/teams`);
+    },
+    getTeamDetail(teamId: string) {
+      return kratosApi.get(`${basePath}/teams/${encodeURIComponent(teamId)}`);
+    },
+  };
+}

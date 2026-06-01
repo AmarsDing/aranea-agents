@@ -13,6 +13,7 @@ import (
 )
 
 func newToolResultCacheBeforeHook(deps TRPCBuilderDeps) callbacks.BeforeToolHook {
+	lg := deps.Logger()
 	return callbacks.NewBeforeToolHook(4, func(ctx context.Context, args *trpctool.BeforeToolArgs) (*trpctool.BeforeToolResult, error) {
 		if args == nil || deps.ToolUC == nil {
 			return &trpctool.BeforeToolResult{Context: ctx}, nil
@@ -30,7 +31,7 @@ func newToolResultCacheBeforeHook(deps TRPCBuilderDeps) callbacks.BeforeToolHook
 			return &trpctool.BeforeToolResult{Context: ctx}, nil
 		}
 		if hit, ok := cache.Global().Get(toolKey, args.Arguments); ok {
-			loggateway.Global().Info("工具结果缓存命中", loggateway.StepID("system.tool.cache_hit"), loggateway.Phase("done"), loggateway.Str("tool", toolKey))
+			lg.Info("工具结果缓存命中", loggateway.StepID("agent.tool.cache_hit"), loggateway.Phase("done"), loggateway.Str("tool", toolKey))
 			return &trpctool.BeforeToolResult{Context: ctx, CustomResult: hit}, nil
 		}
 		return &trpctool.BeforeToolResult{Context: ctx}, nil

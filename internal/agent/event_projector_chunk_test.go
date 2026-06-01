@@ -12,7 +12,7 @@ import (
 
 func TestProjectChatCompletionChunkToolAndTextSameChunk(t *testing.T) {
 	bus := event.NewBus()
-	p := NewEventProjector(bus)
+	p := NewEventProjector(bus, nil)
 	meta := ProjectMeta{SessionID: "sess-1"}
 
 	ev := &trpcevent.Event{

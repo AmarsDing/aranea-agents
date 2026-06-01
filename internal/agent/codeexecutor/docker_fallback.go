@@ -13,13 +13,17 @@ type dockerRuntimeFallback struct {
 	docker  trpcagentcodeexec.CodeExecutor
 	factory *Factory
 	workDir string
+	lg      loggateway.Logger
 }
 
-func newDockerRuntimeFallback(docker trpcagentcodeexec.CodeExecutor, factory *Factory, workDir string) trpcagentcodeexec.CodeExecutor {
+func newDockerRuntimeFallback(docker trpcagentcodeexec.CodeExecutor, factory *Factory, workDir string, lg loggateway.Logger) trpcagentcodeexec.CodeExecutor {
 	if docker == nil || factory == nil {
 		return docker
 	}
-	return &dockerRuntimeFallback{docker: docker, factory: factory, workDir: workDir}
+	if lg == nil {
+		lg = loggateway.Global()
+	}
+	return &dockerRuntimeFallback{docker: docker, factory: factory, workDir: workDir, lg: lg}
 }
 
 func (d *dockerRuntimeFallback) CodeBlockDelimiter() trpcagentcodeexec.CodeBlockDelimiter {
@@ -31,9 +35,9 @@ func (d *dockerRuntimeFallback) ExecuteCode(ctx context.Context, input trpcagent
 	if err == nil {
 		return result, nil
 	}
-	loggateway.Global().Warn("Docker 执行失败，回退到 local 执行器",
-		loggateway.StepID("system.codeexec.docker_runtime_fallback"),
-		loggateway.Str("error", err.Error()))
+	d.lg.Warn("Docker 执行失败，回退到 local 执行器",
+		loggateway.StepID("agent.codeexec.docker_runtime_fallback"),
+		loggateway.Err(err))
 	ResetDockerProbe()
 	return d.factory.getLocal(d.workDir).ExecuteCode(ctx, input)
 }

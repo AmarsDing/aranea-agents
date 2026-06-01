@@ -78,7 +78,11 @@ UPDATE hook_deliveries SET status = ?, attempt_count = ?, last_error = ?, update
 }
 
 func (r *hookDeliveryRepo) List(ctx context.Context, q biz.HookDeliveryQuery) (biz.HookDeliveryListResult, error) {
-	if r == nil || r.data == nil || r.data.RawDB() == nil {
+	if r == nil || r.data == nil {
+		return biz.HookDeliveryListResult{}, nil
+	}
+	readDB := r.data.ReadDB()
+	if readDB == nil {
 		return biz.HookDeliveryListResult{}, nil
 	}
 	limit := int(q.Limit)
@@ -111,11 +115,11 @@ func (r *hookDeliveryRepo) List(ctx context.Context, q biz.HookDeliveryQuery) (b
 		args = append(args, k)
 	}
 	var total int32
-	if err := r.data.RawDB().QueryRowContext(ctx, "SELECT COUNT(*) FROM hook_deliveries"+where, args...).Scan(&total); err != nil {
+	if err := readDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM hook_deliveries"+where, args...).Scan(&total); err != nil {
 		return biz.HookDeliveryListResult{}, err
 	}
 	listArgs := append(append([]any{}, args...), limit, offset)
-	rows, err := r.data.RawDB().QueryContext(ctx, `
+	rows, err := readDB.QueryContext(ctx, `
 SELECT id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, idempotency_key, created_at, updated_at
 FROM hook_deliveries`+where+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...)
 	if err != nil {
@@ -140,14 +144,18 @@ FROM hook_deliveries`+where+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listAr
 // ListStalePending returns pending deliveries with updated_at older than updatedBefore
 // and remaining attempts, ordered by created_at ASC (oldest first). (OUT-02 / HK-01)
 func (r *hookDeliveryRepo) ListStalePending(ctx context.Context, updatedBefore time.Time, limit int) ([]biz.HookDelivery, error) {
-	if r == nil || r.data == nil || r.data.RawDB() == nil {
+	if r == nil || r.data == nil {
+		return nil, nil
+	}
+	readDB := r.data.ReadDB()
+	if readDB == nil {
 		return nil, nil
 	}
 	if limit <= 0 {
 		limit = 20
 	}
 	cutoff := updatedBefore.UTC().Format(time.RFC3339)
-	rows, err := r.data.RawDB().QueryContext(ctx, `
+	rows, err := readDB.QueryContext(ctx, `
 SELECT id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, idempotency_key, created_at, updated_at
 FROM hook_deliveries
 WHERE status = 'pending'

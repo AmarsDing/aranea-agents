@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"strings"
 
+	"aranea-agents/pkg/loggateway"
+
 	trpchttpfetch "trpc.group/trpc-go/trpc-agent-go/tool/webfetch/httpfetch"
 )
 
 // enrichHits fetches page bodies for hits missing content (up to fetchTop URLs).
 // Returns per-URL warning messages; a non-nil aggregate error means total fetch failure.
-func enrichHits(ctx context.Context, hits []Hit, fetchTop int, cfg Config) ([]string, error) {
+func enrichHits(ctx context.Context, hits []Hit, fetchTop int, cfg Config, lg loggateway.Logger) ([]string, error) {
 	if fetchTop <= 0 || len(hits) == 0 {
 		return nil, nil
 	}
@@ -33,7 +35,7 @@ func enrichHits(ctx context.Context, hits []Hit, fetchTop int, cfg Config) ([]st
 		return nil, nil
 	}
 
-	fetchTool := trpchttpfetch.NewTool(trpchttpfetch.WithHTTPClient(buildHTTPClient(cfg)))
+	fetchTool := trpchttpfetch.NewTool(trpchttpfetch.WithHTTPClient(buildHTTPClient(cfg, lg)))
 	ct, ok := fetchTool.(interface {
 		Call(context.Context, []byte) (any, error)
 	})

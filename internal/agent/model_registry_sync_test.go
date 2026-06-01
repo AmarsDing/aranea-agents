@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/modelregistry"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
@@ -59,7 +60,7 @@ func (m *mockApplyBackend) BatchApply(ctx context.Context, patches []modelregist
 func setupTempStore(t *testing.T) (*modelregistry.Store, string) {
 	t.Helper()
 	dir := t.TempDir()
-	store := modelregistry.NewStore(dir)
+	store := modelregistry.NewStore(dir, loggateway.NewNoop())
 	policy := modelregistry.DefaultPolicy()
 	if err := store.SavePolicy(policy); err != nil {
 		t.Fatalf("SavePolicy: %v", err)
@@ -268,7 +269,7 @@ func TestModelRegistrySyncAgent_ImplementsAgent(t *testing.T) {
 func TestModelRegistrySyncAgent_Run_StoreDirNotExists(t *testing.T) {
 	dir := t.TempDir()
 	emptyDir := filepath.Join(dir, "nonexistent")
-	store := modelregistry.NewStore(emptyDir)
+	store := modelregistry.NewStore(emptyDir, loggateway.NewNoop())
 	sp := &mockStoreProvider{store: store}
 	backend := &mockApplyBackend{}
 

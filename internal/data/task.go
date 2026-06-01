@@ -25,6 +25,13 @@ func NewTaskRepo(data *Data) biz.TaskRepo {
 	return &taskRepo{data: data}
 }
 
+func (r *taskRepo) readClient(ctx context.Context) *ent.Client {
+	if c, ok := ctx.Value(txClientKey{}).(*ent.Client); ok {
+		return c
+	}
+	return r.data.ReadEnt()
+}
+
 func (r *taskRepo) SaveTask(ctx context.Context, task *biz.GraphTask) error {
 	client := r.data.Ent()
 	builder := client.GraphTask.Create().
@@ -56,7 +63,7 @@ func (r *taskRepo) SaveTask(ctx context.Context, task *biz.GraphTask) error {
 }
 
 func (r *taskRepo) GetTask(ctx context.Context, taskID string) (*biz.GraphTask, error) {
-	client := r.data.Ent()
+	client := r.readClient(ctx)
 	row, err := client.GraphTask.Get(ctx, taskID)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -67,8 +74,26 @@ func (r *taskRepo) GetTask(ctx context.Context, taskID string) (*biz.GraphTask, 
 	return entTaskToBiz(row), nil
 }
 
+func (r *taskRepo) GetTasksByIDs(ctx context.Context, taskIDs []string) ([]*biz.GraphTask, error) {
+	if len(taskIDs) == 0 {
+		return nil, nil
+	}
+	client := r.readClient(ctx)
+	rows, err := client.GraphTask.Query().
+		Where(graphtask.IDIn(taskIDs...)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("task repo get by ids: %w", err)
+	}
+	result := make([]*biz.GraphTask, len(rows))
+	for i, row := range rows {
+		result[i] = entTaskToBiz(row)
+	}
+	return result, nil
+}
+
 func (r *taskRepo) GetActiveTaskByExecutionNode(ctx context.Context, executionID, nodeID string) (*biz.GraphTask, error) {
-	client := r.data.Ent()
+	client := r.readClient(ctx)
 	row, err := client.GraphTask.Query().
 		Where(
 			graphtask.ExecutionIDEQ(executionID),
@@ -93,7 +118,7 @@ func (r *taskRepo) ListTasksByStatuses(ctx context.Context, statuses []biz.TaskS
 	if limit <= 0 {
 		limit = 50
 	}
-	client := r.data.Ent()
+	client := r.readClient(ctx)
 	strs := make([]string, 0, len(statuses))
 	for _, s := range statuses {
 		if s != "" {
@@ -116,7 +141,7 @@ func (r *taskRepo) ListTasksByStatuses(ctx context.Context, statuses []biz.TaskS
 }
 
 func (r *taskRepo) ListTasksByExecution(ctx context.Context, executionID string, status biz.TaskStatus, pageSize int, pageToken string) ([]*biz.GraphTask, string, error) {
-	client := r.data.Ent()
+	client := r.readClient(ctx)
 	query := client.GraphTask.Query().
 		Where(graphtask.ExecutionIDEQ(executionID)).
 		Order(ent.Asc(graphtask.FieldCreatedAt))
@@ -170,6 +195,21 @@ func (r *taskRepo) UpdateTask(ctx context.Context, task *biz.GraphTask) error {
 	return nil
 }
 
+func (r *taskRepo) BatchUpdateTaskStatus(ctx context.Context, taskIDs []string, status biz.TaskStatus) error {
+	if len(taskIDs) == 0 {
+		return nil
+	}
+	client := r.data.Ent()
+	_, err := client.GraphTask.Update().
+		Where(graphtask.IDIn(taskIDs...)).
+		SetStatus(string(status)).
+		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("task repo batch update status: %w", err)
+	}
+	return nil
+}
+
 func (r *taskRepo) SaveTaskComment(ctx context.Context, comment *biz.TaskComment) error {
 	client := r.data.Ent()
 	_, err := client.GraphTaskComment.Create().
@@ -187,7 +227,7 @@ func (r *taskRepo) SaveTaskComment(ctx context.Context, comment *biz.TaskComment
 }
 
 func (r *taskRepo) ListTaskComments(ctx context.Context, taskID string) ([]*biz.TaskComment, error) {
-	client := r.data.Ent()
+	client := r.readClient(ctx)
 	rows, err := client.GraphTaskComment.Query().
 		Where(graphtaskcomment.TaskIDEQ(taskID)).
 		Order(ent.Asc(graphtaskcomment.FieldCreatedAt)).
@@ -226,7 +266,7 @@ func (r *taskRepo) SaveTaskLog(ctx context.Context, log *biz.TaskLog) error {
 }
 
 func (r *taskRepo) ListTaskLogs(ctx context.Context, taskID string, stream string, level string, pageSize int) ([]*biz.TaskLog, error) {
-	client := r.data.Ent()
+	client := r.readClient(ctx)
 	query := client.GraphTaskLog.Query().
 		Where(graphtasklog.TaskIDEQ(taskID)).
 		Order(ent.Asc(graphtasklog.FieldTimestamp))
@@ -277,7 +317,7 @@ func (r *taskRepo) SaveTaskRun(ctx context.Context, run *biz.TaskRun) error {
 }
 
 func (r *taskRepo) ListTaskRuns(ctx context.Context, taskID string) ([]*biz.TaskRun, error) {
-	client := r.data.Ent()
+	client := r.readClient(ctx)
 	rows, err := client.GraphTaskRun.Query().
 		Where(graphtaskrun.TaskIDEQ(taskID)).
 		Order(ent.Desc(graphtaskrun.FieldStartedAt)).
@@ -320,7 +360,7 @@ func (r *taskRepo) SaveTaskEvent(ctx context.Context, event *biz.TaskEvent) erro
 }
 
 func (r *taskRepo) ListTaskEvents(ctx context.Context, executionID string, taskID string, eventType string, pageSize int) ([]*biz.TaskEvent, error) {
-	client := r.data.Ent()
+	client := r.readClient(ctx)
 	query := client.GraphTaskEvent.Query().
 		Order(ent.Desc(graphtaskevent.FieldTimestamp))
 	// NOTE: executionID is unused because graph_task_events has no execution_id column.

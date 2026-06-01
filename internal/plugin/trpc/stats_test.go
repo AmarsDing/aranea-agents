@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 type statsRepoStub struct {
@@ -52,7 +53,7 @@ func TestRepoStatsRecorder_IncrementStats(t *testing.T) {
 	if repo.count != 1 {
 		t.Fatalf("count=%d", repo.count)
 	}
-	rec := NewRepoStatsRecorder(repo, nil)
+	rec := NewRepoStatsRecorder(repo, nil, loggateway.NewNoop())
 	defer rec.Close()
 	rec.Record(context.Background(), "audit_log", "after_tool", "ok")
 }

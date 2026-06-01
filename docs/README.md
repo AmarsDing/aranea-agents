@@ -199,40 +199,61 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 ## 7. 目录结构总览
 
 ```
-docs/
-├── README.md                              ← 你正在阅读的入口文档
-├── guides/                                ← 编码规范 + 执行基线
-│   ├── AI-DEVELOPMENT-SPECIFICATION.md     ← ★ 后端编码唯一行为准则
-│   ├── frontend-guide.md                   ← ★ 前端编码唯一行为准则
-│   ├── kratos-framework-guide.md           ← Kratos 框架层职责速查
-│   ├── trpc-agent-go-framework.md          ← trpc-agent-go 框架接口速查
-│   ├── prompt/                             ← Agent Prompt 组装指南
-│   │   ├── README.md                       ← 索引与速览
-│   │   └── assembly.md                     ← ★ 拼接全流程（构建期 + 运行时）
-│   └── execution-plan.md                   ← 当前迭代进度与任务
-├── frontend/                              ← 前端参考文档
-│   ├── UX.md                               ← UX 主题与视觉规范
-│   ├── registry-tables.md                  ← Registry 表格规范
-│   └── vue-design/
-│       ├── vue-design.md                   ← Vue 架构与分层详细规范
-│       └── vue-design-agent-rules.md       ← AI 系统提示精简版
-├── 需求/                                  ← 产品需求 + 设计文档 + 开发计划
-│   ├── 0-system-diagram.md                 ← ★ 系统架构总览
-│   ├── 0-module-decoupling-architecture.md ← 跨模块解耦 + 后端优化路线
-│   ├── README-development.md               ← 模块开发计划索引
-│   ├── <编号>-<模块名>.md                  ← 纯需求内容
-│   ├── <编号>-<模块名>.design.md           ← 纯设计内容
-│   ├── <编号>-<模块名>-development.md      ← 开发计划（实现差距以此为准）
-│   └── memory/                             ← Memory L0–L4 子目录
-├── review/                                ← 模块 Review 评分与风险清单
-├── changelog/                             ← 变更摘要（只读历史）
-├── devlog/                                ← 开发日志
-├── observability/                         ← Grafana 仪表盘
-├── sql/                                   ← 数据库初始化 SQL
-├── scenarios/                             ← 场景示例
-├── skills/                                ← 技能模板
-├── merge/                                 ← 合并记录
-└── _deprecated/                           ← 已冻结的历史快照
+项目根/
+├── openspec/                             ← OpenSpec 变更管理（规格驱动开发）
+│   ├── config.yaml                       ← OpenSpec 配置（项目上下文 + 规则）
+│   ├── specs/                            ← 主规格库（稳定参考文档）
+│   │   ├── README.md                     ← 规格库索引
+│   │   ├── architecture.md               ← 架构蓝图精简版
+│   │   ├── module-cross-reference.md     ← 模块交叉参考（指针→docs/）
+│   │   ├── backend-layers.md             ← 后端分层规则速查
+│   │   └── frontend-layers.md            ← 前端分层规则速查
+│   ├── changes/                          ← 活跃变更（每个变更一个目录）
+│   │   ├── <change-name>/
+│   │   │   ├── .openspec.yaml            ← 变更元数据
+│   │   │   ├── proposal.md               ← 为什么做（目标 + 非目标）
+│   │   │   ├── design.md                 ← 怎么做（架构方案）
+│   │   │   ├── specs/                    ← 做成什么样（需求规格）
+│   │   │   └── tasks.md                  ← 分几步做（实施计划 + DoD）
+│   │   └── archive/                      ← 已归档变更
+│   └── (由 openspec CLI 管理)
+├── docs/
+│   ├── README.md                         ← 你正在阅读的入口文档
+│   ├── architecture-blueprint.md         ← 架构蓝图（完整版）
+│   ├── module-cross-reference.md         ← 模块交叉参考（完整版）
+│   ├── guides/                           ← 编码规范 + 执行基线
+│   │   ├── AI-DEVELOPMENT-SPECIFICATION.md ← ★ 后端编码唯一行为准则
+│   │   ├── frontend-guide.md             ← ★ 前端编码唯一行为准则
+│   │   ├── kratos-framework-guide.md     ← Kratos 框架层职责速查
+│   │   ├── trpc-agent-go-framework.md    ← trpc-agent-go 框架接口速查
+│   │   ├── prompt/                       ← Agent Prompt 组装指南
+│   │   └── execution-plan.md             ← 当前迭代进度与任务
+│   ├── frontend/                         ← 前端参考文档
+│   ├── 需求/                             ← 产品需求 + 设计文档 + 开发计划（历史）
+│   ├── superpowers/                      ← Superpowers 旧格式（已迁移至 openspec/changes/）
+│   ├── review/                           ← 模块 Review 评分与风险清单
+│   ├── changelog/                        ← 变更摘要（只读历史）
+│   ├── devlog/                           ← 开发日志
+│   ├── observability/                    ← Grafana 仪表盘
+│   ├── sql/                              ← 数据库初始化 SQL
+│   ├── scenarios/                        ← 场景示例
+│   ├── skills/                           ← 技能模板
+│   ├── merge/                            ← 合并记录
+│   └── _deprecated/                      ← 已冻结的历史快照
+└── .trae/skills/                         ← Trae AI 技能
+    ├── aranea-coding-guide/              ← 后端编码指南
+    ├── aranea-frontend-guide/            ← 前端编码指南
+    ├── aranea-frontend-review/           ← 前端代码审查
+    ├── aranea-review/                    ← 全栈代码审查
+    ├── aranea-test-loop/                 ← 测试循环
+    ├── go-oop-guide/                     ← Go OOP 编程指导
+    ├── go-oop-review/                    ← Go OOP 代码审查
+    ├── vue-frontend-guide/               ← Vue 3 编程指导
+    ├── openspec-explore/                 ← OpenSpec 探索模式
+    ├── openspec-propose/                 ← OpenSpec 提案创建
+    ├── openspec-apply-change/            ← OpenSpec 实施执行
+    ├── openspec-archive-change/          ← OpenSpec 归档
+    └── superpowers-workflow/             ← Superpowers 开发纪律（TDD+审查+验证）
 ```
 
 ---

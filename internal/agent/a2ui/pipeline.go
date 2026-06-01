@@ -111,7 +111,7 @@ func (p *Pipeline) EmitPlanEvents(ctx context.Context, inv *trpcagent.Invocation
 		)
 		if err := trpcagent.EmitEvent(ctx, inv, ch, evt); err != nil {
 			p.lg.Warn("a2ui pipeline emit",
-				loggateway.StepID("system.a2ui.emit_failed"),
+				loggateway.StepID("a2ui.emit_failed"),
 				loggateway.Err(err))
 		}
 	}

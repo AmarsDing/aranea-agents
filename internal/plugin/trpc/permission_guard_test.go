@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -13,7 +14,7 @@ import (
 func TestPermissionGuard_DenyToolsOnly(t *testing.T) {
 	p := NewPermissionGuardPlugin(
 		biz.Plugin{Key: "permission_guard", ConfigJSON: `{"deny_tools":["execute_sql"]}`},
-		nil, nil, nil,
+		nil, nil, nil, loggateway.NewNoop(),
 	)
 
 	res, err := p.beforeTool(context.Background(), &trpctool.BeforeToolArgs{ToolName: "delete_file"})
@@ -42,7 +43,7 @@ func TestPermissionGuard_AgentAllowlistByPlatformID(t *testing.T) {
 	}
 	p := NewPermissionGuardPlugin(
 		biz.Plugin{Key: "permission_guard", ConfigJSON: `{"agent_allowlist":["agent-uuid-1"],"deny_tools":["execute_sql"]}`},
-		nil, nil, resolver,
+		nil, nil, resolver, loggateway.NewNoop(),
 	)
 	inv := trpcagent.NewInvocation()
 	inv.AgentName = "my-agent"

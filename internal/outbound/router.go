@@ -1,12 +1,14 @@
 package outbound
 
 import (
-	ch "aranea-agents/internal/channel"
 	"context"
 	"fmt"
 	"sort"
 	"strings"
 	"sync"
+
+	ch "aranea-agents/internal/channel"
+	"aranea-agents/pkg/loggateway"
 )
 
 type DeliveryTarget struct {
@@ -29,12 +31,14 @@ type Router struct {
 	mu             sync.RWMutex
 	textSenders    map[string]TextSender
 	messageSenders map[string]MessageSender
+	lg             loggateway.Logger
 }
 
-func NewRouter() *Router {
+func NewRouter(lg loggateway.Logger) *Router {
 	return &Router{
 		textSenders:    make(map[string]TextSender),
 		messageSenders: make(map[string]MessageSender),
+		lg:             lg,
 	}
 }
 
@@ -104,18 +108,30 @@ func (r *Router) SendMessage(ctx context.Context, target DeliveryTarget, msg Out
 	if channelID == "" {
 		return fmt.Errorf("outbound: empty channel")
 	}
+
+	r.lg.Info("Outbound send message", loggateway.StepID("outbound.send"), loggateway.Str("channel", channelID), loggateway.Str("target", target.Target))
+
 	r.mu.RLock()
 	messageSender := r.messageSenders[channelID]
 	textSender := r.textSenders[channelID]
 	r.mu.RUnlock()
 	if messageSender != nil {
-		return messageSender.SendMessage(ctx, target.Target, msg)
+		if err := messageSender.SendMessage(ctx, target.Target, msg); err != nil {
+			r.lg.Error("Outbound message send failed", loggateway.StepID("outbound.send.fail"), loggateway.Str("channel", channelID), loggateway.Str("target", target.Target), loggateway.Err(err))
+			return err
+		}
+		return nil
 	}
 	if textSender == nil {
+		r.lg.Warn("Outbound unsupported channel", loggateway.StepID("outbound.send.unsupported"), loggateway.Str("channel", channelID))
 		return fmt.Errorf("outbound: unsupported channel: %s", channelID)
 	}
 	if len(msg.Files) > 0 {
 		return fmt.Errorf("outbound: channel does not support file delivery: %s", channelID)
 	}
-	return textSender.SendText(ctx, target.Target, msg.Text)
+	if err := textSender.SendText(ctx, target.Target, msg.Text); err != nil {
+		r.lg.Error("Outbound text send failed", loggateway.StepID("outbound.send.fail"), loggateway.Str("channel", channelID), loggateway.Str("target", target.Target), loggateway.Err(err))
+		return err
+	}
+	return nil
 }

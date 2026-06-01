@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	a2atrpc "aranea-agents/internal/a2a/trpc"
 	"aranea-agents/pkg/auth"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -39,16 +40,17 @@ type A2AService struct {
 	agents      biz.AgentRepository
 	endpoints          *a2atrpc.EndpointRegistry
 	publicBaseStore    *a2apkg.PublicBaseURLStore
+	lg                 loggateway.Logger
 }
 
-// NewA2AService constructs an A2AService.
-func NewA2AService(uc *biz.A2AUsecase, runner a2apkg.AgentTurnRunner, agents biz.AgentRepository, endpoints *a2atrpc.EndpointRegistry, publicBaseStore *a2apkg.PublicBaseURLStore) *A2AService {
+func NewA2AService(uc *biz.A2AUsecase, runner a2apkg.AgentTurnRunner, agents biz.AgentRepository, endpoints *a2atrpc.EndpointRegistry, publicBaseStore *a2apkg.PublicBaseURLStore, lg loggateway.Logger) *A2AService {
 	return &A2AService{
 		uc:              uc,
 		runner:          runner,
 		agents:          agents,
 		endpoints:       endpoints,
 		publicBaseStore: publicBaseStore,
+		lg:              lg,
 	}
 }
 
@@ -156,7 +158,7 @@ func (s *A2AService) Invoke(ctx context.Context, req *v1.A2AInvokeRequest) (*v1.
 		return nil, err
 	}
 
-	invoker := a2apkg.NewInvoker(s.runner, s.uc, s.agents)
+	invoker := a2apkg.NewInvoker(s.runner, s.uc, s.agents, s.lg)
 
 	timer := prometheus.NewTimer(a2aInvokeDuration)
 	start := time.Now()

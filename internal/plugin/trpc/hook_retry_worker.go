@@ -76,11 +76,34 @@ func (w *HookDeliveryRetryWorker) retryStale() {
 
 	stale, err := w.repo.ListStalePending(ctx, time.Now().UTC().Add(-hookRetryStaleAfter), hookRetryBatchSize)
 	if err != nil {
-		w.lg.Warn("hook.delivery.retry_worker: ListStalePending failed", loggateway.StepID("system.hook.delivery_retry"), loggateway.Err(err))
+		if ctx.Err() != nil {
+			w.lg.Warn("hook.delivery.retry_worker: ListStalePending context timeout",
+				loggateway.StepID("plugin.hook.delivery_retry"),
+				loggateway.Err(ctx.Err()))
+			return
+		}
+		w.lg.Warn("hook.delivery.retry_worker: ListStalePending failed", loggateway.StepID("plugin.hook.delivery_retry"), loggateway.Err(err))
 		return
 	}
+	if len(stale) == 0 {
+		return
+	}
+	w.lg.Info("hook.delivery.retry_worker: found stale deliveries",
+		loggateway.StepID("plugin.hook.delivery_retry"),
+		loggateway.Int("stale_count", len(stale)))
+	retried := 0
 	for _, d := range stale {
+		select {
+		case <-w.stop:
+			w.lg.Info("hook.delivery.retry_worker: stopping after stop signal",
+				loggateway.StepID("plugin.hook.delivery_retry"),
+				loggateway.Int("retried_count", retried),
+				loggateway.Int("remaining_count", len(stale)-retried))
+			return
+		default:
+		}
 		w.retryOne(d)
+		retried++
 	}
 }
 
@@ -97,7 +120,7 @@ func (w *HookDeliveryRetryWorker) retryOne(d biz.HookDelivery) {
 	claimed, err := w.repo.TryClaimForRetry(ctx, d.ID, d.AttemptCount)
 	if err != nil {
 		w.lg.Warn("hook.delivery.retry_worker: TryClaimForRetry failed",
-			loggateway.StepID("system.hook.delivery_retry"),
+			loggateway.StepID("plugin.hook.delivery_retry"),
 			loggateway.Str("id", d.ID),
 			loggateway.Err(err),
 		)
@@ -108,7 +131,7 @@ func (w *HookDeliveryRetryWorker) retryOne(d biz.HookDelivery) {
 	}
 
 	w.lg.Info("hook.delivery.retry_worker: retrying stale delivery",
-		loggateway.StepID("system.hook.delivery_retry"),
+		loggateway.StepID("plugin.hook.delivery_retry"),
 		loggateway.Str("id", d.ID),
 		loggateway.Str("hook_key", d.HookKey),
 		loggateway.Int("attempt_count", d.AttemptCount+1),

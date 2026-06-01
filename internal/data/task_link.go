@@ -41,7 +41,7 @@ func (r *taskRepo) DeleteLink(ctx context.Context, parentTaskID, childTaskID str
 }
 
 func (r *taskRepo) ListParentLinks(ctx context.Context, childTaskID string) ([]*biz.TaskLink, error) {
-	client := r.data.Ent()
+	client := r.readClient(ctx)
 	rows, err := client.GraphTaskLink.Query().
 		Where(graphtasklink.ChildTaskIDEQ(childTaskID)).
 		All(ctx)
@@ -51,8 +51,22 @@ func (r *taskRepo) ListParentLinks(ctx context.Context, childTaskID string) ([]*
 	return entLinksToBiz(rows), nil
 }
 
+func (r *taskRepo) ListParentLinksByChildren(ctx context.Context, childTaskIDs []string) ([]*biz.TaskLink, error) {
+	if len(childTaskIDs) == 0 {
+		return nil, nil
+	}
+	client := r.readClient(ctx)
+	rows, err := client.GraphTaskLink.Query().
+		Where(graphtasklink.ChildTaskIDIn(childTaskIDs...)).
+		All(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("task link list parents by children: %w", err)
+	}
+	return entLinksToBiz(rows), nil
+}
+
 func (r *taskRepo) ListChildLinks(ctx context.Context, parentTaskID string) ([]*biz.TaskLink, error) {
-	client := r.data.Ent()
+	client := r.readClient(ctx)
 	rows, err := client.GraphTaskLink.Query().
 		Where(graphtasklink.ParentTaskIDEQ(parentTaskID)).
 		All(ctx)

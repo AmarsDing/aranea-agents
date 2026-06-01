@@ -137,6 +137,9 @@ type Team struct {
 	DefinitionJSON      string
 	ADKAppName          string
 	CategoryIndustryID  string
+	SpiritSessionID     string
+	TaskDescription     string
+	AutoCreated         bool
 	CreatedAt           string
 	UpdatedAt           string
 	DeletedAt           string

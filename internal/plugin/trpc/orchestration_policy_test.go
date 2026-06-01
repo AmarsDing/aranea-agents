@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestResolvePluginOrchestration_alwaysRunner(t *testing.T) {
@@ -29,7 +30,7 @@ func TestResolvePluginOrchestration_skillTracker(t *testing.T) {
 }
 
 func TestRuntime_PluginsForAgent_includesAll(t *testing.T) {
-	rt := NewRuntime(nil)
+	rt := NewRuntime(nil, loggateway.NewNoop())
 	p := biz.Plugin{
 		Key:               "skill_usage_tracker",
 		Enabled:           true,

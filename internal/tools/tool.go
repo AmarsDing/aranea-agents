@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -19,6 +20,13 @@ type Declaration = trpctool.Declaration
 
 type Schema = trpctool.Schema
 
+type ToolUseExample struct {
+	UserQuery   string          `json:"user_query"`
+	ToolName    string          `json:"tool_name"`
+	Arguments   json.RawMessage `json:"arguments,omitempty"`
+	Explanation string          `json:"explanation,omitempty"`
+}
+
 type ToolRegistration struct {
 	Name                 string
 	Description          string
@@ -31,6 +39,9 @@ type ToolRegistration struct {
 	RequiresConfirmation bool
 	SupportsStreaming    bool
 	SupportsConcurrency  bool
+	Deferred             bool
+	Examples             []ToolUseExample
+	Group                string
 }
 
 func NewToolRegistration(name, description string, factory func(ctx context.Context) (Tool, error)) *ToolRegistration {

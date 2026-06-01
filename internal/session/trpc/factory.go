@@ -9,13 +9,13 @@ import (
 )
 
 // NewTRPCSessionService builds the framework session service from the shared SQLite pool.
-func NewTRPCSessionService(rawDB *sql.DB) trpcsession.Service {
+func NewTRPCSessionService(rawDB *sql.DB, lg loggateway.Logger) trpcsession.Service {
 	if rawDB == nil {
 		return NewInMemorySessionService()
 	}
 	svc, err := NewSQLiteSessionService(rawDB)
 	if err != nil {
-		loggateway.Global().Warn("trpc SQLite session service unavailable, using in-memory fallback", loggateway.StepID("session.factory"), loggateway.Err(err))
+		lg.Warn("trpc SQLite session service unavailable, using in-memory fallback", loggateway.StepID("session.factory"), loggateway.Err(err))
 		return NewInMemorySessionService()
 	}
 	return svc

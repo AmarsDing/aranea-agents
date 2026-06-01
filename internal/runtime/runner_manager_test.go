@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	trpcllmagent "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestTurnDeps_CoalesceRunnerManager(t *testing.T) {
@@ -16,7 +18,7 @@ func TestTurnDeps_CoalesceRunnerManager(t *testing.T) {
 }
 
 func TestRunnerInstanceRegistryReplace(t *testing.T) {
-	mgr := NewRunnerManager(RunnerFactoryDeps{})
+	mgr := NewRunnerManager(RunnerFactoryDeps{}, loggateway.NewNoop())
 	root := trpcllmagent.New("a")
 	_, err := mgr.NewTurnRunner(root, TurnRunnerSpec{RegistryKey: "sess-1"})
 	if err != nil {
@@ -37,7 +39,7 @@ func TestRunnerInstanceRegistryReplace(t *testing.T) {
 }
 
 func TestRunnerManagerNewTurnRunnerNilRoot(t *testing.T) {
-	mgr := NewRunnerManager(RunnerFactoryDeps{})
+	mgr := NewRunnerManager(RunnerFactoryDeps{}, loggateway.NewNoop())
 	_, err := mgr.NewTurnRunner(nil, TurnRunnerSpec{})
 	if err == nil {
 		t.Fatal("expected error for nil root agent")
@@ -45,7 +47,7 @@ func TestRunnerManagerNewTurnRunnerNilRoot(t *testing.T) {
 }
 
 func TestRunnerManagerCloseRunnerUnknownKey(t *testing.T) {
-	mgr := NewRunnerManager(RunnerFactoryDeps{})
+	mgr := NewRunnerManager(RunnerFactoryDeps{}, loggateway.NewNoop())
 	if err := mgr.CloseRunner("missing"); err != nil {
 		t.Fatalf("CloseRunner() error = %v", err)
 	}
@@ -53,7 +55,7 @@ func TestRunnerManagerCloseRunnerUnknownKey(t *testing.T) {
 
 func TestRunnerManagerNewTurnRunnerMinimal(t *testing.T) {
 	root := trpcllmagent.New("test-agent")
-	mgr := NewRunnerManager(RunnerFactoryDeps{})
+	mgr := NewRunnerManager(RunnerFactoryDeps{}, loggateway.NewNoop())
 	mr, err := mgr.NewTurnRunner(root, TurnRunnerSpec{})
 	if err != nil {
 		t.Fatalf("NewTurnRunner() error = %v", err)

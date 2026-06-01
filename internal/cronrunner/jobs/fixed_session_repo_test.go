@@ -169,6 +169,9 @@ func (fixedSessionRepo) CompressSessionInTx(ctx context.Context, _ string, fn fu
 func (fixedSessionRepo) PatchSessionState(_ context.Context, _ string, _ map[string]string, _ []string) error {
 	return nil
 }
+func (fixedSessionRepo) ListByParentSessionID(_ context.Context, _ string) ([]sessionsess.Session, error) {
+	return nil, nil
+}
 
 var _ sessionsess.SessionRepo = fixedSessionRepo{}
 

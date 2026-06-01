@@ -6,10 +6,11 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestLLMService_Compress_nilCatalog(t *testing.T) {
-	s := NewLLMService(nil, &http.Client{})
+	s := NewLLMService(nil, &http.Client{}, loggateway.NewNoop())
 	_, err := s.Compress(context.Background(), Request{Transcript: "x", Provider: "openai", Model: "gpt-4o-mini"})
 	if err != ErrCatalogRequired {
 		t.Fatalf("got %v want ErrCatalogRequired", err)
@@ -17,7 +18,7 @@ func TestLLMService_Compress_nilCatalog(t *testing.T) {
 }
 
 func TestLLMService_Compress_nilHTTP(t *testing.T) {
-	s := NewLLMService(&biz.LlmProviderModelUsecase{}, nil)
+	s := NewLLMService(&biz.LlmProviderModelUsecase{}, nil, loggateway.NewNoop())
 	_, err := s.Compress(context.Background(), Request{Transcript: "x", Provider: "openai", Model: "gpt-4o-mini"})
 	if err != ErrHTTPClientRequired {
 		t.Fatalf("got %v want ErrHTTPClientRequired", err)

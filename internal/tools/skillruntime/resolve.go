@@ -26,15 +26,17 @@ type ResolveResult struct {
 
 // ResolveSkillSlugs applies Layer A (allow/deny) and Layer B (intent + tags + score cap).
 func ResolveSkillSlugs(ctx context.Context, skillUC SkillResolver, opts *SkillToolsetOptions) ([]string, error) {
-	result, err := ResolveSkillSlugsDetailed(ctx, skillUC, opts)
+	result, err := ResolveSkillSlugsDetailed(ctx, skillUC, opts, nil)
 	if err != nil {
 		return nil, err
 	}
 	return result.Slugs, nil
 }
 
-// ResolveSkillSlugsDetailed applies Layer A + B and returns per-slug reasons.
-func ResolveSkillSlugsDetailed(ctx context.Context, skillUC SkillResolver, opts *SkillToolsetOptions) (*ResolveResult, error) {
+func ResolveSkillSlugsDetailed(ctx context.Context, skillUC SkillResolver, opts *SkillToolsetOptions, lg loggateway.Logger) (*ResolveResult, error) {
+	if lg == nil {
+		lg = loggateway.Global()
+	}
 	candidates, err := skillUC.ListEnabledPublishedSkillCandidates(ctx)
 	if err != nil {
 		return nil, err
@@ -80,7 +82,9 @@ func ResolveSkillSlugsDetailed(ctx context.Context, skillUC SkillResolver, opts 
 	if policy.EmbeddingScoringEnabled && strings.TrimSpace(query) != "" {
 		embScores, embErr := skillUC.ScoreByEmbedding(ctx, query, final)
 		if embErr != nil {
-			loggateway.Global().Warn("embedding scoring failed; falling back to keyword scores", loggateway.StepID("system.skillruntime.embedding_score_failed"), loggateway.Err(embErr))
+			lg.Warn("embedding scoring failed; falling back to keyword scores",
+				loggateway.StepID("tool.skillruntime.embedding_score_fail"),
+				loggateway.Err(embErr))
 		} else if len(embScores) > 0 {
 			weight := policy.EmbeddingScoreWeight
 			for i := range scored {

@@ -3,18 +3,18 @@ package data
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/orchestrationstep"
+	"aranea-agents/internal/data/ent/taskdeadletter"
 	"aranea-agents/internal/data/ent/team"
 	"aranea-agents/internal/data/ent/teamrun"
 	"aranea-agents/internal/data/ent/teamrunstep"
-	"aranea-agents/internal/data/ent/taskdeadletter"
 
 	entsql "entgo.io/ent/dialect/sql"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type teamRepo struct {
@@ -41,6 +41,9 @@ func entTeamToBiz(e *ent.Team) biz.Team {
 		DefinitionJSON:     e.DefinitionJSON,
 		ADKAppName:         e.AdkAppName,
 		CategoryIndustryID: e.CategoryIndustryID,
+		SpiritSessionID:    e.SpiritSessionID,
+		TaskDescription:    e.TaskDescription,
+		AutoCreated:        e.AutoCreated,
 		CreatedAt:          e.CreatedAt,
 		UpdatedAt:          e.UpdatedAt,
 		DeletedAt:          e.DeletedAt,
@@ -52,27 +55,27 @@ func entTeamRunToBiz(e *ent.TeamRun) biz.TeamRun {
 		return biz.TeamRun{}
 	}
 	return biz.TeamRun{
-		ID:            e.ID,
-		TeamID:        e.TeamID,
-		SessionID:     e.SessionID,
-		MessageID:     e.MessageID,
-		Mode:          e.Mode,
-		Status:        e.Status,
-		InputPreview:  e.InputPreview,
-		OutputPreview: e.OutputPreview,
-		TokenIn:       e.TokenIn,
-		TokenOut:      e.TokenOut,
-		CostMicroUSD:  e.CostMicroUsd,
-		DurationMS:    e.DurationMs,
-		ErrorMessage:  e.ErrorMessage,
-		TopologyJSON:  e.TopologyJSON,
-		GraphExecutionID:         e.GraphExecutionID,
-		DefinitionSnapshotJSON:   e.DefinitionSnapshotJSON,
-		TraceID:                  e.TraceID,
-		StartedAt:                e.StartedAt,
-		FinishedAt:    e.FinishedAt,
-		CreatedAt:     e.CreatedAt,
-		UpdatedAt:     e.UpdatedAt,
+		ID:                     e.ID,
+		TeamID:                 e.TeamID,
+		SessionID:              e.SessionID,
+		MessageID:              e.MessageID,
+		Mode:                   e.Mode,
+		Status:                 e.Status,
+		InputPreview:           e.InputPreview,
+		OutputPreview:          e.OutputPreview,
+		TokenIn:                e.TokenIn,
+		TokenOut:               e.TokenOut,
+		CostMicroUSD:           e.CostMicroUsd,
+		DurationMS:             e.DurationMs,
+		ErrorMessage:           e.ErrorMessage,
+		TopologyJSON:           e.TopologyJSON,
+		GraphExecutionID:       e.GraphExecutionID,
+		DefinitionSnapshotJSON: e.DefinitionSnapshotJSON,
+		TraceID:                e.TraceID,
+		StartedAt:              e.StartedAt,
+		FinishedAt:             e.FinishedAt,
+		CreatedAt:              e.CreatedAt,
+		UpdatedAt:              e.UpdatedAt,
 	}
 }
 
@@ -133,7 +136,7 @@ func (r *teamRepo) GetTeamByID(ctx context.Context, id string) (biz.Team, error)
 
 func (r *teamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error) {
 	if t.ID == "" || t.TeamKey == "" || t.DisplayName == "" {
-		return biz.Team{}, fmt.Errorf("missing required fields")
+		return biz.Team{}, kerrors.BadRequest("TEAM", "missing required fields")
 	}
 	now := nowRFC3339()
 	if t.CreatedAt == "" {
@@ -152,6 +155,9 @@ func (r *teamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 		SetDefinitionJSON(t.DefinitionJSON).
 		SetAdkAppName(t.ADKAppName).
 		SetCategoryIndustryID(t.CategoryIndustryID).
+		SetSpiritSessionID(t.SpiritSessionID).
+		SetTaskDescription(t.TaskDescription).
+		SetAutoCreated(t.AutoCreated).
 		SetCreatedAt(t.CreatedAt).
 		SetUpdatedAt(t.UpdatedAt).
 		SetDeletedAt(t.DeletedAt).
@@ -164,7 +170,7 @@ func (r *teamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 
 func (r *teamRepo) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error) {
 	if t.ID == "" || t.TeamKey == "" || t.DisplayName == "" {
-		return biz.Team{}, fmt.Errorf("missing required fields")
+		return biz.Team{}, kerrors.BadRequest("TEAM", "missing required fields")
 	}
 	now := nowRFC3339()
 	t.UpdatedAt = now
@@ -179,6 +185,9 @@ func (r *teamRepo) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 		SetDefinitionJSON(t.DefinitionJSON).
 		SetAdkAppName(t.ADKAppName).
 		SetCategoryIndustryID(t.CategoryIndustryID).
+		SetSpiritSessionID(t.SpiritSessionID).
+		SetTaskDescription(t.TaskDescription).
+		SetAutoCreated(t.AutoCreated).
 		SetUpdatedAt(t.UpdatedAt).
 		Save(ctx)
 	if err != nil {
@@ -192,7 +201,7 @@ func (r *teamRepo) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 
 func (r *teamRepo) DeleteTeam(ctx context.Context, id string) error {
 	if id == "" {
-		return fmt.Errorf("id is required")
+		return kerrors.BadRequest("TEAM", "id is required")
 	}
 	now := nowRFC3339()
 	_, err := r.data.entClient.Team.UpdateOneID(id).
@@ -264,7 +273,7 @@ func (r *teamRepo) ListTeamRunSteps(ctx context.Context, runID string) ([]biz.Te
 
 func (r *teamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRun) (biz.TeamRun, error) {
 	if strings.TrimSpace(run.ID) == "" || strings.TrimSpace(run.TeamID) == "" {
-		return biz.TeamRun{}, fmt.Errorf("team run id and team_id are required")
+		return biz.TeamRun{}, kerrors.BadRequest("TEAM_RUN", "team run id and team_id are required")
 	}
 	now := nowRFC3339()
 	if run.CreatedAt == "" {
@@ -317,7 +326,7 @@ func (r *teamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRun) (biz.Team
 
 func (r *teamRepo) UpdateTeamRun(ctx context.Context, run biz.TeamRun) error {
 	if strings.TrimSpace(run.ID) == "" {
-		return fmt.Errorf("team run id is required")
+		return kerrors.BadRequest("TEAM_RUN", "team run id is required")
 	}
 	now := nowRFC3339()
 	_, err := r.data.entClient.TeamRun.UpdateOneID(run.ID).
@@ -337,7 +346,7 @@ func (r *teamRepo) UpdateTeamRun(ctx context.Context, run biz.TeamRun) error {
 
 func (r *teamRepo) CreateTeamRunStep(ctx context.Context, step biz.TeamRunStep) (biz.TeamRunStep, error) {
 	if strings.TrimSpace(step.ID) == "" || strings.TrimSpace(step.RunID) == "" {
-		return biz.TeamRunStep{}, fmt.Errorf("step id and run_id are required")
+		return biz.TeamRunStep{}, kerrors.BadRequest("TEAM_RUN_STEP", "step id and run_id are required")
 	}
 	now := nowRFC3339()
 	if step.CreatedAt == "" {
@@ -380,7 +389,7 @@ func (r *teamRepo) CreateTeamRunStep(ctx context.Context, step biz.TeamRunStep) 
 
 func (r *teamRepo) UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error {
 	if strings.TrimSpace(runID) == "" {
-		return fmt.Errorf("team run id is required")
+		return kerrors.BadRequest("TEAM_RUN", "team run id is required")
 	}
 	now := nowRFC3339()
 	_, err := r.data.entClient.ExecContext(ctx,
@@ -391,7 +400,7 @@ func (r *teamRepo) UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJ
 
 func (r *teamRepo) UpdateTeamRunGraphExecutionID(ctx context.Context, runID, graphExecutionID string) error {
 	if strings.TrimSpace(runID) == "" {
-		return fmt.Errorf("team run id is required")
+		return kerrors.BadRequest("TEAM_RUN", "team run id is required")
 	}
 	now := nowRFC3339()
 	_, err := r.data.entClient.ExecContext(ctx,
@@ -402,7 +411,7 @@ func (r *teamRepo) UpdateTeamRunGraphExecutionID(ctx context.Context, runID, gra
 
 func (r *teamRepo) UpdateTeamRunTraceID(ctx context.Context, runID, traceID string) error {
 	if strings.TrimSpace(runID) == "" {
-		return fmt.Errorf("team run id is required")
+		return kerrors.BadRequest("TEAM_RUN", "team run id is required")
 	}
 	now := nowRFC3339()
 	_, err := r.data.entClient.ExecContext(ctx,
@@ -445,7 +454,7 @@ func (r *teamRepo) BatchCreateOrchestrationSteps(ctx context.Context, steps []bi
 func (r *teamRepo) ListOrchestrationSteps(ctx context.Context, teamRunID, nodeID string, limit int) ([]biz.OrchestrationStep, error) {
 	teamRunID = strings.TrimSpace(teamRunID)
 	if teamRunID == "" {
-		return nil, fmt.Errorf("team_run_id is required")
+		return nil, kerrors.BadRequest("ORCHESTRATION_STEP", "team_run_id is required")
 	}
 	if limit <= 0 {
 		limit = 100
@@ -470,7 +479,7 @@ func (r *teamRepo) ListOrchestrationSteps(ctx context.Context, teamRunID, nodeID
 
 func (r *teamRepo) CreateTaskDeadLetter(ctx context.Context, dl biz.TaskDeadLetter) error {
 	if strings.TrimSpace(dl.ID) == "" {
-		return fmt.Errorf("task dead letter id is required")
+		return kerrors.BadRequest("TASK_DEAD_LETTER", "task dead letter id is required")
 	}
 	payload := strings.TrimSpace(dl.PayloadJSON)
 	if payload == "" {
@@ -525,7 +534,7 @@ func (r *teamRepo) ListTaskDeadLetters(ctx context.Context, filter biz.TaskDeadL
 func (r *teamRepo) ResolveTaskDeadLetter(ctx context.Context, id string) (biz.TaskDeadLetter, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return biz.TaskDeadLetter{}, fmt.Errorf("task dead letter id is required")
+		return biz.TaskDeadLetter{}, kerrors.BadRequest("TASK_DEAD_LETTER", "task dead letter id is required")
 	}
 	existing, err := r.data.entClient.TaskDeadLetter.Get(ctx, id)
 	if err != nil {
@@ -535,7 +544,7 @@ func (r *teamRepo) ResolveTaskDeadLetter(ctx context.Context, id string) (biz.Ta
 		return entTaskDeadLetterToBiz(existing), nil
 	}
 	if !strings.EqualFold(strings.TrimSpace(existing.Status), biz.TaskDeadLetterStatusPending) {
-		return biz.TaskDeadLetter{}, fmt.Errorf("task dead letter %s is not pending", id)
+		return biz.TaskDeadLetter{}, kerrors.BadRequest("TASK_DEAD_LETTER", "task dead letter "+id+" is not pending")
 	}
 	now := nowRFC3339()
 	row, err := r.data.entClient.TaskDeadLetter.UpdateOneID(id).

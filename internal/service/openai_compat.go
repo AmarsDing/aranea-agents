@@ -156,7 +156,7 @@ func (s *ChatService) BuildOpenAIRunner(ctx context.Context, agentKey string) (t
 	}
 	deps.Plugins = plugins
 
-	root, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps)
+	root, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps, s.orch.lg)
 	if err != nil {
 		return nil, nil, err
 	}

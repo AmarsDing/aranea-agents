@@ -189,10 +189,13 @@ func (m *batchSessionRepo) SessionSummaryExists(context.Context, string, int, in
 func (m *batchSessionRepo) UpdateChatMessageStatus(context.Context, string, string, string, string) error {
 	return nil
 }
+func (m *batchSessionRepo) ListByParentSessionID(_ context.Context, _ string) ([]biz.Session, error) {
+	return nil, nil
+}
 
 func TestSessionService_BatchPreviewSessions_validation(t *testing.T) {
 	uc := biz.NewSessionUsecase(&batchSessionRepo{sessions: map[string]biz.Session{}}, nil, nil, nil, nil)
-	svc := service.NewSessionService(uc, nil, nil)
+	svc := service.NewSessionService(uc, nil, nil, nil)
 
 	_, err := svc.BatchPreviewSessions(context.Background(), &v1.BatchPreviewSessionsRequest{})
 	if err == nil {
@@ -213,7 +216,7 @@ func TestSessionService_BatchPreviewSessions_skippedNotFound(t *testing.T) {
 		"s1": {ID: "s1", Status: "completed", CreatedAt: "2020-01-01T00:00:00Z"},
 	}}
 	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil)
-	svc := service.NewSessionService(uc, nil, nil)
+	svc := service.NewSessionService(uc, nil, nil, nil)
 
 	resp, err := svc.BatchPreviewSessions(context.Background(), &v1.BatchPreviewSessionsRequest{
 		Mode: "delete",

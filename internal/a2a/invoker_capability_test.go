@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 type mockTurnRunner struct {
@@ -84,7 +85,7 @@ func TestNewInvoker_RequiresEnabledCapability(t *testing.T) {
 	}}
 	uc := biz.NewA2AUsecase(repo)
 	runner := &mockTurnRunner{}
-	inv := NewInvoker(runner, uc, nil)
+	inv := NewInvoker(runner, uc, nil, loggateway.NewNoop())
 	ctx := WithCallerAgentID(context.Background(), "caller")
 
 	_, err := inv(ctx, "callee", "missing", `{}`, 30)

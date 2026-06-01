@@ -5,6 +5,7 @@ import (
 
 	"aranea-agents/internal/tools"
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
+	"aranea-agents/pkg/loggateway"
 )
 
 const (
@@ -39,7 +40,7 @@ func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresea
 		if !wcfg.Ready() {
 			return tools.AssemblyConfig{}, false
 		}
-		t, err := webresearchpkg.NewTool(wcfg)
+		t, err := webresearchpkg.NewTool(wcfg, loggateway.Global())
 		if err != nil {
 			return tools.AssemblyConfig{}, false
 		}

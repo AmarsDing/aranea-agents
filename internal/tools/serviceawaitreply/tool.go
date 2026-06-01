@@ -41,11 +41,15 @@ func ReplyFuncFromContext(ctx context.Context) ReplyFunc {
 
 // ServiceTool is the await_user_reply tool that integrates with ChatService's
 // awaitChans mechanism to block mid-turn waiting for a user reply.
-type ServiceTool struct{}
+type ServiceTool struct {
+	lg loggateway.Logger
+}
 
-// New creates a ServiceTool.
-func New() trpctool.CallableTool {
-	return &ServiceTool{}
+func New(lg loggateway.Logger) trpctool.CallableTool {
+	if lg == nil {
+		lg = loggateway.Global()
+	}
+	return &ServiceTool{lg: lg}
 }
 
 // Declaration implements trpctool.Tool.
@@ -68,7 +72,9 @@ func (t *ServiceTool) Call(ctx context.Context, _ []byte) (any, error) {
 	// Mark framework routing state (so the runner persists await_user_reply route).
 	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
 		if err := trpcagent.MarkAwaitingUserReply(inv); err != nil {
-			loggateway.Global().Warn("MarkAwaitingUserReply failed", loggateway.StepID("system.await_user_reply"), loggateway.Err(err))
+			t.lg.Warn("MarkAwaitingUserReply failed",
+				loggateway.StepID("tool.await_user_reply.mark_fail"),
+				loggateway.Err(err))
 		}
 	}
 

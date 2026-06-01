@@ -22,9 +22,11 @@ type CredentialLookup func(ctx context.Context, creds []biz.ChannelCredential, k
 // Starter runs a long-lived platform connector until ctx is cancelled.
 type Starter func(ctx context.Context, ch biz.Channel, creds []biz.ChannelCredential, lookup CredentialLookup, handler port.InboundHandler) error
 
+type StarterWithLogger func(ctx context.Context, ch biz.Channel, creds []biz.ChannelCredential, lookup CredentialLookup, handler port.InboundHandler, lg loggateway.Logger) error
+
 var (
 	registryMu sync.RWMutex
-	registry   = map[string]Starter{}
+	registry   = map[string]StarterWithLogger{}
 )
 
 func registryKey(channelType, receiveMode string) string {
@@ -33,12 +35,23 @@ func registryKey(channelType, receiveMode string) string {
 
 // RegisterStarter binds a channel type + receive_mode to a connector starter.
 func RegisterStarter(channelType, receiveMode string, fn Starter) {
+	wrapped := StarterWithLogger(func(ctx context.Context, ch biz.Channel, creds []biz.ChannelCredential, lookup CredentialLookup, handler port.InboundHandler, _ loggateway.Logger) error {
+		return fn(ctx, ch, creds, lookup, handler)
+	})
+	registerStarterWithLogger(channelType, receiveMode, wrapped)
+}
+
+func RegisterStarterWithLogger(channelType, receiveMode string, fn StarterWithLogger) {
+	registerStarterWithLogger(channelType, receiveMode, fn)
+}
+
+func registerStarterWithLogger(channelType, receiveMode string, fn StarterWithLogger) {
 	registryMu.Lock()
 	defer registryMu.Unlock()
 	registry[registryKey(channelType, receiveMode)] = fn
 }
 
-func lookupStarter(channelType, receiveMode string) (Starter, bool) {
+func lookupStarter(channelType, receiveMode string) (StarterWithLogger, bool) {
 	registryMu.RLock()
 	defer registryMu.RUnlock()
 	fn, ok := registry[registryKey(channelType, receiveMode)]
@@ -150,7 +163,7 @@ func (m *Manager) Reload(ctx context.Context) error {
 	}
 	m.mu.Unlock()
 	for _, inst := range stopping {
-		waitRuntimeInstanceDone(inst.done, runtimeReplaceShutdownWait)
+		waitRuntimeInstanceDone(inst.done, runtimeReplaceShutdownWait, m.lg)
 	}
 
 	for _, ch := range items {
@@ -236,7 +249,7 @@ func runtimeFingerprint(ch biz.Channel, mode, credRev string) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-func waitRuntimeInstanceDone(done chan struct{}, timeout time.Duration) {
+func waitRuntimeInstanceDone(done chan struct{}, timeout time.Duration, lg loggateway.Logger) {
 	if done == nil {
 		return
 	}
@@ -245,7 +258,7 @@ func waitRuntimeInstanceDone(done chan struct{}, timeout time.Duration) {
 	select {
 	case <-done:
 	case <-timer.C:
-		loggateway.Global().Warn("Channel Runtime 旧连接器退出超时",
+		lg.Warn("Channel Runtime 旧连接器退出超时",
 			loggateway.StepID("channel.runtime.connector_stop_timeout"),
 			loggateway.Any("wait_ms", timeout.Milliseconds()),
 		)

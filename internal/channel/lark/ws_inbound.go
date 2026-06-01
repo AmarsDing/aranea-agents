@@ -23,10 +23,11 @@ func HandleWSInbound(
 	lookup runtime.CredentialLookup,
 	handler port.InboundHandler,
 	ev port.InboundEvent,
+	lg loggateway.Logger,
 ) {
 	defer func() {
 		if r := recover(); r != nil {
-			loggateway.Global().Error("飞书 WebSocket 入站 panic",
+			lg.Error("飞书 WebSocket 入站 panic",
 			loggateway.StepID(flowStepFeishuWSPanic),
 			loggateway.Str("channel_id", ch.ID),
 			loggateway.Str("channel_key", ch.Key),
@@ -36,14 +37,14 @@ func HandleWSInbound(
 	}()
 	procCtx := context.WithoutCancel(parentCtx)
 	if err := handler.ProcessInbound(procCtx, ch, ev); err != nil {
-		loggateway.Global().Warn("飞书 WebSocket 入站失败",
+		lg.Warn("飞书 WebSocket 入站失败",
 			loggateway.StepID(flowStepFeishuWSInboundErr),
 			loggateway.Str("channel_id", ch.ID),
 			loggateway.Str("channel_key", ch.Key),
 			loggateway.Str("peer_id", ev.PeerID),
 			loggateway.Err(err),
 		)
-		notifyFeishuInboundError(procCtx, ch, creds, lookup, ev, err)
+		notifyFeishuInboundError(procCtx, ch, creds, lookup, ev, err, lg)
 	}
 }
 
@@ -54,6 +55,7 @@ func notifyFeishuInboundError(
 	lookup runtime.CredentialLookup,
 	ev port.InboundEvent,
 	err error,
+	lg loggateway.Logger,
 ) {
 	if err == nil {
 		return
@@ -79,7 +81,8 @@ func notifyFeishuInboundError(
 		AppSecret:     strings.TrimSpace(appSecret),
 		ReceiveIDType: ReceiveIDTypeFromMeta(ev.OutboundMeta),
 	}).SendText(ctx, recipient, msg); sendErr != nil {
-		loggateway.Global().Warn("飞书错误通知发送失败",
+		lg.Warn("飞书错误通知发送失败",
+			loggateway.StepID("channel.feishu.ws.notify_fail"),
 			loggateway.Err(sendErr),
 		)
 	}

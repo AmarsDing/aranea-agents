@@ -18,7 +18,7 @@ func (h *ChannelIngress) processInboundCore(ctx context.Context, chRow biz.Chann
 	if h == nil || h.chat == nil || h.channels == nil || h.sessions == nil {
 		return "", nil
 	}
-	platform := inboundPlatform(chRow, ev)
+	platform := inboundPlatform(chRow, ev, h.lg)
 	result, err := h.runChatTurnWithOutcome(ctx, chRow, platform, ev)
 	if err != nil {
 		return "", err
@@ -56,7 +56,7 @@ func (h *ChannelIngress) processWeChatPassiveInbound(ctx context.Context, chRow 
 
 // ProcessInbound runs accept + synchronous execute (runtime WS path).
 func (h *ChannelIngress) ProcessInbound(ctx context.Context, chRow biz.Channel, ev port.InboundEvent) error {
-	platform := inboundPlatform(chRow, ev)
+	platform := inboundPlatform(chRow, ev, h.lg)
 	if ingressDebounceEnabled(platform) && h.peerDebouncer != nil {
 		h.peerDebouncer.submit(ctx, chRow, ev, h.processInboundNow)
 		return nil
@@ -69,7 +69,7 @@ func (h *ChannelIngress) processInboundNow(ctx context.Context, chRow biz.Channe
 	if err != nil {
 		return err
 	}
-	platform := inboundPlatform(chRow, ev)
+	platform := inboundPlatform(chRow, ev, h.lg)
 	if outcome.DispatchAsync {
 		ltCfg := biz.ParseChannelLongTaskConfig(chRow.ConfigJSON)
 		release := outcome.releaseConcurrent

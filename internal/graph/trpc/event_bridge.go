@@ -63,7 +63,7 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *event.Envelope {
 
 	switch e.Object {
 	case trpcgraph.ObjectTypeGraphNodeStart:
-		meta := extractNodeMeta(e)
+		meta := b.extractNodeMeta(e)
 		env.Metadata = map[string]any{
 			"execution_id": b.execID,
 			"graph_id":     b.graphID,
@@ -77,7 +77,7 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *event.Envelope {
 		}
 
 	case trpcgraph.ObjectTypeGraphNodeComplete:
-		meta := extractNodeMeta(e)
+		meta := b.extractNodeMeta(e)
 		if b.summary != nil {
 			b.summary.RecordNodeComplete(meta)
 		}
@@ -106,7 +106,7 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *event.Envelope {
 		}
 
 	case trpcgraph.ObjectTypeGraphNodeError:
-		meta := extractNodeMeta(e)
+		meta := b.extractNodeMeta(e)
 		if b.summary != nil {
 			b.summary.RecordNodeComplete(meta)
 		}
@@ -126,7 +126,7 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *event.Envelope {
 		}
 
 	case trpcgraph.ObjectTypeGraphNodeCustom:
-		meta := extractNodeCustomMeta(e)
+		meta := b.extractNodeCustomMeta(e)
 		env.Metadata = map[string]any{
 			"execution_id": b.execID,
 			"graph_id":     b.graphID,
@@ -142,7 +142,7 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *event.Envelope {
 		}
 
 	case trpcgraph.ObjectTypeGraphPregelStep:
-		meta := extractPregelMeta(e)
+		meta := b.extractPregelMeta(e)
 		env.Metadata = map[string]any{
 			"execution_id": b.execID,
 			"graph_id":     b.graphID,
@@ -156,7 +156,7 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *event.Envelope {
 		}
 
 	case trpcgraph.ObjectTypeGraphCheckpointInterrupt:
-		meta := extractPregelMeta(e)
+		meta := b.extractPregelMeta(e)
 		env.Metadata = map[string]any{
 			"execution_id":  b.execID,
 			"graph_id":      b.graphID,
@@ -171,7 +171,7 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *event.Envelope {
 		}
 
 	case trpcgraph.ObjectTypeGraphCheckpointCreated:
-		meta := extractPregelMeta(e)
+		meta := b.extractPregelMeta(e)
 		env.Metadata = map[string]any{
 			"execution_id":  b.execID,
 			"graph_id":      b.graphID,
@@ -181,7 +181,7 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *event.Envelope {
 		}
 
 	case trpcgraph.ObjectTypeGraphStateUpdate:
-		meta := extractStateUpdateMeta(e)
+		meta := b.extractStateUpdateMeta(e)
 		env.Metadata = map[string]any{
 			"execution_id": b.execID,
 			"graph_id":     b.graphID,
@@ -191,7 +191,7 @@ func (b *EventBridge) convertEvent(e *trpcevent.Event) *event.Envelope {
 
 	case trpcgraph.ObjectTypeGraphExecution:
 		if e.Done {
-			meta := extractCompletionMeta(e)
+			meta := b.extractCompletionMeta(e)
 			env.Metadata = map[string]any{
 				"execution_id": b.execID,
 				"graph_id":     b.graphID,
@@ -243,7 +243,7 @@ func (b *EventBridge) mapType(e *trpcevent.Event) event.EnvelopeType {
 	}
 }
 
-func extractNodeMeta(e *trpcevent.Event) trpcgraph.NodeExecutionMetadata {
+func (b *EventBridge) extractNodeMeta(e *trpcevent.Event) trpcgraph.NodeExecutionMetadata {
 	var meta trpcgraph.NodeExecutionMetadata
 	if e.StateDelta == nil {
 		return meta
@@ -253,15 +253,15 @@ func extractNodeMeta(e *trpcevent.Event) trpcgraph.NodeExecutionMetadata {
 		return meta
 	}
 	if err := json.Unmarshal(raw, &meta); err != nil {
-		loggateway.Global().Warn("node meta unmarshal failed",
-			loggateway.StepID("graph.event_bridge"),
+		b.lg.Warn("node meta unmarshal failed",
+			loggateway.StepID("graph.event_bridge.node_meta_fail"),
 			loggateway.Err(err),
 		)
 	}
 	return meta
 }
 
-func extractPregelMeta(e *trpcevent.Event) trpcgraph.PregelStepMetadata {
+func (b *EventBridge) extractPregelMeta(e *trpcevent.Event) trpcgraph.PregelStepMetadata {
 	var meta trpcgraph.PregelStepMetadata
 	if e.StateDelta == nil {
 		return meta
@@ -271,15 +271,15 @@ func extractPregelMeta(e *trpcevent.Event) trpcgraph.PregelStepMetadata {
 		return meta
 	}
 	if err := json.Unmarshal(raw, &meta); err != nil {
-		loggateway.Global().Warn("pregel meta unmarshal failed",
-			loggateway.StepID("graph.event_bridge"),
+		b.lg.Warn("pregel meta unmarshal failed",
+			loggateway.StepID("graph.event_bridge.pregel_meta_fail"),
 			loggateway.Err(err),
 		)
 	}
 	return meta
 }
 
-func extractStateUpdateMeta(e *trpcevent.Event) trpcgraph.StateUpdateMetadata {
+func (b *EventBridge) extractStateUpdateMeta(e *trpcevent.Event) trpcgraph.StateUpdateMetadata {
 	var meta trpcgraph.StateUpdateMetadata
 	if e.StateDelta == nil {
 		return meta
@@ -289,15 +289,15 @@ func extractStateUpdateMeta(e *trpcevent.Event) trpcgraph.StateUpdateMetadata {
 		return meta
 	}
 	if err := json.Unmarshal(raw, &meta); err != nil {
-		loggateway.Global().Warn("state update meta unmarshal failed",
-			loggateway.StepID("graph.event_bridge"),
+		b.lg.Warn("state update meta unmarshal failed",
+			loggateway.StepID("graph.event_bridge.state_meta_fail"),
 			loggateway.Err(err),
 		)
 	}
 	return meta
 }
 
-func extractCompletionMeta(e *trpcevent.Event) trpcgraph.CompletionMetadata {
+func (b *EventBridge) extractCompletionMeta(e *trpcevent.Event) trpcgraph.CompletionMetadata {
 	var meta trpcgraph.CompletionMetadata
 	if e.StateDelta == nil {
 		return meta
@@ -307,15 +307,15 @@ func extractCompletionMeta(e *trpcevent.Event) trpcgraph.CompletionMetadata {
 		return meta
 	}
 	if err := json.Unmarshal(raw, &meta); err != nil {
-		loggateway.Global().Warn("completion meta unmarshal failed",
-			loggateway.StepID("graph.event_bridge"),
+		b.lg.Warn("completion meta unmarshal failed",
+			loggateway.StepID("graph.event_bridge.completion_meta_fail"),
 			loggateway.Err(err),
 		)
 	}
 	return meta
 }
 
-func extractNodeCustomMeta(e *trpcevent.Event) trpcgraph.NodeCustomEventMetadata {
+func (b *EventBridge) extractNodeCustomMeta(e *trpcevent.Event) trpcgraph.NodeCustomEventMetadata {
 	var meta trpcgraph.NodeCustomEventMetadata
 	if e.StateDelta == nil {
 		return meta
@@ -325,18 +325,26 @@ func extractNodeCustomMeta(e *trpcevent.Event) trpcgraph.NodeCustomEventMetadata
 		return meta
 	}
 	if err := json.Unmarshal(raw, &meta); err != nil {
-		loggateway.Global().Warn("node custom meta unmarshal failed",
-			loggateway.StepID("graph.event_bridge"),
+		b.lg.Warn("node custom meta unmarshal failed",
+			loggateway.StepID("graph.event_bridge.node_custom_meta_fail"),
 			loggateway.Err(err),
 		)
 	}
 	return meta
 }
 
-func ExtractNodeMeta(e *trpcevent.Event) trpcgraph.NodeExecutionMetadata {
-	return extractNodeMeta(e)
+func ExtractNodeMeta(e *trpcevent.Event, lg loggateway.Logger) trpcgraph.NodeExecutionMetadata {
+	if lg == nil {
+		lg = loggateway.Global()
+	}
+	b := &EventBridge{lg: lg}
+	return b.extractNodeMeta(e)
 }
 
-func ExtractPregelMeta(e *trpcevent.Event) trpcgraph.PregelStepMetadata {
-	return extractPregelMeta(e)
+func ExtractPregelMeta(e *trpcevent.Event, lg loggateway.Logger) trpcgraph.PregelStepMetadata {
+	if lg == nil {
+		lg = loggateway.Global()
+	}
+	b := &EventBridge{lg: lg}
+	return b.extractPregelMeta(e)
 }

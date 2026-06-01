@@ -26,6 +26,8 @@ func (Session) Indexes() []ent.Index {
 		index.Fields("last_message_at").StorageKey("idx_sessions_last_message"),
 		index.Fields("deleted_at", "user_id"),
 		index.Fields("deleted_at", "status"),
+		index.Fields("parent_session_id").StorageKey("idx_sessions_parent"),
+		index.Fields("root_session_id").StorageKey("idx_sessions_root"),
 	}
 }
 
@@ -89,5 +91,8 @@ func (Session) Fields() []ent.Field {
 		field.Text("metadata_json").Default("{}"),
 		field.Int64("session_revision").Default(0),
 		field.Int64("compress_version").Default(0),
+		field.String("parent_session_id").Default("").MaxLen(256),
+		field.String("root_session_id").Default("").MaxLen(256),
+		field.Int("agent_depth").Default(0),
 	}
 }

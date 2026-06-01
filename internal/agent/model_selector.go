@@ -21,6 +21,7 @@ func PluginCostGuardSelector(
 	rt *provider.RoundTrip,
 	cfg plugintrpc.CostGuardConfig,
 	tracker *plugintrpc.CostGuardBudgetTracker,
+	lg loggateway.Logger,
 ) trpcagent.ModelSelector {
 	baseProv = strings.TrimSpace(baseProv)
 	baseMod = strings.TrimSpace(baseMod)
@@ -30,15 +31,15 @@ func PluginCostGuardSelector(
 		if target == "" || target == baseMod {
 			return nil, nil
 		}
-		m, err := provider.TRPCModelForProviderModel(ctx, catalog, rt, baseProv, target)
+		m, err := provider.TRPCModelForProviderModel(ctx, catalog, rt, baseProv, target, lg)
 		if err != nil {
-			loggateway.Global().Warn("费用保护回退到基础模型",
-				loggateway.StepID("plugin.cost_guard.fallback"),
+			lg.Warn("费用保护回退到基础模型",
+				loggateway.StepID("agent.cost_guard.fallback"),
 				loggateway.Str("provider", baseProv), loggateway.Str("target", target), loggateway.Str("base", baseMod), loggateway.Err(err))
 			metrics.ModelRouterFallbackTotal.WithLabelValues("cost_guard_catalog").Inc()
 			return nil, nil
 		}
-		loggateway.Global().Info("费用保护切换模型", loggateway.StepID("plugin.cost_guard.fallback"), loggateway.Phase("done"),
+		lg.Info("费用保护切换模型", loggateway.StepID("agent.cost_guard.switch"), loggateway.Phase("done"),
 			loggateway.Str("provider", baseProv), loggateway.Str("target", target), loggateway.Str("base", baseMod), loggateway.Int("est_tokens", est))
 		return m, nil
 	}
@@ -69,6 +70,7 @@ func PluginModelSelector(
 	catalog *biz.LlmProviderModelUsecase,
 	rt *provider.RoundTrip,
 	cfg plugintrpc.ModelRouterConfig,
+	lg loggateway.Logger,
 ) trpcagent.ModelSelector {
 	baseProv = strings.TrimSpace(baseProv)
 	baseMod = strings.TrimSpace(baseMod)
@@ -78,10 +80,10 @@ func PluginModelSelector(
 		if target == "" || target == baseMod {
 			return nil, nil
 		}
-		m, err := provider.TRPCModelForProviderModel(ctx, catalog, rt, baseProv, target)
+		m, err := provider.TRPCModelForProviderModel(ctx, catalog, rt, baseProv, target, lg)
 		if err != nil {
-			loggateway.Global().Warn("模型路由回退到基础模型",
-				loggateway.StepID("plugin.model_router.route"),
+			lg.Warn("模型路由回退到基础模型",
+				loggateway.StepID("agent.model_router.route"),
 				loggateway.Str("provider", baseProv), loggateway.Str("target", target), loggateway.Str("base", baseMod), loggateway.Err(err))
 			metrics.ModelRouterFallbackTotal.WithLabelValues("catalog_lookup").Inc()
 			return nil, nil

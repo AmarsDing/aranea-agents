@@ -2,6 +2,7 @@ import { ref } from "vue";
 import { defineStore } from "pinia";
 import {
   clearAgentSessions,
+  compactSession,
   createSession,
   deleteSession,
   getSession,
@@ -12,6 +13,7 @@ import {
   updateSessionTitle,
   type Session,
 } from "../../features/session/api";
+import type { CompactSessionResult } from "../../features/session/api";
 import type { SessionContextPatch } from "../../features/chat/sessionContextPatch";
 import { reconcilePatchFromServer } from "../../features/chat/sessionContextPatch";
 import { formatSessionTime } from "../../features/chat/composables/chatWorkspaceUtils";
@@ -426,6 +428,14 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     }
   }
 
+  async function compactSessionAction(sessionId: string, preserveInstruction?: string): Promise<CompactSessionResult> {
+    const result = await compactSession(sessionId, preserveInstruction);
+    if (result.compacted) {
+      await fetchAndReconcileSession(sessionId);
+    }
+    return result;
+  }
+
   return {
     entityKind,
     selectedTeamId,
@@ -457,5 +467,6 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     removeSessionById,
     updateSessionById,
     refreshFromAdmin,
+    compactSessionAction,
   };
 });

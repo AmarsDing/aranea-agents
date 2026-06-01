@@ -10,13 +10,14 @@ import (
 	memtrpc "aranea-agents/internal/memory/trpc"
 	rt "aranea-agents/internal/runtime"
 	sessiontrpc "aranea-agents/internal/session/trpc"
+	"aranea-agents/pkg/loggateway"
 
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
 )
 
-func provideAutoMemoryQueue() *memtrpc.MemoryJobQueue {
-	return memtrpc.NewMemoryJobQueue(256, 30*time.Second)
+func provideAutoMemoryQueue(lg loggateway.Logger) *memtrpc.MemoryJobQueue {
+	return memtrpc.NewMemoryJobQueue(256, 30*time.Second, lg)
 }
 
 func provideMemoryPolicyEngine(store *sessionmemory.Store, sys biz.SystemSettingRepo) *biz.MemoryPolicyEngine {
@@ -71,6 +72,7 @@ func providePersistenceSet(
 	l2Recall biz.MemoryL2Recaller,
 	l3Recall biz.MemoryL3Recaller,
 	compositeRecall biz.MemoryCompositeRecaller,
+	lg loggateway.Logger,
 ) rt.PersistenceSet {
 	var mem rt.MemorySet
 	if store != nil {
@@ -78,7 +80,7 @@ func providePersistenceSet(
 			store.SetPolicyEngine(policy)
 		}
 		mem = rt.MemorySet{
-			TRPC:            memtrpc.NewSQLiteMemoryService(store, factSync, q, vec, memtrpc.NewAgentRuntimeSettingsLoader(agentsUC)),
+			TRPC:            memtrpc.NewSQLiteMemoryService(store, factSync, q, vec, memtrpc.NewAgentRuntimeSettingsLoader(agentsUC), lg),
 			Admin:           newWireSessionAdminStoreAdapter(store),
 			L2Recall:        l2Recall,
 			L3Recall:        l3Recall,

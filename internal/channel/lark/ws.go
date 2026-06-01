@@ -6,6 +6,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/runtime"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
@@ -14,35 +15,41 @@ import (
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 )
 
-var feishuTextBatcher = NewTextInboundBatcher()
-
 func init() {
-	runtime.RegisterStarter("feishu", "websocket", RunWebSocket)
+	runtime.RegisterStarterWithLogger("feishu", "websocket", RunWebSocket)
 }
 
-// RunWebSocket uses Lark long connection (MuseBot StartLarkRobot).
 func RunWebSocket(
 	ctx context.Context,
 	ch biz.Channel,
 	creds []biz.ChannelCredential,
 	lookup runtime.CredentialLookup,
 	handler port.InboundHandler,
+	lg loggateway.Logger,
 ) error {
+	lg.Info("飞书 WebSocket 连接器启动",
+		loggateway.StepID("channel.feishu.ws.start"),
+		loggateway.Str("channel_id", ch.ID),
+	)
 	appID, appSecret, err := WSAppCredentials(ctx, ch, creds, lookup)
 	if err != nil {
+		lg.Error("飞书 WebSocket 凭据获取失败",
+			loggateway.StepID("channel.feishu.ws.creds_fail"),
+			loggateway.Str("channel_id", ch.ID),
+			loggateway.Err(err),
+		)
 		return err
 	}
 	chRow := ch
-	batcher := feishuTextBatcher
+	batcher := NewTextInboundBatcher(lg)
 	onMessage := func(_ context.Context, message *larkim.P2MessageReceiveV1) error {
 		ev, ok := InboundEventFromWSMessage(message)
 		if !ok {
-			return nil // filtered by AcceptFeishuInbound (non-user, no message_id, group w/o @, etc.)
+			return nil
 		}
 		ev.PlatformType = "feishu"
-		// Feishu event ctx may cancel when the handler returns; process async like MuseBot.
 		safego.Go(ctx, "channel.feishu.ws.inbound", func() {
-			batcher.Submit(ctx, wsInboundBridge{ctx: ctx, ch: chRow, creds: creds, lookup: lookup, handler: handler}, chRow, ev)
+			batcher.Submit(ctx, wsInboundBridge{ctx: ctx, ch: chRow, creds: creds, lookup: lookup, handler: handler, lg: lg}, chRow, ev)
 		})
 		return nil
 	}
@@ -53,6 +60,10 @@ func RunWebSocket(
 		}
 		ingress, ok := handler.(CardActionHandler)
 		if !ok {
+			lg.Warn("飞书卡片动作处理器未就绪",
+				loggateway.StepID("channel.feishu.ws.card_handler_unavailable"),
+				loggateway.Str("channel_id", chRow.ID),
+			)
 			return cardActionSDKResponse(NewCardActionToast("服务未就绪")), nil
 		}
 		resp := ingress.HandleFeishuCardAction(context.WithoutCancel(ctx), chRow, action)

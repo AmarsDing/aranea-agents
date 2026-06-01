@@ -21,7 +21,7 @@ func (m *Manager) runSupervised(
 	parentCtx context.Context,
 	ch biz.Channel,
 	fp string,
-	starter Starter,
+	starter StarterWithLogger,
 	platform, mode string,
 ) {
 	defer m.remove(ch.ID)
@@ -60,8 +60,8 @@ func (m *Manager) runSupervised(
 			setChannelConnection(ch.ID, false)
 			return
 		}
-		if err := starter(runCtx, ch, creds, m.credLookup, m.handler); err != nil {
-			loggateway.Global().Warn("渠道连接器异常退出",
+		if err := starter(runCtx, ch, creds, m.credLookup, m.handler, m.lg); err != nil {
+			m.lg.Warn("渠道连接器异常退出",
 				loggateway.StepID("channel.runtime.starter_exited"),
 				loggateway.Str("platform", platform),
 				loggateway.Str("channel_id", ch.ID),

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/modelregistry"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -28,7 +29,7 @@ func (p *ModelRegistryStoreProvider) Store(ctx context.Context) (*modelregistry.
 	if err != nil {
 		return nil, err
 	}
-	return modelregistry.NewStore(root), nil
+	return modelregistry.NewStore(root, loggateway.Global()), nil
 }
 
 type ModelRegistryUsecase struct {
@@ -168,7 +169,7 @@ func (u *ModelRegistryUsecase) Sync(ctx context.Context, dryRun bool) (modelregi
 	if stErr != nil {
 		return modelregistry.SyncOutput{}, stErr
 	}
-	syncer := modelregistry.NewSyncer(st)
+	syncer := modelregistry.NewSyncer(st, loggateway.Global())
 	out, err := syncer.Sync(ctx, modelregistry.SyncInput{DryRun: dryRun})
 	if err != nil || dryRun || u.applyBackend == nil {
 		return u.finalizeSyncOutput(out, err)

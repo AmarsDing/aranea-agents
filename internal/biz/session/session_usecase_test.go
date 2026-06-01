@@ -248,6 +248,10 @@ func (m *mockSessionRepo) CompressSessionInTx(_ context.Context, _ string, _ fun
 	return nil
 }
 
+func (m *mockSessionRepo) ListByParentSessionID(_ context.Context, _ string) ([]Session, error) {
+	return nil, nil
+}
+
 func (m *mockSessionRepo) TransitionSessionStatus(_ context.Context, _ string, _ string, _ string) error {
 	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/metrics"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -20,7 +21,7 @@ import (
 const hookCallbackPriorityBase = 300
 
 // HookCallbacks converts resolved hook rules into Chain entries.
-func HookCallbacks(resolved []biz.ResolvedHook, agentID, agentKey string, stats StatsRecorder, notifier *HookNotifier) []callbacks.Callback {
+func HookCallbacks(resolved []biz.ResolvedHook, agentID, agentKey string, stats StatsRecorder, notifier *HookNotifier, lg loggateway.Logger) []callbacks.Callback {
 	if len(resolved) == 0 {
 		return nil
 	}
@@ -29,40 +30,40 @@ func HookCallbacks(resolved []biz.ResolvedHook, agentID, agentKey string, stats 
 		if rh.Rule.CallbackPoint == "on_event" {
 			continue
 		}
-		if cb := hookToCallback(rh, agentID, agentKey, stats, notifier); cb != nil {
+		if cb := hookToCallback(rh, agentID, agentKey, stats, notifier, lg); cb != nil {
 			out = append(out, cb)
 		}
 	}
 	return out
 }
 
-func hookToCallback(rh biz.ResolvedHook, agentID, agentKey string, stats StatsRecorder, notifier *HookNotifier) callbacks.Callback {
+func hookToCallback(rh biz.ResolvedHook, agentID, agentKey string, stats StatsRecorder, notifier *HookNotifier, lg loggateway.Logger) callbacks.Callback {
 	priority := hookCallbackPriorityBase + rh.Hook.SortOrder
 	switch rh.Rule.CallbackPoint {
 	case "before_agent":
 		return callbacks.NewBeforeAgentHook(priority, func(ctx context.Context, args *trpcagent.BeforeAgentArgs) (*trpcagent.BeforeAgentResult, error) {
-			if err := executeHookAction(ctx, stats, notifier, rh, "before_agent", agentID, agentKey, "", args); err != nil {
+			if err := executeHookAction(ctx, stats, notifier, rh, "before_agent", agentID, agentKey, "", args, lg); err != nil {
 				return nil, err
 			}
 			return &trpcagent.BeforeAgentResult{Context: ctx}, nil
 		})
 	case "after_agent":
 		return callbacks.NewAfterAgentHook(priority, func(ctx context.Context, args *trpcagent.AfterAgentArgs) (*trpcagent.AfterAgentResult, error) {
-			if err := executeHookAction(ctx, stats, notifier, rh, "after_agent", agentID, agentKey, "", args); err != nil {
+			if err := executeHookAction(ctx, stats, notifier, rh, "after_agent", agentID, agentKey, "", args, lg); err != nil {
 				return nil, err
 			}
 			return &trpcagent.AfterAgentResult{Context: ctx}, nil
 		})
 	case "before_model":
 		return callbacks.NewBeforeModelHook(priority, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
-			if err := executeHookAction(ctx, stats, notifier, rh, "before_model", agentID, agentKey, "", args); err != nil {
+			if err := executeHookAction(ctx, stats, notifier, rh, "before_model", agentID, agentKey, "", args, lg); err != nil {
 				return nil, err
 			}
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		})
 	case "after_model":
 		return callbacks.NewAfterModelHook(priority, func(ctx context.Context, args *trpcmodel.AfterModelArgs) (*trpcmodel.AfterModelResult, error) {
-			if err := executeHookAction(ctx, stats, notifier, rh, "after_model", agentID, agentKey, "", args); err != nil {
+			if err := executeHookAction(ctx, stats, notifier, rh, "after_model", agentID, agentKey, "", args, lg); err != nil {
 				return nil, err
 			}
 			return &trpcmodel.AfterModelResult{Context: ctx}, nil
@@ -76,7 +77,7 @@ func hookToCallback(rh biz.ResolvedHook, agentID, agentKey string, stats StatsRe
 			if !biz.HookAppliesToTool(rh.Rule.Condition, toolName) {
 				return &trpctool.BeforeToolResult{Context: ctx}, nil
 			}
-			if err := executeHookAction(ctx, stats, notifier, rh, "before_tool", agentID, agentKey, toolName, args); err != nil {
+			if err := executeHookAction(ctx, stats, notifier, rh, "before_tool", agentID, agentKey, toolName, args, lg); err != nil {
 				return nil, err
 			}
 			mod := ApplyToolModifyPatch(args, rh.Rule.Action.ModifyPatch)
@@ -94,6 +95,7 @@ func hookToCallback(rh biz.ResolvedHook, agentID, agentKey string, stats StatsRe
 			agentKey: agentKey,
 			stats:    stats,
 			notifier: notifier,
+			lg:       lg,
 		}
 	default:
 		return nil
@@ -107,6 +109,7 @@ type hookAfterToolCallback struct {
 	agentKey string
 	stats    StatsRecorder
 	notifier *HookNotifier
+	lg       loggateway.Logger
 }
 
 func (h *hookAfterToolCallback) Point() callbacks.CallbackPoint { return callbacks.PointAfterTool }
@@ -120,11 +123,11 @@ func (h *hookAfterToolCallback) HandleAfterTool(ctx context.Context, args *trpct
 	if !biz.HookAppliesToTool(h.rh.Rule.Condition, toolName) {
 		return &trpctool.AfterToolResult{}, nil
 	}
-	err := executeHookAction(ctx, h.stats, h.notifier, h.rh, "after_tool", h.agentID, h.agentKey, toolName, args)
+	err := executeHookAction(ctx, h.stats, h.notifier, h.rh, "after_tool", h.agentID, h.agentKey, toolName, args, h.lg)
 	return &trpctool.AfterToolResult{}, err
 }
 
-func executeHookAction(ctx context.Context, stats StatsRecorder, notifier *HookNotifier, rh biz.ResolvedHook, point, agentID, agentKey, toolName string, hookCtx any) error {
+func executeHookAction(ctx context.Context, stats StatsRecorder, notifier *HookNotifier, rh biz.ResolvedHook, point, agentID, agentKey, toolName string, hookCtx any, lg loggateway.Logger) error {
 	start := time.Now()
 	action := strings.ToLower(strings.TrimSpace(rh.Rule.Action.Type))
 	if action == "" {
@@ -177,7 +180,7 @@ func executeHookAction(ctx context.Context, stats StatsRecorder, notifier *HookN
 		}
 		n := notifier
 		if n == nil {
-			n = NewHookNotifier(nil)
+			n = NewHookNotifier(nil, lg)
 		}
 		if enqueueErr := n.EnqueueNotify(ctx, rh, payload); enqueueErr != nil {
 			err = enqueueErr

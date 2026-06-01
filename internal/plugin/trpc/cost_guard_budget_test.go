@@ -33,7 +33,7 @@ func TestResolveCostGuardTarget_PromptBudget(t *testing.T) {
 }
 
 func TestResolveCostGuardTarget_DailyBudget(t *testing.T) {
-	tracker := NewCostGuardBudgetTracker()
+	tracker := NewCostGuardBudgetTracker(loggateway.NewNoop())
 	cfg := CostGuardConfig{
 		DailyTokenBudget: 1000,
 		FallbackModel:    "cheap-model",
@@ -78,21 +78,21 @@ func TestShouldPersistPluginRun(t *testing.T) {
 }
 
 func TestCostGuard_BeforeModel_FallbackBypassesDailyBudget(t *testing.T) {
-	tracker := NewCostGuardBudgetTracker()
+	tracker := NewCostGuardBudgetTracker(loggateway.NewNoop())
 	cfg := CostGuardConfig{
 		DailyTokenBudget: 100,
 		FallbackModel:    "cheap-model",
 	}
 	tracker.TryConsume(cfg.DailyTokenBudget, 100)
 
-	registry := NewCostGuardBudgetRegistry()
+	registry := NewCostGuardBudgetRegistry(loggateway.NewNoop())
 	registry.byScope["global"] = tracker
 
 	c := &CostGuardPlugin{
 		base: basePlugin{
 			name:   "cost_guard",
 			stats:  &noopStatsRecorder{},
-			logger: NewPluginSafeLogger("cost_guard", nil, loggateway.Global()),
+			logger: NewPluginSafeLogger("cost_guard", nil, loggateway.NewNoop()),
 		},
 		cfg: cfg,
 		rt: &Runtime{
@@ -118,21 +118,21 @@ func TestCostGuard_BeforeModel_FallbackBypassesDailyBudget(t *testing.T) {
 }
 
 func TestCostGuard_BeforeModel_BlocksNonFallbackWhenOverBudget(t *testing.T) {
-	tracker := NewCostGuardBudgetTracker()
+	tracker := NewCostGuardBudgetTracker(loggateway.NewNoop())
 	cfg := CostGuardConfig{
 		DailyTokenBudget: 100,
 		FallbackModel:    "cheap-model",
 	}
 	tracker.TryConsume(cfg.DailyTokenBudget, 100)
 
-	registry := NewCostGuardBudgetRegistry()
+	registry := NewCostGuardBudgetRegistry(loggateway.NewNoop())
 	registry.byScope["global"] = tracker
 
 	c := &CostGuardPlugin{
 		base: basePlugin{
 			name:   "cost_guard",
 			stats:  &noopStatsRecorder{},
-			logger: NewPluginSafeLogger("cost_guard", nil, loggateway.Global()),
+			logger: NewPluginSafeLogger("cost_guard", nil, loggateway.NewNoop()),
 		},
 		cfg: cfg,
 		rt: &Runtime{

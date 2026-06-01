@@ -147,6 +147,10 @@ func fromProtoTools(pb *v1.AgentRuntimeSettings) biz.ToolsCfg {
 		RetryJitter:            pb.GetToolsRetryJitter(),
 		ParallelEnabled:        pb.GetToolsParallelEnabled(),
 		StreamingEnabled:       pb.GetToolsStreamingEnabled(),
+		CircuitBreakerEnabled:         pb.GetToolsCircuitBreakerEnabled(),
+		CircuitBreakerOverridesJSON:   pb.GetToolsCircuitBreakerOverridesJson(),
+		DeferredJSON:                  pb.GetToolsDeferredJson(),
+		CommandSafetyEnabled:          pb.GetToolsCommandSafetyEnabled(),
 	}
 }
 
@@ -187,12 +191,18 @@ func fromProtoEvolution(pb *v1.AgentRuntimeSettings) biz.EvolutionCfg {
 
 func fromProtoContext(pb *v1.AgentRuntimeSettings) biz.ContextCfg {
 	return biz.ContextCfg{
-		CompactionEnabled:     pb.GetContextCompactionEnabled(),
-		SessionSummaryEnabled: pb.GetSessionSummaryEnabled(),
-		OutputSchemaJSON:      pb.GetOutputSchemaJson(),
-		ModelSelector:         pb.GetModelSelector(),
-		PlannerKind:           pb.GetPlannerKind(),
-		PlannerConfigJSON:     pb.GetPlannerConfigJson(),
+		CompactionEnabled:          pb.GetContextCompactionEnabled(),
+		MicroCompactEnabled:        pb.GetMicroCompactEnabled(),
+		MemoryCompactEnabled:       pb.GetMemoryCompactEnabled(),
+		ToolResultGateEnabled:      pb.GetToolResultGateEnabled(),
+		CompressLLMCacheEnabled:    pb.GetCompressLlmCacheEnabled(),
+		CompressLLMCacheMaxEntries: int(pb.GetCompressLlmCacheMaxEntries()),
+		CompressLLMCacheTTLSec:     int(pb.GetCompressLlmCacheTtlSec()),
+		SessionSummaryEnabled:      pb.GetSessionSummaryEnabled(),
+		OutputSchemaJSON:           pb.GetOutputSchemaJson(),
+		ModelSelector:              pb.GetModelSelector(),
+		PlannerKind:                pb.GetPlannerKind(),
+		PlannerConfigJSON:          pb.GetPlannerConfigJson(),
 	}
 }
 
@@ -299,6 +309,12 @@ func toProtoRuntime(b *biz.AgentRuntimeSettings) *v1.AgentRuntimeSettings {
 		VariablesJson:                     id.VariablesJSON,
 		ModelInstructionsJson:             id.ModelInstructionsJSON,
 		ContextCompactionEnabled:          ctx.CompactionEnabled,
+		MicroCompactEnabled:               ctx.MicroCompactEnabled,
+		MemoryCompactEnabled:              ctx.MemoryCompactEnabled,
+		ToolResultGateEnabled:             ctx.ToolResultGateEnabled,
+		CompressLlmCacheEnabled:           ctx.CompressLLMCacheEnabled,
+		CompressLlmCacheMaxEntries:        int32(ctx.CompressLLMCacheMaxEntries),
+		CompressLlmCacheTtlSec:            int32(ctx.CompressLLMCacheTTLSec),
 		SessionSummaryEnabled:             ctx.SessionSummaryEnabled,
 		SkillLoadMode:                     skills.LoadMode,
 		CodeExecutorType:                  b.CodeExecutorType,
@@ -312,6 +328,10 @@ func toProtoRuntime(b *biz.AgentRuntimeSettings) *v1.AgentRuntimeSettings {
 		ToolsRetryJitter:                  tools.RetryJitter,
 		ToolsParallelEnabled:              tools.ParallelEnabled,
 		ToolsStreamingEnabled:             tools.StreamingEnabled,
+		ToolsCircuitBreakerEnabled:         tools.CircuitBreakerEnabled,
+		ToolsCircuitBreakerOverridesJson:    tools.CircuitBreakerOverridesJSON,
+		ToolsDeferredJson:                   tools.DeferredJSON,
+		ToolsCommandSafetyEnabled:           tools.CommandSafetyEnabled,
 		PlannerKind:                       ctx.PlannerKind,
 		PlannerConfigJson:                 ctx.PlannerConfigJSON,
 		RalphLoopMaxIterations:            int32(b.RalphLoopMaxIterations),

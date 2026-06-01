@@ -3,6 +3,8 @@ package modelregistry
 import (
 	"os"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestAppendSyncLog_NilStore(t *testing.T) {
@@ -13,7 +15,7 @@ func TestAppendSyncLog_NilStore(t *testing.T) {
 
 func TestAppendSyncLog_AppendsEntry(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	entry := SyncLogEntry{
 		ID:        "log-1",
 		StartedAt: "2026-01-01T00:00:00Z",
@@ -41,7 +43,7 @@ func TestAppendSyncLog_AppendsEntry(t *testing.T) {
 
 func TestAppendSyncLog_MultipleEntries(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	for i := 0; i < 5; i++ {
 		entry := SyncLogEntry{
 			ID:     "log-" + string(rune('A'+i)),
@@ -75,7 +77,7 @@ func TestReadSyncLogs_NilStore(t *testing.T) {
 
 func TestReadSyncLogs_NoFile(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	logs, err := ReadSyncLogs(st, 10)
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +89,7 @@ func TestReadSyncLogs_NoFile(t *testing.T) {
 
 func TestReadSyncLogs_DefaultLimit(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	for i := 0; i < 60; i++ {
 		if err := AppendSyncLog(st, SyncLogEntry{ID: "log", Status: "ok"}); err != nil {
 			t.Fatal(err)
@@ -104,7 +106,7 @@ func TestReadSyncLogs_DefaultLimit(t *testing.T) {
 
 func TestReadSyncLogs_RespectsLimit(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	for i := 0; i < 10; i++ {
 		if err := AppendSyncLog(st, SyncLogEntry{ID: "log", Status: "ok"}); err != nil {
 			t.Fatal(err)
@@ -121,7 +123,7 @@ func TestReadSyncLogs_RespectsLimit(t *testing.T) {
 
 func TestReadSyncLogs_SkipsBadJSON(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	if err := st.ensureDir(); err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +158,7 @@ func TestUpdateSyncLogEntry_NilStore(t *testing.T) {
 
 func TestUpdateSyncLogEntry_EmptyID(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	if err := UpdateSyncLogEntry(st, SyncLogEntry{ID: ""}); err != nil {
 		t.Fatalf("expected nil, got %v", err)
 	}
@@ -167,7 +169,7 @@ func TestUpdateSyncLogEntry_EmptyID(t *testing.T) {
 
 func TestUpdateSyncLogEntry_UpdatesExisting(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	orig := SyncLogEntry{
 		ID:        "log-1",
 		StartedAt: "2026-01-01T00:00:00Z",
@@ -204,7 +206,7 @@ func TestUpdateSyncLogEntry_UpdatesExisting(t *testing.T) {
 
 func TestUpdateSyncLogEntry_NoFileFallback(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	entry := SyncLogEntry{
 		ID:     "log-fallback",
 		Status: "success",
@@ -226,7 +228,7 @@ func TestUpdateSyncLogEntry_NoFileFallback(t *testing.T) {
 
 func TestUpdateSyncLogEntry_PreservesOtherEntries(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	entry1 := SyncLogEntry{ID: "log-A", Status: "success", SourceURL: "https://a.com"}
 	entry2 := SyncLogEntry{ID: "log-B", Status: "running", SourceURL: "https://b.com"}
 	entry3 := SyncLogEntry{ID: "log-C", Status: "success", SourceURL: "https://c.com"}

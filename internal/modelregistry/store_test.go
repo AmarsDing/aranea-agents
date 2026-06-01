@@ -4,11 +4,13 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestStorePolicyRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	p := DefaultPolicy()
 	p.SyncIntervalHours = 12
 	if err := st.SavePolicy(p); err != nil {
@@ -25,7 +27,7 @@ func TestStorePolicyRoundTrip(t *testing.T) {
 
 func TestStoreDirectoryRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	cat := Directory{
 		"anthropic": {
 			ID:   "anthropic",

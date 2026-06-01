@@ -7,6 +7,8 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 const (
@@ -18,10 +20,11 @@ const (
 // Runtime wraps trpc session.Service with Aranea session-key conventions.
 type Runtime struct {
 	svc trpcsession.Service
+	lg  loggateway.Logger
 }
 
-func NewRuntime(svc trpcsession.Service) *Runtime {
-	return &Runtime{svc: svc}
+func NewRuntime(svc trpcsession.Service, lg loggateway.Logger) *Runtime {
+	return &Runtime{svc: svc, lg: lg}
 }
 
 func (r *Runtime) Service() trpcsession.Service {
@@ -60,9 +63,11 @@ func (r *Runtime) SyncRunnerSnapshot(ctx context.Context, userID, sessionID, sna
 	}
 	k := Key(userID, sessionID)
 	if err := k.CheckSessionKey(); err != nil {
+		r.lg.Warn("session sync key invalid", loggateway.StepID("session.sync_snapshot"), loggateway.SessionID(sessionID), loggateway.Err(err))
 		return kerrors.InternalServer("SESSION", "session sync key: "+err.Error())
 	}
 	if _, err := r.svc.GetSession(ctx, k); err != nil {
+		r.lg.Warn("session sync get failed", loggateway.StepID("session.sync_snapshot"), loggateway.SessionID(sessionID), loggateway.Err(err))
 		return kerrors.InternalServer("SESSION", "session sync get: "+err.Error())
 	}
 	state := trpcsession.StateMap{}
@@ -76,6 +81,7 @@ func (r *Runtime) SyncRunnerSnapshot(ctx context.Context, userID, sessionID, sna
 		return nil
 	}
 	if err := r.svc.UpdateSessionState(ctx, k, state); err != nil {
+		r.lg.Warn("session sync update failed", loggateway.StepID("session.sync_snapshot"), loggateway.SessionID(sessionID), loggateway.Err(err))
 		return kerrors.InternalServer("SESSION", "session sync update: "+err.Error())
 	}
 	return nil
@@ -108,9 +114,11 @@ func (r *Runtime) SyncStateDelta(ctx context.Context, userID, sessionID, operati
 	}
 	k := Key(userID, sessionID)
 	if err := k.CheckSessionKey(); err != nil {
+		r.lg.Warn("session state sync key invalid", loggateway.StepID("session.sync_state"), loggateway.SessionID(sessionID), loggateway.Err(err))
 		return kerrors.InternalServer("SESSION", "session state sync key: "+err.Error())
 	}
 	if _, err := r.svc.GetSession(ctx, k); err != nil {
+		r.lg.Warn("session state sync get failed", loggateway.StepID("session.sync_state"), loggateway.SessionID(sessionID), loggateway.Err(err))
 		return kerrors.InternalServer("SESSION", "session state sync get: "+err.Error())
 	}
 	state := trpcsession.StateMap{}
@@ -122,6 +130,7 @@ func (r *Runtime) SyncStateDelta(ctx context.Context, userID, sessionID, operati
 		state[key] = []byte(valueJSON)
 	}
 	if err := r.svc.UpdateSessionState(ctx, k, state); err != nil {
+		r.lg.Warn("session state sync update failed", loggateway.StepID("session.sync_state"), loggateway.SessionID(sessionID), loggateway.Err(err))
 		return kerrors.InternalServer("SESSION", "session state sync update: "+err.Error())
 	}
 	return nil

@@ -212,6 +212,10 @@ func fromEntTools(e *ent.AgentRuntimeSetting) biz.ToolsCfg {
 		RetryJitter:            e.ToolsRetryJitter,
 		ParallelEnabled:        e.ToolsParallelEnabled,
 		StreamingEnabled:       e.ToolsStreamingEnabled,
+		CircuitBreakerEnabled:         e.ToolsCircuitBreakerEnabled,
+		CircuitBreakerOverridesJSON:   e.ToolsCircuitBreakerOverridesJSON,
+		DeferredJSON:                  e.ToolsDeferredJSON,
+		CommandSafetyEnabled:          e.ToolsCommandSafetyEnabled,
 	}
 }
 
@@ -253,6 +257,12 @@ func fromEntEvolution(e *ent.AgentRuntimeSetting) biz.EvolutionCfg {
 func fromEntContext(e *ent.AgentRuntimeSetting) biz.ContextCfg {
 	return biz.ContextCfg{
 		CompactionEnabled:     e.ContextCompactionEnabled,
+		MicroCompactEnabled:   e.MicroCompactEnabled,
+		MemoryCompactEnabled:  e.MemoryCompactEnabled,
+		ToolResultGateEnabled: e.ToolResultGateEnabled,
+		CompressLLMCacheEnabled:    e.CompressLlmCacheEnabled,
+		CompressLLMCacheMaxEntries: e.CompressLlmCacheMaxEntries,
+		CompressLLMCacheTTLSec:     e.CompressLlmCacheTTLSec,
 		SessionSummaryEnabled: e.SessionSummaryEnabled,
 		OutputSchemaJSON:      e.OutputSchemaJSON,
 		ModelSelector:         e.ModelSelector,
@@ -368,6 +378,12 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetVariablesJSON(normalizeJSONObj(v.VariablesJSON)).
 		SetModelInstructionsJSON(normalizeJSONObj(v.ModelInstructionsJSON)).
 		SetContextCompactionEnabled(v.ContextCompactionEnabled).
+		SetMicroCompactEnabled(v.MicroCompactEnabled).
+		SetMemoryCompactEnabled(v.MemoryCompactEnabled).
+		SetToolResultGateEnabled(v.ToolResultGateEnabled).
+		SetCompressLlmCacheEnabled(v.CompressLLMCacheEnabled).
+		SetCompressLlmCacheMaxEntries(v.CompressLLMCacheMaxEntries).
+		SetCompressLlmCacheTTLSec(v.CompressLLMCacheTTLSec).
 		SetSessionSummaryEnabled(v.SessionSummaryEnabled).
 		SetSkillLoadMode(v.SkillLoadMode).
 		SetCodeExecutorType(v.CodeExecutorType).
@@ -390,6 +406,10 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetToolsRetryJitter(v.ToolsRetryJitter).
 		SetToolsParallelEnabled(v.ToolsParallelEnabled).
 		SetToolsStreamingEnabled(v.ToolsStreamingEnabled).
+		SetToolsCircuitBreakerEnabled(v.ToolsCircuitBreakerEnabled).
+		SetToolsCircuitBreakerOverridesJSON(v.ToolsCircuitBreakerOverridesJSON).
+		SetToolsDeferredJSON(v.ToolsDeferredJSON).
+		SetToolsCommandSafetyEnabled(v.ToolsCommandSafetyEnabled).
 		SetCreatedAt(v.CreatedAt).
 		SetUpdatedAt(v.UpdatedAt)
 }

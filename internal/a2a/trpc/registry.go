@@ -8,6 +8,7 @@ import (
 
 	a2apkg "aranea-agents/internal/a2a"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 const PublicPathPrefix = "/v1/a2a/public/"
@@ -30,15 +31,17 @@ type EndpointRegistry struct {
 	builder   EndpointBuilder
 	a2aUC     *biz.A2AUsecase
 	baseStore *a2apkg.PublicBaseURLStore
+	lg        loggateway.Logger
 }
 
 // NewEndpointRegistry constructs a registry backed by a hot-reloadable public base URL store.
-func NewEndpointRegistry(builder EndpointBuilder, a2aUC *biz.A2AUsecase, baseStore *a2apkg.PublicBaseURLStore) *EndpointRegistry {
+func NewEndpointRegistry(builder EndpointBuilder, a2aUC *biz.A2AUsecase, baseStore *a2apkg.PublicBaseURLStore, lg loggateway.Logger) *EndpointRegistry {
 	return &EndpointRegistry{
 		cache:     make(map[string]cachedEndpoint),
 		builder:   builder,
 		a2aUC:     a2aUC,
 		baseStore: baseStore,
+		lg:        lg,
 	}
 }
 
@@ -94,11 +97,13 @@ func (r *EndpointRegistry) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	card, err := r.a2aUC.GetAgentCard(req.Context(), agentID)
 	if err != nil || !card.Enabled {
+		r.lg.Warn("A2A endpoint agent not found or disabled", loggateway.StepID("a2a.endpoint.agent_disabled"), loggateway.Str("agent_id", agentID))
 		http.NotFound(w, req)
 		return
 	}
 	handler, err := r.handlerFor(req.Context(), agentID)
 	if err != nil {
+		r.lg.Error("A2A endpoint handler build failed", loggateway.StepID("a2a.endpoint.build_fail"), loggateway.Str("agent_id", agentID), loggateway.Err(err))
 		http.Error(w, "A2A endpoint unavailable", http.StatusServiceUnavailable)
 		return
 	}

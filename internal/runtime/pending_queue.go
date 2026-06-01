@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -35,6 +36,7 @@ type PendingMessageQueue struct {
 	dir      string
 	stopCh   chan struct{}
 	snapshot bool
+	lg       loggateway.Logger
 }
 
 func NewPendingMessageQueue() *PendingMessageQueue {
@@ -42,11 +44,19 @@ func NewPendingMessageQueue() *PendingMessageQueue {
 }
 
 func NewPendingMessageQueueWithDir(dir string) *PendingMessageQueue {
+	return NewPendingMessageQueueWithDirAndLogger(dir, nil)
+}
+
+func NewPendingMessageQueueWithDirAndLogger(dir string, lg loggateway.Logger) *PendingMessageQueue {
+	if lg == nil {
+		lg = loggateway.Global()
+	}
 	q := &PendingMessageQueue{
 		queues:   make(map[string][]PendingMessage),
 		dir:      dir,
 		stopCh:   make(chan struct{}),
 		snapshot: dir != "",
+		lg:       lg,
 	}
 	if q.snapshot {
 		q.restore()
@@ -210,10 +220,12 @@ func (q *PendingMessageQueue) saveSnapshot() {
 
 	data, err := json.Marshal(snapshot)
 	if err != nil {
+		q.lg.Warn("pending queue snapshot marshal failed", loggateway.StepID("runtime.pending_queue.snapshot"), loggateway.Err(err))
 		return
 	}
 	tmp := filepath.Join(q.dir, pendingSnapshotFile+".tmp")
 	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		q.lg.Warn("pending queue snapshot write failed", loggateway.StepID("runtime.pending_queue.snapshot"), loggateway.Err(err))
 		return
 	}
 	_ = os.Rename(tmp, filepath.Join(q.dir, pendingSnapshotFile))
@@ -226,10 +238,14 @@ func (q *PendingMessageQueue) restore() {
 	path := filepath.Join(q.dir, pendingSnapshotFile)
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			q.lg.Warn("pending queue snapshot read failed", loggateway.StepID("runtime.pending_queue.snapshot"), loggateway.Err(err))
+		}
 		return
 	}
 	var snapshot map[string][]PendingMessage
 	if err := json.Unmarshal(data, &snapshot); err != nil {
+		q.lg.Warn("pending queue snapshot unmarshal failed", loggateway.StepID("runtime.pending_queue.snapshot"), loggateway.Err(err))
 		return
 	}
 	cutoff := time.Now().Add(-2 * time.Hour)

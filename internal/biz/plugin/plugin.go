@@ -143,7 +143,6 @@ type Usecase struct {
 	agents ScopeAgentLookup
 }
 
-// NewUsecase constructs a PluginUsecase.
 func NewUsecase(repo Repo, runs RunRepo, agents ScopeAgentLookup) *Usecase {
 	return &Usecase{repo: repo, runs: runs, agents: agents}
 }

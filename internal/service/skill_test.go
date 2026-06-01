@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/service"
 	"aranea-agents/pkg/auth"
+	"aranea-agents/pkg/loggateway"
 )
 
 // memSkillRepo is a minimal in-memory SkillRepo.
@@ -154,7 +155,7 @@ func (m *memSkillRepo) FilesystemHealthStats(_ context.Context) (biz.SkillFilesy
 func newSkillService() *service.SkillService {
 	repo := newMemSkillRepo()
 	repo.items["sk1"] = biz.Skill{ID: "sk1", Name: "Test Skill", Enabled: true, Status: "active"}
-	return service.NewSkillService(biz.NewSkillUsecase(repo, nil), nil, nil, nil)
+	return service.NewSkillService(biz.NewSkillUsecase(repo, nil), nil, nil, nil, loggateway.NewNoop())
 }
 
 func adminCtx() context.Context {

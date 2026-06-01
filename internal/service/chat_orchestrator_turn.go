@@ -154,6 +154,11 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
+	if ag.AgentKey == biz.SpiritAgentKey && o.spiritAssembler != nil {
+		flow.LogStart("chat.spirit.route", "精灵路由：构建精灵 Team", event.P("agent_key", ag.AgentKey))
+		return o.executeSpiritTeamTurn(ctx, sess, input, ag, flow, unlock)
+	}
+
 	dialogMode := strings.TrimSpace(input.Options.DialogMode)
 	prov := strings.TrimSpace(input.Options.Provider)
 	mod := strings.TrimSpace(input.Options.Model)
@@ -334,7 +339,7 @@ func (o *ChatOrchestrator) injectA2AContext(ctx context.Context, callerAgentID s
 	if o == nil || o.a2aUC == nil {
 		return ctx
 	}
-	inv := a2apkg.NewInvoker(o, o.a2aUC, o.td.Catalog.Agents)
+	inv := a2apkg.NewInvoker(o, o.a2aUC, o.td.Catalog.Agents, o.lg)
 	return a2apkg.InjectRunContext(ctx, o.a2aUC, callerAgentID, inv)
 }
 
@@ -581,8 +586,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		IndustryUC:            o.rt.IndustryUC,
 		DepartmentUC:          o.rt.DepartmentUC,
 		PositionUC:            o.rt.PositionUC,
+		ToolResultGate:        o.rt.ToolResultGate,
 	}
-	root, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps)
+	root, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps, o.lg)
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 		emitter.LogError("chat.agent.build", "构建Agent实例失败", event.P("agent_id", ag.ID), event.P("error", err.Error()))
@@ -839,7 +845,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
 	streamOpts := NewChatStreamConsumeOptions(o.td.Catalog.ToolUC, o.td.Catalog.Agents, o.td.Sessions)
-	result, streamErr := chatagent.ConsumeWithFirstByteGuard(runCtx, firstByteTimeout, events, o.td.Pipeline.Bus, projectMeta, streamOpts)
+	result, streamErr := chatagent.ConsumeWithFirstByteGuard(runCtx, firstByteTimeout, events, o.td.Pipeline.Bus, projectMeta, streamOpts, o.lg)
 	resultPromptTok = result.PromptTok
 	resultCompletionTok = result.CompletionTok
 	if streamErr != nil {
@@ -1184,7 +1190,7 @@ func (o *ChatOrchestrator) recordTurnUsage(
 
 // patchSessionContextUsage updates session context usage after a turn.
 func (o *ChatOrchestrator) patchSessionContextUsage(ctx context.Context, sessionID string, sess biz.Session, ag biz.Agent, prov, mod string, promptTok, completionTok int) {
-	sessctx.PatchContextFromLLMUsage(ctx, o.td.Sessions, o.td.Compress, o.llmContextCatalog(), sessionID, sess, ag, prov, mod, promptTok, completionTok)
+	sessctx.PatchContextFromLLMUsage(ctx, o.td.Sessions, o.td.Compress, o.llmContextCatalog(), sessionID, sess, ag, prov, mod, promptTok, completionTok, o.lg)
 }
 
 // notifyNativeTurnHooks runs post-turn side effects.

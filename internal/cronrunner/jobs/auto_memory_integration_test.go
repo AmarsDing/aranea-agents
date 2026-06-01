@@ -139,7 +139,7 @@ func TestAutoMemoryWorker_ExtractChain(t *testing.T) {
 	}
 	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil, nil)
 	agentsUC := newMemoryEnabledAgentsUC(agentID)
-	q := memtrpc.NewMemoryJobQueue(4, 0)
+	q := memtrpc.NewMemoryJobQueue(4, 0, loggateway.NewNoop())
 	w, err := NewAutoMemoryWorker(0, sessionsUC, agentsUC, writer, nil, nil, nil, biz.NewHeuristicConsolidator(), q, loggateway.Global())
 	if err != nil {
 		t.Fatalf("NewAutoMemoryWorker: %v", err)
@@ -182,7 +182,7 @@ func TestAutoMemoryWorker_DrainUsesInjectedQueue(t *testing.T) {
 	}
 	sessionsUC := biz.NewSessionUsecase(repo, nil, nil, nil, nil)
 	agentsUC := newMemoryEnabledAgentsUC("agent-q-1")
-	q := memtrpc.NewMemoryJobQueue(4, 0)
+	q := memtrpc.NewMemoryJobQueue(4, 0, loggateway.NewNoop())
 	w, err := NewAutoMemoryWorker(0, sessionsUC, agentsUC, writer, nil, nil, nil, biz.NewHeuristicConsolidator(), q, loggateway.Global())
 	if err != nil {
 		t.Fatalf("NewAutoMemoryWorker: %v", err)

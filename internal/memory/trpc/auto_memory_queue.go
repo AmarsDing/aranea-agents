@@ -67,10 +67,10 @@ const (
 // It replaces the previous single-channel implementation while keeping the
 // AutoMemoryQueue interface unchanged (Chan() returns a merged output channel).
 type MemoryJobQueue struct {
-	high   chan AutoMemoryJobRequest // cap 64 — feedback / preference
-	normal chan AutoMemoryJobRequest // cap 256 — runner turn completion
-	low    chan AutoMemoryJobRequest // cap 128 — backfill / reconcile
-	out    chan AutoMemoryJobRequest // merged output (cap=normalCap to avoid double-buffering)
+	high   chan AutoMemoryJobRequest
+	normal chan AutoMemoryJobRequest
+	low    chan AutoMemoryJobRequest
+	out    chan AutoMemoryJobRequest
 
 	recent   sync.Map
 	debounce time.Duration
@@ -78,22 +78,21 @@ type MemoryJobQueue struct {
 	dropped   atomic.Int64
 	debounced atomic.Int64
 
-	// tenant in-flight tracking (C-02): incremented on successful enqueue,
-	// decremented via AckDone() called by the Worker after processing each job.
 	mu             sync.Mutex
 	tenantInFlight map[string]int64
 
-	deadLetter MemoryDeadLetterSink // optional; nil disables dead-letter persistence
+	deadLetter MemoryDeadLetterSink
 
-	// H-03: shutdown signal for drain + cleanup goroutines.
 	done chan struct{}
+
+	lg loggateway.Logger
 }
 
 var _ AutoMemoryQueue = (*MemoryJobQueue)(nil)
 
 // NewMemoryJobQueue creates a priority-aware MemoryJobQueue.
 // size is ignored (kept for API compatibility); use the named-priority capacities instead.
-func NewMemoryJobQueue(size int, debounce time.Duration) *MemoryJobQueue {
+func NewMemoryJobQueue(size int, debounce time.Duration, lg loggateway.Logger) *MemoryJobQueue {
 	if debounce <= 0 {
 		debounce = 30 * time.Second
 	}
@@ -101,10 +100,11 @@ func NewMemoryJobQueue(size int, debounce time.Duration) *MemoryJobQueue {
 		high:           make(chan AutoMemoryJobRequest, memQueueHighCap),
 		normal:         make(chan AutoMemoryJobRequest, memQueueNormalCap),
 		low:            make(chan AutoMemoryJobRequest, memQueueLowCap),
-		out:            make(chan AutoMemoryJobRequest, memQueueNormalCap), // M-06: was 448, now 256
+		out:            make(chan AutoMemoryJobRequest, memQueueNormalCap),
 		debounce:       debounce,
 		tenantInFlight: make(map[string]int64),
 		done:           make(chan struct{}),
+		lg:             lg,
 	}
 	safego.Go(context.Background(), "memory.job_queue.drain", q.drain)
 	safego.Go(context.Background(), "memory.job_queue.cleanup_recent", q.cleanupRecent)
@@ -140,8 +140,8 @@ func (q *MemoryJobQueue) tenantID(r AutoMemoryJobRequest) string {
 func (q *MemoryJobQueue) writeDeadLetter(r AutoMemoryJobRequest, reason MemoryDeadLetterReason) {
 	n := q.dropped.Add(1)
 	if n == 1 || n%10 == 0 {
-		loggateway.Global().Warn("auto-memory job dropped → dead-letter",
-			loggateway.StepID("system.auto_memory.extract_fail"),
+		q.lg.Warn("auto-memory job dropped → dead-letter",
+			loggateway.StepID("memory.queue.drop"),
 			loggateway.Str("reason", string(reason)),
 			loggateway.Int("total_dropped", int(n)),
 			loggateway.Str("session_id", r.SessionID),

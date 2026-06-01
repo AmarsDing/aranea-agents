@@ -85,7 +85,7 @@ func (r *Runner) probeAll(ctx context.Context) {
 
 	servers, err := r.deps.MCP.ListMCPServers(ctx)
 	if err != nil {
-		r.lg.Error("MCP 健康检查列表失败", loggateway.StepID("system.mcp.health_list_fail"), loggateway.Err(err))
+		r.lg.Error("MCP 健康检查列表失败", loggateway.StepID("mcp.health_list_fail"), loggateway.Err(err))
 		return
 	}
 	sem := make(chan struct{}, maxConcurrentProbes)
@@ -112,7 +112,7 @@ func (r *Runner) probeOne(ctx context.Context, srv biz.MCPServer) {
 	start := time.Now()
 	result, err := r.deps.UC.TestMCPServer(ctx, srv.ID)
 	if err != nil {
-		r.lg.Error("MCP 健康探测失败", loggateway.StepID("system.mcp.health_probe_fail"), loggateway.Str("server_key", srv.Key), loggateway.Err(err))
+		r.lg.Error("MCP 健康探测失败", loggateway.StepID("mcp.health_probe_fail"), loggateway.Str("server_key", srv.Key), loggateway.Err(err))
 		return
 	}
 	elapsed := time.Since(start)

@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/pkg/loggateway"
 )
 
 type batchCapture struct {
@@ -34,7 +35,7 @@ func (b *captureHandler) ProcessInbound(_ context.Context, _ biz.Channel, ev por
 }
 
 func TestTextInboundBatcher_mergesMessages(t *testing.T) {
-	batcher := NewTextInboundBatcher()
+	batcher := NewTextInboundBatcher(loggateway.NewNoop())
 	batcher.debounce = 80 * time.Millisecond
 	cap := &captureHandler{}
 	ch := biz.Channel{ID: "ch-1"}
@@ -54,7 +55,7 @@ func TestTextInboundBatcher_mergesMessages(t *testing.T) {
 }
 
 func TestTextInboundBatcher_mergedIdempotencyKey(t *testing.T) {
-	batcher := NewTextInboundBatcher()
+	batcher := NewTextInboundBatcher(loggateway.NewNoop())
 	batcher.debounce = 80 * time.Millisecond
 	cap := &captureHandler{}
 	ch := biz.Channel{ID: "ch-1"}

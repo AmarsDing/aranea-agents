@@ -11,13 +11,16 @@ import (
 	"aranea-agents/internal/team"
 	"context"
 	"strings"
+	"time"
+
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/wire"
 )
 
 // ProviderSet is service providers.
 var ProviderSet = wire.NewSet(
-	wire.Bind(new(compress.Compressor), new(*compress.LLMService)),
+	ProvideCompressor,
 	wire.Bind(new(biz.NativeTurnGateway), new(*ChatService)),
 	wire.Bind(new(biz.TurnExecutorGateway), new(*ChatService)),
 	wire.Bind(new(biz.TurnRunControlGateway), new(*ChatService)),
@@ -99,6 +102,7 @@ var ProviderSet = wire.NewSet(
 	NewAIRefineService,
 	NewIndustryService,
 	WireSessionStatusPublisher,
+	NewSpiritTeamAssembler,
 )
 
 func ProvideSkillResolveRootFn(sys biz.SystemSettingRepo) func(ctx context.Context) string {
@@ -109,4 +113,9 @@ func ProvideSkillResolveRootFn(sys biz.SystemSettingRepo) func(ctx context.Conte
 		}
 		return storage.ResolveRoot()
 	}
+}
+
+func ProvideCompressor(svc *compress.LLMService, lg loggateway.Logger) compress.Compressor {
+	cache := compress.NewCompressCache(256, 10*time.Minute, lg)
+	return compress.NewCachingCompressor(svc, cache, lg)
 }

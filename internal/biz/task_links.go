@@ -22,6 +22,7 @@ type TaskLinkRepo interface {
 	DeleteLink(ctx context.Context, parentTaskID, childTaskID string) error
 	ListParentLinks(ctx context.Context, childTaskID string) ([]*TaskLink, error)
 	ListChildLinks(ctx context.Context, parentTaskID string) ([]*TaskLink, error)
+	ListParentLinksByChildren(ctx context.Context, childTaskIDs []string) ([]*TaskLink, error)
 }
 
 func (uc *TaskUsecase) LinkTasks(ctx context.Context, parentTaskID, childTaskID string) error {

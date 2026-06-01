@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/loggateway"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
@@ -18,12 +19,12 @@ Reply with ONLY a decimal number between 0 and 1 (e.g. 0.85). No explanation.`
 
 // NewLLMJudge builds an LLM-as-Judge scorer from the provider catalog (EP-RT-08).
 // Precedence: env KRATOS_EVAL_JUDGE_* → system_settings → env KRATOS_EVAL_SIM_* → catalog mini/flash.
-func NewLLMJudge(catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip, sys EvalLLMSettingsReader) LLMJudge {
+func NewLLMJudge(catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip, sys EvalLLMSettingsReader, lg loggateway.Logger) LLMJudge {
 	if catalog == nil || rt == nil {
 		return nil
 	}
 	return func(ctx context.Context, input, expected, actual string) (float32, error) {
-		m, err := resolveJudgeModel(ctx, catalog, rt, sys)
+		m, err := resolveJudgeModel(ctx, catalog, rt, sys, lg)
 		if err != nil {
 			return 0, err
 		}
@@ -39,11 +40,17 @@ func NewLLMJudge(catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip, s
 		}
 		ch, err := m.GenerateContent(runCtx, req)
 		if err != nil {
+			lg.Error("llm judge call failed",
+				loggateway.StepID("evaluation.llm_judge.call_fail"),
+				loggateway.Err(err))
 			return 0, fmt.Errorf("llm judge: %w", err)
 		}
 		var sb strings.Builder
 		for resp := range ch {
 			if resp.Error != nil {
+				lg.Error("llm judge stream error",
+					loggateway.StepID("evaluation.llm_judge.stream_fail"),
+					loggateway.Str("message", resp.Error.Message))
 				return 0, fmt.Errorf("llm judge: %s", resp.Error.Message)
 			}
 			for _, c := range resp.Choices {

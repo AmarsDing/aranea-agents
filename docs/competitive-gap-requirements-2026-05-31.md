@@ -11,8 +11,8 @@
 |--------|--------|----------|
 | 🔴 P0 | 3 | 补齐 Skill 生态与浏览器工具，对标 OpenClaw 核心能力 |
 | 🟠 P1 | 5 | 增强运行时能力（Profile/Delivery/Outbound/Cron/Persona），缩小与 OpenClaw/Hermes 差距 |
-| 🟡 P2 | 6 | 进化与差异化（学习闭环/Skill 市场/Debug/Langfuse/Memory 可见性），超越竞品 |
-| **合计** | **14** | |
+| 🟡 P2 | 11 | 进化与差异化（学习闭环/Skill 市场/Debug/Langfuse/Memory 可见性 + BabyAGI 启发的自主进化能力），超越竞品 |
+| **合计** | **19** | |
 
 ---
 
@@ -324,6 +324,137 @@
 
 ---
 
+### P2-7：动态任务生成与优先级排序（BabyAGI 启发）
+
+**对标**：BabyAGI Task Creation Agent + Prioritization Agent
+
+**现状差距**：
+- Aranea 的 Graph 工作流中 `GraphTask` 是预定义 DAG 结构，任务就绪判定通过 `task_dispatch.go` 检查父任务完成状态
+- 不支持运行时动态生成新任务——Agent 执行完一个节点后无法根据结果动态插入新节点
+- 无任务优先级排序机制——DAG 执行顺序由拓扑决定，不考虑目标相关性
+
+**需求项**：
+
+| # | 需求 | 实现方式 | 涉及文件 |
+|---|------|---------|---------|
+| 1 | Graph 动态节点插入 | Agent 节点执行完后可 emit `DynamicNodeInsert` 事件，Graph Executor 接收后动态插入新节点 | `pkg/trpc-agent-go/graph/executor.go` |
+| 2 | `TaskStatus` 扩展 | 增加 `dynamic_spawn` 状态类型，标识运行时动态创建的任务 | `internal/biz/task.go` |
+| 3 | 任务优先级排序 | 在 DAG 可并行节点间引入优先级评分（基于目标相关性和记忆检索），优先执行高价值节点 | `internal/biz/task_dispatch.go` |
+| 4 | 预算感知优先级 | 结合 `SessionRun` 的 SoftBudget/HardBudget，在预算内优先执行高价值任务 | `internal/biz/session_run.go` |
+
+**验收标准**：
+- [ ] Agent 执行完 Graph 节点后可根据结果动态插入新节点
+- [ ] 动态生成的任务在 Graph 可视化中标注为 `dynamic_spawn`
+- [ ] 并行节点间按优先级评分排序执行
+- [ ] 预算不足时自动跳过低优先级任务
+
+---
+
+### P2-8：工具自构建与自进化（BabyAGI 启发）
+
+**对标**：BabyAGI `process_user_input` + `self_build`
+
+**现状差距**：
+- Aranea 的工具通过 `Registry()` 静态注册 + `Assemble()` 装配，运行时工具集固定
+- Deferred 工具支持按需发现（`tool_search`），但不能动态创建新工具
+- Skill 自创建（P2-2）聚焦于 SKILL.md 生成，未覆盖工具级动态生成
+
+**需求项**：
+
+| # | 需求 | 实现方式 | 涉及文件 |
+|---|------|---------|---------|
+| 1 | 工具缺口检测 | Agent 运行时检测"现有工具无法满足需求"的场景（LLM 返回 tool_not_found 标记） | `internal/agent/trpc_build.go` |
+| 2 | 动态工具生成 | 通过 LLM 生成新工具代码（`function.NewFunctionTool[I, O]`），注册到 `Registry` | `internal/tools/dynamic_generator.go`（新建） |
+| 3 | 工具持久化 | 动态生成的工具持久化为 Skill（SKILL.md），下次 Agent 构建时自动加载 | `internal/skill/auto_creator.go` |
+| 4 | 工具安全审查 | 动态生成的工具必须经过风险分级 + 人工审批，不可自动启用 | `internal/tools/dynamic_generator.go` |
+| 5 | 与 Skill 自创建集成 | 动态工具生成与 P2-2（Skill 自创建）共享审批流程和持久化机制 | `internal/biz/skill_evolution.go` |
+
+**验收标准**：
+- [ ] Agent 检测到工具缺口后可自动生成新工具代码
+- [ ] 生成的工具经审批后注册到 `Registry` 并可被调用
+- [ ] 动态生成的工具持久化为 Skill，下次会话可用
+- [ ] 高风险动态工具需人工审批
+
+---
+
+### P2-9：工具依赖图管理（BabyAGI 启发）
+
+**对标**：BabyAGI functionz 依赖图 + Dashboard 可视化
+
+**现状差距**：
+- Aranea 的 `ToolRegistration` 已有 `Category/Tags/RiskLevel`，但无 `Dependencies` 字段
+- 工具间依赖关系是隐式的（如 `email` 依赖 `httpfetch` 获取附件），`Assemble()` 按顺序装配但不保证依赖顺序
+- 前端无工具依赖图可视化
+
+**需求项**：
+
+| # | 需求 | 实现方式 | 涉及文件 |
+|---|------|---------|---------|
+| 1 | `ToolRegistration` 增加 Dependencies | 声明工具间依赖关系 | `internal/tools/tool.go` |
+| 2 | Assemble 拓扑排序 | `Assemble()` 时按依赖关系自动拓扑排序，确保依赖工具先加载 | `internal/tools/toolset.go` |
+| 3 | 依赖冲突检测 | 循环依赖检测 + 缺失依赖告警 | `internal/tools/toolset.go` |
+| 4 | 前端依赖图可视化 | 工具管理页增加依赖图视图（类似 BabyAGI functionz Dashboard） | `web/src/components/tools/ToolDependencyGraph.vue`（新建） |
+
+**验收标准**：
+- [ ] `ToolRegistration.Dependencies` 声明生效
+- [ ] `Assemble()` 按拓扑排序加载工具
+- [ ] 循环依赖在启动时报错
+- [ ] 前端可查看工具依赖图
+
+---
+
+### P2-10：事件驱动自动触发（BabyAGI 启发）
+
+**对标**：BabyAGI Triggers 机制
+
+**现状差距**：
+- Aranea 的 `EventBus` 主要用于 WS 推送和内部消费者
+- 工具/Agent 的变更没有自动触发链（如新工具注册后不会自动生成描述和 embedding）
+- Agent 配置变更后缓存刷新（`BuildTRPCAgentCached`）是手动的
+
+**需求项**：
+
+| # | 需求 | 实现方式 | 涉及文件 |
+|---|------|---------|---------|
+| 1 | 工具生命周期事件 | 增加 ToolRegistered/ToolUpdated/ToolRemoved 事件类型 | `internal/event/envelope.go` |
+| 2 | 新工具自动生成描述 | ToolRegistered 事件触发 LLM 自动生成工具描述和 embedding（供 `tool_search` 语义检索） | `internal/tools/triggers.go`（新建） |
+| 3 | Agent 缓存自动失效 | Agent 配置变更事件触发 `BuildTRPCAgentCached` 缓存失效 | `internal/agent/trpc_build.go` |
+| 4 | Session 状态变更触发 | Session 状态变更事件触发自动记忆提取（扩展 `RunnerCompletion` 已有触发点） | `internal/biz/session.go` |
+
+**验收标准**：
+- [ ] 新工具注册后自动生成描述和 embedding
+- [ ] Agent 配置变更后缓存自动失效
+- [ ] Session 状态变更触发记忆提取
+- [ ] 触发操作经 broker/async 异步执行（遵守红线 #8）
+
+---
+
+### P2-11：记忆驱动任务规划（BabyAGI 启发）
+
+**对标**：BabyAGI 向量记忆驱动的 Task Creation Agent
+
+**现状差距**：
+- Aranea 的 L0-L4 分层记忆系统主要用于 Agent 上下文增强
+- 记忆尚未直接参与任务规划——Planner 不基于记忆来规划下一步任务
+- Graph 工作流的任务是预定义的，不根据历史执行结果动态调整
+
+**需求项**：
+
+| # | 需求 | 实现方式 | 涉及文件 |
+|---|------|---------|---------|
+| 1 | Planner 记忆注入 | Planner 构建时注入 `memory.Service.SearchMemories` 结果，基于历史记忆规划任务 | `internal/agent/planner/build.go` |
+| 2 | Graph 记忆驱动规划 | Graph 工作流中 Agent 节点执行完后，基于记忆检索结果决定下一步执行路径（动态条件路由） | `internal/graph/executor.go` |
+| 3 | 记忆与 SessionRun 阶段联动 | `SessionRun` 阶段流转（interactive → escalating → durable → completed）结合记忆丰富度——记忆越丰富，阶段升级越智能 | `internal/biz/session_run.go` |
+| 4 | 任务结果记忆沉淀 | Graph 节点执行结果自动写入记忆（L2 语义召回），供后续任务规划检索 | `internal/biz/task.go` |
+
+**验收标准**：
+- [ ] Planner 规划时参考历史记忆
+- [ ] Graph 条件路由可基于记忆检索结果决策
+- [ ] Graph 节点执行结果自动沉淀为记忆
+- [ ] 记忆驱动的规划在 FlowLog 中可追踪
+
+---
+
 ## 五、与现有路线图的映射
 
 本清单与 `docs/需求/00-总览与路线图.md` 的五阶段路线图映射如下：
@@ -332,9 +463,9 @@
 |-----------|--------------|
 | Phase 1：补齐框架能力缺口 | ✅ 已完成（RalphLoop/Guardrail/Evaluation/多模式/FileTool/WebFetch/Artifact） |
 | Phase 2：增强自主性 | ✅ 已完成（Planner/ClaudeCode/浏览器/SubAgent/Outbound） |
-| Phase 3：进化能力 | P0-1(Skill库), P1-5(Persona), P2-1(学习闭环), P2-2(Skill自创建), P2-3(Skill市场) |
-| Phase 4：生产级增强 | P1-4(Cron), P2-4(Debug), P2-5(Langfuse), P2-6(Memory可见性) |
-| Phase 5：差异化创新 | P0-2(浏览器), P1-1(Runtime Profile), P1-2(SubAgent Delivery), P1-3(Outbound增强) |
+| Phase 3：进化能力 | P0-1(Skill库), P1-5(Persona), P2-1(学习闭环), P2-2(Skill自创建), P2-3(Skill市场), **P2-8(工具自构建)**, **P2-9(依赖图)** |
+| Phase 4：生产级增强 | P1-4(Cron), P2-4(Debug), P2-5(Langfuse), P2-6(Memory可见性), **P2-10(事件驱动触发)** |
+| Phase 5：差异化创新 | P0-2(浏览器), P1-1(Runtime Profile), P1-2(SubAgent Delivery), P1-3(Outbound增强), **P2-7(动态任务生成)**, **P2-11(记忆驱动规划)** |
 
 **新增需求**（路线图中未覆盖）：
 
@@ -345,6 +476,11 @@
 | P1-2 | SubAgent Delivery | 路线图提到 SubAgent 但未覆盖 delivery 通知 |
 | P1-3 | Outbound 增强 | 路线图提到 Outbound 但未覆盖 voice/media/glob |
 | P2-6 | Memory 用户可见性 | 路线图未覆盖 MEMORY.md 导出/编辑 |
+| **P2-7** | **动态任务生成与优先级排序** | **BabyAGI 启发——Graph 运行时动态节点插入 + 优先级排序** |
+| **P2-8** | **工具自构建与自进化** | **BabyAGI 启发——运行时动态工具生成 + 持久化为 Skill** |
+| **P2-9** | **工具依赖图管理** | **BabyAGI 启发——工具依赖声明 + 拓扑排序 + 可视化** |
+| **P2-10** | **事件驱动自动触发** | **BabyAGI 启发——工具生命周期事件 + 自动触发链** |
+| **P2-11** | **记忆驱动任务规划** | **BabyAGI 启发——记忆注入 Planner + 记忆驱动 Graph 路由** |
 
 ---
 
@@ -360,6 +496,8 @@ Sprint 3（P1 下半）: Outbound 增强 + Cron 增强 + Persona 预设
 Sprint 4（P2 上半）: 学习闭环打通 + Skill 自创建
     ↓
 Sprint 5（P2 下半）: Skill 市场 + Debug Recorder + Langfuse + Memory 可见性
+    ↓
+Sprint 6（P2 BabyAGI 启发）: 工具依赖图 + 事件驱动触发 + 工具自构建 + 动态任务生成 + 记忆驱动规划
 ```
 
 **关键依赖**：
@@ -367,6 +505,11 @@ Sprint 5（P2 下半）: Skill 市场 + Debug Recorder + Langfuse + Memory 可�
 - P1-4（Cron Delivery）依赖 P1-3（Outbound 增强）的 outbound.Router
 - P2-2（Skill 自创建）依赖 P0-1（内置 Skills 库）的 Skill 体系
 - P2-3（Skill 市场）依赖 P0-1（内置 Skills 库）+ P2-2（Skill 自创建）
+- **P2-8（工具自构建）依赖 P2-2（Skill 自创建）的审批流程和持久化机制**
+- **P2-9（工具依赖图）无前置依赖，可与 Sprint 1 并行**
+- **P2-10（事件驱动触发）依赖 P2-9（工具依赖图）的 Dependencies 字段**
+- **P2-7（动态任务生成）依赖 Graph 工作流稳定 + P2-11（记忆驱动规划）**
+- **P2-11（记忆驱动规划）依赖 P2-10（事件驱动触发）+ L0-L4 记忆系统**
 
 ---
 
@@ -374,11 +517,11 @@ Sprint 5（P2 下半）: Skill 市场 + Debug Recorder + Langfuse + Memory 可�
 
 | Human-Agent 特征 | 当前达标度 | 补齐需求 | 预期达标度 |
 |------------------|-----------|---------|-----------|
-| 自主规划 | 部分 | P1-1(Runtime Profile 场景切换) | 基本达标 |
-| 工具使用 | 基本达标 | P0-1(Skill库) + P0-2(浏览器) | 完全达标 |
-| 记忆积累 | 完全达标 | P2-6(Memory可见性) | 完全达标+ |
-| 自我纠错 | 部分 | P2-1(学习闭环) | 基本达标 |
+| 自主规划 | 部分 | P1-1(Runtime Profile 场景切换) + **P2-7(动态任务生成)** + **P2-11(记忆驱动规划)** | 完全达标 |
+| 工具使用 | 基本达标 | P0-1(Skill库) + P0-2(浏览器) + **P2-8(工具自构建)** | 完全达标+ |
+| 记忆积累 | 完全达标 | P2-6(Memory可见性) + **P2-11(记忆驱动规划)** | 完全达标+ |
+| 自我纠错 | 部分 | P2-1(学习闭环) + **P2-10(事件驱动触发)** | 基本达标 |
 | 协作能力 | 完全达标 | — | 完全达标+ |
-| 持续进化 | 部分 | P2-1(学习闭环) + P2-2(Skill自创建) | 基本达标 |
+| 持续进化 | 部分 | P2-1(学习闭环) + P2-2(Skill自创建) + **P2-8(工具自构建)** + **P2-9(依赖图)** | 完全达标 |
 
-**综合达标度提升路径**：~60% → Sprint 1 后 ~70% → Sprint 3 后 ~80% → Sprint 5 后 ~90%
+**综合达标度提升路径**：~60% → Sprint 1 后 ~70% → Sprint 3 后 ~80% → Sprint 5 后 ~85% → **Sprint 6 后 ~95%**

@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
@@ -39,7 +40,7 @@ const globalRetryPurgeInterval = 1 * time.Hour
 var _ trpcplugin.Plugin = (*RetryAndReflectPlugin)(nil)
 var _ trpcplugin.Closer = (*RetryAndReflectPlugin)(nil)
 
-func NewRetryAndReflectPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime) *RetryAndReflectPlugin {
+func NewRetryAndReflectPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime, lg loggateway.Logger) *RetryAndReflectPlugin {
 	var cfg retryReflectConfig
 	cfg.MaxRetries = 3
 	cfg.TrackingScope = "invocation"
@@ -49,7 +50,7 @@ func NewRetryAndReflectPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, 
 		cfg.MaxRetries = 3
 	}
 	return &RetryAndReflectPlugin{
-		base:    newBasePlugin(p.Key, stats, bus),
+		base:    newBasePlugin(p.Key, stats, bus, lg),
 		cfg:     cfg,
 		bus:     bus,
 		rt:      rt,

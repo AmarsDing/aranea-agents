@@ -41,7 +41,7 @@ func (h *ChannelIngress) scheduleInboundBackground(r *http.Request, chRow biz.Ch
 	}
 	chCopy := chRow
 	evCopy := ev
-	platform := inboundPlatform(chCopy, evCopy)
+	platform := inboundPlatform(chCopy, evCopy, h.lg)
 	ltCfg := biz.ParseChannelLongTaskConfig(chCopy.ConfigJSON)
 	safego.Go(context.Background(), "channel.inbound.background", func() {
 		procCtx := context.WithoutCancel(r.Context())

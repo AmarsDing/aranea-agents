@@ -87,7 +87,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			http.Error(w, "missing channel_key", http.StatusBadRequest)
 			return nil
 		}
-		if !allowWebhookRequest(channelKey) {
+		if !allowWebhookRequest(channelKey, h.lg) {
 			webhookRateLimitResponse(w)
 			return nil
 		}
@@ -100,7 +100,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			http.Error(w, "channel disabled", http.StatusForbidden)
 			return nil
 		}
-		channelType := channelTypeFromConfig(chRow.ConfigJSON)
+		channelType := channelTypeFromConfig(chRow.ConfigJSON, h.lg)
 		switch channelType {
 		case "dingtalk":
 			if err := h.handleDingTalkWebhook(w, r, chRow); err != nil {
@@ -209,7 +209,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			http.Error(w, "credentials", http.StatusInternalServerError)
 			return nil
 		}
-		encryptKey, encErr := resolveCredentialPlain(r.Context(), h.channels, creds, "encrypt_key")
+		encryptKey, encErr := resolveCredentialPlain(r.Context(), h.channels, creds, "encrypt_key", h.lg)
 		if encErr != nil {
 			h.lg.Warn("凭证解析失败",
 				loggateway.StepID("channel.credential.resolve_failed"),
@@ -223,10 +223,15 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			return nil
 		}
 		if err := lark.VerifyHTTPRequest(r, encryptKey, raw); err != nil {
+			h.lg.Warn("飞书 Webhook 签名验证失败",
+				loggateway.StepID("channel.feishu.webhook.verify_fail"),
+				loggateway.Str("channel_id", chRow.ID),
+				loggateway.Err(err),
+			)
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return nil
 		}
-		verTok, verErr := resolveCredentialPlain(r.Context(), h.channels, creds, "verification_token")
+		verTok, verErr := resolveCredentialPlain(r.Context(), h.channels, creds, "verification_token", h.lg)
 		if verErr != nil {
 			h.lg.Warn("凭证解析失败",
 				loggateway.StepID("channel.credential.resolve_failed"),
@@ -256,7 +261,7 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}
-		if channelReceiveModeFromConfig(chRow.ConfigJSON) == "websocket" {
+		if channelReceiveModeFromConfig(chRow.ConfigJSON, h.lg) == "websocket" {
 			w.WriteHeader(http.StatusOK)
 			return nil
 		}
@@ -275,12 +280,12 @@ func (h *ChannelIngress) FeishuWebhookHTTP() func(ctx khttp.Context) error {
 	}
 }
 
-func channelTypeFromConfig(configJSON string) string {
+func channelTypeFromConfig(configJSON string, lg loggateway.Logger) string {
 	var env struct {
 		Type string `json:"type"`
 	}
 	if err := json.Unmarshal([]byte(configJSON), &env); err != nil {
-		loggateway.Global().Warn("渠道配置 JSON 解析失败",
+		lg.Warn("渠道配置 JSON 解析失败",
 			loggateway.StepID("channel.config.parse_failed"),
 			loggateway.Str("error", err.Error()),
 		)
@@ -288,12 +293,12 @@ func channelTypeFromConfig(configJSON string) string {
 	return strings.TrimSpace(strings.ToLower(env.Type))
 }
 
-func channelReceiveModeFromConfig(configJSON string) string {
+func channelReceiveModeFromConfig(configJSON string, lg loggateway.Logger) string {
 	var env struct {
 		ReceiveMode string `json:"receive_mode"`
 	}
 	if err := json.Unmarshal([]byte(configJSON), &env); err != nil {
-		loggateway.Global().Warn("渠道配置 JSON 解析失败",
+		lg.Warn("渠道配置 JSON 解析失败",
 			loggateway.StepID("channel.config.parse_failed"),
 			loggateway.Str("error", err.Error()),
 		)
@@ -322,7 +327,7 @@ func ingressFirstNonEmpty(parts ...string) string {
 	return ""
 }
 
-func resolveCredentialPlain(ctx context.Context, channels *biz.ChannelUsecase, creds []biz.ChannelCredential, key string) (string, error) {
+func resolveCredentialPlain(ctx context.Context, channels *biz.ChannelUsecase, creds []biz.ChannelCredential, key string, lg loggateway.Logger) (string, error) {
 	key = strings.TrimSpace(key)
 	for _, c := range creds {
 		if !strings.EqualFold(strings.TrimSpace(c.CredentialKey), key) {
@@ -330,7 +335,7 @@ func resolveCredentialPlain(ctx context.Context, channels *biz.ChannelUsecase, c
 		}
 		ref := strings.TrimSpace(c.SecretRef)
 		if ref == "" {
-			loggateway.Global().Warn("凭证 secret_ref 为空",
+			lg.Warn("凭证 secret_ref 为空",
 				loggateway.StepID("channel.credential.empty_ref"),
 				loggateway.Str("key", key),
 			)
@@ -338,7 +343,7 @@ func resolveCredentialPlain(ctx context.Context, channels *biz.ChannelUsecase, c
 		}
 		return ResolveSecretRef(ctx, channels, ref)
 	}
-	loggateway.Global().Warn("凭证 key 未找到",
+	lg.Warn("凭证 key 未找到",
 		loggateway.StepID("channel.credential.not_found"),
 		loggateway.Str("key", key),
 	)

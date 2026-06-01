@@ -45,7 +45,7 @@ func buildRuntimeGraphFromDef(t *testing.T, def Definition) int {
 	}
 	g, agents, err := graphtrpc.BuildStateGraphWithAgents(context.Background(), trpcCfg, &graphtrpc.BuildDeps{
 		Agents: stubAgentResolver{},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("BuildStateGraphWithAgents: %v", err)
 	}

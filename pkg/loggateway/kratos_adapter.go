@@ -11,6 +11,9 @@ type KratosAdapter struct {
 }
 
 func (a *KratosAdapter) Log(level log.Level, keyvals ...interface{}) error {
+	if a == nil || a.sugar == nil {
+		return nil
+	}
 	msg := extractMessage(keyvals)
 	fields := kvToFields(keyvals)
 
@@ -30,6 +33,9 @@ func (a *KratosAdapter) Log(level log.Level, keyvals ...interface{}) error {
 }
 
 func (a *KratosAdapter) WithFields(kv ...interface{}) *KratosAdapter {
+	if a == nil {
+		return &KratosAdapter{}
+	}
 	newBase := make([]interface{}, 0, len(a.base)+len(kv))
 	newBase = append(newBase, a.base...)
 	newBase = append(newBase, kv...)

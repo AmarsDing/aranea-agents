@@ -21,14 +21,15 @@ import (
 type ChannelService struct {
 	v1.UnimplementedChannelServiceServer
 
-	uc      *biz.ChannelUsecase
+	uc       *biz.ChannelUsecase
 	turnJobs *biz.ChannelTurnJobUsecase
-	runtime *ChannelRuntime
-	testers map[string]biz.ChannelLiveTester
+	runtime  *ChannelRuntime
+	testers  map[string]biz.ChannelLiveTester
+	lg       loggateway.Logger
 }
 
-func NewChannelService(uc *biz.ChannelUsecase, turnJobs *biz.ChannelTurnJobUsecase, runtime *ChannelRuntime) *ChannelService {
-	s := &ChannelService{uc: uc, turnJobs: turnJobs, runtime: runtime}
+func NewChannelService(uc *biz.ChannelUsecase, turnJobs *biz.ChannelTurnJobUsecase, runtime *ChannelRuntime, lg loggateway.Logger) *ChannelService {
+	s := &ChannelService{uc: uc, turnJobs: turnJobs, runtime: runtime, lg: lg}
 	s.testers = s.buildLiveTesters()
 	return s
 }
@@ -284,7 +285,7 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *v1.UpdateChanne
 	}
 	if biz.RoutingTargetChanged(current.ConfigJSON, c.ConfigJSON) {
 		if _, err := s.uc.DeletePeerBindingsByChannelID(ctx, c.ID); err != nil {
-			loggateway.Global().Warn("删除渠道 Peer 绑定失败",
+			s.lg.Warn("删除渠道 Peer 绑定失败",
 				loggateway.StepID("channel.peer.delete_failed"),
 				loggateway.Str("channel_id", c.ID),
 				loggateway.Err(err),
@@ -451,7 +452,7 @@ func (s *ChannelService) testFeishuLive(ctx context.Context, configJSON string, 
 
 // testSlackLive performs a live slack auth.test.
 func (s *ChannelService) testSlackLive(ctx context.Context, configJSON string, creds []biz.ChannelCredential) biz.ChannelTestResult {
-	token, terr := resolveCredentialPlain(ctx, s.uc, creds, "bot_token")
+	token, terr := resolveCredentialPlain(ctx, s.uc, creds, "bot_token", s.lg)
 	if terr != nil || strings.TrimSpace(token) == "" {
 		return biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: "bot_token not configured"}
 	}
@@ -463,7 +464,7 @@ func (s *ChannelService) testSlackLive(ctx context.Context, configJSON string, c
 
 // testTelegramLive performs a live telegram getMe test.
 func (s *ChannelService) testTelegramLive(ctx context.Context, configJSON string, creds []biz.ChannelCredential) biz.ChannelTestResult {
-	token, terr := resolveCredentialPlain(ctx, s.uc, creds, "bot_token")
+	token, terr := resolveCredentialPlain(ctx, s.uc, creds, "bot_token", s.lg)
 	if terr != nil || strings.TrimSpace(token) == "" {
 		return biz.ChannelTestResult{OK: false, Status: "pending_auth", Message: "bot_token not configured"}
 	}

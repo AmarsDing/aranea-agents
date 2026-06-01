@@ -27,11 +27,19 @@ func (r *sessionRepo) txClient(ctx context.Context) *ent.Client {
 	return r.data.clientFromCtx(ctx)
 }
 
+func (r *sessionRepo) readClient(ctx context.Context) *ent.Client {
+	if c, ok := ctx.Value(txClientKey{}).(*ent.Client); ok {
+		return c
+	}
+	return r.data.ReadEnt()
+}
+
 var (
 	_ biz.SessionReader        = (*sessionRepo)(nil)
 	_ biz.SessionWriter        = (*sessionRepo)(nil)
 	_ biz.SessionMutator       = (*sessionRepo)(nil)
 	_ biz.SessionBatchMutator  = (*sessionRepo)(nil)
+	_ session.SessionTreeReader    = (*sessionRepo)(nil)
 	_ biz.MessageReader        = (*sessionRepo)(nil)
 	_ biz.MessageSearchReader  = (*sessionRepo)(nil)
 	_ biz.MessageWriter        = (*sessionRepo)(nil)
@@ -105,6 +113,9 @@ func entSessionToBiz(e *ent.Session) biz.Session {
 		MetadataJSON:               e.MetadataJSON,
 		SessionRevision:            e.SessionRevision,
 		CompressVersion:            e.CompressVersion,
+		ParentSessionID:            e.ParentSessionID,
+		RootSessionID:              e.RootSessionID,
+		AgentDepth:                 e.AgentDepth,
 	}
 }
 
@@ -123,7 +134,7 @@ func clampOffset(off int) int {
 }
 
 func (r *sessionRepo) SearchSessions(ctx context.Context, q biz.SessionSearchQuery) (biz.SessionListResult, error) {
-	c := r.txClient(ctx)
+	c := r.readClient(ctx)
 	limit := clampSessionLimit(q.Limit)
 	offset := clampOffset(q.Offset)
 
@@ -219,6 +230,9 @@ func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Se
 		SetDeletedAt(in.DeletedAt).
 		SetRunnerSnapshotJSON(in.RunnerSnapshotJSON).
 		SetMetadataJSON(in.MetadataJSON).
+		SetParentSessionID(in.ParentSessionID).
+		SetRootSessionID(in.RootSessionID).
+		SetAgentDepth(in.AgentDepth).
 		Save(ctx)
 	if err != nil {
 		return biz.Session{}, err
@@ -227,7 +241,7 @@ func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Se
 }
 
 func (r *sessionRepo) GetSessionByID(ctx context.Context, id string) (biz.Session, error) {
-	c := r.txClient(ctx)
+	c := r.readClient(ctx)
 	row, err := c.Session.Query().
 		Where(entsession.IDEQ(id), entsession.DeletedAtEQ("")).
 		Only(ctx)
@@ -401,7 +415,7 @@ func (r *sessionRepo) ListToolInvocationsBySession(ctx context.Context, sessionI
 	if limit <= 0 || limit > 100 {
 		limit = 100
 	}
-	c := r.txClient(ctx)
+	c := r.readClient(ctx)
 	rows, err := c.ToolInvocation.Query().
 		Where(toolinvocationpkg.SessionIDEQ(sessionID)).
 		Order(toolinvocationpkg.ByStartedAt(entsql.OrderDesc()), toolinvocationpkg.ByCreatedAt(entsql.OrderDesc())).
@@ -459,7 +473,7 @@ func (r *sessionRepo) ListSkillInvocationsBySession(ctx context.Context, session
 	if limit <= 0 || limit > 100 {
 		limit = 100
 	}
-	c := r.txClient(ctx)
+	c := r.readClient(ctx)
 	rows, err := c.SkillInvocation.Query().
 		Where(skillinvocationpkg.SessionIDEQ(sessionID)).
 		Order(skillinvocationpkg.ByStartedAt(entsql.OrderDesc()), skillinvocationpkg.ByCreatedAt(entsql.OrderDesc())).
@@ -689,7 +703,7 @@ func (r *sessionRepo) GetSessionRevision(ctx context.Context, sessionID string) 
 	if sessionID == "" {
 		return 0, kerrors.BadRequest("SESSION", "session id is required")
 	}
-	row, err := r.txClient(ctx).Session.Query().
+	row, err := r.readClient(ctx).Session.Query().
 		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -712,4 +726,24 @@ func (r *sessionRepo) TryIncrementCompressVersion(ctx context.Context, sessionID
 
 func (r *sessionRepo) CompressSessionInTx(ctx context.Context, _ string, fn func(ctx context.Context) error) error {
 	return r.data.ExecInTx(ctx, fn)
+}
+
+func (r *sessionRepo) ListByParentSessionID(ctx context.Context, parentSessionID string) ([]biz.Session, error) {
+	parentSessionID = strings.TrimSpace(parentSessionID)
+	if parentSessionID == "" {
+		return nil, kerrors.BadRequest("SESSION", "parent_session_id is required")
+	}
+	c := r.readClient(ctx)
+	rows, err := c.Session.Query().
+		Where(entsession.ParentSessionIDEQ(parentSessionID), entsession.DeletedAtEQ("")).
+		Order(entsession.ByCreatedAt(entsql.OrderAsc())).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.Session, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entSessionToBiz(row))
+	}
+	return out, nil
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 // Hit is a normalized search result used by web_research.
@@ -28,12 +30,12 @@ type searchProvider interface {
 	search(ctx context.Context, query string) (*SearchResponse, error)
 }
 
-func newSearchProvider(cfg Config) (searchProvider, error) {
+func newSearchProvider(cfg Config, lg loggateway.Logger) (searchProvider, error) {
 	switch strings.ToLower(strings.TrimSpace(cfg.Provider)) {
 	case ProviderSerpAPI:
-		return newSerpAPIProvider(cfg)
+		return newSerpAPIProvider(cfg, lg)
 	case ProviderTavily, "":
-		return newTavilyProvider(cfg)
+		return newTavilyProvider(cfg, lg)
 	default:
 		return nil, fmt.Errorf("web_research: unsupported provider %q (use tavily or serpapi)", cfg.Provider)
 	}

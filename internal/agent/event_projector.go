@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/loggateway"
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -34,12 +35,13 @@ type ProjectMeta struct {
 }
 
 type EventProjector struct {
-	eventBus          event.Bus
-	memberStarted     map[string]bool
-	toolCalls         map[string]toolCallCache
-	streamText        map[string]*strings.Builder
-	metaResolver ActivityMetaResolver
-	projectMeta  ProjectMeta
+	eventBus      event.Bus
+	memberStarted map[string]bool
+	toolCalls     map[string]toolCallCache
+	streamText    map[string]*strings.Builder
+	metaResolver  ActivityMetaResolver
+	projectMeta   ProjectMeta
+	lg            loggateway.Logger
 }
 
 type toolCallCache struct {
@@ -49,8 +51,11 @@ type toolCallCache struct {
 	startedAt time.Time
 }
 
-func NewEventProjector(eventBus event.Bus) *EventProjector {
-	return &EventProjector{eventBus: eventBus}
+func NewEventProjector(eventBus event.Bus, lg loggateway.Logger) *EventProjector {
+	if lg == nil {
+		lg = loggateway.Global()
+	}
+	return &EventProjector{eventBus: eventBus, lg: lg}
 }
 
 func (p *EventProjector) Configure(meta ProjectMeta, resolver ActivityMetaResolver) {
@@ -215,7 +220,7 @@ func (p *EventProjector) projectChatCompletionChunk(ctx context.Context, ev *trp
 				if b := p.streamBuilder(streamKey(ev.Author, meta)); b != nil && b.Len() > 0 {
 					textDone = b.String()
 				}
-				if b := p.streamBuilder(streamKey(ev.Author, meta)+":reasoning"); b != nil && b.Len() > 0 {
+				if b := p.streamBuilder(streamKey(ev.Author, meta) + ":reasoning"); b != nil && b.Len() > 0 {
 					reasoningDone = b.String()
 				}
 				env := p.baseEnvelope(ev, meta, event.EnvelopeTypeTextDone)
@@ -487,7 +492,11 @@ func (p *EventProjector) attachActivityMetadata(env *event.Envelope) {
 
 func (p *EventProjector) lookupToolCallArgs(ev *trpcevent.Event, toolID string) string {
 	argsByID, ok, err := trpcevent.GetExtension[map[string]string](ev, trpcevent.ToolCallArgsExtensionKey)
-	if err != nil || !ok {
+	if err != nil {
+		p.lg.Warn("tool call args extension lookup failed", loggateway.StepID("agent.event.tool_args_lookup"), loggateway.Str("tool_id", toolID), loggateway.Err(err))
+		return ""
+	}
+	if !ok {
 		return ""
 	}
 	return argsByID[toolID]

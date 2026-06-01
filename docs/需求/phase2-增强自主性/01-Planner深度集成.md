@@ -330,3 +330,21 @@ Phase 6（验证）: P1-15
 | 用户交互闭环 | 集成测试：模拟 userAction 回传，验证 Agent 响应 |
 | 端到端流程 | 手动测试：配置 planner=a2ui 的 Agent，发送目标，验证前端渲染+审批+执行 |
 | 无 Planner 回归 | 回归测试：配置无 Planner 的 Agent，验证行为不变 |
+
+### 1.6 BabyAGI 启发：记忆驱动任务规划
+
+> 来源：BabyAGI 向量记忆驱动的 Task Creation Agent（GitHub 22k+ stars），竞品分析差距 #8
+
+BabyAGI 的经典版核心是一个"执行→创建→排序"循环，其中 **Task Creation Agent 基于向量数据库中存储的历史任务结果来生成新任务**。这一思想对本需求的 F5（Plan-Execute-Observe 循环）有直接启发：
+
+| BabyAGI 能力 | 本需求对应 | 差异 |
+|-------------|-----------|------|
+| 向量存储任务结果供后续规划参考 | F5 Plan-Execute-Observe 循环 | BabyAGI 用 Pinecone，本需求可用 L0-L4 记忆系统 |
+| Task Creation Agent 基于 LLM + 记忆生成新任务 | F1-F5 整体流程 | BabyAGI 是无限循环，本需求是单次 Plan→Graph 执行 |
+| Prioritization Agent 按目标相关性重排 | 无对应 | **新增启发**：Plan 步骤可增加优先级评分 |
+
+**可借鉴的增强方向**（对应 `docs/competitive-gap-requirements-2026-05-31.md` P2-11）：
+
+1. **Planner 记忆注入**：在 `buildA2UI()` 中注入 `memory.Service.SearchMemories` 结果，让 LLM 在规划时参考历史执行经验
+2. **Plan 步骤优先级评分**：Plan 生成后对每个 Step 进行优先级评分（基于目标相关性和记忆检索匹配度），Graph 执行时按优先级调度可并行步骤
+3. **动态计划调整**：F5 的 Observe 阶段不仅更新进度，还可基于观察结果触发 `PlanToGraphConverter` 重新生成后续步骤（类似 BabyAGI 的 Task Creation Agent）

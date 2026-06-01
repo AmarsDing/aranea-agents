@@ -26,7 +26,7 @@ func (o inboundAcceptOutcome) needsBackgroundWork() bool {
 // When ExecuteSync or DispatchAsync is set, the caller must run background work and release inflight.
 func (h *ChannelIngress) acceptInbound(ctx context.Context, chRow biz.Channel, ev port.InboundEvent, viaWebhook bool) (inboundAcceptOutcome, error) {
 	var noop inboundAcceptOutcome
-	platform := inboundPlatform(chRow, ev)
+	platform := inboundPlatform(chRow, ev, h.lg)
 	dedupKey := biz.InboundIdempotencyKey(platform, ev.IdempotencyKey, ev.PeerID, ev.Text)
 	viaLabel := "runtime"
 	if viaWebhook {
@@ -245,10 +245,10 @@ func ackIdempotencyKey(platform string, ev port.InboundEvent, suffix string) str
 	return base + ":" + suffix
 }
 
-func inboundPlatform(chRow biz.Channel, ev port.InboundEvent) string {
+func inboundPlatform(chRow biz.Channel, ev port.InboundEvent, lg loggateway.Logger) string {
 	platform := strings.TrimSpace(ev.PlatformType)
 	if platform == "" {
-		platform = channelTypeFromConfig(chRow.ConfigJSON)
+		platform = channelTypeFromConfig(chRow.ConfigJSON, lg)
 	}
 	return platform
 }

@@ -73,3 +73,13 @@ type MemoryLegacyMigrator interface {
 	RunLegacyMigration(ctx context.Context) (migrated int, skipped bool, err error)
 	LegacyMigrationVersion() int
 }
+
+type MemoryFactEntry struct {
+	Statement  string
+	Scope      string
+	Confidence float64
+}
+
+type MemoryFactReader interface {
+	ReadSessionMemoryFacts(ctx context.Context, sessionID string) ([]MemoryFactEntry, error)
+}

@@ -28,14 +28,14 @@ func NewEvaluationRunner(
 		}
 		return turns.RunEvalAgentTurn(ctx, agentID, input)
 	}
-	judge := evaluation.NewLLMJudge(catalog, rt, sys)
+	judge := evaluation.NewLLMJudge(catalog, rt, sys, loggateway.Global())
 	runFactory := func(agentID string) (runner.Runner, error) {
 		return evaluation.NewChatRunnerAdapter(agentID, agentRunner), nil
 	}
 	var llmUserSim usersimulation.Simulator
-	if sim, err := evaluation.NewLLMUserSimulator(catalog, rt, sys); err == nil {
+	if sim, err := evaluation.NewLLMUserSimulator(catalog, rt, sys, loggateway.Global()); err == nil {
 		llmUserSim = sim
 	}
 	framework := evaluation.NewFrameworkBridge(runFactory, judge, llmUserSim, evaluation.DefaultMultiRunConfig(), loggateway.Global())
-	return evaluation.NewRunner(uc, agentRunner, judge, framework)
+	return evaluation.NewRunner(uc, agentRunner, judge, framework, loggateway.Global())
 }

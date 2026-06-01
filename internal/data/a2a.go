@@ -11,18 +11,20 @@ import (
 	"aranea-agents/internal/biz"
 	biza2a "aranea-agents/internal/biz/a2a"
 	a2apkg "aranea-agents/internal/a2a"
+	"aranea-agents/pkg/loggateway"
 )
 
 // a2aRepo implements biz.A2ARepo using raw SQL.
 type a2aRepo struct {
 	db *sql.DB
+	lg loggateway.Logger
 }
 
 var _ biza2a.Repo = (*a2aRepo)(nil)
 
 // NewA2ARepo returns a biz.A2ARepo backed by the provided *sql.DB.
-func NewA2ARepo(db *sql.DB) biz.A2ARepo {
-	return &a2aRepo{db: db}
+func NewA2ARepo(db *sql.DB, lg loggateway.Logger) biz.A2ARepo {
+	return &a2aRepo{db: db, lg: lg}
 }
 
 // EnsureA2ASchema creates the A2A tables when they do not exist.
@@ -262,7 +264,13 @@ func (r *a2aRepo) ListAudit(ctx context.Context, callerID, calleeID string, limi
 }
 
 func (r *a2aRepo) DiscoverRemoteCard(ctx context.Context, in biz.RemoteCardDiscoverInput) (biz.A2AAgentCard, error) {
-	return a2apkg.FetchRemoteAgentCard(ctx, in.RemoteURL, in.AuthType, in.AuthConfigJSON)
+	r.lg.Info("A2A discover remote card", loggateway.StepID("a2a.discover_remote_card"), loggateway.Str("remote_url", in.RemoteURL))
+	card, err := a2apkg.FetchRemoteAgentCard(ctx, in.RemoteURL, in.AuthType, in.AuthConfigJSON, r.lg)
+	if err != nil {
+		r.lg.Error("A2A discover remote card failed", loggateway.StepID("a2a.discover_remote_card"), loggateway.Str("remote_url", in.RemoteURL), loggateway.Err(err))
+		return biz.A2AAgentCard{}, err
+	}
+	return card, nil
 }
 
 func (r *a2aRepo) CreateRemoteAgent(ctx context.Context, agent biz.A2ARemoteAgent) (biz.A2ARemoteAgent, error) {

@@ -13,12 +13,12 @@ import (
 
 var (
 	hookLoggerMu sync.RWMutex
-	hookLogger   = NewPluginSafeLogger("hook", nil, loggateway.Global())
+	hookLogger   *PluginSafeLogger
 )
 
-func InitHookLogger(bus event.Bus) {
+func InitHookLogger(bus event.Bus, lg loggateway.Logger) {
 	hookLoggerMu.Lock()
-	hookLogger = NewPluginSafeLogger("hook", bus, loggateway.Global())
+	hookLogger = NewPluginSafeLogger("hook", bus, lg)
 	hookLoggerMu.Unlock()
 }
 

@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"aranea-agents/internal/tools/webresearch"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestBuildHTTPClient_defaultTimeout(t *testing.T) {
 	cfg := webresearch.Config{}
-	client := webresearch.BuildHTTPClient(cfg)
+	client := webresearch.BuildHTTPClient(cfg, loggateway.NewNoop())
 	if client == nil {
 		t.Fatal("expected non-nil client")
 	}
@@ -21,7 +22,7 @@ func TestBuildHTTPClient_defaultTimeout(t *testing.T) {
 
 func TestBuildHTTPClient_zeroTimeout(t *testing.T) {
 	cfg := webresearch.Config{Timeout: 0}
-	client := webresearch.BuildHTTPClient(cfg)
+	client := webresearch.BuildHTTPClient(cfg, loggateway.NewNoop())
 	if client.Timeout != 15*time.Second {
 		t.Fatalf("Timeout = %v, want 15s for zero timeout", client.Timeout)
 	}
@@ -29,7 +30,7 @@ func TestBuildHTTPClient_zeroTimeout(t *testing.T) {
 
 func TestBuildHTTPClient_negativeTimeout(t *testing.T) {
 	cfg := webresearch.Config{Timeout: -1 * time.Second}
-	client := webresearch.BuildHTTPClient(cfg)
+	client := webresearch.BuildHTTPClient(cfg, loggateway.NewNoop())
 	if client.Timeout != 15*time.Second {
 		t.Fatalf("Timeout = %v, want 15s for negative timeout", client.Timeout)
 	}
@@ -37,7 +38,7 @@ func TestBuildHTTPClient_negativeTimeout(t *testing.T) {
 
 func TestBuildHTTPClient_customTimeout(t *testing.T) {
 	cfg := webresearch.Config{Timeout: 30 * time.Second}
-	client := webresearch.BuildHTTPClient(cfg)
+	client := webresearch.BuildHTTPClient(cfg, loggateway.NewNoop())
 	if client.Timeout != 30*time.Second {
 		t.Fatalf("Timeout = %v, want 30s", client.Timeout)
 	}
@@ -48,7 +49,7 @@ func TestBuildHTTPClient_validProxy(t *testing.T) {
 		Timeout:   5 * time.Second,
 		HTTPProxy: "http://proxy.example.com:8080",
 	}
-	client := webresearch.BuildHTTPClient(cfg)
+	client := webresearch.BuildHTTPClient(cfg, loggateway.NewNoop())
 	transport, ok := client.Transport.(*http.Transport)
 	if !ok {
 		t.Fatal("expected *http.Transport")
@@ -71,7 +72,7 @@ func TestBuildHTTPClient_invalidProxy(t *testing.T) {
 		Timeout:   5 * time.Second,
 		HTTPProxy: "://invalid-url",
 	}
-	client := webresearch.BuildHTTPClient(cfg)
+	client := webresearch.BuildHTTPClient(cfg, loggateway.NewNoop())
 	if client == nil {
 		t.Fatal("expected non-nil client even with invalid proxy")
 	}
@@ -96,7 +97,7 @@ func TestBuildHTTPClient_whitespaceProxy(t *testing.T) {
 		Timeout:   5 * time.Second,
 		HTTPProxy: "   ",
 	}
-	client := webresearch.BuildHTTPClient(cfg)
+	client := webresearch.BuildHTTPClient(cfg, loggateway.NewNoop())
 	transport, ok := client.Transport.(*http.Transport)
 	if !ok {
 		t.Fatal("expected *http.Transport")

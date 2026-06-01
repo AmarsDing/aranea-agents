@@ -7,11 +7,12 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestPromptVersion(t *testing.T) {
-	if PromptVersion != "v1" {
-		t.Fatalf("got %q want %q", PromptVersion, "v1")
+	if PromptVersion != "v2" {
+		t.Fatalf("got %q want %q", PromptVersion, "v2")
 	}
 }
 
@@ -214,7 +215,7 @@ func TestCompress_NilService(t *testing.T) {
 }
 
 func TestCompress_EmptyProviderModel(t *testing.T) {
-	s := NewLLMService(&biz.LlmProviderModelUsecase{}, &http.Client{})
+	s := NewLLMService(&biz.LlmProviderModelUsecase{}, &http.Client{}, loggateway.NewNoop())
 	_, err := s.Compress(context.Background(), Request{Transcript: "x"})
 	if err != ErrProviderModelRequired {
 		t.Fatalf("got %v want ErrProviderModelRequired", err)
@@ -222,7 +223,7 @@ func TestCompress_EmptyProviderModel(t *testing.T) {
 }
 
 func TestCompress_EmptyTranscript(t *testing.T) {
-	s := NewLLMService(&biz.LlmProviderModelUsecase{}, &http.Client{})
+	s := NewLLMService(&biz.LlmProviderModelUsecase{}, &http.Client{}, loggateway.NewNoop())
 	_, err := s.Compress(context.Background(), Request{Provider: "openai", Model: "gpt-4o-mini"})
 	if err != ErrEmptyTranscript {
 		t.Fatalf("got %v want ErrEmptyTranscript", err)

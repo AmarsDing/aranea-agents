@@ -13,6 +13,7 @@ import (
 	v1 "aranea-agents/api/kratos/model_catalog/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/modelregistry"
+	"aranea-agents/pkg/loggateway"
 
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -37,7 +38,7 @@ func newTestUsecase(t *testing.T) (*biz.ModelRegistryUsecase, string) {
 
 func seedStore(t *testing.T, dir string, cat modelregistry.Directory, meta modelregistry.Meta, policy modelregistry.Policy) {
 	t.Helper()
-	st := modelregistry.NewStore(dir)
+	st := modelregistry.NewStore(dir, loggateway.NewNoop())
 	if err := st.SavePolicy(policy); err != nil {
 		t.Fatal(err)
 	}
@@ -775,7 +776,7 @@ func TestModelCatalogService_ListModelCatalogSyncLogs(t *testing.T) {
 	meta := defaultTestMeta()
 	seedStore(t, dir, cat, meta, policy)
 
-	st := modelregistry.NewStore(dir)
+	st := modelregistry.NewStore(dir, loggateway.NewNoop())
 	entry := modelregistry.SyncLogEntry{
 		ID:         "sync-test-001",
 		StartedAt:  time.Now().UTC().Format(time.RFC3339),

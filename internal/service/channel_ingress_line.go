@@ -7,6 +7,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/line"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/pkg/loggateway"
 )
 
 func (h *ChannelIngress) handleLINEWebhook(w http.ResponseWriter, r *http.Request, chRow biz.Channel) error {
@@ -20,8 +21,13 @@ func (h *ChannelIngress) handleLINEWebhook(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	channelSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "channel_secret")
+	channelSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "channel_secret", h.lg)
 	if err := line.VerifySignature(channelSecret, string(raw), r.Header.Get("X-Line-Signature")); err != nil {
+		h.lg.Warn("LINE Webhook 签名验证失败",
+			loggateway.StepID("channel.line.webhook.verify_fail"),
+			loggateway.Str("channel_id", chRow.ID),
+			loggateway.Err(err),
+		)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil
 	}

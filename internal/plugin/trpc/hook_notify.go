@@ -30,11 +30,11 @@ const (
 
 type HookNotifier struct {
 	repo biz.HookDeliveryRepo
+	lg   loggateway.Logger
 }
 
-// NewHookNotifier creates a notifier; repo may be nil (fire-and-forget only).
-func NewHookNotifier(repo biz.HookDeliveryRepo) *HookNotifier {
-	return &HookNotifier{repo: repo}
+func NewHookNotifier(repo biz.HookDeliveryRepo, lg loggateway.Logger) *HookNotifier {
+	return &HookNotifier{repo: repo, lg: lg}
 }
 
 // EnqueueNotify schedules a webhook delivery. Synchronous validation/marshal errors are returned;
@@ -118,7 +118,10 @@ func (n *HookNotifier) processDeliveryFrom(ctx context.Context, d biz.HookDelive
 	if startAttempt > max {
 		// All attempts already consumed — mark failed and return.
 		if err := n.repo.UpdateResult(ctx, d.ID, biz.HookDeliveryFailed, max, "max attempts reached"); err != nil {
-			loggateway.Global().Warn("hook.notify: UpdateResult failed", loggateway.Str("id", d.ID), loggateway.Err(err))
+			n.lg.Warn("hook.notify: UpdateResult failed",
+				loggateway.StepID("plugin.hook.update_result_fail"),
+				loggateway.Str("id", d.ID),
+				loggateway.Err(err))
 		}
 		return
 	}
@@ -128,13 +131,20 @@ func (n *HookNotifier) processDeliveryFrom(ctx context.Context, d biz.HookDelive
 		err := deliverHookWebhook(d.WebhookURL, []byte(d.PayloadJSON), d.WebhookSecret, timeoutSec)
 		if err == nil {
 			if uerr := n.repo.UpdateResult(ctx, d.ID, biz.HookDeliverySuccess, attempt, ""); uerr != nil {
-				loggateway.Global().Warn("hook.notify: UpdateResult(success) failed", loggateway.Str("id", d.ID), loggateway.Err(uerr))
+				n.lg.Warn("hook.notify: UpdateResult(success) failed",
+					loggateway.StepID("plugin.hook.update_result_fail"),
+					loggateway.Str("id", d.ID),
+					loggateway.Err(uerr))
 			}
 			return
 		}
 		lastErr = err.Error()
 		if uerr := n.repo.UpdateResult(ctx, d.ID, biz.HookDeliveryPending, attempt, lastErr); uerr != nil {
-			loggateway.Global().Warn("hook.notify: UpdateResult(pending) failed", loggateway.Str("id", d.ID), loggateway.Int("attempt", attempt), loggateway.Err(uerr))
+			n.lg.Warn("hook.notify: UpdateResult(pending) failed",
+				loggateway.StepID("plugin.hook.update_result_fail"),
+				loggateway.Str("id", d.ID),
+				loggateway.Int("attempt", attempt),
+				loggateway.Err(uerr))
 		}
 		if attempt < max {
 			select {
@@ -145,7 +155,10 @@ func (n *HookNotifier) processDeliveryFrom(ctx context.Context, d biz.HookDelive
 		}
 	}
 	if uerr := n.repo.UpdateResult(ctx, d.ID, biz.HookDeliveryFailed, max, lastErr); uerr != nil {
-		loggateway.Global().Warn("hook.notify: UpdateResult(failed) failed", loggateway.Str("id", d.ID), loggateway.Err(uerr))
+		n.lg.Warn("hook.notify: UpdateResult(failed) failed",
+			loggateway.StepID("plugin.hook.update_result_fail"),
+			loggateway.Str("id", d.ID),
+			loggateway.Err(uerr))
 	}
 	arametrics.PluginInvokeTotal.WithLabelValues("hook:"+d.HookKey, "notify", "delivery_failed").Inc()
 }

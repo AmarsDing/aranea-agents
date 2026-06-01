@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -38,15 +39,19 @@ type Runner struct {
 	agent     AgentRunner
 	llmJudge  LLMJudge
 	framework *FrameworkBridge
+	lg        loggateway.Logger
 }
 
-// NewRunner creates an evaluation Runner.
-func NewRunner(uc *biz.EvalUsecase, agent AgentRunner, judge LLMJudge, framework *FrameworkBridge) *Runner {
-	return &Runner{uc: uc, agent: agent, llmJudge: judge, framework: framework}
+func NewRunner(uc *biz.EvalUsecase, agent AgentRunner, judge LLMJudge, framework *FrameworkBridge, lg loggateway.Logger) *Runner {
+	return &Runner{uc: uc, agent: agent, llmJudge: judge, framework: framework, lg: lg}
 }
 
-// Start launches an async goroutine to execute the run and immediately returns.
 func (r *Runner) Start(ctx context.Context, run biz.EvalRun, metrics string, numRuns int, useUserSimulation bool) {
+	r.lg.Info("evaluation run started",
+		loggateway.StepID("evaluation.run.start"),
+		loggateway.Str("run_id", run.ID),
+		loggateway.Str("dataset_id", run.DatasetID),
+	)
 	evalRunsTotal.WithLabelValues("started").Inc()
 	safego.Go(context.Background(), "eval-runner", func() {
 		if err := r.execute(ctx, run, metrics, numRuns, useUserSimulation); err != nil {
@@ -60,11 +65,21 @@ func (r *Runner) Start(ctx context.Context, run biz.EvalRun, metrics string, num
 func (r *Runner) execute(ctx context.Context, run biz.EvalRun, metrics string, numRuns int, useUserSimulation bool) error {
 	cases, err := r.uc.ListCases(ctx, run.DatasetID)
 	if err != nil {
+		r.lg.Error("evaluation load cases failed",
+			loggateway.StepID("evaluation.run.load_cases_fail"),
+			loggateway.Str("run_id", run.ID),
+			loggateway.Str("dataset_id", run.DatasetID),
+			loggateway.Err(err))
 		return r.failRun(ctx, run, "failed to load cases: "+err.Error())
 	}
 
 	ds, dsErr := r.uc.GetDataset(ctx, run.DatasetID)
 	if dsErr != nil {
+		r.lg.Error("evaluation load dataset failed",
+			loggateway.StepID("evaluation.run.load_dataset_fail"),
+			loggateway.Str("run_id", run.ID),
+			loggateway.Str("dataset_id", run.DatasetID),
+			loggateway.Err(dsErr))
 		return r.failRun(ctx, run, "failed to load dataset: "+dsErr.Error())
 	}
 
@@ -120,6 +135,11 @@ func (r *Runner) executeFramework(
 }
 
 func (r *Runner) failRun(ctx context.Context, run biz.EvalRun, msg string) error {
+	r.lg.Warn("evaluation run failed",
+		loggateway.StepID("evaluation.run.fail"),
+		loggateway.Str("run_id", run.ID),
+		loggateway.Str("error", msg),
+	)
 	run.Status = "failed"
 	run.ErrorMessage = msg
 	run.FinishedAt = time.Now().UTC().Format(time.RFC3339)

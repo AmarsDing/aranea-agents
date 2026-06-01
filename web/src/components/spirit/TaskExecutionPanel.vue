@@ -1,0 +1,157 @@
+<template>
+  <div class="task-execution-panel column no-wrap">
+    <div class="task-execution-panel__overview">
+      <div class="row items-center q-gutter-sm">
+        <q-icon name="groups" size="20px" color="accent" />
+        <div class="col min-width-0">
+          <div class="task-execution-panel__title ellipsis">{{ team.teamName }}</div>
+          <div class="task-execution-panel__summary ellipsis">{{ team.taskSummary }}</div>
+        </div>
+        <SessionStatusBadge
+          :status="team.status as any"
+          :status-reason="undefined"
+          :status-changed-at="undefined"
+        />
+      </div>
+      <div v-if="team.totalSteps > 0" class="q-mt-sm">
+        <q-linear-progress
+          :value="team.completedSteps / team.totalSteps"
+          size="6px"
+          rounded
+          color="accent"
+        />
+        <div class="text-caption text-grey-6 q-mt-xs">
+          {{ team.completedSteps }} / {{ team.totalSteps }} 步骤完成
+        </div>
+      </div>
+      <q-btn
+        flat
+        dense
+        no-caps
+        icon="arrow_back"
+        label="返回精灵"
+        color="accent"
+        class="q-mt-sm"
+        @click="$emit('return-to-spirit')"
+      />
+    </div>
+
+    <q-separator />
+
+    <div class="task-execution-panel__timeline col q-pa-md">
+      <div class="text-caption text-weight-medium text-grey-7 q-mb-sm">执行时间线</div>
+      <template v-if="messages.length > 0">
+        <ChatExecutionCard
+          v-for="msg in toolMessages"
+          :key="msg.id"
+          :event="msg"
+          :show-member-label="true"
+        />
+      </template>
+      <div v-else class="text-caption text-grey-6">
+        暂无执行记录
+      </div>
+    </div>
+
+    <q-separator />
+
+    <q-expansion-item
+      dense
+      :label="outputLabel"
+      header-class="task-execution-panel__output-header"
+      :default-opened="false"
+    >
+      <div class="task-execution-panel__output q-pa-md">
+        <template v-if="assistantMessages.length > 0">
+          <div
+            v-for="msg in assistantMessages"
+            :key="msg.id"
+            class="task-execution-panel__output-item"
+          >
+            <div class="text-caption text-grey-7 q-mb-xs">{{ formatTime(msg.created_at) }}</div>
+            <div class="chat-message-prose" v-html="renderChatMarkdown(msg.content_markdown)" />
+          </div>
+        </template>
+        <div v-else class="text-caption text-grey-6">
+          暂无对话输出
+        </div>
+      </div>
+    </q-expansion-item>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed } from "vue";
+import SessionStatusBadge from "../sessions/SessionStatusBadge.vue";
+import ChatExecutionCard from "../chat/ChatExecutionCard.vue";
+import { renderChatMarkdown } from "../../features/chat/chatMessageMarkdown";
+import type { SpiritTeam } from "../../features/spirit/api";
+import type { Message, ToolUseEvent } from "../../features/chat/types";
+
+const props = defineProps<{
+  team: SpiritTeam;
+  messages: Message[];
+}>();
+
+defineEmits<{
+  "return-to-spirit": [];
+}>();
+
+const toolMessages = computed<ToolUseEvent[]>(() => {
+  return props.messages
+    .filter((m) => m.role === "tool" && m.tool_event)
+    .map((m) => m.tool_event as ToolUseEvent);
+});
+
+const assistantMessages = computed(() =>
+  props.messages.filter((m) => m.role === "assistant" && m.content_markdown.trim())
+);
+
+const outputLabel = computed(() =>
+  `对话输出 (${assistantMessages.value.length})`
+);
+
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString();
+}
+</script>
+
+<style scoped lang="sass">
+.task-execution-panel
+  height: 100%
+  overflow: hidden
+
+.task-execution-panel__overview
+  padding: var(--space-4)
+  flex-shrink: 0
+
+.task-execution-panel__title
+  font-size: var(--text-base)
+  font-weight: 700
+  color: var(--color-text-primary)
+
+.task-execution-panel__summary
+  font-size: var(--text-sm)
+  color: var(--color-text-tertiary)
+
+.task-execution-panel__timeline
+  overflow-y: auto
+  min-height: 0
+
+.task-execution-panel__output-header
+  font-size: var(--text-sm)
+  font-weight: 600
+
+.task-execution-panel__output
+  max-height: 240px
+  overflow-y: auto
+
+.task-execution-panel__output-item
+  margin-bottom: var(--space-3)
+  padding: var(--space-3)
+  border-radius: 10px
+  background: color-mix(in srgb, var(--glass-surface) 55%, transparent)
+  border: 1px solid var(--glass-border)
+</style>

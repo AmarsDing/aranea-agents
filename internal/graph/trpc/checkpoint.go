@@ -7,6 +7,8 @@ import (
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
+	"aranea-agents/pkg/loggateway"
+
 	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
 	trpcgraphsqlite "trpc.group/trpc-go/trpc-agent-go/graph/checkpoint/sqlite"
 )
@@ -14,9 +16,10 @@ import (
 type SQLiteCheckpointSaver struct {
 	saver *trpcgraphsqlite.Saver
 	db    *sql.DB
+	lg    loggateway.Logger
 }
 
-func NewSQLiteCheckpointSaver(db *sql.DB) (*SQLiteCheckpointSaver, error) {
+func NewSQLiteCheckpointSaver(db *sql.DB, lg loggateway.Logger) (*SQLiteCheckpointSaver, error) {
 	if db == nil {
 		return nil, kerrors.BadRequest("GRAPH", "graph checkpoint: db is nil")
 	}
@@ -24,7 +27,7 @@ func NewSQLiteCheckpointSaver(db *sql.DB) (*SQLiteCheckpointSaver, error) {
 	if err != nil {
 		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph checkpoint sqlite init: %v", err))
 	}
-	return &SQLiteCheckpointSaver{saver: saver, db: db}, nil
+	return &SQLiteCheckpointSaver{saver: saver, db: db, lg: lg}, nil
 }
 
 func (s *SQLiteCheckpointSaver) Saver() trpcgraph.CheckpointSaver {
@@ -32,7 +35,13 @@ func (s *SQLiteCheckpointSaver) Saver() trpcgraph.CheckpointSaver {
 }
 
 func (s *SQLiteCheckpointSaver) Get(ctx context.Context, config map[string]any) (*trpcgraph.Checkpoint, error) {
-	return s.saver.Get(ctx, config)
+	cp, err := s.saver.Get(ctx, config)
+	if err != nil {
+		s.lg.Warn("graph checkpoint get failed",
+			loggateway.StepID("graph.checkpoint.get_fail"),
+			loggateway.Err(err))
+	}
+	return cp, err
 }
 
 func (s *SQLiteCheckpointSaver) GetTuple(ctx context.Context, config map[string]any) (*trpcgraph.CheckpointTuple, error) {
@@ -44,7 +53,16 @@ func (s *SQLiteCheckpointSaver) List(ctx context.Context, config map[string]any,
 }
 
 func (s *SQLiteCheckpointSaver) Put(ctx context.Context, req trpcgraph.PutRequest) (map[string]any, error) {
-	return s.saver.Put(ctx, req)
+	result, err := s.saver.Put(ctx, req)
+	if err != nil {
+		s.lg.Warn("graph checkpoint put failed",
+			loggateway.StepID("graph.checkpoint.put_fail"),
+			loggateway.Err(err))
+	} else {
+		s.lg.Info("graph checkpoint saved",
+			loggateway.StepID("graph.checkpoint.put"))
+	}
+	return result, err
 }
 
 func (s *SQLiteCheckpointSaver) PutWrites(ctx context.Context, req trpcgraph.PutWritesRequest) error {

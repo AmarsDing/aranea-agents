@@ -97,7 +97,11 @@ type ToolsCfg struct {
 	RetryMaxIntervalMs     int     `json:"tools_retry_max_interval_ms,omitempty"`
 	RetryJitter            bool    `json:"tools_retry_jitter,omitempty"`
 	ParallelEnabled        bool    `json:"tools_parallel_enabled,omitempty"`
-	StreamingEnabled       bool    `json:"tools_streaming_enabled,omitempty"`
+	StreamingEnabled              bool   `json:"tools_streaming_enabled,omitempty"`
+	CircuitBreakerEnabled         bool   `json:"tools_circuit_breaker_enabled,omitempty"`
+	CircuitBreakerOverridesJSON   string `json:"tools_circuit_breaker_overrides_json,omitempty"`
+	CommandSafetyEnabled          bool   `json:"tools_command_safety_enabled,omitempty"`
+	DeferredJSON                  string `json:"tools_deferred_json,omitempty"`
 }
 
 // SkillsCfg holds skill loading and intent-pass settings.
@@ -143,12 +147,18 @@ type EvolutionCfg struct {
 
 // ContextCfg holds context-compaction, output-schema, model-selector, and planner settings.
 type ContextCfg struct {
-	CompactionEnabled     bool   `json:"context_compaction_enabled,omitempty"`
-	SessionSummaryEnabled bool   `json:"session_summary_enabled,omitempty"`
-	OutputSchemaJSON      string `json:"output_schema_json,omitempty"`
-	ModelSelector         string `json:"model_selector,omitempty"`
-	PlannerKind           string `json:"planner_kind,omitempty"`
-	PlannerConfigJSON     string `json:"planner_config_json,omitempty"`
+	CompactionEnabled          bool   `json:"context_compaction_enabled,omitempty"`
+	MicroCompactEnabled        bool   `json:"micro_compact_enabled,omitempty"`
+	MemoryCompactEnabled       bool   `json:"memory_compact_enabled,omitempty"`
+	ToolResultGateEnabled      bool   `json:"tool_result_gate_enabled,omitempty"`
+	CompressLLMCacheEnabled    bool   `json:"compress_llm_cache_enabled,omitempty"`
+	CompressLLMCacheMaxEntries int    `json:"compress_llm_cache_max_entries,omitempty"`
+	CompressLLMCacheTTLSec     int    `json:"compress_llm_cache_ttl_sec,omitempty"`
+	SessionSummaryEnabled      bool   `json:"session_summary_enabled,omitempty"`
+	OutputSchemaJSON           string `json:"output_schema_json,omitempty"`
+	ModelSelector              string `json:"model_selector,omitempty"`
+	PlannerKind                string `json:"planner_kind,omitempty"`
+	PlannerConfigJSON          string `json:"planner_config_json,omitempty"`
 }
 
 func (s *AgentRuntimeSettings) ApplyIdentity(cfg IdentityCfg) {
@@ -235,6 +245,10 @@ func (s *AgentRuntimeSettings) ApplyTools(cfg ToolsCfg) {
 	s.ToolsRetryJitter = cfg.RetryJitter
 	s.ToolsParallelEnabled = cfg.ParallelEnabled
 	s.ToolsStreamingEnabled = cfg.StreamingEnabled
+	s.ToolsCircuitBreakerEnabled = cfg.CircuitBreakerEnabled
+	s.ToolsCircuitBreakerOverridesJSON = cfg.CircuitBreakerOverridesJSON
+	s.ToolsDeferredJSON = cfg.DeferredJSON
+	s.ToolsCommandSafetyEnabled = cfg.CommandSafetyEnabled
 }
 
 func (s *AgentRuntimeSettings) ApplySkills(cfg SkillsCfg) {
@@ -271,6 +285,12 @@ func (s *AgentRuntimeSettings) ApplyEvolution(cfg EvolutionCfg) {
 
 func (s *AgentRuntimeSettings) ApplyContext(cfg ContextCfg) {
 	s.ContextCompactionEnabled = cfg.CompactionEnabled
+	s.MicroCompactEnabled = cfg.MicroCompactEnabled
+	s.MemoryCompactEnabled = cfg.MemoryCompactEnabled
+	s.ToolResultGateEnabled = cfg.ToolResultGateEnabled
+	s.CompressLLMCacheEnabled = cfg.CompressLLMCacheEnabled
+	s.CompressLLMCacheMaxEntries = cfg.CompressLLMCacheMaxEntries
+	s.CompressLLMCacheTTLSec = cfg.CompressLLMCacheTTLSec
 	s.SessionSummaryEnabled = cfg.SessionSummaryEnabled
 	s.OutputSchemaJSON = cfg.OutputSchemaJSON
 	s.ModelSelector = cfg.ModelSelector

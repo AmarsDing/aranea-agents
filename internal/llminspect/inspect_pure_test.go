@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestDeepSeekOpenAICompatBase(t *testing.T) {
@@ -90,7 +92,7 @@ func TestAnthropicKnownModelFallback(t *testing.T) {
 		ProviderType: "anthropic",
 		ModelAPIID:   "claude-3-opus",
 	}
-	result := anthropicKnownModelFallback(in, "test message")
+	result := anthropicKnownModelFallback(in, "test message", loggateway.NewNoop())
 	if !result.OK {
 		t.Error("expected OK=true")
 	}
@@ -111,14 +113,14 @@ func TestAnthropicKnownModelFallbackEmptyProviderType(t *testing.T) {
 		ProviderType: "",
 		ModelAPIID:   "claude-3-opus",
 	}
-	result := anthropicKnownModelFallback(in, "fallback")
+	result := anthropicKnownModelFallback(in, "fallback", loggateway.NewNoop())
 	if result.ProviderType != "anthropic" {
 		t.Errorf("ProviderType = %q, want %q", result.ProviderType, "anthropic")
 	}
 }
 
 func TestRunValidationEmptyProviderCode(t *testing.T) {
-	_, err := Run(Input{ProviderCode: "", ModelAPIID: "gpt-4o"})
+	_, err := Run(Input{ProviderCode: "", ModelAPIID: "gpt-4o"}, loggateway.NewNoop())
 	if err == nil {
 		t.Fatal("expected error for empty ProviderCode")
 	}
@@ -128,7 +130,7 @@ func TestRunValidationEmptyProviderCode(t *testing.T) {
 }
 
 func TestRunValidationEmptyModelAPIID(t *testing.T) {
-	_, err := Run(Input{ProviderCode: "openai", ModelAPIID: ""})
+	_, err := Run(Input{ProviderCode: "openai", ModelAPIID: ""}, loggateway.NewNoop())
 	if err == nil {
 		t.Fatal("expected error for empty ModelAPIID")
 	}
@@ -154,7 +156,7 @@ func TestRunRoutesOpenRouter(t *testing.T) {
 		ModelAPIID:   "meta-llama/llama-3-8b",
 		APIBaseURL:   srv.URL + "/api/v1",
 		APIKey:       "test",
-	})
+	}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +170,7 @@ func TestRunBedrockNoAWSRegion(t *testing.T) {
 		ProviderCode: "aws",
 		ProviderType: "bedrock",
 		ModelAPIID:   "anthropic.claude-3-sonnet",
-	})
+	}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +184,7 @@ func TestRunHunyuanNoCredentials(t *testing.T) {
 		ProviderCode: "hunyuan",
 		ProviderType: "hunyuan",
 		ModelAPIID:   "hunyuan-lite",
-	})
+	}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +198,7 @@ func TestInspectHunyuanModelNoSecretNoAPIKey(t *testing.T) {
 		ProviderCode: "hunyuan",
 		ProviderType: "hunyuan",
 		ModelAPIID:   "hunyuan-lite",
-	})
+	}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +230,7 @@ func TestInspectOpenAICompatibleModelEmptyBaseURL(t *testing.T) {
 		ProviderType: "openai",
 		ModelAPIID:   "gpt-4o",
 		APIBaseURL:   "",
-	})
+	}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +256,7 @@ func TestInspectOpenRouterModelFound(t *testing.T) {
 		ModelAPIID:   "meta-llama/llama-3-8b",
 		APIBaseURL:   srv.URL + "/api/v1",
 		APIKey:       "test",
-	})
+	}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +288,7 @@ func TestInspectOpenRouterModelNotFound(t *testing.T) {
 		ModelAPIID:   "not-found",
 		APIBaseURL:   srv.URL + "/api/v1",
 		APIKey:       "test",
-	})
+	}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +310,7 @@ func TestInspectAnthropicModelFallbackOnHTTPError(t *testing.T) {
 		ModelAPIID:   "claude-3-opus",
 		APIBaseURL:   srv.URL + "/v1",
 		APIKey:       "test",
-	})
+	}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +339,7 @@ func TestInspectOpenAICompatibleModelFound(t *testing.T) {
 		ModelAPIID:   "gpt-4o",
 		APIBaseURL:   srv.URL + "/v1",
 		APIKey:       "test",
-	})
+	}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +371,7 @@ func TestInspectOpenAICompatibleModelNotFound(t *testing.T) {
 		ModelAPIID:   "not-found",
 		APIBaseURL:   srv.URL + "/v1",
 		APIKey:       "test",
-	})
+	}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}

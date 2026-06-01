@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/loggateway"
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -24,6 +25,7 @@ type turnStreamConsumer struct {
 	pendingToolCalls  map[string]event.EnvelopeToolCall
 	firstByteReceived *bool
 	received          bool
+	lg                loggateway.Logger
 }
 
 func newTurnStreamConsumer(
@@ -32,6 +34,7 @@ func newTurnStreamConsumer(
 	projectMeta ProjectMeta,
 	firstByteReceived *bool,
 	opts *StreamConsumeOptions,
+	lg loggateway.Logger,
 ) *turnStreamConsumer {
 	c := &turnStreamConsumer{
 		firstByteCtx:      firstByteCtx,
@@ -41,9 +44,10 @@ func newTurnStreamConsumer(
 		opts:              opts,
 		firstByteReceived: firstByteReceived,
 		pendingToolCalls:  make(map[string]event.EnvelopeToolCall),
+		lg:                lg,
 	}
 	if eventBus != nil {
-		c.projector = NewEventProjector(eventBus)
+		c.projector = NewEventProjector(eventBus, lg)
 		c.observer = event.NewTurnObserver(eventBus)
 		if projectMeta.TeamID != "" && len(projectMeta.MemberAgentKeys) > 0 {
 			c.projector.memberStarted = make(map[string]bool)
@@ -188,7 +192,7 @@ func (c *turnStreamConsumer) projectAndTrackTools(ev *trpcevent.Event) {
 		}
 	}
 	if c.opts != nil {
-		PublishActivityEnvelopes(c.turnCtx, c.projectMeta, c.opts.ActivityPersister, envelopes)
+		PublishActivityEnvelopes(c.turnCtx, c.projectMeta, c.opts.ActivityPersister, envelopes, c.lg)
 	}
 }
 
@@ -249,7 +253,7 @@ func (c *turnStreamConsumer) finalize() {
 		PublishStuckToolResultEnvelopes(c.turnCtx, c.projectMeta, c.eventBus, pending)
 	}
 	if c.opts != nil && c.opts.ActivityPersister != nil {
-		FinalizeStuckToolActivities(c.turnCtx, c.projectMeta, c.opts.ActivityPersister, pending)
+		FinalizeStuckToolActivities(c.turnCtx, c.projectMeta, c.opts.ActivityPersister, pending, c.lg)
 	}
 }
 

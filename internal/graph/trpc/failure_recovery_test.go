@@ -47,7 +47,7 @@ func TestBuildStateGraph_skipOnFailureRecovery(t *testing.T) {
 			},
 		}},
 	}
-	g, _, err := BuildStateGraphWithAgents(context.Background(), cfg, nil)
+	g, _, err := BuildStateGraphWithAgents(context.Background(), cfg, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

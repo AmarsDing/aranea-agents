@@ -23,27 +23,27 @@ import (
 	trpcprovider "trpc.group/trpc-go/trpc-agent-go/model/provider"
 )
 
-func TRPCModelForProviderModel(ctx context.Context, catalog *biz.LlmProviderModelUsecase, rt *RoundTrip, prov, modelAPI string) (trpcmodel.Model, error) {
+func TRPCModelForProviderModel(ctx context.Context, catalog *biz.LlmProviderModelUsecase, rt *RoundTrip, prov, modelAPI string, lg loggateway.Logger) (trpcmodel.Model, error) {
 	if catalog == nil {
 		return nil, ErrNilLlmCatalog
 	}
 	pm, err := catalog.GetByProviderAndModel(ctx, strings.TrimSpace(prov), strings.TrimSpace(modelAPI))
 	if err != nil {
-		loggateway.Global().Error("模型目录查询失败", loggateway.StepID("system.provider.catalog_fail"), loggateway.Str("provider", prov), loggateway.Str("model", modelAPI), loggateway.Err(err))
+		lg.Error("模型目录查询失败", loggateway.StepID("provider.catalog_fail"), loggateway.Str("provider", prov), loggateway.Str("model", modelAPI), loggateway.Err(err))
 		return nil, err
 	}
 	cfg, err := CatalogFromModel(ModelCatalogInput{Model: pm.Model, ConfigJSON: pm.ConfigJSON})
 	if err != nil {
-		loggateway.Global().Error("模型目录配置解析失败", loggateway.StepID("system.provider.catalog_fail"), loggateway.Str("provider", prov), loggateway.Str("model", modelAPI), loggateway.Err(err))
+		lg.Error("模型目录配置解析失败", loggateway.StepID("provider.catalog_parse_fail"), loggateway.Str("provider", prov), loggateway.Str("model", modelAPI), loggateway.Err(err))
 		return nil, err
 	}
 	cfg = MergeCatalogConfig(cfg, pm.ConfigJSON)
-	loggateway.Global().Info("模型配置已解析", loggateway.StepID("system.provider.config_resolved"), loggateway.Phase("done"),
+	lg.Info("模型配置已解析", loggateway.StepID("provider.config_resolved"), loggateway.Phase("done"),
 		loggateway.Str("provider", prov), loggateway.Str("model", modelAPI), loggateway.Str("provider_type", cfg.ProviderType), loggateway.Str("ha_mode", cfg.HAMode))
-	return trpcModelFromCatalogConfig(ctx, cfg, rt)
+	return trpcModelFromCatalogConfig(ctx, cfg, rt, lg)
 }
 
-func trpcModelFromCatalogConfig(ctx context.Context, cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, error) {
+func trpcModelFromCatalogConfig(ctx context.Context, cfg CatalogConfig, rt *RoundTrip, lg loggateway.Logger) (trpcmodel.Model, error) {
 	name := strings.TrimSpace(cfg.ModelAPI)
 	if name == "" {
 		return nil, ErrNilLlmCatalog
@@ -63,11 +63,11 @@ func trpcModelFromCatalogConfig(ctx context.Context, cfg CatalogConfig, rt *Roun
 			client := outboundguard.NewClient(15 * time.Second)
 			resp, err := client.Do(probeReq)
 			if err != nil {
-				loggateway.Global().Error("模型 API 预检失败", loggateway.StepID("system.provider.preflight_fail"), loggateway.Str("url", baseURL), loggateway.Err(err))
+				lg.Error("模型 API 预检失败", loggateway.StepID("provider.preflight_fail"), loggateway.Str("url", baseURL), loggateway.Err(err))
 				return nil, fmt.Errorf("LLM API unreachable (%s): %w", baseURL, err)
 			}
 			resp.Body.Close()
-			loggateway.Global().Info("模型 API 预检通过", loggateway.StepID("system.provider.preflight_ok"), loggateway.Phase("done"), loggateway.Str("url", baseURL), loggateway.Int("status", resp.StatusCode))
+			lg.Info("模型 API 预检通过", loggateway.StepID("provider.preflight_ok"), loggateway.Phase("done"), loggateway.Str("url", baseURL), loggateway.Int("status", resp.StatusCode))
 		}
 	}
 
@@ -76,11 +76,12 @@ func trpcModelFromCatalogConfig(ctx context.Context, cfg CatalogConfig, rt *Roun
 
 	m, err := trpcprovider.Model(providerName, name, opts...)
 	if err != nil {
+		lg.Error("Provider model 构建失败", loggateway.StepID("provider.build_fail"), loggateway.Str("provider", providerName), loggateway.Str("model", name), loggateway.Err(err))
 		return nil, err
 	}
 	m = WrapModelWithMetrics(m, strings.TrimSpace(cfg.ProviderType), name)
 
-	return wrapHA(m, cfg, rt)
+	return wrapHA(m, cfg, rt, lg)
 }
 
 func MapProviderType(pt string) string {
@@ -379,70 +380,70 @@ func buildHunyuanSpecificOptions(cfg CatalogConfig) []trpcprovider.Option {
 	return []trpcprovider.Option{trpcprovider.WithHunyuanOption(providerOpts...)}
 }
 
-func wrapHA(primary trpcmodel.Model, cfg CatalogConfig, rt *RoundTrip) (trpcmodel.Model, error) {
+func wrapHA(primary trpcmodel.Model, cfg CatalogConfig, rt *RoundTrip, lg loggateway.Logger) (trpcmodel.Model, error) {
 	switch strings.ToLower(strings.TrimSpace(cfg.HAMode)) {
 	case "failover":
-		return wrapFailover(cfg, rt, primary)
+		return wrapFailover(cfg, rt, primary, lg)
 	case "hedge":
-		return wrapHedge(cfg, rt, primary)
+		return wrapHedge(cfg, rt, primary, lg)
 	}
 	return primary, nil
 }
 
-func wrapFailover(cfg CatalogConfig, rt *RoundTrip, primary trpcmodel.Model) (trpcmodel.Model, error) {
+func wrapFailover(cfg CatalogConfig, rt *RoundTrip, primary trpcmodel.Model, lg loggateway.Logger) (trpcmodel.Model, error) {
 	candidates := []trpcmodel.Model{primary}
 	for _, c := range cfg.HACandidates {
-		m, err := trpcModelFromCandidate(c, rt)
+		m, err := trpcModelFromCandidate(c, rt, lg)
 		if err != nil {
 			continue
 		}
 		candidates = append(candidates, m)
 	}
 	if len(candidates) < 2 {
+		lg.Warn("HA failover 候选不足，回退到主模型", loggateway.StepID("provider.ha_failover_fallback"), loggateway.Str("ha_mode", "failover"), loggateway.Int("candidates", len(candidates)))
 		return primary, nil
 	}
 	fo, err := trpcfailover.New(
 		trpcfailover.WithCandidates(candidates...),
 		trpcfailover.WithSwitchCallback(func(ctx context.Context, from, to string, err error) {
-			errMsg := ""
-			if err != nil {
-				errMsg = err.Error()
-			}
-			loggateway.Global().Warn("HA 故障切换",
-				loggateway.StepID("system.provider.ha_failover"),
+			lg.Warn("HA 故障切换",
+				loggateway.StepID("provider.ha_failover"),
 				loggateway.Str("ha_mode", "failover"),
 				loggateway.Str("from_candidate", from),
 				loggateway.Str("to_candidate", to),
-				loggateway.Str("error", errMsg),
+				loggateway.Err(err),
 			)
 		}),
 	)
 	if err != nil {
+		lg.Warn("HA failover 构建失败，回退到主模型", loggateway.StepID("provider.ha_failover_build_fail"), loggateway.Err(err))
 		return primary, nil
 	}
 	return fo, nil
 }
 
-func wrapHedge(cfg CatalogConfig, rt *RoundTrip, primary trpcmodel.Model) (trpcmodel.Model, error) {
+func wrapHedge(cfg CatalogConfig, rt *RoundTrip, primary trpcmodel.Model, lg loggateway.Logger) (trpcmodel.Model, error) {
 	candidates := []trpcmodel.Model{primary}
 	for _, c := range cfg.HACandidates {
-		m, err := trpcModelFromCandidate(c, rt)
+		m, err := trpcModelFromCandidate(c, rt, lg)
 		if err != nil {
 			continue
 		}
 		candidates = append(candidates, m)
 	}
 	if len(candidates) < 2 {
+		lg.Warn("HA hedge 候选不足，回退到主模型", loggateway.StepID("provider.ha_hedge_fallback"), loggateway.Str("ha_mode", "hedge"), loggateway.Int("candidates", len(candidates)))
 		return primary, nil
 	}
 	hedgeOpts := []trpchedge.Option{
 		trpchedge.WithCandidates(candidates...),
 		trpchedge.WithSwitchCallback(func(ctx context.Context, from, to string, err error) {
-			loggateway.Global().Warn("HA 对冲切换",
-				loggateway.StepID("system.provider.ha_hedge"),
+			lg.Warn("HA 对冲切换",
+				loggateway.StepID("provider.ha_hedge"),
 				loggateway.Str("ha_mode", "hedge"),
 				loggateway.Str("primary_candidate", from),
 				loggateway.Str("winner_candidate", to),
+				loggateway.Err(err),
 			)
 		}),
 	}
@@ -451,12 +452,13 @@ func wrapHedge(cfg CatalogConfig, rt *RoundTrip, primary trpcmodel.Model) (trpcm
 	}
 	h, err := trpchedge.New(hedgeOpts...)
 	if err != nil {
+		lg.Warn("HA hedge 构建失败，回退到主模型", loggateway.StepID("provider.ha_hedge_build_fail"), loggateway.Err(err))
 		return primary, nil
 	}
 	return h, nil
 }
 
-func trpcModelFromCandidate(c HACandidateConfig, rt *RoundTrip) (trpcmodel.Model, error) {
+func trpcModelFromCandidate(c HACandidateConfig, rt *RoundTrip, lg loggateway.Logger) (trpcmodel.Model, error) {
 	if baseURL := strings.TrimSpace(c.BaseURL); baseURL != "" {
 		if err := outboundguard.ValidateURL(baseURL); err != nil {
 			return nil, fmt.Errorf("HA candidate URL blocked: %w", err)
@@ -475,6 +477,7 @@ func trpcModelFromCandidate(c HACandidateConfig, rt *RoundTrip) (trpcmodel.Model
 	}
 	m, err := trpcprovider.Model(providerName, c.Name, opts...)
 	if err != nil {
+		lg.Error("HA candidate model 构建失败", loggateway.StepID("provider.ha_candidate_build_fail"), loggateway.Str("provider", providerName), loggateway.Str("model", c.Name), loggateway.Err(err))
 		return nil, err
 	}
 	return WrapModelWithMetrics(m, strings.TrimSpace(c.ProviderType), c.Name), nil

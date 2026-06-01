@@ -48,7 +48,7 @@ func (m *Manager) dispatchHookOnEvent(
 		}
 		func() {
 			defer func() { recoverHookPanic("on_event", recover(), nil) }()
-			if err := executeHookAction(ctx, stats, notifier, rh, "on_event", agentID, agentKey, "", e); err != nil {
+			if err := executeHookAction(ctx, stats, notifier, rh, "on_event", agentID, agentKey, "", e, m.lg); err != nil {
 				if metrics.IsBlockedErr(err) {
 					blockedErr = err
 					return

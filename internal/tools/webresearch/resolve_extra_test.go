@@ -64,7 +64,7 @@ func TestResolveConfig_platformFields(t *testing.T) {
 }
 
 func TestNewTool_notReady(t *testing.T) {
-	_, err := webresearch.NewTool(webresearch.Config{})
+	_, err := webresearch.NewTool(webresearch.Config{}, nil)
 	if err == nil {
 		t.Fatal("expected error when config not ready")
 	}
@@ -74,7 +74,7 @@ func TestNewTool_unsupportedProvider(t *testing.T) {
 	_, err := webresearch.NewTool(webresearch.Config{
 		Provider: "bing",
 		APIKey:   "key",
-	})
+	}, nil)
 	if err == nil {
 		t.Fatal("expected error for unsupported provider")
 	}
@@ -86,7 +86,7 @@ func TestNewTool_validTavily(t *testing.T) {
 		APIKey:     "test-key",
 		MaxResults: 5,
 		FetchTop:   0,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestNewTool_validSerpAPI(t *testing.T) {
 		APIKey:     "test-key",
 		MaxResults: 5,
 		FetchTop:   0,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

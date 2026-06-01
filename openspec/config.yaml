@@ -1,0 +1,35 @@
+schema: spec-driven
+
+context: |
+  Tech stack: Go + Kratos v2 (HTTP/gRPC/WebSocket) + trpc-agent-go (Agent runtime) + Vue 3 + Quasar + Pinia + TypeScript + SQLite (Ent ORM) + Wire (DI)
+  Domain: Multi-agent orchestration platform (Aranea-Agents)
+  Architecture: Kratos v2 for transport, trpc-agent-go for Agent orchestration
+  Backend layers: api/**/*.proto → internal/service → internal/biz → internal/data
+  Frontend layers: services/ → features/*/api.ts → stores/ → composables/ → pages/ → components/
+  Key rules:
+    - internal/biz MUST NOT import pkg/trpc-agent-go or api/*/v1
+    - All goroutines MUST use pkg/safego
+    - All logging MUST use pkg/loggateway.Logger (never log/slog)
+    - Errors MUST use kerrors (never fmt.Errorf for business errors)
+    - Tool-generated code (protoc/wire/ent) MUST NOT be manually edited
+    - Frontend: components are pure display (props in / emits out), no direct API calls
+  Testing: make test (backend), pnpm test (frontend)
+  Build: make build (backend), pnpm build (frontend)
+  Full validation: make api && make wire && make build && make test && make lint
+
+rules:
+  proposal:
+    - Always include "Non-goals" section to prevent scope creep
+    - Reference the module-cross-reference.md for impact analysis
+    - Specify which layers are affected (biz/data/service/server/frontend)
+  design:
+    - Follow the existing architecture blueprint patterns
+    - Specify Ent schema changes if database is involved
+    - Specify Proto changes if API is involved
+    - Include state machine diagrams for status changes
+  tasks:
+    - Break tasks into 2-5 minute bite-sized steps
+    - Each task must have a Definition of Done (DoD)
+    - Tasks must follow dependency order (schema → biz → data → service → server → frontend)
+    - Include verification step after each task
+    - Mark non-goals explicitly at the top

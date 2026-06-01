@@ -4,9 +4,11 @@ const LS_SECTION_COLLAPSED = "chat:collapsed:sections";
 const LS_GROUP_COLLAPSED = "chat:collapsed:groups";
 
 export function useChatEntityCollapse() {
-  const sectionCollapsed = reactive<{ agents: boolean; teams: boolean }>({
+  const sectionCollapsed = reactive<{ agents: boolean; teams: boolean; activeTeams: boolean; completedTeams: boolean }>({
     agents: false,
     teams: false,
+    activeTeams: false,
+    completedTeams: true,
   });
   const groupCollapsed = reactive<Record<string, boolean>>({});
 
@@ -14,9 +16,11 @@ export function useChatEntityCollapse() {
     try {
       const raw = localStorage.getItem(LS_SECTION_COLLAPSED);
       if (raw) {
-        const parsed = JSON.parse(raw) as { agents?: boolean; teams?: boolean };
+        const parsed = JSON.parse(raw) as { agents?: boolean; teams?: boolean; activeTeams?: boolean; completedTeams?: boolean };
         if (typeof parsed.agents === "boolean") sectionCollapsed.agents = parsed.agents;
         if (typeof parsed.teams === "boolean") sectionCollapsed.teams = parsed.teams;
+        if (typeof parsed.activeTeams === "boolean") sectionCollapsed.activeTeams = parsed.activeTeams;
+        if (typeof parsed.completedTeams === "boolean") sectionCollapsed.completedTeams = parsed.completedTeams;
       }
     } catch {
       /* ignore */
@@ -50,7 +54,7 @@ export function useChatEntityCollapse() {
     }
   }
 
-  function toggleSection(section: "agents" | "teams") {
+  function toggleSection(section: "agents" | "teams" | "activeTeams" | "completedTeams") {
     sectionCollapsed[section] = !sectionCollapsed[section];
     saveSections();
   }

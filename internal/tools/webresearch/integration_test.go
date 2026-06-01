@@ -34,7 +34,7 @@ func TestResearchTool_Call_mockTavily(t *testing.T) {
 		Timeout:         30 * time.Second,
 		TavilySearchURL: srv.URL,
 	}
-	tool, err := NewTool(cfg)
+	tool, err := NewTool(cfg, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

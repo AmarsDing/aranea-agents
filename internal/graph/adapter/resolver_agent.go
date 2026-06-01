@@ -5,13 +5,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
-	"strings"
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	graphtrpc "aranea-agents/internal/graph/trpc"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 )
@@ -19,12 +20,13 @@ import (
 // CatalogAgentResolver builds catalog agents for graph agent nodes.
 type CatalogAgentResolver struct {
 	Deps chatagent.TRPCBuilderDeps
+	lg   loggateway.Logger
 }
 
 var _ graphtrpc.AgentResolver = (*CatalogAgentResolver)(nil)
 
-func NewCatalogAgentResolver(deps chatagent.TRPCBuilderDeps) *CatalogAgentResolver {
-	return &CatalogAgentResolver{Deps: deps}
+func NewCatalogAgentResolver(deps chatagent.TRPCBuilderDeps, lg loggateway.Logger) *CatalogAgentResolver {
+	return &CatalogAgentResolver{Deps: deps, lg: lg}
 }
 
 func (r *CatalogAgentResolver) ResolveAgent(ctx context.Context, agentRef string) (trpcagent.Agent, error) {
@@ -35,7 +37,7 @@ func (r *CatalogAgentResolver) ResolveAgent(ctx context.Context, agentRef string
 	if err != nil {
 		return nil, err
 	}
-	return chatagent.BuildTRPCAgentCached(ctx, ag, r.Deps)
+	return chatagent.BuildTRPCAgentCached(ctx, ag, r.Deps, r.lg)
 }
 
 func (r *CatalogAgentResolver) resolveBizAgent(ctx context.Context, agentRef string) (biz.Agent, error) {

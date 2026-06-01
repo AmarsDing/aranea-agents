@@ -30,6 +30,9 @@ message Team {
   OrchestrationSpec orchestration_spec = 13;
   // Industry category node ID for team grouping.
   string category_industry_id = 14;
+  string spirit_session_id = 15;
+  string task_description = 16;
+  bool auto_created = 17;
 }
 
 message TeamRun {

@@ -59,6 +59,7 @@ type RuntimeTooling struct {
 	IndustryUC                 *biz.IndustryUsecase
 	DepartmentUC               *biz.DepartmentUsecase
 	PositionUC                 *biz.PositionUsecase
+	ToolResultGate             *biz.ToolResultGate
 }
 
 // TeamOrchestrationDeps groups team execution and graph compilation dependencies.
@@ -85,19 +86,20 @@ type ChannelTurnDeps struct {
 // ChatOrchestrator owns the turn lifecycle: admission, execution, status tracking,
 // and post-turn side effects. ChatService delegates all orchestration work here.
 type ChatOrchestrator struct {
-	td         rt.TurnDeps
-	rt         RuntimeTooling
-	team       TeamOrchestrationDeps
-	chTurn     ChannelTurnDeps
-	admitGate  *turn.AdmissionGate
-	usage      *biz.UsageUsecase
-	monitor    *biz.MonitorUsecase
-	artifacts  *biz.ArtifactUsecase
-	a2aUC      *biz.A2AUsecase
-	mcpServers *biz.MCPServerUsecase
-	runs       *rt.RunRegistry
-	chatUC     *biz.ChatUsecase
-	lg         loggateway.Logger
+	td              rt.TurnDeps
+	rt              RuntimeTooling
+	team            TeamOrchestrationDeps
+	chTurn          ChannelTurnDeps
+	admitGate       *turn.AdmissionGate
+	usage           *biz.UsageUsecase
+	monitor         *biz.MonitorUsecase
+	artifacts       *biz.ArtifactUsecase
+	a2aUC           *biz.A2AUsecase
+	mcpServers      *biz.MCPServerUsecase
+	runs            *rt.RunRegistry
+	chatUC          *biz.ChatUsecase
+	spiritAssembler *SpiritTeamAssembler
+	lg              loggateway.Logger
 
 	sessionRunBindings   sync.Map
 	awaitMetaCache       sync.Map
@@ -116,17 +118,18 @@ type ChatOrchestrator struct {
 // the flat parameter count and make responsibility boundaries explicit.
 type ChatOrchestratorDeps struct {
 	rt.TurnDeps
-	Runs         *rt.RunRegistry
-	PendingQueue *rt.PendingMessageQueue
-	RT           RuntimeTooling
-	Team         TeamOrchestrationDeps
-	ChTurn       ChannelTurnDeps
-	Usage        *biz.UsageUsecase
-	Monitor      *biz.MonitorUsecase
-	Artifacts    *biz.ArtifactUsecase
-	A2AUC        *biz.A2AUsecase
-	MCPServers   *biz.MCPServerUsecase
-	LG           loggateway.Logger
+	Runs            *rt.RunRegistry
+	PendingQueue    *rt.PendingMessageQueue
+	RT              RuntimeTooling
+	Team            TeamOrchestrationDeps
+	ChTurn          ChannelTurnDeps
+	Usage           *biz.UsageUsecase
+	Monitor         *biz.MonitorUsecase
+	Artifacts       *biz.ArtifactUsecase
+	A2AUC           *biz.A2AUsecase
+	MCPServers      *biz.MCPServerUsecase
+	SpiritAssembler *SpiritTeamAssembler
+	LG              loggateway.Logger
 }
 
 func coalesceRunRegistry(r *rt.RunRegistry) *rt.RunRegistry {
@@ -149,18 +152,19 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	sessionLocks := NewSessionLockManager()
 
 	o := &ChatOrchestrator{
-		td:         deps.TurnDeps,
-		rt:         deps.RT,
-		team:       deps.Team,
-		chTurn:     deps.ChTurn,
-		usage:      deps.Usage,
-		monitor:    deps.Monitor,
-		artifacts:  deps.Artifacts,
-		a2aUC:      deps.A2AUC,
-		mcpServers: deps.MCPServers,
-		runs:       runs,
-		chatUC:     NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Sessions, deps.Pipeline.Bus),
-		lg:         deps.LG,
+		td:              deps.TurnDeps,
+		rt:              deps.RT,
+		team:            deps.Team,
+		chTurn:          deps.ChTurn,
+		usage:           deps.Usage,
+		monitor:         deps.Monitor,
+		artifacts:       deps.Artifacts,
+		a2aUC:           deps.A2AUC,
+		mcpServers:      deps.MCPServers,
+		runs:            runs,
+		chatUC:          NewChatUsecaseFromDeps(runs, pending, sessionLocks, deps.Sessions, deps.Pipeline.Bus),
+		spiritAssembler: deps.SpiritAssembler,
+		lg:              deps.LG,
 	}
 	o.admitGate = newTurnAdmissionGate(turn.RunRegistryAdapter{Registry: runs}, o.chatUC, o.sessionPendingMergeFollowup)
 
@@ -675,7 +679,7 @@ func (o *ChatOrchestrator) sessionRuntime() *araneasession.Runtime {
 	if o.td.Persist.Session == nil {
 		return nil
 	}
-	return araneasession.NewRuntime(o.td.Persist.Session)
+	return araneasession.NewRuntime(o.td.Persist.Session, o.lg)
 }
 
 func (o *ChatOrchestrator) resolveUserID(ctx context.Context, sessionID string) string {

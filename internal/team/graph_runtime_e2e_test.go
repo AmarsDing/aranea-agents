@@ -164,7 +164,7 @@ func TestGraphRuntimeE2E_buildSequentialTeamGraph(t *testing.T) {
 	}
 	g, agents, err := graphtrpc.BuildStateGraphWithAgents(context.Background(), trpcCfg, &graphtrpc.BuildDeps{
 		Agents: stubAgentResolver{},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("build graph: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestGraphRuntimeE2E_buildCoordinatorTeamGraph(t *testing.T) {
 	for i, e := range cfg.Edges {
 		trpcCfg.Edges[i] = graphtrpc.EdgeDef{From: e.From, To: e.To}
 	}
-	g, _, err := graphtrpc.BuildStateGraphWithAgents(context.Background(), trpcCfg, &graphtrpc.BuildDeps{Agents: stubAgentResolver{}})
+	g, _, err := graphtrpc.BuildStateGraphWithAgents(context.Background(), trpcCfg, &graphtrpc.BuildDeps{Agents: stubAgentResolver{}}, nil)
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}

@@ -169,7 +169,7 @@ func (b *FrameworkBridge) Execute(
 				// not inflated by skipping failed judge calls. Append to any pre-existing
 				// inference error to preserve both error contexts.
 				b.lg.Warn("eval.llm_judge.failed",
-					loggateway.StepID("system.auto_memory.extract_fail"),
+					loggateway.StepID("evaluation.llm_judge.fail"),
 					loggateway.Str("case_id", bc.ID),
 					loggateway.Err(judgeErr),
 				)

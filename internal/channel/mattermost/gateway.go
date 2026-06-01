@@ -19,7 +19,7 @@ import (
 )
 
 func init() {
-	runtime.RegisterStarter("mattermost", "websocket", RunWebSocket)
+	runtime.RegisterStarterWithLogger("mattermost", "websocket", RunWebSocket)
 }
 
 func RunWebSocket(
@@ -28,13 +28,28 @@ func RunWebSocket(
 	creds []biz.ChannelCredential,
 	lookup runtime.CredentialLookup,
 	handler port.InboundHandler,
+	lg loggateway.Logger,
 ) error {
+	lg.Info("Mattermost WebSocket 连接器启动",
+		loggateway.StepID("channel.mattermost.ws.start"),
+		loggateway.Str("channel_id", ch.ID),
+	)
 	serverURL, err := lookup(ctx, creds, "server_url")
 	if err != nil {
+		lg.Error("Mattermost 凭据获取失败",
+			loggateway.StepID("channel.mattermost.ws.creds_fail"),
+			loggateway.Str("channel_id", ch.ID),
+			loggateway.Err(err),
+		)
 		return err
 	}
 	botToken, err := lookup(ctx, creds, "bot_token")
 	if err != nil {
+		lg.Error("Mattermost 凭据获取失败",
+			loggateway.StepID("channel.mattermost.ws.creds_fail"),
+			loggateway.Str("channel_id", ch.ID),
+			loggateway.Err(err),
+		)
 		return err
 	}
 	serverURL = strings.TrimSpace(serverURL)
@@ -57,7 +72,7 @@ func RunWebSocket(
 		return fmt.Errorf("mattermost websocket: dial: %w", err)
 	}
 	defer conn.Close()
-	loggateway.Global().Info("Mattermost WebSocket 连接成功",
+	lg.Info("Mattermost WebSocket 连接成功",
 		loggateway.StepID("channel.mattermost.ws.connected"),
 		loggateway.Str("server_url", serverURL))
 
@@ -67,7 +82,7 @@ func RunWebSocket(
 		for {
 			_, message, err := conn.ReadMessage()
 			if err != nil {
-				loggateway.Global().Warn("Mattermost WebSocket 读取失败",
+				lg.Warn("Mattermost WebSocket 读取失败",
 					loggateway.StepID("channel.mattermost.ws.read_failed"),
 					loggateway.Err(err))
 				readErr <- err
@@ -79,7 +94,7 @@ func RunWebSocket(
 			}
 			ev.PlatformType = "mattermost"
 			if err := handler.ProcessInbound(ctx, chRow, ev); err != nil {
-				loggateway.Global().Warn("Mattermost 入站处理失败",
+				lg.Warn("Mattermost 入站处理失败",
 					loggateway.StepID("channel.mattermost.inbound_failed"),
 					loggateway.Err(err),
 					loggateway.Str("channel_id", chRow.ID),

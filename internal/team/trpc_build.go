@@ -8,6 +8,7 @@ import (
 
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -30,6 +31,7 @@ func BuildTeamMemberAgents(
 	def Definition,
 	deps TRPCTeamBuilderDeps,
 	catalogAgent func(ctx context.Context, id string) (biz.Agent, error),
+	lg loggateway.Logger,
 ) ([]trpcagent.Agent, map[string]trpcagent.Agent, error) {
 	members := EnabledMembers(def)
 	memberAgents := make([]trpcagent.Agent, 0, len(members))
@@ -41,9 +43,9 @@ func BuildTeamMemberAgents(
 		}
 		var trpcAg trpcagent.Agent
 		if deps.UseCache {
-			trpcAg, err = chatagent.BuildTRPCAgentCached(ctx, ag, deps.BuilderDeps)
+			trpcAg, err = chatagent.BuildTRPCAgentCached(ctx, ag, deps.BuilderDeps, lg)
 		} else {
-			trpcAg, err = chatagent.BuildTRPCAgent(ctx, ag, deps.BuilderDeps)
+			trpcAg, err = chatagent.BuildTRPCAgent(ctx, ag, deps.BuilderDeps, lg)
 		}
 		if err != nil {
 			return nil, nil, kerrors.InternalServer("TEAM", fmt.Sprintf("build member %s: %v", m.AgentID, err))
@@ -58,7 +60,7 @@ func BuildTeamMemberAgents(
 
 // Deprecated: Team runs use the GraphAgent compile path by default (M53 Phase 7).
 // BuildTRPCTeam is retained only for emergency fallback when ARANEA_TEAM_NATIVE=1.
-func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps, catalogAgent func(ctx context.Context, id string) (biz.Agent, error)) (trpcagent.Agent, map[string]trpcagent.Agent, error) {
+func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps, catalogAgent func(ctx context.Context, id string) (biz.Agent, error), lg loggateway.Logger) (trpcagent.Agent, map[string]trpcagent.Agent, error) {
 	members := EnabledMembers(def)
 	if len(members) == 0 {
 		return nil, nil, kerrors.BadRequest("TEAM", "no enabled members")
@@ -66,7 +68,7 @@ func BuildTRPCTeam(ctx context.Context, def Definition, deps TRPCTeamBuilderDeps
 
 	mode := strings.ToLower(strings.TrimSpace(def.Mode))
 
-	memberAgents, lookup, err := BuildTeamMemberAgents(ctx, def, deps, catalogAgent)
+	memberAgents, lookup, err := BuildTeamMemberAgents(ctx, def, deps, catalogAgent, lg)
 	if err != nil {
 		return nil, nil, err
 	}

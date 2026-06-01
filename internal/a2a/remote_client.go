@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -108,25 +109,29 @@ func MTLSHTTPClient(raw string) (*http.Client, error) {
 }
 
 // FetchRemoteAgentCard resolves AgentCard metadata from a remote A2A URL.
-func FetchRemoteAgentCard(ctx context.Context, remoteURL, authType, authConfigJSON string) (biz.A2AAgentCard, error) {
+func FetchRemoteAgentCard(ctx context.Context, remoteURL, authType, authConfigJSON string, lg loggateway.Logger) (biz.A2AAgentCard, error) {
 	remoteURL = strings.TrimSpace(remoteURL)
 	if remoteURL == "" {
 		return biz.A2AAgentCard{}, kerrors.BadRequest("A2A", "remote_url is required")
 	}
 	opts, err := ClientAuthOptions(authType, authConfigJSON)
 	if err != nil {
+		lg.Warn("A2A fetch remote card auth failed", loggateway.StepID("a2a.remote_card.auth_fail"), loggateway.Str("remote_url", remoteURL), loggateway.Err(err))
 		return biz.A2AAgentCard{}, err
 	}
 	opts = append(opts, a2aclient.WithTimeout(30*time.Second))
 	client, err := a2aclient.NewA2AClient(remoteURL, opts...)
 	if err != nil {
+		lg.Warn("A2A fetch remote card connect failed", loggateway.StepID("a2a.remote_card.connect_fail"), loggateway.Str("remote_url", remoteURL), loggateway.Err(err))
 		return biz.A2AAgentCard{}, kerrors.BadRequest("A2A", "connect remote a2a: "+err.Error())
 	}
 	cardPtr, err := client.GetAgentCard(ctx, remoteURL)
 	if err != nil {
+		lg.Error("A2A fetch remote card HTTP call failed", loggateway.StepID("a2a.remote_card.fetch_fail"), loggateway.Str("remote_url", remoteURL), loggateway.Err(err))
 		return biz.A2AAgentCard{}, kerrors.BadRequest("A2A", "fetch remote agent card: "+err.Error())
 	}
 	if cardPtr == nil {
+		lg.Warn("A2A remote agent card is empty", loggateway.StepID("a2a.remote_card.empty"), loggateway.Str("remote_url", remoteURL))
 		return biz.A2AAgentCard{}, kerrors.BadRequest("A2A", "remote agent card is empty")
 	}
 	return protocolCardToBiz(*cardPtr), nil

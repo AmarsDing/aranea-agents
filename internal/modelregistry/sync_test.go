@@ -6,11 +6,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestSyncerNotModified(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	if err := st.SavePolicy(DefaultPolicy()); err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +36,7 @@ func TestSyncerNotModified(t *testing.T) {
 		return FetchResult{NotModified: true, ETag: `"cached"`}, nil
 	}
 
-	out, err := NewSyncer(st).Sync(context.Background(), SyncInput{})
+	out, err := NewSyncer(st, loggateway.NewNoop()).Sync(context.Background(), SyncInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +47,7 @@ func TestSyncerNotModified(t *testing.T) {
 
 func TestSyncer_FetchError(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	if err := st.SavePolicy(DefaultPolicy()); err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +58,7 @@ func TestSyncer_FetchError(t *testing.T) {
 		return FetchResult{}, errors.New("network unreachable")
 	}
 
-	out, err := NewSyncer(st).Sync(context.Background(), SyncInput{})
+	out, err := NewSyncer(st, loggateway.NewNoop()).Sync(context.Background(), SyncInput{})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -81,7 +83,7 @@ func TestSyncer_FetchError(t *testing.T) {
 
 func TestSyncer_ParseError(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	if err := st.SavePolicy(DefaultPolicy()); err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +94,7 @@ func TestSyncer_ParseError(t *testing.T) {
 		return FetchResult{Body: []byte(`{invalid`)}, nil
 	}
 
-	out, err := NewSyncer(st).Sync(context.Background(), SyncInput{})
+	out, err := NewSyncer(st, loggateway.NewNoop()).Sync(context.Background(), SyncInput{})
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -103,7 +105,7 @@ func TestSyncer_ParseError(t *testing.T) {
 
 func TestSyncer_DryRun(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	if err := st.SavePolicy(DefaultPolicy()); err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +119,7 @@ func TestSyncer_DryRun(t *testing.T) {
 		}, nil
 	}
 
-	out, err := NewSyncer(st).Sync(context.Background(), SyncInput{DryRun: true})
+	out, err := NewSyncer(st, loggateway.NewNoop()).Sync(context.Background(), SyncInput{DryRun: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +138,7 @@ func TestSyncer_DryRun(t *testing.T) {
 
 func TestSyncer_Success(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	if err := st.SavePolicy(DefaultPolicy()); err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +152,7 @@ func TestSyncer_Success(t *testing.T) {
 		}, nil
 	}
 
-	out, err := NewSyncer(st).Sync(context.Background(), SyncInput{})
+	out, err := NewSyncer(st, loggateway.NewNoop()).Sync(context.Background(), SyncInput{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +183,7 @@ func TestSyncer_Success(t *testing.T) {
 
 func TestSyncer_NeedsScheduledSync_ScheduledNotExpired(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 
 	policy := Policy{
 		SourceURL:         "https://example.com",
@@ -200,7 +202,7 @@ func TestSyncer_NeedsScheduledSync_ScheduledNotExpired(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	needs, _, err := NewSyncer(st).NeedsScheduledSync()
+	needs, _, err := NewSyncer(st, loggateway.NewNoop()).NeedsScheduledSync()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +213,7 @@ func TestSyncer_NeedsScheduledSync_ScheduledNotExpired(t *testing.T) {
 
 func TestSyncer_NeedsScheduledSync_ScheduledExpired(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 
 	policy := Policy{
 		SourceURL:         "https://example.com",
@@ -230,7 +232,7 @@ func TestSyncer_NeedsScheduledSync_ScheduledExpired(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	needs, _, err := NewSyncer(st).NeedsScheduledSync()
+	needs, _, err := NewSyncer(st, loggateway.NewNoop()).NeedsScheduledSync()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +243,7 @@ func TestSyncer_NeedsScheduledSync_ScheduledExpired(t *testing.T) {
 
 func TestSyncer_NeedsScheduledSync_ManualPolicy(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 
 	policy := Policy{
 		SourceURL:  "https://example.com",
@@ -251,7 +253,7 @@ func TestSyncer_NeedsScheduledSync_ManualPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	needs, _, err := NewSyncer(st).NeedsScheduledSync()
+	needs, _, err := NewSyncer(st, loggateway.NewNoop()).NeedsScheduledSync()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +264,7 @@ func TestSyncer_NeedsScheduledSync_ManualPolicy(t *testing.T) {
 
 func TestSyncer_NeedsScheduledSync_NoMeta(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 
 	policy := Policy{
 		SourceURL:         "https://example.com",
@@ -273,7 +275,7 @@ func TestSyncer_NeedsScheduledSync_NoMeta(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	needs, _, err := NewSyncer(st).NeedsScheduledSync()
+	needs, _, err := NewSyncer(st, loggateway.NewNoop()).NeedsScheduledSync()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +286,7 @@ func TestSyncer_NeedsScheduledSync_NoMeta(t *testing.T) {
 
 func TestSyncer_NeedsScheduledSync_DefaultInterval(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 
 	policy := Policy{
 		SourceURL:         "https://example.com",
@@ -303,7 +305,7 @@ func TestSyncer_NeedsScheduledSync_DefaultInterval(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	needs, _, err := NewSyncer(st).NeedsScheduledSync()
+	needs, _, err := NewSyncer(st, loggateway.NewNoop()).NeedsScheduledSync()
 	if err != nil {
 		t.Fatal(err)
 	}

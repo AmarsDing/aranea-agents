@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/qq"
+	"aranea-agents/pkg/loggateway"
 
 	qqwebhook "github.com/tencent-connect/botgo/interaction/webhook"
 )
@@ -24,8 +25,13 @@ func (h *ChannelIngress) handleQQWebhook(w http.ResponseWriter, r *http.Request,
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	appSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "app_secret")
+	appSecret, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "app_secret", h.lg)
 	if err := qq.VerifyRequest(appSecret, r.Header, raw); err != nil {
+		h.lg.Warn("QQ Webhook 签名验证失败",
+			loggateway.StepID("channel.qq.webhook.verify_fail"),
+			loggateway.Str("channel_id", chRow.ID),
+			loggateway.Err(err),
+		)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil
 	}

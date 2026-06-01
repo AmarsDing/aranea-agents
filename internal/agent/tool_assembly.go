@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -27,7 +28,7 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		eff = loadEffectiveToolKeys(ctx, deps, ag.ID)
 		cfg = tooltrpc.ToolsetConfigFromEffectiveKeys(eff)
 
-		mcpServers, _ := resolveMCPServers(ctx, deps, ag.ID)
+		mcpServers, _ := resolveMCPServers(ctx, deps, ag.ID, deps.Logger())
 		platformAllowAdHoc := platformMCPAllowAdHocHTTP(ctx, deps)
 		if eff[biz.ToolKeyMCPToolSet] && len(mcpServers) > 0 {
 			cfg.MCPServers = mcpServers
@@ -49,6 +50,13 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		cfg.KnowledgeReflect = eff[biz.ToolKeyKnowledgeReflect]
 		cfg.CallAgent = eff[biz.ToolKeyCallAgent]
 		cfg.AwaitHook = deps.AwaitHook
+
+		if ag.Settings.ToolsDeferredJSON != "" {
+			var deferred []string
+			if err := json.Unmarshal([]byte(ag.Settings.ToolsDeferredJSON), &deferred); err == nil {
+				cfg.DeferredTools = deferred
+			}
+		}
 	}
 
 	if len(deps.CustomTools) > 0 {
@@ -60,7 +68,7 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 			cfg.Kanban = true
 			cfg.KanbanBridge = deps.KanbanBridge
 		} else {
-			event.CtxFlowLogWarn(ctx, "system.agent.tool_build", "kanban 已启用但 KanbanBridge 未注入，跳过看板工具",
+			event.CtxFlowLogWarn(ctx, "agent.tool_build", "kanban 已启用但 KanbanBridge 未注入，跳过看板工具",
 				event.P("agent_id", ag.ID))
 		}
 	}
@@ -69,29 +77,33 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		cfg.MemoryEnabled = true
 	}
 
+	if deps.ToolResultGate != nil {
+		cfg.BlobReader = deps.ToolResultGate.BlobReader()
+	}
+
 	if !tooltrpc.ToolsetConfigHasAny(cfg) {
-		event.CtxFlowLogDone(ctx, "system.agent.tool_build", "工具构建：未启用任何工具", event.P("agent_id", ag.ID))
+		event.CtxFlowLogDone(ctx, "agent.tool_build", "工具构建：未启用任何工具", event.P("agent_id", ag.ID))
 		return nil, nil
 	}
-	event.CtxFlowLogDone(ctx, "system.agent.tool_build", "工具构建中", event.P("agent_id", ag.ID), event.P("filesystem", cfg.Filesystem), event.P("mcp_servers", len(cfg.MCPServers)))
+	event.CtxFlowLogDone(ctx, "agent.tool_build", "工具构建中", event.P("agent_id", ag.ID), event.P("filesystem", cfg.Filesystem), event.P("mcp_servers", len(cfg.MCPServers)))
 	applyRuntimeToolConfigs(ctx, ag.ID, eff, deps, &cfg)
 	applyWebResearchPlatformDefaults(ctx, deps, &cfg)
 	tooltrpc.ResolveGeminiFetchModel(&cfg, ag.Provider, ag.Model)
 	if skipped := tooltrpc.PruneUnconfiguredToolFlags(&cfg); len(skipped) > 0 {
-		event.CtxFlowLogWarn(ctx, "system.agent.tool_build", "已跳过未配置凭证的工具，避免构建失败",
+		event.CtxFlowLogWarn(ctx, "agent.tool_build", "已跳过未配置凭证的工具，避免构建失败",
 			event.P("agent_id", ag.ID), event.P("skipped_tools", skipped))
 	}
 	if err := applyToolWorkspaceDirs(ctx, ag, deps, &cfg); err != nil {
-		event.CtxFlowLogError(ctx, "system.agent.tool_build", "工具构建失败", event.P("agent_id", ag.ID), event.P("error", err))
+		event.CtxFlowLogError(ctx, "agent.tool_build", "工具构建失败", event.P("agent_id", ag.ID), event.P("error", err))
 		return nil, err
 	}
-	ts, err := tooltrpc.BuildToolsets(ctx, cfg)
+	ts, err := tooltrpc.BuildToolsets(ctx, cfg, deps.LG)
 	if err != nil || ts == nil {
-		event.CtxFlowLogError(ctx, "system.agent.tool_build", "工具构建失败", event.P("agent_id", ag.ID), event.P("error", err))
+		event.CtxFlowLogError(ctx, "agent.tool_build", "工具构建失败", event.P("agent_id", ag.ID), event.P("error", err))
 		return ts, err
 	}
 	toolCount := len(ts.Tools) + len(ts.ToolSets)
-	event.CtxFlowLogDone(ctx, "system.agent.tool_build", "工具构建完成", event.P("agent_id", ag.ID), event.P("tool_count", toolCount))
+	event.CtxFlowLogDone(ctx, "agent.tool_build", "工具构建完成", event.P("agent_id", ag.ID), event.P("tool_count", toolCount))
 	if gate := buildToolConfirmGate(ctx, ag, deps); gate != nil {
 		tooltrpc.ApplyConfirmationPolicy(ts, gate.confirmationMap())
 	}
@@ -187,7 +199,7 @@ func applyToolWorkspaceDirs(ctx context.Context, ag biz.Agent, deps TRPCBuilderD
 		if shellDir == "" {
 			cfg.ShellExecDir = root
 		} else if err := ensureToolWorkspaceDir(shellDir); err != nil {
-			event.CtxFlowLogWarn(ctx, "system.agent.tool_build", "Shell 工作目录无效，回退到统一工作区",
+			event.CtxFlowLogWarn(ctx, "agent.tool_build", "Shell 工作目录无效，回退到统一工作区",
 				event.P("agent_id", ag.ID), event.P("configured_dir", shellDir), event.P("error", err))
 			cfg.ShellExecDir = root
 		}
@@ -206,7 +218,7 @@ func resolveAgentFilesystemDir(ctx context.Context, ag biz.Agent, deps TRPCBuild
 	configured = strings.TrimSpace(configured)
 	if configured != "" {
 		if err := ensureToolWorkspaceDir(configured); err != nil {
-			event.CtxFlowLogWarn(ctx, "system.agent.tool_build", "工具工作区路径无效，回退到默认目录",
+			event.CtxFlowLogWarn(ctx, "agent.tool_build", "工具工作区路径无效，回退到默认目录",
 				event.P("agent_id", ag.ID), event.P("configured_dir", configured), event.P("error", err))
 		} else {
 			return configured, nil
@@ -254,7 +266,7 @@ func ensureFilesystemWorkspaceDir(dir string) error {
 	return nil
 }
 
-func resolveMCPServers(ctx context.Context, deps TRPCBuilderDeps, agentID string) ([]tooltrpc.MCPServerConfig, error) {
+func resolveMCPServers(ctx context.Context, deps TRPCBuilderDeps, agentID string, lg loggateway.Logger) ([]tooltrpc.MCPServerConfig, error) {
 	if deps.MCPTooling == nil {
 		return nil, nil
 	}
@@ -275,7 +287,7 @@ func resolveMCPServers(ctx context.Context, deps TRPCBuilderDeps, agentID string
 		}
 		sc, err := mcpconfig.ParseServerConfigJSON(cfgJSON)
 		if err != nil {
-			loggateway.Global().Warn("MCP server config parse failed", loggateway.StepID("system.agent.tool_build"), loggateway.Str("server_key", key), loggateway.Err(err))
+			lg.Warn("MCP server config parse failed", loggateway.StepID("agent.tool_build"), loggateway.Str("server_key", key), loggateway.Err(err))
 			continue
 		}
 		out = append(out, tooltrpc.MCPServerConfig{
@@ -297,7 +309,7 @@ func resolveMCPServers(ctx context.Context, deps TRPCBuilderDeps, agentID string
 }
 
 func resolveMCPBrokerConfig(ctx context.Context, deps TRPCBuilderDeps, agentID string) (*tooltrpc.MCPBrokerConfig, error) {
-	servers, err := resolveMCPServers(ctx, deps, agentID)
+	servers, err := resolveMCPServers(ctx, deps, agentID, deps.Logger())
 	if err != nil || len(servers) == 0 {
 		return nil, err
 	}

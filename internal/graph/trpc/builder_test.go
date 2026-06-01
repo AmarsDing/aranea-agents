@@ -38,7 +38,7 @@ func TestBuildStateGraph_LLMNode(t *testing.T) {
 			{ID: "llm1", Type: "llm", Instruction: "say hi", ModelName: "openai/gpt-4o-mini"},
 		},
 	}
-	_, _, err := BuildStateGraphWithAgents(context.Background(), cfg, &BuildDeps{Models: stubDeps{}})
+	_, _, err := BuildStateGraphWithAgents(context.Background(), cfg, &BuildDeps{Models: stubDeps{}}, nil)
 	if err != nil {
 		t.Fatalf("build llm graph: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestBuildStateGraph_FunctionNode(t *testing.T) {
 			{ID: "fn", Type: "function", Func: PassthroughNodeFunc("fn")},
 		},
 	}
-	_, _, err := BuildStateGraphWithAgents(context.Background(), cfg, nil)
+	_, _, err := BuildStateGraphWithAgents(context.Background(), cfg, nil, nil)
 	if err != nil {
 		t.Fatalf("build function graph: %v", err)
 	}

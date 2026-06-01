@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/tools/webresearch"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestEnrichHits(t *testing.T) {
@@ -64,7 +65,7 @@ func TestEnrichHits(t *testing.T) {
 				Timeout:   5 * time.Second,
 				FetchTop:  tt.fetchTop,
 			}
-			warnings, err := webresearch.EnrichHits(context.Background(), tt.hits, tt.fetchTop, cfg)
+			warnings, err := webresearch.EnrichHits(context.Background(), tt.hits, tt.fetchTop, cfg, loggateway.NewNoop())
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("error = %v, wantErr %v", err, tt.wantErr)
 			}

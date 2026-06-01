@@ -63,11 +63,11 @@ func newL0SnapshotAfterModelHook(deps TRPCBuilderDeps) callbacks.Callback {
 			actual = args.Response.Usage.PromptTokens
 		}
 		if err := deps.MemoryAdmin.UpdateL0SnapshotActual(ctx, pending.ID, actual, pending.Window); err != nil {
-			loggateway.Global().Warn("L0 快照 actual 更新失败",
-				loggateway.StepID("memory.l0.snapshot"),
+			deps.Logger().Warn("L0 快照 actual 更新失败",
+				loggateway.StepID("agent.l0.snapshot"),
 				loggateway.Str("snapshot_id", pending.ID),
 				loggateway.Int("model_call_index", callIndex),
-				loggateway.Str("error", err.Error()),
+				loggateway.Err(err),
 			)
 		}
 		return &trpcmodel.AfterModelResult{Context: ctx}, nil
@@ -157,15 +157,15 @@ func persistL0AssemblySnapshot(ctx context.Context, deps TRPCBuilderDeps, ag biz
 		CreatedAt:            time.Now().UTC().Format(time.RFC3339Nano),
 	}
 	if err := deps.MemoryAdmin.InsertL0AssemblySnapshot(ctx, in); err != nil {
-		loggateway.Global().Warn("L0 快照落库失败",
-			loggateway.StepID("memory.l0.snapshot"),
+		deps.Logger().Warn("L0 快照落库失败",
+			loggateway.StepID("agent.l0.snapshot"),
 			loggateway.Str("session_id", sessionID),
-			loggateway.Str("error", err.Error()),
+			loggateway.Err(err),
 		)
 		return
 	}
 	setL0SnapshotPendingForCall(inv, callIndex, in.ID, win)
-	loggateway.Global().Info("L0 快照已落库", loggateway.StepID("memory.l0.snapshot"), loggateway.Phase("done"),
+	deps.Logger().Info("L0 快照已落库", loggateway.StepID("agent.l0.snapshot"), loggateway.Phase("done"),
 		loggateway.Str("snapshot_id", in.ID),
 		loggateway.Str("session_id", sessionID),
 		loggateway.Int("model_call_index", callIndex),

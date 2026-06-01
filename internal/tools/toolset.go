@@ -7,16 +7,20 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/internal/outbound"
 
 	mcpdefaults "aranea-agents/internal/mcp"
 	mcpconfig "aranea-agents/internal/mcp/config"
 	"aranea-agents/internal/tools/browser"
+	"aranea-agents/internal/tools/custom"
+	"aranea-agents/internal/tools/deferred"
 	"aranea-agents/internal/tools/hostexecnorm"
 	"aranea-agents/internal/tools/mcpobserve"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	trpcagenttool "trpc.group/trpc-go/trpc-agent-go/tool/agent"
 	trpcarxivsearch "trpc.group/trpc-go/trpc-agent-go/tool/arxivsearch"
 	trpcawaitreply "trpc.group/trpc-go/trpc-agent-go/tool/awaitreply"
@@ -75,6 +79,11 @@ func Registry() []*ToolRegistration {
 				EnabledByDefault:    true,
 				RiskLevel:           "low",
 				SupportsConcurrency: true,
+				Group:               "file_edit",
+				Examples: []ToolUseExample{
+					{UserQuery: "read the contents of config.yaml", ToolName: "file", Explanation: "basic file read/write operations"},
+					{UserQuery: "search for TODO comments in my project", ToolName: "file", Explanation: "file search within workspace"},
+				},
 			},
 			{
 				Name:        "hostexec",
@@ -98,6 +107,10 @@ func Registry() []*ToolRegistration {
 				},
 				EnabledByDefault: false,
 				RiskLevel:        "medium",
+				Group:            "web_search",
+				Examples: []ToolUseExample{
+					{UserQuery: "fetch the content of this URL", ToolName: "httpfetch", Explanation: "direct HTTP page retrieval, not a search engine"},
+				},
 			},
 			{
 				Name:        "claudefetch",
@@ -131,6 +144,11 @@ func Registry() []*ToolRegistration {
 				},
 				EnabledByDefault: false,
 				RiskLevel:        "medium",
+				Group:            "web_search",
+				Examples: []ToolUseExample{
+					{UserQuery: "search the web for recent news about AI", ToolName: "duckduckgo", Explanation: "general web search via DuckDuckGo"},
+					{UserQuery: "find information about Go programming language", ToolName: "duckduckgo", Explanation: "broad web search query"},
+				},
 			},
 			{
 			Name:        "google_search",
@@ -142,6 +160,10 @@ func Registry() []*ToolRegistration {
 			},
 			EnabledByDefault: false,
 			RiskLevel:        "medium",
+			Group:            "web_search",
+			Examples: []ToolUseExample{
+				{UserQuery: "search Google for latest research papers on transformers", ToolName: "google_search", Explanation: "Google Custom Search with API key"},
+			},
 		},
 			{
 				Name:        "arxiv_search",
@@ -227,6 +249,10 @@ func Registry() []*ToolRegistration {
 				EnabledByDefault:     false,
 				RiskLevel:            "critical",
 				RequiresConfirmation: true,
+				Group:                "file_edit",
+				Examples: []ToolUseExample{
+					{UserQuery: "edit line 42 in main.go to fix the bug", ToolName: "claudecode", Explanation: "full IDE-like coding toolset with bash, edit, grep"},
+				},
 			},
 			{
 				Name:        "workspace_exec",
@@ -327,6 +353,18 @@ func Registry() []*ToolRegistration {
 				RiskLevel:            "critical",
 				RequiresConfirmation: true,
 			},
+			{
+				Name:        "read_tool_result",
+				Description: "Retrieve the full content of a previously persisted tool result by its blob_id",
+				Category:    "system",
+				Tags:        []string{"system", "tool-result", "retrieval"},
+				Factory: func(ctx context.Context) (Tool, error) {
+					return nil, nil
+				},
+				EnabledByDefault: true,
+				RiskLevel:        "low",
+				Deferred:         true,
+			},
 		}
 	})
 	return registry
@@ -385,6 +423,7 @@ func (c MCPServerConfig) ToConnectionConfig() trpcmcp.ConnectionConfig {
 
 type AssemblyConfig struct {
 	EnabledTools   []string
+	DeferredTools  []string
 	FilesystemDir  string
 	ShellExecDir   string
 	GeminiModel    string
@@ -405,6 +444,7 @@ type AssemblyConfig struct {
 	OutboundRouter *outbound.Router
 	SubAgentService *subagenttool.Service
 	Browser         *browser.PlaywrightMCPConfig
+	BlobReader      biz.ToolResultBlobReader
 }
 
 type OpenAPISpecConfig struct {
@@ -414,12 +454,18 @@ type OpenAPISpecConfig struct {
 }
 
 type AssembledToolsets struct {
-	ToolSets []ToolSet
-	Tools    []Tool
+	ToolSets        []ToolSet
+	Tools           []Tool
+	DeferredManager *deferred.DeferredToolManager
 }
 
 func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, error) {
-	// TPM-P1-01: fail fast if runtime/policy alias maps disagree on canonical target.
+	lg := loggateway.Global()
+	lg.Info("tools.Assemble started",
+		loggateway.StepID("tool.assemble.start"),
+		loggateway.Int("enabled_tools", len(cfg.EnabledTools)),
+		loggateway.Int("deferred_tools", len(cfg.DeferredTools)),
+	)
 	if err := ValidateRuntimeAliasesAgainstPolicy(); err != nil {
 		return nil, fmt.Errorf("tools.Assemble: %w", err)
 	}
@@ -428,9 +474,16 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 	for _, name := range cfg.EnabledTools {
 		enabled[name] = true
 	}
+	deferredSet := make(map[string]bool, len(cfg.DeferredTools))
+	for _, name := range cfg.DeferredTools {
+		deferredSet[name] = true
+	}
 
 	for _, reg := range Registry() {
 		if !enabled[reg.Name] {
+			continue
+		}
+		if deferredSet[reg.Name] {
 			continue
 		}
 		if reg.ToolSetFactory != nil {
@@ -441,8 +494,8 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 			if ts != nil {
 				out.ToolSets = append(out.ToolSets, ts)
 			} else {
-				loggateway.Global().Warn("tools.assemble.factory_nil",
-					loggateway.StepID("system.tool_assembly_skip"),
+				lg.Warn("tools.assemble.factory_nil",
+					loggateway.StepID("tool.assemble.factory_nil"),
 					loggateway.Str("tool", reg.Name),
 					loggateway.Str("reason", "factory returned nil without error"))
 			}
@@ -454,8 +507,8 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 			if t != nil {
 				out.Tools = append(out.Tools, t)
 			} else {
-				loggateway.Global().Warn("tools.assemble.factory_nil",
-					loggateway.StepID("system.tool_assembly_skip"),
+				lg.Warn("tools.assemble.factory_nil",
+					loggateway.StepID("tool.assemble.factory_nil"),
 					loggateway.Str("tool", reg.Name),
 					loggateway.Str("reason", "factory returned nil without error"))
 			}
@@ -494,8 +547,8 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 			}
 			out.Tools = append(out.Tools, t)
 		} else {
-			loggateway.Global().Warn("tools.assemble.geminifetch_no_model",
-				loggateway.StepID("system.tool_assembly_skip"),
+			lg.Warn("tools.assemble.geminifetch_no_model",
+				loggateway.StepID("tool.assemble.geminifetch_no_model"),
 				loggateway.Str("reason", "gemini_model config is empty"))
 		}
 	}
@@ -513,8 +566,8 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 			}
 			out.ToolSets = append(out.ToolSets, ts)
 		} else {
-			loggateway.Global().Warn("tools.assemble.google_search_no_config",
-				loggateway.StepID("system.tool_assembly_skip"),
+			lg.Warn("tools.assemble.google_search_no_config",
+				loggateway.StepID("tool.assemble.google_search_no_config"),
 				loggateway.Str("reason", "api_key or cx is empty"))
 		}
 	}
@@ -549,8 +602,8 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 		// of silently disappearing. We continue rather than aborting all assembly
 		// so a bad spec doesn't block unrelated toolsets.
 		if err != nil {
-			loggateway.Global().Warn("tools.assemble.openapi_loader_failed",
-				loggateway.StepID("system.builtin_tools_sync_fail"),
+			lg.Warn("tools.assemble.openapi_loader_failed",
+				loggateway.StepID("tool.assemble.openapi_loader_fail"),
 				loggateway.Str("spec_name", spec.Name),
 				loggateway.Str("spec_url", spec.SpecURL),
 				loggateway.Err(err))
@@ -649,6 +702,85 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 			out.ToolSets = append(out.ToolSets, ts)
 		}
 	}
+
+	if cfg.BlobReader != nil && enabled["read_tool_result"] {
+		rt := custom.NewReadToolResultTool(cfg.BlobReader)
+		out.Tools = append(out.Tools, rt)
+	}
+
+	if len(cfg.DeferredTools) > 0 {
+		var catalog []deferred.DeferredToolEntry
+		registryEntries := Registry()
+		regByName := make(map[string]*ToolRegistration, len(registryEntries))
+		for _, reg := range registryEntries {
+			regByName[reg.Name] = reg
+		}
+		for _, name := range cfg.DeferredTools {
+			reg, ok := regByName[name]
+			if !ok {
+				lg.Warn("tools.assemble.deferred_not_found",
+					loggateway.StepID("tool.assemble.deferred_not_found"),
+					loggateway.Str("tool", name),
+					loggateway.Str("reason", "deferred tool not in registry"))
+				continue
+			}
+			entry := deferred.DeferredToolEntry{
+				Name:        reg.Name,
+				Description: reg.Description,
+				Category:    reg.Category,
+			}
+			if reg.Factory != nil {
+				entry.Factory = reg.Factory
+			} else if reg.ToolSetFactory != nil {
+				entry.Factory = func(ctx context.Context) (trpctool.Tool, error) {
+					ts, err := reg.ToolSetFactory(ctx)
+					if err != nil {
+						return nil, err
+					}
+					if ts == nil {
+						return nil, fmt.Errorf("toolset %q returned nil", reg.Name)
+					}
+					tools := ts.Tools(ctx)
+					if len(tools) == 0 {
+						return nil, fmt.Errorf("toolset %q returned no tools", reg.Name)
+					}
+					return tools[0], nil
+				}
+			}
+			catalog = append(catalog, entry)
+		}
+		if len(catalog) > 0 {
+			searchTool := deferred.NewToolSearchTool(catalog)
+			out.Tools = append(out.Tools, searchTool)
+			out.DeferredManager = searchTool.Manager()
+			for _, entry := range catalog {
+				if entry.Factory == nil {
+					continue
+				}
+				dt := deferred.NewDeferredCallableTool(
+					&trpctool.Declaration{
+						Name:        entry.Name,
+						Description: entry.Description,
+					},
+					entry.Factory,
+					lg,
+				)
+				out.Tools = append(out.Tools, dt)
+			}
+		}
+	}
+
+	ApplyDisambiguationHints(out.Tools)
+
+	for _, ts := range out.ToolSets {
+		ApplyDisambiguationHints(ts.Tools(ctx))
+	}
+
+	lg.Info("tools.Assemble completed",
+		loggateway.StepID("tool.assemble.complete"),
+		loggateway.Int("toolsets", len(out.ToolSets)),
+		loggateway.Int("tools", len(out.Tools)),
+	)
 
 	return out, nil
 }

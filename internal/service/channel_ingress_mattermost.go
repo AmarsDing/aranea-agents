@@ -7,6 +7,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/mattermost"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/pkg/loggateway"
 )
 
 func (h *ChannelIngress) handleMattermostWebhook(w http.ResponseWriter, r *http.Request, chRow biz.Channel) error {
@@ -20,8 +21,13 @@ func (h *ChannelIngress) handleMattermostWebhook(w http.ResponseWriter, r *http.
 		http.Error(w, "credentials", http.StatusInternalServerError)
 		return nil
 	}
-	receiveToken, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "receive_token")
+	receiveToken, _ := resolveCredentialPlain(r.Context(), h.channels, creds, "receive_token", h.lg)
 	if err := mattermost.VerifyToken(receiveToken, r.URL.Query().Get("token")); err != nil {
+		h.lg.Warn("Mattermost Webhook 签名验证失败",
+			loggateway.StepID("channel.mattermost.webhook.verify_fail"),
+			loggateway.Str("channel_id", chRow.ID),
+			loggateway.Err(err),
+		)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil
 	}

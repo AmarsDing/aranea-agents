@@ -6,7 +6,7 @@ import (
 )
 
 func TestResearchTool_Call_requiresQuery(t *testing.T) {
-	tool, err := NewTool(Config{Provider: ProviderTavily, APIKey: "k"})
+	tool, err := NewTool(Config{Provider: ProviderTavily, APIKey: "k"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

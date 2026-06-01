@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 const testSearchQuery = "Aranea web research connectivity test"
@@ -45,11 +47,14 @@ func ConfigFromSetting(provider string, apiKey string, maxResults, fetchTop int,
 }
 
 // TestConnection runs a minimal search against the configured provider.
-func TestConnection(ctx context.Context, cfg Config) (TestResult, error) {
+func TestConnection(ctx context.Context, cfg Config, lg loggateway.Logger) (TestResult, error) {
 	if !cfg.Ready() {
 		return TestResult{}, fmt.Errorf("web_research: api_key is required")
 	}
-	provider, err := newSearchProvider(cfg)
+	if lg == nil {
+		lg = loggateway.Global()
+	}
+	provider, err := newSearchProvider(cfg, lg)
 	if err != nil {
 		return TestResult{Provider: cfg.Provider, Message: err.Error()}, err
 	}

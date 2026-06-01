@@ -59,6 +59,9 @@ const (
 	EnvelopeTypeOrchestrationAgentStatus    = contract.EnvelopeTypeOrchestrationAgentStatus
 	EnvelopeTypeUserFeedback                = contract.EnvelopeTypeUserFeedback
 	EnvelopeTypeSessionStatusChanged        = contract.EnvelopeTypeSessionStatusChanged
+	EnvelopeTypeSpiritTeamAssembled         = contract.EnvelopeTypeSpiritTeamAssembled
+	EnvelopeTypeSpiritTeamCompleted         = contract.EnvelopeTypeSpiritTeamCompleted
+	EnvelopeTypeSpiritTeamFailed            = contract.EnvelopeTypeSpiritTeamFailed
 )
 
 // Re-export functions.

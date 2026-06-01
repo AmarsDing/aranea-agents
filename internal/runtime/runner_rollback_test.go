@@ -3,6 +3,8 @@ package runtime
 import (
 	"context"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type testRollbackStore struct {
@@ -22,7 +24,7 @@ func (s *testRollbackStore) RollbackToBoundary(_ context.Context, _ string, boun
 
 func TestRunnerManagerRollbackBoundaryDelegatesToStore(t *testing.T) {
 	store := &testRollbackStore{}
-	mgr := NewRunnerManager(RunnerFactoryDeps{Persist: PersistenceSet{RunnerRollback: store}})
+	mgr := NewRunnerManager(RunnerFactoryDeps{Persist: PersistenceSet{RunnerRollback: store}}, loggateway.NewNoop())
 
 	boundary, err := mgr.MarkRollbackBoundary(context.Background(), "sess-1", "run-1", "turn-1")
 	if err != nil {

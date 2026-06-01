@@ -74,7 +74,7 @@ func BuildIndustryContext(ctx context.Context, d Deps, ag biz.Agent) string {
 	anc, err := d.PositionUC.GetWithAncestors(ctx, ag.PositionKey)
 	if err != nil {
 		event.CtxFlowLogError(ctx, "agent.industry_context", "行业上下文构建失败：无法获取岗位祖先链",
-			event.P("position_key", ag.PositionKey), event.P("error", err.Error()))
+			event.P("position_key", ag.PositionKey), event.P("error", err))
 		return ""
 	}
 	var b strings.Builder

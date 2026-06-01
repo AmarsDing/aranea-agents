@@ -14,6 +14,7 @@ import (
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/outboundguard"
 	"aranea-agents/pkg/strutil"
 )
@@ -68,7 +69,7 @@ func deepSeekOpenAICompatBase(apiBase string) bool {
 	return !strings.HasSuffix(u, "/anthropic")
 }
 
-func Run(in Input) (Result, error) {
+func Run(in Input, lg loggateway.Logger) (Result, error) {
 	in.ResourceID = strings.TrimSpace(in.ResourceID)
 	in.ProviderCode = strings.TrimSpace(in.ProviderCode)
 	in.ProviderType = strings.TrimSpace(in.ProviderType)
@@ -82,29 +83,32 @@ func Run(in Input) (Result, error) {
 	if in.ProviderCode == "" || in.ModelAPIID == "" {
 		return Result{}, kerrors.BadRequest("LLM_INSPECT", "provider_code and model_api_id are required")
 	}
+
+	lg.Info("LLM inspect started", loggateway.StepID("llminspect.run"), loggateway.Str("provider_code", in.ProviderCode), loggateway.Str("model_api_id", in.ModelAPIID), loggateway.Str("provider_type", in.ProviderType))
+
 	if strings.Contains(strings.ToLower(in.APIBaseURL), "openrouter.ai") || strings.Contains(strings.ToLower(in.ProviderCode), "openrouter") {
-		return inspectOpenRouterModel(in)
+		return inspectOpenRouterModel(in, lg)
 	}
 	if deepSeekOpenAICompatBase(in.APIBaseURL) {
-		return inspectOpenAICompatibleModel(in)
+		return inspectOpenAICompatibleModel(in, lg)
 	}
 	pt := strings.ToLower(in.ProviderType)
 	switch pt {
 	case "anthropic":
-		return inspectAnthropicModel(in)
+		return inspectAnthropicModel(in, lg)
 	case "gemini":
-		return inspectGeminiModel(in)
+		return inspectGeminiModel(in, lg)
 	case "ollama":
-		return inspectOllamaModel(in)
+		return inspectOllamaModel(in, lg)
 	case "hunyuan":
-		return inspectHunyuanModel(in)
+		return inspectHunyuanModel(in, lg)
 	case "bedrock":
 		return inspectBedrockModel(in)
 	}
-	return inspectOpenAICompatibleModel(in)
+	return inspectOpenAICompatibleModel(in, lg)
 }
 
-func inspectOpenRouterModel(in Input) (Result, error) {
+func inspectOpenRouterModel(in Input, lg loggateway.Logger) (Result, error) {
 	endpoint := "https://openrouter.ai/api/v1/models"
 	if in.APIBaseURL != "" {
 		endpoint = openRouterModelsURL(in.APIBaseURL)
@@ -116,6 +120,7 @@ func inspectOpenRouterModel(in Input) (Result, error) {
 		} `json:"data"`
 	}
 	if err := getProviderJSON(endpoint, in.APIKey, nil, &out); err != nil {
+		lg.Error("LLM inspect OpenRouter request failed", loggateway.StepID("llminspect.openrouter.fail"), loggateway.Str("endpoint", endpoint), loggateway.Err(err))
 		return Result{OK: false, Message: "OpenRouter 模型参数请求失败：" + err.Error(), ProviderCode: in.ProviderCode, ProviderType: in.ProviderType, ModelAPIID: in.ModelAPIID}, nil
 	}
 	for _, item := range out.Data {
@@ -138,7 +143,7 @@ func inspectOpenRouterModel(in Input) (Result, error) {
 	return Result{OK: false, Message: "OpenRouter 未找到该模型", ProviderCode: in.ProviderCode, ProviderType: in.ProviderType, ModelAPIID: in.ModelAPIID}, nil
 }
 
-func inspectOpenAICompatibleModel(in Input) (Result, error) {
+func inspectOpenAICompatibleModel(in Input, lg loggateway.Logger) (Result, error) {
 	if in.APIBaseURL == "" {
 		return Result{OK: false, Message: "检查模型需要 API 基础 URL", ProviderCode: in.ProviderCode, ProviderType: in.ProviderType, ModelAPIID: in.ModelAPIID}, nil
 	}
@@ -150,6 +155,7 @@ func inspectOpenAICompatibleModel(in Input) (Result, error) {
 		} `json:"data"`
 	}
 	if err := getProviderJSON(modelsURL(in.APIBaseURL), in.APIKey, nil, &out); err != nil {
+		lg.Error("LLM inspect OpenAI-compatible request failed", loggateway.StepID("llminspect.openai_compat.fail"), loggateway.Str("api_base_url", in.APIBaseURL), loggateway.Err(err))
 		return Result{OK: false, Message: "Provider 模型参数请求失败：" + err.Error(), ProviderCode: in.ProviderCode, ProviderType: in.ProviderType, ModelAPIID: in.ModelAPIID}, nil
 	}
 	for _, item := range out.Data {
@@ -171,7 +177,7 @@ func inspectOpenAICompatibleModel(in Input) (Result, error) {
 	return Result{OK: false, Message: "Provider /models 未找到该模型", ProviderCode: in.ProviderCode, ProviderType: in.ProviderType, ModelAPIID: in.ModelAPIID}, nil
 }
 
-func inspectAnthropicModel(in Input) (Result, error) {
+func inspectAnthropicModel(in Input, lg loggateway.Logger) (Result, error) {
 	base := strutil.FirstNonEmpty(in.APIBaseURL, "https://api.anthropic.com/v1")
 	var out struct {
 		Data []struct {
@@ -181,7 +187,8 @@ func inspectAnthropicModel(in Input) (Result, error) {
 	}
 	headers := map[string]string{"anthropic-version": "2023-06-01"}
 	if err := getProviderJSON(modelsURL(base), in.APIKey, headers, &out); err != nil {
-		return anthropicKnownModelFallback(in, "Anthropic 元数据接口不可用，已根据模型ID使用内置参数："+err.Error()), nil
+		lg.Warn("LLM inspect Anthropic API unavailable, falling back to known defaults", loggateway.StepID("llminspect.anthropic.fallback"), loggateway.Str("api_base_url", base), loggateway.Err(err))
+		return anthropicKnownModelFallback(in, "Anthropic 元数据接口不可用，已根据模型ID使用内置参数："+err.Error(), lg), nil
 	}
 	for _, item := range out.Data {
 		if item.ID == in.ModelAPIID {
@@ -199,10 +206,11 @@ func inspectAnthropicModel(in Input) (Result, error) {
 			}, nil
 		}
 	}
-	return anthropicKnownModelFallback(in, "Anthropic 元数据接口未返回该模型，已登记模型 ID"), nil
+	return anthropicKnownModelFallback(in, "Anthropic 元数据接口未返回该模型，已登记模型 ID", lg), nil
 }
 
-func anthropicKnownModelFallback(in Input, message string) Result {
+func anthropicKnownModelFallback(in Input, message string, lg loggateway.Logger) Result {
+	lg.Warn("LLM inspect using Anthropic known-model fallback", loggateway.StepID("llminspect.anthropic.known_fallback"), loggateway.Str("model_api_id", in.ModelAPIID), loggateway.Str("reason", message))
 	return Result{
 		OK:               true,
 		Message:          message,
@@ -215,7 +223,7 @@ func anthropicKnownModelFallback(in Input, message string) Result {
 	}
 }
 
-func inspectGeminiModel(in Input) (Result, error) {
+func inspectGeminiModel(in Input, lg loggateway.Logger) (Result, error) {
 	base := strutil.FirstNonEmpty(in.APIBaseURL, "https://generativelanguage.googleapis.com/v1beta")
 	endpoint := strings.TrimRight(base, "/") + "/models"
 	if in.APIKey != "" {
@@ -231,6 +239,7 @@ func inspectGeminiModel(in Input) (Result, error) {
 		} `json:"models"`
 	}
 	if err := getProviderJSON(endpoint, "", nil, &out); err != nil {
+		lg.Error("LLM inspect Gemini request failed", loggateway.StepID("llminspect.gemini.fail"), loggateway.Str("endpoint", endpoint), loggateway.Err(err))
 		return Result{OK: false, Message: "Gemini 模型参数请求失败：" + err.Error(), ProviderCode: in.ProviderCode, ProviderType: "gemini", ModelAPIID: in.ModelAPIID}, nil
 	}
 	want := in.ModelAPIID
@@ -260,7 +269,7 @@ func inspectGeminiModel(in Input) (Result, error) {
 	return Result{OK: false, Message: "Gemini 未找到该模型", ProviderCode: in.ProviderCode, ProviderType: "gemini", ModelAPIID: in.ModelAPIID}, nil
 }
 
-func inspectOllamaModel(in Input) (Result, error) {
+func inspectOllamaModel(in Input, lg loggateway.Logger) (Result, error) {
 	base := strutil.FirstNonEmpty(in.APIBaseURL, "http://127.0.0.1:11434")
 	endpoint := strings.TrimRight(base, "/") + "/api/tags"
 	var out struct {
@@ -274,6 +283,7 @@ func inspectOllamaModel(in Input) (Result, error) {
 		} `json:"models"`
 	}
 	if err := getProviderJSON(endpoint, in.APIKey, nil, &out); err != nil {
+		lg.Error("LLM inspect Ollama request failed", loggateway.StepID("llminspect.ollama.fail"), loggateway.Str("endpoint", endpoint), loggateway.Err(err))
 		return Result{OK: false, Message: "Ollama 模型参数请求失败：" + err.Error(), ProviderCode: in.ProviderCode, ProviderType: "ollama", ModelAPIID: in.ModelAPIID}, nil
 	}
 	for _, item := range out.Models {
@@ -302,12 +312,12 @@ func inspectOllamaModel(in Input) (Result, error) {
 	return Result{OK: false, Message: "Ollama 未找到该模型", ProviderCode: in.ProviderCode, ProviderType: "ollama", ModelAPIID: in.ModelAPIID}, nil
 }
 
-func inspectHunyuanModel(in Input) (Result, error) {
+func inspectHunyuanModel(in Input, lg loggateway.Logger) (Result, error) {
 	if in.SecretID == "" || in.SecretKey == "" {
 		if in.APIKey == "" {
 			return Result{OK: false, Message: "混元检查需要 SecretId 与 SecretKey", ProviderCode: in.ProviderCode, ProviderType: "hunyuan", ModelAPIID: in.ModelAPIID}, nil
 		}
-		result, err := inspectOpenAICompatibleModel(in)
+		result, err := inspectOpenAICompatibleModel(in, lg)
 		if err == nil && result.OK {
 			result.ProviderType = "hunyuan"
 			result.Source = "hunyuan"
@@ -318,7 +328,7 @@ func inspectHunyuanModel(in Input) (Result, error) {
 	probe.ProviderType = "hunyuan"
 	probe.APIBaseURL = strutil.FirstNonEmpty(probe.APIBaseURL, "https://api.hunyuan.cloud.tencent.com/v1")
 	probe.APIKey = probe.SecretKey
-	result, err := inspectOpenAICompatibleModel(probe)
+	result, err := inspectOpenAICompatibleModel(probe, lg)
 	if err != nil {
 		return result, err
 	}

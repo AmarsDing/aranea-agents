@@ -18,10 +18,11 @@ const titleGenPrompt = `根据用户的第一条消息，生成一个简短的�
 type LLMSessionTitleGenerator struct {
 	catalog *biz.LlmProviderModelUsecase
 	rt      *provider.RoundTrip
+	lg      loggateway.Logger
 }
 
-func NewLLMSessionTitleGenerator(catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip) *LLMSessionTitleGenerator {
-	return &LLMSessionTitleGenerator{catalog: catalog, rt: rt}
+func NewLLMSessionTitleGenerator(catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip, lg loggateway.Logger) *LLMSessionTitleGenerator {
+	return &LLMSessionTitleGenerator{catalog: catalog, rt: rt, lg: lg}
 }
 
 func (g *LLMSessionTitleGenerator) Generate(ctx context.Context, userMessage string) (string, error) {
@@ -31,7 +32,7 @@ func (g *LLMSessionTitleGenerator) Generate(ctx context.Context, userMessage str
 
 	m, err := g.resolveModel(ctx)
 	if err != nil {
-		loggateway.Global().Warn("session title: resolve model failed", loggateway.StepID("system.session.title_fail"), loggateway.Str("error", err.Error()))
+		g.lg.Warn("session title: resolve model failed", loggateway.StepID("session.title_fail"), loggateway.Err(err))
 		return "", kerrors.InternalServer("SESSION", "session title: resolve model: "+err.Error())
 	}
 
@@ -47,14 +48,14 @@ func (g *LLMSessionTitleGenerator) Generate(ctx context.Context, userMessage str
 
 	ch, err := m.GenerateContent(ctx, req)
 	if err != nil {
-		loggateway.Global().Warn("session title: llm call failed", loggateway.StepID("system.session.title_fail"), loggateway.Str("error", err.Error()))
+		g.lg.Warn("session title: llm call failed", loggateway.StepID("session.title_fail"), loggateway.Err(err))
 		return "", kerrors.InternalServer("SESSION", "session title: llm call: "+err.Error())
 	}
 
 	var sb strings.Builder
 	for resp := range ch {
 		if resp.Error != nil {
-			loggateway.Global().Warn("session title: llm error", loggateway.StepID("system.session.title_fail"), loggateway.Str("error", resp.Error.Message))
+			g.lg.Warn("session title: llm error", loggateway.StepID("session.title_fail"), loggateway.Str("error", resp.Error.Message))
 			return "", kerrors.InternalServer("SESSION", "session title: llm error: "+resp.Error.Message)
 		}
 		for _, c := range resp.Choices {
@@ -84,7 +85,7 @@ func (g *LLMSessionTitleGenerator) resolveModel(ctx context.Context) (trpcmodel.
 	}
 
 	pm := pickTitleModel(models)
-	return provider.TRPCModelForProviderModel(ctx, g.catalog, g.rt, pm.Provider, pm.Model)
+	return provider.TRPCModelForProviderModel(ctx, g.catalog, g.rt, pm.Provider, pm.Model, g.lg)
 }
 
 func pickTitleModel(models []biz.ProviderModel) biz.ProviderModel {

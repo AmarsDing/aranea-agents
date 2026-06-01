@@ -59,7 +59,7 @@ func TestNewTRPCRunnerAndRunUserTurn(t *testing.T) {
 	}
 	defer r.Close()
 
-	events, err := RunTRPCUserTurn(context.Background(), r, "user-1", "session-1", "hi")
+	events, err := RunTRPCUserTurn(context.Background(), r, "user-1", "session-1", "hi", nil)
 	if err != nil {
 		t.Fatalf("RunTRPCUserTurn() error = %v", err)
 	}
@@ -92,10 +92,10 @@ func TestRunTRPCUserTurnValidatesRequiredIDs(t *testing.T) {
 	}
 	defer r.Close()
 
-	if _, err := RunTRPCUserTurn(context.Background(), r, "", "session-1", "hi"); err == nil {
+	if _, err := RunTRPCUserTurn(context.Background(), r, "", "session-1", "hi", nil); err == nil {
 		t.Fatal("expected missing user id error")
 	}
-	if _, err := RunTRPCUserTurn(context.Background(), r, "user-1", "", "hi"); err == nil {
+	if _, err := RunTRPCUserTurn(context.Background(), r, "user-1", "", "hi", nil); err == nil {
 		t.Fatal("expected missing session id error")
 	}
 }

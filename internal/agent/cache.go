@@ -182,16 +182,16 @@ func InvalidateAgentCache(agentID string) {
 
 // BuildTRPCLLMAgentCached wraps BuildTRPCLLMAgent with the global LRU cache.
 // Cache hits avoid the cost of assembling tools, skills, and the model client.
-func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (trpcagent.Agent, error) {
+func BuildTRPCLLMAgentCached(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, lg loggateway.Logger) (trpcagent.Agent, error) {
 	key := BuildCacheKey(ag, deps, deps.ToolVersionHash, deps.SkillVersionHash, deps.MCPVersionHash)
 	if cached := globalBuildCache.get(key); cached != nil {
 		arametrics.AgentBuildCacheHits.Inc()
-		loggateway.Global().Info("Agent 构建缓存命中", loggateway.StepID("system.agent.cache_hit"), loggateway.Phase("done"), loggateway.Str("agent_id", ag.ID), loggateway.Str("agent_key", ag.AgentKey), loggateway.Str("cache_key", key))
+		lg.Info("Agent 构建缓存命中", loggateway.StepID("agent.cache_hit"), loggateway.Phase("done"), loggateway.Str("agent_id", ag.ID), loggateway.Str("agent_key", ag.AgentKey), loggateway.Str("cache_key", key))
 		return cached, nil
 	}
 	arametrics.AgentBuildCacheMisses.Inc()
-	loggateway.Global().Info("Agent 构建缓存未命中", loggateway.StepID("system.agent.cache_miss"), loggateway.Phase("done"), loggateway.Str("agent_id", ag.ID), loggateway.Str("agent_key", ag.AgentKey), loggateway.Str("cache_key", key))
-	built, err := BuildTRPCLLMAgent(ctx, ag, deps)
+	lg.Info("Agent 构建缓存未命中", loggateway.StepID("agent.cache_miss"), loggateway.Phase("done"), loggateway.Str("agent_id", ag.ID), loggateway.Str("agent_key", ag.AgentKey), loggateway.Str("cache_key", key))
+	built, err := BuildTRPCLLMAgent(ctx, ag, deps, lg)
 	if err != nil {
 		return nil, err
 	}

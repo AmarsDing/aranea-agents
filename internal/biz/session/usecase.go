@@ -64,6 +64,9 @@ type Session struct {
 	MetadataJSON               string
 	SessionRevision            int64
 	CompressVersion            int64
+	ParentSessionID            string
+	RootSessionID              string
+	AgentDepth                 int
 }
 
 // SessionSearchQuery filters sessions（对齐遗留 REST query）.
@@ -328,6 +331,10 @@ type SessionReader interface {
 	ListSessionsByIDs(ctx context.Context, ids []string) ([]Session, error)
 }
 
+type SessionTreeReader interface {
+	ListByParentSessionID(ctx context.Context, parentSessionID string) ([]Session, error)
+}
+
 type SessionWriter interface {
 	CreateSession(ctx context.Context, s Session) (Session, error)
 	UpdateSessionTitle(ctx context.Context, id, title string) (Session, error)
@@ -423,6 +430,7 @@ type CompressRepo interface {
 // Consumers should depend on the specific sub-interface they need.
 type SessionRepo interface {
 	SessionReader
+	SessionTreeReader
 	SessionWriter
 	SessionMutator
 	SessionBatchMutator
@@ -459,6 +467,7 @@ type SessionStatusPublisher interface {
 // SessionUsecase handles session CRUD + timeline. Chat 写消息经 AppendChat* 等仓储方法，不经 SessionService RPC.
 type SessionUsecase struct {
 	sessionReader       SessionReader
+	sessionTreeReader   SessionTreeReader
 	sessionWriter       SessionWriter
 	sessionMutator      SessionMutator
 	sessionBatchMutator SessionBatchMutator
@@ -488,6 +497,7 @@ func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLooku
 	}
 	return &SessionUsecase{
 		sessionReader:       sessions,
+		sessionTreeReader:   sessions,
 		sessionWriter:       sessions,
 		sessionMutator:      sessions,
 		sessionBatchMutator: sessions,
@@ -653,6 +663,37 @@ func (uc *SessionUsecase) DeleteByAgent(ctx context.Context, agentID string) err
 		return validationErr("agent_id is required")
 	}
 	return uc.sessionMutator.DeleteSessionsByAgentID(ctx, agentID)
+}
+
+func (uc *SessionUsecase) ListChildSessions(ctx context.Context, parentSessionID string) ([]Session, error) {
+	parentSessionID = strings.TrimSpace(parentSessionID)
+	if parentSessionID == "" {
+		return nil, validationErr("parent_session_id is required")
+	}
+	return uc.sessionTreeReader.ListByParentSessionID(ctx, parentSessionID)
+}
+
+func (uc *SessionUsecase) GetRootSession(ctx context.Context, sessionID string) (Session, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return Session{}, validationErr("session_id is required")
+	}
+	sess, err := uc.sessionReader.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return Session{}, err
+	}
+	const maxDepth = 10
+	for i := 0; i < maxDepth && sess.RootSessionID != ""; i++ {
+		root, err := uc.sessionReader.GetSessionByID(ctx, sess.RootSessionID)
+		if err != nil {
+			return Session{}, err
+		}
+		if root.RootSessionID == "" || root.RootSessionID == root.ID {
+			return root, nil
+		}
+		sess = root
+	}
+	return sess, nil
 }
 
 func normalizeSessionSearch(q *SessionSearchQuery) {

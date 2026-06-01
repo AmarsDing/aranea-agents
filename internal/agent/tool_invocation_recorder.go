@@ -161,7 +161,7 @@ func recordToolInvocationWrite(ctx context.Context, write biz.ToolInvocationWrit
 		bg := context.Background()
 		if deps.ToolUC != nil {
 			if err := deps.ToolUC.RecordToolInvocation(bg, write); err != nil {
-				event.CtxFlowLogWarn(ctx, "system.tool.record_fail", "工具调用记录失败", event.P("tool", write.ToolKey), event.P("error", err))
+				event.CtxFlowLogWarn(ctx, "agent.tool.record_fail", "工具调用记录失败", event.P("tool", write.ToolKey), event.P("error", err))
 			}
 			auditWrite := biz.ToolInvocationAuditWrite{
 				InvocationID:  write.ToolCallID,
@@ -178,12 +178,12 @@ func recordToolInvocationWrite(ctx context.Context, write biz.ToolInvocationWrit
 				auditWrite.ResultSummary = write.ErrorMessage
 			}
 			if err := deps.ToolUC.RecordToolInvocationAudit(bg, auditWrite); err != nil {
-				event.CtxFlowLogWarn(ctx, "system.tool.audit_fail", "工具调用审计写入失败", event.P("tool", write.ToolKey), event.P("error", err))
+				event.CtxFlowLogWarn(ctx, "agent.tool.audit_fail", "工具调用审计写入失败", event.P("tool", write.ToolKey), event.P("error", err))
 			}
 		}
 		if countSession {
 			if err := deps.Sessions.IncrementInvocationCounts(bg, sessionID, toolDelta, mcpDelta, skillDelta); err != nil {
-				loggateway.Global().With(loggateway.SessionID(sessionID)).Warn("会话工具调用计数更新失败", loggateway.StepID("system.tool.record_fail"), loggateway.Str("tool", write.ToolKey), loggateway.Err(err))
+				deps.Logger().With(loggateway.SessionID(sessionID)).Warn("会话工具调用计数更新失败", loggateway.StepID("agent.tool.record_fail"), loggateway.Str("tool", write.ToolKey), loggateway.Err(err))
 			}
 		}
 	})

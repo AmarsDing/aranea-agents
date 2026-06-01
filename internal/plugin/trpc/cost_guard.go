@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
@@ -26,10 +27,10 @@ type CostGuardPlugin struct {
 
 var _ trpcplugin.Plugin = (*CostGuardPlugin)(nil)
 
-func NewCostGuardPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime) *CostGuardPlugin {
+func NewCostGuardPlugin(p biz.Plugin, stats StatsRecorder, bus event.Bus, rt *Runtime, lg loggateway.Logger) *CostGuardPlugin {
 	var cfg CostGuardConfig
 	parsePluginConfig(p.ConfigJSON, p.DefaultConfigJSON, &cfg)
-	return &CostGuardPlugin{base: newBasePlugin(p.Key, stats, bus), cfg: cfg, rt: rt}
+	return &CostGuardPlugin{base: newBasePlugin(p.Key, stats, bus, lg), cfg: cfg, rt: rt}
 }
 
 func (c *CostGuardPlugin) Name() string { return c.base.Name() }
@@ -40,7 +41,7 @@ func (c *CostGuardPlugin) Register(r *trpcplugin.Registry) {
 
 func (c *CostGuardPlugin) budget(ctx context.Context) *CostGuardBudgetTracker {
 	if c == nil || c.rt == nil {
-		return NewCostGuardBudgetTracker()
+		return NewCostGuardBudgetTracker(c.base.lg)
 	}
 	return c.rt.BudgetTrackerForContext(ctx)
 }

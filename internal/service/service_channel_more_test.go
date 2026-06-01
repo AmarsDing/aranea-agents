@@ -7,6 +7,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/service"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestTrimKey(t *testing.T) {
@@ -49,7 +50,7 @@ func TestAllowWebhookRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := service.AllowWebhookRequest(tt.channelKey); got != tt.want {
+			if got := service.AllowWebhookRequest(tt.channelKey, loggateway.NewNoop()); got != tt.want {
 				t.Errorf("AllowWebhookRequest(%q) = %v, want %v", tt.channelKey, got, tt.want)
 			}
 		})
@@ -447,7 +448,7 @@ func TestChannelTypeFromConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := service.ChannelTypeFromConfig(tt.configJSON); got != tt.want {
+			if got := service.ChannelTypeFromConfig(tt.configJSON, loggateway.NewNoop()); got != tt.want {
 				t.Errorf("ChannelTypeFromConfig() = %q, want %q", got, tt.want)
 			}
 		})

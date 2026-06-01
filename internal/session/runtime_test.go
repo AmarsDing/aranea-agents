@@ -5,11 +5,13 @@ import (
 	"testing"
 
 	trpcinmemory "trpc.group/trpc-go/trpc-agent-go/session/inmemory"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestRuntime_SyncRunnerSnapshot_updatesState(t *testing.T) {
 	svc := trpcinmemory.NewSessionService()
-	rt := NewRuntime(svc)
+	rt := NewRuntime(svc, loggateway.NewNoop())
 	ctx := context.Background()
 	userID := "default_user"
 	sessionID := "sess-sync-1"
@@ -40,7 +42,7 @@ func TestRuntime_SyncRunnerSnapshot_updatesState(t *testing.T) {
 
 func TestRuntime_SyncStateDelta_updatesKV(t *testing.T) {
 	svc := trpcinmemory.NewSessionService()
-	rt := NewRuntime(svc)
+	rt := NewRuntime(svc, loggateway.NewNoop())
 	ctx := context.Background()
 	userID := "default_user"
 	sessionID := "sess-kv-1"
@@ -62,7 +64,7 @@ func TestRuntime_SyncStateDelta_updatesKV(t *testing.T) {
 }
 
 func TestRuntime_SyncRunnerSnapshot_missingSession(t *testing.T) {
-	rt := NewRuntime(trpcinmemory.NewSessionService())
+	rt := NewRuntime(trpcinmemory.NewSessionService(), loggateway.NewNoop())
 	err := rt.SyncRunnerSnapshot(context.Background(), "default_user", "missing", `{}`, "")
 	if err == nil {
 		t.Fatal("expected error for missing session")

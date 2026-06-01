@@ -7,6 +7,7 @@ import type { GraphDefinition, NodeType } from "./types";
 import { NODE_TYPE_STYLES } from "./types";
 import { relativeTime } from "./utils";
 import { useGraphExecute } from "./useGraphExecute";
+import type { ContextMenuItem } from "../../components/graph/GraphContextMenu.vue";
 
 const SORT_OPTIONS = [
   { label: "更新时间", value: "updatedAt" },
@@ -40,6 +41,24 @@ export function useGraphsPage() {
   const isDark = computed(() => $q.dark.isActive);
   const error = ref("");
   const runDialogGraph = ref<GraphDefinition | null>(null);
+
+  const selectedGraphId = ref<string | null>(null);
+  const ctxMenuVisible = ref(false);
+  const ctxMenuX = ref(0);
+  const ctxMenuY = ref(0);
+  const ctxMenuGraph = ref<GraphDefinition | null>(null);
+
+  const selectedGraph = computed(() => {
+    if (!selectedGraphId.value) return null;
+    return rows.value.find((g) => g.id === selectedGraphId.value) ?? null;
+  });
+
+  const ctxMenuItems = computed<ContextMenuItem[]>(() => [
+    { icon: "✏️", label: "编辑", shortcut: "Enter", action: "edit" },
+    { icon: "▶️", label: "执行", action: "run", success: true },
+    { icon: "📋", label: "复制", shortcut: "Ctrl+D", action: "duplicate" },
+    { icon: "🗑️", label: "删除", shortcut: "Del", action: "delete", danger: true },
+  ]);
 
   const searchQuery = ref("");
   const engineFilter = ref("");
@@ -171,6 +190,43 @@ export function useGraphsPage() {
     }
   }
 
+  function selectGraph(id: string) {
+    selectedGraphId.value = selectedGraphId.value === id ? null : id;
+  }
+
+  function onCardContextMenu(e: MouseEvent, graph: GraphDefinition) {
+    e.preventDefault();
+    selectedGraphId.value = graph.id;
+    ctxMenuGraph.value = graph;
+    ctxMenuX.value = e.clientX;
+    ctxMenuY.value = e.clientY;
+    ctxMenuVisible.value = true;
+  }
+
+  function closeCtxMenu() {
+    ctxMenuVisible.value = false;
+  }
+
+  function onCtxMenuAction(action: string) {
+    const graph = ctxMenuGraph.value;
+    closeCtxMenu();
+    if (!graph) return;
+    switch (action) {
+      case "edit":
+        openEditor(graph.id);
+        break;
+      case "run":
+        openRunDialog(graph);
+        break;
+      case "duplicate":
+        duplicateGraph(graph);
+        break;
+      case "delete":
+        confirmRemoveGraph(graph);
+        break;
+    }
+  }
+
   return {
     isDark,
     rows,
@@ -192,6 +248,12 @@ export function useGraphsPage() {
     runSessionId: graphExecute.runSessionId,
     runInitialState: graphExecute.runInitialState,
     runLoading: graphExecute.runLoading,
+    selectedGraphId,
+    selectedGraph,
+    ctxMenuVisible,
+    ctxMenuX,
+    ctxMenuY,
+    ctxMenuItems,
     loadRows,
     openCreate,
     openEditor,
@@ -200,5 +262,9 @@ export function useGraphsPage() {
     duplicateGraph,
     confirmRemoveGraph,
     reorderGraphs,
+    selectGraph,
+    onCardContextMenu,
+    closeCtxMenu,
+    onCtxMenuAction,
   };
 }

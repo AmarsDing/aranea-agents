@@ -27,7 +27,7 @@ func (r *Runner) tryNativeFallback(
 	if !envTeamNativeForced() {
 		return nil, nil, false, nil
 	}
-	root, memberLookup, err = BuildTRPCTeam(ctx, def, teamDeps, r.catalogAgent)
+	root, memberLookup, err = BuildTRPCTeam(ctx, def, teamDeps, r.catalogAgent, loggateway.Global())
 	if err != nil {
 		return nil, nil, false, err
 	}
@@ -101,7 +101,7 @@ func (r *Runner) compileTeamRuntime(
 	}
 
 	root = groot
-	_, memberLookup, err = BuildTeamMemberAgents(ctx, def, teamDeps, r.catalogAgent)
+	_, memberLookup, err = BuildTeamMemberAgents(ctx, def, teamDeps, r.catalogAgent, loggateway.Global())
 	if err != nil {
 		return
 	}

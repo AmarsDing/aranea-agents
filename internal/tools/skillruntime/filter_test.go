@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
@@ -118,7 +119,7 @@ func TestAgentVisibilityFilter_Allow_SlugInList(t *testing.T) {
 		},
 	}
 	runtime := &mockRuntime{json: "{}"}
-	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime}
+	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime, lg: loggateway.NewNoop()}
 	if !f.allow(context.Background(), trpcskill.Summary{Name: "skill-a"}) {
 		t.Error("expected skill-a to be allowed")
 	}
@@ -131,7 +132,7 @@ func TestAgentVisibilityFilter_Allow_SlugNotInList(t *testing.T) {
 		},
 	}
 	runtime := &mockRuntime{json: "{}"}
-	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime}
+	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime, lg: loggateway.NewNoop()}
 	if f.allow(context.Background(), trpcskill.Summary{Name: "skill-b"}) {
 		t.Error("expected skill-b to be denied")
 	}
@@ -142,7 +143,7 @@ func TestAgentVisibilityFilter_Allow_EmptyAllowedList(t *testing.T) {
 		candidates: []biz.SkillRuntimeCandidate{},
 	}
 	runtime := &mockRuntime{json: "{}"}
-	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime}
+	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime, lg: loggateway.NewNoop()}
 	if f.allow(context.Background(), trpcskill.Summary{Name: "any"}) {
 		t.Error("expected any skill to be denied with empty allowed list")
 	}
@@ -153,7 +154,7 @@ func TestAgentVisibilityFilter_Allow_ResolveError(t *testing.T) {
 		candidatesErr: context.DeadlineExceeded,
 	}
 	runtime := &mockRuntime{json: "{}"}
-	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime}
+	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime, lg: loggateway.NewNoop()}
 	if f.allow(context.Background(), trpcskill.Summary{Name: "any"}) {
 		t.Error("expected any skill to be denied when resolve fails (fail-closed)")
 	}
@@ -167,7 +168,7 @@ func TestAgentVisibilityFilter_Allow_NilFilter(t *testing.T) {
 }
 
 func TestAgentVisibilityFilter_Allow_NilSkillUC(t *testing.T) {
-	f := &AgentVisibilityFilter{skillUC: nil, runtime: &mockRuntime{json: "{}"}}
+	f := &AgentVisibilityFilter{skillUC: nil, runtime: &mockRuntime{json: "{}"}, lg: loggateway.NewNoop()}
 	if !f.allow(context.Background(), trpcskill.Summary{Name: "any"}) {
 		t.Error("nil skillUC should allow all")
 	}
@@ -180,7 +181,7 @@ func TestAgentVisibilityFilter_Allow_CaseInsensitive(t *testing.T) {
 		},
 	}
 	runtime := &mockRuntime{json: "{}"}
-	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime}
+	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime, lg: loggateway.NewNoop()}
 	if !f.allow(context.Background(), trpcskill.Summary{Name: "skill-a"}) {
 		t.Error("expected case-insensitive match for skill-a")
 	}
@@ -196,7 +197,7 @@ func TestAgentVisibilityFilter_Allow_TrimmedName(t *testing.T) {
 		},
 	}
 	runtime := &mockRuntime{json: "{}"}
-	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime}
+	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime, lg: loggateway.NewNoop()}
 	if !f.allow(context.Background(), trpcskill.Summary{Name: "  skill-a  "}) {
 		t.Error("expected trimmed name to match")
 	}
@@ -209,7 +210,7 @@ func TestAgentVisibilityFilter_AllowedSlugs_CacheHit(t *testing.T) {
 		},
 	}
 	runtime := &mockRuntime{json: "{}"}
-	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime}
+	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime, lg: loggateway.NewNoop()}
 	result1 := f.allowedSlugs(context.Background())
 	if !result1["skill-a"] {
 		t.Error("expected skill-a in first call result")
@@ -232,7 +233,7 @@ func TestAgentVisibilityFilter_AllowedSlugs_CacheMissAndResolve(t *testing.T) {
 		},
 	}
 	runtime := &mockRuntime{json: "{}"}
-	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime}
+	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime, lg: loggateway.NewNoop()}
 	result := f.allowedSlugs(context.Background())
 	if len(result) != 2 {
 		t.Errorf("expected 2 slugs, got %d", len(result))
@@ -247,7 +248,7 @@ func TestAgentVisibilityFilter_AllowedSlugs_ResolveError(t *testing.T) {
 		candidatesErr: context.DeadlineExceeded,
 	}
 	runtime := &mockRuntime{json: "{}"}
-	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime}
+	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime, lg: loggateway.NewNoop()}
 	result := f.allowedSlugs(context.Background())
 	if len(result) != 0 {
 		t.Errorf("expected empty map on resolve error, got %d entries", len(result))
@@ -262,7 +263,7 @@ func TestAgentVisibilityFilter_AllowedSlugs_SlugsLowercased(t *testing.T) {
 		},
 	}
 	runtime := &mockRuntime{json: "{}"}
-	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime}
+	f := &AgentVisibilityFilter{skillUC: resolver, runtime: runtime, lg: loggateway.NewNoop()}
 	result := f.allowedSlugs(context.Background())
 	if !result["skill-a"] {
 		t.Error("expected skill-a (lowercased) in result")

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/trpcscope"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
@@ -26,9 +27,8 @@ type TRPCRunnerDeps struct {
 	Ingestor              trpcsession.Ingestor
 	AwaitUserReplyRouting bool
 	RalphLoop             *trpcrunner.RalphLoopConfig
-	// Plugins is an optional list of runner-level plugins injected at runner creation.
-	// Populate via plugintrpc.Runtime.Plugins() after hot-loading from the DB.
-	Plugins []trpcplugin.Plugin
+	LG                    loggateway.Logger
+	Plugins               []trpcplugin.Plugin
 }
 
 func NewTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, opts ...trpcrunner.Option) (trpcrunner.ManagedRunner, error) {
@@ -39,6 +39,11 @@ func NewTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, opts ...trpcrunner
 	if appName == "" {
 		appName = TRPCDefaultAppName
 	}
+	lg := deps.LG
+	if lg == nil {
+		lg = loggateway.Global()
+	}
+	lg.Info("TRPC Runner 创建", loggateway.StepID("agent.runner_create"), loggateway.Str("app_name", appName))
 	if deps.SessionService != nil {
 		opts = append([]trpcrunner.Option{trpcrunner.WithSessionService(deps.SessionService)}, opts...)
 	}
@@ -64,6 +69,7 @@ func NewTRPCRunner(root trpcagent.Agent, deps TRPCRunnerDeps, opts ...trpcrunner
 	mr, ok := r.(trpcrunner.ManagedRunner)
 	if !ok {
 		r.Close()
+		lg.Error("TRPC Runner 创建失败：ManagedRunner 接口未实现", loggateway.StepID("agent.runner_create_fail"))
 		return nil, errors.New("trpc runtime: runner does not implement ManagedRunner")
 	}
 	return mr, nil
@@ -75,6 +81,7 @@ func RunTRPCUserTurn(
 	userID string,
 	sessionID string,
 	content string,
+	lg loggateway.Logger,
 	opts ...trpcagent.RunOption,
 ) (<-chan *trpcevent.Event, error) {
 	if r == nil {
@@ -88,7 +95,14 @@ func RunTRPCUserTurn(
 	if sessionID == "" {
 		return nil, errors.New("trpc runtime: session id is required")
 	}
+	if lg == nil {
+		lg = loggateway.Global()
+	}
+	lg.Info("TRPC 用户 Turn 启动", loggateway.StepID("agent.user_turn"), loggateway.Str("session_id", sessionID), loggateway.Str("user_id", userID))
 	ch, err := r.Run(ctx, userID, sessionID, trpcmodel.NewUserMessage(content), opts...)
+	if err != nil {
+		lg.Error("TRPC 用户 Turn 启动失败", loggateway.StepID("agent.user_turn_fail"), loggateway.Str("session_id", sessionID), loggateway.Str("user_id", userID), loggateway.Err(err))
+	}
 	return ch, err
 }
 

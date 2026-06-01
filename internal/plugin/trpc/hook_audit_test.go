@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 type pluginRunsInsertStub struct {
@@ -28,7 +29,7 @@ func (s *pluginRunsInsertStub) List(context.Context, biz.PluginRunQuery) (biz.Pl
 func TestRecordHookAudit_persistsBlockedRun(t *testing.T) {
 	repo := &statsRepoStub{key: "unused"}
 	runs := &pluginRunsInsertStub{}
-	rec := NewRepoStatsRecorder(repo, runs)
+	rec := NewRepoStatsRecorder(repo, runs, loggateway.NewNoop())
 	defer rec.Close()
 
 	rh := biz.ResolvedHook{

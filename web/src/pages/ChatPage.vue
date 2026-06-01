@@ -1,22 +1,19 @@
 <template>
-  <ChatWorkspaceShell>
+  <div v-if="!coreReady" class="flex flex-center" style="height: 100vh">
+    <q-spinner-dots size="40px" color="primary" />
+  </div>
+  <ChatWorkspaceShell v-else>
     <ChatEntitySidebar
       v-model:search="layout.search"
-      v-model:agents="entity.displayAgents"
-      v-model:teams="entity.displayTeams"
       :open="layout.leftOpen"
+      :spirit-teams="spiritStore.teams"
+      :expanded-team-ids="spiritStore.expandedTeamIds"
       :selected-kind="entity.selectedEntityKind"
-      :selected-agent-id="entity.store.selectedAgent?.id"
-      :selected-team-id="entity.selectedTeamId"
-      :category-tree="entity.categoryTree"
+      :selected-team-id="spiritStore.activeTeamId"
       :is-dark="layout.isDark"
-      @agent-reorder-end="entity.onEndAgent"
-      @team-reorder-end="entity.onEndTeam"
-      @group-reorder="entity.onGroupReorder"
-      @select-agent="entity.selectAgent"
-      @select-team="entity.selectTeam"
-      @settings="entity.openSettings"
-      @delete="entity.openDelete"
+      @select-spirit="spiritStore.returnToSpirit()"
+      @select-spirit-team="spiritStore.selectTeam($event)"
+      @toggle-team-expand="spiritStore.toggleTeamExpand($event)"
     />
 
     <ChatSideToggle
@@ -39,6 +36,8 @@
         v-model="composer.inputText"
         v-model:dialog-mode="composer.dialogMode"
         v-model:model-provider="composer.modelProvider"
+        :panel-mode="spiritStore.activePanelMode"
+        :spirit-team="spiritStore.activeTeam"
         :messages="session.displayMessages"
         :attachments="composer.attachments"
         :mode-options="composer.modeOpts"
@@ -113,6 +112,7 @@
         @retry="composer.retryFailedMessage"
         @dismiss-failed="composer.dismissFailedMessage"
         @regenerate="composer.regenerateMessage"
+        @compact="onCompactSession"
       />
       <input ref="fileRef" type="file" hidden multiple :accept="session.fileAccept" @change="composer.onFileChange" />
     </div>
@@ -191,10 +191,12 @@ import ChatWorkspaceShell from "../components/chat/ChatWorkspaceShell.vue";
 import SessionTimelineDialog from "../components/chat/SessionTimelineDialog.vue";
 import { useRouter } from "vue-router";
 import { useChatWorkspace } from "../features/chat/composables/useChatWorkspace";
+import { useSpiritTeamStore } from "../stores/spirit";
 import { useQuasar } from "quasar";
 import { useI18n } from "vue-i18n";
 
-const { fileRef, layout, entity, session, composer, dialogs } = useChatWorkspace();
+const { coreReady, fileRef, layout, entity, session, composer, dialogs } = useChatWorkspace();
+const spiritStore = useSpiritTeamStore();
 const router = useRouter();
 const $q = useQuasar();
 const { t } = useI18n();
@@ -205,5 +207,29 @@ function onNavigate(route: { name: string; params: Record<string, string> }) {
 
 function onPasteUnsupported() {
   $q.notify({ type: "warning", message: t("chat.clipboardFileUnsupported", "当前模型不支持此类型的文件粘贴") });
+}
+
+async function onCompactSession(sessionId: string) {
+  try {
+    const result = await session.compactSessionAction(sessionId);
+    if (result.compacted) {
+      const before = Math.round((result.estimated_tokens_before / 1000) * 10) / 10;
+      const after = Math.round((result.estimated_tokens_after / 1000) * 10) / 10;
+      $q.notify({
+        type: "positive",
+        message: t("chat.contextManuallyCompressed", `上下文已压缩 (${before}k → ${after}k tokens)`),
+        timeout: 4000,
+      });
+    } else {
+      $q.notify({
+        type: "info",
+        message: t("chat.contextNoCompactionNeeded", "当前上下文无需压缩"),
+        timeout: 3000,
+      });
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    $q.notify({ type: "negative", message: t("chat.contextCompactFailed", "压缩失败") + `: ${msg}`, timeout: 5000 });
+  }
 }
 </script>

@@ -3,11 +3,14 @@ package agent
 import (
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
+	biztool "aranea-agents/internal/biz/tool"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	"aranea-agents/internal/knowledge"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
+	"aranea-agents/internal/tools/deferred"
 	tooltrpc "aranea-agents/internal/tools/trpc"
+	"aranea-agents/pkg/loggateway"
 
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
@@ -105,6 +108,14 @@ type TRPCBuilderDeps struct {
 	IndustryUC    *biz.IndustryUsecase
 	DepartmentUC  *biz.DepartmentUsecase
 	PositionUC    *biz.PositionUsecase
+	ToolResultGate *biz.ToolResultGate
+	// DeferredManager controls lazy tool visibility. Optional: when nil,
+	// deferred tool filtering is skipped and all tools are always visible.
+	DeferredManager *deferred.DeferredToolManager
+	// CircuitBreakerRegistry exposes per-tool circuit breakers for admin reset.
+	// Optional: when nil, circuit breaker state is not accessible externally.
+	CircuitBreakerRegistry *biztool.CircuitBreakerRegistry
+	LG loggateway.Logger
 	// Cache version hashes: optional strings computed by the caller.
 	// When non-empty they are folded into the build cache fingerprint so that
 	// tool / skill / MCP changes invalidate the cached agent.
@@ -118,4 +129,11 @@ func (d TRPCBuilderDeps) CatalogGroup() TRPCCatalogDeps {
 	return TRPCCatalogDeps{
 		Catalog: d.Catalog, AgentUC: d.AgentUC, Agents: d.Agents, Sys: d.Sys, Sessions: d.Sessions,
 	}
+}
+
+func (d TRPCBuilderDeps) Logger() loggateway.Logger {
+	if d.LG != nil {
+		return d.LG
+	}
+	return loggateway.Global()
 }

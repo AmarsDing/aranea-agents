@@ -26,6 +26,7 @@ type CostGuardBudgetTracker struct {
 	tokens   int
 	repo     biz.PluginCostGuardUsageRepo
 	scopeKey string
+	lg       loggateway.Logger
 
 	persistCh   chan costGuardPersistEntry
 	persistDone chan struct{}
@@ -54,9 +55,10 @@ const (
 	costGuardPersistBatch    = 32
 )
 
-func NewCostGuardBudgetTracker(opts ...CostGuardBudgetOption) *CostGuardBudgetTracker {
+func NewCostGuardBudgetTracker(lg loggateway.Logger, opts ...CostGuardBudgetOption) *CostGuardBudgetTracker {
 	t := &CostGuardBudgetTracker{
 		scopeKey:    "global",
+		lg:          lg,
 		persistCh:   make(chan costGuardPersistEntry, costGuardPersistChanSize),
 		persistDone: make(chan struct{}),
 	}
@@ -136,8 +138,8 @@ func (t *CostGuardBudgetTracker) persistAdd(day, scope string, delta int) {
 	select {
 	case t.persistCh <- costGuardPersistEntry{day: day, scope: scope, delta: delta}:
 	default:
-		loggateway.Global().Warn("cost_guard persist channel full, entry dropped",
-			loggateway.StepID("system.plugin.cost_guard_persist_drop"),
+		t.lg.Warn("cost_guard persist channel full, entry dropped",
+			loggateway.StepID("plugin.cost_guard.persist_drop"),
 			loggateway.Str("scope", scope),
 			loggateway.Str("day", day),
 			loggateway.Int("delta", delta),
@@ -206,8 +208,8 @@ func (t *CostGuardBudgetTracker) flushPersist(batch []costGuardPersistEntry) {
 	bg := context.Background()
 	for key, delta := range aggr {
 		if err := t.repo.AddTokens(bg, key.day, key.scope, delta); err != nil {
-			loggateway.Global().Warn("cost_guard 写库失败，本地累加与远端可能漂移",
-				loggateway.StepID("system.plugin.cost_guard_persist_fail"),
+			t.lg.Warn("cost_guard persist write failed, local counter may drift",
+				loggateway.StepID("plugin.cost_guard.persist_fail"),
 				loggateway.Str("scope", key.scope),
 				loggateway.Str("day", key.day),
 				loggateway.Int("delta", delta),
@@ -246,8 +248,8 @@ func (t *CostGuardBudgetTracker) ensureDayLocked() {
 		if n, err := repo.GetTokens(context.Background(), day, scope); err == nil {
 			loaded = n
 		} else {
-			loggateway.Global().Warn("cost_guard 读取日用量失败，从 0 开始计数",
-				loggateway.StepID("system.plugin.cost_guard_load_fail"),
+			t.lg.Warn("cost_guard daily usage load failed, starting from zero",
+				loggateway.StepID("plugin.cost_guard.load_fail"),
 				loggateway.Str("scope", scope),
 				loggateway.Str("day", day),
 				loggateway.Err(err))

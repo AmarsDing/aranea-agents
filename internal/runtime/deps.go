@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/event"
 	araneasession "aranea-agents/internal/session"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/loggateway"
 
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcsession "trpc.group/trpc-go/trpc-agent-go/session"
@@ -57,6 +58,7 @@ type TurnDeps struct {
 	Compress  biz.NativeTurnCompressor
 	AfterTurn biz.NativeTurnAfterHook
 	RunnerMgr *RunnerManager
+	lg        loggateway.Logger
 }
 
 // RoundTrip returns a provider.RoundTrip backed by the LLMHTTP client.
@@ -70,8 +72,8 @@ func (d TurnDeps) SQLiteSessionMemory() bool {
 }
 
 // NewRunnerManagerFromPersist builds a RunnerManager from a wired PersistenceSet.
-func NewRunnerManagerFromPersist(persist PersistenceSet) *RunnerManager {
-	return NewRunnerManager(RunnerFactoryDeps{Persist: persist})
+func NewRunnerManagerFromPersist(persist PersistenceSet, lg loggateway.Logger) *RunnerManager {
+	return NewRunnerManager(RunnerFactoryDeps{Persist: persist}, lg)
 }
 
 // CoalesceRunnerManager returns the wired RunnerManager or builds one from Persist.
@@ -80,8 +82,23 @@ func (d *TurnDeps) CoalesceRunnerManager() *RunnerManager {
 	if d.RunnerMgr != nil {
 		return d.RunnerMgr
 	}
-	d.RunnerMgr = NewRunnerManagerFromPersist(d.Persist)
+	lg := d.lg
+	if lg == nil {
+		lg = loggateway.Global()
+	}
+	d.RunnerMgr = NewRunnerManagerFromPersist(d.Persist, lg)
 	return d.RunnerMgr
+}
+
+func (d *TurnDeps) SetLogger(lg loggateway.Logger) {
+	d.lg = lg
+}
+
+func (d *TurnDeps) Logger() loggateway.Logger {
+	if d.lg == nil {
+		return loggateway.Global()
+	}
+	return d.lg
 }
 
 // NewEmptyPersistenceSet creates a PersistenceSet with nil memory for tests.

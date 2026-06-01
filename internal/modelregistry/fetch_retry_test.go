@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestCatalogFetchRetryLoop(t *testing.T) {
@@ -16,7 +18,7 @@ func TestCatalogFetchRetryLoop(t *testing.T) {
 			return FetchResult{}, fmt.Errorf("fetch catalog: HTTP 503")
 		}
 		return FetchResult{Body: []byte(`ok`), ETag: `"v1"`}, nil
-	})
+	}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +35,7 @@ func TestCatalogFetchRetryStopsOn404(t *testing.T) {
 	_, err := attemptCatalogFetch(context.Background(), func() (FetchResult, error) {
 		calls++
 		return FetchResult{}, fmt.Errorf("fetch catalog: HTTP 404")
-	})
+	}, loggateway.NewNoop())
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -97,7 +99,7 @@ func TestListModelsSorted(t *testing.T) {
 
 func TestSearchRawLines(t *testing.T) {
 	dir := t.TempDir()
-	st := NewStore(dir)
+	st := NewStore(dir, loggateway.NewNoop())
 	cat := Directory{
 		"openai": {
 			ID:   "openai",

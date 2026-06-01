@@ -262,6 +262,9 @@ func (m *ingressSessionRepo) CompressSessionInTx(ctx context.Context, _ string, 
 func (m *ingressSessionRepo) SessionSummaryExists(context.Context, string, int, int) (bool, error) {
 	return false, nil
 }
+func (m *ingressSessionRepo) ListByParentSessionID(_ context.Context, _ string) ([]biz.Session, error) {
+	return nil, nil
+}
 
 type ingressAgentRepo struct {
 	id string

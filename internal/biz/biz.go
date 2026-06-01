@@ -34,6 +34,7 @@ var ProviderSet = wire.NewSet(
 	NewSessionUsecase,
 	NewSessionAgentLookup,
 	NewSessionTeamLookup,
+	NewSpiritTeamUsecase,
 	NewToolSettingRepo,
 	NewChannelUsecase,
 	NewChannelTurnJobUsecase,
@@ -54,6 +55,7 @@ var ProviderSet = wire.NewSet(
 	NewWebhookDispatcher,
 	NewAgentTemplateUsecase,
 	NewLearningLoopUsecase,
+	NewToolResultGate,
 	ProvideAgentExistenceChecker,
 	ProvideAgentIDExistenceChecker,
 )

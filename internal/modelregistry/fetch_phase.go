@@ -10,7 +10,7 @@ func (p *FetchPhase) Name() string         { return "fetch" }
 func (p *FetchPhase) Timeout() time.Duration { return 120 * time.Second }
 
 func (p *FetchPhase) Run(pc *PhaseContext) PhaseResult {
-	syncer := NewSyncer(pc.Store)
+	syncer := NewSyncer(pc.Store, pc.Lg)
 	out, err := syncer.Sync(pc.Ctx, SyncInput{})
 	if err != nil {
 		return PhaseResult{PhaseName: "fetch", Status: PhaseFailed, Errors: []string{err.Error()}}

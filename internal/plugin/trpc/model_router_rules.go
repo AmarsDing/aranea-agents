@@ -19,12 +19,12 @@ type ModelRouterRule struct {
 	compiledRegex *regexp.Regexp
 }
 
-func (r *ModelRouterRule) compile() {
+func (r *ModelRouterRule) compile(lg loggateway.Logger) {
 	if pat := strings.TrimSpace(r.Regex); pat != "" {
 		if re, err := regexp.Compile(pat); err == nil {
 			r.compiledRegex = re
 		} else {
-			loggateway.Global().Warn("model_router rule regex compile failed",
+			lg.Warn("model_router rule regex compile failed",
 				loggateway.StepID("plugin.model_router.compile_fail"),
 				loggateway.Str("model", r.Model),
 				loggateway.Str("regex", pat),
@@ -38,9 +38,9 @@ func (r *ModelRouterRule) compiled() *regexp.Regexp {
 	return r.compiledRegex
 }
 
-func compileModelRouterRules(rules []ModelRouterRule) {
+func compileModelRouterRules(rules []ModelRouterRule, lg loggateway.Logger) {
 	for i := range rules {
-		rules[i].compile()
+		rules[i].compile(lg)
 	}
 }
 

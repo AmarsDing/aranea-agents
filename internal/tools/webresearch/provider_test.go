@@ -6,11 +6,12 @@ import (
 	"testing"
 
 	"aranea-agents/internal/tools/webresearch"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestNewSearchProvider_tavily(t *testing.T) {
 	cfg := webresearch.Config{Provider: "tavily", APIKey: "tvly-key"}
-	p, err := webresearch.NewSearchProvider(cfg)
+	p, err := webresearch.NewSearchProvider(cfg, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -21,7 +22,7 @@ func TestNewSearchProvider_tavily(t *testing.T) {
 
 func TestNewSearchProvider_serpapi(t *testing.T) {
 	cfg := webresearch.Config{Provider: "serpapi", APIKey: "serp-key"}
-	p, err := webresearch.NewSearchProvider(cfg)
+	p, err := webresearch.NewSearchProvider(cfg, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -32,7 +33,7 @@ func TestNewSearchProvider_serpapi(t *testing.T) {
 
 func TestNewSearchProvider_unsupported(t *testing.T) {
 	cfg := webresearch.Config{Provider: "bing", APIKey: "key"}
-	_, err := webresearch.NewSearchProvider(cfg)
+	_, err := webresearch.NewSearchProvider(cfg, loggateway.NewNoop())
 	if err == nil {
 		t.Fatal("expected error for unsupported provider")
 	}
@@ -43,7 +44,7 @@ func TestNewSearchProvider_unsupported(t *testing.T) {
 
 func TestNewSearchProvider_emptyProvider(t *testing.T) {
 	cfg := webresearch.Config{Provider: "", APIKey: "key"}
-	p, err := webresearch.NewSearchProvider(cfg)
+	p, err := webresearch.NewSearchProvider(cfg, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("empty provider should default to tavily: %v", err)
 	}
@@ -54,7 +55,7 @@ func TestNewSearchProvider_emptyProvider(t *testing.T) {
 
 func TestNewTavilyProvider_valid(t *testing.T) {
 	cfg := webresearch.Config{Provider: "tavily", APIKey: "tvly-key"}
-	p, err := webresearch.NewTavilyProvider(cfg)
+	p, err := webresearch.NewTavilyProvider(cfg, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -65,7 +66,7 @@ func TestNewTavilyProvider_valid(t *testing.T) {
 
 func TestNewTavilyProvider_emptyAPIKey(t *testing.T) {
 	cfg := webresearch.Config{Provider: "tavily", APIKey: ""}
-	_, err := webresearch.NewTavilyProvider(cfg)
+	_, err := webresearch.NewTavilyProvider(cfg, loggateway.NewNoop())
 	if err == nil {
 		t.Fatal("expected error for empty APIKey")
 	}
@@ -76,7 +77,7 @@ func TestNewTavilyProvider_emptyAPIKey(t *testing.T) {
 
 func TestNewSerpAPIProvider_valid(t *testing.T) {
 	cfg := webresearch.Config{Provider: "serpapi", APIKey: "serp-key"}
-	p, err := webresearch.NewSerpAPIProvider(cfg)
+	p, err := webresearch.NewSerpAPIProvider(cfg, loggateway.NewNoop())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -87,7 +88,7 @@ func TestNewSerpAPIProvider_valid(t *testing.T) {
 
 func TestNewSerpAPIProvider_emptyAPIKey(t *testing.T) {
 	cfg := webresearch.Config{Provider: "serpapi", APIKey: ""}
-	_, err := webresearch.NewSerpAPIProvider(cfg)
+	_, err := webresearch.NewSerpAPIProvider(cfg, loggateway.NewNoop())
 	if err == nil {
 		t.Fatal("expected error for empty APIKey")
 	}

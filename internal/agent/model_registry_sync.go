@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/modelregistry"
 	"aranea-agents/internal/tools/modelsync"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -78,6 +79,7 @@ func (a *ModelRegistrySyncAgent) Run(ctx context.Context, inv *trpcagent.Invocat
 			Writer:   a.backend,
 			Migrator: a.backend,
 			Policy:   policy,
+			Lg:       loggateway.NewNoop(),
 		}
 
 		for _, phase := range a.phases {

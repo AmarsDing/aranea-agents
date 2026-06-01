@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagentcodeexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor"
 	e2bexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor/e2b"
@@ -26,11 +27,15 @@ type Factory struct {
 	containerOnce sync.Once
 	localWD   string
 	localExec trpcagentcodeexec.CodeExecutor
+	lg        loggateway.Logger
 }
 
-// NewFactory creates a factory. E2B and container backends are not initialized until Resolve requests them.
 func NewFactory() *Factory {
 	return &Factory{env: LoadEnvConfig()}
+}
+
+func NewFactoryWithLogger(lg loggateway.Logger) *Factory {
+	return &Factory{env: LoadEnvConfig(), lg: lg}
 }
 
 func (f *Factory) newLocal(workDir string) trpcagentcodeexec.CodeExecutor {
@@ -110,7 +115,11 @@ func (f *Factory) Resolve(ctx context.Context, agentType, workDir string) trpcag
 
 	switch typ {
 	case TypeDocker:
-		return wrapMetrics(newDockerRuntimeFallback(f.getDocker(), f, workDir), TypeDocker)
+		lg := f.lg
+		if lg == nil {
+			lg = loggateway.Global()
+		}
+		return wrapMetrics(newDockerRuntimeFallback(f.getDocker(), f, workDir, lg), TypeDocker)
 	case TypeE2B:
 		if exec := f.getE2B(); exec != nil {
 			return exec
@@ -130,7 +139,7 @@ func (f *Factory) Resolve(ctx context.Context, agentType, workDir string) trpcag
 
 func (f *Factory) applyAvailabilityFallback(ctx context.Context, typ string) string {
 	if typ == TypeDocker && !DockerAvailable() {
-		event.CtxFlowLogWarn(ctx, "system.codeexec.docker_fallback",
+		event.CtxFlowLogWarn(ctx, "codeexec.docker_fallback",
 			"Docker 不可用，回退到 local 执行器",
 			event.P("requested", TypeDocker))
 		return TypeLocal
@@ -147,7 +156,7 @@ func (f *Factory) applyAvailabilityFallback(ctx context.Context, typ string) str
 }
 
 func (f *Factory) warnResolveFallback(ctx context.Context, requested string) {
-	event.CtxFlowLogWarn(ctx, "system.codeexec.resolve_fallback",
+	event.CtxFlowLogWarn(ctx, "codeexec.resolve_fallback",
 		"请求的执行器不可用，回退到 local",
 		event.P("requested", requested))
 }
@@ -156,7 +165,7 @@ func (f *Factory) warnLocalInProd(ctx context.Context, typ string) {
 	if typ != TypeLocal || f.env.AllowLocalInProd || !isProductionEnv() {
 		return
 	}
-	event.CtxFlowLogWarn(ctx, "system.codeexec.local_in_prod",
+	event.CtxFlowLogWarn(ctx, "codeexec.local_in_prod",
 		"生产环境使用 local 执行器（无隔离）；建议配置 docker 或设置 CODE_EXECUTOR_ALLOW_LOCAL_IN_PROD=1",
 		event.P("backend", TypeLocal))
 }

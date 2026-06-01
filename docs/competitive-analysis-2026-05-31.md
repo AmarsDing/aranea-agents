@@ -61,6 +61,36 @@
 | 协作能力 | Agent 能与其他 Agent 或人类协作 |
 | 持续进化 | Agent 能从经验中学习、自我改进 |
 
+### 1.4 BabyAGI（GitHub ⭐ 22k+）
+
+**定位**：实验性自构建自主智能体框架，"build the simplest thing that can build itself"。
+
+| 维度 | 详情 |
+|------|------|
+| 核心架构 | 两阶段演进——经典版（任务驱动循环）+ functionz 重写版（数据库驱动函数管理） |
+| 技术栈 | Python 66.5% + HTML 19.7% + JavaScript 11.7% |
+| 经典版核心 | 三 Agent 循环：Execution Agent（执行任务）→ Task Creation Agent（生成新任务）→ Prioritization Agent（重排优先级） |
+| functionz 框架 | 数据库驱动的函数注册/管理/执行，图结构追踪依赖/导入/密钥关系 |
+| 自构建能力 | `process_user_input` 判断现有函数是否够用，不够则自动生成新函数；`self_build` 自动生成任务变体并创建处理函数 |
+| 触发器 | 事件驱动自动执行（如函数新增时自动生成描述和 embedding） |
+| 记忆 | 向量数据库（Pinecone/FAISS/Chroma）存储任务结果，语义检索提供上下文 |
+| Dashboard | Web 界面管理函数、查看依赖图、监控执行日志 |
+| 开源协议 | MIT |
+| 作者 | Yohei Nakajima（VC，非职业开发者，明确标注"不适用于生产"） |
+
+**核心设计思想**：
+
+| 思想 | 说明 |
+|------|------|
+| 任务驱动自治 | 给定目标后 Agent 自主拆解→执行→评估→迭代，无需逐步人工干预 |
+| 自构建/自进化 | Agent 能注册新函数、组合已有函数，扩展自身能力 |
+| 依赖图管理 | 函数间的依赖/导入/密钥关系以图结构追踪，自动解析 |
+| 向量记忆驱动 | 向量数据库存储任务结果，语义检索为任务规划提供上下文 |
+| 极简主义 | 最小可行结构，只保留核心循环，方便理解和定制 |
+| 事件驱动触发 | 函数变更自动触发相关操作，减少人工编排 |
+
+**对 Aranea-Agents 的启发价值**：BabyAGI 虽然工程深度远不及 Aranea（无 Session 管理、无多 Agent 协作、无安全机制、无传输层），但其"任务动态拆解与优先级排序"和"工具自构建"两个设计思想对 Aranea 有直接启发——可以让 Aranea 从"预定义编排"升级为"自主进化编排"。详见 [§四·差距 #8](#差距-8自主任务生成与自构建工具🟡-p2)。
+
 ---
 
 ## 二、项目自身竞品评分（来自 00-总览与路线图.md）
@@ -294,6 +324,32 @@ type Schedule struct {
 - Aranea 的 Skill 自创建（`docs/需求/phase3-进化能力/02-技能自创建.md`）尚在需求阶段
 
 **影响**：学习闭环是 Hermes 的核心卖点（"the AI agent that grows with you"），也是 Human-Agent 达标的关键维度（持续进化）。Aranea 在此维度落后于 Hermes。
+
+---
+
+### 差距 #8：自主任务生成与自构建工具（🟡 P2）— BabyAGI 启发
+
+**来源**：BabyAGI（GitHub 22k+ stars）的核心设计思想
+
+**代码证据**：
+
+- Aranea 的 Graph 工作流中 `GraphTask` 是预定义 DAG 结构，任务就绪判定通过 `task_dispatch.go` 检查父任务完成状态，不支持运行时动态生成新任务
+- Aranea 的工具通过 `Registry()` 静态注册 + `Assemble()` 装配，运行时工具集固定，Deferred 工具支持按需发现但不能动态创建新工具
+- Aranea 的 `ToolRegistration` 已有 `Category/Tags/RiskLevel`，但无 `Dependencies` 字段，工具间依赖关系隐式
+- Aranea 的 `EventBus` 主要用于 WS 推送和内部消费者，工具/Agent 变更没有自动触发链
+- Aranea 的 L0-L4 分层记忆系统主要用于 Agent 上下文增强，尚未直接参与任务规划
+
+**BabyAGI 的五个启发**：
+
+| # | 启发 | BabyAGI 做法 | Aranea 可行方案 |
+|---|------|-------------|----------------|
+| 1 | 任务动态拆解与优先级排序 | Task Creation Agent 根据执行结果动态生成新任务，Prioritization Agent 按目标相关性重排 | Graph 运行时增加动态任务生成能力——Agent 执行完节点后根据结果动态插入新节点到 DAG；`TaskStatus` 增加 `dynamic_spawn` 类型 |
+| 2 | 工具自构建与自进化 | `process_user_input` 判断现有函数能否处理请求，不能则自动生成新函数并注册 | `internal/tools` 层增加动态工具生成——Agent 发现现有工具无法满足需求时，通过 LLM 生成新工具代码（`function.NewFunctionTool[I, O]`），注册到 `Registry` 并持久化为 Skill |
+| 3 | 函数依赖图可视化与管理 | functionz 框架以图结构追踪函数间 import/依赖/密钥关系，Dashboard 可视化 | `ToolRegistration` 增加 `Dependencies []string` 字段，`Assemble()` 时自动拓扑排序；前端 Dashboard 可视化工具依赖图 |
+| 4 | 事件驱动自动触发 | Triggers 机制——函数被添加/更新时自动触发相关函数执行 | `internal/event` 层增加工具生命周期事件（ToolRegistered/ToolUpdated/ToolRemoved），触发自动操作（生成描述/embedding/刷新缓存） |
+| 5 | 记忆驱动任务规划 | 向量数据库存储任务结果，Task Creation Agent 基于语义检索的历史结果生成新任务 | Graph 工作流中 Planner 基于记忆规划下一步任务——`memory.Service.SearchMemories` 语义搜索直接接入 Task Creation 逻辑 |
+
+**影响**：这五个启发可以让 Aranea 从"预定义编排"升级为"自主进化编排"——这是超越 Hermes（自主性 9/10）的关键路径。当前 Aranea 自主性评分 5/10，补齐后可达 8/10+。
 
 ---
 

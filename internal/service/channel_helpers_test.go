@@ -5,6 +5,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestIngressFirstNonEmpty(t *testing.T) {
@@ -80,7 +81,7 @@ func TestInboundPlatform(t *testing.T) {
 		{biz.Channel{ConfigJSON: `{"type":"dingtalk"}`}, port.InboundEvent{PlatformType: "  "}, "dingtalk"},
 	}
 	for _, tc := range cases {
-		got := inboundPlatform(tc.chRow, tc.ev)
+		got := inboundPlatform(tc.chRow, tc.ev, loggateway.NewNoop())
 		if got != tc.want {
 			t.Errorf("inboundPlatform() = %q, want %q", got, tc.want)
 		}
@@ -98,7 +99,7 @@ func TestChannelTypeFromConfig(t *testing.T) {
 		{`invalid`, ""},
 	}
 	for _, tc := range cases {
-		got := channelTypeFromConfig(tc.configJSON)
+		got := channelTypeFromConfig(tc.configJSON, loggateway.NewNoop())
 		if got != tc.want {
 			t.Errorf("channelTypeFromConfig(%q) = %q, want %q", tc.configJSON, got, tc.want)
 		}
@@ -115,7 +116,7 @@ func TestChannelReceiveModeFromConfig(t *testing.T) {
 		{`{}`, ""},
 	}
 	for _, tc := range cases {
-		got := channelReceiveModeFromConfig(tc.configJSON)
+		got := channelReceiveModeFromConfig(tc.configJSON, loggateway.NewNoop())
 		if got != tc.want {
 			t.Errorf("channelReceiveModeFromConfig(%q) = %q, want %q", tc.configJSON, got, tc.want)
 		}

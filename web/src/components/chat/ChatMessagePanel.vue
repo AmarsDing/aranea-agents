@@ -1,5 +1,19 @@
 <template>
   <q-card flat bordered class="col column no-wrap chat-mid-card" style="min-height: 0">
+    <template v-if="panelMode === 'team' && spiritTeam">
+      <TaskExecutionPanel
+        :team="spiritTeam"
+        :messages="props.messages"
+        @return-to-spirit="emit('return-to-spirit')"
+      />
+    </template>
+    <template v-else-if="panelMode === 'member'">
+      <div class="col column flex-center text-grey-6" style="min-height: 200px">
+        <q-icon name="person" size="48px" class="q-mb-md" />
+        <div class="text-body2">成员详情面板（P1 实现）</div>
+      </div>
+    </template>
+    <template v-else>
     <q-banner v-if="wsReplaying" dense rounded class="q-mx-md q-mt-sm app-info-banner">
       <template #avatar>
         <q-spinner-dots color="primary" size="20px" />
@@ -21,6 +35,8 @@
           :usage-snapshot="usageSnapshot"
           :breakdown="contextBreakdown"
           :is-dark="isDark"
+          :session-id="sessionId"
+          @compact="onCompactSession"
         />
         <ChatHeaderPromptBar
           class="chat-message-header__prompt"
@@ -104,6 +120,7 @@
     />
 
     <ChatComposer
+      v-if="panelMode === 'spirit'"
       :model-value="modelValue"
       :attachments="attachments"
       :dialog-mode="dialogMode"
@@ -161,6 +178,7 @@
       @close="emit('close-reasoning-sidebar')"
     />
     </div>
+    </template>
   </q-card>
 </template>
 
@@ -176,6 +194,7 @@ import ChatComposer from "./ChatComposer.vue";
 import ChatHeaderUsagePanel from "./ChatHeaderUsagePanel.vue";
 import ChatHeaderPromptBar from "./ChatHeaderPromptBar.vue";
 import ChatReasoningDrawer from "./ChatReasoningDrawer.vue";
+import TaskExecutionPanel from "../spirit/TaskExecutionPanel.vue";
 import type { RunStatusValue } from "../../features/chat/types";
 import { useChatTimeline, type TimelineItem } from "../../features/chat/composables/useChatTimeline";
 import {
@@ -190,10 +209,13 @@ import type { ComposerUsageSnapshot } from "../../features/chat/composerUsageMet
 import type { PromptBreakdown } from "../../features/chat/contextBreakdown";
 import type { ArtifactMeta } from "../../features/artifact/types";
 import type { ChatAttachment } from "./types";
+import type { SpiritTeam } from "../../features/spirit/api";
 
 type Option = { label: string; value: string; caption?: string };
 
 const props = defineProps<{
+  panelMode?: "spirit" | "team" | "member";
+  spiritTeam?: SpiritTeam | null;
   modelValue: string;
   messages: Message[];
   attachments: ChatAttachment[];
@@ -275,6 +297,8 @@ const emit = defineEmits<{
   "toggle-reasoning-sidebar": [];
   "pin-reasoning-message": [messageId: string];
   "close-reasoning-sidebar": [];
+  "return-to-spirit": [];
+  compact: [sessionId: string];
 }>();
 
 const { t } = useI18n();
@@ -323,6 +347,10 @@ const { headerUserPrompt, promptKey, refreshActivePrompt, resetToLatestOrSession
 function onMessagesScrollWrapped(event?: Event) {
   onMessagesScroll(event);
   refreshActivePrompt();
+}
+
+function onCompactSession(sid: string) {
+  emit("compact", sid);
 }
 
 const { handleMessagesClick } = useChatCodeCopy();

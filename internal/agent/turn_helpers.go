@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/event"
 	sessiontrpc "aranea-agents/internal/session/trpc"
+	"aranea-agents/pkg/loggateway"
 
 	trpcartifact "trpc.group/trpc-go/trpc-agent-go/artifact"
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
@@ -38,13 +39,17 @@ type EventStreamResult struct {
 }
 
 func NewRunnerDepsFromRuntime(trpcSession trpcsession.Service, memory trpcmemory.Service, artifact trpcartifact.Service, plugins ...trpcplugin.Plugin) TRPCRunnerDeps {
+	return NewRunnerDepsFromRuntimeWithLogger(trpcSession, memory, artifact, nil, plugins...)
+}
+
+func NewRunnerDepsFromRuntimeWithLogger(trpcSession trpcsession.Service, memory trpcmemory.Service, artifact trpcartifact.Service, lg loggateway.Logger, plugins ...trpcplugin.Plugin) TRPCRunnerDeps {
 	deps := TRPCRunnerDeps{}
 	if trpcSession != nil {
 		deps.SessionService = trpcSession
 	}
 	if memory != nil {
 		deps.MemoryService = memory
-		deps.Ingestor = NewBizSessionIngestor(deps.MemoryService)
+		deps.Ingestor = NewBizSessionIngestor(deps.MemoryService, lg)
 	}
 	if artifact != nil {
 		deps.ArtifactService = artifact
@@ -71,8 +76,9 @@ func ConsumeEventStream(
 	eventBus event.Bus,
 	projectMeta ProjectMeta,
 	opts *StreamConsumeOptions,
+	lg loggateway.Logger,
 ) EventStreamResult {
-	return ConsumeEventStreamWithFirstByte(ctx, ctx, events, eventBus, projectMeta, nil, opts)
+	return ConsumeEventStreamWithFirstByte(ctx, ctx, events, eventBus, projectMeta, nil, opts, lg)
 }
 
 func ConsumeEventStreamWithFirstByte(
@@ -83,8 +89,9 @@ func ConsumeEventStreamWithFirstByte(
 	projectMeta ProjectMeta,
 	firstByteReceived *bool,
 	opts *StreamConsumeOptions,
+	lg loggateway.Logger,
 ) EventStreamResult {
-	consumer := newTurnStreamConsumer(firstByteCtx, turnCtx, eventBus, projectMeta, firstByteReceived, opts)
+	consumer := newTurnStreamConsumer(firstByteCtx, turnCtx, eventBus, projectMeta, firstByteReceived, opts, lg)
 	return consumer.consume(events)
 }
 

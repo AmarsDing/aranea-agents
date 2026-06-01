@@ -14,6 +14,7 @@ var ProviderSet = wire.NewSet(
 	NewRuntime,
 	NewCompressor,
 	wire.Bind(new(biz.NativeTurnCompressor), new(*Compressor)),
+	wire.Bind(new(biz.ManualCompressor), new(*Compressor)),
 	wire.Bind(new(biz.RunnerSnapshotSync), new(*Runtime)),
 )
 

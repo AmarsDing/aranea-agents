@@ -39,7 +39,7 @@ func bizAgentFactoryForKey(deps TRPCBuilderDeps, agentKey string) trpcrunner.Age
 		if err != nil {
 			return nil, err
 		}
-		return BuildTRPCAgentCached(ctx, ag, deps)
+		return BuildTRPCAgentCached(ctx, ag, deps, deps.Logger())
 	}
 }
 
@@ -48,20 +48,21 @@ func resolveBizAgentByKey(ctx context.Context, deps TRPCBuilderDeps, agentKey st
 	if key == "" {
 		return biz.Agent{}, errors.New("agent key is required")
 	}
+	lg := deps.Logger()
 	if deps.Agents != nil {
 		ag, err := deps.Agents.GetAgentByAgentKey(ctx, key)
 		if err == nil {
-			loggateway.Global().Info("Agent 数据库解析成功", loggateway.StepID("system.agent.db_resolve"), loggateway.Phase("done"), loggateway.Str("agent_key", key), loggateway.Str("agent_id", ag.ID))
+			lg.Info("Agent 数据库解析成功", loggateway.StepID("agent.db_resolve"), loggateway.Phase("done"), loggateway.Str("agent_key", key), loggateway.Str("agent_id", ag.ID))
 			if deps.AgentUC != nil {
 				return deps.AgentUC.Get(ctx, ag.ID)
 			}
 			return ag, nil
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
-			loggateway.Global().Error("Agent 数据库解析失败", loggateway.StepID("system.agent.db_resolve"), loggateway.Str("agent_key", key), loggateway.Err(err))
+			lg.Error("Agent 数据库解析失败", loggateway.StepID("agent.db_resolve"), loggateway.Str("agent_key", key), loggateway.Err(err))
 			return biz.Agent{}, err
 		}
 	}
-	loggateway.Global().Warn("Agent 未找到", loggateway.StepID("system.agent.db_resolve"), loggateway.Str("agent_key", key))
+	lg.Warn("Agent 未找到", loggateway.StepID("agent.db_resolve"), loggateway.Str("agent_key", key))
 	return biz.Agent{}, errors.New("agent not found: " + key)
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -81,7 +82,7 @@ func TestConsumeEventStream_skipsToolResponseInReply(t *testing.T) {
 		events <- runnerCompletionEvent()
 	}()
 
-	result := ConsumeEventStream(context.Background(), events, bus, ProjectMeta{SessionID: "s1"}, nil)
+	result := ConsumeEventStream(context.Background(), events, bus, ProjectMeta{SessionID: "s1"}, nil, loggateway.Global())
 	if got := result.Reply.String(); got != "hello world" {
 		t.Fatalf("reply = %q, want %q", got, "hello world")
 	}
@@ -97,7 +98,7 @@ func TestConsumeEventStream_accumulatesDeltaReasoning(t *testing.T) {
 		events <- runnerCompletionEvent()
 	}()
 
-	result := ConsumeEventStream(context.Background(), events, bus, ProjectMeta{SessionID: "s1"}, nil)
+	result := ConsumeEventStream(context.Background(), events, bus, ProjectMeta{SessionID: "s1"}, nil, loggateway.Global())
 	if got := result.Reasoning.String(); got != "think-athink-b" {
 		t.Fatalf("reasoning = %q", got)
 	}
@@ -115,7 +116,7 @@ func TestConsumeEventStream_finalizesStuckTools(t *testing.T) {
 	}()
 
 	opts := &StreamConsumeOptions{ActivityPersister: persister}
-	_ = ConsumeEventStream(context.Background(), events, bus, ProjectMeta{SessionID: "s1"}, opts)
+	_ = ConsumeEventStream(context.Background(), events, bus, ProjectMeta{SessionID: "s1"}, opts, loggateway.Global())
 	if len(persister.upserts) < 2 {
 		t.Fatalf("expected tool_call + finalize upserts, got %d", len(persister.upserts))
 	}

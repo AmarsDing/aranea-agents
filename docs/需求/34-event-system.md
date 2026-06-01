@@ -136,6 +136,29 @@
 
 **验收标准**：Chat 内可按类型/分支/标签过滤会话事件流，Branch 树与 StateDelta 指示器可用
 
+### 2.10 工具生命周期事件与自动触发（BabyAGI 启发，P2）
+
+> 来源：BabyAGI Triggers 机制（GitHub 22k+ stars），竞品分析差距 #8
+> 对应需求：`docs/competitive-gap-requirements-2026-05-31.md` P2-10
+
+**用户故事**：作为平台开发者，我希望工具/Agent 的变更能自动触发相关操作（如新工具注册后自动生成描述和 embedding），以便减少人工编排。
+
+**背景**：BabyAGI 的 functionz 框架实现了 Triggers 机制——当函数被添加或更新时，自动触发相关函数执行（如自动生成描述和 embedding）。当前 Aranea 的 `EventBus` 主要用于 WS 推送和内部消费者，工具/Agent 变更没有自动触发链。
+
+**功能规格**：
+- 增加 `ToolRegistered`/`ToolUpdated`/`ToolRemoved` 三种工具生命周期事件类型（EnvelopeType）
+- `ToolRegistered` 事件触发 LLM 自动生成工具描述和 embedding（供 `tool_search` 语义检索）
+- `ToolUpdated` 事件触发 `BuildTRPCAgentCached` 缓存失效
+- `ToolRemoved` 事件触发依赖该工具的 Agent 配置告警
+- 所有触发操作经 broker/async 异步执行（遵守红线 #8：框架 plugin 回调不得直接写数据库）
+- 触发结果（成功/失败）记录到 FlowLog
+
+**验收标准**：
+- [ ] 新工具注册后自动生成描述和 embedding
+- [ ] 工具更新后相关 Agent 缓存自动失效
+- [ ] 触发操作异步执行，不阻塞主流程
+- [ ] 触发结果在 FlowLog 中可追踪
+
 ---
 
 ## 3. 验收标准总览

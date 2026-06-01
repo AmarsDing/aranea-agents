@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	ch "aranea-agents/internal/channel"
+	"aranea-agents/pkg/loggateway"
 )
 
 type stubTextSender struct {
@@ -41,14 +42,14 @@ func (s *stubOutboundText) SendText(_ context.Context, _, _ string) error { retu
 var _ ch.OutboundText = (*stubOutboundText)(nil)
 
 func TestNewRouter(t *testing.T) {
-	r := NewRouter()
+	r := NewRouter(loggateway.NewNoop())
 	if r == nil {
 		t.Fatal("expected non-nil router")
 	}
 }
 
 func TestRouter_RegisterTextSender(t *testing.T) {
-	r := NewRouter()
+	r := NewRouter(loggateway.NewNoop())
 	r.RegisterTextSender(&stubTextSender{id: "telegram"})
 	ch := r.Channels()
 	if len(ch) != 1 || ch[0] != "telegram" {
@@ -62,7 +63,7 @@ func TestRouter_RegisterTextSender_NilRouter(t *testing.T) {
 }
 
 func TestRouter_RegisterTextSender_NilSender(t *testing.T) {
-	r := NewRouter()
+	r := NewRouter(loggateway.NewNoop())
 	r.RegisterTextSender(nil)
 	if len(r.Channels()) != 0 {
 		t.Fatal("should not register nil sender")
@@ -70,7 +71,7 @@ func TestRouter_RegisterTextSender_NilSender(t *testing.T) {
 }
 
 func TestRouter_RegisterTextSender_EmptyID(t *testing.T) {
-	r := NewRouter()
+	r := NewRouter(loggateway.NewNoop())
 	r.RegisterTextSender(&stubTextSender{id: ""})
 	if len(r.Channels()) != 0 {
 		t.Fatal("should not register sender with empty ID")
@@ -78,7 +79,7 @@ func TestRouter_RegisterTextSender_EmptyID(t *testing.T) {
 }
 
 func TestRouter_RegisterMessageSender(t *testing.T) {
-	r := NewRouter()
+	r := NewRouter(loggateway.NewNoop())
 	r.RegisterMessageSender(&stubMessageSender{id: "slack"})
 	ch := r.Channels()
 	if len(ch) != 1 || ch[0] != "slack" {
@@ -92,7 +93,7 @@ func TestRouter_RegisterMessageSender_NilRouter(t *testing.T) {
 }
 
 func TestRouter_RegisterMessageSender_NilSender(t *testing.T) {
-	r := NewRouter()
+	r := NewRouter(loggateway.NewNoop())
 	r.RegisterMessageSender(nil)
 	if len(r.Channels()) != 0 {
 		t.Fatal("should not register nil sender")
@@ -100,7 +101,7 @@ func TestRouter_RegisterMessageSender_NilSender(t *testing.T) {
 }
 
 func TestRouter_RegisterMessageSender_EmptyID(t *testing.T) {
-	r := NewRouter()
+	r := NewRouter(loggateway.NewNoop())
 	r.RegisterMessageSender(&stubMessageSender{id: ""})
 	if len(r.Channels()) != 0 {
 		t.Fatal("should not register sender with empty ID")
@@ -108,7 +109,7 @@ func TestRouter_RegisterMessageSender_EmptyID(t *testing.T) {
 }
 
 func TestRouter_RegisterOutboundText(t *testing.T) {
-	r := NewRouter()
+	r := NewRouter(loggateway.NewNoop())
 	r.RegisterOutboundText(&stubOutboundText{id: "feishu"})
 	ch := r.Channels()
 	if len(ch) != 1 || ch[0] != "feishu" {
@@ -117,7 +118,7 @@ func TestRouter_RegisterOutboundText(t *testing.T) {
 }
 
 func TestRouter_RegisterOutboundText_Nil(t *testing.T) {
-	r := NewRouter()
+	r := NewRouter(loggateway.NewNoop())
 	r.RegisterOutboundText(nil)
 	if len(r.Channels()) != 0 {
 		t.Fatal("should not register nil outbound text")
@@ -132,7 +133,7 @@ func TestRouter_Channels_NilRouter(t *testing.T) {
 }
 
 func TestRouter_Channels_Sorted(t *testing.T) {
-	r := NewRouter()
+	r := NewRouter(loggateway.NewNoop())
 	r.RegisterTextSender(&stubTextSender{id: "zebra"})
 	r.RegisterTextSender(&stubTextSender{id: "alpha"})
 	ch := r.Channels()
@@ -142,7 +143,7 @@ func TestRouter_Channels_Sorted(t *testing.T) {
 }
 
 func TestRouter_Channels_Dedup(t *testing.T) {
-	r := NewRouter()
+	r := NewRouter(loggateway.NewNoop())
 	r.RegisterTextSender(&stubTextSender{id: "telegram"})
 	r.RegisterMessageSender(&stubMessageSender{id: "telegram"})
 	ch := r.Channels()
@@ -153,7 +154,7 @@ func TestRouter_Channels_Dedup(t *testing.T) {
 
 func TestRouter_SendText(t *testing.T) {
 	sender := &stubTextSender{id: "telegram"}
-	r := NewRouter()
+	r := NewRouter(loggateway.NewNoop())
 	r.RegisterTextSender(sender)
 	err := r.SendText(context.Background(), DeliveryTarget{Channel: "telegram", Target: "chat1"}, "hello")
 	if err != nil {
@@ -170,7 +171,7 @@ func TestRouter_SendMessage_NilRouter(t *testing.T) {
 }
 
 func TestRouter_SendMessage_EmptyChannel(t *testing.T) {
-	r := NewRouter()
+	r := NewRouter(loggateway.NewNoop())
 	err := r.SendMessage(context.Background(), DeliveryTarget{Channel: "", Target: "y"}, OutboundMessage{Text: "hi"})
 	if err == nil {
 		t.Fatal("expected error for empty channel")
@@ -178,7 +179,7 @@ func TestRouter_SendMessage_EmptyChannel(t *testing.T) {
 }
 
 func TestRouter_SendMessage_UnsupportedChannel(t *testing.T) {
-	r := NewRouter()
+	r := NewRouter(loggateway.NewNoop())
 	err := r.SendMessage(context.Background(), DeliveryTarget{Channel: "unknown", Target: "y"}, OutboundMessage{Text: "hi"})
 	if err == nil {
 		t.Fatal("expected unsupported channel error")
@@ -188,7 +189,7 @@ func TestRouter_SendMessage_UnsupportedChannel(t *testing.T) {
 func TestRouter_SendMessage_MessageSenderPreferred(t *testing.T) {
 	ms := &stubMessageSender{id: "slack"}
 	ts := &stubTextSender{id: "slack"}
-	r := NewRouter()
+	r := NewRouter(loggateway.NewNoop())
 	r.RegisterMessageSender(ms)
 	r.RegisterTextSender(ts)
 	msg := OutboundMessage{Text: "hello", Files: []OutboundFile{{Path: "/tmp/f.txt"}}}
@@ -202,7 +203,7 @@ func TestRouter_SendMessage_MessageSenderPreferred(t *testing.T) {
 }
 
 func TestRouter_SendMessage_FilesOnTextOnlySender(t *testing.T) {
-	r := NewRouter()
+	r := NewRouter(loggateway.NewNoop())
 	r.RegisterTextSender(&stubTextSender{id: "telegram"})
 	msg := OutboundMessage{Text: "hi", Files: []OutboundFile{{Path: "/tmp/f.txt"}}}
 	err := r.SendMessage(context.Background(), DeliveryTarget{Channel: "telegram", Target: "ch1"}, msg)
@@ -213,7 +214,7 @@ func TestRouter_SendMessage_FilesOnTextOnlySender(t *testing.T) {
 
 func TestRouter_SendMessage_TextSenderFallback(t *testing.T) {
 	ts := &stubTextSender{id: "telegram"}
-	r := NewRouter()
+	r := NewRouter(loggateway.NewNoop())
 	r.RegisterTextSender(ts)
 	err := r.SendMessage(context.Background(), DeliveryTarget{Channel: "telegram", Target: "ch1"}, OutboundMessage{Text: "hi"})
 	if err != nil {
@@ -222,7 +223,7 @@ func TestRouter_SendMessage_TextSenderFallback(t *testing.T) {
 }
 
 func TestRouter_SendMessage_SenderError(t *testing.T) {
-	r := NewRouter()
+	r := NewRouter(loggateway.NewNoop())
 	r.RegisterTextSender(&stubTextSender{id: "telegram", sendErr: errors.New("network")})
 	err := r.SendText(context.Background(), DeliveryTarget{Channel: "telegram", Target: "ch1"}, "hi")
 	if err == nil {

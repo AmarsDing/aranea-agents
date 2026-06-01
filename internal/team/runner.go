@@ -15,6 +15,7 @@ import (
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	rt "aranea-agents/internal/runtime"
 	tooltrpc "aranea-agents/internal/tools/trpc"
+	"aranea-agents/pkg/loggateway"
 
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 
@@ -114,7 +115,7 @@ func NewRunner(
 			LLMHTTP:   &http.Client{Timeout: 0},
 			Sessions:  sessions,
 			Compress:  compress,
-			RunnerMgr: rt.NewRunnerManagerFromPersist(persist),
+			RunnerMgr: rt.NewRunnerManagerFromPersist(persist, loggateway.Global()),
 		},
 	}
 }

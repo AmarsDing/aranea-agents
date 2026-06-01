@@ -94,6 +94,9 @@ message AgentRuntimeSettings {
   string variables_json = 80;
   string model_instructions_json = 81;
   bool context_compaction_enabled = 82;
+  bool micro_compact_enabled = 121;
+  bool memory_compact_enabled = 122;
+  bool tool_result_gate_enabled = 123;
   bool session_summary_enabled = 83;
   string skill_load_mode = 84;
   string output_schema_json = 85;
@@ -131,6 +134,16 @@ message AgentRuntimeSettings {
   // MemoryWorkerProvider / MemoryWorkerModel: LLM for async memory extraction; empty → L0 compress, then chat model.
   string memory_worker_provider = 112;
   string memory_worker_model = 113;
+  bool tools_circuit_breaker_enabled = 114;
+  string tools_circuit_breaker_overrides_json = 115;
+  string tools_deferred_json = 116;
+  bool tools_command_safety_enabled = 117;
+  // CompressLLMCacheEnabled enables LLM compression response caching (LRU + TTL).
+  bool compress_llm_cache_enabled = 118;
+  // CompressLLMCacheMaxEntries is the maximum number of cache entries (default 256).
+  int32 compress_llm_cache_max_entries = 119;
+  // CompressLLMCacheTTLSec is the cache TTL in seconds (default 600).
+  int32 compress_llm_cache_ttl_sec = 120;
 }
 
 message AgentPromptFile {

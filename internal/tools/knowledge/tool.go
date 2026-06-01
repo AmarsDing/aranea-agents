@@ -193,7 +193,10 @@ type reflectOutput struct {
 	Chunks           []chunkSummary `json:"chunks"`
 }
 
-func NewReflectTool() trpctool.CallableTool {
+func NewReflectTool(lg loggateway.Logger) trpctool.CallableTool {
+	if lg == nil {
+		lg = loggateway.Global()
+	}
 	execute := func(ctx context.Context, in reflectInput) (reflectOutput, error) {
 		if len(in.CollectionIDs) == 0 {
 			if scoped := knowledgeCollectionsFromContext(ctx); len(scoped) > 0 {
@@ -267,7 +270,9 @@ func NewReflectTool() trpctool.CallableTool {
 				out.Confidence = assessment.Confidence
 				out.SupplementQuery = assessment.SupplementQuery
 			} else {
-				loggateway.Global().Warn(fmt.Sprintf("evaluation failed: %v", evalErr), loggateway.StepID("knowledge_reflect.eval_fail"))
+				lg.Warn("evaluation failed",
+					loggateway.StepID("tool.knowledge_reflect.eval_fail"),
+					loggateway.Err(evalErr))
 			}
 		}
 

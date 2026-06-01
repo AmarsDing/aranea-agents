@@ -15,14 +15,17 @@ import (
 // without duplicating the auto-memory queue job.
 type BizSessionIngestor struct {
 	memory trpcmemory.Service
+	lg     loggateway.Logger
 }
 
-// NewBizSessionIngestor returns an ingestor when memory is available.
-func NewBizSessionIngestor(memory trpcmemory.Service) trpcsession.Ingestor {
+func NewBizSessionIngestor(memory trpcmemory.Service, lg loggateway.Logger) trpcsession.Ingestor {
 	if memory == nil {
 		return nil
 	}
-	return &BizSessionIngestor{memory: memory}
+	if lg == nil {
+		lg = loggateway.Global()
+	}
+	return &BizSessionIngestor{memory: memory, lg: lg}
 }
 
 func (ing *BizSessionIngestor) IngestSession(ctx context.Context, sess *trpcsession.Session, opts ...trpcsession.IngestOption) error {
@@ -30,7 +33,7 @@ func (ing *BizSessionIngestor) IngestSession(ctx context.Context, sess *trpcsess
 		return nil
 	}
 	io := resolveIngestOptions(opts)
-	loggateway.Global().Info("会话摄入 hook", loggateway.StepID("system.session.ingest"), loggateway.Phase("done"),
+	ing.lg.Info("会话摄入 hook", loggateway.StepID("agent.session.ingest"), loggateway.Phase("done"),
 		loggateway.Str("session_id", sess.ID),
 		loggateway.Str("app", sess.AppName),
 		loggateway.Str("user_id", sess.UserID),

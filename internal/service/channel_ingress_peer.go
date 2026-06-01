@@ -20,7 +20,7 @@ func (h *ChannelIngress) inboundPeerKey(chRow biz.Channel, ev port.InboundEvent)
 	if err != nil {
 		return "", err
 	}
-	if channelTypeFromConfig(chRow.ConfigJSON) == "feishu" {
+	if channelTypeFromConfig(chRow.ConfigJSON, h.lg) == "feishu" {
 		fc := lark.ParseFeishuChannelConfig(chRow.ConfigJSON)
 		threadID, chatID := "", ""
 		if ev.OutboundMeta != nil {
@@ -65,7 +65,7 @@ func (h *ChannelIngress) applyFeishuOutboundMeta(chRow biz.Channel, extra map[st
 	if extra == nil {
 		extra = map[string]string{}
 	}
-	if channelTypeFromConfig(chRow.ConfigJSON) != "feishu" {
+	if channelTypeFromConfig(chRow.ConfigJSON, h.lg) != "feishu" {
 		return extra
 	}
 	fc := lark.ParseFeishuChannelConfig(chRow.ConfigJSON)
@@ -76,7 +76,7 @@ func (h *ChannelIngress) applyFeishuOutboundMeta(chRow biz.Channel, extra map[st
 }
 
 func (h *ChannelIngress) startFeishuProcessingReaction(ctx context.Context, chRow biz.Channel, ev port.InboundEvent) func() {
-	if channelTypeFromConfig(chRow.ConfigJSON) != "feishu" {
+	if channelTypeFromConfig(chRow.ConfigJSON, h.lg) != "feishu" {
 		return func() {}
 	}
 	fc := lark.ParseFeishuChannelConfig(chRow.ConfigJSON)
@@ -95,7 +95,7 @@ func (h *ChannelIngress) startFeishuProcessingReaction(ctx context.Context, chRo
 	if err != nil {
 		return func() {}
 	}
-	sec, err := resolveCredentialPlain(ctx, h.channels, creds, "app_secret")
+	sec, err := resolveCredentialPlain(ctx, h.channels, creds, "app_secret", h.lg)
 	if err != nil || strings.TrimSpace(sec) == "" {
 		return func() {}
 	}
