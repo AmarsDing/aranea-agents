@@ -221,7 +221,9 @@ func (s *StreamSender) patchTextLocked(ctx context.Context, messageID, text stri
 		Code int    `json:"code"`
 		Msg  string `json:"msg"`
 	}
-	_ = json.Unmarshal(raw, &out)
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return fmt.Errorf("feishu stream edit: parse response: %w", err)
+	}
 	if out.Code != 0 {
 		desc := strings.ToLower(out.Msg)
 		if strings.Contains(desc, "not modified") || strings.Contains(desc, "same content") {

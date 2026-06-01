@@ -9,14 +9,15 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestGateInboundBeforeTurnDeniesAccess(t *testing.T) {
 	repo := &ingressChannelRepo{}
-	uc := biz.NewChannelUsecase(repo, biz.NewCredentialCrypto(nil))
+	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, nil), nil)
 	h := &ChannelIngress{
-		channels:        uc,
-		inboundReceipts: ingressReceiptStub{},
+		channels: uc,
+		lg:       loggateway.NewNoop(),
 	}
 	ch := biz.Channel{
 		ID:         "ch-1",

@@ -45,7 +45,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, watch } from "vue";
 import type { A2AAgentCard, A2AInvokeResult } from "../../features/a2a/types";
 
 const props = defineProps<{
@@ -61,6 +61,9 @@ const timeoutSeconds = defineModel<number>("timeoutSeconds", { default: 30 });
 const workspace = defineModel<string>("workspace", { default: "" });
 
 defineEmits<{ invoke: [] }>();
+
+watch(calleeAgentId, (v) => { if (v == null) calleeAgentId.value = ""; });
+watch(capability, (v) => { if (v == null) capability.value = ""; });
 
 const agentOptions = computed(() =>
   (props.discoveredAgents ?? [])

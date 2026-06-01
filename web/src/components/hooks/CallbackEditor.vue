@@ -2,9 +2,9 @@
   <div class="callback-editor">
     <section class="callback-editor__section">
       <div class="callback-editor__section-head">
-        <span class="callback-editor__section-title">规则概要</span>
+        <span class="callback-editor__section-title">{{ t('hooksPage.callbackEditor.sectionSummary') }}</span>
         <span class="hook-tag hook-tag--point">{{ localRule.callback_point }}</span>
-        <span :class="actionTagClass(localRule.action.type)">{{ actionTypeLabel(localRule.action.type) }}</span>
+        <span :class="actionTagClass(localRule.action.type)">{{ actionTypeLabel(localRule.action.type, t) }}</span>
       </div>
       <div class="app-form-field-grid app-form-field-grid--wide">
         <q-select
@@ -13,7 +13,7 @@
           outlined
           emit-value
           map-options
-          label="回调点"
+          :label="t('hooksPage.callbackEditor.fieldCallbackPoint')"
           :options="pointOptions"
           @update:model-value="emitChange"
         />
@@ -23,7 +23,7 @@
           outlined
           emit-value
           map-options
-          label="动作"
+          :label="t('hooksPage.callbackEditor.fieldAction')"
           :options="actionOptions"
           @update:model-value="emitChange"
         />
@@ -32,22 +32,22 @@
           dense
           outlined
           type="number"
-          label="排序"
-          hint="越小越先执行"
+          :label="t('hooksPage.callbackEditor.fieldSortOrder')"
+          :hint="t('hooksPage.callbackEditor.sortOrderHint')"
           @update:model-value="emitMeta"
         />
       </div>
     </section>
 
-    <q-expansion-item dense-toggle default-opened icon="filter_alt" label="触发条件" header-class="callback-editor__expansion-head">
+    <q-expansion-item dense-toggle default-opened icon="filter_alt" :label="t('hooksPage.callbackEditor.expansionCondition')" header-class="callback-editor__expansion-head">
       <div class="callback-editor__panel app-form-field-grid">
         <q-input
           v-model="localRule.condition.agent_id"
           dense
           outlined
           clearable
-          label="Agent ID / Key"
-          hint="留空表示匹配全部 Agent"
+          :label="t('hooksPage.callbackEditor.fieldAgentId')"
+          :hint="t('hooksPage.callbackEditor.agentIdHint')"
           @update:model-value="emitChange"
         />
         <q-input
@@ -55,8 +55,8 @@
           dense
           outlined
           clearable
-          label="Tool 名称"
-          hint="仅 before_tool / after_tool 生效"
+          :label="t('hooksPage.callbackEditor.fieldToolName')"
+          :hint="t('hooksPage.callbackEditor.toolNameHint')"
           :disable="!toolPoint"
           @update:model-value="emitChange"
         />
@@ -65,15 +65,15 @@
           dense
           outlined
           clearable
-          label="事件类型"
-          hint="on_event：runner_completion / model_response"
+          :label="t('hooksPage.callbackEditor.fieldEventType')"
+          :hint="t('hooksPage.callbackEditor.eventTypeHint')"
           :disable="!onEventPoint"
           @update:model-value="emitChange"
         />
       </div>
     </q-expansion-item>
 
-    <q-expansion-item dense-toggle default-opened icon="bolt" label="执行动作" header-class="callback-editor__expansion-head">
+    <q-expansion-item dense-toggle default-opened icon="bolt" :label="t('hooksPage.callbackEditor.expansionAction')" header-class="callback-editor__expansion-head">
       <div class="callback-editor__panel q-gutter-md">
         <template v-if="showNotifyFields">
           <q-input
@@ -81,7 +81,7 @@
             class="app-grid-span-full"
             dense
             outlined
-            label="Webhook URL"
+            :label="t('hooksPage.callbackEditor.fieldWebhookUrl')"
             @update:model-value="emitChange"
           />
           <div class="app-form-field-grid app-form-field-grid--2col app-grid-span-full">
@@ -92,8 +92,8 @@
               type="number"
               min="1"
               max="10"
-              label="最大重试"
-              hint="默认 3"
+              :label="t('hooksPage.callbackEditor.fieldMaxRetries')"
+              :hint="t('hooksPage.callbackEditor.maxRetriesHint')"
               @update:model-value="emitChange"
             />
             <q-input
@@ -103,8 +103,8 @@
               type="number"
               min="1"
               max="60"
-              label="超时 (秒)"
-              hint="默认 8"
+              :label="t('hooksPage.callbackEditor.fieldTimeoutSec')"
+              :hint="t('hooksPage.callbackEditor.timeoutSecHint')"
               @update:model-value="emitChange"
             />
           </div>
@@ -117,8 +117,8 @@
           outlined
           emit-value
           map-options
-          label="日志级别"
-          :options="LOG_LEVEL_OPTIONS"
+          :label="t('hooksPage.callbackEditor.fieldLogLevel')"
+          :options="logLevelOptions"
           @update:model-value="emitChange"
         />
 
@@ -130,12 +130,12 @@
           outlined
           type="textarea"
           autogrow
-          label="消息"
+          :label="t('hooksPage.callbackEditor.fieldMessage')"
           @update:model-value="emitChange"
         />
 
         <template v-if="showModifyFields">
-          <p class="callback-editor__hint app-grid-span-full">{{ MODIFY_PATCH_HINT }}</p>
+          <p class="callback-editor__hint app-grid-span-full">{{ t('hooksPage.callbackEditor.modifyPatchHint') }}</p>
           <q-input
             v-model="modifyPatchText"
             class="app-grid-span-full"
@@ -143,7 +143,7 @@
             outlined
             type="textarea"
             rows="8"
-            label="modify_patch (JSON)"
+            :label="t('hooksPage.callbackEditor.modifyPatchLabel')"
             :error="Boolean(modifyPatchError)"
             :error-message="modifyPatchError"
             @update:model-value="onModifyPatchInput"
@@ -155,14 +155,23 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import {
   actionTagClass,
-  actionTypeLabel,
-  LOG_LEVEL_OPTIONS,
-  MODIFY_PATCH_HINT
+  actionTypeLabel
 } from "./callbackEditorUi";
 import { useCallbackEditor } from "./useCallbackEditor";
 import type { HookRuleConfig } from "../../features/hooks/types";
+
+const { t } = useI18n();
+
+const logLevelOptions = computed(() => [
+  { label: "debug", value: "debug" },
+  { label: "info", value: "info" },
+  { label: "warn", value: "warn" },
+  { label: "error", value: "error" }
+]);
 
 const props = defineProps<{
   modelValue: HookRuleConfig;

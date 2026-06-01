@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
 )
@@ -52,7 +53,7 @@ func (rt *Runtime) SetHookDeliveryRepo(repo biz.HookDeliveryRepo) {
 	defer rt.mu.Unlock()
 	rt.notifier = NewHookNotifier(repo)
 	if repo != nil {
-		rt.retryWorker = NewHookDeliveryRetryWorker(repo, rt.notifier)
+		rt.retryWorker = NewHookDeliveryRetryWorker(repo, rt.notifier, loggateway.Global())
 		rt.retryWorker.Start()
 	}
 }

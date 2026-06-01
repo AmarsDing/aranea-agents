@@ -3,6 +3,8 @@ package data
 import (
 	"context"
 	"database/sql"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func ensureSessionRunCheckpointSchema(ctx context.Context, db *sql.DB) error {
@@ -35,7 +37,13 @@ func ensureSessionRunColumnPatches(ctx context.Context, db *sql.DB) error {
 		`ALTER TABLE session_runs ADD COLUMN resume_started_at TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, q := range patches {
-		_, _ = db.ExecContext(ctx, q)
+		if _, execErr := db.ExecContext(ctx, q); execErr != nil {
+			loggateway.Global().Debug("ddl patch skipped",
+				loggateway.StepID("session_run.schema_patch"),
+				loggateway.Str("query", q),
+				loggateway.Err(execErr),
+			)
+		}
 	}
 	return nil
 }

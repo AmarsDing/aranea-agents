@@ -44,6 +44,7 @@ func entToBizAvatar(po *ent.AvatarAsset) biz.AvatarAsset {
 		WorkspaceID:   po.WorkspaceID,
 		OwnerUserID:   po.OwnerUserID,
 		Source:        po.Source,
+		Category:      po.Category,
 		IsSystem:      po.IsSystem,
 		FileSizeBytes: po.FileSizeBytes,
 		WidthPx:       po.WidthPx,
@@ -180,6 +181,7 @@ func (r *avatarRepo) CreateAvatarAsset(ctx context.Context, asset biz.AvatarAsse
 		SetWorkspaceID(asset.WorkspaceID).
 		SetOwnerUserID(asset.OwnerUserID).
 		SetSource(asset.Source).
+		SetCategory(asset.Category).
 		SetIsSystem(asset.IsSystem).
 		SetFileSizeBytes(asset.FileSizeBytes).
 		SetWidthPx(asset.WidthPx).

@@ -14,6 +14,8 @@ const (
 	migrationNameLegacyTRPCMemoryFacts = "legacy_trpc_memory_facts"
 	MigrationTurnIndexToTurnID         = 20260528
 	migrationNameTurnIndexToTurnID     = "turn_index_to_turn_id"
+	MigrationSessionStatusIdle         = 20260531
+	migrationNameSessionStatusIdle     = "session_status_active_to_idle"
 )
 
 func isMigrationApplied(ctx context.Context, client *ent.Client, version int) (bool, error) {
@@ -34,4 +36,12 @@ func recordMigrationApplied(ctx context.Context, client *ent.Client, version int
 		SetAppliedAt(now).
 		Save(ctx)
 	return err
+}
+
+func IsSeedApplied(ctx context.Context, client *ent.Client, version int) (bool, error) {
+	return isMigrationApplied(ctx, client, version)
+}
+
+func MarkSeedApplied(ctx context.Context, client *ent.Client, version int, name string) error {
+	return recordMigrationApplied(ctx, client, version, name)
 }

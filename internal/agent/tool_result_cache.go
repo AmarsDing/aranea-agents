@@ -6,8 +6,8 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/tools/cache"
+	"aranea-agents/pkg/loggateway"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -30,7 +30,7 @@ func newToolResultCacheBeforeHook(deps TRPCBuilderDeps) callbacks.BeforeToolHook
 			return &trpctool.BeforeToolResult{Context: ctx}, nil
 		}
 		if hit, ok := cache.Global().Get(toolKey, args.Arguments); ok {
-			event.CtxFlowLogDone(ctx, "system.tool.cache_hit", "工具结果缓存命中", event.P("tool", toolKey))
+			loggateway.Global().Info("工具结果缓存命中", loggateway.StepID("system.tool.cache_hit"), loggateway.Phase("done"), loggateway.Str("tool", toolKey))
 			return &trpctool.BeforeToolResult{Context: ctx, CustomResult: hit}, nil
 		}
 		return &trpctool.BeforeToolResult{Context: ctx}, nil

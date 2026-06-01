@@ -17,11 +17,11 @@
             v-model="form.name"
             dense
             outlined
-            label="name *"
+            label="标识符 (key) *"
             placeholder="my-mcp-server"
             :rules="[slugRule]"
           />
-          <q-input v-model="form.display_name" dense outlined label="display_name" placeholder="sqlserver" />
+          <q-input v-model="form.display_name" dense outlined label="显示名称" placeholder="sqlserver" />
           <q-input v-model="form.description" class="app-grid-span-full" dense outlined autogrow type="textarea" label="描述" />
 
           <div class="app-grid-span-full">
@@ -185,8 +185,9 @@
 import { computed, reactive, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import type { PlatformResourceInput } from "../platform/types";
-import { createMcpServer, testMcpServer, updateMcpServer, validateMcpServer } from "./api";
 import type { McpKeyValue, McpServerConfig, McpServerFormValue, McpServerMetadata, McpServerRow } from "./types";
+import { parseJSON } from "./utils";
+import { useMcpStore } from "../../stores/mcp";
 
 const props = defineProps<{
   modelValue: boolean;
@@ -200,11 +201,12 @@ const emit = defineEmits<{
 }>();
 
 const $q = useQuasar();
+const mcpStore = useMcpStore();
 const saving = ref(false);
 const testing = ref(false);
 const validating = ref(false);
 const serverError = ref("");
-const form = reactive<McpServerFormValue>(emptyForm());
+let form = reactive<McpServerFormValue>(emptyForm());
 
 const transportOptions = [
   { label: "stdio", value: "stdio" },
@@ -300,7 +302,7 @@ async function runValidate() {
   serverError.value = "";
   try {
     const payload = buildPayload();
-    const result = await validateMcpServer(payload.enabled ?? true, payload.config_json ?? "{}");
+    const result = await mcpStore.validate(payload.enabled ?? true, payload.config_json ?? "{}");
     $q.notify({
       type: result.ok ? "positive" : "warning",
       message: result.message || (result.ok ? "配置有效" : result.status)
@@ -317,7 +319,7 @@ async function saveAndTest() {
   testing.value = true;
   try {
     const saved = await persist({ close: false, notify: false });
-    const result = await testMcpServer(saved.id);
+    const result = await mcpStore.test(saved.id);
     emit("tested");
     emit("update:modelValue", false);
     $q.notify({ type: result.ok ? "positive" : "warning", message: result.message || result.status });
@@ -334,7 +336,7 @@ async function persist(options: { close: boolean; notify: boolean }) {
   saving.value = true;
   try {
     const payload = buildPayload();
-    const saved = props.row ? await updateMcpServer(props.row.id, payload) : await createMcpServer(payload);
+    const saved = props.row ? await mcpStore.editServer(props.row.id, payload) : await mcpStore.addServer(payload);
     emit("saved", saved);
     if (options.close) emit("update:modelValue", false);
     if (options.notify) $q.notify({ type: "positive", message: "MCP 服务器已保存" });
@@ -404,15 +406,6 @@ function recordToPairs(record: Record<string, string>): McpKeyValue[] {
 
 function pairsToRecord(pairs: McpKeyValue[]) {
   return Object.fromEntries(pairs.map((item) => [item.key.trim(), item.value]).filter(([key]) => key));
-}
-
-function parseJSON<T>(value: string | undefined, fallback: T): T {
-  if (!value) return fallback;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
-  }
 }
 
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

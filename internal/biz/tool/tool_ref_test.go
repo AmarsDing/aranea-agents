@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type stubToolRepo struct {
@@ -29,7 +31,7 @@ func TestToolUsecase_ResolveToolKey(t *testing.T) {
 			}
 			return Tool{}, sql.ErrNoRows
 		},
-	}, nil)
+	}, nil, loggateway.NewNoop())
 
 	key, err := uc.ResolveToolKey(context.Background(), "tool_duckduckgo_search")
 	if err != nil || key != "duckduckgo_search" {

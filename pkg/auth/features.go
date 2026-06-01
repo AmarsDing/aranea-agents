@@ -1,9 +1,10 @@
 package auth
 
 import (
-	"fmt"
 	"os"
 	"strings"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 // HTTPAuthBypassEnabled skips cookie/JWT checks on HTTP when true (KRATOS_HTTP_AUTH_DISABLED).
@@ -22,13 +23,12 @@ func HTTPAuthBypassEnabled() bool {
 	// DEPLOY_ENV not set → refuse bypass; unset env could mean production.
 	// SEC-03: never silently allow bypass when the deployment context is unknown.
 	if deployEnv == "" {
-		fmt.Fprintln(os.Stderr, "[flow][system] system.auth.bypass_refused: KRATOS_HTTP_AUTH_DISABLED set but DEPLOY_ENV unset; bypass REFUSED (set DEPLOY_ENV=dev to enable)")
-		_ = os.Stderr.Sync()
+		loggateway.Global().Warn("auth bypass refused: KRATOS_HTTP_AUTH_DISABLED set but DEPLOY_ENV unset",
+			loggateway.StepID("system.auth.bypass_refused"))
 		return false
 	}
-	// Any other DEPLOY_ENV (e.g. "production", "staging") → refuse bypass.
-	fmt.Fprintf(os.Stderr, "[flow][system] system.auth.bypass_refused: KRATOS_HTTP_AUTH_DISABLED set but DEPLOY_ENV=%s\n", deployEnv)
-	_ = os.Stderr.Sync()
+	loggateway.Global().Warn("auth bypass refused: KRATOS_HTTP_AUTH_DISABLED set but DEPLOY_ENV not dev",
+		loggateway.StepID("system.auth.bypass_refused"), loggateway.Str("deploy_env", deployEnv))
 	return false
 }
 
@@ -36,8 +36,8 @@ func HTTPAuthBypassEnabled() bool {
 // Call this once from main() after config is loaded.
 func WarnIfBypassEnabled() {
 	if HTTPAuthBypassEnabled() {
-		fmt.Fprintln(os.Stderr, "[flow][system] system.auth.bypass_active: AUTH BYPASS ACTIVE — all requests as UserID=1 (admin); DO NOT use in production")
-		_ = os.Stderr.Sync()
+		loggateway.Global().Warn("AUTH BYPASS ACTIVE: all requests as UserID=1 (admin); DO NOT use in production",
+			loggateway.StepID("system.auth.bypass_active"))
 	}
 }
 

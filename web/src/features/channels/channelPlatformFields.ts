@@ -50,8 +50,8 @@ export type ChannelFieldHelp = {
 };
 
 const FEISHU_REGION_OPTIONS = [
-  { label: "飞书（国内 open.feishu.cn）", value: "feishu" },
-  { label: "Lark（国际 open.larksuite.com）", value: "lark" }
+  { label: "channelEditor.feishuRegion.feishu", value: "feishu" },
+  { label: "channelEditor.feishuRegion.lark", value: "lark" }
 ];
 
 const RECEIVE_MODE_LABELS: Record<string, string> = {
@@ -118,13 +118,13 @@ function baseFields(type: string, catalog: ChannelCatalogItem | null): ChannelPl
         { museKey: "wechat_app_secret", bind: { source: "credential", key: "app_secret" }, kind: "password", required: true },
         { museKey: "wechat_token", bind: { source: "credential", key: "token" }, kind: "password" },
         { museKey: "wechat_encoding_aes_key", bind: { source: "credential", key: "encoding_aes_key" }, kind: "password" },
-        { museKey: "wechat_active", bind: { source: "config", key: "active_mode" }, kind: "toggle", hint: "开启后走客服 API 主动回复" }
+        { museKey: "wechat_active", bind: { source: "config", key: "active_mode" }, kind: "toggle", hint: "channelEditor.hints.wechatActiveMode" }
       );
       break;
     case "slack":
       fields.push(
         { museKey: "slack_bot_token", bind: { source: "credential", key: "bot_token" }, kind: "password", required: true },
-        { museKey: "slack_app_token", bind: { source: "credential", key: "app_token" }, kind: "password", hint: "Socket Mode 必填" },
+        { museKey: "slack_app_token", bind: { source: "credential", key: "app_token" }, kind: "password", hint: "channelEditor.hints.slackSocketMode" },
         { museKey: "signing_secret", bind: { source: "credential", key: "signing_secret" }, kind: "password", required: true }
       );
       break;
@@ -221,23 +221,23 @@ function routingFields(type: string): ChannelPlatformField[] {
     });
   }
   fields.push(
-    { museKey: "allowed_user_ids", bind: { source: "config", key: "allowed_user_ids" }, kind: "textarea", hint: "允许发消息的用户 ID，JSON 数组或逗号分隔；留空=不限制。飞书填 open_id（ou_xxx）或 user_id" },
-    { museKey: "allowed_group_ids", bind: { source: "config", key: "allowed_group_ids" }, kind: "textarea", hint: "允许响应的群 chat_id（飞书 oc_xxx），JSON 或逗号分隔；留空=不限制。单聊不受此字段约束" },
-    { museKey: "require_mention", bind: { source: "config", key: "require_mention" }, kind: "toggle", hint: "群聊需 @ 机器人才响应（飞书/钉钉等）" }
+    { museKey: "allowed_user_ids", bind: { source: "config", key: "allowed_user_ids" }, kind: "textarea", hint: "channelEditor.hints.allowedUserIds" },
+    { museKey: "allowed_group_ids", bind: { source: "config", key: "allowed_group_ids" }, kind: "textarea", hint: "channelEditor.hints.allowedGroupIds" },
+    { museKey: "require_mention", bind: { source: "config", key: "require_mention" }, kind: "toggle", hint: "channelEditor.hints.requireMention" }
   );
   return fields;
 }
 
 const EXECUTION_MODE_OPTIONS = [
-  { label: "sync — 同步等待结果", value: "sync" },
-  { label: "auto — 按关键词自动路由", value: "auto" },
-  { label: "async — 提交后台任务", value: "async" }
+  { label: "channelEditor.executionMode.sync", value: "sync" },
+  { label: "channelEditor.executionMode.auto", value: "auto" },
+  { label: "channelEditor.executionMode.async", value: "async" }
 ];
 
 const PROGRESS_MODE_OPTIONS = [
-  { label: "off — 不展示进度", value: "off" },
-  { label: "text — 文本进度/心跳", value: "text" },
-  { label: "steps — Team 成员步骤摘要", value: "steps" }
+  { label: "channelEditor.progressMode.off", value: "off" },
+  { label: "channelEditor.progressMode.text", value: "text" },
+  { label: "channelEditor.progressMode.steps", value: "steps" }
 ];
 
 function longTaskFields(): ChannelPlatformField[] {
@@ -247,8 +247,8 @@ function longTaskFields(): ChannelPlatformField[] {
     { museKey: "execution_mode", bind: { source: "config", key: "execution_mode" }, kind: "select", options: EXECUTION_MODE_OPTIONS },
     { museKey: "progress_mode", bind: { source: "config", key: "progress_mode" }, kind: "select", options: PROGRESS_MODE_OPTIONS },
     { museKey: "progress_quiet_sec", bind: { source: "config", key: "progress_quiet_sec" }, kind: "select", options: PROGRESS_QUIET_OPTIONS },
-    { museKey: "ack_message", bind: { source: "config", key: "ack_message" }, kind: "text", placeholder: "收到，正在处理…" },
-    { museKey: "heartbeat_message", bind: { source: "config", key: "heartbeat_message" }, kind: "text", placeholder: "仍在处理中… {{elapsed}}" },
+    { museKey: "ack_message", bind: { source: "config", key: "ack_message" }, kind: "text", placeholder: "channelEditor.placeholders.ackMessage" },
+    { museKey: "heartbeat_message", bind: { source: "config", key: "heartbeat_message" }, kind: "text", placeholder: "channelEditor.placeholders.heartbeatMessage" },
     { museKey: "async_graph_id", bind: { source: "config", key: "async_graph_id" }, kind: "text", placeholder: "graph-uuid" },
     { museKey: "async_team_id", bind: { source: "config", key: "async_team_id" }, kind: "text", placeholder: "team-uuid" },
     { museKey: "async_cron_task_id", bind: { source: "config", key: "async_cron_task_id" }, kind: "text", placeholder: "cron-task-uuid" },
@@ -262,7 +262,7 @@ export function buildPlatformSections(type: string, catalog: ChannelCatalogItem 
     {
       id: "base",
       title: "BASE",
-      hint: "实例标识与平台凭据（字段名对齐 MuseBot snake_case）",
+      hint: "channelEditor.sectionHints.base",
       fields: baseFields(type, catalog)
     }
   ];
@@ -272,7 +272,7 @@ export function buildPlatformSections(type: string, catalog: ChannelCatalogItem 
     sections.push({
       id: "connection",
       title: "CONNECTION",
-      hint: catalog?.supports_webhook ? "Webhook / 长连接接入方式" : "长连接接入方式",
+      hint: catalog?.supports_webhook ? "channelEditor.sectionHints.connectionWebhook" : "channelEditor.sectionHints.connectionLongPoll",
       fields: conn
     });
   }
@@ -280,21 +280,21 @@ export function buildPlatformSections(type: string, catalog: ChannelCatalogItem 
   sections.push({
     id: "routing",
     title: "ROUTING",
-    hint: "消息路由与访问控制",
+    hint: "channelEditor.sectionHints.routing",
     fields: routingFields(type)
   });
 
   sections.push({
     id: "long_task",
     title: "LONG TASK",
-    hint: "长任务 ACK、超时、进度与 async 路由",
+    hint: "channelEditor.sectionHints.longTask",
     fields: longTaskFields()
   });
 
   sections.push({
     id: "avatar",
     title: "AVATAR",
-    fields: [{ museKey: "icon_asset_id", bind: { source: "icon", key: "asset_id" }, kind: "text", hint: "留空使用平台默认图标" }]
+    fields: [{ museKey: "icon_asset_id", bind: { source: "icon", key: "asset_id" }, kind: "text", hint: "channelEditor.hints.avatarIcon" }]
   });
 
   return sections;

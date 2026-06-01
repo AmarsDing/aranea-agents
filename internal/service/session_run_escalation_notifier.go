@@ -7,10 +7,19 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/preview"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 const channelOutboundEmptyFallback = "（暂无文本回复）"
+
+// TECH-DEBT: notification content assembly (phase/source guards, message matching in
+// assistantReplyPartsForRun, error message fallback selection) should be extracted to
+// biz-layer helper functions. The Service layer should only orchestrate: call biz
+// helpers for content assembly → call preview for IM formatting → call channel for
+// delivery. Blocked by: preview package coupling (internal/channel/preview is a
+// presentation concern that must not be imported from biz) and the cross-cutting
+// nature of enqueueForSession which inherently mixes biz data queries with channel
+// service calls. Tracked in issue TBD.
 
 // SessionRunEscalationNotifier sends IM notices when a run hits soft/hard budgets (CC-R-02).
 type SessionRunEscalationNotifier interface {
@@ -48,10 +57,11 @@ func (n *channelRunEscalationNotifier) NotifySoftBudget(ctx context.Context, run
 	}
 	cardJSON := ""
 	if card, err := preview.BuildFeishuEscalateCardJSON(run.ID, run.SessionID, ""); err != nil {
-		event.SysLogWarn(flowStepChannelOutbound, "Channel escalate card build failed",
-			event.P("session_run_id", run.ID),
-			event.P("session_id", run.SessionID),
-			event.P("error", err.Error()),
+		loggateway.Global().Warn("Channel escalate card build failed",
+			loggateway.StepID(flowStepChannelOutbound),
+			loggateway.Str("session_run_id", run.ID),
+			loggateway.Str("session_id", run.SessionID),
+			loggateway.Err(err),
 		)
 	} else {
 		cardJSON = card
@@ -251,11 +261,12 @@ func (n *channelRunEscalationNotifier) enqueueForSession(
 	if !skipFormat {
 		text = preview.FormatAssistantReplyForIM(platform, text)
 		if strings.TrimSpace(text) == "" && strings.TrimSpace(cardJSON) == "" {
-			event.SysLogWarn(flowStepChannelOutbound, "Channel session outbound empty after format",
-				event.P("session_id", sessionID),
-				event.P("platform", platform),
-				event.P("idempotency_key", idempotencyKey),
-			)
+			loggateway.Global().Warn("Channel session outbound empty after format",
+			loggateway.StepID(flowStepChannelOutbound),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("platform", platform),
+			loggateway.Str("idempotency_key", idempotencyKey),
+		)
 			return nil
 		}
 	}

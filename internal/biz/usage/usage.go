@@ -15,8 +15,8 @@ import (
 	"github.com/go-kratos/kratos/v2/errors"
 
 	"aranea-agents/internal/biz/shared"
-	"aranea-agents/internal/event"
-	"aranea-agents/internal/modelcatalog"
+	"aranea-agents/internal/modelregistry"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -273,6 +273,7 @@ type AnalyticsRepo interface {
 type WriteRepo interface {
 	RecordTokenUsageEvent(ctx context.Context, event TokenUsageEvent) (TokenUsageEvent, error)
 	GetActiveModelPricing(ctx context.Context, providerCode, modelAPIID string) (ModelPricingSnapshot, bool, error)
+	PurgeUsageEventsOlderThan(ctx context.Context, retainDays int) (int64, error)
 }
 
 // QuotaRepo manages caps, spend sums, and budget alerts.
@@ -305,13 +306,18 @@ type Usecase struct {
 	alertNotifier AlertNotifier
 	alertFired    map[string]time.Time
 	alertFiredMu  sync.Mutex
+	lg            loggateway.Logger
 }
 
 // NewUsecase constructs a UsageUsecase.
-func NewUsecase(repo Repo) *Usecase {
+func NewUsecase(repo Repo, lg loggateway.Logger) *Usecase {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	return &Usecase{
 		repo: repo,
 		now:  func() time.Time { return time.Now().UTC() },
+		lg:   lg,
 	}
 }
 
@@ -503,6 +509,14 @@ func (u *Usecase) Events(ctx context.Context, query Query) ([]TokenUsageEvent, e
 	return u.repo.ListModelUsageEvents(ctx, u.normalizeQuery(query, u.now()))
 }
 
+// PurgeEvents deletes usage events older than retainDays and returns the count of deleted rows.
+func (u *Usecase) PurgeEvents(ctx context.Context, retainDays int) (int64, error) {
+	if retainDays < 1 {
+		return 0, errors.BadRequest("USAGE", "retain_days must be >= 1")
+	}
+	return u.repo.PurgeUsageEventsOlderThan(ctx, retainDays)
+}
+
 // RecordTokenUsageEvent inserts one usage row, updates session aggregates, and upserts daily rollup.
 func (u *Usecase) RecordTokenUsageEvent(ctx context.Context, e TokenUsageEvent) (TokenUsageEvent, error) {
 	if strings.TrimSpace(e.ID) == "" {
@@ -585,32 +599,32 @@ func applyPricingUSDToEvent(e *TokenUsageEvent, snap ModelPricingSnapshot) {
 	e.EmbeddingPriceUSDPer1M = snap.EmbeddingPriceUSDPer1M
 	// Micro columns remain for DB persistence; derived from USD/1M when available.
 	if snap.InputPriceUSDPer1M > 0 {
-		e.InputPriceMicroUSDPer1K = modelcatalog.USDPer1MToMicroPer1K(snap.InputPriceUSDPer1M)
+		e.InputPriceMicroUSDPer1K = modelregistry.USDPer1MToMicroPer1K(snap.InputPriceUSDPer1M)
 	} else if snap.InputPriceMicroUSDPer1K > 0 {
 		e.InputPriceMicroUSDPer1K = snap.InputPriceMicroUSDPer1K
 	}
 	if snap.OutputPriceUSDPer1M > 0 {
-		e.OutputPriceMicroUSDPer1K = modelcatalog.USDPer1MToMicroPer1K(snap.OutputPriceUSDPer1M)
+		e.OutputPriceMicroUSDPer1K = modelregistry.USDPer1MToMicroPer1K(snap.OutputPriceUSDPer1M)
 	} else if snap.OutputPriceMicroUSDPer1K > 0 {
 		e.OutputPriceMicroUSDPer1K = snap.OutputPriceMicroUSDPer1K
 	}
 	if snap.CacheReadPriceUSDPer1M > 0 {
-		e.CachedInputPriceMicroUSDPer1K = modelcatalog.USDPer1MToMicroPer1K(snap.CacheReadPriceUSDPer1M)
+		e.CachedInputPriceMicroUSDPer1K = modelregistry.USDPer1MToMicroPer1K(snap.CacheReadPriceUSDPer1M)
 	} else if snap.CachedInputPriceMicroUSDPer1K > 0 {
 		e.CachedInputPriceMicroUSDPer1K = snap.CachedInputPriceMicroUSDPer1K
 	}
 	if snap.CacheWritePriceUSDPer1M > 0 {
-		e.CacheWritePriceMicroUSDPer1K = modelcatalog.USDPer1MToMicroPer1K(snap.CacheWritePriceUSDPer1M)
+		e.CacheWritePriceMicroUSDPer1K = modelregistry.USDPer1MToMicroPer1K(snap.CacheWritePriceUSDPer1M)
 	} else if snap.CacheWritePriceMicroUSDPer1K > 0 {
 		e.CacheWritePriceMicroUSDPer1K = snap.CacheWritePriceMicroUSDPer1K
 	}
 	if snap.ReasoningPriceUSDPer1M > 0 {
-		e.ReasoningPriceMicroUSDPer1K = modelcatalog.USDPer1MToMicroPer1K(snap.ReasoningPriceUSDPer1M)
+		e.ReasoningPriceMicroUSDPer1K = modelregistry.USDPer1MToMicroPer1K(snap.ReasoningPriceUSDPer1M)
 	} else if snap.ReasoningPriceMicroUSDPer1K > 0 {
 		e.ReasoningPriceMicroUSDPer1K = snap.ReasoningPriceMicroUSDPer1K
 	}
 	if snap.EmbeddingPriceUSDPer1M > 0 {
-		e.EmbeddingPriceMicroUSDPer1K = modelcatalog.USDPer1MToMicroPer1K(snap.EmbeddingPriceUSDPer1M)
+		e.EmbeddingPriceMicroUSDPer1K = modelregistry.USDPer1MToMicroPer1K(snap.EmbeddingPriceUSDPer1M)
 	} else if snap.EmbeddingPriceMicroUSDPer1K > 0 {
 		e.EmbeddingPriceMicroUSDPer1K = snap.EmbeddingPriceMicroUSDPer1K
 	}
@@ -668,7 +682,7 @@ func usageCostMicro(tokens int, microPer1K int64, usdPer1M float64) int64 {
 		return 0
 	}
 	if usdPer1M > 0 && !math.IsNaN(usdPer1M) {
-		return modelcatalog.CostMicroUSDFromUSDPer1M(tokens, usdPer1M)
+		return modelregistry.CostMicroUSDFromUSDPer1M(tokens, usdPer1M)
 	}
 	if microPer1K > 0 {
 		return int64(tokens) * microPer1K / 1000
@@ -866,7 +880,7 @@ func (u *Usecase) QuotaDashboard(ctx context.Context) (QuotaDashboard, error) {
 	}
 	spentMap, batchErr := u.repo.BatchSumScopeCost(ctx, quotas)
 	if batchErr != nil {
-		event.SysLogWarn("system.usage", "quota_dashboard.batch_failed", event.P("error", batchErr.Error()))
+		u.lg.Warn("quota_dashboard.batch_failed", loggateway.StepID("system.usage"), loggateway.Err(batchErr))
 	}
 	var maxUtil float64
 	for _, q := range quotas {

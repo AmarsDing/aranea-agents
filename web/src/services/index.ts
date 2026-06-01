@@ -3,6 +3,9 @@ import { createAgentCategoryServiceClient } from "./kratos/agent_category/v1/ind
 import { createAgentServiceClient } from "./kratos/agent/v1/index";
 import { createArtifactServiceClient } from "./kratos/artifact/v1/index";
 import { createA2AServiceClient } from "./kratos/a2a/v1/index";
+import { createAIRefineServiceClient } from "./kratos/ai_refine/v1/index";
+import { createEcosystemServiceClient } from "./kratos/ecosystem/v1/index";
+import { createGatewayServiceClient } from "./kratos/gateway/v1/index";
 import { createAvatarServiceClient } from "./kratos/avatar/v1/index";
 import { createChannelServiceClient } from "./kratos/channel/v1/index";
 import { createCronServiceClient } from "./kratos/cron/v1/index";
@@ -129,6 +132,18 @@ export function createEventService() {
 
 export function createA2AService() {
   return createA2AServiceClient(requestHandler);
+}
+
+export function createAIRefineService() {
+  return createAIRefineServiceClient(requestHandler);
+}
+
+export function createEcosystemService() {
+  return createEcosystemServiceClient(requestHandler);
+}
+
+export function createGatewayService() {
+  return createGatewayServiceClient(requestHandler);
 }
 
 export { kratosApi, requestHandler, syncHttpClients } from "./axiosHandler";

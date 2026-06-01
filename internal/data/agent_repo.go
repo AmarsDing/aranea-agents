@@ -80,12 +80,16 @@ func entAgentToBiz(a *ent.Agent) biz.Agent {
 		IsFavorite:         a.IsFavorite,
 		Icon:               a.Icon,
 		AgentDescription:   a.AgentDescription,
-		CategoryPositionID: a.CategoryPositionID,
+		TaxonomyPositionID: a.CategoryPositionID,
+		PositionKey:        a.PositionKey,
+		AgentVariant:       a.AgentVariant,
+		VariantDescription: a.VariantDescription,
 		SystemPromptMode:   a.SystemPromptMode,
 		ContextWindow:      a.ContextWindow,
 		BudgetMonthlyCents: a.BudgetMonthlyCents,
 		ConfigJSON:         a.ConfigJSON,
 		CreatedBy:          a.CreatedBy,
+		Readonly:           a.Readonly,
 		CreatedAt:          a.CreatedAt,
 		UpdatedAt:          a.UpdatedAt,
 		DeletedAt:          a.DeletedAt,
@@ -187,6 +191,8 @@ func fromEntMemory(e *ent.AgentRuntimeSetting) biz.MemoryCfg {
 		L4GraphMaxHops:           e.L4GraphMaxHops,
 		L4IdentityInject:         e.L4IdentityInject,
 		L4StrategyInject:         e.L4StrategyInject,
+		L4DecayIntervalHours:     e.L4DecayIntervalHours,
+		L4DecayOverridesJSON:     e.L4DecayOverridesJSON,
 	}
 }
 
@@ -342,6 +348,8 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetL4GraphMaxHops(v.L4GraphMaxHops).
 		SetL4IdentityInject(v.L4IdentityInject).
 		SetL4StrategyInject(v.L4StrategyInject).
+		SetL4DecayIntervalHours(v.L4DecayIntervalHours).
+		SetL4DecayOverridesJSON(v.L4DecayOverridesJSON).
 		SetEvoEnabled(v.EvoEnabled).
 		SetEvoAutoApply(v.EvoAutoApply).
 		SetEvoMinEpisodes(v.EvoMinEpisodes).
@@ -588,12 +596,16 @@ func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetIsFavorite(a.IsFavorite).
 		SetIcon(a.Icon).
 		SetAgentDescription(a.AgentDescription).
-		SetCategoryPositionID(a.CategoryPositionID).
+		SetCategoryPositionID(a.TaxonomyPositionID).
+		SetPositionKey(a.PositionKey).
+		SetAgentVariant(a.AgentVariant).
+		SetVariantDescription(a.VariantDescription).
 		SetSystemPromptMode(a.SystemPromptMode).
 		SetContextWindow(a.ContextWindow).
 		SetBudgetMonthlyCents(a.BudgetMonthlyCents).
 		SetConfigJSON(a.ConfigJSON).
 		SetCreatedBy(a.CreatedBy).
+		SetReadonly(a.Readonly).
 		SetCreatedAt(a.CreatedAt).
 		SetUpdatedAt(a.UpdatedAt).
 		SetDeletedAt(a.DeletedAt).
@@ -638,11 +650,15 @@ func (r *agentRepo) UpdateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetIsFavorite(a.IsFavorite).
 		SetIcon(a.Icon).
 		SetAgentDescription(a.AgentDescription).
-		SetCategoryPositionID(a.CategoryPositionID).
+		SetCategoryPositionID(a.TaxonomyPositionID).
+		SetPositionKey(a.PositionKey).
+		SetAgentVariant(a.AgentVariant).
+		SetVariantDescription(a.VariantDescription).
 		SetSystemPromptMode(a.SystemPromptMode).
 		SetContextWindow(a.ContextWindow).
 		SetBudgetMonthlyCents(a.BudgetMonthlyCents).
 		SetConfigJSON(a.ConfigJSON).
+		SetReadonly(a.Readonly).
 		SetUpdatedAt(a.UpdatedAt).
 		Save(ctx)
 	if err != nil {
@@ -826,4 +842,8 @@ func (r *agentRepo) txClient(ctx context.Context) *ent.Client {
 
 func (r *agentRepo) ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error {
 	return r.data.ExecInTx(ctx, fn)
+}
+
+func (r *agentRepo) ReorderAgents(ctx context.Context, ids []string) error {
+	return nil
 }

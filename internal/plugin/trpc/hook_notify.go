@@ -11,8 +11,8 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/hook"
-	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/outboundwebhook"
 	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/webhookurl"
@@ -118,7 +118,7 @@ func (n *HookNotifier) processDeliveryFrom(ctx context.Context, d biz.HookDelive
 	if startAttempt > max {
 		// All attempts already consumed — mark failed and return.
 		if err := n.repo.UpdateResult(ctx, d.ID, biz.HookDeliveryFailed, max, "max attempts reached"); err != nil {
-			event.SysLogWarn("system.hook.delivery_fail", "hook.notify: UpdateResult failed", event.P("id", d.ID), event.P("error", err.Error()))
+			loggateway.Global().Warn("hook.notify: UpdateResult failed", loggateway.Str("id", d.ID), loggateway.Err(err))
 		}
 		return
 	}
@@ -128,13 +128,13 @@ func (n *HookNotifier) processDeliveryFrom(ctx context.Context, d biz.HookDelive
 		err := deliverHookWebhook(d.WebhookURL, []byte(d.PayloadJSON), d.WebhookSecret, timeoutSec)
 		if err == nil {
 			if uerr := n.repo.UpdateResult(ctx, d.ID, biz.HookDeliverySuccess, attempt, ""); uerr != nil {
-				event.SysLogWarn("system.hook.delivery_fail", "hook.notify: UpdateResult(success) failed", event.P("id", d.ID), event.P("error", uerr.Error()))
+				loggateway.Global().Warn("hook.notify: UpdateResult(success) failed", loggateway.Str("id", d.ID), loggateway.Err(uerr))
 			}
 			return
 		}
 		lastErr = err.Error()
 		if uerr := n.repo.UpdateResult(ctx, d.ID, biz.HookDeliveryPending, attempt, lastErr); uerr != nil {
-			event.SysLogWarn("system.hook.delivery_fail", "hook.notify: UpdateResult(pending) failed", event.P("id", d.ID), event.P("attempt", attempt), event.P("error", uerr.Error()))
+			loggateway.Global().Warn("hook.notify: UpdateResult(pending) failed", loggateway.Str("id", d.ID), loggateway.Int("attempt", attempt), loggateway.Err(uerr))
 		}
 		if attempt < max {
 			select {
@@ -145,7 +145,7 @@ func (n *HookNotifier) processDeliveryFrom(ctx context.Context, d biz.HookDelive
 		}
 	}
 	if uerr := n.repo.UpdateResult(ctx, d.ID, biz.HookDeliveryFailed, max, lastErr); uerr != nil {
-		event.SysLogWarn("system.hook.delivery_fail", "hook.notify: UpdateResult(failed) failed", event.P("id", d.ID), event.P("error", uerr.Error()))
+		loggateway.Global().Warn("hook.notify: UpdateResult(failed) failed", loggateway.Str("id", d.ID), loggateway.Err(uerr))
 	}
 	arametrics.PluginInvokeTotal.WithLabelValues("hook:"+d.HookKey, "notify", "delivery_failed").Inc()
 }

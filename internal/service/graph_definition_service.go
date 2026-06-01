@@ -158,6 +158,17 @@ func (s *GraphService) DeleteGraph(ctx context.Context, req *graphv1.DeleteGraph
 	return &graphv1.DeleteGraphResponse{Deleted: true}, nil
 }
 
+func (s *GraphService) ReorderGraphs(ctx context.Context, req *graphv1.ReorderGraphsRequest) (*graphv1.ReorderGraphsResponse, error) {
+	if len(req.Ids) == 0 {
+		return &graphv1.ReorderGraphsResponse{}, nil
+	}
+	err := s.uc.ReorderGraphs(ctx, req.Ids)
+	if err != nil {
+		return nil, err
+	}
+	return &graphv1.ReorderGraphsResponse{}, nil
+}
+
 func (s *GraphService) ValidateGraph(ctx context.Context, req *graphv1.ValidateGraphRequest) (*graphv1.ValidateGraphResponse, error) {
 	result, err := s.uc.ValidateGraph(ctx, req.GraphId)
 	if err != nil {

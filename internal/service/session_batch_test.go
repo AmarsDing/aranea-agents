@@ -113,6 +113,7 @@ func (m *batchSessionRepo) GetSessionState(context.Context, string) (map[string]
 	return nil, nil
 }
 func (m *batchSessionRepo) SaveSessionState(context.Context, string, map[string]string) error { return nil }
+func (m *batchSessionRepo) PatchSessionState(context.Context, string, map[string]string, []string) error { return nil }
 func (m *batchSessionRepo) CreateSessionTurn(context.Context, biz.SessionTurn) (biz.SessionTurn, error) {
 	return biz.SessionTurn{}, nil
 }

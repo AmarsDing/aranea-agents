@@ -30,7 +30,7 @@ export type Skill = {
   invoke_count: number;
   success_count: number;
   failure_count: number;
-  usage_count_7d?: number;
+  usage_count_7d: number;
   avg_duration_ms: number | null;
   last_agent_id?: string;
   last_agent_display_name?: string;

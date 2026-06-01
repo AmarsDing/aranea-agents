@@ -7,6 +7,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/runtime"
+	"aranea-agents/pkg/loggateway"
 )
 
 type stubHandler struct {
@@ -41,7 +42,7 @@ func TestRegisterStarter(t *testing.T) {
 	handler := &stubHandler{}
 	mgr := runtime.NewManager(nil, handler, func(ctx context.Context, creds []biz.ChannelCredential, key string) (string, error) {
 		return "x", nil
-	})
+	}, loggateway.NewNoop())
 	// Manager with nil channels skips Reload safely
 	if err := mgr.Reload(context.Background()); err != nil {
 		t.Fatal(err)

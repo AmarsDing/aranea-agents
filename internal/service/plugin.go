@@ -6,7 +6,7 @@ import (
 	"errors"
 	v1 "aranea-agents/api/kratos/plugin/v1"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/pkg/safego"
 
@@ -50,11 +50,19 @@ func (s *PluginService) seedBuiltinPlugins(ctx context.Context) {
 			continue
 		}
 		if !errors.Is(err, sql.ErrNoRows) {
-			event.SysLogWarn("system.plugin.seed_fail", "插件种子查询失败", event.P("key", def.Key), event.P("error", err))
+			loggateway.Global().Warn("插件种子查询失败",
+				loggateway.StepID("system.plugin.seed_fail"),
+				loggateway.Str("key", def.Key),
+				loggateway.Err(err),
+			)
 			continue
 		}
 		if _, err := s.uc.Create(ctx, def.ToBizPlugin()); err != nil {
-			event.SysLogWarn("system.plugin.seed_fail", "插件种子创建失败", event.P("key", def.Key), event.P("error", err))
+			loggateway.Global().Warn("插件种子创建失败",
+				loggateway.StepID("system.plugin.seed_fail"),
+				loggateway.Str("key", def.Key),
+				loggateway.Err(err),
+			)
 		}
 	}
 	s.reloadRuntime(ctx)
@@ -68,7 +76,10 @@ func (s *PluginService) reloadRuntime(ctx context.Context) {
 	safego.Go(ctx, "plugin.reloadRuntime", func() {
 		result, err := s.uc.List(context.Background(), biz.PluginListQuery{Enabled: "true", Limit: 200})
 		if err != nil {
-			event.SysLogWarn("system.plugin.reload_fail", "插件运行时重载列表失败", event.P("error", err))
+			loggateway.Global().Warn("插件运行时重载列表失败",
+				loggateway.StepID("system.plugin.reload_fail"),
+				loggateway.Err(err),
+			)
 			return
 		}
 		s.runtime.Apply(context.Background(), result.Items)

@@ -46,6 +46,7 @@
                 <q-input v-model.trim="form.team_key" class="team-control" dense outlined label="Team Key *" hint="小写字母、数字、连字符" />
                 <q-input v-model.trim="form.app_name" class="team-control" dense outlined label="App Name" hint="留空则使用 Team Key" />
                 <q-select v-model="form.status" class="team-control" dense outlined emit-value map-options label="状态" :options="statusOptions" />
+                <q-select v-model="form.category_industry_id" class="team-control" dense outlined emit-value map-options clearable label="行业归属" :options="industryOptions" />
               </div>
             </section>
 
@@ -302,10 +303,12 @@ const props = withDefaults(
       display_name: string;
       status: string;
       app_name: string;
+      category_industry_id: string;
     };
     definition: TeamDefinition;
     definitionJSON?: string;
     agentOptions: Array<{ label: string; value: string }>;
+    industryOptions: Array<{ label: string; value: string }>;
     saving: boolean;
     canSave: boolean;
     isDark: boolean;

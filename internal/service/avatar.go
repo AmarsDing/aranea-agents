@@ -39,6 +39,7 @@ func toProtoAvatar(a *biz.AvatarAsset) *v1.AvatarAsset {
 		WorkspaceId:   a.WorkspaceID,
 		OwnerUserId:   a.OwnerUserID,
 		Source:        a.Source,
+		Category:      a.Category,
 		IsSystem:      a.IsSystem,
 		FileSizeBytes: int32(a.FileSizeBytes),
 		WidthPx:       int32(a.WidthPx),

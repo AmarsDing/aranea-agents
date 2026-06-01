@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
 )
@@ -195,6 +196,9 @@ func (m *ingressSessionRepo) GetSessionState(context.Context, string) (map[strin
 func (m *ingressSessionRepo) SaveSessionState(context.Context, string, map[string]string) error {
 	return nil
 }
+func (m *ingressSessionRepo) PatchSessionState(context.Context, string, map[string]string, []string) error {
+	return nil
+}
 func (m *ingressSessionRepo) CreateSessionTurn(context.Context, biz.SessionTurn) (biz.SessionTurn, error) {
 	return biz.SessionTurn{}, nil
 }
@@ -304,6 +308,7 @@ func (s ingressAgentRepo) ListExtrasForAgents(context.Context, []string) (map[st
 func (s ingressAgentRepo) ListAgentCreators(context.Context) ([]biz.AgentCreator, error) {
 	return nil, nil
 }
+func (s ingressAgentRepo) ReorderAgents(context.Context, []string) error { return nil }
 func (s ingressAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }
@@ -329,20 +334,20 @@ func TestEnsureChannelSessionRebindsStalePeerBind(t *testing.T) {
 	agents := ingressAgentRepo{id: agentID}
 	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil)
 	h := &ChannelIngress{
-		peers:    peerRepo,
+		channels: biz.NewChannelUsecase(nil, peerRepo, nil, agents, nil, nil, nil),
 		sessions: sessions,
-		agents:   agents,
+		lg:       loggateway.NewNoop(),
 	}
 	ch := biz.Channel{
 		ID:         channelID,
 		Key:        "feishu_main",
 		ConfigJSON: `{"type":"feishu","routing":{"default_agent_id":"` + agentID + `"}}`,
 	}
-	req, err := h.prepareChannelChatRequest(context.Background(), ch, "feishu", peerKey, peerKey, "hello")
+	input, err := h.prepareChannelChatRequest(context.Background(), ch, "feishu", peerKey, peerKey, "hello", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := strings.TrimSpace(req.GetSessionId())
+	got := strings.TrimSpace(input.SessionID)
 	if got == "" || got == staleID {
 		t.Fatalf("session id = %q, want new session (not stale %q)", got, staleID)
 	}
@@ -383,20 +388,20 @@ func TestEnsureChannelSessionReusesLivePeerBind(t *testing.T) {
 	agents := ingressAgentRepo{id: agentID}
 	sessions := biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil)
 	h := &ChannelIngress{
-		peers:    peerRepo,
+		channels: biz.NewChannelUsecase(nil, peerRepo, nil, agents, nil, nil, nil),
 		sessions: sessions,
-		agents:   agents,
+		lg:       loggateway.NewNoop(),
 	}
 	ch := biz.Channel{
 		ID:         channelID,
 		Key:        "feishu_main",
 		ConfigJSON: `{"type":"feishu","routing":{"default_agent_id":"` + agentID + `"}}`,
 	}
-	req, err := h.prepareChannelChatRequest(context.Background(), ch, "feishu", peerKey, peerKey, "hello")
+	input, err := h.prepareChannelChatRequest(context.Background(), ch, "feishu", peerKey, peerKey, "hello", false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(req.GetSessionId()); got != liveID {
+	if got := strings.TrimSpace(input.SessionID); got != liveID {
 		t.Fatalf("session id = %q, want %q", got, liveID)
 	}
 	if sessRepo.created != 0 {

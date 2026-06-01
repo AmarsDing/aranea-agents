@@ -3,9 +3,11 @@ export {
   mapStringFloat,
   pickBool,
   pickI32,
+  pickI64,
   pickNum,
   pickOptionalBoolDefaultTrue,
   pickOptionalI32,
   pickStr,
-  pickStrArray
+  pickStrArray,
+  parseJsonArray
 } from "../../shared/wireJson";

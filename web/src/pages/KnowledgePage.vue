@@ -36,12 +36,22 @@
 
       <div>
         <q-card v-if="selectedCollection" flat class="app-pane-card">
-          <q-card-section class="row items-center justify-between">
-            <div>
-              <div class="app-registry-cell-primary text-h6">{{ selectedCollection.name }}</div>
-              <div class="app-registry-cell-sub">{{ selectedCollection.description || "无描述" }}</div>
+          <q-card-section>
+            <div class="row items-center justify-between">
+              <div>
+                <div class="app-registry-cell-primary text-h6">{{ selectedCollection.name }}</div>
+                <div class="app-registry-cell-sub">{{ selectedCollection.description || "无描述" }}</div>
+              </div>
+              <q-btn flat no-caps color="negative" icon="delete" label="删除集合" @click="confirmDeleteCollection" />
             </div>
-            <q-btn flat no-caps color="negative" icon="delete" label="删除集合" @click="confirmDeleteCollection" />
+            <div class="row q-gutter-md q-mt-sm text-caption text-grey-7">
+              <span>模型: {{ selectedCollection.embedding_model }}</span>
+              <span>维度: {{ selectedCollection.dim }}</span>
+              <span>文档: {{ selectedCollection.document_count }}</span>
+              <span>分块: {{ selectedCollection.chunk_count }}</span>
+              <span v-if="selectedCollection.workspace">工作区: {{ selectedCollection.workspace }}</span>
+              <span v-if="selectedCollection.created_at">创建: {{ formatKnowledgeTime(selectedCollection.created_at) }}</span>
+            </div>
           </q-card-section>
           <div class="app-tab-shell app-tab-shell--inset">
             <q-tabs v-model="tab" dense align="left" class="text-primary">
@@ -63,10 +73,12 @@
               <knowledge-search-panel
                 v-model:query="searchQuery"
                 v-model:top-k="searchTopK"
+                v-model:min-score="searchMinScore"
                 v-model:hybrid-mode="searchHybridMode"
                 v-model:rewrite-strategy="searchRewriteStrategy"
                 v-model:use-rerank="searchUseRerank"
                 :results="searchResults"
+                :doc-source-map="docSourceMap"
                 :loading="searchLoading"
                 :searched="searchRan"
                 @search="runSearch"
@@ -96,6 +108,9 @@
       v-model:mime-type="ingestForm.mime_type"
       v-model:text="ingestForm.text"
       v-model:file="ingestFile"
+      v-model:chunk-strategy="ingestForm.chunk_strategy"
+      v-model:chunk-size="ingestForm.chunk_size"
+      v-model:chunk-overlap="ingestForm.chunk_overlap"
       :loading="ingestLoading"
       @update:file="onIngestFile"
       @submit="submitIngest"
@@ -115,6 +130,7 @@ import KnowledgeCreateDialog from "../components/knowledge/KnowledgeCreateDialog
 import KnowledgeIngestDialog from "../components/knowledge/KnowledgeIngestDialog.vue";
 import { useKnowledgePage } from "../features/knowledge/useKnowledgePage";
 import { useKnowledgeStore } from "../stores/knowledge";
+import { formatKnowledgeTime } from "../features/knowledge/knowledgeUi";
 
 const $q = useQuasar();
 const knowledgeStore = useKnowledgeStore();
@@ -123,6 +139,7 @@ const {
   selectedId,
   selectedCollection,
   documents,
+  docSourceMap,
   loading,
   docsLoading,
   error,
@@ -135,6 +152,7 @@ const {
   ingestFile,
   searchQuery,
   searchTopK,
+  searchMinScore,
   searchHybridMode,
   searchRewriteStrategy,
   searchUseRerank,

@@ -22,12 +22,3 @@ export function evalLLMFromSettings(raw?: EvalLLMSettings | null): EvalLLMForm {
     judgeModel: raw?.judgeModel ?? DEFAULT_EVAL_LLM_FORM.judgeModel
   };
 }
-
-export function evalLLMToPatch(form: EvalLLMForm) {
-  return {
-    evalSimProvider: form.simProvider.trim(),
-    evalSimModel: form.simModel.trim(),
-    evalJudgeProvider: form.judgeProvider.trim(),
-    evalJudgeModel: form.judgeModel.trim()
-  };
-}

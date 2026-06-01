@@ -6,10 +6,9 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/team"
+	"aranea-agents/pkg/loggateway"
 
-	"github.com/go-kratos/kratos/v2/log"
 	"github.com/google/uuid"
 )
 
@@ -21,7 +20,7 @@ type GraphTaskRuntime struct {
 	webhooks        *biz.WebhookDispatcher
 	dispatch        *biz.TaskDispatcher
 	teamGraphResume team.TeamGraphTaskResumeHandler
-	log             *log.Helper
+	lg              loggateway.Logger
 }
 
 // SetTeamGraphTaskResumeHandler wires team graph task completion resume (M53 P1).
@@ -37,13 +36,14 @@ func NewGraphTaskRuntime(
 	taskUC *biz.TaskUsecase,
 	orch *GraphOrchestrationProjector,
 	webhooks *biz.WebhookDispatcher,
+	lg loggateway.Logger,
 ) *GraphTaskRuntime {
 	rt := &GraphTaskRuntime{
 		graphUC:  graphUC,
 		taskUC:   taskUC,
 		orch:     orch,
 		webhooks: webhooks,
-		log:      log.NewHelper(log.DefaultLogger),
+		lg:       lg,
 	}
 	if taskUC != nil {
 		taskUC.SetStatusPublisher(rt)
@@ -52,7 +52,7 @@ func NewGraphTaskRuntime(
 	if graphUC != nil {
 		graphUC.SetTaskCoordinator(rt)
 	}
-	rt.dispatch = biz.NewTaskDispatcher(taskUC, rt)
+	rt.dispatch = biz.NewTaskDispatcher(taskUC, rt, loggateway.Global())
 	return rt
 }
 
@@ -78,8 +78,7 @@ func (r *GraphTaskRuntime) PublishTaskStatus(ctx context.Context, task *biz.Grap
 	}
 	exec, err := r.graphUC.GetExecution(ctx, task.ExecutionID)
 	if err != nil {
-		event.SysLogWarn("system.graph.task_status_fail", "graph task status publish failed",
-			event.P("execution_id", task.ExecutionID), event.P("error", err.Error()))
+		r.lg.Warn("graph task status publish failed", loggateway.StepID("system.graph.task_status_fail"), loggateway.Str("execution_id", task.ExecutionID), loggateway.Err(err))
 		return
 	}
 	if r.orch != nil {
@@ -154,8 +153,7 @@ func (r *GraphTaskRuntime) OnTaskCompleted(ctx context.Context, task *biz.GraphT
 	if exec.Status == "waiting_human" && (exec.InterruptNode == task.NodeID || exec.CurrentNode == task.NodeID) {
 		_, err = r.graphUC.ResumeExecution(ctx, task.ExecutionID, resumeValue)
 		if err != nil {
-			event.SysLogWarn("system.graph.task_resume_fail", "graph resume after task complete failed",
-				event.P("execution_id", task.ExecutionID), event.P("task_id", task.TaskID), event.P("error", err.Error()))
+			r.lg.Warn("graph resume after task complete failed", loggateway.StepID("system.graph.task_resume_fail"), loggateway.Str("execution_id", task.ExecutionID), loggateway.Str("task_id", task.TaskID), loggateway.Err(err))
 		}
 		return err
 	}
@@ -185,11 +183,12 @@ func WireGraphTaskRuntime(
 	linkRepo biz.TaskLinkRepo,
 	webhooks *biz.WebhookDispatcher,
 	teamGraphCoord *team.TeamGraphRunCoordinator,
+	lg loggateway.Logger,
 ) *GraphTaskRuntime {
 	if taskUC != nil && linkRepo != nil {
 		taskUC.SetLinkRepo(linkRepo)
 	}
-	rt := NewGraphTaskRuntime(graphUC, taskUC, orch, webhooks)
+	rt := NewGraphTaskRuntime(graphUC, taskUC, orch, webhooks, lg)
 	if teamGraphCoord != nil {
 		rt.SetTeamGraphTaskResumeHandler(teamGraphCoord)
 	}

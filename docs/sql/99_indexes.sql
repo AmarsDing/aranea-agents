@@ -3,42 +3,34 @@
 -- ============================================================
 
 -- Session 索引
-CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id, deleted_at, updated_at);
-CREATE INDEX IF NOT EXISTS idx_sessions_team ON sessions(team_id, deleted_at, updated_at);
-CREATE INDEX IF NOT EXISTS idx_sessions_last_message ON sessions(last_message_at);
-
--- Message 索引
-CREATE INDEX IF NOT EXISTS idx_messages_session_turn ON messages(session_id, turn_number);
+-- [Ent-managed] idx_sessions_agent, idx_sessions_team, idx_sessions_last_message → ent/schema/session.go
+-- [Ent-managed] idx_messages_session_turn → ent/schema/message.go
 
 -- Session Summary 索引
 CREATE INDEX IF NOT EXISTS idx_session_summaries_session_range ON session_summaries(session_id, to_turn);
 
 -- Team 索引
-CREATE INDEX IF NOT EXISTS idx_team_runs_team_created ON team_runs(team_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_team_runs_session ON team_runs(session_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_team_runs_trace ON team_runs(trace_id, created_at);
+-- [Ent-managed] idx_team_runs_team_created, idx_team_runs_session, idx_team_runs_trace → ent/schema/team_run.go
+-- [Ent-managed] idx_team_run_steps_run → ent/schema/team_run_step.go
 CREATE INDEX IF NOT EXISTS idx_orchestration_steps_run_created ON orchestration_steps(team_run_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_team_run_steps_run ON team_run_steps(run_id, sort_order);
 
 -- Agent 索引
-CREATE INDEX IF NOT EXISTS idx_agent_prompt_files_agent ON agent_prompt_files(agent_id, sort_order);
-CREATE INDEX IF NOT EXISTS idx_avatar_assets_system ON avatar_assets(is_system, sort_order);
-CREATE INDEX IF NOT EXISTS idx_avatar_assets_workspace_owner ON avatar_assets(workspace_id, owner_user_id);
-CREATE INDEX IF NOT EXISTS idx_agent_category_parent ON agent_category_nodes(parent_id, sort_order);
-CREATE INDEX IF NOT EXISTS idx_agent_category_level ON agent_category_nodes(level, sort_order);
-CREATE INDEX IF NOT EXISTS idx_provider_models_provider ON llm_provider_models(provider, enabled, sort_order);
+-- [Ent-managed] idx_agent_prompt_files_agent → ent/schema/agent_prompt_file.go
+-- [Ent-managed] idx_avatar_assets_system, idx_avatar_assets_workspace_owner → ent/schema/avatar_asset.go
+-- [Ent-managed] idx_agent_category_parent, idx_agent_category_level → ent/schema/agent_category.go
+-- [Ent-managed] idx_provider_models_provider → ent/schema/llm_provider_model.go
 
 -- Channel 索引
-CREATE INDEX IF NOT EXISTS idx_channel_delivery_channel ON channel_delivery(channel_id, created_at);
+-- [Ent-managed] idx_channel_delivery_channel → ent/schema/platform_channel_delivery.go
+-- [Ent-managed] idx_plugins_enabled_order → ent/schema/plugin.go
 CREATE INDEX IF NOT EXISTS idx_hook_agents_agent ON hook_agents(agent_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_plugins_enabled_order ON plugins(enabled, sort_order);
 
 -- Skill 索引
-CREATE INDEX IF NOT EXISTS idx_skill_invocation_skill ON skill_invocation(skill_id, created_at);
+-- [Ent-managed] idx_skill_invocation_skill → ent/schema/skill_invocation.go
 
 -- Cron 索引
-CREATE INDEX IF NOT EXISTS idx_cron_task_agent ON cron_task(agent_id, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_cron_run_task ON cron_task_run(task_id, created_at);
+-- [Ent-managed] idx_cron_task_agent → ent/schema/cron_task.go
+-- [Ent-managed] idx_cron_run_task → ent/schema/cron_task_run.go
 
 -- Monitor 索引
 CREATE INDEX IF NOT EXISTS idx_monitor_events_created ON monitor_events(created_at);
@@ -52,7 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_usage_events_session ON model_token_usage_events(
 CREATE INDEX IF NOT EXISTS idx_usage_events_status ON model_token_usage_events(status, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_usage_daily_date_model ON model_token_usage_daily(date_key, provider_code, model_api_id);
 CREATE INDEX IF NOT EXISTS idx_usage_hourly_hour ON model_token_usage_hourly(hour_key);
-CREATE INDEX IF NOT EXISTS idx_pricing_rules_model_active ON model_pricing_rules(provider_code, model_api_id, is_active, effective_from);
+-- [Ent-managed] idx_pricing_rules_model_active → ent/schema/model_pricing_rule.go
 
 -- Attachment 索引
 CREATE INDEX IF NOT EXISTS idx_attachments_session ON chat_attachments(session_id, deleted_at);
@@ -64,10 +56,7 @@ CREATE INDEX IF NOT EXISTS idx_tools_enabled ON tools(enabled);
 CREATE INDEX IF NOT EXISTS idx_tools_risk_level ON tools(risk_level);
 CREATE INDEX IF NOT EXISTS idx_tool_agent_overrides_agent ON tool_agent_overrides(agent_id);
 CREATE INDEX IF NOT EXISTS idx_tool_agent_overrides_tool ON tool_agent_overrides(tool_key);
-CREATE INDEX IF NOT EXISTS idx_tool_invocations_tool_time ON tool_invocations(tool_key, started_at);
-CREATE INDEX IF NOT EXISTS idx_tool_invocations_agent_time ON tool_invocations(agent_id, started_at);
-CREATE INDEX IF NOT EXISTS idx_tool_invocations_session ON tool_invocations(session_id);
-CREATE INDEX IF NOT EXISTS idx_tool_invocations_status ON tool_invocations(status);
+-- [Ent-managed] idx_tool_invocations_tool_time, idx_tool_invocations_agent_time, idx_tool_invocations_session, idx_tool_invocations_status → ent/schema/tool_invocation.go
 CREATE INDEX IF NOT EXISTS idx_tool_invocation_params_invocation ON tool_invocation_params(invocation_id);
 CREATE INDEX IF NOT EXISTS idx_tool_invocation_params_tool_param ON tool_invocation_params(tool_key, param_name);
 CREATE INDEX IF NOT EXISTS idx_tool_usage_daily_tool_date ON tool_usage_daily(tool_key, date_key);

@@ -18,7 +18,7 @@
       v-model:page="page"
       v-model:page-size="pageSize"
       :page-max="pageMax"
-      :total="rows.length"
+      :total="total"
       :loading="loading"
       label="条审计"
     />
@@ -34,6 +34,7 @@ import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
 
 const props = defineProps<{
   rows: A2AAuditEntry[];
+  total: number;
   loading: boolean;
   columns: RegistryTableColumn<A2AAuditEntry>[];
   statusColor: (status: string) => string;

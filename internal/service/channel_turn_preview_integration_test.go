@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestTurnPreviewCoordinator_eventBusWithHeartbeat(t *testing.T) {
@@ -15,12 +16,13 @@ func TestTurnPreviewCoordinator_eventBusWithHeartbeat(t *testing.T) {
 	updater := &mockPreviewUpdater{}
 	lt := biz.ParseChannelLongTaskConfig(`{"config":{"im_render_mode":"transcript","progress_quiet_sec":3600}}`)
 	coord := newTurnPreviewCoordinator(turnPreviewParams{
-		Bus:       bus,
-		Updater:   updater,
-		Platform:  "feishu",
-		Policy:    biz.ParseChannelIMRenderPolicy(`{"config":{"im_render_mode":"transcript","progress_quiet_sec":3600}}`, lt),
-		LtCfg:     lt,
+		Bus:        bus,
+		Updater:    updater,
+		Platform:   "feishu",
+		Policy:     biz.ParseChannelIMRenderPolicy(`{"config":{"im_render_mode":"transcript","progress_quiet_sec":3600}}`, lt),
+		LtCfg:      lt,
 		InitialAck: "收到",
+		Lg:         loggateway.NewNoop(),
 	})
 	ctx := context.Background()
 	stop := coord.Start(ctx, "sess-bus")

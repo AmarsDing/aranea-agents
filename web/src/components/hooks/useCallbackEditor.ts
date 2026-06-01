@@ -1,7 +1,6 @@
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import {
-  ACTION_TYPE_OPTIONS,
-  CALLBACK_POINT_OPTIONS,
   cloneHookRuleConfig,
   defaultHookRuleConfig,
   type HookRuleConfig
@@ -12,6 +11,7 @@ import {
   parseModifyPatchText,
   stringifyModifyPatch
 } from "./callbackEditorUi";
+import { useCallbackPointOptions } from "../../features/callback/constants";
 
 type CallbackEditorProps = {
   modelValue: HookRuleConfig;
@@ -27,13 +27,19 @@ export function useCallbackEditor(
     (event: "update:sortOrder", value: number): void;
   }
 ) {
+  const { t } = useI18n();
   const localRule = ref<HookRuleConfig>(defaultHookRuleConfig(props.agentId, props.agentKey));
   const sortOrder = ref(props.sortOrder ?? 0);
   const modifyPatchText = ref("{}");
   const modifyPatchError = ref("");
 
-  const pointOptions = CALLBACK_POINT_OPTIONS;
-  const actionOptions = ACTION_TYPE_OPTIONS;
+  const pointOptions = useCallbackPointOptions();
+  const actionOptions = computed(() => [
+    { label: t("hooksPage.actionTypes.log"), value: "log" as const },
+    { label: t("hooksPage.actionTypes.notify"), value: "notify" as const },
+    { label: t("hooksPage.actionTypes.block"), value: "block" as const },
+    { label: t("hooksPage.actionTypes.modify"), value: "modify" as const }
+  ]);
 
   const toolPoint = computed(() => isToolCallbackPoint(localRule.value.callback_point));
   const onEventPoint = computed(() => isOnEventPoint(localRule.value.callback_point));
@@ -41,7 +47,7 @@ export function useCallbackEditor(
   const showLogFields = computed(() => localRule.value.action.type === "log");
   const showModifyFields = computed(() => localRule.value.action.type === "modify");
   const showMessageField = computed(
-    () => localRule.value.action.type === "block" || localRule.value.action.type === "log"
+    () => localRule.value.action.type === "block"
   );
 
   watch(
@@ -103,7 +109,7 @@ export function useCallbackEditor(
   }
 
   function onModifyPatchInput(raw: string | number | null) {
-    const { patch, error } = parseModifyPatchText(raw);
+    const { patch, error } = parseModifyPatchText(raw, t);
     modifyPatchError.value = error;
     if (error) return;
     localRule.value.action.modify_patch = patch;

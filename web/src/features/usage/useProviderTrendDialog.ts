@@ -1,5 +1,7 @@
 import { computed, ref, watch, type Ref } from "vue";
+import { useQuasar } from "quasar";
 import type { PlatformResource } from "../platform/types";
+import { errorMessage } from "../platform/providerUtils";
 import type { ModelUsageOverview } from "./types";
 import { useUsageStore } from "../../stores/usage";
 import {
@@ -12,6 +14,7 @@ export function useProviderTrendDialog(
   row: Ref<PlatformResource | null>
 ) {
   const usageStore = useUsageStore();
+  const $q = useQuasar();
   const metricOptions = USAGE_TREND_METRIC_OPTIONS.filter((o) => o.value !== "success_rate");
   const metric = ref<UsageTrendMetric>("tokens");
   const overview = ref<ModelUsageOverview | null>(null);
@@ -46,6 +49,8 @@ export function useProviderTrendDialog(
         provider_code: r.provider,
         model_api_id: r.model
       });
+    } catch (error) {
+      $q.notify({ type: "negative", message: errorMessage(error) || "加载趋势数据失败" });
     } finally {
       loading.value = false;
     }

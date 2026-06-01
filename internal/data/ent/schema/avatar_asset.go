@@ -5,6 +5,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // AvatarAsset maps the legacy table avatar_assets (pkg/backend 0001_init.sql).
@@ -29,6 +30,7 @@ func (AvatarAsset) Fields() []ent.Field {
 		field.String("workspace_id").Default(""),
 		field.String("owner_user_id").Default(""),
 		field.String("source").Default("system"),
+		field.String("category").Default("agent"),
 		field.Bool("is_system").Default(false),
 		field.Int("file_size_bytes").Default(0),
 		field.Int("width_px").Default(0),
@@ -42,5 +44,12 @@ func (AvatarAsset) Fields() []ent.Field {
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("deleted_at").Default(""),
+	}
+}
+
+func (AvatarAsset) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("is_system", "sort_order").StorageKey("idx_avatar_assets_system"),
+		index.Fields("workspace_id", "owner_user_id").StorageKey("idx_avatar_assets_workspace_owner"),
 	}
 }

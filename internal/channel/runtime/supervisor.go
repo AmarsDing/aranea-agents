@@ -8,7 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	arametrics "aranea-agents/internal/metrics"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -61,10 +61,11 @@ func (m *Manager) runSupervised(
 			return
 		}
 		if err := starter(runCtx, ch, creds, m.credLookup, m.handler); err != nil {
-			event.SysLogWarn("channel.runtime.starter_exited", "渠道连接器异常退出",
-				event.P("platform", platform),
-				event.P("channel_id", ch.ID),
-				event.P("error", err.Error()),
+			loggateway.Global().Warn("渠道连接器异常退出",
+				loggateway.StepID("channel.runtime.starter_exited"),
+				loggateway.Str("platform", platform),
+				loggateway.Str("channel_id", ch.ID),
+				loggateway.Err(err),
 			)
 		}
 		setChannelConnection(ch.ID, false)

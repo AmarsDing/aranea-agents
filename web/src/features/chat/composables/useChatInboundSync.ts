@@ -41,6 +41,7 @@ import {
 } from "../channelInboundSession";
 import { noteChannelWsEnvelope } from "../channelWsCursor";
 import { projectConversationEnvelope } from "../conversationEventDispatcher";
+import { emitSessionMutation } from "../../../stores/sessionSync";
 
 export type ChatInboundSyncDeps = {
   appStore: ReturnType<typeof useAppStore>;
@@ -329,6 +330,16 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       const patch = sessionContextPatchFromEnvelope(env);
       if (patch) {
         deps.sessionStore.patchSessionMetricsLocal(sessionId, patch);
+      }
+    }
+
+    if (env.type === "session.status_changed" && env.metadata) {
+      const md = env.metadata as Record<string, unknown>;
+      const status = typeof md.status === "string" ? md.status : "";
+      const statusReason = typeof md.status_reason === "string" ? md.status_reason : "";
+      const statusChangedAt = typeof md.status_changed_at === "string" ? md.status_changed_at : "";
+      if (status) {
+        emitSessionMutation({ type: "status_changed", id: sessionId, status, statusReason, statusChangedAt });
       }
     }
 

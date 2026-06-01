@@ -9,7 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/runtime"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -22,14 +22,14 @@ type ChannelRuntime struct {
 }
 
 // NewChannelRuntime wires runtime.Manager to ChannelIngress.
-func NewChannelRuntime(channels *biz.ChannelUsecase, ingress *ChannelIngress, leases biz.ChannelRuntimeLeaseRepo) *ChannelRuntime {
+func NewChannelRuntime(channels *biz.ChannelUsecase, ingress *ChannelIngress, leases biz.ChannelRuntimeLeaseRepo, lg loggateway.Logger) *ChannelRuntime {
 	if channels == nil || ingress == nil {
 		return nil
 	}
 	lookup := func(ctx context.Context, creds []biz.ChannelCredential, key string) (string, error) {
 		return resolveCredentialPlain(ctx, channels, creds, key)
 	}
-	mgr := runtime.NewManager(channels, ingress, lookup)
+	mgr := runtime.NewManager(channels, ingress, lookup, lg)
 	if leases != nil {
 		mgr = mgr.WithRuntimeLease(leases, channelRuntimeOwnerID(), 0)
 	}
@@ -77,8 +77,9 @@ func (r *ChannelRuntime) Start(parent context.Context) {
 	r.cancel = cancel
 	safego.Go(ctx, "channel_runtime.reload_loop", func() {
 		if err := r.mgr.Reload(ctx); err != nil {
-			event.SysLogWarn("channel.runtime.reload_failed", "渠道运行时 Reload 失败",
-				event.P("error", err.Error()),
+			loggateway.Global().Warn("渠道运行时 Reload 失败",
+				loggateway.StepID("channel.runtime.reload_failed"),
+				loggateway.Err(err),
 			)
 		}
 		interval := RuntimeReloadInterval()
@@ -94,8 +95,9 @@ func (r *ChannelRuntime) Start(parent context.Context) {
 				return
 			case <-ticker.C:
 				if err := r.mgr.Reload(ctx); err != nil {
-					event.SysLogWarn("channel.runtime.reload_failed", "渠道运行时 Reload 失败",
-						event.P("error", err.Error()),
+					loggateway.Global().Warn("渠道运行时 Reload 失败",
+						loggateway.StepID("channel.runtime.reload_failed"),
+						loggateway.Err(err),
 					)
 				}
 			}
@@ -109,8 +111,9 @@ func (r *ChannelRuntime) Reload(ctx context.Context) {
 		return
 	}
 	if err := r.mgr.Reload(ctx); err != nil {
-		event.SysLogWarn("channel.runtime.reload_failed", "渠道运行时 Reload 失败",
-			event.P("error", err.Error()),
+		loggateway.Global().Warn("渠道运行时 Reload 失败",
+			loggateway.StepID("channel.runtime.reload_failed"),
+			loggateway.Err(err),
 		)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // TeamRunStep maps legacy table team_run_steps.
@@ -42,5 +43,11 @@ func (TeamRunStep) Fields() []ent.Field {
 		field.String("finished_at").Default(""),
 		field.String("created_at").Default(""),
 		field.Int("tool_call_count").Default(0),
+	}
+}
+
+func (TeamRunStep) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("run_id", "sort_order").StorageKey("idx_team_run_steps_run"),
 	}
 }

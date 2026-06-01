@@ -9,15 +9,15 @@ import (
 	"sync/atomic"
 	"time"
 
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
-
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
 type TraceProjector struct {
 	repo  Repo
 	buses []contract.Bus
+	lg    loggateway.Logger
 
 	mu     sync.Mutex
 	traces map[string]*activeTrace
@@ -37,7 +37,7 @@ type activeTrace struct {
 	costUsd   float64
 }
 
-func NewTraceProjector(repo Repo, buses ...contract.Bus) *TraceProjector {
+func NewTraceProjector(repo Repo, lg loggateway.Logger, buses ...contract.Bus) *TraceProjector {
 	if repo == nil {
 		return nil
 	}
@@ -63,6 +63,7 @@ func NewTraceProjector(repo Repo, buses ...contract.Bus) *TraceProjector {
 	return &TraceProjector{
 		repo:   repo,
 		buses:  seen,
+		lg:     lg,
 		traces: make(map[string]*activeTrace),
 	}
 }
@@ -74,7 +75,7 @@ func (p *TraceProjector) Start(ctx context.Context) {
 		return
 	}
 	if err := p.repo.EnsureTraceSchema(ctx); err != nil {
-		event.SysLogWarn("system.monitor.trace_schema_fail", "EnsureTraceSchema failed", event.P("error", err.Error()))
+		p.lg.Warn("EnsureTraceSchema failed", loggateway.StepID("system.monitor.trace_schema_fail"), loggateway.Err(err))
 	}
 	opts := contract.SubscribeOptions{
 		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeFlowLog},
@@ -114,7 +115,7 @@ func (p *TraceProjector) evictStaleTraces() {
 }
 
 func (p *TraceProjector) subscribeBus(ctx context.Context, name string, bus contract.Bus, opts contract.SubscribeOptions) {
-	worker := newTraceProjectorWorker(name)
+	worker := newTraceProjectorWorker(name, p.lg)
 	worker.Start(ctx, p.handle)
 	ch, unsub := bus.Subscribe(opts)
 	safego.Go(ctx, name, func() {
@@ -223,8 +224,8 @@ func (p *TraceProjector) handle(ctx context.Context, env contract.Envelope) {
 	}
 
 	if err := p.repo.UpsertMonitorTraceSpan(ctx, sw); err != nil {
-		event.SysLogWarn("system.monitor.trace_span_upsert_fail", "UpsertMonitorTraceSpan failed",
-			event.P("trace_id", traceID), event.P("span_id", spanID), event.P("error", err.Error()))
+		p.lg.Warn("UpsertMonitorTraceSpan failed",
+			loggateway.StepID("system.monitor.trace_span_upsert_fail"), loggateway.Str("trace_id", traceID), loggateway.Str("span_id", spanID), loggateway.Err(err))
 	}
 
 	p.mu.Lock()
@@ -280,8 +281,8 @@ func (p *TraceProjector) OnRunnerCompletion(ctx context.Context, traceID, status
 	}
 
 	if err := p.repo.UpdateMonitorTraceCompletion(ctx, traceID, status, durationMs, spanCount, errCount, tokens, costUsd); err != nil {
-		event.SysLogWarn("system.monitor.trace_completion_fail", "UpdateMonitorTraceCompletion failed",
-			event.P("trace_id", traceID), event.P("error", err.Error()))
+		p.lg.Warn("UpdateMonitorTraceCompletion failed",
+			loggateway.StepID("system.monitor.trace_completion_fail"), loggateway.Str("trace_id", traceID), loggateway.Err(err))
 	}
 }
 
@@ -313,8 +314,8 @@ func (p *TraceProjector) ensureTrace(ctx context.Context, traceID, sessionID, ru
 		Status:    "running",
 	}
 	if err := p.repo.InsertMonitorTrace(ctx, tw); err != nil {
-		event.SysLogWarn("system.monitor.trace_insert_fail", "InsertMonitorTrace failed",
-			event.P("trace_id", traceID), event.P("error", err.Error()))
+		p.lg.Warn("InsertMonitorTrace failed",
+			loggateway.StepID("system.monitor.trace_insert_fail"), loggateway.Str("trace_id", traceID), loggateway.Err(err))
 	}
 }
 
@@ -362,15 +363,17 @@ func coalesceStr(a, b string) string {
 }
 
 type traceProjectorWorker struct {
-	name     string
-	queue    chan contract.Envelope
+	name      string
+	queue     chan contract.Envelope
 	dropCount atomic.Int64
+	lg        loggateway.Logger
 }
 
-func newTraceProjectorWorker(name string) *traceProjectorWorker {
+func newTraceProjectorWorker(name string, lg loggateway.Logger) *traceProjectorWorker {
 	return &traceProjectorWorker{
 		name:  name,
 		queue: make(chan contract.Envelope, 256),
+		lg:    lg,
 	}
 }
 
@@ -396,8 +399,8 @@ func (w *traceProjectorWorker) Offer(ctx context.Context, env contract.Envelope)
 	default:
 		w.dropCount.Add(1)
 		if w.dropCount.Load()%100 == 1 {
-			event.SysLogWarn("system.monitor.trace_projector_queue_full", "TraceProjector queue full, dropping envelope",
-				event.P("worker", w.name), event.P("total_drops", fmt.Sprint(w.dropCount.Load())))
+			w.lg.Warn("TraceProjector queue full, dropping envelope",
+				loggateway.StepID("system.monitor.trace_projector_queue_full"), loggateway.Str("worker", w.name), loggateway.Str("total_drops", fmt.Sprint(w.dropCount.Load())))
 		}
 	}
 }

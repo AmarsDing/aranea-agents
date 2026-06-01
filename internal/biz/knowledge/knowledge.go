@@ -312,12 +312,8 @@ func ApplyEmbedPatch(cur EmbedSetting, provider, baseURL, apiKey, model string, 
 	if p := strings.TrimSpace(provider); p != "" {
 		out.Provider = p
 	}
-	if b := strings.TrimRight(strings.TrimSpace(baseURL), "/"); b != "" {
-		out.BaseURL = b
-	}
-	if m := strings.TrimSpace(model); m != "" {
-		out.Model = m
-	}
+	out.BaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	out.Model = strings.TrimSpace(model)
 	if dim > 0 {
 		out.Dim = dim
 	}

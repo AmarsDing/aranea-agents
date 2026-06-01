@@ -28,12 +28,17 @@ import {
   addTaskComment,
   listTaskLogs,
   listTaskRuns,
+  listTaskEvents,
+  createTask,
+  linkTasks,
+  unlinkTasks,
   exportGraph,
   importGraph,
   listGraphVersions,
   rollbackGraphVersion,
   saveGraphAsTemplate,
   listGraphExecutions,
+  reorderGraphs,
   type GraphDefinition,
   type GraphExecution,
   type GraphExecutionSummary,
@@ -45,6 +50,7 @@ import {
   type TaskComment,
   type TaskLog,
   type TaskRun,
+  type TaskEvent,
   type TaskStatus,
 } from "../../features/graph/api";
 
@@ -52,7 +58,6 @@ export const useGraphStore = defineStore("graph", () => {
   const graphs = ref<GraphDefinition[]>([]);
   const activeGraph = ref<GraphDefinition | null>(null);
   const loading = ref(false);
-  const total = ref(0);
   const templates = ref<GraphTemplateInfo[]>([]);
   const templatesLoading = ref(false);
   const lastValidation = ref<ValidationResult | null>(null);
@@ -65,7 +70,6 @@ export const useGraphStore = defineStore("graph", () => {
     try {
       const result = await listGraphs(pageSize, pageToken);
       graphs.value = result.items ?? [];
-      total.value = graphs.value.length;
     } finally {
       loading.value = false;
     }
@@ -95,6 +99,15 @@ export const useGraphStore = defineStore("graph", () => {
     await deleteGraph(id);
     graphs.value = graphs.value.filter((g) => g.id !== id);
     if (activeGraph.value?.id === id) activeGraph.value = null;
+  }
+
+  async function reorderGraphList(ids: string[]) {
+    await reorderGraphs(ids);
+    const idIndex = new Map(ids.map((id, i) => [id, i + 1]));
+    graphs.value = graphs.value.map((g) => {
+      const newOrder = idIndex.get(g.id);
+      return newOrder !== undefined ? { ...g, sortOrder: newOrder } : g;
+    });
   }
 
   async function runGraph(id: string, sessionId: string, initialState?: Record<string, unknown>) {
@@ -221,6 +234,10 @@ export const useGraphStore = defineStore("graph", () => {
     return listTaskRuns(taskId);
   }
 
+  async function fetchTaskEvents(executionId: string, taskId = "", eventType = "", pageSize = 100): Promise<TaskEvent[]> {
+    return listTaskEvents(executionId, taskId, eventType, pageSize);
+  }
+
   async function exportGraphDefinition(graphId: string) {
     return exportGraph(graphId);
   }
@@ -249,11 +266,22 @@ export const useGraphStore = defineStore("graph", () => {
     return result;
   }
 
+  async function createNewTask(executionId: string, nodeId: string, requiredRole = "", assignmentMode = "", assignmentStrategy = "", input = "", context = "", parentTaskIds: string[] = []): Promise<Task> {
+    return createTask(executionId, nodeId, requiredRole, assignmentMode, assignmentStrategy, input, context, parentTaskIds);
+  }
+
+  async function linkTaskRelation(parentTaskId: string, childTaskId: string): Promise<void> {
+    return linkTasks(parentTaskId, childTaskId);
+  }
+
+  async function unlinkTaskRelation(parentTaskId: string, childTaskId: string): Promise<void> {
+    return unlinkTasks(parentTaskId, childTaskId);
+  }
+
   return {
     graphs,
     activeGraph,
     loading,
-    total,
     templates,
     templatesLoading,
     lastValidation,
@@ -265,6 +293,7 @@ export const useGraphStore = defineStore("graph", () => {
     addGraph,
     editGraph,
     removeGraph,
+    reorderGraphList,
     runGraph,
     fetchExecution,
     loadExecutionHistory,
@@ -288,6 +317,10 @@ export const useGraphStore = defineStore("graph", () => {
     postTaskComment,
     fetchTaskLogs,
     fetchTaskRuns,
+    fetchTaskEvents,
+    createNewTask,
+    linkTaskRelation,
+    unlinkTaskRelation,
     exportGraphDefinition,
     importGraphDefinition,
     fetchGraphVersions,

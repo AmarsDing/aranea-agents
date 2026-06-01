@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -47,13 +48,18 @@ func (h *ChannelIngress) scheduleInboundBackground(r *http.Request, chRow biz.Ch
 		if outcome.DispatchAsync {
 			defer h.releaseInboundInflight(evCopy, platform)
 			if err := h.dispatchAsyncInbound(procCtx, chCopy, evCopy, platform, ltCfg); err != nil {
-				_ = h.deliverTurnErrorReply(procCtx, chCopy, evCopy, platform, err)
-				_ = h.recordDelivery(procCtx, chCopy.ID, "error", map[string]any{"phase": "async_dispatch", "error": err.Error()}, err.Error())
+				if replyErr := h.deliverTurnErrorReply(procCtx, chCopy, evCopy, platform, err); replyErr != nil {
+					h.lg.Warn("异步回复投递失败",
+						loggateway.StepID("channel.async.reply_failed"),
+						loggateway.Str("error", replyErr.Error()),
+					)
+				}
+				h.recordDelivery(procCtx, chCopy.ID, "error", map[string]any{"phase": "async_dispatch", "error": err.Error()}, err.Error())
 			}
 			return
 		}
 		if err := h.executeInboundTurn(procCtx, chCopy, evCopy); err != nil {
-			_ = h.recordDelivery(procCtx, chCopy.ID, "error", map[string]any{"phase": "async_execute", "error": err.Error()}, err.Error())
+			h.recordDelivery(procCtx, chCopy.ID, "error", map[string]any{"phase": "async_execute", "error": err.Error()}, err.Error())
 		}
 	})
 }

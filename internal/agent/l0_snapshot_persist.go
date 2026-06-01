@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/llmcontext"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -62,10 +63,11 @@ func newL0SnapshotAfterModelHook(deps TRPCBuilderDeps) callbacks.Callback {
 			actual = args.Response.Usage.PromptTokens
 		}
 		if err := deps.MemoryAdmin.UpdateL0SnapshotActual(ctx, pending.ID, actual, pending.Window); err != nil {
-			event.CtxFlowLogWarn(ctx, "memory.l0.snapshot", "L0 快照 actual 更新失败",
-				event.P("snapshot_id", pending.ID),
-				event.P("model_call_index", callIndex),
-				event.P("error", err.Error()),
+			loggateway.Global().Warn("L0 快照 actual 更新失败",
+				loggateway.StepID("memory.l0.snapshot"),
+				loggateway.Str("snapshot_id", pending.ID),
+				loggateway.Int("model_call_index", callIndex),
+				loggateway.Str("error", err.Error()),
 			)
 		}
 		return &trpcmodel.AfterModelResult{Context: ctx}, nil
@@ -155,20 +157,21 @@ func persistL0AssemblySnapshot(ctx context.Context, deps TRPCBuilderDeps, ag biz
 		CreatedAt:            time.Now().UTC().Format(time.RFC3339Nano),
 	}
 	if err := deps.MemoryAdmin.InsertL0AssemblySnapshot(ctx, in); err != nil {
-		event.CtxFlowLogWarn(ctx, "memory.l0.snapshot", "L0 快照落库失败",
-			event.P("session_id", sessionID),
-			event.P("error", err.Error()),
+		loggateway.Global().Warn("L0 快照落库失败",
+			loggateway.StepID("memory.l0.snapshot"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Str("error", err.Error()),
 		)
 		return
 	}
 	setL0SnapshotPendingForCall(inv, callIndex, in.ID, win)
-	event.CtxFlowLogDone(ctx, "memory.l0.snapshot", "L0 快照已落库",
-		event.P("snapshot_id", in.ID),
-		event.P("session_id", sessionID),
-		event.P("model_call_index", callIndex),
-		event.P("est_tokens", report.EstTokens),
-		event.P("used_ratio", usedRatio),
-		event.P("context_window", win),
+	loggateway.Global().Info("L0 快照已落库", loggateway.StepID("memory.l0.snapshot"), loggateway.Phase("done"),
+		loggateway.Str("snapshot_id", in.ID),
+		loggateway.Str("session_id", sessionID),
+		loggateway.Int("model_call_index", callIndex),
+		loggateway.Int("est_tokens", report.EstTokens),
+		loggateway.Any("used_ratio", usedRatio),
+		loggateway.Int("context_window", win),
 	)
 }
 

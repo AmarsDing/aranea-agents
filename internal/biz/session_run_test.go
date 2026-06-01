@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type sessionRunRepoStub struct {
@@ -163,7 +165,7 @@ func (s *sessionRunCheckpointRepoStub) GetBySessionRunID(_ context.Context, sess
 
 func TestSessionRunUsecaseStartInteractive(t *testing.T) {
 	repo := &sessionRunRepoStub{runs: map[string]SessionRun{}}
-	uc := NewSessionRunUsecase(repo, nil)
+	uc := NewSessionRunUsecase(repo, nil, loggateway.NewNoop())
 	run, err := uc.StartInteractive(context.Background(), "sess-1", "turn-1", "rt-1", "channel", "agent-1", DefaultSessionRunBudget())
 	if err != nil {
 		t.Fatal(err)
@@ -178,7 +180,7 @@ func TestSessionRunUsecaseStartInteractive(t *testing.T) {
 
 func TestSessionRunBudgetWatcherSoftBudget(t *testing.T) {
 	repo := &sessionRunRepoStub{runs: map[string]SessionRun{}}
-	uc := NewSessionRunUsecase(repo, nil)
+	uc := NewSessionRunUsecase(repo, nil, loggateway.NewNoop())
 	run, err := uc.StartInteractive(context.Background(), "sess-1", "turn-1", "rt-1", "web", "agent-1", SessionRunBudget{SoftBudgetSec: 1, HardBudgetSec: 5})
 	if err != nil {
 		t.Fatal(err)
@@ -224,7 +226,7 @@ func TestSessionRunTryClaimDurableResume(t *testing.T) {
 			CheckpointID: "cp-1",
 		},
 	}}
-	uc := NewSessionRunUsecase(repo, nil)
+	uc := NewSessionRunUsecase(repo, nil, loggateway.NewNoop())
 	claimed, err := uc.TryClaimDurableResume(context.Background(), "run-1")
 	if err != nil || !claimed {
 		t.Fatalf("first claim: claimed=%v err=%v", claimed, err)
@@ -244,7 +246,7 @@ func TestSessionRunTryClaimDurableResume(t *testing.T) {
 
 func TestSessionRunBudgetWatcherHardBudgetDoesNotPremarkDurable(t *testing.T) {
 	repo := &sessionRunRepoStub{runs: map[string]SessionRun{}}
-	uc := NewSessionRunUsecase(repo, nil)
+	uc := NewSessionRunUsecase(repo, nil, loggateway.NewNoop())
 	run, err := uc.StartInteractive(context.Background(), "sess-1", "turn-1", "rt-1", "web", "agent-1", SessionRunBudget{SoftBudgetSec: 30, HardBudgetSec: 1})
 	if err != nil {
 		t.Fatal(err)

@@ -80,7 +80,9 @@ func (s *StreamSender) createPost(ctx context.Context, channelID, text string) (
 	var out struct {
 		ID string `json:"id"`
 	}
-	_ = json.Unmarshal(raw, &out)
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return "", fmt.Errorf("mattermost stream: parse response: %w", err)
+	}
 	if strings.TrimSpace(out.ID) == "" {
 		return "", fmt.Errorf("mattermost stream: empty post id")
 	}

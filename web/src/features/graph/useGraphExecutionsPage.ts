@@ -1,16 +1,19 @@
 import { ref, computed, onMounted, watch } from "vue";
+import { useQuasar } from "quasar";
 import { useGraphStore } from "../../stores/graph";
 import { storeToRefs } from "pinia";
 import { useRoute, useRouter } from "vue-router";
 import { timeRangeStart } from "./graphExecutionsUi";
 
 export function useGraphExecutionsPage() {
+  const $q = useQuasar();
   const route = useRoute();
   const router = useRouter();
   const graphStore = useGraphStore();
   const { executionHistory, executionHistoryLoading, executionHistoryNextToken } = storeToRefs(graphStore);
   const { loadExecutionHistory, fetchGraph } = graphStore;
 
+  const isDark = computed(() => $q.dark.isActive);
   const graphId = ref(route.params.id as string);
   const graphName = ref("");
   const statusFilter = ref("");
@@ -76,6 +79,7 @@ export function useGraphExecutionsPage() {
   }
 
   return {
+    isDark,
     graphId,
     graphName,
     executionHistory,

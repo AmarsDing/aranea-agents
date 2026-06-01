@@ -53,7 +53,8 @@ func (r *graphRepo) SaveDefinition(ctx context.Context, def *biz.GraphDefinition
 		SetExecutionEngine(string(def.ExecutionEngine)).
 		SetInterruptBefore(string(interruptBeforeJSON)).
 		SetInterruptAfter(string(interruptAfterJSON)).
-		SetMetadata(string(metadataJSON))
+		SetMetadata(string(metadataJSON)).
+		SetSortOrder(def.SortOrder)
 
 	if def.ID != "" {
 		builder.SetID(def.ID)
@@ -90,7 +91,7 @@ func (r *graphRepo) GetDefinition(ctx context.Context, id string) (*biz.GraphDef
 
 func (r *graphRepo) ListDefinitions(ctx context.Context, pageSize int, pageToken string) ([]*biz.GraphDefinition, string, error) {
 	client := r.data.Ent()
-	query := client.GraphDefinition.Query().Order(ent.Asc(graphdefinition.FieldCreatedAt))
+	query := client.GraphDefinition.Query().Order(ent.Asc(graphdefinition.FieldSortOrder), ent.Asc(graphdefinition.FieldCreatedAt))
 	if pageSize <= 0 {
 		pageSize = 20
 	}
@@ -163,6 +164,7 @@ func (r *graphRepo) UpdateDefinition(ctx context.Context, def *biz.GraphDefiniti
 		SetInterruptBefore(string(interruptBeforeJSON)).
 		SetInterruptAfter(string(interruptAfterJSON)).
 		SetMetadata(string(metadataJSON)).
+		SetSortOrder(def.SortOrder).
 		SetUpdatedAt(def.UpdatedAt).
 		Save(ctx)
 	if err != nil {
@@ -183,6 +185,7 @@ func entGraphToBiz(row *ent.GraphDefinition) *biz.GraphDefinition {
 		FinishPoint:      row.FinishPoint,
 		EnableCheckpoint: row.EnableCheckpoint,
 		ExecutionEngine:  biz.ExecutionEngineType(row.ExecutionEngine),
+		SortOrder:        row.SortOrder,
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,
 	}
@@ -196,6 +199,19 @@ func entGraphToBiz(row *ent.GraphDefinition) *biz.GraphDefinition {
 	_ = json.Unmarshal([]byte(row.Metadata), &def.Metadata)
 	def.Version = biz.GraphVersion(def)
 	return def
+}
+
+func (r *graphRepo) ReorderGraphs(ctx context.Context, ids []string) error {
+	client := r.data.Ent()
+	for i, id := range ids {
+		_, err := client.GraphDefinition.UpdateOneID(id).
+			SetSortOrder(i + 1).
+			Save(ctx)
+		if err != nil {
+			return fmt.Errorf("graph repo reorder [%s]: %w", id, err)
+		}
+	}
+	return nil
 }
 
 type graphRunRepo struct {

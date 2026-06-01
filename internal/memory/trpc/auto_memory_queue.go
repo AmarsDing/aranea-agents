@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -140,12 +140,12 @@ func (q *MemoryJobQueue) tenantID(r AutoMemoryJobRequest) string {
 func (q *MemoryJobQueue) writeDeadLetter(r AutoMemoryJobRequest, reason MemoryDeadLetterReason) {
 	n := q.dropped.Add(1)
 	if n == 1 || n%10 == 0 {
-		event.SysLogWarn("system.auto_memory.extract_fail", "auto-memory job dropped → dead-letter",
-			event.P("reason", string(reason)),
-			event.P("total_dropped", n),
-			event.P("session_id", r.SessionID),
-			event.P("priority", r.Priority),
-		)
+		loggateway.Global().Warn("auto-memory job dropped → dead-letter",
+			loggateway.StepID("system.auto_memory.extract_fail"),
+			loggateway.Str("reason", string(reason)),
+			loggateway.Int("total_dropped", int(n)),
+			loggateway.Str("session_id", r.SessionID),
+			loggateway.Any("priority", r.Priority))
 	}
 	if q.deadLetter != nil {
 		q.deadLetter.WriteMemoryDeadLetter(biz.MemoryDeadLetterRequest{

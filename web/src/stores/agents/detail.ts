@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import {
-  getAgent, getAgentPromptPreview, updateAgent,
+  getAgent, getAgentPromptPreview, updateAgent, toggleAgentFavorite as toggleAgentFavoriteApi,
   getAgentEvolutionMetrics, getAgentEvolutionSuggestions,
   applyEvolutionSuggestion, rejectEvolutionSuggestion,
   type Agent, type EvolutionMetrics, type EvolutionSuggestion
@@ -57,12 +57,17 @@ export const useAgentDetailStore = defineStore("agentDetail", () => {
     return rejectEvolutionSuggestion(agentId, suggestionId);
   }
 
+  async function toggleFavorite(id: string): Promise<Agent> {
+    return toggleAgentFavoriteApi(id);
+  }
+
   return {
     loading,
     saving,
     previewLoading,
     fetchById,
     patch,
+    toggleFavorite,
     fetchPromptPreview,
     fetchEvolutionMetrics,
     fetchEvolutionSuggestions,

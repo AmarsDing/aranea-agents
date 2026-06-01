@@ -76,6 +76,7 @@ function wireGraph(g: Record<string, unknown> | null | undefined): GraphDefiniti
     interruptAfter: (g?.interruptAfter as string[]) ?? [],
     metadata: (g?.metadata as Record<string, unknown>) ?? {},
     version: (g?.version as number) ?? 0,
+    sortOrder: (g?.sortOrder as number) ?? 0,
     createdAt: (g?.createdAt as string) ?? "",
     updatedAt: (g?.updatedAt as string) ?? "",
   };
@@ -268,16 +269,6 @@ export async function timeTravelGraph(executionId: string, stepIndex: number): P
   };
 }
 
-export async function visualizeGraph(graphId: string, format = "json"): Promise<{ content: string; nodes: VisualGraphNode[]; edges: VisualGraphEdge[] }> {
-  const svc = createGraphService();
-  const res = await svc.VisualizeGraph({ graphId, format });
-  return {
-    content: res.content ?? "",
-    nodes: (res.nodes ?? []) as VisualGraphNode[],
-    edges: (res.edges ?? []) as VisualGraphEdge[],
-  };
-}
-
 export async function listCheckpoints(executionId: string, limit = 50): Promise<CheckpointInfo[]> {
   const svc = createGraphService();
   const res = await svc.ListCheckpoints({ executionId, limit });
@@ -395,12 +386,6 @@ export async function submitTaskResult(taskId: string, output: string, summary: 
   return wireTask(res.task as Record<string, unknown>);
 }
 
-export async function heartbeat(taskId: string, agentKey: string, metadata = ""): Promise<{ acknowledged: boolean; leaseExtensionSeconds: number }> {
-  const svc = createGraphService();
-  const res = await svc.Heartbeat({ taskId, agentKey, metadata });
-  return { acknowledged: res.acknowledged ?? false, leaseExtensionSeconds: res.leaseExtensionSeconds ?? 0 };
-}
-
 export async function reportBlocked(taskId: string, reason: string, metadata = ""): Promise<Task> {
   const svc = createGraphService();
   const res = await svc.ReportBlocked({ taskId, reason, metadata });
@@ -452,6 +437,22 @@ export async function listTaskEvents(executionId: string, taskId = "", eventType
   const svc = createGraphService();
   const res = await svc.ListTaskEvents({ executionId, taskId, eventType, pageSize });
   return (res.events ?? []) as TaskEvent[];
+}
+
+export async function createTask(executionId: string, nodeId: string, requiredRole = "", assignmentMode = "", assignmentStrategy = "", input = "", context = "", parentTaskIds: string[] = []): Promise<Task> {
+  const svc = createGraphService();
+  const res = await svc.CreateTask({ executionId, nodeId, requiredRole, assignmentMode, assignmentStrategy, input, context, parentTaskIds });
+  return wireTask(res.task ?? {});
+}
+
+export async function linkTasks(parentTaskId: string, childTaskId: string): Promise<void> {
+  const svc = createGraphService();
+  await svc.LinkTasks({ parentTaskId, childTaskId });
+}
+
+export async function unlinkTasks(parentTaskId: string, childTaskId: string): Promise<void> {
+  const svc = createGraphService();
+  await svc.UnlinkTasks({ parentTaskId, childTaskId });
 }
 
 export async function exportGraph(graphId: string): Promise<{ json: string; graph: GraphDefinition }> {
@@ -518,4 +519,9 @@ export async function saveGraphAsTemplate(
       finishPoint: t?.finishPoint ?? "",
     },
   };
+}
+
+export async function reorderGraphs(ids: string[]): Promise<void> {
+  const svc = createGraphService();
+  await svc.ReorderGraphs({ ids });
 }

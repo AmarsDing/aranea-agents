@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -32,7 +32,7 @@ const (
 func Init(serviceName, serviceVersion string) func(context.Context) error {
 	endpoint := strings.TrimSpace(os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
 	if endpoint == "" {
-		event.SysLogDebug("system.telemetry.noop", "OTEL_EXPORTER_OTLP_ENDPOINT 未配置，使用 noop 提供者")
+		loggateway.Global().Debug("OTEL_EXPORTER_OTLP_ENDPOINT 未配置，使用 noop 提供者", loggateway.StepID("system.telemetry.noop"))
 		return func(context.Context) error { return nil }
 	}
 
@@ -44,12 +44,12 @@ func Init(serviceName, serviceVersion string) func(context.Context) error {
 	ctx := context.Background()
 	tpShutdown, err := initTracerProvider(ctx, serviceName, serviceVersion, endpoint, protocol)
 	if err != nil {
-		event.SysLogError("system.telemetry.error", "OTel Tracer 初始化失败", event.P("protocol", protocol), event.P("error", err))
+		loggateway.Global().Error("OTel Tracer 初始化失败", loggateway.StepID("system.telemetry.error"), loggateway.Str("protocol", protocol), loggateway.Err(err))
 		return func(context.Context) error { return nil }
 	}
 
 	if err := initMeterProvider(ctx, serviceName, serviceVersion, endpoint, protocol); err != nil {
-		event.SysLogWarn("system.telemetry.error", "OTel Meter 初始化失败，指标使用 noop", event.P("error", err))
+		loggateway.Global().Warn("OTel Meter 初始化失败，指标使用 noop", loggateway.StepID("system.telemetry.error"), loggateway.Err(err))
 	}
 
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
@@ -57,10 +57,11 @@ func Init(serviceName, serviceVersion string) func(context.Context) error {
 		propagation.Baggage{},
 	))
 
-	event.SysLogInfo("system.telemetry.init", "遥测已初始化",
-		event.P("endpoint", endpoint),
-		event.P("protocol", protocol),
-		event.P("service", serviceName),
+	loggateway.Global().Info("遥测已初始化",
+		loggateway.StepID("system.telemetry.init"),
+		loggateway.Str("endpoint", endpoint),
+		loggateway.Str("protocol", protocol),
+		loggateway.Str("service", serviceName),
 	)
 	return func(ctx context.Context) error {
 		return shutdownAll(ctx, tpShutdown)

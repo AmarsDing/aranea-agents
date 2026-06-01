@@ -21,6 +21,7 @@ export function useKnowledgePage() {
   const ingestFile = ref<File | null>(null);
   const searchQuery = ref("");
   const searchTopK = ref(5);
+  const searchMinScore = ref(0);
   const searchHybridMode = ref("auto");
   const searchRewriteStrategy = ref("");
   const searchUseRerank = ref(false);
@@ -29,17 +30,24 @@ export function useKnowledgePage() {
   const searchRan = ref(false);
   const embedderSaving = ref(false);
   const createForm = ref({ name: "", description: "", embedding_model: "text-embedding-3-small" });
-  const ingestForm = ref({ source: "", mime_type: "text/plain", text: "", fileContentBase64: "" });
+  const ingestForm = ref({ source: "", mime_type: "text/plain", text: "", fileContentBase64: "", chunk_strategy: "", chunk_size: 0, chunk_overlap: 0 });
 
   const embedderConfig = computed<EmbedderConfig | null>(() => knowledgeStore.embedderConfig);
   const collections = computed(() => knowledgeStore.collections);
   const loading = computed(() => knowledgeStore.loading);
   const documents = computed(() => knowledgeStore.documentsByCollection[selectedId.value] ?? []);
   const selectedCollection = computed(() => collections.value.find((c) => c.id === selectedId.value));
+  const docSourceMap = computed(() => {
+    const map: Record<string, string> = {};
+    for (const d of documents.value) {
+      map[d.id] = d.source;
+    }
+    return map;
+  });
 
   useKnowledgeIngestWs(
     () => (hasIndexingDocuments(documents.value) ? selectedId.value : ""),
-    () => void loadDocuments()
+    () => { void loadDocuments(); void loadCollections(); }
   );
 
   function friendlyError(err: unknown): string {
@@ -92,7 +100,6 @@ export function useKnowledgePage() {
   function selectCollection(id: string) {
     selectedId.value = id;
     tab.value = "documents";
-    void loadDocuments();
   }
 
   function openCreateCollection() {
@@ -115,7 +122,6 @@ export function useKnowledgePage() {
       createOpen.value = false;
       await loadCollections();
       selectedId.value = col.id;
-      await loadDocuments();
       $q.notify({ type: "positive", message: "集合已创建" });
     } catch (e) {
       $q.notify({ type: "negative", message: friendlyError(e) || "创建失败" });
@@ -190,11 +196,15 @@ export function useKnowledgePage() {
     if (lower.endsWith(".csv")) return "text/csv";
     if (lower.endsWith(".html") || lower.endsWith(".htm")) return "text/html";
     if (lower.endsWith(".xml")) return "application/xml";
+    if (lower.endsWith(".yaml") || lower.endsWith(".yml")) return "text/yaml";
+    if (lower.endsWith(".toml")) return "text/toml";
     if (lower.endsWith(".pdf")) return "application/pdf";
     if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     if (lower.endsWith(".doc")) return "application/msword";
     if (lower.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
     if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    if (lower.endsWith(".png")) return "image/png";
+    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
     return "application/octet-stream";
   }
 
@@ -247,11 +257,14 @@ export function useKnowledgePage() {
         collection_id: selectedId.value,
         source: ingestForm.value.source || "upload",
         mime_type: ingestForm.value.mime_type || "text/plain",
-        content_base64: b64
+        content_base64: b64,
+        chunk_strategy: ingestForm.value.chunk_strategy || undefined,
+        chunk_size: ingestForm.value.chunk_size || undefined,
+        chunk_overlap: ingestForm.value.chunk_overlap || undefined
       });
       ingestOpen.value = false;
       const submittedMime = ingestForm.value.mime_type || "text/plain";
-      ingestForm.value = { source: "", mime_type: "text/plain", text: "", fileContentBase64: "" };
+      ingestForm.value = { source: "", mime_type: "text/plain", text: "", fileContentBase64: "", chunk_strategy: "", chunk_size: 0, chunk_overlap: 0 };
       ingestFile.value = null;
       await loadDocuments();
       await loadCollections();
@@ -282,6 +295,7 @@ export function useKnowledgePage() {
       try {
         await knowledgeStore.removeDocument(doc.id, selectedId.value);
         await loadDocuments();
+        await loadCollections();
         $q.notify({ type: "positive", message: "已删除" });
       } catch (e) {
         $q.notify({ type: "negative", message: friendlyError(e) || "删除失败" });
@@ -298,6 +312,7 @@ export function useKnowledgePage() {
         collection_id: selectedId.value,
         query: searchQuery.value.trim(),
         top_k: searchTopK.value,
+        min_score: searchMinScore.value || undefined,
         hybrid_search: searchHybridMode.value || undefined,
         rewrite_strategy: searchRewriteStrategy.value || undefined,
         use_rerank: searchUseRerank.value ? true : undefined
@@ -327,6 +342,7 @@ export function useKnowledgePage() {
         return;
       }
       void loadDocuments();
+      void loadCollections();
     }, 3000);
   }
 
@@ -358,6 +374,7 @@ export function useKnowledgePage() {
     selectedId,
     selectedCollection,
     documents,
+    docSourceMap,
     loading,
     docsLoading,
     error,
@@ -370,6 +387,7 @@ export function useKnowledgePage() {
     ingestFile,
     searchQuery,
     searchTopK,
+    searchMinScore,
     searchHybridMode,
     searchRewriteStrategy,
     searchUseRerank,

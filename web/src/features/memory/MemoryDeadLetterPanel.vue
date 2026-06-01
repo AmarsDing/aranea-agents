@@ -1,3 +1,4 @@
+// Container: approved — dead-letter queue management with replay/abandon actions.
 <template>
   <q-card flat bordered class="memory-card">
     <q-card-section class="row items-center justify-between">
@@ -33,10 +34,10 @@
             <td><q-badge :color="stateColor(r.state)">{{ r.state }}</q-badge></td>
             <td>{{ formatTime(r.failed_at) }}</td>
             <td class="q-gutter-xs">
-              <q-btn v-if="r.state === 'pending'" flat dense color="primary" icon="replay" size="sm" :loading="actingId === r.id" @click="replay(r.id)">
+              <q-btn v-if="r.state === 'pending'" flat dense color="primary" icon="replay" size="sm" @click="replay(r.id)">
                 <q-tooltip>重试</q-tooltip>
               </q-btn>
-              <q-btn v-if="r.state === 'pending'" flat dense color="negative" icon="delete_outline" size="sm" :loading="actingId === r.id" @click="abandon(r.id)">
+              <q-btn v-if="r.state === 'pending'" flat dense color="negative" icon="delete_outline" size="sm" @click="abandon(r.id)">
                 <q-tooltip>放弃</q-tooltip>
               </q-btn>
             </td>
@@ -51,11 +52,15 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import type { MemoryDeadLetterEntry } from "./types";
-import { listMemoryDeadLetters, replayMemoryDeadLetter, abandonMemoryDeadLetter } from "./api";
+import { listMemoryDeadLetters } from "./api";
+
+const emit = defineEmits<{
+  (e: "replay", id: number): void;
+  (e: "abandon", id: number): void;
+}>();
 
 const rows = ref<MemoryDeadLetterEntry[]>([]);
 const loading = ref(false);
-const actingId = ref<number | null>(null);
 
 function priorityLabel(p: number) {
   if (p >= 2) return "High";
@@ -92,24 +97,12 @@ async function load() {
   }
 }
 
-async function replay(id: number) {
-  actingId.value = id;
-  try {
-    await replayMemoryDeadLetter(id);
-    await load();
-  } finally {
-    actingId.value = null;
-  }
+function replay(id: number) {
+  emit("replay", id);
 }
 
-async function abandon(id: number) {
-  actingId.value = id;
-  try {
-    await abandonMemoryDeadLetter(id);
-    await load();
-  } finally {
-    actingId.value = null;
-  }
+function abandon(id: number) {
+  emit("abandon", id);
 }
 
 onMounted(load);

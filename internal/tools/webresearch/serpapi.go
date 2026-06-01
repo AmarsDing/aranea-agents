@@ -35,7 +35,11 @@ func (p *serpAPIProvider) search(ctx context.Context, query string) (*SearchResp
 	if query == "" {
 		return nil, fmt.Errorf("web_research: query is required")
 	}
-	u, err := url.Parse(serpAPIBaseURL)
+	baseURL := serpAPIBaseURL
+	if u := strings.TrimSpace(p.cfg.SerpAPIBaseURL); u != "" {
+		baseURL = u
+	}
+	u, err := url.Parse(baseURL)
 	if err != nil {
 		return nil, err
 	}

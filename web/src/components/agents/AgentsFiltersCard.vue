@@ -11,7 +11,7 @@
       clearable
       emit-value
       map-options
-      label="All Types"
+      label="状态"
       :options="statusOptions"
     />
     <q-select

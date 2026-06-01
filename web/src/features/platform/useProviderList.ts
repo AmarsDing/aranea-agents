@@ -113,6 +113,8 @@ export function useProviderList(deps: {
       if (deps.isProviderResource.value && platformStore.credentialEncryptionAvailable === null) {
         void platformStore.loadCredentialStatus();
       }
+    } catch (error) {
+      $q.notify({ type: "negative", message: errorMessage(error) || "加载资源列表失败" });
     } finally {
       loading.value = false;
     }
@@ -121,8 +123,10 @@ export function useProviderList(deps: {
   async function toggleEnabled(row: PlatformResource, enabled: boolean) {
     deps.saving.value = true;
     try {
-      const updated = await platformStore.editResource(deps.resource.value, row.id, { ...row, enabled });
+      const updated = await platformStore.editResource(deps.resource.value, row.id, { enabled });
       rows.value = rows.value.map((item) => (item.id === updated.id ? updated : item));
+    } catch (error) {
+      $q.notify({ type: "negative", message: errorMessage(error) || "切换启用状态失败" });
     } finally {
       deps.saving.value = false;
     }
@@ -140,9 +144,13 @@ export function useProviderList(deps: {
   }
 
   async function removeRow(row: PlatformResource) {
-    await platformStore.removeResource(deps.resource.value, row.id);
-    rows.value = rows.value.filter((item) => item.id !== row.id);
-    $q.notify({ type: "positive", message: "已删除" });
+    try {
+      await platformStore.removeResource(deps.resource.value, row.id);
+      rows.value = rows.value.filter((item) => item.id !== row.id);
+      $q.notify({ type: "positive", message: "已删除" });
+    } catch (error) {
+      $q.notify({ type: "negative", message: errorMessage(error) || "删除失败" });
+    }
   }
 
   function openTrend(row: PlatformResource) {

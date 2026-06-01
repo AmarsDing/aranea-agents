@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -65,7 +65,7 @@ func (uc *SessionUsecase) maybeAutoTitleFromUserMessage(ctx context.Context, ses
 	snippet := sessionTitleFromUserSnippet(content)
 	if snippet != "" {
 		if _, err := uc.Rename(ctx, sessionID, snippet); err != nil {
-			event.SysLogWarn("session.title", "auto rename from snippet failed", event.P("session_id", sessionID), event.P("error", err.Error()))
+			uc.lg.Warn("auto rename from snippet failed", loggateway.StepID("session.title"), loggateway.SessionID(sessionID), loggateway.Err(err))
 		}
 	}
 	safego.Go(context.Background(), "generate-title-async", func() {
@@ -83,6 +83,6 @@ func (uc *SessionUsecase) generateTitleAsync(sessionID, content string) {
 		return
 	}
 	if _, err := uc.Rename(bgCtx, sessionID, title); err != nil {
-		event.SysLogWarn("session.title", "auto rename from generated title failed", event.P("session_id", sessionID), event.P("error", err.Error()))
+		uc.lg.Warn("auto rename from generated title failed", loggateway.StepID("session.title"), loggateway.SessionID(sessionID), loggateway.Err(err))
 	}
 }

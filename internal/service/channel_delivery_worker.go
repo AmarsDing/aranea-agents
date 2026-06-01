@@ -11,10 +11,9 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/preview"
-	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
+	"aranea-agents/pkg/loggateway"
 
-	"github.com/go-kratos/kratos/v2/log"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -90,10 +89,11 @@ func (h *ChannelIngress) enqueueOutboundText(
 		}
 	}
 	if strings.TrimSpace(reply) == "" {
-		event.SysLogWarn(flowStepChannelOutbound, "Channel outbound empty after format",
-			event.P("channel_id", chRow.ID),
-			event.P("platform", platform),
-			event.P("idempotency_key", idempotencyKey),
+		h.lg.Warn("Channel outbound empty after format",
+			loggateway.StepID(flowStepChannelOutbound),
+			loggateway.Str("channel_id", chRow.ID),
+			loggateway.Str("platform", platform),
+			loggateway.Str("idempotency_key", idempotencyKey),
 		)
 		reply = channelOutboundEmptyFallback
 	}
@@ -126,14 +126,14 @@ func (h *ChannelIngress) enqueueOutboundText(
 type ChannelDeliveryWorker struct {
 	channels *biz.ChannelUsecase
 	ingress  *ChannelIngress
-	log      *log.Helper
+	lg       loggateway.Logger
 }
 
-func NewChannelDeliveryWorker(channels *biz.ChannelUsecase, ingress *ChannelIngress, logger log.Logger) *ChannelDeliveryWorker {
+func NewChannelDeliveryWorker(channels *biz.ChannelUsecase, ingress *ChannelIngress, lg loggateway.Logger) *ChannelDeliveryWorker {
 	return &ChannelDeliveryWorker{
 		channels: channels,
 		ingress:  ingress,
-		log:      log.NewHelper(logger),
+		lg:       lg,
 	}
 }
 
@@ -152,7 +152,12 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 		var payload biz.ChannelOutboundPayload
 		if err := json.Unmarshal([]byte(row.PayloadJSON), &payload); err != nil {
 			arametrics.ChannelDeliveryTotal.WithLabelValues("unknown", "invalid").Inc()
-			_, _ = w.channels.MarkOutboundAttempt(ctx, row, err)
+			if _, markErr := w.channels.MarkOutboundAttempt(ctx, row, err); markErr != nil {
+				w.lg.Warn("标记投递尝试失败",
+					loggateway.StepID("channel.delivery.mark_attempt_failed"),
+					loggateway.Str("error", markErr.Error()),
+				)
+			}
 			continue
 		}
 		platform := strings.ToLower(strings.TrimSpace(payload.Platform))
@@ -161,36 +166,59 @@ func (w *ChannelDeliveryWorker) ProcessPending(ctx context.Context, limit int) e
 		}
 		if payload.Kind != "" && payload.Kind != biz.ChannelOutboundTextKind && payload.Kind != biz.ChannelOutboundCardKind {
 			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "invalid").Inc()
-			_, _ = w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", fmt.Sprintf("unsupported delivery kind %q", payload.Kind)))
+			if _, markErr := w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", fmt.Sprintf("unsupported delivery kind %q", payload.Kind))); markErr != nil {
+				w.lg.Warn("标记投递尝试失败",
+					loggateway.StepID("channel.delivery.mark_attempt_failed"),
+					loggateway.Str("error", markErr.Error()),
+				)
+			}
 			continue
 		}
 		if payload.Kind == biz.ChannelOutboundCardKind && strings.TrimSpace(payload.CardJSON) == "" && strings.TrimSpace(payload.Text) == "" {
 			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "invalid").Inc()
-			_, _ = w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", "outbound_card missing card_json"))
+			if _, markErr := w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", "outbound_card missing card_json")); markErr != nil {
+				w.lg.Warn("标记投递尝试失败",
+					loggateway.StepID("channel.delivery.mark_attempt_failed"),
+					loggateway.Str("error", markErr.Error()),
+				)
+			}
 			continue
 		}
 		if payload.Kind == "" || payload.Kind == biz.ChannelOutboundTextKind {
 			if strings.TrimSpace(payload.Text) == "" {
 				arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "invalid").Inc()
-				_, _ = w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", "outbound_text missing text"))
+				if _, markErr := w.channels.MarkOutboundAttempt(ctx, row, kerrors.BadRequest("CHANNEL", "outbound_text missing text")); markErr != nil {
+					w.lg.Warn("标记投递尝试失败",
+						loggateway.StepID("channel.delivery.mark_attempt_failed"),
+						loggateway.Str("error", markErr.Error()),
+					)
+				}
 				continue
 			}
 		}
 		start := time.Now()
 		sendErr := w.ingress.sendOutboundPayload(ctx, row.ChannelID, payload)
 		arametrics.ChannelDeliveryDuration.WithLabelValues(platform).Observe(time.Since(start).Seconds())
-		deadLetter, _ := w.channels.MarkOutboundAttempt(ctx, row, sendErr)
+		deadLetter, markErr := w.channels.MarkOutboundAttempt(ctx, row, sendErr)
+		if markErr != nil {
+			w.lg.Warn("标记投递尝试失败",
+				loggateway.StepID("channel.delivery.mark_attempt_failed"),
+				loggateway.Str("error", markErr.Error()),
+			)
+		}
 		switch {
 		case sendErr == nil:
 			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "delivered").Inc()
 		case deadLetter:
 			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "dead_letter").Inc()
-			if w.log != nil {
-				event.SysLogWarn("system.channel.dead_letter", "channel delivery dead-letter",
-					event.P("channel_id", row.ChannelID), event.P("delivery_id", row.ID),
-					event.P("platform", payload.Platform), event.P("attempts", fmt.Sprint(payload.Attempts+1)),
-					event.P("error", sendErr.Error()))
-			}
+			w.lg.Warn("channel delivery dead-letter",
+				loggateway.StepID("system.channel.dead_letter"),
+				loggateway.Str("channel_id", row.ChannelID),
+				loggateway.Str("delivery_id", row.ID),
+				loggateway.Str("platform", payload.Platform),
+				loggateway.Str("attempts", fmt.Sprint(payload.Attempts+1)),
+				loggateway.Str("error", sendErr.Error()),
+			)
 		default:
 			arametrics.ChannelDeliveryTotal.WithLabelValues(platform, "retry").Inc()
 		}

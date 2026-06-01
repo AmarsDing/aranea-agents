@@ -73,6 +73,10 @@ export function useAgentA2AEndpointTab(agentId: () => string) {
     }
   }
 
+  function setCardEnabled(val: boolean) {
+    if (card.value) card.value.enabled = val;
+  }
+
   onMounted(loadCard);
 
   return {
@@ -80,6 +84,7 @@ export function useAgentA2AEndpointTab(agentId: () => string) {
     saving,
     card,
     capabilityLines,
+    setCardEnabled,
     saveEndpoint
   };
 }

@@ -25,15 +25,15 @@ export type ChannelLongTaskPreset = {
 export const CHANNEL_LONG_TASK_PRESETS: ChannelLongTaskPreset[] = [
   {
     id: "feishu_im_preview",
-    label: "飞书 · IM Preview（推荐）",
-    description: "流式 transcript + 工具/MCP 有序展示；ACK 合并单条 preview（§12.9）",
+    label: "channelEditor.longTaskPresets.feishuImPreview",
+    description: "channelEditor.longTaskPresets.feishuImPreviewDesc",
     receiveMode: "websocket",
     config: { ...FEISHU_IM_PREVIEW_DEFAULTS }
   },
   {
     id: "feishu_long_analysis",
-    label: "飞书 · 长任务分析",
-    description: "15 分钟 sync Turn + auto 关键词路由 async；transcript + 步骤进度",
+    label: "channelEditor.longTaskPresets.feishuLongAnalysis",
+    description: "channelEditor.longTaskPresets.feishuLongAnalysisDesc",
     receiveMode: "websocket",
     config: {
       ...FEISHU_IM_PREVIEW_DEFAULTS,
@@ -47,8 +47,8 @@ export const CHANNEL_LONG_TASK_PRESETS: ChannelLongTaskPreset[] = [
   },
   {
     id: "feishu_ops_reasoning",
-    label: "飞书 · 运维 / 思考链可见",
-    description: "Transcript + 思考链；工具卡片 append；超长自动分页",
+    label: "channelEditor.longTaskPresets.feishuOpsReasoning",
+    description: "channelEditor.longTaskPresets.feishuOpsReasoningDesc",
     receiveMode: "websocket",
     config: {
       ...FEISHU_IM_PREVIEW_DEFAULTS,
@@ -64,15 +64,15 @@ export const CHANNEL_LONG_TASK_PRESETS: ChannelLongTaskPreset[] = [
   },
   {
     id: "agent_heavy_tools",
-    label: "单 Agent · 重工具 / 长生成",
-    description: "同「飞书 IM Preview」；Turn 10 分钟、首字节 120 秒",
+    label: "channelEditor.longTaskPresets.agentHeavyTools",
+    description: "channelEditor.longTaskPresets.agentHeavyToolsDesc",
     receiveMode: "websocket",
     config: { ...FEISHU_IM_PREVIEW_DEFAULTS }
   },
   {
     id: "team_pipeline",
-    label: "Team 流水线 · 群 @",
-    description: "Team 成员 inline 摘要；Turn 15 分钟",
+    label: "channelEditor.longTaskPresets.teamPipeline",
+    description: "channelEditor.longTaskPresets.teamPipelineDesc",
     config: {
       require_mention: true,
       streaming_enabled: true,
@@ -90,8 +90,8 @@ export const CHANNEL_LONG_TASK_PRESETS: ChannelLongTaskPreset[] = [
   },
   {
     id: "async_background",
-    label: "超长任务 · Graph/Cron 异步",
-    description: "全部入站走 async；需填写 async_team_id、async_graph_id 或 async_cron_task_id",
+    label: "channelEditor.longTaskPresets.asyncBackground",
+    description: "channelEditor.longTaskPresets.asyncBackgroundDesc",
     config: {
       ack_message: "收到，已提交后台任务…",
       execution_mode: "async",

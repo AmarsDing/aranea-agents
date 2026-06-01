@@ -6,7 +6,7 @@
     </q-tabs>
     <q-tab-panels v-model="subTab" animated class="monitor-log-stream-panels">
       <q-tab-panel name="flow" class="q-pa-none">
-        <FlowLogStream />
+        <FlowLogStream @clear="$emit('clearFlow')" />
       </q-tab-panel>
       <q-tab-panel name="process" class="q-pa-none">
         <ProcessLogStream />
@@ -21,4 +21,8 @@ import FlowLogStream from "./FlowLogStream.vue";
 import ProcessLogStream from "./ProcessLogStream.vue";
 
 const { subTab } = useMonitorLogStreamPanel();
+
+defineEmits<{
+  clearFlow: [];
+}>();
 </script>

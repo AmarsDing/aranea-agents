@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 type memCronExecRepo struct {
@@ -81,13 +82,12 @@ func (m *memCronExecRepo) UpdateCronTaskRun(_ context.Context, id, status, finis
 
 func TestFinishTaskRun_ReloadsMetadataBeforeFinalize(t *testing.T) {
 	repo := newMemCronExecRepo()
-	r := &Runner{deps: Deps{Cron: repo}}
+	r := &Runner{deps: Deps{Cron: repo}, lg: loggateway.NewNoop()}
 	cfg, err := parseCronTaskConfig(repo.tasks["t1"].ConfigJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Simulate another writer bumping run_count while dispatch runs.
 	repo.tasks["t1"] = biz.CronTask{
 		ID:           "t1",
 		TaskKey:      "job",
@@ -114,7 +114,7 @@ func TestFinishTaskRun_ReloadsMetadataBeforeFinalize(t *testing.T) {
 
 func TestFinalizeRun_SkippedDoesNotIncrementFailureCount(t *testing.T) {
 	repo := newMemCronExecRepo()
-	r := &Runner{deps: Deps{Cron: repo}}
+	r := &Runner{deps: Deps{Cron: repo}, lg: loggateway.NewNoop()}
 	cfg, _ := parseCronTaskConfig(repo.tasks["t1"].ConfigJSON)
 	meta := parseCronTaskMetadata(repo.tasks["t1"].MetadataJSON)
 
@@ -138,7 +138,7 @@ func TestFinalizeRun_SkippedDoesNotIncrementFailureCount(t *testing.T) {
 
 func TestRecordScheduleFailure_CreatesRunAndIncrementsFailure(t *testing.T) {
 	repo := newMemCronExecRepo()
-	r := &Runner{deps: Deps{Cron: repo}}
+	r := &Runner{deps: Deps{Cron: repo}, lg: loggateway.NewNoop()}
 	now := time.Now().UTC()
 	cfg, _ := parseCronTaskConfig(`{"message":"","schedule_type":"interval","interval_seconds":60}`)
 
@@ -175,7 +175,7 @@ func TestFinalizeRun_ManualFailureDoesNotIncrementDeadCounter(t *testing.T) {
 		ConfigJSON:   `{"message":"hi","schedule_type":"interval","interval_seconds":60}`,
 		MetadataJSON: `{"failure_count":2}`,
 	}
-	r := &Runner{deps: Deps{Cron: repo}}
+	r := &Runner{deps: Deps{Cron: repo}, lg: loggateway.NewNoop()}
 	cfg, _ := parseCronTaskConfig(repo.tasks["t1"].ConfigJSON)
 	meta := parseCronTaskMetadata(repo.tasks["t1"].MetadataJSON)
 

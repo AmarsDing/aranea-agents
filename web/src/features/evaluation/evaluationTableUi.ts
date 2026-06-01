@@ -1,5 +1,5 @@
 import type { QTableColumn } from "quasar";
-import type { EvalResult, EvalRun, EvalRunComparison, EvalTrendPoint } from "./types";
+import type { EvalCaseResult, EvalRun, EvalRunComparison, EvalTrendPoint } from "./types";
 import { REGISTRY_COL_W, registryCol, registryColActions } from "../ui/registryTableColumns";
 
 /** EvaluationPage — Run 列表 */
@@ -19,14 +19,14 @@ export const EVAL_RUN_TABLE_COLUMNS: QTableColumn<EvalRun>[] = [
 ];
 
 /** EvaluationPage — Result 列表 */
-export const EVAL_RESULT_TABLE_COLUMNS: QTableColumn<EvalResult>[] = [
-  registryCol<EvalResult>("case_id", "Case", "case_id", "left", REGISTRY_COL_W.agent),
-  registryCol<EvalResult>("exact_match", "Exact", "exact_match", "center", REGISTRY_COL_W.narrow),
-  registryCol<EvalResult>("contains_match", "Contains", "contains_match", "center", REGISTRY_COL_W.narrow),
-  registryCol<EvalResult>("human_pass", "人工", "human_pass", "center", REGISTRY_COL_W.narrow),
-  registryCol<EvalResult>("human_score", "分数", "human_score", "center", REGISTRY_COL_W.narrow),
-  registryCol<EvalResult>("human_comment", "评语", "human_comment", "left", "12%"),
-  registryCol<EvalResult>("annotate", "", "id", "right", REGISTRY_COL_W.actions)
+export const EVAL_RESULT_TABLE_COLUMNS: QTableColumn<EvalCaseResult>[] = [
+  registryCol<EvalCaseResult>("case_id", "Case", "case_id", "left", REGISTRY_COL_W.agent),
+  registryCol<EvalCaseResult>("exact_match", "Exact", "exact_match", "center", REGISTRY_COL_W.narrow),
+  registryCol<EvalCaseResult>("contains_match", "Contains", "contains_match", "center", REGISTRY_COL_W.narrow),
+  registryCol<EvalCaseResult>("human_pass", "人工", "human_pass", "center", REGISTRY_COL_W.narrow),
+  registryCol<EvalCaseResult>("human_score", "分数", "human_score", "center", REGISTRY_COL_W.narrow),
+  registryCol<EvalCaseResult>("human_comment", "评语", "human_comment", "left", "12%"),
+  registryCol<EvalCaseResult>("annotate", "", "id", "right", REGISTRY_COL_W.actions)
 ];
 
 /** EvaluationAnalyticsPanel — 趋势点 */

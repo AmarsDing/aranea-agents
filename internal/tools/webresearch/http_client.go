@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 func buildHTTPClient(cfg Config) *http.Client {
@@ -20,7 +20,7 @@ func buildHTTPClient(cfg Config) *http.Client {
 		if u, err := url.Parse(proxyURL); err == nil {
 			transport.Proxy = http.ProxyURL(u)
 		} else {
-			event.SysLogWarn("webresearch.proxy_parse", fmt.Sprintf("failed to parse proxy URL %q: %v", proxyURL, err))
+			loggateway.Global().Warn(fmt.Sprintf("failed to parse proxy URL %q: %v", proxyURL, err), loggateway.StepID("webresearch.proxy_parse"))
 		}
 	}
 	return &http.Client{

@@ -23,19 +23,30 @@
 
   <section v-else class="q-mt-md">
     <div v-if="viewMode === 'grid'" class="app-entity-grid">
-      <agent-card
-        v-for="agent in agents"
-        :key="agent.id"
-        :agent="agent"
-        :favorite="isFavorite(agent.id)"
-        :category-label="getCategoryLabel(agent.category_position_id)"
-        :context-label="formatLastRunContext(agent)"
-        :evolving="isAgentEvolving(agent)"
-        @toggle-favorite="$emit('toggle-favorite', $event)"
-        @copy-key="$emit('copy-key', $event)"
-        @delete="$emit('delete', $event)"
-        @duplicate="$emit('duplicate', $event)"
-      />
+      <draggable
+        v-model="draggableAgents"
+        item-key="id"
+        class="agents-draggable-grid"
+        ghost-class="agent-card--ghost"
+        chosen-class="agent-card--chosen"
+        drag-class="agent-card--dragging"
+        :animation="200"
+        :delay="100"
+      >
+        <template #item="{ element: agent }">
+          <agent-card
+            :agent="agent"
+            :favorite="isFavorite(agent.id)"
+            :category-label="getCategoryLabel(agent.category_position_id)"
+            :context-label="formatLastRunContext(agent)"
+            :evolving="isAgentEvolving(agent)"
+            @toggle-favorite="$emit('toggle-favorite', $event)"
+            @copy-key="$emit('copy-key', $event)"
+            @delete="$emit('delete', $event)"
+            @duplicate="$emit('duplicate', $event)"
+          />
+        </template>
+      </draggable>
     </div>
 
     <AppRegistryTable
@@ -51,6 +62,7 @@
         <q-td :props="props">
           <div class="row items-center no-wrap q-gutter-sm">
             <q-btn
+              v-if="!props.row.readonly"
               flat
               dense
               round
@@ -74,12 +86,12 @@
       </template>
       <template #body-cell-status="props">
         <q-td :props="props">
-          <q-badge rounded :color="props.row.status === 'active' ? 'positive' : 'grey'">{{ props.row.status }}</q-badge>
+          <q-badge rounded :color="props.row.status === 'active' ? 'positive' : 'grey'">{{ statusLabel(props.row.status) }}</q-badge>
         </q-td>
       </template>
       <template #body-cell-actions="props">
         <q-td :props="props">
-          <div class="app-registry-cell-actions">
+          <div v-if="!props.row.readonly" class="app-registry-cell-actions">
             <q-btn flat dense round color="primary" icon="settings" :to="`/agents/${props.row.id}/settings`">
               <q-tooltip>设置</q-tooltip>
             </q-btn>
@@ -90,6 +102,7 @@
               <q-tooltip>删除</q-tooltip>
             </q-btn>
           </div>
+          <q-chip v-else dense square class="agent-card__readonly-chip" icon="verified_user">内置</q-chip>
         </q-td>
       </template>
     </AppRegistryTable>
@@ -97,16 +110,18 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import type { QTableColumn } from "quasar";
+import draggable from "vuedraggable";
 import type { Agent } from "../../features/agents/types";
 import AgentCard from "./AgentCard.vue";
 import AgentAvatarQ from "../avatar/AgentAvatarQ.vue";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import { formatLastRunContext, isAgentEvolving } from "./agentUi";
+import { formatLastRunContext, isAgentEvolving, statusLabel } from "./agentUi";
 
 type ViewMode = "grid" | "list";
 
-defineProps<{
+const props = defineProps<{
   loading: boolean;
   agents: Agent[];
   keyword: string;
@@ -117,11 +132,20 @@ defineProps<{
   getCategoryLabel: (categoryPositionId: string) => string;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   create: [];
   "toggle-favorite": [id: string];
   "copy-key": [key: string];
   delete: [agent: Agent];
   duplicate: [agent: Agent];
+  "reorder": [ids: string[]];
 }>();
+
+const draggableAgents = computed({
+  get: () => props.agents,
+  set: (value: Agent[]) => {
+    const ids = value.map((a) => a.id);
+    emit("reorder", ids);
+  },
+});
 </script>

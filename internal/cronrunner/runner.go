@@ -16,6 +16,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
 
@@ -61,26 +62,29 @@ type SessionRunControl interface {
 
 // Deps wires cron execution to Ent repos + session create + chat HTTP POST.
 type Deps struct {
-	Cron     biz.CronRepo
-	Session  *biz.SessionUsecase
-	Teams    biz.TeamRepository
-	Agents   biz.AgentRepository
-	EventBus event.Bus
-	// Chat, when non-nil, dispatches cron turns in-process via RunCronTurn
-	// instead of the legacy HTTP POST fallback (EP-RT-07).
-	Chat CronChatRunner
+	Cron              biz.CronRepo
+	Session           *biz.SessionUsecase
+	Teams             biz.TeamRepository
+	Agents            biz.AgentRepository
+	EventBus          event.Bus
+	Chat              CronChatRunner
+	RegistrySyncAgent CronRegistrySyncAgent
+}
+
+type CronRegistrySyncAgent interface {
+	RunSync(ctx context.Context) error
 }
 
 // Runner executes due cron_task rows on an interval (ported from pkg/backend CronRunner).
 type Runner struct {
-	deps   Deps
-	mu     sync.Mutex
-	taskMu sync.Map // task id -> *sync.Mutex
+	deps Deps
+	lg   loggateway.Logger
+	mu   sync.Mutex
+	taskMu sync.Map
 }
 
-// NewRunner constructs a runner.
-func NewRunner(deps Deps) *Runner {
-	return &Runner{deps: deps}
+func NewRunner(deps Deps, lg loggateway.Logger) *Runner {
+	return &Runner{deps: deps, lg: lg}
 }
 
 // DefaultInterval reads CRON_RUNNER_INTERVAL (default 1m); values <=0 fall back to 1m.
@@ -203,7 +207,12 @@ func (r *Runner) dispatchWithRetry(ctx context.Context, task biz.CronTask, cfg c
 		}
 		if attempt < len(backoff) {
 			delay := backoff[attempt]
-			event.SysLogWarn("system.cron.retry", "定时任务重试", event.P("job_id", task.ID), event.P("attempt", attempt+1), event.P("delay", delay), event.P("error", err))
+			r.lg.Warn("定时任务重试",
+				loggateway.StepID("system.cron.retry"),
+				loggateway.Str("job_id", task.ID),
+				loggateway.Int("attempt", attempt+1),
+				loggateway.Str("delay", delay.String()),
+				loggateway.Err(err))
 			select {
 			case <-ctx.Done():
 				return cronDispatchResult{}, ctx.Err()
@@ -219,7 +228,10 @@ func (r *Runner) dispatchSafe(ctx context.Context, task biz.CronTask, cfg cronTa
 	defer func() {
 		if rec := recover(); rec != nil {
 			retErr = fmt.Errorf("cron panic: %v", rec)
-			event.SysLogError("system.cron.panic", "定时任务 panic", event.P("job_id", task.ID), event.P("panic", rec))
+			r.lg.Error("定时任务 panic",
+				loggateway.StepID("system.cron.panic"),
+				loggateway.Str("job_id", task.ID),
+				loggateway.Any("panic", rec))
 		}
 	}()
 	return r.dispatchCronTask(ctx, task, cfg)
@@ -250,6 +262,14 @@ type cronDispatchResult struct {
 func (r *Runner) dispatchCronTask(ctx context.Context, task biz.CronTask, cfg cronTaskConfig) (cronDispatchResult, error) {
 	targetType := cronTargetType(cfg)
 	switch targetType {
+	case "model_registry_sync":
+		if r.deps.RegistrySyncAgent == nil {
+			return cronDispatchResult{}, validationErr("model registry sync agent not available")
+		}
+		if err := r.deps.RegistrySyncAgent.RunSync(ctx); err != nil {
+			return cronDispatchResult{}, err
+		}
+		return cronDispatchResult{}, nil
 	case "team":
 		teamID := strings.TrimSpace(cfg.TeamID)
 		if teamID == "" {
@@ -435,7 +455,8 @@ func (r *Runner) sessionBusyErr(sessionID string) error {
 	if !ok || !ctrl.HasActiveRun(sessionID) {
 		return nil
 	}
-	event.SessionSysLogWarn(context.Background(), sessionID, "system.cron.dispatch_skipped", "定时任务跳过：会话有活跃 Run")
+	r.lg.With(loggateway.SessionID(sessionID)).Warn("定时任务跳过：会话有活跃 Run",
+		loggateway.StepID("system.cron.dispatch_skipped"))
 	return biz.ErrCronSessionBusy
 }
 

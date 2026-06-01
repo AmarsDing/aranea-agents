@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 type stubTeamRepo struct {
@@ -106,6 +107,7 @@ func (s channelTestAgentRepo) ListExtrasForAgents(context.Context, []string) (ma
 func (s channelTestAgentRepo) ListAgentCreators(context.Context) ([]biz.AgentCreator, error) {
 	return nil, nil
 }
+func (s channelTestAgentRepo) ReorderAgents(context.Context, []string) error { return nil }
 func (s channelTestAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }
@@ -132,12 +134,12 @@ func TestExecuteAsyncGraphTarget_teamGraph(t *testing.T) {
 	defJSON := `{"version":1,"mode":"sequential","linked_graph_id":"linked-g-1","members":[{"agent_id":"agent-1","sort_order":1}]}`
 	exec := &stubGraphExecutor{}
 	h := &ChannelIngress{
-		teams: stubTeamRepo{team: biz.Team{
+		channels: biz.NewChannelUsecase(nil, nil, nil, channelTestAgentRepo{key: "worker-key"}, stubTeamRepo{team: biz.Team{
 			ID:             "team-42",
 			DefinitionJSON: defJSON,
-		}},
-		agents: channelTestAgentRepo{key: "worker-key"},
+		}}, nil, nil),
 		graphs: exec,
+		lg:     loggateway.NewNoop(),
 	}
 	target := biz.ChannelAsyncGraphTarget{TargetType: "team_graph", TeamID: "team-42"}
 	tt, gid, asyncID, err := h.executeAsyncGraphTarget(context.Background(), target, "sess-99", map[string]any{"input": "hi"})
@@ -162,12 +164,12 @@ func TestExecuteAsyncGraphTarget_teamGraphFallbackGraphID(t *testing.T) {
 	defJSON := `{"version":1,"mode":"sequential","members":[{"agent_id":"agent-1","sort_order":1}]}`
 	exec := &stubGraphExecutor{}
 	h := &ChannelIngress{
-		teams: stubTeamRepo{team: biz.Team{
+		channels: biz.NewChannelUsecase(nil, nil, nil, channelTestAgentRepo{key: "k1"}, stubTeamRepo{team: biz.Team{
 			ID:             "team-7",
 			DefinitionJSON: defJSON,
-		}},
-		agents: channelTestAgentRepo{key: "k1"},
+		}}, nil, nil),
 		graphs: exec,
+		lg:     loggateway.NewNoop(),
 	}
 	target := biz.ChannelAsyncGraphTarget{TargetType: "team_graph", TeamID: "team-7"}
 	_, gid, _, err := h.executeAsyncGraphTarget(context.Background(), target, "sess-1", nil)

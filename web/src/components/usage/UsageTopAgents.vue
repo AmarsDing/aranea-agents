@@ -35,25 +35,17 @@
 
 <script setup lang="ts">
 import type { ModelUsageBreakdownRow } from "../../features/usage/types";
-import { formatUsdFromMicro } from "../../features/usage/moneyFormat";
+import { formatUsdFromMicro, formatCount, formatPercent, formatLatencyMs } from "../../features/usage/moneyFormat";
 
 defineProps<{
   rows: ModelUsageBreakdownRow[];
 }>();
 
-function formatCount(value: number) {
-  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 }).format(value);
-}
-
-function formatMoney(value: number) {
+function formatMoney(value?: number) {
   return formatUsdFromMicro(value);
 }
 
-function formatPercent(value: number) {
-  return `${Math.round(value * 100)}%`;
-}
-
-function formatLatency(value: number) {
-  return `${Math.round(value)} ms`;
+function formatLatency(value?: number) {
+  return formatLatencyMs(value);
 }
 </script>

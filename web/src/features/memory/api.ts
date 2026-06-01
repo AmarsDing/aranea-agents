@@ -62,7 +62,7 @@ import type {
   MemoryWorkerStatus,
   MemoryPlatformSettings
 } from "./types";
-import { asRecord, mapStringFloat, parseJsonArray, pickBool, pickI32, pickI64, pickNum, pickOptionalI32, pickStr, pickStrArray } from "../../shared/wireJson";
+import { asRecord, mapStringFloat, parseJsonArray, pickBool, pickI32, pickI64, pickNum, pickOptionalI32, pickStr, pickStrArray } from "./wireJson";
 import { kratosApi } from "../../services/axiosHandler";
 import { memoryEndpoints } from "./memoryEndpoints";
 

@@ -47,12 +47,22 @@
           <q-input
             :model-value="candidate.apiKey"
             label="API Key"
-            type="password"
-            :placeholder="candidate.apiKey ? undefined : '留空不修改'"
+            :type="isCandidateKeyVisible(idx) ? 'text' : 'password'"
             dense
             outlined
             @update:model-value="updateCandidate(idx, 'apiKey', String($event ?? ''))"
-          />
+          >
+            <template #append>
+              <q-btn
+                flat
+                dense
+                round
+                :icon="isCandidateKeyVisible(idx) ? 'visibility_off' : 'visibility'"
+                :aria-label="isCandidateKeyVisible(idx) ? '隐藏 API Key' : '显示 API Key'"
+                @click="toggleCandidateKeyVisibility(idx)"
+              />
+            </template>
+          </q-input>
           <div class="app-actions-bar app-actions-bar--start">
             <q-btn flat round dense icon="close" color="negative" @click="removeCandidate(idx)" />
           </div>
@@ -78,18 +88,8 @@
 </template>
 
 <script setup lang="ts">
-export type HACandidateForm = {
-  name: string;
-  providerType: string;
-  baseUrl: string;
-  apiKey: string;
-};
-
-export type ProviderHAForm = {
-  haMode: "" | "failover" | "hedge";
-  haCandidates: HACandidateForm[];
-  haHedgeDelayMs: number;
-};
+import { reactive } from "vue";
+import type { HACandidateForm, ProviderHAForm } from "../../features/platform/types";
 
 const props = defineProps<{
   modelValue: ProviderHAForm;
@@ -127,5 +127,18 @@ function removeCandidate(idx: number) {
     "haCandidates",
     props.modelValue.haCandidates.filter((_, i) => i !== idx)
   );
+  Object.keys(visibleCandidateKeys).forEach((k) => {
+    delete visibleCandidateKeys[Number(k)];
+  });
+}
+
+const visibleCandidateKeys = reactive<Record<number, boolean>>({});
+
+function isCandidateKeyVisible(idx: number): boolean {
+  return Boolean(visibleCandidateKeys[idx]);
+}
+
+function toggleCandidateKeyVisibility(idx: number) {
+  visibleCandidateKeys[idx] = !visibleCandidateKeys[idx];
 }
 </script>

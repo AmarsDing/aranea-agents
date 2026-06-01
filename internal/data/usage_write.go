@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/modelcatalog"
+	"aranea-agents/internal/modelregistry"
 
 	stdsql "database/sql"
 )
@@ -23,7 +23,7 @@ func (r *usageRepo) RecordTokenUsageEvent(ctx context.Context, e biz.TokenUsageE
 		streamEnabled = 1
 	}
 	if strings.TrimSpace(e.CanonicalProviderCode) == "" {
-		e.CanonicalProviderCode = modelcatalog.MigrateProviderCode(e.ProviderCode)
+		e.CanonicalProviderCode = modelregistry.MigrateProviderCode(e.ProviderCode)
 	}
 
 	_, err = c.ExecContext(ctx,
@@ -79,6 +79,18 @@ func (r *usageRepo) RecordTokenUsageEvent(ctx context.Context, e biz.TokenUsageE
 		return biz.TokenUsageEvent{}, err
 	}
 	return e, nil
+}
+
+func (r *usageRepo) PurgeUsageEventsOlderThan(ctx context.Context, retainDays int) (int64, error) {
+	result, err := r.ent().ExecContext(ctx,
+		`DELETE FROM model_token_usage_events WHERE date_key < date('now', '-'||?||' days')`,
+		retainDays,
+	)
+	if err != nil {
+		return 0, err
+	}
+	affected, _ := result.RowsAffected()
+	return affected, nil
 }
 
 type execer interface {

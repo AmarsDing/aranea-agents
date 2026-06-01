@@ -14,6 +14,7 @@ import (
 	"aranea-agents/internal/metrics"
 	"aranea-agents/internal/telemetry/turntrace"
 	"aranea-agents/internal/tools/preview"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
 
@@ -182,7 +183,7 @@ func recordToolInvocationWrite(ctx context.Context, write biz.ToolInvocationWrit
 		}
 		if countSession {
 			if err := deps.Sessions.IncrementInvocationCounts(bg, sessionID, toolDelta, mcpDelta, skillDelta); err != nil {
-				event.SessionSysLogWarn(ctx, sessionID, "system.tool.record_fail", "会话工具调用计数更新失败", event.P("tool", write.ToolKey), event.P("error", err))
+				loggateway.Global().With(loggateway.SessionID(sessionID)).Warn("会话工具调用计数更新失败", loggateway.StepID("system.tool.record_fail"), loggateway.Str("tool", write.ToolKey), loggateway.Err(err))
 			}
 		}
 	})

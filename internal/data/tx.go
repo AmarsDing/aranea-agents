@@ -24,6 +24,13 @@ func (d *Data) ExecInTx(ctx context.Context, fn func(ctx context.Context) error)
 	return tx.Commit()
 }
 
+func (d *Data) clientFromCtx(ctx context.Context) *ent.Client {
+	if c, ok := ctx.Value(txClientKey{}).(*ent.Client); ok {
+		return c
+	}
+	return d.entClient
+}
+
 func txClientFromCtx(ctx context.Context) *ent.Client {
 	if c, ok := ctx.Value(txClientKey{}).(*ent.Client); ok {
 		return c

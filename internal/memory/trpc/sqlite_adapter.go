@@ -13,7 +13,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/pgvector"
 	"aranea-agents/internal/data/sessionmemory"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
@@ -175,7 +175,7 @@ func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.
 		hits, err := s.vector.RecallWithUser(ctx, uk.AppName, uk.UserID, q, int(topK))
 		if err != nil {
 			if !errors.Is(err, biz.ErrMemoryUnavailable) {
-				event.SysLogWarn("system.auto_memory.extract_fail", "vector recall failed", event.P("agent", uk.AppName), event.P("error", err.Error()))
+				loggateway.Global().Warn("vector recall failed", loggateway.StepID("system.auto_memory.extract_fail"), loggateway.Str("agent", uk.AppName), loggateway.Err(err))
 			}
 		}
 		if err == nil && len(hits) > 0 {
@@ -195,8 +195,10 @@ func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.
 				if memoryReadConsistencyCheck && factID != "" && s.store != nil {
 					row, consistencyErr := s.store.GetFactConsistencyRow(ctx, factID)
 					if consistencyErr != nil {
-						event.SysLogWarn("system.auto_memory.extract_fail", "read consistency check failed, skipping validation",
-							event.P("fact_id", factID), event.P("error", consistencyErr.Error()))
+						loggateway.Global().Warn("read consistency check failed, skipping validation",
+						loggateway.StepID("system.auto_memory.extract_fail"),
+						loggateway.Str("fact_id", factID),
+						loggateway.Err(consistencyErr))
 					} else if row.Status == "" || row.Status != "active" || row.IndexStatus == "disabled" {
 						continue
 					} else if row.IndexStatus == "stale" {
@@ -251,8 +253,10 @@ func (s *sqliteMemoryService) asyncResyncFact(ctx context.Context, factID string
 			return
 		}
 		if err := syncer.SyncFactIndexFromRow(bgCtx, raw); err != nil {
-			event.SysLogWarn("system.auto_memory.extract_fail", "async resync on stale hit failed",
-				event.P("fact_id", factID), event.P("error", err.Error()))
+			loggateway.Global().Warn("async resync on stale hit failed",
+				loggateway.StepID("system.auto_memory.extract_fail"),
+				loggateway.Str("fact_id", factID),
+				loggateway.Err(err))
 		}
 	})
 }
@@ -300,7 +304,7 @@ func (s *sqliteMemoryService) syncIndexBestEffort(ctx context.Context, raw []byt
 	}
 	// MEM-OPT-01 Phase 1: errors are captured by SyncFactIndexFromRow → MarkFactIndexStale.
 	if err := s.indexSync.SyncFactIndexFromRow(ctx, raw); err != nil {
-		event.SysLogWarn("system.auto_memory.l4_fail", "sqlite_adapter index sync failed", event.P("error", err.Error()))
+		loggateway.Global().Warn("sqlite_adapter index sync failed", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Err(err))
 	}
 }
 

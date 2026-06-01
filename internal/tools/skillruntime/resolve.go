@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/tools/skillrouter"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 )
 
@@ -80,7 +80,7 @@ func ResolveSkillSlugsDetailed(ctx context.Context, skillUC SkillResolver, opts 
 	if policy.EmbeddingScoringEnabled && strings.TrimSpace(query) != "" {
 		embScores, embErr := skillUC.ScoreByEmbedding(ctx, query, final)
 		if embErr != nil {
-			event.SysLogWarn("system.skillruntime.embedding_score_failed", "embedding scoring failed; falling back to keyword scores", event.P("error", embErr))
+			loggateway.Global().Warn("embedding scoring failed; falling back to keyword scores", loggateway.StepID("system.skillruntime.embedding_score_failed"), loggateway.Err(embErr))
 		} else if len(embScores) > 0 {
 			weight := policy.EmbeddingScoreWeight
 			for i := range scored {

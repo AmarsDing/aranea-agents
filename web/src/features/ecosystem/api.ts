@@ -1,4 +1,5 @@
-import { requestHandler } from "../../services/axiosHandler";
+import { createEcosystemService } from "../../services";
+import type { Product } from "../../services/kratos/ecosystem/v1/index";
 
 export type EcosystemProduct = {
   id: string;
@@ -11,38 +12,29 @@ export type EcosystemProduct = {
   installed: boolean;
 };
 
-function mapProduct(raw: unknown): EcosystemProduct {
-  const r = raw as Record<string, unknown>;
+function mapProduct(raw: Product): EcosystemProduct {
   return {
-    id: String(r.id ?? ""),
-    name: String(r.name ?? ""),
-    display_name: String(r.displayName ?? r.display_name ?? ""),
-    description: String(r.description ?? ""),
-    type: String(r.type ?? ""),
-    version: String(r.version ?? ""),
-    install_count: Number(r.installCount ?? r.install_count ?? 0),
-    installed: Boolean(r.installed ?? false)
+    id: String(raw.id ?? ""),
+    name: String(raw.name ?? ""),
+    display_name: String(raw.displayName ?? ""),
+    description: String(raw.description ?? ""),
+    type: String(raw.type ?? ""),
+    version: String(raw.version ?? ""),
+    install_count: Number(raw.installCount ?? 0),
+    installed: Boolean(raw.installed ?? false)
   };
 }
 
 export async function listEcosystemProducts(search = ""): Promise<EcosystemProduct[]> {
-  const q = new URLSearchParams({ limit: "100" });
-  if (search) q.set("search", search);
-  const res = await requestHandler({
-    path: `v1/ecosystem/products?${q.toString()}`,
-    method: "GET",
-    body: null
-  });
-  const items = (res as { items?: unknown[] }).items ?? [];
+  const svc = createEcosystemService();
+  const res = await svc.ListProducts({ search: search || undefined, limit: 100, type: undefined, offset: undefined });
+  const items = res.items ?? [];
   return items.map(mapProduct);
 }
 
 export async function installEcosystemProduct(id: string): Promise<void> {
-  await requestHandler({
-    path: `v1/ecosystem/products/${encodeURIComponent(id)}/install`,
-    method: "POST",
-    body: "{}"
-  });
+  const svc = createEcosystemService();
+  await svc.InstallProduct({ id });
 }
 
 export async function publishEcosystemProduct(input: {
@@ -51,15 +43,16 @@ export async function publishEcosystemProduct(input: {
   description: string;
   type: string;
 }): Promise<EcosystemProduct> {
-  const res = await requestHandler({
-    path: "v1/ecosystem/products",
-    method: "POST",
-    body: JSON.stringify({
-      name: input.name,
-      display_name: input.display_name,
-      description: input.description,
-      type: input.type
-    })
+  const svc = createEcosystemService();
+  const res = await svc.PublishProduct({
+    name: input.name,
+    displayName: input.display_name,
+    description: input.description,
+    type: input.type,
+    version: undefined,
+    priceModel: undefined,
+    priceCents: undefined,
+    configJson: undefined,
   });
   return mapProduct(res);
 }

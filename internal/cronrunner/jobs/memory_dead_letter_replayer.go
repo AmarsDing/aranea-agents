@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -61,7 +61,7 @@ func (w *MemoryDeadLetterReplayer) runOnce(ctx context.Context) {
 	safego.Go(ctx, "memory.dead_letter_replay", func() {
 		entries, err := w.repo.ListDeadLetters(ctx, "pending", memoryDeadLetterReplayBatchSize)
 		if err != nil {
-			event.SysLogWarn("memory.dead_letter_replay", "list pending dead letters failed", event.P("error", err))
+			loggateway.Global().Warn("list pending dead letters failed", loggateway.Err(err))
 			if w.log != nil {
 				w.log.Warnf("dead letter replay: list: %v", err)
 			}
@@ -75,15 +75,15 @@ func (w *MemoryDeadLetterReplayer) runOnce(ctx context.Context) {
 			if e.Attempts >= memoryDeadLetterMaxAttempts {
 				if abandonErr := w.repo.MarkDeadLetterAbandoned(ctx, e.ID, "max_attempts_exceeded"); abandonErr == nil {
 					abandoned++
-					event.SysLogWarn("memory.dead_letter_replay", "abandoned after max attempts",
-						event.P("id", e.ID), event.P("attempts", e.Attempts))
+					loggateway.Global().Warn("abandoned after max attempts",
+						loggateway.Any("id", e.ID), loggateway.Int("attempts", e.Attempts))
 				}
 				continue
 			}
 			if err := w.repo.ReplayDeadLetterIntoQueue(ctx, e.ID, w.enqueueFunc); err != nil {
 				failed++
-				event.SysLogWarn("memory.dead_letter_replay", "replay failed",
-					event.P("id", e.ID), event.P("error", err))
+				loggateway.Global().Warn("replay failed",
+					loggateway.Any("id", e.ID), loggateway.Err(err))
 				continue
 			}
 			replayed++

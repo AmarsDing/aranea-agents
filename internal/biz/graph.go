@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"github.com/go-kratos/kratos/v2/errors"
@@ -143,6 +144,7 @@ type GraphDefinition struct {
 	InterruptAfter   []string
 	Metadata         map[string]any
 	Version          int
+	SortOrder        int
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -180,6 +182,7 @@ type GraphRepo interface {
 	ListUserTemplateDefinitions(ctx context.Context, pageSize int) ([]*GraphDefinition, error)
 	UpdateDefinition(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error)
 	DeleteDefinition(ctx context.Context, id string) error
+	ReorderGraphs(ctx context.Context, ids []string) error
 }
 
 type GraphRunRepo interface {
@@ -204,9 +207,10 @@ type GraphUsecase struct {
 	defs             map[string]*GraphDefinition
 	executions       map[string]*GraphExecution
 	teamBuildConfigs map[string]GraphBuildConfig
+	lg               loggateway.Logger
 }
 
-func NewGraphUsecase(repo GraphRepo, runRepo GraphRunRepo, factory GraphBuilderFactory, observer GraphExecutionObserver) *GraphUsecase {
+func NewGraphUsecase(repo GraphRepo, runRepo GraphRunRepo, factory GraphBuilderFactory, observer GraphExecutionObserver, lg loggateway.Logger) *GraphUsecase {
 	uc := &GraphUsecase{
 		repo:         repo,
 		runRepo:      runRepo,
@@ -214,6 +218,7 @@ func NewGraphUsecase(repo GraphRepo, runRepo GraphRunRepo, factory GraphBuilderF
 		execObserver: observer,
 		defs:         make(map[string]*GraphDefinition),
 		executions:   make(map[string]*GraphExecution),
+		lg:           lg,
 	}
 	safego.Go(context.Background(), "graph-gc-loop", func() { uc.gcLoop() })
 	return uc
@@ -372,6 +377,10 @@ func (uc *GraphUsecase) DeleteGraph(ctx context.Context, id string) error {
 	delete(uc.defs, id)
 	uc.mu.Unlock()
 	return nil
+}
+
+func (uc *GraphUsecase) ReorderGraphs(ctx context.Context, ids []string) error {
+	return uc.repo.ReorderGraphs(ctx, ids)
 }
 
 func (uc *GraphUsecase) VisualizeGraph(ctx context.Context, graphID string, format string) (any, error) {

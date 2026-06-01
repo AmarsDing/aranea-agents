@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
 )
@@ -126,8 +126,9 @@ func (r *DBRepositoryAdapter) refreshIfStale(ctx context.Context) {
 func (r *DBRepositoryAdapter) reload(ctx context.Context) {
 	candidates, err := r.uc.ListEnabledPublishedCandidates(ctx)
 	if err != nil {
-		event.SysLogWarn("system.skill.reload_fail", "skill 缓存刷新失败，保留陈旧数据",
-			event.P("error", err.Error()))
+		loggateway.Global().Warn("skill 缓存刷新失败，保留陈旧数据",
+			loggateway.StepID("system.skill.reload_fail"),
+			loggateway.Err(err))
 		return
 	}
 	entries := make([]dbSkillEntry, 0, len(candidates))
@@ -170,14 +171,19 @@ func (r *DBRepositoryAdapter) reload(ctx context.Context) {
 func (r *DBRepositoryAdapter) loadBody(ctx context.Context, entry dbSkillEntry) string {
 	sk, err := r.uc.GetBySlug(ctx, entry.slug)
 	if err != nil {
-		event.SysLogWarn("system.skill.load_body_fail", "skill body 加载失败",
-			event.P("slug", entry.slug), event.P("error", err.Error()))
+		loggateway.Global().Warn("skill body 加载失败",
+			loggateway.StepID("system.skill.load_body_fail"),
+			loggateway.Str("slug", entry.slug),
+			loggateway.Err(err))
 		return ""
 	}
 	body, err := r.uc.GetLatestMarkdown(ctx, sk.ID)
 	if err != nil {
-		event.SysLogWarn("system.skill.load_markdown_fail", "skill markdown 加载失败",
-			event.P("slug", entry.slug), event.P("skill_id", sk.ID), event.P("error", err.Error()))
+		loggateway.Global().Warn("skill markdown 加载失败",
+			loggateway.StepID("system.skill.load_markdown_fail"),
+			loggateway.Str("slug", entry.slug),
+			loggateway.Str("skill_id", sk.ID),
+			loggateway.Err(err))
 		return ""
 	}
 	dir, _ := r.uc.GetStorageDir(ctx, sk.ID)

@@ -8,7 +8,7 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
@@ -32,29 +32,29 @@ func newPromptSnapshotBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.C
 		callIndex := promptSnapshotCallIndex(ctx)
 		report := analyzePromptRequest(args.Request.Messages)
 		if promptSnapshotEnabled() {
-			event.CtxFlowLogDone(ctx, "chat.prompt.compose", "Prompt 组成快照",
-				event.P("model_call_index", callIndex),
-				event.P("est_tokens", report.EstTokens),
-				event.P("system_chars", report.SystemChars),
-				event.P("user_chars", report.UserChars),
-				event.P("assistant_chars", report.AssistantChars),
-				event.P("tool_chars", report.ToolChars),
-				event.P("system_msgs", report.SystemMsgs),
-				event.P("user_msgs", report.UserMsgs),
-				event.P("assistant_msgs", report.AssistantMsgs),
-				event.P("tool_msgs", report.ToolMsgs),
-				event.P("section_identity", report.Sections["identity"]),
-				event.P("section_instruction", report.Sections["instruction"]),
-				event.P("section_runtime_cue", report.Sections["runtime_cue"]),
-				event.P("section_skills", report.Sections["skills"]),
-				event.P("section_l1", report.Sections["l1_memory"]),
-				event.P("section_l2", report.Sections["l2_memory"]),
-				event.P("section_l2_l3", report.Sections["l2_l3_memory"]),
-				event.P("section_l3", report.Sections["l3_memory"]),
-				event.P("section_l4", report.Sections["l4_memory"]),
-				event.P("section_intent", report.Sections["intent"]),
-				event.P("section_session_summary", report.Sections["session_summary"]),
-				event.P("section_user_memories", report.Sections["user_memories"]),
+			loggateway.Global().Info("Prompt 组成快照", loggateway.StepID("chat.prompt.compose"), loggateway.Phase("done"),
+				loggateway.Int("model_call_index", callIndex),
+				loggateway.Int("est_tokens", report.EstTokens),
+				loggateway.Int("system_chars", report.SystemChars),
+				loggateway.Int("user_chars", report.UserChars),
+				loggateway.Int("assistant_chars", report.AssistantChars),
+				loggateway.Int("tool_chars", report.ToolChars),
+				loggateway.Int("system_msgs", report.SystemMsgs),
+				loggateway.Int("user_msgs", report.UserMsgs),
+				loggateway.Int("assistant_msgs", report.AssistantMsgs),
+				loggateway.Int("tool_msgs", report.ToolMsgs),
+				loggateway.Int("section_identity", report.Sections["identity"]),
+				loggateway.Int("section_instruction", report.Sections["instruction"]),
+				loggateway.Int("section_runtime_cue", report.Sections["runtime_cue"]),
+				loggateway.Int("section_skills", report.Sections["skills"]),
+				loggateway.Int("section_l1", report.Sections["l1_memory"]),
+				loggateway.Int("section_l2", report.Sections["l2_memory"]),
+				loggateway.Int("section_l2_l3", report.Sections["l2_l3_memory"]),
+				loggateway.Int("section_l3", report.Sections["l3_memory"]),
+				loggateway.Int("section_l4", report.Sections["l4_memory"]),
+				loggateway.Int("section_intent", report.Sections["intent"]),
+				loggateway.Int("section_session_summary", report.Sections["session_summary"]),
+				loggateway.Int("section_user_memories", report.Sections["user_memories"]),
 			)
 		}
 		persistL0AssemblySnapshot(ctx, deps, ag, args.Request.Messages, callIndex)

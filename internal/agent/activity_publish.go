@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 const stuckToolResultReason = "turn completed without tool result"
@@ -24,11 +25,12 @@ func PublishActivityEnvelopes(ctx context.Context, meta ProjectMeta, persister A
 			continue
 		}
 		if err := persister.UpsertActivity(ctx, meta, *env.ToolCall); err != nil {
-			event.CtxFlowLogWarn(ctx, "chat.activity.persist", "执行卡片落库失败",
-				event.P("session_id", meta.SessionID),
-				event.P("tool_call_id", env.ToolCall.ID),
-				event.P("tool_name", env.ToolCall.Name),
-				event.P("error", err.Error()),
+			loggateway.Global().Warn("执行卡片落库失败",
+				loggateway.StepID("chat.activity.persist"),
+				loggateway.Str("session_id", meta.SessionID),
+				loggateway.Str("tool_call_id", env.ToolCall.ID),
+				loggateway.Str("tool_name", env.ToolCall.Name),
+				loggateway.Str("error", err.Error()),
 			)
 		}
 	}
@@ -77,11 +79,12 @@ func FinalizeStuckToolActivities(ctx context.Context, meta ProjectMeta, persiste
 	for _, tc := range pending {
 		stuck := stuckToolCallPatch(tc)
 		if err := persister.UpsertActivity(ctx, meta, stuck); err != nil {
-			event.CtxFlowLogWarn(ctx, "chat.activity.finalize_stuck", "未完成工具卡片落库失败",
-				event.P("session_id", meta.SessionID),
-				event.P("tool_call_id", stuck.ID),
-				event.P("tool_name", stuck.Name),
-				event.P("error", err.Error()),
+			loggateway.Global().Warn("未完成工具卡片落库失败",
+				loggateway.StepID("chat.activity.finalize_stuck"),
+				loggateway.Str("session_id", meta.SessionID),
+				loggateway.Str("tool_call_id", stuck.ID),
+				loggateway.Str("tool_name", stuck.Name),
+				loggateway.Str("error", err.Error()),
 			)
 		}
 	}

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/session"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/agent"
 	"aranea-agents/internal/data/ent/platformskill"
@@ -22,12 +23,15 @@ type sessionRepo struct {
 	data *Data
 }
 
+func (r *sessionRepo) txClient(ctx context.Context) *ent.Client {
+	return r.data.clientFromCtx(ctx)
+}
+
 var (
 	_ biz.SessionReader        = (*sessionRepo)(nil)
 	_ biz.SessionWriter        = (*sessionRepo)(nil)
-	_ biz.SessionBatchWriter   = (*sessionRepo)(nil)
-	_ biz.SessionPinWriter     = (*sessionRepo)(nil)
-	_ biz.SessionRevisionWriter = (*sessionRepo)(nil)
+	_ biz.SessionMutator       = (*sessionRepo)(nil)
+	_ biz.SessionBatchMutator  = (*sessionRepo)(nil)
 	_ biz.MessageReader        = (*sessionRepo)(nil)
 	_ biz.MessageSearchReader  = (*sessionRepo)(nil)
 	_ biz.MessageWriter        = (*sessionRepo)(nil)
@@ -40,7 +44,7 @@ var (
 	_ biz.TurnRepo             = (*sessionRepo)(nil)
 	_ biz.ContextUpdater       = (*sessionRepo)(nil)
 	_ biz.CompressRepo         = (*sessionRepo)(nil)
-	_ biz.SessionRepo           = (*sessionRepo)(nil)
+	_ biz.SessionRepo          = (*sessionRepo)(nil)
 )
 
 func NewSessionRepo(d *Data) biz.SessionRepo {
@@ -69,6 +73,8 @@ func entSessionToBiz(e *ent.Session) biz.Session {
 		LastModel:                  e.LastModel,
 		LastContextWindowTokens:    e.LastContextWindowTokens,
 		Status:                     e.Status,
+		StatusReason:               e.StatusReason,
+		StatusChangedAt:            e.StatusChangedAt,
 		Visibility:                 e.Visibility,
 		MessageCount:               e.MessageCount,
 		RunCount:                   e.RunCount,
@@ -117,7 +123,7 @@ func clampOffset(off int) int {
 }
 
 func (r *sessionRepo) SearchSessions(ctx context.Context, q biz.SessionSearchQuery) (biz.SessionListResult, error) {
-	c := r.data.entClient
+	c := r.txClient(ctx)
 	limit := clampSessionLimit(q.Limit)
 	offset := clampOffset(q.Offset)
 
@@ -152,7 +158,7 @@ func (r *sessionRepo) SearchSessions(ctx context.Context, q biz.SessionSearchQue
 }
 
 func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Session, error) {
-	c := r.data.entClient
+	c := r.txClient(ctx)
 	if strings.TrimSpace(in.ID) == "" || strings.TrimSpace(in.Title) == "" {
 		return biz.Session{}, kerrors.BadRequest("SESSION", "missing required fields")
 	}
@@ -163,7 +169,7 @@ func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Se
 	in.CreatedAt = now
 	in.UpdatedAt = now
 	if in.Status == "" {
-		in.Status = "active"
+		in.Status = "idle"
 	}
 	if in.ContextStatus == "" {
 		in.ContextStatus = llmcontext.ContextStatusForRatio(in.ContextUsedRatio)
@@ -221,7 +227,7 @@ func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Se
 }
 
 func (r *sessionRepo) GetSessionByID(ctx context.Context, id string) (biz.Session, error) {
-	c := r.data.entClient
+	c := r.txClient(ctx)
 	row, err := c.Session.Query().
 		Where(entsession.IDEQ(id), entsession.DeletedAtEQ("")).
 		Only(ctx)
@@ -235,7 +241,7 @@ func (r *sessionRepo) GetSessionByID(ctx context.Context, id string) (biz.Sessio
 }
 
 func (r *sessionRepo) UpdateSessionTitle(ctx context.Context, id, title string) (biz.Session, error) {
-	c := r.data.entClient
+	c := r.txClient(ctx)
 	_, err := c.Session.Update().
 		Where(entsession.IDEQ(id), entsession.DeletedAtEQ("")).
 		SetTitle(title).
@@ -248,7 +254,7 @@ func (r *sessionRepo) UpdateSessionTitle(ctx context.Context, id, title string) 
 }
 
 func (r *sessionRepo) UpdateSession(ctx context.Context, id string, fields biz.SessionUpdateFields) (biz.Session, error) {
-	c := r.data.entClient
+	c := r.txClient(ctx)
 	upd := c.Session.Update().
 		Where(entsession.IDEQ(id), entsession.DeletedAtEQ("")).
 		SetUpdatedAt(nowRFC3339())
@@ -273,6 +279,15 @@ func (r *sessionRepo) UpdateSession(ctx context.Context, id string, fields biz.S
 	if fields.DefaultModel != nil {
 		upd = upd.SetDefaultModel(*fields.DefaultModel)
 	}
+	if fields.Status != nil {
+		upd = upd.SetStatus(*fields.Status)
+	}
+	if fields.StatusReason != nil {
+		upd = upd.SetStatusReason(*fields.StatusReason)
+	}
+	if fields.StatusChangedAt != nil {
+		upd = upd.SetStatusChangedAt(*fields.StatusChangedAt)
+	}
 	_, err := upd.Save(ctx)
 	if err != nil {
 		return biz.Session{}, err
@@ -281,13 +296,16 @@ func (r *sessionRepo) UpdateSession(ctx context.Context, id string, fields biz.S
 }
 
 func (r *sessionRepo) RestoreSession(ctx context.Context, id string) (biz.Session, error) {
-	c := r.data.entClient
+	c := r.txClient(ctx)
+	now := nowRFC3339()
 	_, err := c.Session.Update().
 		Where(entsession.IDEQ(id)).
-		SetStatus("active").
+		SetStatus("idle").
+		SetStatusReason("").
+		SetStatusChangedAt(now).
 		SetArchivedAt("").
 		SetDeletedAt("").
-		SetUpdatedAt(nowRFC3339()).
+		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
 		return biz.Session{}, err
@@ -305,7 +323,7 @@ func (r *sessionRepo) PinSession(ctx context.Context, id string) (biz.Session, e
 		return biz.Session{}, kerrors.BadRequest("SESSION", "session id is required")
 	}
 	now := nowRFC3339()
-	_, err := r.data.entClient.Session.Update().
+	_, err := r.txClient(ctx).Session.Update().
 		Where(entsession.IDEQ(id), entsession.DeletedAtEQ("")).
 		SetPinnedAt(now).
 		SetUpdatedAt(now).
@@ -322,7 +340,7 @@ func (r *sessionRepo) UnpinSession(ctx context.Context, id string) (biz.Session,
 		return biz.Session{}, kerrors.BadRequest("SESSION", "session id is required")
 	}
 	now := nowRFC3339()
-	_, err := r.data.entClient.Session.Update().
+	_, err := r.txClient(ctx).Session.Update().
 		Where(entsession.IDEQ(id), entsession.DeletedAtEQ("")).
 		SetPinnedAt("").
 		SetUpdatedAt(now).
@@ -334,11 +352,10 @@ func (r *sessionRepo) UnpinSession(ctx context.Context, id string) (biz.Session,
 }
 
 func (r *sessionRepo) ArchiveSession(ctx context.Context, id string) (int, error) {
-	c := r.data.entClient
+	c := r.txClient(ctx)
 	now := nowRFC3339()
 	n, err := c.Session.Update().
-		Where(entsession.IDEQ(id), entsession.DeletedAtEQ(""), entsession.StatusNEQ("running"), entsession.StatusNEQ("archived")).
-		SetStatus("archived").
+		Where(entsession.IDEQ(id), entsession.DeletedAtEQ(""), entsession.ArchivedAtEQ(""), entsession.StatusNEQ(string(session.SessionStatusRunning)), entsession.StatusNEQ(string(session.SessionStatusAwaitingConfirmation))).
 		SetArchivedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
@@ -349,12 +366,11 @@ func (r *sessionRepo) ArchiveSession(ctx context.Context, id string) (int, error
 }
 
 func (r *sessionRepo) DeleteSession(ctx context.Context, id string) (int, error) {
-	c := r.data.entClient
+	c := r.txClient(ctx)
 	now := nowRFC3339()
 	n, err := c.Session.Update().
-		Where(entsession.IDEQ(id), entsession.DeletedAtEQ(""), entsession.StatusNEQ("running")).
+		Where(entsession.IDEQ(id), entsession.DeletedAtEQ(""), entsession.StatusNEQ(string(session.SessionStatusRunning)), entsession.StatusNEQ(string(session.SessionStatusAwaitingConfirmation))).
 		SetDeletedAt(now).
-		SetStatus("deleted").
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
@@ -368,12 +384,14 @@ func (r *sessionRepo) DeleteSession(ctx context.Context, id string) (int, error)
 }
 
 func (r *sessionRepo) DeleteSessionsByAgentID(ctx context.Context, agentID string) error {
-	c := r.data.entClient
+	c := r.txClient(ctx)
 	now := nowRFC3339()
 	_, err := c.Session.Update().
 		Where(entsession.AgentIDEQ(agentID), entsession.DeletedAtEQ("")).
 		SetDeletedAt(now).
 		SetStatus("deleted").
+		SetStatusReason("manual_override").
+		SetStatusChangedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
 	return err
@@ -383,7 +401,7 @@ func (r *sessionRepo) ListToolInvocationsBySession(ctx context.Context, sessionI
 	if limit <= 0 || limit > 100 {
 		limit = 100
 	}
-	c := r.data.entClient
+	c := r.txClient(ctx)
 	rows, err := c.ToolInvocation.Query().
 		Where(toolinvocationpkg.SessionIDEQ(sessionID)).
 		Order(toolinvocationpkg.ByStartedAt(entsql.OrderDesc()), toolinvocationpkg.ByCreatedAt(entsql.OrderDesc())).
@@ -441,7 +459,7 @@ func (r *sessionRepo) ListSkillInvocationsBySession(ctx context.Context, session
 	if limit <= 0 || limit > 100 {
 		limit = 100
 	}
-	c := r.data.entClient
+	c := r.txClient(ctx)
 	rows, err := c.SkillInvocation.Query().
 		Where(skillinvocationpkg.SessionIDEQ(sessionID)).
 		Order(skillinvocationpkg.ByStartedAt(entsql.OrderDesc()), skillinvocationpkg.ByCreatedAt(entsql.OrderDesc())).
@@ -546,7 +564,7 @@ func (r *sessionRepo) UpdateRunnerSnapshotJSON(ctx context.Context, sessionID st
 	if sessionID == "" {
 		return kerrors.BadRequest("SESSION", "session id is required")
 	}
-	_, err := r.data.entClient.Session.Update().
+	_, err := r.txClient(ctx).Session.Update().
 		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
 		SetRunnerSnapshotJSON(snapshotJSON).
 		SetUpdatedAt(nowRFC3339()).
@@ -594,7 +612,7 @@ func (r *sessionRepo) UpdateSessionContextAfterCompression(ctx context.Context, 
 		tok = 0
 	}
 	ratio := llmcontext.ContextRatio(tok, contextWindow)
-	_, err := r.data.entClient.Session.Update().
+	_, err := r.txClient(ctx).Session.Update().
 		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
 		SetContextUsedTokens(tok).
 		SetContextUsedRatio(ratio).
@@ -634,7 +652,7 @@ func (r *sessionRepo) IncrementInvocationCounts(ctx context.Context, sessionID s
 	if sessionID == "" || (toolDelta == 0 && mcpDelta == 0 && skillDelta == 0) {
 		return nil
 	}
-	c := r.data.entClient
+	c := r.txClient(ctx)
 	upd := c.Session.UpdateOneID(sessionID).SetUpdatedAt(nowRFC3339())
 	if toolDelta != 0 {
 		upd = upd.AddToolCallCount(toolDelta)
@@ -655,7 +673,7 @@ func (r *sessionRepo) BumpSessionRevision(ctx context.Context, sessionID string)
 		return 0, kerrors.BadRequest("SESSION", "session id is required")
 	}
 	var rev int64
-	err := entQueryRowScan(r.data.entClient, ctx,
+	err := entQueryRowScan(r.txClient(ctx), ctx,
 		`UPDATE sessions SET session_revision = session_revision + 1, updated_at = ? WHERE id = ? AND deleted_at = '' RETURNING session_revision`,
 		[]any{nowRFC3339(), sessionID},
 		&rev,
@@ -671,7 +689,7 @@ func (r *sessionRepo) GetSessionRevision(ctx context.Context, sessionID string) 
 	if sessionID == "" {
 		return 0, kerrors.BadRequest("SESSION", "session id is required")
 	}
-	row, err := r.data.entClient.Session.Query().
+	row, err := r.txClient(ctx).Session.Query().
 		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -686,20 +704,12 @@ func (r *sessionRepo) TryIncrementCompressVersion(ctx context.Context, sessionID
 		return 0, kerrors.BadRequest("SESSION", "session id is required")
 	}
 	var old int64
-	err := entQueryRowScan(r.data.entClient, ctx,
+	err := entQueryRowScan(r.txClient(ctx), ctx,
 		`UPDATE sessions SET compress_version = compress_version + 1, updated_at = ? WHERE id = ? AND deleted_at = '' RETURNING compress_version - 1`,
 		[]any{nowRFC3339(), sessionID}, &old)
 	return old, err
 }
 
 func (r *sessionRepo) CompressSessionInTx(ctx context.Context, _ string, fn func(ctx context.Context) error) error {
-	tx, err := r.data.entClient.Tx(ctx)
-	if err != nil {
-		return err
-	}
-	if err := fn(ctx); err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	return tx.Commit()
+	return r.data.ExecInTx(ctx, fn)
 }

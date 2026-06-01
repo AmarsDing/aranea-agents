@@ -11,7 +11,7 @@ import (
 	v1 "aranea-agents/api/kratos/monitor/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -202,7 +202,10 @@ func (s *MonitorService) ListMonitorAlertRules(ctx context.Context, _ *v1.GetMon
 	if len(rules) == 0 {
 		defaults := defaultAlertRules()
 		if err := s.uc.ReplaceAlertRules(ctx, defaults); err != nil {
-			event.SysLogWarn("system.monitor.alert_rules_replace_fail", "ListMonitorAlertRules: ReplaceAlertRules failed", event.P("error", err.Error()))
+			loggateway.Global().Warn("ListMonitorAlertRules: ReplaceAlertRules failed",
+				loggateway.StepID("system.monitor.alert_rules_replace_fail"),
+				loggateway.Err(err),
+			)
 		}
 		rules = defaults
 	}

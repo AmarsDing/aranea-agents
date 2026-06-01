@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestManager_RunnerPlugins_includesEventBridge(t *testing.T) {
@@ -37,7 +38,7 @@ func TestManager_MergeChain_addsHookCallbacks(t *testing.T) {
 		SortOrder:  1,
 		ConfigJSON: `{"callback_point":"after_agent","action":{"type":"log"}}`,
 	}}}
-	resolver := biz.NewHookResolver(biz.NewHookUsecase(repo))
+	resolver := biz.NewHookResolver(biz.NewHookUsecase(repo), loggateway.NewNoop())
 	mgr := NewManager(NewRuntime(nil), resolver)
 
 	base := callbacks.NewChain(callbacks.NewBeforeAgentHook(0, nil))

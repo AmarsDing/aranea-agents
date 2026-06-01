@@ -1,4 +1,4 @@
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { storeToRefs } from "pinia";
 import { useUsageStore } from "../../stores/usage";
 import type { ModelUsageQuery } from "./types";
@@ -28,6 +28,13 @@ export function useUsageEventsPage() {
     { label: "Team 整轮", value: "team_turn" }
   ];
 
+  const retainDays = computed(() => {
+    const r = filters.value.range ?? "7d";
+    const m = r.match(/^(\d+)/);
+    if (!m) return 7;
+    return parseInt(m[1], 10);
+  });
+
   async function load() {
     await usageStore.loadEvents(filters.value);
   }
@@ -41,6 +48,12 @@ export function useUsageEventsPage() {
     a.download = `usage-events-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function purgeEvents() {
+    const deleted = await usageStore.purgeEvents(retainDays.value);
+    await load();
+    return deleted;
   }
 
   function formatMoney(value?: number) {
@@ -67,8 +80,10 @@ export function useUsageEventsPage() {
     rangeOptions,
     statusOptions,
     usageKindOptions,
+    retainDays,
     load,
     exportCsv,
+    purgeEvents,
     resetFilters,
     formatMoney,
     truncate

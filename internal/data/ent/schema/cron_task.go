@@ -5,6 +5,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // CronTask maps legacy table cron_task.
@@ -33,5 +34,11 @@ func (CronTask) Fields() []ent.Field {
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("deleted_at").Default(""),
+	}
+}
+
+func (CronTask) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("agent_id", "deleted_at").StorageKey("idx_cron_task_agent"),
 	}
 }

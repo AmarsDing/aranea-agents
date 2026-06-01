@@ -21,7 +21,9 @@ func (Session) Annotations() []schema.Annotation {
 
 func (Session) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("deleted_at", "agent_id"),
+		index.Fields("agent_id", "deleted_at", "updated_at").StorageKey("idx_sessions_agent"),
+		index.Fields("team_id", "deleted_at", "updated_at").StorageKey("idx_sessions_team"),
+		index.Fields("last_message_at").StorageKey("idx_sessions_last_message"),
 		index.Fields("deleted_at", "user_id"),
 		index.Fields("deleted_at", "status"),
 	}
@@ -50,7 +52,9 @@ func (Session) Fields() []ent.Field {
 		field.String("last_model").Default(""),
 		field.Int("last_context_window_tokens").Default(0),
 
-		field.String("status").Default("active"),
+		field.String("status").Default("idle"),
+		field.String("status_reason").Default(""),
+		field.String("status_changed_at").Default(""),
 		field.String("visibility").Default("private"),
 
 		field.Int("message_count").Default(0),

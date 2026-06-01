@@ -17,9 +17,14 @@
       :form="form"
       :mode-options="modeOptions"
       :mode-label="modeLabel"
+      :effective-state-label="effectiveStateLabel"
+      :confirm-remove-open="confirmRemoveOpen"
+      :pending-remove-row="pendingRemoveRow"
       @refresh="reload()"
       @edit="openEditor($event)"
-      @remove="removeOverride($event)"
+      @request-remove="requestRemoveOverride($event)"
+      @confirm-remove="confirmRemoveOverride()"
+      @cancel-remove="cancelRemoveOverride()"
       @update:editor-open="editorOpen = $event"
       @update:form="form = $event"
       @save="saveOverride()"
@@ -44,12 +49,17 @@ const {
   rows,
   editorOpen,
   editingRow,
+  confirmRemoveOpen,
+  pendingRemoveRow,
   form,
   modeOptions,
   modeLabel,
+  effectiveStateLabel,
   reload,
   openEditor,
   saveOverride,
-  removeOverride
+  requestRemoveOverride,
+  confirmRemoveOverride,
+  cancelRemoveOverride
 } = useAgentToolOverrides(toRef(props, "agentId"));
 </script>

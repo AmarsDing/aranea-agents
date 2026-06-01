@@ -48,7 +48,7 @@ defineProps<{
   rows: UsageModelInsight[];
 }>();
 
-function formatMoney(value: number) {
+function formatMoney(value?: number) {
   return formatUsdFromMicro(value);
 }
 

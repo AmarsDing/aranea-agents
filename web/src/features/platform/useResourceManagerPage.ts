@@ -2,7 +2,7 @@ import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useQuasar } from "quasar";
 import type { PlatformResourceInput, PlatformResourceName } from "./types";
-import { getCategories } from "./providerUtils";
+import { errorMessage, getCategories } from "./providerUtils";
 import { usePlatformStore } from "../../stores/platform";
 import { pricingWarningMessage } from "../usage/pricingWarning";
 import { PLATFORM_RESOURCE_TABLE_COLUMNS } from "../../components/platform/providerModelUi";
@@ -86,7 +86,11 @@ export function useResourceManagerPage() {
       metadata_json: row.metadata_json || "{}"
     });
     if (isProviderResource.value) {
-      await wizard.populateProviderForm(row);
+      try {
+        await wizard.populateProviderForm(row);
+      } catch (error) {
+        $q.notify({ type: "warning", message: `加载目录数据失败：${errorMessage(error)}` });
+      }
     }
     dialogOpen.value = true;
   }
@@ -111,6 +115,8 @@ export function useResourceManagerPage() {
       }
       dialogOpen.value = false;
       $q.notify({ type: "positive", message: "已保存" });
+    } catch (error) {
+      $q.notify({ type: "negative", message: errorMessage(error) || "保存失败" });
     } finally {
       saving.value = false;
     }
@@ -160,6 +166,7 @@ export function useResourceManagerPage() {
     categoryOptions: wizard.categoryOptions,
     providerTypeOptions: wizard.providerTypeOptions,
     providerTypeFilterOptions: wizard.providerTypeFilterOptions,
+    haCandidateProviderTypeOptions: wizard.haCandidateProviderTypeOptions,
     variantOptions: wizard.variantOptions,
     form,
     providerForm: wizard.providerForm,
@@ -209,6 +216,7 @@ export function useResourceManagerPage() {
     trendMetric: list.providerTrend.metric,
     trendMetricOptions: list.providerTrend.metricOptions,
     providerCodeRule: wizard.providerCodeRule,
+    updateHAForm: wizard.updateHAForm,
     getCategories,
     metadataLabel: wizard.metadataLabel,
     credentialEncryptionAvailable: list.credentialEncryptionAvailable,

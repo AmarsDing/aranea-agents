@@ -106,6 +106,12 @@ export function runtimeStatusLabel(value?: string): string {
   return value;
 }
 
+export function runtimeStatusColor(value?: string): string {
+  if (value === "disabled") return "negative";
+  if (value === "catalog_only") return "grey";
+  return "positive";
+}
+
 export function runtimeKindHint(tool: Pick<Tool, "supports_streaming">): string {
   return tool.supports_streaming ? "streaming" : "function";
 }

@@ -7,11 +7,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/sessionmemory"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 const (
@@ -23,25 +20,25 @@ const (
 // MemoryL2DecayWorker periodically reduces stored episode importance and purges episodes past retention.
 type MemoryL2DecayWorker struct {
 	interval time.Duration
-	store    *sessionmemory.Store
+	decayer  biz.MemoryEpisodeDecayer
 	agents   *biz.AgentUsecase
-	log      *log.Helper
+	lg       loggateway.Logger
 }
 
-func NewMemoryL2DecayWorker(interval time.Duration, store *sessionmemory.Store, agents *biz.AgentUsecase, logger log.Logger) *MemoryL2DecayWorker {
+func NewMemoryL2DecayWorker(interval time.Duration, decayer biz.MemoryEpisodeDecayer, agents *biz.AgentUsecase, lg loggateway.Logger) *MemoryL2DecayWorker {
 	if interval <= 0 {
 		interval = memoryL2DecayDefaultInterval
 	}
 	return &MemoryL2DecayWorker{
 		interval: interval,
-		store:    store,
+		decayer:  decayer,
 		agents:   agents,
-		log:      log.NewHelper(logger),
+		lg:       lg,
 	}
 }
 
 func (w *MemoryL2DecayWorker) Start(ctx context.Context) {
-	if w == nil || w.store == nil {
+	if w == nil || w.decayer == nil {
 		return
 	}
 	ticker := time.NewTicker(w.interval)
@@ -62,10 +59,7 @@ func (w *MemoryL2DecayWorker) runOnce(ctx context.Context) {
 		if w.agents != nil {
 			targets, err := w.agents.ListMemoryMaintenanceTargets(ctx)
 			if err != nil {
-				event.SysLogWarn("memory.l2_decay", "L2 maintenance target list failed", event.P("error", err))
-				if w.log != nil {
-					w.log.Warnf("memory l2 decay: list targets: %v", err)
-				}
+				w.lg.Warn("L2 maintenance target list failed", loggateway.Err(err))
 				return
 			}
 			decayCutoff := time.Now().UTC().Add(-memoryL2DecayMinEpisodeAge).Format(time.RFC3339Nano)
@@ -74,8 +68,8 @@ func (w *MemoryL2DecayWorker) runOnce(ctx context.Context) {
 				if !t.WriteL2Episode {
 					continue
 				}
-				if n, err := w.store.ApplyEpisodeImportanceDecay(ctx, t.AgentID, decayCutoff, memoryL2DecayBatchFactor); err != nil {
-					event.SysLogWarn("memory.l2_decay", "L2 episode importance decay failed", event.P("agent_id", t.AgentID), event.P("error", err))
+				if n, err := w.decayer.ApplyEpisodeImportanceDecay(ctx, t.AgentID, decayCutoff, memoryL2DecayBatchFactor); err != nil {
+					w.lg.Warn("L2 episode importance decay failed", loggateway.Str("agent_id", t.AgentID), loggateway.Err(err))
 				} else {
 					decayed += n
 				}
@@ -84,28 +78,25 @@ func (w *MemoryL2DecayWorker) runOnce(ctx context.Context) {
 					retentionDays = 90
 				}
 				purgeCutoff := time.Now().UTC().Add(-time.Duration(retentionDays) * 24 * time.Hour).Format(time.RFC3339Nano)
-				if n, err := w.store.PurgeEpisodesOlderThan(ctx, t.AgentID, purgeCutoff); err != nil {
-					event.SysLogWarn("memory.l2_decay", "L2 episode retention purge failed", event.P("agent_id", t.AgentID), event.P("error", err))
+				if n, err := w.decayer.PurgeEpisodesOlderThan(ctx, t.AgentID, purgeCutoff); err != nil {
+					w.lg.Warn("L2 episode retention purge failed", loggateway.Str("agent_id", t.AgentID), loggateway.Err(err))
 				} else {
 					purged += n
 				}
 			}
-			if (decayed > 0 || purged > 0) && w.log != nil {
-				w.log.Infof("memory l2 decay: importance=%d purged=%d agents=%d", decayed, purged, len(targets))
+			if decayed > 0 || purged > 0 {
+				w.lg.Info("memory l2 decay completed", loggateway.Int("importance", decayed), loggateway.Int("purged", purged), loggateway.Int("agents", len(targets)))
 			}
 			return
 		}
 		cutoff := time.Now().UTC().Add(-memoryL2DecayMinEpisodeAge).Format(time.RFC3339Nano)
-		n, err := w.store.ApplyAllEpisodeImportanceDecay(ctx, cutoff, memoryL2DecayBatchFactor)
+		n, err := w.decayer.ApplyAllEpisodeImportanceDecay(ctx, cutoff, memoryL2DecayBatchFactor)
 		if err != nil {
-			event.SysLogWarn("memory.l2_decay", "L2 episode importance decay failed", event.P("error", err))
-			if w.log != nil {
-				w.log.Warnf("memory l2 decay: %v", err)
-			}
+			w.lg.Warn("L2 episode importance decay failed", loggateway.Err(err))
 			return
 		}
-		if n > 0 && w.log != nil {
-			w.log.Infof("memory l2 decay: updated %d episodes (cutoff=%s factor=%v)", n, cutoff, memoryL2DecayBatchFactor)
+		if n > 0 {
+			w.lg.Info("memory l2 decay updated episodes", loggateway.Int("count", n), loggateway.Str("cutoff", cutoff), loggateway.Any("factor", memoryL2DecayBatchFactor))
 		}
 	})
 }

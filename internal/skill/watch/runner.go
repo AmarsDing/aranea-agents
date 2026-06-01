@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/skill/storage"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"github.com/fsnotify/fsnotify"
@@ -41,6 +42,7 @@ type Runner struct {
 	eventBus  event.Bus
 	reporter  SyncReporter
 	alertEval AlertEvaluator
+	lg        loggateway.Logger
 
 	mu           sync.Mutex
 	timer        *time.Timer
@@ -55,12 +57,12 @@ func SetSyncReporter(r *Runner, reporter SyncReporter) {
 	r.reporter = reporter
 }
 
-func NewRunner(reader SkillReader, writer SkillWriter, sys biz.SystemSettingRepo) *Runner {
-	return &Runner{reader: reader, writer: writer, sys: sys, pending: map[string]struct{}{}}
+func NewRunner(reader SkillReader, writer SkillWriter, sys biz.SystemSettingRepo, lg loggateway.Logger) *Runner {
+	return &Runner{reader: reader, writer: writer, sys: sys, lg: lg, pending: map[string]struct{}{}}
 }
 
-func NewRunnerWithBus(reader SkillReader, writer SkillWriter, sys biz.SystemSettingRepo, bus event.Bus) *Runner {
-	return &Runner{reader: reader, writer: writer, sys: sys, eventBus: bus, pending: map[string]struct{}{}}
+func NewRunnerWithBus(reader SkillReader, writer SkillWriter, sys biz.SystemSettingRepo, bus event.Bus, lg loggateway.Logger) *Runner {
+	return &Runner{reader: reader, writer: writer, sys: sys, eventBus: bus, lg: lg, pending: map[string]struct{}{}}
 }
 
 func (r *Runner) resolveRoot(ctx context.Context) string {
@@ -78,23 +80,23 @@ func (r *Runner) Start(ctx context.Context) {
 	}
 	root := r.resolveRoot(ctx)
 	if err := os.MkdirAll(root, 0o755); err != nil {
-		event.SysLogError("skill.fs.error", "skill watch: mkdir skill root", event.P("path", root), event.P("err", err))
+		r.lg.Error("skill watch: mkdir skill root", loggateway.StepID("skill.fs.error"), loggateway.Str("path", root), loggateway.Err(err))
 		return
 	}
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
-		event.SysLogError("skill.fs.error", "skill watch: fsnotify", event.P("err", err))
+		r.lg.Error("skill watch: fsnotify", loggateway.StepID("skill.fs.error"), loggateway.Err(err))
 		return
 	}
 	defer func() { _ = w.Close() }()
 
 	if err := w.Add(root); err != nil {
-		event.SysLogError("skill.fs.error", "skill watch: add root", event.P("path", root), event.P("err", err))
+		r.lg.Error("skill watch: add root", loggateway.StepID("skill.fs.error"), loggateway.Str("path", root), loggateway.Err(err))
 		return
 	}
 	r.refreshChildWatches(w, root)
 
-	event.SysLogInfo("skill.fs.scan", "skill watch: startup scan", event.P("path", root))
+	r.lg.Info("skill watch: startup scan", loggateway.StepID("skill.fs.scan"), loggateway.Str("path", root))
 	r.scanAll(ctx, root, biz.SkillInvocationSourceFilesystemScan)
 	r.startReconcileLoop(ctx)
 
@@ -112,7 +114,7 @@ func (r *Runner) Start(ctx context.Context) {
 				return
 			}
 			if err != nil {
-				event.SysLogWarn("skill.fs.error", "skill watch: watcher error", event.P("err", err))
+				r.lg.Warn("skill watch: watcher error", loggateway.StepID("skill.fs.error"), loggateway.Err(err))
 			}
 		}
 	}
@@ -212,7 +214,7 @@ func slugFromEvent(root, fullPath string) string {
 func (r *Runner) scanAll(ctx context.Context, root string, source string) {
 	ents, err := os.ReadDir(root)
 	if err != nil {
-		event.SysLogError("skill.fs.error", "skill watch: readdir", event.P("path", root), event.P("err", err))
+		r.lg.Error("skill watch: readdir", loggateway.StepID("skill.fs.error"), loggateway.Str("path", root), loggateway.Err(err))
 		return
 	}
 	for _, e := range ents {
@@ -221,7 +223,7 @@ func (r *Runner) scanAll(ctx context.Context, root string, source string) {
 		}
 		r.syncSlug(ctx, root, e.Name(), source)
 	}
-	event.SysLogInfo("skill.fs.scan", "skill watch: scan done", event.P("path", root), event.P("slugs", len(ents)))
+	r.lg.Info("skill watch: scan done", loggateway.StepID("skill.fs.scan"), loggateway.Str("path", root), loggateway.Int("slugs", len(ents)))
 }
 
 func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
@@ -244,7 +246,7 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 			ErrorMessage: errMsg,
 			Source:       source,
 		})
-		event.SysLogWarn(sourceTag, "skill filesystem missing", event.P("slug", slug), event.P("err", errMsg))
+		r.lg.Warn("skill filesystem missing", loggateway.StepID(sourceTag), loggateway.Str("slug", slug), loggateway.Str("err", errMsg))
 		r.reportSync(ctx, "skill.filesystem.missing", slug, "Skill 磁盘目录缺失: "+slug, "warn")
 		return
 	}
@@ -253,13 +255,13 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 	files, err := importer.ReadSkillDirFiles(dir)
 	if err != nil {
 		r.recordFailure(ctx, slug, source, t0, "read_dir", err)
-		event.SysLogWarn("skill.fs.error", "skill read dir failed", event.P("slug", slug), event.P("err", err))
+		r.lg.Warn("skill read dir failed", loggateway.StepID("skill.fs.error"), loggateway.Str("slug", slug), loggateway.Err(err))
 		return
 	}
 	candidate, tags := importer.ValidateSkillPackage(files, slug, nil, true)
 	if mismatch := importer.DirectorySlugMismatch(slug, candidate.Slug); mismatch != nil {
 		r.recordFailure(ctx, slug, source, t0, mismatch.Type, errors.New(mismatch.Message))
-		event.SysLogWarn("skill.fs.error", "skill slug mismatch", event.P("slug", slug), event.P("msg", mismatch.Message))
+		r.lg.Warn("skill slug mismatch", loggateway.StepID("skill.fs.error"), loggateway.Str("slug", slug), loggateway.Str("msg", mismatch.Message))
 		r.reportSync(ctx, "skill.filesystem.rejected", slug, mismatch.Message, "warn")
 		return
 	}
@@ -269,7 +271,7 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 			msg = candidate.Blocks[0].Message
 		}
 		r.recordFailure(ctx, slug, source, t0, "validate", errors.New(msg))
-		event.SysLogWarn("skill.fs.error", "skill validation failed", event.P("slug", slug), event.P("msg", msg))
+		r.lg.Warn("skill validation failed", loggateway.StepID("skill.fs.error"), loggateway.Str("slug", slug), loggateway.Str("msg", msg))
 		r.reportSync(ctx, "skill.filesystem.rejected", slug, msg, "warn")
 		return
 	}
@@ -294,7 +296,7 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 	dur := int(time.Since(t0).Milliseconds())
 	if err != nil {
 		r.recordFailure(ctx, slug, source, t0, "upsert", err)
-		event.SysLogError("skill.fs.error", "skill upsert failed", event.P("slug", slug), event.P("err", err))
+		r.lg.Error("skill upsert failed", loggateway.StepID("skill.fs.error"), loggateway.Str("slug", slug), loggateway.Err(err))
 		return
 	}
 	ver := ""
@@ -310,7 +312,7 @@ func (r *Runner) syncSlug(ctx context.Context, root, slug, source string) {
 		OutputPreview: preview(sk.Name + " @" + sk.Slug),
 		Source:        source,
 	})
-	event.SysLogInfo(sourceTag, "skill sync success", event.P("slug", slug), event.P("skill_id", sk.ID), event.P("duration_ms", dur))
+	r.lg.Info("skill sync success", loggateway.StepID(sourceTag), loggateway.Str("slug", slug), loggateway.Str("skill_id", sk.ID), loggateway.Int("duration_ms", dur))
 	eventKey := "skill.filesystem.updated"
 	severity := "info"
 	message := "Skill 磁盘同步: " + sk.Name

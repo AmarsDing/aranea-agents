@@ -163,6 +163,28 @@ watch(
   }
 );
 
+watch(
+  () => props.runs,
+  () => {
+    localSelected.value = [];
+    comparePage.value = 1;
+  }
+);
+
+watch(
+  () => props.trendPoints,
+  () => {
+    trendPage.value = 1;
+  }
+);
+
+watch(
+  () => props.comparisons,
+  () => {
+    comparisonPage.value = 1;
+  }
+);
+
 const trendColumns = EVAL_TREND_TABLE_COLUMNS;
 const compareSelectColumns = EVAL_RECENT_RUN_TABLE_COLUMNS;
 const comparisonColumns = EVAL_COMPARE_TABLE_COLUMNS;

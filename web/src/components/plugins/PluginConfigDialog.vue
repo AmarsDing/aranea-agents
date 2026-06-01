@@ -16,7 +16,7 @@
         </q-tabs>
         <q-tab-panels :model-value="mode" animated @update:model-value="$emit('update:mode', $event as 'form' | 'json')">
           <q-tab-panel name="form" class="q-pa-none">
-            <PluginSchemaForm :model-value="configText" :schema-json="target?.config_schema_json || '{}'" @update:model-value="$emit('update:configText', $event)" />
+            <PluginSchemaForm :model-value="configText" :schema-json="target?.config_schema_json || '{}'" @update:model-value="$emit('update:configText', $event)" @validation-error="$emit('validationError', $event)" />
           </q-tab-panel>
           <q-tab-panel name="json" class="q-pa-none">
             <q-input
@@ -32,8 +32,8 @@
           </q-tab-panel>
         </q-tab-panels>
         <q-expansion-item icon="schema" label="默认配置 / Schema 参考">
-          <pre class="app-code-block app-code-block--compact">{{ target?.default_config_json || "{}" }}</pre>
-          <pre class="app-code-block app-code-block--compact">{{ target?.config_schema_json || "{}" }}</pre>
+          <pre class="app-code-block app-code-block--compact">{{ prettyJSON(target?.default_config_json || "{}", "暂无默认配置") }}</pre>
+          <pre class="app-code-block app-code-block--compact">{{ prettyJSON(target?.config_schema_json || "{}", "暂无 Schema") }}</pre>
         </q-expansion-item>
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
@@ -47,6 +47,7 @@
 <script setup lang="ts">
 import PluginSchemaForm from "./PluginSchemaForm.vue";
 import type { Plugin } from "../../features/plugins/types";
+import { prettyJSON } from "./pluginUi";
 
 defineProps<{
   open: boolean;
@@ -62,5 +63,6 @@ defineEmits<{
   "update:configText": [value: string];
   "update:mode": [value: "form" | "json"];
   save: [];
+  validationError: [message: string];
 }>();
 </script>

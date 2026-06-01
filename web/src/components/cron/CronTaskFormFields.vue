@@ -9,7 +9,7 @@
       class="cron-field"
       dense
       outlined
-      label="名称 *"
+      label="标识 *"
       placeholder="my-daily-task"
       :rules="[cronSlugRule]"
     />

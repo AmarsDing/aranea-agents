@@ -9,6 +9,7 @@ import {
   formatPluginDate,
   prettyJSON
 } from "../../components/plugins/pluginUi";
+import { CALLBACK_POINT_OPTIONS } from "../callback/constants";
 
 export function usePluginsPage() {
   const $q = useQuasar();
@@ -34,6 +35,7 @@ export function usePluginsPage() {
   const scopeMode = ref<"global" | "agent">("global");
   const scopeAgentId = ref("");
   const savingScope = ref(false);
+  const bumpingSort = ref(false);
 
   const configOpen = ref(false);
   const configTarget = ref<Plugin | null>(null);
@@ -95,8 +97,9 @@ export function usePluginsPage() {
 
   function openDetail(plugin: Plugin) {
     detailTarget.value = plugin;
-    scopeMode.value = plugin.scope && plugin.scope !== "global" ? "agent" : "global";
-    scopeAgentId.value = scopeMode.value === "agent" ? plugin.scope : "";
+    const isGlobal = !plugin.scope || plugin.scope === "global";
+    scopeMode.value = isGlobal ? "global" : "agent";
+    scopeAgentId.value = isGlobal ? "" : plugin.scope;
     detailOpen.value = true;
   }
 
@@ -123,6 +126,7 @@ export function usePluginsPage() {
   }
 
   async function bumpSort(plugin: Plugin, delta: number) {
+    bumpingSort.value = true;
     try {
       const updated = await pluginsStore.bumpSort(plugin.id, Math.max(0, plugin.sort_order + delta));
       rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
@@ -130,11 +134,17 @@ export function usePluginsPage() {
       $q.notify({ type: "positive", message: "执行顺序已更新" });
     } catch (err) {
       $q.notify({ type: "negative", message: err instanceof Error ? err.message : "更新失败" });
+    } finally {
+      bumpingSort.value = false;
     }
   }
 
   async function saveScope() {
     if (!detailTarget.value) return;
+    if (scopeMode.value === "agent" && !scopeAgentId.value.trim()) {
+      $q.notify({ type: "warning", message: "请输入 Agent ID" });
+      return;
+    }
     savingScope.value = true;
     try {
       const scope = scopeMode.value === "global" ? "global" : scopeAgentId.value.trim();
@@ -150,13 +160,20 @@ export function usePluginsPage() {
   }
 
   watch([search, category, enabled, callbackPoint], () => {
-    page.value = 1;
-    void loadRows(1, pageSize.value);
+    if (page.value === 1) {
+      void loadRows(1, pageSize.value);
+    } else {
+      page.value = 1;
+    }
   });
 
   watch([page, pageSize], () => void loadRows());
 
   onMounted(() => loadRows());
+
+  function onSchemaValidationError(message: string) {
+    $q.notify({ type: "warning", message });
+  }
 
   return {
     rows,
@@ -176,6 +193,7 @@ export function usePluginsPage() {
     scopeMode,
     scopeAgentId,
     savingScope,
+    bumpingSort,
     configOpen,
     configTarget,
     configText,
@@ -184,6 +202,7 @@ export function usePluginsPage() {
     configError,
     categoryOptions: PLUGIN_CATEGORY_OPTIONS,
     enabledOptions: PLUGIN_ENABLED_OPTIONS,
+    callbackPointOptions: CALLBACK_POINT_OPTIONS,
     formatDate: formatPluginDate,
     prettyJSON,
     loadRows,
@@ -193,6 +212,7 @@ export function usePluginsPage() {
     openConfig,
     saveConfig,
     bumpSort,
-    saveScope
+    saveScope,
+    onSchemaValidationError
   };
 }

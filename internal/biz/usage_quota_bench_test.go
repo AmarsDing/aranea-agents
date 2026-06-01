@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func BenchmarkCheckQuota(b *testing.B) {
@@ -17,7 +19,7 @@ func BenchmarkCheckQuota(b *testing.B) {
 		},
 		spent: 1_000_000,
 	}
-	uc := NewUsageUsecase(repo)
+	uc := NewUsageUsecase(repo, loggateway.Global())
 	ctx := context.Background()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

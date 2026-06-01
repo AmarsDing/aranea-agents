@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -121,8 +121,11 @@ func generateModeEdges(ctx context.Context, mode string, def Definition, nodes [
 	}
 	trimmed := countTransferEdges(modeEdges) > maxAdaptiveTransferEdges
 	if trimmed {
-		event.CtxFlowLogWarn(ctx, "team.compile.adaptive_trimmed", "transfer edges trimmed due to member count exceeding limit",
-			event.P("member_count", len(agentIDs)), event.P("max_transfer_edges", maxAdaptiveTransferEdges), event.P("mode", mode))
+		loggateway.Global().Warn("transfer edges trimmed due to member count exceeding limit",
+			loggateway.StepID("team.compile.adaptive_trimmed"),
+			loggateway.Int("member_count", len(agentIDs)),
+			loggateway.Int("max_transfer_edges", maxAdaptiveTransferEdges),
+			loggateway.Str("mode", mode))
 	}
 	out = append(out, modeEdges...)
 

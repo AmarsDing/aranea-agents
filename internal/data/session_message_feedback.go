@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/data/ent/message"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -28,7 +29,9 @@ func (r *sessionRepo) UpdateMessageFeedbackJSON(ctx context.Context, sessionID, 
 	}
 	opts := map[string]any{}
 	if raw := strings.TrimSpace(row.OptionsJSON); raw != "" {
-		_ = json.Unmarshal([]byte(raw), &opts)
+		if err := json.Unmarshal([]byte(raw), &opts); err != nil {
+		loggateway.Global().Warn("options json unmarshal failed", loggateway.StepID("session.feedback"), loggateway.Err(err))
+	}
 	}
 	fb := map[string]any{
 		"rating":     rating,

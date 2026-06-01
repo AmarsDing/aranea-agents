@@ -18,7 +18,7 @@ func TestCancelSessionRunForCard_ownershipDenied(t *testing.T) {
 	svc := &ChatService{
 		orch: &ChatOrchestrator{
 			chTurn: ChannelTurnDeps{
-				SessionRuns: biz.NewSessionRunUsecase(repo, nil),
+				SessionRuns: biz.NewSessionRunUsecase(repo, nil, nil),
 			},
 		},
 	}

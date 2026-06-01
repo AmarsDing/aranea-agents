@@ -35,6 +35,7 @@
               <template #header>
                 <category-tree-node-header
                   :node="department"
+                  :show-system-chip="showSystemChip"
                   :readonly="readonly"
                   :toggle-loading="isToggling(department.id)"
                   @edit="$emit('edit', department)"
@@ -129,7 +130,10 @@ watch(
   () => props.keyword,
   (keyword) => {
     const q = keyword.trim();
-    if (!q) return;
+    if (!q) {
+      expandedIds.value = collectDefaultExpandedIds(props.tree);
+      return;
+    }
     expandedIds.value = new Set(collectExpandedIdsForFilter(props.tree, q));
   }
 );

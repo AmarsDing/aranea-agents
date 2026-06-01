@@ -22,7 +22,7 @@
           <div class="row items-center q-gutter-sm">
             <div class="text-h5" style="color: var(--color-text-primary)">{{ session.title || '未命名会话' }}</div>
             <q-chip dense :color="ownerChipColor(session.owner_type)" text-color="white">{{ ownerLabel(session.owner_type) }}</q-chip>
-            <q-badge :color="statusBadgeColor(session.status)">{{ session.status }}</q-badge>
+            <SessionStatusBadge :status="session.status" :status-reason="session.status_reason" :status-changed-at="session.status_changed_at" />
           </div>
           <div class="text-caption text-grey-7 q-mt-xs">
             {{ session.id }} · 创建 {{ formatSessionDate(session.created_at) }} · 最后活跃 {{ formatSessionDate(session.last_message_at || session.updated_at) }}
@@ -41,9 +41,9 @@
               </q-item>
             </q-list>
           </q-btn-dropdown>
-          <q-btn v-if="session.status === 'archived'" outline rounded icon="restore" label="恢复" class="sessions-btn-accent-outline" @click="handleRestore" />
+          <q-btn v-if="!!session.archived_at" outline rounded icon="restore" label="恢复" class="sessions-btn-accent-outline" @click="handleRestore" />
           <q-btn outline rounded icon="chat" label="继续会话" class="sessions-btn-accent-outline" :to="{ name: 'chat', query: { session: session.id } }" />
-          <q-btn flat rounded icon="archive" label="归档" class="sessions-btn-ghost" :disable="session.status === 'archived'" @click="handleArchive" />
+          <q-btn flat rounded icon="archive" label="归档" class="sessions-btn-ghost" :disable="!!session.archived_at" @click="handleArchive" />
         </div>
       </div>
 
@@ -138,9 +138,9 @@ import {
   formatSessionDate,
   ownerChipColor,
   ownerLabel,
-  ratioValue,
-  statusBadgeColor
+  ratioValue
 } from "../components/sessions/sessionUi";
+import SessionStatusBadge from "../components/sessions/SessionStatusBadge.vue";
 import SessionTurnsPanel from "../components/sessions/SessionTurnsPanel.vue";
 import SessionRunsPanel from "../components/sessions/SessionRunsPanel.vue";
 import SessionParticipantsPanel from "../components/sessions/SessionParticipantsPanel.vue";

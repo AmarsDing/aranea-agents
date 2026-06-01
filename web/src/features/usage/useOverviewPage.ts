@@ -1,13 +1,21 @@
-import { reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import { useRoute } from "vue-router";
 import { storeToRefs } from "pinia";
+import { useI18n } from "vue-i18n";
 import { useUsageStore } from "../../stores/usage";
+import { usePlatformStore } from "../../stores/platform";
+import { useMonitorStore } from "../../stores/monitor";
+import { useAgentsCatalogStore } from "../../stores/agents/catalog";
 import type { ModelUsageQuery } from "./types";
-import { formatUsdFromMicro } from "./moneyFormat";
+import { formatUsdFromMicro, formatCount as fmtCount, formatPercent as fmtPercent } from "./moneyFormat";
+import { useMonitorRunNavigation } from "../monitor/useMonitorRunNavigation";
+import { listTeams } from "../teams/api";
+import { listPlatformResources } from "../platform/api";
 
 const VALID_RANGES = new Set(["today", "7d", "30d", "month"]);
 
 export function useOverviewPage() {
+  const { t } = useI18n();
   const route = useRoute();
   const usageStore = useUsageStore();
   const { overview, loading, error } = storeToRefs(usageStore);
@@ -20,31 +28,91 @@ export function useOverviewPage() {
     status: ""
   });
 
-  const rangeOptions = [
-    { label: "今日", value: "today" },
-    { label: "7 天", value: "7d" },
-    { label: "30 天", value: "30d" },
-    { label: "本月", value: "month" }
-  ];
+  const rangeOptions = computed(() => [
+    { label: t("overviewPage.rangeToday"), value: "today" },
+    { label: t("overviewPage.range7d"), value: "7d" },
+    { label: t("overviewPage.range30d"), value: "30d" },
+    { label: t("overviewPage.rangeMonth"), value: "month" }
+  ]);
 
-  const statusOptions = [
-    { label: "成功", value: "success" },
-    { label: "失败", value: "failed" },
-    { label: "取消", value: "cancelled" },
-    { label: "超时", value: "timeout" }
-  ];
+  const statusOptions = computed(() => [
+    { label: t("overviewPage.statusSuccess"), value: "success" },
+    { label: t("overviewPage.statusFailed"), value: "failed" },
+    { label: t("overviewPage.statusCancelled"), value: "cancelled" },
+    { label: t("overviewPage.statusTimeout"), value: "timeout" }
+  ]);
 
-  const granularityOptions = [
-    { label: "按天", value: "day" },
-    { label: "按小时", value: "hour" }
-  ];
+  const granularityOptions = computed(() => [
+    { label: t("overviewPage.granularityDay"), value: "day" },
+    { label: t("overviewPage.granularityHour"), value: "hour" }
+  ]);
+
+  const platformStore = usePlatformStore();
+  const { providerModels } = storeToRefs(platformStore);
+
+  const providerOptions = computed(() => {
+    const seen = new Map<string, string>();
+    for (const m of providerModels.value) {
+      const code = m.provider ?? "";
+      const name = m.name ?? code;
+      if (code && !seen.has(code)) {
+        seen.set(code, name);
+      }
+    }
+    return Array.from(seen.entries()).map(([value, label]) => ({ label, value }));
+  });
+
+  const modelOptions = computed(() => {
+    const provider = filters.provider_code;
+    const seen = new Map<string, string>();
+    for (const m of providerModels.value) {
+      if (provider && m.provider !== provider) continue;
+      const apiId = m.model ?? "";
+      const name = m.name ?? apiId;
+      if (apiId && !seen.has(apiId)) {
+        seen.set(apiId, name);
+      }
+    }
+    return Array.from(seen.entries()).map(([value, label]) => ({ label, value }));
+  });
+
+  function onProviderChange() {
+    const currentModel = filters.model_api_id;
+    if (currentModel) {
+      const valid = modelOptions.value.some((o) => o.value === currentModel);
+      if (!valid) filters.model_api_id = "";
+    }
+    loadOverview();
+  }
+
+  const providerHealthLoading = ref(true);
+
+  async function loadProviderHealth() {
+    providerHealthLoading.value = true;
+    try {
+      await platformStore.loadProviderModels();
+    } catch {
+      // silent
+    } finally {
+      providerHealthLoading.value = false;
+    }
+  }
 
   async function loadOverview() {
     await usageStore.loadOverview({ ...filters }, trendGranularity.value);
   }
 
+  const monitorStore = useMonitorStore();
+  const { runnerMetrics, runnerLoading } = storeToRefs(monitorStore);
+  const runnerWindowMinutes = ref(60);
+  const { openRunsTab } = useMonitorRunNavigation();
+
+  async function reloadRunnerMetrics() {
+    await monitorStore.loadRunnerMetrics(runnerWindowMinutes.value);
+  }
+
   function formatCount(value?: number) {
-    return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 }).format(value ?? 0);
+    return fmtCount(value);
   }
 
   function formatMoney(value?: number) {
@@ -52,10 +120,104 @@ export function useOverviewPage() {
   }
 
   function formatPercent(value?: number) {
-    return `${Math.round((value ?? 0) * 100)}%`;
+    return fmtPercent(value);
   }
 
+  const agentsCatalogStore = useAgentsCatalogStore();
+  const agentStats = ref({ active: 0, total: 0 });
+
+  async function loadAgentStats() {
+    try {
+      const list = await agentsCatalogStore.fetchAgents({ limit: 1000 });
+      agentStats.value = {
+        active: list.filter((a: { status: string }) => a.status === "active" || !a.status).length,
+        total: list.length
+      };
+    } catch {
+      // silent
+    }
+  }
+
+  const providerCount = computed(() => {
+    const seen = new Set<string>();
+    for (const m of providerModels.value) {
+      const code = m.provider ?? "";
+      if (code) seen.add(code);
+    }
+    return seen.size;
+  });
+
+  const categoryCount = ref(0);
+  const teamCount = ref(0);
+
+  async function loadCategoryCount() {
+    try {
+      const rows = await listPlatformResources("agent-categories");
+      categoryCount.value = rows.length;
+    } catch {
+      // silent
+    }
+  }
+
+  async function loadTeamCount() {
+    try {
+      const teams = await listTeams();
+      teamCount.value = teams.length;
+    } catch {
+      // silent
+    }
+  }
+
+  const tokenTrendDialogOpen = ref(false);
+
+  function openTokenTrendDialog() {
+    tokenTrendDialogOpen.value = true;
+  }
+
+  const username = computed(() => {
+    try {
+      const raw = localStorage.getItem("auth_user");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.username) return parsed.username;
+      }
+    } catch {
+      // silent
+    }
+    return "Admin";
+  });
+
+  const providerHealthSummary = computed(() => {
+    const models = providerModels.value;
+    const active = models.filter((m: { status: string }) => m.status === "active" || !m.status).length;
+    const degraded = models.filter((m: { status: string }) => m.status === "degraded").length;
+    return { active, degraded, total: models.length };
+  });
+
+  const sessionActiveCount = computed(() => overview.value?.today?.call_count ?? 0);
+
+  const sessionSparkline = computed(() => {
+    const trends = overview.value?.trends ?? [];
+    return trends.slice(-24).map((t: { call_count: number }) => t.call_count ?? 0);
+  });
+
+  const runnerStats = computed(() => ({
+    totalRuns: runnerMetrics.value?.total_runs ?? 0,
+    errorRuns: runnerMetrics.value?.error_runs ?? 0,
+    successRate: (runnerMetrics.value?.success_rate ?? 0) * 100,
+    errorRate: (runnerMetrics.value?.error_rate ?? 0) * 100
+  }));
+
+  onMounted(() => {
+    void loadProviderHealth();
+    void reloadRunnerMetrics();
+    void loadAgentStats();
+    void loadCategoryCount();
+    void loadTeamCount();
+  });
+
   return {
+    t,
     overview,
     loading,
     error,
@@ -64,9 +226,30 @@ export function useOverviewPage() {
     rangeOptions,
     statusOptions,
     granularityOptions,
+    providerOptions,
+    modelOptions,
+    onProviderChange,
     loadOverview,
     formatCount,
     formatMoney,
-    formatPercent
+    formatPercent,
+    providerModels,
+    providerHealthLoading,
+    runnerMetrics,
+    runnerLoading,
+    runnerWindowMinutes,
+    reloadRunnerMetrics,
+    openRunsTab,
+    agentStats,
+    providerCount,
+    categoryCount,
+    teamCount,
+    tokenTrendDialogOpen,
+    openTokenTrendDialog,
+    username,
+    providerHealthSummary,
+    sessionActiveCount,
+    sessionSparkline,
+    runnerStats
   };
 }

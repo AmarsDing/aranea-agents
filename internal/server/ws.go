@@ -16,6 +16,7 @@ import (
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/auth"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"github.com/go-kratos/kratos/v2/transport"
@@ -134,6 +135,7 @@ type WSServer struct {
 	closed                bool
 	maxSessionConns       int
 	maxGlobalMonitorConns int
+	lg                    loggateway.Logger
 }
 
 // NewWSServer wires a single bus (tests / legacy).
@@ -142,11 +144,11 @@ func NewWSServer(c *conf.Server, eventBus event.Bus, eventBuffer *event.Buffer, 
 		SessionBus: eventBus,
 		MonitorBus: eventBus,
 		Buffer:     eventBuffer,
-	}, canceller, sender, nil)
+	}, canceller, sender, nil, nil)
 }
 
 // NewWSServerFromInfra uses session bus for chat envelopes and monitor bus for flow_log (P0).
-func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnGateway biz.TurnExecutorGateway) *WSServer {
+func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCanceller, sender ChatSender, turnGateway biz.TurnExecutorGateway, lg loggateway.Logger) *WSServer {
 	if c == nil || c.GetWs() == nil || !c.GetWs().GetEnable() {
 		return nil
 	}
@@ -168,6 +170,7 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 		serverConf:            c,
 		maxSessionConns:       envInt("WS_MAX_SESSION_CONNS", defaultMaxSessionConns),
 		maxGlobalMonitorConns: envInt("WS_MAX_GLOBAL_MONITOR_CONNS", defaultMaxGlobalMonitorConns),
+		lg:                    lg,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				o := strings.TrimSpace(r.Header.Get("Origin"))
@@ -308,7 +311,7 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		event.SysLogWarn("system.ws.upgrade_failed", "WebSocket 升级失败", event.P("error", err))
+		s.lg.Warn("WebSocket 升级失败", loggateway.StepID("system.ws.upgrade_failed"), loggateway.Err(err))
 		return
 	}
 
@@ -575,7 +578,7 @@ func (s *WSServer) readPump(wc *wsConn, eventCh <-chan event.Envelope) {
 		_, message, err := wc.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
-				event.SessionSysLogWarn(context.Background(), wc.sessionID, "system.ws.read_error", "WebSocket 读错误", event.P("error", err))
+				s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket 读错误", loggateway.StepID("system.ws.read_error"), loggateway.Err(err))
 			}
 			return
 		}
@@ -610,9 +613,8 @@ func (s *WSServer) eventPump(wc *wsConn, eventCh <-chan event.Envelope) {
 		// MON-OPT-04: route to priority queue; close connection on high-queue timeout.
 		prio := wsEnvelopePriority(env.Type)
 		if ok := wc.queues.enqueue(prio, data); !ok {
-			// high queue timed out — gracefully close so client reconnects.
-			event.SessionSysLogWarn(context.Background(), wc.sessionID, "system.ws.high_queue_timeout",
-				"WebSocket 高优先级队列超时，关闭连接", event.P("type", env.Type))
+			s.lg.With(loggateway.SessionID(wc.sessionID)).Warn("WebSocket 高优先级队列超时，关闭连接",
+				loggateway.StepID("system.ws.high_queue_timeout"), loggateway.Any("type", env.Type))
 			close(wc.send) // signal writePump to exit
 			return
 		}
@@ -623,7 +625,7 @@ func (s *WSServer) eventPump(wc *wsConn, eventCh <-chan event.Envelope) {
 func (s *WSServer) handleUpstream(wc *wsConn, raw []byte) {
 	var up wsUpstream
 	if err := json.Unmarshal(raw, &up); err != nil {
-		event.SysLogWarn("system.ws.parse_error", "WebSocket 上行消息解析失败", event.P("error", err))
+		s.lg.Warn("WebSocket 上行消息解析失败", loggateway.StepID("system.ws.parse_error"), loggateway.Err(err))
 		return
 	}
 	if up.Direction != "client_to_server" {
@@ -736,7 +738,7 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 			defer cancel()
 			_, err := s.turnGateway.ExecuteTurn(ctx, input)
 			if err != nil {
-				event.SessionSysLogWarn(context.Background(), sessionID, "system.ws.send_failed", "WebSocket 用户消息发送失败", event.P("error", err))
+				s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("system.ws.send_failed"), loggateway.Err(err))
 				// ExecuteTurn publishes user-facing failures through the turn projector.
 				// Avoid a second raw ws-handler error that can leak provider details.
 			}
@@ -767,7 +769,7 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 		defer cancel()
 		_, err := s.sender.SendChatMessage(ctx, req)
 		if err != nil {
-			event.SessionSysLogWarn(context.Background(), sessionID, "system.ws.send_failed", "WebSocket 用户消息发送失败", event.P("error", err))
+			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("system.ws.send_failed"), loggateway.Err(err))
 			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
 			env.RequestID = requestID
 			env.Error = &event.EnvelopeError{
@@ -805,7 +807,7 @@ func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 		defer cancel()
 		resp, err := s.sender.EnqueueUserMessage(ctx, req)
 		if err != nil {
-			event.SessionSysLogWarn(context.Background(), sessionID, "system.ws.send_failed", "WebSocket 入队消息发送失败", event.P("error", err))
+			s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 入队消息发送失败", loggateway.StepID("system.ws.send_failed"), loggateway.Err(err))
 			env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
 			env.RequestID = requestID
 			env.Error = &event.EnvelopeError{

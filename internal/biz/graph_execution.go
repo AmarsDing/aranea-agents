@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -272,7 +272,7 @@ func (uc *GraphUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntimeEvent, e
 	uc.executions[execID] = exec
 	uc.mu.Unlock()
 	if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
-		event.SysLogWarn("system.tool.record_fail", "consumeRuntimeEvents: UpdateRun failed", event.P("exec_id", execID), event.P("error", err.Error()))
+		uc.lg.Warn("consumeRuntimeEvents: UpdateRun failed", loggateway.StepID("system.tool.record_fail"), loggateway.Str("exec_id", execID), loggateway.Err(err))
 	}
 
 	if onComplete != nil {
@@ -295,8 +295,8 @@ func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e 
 				node := nodeDefFromConfig(cfg, e.NodeID)
 				if ShouldCreateTaskForNode(node) {
 					if err := uc.taskCoord.OnGraphNodeStart(ctx, exec, node, ""); err != nil {
-						event.SysLogWarn("system.graph.task_start_fail", "graph task on node start failed",
-							event.P("execution_id", exec.ID), event.P("node_id", e.NodeID), event.P("error", err.Error()))
+						uc.lg.Warn("graph task on node start failed",
+						loggateway.StepID("system.graph.task_start_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Str("node_id", e.NodeID), loggateway.Err(err))
 					}
 				}
 			}
@@ -311,7 +311,7 @@ func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e 
 		})
 		uc.mu.Unlock()
 		if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
-			event.SysLogWarn("system.tool.record_fail", "updateExecutionFromRuntimeEvent: UpdateRun failed for node_end", event.P("execution_id", exec.ID), event.P("error", err.Error()))
+			uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for node_end", loggateway.StepID("system.tool.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))
 		}
 	case DomainEventGraphNodeError:
 		uc.mu.Lock()
@@ -326,7 +326,7 @@ func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e 
 		})
 		uc.mu.Unlock()
 		if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
-			event.SysLogWarn("system.tool.record_fail", "updateExecutionFromRuntimeEvent: UpdateRun failed for node_error", event.P("execution_id", exec.ID), event.P("error", err.Error()))
+			uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for node_error", loggateway.StepID("system.tool.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))
 		}
 	case DomainEventGraphInterrupt:
 		uc.mu.Lock()
@@ -334,7 +334,7 @@ func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e 
 		exec.InterruptNode = e.NodeID
 		uc.mu.Unlock()
 		if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
-			event.SysLogWarn("system.tool.record_fail", "updateExecutionFromRuntimeEvent: UpdateRun failed for interrupt", event.P("execution_id", exec.ID), event.P("error", err.Error()))
+			uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for interrupt", loggateway.StepID("system.tool.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))
 		}
 	}
 }

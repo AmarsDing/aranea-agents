@@ -1,4 +1,3 @@
-// Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
   <div class="artifact-list">
     <div v-if="loading" class="row justify-center q-py-sm">
@@ -53,7 +52,8 @@
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
-import { signDownloadUrl, artifactDownloadHref, deleteArtifact } from "./api";
+import { useArtifactStore } from "../../stores/artifact";
+import { formatBytes } from "../../shared/format";
 import ArtifactPreview from "./ArtifactPreview.vue";
 import type { ArtifactMeta } from "./types";
 
@@ -69,6 +69,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const { notify } = useQuasar();
+const artifactStore = useArtifactStore();
 
 const deletedIds = ref(new Set<string>());
 const displayItems = computed(() => props.items.filter((item) => !deletedIds.value.has(item.id)));
@@ -89,13 +90,6 @@ function mimeIcon(mime: string): string {
   return "insert_drive_file";
 }
 
-function formatBytes(n: number) {
-  if (!n) return "0 B";
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function onView(item: ArtifactMeta) {
   previewMeta.value = item;
   previewArtifactId.value = item.id;
@@ -104,10 +98,10 @@ function onView(item: ArtifactMeta) {
 
 async function onDownload(item: ArtifactMeta) {
   try {
-    const signed = await signDownloadUrl(item.id, item.version);
-    window.open(artifactDownloadHref(signed.url), "_blank", "noopener,noreferrer");
-  } catch {
-    // silent — user can retry
+    const signed = await artifactStore.signDownload(item.id, item.version);
+    window.open(artifactStore.artifactDownloadHref(signed.url), "_blank", "noopener,noreferrer");
+  } catch (e) {
+    notify({ type: "negative", message: e instanceof Error ? e.message : t("chat.sessionArtifacts.download", "下载失败") });
   }
 }
 
@@ -117,7 +111,7 @@ async function onPreviewDownload(meta: ArtifactMeta) {
 
 async function onDelete(item: ArtifactMeta) {
   try {
-    await deleteArtifact(item.id);
+    await artifactStore.remove(item.id);
     deletedIds.value.add(item.id);
     emit("deleted", item.id);
     notify({ type: "positive", message: t("chat.attachmentDeleted") });

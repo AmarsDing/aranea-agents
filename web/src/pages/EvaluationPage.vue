@@ -193,4 +193,8 @@ watch(
     if (runsPage.value > runsPageMax.value) runsPage.value = runsPageMax.value;
   }
 );
+
+watch(selectedDatasetId, () => {
+  runsPage.value = 1;
+});
 </script>

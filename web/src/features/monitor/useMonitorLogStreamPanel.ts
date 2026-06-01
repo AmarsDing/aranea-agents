@@ -12,7 +12,6 @@ export function useMonitorLogStreamPanel() {
   provide("processLogConfigured", processLogConfigured);
 
   onMounted(async () => {
-    hub.setProcessPaused(true);
     try {
       await monitorStore.loadLogs();
       const snapshot = monitorStore.logSnapshot;

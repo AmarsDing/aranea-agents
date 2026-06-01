@@ -34,7 +34,7 @@
         <q-tab name="skills" label="Skill / 工具" />
         <q-tab name="evolution" label="进化" />
         <q-tab name="hooks" label="钩子" />
-        <q-tab name="a2a" label="A2A" />
+        <q-tab name="a2a" label="A2A 协议" />
       </q-tabs>
       <q-separator />
 
@@ -87,6 +87,7 @@
             :dirty="fileDirty"
             :agent-id="toValue(agentId)"
             @update-file-body="updateFileBody"
+            @confirm-reload="confirmFileReload"
             @reload="reloadActiveFile"
             @save="saveAgent"
           />
@@ -111,7 +112,7 @@
             :loading-catalog-tools="loadingCatalogTools"
             :tool-conflicts="toolConflicts"
             @load-skill-slugs="loadSkillSlugOptions"
-            @reset-skill-defaults="resetSkillRuntimeDefaults"
+          @reset-skill-defaults="confirmResetSkillDefaults"
           />
         </q-tab-panel>
         <q-tab-panel name="evolution">
@@ -154,7 +155,7 @@
             :card="a2aEndpoint.card"
             :capability-lines="a2aEndpoint.capabilityLines"
             @save="a2aEndpoint.saveEndpoint()"
-            @update:card-enabled="a2aEndpoint.card && (a2aEndpoint.card.enabled = $event)"
+            @update:card-enabled="a2aEndpoint.setCardEnabled($event)"
             @update:capability-lines="a2aEndpoint.capabilityLines = $event"
           />
         </q-tab-panel>
@@ -263,6 +264,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, toValue } from "vue";
+import { useChannelsStore } from "../stores/channels";
 import AgentAvatarPicker from "../components/avatar/AgentAvatarPicker.vue";
 import AgentEvolutionPanel from "../components/agents/AgentEvolutionPanel.vue";
 import AgentFilesPanel from "../components/agents/AgentFilesPanel.vue";
@@ -302,6 +304,7 @@ const {
   reloadAgent,
   loadInitial,
   saveAgent,
+  confirmFileReload,
   promptModes,
   statusOptions,
   copyKey,
@@ -337,6 +340,7 @@ const {
   piiPolicyOptions,
   loadSkillSlugOptions,
   resetSkillRuntimeDefaults,
+  confirmResetSkillDefaults,
   loadingSkillSlugs,
   skillSlugOptions,
   codeExecutorCapabilities,
@@ -387,6 +391,9 @@ const promptRuntimeTokens = computed(() => {
     .reduce((sum, row) => sum + row.est_tokens, 0);
 });
 
-const advancedChannelOptions: { label: string; value: string }[] = [];
-const loadingAdvancedChannels = ref(false);
+const channelsStore = useChannelsStore();
+const advancedChannelOptions = computed(() =>
+  channelsStore.channels.map((ch) => ({ label: ch.name || ch.key, value: ch.id }))
+);
+const loadingAdvancedChannels = computed(() => channelsStore.loading);
 </script>

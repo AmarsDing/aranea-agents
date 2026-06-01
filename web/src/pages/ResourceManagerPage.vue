@@ -494,6 +494,7 @@
           <q-input v-model.number="providerForm.input_price_usd_per_1m" dense outlined type="number" min="0" step="0.0001" label="输入价格" />
           <q-input v-model.number="providerForm.output_price_usd_per_1m" dense outlined type="number" min="0" step="0.0001" label="输出价格" />
           <q-input v-model.number="providerForm.cache_read_usd_per_1m" dense outlined type="number" min="0" step="0.0001" label="缓存读取价格" />
+          <q-input v-model.number="providerForm.cache_write_usd_per_1m" dense outlined type="number" min="0" step="0.0001" label="缓存写入价格" />
           <q-input v-model.number="providerForm.reasoning_price_usd_per_1m" dense outlined type="number" min="0" step="0.0001" label="推理 Token 价格" />
           <q-input v-model.number="providerForm.embedding_price_usd_per_1m" dense outlined type="number" min="0" step="0.0001" label="Embedding 价格" />
           <q-input v-model.number="providerForm.sort_order" dense outlined type="number" label="排序" />
@@ -505,8 +506,9 @@
                 <h3 class="provider-step-heading">高可用</h3>
                 <p class="provider-step-hint">配置 failover 链路与备用 Provider。</p>
                 <ProviderHAConfig
-                  v-model="providerHAForm"
-                  :provider-type-options="providerTypeFilterOptions"
+                  :model-value="providerHAForm"
+                  :provider-type-options="haCandidateProviderTypeOptions"
+                  @update:model-value="updateHAForm"
                 />
               </div>
 
@@ -659,6 +661,7 @@ const {
   categoryOptions,
   providerTypeOptions,
   providerTypeFilterOptions,
+  haCandidateProviderTypeOptions,
   variantOptions,
   form,
   providerForm,
@@ -708,6 +711,7 @@ const {
   trendMetric,
   trendMetricOptions,
   providerCodeRule,
+  updateHAForm,
   getCategories,
   metadataLabel,
   credentialEncryptionAvailable

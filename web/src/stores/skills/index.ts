@@ -13,9 +13,10 @@ import {
   uploadSkillZip,
   getSkillImportJob,
   refineSkillConflictGroup,
-  applySkillImport
+  applySkillImport,
+  getSkillFilesystemHealth
 } from "../../features/skills/api";
-import type { Skill, SkillListQuery, SkillRunQuery, PaginatedResponse } from "../../features/skills/types";
+import type { Skill, SkillListQuery, SkillRunQuery, SkillFilesystemHealth, PaginatedResponse } from "../../features/skills/types";
 
 export const useSkillsStore = defineStore("skills", () => {
   const skills = ref<Skill[]>([]);
@@ -61,6 +62,10 @@ export const useSkillsStore = defineStore("skills", () => {
     skills.value = skills.value.filter((s) => s.id !== id);
   }
 
+  async function loadFilesystemHealth(): Promise<SkillFilesystemHealth> {
+    return getSkillFilesystemHealth();
+  }
+
   return {
     skills,
     total,
@@ -71,6 +76,7 @@ export const useSkillsStore = defineStore("skills", () => {
     publish,
     duplicate,
     remove,
+    loadFilesystemHealth,
     listSkillFiles,
     readSkillFile,
     updateSkillFile,

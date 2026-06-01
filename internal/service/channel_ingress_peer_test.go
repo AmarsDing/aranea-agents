@@ -6,10 +6,11 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestInboundPeerKey_threadSession(t *testing.T) {
-	h := &ChannelIngress{}
+	h := &ChannelIngress{lg: loggateway.NewNoop()}
 	ch := biz.Channel{
 		ConfigJSON: `{"type":"feishu","routing":{"dm_scope":"per-channel-peer"},"config":{"thread_sessions_per_user":true}}`,
 	}
@@ -30,7 +31,7 @@ func TestInboundPeerKey_threadSession(t *testing.T) {
 }
 
 func TestWasActiveBeforeTurn_interruptSkipsQueued(t *testing.T) {
-	h := &ChannelIngress{}
+	h := &ChannelIngress{lg: loggateway.NewNoop()}
 	ch := biz.Channel{ConfigJSON: `{"config":{"busy_input_mode":"interrupt"}}`}
 	if h.wasActiveBeforeTurn(context.Background(), ch, "sess", true) {
 		t.Fatal("interrupted turn must not report wasActive")

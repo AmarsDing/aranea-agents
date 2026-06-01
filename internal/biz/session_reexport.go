@@ -28,12 +28,11 @@ type (
 	SessionTurnUpdateFields = session.SessionTurnUpdateFields
 	SessionSummary          = session.SessionSummary
 	StateDelta              = session.StateDelta
-	SessionRepo               = session.SessionRepo
+	SessionRepo            = session.SessionRepo
 	SessionReader           = session.SessionReader
 	SessionWriter           = session.SessionWriter
-	SessionBatchWriter      = session.SessionBatchWriter
-	SessionPinWriter        = session.SessionPinWriter
-	SessionRevisionWriter   = session.SessionRevisionWriter
+	SessionMutator              = session.SessionMutator
+	SessionBatchMutator         = session.SessionBatchMutator
 	MessageReader           = session.MessageReader
 	MessageSearchReader     = session.MessageSearchReader
 	MessageWriter           = session.MessageWriter
@@ -56,8 +55,9 @@ type (
 
 // Session interfaces for dependency injection.
 type (
-	SessionAgentLookup = session.AgentLookup
-	SessionTeamLookup  = session.TeamLookup
+	SessionAgentLookup       = session.AgentLookup
+	SessionTeamLookup        = session.TeamLookup
+	SessionStatusPublisher   = session.SessionStatusPublisher
 )
 
 const (

@@ -1,19 +1,19 @@
 <template>
   <q-page class="app-standard-page app-registry-page hooks-page">
     <AppPageHero
-      kicker="回调规则"
-      title="Hook / 回调规则"
-      subtitle="Configure lifecycle hooks for Agent, Model, Tool, and Runner events (log, notify, block, modify)."
+      :kicker="t('hooksPage.kicker')"
+      :title="t('hooksPage.title')"
+      :subtitle="t('hooksPage.subtitle')"
     >
       <template #actions>
-        <q-btn outline rounded no-caps icon="send" label="投递队列" to="/hooks/deliveries" />
-        <q-btn outline rounded no-caps icon="history" label="运行记录" to="/hooks/deliveries" />
-        <q-btn color="primary" rounded unelevated no-caps icon="add" label="新建 Hook" @click="openCreate" />
+        <q-btn outline rounded no-caps icon="send" :label="t('hooksPage.btnDeliveries')" to="/hooks/deliveries" />
+        <q-btn outline rounded no-caps icon="history" :label="t('hooksPage.btnPluginRuns')" to="/plugins/runs" />
+        <q-btn color="primary" rounded unelevated no-caps icon="add" :label="t('hooksPage.btnCreate')" @click="openCreate" />
       </template>
     </AppPageHero>
 
     <AppPageToolbar>
-      <q-input v-model="search" class="app-page-toolbar__search" dense outlined clearable debounce="200" label="搜索">
+      <q-input v-model="search" class="app-page-toolbar__search" dense outlined clearable debounce="200" :label="t('hooksPage.search')">
         <template #prepend><q-icon name="search" /></template>
       </q-input>
       <q-select
@@ -24,19 +24,19 @@
         clearable
         emit-value
         map-options
-        label="回调点"
+        :label="t('hooksPage.filterPoint')"
         :options="callbackPointOptions"
       />
       <template #actions>
-        <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
-        <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
+        <q-btn flat rounded no-caps icon="restart_alt" :label="t('hooksPage.btnReset')" @click="resetFilters" />
+        <q-btn flat rounded no-caps icon="refresh" :label="t('hooksPage.btnRefresh')" :loading="loading" @click="loadRows" />
       </template>
     </AppPageToolbar>
 
     <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
       {{ error }}
       <template #action>
-        <q-btn flat dense label="重试" class="text-white" @click="loadRows" />
+        <q-btn flat dense :label="t('hooksPage.retry')" class="text-white" @click="loadRows" />
       </template>
     </q-banner>
 
@@ -56,29 +56,32 @@
         :page-max="pageMax"
         :total="filteredRows.length"
         :loading="loading"
-        label="条 Hook"
+        :label="t('hooksPage.paginationLabel')"
       />
     </div>
 
-    <q-dialog v-model="editorOpen" persistent maximized>
-      <q-card class="app-dialog-card">
-        <q-card-section class="row items-center justify-between">
-          <div class="text-h6">{{ editingId ? "编辑 Hook" : "新建 Hook" }}</div>
+    <q-dialog v-model="editorOpen" persistent>
+      <q-card class="app-dialog-card app-dialog-card--xl app-glass-dialog">
+        <q-card-section class="app-glass-dialog__head row items-center justify-between">
+          <div class="app-glass-dialog__title">{{ editingId ? t("hooksPage.dialogTitleEdit") : t("hooksPage.dialogTitleCreate") }}</div>
           <q-btn flat round dense icon="close" v-close-popup />
         </q-card-section>
         <q-separator />
-        <q-card-section class="q-gutter-md app-form-wide">
-          <div class="app-form-field-grid app-form-field-grid--2col">
-            <q-input v-model="form.key" dense outlined label="标识" :disable="Boolean(editingId)" />
-            <q-input v-model="form.name" dense outlined label="名称" />
-            <q-toggle v-model="form.enabled" label="启用" />
-          </div>
-          <q-input v-model="form.description" class="app-field-long" dense outlined type="textarea" autogrow label="描述" />
-          <callback-editor v-model="form.rule" v-model:sort-order="form.sort_order" />
-        </q-card-section>
-        <q-card-actions align="right" class="app-actions-bar">
-          <q-btn flat no-caps label="取消" v-close-popup />
-          <q-btn color="primary" unelevated no-caps label="保存" :loading="saving" :disable="!form.key?.trim() || !form.name?.trim()" @click="saveHook" />
+        <div class="app-glass-dialog__scroll">
+          <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md app-form-wide">
+            <div class="app-form-field-grid app-form-field-grid--2col">
+              <q-input v-model="form.key" dense outlined :label="t('hooksPage.fieldKey')" :disable="Boolean(editingId)" />
+              <q-input v-model="form.name" dense outlined :label="t('hooksPage.fieldName')" />
+              <q-toggle v-model="form.enabled" :label="t('hooksPage.fieldEnabled')" />
+            </div>
+            <q-input v-model="form.description" class="app-field-long" dense outlined type="textarea" autogrow :label="t('hooksPage.fieldDescription')" />
+            <callback-editor v-model="form.rule" v-model:sort-order="form.sort_order" />
+          </q-card-section>
+        </div>
+        <q-separator />
+        <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
+          <q-btn flat no-caps :label="t('hooksPage.btnCancel')" v-close-popup />
+          <q-btn color="primary" unelevated no-caps :label="t('hooksPage.btnSave')" :loading="saving" :disable="!form.key?.trim() || !form.name?.trim()" @click="saveHook" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -88,6 +91,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
+import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import AppPageHero from "../components/layout/AppPageHero.vue";
 import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
@@ -95,10 +99,11 @@ import AppRegistryPagination from "../components/layout/AppRegistryPagination.vu
 import CallbackEditor from "../components/hooks/CallbackEditor.vue";
 import HooksTable from "../components/hooks/HooksTable.vue";
 import { hookRuleOf } from "../components/hooks/hookTableUi";
-import { CALLBACK_POINT_OPTIONS } from "../features/callback/constants";
+import { useCallbackPointOptions } from "../features/callback/constants";
 import { defaultHookRuleConfig, type HookRow, type HookRuleConfig } from "../features/hooks/types";
 import { useHooksStore } from "../stores/hooks";
 
+const { t } = useI18n();
 const $q = useQuasar();
 const hooksStore = useHooksStore();
 const { hooks: storeRows, loading: storeLoading } = storeToRefs(hooksStore);
@@ -107,7 +112,7 @@ const saving = ref(false);
 const error = ref("");
 const search = ref("");
 const filterPoint = ref("");
-const callbackPointOptions = CALLBACK_POINT_OPTIONS;
+const callbackPointOptions = useCallbackPointOptions();
 const rows = storeRows;
 const editorOpen = ref(false);
 const editingId = ref("");
@@ -187,7 +192,7 @@ function openEdit(row: HookRow) {
 
 async function saveHook() {
   if (!form.key.trim() || !form.name.trim()) {
-    $q.notify({ type: "warning", message: "标识和名称为必填" });
+    $q.notify({ type: "warning", message: t("hooksPage.notifyRequired") });
     return;
   }
   saving.value = true;
@@ -212,8 +217,7 @@ async function saveHook() {
       });
     }
     editorOpen.value = false;
-    await loadRows();
-    $q.notify({ type: "positive", message: "已保存" });
+    $q.notify({ type: "positive", message: t("hooksPage.notifySaved") });
   } catch (e) {
     $q.notify({ type: "negative", message: e instanceof Error ? e.message : String(e) });
   } finally {
@@ -225,7 +229,6 @@ async function toggleEnabled(row: HookRow, enabled: boolean) {
   busyId.value = row.id;
   try {
     await hooksStore.saveHook(row.id, { enabled });
-    row.enabled = enabled;
   } catch (e) {
     $q.notify({ type: "negative", message: e instanceof Error ? e.message : String(e) });
   } finally {
@@ -235,13 +238,16 @@ async function toggleEnabled(row: HookRow, enabled: boolean) {
 
 function confirmDelete(row: HookRow) {
   $q.dialog({
-    title: "删除 Hook",
-    message: `确定删除「${row.name}」？`,
+    title: t("hooksPage.confirmDeleteTitle"),
+    message: t("hooksPage.confirmDeleteMessage", { name: row.name }),
     cancel: true,
     persistent: true
   }).onOk(async () => {
-    await hooksStore.removeHook(row.id);
-    await loadRows();
+    try {
+      await hooksStore.removeHook(row.id);
+    } catch (e) {
+      $q.notify({ type: "negative", message: e instanceof Error ? e.message : String(e) });
+    }
   });
 }
 

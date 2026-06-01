@@ -5,6 +5,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // AgentPromptFile maps legacy table agent_prompt_files.
@@ -27,5 +28,11 @@ func (AgentPromptFile) Fields() []ent.Field {
 		field.Int("sort_order").Default(0),
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
+	}
+}
+
+func (AgentPromptFile) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("agent_id", "sort_order").StorageKey("idx_agent_prompt_files_agent"),
 	}
 }

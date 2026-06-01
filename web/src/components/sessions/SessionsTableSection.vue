@@ -73,7 +73,7 @@
 
     <template #body-cell-status="props">
       <q-td :props="props">
-        <q-badge :color="statusBadgeColor(props.row.status)">{{ props.row.status }}</q-badge>
+        <SessionStatusBadge :status="props.row.status" :status-reason="props.row.status_reason" :status-changed-at="props.row.status_changed_at" />
       </q-td>
     </template>
 
@@ -93,8 +93,8 @@
         >
           <q-tooltip>{{ isSessionPinned(props.row) ? "取消置顶" : "置顶" }}</q-tooltip>
         </q-btn>
-        <q-btn flat dense round icon="archive" color="primary" :disable="props.row.status === 'archived' || props.row.status === 'running'" @click="$emit('archive-row', props.row.id)">
-          <q-tooltip>{{ props.row.status === 'running' ? '运行中不可归档' : props.row.status === 'archived' ? '已归档' : '归档' }}</q-tooltip>
+        <q-btn flat dense round icon="archive" color="primary" :disable="!!props.row.archived_at || props.row.status === 'running' || props.row.status === 'awaiting_confirmation'" @click="$emit('archive-row', props.row.id)">
+          <q-tooltip>{{ props.row.status === 'running' || props.row.status === 'awaiting_confirmation' ? '执行中不可归档' : !!props.row.archived_at ? '已归档' : '归档' }}</q-tooltip>
         </q-btn>
         <q-btn
           flat
@@ -102,10 +102,10 @@
           round
           icon="delete"
           color="negative"
-          :disable="props.row.status === 'running'"
+          :disable="props.row.status === 'running' || props.row.status === 'awaiting_confirmation'"
           @click="$emit('delete-row', props.row.id)"
         >
-          <q-tooltip>{{ props.row.status === 'running' ? '运行中不可删除' : '永久删除' }}</q-tooltip>
+          <q-tooltip>{{ props.row.status === 'running' || props.row.status === 'awaiting_confirmation' ? '执行中或等待确认时不可删除' : '永久删除' }}</q-tooltip>
         </q-btn>
         </div>
       </q-td>
@@ -141,6 +141,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
+import SessionStatusBadge from "./SessionStatusBadge.vue";
 import type { Session } from "../../features/session/types";
 import {
   contextProgressColor,
@@ -152,8 +153,7 @@ import {
   ownerLabel,
   ratioValue,
   sessionsTableColumns,
-  sessionsTableSelectionColumn,
-  statusBadgeColor
+  sessionsTableSelectionColumn
 } from "./sessionUi";
 
 const props = defineProps<{

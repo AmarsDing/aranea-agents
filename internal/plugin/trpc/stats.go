@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
@@ -250,8 +250,8 @@ func (r *RepoStatsRecorder) persistRun(bg context.Context, ev CallbackEvent) {
 		DetailJSON:    string(detail),
 		CreatedAt:     time.Now().UTC().Format(time.RFC3339),
 	}); err != nil {
-		event.SysLogWarn("system.plugin.run_persist_fail", "PluginRun 写入失败",
-			event.P("plugin", pluginKey), event.P("point", ev.Point), event.P("error", err.Error()))
+		loggateway.Global().Warn("PluginRun 写入失败",
+			loggateway.Str("plugin", pluginKey), loggateway.Str("point", ev.Point), loggateway.Err(err))
 	}
 }
 

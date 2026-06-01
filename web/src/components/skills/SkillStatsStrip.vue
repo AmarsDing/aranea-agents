@@ -3,7 +3,7 @@
     <div class="app-inline-stats-metric">
       <span class="app-inline-stats-metric__label">使用</span>
       <span class="app-inline-stats-metric__value">{{ skill.invoke_count }}</span>
-      <span class="app-inline-stats-metric__meta">7d {{ skill.usage_count_7d ?? 0 }}</span>
+      <span class="app-inline-stats-metric__meta">7d {{ skill.usage_count_7d }}</span>
     </div>
     <span class="app-inline-stats-sep" aria-hidden="true" />
     <div class="app-inline-stats-metric">

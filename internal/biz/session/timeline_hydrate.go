@@ -24,7 +24,7 @@ func (uc *SessionUsecase) hydrateTimelineRefs(ctx context.Context, sessionID str
 
 	msgByID := map[string]ChatMessage{}
 	if len(msgIDs) > 0 {
-		rows, err := uc.messageSearchReader.ListMessagesByIDs(ctx, sessionID, msgIDs)
+		rows, err := uc.messageReader.ListMessagesByIDs(ctx, sessionID, msgIDs)
 		if err != nil {
 			return nil, err
 		}

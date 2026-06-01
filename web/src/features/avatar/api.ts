@@ -75,6 +75,7 @@ export type AvatarAsset = {
   owner_user_id: string;
   source: "system" | "upload";
   is_system: boolean;
+  category: "agent" | "channel";
   file_size_bytes: number;
   width_px: number;
   height_px: number;
@@ -98,6 +99,7 @@ function mapSvcAvatarRow(row: unknown): AvatarAsset {
     owner_user_id: s("owner_user_id", "ownerUserId"),
     source: src === "system" || src === "upload" ? src : "upload",
     is_system: b("is_system", "isSystem"),
+    category: (s("category", "category") === "channel" ? "channel" : "agent") as "agent" | "channel",
     file_size_bytes: n("file_size_bytes", "fileSizeBytes"),
     width_px: n("width_px", "widthPx"),
     height_px: n("height_px", "heightPx"),

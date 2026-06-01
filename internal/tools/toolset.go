@@ -7,10 +7,12 @@ import (
 	"sync"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
+	"aranea-agents/internal/outbound"
 
 	mcpdefaults "aranea-agents/internal/mcp"
 	mcpconfig "aranea-agents/internal/mcp/config"
+	"aranea-agents/internal/tools/browser"
 	"aranea-agents/internal/tools/hostexecnorm"
 	"aranea-agents/internal/tools/mcpobserve"
 
@@ -25,6 +27,7 @@ import (
 	trpcgooglesearch "trpc.group/trpc-go/trpc-agent-go/tool/google/search"
 
 	memorytool "aranea-agents/internal/tools/memory"
+	subagenttool "aranea-agents/internal/tools/subagent"
 
 	trpchostexec "trpc.group/trpc-go/trpc-agent-go/tool/hostexec"
 	trpcmcp "trpc.group/trpc-go/trpc-agent-go/tool/mcp"
@@ -35,6 +38,19 @@ import (
 	trpchttpfetch "trpc.group/trpc-go/trpc-agent-go/tool/webfetch/httpfetch"
 	trpcwikipedia "trpc.group/trpc-go/trpc-agent-go/tool/wikipedia"
 )
+
+type filesystemDirKey struct{}
+
+func FilesystemDirWithDir(dir string) context.Context {
+	return context.WithValue(context.Background(), filesystemDirKey{}, dir)
+}
+
+func FilesystemDirFromContext(ctx context.Context) string {
+	if v, ok := ctx.Value(filesystemDirKey{}).(string); ok {
+		return v
+	}
+	return ""
+}
 
 var (
 	registryOnce sync.Once
@@ -50,7 +66,11 @@ func Registry() []*ToolRegistration {
 				Category:    "filesystem",
 				Tags:        []string{"filesystem", "read", "write", "search"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					return nil, nil
+					baseDir := FilesystemDirFromContext(ctx)
+					if baseDir == "" {
+						return nil, nil
+					}
+					return trpcfile.NewToolSet(trpcfile.WithBaseDir(baseDir))
 				},
 				EnabledByDefault:    true,
 				RiskLevel:           "low",
@@ -113,16 +133,16 @@ func Registry() []*ToolRegistration {
 				RiskLevel:        "medium",
 			},
 			{
-				Name:        "google_search",
-				Description: "Google Custom Search ToolSet",
-				Category:    "search",
-				Tags:        []string{"search", "web", "google"},
-				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					return nil, nil
-				},
-				EnabledByDefault: false,
-				RiskLevel:        "medium",
+			Name:        "google_search",
+			Description: "Google Custom Search ToolSet",
+			Category:    "search",
+			Tags:        []string{"search", "web", "google"},
+			ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
+				return nil, nil
 			},
+			EnabledByDefault: false,
+			RiskLevel:        "medium",
+		},
 			{
 				Name:        "arxiv_search",
 				Description: "ArXiv paper search ToolSet",
@@ -158,6 +178,18 @@ func Registry() []*ToolRegistration {
 				RequiresConfirmation: true,
 			},
 			{
+				Name:        "message",
+				Description: "Send text and optional files through registered channels (outbound messaging)",
+				Category:    "communication",
+				Tags:        []string{"communication", "outbound", "channel", "message"},
+				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
+					return nil, nil
+				},
+				EnabledByDefault:     false,
+				RiskLevel:            "high",
+				RequiresConfirmation: true,
+			},
+			{
 				Name:        "todo",
 				Description: "Todo management tool",
 				Category:    "productivity",
@@ -185,7 +217,12 @@ func Registry() []*ToolRegistration {
 				Category:    "coding",
 				Tags:        []string{"coding", "ide", "claude"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					return nil, nil
+					dir := FilesystemDirFromContext(ctx)
+					var opts []trpcclaudecode.Option
+					if dir != "" {
+						opts = append(opts, trpcclaudecode.WithBaseDir(dir))
+					}
+					return trpcclaudecode.NewToolSet(opts...)
 				},
 				EnabledByDefault:     false,
 				RiskLevel:            "critical",
@@ -237,6 +274,58 @@ func Registry() []*ToolRegistration {
 				Tags:             []string{"mcp", "broker", "discovery"},
 				EnabledByDefault: false,
 				RiskLevel:        "medium",
+			},
+			{
+				Name:             "model_registry_sync",
+				Description:      "Model registry sync tools (fetch_model_directory, migrate_provider_bindings, apply_model_directory, sync_provider_logos)",
+				Category:         "system",
+				Tags:             []string{"model", "registry", "sync", "system"},
+				EnabledByDefault: false,
+				RiskLevel:        "medium",
+			},
+			{
+				Name:             "subagents_spawn",
+				Description:      "Spawn a background subagent for the current session",
+				Category:         "composition",
+				Tags:             []string{"subagent", "background", "spawn"},
+				EnabledByDefault: false,
+				RiskLevel:        "medium",
+			},
+			{
+				Name:             "subagents_list",
+				Description:      "List background subagents for the current session",
+				Category:         "composition",
+				Tags:             []string{"subagent", "background", "list"},
+				EnabledByDefault: false,
+				RiskLevel:        "low",
+			},
+			{
+				Name:             "subagents_get",
+				Description:      "Get status and result of a background subagent run",
+				Category:         "composition",
+				Tags:             []string{"subagent", "background", "get"},
+				EnabledByDefault: false,
+				RiskLevel:        "low",
+			},
+			{
+				Name:             "subagents_cancel",
+				Description:      "Cancel a background subagent run (best-effort)",
+				Category:         "composition",
+				Tags:             []string{"subagent", "background", "cancel"},
+				EnabledByDefault: false,
+				RiskLevel:        "medium",
+			},
+			{
+				Name:        "browser",
+				Description: "Browser automation tool (navigate, snapshot, screenshot, click, type, etc.) via Playwright MCP",
+				Category:    "browser",
+				Tags:        []string{"browser", "web", "automation", "playwright"},
+				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
+					return nil, nil
+				},
+				EnabledByDefault:     false,
+				RiskLevel:            "critical",
+				RequiresConfirmation: true,
 			},
 		}
 	})
@@ -295,19 +384,27 @@ func (c MCPServerConfig) ToConnectionConfig() trpcmcp.ConnectionConfig {
 }
 
 type AssemblyConfig struct {
-	EnabledTools  []string
-	FilesystemDir string
-	ShellExecDir  string
-	GeminiModel   string
-	GoogleAPIKey  string
-	GoogleCX      string
-	ClaudeCodeDir string
-	OpenAPISpecs  []OpenAPISpecConfig
-	AgentTools    []AgentToolConfig
-	MCPServers    []MCPServerConfig
-	MCPBroker     *MCPBrokerConfig
-	MemoryEnabled bool
-	CustomTools   []Tool
+	EnabledTools   []string
+	FilesystemDir  string
+	ShellExecDir   string
+	GeminiModel    string
+	GoogleAPIKey   string
+	GoogleCX       string
+	ClaudeCodeDir         string
+	ClaudeCodeReadOnly    bool
+	ClaudeCodeMaxFileSize int64
+	ClaudeCodeMode        string
+	ClaudeCodeBin         string
+	ClaudeCodeWorkDir     string
+	OpenAPISpecs          []OpenAPISpecConfig
+	AgentTools            []AgentToolConfig
+	MCPServers            []MCPServerConfig
+	MCPBroker             *MCPBrokerConfig
+	MemoryEnabled         bool
+	CustomTools           []Tool
+	OutboundRouter *outbound.Router
+	SubAgentService *subagenttool.Service
+	Browser         *browser.PlaywrightMCPConfig
 }
 
 type OpenAPISpecConfig struct {
@@ -344,9 +441,10 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 			if ts != nil {
 				out.ToolSets = append(out.ToolSets, ts)
 			} else {
-				event.SysLogWarn("system.tool_assembly_skip", "tools.assemble.factory_nil",
-					event.P("tool", reg.Name),
-					event.P("reason", "factory returned nil without error"))
+				loggateway.Global().Warn("tools.assemble.factory_nil",
+					loggateway.StepID("system.tool_assembly_skip"),
+					loggateway.Str("tool", reg.Name),
+					loggateway.Str("reason", "factory returned nil without error"))
 			}
 		} else if reg.Factory != nil {
 			t, err := reg.Factory(ctx)
@@ -356,9 +454,10 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 			if t != nil {
 				out.Tools = append(out.Tools, t)
 			} else {
-				event.SysLogWarn("system.tool_assembly_skip", "tools.assemble.factory_nil",
-					event.P("tool", reg.Name),
-					event.P("reason", "factory returned nil without error"))
+				loggateway.Global().Warn("tools.assemble.factory_nil",
+					loggateway.StepID("system.tool_assembly_skip"),
+					loggateway.Str("tool", reg.Name),
+					loggateway.Str("reason", "factory returned nil without error"))
 			}
 		}
 	}
@@ -395,8 +494,9 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 			}
 			out.Tools = append(out.Tools, t)
 		} else {
-			event.SysLogWarn("system.tool_assembly_skip", "tools.assemble.geminifetch_no_model",
-				event.P("reason", "gemini_model config is empty"))
+			loggateway.Global().Warn("tools.assemble.geminifetch_no_model",
+				loggateway.StepID("system.tool_assembly_skip"),
+				loggateway.Str("reason", "gemini_model config is empty"))
 		}
 	}
 
@@ -413,8 +513,9 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 			}
 			out.ToolSets = append(out.ToolSets, ts)
 		} else {
-			event.SysLogWarn("system.tool_assembly_skip", "tools.assemble.google_search_no_config",
-				event.P("reason", "api_key or cx is empty"))
+			loggateway.Global().Warn("tools.assemble.google_search_no_config",
+				loggateway.StepID("system.tool_assembly_skip"),
+				loggateway.Str("reason", "api_key or cx is empty"))
 		}
 	}
 
@@ -422,6 +523,12 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 		var opts []trpcclaudecode.Option
 		if cfg.ClaudeCodeDir != "" {
 			opts = append(opts, trpcclaudecode.WithBaseDir(cfg.ClaudeCodeDir))
+		}
+		if cfg.ClaudeCodeReadOnly {
+			opts = append(opts, trpcclaudecode.WithReadOnly(true))
+		}
+		if cfg.ClaudeCodeMaxFileSize > 0 {
+			opts = append(opts, trpcclaudecode.WithMaxFileSize(cfg.ClaudeCodeMaxFileSize))
 		}
 		ts, err := trpcclaudecode.NewToolSet(opts...)
 		if err != nil {
@@ -442,10 +549,11 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 		// of silently disappearing. We continue rather than aborting all assembly
 		// so a bad spec doesn't block unrelated toolsets.
 		if err != nil {
-			event.SysLogWarn("system.builtin_tools_sync_fail", "tools.assemble.openapi_loader_failed",
-				event.P("spec_name", spec.Name),
-				event.P("spec_url", spec.SpecURL),
-				event.P("error", err.Error()))
+			loggateway.Global().Warn("tools.assemble.openapi_loader_failed",
+				loggateway.StepID("system.builtin_tools_sync_fail"),
+				loggateway.Str("spec_name", spec.Name),
+				loggateway.Str("spec_url", spec.SpecURL),
+				loggateway.Err(err))
 			continue
 		}
 		if specLoader == nil {
@@ -502,6 +610,45 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 	}
 
 	out.Tools = append(out.Tools, cfg.CustomTools...)
+
+	if enabled["message"] && cfg.OutboundRouter != nil {
+		mt := outbound.NewMessageTool(cfg.OutboundRouter)
+		out.Tools = append(out.Tools, mt)
+	}
+
+	if cfg.SubAgentService != nil {
+		anySubagent := enabled["subagents_spawn"] || enabled["subagents_list"] || enabled["subagents_get"] || enabled["subagents_cancel"]
+		if anySubagent {
+			for _, t := range cfg.SubAgentService.FrameworkTools() {
+				if t == nil || t.Declaration() == nil {
+					continue
+				}
+				if !enabled[t.Declaration().Name] {
+					continue
+				}
+				out.Tools = append(out.Tools, t)
+			}
+		}
+	}
+
+	if enabled["browser"] && cfg.Browser != nil {
+		bcfg := cfg.Browser
+		mcpCfg := MCPServerConfig{
+			Name:       "browser",
+			Transport:  bcfg.Transport,
+			ServerURL:  bcfg.ServerURL,
+			Command:    bcfg.Command,
+			Args:       bcfg.BuildArgs(),
+			TimeoutSec: bcfg.TimeoutSec,
+		}
+		ts, err := buildMCPToolSet(mcpCfg)
+		if err != nil {
+			return nil, fmt.Errorf("browser mcp: %w", err)
+		}
+		if ts != nil {
+			out.ToolSets = append(out.ToolSets, ts)
+		}
+	}
 
 	return out, nil
 }

@@ -7,8 +7,8 @@ import (
 
 	v1 "aranea-agents/api/kratos/llm_provider_model/v1"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/provider"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -161,11 +161,12 @@ func (s *LlmProviderModelService) RevealProviderModelCredentials(ctx context.Con
 		}
 		return nil, err
 	}
-	event.CtxFlowLogWarn(ctx, "admin.provider.credentials_reveal", "管理员查看 Provider 模型凭据明文",
-		event.P("resource_id", resourceID),
-		event.P("has_api_key", out.HasAPIKey),
-		event.P("has_secret_key", out.HasSecretKey),
-		event.P("ha_candidate_count", len(out.HACandidates)),
+	loggateway.Global().Warn("管理员查看 Provider 模型凭据明文",
+		loggateway.StepID("admin.provider.credentials_reveal"),
+		loggateway.Str("resource_id", resourceID),
+		loggateway.Any("has_api_key", out.HasAPIKey),
+		loggateway.Any("has_secret_key", out.HasSecretKey),
+		loggateway.Int("ha_candidate_count", len(out.HACandidates)),
 	)
 	resp := &v1.RevealProviderModelCredentialsResponse{
 		ApiKey:       out.APIKey,
@@ -270,9 +271,10 @@ func logRevealCredentialsDenied(ctx context.Context, resourceID string, err erro
 			}
 		}
 	}
-	event.CtxFlowLogWarn(ctx, "admin.provider.credentials_reveal_denied", "Provider 凭据查看被拒绝或失败",
-		event.P("resource_id", resourceID),
-		event.P("reason", reason),
-		event.P("error", err.Error()),
+	loggateway.Global().Warn("Provider 凭据查看被拒绝或失败",
+		loggateway.StepID("admin.provider.credentials_reveal_denied"),
+		loggateway.Str("resource_id", resourceID),
+		loggateway.Str("reason", reason),
+		loggateway.Str("error", err.Error()),
 	)
 }

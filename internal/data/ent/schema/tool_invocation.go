@@ -5,6 +5,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // ToolInvocation maps legacy table tool_invocations.
@@ -46,5 +47,14 @@ func (ToolInvocation) Fields() []ent.Field {
 		field.Int("chunk_count").Default(0),
 		field.Text("metadata_json").Default("{}"),
 		field.String("created_at"),
+	}
+}
+
+func (ToolInvocation) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("tool_key", "started_at").StorageKey("idx_tool_invocations_tool_time"),
+		index.Fields("agent_id", "started_at").StorageKey("idx_tool_invocations_agent_time"),
+		index.Fields("session_id").StorageKey("idx_tool_invocations_session"),
+		index.Fields("status").StorageKey("idx_tool_invocations_status"),
 	}
 }

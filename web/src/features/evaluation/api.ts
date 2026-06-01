@@ -91,8 +91,8 @@ function mapCaseResult(raw: unknown): EvalCaseResult {
 
 export async function annotateCaseResult(input: AnnotateCaseResultInput): Promise<EvalCaseResult> {
   const body: Record<string, unknown> = {};
-  if (input.human_pass !== undefined && input.human_pass !== null) body.human_pass = input.human_pass;
-  if (input.human_score !== undefined && input.human_score !== null) body.human_score = input.human_score;
+  if (input.human_pass !== undefined) body.human_pass = input.human_pass ?? null;
+  if (input.human_score !== undefined) body.human_score = input.human_score ?? null;
   if (input.human_comment !== undefined) body.human_comment = input.human_comment;
   const raw = await requestHandler({
     path: `v1/evaluation/runs/${encodeURIComponent(input.run_id)}/results/${encodeURIComponent(input.result_id)}/annotation`,

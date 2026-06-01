@@ -85,6 +85,14 @@ export function lastStatusTone(plugin: Plugin) {
   return "ok";
 }
 
+export function lastStatusTagClass(plugin: Plugin) {
+  const tone = lastStatusTone(plugin);
+  if (tone === "bad") return "plugin-tag--risk-high";
+  if (tone === "warn") return "plugin-tag--risk-medium";
+  if (tone === "ok") return "plugin-tag--risk-low";
+  return "";
+}
+
 export function prettyJSON(value: string, emptyLabel = "{}") {
   try {
     const parsed = JSON.parse(value || "{}");

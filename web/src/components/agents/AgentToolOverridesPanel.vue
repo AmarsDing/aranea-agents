@@ -40,7 +40,7 @@
           </template>
           <template #body-cell-effective_state="props">
             <q-td :props="props">
-              <q-badge :color="props.row.enabled ? 'positive' : 'grey'" :label="props.row.effective_state" />
+              <q-badge :color="props.row.enabled ? 'positive' : 'grey'" :label="effectiveStateLabel(props.row.effective_state)" />
             </q-td>
           </template>
           <template #body-cell-requires_confirmation="props">
@@ -69,7 +69,7 @@
                   round
                   icon="delete"
                   size="sm"
-                  @click="$emit('remove', props.row)"
+                  @click="$emit('request-remove', props.row)"
                 >
                   <q-tooltip>删除覆盖</q-tooltip>
                 </q-btn>
@@ -91,6 +91,19 @@
       @update:form="$emit('update:form', $event)"
       @save="$emit('save')"
     />
+
+    <q-dialog :model-value="confirmRemoveOpen" persistent @update:model-value="$emit('cancel-remove')">
+      <q-card class="app-dialog-card app-dialog-card--sm">
+        <q-card-section>
+          <div class="text-h6">删除覆盖</div>
+          <div class="text-body2 text-grey-7 q-mt-sm">确定删除 {{ pendingRemoveRow?.tool_key }} 的 Agent 覆盖？</div>
+        </q-card-section>
+        <q-card-actions align="right" class="app-actions-bar">
+          <q-btn flat rounded no-caps label="取消" @click="$emit('cancel-remove')" />
+          <q-btn color="negative" rounded unelevated no-caps label="删除" @click="$emit('confirm-remove')" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-card>
 </template>
 
@@ -114,12 +127,17 @@ defineProps<{
   form: AgentToolOverrideForm;
   modeOptions: { label: string; value: string }[];
   modeLabel: (mode: string) => string;
+  effectiveStateLabel: (state: string) => string;
+  confirmRemoveOpen: boolean;
+  pendingRemoveRow: AgentToolOverrideRow | null;
 }>();
 
 defineEmits<{
   refresh: [];
   edit: [row: AgentToolOverrideRow];
-  remove: [row: AgentToolOverrideRow];
+  "request-remove": [row: AgentToolOverrideRow];
+  "confirm-remove": [];
+  "cancel-remove": [];
   save: [];
   "update:editorOpen": [value: boolean];
   "update:form": [value: AgentToolOverrideForm];

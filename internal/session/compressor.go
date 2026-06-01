@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/compress"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/llmcontext"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
@@ -96,8 +97,7 @@ func (c *Compressor) AfterNativeTurn(ctx context.Context, sessionID string, ag b
 		runCtx, cancel := context.WithTimeout(context.Background(), compressRunTimeout)
 		defer cancel()
 		if err := c.runCompress(runCtx, sid, trpcUserID, ag, false); err != nil && c.EventBus != nil {
-			event.SessionSysLogWarn(runCtx, sid, "system.session.compress", "会话压缩失败",
-				event.P("error", err.Error()))
+			loggateway.Global().Warn("会话压缩失败", loggateway.StepID("system.session.compress"), loggateway.SessionID(sid), loggateway.Err(err))
 		}
 	})
 }
@@ -117,8 +117,7 @@ func (c *Compressor) BeforeDurableTurn(ctx context.Context, sessionID string, ag
 	runCtx, cancel := context.WithTimeout(ctx, compressRunTimeout)
 	defer cancel()
 	if err := c.runCompress(runCtx, sid, TRPCUserKey(ctx), ag, true); err != nil && c.EventBus != nil {
-		event.SessionSysLogWarn(runCtx, sid, "system.session.compress", "Durable turn 前压缩失败",
-			event.P("error", err.Error()))
+		loggateway.Global().Warn("Durable turn 前压缩失败", loggateway.StepID("system.session.compress"), loggateway.SessionID(sid), loggateway.Err(err))
 	}
 	return nil
 }
@@ -205,19 +204,23 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 			return nil
 		}
 		if c.EventBus != nil {
-			event.SessionSysLogInfo(ctx, sessionID, "system.session.compress", "会话压缩完成",
-				event.P("compress_provider", res.Provider),
-				event.P("compress_model", res.Model),
-				event.P("prompt_tokens", res.PromptTokens),
-				event.P("completion_tokens", res.CompletionTokens),
-				event.P("duration_ms", time.Since(t0).Milliseconds()),
-				event.P("prompt_ver", res.PromptVersion),
-				event.P("truncate_strategy", strategy))
+			loggateway.Global().Info("会话压缩完成",
+				loggateway.StepID("system.session.compress"),
+				loggateway.SessionID(sessionID),
+				loggateway.Str("compress_provider", res.Provider),
+				loggateway.Str("compress_model", res.Model),
+				loggateway.Int("prompt_tokens", res.PromptTokens),
+				loggateway.Int("completion_tokens", res.CompletionTokens),
+				loggateway.Duration(time.Since(t0).Milliseconds()),
+				loggateway.Str("prompt_ver", res.PromptVersion),
+				loggateway.Str("truncate_strategy", strategy))
 		}
 	}
 	if strategy == "drop_oldest" && c.EventBus != nil {
-		event.SessionSysLogInfo(ctx, sessionID, "system.session.compress", "会话压缩完成（drop_oldest）",
-			event.P("truncate_strategy", strategy))
+		loggateway.Global().Info("会话压缩完成（drop_oldest）",
+			loggateway.StepID("system.session.compress"),
+			loggateway.SessionID(sessionID),
+			loggateway.Str("truncate_strategy", strategy))
 	}
 
 	fromTurn := body[0].TurnNumber
@@ -232,10 +235,12 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		return nil
 	}
 
-	exists, existsErr := c.summaryReader.SessionSummaryExists(ctx, sessionID, fromTurn, toTurn)
+	exists, existsErr := c.summaryWriter.SessionSummaryExists(ctx, sessionID, fromTurn, toTurn)
 	if existsErr != nil && c.EventBus != nil {
-		event.SessionSysLogWarn(ctx, sessionID, "system.session.compress", "幂等检查失败",
-			event.P("error", existsErr.Error()))
+		loggateway.Global().Warn("幂等检查失败",
+			loggateway.StepID("system.session.compress"),
+			loggateway.SessionID(sessionID),
+			loggateway.Err(existsErr))
 	}
 	if exists {
 		return nil
@@ -292,7 +297,7 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		preview := firstSummaryLine(txMerged)
 		if preview != "" {
 			if err := c.summaryWriter.UpdateSessionListSummary(txCtx, sessionID, preview); err != nil {
-				event.SysLogWarn("session.compress", "update list summary failed", event.P("session_id", sessionID), event.P("error", err.Error()))
+			loggateway.Global().Warn("update list summary failed", loggateway.StepID("session.compress"), loggateway.SessionID(sessionID), loggateway.Err(err))
 			}
 		}
 
@@ -307,8 +312,11 @@ func (c *Compressor) runCompress(ctx context.Context, sessionID, trpcUserID stri
 		raw, snapErr := RewriteSnapshotWithCompression(sess.RunnerSnapshotJSON, txMerged, txTail, author)
 		if snapErr == nil {
 			if syncErr := c.Runtime.SyncRunnerSnapshot(ctx, trpcUserID, sessionID, raw, txMerged); syncErr != nil && c.EventBus != nil {
-				event.SessionSysLogWarn(ctx, sessionID, "system.session.compress", "trpc 快照同步失败",
-					event.P("error", syncErr.Error()), event.P("user_id", trpcUserID))
+			loggateway.Global().Warn("trpc 快照同步失败",
+				loggateway.StepID("system.session.compress"),
+				loggateway.SessionID(sessionID),
+				loggateway.Err(syncErr),
+				loggateway.Str("user_id", trpcUserID))
 			}
 		}
 	}
@@ -364,7 +372,7 @@ func (c *Compressor) publishCompressionNotice(ctx context.Context, sessionID str
 		CreatedAt:       now,
 	}
 	if err := c.messageWriter.AppendChatMessage(ctx, sessionID, sysMsg, false); err != nil {
-		event.SysLogWarn("session.compress", "append compress notice message failed", event.P("session_id", sessionID), event.P("error", err.Error()))
+		loggateway.Global().Warn("append compress notice message failed", loggateway.StepID("session.compress"), loggateway.SessionID(sessionID), loggateway.Err(err))
 	}
 	if c.EventBus == nil {
 		return
@@ -388,6 +396,6 @@ func (c *Compressor) resyncSessionMemory(ctx context.Context, sessionID string) 
 		return
 	}
 	if err := c.Memory.DeleteSessionEventEntities(ctx, sessionID); err != nil {
-		event.SysLogWarn("session.compress", "delete session event entities failed", event.P("session_id", sessionID), event.P("error", err.Error()))
+		loggateway.Global().Warn("delete session event entities failed", loggateway.StepID("session.compress"), loggateway.SessionID(sessionID), loggateway.Err(err))
 	}
 }

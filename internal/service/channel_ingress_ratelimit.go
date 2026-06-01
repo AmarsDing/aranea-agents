@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -51,9 +51,10 @@ func allowWebhookRequest(channelKey string) bool {
 		rl.count = 0
 	}
 	if rl.count >= rl.limit {
-		event.SysLogWarn(flowStepChannelWebhookRateLimit, "Channel Webhook 入站限流",
-			event.P("channel_key", channelKey),
-			event.P("limit_per_min", rl.limit),
+		loggateway.Global().Warn("Channel Webhook 入站限流",
+			loggateway.StepID(flowStepChannelWebhookRateLimit),
+			loggateway.Str("channel_key", channelKey),
+			loggateway.Int("limit_per_min", rl.limit),
 		)
 		return false
 	}

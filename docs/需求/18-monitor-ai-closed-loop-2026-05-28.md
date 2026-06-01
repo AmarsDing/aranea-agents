@@ -1,7 +1,7 @@
 # Monitor AI 闭环追踪方案
 
 > **关联**：[`18 monitor.md`](./18%20monitor.md) · [`18-monitor-optimization-2026-05-26.md`](./18-monitor-optimization-2026-05-26.md) · [`52-flow-logger.design.md`](./52-flow-logger.design.md) · 代码 Review [`2026-05-26-Monitor-Code-Review.md`](../review/2026-05-26-Monitor-Code-Review.md)
-> **状态**：🟡 Phase A~D 部分落地（LOG-01 ✅ TRACE-01 ✅ DIAG-01 ✅ DIAG-02 ✅ LOG-03 ✅ P0/P1/P2）；LOG-02（跨 pkg）、LOOP-01（P3）待实施
+> **状态**：🟡 Phase A~D 部分落地（LOG-01 ✅ TRACE-01 ✅ DIAG-01 ✅ DIAG-02 ✅ LOG-03 ✅ P0/P1/P2）；LOG-02（跨 pkg）待实施；LOOP-01 已完成需求+设计（见 [18-monitor-loop-01-requirement.md](./18-monitor-loop-01-requirement.md) · [18-monitor-loop-01-design.md](./18-monitor-loop-01-design.md)）
 > **创建**：2026-05-28
 
 ---
@@ -79,7 +79,7 @@
 | TRACE-01（Trace 写入） | ✅ 已落地 | `runner.completion` → `trace-*.jsonl` |
 | DIAG-01（诊断包） | ✅ 已落地 | `DiagBundleGenerator` + `GenerateDiagnosticBundle` RPC |
 | DIAG-02（根因引擎） | ✅ 已落地 | `RootCauseEngine` 5 条内置规则 + 置信度评分 |
-| LOOP-01（闭环工作流） | ❌ 未实施 | 待设计 |
+| LOOP-01（闭环工作流） | 🟡 需求+设计已完成（简化为系统调试日志闭环） | 详见 [18-monitor-loop-01-requirement.md](./18-monitor-loop-01-requirement.md) · [18-monitor-loop-01-design.md](./18-monitor-loop-01-design.md) |
 
 ---
 

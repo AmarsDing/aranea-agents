@@ -7,7 +7,7 @@ import (
 	"errors"
 	"strings"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -43,7 +43,7 @@ type AgentToolPolicyInput struct {
 func jsonStringList(raw string) []string {
 	list, err := JSONStringList(raw)
 	if err != nil {
-		event.SysLogWarn("system.agent.tools", "json string list parse failed", event.P("error", err.Error()))
+		loggateway.Global().Warn("json string list parse failed", loggateway.StepID("system.agent.tools"), loggateway.Err(err))
 		return nil
 	}
 	return list

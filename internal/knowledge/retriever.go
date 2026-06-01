@@ -5,7 +5,7 @@ import (
 	"context"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"trpc.group/trpc-go/trpc-agent-go/knowledge/document"
@@ -79,8 +79,10 @@ func (r *Retriever) Search(ctx context.Context, q biz.KnowledgeSearchQuery) ([]b
 	results := chunksToRerankerResults(chunks)
 	reranked, err := r.reranker.Rerank(ctx, &reranker.Query{Text: q.Query, FinalQuery: q.Query}, results)
 	if err != nil {
-		event.SysLogWarn("knowledge.rerank.fallback", "重排失败，使用向量排序",
-			event.P("error", err.Error()), event.P("collection_id", q.CollectionID))
+		loggateway.Global().Warn("重排失败，使用向量排序",
+			loggateway.StepID("knowledge.rerank.fallback"),
+			loggateway.Err(err),
+			loggateway.Str("collection_id", q.CollectionID))
 		return trimChunks(chunks, topK), nil
 	}
 	return rerankerResultsToChunks(reranked, topK), nil

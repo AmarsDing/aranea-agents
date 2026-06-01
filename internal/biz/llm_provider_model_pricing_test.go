@@ -3,7 +3,7 @@ package biz
 import (
 	"testing"
 
-	"aranea-agents/internal/modelcatalog"
+	"aranea-agents/internal/modelregistry"
 )
 
 func TestCostBlockHasValue(t *testing.T) {
@@ -69,11 +69,11 @@ func TestBuildMicroPricing_CostBlockOverrides(t *testing.T) {
 		},
 	}
 	micro := buildMicroPricing(cfg)
-	if micro.Input != modelcatalog.USDPer1MToMicroPer1K(3.0) {
-		t.Errorf("Input = %d, want %d", micro.Input, modelcatalog.USDPer1MToMicroPer1K(3.0))
+	if micro.Input != modelregistry.USDPer1MToMicroPer1K(3.0) {
+		t.Errorf("Input = %d, want %d", micro.Input, modelregistry.USDPer1MToMicroPer1K(3.0))
 	}
-	if micro.Output != modelcatalog.USDPer1MToMicroPer1K(6.0) {
-		t.Errorf("Output = %d, want %d", micro.Output, modelcatalog.USDPer1MToMicroPer1K(6.0))
+	if micro.Output != modelregistry.USDPer1MToMicroPer1K(6.0) {
+		t.Errorf("Output = %d, want %d", micro.Output, modelregistry.USDPer1MToMicroPer1K(6.0))
 	}
 }
 
@@ -86,8 +86,8 @@ func TestBuildMicroPricing_CostBlockOnlyNonInputOutput(t *testing.T) {
 		},
 	}
 	micro := buildMicroPricing(cfg)
-	if micro.CacheRead != modelcatalog.USDPer1MToMicroPer1K(0.5) {
-		t.Errorf("CacheRead = %d, want %d", micro.CacheRead, modelcatalog.USDPer1MToMicroPer1K(0.5))
+	if micro.CacheRead != modelregistry.USDPer1MToMicroPer1K(0.5) {
+		t.Errorf("CacheRead = %d, want %d", micro.CacheRead, modelregistry.USDPer1MToMicroPer1K(0.5))
 	}
 	if micro.Input != 0 {
 		t.Errorf("Input should be 0 from CostBlock (InputUSDPer1M=0), got %d", micro.Input)
@@ -95,29 +95,29 @@ func TestBuildMicroPricing_CostBlockOnlyNonInputOutput(t *testing.T) {
 }
 
 func TestIsValidPricing(t *testing.T) {
-	if isValidPricing(modelcatalog.MicroPricing{}) {
+	if isValidPricing(modelregistry.MicroPricing{}) {
 		t.Error("zero pricing should not be valid")
 	}
-	if !isValidPricing(modelcatalog.MicroPricing{Input: 1}) {
+	if !isValidPricing(modelregistry.MicroPricing{Input: 1}) {
 		t.Error("non-zero Input should be valid")
 	}
-	if !isValidPricing(modelcatalog.MicroPricing{CacheWrite: 1}) {
+	if !isValidPricing(modelregistry.MicroPricing{CacheWrite: 1}) {
 		t.Error("non-zero CacheWrite should be valid")
 	}
-	if !isValidPricing(modelcatalog.MicroPricing{Embedding: 1}) {
+	if !isValidPricing(modelregistry.MicroPricing{Embedding: 1}) {
 		t.Error("non-zero Embedding should be valid")
 	}
 }
 
 func TestBuildCostUSD_FromMicro(t *testing.T) {
 	cfg := providerPricingConfig{}
-	micro := modelcatalog.MicroPricing{Input: 3000, Output: 6000}
+	micro := modelregistry.MicroPricing{Input: 3000, Output: 6000}
 	costUSD := buildCostUSD(cfg, micro)
-	if costUSD.Input != modelcatalog.MicroPer1KToUSDPer1M(3000) {
-		t.Errorf("Input = %f, want %f", costUSD.Input, modelcatalog.MicroPer1KToUSDPer1M(3000))
+	if costUSD.Input != modelregistry.MicroPer1KToUSDPer1M(3000) {
+		t.Errorf("Input = %f, want %f", costUSD.Input, modelregistry.MicroPer1KToUSDPer1M(3000))
 	}
-	if costUSD.Output != modelcatalog.MicroPer1KToUSDPer1M(6000) {
-		t.Errorf("Output = %f, want %f", costUSD.Output, modelcatalog.MicroPer1KToUSDPer1M(6000))
+	if costUSD.Output != modelregistry.MicroPer1KToUSDPer1M(6000) {
+		t.Errorf("Output = %f, want %f", costUSD.Output, modelregistry.MicroPer1KToUSDPer1M(6000))
 	}
 }
 
@@ -128,7 +128,7 @@ func TestBuildCostUSD_CostBlockOverrides(t *testing.T) {
 			OutputUSDPer1M: 6.0,
 		},
 	}
-	micro := modelcatalog.MicroPricing{Input: 1000, Output: 2000}
+	micro := modelregistry.MicroPricing{Input: 1000, Output: 2000}
 	costUSD := buildCostUSD(cfg, micro)
 	if costUSD.Input != 3.0 {
 		t.Errorf("Input = %f, want 3.0 (from CostBlock)", costUSD.Input)
@@ -144,7 +144,7 @@ func TestBuildCostUSD_CostBlockOnlyCacheRead(t *testing.T) {
 			CacheReadUSDPer1M: 0.5,
 		},
 	}
-	micro := modelcatalog.MicroPricing{Input: 3000}
+	micro := modelregistry.MicroPricing{Input: 3000}
 	costUSD := buildCostUSD(cfg, micro)
 	if costUSD.CacheRead != 0.5 {
 		t.Errorf("CacheRead = %f, want 0.5 (from CostBlock)", costUSD.CacheRead)
@@ -160,7 +160,7 @@ func TestBuildCostUSD_CostBlockOnlyCacheWrite(t *testing.T) {
 			CacheWriteUSDPer1M: 0.05,
 		},
 	}
-	micro := modelcatalog.MicroPricing{}
+	micro := modelregistry.MicroPricing{}
 	costUSD := buildCostUSD(cfg, micro)
 	if costUSD.CacheWrite != 0.05 {
 		t.Errorf("CacheWrite = %f, want 0.05 (from CostBlock)", costUSD.CacheWrite)

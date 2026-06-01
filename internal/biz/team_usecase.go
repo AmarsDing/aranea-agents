@@ -255,6 +255,7 @@ func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, 
 	if patch.ADKAppName == "" {
 		current.ADKAppName = current.TeamKey
 	}
+	current.CategoryIndustryID = firstNonEmpty(patch.CategoryIndustryID, current.CategoryIndustryID)
 	if err := validateTeamDefinition(current.DefinitionJSON); err != nil {
 		return Team{}, err
 	}

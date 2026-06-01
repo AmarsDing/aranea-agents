@@ -7,7 +7,6 @@ import (
 
 	v1 "aranea-agents/api/kratos/memory/v1"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/pkg/jsonutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -22,15 +21,16 @@ type MemoryService struct {
 
 	admin             *biz.MemoryAdminUsecase
 	cascade           *biz.L4CascadeUsecase
-	memStore          *sessionmemory.Store
 	sysUC             *biz.SystemSettingUsecase
 	deadLetterRepo    biz.MemoryDeadLetterAdminRepo
+	debugRecaller     biz.MemoryDebugRecaller
+	factIndexCounter  biz.MemoryFactIndexCounter
 	deadLetterEnqueue func(ctx context.Context, id int64) error
 	queueStats        queueStatsProvider
 }
 
-func NewMemoryService(admin *biz.MemoryAdminUsecase, cascade *biz.L4CascadeUsecase, memStore *sessionmemory.Store, sysUC *biz.SystemSettingUsecase, deadLetterRepo biz.MemoryDeadLetterAdminRepo, deadLetterEnqueue func(ctx context.Context, id int64) error, queueStats queueStatsProvider) *MemoryService {
-	return &MemoryService{admin: admin, cascade: cascade, memStore: memStore, sysUC: sysUC, deadLetterRepo: deadLetterRepo, deadLetterEnqueue: deadLetterEnqueue, queueStats: queueStats}
+func NewMemoryService(admin *biz.MemoryAdminUsecase, cascade *biz.L4CascadeUsecase, sysUC *biz.SystemSettingUsecase, deadLetterRepo biz.MemoryDeadLetterAdminRepo, debugRecaller biz.MemoryDebugRecaller, factIndexCounter biz.MemoryFactIndexCounter, deadLetterEnqueue func(ctx context.Context, id int64) error, queueStats queueStatsProvider) *MemoryService {
+	return &MemoryService{admin: admin, cascade: cascade, sysUC: sysUC, deadLetterRepo: deadLetterRepo, debugRecaller: debugRecaller, factIndexCounter: factIndexCounter, deadLetterEnqueue: deadLetterEnqueue, queueStats: queueStats}
 }
 
 func (s *MemoryService) requireAdmin() error {

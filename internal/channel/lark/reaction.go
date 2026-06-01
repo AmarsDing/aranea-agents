@@ -97,7 +97,9 @@ func (r *ReactionController) Remove(ctx context.Context, messageID, reactionID s
 		Code int    `json:"code"`
 		Msg  string `json:"msg"`
 	}
-	_ = json.Unmarshal(raw, &out)
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return fmt.Errorf("feishu reaction remove: parse response: %w", err)
+	}
 	if out.Code != 0 {
 		return fmt.Errorf("feishu reaction remove: code=%d msg=%s", out.Code, out.Msg)
 	}

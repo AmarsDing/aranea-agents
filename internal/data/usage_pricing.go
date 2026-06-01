@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/modelcatalog"
+	"aranea-agents/internal/modelregistry"
 )
 
 type providerModelPricingJSON struct {
@@ -28,8 +28,8 @@ type providerCostJSON struct {
 	EmbeddingUSDPer1M  float64 `json:"embedding_usd_per_1m"`
 }
 
-func snapshotFromUSD(cost modelcatalog.CostUSDPer1M) biz.ModelPricingSnapshot {
-	micro := modelcatalog.MicroPricingFromCostBlock(cost)
+func snapshotFromUSD(cost modelregistry.CostUSDPer1M) biz.ModelPricingSnapshot {
+	micro := modelregistry.MicroPricingFromCostBlock(cost)
 	return biz.ModelPricingSnapshot{
 		InputPriceUSDPer1M:            cost.Input,
 		OutputPriceUSDPer1M:           cost.Output,
@@ -49,7 +49,7 @@ func snapshotFromUSD(cost modelcatalog.CostUSDPer1M) biz.ModelPricingSnapshot {
 func snapshotFromProviderConfig(cfg providerModelPricingJSON) biz.ModelPricingSnapshot {
 	if cfg.Cost.InputUSDPer1M > 0 || cfg.Cost.OutputUSDPer1M > 0 || cfg.Cost.CacheReadUSDPer1M > 0 ||
 		cfg.Cost.CacheWriteUSDPer1M > 0 || cfg.Cost.ReasoningUSDPer1M > 0 || cfg.Cost.EmbeddingUSDPer1M > 0 {
-		return snapshotFromUSD(modelcatalog.CostUSDPer1M{
+		return snapshotFromUSD(modelregistry.CostUSDPer1M{
 			Input:      cfg.Cost.InputUSDPer1M,
 			Output:     cfg.Cost.OutputUSDPer1M,
 			CacheRead:  cfg.Cost.CacheReadUSDPer1M,
@@ -62,12 +62,12 @@ func snapshotFromProviderConfig(cfg providerModelPricingJSON) biz.ModelPricingSn
 	if cfg.InputPriceMicroUSDPer1K == 0 && cfg.OutputPriceMicroUSDPer1K == 0 {
 		return biz.ModelPricingSnapshot{}
 	}
-	cost := modelcatalog.CostUSDPer1M{
-		Input:      modelcatalog.MicroPer1KToUSDPer1M(cfg.InputPriceMicroUSDPer1K),
-		Output:     modelcatalog.MicroPer1KToUSDPer1M(cfg.OutputPriceMicroUSDPer1K),
-		CacheRead:  modelcatalog.MicroPer1KToUSDPer1M(cfg.CachedInputPriceMicroUSDPer1K),
-		Reasoning:  modelcatalog.MicroPer1KToUSDPer1M(cfg.ReasoningPriceMicroUSDPer1K),
-		Embedding:  modelcatalog.MicroPer1KToUSDPer1M(cfg.EmbeddingPriceMicroUSDPer1K),
+	cost := modelregistry.CostUSDPer1M{
+		Input:      modelregistry.MicroPer1KToUSDPer1M(cfg.InputPriceMicroUSDPer1K),
+		Output:     modelregistry.MicroPer1KToUSDPer1M(cfg.OutputPriceMicroUSDPer1K),
+		CacheRead:  modelregistry.MicroPer1KToUSDPer1M(cfg.CachedInputPriceMicroUSDPer1K),
+		Reasoning:  modelregistry.MicroPer1KToUSDPer1M(cfg.ReasoningPriceMicroUSDPer1K),
+		Embedding:  modelregistry.MicroPer1KToUSDPer1M(cfg.EmbeddingPriceMicroUSDPer1K),
 	}
 	return snapshotFromUSD(cost)
 }
@@ -97,19 +97,19 @@ func (r *usageRepo) GetActiveModelPricing(ctx context.Context, providerCode, mod
 	)
 	if err == nil {
 		if inputUSD > 0 || outputUSD > 0 || cacheUSD > 0 || cacheWriteUSD > 0 || reasonUSD > 0 || embedUSD > 0 {
-			return snapshotFromUSD(modelcatalog.CostUSDPer1M{
+			return snapshotFromUSD(modelregistry.CostUSDPer1M{
 				Input: inputUSD, Output: outputUSD, CacheRead: cacheUSD, CacheWrite: cacheWriteUSD,
 				Reasoning: reasonUSD, Embedding: embedUSD,
 			}), true, nil
 		}
 		if inputMicro != 0 || outputMicro != 0 || cacheMicro != 0 || cacheWriteMicro != 0 || reasonMicro != 0 || embedMicro != 0 {
-			return snapshotFromUSD(modelcatalog.CostUSDPer1M{
-				Input:      modelcatalog.MicroPer1KToUSDPer1M(inputMicro),
-				Output:     modelcatalog.MicroPer1KToUSDPer1M(outputMicro),
-				CacheRead:  modelcatalog.MicroPer1KToUSDPer1M(cacheMicro),
-				CacheWrite: modelcatalog.MicroPer1KToUSDPer1M(cacheWriteMicro),
-				Reasoning:  modelcatalog.MicroPer1KToUSDPer1M(reasonMicro),
-				Embedding:  modelcatalog.MicroPer1KToUSDPer1M(embedMicro),
+			return snapshotFromUSD(modelregistry.CostUSDPer1M{
+				Input:      modelregistry.MicroPer1KToUSDPer1M(inputMicro),
+				Output:     modelregistry.MicroPer1KToUSDPer1M(outputMicro),
+				CacheRead:  modelregistry.MicroPer1KToUSDPer1M(cacheMicro),
+				CacheWrite: modelregistry.MicroPer1KToUSDPer1M(cacheWriteMicro),
+				Reasoning:  modelregistry.MicroPer1KToUSDPer1M(reasonMicro),
+				Embedding:  modelregistry.MicroPer1KToUSDPer1M(embedMicro),
 			}), true, nil
 		}
 	} else if err != sql.ErrNoRows {

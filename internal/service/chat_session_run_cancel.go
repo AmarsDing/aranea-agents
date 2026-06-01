@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 // CancelSessionRunForCard stops a run after validating session_run ownership (Feishu card cancel).
@@ -20,10 +20,11 @@ func (s *ChatService) CancelSessionRunForCard(ctx context.Context, sessionRunID,
 			return false, channelBackgroundReplyNoActiveRun
 		}
 		if expectedSessionID != "" && run.SessionID != expectedSessionID {
-			event.SysLogWarn(flowStepRunEscalate, "session run cancel ownership denied",
-				event.P("session_run_id", sessionRunID),
-				event.P("expected_session_id", expectedSessionID),
-				event.P("run_session_id", run.SessionID),
+			loggateway.Global().Warn("session run cancel ownership denied",
+				loggateway.StepID(flowStepRunEscalate),
+				loggateway.Str("session_run_id", sessionRunID),
+				loggateway.Str("expected_session_id", expectedSessionID),
+				loggateway.Str("run_session_id", run.SessionID),
 			)
 			return false, channelBackgroundReplyDenied
 		}

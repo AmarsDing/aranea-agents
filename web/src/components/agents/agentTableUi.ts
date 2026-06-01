@@ -9,14 +9,14 @@ import {
 
 /** AgentsListSection 列定义（categoryLabel 由 store computed 注入 field） */
 export function buildAgentTableColumns(
-  categoryLabel: (row: Agent) => string,
+  categoryLabel: (id: string) => string,
   formatContext: (value?: number) => string
 ): QTableColumn<Agent>[] {
   return [
     registryCol<Agent>("name", "名称", "display_name", "left", REGISTRY_COL_W.name),
     registryCol<Agent>("status", "状态", "status", "left", REGISTRY_COL_W.status),
     registryCol<Agent>("model", "模型", (row) => `${row.provider} / ${row.model}`, "left", REGISTRY_COL_W.stats),
-    registryCol<Agent>("category", "业务分类", (row) => categoryLabel(row), "left", REGISTRY_COL_W.category),
+    registryCol<Agent>("category", "业务分类", (row) => categoryLabel(row.category_position_id), "left", REGISTRY_COL_W.category),
     registryCol<Agent>("ctx", "上下文", (row) => formatContext(row.context_window), "left", REGISTRY_COL_W.status),
     registryColActions<Agent>()
   ];
@@ -35,7 +35,7 @@ export const AGENT_TOOL_OVERRIDE_TABLE_COLUMNS: QTableColumn<AgentToolOverrideRo
     REGISTRY_COL_W.narrow
   ),
   registryCol<AgentToolOverrideRow>("override", "覆盖", "override", "left", REGISTRY_COL_W.category),
-  registryColActions<AgentToolOverrideRow>(REGISTRY_COL_W.actions, "", "actions")
+  registryColActions<AgentToolOverrideRow>(REGISTRY_COL_W.actions, "", (row) => row.tool_key)
 ];
 
 /** AgentSettings — Prompt 组装预览表 */

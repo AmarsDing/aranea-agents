@@ -81,6 +81,7 @@
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
 import type { McpServerConfig, McpServerMetadata, McpServerRow } from "../../features/mcp/types";
+import { parseJSON } from "../../features/mcp/utils";
 import { MCP_SERVER_TABLE_COLUMNS } from "./mcpServerTableUi";
 
 defineProps<{
@@ -97,15 +98,6 @@ defineEmits<{
   test: [row: McpServerRow];
   credentials: [row: McpServerRow];
 }>();
-
-function parseJSON<T>(value: string | undefined, fallback: T): T {
-  if (!value) return fallback;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return fallback;
-  }
-}
 
 function rowConfig(row: McpServerRow) {
   return parseJSON<McpServerConfig>(row.config_json, {});

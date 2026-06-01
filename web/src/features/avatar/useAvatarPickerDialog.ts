@@ -7,11 +7,30 @@ import { useAvatarCatalogStore } from "../../stores/avatar";
 
 export type AvatarPickerScope = "agent" | "channel";
 
+export type AvatarAssetGroup = {
+  key: "agent" | "channel";
+  label: string;
+  items: AvatarAsset[];
+};
+
 function filterByScope(assets: AvatarAsset[], scope: AvatarPickerScope): AvatarAsset[] {
   if (scope === "channel") {
-    return assets.filter((a) => String(a.key || a.id || "").startsWith("channel_"));
+    return assets.filter((a) => a.category === "channel");
   }
-  return assets.filter((a) => !String(a.key || a.id || "").startsWith("channel_"));
+  return assets.filter((a) => a.category !== "channel");
+}
+
+function groupSystemAssets(assets: AvatarAsset[]): AvatarAssetGroup[] {
+  const agentItems = assets.filter((a) => a.category !== "channel");
+  const channelItems = assets.filter((a) => a.category === "channel");
+  const groups: AvatarAssetGroup[] = [];
+  if (agentItems.length > 0) {
+    groups.push({ key: "agent", label: "Agent 头像", items: agentItems });
+  }
+  if (channelItems.length > 0) {
+    groups.push({ key: "channel", label: "Channel 头像", items: channelItems });
+  }
+  return groups;
 }
 
 /** 头像选择弹层：组合 Store + 本地 UI 状态；供 AgentAvatarPicker / ChannelIconPicker 使用 */
@@ -35,6 +54,8 @@ export function useAvatarPickerDialog(options: {
     const list = tab.value === "system" ? pickerSystem.value : pickerMine.value;
     return tab.value === "system" ? filterByScope(list, scope) : list;
   });
+
+  const systemGroups = computed(() => groupSystemAssets(pickerSystem.value));
 
   watch(
     () => options.open.value,
@@ -62,7 +83,9 @@ export function useAvatarPickerDialog(options: {
         const first = visibleAssets.value[0];
         if (first) selectedId.value = first.id;
       }
-      await Promise.all(visibleAssets.value.slice(0, 40).map((a) => store.ensureThumbnail(a.id)));
+      const allSystem = systemGroups.value.flatMap((g) => g.items);
+      const thumbs = tab.value === "system" ? allSystem : visibleAssets.value;
+      await Promise.all(thumbs.slice(0, 60).map((a) => store.ensureThumbnail(a.id)));
     } finally {
       loading.value = false;
     }
@@ -95,6 +118,7 @@ export function useAvatarPickerDialog(options: {
     selectedId,
     fileInput,
     visibleAssets,
+    systemGroups,
     loadPicker,
     uploadFromFile,
     scope

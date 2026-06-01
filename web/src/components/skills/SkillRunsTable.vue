@@ -44,7 +44,6 @@
 <script setup lang="ts">
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
-import ToolGlassPanel from "./ToolGlassPanel.vue";
 import type { SkillInvocation } from "../../features/skills/types";
 import { SKILL_RUNS_TABLE_COLUMNS } from "./skillTableUi";
 

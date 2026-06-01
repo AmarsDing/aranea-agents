@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 type mockPreviewUpdater struct {
@@ -36,6 +37,7 @@ func TestTurnPreviewCoordinatorTextThenTool(t *testing.T) {
 		Platform:  "feishu",
 		Policy:    biz.ParseChannelIMRenderPolicy(`{"config":{"im_render_mode":"transcript"}}`, lt),
 		LtCfg:     lt,
+		Lg:        loggateway.NewNoop(),
 	})
 	ctx := context.Background()
 	stop := coord.Start(ctx, "sess-1")
@@ -80,6 +82,7 @@ func TestTurnPreviewCoordinator_heartbeatPreservesTranscript(t *testing.T) {
 			HeartbeatMessage:  "仍在处理 {{elapsed}}",
 		},
 		LtCfg: biz.ChannelLongTaskConfig{ProgressQuietSec: 1},
+		Lg:    loggateway.NewNoop(),
 	})
 	ctx := context.Background()
 	coord.transcript.Apply(event.Envelope{

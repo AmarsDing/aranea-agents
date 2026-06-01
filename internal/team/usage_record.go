@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
 )
@@ -71,12 +72,13 @@ func (r *Runner) recordMemberUsage(
 	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
 	defer cancel()
 	if _, err := r.usage.RecordTokenUsageEvent(recCtx, ev); err != nil {
-		event.CtxFlowLogWarn(ctx, "team.usage_record_fail", "团队成员用量落库失败",
-			event.P("error", err.Error()),
-			event.P("agent_id", ag.ID),
-			event.P("team_id", teamID),
-			event.P("step_id", stepID),
-			event.P("usage_kind", ev.UsageKind),
+		loggateway.Global().Warn("团队成员用量落库失败",
+			loggateway.StepID("team.usage_record_fail"),
+			loggateway.Str("error", err.Error()),
+			loggateway.Str("agent_id", ag.ID),
+			loggateway.Str("team_id", teamID),
+			loggateway.Str("step_id", stepID),
+			loggateway.Str("usage_kind", ev.UsageKind),
 		)
 	}
 }
@@ -126,11 +128,12 @@ func (r *Runner) recordTeamRunUsage(
 	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
 	defer cancel()
 	if _, err := r.usage.RecordTokenUsageEvent(recCtx, ev); err != nil {
-		event.CtxFlowLogWarn(ctx, "team.usage_record_fail", "团队轮次用量落库失败",
-			event.P("error", err.Error()),
-			event.P("team_id", teamID),
-			event.P("run_id", run.ID),
-			event.P("usage_kind", biz.UsageKindTeamTurn),
+		loggateway.Global().Warn("团队轮次用量落库失败",
+			loggateway.StepID("team.usage_record_fail"),
+			loggateway.Str("error", err.Error()),
+			loggateway.Str("team_id", teamID),
+			loggateway.Str("run_id", run.ID),
+			loggateway.Str("usage_kind", biz.UsageKindTeamTurn),
 		)
 	}
 }

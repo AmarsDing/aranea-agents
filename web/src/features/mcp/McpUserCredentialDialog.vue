@@ -23,7 +23,7 @@
               </q-item-label>
             </q-item-section>
             <q-item-section side>
-              <q-btn flat dense round icon="delete" color="negative" aria-label="删除" @click="remove(cred.credential_key)" />
+              <q-btn flat dense round icon="delete" color="negative" aria-label="删除" @click="confirmRemove(cred.credential_key)" />
             </q-item-section>
           </q-item>
         </q-list>
@@ -42,8 +42,8 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
 import { useQuasar } from "quasar";
-import { deleteMcpUserCredential, listMcpUserCredentials, upsertMcpUserCredential } from "./api";
 import type { McpUserCredential } from "./types";
+import { useMcpStore } from "../../stores/mcp";
 
 const props = defineProps<{
   modelValue: boolean;
@@ -58,17 +58,18 @@ const emit = defineEmits<{
 }>();
 
 const $q = useQuasar();
+const mcpStore = useMcpStore();
 const loading = ref(false);
 const saving = ref(false);
 const items = ref<McpUserCredential[]>([]);
-const form = reactive({ credential_key: "Authorization", secret: "" });
+let form = reactive({ credential_key: "Authorization", secret: "" });
 
 const canSave = computed(() => Boolean(props.mcpServerId && props.userId && form.credential_key.trim() && form.secret.trim()));
 
 watch(
   () => [props.modelValue, props.mcpServerId, props.userId] as const,
-  ([open]) => {
-    if (open) void reload();
+  ([open, serverId, uid]) => {
+    if (open && serverId && uid) void reload();
   }
 );
 
@@ -76,7 +77,7 @@ async function reload() {
   if (!props.mcpServerId || !props.userId) return;
   loading.value = true;
   try {
-    items.value = await listMcpUserCredentials(props.mcpServerId, props.userId);
+    items.value = await mcpStore.fetchUserCredentials(props.mcpServerId, props.userId);
   } catch (err) {
     $q.notify({ type: "negative", message: err instanceof Error ? err.message : "加载凭据失败" });
   } finally {
@@ -88,7 +89,7 @@ async function save() {
   if (!canSave.value) return;
   saving.value = true;
   try {
-    await upsertMcpUserCredential(props.mcpServerId, props.userId, {
+    await mcpStore.saveUserCredential(props.mcpServerId, props.userId, {
       credential_key: form.credential_key.trim(),
       secret: form.secret.trim()
     });
@@ -105,11 +106,20 @@ async function save() {
 
 async function remove(credentialKey: string) {
   try {
-    await deleteMcpUserCredential(props.mcpServerId, props.userId, credentialKey);
+    await mcpStore.removeUserCredential(props.mcpServerId, props.userId, credentialKey);
     await reload();
     $q.notify({ type: "positive", message: "已删除" });
   } catch (err) {
     $q.notify({ type: "negative", message: err instanceof Error ? err.message : "删除失败" });
   }
+}
+
+function confirmRemove(credentialKey: string) {
+  $q.dialog({
+    title: "删除凭据",
+    message: `确定删除凭据「${credentialKey}」？删除后 Agent 将无法使用该凭据访问 MCP 服务。`,
+    cancel: true,
+    persistent: true
+  }).onOk(() => void remove(credentialKey));
 }
 </script>

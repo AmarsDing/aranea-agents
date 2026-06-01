@@ -7,24 +7,22 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 // ToolAuditCleanup periodically purges tool_invocation_audit rows older than retention policy.
 type ToolAuditCleanup struct {
 	interval time.Duration
 	tools    *biz.ToolUsecase
-	log      *log.Helper
+	lg       loggateway.Logger
 }
 
-func NewToolAuditCleanup(interval time.Duration, tools *biz.ToolUsecase, logger log.Logger) *ToolAuditCleanup {
+func NewToolAuditCleanup(interval time.Duration, tools *biz.ToolUsecase, lg loggateway.Logger) *ToolAuditCleanup {
 	if interval <= 0 {
 		interval = 24 * time.Hour
 	}
-	return &ToolAuditCleanup{interval: interval, tools: tools, log: log.NewHelper(logger)}
+	return &ToolAuditCleanup{interval: interval, tools: tools, lg: lg}
 }
 
 func (w *ToolAuditCleanup) Start(ctx context.Context) {
@@ -48,14 +46,11 @@ func (w *ToolAuditCleanup) runOnce(ctx context.Context) {
 	safego.Go(ctx, "tool_audit.cleanup", func() {
 		n, err := w.tools.PurgeOldInvocationAudits(context.Background())
 		if err != nil {
-			event.SysLogWarn("tool_audit.cleanup", "工具审计日志清理失败", event.P("error", err))
-			if w.log != nil {
-				w.log.Warnf("tool audit cleanup: %v", err)
-			}
+			w.lg.Warn("tool audit cleanup failed", loggateway.Err(err))
 			return
 		}
-		if n > 0 && w.log != nil {
-			w.log.Infof("tool audit cleanup: removed %d rows", n)
+		if n > 0 {
+			w.lg.Info("tool audit cleanup", loggateway.Int("removed", int(n)))
 		}
 	})
 }

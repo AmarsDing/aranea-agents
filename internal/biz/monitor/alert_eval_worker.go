@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"golang.org/x/sync/singleflight"
@@ -30,9 +30,10 @@ type AlertEvalWorker struct {
 	buffer   *MetricRingBuffer
 	sf       singleflight.Group
 	ready    atomic.Bool
+	lg       loggateway.Logger
 }
 
-func NewAlertEvalWorker(uc *Usecase, buffer *MetricRingBuffer) *AlertEvalWorker {
+func NewAlertEvalWorker(uc *Usecase, buffer *MetricRingBuffer, lg loggateway.Logger) *AlertEvalWorker {
 	if uc == nil {
 		return nil
 	}
@@ -41,6 +42,7 @@ func NewAlertEvalWorker(uc *Usecase, buffer *MetricRingBuffer) *AlertEvalWorker 
 		usecase:  uc,
 		interval: interval,
 		buffer:   buffer,
+		lg:       lg,
 	}
 }
 
@@ -71,7 +73,7 @@ func (w *AlertEvalWorker) rebuildFromDB(ctx context.Context) {
 		if rebuilt > 0 {
 			w.ready.Store(true)
 		} else {
-			event.SysLogWarn("system.monitor.alert_eval_rebuild_fail", "AlertEvalWorker: RebuildRingBuffer rebuilt 0 buckets, will retry on next tick")
+			w.lg.Warn("AlertEvalWorker: RebuildRingBuffer rebuilt 0 buckets, will retry on next tick", loggateway.StepID("system.monitor.alert_eval_rebuild_fail"))
 			w.ready.Store(true)
 		}
 	})

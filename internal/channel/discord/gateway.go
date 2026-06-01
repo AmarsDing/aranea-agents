@@ -8,7 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/runtime"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -66,8 +66,9 @@ func RunGateway(
 			},
 		}
 		if err := handler.ProcessInbound(ctx, chRow, ev); err != nil {
-			event.SysLogWarn("channel.discord.inbound_failed", "Discord 入站处理失败",
-				event.P("error", err.Error()),
+			loggateway.Global().Warn("Discord 入站处理失败",
+				loggateway.StepID("channel.discord.inbound_failed"),
+				loggateway.Err(err),
 			)
 		}
 	})

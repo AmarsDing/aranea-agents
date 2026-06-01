@@ -50,5 +50,6 @@ func (ModelPricingRule) Fields() []ent.Field {
 func (ModelPricingRule) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("provider_code", "model_api_id", "effective_from").Unique(),
+		index.Fields("provider_code", "model_api_id", "is_active", "effective_from").StorageKey("idx_pricing_rules_model_active"),
 	}
 }

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
 )
@@ -79,7 +79,7 @@ func (u *SessionRunUsecase) CreateDurableCheckpoint(ctx context.Context, snap Du
 	}
 	cp.ID = id
 	if err := u.repo.UpdateCheckpointID(ctx, run.ID, id); err != nil {
-		event.SysLogWarn("session_run_checkpoint", "update checkpoint id failed", event.P("run_id", run.ID), event.P("checkpoint_id", id), event.P("error", err.Error()))
+		u.lg.Warn("update checkpoint id failed", loggateway.StepID("session_run_checkpoint"), loggateway.Str("run_id", run.ID), loggateway.Str("checkpoint_id", id), loggateway.Err(err))
 	}
 	return cp, nil
 }

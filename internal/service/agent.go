@@ -21,16 +21,16 @@ import (
 type AgentService struct {
 	v1.UnimplementedAgentServiceServer
 
-	uc       *biz.AgentUsecase
-	evoUC    *biz.EvolutionUsecase
-	mon      *biz.MonitorUsecase
-	a2aUC    *biz.A2AUsecase
-	promptAI *PromptFileAIEditor
+	uc              *biz.AgentUsecase
+	evoUC           *biz.EvolutionUsecase
+	mon             *biz.MonitorUsecase
+	a2aUC           *biz.A2AUsecase
+	promptAI        *PromptFileAIEditor
+	agentTemplateUC *biz.AgentTemplateUsecase
 }
 
-// NewAgentService constructs the service.
-func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase, mon *biz.MonitorUsecase, a2aUC *biz.A2AUsecase, promptAI *PromptFileAIEditor) *AgentService {
-	return &AgentService{uc: uc, evoUC: evoUC, mon: mon, a2aUC: a2aUC, promptAI: promptAI}
+func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase, mon *biz.MonitorUsecase, a2aUC *biz.A2AUsecase, promptAI *PromptFileAIEditor, agentTemplateUC *biz.AgentTemplateUsecase) *AgentService {
+	return &AgentService{uc: uc, evoUC: evoUC, mon: mon, a2aUC: a2aUC, promptAI: promptAI, agentTemplateUC: agentTemplateUC}
 }
 
 func fromProtoRuntime(pb *v1.AgentRuntimeSettings) *biz.AgentRuntimeSettings {
@@ -399,6 +399,9 @@ func fromProtoAgent(pb *v1.Agent) biz.Agent {
 		Icon:               pb.GetIcon(),
 		AgentDescription:   pb.GetAgentDescription(),
 		CategoryPositionID: pb.GetCategoryPositionId(),
+		PositionKey:        pb.GetPositionKey(),
+		AgentVariant:       pb.GetAgentVariant(),
+		VariantDescription: pb.GetVariantDescription(),
 		SystemPromptMode:   pb.GetSystemPromptMode(),
 		ContextWindow:      int(pb.GetContextWindow()),
 		BudgetMonthlyCents: int(pb.GetBudgetMonthlyCents()),
@@ -408,6 +411,7 @@ func fromProtoAgent(pb *v1.Agent) biz.Agent {
 		DeletedAt:          pb.GetDeletedAt(),
 		Kind:               pb.GetAgentKind(),
 		A2AProxy:           fromProtoA2AProxy(pb.GetA2AProxyConfig()),
+		Readonly:           pb.GetReadonly(),
 	}
 	biz.HydrateAgentKind(&a)
 	if s := fromProtoRuntime(pb.GetSettings()); s != nil {
@@ -433,6 +437,9 @@ func toProtoAgent(b biz.Agent) *v1.Agent {
 		Icon:               b.Icon,
 		AgentDescription:   b.AgentDescription,
 		CategoryPositionId: b.CategoryPositionID,
+		PositionKey:        b.PositionKey,
+		AgentVariant:       b.AgentVariant,
+		VariantDescription: b.VariantDescription,
 		SystemPromptMode:   b.SystemPromptMode,
 		ContextWindow:      int32(b.ContextWindow),
 		BudgetMonthlyCents: int32(b.BudgetMonthlyCents),
@@ -448,6 +455,7 @@ func toProtoAgent(b biz.Agent) *v1.Agent {
 		LastRunAt:             b.LastRunAt,
 		PendingEvolutionCount: int32(b.PendingEvolutionCount),
 		CreatedBy:             b.CreatedBy,
+		Readonly:              b.Readonly,
 	}
 	for i := range b.Files {
 		out.Files = append(out.Files, toProtoFile(b.Files[i]))
@@ -467,6 +475,9 @@ func fromProtoCreate(req *v1.CreateAgentRequest) biz.Agent {
 		Icon:               req.GetIcon(),
 		AgentDescription:   req.GetAgentDescription(),
 		CategoryPositionID: req.GetCategoryPositionId(),
+		PositionKey:        req.GetPositionKey(),
+		AgentVariant:       req.GetAgentVariant(),
+		VariantDescription: req.GetVariantDescription(),
 		SystemPromptMode:   req.GetSystemPromptMode(),
 		ContextWindow:      int(req.GetContextWindow()),
 		BudgetMonthlyCents: int(req.GetBudgetMonthlyCents()),
@@ -813,8 +824,10 @@ func (s *AgentService) EditPromptFileByAI(ctx context.Context, req *v1.EditPromp
 
 // ListAgentTemplates implements GET /v1/agent-templates.
 func (s *AgentService) ListAgentTemplates(ctx context.Context, _ *emptypb.Empty) (*v1.ListAgentTemplatesResponse, error) {
-	_ = ctx
-	items := biz.ListAgentTemplates()
+	items, err := s.agentTemplateUC.List(ctx)
+	if err != nil {
+		return nil, err
+	}
 	out := &v1.ListAgentTemplatesResponse{Items: make([]*v1.AgentTemplate, 0, len(items))}
 	for _, t := range items {
 		out.Items = append(out.Items, &v1.AgentTemplate{

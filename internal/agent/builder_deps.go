@@ -102,6 +102,9 @@ type TRPCBuilderDeps struct {
 	// from agent_category_nodes for injection into the system instruction.
 	// Optional: when nil, category responsibility injection is skipped.
 	AgentCategory *biz.AgentCategoryUsecase
+	IndustryUC    *biz.IndustryUsecase
+	DepartmentUC  *biz.DepartmentUsecase
+	PositionUC    *biz.PositionUsecase
 	// Cache version hashes: optional strings computed by the caller.
 	// When non-empty they are folded into the build cache fingerprint so that
 	// tool / skill / MCP changes invalidate the cached agent.

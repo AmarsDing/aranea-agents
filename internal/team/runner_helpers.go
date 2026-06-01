@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 
 	"github.com/google/uuid"
@@ -118,8 +119,7 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 		r.td.Pipeline.Bus.Publish(ctx, failEnv)
 	}
 	r.publishTeamRunSummary(ctx, *run)
-	event.SessionSysLogWarn(ctx, strings.TrimSpace(run.SessionID), "team.run.finish", msg,
-		event.P("team_id", run.TeamID), event.P("run_id", run.ID))
+	loggateway.Global().With(loggateway.SessionID(strings.TrimSpace(run.SessionID))).Warn(msg, loggateway.StepID("team.run.finish"), loggateway.Str("team_id", run.TeamID), loggateway.Str("run_id", run.ID))
 }
 
 func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRun) {

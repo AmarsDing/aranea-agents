@@ -29,6 +29,7 @@
       @copy-key="copyAgentKey"
       @delete="confirmDelete"
       @duplicate="duplicateListedAgent"
+      @reorder="onReorder"
     />
 
     <agents-pagination-bar v-model:page="page" v-model:rows-per-page="rowsPerPage" :total="total" :page-max="pageMax" />
@@ -146,6 +147,6 @@ const {
   toggleFavorite,
   copyAgentKey,
   openCreate,
-  categoryLabel
+  categoryLabel,
 } = useAgentsPage();
 </script>

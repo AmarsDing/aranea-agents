@@ -14,7 +14,7 @@
 | 需求符合度 | 15 | 20 | 核心 Graph 框架可用；LLM/Tool 节点待补全；Checkpoint/HITL 产品化尚早期 |
 | 架构一致性 | 21 | 25 | `internal/graph/trpc` 适配层正确；Graph runtime 与 biz 通过端口接口隔离；Data 层 checkpoint 绑定框架有待修复 |
 | 后端实现质量 | 17 | 20 | Graph Builder + GraphAgent + ExecutionSummary ✅；节点类型不完整 |
-| 前端实现质量 | 12 | 15 | Vue Flow 画布 + 节点面板 + 运行页 ✅；节点类型对应前端配置待补 |
+| 前端实现质量 | 14 | 15 | Vue Flow 画布 + 节点面板 + 运行页 ✅；节点色彩7色7调 + 属性面板分组折叠 + 右键菜单 + 搜索筛选排序 + 进度统计 + 霓虹边线 + 工具chip |
 | 测试与验证 | 6 | 10 | `pkg/trpc-agent-go/graph/*_test.go` 框架层有测试；Aranea 适配层测试薄弱 |
 | 文档一致性 | 6 | 10 | `36-graph-development.md` 与代码状态对齐 |
 

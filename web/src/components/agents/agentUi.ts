@@ -20,20 +20,14 @@ export const promptModes = [
   { value: "none" as PromptMode, label: "无", caption: "纯工具调用自动化", tokens: "~2K tokens" }
 ];
 
-export const descriptionTemplates = [
-  { key: "fox", label: "小狐", icon: "pets", text: "温柔、敏捷，擅长把复杂问题拆成清晰步骤。" },
-  { key: "programmer", label: "程序员", icon: "code", text: "资深研发工程师，关注架构、代码质量、测试与可维护性。" },
-  { key: "support", label: "客服", icon: "support_agent", text: "耐心、清晰，优先解决用户问题并记录上下文。" },
-  { key: "writer", label: "写手", icon: "edit_note", text: "擅长品牌文案、结构化写作、润色与多语种表达。" },
-  { key: "translator", label: "翻译", icon: "translate", text: "忠实、准确地进行中英互译，并保留术语一致性。" },
-  { key: "luo", label: "小罗", icon: "bolt", text: "执行力强，适合任务推进、复盘和状态同步。" },
-  { key: "mimi", label: "米米", icon: "auto_awesome", text: "轻松友好，擅长创意发散、陪伴式讨论和灵感整理。" }
+export const statusOptions = [
+  { label: "活跃", value: "active" },
+  { label: "停用", value: "inactive" }
 ];
 
-export const statusOptions = [
-  { label: "Active", value: "active" },
-  { label: "Inactive", value: "inactive" }
-];
+export function statusLabel(value: string) {
+  return statusOptions.find((opt) => opt.value === value)?.label ?? value;
+}
 
 export const toolOptions = ["browser", "replace_content", "list_file", "read_file", "save_file", "create_image", "create_video", "stt"];
 
@@ -87,7 +81,7 @@ export function tokenText(value: string) {
   return count > 0 ? `估计 ${count} token` : "空";
 }
 
-export function formatContext(value: number) {
+export function formatContext(value?: number) {
   if (!value) return "默认 ctx";
   if (value >= 1_000_000) return `${Math.round(value / 1_000_000)}M ctx`;
   if (value >= 1000) return `${Math.round(value / 1000)}K ctx`;

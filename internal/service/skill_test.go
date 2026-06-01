@@ -8,6 +8,7 @@ import (
 	v1 "aranea-agents/api/kratos/skill/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/service"
+	"aranea-agents/pkg/auth"
 )
 
 // memSkillRepo is a minimal in-memory SkillRepo.
@@ -108,6 +109,18 @@ func (m *memSkillRepo) GetLatestSkillMarkdown(_ context.Context, _ string) (stri
 	return "", nil
 }
 
+func (m *memSkillRepo) BatchGetSkillMarkdownBySlugs(_ context.Context, _ []string) (map[string]string, error) {
+	return nil, nil
+}
+
+func (m *memSkillRepo) ListSkillVersions(_ context.Context, _ biz.SkillVersionListQuery) (biz.SkillVersionListResult, error) {
+	return biz.SkillVersionListResult{}, nil
+}
+
+func (m *memSkillRepo) RollbackSkillVersion(_ context.Context, _ string, _ string) (biz.Skill, error) {
+	return biz.Skill{}, fmt.Errorf("not implemented")
+}
+
 func (m *memSkillRepo) PatchSkill(_ context.Context, id string, patch biz.SkillUpdateDraft) (biz.Skill, error) {
 	s, ok := m.items[id]
 	if !ok {
@@ -144,6 +157,10 @@ func newSkillService() *service.SkillService {
 	return service.NewSkillService(biz.NewSkillUsecase(repo, nil), nil, nil, nil)
 }
 
+func adminCtx() context.Context {
+	return auth.NewContext(context.Background(), &auth.Auth{UserID: 1, Access: "admin"})
+}
+
 func TestSkillService_List(t *testing.T) {
 	svc := newSkillService()
 	ctx := context.Background()
@@ -159,7 +176,7 @@ func TestSkillService_List(t *testing.T) {
 
 func TestSkillService_ToggleEnabled(t *testing.T) {
 	svc := newSkillService()
-	ctx := context.Background()
+	ctx := adminCtx()
 
 	out, err := svc.ToggleSkillEnabled(ctx, &v1.ToggleSkillEnabledRequest{Id: "sk1", Enabled: false})
 	if err != nil {
@@ -172,7 +189,7 @@ func TestSkillService_ToggleEnabled(t *testing.T) {
 
 func TestSkillService_Delete(t *testing.T) {
 	svc := newSkillService()
-	ctx := context.Background()
+	ctx := adminCtx()
 
 	_, err := svc.DeleteSkill(ctx, &v1.DeleteSkillRequest{Id: "sk1"})
 	if err != nil {
@@ -186,7 +203,7 @@ func TestSkillService_Delete(t *testing.T) {
 
 func TestSkillService_DuplicateSkill(t *testing.T) {
 	svc := newSkillService()
-	ctx := context.Background()
+	ctx := adminCtx()
 
 	copy, err := svc.DuplicateSkill(ctx, &v1.DuplicateSkillRequest{Id: "sk1"})
 	if err != nil {

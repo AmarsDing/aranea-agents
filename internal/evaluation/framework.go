@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	trpceval "trpc.group/trpc-go/trpc-agent-go/evaluation"
 	evalresultinmemory "trpc.group/trpc-go/trpc-agent-go/evaluation/evalresult/inmemory"
@@ -20,18 +20,21 @@ import (
 
 // FrameworkBridge runs evaluations via trpc-agent-go AgentEvaluator (MultiRun, etc.).
 type FrameworkBridge struct {
-	runFactory func(agentID string) (runner.Runner, error)
-	llmJudge   LLMJudge
-	llmUserSim usersimulation.Simulator
+	runFactory   func(agentID string) (runner.Runner, error)
+	llmJudge     LLMJudge
+	llmUserSim   usersimulation.Simulator
+	multiRunCfg  MultiRunConfig
+	lg           loggateway.Logger
 }
 
-// NewFrameworkBridge constructs a FrameworkBridge.
 func NewFrameworkBridge(
 	runFactory func(agentID string) (runner.Runner, error),
 	judge LLMJudge,
 	llmUserSim usersimulation.Simulator,
+	multiRunCfg MultiRunConfig,
+	lg loggateway.Logger,
 ) *FrameworkBridge {
-	return &FrameworkBridge{runFactory: runFactory, llmJudge: judge, llmUserSim: llmUserSim}
+	return &FrameworkBridge{runFactory: runFactory, llmJudge: judge, llmUserSim: llmUserSim, multiRunCfg: multiRunCfg, lg: lg}
 }
 
 // RunConfig holds per-run framework options.
@@ -55,6 +58,10 @@ func (b *FrameworkBridge) Execute(
 	numRuns := cfg.NumRuns
 	if numRuns <= 0 {
 		numRuns = 1
+	}
+	mrc := b.multiRunCfg
+	if mrc.NumRuns <= 0 {
+		mrc.NumRuns = numRuns
 	}
 	run, err := b.runFactory(cfg.AgentID)
 	if err != nil {
@@ -86,8 +93,8 @@ func (b *FrameworkBridge) Execute(
 		trpceval.WithMetricManager(metricMgr),
 		trpceval.WithEvalResultManager(resultMgr),
 		trpceval.WithRegistry(reg),
-		trpceval.WithNumRuns(numRuns),
 	}
+	opts = append(opts, mrc.ToOptions()...)
 	if sim := resolveUserSimulator(cases, cfg, b.llmUserSim); sim != nil {
 		opts = append(opts, trpceval.WithUserSimulator(sim))
 	}
@@ -102,7 +109,7 @@ func (b *FrameworkBridge) Execute(
 	}
 	defer evaluator.Close()
 
-	result, err := evaluator.Evaluate(ctx, evalSetID, trpceval.WithRunDetailsEnabled(true))
+	result, err := evaluator.Evaluate(ctx, evalSetID)
 	if err != nil {
 		return nil, nil, 0, 0, fmt.Errorf("framework evaluate: %w", err)
 	}
@@ -161,9 +168,10 @@ func (b *FrameworkBridge) Execute(
 				// EV-04: log failure and count as 0 in denominator so the average is
 				// not inflated by skipping failed judge calls. Append to any pre-existing
 				// inference error to preserve both error contexts.
-				event.SysLogWarn("system.auto_memory.extract_fail", "eval.llm_judge.failed",
-					event.P("case_id", bc.ID),
-					event.P("error", judgeErr.Error()),
+				b.lg.Warn("eval.llm_judge.failed",
+					loggateway.StepID("system.auto_memory.extract_fail"),
+					loggateway.Str("case_id", bc.ID),
+					loggateway.Err(judgeErr),
 				)
 				judgeErrMsg := "llm_judge failed: " + judgeErr.Error()
 				if res.ErrorMessage != "" {

@@ -67,7 +67,7 @@
 
 1. **P2 — UI 命名**：路由 Tab `traces` → `runs` 别名；Events 服务端 `hide_linked_completions`（减轻前端过滤）。
 2. **P2 — LOG-02**：框架层 zap 日志结构化（JSON Encoder）— 跨 `pkg/trpc-agent-go` 修改，需独立 PR。
-3. **P3 — LOOP-01**：闭环工作流（detected → tracing → analyzing → fixing → verifying → closed）。
+3. **P2 — LOOP-01**：系统调试日志闭环（用 FlowLog 替代 `fmt.Println`/`log.Printf`，让系统运行信息直接显示在 Monitor Logs 界面）。需求：[18-monitor-loop-01-requirement.md](./18-monitor-loop-01-requirement.md) · 设计：[18-monitor-loop-01-design.md](./18-monitor-loop-01-design.md)
 
 ---
 
@@ -135,7 +135,7 @@
 | TRACE-01 | Trace 文件落盘 | P1 | ✅ | `runner.completion` → `trace-*.jsonl` |
 | DIAG-01 | AI 诊断包 | P1 | ✅ | `DiagBundleGenerator` + `GenerateDiagnosticBundle` RPC |
 | DIAG-02 | 根因分析规则引擎 | P1 | ✅ | `RootCauseEngine` 5 条内置规则 + 置信度评分 |
-| LOOP-01 | 闭环工作流 | P3 | ❌ | 待设计 |
+| LOOP-01 | 系统调试日志闭环 | P2 | ❌ 待实施 | 需求：[18-monitor-loop-01-requirement.md](./18-monitor-loop-01-requirement.md) · 设计：[18-monitor-loop-01-design.md](./18-monitor-loop-01-design.md) |
 
 ### Latency 聚合（2026-05-28 新增）
 
@@ -201,7 +201,7 @@ cd web && pnpm lint && pnpm test && pnpm build
 | 7 | Tab 命名 `traces`→`runs`、服务端 completion 过滤 | P2 | ❌ |
 | 8 | LOG-02 框架层 zap 结构化 | P2 | ❌（跨 pkg 修改） |
 | 9 | LOG-03 关键路径 FlowLog 补全 | P2 | ✅ P0/P1/P2 完成 |
-| 10 | LOOP-01 闭环工作流 | P3 | ❌（待设计） |
+| 10 | LOOP-01 系统调试日志闭环 | P2 | ❌ 待实施（需求+设计已完成） |
 
 ---
 

@@ -8,12 +8,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -27,6 +28,8 @@ type FlowFileAppender struct {
 	systemFile *rotatingFile
 	traceFile  *rotatingFile
 	alertFile  *rotatingFile
+	logFile    *rotatingFile
+	lg         loggateway.Logger
 }
 
 type rotatingFile struct {
@@ -57,14 +60,19 @@ func (rf *rotatingFile) shouldRotate() bool {
 	return fi.Size() >= rf.maxSize
 }
 
-func NewFlowFileAppender(dir string) *FlowFileAppender {
+func NewFlowFileAppender(dir string, lg loggateway.Logger) *FlowFileAppender {
 	if dir == "" {
-		dir = "/var/log/aranea"
+		if runtime.GOOS == "windows" {
+			dir = "./logs"
+		} else {
+			dir = "/var/log/aranea"
+		}
 	}
 	return &FlowFileAppender{
 		dir:           dir,
 		retentionDays: 30,
 		compressAge:   24 * time.Hour,
+		lg:            lg,
 	}
 }
 
@@ -73,12 +81,13 @@ func (a *FlowFileAppender) Start(ctx context.Context, buses ...contract.Bus) {
 		return
 	}
 	if err := os.MkdirAll(a.dir, 0755); err != nil {
-		event.SysLogWarn("system.monitor.flow_file.mkdir_fail", "FlowFileAppender: mkdir failed", event.P("dir", a.dir), event.P("error", err.Error()))
+		a.lg.Warn("FlowFileAppender: mkdir failed", loggateway.StepID("system.monitor.flow_file.mkdir_fail"), loggateway.Str("dir", a.dir), loggateway.Err(err))
 		return
 	}
 	opts := contract.SubscribeOptions{
 		EventTypes: []contract.EnvelopeType{
 			contract.EnvelopeTypeFlowLog,
+			contract.EnvelopeTypeLog,
 			contract.EnvelopeTypeAlertNotify,
 			contract.EnvelopeTypeMCPHealthAlert,
 			contract.EnvelopeTypeRunnerCompletion,
@@ -131,15 +140,16 @@ func (a *FlowFileAppender) maintenance() {
 	purged := a.purgeExpiredFiles()
 	a.purgeTmpFiles()
 	if compressed > 0 || purged > 0 {
-		event.SysLogInfo("system.monitor.flow_file.maintenance", "FlowFileAppender maintenance completed",
-			event.P("compressed", fmt.Sprint(compressed)), event.P("purged", fmt.Sprint(purged)))
+		a.lg.Info("FlowFileAppender maintenance completed",
+			loggateway.StepID("system.monitor.flow_file.maintenance"),
+			loggateway.Str("compressed", fmt.Sprint(compressed)), loggateway.Str("purged", fmt.Sprint(purged)))
 	}
 }
 
 func (a *FlowFileAppender) syncOpenFiles() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for _, f := range []*rotatingFile{a.flowFile, a.systemFile, a.traceFile, a.alertFile} {
+	for _, f := range []*rotatingFile{a.flowFile, a.systemFile, a.traceFile, a.alertFile, a.logFile} {
 		if f != nil && f.file != nil {
 			f.file.Sync()
 		}
@@ -292,6 +302,8 @@ func (a *FlowFileAppender) routeFileLocked(env contract.Envelope) *rotatingFile 
 		return a.ensureFile(&a.alertFile, "alert")
 	case contract.EnvelopeTypeRunnerCompletion:
 		return a.ensureFile(&a.traceFile, "trace")
+	case contract.EnvelopeTypeLog:
+		return a.ensureFile(&a.logFile, "log")
 	case contract.EnvelopeTypeFlowLog:
 		ch := strings.TrimSpace(env.Channel)
 		if ch == "monitor" {
@@ -323,7 +335,7 @@ func (a *FlowFileAppender) ensureFile(slot **rotatingFile, prefix string) *rotat
 	fullPath := filepath.Join(a.dir, path)
 	f, err := os.OpenFile(fullPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		event.SysLogWarn("system.monitor.flow_file.open_fail", "FlowFileAppender: open failed", event.P("path", fullPath), event.P("error", err.Error()))
+		a.lg.Warn("FlowFileAppender: open failed", loggateway.StepID("system.monitor.flow_file.open_fail"), loggateway.Str("path", fullPath), loggateway.Err(err))
 		return nil
 	}
 	rf := &rotatingFile{
@@ -344,7 +356,7 @@ func (a *FlowFileAppender) writeRowLocked(rf *rotatingFile, row map[string]any) 
 		return
 	}
 	if err := rf.encoder.Encode(row); err != nil {
-		event.SysLogWarn("system.monitor.flow_file.write_fail", "FlowFileAppender: write failed", event.P("path", rf.path), event.P("error", err.Error()))
+		a.lg.Warn("FlowFileAppender: write failed", loggateway.StepID("system.monitor.flow_file.write_fail"), loggateway.Str("path", rf.path), loggateway.Err(err))
 		return
 	}
 }

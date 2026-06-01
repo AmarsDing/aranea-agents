@@ -57,61 +57,74 @@
       />
     </section>
 
-    <section class="graphs-grid q-mt-md">
-      <q-card
-        v-for="graph in filteredRows"
-        :key="graph.id"
-        flat
-        :class="['graph-card', { 'is-dark': isDark }]"
-        @click="openEditor(graph.id)"
-      >
-        <div class="graph-card__inner">
-          <div class="row items-center justify-between no-wrap">
-            <h3 class="graph-card__name col min-width-0 ellipsis">{{ graph.name }}</h3>
-            <span class="graph-card__time">{{ relativeTime(graph.updatedAt) }}</span>
-          </div>
-          <p v-if="graph.description" class="graph-card__desc ellipsis">{{ graph.description }}</p>
-          <div class="graph-card__chips">
-            <template v-for="(count, type) in countNodesByType(graph)" :key="type">
-              <span
-                v-if="count"
-                class="graph-card__chip"
-                :style="{ borderColor: (NODE_TYPE_STYLES as any)[type]?.borderColor, color: (NODE_TYPE_STYLES as any)[type]?.borderColor }"
-              >{{ (NODE_TYPE_EMOJI as any)[type] }}×{{ count }}</span>
-            </template>
-          </div>
-          <div class="row items-center justify-between no-wrap">
-            <div class="graph-card__tags">
-              <span v-if="graph.executionEngine === 'dag'" class="graph-card__tag">DAG</span>
-              <span v-else class="graph-card__tag">BSP</span>
-              <span v-if="graph.enableCheckpoint" class="graph-card__tag">检查点</span>
-            </div>
-            <span class="graph-card__summary">{{ graph.nodes?.length ?? 0 }}节点·{{ graph.edges?.length ?? 0 }}线</span>
-          </div>
-          <footer class="graph-card__foot">
-            <q-btn flat dense round icon="play_arrow" size="sm" @click.stop="openRunDialog(graph)">
-              <q-tooltip>执行</q-tooltip>
-            </q-btn>
-            <q-btn flat dense round icon="edit" size="sm" @click.stop="openEditor(graph.id)">
-              <q-tooltip>编辑</q-tooltip>
-            </q-btn>
-            <q-btn flat dense round icon="content_copy" size="sm" @click.stop="duplicateGraph(graph)">
-              <q-tooltip>复制</q-tooltip>
-            </q-btn>
-            <q-btn flat dense round icon="delete" size="sm" color="negative" @click.stop="confirmRemoveGraph(graph)">
-              <q-tooltip>删除</q-tooltip>
-            </q-btn>
-          </footer>
-        </div>
-      </q-card>
+    <q-inner-loading :showing="loading && rows.length === 0" />
 
-      <div class="graph-card graph-card--add" @click="openCreate">
-        <div class="graph-card__inner column items-center justify-center">
-          <q-icon name="add" size="28px" color="grey-6" />
-          <span class="graph-card--add__label">新增 Graph</span>
+    <draggable
+      v-model="localGraphs"
+      item-key="id"
+      tag="section"
+      class="graphs-grid q-mt-md"
+      ghost-class="graph-card--ghost"
+      chosen-class="graph-card--chosen"
+      drag-class="graph-card--dragging"
+      :disabled="!isDefaultSort"
+      @end="onDragEnd"
+    >
+      <template #item="{ element: graph }">
+        <q-card
+          flat
+          :class="['graph-card', { 'is-dark': isDark }]"
+          @click="openEditor(graph.id)"
+        >
+          <div class="graph-card__inner">
+            <div class="row items-center justify-between no-wrap">
+              <h3 class="graph-card__name col min-width-0 ellipsis">{{ graph.name }}</h3>
+              <span class="graph-card__time">{{ relativeTime(graph.updatedAt) }}</span>
+            </div>
+            <p v-if="graph.description" class="graph-card__desc ellipsis">{{ graph.description }}</p>
+            <div class="graph-card__chips">
+              <template v-for="(count, type) in countNodesByType(graph)" :key="type">
+                <span
+                  v-if="count"
+                  class="graph-card__chip"
+                  :style="{ borderColor: nodeTypeBorderColor(type as string), color: nodeTypeBorderColor(type as string) }"
+                >{{ (NODE_TYPE_EMOJI as any)[type] }}×{{ count }}</span>
+              </template>
+            </div>
+            <div class="row items-center justify-between no-wrap">
+              <div class="graph-card__tags">
+                <span v-if="graph.executionEngine === 'dag'" class="graph-card__tag">DAG</span>
+                <span v-else class="graph-card__tag">BSP</span>
+                <span v-if="graph.enableCheckpoint" class="graph-card__tag">检查点</span>
+              </div>
+              <span class="graph-card__summary">{{ graph.nodes?.length ?? 0 }}节点·{{ graph.edges?.length ?? 0 }}线</span>
+            </div>
+            <footer class="graph-card__foot">
+              <q-btn flat dense round icon="play_arrow" size="sm" @click.stop="openRunDialog(graph)">
+                <q-tooltip>执行</q-tooltip>
+              </q-btn>
+              <q-btn flat dense round icon="edit" size="sm" @click.stop="openEditor(graph.id)">
+                <q-tooltip>编辑</q-tooltip>
+              </q-btn>
+              <q-btn flat dense round icon="content_copy" size="sm" @click.stop="duplicateGraph(graph)">
+                <q-tooltip>复制</q-tooltip>
+              </q-btn>
+              <q-btn flat dense round icon="delete" size="sm" color="negative" @click.stop="confirmRemoveGraph(graph)">
+                <q-tooltip>删除</q-tooltip>
+              </q-btn>
+            </footer>
+          </div>
+        </q-card>
+      </template>
+      <template #footer>
+        <div class="graph-card graph-card--add" @click="openCreate">
+          <div class="graph-card__inner column items-center justify-center">
+            <q-icon name="add" size="28px" color="grey-6" />
+            <span class="graph-card--add__label">新增 Graph</span>
+          </div>
         </div>
-      </div>
-    </section>
+      </template>
+    </draggable>
 
     <q-card v-if="!loading && rows.length === 0" flat :class="['graphs-empty', { 'is-dark': isDark }, 'q-mt-lg']">
       <q-card-section class="column items-center text-center q-pa-xl">
@@ -134,9 +147,12 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref, watch } from "vue";
+import draggable from "vuedraggable";
 import AppPageHero from "../components/layout/AppPageHero.vue";
 import GraphRunDialog from "../components/graph/GraphRunDialog.vue";
 import { useGraphsPage } from "../features/graph/useGraphsPage";
+import type { GraphDefinition } from "../features/graph/types";
 
 const {
   isDark,
@@ -151,7 +167,7 @@ const {
   SORT_OPTIONS,
   ENGINE_FILTER_OPTIONS,
   NODE_TYPE_EMOJI,
-  NODE_TYPE_STYLES,
+  nodeTypeBorderColor,
   countNodesByType,
   relativeTime,
   runDialogOpen,
@@ -166,5 +182,23 @@ const {
   executeRun,
   duplicateGraph,
   confirmRemoveGraph,
+  reorderGraphs,
 } = useGraphsPage();
+
+const isDefaultSort = computed(() => sortKey.value === "updatedAt" && sortOrder.value === "desc");
+
+const localGraphs = ref<GraphDefinition[]>([]);
+
+watch(
+  filteredRows,
+  (val) => {
+    localGraphs.value = val.slice();
+  },
+  { immediate: true },
+);
+
+function onDragEnd() {
+  const ids = localGraphs.value.map((g) => g.id);
+  reorderGraphs(ids);
+}
 </script>

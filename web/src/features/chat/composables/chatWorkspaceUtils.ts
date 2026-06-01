@@ -4,6 +4,7 @@ import type { Session } from "../../session/api";
 
 export const LS_AG_ORDER = "chat:order:agents";
 export const LS_TM_ORDER = "chat:order:teams";
+export const LS_AG_GROUP_ORDER_PREFIX = "chat:order:agents:";
 
 export function formatSessionTime(iso: string) {
   if (!iso) return "—";
@@ -74,4 +75,26 @@ export function loadTeamOrder(teams: TeamRow[], defaultTeamId: string): TeamRow[
 
 export function isAgentWorking(agent: { status?: string }) {
   return /work|run|busy|ing/i.test(agent.status || "");
+}
+
+export function loadGroupOrder<T extends { id: string }>(items: T[], groupKey: string, pinnedId?: string | null): T[] {
+  if (items.length === 0) return [];
+  const lsKey = `${LS_AG_GROUP_ORDER_PREFIX}${groupKey}`;
+  const ordered = applyStoredOrder(items, lsKey);
+  if (pinnedId) {
+    const pinned = ordered.find((item) => item.id === pinnedId);
+    if (pinned) {
+      return [pinned, ...ordered.filter((item) => item.id !== pinnedId)];
+    }
+  }
+  return ordered;
+}
+
+export function saveGroupOrder(groupKey: string, ids: string[]) {
+  const lsKey = `${LS_AG_GROUP_ORDER_PREFIX}${groupKey}`;
+  try {
+    localStorage.setItem(lsKey, JSON.stringify(ids));
+  } catch {
+    /* ignore */
+  }
 }

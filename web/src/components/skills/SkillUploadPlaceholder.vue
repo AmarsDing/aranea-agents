@@ -116,8 +116,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { useQuasar } from "quasar";
+import { computed, ref, watch } from "vue";
 import type {
   SkillConflictGroup,
   SkillImportApplyResult,
@@ -137,13 +136,13 @@ const props = defineProps<{
     payload: { provider?: string; model?: string; instructions?: string }
   ) => Promise<SkillRefineResult>;
   applySkillImport: (jobId: string, decisions: SkillImportDecision[]) => Promise<SkillImportApplyResult>;
+  /** 由 composable 注入通知函数，展示层不直接 useQuasar */
+  notify: (opts: { type: string; message: string }) => void;
 }>();
 
 const emit = defineEmits<{
   completed: [];
 }>();
-
-const $q = useQuasar();
 const dialogOpen = ref(false);
 const file = ref<File | null>(null);
 const job = ref<SkillImportJob | null>(null);
@@ -171,6 +170,24 @@ function openDialog() {
   dialogOpen.value = true;
 }
 
+function resetState() {
+  file.value = null;
+  job.value = null;
+  error.value = "";
+  uploading.value = false;
+  applying.value = false;
+  refiningGroupId.value = "";
+  refineResult.value = null;
+  approvedRiskyCandidateIds.value = [];
+  rejectedRiskyCandidateIds.value = [];
+}
+
+watch(dialogOpen, (val) => {
+  if (!val) {
+    resetState();
+  }
+});
+
 defineExpose({ openDialog });
 
 async function startUpload() {
@@ -196,7 +213,7 @@ async function refineGroup(groupId: string) {
   refiningGroupId.value = groupId;
   try {
     refineResult.value = await props.refineSkillConflictGroup(job.value.job_id, groupId, {});
-    $q.notify({ type: "positive", message: "炼化预览已生成" });
+    props.notify({ type: "positive", message: "炼化预览已生成" });
   } catch (err) {
     error.value = err instanceof Error ? err.message : "炼化失败";
   } finally {
@@ -225,7 +242,7 @@ async function applyImportResult() {
   error.value = "";
   try {
     await props.applySkillImport(job.value.job_id, decisions);
-    $q.notify({ type: "positive", message: "Skill 导入完成" });
+    props.notify({ type: "positive", message: "Skill 导入完成" });
     dialogOpen.value = false;
     emit("completed");
   } catch (err) {

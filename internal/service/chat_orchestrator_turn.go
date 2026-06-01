@@ -15,6 +15,7 @@ import (
 	"aranea-agents/internal/agent/intent"
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
+	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
 	arametrics "aranea-agents/internal/metrics"
 	rt "aranea-agents/internal/runtime"
@@ -351,11 +352,17 @@ func (o *ChatOrchestrator) makeAwaitReplyFunc(runCtx context.Context, sessionID,
 			}
 		}
 		o.setRunStatusWithAwait(toolCtx, sessionID, runID, "awaiting_user", "", &awaitMeta)
+		if awaitMeta.Kind == biz.ChatAwaitKindToolConfirm {
+			o.transitionSessionStatus(toolCtx, sessionID, sessstatus.SessionStatusAwaitingConfirmation, sessstatus.StatusReasonToolConfirmation)
+		} else {
+			o.transitionSessionStatus(toolCtx, sessionID, sessstatus.SessionStatusAwaitingConfirmation, sessstatus.StatusReasonAgentAwaitingReply)
+		}
 		o.persistAwaitMarkers(toolCtx, sessionID, runID, awaitMeta, true)
 		defer func() {
 			o.chatUC.DeleteAwaitChannel(sessionID)
 			o.clearAwaitMetaCache(sessionID)
 			o.setRunStatus(toolCtx, sessionID, runID, "running", "")
+			o.transitionSessionStatus(toolCtx, sessionID, sessstatus.SessionStatusRunning, "")
 		}()
 		select {
 		case r, ok := <-ch:
@@ -571,6 +578,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		CodeExecFactory:       o.rt.CodeExecFactory,
 		CustomTools:           o.cliAdminTools(ctx, ag),
 		KanbanBridge:          o.rt.KanbanBridge,
+		IndustryUC:            o.rt.IndustryUC,
+		DepartmentUC:          o.rt.DepartmentUC,
+		PositionUC:            o.rt.PositionUC,
 	}
 	root, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps)
 	if err != nil {
@@ -861,6 +871,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		emitter.LogCritical("chat.turn.timeout", "对话请求超时", event.P("timeout", defaultTurnTimeout.String()), event.P("reason", "sync_cap"))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "timeout").Observe(time.Since(turnStart).Seconds())
 		o.setRunStatus(ctx, sessionID, runID, "failed", "turn timeout")
+		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		te := TurnError(TurnErrTurnTimeout, defaultTurnTimeout.String())
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 		return userMsg, biz.ChatMessage{}, te
@@ -881,6 +892,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, errors.New(detail))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "empty_reply").Observe(time.Since(turnStart).Seconds())
 		o.setRunStatus(ctx, sessionID, runID, "failed", detail)
+		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		te := TurnError(TurnErrEmptyReply, detail)
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 		return userMsg, biz.ChatMessage{}, te
@@ -946,6 +958,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "ok").Observe(time.Since(turnStart).Seconds())
 	o.recordSessionTurn(ctx, sessionID, ag, userMsg.ID, assistantMsg.ID, prov, mod, promptTok, completionTok, assistantMsg.ContentMarkdown)
 	o.setRunStatus(ctx, sessionID, runID, "completed", "")
+	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")
 	o.bumpSessionRevisionAndPublish(ctx, sessionID, runID, userMsg.ID)
 	o.notifyNativeTurnHooks(ctx, sessionID, ag, content, assistantMsg.ContentMarkdown)
 	emitter.LogDone("chat.turn.execute", "对话轮次执行完成",

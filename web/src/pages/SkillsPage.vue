@@ -18,6 +18,7 @@
       :get-skill-import-job="getSkillImportJob"
       :refine-skill-conflict-group="refineSkillConflictGroup"
       :apply-skill-import="applySkillImport"
+      :notify="notify"
       @completed="loadRows"
     />
 
@@ -75,6 +76,8 @@
       :list-skill-files="listSkillFiles"
       :read-skill-file="readSkillFile"
       :update-skill-file="updateSkillFile"
+      :notify="notify"
+      :confirm="confirm"
     />
   </q-page>
 </template>
@@ -128,6 +131,8 @@ const {
   applySkillImport,
   listSkillFiles,
   readSkillFile,
-  updateSkillFile
+  updateSkillFile,
+  notify,
+  confirm
 } = useSkillsPage();
 </script>

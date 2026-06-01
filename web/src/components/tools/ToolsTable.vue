@@ -47,7 +47,7 @@
 
       <template #body-cell-runtime="props">
         <q-td :props="props">
-          <q-badge rounded :color="props.row.runtime_status === 'catalog_only' ? 'grey' : 'positive'">
+          <q-badge rounded :color="runtimeStatusColor(props.row.runtime_status)">
             {{ runtimeStatusLabel(props.row.runtime_status) }}
           </q-badge>
           <div class="text-caption app-registry-muted-caption q-mt-xs">{{ runtimeKindHint(props.row) }}</div>
@@ -108,7 +108,8 @@ import {
   TOOL_TABLE_COLUMNS,
   riskLevelOptions,
   runtimeKindHint,
-  runtimeStatusLabel
+  runtimeStatusLabel,
+  runtimeStatusColor
 } from "./toolUi";
 
 defineProps<{

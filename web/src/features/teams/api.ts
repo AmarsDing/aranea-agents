@@ -42,6 +42,7 @@ function wireTeam(t: WireTeam | null | undefined): Team {
     app_name: t?.adkAppName ?? "",
     linked_graph_id: t?.linkedGraphId ?? "",
     has_active_run: t?.hasActiveRun ?? false,
+    category_industry_id: t?.categoryIndustryId ?? "",
     created_at: t?.createdAt ?? "",
     updated_at: t?.updatedAt ?? "",
     deleted_at: t?.deletedAt ?? ""
@@ -142,6 +143,7 @@ function patchToWire(payload: Partial<Team>): WireTeam {
   if (payload.definition_json !== undefined) t.definitionJson = payload.definition_json;
   if (payload.app_name !== undefined) t.adkAppName = payload.app_name;
   if (payload.linked_graph_id !== undefined) t.linkedGraphId = payload.linked_graph_id;
+  if (payload.category_industry_id !== undefined) t.categoryIndustryId = payload.category_industry_id;
   if (payload.created_at !== undefined) t.createdAt = payload.created_at;
   if (payload.updated_at !== undefined) t.updatedAt = payload.updated_at;
   if (payload.deleted_at !== undefined) t.deletedAt = payload.deleted_at;
@@ -162,7 +164,8 @@ export async function createTeam(payload: Partial<Team>): Promise<Team> {
     displayName: payload.display_name,
     status: payload.status,
     definitionJson: payload.definition_json,
-    adkAppName: payload.app_name
+    adkAppName: payload.app_name,
+    categoryIndustryId: payload.category_industry_id
   });
   return wireTeam(data);
 }
@@ -194,7 +197,7 @@ export async function listTeamRuns(teamID?: string, limit = 50): Promise<TeamRun
 const ACTIVE_RUN_STATUSES = new Set(["running", "pending"]);
 
 export async function findActiveTeamRun(teamID: string): Promise<TeamRun | null> {
-  const runs = await listTeamRuns(teamID, 20);
+  const runs = await listTeamRuns(teamID, 50);
   return runs.find((run) => ACTIVE_RUN_STATUSES.has(run.status)) ?? null;
 }
 

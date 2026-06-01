@@ -240,6 +240,23 @@ body.app-registry-col-resizing
 
   .q-table__middle
     overflow-x: auto
+    scrollbar-width: thin
+    scrollbar-color: var(--table-scrollbar-thumb, rgba(100, 116, 139, 0.18)) transparent
+
+    &::-webkit-scrollbar
+      height: 6px
+
+    &::-webkit-scrollbar-track
+      background: transparent
+
+    &::-webkit-scrollbar-thumb
+      border-radius: 4px
+      border: 1px solid transparent
+      background-clip: content-box
+      background-color: var(--table-scrollbar-thumb, rgba(100, 116, 139, 0.18))
+
+    &::-webkit-scrollbar-thumb:hover
+      background-color: var(--table-scrollbar-thumb-hover, rgba(100, 116, 139, 0.35))
 
   .q-table__middle > table
     width: 100%
@@ -297,6 +314,16 @@ body.app-registry-col-resizing
   overflow: hidden
   text-overflow: ellipsis
   white-space: nowrap
+
+.app-registry-cell-link
+  font-size: var(--text-xs)
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
+  color: var(--color-accent)
+  text-decoration: none
+  transition: color 0.15s ease
+
+  &:hover
+    text-decoration: underline
 
 .app-registry-cell-desc,
 .app-registry-description
@@ -1262,12 +1289,15 @@ body.body--dark .app-registry-hover-tip__popup
   border: 1px solid var(--glass-border)
   background: var(--glass-surface)
 
+.tool-help-drawer-dialog
+  .q-dialog__backdrop
+    background: transparent
+
 .tool-help-drawer.q-card
-  width: min(420px, 92vw)
-  max-height: 90vh
+  width: min(480px, 96vw)
+  max-height: 96vh
   border-radius: 16px 0 0 16px
   border: 1px solid var(--glass-border)
-  // 实底 + 无 blur，避免正文发糊、对比度不足
   background: var(--color-surface-elevated, #fff) !important
   backdrop-filter: none !important
   -webkit-backdrop-filter: none !important
@@ -1278,77 +1308,119 @@ body.body--dark .tool-help-drawer.q-card
   background: var(--color-surface-elevated, #121a28) !important
 
 .tool-help-drawer__head
-  padding: var(--space-4) var(--space-4) var(--space-3)
+  padding: var(--space-3) var(--space-4) var(--space-2)
 
 .tool-help-drawer__title
-  font-size: 18px
+  font-size: 16px
   font-weight: 600
   line-height: 1.35
   color: var(--color-text-primary)
 
-.tool-help-drawer__body
-  padding: var(--space-3) var(--space-4) var(--space-4)
-  overflow-x: hidden
+.tool-help-drawer__tabs
+  padding: 0 var(--space-3)
 
-.tool-help-drawer__section-title
-  margin: 0 0 var(--space-2)
-  font-size: 15px
+  .q-tab
+    padding: 6px 12px
+    font-size: 13px
+    font-weight: 500
+    min-height: 32px
+
+.tool-help-drawer__panels
+  background: transparent !important
+
+.tool-help-drawer__panel
+  padding: var(--space-3) var(--space-4)
+
+.tool-help-drawer__field-grid
+  display: grid
+  grid-template-columns: 1fr 1fr
+  gap: var(--space-2)
+
+.tool-help-drawer__field-card
+  padding: var(--space-2) var(--space-3)
+  border-radius: 8px
+  border: 1px solid var(--glass-border)
+  background: var(--glass-surface)
+
+.tool-help-drawer__field-header
+  display: flex
+  align-items: baseline
+  gap: 6px
+  margin-bottom: 2px
+
+.tool-help-drawer__field-label
+  font-size: 13px
   font-weight: 600
-  line-height: 1.4
   color: var(--color-text-primary)
+  line-height: 1.35
+
+.tool-help-drawer__field-key
+  font-size: 10px
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
+  color: var(--color-text-secondary)
+  opacity: 0.8
+  font-weight: 400
+
+.tool-help-drawer__field-hint
+  font-size: 12px
+  line-height: 1.45
+  color: var(--color-text-secondary)
+  white-space: normal
+  word-break: break-word
+
+.tool-help-drawer__accordion
+  border: none
+
+.tool-help-drawer__expansion
+  border: 1px solid var(--glass-border)
+  border-radius: 8px
+  margin-bottom: var(--space-2)
+  background: var(--glass-surface)
+
+  .q-item
+    padding: 6px 10px
+    min-height: 0
+
+  .q-item__label
+    font-size: 13px
+    font-weight: 600
+    color: var(--color-text-primary)
+
+  .q-item__section--side
+    padding-right: 0
+
+  .q-expansion-item__content
+    padding: 0 var(--space-3) var(--space-2)
 
 .tool-help-drawer__text
-  margin: var(--space-2) 0 0
-  font-size: 14px
-  line-height: 1.65
+  margin: var(--space-1) 0 0
+  font-size: 13px
+  line-height: 1.55
   color: var(--color-text-secondary)
 
 .tool-help-drawer__list
   margin: 0
-  padding-left: 1.25rem
-  font-size: 14px
-  line-height: 1.65
+  padding-left: 1.15rem
+  font-size: 13px
+  line-height: 1.5
   color: var(--color-text-primary)
 
   li + li
-    margin-top: var(--space-1)
+    margin-top: 2px
 
 .tool-help-drawer__code
-  margin: var(--space-2) 0 0
-  padding: var(--space-3)
-  border-radius: 10px
+  margin: var(--space-1) 0 0
+  padding: var(--space-2) var(--space-3)
+  border-radius: 8px
   border: 1px solid var(--glass-border)
   background: color-mix(in srgb, var(--glass-surface) 92%, transparent)
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
-  font-size: 12px
-  line-height: 1.55
+  font-size: 11px
+  line-height: 1.45
   color: var(--color-text-primary)
   white-space: pre-wrap
   word-break: break-word
   overflow-x: auto
-
-.tool-help-drawer__field-list
-  border-color: var(--glass-border) !important
-  background: var(--glass-surface)
-
-.tool-help-drawer__field-label
-  font-size: 14px
-  font-weight: 600
-  color: var(--color-text-primary)
-
-.tool-help-drawer__field-key
-  font-size: 11px
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
-  color: var(--color-text-secondary)
-  opacity: 0.85
-
-.tool-help-drawer__field-hint
-  margin-top: 2px
-  font-size: 13px
-  line-height: 1.55
-  color: var(--color-text-secondary)
-  white-space: normal
-  word-break: break-word
 
 .tool-detail-meta
   display: flex
@@ -1359,6 +1431,22 @@ body.body--dark .tool-help-drawer.q-card
   display: flex
   flex-direction: column
   gap: var(--space-4)
+
+.tool-detail-backdrop
+  position: fixed
+  inset: 0
+  z-index: 1999
+  background: rgba(0, 0, 0, 0.32)
+  backdrop-filter: blur(2px)
+  -webkit-backdrop-filter: blur(2px)
+
+.drawer-backdrop-enter-active,
+.drawer-backdrop-leave-active
+  transition: opacity 0.2s ease
+
+.drawer-backdrop-enter-from,
+.drawer-backdrop-leave-to
+  opacity: 0
 
 .tool-detail-drawer
   display: flex

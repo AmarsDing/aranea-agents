@@ -185,7 +185,7 @@
                       outlined
                       autogrow
                       type="textarea"
-                      :placeholder="field.placeholder"
+                      :placeholder="fieldPlaceholder(field)"
                       @update:model-value="writeField(field, String($event ?? ''))"
                     />
                     <q-input
@@ -194,7 +194,7 @@
                       dense
                       outlined
                       :type="fieldKind(field) === 'password' && !showSecrets ? 'password' : 'text'"
-                      :placeholder="field.placeholder"
+                      :placeholder="fieldPlaceholder(field)"
                       @update:model-value="writeField(field, String($event ?? ''))"
                     />
                   </channel-config-row>
@@ -202,7 +202,7 @@
 
                 <channel-config-row
                   v-if="section.id === 'base' && credentialKeys.length"
-                  label="show_secrets"
+                  :label="t('channelEditor.showSecretsLabel')"
                   field-key="show_secrets"
                 >
                   <q-toggle v-model="showSecrets" :label="t('channelEditor.showSecrets')" />
@@ -374,7 +374,7 @@ const {
   copyWebhookPreview
 } = useChannelEditorForm(props, toRef(props, "modelValue"), emit);
 
-const { catalogDescription, sectionTitle, sectionHint, fieldLabel, fieldHelp, fieldStatusLabel, selectOptions } =
+const { catalogDescription, sectionTitle, sectionHint, fieldLabel, fieldHelp, fieldStatusLabel, fieldPlaceholder, selectOptions } =
   useChannelEditorLabels(selectedCatalog);
 
 const longTaskPresetHelp = computed(() => ({

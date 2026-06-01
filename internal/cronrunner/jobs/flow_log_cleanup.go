@@ -7,27 +7,25 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 // FlowLogCleanup periodically purges old flow_log_events rows.
 type FlowLogCleanup struct {
 	interval time.Duration
 	flowLogs *biz.FlowLogUsecase
-	log      *log.Helper
+	lg       loggateway.Logger
 }
 
-func NewFlowLogCleanup(interval time.Duration, flowLogs *biz.FlowLogUsecase, logger log.Logger) *FlowLogCleanup {
+func NewFlowLogCleanup(interval time.Duration, flowLogs *biz.FlowLogUsecase, lg loggateway.Logger) *FlowLogCleanup {
 	if interval <= 0 {
 		interval = time.Hour
 	}
 	return &FlowLogCleanup{
 		interval: interval,
 		flowLogs: flowLogs,
-		log:      log.NewHelper(logger),
+		lg:       lg,
 	}
 }
 
@@ -52,14 +50,11 @@ func (w *FlowLogCleanup) runOnce(ctx context.Context) {
 	safego.Go(ctx, "flow_log.cleanup", func() {
 		n, err := w.flowLogs.PurgeExpired(ctx)
 		if err != nil {
-			event.SysLogWarn("flow_log.cleanup", "流程日志 TTL 清理失败", event.P("error", err))
-			if w.log != nil {
-				w.log.Warnf("flow log cleanup: %v", err)
-			}
+			w.lg.Warn("flow log cleanup failed", loggateway.Err(err))
 			return
 		}
-		if n > 0 && w.log != nil {
-			w.log.Infof("flow log cleanup: removed %d rows", n)
+		if n > 0 {
+			w.lg.Info("flow log cleanup removed rows", loggateway.Int("count", int(n)))
 		}
 	})
 }

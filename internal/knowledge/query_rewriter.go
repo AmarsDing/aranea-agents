@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 const queryRewriteTimeout = 15 * time.Second
@@ -57,8 +57,9 @@ func (r *QueryRewriter) Rewrite(ctx context.Context, query string, strategy Rewr
 
 	provider, model, err := r.resolveModel(ctx)
 	if err != nil {
-		event.SysLogWarn("knowledge.query_rewrite.skip", "查询重写跳过：无可用 LLM",
-			event.P("error", err.Error()))
+		loggateway.Global().Warn("查询重写跳过：无可用 LLM",
+			loggateway.StepID("knowledge.query_rewrite.skip"),
+			loggateway.Err(err))
 		return &QueryRewriteResult{Queries: []string{query}, Used: RewriteNone}, nil
 	}
 
@@ -87,8 +88,9 @@ func (r *QueryRewriter) rewriteHyDE(ctx context.Context, query, provider, model 
 		User:     query,
 	})
 	if err != nil {
-		event.SysLogWarn("knowledge.query_rewrite.hyde.fail", "HyDE 重写失败",
-			event.P("error", err.Error()))
+		loggateway.Global().Warn("HyDE 重写失败",
+			loggateway.StepID("knowledge.query_rewrite.hyde.fail"),
+			loggateway.Err(err))
 		return &QueryRewriteResult{Queries: []string{query}, Used: RewriteNone}, nil
 	}
 	text = strings.TrimSpace(text)
@@ -108,8 +110,9 @@ func (r *QueryRewriter) rewriteDecomposition(ctx context.Context, query, provide
 		User:     query,
 	})
 	if err != nil {
-		event.SysLogWarn("knowledge.query_rewrite.decomposition.fail", "查询分解失败",
-			event.P("error", err.Error()))
+		loggateway.Global().Warn("查询分解失败",
+			loggateway.StepID("knowledge.query_rewrite.decomposition.fail"),
+			loggateway.Err(err))
 		return &QueryRewriteResult{Queries: []string{query}, Used: RewriteNone}, nil
 	}
 
@@ -117,8 +120,9 @@ func (r *QueryRewriter) rewriteDecomposition(ctx context.Context, query, provide
 	text = strings.TrimSpace(text)
 	text = stripCodeFenceJSON(text)
 	if err := json.Unmarshal([]byte(text), &subQueries); err != nil || len(subQueries) == 0 {
-		event.SysLogWarn("knowledge.query_rewrite.decomposition.parse_fail", "查询分解结果解析失败",
-			event.P("raw", text))
+		loggateway.Global().Warn("查询分解结果解析失败",
+			loggateway.StepID("knowledge.query_rewrite.decomposition.parse_fail"),
+			loggateway.Str("raw", text))
 		return &QueryRewriteResult{Queries: []string{query}, Used: RewriteNone}, nil
 	}
 	return &QueryRewriteResult{Queries: subQueries, Used: RewriteDecomposition}, nil
@@ -134,8 +138,9 @@ func (r *QueryRewriter) rewriteMultiQuery(ctx context.Context, query, provider, 
 		User:     query,
 	})
 	if err != nil {
-		event.SysLogWarn("knowledge.query_rewrite.multi_query.fail", "多查询改写失败",
-			event.P("error", err.Error()))
+		loggateway.Global().Warn("多查询改写失败",
+			loggateway.StepID("knowledge.query_rewrite.multi_query.fail"),
+			loggateway.Err(err))
 		return &QueryRewriteResult{Queries: []string{query}, Used: RewriteNone}, nil
 	}
 
@@ -143,8 +148,9 @@ func (r *QueryRewriter) rewriteMultiQuery(ctx context.Context, query, provider, 
 	text = strings.TrimSpace(text)
 	text = stripCodeFenceJSON(text)
 	if err := json.Unmarshal([]byte(text), &variants); err != nil || len(variants) == 0 {
-		event.SysLogWarn("knowledge.query_rewrite.multi_query.parse_fail", "多查询改写结果解析失败",
-			event.P("raw", text))
+		loggateway.Global().Warn("多查询改写结果解析失败",
+			loggateway.StepID("knowledge.query_rewrite.multi_query.parse_fail"),
+			loggateway.Str("raw", text))
 		return &QueryRewriteResult{Queries: []string{query}, Used: RewriteNone}, nil
 	}
 

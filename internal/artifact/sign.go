@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 const defaultDownloadTTL = 15 * time.Minute
@@ -56,7 +56,9 @@ func SignKey() ([]byte, error) {
 	}
 	if isDevEnv() {
 		devSignKeyOnce.Do(func() {
-			event.SysLogWarn("system.auth.bypass_warn", "artifact: no signing key configured (KRATOS_ARTIFACT_SIGN_KEY / KRATOS_AUTH_SECRET); using insecure dev key — set a strong key before going to production")
+			loggateway.Global().Warn("artifact: no signing key configured (KRATOS_ARTIFACT_SIGN_KEY / KRATOS_AUTH_SECRET); using insecure dev key — set a strong key before going to production",
+				loggateway.StepID("system.auth.bypass_warn"),
+			)
 		})
 		return []byte("aranea-artifact-dev-key"), nil
 	}

@@ -2,8 +2,10 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import {
   deleteArtifact,
+  deleteArtifactVersion,
   getArtifact,
   listArtifacts,
+  listArtifactVersions,
   uploadArtifact,
   signDownloadUrl,
   artifactDownloadHref,
@@ -52,6 +54,14 @@ export const useArtifactStore = defineStore("artifact", () => {
     total.value = Math.max(0, total.value - 1);
   }
 
+  async function removeVersion(id: string, version: number): Promise<void> {
+    await deleteArtifactVersion(id, version);
+  }
+
+  async function listVersions(id: string): Promise<ArtifactMeta[]> {
+    return listArtifactVersions(id);
+  }
+
   async function signDownload(id: string, version?: number) {
     return signDownloadUrl(id, version);
   }
@@ -68,6 +78,8 @@ export const useArtifactStore = defineStore("artifact", () => {
     upload,
     get,
     remove,
+    removeVersion,
+    listVersions,
     signDownload,
     loadPreview,
     artifactDownloadHref

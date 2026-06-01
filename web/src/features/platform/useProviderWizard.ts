@@ -3,13 +3,12 @@ import { useQuasar } from "quasar";
 import type { PlatformResource, PlatformResourceName, ModelCategory, CapabilityChip } from "./types";
 import { errorMessage, toNullableNumber, toNumber, getConfig, getCategories } from "./providerUtils";
 import { usePlatformStore } from "../../stores/platform";
-import type { ProviderHAForm } from "../../components/platform/ProviderHAConfig.vue";
+import type { ProviderHAForm } from "./types";
 import {
   PROVIDER_RUNTIME_OVERLAY,
   PROVIDER_TYPE_OPTIONS,
   VARIANT_OPTIONS,
   runtimeProfileFor,
-  usdPer1MToMicroPer1K,
   microPer1KToUsdPer1M
 } from "../../config/providerRuntimeOverlay";
 import { MODEL_CATEGORY_OPTIONS } from "../model-catalog/catalogCategories";
@@ -52,11 +51,6 @@ export function useProviderWizard(deps: {
     context_window_k: null as number | null,
     max_output_tokens: 4096,
     model_rating: 60,
-    input_price_micro_usd_per_1k: 0,
-    output_price_micro_usd_per_1k: 0,
-    cached_input_price_micro_usd_per_1k: 0,
-    reasoning_price_micro_usd_per_1k: 0,
-    embedding_price_micro_usd_per_1k: 0,
     input_price_usd_per_1m: 0,
     output_price_usd_per_1m: 0,
     cache_read_usd_per_1m: 0,
@@ -92,6 +86,7 @@ export function useProviderWizard(deps: {
   const categoryOptions: ModelCategory[] = MODEL_CATEGORY_OPTIONS;
   const providerTypeOptions = PROVIDER_TYPE_OPTIONS;
   const providerTypeFilterOptions = PROVIDER_TYPE_OPTIONS;
+  const haCandidateProviderTypeOptions = PROVIDER_TYPE_OPTIONS;
   const variantOptions = VARIANT_OPTIONS;
 
   function applyModelPresetValues(preset: ProviderModelPreset, overwrite = false) {
@@ -219,18 +214,16 @@ export function useProviderWizard(deps: {
     return "配置 LLM Provider 连接";
   });
 
-  function effectiveMicroPrice(usdPer1M: number): number {
-    return usdPer1MToMicroPer1K(usdPer1M);
-  }
-
   const showPricingWarning = computed(
     () =>
       deps.isProviderResource.value &&
       !hasPricingConfigured({
-        inputPrice: effectiveMicroPrice(providerForm.input_price_usd_per_1m),
-        outputPrice: effectiveMicroPrice(providerForm.output_price_usd_per_1m),
-        inputPriceCached: effectiveMicroPrice(providerForm.cache_read_usd_per_1m),
-        outputPriceReasoning: effectiveMicroPrice(providerForm.reasoning_price_usd_per_1m),
+        inputPrice: providerForm.input_price_usd_per_1m,
+        outputPrice: providerForm.output_price_usd_per_1m,
+        inputPriceCached: providerForm.cache_read_usd_per_1m,
+        outputPriceReasoning: providerForm.reasoning_price_usd_per_1m,
+        embeddingPrice: providerForm.embedding_price_usd_per_1m,
+        cacheWritePrice: providerForm.cache_write_usd_per_1m,
       })
   );
 
@@ -339,11 +332,6 @@ export function useProviderWizard(deps: {
       context_window_k: null,
       max_output_tokens: 4096,
       model_rating: 60,
-      input_price_micro_usd_per_1k: 0,
-      output_price_micro_usd_per_1k: 0,
-      cached_input_price_micro_usd_per_1k: 0,
-      reasoning_price_micro_usd_per_1k: 0,
-      embedding_price_micro_usd_per_1k: 0,
       input_price_usd_per_1m: 0,
       output_price_usd_per_1m: 0,
       cache_read_usd_per_1m: 0,
@@ -408,11 +396,6 @@ export function useProviderWizard(deps: {
       context_window_k: toNullableNumber(config.context_window_k),
       max_output_tokens: toNumber(config.max_output_tokens, 4096),
       model_rating: toNumber(config.model_rating, 60),
-      input_price_micro_usd_per_1k: toNumber(config.input_price_micro_usd_per_1k, 0),
-      output_price_micro_usd_per_1k: toNumber(config.output_price_micro_usd_per_1k, 0),
-      cached_input_price_micro_usd_per_1k: toNumber(config.cached_input_price_micro_usd_per_1k, 0),
-      reasoning_price_micro_usd_per_1k: toNumber(config.reasoning_price_micro_usd_per_1k, 0),
-      embedding_price_micro_usd_per_1k: toNumber(config.embedding_price_micro_usd_per_1k, 0),
       capability_chips: Array.isArray(config.capability_chips) ? config.capability_chips : [],
       catalog_managed: Boolean(config.catalog_managed),
       catalog_source: config.catalog_source || config.metadata_source || "",
@@ -453,6 +436,10 @@ export function useProviderWizard(deps: {
     providerStep.value = 1;
   }
 
+  function updateHAForm(val: ProviderHAForm) {
+    Object.assign(providerHAForm, val);
+  }
+
   return {
     providerForm,
     providerHAForm,
@@ -477,6 +464,7 @@ export function useProviderWizard(deps: {
     categoryOptions,
     providerTypeOptions,
     providerTypeFilterOptions,
+    haCandidateProviderTypeOptions,
     variantOptions,
     currentAuthType,
     isLocalProviderModel: inspect.isLocalProviderModel,
@@ -521,6 +509,7 @@ export function useProviderWizard(deps: {
     toggleSecretKeyVisibility: credentials.toggleSecretKeyVisibility,
     resetProviderForm,
     populateProviderForm,
+    updateHAForm,
     providerCodeRule,
     metadataLabel: presets.metadataLabel,
   };

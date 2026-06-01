@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -45,12 +46,12 @@ func (h *ChannelIngress) dispatchAsyncInbound(
 		h.markTurnJob(ctx, biz.ChannelTurnJobStatusFailed, err.Error(), "", "")
 		return err
 	}
-	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
+	turnInput, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text, false)
 	if err != nil {
 		h.markTurnJob(ctx, biz.ChannelTurnJobStatusFailed, err.Error(), "", "")
 		return err
 	}
-	sessionID := strings.TrimSpace(req.GetSessionId())
+	sessionID := strings.TrimSpace(turnInput.SessionID)
 	input := strings.TrimSpace(ev.Text)
 	if strings.HasPrefix(strings.ToLower(input), "/async") {
 		input = strings.TrimSpace(input[len("/async"):])
@@ -93,13 +94,11 @@ func (h *ChannelIngress) dispatchAsyncInbound(
 	if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), msg, ev.OutboundMeta, ackIdempotencyKey(platform, ev, "async")); err != nil {
 		return err
 	}
-	if delErr := h.recordDelivery(ctx, chRow.ID, "async_queued", map[string]any{
+	h.recordDelivery(ctx, chRow.ID, "async_queued", map[string]any{
 		"target_type": targetType,
 		"target_id":   asyncID,
 		"session_id":  sessionID,
-	}, ""); delErr != nil {
-		event.SysLogWarn("channel.ingress.delivery", "recordDelivery failed", event.P("channel_id", chRow.ID), event.P("error", delErr.Error()))
-	}
+	}, "")
 
 	switch targetType {
 	case "graph", "team_graph":
@@ -155,7 +154,7 @@ func (h *ChannelIngress) watchAsyncGraphCompletion(ctx context.Context, chRow bi
 					h.failAsyncTargetWatch(asyncWatchPersistCtx(), chCopy, evCopy, platform, jobID, execID, "graph", errors.New(errMsg))
 					return
 				}
-				summary := "Graph 任务已完成。"
+				summary := channelAsyncGraphDoneSummary
 				if env.Content != nil && strings.TrimSpace(env.Content.Text) != "" {
 					summary = strings.TrimSpace(env.Content.Text)
 				}
@@ -201,7 +200,7 @@ func (h *ChannelIngress) watchAsyncCronCompletion(ctx context.Context, chRow biz
 					h.failAsyncTargetWatch(asyncWatchPersistCtx(), chCopy, evCopy, platform, jobID, runID, "cron", watchErr)
 					return
 				case "skipped":
-					h.completeAsyncTargetWatch(asyncWatchPersistCtx(), chCopy, evCopy, platform, jobID, "Cron 任务已跳过。")
+					h.completeAsyncTargetWatch(asyncWatchPersistCtx(), chCopy, evCopy, platform, jobID, channelAsyncCronSkippedSummary)
 					return
 				}
 			}
@@ -215,14 +214,18 @@ func (h *ChannelIngress) completeAsyncTargetWatch(ctx context.Context, chRow biz
 	}
 	if jobID != "" && h.turnJobs != nil {
 		if err := h.turnJobs.UpdateStatus(ctx, jobID, biz.ChannelTurnJobStatusCompleted, "", "", truncateForLog(summary, 200)); err != nil {
-			event.SysLogWarn("channel.async.job_status_update_failed", "异步任务状态更新失败",
-				event.P("job_id", jobID),
-				event.P("error", err.Error()),
+			h.lg.Warn("异步任务状态更新失败",
+				loggateway.StepID("channel.async.job_status_update_failed"),
+				loggateway.Str("job_id", jobID),
+				loggateway.Str("error", err.Error()),
 			)
 		}
 	}
 	if err := h.enqueueOutboundReply(ctx, chRow, platform, outboundRecipient(ev), summary, ev.OutboundMeta, ackIdempotencyKey(platform, ev, "async_done")); err != nil {
-		event.SysLogWarn("channel.async.reply", "enqueueOutboundReply failed", event.P("error", err.Error()))
+		h.lg.Warn("enqueueOutboundReply failed",
+			loggateway.StepID("channel.async.reply"),
+			loggateway.Str("error", err.Error()),
+		)
 	}
 }
 
@@ -232,20 +235,25 @@ func (h *ChannelIngress) failAsyncTargetWatch(ctx context.Context, chRow biz.Cha
 	}
 	if jobID != "" && h.turnJobs != nil {
 		if err := h.turnJobs.UpdateStatus(ctx, jobID, biz.ChannelTurnJobStatusFailed, truncateForLog(cause.Error(), 200), "", ""); err != nil {
-			event.SysLogWarn("channel.async.job_status_update_failed", "异步任务状态更新失败",
-				event.P("job_id", jobID),
-				event.P("error", err.Error()),
+			h.lg.Warn("异步任务状态更新失败",
+				loggateway.StepID("channel.async.job_status_update_failed"),
+				loggateway.Str("job_id", jobID),
+				loggateway.Str("error", err.Error()),
 			)
 		}
 	}
 	if err := h.deliverTurnErrorReply(ctx, chRow, ev, platform, cause); err != nil {
-		event.SysLogWarn("channel.async.error_reply", "deliverTurnErrorReply failed", event.P("error", err.Error()))
+		h.lg.Warn("deliverTurnErrorReply failed",
+			loggateway.StepID("channel.async.error_reply"),
+			loggateway.Str("error", err.Error()),
+		)
 	}
-	event.SysLogWarn(flowStepChannelTurnDone, "Channel 异步任务失败",
-		event.P("target_type", targetType),
-		event.P("target_id", targetID),
-		event.P("job_id", jobID),
-		event.P("error", cause.Error()),
+	h.lg.Warn("Channel 异步任务失败",
+		loggateway.StepID(flowStepChannelTurnDone),
+		loggateway.Str("target_type", targetType),
+		loggateway.Str("target_id", targetID),
+		loggateway.Str("job_id", jobID),
+		loggateway.Str("error", cause.Error()),
 	)
 }
 
@@ -264,20 +272,25 @@ func (h *ChannelIngress) finishAsyncTargetWatch(ctx context.Context, chRow biz.C
 	}
 	if jobID != "" && h.turnJobs != nil {
 		if err := h.turnJobs.UpdateStatus(ctx, jobID, status, truncateForLog(cause.Error(), 200), "", ""); err != nil {
-			event.SysLogWarn("channel.async.job_status_update_failed", "异步任务状态更新失败",
-				event.P("job_id", jobID),
-				event.P("error", err.Error()),
+			h.lg.Warn("异步任务状态更新失败",
+				loggateway.StepID("channel.async.job_status_update_failed"),
+				loggateway.Str("job_id", jobID),
+				loggateway.Str("error", err.Error()),
 			)
 		}
 	}
 	if err := h.deliverTurnErrorReply(ctx, chRow, ev, platform, watchErr); err != nil {
-		event.SysLogWarn("channel.async.error_reply", "deliverTurnErrorReply failed", event.P("error", err.Error()))
+		h.lg.Warn("deliverTurnErrorReply failed",
+			loggateway.StepID("channel.async.error_reply"),
+			loggateway.Str("error", err.Error()),
+		)
 	}
-	event.SysLogWarn(flowStepChannelTurnDone, "Channel 异步任务监听结束",
-		event.P("target_type", targetType),
-		event.P("target_id", targetID),
-		event.P("job_id", jobID),
-		event.P("error", cause.Error()),
+	h.lg.Warn("Channel 异步任务监听结束",
+		loggateway.StepID(flowStepChannelTurnDone),
+		loggateway.Str("target_type", targetType),
+		loggateway.Str("target_id", targetID),
+		loggateway.Str("job_id", jobID),
+		loggateway.Str("error", cause.Error()),
 	)
 }
 

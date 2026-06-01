@@ -276,7 +276,7 @@ export function useSessionsPage() {
     try {
       await sessionStore.archive(id);
       if (selected.value?.id === id) {
-        selected.value = { ...selected.value, status: "archived" };
+        selected.value = { ...selected.value, archived_at: new Date().toISOString() };
       }
       await loadRows();
     } catch (err) {

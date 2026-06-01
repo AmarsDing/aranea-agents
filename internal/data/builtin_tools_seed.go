@@ -3,13 +3,12 @@ package data
 import (
 	"context"
 	"fmt"
-
-	"aranea-agents/internal/event"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/tools"
+	"aranea-agents/pkg/loggateway"
 )
 
 type platformToolSeed struct {
@@ -93,6 +92,8 @@ var builtinPlatformToolSeeds = []platformToolSeed{
 	{key: "working_memory.write", displayName: "工作记忆写入", description: "向当前任务写入或更新一个结构化字段。", category: "memory", enabled: true, paramsSchema: `{"type":"object","properties":{"field_path":{"type":"string"},"value":{"description":"任意 JSON 值"},"field_kind":{"type":"string","enum":["string","number","boolean","json","reference","markdown"]},"visibility":{"type":"string","enum":["prompt","internal","shared"]},"pin_to_prompt":{"type":"boolean"},"reason":{"type":"string"},"if_revision":{"type":"integer","description":"乐观锁，期望的当前 revision"}},"required":["field_path","value"]}`},
 	{key: "working_memory.patch", displayName: "工作记忆批量补丁", description: "一次写入多个字段。任意一项失败将中断后续写入并返回错误。", category: "memory", enabled: true, paramsSchema: `{"type":"object","properties":{"patches":{"type":"array","items":{"type":"object","properties":{"field_path":{"type":"string"},"value":{},"field_kind":{"type":"string"},"visibility":{"type":"string"},"reason":{"type":"string"},"if_revision":{"type":"integer"}},"required":["field_path","value"]}}},"required":["patches"]}`},
 	{key: "working_memory.delete", displayName: "工作记忆删除", description: "删除当前任务下的一个字段（历史版本仍可回滚）。", category: "memory", enabled: true, paramsSchema: `{"type":"object","properties":{"field_path":{"type":"string"}},"required":["field_path"]}`},
+	{key: "model_registry_sync", displayName: "模型目录同步", description: "模型目录同步工具集（fetch_model_directory / migrate_provider_bindings / apply_model_directory / sync_provider_logos）。", category: "system", riskLevel: "medium", enabled: false, readonly: true, paramsSchema: `{"type":"object","properties":{}}`, registryName: "model_registry_sync"},
+	{key: "browser", displayName: "浏览器自动化", description: "通过 Playwright MCP 实现浏览器自动化操作（导航、截图、点击、输入等）。", category: "browser", riskLevel: "critical", enabled: false, reqConfirm: true, paramsSchema: `{"type":"object","properties":{}}`, configSchema: `{"type":"object","properties":{"command":{"type":"string","description":"MCP 启动命令","default":"npx"},"args":{"type":"array","items":{"type":"string"},"description":"MCP 启动参数"},"transport":{"type":"string","enum":["stdio","sse","streamable"],"description":"MCP 传输协议","default":"stdio"},"headless":{"type":"boolean","description":"无头模式","default":true},"vision":{"type":"boolean","description":"启用视觉能力","default":false},"isolated":{"type":"boolean","description":"隔离模式","default":true},"timeout_sec":{"type":"integer","description":"MCP 连接超时（秒）"}}}`, registryName: "browser"},
 }
 
 func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client) error {
@@ -125,10 +126,10 @@ func ensureBuiltinPlatformTools(ctx context.Context, client *ent.Client) error {
 		}
 	}
 	if err := syncBuiltinToolsFromRegistry(ctx, client); err != nil {
-		event.SysLogWarn("system.data.builtin_tool_sync", "内置工具批量同步失败", event.P("error", err))
+		loggateway.Global().Warn("内置工具批量同步失败", loggateway.StepID("system.data.builtin_tool_sync"), loggateway.Err(err))
 	}
 	if err := syncBuiltinWebToolCatalogPatches(ctx, client); err != nil {
-		event.SysLogWarn("system.data.builtin_tool_sync", "内置 Web 工具元数据同步失败", event.P("error", err))
+		loggateway.Global().Warn("内置 Web 工具元数据同步失败", loggateway.StepID("system.data.builtin_tool_sync"), loggateway.Err(err))
 	}
 	return nil
 }
@@ -216,7 +217,7 @@ func syncBuiltinToolsFromRegistry(ctx context.Context, client *ent.Client) error
 			now, seed.key,
 		)
 		if err != nil {
-			event.SysLogWarn("system.data.builtin_tool_sync", "内置工具同步失败", event.P("tool_key", seed.key), event.P("registry_name", regName), event.P("error", err))
+			loggateway.Global().Warn("内置工具同步失败", loggateway.StepID("system.data.builtin_tool_sync"), loggateway.Str("tool_key", seed.key), loggateway.Str("registry_name", regName), loggateway.Err(err))
 		}
 	}
 	return nil

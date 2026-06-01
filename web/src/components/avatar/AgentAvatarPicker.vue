@@ -19,6 +19,27 @@
         <div v-if="loading" class="avatar-grid">
           <q-skeleton v-for="i in 10" :key="i" type="QAvatar" size="72px" />
         </div>
+        <template v-else-if="tab === 'system'">
+          <div v-for="group in systemGroups" :key="group.key" class="avatar-group">
+            <div class="avatar-group__label text-subtitle2">{{ group.label }}</div>
+            <div class="avatar-grid">
+              <button
+                v-for="asset in group.items"
+                :key="asset.id"
+                class="avatar-option"
+                :class="{ 'is-selected': selectedId === asset.id }"
+                type="button"
+                @click="selectedId = asset.id"
+              >
+                <q-avatar rounded size="72px">
+                  <resolved-avatar-img :icon="asset.id" :alt="asset.name" />
+                </q-avatar>
+                <span>{{ asset.name }}</span>
+                <q-icon v-if="selectedId === asset.id" name="check_circle" class="avatar-option__check" />
+              </button>
+            </div>
+          </div>
+        </template>
         <div v-else class="avatar-grid">
           <button
             v-for="asset in visibleAssets"
@@ -36,7 +57,7 @@
           </button>
         </div>
 
-        <q-banner v-if="!loading && visibleAssets.length === 0" rounded class="avatar-picker-empty-banner">
+        <q-banner v-if="isEmpty" rounded class="avatar-picker-empty-banner">
           {{ emptyHint }}
         </q-banner>
       </div>
@@ -60,7 +81,6 @@
 import { computed, toRef } from "vue";
 import { useAvatarPickerDialog, type AvatarPickerScope } from "../../features/avatar/useAvatarPickerDialog";
 import ResolvedAvatarImg from "./ResolvedAvatarImg.vue";
-
 const props = withDefaults(
   defineProps<{
     modelValue: string;
@@ -82,10 +102,16 @@ const dialogModel = computed({
 
 const isChannel = computed(() => props.scope === "channel");
 
-const { tab, loading, uploading, selectedId, fileInput, visibleAssets, uploadFromFile } = useAvatarPickerDialog({
+const { tab, loading, uploading, selectedId, fileInput, visibleAssets, systemGroups, uploadFromFile } = useAvatarPickerDialog({
   modelValue: toRef(props, "modelValue"),
   open: toRef(props, "open"),
   scope: props.scope
+});
+
+const isEmpty = computed(() => {
+  if (loading.value) return false;
+  if (tab.value === "system") return systemGroups.value.length === 0;
+  return visibleAssets.value.length === 0;
 });
 
 const title = computed(() => (isChannel.value ? "选择平台图标" : "选择头像"));

@@ -1,5 +1,6 @@
 import { asRecord, pickI32, pickNum, pickStr } from "../../shared/wireJson";
 
+/** @deprecated Use mapCollection from features/knowledge/api.ts instead — this type omits description/workspace/updated_at. */
 export type KnowledgeCollectionRow = {
   id: string;
   name: string;
@@ -11,6 +12,7 @@ export type KnowledgeCollectionRow = {
   created_at: string;
 };
 
+/** @deprecated Use mapCollection from features/knowledge/api.ts instead. */
 export function mapCollection(raw: unknown): KnowledgeCollectionRow {
   const r = asRecord(raw);
   return {

@@ -23,30 +23,31 @@
         </div>
 
         <div v-if="target.permissions?.can_edit_config" class="row q-gutter-sm">
-          <q-btn outline dense no-caps icon="arrow_upward" label="上移顺序" @click="$emit('bumpSort', -10)" />
-          <q-btn outline dense no-caps icon="arrow_downward" label="下移顺序" @click="$emit('bumpSort', 10)" />
+          <q-btn outline dense no-caps icon="arrow_upward" label="上移顺序" :loading="bumpingSort" @click="$emit('bumpSort', -10)" />
+          <q-btn outline dense no-caps icon="arrow_downward" label="下移顺序" :loading="bumpingSort" @click="$emit('bumpSort', 10)" />
         </div>
 
         <q-expansion-item dense-toggle label="Agent 绑定">
           <div class="q-gutter-sm">
-            <q-radio :model-value="scopeMode" val="global" label="全局生效" @update:model-value="$emit('update:scopeMode', $event as 'global' | 'agent')" />
-            <q-radio :model-value="scopeMode" val="agent" label="指定 Agent" @update:model-value="$emit('update:scopeMode', $event as 'global' | 'agent')" />
+            <q-radio :model-value="scopeMode" val="global" label="全局生效" :disable="!target.permissions?.can_edit_config" @update:model-value="$emit('update:scopeMode', $event as 'global' | 'agent')" />
+            <q-radio :model-value="scopeMode" val="agent" label="指定 Agent" :disable="!target.permissions?.can_edit_config" @update:model-value="$emit('update:scopeMode', $event as 'global' | 'agent')" />
             <q-input
               v-if="scopeMode === 'agent'"
               :model-value="scopeAgentId"
               dense
               outlined
               label="Agent ID"
+              :disable="!target.permissions?.can_edit_config"
               @update:model-value="$emit('update:scopeAgentId', String($event ?? ''))"
             />
-            <q-btn color="primary" rounded unelevated no-caps label="保存作用域" :loading="savingScope" @click="$emit('saveScope')" />
+            <q-btn color="primary" rounded unelevated no-caps label="保存作用域" :loading="savingScope" :disable="!target.permissions?.can_edit_config" @click="$emit('saveScope')" />
           </div>
         </q-expansion-item>
 
         <q-expansion-item dense-toggle default-opened label="Callback">
           <div class="app-registry-chip-wrap">
             <span v-for="point in target.callback_points" :key="point" class="plugin-tag plugin-tag--callback">{{ point }}</span>
-            <span v-if="!target.callback_points.length" class="text-grey-7">暂无 Callback</span>
+            <span v-if="!target.callback_points?.length" class="text-grey-7">暂无 Callback</span>
           </div>
         </q-expansion-item>
 
@@ -67,7 +68,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { Plugin } from "../../features/plugins/types";
-import { formatPluginDate, lastStatusLabel, prettyJSON, riskTagClass } from "./pluginUi";
+import { formatPluginDate, lastStatusLabel, lastStatusTagClass, prettyJSON, riskTagClass } from "./pluginUi";
 
 const props = defineProps<{
   open: boolean;
@@ -75,6 +76,7 @@ const props = defineProps<{
   scopeMode: "global" | "agent";
   scopeAgentId: string;
   savingScope: boolean;
+  bumpingSort: boolean;
 }>();
 
 defineEmits<{
@@ -95,7 +97,7 @@ const metrics = computed(() => {
     { label: "排序", value: String(target.sort_order) },
     { label: "调用次数", value: String(target.invoke_count) },
     { label: "阻断 / 错误", value: `${target.block_count} / ${target.error_count}` },
-    { label: "最近状态", value: lastStatusLabel(target) },
+    { label: "最近状态", value: lastStatusLabel(target), tagClass: lastStatusTagClass(target) },
     { label: "最近调用", value: formatPluginDate(target.last_invoked_at) }
   ];
 });

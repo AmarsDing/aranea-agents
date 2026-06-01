@@ -1,7 +1,8 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { storeToRefs } from "pinia";
 import { useMonitorStore } from "../../stores/monitor";
-import type { AuditLog, ModelUsageQuery, MonitorTraceEvent, PlatformResource } from "./types";
+import type { ModelUsageQuery, MonitorTraceEvent } from "./types";
 
 const VALID_TABS = ["usage", "alerts", "audit", "events", "traces", "logs"] as const;
 
@@ -9,12 +10,10 @@ export function useMonitorPage() {
   const route = useRoute();
   const router = useRouter();
   const monitorStore = useMonitorStore();
+  const { auditLogs, events } = storeToRefs(monitorStore);
   const initialTab = String(route.query.tab || "usage");
   const tab = ref(VALID_TABS.includes(initialTab as (typeof VALID_TABS)[number]) ? initialTab : "usage");
   const highlightUsageEventId = ref(String(route.query.usage_event_id || "").trim());
-  const auditRows = ref<AuditLog[]>([]);
-  const auditTotal = ref(0);
-  const events = ref<PlatformResource[]>([]);
   const traces = ref<MonitorTraceEvent[]>([]);
   const loadingAudit = ref(false);
   const loadingEvents = ref(false);
@@ -86,9 +85,7 @@ export function useMonitorPage() {
   async function loadAudit() {
     loadingAudit.value = true;
     try {
-      const result = await monitorStore.fetchAuditPage({ limit: 200 });
-      auditRows.value = result.items;
-      auditTotal.value = result.total;
+      await monitorStore.loadAuditLogs({ limit: 200 });
     } finally {
       loadingAudit.value = false;
     }
@@ -97,7 +94,7 @@ export function useMonitorPage() {
   async function loadEvents() {
     loadingEvents.value = true;
     try {
-      events.value = await monitorStore.fetchMonitorEvents();
+      await monitorStore.loadEvents();
     } finally {
       loadingEvents.value = false;
     }
@@ -115,8 +112,7 @@ export function useMonitorPage() {
   return {
     tab,
     highlightUsageEventId,
-    auditRows,
-    auditTotal,
+    auditRows: auditLogs,
     events,
     traces,
     loadingAudit,

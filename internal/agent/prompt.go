@@ -6,17 +6,17 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event"
 )
 
 // Deps is a minimal bundle for prompt / runtime helpers (biz facades).
 type Deps struct {
 	Agents       biz.AgentRepository
 	AgentUC      *biz.AgentUsecase
-	ToolsCatalog biz.ToolCatalogReader // optional; with Agents, used when AgentUC is nil to still resolve GetEffectiveTools
-	// SQLiteSessionMemory reflects whether Runner memory persists session entities (SessionMemoryStore wired).
+	ToolsCatalog biz.ToolCatalogReader
 	SQLiteSessionMemory bool
-	// AgentCategory resolves 岗位职责 for preview. PGO-1.
 	AgentCategory *biz.AgentCategoryUsecase
+	PositionUC    *biz.PositionUsecase
 }
 
 // BuildSystemPrompt joins agent description and prompt files, filtered by system_prompt_mode.
@@ -29,7 +29,6 @@ func BuildSystemPrompt(agent biz.Agent, files []biz.AgentPromptFile, mode string
 	filtered := biz.FilesForMode(files, mode)
 	var b strings.Builder
 
-	// L1: inject 岗位职责 from category tree (PGO-1).
 	if len(categoryResponsibility) > 0 {
 		if cr := strings.TrimSpace(categoryResponsibility[0]); cr != "" {
 			b.WriteString("<role_responsibility source=\"category\">\n")
@@ -38,13 +37,22 @@ func BuildSystemPrompt(agent biz.Agent, files []biz.AgentPromptFile, mode string
 		}
 	}
 
-	// L2: agent-level description.
+	if pk := strings.TrimSpace(agent.PositionKey); pk != "" {
+		if vd := strings.TrimSpace(agent.VariantDescription); vd != "" {
+			b.WriteString("<industry_context>\n")
+			fmt.Fprintf(&b, "## 当前定位\n你是本岗位的 %s 方向专家。\n%s\n", agent.AgentVariant, vd)
+			b.WriteString("</industry_context>\n\n")
+		} else if av := strings.TrimSpace(agent.AgentVariant); av != "" && av != "general" {
+			b.WriteString("<industry_context>\n")
+			fmt.Fprintf(&b, "## 当前定位\n你是本岗位的 %s 方向专家。\n", av)
+			b.WriteString("</industry_context>\n\n")
+		}
+	}
 	if d := strings.TrimSpace(agent.AgentDescription); d != "" {
 		b.WriteString(d)
 		b.WriteString("\n\n")
 	}
 
-	// L3: prompt files.
 	for _, f := range filtered {
 		if body := strings.TrimSpace(f.Body); body != "" {
 			b.WriteString(fmt.Sprintf("<internal_config name=%q>\n", f.Name))
@@ -56,6 +64,37 @@ func BuildSystemPrompt(agent biz.Agent, files []biz.AgentPromptFile, mode string
 }
 
 // PromptFilesForAgent returns hydrated in-memory files when present, otherwise loads from persistence.
+func BuildIndustryContext(ctx context.Context, d Deps, ag biz.Agent) string {
+	if strings.TrimSpace(ag.PositionKey) == "" {
+		return ""
+	}
+	if d.PositionUC == nil {
+		return ""
+	}
+	anc, err := d.PositionUC.GetWithAncestors(ctx, ag.PositionKey)
+	if err != nil {
+		event.CtxFlowLogError(ctx, "agent.industry_context", "行业上下文构建失败：无法获取岗位祖先链",
+			event.P("position_key", ag.PositionKey), event.P("error", err.Error()))
+		return ""
+	}
+	var b strings.Builder
+	if anc.Industry.Key != "" {
+		fmt.Fprintf(&b, "## 行业\n%s： %s\n", anc.Industry.Name, anc.Industry.Description)
+	}
+	fmt.Fprintf(&b, "## 部门\n%s： %s\n", anc.Department.Name, anc.Department.Description)
+	if rj := strings.TrimSpace(anc.Department.ResponsibilitiesJSON); rj != "" && rj != "{}" {
+		fmt.Fprintf(&b, "部门职责：%s\n", rj)
+	}
+	fmt.Fprintf(&b, "## 岗位\n%s： %s\n", anc.Position.Name, anc.Position.Description)
+	if rj := strings.TrimSpace(anc.Position.ResponsibilitiesJSON); rj != "" && rj != "{}" {
+		fmt.Fprintf(&b, "岗位职责：%s\n", rj)
+	}
+	if len(anc.Position.SkillsRequired) > 0 {
+		fmt.Fprintf(&b, "技能要求：%s\n", strings.Join(anc.Position.SkillsRequired, "、"))
+	}
+	return b.String()
+}
+
 func PromptFilesForAgent(ctx context.Context, d Deps, ag biz.Agent) ([]biz.AgentPromptFile, error) {
 	if len(ag.Files) > 0 {
 		return ag.Files, nil
@@ -101,7 +140,7 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 	}
 	uc := d.AgentUC
 	if uc == nil && d.Agents != nil && d.ToolsCatalog != nil {
-		uc = biz.NewAgentUsecase(d.Agents, d.ToolsCatalog, nil)
+		uc = biz.NewAgentUsecase(d.Agents, d.ToolsCatalog, nil, nil)
 	}
 	if uc != nil {
 		eff, err := uc.GetEffectiveTools(ctx, ag.ID)

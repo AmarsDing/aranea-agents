@@ -26,6 +26,9 @@ export type Agent = {
   is_favorite: boolean;
   icon: string;
   agent_description: string;
+  position_key?: string;
+  agent_variant?: string;
+  variant_description?: string;
   category_position_id: string;
   system_prompt_mode: string;
   context_window: number;
@@ -35,6 +38,7 @@ export type Agent = {
   updated_at: string;
   deleted_at: string;
   created_by?: string;
+  readonly?: boolean;
   settings?: AgentRuntimeSettings;
   files?: AgentPromptFile[];
 };

@@ -33,22 +33,31 @@
         <h2 class="teams-industry-section__title">{{ group.label }}</h2>
         <q-chip dense square size="sm" class="teams-industry-section__count">{{ group.teams.length }}</q-chip>
       </header>
-      <div class="app-entity-grid teams-industry-section__grid">
-        <TeamCard
-          v-for="team in group.teams"
-          :key="team.id"
-          :team="team"
-          :agents="agents"
-          :is-dark="isDark"
-          @copy-key="copyKey"
-          @open-runs="openRuns"
-          @open-observatory="openTeamObservatory"
-          @run-test="openRunTest"
-          @duplicate="duplicate"
-          @edit="openEdit"
-          @remove="confirmRemove"
-        />
-      </div>
+      <draggable
+        v-model="draggableTeamsMap[group.id]"
+        item-key="id"
+        class="teams-draggable-grid"
+        ghost-class="team-card--ghost"
+        chosen-class="team-card--chosen"
+        drag-class="team-card--dragging"
+        :animation="200"
+        :delay="100"
+      >
+        <template #item="{ element: team }">
+          <TeamCard
+            :team="team"
+            :agents="agents"
+            :is-dark="isDark"
+            @copy-key="copyKey"
+            @open-runs="openRuns"
+            @open-observatory="openTeamObservatory"
+            @run-test="openRunTest"
+            @duplicate="duplicate"
+            @edit="openEdit"
+            @remove="confirmRemove"
+          />
+        </template>
+      </draggable>
     </section>
 
     <q-card v-if="!loading && teamIndustryGroups.length === 0" flat bordered :class="['app-entity-empty', { 'is-dark': isDark }, 'q-mt-lg']">
@@ -68,6 +77,7 @@
       :definition="definition"
       :definition-json="definitionJSON"
       :agent-options="agentOptions"
+      :industry-options="industryOptions"
       :saving="saving"
       :can-save="canSave"
       :is-dark="isDark"
@@ -112,6 +122,8 @@
 </template>
 
 <script setup lang="ts">
+import { computed, reactive, watchEffect, type WritableComputedRef } from "vue";
+import draggable from "vuedraggable";
 import AppPageHero from "../components/layout/AppPageHero.vue";
 import TeamCard from "../components/teams/TeamCard.vue";
 import TeamEditorDialog from "../components/teams/TeamEditorDialog.vue";
@@ -121,6 +133,7 @@ import TeamToolbar from "../components/teams/TeamToolbar.vue";
 import { useTeamsPage } from "../features/teams/useTeamsPage";
 import { storeToRefs } from "pinia";
 import { useAuthStore } from "../stores/auth";
+import type { Team } from "../features/teams/types";
 
 const authStore = useAuthStore();
 const { isPlatformAdmin } = storeToRefs(authStore);
@@ -180,6 +193,20 @@ const {
   openRunObservatory,
   openTeamObservatory,
   loadRuns,
-  loadRunSteps
+  loadRunSteps,
+  reorderTeams
 } = useTeamsPage();
+
+const draggableTeamsMap = reactive<Record<string, WritableComputedRef<Team[]>>>({});
+
+watchEffect(() => {
+  for (const group of teamIndustryGroups.value) {
+    if (!draggableTeamsMap[group.id]) {
+      draggableTeamsMap[group.id] = computed({
+        get: () => teamIndustryGroups.value.find((g) => g.id === group.id)?.teams ?? [],
+        set: (val: Team[]) => reorderTeams(val.map((t) => t.id)),
+      });
+    }
+  }
+});
 </script>

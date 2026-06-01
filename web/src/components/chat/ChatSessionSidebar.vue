@@ -161,7 +161,7 @@
                             <q-item-section avatar><q-icon name="open_in_new" size="18px" /></q-item-section>
                             <q-item-section>详情页</q-item-section>
                           </q-item>
-                          <q-item v-if="session.status === 'archived'" clickable v-close-popup @click.stop="$emit('restore', session.id)">
+                          <q-item v-if="session.archived_at" clickable v-close-popup @click.stop="$emit('restore', session.id)">
                             <q-item-section avatar><q-icon name="restore" size="18px" /></q-item-section>
                             <q-item-section>恢复会话</q-item-section>
                           </q-item>

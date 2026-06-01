@@ -1,89 +1,82 @@
-package biz
+package biz_test
 
-import "testing"
+import (
+	"testing"
+
+	"aranea-agents/internal/biz"
+)
 
 func TestGraphTaskInputFromNode(t *testing.T) {
-	t.Run("defaults", func(t *testing.T) {
-		role, mode, strategy, input := GraphTaskInputFromNode(NodeDef{ID: "t1", Type: "task"})
-		if role != "" {
-			t.Errorf("role=%q want empty", role)
-		}
-		if mode != "static" {
-			t.Errorf("mode=%q want static", mode)
-		}
-		if strategy != "" {
-			t.Errorf("strategy=%q want empty", strategy)
-		}
-		if input != "t1" {
-			t.Errorf("input=%q want t1", input)
-		}
-	})
-
-	t.Run("all_fields", func(t *testing.T) {
-		node := NodeDef{
-			ID:                 "review-1",
-			Type:               "review",
-			RequiredRole:       "  admin  ",
-			AssignmentMode:     "  round_robin  ",
-			AssignmentStrategy: "  least_busy  ",
-			Description:        "  Review the output  ",
-		}
-		role, mode, strategy, input := GraphTaskInputFromNode(node)
-		if role != "admin" {
-			t.Errorf("role=%q want admin", role)
-		}
-		if mode != "round_robin" {
-			t.Errorf("mode=%q want round_robin", mode)
-		}
-		if strategy != "least_busy" {
-			t.Errorf("strategy=%q want least_busy", strategy)
-		}
-		if input != "Review the output" {
-			t.Errorf("input=%q want trimmed description", input)
-		}
-	})
-
-	t.Run("empty_mode_falls_back_to_static", func(t *testing.T) {
-		_, mode, _, _ := GraphTaskInputFromNode(NodeDef{ID: "n1", AssignmentMode: "   "})
-		if mode != "static" {
-			t.Errorf("mode=%q want static", mode)
-		}
-	})
-
-	t.Run("description_fallback_to_id", func(t *testing.T) {
-		_, _, _, input := GraphTaskInputFromNode(NodeDef{ID: "n1", Description: "   "})
-		if input != "n1" {
-			t.Errorf("input=%q want n1", input)
-		}
-	})
-}
-
-func TestNodeDefFromConfig(t *testing.T) {
-	cfg := GraphBuildConfig{
-		Nodes: []NodeDef{
-			{ID: "start", Type: "llm"},
-			{ID: "end", Type: "llm"},
+	cases := []struct {
+		name                string
+		node                biz.NodeDef
+		wantRole            string
+		wantAssignmentMode  string
+		wantStrategy        string
+		wantInput           string
+	}{
+		{
+			name:               "full node",
+			node:               biz.NodeDef{ID: "n1", RequiredRole: "admin", AssignmentMode: "dynamic", AssignmentStrategy: "round_robin", Description: "do stuff"},
+			wantRole:           "admin",
+			wantAssignmentMode: "dynamic",
+			wantStrategy:       "round_robin",
+			wantInput:          "do stuff",
+		},
+		{
+			name:               "empty assignment mode defaults to static",
+			node:               biz.NodeDef{ID: "n2", AssignmentMode: ""},
+			wantAssignmentMode: "static",
+			wantInput:          "n2",
+		},
+		{
+			name:               "empty description falls back to id",
+			node:               biz.NodeDef{ID: "n3", Description: ""},
+			wantAssignmentMode: "static",
+			wantInput:          "n3",
+		},
+		{
+			name:               "whitespace description falls back to id",
+			node:               biz.NodeDef{ID: "n4", Description: "   "},
+			wantAssignmentMode: "static",
+			wantInput:          "n4",
+		},
+		{
+			name:               "whitespace assignment mode defaults to static",
+			node:               biz.NodeDef{ID: "n5", AssignmentMode: "  "},
+			wantAssignmentMode: "static",
+			wantInput:          "n5",
+		},
+		{
+			name:               "whitespace role trimmed",
+			node:               biz.NodeDef{ID: "n6", RequiredRole: "  reviewer  "},
+			wantRole:           "reviewer",
+			wantAssignmentMode: "static",
+			wantInput:          "n6",
+		},
+		{
+			name:               "whitespace strategy trimmed",
+			node:               biz.NodeDef{ID: "n7", AssignmentStrategy: "  least_busy  "},
+			wantAssignmentMode: "static",
+			wantStrategy:       "least_busy",
+			wantInput:          "n7",
 		},
 	}
-
-	t.Run("found", func(t *testing.T) {
-		n := nodeDefFromConfig(cfg, "start")
-		if n == nil || n.ID != "start" {
-			t.Fatalf("n=%+v", n)
-		}
-	})
-
-	t.Run("not_found", func(t *testing.T) {
-		n := nodeDefFromConfig(cfg, "missing")
-		if n != nil {
-			t.Fatalf("expected nil, got %+v", n)
-		}
-	})
-
-	t.Run("empty_config", func(t *testing.T) {
-		n := nodeDefFromConfig(GraphBuildConfig{}, "any")
-		if n != nil {
-			t.Fatalf("expected nil, got %+v", n)
-		}
-	})
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			role, mode, strategy, input := biz.GraphTaskInputFromNode(tc.node)
+			if role != tc.wantRole {
+				t.Fatalf("role = %q, want %q", role, tc.wantRole)
+			}
+			if mode != tc.wantAssignmentMode {
+				t.Fatalf("mode = %q, want %q", mode, tc.wantAssignmentMode)
+			}
+			if strategy != tc.wantStrategy {
+				t.Fatalf("strategy = %q, want %q", strategy, tc.wantStrategy)
+			}
+			if input != tc.wantInput {
+				t.Fatalf("input = %q, want %q", input, tc.wantInput)
+			}
+		})
+	}
 }

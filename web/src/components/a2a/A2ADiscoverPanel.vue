@@ -5,7 +5,7 @@
       <q-input v-model="capability" class="app-page-toolbar__field" dense outlined clearable label="Capability" />
       <template #actions>
         <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
-        <q-btn color="primary" unelevated no-caps rounded icon="search" label="发现" :loading="loading" @click="$emit('discover')" />
+        <q-btn color="primary" unelevated no-caps rounded icon="search" label="发现" :loading="loading" @click="onDiscover" />
       </template>
     </AppPageToolbar>
     <AppRegistryTable
@@ -53,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import AppPageToolbar from "../layout/AppPageToolbar.vue";
 import AppRegistryTable from "../layout/AppRegistryTable.vue";
 import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
@@ -69,7 +69,10 @@ const props = defineProps<{
 const workspace = defineModel<string>("workspace", { default: "" });
 const capability = defineModel<string>("capability", { default: "" });
 
-defineEmits<{ discover: [] }>();
+watch(workspace, (v) => { if (v == null) workspace.value = ""; });
+watch(capability, (v) => { if (v == null) capability.value = ""; });
+
+const emit = defineEmits<{ discover:[] }>();
 
 const page = ref(1);
 const pageSize = ref(10);
@@ -83,5 +86,10 @@ function resetFilters() {
   workspace.value = "";
   capability.value = "";
   page.value = 1;
+}
+
+function onDiscover() {
+  page.value = 1;
+  emit("discover");
 }
 </script>

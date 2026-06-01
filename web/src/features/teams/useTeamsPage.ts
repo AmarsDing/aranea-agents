@@ -6,7 +6,7 @@ import type { Agent } from "../agents/types";
 import type { Team, TeamDefinition, TeamRun, TeamRunEvent, TeamRunStep, TeamRunSummary } from "./types";
 import { findActiveTeamRun } from "./api";
 import { useTeamsPageStore } from "../../stores/teams/page";
-import { buildGraphFromDefinition, defaultDefinition, definitionFromTemplate, definitionToJSON, groupTeamsByIndustry, industryOptionsFromTree, parseDefinition, type TeamTemplateKey } from "../../components/teams/teamUtils";
+import { buildGraphFromDefinition, defaultDefinition, definitionFromTemplate, definitionToJSON, groupTeamsByIndustry, industryOptionsFromTree, parseDefinition, resetDefinition, type TeamTemplateKey } from "../../components/teams/teamUtils";
 import { usePlatformStore } from "../../stores/platform";
 import type { PlatformResourceTreeNode } from "../platform/types";
 
@@ -52,7 +52,8 @@ const form = reactive({
   team_key: "",
   display_name: "",
   status: "active",
-  app_name: ""
+  app_name: "",
+  category_industry_id: ""
 });
 
 const definition = reactive<TeamDefinition>({
@@ -124,15 +125,15 @@ function openRouteEdit() {
 function openCreate() {
   editingId.value = "";
   selectedTeamTemplateKey.value = null;
-  Object.assign(form, { team_key: "", display_name: "", status: "active", app_name: "" });
-  Object.assign(definition, defaultDefinition());
+  Object.assign(form, { team_key: "", display_name: "", status: "active", app_name: "", category_industry_id: "" });
+  resetDefinition(definition);
   editorOpen.value = true;
 }
 
 function openEdit(team: Team) {
   editingId.value = team.id;
   selectedTeamTemplateKey.value = null;
-  Object.assign(form, { team_key: team.team_key, display_name: team.display_name, status: team.status, app_name: team.app_name });
+  Object.assign(form, { team_key: team.team_key, display_name: team.display_name, status: team.status, app_name: team.app_name, category_industry_id: team.category_industry_id || "" });
   Object.assign(definition, parseDefinition(team));
   editorOpen.value = true;
 }
@@ -181,6 +182,7 @@ function applyTemplate(template: TeamTemplateKey) {
     selectedTeamTemplateKey.value = null;
     return;
   }
+  resetDefinition(definition);
   Object.assign(definition, definitionFromTemplate(template, agents.value));
   $q.notify({ type: "positive", message: "Team 模板已应用" });
 }
@@ -198,7 +200,8 @@ async function save() {
       display_name: form.display_name,
       status: form.status,
       app_name: form.app_name || form.team_key,
-      definition_json: definitionJSON.value
+      definition_json: definitionJSON.value,
+      category_industry_id: form.category_industry_id || ""
     };
     const saved = editingId.value ? await teamsPageStore.editTeam(editingId.value, payload) : await teamsPageStore.addTeam(payload);
     rows.value = editingId.value ? rows.value.map((row) => (row.id === saved.id ? saved : row)) : [saved, ...rows.value];
@@ -249,6 +252,7 @@ async function openRuns(team: Team) {
   selectedTeam.value = team;
   runsOpen.value = true;
   summariesByRun.value = {};
+  stepsByRun.value = {};
   await loadRuns();
   openRunEvents(team.id);
 }
@@ -393,6 +397,19 @@ function upsertRunStep(step: TeamRunStep) {
   stepsByRun.value = { ...stepsByRun.value, [step.run_id]: next };
 }
 
+// TECH-DEBT: reorder is local-only; add backend persistence API — issue #xxx
+function reorderTeams(ids: string[]) {
+  const idIndex = new Map(ids.map((id, i) => [id, i]));
+  rows.value = [...rows.value].sort((a, b) => {
+    const ai = idIndex.get(a.id);
+    const bi = idIndex.get(b.id);
+    if (ai !== undefined && bi !== undefined) return ai - bi;
+    if (ai !== undefined) return -1;
+    if (bi !== undefined) return 1;
+    return 0;
+  });
+}
+
   return {
     isDark, rows, agents, loading, saving, error, search, modeFilter, statusFilter, industryFilter,
     categoryTree, industryOptions, teamIndustryGroups,
@@ -401,6 +418,7 @@ function upsertRunStep(step: TeamRunStep) {
     summariesByRun, summariesLoading, testOpen, testTeam, testLoading, testError, testReply, testRun,
     form, definition, agentOptions, definitionJSON, canSave, filteredTeams,
     loadRows, openCreate, openEdit, addMember, removeMember, applyTemplate, save, duplicate, confirmRemove,
-    copyKey, openRuns, openRunTest, executeRunTest, loadRunSummary, openRunObservatory, openTeamObservatory, loadRuns, loadRunSteps
+    copyKey, openRuns, openRunTest, executeRunTest, loadRunSummary, openRunObservatory, openTeamObservatory, loadRuns, loadRunSteps,
+    reorderTeams
   };
 }

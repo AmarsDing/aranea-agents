@@ -6,7 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/sessionmemory"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/jsonutil"
 )
 
@@ -40,7 +40,7 @@ func (s *memoryFactIndexSync) SyncFactIndex(ctx context.Context, agentID, userID
 			return
 		}
 		if serr := s.store.MarkFactIndexStale(ctx, factID, reason.Error()); serr != nil {
-			event.SysLogWarn("system.auto_memory.l4_fail", "failed to mark fact index stale", event.P("fact_id", factID), event.P("error", serr.Error()))
+			loggateway.Global().Warn("failed to mark fact index stale", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(serr))
 		}
 	}
 	embedding, err := s.vec.EmbedText(ctx, statement)
@@ -59,7 +59,7 @@ func (s *memoryFactIndexSync) SyncFactIndex(ctx context.Context, agentID, userID
 	// Mark fresh on full success.
 	if s.store != nil {
 		if serr := s.store.MarkFactIndexSynced(ctx, factID); serr != nil {
-			event.SysLogWarn("system.auto_memory.l4_fail", "failed to mark fact index synced", event.P("fact_id", factID), event.P("error", serr.Error()))
+			loggateway.Global().Warn("failed to mark fact index synced", loggateway.StepID("system.auto_memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(serr))
 		}
 	}
 	return nil

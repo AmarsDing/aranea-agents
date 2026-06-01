@@ -58,6 +58,7 @@ const (
 	EnvelopeTypeAlertNotify                 = contract.EnvelopeTypeAlertNotify
 	EnvelopeTypeOrchestrationAgentStatus    = contract.EnvelopeTypeOrchestrationAgentStatus
 	EnvelopeTypeUserFeedback                = contract.EnvelopeTypeUserFeedback
+	EnvelopeTypeSessionStatusChanged        = contract.EnvelopeTypeSessionStatusChanged
 )
 
 // Re-export functions.

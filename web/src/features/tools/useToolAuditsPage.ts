@@ -50,6 +50,10 @@ export function useToolAuditsPage() {
     void loadRows();
   }
 
+  watch([toolKey, agentId, userId, status], () => {
+    page.value = 1;
+    void loadRows();
+  });
   watch([page, pageSize], () => {
     void loadRows();
   });

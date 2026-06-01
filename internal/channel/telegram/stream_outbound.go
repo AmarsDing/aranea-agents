@@ -125,7 +125,9 @@ func (s *StreamSender) editMessage(ctx context.Context, chatID string, messageID
 		OK          bool   `json:"ok"`
 		Description string `json:"description"`
 	}
-	_ = json.Unmarshal(raw, &out)
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return fmt.Errorf("telegram stream edit: parse response: %w", err)
+	}
 	if !out.OK {
 		desc := strings.ToLower(out.Description)
 		if strings.Contains(desc, "message is not modified") {

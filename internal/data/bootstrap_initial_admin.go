@@ -2,19 +2,46 @@ package data
 
 import (
 	"context"
+	"fmt"
 
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/data/ent"
+	"aranea-agents/pkg/loggateway"
 )
 
-// ensureInitialAdminFromConfig inserts id=1 admin when the admins table is empty and
-// data.initial_admin is set in YAML (password plaintext → MD5 hex, same as Login).
-//
-// When conf.Data has no initial_admin field in the generated protobuf, this is a no-op.
 func ensureInitialAdminFromConfig(ctx context.Context, client *ent.Client, d *conf.Data) error {
 	if client == nil || d == nil {
 		return nil
 	}
-	// Regenerate internal/conf from proto when Data.initial_admin is added; then wire getters here.
+	ia := d.GetInitialAdmin()
+	if ia == nil {
+		return nil
+	}
+	name := ia.GetName()
+	pwd := ia.GetPassword()
+	if name == "" || pwd == "" {
+		return nil
+	}
+	count, err := client.Admin.Query().Count(ctx)
+	if err != nil {
+		return fmt.Errorf("initial admin count: %w", err)
+	}
+	if count > 0 {
+		loggateway.Global().Info("initial admin skipped: admins already exist",
+			loggateway.StepID("system.admin.seed"), loggateway.Int("count", count))
+		return nil
+	}
+	_, err = client.Admin.Create().
+		SetName(name).
+		SetEmail(ia.GetEmail()).
+		SetAccess(ia.GetAccess()).
+		SetAvatar("").
+		SetPassword(adminPwdMD5(pwd)).
+		Save(ctx)
+	if err != nil {
+		return fmt.Errorf("seed initial admin: %w", err)
+	}
+	loggateway.Global().Info("initial admin seeded from config",
+		loggateway.StepID("system.admin.seed"), loggateway.Str("admin_name", name))
 	return nil
 }

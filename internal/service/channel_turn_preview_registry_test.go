@@ -8,6 +8,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestTurnPreviewRegistry_replacesPreviousSessionPreview(t *testing.T) {
@@ -67,6 +68,7 @@ func TestTurnPreviewCoordinator_runIDFilter(t *testing.T) {
 		Platform: "feishu",
 		Policy:   biz.ParseChannelIMRenderPolicy(`{"config":{"im_render_mode":"transcript"}}`, lt),
 		LtCfg:    lt,
+		Lg:       loggateway.NewNoop(),
 	})
 	coord.SetActiveRunID("run-1")
 	coord.consume(context.Background(), event.Envelope{

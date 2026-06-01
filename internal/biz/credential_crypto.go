@@ -10,7 +10,7 @@ import (
 	"io"
 	"strings"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/go-kratos/kratos/v2/errors"
 )
@@ -389,14 +389,14 @@ func (c *CredentialCrypto) DecryptConfigJSONForRuntime(ctx context.Context, cfg 
 	}
 	if enc, ok := m["api_key_enc"].(string); ok && strings.TrimSpace(enc) != "" {
 		if plain, err := c.decryptCredential(ctx, enc); err != nil {
-			event.SysLogWarn("credential.decrypt", "api_key 解密失败", event.P("error", err.Error()))
+			c.lg.Warn("api_key 解密失败", loggateway.StepID("credential.decrypt"), loggateway.Err(err))
 		} else if plain != "" {
 			m["api_key"] = plain
 		}
 	}
 	if enc, ok := m["secret_key_enc"].(string); ok && strings.TrimSpace(enc) != "" {
 		if plain, err := c.decryptCredential(ctx, enc); err != nil {
-			event.SysLogWarn("credential.decrypt", "secret_key 解密失败", event.P("error", err.Error()))
+			c.lg.Warn("secret_key 解密失败", loggateway.StepID("credential.decrypt"), loggateway.Err(err))
 		} else if plain != "" {
 			m["secret_key"] = plain
 		}
@@ -409,7 +409,7 @@ func (c *CredentialCrypto) DecryptConfigJSONForRuntime(ctx context.Context, cfg 
 			}
 			if enc, ok := cm["api_key_enc"].(string); ok && strings.TrimSpace(enc) != "" {
 				if plain, err := c.decryptCredential(ctx, enc); err != nil {
-					event.SysLogWarn("credential.decrypt", "ha_candidate api_key 解密失败", event.P("error", err.Error()))
+					c.lg.Warn("ha_candidate api_key 解密失败", loggateway.StepID("credential.decrypt"), loggateway.Err(err))
 				} else if plain != "" {
 					cm["api_key"] = plain
 				}

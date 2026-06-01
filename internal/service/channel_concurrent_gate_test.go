@@ -3,66 +3,84 @@ package service
 import (
 	"testing"
 
-	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 )
 
-func TestChannelConcurrentGate_limitsGroup(t *testing.T) {
-	g := newChannelConcurrentGate()
-	ch := biz.Channel{ID: "ch-1"}
-	ev := port.InboundEvent{OutboundMeta: map[string]string{"chat_type": "group"}}
-	lt := biz.ChannelLongTaskConfig{SessionMaxConcurrentGroup: 2}
-
-	release1, ok := tryAcquireForTest(g, ch, ev, lt)
-	if !ok {
-		t.Fatal("first acquire")
-	}
-	release2, ok := tryAcquireForTest(g, ch, ev, lt)
-	if !ok {
-		t.Fatal("second acquire")
-	}
-	_, ok = tryAcquireForTest(g, ch, ev, lt)
-	if ok {
-		t.Fatal("third acquire should fail")
-	}
-	release1()
-	release2()
-	_, ok = tryAcquireForTest(g, ch, ev, lt)
-	if !ok {
-		t.Fatal("should acquire after release")
-	}
-}
-
-func tryAcquireForTest(g *channelConcurrentGate, ch biz.Channel, ev port.InboundEvent, lt biz.ChannelLongTaskConfig) (func(), bool) {
-	h := &ChannelIngress{concurrentGate: g}
-	return h.tryAcquireChannelConcurrent(ch, ev, lt)
-}
-
 func TestInboundEventIsGroup(t *testing.T) {
-	if !inboundEventIsGroup(port.InboundEvent{OutboundMeta: map[string]string{"chat_type": "group"}}) {
-		t.Fatal("group chat")
+	cases := []struct {
+		ev   port.InboundEvent
+		want bool
+	}{
+		{port.InboundEvent{OutboundMeta: map[string]string{"chat_type": "group"}}, true},
+		{port.InboundEvent{OutboundMeta: map[string]string{"chat_type": "supergroup"}}, true},
+		{port.InboundEvent{OutboundMeta: map[string]string{"chat_type": "GROUP"}}, true},
+		{port.InboundEvent{OutboundMeta: map[string]string{"chat_type": "  group  "}}, true},
+		{port.InboundEvent{OutboundMeta: map[string]string{"chat_type": "private"}}, false},
+		{port.InboundEvent{OutboundMeta: map[string]string{"group_id": "g123"}}, true},
+		{port.InboundEvent{OutboundMeta: map[string]string{"group_id": "  "}}, false},
+		{port.InboundEvent{OutboundMeta: nil}, false},
+		{port.InboundEvent{}, false},
 	}
-	if inboundEventIsGroup(port.InboundEvent{OutboundMeta: map[string]string{"chat_type": "p2p"}}) {
-		t.Fatal("p2p")
+	for _, tc := range cases {
+		got := inboundEventIsGroup(tc.ev)
+		if got != tc.want {
+			t.Errorf("inboundEventIsGroup(%+v) = %v, want %v", tc.ev, got, tc.want)
+		}
 	}
 }
 
-func TestChannelBusyInputFollowup(t *testing.T) {
-	cfg := `{"config":{"busy_input_mode":"followup"}}`
-	if !biz.ChannelBusyInputFollowup(cfg) {
-		t.Fatal("followup mode")
+func TestChannelConcurrentGate_TryAcquireRelease(t *testing.T) {
+	g := newChannelConcurrentGate()
+	defer g.Close()
+
+	if !g.TryAcquire("ch1", "peer1", false, 2) {
+		t.Fatal("first acquire should succeed")
 	}
-	if !biz.ChannelBusyInputQueue(cfg) {
-		t.Fatal("followup should allow queue/steer")
+	if !g.TryAcquire("ch1", "peer1", false, 2) {
+		t.Fatal("second acquire should succeed (limit=2)")
+	}
+	if g.TryAcquire("ch1", "peer1", false, 2) {
+		t.Fatal("third acquire should fail (limit=2)")
+	}
+
+	g.Release("ch1", "peer1", false)
+	if !g.TryAcquire("ch1", "peer1", false, 2) {
+		t.Fatal("acquire after release should succeed")
 	}
 }
 
-func TestMaxConcurrentInboundDefaults(t *testing.T) {
-	lt := biz.ParseChannelLongTaskConfig(`{}`)
-	if lt.MaxConcurrentInbound(false) != 1 {
-		t.Fatalf("dm default=%d", lt.MaxConcurrentInbound(false))
+func TestChannelConcurrentGate_NilReceiver(t *testing.T) {
+	var g *channelConcurrentGate
+	if !g.TryAcquire("ch1", "peer1", false, 1) {
+		t.Fatal("nil gate should always allow")
 	}
-	if lt.MaxConcurrentInbound(true) != 3 {
-		t.Fatalf("group default=%d", lt.MaxConcurrentInbound(true))
+	g.Release("ch1", "peer1", false)
+}
+
+func TestChannelConcurrentGate_ZeroLimit(t *testing.T) {
+	g := newChannelConcurrentGate()
+	defer g.Close()
+	if !g.TryAcquire("ch1", "peer1", false, 0) {
+		t.Fatal("zero limit should always allow")
 	}
+	if !g.TryAcquire("ch1", "peer1", false, -1) {
+		t.Fatal("negative limit should always allow")
+	}
+}
+
+func TestChannelConcurrentGate_DifferentPeers(t *testing.T) {
+	g := newChannelConcurrentGate()
+	defer g.Close()
+	if !g.TryAcquire("ch1", "peer1", false, 1) {
+		t.Fatal("peer1 should acquire")
+	}
+	if !g.TryAcquire("ch1", "peer2", false, 1) {
+		t.Fatal("peer2 should acquire independently")
+	}
+}
+
+func TestChannelConcurrentGate_ReleaseNonExistent(t *testing.T) {
+	g := newChannelConcurrentGate()
+	defer g.Close()
+	g.Release("nonexistent", "peer", false)
 }

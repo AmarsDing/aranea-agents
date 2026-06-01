@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/modelcatalog"
+	"aranea-agents/internal/modelregistry"
 )
 
 func mergeUsageBreakdownByAlias(rows []biz.UsageBreakdownRow) []biz.UsageBreakdownRow {
@@ -18,7 +18,7 @@ func mergeUsageBreakdownByAlias(rows []biz.UsageBreakdownRow) []biz.UsageBreakdo
 	}
 	merged := make(map[key]*biz.UsageBreakdownRow, len(rows))
 	for _, row := range rows {
-		p, m := modelcatalog.UsageDisplayAlias(row.ProviderCode, row.ModelAPIID)
+		p, m := modelregistry.UsageDisplayAlias(row.ProviderCode, row.ModelAPIID)
 		k := key{provider: p, model: m}
 		if ex, ok := merged[k]; ok {
 			ex.CallCount += row.CallCount
@@ -52,14 +52,14 @@ func mergeUsageBreakdownByAlias(rows []biz.UsageBreakdownRow) []biz.UsageBreakdo
 func aliasUsageEvent(event biz.TokenUsageEvent) biz.TokenUsageEvent {
 	provider := strings.TrimSpace(event.CanonicalProviderCode)
 	if provider == "" {
-		provider, _ = modelcatalog.UsageDisplayAlias(event.ProviderCode, event.ModelAPIID)
+		provider, _ = modelregistry.UsageDisplayAlias(event.ProviderCode, event.ModelAPIID)
 	}
 	event.ProviderCode = provider
 	return event
 }
 
 func usageProviderWhere(provider string) (string, []any) {
-	codes := modelcatalog.ProviderUsageQueryCodes(provider)
+	codes := modelregistry.ProviderUsageQueryCodes(provider)
 	if len(codes) == 0 {
 		return "provider_code = ?", []any{provider}
 	}

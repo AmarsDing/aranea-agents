@@ -81,8 +81,9 @@ export function useAgentCategoriesPage() {
       sort_order: nextSortOrder(canonicalParent ?? undefined),
       parent_id: canonicalParent?.id ?? "",
       level,
+      is_system: false,
       config_json: "{}",
-      metadata_json: JSON.stringify({ is_system: false })
+      metadata_json: "{}"
     });
     dialogOpen.value = true;
   }
@@ -98,6 +99,7 @@ export function useAgentCategoriesPage() {
       sort_order: node.sort_order,
       parent_id: node.parent_id,
       level: node.level as CategoryLevel,
+      is_system: node.is_system,
       config_json: node.config_json || "{}",
       metadata_json: node.metadata_json || "{}"
     });
@@ -105,7 +107,8 @@ export function useAgentCategoriesPage() {
   }
 
   async function saveNode() {
-    if (!form.name.trim()) {
+    const trimmedName = form.name.trim();
+    if (!trimmedName) {
       $q.notify({ type: "negative", message: "名称必填" });
       return;
     }
@@ -113,9 +116,10 @@ export function useAgentCategoriesPage() {
     try {
       const payload: PlatformResourceInput = {
         ...form,
-        key: editingId.value ? form.key : buildKey(form.level, form.name),
+        name: trimmedName,
+        key: editingId.value ? form.key : buildKey(form.level, trimmedName),
         parent_id: form.parent_id || "",
-        metadata_json: form.metadata_json || JSON.stringify({ is_system: false })
+        metadata_json: form.metadata_json || "{}"
       };
       if (editingId.value) {
         await platformStore.editResource(CATEGORY_RESOURCE, editingId.value, payload);
@@ -141,13 +145,25 @@ export function useAgentCategoriesPage() {
       $q.notify({ type: "warning", message: "请先删除或迁移子分类" });
       return;
     }
-    try {
-      await platformStore.removeResource(CATEGORY_RESOURCE, node.id);
-      await loadTree();
-      $q.notify({ type: "positive", message: "已删除分类" });
-    } catch (error) {
-      $q.notify({ type: "negative", message: errorMessage(error) || "删除分类失败" });
-    }
+    return new Promise<void>((resolve) => {
+      $q.dialog({
+        title: "确认删除",
+        message: `确定要删除分类「${node.name}」吗？此操作不可撤销。`,
+        cancel: { label: "取消", flat: true, rounded: true, noCaps: true },
+        ok: { label: "删除", color: "negative", rounded: true, unelevated: true, noCaps: true },
+        persistent: true
+      }).onOk(async () => {
+        try {
+          await platformStore.removeResource(CATEGORY_RESOURCE, node.id);
+          await loadTree();
+          $q.notify({ type: "positive", message: "已删除分类" });
+        } catch (error) {
+          $q.notify({ type: "negative", message: errorMessage(error) || "删除分类失败" });
+        } finally {
+          resolve();
+        }
+      }).onCancel(() => resolve());
+    });
   }
 
   async function toggleNodeEnabled(node: PlatformResourceTreeNode, enabled: boolean) {

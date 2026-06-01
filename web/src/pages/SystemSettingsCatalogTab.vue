@@ -3,17 +3,15 @@
     <q-banner v-if="error" rounded class="bg-negative text-white">{{ error }}</q-banner>
 
     <section class="app-settings-section">
-      <h2 class="app-settings-section__title">模型目录（models.dev）</h2>
+      <h2 class="app-settings-section__title">{{ t("catalogTab.catalogTitle") }}</h2>
       <p class="app-settings-section__hint">
-        从
-        <a href="https://github.com/anomalyco/models.dev" target="_blank" rel="noopener">models.dev</a>
-        同步 AI 模型规格到本地 JSON，供 Provider 默认值与定价（USD/1M）使用。
+        {{ t("catalogTab.catalogHint") }}
       </p>
 
       <div v-if="status" class="catalog-status-grid q-mb-md">
         <div class="catalog-stat">
-          <span class="catalog-stat__label">状态</span>
-          <span class="catalog-stat__value">{{ status.catalogLoaded ? "已加载" : "未加载" }}</span>
+          <span class="catalog-stat__label">{{ t("catalogTab.statusLabel") }}</span>
+          <span class="catalog-stat__value">{{ status.catalogLoaded ? t("catalogTab.loaded") : t("catalogTab.notLoaded") }}</span>
         </div>
         <div class="catalog-stat">
           <span class="catalog-stat__label">Provider</span>
@@ -24,23 +22,23 @@
           <span class="catalog-stat__value">{{ status.modelCount ?? 0 }}</span>
         </div>
         <div class="catalog-stat">
-          <span class="catalog-stat__label">上次同步</span>
+          <span class="catalog-stat__label">{{ t("catalogTab.lastSync") }}</span>
           <span class="catalog-stat__value">{{ lastSyncLabel }}</span>
         </div>
         <div class="catalog-stat catalog-stat--wide">
-          <span class="catalog-stat__label">本地路径</span>
+          <span class="catalog-stat__label">{{ t("catalogTab.localPath") }}</span>
           <span class="catalog-stat__value text-caption">{{ status.localPath || "—" }}</span>
         </div>
       </div>
     </section>
 
     <section class="app-settings-section">
-      <h2 class="app-settings-section__title">更新策略</h2>
+      <h2 class="app-settings-section__title">{{ t("catalogTab.policyTitle") }}</h2>
       <div class="app-form-field-grid app-form-field-grid--2col">
-        <q-input v-model="policyForm.sourceUrl" label="数据源 URL" outlined dense class="app-field-long" />
+        <q-input v-model="policyForm.sourceUrl" :label="t('catalogTab.sourceUrl')" outlined dense class="app-field-long" />
         <q-select
           v-model="policyForm.syncPolicy"
-          label="同步策略"
+          :label="t('catalogTab.syncPolicy')"
           outlined
           dense
           emit-value
@@ -51,13 +49,13 @@
           v-model.number="policyForm.syncIntervalHours"
           type="number"
           min="1"
-          label="间隔（小时）"
+          :label="t('catalogTab.syncInterval')"
           outlined
           dense
         />
         <q-select
           v-model="policyForm.autoApply"
-          label="自动应用到 DB"
+          :label="t('catalogTab.autoApply')"
           outlined
           dense
           emit-value
@@ -66,30 +64,30 @@
         />
       </div>
       <div class="app-actions-bar app-actions-bar--start q-mt-md">
-        <q-btn color="primary" unelevated no-caps :loading="savingPolicy" label="保存策略" @click="savePolicy" />
-        <q-btn outline color="primary" no-caps :loading="syncing" label="立即同步" @click="runSync(false)" />
+        <q-btn color="primary" unelevated no-caps :loading="savingPolicy" :label="t('catalogTab.savePolicy')" @click="savePolicy" />
+        <q-btn outline color="primary" no-caps :loading="syncing" :label="t('catalogTab.syncNow')" @click="runSync(false)" />
         <q-btn flat color="secondary" no-caps :loading="syncing" label="Dry Run" @click="runSync(true)" />
-        <q-btn flat color="primary" no-caps :loading="loading" label="刷新" @click="loadAll" />
+        <q-btn flat color="primary" no-caps :loading="loading" :label="t('catalogTab.refresh')" @click="loadAll" />
       </div>
       <div v-if="status?.lastSyncSummary" class="text-caption text-grey-7 q-mt-sm">
-        最近：{{ status.lastSyncSummary }}
+        {{ t("catalogTab.recent", { summary: status.lastSyncSummary }) }}
       </div>
     </section>
 
     <section class="app-settings-section">
-      <h2 class="app-settings-section__title">Provider 命名对齐</h2>
+      <h2 class="app-settings-section__title">{{ t("catalogTab.migrationTitle") }}</h2>
       <p class="app-settings-section__hint">
-        内置 legacy → models.dev id 映射（随版本发布，不可编辑）。同步时自动迁移绑定；也可手动立即对齐。
+        {{ t("catalogTab.migrationHint") }}
       </p>
       <div class="app-actions-bar app-actions-bar--start q-mb-md">
-        <q-btn outline color="primary" no-caps :loading="loadingMigration" label="预览影响" @click="loadMigrationPreview" />
+        <q-btn outline color="primary" no-caps :loading="loadingMigration" :label="t('catalogTab.previewImpact')" @click="loadMigrationPreview" />
         <q-btn
           color="primary"
           unelevated
           no-caps
           :loading="applyingMigration"
           :disable="!migrationItems?.length"
-          label="立即对齐"
+          :label="t('catalogTab.applyMigration')"
           @click="runApplyMigration"
         />
       </div>
@@ -105,10 +103,10 @@
           </q-item-section>
         </q-item>
       </q-list>
-      <div v-else-if="migrationLoaded" class="text-caption text-grey-7 q-mb-md">无待迁移绑定</div>
+      <div v-else-if="migrationLoaded" class="text-caption text-grey-7 q-mb-md">{{ t("catalogTab.noMigration") }}</div>
       <div v-if="migrationRules.length" class="text-caption text-grey-7 q-mb-sm">
-        内置规则 v{{ migrationVersion || "—" }}
-        <span v-if="migrationLastApplied"> · 上次对齐 {{ migrationLastApplied }}</span>
+        {{ t("catalogTab.builtinRules", { version: migrationVersion || "—" }) }}
+        <span v-if="migrationLastApplied"> · {{ t("catalogTab.lastApplied", { time: migrationLastApplied }) }}</span>
       </div>
       <q-list v-if="migrationRules.length" bordered dense separator class="rounded-borders">
         <q-item v-for="rule in migrationRules" :key="rule.legacy">
@@ -120,8 +118,8 @@
     </section>
 
     <section class="app-settings-section">
-      <h2 class="app-settings-section__title">Catalog 浏览</h2>
-      <p class="app-settings-section__hint">分页浏览 Provider；JSON 内容通过服务端搜索加载，避免全量下载。</p>
+      <h2 class="app-settings-section__title">{{ t("catalogTab.browseTitle") }}</h2>
+      <p class="app-settings-section__hint">{{ t("catalogTab.browseHint") }}</p>
       <div class="row q-col-gutter-sm q-mb-md items-end">
         <div class="col-grow">
           <q-input
@@ -130,17 +128,17 @@
             outlined
             clearable
             debounce="300"
-            label="搜索 Provider"
+            :label="t('catalogTab.searchProvider')"
             @update:model-value="loadProviderBrowse(true)"
           />
         </div>
         <div class="col-auto">
-          <q-btn flat no-caps :disable="providerBrowseOffset <= 0" label="上一页" @click="providerBrowsePrev" />
+          <q-btn flat no-caps :disable="providerBrowseOffset <= 0" :label="t('catalogTab.prevPage')" @click="providerBrowsePrev" />
           <q-btn
             flat
             no-caps
             :disable="providerBrowseOffset + providerBrowseItems.length >= providerBrowseTotal"
-            label="下一页"
+            :label="t('catalogTab.nextPage')"
             @click="providerBrowseNext"
           />
         </div>
@@ -152,20 +150,20 @@
             <q-item-label caption>{{ p.id }} · {{ p.modelCount ?? 0 }} models</q-item-label>
           </q-item-section>
           <q-item-section side>
-            <a v-if="providerDocHref(p.doc)" :href="providerDocHref(p.doc)" target="_blank" rel="noopener" class="text-caption">文档 ↗</a>
+            <a v-if="providerDocHref(p.doc)" :href="providerDocHref(p.doc)" target="_blank" rel="noopener" class="text-caption">{{ t("catalogTab.docLink") }}</a>
           </q-item-section>
         </q-item>
       </q-list>
-      <div v-else class="text-caption text-grey-7 q-mb-md">无匹配 Provider（请先同步 catalog）</div>
+      <div v-else class="text-caption text-grey-7 q-mb-md">{{ t("catalogTab.noMatchingProvider") }}</div>
       <div class="text-caption text-grey-7 q-mb-sm">
-        显示 {{ providerBrowseOffset + 1 }}–{{ providerBrowseOffset + providerBrowseItems.length }} / {{ providerBrowseTotal }}
+        {{ t("catalogTab.showing", { from: providerBrowseOffset + 1, to: providerBrowseOffset + providerBrowseItems.length, total: providerBrowseTotal }) }}
       </div>
     </section>
 
     <section class="app-settings-section">
-      <h2 class="app-settings-section__title">Catalog JSON 浏览</h2>
+      <h2 class="app-settings-section__title">{{ t("catalogTab.jsonBrowseTitle") }}</h2>
       <p class="app-settings-section__hint">
-        按 Provider 或模型关键词搜索；留空则按 Provider 分页浏览（每页 1 条完整 JSON）。
+        {{ t("catalogTab.jsonBrowseHint") }}
       </p>
       <q-input
         :model-value="jsonFilter"
@@ -173,29 +171,29 @@
         outlined
         clearable
         debounce="300"
-        placeholder="搜索 Provider / 模型（如 openai、gpt-4o）..."
+        :placeholder="t('catalogTab.jsonSearchPlaceholder')"
         class="q-mb-sm app-field-long"
         @update:model-value="onJsonFilterChange"
       />
       <q-banner v-if="jsonSearchLegacyMode" rounded class="bg-warning text-dark q-mb-sm">
-        当前返回的是旧版「行片段」格式（非完整 JSON）。请重启 admin 服务（<code>go run ./cmd/admin</code>）后刷新本页。
+        {{ t("catalogTab.legacyModeBanner") }}
       </q-banner>
       <q-banner v-if="jsonSearchTruncated" rounded class="bg-info text-white q-mb-sm">
-        匹配结果过多，仅显示前 {{ jsonSearchCap }} 条，请缩小搜索关键词。
+        {{ t("catalogTab.truncatedBanner", { cap: jsonSearchCap }) }}
       </q-banner>
       <div class="row q-col-gutter-sm q-mb-sm items-center">
         <span class="text-caption text-grey-7">
-          匹配 {{ jsonSearchTotal }} 条
-          <template v-if="jsonSearchBlocks.length === 1"> · 当前第 {{ jsonSearchOffset + 1 }} 条</template>
+          {{ t("catalogTab.matched", { total: jsonSearchTotal }) }}
+          <template v-if="jsonSearchBlocks.length === 1"> · {{ t("catalogTab.currentItem", { index: jsonSearchOffset + 1 }) }}</template>
         </span>
         <q-space />
-        <q-btn flat dense no-caps :disable="jsonSearchOffset <= 0" label="上一页" @click="jsonSearchPrev" />
+        <q-btn flat dense no-caps :disable="jsonSearchOffset <= 0" :label="t('catalogTab.prevPage')" @click="jsonSearchPrev" />
         <q-btn
           flat
           dense
           no-caps
           :disable="jsonSearchOffset + jsonSearchLimit >= jsonSearchTotal"
-          label="下一页"
+          :label="t('catalogTab.nextPage')"
           @click="jsonSearchNext"
         />
       </div>
@@ -208,12 +206,12 @@
         scroll-height="480px"
       />
       <div v-else class="text-caption text-grey-7 q-py-md">
-        {{ jsonSearchError || (jsonSearchQuery ? "无匹配结果" : "暂无 catalog 数据，请先同步") }}
+        {{ jsonSearchError || (jsonSearchQuery ? t("catalogTab.noMatchResult") : t("catalogTab.noCatalogData")) }}
       </div>
     </section>
 
     <section class="app-settings-section">
-      <h2 class="app-settings-section__title">更新日志</h2>
+      <h2 class="app-settings-section__title">{{ t("catalogTab.syncLogsTitle") }}</h2>
       <q-list v-if="logs.length" bordered separator class="rounded-borders">
         <q-item v-for="entry in logs" :key="entry.id">
           <q-item-section>
@@ -225,13 +223,14 @@
           </q-item-section>
         </q-item>
       </q-list>
-      <div v-else class="text-caption text-grey-7">暂无同步日志</div>
+      <div v-else class="text-caption text-grey-7">{{ t("catalogTab.noSyncLogs") }}</div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { useQuasar } from "quasar";
 import {
   getModelCatalogPolicy,
@@ -251,6 +250,7 @@ import { clearProviderLogoCache } from "../features/model-catalog/providerLogo";
 import { resetProviderMigrationCache } from "../features/model-catalog/providerMigration";
 import JsonCodeViewer from "../components/common/JsonCodeViewer.vue";
 
+const { t } = useI18n();
 const $q = useQuasar();
 const loading = ref(false);
 const savingPolicy = ref(false);
@@ -291,17 +291,17 @@ const policyForm = reactive<ModelCatalogPolicy>({
   autoApply: "metadata_and_pricing"
 });
 
-const syncPolicyOptions = [
-  { label: "关闭", value: "off" },
-  { label: "定时", value: "scheduled" }
-];
+const syncPolicyOptions = computed(() => [
+  { label: t("catalogTab.syncOff"), value: "off" },
+  { label: t("catalogTab.syncScheduled"), value: "scheduled" }
+]);
 
-const autoApplyOptions = [
-  { label: "仅更新本地 JSON", value: "none" },
-  { label: "元数据 + 定价", value: "metadata_and_pricing" },
-  { label: "完整规格", value: "full_spec" },
-  { label: "完整 + Runtime Overlay", value: "full_spec_and_runtime_overlay" }
-];
+const autoApplyOptions = computed(() => [
+  { label: t("catalogTab.autoApplyNone"), value: "none" },
+  { label: t("catalogTab.autoApplyMetadataAndPricing"), value: "metadata_and_pricing" },
+  { label: t("catalogTab.autoApplyFullSpec"), value: "full_spec" },
+  { label: t("catalogTab.autoApplyFullSpecAndRuntime"), value: "full_spec_and_runtime_overlay" }
+]);
 
 const lastSyncLabel = computed(() => {
   const ts = status.value?.lastSyncAt;
@@ -329,7 +329,7 @@ async function loadProviderBrowse(resetOffset = false) {
   } catch (e) {
     providerBrowseItems.value = [];
     providerBrowseTotal.value = 0;
-    const msg = e instanceof Error ? e.message : "加载 Provider 列表失败";
+    const msg = e instanceof Error ? e.message : t("catalogTab.loadProvidersFailed");
     error.value = msg;
     $q.notify({ type: "warning", message: msg });
   }
@@ -365,12 +365,12 @@ async function loadJsonSearch(resetOffset = false) {
     jsonSearchTruncated.value = res.truncated;
     jsonSearchLegacyMode.value = res.legacyLineMode;
     if (res.legacyLineMode) {
-      jsonSearchError.value = "后端返回行片段格式，请重启 admin 服务";
+      jsonSearchError.value = t("catalogTab.legacyFormatError");
     }
   } catch (e) {
     jsonSearchBlocks.value = [];
     jsonSearchTotal.value = 0;
-    const msg = e instanceof Error ? e.message : "搜索 catalog 失败";
+    const msg = e instanceof Error ? e.message : t("catalogTab.searchCatalogFailed");
     jsonSearchError.value = msg;
     error.value = msg;
     $q.notify({ type: "warning", message: msg });
@@ -403,7 +403,7 @@ async function loadAll() {
     logs.value = logItems;
     await Promise.all([loadProviderBrowse(true), loadJsonSearch(true)]);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "加载失败";
+    error.value = e instanceof Error ? e.message : t("catalogTab.loadFailed");
   } finally {
     loading.value = false;
   }
@@ -414,10 +414,10 @@ async function savePolicy() {
   error.value = "";
   try {
     await updateModelCatalogPolicy({ ...policyForm });
-    $q.notify({ type: "positive", message: "策略已保存" });
+    $q.notify({ type: "positive", message: t("catalogTab.policySaved") });
     await loadAll();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "保存失败";
+    error.value = e instanceof Error ? e.message : t("catalogTab.saveFailed");
   } finally {
     savingPolicy.value = false;
   }
@@ -433,7 +433,7 @@ async function loadMigrationPreview() {
     migrationItems.value = res.items ?? [];
     migrationLoaded.value = true;
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "预览失败";
+    error.value = e instanceof Error ? e.message : t("catalogTab.previewFailed");
     migrationItems.value = [];
     migrationLoaded.value = false;
   } finally {
@@ -462,13 +462,13 @@ async function runApplyMigration() {
     const res = await applyProviderMigration();
     $q.notify({
       type: res.ok ? "positive" : "warning",
-      message: res.message || (res.ok ? "命名对齐完成" : "对齐失败"),
+      message: res.message || (res.ok ? t("catalogTab.migrationComplete") : t("catalogTab.migrationFailed")),
     });
     await loadMigrationPreview();
     resetProviderMigrationCache();
     await loadMigrationRules();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "对齐失败";
+    error.value = e instanceof Error ? e.message : t("catalogTab.migrationFailed");
   } finally {
     applyingMigration.value = false;
   }
@@ -487,11 +487,11 @@ async function runSync(dryRun: boolean) {
       type: res.ok && !applyFailed ? "positive" : "warning",
       message:
         res.message ||
-        (applyFailed ? `同步完成但应用失败：${(res.applyErrors ?? []).join("; ")}` : res.ok ? "同步完成" : "同步失败"),
+        (applyFailed ? t("catalogTab.syncCompleteButApplyFailed", { errors: (res.applyErrors ?? []).join("; ") }) : res.ok ? t("catalogTab.syncComplete") : t("catalogTab.syncFailed")),
     });
     await loadAll();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : "同步失败";
+    error.value = e instanceof Error ? e.message : t("catalogTab.syncFailed");
   } finally {
     syncing.value = false;
   }

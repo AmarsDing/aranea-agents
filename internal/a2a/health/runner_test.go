@@ -1,6 +1,10 @@
 package health
 
-import "testing"
+import (
+	"testing"
+
+	"aranea-agents/pkg/loggateway"
+)
 
 func TestDefaultInterval(t *testing.T) {
 	if DefaultInterval() <= 0 {
@@ -9,7 +13,7 @@ func TestDefaultInterval(t *testing.T) {
 }
 
 func TestNewRunner(t *testing.T) {
-	if NewRunner(Deps{}) == nil {
+	if NewRunner(Deps{}, loggateway.NewNoop()) == nil {
 		t.Fatal("expected runner")
 	}
 }

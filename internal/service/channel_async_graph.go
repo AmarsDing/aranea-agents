@@ -66,10 +66,7 @@ func (h *ChannelIngress) executeAsyncGraphTarget(
 		}
 		return "graph", target.GraphID, strings.TrimSpace(execID), nil
 	case "team_graph":
-		if h.teams == nil {
-			return "", "", "", kerrors.BadRequest("CHANNEL", "team repository not configured")
-		}
-		teamRow, terr := h.teams.GetTeamByID(ctx, target.TeamID)
+		teamRow, terr := h.channels.GetTeamByID(ctx, target.TeamID)
 		if terr != nil {
 			return "", "", "", terr
 		}
@@ -77,7 +74,7 @@ func (h *ChannelIngress) executeAsyncGraphTarget(
 		if perr != nil {
 			return "", "", "", perr
 		}
-		agentKey := channelCompileAgentKey(ctx, h.agents)
+		agentKey := h.channels.AgentKeyResolver(ctx)
 		cfg, cerr := team.CompileToGraphRuntimeConfigFromJSON(ctx, def, teamRow.DefinitionJSON, agentKey, nil)
 		if cerr != nil {
 			return "", "", "", cerr
@@ -96,15 +93,3 @@ func (h *ChannelIngress) executeAsyncGraphTarget(
 	}
 }
 
-func channelCompileAgentKey(ctx context.Context, agents biz.AgentRepository) team.CompileAgentKey {
-	if agents == nil {
-		return nil
-	}
-	return func(agentID string) string {
-		ag, err := agents.GetAgentByID(ctx, strings.TrimSpace(agentID))
-		if err != nil {
-			return ""
-		}
-		return strings.TrimSpace(ag.AgentKey)
-	}
-}

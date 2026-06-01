@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"aranea-agents/pkg/loggateway"
+
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
@@ -90,7 +92,7 @@ func TestCostGuard_BeforeModel_FallbackBypassesDailyBudget(t *testing.T) {
 		base: basePlugin{
 			name:   "cost_guard",
 			stats:  &noopStatsRecorder{},
-			logger: NewPluginSafeLogger("cost_guard", nil),
+			logger: NewPluginSafeLogger("cost_guard", nil, loggateway.Global()),
 		},
 		cfg: cfg,
 		rt: &Runtime{
@@ -130,7 +132,7 @@ func TestCostGuard_BeforeModel_BlocksNonFallbackWhenOverBudget(t *testing.T) {
 		base: basePlugin{
 			name:   "cost_guard",
 			stats:  &noopStatsRecorder{},
-			logger: NewPluginSafeLogger("cost_guard", nil),
+			logger: NewPluginSafeLogger("cost_guard", nil, loggateway.Global()),
 		},
 		cfg: cfg,
 		rt: &Runtime{

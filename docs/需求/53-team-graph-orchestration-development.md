@@ -494,4 +494,4 @@ Harness：`internal/team/parity_run_test.go`（fixture 级）；全 LLM E2E 待�
 3. **Native 仅紧急熔断**：`ARANEA_TEAM_NATIVE=1` 环境变量为唯一 Native 执行入口，灰度桶/canary/holdout 逻辑全部删除
 4. **HITL SLA 有界延期**：`maxHITLSLAExtensions = 3`，避免无限延期
 5. **CoordinatorConfig 可配置化**：`WatchTimeout` / `HITLSLATimeout` / `SessionMaxAge` / `CleanupInterval` 统一收敛到 `CoordinatorConfig` 结构体，默认值与原常量一致，支持构造后覆盖
-6. **错误处理规范化**：`fmt.Errorf` 统一替换为 `kerrors` 系列（BadRequest/InternalServer）；所有 `_ = xxx.UpdateTeamRun` / `_ = xxx.Create` 静默忽略改为 `FlowLog warn`，确保错误可观测
+6. **错误处理规范化**：`fmt.Errorf` 统一替换为 `kerrors.BadRequest`；所有 `_ = xxx.UpdateTeamRun` / `_ = xxx.Create` 静默忽略改为 `FlowLog warn`，确保错误可观测

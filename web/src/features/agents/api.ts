@@ -74,6 +74,9 @@ export async function createAgent(payload: {
   a2a_proxy_config?: A2AProxyConfig;
   icon?: string;
   agent_description?: string;
+  position_key?: string;
+  agent_variant?: string;
+  variant_description?: string;
   category_position_id?: string;
   system_prompt_mode?: string;
   context_window?: number;
@@ -91,6 +94,9 @@ export async function createAgent(payload: {
     a2aProxyConfig: payload.a2a_proxy_config ? a2aProxyToWire(payload.a2a_proxy_config) : undefined,
     icon: payload.icon,
     agentDescription: payload.agent_description,
+    positionKey: payload.position_key,
+    agentVariant: payload.agent_variant,
+    variantDescription: payload.variant_description,
     categoryPositionId: payload.category_position_id,
     systemPromptMode: payload.system_prompt_mode,
     contextWindow: payload.context_window,
@@ -216,6 +222,12 @@ export async function getAgentPromptPreview(id: string, mode?: string): Promise<
 export async function deleteAgent(id: string): Promise<void> {
   const svc = createAgentService();
   await svc.DeleteAgent({ id });
+}
+
+export async function toggleAgentFavorite(id: string): Promise<Agent> {
+  const svc = createAgentService();
+  const res = await svc.ToggleFavorite({ id });
+  return normalizeAgentFromService(res);
 }
 
 export async function getAgentEvolutionMetrics(

@@ -5,6 +5,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // AgentCategory maps table agent_category_nodes (legacy platform "agent-categories").
@@ -29,6 +30,7 @@ func (AgentCategory) Fields() []ent.Field {
 		field.Int("sort_order").Default(0),
 		field.String("parent_id").Default(""),
 		field.String("level").Default(""),
+		field.String("scenario_key").Default(""),
 		field.String("workspace_id").Default(""),
 		field.String("owner_user_id").Default(""),
 		field.Bool("is_system").Default(false),
@@ -37,5 +39,12 @@ func (AgentCategory) Fields() []ent.Field {
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("deleted_at").Default(""),
+	}
+}
+
+func (AgentCategory) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("parent_id", "sort_order").StorageKey("idx_agent_category_parent"),
+		index.Fields("level", "sort_order").StorageKey("idx_agent_category_level"),
 	}
 }

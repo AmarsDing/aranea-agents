@@ -7,8 +7,8 @@ import {
   fetchToolAgentBindingSummary,
   type ToolAgentBindingSummary
 } from "../../features/tools/toolAgentBindingSummary";
+import { toolToUpsertInput } from "../../features/tools/toolFormPatch";
 import type { Tool, ToolAgentOverride, ToolInvocation, ToolTestResult } from "../../features/tools/types";
-// TECH-DEBT: cross-domain import; move to agents Store or shared utility — issue #tools-agents-decouple
 import { listAgents } from "../../features/agents/api";
 import type { Agent } from "../../features/agents/types";
 
@@ -230,6 +230,30 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
     });
   }
 
+  async function saveConfigSchema(schemaJson: string) {
+    const t = tool.value;
+    if (!t?.id) return;
+    try {
+      JSON.parse(schemaJson || "{}");
+    } catch (err) {
+      $q.notify({
+        type: "negative",
+        message: err instanceof Error ? `Schema JSON 无效：${err.message}` : "Schema JSON 无效"
+      });
+      return;
+    }
+    configSaving.value = true;
+    try {
+      const updated = await toolsStore.editTool(t.id, toolToUpsertInput(t, { config_schema_json: schemaJson }));
+      tool.value = updated;
+      $q.notify({ type: "positive", message: "配置 Schema 已保存" });
+    } catch (err) {
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "保存 Schema 失败" });
+    } finally {
+      configSaving.value = false;
+    }
+  }
+
   async function saveConfig() {
     const t = tool.value;
     if (!t?.id) return;
@@ -288,6 +312,7 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
     refreshDetail,
     runToolTest,
     saveConfig,
+    saveConfigSchema,
     openOverrideEditor,
     saveOverride,
     confirmRemoveOverride,

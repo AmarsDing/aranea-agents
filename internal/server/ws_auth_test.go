@@ -9,13 +9,18 @@ import (
 
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestHandleWS_AuthBypassWithoutToken(t *testing.T) {
 	t.Setenv("KRATOS_HTTP_AUTH_DISABLED", "1")
 	t.Setenv("DEPLOY_ENV", "dev")
 
-	srv := NewWSServer(&conf.Server{Ws: &conf.Server_WS{Enable: true}}, event.NewBus(), event.NewBuffer(), nil, nil)
+	srv := NewWSServerFromInfra(&conf.Server{Ws: &conf.Server_WS{Enable: true}}, &event.Infra{
+		SessionBus: event.NewBus(),
+		MonitorBus: event.NewBus(),
+		Buffer:     event.NewBuffer(),
+	}, nil, nil, nil, loggateway.NewNoop())
 	if srv == nil {
 		t.Fatal("expected WSServer")
 	}
@@ -42,7 +47,11 @@ func TestHandleWS_RequiresTokenWhenAuthOn(t *testing.T) {
 	t.Setenv("DEPLOY_ENV", "production")
 	t.Setenv("KRATOS_AUTH_SECRET", "test-secret-at-least-32-characters-long")
 
-	srv := NewWSServer(&conf.Server{Ws: &conf.Server_WS{Enable: true}}, event.NewBus(), event.NewBuffer(), nil, nil)
+	srv := NewWSServerFromInfra(&conf.Server{Ws: &conf.Server_WS{Enable: true}}, &event.Infra{
+		SessionBus: event.NewBus(),
+		MonitorBus: event.NewBus(),
+		Buffer:     event.NewBuffer(),
+	}, nil, nil, nil, loggateway.NewNoop())
 	req := httptest.NewRequest(http.MethodGet, "/v1/ws?session_id=s1", nil)
 	rec := httptest.NewRecorder()
 	srv.handleWS(rec, req)

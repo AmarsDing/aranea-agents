@@ -124,7 +124,6 @@ func (s *AgentCategoryService) CreateAgentCategory(ctx context.Context, req *v1.
 		Name:         req.GetName(),
 		Description:  req.GetDescription(),
 		Status:       req.GetStatus(),
-		Enabled:      req.GetEnabled(),
 		SortOrder:    int(req.GetSortOrder()),
 		ParentID:     req.GetParentId(),
 		Level:        req.GetLevel(),
@@ -132,6 +131,11 @@ func (s *AgentCategoryService) CreateAgentCategory(ctx context.Context, req *v1.
 		OwnerUserID:  req.GetOwnerUserId(),
 		ConfigJSON:   req.GetConfigJson(),
 		MetadataJSON: req.GetMetadataJson(),
+	}
+	if req.Enabled != nil {
+		in.Enabled = req.GetEnabled()
+	} else {
+		in.Enabled = true
 	}
 	created, err := s.uc.Create(ctx, in)
 	if err != nil {

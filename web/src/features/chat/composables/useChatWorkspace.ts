@@ -428,7 +428,7 @@ export function useChatWorkspace() {
     }
   };
 
-  const { loadAgentOrder, loadTeamOrder, onEndAgent, onEndTeam } = useChatSidebarOrder(
+  const { loadAgentOrder, loadTeamOrder, onEndAgent, onEndTeam, onGroupReorder } = useChatSidebarOrder(
     displayAgents,
     displayTeams,
     defaultAgentId,
@@ -733,6 +733,7 @@ export function useChatWorkspace() {
       activePlannerKind,
       onEndAgent,
       onEndTeam,
+      onGroupReorder,
       selectAgent: entityNav.selectAgent,
       selectTeam: entityNav.selectTeam,
       openSettings,

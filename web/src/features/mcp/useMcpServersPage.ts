@@ -2,6 +2,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import { storeToRefs } from "pinia";
 import type { McpServerConfig, McpServerMetadata, McpServerRow } from "./types";
+import { parseJSON } from "./utils";
 import { useMcpStore } from "../../stores/mcp";
 import { useAuthStore } from "../../stores/auth";
 
@@ -99,8 +100,11 @@ export function useMcpServersPage() {
 
   function onSaved(row: McpServerRow) {
     const index = rows.value.findIndex((item) => item.id === row.id);
-    if (index >= 0) rows.value[index] = row;
-    else rows.value.unshift(row);
+    if (index >= 0) {
+      rows.value[index] = row;
+    } else {
+      rows.value.push(row);
+    }
   }
 
   async function testRow(row: McpServerRow) {
@@ -123,17 +127,22 @@ export function useMcpServersPage() {
       cancel: true,
       persistent: true
     }).onOk(async () => {
-      await mcpStore.removeServer(row.id);
-      rows.value = rows.value.filter((item) => item.id !== row.id);
-      $q.notify({ type: "positive", message: "MCP 服务器已删除" });
+      try {
+        await mcpStore.removeServer(row.id);
+        rows.value = rows.value.filter((item) => item.id !== row.id);
+        $q.notify({ type: "positive", message: "MCP 服务器已删除" });
+      } catch (err) {
+        $q.notify({ type: "negative", message: err instanceof Error ? err.message : "删除失败" });
+      }
     });
   }
 
   function healthTone(row: McpServerRow) {
     const metadata = parseJSON<McpServerMetadata>(row.metadata_json, {});
     if (metadata.health_status === "ok") return "ok";
-    if (metadata.health_status === "error" || metadata.last_error_message) return "error";
+    if (metadata.health_status === "error") return "error";
     if (metadata.health_status === "degraded") return "degraded";
+    if (metadata.last_error_message) return "error";
     return "unknown";
   }
 
@@ -149,15 +158,6 @@ export function useMcpServersPage() {
     if (!value) return "-";
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
-  }
-
-  function parseJSON<T>(value: string | undefined, fallback: T): T {
-    if (!value) return fallback;
-    try {
-      return JSON.parse(value) as T;
-    } catch {
-      return fallback;
-    }
   }
 
   return {

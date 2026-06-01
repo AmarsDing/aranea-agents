@@ -7,6 +7,7 @@ import {
   listAgentCreators,
   listAgentTemplates,
   listAgentsPaged,
+  toggleAgentFavorite as toggleAgentFavoriteApi,
   updateAgent
 } from "../../features/agents/api";
 import type { Agent, AgentCreatorOption, AgentTemplatePreset } from "../../features/agents/types";
@@ -106,7 +107,7 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
     const previous = agent.is_favorite;
     agent.is_favorite = !previous;
     try {
-      const updated = await updateAgent(id, { ...agent, is_favorite: agent.is_favorite });
+      const updated = await toggleAgentFavoriteApi(id);
       agents.value = agents.value.map((item) => (item.id === id ? updated : item));
       useAppStore().upsertAgent(updated);
     } catch (error) {
@@ -147,6 +148,13 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
     page.value = 1;
   }
 
+  function reorderAgents(ids: string[]) {
+    const map = new Map(agents.value.map((a) => [a.id, a]));
+    const reordered = ids.map((id) => map.get(id)).filter(Boolean) as Agent[];
+    const remaining = agents.value.filter((a) => !ids.includes(a.id));
+    agents.value = [...reordered, ...remaining];
+  }
+
   return {
     keyword,
     selectedStatus,
@@ -177,7 +185,8 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
     resetListFiltersAfterCreate,
     verifyAgentKey,
     fetchAgentTemplates,
-    copyAgent
+    copyAgent,
+    reorderAgents
   };
 });
 

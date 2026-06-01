@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"aranea-agents/internal/data/ent/migrate"
 	"aranea-agents/internal/data/pgvector"
 	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/pkg/loggateway"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -77,6 +77,19 @@ var ProviderSet = wire.NewSet(
 	NewWebhookRepo,
 	NewMemoryJobDeadLetterRepo,
 	NewTeamGraphSessionRepo,
+	NewIndustryRepo,
+	NewDepartmentRepo,
+	NewPositionRepo,
+	NewAgentTemplateRepo,
+	NewMemoryConsolidationWriterAdapter,
+	NewMemoryFactIndexMaintainerAdapter,
+	NewMemoryEpisodeDecayerAdapter,
+	NewMemoryFactDecayerAdapter,
+	NewMemoryEpisodeBackfillReaderAdapter,
+	NewMemoryLegacyMigratorAdapter,
+	NewObservationRepo,
+	NewPatternRepo,
+	NewProposalRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -250,15 +263,14 @@ func NewData(c *conf.Data) (*Data, func(), error) {
 	return st, cleanup, nil
 }
 
-var startupLog = log.New(os.Stdout, "", log.LstdFlags)
-
 func runStartupStep(name string, fn func() error) error {
 	start := time.Now()
 	err := fn()
 	if err != nil {
 		return err
 	}
-	startupLog.Printf("[startup] %s done in %s", name, time.Since(start).Round(time.Millisecond))
+	loggateway.Global().Info("startup step completed",
+		loggateway.StepID("system.startup"), loggateway.Str("step", name), loggateway.Duration(time.Since(start).Milliseconds()))
 	return nil
 }
 
@@ -277,7 +289,8 @@ func initSQLite(c *conf.Data) (*ent.Client, *sql.DB, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed opening sqlite raw db: %w", err)
 	}
-	rawDB.SetMaxOpenConns(4)
+	rawDB.SetMaxOpenConns(1)
+	rawDB.SetMaxIdleConns(1)
 
 	drv := entsql.OpenDB(driverName, rawDB)
 	entClient := ent.NewClient(ent.Driver(drv))
@@ -286,7 +299,8 @@ func initSQLite(c *conf.Data) (*ent.Client, *sql.DB, error) {
 		for _, pragma := range []string{
 			"PRAGMA foreign_keys=ON",
 			"PRAGMA journal_mode=WAL",
-			"PRAGMA busy_timeout=10000",
+			"PRAGMA busy_timeout=5000",
+			"PRAGMA synchronous=NORMAL",
 		} {
 			if _, pragmaErr := rawDB.ExecContext(context.Background(), pragma); pragmaErr != nil {
 				rawDB.Close()
@@ -430,12 +444,17 @@ func runPendingDataMigrations(entClient *ent.Client) error {
 		return fmt.Errorf("legacy trpc memory backfill: %w", err)
 	}
 	if skipped {
-		startupLog.Printf("[startup] legacy trpc memory backfill skipped (migration %d applied)", MigrationLegacyTRPCMemoryFacts)
+		loggateway.Global().Info("legacy trpc memory backfill skipped",
+			loggateway.StepID("system.startup"), loggateway.Int("migration", MigrationLegacyTRPCMemoryFacts))
 	} else if migrated > 0 {
-		startupLog.Printf("[startup] legacy trpc memory backfill migrated=%d", migrated)
+		loggateway.Global().Info("legacy trpc memory backfill migrated",
+			loggateway.StepID("system.startup"), loggateway.Int("migrated", migrated))
 	}
 	if err := RunTurnIndexToTurnIDMigration(ctx, entClient); err != nil {
 		return fmt.Errorf("turn_index migration: %w", err)
+	}
+	if err := RunSessionStatusIdleMigration(ctx, entClient); err != nil {
+		return fmt.Errorf("session status migration: %w", err)
 	}
 	return nil
 }
@@ -495,11 +514,24 @@ func seedInitialData(entClient *ent.Client, c *conf.Data) error {
 	if err := ensureChannelPlatformAvatars(context.Background(), entClient); err != nil {
 		return err
 	}
+	if err := ensureAgentAvatars(context.Background(), entClient); err != nil {
+		return err
+	}
 	// Seed system admin agent and built-in CLI admin tools (idempotent).
 	if err := SeedSystemAdminAgent(context.Background(), entClient); err != nil {
 		return err
 	}
 	if err := SeedBuiltinCLIAdminTools(context.Background(), entClient); err != nil {
+		return err
+	}
+	if err := SeedBuiltinIndustries(context.Background(), entClient); err != nil {
+		return err
+	}
+	scenarioDir := biz.ScenarioDir()
+	if err := SeedBuiltinAgentCategories(context.Background(), entClient, scenarioDir); err != nil {
+		return err
+	}
+	if err := SeedAgentTemplates(context.Background(), entClient, scenarioDir); err != nil {
 		return err
 	}
 	return nil
@@ -558,11 +590,13 @@ func OpenSQLiteEntClient(dsn string) (*ent.Client, *sql.DB, func(), error) {
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("open sqlite: %w", err)
 	}
-	rawDB.SetMaxOpenConns(4)
+	rawDB.SetMaxOpenConns(1)
+	rawDB.SetMaxIdleConns(1)
 	for _, pragma := range []string{
 		"PRAGMA foreign_keys=ON",
 		"PRAGMA journal_mode=WAL",
-		"PRAGMA busy_timeout=10000",
+		"PRAGMA busy_timeout=5000",
+		"PRAGMA synchronous=NORMAL",
 	} {
 		if _, err := rawDB.ExecContext(context.Background(), pragma); err != nil {
 			rawDB.Close()

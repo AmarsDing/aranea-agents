@@ -132,6 +132,13 @@ const pagedRows = computed(() => {
 });
 
 watch(
+  () => props.runId,
+  () => {
+    page.value = 1;
+  }
+);
+
+watch(
   () => props.rows.length,
   () => {
     if (page.value > pageMax.value) page.value = pageMax.value;

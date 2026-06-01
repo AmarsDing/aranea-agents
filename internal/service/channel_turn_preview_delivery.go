@@ -8,7 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/lark"
 	"aranea-agents/internal/channel/port"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 // turnPreviewDelivery optional side effects during IM preview (overflow pages, tool cards).
@@ -43,10 +43,11 @@ func (h *ChannelIngress) buildTurnPreviewDelivery(
 		(platform == "feishu" || platform == "lark") {
 		creds, err := h.channels.ListCredentialsRaw(ctx, chRow.ID)
 		if err != nil {
-			event.SysLogWarn(flowStepChannelToolCard, "Channel tool card delivery skipped: credentials list failed",
-				event.P("channel_id", chRow.ID),
-				event.P("platform", platform),
-				event.P("error", err.Error()),
+			h.lg.Warn("Channel tool card delivery skipped: credentials list failed",
+				loggateway.StepID(flowStepChannelToolCard),
+				loggateway.Str("channel_id", chRow.ID),
+				loggateway.Str("platform", platform),
+				loggateway.Err(err),
 			)
 			if d.EnqueueOverflow != nil {
 				return &d
@@ -55,10 +56,11 @@ func (h *ChannelIngress) buildTurnPreviewDelivery(
 		}
 		region, appID, err := feishuAppAndRegion(chRow.ConfigJSON)
 		if err != nil {
-			event.SysLogWarn(flowStepChannelToolCard, "Channel tool card delivery skipped: feishu config",
-				event.P("channel_id", chRow.ID),
-				event.P("platform", platform),
-				event.P("error", err.Error()),
+			h.lg.Warn("Channel tool card delivery skipped: feishu config",
+				loggateway.StepID(flowStepChannelToolCard),
+				loggateway.Str("channel_id", chRow.ID),
+				loggateway.Str("platform", platform),
+				loggateway.Err(err),
 			)
 			if d.EnqueueOverflow != nil {
 				return &d
@@ -67,10 +69,11 @@ func (h *ChannelIngress) buildTurnPreviewDelivery(
 		}
 		sec, err := resolveCredentialPlain(ctx, h.channels, creds, "app_secret")
 		if err != nil {
-			event.SysLogWarn(flowStepChannelToolCard, "Channel tool card delivery skipped: app_secret",
-				event.P("channel_id", chRow.ID),
-				event.P("platform", platform),
-				event.P("error", err.Error()),
+			h.lg.Warn("Channel tool card delivery skipped: app_secret",
+				loggateway.StepID(flowStepChannelToolCard),
+				loggateway.Str("channel_id", chRow.ID),
+				loggateway.Str("platform", platform),
+				loggateway.Err(err),
 			)
 			if d.EnqueueOverflow != nil {
 				return &d

@@ -11,7 +11,7 @@
     </AppPageHero>
 
     <AppPageToolbar>
-      <q-input v-model="sessionFilter" class="app-page-toolbar__field" dense outlined clearable label="按 Session ID 筛选" />
+      <q-input v-model="sessionFilter" class="app-page-toolbar__field" dense outlined clearable debounce="300" label="按 Session ID 筛选" @update:model-value="onSessionFilterChange" />
       <q-input v-model="search" class="app-page-toolbar__search" dense outlined clearable debounce="300" label="搜索名称 / MIME / Session" @update:model-value="onSearchChange" />
       <q-select v-model="mimeFilter" class="app-page-toolbar__field" dense outlined emit-value map-options :options="mimeFilterOptions" label="MIME" />
       <template #actions>
@@ -51,6 +51,12 @@
         </template>
         <template #body-cell-size="props">
           <q-td :props="props">{{ formatBytes(props.row.size) }}</q-td>
+        </template>
+        <template #body-cell-version="props">
+          <q-td :props="props">v{{ props.row.version }}</q-td>
+        </template>
+        <template #body-cell-created_at="props">
+          <q-td :props="props">{{ formatDate(props.row.created_at) }}</q-td>
         </template>
         <template #body-cell-actions="props">
           <q-td :props="props">
@@ -109,8 +115,8 @@ import AppPageHero from "../components/layout/AppPageHero.vue";
 import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
 import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
 import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
-import ArtifactsDetailDialog from "../features/artifact/components/ArtifactsDetailDialog.vue";
-import ArtifactsUploadDialog from "../features/artifact/components/ArtifactsUploadDialog.vue";
+import ArtifactsDetailDialog from "../components/artifact/ArtifactsDetailDialog.vue";
+import ArtifactsUploadDialog from "../components/artifact/ArtifactsUploadDialog.vue";
 import { useArtifactsPage } from "../features/artifact/useArtifactsPage";
 
 const {
@@ -136,8 +142,10 @@ const {
   pageSize,
   pageMax,
   formatBytes,
+  formatDate,
   loadRows,
   onSearchChange,
+  onSessionFilterChange,
   resetFilters,
   submitUpload,
   openDetail,

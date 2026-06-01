@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/knowledge"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -63,15 +64,17 @@ type KnowledgeService struct {
 	search        KnowledgeSearchDeps
 	bus           event.Bus
 	systemSetting biz.SystemSettingRepo
+	lg            loggateway.Logger
 }
 
-func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder *knowledge.Embedder, searchDeps KnowledgeSearchDeps, bus event.Bus, systemSetting biz.SystemSettingRepo) *KnowledgeService {
+func NewKnowledgeService(uc *biz.KnowledgeUsecase, embedder *knowledge.Embedder, searchDeps KnowledgeSearchDeps, bus event.Bus, systemSetting biz.SystemSettingRepo, lg loggateway.Logger) *KnowledgeService {
 	return &KnowledgeService{
 		uc:            uc,
 		embedder:      embedder,
 		search:        searchDeps,
 		bus:           bus,
 		systemSetting: systemSetting,
+		lg:            lg,
 	}
 }
 
@@ -191,14 +194,23 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 	ingestCtx := ctx
 	safego.Go(ingestCtx, "knowledge-ingest", func() {
 		if err := uc.UpdateDocumentStatus(ingestCtx, doc.ID, "indexing", "", 0); err != nil {
-			event.SysLogError("knowledge.ingest.status_fail", "failed to update document status to indexing", event.P("doc_id", doc.ID), event.P("error", err.Error()))
+			s.lg.Error("failed to update document status to indexing",
+				loggateway.StepID("knowledge.ingest.status_fail"),
+				loggateway.Str("doc_id", doc.ID),
+				loggateway.Str("error", err.Error()),
+			)
 		}
 		s.publishKnowledgeIngest(col.ID, doc.ID, "indexing", "", 0)
 
 		bizChunks, err := knowledge.BuildIndexedChunks(ingestCtx, embedder, params)
 		if err != nil {
 			if statusErr := uc.UpdateDocumentStatus(ingestCtx, doc.ID, "error", err.Error(), 0); statusErr != nil {
-				event.SysLogError("knowledge.ingest.status_fail", "failed to update document status to error", event.P("doc_id", doc.ID), event.P("status_error", statusErr.Error()), event.P("original_error", err.Error()))
+				s.lg.Error("failed to update document status to error",
+					loggateway.StepID("knowledge.ingest.status_fail"),
+					loggateway.Str("doc_id", doc.ID),
+					loggateway.Str("status_error", statusErr.Error()),
+					loggateway.Str("original_error", err.Error()),
+				)
 			}
 			s.publishKnowledgeIngest(col.ID, doc.ID, "error", err.Error(), 0)
 			return
@@ -206,16 +218,29 @@ func (s *KnowledgeService) IngestDocument(ctx context.Context, req *v1.IngestDoc
 
 		if err := uc.InsertChunks(ingestCtx, bizChunks); err != nil {
 			if statusErr := uc.UpdateDocumentStatus(ingestCtx, doc.ID, "error", err.Error(), 0); statusErr != nil {
-				event.SysLogError("knowledge.ingest.status_fail", "failed to update document status to error", event.P("doc_id", doc.ID), event.P("status_error", statusErr.Error()), event.P("original_error", err.Error()))
+				s.lg.Error("failed to update document status to error",
+					loggateway.StepID("knowledge.ingest.status_fail"),
+					loggateway.Str("doc_id", doc.ID),
+					loggateway.Str("status_error", statusErr.Error()),
+					loggateway.Str("original_error", err.Error()),
+				)
 			}
 			s.publishKnowledgeIngest(col.ID, doc.ID, "error", err.Error(), 0)
 			return
 		}
 		if err := uc.UpdateDocumentStatus(ingestCtx, doc.ID, "indexed", "", len(bizChunks)); err != nil {
-			event.SysLogError("knowledge.ingest.status_fail", "failed to update document status to indexed", event.P("doc_id", doc.ID), event.P("error", err.Error()))
+			s.lg.Error("failed to update document status to indexed",
+				loggateway.StepID("knowledge.ingest.status_fail"),
+				loggateway.Str("doc_id", doc.ID),
+				loggateway.Str("error", err.Error()),
+			)
 		}
 		if err := uc.UpdateCollectionCounts(ingestCtx, col.ID, 1, len(bizChunks)); err != nil {
-			event.SysLogError("knowledge.ingest.counts_fail", "failed to update collection counts", event.P("col_id", col.ID), event.P("error", err.Error()))
+			s.lg.Error("failed to update collection counts",
+				loggateway.StepID("knowledge.ingest.counts_fail"),
+				loggateway.Str("col_id", col.ID),
+				loggateway.Str("error", err.Error()),
+			)
 		}
 		s.publishKnowledgeIngest(col.ID, doc.ID, "indexed", "", len(bizChunks))
 		knowledgeIngestTotal.Inc()
@@ -279,7 +304,10 @@ func (s *KnowledgeService) Search(ctx context.Context, req *v1.SearchRequest) (*
 			if rewriter != nil {
 				rr, rewriteErr := rewriter.Rewrite(ctx, query, strategy)
 				if rewriteErr != nil {
-					event.SysLogWarn("knowledge.search.rewrite_fail", "query rewrite failed, using original query", event.P("error", rewriteErr.Error()))
+					s.lg.Warn("query rewrite failed, using original query",
+						loggateway.StepID("knowledge.search.rewrite_fail"),
+						loggateway.Str("error", rewriteErr.Error()),
+					)
 				} else {
 					rewriteResult = rr
 				}
@@ -336,8 +364,10 @@ func (s *KnowledgeService) UpdateEmbedderConfig(ctx context.Context, req *v1.Upd
 	s.embedder.Update(provider, req.GetBaseUrl(), req.GetApiKey(), req.GetModel(), int(req.GetDim()))
 	p, baseURL, model, dim, _, _ := s.embedder.Config()
 	if err := PersistKnowledgeEmbed(ctx, s.systemSetting, p, baseURL, strings.TrimSpace(req.GetApiKey()), model, dim); err != nil {
-		event.SysLogWarn("knowledge.embedder.persist", "写入 system_settings 失败",
-			event.P("error", err.Error()))
+		s.lg.Warn("写入 system_settings 失败",
+			loggateway.StepID("knowledge.embedder.persist"),
+			loggateway.Str("error", err.Error()),
+		)
 	}
 	return &v1.UpdateEmbedderConfigResponse{Config: s.embedderConfigProto()}, nil
 }

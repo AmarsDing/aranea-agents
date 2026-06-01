@@ -13,7 +13,7 @@ import (
 	"context"
 	"fmt"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -68,7 +68,7 @@ func (t *ServiceTool) Call(ctx context.Context, _ []byte) (any, error) {
 	// Mark framework routing state (so the runner persists await_user_reply route).
 	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
 		if err := trpcagent.MarkAwaitingUserReply(inv); err != nil {
-			event.SysLogWarn("system.await_user_reply", "MarkAwaitingUserReply failed", event.P("error", err.Error()))
+			loggateway.Global().Warn("MarkAwaitingUserReply failed", loggateway.StepID("system.await_user_reply"), loggateway.Err(err))
 		}
 	}
 

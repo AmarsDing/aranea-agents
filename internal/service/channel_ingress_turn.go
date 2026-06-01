@@ -41,16 +41,13 @@ func (h *ChannelIngress) runChatTurnWithOutcomeOnce(ctx context.Context, chRow b
 	}
 	peerKey, err := h.inboundPeerKey(chRow, ev)
 	if err != nil {
-		if delErr := h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "routing", "error": err.Error()}, err.Error()); delErr != nil {
-			event.SysLogWarn("channel.ingress.delivery", "recordDelivery failed", event.P("channel_id", chRow.ID), event.P("error", delErr.Error()))
-		}
+		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "routing", "error": err.Error()}, err.Error())
 		return biz.ChannelTurnResult{}, err
 	}
-	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
+	input, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text, channelAllowQueueFromConfig(chRow.ConfigJSON))
 	if err != nil {
 		return biz.ChannelTurnResult{}, err
 	}
-	input := channelChatRequestToTurnInput(req, channelAllowQueueFromConfig(chRow.ConfigJSON))
 	sessionID := strings.TrimSpace(input.SessionID)
 	h.maybeInterruptActiveTurn(ctx, chRow, sessionID)
 
@@ -66,9 +63,7 @@ func (h *ChannelIngress) runChatTurnWithOutcomeOnce(ctx context.Context, chRow b
 		if IsTurnBusyError(err) {
 			return biz.ChannelTurnResult{Outcome: biz.TurnOutcomeFailed}, err
 		}
-		if delErr := h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "chat", "error": err.Error()}, err.Error()); delErr != nil {
-			event.SysLogWarn("channel.ingress.delivery", "recordDelivery failed", event.P("channel_id", chRow.ID), event.P("error", delErr.Error()))
-		}
+		h.recordDelivery(ctx, chRow.ID, "error", map[string]any{"phase": "chat", "error": err.Error()}, err.Error())
 		return biz.ChannelTurnResult{Outcome: biz.TurnOutcomeFailed}, err
 	}
 	return h.channelTurnResultFromNative(sessionID, result)

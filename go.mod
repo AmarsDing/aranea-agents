@@ -1,8 +1,6 @@
 module aranea-agents
 
-go 1.25.0
-
-toolchain go1.26.1
+go 1.26.1
 
 // Agent runtime migrations must resolve to the vendored framework source.
 replace trpc.group/trpc-go/trpc-agent-go => ./pkg/trpc-agent-go
@@ -20,7 +18,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/fatih/color v1.19.0
-	github.com/fsnotify/fsnotify v1.6.0
+	github.com/fsnotify/fsnotify v1.7.0
 	github.com/glebarez/go-sqlite v1.22.0
 	github.com/go-kratos/aip-go/ents v0.0.0-20251213081434-74ffa1fc1588
 	github.com/go-kratos/kratos/v2 v2.9.2
@@ -51,6 +49,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.40.0
 	go.opentelemetry.io/otel/trace v1.40.0
 	go.uber.org/automaxprocs v1.5.1
+	go.uber.org/zap v1.27.0
 	golang.org/x/image v0.32.0
 	golang.org/x/net v0.52.0
 	golang.org/x/sync v0.20.0
@@ -58,17 +57,20 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20260316180232-0b37fe3546d5
 	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 	trpc.group/trpc-go/trpc-a2a-go v0.2.5
 	trpc.group/trpc-go/trpc-agent-go v1.9.1
+	trpc.group/trpc-go/trpc-agent-go/artifact/s3 v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/codeexecutor/container v0.0.0-00010101000000-000000000000
 	trpc.group/trpc-go/trpc-agent-go/evaluation v1.9.0
-	trpc.group/trpc-go/trpc-agent-go/knowledge/document/reader/pdf v0.0.0-20251126064502-c8c2594d2519
+	trpc.group/trpc-go/trpc-agent-go/knowledge/document/reader/pdf v1.5.0
 	trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/model/bedrock v0.0.0-00010101000000-000000000000
 	trpc.group/trpc-go/trpc-agent-go/model/gemini v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/model/ollama v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/model/provider v1.9.0
+	trpc.group/trpc-go/trpc-agent-go/openclaw v0.0.1
 	trpc.group/trpc-go/trpc-agent-go/session/sqlite v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/tool/arxivsearch v1.9.0
 	trpc.group/trpc-go/trpc-agent-go/tool/claudecode v1.9.0
@@ -116,7 +118,10 @@ require (
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.24 // indirect
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.30.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.9 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.4.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.13.23 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.18.5 // indirect
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.67.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.0.11 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.17 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.21 // indirect
@@ -130,6 +135,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/clbanning/mxj v1.8.4 // indirect
 	github.com/clipperhouse/displaywidth v0.10.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.6.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
@@ -155,6 +161,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/glog v1.2.5 // indirect
 	github.com/gonfva/docxlib v0.0.0-20210517191039-d8f39cecf1ad // indirect
+	github.com/google/go-querystring v1.0.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.7 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
@@ -176,6 +183,7 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-runewidth v0.0.19 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
+	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/go-archive v0.1.0 // indirect
 	github.com/moby/patternmatcher v0.6.0 // indirect
@@ -183,6 +191,7 @@ require (
 	github.com/moby/sys/user v0.4.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826 // indirect
+	github.com/mozillazg/go-httpheader v0.2.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/neurosnap/sentences v1.1.2 // indirect
 	github.com/oasdiff/yaml v0.0.0-20250309154309-f31be36b4037 // indirect
@@ -205,6 +214,7 @@ require (
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/tencentyun/cos-go-sdk-v5 v0.7.69 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
@@ -226,8 +236,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.40.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.40.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
-	go.uber.org/multierr v1.10.0 // indirect
-	go.uber.org/zap v1.27.0 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/mod v0.33.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
@@ -242,5 +251,6 @@ require (
 	modernc.org/mathutil v1.6.0 // indirect
 	modernc.org/memory v1.7.2 // indirect
 	modernc.org/sqlite v1.28.0 // indirect
+	trpc.group/trpc-go/trpc-agent-go/storage/s3 v1.8.0 // indirect
 	trpc.group/trpc-go/trpc-mcp-go v0.0.10 // indirect
 )

@@ -1,6 +1,4 @@
 import { createChannelService } from "../../services/index";
-import { requestHandler } from "../../services/axiosHandler";
-import { asRecord, pickStr } from "../../shared/wireJson";
 import type {
   Channel as KratosChannel,
   ChannelCatalogItem as KratosCatalogItem,
@@ -66,6 +64,7 @@ function kratosChannelToLegacy(k: KratosChannel): ChannelRow {
     agent_id: k.agentId ?? "",
     provider: k.provider ?? "",
     model: k.model ?? "",
+    is_system: false,
     config_json: k.configJson ?? "",
     metadata_json: k.metadataJson ?? "",
     created_at: k.createdAt ?? "",
@@ -201,38 +200,30 @@ export type {
   ChannelTurnJobRow
 } from "./types";
 
-function wireChannelTurnJob(raw: unknown): ChannelTurnJobRow {
-  const r = asRecord(raw);
+function wireChannelTurnJob(k: { id?: string; channelId?: string; sessionId?: string; peerId?: string; peerKey?: string; idempotencyKey?: string; status?: string; previewMessageId?: string; contentPreview?: string; asyncTargetType?: string; asyncTargetId?: string; errorMessage?: string; startedAt?: string; finishedAt?: string; createdAt?: string; updatedAt?: string }): ChannelTurnJobRow {
   return {
-    id: pickStr(r, "id", "id"),
-    channel_id: pickStr(r, "channel_id", "channelId"),
-    session_id: pickStr(r, "session_id", "sessionId"),
-    peer_id: pickStr(r, "peer_id", "peerId"),
-    peer_key: pickStr(r, "peer_key", "peerKey"),
-    idempotency_key: pickStr(r, "idempotency_key", "idempotencyKey"),
-    status: pickStr(r, "status", "status"),
-    preview_message_id: pickStr(r, "preview_message_id", "previewMessageId"),
-    content_preview: pickStr(r, "content_preview", "contentPreview"),
-    async_target_type: pickStr(r, "async_target_type", "asyncTargetType"),
-    async_target_id: pickStr(r, "async_target_id", "asyncTargetId"),
-    error_message: pickStr(r, "error_message", "errorMessage"),
-    started_at: pickStr(r, "started_at", "startedAt"),
-    finished_at: pickStr(r, "finished_at", "finishedAt"),
-    created_at: pickStr(r, "created_at", "createdAt"),
-    updated_at: pickStr(r, "updated_at", "updatedAt")
+    id: k.id ?? "",
+    channel_id: k.channelId ?? "",
+    session_id: k.sessionId ?? "",
+    peer_id: k.peerId ?? "",
+    peer_key: k.peerKey ?? "",
+    idempotency_key: k.idempotencyKey ?? "",
+    status: k.status ?? "",
+    preview_message_id: k.previewMessageId ?? "",
+    content_preview: k.contentPreview ?? "",
+    async_target_type: k.asyncTargetType ?? "",
+    async_target_id: k.asyncTargetId ?? "",
+    error_message: k.errorMessage ?? "",
+    started_at: k.startedAt ?? "",
+    finished_at: k.finishedAt ?? "",
+    created_at: k.createdAt ?? "",
+    updated_at: k.updatedAt ?? ""
   };
 }
 
-/** TECH-DEBT: use channelApi.ListChannelTurnJobs after `make api` regenerates web client. */
 export async function listChannelTurnJobs(channelId: string, limit = 30): Promise<{ items: ChannelTurnJobRow[] }> {
-  const q = limit > 0 ? `?limit=${limit}` : "";
-  const res = await requestHandler({
-    path: `v1/channels/${encodeURIComponent(channelId)}/turn-jobs${q}`,
-    method: "GET",
-    body: null
-  });
-  const items = (res as { items?: unknown[] }).items ?? [];
-  return { items: items.map(wireChannelTurnJob) };
+  const data = await channelApi.ListChannelTurnJobs({ id: channelId, limit });
+  return { items: (data.items ?? []).map(wireChannelTurnJob) };
 }
 
 export async function listChannelDeliveries(id: string, limit?: number): Promise<{ items: ChannelDeliveryRow[] }> {

@@ -69,3 +69,65 @@ func TestPersistentTurnServiceLifecycle(t *testing.T) {
 		t.Fatalf("unexpected failed turn: %+v update=%+v", failed, store.updated)
 	}
 }
+
+func TestTurnFromSessionTurn(t *testing.T) {
+	cases := []struct {
+		name string
+		row  biz.SessionTurn
+		base biz.Turn
+		want biz.Turn
+	}{
+		{
+			name: "row_overrides_base_fields",
+			row:  biz.SessionTurn{ID: "r1", SessionID: "s1", RunID: "run-1", AgentID: "a1", TeamID: "t1", Status: "completed"},
+			base: biz.Turn{ID: "old", SessionID: "old", AgentID: "old"},
+			want: biz.Turn{ID: "r1", SessionID: "s1", RunID: "run-1", AgentID: "a1", TeamID: "t1", Status: biz.TurnStatus("completed")},
+		},
+		{
+			name: "empty_status_keeps_base",
+			row:  biz.SessionTurn{ID: "r2", SessionID: "s2", Status: ""},
+			base: biz.Turn{Status: biz.TurnStatusQueued},
+			want: biz.Turn{ID: "r2", SessionID: "s2", Status: biz.TurnStatusQueued},
+		},
+		{
+			name: "non_empty_status_overrides",
+			row:  biz.SessionTurn{ID: "r3", Status: "failed"},
+			base: biz.Turn{Status: biz.TurnStatusQueued},
+			want: biz.Turn{ID: "r3", Status: biz.TurnStatus("failed")},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := turnFromSessionTurn(tc.row, tc.base)
+			if got.ID != tc.want.ID || got.SessionID != tc.want.SessionID || got.RunID != tc.want.RunID || got.AgentID != tc.want.AgentID || got.TeamID != tc.want.TeamID || got.Status != tc.want.Status {
+				t.Fatalf("got=%+v want=%+v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPtrString(t *testing.T) {
+	v := "hello"
+	p := ptrString(v)
+	if p == nil || *p != v {
+		t.Fatalf("ptrString(%q) = %v, want *%q", v, p, v)
+	}
+	s := ""
+	ps := ptrString(s)
+	if ps == nil || *ps != s {
+		t.Fatal("ptrString empty should return non-nil pointer to empty string")
+	}
+}
+
+func TestPtrInt(t *testing.T) {
+	v := 42
+	p := ptrInt(v)
+	if p == nil || *p != v {
+		t.Fatalf("ptrInt(%d) = %v, want *%d", v, p, v)
+	}
+	z := 0
+	pz := ptrInt(z)
+	if pz == nil || *pz != z {
+		t.Fatal("ptrInt(0) should return non-nil pointer to 0")
+	}
+}

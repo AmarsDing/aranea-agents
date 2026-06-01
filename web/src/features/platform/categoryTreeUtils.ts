@@ -30,6 +30,7 @@ export function levelLabel(level: string) {
 }
 
 export function parseIsSystem(node: PlatformResourceTreeNode) {
+  if (node.is_system) return true;
   try {
     return Boolean(JSON.parse(node.metadata_json || "{}").is_system);
   } catch {

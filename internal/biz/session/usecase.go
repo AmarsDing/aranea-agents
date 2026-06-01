@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
+
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
@@ -29,6 +32,8 @@ type Session struct {
 	LastModel                  string
 	LastContextWindowTokens    int
 	Status                     string
+	StatusReason               string
+	StatusChangedAt            string
 	Visibility                 string
 	MessageCount               int
 	RunCount                   int
@@ -220,6 +225,9 @@ type SessionUpdateFields struct {
 	DialogMode      *string
 	DefaultProvider *string
 	DefaultModel    *string
+	Status          *string
+	StatusReason    *string
+	StatusChangedAt *string
 }
 
 // TimelineQuery holds optional pagination and filter parameters for timeline.
@@ -325,36 +333,33 @@ type SessionWriter interface {
 	UpdateSessionTitle(ctx context.Context, id, title string) (Session, error)
 	UpdateSession(ctx context.Context, id string, fields SessionUpdateFields) (Session, error)
 	RestoreSession(ctx context.Context, id string) (Session, error)
-	DeleteSession(ctx context.Context, id string) (int, error)
+	BumpSessionRevision(ctx context.Context, sessionID string) (int64, error)
 }
 
-type SessionBatchWriter interface {
+type SessionMutator interface {
 	ArchiveSession(ctx context.Context, id string) (int, error)
-	ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
-	DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
-}
-
-type SessionPinWriter interface {
+	DeleteSession(ctx context.Context, id string) (int, error)
+	DeleteSessionsByAgentID(ctx context.Context, agentID string) error
 	PinSession(ctx context.Context, id string) (Session, error)
 	UnpinSession(ctx context.Context, id string) (Session, error)
 }
 
-type SessionRevisionWriter interface {
-	BumpSessionRevision(ctx context.Context, sessionID string) (int64, error)
-	DeleteSessionsByAgentID(ctx context.Context, agentID string) error
+type SessionBatchMutator interface {
+	ArchiveSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
+	DeleteSessionsByIDs(ctx context.Context, ids []string) (processed int, failed []string, err error)
 }
 
 type MessageReader interface {
 	CountMessagesBySession(ctx context.Context, sessionID string) (int, error)
 	ListMessagesBySession(ctx context.Context, sessionID string, limit, offset int) ([]ChatMessage, error)
 	ListMessagesAfterTurn(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error)
-	ListMessagesByStatus(ctx context.Context, sessionID, status string, limit int) ([]ChatMessage, error)
 	ListMessagesRecent(ctx context.Context, sessionID string, limit int) ([]ChatMessage, error)
+	ListMessagesByIDs(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error)
 }
 
 type MessageSearchReader interface {
+	ListMessagesByStatus(ctx context.Context, sessionID, status string, limit int) ([]ChatMessage, error)
 	SearchMessages(ctx context.Context, q MessageSearchQuery) (MessageSearchResult, error)
-	ListMessagesByIDs(ctx context.Context, sessionID string, ids []string) ([]ChatMessage, error)
 	ListMessagesAfterRevision(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error)
 }
 
@@ -381,17 +386,18 @@ type SummaryReader interface {
 	MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error)
 	ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error)
 	LatestSessionSummaryTime(ctx context.Context, sessionID string) (string, error)
-	SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error)
 }
 
 type SummaryWriter interface {
 	InsertSessionSummary(ctx context.Context, row SessionSummary) error
 	UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error
+	SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error)
 }
 
 type StateRepo interface {
 	GetSessionState(ctx context.Context, sessionID string) (map[string]string, error)
 	SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error
+	PatchSessionState(ctx context.Context, sessionID string, sets map[string]string, deletes []string) error
 }
 
 type TurnRepo interface {
@@ -418,9 +424,8 @@ type CompressRepo interface {
 type SessionRepo interface {
 	SessionReader
 	SessionWriter
-	SessionBatchWriter
-	SessionPinWriter
-	SessionRevisionWriter
+	SessionMutator
+	SessionBatchMutator
 	MessageReader
 	MessageSearchReader
 	MessageWriter
@@ -445,13 +450,18 @@ type TeamLookup interface {
 	GetTeamByID(ctx context.Context, id string) (struct{}, error)
 }
 
+// SessionStatusPublisher emits session status change events to realtime observers (WS).
+// Implemented in service layer; set via SetStatusPublisher after construction.
+type SessionStatusPublisher interface {
+	PublishSessionStatusChanged(sessionID string, status string, statusReason string, statusChangedAt string)
+}
+
 // SessionUsecase handles session CRUD + timeline. Chat 写消息经 AppendChat* 等仓储方法，不经 SessionService RPC.
 type SessionUsecase struct {
 	sessionReader       SessionReader
 	sessionWriter       SessionWriter
-	sessionBatchWriter  SessionBatchWriter
-	sessionPinWriter    SessionPinWriter
-	sessionRevWriter    SessionRevisionWriter
+	sessionMutator      SessionMutator
+	sessionBatchMutator SessionBatchMutator
 	messageReader       MessageReader
 	messageSearchReader MessageSearchReader
 	messageWriter       MessageWriter
@@ -468,6 +478,8 @@ type SessionUsecase struct {
 	teams               TeamLookup
 	titleGenerator      SessionTitleGenerator
 	participants        SessionParticipantRepository
+	lg                  loggateway.Logger
+	statusPublisher     SessionStatusPublisher
 }
 
 func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository) *SessionUsecase {
@@ -477,9 +489,8 @@ func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLooku
 	return &SessionUsecase{
 		sessionReader:       sessions,
 		sessionWriter:       sessions,
-		sessionBatchWriter:  sessions,
-		sessionPinWriter:    sessions,
-		sessionRevWriter:    sessions,
+		sessionMutator:      sessions,
+		sessionBatchMutator: sessions,
 		messageReader:       sessions,
 		messageSearchReader: sessions,
 		messageWriter:       sessions,
@@ -497,6 +508,39 @@ func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLooku
 		titleGenerator:      titleGenerator,
 		participants:        participants,
 	}
+}
+
+func (uc *SessionUsecase) SetStatusPublisher(publisher SessionStatusPublisher) {
+	uc.statusPublisher = publisher
+}
+
+func (uc *SessionUsecase) TransitionStatus(ctx context.Context, sessionID string, target SessionStatus, reason SessionStatusReason) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return validationErr("session id is required")
+	}
+	current, err := uc.sessionReader.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	machine := NewSessionStatusMachine(SessionStatus(current.Status), SessionStatusReason(current.StatusReason), current.StatusChangedAt)
+	if err := machine.TransitionTo(target, reason); err != nil {
+		return err
+	}
+	newStatus := string(machine.Status())
+	newReason := string(machine.StatusReason())
+	changedAt := machine.ChangedAt()
+	if _, err := uc.sessionWriter.UpdateSession(ctx, sessionID, SessionUpdateFields{
+		Status:          &newStatus,
+		StatusReason:    &newReason,
+		StatusChangedAt: &changedAt,
+	}); err != nil {
+		return err
+	}
+	if uc.statusPublisher != nil {
+		uc.statusPublisher.PublishSessionStatusChanged(sessionID, newStatus, newReason, changedAt)
+	}
+	return nil
 }
 
 func (uc *SessionUsecase) Search(ctx context.Context, q SessionSearchQuery) (SessionListResult, error) {
@@ -571,20 +615,18 @@ func (uc *SessionUsecase) Archive(ctx context.Context, id string) error {
 	if id == "" {
 		return validationErr("session id is required")
 	}
-	n, err := uc.sessionBatchWriter.ArchiveSession(ctx, id)
+	sess, err := uc.sessionReader.GetSessionByID(ctx, id)
 	if err != nil {
 		return err
 	}
-	if n == 0 {
-		sess, getErr := uc.sessionReader.GetSessionByID(ctx, id)
-		if getErr != nil {
-			return getErr
-		}
-		if sess.Status == "running" {
-			return validationErr("running session cannot be archived")
-		}
+	if IsProtectedStatus(SessionStatus(sess.Status)) {
+		return kerrors.BadRequest("SESSION", fmt.Sprintf("session is %s, cannot archive", sess.Status))
 	}
-	return nil
+	n, err := uc.sessionMutator.ArchiveSession(ctx, id)
+	if n == 0 {
+		return kerrors.NotFound("SESSION", id)
+	}
+	return err
 }
 
 func (uc *SessionUsecase) Delete(ctx context.Context, id string) error {
@@ -592,27 +634,25 @@ func (uc *SessionUsecase) Delete(ctx context.Context, id string) error {
 	if id == "" {
 		return validationErr("session id is required")
 	}
-	n, err := uc.sessionWriter.DeleteSession(ctx, id)
+	sess, err := uc.sessionReader.GetSessionByID(ctx, id)
 	if err != nil {
 		return err
 	}
-	if n == 0 {
-		sess, getErr := uc.sessionReader.GetSessionByID(ctx, id)
-		if getErr != nil {
-			return getErr
-		}
-		if sess.Status == "running" {
-			return validationErr("running session cannot be deleted")
-		}
+	if IsProtectedStatus(SessionStatus(sess.Status)) {
+		return kerrors.BadRequest("SESSION", fmt.Sprintf("session is %s, cannot delete", sess.Status))
 	}
-	return nil
+	n, err := uc.sessionMutator.DeleteSession(ctx, id)
+	if n == 0 {
+		return kerrors.NotFound("SESSION", id)
+	}
+	return err
 }
 
 func (uc *SessionUsecase) DeleteByAgent(ctx context.Context, agentID string) error {
 	if strings.TrimSpace(agentID) == "" {
 		return validationErr("agent_id is required")
 	}
-	return uc.sessionRevWriter.DeleteSessionsByAgentID(ctx, agentID)
+	return uc.sessionMutator.DeleteSessionsByAgentID(ctx, agentID)
 }
 
 func normalizeSessionSearch(q *SessionSearchQuery) {

@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -83,8 +83,9 @@ func (f *FederatedRetriever) SearchWithOptions(ctx context.Context, collectionID
 	if opts.Strategy == FederationRoute && f.meta != nil {
 		routed, err := f.routeCollections(ctx, collectionIDs, q.Query, opts)
 		if err != nil {
-			event.SysLogWarn("knowledge.federated.route_fail", "路由策略失败，降级广播",
-				event.P("error", err.Error()))
+			loggateway.Global().Warn("路由策略失败，降级广播",
+				loggateway.StepID("knowledge.federated.route_fail"),
+				loggateway.Err(err))
 		} else if len(routed) > 0 {
 			return f.searchBroadcast(ctx, routed, q, rewriteResult, modeOverride)
 		}
@@ -214,7 +215,9 @@ func (f *FederatedRetriever) searchBroadcast(ctx context.Context, collectionIDs 
 	var firstErr error
 	for i, r := range results {
 		if r.err != nil {
-			event.SysLogWarn("knowledge.federated_retriever", fmt.Sprintf("collection %s search failed", collectionIDs[i]), event.P("error", r.err.Error()))
+			loggateway.Global().Warn(fmt.Sprintf("collection %s search failed", collectionIDs[i]),
+				loggateway.StepID("knowledge.federated_retriever"),
+				loggateway.Err(r.err))
 			if firstErr == nil {
 				firstErr = r.err
 			}

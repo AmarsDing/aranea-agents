@@ -53,6 +53,7 @@ func ensureOneChannelPlatformAvatar(ctx context.Context, repo AvatarRepo, spec C
 		Description:   fmt.Sprintf("Channel platform icon (%s)", spec.ChannelType),
 		MimeType:      mime,
 		Source:        "system",
+		Category:      "channel",
 		IsSystem:      true,
 		FileSizeBytes: len(main),
 		WidthPx:       w,

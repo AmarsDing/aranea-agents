@@ -47,6 +47,22 @@
             <div class="text-h5 text-weight-bold">{{ formatPercent(metrics.success_rate) }}</div>
           </q-btn>
         </div>
+        <div v-if="metrics.p50_duration_ms != null" class="app-metrics-grid__item">
+          <div class="text-caption text-grey">P50 延迟</div>
+          <div class="text-h6 text-weight-bold">{{ formatLatency(metrics.p50_duration_ms) }}</div>
+        </div>
+        <div v-if="metrics.p95_duration_ms != null" class="app-metrics-grid__item">
+          <div class="text-caption text-grey">P95 延迟</div>
+          <div class="text-h6 text-weight-bold">{{ formatLatency(metrics.p95_duration_ms) }}</div>
+        </div>
+        <div v-if="metrics.p99_duration_ms != null" class="app-metrics-grid__item">
+          <div class="text-caption text-grey">P99 延迟</div>
+          <div class="text-h6 text-weight-bold">{{ formatLatency(metrics.p99_duration_ms) }}</div>
+        </div>
+        <div v-if="metrics.avg_duration_ms != null" class="app-metrics-grid__item">
+          <div class="text-caption text-grey">平均延迟</div>
+          <div class="text-h6 text-weight-bold">{{ formatLatency(metrics.avg_duration_ms) }}</div>
+        </div>
       </div>
       <div class="text-caption text-grey-7 q-mt-sm">{{ drillHint }}</div>
     </q-card-section>
@@ -97,5 +113,11 @@ const windowOptions = [
 function formatPercent(v: number): string {
   if (!Number.isFinite(v)) return "-";
   return `${(v * 100).toFixed(1)}%`;
+}
+
+function formatLatency(v?: number): string {
+  if (v == null || !Number.isFinite(v)) return "-";
+  if (v >= 1000) return `${(v / 1000).toFixed(1)}s`;
+  return `${Math.round(v)}ms`;
 }
 </script>

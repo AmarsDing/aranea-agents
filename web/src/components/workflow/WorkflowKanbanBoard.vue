@@ -19,7 +19,22 @@
             <div v-if="column.items.length === 0" class="workflow-kanban-board__empty">
               {{ emptyLabel }}
             </div>
-            <slot v-else name="card" :column="column" :items="column.items" />
+            <draggable
+              v-else
+              :model-value="column.items"
+              item-key="key"
+              class="workflow-kanban-board__card-list"
+              ghost-class="workflow-kanban-card--ghost"
+              chosen-class="workflow-kanban-card--chosen"
+              drag-class="workflow-kanban-card--dragging"
+              :group="groupName"
+              :animation="200"
+              @update:model-value="(items: unknown[]) => onReorder(column.key, items)"
+            >
+              <template #item="{ element }">
+                <slot name="card" :column="column" :item="element" />
+              </template>
+            </draggable>
           </template>
         </div>
       </section>
@@ -28,15 +43,32 @@
 </template>
 
 <script setup lang="ts">
+import draggable from "vuedraggable";
+
 export type WorkflowKanbanColumn<T> = {
   key: string;
   label: string;
   items: T[];
 };
 
-defineProps<{
-  columns: WorkflowKanbanColumn<unknown>[];
-  isDark: boolean;
-  emptyLabel?: string;
+withDefaults(
+  defineProps<{
+    columns: WorkflowKanbanColumn<unknown>[];
+    isDark: boolean;
+    emptyLabel?: string;
+    groupName?: string;
+  }>(),
+  {
+    emptyLabel: undefined,
+    groupName: "workflow-kanban",
+  },
+);
+
+const emit = defineEmits<{
+  reorder: [payload: { columnKey: string; items: unknown[] }];
 }>();
+
+function onReorder(columnKey: string, items: unknown[]) {
+  emit("reorder", { columnKey, items });
+}
 </script>

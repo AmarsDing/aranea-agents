@@ -16,7 +16,7 @@
       </q-input>
       <q-select v-model="category" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="类型" :options="categoryOptions" />
       <q-select v-model="enabled" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="启用状态" :options="enabledOptions" />
-      <q-input v-model="callbackPoint" class="app-page-toolbar__field" dense outlined clearable label="Callback" placeholder="before_model" />
+      <q-select v-model="callbackPoint" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="Callback" :options="callbackPointOptions" />
       <template #actions>
         <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
         <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="() => loadRows()" />
@@ -56,6 +56,7 @@
       v-model:scope-mode="scopeMode"
       v-model:scope-agent-id="scopeAgentId"
       :saving-scope="savingScope"
+      :bumping-sort="bumpingSort"
       @bump-sort="(delta) => detailTarget && bumpSort(detailTarget, delta)"
       @save-scope="saveScope"
     />
@@ -68,6 +69,7 @@
       :config-error="configError"
       :saving="savingConfig"
       @save="saveConfig"
+      @validation-error="onSchemaValidationError"
     />
   </q-page>
 </template>
@@ -99,6 +101,7 @@ const {
   scopeMode,
   scopeAgentId,
   savingScope,
+  bumpingSort,
   configOpen,
   configTarget,
   configText,
@@ -107,6 +110,7 @@ const {
   configError,
   categoryOptions,
   enabledOptions,
+  callbackPointOptions,
   loadRows,
   resetFilters,
   toggleEnabled,
@@ -114,6 +118,7 @@ const {
   openConfig,
   saveConfig,
   bumpSort,
-  saveScope
+  saveScope,
+  onSchemaValidationError
 } = usePluginsPage();
 </script>

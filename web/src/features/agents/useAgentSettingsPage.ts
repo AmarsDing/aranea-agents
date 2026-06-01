@@ -6,6 +6,7 @@ import type { Agent } from "./types";
 import { useAgentDetailStore } from "../../stores/agents";
 import { statusOptions, tokenEstimateFor } from "../../components/agents/agentUi";
 import { useAppStore } from "../../stores/app";
+import { useChannelsStore } from "../../stores/channels";
 import { useAgentPlannerForm } from "./useAgentPlannerForm";
 import { useAgentRalphLoopForm } from "./useAgentRalphLoopForm";
 import { useAgentRuntimeConfig } from "./useAgentRuntimeConfig";
@@ -25,6 +26,7 @@ export function useAgentSettingsPage() {
   const router = useRouter();
   const store = useAppStore();
   const detailStore = useAgentDetailStore();
+  const channelsStore = useChannelsStore();
   const agentId = computed(() => String(route.params.id ?? "").trim());
   const { saving } = storeToRefs(detailStore);
 
@@ -217,6 +219,7 @@ export function useAgentSettingsPage() {
         loadCatalogTools(),
         loadSkillSlugOptions(),
         loadCodeExecutorCapabilities(),
+        channelsStore.loadChannels().catch(() => {}),
       ]);
       await applyLoadedAgent(agent);
     } catch (e) {
@@ -307,7 +310,7 @@ export function useAgentSettingsPage() {
     const next = !form.is_favorite;
     form.is_favorite = next;
     try {
-      const updated = await detailStore.patch(form.id, { is_favorite: next });
+      const updated = await detailStore.toggleFavorite(form.id);
       form.is_favorite = updated.is_favorite;
       store.upsertAgent(updated);
     } catch (error) {
@@ -319,6 +322,15 @@ export function useAgentSettingsPage() {
   async function copyKey() {
     await copyToClipboard(form.agent_key);
     $q.notify({ type: "positive", message: "Agent 标识已复制" });
+  }
+
+  function confirmFileReload() {
+    $q.dialog({
+      title: "重新召唤",
+      message: "未保存的更改将丢失，确定重新召唤？",
+      cancel: true,
+      persistent: true
+    }).onOk(() => void reloadActiveFile());
   }
 
   async function reloadAgent() {
@@ -347,6 +359,7 @@ export function useAgentSettingsPage() {
         loadCatalogTools(),
         loadSkillSlugOptions(),
         loadCodeExecutorCapabilities(),
+        channelsStore.loadChannels().catch(() => {}),
       ]);
       await applyLoadedAgent(agent);
     } catch (e) {
@@ -374,6 +387,7 @@ export function useAgentSettingsPage() {
     reloadAgent,
     loadInitial,
     saveAgent,
+    confirmFileReload,
     promptModes,
     statusOptions,
     copyKey,
@@ -413,6 +427,16 @@ export function useAgentSettingsPage() {
     loadSkillSlugOptions,
     resetSkillRuntimeDefaults: () =>
       resetSkillRuntimeDefaults(config, (message) => $q.notify({ type: "info", message })),
+    confirmResetSkillDefaults: () => {
+      $q.dialog({
+        title: "恢复默认",
+        message: "确定恢复默认 Skill 配置？当前自定义设置将被覆盖。",
+        cancel: true,
+        persistent: true
+      }).onOk(() =>
+        resetSkillRuntimeDefaults(config, (message) => $q.notify({ type: "info", message }))
+      );
+    },
     loadingSkillSlugs,
     skillSlugOptions,
     codeExecutorCapabilities,

@@ -4,7 +4,7 @@ import { copyToClipboard, useQuasar } from "quasar";
 import { mapAgentCreateFieldErrors, parseKratosApiError } from "../../utils/kratosError";
 import type { Agent, AgentKind, A2AProxyConfig, AgentTemplatePreset } from "./types";
 import type { PlatformResource } from "../platform/types";
-import { descriptionTemplates, statusOptions } from "../../components/agents/agentUi";
+import { statusOptions } from "../../components/agents/agentUi";
 import { useAgentsPageStore } from "../../stores/agents";
 import { useAppStore } from "../../stores/app";
 import { useAvatarCatalogStore } from "../../stores/avatar";
@@ -16,6 +16,9 @@ export type CreateAgentForm = {
   model: string;
   icon: string;
   agent_description: string;
+  position_key: string;
+  agent_variant: string;
+  variant_description: string;
   category_position_id: string;
 };
 
@@ -77,19 +80,14 @@ export function useAgentsPage() {
     model: "gpt-4.1-mini",
     icon: "smart_toy",
     agent_description: "",
+    position_key: "",
+    agent_variant: "",
+    variant_description: "",
     category_position_id: ""
   });
 
   const selectedTemplateKey = ref("");
-  const createTemplates = ref<AgentTemplatePreset[]>(
-    descriptionTemplates.map((t) => ({
-      key: t.key,
-      label: t.label,
-      icon: t.icon,
-      description: t.text,
-      text: t.text
-    }))
-  );
+  const createTemplates = ref<AgentTemplatePreset[]>([]);
   const agentKeyServerError = ref("");
   const displayNameError = ref("");
   const providerModelError = ref("");
@@ -166,7 +164,6 @@ export function useAgentsPage() {
             }
           })
           .catch(() => {
-            /* 查重失败不阻塞创建，提交时后端仍会校验 */
           });
       }, 500);
     }
@@ -175,11 +172,8 @@ export function useAgentsPage() {
   onMounted(async () => {
     try {
       const remote = await pageStore.fetchAgentTemplates();
-      if (remote.length) {
-        createTemplates.value = remote;
-      }
+      createTemplates.value = remote;
     } catch {
-      // Keep local descriptionTemplates fallback.
     }
     try {
       await Promise.all([runLoadList(), pageStore.loadAgentsDependencies()]);
@@ -233,6 +227,9 @@ export function useAgentsPage() {
       model: "gpt-4.1-mini",
       icon: avatars.value[0]?.id ?? "smart_toy",
       agent_description: "",
+      position_key: "",
+      agent_variant: "",
+      variant_description: "",
       category_position_id: ""
     });
     selectedTemplateKey.value = "";
@@ -300,9 +297,7 @@ export function useAgentsPage() {
 
   function applyTemplate(template: AgentTemplatePreset) {
     selectedTemplateKey.value = template.key;
-    if (!form.display_name.trim()) {
-      form.display_name = template.display_name?.trim() || template.label;
-    }
+    form.display_name = template.display_name?.trim() || template.label;
     if (!isA2AProxyCreate.value) {
       if (template.provider?.trim()) {
         form.provider = template.provider.trim();
@@ -314,11 +309,7 @@ export function useAgentsPage() {
     }
     const text = template.description?.trim() || "";
     if (!text) return;
-    if (form.agent_description.trim()) {
-      form.agent_description = `${form.agent_description}\n\n${text}`;
-    } else {
-      form.agent_description = text;
-    }
+    form.agent_description = text;
   }
 
   function confirmDelete(agent: Agent) {
@@ -353,6 +344,10 @@ export function useAgentsPage() {
   async function copyAgentKey(value: string) {
     await copyToClipboard(value);
     $q.notify({ type: "positive", message: "Agent 标识已复制" });
+  }
+
+  function onReorder(ids: string[]) {
+    pageStore.reorderAgents(ids);
   }
 
   return {
@@ -406,6 +401,7 @@ export function useAgentsPage() {
     applyTemplate,
     confirmDelete,
     deleteAgentTarget,
-    duplicateListedAgent
+    duplicateListedAgent,
+    onReorder,
   };
 }

@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/channel/runtime"
+	"aranea-agents/pkg/loggateway"
 )
 
 type reconnectHandler struct{}
@@ -69,10 +70,10 @@ func TestSupervisorReconnectsAfterDisconnect(t *testing.T) {
 		Enabled:    true,
 		ConfigJSON: `{"type":"reconnplat","receive_mode":"polling"}`,
 	}}}
-	uc := biz.NewChannelUsecase(repo, biz.NewCredentialCrypto(nil))
+	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, loggateway.NewNoop()), loggateway.NewNoop())
 	mgr := runtime.NewManager(uc, reconnectHandler{}, func(ctx context.Context, creds []biz.ChannelCredential, key string) (string, error) {
 		return "token", nil
-	})
+	}, loggateway.NewNoop())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

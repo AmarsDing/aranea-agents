@@ -1,62 +1,66 @@
 // Graph 列表 / 编辑器 / 运行页共享样式（对齐 entity-pages 玻璃体系）
 
 :root
-  --graph-node-function-fill: color-mix(in srgb, #a78bfa 8%, var(--glass-elevated))
-  --graph-node-function-border: #a78bfa
-  --graph-node-llm-fill: color-mix(in srgb, #93c5fd 8%, var(--glass-elevated))
-  --graph-node-llm-border: #93c5fd
-  --graph-node-tool-fill: color-mix(in srgb, #fbbf24 8%, var(--glass-elevated))
-  --graph-node-tool-border: #fbbf24
-  --graph-node-agent-fill: color-mix(in srgb, #34d399 8%, var(--glass-elevated))
-  --graph-node-agent-border: #34d399
-  --graph-node-router-fill: color-mix(in srgb, #94a3b8 8%, var(--glass-elevated))
-  --graph-node-router-border: #94a3b8
-  --graph-node-join-fill: color-mix(in srgb, #a78bfa 8%, var(--glass-elevated))
-  --graph-node-join-border: #a78bfa
-  --graph-node-hitl-fill: color-mix(in srgb, #fb923c 8%, var(--glass-elevated))
-  --graph-node-hitl-border: #fb923c
-  --graph-edge-normal: #93c5fd
-  --graph-edge-conditional: #f9a8d4
-  --graph-edge-transfer: #fde68a
-  --graph-edge-dispatch: #6ee7b7
-  --graph-status-running: #0891b2
-  --graph-status-completed: #059669
-  --graph-status-failed: #db2777
-  --graph-status-interrupted: #d97706
-  --graph-progress-from: #059669
-  --graph-progress-to: #0891b2
+  --graph-node-function-fill: color-mix(in srgb, #9c27b0 8%, var(--glass-elevated))
+  --graph-node-function-border: color-mix(in srgb, #9c27b0 42%, var(--glass-border))
+  --graph-node-llm-fill: color-mix(in srgb, #1565c0 8%, var(--glass-elevated))
+  --graph-node-llm-border: color-mix(in srgb, #1565c0 38%, var(--glass-border))
+  --graph-node-tool-fill: color-mix(in srgb, #e65100 8%, var(--glass-elevated))
+  --graph-node-tool-border: color-mix(in srgb, #e65100 40%, var(--glass-border))
+  --graph-node-agent-fill: color-mix(in srgb, #2e7d32 8%, var(--glass-elevated))
+  --graph-node-agent-border: color-mix(in srgb, #2e7d32 38%, var(--glass-border))
+  --graph-node-router-fill: color-mix(in srgb, #6a1b9a 8%, var(--glass-elevated))
+  --graph-node-router-border: color-mix(in srgb, #6a1b9a 38%, var(--glass-border))
+  --graph-node-join-fill: color-mix(in srgb, #546e7a 8%, var(--glass-elevated))
+  --graph-node-join-border: color-mix(in srgb, #546e7a 35%, var(--glass-border))
+  --graph-node-hitl-fill: color-mix(in srgb, #f57f17 10%, var(--glass-elevated))
+  --graph-node-hitl-border: color-mix(in srgb, #f57f17 42%, var(--glass-border))
+  --graph-edge-normal: color-mix(in srgb, var(--color-accent) 50%, var(--color-text-secondary))
+  --graph-edge-conditional: #c2185b
+  --graph-edge-transfer: #e65100
+  --graph-edge-dispatch: #2e7d32
+  --graph-status-running: #0277bd
+  --graph-status-completed: #2e7d32
+  --graph-status-failed: #c62828
+  --graph-status-interrupted: #f57f17
+  --graph-progress-from: #2e7d32
+  --graph-progress-to: #0277bd
   --graph-ctx-bg: rgba(255,253,245,0.95)
-  --graph-ctx-border: rgba(34,211,238,0.12)
+  --graph-ctx-border: rgba(0,0,0,0.08)
   --graph-ctx-text: #3A322C
-  --graph-ctx-accent: #0891b2
-  --graph-ctx-danger: #E55C5C
-  --graph-ctx-success: #4CAF7C
-  --graph-ctx-glow: rgba(8,145,178,0.4)
-  --graph-ctx-danger-glow: rgba(229,92,92,0.4)
-  --graph-ctx-success-glow: rgba(76,175,124,0.4)
-  --graph-cond-edge-label-stroke: rgba(249,168,212,0.15)
+  --graph-ctx-accent: #0277bd
+  --graph-ctx-danger: #c62828
+  --graph-ctx-success: #2e7d32
+  --graph-ctx-glow: rgba(2,119,189,0.4)
+  --graph-ctx-danger-glow: rgba(198,40,40,0.4)
+  --graph-ctx-success-glow: rgba(46,125,50,0.4)
+  --graph-cond-edge-label-stroke: rgba(194,24,91,0.15)
 
 body.body--dark
   --graph-node-function-fill: color-mix(in srgb, #a78bfa 12%, var(--glass-surface))
   --graph-node-function-border: #a78bfa
-  --graph-node-llm-fill: color-mix(in srgb, #93c5fd 12%, var(--glass-surface))
-  --graph-node-llm-border: #93c5fd
+  --graph-node-llm-fill: color-mix(in srgb, #22d3ee 12%, var(--glass-surface))
+  --graph-node-llm-border: #22d3ee
   --graph-node-tool-fill: color-mix(in srgb, #fbbf24 12%, var(--glass-surface))
   --graph-node-tool-border: #fbbf24
   --graph-node-agent-fill: color-mix(in srgb, #34d399 12%, var(--glass-surface))
   --graph-node-agent-border: #34d399
-  --graph-node-router-fill: color-mix(in srgb, #94a3b8 12%, var(--glass-surface))
-  --graph-node-router-border: #94a3b8
-  --graph-node-join-fill: color-mix(in srgb, #a78bfa 12%, var(--glass-surface))
-  --graph-node-join-border: #a78bfa
+  --graph-node-router-fill: color-mix(in srgb, #f472b6 12%, var(--glass-surface))
+  --graph-node-router-border: #f472b6
+  --graph-node-join-fill: color-mix(in srgb, #94a3b8 12%, var(--glass-surface))
+  --graph-node-join-border: #94a3b8
   --graph-node-hitl-fill: color-mix(in srgb, #fb923c 12%, var(--glass-surface))
   --graph-node-hitl-border: #fb923c
-  --graph-status-running: #93c5fd
+  --graph-status-running: #22d3ee
   --graph-status-completed: #34d399
-  --graph-status-failed: #f87171
+  --graph-status-failed: #f472b6
   --graph-status-interrupted: #fbbf24
   --graph-progress-from: #34d399
-  --graph-progress-to: #93c5fd
+  --graph-progress-to: #22d3ee
+  --graph-edge-normal: #22d3ee
+  --graph-edge-conditional: #f472b6
+  --graph-edge-transfer: #fbbf24
+  --graph-edge-dispatch: #34d399
   --graph-ctx-bg: rgba(3,7,18,0.97)
   --graph-ctx-border: rgba(34,211,238,0.12)
   --graph-ctx-text: #a5f3fc
@@ -86,11 +90,9 @@ body.body--dark
   min-width: 130px
 
 .graphs-grid
-  @extend .app-entity-grid
-
-.graphs-page .app-entity-grid
-  grid-template-columns: repeat(2, 1fr)
-  gap: 12px
+  display: grid
+  grid-template-columns: repeat(3, 1fr)
+  gap: 14px
   align-items: start
 
 .graph-card
@@ -104,11 +106,38 @@ body.body--dark
   -webkit-backdrop-filter: blur(16px)
   transition: transform 160ms ease, background 160ms ease, border-color 160ms ease
   animation: graph-card-in 0.3s ease-out both
+  position: relative
+
+body:not(.body--dark) .graph-card
+  background: rgba(255, 252, 243, 0.88)
+  border-color: rgba(200, 178, 148, 0.52)
+  box-shadow: 0 2px 8px rgba(93, 64, 55, 0.07), 0 8px 24px rgba(93, 64, 55, 0.04)
+
+.graph-card::before
+  content: ""
+  position: absolute
+  top: 0
+  left: 0
+  right: 0
+  height: 3px
+  background: linear-gradient(90deg, var(--graph-node-agent-border), var(--graph-node-llm-border), var(--graph-node-tool-border))
+  opacity: 0.6
+  border-radius: 18px 18px 0 0
+
+body:not(.body--dark) .graph-card::before
+  height: 4px
+  opacity: 0.85
 
 .graph-card:hover
   transform: translateY(-1px)
   background: var(--glass-surface-hover)
-  border-color: color-mix(in srgb, var(--color-accent) 18%, var(--glass-border))
+  border-color: color-mix(in srgb, var(--color-accent) 28%, var(--glass-border))
+  box-shadow: 0 0 12px color-mix(in srgb, var(--color-accent) 8%, transparent), var(--shadow-entity-panel)
+
+body:not(.body--dark) .graph-card:hover
+  background: rgba(255, 250, 238, 0.95)
+  border-color: rgba(220, 160, 62, 0.45)
+  box-shadow: 0 4px 16px rgba(220, 160, 62, 0.12), 0 2px 8px rgba(93, 64, 55, 0.06)
 
 .graph-card__inner
   display: flex
@@ -155,6 +184,10 @@ body.body--dark
   line-height: 1.4
   white-space: nowrap
 
+body:not(.body--dark) .graph-card__chip
+  background: rgba(255, 255, 255, 0.72)
+  border-color: color-mix(in srgb, currentColor 22%, rgba(200, 178, 148, 0.4))
+
 .graph-card__summary
   flex-shrink: 0
   color: var(--color-text-tertiary)
@@ -179,6 +212,11 @@ body.body--dark
   line-height: 1.2
   white-space: nowrap
 
+body:not(.body--dark) .graph-card__tag
+  background: rgba(220, 160, 62, 0.1)
+  border-color: rgba(220, 160, 62, 0.32)
+  color: #8A6A3A
+
 .graph-card__foot
   display: flex
   align-items: center
@@ -186,6 +224,9 @@ body.body--dark
   gap: 0
   padding-top: 6px
   border-top: 1px solid var(--glass-border)
+
+body:not(.body--dark) .graph-card__foot
+  border-top-color: rgba(200, 178, 148, 0.35)
 
 .graph-card--add
   cursor: pointer
@@ -197,9 +238,17 @@ body.body--dark
   min-height: 120px
   transition: border-color 160ms ease, background 160ms ease
 
+body:not(.body--dark) .graph-card--add
+  border-color: rgba(200, 178, 148, 0.45)
+  background: rgba(255, 252, 243, 0.4)
+
 .graph-card--add:hover
   border-color: var(--color-accent)
   background: color-mix(in srgb, var(--color-accent) 4%, var(--glass-elevated))
+
+body:not(.body--dark) .graph-card--add:hover
+  background: rgba(220, 160, 62, 0.08)
+  border-color: rgba(220, 160, 62, 0.55)
 
 .graph-card--add__label
   margin-top: 4px
@@ -214,6 +263,21 @@ body.body--dark
   to
     opacity: 1
     transform: translateY(0)
+
+.graph-card--ghost
+  opacity: 0.4
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--glass-surface))
+  border-color: var(--color-accent)
+  box-shadow: none
+
+.graph-card--chosen
+  border-color: var(--color-accent)
+  box-shadow: 0 0 16px color-mix(in srgb, var(--color-accent) 14%, transparent)
+
+.graph-card--dragging
+  opacity: 0.9
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), 0 0 16px color-mix(in srgb, var(--color-accent) 12%, transparent)
+  transform: rotate(1deg)
 
 .graphs-empty
   @extend .app-entity-empty
@@ -371,8 +435,9 @@ body.body--dark
 .graph-flow-node__handle
   width: 10px
   height: 10px
-  border: 2px solid var(--glass-border)
+  border: 2px solid var(--node-accent, var(--color-accent))
   background: var(--glass-elevated)
+  box-shadow: 0 0 4px color-mix(in srgb, var(--node-accent, var(--color-accent)) 20%, transparent)
 
 .graph-flow-node--selected
   border-color: var(--node-accent, var(--color-accent))
@@ -405,14 +470,29 @@ body.body--dark
   background: var(--node-fill)
   backdrop-filter: blur(8px)
   -webkit-backdrop-filter: blur(8px)
-  transition: box-shadow 0.2s
+  box-shadow: 0 0 6px color-mix(in srgb, var(--node-border) 15%, transparent)
+  transition: box-shadow 0.2s, border-color 0.2s
   position: relative
 
 .graph-flow-diamond--selected
-  box-shadow: 0 0 0 2px var(--color-accent, var(--color-accent))
+  box-shadow: 0 0 12px color-mix(in srgb, var(--node-border) 30%, transparent), 0 0 0 1px color-mix(in srgb, var(--node-border) 20%, transparent)
 
 .graph-flow-diamond--running
   animation: graph-diamond-pulse 1.5s ease-in-out infinite
+  border-color: var(--graph-status-running)
+  box-shadow: 0 0 16px color-mix(in srgb, var(--graph-status-running) 25%, transparent)
+
+.graph-flow-diamond--completed
+  border-color: var(--graph-status-completed)
+  box-shadow: 0 0 8px color-mix(in srgb, var(--graph-status-completed) 20%, transparent)
+
+.graph-flow-diamond--failed
+  border-color: var(--graph-status-failed)
+  box-shadow: 0 0 8px color-mix(in srgb, var(--graph-status-failed) 20%, transparent)
+
+.graph-flow-diamond--interrupted
+  border-color: var(--graph-status-interrupted)
+  box-shadow: 0 0 8px color-mix(in srgb, var(--graph-status-interrupted) 20%, transparent)
 
 .graph-flow-diamond__inner
   transform: rotate(-45deg)
@@ -431,6 +511,32 @@ body.body--dark
   overflow-wrap: break-word
   line-height: 1.2
 
+.graph-flow-diamond__status-badge
+  font-size: 8px
+  padding: 1px 4px
+  background: color-mix(in srgb, var(--color-accent) 12%, var(--glass-surface))
+  color: var(--color-text-secondary)
+
+.graph-flow-diamond__status-badge--running
+  background: color-mix(in srgb, var(--graph-status-running) 12%, var(--glass-surface))
+  color: var(--graph-status-running)
+  border: 1px solid color-mix(in srgb, var(--graph-status-running) 20%, transparent)
+
+.graph-flow-diamond__status-badge--completed
+  background: color-mix(in srgb, var(--graph-status-completed) 12%, var(--glass-surface))
+  color: var(--graph-status-completed)
+  border: 1px solid color-mix(in srgb, var(--graph-status-completed) 20%, transparent)
+
+.graph-flow-diamond__status-badge--failed
+  background: color-mix(in srgb, var(--graph-status-failed) 12%, var(--glass-surface))
+  color: var(--graph-status-failed)
+  border: 1px solid color-mix(in srgb, var(--graph-status-failed) 20%, transparent)
+
+.graph-flow-diamond__status-badge--interrupted
+  background: color-mix(in srgb, var(--graph-status-interrupted) 12%, var(--glass-surface))
+  color: var(--graph-status-interrupted)
+  border: 1px solid color-mix(in srgb, var(--graph-status-interrupted) 20%, transparent)
+
 .graph-flow-diamond__branch-label
   position: absolute
   font-size: 10px
@@ -442,18 +548,18 @@ body.body--dark
 .graph-flow-diamond__branch-label--yes
   right: -6px
   top: 50%
-  color: var(--color-success, #4caf50)
+  color: var(--graph-status-completed)
 
 .graph-flow-diamond__branch-label--no
   left: -6px
   top: 50%
-  color: var(--color-danger, #f44336)
+  color: var(--graph-status-failed)
 
 @keyframes graph-diamond-pulse
   0%, 100%
-    box-shadow: 0 0 4px color-mix(in srgb, var(--color-primary) 30%, transparent)
+    box-shadow: 0 0 8px color-mix(in srgb, var(--graph-status-running) 15%, transparent)
   50%
-    box-shadow: 0 0 16px color-mix(in srgb, var(--color-primary) 60%, transparent)
+    box-shadow: 0 0 20px color-mix(in srgb, var(--graph-status-running) 35%, transparent), 0 0 40px color-mix(in srgb, var(--graph-status-running) 12%, transparent)
 
 .graph-run-sidebar,
 .graph-property-panel,
@@ -782,7 +888,8 @@ body.body--dark
   min-width: 0
   height: 100%
   background-color: var(--canvas-base)
-  background-image: radial-gradient(circle at top, color-mix(in srgb, var(--color-accent) 5%, transparent), transparent 34%)
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--color-accent) 8%, transparent) 1px, transparent 1px), radial-gradient(circle at top, color-mix(in srgb, var(--color-accent) 5%, transparent), transparent 34%)
+  background-size: 24px 24px, 100% 100%
 
 .graph-editor-canvas .vue-flow__edge-path
   stroke: var(--graph-edge-normal)
@@ -841,14 +948,14 @@ body.body--dark
   border-radius: 14px
   overflow: hidden
   background: var(--glass-surface)
-  box-shadow: var(--shadow-entity-panel)
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-accent) 6%, transparent), var(--shadow-entity-panel)
 
 .graph-editor-canvas .vue-flow__minimap
   border: 1px solid var(--glass-border)
   border-radius: 14px
   overflow: hidden
   background: var(--glass-surface)
-  box-shadow: var(--shadow-entity-panel)
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-accent) 6%, transparent), var(--shadow-entity-panel)
 
 .graph-editor-canvas__zoom-indicator
   position: absolute
@@ -863,7 +970,7 @@ body.body--dark
   background: var(--glass-surface)
   backdrop-filter: blur(var(--glass-blur-default))
   -webkit-backdrop-filter: blur(var(--glass-blur-default))
-  box-shadow: var(--shadow-entity-panel)
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-accent) 6%, transparent), var(--shadow-entity-panel)
   z-index: 5
 
 .graph-editor-canvas__zoom-text
@@ -1004,6 +1111,7 @@ body.body--dark
     background: var(--glass-surface-hover)
     border-color: color-mix(in srgb, var(--color-accent) 22%, var(--glass-border))
     transform: translateY(-1px)
+    box-shadow: 0 0 8px color-mix(in srgb, var(--node-accent, var(--color-accent)) 12%, transparent)
 
   &:active
     cursor: grabbing
@@ -1069,18 +1177,19 @@ body.body--dark
   opacity: 0.5
   background: var(--q-primary)
 
-// Graph 右键上下文菜单（从 scoped 迁移至全局，支持亮/暗模式）
+// Graph 右键上下文菜单 — v7 设计稿对齐（赛博青色系 + 顶部/底部光线条 + 左侧发光条）
 .graph-ctx-menu
   position: fixed
   z-index: 9999
-  min-width: 210px
+  width: 234px
   background: var(--graph-ctx-bg)
   backdrop-filter: blur(28px)
   -webkit-backdrop-filter: blur(28px)
   border: 1px solid var(--graph-ctx-border)
   border-radius: 10px
-  box-shadow: 0 0 20px color-mix(in srgb, var(--graph-ctx-accent) 8%, transparent), 0 0 60px color-mix(in srgb, var(--graph-ctx-accent) 4%, transparent), 0 8px 32px rgba(0, 0, 0, 0.3)
-  padding: 4px 0
+  box-shadow: 0 0 32px color-mix(in srgb, var(--graph-ctx-accent) 5%, transparent), 0 12px 48px rgba(0, 0, 0, 0.8)
+  padding: 6px 0
+  overflow: hidden
   animation: ctx-menu-in 0.12s ease-out
 
 @keyframes ctx-menu-in
@@ -1091,95 +1200,110 @@ body.body--dark
     opacity: 1
     transform: scale(1) translateY(0)
 
-.graph-ctx-menu__top-line,
-.graph-ctx-menu__bottom-line
+// 顶部 / 底部光线条（v7 规范）
+.graph-ctx-menu__glow-top,
+.graph-ctx-menu__glow-bottom
+  position: absolute
+  left: 0
+  right: 0
   height: 1px
+  pointer-events: none
+
+.graph-ctx-menu__glow-top
+  top: 0
   background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--graph-ctx-accent) 50%, transparent), transparent)
-  margin: 0 8px
 
-.graph-ctx-menu__top-line
-  margin-bottom: 4px
+.graph-ctx-menu__glow-bottom
+  bottom: 0
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--graph-ctx-accent) 30%, transparent), transparent)
 
-.graph-ctx-menu__bottom-line
-  margin-top: 4px
-
+// 菜单项（v7 规范：flex 布局 + 左侧发光条 + 悬停内发光）
 .graph-ctx-menu__item
   display: flex
   align-items: center
   gap: 10px
   padding: 9px 14px
-  margin: 2px 4px
+  margin: 2px 5px
   border-radius: 4px
   cursor: pointer
   position: relative
-  transition: background 0.1s, transform 0.08s
+  transition: background 0.1s, transform 0.08s, box-shadow 0.1s
 
-.graph-ctx-menu__item::before
-  content: ""
+// 左侧发光条（悬停时显示，颜色跟随语义类型）
+.graph-ctx-menu__accent
   position: absolute
   left: 0
-  top: 4px
-  bottom: 4px
+  top: 3px
+  bottom: 3px
   width: 2px
-  border-radius: 1px
+  border-radius: 0 1px 1px 0
   background: var(--graph-ctx-accent)
   opacity: 0
   transition: opacity 0.12s
-  box-shadow: 0 0 6px var(--graph-ctx-glow)
+  box-shadow: 0 0 6px var(--graph-ctx-glow), 0 0 14px color-mix(in srgb, var(--graph-ctx-glow) 40%, transparent)
 
+// 悬停态：背景着色 + 内发光 + 左条显现 + 图标投影
 .graph-ctx-menu__item:hover
   background: color-mix(in srgb, var(--graph-ctx-accent) 6%, transparent)
+  box-shadow: inset 0 0 16px color-mix(in srgb, var(--graph-ctx-accent) 3%, transparent)
 
-.graph-ctx-menu__item:hover::before
+.graph-ctx-menu__item:hover .graph-ctx-menu__accent
   opacity: 1
 
+// 按压态：缩放 + 加深背景
 .graph-ctx-menu__item:active
+  transform: scale(0.97)
   background: color-mix(in srgb, var(--graph-ctx-accent) 12%, transparent)
 
-.graph-ctx-menu__item--danger::before
+// 危险操作项（赛博粉 #f472b6）
+.graph-ctx-menu__item--danger .graph-ctx-menu__accent
   background: var(--graph-ctx-danger)
-  box-shadow: 0 0 6px var(--graph-ctx-danger-glow)
+  box-shadow: 0 0 6px var(--graph-ctx-danger-glow), 0 0 14px color-mix(in srgb, var(--graph-ctx-danger-glow) 40%, transparent)
 
 .graph-ctx-menu__item--danger:hover
   background: color-mix(in srgb, var(--graph-ctx-danger) 6%, transparent)
+  box-shadow: inset 0 0 16px color-mix(in srgb, var(--graph-ctx-danger) 3%, transparent)
 
 .graph-ctx-menu__item--danger:active
   background: color-mix(in srgb, var(--graph-ctx-danger) 12%, transparent)
 
-.graph-ctx-menu__item--success::before
+// 成功操作项（翡翠绿 #34d399）
+.graph-ctx-menu__item--success .graph-ctx-menu__accent
   background: var(--graph-ctx-success)
-  box-shadow: 0 0 6px var(--graph-ctx-success-glow)
+  box-shadow: 0 0 6px var(--graph-ctx-success-glow), 0 0 14px color-mix(in srgb, var(--graph-ctx-success-glow) 40%, transparent)
 
 .graph-ctx-menu__item--success:hover
   background: color-mix(in srgb, var(--graph-ctx-success) 6%, transparent)
+  box-shadow: inset 0 0 16px color-mix(in srgb, var(--graph-ctx-success) 3%, transparent)
 
 .graph-ctx-menu__item--success:active
   background: color-mix(in srgb, var(--graph-ctx-success) 12%, transparent)
 
+// 禁用态
+.graph-ctx-menu__item--disabled
+  opacity: 0.35
+  pointer-events: none
+
+// 图标（等宽 + 悬停投影）
 .graph-ctx-menu__icon
-  width: 20px
+  width: 18px
   text-align: center
-  font-size: 16px
-  color: var(--graph-ctx-accent)
-  font-weight: 700
+  font-size: 13px
   flex-shrink: 0
+  padding-left: 2px
   transition: filter 0.12s
+  color: var(--graph-ctx-text)
 
 .graph-ctx-menu__item:hover .graph-ctx-menu__icon
   filter: drop-shadow(0 0 4px var(--graph-ctx-glow))
 
-.graph-ctx-menu__item--danger .graph-ctx-menu__icon
-  color: var(--graph-ctx-danger)
-
 .graph-ctx-menu__item--danger:hover .graph-ctx-menu__icon
   filter: drop-shadow(0 0 4px var(--graph-ctx-danger-glow))
-
-.graph-ctx-menu__item--success .graph-ctx-menu__icon
-  color: var(--graph-ctx-success)
 
 .graph-ctx-menu__item--success:hover .graph-ctx-menu__icon
   filter: drop-shadow(0 0 4px var(--graph-ctx-success-glow))
 
+// 标签文字
 .graph-ctx-menu__label
   flex: 1
   color: var(--graph-ctx-text)
@@ -1188,6 +1312,7 @@ body.body--dark
   letter-spacing: 0.03em
   white-space: nowrap
 
+// 快捷键徽章（等宽字体 + 边框）
 .graph-ctx-menu__shortcut
   padding: 1px 5px
   border-radius: 3px

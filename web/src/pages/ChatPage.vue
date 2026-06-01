@@ -12,6 +12,7 @@
       :is-dark="layout.isDark"
       @agent-reorder-end="entity.onEndAgent"
       @team-reorder-end="entity.onEndTeam"
+      @group-reorder="entity.onGroupReorder"
       @select-agent="entity.selectAgent"
       @select-team="entity.selectTeam"
       @settings="entity.openSettings"

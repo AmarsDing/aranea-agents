@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/runtime"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -138,6 +139,7 @@ func NewChatUsecaseFromDeps(
 		NewPendingQueueAdapter(pending),
 		NewChatRunStatusPersister(sessions),
 		NewChatEventPublisher(bus),
+		loggateway.Global(),
 	)
 	uc.StartBackgroundGoroutines()
 	return uc
@@ -151,33 +153,21 @@ func persistRunStatusToSession(sessions *biz.SessionUsecase, ctx context.Context
 	if sessionID == "" {
 		return nil
 	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	writeState := func(bg context.Context) error {
-		state, err := sessions.GetSessionState(bg, sessionID)
-		if err != nil {
-			return err
-		}
-		if state == nil {
-			state = map[string]string{}
-		}
-		if terminalRunStatus(status) {
-			state[stateKeyRunStatus] = strings.TrimSpace(status)
-			state[stateKeyRunError] = strings.TrimSpace(errMsg)
-			state[stateKeyRunUpdatedAt] = now
-			delete(state, stateKeyRunID)
-			delete(state, stateKeyAwaitRunID)
-			delete(state, stateKeyAwaitSince)
-		} else {
-			state[stateKeyRunID] = strings.TrimSpace(runID)
-			state[stateKeyRunStatus] = strings.TrimSpace(status)
-			state[stateKeyRunError] = strings.TrimSpace(errMsg)
-			state[stateKeyRunUpdatedAt] = now
-		}
-		return sessions.SaveSessionState(bg, sessionID, state)
-	}
 	bg, bgCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer bgCancel()
-	return writeState(bg)
+
+	if terminalRunStatus(status) {
+		return sessions.PatchSessionState(bg, sessionID,
+			map[string]string{},
+			[]string{stateKeyRunID, stateKeyAwaitRunID, stateKeyAwaitSince},
+		)
+	}
+	return sessions.PatchSessionState(bg, sessionID,
+		map[string]string{
+			stateKeyRunID: strings.TrimSpace(runID),
+		},
+		nil,
+	)
 }
 
 func persistAwaitMarkersToSession(sessions *biz.SessionUsecase, ctx context.Context, sessionID, runID string, await biz.ChatAwaitMeta, syncWrite bool) {
@@ -188,44 +178,43 @@ func persistAwaitMarkersToSession(sessions *biz.SessionUsecase, ctx context.Cont
 	if sessionID == "" {
 		return
 	}
-	write := func(bg context.Context) {
-		state, err := sessions.GetSessionState(bg, sessionID)
-		if err != nil {
-			return
+	now := time.Now().UTC().Format(time.RFC3339)
+	sets := map[string]string{
+		stateKeyAwaitRunID: strings.TrimSpace(runID),
+		stateKeyAwaitSince: now,
+	}
+	var deletes []string
+	if k := strings.TrimSpace(await.Kind); k != "" {
+		sets[stateKeyAwaitKind] = k
+	} else {
+		deletes = append(deletes, stateKeyAwaitKind)
+	}
+	if k := strings.TrimSpace(await.ToolKey); k != "" {
+		sets[stateKeyAwaitToolKey] = k
+	} else {
+		deletes = append(deletes, stateKeyAwaitToolKey)
+	}
+	if k := strings.TrimSpace(await.ToolCallID); k != "" {
+		sets[stateKeyAwaitToolCallID] = k
+	} else {
+		deletes = append(deletes, stateKeyAwaitToolCallID)
+	}
+
+	patch := func(bg context.Context) {
+		if err := sessions.PatchSessionState(bg, sessionID, sets, deletes); err != nil {
+			loggateway.Global().Warn("PatchSessionState failed", loggateway.StepID("chat.persist_await_markers"), loggateway.Err(err), loggateway.Str("session_id", sessionID))
 		}
-		if state == nil {
-			state = map[string]string{}
-		}
-		now := time.Now().UTC().Format(time.RFC3339)
-		state[stateKeyAwaitRunID] = strings.TrimSpace(runID)
-		state[stateKeyAwaitSince] = now
-		if k := strings.TrimSpace(await.Kind); k != "" {
-			state[stateKeyAwaitKind] = k
-		} else {
-			delete(state, stateKeyAwaitKind)
-		}
-		if k := strings.TrimSpace(await.ToolKey); k != "" {
-			state[stateKeyAwaitToolKey] = k
-		} else {
-			delete(state, stateKeyAwaitToolKey)
-		}
-		if k := strings.TrimSpace(await.ToolCallID); k != "" {
-			state[stateKeyAwaitToolCallID] = k
-		} else {
-			delete(state, stateKeyAwaitToolCallID)
-		}
-		_ = sessions.SaveSessionState(bg, sessionID, state)
 	}
 	if syncWrite {
 		bg, bgCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer bgCancel()
-		write(bg)
+		patch(bg)
 		return
 	}
 	safego.Go(ctx, "chat.persist_await_markers", func() {
 		bg, bgCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer bgCancel()
-		write(bg)
+		patch(bg)
 	})
 }
 
@@ -240,20 +229,13 @@ func clearAwaitingRunStateFromSession(sessions *biz.SessionUsecase, ctx context.
 	safego.Go(ctx, "chat.clear_await_state", func() {
 		bg, bgCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer bgCancel()
-		state, err := sessions.GetSessionState(bg, sessionID)
-		if err != nil || len(state) == 0 {
-			return
+		if err := sessions.PatchSessionState(bg, sessionID, nil, []string{
+			stateKeyRunID, stateKeyRunStatus, stateKeyRunError, stateKeyRunUpdatedAt,
+			stateKeyAwaitRunID, stateKeyAwaitSince, stateKeyAwaitKind,
+			stateKeyAwaitToolKey, stateKeyAwaitToolCallID,
+		}); err != nil {
+			loggateway.Global().Warn("PatchSessionState failed", loggateway.StepID("chat.clear_await_state"), loggateway.Err(err), loggateway.Str("session_id", sessionID))
 		}
-		delete(state, stateKeyRunID)
-		delete(state, stateKeyRunStatus)
-		delete(state, stateKeyRunError)
-		delete(state, stateKeyRunUpdatedAt)
-		delete(state, stateKeyAwaitRunID)
-		delete(state, stateKeyAwaitSince)
-		delete(state, stateKeyAwaitKind)
-		delete(state, stateKeyAwaitToolKey)
-		delete(state, stateKeyAwaitToolCallID)
-		_ = sessions.SaveSessionState(bg, sessionID, state)
 	})
 }
 

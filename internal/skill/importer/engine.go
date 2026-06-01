@@ -13,10 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"aranea-agents/internal/event"
-
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/skill/storage"
+	"aranea-agents/pkg/loggateway"
 )
 
 const MaxZipBytes = 20 * 1024 * 1024
@@ -228,12 +227,16 @@ func (e *Engine) ApplyImport(ctx context.Context, jobID string, in biz.SkillImpo
 		cCtx := context.Background()
 		for _, r := range committed {
 			if err := e.repo.DeleteSkill(cCtx, r.id); err != nil {
-				event.SysLogWarn("system.plugin.seed_fail", "skill.import.compensate_db_delete_fail",
-					event.P("skill_id", r.id), event.P("error", err.Error()))
+				loggateway.Global().Warn("skill.import.compensate_db_delete_fail",
+					loggateway.StepID("system.plugin.seed_fail"),
+					loggateway.Str("skill_id", r.id),
+					loggateway.Err(err))
 			}
 			if err := os.RemoveAll(r.storageDir); err != nil {
-				event.SysLogWarn("system.plugin.seed_fail", "skill.import.compensate_dir_remove_fail",
-					event.P("storage_dir", r.storageDir), event.P("error", err.Error()))
+				loggateway.Global().Warn("skill.import.compensate_dir_remove_fail",
+					loggateway.StepID("system.plugin.seed_fail"),
+					loggateway.Str("storage_dir", r.storageDir),
+					loggateway.Err(err))
 			}
 		}
 	}
@@ -482,8 +485,9 @@ func (e *Engine) inspectSimilarity(ctx context.Context, job *jobState, existing 
 		state := job.candidates[candidate.CandidateID]
 		for _, source := range existing {
 			if llmCalls >= maxSimilarityLLMCalls {
-				event.SysLogWarn("system.skill.similarity_cap", "inspectSimilarity LLM call limit reached, skipping remaining comparisons",
-					event.P("cap", maxSimilarityLLMCalls))
+				loggateway.Global().Warn("inspectSimilarity LLM call limit reached, skipping remaining comparisons",
+					loggateway.StepID("system.skill.similarity_cap"),
+					loggateway.Int("cap", maxSimilarityLLMCalls))
 				return nil
 			}
 			llmCalls++

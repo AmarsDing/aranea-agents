@@ -110,7 +110,7 @@ export const useEvaluationStore = defineStore("evaluation", () => {
 
   async function loadAgentTrend(params: {
     agent_id: string;
-    metric?: string;
+    dataset_id?: string;
     limit?: number;
   }): Promise<EvalTrendPoint[]> {
     return getAgentEvalTrend(params);

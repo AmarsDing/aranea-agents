@@ -6,15 +6,13 @@ import (
 
 	v1 "aranea-agents/api/kratos/memory/v1"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/sessionmemory"
-	"aranea-agents/internal/event"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 func (s *MemoryService) DebugMemoryRecall(ctx context.Context, req *v1.DebugMemoryRecallRequest) (*v1.DebugMemoryRecallResponse, error) {
-	if s.memStore == nil {
-		return nil, kerrors.InternalServer("MEMORY", "session memory store not wired")
+	if s.debugRecaller == nil {
+		return nil, kerrors.InternalServer("MEMORY", "session memory debug recaller not wired")
 	}
 	agentID := strings.TrimSpace(req.GetAgentId())
 	if agentID == "" {
@@ -28,11 +26,11 @@ func (s *MemoryService) DebugMemoryRecall(ctx context.Context, req *v1.DebugMemo
 	if l3lim <= 0 {
 		l3lim = 8
 	}
-	l2rows, err := s.memStore.RecallL2EpisodesDebug(ctx, agentID, strings.TrimSpace(req.GetSessionId()), strings.TrimSpace(req.GetQuery()), l2lim)
+	l2rows, err := s.debugRecaller.RecallL2EpisodesDebug(ctx, agentID, strings.TrimSpace(req.GetSessionId()), strings.TrimSpace(req.GetQuery()), l2lim)
 	if err != nil {
 		return nil, err
 	}
-	l3rows, err := s.memStore.RecallL3FactsDebug(ctx, "agent", agentID, strings.TrimSpace(req.GetUserId()), strings.TrimSpace(req.GetQuery()), l3lim)
+	l3rows, err := s.debugRecaller.RecallL3FactsDebug(ctx, "agent", agentID, strings.TrimSpace(req.GetUserId()), strings.TrimSpace(req.GetQuery()), l3lim)
 	if err != nil {
 		return nil, err
 	}
@@ -47,8 +45,8 @@ func (s *MemoryService) DebugMemoryRecall(ctx context.Context, req *v1.DebugMemo
 }
 
 func (s *MemoryService) CompositeSearchMemories(ctx context.Context, req *v1.CompositeSearchMemoriesRequest) (*v1.CompositeSearchMemoriesResponse, error) {
-	if s.memStore == nil {
-		return nil, kerrors.InternalServer("MEMORY", "session memory store not wired")
+	if s.debugRecaller == nil {
+		return nil, kerrors.InternalServer("MEMORY", "session memory debug recaller not wired")
 	}
 	agentID := strings.TrimSpace(req.GetAgentId())
 	query := strings.TrimSpace(req.GetQuery())
@@ -59,7 +57,7 @@ func (s *MemoryService) CompositeSearchMemories(ctx context.Context, req *v1.Com
 	if lim <= 0 {
 		lim = 10
 	}
-	rows, err := s.memStore.CompositeSearchMemories(ctx, agentID, strings.TrimSpace(req.GetSessionId()), strings.TrimSpace(req.GetUserId()), query, lim)
+	rows, err := s.debugRecaller.CompositeSearchMemories(ctx, agentID, strings.TrimSpace(req.GetSessionId()), strings.TrimSpace(req.GetUserId()), query, lim)
 	if err != nil {
 		return nil, err
 	}
@@ -92,11 +90,10 @@ func (s *MemoryService) GetMemoryWorkerStatus(ctx context.Context, _ *v1.GetMemo
 		EpisodeBackfillTotal: backfill,
 		DbAvailable:          true,
 	}
-	if s.memStore != nil {
-		fresh, stale, disabled, err := s.memStore.CountFactsByIndexStatus(ctx)
+	if s.factIndexCounter != nil {
+		fresh, stale, disabled, err := s.factIndexCounter.CountFactsByIndexStatus(ctx)
 		if err != nil {
 			out.DbAvailable = false
-			event.SysLogWarn("memory.worker_status", "CountFactsByIndexStatus failed", event.P("error", err.Error()))
 		} else {
 			out.FactIndexStaleCount = stale
 			out.FactIndexDisabledCount = disabled
@@ -107,7 +104,6 @@ func (s *MemoryService) GetMemoryWorkerStatus(ctx context.Context, _ *v1.GetMemo
 		pending, replayed, abandoned, err := s.deadLetterRepo.CountDeadLettersByState(ctx)
 		if err != nil {
 			out.DbAvailable = false
-			event.SysLogWarn("memory.worker_status", "CountDeadLettersByState failed", event.P("error", err.Error()))
 		} else {
 			out.DeadLetterPending = pending
 			_ = replayed
@@ -134,7 +130,7 @@ func (s *MemoryService) GetMemoryWorkerStatus(ctx context.Context, _ *v1.GetMemo
 	return out, nil
 }
 
-func pbRecallHit(row sessionmemory.RecallDebugRow) *v1.MemoryRecallHit {
+func pbRecallHit(row biz.RecallDebugRow) *v1.MemoryRecallHit {
 	return &v1.MemoryRecallHit{
 		Layer:     row.Layer,
 		Id:        row.ID,

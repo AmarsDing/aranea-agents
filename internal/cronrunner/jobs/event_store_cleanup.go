@@ -7,27 +7,25 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 // EventStoreCleanup periodically purges expired event_store rows.
 type EventStoreCleanup struct {
 	interval time.Duration
 	store    *biz.EventStoreUsecase
-	log      *log.Helper
+	lg       loggateway.Logger
 }
 
-func NewEventStoreCleanup(interval time.Duration, store *biz.EventStoreUsecase, logger log.Logger) *EventStoreCleanup {
+func NewEventStoreCleanup(interval time.Duration, store *biz.EventStoreUsecase, lg loggateway.Logger) *EventStoreCleanup {
 	if interval <= 0 {
 		interval = time.Hour
 	}
 	return &EventStoreCleanup{
 		interval: interval,
 		store:    store,
-		log:      log.NewHelper(logger),
+		lg:       lg,
 	}
 }
 
@@ -52,14 +50,11 @@ func (w *EventStoreCleanup) runOnce(ctx context.Context) {
 	safego.Go(ctx, "event_store.cleanup", func() {
 		n, err := w.store.PurgeExpired(ctx)
 		if err != nil {
-			event.SysLogWarn("event_store.cleanup", "事件存储 TTL 清理失败", event.P("error", err))
-			if w.log != nil {
-				w.log.Warnf("event store cleanup: %v", err)
-			}
+			w.lg.Warn("event store cleanup failed", loggateway.Err(err))
 			return
 		}
-		if n > 0 && w.log != nil {
-			w.log.Infof("event store cleanup: removed %d rows", n)
+		if n > 0 {
+			w.lg.Info("event store cleanup removed rows", loggateway.Int("count", int(n)))
 		}
 	})
 }

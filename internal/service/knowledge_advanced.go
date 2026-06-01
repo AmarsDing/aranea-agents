@@ -2,8 +2,8 @@ package service
 
 import (
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/knowledge"
+	"aranea-agents/pkg/loggateway"
 )
 
 func NewKnowledgeHybridRetriever(retriever *knowledge.Retriever, sparse biz.KnowledgeSparseSearcher) *knowledge.HybridRetriever {
@@ -11,14 +11,18 @@ func NewKnowledgeHybridRetriever(retriever *knowledge.Retriever, sparse biz.Know
 		return nil
 	}
 	if sparse == nil {
-		event.SysLogInfo("knowledge.hybrid.init", "稀疏检索未配置，仅使用密集检索")
+		loggateway.Global().Info("稀疏检索未配置，仅使用密集检索",
+			loggateway.StepID("knowledge.hybrid.init"),
+		)
 	}
 	return knowledge.NewHybridRetriever(retriever, sparse)
 }
 
 func NewKnowledgeQueryRewriter(llm biz.LLMCaller, sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase) *knowledge.QueryRewriter {
 	if llm == nil {
-		event.SysLogInfo("knowledge.query_rewriter.init", "LLM 未配置，查询重写已禁用")
+		loggateway.Global().Info("LLM 未配置，查询重写已禁用",
+			loggateway.StepID("knowledge.query_rewriter.init"),
+		)
 		return nil
 	}
 	return knowledge.NewQueryRewriter(llm, sys, catalog)

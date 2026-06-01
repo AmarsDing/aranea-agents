@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type stubAgentRepo struct {
@@ -54,6 +56,7 @@ func (s *stubAgentRepo) DeleteAgentPromptFile(context.Context, string, string) e
 func (s *stubAgentRepo) ExecInTx(ctx context.Context, fn func(context.Context) error) error {
 	return fn(ctx)
 }
+func (s *stubAgentRepo) ReorderAgents(context.Context, []string) error { return nil }
 
 func TestAgentUsecase_UpdateRejectsKindChange(t *testing.T) {
 	t.Parallel()
@@ -65,7 +68,7 @@ func TestAgentUsecase_UpdateRejectsKindChange(t *testing.T) {
 			ConfigJSON: EmbedAgentKindInConfigJSON("{}", AgentKindLLM, nil),
 		},
 	}
-	uc := NewAgentUsecase(repo, nil, nil)
+	uc := NewAgentUsecase(repo, nil, nil, loggateway.NewNoop())
 	_, err := uc.Update(context.Background(), "agent-1", Agent{Kind: AgentKindA2AProxy})
 	if err == nil {
 		t.Fatal("expected error")

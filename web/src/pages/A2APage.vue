@@ -54,10 +54,11 @@
           </template>
         </AppPageToolbar>
         <A2ARemoteAgentPanel
-          :loading="remoteLoading"
+          ref="remoteAgentPanelRef"
+          :loading="remoteRegisterLoading"
           :discovering="remoteDiscoverLoading"
           :preview="remotePreview"
-          @register="submitRemoteRegister"
+          @register="onRemoteRegister"
           @discover="previewRemote"
         />
         <AppRegistryTable
@@ -81,17 +82,22 @@
               <q-badge :color="props.row.enabled ? 'positive' : 'grey'" :label="props.row.enabled ? '启用' : '禁用'" />
             </q-td>
           </template>
+          <template #body-cell-auth_type="props">
+            <q-td :props="props">
+              {{ a2aAuthTypeLabel(props.row.auth_type) }}
+            </q-td>
+          </template>
           <template #body-cell-actions="props">
             <q-td :props="props">
               <div class="app-registry-cell-actions">
-                <q-btn flat dense round color="negative" icon="delete" aria-label="删除" @click="removeRemote(props.row.id)" />
+                <q-btn flat dense round color="negative" icon="delete" aria-label="删除" @click="confirmRemoveRemote(props.row.id, props.row.display_name)" />
               </div>
             </q-td>
           </template>
         </AppRegistryTable>
       </q-tab-panel>
       <q-tab-panel name="audit" class="q-pa-none">
-        <A2AAuditPanel :rows="auditRows" :loading="auditLoading" :columns="auditColumns" :status-color="auditStatusColor" />
+        <A2AAuditPanel :rows="auditRows" :total="auditTotal" :loading="auditLoading" :columns="auditColumns" :status-color="auditStatusColor" />
       </q-tab-panel>
       <q-tab-panel name="invoke" class="q-pa-none">
         <A2AInvokePanel
@@ -111,6 +117,8 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from "vue";
+import { useQuasar } from "quasar";
 import AppPageHero from "../components/layout/AppPageHero.vue";
 import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
 import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
@@ -121,10 +129,13 @@ import A2AInvokePanel from "../components/a2a/A2AInvokePanel.vue";
 import A2ARemoteAgentPanel from "../components/a2a/A2ARemoteAgentPanel.vue";
 import A2ARuntimeConfigBanner from "../components/a2a/A2ARuntimeConfigBanner.vue";
 import { useA2APage } from "../features/a2a/useA2APage";
+import { a2aAuthTypeLabel } from "../features/a2a/a2aTableUi";
+import type { RegisterRemoteAgentInput } from "../features/a2a/types";
 
 const {
   agents,
   auditRows,
+  auditTotal,
   remoteAgents,
   loading,
   tab,
@@ -132,6 +143,7 @@ const {
   invokeLoading,
   remoteLoading,
   remoteDiscoverLoading,
+  remoteRegisterLoading,
   error,
   invokeResult,
   remotePreview,
@@ -152,4 +164,24 @@ const {
   reload,
   runtimeConfig
 } = useA2APage();
+
+const $q = useQuasar();
+
+const remoteAgentPanelRef = ref<InstanceType<typeof A2ARemoteAgentPanel> | null>(null);
+
+async function onRemoteRegister(input: RegisterRemoteAgentInput) {
+  await submitRemoteRegister(input);
+  remoteAgentPanelRef.value?.resetForm();
+}
+
+function confirmRemoveRemote(id: string, name: string) {
+  $q.dialog({
+    title: "确认删除",
+    message: `确定要删除远程 Agent「${name || id}」吗？`,
+    cancel: true,
+    persistent: true
+  }).onOk(() => {
+    removeRemote(id);
+  });
+}
 </script>

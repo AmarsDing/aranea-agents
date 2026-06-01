@@ -35,7 +35,11 @@ export function useGraphRunHitl(
     try {
       let advanced: Record<string, unknown> | undefined;
       if (hitlAdvancedJson.value.trim()) {
-        advanced = JSON.parse(hitlAdvancedJson.value);
+        try {
+          advanced = JSON.parse(hitlAdvancedJson.value);
+        } catch {
+          throw new Error("恢复值 JSON 格式无效，请检查输入");
+        }
       }
       const payload = buildResumePayload(interrupt.value, approved, advanced);
       await graphStore.resumeExecution(execId.value, payload);

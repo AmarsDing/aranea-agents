@@ -18,6 +18,7 @@ import PluginsPage from "../pages/PluginsPage.vue";
 import PluginRunsPage from "../pages/PluginRunsPage.vue";
 import HooksPage from "../pages/HooksPage.vue";
 import HookDeliveriesPage from "../pages/HookDeliveriesPage.vue";
+import WebhooksPage from "../pages/WebhooksPage.vue";
 import KnowledgePage from "../pages/KnowledgePage.vue";
 import ArtifactsPage from "../pages/ArtifactsPage.vue";
 import EvaluationPage from "../pages/EvaluationPage.vue";
@@ -30,7 +31,6 @@ import SessionDetailPage from "../pages/SessionDetailPage.vue";
 import ChannelsPage from "../pages/ChannelsPage.vue";
 import McpServersPage from "../pages/McpServersPage.vue";
 import CronTasksPage from "../pages/CronTasksPage.vue";
-import CronRunsPage from "../pages/CronRunsPage.vue";
 import MemoryCenterPage from "../pages/MemoryCenterPage.vue";
 import SystemSettingsPage from "../pages/SystemSettingsPage.vue";
 import GraphsPage from "../pages/GraphsPage.vue";
@@ -40,6 +40,8 @@ import GraphExecutionsPage from "../pages/GraphExecutionsPage.vue";
 import TeamRunObservatoryPage from "../pages/TeamRunObservatoryPage.vue";
 import TeamOrchestratePage from "../pages/TeamOrchestratePage.vue";
 import ThemePreviewPage from "../pages/ThemePreviewPage.vue";
+import IndustryMarketPage from "../pages/industries/IndustryMarketPage.vue";
+import IndustryDetailPage from "../pages/industries/IndustryDetailPage.vue";
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -125,6 +127,11 @@ export const routes: RouteRecordRaw[] = [
         component: HookDeliveriesPage
       },
       {
+        path: "webhooks",
+        name: "webhooks",
+        component: WebhooksPage
+      },
+      {
         path: "knowledge",
         name: "knowledge",
         component: KnowledgePage
@@ -164,9 +171,10 @@ export const routes: RouteRecordRaw[] = [
         name: "cron",
         component: CronTasksPage
       },
-      { path: "cron/runs", name: "cron-runs", component: CronRunsPage },
       { path: "monitor/logs", name: "monitor-logs", component: MonitorPage },
       { path: "shop", name: "shop", component: EcosystemPage },
+      { path: "industries", name: "industry-market", component: IndustryMarketPage },
+      { path: "industries/:key", name: "industry-detail", component: IndustryDetailPage },
       { path: "settings", name: "settings", component: SystemSettingsPage, meta: { titleKey: "menu.settings" } },
       ...(import.meta.env.DEV
         ? [{ path: "dev/theme-preview", name: "theme-preview", component: ThemePreviewPage }]

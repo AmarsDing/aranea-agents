@@ -26,6 +26,7 @@ export type PlatformResource = {
   agent_id: string;
   provider: string;
   model: string;
+  is_system: boolean;
   config_json: string;
   metadata_json: string;
   capabilities?: {
@@ -164,5 +165,58 @@ export type ProviderConfig = {
   metadata_source?: string;
   last_used_at?: string;
   model_rating?: number | string | null;
+};
+
+export type HACandidateForm = {
+  name: string;
+  providerType: string;
+  baseUrl: string;
+  apiKey: string;
+};
+
+export type ProviderHAForm = {
+  haMode: "" | "failover" | "hedge";
+  haCandidates: HACandidateForm[];
+  haHedgeDelayMs: number;
+};
+
+export type ProviderForm = {
+  provider_type: string;
+  variant: string;
+  model_api_id: string;
+  provider_code: string;
+  provider_display_name: string;
+  model_display_name: string;
+  api_base_url: string;
+  api_key: string;
+  api_key_set: boolean;
+  secret_id: string;
+  secret_key: string;
+  aws_region: string;
+  enabled: boolean;
+  model_category: ModelCategory[];
+  model_size_label: string;
+  context_window_k: number | null;
+  max_output_tokens: number;
+  model_rating: number;
+  input_price_usd_per_1m: number;
+  output_price_usd_per_1m: number;
+  cache_read_usd_per_1m: number;
+  cache_write_usd_per_1m: number;
+  reasoning_price_usd_per_1m: number;
+  embedding_price_usd_per_1m: number;
+  capability_chips: CapabilityChip[];
+  catalog_managed: boolean;
+  catalog_source: string;
+  raw_metadata_json: string;
+  metadata_source: string;
+  sort_order: number;
+  description: string;
+  enable_token_tailoring: boolean;
+  optimize_for_cache: boolean;
+  reasoning_backfill: boolean;
+  show_tool_call_delta: boolean;
+  keep_alive_minutes: number;
+  rate_limit_rpm: number;
 };
 

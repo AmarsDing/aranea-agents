@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/loggateway"
+
 	"github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -337,10 +339,11 @@ type ToolUsecase struct {
 	sys           SettingRepo
 	tester        ToolTester
 	webResChecker WebResearchReadinessChecker
+	lg            loggateway.Logger
 }
 
-func NewToolUsecase(repo ToolRepo, sys SettingRepo) *ToolUsecase {
-	return &ToolUsecase{repo: repo, sys: sys}
+func NewToolUsecase(repo ToolRepo, sys SettingRepo, lg loggateway.Logger) *ToolUsecase {
+	return &ToolUsecase{repo: repo, sys: sys, lg: lg}
 }
 
 func (u *ToolUsecase) SetToolTester(tester ToolTester) {

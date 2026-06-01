@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/lark"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestResolvePeerSessionID_prefersOperatorOpenID(t *testing.T) {
@@ -32,8 +33,9 @@ func TestResolvePeerSessionID_prefersOperatorOpenID(t *testing.T) {
 	}
 	agents := ingressAgentRepo{id: agentID}
 	h := &ChannelIngress{
-		peers:    peerRepo,
+		channels: biz.NewChannelUsecase(nil, peerRepo, nil, agents, nil, nil, nil),
 		sessions: biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil),
+		lg:       loggateway.NewNoop(),
 	}
 	ch := biz.Channel{
 		ID:         channelID,
@@ -74,14 +76,14 @@ func TestResolvePeerSessionID_deniedWhenOnlyChatIDBindMissing(t *testing.T) {
 	}
 	agents := ingressAgentRepo{id: agentID}
 	h := &ChannelIngress{
-		peers:    peerRepo,
+		channels: biz.NewChannelUsecase(nil, peerRepo, nil, agents, nil, nil, nil),
 		sessions: biz.NewSessionUsecase(sessRepo, biz.NewSessionAgentLookup(agents), nil, nil, nil),
+		lg:       loggateway.NewNoop(),
 	}
 	ch := biz.Channel{
 		ID:         channelID,
 		ConfigJSON: `{"type":"feishu","routing":{"default_agent_id":"` + agentID + `"}}`,
 	}
-	// Card only carried chat_id (wrong order before fix) — should still resolve via operator.
 	action := lark.CardActionPayload{
 		OperatorOpenID: openID,
 		OpenChatID:     chatID,

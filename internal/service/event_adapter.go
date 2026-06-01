@@ -6,11 +6,11 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/pkg/loggateway"
 )
 
 // --- EnvelopeBuffer adapter ---
 
-// envelopeBufferAdapter adapts event.Buffer to biz.EnvelopeBuffer.
 type envelopeBufferAdapter struct {
 	buf *event.Buffer
 }
@@ -21,45 +21,52 @@ func (a envelopeBufferAdapter) Append(env contract.Envelope) {
 	}
 }
 
-// ProvideEnvelopeBuffer creates a biz.EnvelopeBuffer backed by event.Buffer.
 func ProvideEnvelopeBuffer(buf *event.Buffer) biz.EnvelopeBuffer {
 	return envelopeBufferAdapter{buf: buf}
 }
 
 // --- SessionLogWriter adapter ---
 
-// sessionLogWriterAdapter adapts event session log functions to biz.SessionLogWriter.
-type sessionLogWriterAdapter struct{}
+type sessionLogWriterAdapter struct {
+	lg loggateway.Logger
+}
 
 func (a sessionLogWriterAdapter) SessionSysLogWarn(ctx context.Context, sessionID, stepID, message string, pairs ...biz.LogPair) {
-	event.SessionSysLogWarn(ctx, sessionID, stepID, message, toEventPairs(pairs)...)
+	a.lg.With(loggateway.SessionID(sessionID)).Warn(message,
+		loggateway.StepID(stepID),
+	)
 }
 
 func (a sessionLogWriterAdapter) SessionSysLogError(ctx context.Context, sessionID, stepID, message string, pairs ...biz.LogPair) {
-	event.SessionSysLogError(ctx, sessionID, stepID, message, toEventPairs(pairs)...)
+	a.lg.With(loggateway.SessionID(sessionID)).Error(message,
+		loggateway.StepID(stepID),
+	)
 }
 
-// ProvideSessionLogWriter creates a biz.SessionLogWriter backed by event session log functions.
-func ProvideSessionLogWriter() biz.SessionLogWriter {
-	return sessionLogWriterAdapter{}
+func ProvideSessionLogWriter(lg loggateway.Logger) biz.SessionLogWriter {
+	return sessionLogWriterAdapter{lg: lg}
 }
 
 // --- SystemLogWriter adapter ---
 
-// systemLogWriterAdapter adapts event system log functions to biz.SystemLogWriter.
-type systemLogWriterAdapter struct{}
+type systemLogWriterAdapter struct {
+	lg loggateway.Logger
+}
 
 func (a systemLogWriterAdapter) SysLogWarn(stepID, message string, pairs ...biz.LogPair) {
-	event.SysLogWarn(stepID, message, toEventPairs(pairs)...)
+	a.lg.Warn(message,
+		loggateway.StepID(stepID),
+	)
 }
 
 func (a systemLogWriterAdapter) SysLogError(stepID, message string, pairs ...biz.LogPair) {
-	event.SysLogError(stepID, message, toEventPairs(pairs)...)
+	a.lg.Error(message,
+		loggateway.StepID(stepID),
+	)
 }
 
-// ProvideSystemLogWriter creates a biz.SystemLogWriter backed by event system log functions.
-func ProvideSystemLogWriter() biz.SystemLogWriter {
-	return systemLogWriterAdapter{}
+func ProvideSystemLogWriter(lg loggateway.Logger) biz.SystemLogWriter {
+	return systemLogWriterAdapter{lg: lg}
 }
 
 // --- helpers ---

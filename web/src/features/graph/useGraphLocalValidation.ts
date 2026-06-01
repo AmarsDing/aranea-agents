@@ -1,15 +1,16 @@
-import { computed, reactive, type Ref } from "vue";
+import { computed, ref, watch } from "vue";
+import type { Ref } from "vue";
 import type { GraphDefinition, ValidationError, ValidationWarning } from "./types";
 
 export function useGraphLocalValidation(graphDef: Ref<GraphDefinition>) {
-  const cycleWarningsBuffer = reactive<{ items: ValidationWarning[] }>({ items: [] });
+  const cycleWarnings = ref<ValidationWarning[]>([]);
 
   const localErrors = computed<ValidationError[]>(() => {
     const errors: ValidationError[] = [];
     const def = graphDef.value;
     const nodeIds = new Set(def.nodes.map((n) => n.id));
 
-    cycleWarningsBuffer.items = [];
+    cycleWarnings.value = [];
 
     if (def.nodes.length === 0) return errors;
 
@@ -137,7 +138,7 @@ export function useGraphLocalValidation(graphDef: Ref<GraphDefinition>) {
         }
       }
       if (hasConditionalCycle) {
-        cycleWarningsBuffer.items.push({ code: "conditional_loop", nodeId: "", field: "", message: "图中存在条件循环（运行时可能回退）" });
+        cycleWarnings.value.push({ code: "conditional_loop", nodeId: "", field: "", message: "图中存在条件循环（运行时可能回退）" });
       }
     }
 
@@ -166,7 +167,7 @@ export function useGraphLocalValidation(graphDef: Ref<GraphDefinition>) {
       }
     }
 
-    warnings.push(...cycleWarningsBuffer.items);
+    warnings.push(...cycleWarnings.value);
 
     return warnings;
   });

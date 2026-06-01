@@ -46,6 +46,7 @@ export const sideNavGroups: NavGroup[] = [
       { to: "/skills", icon: "psychology", labelKey: "menu.skills" },
       { to: "/plugins", icon: "tune", labelKey: "menu.plugins" },
       { to: "/hooks", icon: "link", labelKey: "menu.hooks" },
+      { to: "/webhooks", icon: "webhook", labelKey: "menu.webhooks" },
       { to: "/a2a", icon: "swap_horiz", labelKey: "menu.a2a" }
     ]
   },
@@ -61,9 +62,9 @@ export const sideNavGroups: NavGroup[] = [
     labelKey: "menu.groupOps",
     items: [
       { to: "/cron", icon: "schedule", labelKey: "menu.cron" },
-      { to: "/cron/runs", icon: "history", labelKey: "menu.cronRuns" },
       { to: "/monitor/logs", icon: "monitor_heart", labelKey: "menu.monitor", exact: false },
       { to: "/shop", icon: "storefront", labelKey: "menu.shop" },
+      { to: "/industries", icon: "store", labelKey: "menu.industryMarket" },
       { to: "/settings", icon: "settings", labelKey: "menu.settings" }
     ]
   }

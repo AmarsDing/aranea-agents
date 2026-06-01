@@ -19,7 +19,7 @@ export function useGraphEditorAssets(graphDef: GraphDefinition, isNew: () => boo
   const templateSaving = ref(false);
   const importInputRef = ref<HTMLInputElement | null>(null);
 
-  async function openVersionDialog(onRestored?: () => Promise<void>) {
+  async function openVersionDialog() {
     if (!graphDef.id) {
       $q.notify({ type: "warning", message: "请先保存 Graph" });
       return;

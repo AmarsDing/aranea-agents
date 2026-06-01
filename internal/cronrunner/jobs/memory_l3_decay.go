@@ -7,11 +7,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/sessionmemory"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 const (
@@ -22,25 +19,25 @@ const (
 // MemoryL3DecayWorker periodically reduces stored fact importance for stale L3 rows.
 type MemoryL3DecayWorker struct {
 	interval time.Duration
-	store    *sessionmemory.Store
+	decayer  biz.MemoryFactDecayer
 	agents   *biz.AgentUsecase
-	log      *log.Helper
+	lg       loggateway.Logger
 }
 
-func NewMemoryL3DecayWorker(interval time.Duration, store *sessionmemory.Store, agents *biz.AgentUsecase, logger log.Logger) *MemoryL3DecayWorker {
+func NewMemoryL3DecayWorker(interval time.Duration, decayer biz.MemoryFactDecayer, agents *biz.AgentUsecase, lg loggateway.Logger) *MemoryL3DecayWorker {
 	if interval <= 0 {
 		interval = memoryL3DecayDefaultInterval
 	}
 	return &MemoryL3DecayWorker{
 		interval: interval,
-		store:    store,
+		decayer:  decayer,
 		agents:   agents,
-		log:      log.NewHelper(logger),
+		lg:       lg,
 	}
 }
 
 func (w *MemoryL3DecayWorker) Start(ctx context.Context) {
-	if w == nil || w.store == nil {
+	if w == nil || w.decayer == nil {
 		return
 	}
 	ticker := time.NewTicker(w.interval)
@@ -61,10 +58,7 @@ func (w *MemoryL3DecayWorker) runOnce(ctx context.Context) {
 		if w.agents != nil {
 			targets, err := w.agents.ListMemoryMaintenanceTargets(ctx)
 			if err != nil {
-				event.SysLogWarn("memory.l3_decay", "L3 maintenance target list failed", event.P("error", err))
-				if w.log != nil {
-					w.log.Warnf("memory l3 decay: list targets: %v", err)
-				}
+				w.lg.Warn("L3 maintenance target list failed", loggateway.Err(err))
 				return
 			}
 			var total int
@@ -77,29 +71,26 @@ func (w *MemoryL3DecayWorker) runOnce(ctx context.Context) {
 					intervalHours = 24
 				}
 				cutoff := time.Now().UTC().Add(-time.Duration(intervalHours) * time.Hour).Format(time.RFC3339Nano)
-				n, err := w.store.ApplyAgentFactImportanceDecay(ctx, t.AgentID, cutoff, memoryL3DecayBatchFactor)
+				n, err := w.decayer.ApplyAgentFactImportanceDecay(ctx, t.AgentID, cutoff, memoryL3DecayBatchFactor)
 				if err != nil {
-					event.SysLogWarn("memory.l3_decay", "L3 fact importance decay failed", event.P("agent_id", t.AgentID), event.P("error", err))
+					w.lg.Warn("L3 fact importance decay failed", loggateway.Str("agent_id", t.AgentID), loggateway.Err(err))
 					continue
 				}
 				total += n
 			}
-			if total > 0 && w.log != nil {
-				w.log.Infof("memory l3 decay: updated %d facts across %d agents", total, len(targets))
+			if total > 0 {
+				w.lg.Info("memory l3 decay updated facts", loggateway.Int("count", total), loggateway.Int("agents", len(targets)))
 			}
 			return
 		}
 		cutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339Nano)
-		n, err := w.store.ApplyAllFactImportanceDecay(ctx, cutoff, memoryL3DecayBatchFactor)
+		n, err := w.decayer.ApplyAllFactImportanceDecay(ctx, cutoff, memoryL3DecayBatchFactor)
 		if err != nil {
-			event.SysLogWarn("memory.l3_decay", "L3 fact importance decay failed", event.P("error", err))
-			if w.log != nil {
-				w.log.Warnf("memory l3 decay: %v", err)
-			}
+			w.lg.Warn("L3 fact importance decay failed", loggateway.Err(err))
 			return
 		}
-		if n > 0 && w.log != nil {
-			w.log.Infof("memory l3 decay: updated %d facts (cutoff=%s factor=%v)", n, cutoff, memoryL3DecayBatchFactor)
+		if n > 0 {
+			w.lg.Info("memory l3 decay updated facts", loggateway.Int("count", n), loggateway.Str("cutoff", cutoff), loggateway.Any("factor", memoryL3DecayBatchFactor))
 		}
 	})
 }

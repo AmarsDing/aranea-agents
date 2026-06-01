@@ -33,9 +33,12 @@ func (uc *SessionUsecase) UpdateTurn(ctx context.Context, id string, fields Sess
 
 // IncrementInvocationCounts bumps session.tool_call_count / mcp_call_count / skill_call_count.
 func (uc *SessionUsecase) IncrementInvocationCounts(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" || (toolDelta == 0 && mcpDelta == 0 && skillDelta == 0) {
+	if toolDelta == 0 && mcpDelta == 0 && skillDelta == 0 {
 		return nil
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return validationErr("session id is required")
 	}
 	return uc.contextUpdater.IncrementInvocationCounts(ctx, sessionID, toolDelta, mcpDelta, skillDelta)
 }

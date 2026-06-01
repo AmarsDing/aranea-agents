@@ -2,7 +2,7 @@ import { onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import type { ChannelTurnJobRow } from "./types";
 import { useChannelsStore } from "../../stores/channels";
-import { CHANNEL_TURN_JOBS_TABLE_COLUMNS } from "../../components/channels/channelUi";
+import { channelTurnJobsColumns } from "../../components/channels/channelUi";
 
 export function useChannelTurnJobsPanel(channelId: () => string) {
   const { t } = useI18n();
@@ -10,7 +10,7 @@ export function useChannelTurnJobsPanel(channelId: () => string) {
   const loading = ref(false);
   const error = ref("");
   const rows = ref<ChannelTurnJobRow[]>([]);
-  const columns = CHANNEL_TURN_JOBS_TABLE_COLUMNS;
+  const columns = channelTurnJobsColumns(t);
 
   function statusColor(status: string) {
     switch (status) {
@@ -40,7 +40,7 @@ export function useChannelTurnJobsPanel(channelId: () => string) {
     try {
       rows.value = await channelsStore.loadTurnJobs(id, 30);
     } catch (err) {
-      error.value = err instanceof Error ? err.message : "load failed";
+      error.value = err instanceof Error ? err.message : t("channelEditor.loadFailed");
     } finally {
       loading.value = false;
     }

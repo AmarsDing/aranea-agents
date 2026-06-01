@@ -69,10 +69,10 @@
       </template>
     </AppPageToolbar>
 
-    <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
+    <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
       {{ error }}
       <template #action>
-        <q-btn flat color="white" label="重试" @click="() => loadRows()" />
+        <q-btn flat dense label="重试" class="text-white" @click="() => loadRows()" />
       </template>
     </q-banner>
 
@@ -125,7 +125,7 @@
     />
 
     <q-dialog v-model="detailOpen">
-      <q-card class="app-dialog-card app-dialog-card--sm">
+      <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
         <q-card-section class="text-h6">运行详情</q-card-section>
         <q-card-section class="app-dialog-body q-pt-none">
           <pre class="plugin-run-detail app-code-block">{{ detailText }}</pre>

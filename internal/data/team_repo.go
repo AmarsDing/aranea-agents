@@ -33,16 +33,17 @@ func entTeamToBiz(e *ent.Team) biz.Team {
 		return biz.Team{}
 	}
 	return biz.Team{
-		ID:             e.ID,
-		TeamKey:        e.TeamKey,
-		DisplayName:    e.DisplayName,
-		Status:         e.Status,
-		IsDefault:      e.IsDefault,
-		DefinitionJSON: e.DefinitionJSON,
-		ADKAppName:     e.AdkAppName,
-		CreatedAt:      e.CreatedAt,
-		UpdatedAt:      e.UpdatedAt,
-		DeletedAt:      e.DeletedAt,
+		ID:                 e.ID,
+		TeamKey:            e.TeamKey,
+		DisplayName:        e.DisplayName,
+		Status:             e.Status,
+		IsDefault:          e.IsDefault,
+		DefinitionJSON:     e.DefinitionJSON,
+		ADKAppName:         e.AdkAppName,
+		CategoryIndustryID: e.CategoryIndustryID,
+		CreatedAt:          e.CreatedAt,
+		UpdatedAt:          e.UpdatedAt,
+		DeletedAt:          e.DeletedAt,
 	}
 }
 
@@ -150,6 +151,7 @@ func (r *teamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 		SetIsDefault(t.IsDefault).
 		SetDefinitionJSON(t.DefinitionJSON).
 		SetAdkAppName(t.ADKAppName).
+		SetCategoryIndustryID(t.CategoryIndustryID).
 		SetCreatedAt(t.CreatedAt).
 		SetUpdatedAt(t.UpdatedAt).
 		SetDeletedAt(t.DeletedAt).
@@ -176,6 +178,7 @@ func (r *teamRepo) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 		SetIsDefault(t.IsDefault).
 		SetDefinitionJSON(t.DefinitionJSON).
 		SetAdkAppName(t.ADKAppName).
+		SetCategoryIndustryID(t.CategoryIndustryID).
 		SetUpdatedAt(t.UpdatedAt).
 		Save(ctx)
 	if err != nil {

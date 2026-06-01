@@ -65,7 +65,7 @@
 import { computed, ref, watch } from "vue";
 import type { CompositeSearchHit, MemoryRecallHit } from "./types";
 import { compositeSearchMemories, debugMemoryRecall } from "./api";
-import RecallHitTable from "./RecallHitTable.vue";
+import RecallHitTable from "../../components/memory/RecallHitTable.vue";
 import AppRegistryHoverTip from "../../components/layout/AppRegistryHoverTip.vue";
 import AppRegistryMarkupTable from "../../components/layout/AppRegistryMarkupTable.vue";
 import { REGISTRY_COL_W, registryCol } from "../ui/registryTableColumns";

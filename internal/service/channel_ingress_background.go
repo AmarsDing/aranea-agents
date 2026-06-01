@@ -40,11 +40,11 @@ func (h *ChannelIngress) resolveBackgroundInboundTurn(ctx context.Context, chRow
 	if err != nil {
 		return true, "", err
 	}
-	req, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text)
+	input, err := h.prepareChannelChatRequest(ctx, chRow, platform, peerKey, ev.PeerID, ev.Text, false)
 	if err != nil {
 		return true, "", err
 	}
-	sessionID := strings.TrimSpace(req.GetSessionId())
+	sessionID := strings.TrimSpace(input.SessionID)
 	reply = channelBackgroundReplyNoActiveRun
 	escalated := false
 	if h.chat != nil && sessionID != "" {
@@ -59,7 +59,7 @@ func (h *ChannelIngress) resolveBackgroundInboundTurn(ctx context.Context, chRow
 		event.P("peer_id", ev.PeerID),
 		event.P("escalated", escalated),
 	)
-	_ = h.recordDelivery(ctx, chRow.ID, "background", map[string]any{
+	h.recordDelivery(ctx, chRow.ID, "background", map[string]any{
 		"peer_id":    ev.PeerID,
 		"session_id": sessionID,
 		"escalated":  escalated,

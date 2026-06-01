@@ -9,10 +9,10 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/testexec"
+	"aranea-agents/pkg/loggateway"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -93,13 +93,13 @@ func mergeToolConfigJSON(configJSON, defaultJSON string) map[string]any {
 	out := map[string]any{}
 	if strings.TrimSpace(defaultJSON) != "" {
 		if err := json.Unmarshal([]byte(defaultJSON), &out); err != nil {
-			event.SysLogWarn("graph.resolver_tool", "default tool config json unmarshal failed", event.P("error", err.Error()))
+			loggateway.Global().Warn("default tool config json unmarshal failed", loggateway.Err(err))
 		}
 	}
 	if strings.TrimSpace(configJSON) != "" {
 		var overlay map[string]any
 		if err := json.Unmarshal([]byte(configJSON), &overlay); err != nil {
-			event.SysLogWarn("graph.resolver_tool", "tool config json unmarshal failed, using defaults", event.P("error", err.Error()))
+			loggateway.Global().Warn("tool config json unmarshal failed, using defaults", loggateway.Err(err))
 		} else {
 			for k, v := range overlay {
 				out[k] = v
@@ -113,7 +113,7 @@ func openAPISpecFromBizTool(row biz.Tool) (tools.OpenAPISpecConfig, bool) {
 	var meta map[string]any
 	if strings.TrimSpace(row.MetadataJSON) != "" {
 		if err := json.Unmarshal([]byte(row.MetadataJSON), &meta); err != nil {
-			event.SysLogWarn("graph.resolver_tool", "tool metadata json unmarshal failed", event.P("error", err.Error()), event.P("tool_key", row.Key))
+			loggateway.Global().Warn("tool metadata json unmarshal failed", loggateway.Err(err), loggateway.Str("tool_key", row.Key))
 		}
 	}
 	if spec, ok := meta["openapi_spec"].(map[string]any); ok {

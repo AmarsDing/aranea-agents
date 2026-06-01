@@ -182,7 +182,7 @@ export function useEvaluationPage() {
     try {
       trendPoints.value = await evaluationStore.loadAgentTrend({
         agent_id: trendAgentId.value,
-        metric: runForm.value.metrics.trim() || undefined,
+        dataset_id: selectedDatasetId.value || undefined,
         limit: 20
       });
     } catch (e) {

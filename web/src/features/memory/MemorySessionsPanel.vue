@@ -94,6 +94,10 @@
           <div class="text-h6">L1 工作记忆</div>
           <div class="text-caption text-grey-7">当前任务状态、约束、决策和中间结果。</div>
         </q-card-section>
+        <div v-if="loadingTasks" class="row justify-center q-py-md">
+          <q-spinner-dots size="28px" color="primary" />
+        </div>
+        <template v-else>
         <q-list separator>
           <q-item v-for="task in taskRows" :key="task.id">
             <q-item-section>
@@ -110,6 +114,7 @@
           <q-icon name="assignment" size="38px" />
           <div class="q-mt-sm">暂无工作记忆 task。</div>
         </q-card-section>
+        </template>
       </q-card>
     </div>
   </div>
@@ -129,6 +134,7 @@ defineProps<{
   snapshotColumns: QTableProps["columns"];
   loadingSnapshots: boolean;
   taskRows: L1Task[];
+  loadingTasks?: boolean;
 }>();
 
 defineEmits<{

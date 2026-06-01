@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestMergeAgentConfigJSON_patchWins(t *testing.T) {
@@ -13,7 +15,7 @@ func TestMergeAgentConfigJSON_patchWins(t *testing.T) {
 }
 
 func TestCheckAgentKeyAvailability_format(t *testing.T) {
-	uc := NewAgentUsecase(nil, nil, nil)
+	uc := NewAgentUsecase(nil, nil, nil, loggateway.NewNoop())
 	_, _, err := uc.CheckAgentKeyAvailability(context.Background(), "Bad Key")
 	if err == nil {
 		t.Fatal("expected format error")

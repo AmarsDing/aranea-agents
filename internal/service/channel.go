@@ -11,7 +11,7 @@ import (
 	"aranea-agents/internal/channel/lark"
 	"aranea-agents/internal/channel/slack"
 	"aranea-agents/internal/channel/telegram"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
@@ -21,15 +21,14 @@ import (
 type ChannelService struct {
 	v1.UnimplementedChannelServiceServer
 
-	uc       *biz.ChannelUsecase
+	uc      *biz.ChannelUsecase
 	turnJobs *biz.ChannelTurnJobUsecase
-	peers    biz.ChannelPeerSessionRepo
-	runtime  *ChannelRuntime
-	testers  map[string]biz.ChannelLiveTester
+	runtime *ChannelRuntime
+	testers map[string]biz.ChannelLiveTester
 }
 
-func NewChannelService(uc *biz.ChannelUsecase, turnJobs *biz.ChannelTurnJobUsecase, peers biz.ChannelPeerSessionRepo, runtime *ChannelRuntime) *ChannelService {
-	s := &ChannelService{uc: uc, turnJobs: turnJobs, peers: peers, runtime: runtime}
+func NewChannelService(uc *biz.ChannelUsecase, turnJobs *biz.ChannelTurnJobUsecase, runtime *ChannelRuntime) *ChannelService {
+	s := &ChannelService{uc: uc, turnJobs: turnJobs, runtime: runtime}
 	s.testers = s.buildLiveTesters()
 	return s
 }
@@ -283,11 +282,12 @@ func (s *ChannelService) UpdateChannel(ctx context.Context, req *v1.UpdateChanne
 	if err != nil {
 		return nil, err
 	}
-	if biz.RoutingTargetChanged(current.ConfigJSON, c.ConfigJSON) && s.peers != nil {
-		if _, err := s.peers.DeleteByChannelID(ctx, c.ID); err != nil {
-			event.SysLogWarn("channel.peer.delete_failed", "删除渠道 Peer 绑定失败",
-				event.P("channel_id", c.ID),
-				event.P("error", err.Error()),
+	if biz.RoutingTargetChanged(current.ConfigJSON, c.ConfigJSON) {
+		if _, err := s.uc.DeletePeerBindingsByChannelID(ctx, c.ID); err != nil {
+			loggateway.Global().Warn("删除渠道 Peer 绑定失败",
+				loggateway.StepID("channel.peer.delete_failed"),
+				loggateway.Str("channel_id", c.ID),
+				loggateway.Err(err),
 			)
 		}
 	}

@@ -2,14 +2,13 @@ package jobs
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/monitor"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -17,6 +16,7 @@ type MonitorTraceBackfillWorker struct {
 	repo      biz.MonitorRepo
 	interval  time.Duration
 	watermark string
+	lg        loggateway.Logger
 }
 
 func defaultBackfillInterval() time.Duration {
@@ -28,10 +28,11 @@ func defaultBackfillInterval() time.Duration {
 	return 6 * time.Hour
 }
 
-func NewMonitorTraceBackfillWorker(repo biz.MonitorRepo) *MonitorTraceBackfillWorker {
+func NewMonitorTraceBackfillWorker(repo biz.MonitorRepo, lg loggateway.Logger) *MonitorTraceBackfillWorker {
 	return &MonitorTraceBackfillWorker{
 		repo:     repo,
 		interval: defaultBackfillInterval(),
+		lg:       lg,
 	}
 }
 
@@ -56,7 +57,7 @@ func (w *MonitorTraceBackfillWorker) Start(ctx context.Context) {
 
 func (w *MonitorTraceBackfillWorker) runOnce(ctx context.Context) {
 	if err := w.repo.EnsureTraceSchema(ctx); err != nil {
-		event.SysLogWarn("system.monitor.trace_backfill_schema_fail", "backfill: EnsureTraceSchema failed", event.P("error", err.Error()))
+		w.lg.Warn("backfill: EnsureTraceSchema failed", loggateway.Err(err))
 		return
 	}
 	since := 30 * 24 * time.Hour
@@ -70,7 +71,7 @@ func (w *MonitorTraceBackfillWorker) runOnce(ctx context.Context) {
 	}
 	rows, err := w.repo.ListRecentRunnerCompletions(ctx, since, 1000)
 	if err != nil {
-		event.SysLogWarn("system.monitor.trace_backfill_query_fail", "backfill: ListRecentRunnerCompletions failed", event.P("error", err.Error()))
+		w.lg.Warn("backfill: ListRecentRunnerCompletions failed", loggateway.Err(err))
 		return
 	}
 	inserted := 0
@@ -102,8 +103,8 @@ func (w *MonitorTraceBackfillWorker) runOnce(ctx context.Context) {
 		w.watermark = latestCreatedAt
 	}
 	if inserted > 0 {
-		event.SysLogInfo("system.monitor.trace_backfill_done", "monitor trace backfill completed",
-			event.P("inserted", fmt.Sprint(inserted)),
-			event.P("since", since.String()))
+		w.lg.Info("monitor trace backfill completed",
+			loggateway.Int("inserted", inserted),
+			loggateway.Str("since", since.String()))
 	}
 }

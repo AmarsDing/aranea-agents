@@ -23,7 +23,7 @@ import (
 
 	"aranea-agents/internal/agent/callbacks"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	trpcguardrail "trpc.group/trpc-go/trpc-agent-go/plugin/guardrail"
 	trpcidentity "trpc.group/trpc-go/trpc-agent-go/plugin/identity"
@@ -55,8 +55,7 @@ func NewManager(rt *Runtime, hooks *biz.HookResolver) *Manager {
 	m := &Manager{rt: rt, hooks: hooks}
 	if hooks != nil {
 		if err := hooks.Reload(context.Background()); err != nil {
-			event.SysLogWarn("system.hook.reload_fail", "Hook 规则加载失败，Hook 通知将不可用",
-				event.P("error", err.Error()))
+			loggateway.Global().Warn("Hook 规则加载失败，Hook 通知将不可用", loggateway.Err(err))
 		}
 	}
 	return m

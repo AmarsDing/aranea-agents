@@ -80,7 +80,9 @@ func (s *StreamSender) pushMessage(ctx context.Context, recipient, text string) 
 			ID string `json:"id"`
 		} `json:"sentMessages"`
 	}
-	_ = json.Unmarshal(raw, &out)
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return "", fmt.Errorf("line stream: parse response: %w", err)
+	}
 	if len(out.SentMessages) > 0 {
 		return strings.TrimSpace(out.SentMessages[0].ID), nil
 	}

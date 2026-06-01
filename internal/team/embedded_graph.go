@@ -37,10 +37,10 @@ type embeddedGraphNode struct {
 }
 
 type embeddedGraphEdge struct {
-	ID        string `json:"id"`
-	Source    string `json:"source"`
-	Target    string `json:"target"`
-	Label     string `json:"label"`
+	ID       string `json:"id"`
+	Source   string `json:"source"`
+	Target   string `json:"target"`
+	Label    string `json:"label"`
 	Condition string `json:"condition"`
 }
 
@@ -160,7 +160,7 @@ func compileFromEmbeddedGraph(ctx context.Context, def Definition, spec *embedde
 				ID: id, Type: "task", Description: strings.TrimSpace(n.Label),
 				RequiredRole: strings.TrimSpace(n.Role), AssignmentMode: strings.TrimSpace(n.AssignmentMode),
 				AssignmentStrategy: strings.TrimSpace(n.AssignmentStrategy),
-				InterruptAfter:     true,
+				InterruptAfter: true,
 			}))
 		case "review":
 			executableIDs[id] = struct{}{}

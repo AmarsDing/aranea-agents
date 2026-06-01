@@ -181,7 +181,7 @@ func (r *Runner) catalogAgent(ctx context.Context, id string) (biz.Agent, error)
 		return r.td.Catalog.AgentsUC.Get(ctx, id)
 	}
 	if r.td.Catalog.Agents != nil && r.td.Catalog.Tools != nil {
-		return biz.NewAgentUsecase(r.td.Catalog.Agents, r.td.Catalog.Tools, nil).Get(ctx, id)
+		return biz.NewAgentUsecase(r.td.Catalog.Agents, r.td.Catalog.Tools, nil, nil).Get(ctx, id)
 	}
 	return r.td.Catalog.Agents.GetAgentByID(ctx, id)
 }

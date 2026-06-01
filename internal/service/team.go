@@ -59,8 +59,9 @@ func toProtoTeam(t biz.Team) *v1.Team {
 		AdkAppName:        t.ADKAppName,
 		CreatedAt:         t.CreatedAt,
 		UpdatedAt:         t.UpdatedAt,
-		DeletedAt:         t.DeletedAt,
-		LinkedGraphId:     team.LinkedGraphIDFromDefinition(t.DefinitionJSON),
+		DeletedAt:          t.DeletedAt,
+		LinkedGraphId:      team.LinkedGraphIDFromDefinition(t.DefinitionJSON),
+		CategoryIndustryId: t.CategoryIndustryID,
 	}
 }
 
@@ -155,16 +156,17 @@ func teamFromProto(pb *v1.Team) biz.Team {
 		return biz.Team{}
 	}
 	return biz.Team{
-		ID:             pb.GetId(),
-		TeamKey:        pb.GetTeamKey(),
-		DisplayName:    pb.GetDisplayName(),
-		Status:         pb.GetStatus(),
-		IsDefault:      pb.GetIsDefault(),
-		DefinitionJSON: pb.GetDefinitionJson(),
-		ADKAppName:     pb.GetAdkAppName(),
-		CreatedAt:      pb.GetCreatedAt(),
-		UpdatedAt:      pb.GetUpdatedAt(),
-		DeletedAt:      pb.GetDeletedAt(),
+		ID:                 pb.GetId(),
+		TeamKey:            pb.GetTeamKey(),
+		DisplayName:        pb.GetDisplayName(),
+		Status:             pb.GetStatus(),
+		IsDefault:          pb.GetIsDefault(),
+		DefinitionJSON:     pb.GetDefinitionJson(),
+		ADKAppName:         pb.GetAdkAppName(),
+		CategoryIndustryID: pb.GetCategoryIndustryId(),
+		CreatedAt:          pb.GetCreatedAt(),
+		UpdatedAt:          pb.GetUpdatedAt(),
+		DeletedAt:          pb.GetDeletedAt(),
 	}
 }
 
@@ -185,7 +187,11 @@ func (s *TeamService) ListTeams(ctx context.Context, _ *v1.ListTeamsRequest) (*v
 	}
 	out := &v1.ListTeamsResponse{Items: make([]*v1.Team, 0, len(items))}
 	for i := range items {
-		out.Items = append(out.Items, toProtoTeam(items[i]))
+		pb := toProtoTeam(items[i])
+		if active, aerr := s.uc.HasActiveRun(ctx, items[i].ID); aerr == nil {
+			pb.HasActiveRun = active
+		}
+		out.Items = append(out.Items, pb)
 	}
 	return out, nil
 }
@@ -198,11 +204,12 @@ func (s *TeamService) CreateTeam(ctx context.Context, req *v1.CreateTeamRequest)
 		defJSON = biz.EnsureGraphRuntimeDefault(defJSON)
 	}
 	in := biz.Team{
-		TeamKey:        req.GetTeamKey(),
-		DisplayName:    req.GetDisplayName(),
-		Status:         req.GetStatus(),
-		DefinitionJSON: defJSON,
-		ADKAppName:     req.GetAdkAppName(),
+		TeamKey:            req.GetTeamKey(),
+		DisplayName:        req.GetDisplayName(),
+		Status:             req.GetStatus(),
+		DefinitionJSON:     defJSON,
+		ADKAppName:         req.GetAdkAppName(),
+		CategoryIndustryID: req.GetCategoryIndustryId(),
 	}
 	created, err := s.uc.Create(ctx, in)
 	if err != nil {

@@ -91,6 +91,18 @@ export function failurePolicySummary(def: TeamDefinition): string {
   return parts.length ? parts.join(" · ") : "—";
 }
 
+export function resetDefinition(target: TeamDefinition): void {
+  const fresh = defaultDefinition();
+  const optionalKeys: (keyof TeamDefinition)[] = [
+    "failure_policy", "linked_graph_id", "synthesizer_agent_id",
+    "enable_checkpoint", "team_graph_runtime", "graph",
+  ];
+  for (const key of optionalKeys) {
+    delete (target as Record<string, unknown>)[key];
+  }
+  Object.assign(target, fresh);
+}
+
 export function defaultDefinition(): TeamDefinition {
   const definition: TeamDefinition = {
     version: 1,
@@ -175,10 +187,6 @@ function templateMember(agents: Agent[], index: number, role: string, fallbackNa
     enabled: true,
     sort_order: sortOrder
   };
-}
-
-function pickAgentID(agents: Agent[], index: number) {
-  return pickAgent(agents, index)?.id ?? "";
 }
 
 function pickAgent(agents: Agent[], index: number) {
@@ -383,6 +391,9 @@ function teamDefinitionExtras(team: Team) {
 
 /** 根据成员 Agent 所属行业投票；无成员时回退 definition 中的 category / industry_id。 */
 export function inferTeamIndustryId(team: Team, agents: Agent[], categoryTree: PlatformResourceTreeNode[]): string {
+  if (team.category_industry_id && findIndustryNode(categoryTree, team.category_industry_id)) {
+    return team.category_industry_id;
+  }
   const extras = teamDefinitionExtras(team);
   if (extras.industry_id && findIndustryNode(categoryTree, extras.industry_id)) {
     return extras.industry_id;

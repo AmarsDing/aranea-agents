@@ -19,6 +19,18 @@
         style="max-width: 120px"
         @update:model-value="$emit('update:topK', Number($event) || 5)"
       />
+      <q-input
+        :model-value="minScore"
+        dense
+        outlined
+        type="number"
+        step="0.1"
+        min="0"
+        max="1"
+        label="最低相似度"
+        style="max-width: 140px"
+        @update:model-value="$emit('update:minScore', Number($event) || 0)"
+      />
       <q-btn color="primary" unelevated icon="search" label="检索" :loading="loading" @click="$emit('search')" />
     </div>
     <q-expansion-item
@@ -64,7 +76,7 @@
     <q-list v-if="results.length" bordered separator class="rounded-borders">
       <q-item v-for="chunk in results" :key="chunk.id">
         <q-item-section>
-          <q-item-label caption>score {{ chunk.score.toFixed(2) }} · chunk #{{ chunk.chunk_index }}</q-item-label>
+          <q-item-label caption>score {{ chunk.score.toFixed(2) }} · chunk #{{ chunk.chunk_index }}<template v-if="chunk.doc_id"> · {{ docSourceMap?.[chunk.doc_id] ?? chunk.doc_id.slice(0, 8) }}</template></q-item-label>
           <q-item-label class="q-mt-xs">{{ chunk.content }}</q-item-label>
         </q-item-section>
       </q-item>
@@ -75,14 +87,20 @@
 
 <script setup lang="ts">
 import type { KnowledgeChunk } from "../../features/knowledge/types";
+import {
+  KNOWLEDGE_HYBRID_MODE_OPTIONS,
+  KNOWLEDGE_REWRITE_STRATEGY_OPTIONS
+} from "../../features/knowledge/knowledgeUi";
 
 defineProps<{
   query: string;
   topK: number;
+  minScore: number;
   hybridMode: string;
   rewriteStrategy: string;
   useRerank: boolean;
   results: KnowledgeChunk[];
+  docSourceMap?: Record<string, string>;
   loading: boolean;
   searched: boolean;
 }>();
@@ -90,23 +108,13 @@ defineProps<{
 defineEmits<{
   "update:query": [value: string];
   "update:topK": [value: number];
+  "update:minScore": [value: number];
   "update:hybridMode": [value: string];
   "update:rewriteStrategy": [value: string];
   "update:useRerank": [value: boolean];
   search: [];
 }>();
 
-const hybridModeOptions = [
-  { label: "自动", value: "auto" },
-  { label: "向量检索", value: "dense" },
-  { label: "全文检索", value: "sparse" },
-  { label: "混合 (RRF)", value: "rrf" }
-];
-
-const rewriteStrategyOptions = [
-  { label: "无", value: "" },
-  { label: "HyDE", value: "hyde" },
-  { label: "查询分解", value: "decomposition" },
-  { label: "多查询", value: "multi_query" }
-];
+const hybridModeOptions = KNOWLEDGE_HYBRID_MODE_OPTIONS;
+const rewriteStrategyOptions = KNOWLEDGE_REWRITE_STRATEGY_OPTIONS;
 </script>

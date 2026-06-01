@@ -12,7 +12,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
 
@@ -59,6 +59,7 @@ type Manager struct {
 	channels   *biz.ChannelUsecase
 	handler    port.InboundHandler
 	credLookup CredentialLookup
+	lg         loggateway.Logger
 
 	mu      sync.Mutex
 	running map[string]runningInstance
@@ -68,11 +69,12 @@ type Manager struct {
 	leaseTTL  time.Duration
 }
 
-func NewManager(channels *biz.ChannelUsecase, handler port.InboundHandler, credLookup CredentialLookup) *Manager {
+func NewManager(channels *biz.ChannelUsecase, handler port.InboundHandler, credLookup CredentialLookup, lg loggateway.Logger) *Manager {
 	return &Manager{
 		channels:   channels,
 		handler:    handler,
 		credLookup: credLookup,
+		lg:         lg,
 		running:    map[string]runningInstance{},
 	}
 }
@@ -113,10 +115,11 @@ func (m *Manager) Reload(ctx context.Context) error {
 		if strings.EqualFold(cfg.Type, "feishu") {
 			if appID := feishuAppIDFromConfig(ch.ConfigJSON); appID != "" {
 				if owner, dup := appIDOwners[appID]; dup {
-					event.SysLogWarn("channel.runtime.app_id_conflict", "同 app_id 已有 enabled channel 占用 WS，跳过启动",
-						event.P("app_id", appID),
-						event.P("channel_id", ch.ID),
-						event.P("existing_channel_id", owner),
+					m.lg.Warn("同 app_id 已有 enabled channel 占用 WS，跳过启动",
+						loggateway.StepID("channel.runtime.app_id_conflict"),
+						loggateway.Str("app_id", appID),
+						loggateway.Str("channel_id", ch.ID),
+						loggateway.Str("existing_channel_id", owner),
 					)
 					continue
 				}
@@ -125,9 +128,10 @@ func (m *Manager) Reload(ctx context.Context) error {
 		}
 		creds, err := m.channels.ListCredentialsRaw(ctx, ch.ID)
 		if err != nil {
-			event.SysLogWarn("channel.runtime.credentials_fail", "Channel Runtime 读取凭据失败",
-				event.P("channel_id", ch.ID),
-				event.P("error", err.Error()),
+			m.lg.Warn("Channel Runtime 读取凭据失败",
+				loggateway.StepID("channel.runtime.credentials_fail"),
+				loggateway.Str("channel_id", ch.ID),
+				loggateway.Err(err),
 			)
 			continue
 		}
@@ -183,11 +187,12 @@ func (m *Manager) Reload(ctx context.Context) error {
 			defer close(done)
 			m.runSupervised(runCtx, chCopy, fp, st, platform, mode)
 		})
-		event.SysLogInfo("channel.runtime.connector_start", "Channel Runtime 启动连接器",
-			event.P("channel_id", chCopy.ID),
-			event.P("platform", platform),
-			event.P("receive_mode", mode),
-			event.P("fingerprint", fp),
+		m.lg.Info("Channel Runtime 启动连接器",
+			loggateway.StepID("channel.runtime.connector_start"),
+			loggateway.Str("channel_id", chCopy.ID),
+			loggateway.Str("platform", platform),
+			loggateway.Str("receive_mode", mode),
+			loggateway.Str("fingerprint", fp),
 		)
 	}
 	return nil
@@ -200,17 +205,19 @@ func (m *Manager) acquireLease(ctx context.Context, channelID, platform string) 
 	lease := biz.NewChannelRuntimeLease(channelID, platform, m.ownerID, m.leaseTTL, time.Now().UTC())
 	claimed, err := m.leaseRepo.TryAcquireRuntimeLease(ctx, lease)
 	if err != nil {
-		event.SysLogWarn("channel.runtime.lease_acquire_fail", "Channel Runtime 获取租约失败",
-			event.P("channel_id", channelID),
-			event.P("platform", platform),
-			event.P("error", err.Error()),
+		m.lg.Warn("Channel Runtime 获取租约失败",
+			loggateway.StepID("channel.runtime.lease_acquire_fail"),
+			loggateway.Str("channel_id", channelID),
+			loggateway.Str("platform", platform),
+			loggateway.Err(err),
 		)
 		return false
 	}
 	if !claimed {
-		event.SysLogInfo("channel.runtime.lease_skip", "Channel Runtime 租约被其他副本持有，跳过启动",
-			event.P("channel_id", channelID),
-			event.P("platform", platform),
+		m.lg.Info("Channel Runtime 租约被其他副本持有，跳过启动",
+			loggateway.StepID("channel.runtime.lease_skip"),
+			loggateway.Str("channel_id", channelID),
+			loggateway.Str("platform", platform),
 		)
 	}
 	return claimed
@@ -238,8 +245,9 @@ func waitRuntimeInstanceDone(done chan struct{}, timeout time.Duration) {
 	select {
 	case <-done:
 	case <-timer.C:
-		event.SysLogWarn("channel.runtime.connector_stop_timeout", "Channel Runtime 旧连接器退出超时",
-			event.P("wait_ms", timeout.Milliseconds()),
+		loggateway.Global().Warn("Channel Runtime 旧连接器退出超时",
+			loggateway.StepID("channel.runtime.connector_stop_timeout"),
+			loggateway.Any("wait_ms", timeout.Milliseconds()),
 		)
 	}
 }

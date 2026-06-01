@@ -54,6 +54,16 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) 
 	if shouldInjectCategoryResponsibility(ag) && deps.AgentCategory != nil {
 		catResp, _ = deps.AgentCategory.BuildResponsibility(ctx, ag.CategoryPositionID, ag.SystemPromptMode)
 	}
+	if indCtx := BuildIndustryContext(ctx, Deps{
+		Agents: deps.Agents, AgentUC: deps.AgentUC,
+		PositionUC: deps.PositionUC,
+	}, ag); indCtx != "" {
+		if catResp != "" {
+			catResp += "\n\n" + indCtx
+		} else {
+			catResp = indCtx
+		}
+	}
 	sys := BuildSystemPrompt(ag, files, ag.SystemPromptMode, catResp)
 	// RuntimeCapabilityCue is injected per LLM call via BeforeModel (runtime_cue_inject.go).
 	opts := []trpcllmagent.Option{

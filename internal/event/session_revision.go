@@ -3,6 +3,8 @@ package event
 import (
 	"context"
 	"strings"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 // Session run_status values for revision envelopes (M55).
@@ -50,8 +52,10 @@ func bumpAndPublishSessionRevision(ctx context.Context, bumper SessionRevisionBu
 	}
 	rev, err := bumper.BumpSessionRevision(ctx, sessionID)
 	if err != nil {
-		CtxFlowLogWarn(ctx, "session.revision.bump", "session_revision bump failed",
-			P("session_id", sessionID), P("error", err.Error()))
+		loggateway.Global().Warn("session_revision bump failed",
+			loggateway.StepID("session.revision.bump"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Err(err))
 		return
 	}
 	PublishSessionRevisionEnvelope(bus, sessionID, runID, turnID, source, rev, status)

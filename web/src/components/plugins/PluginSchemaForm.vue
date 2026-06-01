@@ -25,7 +25,7 @@
         type="number"
         dense
         outlined
-        @update:model-value="setValue(key, Number($event))"
+        @update:model-value="setValue(key, def.type === 'integer' ? Math.round(Number($event)) : Number($event))"
       />
       <q-input
         v-else-if="def.type === 'array' && stringArrayItem(def)"
@@ -70,7 +70,6 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { useQuasar } from "quasar";
 import ModelRouterRulesEditor, { type ModelRouterRulePayload } from "./ModelRouterRulesEditor.vue";
 
 type SchemaProperty = {
@@ -89,9 +88,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];
+  "validationError": [message: string];
 }>();
-
-const $q = useQuasar();
 
 const schema = computed(() => {
   try {
@@ -134,7 +132,7 @@ function getInputValue(key: string): string {
 }
 
 function setValue(key: string, val: unknown) {
-  const next = { ...data.value, [key]: val };
+  const next = { ...data.value, [key]: val === undefined ? null : val };
   emit("update:modelValue", JSON.stringify(next, null, 2));
 }
 
@@ -173,7 +171,7 @@ function setJSONField(key: string, text: string) {
     const parsed = JSON.parse(text || "[]");
     setValue(key, parsed);
   } catch {
-    $q.notify({ type: "warning", message: "JSON 格式错误" });
+    emit("validationError", "JSON 格式错误");
   }
 }
 </script>

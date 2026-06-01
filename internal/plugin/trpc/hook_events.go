@@ -32,6 +32,7 @@ func (m *Manager) dispatchHookOnEvent(
 		return e, nil
 	}
 	eventType := eventTypeLabel(e)
+	var blockedErr error
 	for _, rh := range resolved {
 		if rh.Rule.CallbackPoint != "on_event" {
 			continue
@@ -49,11 +50,15 @@ func (m *Manager) dispatchHookOnEvent(
 			defer func() { recoverHookPanic("on_event", recover(), nil) }()
 			if err := executeHookAction(ctx, stats, notifier, rh, "on_event", agentID, agentKey, "", e); err != nil {
 				if metrics.IsBlockedErr(err) {
+					blockedErr = err
 					return
 				}
 				getHookLogger().Warn("hook: non-block error suppressed", "point", "on_event", "agent_id", agentID, "error", err)
 			}
 		}()
+		if blockedErr != nil {
+			return e, blockedErr
+		}
 	}
 	return e, nil
 }

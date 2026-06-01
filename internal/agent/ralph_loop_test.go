@@ -47,6 +47,7 @@ func TestResolveRalphLoopTurn_SkipErr(t *testing.T) {
 
 func TestResolveRalphLoopTurn_OK(t *testing.T) {
 	rl := ResolveRalphLoopTurn(&biz.AgentRuntimeSettings{
+		RalphLoopMaxIterations:     3,
 		RalphLoopCompletionPromise: "DONE",
 	})
 	if rl.SkipErr != nil || rl.Config == nil {

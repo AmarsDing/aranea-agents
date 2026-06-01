@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/llmcontext"
+	"aranea-agents/pkg/loggateway"
 )
 
 // ModelConfigCatalog resolves provider/model config JSON for context window lookup.
@@ -44,11 +44,12 @@ func PatchContextFromLLMUsage(
 	}
 	win := ResolveContextWindowTokens(ctx, catalog, sess, ag, prov, mod)
 	if err := sessions.UpdateSessionContextFromLLMUsage(ctx, sessionID, promptTok, completionTok, win); err != nil {
-		event.SessionSysLogWarn(ctx, sessionID, "context.usage", "更新会话上下文用量失败",
-			event.P("error", err.Error()),
-			event.P("prompt_tokens", promptTok),
-			event.P("context_window", win),
-		)
+		loggateway.Global().Warn("更新会话上下文用量失败",
+			loggateway.StepID("context.usage"),
+			loggateway.SessionID(sessionID),
+			loggateway.Err(err),
+			loggateway.Int("prompt_tokens", promptTok),
+			loggateway.Int("context_window", win))
 	}
 	if compress != nil {
 		compress.AfterNativeTurn(ctx, sessionID, ag)

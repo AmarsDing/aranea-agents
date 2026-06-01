@@ -11,10 +11,9 @@ import (
 	"unicode/utf8"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/sessionmemory"
-	"aranea-agents/internal/event"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	servmetrics "aranea-agents/internal/metrics"
+	"aranea-agents/pkg/loggateway"
 )
 
 // autoMemoryMaxRetries is the maximum number of extraction attempts per job.
@@ -34,25 +33,27 @@ type AutoMemoryWorker struct {
 	interval     time.Duration
 	sessions     *biz.SessionUsecase
 	agents       *biz.AgentUsecase
-	memStore     *sessionmemory.Store
+	writer       biz.MemoryConsolidationWriter
 	indexSync    biz.MemoryFactIndexSyncer
 	episodeSync  biz.EpisodeIndexSyncer
 	l4           biz.L4GraphWriter
 	consolidator biz.MemoryConsolidator
 	feedback     biz.MemoryConsolidator
 	queue        memtrpc.AutoMemoryQueue
+	lg           loggateway.Logger
 }
 
 func NewAutoMemoryWorker(
 	interval time.Duration,
 	sessions *biz.SessionUsecase,
 	agents *biz.AgentUsecase,
-	memStore *sessionmemory.Store,
+	writer biz.MemoryConsolidationWriter,
 	indexSync biz.MemoryFactIndexSyncer,
 	episodeSync biz.EpisodeIndexSyncer,
 	l4 biz.L4GraphWriter,
 	consolidator biz.MemoryConsolidator,
 	queue memtrpc.AutoMemoryQueue,
+	lg loggateway.Logger,
 ) (*AutoMemoryWorker, error) {
 	if queue == nil {
 		return nil, errors.New("jobs: auto memory queue is required")
@@ -67,13 +68,14 @@ func NewAutoMemoryWorker(
 		interval:     interval,
 		sessions:     sessions,
 		agents:       agents,
-		memStore:     memStore,
+		writer:       writer,
 		indexSync:    indexSync,
 		episodeSync:  episodeSync,
 		l4:           l4,
 		consolidator: consolidator,
 		feedback:     biz.NewFeedbackConsolidator(),
 		queue:        queue,
+		lg:           lg,
 	}, nil
 }
 
@@ -130,12 +132,12 @@ func (w *AutoMemoryWorker) processWithRetry(ctx context.Context, req memtrpc.Aut
 			return
 		}
 		lastErr = err
-		event.SessionSysLogWarn(ctx, req.SessionID, "system.auto_memory.extract_fail", "自动记忆提取失败",
-			event.P("attempt", attempt+1), event.P("error", err))
+		w.lg.With(loggateway.SessionID(req.SessionID)).Warn("自动记忆提取失败",
+			loggateway.Int("attempt", attempt+1), loggateway.Err(err))
 	}
 	servmetrics.AutoMemoryJobTotal.WithLabelValues("dead").Inc()
 	biz.MemoryWorkerStatsGlobal().RecordJobDead()
-	event.SessionSysLogWarn(ctx, req.SessionID, "system.auto_memory.extract_max_retry", "自动记忆提取重试耗尽", event.P("error", lastErr))
+	w.lg.With(loggateway.SessionID(req.SessionID)).Warn("自动记忆提取重试耗尽", loggateway.Err(lastErr))
 }
 
 func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJobRequest) error {
@@ -146,8 +148,8 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 	if sid == "" {
 		return nil
 	}
-	if w.sessions == nil || w.memStore == nil || w.consolidator == nil {
-		event.SysLogDebug("system.auto_memory.extract_fail", "自动记忆跳过：未注入 sessions/memStore/consolidator", event.P("session_id", sid))
+	if w.sessions == nil || w.writer == nil || w.consolidator == nil {
+		w.lg.Debug("自动记忆跳过：未注入 sessions/writer/consolidator", loggateway.Str("session_id", sid))
 		return nil
 	}
 
@@ -198,8 +200,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 		servmetrics.AutoMemoryLLMFallbackTotal.Inc()
 		biz.MemoryWorkerStatsGlobal().RecordLLMFallback()
 		if primaryErr != nil && !errors.Is(primaryErr, biz.ErrLLMExtractorUnavailable) {
-			event.SessionSysLogWarn(ctx, sid, "system.auto_memory.llm_fallback", "LLM 记忆提取失败，已降级启发式",
-				event.P("error", primaryErr))
+			w.lg.With(loggateway.SessionID(sid)).Warn("LLM 记忆提取失败，已降级启发式", loggateway.Err(primaryErr))
 		}
 	})
 	if err != nil {
@@ -208,7 +209,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 
 	lastUserMsgID := lastUserMessageID(msgs)
 	msgIDsWithL3 := make(map[string]struct{})
-	var factInputs []sessionmemory.MemoryFactUpsert
+	var factInputs []biz.MemoryFactWrite
 	if memoryPolicy.WriteL3Facts {
 		for _, p := range proposals {
 			stmt := strings.TrimSpace(p.Statement)
@@ -222,7 +223,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 			if msgID != "" {
 				msgIDsWithL3[msgID] = struct{}{}
 			}
-			factInputs = append(factInputs, sessionmemory.MemoryFactUpsert{
+			factInputs = append(factInputs, biz.MemoryFactWrite{
 				ScopeType:       "agent",
 				ScopeID:         appName,
 				UserID:          userID,
@@ -242,7 +243,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 		}
 	}
 
-	var ep *sessionmemory.EpisodeInsert
+	var ep *biz.EpisodeWrite
 	if memoryPolicy.WriteL2Episode && len(factInputs) > 0 {
 		added := len(factInputs)
 		title := "Auto-memory consolidation"
@@ -250,7 +251,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 			title = previewText(factInputs[0].Statement, 120)
 		}
 		summary := previewText(buildEpisodeSummary(proposals, added), 500)
-		ep = &sessionmemory.EpisodeInsert{
+		ep = &biz.EpisodeWrite{
 			SessionID:      sid,
 			AgentID:        agentID,
 			UserID:         userID,
@@ -263,17 +264,16 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 		}
 	}
 
-	writeResult, err := w.memStore.UpsertFactsAndEpisodeBatch(ctx, factInputs, ep)
+	writeResult, err := w.writer.UpsertFactsAndEpisodeBatch(ctx, factInputs, ep)
 	if err != nil {
-		event.SessionSysLogWarn(ctx, sid, "system.auto_memory.extract_fail", "自动记忆巩固写入失败",
-			event.P("error", err))
+		w.lg.With(loggateway.SessionID(sid)).Warn("自动记忆巩固写入失败", loggateway.Err(err))
 		return err
 	}
 	added := writeResult.FactsWritten
 	for _, raw := range writeResult.FactRows {
 		if w.indexSync != nil {
 			if serr := w.indexSync.SyncFactIndexFromRow(ctx, raw); serr != nil {
-				event.SysLogWarn("system.auto_memory.l4_fail", "auto_memory index sync failed", event.P("error", serr.Error()))
+				w.lg.Warn("auto_memory index sync failed", loggateway.Err(serr))
 			}
 		}
 	}
@@ -304,7 +304,7 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 			}
 			n, err := w.l4.WriteFromUserText(ctx, agentID, userID, text)
 			if err != nil {
-				event.SessionSysLogWarn(ctx, sid, "system.auto_memory.l4_fail", "L4 图谱写入失败", event.P("error", err))
+				w.lg.With(loggateway.SessionID(sid)).Warn("L4 图谱写入失败", loggateway.Err(err))
 			} else {
 				l4Written += n
 			}
@@ -314,10 +314,10 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 		}
 	}
 
-	event.SessionSysLogInfo(ctx, sid, "system.auto_memory.done", "自动记忆提取完成",
-		event.P("messages_scanned", len(msgs)),
-		event.P("facts_added", added),
-		event.P("l4_entities", l4Written),
+	w.lg.With(loggateway.SessionID(sid)).Info("自动记忆提取完成",
+		loggateway.Int("messages_scanned", len(msgs)),
+		loggateway.Int("facts_added", added),
+		loggateway.Int("l4_entities", l4Written),
 	)
 	return nil
 }
@@ -330,8 +330,8 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 	if sid == "" || msgID == "" || rating == "" {
 		return nil
 	}
-	if w.sessions == nil || w.memStore == nil || w.feedback == nil {
-		event.SysLogDebug("system.auto_memory.feedback_skip", "反馈记忆跳过：未注入 sessions/memStore", event.P("session_id", sid))
+	if w.sessions == nil || w.writer == nil || w.feedback == nil {
+		w.lg.Debug("反馈记忆跳过：未注入 sessions/writer", loggateway.Str("session_id", sid))
 		return nil
 	}
 	sess, err := w.sessions.Get(ctx, sid)
@@ -369,13 +369,13 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 	if err != nil {
 		return err
 	}
-	var facts []sessionmemory.MemoryFactUpsert
+	var facts []biz.MemoryFactWrite
 	for _, p := range proposals {
 		stmt := strings.TrimSpace(p.Statement)
 		if stmt == "" {
 			continue
 		}
-		facts = append(facts, sessionmemory.MemoryFactUpsert{
+		facts = append(facts, biz.MemoryFactWrite{
 			ScopeType:       "agent",
 			ScopeID:         appName,
 			UserID:          userID,
@@ -396,19 +396,19 @@ func (w *AutoMemoryWorker) extractFeedback(ctx context.Context, req memtrpc.Auto
 	if len(facts) == 0 {
 		return nil
 	}
-	writeResult, err := w.memStore.UpsertFactsAndEpisodeBatch(ctx, facts, nil)
+	writeResult, err := w.writer.UpsertFactsAndEpisodeBatch(ctx, facts, nil)
 	if err != nil {
 		return err
 	}
 	for _, raw := range writeResult.FactRows {
 		if w.indexSync != nil {
 			if serr := w.indexSync.SyncFactIndexFromRow(ctx, raw); serr != nil {
-				event.SysLogWarn("system.auto_memory.l4_fail", "feedback_memory index sync failed", event.P("error", serr.Error()))
+				w.lg.Warn("feedback_memory index sync failed", loggateway.Err(serr))
 			}
 		}
 	}
-	event.SessionSysLogInfo(ctx, sid, "system.auto_memory.feedback_done", "反馈偏好记忆已写入",
-		event.P("message_id", msgID), event.P("rating", rating))
+	w.lg.With(loggateway.SessionID(sid)).Info("反馈偏好记忆已写入",
+		loggateway.Str("message_id", msgID), loggateway.Str("rating", rating))
 	return nil
 }
 

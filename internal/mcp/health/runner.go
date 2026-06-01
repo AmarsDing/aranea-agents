@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/mcp"
 	"aranea-agents/internal/mcp/alert"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -41,10 +41,11 @@ type Deps struct {
 type Runner struct {
 	deps Deps
 	mu   sync.Mutex
+	lg   loggateway.Logger
 }
 
-func NewRunner(deps Deps) *Runner {
-	return &Runner{deps: deps}
+func NewRunner(deps Deps, lg loggateway.Logger) *Runner {
+	return &Runner{deps: deps, lg: lg}
 }
 
 func DefaultInterval() time.Duration {
@@ -84,7 +85,7 @@ func (r *Runner) probeAll(ctx context.Context) {
 
 	servers, err := r.deps.MCP.ListMCPServers(ctx)
 	if err != nil {
-		event.SysLogError("system.mcp.health_list_fail", "MCP 健康检查列表失败", event.P("error", err))
+		r.lg.Error("MCP 健康检查列表失败", loggateway.StepID("system.mcp.health_list_fail"), loggateway.Err(err))
 		return
 	}
 	sem := make(chan struct{}, maxConcurrentProbes)
@@ -111,7 +112,7 @@ func (r *Runner) probeOne(ctx context.Context, srv biz.MCPServer) {
 	start := time.Now()
 	result, err := r.deps.UC.TestMCPServer(ctx, srv.ID)
 	if err != nil {
-		event.SysLogError("system.mcp.health_probe_fail", "MCP 健康探测失败", event.P("server_key", srv.Key), event.P("error", err))
+		r.lg.Error("MCP 健康探测失败", loggateway.StepID("system.mcp.health_probe_fail"), loggateway.Str("server_key", srv.Key), loggateway.Err(err))
 		return
 	}
 	elapsed := time.Since(start)

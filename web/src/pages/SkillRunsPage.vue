@@ -14,9 +14,11 @@
       <q-input v-model="skillId" class="app-page-toolbar__field" dense outlined clearable debounce="350" label="Skill ID" />
       <q-input v-model="agentId" class="app-page-toolbar__field" dense outlined clearable debounce="350" label="Agent ID" />
       <q-select v-model="status" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="结果" :options="statusOptions" />
-      <q-input v-model="from" class="app-page-toolbar__field" dense outlined clearable label="开始时间 ISO" />
+      <q-input v-model="from" class="app-page-toolbar__field" dense outlined clearable type="date" label="开始日期" />
+      <q-input v-model="to" class="app-page-toolbar__field" dense outlined clearable type="date" label="结束日期" />
       <template #actions>
         <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
+        <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
       </template>
     </AppPageToolbar>
 
@@ -45,6 +47,7 @@ const {
   agentId,
   status,
   from,
+  to,
   page,
   pageSize,
   rows,

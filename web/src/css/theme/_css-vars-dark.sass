@@ -1,6 +1,8 @@
 // 夜间 CSS 变量（Quasar Dark → body.body--dark）；与 UX.md §2.2 / §5.2a 对齐
 // stylelint-disable color-no-hex -- 主题变量定义文件，必须使用 hex 值
 body.body--dark
+  --q-primary: #4DD8E8
+  --q-secondary: #94A3B8
   --canvas-base: #0A1018
   --glass-surface: rgba(18, 26, 40, 0.68)
   --glass-surface-hover: rgba(22, 32, 48, 0.78)
@@ -232,3 +234,9 @@ body.body--dark
   --color-diff-removed-bg: rgba(248, 113, 113, 0.12)
   --color-diff-added: #4ade80
   --color-diff-added-bg: rgba(74, 222, 128, 0.12)
+  --table-scrollbar-thumb: rgba(148, 163, 184, 0.16)
+  --table-scrollbar-thumb-hover: rgba(148, 163, 184, 0.32)
+  --toggle-track-off: rgba(148, 163, 184, 0.18)
+  --toggle-track-on: color-mix(in srgb, var(--color-accent) 68%, var(--glass-surface))
+  --toggle-thumb-on: var(--color-accent)
+  --toggle-label-color: var(--color-text-primary)

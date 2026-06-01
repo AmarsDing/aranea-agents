@@ -26,6 +26,11 @@ const modeOptions = [
   { label: "拒绝 (deny)", value: "deny" }
 ];
 
+const effectiveStateLabels: Record<string, string> = {
+  allowed: "允许",
+  denied: "拒绝"
+};
+
 /** Agent settings: effective tools matrix + per-agent overrides (store lives here, not in components). */
 export function useAgentToolOverrides(agentId: Ref<string>) {
   const $q = useQuasar();
@@ -37,6 +42,8 @@ export function useAgentToolOverrides(agentId: Ref<string>) {
   const catalogByKey = ref<Record<string, Tool>>({});
   const editorOpen = ref(false);
   const editingRow = ref<AgentToolOverrideRow | null>(null);
+  const confirmRemoveOpen = ref(false);
+  const pendingRemoveRow = ref<AgentToolOverrideRow | null>(null);
   const form = ref<AgentToolOverrideForm>({
     mode: "inherit",
     enabled: true,
@@ -67,6 +74,10 @@ export function useAgentToolOverrides(agentId: Ref<string>) {
 
   function modeLabel(mode: string): string {
     return modeOptions.find((o) => o.value === mode)?.label ?? mode;
+  }
+
+  function effectiveStateLabel(state: string): string {
+    return effectiveStateLabels[state] ?? state;
   }
 
   async function reload() {
@@ -129,23 +140,32 @@ export function useAgentToolOverrides(agentId: Ref<string>) {
     }
   }
 
-  function removeOverride(row: AgentToolOverrideRow) {
+  function requestRemoveOverride(row: AgentToolOverrideRow) {
     const id = agentId.value?.trim();
     if (!row.override || !id) return;
-    $q.dialog({
-      title: "删除覆盖",
-      message: `确定删除 ${row.tool_key} 的 Agent 覆盖？`,
-      cancel: true,
-      persistent: true
-    }).onOk(async () => {
-      try {
-        await toolsStore.removeOverride(row.tool_id, id);
-        $q.notify({ type: "positive", message: "已删除" });
-        await reload();
-      } catch (e) {
-        $q.notify({ type: "negative", message: e instanceof Error ? e.message : "删除失败" });
-      }
-    });
+    pendingRemoveRow.value = row;
+    confirmRemoveOpen.value = true;
+  }
+
+  async function confirmRemoveOverride() {
+    const row = pendingRemoveRow.value;
+    const id = agentId.value?.trim();
+    if (!row?.override || !id) return;
+    confirmRemoveOpen.value = false;
+    try {
+      await toolsStore.removeOverride(row.tool_id, id);
+      $q.notify({ type: "positive", message: "已删除" });
+      await reload();
+    } catch (e) {
+      $q.notify({ type: "negative", message: e instanceof Error ? e.message : "删除失败" });
+    } finally {
+      pendingRemoveRow.value = null;
+    }
+  }
+
+  function cancelRemoveOverride() {
+    confirmRemoveOpen.value = false;
+    pendingRemoveRow.value = null;
   }
 
   watch(agentId, () => void reload());
@@ -158,12 +178,17 @@ export function useAgentToolOverrides(agentId: Ref<string>) {
     rows,
     editorOpen,
     editingRow,
+    confirmRemoveOpen,
+    pendingRemoveRow,
     form,
     modeOptions,
     modeLabel,
+    effectiveStateLabel,
     reload,
     openEditor,
     saveOverride,
-    removeOverride
+    requestRemoveOverride,
+    confirmRemoveOverride,
+    cancelRemoveOverride
   };
 }

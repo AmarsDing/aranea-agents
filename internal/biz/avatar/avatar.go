@@ -23,6 +23,7 @@ type Asset struct {
 	WorkspaceID   string
 	OwnerUserID   string
 	Source        string
+	Category      string
 	IsSystem      bool
 	FileSizeBytes int
 	WidthPx       int

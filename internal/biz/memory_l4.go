@@ -87,14 +87,26 @@ type L4GraphWriter interface {
 	RecordEntityReinforcement(ctx context.Context, entityID string, signal ReinforcementSignal, source string) error
 }
 
-type L4GraphRepo interface {
-	UpsertEntity(ctx context.Context, params L4EntityWrite) error
-	UpsertRelation(ctx context.Context, params L4RelationWrite) error
+type L4EntityReader interface {
 	GetEntityByScopeKey(ctx context.Context, scopeType, scopeID, entityType, nameNormalized string) (L4EntitySnapshot, bool, error)
 	GetFirstEntityByType(ctx context.Context, scopeType, scopeID, entityType string) (L4EntitySnapshot, bool, error)
+}
+
+type L4EntityWriter interface {
+	UpsertEntity(ctx context.Context, params L4EntityWrite) error
+	UpsertRelation(ctx context.Context, params L4RelationWrite) error
+}
+
+type L4DecayWriter interface {
 	ApplyConfidenceDecay(ctx context.Context, scopeType, scopeID, olderThanRFC3339 string, factor float64) (int64, error)
-	RecordEntityReinforcement(ctx context.Context, entityID string, signal ReinforcementSignal, source string) error
-	GetRecentReinforcementCounts(ctx context.Context, scopeType, scopeID string, windowDays int) (map[string]int, error)
 	ApplyBusinessConfidenceDecay(ctx context.Context, scopeType, scopeID string, cfg L4DecayConfig, nowUnixMs int64) (int64, error)
 	ArchiveLowConfidenceEntities(ctx context.Context, scopeType, scopeID string, threshold float64) (int64, error)
+	RecordEntityReinforcement(ctx context.Context, entityID string, signal ReinforcementSignal, source string) error
+	GetRecentReinforcementCounts(ctx context.Context, scopeType, scopeID string, windowDays int) (map[string]int, error)
+}
+
+type L4GraphRepo interface {
+	L4EntityReader
+	L4EntityWriter
+	L4DecayWriter
 }

@@ -6,27 +6,23 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/data"
-	"aranea-agents/internal/data/sessionmemory"
-	"aranea-agents/internal/event"
+	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 const memoryDataMigrationTimeout = 30 * time.Second
 
-// MemoryDataMigrationWorker runs one-time data migrations after HTTP is listening.
 type MemoryDataMigrationWorker struct {
-	store *sessionmemory.Store
-	log   *log.Helper
+	migrator biz.MemoryLegacyMigrator
+	lg       loggateway.Logger
 }
 
-func NewMemoryDataMigrationWorker(store *sessionmemory.Store, logger log.Logger) *MemoryDataMigrationWorker {
-	if store == nil {
+func NewMemoryDataMigrationWorker(migrator biz.MemoryLegacyMigrator, lg loggateway.Logger) *MemoryDataMigrationWorker {
+	if migrator == nil {
 		return nil
 	}
-	return &MemoryDataMigrationWorker{store: store, log: log.NewHelper(logger)}
+	return &MemoryDataMigrationWorker{migrator: migrator, lg: lg}
 }
 
 func MemoryDataMigrationDisabled() bool {
@@ -34,30 +30,24 @@ func MemoryDataMigrationDisabled() bool {
 	return v == "1" || v == "true" || v == "yes"
 }
 
-// Start runs pending migrations once in the background (post HTTP listen via kratos AfterStart).
 func (w *MemoryDataMigrationWorker) Start(ctx context.Context) {
-	if w == nil || w.store == nil {
+	if w == nil || w.migrator == nil {
 		return
 	}
 	safego.Go(ctx, "memory.data_migration", func() {
 		runCtx, cancel := context.WithTimeout(ctx, memoryDataMigrationTimeout)
 		defer cancel()
-		migrated, skipped, err := data.RunLegacyTRPCMemoryMigration(runCtx, w.store)
+		migrated, skipped, err := w.migrator.RunLegacyMigration(runCtx)
 		if err != nil {
-			event.SysLogWarn("memory.data_migration", "legacy trpc memory migration failed", event.P("error", err))
-			if w.log != nil {
-				w.log.Warnf("memory data migration failed: %v", err)
-			}
+			w.lg.Warn("legacy trpc memory migration failed", loggateway.Err(err))
 			return
 		}
 		if skipped {
-			if w.log != nil {
-				w.log.Infof("memory data migration skipped (version %d applied)", data.MigrationLegacyTRPCMemoryFacts)
-			}
+			w.lg.Info("memory data migration skipped", loggateway.Int("version", w.migrator.LegacyMigrationVersion()))
 			return
 		}
-		if migrated > 0 && w.log != nil {
-			w.log.Infof("memory data migration: migrated=%d legacy trpc_memory entities", migrated)
+		if migrated > 0 {
+			w.lg.Info("memory data migration completed", loggateway.Int("migrated", migrated))
 		}
 	})
 }

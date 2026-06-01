@@ -11,6 +11,7 @@ import (
 	agentv1 "aranea-agents/api/kratos/agent/v1"
 	agentcategoryv1 "aranea-agents/api/kratos/agent_category/v1"
 	airefinev1 "aranea-agents/api/kratos/ai_refine/v1"
+	industryv1 "aranea-agents/api/kratos/industry/v1"
 	artifactv1 "aranea-agents/api/kratos/artifact/v1"
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
 	channelv1 "aranea-agents/api/kratos/channel/v1"
@@ -114,6 +115,7 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	ecosystemv1.RegisterEcosystemServiceHTTPServer(srv, s.Ecosystem)
 	eventv1.RegisterEventServiceHTTPServer(srv, s.Event)
 	gatewayv1.RegisterGatewayServiceHTTPServer(srv, s.Gateway)
+	industryv1.RegisterIndustryServiceHTTPServer(srv, s.Industry)
 }
 
 // registerCustomRoutes registers cross-cutting operational routes that bypass proto

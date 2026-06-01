@@ -8,10 +8,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	"github.com/go-kratos/kratos/v2/log"
 )
 
 const (
@@ -24,10 +22,10 @@ type MemoryL4DecayWorker struct {
 	l4       biz.L4GraphWriter
 	agents   *biz.AgentUsecase
 	cfg      biz.L4DecayConfig
-	log      *log.Helper
+	lg       loggateway.Logger
 }
 
-func NewMemoryL4DecayWorker(interval time.Duration, l4 biz.L4GraphWriter, agents *biz.AgentUsecase, logger log.Logger) *MemoryL4DecayWorker {
+func NewMemoryL4DecayWorker(interval time.Duration, l4 biz.L4GraphWriter, agents *biz.AgentUsecase, lg loggateway.Logger) *MemoryL4DecayWorker {
 	if interval <= 0 {
 		interval = memoryL4DecayDefaultInterval
 	}
@@ -41,7 +39,7 @@ func NewMemoryL4DecayWorker(interval time.Duration, l4 biz.L4GraphWriter, agents
 		l4:       l4,
 		agents:   agents,
 		cfg:      biz.DefaultL4DecayConfig(),
-		log:      log.NewHelper(logger),
+		lg:       lg,
 	}
 }
 
@@ -69,10 +67,7 @@ func (w *MemoryL4DecayWorker) runOnce(ctx context.Context) {
 		}
 		targets, err := w.agents.ListMemoryMaintenanceTargets(ctx)
 		if err != nil {
-			event.SysLogWarn("memory.l4_decay", "L4 maintenance target list failed", event.P("error", err))
-			if w.log != nil {
-				w.log.Warnf("memory l4 decay: list targets: %v", err)
-			}
+			w.lg.Warn("L4 maintenance target list failed", loggateway.Err(err))
 			return
 		}
 		var totalDecayed, totalArchived, totalAgents int
@@ -85,8 +80,8 @@ func (w *MemoryL4DecayWorker) runOnce(ctx context.Context) {
 			totalArchived += result.Archived
 			totalAgents++
 		}
-		if totalAgents > 0 && w.log != nil {
-			w.log.Debugf("memory l4 decay: %d agents, %d decayed, %d archived", totalAgents, totalDecayed, totalArchived)
+		if totalAgents > 0 {
+			w.lg.Debug("memory l4 decay completed", loggateway.Int("agents", totalAgents), loggateway.Int("decayed", totalDecayed), loggateway.Int("archived", totalArchived))
 		}
 	})
 }

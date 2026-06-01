@@ -2,7 +2,6 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue"
 import { useQuasar } from "quasar";
 import { useRoute, useRouter } from "vue-router";
 import type { CheckpointInfo, GraphDefinition, GraphExecution } from "./types";
-import { formatTime, stepIcon, stepColor } from "./utils";
 import { useGraphStore } from "../../stores/graph";
 import { useGraphTimeTravel } from "./runtime/useGraphTimeTravel";
 import { useGraphRunStream } from "./runtime/useGraphRunStream";
@@ -177,6 +176,19 @@ export function useGraphRunPage() {
     }
   }
 
+  async function onRestoreCheckpoint(_checkpoint: CheckpointInfo) {
+    try {
+      const result = await timeTravel.applyEditState();
+      if (result) {
+        $q.notify({ type: "positive", message: `已回退至检查点 ${result.newCheckpointId}` });
+        await timeTravel.loadCheckpoints();
+        await refreshExecution();
+      }
+    } catch (err) {
+      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "回退检查点失败" });
+    }
+  }
+
   function updateStatePatchJson(value: string) {
     timeTravel.statePatchJson.value = value;
   }
@@ -190,6 +202,59 @@ export function useGraphRunPage() {
   function goBack() {
     router.push({ name: "graphs" });
   }
+
+  const progressCompleted = computed(() => {
+    let count = 0;
+    for (const state of stream.execNodeStates.value.values()) {
+      if (state.status === "completed") count++;
+    }
+    return count;
+  });
+
+  const progressRunning = computed(() => {
+    let count = 0;
+    for (const state of stream.execNodeStates.value.values()) {
+      if (state.status === "running") count++;
+    }
+    return count;
+  });
+
+  const progressWaiting = computed(() => {
+    let count = 0;
+    for (const state of stream.execNodeStates.value.values()) {
+      if (state.status === "waiting" || state.status === "idle") count++;
+    }
+    return count;
+  });
+
+  const progressTotal = computed(() => {
+    const fromStates = stream.execNodeStates.value.size;
+    const fromDef = graphDef.nodes?.length ?? 0;
+    return Math.max(fromStates, fromDef);
+  });
+
+  const progressPercent = computed(() => {
+    if (progressTotal.value === 0) return 0;
+    return Math.round((progressCompleted.value / progressTotal.value) * 100);
+  });
+
+  const progressStepLabel = computed(() => {
+    if (stream.executionSummary.value?.totalSteps) {
+      return `Step ${progressCompleted.value}/${stream.executionSummary.value.totalSteps}`;
+    }
+    if (progressTotal.value > 0) {
+      return `Step ${progressCompleted.value}/${progressTotal.value}`;
+    }
+    return "";
+  });
+
+  const progressDurationSec = computed(() => {
+    const ms = stream.executionSummary.value?.durationMs;
+    if (ms && ms > 0) return (ms / 1000).toFixed(1);
+    return "";
+  });
+
+  const showProgressBar = computed(() => stream.execNodeStates.value.size > 0);
 
   return {
     isDark,
@@ -219,6 +284,7 @@ export function useGraphRunPage() {
     checkpoints: timeTravel.checkpoints,
     checkpointsLoading: timeTravel.checkpointsLoading,
     selectedCheckpoint: timeTravel.selectedCheckpoint,
+    stateSnapshot: timeTravel.stateSnapshot,
     statePatchJson: timeTravel.statePatchJson,
     snapshotLoading: timeTravel.snapshotLoading,
     editLoading: timeTravel.editLoading,
@@ -226,12 +292,12 @@ export function useGraphRunPage() {
     stepIndex: timeTravel.stepIndexInput,
     onSelectNode,
     confirmCancelExec,
-    cancelExec,
     resumeExec: hitl.resumeExec,
     submitHitlResume: hitl.submitHitlResume,
     onSelectCheckpoint,
     onTimeTravel,
     onApplyEditState,
+    onRestoreCheckpoint,
     loadTasks: () => tasks.loadTasks(execId.value),
     timeTravelLoadCheckpoints: timeTravel.loadCheckpoints,
     updateStatePatchJson,
@@ -245,9 +311,13 @@ export function useGraphRunPage() {
     onAddTaskComment: tasks.onAddTaskComment,
     onKanbanAdminAction: tasks.onKanbanAdminAction,
     inspectorTab,
-    stepIcon,
-    stepColor,
-    formatTime,
     goBack,
+    progressCompleted,
+    progressRunning,
+    progressWaiting,
+    progressPercent,
+    progressStepLabel,
+    progressDurationSec,
+    showProgressBar,
   };
 }

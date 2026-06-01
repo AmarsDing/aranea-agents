@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 type RootCauseRule struct {
@@ -45,21 +45,23 @@ type RootCauseResult struct {
 
 type RootCauseEngine struct {
 	rules []RootCauseRule
+	lg    loggateway.Logger
 }
 
-func NewRootCauseEngine() *RootCauseEngine {
+func NewRootCauseEngine(lg loggateway.Logger) *RootCauseEngine {
 	rules := builtinRootCauseRules()
 	for i := range rules {
 		if p := rules[i].Condition.Pattern; p != "" {
 			if re, err := regexp.Compile(p); err == nil {
 				rules[i].Condition.compiledPattern = re
 			} else {
-				event.SysLogError("system.monitor.root_cause_regex_fail", "NewRootCauseEngine: regexp.Compile failed",
-					event.P("rule_id", rules[i].ID), event.P("pattern", p), event.P("error", err.Error()))
+				lg.Error("NewRootCauseEngine: regexp.Compile failed",
+					loggateway.StepID("system.monitor.root_cause_regex_fail"),
+					loggateway.Str("rule_id", rules[i].ID), loggateway.Str("pattern", p), loggateway.Err(err))
 			}
 		}
 	}
-	return &RootCauseEngine{rules: rules}
+	return &RootCauseEngine{rules: rules, lg: lg}
 }
 
 func (e *RootCauseEngine) Evaluate(ctx context.Context, stepID, phase string, metadata map[string]any) []RootCauseResult {

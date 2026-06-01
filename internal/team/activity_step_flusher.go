@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
 	"github.com/google/uuid"
@@ -103,8 +103,10 @@ func (f *ActivityStepFlusher) loop() {
 		pending = pending[:0]
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if berr := f.repo.BatchCreateOrchestrationSteps(ctx, batch); berr != nil {
-			event.CtxFlowLogWarn(ctx, "team.step.batch_fail", "BatchCreateOrchestrationSteps failed",
-				event.P("batch_size", len(batch)), event.P("error", berr.Error()))
+			loggateway.Global().Warn("BatchCreateOrchestrationSteps failed",
+				loggateway.StepID("team.step.batch_fail"),
+				loggateway.Int("batch_size", len(batch)),
+				loggateway.Err(berr))
 		}
 		cancel()
 	}

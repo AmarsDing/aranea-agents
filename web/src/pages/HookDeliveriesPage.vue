@@ -1,21 +1,18 @@
 <template>
   <q-page class="app-standard-page app-registry-page hook-deliveries-page">
-    <section class="row items-center justify-between q-mb-md">
-      <div>
-        <div class="text-caption text-primary text-weight-bold">Hook notify</div>
-        <h1 class="text-h4 q-my-xs">Webhook 投递队列</h1>
-        <p class="text-grey-7 q-mb-none">
-          查看 Hook <code>notify</code> 动作的异步投递状态（queued → pending/success/failed）。
-        </p>
-      </div>
-      <div class="row q-gutter-sm">
-        <q-btn outline rounded icon="rule" label="Hook 规则" to="/hooks" />
-        <q-btn outline rounded icon="history" label="阻断/错误记录" to="/plugins/runs" />
-      </div>
-    </section>
+    <AppPageHero
+      :kicker="t('hooksPage.deliveries.kicker')"
+      :title="t('hooksPage.deliveries.title')"
+      :subtitle="t('hooksPage.deliveries.subtitle')"
+    >
+      <template #actions>
+        <q-btn outline rounded no-caps icon="rule" :label="t('hooksPage.deliveries.btnHookRules')" to="/hooks" />
+        <q-btn outline rounded no-caps icon="history" :label="t('hooksPage.deliveries.btnBlockErrors')" to="/plugins/runs" />
+      </template>
+    </AppPageHero>
 
     <AppPageToolbar>
-      <q-input v-model="hookKey" class="app-page-toolbar__field" dense outlined clearable debounce="350" label="Hook Key" @update:model-value="onFilterChange" />
+      <q-input v-model="hookKey" class="app-page-toolbar__field" dense outlined clearable debounce="350" :label="t('hooksPage.deliveries.filterHookKey')" @update:model-value="onFilterChange" />
       <q-select
         v-model="status"
         class="app-page-toolbar__field"
@@ -24,76 +21,85 @@
         clearable
         emit-value
         map-options
-        label="状态"
+        :label="t('hooksPage.deliveries.filterStatus')"
         :options="statusOptions"
         @update:model-value="onFilterChange"
       />
-      <q-input v-model="from" class="app-page-toolbar__field" dense outlined clearable type="datetime-local" label="起始时间" @update:model-value="onFilterChange" />
-      <q-input v-model="to" class="app-page-toolbar__field" dense outlined clearable type="datetime-local" label="结束时间" @update:model-value="onFilterChange" />
+      <q-input v-model="from" class="app-page-toolbar__field" dense outlined clearable type="datetime-local" :label="t('hooksPage.deliveries.filterFrom')" @update:model-value="onFilterChange" />
+      <q-input v-model="to" class="app-page-toolbar__field" dense outlined clearable type="datetime-local" :label="t('hooksPage.deliveries.filterTo')" @update:model-value="onFilterChange" />
       <template #actions>
-        <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
-        <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="() => loadRows()" />
+        <q-btn flat rounded no-caps icon="restart_alt" :label="t('hooksPage.deliveries.btnReset')" @click="resetFilters" />
+        <q-btn flat rounded no-caps icon="refresh" :label="t('hooksPage.deliveries.btnRefresh')" :loading="loading" @click="() => loadRows()" />
       </template>
     </AppPageToolbar>
 
-    <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
+    <q-banner v-if="error" rounded class="app-page-error-banner q-mb-md">
       {{ error }}
       <template #action>
-        <q-btn flat color="white" label="重试" @click="() => loadRows()" />
+        <q-btn flat dense :label="t('hooksPage.deliveries.retry')" class="text-white" @click="() => loadRows()" />
       </template>
     </q-banner>
 
-    <AppRegistryTable
-      :rows="rows"
-      :columns="columns"
-      row-key="id"
-      :loading="loading"
-      hide-pagination
-      :pagination="{ rowsPerPage: 0 }"
-    >
-      <template #body-cell-hook_key="props">
-        <q-td :props="props">
-          <AppRegistryHoverTip :text="props.row.webhook_url" empty-label="暂无 URL">
-            <span class="app-registry-cell-primary ellipsis">{{ props.row.hook_key }}</span>
-          </AppRegistryHoverTip>
-        </q-td>
-      </template>
-      <template #body-cell-status="props">
-        <q-td :props="props">
-          <AppRegistryHoverTip :text="props.row.payload_json" :indicator="Boolean(String(props.row.payload_json ?? '').trim())">
-            <q-chip
-              dense
-              :color="statusColor(props.row.status)"
-              text-color="white"
-              class="cursor-pointer"
-              @click="openDetail(props.row)"
-            >
-              {{ props.row.status }}
-            </q-chip>
-          </AppRegistryHoverTip>
-        </q-td>
-      </template>
-    </AppRegistryTable>
+    <div class="app-registry-table-shell">
+      <AppRegistryTable
+        :rows="rows"
+        :columns="columns"
+        row-key="id"
+        :loading="loading"
+        hide-pagination
+        :pagination="{ rowsPerPage: 0 }"
+      >
+        <template #body-cell-hook_key="props">
+          <q-td :props="props">
+            <AppRegistryHoverTip :text="props.row.webhook_url" :empty-label="t('hooksPage.deliveries.noUrl')">
+              <span class="app-registry-cell-primary ellipsis">{{ props.row.hook_key }}</span>
+            </AppRegistryHoverTip>
+          </q-td>
+        </template>
+        <template #body-cell-status="props">
+          <q-td :props="props">
+            <AppRegistryHoverTip :text="props.row.payload_json" :indicator="Boolean(String(props.row.payload_json ?? '').trim())">
+              <q-chip
+                dense
+                :color="statusColor(props.row.status)"
+                text-color="white"
+                class="cursor-pointer"
+                @click="openDetail(props.row)"
+              >
+                {{ props.row.status }}
+              </q-chip>
+            </AppRegistryHoverTip>
+          </q-td>
+        </template>
+      </AppRegistryTable>
 
-    <AppRegistryPagination
-      v-model:page="page"
-      v-model:page-size="pageSize"
-      :page-max="pageMax"
-      :total="total"
-      :loading="loading"
-      label="条投递"
-    />
+      <AppRegistryPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :page-max="pageMax"
+        :total="total"
+        :loading="loading"
+        :label="t('hooksPage.deliveries.paginationLabel')"
+      />
+    </div>
 
     <q-dialog v-model="detailOpen">
-      <q-card class="app-dialog-card app-dialog-card--sm">
-        <q-card-section class="text-h6">投递详情</q-card-section>
-        <q-card-section class="app-dialog-body q-pt-none">
-          <div class="text-caption text-grey-7">{{ detailUrl }}</div>
-          <pre class="hook-delivery-detail app-code-block">{{ detailText }}</pre>
-          <div v-if="detailError" class="text-negative q-mt-sm">{{ detailError }}</div>
+      <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
+        <q-card-section class="app-glass-dialog__head row items-center justify-between">
+          <div class="app-glass-dialog__title">{{ t('hooksPage.deliveries.dialogTitle') }}</div>
+          <q-btn flat round dense icon="close" v-close-popup />
         </q-card-section>
-        <q-card-actions align="right" class="app-actions-bar">
-          <q-btn flat no-caps label="关闭" v-close-popup />
+        <q-separator />
+        <div class="app-glass-dialog__scroll">
+          <q-card-section class="app-dialog-body app-glass-dialog__body">
+            <div class="text-caption text-grey">{{ detailUrl }}</div>
+            <pre class="hook-delivery-detail app-code-block">{{ detailText }}</pre>
+            <div v-if="detailError" class="text-negative q-mt-sm">{{ detailError }}</div>
+          </q-card-section>
+        </div>
+        <q-separator />
+        <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
+          <q-btn flat no-caps :label="t('hooksPage.deliveries.btnClose')" v-close-popup />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -102,59 +108,59 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import { storeToRefs } from "pinia";
 import { useRoute } from "vue-router";
+import { useI18n } from "vue-i18n";
+import AppPageHero from "../components/layout/AppPageHero.vue";
 import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
 import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
 import AppRegistryHoverTip from "../components/layout/AppRegistryHoverTip.vue";
 import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
 
-import { listHookDeliveries, type HookDeliveryRow } from "../features/hooks/deliveries";
-import { HOOK_DELIVERY_TABLE_COLUMNS } from "../components/hooks/hookTableUi";
+import { createHookDeliveryTableColumns } from "../components/hooks/hookTableUi";
+import type { HookDeliveryRow } from "../features/hooks/deliveries";
+import { useHooksStore } from "../stores/hooks";
 
+const { t } = useI18n();
 const route = useRoute();
+const hooksStore = useHooksStore();
+const { deliveries: rows, deliveriesTotal: total, deliveriesLoading: loading } = storeToRefs(hooksStore);
+
 const hookKey = ref("");
 const status = ref("");
 const from = ref("");
 const to = ref("");
-const rows = ref<HookDeliveryRow[]>([]);
-const loading = ref(false);
 const error = ref("");
 const page = ref(1);
 const pageSize = ref(20);
-const total = ref(0);
 const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 const detailOpen = ref(false);
 const detailText = ref("");
 const detailUrl = ref("");
 const detailError = ref("");
 
-const statusOptions = [
-  { label: "pending", value: "pending" },
-  { label: "success", value: "success" },
-  { label: "failed", value: "failed" }
-];
+const statusOptions = ["pending", "success", "failed"];
 
-const columns = HOOK_DELIVERY_TABLE_COLUMNS;
+const columns = createHookDeliveryTableColumns(t);
 
 function statusColor(st: string) {
   if (st === "failed") return "negative";
   if (st === "success") return "positive";
-  return "grey-7";
+  return "grey";
 }
 
 function toRFC3339(local: string): string | undefined {
-  const t = local.trim();
-  if (!t) return undefined;
-  const d = new Date(t);
+  const val = local.trim();
+  if (!val) return undefined;
+  const d = new Date(val);
   if (Number.isNaN(d.getTime())) return undefined;
   return d.toISOString();
 }
 
 async function loadRows(nextPage = page.value, nextPageSize = pageSize.value) {
-  loading.value = true;
   error.value = "";
   try {
-    const data = await listHookDeliveries({
+    await hooksStore.loadDeliveries({
       hook_key: hookKey.value.trim() || undefined,
       status: status.value || undefined,
       from: toRFC3339(from.value),
@@ -162,12 +168,8 @@ async function loadRows(nextPage = page.value, nextPageSize = pageSize.value) {
       page: nextPage,
       page_size: nextPageSize
     });
-    rows.value = data.items;
-    total.value = data.total;
   } catch (err) {
-    error.value = err instanceof Error ? err.message : "加载投递记录失败";
-  } finally {
-    loading.value = false;
+    error.value = err instanceof Error ? err.message : t("hooksPage.deliveries.loadFailed");
   }
 }
 

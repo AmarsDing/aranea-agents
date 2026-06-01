@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"testing"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 type memGraphRunRepo struct {
@@ -38,7 +40,7 @@ func (m *memGraphRunRepo) UpdateRun(_ context.Context, exec *GraphExecution) err
 
 func TestRegisterTeamGraphExecution_andInterrupt(t *testing.T) {
 	repo := &memGraphRunRepo{runs: map[string]*GraphExecution{}}
-	uc := NewGraphUsecase(nil, repo, nil, nil)
+	uc := NewGraphUsecase(nil, repo, nil, nil, loggateway.NewNoop())
 	cfg := GraphBuildConfig{
 		Nodes: []NodeDef{{ID: "review-1", Type: "review", InterruptAfter: true}},
 		EntryPoint: "review-1", FinishPoint: "review-1",

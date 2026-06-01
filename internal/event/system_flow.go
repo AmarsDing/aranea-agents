@@ -60,36 +60,50 @@ func pairsToMap(extra []Pair) map[string]any {
 }
 
 // SysLogInfo emits a system-domain informational flow log.
+//
+// Deprecated: use loggateway.Logger.Info(msg, loggateway.StepID(stepID), ...) instead.
 func SysLogInfo(stepID, message string, extra ...Pair) {
 	emitSystem(context.Background(), "", "", stepID, FlowPhaseDone, FlowSeverityInfo, message, extra)
 }
 
 // SysLogWarn emits a system-domain warning flow log.
+//
+// Deprecated: use loggateway.Logger.Warn(msg, loggateway.StepID(stepID), ...) instead.
 func SysLogWarn(stepID, message string, extra ...Pair) {
 	emitSystem(context.Background(), "", "", stepID, FlowPhaseDone, FlowSeverityWarn, message, extra)
 }
 
 // SysLogError emits a system-domain error flow log.
+//
+// Deprecated: use loggateway.Logger.Error(msg, loggateway.StepID(stepID), ...) instead.
 func SysLogError(stepID, message string, extra ...Pair) {
 	emitSystem(context.Background(), "", "", stepID, FlowPhaseError, FlowSeverityError, message, extra)
 }
 
 // SysLogDebug emits a low-noise debug flow log (info severity, skip Monitor highlight).
+//
+// Deprecated: use loggateway.Logger.Debug(msg, loggateway.StepID(stepID), ...) instead.
 func SysLogDebug(stepID, message string, extra ...Pair) {
 	emitSystem(context.Background(), "", "", stepID, FlowPhaseStart, FlowSeverityInfo, message, extra)
 }
 
 // SessionSysLogWarn attaches session context for Monitor filtering.
+//
+// Deprecated: use lg.With(loggateway.SessionID(sessionID)).Warn(msg, loggateway.StepID(stepID), ...) instead.
 func SessionSysLogWarn(ctx context.Context, sessionID, stepID, message string, extra ...Pair) {
 	emitSystem(ctx, sessionID, "", stepID, FlowPhaseDone, FlowSeverityWarn, message, extra)
 }
 
 // SessionSysLogInfo emits an ok-severity flow log scoped to a session.
+//
+// Deprecated: use lg.With(loggateway.SessionID(sessionID)).Info(msg, loggateway.StepID(stepID), ...) instead.
 func SessionSysLogInfo(ctx context.Context, sessionID, stepID, message string, extra ...Pair) {
 	emitSystem(ctx, sessionID, "", stepID, FlowPhaseDone, FlowSeverityOK, message, extra)
 }
 
 // SessionSysLogError emits an error-severity flow log scoped to a session.
+//
+// Deprecated: use lg.With(loggateway.SessionID(sessionID)).Error(msg, loggateway.StepID(stepID), ...) instead.
 func SessionSysLogError(ctx context.Context, sessionID, stepID, message string, extra ...Pair) {
 	emitSystem(ctx, sessionID, "", stepID, FlowPhaseError, FlowSeverityError, message, extra)
 }

@@ -1,7 +1,7 @@
 <template>
   <div class="app-flow-trace-panel flow-trace-panel">
     <div v-if="!sortedLines.length" class="text-caption text-grey-7 q-pa-md">
-      No flow logs yet. Keep this detail open and run a chat turn, or use the Logs tab for the global stream.
+      暂无流程日志。保持详情打开并运行一次对话，或在日志 Tab 查看全局流。
     </div>
     <div
       v-for="line in sortedLines"

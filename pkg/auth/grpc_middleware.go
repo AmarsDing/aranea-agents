@@ -2,9 +2,9 @@ package auth
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"strings"
+
+	"aranea-agents/pkg/loggateway"
 
 	"github.com/go-kratos/kratos/v2/middleware"
 	"google.golang.org/grpc/metadata"
@@ -25,21 +25,22 @@ func GRPCMiddleware() middleware.Middleware {
 		return func(ctx context.Context, req interface{}) (interface{}, error) {
 			// Bypass mode: inject dev principal and continue.
 			if HTTPAuthBypassEnabled() {
+				loggateway.Global().Warn("auth bypass active: injecting dev principal (gRPC)",
+					loggateway.StepID("system.auth.bypass"))
 				return handler(NewContext(ctx, DevBypassPrincipal()), req)
 			}
 
-			// Try to read Bearer token from gRPC metadata.
 			token := grpcBearerToken(ctx)
 			if token == "" {
-				// No auth credentials – allow with a debug log.
-				// Note: gRPC port should be internal-only (not exposed to internet).
-				fmt.Fprintln(os.Stderr, "[flow][system] system.grpc.unauthenticated: gRPC request without credentials (internal-only until M2)")
-				_ = os.Stderr.Sync()
+				loggateway.Global().Info("gRPC request without credentials (internal-only)",
+					loggateway.StepID("system.grpc.unauthenticated"))
 				return handler(ctx, req)
 			}
 
 			auth, err := ParseToken(token, authSecretKey)
 			if err != nil {
+				loggateway.Global().Warn("gRPC auth rejected: token parse failed",
+					loggateway.StepID("system.grpc.token_invalid"), loggateway.Err(err))
 				return nil, ErrUnauthorized
 			}
 			return handler(NewContext(ctx, auth), req)

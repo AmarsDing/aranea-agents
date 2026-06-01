@@ -51,6 +51,8 @@ func toProtoSession(s biz.Session) *v1.Session {
 		LastModel:                  s.LastModel,
 		LastContextWindowTokens:    int32(s.LastContextWindowTokens),
 		Status:                     s.Status,
+		StatusReason:               s.StatusReason,
+		StatusChangedAt:            s.StatusChangedAt,
 		Visibility:                 s.Visibility,
 		MessageCount:               int32(s.MessageCount),
 		RunCount:                   int32(s.RunCount),
