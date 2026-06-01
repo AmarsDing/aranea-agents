@@ -1,9 +1,9 @@
 {
-  "synced_at": "2026-05-29T07:49:48Z",
-  "etag": "W/\"cb5e38cebfa716e8c38b867bea09b155\"",
-  "sha256": "cb5e38cebfa716e8c38b867bea09b1552c75c6a598c40a118674f7f089194289",
+  "synced_at": "2026-06-01T00:53:25Z",
+  "etag": "W/\"e13aab31f4f45a44b0757318ffab9f64\"",
+  "sha256": "e13aab31f4f45a44b0757318ffab9f644923507a3e0097086a8ac1e55398c325",
   "source_url": "https://models.dev/api.json",
-  "provider_count": 136,
-  "model_count": 4965,
-  "bytes": 2079763
+  "provider_count": 137,
+  "model_count": 4967,
+  "bytes": 2080122
 }
