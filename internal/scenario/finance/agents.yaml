@@ -1,0 +1,338 @@
+defaults:
+  provider: openrouter
+  fast_model: gpt-4.1-mini
+  strong_model: gpt-4.1
+  tools_deny: [workspace_exec, filesystem, shell, bash]
+  system_prompt_mode: file
+  context_window: 64000
+
+agents:
+  - key: technical-analyst-general
+    position_key: technical_analyst
+    variant: general
+    model_tier: fast
+    skills: [finance-technical-analysis]
+
+  - key: fundamental-analyst-general
+    position_key: fundamental_analyst
+    variant: general
+    model_tier: strong
+    skills: [finance-fundamental-analysis]
+
+  - key: money-flow-analyst-general
+    position_key: money_flow_analyst
+    variant: general
+    model_tier: fast
+
+  - key: news-analyst-general
+    position_key: news_analyst
+    variant: general
+    model_tier: fast
+
+  - key: sentiment-analyst-general
+    position_key: sentiment_analyst
+    variant: general
+    model_tier: fast
+
+  - key: industry-analyst-general
+    position_key: industry_analyst
+    variant: general
+    model_tier: fast
+
+  - key: risk-assessor-general
+    position_key: risk_assessor
+    variant: general
+    model_tier: fast
+    skills: [finance-risk-management]
+
+  - key: quant-researcher-backtest
+    position_key: quant_researcher
+    variant: backtest
+    model_tier: fast
+    skills: [finance-quant-strategy]
+    code_executor: local
+    tools_parallel: true
+
+  - key: quant-researcher-factor
+    position_key: quant_researcher
+    variant: factor
+    model_tier: strong
+    skills: [finance-quant-strategy]
+    code_executor: local
+    tools_parallel: true
+
+  - key: quant-researcher-ml-alpha
+    position_key: quant_researcher
+    variant: ml_alpha
+    model_tier: fast
+    skills: [finance-quant-strategy]
+    code_executor: local
+    tools_parallel: true
+
+  - key: quant-researcher-portfolio
+    position_key: quant_researcher
+    variant: portfolio
+    model_tier: strong
+    skills: [finance-quant-strategy]
+    code_executor: local
+    tools_parallel: true
+
+  - key: data-collector-general
+    position_key: data_collector
+    variant: general
+    model_tier: fast
+
+  - key: report-writer-general
+    position_key: report_writer
+    variant: general
+    model_tier: strong
+
+  - key: trading-coordinator-premarket
+    position_key: trading_coordinator
+    variant: premarket
+    model_tier: strong
+
+  - key: trading-coordinator-intraday
+    position_key: trading_coordinator
+    variant: intraday
+    model_tier: strong
+
+  - key: quant-developer-data-pipeline
+    position_key: quant_developer
+    variant: data_pipeline
+    model_tier: fast
+
+  - key: quant-developer-research-platform
+    position_key: quant_developer
+    variant: research_platform
+    model_tier: fast
+
+  - key: quant-developer-trading-system
+    position_key: quant_developer
+    variant: trading_system
+    model_tier: fast
+
+  - key: algo-trading-engineer-execution-algo
+    position_key: algo_trading_engineer
+    variant: execution_algo
+    model_tier: fast
+    skills: [finance-market-microstructure]
+    code_executor: local
+    tools_parallel: true
+
+  - key: algo-trading-engineer-market-making
+    position_key: algo_trading_engineer
+    variant: market_making
+    model_tier: fast
+    skills: [finance-market-microstructure]
+    code_executor: local
+    tools_parallel: true
+
+  - key: low-latency-engineer-kernel-tuning
+    position_key: low_latency_engineer
+    variant: kernel_tuning
+    model_tier: fast
+
+  - key: low-latency-engineer-network-opt
+    position_key: low_latency_engineer
+    variant: network_opt
+    model_tier: fast
+
+  - key: quant-devops-operations
+    position_key: quant_devops
+    variant: operations
+    model_tier: fast
+
+  - key: fixed-income-analyst-bond-analysis
+    position_key: fixed_income_analyst
+    variant: bond_analysis
+    model_tier: fast
+
+  - key: fixed-income-analyst-credit-rating
+    position_key: fixed_income_analyst
+    variant: credit_rating
+    model_tier: fast
+
+  - key: derivatives-pricer-futures-strategy
+    position_key: derivatives_pricer
+    variant: futures_strategy
+    model_tier: fast
+    skills: [finance-derivatives-pricing]
+
+  - key: derivatives-pricer-options-pricing
+    position_key: derivatives_pricer
+    variant: options_pricing
+    model_tier: fast
+    skills: [finance-derivatives-pricing]
+
+  - key: compliance-officer-regulatory
+    position_key: compliance_officer
+    variant: regulatory
+    model_tier: fast
+    skills: [finance-compliance-check]
+
+  - key: risk-manager-credit-risk
+    position_key: risk_manager
+    variant: credit_risk
+    model_tier: fast
+    skills: [finance-risk-management]
+
+  - key: risk-manager-market-risk
+    position_key: risk_manager
+    variant: market_risk
+    model_tier: fast
+    skills: [finance-risk-management]
+
+  - key: aml-specialist-anti-money-laundering
+    position_key: aml_specialist
+    variant: anti_money_laundering
+    model_tier: fast
+
+  - key: investment-advisor-client-profiling
+    position_key: investment_advisor
+    variant: client_profiling
+    model_tier: fast
+
+  - key: investment-advisor-portfolio-advice
+    position_key: investment_advisor
+    variant: portfolio_advice
+    model_tier: fast
+
+  - key: asset-allocator-strategic-allocation
+    position_key: asset_allocator
+    variant: strategic_allocation
+    model_tier: fast
+    skills: [finance-portfolio-optimization]
+
+  - key: client-profiler-wealth-profiling
+    position_key: client_profiler
+    variant: wealth_profiling
+    model_tier: fast
+
+  - key: fintech-product-manager-product-design
+    position_key: fintech_product_manager
+    variant: product_design
+    model_tier: fast
+
+  - key: financial-data-engineer-data-pipeline
+    position_key: financial_data_engineer
+    variant: data_pipeline
+    model_tier: fast
+
+  - key: financial-data-engineer-real-time-feed
+    position_key: financial_data_engineer
+    variant: real_time_feed
+    model_tier: fast
+
+  - key: blockchain-analyst-crypto-analysis
+    position_key: blockchain_analyst
+    variant: crypto_analysis
+    model_tier: fast
+
+teams:
+  - key: team-premarket-brief
+    mode: coordinator
+    members:
+      - key: trading-coordinator-premarket
+        role: coordinator
+      - key: data-collector-general
+        role: worker
+      - key: technical-analyst-general
+        role: worker
+      - key: money-flow-analyst-general
+        role: worker
+      - key: news-analyst-general
+        role: worker
+      - key: report-writer-general
+        role: synthesizer
+
+  - key: team-stock-deep-dive
+    mode: coordinator
+    members:
+      - key: trading-coordinator-intraday
+        role: coordinator
+      - key: data-collector-general
+        role: worker
+      - key: technical-analyst-general
+        role: worker
+      - key: fundamental-analyst-general
+        role: worker
+      - key: money-flow-analyst-general
+        role: worker
+      - key: news-analyst-general
+        role: worker
+      - key: sentiment-analyst-general
+        role: worker
+      - key: industry-analyst-general
+        role: worker
+      - key: risk-assessor-general
+        role: worker
+      - key: report-writer-general
+        role: synthesizer
+
+  - key: team-sector-rotation
+    mode: sequential
+    graph:
+      type: linear
+    members:
+      - key: industry-analyst-general
+      - key: money-flow-analyst-general
+      - key: news-analyst-general
+      - key: report-writer-general
+        role: synthesizer
+
+  - key: team-portfolio-doctor
+    mode: parallel
+    graph:
+      type: parallel
+    members:
+      - key: risk-assessor-general
+      - key: fundamental-analyst-general
+      - key: quant-researcher-portfolio
+      - key: report-writer-general
+        role: synthesizer
+
+  - key: team-market-recap
+    mode: sequential
+    graph:
+      type: linear
+    members:
+      - key: technical-analyst-general
+      - key: money-flow-analyst-general
+      - key: industry-analyst-general
+      - key: news-analyst-general
+      - key: report-writer-general
+        role: synthesizer
+
+  - key: team-quant-strategy-research
+    mode: sequential
+    graph:
+      type: linear
+    members:
+      - key: quant-researcher-factor
+      - key: quant-researcher-backtest
+      - key: quant-researcher-ml-alpha
+      - key: quant-developer-trading-system
+
+  - key: team-investment-committee
+    mode: coordinator
+    members:
+      - key: investment-advisor-portfolio-advice
+        role: coordinator
+      - key: fundamental-analyst-general
+        role: worker
+      - key: risk-manager-market-risk
+        role: worker
+      - key: asset-allocator-strategic-allocation
+        role: worker
+      - key: compliance-officer-regulatory
+        role: worker
+
+  - key: team-risk-monitoring
+    mode: parallel
+    graph:
+      type: parallel
+    members:
+      - key: risk-manager-market-risk
+      - key: risk-manager-credit-risk
+      - key: aml-specialist-anti-money-laundering

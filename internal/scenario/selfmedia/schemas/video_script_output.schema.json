@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VideoScriptOutput",
+  "type": "object",
+  "required": ["script_structure", "scenes", "total_duration_seconds"],
+  "properties": {
+    "script_structure": {
+      "type": "string",
+      "enum": ["total_partial_total", "progressive", "contrast", "story", "list"],
+      "description": "脚本结构类型：总分总/递进/对比/故事/清单"
+    },
+    "hook_type": {
+      "type": "string",
+      "enum": ["suspense", "conflict", "resonance", "contrast"],
+      "description": "开头3秒钩子类型：悬念/冲突/共鸣/反差"
+    },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["timestamp", "visual_description", "narration", "emotion"],
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "pattern": "^[0-9]{2}:[0-9]{2}$",
+            "description": "时间点，格式 MM:SS"
+          },
+          "visual_description": {
+            "type": "string",
+            "description": "画面描述"
+          },
+          "narration": {
+            "type": "string",
+            "description": "口播文案"
+          },
+          "subtitle": {
+            "type": "string",
+            "description": "字幕文本"
+          },
+          "emotion": {
+            "type": "string",
+            "enum": ["curiosity", "engagement", "tension", "release", "satisfaction", "surprise", "touching"],
+            "description": "情绪标记"
+          },
+          "bgm_cue": {
+            "type": "string",
+            "description": "BGM提示"
+          },
+          "interaction_prompt": {
+            "type": "string",
+            "description": "互动引导"
+          }
+        }
+      },
+      "description": "分镜场景列表"
+    },
+    "total_duration_seconds": {
+      "type": "integer",
+      "minimum": 15,
+      "maximum": 900,
+      "description": "视频总时长（秒）"
+    },
+    "target_platform": {
+      "type": "string",
+      "enum": ["douyin", "bilibili", "xiaohongshu", "weixin_channels", "kuaishou"],
+      "description": "目标平台"
+    },
+    "aspect_ratio": {
+      "type": "string",
+      "enum": ["9:16", "16:9", "3:4", "1:1"],
+      "description": "画面比例"
+    },
+    "shooting_notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "拍摄备注：特殊场景需求、道具清单、演员指示"
+    }
+  }
+}

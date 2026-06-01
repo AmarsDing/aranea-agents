@@ -1,0 +1,294 @@
+package usage
+
+import (
+	"errors"
+	"fmt"
+	"math"
+	"testing"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+
+	"aranea-agents/internal/biz/shared"
+)
+
+func TestNormalizeStatus(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		expect string
+	}{
+		{"ok_to_success", "ok", "success"},
+		{"success_passthrough", "success", "success"},
+		{"empty_to_success", "", "success"},
+		{"fail_to_failed", "fail", "failed"},
+		{"failed_passthrough", "failed", "failed"},
+		{"error_to_failed", "error", "failed"},
+		{"timeout_passthrough", "timeout", "timeout"},
+		{"timed_out_to_timeout", "timed_out", "timeout"},
+		{"cancelled_passthrough", "cancelled", "cancelled"},
+		{"canceled_to_cancelled", "canceled", "cancelled"},
+		{"unknown_value_passthrough", "unknown_value", "unknown_value"},
+		{"uppercase_ok", "OK", "success"},
+		{"mixed_case_Fail", "Fail", "failed"},
+		{"spaced_ok", " ok ", "success"},
+		{"spaced_fail", " fail ", "failed"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := NormalizeStatus(tt.input)
+			if got != tt.expect {
+				t.Errorf("NormalizeStatus(%q) = %q, want %q", tt.input, got, tt.expect)
+			}
+		})
+	}
+}
+
+func TestApplyTokenUsageCosts(t *testing.T) {
+	t.Run("nil_event", func(t *testing.T) {
+		ApplyTokenUsageCosts(nil)
+	})
+
+	t.Run("input_cost_from_usd_per_1m", func(t *testing.T) {
+		e := &TokenUsageEvent{
+			InputTokens:        1000,
+			InputPriceUSDPer1M: 3.0,
+		}
+		ApplyTokenUsageCosts(e)
+		want := int64(math.Round(float64(1000) * 3.0))
+		if e.InputCostMicroUSD != want {
+			t.Errorf("InputCostMicroUSD = %d, want %d", e.InputCostMicroUSD, want)
+		}
+	})
+
+	t.Run("output_cost_from_usd_per_1m", func(t *testing.T) {
+		e := &TokenUsageEvent{
+			OutputTokens:        500,
+			OutputPriceUSDPer1M: 15.0,
+		}
+		ApplyTokenUsageCosts(e)
+		want := int64(math.Round(float64(500) * 15.0))
+		if e.OutputCostMicroUSD != want {
+			t.Errorf("OutputCostMicroUSD = %d, want %d", e.OutputCostMicroUSD, want)
+		}
+	})
+
+	t.Run("input_cost_micro_per_1k_fallback", func(t *testing.T) {
+		e := &TokenUsageEvent{
+			InputTokens:             2000,
+			InputPriceMicroUSDPer1K: 500,
+		}
+		ApplyTokenUsageCosts(e)
+		want := int64(2000) * 500 / 1000
+		if e.InputCostMicroUSD != want {
+			t.Errorf("InputCostMicroUSD = %d, want %d", e.InputCostMicroUSD, want)
+		}
+	})
+
+	t.Run("usd_per_1m_takes_priority_over_micro_per_1k", func(t *testing.T) {
+		e := &TokenUsageEvent{
+			InputTokens:             1000,
+			InputPriceMicroUSDPer1K: 9999,
+			InputPriceUSDPer1M:      3.0,
+		}
+		ApplyTokenUsageCosts(e)
+		want := int64(math.Round(float64(1000) * 3.0))
+		if e.InputCostMicroUSD != want {
+			t.Errorf("InputCostMicroUSD = %d, want %d (should use USDPer1M path)", e.InputCostMicroUSD, want)
+		}
+	})
+
+	t.Run("zero_tokens_skips_cost", func(t *testing.T) {
+		e := &TokenUsageEvent{
+			InputTokens:        0,
+			InputPriceUSDPer1M: 3.0,
+			OutputTokens:       0,
+			OutputPriceUSDPer1M: 15.0,
+		}
+		ApplyTokenUsageCosts(e)
+		if e.InputCostMicroUSD != 0 {
+			t.Errorf("InputCostMicroUSD = %d, want 0 for zero tokens", e.InputCostMicroUSD)
+		}
+		if e.OutputCostMicroUSD != 0 {
+			t.Errorf("OutputCostMicroUSD = %d, want 0 for zero tokens", e.OutputCostMicroUSD)
+		}
+	})
+
+	t.Run("total_cost_is_sum_of_all_fields", func(t *testing.T) {
+		e := &TokenUsageEvent{
+			InputTokens:        1000,
+			InputPriceUSDPer1M: 3.0,
+			OutputTokens:       500,
+			OutputPriceUSDPer1M: 15.0,
+		}
+		ApplyTokenUsageCosts(e)
+		wantTotal := e.InputCostMicroUSD + e.OutputCostMicroUSD +
+			e.CachedInputCostMicroUSD + e.CacheWriteCostMicroUSD +
+			e.ReasoningCostMicroUSD + e.EmbeddingCostMicroUSD
+		if e.TotalCostMicroUSD != wantTotal {
+			t.Errorf("TotalCostMicroUSD = %d, want %d", e.TotalCostMicroUSD, wantTotal)
+		}
+	})
+
+	t.Run("all_six_cost_kinds", func(t *testing.T) {
+		e := &TokenUsageEvent{
+			InputTokens:               100,
+			InputPriceUSDPer1M:        2.0,
+			OutputTokens:              200,
+			OutputPriceUSDPer1M:       4.0,
+			CachedInputTokens:         50,
+			CacheReadPriceUSDPer1M:    1.0,
+			CacheWriteTokens:          80,
+			CacheWritePriceUSDPer1M:   5.0,
+			ReasoningTokens:           300,
+			ReasoningPriceUSDPer1M:    6.0,
+			EmbeddingTokens:           400,
+			EmbeddingPriceUSDPer1M:    0.5,
+		}
+		ApplyTokenUsageCosts(e)
+
+		wantInput := int64(math.Round(100 * 2.0))
+		wantOutput := int64(math.Round(200 * 4.0))
+		wantCached := int64(math.Round(50 * 1.0))
+		wantCacheWrite := int64(math.Round(80 * 5.0))
+		wantReasoning := int64(math.Round(300 * 6.0))
+		wantEmbedding := int64(math.Round(400 * 0.5))
+
+		if e.InputCostMicroUSD != wantInput {
+			t.Errorf("InputCostMicroUSD = %d, want %d", e.InputCostMicroUSD, wantInput)
+		}
+		if e.OutputCostMicroUSD != wantOutput {
+			t.Errorf("OutputCostMicroUSD = %d, want %d", e.OutputCostMicroUSD, wantOutput)
+		}
+		if e.CachedInputCostMicroUSD != wantCached {
+			t.Errorf("CachedInputCostMicroUSD = %d, want %d", e.CachedInputCostMicroUSD, wantCached)
+		}
+		if e.CacheWriteCostMicroUSD != wantCacheWrite {
+			t.Errorf("CacheWriteCostMicroUSD = %d, want %d", e.CacheWriteCostMicroUSD, wantCacheWrite)
+		}
+		if e.ReasoningCostMicroUSD != wantReasoning {
+			t.Errorf("ReasoningCostMicroUSD = %d, want %d", e.ReasoningCostMicroUSD, wantReasoning)
+		}
+		if e.EmbeddingCostMicroUSD != wantEmbedding {
+			t.Errorf("EmbeddingCostMicroUSD = %d, want %d", e.EmbeddingCostMicroUSD, wantEmbedding)
+		}
+
+		wantTotal := wantInput + wantOutput + wantCached + wantCacheWrite + wantReasoning + wantEmbedding
+		if e.TotalCostMicroUSD != wantTotal {
+			t.Errorf("TotalCostMicroUSD = %d, want %d", e.TotalCostMicroUSD, wantTotal)
+		}
+	})
+
+	t.Run("existing_cost_not_overwritten", func(t *testing.T) {
+		e := &TokenUsageEvent{
+			InputTokens:        1000,
+			InputPriceUSDPer1M: 3.0,
+			InputCostMicroUSD:  42,
+		}
+		ApplyTokenUsageCosts(e)
+		if e.InputCostMicroUSD != 42 {
+			t.Errorf("InputCostMicroUSD = %d, want 42 (should not overwrite existing)", e.InputCostMicroUSD)
+		}
+	})
+
+	t.Run("no_price_no_cost", func(t *testing.T) {
+		e := &TokenUsageEvent{
+			InputTokens:  1000,
+			OutputTokens: 500,
+		}
+		ApplyTokenUsageCosts(e)
+		if e.InputCostMicroUSD != 0 {
+			t.Errorf("InputCostMicroUSD = %d, want 0 with no price", e.InputCostMicroUSD)
+		}
+		if e.OutputCostMicroUSD != 0 {
+			t.Errorf("OutputCostMicroUSD = %d, want 0 with no price", e.OutputCostMicroUSD)
+		}
+	})
+}
+
+func TestMapRepoErr(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       error
+		wantNil     bool
+		wantReason  string
+		wantMessage string
+		wantCode    int32
+		wantKratos  bool
+	}{
+		{"nil_returns_nil", nil, true, "", "", 0, false},
+		{
+			"usage_scope_required",
+			shared.ErrUsageScopeRequired,
+			false,
+			"USAGE",
+			"scope_type and scope_id are required",
+			400,
+			true,
+		},
+		{
+			"budget_alert_not_found",
+			shared.ErrBudgetAlertNotFound,
+			false,
+			"USAGE_ALERT",
+			"budget alert not found",
+			404,
+			true,
+		},
+		{
+			"unknown_error_passthrough",
+			errors.New("something broke"),
+			false,
+			"",
+			"something broke",
+			0,
+			false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := MapRepoErr(tt.input)
+			if tt.wantNil {
+				if got != nil {
+					t.Errorf("MapRepoErr(%v) = %v, want nil", tt.input, got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatalf("MapRepoErr(%v) = nil, want non-nil", tt.input)
+			}
+			if se := kerrors.FromError(got); se != nil && tt.wantKratos {
+				if se.Reason != tt.wantReason {
+					t.Errorf("reason = %q, want %q", se.Reason, tt.wantReason)
+				}
+				if se.Message != tt.wantMessage {
+					t.Errorf("message = %q, want %q", se.Message, tt.wantMessage)
+				}
+				if se.Code != tt.wantCode {
+					t.Errorf("code = %d, want %d", se.Code, tt.wantCode)
+				}
+			} else if got.Error() != tt.wantMessage {
+				t.Errorf("error message = %q, want %q", got.Error(), tt.wantMessage)
+			}
+		})
+	}
+
+	t.Run("wrapped_usage_scope_required", func(t *testing.T) {
+		wrapped := fmt.Errorf("wrap: %w", shared.ErrUsageScopeRequired)
+		got := MapRepoErr(wrapped)
+		if got == nil {
+			t.Fatal("MapRepoErr(wrapped) = nil, want non-nil")
+		}
+		se := kerrors.FromError(got)
+		if se == nil {
+			t.Fatalf("expected kratos error, got %T", got)
+		}
+		if se.Reason != "USAGE" {
+			t.Errorf("reason = %q, want %q", se.Reason, "USAGE")
+		}
+		if se.Code != 400 {
+			t.Errorf("code = %d, want 400", se.Code)
+		}
+	})
+}
