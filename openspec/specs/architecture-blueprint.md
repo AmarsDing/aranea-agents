@@ -122,7 +122,23 @@ Aranea-Agents 是基于 **trpc-agent-go** 的多智能体编排平台。以 **Kr
 | **AIRefineService** | ai_refine/v1 | — | 条件注册 |
 | **GatewayService** | gateway/v1 | — | 无 |
 | **IndustryService** | industry/v1 | IndustryUsecase | 无 |
-| **其他** | admin/hook/usage/evaluation/ecosystem/event/model_catalog/system_setting/mcp_server/artifact/learning_loop/skill_evolution... | 对应 Usecase | 无 |
+| **其他** | admin/hook/usage/evaluation/ecosystem/event/model_catalog/system_setting/mcp_server/artifact/learning_loop/skill_evolution/taxonomy/plan/webhook | 对应 Usecase | 无 |
+| **SpiritSynthesisService** | spirit/v1 | SpiritTeamUsecase | 通过 SpiritTeamUsecase |
+| **OpenAICompatService** | — | — | OpenAI 兼容 API |
+| **PersistentTurnService** | — | — | 持久化 Turn 管理 |
+| **FlowLogService** | monitor/v1 | FlowLogUsecase | 无 |
+| **CodeExecutorService** | monitor/v1 | — | 代码执行监控 |
+| **TaxonomyService** | taxonomy/v1 | TaxonomyUsecase | 无 |
+| **SkillEvolutionService** | skill_evolution/v1 | SkillEvolutionUsecase | 无 |
+| **ArtifactService** | artifact/v1 | ArtifactUsecase | 无 |
+| **EventService** | event/v1 | EventStoreUsecase | 无 |
+| **LlmProviderModelService** | llm_provider_model/v1 | LlmProviderModelUsecase | 无 |
+| **ModelCatalogService** | model_catalog/v1 | ModelRegistryUsecase | 无 |
+| **MCPServerService** | mcp_server/v1 | MCPServerUsecase | 无 |
+| **EcosystemService** | ecosystem/v1 | — | 无 |
+| **LearningLoopService** | learning_loop/v1 | LearningLoopUsecase | 无 |
+| **WebhookService** | — | WebhookUsecase | 无 |
+| **PlanService** | — | PlanUsecase | 无 |
 
 **ChatOrchestrator** 是核心编排器，实现 `biz.TurnExecutor`，负责：
 1. 准入控制（会话锁、活跃 Run 检查、待处理队列）
@@ -156,6 +172,32 @@ Aranea-Agents 是基于 **trpc-agent-go** 的多智能体编排平台。以 **Kr
 | **KnowledgeUsecase** | 知识库 CRUD、文档摄入 | `KnowledgeRepo` |
 | **A2AUsecase** | A2A 端点 CRUD、远程调用 | `A2ARepo` |
 | **UsageUsecase** | 用量记录、配额管理、定价 | `UsageRepo` |
+| **SpiritTeamUsecase** | Spirit 模式：动态组装 Team 执行任务、综合结果 | `TaskDAG`、`SynthesisEngine`、`TeamStarterPort` |
+| **TaskUsecase** | 任务管理：Graph 任务生命周期 | `TaskRepo`、`TaskLinkRepo` |
+| **SessionRunUsecase** | 会话 Run 管理：Run 状态、检查点 | `SessionRunRepo`、`SessionRunCheckpointRepo` |
+| **MemoryAdminUsecase** | 记忆管理后台：批量操作、PII 审计 | `MemoryAdminStore` 端口集 |
+| **L4CascadeUsecase** | L4 级联演化：跨层记忆传播 | `CascadeProposalStore`/`CascadeGraphReader`/`CascadeFactMutator`/`CascadeSagaStore` |
+| **L4GraphUsecase** | L4 图记忆 CRUD | `L4GraphRepo`、`L4GraphWriter` |
+| **MemoryL2RecallUsecase** | L2 事实召回 | `MemoryFactReader` |
+| **MemoryL3RecallUsecase** | L3 融合召回 | `MemoryL3Store` |
+| **MemoryCompositeRecallUsecase** | 复合记忆召回（L2+L3 融合） | `SessionCompositeRecallStore` |
+| **EvolutionUsecase** | Agent 演化：指标采集、建议生成/应用/拒绝 | `EvolutionMetricsRepo`、`EvolutionSuggestionRepo` |
+| **TaxonomyUsecase** | 分类法管理 | `TaxonomyRepo` |
+| **PositionUsecase** | 岗位 CRUD（含祖先链查询） | `PositionRepository` |
+| **IndustryUsecase** | 行业 CRUD | `IndustryRepository` |
+| **DepartmentUsecase** | 部门 CRUD | `DepartmentRepository` |
+| **AgentCategoryUsecase** | Agent 分类 CRUD | `AgentCategoryRepo` |
+| **PlanUsecase** | 计划管理：draft→approved→executing→completed/failed | `PlanRepository` |
+| **AgentTemplateUsecase** | Agent 模板管理 | `AgentRepository` |
+| **MCPServerUsecase** | MCP 服务器 CRUD + 连通性测试 + 健康元数据 | `MCPServerRepo` |
+| **ChannelTurnJobUsecase** | 渠道 Turn Job 管理 | `ChannelTurnJobRepo` |
+| **SystemSettingUsecase** | 系统设置（含 DefaultRefineLLM） | `SystemSettingRepo` |
+| **WebhookUsecase** | Webhook 配置管理 | `WebhookRepository` |
+| **EventStoreUsecase** | 事件存储查询 | `EventStoreRepo` |
+| **ModelRegistryUsecase** | 模型注册表：策略/同步/应用/迁移/Logo | `modelregistry.Store` |
+| **LlmProviderModelUsecase** | LLM Provider/Model 目录管理 | `LlmProviderModelRepo` |
+| **DeliveryUsecase** | Webhook 投递管理 | `hook.DeliveryRepo` |
+| **AdminUsecase** | 管理员 CRUD | `AdminRepo` |
 
 **跨模块端口接口**（定义在 biz，Wire 绑定在 service）：
 
@@ -186,7 +228,7 @@ SeedVersionRepo         ← IndustryAgentSeed 消费（查询种子版本号）
 
 **启动流程**：`initSQLite` → `ensureSchemaDDL`（30+ DDL 补丁）→ `initPostgres` → `runPendingDataMigrations` → `seedInitialData`
 
-**42→27 个 Repo 实现**，每个都有编译期接口检查 `var _ biz.XxxRepo = (*xxxRepo)(nil)`。
+**~60 个 Repo/Adapter 实现（65 条编译期接口检查）**，每个都有编译期接口检查 `var _ biz.XxxRepo = (*xxxRepo)(nil)`。
 
 ### 3.2 Agent 运行时模块
 
@@ -219,7 +261,7 @@ SeedVersionRepo         ← IndustryAgentSeed 消费（查询种子版本号）
 
 #### 工具装配 (`internal/tools/`)
 
-**18→28 个内置工具**：
+**28 个注册工具 + ~37 个运行时注入工具**：
 
 | 工具 | 类别 | 风险 | 默认 |
 |------|------|------|------|
@@ -303,6 +345,64 @@ SeedVersionRepo         ← IndustryAgentSeed 消费（查询种子版本号）
 
 技能导入、执行、Watch 热重载。通过 `trpcskill.Filter` + `trpcskill.Tools` 适配框架。
 
+### 3.2b 横切基础设施模块
+
+#### Chat 活动卡片 (`internal/chatactivity/`)
+
+用户停止生成时，将 tool_running 状态消息卡片标记为已取消。
+
+#### LLM 上下文窗口 (`internal/llmcontext/`)
+
+LLM 上下文窗口大小解析与 Token 估算。`ResolveWindow()` 按优先级解析（provider config → session → agent → 128K 默认）。阈值：warning=60%、critical=80%、exceeded=95%。
+
+#### LLM Provider 探测 (`internal/llminspect/`)
+
+探测远程 LLM Provider 元数据（模型存在性、上下文窗口、定价），支持 OpenRouter/OpenAI/Anthropic/Gemini/Ollama/混元/Bedrock。
+
+#### MCP 服务器管理 (`internal/mcp/`)
+
+6 个子包：config（配置解析）、health（健康检查 Runner）、alert（告警发布）、classify（工具调用分类）、metadata（元数据读写）、probe（探针策略）。
+
+#### Prometheus 指标 (`internal/metrics/`)
+
+30+ 业务指标（`aranea_` 前缀），覆盖 Chat/Agent/EventBus/Graph/Tool/Provider/Plugin/MCP/Channel/Skill 等。
+
+#### 模型注册表 (`internal/modelregistry/`)
+
+LLM 模型目录的文件系统存储、远程同步、定价应用、Provider 迁移。14 个文件。
+
+#### 出站消息路由 (`internal/outbound/`)
+
+统一的出站消息路由层：Router 注册 TextSender/MessageSender，按 channel ID 路由。含 `MessageTool`（message 内置工具）。
+
+#### 组织架构导入 (`internal/orgimport/`)
+
+CLI 驱动的组织架构自动导入（行业→部门→岗位→Agent+Team），纯 HTTP API 通信。
+
+#### 包安装器 (`internal/pkginstall/`)
+
+`aranea pkg install` 命令实现，6 步安装（MCP→Skill→Org→Agent→Team→Graph）。
+
+#### 场景种子 (`internal/scenario/`)
+
+YAML 驱动的行业 Agent/Team 种子数据加载。
+
+#### 遥测 (`internal/telemetry/`)
+
+OpenTelemetry Tracer/Meter Provider 初始化 + Langfuse 可观测性集成。
+
+#### 工作空间 (`internal/workspace/`)
+
+多租户 workspace ID 的 context 传播。`SystemWorkspaceID = "__system__"`。
+
+#### 制品签名 (`internal/artifact/`)
+
+制品下载 URL 的 HMAC-SHA256 签名与验证。
+
+#### 调试录制器 (`internal/debug/`)
+
+Turn 级别调试事件录制，JSONL 输出，safe/full 模式。
+
 ### 3.3 编排模块
 
 #### Team 多 Agent (`internal/team/`)
@@ -319,6 +419,18 @@ SeedVersionRepo         ← IndustryAgentSeed 消费（查询种子版本号）
 | Adaptive | 动态选择 | 自适应 |
 
 **当前默认路径**：Team 运行使用 **GraphAgent 编译路径**（M53 Phase 7）。原生路径为紧急回退。
+
+#### Spirit 动态编排 (`internal/biz/spirit_team_usecase.go` + `internal/biz/spirit_synthesis.go` + `internal/biz/spirit_task_dag.go`)
+
+**核心能力**：
+- 动态组装 Team 并行执行任务
+- 任务有向无环图（TaskDAG）：依赖验证、环检测、拓扑排序
+- 结果综合引擎（SynthesisEngine）：template/prompt/hybrid 三种策略
+- 6 种 Spirit 相关 EnvelopeType：spirit_team_assembled/completed/failed/progress、spirit_teams_all_completed、spirit_synthesis_completed
+
+**核心 Usecase**：`SpiritTeamUsecase`（AssembleTeams → ExecuteTaskDAG → SynthesizeResults）
+
+**前端对应**：SpiritEntry/SynthesisResultCard/TeamAssemblyCard/TeamProgressCard/TaskExecutionPanel 组件
 
 #### Graph 图编排 (`internal/graph/`)
 
@@ -515,7 +627,7 @@ dispatcher.ts            ← EnvelopeDispatcher: 按 type/channel/sessionId/team
   └── features/orchestration/useOrchestrationStream.ts
 ```
 
-**47→44 种 Envelope 类型**：text_delta、tool_call、tool_result、runner_completion、context_usage、graph_node_start/end、team_run_started/finished、alert.notify、**session.status_changed**、**spirit_team_***、**token_usage** 等。
+**45 种 Envelope 类型（后端）+ 43 种（前端）**：text_delta、tool_call、tool_result、runner_completion、context_usage、graph_node_start/end、team_run_started/finished、alert.notify、**session.status_changed**、**spirit_team_***、**token_usage** 等。
 
 ### 4.4 跨 Store 通信
 
@@ -789,6 +901,21 @@ WS 事件流：
 | usage_events / usage_quotas | 08_usage.sql | 用量记录/配额 |
 | learning_observations / learning_patterns / learning_proposals | learning_loop.sql | 学习闭环（观察/模式/提议） |
 | skill_proposals | skill_evolution.sql | 技能自创建提议 |
+| plans | plan.sql | 计划表（goal/steps/status） |
+| mcp_servers | mcp_server.go | MCP 服务器定义 |
+| channel_turn_jobs | channel_turn_job.go | 渠道 Turn Job 队列 |
+| evolution_metrics | evolution_metrics_repo.go | Agent 演化指标 |
+| evolution_suggestions | evolution_suggestion_repo.go | Agent 演化建议 |
+| compiled_teams | compiled_team_repo.go | 编译后 Team 缓存 |
+| orchestration_cache | orchestration_cache_repo.go | 编排缓存 |
+| channel_runtime_leases | channel_runtime_lease.go | 渠道运行时租约 |
+| channel_peer_sessions | channel_peer_session.go | 渠道对端会话映射 |
+| channel_inbound_receipts | channel_inbound_receipt.go | 渠道入站去重收据 |
+| team_graph_sessions | team_graph_session_repo.go | Team-Graph-Session 映射 |
+| session_run_checkpoints | session_run_checkpoint_repo.go | Session Run 检查点 |
+| mcp_user_credentials | mcp_user_credential.go | MCP 用户级凭据 |
+| seed_versions | seed_version_repo.go | 种子数据版本号 |
+| task_links | task_link.go | 任务关联链接 |
 
 ---
 
@@ -799,11 +926,11 @@ WS 事件流：
 ```
 cmd/admin/wire.go
   ├── server.ProviderSet    — HTTP/gRPC/WS 注册
-  ├── data.ProviderSet      — 27 个 Repo 实现
-  ├── biz.ProviderSet       — ~35 个 Usecase
+  ├── data.ProviderSet      — ~60 个 Repo/Adapter 实现
+  ├── biz.ProviderSet       — 36 个 Usecase
   ├── event.ProviderSet     — 事件基础设施
   ├── session.ProviderSet   — 会话运行时
-  └── service.ProviderSet   — 30 个 Service + Wire 接口绑定（含 `WireSessionStatusPublisher` → `SessionStatusGuard` + `SessionStatusPublisher` 注入）
+  └── service.ProviderSet   — 38 个 Service + 16 条 Wire 接口绑定
 ```
 
 **Wire adapter 模式**：当 Server 层需要消费 biz 端口接口但不得 import `internal/biz` 时，在 `cmd/admin/wire.go` 中定义 adapter（如 `wsTurnExecutorAdapter` 将 `biz.TurnExecutorGateway` 转换为 `server.WSTurnExecutor`）。
@@ -820,6 +947,12 @@ wire.Bind(new(biz.DurableResumeGateway), new(*ChatService))
 wire.Bind(new(biz.A2ARunnerFactory), new(*ChatService))
 wire.Bind(new(biz.TurnExecutor), new(*ChatOrchestrator))
 wire.Bind(new(biz.GraphExecutor), new(*GraphService))
+wire.Bind(new(a2apkg.AgentTurnRunner), new(*ChatService))
+wire.Bind(new(biz.SessionProjection), new(*SessionProjectionAdapter))
+wire.Bind(new(biz.EmbeddingService), new(*MemoryEmbeddingAdapter))
+wire.Bind(new(biz.SkillEmbedder), new(*knowledge.Embedder))
+wire.Bind(new(biz.MemoryTextExtractor), new(*MemoryLLMExtractor))
+wire.Bind(new(biz.TeamStarterPort), new(*TeamStarter))
 ```
 
 ---

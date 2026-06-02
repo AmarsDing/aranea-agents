@@ -133,7 +133,7 @@ func seedTeams(ctx context.Context, d Deps, spec *IndustrySpec, dryRun bool) (in
 func BuildBizAgentFromSpec(ctx context.Context, d Deps, spec *IndustrySpec, as *AgentSpec) (biz.Agent, error) {
 	posName := as.DisplayName
 	posDesc := as.Description
-	if as.PositionKey != "" {
+	if as.PositionKey != "" && d.PositionUC != nil {
 		anc, err := d.PositionUC.GetWithAncestors(ctx, as.PositionKey)
 		if err == nil {
 			if posName == "" {
@@ -247,9 +247,13 @@ func BuildBizAgentFromSpec(ctx context.Context, d Deps, spec *IndustrySpec, as *
 func BuildBizTeamFromSpec(spec *IndustrySpec, ts *TeamSpec, keyToID map[string]string) (biz.Team, error) {
 	members := make([]biz.OrchestrationMember, 0, len(ts.Members))
 	for _, m := range ts.Members {
-		agentID, ok := keyToID[m.AgentKey]
+		agentKey := m.AgentKey
+		if agentKey == "" {
+			agentKey = m.Key
+		}
+		agentID, ok := keyToID[agentKey]
 		if !ok {
-			return biz.Team{}, fmt.Errorf("agent key %q not found in DB", m.AgentKey)
+			return biz.Team{}, fmt.Errorf("agent key %q not found in DB", agentKey)
 		}
 		members = append(members, biz.OrchestrationMember{
 			AgentID:    agentID,

@@ -55,6 +55,7 @@ type TeamSpec struct {
 }
 
 type TeamMemberSpec struct {
+	Key        string `yaml:"key"`
 	AgentKey   string `yaml:"agent_key"`
 	Role       string `yaml:"role"`
 	Name       string `yaml:"name"`

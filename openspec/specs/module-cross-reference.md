@@ -44,7 +44,7 @@
 
 ### 1.2 工具装配 (`internal/tools/`)
 
-**职责**：工具注册中心 + Assemble 装配。18 个内置工具 + AgentTool + MCP + Custom。
+**职责**：工具注册中心 + Assemble 装配。28 个注册工具 + ~37 个运行时注入工具 + AgentTool + MCP + Custom。
 
 | 维度 | 内容 |
 |------|------|
@@ -461,6 +461,114 @@
 
 ---
 
+### 1.21 Spirit 动态编排 (`internal/biz/spirit_team_usecase.go` + `internal/biz/spirit_synthesis.go` + `internal/biz/spirit_task_dag.go`)
+
+**职责**：动态组装 Team 并行执行任务，综合结果。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（TeamStarterPort 端口、TaskDAG、SynthesisEngine）、`team`（Team 运行） |
+| **下游影响** | `service/spirit_synthesis`（SpiritSynthesisService 调用 SpiritTeamUsecase） |
+| **核心导出** | `SpiritTeamUsecase`、`SynthesisEngine`（template/prompt/hybrid 三策略）、`TaskDAG`（依赖验证/环检测/拓扑排序） |
+| **实现接口** | `biz.TeamStarterPort`（Wire 绑定到 TeamStarter） |
+| **共享类型** | `SpiritTeamConfig`、`SynthesisResult`、`TaskDAG`、`DAGNode` |
+| **事件生产** | `spirit_team_assembled`、`spirit_team_completed`、`spirit_team_failed`、`spirit_team_progress`、`spirit_teams_all_completed`、`spirit_synthesis_completed` |
+| **事件消费** | 无 |
+| **数据库** | 无直接访问（通过 biz Usecase 间接访问） |
+| **前端对应** | SpiritEntry/SynthesisResultCard/TeamAssemblyCard/TeamProgressCard/TaskExecutionPanel 组件 |
+
+**⚠️ 开发注意**：
+- Spirit 模式是 Team 的上层编排，不替代 Team，而是动态创建和调度多个 Team
+- 修改 `TeamStarterPort` 接口时，需同步更新 `service/team.go` 的 `TeamStarter` 实现
+- 6 种 Spirit EnvelopeType 被前端 `useSpiritTeamStore` 和 `useOrchestrationStore` 消费
+
+---
+
+### 1.22 MCP 服务器管理 (`internal/mcp/`)
+
+**职责**：MCP 服务器全生命周期管理——配置解析、健康检查、告警发布、探针策略。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（MCPServerUsecase/Repo）、`event`（告警发布） |
+| **下游影响** | `service/mcp_server`（MCPServerService 调用健康检查）、`tools`（MCP ToolSet 连接） |
+| **核心导出** | `config.ParseServerConfigJSON`、`health.Runner`、`alert.Publisher`、`classify.IsMCPToolInvocation`、`probe.Prober` |
+| **共享类型** | `ServerConfig`、`TransportConfig`、`TestResult` |
+| **事件生产** | `mcp.session.reconnect`、`mcp.health.alert` |
+| **事件消费** | 无 |
+| **数据库** | 通过 biz MCPServerUsecase 访问（mcp_servers/mcp_user_credentials） |
+| **前端对应** | McpServersPage |
+
+---
+
+### 1.23 出站消息路由 (`internal/outbound/`)
+
+**职责**：统一的出站消息路由层，解耦渠道适配器与消息发送逻辑。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `channel`（各平台 OutboundText 适配器） |
+| **下游影响** | `tools`（message 工具通过 OutboundRouter 发送）、`channel`（出站投递） |
+| **核心导出** | `Router`、`TextSender`/`MessageSender` 接口、`WrapOutboundText`、`MessageTool`、`ResolveTarget` |
+| **共享类型** | `DeliveryTarget`、`OutboundMessage`、`OutboundFile` |
+| **事件生产** | 无直接生产（通过 channel 适配器间接发送） |
+| **事件消费** | 无 |
+| **数据库** | 无直接访问 |
+| **前端对应** | ChannelsPage（渠道配置影响路由） |
+
+---
+
+### 1.24 模型注册表 (`internal/modelregistry/`)
+
+**职责**：LLM 模型目录的文件系统存储、远程同步、定价应用、Provider 迁移。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（ModelRegistryUsecase）、`provider`（Provider 信息） |
+| **下游影响** | `service/model_catalog`（ModelCatalogService 调用 Store）、`tools/modelsync`（模型同步工具） |
+| **核心导出** | `Store`、`Syncer`、`Applier`、`ApplyBackend`、`ProviderMigrationRule` |
+| **共享类型** | `Directory`、`Policy`、`SyncLog`、`ProviderMigrationRule` |
+| **事件生产** | 无 |
+| **事件消费** | 无 |
+| **数据库** | 通过 biz LlmProviderModelUsecase 间接访问 |
+| **前端对应** | ResourceManagerPage |
+
+---
+
+### 1.25 Agent 演化 (`internal/biz/evolution.go` + `internal/biz/evolution_scan.go`)
+
+**职责**：Agent 演化闭环——指标采集、建议生成/应用/拒绝、自动扫描。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（EvolutionMetricsRepo/EvolutionSuggestionRepo 端口、AgentRepository） |
+| **下游影响** | `service/chat`（ChatOrchestrator 调用演化指标记录） |
+| **核心导出** | `EvolutionUsecase`、`EvolutionMetrics`、`EvolutionSuggestion` |
+| **共享类型** | `EvolutionMetrics`（工具成功率/检索质量）、`EvolutionSuggestion`（persona/prompt/skill 类型） |
+| **事件生产** | 无直接生产 |
+| **事件消费** | 无 |
+| **数据库** | SQLite（evolution_metrics/evolution_suggestions，原生 SQL DDL） |
+| **前端对应** | AgentEvolutionPanel（Agent 详情页"演化"Tab） |
+
+---
+
+### 1.26 工作空间 (`internal/workspace/`)
+
+**职责**：多租户 workspace ID 的 context 传播。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | 无（基础设施） |
+| **下游影响** | `data`（Ent hooks 过滤）、`server`（中间件注入）、`biz`（后台任务传播） |
+| **核心导出** | `WithContext`、`FromContext`、`IDFromContext`、`WithSystemWorkspace`、`IsSystem` |
+| **共享类型** | `SystemWorkspaceID = "__system__"`、`DefaultWorkspaceID = "default"` |
+| **事件生产** | 无 |
+| **事件消费** | 无 |
+| **数据库** | 无 |
+| **前端对应** | 无（后端透明） |
+
+---
+
 ## 二、前端模块开发上下文卡片
 
 ### 2.1 Chat 域（最复杂的前端域）
@@ -581,6 +689,10 @@
 | `SessionStatusPublisher` | SessionUsecase | `internal/service/run_status_publish.go`（sessionStatusPublisher 适配器）+ `cmd/admin/wire.go`（WireSessionStatusPublisher） |
 | `SessionStatusTransitioner` | SessionUsecase | `internal/biz/session/usecase.go`（SessionUsecase 自身实现）+ `internal/service/chat_orchestrator*.go`/`team_turn_hooks.go`（调用方） |
 | `SeedVersionRepo` | IndustryAgentSeed | `internal/biz/seed_version.go`（接口定义）+ `internal/data/seed_version_repo.go`（实现）+ `cmd/admin/wire.go`（绑定） |
+| `TeamStarterPort` | SpiritTeamUsecase | `internal/service/team.go`（TeamStarter 实现）+ `cmd/admin/wire.go` |
+| `ToolResultGate` | ChatOrchestrator | `internal/service/chat_orchestrator*.go` + `internal/biz/tool_result_gate.go` |
+| `MemoryTextExtractor` | MemoryService | `internal/service/memory_recall.go`（MemoryLLMExtractor）+ `cmd/admin/wire.go` |
+| `SkillEmbedder` | KnowledgeService | `internal/knowledge/embedder.go` + `cmd/admin/wire.go` |
 
 ### 3.2 修改共享类型时
 
@@ -661,8 +773,14 @@
 | SystemSettingService | system_setting/v1 | createSystemSettingService | useSystemSettingsStore | SystemSettingsPage |
 | ModelCatalogService | model_catalog/v1 | createModelCatalogService | usePlatformStore | ResourceManagerPage |
 | AdminService | admin/v1 | createAdminService | useAuthStore | LoginPage |
-| LearningLoopService | learning_loop/v1 | createLearningLoopService | useAgentDetailStore（学习闭环 Tab） | AgentSettingsPage（学习闭环 Tab） |
+| LearningLoopService | learning_loop/v1 | createLearningLoopService | useLearningLoopStore + useAgentDetailStore（学习闭环 Tab） | AgentSettingsPage（学习闭环 Tab） |
 | SkillEvolutionService | skill_evolution/v1 | createSkillEvolutionService | 待集成 | 待集成 |
+| SpiritSynthesisService | spirit/v1 | createSpiritService | useSpiritTeamStore | — |
+| TaxonomyService | taxonomy/v1 | createTaxonomyService | — | — |
+| FlowLogService | monitor/v1 | createMonitorService | useMonitorStore | MonitorPage |
+| CodeExecutorService | monitor/v1 | createMonitorService | useMonitorStore | MonitorPage |
+| OpenAICompatService | — | — | — | — |
+| PersistentTurnService | — | — | — | — |
 
 ---
 

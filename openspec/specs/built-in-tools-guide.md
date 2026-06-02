@@ -87,7 +87,7 @@ Hermes 的工具体系按 toolset 组织，共 **~70 个工具**：
 
 ## 二、Aranea 现有工具差距分析
 
-### 2.1 当前注册工具清单（25 个注册 + 7+ CustomTool）
+### 2.1 当前注册工具清单（28 个注册 + ~37 个运行时注入工具）
 
 | # | 名称 | 类别 | 风险 | 默认启用 | Factory | 差距 |
 |---|------|------|------|----------|---------|------|
@@ -95,7 +95,7 @@ Hermes 的工具体系按 toolset 组织，共 **~70 个工具**：
 | 2 | `hostexec` | execution | critical | ❌ | ✅ | ✅ 已实现（含输出脱敏） |
 | 3 | `httpfetch` | web | medium | ❌ | ✅ | — |
 | 4 | `claudefetch` | web | medium | ❌ | **nil** | 🟡 stub |
-| 5 | `geminifetch` | web | medium | ❌ | ✅ | — |
+| 5 | `geminifetch` | web | medium | ❌ | ✅(nil,需配置) | — |
 | 6 | `duckduckgo` | search | medium | ❌ | ✅ | — |
 | 7 | `google_search` | search | medium | ❌ | **nil** | 🟡 需配置 |
 | 8 | `arxiv_search` | search | low | ❌ | ✅ | — |
@@ -106,18 +106,58 @@ Hermes 的工具体系按 toolset 组织，共 **~70 个工具**：
 | 13 | `await_user_reply` | interaction | low | ❌ | ✅ | — |
 | 14 | `claudecode` | coding | critical | ❌ | ✅ | — |
 | 15 | `workspace_exec` | execution | critical | ❌ | **nil** | 🟡 需实现 |
-| 16 | `openapi` | integration | medium | ❌ | ✅(err) | 🟡 需配置 |
+| 16 | `openapi` | integration | medium | ❌ | ToolSetFactory(err,需配置) | 🟡 需配置 |
 | 17 | `browser` | browser | critical | ❌ | ✅(MCP) | ✅ MCP MVP 已实现 |
 | 18 | `read_document` | media | medium | ✅ | ✅ | ✅ 已实现 |
 | 19 | `read_spreadsheet` | media | medium | ✅ | ✅ | ✅ 已实现 |
-| 20 | `mcp` | integration | medium | ❌ | 动态 | — |
-| 21 | `mcpbroker` | integration | medium | ❌ | 动态 | — |
-| 22 | `subagents_*` | composition | medium | ❌ | 动态 | — |
+| 20 | `model_registry_sync` | system | medium | ❌ | ✅ | — |
+| 21 | `mcp` | integration | medium | ❌ | 动态 | — |
+| 22 | `mcpbroker` | integration | medium | ❌ | 动态 | — |
+| 23 | `subagents_*` | composition | medium | ❌ | 动态 | — |
+| 24 | `tool_search` | system | low | ✅ | ✅ | — |
+| 25 | `diff_edit` | filesystem | medium | ❌ | ✅ | — |
+| 26 | `save_file` | filesystem | medium | ❌ | ✅ | — |
+| 27 | `list_file` | filesystem | low | ✅ | ✅ | — |
+| 28 | `read_tool_result` | system | low | ✅ | ✅ | Deferred tool |
 | Custom | `knowledge_search/reflect` | knowledge | low | — | ✅ | — |
 | Custom | `web_research` | web | medium | — | ✅ | — |
 | Custom | `call_agent` | a2a | medium | — | ✅ | — |
 | Custom | `kanban` | productivity | medium | — | ✅ | — |
 | Custom | `memory.*` | memory | low | — | ✅ | — |
+
+### 2.1b 运行时注入工具（非 Registry 注册）
+
+| 来源包 | 工具名 | 数量 | 注入方式 |
+|--------|--------|------|---------|
+| `tools/kanban` | kanban_show/list/complete/block/unblock/heartbeat/comment/create/link | 9 | customTools (Kanban=true) |
+| `tools/knowledge` | knowledge_search、knowledge_reflect | 2 | customTools |
+| `tools/webresearch` | web_research | 1 | customTools |
+| `tools/memory` | memory_add/update/load/search/delete | 5 | cfg.MemoryTools 或 MemoryEnabled |
+| `tools/subagent` | subagents_spawn/list/get/cancel | 4 | SubAgentService.FrameworkTools() |
+| `tools/modelsync` | fetch_model_directory/migrate_provider_bindings/apply_model_directory/sync_provider_logos | 4 | modelsync.RegisterAll() |
+| `tools/cli_admin` | cli_admin_skill_list/get/install + agent_list/get + pkg_install | 6 | cli_admin.RegisterAll() |
+| `tools/skills_butler` | analyze_skill_usage/recommend_skills/evolve_skill/optimize_skill | 4 | skills_butler.RegisterAll() |
+| `tools/spirit_tools` | assemble_team/check_team_progress/cancel_team/synthesize_results/list_butlers/query_butler_status/assess_complexity | 7 | Spirit 专用 |
+| `tools/serviceawaitreply` | await_user_reply（服务端阻塞版） | 1 | customTools |
+| `a2a` | call_agent | 1 | customTools |
+| `outbound` | message | 1 | OutboundRouter |
+| `tools/custom` | demo_search | 1 | custom.NewDemoTool() |
+
+### 2.1c 运行时别名映射
+
+| 别名 | 指向 |
+|------|------|
+| write_file | save_file |
+| edit_file | diff_edit |
+| list_files | list_file |
+| workspace_search | search_content |
+| shell / shell_exec | exec_command |
+| todo | todo_write |
+| gemini_fetch | gemini_web_fetch |
+| wikipedia | wikipedia_search |
+| email | send_email |
+| await_reply | await_user_reply |
+| web_search | web_research |
 
 ### 2.2 与竞品的核心差距
 
@@ -663,8 +703,8 @@ web/src/components/memory/
 ### 6.1 注册流程
 
 1. 在 `internal/tools/trpc/toolsets.go` 的 `Registry()` 中注册 `ToolRegistration`
-2. 在 `internal/tools/trpc/builtin_tools_seed.go` 中添加种子数据
-3. 在 `internal/tools/trpc/toolsets.go` 的 `Assemble()` 中处理特殊逻辑
+2. 在 `internal/tools/toolset.go` 的 `Registry()` 函数中添加 ToolRegistration 条目（无独立种子文件）
+3. 在 `internal/tools/toolset.go` 的 `Assemble()` 中处理特殊逻辑（如配置覆盖、customTools 注入）
 4. 编写单元测试 `internal/tools/trpc/*_test.go`
 
 ### 6.2 ToolRegistration 字段规范
@@ -679,6 +719,7 @@ ToolRegistration{
     Description:     "简短描述",
     Factory:         nil,               // 或 Factory 函数
     ToolSetFactory:  nil,               // 或 ToolSetFactory 函数
+    Deferred:          false,            // true 时延迟加载，LLM 需通过 tool_search 发现
 }
 ```
 

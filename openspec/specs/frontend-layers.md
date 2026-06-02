@@ -10,9 +10,9 @@
 **数据流只允许从左到右。**
 
 ```
-services/index.ts (createXxxService)
+services/index.ts (31 个 createXxxService)
   → features/<域>/api.ts (HTTP 门面 + 类型归一化)
-    → stores/<域>/index.ts (状态 + action 调 api)
+    → stores/<域>/index.ts (43 个 Store: 状态 + action 调 api)
       → features/<域>/useXxxPage.ts (composable 组合 Store)
         → pages/XxxPage.vue (布局 + 传参)
           → components/<域>/*.vue (纯展示：props in / emits out)
@@ -26,7 +26,7 @@ services/index.ts (createXxxService)
 
 | 规则 | 说明 |
 |------|------|
-| HTTP 客户端工厂 | `createXxxService()` 或 `kratosApi` |
+| HTTP 客户端工厂 | `createXxxService()` 或 `kratosApi`；当前 31 个 createXxxService（30 个 Kratos 生成 + 1 个手动构建 createSpiritService） |
 | 不写业务逻辑 | 只创建 HTTP 调用实例 |
 
 ### features/<域>/api.ts
@@ -44,6 +44,7 @@ services/index.ts (createXxxService)
 | 状态 + action | action 内调 api.ts（红线 #2） |
 | 新 Store 必须在 `stores/index.ts` 具名导出 | 不得删除 default export Pinia 工厂（红线 #6） |
 | 跨 Store 同步走 `stores/sessionSync.ts` | 禁止直接 import 另一 Store 导致循环依赖（红线 #11） |
+| 新增 Store | `useSpiritTeamStore`（Spirit 动态编排）、`useOrchestrationStore`（编排流）、`useHeartbeatStore`（心跳检测）、`useAvatarCatalogStore`（头像目录）、`useAgentsCatalogStore`（Agent 目录）、`useModelCatalogStore`（模型目录）、`useAdminStore`（管理后台）、`useEventStore`（事件查询） |
 
 ### composables / useXxxPage.ts
 
@@ -69,11 +70,13 @@ services/index.ts (createXxxService)
 | Dialog/Drawer 不得直接调 API | `emit('submit', payload)`，由 Page 或 Store 调（红线 #4） |
 | 展示组件放 `components/<域>/` | 禁止放在 `features/<域>/`（红线 #5） |
 
+路由表详见 [`architecture-blueprint.md`](./architecture-blueprint.md) §四.5（44 条路由，含 3 条重定向）。
+
 ---
 
 ## 三、实时通信层
 
-**新增 EnvelopeType 时，必须同时更新：后端 `internal/event/envelope.go` + 前端 `realtime/envelope.ts`**
+**新增 EnvelopeType 时，必须同时更新：后端 `internal/event/envelope.go`（45 种）+ 前端 `realtime/envelope.ts`（43 种）**
 
 通信链详见 [`architecture-blueprint.md`](./architecture-blueprint.md) §四.3。
 

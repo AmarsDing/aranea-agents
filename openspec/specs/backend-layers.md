@@ -36,6 +36,8 @@ api/**/*.proto → internal/service → internal/biz → internal/data
 | 不得直接依赖 Repo | 通过 Usecase 层访问（红线 #13） |
 | 错误映射用 `kerrors` | 禁止 `fmt.Errorf` |
 
+当前共 38 个 Service struct（含 ChatService 实现 7 个 biz 端口接口）。
+
 ### Biz 层 (`internal/biz/`)
 
 | 规则 | 说明 |
@@ -47,12 +49,14 @@ api/**/*.proto → internal/service → internal/biz → internal/data
 | 错误用 `kerrors` | 禁止 `fmt.Errorf` 返回业务错误 |
 | Repo 接口方法 ≤ 5 | 超过按职责域拆分子接口（红线 #15） |
 
+当前共 36 个 Usecase struct，295 个接口定义分布在 100 个文件中。
+
 ### Data 层 (`internal/data/`)
 
 | 规则 | 说明 |
 |------|------|
 | 仅通过 `d.Ent()` / `d.Postgres()` 访问 | 不得另开 SQLite 连接（红线 #11） |
-| 编译期接口检查 | `var _ biz.XxxRepo = (*xxxRepo)(nil)` |
+| 编译期接口检查 | 65 条 `var _ biz.XxxRepo = (*xxxRepo)(nil)` 编译期接口检查，~60 个唯一 Repo/Adapter 实现 |
 | 转换函数 | `entXxxToBiz` / `bizXxxToEnt` |
 
 ---
@@ -67,6 +71,7 @@ api/**/*.proto → internal/service → internal/biz → internal/data
 | A4 | 后台/定时 Agent 必须通过 `Runner.Run()` 调用 | 参考框架 `openclaw/internal/cron/service.go` |
 | A5 | 工具构建使用 `function.NewFunctionTool[I, O]` | 禁止手动实现 `CallableTool` 接口 |
 | A6 | 程序化 Agent 也必须走 Runner | Runner 管理 Session/Invocation/事件流生命周期 |
+| A7 | 工具结果门控：`tool_result_gate` 控制 tool_result 事件是否推送给前端 | `ToolResultGate` 端口接口，Service 层实现 |
 
 ---
 
@@ -79,6 +84,8 @@ api/**/*.proto → internal/service → internal/biz → internal/data
 3. Chat/Team 共用同一 `BuildToolsets` 逻辑
 
 装配顺序：Registry 注册 → 配置覆盖 → OpenAPI → workspace_exec → AgentTool → MCP ToolSet → MCP Broker → CustomTools
+
+当前共 28 个注册工具 + ~37 个运行时注入工具（kanban/memory/subagent/modelsync/cli_admin/skills_butler/spirit_tools 等）。
 
 ---
 
@@ -117,6 +124,10 @@ api/**/*.proto → internal/service → internal/biz → internal/data
 ## 八、Wire 依赖注入
 
 - Wire ProviderSet：每层一个（`biz.go` / `data.go` / `service.go` / `server.go`）
+  - biz.ProviderSet — 36 个 Usecase
+  - data.ProviderSet — ~60 个 Repo/Adapter 实现
+  - service.ProviderSet — 38 个 Service + 16 条 Wire 接口绑定
+  - cmd/admin/wire.go 额外 19 条 wire.Bind（跨层绑定 + biz 子接口窄化绑定）。
 - 构造函数参数：只接收接口或具体依赖，不接收"上帝对象"
 - 禁止手动编辑 `wire_gen.go`，必须通过 `make wire` 生成
 - 关键绑定详见 [`architecture-blueprint.md`](./architecture-blueprint.md) §八

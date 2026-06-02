@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -23,7 +24,16 @@ func NewLazySeeder(client *ent.Client, fn func(context.Context, *ent.Client) err
 
 func (s *LazySeeder) SeedIfNeeded(ctx context.Context) error {
 	s.once.Do(func() {
-		e := s.fn(ctx, s.client)
+		var e error
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					e = fmt.Errorf("panic in lazy seeder: %v", r)
+					s.lg.Warn("lazy seeder panicked", loggateway.StepID("data.seed.lazy"), loggateway.Err(e))
+				}
+			}()
+			e = s.fn(ctx, s.client)
+		}()
 		s.err.Store(&e)
 	})
 	if p := s.err.Load(); p != nil && *p != nil {

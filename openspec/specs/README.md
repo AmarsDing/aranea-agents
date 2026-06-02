@@ -18,12 +18,12 @@
 
 | 文档 | 内容 | 定位 |
 |------|------|------|
-| [architecture-blueprint.md](./architecture-blueprint.md) | 架构真相源：模块结构、业务流程、数据库 Schema、Wire 注入、路由表、开发决策树 | 全局上下文参考 |
-| [backend-layers.md](./backend-layers.md) | 后端分层规则、Agent 运行时铁律、横切约束、验证命令 | 后端编码规则速查 |
-| [frontend-layers.md](./frontend-layers.md) | 前端分层规则、数据流约束、CSS 主题、消息分组 | 前端编码规则速查 |
-| [module-cross-reference.md](./module-cross-reference.md) | 模块交叉参考：改模块 X 时必须注意谁（8 维度卡片） | 跨模块影响分析 |
+| [architecture-blueprint.md](./architecture-blueprint.md) | 架构真相源：模块结构（38 Service / 36 Usecase / ~60 Repo）、业务流程、数据库 Schema（~40 表）、Wire 注入、路由表（44 条）、开发决策树 | 全局上下文参考 |
+| [backend-layers.md](./backend-layers.md) | 后端分层规则、Agent 运行时铁律（A1-A7）、横切约束、验证命令 | 后端编码规则速查 |
+| [frontend-layers.md](./frontend-layers.md) | 前端分层规则（31 Service / 43 Store）、数据流约束、CSS 主题、消息分组 | 前端编码规则速查 |
+| [module-cross-reference.md](./module-cross-reference.md) | 模块交叉参考：26 个后端模块卡片 + 6 个前端域卡片（8 维度） | 跨模块影响分析 |
 | [review-dimension-checklists.md](./review-dimension-checklists.md) | 代码审查 12 维度 × 双面卡片（A 面=编码预防，B 面=Review 检查） | 代码审查清单 |
-| [built-in-tools-guide.md](./built-in-tools-guide.md) | 内置工具清单 + 竞品对标 + 知识图谱可视化建设指南 | 工具建设参考 |
+| [built-in-tools-guide.md](./built-in-tools-guide.md) | 内置工具清单（28 注册 + ~37 运行时注入）+ 竞品对标 + 知识图谱可视化建设指南 | 工具建设参考 |
 
 ---
 

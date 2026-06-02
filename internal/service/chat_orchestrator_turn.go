@@ -399,6 +399,7 @@ func (o *ChatOrchestrator) resumeAwaitAfterRestart(ctx context.Context, sessionI
 		})
 		if turnErr != nil && !IsTurnMessageQueued(turnErr) {
 			o.setRunStatus(bgCtx, sessionID, runID, "failed", turnErr.Error())
+			o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 			o.publishTurnFailure(sessionID, runID, "chat-service", turnErr, "")
 		}
 	})
@@ -653,6 +654,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		}
 	}
 	o.setRunStatus(ctx, sessionID, runID, "running", "")
+	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusRunning, "")
 	emitter.LogStart("chat.turn.execute", "开始执行对话轮次", event.P("run_id", runID))
 	defer func() {
 		if turnStatus != "ok" {
@@ -859,12 +861,14 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			emitter.LogCritical("chat.first_byte_timeout", "首字节超时，模型响应过慢", event.P("timeout", firstByteTimeout.String()))
 			arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "first_byte_timeout").Observe(time.Since(turnStart).Seconds())
 			o.setRunStatus(ctx, sessionID, runID, "failed", "first byte timeout")
+			o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 			te := TurnError(TurnErrFirstByteTimeout, firstByteTimeout.String())
 			o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 			return userMsg, biz.ChatMessage{}, te
 		}
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, streamErr)
 		o.setRunStatus(ctx, sessionID, runID, "failed", streamErr.Error())
+		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
 		o.publishTurnFailure(sessionID, runID, "chat-service", streamErr, "")
 		return userMsg, biz.ChatMessage{}, streamErr
 	}
