@@ -91,9 +91,43 @@ api/**/*.proto → internal/service → internal/biz → internal/data
 
 ## 五、记忆系统
 
-- 记忆工具通过 `memory.Service.Tools()` 注入
+### 5.1 两种工具路径
+
+| 路径 | 工具 | 注入方式 |
+|------|------|---------|
+| 框架记忆工具 | memory_add/search/delete 等 6 个 | `memory.Service.Tools()` → 过滤 → `AssemblyConfig.MemoryTools` + `llmagent.WithMemoryService(service)` |
+| L1 工作记忆工具 | working_memory.read/write/list/patch/delete 5 个 | `working_memory.ToolSet` → `BeforeToolHook` 注入 L1TaskWriter/L1FieldWriter/L1AdminReader/sessionID/agentID |
+
+### 5.2 写入红线
+
 - 记忆写入经 broker/async 异步写（红线 #8）
-- 5 层：L0 快照 → L1 字段 → L2 事实 → L3 实体 → L4 级联
+- L1 工作记忆工具写入是同步的（Agent 主动调用，非 plugin 回调）
+
+### 5.3 五层架构
+
+| 层级 | 存储 | 核心接口 | 关键 Worker |
+|------|------|----------|-------------|
+| L0 会话快照 | SQLite Session | `L0AdminStore` | 无 |
+| L1 工作记忆 | SQLite Memory | `L1TaskWriter`(4) + `L1FieldWriter`(4) + `L1AdminReader`(4) | `MemoryL1ArchiveWorker`(5min) |
+| L2 会话事件 | SQLite + pgvector | `L2RecallStore` + `L2EpisodeWriter` + `L2ConsolidationStore`(2) | `MemoryL2ConsolidateWorker`(10min) + `MemoryL2DecayWorker` |
+| L3 语义知识 | SQLite + pgvector | `L3FactAdminStore` + `L3ConflictStore`(2) + `PIIReviewStore`(3) | `MemoryL3DecayWorker` + `MemoryFactIndexReconciler`(6h) |
+| L4 持久进化 | SQLite Memory | `L4EntityStore`(5) + `L4EvolutionStore`(4) | `MemoryL4DecayWorker` |
+
+### 5.4 关键数据流
+
+- **L1→L2 桥接**：`EndL1Task` → `archiveAndCreateEpisode` → `ArchiveL1Task` + `InsertL1ArchiveEpisode`
+- **L2 Consolidation**：Episode pending → `MemoryL2ConsolidateWorker` → consolidated（实际 LLM 提取由 AutoMemoryWorker 完成）
+- **L3 冲突检测**：`UpsertFactRow` → `DetectFactConflicts`（best-effort）→ `IncrementConflictCount`
+- **L3 PII 审核**：`ListPIIFlaggedFacts` / `ApprovePIIFact` / `RejectPIIFact`
+- **L3 5维评分**：keyword(0.25) + vector(0.30) + importance(0.20) + recency(0.15) + quality(0.10)
+
+### 5.5 SessionAdminStore 迁移
+
+`SessionAdminStore`（38 方法）是向后兼容的组合接口，已标记 Deprecated。新代码应依赖细粒度子接口：
+- `L0AdminStore`、`L1AdminReader`、`L1TaskWriter`、`L1FieldWriter`、`L1IdleTaskReader`
+- `L2RecallStore`、`L2EpisodeWriter`、`L2ConsolidationStore`
+- `L3FactAdminStore`、`L3ConflictStore`、`PIIReviewStore`
+- `L4EntityStore`、`L4EvolutionStore`
 
 ---
 

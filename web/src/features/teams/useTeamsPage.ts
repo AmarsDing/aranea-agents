@@ -26,6 +26,8 @@ const modeFilter = ref("");
 const statusFilter = ref("");
 const industryFilter = ref("");
 const categoryTree = ref<PlatformResourceTreeNode[]>([]);
+const currentPage = ref(1);
+const pageSize = ref(12);
 const editorOpen = ref(false);
 const selectedTeamTemplateKey = ref<TeamTemplateKey | null>(null);
 const editingId = ref("");
@@ -80,9 +82,19 @@ const filteredTeams = computed(() => {
   });
 });
 const industryOptions = computed(() => industryOptionsFromTree(categoryTree.value));
+const totalFiltered = computed(() => filteredTeams.value.length);
+const pageMax = computed(() => Math.max(1, Math.ceil(totalFiltered.value / pageSize.value)));
+const paginatedTeams = computed(() => {
+  const start = (currentPage.value - 1) * pageSize.value;
+  return filteredTeams.value.slice(start, start + pageSize.value);
+});
 const teamIndustryGroups = computed(() =>
-  groupTeamsByIndustry(filteredTeams.value, agents.value, categoryTree.value, industryFilter.value)
+  groupTeamsByIndustry(paginatedTeams.value, agents.value, categoryTree.value, industryFilter.value)
 );
+
+watch([search, modeFilter, statusFilter, industryFilter], () => {
+  currentPage.value = 1;
+});
 
 onMounted(loadRows);
 onBeforeUnmount(closeRunEvents);
@@ -413,6 +425,7 @@ function reorderTeams(ids: string[]) {
   return {
     isDark, rows, agents, loading, saving, error, search, modeFilter, statusFilter, industryFilter,
     categoryTree, industryOptions, teamIndustryGroups,
+    currentPage, pageSize, totalFiltered, pageMax,
     editorOpen, selectedTeamTemplateKey, editingId, runsOpen, runsLoading, runsError,
     runEventsConnected, runEventsReplaying, selectedTeam, runs, stepsByRun, stepsLoading,
     summariesByRun, summariesLoading, testOpen, testTeam, testLoading, testError, testReply, testRun,

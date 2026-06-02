@@ -915,9 +915,13 @@ WS 事件流：
 
 | 表 | DDL 文件 | 用途 |
 |----|---------|------|
-| memory_facts | 10_memory_l2.sql | L2 事实记忆 |
-| memory_entities | 10_memory_l3.sql | L3 实体关系 |
+| memory_facts | 10_memory_l2.sql | L3 语义知识（Fact CRUD + 冲突检测 + PII 审核） |
+| memory_entities | 10_memory_l3.sql | L4 实体关系图 |
 | memory_l4_graph | 10_memory_l4.sql | L4 级联图 |
+| memory_episodes | 10_memory_l2.sql | L2 会话事件（Episode + pending/consolidated 状态） |
+| memory_l1_tasks | memory_l1.sql | L1 工作记忆任务（active/completed/cancelled + archived_at） |
+| memory_l1_fields | memory_l1.sql | L1 工作记忆字段（field_path + revision + visibility） |
+| memory_l1_field_history | memory_l1.sql | L1 字段版本历史（归档旧值） |
 | flow_log_events | 15_flow_log.sql | Flow Log |
 | event_store | 18_event_store.sql | 事件存储 |
 | plugin_runs | 13_plugin_run.sql | 插件运行记录 |

@@ -107,6 +107,7 @@ func validateTeamDefinition(raw string) error {
 	hasSynthesizer := false
 	hasGenerator := false
 	hasCritic := false
+	hasCoordinator := false
 	for _, member := range body.Members {
 		if strings.TrimSpace(member.AgentID) == "" {
 			return kerrors.BadRequest("TEAM", "team member agent_id is required")
@@ -121,6 +122,8 @@ func validateTeamDefinition(raw string) error {
 			hasGenerator = true
 		case "critic":
 			hasCritic = true
+		case "coordinator":
+			hasCoordinator = true
 		}
 	}
 	// Validate role compatibility with mode.
@@ -130,7 +133,7 @@ func validateTeamDefinition(raw string) error {
 		if role == "" {
 			continue
 		}
-		if !validRoles[role] {
+		if validRoles != nil && !validRoles[role] {
 			return kerrors.BadRequest("TEAM", "role "+role+" is not compatible with mode "+mode)
 		}
 	}
@@ -140,8 +143,8 @@ func validateTeamDefinition(raw string) error {
 	if mode == "parallel" && !hasSynthesizer && strings.TrimSpace(body.SynthesizerAgent) == "" && enabledCount > 1 {
 		return kerrors.BadRequest("TEAM", "parallel mode requires a synthesizer member or synthesizer_agent_id")
 	}
-	if mode == "coordinator" && !hasSynthesizer && strings.TrimSpace(body.SynthesizerAgent) == "" {
-		return kerrors.BadRequest("TEAM", "coordinator mode requires a synthesizer member or synthesizer_agent_id")
+	if mode == "coordinator" && !hasSynthesizer && !hasCoordinator && strings.TrimSpace(body.SynthesizerAgent) == "" {
+		return kerrors.BadRequest("TEAM", "coordinator mode requires a synthesizer or coordinator member, or synthesizer_agent_id")
 	}
 	if mode == "critic_loop" && (!hasGenerator || !hasCritic) {
 		return kerrors.BadRequest("TEAM", "critic_loop mode requires generator and critic members")
@@ -160,8 +163,8 @@ func validRolesForMode(mode string) map[string]bool {
 	case "coordinator":
 		return map[string]bool{"coordinator": true, "worker": true, "synthesizer": true}
 	case "sequential", "swarm", "adaptive":
-		// These modes use generic members; no special roles needed.
-		return map[string]bool{}
+		// These modes accept any role; no restriction.
+		return nil
 	default:
 		return map[string]bool{}
 	}

@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"database/sql"
@@ -13,38 +13,36 @@ func main() {
 	}
 	defer db.Close()
 
-	var count int
-	db.QueryRow("SELECT COUNT(*) FROM teams").Scan(&count)
-	fmt.Printf("teams count: %d\n", count)
+	// Delete the version record
+	res, err := db.Exec("DELETE FROM schema_migrations WHERE name = 'industry_agents_v1'")
+	if err != nil {
+		fmt.Printf("DELETE error: %v\n", err)
+		return
+	}
+	affected, _ := res.RowsAffected()
+	fmt.Printf("Deleted %d rows from schema_migrations\n", affected)
 
-	var aCount int
-	db.QueryRow("SELECT COUNT(*) FROM agents").Scan(&aCount)
-	fmt.Printf("agents count: %d\n", aCount)
+	// Also clear teams table to start fresh
+	res2, err := db.Exec("DELETE FROM teams")
+	if err != nil {
+		fmt.Printf("DELETE teams error: %v\n", err)
+		return
+	}
+	affected2, _ := res2.RowsAffected()
+	fmt.Printf("Deleted %d rows from teams\n", affected2)
 
-	// Show teams
-	rows, _ := db.Query("SELECT id, team_key FROM teams LIMIT 5")
-	fmt.Println("\nSample teams:")
+	// Show remaining migrations
+	rows, err := db.Query("SELECT name, version FROM schema_migrations")
+	if err != nil {
+		fmt.Printf("SELECT error: %v\n", err)
+		return
+	}
+	defer rows.Close()
+	fmt.Println("Remaining migrations:")
 	for rows.Next() {
-		var id, key string
-		rows.Scan(&id, &key)
-		fmt.Printf("  id=%s key=%s\n", id, key)
-	}
-
-	// Check a team's definition_json for agent IDs
-	var defJSON string
-	db.QueryRow("SELECT definition_json FROM teams WHERE team_key = 'team-fullstack-feature' LIMIT 1").Scan(&defJSON)
-	if len(defJSON) > 300 {
-		defJSON = defJSON[:300]
-	}
-	fmt.Printf("\nteam-fullstack-feature definition (first 300 chars):\n%s\n", defJSON)
-
-	// Check schema_migrations
-	rows2, _ := db.Query("SELECT version, name FROM schema_migrations WHERE name = 'industry_agents_v1'")
-	fmt.Println("\nindustry_agents migrations:")
-	for rows2.Next() {
-		var v int
-		var n string
-		rows2.Scan(&v, &n)
-		fmt.Printf("  version=%d name=%s\n", v, n)
+		var name string
+		var ver int
+		rows.Scan(&name, &ver)
+		fmt.Printf("  %s: %d\n", name, ver)
 	}
 }

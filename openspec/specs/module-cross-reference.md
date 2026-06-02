@@ -86,28 +86,34 @@
 
 ---
 
-### 1.4 记忆服务 (`internal/memory/` + `internal/service/memory*.go`)
+### 1.4 记忆服务 (`internal/memory/` + `internal/service/memory*.go` + `internal/data/sessionmemory/` + `internal/tools/working_memory/`)
 
-**职责**：5 层记忆系统适配器，提供记忆 CRUD + 6 个记忆工具 + 自动提取 + Memory 管理 API 传输桥点。
+**职责**：5 层记忆系统适配器，提供记忆 CRUD + 6 个框架记忆工具 + 5 个 working_memory 工具 + 自动提取 + Memory 管理 API 传输桥点。
 
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | `biz`（Memory 类型 + `MemoryDebugRecaller`/`MemoryFactIndexCounter` 端口）、`pkg/trpc-agent-go/memory`（框架记忆 API）、`data`（`memoryDebugRecallAdapter`/`memoryFactIndexCounterAdapter` 适配器） |
-| **下游影响** | `agent`（MemoryService.Tools() 注入记忆工具，统一路径：`Service.Tools()` → 过滤 → `AssemblyConfig.MemoryTools`）、`service/chat`（记忆管理 API）、`service/memory`（L4 级联管理 + Debug Recall + Worker Status） |
-| **核心导出** | `NewSQLiteMemoryService()`、`Service.Tools()`、`Service.EnqueueAutoMemoryJob()`、`NewMemoryService()`（含 `debugRecaller`/`factIndexCounter` biz 端口） |
-| **共享类型** | `trpcmemory.Service` 接口（被 agent 和 service 共享）、`biz.RecallDebugRow`/`biz.RecallScoreBreakdown`（debug recall DTO） |
+| **上游依赖** | `biz`（Memory 类型 + `MemoryDebugRecaller`/`MemoryFactIndexCounter` 端口）、`pkg/trpc-agent-go/memory`（框架记忆 API）、`data`（`memoryDebugRecallAdapter`/`memoryFactIndexCounterAdapter` 适配器）、`data/sessionmemory`（L0-L4 Store 实现） |
+| **下游影响** | `agent`（MemoryService.Tools() 注入记忆工具，统一路径：`Service.Tools()` → 过滤 → `AssemblyConfig.MemoryTools`）、`agent`（working_memory BeforeToolHook 注入 L1TaskWriter/L1FieldWriter/L1AdminReader）、`service/chat`（记忆管理 API）、`service/memory`（L4 级联管理 + Debug Recall + Worker Status） |
+| **核心导出** | `NewSQLiteMemoryService()`、`Service.Tools()`、`Service.EnqueueAutoMemoryJob()`、`NewMemoryService()`（含 `debugRecaller`/`factIndexCounter` biz 端口）、`working_memory.ToolSet`/`Tools()`（5 个 L1 工具） |
+| **共享类型** | `trpcmemory.Service` 接口（被 agent 和 service 共享）、`biz.RecallDebugRow`/`biz.RecallScoreBreakdown`（debug recall DTO）、`biz.L1TaskInsert`/`biz.L1FieldInsert`（L1 写入 DTO） |
 | **事件生产** | 无直接生产（记忆提取通过 EventBus 异步触发） |
 | **事件消费** | 记忆提取 Worker 消费 `runner_completion` 事件 |
-| **数据库** | SQLite（memory_facts/memory_entities/memory_l4_graph）+ PostgreSQL（embedding 向量） |
+| **数据库** | SQLite（memory_facts/memory_entities/memory_l4_graph/memory_episodes/memory_l1_tasks/memory_l1_fields/memory_l1_field_history）+ PostgreSQL（embedding 向量） |
 | **前端对应** | MemoryCenterPage（5 层记忆浏览）、AgentSettingsPage（记忆策略配置） |
 
 **⚠️ 开发注意**：
 - 记忆写入必须经 broker/async 异步写（红线 #3），禁止在 plugin 回调中直接写库
 - 记忆工具通过 `Service.Tools()` 注入（统一路径），不手动构造，不使用 `memorytool.DefaultTools()`
+- **working_memory 工具**通过 `BeforeToolHook` 注入 L1 依赖（L1TaskWriter/L1FieldWriter/L1AdminReader/sessionID/agentID），不在工具构造时传入
 - 修改记忆层级结构时，需同步更新前端 MemoryCenterPage 的 5 个 Tab
 - **Service 层禁止直接依赖 `*sessionmemory.Store`**（data 层类型），需通过 biz 端口接口（`MemoryDebugRecaller`/`MemoryFactIndexCounter`）+ data 层适配器桥接
 - `L4CascadeUsecase` 构造函数接收 4 个子接口（`CascadeProposalStore`/`CascadeGraphReader`/`CascadeFactMutator`/`CascadeSagaStore`）+ `L4EntityWriter`，不使用聚合接口 `CascadeGraphStore`（已 Deprecated）
+- `SessionAdminStore` 是向后兼容的组合接口（38 方法），新代码应依赖细粒度子接口（`L1TaskWriter`/`L1FieldWriter`/`L1AdminReader`/`L2ConsolidationStore`/`L3ConflictStore`/`PIIReviewStore`/`L4EntityStore`/`L4EvolutionStore` 等）
 - 新增 biz 端口接口时，需同步创建 data 层适配器 + 更新 `cmd/admin/wire.go` 绑定
+- L1→L2 桥接：`EndL1Task` 自动归档 + 创建 L2 Episode（`archiveAndCreateEpisode`），L1 Archive Worker 定时扫描空闲任务
+- L2 Consolidation：Episode 有 pending/consolidated 状态，`MemoryL2ConsolidateWorker` 负责 pending→consolidated 转换
+- L3 冲突检测：`DetectFactConflicts` 启发式否定词检测 + `IncrementConflictCount`，best-effort 日志
+- L3 PII 审核：`PIIReviewStore` 提供 list/approve/reject API
 
 ---
 
