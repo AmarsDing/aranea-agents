@@ -115,11 +115,21 @@ func (r *memoryRepo) FindSimilarWithUser(ctx context.Context, agentID, userID st
 	out := make([]*biz.AgentMemory, len(rows))
 	for i := range rows {
 		row := rows[i]
+		// Convert cosine distance to cosine similarity (1 - distance)
+		score := 1.0 - row.Distance
+		// Clamp score to [0, 1] range
+		if score < 0 {
+			score = 0
+		}
+		if score > 1.0 {
+			score = 1.0
+		}
 		out[i] = &biz.AgentMemory{
 			ID:        row.ID,
 			AgentID:   row.AgentID,
 			UserID:    row.UserID,
 			Content:   row.Content,
+			Score:     score,
 			CreatedAt: row.CreatedAt,
 		}
 	}

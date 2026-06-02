@@ -3,23 +3,28 @@ package data
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
 	bizevaluation "aranea-agents/internal/biz/evaluation"
+	"aranea-agents/pkg/loggateway"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type evalRepo struct {
-	db *sql.DB
+	data *Data
+	lg   loggateway.Logger
 }
 
 var _ bizevaluation.Repo = (*evalRepo)(nil)
 
-// NewEvalRepo returns a biz.EvalRepo backed by the provided *sql.DB.
-func NewEvalRepo(db *sql.DB) biz.EvalRepo {
-	return &evalRepo{db: db}
+func NewEvalRepo(data *Data, lg loggateway.Logger) biz.EvalRepo {
+	if data == nil || data.RawDB() == nil {
+		return nil
+	}
+	return &evalRepo{data: data, lg: lg}
 }
 
 // EnsureEvalSchema creates the evaluation tables when they do not exist.
@@ -86,7 +91,7 @@ func EnsureEvalSchema(ctx context.Context, db *sql.DB) error {
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
-			return fmt.Errorf("eval schema: %w", err)
+			return kerrors.InternalServer("EVAL", "eval schema: "+err.Error())
 		}
 	}
 	migrations := []string{
@@ -116,7 +121,7 @@ func (r *evalRepo) CreateDataset(ctx context.Context, d biz.EvalDataset) (biz.Ev
 	t := now()
 	d.CreatedAt = t
 	d.UpdatedAt = t
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.data.RawDB().ExecContext(ctx,
 		`INSERT INTO eval_datasets (id,name,description,case_count,workspace,created_at,updated_at)
 		 VALUES (?,?,?,0,?,?,?)`,
 		d.ID, d.Name, d.Description, d.Workspace, t, t)
@@ -124,7 +129,7 @@ func (r *evalRepo) CreateDataset(ctx context.Context, d biz.EvalDataset) (biz.Ev
 }
 
 func (r *evalRepo) GetDataset(ctx context.Context, id string) (biz.EvalDataset, error) {
-	row := r.db.QueryRowContext(ctx,
+	row := r.data.RawDB().QueryRowContext(ctx,
 		`SELECT id,name,description,case_count,workspace,created_at,updated_at FROM eval_datasets WHERE id=?`, id)
 	var d biz.EvalDataset
 	if err := row.Scan(&d.ID, &d.Name, &d.Description, &d.CaseCount, &d.Workspace, &d.CreatedAt, &d.UpdatedAt); err != nil {
@@ -135,11 +140,11 @@ func (r *evalRepo) GetDataset(ctx context.Context, id string) (biz.EvalDataset, 
 
 func (r *evalRepo) ListDatasets(ctx context.Context, workspace string, limit, offset int) ([]biz.EvalDataset, int, error) {
 	var total int
-	if err := r.db.QueryRowContext(ctx,
+	if err := r.data.RawDB().QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM eval_datasets WHERE workspace=? OR ?=''`, workspace, workspace).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := r.db.QueryContext(ctx,
+	rows, err := r.data.RawDB().QueryContext(ctx,
 		`SELECT id,name,description,case_count,workspace,created_at,updated_at
 		 FROM eval_datasets WHERE workspace=? OR ?='' ORDER BY created_at DESC LIMIT ? OFFSET ?`,
 		workspace, workspace, limit, offset)
@@ -159,13 +164,11 @@ func (r *evalRepo) ListDatasets(ctx context.Context, workspace string, limit, of
 }
 
 func (r *evalRepo) DeleteDataset(ctx context.Context, id string) error {
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.data.RawDB().BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	// 级联顺序：results → runs → cases → dataset，避免孤儿数据。
-	// 参考 DeleteRun 已用同事务删 results+runs 的模式。
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM eval_case_results WHERE run_id IN (SELECT id FROM eval_runs WHERE dataset_id=?)`,
 		id); err != nil {
@@ -185,7 +188,7 @@ func (r *evalRepo) DeleteDataset(ctx context.Context, id string) error {
 
 func (r *evalRepo) UpdateDataset(ctx context.Context, id, name, description string) (biz.EvalDataset, error) {
 	t := now()
-	if _, err := r.db.ExecContext(ctx,
+	if _, err := r.data.RawDB().ExecContext(ctx,
 		`UPDATE eval_datasets SET name=?, description=?, updated_at=? WHERE id=?`,
 		name, description, t, id); err != nil {
 		return biz.EvalDataset{}, err
@@ -194,7 +197,7 @@ func (r *evalRepo) UpdateDataset(ctx context.Context, id, name, description stri
 }
 
 func (r *evalRepo) UpdateDatasetCaseCount(ctx context.Context, id string, delta int) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.data.RawDB().ExecContext(ctx,
 		`UPDATE eval_datasets SET case_count=case_count+?, updated_at=? WHERE id=?`, delta, now(), id)
 	return err
 }
@@ -202,7 +205,7 @@ func (r *evalRepo) UpdateDatasetCaseCount(ctx context.Context, id string, delta 
 // --- Cases ---
 
 func (r *evalRepo) InsertCases(ctx context.Context, cases []biz.EvalCase) error {
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.data.RawDB().BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -218,7 +221,7 @@ func (r *evalRepo) InsertCases(ctx context.Context, cases []biz.EvalCase) error 
 }
 
 func (r *evalRepo) ListCases(ctx context.Context, datasetID string) ([]biz.EvalCase, error) {
-	rows, err := r.db.QueryContext(ctx,
+	rows, err := r.data.RawDB().QueryContext(ctx,
 		`SELECT id,dataset_id,input,expected_output,metadata_json FROM eval_cases WHERE dataset_id=?`, datasetID)
 	if err != nil {
 		return nil, err
@@ -245,7 +248,7 @@ func (r *evalRepo) CreateRun(ctx context.Context, rn biz.EvalRun) (biz.EvalRun, 
 	if rn.NumRuns <= 0 {
 		rn.NumRuns = 1
 	}
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.data.RawDB().ExecContext(ctx,
 		`INSERT INTO eval_runs
 		 (id,dataset_id,agent_id,status,total_cases,completed_cases,
 		  exact_match_score,contains_match_score,llm_judge_score,tool_call_accuracy,
@@ -281,12 +284,12 @@ func scanEvalRun(row interface{ Scan(dest ...any) error }) (biz.EvalRun, error) 
 }
 
 func (r *evalRepo) GetRun(ctx context.Context, id string) (biz.EvalRun, error) {
-	row := r.db.QueryRowContext(ctx, evalRunSelect+` WHERE id=?`, id)
+	row := r.data.RawDB().QueryRowContext(ctx, evalRunSelect+` WHERE id=?`, id)
 	return scanEvalRun(row)
 }
 
 func (r *evalRepo) UpdateRun(ctx context.Context, rn biz.EvalRun) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.data.RawDB().ExecContext(ctx,
 		`UPDATE eval_runs SET status=?,total_cases=?,completed_cases=?,
 		        exact_match_score=?,contains_match_score=?,llm_judge_score=?,tool_call_accuracy=?,
 		        pass_at_k=?,pass_hat_k=?,scores_json=?,
@@ -300,7 +303,7 @@ func (r *evalRepo) UpdateRun(ctx context.Context, rn biz.EvalRun) error {
 }
 
 func (r *evalRepo) DeleteRun(ctx context.Context, id string) error {
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.data.RawDB().BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -316,12 +319,12 @@ func (r *evalRepo) DeleteRun(ctx context.Context, id string) error {
 
 func (r *evalRepo) ListRuns(ctx context.Context, datasetID, agentID string, limit, offset int) ([]biz.EvalRun, int, error) {
 	var total int
-	if err := r.db.QueryRowContext(ctx,
+	if err := r.data.RawDB().QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM eval_runs WHERE (dataset_id=? OR ?='') AND (agent_id=? OR ?='')`,
 		datasetID, datasetID, agentID, agentID).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := r.db.QueryContext(ctx,
+	rows, err := r.data.RawDB().QueryContext(ctx,
 		evalRunSelect+` WHERE (dataset_id=? OR ?='') AND (agent_id=? OR ?='')
 		 ORDER BY created_at DESC LIMIT ? OFFSET ?`,
 		datasetID, datasetID, agentID, agentID, limit, offset)
@@ -350,7 +353,7 @@ func (r *evalRepo) ListTrendPoints(ctx context.Context, agentID, datasetID strin
 	}
 	q += ` ORDER BY created_at DESC LIMIT ?`
 	args = append(args, limit)
-	rows, err := r.db.QueryContext(ctx, q, args...)
+	rows, err := r.data.RawDB().QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -378,7 +381,7 @@ func (r *evalRepo) GetRunsByIDs(ctx context.Context, ids []string) ([]biz.EvalRu
 	for i, id := range ids {
 		args[i] = id
 	}
-	rows, err := r.db.QueryContext(ctx, evalRunSelect+` WHERE id IN (`+placeholders+`)`, args...)
+	rows, err := r.data.RawDB().QueryContext(ctx, evalRunSelect+` WHERE id IN (`+placeholders+`)`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -444,7 +447,7 @@ func (r *evalRepo) InsertCaseResult(ctx context.Context, res biz.EvalCaseResult)
 	if res.ContainsMatch {
 		cm = 1
 	}
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.data.RawDB().ExecContext(ctx,
 		`INSERT INTO eval_case_results
 		 (id,run_id,case_id,actual_output,exact_match,contains_match,llm_judge_score,tool_call_accuracy,error_message,created_at,scores_json)
 		 VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
@@ -456,11 +459,11 @@ func (r *evalRepo) InsertCaseResult(ctx context.Context, res biz.EvalCaseResult)
 
 func (r *evalRepo) ListCaseResults(ctx context.Context, runID string, limit, offset int) ([]biz.EvalCaseResult, int, error) {
 	var total int
-	if err := r.db.QueryRowContext(ctx,
+	if err := r.data.RawDB().QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM eval_case_results WHERE run_id=?`, runID).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := r.db.QueryContext(ctx,
+	rows, err := r.data.RawDB().QueryContext(ctx,
 		evalCaseResultSelect+` WHERE run_id=? ORDER BY created_at LIMIT ? OFFSET ?`,
 		runID, limit, offset)
 	if err != nil {
@@ -479,7 +482,7 @@ func (r *evalRepo) ListCaseResults(ctx context.Context, runID string, limit, off
 }
 
 func (r *evalRepo) GetCaseResult(ctx context.Context, runID, resultID string) (biz.EvalCaseResult, error) {
-	row := r.db.QueryRowContext(ctx, evalCaseResultSelect+` WHERE run_id=? AND id=?`, runID, resultID)
+	row := r.data.RawDB().QueryRowContext(ctx, evalCaseResultSelect+` WHERE run_id=? AND id=?`, runID, resultID)
 	res, err := scanEvalCaseResult(row)
 	if err == sql.ErrNoRows {
 		return biz.EvalCaseResult{}, sql.ErrNoRows
@@ -521,7 +524,7 @@ func (r *evalRepo) UpdateCaseResultAnnotation(ctx context.Context, runID, result
 		humanScore = nil
 	}
 
-	_, err = r.db.ExecContext(ctx,
+	_, err = r.data.RawDB().ExecContext(ctx,
 		`UPDATE eval_case_results SET human_pass=?, human_score=?, human_comment=?, annotated_at=?, annotated_by=? WHERE run_id=? AND id=?`,
 		humanPass, humanScore, cur.HumanComment, cur.AnnotatedAt, cur.AnnotatedBy, runID, resultID)
 	if err != nil {

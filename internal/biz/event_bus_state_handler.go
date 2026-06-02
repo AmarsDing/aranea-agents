@@ -13,12 +13,8 @@ type stateDeltaHandler struct {
 	logger     SessionLogWriter
 }
 
-func newStateDeltaHandler(sessions *SessionUsecase, runnerSync RunnerSnapshotSync) *stateDeltaHandler {
-	return &stateDeltaHandler{sessions: sessions, runnerSync: runnerSync}
-}
-
-func (h *stateDeltaHandler) SetLogger(logger SessionLogWriter) {
-	h.logger = logger
+func newStateDeltaHandler(sessions *SessionUsecase, runnerSync RunnerSnapshotSync, logger SessionLogWriter) *stateDeltaHandler {
+	return &stateDeltaHandler{sessions: sessions, runnerSync: runnerSync, logger: logger}
 }
 
 func (h *stateDeltaHandler) Handle(ctx context.Context, de DomainEvent) {

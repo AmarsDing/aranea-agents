@@ -219,7 +219,7 @@ func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.
 						Memory:      memText,
 						LastUpdated: &now,
 					},
-					Score: 1.0,
+					Score: h.Score,
 				})
 			}
 			if len(out) > 0 {

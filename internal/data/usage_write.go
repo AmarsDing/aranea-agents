@@ -6,18 +6,9 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/modelregistry"
-
-	stdsql "database/sql"
 )
 
 func (r *usageRepo) RecordTokenUsageEvent(ctx context.Context, e biz.TokenUsageEvent) (biz.TokenUsageEvent, error) {
-	tx, err := r.ent().BeginTx(ctx, nil)
-	if err != nil {
-		return biz.TokenUsageEvent{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	c := tx.Client()
 	streamEnabled := 0
 	if e.StreamEnabled {
 		streamEnabled = 1
@@ -26,7 +17,7 @@ func (r *usageRepo) RecordTokenUsageEvent(ctx context.Context, e biz.TokenUsageE
 		e.CanonicalProviderCode = modelregistry.MigrateProviderCode(e.ProviderCode)
 	}
 
-	_, err = c.ExecContext(ctx,
+	_, err := r.ent().ExecContext(ctx,
 		`INSERT INTO model_token_usage_events(
 		 id, occurred_at, date_key, hour_key, workspace_id, user_id, team_id, agent_id, agent_key, session_id, message_id, request_id,
 		 provider_code, canonical_provider_code, provider_type, provider_display_name, model_api_id, model_display_name, model_category_json, usage_kind, call_count,
@@ -48,37 +39,18 @@ func (r *usageRepo) RecordTokenUsageEvent(ctx context.Context, e biz.TokenUsageE
 		return biz.TokenUsageEvent{}, err
 	}
 
-	if strings.TrimSpace(e.SessionID) != "" {
-		_, err = c.ExecContext(ctx,
-			`UPDATE sessions
-			 SET model_call_count = model_call_count + ?,
-			     input_tokens = input_tokens + ?,
-			     output_tokens = output_tokens + ?,
-			     total_tokens = total_tokens + ?,
-			     total_cost_micro_usd = total_cost_micro_usd + ?,
-			     last_provider = ?,
-			     last_model = ?,
-			     updated_at = ?
-			 WHERE id = ? AND deleted_at = ''`,
-			e.CallCount, e.InputTokens, e.OutputTokens, e.TotalTokens, e.TotalCostMicroUSD,
-			e.ProviderCode, e.ModelAPIID, nowRFC3339(), e.SessionID,
-		)
-		if err != nil {
-			return biz.TokenUsageEvent{}, err
-		}
-	}
-
-	if err = upsertModelTokenUsageDaily(ctx, c, e); err != nil {
-		return biz.TokenUsageEvent{}, err
-	}
-	if err = upsertModelTokenUsageHourly(ctx, c, e); err != nil {
-		return biz.TokenUsageEvent{}, err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return biz.TokenUsageEvent{}, err
-	}
 	return e, nil
+}
+
+func (r *usageRepo) RollupDailyHourly(ctx context.Context, e biz.TokenUsageEvent) error {
+	c := r.ent()
+	if err := upsertModelTokenUsageDaily(ctx, c, e); err != nil {
+		return err
+	}
+	if err := upsertModelTokenUsageHourly(ctx, c, e); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (r *usageRepo) PurgeUsageEventsOlderThan(ctx context.Context, retainDays int) (int64, error) {
@@ -91,10 +63,6 @@ func (r *usageRepo) PurgeUsageEventsOlderThan(ctx context.Context, retainDays in
 	}
 	affected, _ := result.RowsAffected()
 	return affected, nil
-}
-
-type execer interface {
-	ExecContext(ctx context.Context, query string, args ...any) (stdsql.Result, error)
 }
 
 func upsertModelTokenUsageDaily(ctx context.Context, c execer, e biz.TokenUsageEvent) error {

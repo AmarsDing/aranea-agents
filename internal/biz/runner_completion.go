@@ -7,13 +7,17 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"aranea-agents/pkg/safego"
 )
 
 const runnerCompletionSchemaV1 = "runner.completion/v1"
+const bridgeEntryTTL = 5 * time.Minute
 
 type turnPendingUsage struct {
 	UsageEventID string
 	TraceID      string
+	CreatedAt    time.Time
 }
 
 // TurnCompletionBridge links runner.completion monitor rows with chat turn usage rows.
@@ -89,6 +93,7 @@ func (b *TurnCompletionBridge) RegisterTurnUsage(sessionID, runID, usageEventID,
 	b.pendingUsage[key] = turnPendingUsage{
 		UsageEventID: usageEventID,
 		TraceID:      strings.TrimSpace(traceID),
+		CreatedAt:    time.Now(),
 	}
 }
 
@@ -119,6 +124,43 @@ func (b *TurnCompletionBridge) ClearTurn(sessionID, runID string) {
 	defer b.mu.Unlock()
 	delete(b.turnStarts, key)
 	delete(b.pendingUsage, key)
+}
+
+func (b *TurnCompletionBridge) cleanupStale() {
+	if b == nil {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	cutoff := time.Now().Add(-bridgeEntryTTL)
+	for key, t := range b.turnStarts {
+		if t.Before(cutoff) {
+			delete(b.turnStarts, key)
+		}
+	}
+	for key, usage := range b.pendingUsage {
+		if usage.CreatedAt.Before(cutoff) {
+			delete(b.pendingUsage, key)
+		}
+	}
+}
+
+func (b *TurnCompletionBridge) StartCleanup(ctx context.Context) {
+	if b == nil {
+		return
+	}
+	safego.Go(ctx, "turn-completion-bridge-cleanup", func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				b.cleanupStale()
+			}
+		}
+	})
 }
 
 func enrichRunnerCompletionFromBridge(de *DomainEvent) {

@@ -11,9 +11,10 @@ import (
 type AgentMemory struct {
 	ID        int64
 	AgentID   string
-	UserID    string // optional scope under agent; empty = default namespace
+	UserID    string
 	Content   string
-	Embedding []float32 // present on insert / when Search returns vectors (optional per implementation)
+	Score     float64
+	Embedding []float32
 	CreatedAt time.Time
 }
 
@@ -21,9 +22,7 @@ type AgentMemory struct {
 type MemoryRepo interface {
 	Insert(ctx context.Context, m *AgentMemory) error
 	FindSimilar(ctx context.Context, agentID string, query []float32, topK int) ([]*AgentMemory, error)
-	// Optional scoping alongside agent (default "").
 	FindSimilarWithUser(ctx context.Context, agentID, userID string, query []float32, topK int) ([]*AgentMemory, error)
-	// UpsertFactVector replaces the pgvector row keyed by fact_id (read index for memory_facts).
 	UpsertFactVector(ctx context.Context, agentID, userID, factID, statement string, embedding []float32) error
 }
 

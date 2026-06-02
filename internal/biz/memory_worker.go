@@ -87,29 +87,30 @@ func (a SystemLogWriterFunc) LogError(stepID, message string, pairs ...LogPair) 
 	a.ErrorFn(stepID, message, pairs...)
 }
 
-// TurnMemoryWorker schedules post-turn memory extraction (EP-MEM-01).
+// TurnMemoryWorker handles post-turn feedback memory extraction (EP-MEM-01).
+// Auto-memory enqueue is handled by the framework layer (runner.enqueueAutoMemoryJob
+// → memory.Service.EnqueueAutoMemoryJob), so this worker only manages feedback-triggered
+// preference extraction to avoid duplicate queue entries.
 type TurnMemoryWorker struct {
-	enqueuer         AutoMemoryEnqueuer
 	feedbackEnqueuer FeedbackMemoryEnqueuer
 	logger           SessionLogWriter
 }
 
 // NewTurnMemoryWorker constructs a turn memory worker.
-func NewTurnMemoryWorker(enqueuer AutoMemoryEnqueuer, feedback FeedbackMemoryEnqueuer, logger SessionLogWriter) *TurnMemoryWorker {
-	return &TurnMemoryWorker{enqueuer: enqueuer, feedbackEnqueuer: feedback, logger: logger}
+func NewTurnMemoryWorker(feedback FeedbackMemoryEnqueuer, logger SessionLogWriter) *TurnMemoryWorker {
+	return &TurnMemoryWorker{feedbackEnqueuer: feedback, logger: logger}
 }
 
-// OnRunnerCompletion enqueues heuristic extraction after runner completion.
+// OnRunnerCompletion logs runner completion for observability.
+// Auto-memory enqueue is handled by the framework layer; this method no longer
+// duplicates the enqueue to prevent double-processing of the same session.
 func (w *TurnMemoryWorker) OnRunnerCompletion(ctx context.Context, de DomainEvent) {
 	sid := strings.TrimSpace(de.SessionID)
 	if sid == "" {
 		return
 	}
-	if w.enqueuer != nil {
-		w.enqueuer.EnqueueAutoMemory(strings.TrimSpace(de.Author), sid, time.Now().UTC())
-	}
 	if w.logger != nil {
-		w.logger.LogSessionWarn(ctx, sid, "system.memory_worker.enqueue", "自动记忆任务已入队")
+		w.logger.LogSessionWarn(ctx, sid, "system.memory_worker.runner_complete", "Runner 完成，自动记忆由框架层入队")
 	}
 }
 

@@ -102,7 +102,7 @@ func TestUserFeedbackConsumer_handle(t *testing.T) {
 	repo := &feedbackMonitorRepo{}
 	uc := NewMonitorUsecase(repo, nil)
 	feedback := &testFeedbackEnqueuer{}
-	worker := NewTurnMemoryWorker(nil, feedback, noopSessionLogWriter{})
+	worker := NewTurnMemoryWorker(feedback, noopSessionLogWriter{})
 
 	bus := contract.Bus(nil) // consumer only stores the bus; handle is called directly
 	c := &userFeedbackConsumer{bus: bus, monitor: uc, memWorker: worker}

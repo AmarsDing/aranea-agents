@@ -15,11 +15,11 @@ type userFeedbackConsumer struct {
 	logger    SessionLogWriter
 }
 
-func newUserFeedbackConsumer(bus contract.Bus, monitor *MonitorUsecase, memWorker *TurnMemoryWorker) *userFeedbackConsumer {
+func newUserFeedbackConsumer(bus contract.Bus, monitor *MonitorUsecase, memWorker *TurnMemoryWorker, logger SessionLogWriter) *userFeedbackConsumer {
 	if bus == nil {
 		return nil
 	}
-	return &userFeedbackConsumer{bus: bus, monitor: monitor, memWorker: memWorker}
+	return &userFeedbackConsumer{bus: bus, monitor: monitor, memWorker: memWorker, logger: logger}
 }
 
 func (c *userFeedbackConsumer) Start(ctx context.Context) {
@@ -30,7 +30,7 @@ func (c *userFeedbackConsumer) Start(ctx context.Context) {
 		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeUserFeedback},
 		BufferSize: 64,
 		Reliable:   true,
-	}, c.handle)
+	}, c.handle, c.logger)
 }
 
 func (c *userFeedbackConsumer) handle(ctx context.Context, env contract.Envelope) {

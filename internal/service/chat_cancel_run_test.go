@@ -5,11 +5,12 @@ import (
 	"testing"
 
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 	rt "aranea-agents/internal/runtime"
 )
 
 func TestCancelRun_PublishesCancelledRunStatus(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(loggateway.NewNoop())
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{BufferSize: 8})
 	defer unsub()
 

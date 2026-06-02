@@ -5,13 +5,11 @@ description: "Go OOP 编程规范指导。当编写 Go 代码涉及 struct 设�
 
 # Go 面向对象编程规范
 
-> **项目特定约束**（红线、分层、框架集成等）见 `aranea-coding-guide` SKILL。本文只提供通用 Go OOP 最佳实践，项目内编码以统一指南为准。
+> **项目特定约束**（红线、分层、框架集成、错误处理、并发、命名等）见 `aranea-coding-guide` SKILL。本文只提供**通用 Go OOP 最佳实践**，不含项目特定约束。
 
 ## 核心哲学
 
 **组合优于继承，接口优于抽象类，小优于大。**
-
-Go 不是传统 OOP 语言（无 class、继承、虚方法表），其抽象体系：
 
 | 传统 OOP | Go 做法 |
 |----------|---------|
@@ -48,7 +46,7 @@ func NewOrder(id string) *Order {
 
 func (o *Order) AddItem(item *OrderItem) error {
     if o.status == StatusClosed {
-        return kerrors.BadRequest("ORDER", "order is closed")
+        return fmt.Errorf("order is closed")
     }
     o.items = append(o.items, item)
     return nil
@@ -75,11 +73,11 @@ type BaseEntity struct {
     UpdatedAt time.Time
 }
 
-type Agent struct {
+type Product struct {
     BaseEntity
-    Name     string
-    Provider string
-    Config   AgentConfig
+    Name  string
+    Price float64
+    Stock int
 }
 ```
 
@@ -103,22 +101,22 @@ type Agent struct {
 ### 好的接口
 
 ```go
-type AgentRepository interface {
-    Get(ctx context.Context, id string) (*Agent, error)
-    Save(ctx context.Context, agent *Agent) error
+type OrderRepository interface {
+    Get(ctx context.Context, id string) (*Order, error)
+    Save(ctx context.Context, order *Order) error
 }
 ```
 
 ### 差的接口
 
 ```go
-type AgentRepository interface {
-    Get(ctx context.Context, id string) (*Agent, error)
-    Save(ctx context.Context, agent *Agent) error
+type OrderRepository interface {
+    Get(ctx context.Context, id string) (*Order, error)
+    Save(ctx context.Context, order *Order) error
     Delete(ctx context.Context, id string) error
-    List(ctx context.Context, filter Filter) ([]*Agent, error)
+    List(ctx context.Context, filter Filter) ([]*Order, error)
     Count(ctx context.Context, filter Filter) (int, error)
-    BatchSave(ctx context.Context, agents []*Agent) error
+    BatchSave(ctx context.Context, orders []*Order) error
 }
 ```
 
@@ -155,15 +153,15 @@ func NewUsecase(notifier Notifier) *Usecase { ... }
 
 ### 规则
 
-1. 接口定义在 biz 层（端口），实现在 data 层（适配器）
-2. biz 层不得 import data 层或基础设施包
-3. 跨模块调用通过 biz 级窄接口（端口），不持有对方 Service 完整类型
-4. Wire 绑定在 Service 层
+1. 接口定义在领域层（端口），实现在基础设施层（适配器）
+2. 领域层不得 import 基础设施层或传输层包
+3. 跨模块调用通过领域级窄接口（端口），不持有对方完整类型
+4. 依赖注入在组合层绑定
 
 ### 示例
 
 ```go
-// biz/order.go — 端口
+// domain/order.go — 端口
 type OrderRepository interface {
     Get(ctx context.Context, id string) (*Order, error)
     Save(ctx context.Context, order *Order) error
@@ -174,14 +172,14 @@ type OrderUsecase struct {
     events EventPublisher
 }
 
-// data/order.go — 适配器
+// infra/order.go — 适配器
 type orderRepo struct {
     db *ent.Client
 }
 
 func (r *orderRepo) Get(ctx context.Context, id string) (*Order, error) {
     entOrder, err := r.db.Order.Get(ctx, id)
-    return entOrderToBiz(entOrder), err
+    return entOrderToDomain(entOrder), err
 }
 ```
 
@@ -191,17 +189,17 @@ func (r *orderRepo) Get(ctx context.Context, id string) (*Order, error) {
 
 ```go
 // ❌ 持有对方完整类型——耦合
-type ChatUsecase struct {
-    agentSvc *AgentService
+type OrderUsecase struct {
+    userSvc *UserService
 }
 
 // ✅ 窄接口——只暴露需要的
-type AgentLookup interface {
-    GetAgentConfig(ctx context.Context, id string) (*AgentConfig, error)
+type UserLookup interface {
+    GetUserEmail(ctx context.Context, id string) (string, error)
 }
 
-type ChatUsecase struct {
-    agentLookup AgentLookup
+type OrderUsecase struct {
+    userLookup UserLookup
 }
 ```
 
@@ -212,25 +210,25 @@ type ChatUsecase struct {
 用于灵活构造，当结构体有多个可选配置时：
 
 ```go
-type AgentOption func(*Agent)
+type ServerOption func(*Server)
 
-func WithProvider(p string) AgentOption {
-    return func(a *Agent) { a.Provider = p }
+func WithHost(h string) ServerOption {
+    return func(s *Server) { s.Host = h }
 }
 
-func WithModel(m string) AgentOption {
-    return func(a *Agent) { a.Model = m }
+func WithPort(p int) ServerOption {
+    return func(s *Server) { s.Port = p }
 }
 
-func NewAgent(name string, opts ...AgentOption) *Agent {
-    a := &Agent{Name: name}
+func NewServer(name string, opts ...ServerOption) *Server {
+    s := &Server{Name: name}
     for _, opt := range opts {
-        opt(a)
+        opt(s)
     }
-    return a
+    return s
 }
 
-agent := NewAgent("gpt4", WithProvider("openai"), WithModel("gpt-4"))
+server := NewServer("api", WithHost("0.0.0.0"), WithPort(8080))
 ```
 
 ---
@@ -278,7 +276,7 @@ type Order struct {
 
 func (o *Order) Validate() error {
     if o.ID == "" {
-        return kerrors.BadRequest("ORDER", "id is required")
+        return fmt.Errorf("id is required")
     }
     return nil
 }
@@ -293,42 +291,34 @@ func (o *Order) Validate() error {
 需要代码复用？     → 组合（嵌入 struct）
 需要默认行为？     → 接口 + 默认实现函数
 需要灵活构造？     → Functional Options
-需要解耦模块？     → 端口-适配器（接口在 biz，实现在 data）
+需要解耦模块？     → 端口-适配器（接口在领域层，实现在基础设施层）
 需要横切关注点？   → 中间件/装饰器
 只在本包用？       → 不需要接口，直接用 struct
 ```
 
 ---
 
-## 十、错误处理
-
-1. 统一使用 `kerrors`，禁止 `fmt.Errorf` 返回业务错误
-2. `fmt.Errorf` 仅用于 wrap 错误（`fmt.Errorf("get order: %w", err)`）
-3. 错误变量用 `Err` 前缀（`ErrNotFound`）
-
-```go
-kerrors.BadRequest("AGENT", "id is required")
-kerrors.NotFound("AGENT", "agent not found")
-kerrors.InternalServer("AGENT", err.Error())
-```
-
----
-
-## 十一、并发
-
-1. 所有跨层调用必须传递 `ctx`
-2. goroutine 必须走 `pkg/safego.Go` / `pkg/safego.GoRecover`
-3. 共享状态用 `sync.Mutex` / `sync.RWMutex`，禁止全局变量
-
----
-
-## 十二、命名约定
+## 十、命名约定
 
 | 类别 | 规则 | 示例 |
 |------|------|------|
-| 包名 | 小写单词，不用下划线 | `agent`, `mcp/config` |
-| 结构体/接口 | 大驼峰，名词 | `AgentUsecase`, `AgentRepository` |
-| 函数 | 大驼峰导出/小驼峰内部 | `NewAgentUsecase`, `fromProtoRuntime` |
+| 包名 | 小写单词，不用下划线 | `order`, `user/config` |
+| 结构体/接口 | 大驼峰，名词 | `OrderUsecase`, `OrderRepository` |
+| 函数 | 大驼峰导出/小驼峰内部 | `NewOrderUsecase`, `fromResponse` |
 | 错误变量 | `Err` 前缀 | `ErrNotFound` |
 | 接口 | 名词 + er 后缀（行为接口） | `Reader`, `Notifier` |
-| 接口 | 名词（数据接口） | `AgentRepository`, `OrderStore` |
+| 接口 | 名词（数据接口） | `OrderRepository`, `UserStore` |
+
+---
+
+## 项目特定约束引用
+
+以下内容不在本文范围，见 `aranea-coding-guide` SKILL：
+
+| 内容 | 位置 |
+|------|------|
+| 错误处理（kerrors） | `aranea-coding-guide` §7.1 |
+| 并发（safego、ctx 传递） | `aranea-coding-guide` §7.3 |
+| 日志（loggateway.Logger） | `aranea-coding-guide` §7.4 |
+| 依赖注入（Wire） | `aranea-coding-guide` §7.2 |
+| 项目命名补充 | `aranea-coding-guide` §7.5 |

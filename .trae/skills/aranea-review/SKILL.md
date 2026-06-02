@@ -5,9 +5,9 @@ description: "Aranea-Agents 全栈代码审查指导。当审查本项目代码�
 
 # Aranea-Agents 全栈代码审查指导
 
-> **文档地位**：本项目代码审查的权威规范，统一后端 + 前端审查流程。
+> **文档地位**：本项目代码审查的权威规范，统一后端 + 前端审查流程。前端审查已合并入本文（原 `aranea-frontend-review` 已删除）。
 > **编码规范参考**：后端见 `aranea-coding-guide` SKILL，前端见 `aranea-frontend-guide` SKILL。
-> **通用 OOP 审查**：见 `go-oop-review` SKILL；**通用 Vue 3 审查**：见 `vue-frontend-guide` SKILL。
+> **通用 OOP 审查**：见 `go-oop-review` SKILL；**通用 Vue 3 编程**：见 `vue-frontend-guide` SKILL。
 > 本文聚焦**项目业务合规性审查**，补充通用审查未覆盖的领域。
 
 ---
@@ -16,11 +16,26 @@ description: "Aranea-Agents 全栈代码审查指导。当审查本项目代码�
 
 ```
 1. 判定审查范围（后端 / 前端 / 全栈）
-2. 后端审查：架构合规 → 分层合规 → OOP 审查 → Agent 运行时合规 → 并发安全 → 错误处理
-3. 前端审查：数据流合规 → 组件分层 → 业务逻辑归属 → 聊天消息分组 → UX 主题
-4. 构建与回归审查
-5. 输出统一审查报告
+2. 按变更范围动态加载审查维度（见下方维度加载规则）
+3. 后端审查：架构合规 → 分层合规 → OOP 审查 → Agent 运行时合规 → 并发安全 → 错误处理 → 编程规范
+4. 前端审查：数据流合规 → 组件分层 → 业务逻辑归属 → 聊天消息分组 → UX 主题 → 编程规范
+5. 维度审查：按动态加载的维度 B 面清单逐项检查
+6. 构建与回归审查
+7. 输出统一审查报告
 ```
+
+### 维度加载规则
+
+| 变更范围 | 必查维度 |
+|----------|----------|
+| 所有变更 | 1（架构）、2（质量）、3（正确性）、8（错误处理） |
+| 涉及 DB | + 4（性能） |
+| 涉及外部输入/API | + 5（安全） |
+| 涉及 Usecase | + 6（可测试性）、11（业务逻辑） |
+| 涉及跨模块 | + 7（可维护性）、12（文档同步） |
+| 涉及前端 | + 9（前端性能）、10（前端安全） |
+
+完整维度检查清单见 `docs/review-dimension-checklists.md`。
 
 ---
 
@@ -53,11 +68,8 @@ description: "Aranea-Agents 全栈代码审查指导。当审查本项目代码�
 **检测方法**：
 
 ```bash
-# 检测 biz 层违规 import
 grep -rn "pkg/trpc-agent-go\|api/kratos.*v1" internal/biz/
-# 检测 server 层 Runner 装配
 grep -rn "runner.Runner\|llmagent.New\|runner.New" internal/server/
-# 检测 Service 层业务逻辑（if/for 超过映射转换）
 grep -rn "fmt.Errorf" internal/service/
 ```
 
@@ -93,7 +105,7 @@ grep -rn "fmt.Errorf" internal/service/
 | BI3 | 是否存在"上帝接口" | 🔴 阻断 | 合并了多个不相关职责的接口必须拆分 |
 | BI4 | 返回值是否为具体类型 | 🟡 建议 | 函数应返回具体类型，参数接收接口 |
 | BI5 | 是否滥用 `interface{}` | 🔴 阻断 | 用泛型或具体类型替代 |
-| BI6 | Repository 接口方法是否 ≤ 5 | 🟡 建议 | 超过则按职责域拆分为子接口（`SessionReader`/`SessionWriter`/`MessageReader` 等） |
+| BI6 | Repository 接口方法是否 ≤ 5 | 🟡 建议 | 超过则按职责域拆分为子接口 |
 
 ### 3.2 Struct 审查
 
@@ -193,9 +205,7 @@ grep -rn "fmt.Errorf" internal/service/
 **检测方法**：
 
 ```bash
-# 检测展示组件中的 Store/API import
 grep -rn "useXxxStore\|from.*api\|from.*services\|axios\|kratosApi" web/src/components/
-# 检测 Page 中的直接 API import
 grep -rn "from.*features.*api" web/src/pages/
 ```
 
@@ -211,15 +221,6 @@ grep -rn "from.*features.*api" web/src/pages/
 | FL4 | 组件类型是否从 types.ts 引入 | 🟡 建议 | 禁止从 api.ts 引入（即使仅类型） |
 | FL5 | 域内 composable 是否绕过 Store 直接调 API | 🟡 建议 | 须标 `// TECH-DEBT` 并尽快迁入 Store |
 | FL6 | 多 Dialog/Tab 是否已拆分 | 🟡 建议 | 拆为 `*Dialog.vue`、`*Panel.vue` |
-
-**检测方法**：
-
-```bash
-# 检测 Page 行数
-find web/src/pages -name "*Page.vue" -exec sh -c 'lines=$(grep -c "" "$1"); if [ $lines -gt 250 ]; then echo "$1: $lines lines"; fi' _ {} \;
-# 检测 features 下的 .vue 文件
-find web/src/features -name "*.vue"
-```
 
 ---
 
@@ -254,7 +255,6 @@ find web/src/features -name "*.vue"
 **检测方法**：
 
 ```bash
-# 检测 turn_index 使用
 grep -rn "turn_index\|deriveTurnKey\|inferAssistant\|inferTool\|realignEphemeral\|nextUserTurnIndex" web/src/
 ```
 
@@ -278,11 +278,8 @@ grep -rn "turn_index\|deriveTurnKey\|inferAssistant\|inferTool\|realignEphemeral
 **检测方法**：
 
 ```bash
-# 检测硬编码 hex（排除 token 定义文件）
 grep -rn "#[0-9a-fA-F]\{3,8\}" web/src/components/ web/src/pages/ --include="*.vue" --include="*.ts"
-# 检测裸 q-table
 grep -rn "<q-table" web/src/ --include="*.vue"
-# 检测 backdrop-filter 缺失
 grep -rn "backdrop-filter" web/src/ --include="*.vue" --include="*.sass" | grep -v "webkit"
 ```
 
@@ -306,6 +303,47 @@ grep -rn "backdrop-filter" web/src/ --include="*.vue" --include="*.sass" | grep 
 
 ---
 
+## 十三、编程规范审查
+
+> 编程规范违反级别为 🟡 建议（非 🔴 阻断），但累计过多应升级为阻断。
+
+### 后端编程规范审查
+
+| # | 检查项 | 严重级别 | 说明 |
+|---|--------|----------|------|
+| BP1 | 是否使用 `log/slog` | 🟡 建议 | CS-B1：统一 `pkg/loggateway.Logger` |
+| BP2 | 是否有已无调用者的 deprecated 方法 | 🟡 建议 | CS-B2：死代码即删 |
+| BP3 | 压缩操作是否通过 CAS + 事务 | 🟡 建议 | CS-B3：保证原子性 |
+| BP4 | Repo 接口方法是否 ≤ 5 | 🟡 建议 | CS-B4：超过按职责域拆分 |
+| BP5 | 函数体是否超过 80 行 | 🟡 建议 | CS-B5：超过必须拆分 |
+| BP6 | 圈复杂度是否超过 15 | 🟡 建议 | CS-B6：超过必须简化 |
+| BP7 | 参数列表是否超过 5 个 | 🟡 建议 | CS-B7：超过用 Option struct |
+| BP8 | 是否有魔法数字 | 🟡 建议 | CS-B8：必须定义命名常量 |
+| BP9 | DB 查询是否带 context 超时 | 🟡 建议 | CS-B9：禁止裸 `d.Ent().Query()` |
+| BP10 | 循环内是否有逐条 DB 操作 | 🟡 建议 | CS-B10：必须批量 |
+| BP11 | 外部输入是否校验后才进 biz | 🟡 建议 | CS-B11：Service 层校验 |
+| BP12 | 敏感字段是否在日志中暴露 | 🟡 建议 | CS-B12：key/secret/token 禁止日志 |
+| BP13 | 核心 Usecase 是否有单元测试 | 🟡 建议 | CS-B13：覆盖率 ≥ 70% |
+| BP14 | 错误路径是否有测试 | 🟡 建议 | CS-B14：错误路径覆盖 |
+| BP15 | 重试逻辑是否合理 | 🟡 建议 | CS-B15：上限 3 次 + 指数退避 |
+| BP16 | 写操作是否幂等 | 🟡 建议 | CS-B16：相同请求不产生副作用 |
+| BP17 | 技术债务是否标记 | 🟡 建议 | CS-B17：`// TODO(debt):` + issue 编号 |
+
+### 前端编程规范审查
+
+| # | 检查项 | 严重级别 | 说明 |
+|---|--------|----------|------|
+| FP1 | Store 是否在 stores/index.ts 具名导出 | 🟡 建议 | CS-F1：保持 Pinia 安装一致 |
+| FP2 | 浮层是否遵守 UX 规范 | 🟡 建议 | CS-F2：backdrop-filter 成对 + --color-accent |
+| FP3 | Page script 是否超过 ~200 行 | 🟡 建议 | CS-F3：拆 Dialog/Panel/composable |
+| FP4 | 组件 props 是否有 TypeScript 类型 | 🟡 建议 | CS-F4：defineProps<T>() |
+| FP5 | 核心 Store/composable 是否有测试 | 🟡 建议 | CS-F5：单元测试覆盖 |
+| FP6 | 是否有 any 类型 | 🟡 建议 | CS-F6：用具体类型或泛型 |
+| FP7 | 事件处理器命名是否 onXxx | 🟢 提示 | CS-F7：命名约定 |
+| FP8 | 技术债务是否标记 | 🟡 建议 | CS-F8：`// TECH-DEBT:` + issue 编号 |
+
+---
+
 ## 审查输出模板
 
 ```markdown
@@ -322,11 +360,13 @@ grep -rn "backdrop-filter" web/src/ --include="*.vue" --include="*.sass" | grep 
 | **后端 — 并发安全** | | | | |
 | **后端 — 错误处理** | | | | |
 | **后端 — 依赖注入** | | | | |
+| **后端 — 编程规范** | | | | |
 | **前端 — 数据流合规** | | | | |
 | **前端 — 组件分层** | | | | |
 | **前端 — 业务逻辑归属** | | | | |
 | **前端 — 聊天消息分组** | | | | |
 | **前端 — UX 主题** | | | | |
+| **前端 — 编程规范** | | | | |
 | **构建与回归** | | | | |
 
 ### 阻断项（必须修复）
@@ -366,6 +406,7 @@ grep -rn "backdrop-filter" web/src/ --include="*.vue" --include="*.sass" | grep 
 - [ ] 无上帝对象注入
 - [ ] 接口方法 ≤ 5
 - [ ] Repository 接口方法 ≤ 5（否则拆子接口）
+- [ ] 编程规范合规（CS-B1~B17）
 
 ### 前端合规性清单
 
@@ -381,6 +422,7 @@ grep -rn "backdrop-filter" web/src/ --include="*.vue" --include="*.sass" | grep 
 - [ ] Registry 表格用 AppRegistryTable + registryCol()
 - [ ] 表格列定义在 *Ui.ts（非 .vue 内）
 - [ ] Page script ≤~200 行
+- [ ] 编程规范合规（CS-F1~F8）
 ```
 
 ---
@@ -461,13 +503,24 @@ grep -rn "backdrop-filter" web/src/ --include="*.vue" --include="*.sass" | grep 
 ```
 变更文件类型？
 │
-├─ 仅 .go 文件 → 后端审查（第一~六节）
+├─ 仅 .go 文件 → 后端审查（第一~六节 + 第十三节编程规范）
 │
-├─ 仅 .vue/.ts/.sass 文件 → 前端审查（第七~十一节）
+├─ 仅 .vue/.ts/.sass 文件 → 前端审查（第七~十一节 + 第十三节编程规范）
 │
 ├─ .go + .proto → 后端审查 + 构建回归（Proto 变更专项）
 │
 ├─ .go + 前端文件 → 全栈审查
 │
 └─ 仅配置/文档 → 跳过业务审查，仅检查构建
+
+维度动态加载？
+│
+├─ 所有变更 → 维度 1（架构）、2（质量）、3（正确性）、8（错误处理）
+├─ 涉及 DB → + 维度 4（性能）
+├─ 涉及外部输入/API → + 维度 5（安全）
+├─ 涉及 Usecase → + 维度 6（可测试性）、11（业务逻辑）
+├─ 涉及跨模块 → + 维度 7（可维护性）、12（文档同步）
+└─ 涉及前端 → + 维度 9（前端性能）、10（前端安全）
+
+完整维度 B 面清单见 docs/review-dimension-checklists.md
 ```

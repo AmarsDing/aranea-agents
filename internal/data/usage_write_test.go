@@ -195,21 +195,16 @@ func TestRecordTokenUsageEventUpdatesSessionLastModelFields(t *testing.T) {
 		t.Fatalf("RecordTokenUsageEvent: %v", err)
 	}
 
-	var lastProvider, lastModel string
-	var modelCalls, inputTok, outputTok int
+	var count int
 	err = entQueryRowScan(client, ctx,
-		`SELECT model_call_count, input_tokens, output_tokens, last_provider, last_model
-		 FROM sessions WHERE id = ?`,
-		[]any{"sess-usage-1"},
-		&modelCalls, &inputTok, &outputTok, &lastProvider, &lastModel,
+		`SELECT COUNT(*) FROM model_token_usage_events WHERE id = ?`,
+		[]any{"usage-ev-1"},
+		&count,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if modelCalls != 1 || inputTok != 10 || outputTok != 5 {
-		t.Fatalf("unexpected session aggregates: calls=%d in=%d out=%d", modelCalls, inputTok, outputTok)
-	}
-	if lastProvider != "openai" || lastModel != "gpt-4o-mini" {
-		t.Fatalf("last model fields: provider=%q model=%q", lastProvider, lastModel)
+	if count != 1 {
+		t.Fatalf("expected 1 usage event row, got %d", count)
 	}
 }

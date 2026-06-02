@@ -5,7 +5,7 @@ description: "Aranea-Agents 项目前端统一编码指南。当在本项目编�
 
 # Aranea-Agents 前端统一编码指南
 
-> **文档地位**：本项目前端编码的权威规范，与 `.trae/rules/project_rules.md` 互补。SKILL 为详细版，rules 为精简版；内容冲突时以 SKILL 为准。
+> **文档地位**：本项目前端编码的权威规范。`project_rules.md` 为索引 + 全局约束，详细规范只在本 SKILL 中；内容冲突时以 SKILL 为准。
 > **通用 Vue 3 编程规范**：见 `vue-frontend-guide` SKILL（组件设计、Composable 模式、TypeScript 类型等）。
 > **后端规范**：见 `aranea-coding-guide` SKILL，不在本文范围。
 
@@ -25,6 +25,7 @@ description: "Aranea-Agents 项目前端统一编码指南。当在本项目编�
 - [第十章：AI 编码自检清单](#第十章ai-编码自检清单)
 - [第十一章：验证命令](#第十一章验证命令)
 - [第十二章：模块关联强制检查](#第十二章模块关联强制检查)
+- [第十三章：编程规范](#第十三章编程规范)
 
 ---
 
@@ -39,15 +40,17 @@ description: "Aranea-Agents 项目前端统一编码指南。当在本项目编�
 | 3 | 展示组件不得 `watch` + fetch + `ref` 存跨组件共享的业务数据 | 应进 Store |
 | 4 | Dialog / Drawer / 浮层组件不得在组件内直接调 API | `emit('submit', payload)`，由 Page 或 Store action 调 API |
 | 5 | 展示组件 `.vue` 必须放在 `components/<域>/`，禁止放在 `features/<域>/` | `features/<域>/` 只放 api.ts、composable、容器组件 |
-| 6 | 新 Store 必须在 `stores/index.ts` 具名导出，不得删除 default export Pinia 工厂 | 保持 Quasar Pinia 安装方式一致 |
+| 6 | 新 Store 必须在 `stores/index.ts` 具名导出，不得删除 default export Pinia 工厂 → **编程规范 CS-F1** | 保持 Quasar Pinia 安装方式一致 |
 | 7 | 新 HTTP 调用必须写在 `features/<域>/api.ts`，经 `services/index.ts` 的 `create*Service()` 或 `kratosApi` | 禁止在 `.vue` 中写裸 URL 或散装 `axios` |
-| 8 | 浮层视觉必须遵守 UX 规范：`backdrop-filter` + `-webkit-backdrop-filter` 成对；主按钮用 `--color-accent` | 禁止日间用夜间霓虹青紫作默认强调 |
+| 8 | 浮层视觉必须遵守 UX 规范：`backdrop-filter` + `-webkit-backdrop-filter` 成对；主按钮用 `--color-accent` → **编程规范 CS-F2** | 禁止日间用夜间霓虹青紫作默认强调 |
 | 9 | 禁止运行时用脚本改 `quasar-variables` | 昼夜仅用 Dark + CSS 变量 + body 选择器 |
 | 10 | 禁止与 `app-global.sass` 平行的第二套全局 CSS 入口 | 新 token 只在 `theme/` 增加 partial，由 `app-theme.sass` 聚合 |
 | 11 | **Page**（`pages/**/*Page.vue`）不得直接 `import` `features/*/api` | 请求经 **Store action**；编排经 **`features/<域>/useXxx.ts`** composable |
 | 12 | 展示组件从 `features/<域>/api.ts` **引类型**（含 re-export） | 共享类型放在 **`features/<域>/types.ts`**，组件只 import types |
-| 13 | 单页 `*Page.vue` 的 `<script setup>` 不宜长期超过 **~200 行**（不含 import） | 拆 **Dialog 组件** + **域内 composable** + **子面板组件** |
+| 13 | 单页 `*Page.vue` 的 `<script setup>` 不宜长期超过 **~200 行**（不含 import）→ **编程规范 CS-F3** | 拆 **Dialog 组件** + **域内 composable** + **子面板组件** |
 | 14 | 前端禁止使用 `turn_index` 做消息分组，聊天消息分组必须使用堆栈模型 | `groupMessagesByTurn` 按 `role=user` 边界 + 时间顺序 |
+
+> **降级说明**：红线 #6（Store 导出）→ CS-F1、#8（UX 视觉）→ CS-F2、#13（Page 行数）→ CS-F3 已降级为编程规范（见第十三章），因可通过 linter/编码约定约束，不属于架构边界违反。红线编号不变，但违反级别从"阻断"降为"建议"。
 
 ---
 
@@ -471,6 +474,7 @@ registryColActions<Row>();
 - [ ] `pnpm build` 通过
 - [ ] 昼/夜各看一眼（或 `/dev/theme-preview`）
 - [ ] 无红线违反
+- [ ] **编程规范合规**：CS-F4 props 有类型、CS-F6 无 any 类型、CS-F7 事件命名 onXxx、CS-F8 技术债务已标记
 
 ---
 
@@ -496,6 +500,40 @@ registryColActions<Row>();
 | 页面 Hero / 登录 / 代码块 | `web/src/css/theme/_page-patterns.sass` |
 | Dialog 毛玻璃 | `web/src/css/theme/_glass-dialog.sass` |
 | 布局/动画（仅本组件） | `web/src/components/**` scoped sass |
+
+---
+
+## 第十三章：编程规范
+
+> 编程规范是编码质量的硬约束，可通过 linter/编码约定自动或半自动执行。违反不等于架构破坏，但影响代码质量和可维护性。完整维度检查清单见 `docs/review-dimension-checklists.md`。
+
+| 编号 | 规范 | 约束方式 | 来源 |
+|------|------|----------|------|
+| CS-F1 | 新 Store 必须在 `stores/index.ts` 具名导出，不得删除 default export Pinia 工厂 | ESLint | 原红线 #6 |
+| CS-F2 | 浮层视觉必须遵守 UX 规范：`backdrop-filter` 成对；主按钮用 `--color-accent` | 审查 | 原红线 #8 |
+| CS-F3 | 单页 `*Page.vue` 的 `<script setup>` 不宜超过 ~200 行 | ESLint/审查 | 原红线 #13 |
+| CS-F4 | 组件 props 必须有 TypeScript 类型定义（`defineProps<T>()`） | TypeScript | 新增 |
+| CS-F5 | 核心业务 Store/composable 必须有单元测试 | CI 门槛 | 新增 |
+| CS-F6 | 禁止 `any` 类型，必须用具体类型或泛型 | TypeScript strict | 新增 |
+| CS-F7 | 事件处理器命名：`onXxx`（如 `onSubmit`、`onDelete`） | 审查 | 新增 |
+| CS-F8 | 技术债务用 `// TECH-DEBT:` 标记，含 issue 编号 | linter/审查 | 新增 |
+
+### 13.1 编程规范与红线的关系
+
+| 维度 | 红线（架构边界） | 编程规范（编码质量） |
+|------|-----------------|---------------------|
+| 违反后果 | 数据流混乱/组件耦合/消息分组错误 | 代码质量下降/可维护性降低 |
+| 检测方式 | 代码审查（人工） | linter/TypeScript（自动）+ 审查 |
+| 修复优先级 | 🔴 阻断（必须修复） | 🟡 建议（推荐修复） |
+| 示例 | 展示组件 import Store | Page 超过 200 行 |
+
+### 13.2 维度检查清单引用
+
+编码时按维度 A 面预防，详见 `docs/review-dimension-checklists.md`：
+- 所有编码：维度 1（架构）、2（质量）、3（正确性）、8（错误处理）
+- 涉及 DB/API：+ 维度 9（前端性能）、10（前端安全）
+- 涉及 Store/composable：+ 维度 6（可测试性）、11（业务逻辑）
+- 涉及跨模块：+ 维度 7（可维护性）、12（文档同步）
 
 ## 附录：代表文件（抄作业起点）
 

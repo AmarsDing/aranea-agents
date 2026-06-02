@@ -29,8 +29,8 @@ func NewToolRepo(d *Data) biz.ToolRepo {
 }
 
 func (r *toolRepo) readClient(ctx context.Context) *ent.Client {
-	if c, ok := ctx.Value(txClientKey{}).(*ent.Client); ok {
-		return c
+	if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
+		return tx.Client()
 	}
 	return r.data.ReadEnt()
 }

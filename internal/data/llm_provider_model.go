@@ -63,8 +63,8 @@ func entToBizPM(lg loggateway.Logger, e *ent.LlmProviderModel) biz.ProviderModel
 }
 
 func (r *llmProviderModelRepo) readClient(ctx context.Context) *ent.Client {
-	if c, ok := ctx.Value(txClientKey{}).(*ent.Client); ok {
-		return c
+	if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
+		return tx.Client()
 	}
 	return r.data.ReadEnt()
 }

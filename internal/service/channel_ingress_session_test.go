@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
@@ -163,8 +164,8 @@ func (m *ingressSessionRepo) UpdateChatMessageStatus(context.Context, string, st
 func (m *ingressSessionRepo) UpdateMessageFeedbackJSON(context.Context, string, string, string, string) error {
 	return nil
 }
-func (m *ingressSessionRepo) UpsertChatActivityMessage(context.Context, string, biz.ChatMessage) error {
-	return nil
+func (m *ingressSessionRepo) UpsertChatActivityMessage(context.Context, string, biz.ChatMessage) (bool, error) {
+	return false, nil
 }
 func (m *ingressSessionRepo) UpdateRunnerSnapshotJSON(context.Context, string, string) error {
 	return nil
@@ -212,6 +213,9 @@ func (m *ingressSessionRepo) GetSessionTurn(context.Context, string) (biz.Sessio
 	return biz.SessionTurn{}, nil
 }
 func (m *ingressSessionRepo) IncrementInvocationCounts(context.Context, string, int, int, int) error {
+	return nil
+}
+func (m *ingressSessionRepo) ApplyMetricsDelta(context.Context, *sessstatus.SessionMetricsDelta) error {
 	return nil
 }
 func (m *ingressSessionRepo) ListSessionsByIDs(_ context.Context, ids []string) ([]biz.Session, error) {

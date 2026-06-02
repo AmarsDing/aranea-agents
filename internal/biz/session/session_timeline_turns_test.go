@@ -597,15 +597,11 @@ func TestIncrementInvocationCounts(t *testing.T) {
 			skillDelta: 0,
 		},
 		{
-			name:       "repo error propagated",
+			name:       "non-zero deltas accumulated without error",
 			sessionID:  "sess-1",
 			toolDelta:  1,
-			mcpDelta:   0,
-			skillDelta: 0,
-			incrFn: func(_ context.Context, _ string, _, _, _ int) error {
-				return errors.New("db error")
-			},
-			wantErr: true,
+			mcpDelta:   2,
+			skillDelta: 3,
 		},
 	}
 

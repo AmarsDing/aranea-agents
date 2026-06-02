@@ -5,7 +5,7 @@ description: "Aranea-Agents 项目统一编码指南。当在本项目编写 Go 
 
 # Aranea-Agents 统一编码指南
 
-> **文档地位**：本项目 Go 后端编码的权威规范，与 `.trae/rules/project_rules.md` 互补。SKILL 为详细版，rules 为精简版；内容冲突时以 SKILL 为准。
+> **文档地位**：本项目 Go 后端编码的权威规范。`project_rules.md` 为索引 + 全局约束，详细规范只在本 SKILL 中；内容冲突时以 SKILL 为准。
 > **通用 Go OOP 规范**：见 `go-oop-guide` SKILL（接口设计、组合嵌入、工厂构造、设计模式等）。
 > **前端规范**：见 `aranea-frontend-guide` SKILL，不在本文范围。
 
@@ -26,6 +26,7 @@ description: "Aranea-Agents 项目统一编码指南。当在本项目编写 Go 
 - [第十一章：AI 编码自检清单](#第十一章ai-编码自检清单)
 - [第十二章：验证命令](#第十二章验证命令)
 - [第十三章：模块关联强制检查](#第十三章模块关联强制检查)
+- [第十四章：编程规范](#第十四章编程规范)
 
 ---
 
@@ -114,10 +115,12 @@ internal/data           ← Repo 实现（Ent ORM + pgvector）
 | 13 | 所有 `go func()` 必须走 `pkg/safego.Go` / `pkg/safego.GoRecover` | 禁止裸 `go func()` 不处理 panic |
 | 14 | 不得在 biz 层使用 `fmt.Errorf` 返回业务错误 | 统一使用 `kerrors.BadRequest/NotFound/InternalServer` |
 | 15 | 非 Service 层不得 import `api/*/v1` proto 包 | proto 映射只在 Service 层；biz 定义端口接口 |
-| 16 | 禁止使用 `log/slog` 记录日志 | 统一使用 `pkg/loggateway.Logger`（`lg.Info/Warn/Error` + `loggateway.StepID/Err/Str`）；`event.SysLog*` / `event.SessionSysLog*` 已废弃 |
+| 16 | 禁止使用 `log/slog` 记录日志 → **编程规范 CS-B1** | 统一使用 `pkg/loggateway.Logger`（`lg.Info/Warn/Error` + `loggateway.StepID/Err/Str`）；`event.SysLog*` / `event.SessionSysLog*` 已废弃 |
 | 17 | 跨模块调用不得持有对方 Service 具体类型 | 通过 biz 级窄接口（端口）交互，Wire 绑定在 Service 层 |
 | 18 | Graph 运行时类型不得泄漏到 biz | biz 暴露 `GraphBuildConfig`/`GraphRuntime`/`GraphExecutor` 端口 |
-| 19 | 不得新增已无调用者的 deprecated 方法 | 死代码即删，不保留 Deprecated 标记 |
+| 19 | 不得新增已无调用者的 deprecated 方法 → **编程规范 CS-B2** | 死代码即删，不保留 Deprecated 标记 |
+
+> **降级说明**：红线 #16（log/slog）→ CS-B1、#19（deprecated 方法）→ CS-B2 已降级为编程规范（见第十四章），因可通过 linter/静态分析约束，不属于架构边界违反。红线编号不变，但违反级别从"阻断"降为"建议"。
 
 ---
 
@@ -253,7 +256,66 @@ func (s *ChatService) SendChatMessage(ctx context.Context, req *chatv1.SendChatM
 2. **Ent 转换函数**：`entXxxToBiz` / `bizXxxToEnt`，放在对应 Repo 文件中
 3. **编译期检查**：`var _ biz.XxxRepo = (*xxxRepo)(nil)`
 
-### 5.4 Server 层——传输注册
+### 5.4 数据库编码规范（SQLite + Ent ORM）
+
+> 源自 `docs/sqlite问题和解决方案.md` 的核心设计原则，所有 data 层开发必须遵守。
+
+#### 5.4.1 Schema 管理
+
+- **单一 Schema 真相源**：所有表必须进 Ent Schema，`go generate` 是唯一的 Schema 演进方式
+- **禁止野生表**：不得在 Ent Schema 之外通过 Raw SQL 创建新表
+- **Ent 不支持的特性**（FTS5、pgvector、`BEGIN IMMEDIATE`）：在 Ent Schema 中标注 `Annotations`，用 Raw Query 补充但不另建表
+- **新增数据库表/查询**：`internal/data/ent/schema` → `go generate ./internal/data/ent` → `internal/data`
+
+#### 5.4.2 数据访问模式
+
+**Raw SQL → Ent Repo 迁移策略**：
+
+| 场景 | 方案 |
+|------|------|
+| 简单 CRUD | 直接替换为 Ent API |
+| 复杂查询 | 保留 `ent.Client.QueryContext()`，但用 Ent 生成的类型做结果映射 |
+| SQLite 特有语法 | 通过 Ent 的 Raw Query + 类型映射保留 |
+
+**Ent 无法覆盖的场景**：
+
+| 场景 | 方案 |
+|------|------|
+| `ON CONFLICT DO UPDATE WHERE` | Ent 的 `OnConflictColumns` + `UpdateSet` |
+| `INSERT OR IGNORE` | Ent 的 `OnConflictColumns` + 不更新 |
+| `json_set()`/`json_remove()` | 保留 Raw SQL，但封装为 Repo 方法 |
+| FTS5 全文搜索 | 保留 Raw SQL（Ent 不支持 FTS5） |
+| pgvector 向量搜索 | 保留 Raw SQL（Ent 不支持向量） |
+| `BEGIN IMMEDIATE` | 保留 Raw SQL（Ent 不支持事务隔离级别） |
+| 50+ 列大表 | Ent 生成后用 `SetXxx()` 链式调用 |
+
+#### 5.4.3 Repo 接口规范
+
+- **方法数上限**：每个 Repo 接口 ≤ 5 方法（红线 #15）
+- **拆分维度**：按读写职责拆分（`XxxReader`/`XxxWriter`），或按业务子域拆分（`TeamRunRepo`/`OrchestrationStepRepo`）
+- **Wire 绑定**：按需注入窄接口，消费方只看到自己需要的方法
+- **接口定义位置**：biz 层定义接口，data 层实现
+
+#### 5.4.4 事务管理
+
+- **统一事务接口**：一套 `TransactionManager` 覆盖 Ent + Raw SQL，通过 context 传播事务对象
+- **Raw SQL Repo 从 ctx 获取事务**：优先使用 `ctx.Value(rawTxKey{})` 获取已开启的事务，无事务时回退到 `d.RawDB()`
+- **压缩操作**：必须通过 CAS + 事务保证原子性（`TryIncrementCompressVersion` + `CompressSessionInTx`）
+
+#### 5.4.5 读写分离
+
+- **SQLite 双连接**：写连接 `entClient`（`MaxOpenConns=1`），读连接 `readClient`（`MaxOpenConns=2`）
+- **Ent Repo**：`readClient(ctx)` 读、`txClient(ctx)` 写
+- **Raw SQL Repo**：读操作用 `d.ReadDB()`，写操作用 `d.RawDB()`
+- **连接收口**：不得在 `NewData` 外另开 SQLite 连接（红线 #11）
+
+#### 5.4.6 Schema 迁移
+
+- **框架化迁移**：所有 Schema 变更（包括 `ALTER TABLE ADD COLUMN`）纳入统一迁移框架
+- **迁移要素**：有版本号、有依赖顺序、可回滚
+- **禁止散落 patch**：不得新增 `*_patch.go` 模式的迁移，统一走迁移框架
+
+### 5.5 Server 层——传输注册
 
 **职责**：创建 HTTP/gRPC/WebSocket 实例，注册 Service。
 
@@ -772,6 +834,7 @@ cmd/admin/wire.go                         ← Wire 注入
 - [ ] **日志**：使用 `loggateway.Logger`，不用 `log/slog`，不用 `event.SysLog*`
 - [ ] **goroutine**：走 `pkg/safego`，无裸 `go func()`
 - [ ] **OOP 合规**：见 `go-oop-guide` SKILL（接口方法 ≤ 5、接口定义在使用方、返回具体类型参数接收接口、无上帝对象注入）
+- [ ] **编程规范合规**：CS-B5 函数 ≤ 80 行、CS-B6 圈复杂度 ≤ 15、CS-B7 参数 ≤ 5 个、CS-B8 无魔法数字、CS-B9 DB 查询带超时、CS-B10 循环内无逐条 DB、CS-B12 敏感字段不日志、CS-B17 技术债务已标记
 
 ### 改动后（构建与验证）
 
@@ -801,6 +864,50 @@ cmd/admin/wire.go                         ← Wire 注入
 | Wire 注入 | `make wire && go build ./cmd/admin` |
 | 前端 | `cd web && pnpm lint && pnpm test && pnpm build` |
 | **提交前（全量）** | 后端：`make api && make wire && make build && make test && make lint`；前端：`cd web && pnpm lint && pnpm test && pnpm build` |
+
+---
+
+## 第十四章：编程规范
+
+> 编程规范是编码质量的硬约束，可通过 linter/静态分析/编码模式自动或半自动执行。违反不等于架构破坏，但影响代码质量和可维护性。完整维度检查清单见 `docs/review-dimension-checklists.md`。
+
+| 编号 | 规范 | 约束方式 | 来源 |
+|------|------|----------|------|
+| CS-B1 | 禁止使用 `log/slog`，统一 `pkg/loggateway.Logger` | linter 禁止 import | 原红线 #16 |
+| CS-B2 | 不得新增已无调用者的 deprecated 方法，死代码即删 | 静态分析 | 原红线 #19 |
+| CS-B3 | 压缩操作必须通过 CAS + 事务保证原子性 | 代码审查 | 新增 |
+| CS-B4 | Repository 接口方法 ≤ 5，超过按职责域拆分子接口 | linter/审查 | 新增 |
+| CS-B5 | 函数体不超过 80 行，超过必须拆分 | linter/审查 | 新增 |
+| CS-B6 | 圈复杂度不超过 15，超过必须简化分支 | linter | 新增 |
+| CS-B7 | 参数列表不超过 5 个，超过用 Option struct | 审查 | 新增 |
+| CS-B8 | 禁止魔法数字，必须定义命名常量 | linter | 新增 |
+| CS-B9 | 数据库查询必须带 `context` 超时，禁止裸 `d.Ent().Query()` | 审查 | 新增 |
+| CS-B10 | 循环内禁止逐条 DB 操作，必须批量 | 审查 | 新增 |
+| CS-B11 | 外部输入必须校验后才进入 biz 层 | 审查 | 新增 |
+| CS-B12 | 敏感字段（key/secret/token）禁止日志输出 | linter/审查 | 新增 |
+| CS-B13 | 核心业务 Usecase 必须有单元测试，覆盖率 ≥ 70% | CI 门槛 | 新增 |
+| CS-B14 | 错误路径必须有测试用例覆盖 | 审查 | 新增 |
+| CS-B15 | 重试次数上限 3 次，必须指数退避 | 审查 | 新增 |
+| CS-B16 | 写操作必须保证幂等（相同请求不产生副作用） | 审查 | 新增 |
+| CS-B17 | 技术债务用 `// TODO(debt):` 标记，含 issue 编号和预期偿还时间 | linter/审查 | 新增 |
+
+### 14.1 编程规范与红线的关系
+
+| 维度 | 红线（架构边界） | 编程规范（编码质量） |
+|------|-----------------|---------------------|
+| 违反后果 | 架构耦合/数据不一致/运行时崩溃 | 代码质量下降/可维护性降低 |
+| 检测方式 | 代码审查（人工） | linter/静态分析（自动）+ 审查 |
+| 修复优先级 | 🔴 阻断（必须修复） | 🟡 建议（推荐修复） |
+| 示例 | biz import trpc-agent-go | 函数超过 80 行 |
+
+### 14.2 维度检查清单引用
+
+编码时按维度 A 面预防，详见 `docs/review-dimension-checklists.md`：
+- 所有编码：维度 1（架构）、2（质量）、3（正确性）、8（错误处理）
+- 涉及 DB：+ 维度 4（性能）
+- 涉及外部输入/API：+ 维度 5（安全）
+- 涉及 Usecase：+ 维度 6（可测试性）、11（业务逻辑）
+- 涉及跨模块：+ 维度 7（可维护性）、12（文档同步）
 
 ---
 

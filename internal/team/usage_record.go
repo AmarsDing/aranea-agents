@@ -3,9 +3,11 @@ package team
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 
@@ -80,7 +82,19 @@ func (r *Runner) recordMemberUsage(
 			loggateway.Str("step_id", stepID),
 			loggateway.Str("usage_kind", ev.UsageKind),
 		)
+		return
 	}
+	if r.td.Sessions != nil && strings.TrimSpace(run.SessionID) != "" {
+		r.td.Sessions.AccumulateMetricsDelta(session.SessionMetricsDelta{
+			SessionID:        run.SessionID,
+			ModelCallCount:   ev.CallCount,
+			InputTokens:      int64(ev.InputTokens),
+			OutputTokens:     int64(ev.OutputTokens),
+			TotalTokens:      int64(ev.TotalTokens),
+			TotalCostMicroUsd: ev.TotalCostMicroUSD,
+		})
+	}
+	biz.PublishTokenUsageEnvelope(ctx, r.td.Pipeline.Bus, ev)
 }
 
 // recordTeamRunUsage writes one aggregated team turn row (workflow-level tokens).
@@ -135,5 +149,17 @@ func (r *Runner) recordTeamRunUsage(
 			loggateway.Str("run_id", run.ID),
 			loggateway.Str("usage_kind", biz.UsageKindTeamTurn),
 		)
+		return
 	}
+	if r.td.Sessions != nil && strings.TrimSpace(run.SessionID) != "" {
+		r.td.Sessions.AccumulateMetricsDelta(session.SessionMetricsDelta{
+			SessionID:        run.SessionID,
+			ModelCallCount:   ev.CallCount,
+			InputTokens:      int64(ev.InputTokens),
+			OutputTokens:     int64(ev.OutputTokens),
+			TotalTokens:      int64(ev.TotalTokens),
+			TotalCostMicroUsd: ev.TotalCostMicroUSD,
+		})
+	}
+	biz.PublishTokenUsageEnvelope(ctx, r.td.Pipeline.Bus, ev)
 }

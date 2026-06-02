@@ -16,8 +16,8 @@ type systemSettingRepo struct {
 var _ biz.SystemSettingRepo = (*systemSettingRepo)(nil)
 
 func (r *systemSettingRepo) readClient(ctx context.Context) *ent.Client {
-	if c, ok := ctx.Value(txClientKey{}).(*ent.Client); ok {
-		return c
+	if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
+		return tx.Client()
 	}
 	return r.data.ReadEnt()
 }

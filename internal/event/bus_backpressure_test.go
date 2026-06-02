@@ -6,10 +6,11 @@ import (
 	"time"
 
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestBusDropOldest(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(loggateway.NewNoop())
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{
 		BufferSize: 2,
 		DropPolicy: event.DropOldest,
@@ -34,15 +35,13 @@ loop:
 			break loop
 		}
 	}
-	// With DropOldest, evictions replace old events but don't count as drops.
-	// We just verify at least buffer-size events were available for consumption.
 	if received < 2 {
 		t.Fatalf("expected at least 2 delivered events, got %d", received)
 	}
 }
 
 func TestBusDropNewest(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(loggateway.NewNoop())
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{
 		BufferSize: 1,
 		DropPolicy: event.DropNewest,
@@ -65,7 +64,7 @@ func TestBusDropNewest(t *testing.T) {
 }
 
 func TestBusBlockUpTo(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(loggateway.NewNoop())
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{
 		BufferSize: 1,
 		DropPolicy: event.BlockUpTo,
@@ -80,7 +79,6 @@ func TestBusBlockUpTo(t *testing.T) {
 	}
 	elapsed := time.Since(start)
 
-	// With buffer=1 and 3 publishes, second and third should block briefly.
 	if elapsed < 40*time.Millisecond {
 		t.Logf("BlockUpTo elapsed=%s (may be fast if consumer drained buffer)", elapsed)
 	}
@@ -88,7 +86,7 @@ func TestBusBlockUpTo(t *testing.T) {
 }
 
 func TestBusReliableOption(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(loggateway.NewNoop())
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{
 		BufferSize: 4,
 		Reliable:   true,
@@ -96,7 +94,6 @@ func TestBusReliableOption(t *testing.T) {
 	defer unsub()
 
 	ctx := context.Background()
-	// Publish a critical event type — should be delivered with block-up-to semantics.
 	env := event.NewEnvelope(event.EnvelopeTypeToolResult, "agent", "sess-1")
 	bus.Publish(ctx, env)
 
@@ -111,7 +108,7 @@ func TestBusReliableOption(t *testing.T) {
 }
 
 func TestBusSelectorFilter(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(loggateway.NewNoop())
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{
 		BufferSize: 8,
 		Selector: func(et event.EnvelopeType) bool {

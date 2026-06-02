@@ -29,8 +29,8 @@ func (r *sessionRepo) txClient(ctx context.Context) *ent.Client {
 }
 
 func (r *sessionRepo) readClient(ctx context.Context) *ent.Client {
-	if c, ok := ctx.Value(txClientKey{}).(*ent.Client); ok {
-		return c
+	if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
+		return tx.Client()
 	}
 	return r.data.ReadEnt()
 }
@@ -691,6 +691,46 @@ func (r *sessionRepo) IncrementInvocationCounts(ctx context.Context, sessionID s
 	}
 	if skillDelta != 0 {
 		upd = upd.AddSkillCallCount(skillDelta)
+	}
+	_, err := upd.Save(ctx)
+	return err
+}
+
+func (r *sessionRepo) ApplyMetricsDelta(ctx context.Context, d *session.SessionMetricsDelta) error {
+	if d == nil {
+		return nil
+	}
+	sessionID := strings.TrimSpace(d.SessionID)
+	if sessionID == "" {
+		return nil
+	}
+	upd := r.txClient(ctx).Session.UpdateOneID(sessionID).SetUpdatedAt(nowRFC3339())
+	if d.MessageCount != 0 {
+		upd = upd.AddMessageCount(d.MessageCount)
+	}
+	if d.ModelCallCount != 0 {
+		upd = upd.AddModelCallCount(d.ModelCallCount)
+	}
+	if d.ToolCallCount != 0 {
+		upd = upd.AddToolCallCount(d.ToolCallCount)
+	}
+	if d.SkillCallCount != 0 {
+		upd = upd.AddSkillCallCount(d.SkillCallCount)
+	}
+	if d.McpCallCount != 0 {
+		upd = upd.AddMcpCallCount(d.McpCallCount)
+	}
+	if d.InputTokens != 0 {
+		upd = upd.AddInputTokens(int(d.InputTokens))
+	}
+	if d.OutputTokens != 0 {
+		upd = upd.AddOutputTokens(int(d.OutputTokens))
+	}
+	if d.TotalTokens != 0 {
+		upd = upd.AddTotalTokens(int(d.TotalTokens))
+	}
+	if d.TotalCostMicroUsd != 0 {
+		upd = upd.AddTotalCostMicroUsd(d.TotalCostMicroUsd)
 	}
 	_, err := upd.Save(ctx)
 	return err

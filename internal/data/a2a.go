@@ -11,20 +11,23 @@ import (
 	"aranea-agents/internal/biz"
 	biza2a "aranea-agents/internal/biz/a2a"
 	a2apkg "aranea-agents/internal/a2a"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"aranea-agents/pkg/loggateway"
 )
 
 // a2aRepo implements biz.A2ARepo using raw SQL.
 type a2aRepo struct {
-	db *sql.DB
-	lg loggateway.Logger
+	data *Data
+	lg   loggateway.Logger
 }
 
 var _ biza2a.Repo = (*a2aRepo)(nil)
 
-// NewA2ARepo returns a biz.A2ARepo backed by the provided *sql.DB.
-func NewA2ARepo(db *sql.DB, lg loggateway.Logger) biz.A2ARepo {
-	return &a2aRepo{db: db, lg: lg}
+func NewA2ARepo(data *Data, lg loggateway.Logger) biz.A2ARepo {
+	if data == nil || data.RawDB() == nil {
+		return nil
+	}
+	return &a2aRepo{data: data, lg: lg}
 }
 
 // EnsureA2ASchema creates the A2A tables when they do not exist.
@@ -82,7 +85,7 @@ func EnsureA2ASchema(ctx context.Context, db *sql.DB) error {
 	}
 	for _, s := range stmts {
 		if _, err := db.ExecContext(ctx, s); err != nil {
-			return fmt.Errorf("a2a schema: %w", err)
+			return kerrors.InternalServer("A2A", "a2a schema: "+err.Error())
 		}
 	}
 	return nil
@@ -101,7 +104,7 @@ func (r *a2aRepo) UpsertAgentCard(ctx context.Context, card biz.A2AAgentCard) (b
 	}
 	t := time.Now().UTC().Format(time.RFC3339)
 	card.UpdatedAt = t
-	_, err = r.db.ExecContext(ctx,
+	_, err = r.data.RawDB().ExecContext(ctx,
 		`INSERT INTO a2a_agent_cards (agent_id,display_name,workspace,enabled,capabilities,updated_at)
 		 VALUES (?,?,?,?,?,?)
 		 ON CONFLICT(agent_id) DO UPDATE SET
@@ -115,7 +118,7 @@ func (r *a2aRepo) UpsertAgentCard(ctx context.Context, card biz.A2AAgentCard) (b
 }
 
 func (r *a2aRepo) GetAgentCard(ctx context.Context, agentID string) (biz.A2AAgentCard, error) {
-	row := r.db.QueryRowContext(ctx,
+	row := r.data.RawDB().QueryRowContext(ctx,
 		`SELECT agent_id,display_name,workspace,enabled,capabilities,updated_at FROM a2a_agent_cards WHERE agent_id=?`, agentID)
 	card, err := scanA2ACard(row, r.lg)
 	if err == sql.ErrNoRows {
@@ -125,7 +128,7 @@ func (r *a2aRepo) GetAgentCard(ctx context.Context, agentID string) (biz.A2AAgen
 }
 
 func (r *a2aRepo) ListEnabledCards(ctx context.Context, workspace, capability string) ([]biz.A2AAgentCard, error) {
-	rows, err := r.db.QueryContext(ctx,
+	rows, err := r.data.RawDB().QueryContext(ctx,
 		`SELECT agent_id,display_name,workspace,enabled,capabilities,updated_at
 		 FROM a2a_agent_cards WHERE enabled=1 AND (workspace=? OR ?='')
 		 ORDER BY agent_id`, workspace, workspace)
@@ -159,7 +162,7 @@ func (r *a2aRepo) ListEnabledCards(ctx context.Context, workspace, capability st
 
 func (r *a2aRepo) MapEndpointEnabled(ctx context.Context, agentIDs []string) (map[string]bool, error) {
 	out := make(map[string]bool)
-	if r == nil || r.db == nil || len(agentIDs) == 0 {
+	if r == nil || r.data == nil || len(agentIDs) == 0 {
 		return out, nil
 	}
 	seen := make(map[string]struct{}, len(agentIDs))
@@ -185,7 +188,7 @@ func (r *a2aRepo) MapEndpointEnabled(ctx context.Context, agentIDs []string) (ma
 	for i, id := range ids {
 		args[i] = id
 	}
-	rows, err := r.db.QueryContext(ctx, q, args...)
+	rows, err := r.data.RawDB().QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +207,7 @@ func (r *a2aRepo) MapEndpointEnabled(ctx context.Context, agentIDs []string) (ma
 
 func (r *a2aRepo) CreateInvocation(ctx context.Context, inv biz.A2AInvocation) (biz.A2AInvocation, error) {
 	t := time.Now().UTC().Format(time.RFC3339)
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.data.RawDB().ExecContext(ctx,
 		`INSERT INTO a2a_invocations
 		 (id,caller_agent_id,callee_agent_id,caller_session_id,capability,payload_json,status,result_json,error_message,duration_ms,timeout_seconds,created_at)
 		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -215,7 +218,7 @@ func (r *a2aRepo) CreateInvocation(ctx context.Context, inv biz.A2AInvocation) (
 }
 
 func (r *a2aRepo) UpdateInvocation(ctx context.Context, inv biz.A2AInvocation) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.data.RawDB().ExecContext(ctx,
 		`UPDATE a2a_invocations SET status=?,result_json=?,error_message=?,duration_ms=? WHERE id=?`,
 		inv.Status, inv.ResultJSON, inv.ErrorMessage, inv.DurationMs, inv.ID)
 	return err
@@ -227,7 +230,7 @@ func (r *a2aRepo) InsertAudit(ctx context.Context, entry biz.A2AAuditEntry) erro
 	if entry.CreatedAt == "" {
 		entry.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.data.RawDB().ExecContext(ctx,
 		`INSERT INTO a2a_audit (id,invoke_id,caller_agent_id,callee_agent_id,capability,status,duration_ms,workspace,created_at)
 		 VALUES (?,?,?,?,?,?,?,?,?)`,
 		entry.ID, entry.InvokeID, entry.CallerAgentID, entry.CalleeAgentID,
@@ -237,12 +240,12 @@ func (r *a2aRepo) InsertAudit(ctx context.Context, entry biz.A2AAuditEntry) erro
 
 func (r *a2aRepo) ListAudit(ctx context.Context, callerID, calleeID string, limit, offset int) ([]biz.A2AAuditEntry, int, error) {
 	var total int
-	if err := r.db.QueryRowContext(ctx,
+	if err := r.data.RawDB().QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM a2a_audit WHERE (caller_agent_id=? OR ?='') AND (callee_agent_id=? OR ?='')`,
 		callerID, callerID, calleeID, calleeID).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := r.db.QueryContext(ctx,
+	rows, err := r.data.RawDB().QueryContext(ctx,
 		`SELECT id,invoke_id,caller_agent_id,callee_agent_id,capability,status,duration_ms,workspace,created_at
 		 FROM a2a_audit WHERE (caller_agent_id=? OR ?='') AND (callee_agent_id=? OR ?='')
 		 ORDER BY created_at DESC LIMIT ? OFFSET ?`,
@@ -274,8 +277,8 @@ func (r *a2aRepo) DiscoverRemoteCard(ctx context.Context, in biz.RemoteCardDisco
 }
 
 func (r *a2aRepo) CreateRemoteAgent(ctx context.Context, agent biz.A2ARemoteAgent) (biz.A2ARemoteAgent, error) {
-	if r == nil || r.db == nil {
-		return biz.A2ARemoteAgent{}, fmt.Errorf("a2a db nil")
+	if r == nil || r.data == nil {
+		return biz.A2ARemoteAgent{}, kerrors.InternalServer("A2A", "a2a db nil")
 	}
 	if agent.ID == "" {
 		agent.ID = fmt.Sprintf("remote-%d", time.Now().UnixNano())
@@ -289,7 +292,7 @@ func (r *a2aRepo) CreateRemoteAgent(ctx context.Context, agent biz.A2ARemoteAgen
 		enabled = 1
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err = r.db.ExecContext(ctx,
+	_, err = r.data.RawDB().ExecContext(ctx,
 		`INSERT INTO a2a_remote_agents
 		 (id,workspace,display_name,remote_url,agent_card_url,auth_type,auth_config_json,enabled,card_json,created_at,updated_at)
 		 VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
@@ -304,7 +307,7 @@ func (r *a2aRepo) CreateRemoteAgent(ctx context.Context, agent biz.A2ARemoteAgen
 }
 
 func (r *a2aRepo) ListRemoteAgents(ctx context.Context, workspace string) ([]biz.A2ARemoteAgent, error) {
-	if r == nil || r.db == nil {
+	if r == nil || r.data == nil {
 		return nil, nil
 	}
 	q := `SELECT id,workspace,display_name,remote_url,agent_card_url,auth_type,auth_config_json,enabled,card_json,
@@ -316,7 +319,7 @@ func (r *a2aRepo) ListRemoteAgents(ctx context.Context, workspace string) ([]biz
 		args = append(args, workspace)
 	}
 	q += ` ORDER BY updated_at DESC`
-	rows, err := r.db.QueryContext(ctx, q, args...)
+	rows, err := r.data.RawDB().QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -333,22 +336,22 @@ func (r *a2aRepo) ListRemoteAgents(ctx context.Context, workspace string) ([]biz
 }
 
 func (r *a2aRepo) DeleteRemoteAgent(ctx context.Context, id string) error {
-	if r == nil || r.db == nil {
-		return fmt.Errorf("a2a db nil")
+	if r == nil || r.data == nil {
+		return kerrors.InternalServer("A2A", "a2a db nil")
 	}
-	_, err := r.db.ExecContext(ctx, `DELETE FROM a2a_remote_agents WHERE id=?`, id)
+	_, err := r.data.RawDB().ExecContext(ctx, `DELETE FROM a2a_remote_agents WHERE id=?`, id)
 	return err
 }
 
 func (r *a2aRepo) GetRemoteAgent(ctx context.Context, id string) (biz.A2ARemoteAgent, error) {
-	if r == nil || r.db == nil {
-		return biz.A2ARemoteAgent{}, fmt.Errorf("a2a db nil")
+	if r == nil || r.data == nil {
+		return biz.A2ARemoteAgent{}, kerrors.InternalServer("A2A", "a2a db nil")
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return biz.A2ARemoteAgent{}, biz.ErrNotFound
 	}
-	row := r.db.QueryRowContext(ctx,
+	row := r.data.RawDB().QueryRowContext(ctx,
 		`SELECT id,workspace,display_name,remote_url,agent_card_url,auth_type,auth_config_json,enabled,card_json,
 		 COALESCE(last_health_at,''),COALESCE(last_health_ok,0),COALESCE(last_health_error,''),created_at,updated_at
 		 FROM a2a_remote_agents WHERE id=?`, id)
@@ -360,19 +363,19 @@ func (r *a2aRepo) GetRemoteAgent(ctx context.Context, id string) (biz.A2ARemoteA
 }
 
 func (r *a2aRepo) UpdateRemoteAgentHealth(ctx context.Context, id string, ok bool, errMsg string) error {
-	if r == nil || r.db == nil {
-		return fmt.Errorf("a2a db nil")
+	if r == nil || r.data == nil {
+		return kerrors.InternalServer("A2A", "a2a db nil")
 	}
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return fmt.Errorf("id is required")
+		return kerrors.BadRequest("A2A", "id is required")
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	okInt := 0
 	if ok {
 		okInt = 1
 	}
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.data.RawDB().ExecContext(ctx,
 		`UPDATE a2a_remote_agents SET last_health_at=?, last_health_ok=?, last_health_error=?, updated_at=? WHERE id=?`,
 		now, okInt, strings.TrimSpace(errMsg), now, id)
 	return err

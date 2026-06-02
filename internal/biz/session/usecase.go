@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"aranea-agents/pkg/loggateway"
 
@@ -374,7 +376,7 @@ type MessageWriter interface {
 	AppendChatTurn(ctx context.Context, sessionID string, user, assistant ChatMessage) error
 	AppendChatMessage(ctx context.Context, sessionID string, msg ChatMessage, bumpModelCall bool) error
 	UpdateMessageFeedbackJSON(ctx context.Context, sessionID, messageID, rating, comment string) error
-	UpsertChatActivityMessage(ctx context.Context, sessionID string, msg ChatMessage) error
+	UpsertChatActivityMessage(ctx context.Context, sessionID string, msg ChatMessage) (bool, error)
 }
 
 type TimelineReader interface {
@@ -419,6 +421,7 @@ type ContextUpdater interface {
 	UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, completionTokens, contextWindow int) error
 	UpdateSessionContextAfterCompression(ctx context.Context, sessionID string, estimatedPromptTokens int, contextWindow int) error
 	IncrementInvocationCounts(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error
+	ApplyMetricsDelta(ctx context.Context, d *SessionMetricsDelta) error
 }
 
 type CompressRepo interface {
@@ -489,6 +492,9 @@ type SessionUsecase struct {
 	participants        SessionParticipantRepository
 	lg                  loggateway.Logger
 	statusPublisher     SessionStatusPublisher
+	metricsDeltaMu      sync.Mutex
+	metricsDeltas       map[string]*SessionMetricsDelta
+	flushInterval       time.Duration
 }
 
 func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository) *SessionUsecase {
@@ -517,6 +523,8 @@ func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLooku
 		teams:               teams,
 		titleGenerator:      titleGenerator,
 		participants:        participants,
+		metricsDeltas:       make(map[string]*SessionMetricsDelta),
+		flushInterval:       200 * time.Millisecond,
 	}
 }
 

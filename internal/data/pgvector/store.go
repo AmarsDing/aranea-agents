@@ -22,6 +22,7 @@ type Row struct {
 	AgentID   string
 	UserID    string
 	Content   string
+	Distance  float64
 	CreatedAt time.Time
 }
 
@@ -148,7 +149,7 @@ func (s *Store) SearchNearest(ctx context.Context, agentID, userID string, query
 	}
 	vec := pgvector.NewVector(queryEmbedding)
 	q := fmt.Sprintf(`
-SELECT id, agent_id, user_id, content, created_at
+SELECT id, agent_id, user_id, content, embedding <=> $3::vector AS distance, created_at
 FROM %s
 WHERE agent_id = $1 AND user_id = $2
 ORDER BY embedding <=> $3::vector
@@ -162,7 +163,7 @@ LIMIT $4`, s.Table())
 	var out []Row
 	for rows.Next() {
 		var r Row
-		if err := rows.Scan(&r.ID, &r.AgentID, &r.UserID, &r.Content, &r.CreatedAt); err != nil {
+		if err := rows.Scan(&r.ID, &r.AgentID, &r.UserID, &r.Content, &r.Distance, &r.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

@@ -154,16 +154,29 @@ Result: PASS / FAIL / PASS_WITH_CONCERNS
 
 Use the project's review skills:
 - Backend → `go-oop-review` skill
-- Frontend → `aranea-frontend-review` skill
+- Frontend → `aranea-review` skill (frontend sections)
+
+**Dimension-based review**: Load review dimensions based on change scope (see `docs/review-dimension-checklists.md` B-side checklists):
+
+| Change scope | Required dimensions |
+|-------------|-------------------|
+| All changes | 1 (Architecture), 2 (Quality), 3 (Correctness), 8 (Error handling) |
+| Involves DB | + 4 (Performance) |
+| Involves external input/API | + 5 (Security) |
+| Involves Usecase | + 6 (Testability), 11 (Business logic) |
+| Involves cross-module | + 7 (Maintainability), 12 (Doc sync) |
+| Involves frontend | + 9 (FE Performance), 10 (FE Security) |
 
 | Check | Question |
 |-------|----------|
 | Layer compliance | Does code follow the dependency direction? |
-| Red line check | Are any of the 19 backend / 14 frontend red lines violated? |
+| Red line check | Are any of the 11 backend / 12 frontend red lines violated? |
+| Programming standard check | Are any of the CS-B1~B17 / CS-F1~F8 coding standards violated? |
 | OOP compliance | Are structs/interfaces properly designed? |
 | Error handling | Are errors using kerrors (not fmt.Errorf)? |
 | Concurrency | Are goroutines using safego? |
 | Logging | Is logging using loggateway.Logger? |
+| Dimension B-side | Are all loaded dimension B-side checklist items passing? |
 
 **Output format**:
 ```
@@ -197,6 +210,8 @@ Before declaring a task complete, provide EVIDENCE:
 | Build passes | `make build` or `pnpm build` | ✅ Always |
 | Type check | `go build ./...` or `pnpm build` | ✅ Always |
 | No red line violations | Manual check against project_rules.md | ✅ Always |
+| No coding standard violations | Check CS-B1~B17 / CS-F1~F8 | ✅ Always |
+| Dimension review passed | B-side checklists in docs/review-dimension-checklists.md | ✅ Always |
 | Cross-module impact | Read module-cross-reference.md | ✅ For cross-layer changes |
 | Wire generation | `make wire` | ⚠️ If Wire deps changed |
 | Proto generation | `make api` | ⚠️ If proto changed |
@@ -298,10 +313,10 @@ When using `openspec-apply-change`, this skill should be automatically engaged f
 | `aranea-frontend-guide` | Phase 2 (implementation) — follow frontend coding rules |
 | `go-oop-guide` | Phase 2 (implementation) — follow OOP design patterns |
 | `go-oop-review` | Phase 3B (code quality review) — backend review checklist |
-| `aranea-frontend-review` | Phase 3B (code quality review) — frontend review checklist |
 | `aranea-review` | Phase 3 (full review) — full-stack review checklist |
 | `aranea-test-loop` | Phase 4 (verification) — test loop process |
 | `openspec-apply-change` | Phase 2 (implementation) — task tracking |
+| Dimension checklists | Phase 3B (code quality review) — `docs/review-dimension-checklists.md` B-side |
 
 ---
 
@@ -321,6 +336,11 @@ When using `openspec-apply-change`, this skill should be automatically engaged f
 │  4. REFACTOR → Clean up, all tests still pass    │
 │     ↓                                            │
 │  5. REVIEW → Spec compliance → Code quality      │
+│     ↓                                            │
+│     Code quality includes:                        │
+│     - Red lines (architecture boundaries)         │
+│     - Coding standards (CS-B/F rules)             │
+│     - Dimension B-side checklists                 │
 │     ↓                                            │
 │  6. VERIFY → Evidence before declaration         │
 │                                                  │

@@ -26,29 +26,14 @@ func NewEventBusConsumer(
 	memWorker *TurnMemoryWorker,
 	eventStore *EventStoreUsecase,
 	traceProj *monitor.TraceProjector,
+	logger SessionLogWriter,
 ) *EventBusConsumer {
 	return &EventBusConsumer{
 		eventBus: eventBus,
 		buffer:   newEventBufferHandler(eventBuffer),
-		runner:   newRunnerCompletionHandler(sessions, usage, monitorUC, memWorker, traceProj),
-		state:    newStateDeltaHandler(sessions, runnerSync),
-		persist:  newEventPersistHandler(eventStore),
-	}
-}
-
-// SetLogger propagates SessionLogWriter to all sub-handlers that need it.
-func (c *EventBusConsumer) SetLogger(logger SessionLogWriter) {
-	if c == nil {
-		return
-	}
-	if c.runner != nil {
-		c.runner.SetLogger(logger)
-	}
-	if c.state != nil {
-		c.state.SetLogger(logger)
-	}
-	if c.persist != nil {
-		c.persist.SetLogger(logger)
+		runner:   newRunnerCompletionHandler(sessions, usage, monitorUC, memWorker, traceProj, eventBus, logger),
+		state:    newStateDeltaHandler(sessions, runnerSync, logger),
+		persist:  newEventPersistHandler(eventStore, logger),
 	}
 }
 

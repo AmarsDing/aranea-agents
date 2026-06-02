@@ -5,7 +5,7 @@ description: "Vue 3 前端通用编程规范指导。当编写 Vue 3 / Compositi
 
 # Vue 3 通用前端编程规范
 
-> **项目特定约束**（数据流铁律、分层规范、UX 主题等）见 `aranea-frontend-guide` SKILL。本文只提供通用 Vue 3 编程最佳实践，项目内编码以统一指南为准。
+> **项目特定约束**（数据流铁律、分层规范、UX 主题、聊天消息分组等）见 `aranea-frontend-guide` SKILL。本文只提供**通用 Vue 3 编程最佳实践**，不含项目特定约束。
 
 ---
 
@@ -592,3 +592,20 @@ it('emits submit on button click', async () => {
 ├─ 条件渲染重组件     → defineAsyncComponent
 └─ 复杂组件状态机     → useReducer 模式或 XState
 ```
+
+---
+
+## 项目特定约束引用
+
+以下内容不在本文范围，见 `aranea-frontend-guide` SKILL：
+
+| 内容 | 位置 |
+|------|------|
+| 数据流铁律（API→Store→Composable→Page→Component） | `aranea-frontend-guide` §3 |
+| 各层编码规范（API/Store/Composable/Component/Page） | `aranea-frontend-guide` §4 |
+| 聊天消息分组（堆栈模型、turn_index 禁用） | `aranea-frontend-guide` §5 |
+| UX 主题规范（日夜双模、玻璃材质、CSS 变量） | `aranea-frontend-guide` §6 |
+| Dialog 毛玻璃规范 | `aranea-frontend-guide` §7 |
+| Registry 列表表格规范 | `aranea-frontend-guide` §8 |
+| 14 条红线 | `aranea-frontend-guide` §1 |
+| 编程规范 CS-F1~F8 | `aranea-frontend-guide` §13 |

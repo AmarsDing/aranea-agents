@@ -17,7 +17,7 @@ type flowLogPersistConsumer struct {
 	logger   SessionLogWriter
 }
 
-func newFlowLogPersistConsumer(flowLogs *FlowLogUsecase, buses ...contract.Bus) *flowLogPersistConsumer {
+func newFlowLogPersistConsumer(flowLogs *FlowLogUsecase, logger SessionLogWriter, buses ...contract.Bus) *flowLogPersistConsumer {
 	if flowLogs == nil {
 		return nil
 	}
@@ -40,7 +40,7 @@ func newFlowLogPersistConsumer(flowLogs *FlowLogUsecase, buses ...contract.Bus) 
 	if len(seen) == 0 {
 		return nil
 	}
-	return &flowLogPersistConsumer{buses: seen, flowLogs: flowLogs}
+	return &flowLogPersistConsumer{buses: seen, flowLogs: flowLogs, logger: logger}
 }
 
 func (c *flowLogPersistConsumer) Start(ctx context.Context) {
@@ -57,7 +57,7 @@ func (c *flowLogPersistConsumer) Start(ctx context.Context) {
 		if len(c.buses) > 1 {
 			name = fmt.Sprintf("event-bus-flow-log-%d", i)
 		}
-		runTypedConsumer(ctx, name, bus, opts, c.handle)
+		runTypedConsumer(ctx, name, bus, opts, c.handle, c.logger)
 	}
 }
 

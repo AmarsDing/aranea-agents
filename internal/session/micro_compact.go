@@ -34,7 +34,7 @@ func tryMicroCompact(body []biz.ChatMessage, currentTurn int) microCompactResult
 	from := body[0].TurnNumber
 	to := body[len(body)-1].TurnNumber
 	return microCompactResult{
-		summaryMarkdown: "[L1 MicroCompact: " + strconv.Itoa(cleared) + " tool result(s) from turns " + strconv.Itoa(from) + "–" + strconv.Itoa(to) + " cleared]",
+		summaryMarkdown: "[MicroCompact: " + strconv.Itoa(cleared) + " tool result(s) from turns " + strconv.Itoa(from) + "–" + strconv.Itoa(to) + " cleared]",
 		fromTurn:        from,
 		toTurn:          to,
 		didCompact:      true,

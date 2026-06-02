@@ -6,9 +6,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"aranea-agents/internal/conf"
+	"aranea-agents/pkg/logpipeline"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -16,13 +18,14 @@ import (
 )
 
 type Gateway struct {
-	core      zapcore.Core
-	logger    *zap.Logger
-	sugar     *zap.SugaredLogger
-	hook      *busHook
-	kratosAdp *KratosAdapter
-	base      []Field
-	outputDir string
+	core        zapcore.Core
+	logger      *zap.Logger
+	sugar       *zap.SugaredLogger
+	kratosAdp   *KratosAdapter
+	base        []Field
+	outputDir   string
+	pipeline    atomic.Pointer[logpipeline.Pipeline]
+	atomicLevel zap.AtomicLevel
 }
 
 var (
@@ -32,7 +35,6 @@ var (
 
 func New(c *conf.Logging) *Gateway {
 	level := parseLevel(c.GetLevel(), zapcore.InfoLevel)
-	hookLevel := parseLevel(c.GetHookLevel(), zapcore.InfoLevel)
 	outputDir := c.GetOutputDir()
 	if outputDir == "" {
 		outputDir = defaultOutputDir()
@@ -69,8 +71,6 @@ func New(c *conf.Logging) *Gateway {
 		ws = fileSyncer
 	}
 
-	hook := &busHook{hookLevel: hookLevel}
-
 	encoderCfg := zapcore.EncoderConfig{
 		TimeKey:        "ts",
 		LevelKey:       "level",
@@ -85,24 +85,22 @@ func New(c *conf.Logging) *Gateway {
 		EncodeCaller:   zapcore.ShortCallerEncoder,
 	}
 
-	core := &hookedCore{
-		Core: zapcore.NewCore(
-			zapcore.NewJSONEncoder(encoderCfg),
-			ws,
-			level,
-		),
-		hook: hook,
-	}
+	atomicLevel := zap.NewAtomicLevelAt(level)
+	core := zapcore.NewCore(
+		zapcore.NewJSONEncoder(encoderCfg),
+		ws,
+		atomicLevel,
+	)
 
 	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
 	sugar := logger.Sugar()
 	g := &Gateway{
-		core:      core,
-		logger:    logger,
-		sugar:     sugar,
-		hook:      hook,
-		kratosAdp: &KratosAdapter{sugar: sugar},
-		outputDir: outputDir,
+		core:        core,
+		logger:      logger,
+		sugar:       sugar,
+		kratosAdp:   &KratosAdapter{sugar: sugar},
+		outputDir:   outputDir,
+		atomicLevel: atomicLevel,
 	}
 
 	globalMu.Lock()
@@ -131,6 +129,13 @@ func (g *Gateway) OutputDir() string {
 	return g.outputDir
 }
 
+func (g *Gateway) SetLevel(level string) {
+	if g == nil {
+		return
+	}
+	g.atomicLevel.SetLevel(parseLevel(level, zapcore.InfoLevel))
+}
+
 func NewNoop() *Gateway {
 	core := zapcore.NewCore(
 		zapcore.NewJSONEncoder(zapcore.EncoderConfig{}),
@@ -140,11 +145,11 @@ func NewNoop() *Gateway {
 	logger := zap.New(core)
 	sugar := logger.Sugar()
 	return &Gateway{
-		core:      core,
-		logger:    logger,
-		sugar:     sugar,
-		hook:      &busHook{},
-		kratosAdp: &KratosAdapter{sugar: sugar},
+		core:        core,
+		logger:      logger,
+		sugar:       sugar,
+		kratosAdp:   &KratosAdapter{sugar: sugar},
+		atomicLevel: zap.NewAtomicLevelAt(zapcore.DebugLevel),
 	}
 }
 
@@ -154,6 +159,7 @@ func (g *Gateway) Debug(msg string, fields ...Field) {
 	}
 	all := g.withBase(fields)
 	g.logger.Debug(msg, all...)
+	g.emitToPipeline(zapcore.DebugLevel, msg, all)
 }
 
 func (g *Gateway) Info(msg string, fields ...Field) {
@@ -162,6 +168,7 @@ func (g *Gateway) Info(msg string, fields ...Field) {
 	}
 	all := g.withBase(fields)
 	g.logger.Info(msg, all...)
+	g.emitToPipeline(zapcore.InfoLevel, msg, all)
 }
 
 func (g *Gateway) Warn(msg string, fields ...Field) {
@@ -170,6 +177,7 @@ func (g *Gateway) Warn(msg string, fields ...Field) {
 	}
 	all := g.withBase(fields)
 	g.logger.Warn(msg, all...)
+	g.emitToPipeline(zapcore.WarnLevel, msg, all)
 }
 
 func (g *Gateway) Error(msg string, fields ...Field) {
@@ -178,6 +186,7 @@ func (g *Gateway) Error(msg string, fields ...Field) {
 	}
 	all := g.withBase(fields)
 	g.logger.Error(msg, all...)
+	g.emitToPipeline(zapcore.ErrorLevel, msg, all)
 }
 
 func (g *Gateway) With(fields ...Field) Logger {
@@ -216,18 +225,40 @@ func (g *Gateway) ZapSugar() *zap.SugaredLogger {
 	return g.sugar
 }
 
-func (g *Gateway) SetBusPublish(fn func(env EnvelopeLog)) {
+func (g *Gateway) SetPipeline(p logpipeline.Pipeline) {
 	if g == nil {
 		return
 	}
-	g.hook.setPublisher(fn)
+	g.pipeline.Store(&p)
 }
 
-func (g *Gateway) SetHookLevel(level string) {
+func (g *Gateway) emitToPipeline(level zapcore.Level, msg string, fields []Field) {
 	if g == nil {
 		return
 	}
-	g.hook.setLevel(parseLevel(level, zapcore.InfoLevel))
+	pp := g.pipeline.Load()
+	if pp == nil || *pp == nil {
+		return
+	}
+	func() {
+		defer func() { recover() }()
+		enc := zapcore.NewMapObjectEncoder()
+		for _, f := range fields {
+			f.AddTo(enc)
+		}
+		enc.Fields["level"] = level.String()
+		sessionID, _ := enc.Fields["session_id"].(string)
+		stepID, _ := enc.Fields["step_id"].(string)
+		(*pp).Emit(logpipeline.LogEntry{
+			Kind:      logpipeline.KindLog,
+			Level:     level.String(),
+			Message:   msg,
+			Fields:    enc.Fields,
+			Timestamp: time.Now(),
+			SessionID: sessionID,
+			StepID:    stepID,
+		})
+	}()
 }
 
 func (g *Gateway) withBase(fields []Field) []Field {
@@ -241,12 +272,6 @@ func (g *Gateway) withBase(fields []Field) []Field {
 	all = append(all, g.base...)
 	all = append(all, fields...)
 	return all
-}
-
-func SetHookLevel(level string) {
-	if g := Global(); g != nil {
-		g.SetHookLevel(level)
-	}
 }
 
 func parseLevel(s string, fallback zapcore.Level) zapcore.Level {
@@ -287,19 +312,35 @@ type loggerWith struct {
 }
 
 func (l *loggerWith) Debug(msg string, fields ...Field) {
-	l.g.Debug(msg, l.g.withBase(append(l.base, fields...))...)
+	all := make([]Field, 0, len(l.base)+len(fields))
+	all = append(all, l.base...)
+	all = append(all, fields...)
+	l.g.logger.Debug(msg, all...)
+	l.g.emitToPipeline(zapcore.DebugLevel, msg, all)
 }
 
 func (l *loggerWith) Info(msg string, fields ...Field) {
-	l.g.Info(msg, l.g.withBase(append(l.base, fields...))...)
+	all := make([]Field, 0, len(l.base)+len(fields))
+	all = append(all, l.base...)
+	all = append(all, fields...)
+	l.g.logger.Info(msg, all...)
+	l.g.emitToPipeline(zapcore.InfoLevel, msg, all)
 }
 
 func (l *loggerWith) Warn(msg string, fields ...Field) {
-	l.g.Warn(msg, l.g.withBase(append(l.base, fields...))...)
+	all := make([]Field, 0, len(l.base)+len(fields))
+	all = append(all, l.base...)
+	all = append(all, fields...)
+	l.g.logger.Warn(msg, all...)
+	l.g.emitToPipeline(zapcore.WarnLevel, msg, all)
 }
 
 func (l *loggerWith) Error(msg string, fields ...Field) {
-	l.g.Error(msg, l.g.withBase(append(l.base, fields...))...)
+	all := make([]Field, 0, len(l.base)+len(fields))
+	all = append(all, l.base...)
+	all = append(all, fields...)
+	l.g.logger.Error(msg, all...)
+	l.g.emitToPipeline(zapcore.ErrorLevel, msg, all)
 }
 
 func (l *loggerWith) With(fields ...Field) Logger {

@@ -286,13 +286,8 @@ func (r *sessionRepo) AppendChatTurn(ctx context.Context, sessionID string, user
 		return err
 	}
 	upd := tx.Session.UpdateOneID(sessionID).
-		AddMessageCount(2).
 		SetLastMessageAt(assistant.CreatedAt).
-		SetUpdatedAt(nowRFC3339()).
-		AddModelCallCount(1)
-	if tin, tout := assistant.TokenIn, assistant.TokenOut; tin > 0 || tout > 0 {
-		upd = upd.AddInputTokens(tin).AddOutputTokens(tout).AddTotalTokens(tin + tout)
-	}
+		SetUpdatedAt(nowRFC3339())
 	if _, err = upd.Save(ctx); err != nil {
 		return err
 	}
@@ -305,33 +300,33 @@ func (r *sessionRepo) AppendChatTurn(ctx context.Context, sessionID string, user
 
 // UpsertChatActivityMessage still uses manual Tx instead of ExecInTx + txClient.
 // sessionRepo has no txClient helper yet; refactor when available.
-func (r *sessionRepo) UpsertChatActivityMessage(ctx context.Context, sessionID string, msg biz.ChatMessage) error {
+func (r *sessionRepo) UpsertChatActivityMessage(ctx context.Context, sessionID string, msg biz.ChatMessage) (bool, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
-		return kerrors.BadRequest("SESSION", "session id is required")
+		return false, kerrors.BadRequest("SESSION", "session id is required")
 	}
 	msg.ID = strings.TrimSpace(msg.ID)
 	if msg.ID == "" {
-		return kerrors.BadRequest("SESSION", "message id is required")
+		return false, kerrors.BadRequest("SESSION", "message id is required")
 	}
 	tx, err := r.txClient(ctx).Tx(ctx)
 	if err != nil {
 		r.data.lg.Error("tx begin failed", loggateway.StepID("data.session.upsert_msg.tx_begin"), loggateway.Err(err))
-		return err
+		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
 	if _, err = tx.Session.Query().Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).Only(ctx); err != nil {
-		return err
+		return false, err
 	}
 	existing, err := tx.Message.Query().Where(message.IDEQ(msg.ID), message.SessionIDEQ(sessionID)).Only(ctx)
 	if err != nil {
 		if !ent.IsNotFound(err) {
-			return err
+			return false, err
 		}
 		msg.SessionID = sessionID
 		turnID, turnNum, seqInTurn, merr := r.assignTurnForNewMessage(ctx, tx, sessionID, msg.Role)
 		if merr != nil {
-			return merr
+			return false, merr
 		}
 		msg.TurnID = turnID
 		msg.TurnNumber = turnNum
@@ -340,20 +335,19 @@ func (r *sessionRepo) UpsertChatActivityMessage(ctx context.Context, sessionID s
 			msg.CreatedAt = nowRFC3339()
 		}
 		if err = r.insertMessageTx(ctx, tx, msg); err != nil {
-			return err
+			return false, err
 		}
 		if _, err = tx.Session.UpdateOneID(sessionID).
-			AddMessageCount(1).
 			SetLastMessageAt(msg.CreatedAt).
 			SetUpdatedAt(nowRFC3339()).
 			Save(ctx); err != nil {
-			return err
+			return false, err
 		}
 		if err := tx.Commit(); err != nil {
 			r.data.lg.Error("tx commit failed", loggateway.StepID("data.session.upsert_msg.commit"), loggateway.Err(err))
-			return err
+			return false, err
 		}
-		return nil
+		return true, nil
 	}
 	lastAt := msg.CreatedAt
 	if strings.TrimSpace(lastAt) == "" {
@@ -375,19 +369,19 @@ func (r *sessionRepo) UpsertChatActivityMessage(ctx context.Context, sessionID s
 		update = update.SetModelName(msg.ModelName)
 	}
 	if _, err = update.Save(ctx); err != nil {
-		return err
+		return false, err
 	}
 	if _, err = tx.Session.UpdateOneID(sessionID).
 		SetLastMessageAt(lastAt).
 		SetUpdatedAt(nowRFC3339()).
 		Save(ctx); err != nil {
-		return err
+		return false, err
 	}
 	if err := tx.Commit(); err != nil {
 		r.data.lg.Error("tx commit failed", loggateway.StepID("data.session.upsert_msg.commit"), loggateway.Err(err))
-		return err
+		return false, err
 	}
-	return nil
+	return false, nil
 }
 
 func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, msg biz.ChatMessage, bumpModelCall bool) error {
@@ -418,16 +412,8 @@ func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, m
 		return err
 	}
 	upd := tx.Session.UpdateOneID(sessionID).
-		AddMessageCount(1).
 		SetLastMessageAt(msg.CreatedAt).
 		SetUpdatedAt(nowRFC3339())
-	if bumpModelCall {
-		upd = upd.AddModelCallCount(1)
-	}
-	tin, tout := msg.TokenIn, msg.TokenOut
-	if bumpModelCall && (tin > 0 || tout > 0) {
-		upd = upd.AddInputTokens(tin).AddOutputTokens(tout).AddTotalTokens(tin + tout)
-	}
 	if _, err = upd.Save(ctx); err != nil {
 		return err
 	}

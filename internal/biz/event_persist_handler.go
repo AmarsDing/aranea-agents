@@ -21,18 +21,15 @@ type eventPersistHandler struct {
 	logger SessionLogWriter
 }
 
-func newEventPersistHandler(store *EventStoreUsecase) *eventPersistHandler {
+func newEventPersistHandler(store *EventStoreUsecase, logger SessionLogWriter) *eventPersistHandler {
 	if store == nil {
 		return nil
 	}
 	return &eventPersistHandler{
-		store: store,
-		jobs:  make(chan EventStoreRecord, eventPersistQueueSize()),
+		store:  store,
+		jobs:   make(chan EventStoreRecord, eventPersistQueueSize()),
+		logger: logger,
 	}
-}
-
-func (h *eventPersistHandler) SetLogger(logger SessionLogWriter) {
-	h.logger = logger
 }
 
 func (h *eventPersistHandler) Start(ctx context.Context) {

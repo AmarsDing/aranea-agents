@@ -1,4 +1,4 @@
-package team
+﻿package team
 
 import (
 	"context"
@@ -35,7 +35,7 @@ func (s *stubExecRegistry) MarkTeamGraphInterrupt(_ context.Context, execID, nod
 }
 
 func TestStartTeamGraphTaskBridge_createsTaskOnce(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(loggateway.NewNoop())
 	ctx := context.Background()
 	creator := &stubTaskCreator{}
 	nodes := map[string]biz.NodeDef{"review-1": {ID: "review-1", Type: "review"}}
@@ -55,7 +55,7 @@ func TestStartTeamGraphTaskBridge_createsTaskOnce(t *testing.T) {
 }
 
 func TestStartTeamGraphExecutionTracker_marksInterrupt(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(loggateway.NewNoop())
 	ctx := context.Background()
 	reg := &stubExecRegistry{}
 	stop := StartTeamGraphExecutionTracker(ctx, bus, TeamGraphExecutionTrackerConfig{
@@ -77,7 +77,7 @@ func TestStartTeamGraphExecutionTracker_marksInterrupt(t *testing.T) {
 }
 
 func TestStartTeamGraphTaskBridge_logsCreateError(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(loggateway.NewNoop())
 	ctx := context.Background()
 	creator := &stubTaskCreator{err: errors.New("boom")}
 	stop := StartTeamGraphTaskBridge(ctx, bus, TeamGraphTaskBridgeConfig{

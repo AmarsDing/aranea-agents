@@ -5,32 +5,35 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/safego"
 )
 
 const defaultSideConsumerQueueSize = 256
+const defaultHandleTimeout = 45 * time.Second
 
-// asyncEnvelopeWorker drains a bounded queue so Bus subscribers return quickly.
 type asyncEnvelopeWorker struct {
-	name   string
-	jobs   chan contract.Envelope
-	logger SessionLogWriter
+	name          string
+	jobs          chan contract.Envelope
+	logger        SessionLogWriter
+	handleTimeout time.Duration
 }
 
-func newAsyncEnvelopeWorker(name string, queueSize int) *asyncEnvelopeWorker {
+func newAsyncEnvelopeWorker(name string, queueSize int, handleTimeout time.Duration, logger SessionLogWriter) *asyncEnvelopeWorker {
 	if queueSize <= 0 {
 		queueSize = defaultSideConsumerQueueSize
 	}
-	return &asyncEnvelopeWorker{
-		name: name,
-		jobs: make(chan contract.Envelope, queueSize),
+	if handleTimeout <= 0 {
+		handleTimeout = defaultHandleTimeout
 	}
-}
-
-func (w *asyncEnvelopeWorker) SetLogger(logger SessionLogWriter) {
-	w.logger = logger
+	return &asyncEnvelopeWorker{
+		name:          name,
+		jobs:          make(chan contract.Envelope, queueSize),
+		logger:        logger,
+		handleTimeout: handleTimeout,
+	}
 }
 
 func (w *asyncEnvelopeWorker) Start(ctx context.Context, handle func(context.Context, contract.Envelope)) {
@@ -46,7 +49,9 @@ func (w *asyncEnvelopeWorker) Start(ctx context.Context, handle func(context.Con
 				if !ok {
 					return
 				}
-				handle(context.Background(), env)
+				handleCtx, cancel := context.WithTimeout(context.Background(), w.handleTimeout)
+				handle(handleCtx, env)
+				cancel()
 			}
 		}
 	})
@@ -62,6 +67,36 @@ func (w *asyncEnvelopeWorker) Offer(ctx context.Context, env contract.Envelope) 
 		if w.logger != nil {
 			w.logger.LogSessionWarn(ctx, env.SessionID, "event_bus.queue_full", "侧效消费者队列已满，丢弃事件",
 				LogPair{Key: "consumer", Value: w.name}, LogPair{Key: "type", Value: string(env.Type)}, LogPair{Key: "id", Value: env.ID})
+		}
+	}
+}
+
+type OfferOption struct {
+	FallbackSync bool
+	FallbackFn   func(ctx context.Context, env contract.Envelope)
+}
+
+func (w *asyncEnvelopeWorker) OfferWithOptions(ctx context.Context, env contract.Envelope, opts OfferOption) {
+	if w == nil {
+		if opts.FallbackSync && opts.FallbackFn != nil {
+			opts.FallbackFn(ctx, env)
+		}
+		return
+	}
+	select {
+	case w.jobs <- env:
+	default:
+		if opts.FallbackSync && opts.FallbackFn != nil {
+			if w.logger != nil {
+				w.logger.LogSessionWarn(ctx, env.SessionID, "event_bus.queue_full_fallback", "队列已满，回退同步写入",
+					LogPair{Key: "consumer", Value: w.name}, LogPair{Key: "type", Value: string(env.Type)}, LogPair{Key: "id", Value: env.ID})
+			}
+			opts.FallbackFn(ctx, env)
+		} else {
+			if w.logger != nil {
+				w.logger.LogSessionWarn(ctx, env.SessionID, "event_bus.queue_full_drop", "侧效消费者队列已满，丢弃事件",
+					LogPair{Key: "consumer", Value: w.name}, LogPair{Key: "type", Value: string(env.Type)}, LogPair{Key: "id", Value: env.ID})
+			}
 		}
 	}
 }

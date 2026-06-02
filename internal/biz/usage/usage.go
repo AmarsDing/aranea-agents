@@ -274,6 +274,7 @@ type WriteRepo interface {
 	RecordTokenUsageEvent(ctx context.Context, event TokenUsageEvent) (TokenUsageEvent, error)
 	GetActiveModelPricing(ctx context.Context, providerCode, modelAPIID string) (ModelPricingSnapshot, bool, error)
 	PurgeUsageEventsOlderThan(ctx context.Context, retainDays int) (int64, error)
+	RollupDailyHourly(ctx context.Context, event TokenUsageEvent) error
 }
 
 // QuotaRepo manages caps, spend sums, and budget alerts.
@@ -517,7 +518,7 @@ func (u *Usecase) PurgeEvents(ctx context.Context, retainDays int) (int64, error
 	return u.repo.PurgeUsageEventsOlderThan(ctx, retainDays)
 }
 
-// RecordTokenUsageEvent inserts one usage row, updates session aggregates, and upserts daily rollup.
+// RecordTokenUsageEvent inserts one usage row (events INSERT only; session aggregate and daily/hourly rollup are handled separately).
 func (u *Usecase) RecordTokenUsageEvent(ctx context.Context, e TokenUsageEvent) (TokenUsageEvent, error) {
 	if strings.TrimSpace(e.ID) == "" {
 		return TokenUsageEvent{}, errors.BadRequest("USAGE", "id is required")
@@ -529,6 +530,10 @@ func (u *Usecase) RecordTokenUsageEvent(ctx context.Context, e TokenUsageEvent) 
 		u.scheduleBudgetAlerts(ctx, out)
 	}
 	return out, err
+}
+
+func (u *Usecase) RollupDailyHourly(ctx context.Context, e TokenUsageEvent) error {
+	return u.repo.RollupDailyHourly(ctx, e)
 }
 
 func normalizeTokenUsageEventForInsert(e TokenUsageEvent, now time.Time) TokenUsageEvent {

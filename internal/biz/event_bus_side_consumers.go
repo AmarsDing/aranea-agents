@@ -15,6 +15,7 @@ type EventBusSideConsumers struct {
 	messageStore *messageStoreConsumer
 	flowLog      *flowLogPersistConsumer
 	userFeedback *userFeedbackConsumer
+	usageRollup  *usageRollupConsumer
 	webhooks     *WebhookDispatcher
 	traceProj    *monitor.TraceProjector
 	fileAppender *monitor.FlowFileAppender
@@ -32,38 +33,23 @@ func NewEventBusSideConsumers(
 	memWorker *TurnMemoryWorker,
 	traceProj *monitor.TraceProjector,
 	fileAppender *monitor.FlowFileAppender,
+	usage *UsageUsecase,
+	logger SessionLogWriter,
 ) *EventBusSideConsumers {
 	if sessionBus == nil {
 		return nil
 	}
 	return &EventBusSideConsumers{
-		toolCall:     newToolCallConsumer(sessionBus, tools),
-		callback:     newCallbackConsumer(sessionBus, webhooks),
-		messageStore: newMessageStoreConsumer(sessionBus, sessions),
-		flowLog:      newFlowLogPersistConsumer(flowLogs, sessionBus, monitorBus),
-		userFeedback: newUserFeedbackConsumer(sessionBus, monitorUC, memWorker),
+		toolCall:     newToolCallConsumer(sessionBus, tools, logger),
+		callback:     newCallbackConsumer(sessionBus, webhooks, logger),
+		messageStore: newMessageStoreConsumer(sessionBus, sessions, logger),
+		flowLog:      newFlowLogPersistConsumer(flowLogs, logger, sessionBus, monitorBus),
+		userFeedback: newUserFeedbackConsumer(sessionBus, monitorUC, memWorker, logger),
+		usageRollup:  newUsageRollupConsumer(sessionBus, usage, logger),
 		webhooks:     webhooks,
 		traceProj:    traceProj,
 		fileAppender: fileAppender,
-	}
-}
-
-func (c *EventBusSideConsumers) SetLogger(logger SessionLogWriter) {
-	c.logger = logger
-	if c.toolCall != nil {
-		c.toolCall.logger = logger
-	}
-	if c.flowLog != nil {
-		c.flowLog.logger = logger
-	}
-	if c.messageStore != nil {
-		c.messageStore.logger = logger
-	}
-	if c.userFeedback != nil {
-		c.userFeedback.logger = logger
-	}
-	if c.webhooks != nil {
-		c.webhooks.SetLogger(logger)
+		logger:       logger,
 	}
 }
 
@@ -86,6 +72,9 @@ func (c *EventBusSideConsumers) Start(ctx context.Context) {
 	if c.userFeedback != nil {
 		c.userFeedback.Start(ctx)
 	}
+	if c.usageRollup != nil {
+		c.usageRollup.Start(ctx)
+	}
 	if c.traceProj != nil {
 		c.traceProj.Start(ctx)
 	}
@@ -104,11 +93,15 @@ func (c *EventBusSideConsumers) fileAppenderBuses() []contract.Bus {
 	return buses
 }
 
-func runTypedConsumer(ctx context.Context, name string, bus contract.Bus, opts contract.SubscribeOptions, fn func(context.Context, contract.Envelope)) {
+func runTypedConsumer(ctx context.Context, name string, bus contract.Bus, opts contract.SubscribeOptions, fn func(context.Context, contract.Envelope), logger SessionLogWriter) {
+	runTypedConsumerWithOpts(ctx, name, bus, opts, fn, OfferOption{}, logger)
+}
+
+func runTypedConsumerWithOpts(ctx context.Context, name string, bus contract.Bus, opts contract.SubscribeOptions, fn func(context.Context, contract.Envelope), offerOpts OfferOption, logger SessionLogWriter) {
 	if bus == nil || fn == nil {
 		return
 	}
-	worker := newAsyncEnvelopeWorker(name, sideConsumerQueueSize())
+	worker := newAsyncEnvelopeWorker(name, sideConsumerQueueSize(), 0, logger)
 	worker.Start(ctx, fn)
 	ch, unsub := bus.Subscribe(opts)
 	safego.Go(ctx, name, func() {
@@ -121,7 +114,7 @@ func runTypedConsumer(ctx context.Context, name string, bus contract.Bus, opts c
 				if !ok {
 					return
 				}
-				worker.Offer(ctx, env)
+				worker.OfferWithOptions(ctx, env, offerOpts)
 			}
 		}
 	})

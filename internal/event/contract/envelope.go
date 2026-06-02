@@ -57,6 +57,7 @@ const (
 	EnvelopeTypeSpiritTeamProgress          EnvelopeType = "spirit_team_progress"
 	EnvelopeTypeSpiritTeamsAllCompleted     EnvelopeType = "spirit_teams_all_completed"
 	EnvelopeTypeSpiritSynthesisCompleted    EnvelopeType = "spirit_synthesis_completed"
+	EnvelopeTypeTokenUsage                  EnvelopeType = "token_usage"
 )
 
 // Envelope is the universal event carrier.
@@ -82,6 +83,7 @@ type Envelope struct {
 	Transfer   *EnvelopeTransfer   `json:"transfer,omitempty"`
 	Error      *EnvelopeError      `json:"error,omitempty"`
 	Usage      *EnvelopeUsage      `json:"usage,omitempty"`
+	TokenUsage *EnvelopeTokenUsage `json:"token_usage,omitempty"`
 	Extensions map[string]string   `json:"extensions,omitempty"`
 	Actions    *EnvelopeActions    `json:"actions,omitempty"`
 	Trace      *EnvelopeTrace      `json:"trace,omitempty"`
@@ -155,6 +157,63 @@ type EnvelopeUsage struct {
 
 type EnvelopeActions struct {
 	SkipSummarization bool `json:"skip_summarization,omitempty"`
+}
+
+type EnvelopeTokenUsage struct {
+	ID                       string  `json:"id"`
+	OccurredAt               string  `json:"occurred_at"`
+	DateKey                  string  `json:"date_key"`
+	HourKey                  string  `json:"hour_key"`
+	WorkspaceID              string  `json:"workspace_id"`
+	UserID                   string  `json:"user_id"`
+	TeamID                   string  `json:"team_id"`
+	AgentID                  string  `json:"agent_id"`
+	AgentKey                 string  `json:"agent_key"`
+	SessionID                string  `json:"session_id"`
+	MessageID                string  `json:"message_id"`
+	RequestID                string  `json:"request_id"`
+	ProviderCode             string  `json:"provider_code"`
+	CanonicalProviderCode    string  `json:"canonical_provider_code"`
+	ProviderType             string  `json:"provider_type"`
+	ProviderDisplayName      string  `json:"provider_display_name"`
+	ModelAPIID               string  `json:"model_api_id"`
+	ModelDisplayName         string  `json:"model_display_name"`
+	ModelCategoryJSON        string  `json:"model_category_json"`
+	UsageKind                string  `json:"usage_kind"`
+	CallCount                int     `json:"call_count"`
+	InputTokens              int     `json:"input_tokens"`
+	OutputTokens             int     `json:"output_tokens"`
+	CachedInputTokens        int     `json:"cached_input_tokens"`
+	CacheWriteTokens         int     `json:"cache_write_tokens"`
+	ReasoningTokens          int     `json:"reasoning_tokens"`
+	EmbeddingTokens          int     `json:"embedding_tokens"`
+	TotalTokens              int     `json:"total_tokens"`
+	InputPriceMicroUSDPer1K  int64   `json:"input_price_micro_usd_per_1k"`
+	OutputPriceMicroUSDPer1K int64   `json:"output_price_micro_usd_per_1k"`
+	CachedInputPriceMicroUSDPer1K int64 `json:"cached_input_price_micro_usd_per_1k"`
+	CacheWritePriceMicroUSDPer1K  int64 `json:"cache_write_price_micro_usd_per_1k"`
+	ReasoningPriceMicroUSDPer1K   int64 `json:"reasoning_price_micro_usd_per_1k"`
+	EmbeddingPriceMicroUSDPer1K   int64 `json:"embedding_price_micro_usd_per_1k"`
+	InputCostMicroUSD        int64   `json:"input_cost_micro_usd"`
+	OutputCostMicroUSD       int64   `json:"output_cost_micro_usd"`
+	CachedInputCostMicroUSD  int64   `json:"cached_input_cost_micro_usd"`
+	CacheWriteCostMicroUSD   int64   `json:"cache_write_cost_micro_usd"`
+	ReasoningCostMicroUSD    int64   `json:"reasoning_cost_micro_usd"`
+	EmbeddingCostMicroUSD    int64   `json:"embedding_cost_micro_usd"`
+	TotalCostMicroUSD        int64   `json:"total_cost_micro_usd"`
+	LatencyMS                int     `json:"latency_ms"`
+	TimeToFirstTokenMS       int     `json:"time_to_first_token_ms"`
+	TokensPerSecond          float64 `json:"tokens_per_second"`
+	Status                   string  `json:"status"`
+	ErrorCode                string  `json:"error_code"`
+	ErrorMessage             string  `json:"error_message"`
+	RetryCount               int     `json:"retry_count"`
+	PromptMode               string  `json:"prompt_mode"`
+	MaxOutputTokens          int     `json:"max_output_tokens"`
+	ContextWindowK           int     `json:"context_window_k"`
+	StreamEnabled            bool    `json:"stream_enabled"`
+	MetadataJSON             string  `json:"metadata_json"`
+	CreatedAt                string  `json:"created_at"`
 }
 
 type EnvelopeTrace struct {
@@ -242,6 +301,10 @@ func (e Envelope) Clone() Envelope {
 	if e.Usage != nil {
 		u := *e.Usage
 		clone.Usage = &u
+	}
+	if e.TokenUsage != nil {
+		tu := *e.TokenUsage
+		clone.TokenUsage = &tu
 	}
 	if e.Extensions != nil {
 		clone.Extensions = make(map[string]string, len(e.Extensions))

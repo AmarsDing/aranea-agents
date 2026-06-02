@@ -2,6 +2,7 @@ package biz
 
 import (
 	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/event/contract"
 	"context"
 	"os"
 	"strings"
@@ -17,6 +18,7 @@ type runnerCompletionHandler struct {
 	monitor   *MonitorUsecase
 	memWorker *TurnMemoryWorker
 	traceProj *monitor.TraceProjector
+	bus       contract.Bus
 	logger    SessionLogWriter
 }
 
@@ -26,6 +28,8 @@ func newRunnerCompletionHandler(
 	monitorUC *MonitorUsecase,
 	memWorker *TurnMemoryWorker,
 	traceProj *monitor.TraceProjector,
+	bus contract.Bus,
+	logger SessionLogWriter,
 ) *runnerCompletionHandler {
 	return &runnerCompletionHandler{
 		sessions:  sessions,
@@ -33,11 +37,9 @@ func newRunnerCompletionHandler(
 		monitor:   monitorUC,
 		memWorker: memWorker,
 		traceProj: traceProj,
+		bus:       bus,
+		logger:    logger,
 	}
-}
-
-func (h *runnerCompletionHandler) SetLogger(logger SessionLogWriter) {
-	h.logger = logger
 }
 
 func runnerUsageRecordingEnabled() bool {
@@ -85,7 +87,7 @@ func (h *runnerCompletionHandler) Handle(ctx context.Context, de DomainEvent) {
 	if de.Error != nil {
 		status = "error"
 	}
-	_, err := h.usage.RecordTokenUsageEvent(ctx, TokenUsageEvent{
+	ev := TokenUsageEvent{
 		ID:            uuid.NewString(),
 		SessionID:     de.SessionID,
 		AgentID:       de.Author,
@@ -99,10 +101,12 @@ func (h *runnerCompletionHandler) Handle(ctx context.Context, de DomainEvent) {
 		Status:        status,
 		StreamEnabled: true,
 		MetadataJSON:  `{"source":"event_bus.runner_completion"}`,
-	})
-	if err != nil {
-		h.logError(context.Background(), de.SessionID, "event_bus.usage.record", "用量事件写入失败", LogPair{Key: "error", Value: err})
 	}
+	if _, err := h.usage.RecordTokenUsageEvent(ctx, ev); err != nil {
+		h.logError(context.Background(), de.SessionID, "event_bus.usage.record", "用量事件写入失败", LogPair{Key: "error", Value: err})
+		return
+	}
+	PublishTokenUsageEnvelope(ctx, h.bus, ev)
 }
 
 func (h *runnerCompletionHandler) logError(ctx context.Context, sessionID, stepID, message string, pairs ...LogPair) {

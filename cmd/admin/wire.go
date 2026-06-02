@@ -53,6 +53,7 @@ import (
 	"aranea-agents/internal/tools/testexec"
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
 	loggateway "aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/logpipeline"
 
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
@@ -73,13 +74,15 @@ func provideEventBusSideConsumers(
 	memWorker *biz.TurnMemoryWorker,
 	traceProj *monitor.TraceProjector,
 	fileAppender *monitor.FlowFileAppender,
+	usage *biz.UsageUsecase,
+	logger biz.SessionLogWriter,
 ) *biz.EventBusSideConsumers {
 	var sessionBus, monitorBus event.Bus
 	if infra != nil {
 		sessionBus = infra.SessionBus
 		monitorBus = infra.MonitorBus
 	}
-	return biz.NewEventBusSideConsumers(sessionBus, monitorBus, tools, webhooks, sessions, flowLogs, monitor, memWorker, traceProj, fileAppender)
+	return biz.NewEventBusSideConsumers(sessionBus, monitorBus, tools, webhooks, sessions, flowLogs, monitor, memWorker, traceProj, fileAppender, usage, logger)
 }
 
 func provideCronRunnerDeps(
@@ -1087,7 +1090,7 @@ func provideA2AService(
 }
 
 // wireApp init kratos application.
-func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggateway.Logger) (wireOut, func(), error) {
+func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline) (wireOut, func(), error) {
 	panic(wire.Build(
 		server.ProviderSet,
 		data.ProviderSet,
@@ -1115,7 +1118,6 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideMemoryL2Recall,
 		provideMemoryL3Recall,
 		provideMemoryCompositeRecall,
-		provideAutoMemoryEnqueuer,
 		provideFeedbackMemoryEnqueuer,
 		provideMCPProber,
 		provideMCPMetadataEditor,

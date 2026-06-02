@@ -46,7 +46,7 @@ type testRepo struct {
 	bumpSessionRevisionFn        func(ctx context.Context, sessionID string) (int64, error)
 	getSessionRevisionFn         func(ctx context.Context, sessionID string) (int64, error)
 	updateSessionTurnFn          func(ctx context.Context, id string, fields SessionTurnUpdateFields) (SessionTurn, error)
-	upsertChatActivityMessageFn  func(ctx context.Context, sessionID string, msg ChatMessage) error
+	upsertChatActivityMessageFn  func(ctx context.Context, sessionID string, msg ChatMessage) (bool, error)
 	listMessagesAfterTurnFn      func(ctx context.Context, sessionID string, afterTurn int) ([]ChatMessage, error)
 	listMessagesRecentFn         func(ctx context.Context, sessionID string, limit int) ([]ChatMessage, error)
 	listMessagesAfterRevisionFn  func(ctx context.Context, sessionID string, afterRevision int64) ([]ChatMessage, error)

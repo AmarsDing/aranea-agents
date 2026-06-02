@@ -140,8 +140,8 @@ func (m *mockSessionRepo) UpdateMessageFeedbackJSON(_ context.Context, _, _, _, 
 	return nil
 }
 
-func (m *mockSessionRepo) UpsertChatActivityMessage(_ context.Context, _ string, _ ChatMessage) error {
-	return nil
+func (m *mockSessionRepo) UpsertChatActivityMessage(_ context.Context, _ string, _ ChatMessage) (bool, error) {
+	return false, nil
 }
 
 func (m *mockSessionRepo) UpdateChatMessageStatus(_ context.Context, _, _, _, _ string) error {
@@ -237,6 +237,10 @@ func (m *mockSessionRepo) UpdateSessionContextAfterCompression(_ context.Context
 }
 
 func (m *mockSessionRepo) IncrementInvocationCounts(_ context.Context, _ string, _, _, _ int) error {
+	return nil
+}
+
+func (m *mockSessionRepo) ApplyMetricsDelta(_ context.Context, _ *SessionMetricsDelta) error {
 	return nil
 }
 

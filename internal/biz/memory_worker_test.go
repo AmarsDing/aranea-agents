@@ -2,67 +2,41 @@ package biz
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 )
-
-// testAutoMemoryEnqueuer captures enqueued jobs for test assertions.
-type testAutoMemoryEnqueuer struct {
-	mu   sync.Mutex
-	jobs []struct {
-		AppName    string
-		SessionID  string
-		EnqueuedAt time.Time
-	}
-}
-
-func (e *testAutoMemoryEnqueuer) EnqueueAutoMemory(appName, sessionID string, enqueuedAt time.Time) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.jobs = append(e.jobs, struct {
-		AppName    string
-		SessionID  string
-		EnqueuedAt time.Time
-	}{appName, sessionID, enqueuedAt})
-}
-
-func (e *testAutoMemoryEnqueuer) lastJob() (appName, sessionID string, ok bool) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if len(e.jobs) == 0 {
-		return "", "", false
-	}
-	j := e.jobs[len(e.jobs)-1]
-	return j.AppName, j.SessionID, true
-}
 
 type noopSessionLogWriter struct{}
 
 func (noopSessionLogWriter) LogSessionWarn(_ context.Context, _, _, _ string, _ ...LogPair)  {}
 func (noopSessionLogWriter) LogSessionError(_ context.Context, _, _, _ string, _ ...LogPair) {}
 
-func TestTurnMemoryWorker_OnRunnerCompletion_EnqueuesJob(t *testing.T) {
-	enqueuer := &testAutoMemoryEnqueuer{}
-	w := NewTurnMemoryWorker(enqueuer, nil, noopSessionLogWriter{})
+func TestTurnMemoryWorker_OnRunnerCompletion_NoDuplicateEnqueue(t *testing.T) {
+	w := NewTurnMemoryWorker(nil, noopSessionLogWriter{})
 	w.OnRunnerCompletion(context.Background(), DomainEvent{SessionID: "sess-1", Author: "agent-a"})
-
-	appName, sessionID, ok := enqueuer.lastJob()
-	if !ok {
-		t.Fatal("expected auto-memory job")
-	}
-	if sessionID != "sess-1" || appName != "agent-a" {
-		t.Fatalf("unexpected job: appName=%s sessionID=%s", appName, sessionID)
-	}
 }
 
 func TestTurnMemoryWorker_OnRunnerCompletion_SkipsEmptySession(t *testing.T) {
-	enqueuer := &testAutoMemoryEnqueuer{}
-	w := NewTurnMemoryWorker(enqueuer, nil, noopSessionLogWriter{})
+	w := NewTurnMemoryWorker(nil, noopSessionLogWriter{})
 	w.OnRunnerCompletion(context.Background(), DomainEvent{SessionID: "  ", Author: "agent-a"})
+}
 
-	_, _, ok := enqueuer.lastJob()
-	if ok {
-		t.Fatal("unexpected job enqueued for empty session")
+func TestTurnMemoryWorker_OnUserFeedback_EnqueuesJob(t *testing.T) {
+	var capturedSessionID, capturedMessageID, capturedRating string
+	feedback := FeedbackMemoryEnqueuerFunc(func(sessionID, messageID, rating, _ string, _ time.Time) {
+		capturedSessionID = sessionID
+		capturedMessageID = messageID
+		capturedRating = rating
+	})
+	w := NewTurnMemoryWorker(feedback, noopSessionLogWriter{})
+	w.OnUserFeedback(context.Background(), "sess-1", "msg-1", "positive", "great")
+	if capturedSessionID != "sess-1" {
+		t.Fatalf("expected sessionID=sess-1, got %s", capturedSessionID)
+	}
+	if capturedMessageID != "msg-1" {
+		t.Fatalf("expected messageID=msg-1, got %s", capturedMessageID)
+	}
+	if capturedRating != "positive" {
+		t.Fatalf("expected rating=positive, got %s", capturedRating)
 	}
 }

@@ -7,6 +7,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
+	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/service"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -92,8 +93,8 @@ func (m *batchSessionRepo) AppendChatMessage(context.Context, string, biz.ChatMe
 func (m *batchSessionRepo) UpdateMessageFeedbackJSON(context.Context, string, string, string, string) error {
 	return nil
 }
-func (m *batchSessionRepo) UpsertChatActivityMessage(context.Context, string, biz.ChatMessage) error {
-	return nil
+func (m *batchSessionRepo) UpsertChatActivityMessage(context.Context, string, biz.ChatMessage) (bool, error) {
+	return false, nil
 }
 func (m *batchSessionRepo) UpdateRunnerSnapshotJSON(context.Context, string, string) error { return nil }
 func (m *batchSessionRepo) UpdateSessionContextFromLLMUsage(context.Context, string, int, int, int) error {
@@ -127,6 +128,9 @@ func (m *batchSessionRepo) GetSessionTurn(context.Context, string) (biz.SessionT
 	return biz.SessionTurn{}, nil
 }
 func (m *batchSessionRepo) IncrementInvocationCounts(context.Context, string, int, int, int) error {
+	return nil
+}
+func (m *batchSessionRepo) ApplyMetricsDelta(context.Context, *sessstatus.SessionMetricsDelta) error {
 	return nil
 }
 func (m *batchSessionRepo) ListSessionsByIDs(_ context.Context, ids []string) ([]biz.Session, error) {

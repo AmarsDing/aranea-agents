@@ -15,22 +15,25 @@ type toolCallConsumer struct {
 	logger SessionLogWriter
 }
 
-func newToolCallConsumer(bus contract.Bus, tools *ToolUsecase) *toolCallConsumer {
+func newToolCallConsumer(bus contract.Bus, tools *ToolUsecase, logger SessionLogWriter) *toolCallConsumer {
 	if tools == nil {
 		return nil
 	}
-	return &toolCallConsumer{bus: bus, tools: tools}
+	return &toolCallConsumer{bus: bus, tools: tools, logger: logger}
 }
 
 func (c *toolCallConsumer) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	runTypedConsumer(ctx, "event-bus-tool-call", c.bus, contract.SubscribeOptions{
+	runTypedConsumerWithOpts(ctx, "event-bus-tool-call", c.bus, contract.SubscribeOptions{
 		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeToolResult},
 		BufferSize: 256,
 		Reliable:   true,
-	}, c.handle)
+	}, c.handle, OfferOption{
+		FallbackSync: true,
+		FallbackFn:   c.handle,
+	}, c.logger)
 }
 
 func (c *toolCallConsumer) handle(ctx context.Context, env contract.Envelope) {

@@ -94,8 +94,8 @@ func (fixedSessionRepo) AppendChatMessage(context.Context, string, sessionsess.C
 func (fixedSessionRepo) UpdateMessageFeedbackJSON(context.Context, string, string, string, string) error {
 	return nil
 }
-func (fixedSessionRepo) UpsertChatActivityMessage(context.Context, string, sessionsess.ChatMessage) error {
-	return nil
+func (fixedSessionRepo) UpsertChatActivityMessage(context.Context, string, sessionsess.ChatMessage) (bool, error) {
+	return false, nil
 }
 func (fixedSessionRepo) UpdateRunnerSnapshotJSON(context.Context, string, string) error { return nil }
 func (fixedSessionRepo) UpdateSessionContextFromLLMUsage(context.Context, string, int, int, int) error {
@@ -128,6 +128,9 @@ func (fixedSessionRepo) GetSessionTurn(context.Context, string) (sessionsess.Ses
 	return sessionsess.SessionTurn{}, sql.ErrNoRows
 }
 func (fixedSessionRepo) IncrementInvocationCounts(context.Context, string, int, int, int) error {
+	return nil
+}
+func (fixedSessionRepo) ApplyMetricsDelta(context.Context, *sessionsess.SessionMetricsDelta) error {
 	return nil
 }
 func (fixedSessionRepo) ListSessionsForBatch(context.Context, sessionsess.SessionSearchQuery) ([]sessionsess.Session, error) {

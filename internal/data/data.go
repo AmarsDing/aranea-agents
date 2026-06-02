@@ -145,8 +145,8 @@ func (d *Data) ReadEnt() *ent.Client {
 }
 
 func (d *Data) ReadClient(ctx context.Context) *ent.Client {
-	if c, ok := ctx.Value(txClientKey{}).(*ent.Client); ok {
-		return c
+	if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
+		return tx.Client()
 	}
 	return d.ReadEnt()
 }
@@ -179,32 +179,6 @@ func (d *Data) IsReady() bool {
 		return true
 	}
 	return d.readiness.IsReady()
-}
-
-const sqliteWriteRetryMax = 3
-
-func isSQLiteBusyErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "database is locked") || strings.Contains(msg, "SQLITE_BUSY")
-}
-
-func retryOnBusy(fn func() error) error {
-	var lastErr error
-	for i := 0; i < sqliteWriteRetryMax; i++ {
-		if err := fn(); err != nil {
-			if isSQLiteBusyErr(err) {
-				lastErr = err
-				time.Sleep(time.Duration(100*(i+1)) * time.Millisecond)
-				continue
-			}
-			return err
-		}
-		return nil
-	}
-	return lastErr
 }
 
 func (d *Data) SeedLazy(ctx context.Context, name string) error {
@@ -849,31 +823,23 @@ func NewArtifactRepo(d *Data) biz.ArtifactRepo {
 }
 
 func NewKnowledgeRepoFromData(d *Data) biz.KnowledgeRepo {
-	if d == nil || d.Postgres() == nil {
-		return nil
-	}
-	return NewKnowledgeRepo(d.Postgres(), d.lg)
+	return NewKnowledgeRepo(d, d.lg)
 }
 
 func NewKnowledgeSparseSearcherFromData(d *Data) biz.KnowledgeSparseSearcher {
-	if d == nil || d.Postgres() == nil {
+	repo := NewKnowledgeRepo(d, d.lg)
+	if repo == nil {
 		return nil
 	}
-	return &knowledgeRepo{db: d.Postgres(), lg: d.lg}
+	return repo.(*knowledgeRepo)
 }
 
 func NewEvalRepoFromData(d *Data) biz.EvalRepo {
-	if d == nil || d.RawDB() == nil {
-		return nil
-	}
-	return NewEvalRepo(d.RawDB())
+	return NewEvalRepo(d, d.lg)
 }
 
 func NewA2ARepoFromData(d *Data, lg loggateway.Logger) biz.A2ARepo {
-	if d == nil || d.RawDB() == nil {
-		return nil
-	}
-	return NewA2ARepo(d.RawDB(), lg)
+	return NewA2ARepo(d, lg)
 }
 
 // NewCLIData wraps SQLite handles opened by OpenSQLiteEntClient for offline maintenance CLIs.

@@ -752,7 +752,9 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		}
 		userMsgPersisted = true
 		emitter.LogDone("chat.user_msg_persist", "用户消息已持久化")
-		o.bumpSessionRevisionSyncAndPublish(ctx, sessionID, runID, userMsg.ID)
+		if !input.EntryConfig.AllowStream {
+			o.bumpSessionRevisionSyncAndPublish(ctx, sessionID, runID, userMsg.ID)
+		}
 	}
 
 	var sessionRunID string
@@ -1194,6 +1196,17 @@ func (o *ChatOrchestrator) recordTurnUsage(
 		)
 		return
 	}
+	if o.td.Sessions != nil && strings.TrimSpace(sessionID) != "" {
+		o.td.Sessions.AccumulateMetricsDelta(sessstatus.SessionMetricsDelta{
+			SessionID:        sessionID,
+			ModelCallCount:   ev.CallCount,
+			InputTokens:      int64(ev.InputTokens),
+			OutputTokens:     int64(ev.OutputTokens),
+			TotalTokens:      int64(ev.TotalTokens),
+			TotalCostMicroUsd: ev.TotalCostMicroUSD,
+		})
+	}
+	biz.PublishTokenUsageEnvelope(ctx, o.td.Pipeline.Bus, ev)
 	if o.monitor != nil && sessionID != "" && runID != "" {
 		linkCtx, linkCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 		defer linkCancel()

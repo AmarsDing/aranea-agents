@@ -179,9 +179,9 @@ type AgentRuntimeSettings struct {
 	ModelInstructionsJSON string
 	// ContextCompactionEnabled enables automatic context compaction when tokens approach the limit.
 	ContextCompactionEnabled bool
-	// MicroCompactEnabled enables L1 MicroCompact (zero-API tool result clearing) as the first compression tier.
+	// MicroCompactEnabled enables MicroCompact (zero-API tool result clearing) as the first compression tier.
 	MicroCompactEnabled bool
-	// MemoryCompactEnabled enables L2 Memory Compact (reuse extracted memory facts) as the second compression tier.
+	// MemoryCompactEnabled enables MemoryCompact (reuse extracted memory facts) as the second compression tier.
 	MemoryCompactEnabled bool
 	ToolResultGateEnabled bool
 	CompressLLMCacheEnabled    bool

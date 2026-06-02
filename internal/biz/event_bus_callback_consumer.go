@@ -11,13 +11,14 @@ import (
 type callbackConsumer struct {
 	bus      contract.Bus
 	webhooks *WebhookDispatcher
+	logger   SessionLogWriter
 }
 
-func newCallbackConsumer(bus contract.Bus, webhooks *WebhookDispatcher) *callbackConsumer {
+func newCallbackConsumer(bus contract.Bus, webhooks *WebhookDispatcher, logger SessionLogWriter) *callbackConsumer {
 	if webhooks == nil {
 		return nil
 	}
-	return &callbackConsumer{bus: bus, webhooks: webhooks}
+	return &callbackConsumer{bus: bus, webhooks: webhooks, logger: logger}
 }
 
 func terminalRunStatuses() map[string]struct{} {
@@ -37,7 +38,7 @@ func (c *callbackConsumer) Start(ctx context.Context) {
 		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeRunStatus},
 		BufferSize: 128,
 		Reliable:   true,
-	}, c.handle)
+	}, c.handle, c.logger)
 }
 
 func (c *callbackConsumer) handle(ctx context.Context, env contract.Envelope) {

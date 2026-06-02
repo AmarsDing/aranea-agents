@@ -185,16 +185,16 @@ func (c *Compressor) CompactSession(ctx context.Context, sessionID string, prese
 		return &biz.CompactResult{Compacted: true, EstimatedTokensBefore: estBefore, EstimatedTokensAfter: estBefore}, nil
 	}
 
-	level := "L3"
+	level := "auto_compact"
 	fromTurn, toTurn := 0, 0
 	if summaries, sErr := c.summaryReader.ListSessionSummaries(ctx, sid); sErr == nil && len(summaries) > 0 {
 		latest := summaries[len(summaries)-1]
 		fromTurn = latest.FromTurn
 		toTurn = latest.ToTurn
 		if containsMicroCompactMarker(latest.SummaryMarkdown) {
-			level = "L1"
+			level = "micro_compact"
 		} else if containsMemoryCompactMarker(latest.SummaryMarkdown) {
-			level = "L2"
+			level = "memory_compact"
 		}
 	}
 

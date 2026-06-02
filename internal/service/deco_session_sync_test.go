@@ -9,6 +9,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/service"
+	"aranea-agents/pkg/loggateway"
 )
 
 type decoSyncSessionRepo struct {
@@ -56,7 +57,7 @@ func TestDECO01_SessionRevisionChannelToWebSync(t *testing.T) {
 	}
 	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil)
 	proj := service.NewSessionProjectionAdapter(uc, nil)
-	bus := event.NewBus()
+	bus := event.NewBus(loggateway.NewNoop())
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{SessionID: sessionID, BufferSize: 4})
 	defer unsub()
 

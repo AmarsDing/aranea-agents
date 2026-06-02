@@ -14,8 +14,11 @@ func (a *KratosAdapter) Log(level log.Level, keyvals ...interface{}) error {
 	if a == nil || a.sugar == nil {
 		return nil
 	}
-	msg := extractMessage(keyvals)
-	fields := kvToFields(keyvals)
+	all := make([]interface{}, 0, len(a.base)+len(keyvals))
+	all = append(all, a.base...)
+	all = append(all, keyvals...)
+	msg := extractMessage(all)
+	fields := kvToFields(all)
 
 	switch level {
 	case log.LevelDebug:

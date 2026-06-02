@@ -6,6 +6,8 @@ import (
 	"sync"
 
 	"github.com/google/wire"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 // Infra holds session vs monitor event buses (P0: isolate flow_log from chat envelopes).
@@ -43,31 +45,31 @@ func monitorBusRef() Bus {
 }
 
 // NewInfra wires dual buses for dependency injection.
-func NewInfra() *Infra {
+func NewInfra(lg loggateway.Logger) *Infra {
 	mode := routingMode(os.Getenv("MONITOR_BUS_ROUTING"))
 	if mode == "" {
 		mode = routingModeSplit
 	}
 	return &Infra{
-		SessionBus: NewBus(),
-		MonitorBus: NewBus(),
+		SessionBus: NewBus(lg),
+		MonitorBus: NewBus(lg),
 		Buffer:     NewBuffer(),
 		routing:    mode,
 	}
 }
 
 // ProvideSessionBus exposes the interactive/session bus for wire.
-func ProvideSessionBus(infra *Infra) Bus {
+func ProvideSessionBus(infra *Infra, lg loggateway.Logger) Bus {
 	if infra == nil {
-		return NewBus()
+		return NewBus(lg)
 	}
 	return infra.SessionBus
 }
 
 // ProvideMonitorBus exposes the monitor/flow bus for wire.
-func ProvideMonitorBus(infra *Infra) Bus {
+func ProvideMonitorBus(infra *Infra, lg loggateway.Logger) Bus {
 	if infra == nil {
-		return NewBus()
+		return NewBus(lg)
 	}
 	return infra.MonitorBus
 }

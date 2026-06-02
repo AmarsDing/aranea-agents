@@ -57,7 +57,7 @@ func (r *testRepo) UpdateSessionTurn(ctx context.Context, id string, fields Sess
 	return r.mockSessionRepo.UpdateSessionTurn(ctx, id, fields)
 }
 
-func (r *testRepo) UpsertChatActivityMessage(ctx context.Context, sessionID string, msg ChatMessage) error {
+func (r *testRepo) UpsertChatActivityMessage(ctx context.Context, sessionID string, msg ChatMessage) (bool, error) {
 	if r.upsertChatActivityMessageFn != nil {
 		return r.upsertChatActivityMessageFn(ctx, sessionID, msg)
 	}
@@ -532,7 +532,7 @@ func TestUpsertChatActivityMessage(t *testing.T) {
 		sessionID string
 		msg       ChatMessage
 		getFn     func(_ context.Context, id string) (Session, error)
-		upsertFn  func(_ context.Context, sid string, msg ChatMessage) error
+		upsertFn  func(_ context.Context, sid string, msg ChatMessage) (bool, error)
 		wantErr   bool
 		wantMsg   string
 	}{
@@ -557,14 +557,14 @@ func TestUpsertChatActivityMessage(t *testing.T) {
 			func(_ context.Context, id string) (Session, error) {
 				return Session{ID: id}, nil
 			},
-			func(_ context.Context, sid string, msg ChatMessage) error {
+			func(_ context.Context, sid string, msg ChatMessage) (bool, error) {
 				if sid != "sess-1" {
 					t.Errorf("sid = %q, want %q", sid, "sess-1")
 				}
 				if msg.ID != "msg-1" {
 					t.Errorf("msg.ID = %q, want %q", msg.ID, "msg-1")
 				}
-				return nil
+				return true, nil
 			},
 			false, "",
 		},
@@ -574,8 +574,8 @@ func TestUpsertChatActivityMessage(t *testing.T) {
 			func(_ context.Context, id string) (Session, error) {
 				return Session{ID: id}, nil
 			},
-			func(_ context.Context, _ string, _ ChatMessage) error {
-				return errors.New("db error")
+			func(_ context.Context, _ string, _ ChatMessage) (bool, error) {
+				return false, errors.New("db error")
 			},
 			true, "",
 		},

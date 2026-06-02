@@ -20,6 +20,7 @@ import (
 	"aranea-agents/internal/telemetry"
 	"aranea-agents/pkg/auth"
 	loggateway "aranea-agents/pkg/loggateway"
+	"aranea-agents/pkg/logpipeline"
 	"aranea-agents/pkg/safego"
 
 	_ "aranea-agents/internal/channel/all"
@@ -53,13 +54,13 @@ func init() {
 func newApp(
 	logger log.Logger,
 	lg loggateway.Logger,
+	pipeline logpipeline.Pipeline,
 	gs *grpc.Server,
 	hs *http.Server,
 	wsSrv *server.WSServer,
 	consumer *biz.EventBusConsumer,
 	sideConsumers *biz.EventBusSideConsumers,
 	eventInfra *event.Infra,
-	sessionLogWriter biz.SessionLogWriter,
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
 	agentUC *biz.AgentUsecase,
 	teamUC *biz.TeamUsecase,
@@ -67,18 +68,13 @@ func newApp(
 	d *data.Data,
 	guard *service.SessionStatusGuard,
 	orchCache *biz.OrchestrationCache,
+	sessions *biz.SessionUsecase,
 ) *kratos.App {
 	// EP-OBS-03: WSServer implements transport.Server (Start/Stop); register it so
 	// kratos.App orchestrates its lifecycle and Stop triggers broadcastShutdown.
 	srv := []transport.Server{gs, hs}
 	if wsSrv != nil {
 		srv = append(srv, wsSrv)
-	}
-
-	// Phase 3: inject SessionLogWriter into event bus consumers
-	consumer.SetLogger(sessionLogWriter)
-	if sideConsumers != nil {
-		sideConsumers.SetLogger(sessionLogWriter)
 	}
 
 	consumerCtx, consumerCancel := context.WithCancel(context.Background())
@@ -108,8 +104,12 @@ func newApp(
 			if sideConsumers != nil {
 				sideConsumers.Start(consumerCtx)
 			}
+			sessions.StartMetricsFlusher(consumerCtx)
 			if eventInfra != nil {
 				event.BindInfra(eventInfra)
+				if pipeline != nil {
+					pipeline.AddSink(logpipeline.NewEventBusSink(event.NewLogPipelinePublisher(eventInfra.MonitorBus), "info"))
+				}
 			}
 			logger.Log(log.LevelInfo, "msg", "event infra bound for monitor flow logs")
 			return nil
@@ -131,6 +131,9 @@ func newApp(
 				logger.Log(log.LevelWarn, "msg", "session status guard shutdown failed", "error", err.Error())
 			}
 			consumerCancel()
+			if pipeline != nil {
+				pipeline.Close()
+			}
 			return nil
 		}),
 	)
@@ -170,15 +173,30 @@ func main() {
 	}
 
 	var lg loggateway.Logger = loggateway.NewNoop()
+	var pipeline logpipeline.Pipeline
 	if bc.Logging != nil {
 		lg = loggateway.New(bc.Logging)
+		pipeline = logpipeline.NewPipeline(4096)
+		if bc.Logging.GetStdoutEnabled() {
+			pipeline.AddSink(logpipeline.NewStdoutSink("debug"))
+		}
+		pipeline.AddSink(logpipeline.NewFileSink(logpipeline.FileSinkConfig{
+			OutputDir:  bc.Logging.GetOutputDir(),
+			MaxSizeMB:  int(bc.Logging.GetMaxSizeMb()),
+			MaxBackups: int(bc.Logging.GetMaxBackups()),
+			MaxAgeDays: int(bc.Logging.GetMaxAgeDays()),
+			Compress:   bc.Logging.GetCompress(),
+		}))
+		if gw, ok := lg.(*loggateway.Gateway); ok {
+			gw.SetPipeline(pipeline)
+		}
 	}
 	loggateway.SetGlobal(lg.(*loggateway.Gateway))
 
 	shutdownTelemetry := telemetry.Init(Name, Version, lg)
 	defer func() { _ = shutdownTelemetry(context.Background()) }()
 
-	out, cleanup, err := wireApp(bc.Server, bc.Data, nil, logger, lg)
+	out, cleanup, err := wireApp(bc.Server, bc.Data, nil, logger, lg, pipeline)
 	if err != nil {
 		panic(err)
 	}

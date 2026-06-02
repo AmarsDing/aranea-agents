@@ -84,6 +84,10 @@ func (s *stubUsageRepo) PurgeUsageEventsOlderThan(context.Context, int) (int64, 
 	return 0, nil
 }
 
+func (s *stubUsageRepo) RollupDailyHourly(context.Context, TokenUsageEvent) error {
+	return nil
+}
+
 func TestCheckQuota_noConfigAllowed(t *testing.T) {
 	uc := NewUsageUsecase(&stubUsageRepo{hasQuota: false}, loggateway.Global())
 	check, err := uc.CheckQuota(context.Background(), "agent", "a1")

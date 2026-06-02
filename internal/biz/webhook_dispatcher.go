@@ -33,15 +33,12 @@ type WebhookDispatcher struct {
 	logger SessionLogWriter
 }
 
-func NewWebhookDispatcher(repo WebhookRepository) *WebhookDispatcher {
+func NewWebhookDispatcher(repo WebhookRepository, logger SessionLogWriter) *WebhookDispatcher {
 	return &WebhookDispatcher{
 		repo:   repo,
 		client: webhookurl.NewOutboundHTTPClient(webhookHTTPTimeout),
+		logger: logger,
 	}
-}
-
-func (d *WebhookDispatcher) SetLogger(logger SessionLogWriter) {
-	d.logger = logger
 }
 
 // Dispatch fans out one event to enabled webhooks that subscribe to eventType.

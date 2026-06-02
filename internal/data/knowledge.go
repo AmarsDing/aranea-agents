@@ -18,12 +18,15 @@ import (
 )
 
 type knowledgeRepo struct {
-	db *sql.DB
-	lg loggateway.Logger
+	data *Data
+	lg   loggateway.Logger
 }
 
-func NewKnowledgeRepo(db *sql.DB, lg loggateway.Logger) biz.KnowledgeRepo {
-	return &knowledgeRepo{db: db, lg: lg}
+func NewKnowledgeRepo(data *Data, lg loggateway.Logger) biz.KnowledgeRepo {
+	if data == nil || data.Postgres() == nil {
+		return nil
+	}
+	return &knowledgeRepo{data: data, lg: lg}
 }
 
 func ivfflatLists(dim int) int {
@@ -121,7 +124,7 @@ func (r *knowledgeRepo) CreateCollection(ctx context.Context, c biz.KnowledgeCol
 		RETURNING id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
 		          to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		          to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')`
-	row := r.db.QueryRowContext(ctx, q, c.ID, c.Name, c.Description, c.EmbeddingModel, c.Dim, c.Status, c.Workspace, now)
+	row := r.data.Postgres().QueryRowContext(ctx, q, c.ID, c.Name, c.Description, c.EmbeddingModel, c.Dim, c.Status, c.Workspace, now)
 	return scanCollection(row)
 }
 
@@ -130,13 +133,13 @@ func (r *knowledgeRepo) GetCollection(ctx context.Context, id string) (biz.Knowl
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_collections WHERE id = $1`
-	return scanCollection(r.db.QueryRowContext(ctx, q, id))
+	return scanCollection(r.data.Postgres().QueryRowContext(ctx, q, id))
 }
 
 func (r *knowledgeRepo) ListCollections(ctx context.Context, workspace string, limit, offset int) ([]biz.KnowledgeCollection, int, error) {
 	var total int
 	cq := `SELECT COUNT(*) FROM knowledge_collections WHERE workspace = $1 OR $1 = ''`
-	if err := r.db.QueryRowContext(ctx, cq, workspace).Scan(&total); err != nil {
+	if err := r.data.Postgres().QueryRowContext(ctx, cq, workspace).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	q := `SELECT id, name, description, embedding_model, dim, status, document_count, chunk_count, workspace,
@@ -144,7 +147,7 @@ func (r *knowledgeRepo) ListCollections(ctx context.Context, workspace string, l
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_collections WHERE workspace = $1 OR $1 = ''
 		  ORDER BY created_at DESC LIMIT $2 OFFSET $3`
-	rows, err := r.db.QueryContext(ctx, q, workspace, limit, offset)
+	rows, err := r.data.Postgres().QueryContext(ctx, q, workspace, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -161,12 +164,12 @@ func (r *knowledgeRepo) ListCollections(ctx context.Context, workspace string, l
 }
 
 func (r *knowledgeRepo) DeleteCollection(ctx context.Context, id string) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM knowledge_collections WHERE id = $1`, id)
+	_, err := r.data.Postgres().ExecContext(ctx, `DELETE FROM knowledge_collections WHERE id = $1`, id)
 	return err
 }
 
 func (r *knowledgeRepo) UpdateCollectionCounts(ctx context.Context, id string, docDelta, chunkDelta int) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.data.Postgres().ExecContext(ctx,
 		`UPDATE knowledge_collections
 		 SET document_count = document_count + $2,
 		     chunk_count    = chunk_count    + $3,
@@ -185,7 +188,7 @@ func (r *knowledgeRepo) CreateDocument(ctx context.Context, d biz.KnowledgeDocum
 		RETURNING id, collection_id, source, mime_type, size_bytes, chunk_count, status, error_message,
 		          to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		          to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')`
-	row := r.db.QueryRowContext(ctx, q, d.ID, d.CollectionID, d.Source, d.MimeType, d.SizeBytes, d.Status, now)
+	row := r.data.Postgres().QueryRowContext(ctx, q, d.ID, d.CollectionID, d.Source, d.MimeType, d.SizeBytes, d.Status, now)
 	return scanDocument(row)
 }
 
@@ -194,11 +197,11 @@ func (r *knowledgeRepo) GetDocument(ctx context.Context, id string) (biz.Knowled
 		         to_char(created_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_documents WHERE id = $1`
-	return scanDocument(r.db.QueryRowContext(ctx, q, id))
+	return scanDocument(r.data.Postgres().QueryRowContext(ctx, q, id))
 }
 
 func (r *knowledgeRepo) UpdateDocumentStatus(ctx context.Context, id, status, errMsg string, chunkCount int) error {
-	_, err := r.db.ExecContext(ctx,
+	_, err := r.data.Postgres().ExecContext(ctx,
 		`UPDATE knowledge_documents
 		 SET status = $2, error_message = $3, chunk_count = $4, updated_at = NOW()
 		 WHERE id = $1`, id, status, errMsg, chunkCount)
@@ -207,7 +210,7 @@ func (r *knowledgeRepo) UpdateDocumentStatus(ctx context.Context, id, status, er
 
 func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, limit, offset int) ([]biz.KnowledgeDocument, int, error) {
 	var total int
-	if err := r.db.QueryRowContext(ctx,
+	if err := r.data.Postgres().QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM knowledge_documents WHERE collection_id = $1 OR $1 = ''`, collectionID).Scan(&total); err != nil {
 		return nil, 0, err
 	}
@@ -216,7 +219,7 @@ func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, 
 		         to_char(updated_at,'YYYY-MM-DD"T"HH24:MI:SS"Z"')
 		  FROM knowledge_documents WHERE collection_id = $1 OR $1 = ''
 		  ORDER BY created_at DESC LIMIT $2 OFFSET $3`
-	rows, err := r.db.QueryContext(ctx, q, collectionID, limit, offset)
+	rows, err := r.data.Postgres().QueryContext(ctx, q, collectionID, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -246,7 +249,7 @@ func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, 
 //
 // All statements run in one transaction to avoid any partial-update window.
 func (r *knowledgeRepo) DeleteDocument(ctx context.Context, id string) error {
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.data.Postgres().BeginTx(ctx, nil)
 	if err != nil {
 		r.lg.Warn("delete document begin tx failed", loggateway.StepID("knowledge.tx_fail"), loggateway.Err(err))
 		return err
@@ -295,7 +298,7 @@ func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.Knowledge
 		return nil
 	}
 	var expectedDim int
-	err := r.db.QueryRowContext(ctx,
+	err := r.data.Postgres().QueryRowContext(ctx,
 		"SELECT dim FROM knowledge_collections WHERE id = $1", chunks[0].CollectionID).Scan(&expectedDim)
 	if err != nil {
 		return kerrors.InternalServer("KNOWLEDGE", fmt.Sprintf("failed to query collection dimension: %s", err.Error()))
@@ -305,7 +308,7 @@ func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.Knowledge
 			return kerrors.BadRequest("KNOWLEDGE", fmt.Sprintf("embedding dimension mismatch: collection expects %d, chunk %q has %d", expectedDim, ch.ID, len(ch.Embedding)))
 		}
 	}
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.data.Postgres().BeginTx(ctx, nil)
 	if err != nil {
 		r.lg.Warn("insert chunks begin tx failed", loggateway.StepID("knowledge.tx_fail"), loggateway.Err(err))
 		return err
@@ -337,7 +340,7 @@ func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.Knowledge
 }
 
 func (r *knowledgeRepo) DeleteChunksByDocument(ctx context.Context, docID string) error {
-	_, err := r.db.ExecContext(ctx, `DELETE FROM knowledge_chunks WHERE doc_id = $1`, docID)
+	_, err := r.data.Postgres().ExecContext(ctx, `DELETE FROM knowledge_chunks WHERE doc_id = $1`, docID)
 	return err
 }
 
@@ -378,13 +381,13 @@ LIMIT $3`, scoreFilter, filterClause)
 	var err error
 	switch {
 	case filterClause != "" && q.MinScore > 0:
-		rows, err = r.db.QueryContext(ctx, raw, vec, q.CollectionID, q.TopK, filterArg, q.MinScore)
+		rows, err = r.data.Postgres().QueryContext(ctx, raw, vec, q.CollectionID, q.TopK, filterArg, q.MinScore)
 	case filterClause != "":
-		rows, err = r.db.QueryContext(ctx, raw, vec, q.CollectionID, q.TopK, filterArg)
+		rows, err = r.data.Postgres().QueryContext(ctx, raw, vec, q.CollectionID, q.TopK, filterArg)
 	case q.MinScore > 0:
-		rows, err = r.db.QueryContext(ctx, raw, vec, q.CollectionID, q.TopK, q.MinScore)
+		rows, err = r.data.Postgres().QueryContext(ctx, raw, vec, q.CollectionID, q.TopK, q.MinScore)
 	default:
-		rows, err = r.db.QueryContext(ctx, raw, vec, q.CollectionID, q.TopK)
+		rows, err = r.data.Postgres().QueryContext(ctx, raw, vec, q.CollectionID, q.TopK)
 	}
 	if err != nil {
 		return nil, err
@@ -442,9 +445,9 @@ LIMIT $%d`, filterClause, nextArgIdx)
 	var rows *sql.Rows
 	var err error
 	if filterClause != "" {
-		rows, err = r.db.QueryContext(ctx, raw, q.Query, q.CollectionID, filterArg, q.TopK)
+		rows, err = r.data.Postgres().QueryContext(ctx, raw, q.Query, q.CollectionID, filterArg, q.TopK)
 	} else {
-		rows, err = r.db.QueryContext(ctx, raw, q.Query, q.CollectionID, q.TopK)
+		rows, err = r.data.Postgres().QueryContext(ctx, raw, q.Query, q.CollectionID, q.TopK)
 	}
 	if err != nil {
 		return nil, err
@@ -467,9 +470,9 @@ LIMIT $%d`, filterClause, nextArgIdx)
 	var rows *sql.Rows
 	var err error
 	if filterClause != "" {
-		rows, err = r.db.QueryContext(ctx, raw, q.Query, q.CollectionID, filterArg, q.TopK)
+		rows, err = r.data.Postgres().QueryContext(ctx, raw, q.Query, q.CollectionID, filterArg, q.TopK)
 	} else {
-		rows, err = r.db.QueryContext(ctx, raw, q.Query, q.CollectionID, q.TopK)
+		rows, err = r.data.Postgres().QueryContext(ctx, raw, q.Query, q.CollectionID, q.TopK)
 	}
 	if err != nil {
 		return nil, err

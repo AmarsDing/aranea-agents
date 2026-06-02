@@ -1,6 +1,10 @@
 package event
 
-import "context"
+import (
+	"context"
+
+	"aranea-agents/pkg/loggateway"
+)
 
 type traceEmitterKey struct{}
 
@@ -78,7 +82,7 @@ func CtxFlowLogWarn(ctx context.Context, step, msg string, extra ...Pair) {
 		e.LogWarn(step, "", msg, extra...)
 		return
 	}
-	emitSystem(ctx, "", "", step, FlowPhaseDone, FlowSeverityWarn, msg, extra)
+	loggateway.Global().Warn(msg, loggateway.StepID(step))
 }
 
 // NewFlowLogger creates a v2 TraceEmitter (name kept for call-site stability).

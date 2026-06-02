@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
-
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestEvalCaseResultAnnotation(t *testing.T) {
@@ -19,7 +19,7 @@ func TestEvalCaseResultAnnotation(t *testing.T) {
 	if err := EnsureEvalSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	repo := NewEvalRepo(db)
+	repo := NewEvalRepo(&Data{rawDB: db, lg: loggateway.NewNoop()}, loggateway.NewNoop())
 	runID := "run-1"
 	if err := repo.InsertCaseResult(ctx, biz.EvalCaseResult{
 		ID:     "res-1",

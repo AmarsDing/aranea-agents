@@ -21,7 +21,7 @@ func tryMemoryCompact(ctx context.Context, body []biz.ChatMessage, reader biz.Me
 	}
 	facts, err := reader.ReadSessionMemoryFacts(ctx, sessionID)
 	if err != nil {
-		lg.Warn("L2 Memory Compact: read memory facts failed", loggateway.StepID("session.compress"), loggateway.SessionID(sessionID), loggateway.Err(err))
+		lg.Warn("MemoryCompact: read memory facts failed", loggateway.StepID("session.compress"), loggateway.SessionID(sessionID), loggateway.Err(err))
 		return memoryCompactResult{}
 	}
 	if len(facts) == 0 {

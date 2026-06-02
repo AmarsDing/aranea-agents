@@ -86,6 +86,8 @@ func (uc *SessionUsecase) AppendChatTurn(ctx context.Context, sessionID string, 
 	if err := uc.messageWriter.AppendChatTurn(ctx, sessionID, user, assistant); err != nil {
 		return err
 	}
+	delta := SessionMetricsDelta{SessionID: sessionID, MessageCount: 2}
+	uc.AccumulateMetricsDelta(delta)
 	if strings.EqualFold(strings.TrimSpace(user.Role), "user") {
 		if err := uc.maybeAutoTitleFromUserMessage(ctx, sessionID, user.ContentMarkdown); err != nil {
 			uc.lg.Warn("maybeAutoTitleFromUserMessage failed", loggateway.StepID("session.auto_title"), loggateway.SessionID(sessionID), loggateway.Err(err))
@@ -99,6 +101,8 @@ func (uc *SessionUsecase) AppendChatMessage(ctx context.Context, sessionID strin
 	if err := uc.messageWriter.AppendChatMessage(ctx, sessionID, msg, bumpModelCall); err != nil {
 		return err
 	}
+	delta := SessionMetricsDelta{SessionID: sessionID, MessageCount: 1}
+	uc.AccumulateMetricsDelta(delta)
 	if strings.EqualFold(strings.TrimSpace(msg.Role), "user") {
 		if err := uc.maybeAutoTitleFromUserMessage(ctx, sessionID, msg.ContentMarkdown); err != nil {
 			uc.lg.Warn("maybeAutoTitleFromUserMessage failed", loggateway.StepID("session.auto_title"), loggateway.SessionID(sessionID), loggateway.Err(err))
@@ -176,7 +180,14 @@ func (uc *SessionUsecase) UpsertChatActivityMessage(ctx context.Context, session
 	if _, err := uc.sessionReader.GetSessionByID(ctx, sessionID); err != nil {
 		return err
 	}
-	return uc.messageWriter.UpsertChatActivityMessage(ctx, sessionID, msg)
+	inserted, err := uc.messageWriter.UpsertChatActivityMessage(ctx, sessionID, msg)
+	if err != nil {
+		return err
+	}
+	if inserted {
+		uc.AccumulateMetricsDelta(SessionMetricsDelta{SessionID: sessionID, MessageCount: 1})
+	}
+	return nil
 }
 
 // UpdateRunnerSnapshotJSON persists the Runner session snapshot.

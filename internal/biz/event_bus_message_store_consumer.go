@@ -20,22 +20,25 @@ type messageStoreConsumer struct {
 	logger   SessionLogWriter
 }
 
-func newMessageStoreConsumer(bus contract.Bus, sessions *SessionUsecase) *messageStoreConsumer {
+func newMessageStoreConsumer(bus contract.Bus, sessions *SessionUsecase, logger SessionLogWriter) *messageStoreConsumer {
 	if sessions == nil {
 		return nil
 	}
-	return &messageStoreConsumer{bus: bus, sessions: sessions}
+	return &messageStoreConsumer{bus: bus, sessions: sessions, logger: logger}
 }
 
 func (c *messageStoreConsumer) Start(ctx context.Context) {
 	if c == nil {
 		return
 	}
-	runTypedConsumer(ctx, "event-bus-message-store", c.bus, contract.SubscribeOptions{
+	runTypedConsumerWithOpts(ctx, "event-bus-message-store", c.bus, contract.SubscribeOptions{
 		EventTypes: []contract.EnvelopeType{contract.EnvelopeTypeMemberMessageDone},
 		BufferSize: 256,
 		Reliable:   true,
-	}, c.handle)
+	}, c.handle, OfferOption{
+		FallbackSync: true,
+		FallbackFn:   c.handle,
+	}, c.logger)
 }
 
 func (c *messageStoreConsumer) handle(ctx context.Context, env contract.Envelope) {

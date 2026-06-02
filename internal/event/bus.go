@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/event/contract"
 	arametrics "aranea-agents/internal/metrics"
+	"aranea-agents/pkg/loggateway"
 )
 
 // Re-export contract types for backward compatibility.
@@ -32,6 +33,7 @@ type bus struct {
 	subscribers map[uint64]*subscriber
 	nextID      uint64
 	dropCount   atomic.Uint64
+	lg          loggateway.Logger
 }
 
 type subscriber struct {
@@ -42,9 +44,10 @@ type subscriber struct {
 }
 
 // NewBus returns a new in-process event bus.
-func NewBus() Bus {
+func NewBus(lg loggateway.Logger) Bus {
 	return &bus{
 		subscribers: make(map[uint64]*subscriber),
+		lg:          lg,
 	}
 }
 
@@ -90,6 +93,7 @@ func (b *bus) Publish(ctx context.Context, env Envelope) {
 }
 
 func (b *bus) deliverToSubscriber(sub *subscriber, env Envelope, isCritical bool) {
+	env = env.Clone()
 	if !b.matchSubscriber(sub.opts, env) {
 		return
 	}
@@ -118,8 +122,8 @@ func (b *bus) deliverToSubscriber(sub *subscriber, env Envelope, isCritical bool
 }
 
 func (b *bus) deliverBlockUpTo(sub *subscriber, env Envelope, blockFor time.Duration) {
-	sub.mu.RLock()
-	defer sub.mu.RUnlock()
+	sub.mu.Lock()
+	defer sub.mu.Unlock()
 	if sub.closed {
 		return
 	}
@@ -145,8 +149,8 @@ func (b *bus) deliverBlockUpTo(sub *subscriber, env Envelope, blockFor time.Dura
 }
 
 func (b *bus) deliverDropOldest(sub *subscriber, env Envelope) {
-	sub.mu.RLock()
-	defer sub.mu.RUnlock()
+	sub.mu.Lock()
+	defer sub.mu.Unlock()
 	if sub.closed {
 		return
 	}
@@ -164,21 +168,35 @@ func (b *bus) deliverDropOldestLocked(sub *subscriber, env Envelope) {
 			default:
 				b.dropCount.Add(1)
 				arametrics.EventBusDropped.WithLabelValues(string(env.Type), "drop_oldest").Inc()
-				SessionSysLogWarn(context.Background(), env.SessionID, "system.bus.drop", "事件总线丢弃消息（drop_oldest）",
-					P("type", string(env.Type)), P("channel", env.Channel), P("policy", "drop_oldest"), P("total_drops", b.dropCount.Load()))
+				if b.lg != nil {
+					b.lg.Warn("事件总线丢弃消息（drop_oldest）",
+						loggateway.StepID("event_bus.drop"),
+						loggateway.SessionID(env.SessionID),
+						loggateway.Str("type", string(env.Type)),
+						loggateway.Str("channel", env.Channel),
+						loggateway.Str("policy", "drop_oldest"),
+						loggateway.Int64("total_drops", int64(b.dropCount.Load())))
+				}
 			}
 		default:
 			b.dropCount.Add(1)
 			arametrics.EventBusDropped.WithLabelValues(string(env.Type), "drop_oldest").Inc()
-			SessionSysLogWarn(context.Background(), env.SessionID, "system.bus.drop", "事件总线丢弃消息（drop_oldest）",
-				P("type", string(env.Type)), P("channel", env.Channel), P("policy", "drop_oldest"), P("total_drops", b.dropCount.Load()))
+			if b.lg != nil {
+				b.lg.Warn("事件总线丢弃消息（drop_oldest）",
+					loggateway.StepID("event_bus.drop"),
+					loggateway.SessionID(env.SessionID),
+					loggateway.Str("type", string(env.Type)),
+					loggateway.Str("channel", env.Channel),
+					loggateway.Str("policy", "drop_oldest"),
+					loggateway.Int64("total_drops", int64(b.dropCount.Load())))
+			}
 		}
 	}
 }
 
 func (b *bus) deliverDropNewest(sub *subscriber, env Envelope) {
-	sub.mu.RLock()
-	defer sub.mu.RUnlock()
+	sub.mu.Lock()
+	defer sub.mu.Unlock()
 	if sub.closed {
 		return
 	}
@@ -187,8 +205,15 @@ func (b *bus) deliverDropNewest(sub *subscriber, env Envelope) {
 	default:
 		b.dropCount.Add(1)
 		arametrics.EventBusDropped.WithLabelValues(string(env.Type), "drop_newest").Inc()
-		SessionSysLogWarn(context.Background(), env.SessionID, "system.bus.drop", "事件总线丢弃消息（drop_newest）",
-			P("type", string(env.Type)), P("channel", env.Channel), P("policy", "drop_newest"), P("total_drops", b.dropCount.Load()))
+		if b.lg != nil {
+			b.lg.Warn("事件总线丢弃消息（drop_newest）",
+				loggateway.StepID("event_bus.drop"),
+				loggateway.SessionID(env.SessionID),
+				loggateway.Str("type", string(env.Type)),
+				loggateway.Str("channel", env.Channel),
+				loggateway.Str("policy", "drop_newest"),
+				loggateway.Int64("total_drops", int64(b.dropCount.Load())))
+		}
 	}
 }
 

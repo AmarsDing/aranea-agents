@@ -183,6 +183,10 @@ func (m *mockUsageRepo) PurgeUsageEventsOlderThan(ctx context.Context, retainDay
 	return 0, nil
 }
 
+func (m *mockUsageRepo) RollupDailyHourly(_ context.Context, _ TokenUsageEvent) error {
+	return nil
+}
+
 var fixedNow = time.Date(2025, 3, 15, 12, 0, 0, 0, time.UTC)
 
 func newTestUsecase(repo Repo) *Usecase {
