@@ -52,7 +52,7 @@ func (r *memoryRepo) dimForEmbedding(ctx context.Context, memoryPartitionUserID 
 	if memoryPartitionUserID == "" {
 		return r.data.VectorDim(), nil
 	}
-	row, err := r.data.Ent().UserEmbeddingSetting.Query().
+	row, err := r.data.ReadEnt().UserEmbeddingSetting.Query().
 		Where(userembeddingsetting.UserID(memoryPartitionUserID)).
 		Only(ctx)
 	switch {

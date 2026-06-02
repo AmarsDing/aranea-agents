@@ -163,6 +163,7 @@ const {
   saveNode,
   removeNode,
   toggleNodeEnabled,
+  reorderNodes,
   levelLabel
 } = useTaxonomyPage();
 

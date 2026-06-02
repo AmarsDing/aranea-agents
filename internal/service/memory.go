@@ -63,6 +63,29 @@ func (s *MemoryService) ListL0Snapshots(ctx context.Context, req *v1.ListL0Snaps
 	return out, nil
 }
 
+func (s *MemoryService) ListPIIFlaggedFacts(ctx context.Context, req *v1.ListPIIFlaggedFactsRequest) (*v1.ListPIIFlaggedFactsResponse, error) {
+	if err := s.requireAdmin(); err != nil {
+		return nil, err
+	}
+	rows, total, err := s.admin.ListPIIFlaggedFacts(ctx,
+		strings.TrimSpace(req.GetScopeType()),
+		strings.TrimSpace(req.GetScopeId()),
+		req.GetLimit(),
+		req.GetOffset(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	out := &v1.ListPIIFlaggedFactsResponse{Total: total}
+	for _, raw := range rows {
+		f, e := pbMemoryFact(raw)
+		if e == nil && f != nil {
+			out.Items = append(out.Items, f)
+		}
+	}
+	return out, nil
+}
+
 func (s *MemoryService) ListL1Tasks(ctx context.Context, req *v1.ListL1TasksRequest) (*v1.ListL1TasksResponse, error) {
 	if err := s.requireAdmin(); err != nil {
 		return nil, err

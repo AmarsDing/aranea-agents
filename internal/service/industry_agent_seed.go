@@ -13,7 +13,7 @@ func SeedBuiltinIndustryAgents(
 	ctx context.Context,
 	agentUC *biz.AgentUsecase,
 	teamUC *biz.TeamUsecase,
-	positionUC *biz.PositionUsecase,
+	taxonomyUC *biz.TaxonomyUsecase,
 	scenarioDir string,
 	seedRepo biz.SeedVersionRepo,
 ) {
@@ -33,16 +33,18 @@ func SeedBuiltinIndustryAgents(
 	deps := loader.Deps{
 		AgentUC:     agentUC,
 		TeamUC:      teamUC,
-		PositionUC:  positionUC,
+		Taxonomy:    taxonomyUC,
 		ScenarioDir: scenarioDir,
 	}
 
 	totalAgents, totalTeams := 0, 0
+	hasError := false
 	for _, ind := range industries {
 		ac, tc, err := loader.SeedFromYAML(ctx, deps, ind, false)
 		if err != nil {
 			event.CtxFlowLogError(ctx, "seed.industry_agents", fmt.Sprintf("种子 %s 失败", ind),
 				event.P("industry", ind), event.P("error", err.Error()))
+			hasError = true
 			continue
 		}
 		totalAgents += ac
@@ -55,7 +57,7 @@ func SeedBuiltinIndustryAgents(
 			event.P("teams", fmt.Sprintf("%d", totalTeams)))
 	}
 
-	if seedRepo != nil {
+	if !hasError && seedRepo != nil {
 		if err := seedRepo.MarkApplied(ctx, biz.SeedVersionIndustryAgentsV1, "industry_agents_v1"); err != nil {
 			event.CtxFlowLogError(ctx, "seed.industry_agents", "版本标记失败",
 				event.P("error", err.Error()))

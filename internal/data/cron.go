@@ -87,7 +87,7 @@ func entToBizCronTaskRun(e *ent.CronTaskRun, taskName string) biz.CronTaskRun {
 }
 
 func (r *cronRepo) ListCronTasks(ctx context.Context) ([]biz.CronTask, error) {
-	rows, err := r.data.entClient.CronTask.Query().
+	rows, err := r.data.ReadClient(ctx).CronTask.Query().
 		Where(crontask.DeletedAtEQ("")).
 		Order(
 			crontask.BySortOrder(),
@@ -105,7 +105,7 @@ func (r *cronRepo) ListCronTasks(ctx context.Context) ([]biz.CronTask, error) {
 }
 
 func (r *cronRepo) GetCronTask(ctx context.Context, id string) (biz.CronTask, error) {
-	row, err := r.data.entClient.CronTask.Query().
+	row, err := r.data.ReadClient(ctx).CronTask.Query().
 		Where(crontask.IDEQ(id), crontask.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -174,7 +174,7 @@ func (r *cronRepo) DeleteCronTask(ctx context.Context, id string) error {
 }
 
 func (r *cronRepo) GetCronTaskRun(ctx context.Context, id string) (biz.CronTaskRun, error) {
-	run, err := r.data.entClient.CronTaskRun.Query().
+	run, err := r.data.ReadClient(ctx).CronTaskRun.Query().
 		Where(crontaskrun.IDEQ(id)).
 		Only(ctx)
 	if err != nil {
@@ -199,7 +199,7 @@ func (r *cronRepo) ListCronTaskRuns(ctx context.Context, q biz.CronTaskRunQuery)
 	if limit > 500 {
 		limit = 500
 	}
-	query := r.data.entClient.CronTaskRun.Query().
+	query := r.data.ReadClient(ctx).CronTaskRun.Query().
 		Order(crontaskrun.ByCreatedAt(entsql.OrderDesc())).
 		Limit(limit)
 	if tid := strings.TrimSpace(q.TaskID); tid != "" {
@@ -224,7 +224,7 @@ func (r *cronRepo) ListCronTaskRuns(ctx context.Context, q biz.CronTaskRunQuery)
 		seen[run.TaskID] = struct{}{}
 		ids = append(ids, run.TaskID)
 	}
-	tasks, err := r.data.entClient.CronTask.Query().
+	tasks, err := r.data.ReadClient(ctx).CronTask.Query().
 		Where(crontask.IDIn(ids...)).
 		All(ctx)
 	if err != nil {

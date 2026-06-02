@@ -585,9 +585,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		CodeExecFactory:       o.rt.CodeExecFactory,
 		CustomTools:           o.cliAdminTools(ctx, ag),
 		KanbanBridge:          o.rt.KanbanBridge,
-		IndustryUC:            o.rt.IndustryUC,
-		DepartmentUC:          o.rt.DepartmentUC,
-		PositionUC:            o.rt.PositionUC,
+		Taxonomy:              o.rt.TaxonomyUC,
 		ToolResultGate:        o.rt.ToolResultGate,
 	}
 	deps.CustomTools = append(deps.CustomTools, o.spiritCustomTools(ag)...)

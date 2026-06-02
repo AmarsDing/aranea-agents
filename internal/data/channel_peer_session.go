@@ -42,7 +42,7 @@ func (r *channelPeerSessionRepo) GetByChannelAndPeer(ctx context.Context, channe
 	if channelID == "" {
 		return biz.ChannelPeerSession{}, sql.ErrNoRows
 	}
-	e, err := r.data.entClient.PlatformChannelPeerSession.Query().
+	e, err := r.data.ReadClient(ctx).PlatformChannelPeerSession.Query().
 		Where(
 			platformchannelpeersession.ChannelIDEQ(channelID),
 			platformchannelpeersession.PeerKeyEQ(peerKey),

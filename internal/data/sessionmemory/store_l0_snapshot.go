@@ -2,7 +2,9 @@ package sessionmemory
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -78,6 +80,62 @@ func (st *Store) InsertL0AssemblySnapshot(ctx context.Context, in biz.L0Assembly
 		segs, warns, meta, created,
 	)
 	return err
+}
+
+// GetL0SnapshotRow returns one L0 assembly snapshot row as JSON.
+func (st *Store) GetL0SnapshotRow(ctx context.Context, sessionID, id string) ([]byte, error) {
+	if st == nil || st.client == nil {
+		return nil, errors.New("session memory store not wired")
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil, errors.New("session id is required")
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, errors.New("snapshot id is required")
+	}
+	rows, err := st.client.QueryContext(ctx, sqlL0Select+` WHERE id = ? AND session_id = ?`, id, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return nil, fmt.Errorf("l0 snapshot %s not found in session %s", id, sessionID)
+	}
+	var (
+		sid, sessID, runID, turnID, spanID, agentID, teamID, provider, model string
+		cwt, bt, rwt, rwtok, ste, l1fc, l1te, l3c, l3te, l4p, l4te          int
+		pte, pta                                                            int
+		ur                                                                  float64
+		ts                                                                  string
+		tmc, stf, ste2                                                      int
+		segs, warns, meta, cat                                              string
+	)
+	if err := rows.Scan(
+		&sid, &sessID, &runID, &turnID, &spanID, &agentID, &teamID, &provider, &model,
+		&cwt, &bt, &rwt, &rwtok, &ste, &l1fc, &l1te, &l3c, &l3te, &l4p, &l4te,
+		&pte, &pta, &ur, &ts, &tmc, &stf, &ste2,
+		&segs, &warns, &meta, &cat,
+	); err != nil {
+		return nil, err
+	}
+	m := map[string]any{
+		"id": sid, "session_id": sessID, "run_id": runID, "turn_id": turnID, "span_id": spanID,
+		"agent_id": agentID, "team_id": teamID, "provider": provider, "model": model,
+		"context_window_tokens": cwt, "budget_tokens": bt,
+		"recent_window_turns": rwt, "recent_window_tokens": rwtok,
+		"summary_token_estimate": ste,
+		"l1_field_count":         l1fc, "l1_token_estimate": l1te,
+		"l3_chunk_count": l3c, "l3_token_estimate": l3te,
+		"l4_path_count": l4p, "l4_token_estimate": l4te,
+		"prompt_token_estimate": pte, "prompt_token_actual": pta,
+		"used_ratio": ur, "truncate_strategy": ts,
+		"truncated_message_count": tmc, "summarized_turn_from": stf, "summarized_turn_to": ste2,
+		"segments_json": segs, "warning_codes_json": warns, "metadata_json": meta,
+		"created_at": cat,
+	}
+	return json.Marshal(m)
 }
 
 // UpdateL0SnapshotActual fills prompt_token_actual after the model responds.

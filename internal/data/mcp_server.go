@@ -42,7 +42,7 @@ func entToBizMCP(e *ent.PlatformMCPServer) biz.MCPServer {
 }
 
 func (r *mcpServerRepo) ListMCPServers(ctx context.Context) ([]biz.MCPServer, error) {
-	rows, err := r.data.entClient.PlatformMCPServer.Query().
+	rows, err := r.data.ReadClient(ctx).PlatformMCPServer.Query().
 		Where(platformmcpserver.DeletedAtEQ("")).
 		Order(
 			platformmcpserver.BySortOrder(),
@@ -60,7 +60,7 @@ func (r *mcpServerRepo) ListMCPServers(ctx context.Context) ([]biz.MCPServer, er
 }
 
 func (r *mcpServerRepo) GetMCPServer(ctx context.Context, id string) (biz.MCPServer, error) {
-	row, err := r.data.entClient.PlatformMCPServer.Query().
+	row, err := r.data.ReadClient(ctx).PlatformMCPServer.Query().
 		Where(platformmcpserver.IDEQ(id), platformmcpserver.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -73,7 +73,7 @@ func (r *mcpServerRepo) GetMCPServer(ctx context.Context, id string) (biz.MCPSer
 }
 
 func (r *mcpServerRepo) GetMCPServerByKey(ctx context.Context, key string) (biz.MCPServer, error) {
-	row, err := r.data.entClient.PlatformMCPServer.Query().
+	row, err := r.data.ReadClient(ctx).PlatformMCPServer.Query().
 		Where(platformmcpserver.ServerKeyEQ(key), platformmcpserver.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {

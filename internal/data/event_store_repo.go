@@ -48,7 +48,7 @@ func (r *eventStoreRepo) List(ctx context.Context, q biz.EventStoreQuery) (biz.E
 	if r == nil || r.data == nil || r.data.Ent() == nil {
 		return biz.EventStoreListResult{}, kerrors.InternalServer("EVENT_STORE", "database not configured")
 	}
-	client := r.data.Ent()
+	client := r.data.ReadEnt()
 	query := client.EventStore.Query().
 		Where(eventstore.SessionIDEQ(strings.TrimSpace(q.SessionID)))
 	if !q.Since.IsZero() {

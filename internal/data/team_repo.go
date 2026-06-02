@@ -359,7 +359,7 @@ func (r *teamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRun) (biz.Team
 	if err != nil {
 		return biz.TeamRun{}, err
 	}
-	row, err := r.data.entClient.TeamRun.Get(ctx, run.ID)
+	row, err := r.data.ReadClient(ctx).TeamRun.Get(ctx, run.ID)
 	if err != nil {
 		return biz.TeamRun{}, err
 	}
@@ -422,7 +422,7 @@ func (r *teamRepo) CreateTeamRunStep(ctx context.Context, step biz.TeamRunStep) 
 	if err != nil {
 		return biz.TeamRunStep{}, err
 	}
-	row, err := r.data.entClient.TeamRunStep.Get(ctx, step.ID)
+	row, err := r.data.ReadClient(ctx).TeamRunStep.Get(ctx, step.ID)
 	if err != nil {
 		return biz.TeamRunStep{}, err
 	}

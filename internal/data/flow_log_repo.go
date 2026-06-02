@@ -56,7 +56,7 @@ func (r *flowLogRepo) List(ctx context.Context, q biz.FlowLogQuery) (biz.FlowLog
 	if r == nil || r.data == nil || r.data.Ent() == nil {
 		return biz.FlowLogListResult{}, kerrors.InternalServer("FLOW_LOG", "database not configured")
 	}
-	client := r.data.Ent()
+	client := r.data.ReadEnt()
 	query := client.FlowLogEvent.Query()
 	if tid := strings.TrimSpace(q.TraceID); tid != "" {
 		query = query.Where(flowlogevent.TraceIDEQ(tid))

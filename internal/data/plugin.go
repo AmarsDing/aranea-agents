@@ -58,8 +58,8 @@ func entToBizPlugin(lg loggateway.Logger, e *ent.PlatformPlugin) biz.Plugin {
 	}
 }
 
-func (r *pluginRepo) pluginSearchQuery(q biz.PluginListQuery) *ent.PlatformPluginQuery {
-	pq := r.data.entClient.PlatformPlugin.Query().Where(platformplugin.DeletedAtEQ(""))
+func (r *pluginRepo) pluginSearchQuery(ctx context.Context, q biz.PluginListQuery) *ent.PlatformPluginQuery {
+	pq := r.data.ReadClient(ctx).PlatformPlugin.Query().Where(platformplugin.DeletedAtEQ(""))
 	if s := strings.TrimSpace(q.Search); s != "" {
 		pq = pq.Where(
 			platformplugin.Or(
@@ -85,12 +85,12 @@ func (r *pluginRepo) pluginSearchQuery(q biz.PluginListQuery) *ent.PlatformPlugi
 }
 
 func (r *pluginRepo) SearchPlugins(ctx context.Context, q biz.PluginListQuery) (biz.PluginListResult, error) {
-	base := r.pluginSearchQuery(q)
+	base := r.pluginSearchQuery(ctx, q)
 	total, err := base.Count(ctx)
 	if err != nil {
 		return biz.PluginListResult{}, err
 	}
-	rows, err := r.pluginSearchQuery(q).
+	rows, err := r.pluginSearchQuery(ctx, q).
 		Order(
 			platformplugin.BySortOrder(),
 			platformplugin.ByCreatedAt(entsql.OrderDesc()),
@@ -114,7 +114,7 @@ func (r *pluginRepo) SearchPlugins(ctx context.Context, q biz.PluginListQuery) (
 }
 
 func (r *pluginRepo) GetByKey(ctx context.Context, key string) (biz.Plugin, error) {
-	row, err := r.data.entClient.PlatformPlugin.Query().
+	row, err := r.data.ReadClient(ctx).PlatformPlugin.Query().
 		Where(platformplugin.PluginKeyEQ(key), platformplugin.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -169,7 +169,7 @@ func (r *pluginRepo) CreatePlugin(ctx context.Context, p biz.Plugin) (biz.Plugin
 }
 
 func (r *pluginRepo) GetPlugin(ctx context.Context, id string) (biz.Plugin, error) {
-	row, err := r.data.entClient.PlatformPlugin.Query().
+	row, err := r.data.ReadClient(ctx).PlatformPlugin.Query().
 		Where(platformplugin.IDEQ(id), platformplugin.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -242,7 +242,7 @@ func (r *pluginRepo) IncrementStats(ctx context.Context, pluginKey string, delta
 	if pluginKey == "" {
 		return nil
 	}
-	row, err := r.data.entClient.PlatformPlugin.Query().
+	row, err := r.data.ReadClient(ctx).PlatformPlugin.Query().
 		Where(platformplugin.PluginKeyEQ(pluginKey), platformplugin.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {

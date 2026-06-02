@@ -85,7 +85,7 @@ func (r *webhookRepo) Create(ctx context.Context, w biz.WebhookConfig) (biz.Webh
 }
 
 func (r *webhookRepo) Get(ctx context.Context, id string) (biz.WebhookConfig, error) {
-	row, err := r.data.entClient.GatewayWebhook.Get(ctx, strings.TrimSpace(id))
+	row, err := r.data.ReadClient(ctx).GatewayWebhook.Get(ctx, strings.TrimSpace(id))
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.WebhookConfig{}, sql.ErrNoRows
@@ -96,7 +96,7 @@ func (r *webhookRepo) Get(ctx context.Context, id string) (biz.WebhookConfig, er
 }
 
 func (r *webhookRepo) List(ctx context.Context) ([]biz.WebhookConfig, error) {
-	rows, err := r.data.entClient.GatewayWebhook.Query().
+	rows, err := r.data.ReadClient(ctx).GatewayWebhook.Query().
 		Order(gatewaywebhook.ByCreatedAt()).
 		All(ctx)
 	if err != nil {
@@ -106,7 +106,7 @@ func (r *webhookRepo) List(ctx context.Context) ([]biz.WebhookConfig, error) {
 }
 
 func (r *webhookRepo) ListEnabled(ctx context.Context) ([]biz.WebhookConfig, error) {
-	rows, err := r.data.entClient.GatewayWebhook.Query().
+	rows, err := r.data.ReadClient(ctx).GatewayWebhook.Query().
 		Where(gatewaywebhook.EnabledEQ(true)).
 		Order(gatewaywebhook.ByCreatedAt()).
 		All(ctx)

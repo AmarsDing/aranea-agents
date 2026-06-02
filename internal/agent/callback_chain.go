@@ -53,6 +53,9 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	if hook := newMemoryInjectBeforeHook(ag, deps); hook != nil {
 		entries = append(entries, hook)
 	}
+	if hook := newWorkingMemoryContextBeforeHook(ag, deps); hook != nil {
+		entries = append(entries, hook)
+	}
 	if hook := newToolResultGateBeforeHook(deps.ToolResultGate, ag, lg); hook != nil {
 		entries = append(entries, hook)
 	}

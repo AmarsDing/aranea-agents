@@ -33,7 +33,7 @@ func (r *mcpServerRepo) ListMCPServerUserCredentials(ctx context.Context, mcpSer
 	if mcpServerID == "" {
 		return nil, errors.New("mcp_server_id is required")
 	}
-	q := r.data.entClient.PlatformMCPUserCredential.Query().
+	q := r.data.ReadClient(ctx).PlatformMCPUserCredential.Query().
 		Where(
 			platformmcpusercredential.McpServerIDEQ(mcpServerID),
 			platformmcpusercredential.DeletedAtEQ(""),
@@ -59,7 +59,7 @@ func (r *mcpServerRepo) UpsertMCPServerUserCredential(ctx context.Context, cred 
 	if cred.ID == "" || cred.MCPServerID == "" || cred.UserID == "" || cred.CredentialKey == "" {
 		return biz.MCPServerUserCredential{}, errors.New("id, mcp_server_id, user_id and credential_key are required")
 	}
-	existing, err := r.data.entClient.PlatformMCPUserCredential.Query().
+	existing, err := r.data.ReadClient(ctx).PlatformMCPUserCredential.Query().
 		Where(
 			platformmcpusercredential.McpServerIDEQ(cred.MCPServerID),
 			platformmcpusercredential.UserIDEQ(cred.UserID),

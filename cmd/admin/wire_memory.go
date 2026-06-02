@@ -109,6 +109,10 @@ func (a *wireSessionAdminStoreAdapter) ListL0SnapshotRows(ctx context.Context, s
 	return a.inner.ListL0SnapshotRows(ctx, sessionID, limit)
 }
 
+func (a *wireSessionAdminStoreAdapter) GetL0SnapshotRow(ctx context.Context, sessionID, id string) ([]byte, error) {
+	return a.inner.GetL0SnapshotRow(ctx, sessionID, id)
+}
+
 func (a *wireSessionAdminStoreAdapter) InsertL0AssemblySnapshot(ctx context.Context, in biz.L0AssemblySnapshotInsert) error {
 	return a.inner.InsertL0AssemblySnapshot(ctx, in)
 }
@@ -125,6 +129,54 @@ func (a *wireSessionAdminStoreAdapter) ListL1FieldRows(ctx context.Context, task
 	return a.inner.ListL1FieldRows(ctx, taskID, includeInternal)
 }
 
+func (a *wireSessionAdminStoreAdapter) StartL1Task(ctx context.Context, in biz.L1TaskInsert) ([]byte, error) {
+	return a.inner.StartL1Task(ctx, in)
+}
+
+func (a *wireSessionAdminStoreAdapter) EndL1Task(ctx context.Context, sessionID, taskID, status string) ([]byte, error) {
+	return a.inner.EndL1Task(ctx, sessionID, taskID, status)
+}
+
+func (a *wireSessionAdminStoreAdapter) GetL1TaskRow(ctx context.Context, sessionID, id string) ([]byte, error) {
+	return a.inner.GetL1TaskRow(ctx, sessionID, id)
+}
+
+func (a *wireSessionAdminStoreAdapter) UpsertL1Field(ctx context.Context, in biz.L1FieldInsert) ([]byte, error) {
+	return a.inner.UpsertL1Field(ctx, in)
+}
+
+func (a *wireSessionAdminStoreAdapter) DeleteL1Field(ctx context.Context, taskID, fieldPath string) error {
+	return a.inner.DeleteL1Field(ctx, taskID, fieldPath)
+}
+
+func (a *wireSessionAdminStoreAdapter) GetL1FieldRow(ctx context.Context, taskID, fieldPath string) ([]byte, error) {
+	return a.inner.GetL1FieldRow(ctx, taskID, fieldPath)
+}
+
+func (a *wireSessionAdminStoreAdapter) PatchL1Fields(ctx context.Context, fields []biz.L1FieldInsert) ([][]byte, error) {
+	return a.inner.PatchL1Fields(ctx, fields)
+}
+
+func (a *wireSessionAdminStoreAdapter) ArchiveL1Task(ctx context.Context, sessionID, taskID string) ([]byte, error) {
+	return a.inner.ArchiveL1Task(ctx, sessionID, taskID)
+}
+
+func (a *wireSessionAdminStoreAdapter) ListIdleL1Tasks(ctx context.Context, cutoffRFC3339 string) ([][]byte, error) {
+	return a.inner.ListIdleL1Tasks(ctx, cutoffRFC3339)
+}
+
+func (a *wireSessionAdminStoreAdapter) InsertL1ArchiveEpisode(ctx context.Context, in biz.L1ArchiveEpisodeInsert) error {
+	return a.inner.InsertL1ArchiveEpisode(ctx, in)
+}
+
+func (a *wireSessionAdminStoreAdapter) ListPendingConsolidationEpisodes(ctx context.Context, agentID string, limit int) ([][]byte, error) {
+	return a.inner.ListPendingConsolidationEpisodes(ctx, agentID, limit)
+}
+
+func (a *wireSessionAdminStoreAdapter) MarkEpisodeConsolidated(ctx context.Context, id string, l3Count, l4Count int) error {
+	return a.inner.MarkEpisodeConsolidated(ctx, id, l3Count, l4Count)
+}
+
 func (a *wireSessionAdminStoreAdapter) ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword string, limit, offset int32) ([][]byte, int32, int32, int32, error) {
 	return a.inner.ListFactRows(ctx, scopeType, scopeID, kind, status, keyword, limit, offset)
 }
@@ -135,6 +187,14 @@ func (a *wireSessionAdminStoreAdapter) ListFactRowsForUser(ctx context.Context, 
 
 func (a *wireSessionAdminStoreAdapter) RecallL3Facts(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32, minScore float64) ([][]byte, error) {
 	return a.inner.RecallL3Facts(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit, minScore)
+}
+
+func (a *wireSessionAdminStoreAdapter) IncrementConflictCount(ctx context.Context, factID string) (int32, error) {
+	return a.inner.IncrementConflictCount(ctx, factID)
+}
+
+func (a *wireSessionAdminStoreAdapter) ListConflictingFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error) {
+	return a.inner.ListConflictingFacts(ctx, scopeType, scopeID, limit, offset)
 }
 
 func (a *wireSessionAdminStoreAdapter) ListEpisodeRowsForRecall(ctx context.Context, agentID, sessionID string, limit int32) ([][]byte, error) {
@@ -183,6 +243,18 @@ func (a *wireSessionAdminStoreAdapter) InsertEvolutionEventRow(ctx context.Conte
 
 func (a *wireSessionAdminStoreAdapter) DeleteSessionEventEntities(ctx context.Context, sessionID string) error {
 	return a.inner.DeleteSessionEventEntities(ctx, sessionID)
+}
+
+func (a *wireSessionAdminStoreAdapter) ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error) {
+	return a.inner.ListPIIFlaggedFacts(ctx, scopeType, scopeID, limit, offset)
+}
+
+func (a *wireSessionAdminStoreAdapter) ApprovePIIFact(ctx context.Context, factID string) error {
+	return a.inner.ApprovePIIFact(ctx, factID)
+}
+
+func (a *wireSessionAdminStoreAdapter) RejectPIIFact(ctx context.Context, factID string) error {
+	return a.inner.RejectPIIFact(ctx, factID)
 }
 
 func wireFactUpsertToStore(in biz.FactUpsert) sessionmemory.MemoryFactUpsert {

@@ -231,108 +231,165 @@ agents:
 
 teams:
   - key: team-premarket-brief
+    display_name: 盘前简报
     mode: coordinator
+    description: 协调式盘前准备：数据采集、技术分析、资金流向与新闻汇总，生成研报。
     members:
       - key: trading-coordinator-premarket
         role: coordinator
+        name: 交易协调
       - key: data-collector-general
         role: worker
+        name: 数据采集
       - key: technical-analyst-general
         role: worker
+        name: 技术分析
       - key: money-flow-analyst-general
         role: worker
+        name: 资金流向分析
       - key: news-analyst-general
         role: worker
+        name: 新闻分析
       - key: report-writer-general
         role: synthesizer
+        name: 研报撰写
 
   - key: team-stock-deep-dive
+    display_name: 个股深度研究
     mode: coordinator
+    description: 协调式个股深度研究：技术面、基本面、资金面、舆情与行业全景分析。
     members:
       - key: trading-coordinator-intraday
         role: coordinator
+        name: 盘中协调
       - key: data-collector-general
         role: worker
+        name: 数据采集
       - key: technical-analyst-general
         role: worker
+        name: 技术分析
       - key: fundamental-analyst-general
         role: worker
+        name: 基本面分析
       - key: money-flow-analyst-general
         role: worker
+        name: 资金流向分析
       - key: news-analyst-general
         role: worker
+        name: 新闻分析
       - key: sentiment-analyst-general
         role: worker
+        name: 舆情分析
       - key: industry-analyst-general
         role: worker
+        name: 行业分析
       - key: risk-assessor-general
         role: worker
+        name: 风险评估
       - key: report-writer-general
         role: synthesizer
+        name: 研报撰写
 
   - key: team-sector-rotation
+    display_name: 板块轮动
     mode: sequential
+    description: 顺序式板块轮动分析：行业趋势、资金流向与新闻驱动，综合输出研报。
     graph:
       type: linear
     members:
       - key: industry-analyst-general
+        name: 行业分析
       - key: money-flow-analyst-general
+        name: 资金流向分析
       - key: news-analyst-general
+        name: 新闻分析
       - key: report-writer-general
         role: synthesizer
+        name: 研报撰写
 
   - key: team-portfolio-doctor
+    display_name: 组合诊断
     mode: parallel
+    description: 并行式组合诊断：风险评估、基本面验证与量化优化，综合输出报告。
     graph:
       type: parallel
     members:
       - key: risk-assessor-general
+        name: 风险评估
       - key: fundamental-analyst-general
+        name: 基本面分析
       - key: quant-researcher-portfolio
+        name: 量化组合优化
       - key: report-writer-general
         role: synthesizer
+        name: 研报撰写
 
   - key: team-market-recap
+    display_name: 市场复盘
     mode: sequential
+    description: 顺序式市场复盘：技术面、资金面、行业与新闻逐层分析，生成复盘报告。
     graph:
       type: linear
     members:
       - key: technical-analyst-general
+        name: 技术分析
       - key: money-flow-analyst-general
+        name: 资金流向分析
       - key: industry-analyst-general
+        name: 行业分析
       - key: news-analyst-general
+        name: 新闻分析
       - key: report-writer-general
         role: synthesizer
+        name: 研报撰写
 
   - key: team-quant-strategy-research
+    display_name: 量化策略研发
     mode: sequential
+    description: 顺序式量化策略研发：因子研究、回测验证、Alpha 挖掘与交易系统开发。
     graph:
       type: linear
     members:
       - key: quant-researcher-factor
+        name: 因子研究
       - key: quant-researcher-backtest
+        name: 回测验证
       - key: quant-researcher-ml-alpha
+        name: Alpha 挖掘
       - key: quant-developer-trading-system
+        name: 交易系统开发
 
   - key: team-investment-committee
+    display_name: 投资决策委员会
     mode: coordinator
+    description: 协调式投资决策：投资顾问主持，基本面、风控、资产配置与合规协同审议。
     members:
       - key: investment-advisor-portfolio-advice
         role: coordinator
+        name: 投资顾问
       - key: fundamental-analyst-general
         role: worker
+        name: 基本面分析
       - key: risk-manager-market-risk
         role: worker
+        name: 市场风控
       - key: asset-allocator-strategic-allocation
         role: worker
+        name: 资产配置
       - key: compliance-officer-regulatory
         role: worker
+        name: 合规审查
 
   - key: team-risk-monitoring
+    display_name: 风险监控
     mode: parallel
+    description: 并行式风险监控：市场风险、信用风险与反洗钱同步扫描。
     graph:
       type: parallel
     members:
       - key: risk-manager-market-risk
+        name: 市场风控
       - key: risk-manager-credit-risk
+        name: 信用风控
       - key: aml-specialist-anti-money-laundering
+        name: 反洗钱

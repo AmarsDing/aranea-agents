@@ -58,6 +58,7 @@ func convertRecallDebugRows(rows []sessionmemory.RecallDebugRow) []biz.RecallDeb
 				Vector:       r.Scores.Vector,
 				Importance:   r.Scores.Importance,
 				Recency:      r.Scores.Recency,
+				QualityScore: r.Scores.QualityScore,
 				CrossEncoder: r.Scores.CrossEncoder,
 				Total:        r.Scores.Total,
 			},

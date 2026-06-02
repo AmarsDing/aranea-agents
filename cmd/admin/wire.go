@@ -820,6 +820,24 @@ func provideMemoryL2DecayWorker(decayer biz.MemoryEpisodeDecayer, agents *biz.Ag
 	return jobs.NewMemoryL2DecayWorker(0, decayer, agents, lg)
 }
 
+func provideMemoryL2ConsolidateWorker(admin *biz.MemoryAdminUsecase, lg loggateway.Logger) *jobs.MemoryL2ConsolidateWorker {
+	if jobs.MemoryL2ConsolidateDisabled() {
+		return nil
+	}
+	return jobs.NewMemoryL2ConsolidateWorker(0, admin, lg)
+}
+
+func provideSessionAdminStore(store *sessionmemory.Store) biz.SessionAdminStore {
+	return newWireSessionAdminStoreAdapter(store)
+}
+
+func provideMemoryL1ArchiveWorker(admin biz.SessionAdminStore, agents *biz.AgentUsecase, lg loggateway.Logger) *jobs.MemoryL1ArchiveWorker {
+	if jobs.MemoryL1ArchiveDisabled() {
+		return nil
+	}
+	return jobs.NewMemoryL1ArchiveWorker(0, admin, agents, lg)
+}
+
 func provideMemoryEpisodeBackfillWorker(reader biz.MemoryEpisodeBackfillReader, episodeSync biz.EpisodeIndexSyncer, sys biz.SystemSettingRepo, lg loggateway.Logger) *jobs.MemoryEpisodeBackfillWorker {
 	if biz.ResolveEpisodeBackfillDisabled(context.Background(), sys) {
 		return nil
@@ -1027,6 +1045,8 @@ type wireOut struct {
 	MonitorAlertEvalWorker      *monitor.AlertEvalWorker
 	MonitorTraceBackfillWorker  *jobs.MonitorTraceBackfillWorker
 	MemoryL2Decay               *jobs.MemoryL2DecayWorker
+	MemoryL2Consolidate         *jobs.MemoryL2ConsolidateWorker
+	MemoryL1Archive             *jobs.MemoryL1ArchiveWorker
 	MemoryL3Decay               *jobs.MemoryL3DecayWorker
 	MemoryL4Decay               *jobs.MemoryL4DecayWorker
 	MemoryEpisodeBackfill       *jobs.MemoryEpisodeBackfillWorker
@@ -1060,6 +1080,8 @@ func provideWireOut(
 	monitorAlertEvalWorker *monitor.AlertEvalWorker,
 	monitorTraceBackfillWorker *jobs.MonitorTraceBackfillWorker,
 	memoryL2Decay *jobs.MemoryL2DecayWorker,
+	memoryL2Consolidate *jobs.MemoryL2ConsolidateWorker,
+	memoryL1Archive *jobs.MemoryL1ArchiveWorker,
 	memoryL3Decay *jobs.MemoryL3DecayWorker,
 	memoryL4Decay *jobs.MemoryL4DecayWorker,
 	memoryEpisodeBackfill *jobs.MemoryEpisodeBackfillWorker,
@@ -1077,7 +1099,7 @@ func provideWireOut(
 		ChannelRuntime:          channelRuntime,
 		PluginRuntime:           pluginRuntime,
 		EventStoreCleanup:       eventStoreCleanup, ToolAuditCleanup: toolAuditCleanup,
-		FlowLogCleanup: flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
+		FlowLogCleanup: flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL2Consolidate: memoryL2Consolidate, MemoryL1Archive: memoryL1Archive, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
 		MemoryEpisodeBackfill:     memoryEpisodeBackfill,
 		MemoryDataMigration:       memoryDataMigration,
 		MemoryFactIndexReconciler: memoryFactIndexReconciler,
@@ -1217,6 +1239,10 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideChannelRuntime,
 		provideEventStoreCleanup,
 		provideMemoryL2DecayWorker,
+		provideMemoryL2ConsolidateWorker,
+		provideMemoryAdminUsecase,
+		provideSessionAdminStore,
+		provideMemoryL1ArchiveWorker,
 		provideMemoryL3DecayWorker,
 		provideMemoryL4DecayWorker,
 		provideMemoryEpisodeBackfillWorker,

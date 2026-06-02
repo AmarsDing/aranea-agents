@@ -14,7 +14,7 @@ import (
 type Deps struct {
 	AgentUC     *biz.AgentUsecase
 	TeamUC      *biz.TeamUsecase
-	PositionUC  *biz.PositionUsecase
+	Taxonomy    *biz.TaxonomyUsecase
 	ScenarioDir string
 }
 
@@ -133,22 +133,25 @@ func seedTeams(ctx context.Context, d Deps, spec *IndustrySpec, dryRun bool) (in
 func BuildBizAgentFromSpec(ctx context.Context, d Deps, spec *IndustrySpec, as *AgentSpec) (biz.Agent, error) {
 	posName := as.DisplayName
 	posDesc := as.Description
-	if as.PositionKey != "" && d.PositionUC != nil {
-		anc, err := d.PositionUC.GetWithAncestors(ctx, as.PositionKey)
+	if as.PositionKey != "" && d.Taxonomy != nil {
+		posNode, err := d.Taxonomy.GetByKey(ctx, as.PositionKey)
 		if err == nil {
-			if posName == "" {
-				posName = anc.Position.Name
-			}
-			if posDesc == "" {
-				parts := []string{}
-				if anc.Industry.Key != "" {
-					parts = append(parts, anc.Industry.Name)
+			anc, ancErr := d.Taxonomy.GetAncestors(ctx, posNode.ID)
+			if ancErr == nil {
+				if posName == "" {
+					posName = anc.Position.Name
 				}
-				if anc.Department.Key != "" {
-					parts = append(parts, anc.Department.Name)
+				if posDesc == "" {
+					parts := []string{}
+					if anc.Industry.Key != "" {
+						parts = append(parts, anc.Industry.Name)
+					}
+					if anc.Department.Key != "" {
+						parts = append(parts, anc.Department.Name)
+					}
+					parts = append(parts, anc.Position.Name)
+					posDesc = strings.Join(parts, " · ") + " 方向专家"
 				}
-				parts = append(parts, anc.Position.Name)
-				posDesc = strings.Join(parts, " · ") + " 方向专家"
 			}
 		}
 	}

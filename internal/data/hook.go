@@ -44,7 +44,7 @@ func entToBizHook(e *ent.PlatformHook) biz.Hook {
 }
 
 func (r *hookRepo) ListHooks(ctx context.Context) ([]biz.Hook, error) {
-	rows, err := r.data.entClient.PlatformHook.Query().
+	rows, err := r.data.ReadClient(ctx).PlatformHook.Query().
 		Where(platformhook.DeletedAtEQ("")).
 		Order(
 			platformhook.BySortOrder(),
@@ -62,7 +62,7 @@ func (r *hookRepo) ListHooks(ctx context.Context) ([]biz.Hook, error) {
 }
 
 func (r *hookRepo) GetHook(ctx context.Context, id string) (biz.Hook, error) {
-	row, err := r.data.entClient.PlatformHook.Query().
+	row, err := r.data.ReadClient(ctx).PlatformHook.Query().
 		Where(platformhook.IDEQ(id), platformhook.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {

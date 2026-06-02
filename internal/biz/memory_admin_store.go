@@ -54,6 +54,7 @@ type EvolutionEventInsert struct {
 // L0AdminStore lists and persists L0 assembly snapshots.
 type L0AdminStore interface {
 	ListL0SnapshotRows(ctx context.Context, sessionID string, limit int32) ([][]byte, error)
+	GetL0SnapshotRow(ctx context.Context, sessionID, id string) ([]byte, error)
 	InsertL0AssemblySnapshot(ctx context.Context, in L0AssemblySnapshotInsert) error
 	UpdateL0SnapshotActual(ctx context.Context, id string, actualPromptTokens, contextWindowTokens int) error
 }
@@ -62,6 +63,82 @@ type L0AdminStore interface {
 type L1AdminReader interface {
 	ListL1TaskRows(ctx context.Context, sessionID, agentID, status, includeEnded string) ([][]byte, error)
 	ListL1FieldRows(ctx context.Context, taskID string, includeInternal bool) ([][]byte, error)
+	GetL1TaskRow(ctx context.Context, sessionID, id string) ([]byte, error)
+	GetL1FieldRow(ctx context.Context, taskID, fieldPath string) ([]byte, error)
+}
+
+// L1TaskInsert is the domain-level DTO for creating L1 tasks.
+type L1TaskInsert struct {
+	ID           string
+	SessionID    string
+	RunID        string
+	TeamID       string
+	AgentID      string
+	TaskKey      string
+	TaskTitle    string
+	TaskGoal     string
+	BudgetTokens int
+	ParentTaskID string
+}
+
+// L1FieldInsert is the domain-level DTO for upserting L1 fields.
+type L1FieldInsert struct {
+	ID            string
+	TaskID        string
+	SessionID     string
+	AgentID       string
+	FieldPath     string
+	FieldKind     string
+	Visibility    string
+	PinToPrompt   bool
+	IsRequired    bool
+	ValueText     string
+	ValueJSON     string
+	ValueRef      string
+	Preview       string
+	TokenEstimate int
+	Source        string
+	SourceRef     string
+	TTLSeconds    int
+	ChangedBy     string
+}
+
+// L1Writer exposes L1 task and field write operations.
+type L1Writer interface {
+	StartL1Task(ctx context.Context, in L1TaskInsert) ([]byte, error)
+	EndL1Task(ctx context.Context, sessionID, taskID, status string) ([]byte, error)
+	GetL1TaskRow(ctx context.Context, sessionID, id string) ([]byte, error)
+	UpsertL1Field(ctx context.Context, in L1FieldInsert) ([]byte, error)
+	DeleteL1Field(ctx context.Context, taskID, fieldPath string) error
+	GetL1FieldRow(ctx context.Context, taskID, fieldPath string) ([]byte, error)
+	PatchL1Fields(ctx context.Context, fields []L1FieldInsert) ([][]byte, error)
+	ArchiveL1Task(ctx context.Context, sessionID, taskID string) ([]byte, error)
+}
+
+// L1IdleTaskReader lists idle L1 tasks for the auto-archive worker.
+type L1IdleTaskReader interface {
+	ListIdleL1Tasks(ctx context.Context, cutoffRFC3339 string) ([][]byte, error)
+}
+
+// L2EpisodeWriter inserts L2 episodes (used by L1 archive hook).
+type L2EpisodeWriter interface {
+	InsertL1ArchiveEpisode(ctx context.Context, in L1ArchiveEpisodeInsert) error
+}
+
+// L2ConsolidationStore manages episode consolidation.
+type L2ConsolidationStore interface {
+	ListPendingConsolidationEpisodes(ctx context.Context, agentID string, limit int) ([][]byte, error)
+	MarkEpisodeConsolidated(ctx context.Context, id string, l3Count, l4Count int) error
+}
+
+// L1ArchiveEpisodeInsert is the domain-level DTO for inserting an L2 episode from an L1 archive.
+type L1ArchiveEpisodeInsert struct {
+	SessionID      string
+	AgentID        string
+	TaskID         string
+	TaskTitle      string
+	Status         string
+	L1SnapshotJSON string
 }
 
 // L2RecallStore retrieves episodic (L2) memories for prompt injection and admin.
@@ -78,6 +155,13 @@ type L3FactAdminStore interface {
 	UpsertFactRow(ctx context.Context, in FactUpsert) ([]byte, error)
 }
 
+// PIIReviewStore manages PII-flagged fact review.
+type PIIReviewStore interface {
+	ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error)
+	ApprovePIIFact(ctx context.Context, factID string) error
+	RejectPIIFact(ctx context.Context, factID string) error
+}
+
 // L4GraphAdminStore exposes L4 graph entities, neighborhood, and agent evolution rows.
 type L4GraphAdminStore interface {
 	ListEntityRows(ctx context.Context, scopeType, scopeID, workspaceID, userID, entityType, status, keyword string, limit, offset int32) ([][]byte, int32, error)
@@ -91,11 +175,23 @@ type L4GraphAdminStore interface {
 	DeleteSessionEventEntities(ctx context.Context, sessionID string) error
 }
 
+// L3ConflictStore manages L3 fact conflict detection.
+type L3ConflictStore interface {
+	IncrementConflictCount(ctx context.Context, factID string) (int32, error)
+	ListConflictingFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error)
+}
+
 // SessionAdminStore is the composed admin port for L0–L4 session memory (typed sub-interfaces are preferred for new code).
 type SessionAdminStore interface {
 	L0AdminStore
 	L1AdminReader
+	L1Writer
+	L1IdleTaskReader
 	L2RecallStore
+	L2EpisodeWriter
+	L2ConsolidationStore
 	L3FactAdminStore
+	L3ConflictStore
+	PIIReviewStore
 	L4GraphAdminStore
 }

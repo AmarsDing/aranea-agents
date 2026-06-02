@@ -79,7 +79,7 @@ func (r *graphRepo) SaveDefinition(ctx context.Context, def *biz.GraphDefinition
 }
 
 func (r *graphRepo) GetDefinition(ctx context.Context, id string) (*biz.GraphDefinition, error) {
-	client := r.data.Ent()
+	client := r.data.ReadEnt()
 	row, err := client.GraphDefinition.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -91,7 +91,7 @@ func (r *graphRepo) GetDefinition(ctx context.Context, id string) (*biz.GraphDef
 }
 
 func (r *graphRepo) ListDefinitions(ctx context.Context, pageSize int, pageToken string) ([]*biz.GraphDefinition, string, error) {
-	client := r.data.Ent()
+	client := r.data.ReadEnt()
 	query := client.GraphDefinition.Query().Order(ent.Asc(graphdefinition.FieldSortOrder), ent.Asc(graphdefinition.FieldCreatedAt))
 	if pageSize <= 0 {
 		pageSize = 20
@@ -267,7 +267,7 @@ func (r *graphRunRepo) SaveRun(ctx context.Context, exec *biz.GraphExecution) er
 }
 
 func (r *graphRunRepo) GetRun(ctx context.Context, id string) (*biz.GraphExecution, error) {
-	client := r.data.Ent()
+	client := r.data.ReadEnt()
 	row, err := client.GraphExecution.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -279,7 +279,7 @@ func (r *graphRunRepo) GetRun(ctx context.Context, id string) (*biz.GraphExecuti
 }
 
 func (r *graphRunRepo) ListRunsByGraph(ctx context.Context, graphID string, pageSize int, pageToken string, opts ...biz.GraphRunListOption) ([]*biz.GraphExecution, string, error) {
-	client := r.data.Ent()
+	client := r.data.ReadEnt()
 	query := client.GraphExecution.Query().
 		Where(graphexecution.GraphIDEQ(graphID)).
 		Order(ent.Desc(graphexecution.FieldStartedAt))

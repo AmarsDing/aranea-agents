@@ -12,7 +12,7 @@ func ensureChannelPlatformAvatars(ctx context.Context, entClient *ent.Client, lg
 	if entClient == nil {
 		return nil
 	}
-	repo := &avatarRepo{data: &Data{entClient: entClient}}
+	repo := &avatarRepo{data: &Data{entClient: entClient, readClient: entClient}}
 	if err := biz.EnsureChannelPlatformAvatars(ctx, repo); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.channel_avatars"), loggateway.Err(err))
 		return err

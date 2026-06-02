@@ -105,7 +105,6 @@ var ProviderSet = wire.NewSet(
 	NewSpiritTeamAssembler,
 	NewSpiritSynthesisService,
 	NewTeamStarter,
-	NewTaxonomyService,
 	NewSkillEvolutionService,
 )
 

@@ -74,7 +74,7 @@ func (r *adminRepo) ListAdmins(ctx context.Context, opts ...biz.ListOption) ([]*
 	for _, opt := range opts {
 		opt(&o)
 	}
-	pos, err := r.data.entClient.Admin.Query().
+	pos, err := r.data.ReadClient(ctx).Admin.Query().
 		Where(ents.ApplyFilter(o.Filter)).
 		Order(ents.ApplyOrderBy(o.OrderBy)).
 		Offset(o.Offset).

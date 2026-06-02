@@ -51,6 +51,7 @@ type recallScoreBreakdown struct {
 	Vector       float64 `json:"vector"`
 	Importance   float64 `json:"importance"`
 	Recency      float64 `json:"recency"`
+	QualityScore float64 `json:"quality_score"`
 	CrossEncoder float64 `json:"cross_encoder"`
 	Total        float64 `json:"total"`
 }

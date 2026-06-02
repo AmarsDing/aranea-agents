@@ -85,7 +85,7 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
 
   async function loadAgentsDependencies() {
     const [treeRows, providerRows, creators] = await Promise.all([
-      listPlatformResourceTree("agent-categories"),
+      listPlatformResourceTree("taxonomy"),
       listPlatformResources("llm-provider-models"),
       listAgentCreators().catch(() => [] as AgentCreatorOption[])
     ]);

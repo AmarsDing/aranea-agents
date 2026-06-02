@@ -18,7 +18,7 @@ func (r *sessionRepo) UpdateMessageFeedbackJSON(ctx context.Context, sessionID, 
 	if sessionID == "" || messageID == "" {
 		return kerrors.BadRequest("SESSION", "session id and message id are required")
 	}
-	row, err := r.data.entClient.Message.Query().
+	row, err := r.data.ReadClient(ctx).Message.Query().
 		Where(message.IDEQ(messageID), message.SessionIDEQ(sessionID)).
 		Only(ctx)
 	if err != nil {

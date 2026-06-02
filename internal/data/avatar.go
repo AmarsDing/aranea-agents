@@ -81,7 +81,7 @@ func (r *avatarRepo) ListAvatarAssets(ctx context.Context, scope, workspaceID, o
 		))
 	}
 
-	rows, err := r.data.Ent().AvatarAsset.Query().
+	rows, err := r.data.ReadEnt().AvatarAsset.Query().
 		Where(avatarasset.And(preds...)).
 		Order(
 			avatarasset.ByIsSystem(entsql.OrderDesc()),
@@ -104,7 +104,7 @@ func (r *avatarRepo) GetAvatarAssetByKey(ctx context.Context, assetKey string) (
 	if assetKey == "" {
 		return biz.AvatarAsset{}, sql.ErrNoRows
 	}
-	po, err := r.data.Ent().AvatarAsset.Query().
+	po, err := r.data.ReadEnt().AvatarAsset.Query().
 		Where(
 			avatarasset.AssetKeyEQ(assetKey),
 			avatarasset.DeletedAtEQ(""),
@@ -124,7 +124,7 @@ func (r *avatarRepo) GetAvatarImage(ctx context.Context, id string, thumbnail bo
 	if id == "" {
 		return biz.AvatarImage{}, errors.New("avatar id is required")
 	}
-	po, err := r.data.Ent().AvatarAsset.Get(ctx, id)
+	po, err := r.data.ReadEnt().AvatarAsset.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.AvatarImage{}, sql.ErrNoRows

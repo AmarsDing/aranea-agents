@@ -12,6 +12,7 @@ type RecallScoreBreakdown struct {
 	Vector       float64
 	Importance   float64
 	Recency      float64
+	QualityScore float64
 	SessionBoost float64
 	CrossEncoder float64
 	Total        float64

@@ -22,8 +22,6 @@ var (
 	FromProtoSkills               = fromProtoSkills
 	FromProtoEvolution            = fromProtoEvolution
 	FromProtoContext              = fromProtoContext
-	ToProtoCat                    = toProtoCat
-	FromProtoCat                  = fromProtoCat
 	ToProtoSession                = toProtoSession
 	ToProtoTimeline               = toProtoTimeline
 	ToProtoTimelineItem           = toProtoTimelineItem
@@ -100,8 +98,6 @@ var (
 	ToProtoTokenUsageEvents       = toProtoTokenUsageEvents
 	ToProtoBudgetAlerts           = toProtoBudgetAlerts
 	ToProtoAvatar                 = toProtoAvatar
-	ToProtoTree                   = toProtoTree
-	ToProtoTreeNode               = toProtoTreeNode
 	ProductToProto                = productToProto
 	BizCatalogItemToProto         = bizCatalogItemToProto
 	BizChannelToProto             = bizChannelToProto

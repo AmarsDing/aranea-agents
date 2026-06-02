@@ -188,7 +188,7 @@ func (r *a2aRepo) MapEndpointEnabled(ctx context.Context, agentIDs []string) (ma
 	for i, id := range ids {
 		args[i] = id
 	}
-	rows, err := r.data.RawDB().QueryContext(ctx, q, args...)
+	rows, err := r.data.ReadDB().QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

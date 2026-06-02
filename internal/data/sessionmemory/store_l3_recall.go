@@ -13,10 +13,11 @@ import (
 const (
 	l3RecallCandidatePool = 60
 	l3DecayHalfLifeDays   = 30.0
-	l3ScoreWeightKeyword  = 0.40
-	l3ScoreWeightVector   = 0.40
-	l3ScoreWeightImport   = 0.15
-	l3ScoreWeightRecency  = 0.05
+	l3ScoreWeightKeyword  = 0.25
+	l3ScoreWeightVector   = 0.30
+	l3ScoreWeightImport   = 0.20
+	l3ScoreWeightRecency  = 0.15
+	l3ScoreWeightQuality  = 0.10
 )
 
 type scoredFact struct {
@@ -91,7 +92,7 @@ func (st *Store) RecallL3FactsScored(ctx context.Context, scopeType, scopeID, us
 
 	var scored []scoredFact
 	for rows.Next() {
-		raw, stmt, details, importance, updatedAt, embedBlob, err := scanFactRowForRecall(rows)
+		raw, stmt, details, importance, updatedAt, embedBlob, qualityScore, err := scanFactRowForRecall(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -112,9 +113,13 @@ func (st *Store) RecallL3FactsScored(ctx context.Context, scopeType, scopeID, us
 		}
 		decayedImp := imp * factRecencyDecay(updatedAt, now)
 		recency := recencyBoost(updatedAt, now)
-		total := l3ScoreWeightKeyword*kwScore + l3ScoreWeightVector*vecScore + l3ScoreWeightImport*decayedImp + l3ScoreWeightRecency*recency
+		qScore := qualityScore
+		if qScore <= 0 {
+			qScore = 0.5
+		}
+		total := l3ScoreWeightKeyword*kwScore + l3ScoreWeightVector*vecScore + l3ScoreWeightImport*decayedImp + l3ScoreWeightRecency*recency + l3ScoreWeightQuality*qScore
 		if query == "" && kwScore == 0 && vecScore == 0 {
-			total = decayedImp + recency*0.1
+			total = decayedImp + recency*0.1 + qScore*0.1
 		}
 		var id string
 		if m := map[string]any{}; json.Unmarshal(raw, &m) == nil {
@@ -124,7 +129,7 @@ func (st *Store) RecallL3FactsScored(ctx context.Context, scopeType, scopeID, us
 			raw: raw, id: id, stmt: stmt, details: details, score: total,
 			breakdown: recallScoreBreakdown{
 				Keyword: kwScore, Vector: vecScore, Importance: decayedImp,
-				Recency: recency, Total: total,
+				Recency: recency, QualityScore: qScore, Total: total,
 			},
 		})
 	}
@@ -151,7 +156,7 @@ func (st *Store) RecallL3FactsScored(ctx context.Context, scopeType, scopeID, us
 	return out, nil
 }
 
-func scanFactRowForRecall(rows *sql.Rows) (raw []byte, stmt, details string, importance float64, updatedAt string, embedBlob []byte, err error) {
+func scanFactRowForRecall(rows *sql.Rows) (raw []byte, stmt, details string, importance float64, updatedAt string, embedBlob []byte, qualityScore float64, err error) {
 	var (
 		id, stype, sid, wid, uid, tid, aid string
 		snorm, fp                          string
@@ -170,6 +175,7 @@ func scanFactRowForRecall(rows *sql.Rows) (raw []byte, stmt, details string, imp
 		decay                              float64
 		nextD, lastU, exp                  string
 		meta, ca, ua, arch, del            string
+		qScore                             float64
 	)
 	if err := rows.Scan(
 		&id, &stype, &sid, &wid, &uid, &tid, &aid,
@@ -181,12 +187,13 @@ func scanFactRowForRecall(rows *sql.Rows) (raw []byte, stmt, details string, imp
 		&embSt, &embModel, &embDim, &embedBlob, &embNorm,
 		&pii, &redacted,
 		&ttlD, &decay, &nextD, &lastU, &exp,
-		&meta, &ca, &ua, &arch, &del,
+		&meta, &qScore, &ca, &ua, &arch, &del,
 	); err != nil {
-		return nil, "", "", 0, "", nil, err
+		return nil, "", "", 0, "", nil, 0, err
 	}
 	importance = imp
 	updatedAt = ua
+	qualityScore = qScore
 	m := map[string]any{
 		"id": id, "scope_type": stype, "scope_id": sid, "workspace_id": wid,
 		"user_id": uid, "team_id": tid, "agent_id": aid,
@@ -204,11 +211,11 @@ func scanFactRowForRecall(rows *sql.Rows) (raw []byte, stmt, details string, imp
 		"redacted_statement": redacted,
 		"ttl_days":           ttlD, "decay_factor": decay,
 		"next_decay_at": nextD, "last_used_at": lastU, "expires_at": exp,
-		"metadata_json": meta, "created_at": ca, "updated_at": ua,
+		"metadata_json": meta, "quality_score": qScore, "created_at": ca, "updated_at": ua,
 		"archived_at": arch, "deleted_at": del,
 	}
 	raw, err = json.Marshal(m)
-	return raw, stmt, details, importance, updatedAt, embedBlob, err
+	return raw, stmt, details, importance, updatedAt, embedBlob, qualityScore, err
 }
 
 func factRecencyDecay(updatedAt string, now time.Time) float64 {

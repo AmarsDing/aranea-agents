@@ -152,7 +152,7 @@ export function useOverviewPage() {
 
   async function loadCategoryCount() {
     try {
-      const rows = await listPlatformResources("agent-categories");
+      const rows = await listPlatformResources("taxonomy");
       categoryCount.value = rows.length;
     } catch {
       // silent

@@ -29,6 +29,10 @@ func (r *channelRepo) entClient() *ent.Client {
 	return r.data.Ent()
 }
 
+func (r *channelRepo) readClient(ctx context.Context) *ent.Client {
+	return r.data.ReadClient(ctx)
+}
+
 func entToChannel(e *ent.PlatformChannel) biz.Channel {
 	return biz.Channel{
 		ID:           e.ID,
@@ -48,7 +52,7 @@ func entToChannel(e *ent.PlatformChannel) biz.Channel {
 }
 
 func (r *channelRepo) List(ctx context.Context) ([]biz.Channel, error) {
-	rows, err := r.entClient().PlatformChannel.Query().
+	rows, err := r.readClient(ctx).PlatformChannel.Query().
 		Where(platformchannel.DeletedAtEQ("")).
 		Order(platformchannel.BySortOrder(sql.OrderAsc()), platformchannel.ByCreatedAt(sql.OrderDesc())).
 		All(ctx)
@@ -67,7 +71,7 @@ func (r *channelRepo) Get(ctx context.Context, id string) (biz.Channel, error) {
 	if id == "" {
 		return biz.Channel{}, errors.New("channel id is required")
 	}
-	e, err := r.entClient().PlatformChannel.Query().
+	e, err := r.readClient(ctx).PlatformChannel.Query().
 		Where(
 			platformchannel.IDEQ(id),
 			platformchannel.DeletedAtEQ(""),
@@ -84,7 +88,7 @@ func (r *channelRepo) GetByKey(ctx context.Context, key string) (biz.Channel, er
 	if key == "" {
 		return biz.Channel{}, errors.New("channel key is required")
 	}
-	e, err := r.entClient().PlatformChannel.Query().
+	e, err := r.readClient(ctx).PlatformChannel.Query().
 		Where(
 			platformchannel.ChannelKeyEQ(key),
 			platformchannel.DeletedAtEQ(""),
@@ -165,7 +169,7 @@ func credentialEntToBiz(e *ent.PlatformChannelCredential) biz.ChannelCredential 
 }
 
 func (r *channelRepo) ListCredentials(ctx context.Context, channelID string) ([]biz.ChannelCredential, error) {
-	rows, err := r.entClient().PlatformChannelCredential.Query().
+	rows, err := r.readClient(ctx).PlatformChannelCredential.Query().
 		Where(
 			platformchannelcredential.ChannelIDEQ(strings.TrimSpace(channelID)),
 			platformchannelcredential.DeletedAtEQ(""),
@@ -188,7 +192,7 @@ func (r *channelRepo) UpsertCredential(ctx context.Context, cred biz.ChannelCred
 	if cred.ID == "" || cred.ChannelID == "" || cred.CredentialKey == "" {
 		return biz.ChannelCredential{}, errors.New("id, channel_id and credential_key are required")
 	}
-	existing, err := r.entClient().PlatformChannelCredential.Query().
+	existing, err := r.readClient(ctx).PlatformChannelCredential.Query().
 		Where(
 			platformchannelcredential.ChannelIDEQ(cred.ChannelID),
 			platformchannelcredential.CredentialKeyEQ(cred.CredentialKey),
@@ -269,7 +273,7 @@ func (r *channelRepo) ListDeliveries(ctx context.Context, channelID string, limi
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	rows, err := r.entClient().PlatformChannelDelivery.Query().
+	rows, err := r.readClient(ctx).PlatformChannelDelivery.Query().
 		Where(platformchanneldelivery.ChannelIDEQ(strings.TrimSpace(channelID))).
 		Order(platformchanneldelivery.ByCreatedAt(sql.OrderDesc())).
 		Limit(limit).
@@ -316,7 +320,7 @@ func (r *channelRepo) ListPendingDeliveries(ctx context.Context, limit int) ([]b
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	rows, err := r.entClient().PlatformChannelDelivery.Query().
+	rows, err := r.readClient(ctx).PlatformChannelDelivery.Query().
 		Where(
 			platformchanneldelivery.StatusIn(
 				biz.ChannelDeliveryStatusPending,

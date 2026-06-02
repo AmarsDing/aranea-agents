@@ -64,7 +64,7 @@ func newApp(
 	memoryDataMigration *jobs.MemoryDataMigrationWorker,
 	agentUC *biz.AgentUsecase,
 	teamUC *biz.TeamUsecase,
-	positionUC *biz.PositionUsecase,
+	taxonomyUC *biz.TaxonomyUsecase,
 	d *data.Data,
 	guard *service.SessionStatusGuard,
 	orchCache *biz.OrchestrationCache,
@@ -121,7 +121,7 @@ func newApp(
 			}
 			safego.Go(startCtx, "seed.industry_agents", func() {
 				logger.Log(log.LevelInfo, "msg", "industry agent seed started")
-				service.SeedBuiltinIndustryAgents(startCtx, agentUC, teamUC, positionUC, biz.ScenarioDir(), data.NewSeedVersionRepo(d))
+				service.SeedBuiltinIndustryAgents(startCtx, agentUC, teamUC, taxonomyUC, biz.ScenarioDir(), data.NewSeedVersionRepo(d))
 				logger.Log(log.LevelInfo, "msg", "industry agent seed completed")
 			})
 			return nil
@@ -370,6 +370,16 @@ func main() {
 	if out.MemoryL2Decay != nil {
 		goAfterReady("memory_l2_decay", func() { out.MemoryL2Decay.Start(cronCtx) })
 		logger.Log(log.LevelInfo, "msg", "memory l2 decay worker scheduled", "interval", "24h")
+	}
+
+	if out.MemoryL2Consolidate != nil {
+		goAfterReady("memory_l2_consolidate", func() { out.MemoryL2Consolidate.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "memory l2 consolidate worker scheduled", "interval", "10m")
+	}
+
+	if out.MemoryL1Archive != nil {
+		goAfterReady("memory_l1_archive", func() { out.MemoryL1Archive.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "memory l1 archive worker scheduled", "interval", "5m")
 	}
 
 	if out.MemoryL3Decay != nil {

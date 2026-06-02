@@ -33,6 +33,7 @@ import (
 
 	memorytool "aranea-agents/internal/tools/memory"
 	subagenttool "aranea-agents/internal/tools/subagent"
+	workingmemory "aranea-agents/internal/tools/working_memory"
 
 	trpcmcp "trpc.group/trpc-go/trpc-agent-go/tool/mcp"
 	trpcmcpbroker "trpc.group/trpc-go/trpc-agent-go/tool/mcpbroker"
@@ -388,6 +389,15 @@ func Registry() []*ToolRegistration {
 				EnabledByDefault: true,
 				RiskLevel:        "low",
 				Deferred:         true,
+			},
+			{
+				Name:             "working_memory",
+				Description:      "Working memory tools for reading/writing task-scoped fields (read, list, write, patch, delete)",
+				Category:         "memory",
+				Tags:             []string{"memory", "working-memory", "l1"},
+				ToolSetFactory:   func(ctx context.Context) (ToolSet, error) { return workingmemory.ToolSet{}, nil },
+				EnabledByDefault: true,
+				RiskLevel:        "low",
 			},
 		}
 	})

@@ -463,6 +463,30 @@ func (u *TaxonomyUsecase) BuildResponsibility(ctx context.Context, positionID st
 	}
 }
 
+var scenarioDirFunc = func() string {
+	return filepath.Join("internal", "scenario")
+}
+
+func ScenarioDir() string {
+	return scenarioDirFunc()
+}
+
 func ErrTaxonomyBadRequest(msg string) error {
 	return kerrors.BadRequest("TAXONOMY", msg)
+}
+
+func isErrNoRows(err error) bool {
+	return err != nil && err.Error() == "sql: no rows in result set"
+}
+
+func truncateResponsibility(s string, maxChars int) string {
+	runes := []rune(s)
+	if len(runes) <= maxChars {
+		return s
+	}
+	sub := string(runes[:maxChars])
+	if idx := strings.LastIndex(sub, "\n"); idx > maxChars/2 {
+		return strings.TrimRight(sub[:idx], " \t") + "…"
+	}
+	return strings.TrimRight(sub, " \t") + "…"
 }

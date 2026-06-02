@@ -228,9 +228,9 @@ agents:
 
 teams:
   - key: team-novel-daily-production
-    display_name: Novel Daily Production
+    display_name: 网文日更流水线
     mode: coordinator
-    description: "Coordinator-driven novel production pipeline: drafting, plotting, character creation, worldbuilding, editorial review, and polishing."
+    description: "协调式网文生产流水线：起草、大纲、角色创建、世界观构建、编辑审核与润色。"
     max_concurrency: 3
     timeout_seconds: 600
     loop_max_iterations: 1
@@ -239,33 +239,33 @@ teams:
     members:
       - agent_key: webnovel-author-drafting
         role: coordinator
-        name: Drafting Lead
+        name: 起草主控
         sort_order: 10
       - agent_key: webnovel-plotter-outline
         role: worker
-        name: Plot Outliner
+        name: 大纲规划
         sort_order: 20
       - agent_key: character-writer-creation
         role: worker
-        name: Character Creator
+        name: 角色创建
         sort_order: 30
       - agent_key: worldbuilding-designer-magic-system
         role: worker
-        name: Worldbuilder
+        name: 世界观构建
         sort_order: 40
       - agent_key: fiction-editor-review
         role: worker
-        name: Fiction Reviewer
+        name: 小说审核
         sort_order: 50
       - agent_key: webnovel-author-polishing
         role: synthesizer
-        name: Polishing Synthesizer
+        name: 润色综合
         sort_order: 90
 
   - key: team-viral-video-factory
-    display_name: Viral Video Factory
+    display_name: 爆款视频工厂
     mode: coordinator
-    description: "Coordinator-driven viral video production: planning, scriptwriting, editing, thumbnail design, and Xiaohongshu seeding."
+    description: "协调式爆款视频生产：策划、编剧、剪辑、封面设计与小红书种草。"
     max_concurrency: 3
     timeout_seconds: 600
     loop_max_iterations: 1
@@ -273,70 +273,70 @@ teams:
     members:
       - agent_key: short-video-director-planning
         role: coordinator
-        name: Director
+        name: 导演
         sort_order: 10
       - agent_key: video-scriptwriter-scriptwriting
         role: worker
-        name: Scriptwriter
+        name: 编剧
         sort_order: 20
       - agent_key: video-editor-capcut-editing
         role: worker
-        name: CapCut Editor
+        name: 剪映剪辑
         sort_order: 30
       - agent_key: thumbnail-designer-design
         role: worker
-        name: Thumbnail Designer
+        name: 封面设计
         sort_order: 40
       - agent_key: xiaohongshu-creator-planting
         role: worker
-        name: Xiaohongshu Seeding
+        name: 小红书种草
         sort_order: 50
 
   - key: team-multi-platform-sync
-    display_name: Multi-Platform Sync
+    display_name: 多平台同步发布
     mode: parallel
-    description: "Parallel multi-platform content distribution: WeChat, Xiaohongshu, and cross-platform adaptation, with synchronized publishing."
+    description: "并行多平台内容分发：微信、小红书与跨平台适配，同步发布。"
     max_concurrency: 3
     timeout_seconds: 300
     synthesizer_key: multi-platform-operator-sync
     members:
       - agent_key: wechat-operator-content
         role: worker
-        name: WeChat Content
+        name: 微信内容
         sort_order: 10
       - agent_key: xiaohongshu-creator-seo
         role: worker
-        name: Xiaohongshu SEO
+        name: 小红书 SEO
         sort_order: 20
       - agent_key: multi-platform-operator-adapt
         role: worker
-        name: Platform Adapter
+        name: 平台适配
         sort_order: 30
       - agent_key: multi-platform-operator-sync
         role: synthesizer
-        name: Sync Coordinator
+        name: 同步协调
         sort_order: 90
     graph:
       layout: parallel
       nodes:
         - id: wechat-content
           type: agent
-          label: WeChat Content
+          label: 微信内容
           agent_key: wechat-operator-content
           role: worker
         - id: xiaohongshu-seo
           type: agent
-          label: Xiaohongshu SEO
+          label: 小红书 SEO
           agent_key: xiaohongshu-creator-seo
           role: worker
         - id: platform-adapt
           type: agent
-          label: Platform Adapter
+          label: 平台适配
           agent_key: multi-platform-operator-adapt
           role: worker
         - id: sync-publish
           type: agent
-          label: Sync & Publish
+          label: 同步发布
           agent_key: multi-platform-operator-sync
           role: synthesizer
       edges:
@@ -360,40 +360,40 @@ teams:
           target: sync-publish
 
   - key: team-live-stream-crew
-    display_name: Live Stream Crew
+    display_name: 直播团队
     mode: sequential
-    description: "Sequential live stream workflow: script writing, hosting execution, and post-stream analytics review."
+    description: "顺序式直播工作流：脚本编写、直播执行与直播后数据分析。"
     max_concurrency: 1
     timeout_seconds: 300
     members:
       - agent_key: live-stream-scriptwriter-script
         role: worker
-        name: Script Writer
+        name: 直播编剧
         sort_order: 10
       - agent_key: live-stream-host-hosting
         role: worker
-        name: Stream Host
+        name: 直播主持
         sort_order: 20
       - agent_key: live-stream-analyst-analytics
         role: worker
-        name: Stream Analyst
+        name: 直播分析师
         sort_order: 30
     graph:
       layout: linear
       nodes:
         - id: write-script
           type: agent
-          label: Write Script
+          label: 编写脚本
           agent_key: live-stream-scriptwriter-script
           role: worker
         - id: host-stream
           type: agent
-          label: Host Stream
+          label: 直播主持
           agent_key: live-stream-host-hosting
           role: worker
         - id: analyze-stream
           type: agent
-          label: Analyze Stream
+          label: 数据分析
           agent_key: live-stream-analyst-analytics
           role: worker
       edges:
@@ -411,9 +411,9 @@ teams:
           target: __end__
 
   - key: team-content-calendar
-    display_name: Content Calendar
+    display_name: 内容日历
     mode: coordinator
-    description: Coordinator-driven content calendar planning across WeChat, Xiaohongshu, short video, and fan growth channels.
+    description: 协调式内容日历规划，覆盖微信、小红书、短视频与粉丝增长渠道。
     max_concurrency: 3
     timeout_seconds: 300
     loop_max_iterations: 1
@@ -421,56 +421,56 @@ teams:
     members:
       - agent_key: wechat-operator-content
         role: coordinator
-        name: WeChat Coordinator
+        name: 微信协调
         sort_order: 10
       - agent_key: xiaohongshu-creator-planting
         role: worker
-        name: Xiaohongshu Seeding
+        name: 小红书种草
         sort_order: 20
       - agent_key: short-video-director-planning
         role: worker
-        name: Video Director
+        name: 视频导演
         sort_order: 30
       - agent_key: fan-growth-strategist-strategy
         role: worker
-        name: Fan Growth Strategist
+        name: 粉丝增长策略
         sort_order: 40
 
   - key: team-fan-community
-    display_name: Fan Community
+    display_name: 粉丝社区
     mode: parallel
-    description: "Parallel fan community management: growth strategy, monetization, and live interaction engagement."
+    description: "并行粉丝社区运营：增长策略、商业变现与直播互动。"
     max_concurrency: 3
     timeout_seconds: 300
     members:
       - agent_key: fan-growth-strategist-strategy
         role: worker
-        name: Fan Growth Strategist
+        name: 粉丝增长策略师
         sort_order: 10
       - agent_key: monetization-specialist-revenue
         role: worker
-        name: Monetization Specialist
+        name: 变现专员
         sort_order: 20
       - agent_key: live-stream-host-interaction
         role: worker
-        name: Live Interaction Host
+        name: 直播互动主持
         sort_order: 30
     graph:
       layout: parallel
       nodes:
         - id: fan-growth
           type: agent
-          label: Fan Growth Strategy
+          label: 粉丝增长策略
           agent_key: fan-growth-strategist-strategy
           role: worker
         - id: monetization
           type: agent
-          label: Monetization
+          label: 商业变现
           agent_key: monetization-specialist-revenue
           role: worker
         - id: live-interaction
           type: agent
-          label: Live Interaction
+          label: 直播互动
           agent_key: live-stream-host-interaction
           role: worker
       edges:

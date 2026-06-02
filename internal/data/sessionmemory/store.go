@@ -269,7 +269,7 @@ const sqlFactSelect = `SELECT id, scope_type, scope_id, workspace_id, user_id, t
  embedding_status, embedding_model, embedding_dim, embedding_blob, embedding_norm,
  pii_flag, redacted_statement,
  ttl_days, decay_factor, next_decay_at, last_used_at, expires_at,
- metadata_json, created_at, updated_at, archived_at, deleted_at
+ metadata_json, quality_score, created_at, updated_at, archived_at, deleted_at
  FROM memory_facts`
 
 // ListFactRows lists facts with filters compatible with legacy **ListFacts**.
@@ -353,6 +353,7 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		decay                              float64
 		nextD, lastU, exp                  string
 		meta, ca, ua, arch, del            string
+		qScore                             float64
 	)
 	if err := rows.Scan(
 		&id, &stype, &sid, &wid, &uid, &tid, &aid,
@@ -364,7 +365,7 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		&embSt, &embModel, &embDim, &embBlob, &embNorm,
 		&pii, &redacted,
 		&ttlD, &decay, &nextD, &lastU, &exp,
-		&meta, &ca, &ua, &arch, &del,
+		&meta, &qScore, &ca, &ua, &arch, &del,
 	); err != nil {
 		return nil, err
 	}
@@ -385,7 +386,7 @@ func scanFactRowJSON(rows *sql.Rows) ([]byte, error) {
 		"redacted_statement": redacted,
 		"ttl_days":           ttlD, "decay_factor": decay,
 		"next_decay_at": nextD, "last_used_at": lastU, "expires_at": exp,
-		"metadata_json": meta, "created_at": ca, "updated_at": ua,
+		"metadata_json": meta, "quality_score": qScore, "created_at": ca, "updated_at": ua,
 		"archived_at": arch, "deleted_at": del,
 	}
 	return json.Marshal(m)

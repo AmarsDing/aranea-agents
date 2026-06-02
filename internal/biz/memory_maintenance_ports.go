@@ -21,15 +21,16 @@ type MemoryFactWrite struct {
 }
 
 type EpisodeWrite struct {
-	SessionID      string
-	AgentID        string
-	UserID         string
-	Title          string
-	OutcomeSummary string
-	Importance     float64
-	MessageCount   int
-	ConsolidatedL3 int
-	MetadataJSON   string
+	SessionID          string
+	AgentID            string
+	UserID             string
+	Title              string
+	OutcomeSummary     string
+	Importance         float64
+	MessageCount       int
+	ConsolidatedL3     int
+	ConsolidationStatus string
+	MetadataJSON       string
 }
 
 type ConsolidationResult struct {

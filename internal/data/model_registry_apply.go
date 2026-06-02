@@ -60,7 +60,7 @@ func (b *modelRegistryApplyBackend) SaveProviderModel(ctx context.Context, row m
 }
 
 func (b *modelRegistryApplyBackend) countEvalBindings(ctx context.Context, provider string) (int, error) {
-	setting, err := b.data.entClient.SystemSetting.Query().Only(ctx)
+	setting, err := b.data.ReadClient(ctx).SystemSetting.Query().Only(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -76,7 +76,7 @@ func (b *modelRegistryApplyBackend) countEvalBindings(ctx context.Context, provi
 
 func (b *modelRegistryApplyBackend) countRuntimeProviderBindings(ctx context.Context, provider string) (int, error) {
 	var n int
-	err := entQueryRowScan(b.data.Ent(), ctx,
+	err := entQueryRowScan(b.data.ReadEnt(), ctx,
 		`SELECT COUNT(*) FROM agent_runtime_settings
 		 WHERE l0_compress_provider = ? OR memory_worker_provider = ?`,
 		[]any{provider, provider},
@@ -87,7 +87,7 @@ func (b *modelRegistryApplyBackend) countRuntimeProviderBindings(ctx context.Con
 
 func (b *modelRegistryApplyBackend) countSkillProviderBindings(ctx context.Context, provider string) (int, error) {
 	var n int
-	err := entQueryRowScan(b.data.Ent(), ctx,
+	err := entQueryRowScan(b.data.ReadEnt(), ctx,
 		`SELECT COUNT(*) FROM skill WHERE deleted_at = '' AND provider = ?`,
 		[]any{provider},
 		&n,
@@ -97,7 +97,7 @@ func (b *modelRegistryApplyBackend) countSkillProviderBindings(ctx context.Conte
 
 func (b *modelRegistryApplyBackend) countWebResearchBindings(ctx context.Context, provider string) (int, error) {
 	var n int
-	err := entQueryRowScan(b.data.Ent(), ctx,
+	err := entQueryRowScan(b.data.ReadEnt(), ctx,
 		`SELECT COUNT(*) FROM system_settings WHERE web_research_provider = ?`,
 		[]any{provider},
 		&n,
@@ -110,7 +110,7 @@ func (b *modelRegistryApplyBackend) countWebResearchBindings(ctx context.Context
 
 func (b *modelRegistryApplyBackend) countKnowledgeEmbedBindings(ctx context.Context, provider string) (int, error) {
 	var n int
-	err := entQueryRowScan(b.data.Ent(), ctx,
+	err := entQueryRowScan(b.data.ReadEnt(), ctx,
 		`SELECT COUNT(*) FROM system_settings WHERE knowledge_embed_provider = ?`,
 		[]any{provider},
 		&n,
@@ -127,12 +127,12 @@ func (b *modelRegistryApplyBackend) CountProviderBindings(ctx context.Context, p
 		return modelregistry.ApplyMigrationStats{}, nil
 	}
 	var stats modelregistry.ApplyMigrationStats
-	agents, err := b.data.entClient.Agent.Query().Where(agent.ProviderEQ(provider)).Count(ctx)
+	agents, err := b.data.ReadClient(ctx).Agent.Query().Where(agent.ProviderEQ(provider)).Count(ctx)
 	if err != nil {
 		return stats, err
 	}
 	stats.Agents = agents
-	sess, err := b.data.entClient.Session.Query().Where(
+	sess, err := b.data.ReadClient(ctx).Session.Query().Where(
 		session.Or(
 			session.DefaultProviderEQ(provider),
 			session.LastProviderEQ(provider),

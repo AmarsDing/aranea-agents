@@ -143,6 +143,18 @@ message ListMemoryFactsResponse {
   int32 offset = 4;
 }
 
+message ListConflictingFactsRequest {
+  string scope_type = 1;
+  string scope_id = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message ListConflictingFactsResponse {
+  repeated MemoryFact items = 1;
+  int32 total = 2;
+}
+
 message MemoryFact {
   string id = 1;
   string scope_type = 2;
@@ -497,6 +509,7 @@ message MemoryRecallScoreBreakdown {
   double recency = 4;
   double cross_encoder = 5;
   double total = 6;
+  double quality_score = 7;
 }
 
 message MemoryRecallHit {
@@ -626,6 +639,29 @@ message AbandonMemoryDeadLetterResponse {
   MemoryDeadLetterEntry entry = 1;
 }
 
+// MEM-OPT-04: PII Review
+
+message ListPIIFlaggedFactsRequest {
+  string scope_type = 1;
+  string scope_id = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message ListPIIFlaggedFactsResponse {
+  repeated MemoryFact items = 1;
+  int32 total = 2;
+}
+
+message ReviewPIIFactRequest {
+  string fact_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string action = 2 [(google.api.field_behavior) = REQUIRED]; // "approve" or "reject"
+}
+
+message ReviewPIIFactResponse {
+  MemoryFact fact = 1;
+}
+
 service MemoryService {
   rpc ListL0Snapshots(ListL0SnapshotsRequest) returns (ListL0SnapshotsResponse) {
     option (google.api.http) = {get: "/v1/sessions/{session_id}/l0/snapshots"};
@@ -638,6 +674,9 @@ service MemoryService {
   }
   rpc ListMemoryFacts(ListMemoryFactsRequest) returns (ListMemoryFactsResponse) {
     option (google.api.http) = {get: "/v1/memory/l3/facts"};
+  }
+  rpc ListConflictingFacts(ListConflictingFactsRequest) returns (ListConflictingFactsResponse) {
+    option (google.api.http) = {get: "/v1/memory/l3/facts/conflicts"};
   }
   rpc ListMemoryEntities(ListMemoryEntitiesRequest) returns (ListMemoryEntitiesResponse) {
     option (google.api.http) = {get: "/v1/memory/l4/entities"};
@@ -760,6 +799,17 @@ service MemoryService {
   rpc AbandonMemoryDeadLetter(AbandonMemoryDeadLetterRequest) returns (AbandonMemoryDeadLetterResponse) {
     option (google.api.http) = {
       post: "/v1/memory/worker/dead-letters/{id}/abandon"
+      body: "*"
+    };
+  }
+
+  rpc ListPIIFlaggedFacts(ListPIIFlaggedFactsRequest) returns (ListPIIFlaggedFactsResponse) {
+    option (google.api.http) = {get: "/v1/memory/l3/facts/pii"};
+  }
+
+  rpc ReviewPIIFact(ReviewPIIFactRequest) returns (ReviewPIIFactResponse) {
+    option (google.api.http) = {
+      post: "/v1/memory/l3/facts/pii/review"
       body: "*"
     };
   }

@@ -1,5 +1,6 @@
 import { createAdminServiceClient } from "./kratos/admin/v1/index";
 import { createAgentCategoryServiceClient } from "./kratos/agent_category/v1/index";
+import { createTaxonomyServiceClient } from "./kratos/taxonomy/v1/index";
 import { createAgentServiceClient } from "./kratos/agent/v1/index";
 import { createArtifactServiceClient } from "./kratos/artifact/v1/index";
 import { createA2AServiceClient } from "./kratos/a2a/v1/index";
@@ -45,6 +46,10 @@ export function createChannelService() {
 
 export function createAgentCategoryService() {
   return createAgentCategoryServiceClient(requestHandler);
+}
+
+export function createTaxonomyService() {
+  return createTaxonomyServiceClient(requestHandler);
 }
 
 export function createAgentService() {

@@ -37,7 +37,7 @@ func entSuggestionToBiz(row *ent.EvolutionSuggestion) biz.EvolutionSuggestion {
 }
 
 func (r *evolutionSuggestionRepo) ListByAgent(ctx context.Context, agentID string, status string) ([]biz.EvolutionSuggestion, error) {
-	query := r.data.entClient.EvolutionSuggestion.Query().
+	query := r.data.ReadClient(ctx).EvolutionSuggestion.Query().
 		Where(evolutionsuggestion.AgentIDEQ(agentID))
 	if status != "" {
 		query = query.Where(evolutionsuggestion.StatusEQ(status))
@@ -54,7 +54,7 @@ func (r *evolutionSuggestionRepo) ListByAgent(ctx context.Context, agentID strin
 }
 
 func (r *evolutionSuggestionRepo) GetByID(ctx context.Context, id string) (biz.EvolutionSuggestion, error) {
-	row, err := r.data.entClient.EvolutionSuggestion.Get(ctx, id)
+	row, err := r.data.ReadClient(ctx).EvolutionSuggestion.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.EvolutionSuggestion{}, fmt.Errorf("suggestion not found")

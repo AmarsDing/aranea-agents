@@ -96,7 +96,6 @@ var ProviderSet = wire.NewSet(
 	NewCompiledTeamRepo,
 	NewSkillProposalRepo,
 	NewSkillInvocationStatsRepo,
-	NewTaxonomyRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -606,10 +605,6 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.cli_admin_tools"), loggateway.Err(err))
 		return err
 	}
-	if err := SeedBuiltinIndustries(context.Background(), entClient); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.builtin_industries"), loggateway.Err(err))
-		return err
-	}
 
 	scenarioDir := biz.ScenarioDir()
 
@@ -624,7 +619,7 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 	}
 	d.lazySeeders = map[string]*LazySeeder{
 		"agent_categories": NewLazySeeder(entClient, func(ctx context.Context, client *ent.Client) error {
-			return SeedBuiltinAgentCategories(ctx, client, scenarioDir, lg)
+			return SeedBuiltinTaxonomy(ctx, client, scenarioDir, lg)
 		}, lg),
 		"agent_templates": NewLazySeeder(entClient, func(ctx context.Context, client *ent.Client) error {
 			return SeedAgentTemplates(ctx, client, scenarioDir, lg)
@@ -671,7 +666,7 @@ func NewA2ARepoFromData(d *Data, lg loggateway.Logger) biz.A2ARepo {
 
 // NewCLIData wraps SQLite handles opened by OpenSQLiteEntClient for offline maintenance CLIs.
 func NewCLIData(client *ent.Client, rawDB *sql.DB, lg loggateway.Logger) *Data {
-	return &Data{entClient: client, rawDB: rawDB, lg: lg}
+	return &Data{entClient: client, readClient: client, rawDB: rawDB, lg: lg}
 }
 
 // OpenSQLiteEntClient opens SQLite for offline CLI maintenance tools (e.g. memory-migrate).

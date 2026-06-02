@@ -41,6 +41,7 @@ func (a *L3ScoredRecallAdapter) RecallL3Hits(ctx context.Context, scopeType, sco
 				Vector:       row.Scores.Vector,
 				Importance:   row.Scores.Importance,
 				Recency:      row.Scores.Recency,
+				QualityScore: row.Scores.QualityScore,
 				CrossEncoder: row.Scores.CrossEncoder,
 				Total:        row.Scores.Total,
 			},

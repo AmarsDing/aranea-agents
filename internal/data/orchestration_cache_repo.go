@@ -18,7 +18,7 @@ func NewOrchestrationCacheRepo(data *Data) biz.OrchestrationCacheRepo {
 
 func (r *orchestrationCacheRepo) LoadCacheJSON(ctx context.Context) (string, error) {
 	var jsonStr string
-	rows, err := r.data.entClient.QueryContext(ctx,
+	rows, err := r.data.ReadDB().QueryContext(ctx,
 		`SELECT orchestration_cache_json FROM system_settings WHERE id = 1 LIMIT 1`,
 	)
 	if err != nil {

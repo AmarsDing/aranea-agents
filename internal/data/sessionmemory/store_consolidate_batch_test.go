@@ -100,7 +100,7 @@ func TestUpsertFactsAndEpisodeBatch_LinksProvenance(t *testing.T) {
 		},
 	}, &sessionmemory.EpisodeInsert{
 		SessionID: "sess-1", AgentID: "agent-1", Title: "Consolidation",
-		OutcomeSummary: "tea; Alice", ConsolidatedL3: 2,
+		OutcomeSummary: "tea; Alice", ConsolidatedL3: 2, ConsolidationStatus: "consolidated",
 	})
 	if err != nil {
 		t.Fatal(err)

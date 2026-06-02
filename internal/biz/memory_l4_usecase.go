@@ -13,8 +13,10 @@ import (
 )
 
 var (
-	l4NamePattern      = regexp.MustCompile(`(?i)(?:my name is|I(?:'m| am) called)\s+([A-Za-z][A-Za-z0-9 _-]{0,48})`)
-	l4PreferencePattern = regexp.MustCompile(`(?i)I\s+(?:prefer|like|love)\s+([^.!?\n]{2,120})`)
+	l4NamePattern             = regexp.MustCompile(`(?i)(?:my name is|I(?:'m| am) called)\s+([A-Za-z][A-Za-z0-9 _-]{0,48})`)
+	l4PreferencePattern       = regexp.MustCompile(`(?i)I\s+(?:prefer|like|love)\s+([^.!?\n]{2,120})`)
+	l4ChineseNamePattern      = regexp.MustCompile(`(?:我叫|我的名字是|我是)\s*([^\s,.，。!！?？]{1,20})`)
+	l4ChinesePreferencePattern = regexp.MustCompile(`(?:我喜欢|我偏好|我偏爱|我爱吃|我爱喝|我爱看|我爱听)\s*([^.!?\n，。！？]{2,80})`)
 )
 
 const (
@@ -90,8 +92,17 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 		uc.lg.Warn("L4Graph: failed to upsert anchor entity", loggateway.StepID("memory.l4_fail"), loggateway.Str("anchor_id", anchorID), loggateway.Err(err))
 	}
 
+	// Extract name from English patterns first, then Chinese fallback.
+	name := ""
 	if m := l4NamePattern.FindStringSubmatch(text); len(m) > 1 {
-		name := strings.TrimSpace(m[1])
+		name = strings.TrimSpace(m[1])
+	}
+	if name == "" {
+		if m := l4ChineseNamePattern.FindStringSubmatch(text); len(m) > 1 {
+			name = strings.TrimSpace(m[1])
+		}
+	}
+	if name != "" {
 		nameNorm := strings.ToLower(name)
 		existing, _, err := uc.repo.GetEntityByScopeKey(ctx, "agent", agentID, "person", nameNorm)
 		if err != nil {
@@ -156,8 +167,17 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 		}
 	}
 
+	// Extract preference from English patterns first, then Chinese fallback.
+	pref := ""
 	if m := l4PreferencePattern.FindStringSubmatch(text); len(m) > 1 {
-		pref := strings.TrimSpace(m[1])
+		pref = strings.TrimSpace(m[1])
+	}
+	if pref == "" {
+		if m := l4ChinesePreferencePattern.FindStringSubmatch(text); len(m) > 1 {
+			pref = strings.TrimSpace(m[1])
+		}
+	}
+	if pref != "" {
 		entID := fmt.Sprintf("l4-pref-%s-%s", agentID, slugEntityName(pref))
 		if err := uc.repo.UpsertEntity(ctx, L4EntityWrite{
 			ID:             entID,

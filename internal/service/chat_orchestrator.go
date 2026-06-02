@@ -55,9 +55,7 @@ type RuntimeTooling struct {
 	CodeExecFactory            *localexec.Factory
 	KanbanBridge               kanbanpkg.Bridge
 	DebugRecorder              *debug.RecorderFactory
-	IndustryUC                 *biz.IndustryUsecase
-	DepartmentUC               *biz.DepartmentUsecase
-	PositionUC                 *biz.PositionUsecase
+	TaxonomyUC                *biz.TaxonomyUsecase
 	ToolResultGate             *biz.ToolResultGate
 }
 

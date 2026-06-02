@@ -52,6 +52,7 @@ func SeedIndustryAgentsRawSQL(ctx context.Context, rawDB *sql.DB, scenarioDir st
 	for _, ind := range industries {
 		spec := specCache[ind]
 		if len(spec.Teams) == 0 {
+			lg.Info("no teams in spec", loggateway.StepID("data.seed.industry_agents.no_teams"), loggateway.Str("industry", ind))
 			continue
 		}
 		for i := range spec.Teams {
@@ -61,6 +62,7 @@ func SeedIndustryAgentsRawSQL(ctx context.Context, rawDB *sql.DB, scenarioDir st
 				lg.Warn("build team failed", loggateway.StepID("data.seed.industry_agents.build_team"), loggateway.Str("industry", ind), loggateway.Str("team_key", ts.Key), loggateway.Err(buildErr))
 				return fmt.Errorf("build team %s/%s: %w", ind, ts.Key, buildErr)
 			}
+			lg.Info("built team", loggateway.StepID("data.seed.industry_agents.built_team"), loggateway.Str("industry", ind), loggateway.Str("team_key", team.TeamKey), loggateway.Int("members", len(team.DefinitionJSON)))
 			allTeams = append(allTeams, team)
 		}
 	}

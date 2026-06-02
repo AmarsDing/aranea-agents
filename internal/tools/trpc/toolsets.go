@@ -60,6 +60,7 @@ type ToolsetConfig struct {
 	BlobReader       biz.ToolResultBlobReader
 	ReadDocument     bool
 	ReadSpreadsheet  bool
+	WorkingMemory    bool
 }
 
 type AgentToolConfig = tools.AgentToolConfig
@@ -132,6 +133,9 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 	}
 	if cfg.ReadSpreadsheet {
 		enabled = append(enabled, "read_spreadsheet")
+	}
+	if cfg.WorkingMemory {
+		enabled = append(enabled, "working_memory")
 	}
 
 	openAPISpecs := make([]tools.OpenAPISpecConfig, len(cfg.OpenAPISpecs))

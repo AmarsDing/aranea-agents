@@ -3,6 +3,7 @@ package sessionmemory
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -88,6 +89,68 @@ func (st *Store) DeleteFactByID(ctx context.Context, id string) error {
 	return nil
 }
 
+// IncrementConflictCount increments the conflict_count for a fact and returns the new count.
+func (st *Store) IncrementConflictCount(ctx context.Context, factID string) (int32, error) {
+	if st == nil || st.client == nil {
+		return 0, fmt.Errorf("session memory store not wired")
+	}
+	var newCount int32
+	err := queryOne(ctx, st.client,
+		`UPDATE memory_facts SET conflict_count = conflict_count + 1, updated_at = ? WHERE id = ? RETURNING conflict_count`,
+		[]any{time.Now().UTC().Format(time.RFC3339Nano), factID},
+		&newCount,
+	)
+	return newCount, err
+}
+
+// ListConflictingFacts returns facts with conflict_count > 0 for a given scope.
+func (st *Store) ListConflictingFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error) {
+	if st == nil || st.client == nil {
+		return nil, 0, fmt.Errorf("session memory store not wired")
+	}
+	lim := int(limit)
+	if lim <= 0 || lim > 100 {
+		lim = 20
+	}
+	off := int(offset)
+	if off < 0 {
+		off = 0
+	}
+	var total int32
+	countQ := `SELECT COUNT(*) FROM memory_facts WHERE conflict_count > 0 AND status != 'deleted'`
+	listQ := sqlFactSelect + ` WHERE conflict_count > 0 AND status != 'deleted'`
+	args := []any{}
+	if scopeType != "" {
+		countQ += ` AND scope_type = ?`
+		listQ += ` AND scope_type = ?`
+		args = append(args, scopeType)
+	}
+	if scopeID != "" {
+		countQ += ` AND scope_id = ?`
+		listQ += ` AND scope_id = ?`
+		args = append(args, scopeID)
+	}
+	if err := queryOne(ctx, st.client, countQ, args, &total); err != nil {
+		return nil, 0, err
+	}
+	listQ += ` ORDER BY conflict_count DESC, updated_at DESC LIMIT ? OFFSET ?`
+	listArgs := append(args, lim, off)
+	rows, err := st.client.QueryContext(ctx, listQ, listArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var out [][]byte
+	for rows.Next() {
+		b, err := scanFactRowJSON(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		out = append(out, b)
+	}
+	return out, total, rows.Err()
+}
+
 // ClearFacts soft-deletes facts for a scope, optionally filtered by user_id.
 func (st *Store) ClearFacts(ctx context.Context, scopeType, scopeID, userID string) error {
 	if st == nil || st.client == nil {
@@ -119,4 +182,74 @@ func (st *Store) ClearFacts(ctx context.Context, scopeType, scopeID, userID stri
 		return err
 	}
 	return nil
+}
+
+// ListPIIFlaggedFacts returns facts with pii_flag=true.
+func (st *Store) ListPIIFlaggedFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error) {
+	if st == nil || st.client == nil {
+		return nil, 0, errors.New("session memory store not wired")
+	}
+	lim := int(limit)
+	if lim <= 0 || lim > 100 {
+		lim = 20
+	}
+	off := int(offset)
+	if off < 0 {
+		off = 0
+	}
+	var total int32
+	countQ := `SELECT COUNT(*) FROM memory_facts WHERE pii_flag = 1 AND status != 'deleted'`
+	listQ := sqlFactSelect + ` WHERE pii_flag = 1 AND status != 'deleted'`
+	args := []any{}
+	if scopeType != "" {
+		countQ += ` AND scope_type = ?`
+		listQ += ` AND scope_type = ?`
+		args = append(args, scopeType)
+	}
+	if scopeID != "" {
+		countQ += ` AND scope_id = ?`
+		listQ += ` AND scope_id = ?`
+		args = append(args, scopeID)
+	}
+	if err := queryOne(ctx, st.client, countQ, args, &total); err != nil {
+		return nil, 0, err
+	}
+	listQ += ` ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+	listArgs := append(args, lim, off)
+	rows, err := st.client.QueryContext(ctx, listQ, listArgs...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var out [][]byte
+	for rows.Next() {
+		b, err := scanFactRowJSON(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		out = append(out, b)
+	}
+	return out, total, rows.Err()
+}
+
+// ApprovePIIFact clears the pii_flag on a fact.
+func (st *Store) ApprovePIIFact(ctx context.Context, factID string) error {
+	if st == nil || st.client == nil {
+		return errors.New("session memory store not wired")
+	}
+	_, err := st.client.ExecContext(ctx,
+		`UPDATE memory_facts SET pii_flag = 0, updated_at = ? WHERE id = ?`,
+		time.Now().UTC().Format(time.RFC3339Nano), factID)
+	return err
+}
+
+// RejectPIIFact deletes a PII-flagged fact (soft delete by setting status='deleted').
+func (st *Store) RejectPIIFact(ctx context.Context, factID string) error {
+	if st == nil || st.client == nil {
+		return errors.New("session memory store not wired")
+	}
+	_, err := st.client.ExecContext(ctx,
+		`UPDATE memory_facts SET status = 'deleted', updated_at = ? WHERE id = ? AND pii_flag = 1`,
+		time.Now().UTC().Format(time.RFC3339Nano), factID)
+	return err
 }

@@ -18,7 +18,7 @@ func NewAgentTemplateRepo(d *Data) biz.AgentTemplateRepo {
 }
 
 func (r *agentTemplateRepo) ListAgentTemplates(ctx context.Context) ([]biz.AgentTemplate, error) {
-	rows, err := r.data.entClient.AgentTemplate.Query().
+	rows, err := r.data.ReadClient(ctx).AgentTemplate.Query().
 		Where(agenttemplate.DeletedAtEQ("")).
 		Order(agenttemplate.BySortOrder(entsql.OrderAsc())).
 		All(ctx)

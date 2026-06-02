@@ -51,7 +51,7 @@ func entToBizTaxonomy(e *ent.IndustryTaxonomy) biz.TaxonomyNode {
 }
 
 func (r *TaxonomyRepo) ListTaxonomyNodes(ctx context.Context) ([]biz.TaxonomyNode, error) {
-	rows, err := r.data.entClient.IndustryTaxonomy.Query().
+	rows, err := r.data.ReadClient(ctx).IndustryTaxonomy.Query().
 		Where(industrytaxonomy.DeletedAtEQ("")).
 		Order(
 			industrytaxonomy.BySortOrder(),
@@ -69,7 +69,7 @@ func (r *TaxonomyRepo) ListTaxonomyNodes(ctx context.Context) ([]biz.TaxonomyNod
 }
 
 func (r *TaxonomyRepo) GetTaxonomyNode(ctx context.Context, id string) (biz.TaxonomyNode, error) {
-	row, err := r.data.entClient.IndustryTaxonomy.Query().
+	row, err := r.data.ReadClient(ctx).IndustryTaxonomy.Query().
 		Where(
 			industrytaxonomy.IDEQ(id),
 			industrytaxonomy.DeletedAtEQ(""),
@@ -85,7 +85,7 @@ func (r *TaxonomyRepo) GetTaxonomyNode(ctx context.Context, id string) (biz.Taxo
 }
 
 func (r *TaxonomyRepo) GetTaxonomyNodeByKey(ctx context.Context, key string) (biz.TaxonomyNode, error) {
-	row, err := r.data.entClient.IndustryTaxonomy.Query().
+	row, err := r.data.ReadClient(ctx).IndustryTaxonomy.Query().
 		Where(
 			industrytaxonomy.TaxonomyKeyEQ(key),
 			industrytaxonomy.DeletedAtEQ(""),
@@ -101,7 +101,7 @@ func (r *TaxonomyRepo) GetTaxonomyNodeByKey(ctx context.Context, key string) (bi
 }
 
 func (r *TaxonomyRepo) ListTaxonomyNodesByParentID(ctx context.Context, parentID string) ([]biz.TaxonomyNode, error) {
-	rows, err := r.data.entClient.IndustryTaxonomy.Query().
+	rows, err := r.data.ReadClient(ctx).IndustryTaxonomy.Query().
 		Where(
 			industrytaxonomy.ParentIDEQ(parentID),
 			industrytaxonomy.DeletedAtEQ(""),
@@ -119,7 +119,7 @@ func (r *TaxonomyRepo) ListTaxonomyNodesByParentID(ctx context.Context, parentID
 }
 
 func (r *TaxonomyRepo) ListTaxonomyNodesByLevel(ctx context.Context, level string) ([]biz.TaxonomyNode, error) {
-	rows, err := r.data.entClient.IndustryTaxonomy.Query().
+	rows, err := r.data.ReadClient(ctx).IndustryTaxonomy.Query().
 		Where(
 			industrytaxonomy.LevelEQ(level),
 			industrytaxonomy.DeletedAtEQ(""),
@@ -206,7 +206,7 @@ func (r *TaxonomyRepo) DeleteTaxonomyNode(ctx context.Context, id string) error 
 }
 
 func (r *TaxonomyRepo) ensureNodeCanDelete(ctx context.Context, id string) error {
-	n, err := r.data.entClient.IndustryTaxonomy.Query().
+	n, err := r.data.ReadClient(ctx).IndustryTaxonomy.Query().
 		Where(
 			industrytaxonomy.ParentIDEQ(id),
 			industrytaxonomy.DeletedAtEQ(""),
@@ -218,7 +218,7 @@ func (r *TaxonomyRepo) ensureNodeCanDelete(ctx context.Context, id string) error
 	if n > 0 {
 		return kerrors.BadRequest("TAXONOMY", fmt.Sprintf("node has %d child nodes", n))
 	}
-	nAgents, err := r.data.entClient.Agent.Query().
+	nAgents, err := r.data.ReadClient(ctx).Agent.Query().
 		Where(
 			agent.TaxonomyPositionIDEQ(id),
 			agent.DeletedAtEQ(""),

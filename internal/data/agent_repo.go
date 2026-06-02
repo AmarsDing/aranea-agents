@@ -10,7 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/agent"
-	"aranea-agents/internal/data/ent/agentcategory"
+	"aranea-agents/internal/data/ent/industrytaxonomy"
 	"aranea-agents/internal/data/ent/agentpromptfile"
 	"aranea-agents/internal/data/ent/agentruntimesetting"
 	"aranea-agents/internal/data/ent/predicate"
@@ -424,10 +424,10 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 	if categoryID == "" {
 		return nil, nil
 	}
-	node, err := r.readClient(ctx).AgentCategory.Query().
+	node, err := r.readClient(ctx).IndustryTaxonomy.Query().
 		Where(
-			agentcategory.IDEQ(categoryID),
-			agentcategory.DeletedAtEQ(""),
+			industrytaxonomy.IDEQ(categoryID),
+			industrytaxonomy.DeletedAtEQ(""),
 		).
 		Only(ctx)
 	if err != nil {
@@ -440,19 +440,19 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 	case "position":
 		return []string{node.ID}, nil
 	case "department":
-		return r.readClient(ctx).AgentCategory.Query().
+		return r.readClient(ctx).IndustryTaxonomy.Query().
 			Where(
-				agentcategory.ParentIDEQ(categoryID),
-				agentcategory.LevelEQ("position"),
-				agentcategory.DeletedAtEQ(""),
+				industrytaxonomy.ParentIDEQ(categoryID),
+				industrytaxonomy.LevelEQ("position"),
+				industrytaxonomy.DeletedAtEQ(""),
 			).
 			IDs(ctx)
 	case "industry":
-		deptIDs, err := r.readClient(ctx).AgentCategory.Query().
+		deptIDs, err := r.readClient(ctx).IndustryTaxonomy.Query().
 			Where(
-				agentcategory.ParentIDEQ(categoryID),
-				agentcategory.LevelEQ("department"),
-				agentcategory.DeletedAtEQ(""),
+				industrytaxonomy.ParentIDEQ(categoryID),
+				industrytaxonomy.LevelEQ("department"),
+				industrytaxonomy.DeletedAtEQ(""),
 			).
 			IDs(ctx)
 		if err != nil {
@@ -461,11 +461,11 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 		if len(deptIDs) == 0 {
 			return []string{}, nil
 		}
-		return r.readClient(ctx).AgentCategory.Query().
+		return r.readClient(ctx).IndustryTaxonomy.Query().
 			Where(
-				agentcategory.ParentIDIn(deptIDs...),
-				agentcategory.LevelEQ("position"),
-				agentcategory.DeletedAtEQ(""),
+				industrytaxonomy.ParentIDIn(deptIDs...),
+				industrytaxonomy.LevelEQ("position"),
+				industrytaxonomy.DeletedAtEQ(""),
 			).
 			IDs(ctx)
 	default:

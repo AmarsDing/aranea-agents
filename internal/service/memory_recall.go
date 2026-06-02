@@ -142,6 +142,7 @@ func pbRecallHit(row biz.RecallDebugRow) *v1.MemoryRecallHit {
 			Vector:       row.Scores.Vector,
 			Importance:   row.Scores.Importance,
 			Recency:      row.Scores.Recency,
+			QualityScore: row.Scores.QualityScore,
 			CrossEncoder: row.Scores.CrossEncoder,
 			Total:        row.Scores.Total,
 		},

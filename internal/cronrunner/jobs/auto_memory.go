@@ -252,15 +252,16 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 		}
 		summary := previewText(buildEpisodeSummary(proposals, added), 500)
 		ep = &biz.EpisodeWrite{
-			SessionID:      sid,
-			AgentID:        agentID,
-			UserID:         userID,
-			Title:          title,
-			OutcomeSummary: summary,
-			Importance:     0.55,
-			MessageCount:   len(msgs),
-			ConsolidatedL3: added,
-			MetadataJSON:   `{"source":"auto_memory"}`,
+			SessionID:          sid,
+			AgentID:            agentID,
+			UserID:             userID,
+			Title:              title,
+			OutcomeSummary:     summary,
+			Importance:         0.55,
+			MessageCount:       len(msgs),
+			ConsolidatedL3:     added,
+			ConsolidationStatus: "consolidated",
+			MetadataJSON:       `{"source":"auto_memory"}`,
 		}
 	}
 

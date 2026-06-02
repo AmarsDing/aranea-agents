@@ -172,14 +172,15 @@ func bizFactWriteToData(f biz.MemoryFactWrite) sessionmemory.MemoryFactUpsert {
 
 func bizEpisodeWriteToData(ep *biz.EpisodeWrite) *sessionmemory.EpisodeInsert {
 	return &sessionmemory.EpisodeInsert{
-		SessionID:      ep.SessionID,
-		AgentID:        ep.AgentID,
-		UserID:         ep.UserID,
-		Title:          ep.Title,
-		OutcomeSummary: ep.OutcomeSummary,
-		Importance:     ep.Importance,
-		MessageCount:   ep.MessageCount,
-		ConsolidatedL3: ep.ConsolidatedL3,
-		MetadataJSON:   ep.MetadataJSON,
+		SessionID:          ep.SessionID,
+		AgentID:            ep.AgentID,
+		UserID:             ep.UserID,
+		Title:              ep.Title,
+		OutcomeSummary:     ep.OutcomeSummary,
+		Importance:         ep.Importance,
+		MessageCount:       ep.MessageCount,
+		ConsolidatedL3:     ep.ConsolidatedL3,
+		ConsolidationStatus: ep.ConsolidationStatus,
+		MetadataJSON:       ep.MetadataJSON,
 	}
 }

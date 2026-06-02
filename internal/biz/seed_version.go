@@ -7,4 +7,4 @@ type SeedVersionRepo interface {
 	MarkApplied(ctx context.Context, version int, name string) error
 }
 
-const SeedVersionIndustryAgentsV1 = 20260803
+const SeedVersionIndustryAgentsV1 = 20260804
