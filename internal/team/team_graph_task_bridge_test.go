@@ -1,4 +1,4 @@
-﻿package team
+package team
 
 import (
 	"context"
@@ -25,7 +25,7 @@ type stubExecRegistry struct {
 	interrupts []string
 }
 
-func (s *stubExecRegistry) RegisterTeamGraphExecution(context.Context, string, string, string, string, biz.GraphBuildConfig) error {
+func (s *stubExecRegistry) RegisterTeamGraphExecution(context.Context, string, string, string, string, *biz.CompiledTeam) error {
 	return nil
 }
 

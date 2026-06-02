@@ -719,6 +719,22 @@ func (r *sessionRepo) ApplyMetricsDelta(ctx context.Context, d *session.SessionM
 	return err
 }
 
+func (r *sessionRepo) IncrementInvocationCounts(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error {
+	if toolDelta == 0 && mcpDelta == 0 && skillDelta == 0 {
+		return nil
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil
+	}
+	return r.ApplyMetricsDelta(ctx, &session.SessionMetricsDelta{
+		SessionID:      sessionID,
+		ToolCallCount:  toolDelta,
+		McpCallCount:   mcpDelta,
+		SkillCallCount: skillDelta,
+	})
+}
+
 func (r *sessionRepo) BumpSessionRevision(ctx context.Context, sessionID string) (int64, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {

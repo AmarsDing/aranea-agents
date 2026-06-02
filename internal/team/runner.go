@@ -11,6 +11,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
+	tooltrpc "aranea-agents/internal/tools/trpc"
 	"aranea-agents/pkg/loggateway"
 
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
@@ -45,6 +46,34 @@ func (r *Runner) SetTeamGraphRunCoordinator(c *TeamGraphRunCoordinator) {
 		return
 	}
 	r.teamGraphCoord = c
+}
+
+func (r *Runner) SetAwaitHookProvider(fn func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc) {
+	if r == nil {
+		return
+	}
+	r.cfg.AwaitHookProvider = fn
+}
+
+func (r *Runner) SetRuns(runs *rt.RunRegistry) {
+	if r == nil {
+		return
+	}
+	r.cfg.Runs = runs
+}
+
+func (r *Runner) SetStreamOptsFactory(f StreamOptsFactory) {
+	if r == nil {
+		return
+	}
+	r.cfg.StreamOptsFactory = f
+}
+
+func (r *Runner) SetAgentHelper(h biz.TeamAgentHelper) {
+	if r == nil {
+		return
+	}
+	r.cfg.AgentHelper = h
 }
 
 func NewRunner(

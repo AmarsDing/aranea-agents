@@ -12,7 +12,7 @@ import (
 
 // TeamGraphExecutionRegistry tracks team GraphAgent executions for task/resume (M53 Phase 7).
 type TeamGraphExecutionRegistry interface {
-	RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, teamID, teamRunID string, cfg biz.GraphBuildConfig) error
+	RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, teamID, teamRunID string, ct *biz.CompiledTeam) error
 	MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error
 }
 

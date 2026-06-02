@@ -51,7 +51,7 @@ func entTeamToBiz(e *ent.Team, lg loggateway.Logger) biz.Team {
 		ParallelConfigJSON: e.ParallelConfigJSON,
 		Topology:           e.Topology,
 		Readonly:           e.Readonly,
-		Source:             e.Source,
+		Source:             string(e.Source),
 		CreatedAt:          e.CreatedAt,
 		UpdatedAt:          e.UpdatedAt,
 		DeletedAt:          e.DeletedAt,

@@ -179,16 +179,16 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	o.admitGate = newTurnAdmissionGate(turn.RunRegistryAdapter{Registry: runs}, o.chatUC, o.sessionPendingMergeFollowup)
 
 	if deps.Team.TeamsNative != nil {
-		deps.Team.TeamsNative.cfg.AwaitHookProvider = func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc {
+		deps.Team.TeamsNative.SetAwaitHookProvider(func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc {
 			return o.makeAwaitReplyFunc(runCtx, sessionID, runID)
-		}
-		deps.Team.TeamsNative.cfg.Runs = o.runs
-		deps.Team.TeamsNative.cfg.StreamOptsFactory = &chatactivity.StreamOptsFactoryAdapter{
+		})
+		deps.Team.TeamsNative.SetRuns(o.runs)
+		deps.Team.TeamsNative.SetStreamOptsFactory(&chatactivity.StreamOptsFactoryAdapter{
 			Tools:    deps.Catalog.ToolUC,
 			Agents:   deps.Catalog.Agents,
 			Sessions: deps.Sessions,
-		}
-		deps.Team.TeamsNative.cfg.AgentHelper = &chatagent.TeamAgentHelperAdapter{}
+		})
+		deps.Team.TeamsNative.SetAgentHelper(&chatagent.TeamAgentHelperAdapter{})
 		if deps.Team.TeamGraphCoord != nil {
 			deps.Team.TeamsNative.SetTeamGraphRunCoordinator(deps.Team.TeamGraphCoord)
 			deps.Team.TeamGraphCoord.SetFinisher(deps.Team.TeamsNative)
