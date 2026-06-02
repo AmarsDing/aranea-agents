@@ -44,8 +44,7 @@ type participantAgg struct {
 }
 
 func (r *sessionParticipantRepo) SyncFromSession(ctx context.Context, sess bizsess.Session, messages []bizsess.ChatMessage) error {
-	db := r.db()
-	if db == nil {
+	if r.data == nil {
 		return nil
 	}
 	sessionID := strings.TrimSpace(sess.ID)
@@ -93,39 +92,29 @@ func (r *sessionParticipantRepo) SyncFromSession(ctx context.Context, sess bizse
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		r.data.lg.Error("tx begin failed", loggateway.StepID("data.session_participant.sync.tx_begin"), loggateway.Err(err))
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	if _, err := tx.ExecContext(ctx, `DELETE FROM session_participants WHERE session_id=?`, sessionID); err != nil {
-		r.data.lg.Error("delete participants in tx failed", loggateway.StepID("data.session_participant.sync.delete"), loggateway.Err(err))
-		return err
-	}
-	for _, row := range aggs {
-		id := uuid.NewString()
-		_, err := tx.ExecContext(ctx, `
+	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		e := TxExecerFromCtx(txCtx, r.data.RawDB())
+		if _, err := e.ExecContext(txCtx, `DELETE FROM session_participants WHERE session_id=?`, sessionID); err != nil {
+			return err
+		}
+		for _, row := range aggs {
+			id := uuid.NewString()
+			_, err := e.ExecContext(txCtx, `
 INSERT INTO session_participants (
   id, session_id, participant_type, participant_id, display_name, role_in_session, status,
   first_active_at, last_active_at, message_count, run_step_count, input_tokens, output_tokens,
   context_used_ratio, metadata_json, created_at, updated_at
 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			id, sessionID, row.participantType, row.participantID, row.displayName, row.roleInSession, "active",
-			row.firstActiveAt, row.lastActiveAt, row.messageCount, 0, row.inputTokens, row.outputTokens,
-			0, "{}", now, now,
-		)
-		if err != nil {
-			r.data.lg.Error("insert participants in tx failed", loggateway.StepID("data.session_participant.sync.insert"), loggateway.Err(err))
-			return err
+				id, sessionID, row.participantType, row.participantID, row.displayName, row.roleInSession, "active",
+				row.firstActiveAt, row.lastActiveAt, row.messageCount, 0, row.inputTokens, row.outputTokens,
+				0, "{}", now, now,
+			)
+			if err != nil {
+				return err
+			}
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		r.data.lg.Error("tx commit failed", loggateway.StepID("data.session_participant.sync.commit"), loggateway.Err(err))
-		return err
-	}
-	return nil
+		return nil
+	})
 }
 
 func participantFromMessage(msg bizsess.ChatMessage, sess bizsess.Session, lg loggateway.Logger) (pType, pID, name, role string) {

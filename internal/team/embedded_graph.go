@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -98,9 +99,9 @@ func isEmbeddedDecorID(id string) bool {
 	}
 }
 
-func compileFromEmbeddedGraph(ctx context.Context, def Definition, spec *embeddedGraphSpec, agentKey CompileAgentKey, loader GraphBuildConfigLoader) (biz.GraphBuildConfig, error) {
+func compileFromEmbeddedGraph(ctx context.Context, def Definition, spec *embeddedGraphSpec, agentKey CompileAgentKey, loader GraphBuildConfigLoader) (biz.GraphBuildConfig, []string, error) {
 	if spec == nil {
-		return biz.GraphBuildConfig{}, kerrors.BadRequest("TEAM", "embedded graph is nil")
+		return biz.GraphBuildConfig{}, nil, kerrors.BadRequest("TEAM", "embedded graph is nil")
 	}
 	memberByAgentID := map[string]MemberDef{}
 	for i, m := range EnabledMembers(def) {
@@ -120,6 +121,7 @@ func compileFromEmbeddedGraph(ctx context.Context, def Definition, spec *embedde
 	executableIDs := make(map[string]struct{})
 	nodes := make([]biz.NodeDef, 0, len(spec.Nodes))
 	subgraphs := make([]biz.SubgraphDef, 0)
+	taskMeta := make(map[string]biz.NodeTaskMeta)
 	loading := map[string]struct{}{}
 
 	for _, n := range spec.Nodes {
@@ -150,67 +152,81 @@ func compileFromEmbeddedGraph(ctx context.Context, def Definition, spec *embedde
 				instruction = strings.TrimSpace(member.TaskPrompt)
 			}
 			executableIDs[id] = struct{}{}
-			nodes = append(nodes, compileEmbeddedBizNode(n, biz.NodeDef{
+			nd := compileEmbeddedBizNode(n, biz.NodeDef{
 				ID: id, Type: "agent", Description: desc, Instruction: instruction,
-				AgentName: key, RequiredRole: role,
-			}))
+				AgentName: key,
+			})
+			nodes = append(nodes, nd)
+			if role != "" {
+				taskMeta[id] = biz.NodeTaskMeta{RequiredRole: role}
+			}
 		case "task":
 			executableIDs[id] = struct{}{}
-			nodes = append(nodes, compileEmbeddedBizNode(n, biz.NodeDef{
+			nd := compileEmbeddedBizNode(n, biz.NodeDef{
 				ID: id, Type: "task", Description: strings.TrimSpace(n.Label),
-				RequiredRole: strings.TrimSpace(n.Role), AssignmentMode: strings.TrimSpace(n.AssignmentMode),
-				AssignmentStrategy: strings.TrimSpace(n.AssignmentStrategy),
 				InterruptAfter: true,
-			}))
+			})
+			nodes = append(nodes, nd)
+			taskMeta[id] = biz.NodeTaskMeta{
+				RequiredRole:       strings.TrimSpace(n.Role),
+				AssignmentMode:     strings.TrimSpace(n.AssignmentMode),
+				AssignmentStrategy: strings.TrimSpace(n.AssignmentStrategy),
+			}
 		case "review":
 			executableIDs[id] = struct{}{}
-			nodes = append(nodes, compileEmbeddedBizNode(n, biz.NodeDef{
+			nd := compileEmbeddedBizNode(n, biz.NodeDef{
 				ID: id, Type: "review", Description: strings.TrimSpace(n.Label),
-				ReviewerAgent: strings.TrimSpace(n.ReviewerAgent), ReviewRules: strings.TrimSpace(n.ReviewRules),
 				InterruptAfter: true,
-			}))
+			})
+			nodes = append(nodes, nd)
+			taskMeta[id] = biz.NodeTaskMeta{
+				ReviewerAgent: strings.TrimSpace(n.ReviewerAgent),
+				ReviewRules:   strings.TrimSpace(n.ReviewRules),
+			}
 		case "subgraph":
 			ref := strings.TrimSpace(n.SubgraphID)
 			if ref == "" {
-				return biz.GraphBuildConfig{}, kerrors.BadRequest("TEAM", fmt.Sprintf("subgraph node %q requires subgraph_id", id))
+				return biz.GraphBuildConfig{}, nil, kerrors.BadRequest("TEAM", fmt.Sprintf("subgraph node %q requires subgraph_id", id))
 			}
 			if loader == nil {
-				return biz.GraphBuildConfig{}, kerrors.BadRequest("TEAM", fmt.Sprintf("subgraph node %q requires graph loader", id))
+				return biz.GraphBuildConfig{}, nil, kerrors.BadRequest("TEAM", fmt.Sprintf("subgraph node %q requires graph loader", id))
 			}
 			subCfg, err := loadEmbeddedSubgraphConfig(ctx, loader, ref, loading)
 			if err != nil {
-				return biz.GraphBuildConfig{}, kerrors.BadRequest("TEAM", fmt.Sprintf("subgraph node %q: %s", id, err.Error()))
+				return biz.GraphBuildConfig{}, nil, kerrors.BadRequest("TEAM", fmt.Sprintf("subgraph node %q: %s", id, err.Error()))
 			}
 			executableIDs[id] = struct{}{}
 			subgraphs = append(subgraphs, biz.SubgraphDef{ID: id, GraphID: ref, BuildConfig: subCfg})
 		}
 	}
 	if len(executableIDs) == 0 {
-		return biz.GraphBuildConfig{}, kerrors.BadRequest("TEAM", "embedded graph has no executable nodes")
+		return biz.GraphBuildConfig{}, nil, kerrors.BadRequest("TEAM", "embedded graph has no executable nodes")
 	}
 
 	edges, condEdges, entry, finish, branchIDs := compileEmbeddedEdges(def, spec, nodeTypeByID, executableIDs)
 	if entry == "" {
+		ids := make([]string, 0, len(executableIDs))
 		for id := range executableIDs {
-			entry = id
-			break
+			ids = append(ids, id)
 		}
+		sort.Strings(ids)
+		entry = ids[0]
 	}
 	if finish == "" {
 		finish = entry
 	}
 
 	cfg := biz.GraphBuildConfig{
-		Nodes:             nodes,
-		Subgraphs:         subgraphs,
-		Edges:             edges,
-		ConditionalEdges:  condEdges,
-		EntryPoint:        entry,
-		FinishPoint:       finish,
-		ParallelBranchIDs: branchIDs,
-		ExecutionEngine:   biz.EngineBSP,
+		Nodes:            nodes,
+		Subgraphs:        subgraphs,
+		Edges:            edges,
+		ConditionalEdges: condEdges,
+		EntryPoint:       entry,
+		FinishPoint:      finish,
+		ExecutionEngine:  biz.EngineBSP,
+		TaskMeta:         taskMeta,
 	}
-	return cfg, nil
+	return cfg, branchIDs, nil
 }
 
 func compileEmbeddedBizNode(n embeddedGraphNode, base biz.NodeDef) biz.NodeDef {

@@ -29,7 +29,7 @@ func newKnowledgeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Cal
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		cue := buildKnowledgeCue(ctx, deps.KnowledgeUsecase, deps.LG)
+		cue := buildKnowledgeCue(ctx, deps.KnowledgeUsecase, deps.Logger())
 		if cue == "" {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}

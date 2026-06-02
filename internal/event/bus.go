@@ -53,16 +53,14 @@ func NewBus(lg loggateway.Logger) Bus {
 
 // criticalTypes returns the set of event types that must never be silently dropped.
 // These are persisted session events where loss causes observable data corruption.
-func criticalTypes() map[EnvelopeType]struct{} {
-	return map[EnvelopeType]struct{}{
-		EnvelopeTypeToolResult:       {},
-		EnvelopeTypeError:            {},
-		EnvelopeTypeRunnerCompletion: {},
-		EnvelopeTypeContextUsage:     {},
-		EnvelopeTypeGraphNodeEnd:     {},
-		EnvelopeTypeTeamRunFinished:  {},
-		EnvelopeTypeTeamRunFailed:    {},
-	}
+var criticalTypeSet = map[EnvelopeType]struct{}{
+	EnvelopeTypeToolResult:       {},
+	EnvelopeTypeError:            {},
+	EnvelopeTypeRunnerCompletion: {},
+	EnvelopeTypeContextUsage:     {},
+	EnvelopeTypeGraphNodeEnd:     {},
+	EnvelopeTypeTeamRunFinished:  {},
+	EnvelopeTypeTeamRunFailed:    {},
 }
 
 func (b *bus) Publish(ctx context.Context, env Envelope) {
@@ -70,7 +68,7 @@ func (b *bus) Publish(ctx context.Context, env Envelope) {
 		env.Channel = RouteChannel(env)
 	}
 	arametrics.EventBusPublished.WithLabelValues(string(env.Type)).Inc()
-	_, isCritical := criticalTypes()[env.Type]
+	_, isCritical := criticalTypeSet[env.Type]
 
 	b.mu.RLock()
 	criticalSubs := make([]*subscriber, 0, len(b.subscribers))
@@ -166,30 +164,10 @@ func (b *bus) deliverDropOldestLocked(sub *subscriber, env Envelope) {
 			select {
 			case sub.ch <- env:
 			default:
-				b.dropCount.Add(1)
-				arametrics.EventBusDropped.WithLabelValues(string(env.Type), "drop_oldest").Inc()
-				if b.lg != nil {
-					b.lg.Warn("事件总线丢弃消息（drop_oldest）",
-						loggateway.StepID("event_bus.drop"),
-						loggateway.SessionID(env.SessionID),
-						loggateway.Str("type", string(env.Type)),
-						loggateway.Str("channel", env.Channel),
-						loggateway.Str("policy", "drop_oldest"),
-						loggateway.Int64("total_drops", int64(b.dropCount.Load())))
-				}
+				b.logDrop(env, "drop_oldest")
 			}
 		default:
-			b.dropCount.Add(1)
-			arametrics.EventBusDropped.WithLabelValues(string(env.Type), "drop_oldest").Inc()
-			if b.lg != nil {
-				b.lg.Warn("事件总线丢弃消息（drop_oldest）",
-					loggateway.StepID("event_bus.drop"),
-					loggateway.SessionID(env.SessionID),
-					loggateway.Str("type", string(env.Type)),
-					loggateway.Str("channel", env.Channel),
-					loggateway.Str("policy", "drop_oldest"),
-					loggateway.Int64("total_drops", int64(b.dropCount.Load())))
-			}
+			b.logDrop(env, "drop_oldest")
 		}
 	}
 }
@@ -203,17 +181,21 @@ func (b *bus) deliverDropNewest(sub *subscriber, env Envelope) {
 	select {
 	case sub.ch <- env:
 	default:
-		b.dropCount.Add(1)
-		arametrics.EventBusDropped.WithLabelValues(string(env.Type), "drop_newest").Inc()
-		if b.lg != nil {
-			b.lg.Warn("事件总线丢弃消息（drop_newest）",
-				loggateway.StepID("event_bus.drop"),
-				loggateway.SessionID(env.SessionID),
-				loggateway.Str("type", string(env.Type)),
-				loggateway.Str("channel", env.Channel),
-				loggateway.Str("policy", "drop_newest"),
-				loggateway.Int64("total_drops", int64(b.dropCount.Load())))
-		}
+		b.logDrop(env, "drop_newest")
+	}
+}
+
+func (b *bus) logDrop(env Envelope, policy string) {
+	b.dropCount.Add(1)
+	arametrics.EventBusDropped.WithLabelValues(string(env.Type), policy).Inc()
+	if b.lg != nil {
+		b.lg.Warn("事件总线丢弃消息",
+			loggateway.StepID("event_bus.drop"),
+			loggateway.SessionID(env.SessionID),
+			loggateway.Str("type", string(env.Type)),
+			loggateway.Str("channel", env.Channel),
+			loggateway.Str("policy", policy),
+			loggateway.Int64("total_drops", int64(b.dropCount.Load())))
 	}
 }
 

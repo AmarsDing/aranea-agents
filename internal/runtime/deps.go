@@ -58,7 +58,7 @@ type TurnDeps struct {
 	Compress  biz.NativeTurnCompressor
 	AfterTurn biz.NativeTurnAfterHook
 	RunnerMgr *RunnerManager
-	lg        loggateway.Logger
+	Lg        loggateway.Logger
 }
 
 // RoundTrip returns a provider.RoundTrip backed by the LLMHTTP client.
@@ -82,7 +82,7 @@ func (d *TurnDeps) CoalesceRunnerManager() *RunnerManager {
 	if d.RunnerMgr != nil {
 		return d.RunnerMgr
 	}
-	lg := d.lg
+	lg := d.Lg
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
@@ -90,15 +90,11 @@ func (d *TurnDeps) CoalesceRunnerManager() *RunnerManager {
 	return d.RunnerMgr
 }
 
-func (d *TurnDeps) SetLogger(lg loggateway.Logger) {
-	d.lg = lg
-}
-
 func (d *TurnDeps) Logger() loggateway.Logger {
-	if d.lg == nil {
+	if d.Lg == nil {
 		return loggateway.NewNoop()
 	}
-	return d.lg
+	return d.Lg
 }
 
 // NewEmptyPersistenceSet creates a PersistenceSet with nil memory for tests.

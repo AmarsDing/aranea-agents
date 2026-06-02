@@ -43,7 +43,7 @@ func DefaultCoordinatorConfig() CoordinatorConfig {
 
 // TeamGraphExecutionBackend indexes and resumes team-linked graph executions.
 type TeamGraphExecutionBackend interface {
-	RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, teamID, teamRunID string, cfg biz.GraphBuildConfig) error
+	RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, teamID, teamRunID string, ct *biz.CompiledTeam) error
 	MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error
 	ResumeExecution(ctx context.Context, executionID string, resumeValue map[string]any) (*biz.GraphExecution, error)
 	GetExecution(ctx context.Context, executionID string) (*biz.GraphExecution, error)
@@ -57,12 +57,13 @@ type TeamGraphTaskResumeHandler interface {
 // TeamGraphRunCoordinator unifies team graph execution register, HITL defer, and task resume (M53 P1).
 type TeamGraphRunCoordinator struct {
 	graphs         TeamGraphExecutionBackend
-	teams          biz.TeamRepository
+	teams          biz.TeamRunRepo
 	bus            event.Bus
 	finisher       TeamGraphRunFinisher
 	sessionRepo    biz.TeamGraphSessionRepo
 	cfg            CoordinatorConfig
 	lg             loggateway.Logger
+	agentKeyFn     func(agentID string) string
 
 	mu       sync.RWMutex
 	sessions map[string]*teamGraphRunSession
@@ -92,23 +93,27 @@ const (
 	graphWatchStepsAndFinalize
 )
 
-func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teams biz.TeamRepository, bus event.Bus, sessionRepo biz.TeamGraphSessionRepo, lg loggateway.Logger) *TeamGraphRunCoordinator {
+func NewTeamGraphRunCoordinator(graphs TeamGraphExecutionBackend, teams biz.TeamRunRepo, bus event.Bus, sessionRepo biz.TeamGraphSessionRepo, agentKeyFn func(agentID string) string, lg loggateway.Logger) *TeamGraphRunCoordinator {
+	if agentKeyFn == nil {
+		agentKeyFn = func(agentID string) string { return strings.TrimSpace(agentID) }
+	}
 	return &TeamGraphRunCoordinator{
 		graphs:         graphs,
 		teams:          teams,
 		bus:            bus,
 		sessionRepo:    sessionRepo,
+		agentKeyFn:     agentKeyFn,
 		sessions:       make(map[string]*teamGraphRunSession),
 		cfg:            DefaultCoordinatorConfig(),
 		lg:             lg,
 	}
 }
 
-func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, teamID, teamRunID string, cfg biz.GraphBuildConfig) error {
+func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, teamID, teamRunID string, ct *biz.CompiledTeam) error {
 	if c == nil || c.graphs == nil {
 		return nil
 	}
-	if err := c.graphs.RegisterTeamGraphExecution(ctx, execID, sessionID, teamID, teamRunID, cfg); err != nil {
+	if err := c.graphs.RegisterTeamGraphExecution(ctx, execID, sessionID, teamID, teamRunID, ct); err != nil {
 		return err
 	}
 	execID = strings.TrimSpace(execID)
@@ -124,7 +129,7 @@ func (c *TeamGraphRunCoordinator) RegisterTeamGraphExecution(ctx context.Context
 		if run, err := c.teams.GetTeamRunByID(ctx, sess.teamRunID); err == nil {
 			sess.inputPreview = strings.TrimSpace(run.InputPreview)
 			sess.definitionJSON = strings.TrimSpace(run.DefinitionSnapshotJSON)
-			reg, memberByNode, stepSortIndex := buildResumeSessionContext(run.DefinitionSnapshotJSON, sess.inputPreview, c.lg)
+			reg, memberByNode, stepSortIndex := buildResumeSessionContext(run.DefinitionSnapshotJSON, sess.inputPreview, c.agentKeyFn, c.lg)
 			sess.obsReg = reg
 			sess.obsStore = biz.NewOrchestrationStatusStore(reg)
 			sess.memberByNode = memberByNode
@@ -179,7 +184,7 @@ func (c *TeamGraphRunCoordinator) DeferTeamRunSuccessIfHITL(ctx context.Context,
 	if exec.Status != biz.TeamRunStatusWaitingHuman {
 		return false, nil
 	}
-	if strings.TrimSpace(exec.InterruptNode) == "" {
+	if strings.TrimSpace(exec.GetInterruptNode()) == "" {
 		return false, nil
 	}
 	if !biz.ValidateTeamRunTransition(run.Status, biz.TeamRunStatusWaitingHuman) {
@@ -346,10 +351,10 @@ func shouldResumeTeamGraph(exec *biz.GraphExecution, nodeID string) bool {
 	if nodeID == "" {
 		return false
 	}
-	if exec.Status == biz.TeamRunStatusWaitingHuman && (exec.InterruptNode == nodeID || exec.CurrentNode == nodeID) {
+	if exec.Status == biz.TeamRunStatusWaitingHuman && (exec.GetInterruptNode() == nodeID || exec.CurrentNode == nodeID) {
 		return true
 	}
-	return strings.HasPrefix(exec.GraphID, "team:") && exec.InterruptNode == nodeID
+	return strings.HasPrefix(exec.GraphID, "team:") && exec.GetInterruptNode() == nodeID
 }
 
 func (c *TeamGraphRunCoordinator) handleGraphWatchEnvelope(ctx context.Context, sess *teamGraphRunSession, env event.Envelope, mode graphWatchMode) (done, failed bool, errMsg string) {
@@ -628,7 +633,7 @@ func (c *TeamGraphRunCoordinator) RecoverSessions(ctx context.Context) {
 			stepDedup:      newGraphStepDedup(),
 			registeredAt:   time.Now(),
 		}
-		reg, memberByNode, stepSortIndex := buildResumeSessionContext(dbSess.DefinitionJSON, dbSess.InputPreview, c.lg)
+		reg, memberByNode, stepSortIndex := buildResumeSessionContext(dbSess.DefinitionJSON, dbSess.InputPreview, c.agentKeyFn, c.lg)
 		sess.obsReg = reg
 		sess.obsStore = biz.NewOrchestrationStatusStore(reg)
 		sess.memberByNode = memberByNode

@@ -10,7 +10,7 @@ type TaskStatusPublisher interface {
 // GraphTaskCoordinator hooks graph runtime events to the task board (M54).
 type GraphTaskCoordinator interface {
 	TaskStatusPublisher
-	OnGraphNodeStart(ctx context.Context, exec *GraphExecution, node *NodeDef, inputPreview string) error
+	OnGraphNodeStart(ctx context.Context, exec *GraphExecution, node *NodeDef, meta NodeTaskMeta, inputPreview string) error
 	OnTaskCompleted(ctx context.Context, task *GraphTask) error
 }
 

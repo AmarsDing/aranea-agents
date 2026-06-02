@@ -84,8 +84,11 @@ func TestCompileToGraphBuildConfig_embeddedTaskNode(t *testing.T) {
 	if len(cfg.Nodes) != 1 || cfg.Nodes[0].Type != "review" {
 		t.Fatalf("nodes=%+v", cfg.Nodes)
 	}
-	if !cfg.Nodes[0].InterruptAfter || cfg.Nodes[0].ReviewerAgent != "critic" {
+	if !cfg.Nodes[0].InterruptAfter {
 		t.Fatalf("review node=%+v", cfg.Nodes[0])
+	}
+	if m, ok := cfg.TaskMeta[cfg.Nodes[0].ID]; !ok || m.ReviewerAgent != "critic" {
+		t.Fatalf("review taskMeta=%+v", cfg.TaskMeta)
 	}
 }
 
@@ -116,7 +119,7 @@ func TestCompileToGraphBuildConfig_embeddedSubgraph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := compileToGraphBuildConfigWithLoader(context.Background(), def, raw, nil, loader, loggateway.NewNoop())
+	cfg, _, err := compileToGraphBuildConfigWithLoader(context.Background(), def, raw, nil, loader, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,27 +187,27 @@ func TestCompileToGraphBuildConfig_embeddedParallelJoin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := CompileToGraphBuildConfigFromJSON(def, raw, nil, loggateway.NewNoop())
+	cfg, branchIDs, err := compileToGraphBuildConfigWithLoader(context.Background(), def, raw, nil, stubGraphLoader{}, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cfg.FinishPoint != "member-30" {
 		t.Fatalf("finish=%q want member-30", cfg.FinishPoint)
 	}
-	if len(cfg.ParallelBranchIDs) != 2 {
-		t.Fatalf("branchIDs=%v", cfg.ParallelBranchIDs)
+	if len(branchIDs) != 2 {
+		t.Fatalf("branchIDs=%v", branchIDs)
 	}
-	runtimeCfg, err := CompileToGraphRuntimeConfigFromJSON(context.Background(), def, raw, nil, nil, loggateway.NewNoop())
+	runtimeCt, err := CompileToGraphRuntimeConfigFromJSON(context.Background(), def, raw, nil, nil, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
 	skipCount := 0
-	for _, n := range runtimeCfg.Nodes {
+	for _, n := range runtimeCt.Nodes {
 		if n.FailureAction == biz.FailureOnFailureSkip {
 			skipCount++
 		}
 	}
 	if skipCount < 2 {
-		t.Fatalf("expected 2 skip-on-failure branches, nodes=%+v", runtimeCfg.Nodes)
+		t.Fatalf("expected 2 skip-on-failure branches, nodes=%+v", runtimeCt.Nodes)
 	}
 }

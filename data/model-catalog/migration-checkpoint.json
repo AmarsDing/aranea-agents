@@ -9,5 +9,12 @@
     "Skills": 0,
     "KnowledgeEmbed": 0,
     "WebResearch": 0
-  }
+  },
+  "completed_rules": [
+    "aliyun-qwen-\u003ealibaba-cn",
+    "gemini-\u003egoogle",
+    "moonshot-kimi-\u003emoonshotai-cn",
+    "tencent-hunyuan-\u003ehunyuan",
+    "zhipu-glm-\u003ezhipuai"
+  ]
 }

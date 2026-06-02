@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
+	"sync/atomic"
 )
 
 type StdoutSink struct {
-	level string
+	level   string
+	dropped atomic.Uint64
 }
 
 func NewStdoutSink(level string) *StdoutSink {
@@ -22,13 +24,19 @@ func (s *StdoutSink) Write(entry LogEntry) {
 	if err != nil {
 		return
 	}
-	os.Stdout.Write(append(data, '\n'))
+	if _, err := os.Stdout.Write(append(data, '\n')); err != nil {
+		s.dropped.Add(1)
+	}
 }
 
 func (s *StdoutSink) Flush() {}
 
 func (s *StdoutSink) Close() error {
 	return nil
+}
+
+func (s *StdoutSink) Dropped() uint64 {
+	return s.dropped.Load()
 }
 
 func (s *StdoutSink) levelAllowed(entryLevel string) bool {

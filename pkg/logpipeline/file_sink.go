@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync/atomic"
 
 	"gopkg.in/natefinch/lumberjack.v2"
 )
@@ -20,7 +21,7 @@ type FileSinkConfig struct {
 
 type FileSink struct {
 	lj      *lumberjack.Logger
-	dropped uint64
+	dropped atomic.Uint64
 }
 
 func NewFileSink(cfg FileSinkConfig) *FileSink {
@@ -61,7 +62,7 @@ func (s *FileSink) Write(entry LogEntry) {
 		return
 	}
 	if _, err := s.lj.Write(append(data, '\n')); err != nil {
-		s.dropped++
+		s.dropped.Add(1)
 	}
 }
 
@@ -72,7 +73,7 @@ func (s *FileSink) Close() error {
 }
 
 func (s *FileSink) Dropped() uint64 {
-	return s.dropped
+	return s.dropped.Load()
 }
 
 func defaultOutputDir() string {

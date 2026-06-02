@@ -27,30 +27,31 @@ func CompileToGraphBuildConfigFromJSON(def Definition, rawDefinitionJSON string,
 }
 
 func compileToGraphBuildConfig(def Definition, rawDefinitionJSON string, agentKey CompileAgentKey, lg loggateway.Logger) (biz.GraphBuildConfig, error) {
-	return compileToGraphBuildConfigWithLoader(context.Background(), def, rawDefinitionJSON, agentKey, nil, lg)
+	cfg, _, err := compileToGraphBuildConfigWithLoader(context.Background(), def, rawDefinitionJSON, agentKey, nil, lg)
+	return cfg, err
 }
 
-func compileToGraphBuildConfigWithLoader(ctx context.Context, def Definition, rawDefinitionJSON string, agentKey CompileAgentKey, loader GraphBuildConfigLoader, lg loggateway.Logger) (biz.GraphBuildConfig, error) {
+func compileToGraphBuildConfigWithLoader(ctx context.Context, def Definition, rawDefinitionJSON string, agentKey CompileAgentKey, loader GraphBuildConfigLoader, lg loggateway.Logger) (biz.GraphBuildConfig, []string, error) {
 	if spec, ok := parseEmbeddedGraph(rawDefinitionJSON); ok {
-		cfg, err := compileFromEmbeddedGraph(ctx, def, spec, agentKey, loader)
+		cfg, branchIDs, err := compileFromEmbeddedGraph(ctx, def, spec, agentKey, loader)
 		if err != nil {
-			return biz.GraphBuildConfig{}, err
+			return biz.GraphBuildConfig{}, nil, err
 		}
-		return biz.ApplyFailurePolicy(cfg, def.FailurePolicy), nil
+		return biz.ApplyFailurePolicy(cfg, def.FailurePolicy), branchIDs, nil
 	}
 
 	members := EnabledMembers(def)
 	if len(members) == 0 {
-		return biz.GraphBuildConfig{}, kerrors.BadRequest("TEAM", "compile graph: no enabled members")
+		return biz.GraphBuildConfig{}, nil, kerrors.BadRequest("TEAM", "compile graph: no enabled members")
 	}
 
 	mode := normalizeCompileMode(def.Mode)
 	spec := generateGraphSpecFromMode(ctx, def, mode, lg)
-	cfg, err := compileFromEmbeddedGraph(ctx, def, spec, agentKey, loader)
+	cfg, branchIDs, err := compileFromEmbeddedGraph(ctx, def, spec, agentKey, loader)
 	if err != nil {
-		return biz.GraphBuildConfig{}, err
+		return biz.GraphBuildConfig{}, nil, err
 	}
-	return biz.ApplyFailurePolicy(cfg, def.FailurePolicy), nil
+	return biz.ApplyFailurePolicy(cfg, def.FailurePolicy), branchIDs, nil
 }
 
 func normalizeCompileMode(mode string) string {
@@ -182,6 +183,53 @@ func resolveCompileAgentKey(m MemberDef, agentKey CompileAgentKey) string {
 		return name
 	}
 	return id
+}
+
+func CompileToCompiledTeam(
+	ctx context.Context,
+	def Definition,
+	rawDefinitionJSON string,
+	agentKey CompileAgentKey,
+	linked GraphBuildConfigLoader,
+	lg loggateway.Logger,
+) (*biz.CompiledTeam, error) {
+	raw := strings.TrimSpace(rawDefinitionJSON)
+	if raw != "" && linked != nil {
+		if linkedID := LinkedGraphIDFromDefinition(raw); linkedID != "" {
+			if cfg, err := linked.LoadGraphBuildConfig(ctx, linkedID); err == nil {
+				cfg = finalizeRuntimeGraphConfig(cfg, def, raw, def.FailurePolicy, nil)
+				return biz.NewCompiledTeam(cfg, buildRoleManifest(cfg), def.FailurePolicy), nil
+			}
+		}
+	}
+	cfg, branchIDs, err := compileToGraphBuildConfigWithLoader(ctx, def, raw, agentKey, linked, lg)
+	if err != nil {
+		return nil, err
+	}
+	mode := normalizeCompileMode(def.Mode)
+	if mode == "adaptive" {
+		cfg = applyAdaptiveAgentDestinations(cfg)
+	}
+	cfg = finalizeRuntimeGraphConfig(cfg, def, raw, def.FailurePolicy, branchIDs)
+	return biz.NewCompiledTeam(cfg, buildRoleManifest(cfg), def.FailurePolicy), nil
+}
+
+func buildRoleManifest(cfg biz.GraphBuildConfig) map[string]biz.RoleInfo {
+	roleManifest := make(map[string]biz.RoleInfo)
+	for _, node := range cfg.Nodes {
+		agentName := strings.TrimSpace(node.AgentName)
+		if agentName == "" {
+			continue
+		}
+		roleManifest[node.ID] = biz.RoleInfo{
+			AgentID:      agentName,
+			AgentKey:     agentName,
+			DisplayName:  agentName,
+			Role:         node.Type,
+			Capabilities: []string{},
+		}
+	}
+	return roleManifest
 }
 
 func CompileTemplateID(mode string) string {

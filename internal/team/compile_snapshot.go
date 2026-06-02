@@ -19,6 +19,7 @@ type CompileSnapshot struct {
 	Nodes            []biz.NodeDef
 	Edges            []biz.EdgeDef
 	ConditionalEdges []biz.ConditionalEdgeDef
+	TaskMeta         map[string]biz.NodeTaskMeta
 }
 
 // BuildCompileSnapshot compiles OrchestrationSpec JSON to graph topology (embedded graph aware).
@@ -40,6 +41,7 @@ func BuildCompileSnapshot(def Definition, rawDefinitionJSON string, agentKey Com
 	snap.Nodes = append([]biz.NodeDef(nil), cfg.Nodes...)
 	snap.Edges = append([]biz.EdgeDef(nil), cfg.Edges...)
 	snap.ConditionalEdges = append([]biz.ConditionalEdgeDef(nil), cfg.ConditionalEdges...)
+	snap.TaskMeta = cfg.TaskMeta
 	if b, merr := json.Marshal(cfg); merr == nil {
 		snap.GraphJSON = string(b)
 	}

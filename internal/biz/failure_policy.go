@@ -73,7 +73,6 @@ func ApplyFailurePolicy(cfg GraphBuildConfig, policy *TeamFailurePolicy) GraphBu
 			cfg.Nodes[i].RetryMaxAttempts = retry.MaxAttempts
 		}
 	}
-	cfg.FailurePolicy = policy
 	return cfg
 }
 
@@ -162,27 +161,27 @@ func ApplySkipNodeSemantics(cfg GraphBuildConfig) GraphBuildConfig {
 }
 
 // FinalizeGraphFailurePolicy applies runtime failure semantics after base policy annotation.
-func FinalizeGraphFailurePolicy(cfg GraphBuildConfig) GraphBuildConfig {
-	cfg = ApplyParallelFailContinue(cfg)
+func FinalizeGraphFailurePolicy(cfg GraphBuildConfig, policy *TeamFailurePolicy, parallelBranchIDs []string) GraphBuildConfig {
+	cfg = ApplyParallelFailContinue(cfg, policy, parallelBranchIDs)
 	cfg = ApplySkipNodeSemantics(cfg)
 	cfg = EnsureFailureRecoveryStateFields(cfg)
 	return cfg
 }
 
 // ApplyParallelFailContinue marks parallel join branch nodes with skip-on-failure when parallel_fail=continue.
-func ApplyParallelFailContinue(cfg GraphBuildConfig) GraphBuildConfig {
-	if cfg.FailurePolicy == nil {
+func ApplyParallelFailContinue(cfg GraphBuildConfig, policy *TeamFailurePolicy, parallelBranchIDs []string) GraphBuildConfig {
+	if policy == nil {
 		return cfg
 	}
-	if !strings.EqualFold(strings.TrimSpace(cfg.FailurePolicy.ParallelFail), ParallelFailContinue) {
+	if !strings.EqualFold(strings.TrimSpace(policy.ParallelFail), ParallelFailContinue) {
 		return cfg
 	}
-	branches := parallelBranchNodeIDs(cfg)
+	branches := parallelBranchNodeIDs(cfg, parallelBranchIDs)
 	if len(branches) == 0 {
 		return cfg
 	}
 	finish := strings.TrimSpace(cfg.FinishPoint)
-	overrides := cfg.FailurePolicy.NodeOverrides
+	overrides := policy.NodeOverrides
 	for i := range cfg.Nodes {
 		id := cfg.Nodes[i].ID
 		if id == finish {
@@ -211,10 +210,10 @@ func ApplyParallelFailContinue(cfg GraphBuildConfig) GraphBuildConfig {
 	return EnsureFailureRecoveryStateFields(cfg)
 }
 
-func parallelBranchNodeIDs(cfg GraphBuildConfig) map[string]struct{} {
-	if len(cfg.ParallelBranchIDs) >= 2 {
-		branches := make(map[string]struct{}, len(cfg.ParallelBranchIDs))
-		for _, id := range cfg.ParallelBranchIDs {
+func parallelBranchNodeIDs(cfg GraphBuildConfig, parallelBranchIDs []string) map[string]struct{} {
+	if len(parallelBranchIDs) >= 2 {
+		branches := make(map[string]struct{}, len(parallelBranchIDs))
+		for _, id := range parallelBranchIDs {
 			id = strings.TrimSpace(id)
 			if id == "" {
 				continue

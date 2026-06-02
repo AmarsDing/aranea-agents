@@ -27,7 +27,7 @@ func (r *Runner) startObservers(
 	def Definition,
 	run biz.TeamRun,
 	graphExecID string,
-	compiledGraphCfg biz.GraphBuildConfig,
+	compiledTeam *biz.CompiledTeam,
 ) observerSetup {
 	var setup observerSetup
 	if r.td.Pipeline.Bus == nil {
@@ -65,7 +65,7 @@ func (r *Runner) startObservers(
 		FailureOnError:   failureOnError,
 	})
 	if r.teamGraphTasks != nil && graphExecID != "" {
-		taskNodes := TaskNodesFromBuildConfig(compiledGraphCfg)
+		taskNodes := TaskNodesFromBuildConfig(compiledTeam.GraphBuildConfig)
 		if len(taskNodes) > 0 {
 			setup.stopTaskBridge = StartTeamGraphTaskBridge(ctx, r.td.Pipeline.Bus, TeamGraphTaskBridgeConfig{
 				SessionID:        sess.ID,

@@ -10,6 +10,7 @@ func TestGraphTaskInputFromNode(t *testing.T) {
 	cases := []struct {
 		name                string
 		node                biz.NodeDef
+		meta                biz.NodeTaskMeta
 		wantRole            string
 		wantAssignmentMode  string
 		wantStrategy        string
@@ -17,7 +18,8 @@ func TestGraphTaskInputFromNode(t *testing.T) {
 	}{
 		{
 			name:               "full node",
-			node:               biz.NodeDef{ID: "n1", RequiredRole: "admin", AssignmentMode: "dynamic", AssignmentStrategy: "round_robin", Description: "do stuff"},
+			node:               biz.NodeDef{ID: "n1", Description: "do stuff"},
+			meta:               biz.NodeTaskMeta{RequiredRole: "admin", AssignmentMode: "dynamic", AssignmentStrategy: "round_robin"},
 			wantRole:           "admin",
 			wantAssignmentMode: "dynamic",
 			wantStrategy:       "round_robin",
@@ -25,38 +27,44 @@ func TestGraphTaskInputFromNode(t *testing.T) {
 		},
 		{
 			name:               "empty assignment mode defaults to static",
-			node:               biz.NodeDef{ID: "n2", AssignmentMode: ""},
+			node:               biz.NodeDef{ID: "n2"},
+			meta:               biz.NodeTaskMeta{AssignmentMode: ""},
 			wantAssignmentMode: "static",
 			wantInput:          "n2",
 		},
 		{
 			name:               "empty description falls back to id",
 			node:               biz.NodeDef{ID: "n3", Description: ""},
+			meta:               biz.NodeTaskMeta{},
 			wantAssignmentMode: "static",
 			wantInput:          "n3",
 		},
 		{
 			name:               "whitespace description falls back to id",
 			node:               biz.NodeDef{ID: "n4", Description: "   "},
+			meta:               biz.NodeTaskMeta{},
 			wantAssignmentMode: "static",
 			wantInput:          "n4",
 		},
 		{
 			name:               "whitespace assignment mode defaults to static",
-			node:               biz.NodeDef{ID: "n5", AssignmentMode: "  "},
+			node:               biz.NodeDef{ID: "n5"},
+			meta:               biz.NodeTaskMeta{AssignmentMode: "  "},
 			wantAssignmentMode: "static",
 			wantInput:          "n5",
 		},
 		{
 			name:               "whitespace role trimmed",
-			node:               biz.NodeDef{ID: "n6", RequiredRole: "  reviewer  "},
+			node:               biz.NodeDef{ID: "n6"},
+			meta:               biz.NodeTaskMeta{RequiredRole: "  reviewer  "},
 			wantRole:           "reviewer",
 			wantAssignmentMode: "static",
 			wantInput:          "n6",
 		},
 		{
 			name:               "whitespace strategy trimmed",
-			node:               biz.NodeDef{ID: "n7", AssignmentStrategy: "  least_busy  "},
+			node:               biz.NodeDef{ID: "n7"},
+			meta:               biz.NodeTaskMeta{AssignmentStrategy: "  least_busy  "},
 			wantAssignmentMode: "static",
 			wantStrategy:       "least_busy",
 			wantInput:          "n7",
@@ -64,7 +72,7 @@ func TestGraphTaskInputFromNode(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			role, mode, strategy, input := biz.GraphTaskInputFromNode(tc.node)
+			role, mode, strategy, input := biz.GraphTaskInputFromNode(tc.node, tc.meta)
 			if role != tc.wantRole {
 				t.Fatalf("role = %q, want %q", role, tc.wantRole)
 			}

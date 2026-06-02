@@ -114,7 +114,7 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 	}
 }
 
-func buildResumeSessionContext(defJSON, inputPreview string, lg loggateway.Logger) (
+func buildResumeSessionContext(defJSON, inputPreview string, agentKeyFn func(agentID string) string, lg loggateway.Logger) (
 	reg biz.OrchestrationRegistry,
 	memberByNode map[string]MemberDef,
 	stepSortIndex map[string]int,
@@ -124,8 +124,11 @@ func buildResumeSessionContext(defJSON, inputPreview string, lg loggateway.Logge
 		lg.Warn("buildResumeSessionContext: ParseDefinition failed", loggateway.StepID("team.intent.merge_fail"), loggateway.Err(err))
 		return biz.OrchestrationRegistry{}, nil, nil
 	}
+	if agentKeyFn == nil {
+		agentKeyFn = func(agentID string) string { return strings.TrimSpace(agentID) }
+	}
 	reg = BuildOrchestrationRegistry(def,
-		func(agentID string) string { return "key-" + strings.TrimSpace(agentID) },
+		agentKeyFn,
 		func(agentID string) string { return strings.TrimSpace(agentID) },
 	)
 	memberByNode = MemberByCompileNodeID(def)

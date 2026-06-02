@@ -1,1 +1,0 @@
-﻿internal\plugin\trpc\hook_callbacks.go:180:29: undefined: loggateway

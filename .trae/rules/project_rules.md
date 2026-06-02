@@ -102,7 +102,7 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 - 列假设 → 编码 → 分级验证 → 通过后再扩 scope
 - 只改与任务直接相关的文件；不顺带 refactor 相邻模块
 
-### 5.1 OpenSpec + Superpowers 工作流（推荐）
+### 5.1 OpenSpec + Superpowers 工作流
 
 **新变更必须走 OpenSpec 流程**，开发纪律由 Superpowers 强制执行：
 

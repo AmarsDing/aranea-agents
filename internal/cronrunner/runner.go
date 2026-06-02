@@ -64,7 +64,7 @@ type SessionRunControl interface {
 type Deps struct {
 	Cron              biz.CronRepo
 	Session           *biz.SessionUsecase
-	Teams             biz.TeamRepository
+	Teams             biz.TeamReader
 	Agents            biz.AgentRepository
 	EventBus          event.Bus
 	Chat              CronChatRunner

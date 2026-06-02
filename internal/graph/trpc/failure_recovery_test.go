@@ -17,7 +17,7 @@ func TestFailureRecoveryAfterNode_skipOnFailure(t *testing.T) {
 	cb := failureRecoveryAfterNode(NodeDef{
 		ID:            "member-1",
 		FailureAction: biz.FailureOnFailureSkip,
-	})
+	}, nil)
 	state := trpcgraph.State{}
 	out, err := cb(context.Background(), &trpcgraph.NodeCallbackContext{NodeID: "member-1"}, state, nil, errors.New("boom"))
 	if err != nil {
@@ -47,7 +47,7 @@ func TestBuildStateGraph_skipOnFailureRecovery(t *testing.T) {
 			},
 		}},
 	}
-	g, _, err := BuildStateGraphWithAgents(context.Background(), cfg, nil, nil)
+	g, _, _, err := BuildStateGraphWithAgents(context.Background(), cfg, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestFailureRecoveryAfterNode_fallbackAgent(t *testing.T) {
 		ID:            "member-1",
 		AgentName:     "primary-key",
 		FallbackAgent: "backup-key",
-	})
+	}, backup)
 	out, err := cb(context.Background(), &trpcgraph.NodeCallbackContext{NodeID: "member-1"}, state, nil, errors.New("primary failed"))
 	if err != nil {
 		t.Fatal(err)

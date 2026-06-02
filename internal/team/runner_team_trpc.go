@@ -137,7 +137,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	}
 	teamDeps := TRPCTeamBuilderDeps{BuilderDeps: builderDeps, UseCache: true}
 
-	root, memberLookup, graphExecID, compiledGraphCfg, err := r.compileTeamRuntime(ctx, sess, teamRow, def, mode, teamDeps, teamEmitter, run.ID)
+	root, memberLookup, graphExecID, compiledTeam, err := r.compileTeamRuntime(ctx, sess, teamRow, def, mode, teamDeps, teamEmitter, run.ID)
 	if err != nil {
 		turnStatus = biz.TeamMemberStepStatusError
 		r.finishRunErr(ctx, &run, t0, err.Error())
@@ -164,7 +164,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
 
-	obs := r.startObservers(ctx, sess, teamRow, def, run, graphExecID, compiledGraphCfg)
+	obs := r.startObservers(ctx, sess, teamRow, def, run, graphExecID, compiledTeam)
 	defer obs.stopAll()
 
 	rl := agent.ResolveRalphLoopTurn(ar.agent.Settings)

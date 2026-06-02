@@ -114,7 +114,6 @@ func compactNodesForVersion(nodes []NodeDef) []NodeDef {
 		out[i].Instruction = ""
 		out[i].InputMapperJSON = ""
 		out[i].OutputMapperJSON = ""
-		out[i].ReviewRules = ""
 	}
 	return out
 }

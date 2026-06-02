@@ -236,7 +236,6 @@ func BuildOrchestrationRegistryFromGraph(def *GraphDefinition) OrchestrationRegi
 			NodeID:    nodeID,
 			AgentKey:  agentName,
 			AgentName: agentName,
-			Role:      strings.TrimSpace(n.RequiredRole),
 		})
 	}
 	return NewOrchestrationRegistry(entries)

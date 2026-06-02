@@ -1,6 +1,7 @@
 package loggateway
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -20,8 +21,6 @@ import (
 type Gateway struct {
 	core        zapcore.Core
 	logger      *zap.Logger
-	sugar       *zap.SugaredLogger
-	kratosAdp   *KratosAdapter
 	base        []Field
 	outputDir   string
 	pipeline    atomic.Pointer[logpipeline.Pipeline]
@@ -39,7 +38,9 @@ func New(c *conf.Logging) *Gateway {
 	if outputDir == "" {
 		outputDir = defaultOutputDir()
 	}
-	os.MkdirAll(outputDir, 0755)
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return NewNoop()
+	}
 
 	maxSize := c.GetMaxSizeMb()
 	if maxSize <= 0 {
@@ -93,12 +94,9 @@ func New(c *conf.Logging) *Gateway {
 	)
 
 	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
-	sugar := logger.Sugar()
 	g := &Gateway{
 		core:        core,
 		logger:      logger,
-		sugar:       sugar,
-		kratosAdp:   &KratosAdapter{sugar: sugar},
 		outputDir:   outputDir,
 		atomicLevel: atomicLevel,
 	}
@@ -143,12 +141,9 @@ func NewNoop() *Gateway {
 		zapcore.DebugLevel,
 	)
 	logger := zap.New(core)
-	sugar := logger.Sugar()
 	return &Gateway{
 		core:        core,
 		logger:      logger,
-		sugar:       sugar,
-		kratosAdp:   &KratosAdapter{sugar: sugar},
 		atomicLevel: zap.NewAtomicLevelAt(zapcore.DebugLevel),
 	}
 }
@@ -199,32 +194,6 @@ func (g *Gateway) With(fields ...Field) Logger {
 	return &loggerWith{g: g, base: newBase}
 }
 
-func (g *Gateway) BeginStep(stepID, msg string, fields ...Field) *Step {
-	if g == nil {
-		return &Step{g: g, stepID: stepID, start: time.Now()}
-	}
-	all := make([]Field, 0, len(g.base)+len(fields)+2)
-	all = append(all, g.base...)
-	all = append(all, StepID(stepID), Phase("start"))
-	all = append(all, fields...)
-	g.Info(msg, all...)
-	return &Step{g: g, stepID: stepID, start: time.Now()}
-}
-
-func (g *Gateway) KratosLogger(kv ...interface{}) *KratosAdapter {
-	if g == nil {
-		return &KratosAdapter{}
-	}
-	return g.kratosAdp.WithFields(kv...)
-}
-
-func (g *Gateway) ZapSugar() *zap.SugaredLogger {
-	if g == nil {
-		return zap.NewNop().Sugar()
-	}
-	return g.sugar
-}
-
 func (g *Gateway) SetPipeline(p logpipeline.Pipeline) {
 	if g == nil {
 		return
@@ -241,7 +210,11 @@ func (g *Gateway) emitToPipeline(level zapcore.Level, msg string, fields []Field
 		return
 	}
 	func() {
-		defer func() { recover() }()
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Fprintf(os.Stderr, "[loggateway] emitToPipeline panic: %v\n", r)
+			}
+		}()
 		enc := zapcore.NewMapObjectEncoder()
 		for _, f := range fields {
 			f.AddTo(enc)
@@ -249,6 +222,8 @@ func (g *Gateway) emitToPipeline(level zapcore.Level, msg string, fields []Field
 		enc.Fields["level"] = level.String()
 		sessionID, _ := enc.Fields["session_id"].(string)
 		stepID, _ := enc.Fields["step_id"].(string)
+		traceID, _ := enc.Fields["trace_id"].(string)
+		runID, _ := enc.Fields["run_id"].(string)
 		(*pp).Emit(logpipeline.LogEntry{
 			Kind:      logpipeline.KindLog,
 			Level:     level.String(),
@@ -257,6 +232,8 @@ func (g *Gateway) emitToPipeline(level zapcore.Level, msg string, fields []Field
 			Timestamp: time.Now(),
 			SessionID: sessionID,
 			StepID:    stepID,
+			TraceID:   traceID,
+			RunID:     runID,
 		})
 	}()
 }
@@ -350,15 +327,6 @@ func (l *loggerWith) With(fields ...Field) Logger {
 	return &loggerWith{g: l.g, base: newBase}
 }
 
-func (l *loggerWith) BeginStep(stepID, msg string, fields ...Field) *Step {
-	all := make([]Field, 0, len(l.base)+len(fields)+2)
-	all = append(all, l.base...)
-	all = append(all, StepID(stepID), Phase("start"))
-	all = append(all, fields...)
-	l.Info(msg, all...)
-	return &Step{g: l.g, stepID: stepID, start: time.Now()}
-}
-
 type noopLogger struct{}
 
 func (noopLogger) Debug(string, ...Field) {}
@@ -366,6 +334,3 @@ func (noopLogger) Info(string, ...Field)  {}
 func (noopLogger) Warn(string, ...Field)  {}
 func (noopLogger) Error(string, ...Field) {}
 func (noopLogger) With(...Field) Logger   { return noopLogger{} }
-func (noopLogger) BeginStep(stepID, _ string, _ ...Field) *Step {
-	return &Step{stepID: stepID, start: time.Now()}
-}

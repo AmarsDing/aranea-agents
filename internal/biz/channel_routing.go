@@ -96,7 +96,7 @@ func MatchRoute(r ChannelRouting, peerID string) (agentID, teamID string) {
 
 // ResolveChannelTarget resolves routing to session owner_type + agent_id or team_id.
 // agent identifiers may be UUID or agent_key.
-func ResolveChannelTarget(ctx context.Context, agents AgentRepository, teams TeamRepository, r ChannelRouting, peerID string) (ownerType, agentID, teamID string, err error) {
+func ResolveChannelTarget(ctx context.Context, agents AgentRepository, teams TeamReader, r ChannelRouting, peerID string) (ownerType, agentID, teamID string, err error) {
 	ra, rt := MatchRoute(r, peerID)
 	teamID = strings.TrimSpace(rt)
 	if teamID != "" {

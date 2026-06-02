@@ -56,7 +56,7 @@ func TestParallelBranchNodeIDs_parallelJoin(t *testing.T) {
 			{From: "member-2", To: "member-3"},
 		},
 	}
-	branches := parallelBranchNodeIDs(cfg)
+	branches := parallelBranchNodeIDs(cfg, nil)
 	if len(branches) != 2 {
 		t.Fatalf("branches=%v", branches)
 	}
@@ -81,9 +81,9 @@ func TestApplyParallelFailContinue(t *testing.T) {
 			{ID: "member-2", Type: "agent", FailureAction: FailureDefaultRetryThenBlock, RetryMaxAttempts: 2},
 			{ID: "member-3", Type: "agent", FailureAction: FailureDefaultRetryThenBlock},
 		},
-		FailurePolicy: &TeamFailurePolicy{ParallelFail: ParallelFailContinue},
 	}
-	out := ApplyParallelFailContinue(cfg)
+	policy := &TeamFailurePolicy{ParallelFail: ParallelFailContinue}
+	out := ApplyParallelFailContinue(cfg, policy, nil)
 	if out.Nodes[0].FailureAction != FailureOnFailureSkip {
 		t.Fatalf("member-1 action=%q", out.Nodes[0].FailureAction)
 	}
@@ -100,16 +100,16 @@ func TestApplyParallelFailContinue(t *testing.T) {
 
 func TestApplyParallelFailContinue_explicitBranchIDs(t *testing.T) {
 	cfg := GraphBuildConfig{
-		FinishPoint:       "member-3",
-		ParallelBranchIDs: []string{"member-1", "member-2"},
+		FinishPoint: "member-3",
 		Nodes: []NodeDef{
 			{ID: "member-1", Type: "agent", FailureAction: FailureDefaultRetryThenBlock},
 			{ID: "member-2", Type: "agent", FailureAction: FailureDefaultRetryThenBlock},
 			{ID: "member-3", Type: "agent", FailureAction: FailureDefaultRetryThenBlock},
 		},
-		FailurePolicy: &TeamFailurePolicy{ParallelFail: ParallelFailContinue},
 	}
-	out := ApplyParallelFailContinue(cfg)
+	policy := &TeamFailurePolicy{ParallelFail: ParallelFailContinue}
+	branchIDs := []string{"member-1", "member-2"}
+	out := ApplyParallelFailContinue(cfg, policy, branchIDs)
 	if out.Nodes[0].FailureAction != FailureOnFailureSkip {
 		t.Fatalf("member-1 action=%q", out.Nodes[0].FailureAction)
 	}
@@ -290,7 +290,7 @@ func TestFinalizeGraphFailurePolicy(t *testing.T) {
 		cfg := GraphBuildConfig{
 			Nodes: []NodeDef{{ID: "n1", Type: "agent", FailureAction: FailureDefaultRetryThenBlock}},
 		}
-		out := FinalizeGraphFailurePolicy(cfg)
+		out := FinalizeGraphFailurePolicy(cfg, nil, nil)
 		if out.Nodes[0].FailureAction != FailureDefaultRetryThenBlock {
 			t.Fatalf("no policy should not change action")
 		}
@@ -300,7 +300,7 @@ func TestFinalizeGraphFailurePolicy(t *testing.T) {
 		cfg := GraphBuildConfig{
 			Nodes: []NodeDef{{ID: "n1", Type: "agent", FailureAction: FailureDefaultSkip}},
 		}
-		out := FinalizeGraphFailurePolicy(cfg)
+		out := FinalizeGraphFailurePolicy(cfg, nil, nil)
 		if out.Nodes[0].Type != "function" {
 			t.Fatalf("skip node should be converted to function: type=%q", out.Nodes[0].Type)
 		}
@@ -320,7 +320,7 @@ func TestParallelBranchNodeIDs_noFinishPoint(t *testing.T) {
 	cfg := GraphBuildConfig{
 		Edges: []EdgeDef{{From: "a", To: "b"}},
 	}
-	branches := parallelBranchNodeIDs(cfg)
+	branches := parallelBranchNodeIDs(cfg, nil)
 	if branches != nil {
 		t.Fatalf("expected nil without finish point, got %v", branches)
 	}
@@ -331,7 +331,7 @@ func TestParallelBranchNodeIDs_singleFeeder(t *testing.T) {
 		FinishPoint: "end",
 		Edges:       []EdgeDef{{From: "a", To: "end"}},
 	}
-	branches := parallelBranchNodeIDs(cfg)
+	branches := parallelBranchNodeIDs(cfg, nil)
 	if branches != nil {
 		t.Fatalf("expected nil with single feeder, got %v", branches)
 	}
@@ -345,7 +345,7 @@ func TestParallelBranchNodeIDs_transferEdgesIgnored(t *testing.T) {
 			{From: "b", To: "end", Kind: "transfer"},
 		},
 	}
-	branches := parallelBranchNodeIDs(cfg)
+	branches := parallelBranchNodeIDs(cfg, nil)
 	if branches != nil {
 		t.Fatalf("transfer edges should not count as feeders, got %v", branches)
 	}

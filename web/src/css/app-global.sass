@@ -1086,45 +1086,60 @@ $chat-user-max: 46rem
 
 body:not(.body--dark) .chat-page
   .chat-message-bubble--received
-    background: var(--glass-elevated)
-    border: 1px solid var(--glass-border)
+    background: var(--chat-bubble-cream)
+    border: 1px solid var(--chat-bubble-cream-border)
     box-shadow: var(--glass-inner-highlight)
-    color: var(--color-text-primary)
+    color: var(--chat-bubble-cream-text)
   .chat-message-bubble--received .message-name
-    color: var(--color-text-primary)
+    color: var(--chat-bubble-cream-text)
   .chat-message-bubble--received .message-stamp
-    color: var(--color-text-secondary)
+    color: var(--chat-bubble-cream-text-muted)
   .chat-message-bubble--sent
-    background: var(--color-accent)
-    border: 1px solid rgba(220, 160, 62, 0.42)
-    box-shadow: var(--glass-inner-highlight)
-    color: var(--color-on-accent)
+    background: color-mix(in srgb, var(--color-accent) 14%, var(--glass-elevated))
+    border: 1px solid color-mix(in srgb, var(--color-accent) 38%, var(--glass-border))
+    box-shadow: var(--glass-inner-highlight), 0 0 12px rgba(220, 160, 62, 0.08)
+    color: var(--chat-bubble-cream-text)
   .chat-message-bubble--sent .message-name,
   .chat-message-bubble--sent .message-stamp
-    color: rgba(255, 255, 255, 0.94)
-  .chat-message-bubble--sent .message-stamp
-    color: rgba(255, 255, 255, 0.78)
+    color: var(--chat-bubble-cream-text-muted)
   .chat-q-message:hover .chat-message-bubble--received
-    background: var(--glass-surface-hover)
+    background: var(--chat-bubble-cream-hover)
     border-color: rgba(235, 220, 200, 0.85)
   .chat-q-message:hover .chat-message-bubble--sent
-    background: var(--color-accent-hover)
+    background: color-mix(in srgb, var(--color-accent) 22%, var(--glass-surface-hover))
+    box-shadow: var(--glass-inner-highlight), 0 0 16px rgba(220, 160, 62, 0.12)
   .message-avatar--user
-    background: var(--glass-elevated) !important
-    color: var(--color-accent) !important
-    border: 1px solid var(--glass-border)
+    background: var(--color-accent) !important
+    color: var(--color-text-primary) !important
+    border: 1px solid color-mix(in srgb, var(--color-accent) 38%, var(--glass-border))
   .chat-message-content :is(h1, h2, h3, h4, h5, h6)
-    color: var(--color-text-heading)
+    color: var(--chat-bubble-cream-text)
   .chat-message-content a
     color: var(--color-accent)
     border-bottom-color: rgba(220, 160, 62, 0.45)
   .chat-message-content a:hover
     color: var(--color-accent-hover)
   .chat-message-content th
-    color: var(--color-text-primary)
+    color: var(--chat-bubble-cream-text)
     background: rgba(220, 160, 62, 0.1)
   .chat-tool-details__summary-text
-    color: var(--color-text-primary)
+    color: var(--chat-bubble-cream-text)
+  .chat-message-bubble--send-failed,
+  .chat-message-bubble--tool-failed
+    color: var(--chat-bubble-cream-failed-text)
+  .chat-message-bubble--send-failed .chat-message-content,
+  .chat-message-bubble--tool-failed .chat-message-content
+    color: var(--chat-bubble-cream-failed-text)
+  .chat-message-bubble--send-failed .chat-message-content :is(p, li, span),
+  .chat-message-bubble--tool-failed .chat-message-content :is(p, li, span)
+    color: var(--chat-bubble-cream-failed-text)
+  .chat-message-bubble--sent .chat-message-content a
+    color: #8B5A2B
+    border-bottom-color: rgba(139, 90, 43, 0.35)
+  .chat-message-bubble--sent .chat-message-content a:hover
+    color: #6B4226
+  .chat-message-bubble--sent .chat-message-content th
+    background: rgba(180, 130, 40, 0.12)
 
 body.body--dark .chat-page
   .chat-message-bubble--received,

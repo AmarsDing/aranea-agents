@@ -29,6 +29,7 @@ type trpcGraphRuntime struct {
 	graphID   string
 	execID    string
 	lg        loggateway.Logger
+	bridge    *graphtrpc.EventBridge
 
 	cancelMu  sync.Mutex
 	runCancel context.CancelFunc
@@ -93,7 +94,7 @@ func (r *trpcGraphRuntime) Run(ctx context.Context, initialState map[string]any)
 			close(out)
 		}()
 		for e := range eventCh {
-			runtimeEvt := convertTrpcEvent(e, r.eventBus, r.sessionID, r.graphID, r.execID, r.lg)
+			runtimeEvt := convertTrpcEvent(e, r.bridge, r.lg)
 			out <- runtimeEvt
 		}
 	})
@@ -142,7 +143,7 @@ func (r *trpcGraphRuntime) Resume(ctx context.Context, lineageID string, resumeV
 			close(out)
 		}()
 		for e := range eventCh {
-			runtimeEvt := convertTrpcEvent(e, r.eventBus, r.sessionID, r.graphID, r.execID, r.lg)
+			runtimeEvt := convertTrpcEvent(e, r.bridge, r.lg)
 			out <- runtimeEvt
 		}
 	})
@@ -206,16 +207,11 @@ func (r *trpcGraphRuntime) GetLineageID() string {
 	return r.lineageID
 }
 
-func convertTrpcEvent(e *trpcevent.Event, bus event.Bus, sessionID, graphID, execID string, lg loggateway.Logger) biz.GraphRuntimeEvent {
-	var bridge *graphtrpc.EventBridge
-	if bus != nil {
-		bridge = graphtrpc.NewEventBridge(bus, sessionID, graphID, execID, nil)
-	}
-
+func convertTrpcEvent(e *trpcevent.Event, bridge *graphtrpc.EventBridge, lg loggateway.Logger) biz.GraphRuntimeEvent {
 	if bridge != nil {
 		env := bridge.ConvertEvent(e)
 		if env != nil {
-			bus.Publish(context.Background(), *env)
+			bridge.EventBus().Publish(context.Background(), *env)
 		}
 	}
 
@@ -287,11 +283,8 @@ func bizCfgToTrpc(cfg biz.GraphBuildConfig) graphtrpc.GraphBuildConfig {
 			ID: n.ID, FuncRef: n.FuncRef, Type: n.Type, Description: n.Description,
 			Instruction: n.Instruction, ModelName: n.ModelName, ToolNames: n.ToolNames,
 			AgentName: n.AgentName, InterruptBefore: n.InterruptBefore, InterruptAfter: n.InterruptAfter,
-			Destinations: n.Destinations, RequiredRole: n.RequiredRole, AssignmentMode: n.AssignmentMode,
-			AssignmentStrategy: n.AssignmentStrategy, ReviewerAgent: n.ReviewerAgent, ReviewRules: n.ReviewRules,
-			TimeoutSeconds: n.TimeoutSeconds, HeartbeatIntervalSeconds: n.HeartbeatIntervalSeconds,
-			EnableLeaseExtension: n.EnableLeaseExtension,
-			RetryMaxAttempts:     n.RetryMaxAttempts, FailureAction: n.FailureAction, FallbackAgent: n.FallbackAgent,
+			Destinations: n.Destinations,
+			RetryMaxAttempts: n.RetryMaxAttempts, FailureAction: n.FailureAction, FallbackAgent: n.FallbackAgent,
 			InputMapperJSON: n.InputMapperJSON, OutputMapperJSON: n.OutputMapperJSON,
 			IsolatedMessages: n.IsolatedMessages, InputFromLastResponse: n.InputFromLastResponse,
 			CacheEnabled: n.CacheEnabled, CacheTTLSeconds: n.CacheTTLSeconds,
@@ -324,7 +317,6 @@ func bizCfgToTrpc(cfg biz.GraphBuildConfig) graphtrpc.GraphBuildConfig {
 		StateFields: stateFields, EntryPoint: cfg.EntryPoint, FinishPoint: cfg.FinishPoint,
 		EnableCheckpoint: cfg.EnableCheckpoint, ExecutionEngine: graphtrpc.ExecutionEngineType(cfg.ExecutionEngine),
 		InterruptBefore: cfg.InterruptBefore, InterruptAfter: cfg.InterruptAfter,
-		FailurePolicy: cfg.FailurePolicy,
 	}
 }
 
@@ -335,11 +327,8 @@ func trpcCfgToBiz(cfg graphtrpc.GraphBuildConfig) biz.GraphBuildConfig {
 			ID: n.ID, FuncRef: n.FuncRef, Type: n.Type, Description: n.Description,
 			Instruction: n.Instruction, ModelName: n.ModelName, ToolNames: n.ToolNames,
 			AgentName: n.AgentName, InterruptBefore: n.InterruptBefore, InterruptAfter: n.InterruptAfter,
-			Destinations: n.Destinations, RequiredRole: n.RequiredRole, AssignmentMode: n.AssignmentMode,
-			AssignmentStrategy: n.AssignmentStrategy, ReviewerAgent: n.ReviewerAgent, ReviewRules: n.ReviewRules,
-			TimeoutSeconds: n.TimeoutSeconds, HeartbeatIntervalSeconds: n.HeartbeatIntervalSeconds,
-			EnableLeaseExtension: n.EnableLeaseExtension,
-			RetryMaxAttempts:     n.RetryMaxAttempts, FailureAction: n.FailureAction, FallbackAgent: n.FallbackAgent,
+			Destinations: n.Destinations,
+			RetryMaxAttempts: n.RetryMaxAttempts, FailureAction: n.FailureAction, FallbackAgent: n.FallbackAgent,
 			InputMapperJSON: n.InputMapperJSON, OutputMapperJSON: n.OutputMapperJSON,
 			IsolatedMessages: n.IsolatedMessages, InputFromLastResponse: n.InputFromLastResponse,
 			CacheEnabled: n.CacheEnabled, CacheTTLSeconds: n.CacheTTLSeconds,
@@ -377,18 +366,19 @@ func trpcCfgToBiz(cfg graphtrpc.GraphBuildConfig) biz.GraphBuildConfig {
 
 func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID, lineageID string) (*trpcGraphRuntime, error) {
 	trpcCfg := bizCfgToTrpc(cfg)
-	g, subAgents, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, trpcCfg, f.registry, f.resolvers.ToBuildDepsPtr(), f.lg)
+	g, subAgents, cbState, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, trpcCfg, f.registry, f.resolvers.ToBuildDepsPtr(), f.lg)
 	if err != nil {
 		return nil, err
 	}
 	name := cfg.EntryPoint
-	graphAgent, err := f.createAgent(name, g, cfg.EnableCheckpoint, graphtrpc.ExecutionEngineType(cfg.ExecutionEngine), subAgents)
+	graphAgent, err := f.createAgent(name, g, cfg.EnableCheckpoint, graphtrpc.ExecutionEngineType(cfg.ExecutionEngine), cbState, subAgents)
 	if err != nil {
 		return nil, err
 	}
 	return &trpcGraphRuntime{
 		agent: graphAgent, graph: g, lineageID: lineageID, eventBus: f.eventBus,
 		sessionID: sessionID, graphID: graphID, execID: execID, lg: f.lg,
+		bridge: graphtrpc.NewEventBridge(f.eventBus, sessionID, graphID, execID, f.lg),
 	}, nil
 }
 
@@ -422,7 +412,7 @@ func (f *trpcGraphBuilderFactory) BuildAndResume(ctx context.Context, cfg biz.Gr
 
 func (f *trpcGraphBuilderFactory) Visualize(ctx context.Context, cfg biz.GraphBuildConfig) (any, error) {
 	trpcCfg := bizCfgToTrpc(cfg)
-	g, _, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, trpcCfg, f.registry, f.resolvers.ToBuildDepsPtr(), f.lg)
+	g, _, _, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, trpcCfg, f.registry, f.resolvers.ToBuildDepsPtr(), f.lg)
 	if err != nil {
 		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("build state graph for visualization: %v", err))
 	}
@@ -500,23 +490,28 @@ func (f *trpcGraphBuilderFactory) AgentExists(ctx context.Context, agentID strin
 func (f *trpcGraphBuilderFactory) FindNodeDef(cfg biz.GraphBuildConfig, nodeID string) *biz.NodeDefInfo {
 	for i := range cfg.Nodes {
 		if cfg.Nodes[i].ID == nodeID {
-			return &biz.NodeDefInfo{
-				RequiredRole: cfg.Nodes[i].RequiredRole, AssignmentMode: cfg.Nodes[i].AssignmentMode,
-				AssignmentStrategy: cfg.Nodes[i].AssignmentStrategy, ReviewerAgent: cfg.Nodes[i].ReviewerAgent,
-				ReviewRules: cfg.Nodes[i].ReviewRules, TimeoutSeconds: cfg.Nodes[i].TimeoutSeconds,
-				HeartbeatIntervalSeconds: cfg.Nodes[i].HeartbeatIntervalSeconds,
-				EnableLeaseExtension:     cfg.Nodes[i].EnableLeaseExtension,
+			info := &biz.NodeDefInfo{}
+			if m, ok := cfg.TaskMeta[nodeID]; ok {
+				info.RequiredRole = m.RequiredRole
+				info.AssignmentMode = m.AssignmentMode
+				info.AssignmentStrategy = m.AssignmentStrategy
+				info.ReviewerAgent = m.ReviewerAgent
+				info.ReviewRules = m.ReviewRules
+				info.TimeoutSeconds = m.TimeoutSeconds
+				info.HeartbeatIntervalSeconds = m.HeartbeatIntervalSeconds
+				info.EnableLeaseExtension = m.EnableLeaseExtension
 			}
+			return info
 		}
 	}
 	return nil
 }
 
-func (f *trpcGraphBuilderFactory) createAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool, ee graphtrpc.ExecutionEngineType, subAgents []trpcagent.Agent) (*graphtrpc.GraphAgent, error) {
+func (f *trpcGraphBuilderFactory) createAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool, ee graphtrpc.ExecutionEngineType, cbState *graphtrpc.CircuitBreakerState, subAgents []trpcagent.Agent) (*graphtrpc.GraphAgent, error) {
 	if f.saver != nil && enableCheckpoint {
-		return graphtrpc.NewGraphAgentWithSaver(name, g, f.saver, ee, subAgents...)
+		return graphtrpc.NewGraphAgentWithSaver(name, g, f.saver, ee, cbState, subAgents...)
 	} else if ee != "" && ee != graphtrpc.EngineBSP {
-		return graphtrpc.NewGraphAgentWithEngine(name, g, enableCheckpoint, ee, subAgents...)
+		return graphtrpc.NewGraphAgentWithEngine(name, g, enableCheckpoint, ee, cbState, subAgents...)
 	}
 	return graphtrpc.NewGraphAgent(name, g, enableCheckpoint, subAgents...)
 }

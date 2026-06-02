@@ -119,6 +119,7 @@ func NewRunner(
 			Sessions:  sessions,
 			Compress:  compress,
 			RunnerMgr: rt.NewRunnerManagerFromPersist(persist, lg),
+			Lg:        lg,
 		},
 	}
 }

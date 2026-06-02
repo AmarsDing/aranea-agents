@@ -89,7 +89,7 @@ func (a *agentLookupAdapter) GetAgentByID(ctx context.Context, id string) (struc
 
 // teamLookupAdapter adapts biz.TeamRepository to session.TeamLookup.
 type teamLookupAdapter struct {
-	teams TeamRepository
+	teams TeamReader
 }
 
 func (a *teamLookupAdapter) GetTeamByID(ctx context.Context, id string) (struct{}, error) {
@@ -106,6 +106,6 @@ func NewSessionAgentLookup(agents AgentRepository) session.AgentLookup {
 }
 
 // NewSessionTeamLookup creates a session.TeamLookup from biz.TeamRepository.
-func NewSessionTeamLookup(teams TeamRepository) session.TeamLookup {
+func NewSessionTeamLookup(teams TeamReader) session.TeamLookup {
 	return &teamLookupAdapter{teams: teams}
 }

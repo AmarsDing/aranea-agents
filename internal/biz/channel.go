@@ -143,7 +143,7 @@ type ChannelUsecase struct {
 	peers            ChannelPeerSessionRepo
 	inboundReceipts  ChannelInboundReceiptRepo
 	agents           AgentRepository
-	teams            TeamRepository
+	teams            TeamReader
 	crypto           *CredentialCrypto
 	lg               loggateway.Logger
 }
@@ -153,7 +153,7 @@ func NewChannelUsecase(
 	peers ChannelPeerSessionRepo,
 	inboundReceipts ChannelInboundReceiptRepo,
 	agents AgentRepository,
-	teams TeamRepository,
+	teams TeamReader,
 	crypto *CredentialCrypto,
 	lg loggateway.Logger,
 ) *ChannelUsecase {

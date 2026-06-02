@@ -90,34 +90,26 @@ func TestFromProtoStateField(t *testing.T) {
 
 func TestFromProtoNode(t *testing.T) {
 	in := &graphv1.NodeDef{
-		Id:                       "node-1",
-		FuncRef:                  "fn1",
-		Type:                     "llm",
-		Description:              "test node",
-		Instruction:              "say hi",
-		ModelName:                "gpt-4o",
-		ToolNames:                []string{"search"},
-		AgentName:                "helper",
-		InterruptBefore:          true,
-		InterruptAfter:           false,
-		Destinations:             []string{"next"},
-		RequiredRole:             "admin",
-		AssignmentMode:           "static",
-		AssignmentStrategy:       "round_robin",
-		ReviewerAgent:            "reviewer",
-		ReviewRules:              "must approve",
-		TimeoutSeconds:           30,
-		HeartbeatIntervalSeconds: 10,
-		EnableLeaseExtension:     true,
-		RetryMaxAttempts:         3,
-		FailureAction:            "fallback",
-		FallbackAgent:            "backup",
-		InputMapperJson:          `{"x":"y"}`,
-		OutputMapperJson:         `{"a":"b"}`,
-		IsolatedMessages:         true,
-		InputFromLastResponse:    false,
-		CacheEnabled:             true,
-		CacheTtlSeconds:          300,
+		Id:                    "node-1",
+		FuncRef:               "fn1",
+		Type:                  "llm",
+		Description:           "test node",
+		Instruction:           "say hi",
+		ModelName:             "gpt-4o",
+		ToolNames:             []string{"search"},
+		AgentName:             "helper",
+		InterruptBefore:       true,
+		InterruptAfter:        false,
+		Destinations:          []string{"next"},
+		RetryMaxAttempts:      3,
+		FailureAction:         "fallback",
+		FallbackAgent:         "backup",
+		InputMapperJson:       `{"x":"y"}`,
+		OutputMapperJson:      `{"a":"b"}`,
+		IsolatedMessages:      true,
+		InputFromLastResponse: false,
+		CacheEnabled:          true,
+		CacheTtlSeconds:       300,
 	}
 	got := fromProtoNode(in)
 	if got.ID != "node-1" {
@@ -134,9 +126,6 @@ func TestFromProtoNode(t *testing.T) {
 	}
 	if len(got.ToolNames) != 1 || got.ToolNames[0] != "search" {
 		t.Errorf("ToolNames = %v", got.ToolNames)
-	}
-	if got.TimeoutSeconds != 30 {
-		t.Errorf("TimeoutSeconds = %d", got.TimeoutSeconds)
 	}
 	if got.RetryMaxAttempts != 3 {
 		t.Errorf("RetryMaxAttempts = %d", got.RetryMaxAttempts)

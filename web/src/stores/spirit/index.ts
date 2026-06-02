@@ -13,6 +13,7 @@ export const useSpiritTeamStore = defineStore("spiritTeam", () => {
   const loading = ref(false);
   const teamProgress = ref<TeamProgressView[]>([]);
   const allTeamsCompleted = ref(false);
+  const synthesisCompleted = ref(false);
   const synthesisResult = ref<SynthesisOutput | null>(null);
 
   const activeTeam = computed(() =>
@@ -123,6 +124,7 @@ export const useSpiritTeamStore = defineStore("spiritTeam", () => {
 
     switch (env.type) {
       case "spirit_team_assembled":
+        synthesisCompleted.value = false;
         if (teamId) {
           addTeam({
             id: teamId,
@@ -189,6 +191,7 @@ export const useSpiritTeamStore = defineStore("spiritTeam", () => {
         break;
 
       case "spirit_synthesis_completed":
+        synthesisCompleted.value = true;
         allTeamsCompleted.value = false;
         {
           const rawResults = Array.isArray(env.metadata?.team_results)
@@ -221,6 +224,7 @@ export const useSpiritTeamStore = defineStore("spiritTeam", () => {
     loading,
     teamProgress,
     allTeamsCompleted,
+    synthesisCompleted,
     synthesisResult,
     activeTeam,
     activeTeams,

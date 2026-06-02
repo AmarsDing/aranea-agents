@@ -44,7 +44,7 @@ func buildRuntimeGraphFromDef(t *testing.T, def Definition) int {
 	for i, e := range cfg.Edges {
 		trpcCfg.Edges[i] = graphtrpc.EdgeDef{From: e.From, To: e.To}
 	}
-	g, agents, err := graphtrpc.BuildStateGraphWithAgents(context.Background(), trpcCfg, &graphtrpc.BuildDeps{
+	g, agents, _, err := graphtrpc.BuildStateGraphWithAgents(context.Background(), trpcCfg, &graphtrpc.BuildDeps{
 		Agents: stubAgentResolver{},
 	}, nil)
 	if err != nil {

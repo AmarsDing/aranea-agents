@@ -75,7 +75,7 @@ func (h *ChannelIngress) executeAsyncGraphTarget(
 			return "", "", "", perr
 		}
 		agentKey := h.channels.AgentKeyResolver(ctx)
-		cfg, cerr := team.CompileToGraphRuntimeConfigFromJSON(ctx, def, teamRow.DefinitionJSON, agentKey, nil, h.lg)
+		ct, cerr := team.CompileToGraphRuntimeConfigFromJSON(ctx, def, teamRow.DefinitionJSON, agentKey, nil, h.lg)
 		if cerr != nil {
 			return "", "", "", cerr
 		}
@@ -83,7 +83,7 @@ func (h *ChannelIngress) executeAsyncGraphTarget(
 		if graphID == "" {
 			graphID = "team-" + strings.TrimSpace(teamRow.ID)
 		}
-		execID, gerr := h.graphs.ExecuteGraphBuildConfig(ctx, graphID, sessionID, cfg, initialState)
+		execID, gerr := h.graphs.ExecuteGraphBuildConfig(ctx, graphID, sessionID, ct.GraphBuildConfig, initialState)
 		if gerr != nil {
 			return "", "", "", gerr
 		}

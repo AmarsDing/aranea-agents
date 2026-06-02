@@ -19,7 +19,8 @@ func NewTaskUsecaseGraphTaskCreator(uc *biz.TaskUsecase) TeamGraphTaskCreator {
 }
 
 func (c taskUsecaseCreator) CreateGraphTask(ctx context.Context, graphExecutionID, _ string, node biz.NodeDef) error {
-	role, mode, strategy, input := biz.GraphTaskInputFromNode(node)
+	var meta biz.NodeTaskMeta
+	role, mode, strategy, input := biz.GraphTaskInputFromNode(node, meta)
 	_, err := c.uc.CreateTask(ctx, node.ID, graphExecutionID, role, mode, strategy, input, "{}")
 	return err
 }

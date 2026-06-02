@@ -240,8 +240,8 @@ func (u *SpiritTeamUsecase) CancelTeam(ctx context.Context, teamID string) error
 	if err != nil {
 		return kerrors.NotFound("SPIRIT", "team not found")
 	}
-	if t.Status != "active" && t.Status != "waiting_deps" {
-		return kerrors.BadRequest("SPIRIT", "only active or waiting teams can be cancelled")
+	if t.Status != "active" && t.Status != "waiting_deps" && t.Status != "running" {
+		return kerrors.BadRequest("SPIRIT", "only active, waiting or running teams can be cancelled")
 	}
 	_, err = u.teamUC.Update(ctx, teamID, Team{Status: "cancelled"})
 	if err != nil {
@@ -300,13 +300,28 @@ func extractKeyFindings(content string) string {
 	var findings []string
 	for _, line := range strings.Split(content, "\n") {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") || strings.HasPrefix(trimmed, "> ") {
-			if len(findings) < 5 {
-				findings = append(findings, trimmed)
-			}
+		isBullet := strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ")
+		isNumbered := isNumberedListItem(trimmed)
+		isQuote := strings.HasPrefix(trimmed, "> ")
+		if (isBullet || isNumbered) && !isQuote && len(findings) < 5 {
+			findings = append(findings, trimmed)
 		}
 	}
 	return strings.Join(findings, "\n")
+}
+
+func isNumberedListItem(s string) bool {
+	if len(s) < 3 {
+		return false
+	}
+	i := 0
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	if i == 0 || i >= len(s) {
+		return false
+	}
+	return (s[i] == '.' || s[i] == ')') && i+1 < len(s) && s[i+1] == ' '
 }
 
 func (u *SpiritTeamUsecase) CheckTeamProgress(ctx context.Context, spiritSessionID string) ([]TeamProgress, error) {

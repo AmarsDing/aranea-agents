@@ -88,7 +88,7 @@ func provideEventBusSideConsumers(
 func provideCronRunnerDeps(
 	cron biz.CronRepo,
 	session *biz.SessionUsecase,
-	teams biz.TeamRepository,
+	teams biz.TeamReader,
 	agents biz.AgentRepository,
 	eventBus event.Bus,
 	chat *service.ChatService,
@@ -559,18 +559,19 @@ func provideChatServiceDeps(
 			Compress:  compress,
 			AfterTurn: biz.NoopNativeTurnAfter{},
 			RunnerMgr: rt.NewRunnerManagerFromPersist(persist, lg),
+			Lg:        lg,
 		},
-		Runs:         runs,
-		PendingQueue: pendingQueue,
-		RT:           rtDeps,
-		Team:         teamDeps,
-		ChTurn:       chTurn,
-		Usage:        usage,
-		Monitor:      mon,
-		Artifacts:    artifacts,
-		A2AUC:        a2aUC,
-		MCPServers:   mcpUC,
-		LG:           lg,
+		Runs:            runs,
+		PendingQueue:    pendingQueue,
+		RT:              rtDeps,
+		Team:            teamDeps,
+		ChTurn:          chTurn,
+		Usage:           usage,
+		Monitor:         mon,
+		Artifacts:       artifacts,
+		A2AUC:           a2aUC,
+		MCPServers:      mcpUC,
+		LG:              lg,
 		SpiritAssembler: spiritAssembler,
 		SpiritSynthesis: spiritSynthesis,
 		OrchCache:       orchCache,
@@ -955,20 +956,20 @@ func agentKeyToID(agents biz.AgentRepository) plugintrpc.AgentKeyResolver {
 
 // wireOut is non-cleanup inject outputs (cleanup must be a top-level injector return for Wire).
 type wireOut struct {
-	App                     *kratos.App
-	Data                    *data.Data
-	CronRunner              *cronrunner.Runner
-	SkillWatch              *watch.Runner
-	AutoMemory              *jobs.AutoMemoryWorker
-	MCPHealthProbe          *health.Runner
-	A2AGatewayHealthProbe   *a2ahealth.Runner
-	EvolutionScanner        *jobs.EvolutionScanner
-	LearningLoopScanner     *jobs.LearningLoopScanner
-	ProviderHealthScanner   *jobs.ProviderHealthScanner
-	ChannelHealthScanner    *jobs.ChannelHealthScanner
-	ChannelDeliveryScanner  *jobs.ChannelDeliveryWorker
-	SessionRunDurableWorker *service.SessionRunDurableWorker
-	ChannelRuntime          *service.ChannelRuntime
+	App                         *kratos.App
+	Data                        *data.Data
+	CronRunner                  *cronrunner.Runner
+	SkillWatch                  *watch.Runner
+	AutoMemory                  *jobs.AutoMemoryWorker
+	MCPHealthProbe              *health.Runner
+	A2AGatewayHealthProbe       *a2ahealth.Runner
+	EvolutionScanner            *jobs.EvolutionScanner
+	LearningLoopScanner         *jobs.LearningLoopScanner
+	ProviderHealthScanner       *jobs.ProviderHealthScanner
+	ChannelHealthScanner        *jobs.ChannelHealthScanner
+	ChannelDeliveryScanner      *jobs.ChannelDeliveryWorker
+	SessionRunDurableWorker     *service.SessionRunDurableWorker
+	ChannelRuntime              *service.ChannelRuntime
 	PluginRuntime               *plugintrpc.Runtime
 	EventStoreCleanup           *jobs.EventStoreCleanup
 	ToolAuditCleanup            *jobs.ToolAuditCleanup

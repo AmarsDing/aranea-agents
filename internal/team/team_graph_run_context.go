@@ -68,7 +68,7 @@ func (s *teamGraphRunSession) stepContext() *GraphRunStepContext {
 }
 
 func buildGraphRunStepContext(defJSON, inputPreview, teamRunID, teamID, sessionID string, lg loggateway.Logger) *GraphRunStepContext {
-	_, memberByNode, stepSortIndex := buildResumeSessionContext(defJSON, inputPreview, lg)
+	_, memberByNode, stepSortIndex := buildResumeSessionContext(defJSON, inputPreview, nil, lg)
 	return &GraphRunStepContext{
 		TeamRunID:     teamRunID,
 		TeamID:        teamID,

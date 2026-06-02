@@ -51,7 +51,13 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 		return nil
 	}
 
-	_ = s.sessions.TransitionStatus(ctx, sessionID, sessstatus.SessionStatusRunning, "")
+	if err := s.sessions.TransitionStatus(ctx, sessionID, sessstatus.SessionStatusRunning, ""); err != nil {
+		s.lg.Warn("团队 Session 状态转换到 running 失败",
+			loggateway.StepID("spirit.transition_running_err"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Err(err),
+		)
+	}
 
 	spiritSessionID := strings.TrimSpace(sess.ParentSessionID)
 	teamID := strings.TrimSpace(sess.TeamID)
@@ -95,7 +101,13 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 	_, _, err = s.team.TeamsNative.RunTurnFromInput(turnCtx, sess, input)
 
 	if err != nil {
-		_ = s.sessions.TransitionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
+		if transErr := s.sessions.TransitionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError); transErr != nil {
+			s.lg.Warn("团队 Session 状态转换到 interrupted 失败",
+				loggateway.StepID("spirit.transition_interrupted_err"),
+				loggateway.Str("session_id", sessionID),
+				loggateway.Err(transErr),
+			)
+		}
 		s.lg.Warn("自动启动团队 Turn 失败",
 			loggateway.StepID("spirit.start_team_fail"),
 			loggateway.Str("session_id", sessionID),
@@ -107,7 +119,13 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 		return err
 	}
 
-	_ = s.sessions.TransitionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")
+	if err := s.sessions.TransitionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, ""); err != nil {
+		s.lg.Warn("团队 Session 状态转换到 completed 失败",
+			loggateway.StepID("spirit.transition_completed_err"),
+			loggateway.Str("session_id", sessionID),
+			loggateway.Err(err),
+		)
+	}
 	if spiritSessionID != "" && teamID != "" {
 		s.HandleTeamTurnResult(ctx, spiritSessionID, teamID, "completed", "")
 	}
@@ -132,10 +150,48 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 	var envType event.EnvelopeType
 	if status == "completed" {
 		envType = event.EnvelopeTypeSpiritTeamCompleted
+		if _, updateErr := s.team.TeamUC.Update(ctx, teamID, biz.Team{Status: "completed"}); updateErr != nil {
+			s.lg.Warn("更新团队状态为 completed 失败",
+				loggateway.StepID("spirit.team.completed_err"),
+				loggateway.Str("team_id", teamID),
+				loggateway.Err(updateErr),
+			)
+		}
 		s.recordTeamCompletion(ctx, team, durationMs)
 		s.scheduleDependentTeams(ctx, spiritSessionID, team)
+	} else if status == "cancelled" {
+		envType = event.EnvelopeTypeSpiritTeamFailed
+		if _, updateErr := s.team.TeamUC.Update(ctx, teamID, biz.Team{Status: "cancelled"}); updateErr != nil {
+			s.lg.Warn("更新团队状态为 cancelled 失败",
+				loggateway.StepID("spirit.team.cancelled_err"),
+				loggateway.Str("team_id", teamID),
+				loggateway.Err(updateErr),
+			)
+		}
+		s.scheduleDependentTeams(ctx, spiritSessionID, team)
+		result, searchErr := s.sessions.Search(ctx, biz.SessionSearchQuery{TeamID: teamID, Limit: 10})
+		if searchErr == nil {
+			for _, sess := range result.Items {
+				if sess.Status == string(sessstatus.SessionStatusRunning) {
+					if transErr := s.sessions.TransitionStatus(ctx, sess.ID, sessstatus.SessionStatusInterrupted, "user_cancelled"); transErr != nil {
+						s.lg.Warn("取消团队 Session 状态转换失败",
+							loggateway.StepID("spirit.cancel_session_transition_err"),
+							loggateway.Str("session_id", sess.ID),
+							loggateway.Err(transErr),
+						)
+					}
+				}
+			}
+		}
 	} else {
 		envType = event.EnvelopeTypeSpiritTeamFailed
+		if _, updateErr := s.team.TeamUC.Update(ctx, teamID, biz.Team{Status: "failed"}); updateErr != nil {
+			s.lg.Warn("更新团队状态为 failed 失败",
+				loggateway.StepID("spirit.team.failed_err"),
+				loggateway.Str("team_id", teamID),
+				loggateway.Err(updateErr),
+			)
+		}
 	}
 
 	if s.bus != nil {
@@ -154,7 +210,7 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		s.bus.Publish(ctx, env)
 
 		progressPct := 100.0
-		if status == "failed" {
+		if status == "failed" || status == "cancelled" {
 			progressPct = 0
 		}
 		progressEnv := event.NewEnvelope(event.EnvelopeTypeSpiritTeamProgress, "spirit-lifecycle", spiritSessionID)
@@ -244,7 +300,7 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 				if allTeams[j].DagNodeID == depID {
 					if allTeams[j].Status == "completed" {
 						found = true
-					} else if allTeams[j].Status == "failed" {
+					} else if allTeams[j].Status == "failed" || allTeams[j].Status == "cancelled" {
 						anyDepFailed = true
 					}
 					break
@@ -362,10 +418,17 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 	if len(teams) == 0 {
 		return
 	}
+	hasCompleted := false
 	for _, t := range teams {
-		if t.Status == "active" || t.Status == "waiting_deps" || t.Status == "assembled" || t.Status == "running" {
+		switch t.Status {
+		case "active", "waiting_deps", "assembled", "running":
 			return
+		case "completed":
+			hasCompleted = true
 		}
+	}
+	if !hasCompleted {
+		return
 	}
 	var teamIDs []string
 	for _, t := range teams {
@@ -490,8 +553,9 @@ func (a *SpiritTeamAssembler) CancelTeam(ctx context.Context, teamID string) err
 	if err := a.spiritUC.CancelTeam(ctx, teamID); err != nil {
 		return err
 	}
-	if a.bus != nil && team.SpiritSessionID != "" {
-		env := event.NewEnvelope(event.EnvelopeTypeSpiritTeamProgress, "spirit-cancel", team.SpiritSessionID)
+	spiritSessionID := strings.TrimSpace(team.SpiritSessionID)
+	if a.bus != nil && spiritSessionID != "" {
+		env := event.NewEnvelope(event.EnvelopeTypeSpiritTeamProgress, "spirit-cancel", spiritSessionID)
 		env.TeamID = teamID
 		env.Metadata = map[string]any{
 			"team_id":   teamID,
@@ -499,6 +563,9 @@ func (a *SpiritTeamAssembler) CancelTeam(ctx context.Context, teamID string) err
 			"status":    "cancelled",
 		}
 		a.bus.Publish(ctx, env)
+	}
+	if a.teamStarter != nil && spiritSessionID != "" {
+		a.teamStarter.HandleTeamTurnResult(ctx, spiritSessionID, teamID, "cancelled", "")
 	}
 	return nil
 }

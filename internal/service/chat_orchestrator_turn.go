@@ -1011,6 +1011,7 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 		}
 		var err error
 		if strings.EqualFold(strings.TrimSpace(sess.OwnerType), "team") {
+			o.transitionSessionStatus(bgCtx, sessionID, sessstatus.SessionStatusRunning, "")
 			_, _, err = o.team.TeamsNative.RunTurnFromInput(bgCtx, sess, pendingInput)
 			spiritSessionID := strings.TrimSpace(sess.ParentSessionID)
 			teamID := strings.TrimSpace(sess.TeamID)

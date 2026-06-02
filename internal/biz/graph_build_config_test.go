@@ -97,7 +97,6 @@ func TestCompactNodesForVersion(t *testing.T) {
 			Instruction:     "do this",
 			InputMapperJSON: `{"x":1}`,
 			OutputMapperJSON: `{"y":2}`,
-			ReviewRules:     "must pass",
 		},
 	}
 	out := compactNodesForVersion(nodes)
@@ -112,9 +111,6 @@ func TestCompactNodesForVersion(t *testing.T) {
 	}
 	if out[0].OutputMapperJSON != "" {
 		t.Errorf("output_mapper should be cleared")
-	}
-	if out[0].ReviewRules != "" {
-		t.Errorf("review_rules should be cleared")
 	}
 	if out[0].ID != "n1" || out[0].Type != "llm" {
 		t.Errorf("id/type should be preserved: %+v", out[0])

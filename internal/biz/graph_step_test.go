@@ -51,7 +51,7 @@ func TestUpsertGraphStep(t *testing.T) {
 func TestEvictIfNeeded(t *testing.T) {
 	uc := &GraphUsecase{
 		executions:       make(map[string]*GraphExecution),
-		teamBuildConfigs: make(map[string]GraphBuildConfig),
+		teamBuildConfigs: make(map[string]*CompiledTeam),
 	}
 
 	for i := 0; i < maxExecutions; i++ {
@@ -73,7 +73,7 @@ func TestEvictIfNeeded(t *testing.T) {
 func TestEvictIfNeeded_skipsRunning(t *testing.T) {
 	uc := &GraphUsecase{
 		executions:       make(map[string]*GraphExecution),
-		teamBuildConfigs: make(map[string]GraphBuildConfig),
+		teamBuildConfigs: make(map[string]*CompiledTeam),
 	}
 
 	uc.executions["running-1"] = &GraphExecution{ID: "running-1", Status: "running"}

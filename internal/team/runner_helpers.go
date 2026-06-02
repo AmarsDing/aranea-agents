@@ -108,12 +108,6 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 		}
 	}
 	if r.td.Pipeline.Bus != nil {
-		cp := *run
-		env := event.NewEnvelope(event.EnvelopeTypeTeamRunFinished, "team-runner", strings.TrimSpace(run.SessionID))
-		env.TeamID = run.TeamID
-		env.Metadata = map[string]any{"run_id": run.ID, "run": cp}
-		r.td.Pipeline.Bus.Publish(ctx, env)
-
 		failEnv := event.NewEnvelope(event.EnvelopeTypeTeamRunFailed, "team-runner", strings.TrimSpace(run.SessionID))
 		failEnv.TeamID = run.TeamID
 		failEnv.Metadata = map[string]any{"run_id": run.ID, "error_message": msg}

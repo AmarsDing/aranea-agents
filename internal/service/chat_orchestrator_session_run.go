@@ -129,6 +129,16 @@ func (o *ChatOrchestrator) onSessionRunSoftBudget(ctx context.Context, run biz.S
 		defer timer.Stop()
 		select {
 		case <-ctx.Done():
+			escalateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			cur, err := o.chTurn.SessionRuns.Get(escalateCtx, runID)
+			if err != nil || cur.ID == "" {
+				return
+			}
+			if cur.Phase != biz.SessionRunPhaseEscalating {
+				return
+			}
+			o.escalateSessionRunToDurable(escalateCtx, sessionID, runID)
 			return
 		case <-timer.C:
 			escalateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

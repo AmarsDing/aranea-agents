@@ -83,32 +83,21 @@ func (r *obsRepo) BatchCreate(ctx context.Context, obs []biz.Observation) error 
 	if len(obs) == 0 {
 		return nil
 	}
-	tx, err := r.data.RawDB().BeginTx(ctx, nil)
-	if err != nil {
-		return kerrors.InternalServer("LEARNING", "begin tx: "+err.Error())
-	}
-	q := `INSERT INTO learning_observations (id, agent_id, session_id, kind, content, metadata, observed_at)
-	      VALUES (?, ?, ?, ?, ?, ?, ?)`
-	stmt, err := tx.PrepareContext(ctx, q)
-	if err != nil {
-		tx.Rollback()
-		return kerrors.InternalServer("LEARNING", "prepare stmt: "+err.Error())
-	}
-	defer stmt.Close()
-	for _, o := range obs {
-		_, err := stmt.ExecContext(ctx,
-			o.ID, o.AgentID, o.SessionID, string(o.Kind), o.Content, o.Metadata,
-			o.ObservedAt.UTC().Format(time.RFC3339),
-		)
-		if err != nil {
-			tx.Rollback()
-			return kerrors.InternalServer("LEARNING", "batch insert observation: "+err.Error())
+	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		e := TxExecerFromCtx(txCtx, r.data.RawDB())
+		q := `INSERT INTO learning_observations (id, agent_id, session_id, kind, content, metadata, observed_at)
+		      VALUES (?, ?, ?, ?, ?, ?, ?)`
+		for _, o := range obs {
+			_, err := e.ExecContext(txCtx, q,
+				o.ID, o.AgentID, o.SessionID, string(o.Kind), o.Content, o.Metadata,
+				o.ObservedAt.UTC().Format(time.RFC3339),
+			)
+			if err != nil {
+				return kerrors.InternalServer("LEARNING", "batch insert observation: "+err.Error())
+			}
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return kerrors.InternalServer("LEARNING", "commit batch: "+err.Error())
-	}
-	return nil
+		return nil
+	})
 }
 
 func (r *patternRepo) ListByAgent(ctx context.Context, agentID string, status string) ([]biz.Pattern, error) {

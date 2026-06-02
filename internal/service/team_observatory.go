@@ -27,11 +27,15 @@ func compileSnapshotToProto(snap team.CompileSnapshot) *v1.CompileTeamGraphRespo
 		})
 	}
 	for _, n := range snap.Nodes {
+		role := ""
+		if m, ok := snap.TaskMeta[n.ID]; ok {
+			role = m.RequiredRole
+		}
 		resp.Nodes = append(resp.Nodes, &v1.CompiledGraphNodeView{
 			Id:               n.ID,
 			Type:             n.Type,
 			AgentName:        n.AgentName,
-			Role:             n.RequiredRole,
+			Role:             role,
 			Description:      n.Description,
 			AgentDisplayName: n.Description,
 			TaskPrompt:       n.Instruction,

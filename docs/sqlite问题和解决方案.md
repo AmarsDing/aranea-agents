@@ -1798,6 +1798,8 @@ Phase 4（长期，需 feature flag + 回滚脚本）─────────
 | **1.2 统一事务管理器（基础设施）** | `ExecInTx` 增强：存储 `*ent.Tx` 到 context（替代原 `*ent.Client`），支持事务传播检测；新增 `TxExecerFromCtx` 返回 `execer` 接口，Raw SQL Repo 可通过此接口参与 Ent 事务；统一 `execer` 接口定义到 tx.go；所有 `readClient`/`clientFromCtx` 更新为从 `*ent.Tx` 提取 `Client()` | tx.go, data.go, usage.go, tool.go, system_setting.go, team_repo.go, llm_provider_model.go, agent_repo.go, task.go, session_repo.go, usage_write.go | ✅ go build + test 通过 |
 | **死代码清理** | 删除 `retryOnBusy`、`isSQLiteBusyErr`、`sqliteWriteRetryMax`（零调用点） | data.go | ✅ go build 通过 |
 | **4.3 补充：channelRuntimeLeaseRepo 收口** | `channelRuntimeLeaseRepo` 存储字段从 `*sql.DB` 改为 `*Data`，通过 `r.data.RawDB()` 访问数据库 | channel_runtime_lease.go | ✅ go build 通过 |
+| **2.2 接口拆分合规化** | `TeamRepository`（21 方法）拆分为 6 个子接口：`TeamReader`（3）、`TeamWriter`（3）、`TeamRunReader`（4）、`TeamRunWriter`（6）、`OrchestrationStepRepo`（2）、`TaskDeadLetterRepo`（3）+ 组合接口 `TeamRunRepo`；消费者按需依赖窄接口：ChannelUsecase→TeamReader，CronRunner→TeamReader，ActivityStepFlusher→OrchestrationStepRepo，TeamGraphRunCoordinator→TeamRunRepo | team_usecase.go, channel.go, channel_routing.go, session_reexport.go, cronrunner/runner.go, activity_step_flusher.go, team_graph_run_coordinator.go, provider.go, wire.go | ✅ go build + wire + test 通过 |
+| **2.3 Schema 迁移框架化** | 创建 `ddl_migration_registry.go`，将 34 个 DDL patch 注册为版本号+名称+函数的声明式列表；`runDDLMigrations` 逐条检查 `isMigrationApplied`，已应用则跳过；替换原 143 行 `ensureSchemaDDL` 为单行委托；删除死代码 `retryOnBusy`/`isSQLiteBusyErr`/`sqliteWriteRetryMax` | ddl_migration_registry.go, data.go | ✅ go build + test 通过 |
 
 ### 暂缓
 
@@ -1813,8 +1815,6 @@ Phase 4（长期，需 feature flag + 回滚脚本）─────────
 | 1.2 统一事务管理器（Repo 迁移） | P1 | 基础设施已就绪（`TxExecerFromCtx`），需逐个将 15 处 `BeginTx` 调用迁移为 `ExecInTx` + `TxExecerFromCtx` |
 | 1.3 记忆子系统收口 | P1 | 分两阶段：先拆读取侧，再拆写入侧+事务协调 |
 | 2.1 野生表纳入 Ent | P2 | 分 3 批，每批 6~7 张表 |
-| 2.2 接口拆分合规化 | P2 | TeamRepository→6 子接口 |
-| 2.3 Schema 迁移框架化 | P2 | 12 个 patch→registry |
 
 ### 收益验证
 
@@ -1828,3 +1828,5 @@ Phase 4（长期，需 feature flag + 回滚脚本）─────────
 | Repo 构造函数合规 | 4 个绕过 Data | 全部通过 Data | ✅ 全部收口（含 channelRuntimeLeaseRepo） |
 | Team/runner_handler Usage rollup | 缺失（daily/hourly 不生成） | 全路径覆盖 | ✅ 全路径发布 EnvelopeTypeTokenUsage |
 | 事务模式统一 | 5 种 | 5 种（基础设施就绪） | 基础设施就绪（`TxExecerFromCtx`），待逐 Repo 迁移 |
+| TeamRepository 方法数 | 21（超标 4x） | ≤5/子接口 | ✅ 拆为 6 子接口（3/3/4/6/2/3）+ 2 组合接口 |
+| DDL 迁移版本控制 | 无（每次全量执行） | 版本号门控 | ✅ `ddlMigrations` 注册表 + `isMigrationApplied` 跳过 |

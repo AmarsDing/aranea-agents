@@ -169,21 +169,14 @@ func (b *modelRegistryApplyBackend) MigrateProviderBindings(ctx context.Context,
 		return modelregistry.ApplyMigrationStats{}, nil
 	}
 
-	tx, err := b.data.RawDB().BeginTx(ctx, nil)
-	if err != nil {
-		return modelregistry.ApplyMigrationStats{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	stats, err := migrateOneRuleInTx(ctx, tx, modelregistry.ProviderMigrationRule{Legacy: from, Catalog: to}, nowRFC3339())
-	if err != nil {
-		return stats, err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return stats, err
-	}
-	return stats, nil
+	var stats modelregistry.ApplyMigrationStats
+	err := b.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		e := TxExecerFromCtx(txCtx, b.data.RawDB())
+		var err error
+		stats, err = migrateOneRuleInTx(txCtx, e, modelregistry.ProviderMigrationRule{Legacy: from, Catalog: to}, nowRFC3339())
+		return err
+	})
+	return stats, err
 }
 
 func (b *modelRegistryApplyBackend) UpsertModelPricing(ctx context.Context, provider, model string, micro modelregistry.MicroPricing, source string) error {
@@ -196,38 +189,35 @@ func (b *modelRegistryApplyBackend) BatchMigrateProviderBindings(
 	rules []modelregistry.ProviderMigrationRule,
 	skipRules []string,
 ) modelregistry.BatchMigrationResult {
-	tx, err := b.data.RawDB().BeginTx(ctx, nil)
-	if err != nil {
-		return modelregistry.BatchMigrationResult{Errors: []string{err.Error()}}
-	}
-	defer func() { _ = tx.Rollback() }()
-
 	var result modelregistry.BatchMigrationResult
-	now := nowRFC3339()
+	err := b.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		e := TxExecerFromCtx(txCtx, b.data.RawDB())
+		now := nowRFC3339()
 
-	for _, rule := range rules {
-		rk := ruleKey(rule)
-		if containsStr(skipRules, rk) {
+		for _, rule := range rules {
+			rk := ruleKey(rule)
+			if containsStr(skipRules, rk) {
+				result.CompletedRules = append(result.CompletedRules, rk)
+				continue
+			}
+			stats, err := migrateOneRuleInTx(txCtx, e, rule, now)
+			if err != nil {
+				result.FailedRules = append(result.FailedRules, rk)
+				result.Errors = append(result.Errors, fmt.Sprintf("migrate %s->%s: %v", rule.Legacy, rule.Catalog, err))
+				continue
+			}
 			result.CompletedRules = append(result.CompletedRules, rk)
-			continue
+			result.Stats.Agents += stats.Agents
+			result.Stats.Sessions += stats.Sessions
+			result.Stats.Eval += stats.Eval
+			result.Stats.RuntimeSettings += stats.RuntimeSettings
+			result.Stats.Skills += stats.Skills
+			result.Stats.KnowledgeEmbed += stats.KnowledgeEmbed
+			result.Stats.WebResearch += stats.WebResearch
 		}
-		stats, err := migrateOneRuleInTx(ctx, tx, rule, now)
-		if err != nil {
-			result.FailedRules = append(result.FailedRules, rk)
-			result.Errors = append(result.Errors, fmt.Sprintf("migrate %s->%s: %v", rule.Legacy, rule.Catalog, err))
-			continue
-		}
-		result.CompletedRules = append(result.CompletedRules, rk)
-		result.Stats.Agents += stats.Agents
-		result.Stats.Sessions += stats.Sessions
-		result.Stats.Eval += stats.Eval
-		result.Stats.RuntimeSettings += stats.RuntimeSettings
-		result.Stats.Skills += stats.Skills
-		result.Stats.KnowledgeEmbed += stats.KnowledgeEmbed
-		result.Stats.WebResearch += stats.WebResearch
-	}
-
-	if err := tx.Commit(); err != nil {
+		return nil
+	})
+	if err != nil {
 		result.Errors = append(result.Errors, err.Error())
 	}
 	return result
@@ -238,64 +228,63 @@ func (b *modelRegistryApplyBackend) BatchApply(
 	patches []modelregistry.ApplyRow,
 	pricing []modelregistry.PricingUpsert,
 ) modelregistry.BatchApplyResult {
-	tx, err := b.data.RawDB().BeginTx(ctx, nil)
-	if err != nil {
-		return modelregistry.BatchApplyResult{Errors: []string{err.Error()}}
-	}
-	defer func() { _ = tx.Rollback() }()
-
 	var result modelregistry.BatchApplyResult
-	now := nowRFC3339()
+	err := b.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		e := TxExecerFromCtx(txCtx, b.data.RawDB())
+		now := nowRFC3339()
 
-	for _, p := range patches {
-		res, err := tx.ExecContext(ctx,
-			`UPDATE llm_provider_models SET provider=?, model_key=?, name=?, enabled=?, config_json=?, metadata_json=?, updated_at=? WHERE id=?`,
-			p.Provider, p.Key, p.Name, p.Enabled, p.ConfigJSON, p.MetadataJSON, now, p.ID,
-		)
-		if err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("save %s/%s: %v", p.Provider, p.Model, err))
-			continue
+		for _, p := range patches {
+			res, err := e.ExecContext(txCtx,
+				`UPDATE llm_provider_models SET provider=?, model_key=?, name=?, enabled=?, config_json=?, metadata_json=?, updated_at=? WHERE id=?`,
+				p.Provider, p.Key, p.Name, p.Enabled, p.ConfigJSON, p.MetadataJSON, now, p.ID,
+			)
+			if err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("save %s/%s: %v", p.Provider, p.Model, err))
+				continue
+			}
+			n, _ := res.RowsAffected()
+			if n > 0 {
+				result.RowsUpdated++
+			}
 		}
-		n, _ := res.RowsAffected()
-		if n > 0 {
-			result.RowsUpdated++
-		}
-	}
 
-	for _, p := range pricing {
-		if err := b.upsertPricingInTx(ctx, tx, p); err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("pricing %s/%s: %v", p.Provider, p.Model, err))
-			continue
+		for _, p := range pricing {
+			if err := b.upsertPricingInTx(txCtx, e, p); err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("pricing %s/%s: %v", p.Provider, p.Model, err))
+				continue
+			}
+			result.PricingUpdated++
 		}
-		result.PricingUpdated++
-	}
 
-	if err := tx.Commit(); err != nil {
+		return nil
+	})
+	if err != nil {
 		result.Errors = append(result.Errors, err.Error())
 	}
 	return result
 }
 
-func (b *modelRegistryApplyBackend) upsertPricingInTx(ctx context.Context, tx *sql.Tx, p modelregistry.PricingUpsert) error {
+func (b *modelRegistryApplyBackend) upsertPricingInTx(ctx context.Context, e execer, p modelregistry.PricingUpsert) error {
 	now := nowRFC3339()
 	var existingID string
-	err := tx.QueryRowContext(ctx,
+	err := queryRowScan(ctx, e,
 		`SELECT id FROM model_pricing_rules WHERE provider_code = ? AND model_api_id = ? AND is_active = true AND effective_to = ''`,
-		p.Provider, p.Model,
-	).Scan(&existingID)
+		[]any{p.Provider, p.Model},
+		&existingID,
+	)
 	if err != nil && err != sql.ErrNoRows {
 		return err
 	}
 	if existingID != "" {
 		var existingSource string
-		if err := tx.QueryRowContext(ctx, `SELECT source FROM model_pricing_rules WHERE id = ?`, existingID).Scan(&existingSource); err != nil {
+		if err := queryRowScan(ctx, e, `SELECT source FROM model_pricing_rules WHERE id = ?`, []any{existingID}, &existingSource); err != nil {
 			return err
 		}
 		if biz.PricingSourcePriority(p.Source) < biz.PricingSourcePriority(existingSource) {
 			return nil
 		}
 		cost := modelregistry.MicroPer1KToCostUSDPer1M(p.Micro)
-		_, err := tx.ExecContext(ctx,
+		_, err := e.ExecContext(ctx,
 			`UPDATE model_pricing_rules SET currency='USD', input_price_micro_usd_per_1k=?, output_price_micro_usd_per_1k=?, cached_input_price_micro_usd_per_1k=?, cache_write_price_micro_usd_per_1k=?, reasoning_price_micro_usd_per_1k=?, embedding_price_micro_usd_per_1k=?, input_price_usd_per_1m=?, output_price_usd_per_1m=?, cached_input_price_usd_per_1m=?, cache_write_price_usd_per_1m=?, reasoning_price_usd_per_1m=?, embedding_price_usd_per_1m=?, source=?, metadata_json='{}', updated_at=? WHERE id=?`,
 			p.Micro.Input, p.Micro.Output, p.Micro.CacheRead, p.Micro.CacheWrite, p.Micro.Reasoning, p.Micro.Embedding,
 			cost.Input, cost.Output, cost.CacheRead, cost.CacheWrite, cost.Reasoning, cost.Embedding,
@@ -305,7 +294,7 @@ func (b *modelRegistryApplyBackend) upsertPricingInTx(ctx context.Context, tx *s
 	}
 	ruleID := fmt.Sprintf("pricing:%s:%s:%d", p.Provider, strings.ReplaceAll(p.Model, "/", "_"), time.Now().UTC().UnixNano())
 	cost := modelregistry.MicroPer1KToCostUSDPer1M(p.Micro)
-	_, err = tx.ExecContext(ctx,
+	_, err = e.ExecContext(ctx,
 		`INSERT INTO model_pricing_rules (id, provider_code, model_api_id, currency, input_price_micro_usd_per_1k, output_price_micro_usd_per_1k, cached_input_price_micro_usd_per_1k, cache_write_price_micro_usd_per_1k, reasoning_price_micro_usd_per_1k, embedding_price_micro_usd_per_1k, input_price_usd_per_1m, output_price_usd_per_1m, cached_input_price_usd_per_1m, cache_write_price_usd_per_1m, reasoning_price_usd_per_1m, embedding_price_usd_per_1m, effective_from, effective_to, is_active, source, metadata_json, created_at, updated_at) VALUES (?, ?, ?, 'USD', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', true, ?, '{}', ?, ?)`,
 		ruleID, p.Provider, p.Model,
 		p.Micro.Input, p.Micro.Output, p.Micro.CacheRead, p.Micro.CacheWrite, p.Micro.Reasoning, p.Micro.Embedding,
@@ -338,51 +327,51 @@ func microPricingToBizRule(provider, model string, micro modelregistry.MicroPric
 	}
 }
 
-func migrateOneRuleInTx(ctx context.Context, tx *sql.Tx, rule modelregistry.ProviderMigrationRule, now string) (modelregistry.ApplyMigrationStats, error) {
+func migrateOneRuleInTx(ctx context.Context, e execer, rule modelregistry.ProviderMigrationRule, now string) (modelregistry.ApplyMigrationStats, error) {
 	var stats modelregistry.ApplyMigrationStats
 	from, to := rule.Legacy, rule.Catalog
 
-	res, err := tx.ExecContext(ctx, `UPDATE agents SET provider = ?, updated_at = ? WHERE provider = ?`, to, now, from)
+	res, err := e.ExecContext(ctx, `UPDATE agents SET provider = ?, updated_at = ? WHERE provider = ?`, to, now, from)
 	if err != nil {
 		return stats, err
 	}
 	n, _ := res.RowsAffected()
 	stats.Agents = int(n)
 
-	res, err = tx.ExecContext(ctx, `UPDATE sessions SET default_provider = ? WHERE default_provider = ?`, to, from)
+	res, err = e.ExecContext(ctx, `UPDATE sessions SET default_provider = ? WHERE default_provider = ?`, to, from)
 	if err != nil {
 		return stats, err
 	}
 	n, _ = res.RowsAffected()
 	stats.Sessions = int(n)
-	res, err = tx.ExecContext(ctx, `UPDATE sessions SET last_provider = ? WHERE last_provider = ?`, to, from)
+	res, err = e.ExecContext(ctx, `UPDATE sessions SET last_provider = ? WHERE last_provider = ?`, to, from)
 	if err != nil {
 		return stats, err
 	}
 	n, _ = res.RowsAffected()
 	stats.Sessions += int(n)
 
-	res, err = tx.ExecContext(ctx, `UPDATE system_settings SET eval_sim_provider = ? WHERE eval_sim_provider = ?`, to, from)
+	res, err = e.ExecContext(ctx, `UPDATE system_settings SET eval_sim_provider = ? WHERE eval_sim_provider = ?`, to, from)
 	if err != nil {
 		return stats, err
 	}
 	n, _ = res.RowsAffected()
 	stats.Eval = int(n)
-	res, err = tx.ExecContext(ctx, `UPDATE system_settings SET eval_judge_provider = ? WHERE eval_judge_provider = ?`, to, from)
+	res, err = e.ExecContext(ctx, `UPDATE system_settings SET eval_judge_provider = ? WHERE eval_judge_provider = ?`, to, from)
 	if err != nil {
 		return stats, err
 	}
 	n, _ = res.RowsAffected()
 	stats.Eval += int(n)
 
-	res, err = tx.ExecContext(ctx,
+	res, err = e.ExecContext(ctx,
 		`UPDATE agent_runtime_settings SET l0_compress_provider = ? WHERE l0_compress_provider = ?`, to, from)
 	if err != nil {
 		return stats, err
 	}
 	n, _ = res.RowsAffected()
 	stats.RuntimeSettings = int(n)
-	res, err = tx.ExecContext(ctx,
+	res, err = e.ExecContext(ctx,
 		`UPDATE agent_runtime_settings SET memory_worker_provider = ? WHERE memory_worker_provider = ?`, to, from)
 	if err != nil {
 		return stats, err
@@ -390,7 +379,7 @@ func migrateOneRuleInTx(ctx context.Context, tx *sql.Tx, rule modelregistry.Prov
 	n, _ = res.RowsAffected()
 	stats.RuntimeSettings += int(n)
 
-	res, err = tx.ExecContext(ctx,
+	res, err = e.ExecContext(ctx,
 		`UPDATE skill SET provider = ?, updated_at = ? WHERE deleted_at = '' AND provider = ?`, to, now, from)
 	if err != nil {
 		return stats, err
@@ -398,7 +387,7 @@ func migrateOneRuleInTx(ctx context.Context, tx *sql.Tx, rule modelregistry.Prov
 	n, _ = res.RowsAffected()
 	stats.Skills = int(n)
 
-	res, err = tx.ExecContext(ctx,
+	res, err = e.ExecContext(ctx,
 		`UPDATE system_settings SET knowledge_embed_provider = ?, update_time = ? WHERE knowledge_embed_provider = ?`,
 		to, now, from)
 	if err != nil {
@@ -407,7 +396,7 @@ func migrateOneRuleInTx(ctx context.Context, tx *sql.Tx, rule modelregistry.Prov
 	n, _ = res.RowsAffected()
 	stats.KnowledgeEmbed = int(n)
 
-	res, err = tx.ExecContext(ctx,
+	res, err = e.ExecContext(ctx,
 		`UPDATE system_settings SET web_research_provider = ?, update_time = ? WHERE web_research_provider = ?`,
 		to, now, from)
 	if err != nil {
@@ -416,7 +405,7 @@ func migrateOneRuleInTx(ctx context.Context, tx *sql.Tx, rule modelregistry.Prov
 	n, _ = res.RowsAffected()
 	stats.WebResearch = int(n)
 
-	res, err = tx.ExecContext(ctx,
+	res, err = e.ExecContext(ctx,
 		`UPDATE llm_provider_models SET provider = ?, model_key = ? || ':' || model, updated_at = ? WHERE provider = ?`,
 		to, to, now, from)
 	if err != nil {

@@ -627,29 +627,43 @@ type NodeTaskMeta struct {
 
 ## 十二、渐进式演进方案（5 个 Milestone）
 
-### M1：修复 P0 业务 Bug（可独立回滚）
+> **实施进度**：M1 ✅ 已完成 | M2 ✅ 已完成 | M3 ⏳ 待实施 | M4 ⏳ 待实施 | M5 ⏳ 待实施
 
-| 任务 | 修复项 | 影响范围 |
-|------|--------|----------|
-| 1.1 | BUG-01：Critic Loop 否定语义修复 | `critic_loop_cond.go` |
-| 1.2 | BUG-02：`finishRunErr` 只发布一个事件 | `runner_helpers.go` |
-| 1.3 | BUG-03：嵌入式图入口点排序确定性 | `embedded_graph.go` |
-| 1.4 | BUG-04：Fallback Agent 走正常解析管线 | `failure_recovery.go` |
-| 1.5 | BUG-05：恢复路径使用真实 AgentKey | `team_graph_run_finisher.go` |
-| 1.6 | BUG-06：`convertTrpcEvent` 传入 logger | `runtime_adapter.go` |
-| 1.7 | BUG-07：EventBridge 共享实例 | `runtime_adapter.go` + `event_bridge.go` |
+### M1：修复 P0 业务 Bug（可独立回滚）✅ 已完成
 
-### M2：修复 P1 竞态和状态安全（可独立回滚，可与 M1 并行）
+| 任务 | 修复项 | 影响范围 | 状态 |
+|------|--------|----------|------|
+| 1.1 | BUG-01：Critic Loop 否定语义修复 | `critic_loop_cond.go` | ✅ |
+| 1.2 | BUG-02：`finishRunErr` 只发布一个事件 | `runner_helpers.go` | ✅ |
+| 1.3 | BUG-03：嵌入式图入口点排序确定性 | `embedded_graph.go` | ✅ |
+| 1.4 | BUG-04：Fallback Agent 走正常解析管线 | `failure_recovery.go` + `node_wiring.go` | ✅ |
+| 1.5 | BUG-05：恢复路径使用真实 AgentKey | `team_graph_run_finisher.go` + `team_graph_run_coordinator.go` + `runner.go` | ✅ |
+| 1.6 | BUG-06：`convertTrpcEvent` 传入 logger | `runtime_adapter.go` | ✅ |
+| 1.7 | BUG-07：EventBridge 共享实例 | `runtime_adapter.go` + `event_bridge.go` | ✅ |
 
-| 任务 | 修复项 | 影响范围 |
-|------|--------|----------|
-| 2.1 | ARCH-07：TOCTOU 竞态修复 | `graph_execution.go` |
-| 2.2 | ARCH-08：GC 驱逐前取消 runtime | `graph.go` |
-| 2.3 | ARCH-10：`GraphExecution` 增加独立 mutex | `graph_team_execution.go` |
-| 2.4 | ARCH-06：Circuit Breaker 绑定到 GraphAgent 实例 | `circuit_breaker.go` + `builder.go` |
-| 2.5 | ARCH-09：Team build config 持久化或恢复路径 | `graph_team_execution.go` |
+**M1 实施细节**：
+- BUG-01：新增 `containsNegationBeforeWord` 函数，检测 "not"/"don't" 等否定词
+- BUG-04：`failureRecoveryOptions`/`failureRecoveryAfterNode` 新增 `resolvedFallback trpcagent.Agent` 参数；`wireNode` 中预解析 fallback agent；新增 `resolvedAgentNodeFunc` + `fallbackAgentWrapper` 确保已解析 agent 走完整管线
+- BUG-05：`buildResumeSessionContext` 新增 `agentKeyFn` 参数；Coordinator 新增 `agentKeyFn` 字段；Runner 在 `SetTeamGraphRunCoordinator` 中注入 catalog 查询函数
+- BUG-07：`trpcGraphRuntime` 新增 `bridge *EventBridge` 字段，Run/Resume 时懒初始化；`convertTrpcEvent` 改为接受 `*EventBridge` 参数；`EventBridge` 新增 `EventBus()` 方法
 
-### M3：引入 CompiledTeam——断开耦合根（回滚成本较高但收益大）
+### M2：修复 P1 竞态和状态安全（可独立回滚，可与 M1 并行）✅ 已完成
+
+| 任务 | 修复项 | 影响范围 | 状态 |
+|------|--------|----------|------|
+| 2.1 | ARCH-07：TOCTOU 竞态修复 | `graph_execution.go` | ✅ |
+| 2.2 | ARCH-08：GC 驱逐前取消 runtime | `graph.go` | ✅ |
+| 2.3 | ARCH-10：`GraphExecution` 增加独立 mutex | `graph.go` + `graph_team_execution.go` + `graph_execution.go` + 多个读取方 | ✅ |
+| 2.4 | ARCH-06：Circuit Breaker 绑定到 GraphAgent 实例 | `circuit_breaker.go` + `builder.go` + `node_wiring.go` + `runtime_adapter.go` + `team_graph_root.go` + 测试文件 | ✅ |
+| 2.5 | ARCH-09：Team build config 恢复路径 | `graph_team_execution.go` | ✅（临时修复，M3.8 将完全替换） |
+
+**M2 实施细节**：
+- ARCH-06：`CircuitBreakerState` 从包级变量改为实例级 struct，绑定到 `GraphAgent`；`BuildStateGraph*` 系列函数返回值新增 `*CircuitBreakerState`；所有调用方和测试适配
+- ARCH-07：`updateExecutionFromRuntimeEvent` 中锁内深拷贝 Steps 切片，锁外用快照写 DB
+- ARCH-08：GC 驱逐前调用 `exec.runtime.Cancel()` 终止运行时
+- ARCH-10：`GraphExecution` 新增 `interruptMu sync.RWMutex` + `interrupted bool`；新增 `IsInterrupted()`/`GetInterruptNode()` 访问器；所有读取方改用访问器
+
+### M3：引入 CompiledTeam——断开耦合根（回滚成本较高但收益大）⏳ 待实施
 
 > 这是连接当前架构和目标架构的关键 Milestone。
 

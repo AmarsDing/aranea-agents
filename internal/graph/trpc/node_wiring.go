@@ -19,7 +19,7 @@ func normalizeNodeType(t string) string {
 	return strings.ToLower(strings.TrimSpace(t))
 }
 
-func nodeOptions(n NodeDef, policy *biz.TeamFailurePolicy) []trpcgraph.Option {
+func nodeOptions(n NodeDef, policy *biz.TeamFailurePolicy, resolvedFallback trpcagent.Agent, cbState *CircuitBreakerState) []trpcgraph.Option {
 	opts := []trpcgraph.Option{}
 	if n.InterruptBefore {
 		opts = append(opts, trpcgraph.WithInterruptBefore())
@@ -54,9 +54,9 @@ func nodeOptions(n NodeDef, policy *biz.TeamFailurePolicy) []trpcgraph.Option {
 		opts = append(opts, trpcgraph.WithNodeCachePolicy(pol))
 	}
 	opts = append(opts, agentMapperOptions(n)...)
-	opts = append(opts, failureRecoveryOptions(n)...)
+	opts = append(opts, failureRecoveryOptions(n, resolvedFallback)...)
 	if policy != nil && policy.CircuitBreaker != nil {
-		opts = append(opts, circuitBreakerOptions(n, policy.CircuitBreaker)...)
+		opts = append(opts, circuitBreakerOptions(n, policy.CircuitBreaker, cbState)...)
 	}
 	return opts
 }
@@ -78,8 +78,14 @@ func agentMapperOptions(n NodeDef) []trpcgraph.Option {
 	return opts
 }
 
-func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *BuildDeps, policy *biz.TeamFailurePolicy) ([]trpcagent.Agent, error) {
-	opts := nodeOptions(n, policy)
+func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *BuildDeps, policy *biz.TeamFailurePolicy, cbState *CircuitBreakerState) ([]trpcagent.Agent, error) {
+	var resolvedFallback trpcagent.Agent
+	if fb := strings.TrimSpace(n.FallbackAgent); fb != "" && deps != nil && deps.Agents != nil {
+		if fa, ferr := deps.Agents.ResolveAgent(ctx, fb); ferr == nil {
+			resolvedFallback = fa
+		}
+	}
+	opts := nodeOptions(n, policy, resolvedFallback, cbState)
 	switch normalizeNodeType(n.Type) {
 	case "llm":
 		if deps == nil || deps.Models == nil {

@@ -33,6 +33,10 @@ func NewEventBridge(eventBus event.Bus, sessionID, graphID, execID string, lg lo
 	}
 }
 
+func (b *EventBridge) EventBus() event.Bus {
+	return b.eventBus
+}
+
 func (b *EventBridge) Consume(ctx context.Context, eventCh <-chan *trpcevent.Event) {
 	for e := range eventCh {
 		env := b.convertEvent(e)

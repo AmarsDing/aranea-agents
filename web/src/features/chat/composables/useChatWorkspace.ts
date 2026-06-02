@@ -435,7 +435,7 @@ export function useChatWorkspace() {
     followUp.onRunStatusEnvelope(env);
     applyFromEnvelope(env);
     const rs = runStatusFromEnvelope(env);
-    if (rs?.status === "cancelled") {
+    if (rs?.status === "cancelled" || rs?.status === "failed") {
       const sid = selectedSessionForUi.value?.id;
       if (sid) {
         messageStore.setMessages(sid, cancelRunningToolMessages(messageStore.getMessages(sid)));

@@ -104,75 +104,73 @@ FROM monitor_alert_rules ORDER BY created_at ASC`)
 
 func (r *monitorRepo) ReplaceAlertRules(ctx context.Context, rules []biz.MonitorAlertRule) error {
 	r.ensureMonitorAlertFiringStateCols(ctx)
-	tx, err := r.data.RawDB().BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		e := TxExecerFromCtx(txCtx, r.data.RawDB())
 
-	existingRows, err := tx.QueryContext(ctx, `SELECT id FROM monitor_alert_rules`)
-	if err != nil {
-		return err
-	}
-	existingIDs := map[string]struct{}{}
-	for existingRows.Next() {
-		var id string
-		if err := existingRows.Scan(&id); err != nil {
-			continue
+		existingRows, err := e.QueryContext(txCtx, `SELECT id FROM monitor_alert_rules`)
+		if err != nil {
+			return err
 		}
-		existingIDs[id] = struct{}{}
-	}
-	existingRows.Close()
+		existingIDs := map[string]struct{}{}
+		for existingRows.Next() {
+			var id string
+			if err := existingRows.Scan(&id); err != nil {
+				continue
+			}
+			existingIDs[id] = struct{}{}
+		}
+		existingRows.Close()
 
-	newIDs := map[string]struct{}{}
-	now := time.Now().UTC().Format(time.RFC3339)
-	for _, rule := range rules {
-		id := strings.TrimSpace(rule.ID)
-		if id == "" {
-			id = uuid.NewString()
-		}
-		newIDs[id] = struct{}{}
-		enabled := 0
-		if rule.Enabled {
-			enabled = 1
-		}
-		if _, exists := existingIDs[id]; exists {
-			_, err := tx.ExecContext(ctx, `
+		newIDs := map[string]struct{}{}
+		now := time.Now().UTC().Format(time.RFC3339)
+		for _, rule := range rules {
+			id := strings.TrimSpace(rule.ID)
+			if id == "" {
+				id = uuid.NewString()
+			}
+			newIDs[id] = struct{}{}
+			enabled := 0
+			if rule.Enabled {
+				enabled = 1
+			}
+			if _, exists := existingIDs[id]; exists {
+				_, err := e.ExecContext(txCtx, `
 UPDATE monitor_alert_rules
 SET name = ?, metric_key = ?, threshold = ?, window_minutes = ?, enabled = ?, severity = ?,
     notify_webhook_url = ?, notify_channel_id = ?, cooldown_minutes = ?, updated_at = ?
 WHERE id = ?`,
-				rule.Name, rule.MetricKey, rule.Threshold, rule.WindowMinutes, enabled, rule.Severity,
-				rule.NotifyWebhookURL, rule.NotifyChannelID, rule.CooldownMinutes, now, id,
-			)
-			if err != nil {
-				return err
-			}
-		} else {
-			_, err := tx.ExecContext(ctx, `
+					rule.Name, rule.MetricKey, rule.Threshold, rule.WindowMinutes, enabled, rule.Severity,
+					rule.NotifyWebhookURL, rule.NotifyChannelID, rule.CooldownMinutes, now, id,
+				)
+				if err != nil {
+					return err
+				}
+			} else {
+				_, err := e.ExecContext(txCtx, `
 INSERT INTO monitor_alert_rules
   (id, name, metric_key, threshold, window_minutes, enabled, severity,
    notify_webhook_url, notify_channel_id, cooldown_minutes, created_at, updated_at,
    firing_state)
 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'idle')`,
-				id, rule.Name, rule.MetricKey, rule.Threshold, rule.WindowMinutes, enabled, rule.Severity,
-				rule.NotifyWebhookURL, rule.NotifyChannelID, rule.CooldownMinutes, now, now,
-			)
-			if err != nil {
-				return err
+					id, rule.Name, rule.MetricKey, rule.Threshold, rule.WindowMinutes, enabled, rule.Severity,
+					rule.NotifyWebhookURL, rule.NotifyChannelID, rule.CooldownMinutes, now, now,
+				)
+				if err != nil {
+					return err
+				}
 			}
 		}
-	}
 
-	for id := range existingIDs {
-		if _, exists := newIDs[id]; !exists {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM monitor_alert_rules WHERE id = ?`, id); err != nil {
-				return err
+		for id := range existingIDs {
+			if _, exists := newIDs[id]; !exists {
+				if _, err := e.ExecContext(txCtx, `DELETE FROM monitor_alert_rules WHERE id = ?`, id); err != nil {
+					return err
+				}
 			}
 		}
-	}
 
-	return tx.Commit()
+		return nil
+	})
 }
 
 // UpdateAlertFiringState persists the firing state machine columns (MON-OPT-02).

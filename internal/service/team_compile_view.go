@@ -24,6 +24,8 @@ func (s *TeamService) compileAgentDisplayNameResolver(ctx context.Context) func(
 
 func buildCompiledGraphNodeView(
 	n biz.NodeDef,
+	meta biz.NodeTaskMeta,
+	metaOK bool,
 	member team.MemberDef,
 	memberOK bool,
 	displayName func(agentID string) string,
@@ -50,11 +52,15 @@ func buildCompiledGraphNodeView(
 	if agentDisplayName == "" {
 		agentDisplayName = strings.TrimSpace(n.AgentName)
 	}
+	role := ""
+	if metaOK {
+		role = meta.RequiredRole
+	}
 	return &v1.CompiledGraphNodeView{
 		Id:               n.ID,
 		Type:             n.Type,
 		AgentName:        n.AgentName,
-		Role:             n.RequiredRole,
+		Role:             role,
 		Description:      n.Description,
 		AgentDisplayName: agentDisplayName,
 		TaskPrompt:       taskPrompt,
@@ -65,13 +71,15 @@ func (s *TeamService) buildCompiledGraphNodeViews(
 	ctx context.Context,
 	def team.Definition,
 	nodes []biz.NodeDef,
+	taskMeta map[string]biz.NodeTaskMeta,
 ) []*v1.CompiledGraphNodeView {
 	memberByNode := team.MemberByCompileNodeID(def)
 	displayName := s.compileAgentDisplayNameResolver(ctx)
 	views := make([]*v1.CompiledGraphNodeView, 0, len(nodes))
 	for _, n := range nodes {
 		member, ok := memberByNode[n.ID]
-		views = append(views, buildCompiledGraphNodeView(n, member, ok, displayName))
+		meta, metaOK := taskMeta[n.ID]
+		views = append(views, buildCompiledGraphNodeView(n, meta, metaOK, member, ok, displayName))
 	}
 	return views
 }

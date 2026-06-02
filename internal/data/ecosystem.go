@@ -92,20 +92,18 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'')`,
 
 func (r *ecosystemRepo) RecordInstall(ctx context.Context, productID, refID string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	tx, err := r.data.RawDB().BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `
+	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		e := TxExecerFromCtx(txCtx, r.data.RawDB())
+		if _, err := e.ExecContext(txCtx, `
 INSERT INTO ecosystem_installs (id, product_id, installed_ref_id, created_at, deleted_at)
 VALUES (?,?,?,?,'')`, refID, productID, refID, now); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE ecosystem_products SET install_count = install_count + 1, updated_at = ? WHERE id = ?`, now, productID); err != nil {
-		return err
-	}
-	return tx.Commit()
+			return err
+		}
+		if _, err := e.ExecContext(txCtx, `UPDATE ecosystem_products SET install_count = install_count + 1, updated_at = ? WHERE id = ?`, now, productID); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func (r *ecosystemRepo) RemoveInstall(ctx context.Context, productID string) error {

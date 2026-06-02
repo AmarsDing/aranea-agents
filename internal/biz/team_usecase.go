@@ -8,28 +8,57 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-type TeamRepository interface {
+type TeamReader interface {
 	ListTeams(ctx context.Context) ([]Team, error)
 	GetTeamByID(ctx context.Context, id string) (Team, error)
+	ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]Team, error)
+}
+
+type TeamWriter interface {
 	CreateTeam(ctx context.Context, t Team) (Team, error)
 	UpdateTeam(ctx context.Context, t Team) (Team, error)
 	DeleteTeam(ctx context.Context, id string) error
-	ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]Team, error)
+}
+
+type TeamRunReader interface {
 	ListTeamRuns(ctx context.Context, teamID string, limit int) ([]TeamRun, error)
 	HasActiveTeamRun(ctx context.Context, teamID string) (bool, error)
 	GetTeamRunByID(ctx context.Context, id string) (TeamRun, error)
 	ListTeamRunSteps(ctx context.Context, runID string) ([]TeamRunStep, error)
+}
+
+type TeamRunWriter interface {
 	CreateTeamRun(ctx context.Context, r TeamRun) (TeamRun, error)
 	UpdateTeamRun(ctx context.Context, r TeamRun) error
 	UpdateTeamRunGraphExecutionID(ctx context.Context, runID, graphExecutionID string) error
 	UpdateTeamRunTraceID(ctx context.Context, runID, traceID string) error
 	UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error
 	CreateTeamRunStep(ctx context.Context, s TeamRunStep) (TeamRunStep, error)
+}
+
+type OrchestrationStepRepo interface {
 	BatchCreateOrchestrationSteps(ctx context.Context, steps []OrchestrationStep) error
 	ListOrchestrationSteps(ctx context.Context, teamRunID, nodeID string, limit int) ([]OrchestrationStep, error)
+}
+
+type TaskDeadLetterRepo interface {
 	CreateTaskDeadLetter(ctx context.Context, dl TaskDeadLetter) error
 	ListTaskDeadLetters(ctx context.Context, filter TaskDeadLetterListFilter) ([]TaskDeadLetter, error)
 	ResolveTaskDeadLetter(ctx context.Context, id string) (TaskDeadLetter, error)
+}
+
+type TeamRunRepo interface {
+	TeamRunReader
+	TeamRunWriter
+}
+
+type TeamRepository interface {
+	TeamReader
+	TeamWriter
+	TeamRunReader
+	TeamRunWriter
+	OrchestrationStepRepo
+	TaskDeadLetterRepo
 }
 
 type TeamUsecase struct {

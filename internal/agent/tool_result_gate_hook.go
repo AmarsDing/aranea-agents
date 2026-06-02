@@ -19,6 +19,9 @@ func newToolResultGateBeforeHook(gate *biz.ToolResultGate, ag biz.Agent, lg logg
 		if !enabled || gate == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
+		if args == nil || args.Request == nil {
+			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
 
 		sessionID := sessionIDFromInvocationContext(ctx)
 		if sessionID == "" {

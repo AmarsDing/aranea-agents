@@ -23,28 +23,49 @@ type nodeBreaker struct {
 	threshold        int
 }
 
-var (
-	breakerMu sync.Mutex
-	breakers  = map[string]*nodeBreaker{}
-)
+type CircuitBreakerState struct {
+	mu       sync.Mutex
+	breakers map[string]*nodeBreaker
+}
 
-func circuitBreakerOptions(n NodeDef, policy *biz.CircuitBreakerPolicy) []trpcgraph.Option {
-	if policy == nil || policy.FailureThreshold <= 0 {
+func NewCircuitBreakerState() *CircuitBreakerState {
+	return &CircuitBreakerState{
+		breakers: map[string]*nodeBreaker{},
+	}
+}
+
+func (s *CircuitBreakerState) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.breakers = map[string]*nodeBreaker{}
+}
+
+func (s *CircuitBreakerState) State(nodeID string) breakerState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if b := s.breakers[nodeID]; b != nil {
+		return b.state
+	}
+	return breakerClosed
+}
+
+func circuitBreakerOptions(n NodeDef, policy *biz.CircuitBreakerPolicy, cbState *CircuitBreakerState) []trpcgraph.Option {
+	if policy == nil || policy.FailureThreshold <= 0 || cbState == nil {
 		return nil
 	}
 	nodeID := n.ID
 	threshold := policy.FailureThreshold
-	return []trpcgraph.Option{trpcgraph.WithPostNodeCallback(circuitBreakerAfterNode(nodeID, threshold))}
+	return []trpcgraph.Option{trpcgraph.WithPostNodeCallback(cbState.afterNode(nodeID, threshold))}
 }
 
-func circuitBreakerAfterNode(nodeID string, threshold int) trpcgraph.AfterNodeCallback {
+func (s *CircuitBreakerState) afterNode(nodeID string, threshold int) trpcgraph.AfterNodeCallback {
 	return func(_ context.Context, _ *trpcgraph.NodeCallbackContext, _ trpcgraph.State, _ any, nodeErr error) (any, error) {
-		breakerMu.Lock()
-		defer breakerMu.Unlock()
-		b := breakers[nodeID]
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		b := s.breakers[nodeID]
 		if b == nil {
 			b = &nodeBreaker{state: breakerClosed, threshold: threshold}
-			breakers[nodeID] = b
+			s.breakers[nodeID] = b
 		}
 		if nodeErr != nil {
 			b.consecutiveFails++
@@ -66,21 +87,4 @@ func circuitBreakerAfterNode(nodeID string, threshold int) trpcgraph.AfterNodeCa
 		}
 		return nil, nil
 	}
-}
-
-// ResetCircuitBreakers clears in-memory breaker state (tests).
-func ResetCircuitBreakers() {
-	breakerMu.Lock()
-	defer breakerMu.Unlock()
-	breakers = map[string]*nodeBreaker{}
-}
-
-// CircuitBreakerState exposes state for tests.
-func CircuitBreakerState(nodeID string) breakerState {
-	breakerMu.Lock()
-	defer breakerMu.Unlock()
-	if b := breakers[nodeID]; b != nil {
-		return b.state
-	}
-	return breakerClosed
 }

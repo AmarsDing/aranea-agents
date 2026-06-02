@@ -65,7 +65,7 @@ func (s *GraphService) GetGraphExecution(ctx context.Context, req *graphv1.GetGr
 		GraphId:       exec.GraphID,
 		SessionId:     exec.SessionID,
 		Status:        exec.Status,
-		InterruptNode: exec.InterruptNode,
+		InterruptNode: exec.GetInterruptNode(),
 		StartedAt:     timestamppb.New(exec.StartedAt),
 	}
 	if exec.FinishedAt != nil {

@@ -10,7 +10,7 @@ import (
 
 // RegisterTeamGraphExecution indexes a team GraphAgent run for task/resume coordination (M53 Phase 7).
 // Build config is kept in-memory; graph_id uses the team: prefix (not a persisted graph asset).
-func (uc *GraphUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, teamID, teamRunID string, cfg GraphBuildConfig) error {
+func (uc *GraphUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, teamID, teamRunID string, ct *CompiledTeam) error {
 	if uc == nil {
 		return nil
 	}
@@ -26,7 +26,6 @@ func (uc *GraphUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, 
 	if teamRunID != "" {
 		graphID = graphID + ":" + strings.TrimSpace(teamRunID)
 	}
-	cfg = FinalizeGraphFailurePolicy(cfg)
 	exec := &GraphExecution{
 		ID:        execID,
 		GraphID:   graphID,
@@ -36,7 +35,7 @@ func (uc *GraphUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, 
 	}
 	uc.mu.Lock()
 	if uc.teamBuildConfigs == nil {
-		uc.teamBuildConfigs = make(map[string]GraphBuildConfig)
+		uc.teamBuildConfigs = make(map[string]*CompiledTeam)
 	}
 	uc.mu.Unlock()
 
@@ -47,7 +46,7 @@ func (uc *GraphUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, 
 	}
 
 	uc.mu.Lock()
-	uc.teamBuildConfigs[execID] = cfg
+	uc.teamBuildConfigs[execID] = ct
 	uc.evictIfNeeded()
 	uc.executions[execID] = exec
 	uc.mu.Unlock()
@@ -65,9 +64,12 @@ func (uc *GraphUsecase) MarkTeamGraphInterrupt(ctx context.Context, execID, node
 	}
 	nodeID = strings.TrimSpace(nodeID)
 	lineageID = strings.TrimSpace(lineageID)
+	exec.interruptMu.Lock()
+	exec.interrupted = true
+	exec.InterruptNode = nodeID
+	exec.interruptMu.Unlock()
 	uc.mu.Lock()
 	exec.Status = TeamRunStatusWaitingHuman
-	exec.InterruptNode = nodeID
 	exec.CurrentNode = nodeID
 	if lineageID != "" {
 		exec.LineageID = lineageID
@@ -79,12 +81,12 @@ func (uc *GraphUsecase) MarkTeamGraphInterrupt(ctx context.Context, execID, node
 	return uc.runRepo.UpdateRun(ctx, exec)
 }
 
-func (uc *GraphUsecase) teamBuildConfig(execID string) (GraphBuildConfig, bool) {
+func (uc *GraphUsecase) teamBuildConfig(execID string) (*CompiledTeam, bool) {
 	if uc == nil {
-		return GraphBuildConfig{}, false
+		return nil, false
 	}
 	uc.mu.RLock()
 	defer uc.mu.RUnlock()
-	cfg, ok := uc.teamBuildConfigs[strings.TrimSpace(execID)]
-	return cfg, ok
+	ct, ok := uc.teamBuildConfigs[strings.TrimSpace(execID)]
+	return ct, ok
 }

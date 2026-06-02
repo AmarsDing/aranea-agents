@@ -22,7 +22,7 @@ const (
 
 // ActivityStepFlusher asynchronously persists orchestration activity rows.
 type ActivityStepFlusher struct {
-	repo             biz.TeamRepository
+	repo             biz.OrchestrationStepRepo
 	runID            string
 	graphExecutionID string
 	ch               chan biz.OrchestrationStep
@@ -32,7 +32,7 @@ type ActivityStepFlusher struct {
 	lg               loggateway.Logger
 }
 
-func NewActivityStepFlusher(repo biz.TeamRepository, runID, graphExecutionID string, lg loggateway.Logger) *ActivityStepFlusher {
+func NewActivityStepFlusher(repo biz.OrchestrationStepRepo, runID, graphExecutionID string, lg loggateway.Logger) *ActivityStepFlusher {
 	if repo == nil || strings.TrimSpace(runID) == "" || !obsPersistEnabled() {
 		return nil
 	}

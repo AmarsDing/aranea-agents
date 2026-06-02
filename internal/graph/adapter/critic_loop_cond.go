@@ -33,7 +33,7 @@ func criticLoopCondFunc(threshold float64, lg loggateway.Logger) trpcgraph.Condi
 			}
 		}
 		content := strings.ToLower(lastMsg.Content)
-		if containsWord(content, "approved") {
+		if containsWord(content, "approved") && !containsNegationBeforeWord(content, "approved") {
 			return "approved", nil
 		}
 		if threshold > 0 {
@@ -64,6 +64,36 @@ func containsWord(s, word string) bool {
 
 func isAlphaNum(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
+func containsNegationBeforeWord(s, word string) bool {
+	negations := []string{"not", "no", "never", "don't", "doesn't", "isn't", "wasn't", "won't", "can't", "couldn't", "shouldn't", "wouldn't"}
+	for {
+		idx := strings.Index(s, word)
+		if idx < 0 {
+			return false
+		}
+		beforeOk := idx == 0 || !isAlphaNum(rune(s[idx-1]))
+		afterIdx := idx + len(word)
+		afterOk := afterIdx >= len(s) || !isAlphaNum(rune(s[afterIdx]))
+		if beforeOk && afterOk {
+			prefix := strings.TrimSpace(s[:idx])
+			words := strings.Fields(prefix)
+			start := len(words) - 3
+			if start < 0 {
+				start = 0
+			}
+			for _, w := range words[start:] {
+				for _, neg := range negations {
+					if w == neg {
+						return true
+					}
+				}
+			}
+			return false
+		}
+		s = s[afterIdx:]
+	}
 }
 
 func RegisterCriticLoopCondFunc(reg RegistryRegistrar, threshold float64, lg loggateway.Logger) {

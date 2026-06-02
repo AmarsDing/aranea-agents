@@ -73,7 +73,8 @@ func NewAssembleTeamTool(assembler SpiritTeamAssemblerPort, query SpiritTeamQuer
 				return AssembleTeamOutput{}, kerrors.InternalServer("SPIRIT", "query active teams: "+err.Error())
 			}
 			maxParallel := query.GetMaxParallelTeams(ctx, spiritSessionID)
-			if len(activeTeams) >= maxParallel {
+			availableSlots := maxParallel - len(activeTeams)
+			if availableSlots <= 0 {
 				return AssembleTeamOutput{}, kerrors.BadRequest(
 					"SPIRIT",
 					fmt.Sprintf("max parallel teams (%d) reached, wait for existing teams to complete", maxParallel),
@@ -122,7 +123,7 @@ func NewAssembleTeamTool(assembler SpiritTeamAssemblerPort, query SpiritTeamQuer
 			}
 
 			if dag != nil && len(dag.Nodes) > 1 {
-				outputs, err := assembleDAGTeams(ctx, assembler, dag, spiritSessionID, mode, input.AgentKeys, maxParallel, autoStart)
+				outputs, err := assembleDAGTeams(ctx, assembler, dag, spiritSessionID, mode, input.AgentKeys, maxParallel, availableSlots, autoStart)
 				if err != nil {
 					return AssembleTeamOutput{}, kerrors.InternalServer("SPIRIT", "assemble dag teams: "+err.Error())
 				}
@@ -229,9 +230,10 @@ type SynthesizeResultsInput struct {
 }
 
 type SynthesizeResultsOutput struct {
-	Content     string                    `json:"content"`
-	Strategy    string                    `json:"strategy"`
-	TeamResults []biz.TeamSynthesisResult `json:"team_results"`
+	Content            string                    `json:"content"`
+	Strategy           string                    `json:"strategy"`
+	TeamResults        []biz.TeamSynthesisResult `json:"team_results"`
+	NeedsLLMSynthesis  bool                      `json:"needs_llm_synthesis"`
 }
 
 func NewSynthesizeResultsTool(synthesis SpiritSynthesisPort) *trpcfunction.FunctionTool[SynthesizeResultsInput, SynthesizeResultsOutput] {
@@ -246,9 +248,10 @@ func NewSynthesizeResultsTool(synthesis SpiritSynthesisPort) *trpcfunction.Funct
 				return SynthesizeResultsOutput{}, kerrors.InternalServer("SPIRIT", "synthesize results: "+err.Error())
 			}
 			return SynthesizeResultsOutput{
-				Content:     output.Content,
-				Strategy:    string(output.Strategy),
-				TeamResults: output.TeamResults,
+				Content:           output.Content,
+				Strategy:          string(output.Strategy),
+				TeamResults:       output.TeamResults,
+				NeedsLLMSynthesis: output.Strategy == biz.SynthesisStrategyPrompt || output.Strategy == biz.SynthesisStrategyHybrid,
 			}, nil
 		},
 		trpcfunction.WithName("synthesize_results"),
@@ -343,8 +346,9 @@ func taskNodeIDsToStrings(ids []biz.TaskNodeID) []string {
 	return result
 }
 
-func assembleDAGTeams(ctx context.Context, assembler SpiritTeamAssemblerPort, dag *biz.TaskDAG, spiritSessionID, mode string, agentKeys []string, maxParallel int, autoStart bool) ([]AssembleTeamOutput, error) {
+func assembleDAGTeams(ctx context.Context, assembler SpiritTeamAssemblerPort, dag *biz.TaskDAG, spiritSessionID, mode string, agentKeys []string, maxParallel, availableSlots int, autoStart bool) ([]AssembleTeamOutput, error) {
 	var outputs []AssembleTeamOutput
+	immediateStartCount := 0
 	for _, node := range dag.OrderedNodes() {
 		nodeAgentKeys := node.AgentKeys
 		if len(nodeAgentKeys) == 0 {
@@ -358,6 +362,14 @@ func assembleDAGTeams(ctx context.Context, assembler SpiritTeamAssemblerPort, da
 		for i, d := range node.DependsOn {
 			dependsOn[i] = string(d)
 		}
+		canAutoStart := autoStart
+		if canAutoStart && len(dependsOn) == 0 {
+			if immediateStartCount >= availableSlots {
+				canAutoStart = false
+			} else {
+				immediateStartCount++
+			}
+		}
 		params := biz.SpiritTeamParams{
 			SpiritSessionID:    spiritSessionID,
 			TaskDescription:    node.Description,
@@ -366,7 +378,7 @@ func assembleDAGTeams(ctx context.Context, assembler SpiritTeamAssemblerPort, da
 			DagNodeID:          string(node.ID),
 			DependsOn:          taskNodeIDsToStrings(node.DependsOn),
 			ParallelConfigJSON: buildParallelConfigJSON(maxParallel),
-			AutoStart:          autoStart,
+			AutoStart:          canAutoStart,
 		}
 		team, session, err := assembler.AssembleTeam(ctx, params)
 		if err != nil {

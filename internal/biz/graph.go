@@ -45,34 +45,26 @@ type StateFieldDef struct {
 // NodeDef is the schema-level (biz) description of a graph node.
 // Func/function pointers are resolved in the graph/trpc adapter layer.
 type NodeDef struct {
-	ID                       string
-	FuncRef                  string
-	Type                     string
-	Description              string
-	Instruction              string
-	ModelName                string
-	ToolNames                []string
-	AgentName                string
-	InterruptBefore          bool
-	InterruptAfter           bool
-	Destinations             []string
-	RequiredRole             string
-	AssignmentMode           string
-	AssignmentStrategy       string
-	ReviewerAgent            string
-	ReviewRules              string
-	TimeoutSeconds           int
-	HeartbeatIntervalSeconds int
-	EnableLeaseExtension     bool
-	RetryMaxAttempts         int
-	FailureAction            string
-	FallbackAgent            string
-	InputMapperJSON          string
-	OutputMapperJSON         string
-	IsolatedMessages         bool
-	InputFromLastResponse    bool
-	CacheEnabled             bool
-	CacheTTLSeconds          int
+	ID                    string
+	FuncRef               string
+	Type                  string
+	Description           string
+	Instruction           string
+	ModelName             string
+	ToolNames             []string
+	AgentName             string
+	InterruptBefore       bool
+	InterruptAfter        bool
+	Destinations          []string
+	RetryMaxAttempts      int
+	FailureAction         string
+	FallbackAgent         string
+	InputMapperJSON       string
+	OutputMapperJSON      string
+	IsolatedMessages      bool
+	InputFromLastResponse bool
+	CacheEnabled          bool
+	CacheTTLSeconds       int
 }
 
 // EdgeDef is a directed edge between two graph nodes.
@@ -114,9 +106,7 @@ type GraphBuildConfig struct {
 	ExecutionEngine  ExecutionEngineType
 	InterruptBefore  []string
 	InterruptAfter   []string
-	FailurePolicy    *TeamFailurePolicy
-	// ParallelBranchIDs lists explicit parallel branch agent node ids (from embedded join compile).
-	ParallelBranchIDs []string
+	TaskMeta         map[string]NodeTaskMeta
 }
 
 // GraphExecutor is the biz-level port for executing graphs from other modules.
@@ -160,9 +150,23 @@ type GraphExecution struct {
 	CurrentState  map[string]any
 	Steps         []GraphStepSnapshot
 	InterruptNode string
+	interrupted   bool
+	interruptMu   sync.RWMutex
 	runtime       GraphRuntime
 	StartedAt     time.Time
 	FinishedAt    *time.Time
+}
+
+func (e *GraphExecution) IsInterrupted() bool {
+	e.interruptMu.RLock()
+	defer e.interruptMu.RUnlock()
+	return e.interrupted
+}
+
+func (e *GraphExecution) GetInterruptNode() string {
+	e.interruptMu.RLock()
+	defer e.interruptMu.RUnlock()
+	return e.InterruptNode
 }
 
 type GraphStepSnapshot struct {
@@ -206,7 +210,7 @@ type GraphUsecase struct {
 	mu               sync.RWMutex
 	defs             map[string]*GraphDefinition
 	executions       map[string]*GraphExecution
-	teamBuildConfigs map[string]GraphBuildConfig
+	teamBuildConfigs map[string]*CompiledTeam
 	lg               loggateway.Logger
 }
 
@@ -239,7 +243,7 @@ func nodeDefFromConfig(cfg GraphBuildConfig, nodeID string) *NodeDef {
 }
 
 // ShouldCreateTaskForNode reports whether a standalone Graph run should spawn a Kanban task row (M54).
-func ShouldCreateTaskForNode(node *NodeDef) bool {
+func ShouldCreateTaskForNode(node *NodeDef, meta NodeTaskMeta) bool {
 	if node == nil {
 		return false
 	}
@@ -247,7 +251,7 @@ func ShouldCreateTaskForNode(node *NodeDef) bool {
 	case "agent", "llm", "tool", "tools", "task", "review":
 		return true
 	default:
-		return node.RequiredRole != "" || node.AssignmentMode != "" || node.ReviewerAgent != ""
+		return meta.RequiredRole != "" || meta.AssignmentMode != "" || meta.ReviewerAgent != ""
 	}
 }
 
@@ -289,6 +293,11 @@ func (uc *GraphUsecase) gc() {
 			delete(uc.executions, id)
 			delete(uc.teamBuildConfigs, id)
 		} else if exec.FinishedAt == nil && now.Sub(exec.StartedAt) > executionMaxAge {
+			if exec.runtime != nil {
+				if err := exec.runtime.Cancel(); err != nil {
+					uc.lg.Warn("cancel graph runtime on gc eviction", loggateway.Err(err))
+				}
+			}
 			exec.Status = "failed"
 			exec.ErrorMessage = "execution expired: no activity within timeout"
 			nowCopy := now

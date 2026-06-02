@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"reflect"
 
-	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -53,35 +52,27 @@ type SubgraphDef struct {
 }
 
 type NodeDef struct {
-	ID                       string
-	FuncRef                  string
-	Func                     trpcgraph.NodeFunc
-	Type                     string
-	Description              string
-	Instruction              string
-	ModelName                string
-	ToolNames                []string
-	AgentName                string
-	InterruptBefore          bool
-	InterruptAfter           bool
-	Destinations             []string
-	RequiredRole             string
-	AssignmentMode           string
-	AssignmentStrategy       string
-	ReviewerAgent            string
-	ReviewRules              string
-	TimeoutSeconds           int
-	HeartbeatIntervalSeconds int
-	EnableLeaseExtension     bool
-	RetryMaxAttempts         int
-	FailureAction            string
-	FallbackAgent            string
-	InputMapperJSON          string
-	OutputMapperJSON         string
-	IsolatedMessages         bool
-	InputFromLastResponse    bool
-	CacheEnabled             bool
-	CacheTTLSeconds          int
+	ID                    string
+	FuncRef               string
+	Func                  trpcgraph.NodeFunc
+	Type                  string
+	Description           string
+	Instruction           string
+	ModelName             string
+	ToolNames             []string
+	AgentName             string
+	InterruptBefore       bool
+	InterruptAfter        bool
+	Destinations          []string
+	RetryMaxAttempts      int
+	FailureAction         string
+	FallbackAgent         string
+	InputMapperJSON       string
+	OutputMapperJSON      string
+	IsolatedMessages      bool
+	InputFromLastResponse bool
+	CacheEnabled          bool
+	CacheTTLSeconds       int
 }
 
 type EdgeDef struct {
@@ -108,7 +99,6 @@ type GraphBuildConfig struct {
 	ExecutionEngine  ExecutionEngineType
 	InterruptBefore  []string
 	InterruptAfter   []string
-	FailurePolicy    *biz.TeamFailurePolicy
 }
 
 func resolveReducer(rt ReducerType) trpcgraph.StateReducer {
@@ -147,16 +137,16 @@ func resolveFieldType(typeName string) reflect.Type {
 	}
 }
 
-func BuildStateGraph(ctx context.Context, cfg GraphBuildConfig, deps *BuildDeps) (*trpcgraph.Graph, error) {
-	g, _, err := BuildStateGraphWithAgents(ctx, cfg, deps, nil)
-	return g, err
+func BuildStateGraph(ctx context.Context, cfg GraphBuildConfig, deps *BuildDeps) (*trpcgraph.Graph, *CircuitBreakerState, error) {
+	g, _, cbState, err := BuildStateGraphWithAgents(ctx, cfg, deps, nil)
+	return g, cbState, err
 }
 
-func BuildStateGraphWithRegistry(ctx context.Context, cfg GraphBuildConfig, reg *Registry, deps *BuildDeps) (*trpcgraph.Graph, []trpcagent.Agent, error) {
+func BuildStateGraphWithRegistry(ctx context.Context, cfg GraphBuildConfig, reg *Registry, deps *BuildDeps) (*trpcgraph.Graph, []trpcagent.Agent, *CircuitBreakerState, error) {
 	return BuildStateGraphWithRegistryAndLogger(ctx, cfg, reg, deps, nil)
 }
 
-func BuildStateGraphWithRegistryAndLogger(ctx context.Context, cfg GraphBuildConfig, reg *Registry, deps *BuildDeps, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, error) {
+func BuildStateGraphWithRegistryAndLogger(ctx context.Context, cfg GraphBuildConfig, reg *Registry, deps *BuildDeps, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, *CircuitBreakerState, error) {
 	local := GraphBuildConfig{
 		Nodes:            append([]NodeDef(nil), cfg.Nodes...),
 		Edges:            append([]EdgeDef(nil), cfg.Edges...),
@@ -169,27 +159,26 @@ func BuildStateGraphWithRegistryAndLogger(ctx context.Context, cfg GraphBuildCon
 		ExecutionEngine:  cfg.ExecutionEngine,
 		InterruptBefore:  append([]string(nil), cfg.InterruptBefore...),
 		InterruptAfter:   append([]string(nil), cfg.InterruptAfter...),
-		FailurePolicy:    cfg.FailurePolicy,
 	}
 	if reg != nil {
 		resolved, err := reg.ResolveBuildConfig(local)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		local = resolved
 	}
 	return BuildStateGraphWithAgents(ctx, local, deps, lg)
 }
 
-func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *BuildDeps, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, error) {
+func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *BuildDeps, lg loggateway.Logger) (*trpcgraph.Graph, []trpcagent.Agent, *CircuitBreakerState, error) {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
 	if len(cfg.Nodes) == 0 && len(cfg.Subgraphs) == 0 {
-		return nil, nil, kerrors.BadRequest("GRAPH", "graph: at least one node required")
+		return nil, nil, nil, kerrors.BadRequest("GRAPH", "graph: at least one node required")
 	}
 	if cfg.EntryPoint == "" {
-		return nil, nil, kerrors.BadRequest("GRAPH", "graph: entry point required")
+		return nil, nil, nil, kerrors.BadRequest("GRAPH", "graph: entry point required")
 	}
 
 	lg.Info("graph.BuildStateGraph started",
@@ -201,6 +190,7 @@ func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *
 	)
 
 	var allAgents []trpcagent.Agent
+	cbState := NewCircuitBreakerState()
 
 	schema := trpcgraph.NewStateSchema()
 	for _, sf := range cfg.StateFields {
@@ -222,22 +212,23 @@ func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *
 	sg := trpcgraph.NewStateGraph(schema)
 
 	for _, n := range cfg.Nodes {
-		extras, err := wireNode(ctx, sg, n, deps, cfg.FailurePolicy)
+		extras, err := wireNode(ctx, sg, n, deps, nil, cbState)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		allAgents = append(allAgents, extras...)
 	}
 
 	for _, sub := range cfg.Subgraphs {
-		subGraph, subAgents, err := BuildStateGraphWithAgents(ctx, sub.BuildConfig, deps, lg)
+		subGraph, subAgents, subCBState, err := BuildStateGraphWithAgents(ctx, sub.BuildConfig, deps, lg)
 		if err != nil {
-			return nil, nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: subgraph %q build failed: %v", sub.ID, err))
+			return nil, nil, nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: subgraph %q build failed: %v", sub.ID, err))
 		}
-		subAgent, err := NewGraphAgent(sub.ID, subGraph, sub.BuildConfig.EnableCheckpoint)
+		subAgent, err := NewGraphAgent(sub.ID, subGraph, sub.BuildConfig.EnableCheckpoint, subAgents...)
 		if err != nil {
-			return nil, nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: subgraph %q agent failed: %v", sub.ID, err))
+			return nil, nil, nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("graph: subgraph %q agent failed: %v", sub.ID, err))
 		}
+		subAgent.cbState = subCBState
 		allAgents = append(allAgents, subAgent)
 		allAgents = append(allAgents, subAgents...)
 		opts := []trpcgraph.Option{}
@@ -282,30 +273,31 @@ func BuildStateGraphWithAgents(ctx context.Context, cfg GraphBuildConfig, deps *
 			loggateway.StepID("graph.build.compile_fail"),
 			loggateway.Err(err),
 		)
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	lg.Info("graph.BuildStateGraph completed",
 		loggateway.StepID("graph.build.complete"),
 		loggateway.Str("entry_point", cfg.EntryPoint),
 	)
-	return compiled, allAgents, nil
+	return compiled, allAgents, cbState, nil
 }
 
 type GraphAgent struct {
-	graph      *trpcgraph.Graph
-	executor   *trpcgraph.Executor
-	name       string
-	saver      trpcgraph.CheckpointSaver
-	subAgents  []trpcagent.Agent
+	graph     *trpcgraph.Graph
+	executor  *trpcgraph.Executor
+	name      string
+	saver     trpcgraph.CheckpointSaver
+	subAgents []trpcagent.Agent
+	cbState   *CircuitBreakerState
 }
 
 var _ trpcagent.Agent = (*GraphAgent)(nil)
 
 func NewGraphAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool, subAgents ...trpcagent.Agent) (*GraphAgent, error) {
-	return NewGraphAgentWithSubAgents(name, g, enableCheckpoint, nil, subAgents)
+	return NewGraphAgentWithSubAgents(name, g, enableCheckpoint, nil, nil, subAgents)
 }
 
-func NewGraphAgentWithSubAgents(name string, g *trpcgraph.Graph, enableCheckpoint bool, saver trpcgraph.CheckpointSaver, subAgents []trpcagent.Agent) (*GraphAgent, error) {
+func NewGraphAgentWithSubAgents(name string, g *trpcgraph.Graph, enableCheckpoint bool, saver trpcgraph.CheckpointSaver, cbState *CircuitBreakerState, subAgents []trpcagent.Agent) (*GraphAgent, error) {
 	var execOpts []trpcgraph.ExecutorOption
 	if enableCheckpoint && saver == nil {
 		saver = trpcgraphcheckpoint.NewSaver()
@@ -323,10 +315,11 @@ func NewGraphAgentWithSubAgents(name string, g *trpcgraph.Graph, enableCheckpoin
 		name:      name,
 		saver:     saver,
 		subAgents: append([]trpcagent.Agent(nil), subAgents...),
+		cbState:   cbState,
 	}, nil
 }
 
-func NewGraphAgentWithSaver(name string, g *trpcgraph.Graph, saver trpcgraph.CheckpointSaver, engine ExecutionEngineType, subAgents ...trpcagent.Agent) (*GraphAgent, error) {
+func NewGraphAgentWithSaver(name string, g *trpcgraph.Graph, saver trpcgraph.CheckpointSaver, engine ExecutionEngineType, cbState *CircuitBreakerState, subAgents ...trpcagent.Agent) (*GraphAgent, error) {
 	var execOpts []trpcgraph.ExecutorOption
 	if saver != nil {
 		execOpts = append(execOpts, trpcgraph.WithCheckpointSaver(saver))
@@ -347,10 +340,11 @@ func NewGraphAgentWithSaver(name string, g *trpcgraph.Graph, saver trpcgraph.Che
 		name:      name,
 		saver:     saver,
 		subAgents: append([]trpcagent.Agent(nil), subAgents...),
+		cbState:   cbState,
 	}, nil
 }
 
-func NewGraphAgentWithEngine(name string, g *trpcgraph.Graph, enableCheckpoint bool, engine ExecutionEngineType, subAgents ...trpcagent.Agent) (*GraphAgent, error) {
+func NewGraphAgentWithEngine(name string, g *trpcgraph.Graph, enableCheckpoint bool, engine ExecutionEngineType, cbState *CircuitBreakerState, subAgents ...trpcagent.Agent) (*GraphAgent, error) {
 	var execOpts []trpcgraph.ExecutorOption
 	var saver trpcgraph.CheckpointSaver
 	if enableCheckpoint {
@@ -373,6 +367,7 @@ func NewGraphAgentWithEngine(name string, g *trpcgraph.Graph, enableCheckpoint b
 		name:      name,
 		saver:     saver,
 		subAgents: append([]trpcagent.Agent(nil), subAgents...),
+		cbState:   cbState,
 	}, nil
 }
 

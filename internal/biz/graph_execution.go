@@ -63,17 +63,18 @@ func (uc *GraphUsecase) loadExecution(ctx context.Context, executionID string) (
 	return persisted, nil
 }
 
-func (uc *GraphUsecase) buildConfigForExecution(ctx context.Context, exec *GraphExecution) (GraphBuildConfig, error) {
+func (uc *GraphUsecase) buildConfigForExecution(ctx context.Context, exec *GraphExecution) (*CompiledTeam, error) {
 	if exec != nil {
-		if cfg, ok := uc.teamBuildConfig(exec.ID); ok {
-			return cfg, nil
+		if ct, ok := uc.teamBuildConfig(exec.ID); ok {
+			return ct, nil
 		}
 	}
 	def, err := uc.GetGraph(ctx, exec.GraphID)
 	if err != nil {
-		return GraphBuildConfig{}, err
+		return nil, err
 	}
-	return FinalizeGraphFailurePolicy(defToBuildConfig(def)), nil
+	cfg := FinalizeGraphFailurePolicy(defToBuildConfig(def), nil, nil)
+	return NewCompiledTeam(cfg, nil, nil), nil
 }
 
 func (uc *GraphUsecase) ensureCheckpointRuntime(ctx context.Context, exec *GraphExecution) error {
@@ -83,11 +84,11 @@ func (uc *GraphUsecase) ensureCheckpointRuntime(ctx context.Context, exec *Graph
 	if exec.GraphID == "" || exec.LineageID == "" {
 		return ErrNotFound
 	}
-	cfg, err := uc.buildConfigForExecution(ctx, exec)
+	ct, err := uc.buildConfigForExecution(ctx, exec)
 	if err != nil {
 		return err
 	}
-	rt, err := uc.factory.BuildRuntime(ctx, cfg, exec.SessionID, exec.GraphID, exec.ID, exec.LineageID)
+	rt, err := uc.factory.BuildRuntime(ctx, ct.GraphBuildConfig, exec.SessionID, exec.GraphID, exec.ID, exec.LineageID)
 	if err != nil {
 		return err
 	}
@@ -109,7 +110,7 @@ func (uc *GraphUsecase) ExecuteGraph(ctx context.Context, graphID, sessionID, ex
 		return nil, err
 	}
 
-	cfg := FinalizeGraphFailurePolicy(defToBuildConfig(def))
+	cfg := FinalizeGraphFailurePolicy(defToBuildConfig(def), nil, nil)
 
 	runtime, eventCh, err := uc.factory.BuildAndRun(ctx, cfg, sessionID, graphID, execID, initialState)
 	if err != nil {
@@ -149,7 +150,7 @@ func (uc *GraphUsecase) ExecuteGraphBuildConfig(ctx context.Context, graphID, se
 	if execID == "" {
 		execID = uuid.New().String()
 	}
-	cfg = FinalizeGraphFailurePolicy(cfg)
+	cfg = FinalizeGraphFailurePolicy(cfg, nil, nil)
 	graphID = strings.TrimSpace(graphID)
 	if graphID == "" {
 		graphID = "compiled-graph"
@@ -206,7 +207,9 @@ func (uc *GraphUsecase) CancelExecution(ctx context.Context, executionID string)
 		return ErrGraphInvalidStatus
 	}
 	if exec.runtime != nil {
-		_ = exec.runtime.Cancel()
+		if err := exec.runtime.Cancel(); err != nil {
+			uc.lg.Warn("cancel graph runtime", loggateway.Err(err))
+		}
 	}
 	exec.Status = "cancelled"
 	now := time.Now()
@@ -230,22 +233,27 @@ func (uc *GraphUsecase) ResumeExecution(ctx context.Context, executionID string,
 	}
 
 	if exec.runtime != nil {
-		_ = exec.runtime.Cancel()
+		if err := exec.runtime.Cancel(); err != nil {
+			uc.lg.Warn("cancel graph runtime on resume", loggateway.Err(err))
+		}
 	}
 
-	cfg, err := uc.buildConfigForExecution(ctx, exec)
+	ct, err := uc.buildConfigForExecution(ctx, exec)
 	if err != nil {
 		return nil, err
 	}
 
-	runtime, eventCh, err := uc.factory.BuildAndResume(ctx, cfg, exec.SessionID, exec.GraphID, executionID, lineageID, resumeValue)
+	runtime, eventCh, err := uc.factory.BuildAndResume(ctx, ct.GraphBuildConfig, exec.SessionID, exec.GraphID, executionID, lineageID, resumeValue)
 	if err != nil {
 		return nil, kerrors.FromError(ErrGraphResume).WithCause(err)
 	}
 
 	exec.runtime = runtime
 	exec.Status = "running"
+	exec.interruptMu.Lock()
+	exec.interrupted = false
 	exec.InterruptNode = ""
+	exec.interruptMu.Unlock()
 
 	safego.Go(context.Background(), "graph.consumeEvents(resume)", func() {
 		uc.consumeRuntimeEvents(eventCh, exec, executionID, exec.GraphID, exec.SessionID, func() { uc.notifyExecComplete(exec) })
@@ -290,11 +298,15 @@ func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e 
 		uc.mu.Unlock()
 		if uc.taskCoord != nil {
 			ctx := context.Background()
-			cfg, err := uc.buildConfigForExecution(ctx, exec)
+			ct, err := uc.buildConfigForExecution(ctx, exec)
 			if err == nil {
-				node := nodeDefFromConfig(cfg, e.NodeID)
-				if ShouldCreateTaskForNode(node) {
-					if err := uc.taskCoord.OnGraphNodeStart(ctx, exec, node, ""); err != nil {
+				node := nodeDefFromConfig(ct.GraphBuildConfig, e.NodeID)
+				var meta NodeTaskMeta
+				if m, ok := ct.TaskMeta[e.NodeID]; ok {
+					meta = m
+				}
+				if ShouldCreateTaskForNode(node, meta) {
+					if err := uc.taskCoord.OnGraphNodeStart(ctx, exec, node, meta, ""); err != nil {
 						uc.lg.Warn("graph task on node start failed",
 						loggateway.StepID("graph.task_start_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Str("node_id", e.NodeID), loggateway.Err(err))
 					}
@@ -302,6 +314,7 @@ func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e 
 			}
 		}
 	case DomainEventGraphNodeEnd:
+		var stepsSnapshot []GraphStepSnapshot
 		uc.mu.Lock()
 		exec.Steps = upsertGraphStep(exec.Steps, GraphStepSnapshot{
 			NodeID:    e.NodeID,
@@ -309,11 +322,17 @@ func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e 
 			Status:    "completed",
 			Timestamp: time.Now(),
 		})
+		stepsSnapshot = make([]GraphStepSnapshot, len(exec.Steps))
+		copy(stepsSnapshot, exec.Steps)
 		uc.mu.Unlock()
+		exec.Steps = stepsSnapshot
 		if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
 			uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for node_end", loggateway.StepID("graph.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))
 		}
 	case DomainEventGraphNodeError:
+		var stepsSnapshot []GraphStepSnapshot
+		var statusSnapshot string
+		var errMsgSnapshot string
 		uc.mu.Lock()
 		exec.ErrorMessage = e.Error
 		exec.Status = "failed"
@@ -324,15 +343,31 @@ func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e 
 			Error:     e.Error,
 			Timestamp: time.Now(),
 		})
+		stepsSnapshot = make([]GraphStepSnapshot, len(exec.Steps))
+		copy(stepsSnapshot, exec.Steps)
+		statusSnapshot = exec.Status
+		errMsgSnapshot = exec.ErrorMessage
 		uc.mu.Unlock()
+		exec.Steps = stepsSnapshot
+		exec.Status = statusSnapshot
+		exec.ErrorMessage = errMsgSnapshot
 		if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
 			uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for node_error", loggateway.StepID("graph.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))
 		}
 	case DomainEventGraphInterrupt:
+		var statusSnapshot string
+		var interruptNodeSnapshot string
+		exec.interruptMu.Lock()
+		exec.interrupted = true
+		exec.InterruptNode = e.NodeID
+		interruptNodeSnapshot = exec.InterruptNode
+		exec.interruptMu.Unlock()
 		uc.mu.Lock()
 		exec.Status = "waiting_human"
-		exec.InterruptNode = e.NodeID
+		statusSnapshot = exec.Status
 		uc.mu.Unlock()
+		exec.Status = statusSnapshot
+		exec.InterruptNode = interruptNodeSnapshot
 		if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
 			uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for interrupt", loggateway.StepID("graph.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))
 		}

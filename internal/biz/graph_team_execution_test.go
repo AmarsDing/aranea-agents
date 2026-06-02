@@ -45,15 +45,16 @@ func TestRegisterTeamGraphExecution_andInterrupt(t *testing.T) {
 		Nodes: []NodeDef{{ID: "review-1", Type: "review", InterruptAfter: true}},
 		EntryPoint: "review-1", FinishPoint: "review-1",
 	}
-	if err := uc.RegisterTeamGraphExecution(context.Background(), "exec-1", "sess-1", "team-1", "run-1", cfg); err != nil {
+	ct := NewCompiledTeam(cfg, nil, nil)
+	if err := uc.RegisterTeamGraphExecution(context.Background(), "exec-1", "sess-1", "team-1", "run-1", ct); err != nil {
 		t.Fatal(err)
 	}
-	gotCfg, err := uc.buildConfigForExecution(context.Background(), &GraphExecution{ID: "exec-1", GraphID: "team:team-1:run-1"})
+	gotCt, err := uc.buildConfigForExecution(context.Background(), &GraphExecution{ID: "exec-1", GraphID: "team:team-1:run-1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(gotCfg.Nodes) != 1 || gotCfg.Nodes[0].ID != "review-1" {
-		t.Fatalf("cfg=%+v", gotCfg)
+	if len(gotCt.Nodes) != 1 || gotCt.Nodes[0].ID != "review-1" {
+		t.Fatalf("cfg=%+v", gotCt)
 	}
 	if err := uc.MarkTeamGraphInterrupt(context.Background(), "exec-1", "review-1", "lineage-1"); err != nil {
 		t.Fatal(err)
@@ -68,7 +69,7 @@ func TestRegisterTeamGraphExecution_andInterrupt(t *testing.T) {
 }
 
 func TestGraphTaskInputFromNode_defaults(t *testing.T) {
-	role, mode, strategy, input := GraphTaskInputFromNode(NodeDef{ID: "t1", Type: "task"})
+	role, mode, strategy, input := GraphTaskInputFromNode(NodeDef{ID: "t1", Type: "task"}, NodeTaskMeta{})
 	if role != "" || mode != "static" || strategy != "" || input != "t1" {
 		t.Fatalf("role=%q mode=%q strategy=%q input=%q", role, mode, strategy, input)
 	}
@@ -76,7 +77,7 @@ func TestGraphTaskInputFromNode_defaults(t *testing.T) {
 
 func TestShouldCreateTeamGraphTaskNode_vsStandalone(t *testing.T) {
 	agent := NodeDef{ID: "a1", Type: "agent", AgentName: "worker"}
-	if !ShouldCreateTaskForNode(&agent) {
+	if !ShouldCreateTaskForNode(&agent, NodeTaskMeta{}) {
 		t.Fatal("standalone graph should still create task for agent when policy applies")
 	}
 	if ShouldCreateTeamGraphTaskNode(&agent) {

@@ -2,12 +2,14 @@ package service
 
 import (
 	"context"
+	"fmt"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
-	"aranea-agents/internal/event/contract"
 	"aranea-agents/internal/tools"
 	"aranea-agents/pkg/loggateway"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 var _ tools.SpiritSynthesisPort = (*SpiritSynthesisService)(nil)
@@ -15,14 +17,14 @@ var _ tools.SpiritSynthesisPort = (*SpiritSynthesisService)(nil)
 type SpiritSynthesisService struct {
 	spiritUC *biz.SpiritTeamUsecase
 	engine   *biz.SynthesisEngine
-	eventBus contract.Bus
+	eventBus event.Bus
 	lg       loggateway.Logger
 }
 
 func NewSpiritSynthesisService(
 	spiritUC *biz.SpiritTeamUsecase,
 	engine *biz.SynthesisEngine,
-	eventBus contract.Bus,
+	eventBus event.Bus,
 	lg loggateway.Logger,
 ) *SpiritSynthesisService {
 	return &SpiritSynthesisService{
@@ -34,6 +36,17 @@ func NewSpiritSynthesisService(
 }
 
 func (s *SpiritSynthesisService) SynthesizeResults(ctx context.Context, spiritSessionID string, strategy string) (*biz.SynthesisOutput, error) {
+	activeTeams, activeErr := s.spiritUC.ListActiveTeams(ctx, spiritSessionID)
+	if activeErr != nil {
+		s.lg.Warn("查询活跃团队失败，跳过活跃检查",
+			loggateway.StepID("spirit.synthesis.active_check_err"),
+			loggateway.Err(activeErr),
+		)
+	} else if len(activeTeams) > 0 {
+		return nil, kerrors.BadRequest("SPIRIT",
+			fmt.Sprintf("cannot synthesize: %d team(s) still running/active, wait for completion", len(activeTeams)))
+	}
+
 	teams, err := s.spiritUC.ListCompletedAndFailedTeams(ctx, spiritSessionID)
 	if err != nil {
 		return nil, err
@@ -71,7 +84,7 @@ func (s *SpiritSynthesisService) SynthesizeResults(ctx context.Context, spiritSe
 				KeyFindings: r.KeyFindings,
 			})
 		}
-		env := event.NewEnvelope(contract.EnvelopeTypeSpiritSynthesisCompleted, "spirit-synthesis", spiritSessionID)
+		env := event.NewEnvelope(event.EnvelopeTypeSpiritSynthesisCompleted, "spirit-synthesis", spiritSessionID)
 		env.Metadata = map[string]interface{}{
 			"spirit_session_id": spiritSessionID,
 			"strategy":          string(output.Strategy),

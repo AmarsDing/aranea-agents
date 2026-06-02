@@ -120,14 +120,14 @@ func (r *GraphTaskRuntime) dispatchGraphTaskWebhook(
 	)
 }
 
-func (r *GraphTaskRuntime) OnGraphNodeStart(ctx context.Context, exec *biz.GraphExecution, node *biz.NodeDef, inputPreview string) error {
+func (r *GraphTaskRuntime) OnGraphNodeStart(ctx context.Context, exec *biz.GraphExecution, node *biz.NodeDef, meta biz.NodeTaskMeta, inputPreview string) error {
 	if r == nil || r.taskUC == nil || exec == nil || node == nil {
 		return nil
 	}
-	if !biz.ShouldCreateTaskForNode(node) {
+	if !biz.ShouldCreateTaskForNode(node, meta) {
 		return nil
 	}
-	role, mode, strategy, input := biz.GraphTaskInputFromNode(*node)
+	role, mode, strategy, input := biz.GraphTaskInputFromNode(*node, meta)
 	if strings.TrimSpace(inputPreview) != "" {
 		input = inputPreview
 	}
@@ -150,7 +150,7 @@ func (r *GraphTaskRuntime) OnTaskCompleted(ctx context.Context, task *biz.GraphT
 	if err != nil {
 		return err
 	}
-	if exec.Status == "waiting_human" && (exec.InterruptNode == task.NodeID || exec.CurrentNode == task.NodeID) {
+	if exec.Status == "waiting_human" && (exec.GetInterruptNode() == task.NodeID || exec.CurrentNode == task.NodeID) {
 		_, err = r.graphUC.ResumeExecution(ctx, task.ExecutionID, resumeValue)
 		if err != nil {
 			r.lg.Warn("graph resume after task complete failed", loggateway.StepID("graph.task_resume_fail"), loggateway.Str("execution_id", task.ExecutionID), loggateway.Str("task_id", task.TaskID), loggateway.Err(err))

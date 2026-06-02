@@ -11,10 +11,13 @@ import (
 // CompileToGraphRuntimeConfig builds a graph config for GraphAgent team runtime execution.
 // When linked_graph_id is set, loads the persisted graph asset before mode/embedded compile.
 func CompileToGraphRuntimeConfig(def Definition, agentKey CompileAgentKey, lg loggateway.Logger) (biz.GraphBuildConfig, error) {
-	return CompileToGraphRuntimeConfigFromJSON(context.Background(), def, "", agentKey, nil, lg)
+	ct, err := CompileToCompiledTeam(context.Background(), def, "", agentKey, nil, lg)
+	if err != nil {
+		return biz.GraphBuildConfig{}, err
+	}
+	return ct.GraphBuildConfig, nil
 }
 
-// CompileToGraphRuntimeConfigFromJSON applies linked graph, embedded graph, and failure policy.
 func CompileToGraphRuntimeConfigFromJSON(
 	ctx context.Context,
 	def Definition,
@@ -22,24 +25,8 @@ func CompileToGraphRuntimeConfigFromJSON(
 	agentKey CompileAgentKey,
 	linked GraphBuildConfigLoader,
 	lg loggateway.Logger,
-) (biz.GraphBuildConfig, error) {
-	raw := strings.TrimSpace(rawDefinitionJSON)
-	if raw != "" && linked != nil {
-		if linkedID := LinkedGraphIDFromDefinition(raw); linkedID != "" {
-			if cfg, err := linked.LoadGraphBuildConfig(ctx, linkedID); err == nil {
-				return finalizeRuntimeGraphConfig(cfg, def, raw), nil
-			}
-		}
-	}
-	cfg, err := compileToGraphBuildConfigWithLoader(ctx, def, raw, agentKey, linked, lg)
-	if err != nil {
-		return cfg, err
-	}
-	mode := normalizeCompileMode(def.Mode)
-	if mode == "adaptive" {
-		cfg = applyAdaptiveAgentDestinations(cfg)
-	}
-	return finalizeRuntimeGraphConfig(cfg, def, raw), nil
+) (*biz.CompiledTeam, error) {
+	return CompileToCompiledTeam(ctx, def, rawDefinitionJSON, agentKey, linked, lg)
 }
 
 // applyAdaptiveAgentDestinations moves transfer overlay edges into node Destinations
@@ -90,10 +77,10 @@ func appendAdaptiveDests(existing []string, extra ...string) []string {
 	return existing
 }
 
-func finalizeRuntimeGraphConfig(cfg biz.GraphBuildConfig, def Definition, rawDefinitionJSON string) biz.GraphBuildConfig {
+func finalizeRuntimeGraphConfig(cfg biz.GraphBuildConfig, def Definition, rawDefinitionJSON string, policy *biz.TeamFailurePolicy, parallelBranchIDs []string) biz.GraphBuildConfig {
 	cfg = biz.FilterVisualizationEdges(cfg)
-	cfg = biz.ApplyFailurePolicy(cfg, def.FailurePolicy)
-	cfg = biz.FinalizeGraphFailurePolicy(cfg)
+	cfg = biz.ApplyFailurePolicy(cfg, policy)
+	cfg = biz.FinalizeGraphFailurePolicy(cfg, policy, parallelBranchIDs)
 	cfg = applyTeamRuntimeExecutionOptions(cfg, def, rawDefinitionJSON)
 	return cfg
 }

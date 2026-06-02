@@ -3,7 +3,7 @@ import type { Message } from "./types";
 
 export type ChannelFocusLoadDeps = {
   getMessages: (sessionId: string) => Message[];
-  loadMessages: (opts: { sessionId: string }) => Promise<void>;
+  loadMessages: (opts: { sessionId: string; replace?: boolean; dropStaleInFlight?: boolean }) => Promise<void>;
   setMessages: (sessionId: string, rows: Message[]) => void;
   ensureChatStream: (sessionId: string) => void;
 };
@@ -25,7 +25,7 @@ export async function hydrateSessionForChannelFocus(
     .some((m) => m.role === "user" && (m.content_markdown ?? "").trim());
 
   if (!skipMessageReload || !hasUserContent) {
-    await deps.loadMessages({ sessionId: sid });
+    await deps.loadMessages({ sessionId: sid, replace: true });
   }
 
   applyStreamingSnapshotToSession(

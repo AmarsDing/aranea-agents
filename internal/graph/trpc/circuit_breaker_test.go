@@ -3,23 +3,23 @@ package graph
 import "testing"
 
 func TestCircuitBreakerStateMachine(t *testing.T) {
-	ResetCircuitBreakers()
+	cbState := NewCircuitBreakerState()
 	nodeID := "member-1"
 	threshold := 3
-	cb := circuitBreakerAfterNode(nodeID, threshold)
+	cb := cbState.afterNode(nodeID, threshold)
 	ctx := t.Context()
 	for i := 0; i < threshold; i++ {
 		_, _ = cb(ctx, nil, nil, nil, errTestFail)
 	}
-	if CircuitBreakerState(nodeID) != breakerOpen {
+	if cbState.State(nodeID) != breakerOpen {
 		t.Fatalf("expected open after %d failures", threshold)
 	}
 	_, _ = cb(ctx, nil, nil, nil, nil)
-	if CircuitBreakerState(nodeID) != breakerHalfOpen {
-		t.Fatalf("expected half-open after first success, got %v", CircuitBreakerState(nodeID))
+	if cbState.State(nodeID) != breakerHalfOpen {
+		t.Fatalf("expected half-open after first success, got %v", cbState.State(nodeID))
 	}
 	_, _ = cb(ctx, nil, nil, nil, nil)
-	if CircuitBreakerState(nodeID) != breakerClosed {
+	if cbState.State(nodeID) != breakerClosed {
 		t.Fatalf("expected closed after second success")
 	}
 }

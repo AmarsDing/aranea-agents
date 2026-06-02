@@ -63,3 +63,18 @@ func TxExecerFromCtx(ctx context.Context, fallback *sql.DB) execer {
 	}
 	return fallback
 }
+
+func queryRowScan(ctx context.Context, e execer, query string, args []any, dest ...any) error {
+	rows, err := e.QueryContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return sql.ErrNoRows
+	}
+	if err := rows.Scan(dest...); err != nil {
+		return err
+	}
+	return rows.Err()
+}

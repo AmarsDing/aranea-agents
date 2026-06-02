@@ -224,10 +224,6 @@ func TestFromProtoNode(t *testing.T) {
 		ModelName: "gpt-4", ToolNames: []string{"tool1"},
 		AgentName: "agent1", InterruptBefore: true, InterruptAfter: false,
 		Destinations: []string{"node2"},
-		RequiredRole: "admin", AssignmentMode: "manual",
-		AssignmentStrategy: "round_robin", ReviewerAgent: "reviewer1",
-		ReviewRules: "must approve", TimeoutSeconds: 60,
-		HeartbeatIntervalSeconds: 10, EnableLeaseExtension: true,
 		RetryMaxAttempts: 3, FailureAction: "fallback",
 		FallbackAgent: "fallback1",
 		InputMapperJson: `{"in":"x"}`, OutputMapperJson: `{"out":"y"}`,
@@ -243,9 +239,6 @@ func TestFromProtoNode(t *testing.T) {
 	}
 	if got.Type != "llm" {
 		t.Errorf("Type = %q, want %q", got.Type, "llm")
-	}
-	if got.TimeoutSeconds != 60 {
-		t.Errorf("TimeoutSeconds = %d, want 60", got.TimeoutSeconds)
 	}
 	if got.RetryMaxAttempts != 3 {
 		t.Errorf("RetryMaxAttempts = %d, want 3", got.RetryMaxAttempts)

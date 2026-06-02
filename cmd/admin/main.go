@@ -133,6 +133,9 @@ func newApp(
 			consumerCancel()
 			if pipeline != nil {
 				pipeline.Close()
+				if gw, ok := lg.(*loggateway.Gateway); ok {
+					gw.SetPipeline(nil)
+				}
 			}
 			return nil
 		}),
@@ -191,7 +194,9 @@ func main() {
 			gw.SetPipeline(pipeline)
 		}
 	}
-	loggateway.SetGlobal(lg.(*loggateway.Gateway))
+	if gw, ok := lg.(*loggateway.Gateway); ok {
+		loggateway.SetGlobal(gw)
+	}
 
 	shutdownTelemetry := telemetry.Init(Name, Version, lg)
 	defer func() { _ = shutdownTelemetry(context.Background()) }()

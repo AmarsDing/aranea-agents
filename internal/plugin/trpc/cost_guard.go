@@ -41,7 +41,11 @@ func (c *CostGuardPlugin) Register(r *trpcplugin.Registry) {
 
 func (c *CostGuardPlugin) budget(ctx context.Context) *CostGuardBudgetTracker {
 	if c == nil || c.rt == nil {
-		return NewCostGuardBudgetTracker(c.base.lg)
+		lg := c.base.lg
+		if lg == nil {
+			lg = loggateway.NewNoop()
+		}
+		return NewCostGuardBudgetTracker(lg)
 	}
 	return c.rt.BudgetTrackerForContext(ctx)
 }
