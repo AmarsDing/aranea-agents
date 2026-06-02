@@ -21,7 +21,7 @@ const (
 type MemoryL1ArchiveWorker struct {
 	interval time.Duration
 	store    biz.L1IdleTaskReader
-	writer   biz.L1Writer
+	writer   biz.L1TaskWriter
 	agents   *biz.AgentUsecase
 	lg       loggateway.Logger
 }

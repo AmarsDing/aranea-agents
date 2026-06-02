@@ -156,9 +156,9 @@ func validRolesForMode(mode string) map[string]bool {
 	case "critic_loop":
 		return map[string]bool{"generator": true, "critic": true, "synthesizer": true}
 	case "parallel":
-		return map[string]bool{"synthesizer": true}
+		return map[string]bool{"synthesizer": true, "worker": true}
 	case "coordinator":
-		return map[string]bool{"synthesizer": true}
+		return map[string]bool{"coordinator": true, "worker": true, "synthesizer": true}
 	case "sequential", "swarm", "adaptive":
 		// These modes use generic members; no special roles needed.
 		return map[string]bool{}

@@ -8,20 +8,26 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/jsonutil"
 
-	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
+	trpcfunction "trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
 // --- Context keys for dependency injection ---
 
-type l1WriterKey struct{}
+type l1TaskWriterKey struct{}
+type l1FieldWriterKey struct{}
 type l1ReaderKey struct{}
 type sessionIDKey struct{}
 type agentIDKey struct{}
 
-// WithL1Writer injects L1Writer into context for tool execution.
-func WithL1Writer(ctx context.Context, w biz.L1Writer) context.Context {
-	return context.WithValue(ctx, l1WriterKey{}, w)
+// WithL1TaskWriter injects L1TaskWriter into context for tool execution.
+func WithL1TaskWriter(ctx context.Context, w biz.L1TaskWriter) context.Context {
+	return context.WithValue(ctx, l1TaskWriterKey{}, w)
+}
+
+// WithL1FieldWriter injects L1FieldWriter into context for tool execution.
+func WithL1FieldWriter(ctx context.Context, w biz.L1FieldWriter) context.Context {
+	return context.WithValue(ctx, l1FieldWriterKey{}, w)
 }
 
 // WithL1Reader injects L1AdminReader into context for tool execution.
@@ -39,9 +45,15 @@ func WithAgentID(ctx context.Context, aid string) context.Context {
 	return context.WithValue(ctx, agentIDKey{}, aid)
 }
 
-// L1WriterFromCtx extracts L1Writer from context.
-func L1WriterFromCtx(ctx context.Context) biz.L1Writer {
-	v, _ := ctx.Value(l1WriterKey{}).(biz.L1Writer)
+// L1TaskWriterFromCtx extracts L1TaskWriter from context.
+func L1TaskWriterFromCtx(ctx context.Context) biz.L1TaskWriter {
+	v, _ := ctx.Value(l1TaskWriterKey{}).(biz.L1TaskWriter)
+	return v
+}
+
+// L1FieldWriterFromCtx extracts L1FieldWriter from context.
+func L1FieldWriterFromCtx(ctx context.Context) biz.L1FieldWriter {
+	v, _ := ctx.Value(l1FieldWriterKey{}).(biz.L1FieldWriter)
 	return v
 }
 
@@ -79,7 +91,7 @@ func findActiveTaskID(ctx context.Context, reader biz.L1AdminReader, sessID, age
 }
 
 // ensureActiveTask finds or creates an active task for the session+agent.
-func ensureActiveTask(ctx context.Context, writer biz.L1Writer, reader biz.L1AdminReader, sessID, agentID string) (string, error) {
+func ensureActiveTask(ctx context.Context, writer biz.L1TaskWriter, reader biz.L1AdminReader, sessID, agentID string) (string, error) {
 	taskID, err := findActiveTaskID(ctx, reader, sessID, agentID)
 	if err != nil {
 		return "", err
@@ -117,11 +129,12 @@ type ReadOutput struct {
 }
 
 func readExecute(ctx context.Context, input ReadInput) (ReadOutput, error) {
-	writer := L1WriterFromCtx(ctx)
+	taskWriter := L1TaskWriterFromCtx(ctx)
+	fieldWriter := L1FieldWriterFromCtx(ctx)
 	reader := L1ReaderFromCtx(ctx)
 	sessID := SessionIDFromCtx(ctx)
 	agentID := AgentIDFromCtx(ctx)
-	if writer == nil || reader == nil || sessID == "" {
+	if taskWriter == nil || fieldWriter == nil || reader == nil || sessID == "" {
 		return ReadOutput{}, fmt.Errorf("working_memory not available")
 	}
 	taskID, err := findActiveTaskID(ctx, reader, sessID, agentID)
@@ -219,18 +232,19 @@ type WriteOutput struct {
 }
 
 func writeExecute(ctx context.Context, input WriteInput) (WriteOutput, error) {
-	writer := L1WriterFromCtx(ctx)
+	taskWriter := L1TaskWriterFromCtx(ctx)
+	fieldWriter := L1FieldWriterFromCtx(ctx)
 	reader := L1ReaderFromCtx(ctx)
 	sessID := SessionIDFromCtx(ctx)
 	agentID := AgentIDFromCtx(ctx)
-	if writer == nil || sessID == "" {
+	if taskWriter == nil || fieldWriter == nil || sessID == "" {
 		return WriteOutput{}, fmt.Errorf("working_memory not available")
 	}
-	taskID, err := ensureActiveTask(ctx, writer, reader, sessID, agentID)
+	taskID, err := ensureActiveTask(ctx, taskWriter, reader, sessID, agentID)
 	if err != nil {
 		return WriteOutput{}, err
 	}
-	raw, err := writer.UpsertL1Field(ctx, biz.L1FieldInsert{
+	raw, err := fieldWriter.UpsertL1Field(ctx, biz.L1FieldInsert{
 		TaskID:      taskID,
 		SessionID:   sessID,
 		AgentID:     agentID,
@@ -279,14 +293,15 @@ type PatchOutput struct {
 }
 
 func patchExecute(ctx context.Context, input PatchInput) (PatchOutput, error) {
-	writer := L1WriterFromCtx(ctx)
+	taskWriter := L1TaskWriterFromCtx(ctx)
+	fieldWriter := L1FieldWriterFromCtx(ctx)
 	reader := L1ReaderFromCtx(ctx)
 	sessID := SessionIDFromCtx(ctx)
 	agentID := AgentIDFromCtx(ctx)
-	if writer == nil || sessID == "" {
+	if taskWriter == nil || fieldWriter == nil || sessID == "" {
 		return PatchOutput{}, fmt.Errorf("working_memory not available")
 	}
-	taskID, err := ensureActiveTask(ctx, writer, reader, sessID, agentID)
+	taskID, err := ensureActiveTask(ctx, taskWriter, reader, sessID, agentID)
 	if err != nil {
 		return PatchOutput{}, err
 	}
@@ -303,7 +318,7 @@ func patchExecute(ctx context.Context, input PatchInput) (PatchOutput, error) {
 			ChangedBy:   "agent",
 		})
 	}
-	_, err = writer.PatchL1Fields(ctx, fields)
+	_, err = fieldWriter.PatchL1Fields(ctx, fields)
 	if err != nil {
 		return PatchOutput{}, err
 	}
@@ -331,18 +346,18 @@ type DeleteOutput struct {
 }
 
 func deleteExecute(ctx context.Context, input DeleteInput) (DeleteOutput, error) {
-	writer := L1WriterFromCtx(ctx)
+	fieldWriter := L1FieldWriterFromCtx(ctx)
 	reader := L1ReaderFromCtx(ctx)
 	sessID := SessionIDFromCtx(ctx)
 	agentID := AgentIDFromCtx(ctx)
-	if writer == nil || sessID == "" {
+	if fieldWriter == nil || sessID == "" {
 		return DeleteOutput{}, fmt.Errorf("working_memory not available")
 	}
 	taskID, err := findActiveTaskID(ctx, reader, sessID, agentID)
 	if err != nil || taskID == "" {
 		return DeleteOutput{Deleted: false}, nil
 	}
-	err = writer.DeleteL1Field(ctx, taskID, input.FieldPath)
+	err = fieldWriter.DeleteL1Field(ctx, taskID, input.FieldPath)
 	if err != nil {
 		return DeleteOutput{Deleted: false}, nil
 	}

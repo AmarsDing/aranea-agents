@@ -14,6 +14,12 @@ import (
 	"aranea-agents/internal/biz"
 )
 
+// Default confidence/importance values for auto-generated episodes.
+const (
+	defaultEpisodeConfidence = 0.75
+	defaultL1ArchiveImportance = 0.6
+)
+
 // EpisodeInsert captures inputs for InsertEpisodeRow.
 type EpisodeInsert struct {
 	ID                 string
@@ -93,7 +99,7 @@ INSERT INTO memory_episodes (
 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		id, sid, "", "", strings.TrimSpace(in.AgentID), l1TaskID,
 		"auto_memory", title, "", "completed", summary, summary,
-		imp, 0.75, in.MessageCount,
+		imp, defaultEpisodeConfidence, in.MessageCount,
 		consStatus, in.ConsolidatedL3,
 		l1Snapshot, keyDecisions, keyArtifacts,
 		meta, now, now, now, now,
@@ -221,7 +227,7 @@ INSERT INTO memory_episodes (
 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		id, sid, "", "", strings.TrimSpace(in.AgentID), taskID,
 		"l1_archive", title, "", status, title, "",
-		0.6, 0.75, 0,
+		defaultL1ArchiveImportance, defaultEpisodeConfidence, 0,
 		"consolidated", 0,
 		l1Snapshot, "[]", "[]",
 		"{}", now, now, now, now,

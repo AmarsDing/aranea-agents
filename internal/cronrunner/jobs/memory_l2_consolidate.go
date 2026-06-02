@@ -70,10 +70,10 @@ func (w *MemoryL2ConsolidateWorker) runOnce(ctx context.Context) {
 			if id == "" {
 				continue
 			}
-			// For now, mark as consolidated with 0 extracted facts.
-			// The actual LLM extraction is handled by AutoMemoryWorker which already
-			// processes episodes and creates facts. This worker ensures pending episodes
-			// transition to consolidated status.
+			// Mark as consolidated with zero extracted counts. The actual LLM-based fact
+			// extraction is handled by AutoMemoryWorker (which already processes episodes
+			// and creates L3/L4 artifacts). This worker ensures pending episodes transition
+			// to consolidated status so they become visible in L2 recall queries.
 			if err := w.admin.MarkEpisodeConsolidated(ctx, id, 0, 0); err != nil {
 				w.lg.Warn("failed to consolidate episode",
 					loggateway.Str("episode_id", id),

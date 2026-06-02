@@ -155,7 +155,11 @@ func (uc *MemoryAdminUsecase) UpsertFactRow(ctx context.Context, in FactUpsert) 
 	}
 	uc.syncFactIndexBestEffort(ctx, raw)
 	// Best-effort conflict detection
-	_ = uc.DetectFactConflicts(ctx, in.ScopeType, in.ScopeID, in.Statement)
+	if err := uc.DetectFactConflicts(ctx, in.ScopeType, in.ScopeID, in.Statement); err != nil {
+		uc.lg.Warn("DetectFactConflicts failed (best-effort)",
+			loggateway.StepID("memory.l3_conflict_detect_fail"),
+			loggateway.Err(err))
+	}
 	return raw, nil
 }
 
@@ -365,7 +369,10 @@ func (uc *MemoryAdminUsecase) DetectFactConflicts(ctx context.Context, scopeType
 			if strings.Contains(newLower, neg+existingLower) ||
 				strings.Contains(existingLower, neg+newLower) {
 				if _, err := uc.admin.IncrementConflictCount(ctx, id); err != nil {
-					_ = err // best-effort
+					uc.lg.Warn("IncrementConflictCount failed (best-effort)",
+						loggateway.StepID("memory.l3_conflict_increment_fail"),
+						loggateway.Str("fact_id", id),
+						loggateway.Err(err))
 				}
 				break
 			}

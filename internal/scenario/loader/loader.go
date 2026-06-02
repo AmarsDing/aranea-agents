@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,12 +91,15 @@ func seedAgents(ctx context.Context, d Deps, spec *IndustrySpec, dryRun bool) (i
 
 func seedTeams(ctx context.Context, d Deps, spec *IndustrySpec, dryRun bool) (int, error) {
 	if len(spec.Teams) == 0 {
+		log.Printf("[SEED] seedTeams: no teams in spec for industry %s", spec.IndustryKey)
 		return 0, nil
 	}
 	agentKeyToID, err := resolveAgentKeys(ctx, d, spec)
 	if err != nil {
+		log.Printf("[SEED] seedTeams: resolveAgentKeys failed for industry %s: %v", spec.IndustryKey, err)
 		return 0, err
 	}
+	log.Printf("[SEED] seedTeams: resolved %d agent keys for industry %s", len(agentKeyToID), spec.IndustryKey)
 	existingTeams, err := d.TeamUC.List(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("list teams: %w", err)
@@ -118,12 +122,16 @@ func seedTeams(ctx context.Context, d Deps, spec *IndustrySpec, dryRun bool) (in
 		}
 		if existing, ok := teamKeyMap[team.TeamKey]; ok && existing.ID != "" {
 			if _, updateErr := d.TeamUC.Update(ctx, existing.ID, team); updateErr != nil {
+				log.Printf("[SEED] seedTeams: update team %s failed: %v", team.TeamKey, updateErr)
 				return count, fmt.Errorf("update team %s: %w", team.TeamKey, updateErr)
 			}
+			log.Printf("[SEED] seedTeams: updated team %s", team.TeamKey)
 		} else {
 			if _, createErr := d.TeamUC.Create(ctx, team); createErr != nil {
+				log.Printf("[SEED] seedTeams: create team %s failed: %v", team.TeamKey, createErr)
 				return count, fmt.Errorf("create team %s: %w", team.TeamKey, createErr)
 			}
+			log.Printf("[SEED] seedTeams: created team %s", team.TeamKey)
 		}
 		count++
 	}

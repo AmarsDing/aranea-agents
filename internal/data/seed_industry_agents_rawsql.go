@@ -43,9 +43,15 @@ func SeedIndustryAgentsRawSQL(ctx context.Context, rawDB *sql.DB, scenarioDir st
 				lg.Warn("build agent failed", loggateway.StepID("data.seed.industry_agents.build_agent"), loggateway.Str("industry", ind), loggateway.Str("agent_key", as.Key), loggateway.Err(buildErr))
 				return fmt.Errorf("build agent %s/%s: %w", ind, as.Key, buildErr)
 			}
-			id := fmt.Sprintf("agent_%s", agent.AgentKey)
-			agentKeyToID[agent.AgentKey] = id
-			allAgents = append(allAgents, agentEntry{agent: agent, id: id})
+			// Prefer the actual DB ID if the agent already exists (created by Ent ORM path).
+			var existingID string
+			if qErr := rawDB.QueryRowContext(ctx, "SELECT id FROM agents WHERE agent_key = ? AND deleted_at = ''", agent.AgentKey).Scan(&existingID); qErr == nil && existingID != "" {
+				agentKeyToID[agent.AgentKey] = existingID
+			} else {
+				id := fmt.Sprintf("agent_%s", agent.AgentKey)
+				agentKeyToID[agent.AgentKey] = id
+			}
+			allAgents = append(allAgents, agentEntry{agent: agent, id: agentKeyToID[agent.AgentKey]})
 		}
 	}
 

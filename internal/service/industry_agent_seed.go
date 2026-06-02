@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
@@ -22,11 +23,14 @@ func SeedBuiltinIndustryAgents(
 		if err != nil {
 			event.CtxFlowLogError(ctx, "seed.industry_agents", "版本门控查询失败",
 				event.P("error", err.Error()))
+			log.Printf("[SEED] version check error: %v", err)
 			return
 		}
 		if applied {
+			log.Printf("[SEED] version %d already applied, skipping", biz.SeedVersionIndustryAgentsV1)
 			return
 		}
+		log.Printf("[SEED] version %d not applied, running seed", biz.SeedVersionIndustryAgentsV1)
 	}
 
 	industries := []string{"softwaredev", "selfmedia", "finance"}
@@ -44,9 +48,11 @@ func SeedBuiltinIndustryAgents(
 		if err != nil {
 			event.CtxFlowLogError(ctx, "seed.industry_agents", fmt.Sprintf("种子 %s 失败", ind),
 				event.P("industry", ind), event.P("error", err.Error()))
+			log.Printf("[SEED] industry %s failed: agents=%d teams=%d error=%v", ind, ac, tc, err)
 			hasError = true
 			continue
 		}
+		log.Printf("[SEED] industry %s ok: agents=%d teams=%d", ind, ac, tc)
 		totalAgents += ac
 		totalTeams += tc
 	}

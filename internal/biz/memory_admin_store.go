@@ -103,16 +103,20 @@ type L1FieldInsert struct {
 	ChangedBy     string
 }
 
-// L1Writer exposes L1 task and field write operations.
-type L1Writer interface {
+// L1TaskWriter exposes L1 task write operations.
+type L1TaskWriter interface {
 	StartL1Task(ctx context.Context, in L1TaskInsert) ([]byte, error)
 	EndL1Task(ctx context.Context, sessionID, taskID, status string) ([]byte, error)
 	GetL1TaskRow(ctx context.Context, sessionID, id string) ([]byte, error)
+	ArchiveL1Task(ctx context.Context, sessionID, taskID string) ([]byte, error)
+}
+
+// L1FieldWriter exposes L1 field write operations.
+type L1FieldWriter interface {
 	UpsertL1Field(ctx context.Context, in L1FieldInsert) ([]byte, error)
 	DeleteL1Field(ctx context.Context, taskID, fieldPath string) error
 	GetL1FieldRow(ctx context.Context, taskID, fieldPath string) ([]byte, error)
 	PatchL1Fields(ctx context.Context, fields []L1FieldInsert) ([][]byte, error)
-	ArchiveL1Task(ctx context.Context, sessionID, taskID string) ([]byte, error)
 }
 
 // L1IdleTaskReader lists idle L1 tasks for the auto-archive worker.
@@ -162,17 +166,21 @@ type PIIReviewStore interface {
 	RejectPIIFact(ctx context.Context, factID string) error
 }
 
-// L4GraphAdminStore exposes L4 graph entities, neighborhood, and agent evolution rows.
-type L4GraphAdminStore interface {
+// L4EntityStore exposes L4 entity and graph operations.
+type L4EntityStore interface {
 	ListEntityRows(ctx context.Context, scopeType, scopeID, workspaceID, userID, entityType, status, keyword string, limit, offset int32) ([][]byte, int32, error)
 	NeighborhoodJSON(ctx context.Context, centerID string, hops, maxNodes int32, queryAtRFC3339 string) ([]byte, error)
 	AgentIdentityJSON(ctx context.Context, agentID string) ([]byte, error)
 	AgentStrategyJSON(ctx context.Context, agentID string) ([]byte, error)
+	DeleteSessionEventEntities(ctx context.Context, sessionID string) error
+}
+
+// L4EvolutionStore exposes L4 evolution operations.
+type L4EvolutionStore interface {
 	EvolutionProposalRows(ctx context.Context, agentID, status string, limit int32) ([][]byte, error)
 	EvolutionEventRows(ctx context.Context, agentID string, limit int32) ([][]byte, error)
 	EvolutionMetricsJSON(ctx context.Context, agentID string) ([]byte, error)
 	InsertEvolutionEventRow(ctx context.Context, in EvolutionEventInsert) ([]byte, error)
-	DeleteSessionEventEntities(ctx context.Context, sessionID string) error
 }
 
 // L3ConflictStore manages L3 fact conflict detection.
@@ -181,11 +189,17 @@ type L3ConflictStore interface {
 	ListConflictingFacts(ctx context.Context, scopeType, scopeID string, limit, offset int32) ([][]byte, int32, error)
 }
 
-// SessionAdminStore is the composed admin port for L0–L4 session memory (typed sub-interfaces are preferred for new code).
+// SessionAdminStore is the composed admin port for L0–L4 session memory.
+//
+// Deprecated: This composed interface has grown too large. New code should depend on
+// the fine-grained sub-interfaces (L0AdminStore, L1AdminReader, L1TaskWriter, etc.)
+// directly rather than embedding SessionAdminStore. It is retained only for backward
+// compatibility with existing Wire providers.
 type SessionAdminStore interface {
 	L0AdminStore
 	L1AdminReader
-	L1Writer
+	L1TaskWriter
+	L1FieldWriter
 	L1IdleTaskReader
 	L2RecallStore
 	L2EpisodeWriter
@@ -193,5 +207,6 @@ type SessionAdminStore interface {
 	L3FactAdminStore
 	L3ConflictStore
 	PIIReviewStore
-	L4GraphAdminStore
+	L4EntityStore
+	L4EvolutionStore
 }

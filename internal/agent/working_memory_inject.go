@@ -13,7 +13,7 @@ import (
 )
 
 // newWorkingMemoryContextBeforeHook returns a BeforeToolHook that injects
-// L1Writer, L1AdminReader, sessionID, and agentID into the tool execution
+// L1TaskWriter, L1FieldWriter, L1AdminReader, sessionID, and agentID into the tool execution
 // context for working_memory.* tools.
 func newWorkingMemoryContextBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
 	if deps.MemoryAdmin == nil {
@@ -41,8 +41,9 @@ func newWorkingMemoryContextBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callb
 		if sessID == "" || agentID == "" {
 			return &trpctool.BeforeToolResult{Context: ctx}, nil
 		}
-		// Inject L1Writer and L1AdminReader into context
-		ctx = working_memory.WithL1Writer(ctx, deps.MemoryAdmin)
+		// Inject L1TaskWriter, L1FieldWriter and L1AdminReader into context
+		ctx = working_memory.WithL1TaskWriter(ctx, deps.MemoryAdmin)
+		ctx = working_memory.WithL1FieldWriter(ctx, deps.MemoryAdmin)
 		ctx = working_memory.WithL1Reader(ctx, deps.MemoryAdmin)
 		ctx = working_memory.WithSessionID(ctx, sessID)
 		ctx = working_memory.WithAgentID(ctx, agentID)

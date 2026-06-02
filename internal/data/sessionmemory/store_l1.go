@@ -12,6 +12,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/jsonutil"
+	"aranea-agents/pkg/loggateway"
 )
 
 // --- L1 Task Write Operations ---
@@ -118,12 +119,18 @@ func (st *Store) UpsertL1Field(ctx context.Context, in biz.L1FieldInsert) ([]byt
 		fieldKind = "string"
 	}
 
-	// Archive old value to field_history on conflict
-	_, _ = st.client.ExecContext(ctx, `INSERT INTO memory_l1_field_history (id, field_id, task_id, revision, value_text, value_json, value_ref, preview, token_estimate, changed_by, change_reason, diff_json, metadata_json, created_at)
+	// Archive old value to field_history on conflict (best-effort).
+	if _, histErr := st.client.ExecContext(ctx, `INSERT INTO memory_l1_field_history (id, field_id, task_id, revision, value_text, value_json, value_ref, preview, token_estimate, changed_by, change_reason, diff_json, metadata_json, created_at)
 		SELECT ?, id, task_id, revision, value_text, value_json, value_ref, preview, token_estimate, ?, 'upsert', '{}', '{}', ?
 		FROM memory_l1_fields WHERE task_id = ? AND field_path = ?`,
 		uuid.NewString(), in.ChangedBy, now, taskID, fieldPath,
-	)
+	); histErr != nil {
+		st.lg.Warn("L1 field history archival failed (best-effort)",
+			loggateway.StepID("memory.l1_field_history_fail"),
+			loggateway.Str("task_id", taskID),
+			loggateway.Str("field_path", fieldPath),
+			loggateway.Err(histErr))
+	}
 
 	_, err := st.client.ExecContext(ctx, `INSERT INTO memory_l1_fields (
 		id, task_id, session_id, agent_id, field_path, field_kind, visibility,

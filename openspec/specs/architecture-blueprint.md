@@ -292,24 +292,49 @@ SeedVersionRepo         ← IndustryAgentSeed 消费（查询种子版本号）
 
 **HA 策略**：Failover（`trpcfailover.New`）或 Hedge（`trpchedge.New`）。
 
-#### 记忆系统 (`internal/memory/`)
+#### 记忆系统 (`internal/memory/` + `internal/data/sessionmemory/` + `internal/tools/working_memory/`)
 
-**两种模式**：
+**三种模式**：
 
 | 模式 | 行为 | 接入方式 |
 |------|------|---------|
-| Agentic | Agent 主动调用 memory_add/search 等工具 | `Service.Tools()` → 过滤（移除 memory_clear）→ `AssemblyConfig.MemoryTools` + `llmagent.WithMemoryService(service)` |
+| Agentic (框架) | Agent 主动调用 memory_add/search 等工具 | `Service.Tools()` → 过滤（移除 memory_clear）→ `AssemblyConfig.MemoryTools` + `llmagent.WithMemoryService(service)` |
+| Agentic (L1) | Agent 主动调用 working_memory.read/write/list/patch/delete 工具 | `working_memory.ToolSet` → `BeforeToolHook` 注入 L1TaskWriter/L1FieldWriter/L1AdminReader |
 | Auto | 对话结束后 LLM 自动提取记忆 | `service.EnqueueAutoMemoryJob(ctx, session)` |
 
 **5 层记忆架构**：
 
-| 层级 | 内容 | 存储 |
-|------|------|------|
-| L0 | 会话快照 | SQLite Session |
-| L1 | 任务/字段提取 | SQLite Memory |
-| L2 | 事实检索 | SQLite + pgvector |
-| L3 | 实体关系图 | SQLite + pgvector |
-| L4 | 级联演化 | SQLite Memory |
+| 层级 | 内容 | 存储 | 核心模块 | 进度 |
+|------|------|------|----------|------|
+| L0 | 会话快照（Prompt 组装观测 + 压缩摘要） | SQLite Session | `biz/l0_assembly_snapshot.go` + `agent/l0_snapshot_persist.go` + `data/sessionmemory/store_l0_snapshot.go` | 95% |
+| L1 | 工作记忆（任务/字段读写 + 归档 + 自动归档 Worker） | SQLite Memory | `biz/memory_admin_store.go`(L1TaskWriter/L1FieldWriter/L1AdminReader) + `tools/working_memory/tools.go` + `agent/working_memory_inject.go` + `cronrunner/jobs/memory_l1_archive.go` | 75% |
+| L2 | 会话事件（Episode + 融合召回 + Consolidation Worker） | SQLite + pgvector | `data/sessionmemory/store_episodes.go` + `biz/memory_l2_recall.go` + `cronrunner/jobs/memory_l2_consolidate.go` + `cronrunner/jobs/memory_l2_decay.go` | 85% |
+| L3 | 语义知识（Fact CRUD + 冲突检测 + PII 审核 + 5维评分召回） | SQLite + pgvector | `data/sessionmemory/store_facts_ops.go` + `biz/memory_l3_fused_recall.go` + `biz/memory_admin_usecase.go`(DetectFactConflicts) + `data/sessionmemory/store_l3_recall.go` | 80% |
+| L4 | 持久进化（知识图谱 + Cascade Saga + 衰减 + 中文 regex） | SQLite Memory | `biz/memory_l4_usecase.go` + `biz/memory_l4_cascade.go` + `data/sessionmemory/entity.go` + `cronrunner/jobs/memory_l4_decay.go` | 75% |
+
+**关键接口拆分**（遵守 ≤5 方法规范）：
+
+| 接口 | 方法数 | 职责 |
+|------|--------|------|
+| `L1TaskWriter` | 4 | L1 任务写操作（Start/End/Get/Archive） |
+| `L1FieldWriter` | 4 | L1 字段写操作（Upsert/Delete/Get/Patch） |
+| `L1AdminReader` | 4 | L1 管理读操作（ListTasks/ListFields/GetTask/GetField） |
+| `L4EntityStore` | 5 | L4 实体/图操作 |
+| `L4EvolutionStore` | 4 | L4 进化操作 |
+| `L2ConsolidationStore` | 2 | Episode pending→consolidated 状态机 |
+| `L3ConflictStore` | 2 | 冲突检测 + 计数 |
+| `PIIReviewStore` | 3 | PII 审核（list/approve/reject） |
+
+**Cron Workers**：
+
+| Worker | 间隔 | 职责 |
+|--------|------|------|
+| `MemoryL1ArchiveWorker` | 5min | 自动归档空闲 L1 任务（60min 阈值） |
+| `MemoryL2ConsolidateWorker` | 10min | pending→consolidated Episode 状态转换 |
+| `MemoryL2DecayWorker` | 定期 | Episode importance 衰减 + retention purge |
+| `MemoryL3DecayWorker` | 定期 | Fact importance 衰减 |
+| `MemoryL4DecayWorker` | 定期 | Entity 指数衰减 + reinforcement |
+| `MemoryFactIndexReconciler` | 6h | pgvector 索引 stale/fresh 状态同步 |
 
 #### 会话存储 (`internal/session/`)
 
