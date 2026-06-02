@@ -23,6 +23,9 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 	if !SkillsUseFullProfile(ag.SystemPromptMode) {
 		return nil
 	}
+	if biz.IsProgressiveSkillLoad(ag.Settings.GetSkillLoadMode()) {
+		return newProgressiveSkillGuidanceHook(ag, deps)
+	}
 	return callbacks.NewBeforeModelHook(5, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
@@ -58,6 +61,43 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 		}
 		if written == 0 {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
+		cue := b.String()
+		sys := trpcmodel.NewSystemMessage(cue)
+		args.Request.Messages = append([]trpcmodel.Message{sys}, args.Request.Messages...)
+		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+	})
+}
+
+func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
+	return callbacks.NewBeforeModelHook(5, func(ctx context.Context, args *trpcmodel.BeforeModelArgs) (*trpcmodel.BeforeModelResult, error) {
+		if args == nil || args.Request == nil {
+			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
+		runtime := ag.Settings
+		opts := &skillruntime.SkillToolsetOptions{Runtime: runtime, UserQuery: skillruntime.TurnQueryFromContext(ctx)}
+		result, err := skillruntime.ResolveSkillSlugsDetailed(ctx, deps.SkillUC, opts, deps.LG)
+		if err != nil || len(result.Slugs) == 0 {
+			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
+		entries, err := deps.SkillUC.BatchGetSkillGuidance(ctx, result.Slugs)
+		if err != nil || len(entries) == 0 {
+			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
+		var b strings.Builder
+		b.WriteString("## Available Skills\n\nThe following skills are available. Use the skill_load tool to load specific skill details.\n\n")
+		for _, e := range entries {
+			m := manifest.Parse(e.Guidance)
+			name := strings.TrimSpace(m.Name)
+			if name == "" {
+				name = e.Slug
+			}
+			desc := strings.TrimSpace(m.Description)
+			if desc != "" {
+				fmt.Fprintf(&b, "- **%s**: %s\n", name, desc)
+			} else {
+				fmt.Fprintf(&b, "- **%s**\n", name)
+			}
 		}
 		cue := b.String()
 		sys := trpcmodel.NewSystemMessage(cue)

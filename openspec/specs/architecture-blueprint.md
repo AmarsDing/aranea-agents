@@ -28,7 +28,7 @@ Aranea-Agents 是基于 **trpc-agent-go** 的多智能体编排平台。以 **Kr
 │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘ │
 │       │             │             │             │             │        │
 │  ┌────┴─────────────┴─────────────┴─────────────┴─────────────┴────┐   │
-│  │              Stores (Pinia) — 36 个域 Store                      │   │
+│  │              Stores (Pinia) — 43 个域 Store                      │   │
 │  └────┬─────────────┬─────────────┬─────────────┬──────────────┬───┘   │
 │       │             │             │             │              │        │
 │  ┌────┴─────┐  ┌────┴─────┐  ┌────┴─────┐  ┌───┴──────┐ ┌────┴─────┐ │
@@ -117,7 +117,12 @@ Aranea-Agents 是基于 **trpc-agent-go** 的多智能体编排平台。以 **Kr
 | **ToolService** | tool/v1 | ToolUsecase | 无 |
 | **KnowledgeService** | knowledge/v1 | KnowledgeUsecase | 无 |
 | **A2AService** | a2a/v1 | A2AUsecase | 通过 `A2ARunnerFactory` 端口 |
-| **其他** | admin/avatar/hook/usage/evaluation/ecosystem... | 对应 Usecase | 无 |
+| **AvatarService** | avatar/v1 | — | 无 |
+| **AgentCategoryService** | agent_category/v1 | AgentCategoryUsecase | 无 |
+| **AIRefineService** | ai_refine/v1 | — | 条件注册 |
+| **GatewayService** | gateway/v1 | — | 无 |
+| **IndustryService** | industry/v1 | IndustryUsecase | 无 |
+| **其他** | admin/hook/usage/evaluation/ecosystem/event/model_catalog/system_setting/mcp_server/artifact/learning_loop... | 对应 Usecase | 无 |
 
 **ChatOrchestrator** 是核心编排器，实现 `biz.TurnExecutor`，负责：
 1. 准入控制（会话锁、活跃 Run 检查、待处理队列）
@@ -181,7 +186,7 @@ SeedVersionRepo         ← IndustryAgentSeed 消费（查询种子版本号）
 
 **启动流程**：`initSQLite` → `ensureSchemaDDL`（30+ DDL 补丁）→ `initPostgres` → `runPendingDataMigrations` → `seedInitialData`
 
-**42 个 Repo 实现**，每个都有编译期接口检查 `var _ biz.XxxRepo = (*xxxRepo)(nil)`。
+**42→27 个 Repo 实现**，每个都有编译期接口检查 `var _ biz.XxxRepo = (*xxxRepo)(nil)`。
 
 ### 3.2 Agent 运行时模块
 
@@ -214,19 +219,22 @@ SeedVersionRepo         ← IndustryAgentSeed 消费（查询种子版本号）
 
 #### 工具装配 (`internal/tools/`)
 
-**18 个内置工具**：
+**18→28 个内置工具**：
 
 | 工具 | 类别 | 风险 | 默认 |
 |------|------|------|------|
 | file | 文件系统 | low | ✅ |
 | hostexec | 执行 | critical | ❌ |
-| httpfetch / geminifetch | Web | medium | ❌ |
+| httpfetch / claudefetch / geminifetch | Web | medium | ❌ |
 | duckduckgo / google_search / arxiv_search / wikipedia | 搜索 | low-medium | ❌ |
-| email | 通信 | high | ❌ |
+| email / message | 通信 | high | ❌ |
 | todo | 效率 | low | ❌ |
 | await_user_reply | 交互 | low | ❌ |
 | claudecode / workspace_exec | 编码/执行 | critical | ❌ |
-| openapi / agent / mcp / mcpbroker | 集成 | medium | ❌ |
+| openapi / agent / mcp / mcpbroker / model_registry_sync | 集成 | medium | ❌ |
+| subagents_spawn / list / get / cancel | 组合 | low-medium | ❌ |
+| browser | 浏览器 | critical | ❌ |
+| read_document / read_spreadsheet / read_tool_result | 媒体 | low-medium | ✅/❌ |
 
 **装配入口**：`Assemble(ctx, AssemblyConfig) → AssembledToolsets`
 
@@ -409,9 +417,9 @@ kerrors.InternalServer("AGENT", err.Error())
 ### 4.1 分层架构
 
 ```
-services/index.ts (25 个 createXxxService)
+services/index.ts (31 个 createXxxService)
   → features/<域>/api.ts (HTTP 门面 + 类型归一化)
-    → stores/<域>/index.ts (36 个 Store: 状态 + action)
+    → stores/<域>/index.ts (43 个 Store: 状态 + action)
       → features/<域>/useXxxPage.ts (composable 组合 Store)
         → pages/XxxPage.vue (布局 + composable 绑定)
           → components/<域>/*.vue (纯展示: props in / emits out)
@@ -456,7 +464,7 @@ dispatcher.ts            ← EnvelopeDispatcher: 按 type/channel/sessionId/team
   └── features/orchestration/useOrchestrationStream.ts
 ```
 
-**47 种 Envelope 类型**：text_delta、tool_call、tool_result、runner_completion、context_usage、graph_node_start/end、team_run_started/finished、alert.notify、**session.status_changed** 等。
+**47→44 种 Envelope 类型**：text_delta、tool_call、tool_result、runner_completion、context_usage、graph_node_start/end、team_run_started/finished、alert.notify、**session.status_changed**、**spirit_team_***、**token_usage** 等。
 
 ### 4.4 跨 Store 通信
 
@@ -474,27 +482,42 @@ dispatcher.ts            ← EnvelopeDispatcher: 按 type/channel/sessionId/team
 | `/overview` | OverviewPage | 用量概览 |
 | `/chat` | ChatPage | 聊天工作台（Agent 对话 + Team 对话） |
 | `/sessions` | SessionsPage | 会话列表 + 搜索 |
+| `/sessions/:sessionId` | SessionDetailPage | 会话详情 |
 | `/memory` | MemoryCenterPage | 记忆中心（5 层记忆浏览） |
 | `/agents` | AgentsPage | Agent 列表 + 创建 |
 | `/agents/:id/settings` | AgentSettingsPage | Agent 设置（Prompt/工具/模型/记忆） |
+| `/settings/agent-categories` | AgentCategoriesPage | Agent 分类管理 |
 | `/team` | TeamsPage | Team 列表 + 编排 |
+| `/teams/:teamId/orchestrate` | TeamOrchestratePage | Team 编排界面 |
+| `/teams/:teamId/runs/:runId/observatory` | TeamRunObservatoryPage | Team 运行观测 |
 | `/graphs` | GraphsPage | Graph 列表 + 编辑器 |
-| `/graphs/:id/edit` | GraphEditorPage | Graph 可视化编辑（Vue Flow 画布 + 属性面板 + 实时校验 + 撤销重做） |
-| `/graphs/:id/run` | GraphRunPage | Graph 执行态（步骤时间线 + 任务看板 + HITL + 检查点回退） |
-| `/graphs/executions` | GraphExecutionsPage | Graph 执行历史（服务端过滤 + 状态/时间范围筛选） |
+| `/graphs/new` | GraphEditorPage | Graph 新建 |
+| `/graphs/:id` | GraphEditorPage | Graph 可视化编辑（Vue Flow 画布 + 属性面板 + 实时校验 + 撤销重做） |
+| `/graphs/:id/run/:execId` | GraphRunPage | Graph 执行态（步骤时间线 + 任务看板 + HITL + 检查点回退） |
+| `/graphs/:id/executions` | GraphExecutionsPage | Graph 执行历史（服务端过滤 + 状态/时间范围筛选） |
 | `/models` | ResourceManagerPage | LLM Provider/Model 管理 |
 | `/channels` | ChannelsPage | 渠道管理 |
 | `/tools` | ToolsPage | 工具目录 |
+| `/tools/audits` | ToolAuditsPage | 工具审计 |
+| `/tools/runs` | ToolRunsPage | 工具运行记录 |
 | `/monitor/logs` | MonitorPage | 监控日志 + 告警 |
 | `/cron` | CronTasksPage | 定时任务 |
 | `/hooks` | HooksPage | Webhook 管理 |
+| `/hooks/deliveries` | HookDeliveriesPage | Webhook 投递记录 |
+| `/webhooks` | WebhooksPage | Webhook 配置 |
 | `/knowledge` | KnowledgePage | 知识库 |
+| `/artifacts` | ArtifactsPage | 制品管理 |
 | `/plugins` | PluginsPage | 插件管理 |
+| `/plugins/runs` | PluginRunsPage | 插件运行记录 |
 | `/skills` | SkillsPage | 技能管理 |
+| `/skills/runs` | SkillRunsPage | 技能运行记录 |
 | `/mcp-servers` | McpServersPage | MCP 服务器 |
 | `/a2a` | A2APage | A2A 端点 |
 | `/evaluation` | EvaluationPage | 评估 |
 | `/usage/events` | UsageEventsPage | 用量事件 |
+| `/shop` | EcosystemPage | 生态商店 |
+| `/industries` | IndustryMarketPage | 行业市场 |
+| `/industries/:key` | IndustryDetailPage | 行业详情 |
 | `/settings` | SystemSettingsPage | 系统设置 |
 
 ---
@@ -723,11 +746,11 @@ WS 事件流：
 ```
 cmd/admin/wire.go
   ├── server.ProviderSet    — HTTP/gRPC/WS 注册
-  ├── data.ProviderSet      — 42 个 Repo 实现
+  ├── data.ProviderSet      — 27 个 Repo 实现
   ├── biz.ProviderSet       — ~35 个 Usecase
   ├── event.ProviderSet     — 事件基础设施
   ├── session.ProviderSet   — 会话运行时
-  └── service.ProviderSet   — ~25 个 Service + Wire 接口绑定（含 `WireSessionStatusPublisher` → `SessionStatusGuard` + `SessionStatusPublisher` 注入）
+  └── service.ProviderSet   — 30 个 Service + Wire 接口绑定（含 `WireSessionStatusPublisher` → `SessionStatusGuard` + `SessionStatusPublisher` 注入）
 ```
 
 **Wire adapter 模式**：当 Server 层需要消费 biz 端口接口但不得 import `internal/biz` 时，在 `cmd/admin/wire.go` 中定义 adapter（如 `wsTurnExecutorAdapter` 将 `biz.TurnExecutorGateway` 转换为 `server.WSTurnExecutor`）。

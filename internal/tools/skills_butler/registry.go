@@ -1,0 +1,47 @@
+package skills_butler
+
+import (
+	"context"
+	"time"
+
+	"aranea-agents/internal/biz"
+	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
+)
+
+type SkillUsecasePort interface {
+	ListProposals(ctx context.Context, agentID string, status string) ([]biz.SkillProposal, error)
+	ApproveProposal(ctx context.Context, id string, approvedBy string) (biz.SkillProposal, error)
+	RejectProposal(ctx context.Context, id string, rejectedBy string) (biz.SkillProposal, error)
+	RegisterApproved(ctx context.Context, id string) (biz.SkillProposal, error)
+	CreateProposal(ctx context.Context, proposal biz.SkillProposal) (biz.SkillProposal, error)
+}
+
+type EvolutionUsecasePort interface {
+	GetEvolutionMetrics(ctx context.Context, agentID string, timeRange string) (biz.EvolutionMetrics, error)
+}
+
+type SkillQueryReaderPort interface {
+	GetSkillInvocationStats(ctx context.Context, agentID string, since time.Time) ([]SkillInvocationStat, error)
+}
+
+type SkillInvocationStat struct {
+	SkillName     string  `json:"skill_name"`
+	Count         int     `json:"count"`
+	SuccessRate   float64 `json:"success_rate"`
+	AvgDurationMs int64   `json:"avg_duration_ms"`
+}
+
+type Deps struct {
+	Skills    SkillUsecasePort
+	Evolution EvolutionUsecasePort
+	Queries   SkillQueryReaderPort
+}
+
+func RegisterAll(deps Deps) []trpctool.Tool {
+	return []trpctool.Tool{
+		newAnalyzeSkillUsageTool(deps),
+		newRecommendSkillsTool(deps),
+		newEvolveSkillTool(deps),
+		newOptimizeSkillTool(deps),
+	}
+}

@@ -887,7 +887,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		return userMsg, biz.ChatMessage{}, te
 	}
 	if ctx.Err() != nil && result.HasContent {
-		emitter.LogWarn("chat.turn.timeout_with_reply", "对话超时但模型已输出，保存回复", event.P("timeout", o.turnTimeout.String()), event.P("reply_len", result.Reply.Len()))
+		emitter.LogWarn("chat.turn.timeout_with_reply", "对话超时但模型已输出，保存回复", "", event.P("timeout", o.turnTimeout.String()), event.P("reply_len", result.Reply.Len()))
 	}
 
 	displayMarkdown := chatagent.DisplayMarkdownFromStream(result)

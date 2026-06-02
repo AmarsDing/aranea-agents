@@ -121,6 +121,12 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 			opts = append(opts, trpcllmagent.WithCodeExecutor(exec))
 		}
 		skillProfile, dirHints := skillOptionsForPromptMode(ag.SystemPromptMode)
+		if ag.Settings != nil && biz.IsProgressiveSkillLoad(ag.Settings.GetSkillLoadMode()) {
+			if skillProfile == "" {
+				skillProfile = trpcllmagent.SkillToolProfileKnowledgeOnly
+			}
+			dirHints = true
+		}
 		opts = append(opts,
 			trpcllmagent.WithSkillToolProfile(skillProfile),
 			trpcllmagent.WithSkillsDirectoryHints(dirHints),

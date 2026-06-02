@@ -257,6 +257,17 @@ func (s *AgentRuntimeSettings) ApplySkills(cfg SkillsCfg) {
 	s.IntentPassEnabled = cfg.IntentPassEnabled
 }
 
+func (s *AgentRuntimeSettings) GetSkillLoadMode() string {
+	if s == nil {
+		return SkillLoadModeEager
+	}
+	mode := strings.TrimSpace(s.SkillLoadMode)
+	if mode == "" {
+		return SkillLoadModeEager
+	}
+	return mode
+}
+
 func (s *AgentRuntimeSettings) ApplyEvolution(cfg EvolutionCfg) {
 	s.SelfEvolve = cfg.SelfEvolve
 	s.EvolutionSelfEvolve = cfg.SelfEvolve
