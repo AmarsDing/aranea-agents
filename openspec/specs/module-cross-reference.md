@@ -367,6 +367,100 @@
 
 ---
 
+### 1.17 学习闭环 (`internal/biz/learning_loop.go` + `internal/service/learning_loop.go` + `internal/data/learning_loop.go`)
+
+**职责**：Observation → Pattern → Proposal → Validation → Registration 完整学习闭环，让 Agent 从经验中学习。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（Observation/Pattern/Proposal 类型、ObservationReadWriter/PatternReadWriter/ProposalReadWriter 端口）、`biz/evolution.go`（EvolutionUsecase） |
+| **下游影响** | `service/learning_loop`（LearningLoopService 调用 LearningLoopUsecase） |
+| **核心导出** | `LearningLoopUsecase`、`Observation`/`Pattern`/`KnowledgeProposal` 领域模型 |
+| **实现接口** | 无（通过 Service 层暴露 HTTP/gRPC API） |
+| **共享类型** | `Observation`（tool_call/feedback/memory_hit/memory_miss）、`Pattern`（detected/confirmed/dismissed）、`KnowledgeProposal`（draft/pending/approved/rejected/applied） |
+| **事件生产** | 无直接生产（闭环由 API 触发或手动 RunLoop） |
+| **事件消费** | 无直接消费（未来可消费 `runner_completion` 事件自动触发闭环） |
+| **数据库** | SQLite（learning_observations/learning_patterns/learning_proposals，原生 SQL DDL） |
+| **前端对应** | AgentLearningLoopPanel（Agent 详情页"学习闭环"Tab）、LearningLoopOverview/LearningPatternList/LearningProposalList 组件 |
+
+**⚠️ 开发注意**：
+- 学习闭环与 EvolutionUsecase 协作：EvolutionUsecase 提供进化指标，LearningLoopUsecase 提供模式识别和知识注册
+- 修改 `Observation`/`Pattern`/`KnowledgeProposal` 类型时，需同步更新前端 `api.learning.ts` 类型定义
+- 前端数据流：`api.learning.ts` → `useAgentLearningLoopPanel` composable → `AgentLearningLoopPanel.vue` + 子组件
+
+---
+
+### 1.18 技能自创建 (`internal/biz/skill_evolution.go` + `internal/service/skill_evolution.go` + `internal/data/skill_evolution.go`)
+
+**职责**：检测 Agent 重复工具调用模式，自动提议创建新 Skill，经审批后注册到 Skill 仓库。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（SkillProposal 类型、SkillProposalReadWriter/SkillAutoCreator/SkillRegistrationPort 端口、AgentRepository、PatternReader） |
+| **下游影响** | `service/skill_evolution`（SkillEvolutionService 调用 SkillEvolutionUsecase）、`skill`（注册新 Skill） |
+| **核心导出** | `SkillEvolutionUsecase`、`SkillProposal` 领域模型、`DetectAndPropose`/`ApproveProposal`/`RejectProposal`/`RegisterApproved` 方法 |
+| **实现接口** | `SkillAutoCreator`（LLM 生成 SKILL.md）、`SkillRegistrationPort`（注册 Skill 到仓库） |
+| **共享类型** | `SkillProposal`（pending/approved/rejected/registered/expired）、`ToolCallRecord` |
+| **事件生产** | 无直接生产（由 Cron 定时任务或 API 触发） |
+| **事件消费** | 无直接消费 |
+| **数据库** | SQLite（skill_proposals，原生 SQL DDL） |
+| **前端对应** | 待集成（后端 API 已就绪，前端 Skill 进化管理界面待开发） |
+
+**⚠️ 开发注意**：
+- `SkillAutoCreator` 接口由 `internal/skill/auto_creator.go` 实现，调用 LLM 生成 SKILL.md
+- `SkillRegistrationPort` 接口由 SkillUsecase 适配，将审批通过的 Proposal 注册为正式 Skill
+- 定时检测通过 `internal/cronrunner/jobs/skill_evolution.go` 触发
+- 前端集成时需在 SkillsPage 或 AgentSettingsPage 新增"技能提议"管理界面
+
+---
+
+### 1.19 技能管家工具 (`internal/tools/skills_butler/`)
+
+**职责**：4 个技能管家核心工具（evolve_skill/optimize_skill/recommend_skills/analyze_skill_usage），让 `__skills__` Agent 主动进化自身技能。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（SkillUsecase/SkillQueryReader/EvolutionMetricsRepo/ToolInvocationReader 端口）、`provider`（LLM 模型，evolve_skill/optimize_skill 需调用 LLM） |
+| **下游影响** | `agent`（ChatOrchestrator.skillsButlerTools() 注入到 `__skills__` Agent）、`service/chat`（工具装配） |
+| **核心导出** | `RegisterAll(deps Deps) []trpctool.Tool`、`IsSkillsButlerAllowed(agentKey) bool`、4 个工具函数 |
+| **实现接口** | 无（工具注册到 tools 包，通过 Assemble 装配） |
+| **共享类型** | `Deps`（端口依赖聚合）、`EvolveSkillInput/Output`、`OptimizeSkillInput/Output`、`RecommendSkillsInput/Output`、`AnalyzeSkillUsageInput/Output` |
+| **事件生产** | 无直接生产（工具执行结果通过 tool_result 事件返回） |
+| **事件消费** | 无 |
+| **数据库** | 无直接访问（通过 biz Usecase/Repo 间接访问） |
+| **前端对应** | 待集成（工具在 `__skills__` Agent 会话中使用，前端无需独立页面） |
+
+**⚠️ 开发注意**：
+- `IsSkillsButlerAllowed` 仅对 `__skills__` Agent 返回 true，其他 Agent 不注入这些工具
+- `evolve_skill` 和 `optimize_skill` 需调用 LLM 分析失败模式和生成优化方案，需确保 Provider 可用
+- 修改 `Deps` 结构体时，需同步更新 `service/chat` 的 `skillsButlerTools()` 适配器
+
+---
+
+### 1.20 Skill 渐进加载 (`internal/agent/skill_guidance_inject.go` + `internal/agent/trpc_build.go` + `internal/agent/prompt_mode.go`)
+
+**职责**：将 Skill Prompt 注入策略从 Eager 全量注入改为 3 阶段渐进加载（L0 manifest → L1 body → L2 refs），通过 `skill_load_mode=progressive` 配置切换。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `biz`（Agent 类型、SkillLoadMode 配置）、`pkg/trpc-agent-go/processor/skills`（SkillsRequestProcessor） |
+| **下游影响** | `agent`（BuildTRPCAgent 根据 skill_load_mode 选择注入策略）、所有使用 Skill 的 Agent |
+| **核心导出** | `IsProgressiveSkillLoad(mode) bool`、progressive 模式下的 guidance 注入跳过逻辑 |
+| **实现接口** | 无（修改现有 `newSkillGuidanceBeforeHook` 行为） |
+| **共享类型** | 无新增（复用现有 `skill_load_mode` 字段） |
+| **事件生产** | 无 |
+| **事件消费** | 无 |
+| **数据库** | 无（配置存储在 Agent 的 runtime_settings 中） |
+| **前端对应** | AgentSettingsPage（skill_load_mode 选项，需新增 `progressive` 选项） |
+
+**⚠️ 开发注意**：
+- progressive 模式下 `newSkillGuidanceBeforeHook` 返回 nil（不注入 guidance），LLM 必须通过 `skill_load` 工具按需获取 Skill 正文
+- progressive 模式自动启用 `WithSkillsLoadedContentInToolResults(true)`，避免 loaded body 再次注入 system prompt
+- `injectOverview` 增加 `[routed]` 标记，引导 LLM 优先加载被路由的 Skill
+- 修改 `skill_load_mode` 枚举时，需同步更新 `api/kratos/agent/v1/agent.proto` 注释
+
+---
+
 ## 二、前端模块开发上下文卡片
 
 ### 2.1 Chat 域（最复杂的前端域）
@@ -534,6 +628,8 @@
 | memory_* | 原生 SQL | MemoryRepo | MemoryUsecase | MemoryCenterPage |
 | graph_* | 原生 SQL | GraphRepo | GraphUsecase | GraphsPage |
 | flow_log_events | 原生 SQL | FlowLogRepo | MonitorUsecase | MonitorPage |
+| learning_observations / learning_patterns / learning_proposals | 原生 SQL | LearningLoopRepo | LearningLoopUsecase | AgentSettingsPage（学习闭环 Tab） |
+| skill_proposals | 原生 SQL | SkillEvolutionRepo | SkillEvolutionUsecase | 待集成 |
 
 ---
 
@@ -565,6 +661,8 @@
 | SystemSettingService | system_setting/v1 | createSystemSettingService | useSystemSettingsStore | SystemSettingsPage |
 | ModelCatalogService | model_catalog/v1 | createModelCatalogService | usePlatformStore | ResourceManagerPage |
 | AdminService | admin/v1 | createAdminService | useAuthStore | LoginPage |
+| LearningLoopService | learning_loop/v1 | createLearningLoopService | useAgentDetailStore（学习闭环 Tab） | AgentSettingsPage（学习闭环 Tab） |
+| SkillEvolutionService | skill_evolution/v1 | createSkillEvolutionService | 待集成 | 待集成 |
 
 ---
 

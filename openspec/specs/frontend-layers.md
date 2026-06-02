@@ -1,10 +1,13 @@
 # 前端分层规范
 
 > 来源：项目规则 + `aranea-frontend-guide` SKILL 精简版。
+> 架构上下文（数据流图、Store 表、WS 通信链、跨 Store 通信、路由表）详见 [`architecture-blueprint.md`](./architecture-blueprint.md) §四。
 
 ---
 
 ## 一、数据流方向
+
+**数据流只允许从左到右。**
 
 ```
 services/index.ts (createXxxService)
@@ -14,8 +17,6 @@ services/index.ts (createXxxService)
         → pages/XxxPage.vue (布局 + 传参)
           → components/<域>/*.vue (纯展示：props in / emits out)
 ```
-
-**数据流只允许从左到右。**
 
 ---
 
@@ -72,32 +73,17 @@ services/index.ts (createXxxService)
 
 ## 三、实时通信层
 
-```
-WebSocket Server (Go /v1/ws)
-  → ws-transport.ts (原始 WS 连接、重连、心跳)
-    → globalWsHub.ts (共享 session_id=* 连接)
-      → useEnvelopeStream.ts (Composable 工厂)
-        → dispatcher.ts (EnvelopeDispatcher: 按 type/channel/sessionId/teamId 发布订阅)
-          → features/chat/composables/useChatStreamManager.ts
-          → features/monitor/api.ts
-          → features/teams/api.ts
-          → features/graph/runtime/useGraphExecutionStream.ts
-          → features/orchestration/useOrchestrationStream.ts
-```
+**新增 EnvelopeType 时，必须同时更新：后端 `internal/event/envelope.go` + 前端 `realtime/envelope.ts`**
 
-**47 种 Envelope 类型**：text_delta、tool_call、tool_result、runner_completion、context_usage、graph_node_start/end、team_run_started/finished、alert.notify、session.status_changed 等。
+通信链详见 [`architecture-blueprint.md`](./architecture-blueprint.md) §四.3。
 
 ---
 
 ## 四、跨 Store 通信
 
-| 机制 | 生产者 | 消费者 | 说明 |
-|------|--------|--------|------|
-| sessionSync 事件总线 | ChatSessionStore、SessionStore | ChatSessionStore | 会话变更通知（remove/update/archive/refresh/status_changed） |
-| AppStore → ChatStore | AppStore | ChatSessionStore、ChatMessageStore | Agent 切换时重置 |
-| InboundNotificationStore | WS 事件 | InboundNotificationBell | 通知铃铛 |
-
 **跨 Store 同步必须通过 `stores/sessionSync.ts` 事件总线**（红线 #11）。
+
+通信矩阵详见 [`architecture-blueprint.md`](./architecture-blueprint.md) §四.4。
 
 ---
 
@@ -126,37 +112,7 @@ WebSocket Server (Go /v1/ws)
 
 ---
 
-## 七、页面路由
-
-| 路由 | 页面 | 核心功能 |
-|------|------|---------|
-| `/overview` | OverviewPage | 用量概览 |
-| `/chat` | ChatPage | 聊天工作台 |
-| `/sessions` | SessionsPage | 会话列表 |
-| `/memory` | MemoryCenterPage | 记忆中心 |
-| `/agents` | AgentsPage | Agent 列表 |
-| `/agents/:id/settings` | AgentSettingsPage | Agent 设置 |
-| `/team` | TeamsPage | Team 编排 |
-| `/graphs` | GraphsPage | Graph 列表 |
-| `/graphs/:id/edit` | GraphEditorPage | Graph 编辑器 |
-| `/graphs/:id/run` | GraphRunPage | Graph 执行态 |
-| `/models` | ResourceManagerPage | LLM 管理 |
-| `/channels` | ChannelsPage | 渠道管理 |
-| `/tools` | ToolsPage | 工具目录 |
-| `/monitor/logs` | MonitorPage | 监控日志 |
-| `/cron` | CronTasksPage | 定时任务 |
-| `/hooks` | HooksPage | Webhook |
-| `/knowledge` | KnowledgePage | 知识库 |
-| `/plugins` | PluginsPage | 插件 |
-| `/skills` | SkillsPage | 技能 |
-| `/mcp-servers` | McpServersPage | MCP 服务器 |
-| `/a2a` | A2APage | A2A 端点 |
-| `/evaluation` | EvaluationPage | 评估 |
-| `/settings` | SystemSettingsPage | 系统设置 |
-
----
-
-## 八、验证命令
+## 七、验证命令
 
 ```bash
 cd web && pnpm lint && pnpm test && pnpm build

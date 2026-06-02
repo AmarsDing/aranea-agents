@@ -16,16 +16,27 @@
 
 ## 文档索引
 
-| 文档 | 内容 | 来源 |
+| 文档 | 内容 | 定位 |
 |------|------|------|
-| [architecture.md](./architecture.md) | 模块结构与职责、数据库 Schema、Wire 注入、开发决策树（精简版） | `architecture-blueprint.md` |
-| [architecture-blueprint.md](./architecture-blueprint.md) | 架构蓝图完整版（含叙述性内容） | 原 `docs/architecture-blueprint.md` |
-| [module-cross-reference.md](./module-cross-reference.md) | 指针文件 → `module-cross-reference-full.md`（模块关联 8 维度卡片） | — |
-| [module-cross-reference-full.md](./module-cross-reference-full.md) | 模块交叉参考完整版 | 原 `docs/module-cross-reference.md` |
-| [backend-layers.md](./backend-layers.md) | 后端分层规则、依赖方向、Agent 运行时铁律、横切约束 | 项目规则 + `aranea-coding-guide` SKILL |
-| [frontend-layers.md](./frontend-layers.md) | 前端分层规则、数据流、组件约束、CSS 主题、消息分组 | 项目规则 + `aranea-frontend-guide` SKILL |
-| [review-dimension-checklists.md](./review-dimension-checklists.md) | 代码审查 12 维度 × 双面卡片（A 面=编码预防，B 面=Review 检查） | 原 `docs/review-dimension-checklists.md` |
-| [built-in-tools-guide.md](./built-in-tools-guide.md) | 内置工具清单 + 可视化配置指南 | 原 `docs/built-in-tools-and-visualization-guide-2026-05-31.md` |
+| [architecture-blueprint.md](./architecture-blueprint.md) | 架构真相源：模块结构、业务流程、数据库 Schema、Wire 注入、路由表、开发决策树 | 全局上下文参考 |
+| [backend-layers.md](./backend-layers.md) | 后端分层规则、Agent 运行时铁律、横切约束、验证命令 | 后端编码规则速查 |
+| [frontend-layers.md](./frontend-layers.md) | 前端分层规则、数据流约束、CSS 主题、消息分组 | 前端编码规则速查 |
+| [module-cross-reference.md](./module-cross-reference.md) | 模块交叉参考：改模块 X 时必须注意谁（8 维度卡片） | 跨模块影响分析 |
+| [review-dimension-checklists.md](./review-dimension-checklists.md) | 代码审查 12 维度 × 双面卡片（A 面=编码预防，B 面=Review 检查） | 代码审查清单 |
+| [built-in-tools-guide.md](./built-in-tools-guide.md) | 内置工具清单 + 竞品对标 + 知识图谱可视化建设指南 | 工具建设参考 |
+
+---
+
+## 文档间关系
+
+```
+architecture-blueprint.md    ← 架构真相源（全局上下文）
+  ├── backend-layers.md      ← 引用 blueprint §三（后端上下文），只保留规则
+  ├── frontend-layers.md     ← 引用 blueprint §四（前端上下文），只保留规则
+  └── module-cross-reference.md ← 与蓝图互补：蓝图说"是什么"，交叉参考说"改了影响谁"
+```
+
+**去重原则**：结构描述和数据表只在 `architecture-blueprint.md` 出现一次，layer docs 通过引用避免重复。
 
 ---
 
@@ -36,7 +47,5 @@
 | `.trae/rules/project_rules.md` | 项目级速查规则 | 本目录从中提取分层规则，展开为独立文档 |
 | `.trae/skills/aranea-coding-guide` | 后端编码完整规范 | 本目录为精简版，SKILL 为权威源 |
 | `.trae/skills/aranea-frontend-guide` | 前端编码完整规范 | 本目录为精简版，SKILL 为权威源 |
-| `architecture-blueprint.md` | 架构蓝图（含叙述） | `architecture.md` 提取结构事实，去除叙述 |
-| `module-cross-reference-full.md` | 模块交叉参考（完整） | `module-cross-reference.md` 为指针文件，指向完整版 |
 
 **冲突处理**：内容冲突时以 SKILLs 为准，本目录文档为快速参考用途。

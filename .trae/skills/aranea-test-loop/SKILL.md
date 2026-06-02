@@ -201,7 +201,7 @@ All test data and sample fixtures are in `docs/testing/test-data/`:
 | Loop Process | `docs/testing/test-loop-process.md` |
 | Report Template | `docs/testing/test-report-template.md` |
 | Architecture Blueprint | `openspec/specs/architecture-blueprint.md` |
-| Module Cross Reference | `openspec/specs/module-cross-reference-full.md` |
+| Module Cross Reference | `openspec/specs/module-cross-reference.md` |
 
 ## 9. Execution Workflow
 

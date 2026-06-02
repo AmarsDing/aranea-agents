@@ -814,7 +814,7 @@ cmd/admin/wire.go                         ← Wire 注入
 
 - [ ] **结构性问题已用 CodeGraph**：符号 / 调用链 / 影响面 / 模块上下文，未 grep 先于 `codegraph_*`
 - [ ] **探索结果可信**：未对 CodeGraph 返回的结构信息做重复 grep 验证
-- [ ] **已读模块交叉参考手册**：在 `openspec/specs/module-cross-reference-full.md` 中找到目标模块卡片，确认上游依赖、下游影响、共享契约、事件、数据库、前端对应
+- [ ] **已读模块交叉参考手册**：在 `openspec/specs/module-cross-reference.md` 中找到目标模块卡片，确认上游依赖、下游影响、共享契约、事件、数据库、前端对应
 
 ### 改动中（逐层检查）
 
@@ -937,7 +937,7 @@ cmd/admin/wire.go                         ← Wire 注入
 | 文档 | 路径 | 定位 |
 |------|------|------|
 | **架构蓝图** | `openspec/specs/architecture-blueprint.md` | "每个模块是什么"（静态结构、全貌） |
-| **模块交叉参考** | `openspec/specs/module-cross-reference-full.md` | "改模块 X 时必须注意谁"（动态关联、影响面） |
+| **模块交叉参考** | `openspec/specs/module-cross-reference.md` | "改模块 X 时必须注意谁"（动态关联、影响面） |
 
 ### 13.2 开发前强制步骤
 

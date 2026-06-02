@@ -887,7 +887,11 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		return userMsg, biz.ChatMessage{}, te
 	}
 	if ctx.Err() != nil && result.HasContent {
+		turnStatus = "timeout_degraded"
 		emitter.LogWarn("chat.turn.timeout_with_reply", "对话超时但模型已输出，保存回复", "", event.P("timeout", o.turnTimeout.String()), event.P("reply_len", result.Reply.Len()))
+		bgCtx, bgCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer bgCancel()
+		ctx = bgCtx
 	}
 
 	displayMarkdown := chatagent.DisplayMarkdownFromStream(result)
@@ -968,7 +972,11 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	emitter.LogDone("chat.assistant_msg_persist", "助手消息已持久化", event.P("reply_len", len(displayMarkdown)))
 	o.patchSessionContextUsage(ctx, sessionID, sess, ag, prov, mod, promptTok, completionTok)
 
-	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "ok").Observe(time.Since(turnStart).Seconds())
+	metricsLabel := "ok"
+	if turnStatus == "timeout_degraded" {
+		metricsLabel = "timeout_degraded"
+	}
+	arametrics.ChatTurnDuration.WithLabelValues(ag.ID, metricsLabel).Observe(time.Since(turnStart).Seconds())
 	o.recordSessionTurn(ctx, sessionID, ag, userMsg.ID, assistantMsg.ID, prov, mod, promptTok, completionTok, assistantMsg.ContentMarkdown)
 	o.setRunStatus(ctx, sessionID, runID, "completed", "")
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusCompleted, "")

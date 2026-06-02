@@ -166,6 +166,22 @@ func (uc *SkillEvolutionUsecase) ListProposals(ctx context.Context, agentID stri
 	return uc.repo.ListByAgent(ctx, agentID, status)
 }
 
+func (uc *SkillEvolutionUsecase) CreateProposal(ctx context.Context, proposal SkillProposal) (SkillProposal, error) {
+	if proposal.ID == "" {
+		proposal.ID = newAgentCatalogID()
+	}
+	if proposal.Status == "" {
+		proposal.Status = SkillProposalStatusPending
+	}
+	if proposal.CreatedAt.IsZero() {
+		proposal.CreatedAt = time.Now().UTC()
+	}
+	if proposal.PatternHash == "" {
+		proposal.PatternHash = patternHash(proposal.PatternDesc)
+	}
+	return uc.repo.Create(ctx, proposal)
+}
+
 func (uc *SkillEvolutionUsecase) ScanAndProposeAll(ctx context.Context) error {
 	if uc.agents == nil {
 		return nil

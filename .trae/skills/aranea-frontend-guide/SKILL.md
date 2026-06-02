@@ -718,7 +718,7 @@ registryColActions<Row>();
 
 ### 改动中（逐层检查）
 
-- [ ] **已读模块交叉参考手册**：在 `openspec/specs/module-cross-reference-full.md` 中找到目标前端模块卡片，确认后端对应 Service/Proto/Store、跨 Store 依赖、事件消费
+- [ ] **已读模块交叉参考手册**：在 `openspec/specs/module-cross-reference.md` 中找到目标前端模块卡片，确认后端对应 Service/Proto/Store、跨 Store 依赖、事件消费
 - [ ] 展示组件是否直接调用 API / Store？若有 → 已上收或已备案例外
 - [ ] **Page** 是否直接 `import` `features/*/api`？若有 → 迁入 Store + composable
 - [ ] 新网络请求是否只出现在 `features/*/api.ts` 或 `services/`，且由 Store action 触发？
@@ -824,8 +824,8 @@ registryColActions<Row>();
 
 | 文档 | 路径 | 定位 |
 |------|------|------|
-| **架构蓝图** | `openspec/specs/architecture-blueprint.md` | 前端全貌：36 个 Store、实时层、路由 |
-| **模块交叉参考** | `openspec/specs/module-cross-reference-full.md` | §三·前端模块上下文卡 + §六·前后端对齐表 |
+| **架构蓝图** | `openspec/specs/architecture-blueprint.md` | 前端全貌：43 个 Store、实时层、路由 |
+| **模块交叉参考** | `openspec/specs/module-cross-reference.md` | §三·前端模块上下文卡 + §六·前后端对齐表 |
 
 ### 12.2 开发前强制步骤
 

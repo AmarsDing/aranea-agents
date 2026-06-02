@@ -1,5 +1,9 @@
 package biz
 
+import (
+	"strings"
+)
+
 // IdentityCfg holds routing/identity fields for an agent runtime.
 type IdentityCfg struct {
 	AgentID               string `json:"agent_id,omitempty"`

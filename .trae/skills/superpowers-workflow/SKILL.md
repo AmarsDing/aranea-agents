@@ -46,7 +46,7 @@ If working ad-hoc, clarify:
 
 **MANDATORY**: Before touching any module, read the module cross-reference:
 ```
-openspec/specs/module-cross-reference-full.md
+openspec/specs/module-cross-reference.md
 ```
 
 Find the target module card and check:

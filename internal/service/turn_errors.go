@@ -1,13 +1,8 @@
 package service
 
 import (
-	chatagent "aranea-agents/internal/agent"
-
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
-
-// defaultTurnTimeout is the maximum wall-clock duration for a single chat turn.
-var defaultTurnTimeout = chatagent.DefaultTurnTimeout
 
 type TurnErrorCode string
 

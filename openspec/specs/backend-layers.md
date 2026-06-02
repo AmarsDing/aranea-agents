@@ -1,22 +1,17 @@
 # 后端分层规范
 
 > 来源：项目规则 + `aranea-coding-guide` SKILL 精简版。
+> 架构上下文详见 [`architecture-blueprint.md`](./architecture-blueprint.md) §三。
 
 ---
 
 ## 一、依赖方向
 
-```
-api/**/*.proto          ← 唯一对外契约
-        ↓
-internal/service        ← 传输桥点：proto ↔ biz 映射 + Runner 编排
-        ↓
-internal/biz            ← 领域模型 + Usecase + Repo 接口定义
-        ↓
-internal/data           ← Repo 实现（Ent ORM + SQLite）
-```
-
 **跨层只允许向内依赖。违反即停。**
+
+```
+api/**/*.proto → internal/service → internal/biz → internal/data
+```
 
 ---
 
@@ -124,18 +119,13 @@ internal/data           ← Repo 实现（Ent ORM + SQLite）
 - Wire ProviderSet：每层一个（`biz.go` / `data.go` / `service.go` / `server.go`）
 - 构造函数参数：只接收接口或具体依赖，不接收"上帝对象"
 - 禁止手动编辑 `wire_gen.go`，必须通过 `make wire` 生成
+- 关键绑定详见 [`architecture-blueprint.md`](./architecture-blueprint.md) §八
 
 ---
 
 ## 九、错误处理
 
-统一使用 `kerrors`，禁止 `fmt.Errorf` 返回业务错误：
-
-```go
-kerrors.BadRequest("AGENT", "id is required")
-kerrors.NotFound("AGENT", "agent not found")
-kerrors.InternalServer("AGENT", err.Error())
-```
+统一使用 `kerrors`，禁止 `fmt.Errorf` 返回业务错误。示例详见 [`architecture-blueprint.md`](./architecture-blueprint.md) §三"错误处理规范"。
 
 ---
 

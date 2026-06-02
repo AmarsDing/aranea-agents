@@ -122,7 +122,7 @@ Aranea-Agents 是基于 **trpc-agent-go** 的多智能体编排平台。以 **Kr
 | **AIRefineService** | ai_refine/v1 | — | 条件注册 |
 | **GatewayService** | gateway/v1 | — | 无 |
 | **IndustryService** | industry/v1 | IndustryUsecase | 无 |
-| **其他** | admin/hook/usage/evaluation/ecosystem/event/model_catalog/system_setting/mcp_server/artifact/learning_loop... | 对应 Usecase | 无 |
+| **其他** | admin/hook/usage/evaluation/ecosystem/event/model_catalog/system_setting/mcp_server/artifact/learning_loop/skill_evolution... | 对应 Usecase | 无 |
 
 **ChatOrchestrator** 是核心编排器，实现 `biz.TurnExecutor`，负责：
 1. 准入控制（会话锁、活跃 Run 检查、待处理队列）
@@ -397,6 +397,57 @@ Plugin 生命周期管理：注册 → 配置 → 热加载 → 回调链（audi
 #### 模型目录 (`internal/modelcatalog/`)
 
 LLM 模型目录同步：从 Provider API 拉取模型列表 → 定价同步 → 搜索/筛选 → Logo 管理。
+
+#### 学习闭环 (`internal/biz/learning_loop.go`)
+
+Observation → Pattern → Proposal → Validation → Registration 完整学习闭环。Agent 从对话经验中自动识别重复行为模式（tool_call/feedback/memory_hit/memory_miss），生成知识提议，经审批后注册为持久化知识。
+
+**核心 Usecase**：`LearningLoopUsecase`（CollectObservations → DetectPatterns → GenerateProposals → ApproveProposal → RegisterKnowledge）
+
+**数据模型**：`Observation`（原始观察）、`Pattern`（识别的模式，detected/confirmed/dismissed）、`KnowledgeProposal`（知识提议，draft/pending/approved/rejected/applied）
+
+**API**：`LearningLoopService`（6 个 HTTP/gRPC 端点：ListProposals/ListPatterns/ListObservations/ApproveProposal/RejectProposal/RunLoop）
+
+**前端**：AgentLearningLoopPanel（Agent 详情页"学习闭环"Tab），包含 LearningLoopOverview/LearningPatternList/LearningProposalList 组件。
+
+#### 技能自创建 (`internal/biz/skill_evolution.go`)
+
+检测 Agent 重复工具调用模式，自动提议创建新 Skill。完整闭环：检测 → 生成 SKILL.md → 审批 → 注册。
+
+**核心 Usecase**：`SkillEvolutionUsecase`（DetectAndPropose → ApproveProposal → RejectProposal → RegisterApproved）
+
+**端口接口**：`SkillAutoCreator`（LLM 生成 SKILL.md）、`SkillRegistrationPort`（注册 Skill 到仓库）、`SkillProposalReadWriter`（提议持久化）
+
+**数据模型**：`SkillProposal`（pending/approved/rejected/registered/expired）
+
+**触发方式**：Cron 定时任务（`internal/cronrunner/jobs/skill_evolution.go`）或 API 手动触发。
+
+**前端**：待集成（后端 API 已就绪）。
+
+#### 技能管家工具 (`internal/tools/skills_butler/`)
+
+4 个技能管家核心工具，让 `__skills__` Agent 主动进化自身技能：
+
+| 工具 | 功能 | 核心依赖 |
+|------|------|---------|
+| `evolve_skill` | 基于失败模式分析优化 Skill body，创建新版本 | SkillUsecase + LLM + SkillQueryReader |
+| `optimize_skill` | 分析工具权重并生成调整建议 | EvolutionMetricsRepo + ToolInvocationReader + LLM |
+| `recommend_skills` | 基于任务描述推荐 Skill 组合 | SkillUsecase.ScoreByEmbedding |
+| `analyze_skill_usage` | 分析 Skill 调用频率、成功率、趋势 | SkillQueryReader + EvolutionMetricsRepo |
+
+工具仅对 `__skills__` Agent 注入（`IsSkillsButlerAllowed` 控制），通过 `ChatOrchestrator.skillsButlerTools()` 装配。
+
+#### Skill 渐进加载 (`internal/agent/skill_guidance_inject.go`)
+
+将 Skill Prompt 注入策略从 Eager 全量注入改为 3 阶段渐进加载，通过 `skill_load_mode=progressive` 配置切换：
+
+| 层级 | 内容 | 注入方式 | Token 成本 |
+|------|------|---------|-----------|
+| L0 | Skill manifest（name + description + `[routed]` 标记） | system prompt | ~3K / 40 skill |
+| L1 | SKILL.md 正文 | `skill_load` 工具返回值 | ~2-8K / skill（按需） |
+| L2 | 关联引用文件 | `skill_select_docs` 工具返回值 | ~1-5K / doc（按需） |
+
+progressive 模式下：`newSkillGuidanceBeforeHook` 不注入 guidance（返回 nil），LLM 必须通过 `skill_load` 工具按需获取 Skill 正文；自动启用 `WithSkillsLoadedContentInToolResults(true)` 避免 loaded body 再次注入 system prompt。目标降低 Skill 相关 token 消耗 50-80%。
 
 #### 错误处理规范
 
@@ -736,6 +787,8 @@ WS 事件流：
 | message_fts | 16_message_fts.sql | 消息全文搜索 |
 | memory_chain | 16_memory_chain.sql | 记忆链 |
 | usage_events / usage_quotas | 08_usage.sql | 用量记录/配额 |
+| learning_observations / learning_patterns / learning_proposals | learning_loop.sql | 学习闭环（观察/模式/提议） |
+| skill_proposals | skill_evolution.sql | 技能自创建提议 |
 
 ---
 

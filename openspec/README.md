@@ -224,14 +224,12 @@ internal/data           ← Repo 实现（Ent ORM + SQLite，单 sql.Open）
 │   ├── config.yaml                       ← OpenSpec 配置（项目上下文 + 规则）
 │   ├── specs/                            ← 主规格库（稳定参考文档）
 │   │   ├── README.md                     ← 规格库索引
-│   │   ├── architecture-blueprint.md     ← 架构蓝图（完整版）
-│   │   ├── module-cross-reference-full.md ← 模块交叉参考（完整版）
-│   │   ├── review-dimension-checklists.md ← 代码审查维度清单
-│   │   ├── built-in-tools-guide.md       ← 内置工具指南
-│   │   ├── architecture.md               ← 架构蓝图精简版
-│   │   ├── module-cross-reference.md     ← 模块交叉参考（指针→docs/）
+│   │   ├── architecture-blueprint.md     ← 架构蓝图（真相源）
 │   │   ├── backend-layers.md             ← 后端分层规则速查
-│   │   └── frontend-layers.md            ← 前端分层规则速查
+│   │   ├── frontend-layers.md            ← 前端分层规则速查
+│   │   ├── module-cross-reference.md     ← 模块交叉参考
+│   │   ├── review-dimension-checklists.md ← 代码审查维度清单
+│   │   └── built-in-tools-guide.md       ← 内置工具指南
 │   ├── requirements/                     ← 产品需求 + 设计文档 + 开发计划（原 需求/）
 │   ├── reports/                          ← 分析报告
 │   │   ├── competitive-analysis/         ← 竞品分析
