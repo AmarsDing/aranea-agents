@@ -145,4 +145,4 @@
 | [52-flow-logger.design.md](./52-flow-logger.design.md) | Span / trace_id 同源；Chat 不展示 flow_log |
 | [23 tools.md](./23%20tools.md) | 工具 catalog 与 risk_level |
 | [20 skill.md](./20%20skill.md) | Skill 运行时 |
-| [frontend/UX.md](../frontend/UX.md) | 玻璃卡片视觉 token |
+| `aranea-frontend-guide` SKILL §6 | 玻璃卡片视觉 token |

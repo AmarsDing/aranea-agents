@@ -1,6 +1,6 @@
 <!--
-  Cron 域展示组件：仅 props / emits（vue-design.md §0.2）。
-  路径：vue-design.md §2 → web/src/components/cron/。
+  Cron 域展示组件：仅 props / emits（aranea-frontend-guide SKILL §1 红线 #1）。
+  路径：SKILL §3.3 → web/src/components/cron/。
   浮层皮肤：app-glass-dialog（--glass-elevated、backdrop-filter 双前缀、accent CTA）。
 -->
 <template>

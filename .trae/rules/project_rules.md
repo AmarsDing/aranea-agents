@@ -128,8 +128,8 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 
 | 文档 | 路径 | 定位 |
 |------|------|------|
-| **架构蓝图** | `docs/architecture-blueprint.md` | "每个模块是什么"（静态结构、全貌） |
-| **模块交叉参考** | `docs/module-cross-reference.md` | "改模块 X 时必须注意谁"（动态关联、影响面） |
+| **架构蓝图** | `openspec/specs/architecture-blueprint.md` | "每个模块是什么"（静态结构、全貌） |
+| **模块交叉参考** | `openspec/specs/module-cross-reference-full.md` | "改模块 X 时必须注意谁"（动态关联、影响面） |
 
 **开发任何模块时**：
 1. 定位目标模块 → 读蓝图对应章节

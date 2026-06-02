@@ -391,7 +391,7 @@ func (o *ChatOrchestrator) resumeAwaitAfterRestart(ctx context.Context, sessionI
 	o.publishAwaitResumed(sessionID, runID)
 	safego.Go(ctx, "chat.resume_await_turn", func() {
 		defer o.endResume(sessionID)
-		bgCtx, cancel := context.WithTimeout(context.Background(), defaultTurnTimeout)
+		bgCtx, cancel := context.WithTimeout(context.Background(), o.turnTimeout)
 		defer cancel()
 		_, _, turnErr := o.RunNativeAgentTurnFromInput(bgCtx, biz.TurnInput{
 			SessionID: sessionID,
@@ -540,7 +540,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, defaultTurnTimeout)
+		ctx, cancel = context.WithTimeout(ctx, o.turnTimeout)
 		defer cancel()
 	}
 
@@ -874,17 +874,20 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		event.P("prompt_tok", result.PromptTok),
 		event.P("completion_tok", result.CompletionTok),
 	)
-	if ctx.Err() != nil {
+	if ctx.Err() != nil && !result.HasContent {
 		turnStatus = "timeout"
 		turnErr = ctx.Err()
 		turnErrMsg = "turn timeout"
-		emitter.LogCritical("chat.turn.timeout", "对话请求超时", event.P("timeout", defaultTurnTimeout.String()), event.P("reason", "sync_cap"))
+		emitter.LogCritical("chat.turn.timeout", "对话请求超时", event.P("timeout", o.turnTimeout.String()), event.P("reason", "sync_cap"))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "timeout").Observe(time.Since(turnStart).Seconds())
 		o.setRunStatus(ctx, sessionID, runID, "failed", "turn timeout")
 		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
-		te := TurnError(TurnErrTurnTimeout, defaultTurnTimeout.String())
+		te := TurnError(TurnErrTurnTimeout, o.turnTimeout.String())
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 		return userMsg, biz.ChatMessage{}, te
+	}
+	if ctx.Err() != nil && result.HasContent {
+		emitter.LogWarn("chat.turn.timeout_with_reply", "对话超时但模型已输出，保存回复", event.P("timeout", o.turnTimeout.String()), event.P("reply_len", result.Reply.Len()))
 	}
 
 	displayMarkdown := chatagent.DisplayMarkdownFromStream(result)
@@ -999,7 +1002,7 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 			pendingEmitter.Log("chat.pending_dequeue", event.FlowPhaseDone, "会话仍活跃，消息已重新入队", event.P("entry_id", pendingEntryID))
 			return
 		}
-		bgCtx, cancel := context.WithTimeout(o.svcCtx, defaultTurnTimeout)
+		bgCtx, cancel := context.WithTimeout(o.svcCtx, o.turnTimeout)
 		o.runs.SetPendingCancel(sessionID, cancel)
 		defer func() {
 			cancel()

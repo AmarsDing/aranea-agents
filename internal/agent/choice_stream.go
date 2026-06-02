@@ -11,7 +11,7 @@ import (
 const DefaultFirstByteTimeout = 30 * time.Second
 
 // DefaultTurnTimeout is the maximum wall-clock duration for a single chat turn.
-const DefaultTurnTimeout = 5 * time.Minute
+const DefaultTurnTimeout = 10 * time.Minute
 
 // ChoiceStreamContent extracts text and reasoning from a streaming choice.
 // Partial chunks preserve delta spacing; non-partial values are trimmed.

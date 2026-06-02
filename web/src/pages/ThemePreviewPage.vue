@@ -6,7 +6,7 @@
         <h1 class="theme-preview-title">Theme Preview</h1>
         <p class="theme-preview-subtitle">
           开发专用：验证昼夜 token、排版阶梯与 Quasar 组件映射。权威规范见
-          <code>docs/frontend/UX.md</code>。
+          <code>aranea-frontend-guide SKILL §6</code>。
         </p>
       </header>
 

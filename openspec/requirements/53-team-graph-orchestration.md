@@ -149,7 +149,7 @@
 | 架构 | `internal/biz` 不 import trpc；状态归约在 biz，投影在 team/service |
 | 性能 | Observatory 首屏 30 节点 < 500ms |
 | 兼容 | Phase 0.5 不切换 Team 运行时，仅增强观测 |
-| 前端 | 遵循 `docs/frontend/UX.md` token；复用 `GraphFlowNode` |
+| 前端 | 遵循 `aranea-frontend-guide` SKILL §6 token；复用 `GraphFlowNode` |
 
 ---
 

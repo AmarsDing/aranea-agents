@@ -165,6 +165,48 @@ M59 实现了精灵模式基础骨架：精灵为唯一对话入口，LLM 自主
 - 精灵在 `assemble_team` 时参考历史 DQ Score 选择编排模式
 - 进化护栏确保策略变更幅度可控（`GuardrailMaxChangePerPeriod`）
 
+### US-08 任务复杂度智能评估
+
+**作为** 用户
+**我希望** 精灵在委派任务前先评估任务复杂度，根据复杂度选择最合适的处理路径
+**以便** 简单问题得到快速响应，复杂任务得到充分编排
+
+**验收**：
+- 精灵收到用户消息后，先调用 `assess_complexity` 工具评估复杂度
+- 复杂度分为三级：simple（直接回答）、moderate（委派单一管家）、complex（委派编排管家）
+- 规则引擎优先判断（零 Token 消耗），无法判断时返回 moderate 作为安全默认值
+- 精灵回复中说明复杂度评估结果和路由决策理由
+- 禁止跳过 `assess_complexity` 直接委派
+- 禁止对 simple 级别任务委派给管家
+
+### US-09 Graph DAG 编排
+
+**作为** 用户
+**我希望** 编排管家能将复杂任务拆解为 Graph DAG 结构执行，而非线性工具调用序列
+**以便** 无依赖的 Agent 并行执行，有依赖的 Agent 按序执行，充分利用 Graph 引擎的检查点、中断、重试能力
+
+**验收**：
+- 编排管家新增 `build_orchestration_graph` 工具，动态生成 `GraphBuildConfig`
+- Graph DAG 支持并行节点（无依赖的 Agent 同时执行）
+- Graph DAG 支持汇合节点（所有 Agent 完成后合并结果）
+- Graph DAG 支持条件路由（根据 Agent 结果决定下一步）
+- P0 阶段 `assemble_team` 与 `build_orchestration_graph` 共存，编排管家 LLM 根据任务复杂度选择
+- 简单任务（2-3 Agent，顺序执行）→ `assemble_team`
+- 复杂任务（4+ Agent，有并行/条件路由）→ `build_orchestration_graph`
+
+### US-10 编排验证门禁
+
+**作为** 用户
+**我希望** 编排管家的 Graph DAG 中包含自动验证节点，在关键步骤后检查结果质量
+**以便** 质量不达标时自动回退/重试，而非等到最终合成才发现问题
+
+**验收**：
+- Graph DAG 中可注入验证节点（Verification Node）
+- 验证节点类型：output_format（输出格式验证）、task_completion（任务完成度验证）、human_approval（人工审批 HITL）
+- 验证失败时根据 FailureAction 处理：Skip（跳过继续）、RetryThenBlock（重试后阻塞）、FailFast（快速失败）
+- HITL 验证节点使用 Graph 的 interrupt_before/interrupt_after 机制暂停执行
+- 验证结果写入 Graph State，后续节点可读取
+
 ---
 
 ## 4. 功能规格
@@ -281,6 +323,44 @@ Team C completed → spirit_team_completed → Spirit Observer
 | 0.3 ~ 0.5 | 生成编排优化建议 |
 | < 0.3 | 生成优化建议 + 告警 |
 
+### 4.7 任务复杂度评估
+
+**复杂度分级规则**：
+
+| 级别 | 判定条件 | 路由路径 |
+|------|---------|---------|
+| `simple` | 单领域、≤2 步、无跨模块依赖 | `direct_answer`：Spirit 直接回答 |
+| `moderate` | 单领域、>2 步、有明确工具链 | `single_butler`：委派给单一管家 |
+| `complex` | 跨领域、需多 Agent 协作、有依赖关系 | `orchestrator`：委派给编排管家 |
+
+**规则引擎**（关键词 + 模式匹配，零 Token 消耗）：
+
+| 模式 | 关键词示例 | 复杂度 |
+|------|-----------|--------|
+| 简单问答 | "什么是"、"解释一下"、"帮我看看"、"怎么用" | simple |
+| 复杂任务 | "分析"、"对比"、"编写"、"设计"、"规划"、"编排"、"跨行业" | complex |
+
+规则无法判断时返回 `moderate` 作为安全默认值。
+
+### 4.8 Graph DAG 编排
+
+**Graph 拓扑生成规则**：
+
+| Agent 依赖关系 | 生成的 Graph 结构 | 说明 |
+|---------------|-----------------|------|
+| 所有 Agent 无依赖 | entry → [A][B][C] → merge → verify | 全并行 |
+| Agent 间有依赖链 | entry → A → B → C → merge → verify | 全串行 |
+| 部分独立部分依赖 | entry → [A][B] → C → merge → verify | 混合 |
+| 需要条件路由 | entry → A → conditional → [B1][B2] → merge → verify | 条件分支 |
+
+**验证节点配置**：
+
+| 验证类型 | 触发时机 | FailureAction | 说明 |
+|---------|---------|---------------|------|
+| output_format | merge 后 | Skip | 输出格式验证，失败不阻塞 |
+| task_completion | merge 后 | RetryThenBlock | 任务完成度验证，失败重试 |
+| human_approval | 关键节点前 | interrupt_before | 人工审批，暂停等待确认 |
+
 ---
 
 ## 5. 非功能需求
@@ -337,5 +417,8 @@ Team C completed → spirit_team_completed → Spirit Observer
 | SPO-07 | Synthesis Engine 结果合成 | P2 |
 | SPO-08 | DQ Score 驱动编排缓存 | P2 |
 | SPO-09 | 编排策略进化闭环 | P2 |
+| SPO-10 | 任务复杂度智能评估 + 路由决策 | P4 |
+| SPO-11 | Graph DAG 动态编排 | P4 |
+| SPO-12 | 编排验证门禁节点 | P4 |
 
 完整任务拆分见 [开发计划](./60-spirit-parallel-orchestrator-development.md)。

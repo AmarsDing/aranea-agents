@@ -44,11 +44,11 @@
 
 | 文档 | 路径 | 何时读 |
 |------|------|--------|
-| 架构蓝图 | `docs/architecture-blueprint.md` | 了解项目全貌和每个模块的静态职责 |
-| 模块交叉参考 | `docs/module-cross-reference.md` | **每次开发前必读**——查找目标模块的所有上游依赖、下游影响、共享契约、事件、数据库、前端对应 |
+| 架构蓝图 | `openspec/specs/architecture-blueprint.md` | 了解项目全貌和每个模块的静态职责 |
+| 模块交叉参考 | `openspec/specs/module-cross-reference-full.md` | **每次开发前必读**——查找目标模块的所有上游依赖、下游影响、共享契约、事件、数据库、前端对应 |
 
 ## 任务执行
 
 - 列假设 → 编码 → 分级验证 → 通过后再扩 scope
 - 只改与任务直接相关的文件；不顺带 refactor 相邻模块
-- **开发前必读模块交叉参考手册**（`docs/module-cross-reference.md`），确认所有关联影响面
+- **开发前必读模块交叉参考手册**（`openspec/specs/module-cross-reference-full.md`），确认所有关联影响面

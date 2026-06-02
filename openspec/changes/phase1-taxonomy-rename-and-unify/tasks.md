@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go + Kratos v2 + Ent ORM + Vue 3 + Quasar + Pinia + TypeScript + Proto3
 
-**设计文档:** `docs/superpowers/specs/2026-05-31-industry-template-library-audit-fix-design.md`
+**设计文档:** `design.md`
 
 ---
 

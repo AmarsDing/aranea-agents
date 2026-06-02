@@ -21,6 +21,14 @@ func PublishActivityEnvelopes(ctx context.Context, meta ProjectMeta, persister A
 		if env.ToolCall == nil {
 			continue
 		}
+		if strings.TrimSpace(env.ToolCall.ID) == "" {
+			lg.Warn("跳过无ID的ToolCall卡片",
+				loggateway.StepID("agent.activity.persist"),
+				loggateway.Str("session_id", meta.SessionID),
+				loggateway.Str("tool_name", env.ToolCall.Name),
+			)
+			continue
+		}
 		if env.Type != event.EnvelopeTypeToolCall && env.Type != event.EnvelopeTypeToolResult {
 			continue
 		}
@@ -77,6 +85,14 @@ func FinalizeStuckToolActivities(ctx context.Context, meta ProjectMeta, persiste
 		return
 	}
 	for _, tc := range pending {
+		if strings.TrimSpace(tc.ID) == "" {
+			lg.Warn("跳过无ID的未完成工具卡片",
+				loggateway.StepID("agent.activity.finalize_stuck"),
+				loggateway.Str("session_id", meta.SessionID),
+				loggateway.Str("tool_name", tc.Name),
+			)
+			continue
+		}
 		stuck := stuckToolCallPatch(tc)
 		if err := persister.UpsertActivity(ctx, meta, stuck); err != nil {
 			lg.Warn("未完成工具卡片落库失败",

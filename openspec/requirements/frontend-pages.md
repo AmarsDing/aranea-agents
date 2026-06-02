@@ -2,7 +2,7 @@
 
 > **版本**：2026-05-20 | **状态**：基于 `web/src` 代码梳理  
 > **技术栈**：Vue 3 · Quasar · Pinia · TypeScript · Vue Router · vue-i18n  
-> **编码规范**：[guides/frontend-guide.md](../guides/frontend-guide.md) · **UX**：[frontend/UX.md](../frontend/UX.md) · **架构**：[frontend/vue-design/vue-design.md](../frontend/vue-design/vue-design.md)
+> **编码规范**：[guides/frontend-guide.md](../guides/frontend-guide.md) · **UX**：`aranea-frontend-guide` SKILL §6 · **架构**：`aranea-frontend-guide` SKILL §3
 
 ---
 
@@ -525,7 +525,7 @@ flowchart LR
 | 文档 | 用途 |
 |------|------|
 | [guides/frontend-guide.md](../guides/frontend-guide.md) | 前端编码红线与分层 |
-| [frontend/vue-design/vue-design.md](../frontend/vue-design/vue-design.md) | 详细架构与迁移剧本 |
+| `aranea-frontend-guide` SKILL | 详细架构与迁移剧本 |
 | [1-chat-development.md](./1-chat-development.md) | Chat/WS 需求与验收 |
 | [18-monitor-development.md](./18-monitor-development.md) | Monitor 运维六 Tab |
 | [18-monitor-dashboard-development.md](./18-monitor-dashboard-development.md) | 概览 Dashboard `/overview` |

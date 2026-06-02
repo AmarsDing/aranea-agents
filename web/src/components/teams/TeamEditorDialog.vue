@@ -1,6 +1,6 @@
 <!--
-  Team 域展示组件：仅 props / emits（vue-design.md §0.2）。
-  路径约定：vue-design.md §2 → `web/src/components/teams/`。
+  Team 域展示组件：仅 props / emits（aranea-frontend-guide SKILL §1 红线 #1）。
+  路径约定：SKILL §3.3 → `web/src/components/teams/`。
 -->
 <template>
   <q-dialog :model-value="modelValue" persistent @update:model-value="$emit('update:modelValue', $event)">

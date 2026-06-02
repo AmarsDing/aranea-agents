@@ -8,7 +8,7 @@ import {
 } from "../../features/agents/api";
 import type { AgentPromptPreview } from "../../features/agents/types";
 
-/** Agent 详情 / 设置页：HTTP 仅在此 Store actions（vue-design §0.1）。 */
+/** Agent 详情 / 设置页：HTTP 仅在此 Store actions（aranea-frontend-guide SKILL §3.1）。 */
 export const useAgentDetailStore = defineStore("agentDetail", () => {
   const loading = ref(false);
   const saving = ref(false);

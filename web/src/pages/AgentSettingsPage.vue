@@ -33,6 +33,7 @@
         <q-tab name="permissions" label="权限" />
         <q-tab name="skills" label="Skill / 工具" />
         <q-tab name="evolution" label="进化" />
+        <q-tab name="learning" label="学习闭环" />
         <q-tab name="hooks" label="钩子" />
         <q-tab name="a2a" label="A2A 协议" />
       </q-tabs>
@@ -131,6 +132,10 @@
             @apply="applyEvolutionSuggestion"
             @reject="rejectEvolutionSuggestion"
           />
+        </q-tab-panel>
+
+        <q-tab-panel name="learning">
+          <agent-learning-loop-panel :agent-id="agentId" />
         </q-tab-panel>
 
         <q-tab-panel name="hooks">
@@ -267,6 +272,7 @@ import { computed, reactive, ref, toValue } from "vue";
 import { useChannelsStore } from "../stores/channels";
 import AgentAvatarPicker from "../components/avatar/AgentAvatarPicker.vue";
 import AgentEvolutionPanel from "../components/agents/AgentEvolutionPanel.vue";
+import AgentLearningLoopPanel from "../components/agents/AgentLearningLoopPanel.vue";
 import AgentFilesPanel from "../components/agents/AgentFilesPanel.vue";
 import AgentSettingsHeader from "../components/agents/AgentSettingsHeader.vue";
 import AgentAdvancedDialog from "../components/agents/AgentAdvancedDialog.vue";

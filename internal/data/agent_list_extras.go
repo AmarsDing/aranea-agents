@@ -88,10 +88,18 @@ func runStatusFromStateJSON(lg loggateway.Logger, raw string) string {
 	if raw == "" || raw == "{}" {
 		return ""
 	}
-	state := map[string]string{}
+	state := map[string]interface{}{}
 	if err := json.Unmarshal([]byte(raw), &state); err != nil {
 		lg.Warn("unmarshal agent state_json failed", loggateway.StepID("data.agent_list_extras"), loggateway.Err(err))
 		return ""
 	}
-	return strings.TrimSpace(state[biz.SessionStateRunStatus])
+	v, ok := state[biz.SessionStateRunStatus]
+	if !ok {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(s)
 }

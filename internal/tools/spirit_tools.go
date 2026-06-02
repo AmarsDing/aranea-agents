@@ -56,6 +56,18 @@ type SpiritTeamControllerPort interface {
 	CheckTeamProgress(ctx context.Context, spiritSessionID string) ([]biz.TeamProgress, error)
 }
 
+type AssessComplexityInput struct {
+	UserMessage string `json:"user_message" jsonschema:"description=用户消息内容"`
+}
+
+type AssessComplexityOutput struct {
+	Level          string   `json:"level"`
+	Reasoning      string   `json:"reasoning"`
+	SuggestedPath  string   `json:"suggested_path"`
+	RequiredSkills []string `json:"required_skills,omitempty"`
+	AvailableTools []string `json:"available_tools"`
+}
+
 type SpiritSynthesisPort interface {
 	SynthesizeResults(ctx context.Context, spiritSessionID string, strategy string) (*biz.SynthesisOutput, error)
 }
@@ -391,4 +403,47 @@ func assembleDAGTeams(ctx context.Context, assembler SpiritTeamAssemblerPort, da
 		})
 	}
 	return outputs, nil
+}
+
+func NewAssessComplexityTool(engine *ComplexityRuleEngine) *trpcfunction.FunctionTool[AssessComplexityInput, AssessComplexityOutput] {
+	return trpcfunction.NewFunctionTool(
+		func(ctx context.Context, input AssessComplexityInput) (AssessComplexityOutput, error) {
+			level := engine.Assess(input.UserMessage)
+			path := complexityLevelToPath(level)
+			return AssessComplexityOutput{
+				Level:          string(level),
+				Reasoning:      engine.LastReasoning(),
+				SuggestedPath:  path,
+				AvailableTools: complexityAvailableTools(level),
+			}, nil
+		},
+		trpcfunction.WithName("assess_complexity"),
+		trpcfunction.WithDescription("评估用户消息的任务复杂度。在委派任务前必须先调用此工具，根据复杂度选择合适的处理路径：simple→直接回答，moderate→委派单一管家，complex→委派编排管家组建团队。"),
+	)
+}
+
+func complexityLevelToPath(level ComplexityLevel) string {
+	switch level {
+	case ComplexitySimple:
+		return "direct_answer"
+	case ComplexityModerate:
+		return "single_butler"
+	case ComplexityComplex:
+		return "orchestrator"
+	default:
+		return "single_butler"
+	}
+}
+
+func complexityAvailableTools(level ComplexityLevel) []string {
+	switch level {
+	case ComplexitySimple:
+		return simpleAvailableTools
+	case ComplexityModerate:
+		return moderateAvailableTools
+	case ComplexityComplex:
+		return complexAvailableTools
+	default:
+		return moderateAvailableTools
+	}
 }

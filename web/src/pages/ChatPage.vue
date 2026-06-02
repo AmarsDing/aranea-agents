@@ -11,7 +11,7 @@
       :selected-kind="entity.selectedEntityKind"
       :selected-team-id="spiritStore.activeTeamId"
       :is-dark="layout.isDark"
-      @select-spirit="spiritStore.returnToSpirit()"
+      @select-spirit="onSelectSpirit()"
       @select-spirit-team="spiritStore.selectTeam($event)"
       @toggle-team-expand="spiritStore.toggleTeamExpand($event)"
     />
@@ -201,6 +201,14 @@ const spiritStore = useSpiritTeamStore();
 const router = useRouter();
 const $q = useQuasar();
 const { t } = useI18n();
+
+function onSelectSpirit() {
+  spiritStore.returnToSpirit();
+  const spiritAgent = entity.store.agents.find((a: { agent_key: string }) => a.agent_key === "__spirit__");
+  if (spiritAgent && entity.store.selectedAgent?.id !== spiritAgent.id) {
+    entity.selectAgent(spiritAgent);
+  }
+}
 
 function onNavigate(route: { name: string; params: Record<string, string> }) {
   router.push(route);

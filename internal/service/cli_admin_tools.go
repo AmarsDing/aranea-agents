@@ -102,6 +102,7 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 		return nil
 	}
 	var out []trpctool.Tool
+	out = append(out, tools.NewAssessComplexityTool(tools.NewComplexityRuleEngine()))
 	out = append(out, tools.NewAssembleTeamTool(o.spiritAssembler, o.spiritAssembler, o.lg))
 	out = append(out, tools.NewListButlersTool())
 	out = append(out, tools.NewQueryButlerStatusTool())

@@ -664,3 +664,337 @@ message SynthesizeResultsResponse {
 | 39 Planner | 远期：A2UI Planner 生成结构化执行计划 |
 | superpowers Builtin Agents | 精灵工具扩展（3 个新工具） |
 | superpowers Learning Loop | 编排策略 Pattern 检测 → Proposal |
+
+---
+
+## 七、Phase 4 设计：智能增强
+
+> 基于 AI Agent 工作模式启发，补充 4 个关键增强：任务复杂度分级、Graph DAG 编排、自适应 Team 模式、验证门禁。
+
+### 7.1 GAP-1：TaskComplexityClassifier — 任务复杂度分级器
+
+**问题**：Spirit 的"简单问答直接回答"是 Prompt 级别软约束，LLM 可能对复杂度判断不一致。
+
+**方案**：新增 `assess_complexity` 工具，形式化复杂度评估。
+
+#### 7.1.1 工具定义
+
+```go
+// internal/tools/spirit/assess_complexity.go
+type AssessComplexityInput struct {
+    UserMessage string `json:"user_message" jsonschema:"description=用户消息"`
+}
+
+type AssessComplexityOutput struct {
+    Level          string   `json:"level"`            // "simple" | "moderate" | "complex"
+    Reasoning      string   `json:"reasoning"`        // 复杂度判断理由
+    SuggestedPath  string   `json:"suggested_path"`   // "direct_answer" | "single_butler" | "orchestrator"
+    RequiredSkills []string `json:"required_skills"`  // 需要的能力标签
+}
+```
+
+#### 7.1.2 规则引擎
+
+```go
+// internal/tools/spirit/complexity_rules.go
+var simplePatterns = []string{
+    "什么是", "解释一下", "帮我看看", "怎么用",
+    "是什么意思", "告诉我", "列出", "显示",
+}
+
+var complexIndicators = []string{
+    "分析", "对比", "编写", "设计", "规划", "编排",
+    "多个", "跨行业", "团队", "协作", "流程",
+}
+```
+
+规则引擎优先判断（零 Token 消耗），无法判断时返回 `moderate` 作为安全默认值。
+
+#### 7.1.3 Spirit Prompt 增强
+
+```
+## 决策规则（强制）
+1. 收到用户消息后，先调用 assess_complexity 评估复杂度
+2. 根据评估结果路由：
+   - simple → 直接回答，不委派
+   - moderate → 委派给最相关的单一管家
+   - complex → 委派给 __orchestrator__
+3. 禁止跳过 assess_complexity 直接委派
+4. 禁止对 simple 级别任务委派给管家
+```
+
+### 7.2 GAP-2：GraphOrchestration — 编排管家生成 Graph DAG
+
+**问题**：编排管家通过线性工具调用序列执行任务，无法表达并行/条件路由，无法利用 Graph 的检查点、中断、重试能力。
+
+**方案**：新增 `build_orchestration_graph` 工具，动态生成 `GraphBuildConfig`。
+
+#### 7.2.1 工具定义
+
+```go
+// internal/tools/orchestrator/build_graph.go
+type BuildOrchestrationGraphInput struct {
+    TaskDescription string            `json:"task_description"`
+    Agents          []AgentAssignment `json:"agents"`
+    Mode            string            `json:"mode"`
+    TaskPrompt      string            `json:"task_prompt"`
+}
+
+type AgentAssignment struct {
+    AgentKey  string   `json:"agent_key"`
+    Role      string   `json:"role"`
+    SubTask   string   `json:"sub_task"`
+    DependsOn []string `json:"depends_on"`
+}
+
+type BuildOrchestrationGraphOutput struct {
+    GraphExecutionID string `json:"graph_execution_id"`
+    SessionID        string `json:"session_id"`
+    NodeCount        int    `json:"node_count"`
+    EstimatedSteps   int    `json:"estimated_steps"`
+}
+```
+
+#### 7.2.2 Graph 动态构建核心逻辑
+
+```go
+func (t *buildOrchestrationGraphTool) buildGraphConfig(
+    input BuildOrchestrationGraphInput,
+) biz.GraphBuildConfig {
+    var nodes []biz.NodeDef
+    var edges []biz.EdgeDef
+
+    // 1. 入口节点
+    entryNode := "entry"
+    nodes = append(nodes, biz.NodeDef{ID: entryNode, Type: "function"})
+
+    // 2. 为每个 Agent 创建节点
+    for _, a := range input.Agents {
+        nodes = append(nodes, biz.NodeDef{
+            ID:          a.AgentKey,
+            Type:        "agent",
+            AgentName:   a.AgentKey,
+            Instruction: a.SubTask,
+        })
+    }
+
+    // 3. 根据依赖关系生成边
+    for _, a := range input.Agents {
+        if len(a.DependsOn) == 0 {
+            edges = append(edges, biz.EdgeDef{From: entryNode, To: a.AgentKey})
+        } else {
+            for _, dep := range a.DependsOn {
+                edges = append(edges, biz.EdgeDef{From: dep, To: a.AgentKey})
+            }
+        }
+    }
+
+    // 4. 汇合节点
+    mergeNode := "merge_results"
+    nodes = append(nodes, biz.NodeDef{ID: mergeNode, Type: "function"})
+
+    // 5. 验证门禁节点
+    verifyNode := "verify_results"
+    nodes = append(nodes, biz.NodeDef{
+        ID:             verifyNode,
+        Type:           "function",
+        InterruptAfter: true,
+    })
+    edges = append(edges, biz.EdgeDef{From: mergeNode, To: verifyNode})
+
+    return biz.GraphBuildConfig{
+        Nodes:            nodes,
+        Edges:            edges,
+        EntryPoint:       entryNode,
+        FinishPoint:      verifyNode,
+        EnableCheckpoint: true,
+        ExecutionEngine:  biz.ExecutionEnginePregel,
+        InterruptAfter:   []string{verifyNode},
+        StateFields: []biz.StateFieldDef{
+            {Key: "task_description", Reducer: "default"},
+            {Key: "agent_results", Reducer: "merge"},
+        },
+    }
+}
+```
+
+#### 7.2.3 与 `assemble_team` 的关系
+
+P0 阶段两者共存，编排管家 LLM 根据任务复杂度选择：
+- 简单任务（2-3 Agent，顺序执行）→ `assemble_team`
+- 复杂任务（4+ Agent，有并行/条件路由）→ `build_orchestration_graph`
+
+P1 阶段 `assemble_team` 内部重构为调用 `build_orchestration_graph`，统一走 Graph 引擎。
+
+### 7.3 GAP-3：AdaptiveTeamMode — 自适应 Team 模式选择
+
+**问题**：Spirit Team 固定使用 `ModeCoordinator`，不同任务特征适合不同模式。
+
+**方案**：在 `buildSpiritTeam` 中根据 `assess_complexity` 的输出动态选择 Team 构建方式。
+
+#### 7.3.1 Team 模式选择
+
+```go
+// internal/service/chat_orchestrator_spirit.go
+type SpiritTeamMode string
+
+const (
+    SpiritModeCoordinator SpiritTeamMode = "coordinator"
+    SpiritModeSwarm       SpiritTeamMode = "swarm"
+    SpiritModeDirect      SpiritTeamMode = "direct"
+)
+
+func (o *ChatOrchestrator) buildSpiritTeam(
+    ctx context.Context, spiritAg biz.Agent, deps chatagent.TRPCBuilderDeps,
+    mode SpiritTeamMode,
+) (agent.Agent, error) {
+    spiritAgent, err := chatagent.BuildTRPCAgentCached(ctx, spiritAg, deps)
+    if err != nil { return nil, err }
+
+    butlers, err := o.loadSystemButlers(ctx, deps)
+    if err != nil { return nil, err }
+
+    switch mode {
+    case SpiritModeCoordinator:
+        return trpcteam.New(spiritAgent, butlers)
+    case SpiritModeSwarm:
+        return trpcteam.NewSwarm(
+            "spirit_swarm", spiritAgent.Info().Name,
+            append([]agent.Agent{spiritAgent}, butlers...),
+        )
+    case SpiritModeDirect:
+        targetKey := ctx.Value(ctxKeyTargetButler).(string)
+        for _, b := range butlers {
+            if b.Info().Name == targetKey { return b, nil }
+        }
+        return spiritAgent, nil
+    default:
+        return trpcteam.New(spiritAgent, butlers)
+    }
+}
+```
+
+#### 7.3.2 模式选择逻辑
+
+| assess_complexity 输出 | Team 模式 | 说明 |
+|----------------------|----------|------|
+| `direct_answer` | Direct | 不构建 Team |
+| `single_butler` | Direct | 直接路由到目标管家 |
+| `orchestrator` | Coordinator | 完整 Team 编排 |
+
+P1 增强：基于历史编排记录的成功率自动优化模式选择。
+
+### 7.4 GAP-4：VerificationGate — 编排验证门禁节点
+
+**问题**：Graph 有 `interrupt_before`/`interrupt_after` 用于 HITL，但没有自动化验证门禁。
+
+**方案**：在 Graph 中增加验证节点（Verification Node），利用 `NodeDef.FailureAction` + 自定义验证函数实现自动验证。
+
+#### 7.4.1 验证节点类型
+
+```go
+// internal/tools/orchestrator/verification.go
+type VerificationType string
+
+const (
+    VerifyOutputFormat   VerificationType = "output_format"
+    VerifyTaskCompletion VerificationType = "task_completion"
+    VerifyHumanApproval VerificationType = "human_approval"
+)
+```
+
+#### 7.4.2 验证函数
+
+```go
+// internal/tools/orchestrator/verify_funcs.go
+func verifyOutputFormat(ctx context.Context, state graph.State) (any, error) {
+    results, ok := state["agent_results"]
+    if !ok { return nil, fmt.Errorf("no agent results found") }
+
+    agentResults, ok := results.(map[string]any)
+    if !ok { return nil, fmt.Errorf("agent_results is not a map") }
+
+    var issues []string
+    for agentKey, result := range agentResults {
+        resultStr, ok := result.(string)
+        if !ok || resultStr == "" {
+            issues = append(issues, fmt.Sprintf("agent %s returned empty result", agentKey))
+        }
+    }
+
+    if len(issues) > 0 {
+        return map[string]any{"verified": false, "issues": issues}, nil
+    }
+    return map[string]any{"verified": true}, nil
+}
+```
+
+#### 7.4.3 验证节点注入
+
+在 `buildGraphConfig` 中根据验证类型注入验证节点：
+
+| 验证类型 | 注入位置 | FailureAction | 说明 |
+|---------|---------|---------------|------|
+| output_format | merge 后 | Skip | 格式验证失败不阻塞 |
+| task_completion | merge 后 | RetryThenBlock | 完成度不足则重试 |
+| human_approval | 关键节点前 | interrupt_before | 暂停等待人工确认 |
+
+### 7.5 整体架构
+
+```
+用户消息
+  │
+  ▼
+Spirit（总管家）
+  ├── GAP-1: assess_complexity
+  │     ├── simple → direct_answer
+  │     ├── moderate → single_butler
+  │     └── complex → orchestrator
+  │
+  └── GAP-3: AdaptiveTeamMode
+        ├── direct_answer → 不构建 Team
+        ├── single_butler → SpiritModeDirect
+        └── orchestrator → SpiritModeCoordinator
+              │
+              ▼
+        Orchestrator（编排管家）
+          ├── 现有工具链：classify_industry → search_positions → find_agents
+          │
+          └── GAP-2: build_orchestration_graph
+                │  动态生成 GraphBuildConfig
+                │
+                ▼
+          Graph Engine
+            entry → [Agent A] ─┐
+                   [Agent B] ─┼→ merge → verify → finish
+                   [Agent C] ─┘          ↑
+                                  GAP-4: VerificationGate
+```
+
+### 7.6 新增文件清单
+
+```
+internal/
+  tools/
+    spirit/
+      assess_complexity.go      # GAP-1: 复杂度评估工具
+      complexity_rules.go       # GAP-1: 规则引擎
+    orchestrator/
+      build_graph.go            # GAP-2: Graph 构建工具
+      verification.go           # GAP-4: 验证节点类型定义
+      verify_funcs.go           # GAP-4: 验证函数实现
+  service/
+    chat_orchestrator_spirit.go # GAP-3: Spirit Team 构建 + 模式选择
+  scenario/system/prompts/
+    spirit.md                   # 修改：增加强制决策规则
+    orchestrator.md             # 修改：增加 Graph 编排决策规则
+```
+
+### 7.7 依赖关系
+
+| 依赖 | 说明 |
+|------|------|
+| M59 精灵模式骨架 | 前置：Spirit 种子数据 + CustomTools 机制 |
+| team-graph-optimization | 前置：GraphBuilderFactory 拆分后接口稳定 |
+| Graph 引擎 interrupt 机制 | GAP-4 依赖：interrupt_before/interrupt_after |
+| `team.New()` / `team.NewSwarm()` | GAP-3 依赖：框架 Team 构造 API |

@@ -297,31 +297,185 @@ backdrop-filter: blur(var(--glass-blur-default));
 | 主强调/链接/焦点 | 以 `--color-accent` 为准 |
 | 禁止 | 运行时改 `quasar-variables`；第二套全局 CSS 入口 |
 
-### 6.4 关键 Token 速查
+### 6.4 完整 CSS 变量 Token 表
 
-| Token | 日间 | 夜间 |
-|-------|------|------|
-| `--canvas-base` | `#FEFBF4` | `#090D14` |
-| `--glass-surface` | `rgba(255,253,245,0.65)` | `rgba(18,24,34,0.65)` |
-| `--glass-border` | `rgba(235,220,200,0.7)` | `rgba(255,255,255,0.08)` |
-| `--color-accent` | `#E9A23B` | `#00E5FF` |
-| `--color-text-primary` | `#3A322C` | `#EBEBF0` |
-| `--glass-elevated` | `rgba(255,255,255,0.72)` | — |
-| `--glass-blur-default` | `18px` | `18px` |
-| `--glass-blur-elevated` | `24px` | `24px` |
+**实现位置**：`web/src/css/theme/_css-vars-light.sass`（`:root`）、`_css-vars-dark.sass`（`body.body--dark`）；聚合入口 `app-theme.sass`。页面/组件用 `var(--*)`，勿硬编码 hex（除本文档明确要求处）。
 
-### 6.5 组件数值速查
+#### 6.4.1 日间（`:root`）
 
-| 组件 | 规则 |
+| Token | 值 | 用途 |
+|-------|-----|------|
+| `--canvas-base` | `#FEFBF4` | 主画布底 |
+| `--glass-surface` | `rgba(255, 253, 245, 0.65)` | 标准玻璃 |
+| `--glass-surface-hover` | `rgba(255, 253, 245, 0.78)` | 玻璃悬停 |
+| `--glass-blur-default` | `18px` | 与 surface 配对 |
+| `--glass-blur-hover` | `20px` | 悬停略增 |
+| `--glass-border` | `rgba(235, 220, 200, 0.7)` | 玻璃边 |
+| `--glass-elevated` | `rgba(255, 255, 255, 0.72)` | 弹层 |
+| `--glass-blur-elevated` | `24px` | 抬高 blur |
+| `--color-accent` | `#E9A23B` | 主操作、链接、焦点 |
+| `--color-accent-hover` | `#D48C1A` | 主操作悬停 |
+| `--focus-ring-light` | `2px solid rgba(233, 162, 59, 0.45)` | `:focus-visible` |
+| `--interaction-surface-hover` | `#FEF3E4` | 次级悬停衬底 |
+| `--glass-inner-highlight` | `inset 0 1px 0 rgba(255, 255, 255, 0.45)` | 可选顶缘高光 |
+| `--color-text-primary` | `#3A322C` | 主文案 |
+| `--color-text-secondary` | `#8B7A6B` | 辅文案 |
+| `--color-icon-muted` | `#B8A590` | 图标/线 |
+| `--color-success` | `#4CAF7C` | 成功 |
+| `--color-warning` | `#F09B54` | 警告 |
+| `--color-danger` | `#E55C5C` | 危险 |
+| `--nav-bg-light` | `rgba(255, 249, 236, 0.85)` | 日间顶栏底（+ blur） |
+
+#### 6.4.2 夜间（`body.body--dark`）
+
+| Token | 值 | 用途 |
+|-------|-----|------|
+| `--canvas-base` | `#090D14` | 主画布底 |
+| `--glass-surface` | `rgba(18, 24, 34, 0.65)` | 标准玻璃 |
+| `--glass-surface-hover` | `rgba(22, 28, 40, 0.75)` | 玻璃悬停 |
+| `--glass-border` | `rgba(255, 255, 255, 0.08)` | 细边 |
+| `--glass-border-hover` | `rgba(255, 255, 255, 0.16)` | 悬停边 |
+| `--color-accent` | `#00E5FF` | 夜间语义强调 |
+| `--color-accent-hover` | `#5aebff` | 悬停 |
+| `--color-neon-cyan` | `#00E5FF` | 焦点/链接 |
+| `--color-neon-violet` | `#A855F7` | 二级强调 |
+| `--gradient-flow-border` | `linear-gradient(120deg, #00E5FF, #A855F7, #00E5FF)` | 流动边 |
+| `--color-text-primary` | `#EBEBF0` | 主文案 |
+| `--color-text-secondary` | `#9CA0B0` | 辅文案 |
+| `--color-success` | `#3FE0A0` | 成功 |
+| `--color-warning` | `#FFAF4D` | 警告 |
+| `--color-danger` | `#FF5E7A` | 危险 |
+| `--nav-bg-dark` | `rgba(9, 13, 20, 0.7)` | 顶栏底（+ blur 20px） |
+| `--nav-divider-dark` | `rgba(255, 255, 255, 0.06)` | 栏底分割线 |
+
+### 6.5 日间交互增强速查
+
+| 场景 | 推荐处理 | 避免 |
+|------|----------|------|
+| 主操作 | 实心或高对比填充 `#E9A23B`，字 `#FFFFFF`，悬停 `#D48C1A` | 大区域渐变抢镜 |
+| 链接 / 次要强调 | 字色或下划线用 `#E9A23B`，悬停加深为 `#D48C1A` | 夜间霓虹青紫 |
+| `:focus-visible` | `outline` / `ring` 使用 `#E9A23B`（或 `rgba(233,162,59,0.45)` 2px），与背景对比足够 | 仅依赖浏览器默认蓝环 |
+| 可点击玻璃卡片 | 悬停：`rgba(255,253,245,0.78)` + `blur(20px)`，边框可向 `rgba(235,220,200,0.85)` 过渡 | 突然加深阴影代替材质变化 |
+| 图标按钮 | 默认 `#B8A590`，悬停/激活 `#E9A23B` 或 `#3A322C`（按层级） | 彩虹或霓虹描边 |
+
+**夜间霓虹**：`#00E5FF` / `#A855F7` **仅用于**交互焦点、强调边、动态渐变，避免铺满界面；**日间不得**使用该组色作默认强调（避免昼夜调性串味）。
+
+### 6.6 组件详细数值
+
+#### 6.6.1 按钮
+
+| 模式 | 背景 | 字/边 | 悬停 | 圆角 / 其它 |
+|------|------|--------|------|-------------|
+| 昼·主 | `#E9A23B` | `#fff` | `#D48C1A` | 圆角 `10px`；内边距 `10px 20px`；可按 `scale(0.98)` |
+| 昼·次 | 透明 | 字 `#3A322C`，边 `1px solid #D0C0A8` | 底 `#FEF3E4` | — |
+| 昼·玻璃次 | `rgba(255,253,245,0.5)` + blur | 边 `#EDE3D3` | 按 §6.5 玻璃交互 | — |
+| 夜·主（霓虹） | `rgba(0,229,255,0.15)` | 边 `1px solid #00E5FF`，字 `#00E5FF` | alpha→0.25；`box-shadow: 0 0 16px rgba(0,229,255,0.3)` | — |
+| 夜·次 | 玻璃材质 | 边 `rgba(255,255,255,0.1)`，字 `#EBEBF0` | — | — |
+| 胶囊 CTA | — | — | — | 圆角 `18px–980px` 按需 |
+
+#### 6.6.2 卡片
+
+| 模式 | 规则 |
 |------|------|
-| 按钮 | 圆角 10px；内边距 10px 20px；主按钮 `--color-accent` |
-| 卡片 | 玻璃 `--glass-surface` + blur 18px；圆角 16-20px；无重投影 |
-| 对话框 | `app-dialog-card` + 可选 `app-glass-dialog` |
-| 输入 | 圆角 12-16px；聚焦边 `--color-accent` |
-| 间距刻度 | 4, 8, 12, 16, 20, 24, 32, 48, 64 px（昼夜同一套） |
-| 圆角阶梯 | 控件 5-8px；卡片 16-20px；大模块 28-36px；胶囊 56-980px |
+| 昼·玻璃（默认浮层） | `rgba(255,253,245,0.65)` + blur 18px；边 `rgba(235,220,200,0.7)`；**无**重投影 |
+| 昼·实体（慎用） | 底 `#FFFDF5`；边 `#EDE3D3`；影 `0 2px 12px rgba(0,0,0,0.04)`；圆角 16–20px。**同一层级勿与玻璃混用** |
+| 夜 | `rgba(18,24,34,0.65)` + blur 18px + webkit；边 `rgba(255,255,255,0.08)`；悬停边 → `--glass-border-hover`；选中可 `box-shadow: 0 0 20px rgba(0,229,255,0.15)` |
 
-### 6.6 聊天消息卡片
+#### 6.6.3 对话框（`q-dialog` 内主卡片）
+
+- 背景 `var(--glass-elevated)`，`backdrop-filter` + `-webkit-backdrop-filter` 使用 `var(--glass-blur-elevated)`；边框 `var(--glass-border)`；圆角 20–24px
+- 主按钮：优先 `var(--color-accent)` / `var(--color-accent-hover)`（随昼夜 token 切换），**禁止**在日间把霓虹青紫当默认主色
+
+#### 6.6.4 输入
+
+| 模式 | 规则 |
+|------|------|
+| 昼·实体 | 底 `#fff`；边 `#D0C0A8`；聚焦边 `#E9A23B`；字 `#3A322C` |
+| 昼·玻璃 | 底 `rgba(255,255,255,0.5)` blur 8px；边 `rgba(208,192,168,0.6)`；聚焦 `#E9A23B` |
+| 夜 | 底 `rgba(18,24,34,0.45)` blur 8px；边 `rgba(255,255,255,0.1)`；聚焦 `#00E5FF` + 微光晕 |
+| 圆角 | `12px–16px` |
+
+#### 6.6.5 导航 / 工具条
+
+| 模式 | 规则 |
+|------|------|
+| 昼 | 底 `rgba(255,249,236,0.85)` + blur；字暖棕系；可无下边线，或 `1px solid rgba(235,220,200,0.6)`；奶霜顶栏可用 `rgba(255,253,245,0.72)` + blur 20px |
+| 夜 | 底 `rgba(9,13,20,0.7)` blur 20px；底分割 `1px`、`rgba(255,255,255,0.06)`；链接 `#EBEBF0`，悬停点亮 `#00E5FF` |
+
+#### 6.6.6 媒体
+
+昼：图贴在奶油底上。夜：可略压暗或加玻璃蒙层；产品图夜间仅**极弱**青辉，勿抢主体。
+
+### 6.7 排版
+
+| 项 | 值 |
+|----|-----|
+| 展示 | `SF Pro Display, Inter Tight, Helvetica Neue, sans-serif` |
+| 正文 | `SF Pro Text, Inter, Helvetica Neue, sans-serif` |
+| 字色 | 昼 `var(--color-text-primary)` / 夜同 token |
+| 标题 | 负字距、偏紧行高 |
+| 夜间标题（特殊模块可选） | `text-shadow: 0 0 12px rgba(0, 229, 255, 0.15)` |
+
+字号阶梯（若项目另有全局阶梯文档）与之对齐；**切换昼夜不改阶梯与行高体系**。
+
+### 6.8 夜间特效（可选）
+
+| 用途 | 要点 |
+|------|------|
+| 流动边 | `border-image` 或背景渐变；色 `#00E5FF` ↔ `#A855F7` |
+| 扫描光 | 大面积 Hero 伪元素慢速带；**不挡阅读** |
+| 霓虹 | `filter: drop-shadow(0 0 8px #00E5FF)` 小面积 |
+| 移动降级 | 流光改静态渐变；blur 降至 8–12px |
+
+### 6.9 布局规范
+
+| 项 | 规则 |
+|----|------|
+| 间距刻度 | `4, 8, 12, 16, 20, 24, 32, 48, 64` px；**昼夜同一套** |
+| 圆角 | 控件 5–8px；卡片/面板 16–20px；大模块 28–36px；胶囊 56–980px；圆 `50%` |
+| 密度 | 营销宽留白；数据页可更密 |
+| 表单区宽度 | 单列表单 `max-width: 960px`（`.app-form-shell` / `.settings-grid`）；双栏能力卡 `1200px`（`.app-form-wide`） |
+| 字段宽度 | 短字段 `320px`（`.app-field-sm`）；名称/下拉 `480px`（`.app-field-md`）；描述/Prompt `72ch`（`.app-field-long`） |
+| 字段网格 | 多列配置用 `.app-form-field-grid`（`auto-fill, minmax(200px, 280px)`），禁止裸 `col-12` 拉满超宽屏 |
+| 按钮 | 主操作 **auto width**，`.app-actions-bar` 右对齐；**禁止**配置页 `full-width` 主按钮（移动 `.app-btn-block-mobile` 除外） |
+| Chat composer | `.chat-composer-inner` 限宽 `900px` 居中，与消息区对齐 |
+| Dialog | `.app-dialog-card` + `--glass-elevated`；宽 `640–860px` |
+| Z / 层级 | L0=`--canvas-base`；L1/L2 用玻璃不透明度与 blur 差、边框亮度区分；焦点昼 `#E9A23B`、夜霓虹边。**摒弃**靠重投影分层层级 |
+
+### 6.10 交互安全规范
+
+| 场景 | 要求 |
+|------|------|
+| 破坏性操作 | 删除、回滚、终止、清除等不可逆操作**必须**有 `$q.dialog` 二次确认 |
+| 表单提交 | 必填字段**必须**有 `:rules` 前端校验；提交按钮**必须**有 `:disable` 绑定 |
+| 编辑器关闭 | 有未保存变更时关闭**必须**弹出确认；使用 `persistent` + dirty 检测 |
+| IME 输入 | Chat 发送须同时检查 `event.isComposing` 和 `event.keyCode === 229` |
+| 收藏/置顶 | 单字段切换只 patch 该字段，不提交完整 form |
+| 加载失败 | 不使用 `router.back()` 强制跳转；显示错误页 + 重试按钮 |
+| 删除按钮 | 列表项删除按钮应 hover 时才显示（`opacity: 0 → 1`），不始终暴露 |
+
+### 6.11 响应式
+
+断点跟随项目全局配置。移动：blur **8–12px**；§6.8 动效降级静态。
+
+### 6.12 Do / Don't
+
+**Do**：全昼夜浮层磨砂玻璃；昼奶油 rgba(255,253,245,…)；夜深半透明 + 微光；强调仅交互锚点；层级靠模糊与边框。
+
+**Don't**：昼默认大白实心不透明大块；默认重阴影堆层级；同层混实体与玻璃；玻璃上大色块糊满；移动端忽视性能（须降 blur / 简化光效）。
+
+### 6.13 样式工程落点
+
+| 层级 | 路径 | 职责 |
+|------|------|------|
+| 构建期 | `web/src/css/quasar-variables.sass` | `$primary` 等（Vite `sassVariables`）；**不**随 Dark 重算 |
+| Token | `web/src/css/app-theme.sass` → `web/src/css/theme/*` | `$cream-*`、`:root` / `body.body--dark` |
+| 全局类 | `web/src/css/app-global.sass` | 字体、shell、页面级 class；昼夜用 `body:not(.body--dark)` / `body.body--dark` |
+| Quasar 链（约定） | `web/src/style.sass` → `web/src/css/style.sass` | 配置里为 `css: ['style.sass']`（相对 `src/`）。**业务样式只改 `css/`**；根文件仅一行 `@import`。`client-entry` 固定 `import 'src/css/style.sass'`。 |
+
+**Token 膨胀**：仅在 `web/src/css/theme/` 增加 `_*.sass`，由 `app-theme.sass` 聚合；可按域拆文件，每文件可含并列的 `:root` 与 `body.body--dark` 块；**禁止**与 `app-global` 平行的第二套全局 CSS 入口。
+
+### 6.14 聊天消息卡片
 
 - **结构**：头像外置 → 元信息行（名/时间）→ **玻璃 prose 卡片**（Markdown）
 - **助手气泡**：`--glass-elevated`（昼）/ `--glass-surface`（夜）；`1px var(--glass-border)`；**禁止**-success/positive 绿描边
@@ -330,7 +484,7 @@ backdrop-filter: blur(var(--glass-blur-default));
 - **Quasar**：`q-chat-message` 设 `bg-color="transparent"`；全局覆盖 `.q-message-text` 背景
 - **流式**：左侧 3px inset 强调条或轻脉动，**禁止**整卡绿色外框
 
-### 6.7 反模式
+### 6.15 反模式
 
 - 粗纯色边框（尤其 `#4CAF7C` / Quasar `positive` 当消息底）
 - 标题 24px+ 压在 14px 正文上
@@ -399,14 +553,27 @@ backdrop-filter: blur(var(--glass-blur-default));
 
 ## 第八章：Registry 列表表格规范
 
-### 8.1 红线
+### 8.1 三层架构
+
+| 层 | 路径 | 职责 |
+|----|------|------|
+| 基础设施 | `web/src/features/ui/registryTableColumns.ts` | `registryCol`、`REGISTRY_COL_W`、`registryColActions` / `registryColEnabled` |
+| 基础设施 | `web/src/features/ui/useResizableRegistryColumns.ts` | 表头拖拽 + localStorage |
+| 基础设施 | `web/src/components/layout/AppRegistryTable.vue` | 统一 QTable 壳（flat、dense、分页隐藏、列拖拽） |
+| 领域 UI | `components/<域>/*Ui.ts` 或 `features/<域>/*TableUi.ts` | `XXX_TABLE_COLUMNS` + 格式化函数 |
+| 展示 | `components/<域>/*Table.vue` | 仅 `#body-cell-*` slots，**不写 columns 数组** |
+| 样式 | `web/src/css/theme/_registry-page.sass` | `.app-registry-*` 单元格语义类、表格 chrome |
+
+轻量只读表（无 loading / 分页）可用 `AppRegistryMarkupTable.vue`。
+
+### 8.2 红线
 
 1. **列定义不得写在 `*Table.vue` 或 Page script 内** — 放在 `components/<域>/*Ui.ts` 或 `features/<域>/*TableUi.ts`
 2. **禁止**手写 `{ style: "width: …", headerStyle: "width: …" }` — 使用 `registryCol()` + `REGISTRY_COL_W`
 3. **列表表必须用** `AppRegistryTable`（或只读小表用 `AppRegistryMarkupTable`），禁止裸 `q-table`
 4. **单元格**优先 `.app-registry-cell-primary` / `__sub` / `__actions`；域样式用 `table-class` + `_registry-page.sass`
 
-### 8.2 列 API
+### 8.3 列 API
 
 ```typescript
 import { REGISTRY_COL_W, registryCol, registryColActions, registryColEnabled } from "../../features/ui/registryTableColumns";
@@ -415,6 +582,107 @@ registryCol<Row>("name", "名称", "name", "left", REGISTRY_COL_W.name);
 registryColEnabled<Row>();
 registryColActions<Row>();
 ```
+
+参数顺序：`name` → `label` → `field` → **`align`** → `width` → `extra?`
+
+### 8.4 列宽 token（`REGISTRY_COL_W`）
+
+| Token | 典型用途 |
+|-------|----------|
+| `name` / `nameWide` | 名称列（14% / 18%） |
+| `desc` | 规则、描述（16%） |
+| `status` / `category` / `time` | 状态、分类、时间 |
+| `agent` / `session` | Agent、Session |
+| `enabled` | Toggle 列（64px，居中） |
+| `metric` / `narrow` | 数值、短标签（72px / 64px） |
+| `actions` / `actionsWide` | 操作列（108px / 148px，右对齐） |
+
+需要完整 CSS（如 `max-width`）时 width 传 `"16%; max-width: 168px"`。
+
+### 8.5 对齐约定
+
+| 列类型 | align |
+|--------|-------|
+| 名称、描述、时间 | `left` |
+| Toggle、状态 badge | `center` |
+| 操作按钮 | `right` |
+| 纯数字 | `right`（推荐） |
+
+自定义 `#body-cell-*` 内若用 `row items-center` 等 flex，列 `align` 可能不明显，需在 slot 内用 `justify-*` 微调。
+
+### 8.6 Preset
+
+- `registryColEnabled()` — 启用 Toggle 列
+- `registryColActions(width?, label?, field?)` — 操作列 + `app-registry-col-actions` 类
+
+### 8.7 表格组件用法
+
+```vue
+<AppRegistryTable
+  table-class="tools-data-table"
+  :columns="TOOL_TABLE_COLUMNS"
+  column-persist-key="tools-table"
+  hide-pagination
+  :pagination="{ rowsPerPage: 0 }"
+>
+  <template #body-cell-name="props">
+    <q-td :props="props">
+      <div class="app-registry-cell-primary ellipsis">{{ props.row.display_name }}</div>
+      <div class="app-registry-cell-sub ellipsis">{{ props.row.key }}</div>
+    </q-td>
+  </template>
+</AppRegistryTable>
+```
+
+| Prop | 说明 |
+|------|------|
+| `table-class` | 域特有样式时注册到 `_registry-page.sass`（如 `.tools-data-table.q-table`） |
+| `column-persist-key` | 同页多表必须唯一；拖拽宽度存 localStorage |
+| `:shell="false"` | Dialog / 嵌套 panel 内由外层提供玻璃壳 |
+| `:resizable="false"` | 小表 / Dialog 内只读表可关闭拖拽 |
+
+### 8.8 单元格样式
+
+优先使用全局语义类（`_registry-page.sass`）：
+
+| 类名 | 用途 |
+|------|------|
+| `.app-registry-cell-primary` | 主文本 |
+| `.app-registry-cell-sub` | 副文本（key、时间戳） |
+| `.app-registry-cell-desc` | 多行描述 |
+| `.app-registry-cell-actions` | 操作按钮组 |
+| `.app-registry-chip-wrap` | tag / chip 容器 |
+| `.app-registry-icon-btn` | 圆形 icon 按钮 |
+
+域特有样式：`.{domain}-data-table__*`（BEM），写在 `_registry-page.sass` 对应块内，**勿**在 Table.vue scoped 里重复 thead/td padding。
+
+### 8.9 文件命名
+
+| 场景 | 导出 | 文件示例 |
+|------|------|----------|
+| 单表 | `TOOL_TABLE_COLUMNS` | `components/tools/toolUi.ts` |
+| 多表同域 | `SKILL_TABLE_COLUMNS` / `SKILL_RUNS_TABLE_COLUMNS` | `components/skills/skillTableUi.ts` |
+| Page composable | `CRON_TASK_TABLE_COLUMNS` | `features/cron/cronTableUi.ts` |
+| 需动态 field | `buildAgentTableColumns(...)` | `components/agents/agentTableUi.ts` |
+
+### 8.10 新表 Checklist
+
+- [ ] 在 `*Ui.ts` / `*TableUi.ts` 定义 `XXX_TABLE_COLUMNS`（`registryCol` + `REGISTRY_COL_W`）
+- [ ] `*Table.vue` 只用 `AppRegistryTable` + body-cell slots
+- [ ] 设置 `column-persist-key`
+- [ ] 单元格用 `.app-registry-cell-*`
+- [ ] 有域样式时：`table-class` + `_registry-page.sass` 注册
+- [ ] `cd web && pnpm build`
+
+### 8.11 参考实现
+
+| 场景 | 文件 |
+|------|------|
+| 标准 Registry 列表 | `PluginsTable.vue` + `pluginUi.ts` |
+| 多 variant 列 | `HooksTable.vue` + `hookTableUi.ts` |
+| Provider 宽表 | `ProviderModelsTable.vue` + `providerModelUi.ts` |
+| 会话 sticky 操作列 | `sessionUi.ts`（`app-registry-col-actions`） |
+| 基础设施源码 | `registryTableColumns.ts`、`AppRegistryTable.vue` |
 
 ---
 
@@ -450,7 +718,7 @@ registryColActions<Row>();
 
 ### 改动中（逐层检查）
 
-- [ ] **已读模块交叉参考手册**：在 `docs/module-cross-reference.md` 中找到目标前端模块卡片，确认后端对应 Service/Proto/Store、跨 Store 依赖、事件消费
+- [ ] **已读模块交叉参考手册**：在 `openspec/specs/module-cross-reference-full.md` 中找到目标前端模块卡片，确认后端对应 Service/Proto/Store、跨 Store 依赖、事件消费
 - [ ] 展示组件是否直接调用 API / Store？若有 → 已上收或已备案例外
 - [ ] **Page** 是否直接 `import` `features/*/api`？若有 → 迁入 Store + composable
 - [ ] 新网络请求是否只出现在 `features/*/api.ts` 或 `services/`，且由 Store action 触发？
@@ -556,8 +824,8 @@ registryColActions<Row>();
 
 | 文档 | 路径 | 定位 |
 |------|------|------|
-| **架构蓝图** | `docs/architecture-blueprint.md` | 前端全貌：36 个 Store、实时层、路由 |
-| **模块交叉参考** | `docs/module-cross-reference.md` | §三·前端模块上下文卡 + §六·前后端对齐表 |
+| **架构蓝图** | `openspec/specs/architecture-blueprint.md` | 前端全貌：36 个 Store、实时层、路由 |
+| **模块交叉参考** | `openspec/specs/module-cross-reference-full.md` | §三·前端模块上下文卡 + §六·前后端对齐表 |
 
 ### 12.2 开发前强制步骤
 

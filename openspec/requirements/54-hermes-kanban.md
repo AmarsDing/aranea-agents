@@ -134,7 +134,7 @@ Aranea 已在 **M36 Graph Task** 实现任务模型、RPC、Ent 持久化与 **G
 
 ### 4.5 视觉规范
 
-- 玻璃材质 Dialog：`app-glass-dialog`（见 [UX.md](../frontend/UX.md)）
+- 玻璃材质 Dialog：`app-glass-dialog`（见 `aranea-frontend-guide` SKILL §7）
 - 列壳复用：`WorkflowKanbanBoard.vue`
 - 与 Graph Run 画布同页；Observatory 双 Tab 切换
 

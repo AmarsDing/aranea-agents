@@ -13,6 +13,7 @@ import { createEvaluationServiceClient } from "./kratos/evaluation/v1/index";
 import { createEventServiceClient } from "./kratos/event/v1/index";
 import { createHookServiceClient } from "./kratos/hook/v1/index";
 import { createKnowledgeServiceClient } from "./kratos/knowledge/v1/index";
+import { createLearningLoopServiceClient } from "./kratos/learning_loop/v1/index";
 import { createLlmProviderModelServiceClient } from "./kratos/llm_provider_model/v1/index";
 import { createMCPServerServiceClient } from "./kratos/mcp_server/v1/index";
 import { createPluginServiceClient } from "./kratos/plugin/v1/index";
@@ -120,6 +121,10 @@ export function createArtifactService() {
 
 export function createKnowledgeService() {
   return createKnowledgeServiceClient(requestHandler);
+}
+
+export function createLearningLoopService() {
+  return createLearningLoopServiceClient(requestHandler);
 }
 
 export function createEvaluationService() {

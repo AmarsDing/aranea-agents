@@ -104,6 +104,7 @@ type ChatOrchestrator struct {
 	spiritSynthesis *SpiritSynthesisService
 	orchCache       *biz.OrchestrationCache
 	teamStarter     biz.TeamStarterPort
+	turnTimeout     time.Duration
 
 	sessionRunBindings   sync.Map
 	awaitMetaCache       sync.Map
@@ -137,6 +138,7 @@ type ChatOrchestratorDeps struct {
 	SpiritSynthesis *SpiritSynthesisService
 	OrchCache       *biz.OrchestrationCache
 	TeamStarter     biz.TeamStarterPort
+	TurnTimeout     time.Duration
 }
 
 func coalesceRunRegistry(r *rt.RunRegistry) *rt.RunRegistry {
@@ -175,6 +177,10 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		spiritSynthesis: deps.SpiritSynthesis,
 		orchCache:       deps.OrchCache,
 		teamStarter:     deps.TeamStarter,
+		turnTimeout:     deps.TurnTimeout,
+	}
+	if o.turnTimeout <= 0 {
+		o.turnTimeout = chatagent.DefaultTurnTimeout
 	}
 	o.admitGate = newTurnAdmissionGate(turn.RunRegistryAdapter{Registry: runs}, o.chatUC, o.sessionPendingMergeFollowup)
 

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go, trpc-agent-go (agent/tool/event), CronRunner, Ent ORM, Wire DI, safego, FlowLog
 
-**Design Spec:** `docs/superpowers/specs/2026-05-30-modelregistry-refactor-design.md`
+**Design Spec:** `design.md`
 
 ---
 

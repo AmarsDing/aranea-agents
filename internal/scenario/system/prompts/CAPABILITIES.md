@@ -26,7 +26,8 @@
 
 | 工具 | 用途 | 使用建议 |
 |------|------|----------|
-| assemble_team | 组建多 Agent 团队 | 复杂任务时使用，支持 Task DAG |
+| assess_complexity | 评估任务复杂度 | **必须最先调用**，根据结果选择执行路径 |
+| assemble_team | 组建多 Agent 团队 | complex 级别任务时使用，支持 Task DAG |
 | check_team_progress | 查询团队进度 | 团队执行中定期检查 |
 | synthesize_results | 合成团队结果 | 所有团队完成后调用 |
 | cancel_team | 取消团队 | 团队执行异常时使用 |

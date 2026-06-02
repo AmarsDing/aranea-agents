@@ -22,13 +22,20 @@ func (r *sessionRepo) GetSessionState(ctx context.Context, sessionID string) (ma
 	if err != nil {
 		return nil, err
 	}
-	state := map[string]string{}
+	out := map[string]string{}
 	if row.StateJSON != "" {
-		if err := json.Unmarshal([]byte(row.StateJSON), &state); err != nil {
+		raw := map[string]interface{}{}
+		if err := json.Unmarshal([]byte(row.StateJSON), &raw); err != nil {
 			r.data.lg.Warn("session state json unmarshal failed", loggateway.StepID("data.session_state"), loggateway.Err(err))
+		} else {
+			for k, v := range raw {
+				if s, ok := v.(string); ok {
+					out[k] = s
+				}
+			}
 		}
 	}
-	return state, nil
+	return out, nil
 }
 
 func (r *sessionRepo) SaveSessionState(ctx context.Context, sessionID string, state map[string]string) error {

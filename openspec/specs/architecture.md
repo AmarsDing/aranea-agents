@@ -1,6 +1,6 @@
 # 架构规范
 
-> 来源：`docs/architecture-blueprint.md` 精简版。聚焦模块结构与职责，去除叙述性内容。
+> 来源：[`architecture-blueprint.md`](./architecture-blueprint.md) 精简版。聚焦模块结构与职责，去除叙述性内容。完整版见链接。
 
 ---
 

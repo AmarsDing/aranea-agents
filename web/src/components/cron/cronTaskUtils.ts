@@ -1,5 +1,5 @@
 /**
- * Cron 表单纯逻辑（无网络）。与 `components/cron/*.vue` 共址，见 vue-design.md §2。
+ * Cron 表单纯逻辑（无网络）。与 `components/cron/*.vue` 共址，见 aranea-frontend-guide SKILL §3.3。
  */
 import type { Agent } from "../../features/agents/types";
 import type { PlatformResourceInput } from "../../features/platform/types";

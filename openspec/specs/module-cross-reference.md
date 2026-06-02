@@ -2,7 +2,7 @@
 
 > 本文档为指针文件，完整内容请查阅：
 
-**完整文档**：[`docs/module-cross-reference.md`](../../docs/module-cross-reference.md)
+**完整文档**：[`module-cross-reference-full.md`](./module-cross-reference-full.md)
 
 ---
 

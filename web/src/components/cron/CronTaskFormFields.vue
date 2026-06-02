@@ -1,5 +1,5 @@
 <!--
-  Cron 表单字段区：q-form + 校验暴露（vue-design §0.2，无 API）。
+  Cron 表单字段区：q-form + 校验暴露（aranea-frontend-guide SKILL §1 红线 #1，无 API）。
   皮肤：UX token，见父级 CronTaskFormDialog 与同文件 scoped :deep。
 -->
 <template>

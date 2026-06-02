@@ -1041,3 +1041,508 @@ make api && make wire && make build && make test && make lint
 # 前端
 cd web && pnpm lint && pnpm test && pnpm build
 ```
+
+---
+
+## 九、Phase 4 差距与详细实现 — 智能增强
+
+> 基于 AI Agent 工作模式启发，补充 4 个关键增强的详细实现设计。
+
+### 9.1 Phase 4 差距矩阵
+
+| 验收 ID | 摘要 | 骨架状态 | 差距级别 | 差距描述 |
+|---------|------|---------|---------|---------|
+| SPO-10 | 任务复杂度智能评估 | ❌ 不存在 | **P0** | 无形式化复杂度评估机制，Spirit 路由决策依赖 LLM 软约束 |
+| SPO-11 | Graph DAG 动态编排 | ❌ 不存在 | **P1** | 编排管家只有线性工具调用，无法利用 Graph 并行/条件/检查点能力 |
+| SPO-12 | 编排验证门禁节点 | ❌ 不存在 | **P1** | Graph 无自动化验证门禁，质量检查依赖最终合成 |
+
+### 9.2 SPO-10 详细实现：TaskComplexityClassifier
+
+#### 9.2.1 `assess_complexity` 工具实现
+
+**实现位置**：`internal/tools/spirit/assess_complexity.go`
+
+```go
+type assessComplexityTool struct {
+    rules *ComplexityRuleEngine
+}
+
+func (t *assessComplexityTool) Call(ctx context.Context, input AssessComplexityInput) (*AssessComplexityOutput, error) {
+    level := t.rules.Assess(input.UserMessage)
+    path := levelToPath(level)
+    return &AssessComplexityOutput{
+        Level:         string(level),
+        Reasoning:     t.rules.LastReasoning(),
+        SuggestedPath: path,
+    }, nil
+}
+
+func levelToPath(level ComplexityLevel) string {
+    switch level {
+    case ComplexitySimple:
+        return "direct_answer"
+    case ComplexityModerate:
+        return "single_butler"
+    case ComplexityComplex:
+        return "orchestrator"
+    default:
+        return "single_butler"
+    }
+}
+```
+
+#### 9.2.2 规则引擎实现
+
+**实现位置**：`internal/tools/spirit/complexity_rules.go`
+
+```go
+type ComplexityLevel string
+
+const (
+    ComplexitySimple   ComplexityLevel = "simple"
+    ComplexityModerate ComplexityLevel = "moderate"
+    ComplexityComplex  ComplexityLevel = "complex"
+)
+
+type ComplexityRuleEngine struct {
+    simplePatterns    []string
+    complexIndicators []string
+    lastReasoning     string
+    mu                sync.Mutex
+}
+
+func NewComplexityRuleEngine() *ComplexityRuleEngine {
+    return &ComplexityRuleEngine{
+        simplePatterns: []string{
+            "什么是", "解释一下", "帮我看看", "怎么用",
+            "是什么意思", "告诉我", "列出", "显示",
+            "what is", "explain", "show me", "how to use",
+        },
+        complexIndicators: []string{
+            "分析", "对比", "编写", "设计", "规划", "编排",
+            "多个", "跨行业", "团队", "协作", "流程",
+            "analyze", "compare", "design", "plan", "orchestrate",
+        },
+    }
+}
+
+func (r *ComplexityRuleEngine) Assess(message string) ComplexityLevel {
+    r.mu.Lock()
+    defer r.mu.Unlock()
+
+    lower := strings.ToLower(message)
+
+    for _, p := range r.simplePatterns {
+        if strings.Contains(lower, strings.ToLower(p)) {
+            r.lastReasoning = fmt.Sprintf("匹配简单问答模式: %s", p)
+            return ComplexitySimple
+        }
+    }
+
+    complexHits := 0
+    for _, p := range r.complexIndicators {
+        if strings.Contains(lower, strings.ToLower(p)) {
+            complexHits++
+        }
+    }
+    if complexHits >= 2 {
+        r.lastReasoning = fmt.Sprintf("匹配 %d 个复杂任务指标", complexHits)
+        return ComplexityComplex
+    }
+    if complexHits == 1 {
+        r.lastReasoning = "匹配 1 个复杂任务指标，但不足以确定，降级为 moderate"
+        return ComplexityModerate
+    }
+
+    r.lastReasoning = "无法通过规则确定复杂度，使用安全默认值 moderate"
+    return ComplexityModerate
+}
+
+func (r *ComplexityRuleEngine) LastReasoning() string {
+    r.mu.Lock()
+    defer r.mu.Unlock()
+    return r.lastReasoning
+}
+```
+
+#### 9.2.3 工具注册
+
+**实现位置**：`internal/tools/spirit_tools.go` 中 `NewSpiritTools` 函数追加：
+
+```go
+tools = append(tools,
+    NewAssessComplexityTool(NewComplexityRuleEngine()),
+)
+```
+
+#### 9.2.4 Spirit Prompt 更新
+
+**实现位置**：`internal/scenario/system/prompts/spirit.md`
+
+在现有 Prompt 末尾追加：
+
+```
+## 决策规则（强制）
+1. 收到用户消息后，先调用 assess_complexity 评估复杂度
+2. 根据评估结果路由：
+   - simple → 直接回答，不委派
+   - moderate → 委派给最相关的单一管家
+   - complex → 委派给 __orchestrator__
+3. 禁止跳过 assess_complexity 直接委派
+4. 禁止对 simple 级别任务委派给管家
+```
+
+### 9.3 SPO-11 详细实现：GraphOrchestration
+
+#### 9.3.1 `build_orchestration_graph` 工具实现
+
+**实现位置**：`internal/tools/orchestrator/build_graph.go`
+
+```go
+type buildOrchestrationGraphTool struct {
+    deps OrchestratorGraphDeps
+}
+
+type OrchestratorGraphDeps struct {
+    GraphExecutor func() biz.GraphExecutor
+    SessionIDFunc func(ctx context.Context) string
+}
+
+func (t *buildOrchestrationGraphTool) Call(
+    ctx context.Context, input BuildOrchestrationGraphInput,
+) (*BuildOrchestrationGraphOutput, error) {
+    cfg := t.buildGraphConfig(input)
+
+    graphID := fmt.Sprintf("orchestration_%d", time.Now().UnixMilli())
+    sessID := t.deps.SessionIDFunc(ctx)
+
+    executionID, err := t.deps.GraphExecutor().ExecuteGraphBuildConfig(
+        ctx, graphID, sessID, cfg, map[string]any{
+            "task_description": input.TaskPrompt,
+        },
+    )
+    if err != nil {
+        return nil, err
+    }
+
+    return &BuildOrchestrationGraphOutput{
+        GraphExecutionID: executionID,
+        SessionID:        sessID,
+        NodeCount:        len(cfg.Nodes),
+        EstimatedSteps:   t.estimateSteps(cfg),
+    }, nil
+}
+```
+
+#### 9.3.2 Graph 拓扑生成关键逻辑
+
+`buildGraphConfig` 方法根据 `AgentAssignment.DependsOn` 自动生成 DAG：
+- 无依赖的 Agent → 从 entry_point 直连（可并行）
+- 有依赖的 Agent → 从依赖 Agent 连边
+- 所有 Agent 完成后 → JoinEdge 到 merge_results
+- merge_results → verify_results（验证门禁节点）
+
+#### 9.3.3 与 `assemble_team` 共存策略
+
+**P0 阶段**：两个工具共存，编排管家 Prompt 中增加决策规则：
+
+```
+## 编排方式选择
+- 简单任务（2-3 Agent，顺序执行）→ 使用 assemble_team
+- 复杂任务（4+ Agent，有并行/条件路由）→ 使用 build_orchestration_graph
+```
+
+**P1 阶段**：`assemble_team` 内部重构为调用 `build_orchestration_graph`。
+
+#### 9.3.4 依赖注入路径
+
+`OrchestratorGraphDeps.GraphExecutor` 通过 `ChatOrchestratorDeps.Team.GraphFactory` 获取：
+
+```go
+func (o *ChatOrchestrator) orchestratorTools(ctx context.Context, ag biz.Agent) []trpctool.Tool {
+    if ag.AgentKey != "__orchestrator__" { return nil }
+    return orchestrator.RegisterAll(orchestrator.Deps{
+        // ... 现有依赖
+        GraphDeps: orchestrator.OrchestratorGraphDeps{
+            GraphExecutor: func() biz.GraphExecutor { return o.td.Team.GraphFactory },
+        },
+    })
+}
+```
+
+### 9.4 SPO-12 详细实现：VerificationGate
+
+#### 9.4.1 验证节点类型定义
+
+**实现位置**：`internal/tools/orchestrator/verification.go`
+
+```go
+type VerificationType string
+
+const (
+    VerifyOutputFormat   VerificationType = "output_format"
+    VerifyTaskCompletion VerificationType = "task_completion"
+    VerifyHumanApproval VerificationType = "human_approval"
+)
+
+type VerificationConfig struct {
+    Type          VerificationType `json:"type"`
+    NodeID        string           `json:"node_id"`
+    InjectAfter   string           `json:"inject_after"`    // 在哪个节点后注入
+    FailureAction string           `json:"failure_action"`  // skip / retry_then_block / fail_fast
+}
+```
+
+#### 9.4.2 验证函数实现
+
+**实现位置**：`internal/tools/orchestrator/verify_funcs.go`
+
+```go
+func verifyOutputFormat(ctx context.Context, state graph.State) (any, error) {
+    results, ok := state["agent_results"]
+    if !ok { return nil, fmt.Errorf("no agent results found in state") }
+
+    agentResults, ok := results.(map[string]any)
+    if !ok { return nil, fmt.Errorf("agent_results is not a map") }
+
+    var issues []string
+    for agentKey, result := range agentResults {
+        resultStr, ok := result.(string)
+        if !ok || resultStr == "" {
+            issues = append(issues, fmt.Sprintf("agent %s returned empty result", agentKey))
+        }
+    }
+
+    if len(issues) > 0 {
+        return map[string]any{"verified": false, "issues": issues}, nil
+    }
+    return map[string]any{"verified": true}, nil
+}
+
+func verifyTaskCompletion(ctx context.Context, state graph.State) (any, error) {
+    results, ok := state["agent_results"]
+    if !ok { return map[string]any{"verified": false, "reason": "no results"}, nil }
+
+    agentResults, ok := results.(map[string]any)
+    if !ok { return map[string]any{"verified": false, "reason": "invalid results"}, nil }
+
+    completedCount := 0
+    for _, result := range agentResults {
+        if resultStr, ok := result.(string); ok && resultStr != "" {
+            completedCount++
+        }
+    }
+
+    completionRate := float64(completedCount) / float64(len(agentResults))
+    if completionRate >= 0.8 {
+        return map[string]any{"verified": true, "completion_rate": completionRate}, nil
+    }
+    return map[string]any{
+        "verified":        false,
+        "completion_rate": completionRate,
+        "reason":          fmt.Sprintf("only %.0f%% agents completed", completionRate*100),
+    }, nil
+}
+```
+
+#### 9.4.3 验证节点注入到 Graph
+
+在 `buildGraphConfig` 中根据 `VerificationConfig` 注入验证节点：
+
+```go
+func (t *buildOrchestrationGraphTool) addVerificationNodes(
+    cfg *biz.GraphBuildConfig, verifyConfigs []VerificationConfig,
+) {
+    for _, vc := range verifyConfigs {
+        verifyNodeID := vc.NodeID
+        if verifyNodeID == "" {
+            verifyNodeID = fmt.Sprintf("verify_%s", vc.InjectAfter)
+        }
+
+        failureAction := biz.FailureActionSkip
+        switch vc.FailureAction {
+        case "retry_then_block":
+            failureAction = biz.FailureActionRetryThenBlock
+        case "fail_fast":
+            failureAction = biz.FailureActionFailFast
+        }
+
+        interruptAfter := vc.Type == VerifyHumanApproval
+
+        cfg.Nodes = append(cfg.Nodes, biz.NodeDef{
+            ID:             verifyNodeID,
+            Type:           "function",
+            Instruction:    fmt.Sprintf("验证类型: %s", vc.Type),
+            FailureAction:  failureAction,
+            InterruptAfter: interruptAfter,
+        })
+
+        // 修改边：inject_after → verify_node → 原下游
+        for i, e := range cfg.Edges {
+            if e.From == vc.InjectAfter {
+                cfg.Edges[i].From = verifyNodeID
+            }
+        }
+        cfg.Edges = append(cfg.Edges, biz.EdgeDef{
+            From: vc.InjectAfter, To: verifyNodeID,
+        })
+
+        if interruptAfter {
+            cfg.InterruptAfter = append(cfg.InterruptAfter, verifyNodeID)
+        }
+    }
+}
+```
+
+### 9.5 GAP-3 详细实现：AdaptiveTeamMode
+
+#### 9.5.1 Spirit Team 构建逻辑
+
+**实现位置**：`internal/service/chat_orchestrator_spirit.go`（新增文件）
+
+```go
+type SpiritTeamMode string
+
+const (
+    SpiritModeCoordinator SpiritTeamMode = "coordinator"
+    SpiritModeSwarm       SpiritTeamMode = "swarm"
+    SpiritModeDirect      SpiritTeamMode = "direct"
+)
+
+func (o *ChatOrchestrator) selectSpiritMode(
+    complexityLevel string,
+) SpiritTeamMode {
+    switch complexityLevel {
+    case "simple":
+        return SpiritModeDirect
+    case "moderate":
+        return SpiritModeDirect
+    case "complex":
+        return SpiritModeCoordinator
+    default:
+        return SpiritModeCoordinator
+    }
+}
+
+func (o *ChatOrchestrator) buildSpiritTeam(
+    ctx context.Context, spiritAg biz.Agent, deps chatagent.TRPCBuilderDeps,
+    mode SpiritTeamMode,
+) (agent.Agent, error) {
+    spiritAgent, err := chatagent.BuildTRPCAgentCached(ctx, spiritAg, deps)
+    if err != nil { return nil, err }
+
+    if mode == SpiritModeDirect {
+        return spiritAgent, nil
+    }
+
+    butlers, err := o.loadSystemButlers(ctx, deps)
+    if err != nil { return nil, err }
+
+    switch mode {
+    case SpiritModeCoordinator:
+        return trpcteam.New(spiritAgent, butlers)
+    case SpiritModeSwarm:
+        return trpcteam.NewSwarm(
+            "spirit_swarm", spiritAgent.Info().Name,
+            append([]agent.Agent{spiritAgent}, butlers...),
+        )
+    default:
+        return trpcteam.New(spiritAgent, butlers)
+    }
+}
+
+func (o *ChatOrchestrator) loadSystemButlers(
+    ctx context.Context, deps chatagent.TRPCBuilderDeps,
+) ([]agent.Agent, error) {
+    var butlerKeys = []string{"__orchestrator__", "__system_admin__", "__memory__", "__skills__", "__monitor__"}
+    var members []agent.Agent
+    for _, key := range butlerKeys {
+        b, err := o.td.Catalog.Agents.GetAgentByAgentKey(ctx, key)
+        if err != nil { continue }
+        memberDeps := deps
+        memberDeps.CustomTools = o.systemBuiltinTools(ctx, b)
+        member, err := chatagent.BuildTRPCAgentCached(ctx, b, memberDeps)
+        if err != nil { continue }
+        members = append(members, member)
+    }
+    return members, nil
+}
+```
+
+#### 9.5.2 与 `runSingleAgentViaTRPC` 集成
+
+**修改位置**：`internal/service/chat_orchestrator_turn.go`
+
+```go
+// 在 __spirit__ 分支中：
+if ag.AgentKey == "__spirit__" {
+    mode := o.selectSpiritMode(complexityLevel) // 从 assess_complexity 结果获取
+    root, err = o.buildSpiritTeam(ctx, ag, deps, mode)
+} else {
+    root, err = chatagent.BuildTRPCAgentCached(ctx, ag, deps)
+}
+```
+
+### 9.6 Phase 4 实现优先级
+
+| 排序 | ID | 任务 | 差距级别 | 影响域 |
+|------|-----|------|---------|--------|
+| 1 | SPO-P4-01 | `ComplexityRuleEngine` + `assess_complexity` 工具 | P0 | tools/spirit |
+| 2 | SPO-P4-02 | Spirit Prompt 强制决策规则 | P0 | scenario/prompts |
+| 3 | SPO-P4-03 | `chat_orchestrator_spirit.go` + Team 模式选择 | P0 | service |
+| 4 | SPO-P4-04 | `runSingleAgentViaTRPC` 集成 Spirit 模式选择 | P0 | service |
+| 5 | SPO-P4-05 | `build_orchestration_graph` 工具 | P1 | tools/orchestrator |
+| 6 | SPO-P4-06 | `buildGraphConfig` DAG 生成逻辑 | P1 | tools/orchestrator |
+| 7 | SPO-P4-07 | 验证节点类型定义 + 验证函数 | P1 | tools/orchestrator |
+| 8 | SPO-P4-08 | 验证节点注入到 Graph | P1 | tools/orchestrator |
+| 9 | SPO-P4-09 | `OrchestratorGraphDeps` 依赖注入 | P1 | service |
+| 10 | SPO-P4-10 | 编排管家 Prompt Graph 编排决策规则 | P1 | scenario/prompts |
+
+### 9.7 依赖关系
+
+```
+SPO-P4-01 → SPO-P4-02 (规则引擎 → Prompt 规则)
+SPO-P4-01 → SPO-P4-03 (assess_complexity → Team 模式选择)
+SPO-P4-03 → SPO-P4-04 (buildSpiritTeam → runSingleAgentViaTRPC 集成)
+SPO-P4-05 → SPO-P4-06 (工具定义 → DAG 生成逻辑)
+SPO-P4-06 → SPO-P4-07 (DAG 生成 → 验证节点)
+SPO-P4-07 → SPO-P4-08 (验证函数 → 注入逻辑)
+SPO-P4-05 → SPO-P4-09 (工具 → 依赖注入)
+SPO-P4-06 → SPO-P4-10 (DAG 生成 → Prompt 规则)
+```
+
+### 9.8 风险与缓解
+
+| 风险 | 缓解 |
+|------|------|
+| `assess_complexity` 规则引擎覆盖不全 | P0 使用安全默认值 moderate；P1 引入历史数据优化 |
+| `build_orchestration_graph` 生成的 DAG 不合理 | P0 保留 assemble_team 作为回退；P1 增加模板缓存 |
+| Graph 验证节点增加执行时间 | 验证节点使用 FailureAction=Skip，验证失败不阻塞 |
+| Spirit Team 模式选择错误 | P0 默认 Coordinator（最安全）；P1 基于成功率自动优化 |
+| `OrchestratorGraphDeps` 循环依赖 | 接口定义在 biz 层，实现注入在 service 层 |
+
+### 9.9 验证计划
+
+#### 9.9.1 P0 验证
+
+| 验证项 | 方法 |
+|--------|------|
+| assess_complexity 规则引擎 | 单元测试覆盖 simple/moderate/complex 三级 |
+| Spirit 强制决策规则 | 精灵对话中验证先调用 assess_complexity 再路由 |
+| Team 模式选择 | 验证 simple→Direct, moderate→Direct, complex→Coordinator |
+
+#### 9.9.2 P1 验证
+
+| 验证项 | 方法 |
+|--------|------|
+| Graph DAG 生成 | 验证并行/串行/混合拓扑正确性 |
+| 验证节点注入 | 验证 output_format/task_completion/human_approval 三种类型 |
+| 验证函数逻辑 | 验证空结果检测、完成度计算 |
+| HITL 中断 | 验证 human_approval 验证节点触发 interrupt |
+
+#### 9.9.3 全量验证
+
+```bash
+make api && make wire && make build && make test && make lint
+cd web && pnpm lint && pnpm test && pnpm build
+```

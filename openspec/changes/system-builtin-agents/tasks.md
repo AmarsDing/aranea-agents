@@ -9,8 +9,8 @@
 **Tech Stack:** Go + Ent ORM + Wire DI + trpc-agent-go framework
 
 **Design Docs:**
-- [2026-05-31-system-builtin-agents-design.md](../specs/2026-05-31-system-builtin-agents-design.md) §十三
-- [2026-05-31-memory-skills-butler-design.md](../specs/2026-05-31-memory-skills-butler-design.md) §十一
+- [system-builtin-agents-design](design.md) §十三
+- [memory-skills-butler-design](../memory-skills-butler/design.md) §十一
 
 ---
 

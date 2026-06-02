@@ -26,7 +26,7 @@ type ViewMode = "grid" | "list";
 
 const LS_VIEW = "agents.viewMode";
 
-/** Agent 列表页：组合 Pinia Store 与局部 UI（表单 / 对话框），不包含裸 HTTP（见 vue-design §0～§3）。 */
+/** Agent 列表页：组合 Pinia Store 与局部 UI（表单 / 对话框），不包含裸 HTTP（见 aranea-frontend-guide SKILL §3）。 */
 export function useAgentsPage() {
   const $q = useQuasar();
   const appStore = useAppStore();

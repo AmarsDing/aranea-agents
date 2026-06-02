@@ -280,7 +280,7 @@ Page.vue          ← import composable + storeToRefs；模板只做布局与事
 | Dialog 状态 | `createOpen`、`editorOpen` 等由 composable 持有 | Dialog 组件内 `watch` + fetch |
 | 共享 UI 常量 | `features/<域>/knowledgeUi.ts`、`components/<域>/*TableUi.ts` | 在 Page 与 Panel 各复制一份 `docColumns` |
 
-**Registry 列表表格**（列宽 / 对齐 / 拖拽）：见 [frontend/registry-tables.md](../frontend/registry-tables.md)。列定义必须用 `registryCol` + `REGISTRY_COL_W`，放在 `*Ui.ts` / `*TableUi.ts`，Table 组件只写 slots。
+**Registry 列表表格**（列宽 / 对齐 / 拖拽）：见 `aranea-frontend-guide` SKILL §8。列定义必须用 `registryCol` + `REGISTRY_COL_W`，放在 `*Ui.ts` / `*TableUi.ts`，Table 组件只写 slots。
 
 **命名建议**：
 
@@ -293,7 +293,7 @@ Page.vue          ← import composable + storeToRefs；模板只做布局与事
 
 ## 第三章：UX 主题规范
 
-> 完整规范见 [frontend/UX.md](../frontend/UX.md)。本章为 AI 编码时的速查要点。
+> 完整规范见 `aranea-frontend-guide` SKILL §6。本章为 AI 编码时的速查要点。
 
 ### 3.1 日夜双模核心原则
 
