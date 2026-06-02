@@ -32,5 +32,5 @@ func (f *trpcGraphBuilderFactory) BuildTeamGraphRoot(ctx context.Context, cfg bi
 	if name == "" {
 		name = "team-graph"
 	}
-	return f.createAgent(name, g, cfg.EnableCheckpoint, graphtrpc.ExecutionEngineType(cfg.ExecutionEngine), cbState, subAgents)
+	return f.createAgent(name, g, cfg.EnableCheckpoint, cfg.ExecutionEngine, cbState, subAgents)
 }

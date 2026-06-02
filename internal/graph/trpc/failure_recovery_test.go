@@ -15,8 +15,7 @@ import (
 
 func TestFailureRecoveryAfterNode_skipOnFailure(t *testing.T) {
 	cb := failureRecoveryAfterNode(NodeDef{
-		ID:            "member-1",
-		FailureAction: biz.FailureOnFailureSkip,
+		NodeDef: biz.NodeDef{ID: "member-1", FailureAction: biz.FailureOnFailureSkip},
 	}, nil)
 	state := trpcgraph.State{}
 	out, err := cb(context.Background(), &trpcgraph.NodeCallbackContext{NodeID: "member-1"}, state, nil, errors.New("boom"))
@@ -39,9 +38,7 @@ func TestBuildStateGraph_skipOnFailureRecovery(t *testing.T) {
 		FinishPoint: "fail",
 		StateFields: []StateFieldDef{{Name: biz.SkippedNodesStateKey, Type: "[]string", Reducer: ReducerAppend}},
 		Nodes: []NodeDef{{
-			ID:            "fail",
-			Type:          "function",
-			FailureAction: biz.FailureOnFailureSkip,
+			NodeDef: biz.NodeDef{ID: "fail", Type: "function", FailureAction: biz.FailureOnFailureSkip},
 			Func: func(_ context.Context, _ trpcgraph.State) (any, error) {
 				return nil, errors.New("boom")
 			},
@@ -100,9 +97,7 @@ func TestFailureRecoveryAfterNode_fallbackAgent(t *testing.T) {
 		trpcgraph.StateKeyParentAgent:   &parentWithSubAgent{a: backup},
 	}
 	cb := failureRecoveryAfterNode(NodeDef{
-		ID:            "member-1",
-		AgentName:     "primary-key",
-		FallbackAgent: "backup-key",
+		NodeDef: biz.NodeDef{ID: "member-1", AgentName: "primary-key", FallbackAgent: "backup-key"},
 	}, backup)
 	out, err := cb(context.Background(), &trpcgraph.NodeCallbackContext{NodeID: "member-1"}, state, nil, errors.New("primary failed"))
 	if err != nil {

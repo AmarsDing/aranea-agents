@@ -64,14 +64,14 @@ func (r *Runner) startObservers(
 		ActivityFlusher:  setup.activityFlusher,
 		FailureOnError:   failureOnError,
 	})
-	if r.teamGraphTasks != nil && graphExecID != "" {
+	if r.cfg.TeamGraphTasks != nil && graphExecID != "" {
 		taskNodes := TaskNodesFromBuildConfig(compiledTeam.GraphBuildConfig)
 		if len(taskNodes) > 0 {
 			setup.stopTaskBridge = StartTeamGraphTaskBridge(ctx, r.td.Pipeline.Bus, TeamGraphTaskBridgeConfig{
 				SessionID:        sess.ID,
 				GraphExecutionID: graphExecID,
 				Nodes:            taskNodes,
-				Creator:          r.teamGraphTasks,
+				Creator:          r.cfg.TeamGraphTasks,
 			}, r.lg)
 		}
 	}

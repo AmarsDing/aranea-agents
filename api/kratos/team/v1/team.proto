@@ -36,6 +36,10 @@ message Team {
   string dag_node_id = 18;
   repeated string depends_on = 19;
   string parallel_config_json = 20;
+  // readonly: system teams cannot be deleted.
+  bool readonly = 21;
+  // source: user | system | imported.
+  string source = 22;
 }
 
 message TeamRun {

@@ -21,28 +21,35 @@ type GraphRuntime interface {
 	GetLineageID() string
 }
 
-type NodeDefInfo struct {
-	RequiredRole             string
-	AssignmentMode           string
-	AssignmentStrategy       string
-	ReviewerAgent            string
-	ReviewRules              string
-	TimeoutSeconds           int
-	HeartbeatIntervalSeconds int
-	EnableLeaseExtension     bool
-}
-
-// GraphBuilderFactory converts biz-level GraphBuildConfig into a running GraphRuntime.
-// Implementations live in internal/graph/trpc/ and may import trpc-agent-go freely.
-type GraphBuilderFactory interface {
+type GraphRunnerFactory interface {
 	BuildAndRun(ctx context.Context, cfg GraphBuildConfig, sessionID, graphID, execID string, initialState map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
 	BuildAndResume(ctx context.Context, cfg GraphBuildConfig, sessionID, graphID, execID, lineageID string, resumeValue map[string]any) (GraphRuntime, <-chan GraphRuntimeEvent, error)
 	BuildRuntime(ctx context.Context, cfg GraphBuildConfig, sessionID, graphID, execID, lineageID string) (GraphRuntime, error)
+}
+
+type GraphVisualizer interface {
 	Visualize(ctx context.Context, cfg GraphBuildConfig) (any, error)
+}
+
+type GraphValidator interface {
 	Validate(ctx context.Context, cfg GraphBuildConfig) (*GraphValidationResult, error)
+}
+
+type GraphTemplateProvider interface {
 	ListTemplates() any
 	GetTemplate(templateID string) (any, bool)
 	TemplateToDef(template any, name, description string) *GraphDefinition
+}
+
+type GraphNodeInfoProvider interface {
 	AgentExists(ctx context.Context, agentID string) bool
-	FindNodeDef(cfg GraphBuildConfig, nodeID string) *NodeDefInfo
+	FindNodeDef(cfg GraphBuildConfig, nodeID string) *NodeTaskMeta
+}
+
+type GraphBuilderFactory interface {
+	GraphRunnerFactory
+	GraphVisualizer
+	GraphValidator
+	GraphTemplateProvider
+	GraphNodeInfoProvider
 }

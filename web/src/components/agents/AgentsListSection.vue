@@ -22,19 +22,15 @@
   </q-card>
 
   <section v-else class="q-mt-md">
-    <div v-if="viewMode === 'grid'" class="app-entity-grid">
-      <draggable
-        v-model="draggableAgents"
-        item-key="id"
-        class="agents-draggable-grid"
-        ghost-class="agent-card--ghost"
-        chosen-class="agent-card--chosen"
-        drag-class="agent-card--dragging"
-        :animation="200"
-        :delay="100"
-      >
-        <template #item="{ element: agent }">
+    <template v-if="viewMode === 'grid'">
+      <div v-if="builtinAgents.length" class="q-mb-lg">
+        <div class="text-subtitle2 text-weight-bold q-mb-sm">
+          <q-icon name="verified_user" size="18px" class="q-mr-xs" />系统内置
+        </div>
+        <div class="app-entity-grid">
           <agent-card
+            v-for="agent in builtinAgents"
+            :key="agent.id"
             :agent="agent"
             :favorite="isFavorite(agent.id)"
             :category-label="getCategoryLabel(agent.category_position_id)"
@@ -45,9 +41,38 @@
             @delete="$emit('delete', $event)"
             @duplicate="$emit('duplicate', $event)"
           />
-        </template>
-      </draggable>
-    </div>
+        </div>
+      </div>
+      <div v-if="userAgents.length">
+        <div v-if="builtinAgents.length" class="text-subtitle2 text-weight-bold q-mb-sm">
+          <q-icon name="person" size="18px" class="q-mr-xs" />我的 Agent
+        </div>
+        <draggable
+          v-model="draggableUserAgents"
+          item-key="id"
+          class="agents-draggable-grid"
+          ghost-class="agent-card--ghost"
+          chosen-class="agent-card--chosen"
+          drag-class="agent-card--dragging"
+          :animation="200"
+          :delay="100"
+        >
+          <template #item="{ element: agent }">
+            <agent-card
+              :agent="agent"
+              :favorite="isFavorite(agent.id)"
+              :category-label="getCategoryLabel(agent.category_position_id)"
+              :context-label="formatLastRunContext(agent)"
+              :evolving="isAgentEvolving(agent)"
+              @toggle-favorite="$emit('toggle-favorite', $event)"
+              @copy-key="$emit('copy-key', $event)"
+              @delete="$emit('delete', $event)"
+              @duplicate="$emit('duplicate', $event)"
+            />
+          </template>
+        </draggable>
+      </div>
+    </template>
 
     <AppRegistryTable
       v-else
@@ -91,18 +116,18 @@
       </template>
       <template #body-cell-actions="props">
         <q-td :props="props">
-          <div v-if="!props.row.readonly" class="app-registry-cell-actions">
+          <div class="app-registry-cell-actions">
             <q-btn flat dense round color="primary" icon="settings" :to="`/agents/${props.row.id}/settings`">
               <q-tooltip>设置</q-tooltip>
             </q-btn>
-            <q-btn flat dense round color="secondary" icon="content_copy" @click="$emit('duplicate', props.row)">
+            <q-btn v-if="!props.row.readonly" flat dense round color="secondary" icon="content_copy" @click="$emit('duplicate', props.row)">
               <q-tooltip>复制</q-tooltip>
             </q-btn>
-            <q-btn flat dense round color="negative" icon="delete" @click="$emit('delete', props.row)">
+            <q-btn v-if="!props.row.readonly" flat dense round color="negative" icon="delete" @click="$emit('delete', props.row)">
               <q-tooltip>删除</q-tooltip>
             </q-btn>
+            <q-chip v-if="props.row.readonly" dense square class="agent-card__readonly-chip" icon="verified_user">内置</q-chip>
           </div>
-          <q-chip v-else dense square class="agent-card__readonly-chip" icon="verified_user">内置</q-chip>
         </q-td>
       </template>
     </AppRegistryTable>
@@ -141,8 +166,11 @@ const emit = defineEmits<{
   "reorder": [ids: string[]];
 }>();
 
-const draggableAgents = computed({
-  get: () => props.agents,
+const builtinAgents = computed(() => props.agents.filter((a) => a.readonly));
+const userAgents = computed(() => props.agents.filter((a) => !a.readonly));
+
+const draggableUserAgents = computed({
+  get: () => userAgents.value,
   set: (value: Agent[]) => {
     const ids = value.map((a) => a.id);
     emit("reorder", ids);

@@ -2,6 +2,9 @@ package data
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -13,13 +16,6 @@ import (
 
 const systemAdminAgentKey = "__system_admin__"
 
-// SeedSystemAdminAgent upserts the built-in system admin agent.
-// Uses raw SQL (ON CONFLICT DO NOTHING) so it remains idempotent across restarts.
-//
-// NOTE: The `readonly` and `kind` columns are added to the agents table via the
-// ent schema extension in internal/data/ent/schema/agent.go. After editing that
-// file you must regenerate: go generate ./internal/data/ent/...
-// and run the corresponding SQL migration before calling this seed.
 func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
@@ -33,10 +29,15 @@ func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, lg loggateway
 		created_at, updated_at, deleted_at, readonly, kind
 	) VALUES (
 		'agent___system_admin__', ?, '系统管家', 'openrouter', 'gpt-4.1-mini',
-		'active', 0, 0, '', '系统内置管理助手 Agent，负责管理 Skill / Agent / Team 等资源。',
+		'active', 0, 0, '', '系统内置管理助手，负责管理 Skill、Agent、Team 等系统资源，提供系统级运维能力。',
 		'', 'complete', 0, 0, '{"tools_profile":"system_admin"}', '[]', 'system',
 		?, ?, '', 1, 'system'
-	) ON CONFLICT(agent_key) DO NOTHING`
+	) ON CONFLICT(agent_key) DO UPDATE SET
+		display_name = excluded.display_name,
+		agent_description = excluded.agent_description,
+		readonly = excluded.readonly,
+		kind = excluded.kind,
+		updated_at = excluded.updated_at`
 	if _, err := client.ExecContext(ctx, q, systemAdminAgentKey, now, now); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.system_admin_agent"), loggateway.Err(err))
 		return kerrors.InternalServer("SEED", "seed system admin agent: "+err.Error())
@@ -44,9 +45,6 @@ func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, lg loggateway
 	return nil
 }
 
-// SeedSpiritAgent upserts the built-in spirit (butler) agent.
-// The spirit agent is the single chat entry point for users; it auto-assembles
-// teams via the assemble_team tool and delegates work to team members.
 func SeedSpiritAgent(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
 	if client == nil {
 		return nil
@@ -59,11 +57,16 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		budget_monthly_cents, config_json, roles_json, created_by,
 		created_at, updated_at, deleted_at, readonly, kind
 	) VALUES (
-		'agent___spirit__', ?, '精灵管家', 'openrouter', 'gpt-4.1-mini',
-		'active', 0, 0, '', '系统内置总管家，用户唯一对话入口',
+		'agent___spirit__', ?, '精灵助手', 'openrouter', 'gpt-4.1-mini',
+		'active', 0, 0, '', '系统内置总管家，用户唯一对话入口，自动组装团队并委派工作。',
 		'', 'complete', 0, 0, '{"tools_profile":"spirit"}', '[]', 'system',
 		?, ?, '', 1, 'system'
-	) ON CONFLICT(agent_key) DO NOTHING`
+	) ON CONFLICT(agent_key) DO UPDATE SET
+		display_name = excluded.display_name,
+		agent_description = excluded.agent_description,
+		readonly = excluded.readonly,
+		kind = excluded.kind,
+		updated_at = excluded.updated_at`
 	if _, err := client.ExecContext(ctx, q, biz.SpiritAgentKey, now, now); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_agent"), loggateway.Err(err))
 		return kerrors.InternalServer("SEED", "seed spirit agent: "+err.Error())
@@ -71,8 +74,50 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 	return nil
 }
 
-// SeedBuiltinCLIAdminTools seeds the cli_admin_* tool records in the tools table.
-// The actual implementations are registered in internal/tools/cli_admin.
+func SeedSpiritPromptFiles(ctx context.Context, client *ent.Client, scenarioDir string, lg loggateway.Logger) error {
+	if client == nil {
+		return nil
+	}
+	promptDir := filepath.Join(scenarioDir, "system", "prompts")
+	entries, err := os.ReadDir(promptDir)
+	if err != nil {
+		lg.Warn("spirit prompt dir not found, skipping",
+			loggateway.StepID("data.seed.spirit_prompt_files"),
+			loggateway.Str("dir", promptDir),
+			loggateway.Err(err))
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	const agentID = "agent___spirit__"
+	const q = `INSERT INTO agent_prompt_files (
+		id, agent_id, file_name, body, sort_order, created_at, updated_at
+	) VALUES (
+		?, ?, ?, ?, ?, ?, ?
+	) ON CONFLICT(id) DO UPDATE SET
+		body = excluded.body,
+		sort_order = excluded.sort_order,
+		updated_at = excluded.updated_at`
+	sortOrder := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		fileName := strings.TrimSuffix(e.Name(), ".md")
+		data, err := os.ReadFile(filepath.Join(promptDir, e.Name()))
+		if err != nil {
+			lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_prompt_files"), loggateway.Str("file", e.Name()), loggateway.Err(err))
+			return kerrors.InternalServer("SEED", "read spirit prompt file "+e.Name()+": "+err.Error())
+		}
+		id := "apf_spirit_" + fileName
+		if _, err := client.ExecContext(ctx, q, id, agentID, fileName, string(data), sortOrder, now, now); err != nil {
+			lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_prompt_files"), loggateway.Str("file_name", fileName), loggateway.Err(err))
+			return kerrors.InternalServer("SEED", "seed spirit prompt file "+fileName+": "+err.Error())
+		}
+		sortOrder++
+	}
+	return nil
+}
+
 func SeedBuiltinCLIAdminTools(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
 	if client == nil {
 		return nil

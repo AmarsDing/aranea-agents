@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/loggateway"
+
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
@@ -42,6 +44,12 @@ func (uc *GraphUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, 
 	if uc.runRepo != nil {
 		if err := uc.runRepo.SaveRun(ctx, exec); err != nil {
 			return err
+		}
+	}
+
+	if uc.compiledTeamRepo != nil {
+		if err := uc.compiledTeamRepo.Save(ctx, teamID, graphID, ct); err != nil {
+			uc.lg.Warn("persist compiled team failed", loggateway.StepID("graph.register_team"), loggateway.Err(err))
 		}
 	}
 

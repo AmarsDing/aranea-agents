@@ -92,6 +92,7 @@ func entAgentToBiz(a *ent.Agent, lg loggateway.Logger) biz.Agent {
 		ConfigJSON:         a.ConfigJSON,
 		CreatedBy:          a.CreatedBy,
 		Readonly:           a.Readonly,
+		Source:             a.Kind,
 		CreatedAt:          a.CreatedAt,
 		UpdatedAt:          a.UpdatedAt,
 		DeletedAt:          a.DeletedAt,

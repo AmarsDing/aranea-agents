@@ -12,7 +12,6 @@ import (
 	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/debug"
 	"aranea-agents/internal/event"
-	graphadapter "aranea-agents/internal/graph/adapter"
 	"aranea-agents/internal/knowledge"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
@@ -180,31 +179,16 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 	o.admitGate = newTurnAdmissionGate(turn.RunRegistryAdapter{Registry: runs}, o.chatUC, o.sessionPendingMergeFollowup)
 
 	if deps.Team.TeamsNative != nil {
-		deps.Team.TeamsNative.SetKnowledgeRetriever(deps.RT.KnowledgeRetriever)
-		deps.Team.TeamsNative.SetKnowledgeRouter(deps.RT.KnowledgeRouter)
-		deps.Team.TeamsNative.SetKnowledgeFederatedRetriever(deps.RT.KnowledgeFederatedRetriever)
-		deps.Team.TeamsNative.SetKnowledgeEvaluator(deps.RT.KnowledgeEvaluator)
-		deps.Team.TeamsNative.SetAwaitHookProvider(func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc {
+		deps.Team.TeamsNative.cfg.AwaitHookProvider = func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc {
 			return o.makeAwaitReplyFunc(runCtx, sessionID, runID)
-		})
-		deps.Team.TeamsNative.SetRunRegistry(o.runs)
-		deps.Team.TeamsNative.SetStreamOptsFactory(&chatactivity.StreamOptsFactoryAdapter{
+		}
+		deps.Team.TeamsNative.cfg.Runs = o.runs
+		deps.Team.TeamsNative.cfg.StreamOptsFactory = &chatactivity.StreamOptsFactoryAdapter{
 			Tools:    deps.Catalog.ToolUC,
 			Agents:   deps.Catalog.Agents,
 			Sessions: deps.Sessions,
-		})
-		deps.Team.TeamsNative.SetAgentHelper(&chatagent.TeamAgentHelperAdapter{})
-		if deps.Team.Graphs != nil {
-			deps.Team.TeamsNative.SetGraphBuildConfigLoader(graphadapter.NewLinkedGraphBuildConfigLoader(deps.Team.Graphs))
 		}
-		if deps.Team.GraphFactory != nil {
-			if builder, ok := deps.Team.GraphFactory.(graphadapter.TeamGraphRootBuilder); ok {
-				deps.Team.TeamsNative.SetGraphRootBuilder(builder)
-			}
-		}
-		if deps.Team.Tasks != nil {
-			deps.Team.TeamsNative.SetTeamGraphTaskCreator(team.NewTaskUsecaseGraphTaskCreator(deps.Team.Tasks))
-		}
+		deps.Team.TeamsNative.cfg.AgentHelper = &chatagent.TeamAgentHelperAdapter{}
 		if deps.Team.TeamGraphCoord != nil {
 			deps.Team.TeamsNative.SetTeamGraphRunCoordinator(deps.Team.TeamGraphCoord)
 			deps.Team.TeamGraphCoord.SetFinisher(deps.Team.TeamsNative)

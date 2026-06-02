@@ -476,6 +476,7 @@ func toProtoAgent(b biz.Agent) *v1.Agent {
 		PendingEvolutionCount: int32(b.PendingEvolutionCount),
 		CreatedBy:             b.CreatedBy,
 		Readonly:              b.Readonly,
+		Source:                b.Source,
 	}
 	for i := range b.Files {
 		out.Files = append(out.Files, toProtoFile(b.Files[i]))

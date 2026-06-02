@@ -29,7 +29,7 @@
 
     <section v-for="group in teamIndustryGroups" :key="group.id" class="teams-industry-section q-mt-lg">
       <header class="teams-industry-section__head">
-        <q-icon name="domain" size="20px" color="primary" />
+        <q-icon :name="group.id === '__builtin__' ? 'verified_user' : 'domain'" size="20px" color="primary" />
         <h2 class="teams-industry-section__title">{{ group.label }}</h2>
         <q-chip dense square size="sm" class="teams-industry-section__count">{{ group.teams.length }}</q-chip>
       </header>

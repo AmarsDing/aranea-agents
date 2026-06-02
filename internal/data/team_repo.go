@@ -50,6 +50,8 @@ func entTeamToBiz(e *ent.Team, lg loggateway.Logger) biz.Team {
 		DependsOn:          parseDependsOnJSON(e.DependsOnJSON, lg),
 		ParallelConfigJSON: e.ParallelConfigJSON,
 		Topology:           e.Topology,
+		Readonly:           e.Readonly,
+		Source:             e.Source,
 		CreatedAt:          e.CreatedAt,
 		UpdatedAt:          e.UpdatedAt,
 		DeletedAt:          e.DeletedAt,

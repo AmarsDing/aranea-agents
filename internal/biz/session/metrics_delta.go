@@ -13,6 +13,7 @@ type SessionMetricsDelta struct {
 	OutputTokens      int64
 	TotalTokens       int64
 	TotalCostMicroUsd int64
+	LastMessageAt     string
 	AccumulatedCount  int
 	FirstAccumulatedAt time.Time
 }

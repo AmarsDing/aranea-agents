@@ -31,13 +31,6 @@ func (st *Store) UpsertFactsAndEpisodeBatch(ctx context.Context, facts []MemoryF
 		return nil, errors.New("episode requires at least one fact")
 	}
 
-	tx, err := st.client.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	db := tx.Client()
-
 	epID := ""
 	if ep != nil {
 		epID = strings.TrimSpace(ep.ID)
@@ -48,6 +41,59 @@ func (st *Store) UpsertFactsAndEpisodeBatch(ctx context.Context, facts []MemoryF
 			ep = &epCopy
 		}
 	}
+
+	if st.txMgr != nil {
+		var out ConsolidateWriteResult
+		err := st.txMgr.ExecInTx(ctx, func(txCtx context.Context) error {
+			db := st.txMgr.ClientFromCtx(txCtx)
+			for i := range facts {
+				in := facts[i]
+				if epID != "" && strings.TrimSpace(in.SourceEpisodeID) == "" {
+					in.SourceEpisodeID = epID
+				}
+				raw, err := st.upsertFactRowOn(txCtx, db, in)
+				if err != nil {
+					return err
+				}
+				if err := st.recordPolicyOnTx(txCtx, db, MemoryActionLogInsert{
+					Action:        "UPSERT",
+					TargetKind:    "fact",
+					TargetID:      factIDFromRow(raw, in.ID),
+					Reason:        strings.TrimSpace(in.SourceKind),
+					PolicyVersion: biz.PolicyVersionConsolidateV1,
+					SourceEventIDs: []string{
+						strings.TrimSpace(in.SourceSessionID),
+						strings.TrimSpace(in.SourceMessageID),
+					},
+					TurnID:       composeTurnRef(in.SourceSessionID, in.SourceMessageID),
+					MetadataJSON: strings.TrimSpace(in.MetadataJSON),
+				}); err != nil {
+					return err
+				}
+				out.FactRows = append(out.FactRows, raw)
+			}
+			out.FactsWritten = len(out.FactRows)
+			if ep != nil {
+				epRaw, err := st.insertEpisodeRowOn(txCtx, db, *ep)
+				if err != nil {
+					return err
+				}
+				out.EpisodeRow = epRaw
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		return &out, nil
+	}
+
+	tx, err := st.client.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	db := tx.Client()
 
 	out := &ConsolidateWriteResult{}
 	for i := range facts {

@@ -444,18 +444,23 @@ export function industryOptionsFromTree(categoryTree: PlatformResourceTreeNode[]
     }));
 }
 
+export const BuiltinIndustryId = "__builtin__";
+
 export function groupTeamsByIndustry(
   teams: Team[],
   agents: Agent[],
   categoryTree: PlatformResourceTreeNode[],
   industryFilter = ""
 ): TeamIndustryGroup[] {
+  const builtinTeams = teams.filter((t) => t.readonly);
+  const nonBuiltinTeams = teams.filter((t) => !t.readonly);
+
   const industries = categoryTree.filter((node) => node.level === "industry");
   const buckets = new Map<string, Team[]>();
   buckets.set(UNCategorizedIndustryId, []);
   for (const industry of industries) buckets.set(industry.id, []);
 
-  for (const team of teams) {
+  for (const team of nonBuiltinTeams) {
     const industryId = inferTeamIndustryId(team, agents, categoryTree);
     if (!buckets.has(industryId)) buckets.set(industryId, []);
     buckets.get(industryId)!.push(team);
@@ -472,7 +477,7 @@ export function groupTeamsByIndustry(
 
   let uncategorized = buckets.get(UNCategorizedIndustryId) ?? [];
   const assigned = new Set(groups.flatMap((group) => group.teams.map((team) => team.id)));
-  for (const team of teams) {
+  for (const team of nonBuiltinTeams) {
     if (!assigned.has(team.id)) uncategorized.push(team);
   }
   if (uncategorized.length > 0) {
@@ -484,7 +489,16 @@ export function groupTeamsByIndustry(
     });
   }
 
+  if (builtinTeams.length > 0) {
+    groups.unshift({
+      id: BuiltinIndustryId,
+      label: "系统内置",
+      sortOrder: -1,
+      teams: builtinTeams
+    });
+  }
+
   groups.sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label, "zh-CN"));
   if (!industryFilter) return groups;
-  return groups.filter((group) => group.id === industryFilter);
+  return groups.filter((group) => group.id === industryFilter || group.id === BuiltinIndustryId);
 }

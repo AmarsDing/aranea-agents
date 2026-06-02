@@ -69,6 +69,21 @@ func (uc *GraphUsecase) buildConfigForExecution(ctx context.Context, exec *Graph
 			return ct, nil
 		}
 	}
+	if uc.compiledTeamRepo != nil && exec != nil && strings.HasPrefix(exec.GraphID, "team:") {
+		parts := strings.SplitN(exec.GraphID, ":", 2)
+		if len(parts) == 2 {
+			ct, err := uc.compiledTeamRepo.Load(ctx, parts[1], exec.GraphID)
+			if err == nil && ct != nil {
+				uc.mu.Lock()
+				if uc.teamBuildConfigs == nil {
+					uc.teamBuildConfigs = make(map[string]*CompiledTeam)
+				}
+				uc.teamBuildConfigs[exec.ID] = ct
+				uc.mu.Unlock()
+				return ct, nil
+			}
+		}
+	}
 	def, err := uc.GetGraph(ctx, exec.GraphID)
 	if err != nil {
 		return nil, err

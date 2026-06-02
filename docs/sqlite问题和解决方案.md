@@ -1800,6 +1800,8 @@ Phase 4（长期，需 feature flag + 回滚脚本）─────────
 | **4.3 补充：channelRuntimeLeaseRepo 收口** | `channelRuntimeLeaseRepo` 存储字段从 `*sql.DB` 改为 `*Data`，通过 `r.data.RawDB()` 访问数据库 | channel_runtime_lease.go | ✅ go build 通过 |
 | **2.2 接口拆分合规化** | `TeamRepository`（21 方法）拆分为 6 个子接口：`TeamReader`（3）、`TeamWriter`（3）、`TeamRunReader`（4）、`TeamRunWriter`（6）、`OrchestrationStepRepo`（2）、`TaskDeadLetterRepo`（3）+ 组合接口 `TeamRunRepo`；消费者按需依赖窄接口：ChannelUsecase→TeamReader，CronRunner→TeamReader，ActivityStepFlusher→OrchestrationStepRepo，TeamGraphRunCoordinator→TeamRunRepo | team_usecase.go, channel.go, channel_routing.go, session_reexport.go, cronrunner/runner.go, activity_step_flusher.go, team_graph_run_coordinator.go, provider.go, wire.go | ✅ go build + wire + test 通过 |
 | **2.3 Schema 迁移框架化** | 创建 `ddl_migration_registry.go`，将 34 个 DDL patch 注册为版本号+名称+函数的声明式列表；`runDDLMigrations` 逐条检查 `isMigrationApplied`，已应用则跳过；替换原 143 行 `ensureSchemaDDL` 为单行委托；删除死代码 `retryOnBusy`/`isSQLiteBusyErr`/`sqliteWriteRetryMax` | ddl_migration_registry.go, data.go | ✅ go build + test 通过 |
+| **0.1 聚合字段异步化（补充）** | ① `last_message_at` 纳入 `SessionMetricsDelta`：3 处 `AccumulateMetricsDelta` 调用添加 `LastMessageAt` 字段（AppendChatTurn/UpsertChatActivityMessage/AppendChatMessage）；② `ApplyMetricsDelta` 新增 `LastMessageAt` 处理（取最新值）；③ 移除 `session_message_repo.go` 中 4 处 `SetLastMessageAt` 直接写入（从消息写入事务内移除，改为 delta 延迟刷新）；④ 删除 `sessionRepo.IncrementInvocationCounts` 死代码（20 行，零调用点） | metrics_delta.go, metrics_flush.go, session_repo.go, messages.go, session_message_repo.go | ✅ go build + wire + vet + test 通过 |
+| **1.2 统一事务管理器（Repo 迁移）** | ① `session_message_repo`：`AppendChatTurn`/`UpsertChatActivityMessage`/`AppendChatMessage` 3 个方法从手动 `tx.Commit()`/`tx.Rollback()` 迁移为 `r.data.ExecInTx`；辅助方法 `maxMessageTurnTx`→`queryMaxTurnNumber`、`assignTurnForNewMessage`、`insertMessageTx`→`createMessageOnClient` 参数从 `*ent.Tx` 改为 `*ent.Client`；② `sessionmemory.Store`：新增 `TxManager` 接口 + `WithTxManager` 选项，`NewSessionMemoryStore` 传入 `*Data` 作为 TxManager；`ApplyBusinessConfidenceDecay` 和 `UpsertFactsAndEpisodeBatch` 优先使用 `txMgr.ExecInTx`，保留 `client.BeginTx` fallback 兼容测试；③ `knowledge.go`：`DeleteDocument`/`InsertChunks` 从手动 `Postgres().BeginTx` 迁移为 `r.data.PostgresExecInTx`；④ `tx.go`：导出 `EntClientFromCtx` 函数 + `Data.ClientFromCtx` 方法，新增 `Data.PostgresExecInTx` | tx.go, session_message_repo.go, sessionmemory/store.go, sessionmemory/entity_lookup.go, sessionmemory/store_consolidate_batch.go, knowledge.go, data.go | ✅ go build + wire + vet 通过 |
 
 ### 暂缓
 
@@ -1812,9 +1814,15 @@ Phase 4（长期，需 feature flag + 回滚脚本）─────────
 | 方案 | 优先级 | 前置条件 |
 |------|--------|---------|
 | 1.1 Session 冷热分离 | P1 | 0.5 ApplyBatch 通过接口封装 + 6 处读取点覆盖 + 双写过渡期 |
-| 1.2 统一事务管理器（Repo 迁移） | P1 | 基础设施已就绪（`TxExecerFromCtx`），需逐个将 15 处 `BeginTx` 调用迁移为 `ExecInTx` + `TxExecerFromCtx` |
-| 1.3 记忆子系统收口 | P1 | 分两阶段：先拆读取侧，再拆写入侧+事务协调 |
-| 2.1 野生表纳入 Ent | P2 | 分 3 批，每批 6~7 张表 |
+| 2.1 野生表纳入 Ent Batch 1 | P2 | 可行性已评估：6 张高频表（session_runs/session_participants/session_run_checkpoints/channel_inbound_receipt/channel_turn_job/channel_runtime_lease），预估 9-11 天工作量，渐进式双轨迁移策略。风险：channel_runtime_lease 的 ON CONFLICT WHERE 条件 UPSERT 可能需保留 raw SQL |
+
+### 部分完成
+
+| 方案 | 已完成 | 剩余 |
+|------|--------|------|
+| 0.1 聚合字段异步化 | 核心机制已存在（SessionMetricsDelta + AccumulateMetricsDelta + flushAllMetrics + ApplyMetricsDelta）；`last_message_at` 已纳入 delta 机制；`IncrementInvocationCounts` 死代码已清理 | delta 溢出安全阀（maxDeltaAge/maxDeltaCount）未实施；前端 reconcilePatchFromServer 旧值覆盖问题未修复 |
+| 1.2 统一事务管理器（Repo 迁移） | SQLite：`session_message_repo` 3 方法 + `sessionmemory` 2 方法 + `monitor_alert`/`model_registry_apply`/`session_participant`/`ecosystem`/`learning_loop`/`evaluation` 6 Repo 已迁移；Postgres：`knowledge.go` 2 方法已迁移；基础设施：`EntClientFromCtx`/`ClientFromCtx`/`PostgresExecInTx` | `seed_industry_agents_rawsql.go` 种子脚本（低优先级）；sessionmemory fallback 路径（`txMgr==nil` 时仍用 `client.BeginTx`，仅测试场景触发） |
+| 1.3 记忆子系统收口 | biz 层窄接口已定义（30+ 个）：维护类 7 个（memory_maintenance_ports.go）、Admin 类 6 个（memory_admin_store.go，含组合接口 SessionAdminStore）、Cascade 类 5 个（memory_l4_cascade.go）、L4 Graph 类 5 个（memory_l4.go）、Recall/Policy/Index 类 7+ 个；data 层 adapter 全部实现；Wire 绑定完整；biz 层零直接引用 `sessionmemory.Store` | ① `CascadeGraphStore` Deprecated 组合接口仍在 Wire 中使用，未迁移到 4 个独立子接口；② `SessionL2RecallStore`/`SessionL3RecallStore`/`MemoryActionLogWriter` 的 adapter 在 Wire 层（duck typing），非 data 层显式 adapter；③ `L3FactWriter` 接口未实现（Wire 传入 nil）；④ `wireSessionAdminStoreAdapter` 定义在 wire_memory.go 而非 data 层 |
 
 ### 收益验证
 
@@ -1827,6 +1835,8 @@ Phase 4（长期，需 feature flag + 回滚脚本）─────────
 | TurnCompletionBridge 内存泄漏 | 无 TTL 清理 | 5 分钟 TTL | 5 分钟 TTL |
 | Repo 构造函数合规 | 4 个绕过 Data | 全部通过 Data | ✅ 全部收口（含 channelRuntimeLeaseRepo） |
 | Team/runner_handler Usage rollup | 缺失（daily/hourly 不生成） | 全路径覆盖 | ✅ 全路径发布 EnvelopeTypeTokenUsage |
-| 事务模式统一 | 5 种 | 5 种（基础设施就绪） | 基础设施就绪（`TxExecerFromCtx`），待逐 Repo 迁移 |
+| 事务模式统一 | 5 种 | 5 种（基础设施就绪） | ✅ 生产路径统一为 `ExecInTx`/`PostgresExecInTx`，仅 sessionmemory 测试 fallback + seed 脚本保留旧模式 |
 | TeamRepository 方法数 | 21（超标 4x） | ≤5/子接口 | ✅ 拆为 6 子接口（3/3/4/6/2/3）+ 2 组合接口 |
 | DDL 迁移版本控制 | 无（每次全量执行） | 版本号门控 | ✅ `ddlMigrations` 注册表 + `isMigrationApplied` 跳过 |
+| last_message_at 写入方式 | 消息事务内直接 SET | delta 延迟刷新 | ✅ 纳入 SessionMetricsDelta，3 处调用添加 LastMessageAt |
+| 记忆子系统窄接口覆盖 | 极小部分 | 全覆盖 | ✅ biz 层 30+ 窄接口 + data 层 adapter + Wire 绑定；biz 层零直接引用 Store |

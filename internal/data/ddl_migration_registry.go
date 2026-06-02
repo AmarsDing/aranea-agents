@@ -51,6 +51,7 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260702, Name: "monitor_alert_schema", Func: ddlMonitorAlertSchema},
 	{Version: 20260703, Name: "ecosystem_schema", Func: ddlEcosystemSchema},
 	{Version: 20260704, Name: "team_graph_session_schema", Func: ddlTeamGraphSessionSchema},
+	{Version: 20260705, Name: "compiled_team_schema", Func: ddlCompiledTeamSchema},
 }
 
 func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
@@ -218,4 +219,8 @@ func ddlEcosystemSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Clien
 
 func ddlTeamGraphSessionSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
 	return EnsureTeamGraphSessionSchema(ctx, rawDB)
+}
+
+func ddlCompiledTeamSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+	return EnsureCompiledTeamSchema(ctx, rawDB)
 }

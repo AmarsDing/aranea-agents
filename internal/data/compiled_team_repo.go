@@ -1,0 +1,102 @@
+package data
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
+	"aranea-agents/internal/biz"
+)
+
+type compiledTeamRepo struct {
+	data *Data
+}
+
+var _ biz.CompiledTeamRepo = (*compiledTeamRepo)(nil)
+
+func NewCompiledTeamRepo(d *Data) biz.CompiledTeamRepo {
+	return &compiledTeamRepo{data: d}
+}
+
+func (r *compiledTeamRepo) db() *sql.DB {
+	if r == nil || r.data == nil {
+		return nil
+	}
+	return r.data.RawDB()
+}
+
+func compiledTeamRowID(teamID, graphID string) string {
+	return teamID + ":" + graphID
+}
+
+func (r *compiledTeamRepo) Save(ctx context.Context, teamID, graphID string, ct *biz.CompiledTeam) error {
+	db := r.db()
+	if db == nil {
+		return nil
+	}
+	if ct == nil {
+		return nil
+	}
+	teamID = strings.TrimSpace(teamID)
+	graphID = strings.TrimSpace(graphID)
+	if teamID == "" || graphID == "" {
+		return fmt.Errorf("compiled_team repo save: team_id and graph_id required")
+	}
+	configJSON, err := json.Marshal(ct)
+	if err != nil {
+		return fmt.Errorf("compiled_team repo save: marshal: %w", err)
+	}
+	id := compiledTeamRowID(teamID, graphID)
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err = db.ExecContext(ctx, `
+INSERT OR REPLACE INTO compiled_teams
+  (id, team_id, graph_id, config_json, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?)`,
+		id, teamID, graphID, string(configJSON), now, now,
+	)
+	if err != nil {
+		return fmt.Errorf("compiled_team repo save: %w", err)
+	}
+	return nil
+}
+
+func (r *compiledTeamRepo) Load(ctx context.Context, teamID, graphID string) (*biz.CompiledTeam, error) {
+	db := r.db()
+	if db == nil {
+		return nil, sql.ErrNoRows
+	}
+	teamID = strings.TrimSpace(teamID)
+	graphID = strings.TrimSpace(graphID)
+	id := compiledTeamRowID(teamID, graphID)
+	var configJSON string
+	err := db.QueryRowContext(ctx,
+		`SELECT config_json FROM compiled_teams WHERE id = ? LIMIT 1`, id,
+	).Scan(&configJSON)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("compiled_team repo load: not found: %s", id)
+		}
+		return nil, fmt.Errorf("compiled_team repo load: %w", err)
+	}
+	var ct biz.CompiledTeam
+	if err := json.Unmarshal([]byte(configJSON), &ct); err != nil {
+		return nil, fmt.Errorf("compiled_team repo load: unmarshal: %w", err)
+	}
+	return &ct, nil
+}
+
+func (r *compiledTeamRepo) Delete(ctx context.Context, teamID, graphID string) error {
+	db := r.db()
+	if db == nil {
+		return nil
+	}
+	id := compiledTeamRowID(strings.TrimSpace(teamID), strings.TrimSpace(graphID))
+	_, err := db.ExecContext(ctx, `DELETE FROM compiled_teams WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("compiled_team repo delete: %w", err)
+	}
+	return nil
+}

@@ -1,5 +1,9 @@
 package graph
 
+import (
+	"aranea-agents/internal/biz"
+)
+
 type GraphTemplate struct {
 	ID          string          `json:"id"`
 	Name        string          `json:"name"`
@@ -200,9 +204,11 @@ func TemplateToBuildConfig(tmpl GraphTemplate) GraphBuildConfig {
 	nodes := make([]NodeDef, len(tmpl.Nodes))
 	for i, tn := range tmpl.Nodes {
 		nodes[i] = NodeDef{
-			ID:          tn.NodeID,
-			Type:        tn.Type,
-			Description: tn.Description,
+			NodeDef: biz.NodeDef{
+				ID:          tn.NodeID,
+				Type:        tn.Type,
+				Description: tn.Description,
+			},
 		}
 	}
 
@@ -228,8 +234,10 @@ func TemplateToBuildConfig(tmpl GraphTemplate) GraphBuildConfig {
 
 	for from, pathMap := range routePathMaps {
 		condEdges = append(condEdges, ConditionalEdgeDef{
-			From:    from,
-			PathMap: pathMap,
+			ConditionalEdgeDef: biz.ConditionalEdgeDef{
+				From:    from,
+				PathMap: pathMap,
+			},
 		})
 	}
 

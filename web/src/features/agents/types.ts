@@ -39,6 +39,7 @@ export type Agent = {
   deleted_at: string;
   created_by?: string;
   readonly?: boolean;
+  source?: string; // user | system | imported
   settings?: AgentRuntimeSettings;
   files?: AgentPromptFile[];
 };

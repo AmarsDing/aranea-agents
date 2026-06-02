@@ -86,7 +86,7 @@ func (uc *SessionUsecase) AppendChatTurn(ctx context.Context, sessionID string, 
 	if err := uc.messageWriter.AppendChatTurn(ctx, sessionID, user, assistant); err != nil {
 		return err
 	}
-	delta := SessionMetricsDelta{SessionID: sessionID, MessageCount: 2}
+	delta := SessionMetricsDelta{SessionID: sessionID, MessageCount: 2, LastMessageAt: assistant.CreatedAt}
 	uc.AccumulateMetricsDelta(delta)
 	if strings.EqualFold(strings.TrimSpace(user.Role), "user") {
 		if err := uc.maybeAutoTitleFromUserMessage(ctx, sessionID, user.ContentMarkdown); err != nil {
@@ -101,7 +101,7 @@ func (uc *SessionUsecase) AppendChatMessage(ctx context.Context, sessionID strin
 	if err := uc.messageWriter.AppendChatMessage(ctx, sessionID, msg, bumpModelCall); err != nil {
 		return err
 	}
-	delta := SessionMetricsDelta{SessionID: sessionID, MessageCount: 1}
+	delta := SessionMetricsDelta{SessionID: sessionID, MessageCount: 1, LastMessageAt: msg.CreatedAt}
 	uc.AccumulateMetricsDelta(delta)
 	if strings.EqualFold(strings.TrimSpace(msg.Role), "user") {
 		if err := uc.maybeAutoTitleFromUserMessage(ctx, sessionID, msg.ContentMarkdown); err != nil {
@@ -185,7 +185,7 @@ func (uc *SessionUsecase) UpsertChatActivityMessage(ctx context.Context, session
 		return err
 	}
 	if inserted {
-		uc.AccumulateMetricsDelta(SessionMetricsDelta{SessionID: sessionID, MessageCount: 1})
+		uc.AccumulateMetricsDelta(SessionMetricsDelta{SessionID: sessionID, MessageCount: 1, LastMessageAt: msg.CreatedAt})
 	}
 	return nil
 }

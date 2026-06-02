@@ -131,7 +131,7 @@ type AgentListerByRole func(ctx context.Context, role string) ([]string, error)
 type TaskGraphResolver interface {
 	GetExecution(ctx context.Context, executionID string) (*GraphExecution, error)
 	FindGraphNode(ctx context.Context, graphID string, nodeID string) *NodeDef
-	FindNodeDef(ctx context.Context, graphID string, nodeID string) *NodeDefInfo
+	FindNodeDef(ctx context.Context, graphID string, nodeID string) *NodeTaskMeta
 }
 
 type TaskUsecase struct {
@@ -528,7 +528,7 @@ func (uc *TaskUsecase) CheckTimeouts(ctx context.Context) error {
 	return nil
 }
 
-func (uc *TaskUsecase) findNodeDef(ctx context.Context, task *GraphTask) *NodeDefInfo {
+func (uc *TaskUsecase) findNodeDef(ctx context.Context, task *GraphTask) *NodeTaskMeta {
 	exec, err := uc.graph.GetExecution(ctx, task.ExecutionID)
 	if err != nil {
 		return nil

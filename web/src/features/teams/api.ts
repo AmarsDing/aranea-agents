@@ -43,6 +43,8 @@ function wireTeam(t: WireTeam | null | undefined): Team {
     linked_graph_id: t?.linkedGraphId ?? "",
     has_active_run: t?.hasActiveRun ?? false,
     category_industry_id: t?.categoryIndustryId ?? "",
+    readonly: t?.readonly ?? false,
+    source: t?.source ?? "",
     created_at: t?.createdAt ?? "",
     updated_at: t?.updatedAt ?? "",
     deleted_at: t?.deletedAt ?? ""

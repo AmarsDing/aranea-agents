@@ -21,6 +21,9 @@ func (uc *SessionUsecase) AccumulateMetricsDelta(delta SessionMetricsDelta) {
 		existing.OutputTokens += delta.OutputTokens
 		existing.TotalTokens += delta.TotalTokens
 		existing.TotalCostMicroUsd += delta.TotalCostMicroUsd
+		if delta.LastMessageAt != "" && delta.LastMessageAt > existing.LastMessageAt {
+			existing.LastMessageAt = delta.LastMessageAt
+		}
 		existing.AccumulatedCount++
 		if existing.AccumulatedCount >= MaxDeltaCount || time.Since(existing.FirstAccumulatedAt) > MaxDeltaAge {
 			safego.Go(context.Background(), "metrics-delta-force-flush", func() {

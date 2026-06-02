@@ -37,7 +37,7 @@ func compileToGraphBuildConfigWithLoader(ctx context.Context, def Definition, ra
 		if err != nil {
 			return biz.GraphBuildConfig{}, nil, err
 		}
-		return biz.ApplyFailurePolicy(cfg, def.FailurePolicy), branchIDs, nil
+		return cfg, branchIDs, nil
 	}
 
 	members := EnabledMembers(def)
@@ -51,7 +51,7 @@ func compileToGraphBuildConfigWithLoader(ctx context.Context, def Definition, ra
 	if err != nil {
 		return biz.GraphBuildConfig{}, nil, err
 	}
-	return biz.ApplyFailurePolicy(cfg, def.FailurePolicy), branchIDs, nil
+	return cfg, branchIDs, nil
 }
 
 func normalizeCompileMode(mode string) string {

@@ -124,16 +124,16 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		SkillDBRepo:           r.skillDBRepo,
 		HasMemory:             r.td.Persist.Memory.Available(),
 		MemoryService:         r.td.Persist.Memory.TRPC,
-		PluginManager:         r.pluginManager,
+		PluginManager:         r.cfg.PluginManager,
 		MemoryAdmin:           r.td.Persist.Memory.Admin,
 		MemoryL2Recall:        r.td.Persist.Memory.L2Recall,
 		MemoryL3Recall:        r.td.Persist.Memory.L3Recall,
 		MemoryCompositeRecall: r.td.Persist.Memory.CompositeRecall,
-		KnowledgeRetriever:    r.knowledgeRetriever,
+		KnowledgeRetriever:    r.cfg.Knowledge.Retriever,
 		CodeExecFactory:       r.codeExecFactory,
 	}
-	if r.awaitHookProvider != nil {
-		builderDeps.AwaitHook = r.awaitHookProvider(ctx, sess.ID, run.ID)
+	if r.cfg.AwaitHookProvider != nil {
+		builderDeps.AwaitHook = r.cfg.AwaitHookProvider(ctx, sess.ID, run.ID)
 	}
 	teamDeps := TRPCTeamBuilderDeps{BuilderDeps: builderDeps, UseCache: true}
 
@@ -151,10 +151,10 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	}
 
 	var plugins []trpcplugin.Plugin
-	if r.pluginManager != nil {
-		plugins = r.pluginManager.RunnerPluginsForAgent(ar.agent.ID)
-	} else if r.pluginRT != nil {
-		plugins = r.pluginRT.PluginsForAgent(ar.agent.ID)
+	if r.cfg.PluginManager != nil {
+		plugins = r.cfg.PluginManager.RunnerPluginsForAgent(ar.agent.ID)
+	} else if r.cfg.PluginRT != nil {
+		plugins = r.cfg.PluginRT.PluginsForAgent(ar.agent.ID)
 	}
 	builderDeps.Plugins = plugins
 	memberKeys, err := memberAgentKeys(ctx, def, r.catalogAgent)
@@ -186,8 +186,8 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		r.finishRunErr(ctx, &run, t0, err.Error())
 		return biz.ChatMessage{}, biz.ChatMessage{}, err
 	}
-	if r.runs != nil {
-		r.runs.StoreRunner(sess.ID, run.ID, runner)
+	if r.cfg.Runs != nil {
+		r.cfg.Runs.StoreRunner(sess.ID, run.ID, runner)
 	}
 	rollbackBoundary, _ := runnerMgr.MarkRollbackBoundary(ctx, sess.ID, run.ID, "")
 	rollbackDone := false
@@ -205,8 +205,8 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		if turnStatus != biz.TeamMemberStepStatusOK {
 			rollbackRunnerSession()
 		}
-		if r.runs != nil {
-			r.runs.Finish(sess.ID)
+		if r.cfg.Runs != nil {
+			r.cfg.Runs.Finish(sess.ID)
 		}
 		runner.Close()
 	}()
@@ -244,17 +244,17 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	if builderDeps.AwaitHook != nil {
 		runCtx = serviceawaitreply.WithReplyFunc(runCtx, builderDeps.AwaitHook)
 	}
-	if r.knowledgeRetriever != nil {
-		runCtx = knowledgetool.WithRetriever(runCtx, r.knowledgeRetriever)
+	if r.cfg.Knowledge != nil && r.cfg.Knowledge.Retriever != nil {
+		runCtx = knowledgetool.WithRetriever(runCtx, r.cfg.Knowledge.Retriever)
 	}
-	if r.knowledgeRouter != nil {
-		runCtx = knowledgetool.WithAdaptiveRouter(runCtx, r.knowledgeRouter)
+	if r.cfg.Knowledge != nil && r.cfg.Knowledge.Router != nil {
+		runCtx = knowledgetool.WithAdaptiveRouter(runCtx, r.cfg.Knowledge.Router)
 	}
-	if r.knowledgeFederatedRetriever != nil {
-		runCtx = knowledgetool.WithFederatedRetriever(runCtx, r.knowledgeFederatedRetriever)
+	if r.cfg.Knowledge != nil && r.cfg.Knowledge.FederatedRetriever != nil {
+		runCtx = knowledgetool.WithFederatedRetriever(runCtx, r.cfg.Knowledge.FederatedRetriever)
 	}
-	if r.knowledgeEvaluator != nil {
-		runCtx = knowledgetool.WithRetrievalEvaluator(runCtx, r.knowledgeEvaluator)
+	if r.cfg.Knowledge != nil && r.cfg.Knowledge.Evaluator != nil {
+		runCtx = knowledgetool.WithRetrievalEvaluator(runCtx, r.cfg.Knowledge.Evaluator)
 	}
 	if len(input.Options.KnowledgeBases) > 0 {
 		runCtx = knowledgetool.WithKnowledgeCollections(runCtx, input.Options.KnowledgeBases)

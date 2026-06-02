@@ -279,31 +279,11 @@ func NewGraphBuilderFactory(
 func bizCfgToTrpc(cfg biz.GraphBuildConfig) graphtrpc.GraphBuildConfig {
 	nodes := make([]graphtrpc.NodeDef, len(cfg.Nodes))
 	for i, n := range cfg.Nodes {
-		nodes[i] = graphtrpc.NodeDef{
-			ID: n.ID, FuncRef: n.FuncRef, Type: n.Type, Description: n.Description,
-			Instruction: n.Instruction, ModelName: n.ModelName, ToolNames: n.ToolNames,
-			AgentName: n.AgentName, InterruptBefore: n.InterruptBefore, InterruptAfter: n.InterruptAfter,
-			Destinations: n.Destinations,
-			RetryMaxAttempts: n.RetryMaxAttempts, FailureAction: n.FailureAction, FallbackAgent: n.FallbackAgent,
-			InputMapperJSON: n.InputMapperJSON, OutputMapperJSON: n.OutputMapperJSON,
-			IsolatedMessages: n.IsolatedMessages, InputFromLastResponse: n.InputFromLastResponse,
-			CacheEnabled: n.CacheEnabled, CacheTTLSeconds: n.CacheTTLSeconds,
-		}
-	}
-	edges := make([]graphtrpc.EdgeDef, len(cfg.Edges))
-	for i, e := range cfg.Edges {
-		edges[i] = graphtrpc.EdgeDef{From: e.From, To: e.To}
+		nodes[i] = graphtrpc.NodeDef{NodeDef: n}
 	}
 	condEdges := make([]graphtrpc.ConditionalEdgeDef, len(cfg.ConditionalEdges))
 	for i, ce := range cfg.ConditionalEdges {
-		condEdges[i] = graphtrpc.ConditionalEdgeDef{From: ce.From, CondFuncRef: ce.CondFuncRef, PathMap: ce.PathMap}
-	}
-	stateFields := make([]graphtrpc.StateFieldDef, len(cfg.StateFields))
-	for i, sf := range cfg.StateFields {
-		stateFields[i] = graphtrpc.StateFieldDef{
-			Name: sf.Name, Type: sf.Type, Reducer: graphtrpc.ReducerType(sf.Reducer),
-			DefaultValue: sf.DefaultValue, Required: sf.Required, DisableDeepCopy: sf.DisableDeepCopy,
-		}
+		condEdges[i] = graphtrpc.ConditionalEdgeDef{ConditionalEdgeDef: ce}
 	}
 	subgraphs := make([]graphtrpc.SubgraphDef, len(cfg.Subgraphs))
 	for i, s := range cfg.Subgraphs {
@@ -313,9 +293,9 @@ func bizCfgToTrpc(cfg biz.GraphBuildConfig) graphtrpc.GraphBuildConfig {
 		}
 	}
 	return graphtrpc.GraphBuildConfig{
-		Nodes: nodes, Edges: edges, ConditionalEdges: condEdges, Subgraphs: subgraphs,
-		StateFields: stateFields, EntryPoint: cfg.EntryPoint, FinishPoint: cfg.FinishPoint,
-		EnableCheckpoint: cfg.EnableCheckpoint, ExecutionEngine: graphtrpc.ExecutionEngineType(cfg.ExecutionEngine),
+		Nodes: nodes, Edges: cfg.Edges, ConditionalEdges: condEdges, Subgraphs: subgraphs,
+		StateFields: cfg.StateFields, EntryPoint: cfg.EntryPoint, FinishPoint: cfg.FinishPoint,
+		EnableCheckpoint: cfg.EnableCheckpoint, ExecutionEngine: cfg.ExecutionEngine,
 		InterruptBefore: cfg.InterruptBefore, InterruptAfter: cfg.InterruptAfter,
 	}
 }
@@ -323,31 +303,11 @@ func bizCfgToTrpc(cfg biz.GraphBuildConfig) graphtrpc.GraphBuildConfig {
 func trpcCfgToBiz(cfg graphtrpc.GraphBuildConfig) biz.GraphBuildConfig {
 	nodes := make([]biz.NodeDef, len(cfg.Nodes))
 	for i, n := range cfg.Nodes {
-		nodes[i] = biz.NodeDef{
-			ID: n.ID, FuncRef: n.FuncRef, Type: n.Type, Description: n.Description,
-			Instruction: n.Instruction, ModelName: n.ModelName, ToolNames: n.ToolNames,
-			AgentName: n.AgentName, InterruptBefore: n.InterruptBefore, InterruptAfter: n.InterruptAfter,
-			Destinations: n.Destinations,
-			RetryMaxAttempts: n.RetryMaxAttempts, FailureAction: n.FailureAction, FallbackAgent: n.FallbackAgent,
-			InputMapperJSON: n.InputMapperJSON, OutputMapperJSON: n.OutputMapperJSON,
-			IsolatedMessages: n.IsolatedMessages, InputFromLastResponse: n.InputFromLastResponse,
-			CacheEnabled: n.CacheEnabled, CacheTTLSeconds: n.CacheTTLSeconds,
-		}
-	}
-	edges := make([]biz.EdgeDef, len(cfg.Edges))
-	for i, e := range cfg.Edges {
-		edges[i] = biz.EdgeDef{From: e.From, To: e.To}
+		nodes[i] = n.NodeDef
 	}
 	condEdges := make([]biz.ConditionalEdgeDef, len(cfg.ConditionalEdges))
 	for i, ce := range cfg.ConditionalEdges {
-		condEdges[i] = biz.ConditionalEdgeDef{From: ce.From, CondFuncRef: ce.CondFuncRef, PathMap: ce.PathMap}
-	}
-	stateFields := make([]biz.StateFieldDef, len(cfg.StateFields))
-	for i, sf := range cfg.StateFields {
-		stateFields[i] = biz.StateFieldDef{
-			Name: sf.Name, Type: sf.Type, Reducer: biz.ReducerType(sf.Reducer),
-			DefaultValue: sf.DefaultValue, Required: sf.Required, DisableDeepCopy: sf.DisableDeepCopy,
-		}
+		condEdges[i] = ce.ConditionalEdgeDef
 	}
 	subgraphs := make([]biz.SubgraphDef, len(cfg.Subgraphs))
 	for i, s := range cfg.Subgraphs {
@@ -357,9 +317,9 @@ func trpcCfgToBiz(cfg graphtrpc.GraphBuildConfig) biz.GraphBuildConfig {
 		}
 	}
 	return biz.GraphBuildConfig{
-		Nodes: nodes, Edges: edges, ConditionalEdges: condEdges, Subgraphs: subgraphs,
-		StateFields: stateFields, EntryPoint: cfg.EntryPoint, FinishPoint: cfg.FinishPoint,
-		EnableCheckpoint: cfg.EnableCheckpoint, ExecutionEngine: biz.ExecutionEngineType(cfg.ExecutionEngine),
+		Nodes: nodes, Edges: cfg.Edges, ConditionalEdges: condEdges, Subgraphs: subgraphs,
+		StateFields: cfg.StateFields, EntryPoint: cfg.EntryPoint, FinishPoint: cfg.FinishPoint,
+		EnableCheckpoint: cfg.EnableCheckpoint, ExecutionEngine: cfg.ExecutionEngine,
 		InterruptBefore: cfg.InterruptBefore, InterruptAfter: cfg.InterruptAfter,
 	}
 }
@@ -371,7 +331,7 @@ func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.Grap
 		return nil, err
 	}
 	name := cfg.EntryPoint
-	graphAgent, err := f.createAgent(name, g, cfg.EnableCheckpoint, graphtrpc.ExecutionEngineType(cfg.ExecutionEngine), cbState, subAgents)
+	graphAgent, err := f.createAgent(name, g, cfg.EnableCheckpoint, cfg.ExecutionEngine, cbState, subAgents)
 	if err != nil {
 		return nil, err
 	}
@@ -487,21 +447,13 @@ func (f *trpcGraphBuilderFactory) AgentExists(ctx context.Context, agentID strin
 	return f.agentChecker(ctx, agentID)
 }
 
-func (f *trpcGraphBuilderFactory) FindNodeDef(cfg biz.GraphBuildConfig, nodeID string) *biz.NodeDefInfo {
+func (f *trpcGraphBuilderFactory) FindNodeDef(cfg biz.GraphBuildConfig, nodeID string) *biz.NodeTaskMeta {
 	for i := range cfg.Nodes {
 		if cfg.Nodes[i].ID == nodeID {
-			info := &biz.NodeDefInfo{}
 			if m, ok := cfg.TaskMeta[nodeID]; ok {
-				info.RequiredRole = m.RequiredRole
-				info.AssignmentMode = m.AssignmentMode
-				info.AssignmentStrategy = m.AssignmentStrategy
-				info.ReviewerAgent = m.ReviewerAgent
-				info.ReviewRules = m.ReviewRules
-				info.TimeoutSeconds = m.TimeoutSeconds
-				info.HeartbeatIntervalSeconds = m.HeartbeatIntervalSeconds
-				info.EnableLeaseExtension = m.EnableLeaseExtension
+				return &m
 			}
-			return info
+			return &biz.NodeTaskMeta{}
 		}
 	}
 	return nil

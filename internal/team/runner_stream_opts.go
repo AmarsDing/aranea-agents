@@ -5,11 +5,11 @@ import (
 )
 
 // newStreamConsumeOptions returns stream consume options via the injected factory.
-// SetStreamOptsFactory must be called before use; the factory is always wired
+// RunnerConfig.StreamOptsFactory must be set before use; the factory is always wired
 // in service/chat_orchestrator.go via chatactivity.StreamOptsFactoryAdapter.
 func (r *Runner) newStreamConsumeOptions() *agent.StreamConsumeOptions {
-	if r.streamOptsFactory == nil {
+	if r.cfg.StreamOptsFactory == nil {
 		return nil
 	}
-	return r.streamOptsFactory.NewStreamConsumeOptions()
+	return r.cfg.StreamOptsFactory.NewStreamConsumeOptions()
 }

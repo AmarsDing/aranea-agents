@@ -311,6 +311,9 @@ func (u *TeamUsecase) Delete(ctx context.Context, id string) error {
 	if team.IsDefault {
 		return kerrors.Conflict("TEAM", "default team cannot be deleted")
 	}
+	if team.Readonly {
+		return kerrors.Forbidden("TEAM", "cannot delete a readonly team")
+	}
 	return u.repo.DeleteTeam(ctx, id)
 }
 

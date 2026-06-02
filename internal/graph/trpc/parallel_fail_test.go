@@ -23,9 +23,9 @@ func TestBuildStateGraph_parallelFailContinue(t *testing.T) {
 		FinishPoint: "member-3",
 		StateFields: []StateFieldDef{{Name: biz.SkippedNodesStateKey, Type: "[]string", Reducer: ReducerAppend}},
 		Nodes: []NodeDef{
-			{ID: "member-1", Type: "function", Func: pass},
-			{ID: "member-2", Type: "function", Func: fail, FailureAction: biz.FailureOnFailureSkip},
-			{ID: "member-3", Type: "function", Func: pass},
+			{NodeDef: biz.NodeDef{ID: "member-1", Type: "function"}, Func: pass},
+			{NodeDef: biz.NodeDef{ID: "member-2", Type: "function", FailureAction: biz.FailureOnFailureSkip}, Func: fail},
+			{NodeDef: biz.NodeDef{ID: "member-3", Type: "function"}, Func: pass},
 		},
 		Edges: []EdgeDef{
 			{From: "member-1", To: "member-2"},

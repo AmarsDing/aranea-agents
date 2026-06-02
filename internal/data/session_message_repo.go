@@ -9,7 +9,6 @@ import (
 	"aranea-agents/internal/data/ent/message"
 	entsession "aranea-agents/internal/data/ent/session"
 	entsessionturn "aranea-agents/internal/data/ent/sessionturn"
-	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -137,8 +136,8 @@ func (r *sessionRepo) ListMessagesRecent(ctx context.Context, sessionID string, 
 	return out, nil
 }
 
-func (r *sessionRepo) maxMessageTurnTx(ctx context.Context, tx *ent.Tx, sessionID string) (int, error) {
-	row, err := tx.SessionTurn.Query().
+func (r *sessionRepo) queryMaxTurnNumber(ctx context.Context, c *ent.Client, sessionID string) (int, error) {
+	row, err := c.SessionTurn.Query().
 		Where(entsessionturn.SessionIDEQ(sessionID)).
 		Order(entsessionturn.ByTurnNumber(entsql.OrderDesc())).
 		First(ctx)
@@ -164,8 +163,8 @@ func (r *sessionRepo) maxMessageTurnTx(ctx context.Context, tx *ent.Tx, sessionI
 //	running / completing    �?user         �?new turn (status=running)
 //	completed / failed /    �?any          �?new turn (status=running)
 //	cancelled               �?             �?//	no existing turn        �?any          �?new turn (status=running)
-func (r *sessionRepo) assignTurnForNewMessage(ctx context.Context, tx *ent.Tx, sessionID, role string) (turnID string, turnNumber int, seqInTurn int, err error) {
-	latestTurn, qErr := tx.SessionTurn.Query().
+func (r *sessionRepo) assignTurnForNewMessage(ctx context.Context, c *ent.Client, sessionID, role string) (turnID string, turnNumber int, seqInTurn int, err error) {
+	latestTurn, qErr := c.SessionTurn.Query().
 		Where(entsessionturn.SessionIDEQ(sessionID)).
 		Order(entsessionturn.ByTurnNumber(entsql.OrderDesc())).
 		First(ctx)
@@ -181,7 +180,7 @@ func (r *sessionRepo) assignTurnForNewMessage(ctx context.Context, tx *ent.Tx, s
 			shouldReuse = latestTurn.Status != "completed" && latestTurn.Status != "failed" && latestTurn.Status != "cancelled"
 		}
 		if shouldReuse {
-			maxSeq, seqErr := tx.Message.Query().
+			maxSeq, seqErr := c.Message.Query().
 				Where(message.SessionIDEQ(sessionID), message.TurnIDEQ(latestTurn.ID)).
 				Order(message.BySeqInTurn(entsql.OrderDesc())).
 				First(ctx)
@@ -195,14 +194,14 @@ func (r *sessionRepo) assignTurnForNewMessage(ctx context.Context, tx *ent.Tx, s
 			return latestTurn.ID, latestTurn.TurnNumber, nextSeq, nil
 		}
 	}
-	maxTurn, mErr := r.maxMessageTurnTx(ctx, tx, sessionID)
+	maxTurn, mErr := r.queryMaxTurnNumber(ctx, c, sessionID)
 	if mErr != nil {
 		return "", 0, 0, mErr
 	}
 	newTurnID := uuid.NewString()
 	newTurnNumber := maxTurn + 1
 	now := nowRFC3339()
-	if _, cErr := tx.SessionTurn.Create().
+	if _, cErr := c.SessionTurn.Create().
 		SetID(newTurnID).
 		SetSessionID(sessionID).
 		SetTurnNumber(newTurnNumber).
@@ -216,8 +215,8 @@ func (r *sessionRepo) assignTurnForNewMessage(ctx context.Context, tx *ent.Tx, s
 	return newTurnID, newTurnNumber, 1, nil
 }
 
-func (r *sessionRepo) insertMessageTx(ctx context.Context, tx *ent.Tx, m biz.ChatMessage) error {
-	return tx.Message.Create().
+func (r *sessionRepo) createMessageOnClient(ctx context.Context, c *ent.Client, m biz.ChatMessage) error {
+	return c.Message.Create().
 		SetID(m.ID).
 		SetSessionID(m.SessionID).
 		SetParentMessageID(m.ParentMessageID).
@@ -243,63 +242,48 @@ func (r *sessionRepo) AppendChatTurn(ctx context.Context, sessionID string, user
 	if sessionID == "" {
 		return kerrors.BadRequest("SESSION", "session id is required")
 	}
-	tx, err := r.txClient(ctx).Tx(ctx)
-	if err != nil {
-		r.data.lg.Error("tx begin failed", loggateway.StepID("data.session.append_turn.tx_begin"), loggateway.Err(err))
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err = tx.Session.Query().Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).Only(ctx); err != nil {
-		return err
-	}
-	maxTurn, err := r.maxMessageTurnTx(ctx, tx, sessionID)
-	if err != nil {
-		return err
-	}
-	turnID := uuid.NewString()
-	turnNumber := maxTurn + 1
-	now := nowRFC3339()
-	if _, err = tx.SessionTurn.Create().
-		SetID(turnID).
-		SetSessionID(sessionID).
-		SetTurnNumber(turnNumber).
-		SetUserMessageID(user.ID).
-		SetAssistantMessageID(assistant.ID).
-		SetStatus("completed").
-		SetStartedAt(now).
-		SetEndedAt(now).
-		SetCreatedAt(now).
-		SetUpdatedAt(now).
-		Save(ctx); err != nil {
-		return err
-	}
-	user.TurnID = turnID
-	user.TurnNumber = turnNumber
-	user.SeqInTurn = 1
-	assistant.TurnID = turnID
-	assistant.TurnNumber = turnNumber
-	assistant.SeqInTurn = 2
-	if err = r.insertMessageTx(ctx, tx, user); err != nil {
-		return err
-	}
-	if err = r.insertMessageTx(ctx, tx, assistant); err != nil {
-		return err
-	}
-	upd := tx.Session.UpdateOneID(sessionID).
-		SetLastMessageAt(assistant.CreatedAt).
-		SetUpdatedAt(nowRFC3339())
-	if _, err = upd.Save(ctx); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		r.data.lg.Error("tx commit failed", loggateway.StepID("data.session.append_turn.commit"), loggateway.Err(err))
-		return err
-	}
-	return nil
+	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		c := r.data.clientFromCtx(txCtx)
+		if _, err := c.Session.Query().Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).Only(txCtx); err != nil {
+			return err
+		}
+		maxTurn, err := r.queryMaxTurnNumber(txCtx, c, sessionID)
+		if err != nil {
+			return err
+		}
+		turnID := uuid.NewString()
+		turnNumber := maxTurn + 1
+		now := nowRFC3339()
+		if _, err = c.SessionTurn.Create().
+			SetID(turnID).
+			SetSessionID(sessionID).
+			SetTurnNumber(turnNumber).
+			SetUserMessageID(user.ID).
+			SetAssistantMessageID(assistant.ID).
+			SetStatus("completed").
+			SetStartedAt(now).
+			SetEndedAt(now).
+			SetCreatedAt(now).
+			SetUpdatedAt(now).
+			Save(txCtx); err != nil {
+			return err
+		}
+		user.TurnID = turnID
+		user.TurnNumber = turnNumber
+		user.SeqInTurn = 1
+		assistant.TurnID = turnID
+		assistant.TurnNumber = turnNumber
+		assistant.SeqInTurn = 2
+		if err = r.createMessageOnClient(txCtx, c, user); err != nil {
+			return err
+		}
+		if err = r.createMessageOnClient(txCtx, c, assistant); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
-// UpsertChatActivityMessage still uses manual Tx instead of ExecInTx + txClient.
-// sessionRepo has no txClient helper yet; refactor when available.
 func (r *sessionRepo) UpsertChatActivityMessage(ctx context.Context, sessionID string, msg biz.ChatMessage) (bool, error) {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
@@ -309,79 +293,59 @@ func (r *sessionRepo) UpsertChatActivityMessage(ctx context.Context, sessionID s
 	if msg.ID == "" {
 		return false, kerrors.BadRequest("SESSION", "message id is required")
 	}
-	tx, err := r.txClient(ctx).Tx(ctx)
-	if err != nil {
-		r.data.lg.Error("tx begin failed", loggateway.StepID("data.session.upsert_msg.tx_begin"), loggateway.Err(err))
-		return false, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err = tx.Session.Query().Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).Only(ctx); err != nil {
-		return false, err
-	}
-	existing, err := tx.Message.Query().Where(message.IDEQ(msg.ID), message.SessionIDEQ(sessionID)).Only(ctx)
-	if err != nil {
-		if !ent.IsNotFound(err) {
-			return false, err
+	var created bool
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		c := r.data.clientFromCtx(txCtx)
+		if _, err := c.Session.Query().Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).Only(txCtx); err != nil {
+			return err
 		}
-		msg.SessionID = sessionID
-		turnID, turnNum, seqInTurn, merr := r.assignTurnForNewMessage(ctx, tx, sessionID, msg.Role)
-		if merr != nil {
-			return false, merr
+		existing, err := c.Message.Query().Where(message.IDEQ(msg.ID), message.SessionIDEQ(sessionID)).Only(txCtx)
+		if err != nil {
+			if !ent.IsNotFound(err) {
+				return err
+			}
+			msg.SessionID = sessionID
+			turnID, turnNum, seqInTurn, merr := r.assignTurnForNewMessage(txCtx, c, sessionID, msg.Role)
+			if merr != nil {
+				return merr
+			}
+			msg.TurnID = turnID
+			msg.TurnNumber = turnNum
+			msg.SeqInTurn = seqInTurn
+			if strings.TrimSpace(msg.CreatedAt) == "" {
+				msg.CreatedAt = nowRFC3339()
+			}
+			if err = r.createMessageOnClient(txCtx, c, msg); err != nil {
+				return err
+			}
+			created = true
+			return nil
 		}
-		msg.TurnID = turnID
-		msg.TurnNumber = turnNum
-		msg.SeqInTurn = seqInTurn
-		if strings.TrimSpace(msg.CreatedAt) == "" {
-			msg.CreatedAt = nowRFC3339()
+		lastAt := msg.CreatedAt
+		if strings.TrimSpace(lastAt) == "" {
+			lastAt = existing.CreatedAt
 		}
-		if err = r.insertMessageTx(ctx, tx, msg); err != nil {
-			return false, err
+		update := c.Message.UpdateOneID(msg.ID).
+			SetContentMarkdown(msg.ContentMarkdown).
+			SetOptionsJSON(msg.OptionsJSON).
+			SetStatus(msg.Status).
+			SetLatencyMs(msg.LatencyMS).
+			SetErrorMessage(msg.ErrorMessage)
+		if msg.TokenIn > 0 {
+			update = update.SetTokenIn(msg.TokenIn)
 		}
-		if _, err = tx.Session.UpdateOneID(sessionID).
-			SetLastMessageAt(msg.CreatedAt).
-			SetUpdatedAt(nowRFC3339()).
-			Save(ctx); err != nil {
-			return false, err
+		if msg.TokenOut > 0 {
+			update = update.SetTokenOut(msg.TokenOut)
 		}
-		if err := tx.Commit(); err != nil {
-			r.data.lg.Error("tx commit failed", loggateway.StepID("data.session.upsert_msg.commit"), loggateway.Err(err))
-			return false, err
+		if msg.ModelName != "" {
+			update = update.SetModelName(msg.ModelName)
 		}
-		return true, nil
-	}
-	lastAt := msg.CreatedAt
-	if strings.TrimSpace(lastAt) == "" {
-		lastAt = existing.CreatedAt
-	}
-	update := tx.Message.UpdateOneID(msg.ID).
-		SetContentMarkdown(msg.ContentMarkdown).
-		SetOptionsJSON(msg.OptionsJSON).
-		SetStatus(msg.Status).
-		SetLatencyMs(msg.LatencyMS).
-		SetErrorMessage(msg.ErrorMessage)
-	if msg.TokenIn > 0 {
-		update = update.SetTokenIn(msg.TokenIn)
-	}
-	if msg.TokenOut > 0 {
-		update = update.SetTokenOut(msg.TokenOut)
-	}
-	if msg.ModelName != "" {
-		update = update.SetModelName(msg.ModelName)
-	}
-	if _, err = update.Save(ctx); err != nil {
-		return false, err
-	}
-	if _, err = tx.Session.UpdateOneID(sessionID).
-		SetLastMessageAt(lastAt).
-		SetUpdatedAt(nowRFC3339()).
-		Save(ctx); err != nil {
-		return false, err
-	}
-	if err := tx.Commit(); err != nil {
-		r.data.lg.Error("tx commit failed", loggateway.StepID("data.session.upsert_msg.commit"), loggateway.Err(err))
-		return false, err
-	}
-	return false, nil
+		if _, err = update.Save(txCtx); err != nil {
+			return err
+		}
+		return nil
+	})
+	return created, err
 }
 
 func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, msg biz.ChatMessage, bumpModelCall bool) error {
@@ -389,39 +353,26 @@ func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, m
 	if sessionID == "" {
 		return kerrors.BadRequest("SESSION", "session id is required")
 	}
-	tx, err := r.txClient(ctx).Tx(ctx)
-	if err != nil {
-		r.data.lg.Error("tx begin failed", loggateway.StepID("data.session.append_msg.tx_begin"), loggateway.Err(err))
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err = tx.Session.Query().Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).Only(ctx); err != nil {
-		return err
-	}
-	turnID, turnNum, seqInTurn, err := r.assignTurnForNewMessage(ctx, tx, sessionID, msg.Role)
-	if err != nil {
-		return err
-	}
-	msg.TurnID = turnID
-	msg.TurnNumber = turnNum
-	msg.SeqInTurn = seqInTurn
-	if err = r.insertMessageTx(ctx, tx, msg); err != nil {
-		if ent.IsConstraintError(err) {
-			return biz.ErrMessageDuplicate
+	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		c := r.data.clientFromCtx(txCtx)
+		if _, err := c.Session.Query().Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).Only(txCtx); err != nil {
+			return err
 		}
-		return err
-	}
-	upd := tx.Session.UpdateOneID(sessionID).
-		SetLastMessageAt(msg.CreatedAt).
-		SetUpdatedAt(nowRFC3339())
-	if _, err = upd.Save(ctx); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		r.data.lg.Error("tx commit failed", loggateway.StepID("data.session.append_msg.commit"), loggateway.Err(err))
-		return err
-	}
-	return nil
+		turnID, turnNum, seqInTurn, err := r.assignTurnForNewMessage(txCtx, c, sessionID, msg.Role)
+		if err != nil {
+			return err
+		}
+		msg.TurnID = turnID
+		msg.TurnNumber = turnNum
+		msg.SeqInTurn = seqInTurn
+		if err = r.createMessageOnClient(txCtx, c, msg); err != nil {
+			if ent.IsConstraintError(err) {
+				return biz.ErrMessageDuplicate
+			}
+			return err
+		}
+		return nil
+	})
 }
 
 func (r *sessionRepo) UpdateChatMessageStatus(ctx context.Context, sessionID, messageID, status, errorMessage string) error {

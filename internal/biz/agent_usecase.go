@@ -343,9 +343,6 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 	if err != nil {
 		return Agent{}, err
 	}
-	if current.Readonly {
-		return Agent{}, kerrors.Forbidden("AGENT", "cannot update a readonly agent")
-	}
 	HydrateAgentKind(&patch)
 	HydrateAgentKind(&current)
 	if strings.TrimSpace(patch.Kind) != "" && NormalizeAgentKind(patch.Kind) != NormalizeAgentKind(current.Kind) {

@@ -242,6 +242,7 @@ export function normalizeAgentFromService(raw: unknown): Agent {
     last_run_at: pickStrOpt(w, "lastRunAt", "last_run_at"),
     pending_evolution_count: pickNum(w, "pendingEvolutionCount", "pending_evolution_count", 0),
     readonly: pickBool(w, "readonly", "readonly", false),
+    source: pickStrOpt(w, "source", "source"),
     settings: normalizeRuntimeSettingsFromWire(w.settings),
     files
   };

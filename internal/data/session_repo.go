@@ -676,26 +676,6 @@ func sessionSearchOrder(sortBy, sortOrder string) []entsession.OrderOption {
 	}
 }
 
-func (r *sessionRepo) IncrementInvocationCounts(ctx context.Context, sessionID string, toolDelta, mcpDelta, skillDelta int) error {
-	sessionID = strings.TrimSpace(sessionID)
-	if sessionID == "" || (toolDelta == 0 && mcpDelta == 0 && skillDelta == 0) {
-		return nil
-	}
-	c := r.txClient(ctx)
-	upd := c.Session.UpdateOneID(sessionID).SetUpdatedAt(nowRFC3339())
-	if toolDelta != 0 {
-		upd = upd.AddToolCallCount(toolDelta)
-	}
-	if mcpDelta != 0 {
-		upd = upd.AddMcpCallCount(mcpDelta)
-	}
-	if skillDelta != 0 {
-		upd = upd.AddSkillCallCount(skillDelta)
-	}
-	_, err := upd.Save(ctx)
-	return err
-}
-
 func (r *sessionRepo) ApplyMetricsDelta(ctx context.Context, d *session.SessionMetricsDelta) error {
 	if d == nil {
 		return nil
@@ -731,6 +711,9 @@ func (r *sessionRepo) ApplyMetricsDelta(ctx context.Context, d *session.SessionM
 	}
 	if d.TotalCostMicroUsd != 0 {
 		upd = upd.AddTotalCostMicroUsd(d.TotalCostMicroUsd)
+	}
+	if d.LastMessageAt != "" {
+		upd = upd.SetLastMessageAt(d.LastMessageAt)
 	}
 	_, err := upd.Save(ctx)
 	return err

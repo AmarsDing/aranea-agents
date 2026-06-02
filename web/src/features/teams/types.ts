@@ -14,6 +14,8 @@ export type Team = {
   linked_graph_id: string;
   has_active_run: boolean;
   category_industry_id: string;
+  readonly?: boolean;
+  source?: string; // user | system | imported
   created_at: string;
   updated_at: string;
   deleted_at: string;

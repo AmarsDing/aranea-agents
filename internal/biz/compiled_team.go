@@ -1,28 +1,36 @@
 package biz
 
+import "context"
+
 type NodeTaskMeta struct {
-	RequiredRole             string
-	AssignmentMode           string
-	AssignmentStrategy       string
-	ReviewerAgent            string
-	ReviewRules              string
-	TimeoutSeconds           int
-	HeartbeatIntervalSeconds int
-	EnableLeaseExtension     bool
+	RequiredRole             string `json:"required_role"`
+	AssignmentMode           string `json:"assignment_mode"`
+	AssignmentStrategy       string `json:"assignment_strategy"`
+	ReviewerAgent            string `json:"reviewer_agent"`
+	ReviewRules              string `json:"review_rules"`
+	TimeoutSeconds           int    `json:"timeout_seconds"`
+	HeartbeatIntervalSeconds int    `json:"heartbeat_interval_seconds"`
+	EnableLeaseExtension     bool   `json:"enable_lease_extension"`
 }
 
 type RoleInfo struct {
-	AgentID      string
-	AgentKey     string
-	DisplayName  string
-	Role         string
-	Capabilities []string
+	AgentID      string   `json:"agent_id"`
+	AgentKey     string   `json:"agent_key"`
+	DisplayName  string   `json:"display_name"`
+	Role         string   `json:"role"`
+	Capabilities []string `json:"capabilities"`
 }
 
 type CompiledTeam struct {
 	GraphBuildConfig
-	RoleManifest   map[string]RoleInfo
-	OriginalPolicy *TeamFailurePolicy
+	RoleManifest   map[string]RoleInfo      `json:"role_manifest"`
+	OriginalPolicy *TeamFailurePolicy       `json:"original_policy,omitempty"`
+}
+
+type CompiledTeamRepo interface {
+	Save(ctx context.Context, teamID, graphID string, ct *CompiledTeam) error
+	Load(ctx context.Context, teamID, graphID string) (*CompiledTeam, error)
+	Delete(ctx context.Context, teamID, graphID string) error
 }
 
 func NewCompiledTeam(cfg GraphBuildConfig, roleManifest map[string]RoleInfo, originalPolicy *TeamFailurePolicy) *CompiledTeam {

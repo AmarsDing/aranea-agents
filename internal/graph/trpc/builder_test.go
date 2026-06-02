@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"aranea-agents/internal/biz"
+
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -35,7 +37,7 @@ func TestBuildStateGraph_LLMNode(t *testing.T) {
 		FinishPoint: "llm1",
 		StateFields: []StateFieldDef{{Name: "messages", Type: "[]any", Reducer: ReducerAppend}},
 		Nodes: []NodeDef{
-			{ID: "llm1", Type: "llm", Instruction: "say hi", ModelName: "openai/gpt-4o-mini"},
+			{NodeDef: biz.NodeDef{ID: "llm1", Type: "llm", Instruction: "say hi", ModelName: "openai/gpt-4o-mini"}},
 		},
 	}
 	_, _, _, err := BuildStateGraphWithAgents(context.Background(), cfg, &BuildDeps{Models: stubDeps{}}, nil)
@@ -50,7 +52,7 @@ func TestBuildStateGraph_FunctionNode(t *testing.T) {
 		FinishPoint: "fn",
 		StateFields: []StateFieldDef{{Name: "messages", Type: "[]any", Reducer: ReducerAppend}},
 		Nodes: []NodeDef{
-			{ID: "fn", Type: "function", Func: PassthroughNodeFunc("fn")},
+			{NodeDef: biz.NodeDef{ID: "fn", Type: "function"}, Func: PassthroughNodeFunc("fn")},
 		},
 	}
 	_, _, _, err := BuildStateGraphWithAgents(context.Background(), cfg, nil, nil)

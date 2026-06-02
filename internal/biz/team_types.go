@@ -147,6 +147,8 @@ type Team struct {
 	DependsOn           []string
 	ParallelConfigJSON  string
 	Topology            string
+	Readonly            bool
+	Source              string // user | system | imported
 	CreatedAt           string
 	UpdatedAt           string
 	DeletedAt           string

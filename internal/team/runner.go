@@ -10,11 +10,7 @@ import (
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
-	graphadapter "aranea-agents/internal/graph/adapter"
-	"aranea-agents/internal/knowledge"
-	plugintrpc "aranea-agents/internal/plugin/trpc"
 	rt "aranea-agents/internal/runtime"
-	tooltrpc "aranea-agents/internal/tools/trpc"
 	"aranea-agents/pkg/loggateway"
 
 	trpcskill "trpc.group/trpc-go/trpc-agent-go/skill"
@@ -23,51 +19,27 @@ import (
 )
 
 // StreamOptsFactory creates StreamConsumeOptions for a team turn.
-// Implemented by internal/chatactivity; injected via SetStreamOptsFactory.
+// Implemented by internal/chatactivity; injected via RunnerConfig.StreamOptsFactory.
 type StreamOptsFactory interface {
 	NewStreamConsumeOptions() *agent.StreamConsumeOptions
 }
 
 type Runner struct {
-	teams              biz.TeamRepository
-	usage              *biz.UsageUsecase
-	td                 rt.TurnDeps
-	pluginRT           *plugintrpc.Runtime
-	pluginManager      *plugintrpc.Manager
-	skillDBRepo        trpcskill.Repository
-	runs               *rt.RunRegistry
-	awaitHookProvider  func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc
-	knowledgeRetriever         *knowledge.Retriever
-	knowledgeRouter            *knowledge.AdaptiveRouter
-	knowledgeFederatedRetriever *knowledge.FederatedRetriever
-	knowledgeEvaluator         *knowledge.RetrievalEvaluator
-	streamOptsFactory  StreamOptsFactory
-	agentHelper        biz.TeamAgentHelper
-	codeExecFactory    *localexec.Factory
-	graphRoot          graphadapter.TeamGraphRootBuilder
-	graphLoader        GraphBuildConfigLoader
-	teamGraphTasks     TeamGraphTaskCreator
-	teamGraphCoord     *TeamGraphRunCoordinator
-	lg                 loggateway.Logger
-}
-
-// SetGraphBuildConfigLoader wires linked_graph_id resolution for GraphAgent runtime (M53 P2).
-func (r *Runner) SetGraphBuildConfigLoader(l GraphBuildConfigLoader) {
-	if r == nil {
-		return
-	}
-	r.graphLoader = l
-}
-
-// SetTeamGraphTaskCreator wires Kanban task creation for team Graph task/review nodes (M53 TG-RT-TASK).
-func (r *Runner) SetTeamGraphTaskCreator(c TeamGraphTaskCreator) {
-	if r == nil {
-		return
-	}
-	r.teamGraphTasks = c
+	teams           biz.TeamRepository
+	usage           *biz.UsageUsecase
+	td              rt.TurnDeps
+	skillDBRepo     trpcskill.Repository
+	codeExecFactory *localexec.Factory
+	cfg             RunnerConfig
+	teamGraphCoord  *TeamGraphRunCoordinator
+	lg              loggateway.Logger
 }
 
 // SetTeamGraphRunCoordinator wires team graph execution lifecycle (register / HITL / task resume).
+// This is the only remaining Setter because Runner and TeamGraphRunCoordinator have a circular
+// dependency: Runner needs Coordinator, and Coordinator needs Runner via TeamGraphRunFinisher.
+// The circular dependency is resolved at construction time: Runner is created first (without
+// Coordinator), then Coordinator is created, then this Setter links them.
 func (r *Runner) SetTeamGraphRunCoordinator(c *TeamGraphRunCoordinator) {
 	if r == nil {
 		return
@@ -89,19 +61,17 @@ func NewRunner(
 	sys biz.SystemSettingRepo,
 	persist rt.PersistenceSet,
 	compress biz.NativeTurnCompressor,
-	pluginRT *plugintrpc.Runtime,
-	pluginManager *plugintrpc.Manager,
 	skillDBRepo trpcskill.Repository,
 	codeExecFactory *localexec.Factory,
 	lg loggateway.Logger,
+	cfg RunnerConfig,
 ) *Runner {
 	return &Runner{
 		teams:           teams,
 		usage:           usage,
-		pluginRT:        pluginRT,
-		pluginManager:   pluginManager,
 		skillDBRepo:     skillDBRepo,
 		codeExecFactory: codeExecFactory,
+		cfg:             cfg,
 		lg:              lg,
 		td: rt.TurnDeps{
 			Catalog: rt.Catalog{
@@ -122,63 +92,6 @@ func NewRunner(
 			Lg:        lg,
 		},
 	}
-}
-
-func (r *Runner) SetAwaitHookProvider(fn func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc) {
-	r.awaitHookProvider = fn
-}
-
-func (r *Runner) SetKnowledgeRetriever(ret *knowledge.Retriever) {
-	if r == nil {
-		return
-	}
-	r.knowledgeRetriever = ret
-}
-
-func (r *Runner) SetKnowledgeRouter(router *knowledge.AdaptiveRouter) {
-	if r == nil {
-		return
-	}
-	r.knowledgeRouter = router
-}
-
-func (r *Runner) SetKnowledgeFederatedRetriever(fr *knowledge.FederatedRetriever) {
-	if r == nil {
-		return
-	}
-	r.knowledgeFederatedRetriever = fr
-}
-
-func (r *Runner) SetKnowledgeEvaluator(ev *knowledge.RetrievalEvaluator) {
-	if r == nil {
-		return
-	}
-	r.knowledgeEvaluator = ev
-}
-
-// SetStreamOptsFactory wires the StreamConsumeOptions factory, eliminating
-// direct chatactivity import from the team package.
-func (r *Runner) SetStreamOptsFactory(f StreamOptsFactory) {
-	r.streamOptsFactory = f
-}
-
-// SetAgentHelper wires the agent helper, eliminating direct agent import
-// for utility functions from the team package.
-func (r *Runner) SetAgentHelper(h biz.TeamAgentHelper) {
-	r.agentHelper = h
-}
-
-// SetRunRegistry shares the chat gateway run registry for cancel/status/enqueue.
-func (r *Runner) SetRunRegistry(reg *rt.RunRegistry) {
-	r.runs = reg
-}
-
-// SetGraphRootBuilder wires GraphAgent team runtime (Phase 3). Nil disables graph path.
-func (r *Runner) SetGraphRootBuilder(b graphadapter.TeamGraphRootBuilder) {
-	if r == nil {
-		return
-	}
-	r.graphRoot = b
 }
 
 func (r *Runner) catalogAgent(ctx context.Context, id string) (biz.Agent, error) {

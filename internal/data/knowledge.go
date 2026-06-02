@@ -249,48 +249,38 @@ func (r *knowledgeRepo) ListDocuments(ctx context.Context, collectionID string, 
 //
 // All statements run in one transaction to avoid any partial-update window.
 func (r *knowledgeRepo) DeleteDocument(ctx context.Context, id string) error {
-	tx, err := r.data.Postgres().BeginTx(ctx, nil)
-	if err != nil {
-		r.lg.Warn("delete document begin tx failed", loggateway.StepID("knowledge.tx_fail"), loggateway.Err(err))
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	var collectionID string
-	var chunkCount int
-	var status string
-	switch err := tx.QueryRowContext(ctx,
-		`SELECT collection_id, chunk_count, status FROM knowledge_documents WHERE id = $1`, id).
-		Scan(&collectionID, &chunkCount, &status); {
-	case err == sql.ErrNoRows:
-		return nil // idempotent: deleting an absent doc is a no-op
-	case err != nil:
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM knowledge_documents WHERE id = $1`, id); err != nil {
-		return err
-	}
-	if collectionID != "" {
-		// Only decrement document_count when the document was actually counted
-		// (i.e. UpdateCollectionCounts was called on successful ingest).
-		docDelta := 0
-		if status == "indexed" {
-			docDelta = 1
-		}
-		if _, err := tx.ExecContext(ctx,
-			`UPDATE knowledge_collections
-			 SET document_count = GREATEST(document_count - $2, 0),
-			     chunk_count    = GREATEST(chunk_count    - $3, 0),
-			     updated_at     = NOW()
-			 WHERE id = $1`, collectionID, docDelta, chunkCount); err != nil {
-			r.lg.Warn("delete document counter update failed", loggateway.StepID("knowledge.counter_drift"), loggateway.Err(err))
+	return r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		var collectionID string
+		var chunkCount int
+		var status string
+		switch err := tx.QueryRowContext(ctx,
+			`SELECT collection_id, chunk_count, status FROM knowledge_documents WHERE id = $1`, id).
+			Scan(&collectionID, &chunkCount, &status); {
+		case err == sql.ErrNoRows:
+			return nil
+		case err != nil:
 			return err
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		r.lg.Error("delete document commit failed", loggateway.StepID("knowledge.tx_commit"), loggateway.Err(err))
-		return err
-	}
-	return nil
+		if _, err := tx.ExecContext(ctx, `DELETE FROM knowledge_documents WHERE id = $1`, id); err != nil {
+			return err
+		}
+		if collectionID != "" {
+			docDelta := 0
+			if status == "indexed" {
+				docDelta = 1
+			}
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE knowledge_collections
+				 SET document_count = GREATEST(document_count - $2, 0),
+				     chunk_count    = GREATEST(chunk_count    - $3, 0),
+				     updated_at     = NOW()
+				 WHERE id = $1`, collectionID, docDelta, chunkCount); err != nil {
+				r.lg.Warn("delete document counter update failed", loggateway.StepID("knowledge.counter_drift"), loggateway.Err(err))
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.KnowledgeChunk) error {
@@ -308,35 +298,27 @@ func (r *knowledgeRepo) InsertChunks(ctx context.Context, chunks []biz.Knowledge
 			return kerrors.BadRequest("KNOWLEDGE", fmt.Sprintf("embedding dimension mismatch: collection expects %d, chunk %q has %d", expectedDim, ch.ID, len(ch.Embedding)))
 		}
 	}
-	tx, err := r.data.Postgres().BeginTx(ctx, nil)
-	if err != nil {
-		r.lg.Warn("insert chunks begin tx failed", loggateway.StepID("knowledge.tx_fail"), loggateway.Err(err))
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	stmt, err := tx.PrepareContext(ctx,
-		`INSERT INTO knowledge_chunks (id, doc_id, collection_id, content, embedding, metadata, chunk_index)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7)`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-	for _, ch := range chunks {
-		meta := ch.MetadataJSON
-		if meta == "" {
-			meta = "{}"
-		}
-		vec := pgvector.NewVector(ch.Embedding)
-		if _, err := stmt.ExecContext(ctx, ch.ID, ch.DocID, ch.CollectionID, ch.Content, vec, meta, ch.ChunkIndex); err != nil {
-			r.lg.Warn("chunk insert failed", loggateway.StepID("knowledge.chunk_insert_fail"), loggateway.Err(err))
+	return r.data.PostgresExecInTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		stmt, err := tx.PrepareContext(ctx,
+			`INSERT INTO knowledge_chunks (id, doc_id, collection_id, content, embedding, metadata, chunk_index)
+			 VALUES ($1,$2,$3,$4,$5,$6,$7)`)
+		if err != nil {
 			return err
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		r.lg.Error("insert chunks commit failed", loggateway.StepID("knowledge.tx_commit"), loggateway.Err(err))
-		return err
-	}
-	return nil
+		defer stmt.Close()
+		for _, ch := range chunks {
+			meta := ch.MetadataJSON
+			if meta == "" {
+				meta = "{}"
+			}
+			vec := pgvector.NewVector(ch.Embedding)
+			if _, err := stmt.ExecContext(ctx, ch.ID, ch.DocID, ch.CollectionID, ch.Content, vec, meta, ch.ChunkIndex); err != nil {
+				r.lg.Warn("chunk insert failed", loggateway.StepID("knowledge.chunk_insert_fail"), loggateway.Err(err))
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (r *knowledgeRepo) DeleteChunksByDocument(ctx context.Context, docID string) error {

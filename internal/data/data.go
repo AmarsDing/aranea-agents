@@ -96,6 +96,7 @@ var ProviderSet = wire.NewSet(
 	NewToolResultReplacementRepo,
 	NewSeedVersionRepo,
 	NewOrchestrationCacheRepo,
+	NewCompiledTeamRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -618,6 +619,10 @@ func seedInitialData(entClient *ent.Client, c *conf.Data, lg loggateway.Logger) 
 		return err
 	}
 	scenarioDir := biz.ScenarioDir()
+	if err := SeedSpiritPromptFiles(context.Background(), entClient, scenarioDir, lg); err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_prompt_files"), loggateway.Err(err))
+		return err
+	}
 	if err := SeedBuiltinAgentCategories(context.Background(), entClient, scenarioDir, lg); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.agent_categories"), loggateway.Err(err))
 		return err
@@ -657,6 +662,10 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 	}
 
 	scenarioDir := biz.ScenarioDir()
+	if err := SeedSpiritPromptFiles(context.Background(), entClient, scenarioDir, lg); err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_prompt_files"), loggateway.Err(err))
+		return err
+	}
 	d.lazySeeders = map[string]*LazySeeder{
 		"agent_categories": NewLazySeeder(entClient, func(ctx context.Context, client *ent.Client) error {
 			return SeedBuiltinAgentCategories(ctx, client, scenarioDir, lg)
@@ -674,7 +683,7 @@ func NewSessionMemoryStore(d *Data) *sessionmemory.Store {
 	if d == nil {
 		return nil
 	}
-	return sessionmemory.NewStore(d.Ent(), d.lg)
+	return sessionmemory.NewStore(d.Ent(), d.lg, sessionmemory.WithTxManager(d))
 }
 
 func NewArtifactRepo(d *Data) biz.ArtifactRepo {

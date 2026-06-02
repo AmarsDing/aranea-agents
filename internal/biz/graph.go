@@ -34,79 +34,79 @@ const (
 
 // StateFieldDef describes a single typed state field in a graph.
 type StateFieldDef struct {
-	Name            string
-	Type            string
-	Reducer         ReducerType
-	DefaultValue    any
-	Required        bool
-	DisableDeepCopy bool
+	Name            string      `json:"name"`
+	Type            string      `json:"type"`
+	Reducer         ReducerType `json:"reducer"`
+	DefaultValue    any         `json:"default_value"`
+	Required        bool        `json:"required"`
+	DisableDeepCopy bool        `json:"disable_deep_copy"`
 }
 
 // NodeDef is the schema-level (biz) description of a graph node.
 // Func/function pointers are resolved in the graph/trpc adapter layer.
 type NodeDef struct {
-	ID                    string
-	FuncRef               string
-	Type                  string
-	Description           string
-	Instruction           string
-	ModelName             string
-	ToolNames             []string
-	AgentName             string
-	InterruptBefore       bool
-	InterruptAfter        bool
-	Destinations          []string
-	RetryMaxAttempts      int
-	FailureAction         string
-	FallbackAgent         string
-	InputMapperJSON       string
-	OutputMapperJSON      string
-	IsolatedMessages      bool
-	InputFromLastResponse bool
-	CacheEnabled          bool
-	CacheTTLSeconds       int
+	ID                    string   `json:"id"`
+	FuncRef               string   `json:"func_ref"`
+	Type                  string   `json:"type"`
+	Description           string   `json:"description"`
+	Instruction           string   `json:"instruction"`
+	ModelName             string   `json:"model_name"`
+	ToolNames             []string `json:"tool_names"`
+	AgentName             string   `json:"agent_name"`
+	InterruptBefore       bool     `json:"interrupt_before"`
+	InterruptAfter        bool     `json:"interrupt_after"`
+	Destinations          []string `json:"destinations"`
+	RetryMaxAttempts      int      `json:"retry_max_attempts"`
+	FailureAction         string   `json:"failure_action"`
+	FallbackAgent         string   `json:"fallback_agent"`
+	InputMapperJSON       string   `json:"input_mapper_json"`
+	OutputMapperJSON      string   `json:"output_mapper_json"`
+	IsolatedMessages      bool     `json:"isolated_messages"`
+	InputFromLastResponse bool     `json:"input_from_last_response"`
+	CacheEnabled          bool     `json:"cache_enabled"`
+	CacheTTLSeconds       int      `json:"cache_ttl_seconds"`
 }
 
 // EdgeDef is a directed edge between two graph nodes.
 type EdgeDef struct {
-	From string
-	To   string
+	From string `json:"from"`
+	To   string `json:"to"`
 	// Kind is optional metadata for visualization (e.g. "transfer" dashed edges). Runtime ignores unknown kinds.
-	Kind string
+	Kind string `json:"kind"`
 }
 
 // ConditionalEdgeDef is a conditional routing edge.
 // CondFunc is resolved in the graph/trpc adapter layer.
 type ConditionalEdgeDef struct {
-	From        string
-	CondFuncRef string
-	PathMap     map[string]string
+	From        string            `json:"from"`
+	CondFuncRef string            `json:"cond_func_ref"`
+	PathMap     map[string]string `json:"path_map"`
 }
 
 // SubgraphDef embeds a nested graph inside a parent graph.
 // InputMapper/OutputMapper are trpc-specific and resolved in the adapter layer.
 type SubgraphDef struct {
-	ID              string
-	GraphID         string
-	BuildConfig     GraphBuildConfig
-	InterruptBefore bool
-	InterruptAfter  bool
+	ID              string           `json:"id"`
+	GraphID         string           `json:"graph_id"`
+	BuildConfig     GraphBuildConfig `json:"build_config"`
+	InterruptBefore bool             `json:"interrupt_before"`
+	InterruptAfter  bool             `json:"interrupt_after"`
 }
 
 // GraphBuildConfig is the schema-level (biz) graph build configuration.
 type GraphBuildConfig struct {
-	Nodes            []NodeDef
-	Edges            []EdgeDef
-	ConditionalEdges []ConditionalEdgeDef
-	Subgraphs        []SubgraphDef
-	StateFields      []StateFieldDef
-	EntryPoint       string
-	FinishPoint      string
-	EnableCheckpoint bool
-	ExecutionEngine  ExecutionEngineType
-	InterruptBefore  []string
-	InterruptAfter   []string
-	TaskMeta         map[string]NodeTaskMeta
+	Nodes            []NodeDef            `json:"nodes"`
+	Edges            []EdgeDef            `json:"edges"`
+	ConditionalEdges []ConditionalEdgeDef `json:"conditional_edges"`
+	Subgraphs        []SubgraphDef        `json:"subgraphs"`
+	StateFields      []StateFieldDef      `json:"state_fields"`
+	EntryPoint       string               `json:"entry_point"`
+	FinishPoint      string               `json:"finish_point"`
+	EnableCheckpoint bool                 `json:"enable_checkpoint"`
+	ExecutionEngine  ExecutionEngineType  `json:"execution_engine"`
+	InterruptBefore  []string             `json:"interrupt_before"`
+	InterruptAfter   []string             `json:"interrupt_after"`
+	TaskMeta         map[string]NodeTaskMeta `json:"task_meta"`
 }
 
 // GraphExecutor is the biz-level port for executing graphs from other modules.
@@ -207,6 +207,7 @@ type GraphUsecase struct {
 	factory          GraphBuilderFactory
 	execObserver     GraphExecutionObserver
 	taskCoord        GraphTaskCoordinator
+	compiledTeamRepo CompiledTeamRepo
 	mu               sync.RWMutex
 	defs             map[string]*GraphDefinition
 	executions       map[string]*GraphExecution
@@ -214,15 +215,16 @@ type GraphUsecase struct {
 	lg               loggateway.Logger
 }
 
-func NewGraphUsecase(repo GraphRepo, runRepo GraphRunRepo, factory GraphBuilderFactory, observer GraphExecutionObserver, lg loggateway.Logger) *GraphUsecase {
+func NewGraphUsecase(repo GraphRepo, runRepo GraphRunRepo, factory GraphBuilderFactory, observer GraphExecutionObserver, compiledTeamRepo CompiledTeamRepo, lg loggateway.Logger) *GraphUsecase {
 	uc := &GraphUsecase{
-		repo:         repo,
-		runRepo:      runRepo,
-		factory:      factory,
-		execObserver: observer,
-		defs:         make(map[string]*GraphDefinition),
-		executions:   make(map[string]*GraphExecution),
-		lg:           lg,
+		repo:             repo,
+		runRepo:          runRepo,
+		factory:          factory,
+		execObserver:     observer,
+		compiledTeamRepo: compiledTeamRepo,
+		defs:             make(map[string]*GraphDefinition),
+		executions:       make(map[string]*GraphExecution),
+		lg:               lg,
 	}
 	safego.Go(context.Background(), "graph-gc-loop", func() { uc.gcLoop() })
 	return uc
@@ -544,7 +546,7 @@ func (uc *GraphUsecase) ListUserTemplateGraphs(ctx context.Context) ([]*GraphDef
 	return uc.repo.ListUserTemplateDefinitions(ctx, 200)
 }
 
-func (uc *GraphUsecase) FindNodeDef(ctx context.Context, graphID string, nodeID string) *NodeDefInfo {
+func (uc *GraphUsecase) FindNodeDef(ctx context.Context, graphID string, nodeID string) *NodeTaskMeta {
 	def, err := uc.GetGraph(ctx, graphID)
 	if err != nil {
 		return nil

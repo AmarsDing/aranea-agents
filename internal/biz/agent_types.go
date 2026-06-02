@@ -38,6 +38,7 @@ type Agent struct {
 	PendingEvolutionCount int
 	CreatedBy            string
 	Readonly             bool
+	Source               string // user | system | imported (maps from DB kind column)
 	CreatedAt            string
 	UpdatedAt          string
 	DeletedAt          string

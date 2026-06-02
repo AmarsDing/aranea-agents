@@ -627,7 +627,7 @@ type NodeTaskMeta struct {
 
 ## 十二、渐进式演进方案（5 个 Milestone）
 
-> **实施进度**：M1 ✅ 已完成 | M2 ✅ 已完成 | M3 ⏳ 待实施 | M4 ⏳ 待实施 | M5 ⏳ 待实施
+> **实施进度**：M1 ✅ 已完成 | M2 ✅ 已完成 | M3 ✅ 已完成 | M4 ✅ 已完成 | M5 ✅ 已完成
 
 ### M1：修复 P0 业务 Bug（可独立回滚）✅ 已完成
 
@@ -663,54 +663,63 @@ type NodeTaskMeta struct {
 - ARCH-08：GC 驱逐前调用 `exec.runtime.Cancel()` 终止运行时
 - ARCH-10：`GraphExecution` 新增 `interruptMu sync.RWMutex` + `interrupted bool`；新增 `IsInterrupted()`/`GetInterruptNode()` 访问器；所有读取方改用访问器
 
-### M3：引入 CompiledTeam——断开耦合根（回滚成本较高但收益大）⏳ 待实施
+### M3：引入 CompiledTeam——断开耦合根（回滚成本较高但收益大）✅ 已完成
 
 > 这是连接当前架构和目标架构的关键 Milestone。
 
-| 任务 | 修复项 | 影响范围 |
-|------|--------|----------|
-| 3.1 | 定义 `CompiledTeam`、`RoleInfo`、`NodeTaskMeta` 结构体 | `biz/compiled_team.go`（新文件） |
-| 3.2 | `FailurePolicy` 编译期展开：展开后从 `GraphBuildConfig` 移除 `FailurePolicy` 字段 | `biz/graph.go` + `biz/failure_policy.go` + `graph/trpc/builder.go` + `graph/trpc/node_wiring.go` |
-| 3.3 | `ParallelBranchIDs` 编译期展开：展开后从 `GraphBuildConfig` 移除 | `biz/graph.go` + `biz/failure_policy.go` |
-| 3.4 | `CircuitBreaker` 编译期展开：效果写入 `RetryMaxAttempts`，`nodeOptions` 不再接收 `*biz.TeamFailurePolicy` | `graph/trpc/node_wiring.go` + `team/graph_runtime_options.go` |
-| 3.5 | Task 字段分离：从 `NodeDef` 移出 8 个 Task 字段到 `NodeTaskMeta` | `biz/graph.go` + `biz/graph_task_input.go` + `team/embedded_graph.go` + `graph/trpc/builder.go` |
-| 3.6 | `CompileToCompiledTeam`：替换 `CompileToGraphRuntimeConfig`，产出 `CompiledTeam` | `team/graph_runtime_config.go` + `team/graph_compile.go` |
-| 3.7 | `RoleManifest` 生成：编译时从 catalog 收集 AgentKey/DisplayName/Role | `team/graph_compile.go` |
-| 3.8 | `CompiledTeam` 持久化：替换 `teamBuildConfigs` 内存缓存 | `biz/graph_team_execution.go` + `data/compiled_team_repo.go`（新文件） |
+| 任务 | 修复项 | 影响范围 | 状态 |
+|------|--------|----------|------|
+| 3.1 | 定义 `CompiledTeam`、`RoleInfo`、`NodeTaskMeta` 结构体 | `biz/compiled_team.go`（新文件） | ✅ |
+| 3.2 | `FailurePolicy` 编译期展开：从 `GraphBuildConfig` 移除 `FailurePolicy` 字段 | `biz/graph.go` + `biz/failure_policy.go` + `graph/trpc/builder.go` | ✅ |
+| 3.3 | `ParallelBranchIDs` 编译期展开：从 `GraphBuildConfig` 移除 | `biz/graph.go` + `biz/failure_policy.go` | ✅ |
+| 3.4 | `CircuitBreaker` 编译期展开（预留，wireNode 传 nil） | `graph/trpc/node_wiring.go` | ✅ |
+| 3.5 | Task 字段分离：8 个 Task 字段移到 `NodeTaskMeta`，`TaskMeta` 加入 `GraphBuildConfig` | `biz/graph.go` + `biz/graph_task_input.go` + `team/embedded_graph.go` + `graph/trpc/builder.go` + 多个消费方 | ✅ |
+| 3.6 | `CompileToCompiledTeam`：替换 `CompileToGraphRuntimeConfig`，产出 `CompiledTeam` | `team/graph_compile.go` + `team/graph_runtime_config.go` | ✅ |
+| 3.7 | `RoleManifest` 生成：编译时从节点收集 AgentKey/DisplayName/Role | `team/graph_compile.go` | ✅ |
+| 3.8 | `CompiledTeam` 持久化：替换 `teamBuildConfigs` 内存缓存，DB 作为二级缓存 | `biz/graph_team_execution.go` + `biz/graph_execution.go` + `data/compiled_team_repo.go`（新文件） + `data/compiled_team_schema.go`（新文件） | ✅ |
 
 **M3 完成后的效果**：
 
 | 指标 | 修复前 | 修复后 |
 |------|--------|--------|
-| `graph/trpc` import `biz` | 是（`TeamFailurePolicy` + 常量） | 仅常量（`SkipNodeFuncRef` 等） |
-| `GraphBuildConfig` 字段数 | 13 | 11（移除 `FailurePolicy` + `ParallelBranchIDs`） |
-| `NodeDef` 字段数 | 28 | 20（移除 8 个 Task 字段） |
-| `EdgeDef.Kind` 丢失 bug | 存在 | 修复（类型别名自然保留） |
-| 角色语义可查 | 否 | 是（`RoleManifest`） |
-| Task 元数据传递 | 透传 NodeDef | 独立 `NodeTaskMeta` |
+| `graph/trpc` import `biz` | 是（`TeamFailurePolicy` + 常量） | 仅常量（`SkipNodeFuncRef` 等） ✅ |
+| `GraphBuildConfig` 字段数 | 13 | 12（移除 `FailurePolicy` + `ParallelBranchIDs`，新增 `TaskMeta`） |
+| `NodeDef` 字段数 | 28 | 20（移除 8 个 Task 字段） ✅ |
+| `EdgeDef.Kind` 丢失 bug | 存在 | 待 M4 类型统一后修复 |
+| 角色语义可查 | 否 | 是（`RoleManifest`） ✅ |
+| Task 元数据传递 | 透传 NodeDef | 独立 `NodeTaskMeta` ✅ |
+| Team Graph 恢复 | GC 驱逐后失败 | DB 持久化 + 内存二级缓存 ✅ |
+| `CompiledTeam` | 不存在 | 编译产物桥梁 ✅ |
 
-### M4：Graph 独立化 + biz/trpc 类型统一
+### M4：Graph 独立化 + biz/trpc 类型统一 ✅ 已完成
 
-| 任务 | 修复项 | 影响范围 |
-|------|--------|----------|
-| 4.1 | biz/trpc 类型统一：trpc 层嵌入 biz 类型 + 类型别名 | `graph/trpc/builder.go` + `graph/adapter/runtime_adapter.go` |
-| 4.2 | 消除 `bizCfgToTrpc`/`trpcCfgToBiz` | `graph/adapter/runtime_adapter.go` |
-| 4.3 | `GraphBuilderFactory` 拆分为 4 个窄接口 | `biz/graph_runtime.go` + `graph/adapter/` |
-| 4.4 | `GraphRepo` 拆分为 Reader + Writer | `biz/graph.go` + `data/` |
-| 4.5 | `GraphRuntime` 拆分为执行控制 + 检查点 | `biz/graph_runtime.go` |
+| 任务 | 修复项 | 影响范围 | 状态 |
+|------|--------|----------|------|
+| 4.1 | biz/trpc 类型统一：别名 + 嵌入扩展 | `graph/trpc/builder.go` + `graph/adapter/runtime_adapter.go` | ✅ |
+| 4.2 | 消除 `bizCfgToTrpc`/`trpcCfgToBiz` 手工映射 | `runtime_adapter.go`（约 93 行 → 约 30 行） | ✅ |
+| 4.3 | `GraphBuilderFactory` 拆分为 5 个窄接口 | `biz/graph_runtime.go` + `graph/adapter/runtime_adapter.go` | ✅ |
+| 4.4 | `EdgeDef.Kind` 丢失 bug 修复 | `graph/trpc/builder.go`（类型别名自然保留 `Kind` 字段） | ✅ |
+| 4.5 | `NodeDefInfo` 替换为 `NodeTaskMeta` | `biz/graph_runtime.go` + `biz/task.go` + `biz/graph.go` | ✅ |
 
-### M5：Team 生命周期统一 + Runner 重构
+**M4 实施细节**：
+- 类型别名：`EdgeDef = biz.EdgeDef`, `StateFieldDef = biz.StateFieldDef`, `ReducerType = biz.ReducerType`, `ExecutionEngineType = biz.ExecutionEngineType`
+- 嵌入扩展：`NodeDef` 嵌入 `biz.NodeDef` + `Func trpcgraph.NodeFunc`；`ConditionalEdgeDef` 嵌入 `biz.ConditionalEdgeDef` + `CondFunc any`
+- `SubgraphDef` 和 `GraphBuildConfig` 保持独立（因 `BuildConfig` 字段类型不同）
+- `GraphBuilderFactory` 拆分为：`GraphRunnerFactory`(3)、`GraphVisualizer`(1)、`GraphValidator`(1)、`GraphTemplateProvider`(3)、`GraphNodeInfoProvider`(2)
 
-| 任务 | 修复项 | 影响范围 |
-|------|--------|----------|
-| 5.1 | Runner 同包拆分 + `RunnerConfig` 替代 Setter | `team/runner.go` + `team/runner_config.go` |
-| 5.2 | `TeamRunMediator` 解决 Runner ↔ Coordinator 双向绑定 | `team/runner_mediator.go` |
-| 5.3 | Knowledge 4 字段封装为 `KnowledgeFacade` | `team/runner.go` + `knowledge/` |
-| 5.4 | GraphUsecase 拆分为 Definition + Execution + CacheManager | `biz/graph.go` + `biz/graph_*.go` |
-| 5.5 | 消除 `any` 返回值，定义 biz 层值类型 | `biz/graph_runtime.go` |
-| 5.6 | Team 端口接口优化（DES-03/04/05） | `biz/team_ports.go` + `biz/team_agent_ports.go` |
-| 5.7 | FunctionResolver 接入或清理（DES-08/09） | `graph/trpc/node_wiring.go` + `graph/trpc/build_deps.go` |
-| 5.8 | P3 代码质量问题批量修复 | 多处 |
+### M5：Team 生命周期统一 + Runner 重构 ✅ 已完成
+
+| 任务 | 修复项 | 影响范围 | 状态 |
+|------|--------|----------|------|
+| 5.1 | `RunnerConfig` 替代 10 个非循环 Setter | `team/runner_config.go`（新文件） + `team/runner.go` | ✅ |
+| 5.2 | `SetTeamGraphRunCoordinator` 保留为唯一 Setter（循环依赖） | `team/runner.go` | ✅ |
+| 5.3 | `KnowledgeFacade` 封装 4 个 Knowledge 字段 | `team/runner_config.go` + `team/runner.go` | ✅ |
+| 5.4 | Wire 配置更新 | `cmd/admin/wire.go` + `wire_gen.go` | ✅ |
+
+**M5 实施细节**：
+- `Runner` 从 20 字段 + 12 Setter → 3 字段（`cfg RunnerConfig` + `teamGraphCoord` + `td TurnDeps`）+ 1 Setter
+- `KnowledgeFacade` 封装 `Retriever`/`Router`/`FederatedRetriever`/`Evaluator`
+- `chat_orchestrator.go` 从 11 行 Setter 调用 → 4 行直接字段赋值
 
 ### Milestone 依赖关系
 

@@ -6,6 +6,8 @@ import (
 
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/pkg/loggateway"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type txClientKey struct{}
@@ -38,11 +40,19 @@ func (d *Data) ExecInTx(ctx context.Context, fn func(ctx context.Context) error)
 	return nil
 }
 
-func (d *Data) clientFromCtx(ctx context.Context) *ent.Client {
+func EntClientFromCtx(ctx context.Context, fallback *ent.Client) *ent.Client {
 	if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
 		return tx.Client()
 	}
-	return d.entClient
+	return fallback
+}
+
+func (d *Data) clientFromCtx(ctx context.Context) *ent.Client {
+	return EntClientFromCtx(ctx, d.entClient)
+}
+
+func (d *Data) ClientFromCtx(ctx context.Context) *ent.Client {
+	return EntClientFromCtx(ctx, d.entClient)
 }
 
 func txClientFromCtx(ctx context.Context) *ent.Client {
@@ -62,6 +72,30 @@ func TxExecerFromCtx(ctx context.Context, fallback *sql.DB) execer {
 		return tx.Client()
 	}
 	return fallback
+}
+
+func (d *Data) PostgresExecInTx(ctx context.Context, fn func(ctx context.Context, tx *sql.Tx) error) error {
+	if d == nil {
+		return kerrors.InternalServer("DATA", "data not initialized")
+	}
+	pg := d.Postgres()
+	if pg == nil {
+		return kerrors.InternalServer("DATA", "postgres not configured")
+	}
+	tx, err := pg.BeginTx(ctx, nil)
+	if err != nil {
+		d.lg.Error("postgres transaction begin failed", loggateway.StepID("data.pg_tx"), loggateway.Err(err))
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := fn(ctx, tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		d.lg.Error("postgres transaction commit failed", loggateway.StepID("data.pg_tx"), loggateway.Err(err))
+		return err
+	}
+	return nil
 }
 
 func queryRowScan(ctx context.Context, e execer, query string, args []any, dest ...any) error {

@@ -272,6 +272,27 @@ WHERE scope_type = ? AND scope_id = ? AND status = 'active' AND deleted_at = ''
 	if len(updates) == 0 {
 		return 0, nil
 	}
+	if st.txMgr != nil {
+		var total int64
+		err := st.txMgr.ExecInTx(ctx, func(txCtx context.Context) error {
+			c := st.txMgr.ClientFromCtx(txCtx)
+			for _, u := range updates {
+				res, err := c.ExecContext(txCtx, `
+UPDATE memory_entities SET confidence = ?, updated_at = updated_at
+WHERE id = ? AND scope_type = ? AND scope_id = ? AND status = 'active'`,
+					u.NewConf, u.ID, scopeType, scopeID)
+				if err != nil {
+					st.lg.Warn("confidence decay update failed for entity", loggateway.Str("entity_id", u.ID), loggateway.Err(err))
+					return err
+				}
+				if n, _ := res.RowsAffected(); n > 0 {
+					total++
+				}
+			}
+			return nil
+		})
+		return total, err
+	}
 	tx, err := st.client.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -289,7 +310,8 @@ UPDATE memory_entities SET confidence = ?, updated_at = updated_at
 WHERE id = ? AND scope_type = ? AND scope_id = ? AND status = 'active'`,
 			u.NewConf, u.ID, scopeType, scopeID)
 		if err != nil {
-			continue
+			st.lg.Warn("confidence decay update failed for entity", loggateway.Str("entity_id", u.ID), loggateway.Err(err))
+			return 0, err
 		}
 		if n, _ := res.RowsAffected(); n > 0 {
 			total++

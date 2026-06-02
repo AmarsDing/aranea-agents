@@ -45,17 +45,14 @@
     </q-card-section>
 
     <q-space />
-    <q-card-actions v-if="!isBuiltin" align="between" class="agent-card__actions">
+    <q-card-actions align="between" class="agent-card__actions">
       <span class="agent-card__context">{{ contextLabel }}</span>
       <div class="q-gutter-xs">
         <q-btn flat dense rounded color="primary" label="设置" :to="`/agents/${agent.id}/settings`" />
-        <q-btn flat dense rounded color="secondary" label="复制" @click="$emit('duplicate', agent)" />
-        <q-btn flat dense rounded color="negative" icon="delete" @click="$emit('delete', agent)" />
+        <q-btn v-if="!isBuiltin" flat dense rounded color="secondary" label="复制" @click="$emit('duplicate', agent)" />
+        <q-btn v-if="!isBuiltin" flat dense rounded color="negative" icon="delete" @click="$emit('delete', agent)" />
+        <q-chip v-if="isBuiltin" dense square class="agent-card__readonly-chip" icon="verified_user">内置</q-chip>
       </div>
-    </q-card-actions>
-    <q-card-actions v-else align="between" class="agent-card__actions agent-card__actions--readonly">
-      <span class="agent-card__context">{{ contextLabel }}</span>
-      <q-chip dense square class="agent-card__readonly-chip" icon="verified_user">内置</q-chip>
     </q-card-actions>
   </q-card>
 </template>

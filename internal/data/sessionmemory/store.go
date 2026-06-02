@@ -12,20 +12,45 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
+// TxManager abstracts SQLite transaction management for sessionmemory Store.
+// Defined here because it's only used within data layer; *Data satisfies this
+// interface implicitly via ExecInTx and ClientFromCtx methods.
+// Returns *ent.Client (not interface) because Store helper methods require
+// Ent-typed client for CRUD operations beyond raw SQL.
+type TxManager interface {
+	ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
+	ClientFromCtx(ctx context.Context) *ent.Client
+}
+
+type StoreOption func(*Store)
+
+func WithTxManager(mgr TxManager) StoreOption {
+	return func(s *Store) {
+		if mgr != nil {
+			s.txMgr = mgr
+		}
+	}
+}
+
 type Store struct {
 	client *ent.Client
+	txMgr  TxManager
 	policy *biz.MemoryPolicyEngine
 	lg     loggateway.Logger
 }
 
-func NewStore(client *ent.Client, lg loggateway.Logger) *Store {
+func NewStore(client *ent.Client, lg loggateway.Logger, opts ...StoreOption) *Store {
 	if client == nil {
 		return nil
 	}
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &Store{client: client, lg: lg}
+	s := &Store{client: client, lg: lg}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // Client returns the shared Ent client (SQLite).

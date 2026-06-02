@@ -161,7 +161,7 @@ func insertAgent(ctx context.Context, tx *sql.Tx, id string, a biz.Agent, rolesJ
 		a.PositionKey, a.SystemPromptMode, a.ContextWindow,
 		0, "", rolesJSON,
 		"", now, now, "",
-		true, "system", a.PositionKey, a.AgentVariant, a.VariantDescription,
+		false, "imported", a.PositionKey, a.AgentVariant, a.VariantDescription,
 	}
 	if len(cols) != len(vals) {
 		return fmt.Errorf("agents column count %d != value count %d", len(cols), len(vals))
@@ -201,11 +201,13 @@ func insertTeam(ctx context.Context, tx *sql.Tx, teamID string, t biz.Team, now 
 		"id", "team_key", "display_name", "status", "is_default",
 		"definition_json", "adk_app_name", "category_industry_id",
 		"created_at", "updated_at", "deleted_at",
+		"readonly", "source",
 	}
 	vals := []any{
 		teamID, t.TeamKey, t.DisplayName, t.Status, false,
 		t.DefinitionJSON, "", t.CategoryIndustryID,
 		now, now, "",
+		false, "imported",
 	}
 	if len(cols) != len(vals) {
 		return fmt.Errorf("teams column count %d != value count %d", len(cols), len(vals))
@@ -218,6 +220,8 @@ func insertTeam(ctx context.Context, tx *sql.Tx, teamID string, t biz.Team, now 
 		"display_name = excluded.display_name",
 		"definition_json = excluded.definition_json",
 		"category_industry_id = excluded.category_industry_id",
+		"readonly = excluded.readonly",
+		"source = excluded.source",
 		"updated_at = excluded.updated_at",
 	}
 	query := fmt.Sprintf(

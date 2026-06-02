@@ -81,7 +81,8 @@
           </q-btn>
           <q-btn flat dense round size="sm" color="primary" icon="content_copy" @click="$emit('duplicate', team)" />
           <q-btn flat dense round size="sm" color="primary" icon="edit" @click="$emit('edit', team)" />
-          <q-btn flat dense round size="sm" color="negative" icon="delete" :disable="team.is_default" @click="$emit('remove', team)" />
+          <q-btn flat dense round size="sm" color="negative" icon="delete" :disable="team.is_default || !!team.readonly" @click="$emit('remove', team)" />
+          <q-chip v-if="team.readonly" dense square size="sm" icon="verified_user">内置</q-chip>
         </div>
       </footer>
     </div>

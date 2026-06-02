@@ -51,7 +51,7 @@ func (r *Runner) compileTeamRuntime(
 	compiledTeam *biz.CompiledTeam,
 	err error,
 ) {
-	if r.graphRoot == nil {
+	if r.cfg.GraphRoot == nil {
 		if nRoot, nLookup, nOk, nErr := r.tryNativeFallback(ctx, def, teamDeps, "native_emergency"); nOk {
 			return nRoot, nLookup, "", nil, nil
 		} else if nErr != nil {
@@ -73,7 +73,7 @@ func (r *Runner) compileTeamRuntime(
 			return ""
 		}
 		return strings.TrimSpace(ag.AgentKey)
-	}, r.graphLoader, r.lg)
+	}, r.cfg.GraphLoader, r.lg)
 	if cerr != nil {
 		r.lg.Warn("Graph 编译失败", loggateway.StepID("team.graph_runtime.compile"), loggateway.Err(cerr))
 		metrics.TeamGraphRuntimeTotal.WithLabelValues("graph", "compile_error").Inc()
@@ -87,7 +87,7 @@ func (r *Runner) compileTeamRuntime(
 	}
 
 	compiledTeam = ct
-	groot, gerr := r.graphRoot.BuildTeamGraphRoot(ctx, ct.GraphBuildConfig)
+	groot, gerr := r.cfg.GraphRoot.BuildTeamGraphRoot(ctx, ct.GraphBuildConfig)
 	if gerr != nil {
 		r.lg.Warn("GraphAgent 构建失败", loggateway.StepID("team.graph_runtime.build"), loggateway.Err(gerr))
 		metrics.TeamGraphRuntimeTotal.WithLabelValues("graph", "build_error").Inc()

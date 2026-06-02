@@ -127,36 +127,29 @@ func (o *ChatOrchestrator) onSessionRunSoftBudget(ctx context.Context, run biz.S
 	safego.Go(ctx, "session-run-auto-escalate", func() {
 		timer := time.NewTimer(wait)
 		defer timer.Stop()
+		fromTimer := false
 		select {
 		case <-ctx.Done():
-			escalateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			cur, err := o.chTurn.SessionRuns.Get(escalateCtx, runID)
-			if err != nil || cur.ID == "" {
-				return
-			}
-			if cur.Phase != biz.SessionRunPhaseEscalating {
-				return
-			}
-			o.escalateSessionRunToDurable(escalateCtx, sessionID, runID)
-			return
 		case <-timer.C:
-			escalateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-			cur, err := o.chTurn.SessionRuns.Get(escalateCtx, runID)
-			if err != nil || cur.ID == "" {
-				return
-			}
-			if cur.Phase != biz.SessionRunPhaseEscalating {
+			fromTimer = true
+		}
+		escalateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		cur, err := o.chTurn.SessionRuns.Get(escalateCtx, runID)
+		if err != nil || cur.ID == "" {
+			return
+		}
+		if cur.Phase != biz.SessionRunPhaseEscalating {
+			if fromTimer {
 				o.lg.Warn("skipping auto-escalate, run no longer escalating",
 					loggateway.StepID("session-run-auto-escalate"),
 					loggateway.Str("session_run_id", runID),
 					loggateway.Any("current_phase", cur.Phase),
 				)
-				return
 			}
-			o.escalateSessionRunToDurable(escalateCtx, sessionID, runID)
+			return
 		}
+		o.escalateSessionRunToDurable(escalateCtx, sessionID, runID)
 	})
 }
 

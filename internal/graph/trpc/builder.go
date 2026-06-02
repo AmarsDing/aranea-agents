@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -16,30 +17,34 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
-type ReducerType string
+type ReducerType = biz.ReducerType
+type ExecutionEngineType = biz.ExecutionEngineType
 
 const (
-	ReducerDefault ReducerType = "default"
-	ReducerAppend  ReducerType = "append"
-	ReducerCover   ReducerType = "cover"
-	ReducerMerge   ReducerType = "merge"
+	ReducerDefault = biz.ReducerDefault
+	ReducerAppend  = biz.ReducerAppend
+	ReducerCover   = biz.ReducerCover
+	ReducerMerge   = biz.ReducerMerge
 )
 
-type StateFieldDef struct {
-	Name            string
-	Type            string
-	Reducer         ReducerType
-	DefaultValue    any
-	Required        bool
-	DisableDeepCopy bool
+const (
+	EngineBSP = biz.EngineBSP
+	EngineDAG = biz.EngineDAG
+)
+
+type StateFieldDef = biz.StateFieldDef
+
+type EdgeDef = biz.EdgeDef
+
+type ConditionalEdgeDef struct {
+	biz.ConditionalEdgeDef
+	CondFunc any
 }
 
-type ExecutionEngineType string
-
-const (
-	EngineBSP ExecutionEngineType = "bsp"
-	EngineDAG ExecutionEngineType = "dag"
-)
+type NodeDef struct {
+	biz.NodeDef
+	Func trpcgraph.NodeFunc
+}
 
 type SubgraphDef struct {
 	ID              string
@@ -49,42 +54,6 @@ type SubgraphDef struct {
 	OutputMapper    trpcgraph.SubgraphOutputMapper
 	InterruptBefore bool
 	InterruptAfter  bool
-}
-
-type NodeDef struct {
-	ID                    string
-	FuncRef               string
-	Func                  trpcgraph.NodeFunc
-	Type                  string
-	Description           string
-	Instruction           string
-	ModelName             string
-	ToolNames             []string
-	AgentName             string
-	InterruptBefore       bool
-	InterruptAfter        bool
-	Destinations          []string
-	RetryMaxAttempts      int
-	FailureAction         string
-	FallbackAgent         string
-	InputMapperJSON       string
-	OutputMapperJSON      string
-	IsolatedMessages      bool
-	InputFromLastResponse bool
-	CacheEnabled          bool
-	CacheTTLSeconds       int
-}
-
-type EdgeDef struct {
-	From string
-	To   string
-}
-
-type ConditionalEdgeDef struct {
-	From        string
-	CondFuncRef string
-	CondFunc    any
-	PathMap     map[string]string
 }
 
 type GraphBuildConfig struct {

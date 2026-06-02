@@ -71,6 +71,8 @@ func toProtoTeam(t biz.Team) *v1.Team {
 		DagNodeId:           t.DagNodeID,
 		DependsOn:           t.DependsOn,
 		ParallelConfigJson:  t.ParallelConfigJSON,
+		Readonly:            t.Readonly,
+		Source:              t.Source,
 	}
 }
 

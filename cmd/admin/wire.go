@@ -496,6 +496,41 @@ func provideTeamOrchestrationDeps(
 	}
 }
 
+func provideRunnerConfig(
+	pluginRT *plugintrpc.Runtime,
+	pluginMgr *plugintrpc.Manager,
+	knowledgeRetriever *knowledge.Retriever,
+	knowledgeRouter *knowledge.AdaptiveRouter,
+	knowledgeFederatedRetriever *knowledge.FederatedRetriever,
+	knowledgeEvaluator *knowledge.RetrievalEvaluator,
+	graphs *biz.GraphUsecase,
+	graphFactory biz.GraphBuilderFactory,
+	tasks *biz.TaskUsecase,
+) team.RunnerConfig {
+	cfg := team.RunnerConfig{
+		PluginRT:      pluginRT,
+		PluginManager: pluginMgr,
+		Knowledge: &team.KnowledgeFacade{
+			Retriever:          knowledgeRetriever,
+			Router:             knowledgeRouter,
+			FederatedRetriever: knowledgeFederatedRetriever,
+			Evaluator:          knowledgeEvaluator,
+		},
+	}
+	if graphs != nil {
+		cfg.GraphLoader = graphadapter.NewLinkedGraphBuildConfigLoader(graphs)
+	}
+	if graphFactory != nil {
+		if builder, ok := graphFactory.(graphadapter.TeamGraphRootBuilder); ok {
+			cfg.GraphRoot = builder
+		}
+	}
+	if tasks != nil {
+		cfg.TeamGraphTasks = team.NewTaskUsecaseGraphTaskCreator(tasks)
+	}
+	return cfg
+}
+
 func provideChannelTurnDeps(
 	turnJobs *biz.ChannelTurnJobUsecase,
 	sessionRuns *biz.SessionRunUsecase,
