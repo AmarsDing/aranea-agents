@@ -59,6 +59,13 @@ message DeleteAvatarAssetRequest {
   string id = 1 [(google.api.field_behavior) = REQUIRED];
 }
 
+message RefreshChannelPlatformIconsRequest {}
+
+message RefreshChannelPlatformIconsResponse {
+  int32 updated = 1;
+  int32 failed = 2;
+}
+
 service AvatarService {
   rpc ListAvatarAssets(ListAvatarAssetsRequest) returns (ListAvatarAssetsResponse) {
     option (google.api.http) = {
@@ -88,6 +95,13 @@ service AvatarService {
   rpc DeleteAvatarAsset(DeleteAvatarAssetRequest) returns (google.protobuf.Empty) {
     option (google.api.http) = {
       delete: "/v1/avatar-assets/{id}"
+    };
+  }
+
+  rpc RefreshChannelPlatformIcons(RefreshChannelPlatformIconsRequest) returns (RefreshChannelPlatformIconsResponse) {
+    option (google.api.http) = {
+      post: "/v1/avatar-assets/channel-platform-icons:refresh"
+      body: "*"
     };
   }
 }

@@ -9,9 +9,7 @@ import (
 	a2av1 "aranea-agents/api/kratos/a2a/v1"
 	adminv1 "aranea-agents/api/kratos/admin/v1"
 	agentv1 "aranea-agents/api/kratos/agent/v1"
-	agentcategoryv1 "aranea-agents/api/kratos/agent_category/v1"
 	airefinev1 "aranea-agents/api/kratos/ai_refine/v1"
-	industryv1 "aranea-agents/api/kratos/industry/v1"
 	artifactv1 "aranea-agents/api/kratos/artifact/v1"
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
 	channelv1 "aranea-agents/api/kratos/channel/v1"
@@ -93,7 +91,6 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	adminv1.RegisterAdminServiceHTTPServer(srv, s.Admin)
 	avatarv1.RegisterAvatarServiceHTTPServer(srv, s.Avatar)
 	agentv1.RegisterAgentServiceHTTPServer(srv, s.Agents)
-	agentcategoryv1.RegisterAgentCategoryServiceHTTPServer(srv, s.AgentCat)
 	if s.AIRefine != nil {
 		airefinev1.RegisterAIRefineServiceHTTPServer(srv, s.AIRefine)
 	}
@@ -121,7 +118,6 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	ecosystemv1.RegisterEcosystemServiceHTTPServer(srv, s.Ecosystem)
 	eventv1.RegisterEventServiceHTTPServer(srv, s.Event)
 	gatewayv1.RegisterGatewayServiceHTTPServer(srv, s.Gateway)
-	industryv1.RegisterIndustryServiceHTTPServer(srv, s.Industry)
 	taxonomyv1.RegisterTaxonomyServiceHTTPServer(srv, s.Taxonomy)
 	skillevov1.RegisterSkillEvolutionServiceHTTPServer(srv, s.SkillEvo)
 }

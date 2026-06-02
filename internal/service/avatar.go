@@ -103,3 +103,15 @@ func (s *AvatarService) DeleteAvatarAsset(ctx context.Context, req *v1.DeleteAva
 	}
 	return &emptypb.Empty{}, nil
 }
+
+// RefreshChannelPlatformIcons re-fetches channel platform icons from Iconify API.
+func (s *AvatarService) RefreshChannelPlatformIcons(ctx context.Context, req *v1.RefreshChannelPlatformIconsRequest) (*v1.RefreshChannelPlatformIconsResponse, error) {
+	result, err := s.uc.RefreshChannelPlatformIcons(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &v1.RefreshChannelPlatformIconsResponse{
+		Updated: int32(result.Updated),
+		Failed:  int32(result.Failed),
+	}, nil
+}

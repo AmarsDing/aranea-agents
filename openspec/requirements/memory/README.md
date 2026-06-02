@@ -35,6 +35,7 @@
 | 设计 | [`memory.design.md`](./memory.design.md) | 目标架构、存储拓扑、双轨、Policy、MemoryWorker、Proto 索引 |
 | 开发计划 | [`memory-development.md`](./memory-development.md) | 模块定位、分层包表、全局现状、Phase、跨层任务 |
 | 优化方案 | [`memory-optimization-2026-05-26.md`](./memory-optimization-2026-05-26.md) | 6 项业务逻辑优化（L3 双轨、L4 衰减、队列隔离、PII、提取协议、Cascade Saga） |
+| **实施进度** | [`实施进度.md`](./实施进度.md) | **各层实施进度总览**：代码位置、完成状态、待办事项（2026-06-02 更新） |
 | 理论 | [`theory.md`](./theory.md) | 知识体系思辨（原 `38 memory.md`） |
 
 ### 分层

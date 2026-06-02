@@ -117,7 +117,7 @@ Aranea-Agents 是基于 **trpc-agent-go** 的多智能体编排平台。以 **Kr
 | **ToolService** | tool/v1 | ToolUsecase | 无 |
 | **KnowledgeService** | knowledge/v1 | KnowledgeUsecase | 无 |
 | **A2AService** | a2a/v1 | A2AUsecase | 通过 `A2ARunnerFactory` 端口 |
-| **AvatarService** | avatar/v1 | — | 无 |
+| **AvatarService** | avatar/v1 | AvatarUsecase | `ChannelIconRefresher` 函数钩子（biz 包 init 注册） |
 | **AgentCategoryService** | agent_category/v1 | AgentCategoryUsecase | 无 |
 | **AIRefineService** | ai_refine/v1 | — | 条件注册 |
 | **GatewayService** | gateway/v1 | — | 无 |

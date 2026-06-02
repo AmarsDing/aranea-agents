@@ -104,13 +104,10 @@ type TRPCBuilderDeps struct {
 	SkillUC         *biz.SkillUsecase
 	SkillDBRepo     trpcskill.Repository
 	CodeExecFactory *localexec.Factory
-	// PGO-1: AgentCategory is used to resolve the 岗位职责 (position description)
-	// from agent_category_nodes for injection into the system instruction.
+	// PGO-1: Taxonomy is used to resolve the 岗位职责 (position description)
+	// from industry_taxonomy for injection into the system instruction.
 	// Optional: when nil, category responsibility injection is skipped.
-	AgentCategory *biz.AgentCategoryUsecase
-	IndustryUC    *biz.IndustryUsecase
-	DepartmentUC  *biz.DepartmentUsecase
-	PositionUC    *biz.PositionUsecase
+	Taxonomy *biz.TaxonomyUsecase
 	ToolResultGate *biz.ToolResultGate
 	// DeferredManager controls lazy tool visibility. Optional: when nil,
 	// deferred tool filtering is skipped and all tools are always visible.

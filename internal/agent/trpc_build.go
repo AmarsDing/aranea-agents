@@ -56,12 +56,12 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 	// PGO-1-AGENT-02: Inject 岗位职责 from the category tree when the flag is on
 	// and the agent has a position associated (CategoryPositionID != "").
 	var catResp string
-	if shouldInjectCategoryResponsibility(ag) && deps.AgentCategory != nil {
-		catResp, _ = deps.AgentCategory.BuildResponsibility(ctx, ag.CategoryPositionID, ag.SystemPromptMode)
+	if shouldInjectCategoryResponsibility(ag) && deps.Taxonomy != nil {
+		catResp, _ = deps.Taxonomy.BuildResponsibility(ctx, ag.CategoryPositionID, ag.SystemPromptMode)
 	}
 	if indCtx := BuildIndustryContext(ctx, Deps{
 		Agents: deps.Agents, AgentUC: deps.AgentUC,
-		PositionUC: deps.PositionUC,
+		Taxonomy: deps.Taxonomy,
 	}, ag); indCtx != "" {
 		if catResp != "" {
 			catResp += "\n\n" + indCtx

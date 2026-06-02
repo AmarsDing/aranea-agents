@@ -81,6 +81,27 @@ service AvatarService {
 }
 ```
 
+### 2.3 Proto 扩展（渠道平台图标刷新）
+
+```protobuf
+message RefreshChannelPlatformIconsRequest {}
+
+message RefreshChannelPlatformIconsResponse {
+  int32 updated = 1;
+  int32 failed = 2;
+}
+
+service AvatarService {
+  // ... 已有方法 ...
+
+  rpc RefreshChannelPlatformIcons(RefreshChannelPlatformIconsRequest) returns (RefreshChannelPlatformIconsResponse) {
+    option (google.api.http) = { post: "/v1/avatar-assets/channel-platform-icons:refresh" body: "*" };
+  }
+}
+```
+
+**说明**：从 Iconify API（`https://api.iconify.design/simple-icons/{slug}.svg`）下载 SVG 图标，渲染为 PNG 后 upsert 到 `avatar_assets` 表（`category=channel`）。下载/渲染失败时回退到嵌入 PNG 或文字标签渲染。
+
 ---
 
 ## 三、Biz 层

@@ -15,8 +15,7 @@ type Deps struct {
 	AgentUC      *biz.AgentUsecase
 	ToolsCatalog biz.ToolCatalogReader
 	SQLiteSessionMemory bool
-	AgentCategory *biz.AgentCategoryUsecase
-	PositionUC    *biz.PositionUsecase
+	Taxonomy      *biz.TaxonomyUsecase
 }
 
 // BuildSystemPrompt joins agent description and prompt files, filtered by system_prompt_mode.
@@ -68,10 +67,16 @@ func BuildIndustryContext(ctx context.Context, d Deps, ag biz.Agent) string {
 	if strings.TrimSpace(ag.PositionKey) == "" {
 		return ""
 	}
-	if d.PositionUC == nil {
+	if d.Taxonomy == nil {
 		return ""
 	}
-	anc, err := d.PositionUC.GetWithAncestors(ctx, ag.PositionKey)
+	posNode, err := d.Taxonomy.GetByKey(ctx, ag.PositionKey)
+	if err != nil {
+		event.CtxFlowLogError(ctx, "agent.industry_context", "行业上下文构建失败：无法获取岗位节点",
+			event.P("position_key", ag.PositionKey), event.P("error", err))
+		return ""
+	}
+	anc, err := d.Taxonomy.GetAncestors(ctx, posNode.ID)
 	if err != nil {
 		event.CtxFlowLogError(ctx, "agent.industry_context", "行业上下文构建失败：无法获取岗位祖先链",
 			event.P("position_key", ag.PositionKey), event.P("error", err))
@@ -82,16 +87,7 @@ func BuildIndustryContext(ctx context.Context, d Deps, ag biz.Agent) string {
 		fmt.Fprintf(&b, "## 行业\n%s： %s\n", anc.Industry.Name, anc.Industry.Description)
 	}
 	fmt.Fprintf(&b, "## 部门\n%s： %s\n", anc.Department.Name, anc.Department.Description)
-	if rj := strings.TrimSpace(anc.Department.ResponsibilitiesJSON); rj != "" && rj != "{}" {
-		fmt.Fprintf(&b, "部门职责：%s\n", rj)
-	}
 	fmt.Fprintf(&b, "## 岗位\n%s： %s\n", anc.Position.Name, anc.Position.Description)
-	if rj := strings.TrimSpace(anc.Position.ResponsibilitiesJSON); rj != "" && rj != "{}" {
-		fmt.Fprintf(&b, "岗位职责：%s\n", rj)
-	}
-	if len(anc.Position.SkillsRequired) > 0 {
-		fmt.Fprintf(&b, "技能要求：%s\n", strings.Join(anc.Position.SkillsRequired, "、"))
-	}
 	return b.String()
 }
 

@@ -4,7 +4,6 @@ import (
 	a2av1 "aranea-agents/api/kratos/a2a/v1"
 	adminv1 "aranea-agents/api/kratos/admin/v1"
 	agentv1 "aranea-agents/api/kratos/agent/v1"
-	agentcategoryv1 "aranea-agents/api/kratos/agent_category/v1"
 	airefinev1 "aranea-agents/api/kratos/ai_refine/v1"
 	artifactv1 "aranea-agents/api/kratos/artifact/v1"
 	avatarv1 "aranea-agents/api/kratos/avatar/v1"
@@ -66,7 +65,6 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry) *grpc.Server {
 	adminv1.RegisterAdminServiceServer(srv, s.Admin)
 	avatarv1.RegisterAvatarServiceServer(srv, s.Avatar)
 	agentv1.RegisterAgentServiceServer(srv, s.Agents)
-	agentcategoryv1.RegisterAgentCategoryServiceServer(srv, s.AgentCat)
 	if s.AIRefine != nil {
 		airefinev1.RegisterAIRefineServiceServer(srv, s.AIRefine)
 	}

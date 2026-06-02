@@ -156,3 +156,13 @@ export async function getAvatarThumbnailDataUrl(assetId: string): Promise<string
   if (typeof b64 !== "string" || !b64) return "";
   return `data:${mime};base64,${b64}`;
 }
+
+/** 从 Iconify API 重新获取渠道平台图标 */
+export async function refreshChannelPlatformIcons(): Promise<{ updated: number; failed: number }> {
+  const svc = createAvatarService();
+  const res = (await svc.RefreshChannelPlatformIcons({})) as Record<string, unknown>;
+  return {
+    updated: Number(res.updated ?? 0),
+    failed: Number(res.failed ?? 0)
+  };
+}

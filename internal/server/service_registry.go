@@ -13,7 +13,6 @@ type ServiceRegistry struct {
 	Admin          *service.AdminService
 	Avatar         *service.AvatarService
 	Agents         *service.AgentService
-	AgentCat       *service.AgentCategoryService
 	LLM            *service.LlmProviderModelService
 	Hook           *service.HookService
 	Cron           *service.CronService
@@ -41,7 +40,6 @@ type ServiceRegistry struct {
 	Gateway        *service.GatewayService
 	ChannelIngress *service.ChannelIngress
 	AIRefine       *service.AIRefineService
-	Industry       *service.IndustryService
 	Taxonomy       *service.TaxonomyService
 	SkillEvo       *service.SkillEvolutionService
 }
@@ -52,7 +50,6 @@ func NewServiceRegistry(
 	admin *service.AdminService,
 	avatar *service.AvatarService,
 	agents *service.AgentService,
-	agentCat *service.AgentCategoryService,
 	llm *service.LlmProviderModelService,
 	hookSvc *service.HookService,
 	cronSvc *service.CronService,
@@ -80,7 +77,6 @@ func NewServiceRegistry(
 	gatewaySvc *service.GatewayService,
 	channelIngress *service.ChannelIngress,
 	aiRefine *service.AIRefineService,
-	industry *service.IndustryService,
 	taxonomy *service.TaxonomyService,
 	skillEvo *service.SkillEvolutionService,
 ) *ServiceRegistry {
@@ -88,7 +84,6 @@ func NewServiceRegistry(
 		Admin:          admin,
 		Avatar:         avatar,
 		Agents:         agents,
-		AgentCat:       agentCat,
 		LLM:            llm,
 		Hook:           hookSvc,
 		Cron:           cronSvc,
@@ -116,7 +111,6 @@ func NewServiceRegistry(
 		Gateway:        gatewaySvc,
 		ChannelIngress: channelIngress,
 		AIRefine:       aiRefine,
-		Industry:       industry,
 		Taxonomy:       taxonomy,
 		SkillEvo:       skillEvo,
 	}

@@ -42,7 +42,7 @@ var ProviderSet = wire.NewSet(
 	NewAvatarService,
 	NewAgentService,
 	NewTeamService,
-	NewAgentCategoryService,
+	NewTaxonomyService,
 	NewLlmProviderModelService,
 	NewHookService,
 	NewCronService,
@@ -101,7 +101,6 @@ var ProviderSet = wire.NewSet(
 	ProvideWebResearchTester,
 	// PGO-3: AI prompt refinement service.
 	NewAIRefineService,
-	NewIndustryService,
 	WireSessionStatusPublisher,
 	NewSpiritTeamAssembler,
 	NewSpiritSynthesisService,

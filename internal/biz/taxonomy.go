@@ -3,12 +3,52 @@ package biz
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
+
+// PositionPromptResult holds the resolved prompt content for a position variant.
+type PositionPromptResult struct {
+	PromptContent         string
+	Variant               string
+	PositionName          string
+	DepartmentName        string
+	IndustryName          string
+	IndustryDescription   string
+	DepartmentDescription string
+	PositionDescription   string
+	ResponsibilitiesJSON  string
+	VariantDescription    string
+}
+
+// VariantInfo describes a single variant of a position.
+type VariantInfo struct {
+	Key   string
+	Label string
+}
+
+var variantSafeRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+func newRandID() string {
+	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, 16)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
+}
+
+func variantLabel(v string) string {
+	if v == "general" {
+		return "通用"
+	}
+	return v
+}
 
 type TaxonomyNode struct {
 	ID           string

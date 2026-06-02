@@ -1,6 +1,8 @@
 # Phase 1: 命名重构 + 数据统一 实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **状态**: 🔶 部分完成（新旧并存，旧代码未清理）
+> **检查日期**: 2026-06-02
+> **关键发现**: 新 taxonomy 代码已创建，但旧 agent_category 代码未删除，两者并存
 
 **Goal:** 将 AgentCategory 体系重命名为 IndustryTaxonomy，废弃 industries/departments/positions 三表，统一到 industry_taxonomy 单表，升级 categories.yaml → taxonomy.yaml。
 
@@ -9,6 +11,46 @@
 **Tech Stack:** Go + Kratos v2 + Ent ORM + Vue 3 + Quasar + Pinia + TypeScript + Proto3
 
 **设计文档:** `design.md`
+
+---
+
+## 当前完成状态总览
+
+| Task | 描述 | 状态 | 备注 |
+|------|------|------|------|
+| Task 1 | 重命名 Ent Schema | 🔶 部分 | 新 schema 已创建，旧 schema 未删除 |
+| Task 2 | 重命名 Biz 层 | 🔶 部分 | 新 taxonomy.go 已创建，旧 agent_category.go 未删除 |
+| Task 3 | 重命名 Data 层 | 🔶 部分 | 新 taxonomy.go 已创建，旧 agent_category.go 未删除 |
+| Task 4 | 重命名 Proto | 🔶 部分 | 新 taxonomy.proto 已创建，旧 agent_category.proto 未删除 |
+| Task 5 | 重命名 Service 层 | 🔶 部分 | 新 taxonomy.go 已创建，旧 agent_category.go 未删除 |
+| Task 6 | 重命名 Server 层注册 | ❌ 未完成 | grpc.go/http.go 仍引用旧 agent_category |
+| Task 7 | 重命名 Agent 运行时依赖 | ❌ 未完成 | builder_deps/prompt 仍用 AgentCategory |
+| Task 8 | 重命名 Wire 注入 | ❌ 未完成 | 旧 Usecase 仍在 Wire 中 |
+| Task 9 | 更新 CLI 工具引用 | ❌ 未完成 | |
+| Task 10 | 更新 scenario loader | ❌ 未完成 | |
+| Task 11 | 删除三表体系文件 | ❌ 未完成 | IndustryUsecase/DepartmentUsecase/PositionUsecase 仍存在 |
+| Task 12 | 升级 taxonomy.yaml | ✅ 已完成 | |
+| Task 13 | 更新 SQL DDL 文件 | ❌ 未完成 | |
+| Task 14 | 前端重命名 — 后端 API 层 | ❌ 未完成 | services/index.ts 仍引用旧 agent_category |
+| Task 15 | 前端重命名 — 组件和页面 | ❌ 未完成 | |
+| Task 16 | 前端重命名 — Store/路由/工具 | ❌ 未完成 | category_position_id 仍存在 |
+| Task 17 | 前端重命名 — CSS/Sass | ❌ 未完成 | agent-category CSS 类名仍存在 |
+| Task 18 | 前端行业市场页迁移 | ❌ 未完成 | |
+| Task 19 | 全量编译验证 | ❌ 未完成 | |
+| Task 20 | 数据库迁移脚本 | ❌ 未完成 | |
+| Task 21 | 全局 grep 验证 | ❌ 未完成 | |
+
+### 残留引用统计（2026-06-02 检查）
+
+**后端**:
+- `AgentCategory` 引用: 20+ 处（agent_category.go, builder_deps.go, prompt.go, agent_repo.go 等）
+- `agent_category` 引用: 14 处（proto, seed, server 注册等）
+- `category_position_id` 引用: 5 处（seed_system_admin.go, agent.go schema, orgimport 等）
+- `IndustryUsecase/DepartmentUsecase/PositionUsecase` 引用: 20+ 处
+
+**前端**:
+- `AgentCategory/agent-category/agent-categories` 引用: 20+ 处（services, CSS, components）
+- `category_position_id` 引用: 10 处（types, wireNormalize, useAgentsPage, teamUtils 等）
 
 ---
 

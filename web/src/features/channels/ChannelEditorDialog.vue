@@ -121,6 +121,16 @@
                         class="q-mt-sm"
                         @click.stop="iconAssetId = ''"
                       />
+                      <q-btn
+                        flat
+                        dense
+                        no-caps
+                        icon="refresh"
+                        :label="t('channelEditor.refreshPlatformIcons')"
+                        :loading="refreshingIcons"
+                        class="q-mt-sm"
+                        @click.stop="onRefreshPlatformIcons"
+                      />
                       <agent-avatar-picker v-model="iconAssetId" v-model:open="iconPickerOpen" scope="channel" />
                     </div>
                     <span class="app-musebot-row__status">{{ fieldStatusLabel(fieldStatus(field)) }}</span>
@@ -301,8 +311,9 @@
 </template>
 
 <script setup lang="ts">
-import { toRef, computed } from "vue";
+import { toRef, computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { useQuasar } from "quasar";
 import ChannelCatalogPicker from "./ChannelCatalogPicker.vue";
 import ChannelConfigRow from "../../components/channels/ChannelConfigRow.vue";
 import ChannelRoutingFields from "../../components/channels/ChannelRoutingFields.vue";
@@ -311,6 +322,7 @@ import AgentAvatarPicker from "../../components/avatar/AgentAvatarPicker.vue";
 import ChannelTurnJobsPanel from "./ChannelTurnJobsPanel.vue";
 import { useChannelEditorForm } from "./useChannelEditorForm";
 import { useChannelEditorLabels } from "./useChannelEditorLabels";
+import { useAvatarCatalogStore } from "../../stores/avatar";
 import type { ChannelCatalogItem, ChannelCredential, ChannelRow } from "./types";
 
 const props = defineProps<{
@@ -384,5 +396,25 @@ const longTaskPresetHelp = computed(() => ({
 
 function sectionDomId(id: string) {
   return `channel-section-${id}`;
+}
+
+const refreshingIcons = ref(false);
+const avatarStore = useAvatarCatalogStore();
+const $q = useQuasar();
+
+async function onRefreshPlatformIcons() {
+  refreshingIcons.value = true;
+  try {
+    const result = await avatarStore.refreshChannelIcons();
+    $q.notify({
+      type: result.failed > 0 ? "warning" : "positive",
+      message: t("channelEditor.refreshIconsResult", { updated: result.updated, failed: result.failed }),
+      position: "top"
+    });
+  } catch {
+    $q.notify({ type: "negative", message: t("channelEditor.refreshIconsFailed"), position: "top" });
+  } finally {
+    refreshingIcons.value = false;
+  }
 }
 </script>

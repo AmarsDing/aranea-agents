@@ -124,6 +124,33 @@ func (uc *Usecase) UploadAvatar(ctx context.Context, data []byte, filename strin
 	return uc.repo.CreateAvatarAsset(ctx, asset, mainData, thumbData)
 }
 
+// RefreshChannelPlatformIconsResult holds the result of a channel icon refresh.
+type RefreshChannelPlatformIconsResult struct {
+	Updated int
+	Failed  int
+}
+
+// ChannelIconRefresher is a function type that refreshes channel platform icons.
+// The biz package registers the actual implementation at init time to avoid circular imports.
+type ChannelIconRefresher func(ctx context.Context, repo Repo) (*RefreshChannelPlatformIconsResult, error)
+
+// channelIconRefresher is the package-level hook set by the biz package at init.
+var channelIconRefresher ChannelIconRefresher
+
+// SetChannelIconRefresher registers the channel icon refresh implementation.
+func SetChannelIconRefresher(fn ChannelIconRefresher) {
+	channelIconRefresher = fn
+}
+
+// RefreshChannelPlatformIcons re-fetches channel platform icons from Iconify API
+// and upserts them into the avatar_assets table.
+func (uc *Usecase) RefreshChannelPlatformIcons(ctx context.Context) (*RefreshChannelPlatformIconsResult, error) {
+	if channelIconRefresher == nil {
+		return nil, errors.InternalServer("AVATAR", "channel icon refresher not registered")
+	}
+	return channelIconRefresher(ctx, uc.repo)
+}
+
 // DeleteAvatarAsset soft-deletes an avatar asset.
 func (uc *Usecase) DeleteAvatarAsset(ctx context.Context, id string) error {
 	if strings.TrimSpace(id) == "" {

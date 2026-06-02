@@ -169,6 +169,7 @@ CREATE INDEX idx_avatar_assets_system
 | GET | `/avatar-assets/:id/thumbnail` | **读缩略图**（若无缩略图可 302 或回退为 `/file`）。 |
 | POST | `/avatar-assets` | `multipart` 上传；校验类型/大小；**可选服务端再压图**；写入 `image_data`（及 `thumbnail_data`）；返回 **`{ id }`**。 |
 | DELETE | `/avatar-assets/:id` | 软删；校验权限与 **Agent 引用**。 |
+| POST | `/avatar-assets/channel-platform-icons:refresh` | 从 Iconify API 重新获取渠道平台图标并更新 DB；返回 `{ updated, failed }`。 |
 
 **前端 `src` 写法示例**：`const avatarSrc = (id) => \`/api/avatar-assets/${id}/thumbnail\``（或 `/file`）；若走 JWT 无 Cookie，可用短期签名 query：`/file?token=...`。
 

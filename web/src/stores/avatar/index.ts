@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import {
   getAvatarThumbnailDataUrl,
   listAvatarAssets,
+  refreshChannelPlatformIcons,
   uploadAvatarAsset,
   type AvatarAsset
 } from "../../features/avatar/api";
@@ -69,6 +70,12 @@ export const useAvatarCatalogStore = defineStore("avatarCatalog", {
       this.pickerSystem = [];
       this.pickerMine = [];
       this.thumbnailById = {};
+    },
+    /** 从 Iconify API 重新获取渠道平台图标，刷新后清除缓存 */
+    async refreshChannelIcons(): Promise<{ updated: number; failed: number }> {
+      const result = await refreshChannelPlatformIcons();
+      this.invalidateAll();
+      return result;
     }
   }
 });
