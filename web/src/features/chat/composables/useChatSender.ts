@@ -71,6 +71,9 @@ export function useChatSender(deps: SenderDeps) {
   let sendingTimeout: ReturnType<typeof setTimeout> | null = null;
   const SEND_DISPATCH_TIMEOUT_MS = 30_000;
 
+  let firstByteTimeout: ReturnType<typeof setTimeout> | null = null;
+  const FIRST_BYTE_TIMEOUT_MS = 90_000;
+
   let lastRunEventAt = 0;
   const RUN_STALL_TIMEOUT_MS = 180_000;
   const RUN_STALL_CHECK_INTERVAL_MS = 30_000;
@@ -115,6 +118,7 @@ export function useChatSender(deps: SenderDeps) {
   function markSendingDone() {
     sending.value = false;
     clearSendingTimeout();
+    clearFirstByteTimeout();
     clearStallCheck();
   }
 
@@ -123,6 +127,31 @@ export function useChatSender(deps: SenderDeps) {
       clearTimeout(sendingTimeout);
       sendingTimeout = null;
     }
+  }
+
+  function clearFirstByteTimeout() {
+    if (firstByteTimeout != null) {
+      clearTimeout(firstByteTimeout);
+      firstByteTimeout = null;
+    }
+  }
+
+  function onFirstByteArrived() {
+    clearFirstByteTimeout();
+  }
+
+  function onRunAccepted() {
+    clearFirstByteTimeout();
+    firstByteTimeout = setTimeout(() => {
+      if (sending.value) {
+        $q.notify({
+          type: "warning",
+          message: t("chat.firstByteTimeout", "响应等待时间较长，模型可能正在思考中"),
+          timeout: 8000,
+        });
+        clearFirstByteTimeout();
+      }
+    }, FIRST_BYTE_TIMEOUT_MS);
   }
 
   function touchRunActivity() {
@@ -180,7 +209,10 @@ export function useChatSender(deps: SenderDeps) {
     return s === "running" || s === "pending";
   }
 
-  const inputDisabled = computed(() => sending.value && !isActiveRun());
+  const inputDisabled = computed(() => {
+    if (isActiveRun()) return false;
+    return sending.value;
+  });
 
   async function onSend() {
     const content = deps.inputText.value.trim();
@@ -527,6 +559,8 @@ export function useChatSender(deps: SenderDeps) {
     markSending,
     markSendingDone,
     clearSendingTimeout,
+    onRunAccepted,
+    onFirstByteArrived,
     stopStreaming,
     submitAwaitingReply,
     submitToolConfirm: deps.submitToolConfirm,

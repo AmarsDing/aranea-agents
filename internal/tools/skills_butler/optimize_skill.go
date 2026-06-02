@@ -33,7 +33,7 @@ func newOptimizeSkillTool(deps Deps) trpctool.Tool {
 			return optimizeSkillOutput{}, errAgentIDRequired
 		}
 		if input.SkillName == "" {
-			return optimizeSkillOutput{}, fmt.Errorf("skill_name is required")
+			return optimizeSkillOutput{}, errSkillNameRequired
 		}
 		since := time.Now().AddDate(0, 0, -30)
 		stats, err := deps.Queries.GetSkillInvocationStats(ctx, input.AgentID, since)

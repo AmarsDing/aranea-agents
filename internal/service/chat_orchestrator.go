@@ -105,6 +105,9 @@ type ChatOrchestrator struct {
 	orchCache       *biz.OrchestrationCache
 	teamStarter     biz.TeamStarterPort
 	turnTimeout     time.Duration
+	skillEvo        *biz.SkillEvolutionUsecase
+	evolution       *biz.EvolutionUsecase
+	skillStats      biz.SkillInvocationStatsReader
 
 	sessionRunBindings   sync.Map
 	awaitMetaCache       sync.Map
@@ -139,6 +142,9 @@ type ChatOrchestratorDeps struct {
 	OrchCache       *biz.OrchestrationCache
 	TeamStarter     biz.TeamStarterPort
 	TurnTimeout     time.Duration
+	SkillEvo        *biz.SkillEvolutionUsecase
+	Evolution       *biz.EvolutionUsecase
+	SkillStats      biz.SkillInvocationStatsReader
 }
 
 func coalesceRunRegistry(r *rt.RunRegistry) *rt.RunRegistry {
@@ -178,6 +184,9 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		orchCache:       deps.OrchCache,
 		teamStarter:     deps.TeamStarter,
 		turnTimeout:     deps.TurnTimeout,
+		skillEvo:        deps.SkillEvo,
+		evolution:       deps.Evolution,
+		skillStats:      deps.SkillStats,
 	}
 	if o.turnTimeout <= 0 {
 		o.turnTimeout = chatagent.DefaultTurnTimeout

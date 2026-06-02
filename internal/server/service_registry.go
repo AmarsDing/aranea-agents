@@ -42,6 +42,8 @@ type ServiceRegistry struct {
 	ChannelIngress *service.ChannelIngress
 	AIRefine       *service.AIRefineService
 	Industry       *service.IndustryService
+	Taxonomy       *service.TaxonomyService
+	SkillEvo       *service.SkillEvolutionService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -79,6 +81,8 @@ func NewServiceRegistry(
 	channelIngress *service.ChannelIngress,
 	aiRefine *service.AIRefineService,
 	industry *service.IndustryService,
+	taxonomy *service.TaxonomyService,
+	skillEvo *service.SkillEvolutionService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:          admin,
@@ -113,5 +117,7 @@ func NewServiceRegistry(
 		ChannelIngress: channelIngress,
 		AIRefine:       aiRefine,
 		Industry:       industry,
+		Taxonomy:       taxonomy,
+		SkillEvo:       skillEvo,
 	}
 }

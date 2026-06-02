@@ -7,22 +7,23 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
 type evolveSkillInput struct {
-	AgentID               string `json:"agent_id" jsonschema:"description=Agent ID,required"`
-	SkillName             string `json:"skill_name" jsonschema:"description=要进化的 Skill 名称,required"`
+	AgentID                string `json:"agent_id" jsonschema:"description=Agent ID,required"`
+	SkillName              string `json:"skill_name" jsonschema:"description=要进化的 Skill 名称,required"`
 	ImprovementDescription string `json:"improvement_description" jsonschema:"description=改进描述，说明需要优化的方向,required"`
 }
 
 type evolveSkillOutput struct {
-	ProposalID    string `json:"proposal_id"`
-	SkillName     string `json:"skill_name"`
-	Status        string `json:"status"`
-	PatternDesc   string `json:"pattern_desc"`
-	CreatedAt     string `json:"created_at"`
+	ProposalID  string `json:"proposal_id"`
+	SkillName   string `json:"skill_name"`
+	Status      string `json:"status"`
+	PatternDesc string `json:"pattern_desc"`
+	CreatedAt   string `json:"created_at"`
 }
 
 func newEvolveSkillTool(deps Deps) trpctool.Tool {
@@ -31,10 +32,10 @@ func newEvolveSkillTool(deps Deps) trpctool.Tool {
 			return evolveSkillOutput{}, errAgentIDRequired
 		}
 		if input.SkillName == "" {
-			return evolveSkillOutput{}, fmt.Errorf("skill_name is required")
+			return evolveSkillOutput{}, errSkillNameRequired
 		}
 		if input.ImprovementDescription == "" {
-			return evolveSkillOutput{}, fmt.Errorf("improvement_description is required")
+			return evolveSkillOutput{}, errImprovementDescRequired
 		}
 		patternDesc := fmt.Sprintf("%s: %s", input.SkillName, input.ImprovementDescription)
 		h := sha256.Sum256([]byte(patternDesc))
@@ -53,11 +54,11 @@ func newEvolveSkillTool(deps Deps) trpctool.Tool {
 			return evolveSkillOutput{}, err
 		}
 		return evolveSkillOutput{
-			ProposalID:    created.ID,
-			SkillName:     created.SkillName,
-			Status:        string(created.Status),
-			PatternDesc:   created.PatternDesc,
-			CreatedAt:     created.CreatedAt.Format(time.RFC3339),
+			ProposalID:  created.ID,
+			SkillName:   created.SkillName,
+			Status:      string(created.Status),
+			PatternDesc: created.PatternDesc,
+			CreatedAt:   created.CreatedAt.Format(time.RFC3339),
 		}, nil
 	}
 	return function.NewFunctionTool(

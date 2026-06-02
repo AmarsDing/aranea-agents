@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"aranea-agents/internal/biz"
@@ -93,7 +94,10 @@ func (r *skillProposalRepo) GetByPatternHash(ctx context.Context, agentID string
 		&p.ID, &p.AgentID, &p.PatternHash, &p.PatternDesc, &p.SkillName, &p.SkillMD, &p.Status, &p.ApprovedBy, &p.RejectedBy, &createdAt, &approvedAt,
 	)
 	if err != nil {
-		return nil, nil
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, kerrors.InternalServer("SKILL_EVO", "query skill proposal by pattern hash: "+err.Error())
 	}
 	t, err := time.Parse(time.RFC3339, createdAt)
 	if err != nil {

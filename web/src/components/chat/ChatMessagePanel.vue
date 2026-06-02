@@ -142,6 +142,7 @@
       :is-dark="isDark"
       :sending="sending"
       :input-disabled="inputDisabled"
+      :is-runner-active="isRunnerActive"
       :is-awaiting-user="isAwaitingUser"
       :await-kind="awaitKind"
       :await-tool-key="awaitToolKey"
@@ -243,6 +244,7 @@ const props = defineProps<{
   isDark: boolean;
   sending?: boolean;
   inputDisabled?: boolean;
+  isRunnerActive?: boolean;
   isAwaitingUser?: boolean;
   awaitKind?: string;
   awaitToolKey?: string;

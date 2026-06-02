@@ -97,6 +97,9 @@ var ProviderSet = wire.NewSet(
 	NewSeedVersionRepo,
 	NewOrchestrationCacheRepo,
 	NewCompiledTeamRepo,
+	NewSkillProposalRepo,
+	NewSkillInvocationStatsRepo,
+	NewTaxonomyRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -584,56 +587,6 @@ func ensurePostgresSchemas(pg *sql.DB, vdim int, lg loggateway.Logger) error {
 	return nil
 }
 
-// seedInitialData seeds initial admin from config and optional dev bypass admin.
-func seedInitialData(entClient *ent.Client, c *conf.Data, lg loggateway.Logger) error {
-	if err := ensureInitialAdminFromConfig(context.Background(), entClient, c, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.initial_admin"), loggateway.Err(err))
-		return err
-	}
-	if err := ensureDevBypassAdminIfEnabled(context.Background(), entClient, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.dev_admin"), loggateway.Err(err))
-		return err
-	}
-	if err := ensureChannelPlatformAvatars(context.Background(), entClient, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.channel_avatars"), loggateway.Err(err))
-		return err
-	}
-	if err := ensureAgentAvatars(context.Background(), entClient, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.agent_avatars"), loggateway.Err(err))
-		return err
-	}
-	if err := SeedSystemAdminAgent(context.Background(), entClient, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.system_admin_agent"), loggateway.Err(err))
-		return err
-	}
-	if err := SeedSpiritAgent(context.Background(), entClient, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_agent"), loggateway.Err(err))
-		return err
-	}
-	if err := SeedBuiltinCLIAdminTools(context.Background(), entClient, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.cli_admin_tools"), loggateway.Err(err))
-		return err
-	}
-	if err := SeedBuiltinIndustries(context.Background(), entClient); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.builtin_industries"), loggateway.Err(err))
-		return err
-	}
-	scenarioDir := biz.ScenarioDir()
-	if err := SeedSpiritPromptFiles(context.Background(), entClient, scenarioDir, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_prompt_files"), loggateway.Err(err))
-		return err
-	}
-	if err := SeedBuiltinAgentCategories(context.Background(), entClient, scenarioDir, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.agent_categories"), loggateway.Err(err))
-		return err
-	}
-	if err := SeedAgentTemplates(context.Background(), entClient, scenarioDir, lg); err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.seed.agent_templates"), loggateway.Err(err))
-		return err
-	}
-	return nil
-}
-
 func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 	lg := d.lg
 	if err := ensureChannelPlatformAvatars(context.Background(), entClient, lg); err != nil {
@@ -662,6 +615,12 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 	}
 
 	scenarioDir := biz.ScenarioDir()
+
+	if err := SeedBuiltinTaxonomy(context.Background(), entClient, scenarioDir, lg); err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.builtin_taxonomy"), loggateway.Err(err))
+		return err
+	}
+
 	if err := SeedSpiritPromptFiles(context.Background(), entClient, scenarioDir, lg); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_prompt_files"), loggateway.Err(err))
 		return err
@@ -672,6 +631,9 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 		}, lg),
 		"agent_templates": NewLazySeeder(entClient, func(ctx context.Context, client *ent.Client) error {
 			return SeedAgentTemplates(ctx, client, scenarioDir, lg)
+		}, lg),
+		"industry_agents": NewLazySeeder(entClient, func(ctx context.Context, client *ent.Client) error {
+			return SeedIndustryAgentsRawSQL(ctx, d.RawDB(), scenarioDir, lg)
 		}, lg),
 	}
 

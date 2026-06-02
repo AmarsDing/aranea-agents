@@ -57,6 +57,8 @@ var ProviderSet = wire.NewSet(
 	NewWebhookDispatcher,
 	NewAgentTemplateUsecase,
 	NewLearningLoopUsecase,
+	NewSkillEvolutionUsecase,
+	NewTaxonomyUsecase,
 	NewToolResultGate,
 	ProvideAgentExistenceChecker,
 	ProvideAgentIDExistenceChecker,

@@ -55,7 +55,7 @@ const elapsedLabel = computed(() => {
   return `${Math.floor(sec / 60)}m ${sec % 60}s`;
 });
 
-const showCancel = computed(() => props.showCancel !== false && props.status === "running");
+const showCancel = computed(() => props.showCancel !== false && (props.status === "running" || props.status === "pending"));
 </script>
 
 <style scoped lang="sass">

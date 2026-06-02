@@ -41,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import type { LearningPattern } from "../../features/agents/api.learning";
+import type { LearningPattern } from "../../features/agents/learning.types";
 
 defineProps<{
   patterns: LearningPattern[];

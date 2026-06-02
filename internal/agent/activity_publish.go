@@ -12,6 +12,10 @@ import (
 
 const stuckToolResultReason = "turn completed without tool result"
 
+func toolCallIDValid(tc *event.EnvelopeToolCall) bool {
+	return tc != nil && strings.TrimSpace(tc.ID) != ""
+}
+
 // PublishActivityEnvelopes persists chat.activity rows after WS publish (orchestration lives outside EventProjector).
 func PublishActivityEnvelopes(ctx context.Context, meta ProjectMeta, persister ActivityPersister, envelopes []event.Envelope, lg loggateway.Logger) {
 	if persister == nil || len(envelopes) == 0 {
@@ -21,7 +25,7 @@ func PublishActivityEnvelopes(ctx context.Context, meta ProjectMeta, persister A
 		if env.ToolCall == nil {
 			continue
 		}
-		if strings.TrimSpace(env.ToolCall.ID) == "" {
+		if !toolCallIDValid(env.ToolCall) {
 			lg.Warn("跳过无ID的ToolCall卡片",
 				loggateway.StepID("agent.activity.persist"),
 				loggateway.Str("session_id", meta.SessionID),
@@ -85,7 +89,7 @@ func FinalizeStuckToolActivities(ctx context.Context, meta ProjectMeta, persiste
 		return
 	}
 	for _, tc := range pending {
-		if strings.TrimSpace(tc.ID) == "" {
+		if !toolCallIDValid(&tc) {
 			lg.Warn("跳过无ID的未完成工具卡片",
 				loggateway.StepID("agent.activity.finalize_stuck"),
 				loggateway.Str("session_id", meta.SessionID),

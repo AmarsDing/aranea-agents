@@ -50,6 +50,8 @@ export type StreamHandlerCtx = {
   getMessages: (sessionId: string) => Message[];
   setMessages: (sessionId: string, rows: Message[]) => void;
   markSendingDone: () => void;
+  clearSendingTimeout?: () => void;
+  onRunAccepted?: () => void;
   onRunStatus: (env: Envelope) => void;
   onErrorNotify: (message: string) => void;
   onOrchestrationNotice?: (message: string) => void;
@@ -62,6 +64,7 @@ export type StreamHandlerCtx = {
   setLastIntentPass: (value: IntentPassResult | null) => void;
   onStreamingPatch?: (sessionId: string, patch: { reasoning?: string; partialText?: string; done?: boolean }) => void;
   onRunActivity?: () => void;
+  onFirstByteArrived?: () => void;
   /** Team-only: resolve member meta for member_* envelopes */
   resolveMemberMeta?: (agentKey: string) => { agent_key: string; name: string; role: string };
   streamIdPrefix?: string;
@@ -189,6 +192,7 @@ export function bindStreamHandlers(
   stream.onType("text_delta", withSessionFilter(ctx, (env, sid) => {
     if (!env.content?.text && !env.content?.reasoning) return;
     ctx.onRunActivity?.();
+    ctx.onFirstByteArrived?.();
     ctx.onStreamingPatch?.(sid, {
       reasoning: env.content?.reasoning,
       partialText: env.content?.text,
@@ -229,6 +233,11 @@ export function bindStreamHandlers(
     if (env.session_id && env.session_id !== ctx.sessionId) return;
     ctx.onRunActivity?.();
     ctx.onRunStatus(env);
+    const status = String(env.metadata?.status ?? "");
+    if (status === "running" || status === "accepted") {
+      ctx.clearSendingTimeout?.();
+      ctx.onRunAccepted?.();
+    }
   });
 
   if (ctx.resolveMemberMeta) {

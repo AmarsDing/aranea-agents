@@ -26,17 +26,21 @@ func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, lg loggateway
 		is_default, is_favorite, icon, agent_description,
 		category_position_id, system_prompt_mode, context_window,
 		budget_monthly_cents, config_json, roles_json, created_by,
-		created_at, updated_at, deleted_at, readonly, kind
+		created_at, updated_at, deleted_at, readonly, kind,
+		position_key, agent_variant
 	) VALUES (
 		'agent___system_admin__', ?, '系统管家', 'openrouter', 'gpt-4.1-mini',
 		'active', 0, 0, '', '系统内置管理助手，负责管理 Skill、Agent、Team 等系统资源，提供系统级运维能力。',
 		'', 'complete', 0, 0, '{"tools_profile":"system_admin"}', '[]', 'system',
-		?, ?, '', 1, 'system'
+		?, ?, '', 1, 'system',
+		'system_admin', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		display_name = excluded.display_name,
 		agent_description = excluded.agent_description,
 		readonly = excluded.readonly,
 		kind = excluded.kind,
+		position_key = excluded.position_key,
+		agent_variant = excluded.agent_variant,
 		updated_at = excluded.updated_at`
 	if _, err := client.ExecContext(ctx, q, systemAdminAgentKey, now, now); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.system_admin_agent"), loggateway.Err(err))
@@ -55,17 +59,21 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		is_default, is_favorite, icon, agent_description,
 		category_position_id, system_prompt_mode, context_window,
 		budget_monthly_cents, config_json, roles_json, created_by,
-		created_at, updated_at, deleted_at, readonly, kind
+		created_at, updated_at, deleted_at, readonly, kind,
+		position_key, agent_variant
 	) VALUES (
 		'agent___spirit__', ?, '精灵助手', 'openrouter', 'gpt-4.1-mini',
 		'active', 0, 0, '', '系统内置总管家，用户唯一对话入口，自动组装团队并委派工作。',
 		'', 'complete', 0, 0, '{"tools_profile":"spirit"}', '[]', 'system',
-		?, ?, '', 1, 'system'
+		?, ?, '', 1, 'system',
+		'spirit', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		display_name = excluded.display_name,
 		agent_description = excluded.agent_description,
 		readonly = excluded.readonly,
 		kind = excluded.kind,
+		position_key = excluded.position_key,
+		agent_variant = excluded.agent_variant,
 		updated_at = excluded.updated_at`
 	if _, err := client.ExecContext(ctx, q, biz.SpiritAgentKey, now, now); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_agent"), loggateway.Err(err))

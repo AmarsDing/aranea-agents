@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/cli_admin"
+	"aranea-agents/internal/tools/skills_butler"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
@@ -112,6 +113,21 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 		out = append(out, tools.NewSynthesizeResultsTool(o.spiritSynthesis))
 	}
 	return out
+}
+
+func (o *ChatOrchestrator) skillsButlerTools(_ context.Context, ag biz.Agent) []trpctool.Tool {
+	if o == nil {
+		return nil
+	}
+	settings, err := o.td.Catalog.Agents.GetAgentRuntimeSettings(context.Background(), ag.ID)
+	if err != nil || !settings.EvolutionSkillEvolve {
+		return nil
+	}
+	return skills_butler.RegisterAll(skills_butler.Deps{
+		Skills:    skillsButlerSkillUsecaseAdapter{uc: o.skillEvo},
+		Evolution: skillsButlerEvolutionAdapter{uc: o.evolution},
+		Queries:   skillsButlerQueryAdapter{reader: o.skillStats},
+	})
 }
 
 func skillItemFromBiz(s biz.Skill) cli_admin.SkillItem {

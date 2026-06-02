@@ -32,8 +32,10 @@ import (
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
+	skillevov1 "aranea-agents/api/kratos/skill_evolution/v1"
 	systemsettingv1 "aranea-agents/api/kratos/system_setting/v1"
 	teamv1 "aranea-agents/api/kratos/team/v1"
+	taxonomyv1 "aranea-agents/api/kratos/taxonomy/v1"
 	toolv1 "aranea-agents/api/kratos/tool/v1"
 	usagev1 "aranea-agents/api/kratos/usage/v1"
 	a2atrpc "aranea-agents/internal/a2a/trpc"
@@ -120,6 +122,8 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	eventv1.RegisterEventServiceHTTPServer(srv, s.Event)
 	gatewayv1.RegisterGatewayServiceHTTPServer(srv, s.Gateway)
 	industryv1.RegisterIndustryServiceHTTPServer(srv, s.Industry)
+	taxonomyv1.RegisterTaxonomyServiceHTTPServer(srv, s.Taxonomy)
+	skillevov1.RegisterSkillEvolutionServiceHTTPServer(srv, s.SkillEvo)
 }
 
 // registerCustomRoutes registers cross-cutting operational routes that bypass proto

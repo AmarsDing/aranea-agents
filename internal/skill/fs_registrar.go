@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"aranea-agents/pkg/loggateway"
 
@@ -22,6 +23,9 @@ func NewFileSystemSkillRegistrar(agentRootDir func(agentID string) string, lg lo
 func (r *FileSystemSkillRegistrar) RegisterSkill(ctx context.Context, agentID string, name string, skillMD string) error {
 	if r.agentRootDir == nil {
 		return kerrors.InternalServer("SKILL_EVO", "agent root dir resolver is nil")
+	}
+	if strings.Contains(name, "..") || strings.ContainsAny(name, `/\`) {
+		return kerrors.BadRequest("SKILL_EVO", "skill name contains invalid path characters")
 	}
 	root := r.agentRootDir(agentID)
 	skillDir := filepath.Join(root, name)

@@ -590,6 +590,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		ToolResultGate:        o.rt.ToolResultGate,
 	}
 	deps.CustomTools = append(deps.CustomTools, o.spiritCustomTools(ag)...)
+	deps.CustomTools = append(deps.CustomTools, o.skillsButlerTools(ctx, ag)...)
 	root, err := chatagent.BuildTRPCAgentCached(ctx, ag, deps, o.lg)
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)

@@ -573,6 +573,9 @@ func provideChatServiceDeps(
 	spiritSynthesis *service.SpiritSynthesisService,
 	orchCache *biz.OrchestrationCache,
 	teamStarter biz.TeamStarterPort,
+	skillEvo *biz.SkillEvolutionUsecase,
+	evolution *biz.EvolutionUsecase,
+	skillStats biz.SkillInvocationStatsReader,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	return service.ChatOrchestratorDeps{
@@ -611,6 +614,9 @@ func provideChatServiceDeps(
 		SpiritSynthesis: spiritSynthesis,
 		OrchCache:       orchCache,
 		TeamStarter:     teamStarter,
+		SkillEvo:        skillEvo,
+		Evolution:       evolution,
+		SkillStats:      skillStats,
 	}
 }
 
@@ -765,6 +771,14 @@ func provideEvolutionScanner(evo *biz.EvolutionUsecase, logger log.Logger) *jobs
 		return nil
 	}
 	return jobs.NewEvolutionScanner(0, evo, logger)
+}
+
+func provideSkillAutoCreator() biz.SkillAutoCreator {
+	return nil
+}
+
+func provideSkillRegistrationPort(skillUC *biz.SkillUsecase) biz.SkillRegistrationPort {
+	return service.NewSkillsButlerRegistrationAdapter(skillUC)
 }
 
 func provideLearningLoopScanner(loop *biz.LearningLoopUsecase, lg loggateway.Logger) *jobs.LearningLoopScanner {
@@ -1193,6 +1207,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideAutoMemoryWorker,
 		provideL4GraphWriter,
 		provideEvolutionScanner,
+		provideSkillAutoCreator,
+		provideSkillRegistrationPort,
 		provideLearningLoopScanner,
 		provideProviderHealthScanner,
 		provideChannelHealthScanner,
@@ -1251,6 +1267,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		wire.Bind(new(biz.MCPServerReader), new(biz.MCPServerRepo)),
 		wire.Bind(new(biz.TeamReader), new(biz.TeamRepository)),
 		wire.Bind(new(biz.TeamRunRepo), new(biz.TeamRepository)),
+		wire.Bind(new(biz.PatternReader), new(biz.PatternReadWriter)),
 		provideWSTurnExecutor,
 		newApp,
 		provideWireOut,

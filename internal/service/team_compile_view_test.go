@@ -11,6 +11,8 @@ func TestBuildCompiledGraphNodeView(t *testing.T) {
 	tests := []struct {
 		name            string
 		node            biz.NodeDef
+		meta            biz.NodeTaskMeta
+		metaOK          bool
 		member          team.MemberDef
 		memberOK        bool
 		displayName     func(agentID string) string
@@ -112,7 +114,7 @@ func TestBuildCompiledGraphNodeView(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildCompiledGraphNodeView(tt.node, tt.member, tt.memberOK, tt.displayName)
+			got := buildCompiledGraphNodeView(tt.node, tt.meta, tt.metaOK, tt.member, tt.memberOK, tt.displayName)
 			if got == nil {
 				t.Fatal("expected non-nil view")
 			}
@@ -129,12 +131,13 @@ func TestBuildCompiledGraphNodeView(t *testing.T) {
 func TestBuildCompiledGraphNodeView_FieldMapping(t *testing.T) {
 	node := biz.NodeDef{
 		ID: "node-1", Type: "agent", AgentName: "key-x",
-		RequiredRole: "worker", Description: "desc", Instruction: "instr",
+		Description: "desc", Instruction: "instr",
 	}
+	meta := biz.NodeTaskMeta{RequiredRole: "worker"}
 	member := team.MemberDef{AgentID: "a1", Name: "Display"}
 	displayName := func(string) string { return "" }
 
-	got := buildCompiledGraphNodeView(node, member, true, displayName)
+	got := buildCompiledGraphNodeView(node, meta, true, member, true, displayName)
 	if got.Id != "node-1" {
 		t.Errorf("Id = %q, want %q", got.Id, "node-1")
 	}
@@ -159,7 +162,7 @@ func TestBuildCompiledGraphNodeView_NilDisplayName(t *testing.T) {
 	}
 	member := team.MemberDef{AgentID: "a1", Name: "M1"}
 
-	got := buildCompiledGraphNodeView(node, member, true, nil)
+	got := buildCompiledGraphNodeView(node, biz.NodeTaskMeta{}, false, member, true, nil)
 	if got == nil {
 		t.Fatal("expected non-nil view with nil displayName")
 	}
@@ -173,7 +176,7 @@ func TestBuildCompiledGraphNodeView_DisplayNamePriorityChain(t *testing.T) {
 		node := biz.NodeDef{ID: "n1", AgentName: "key-a1", Description: "desc"}
 		member := team.MemberDef{AgentID: "a1", Name: "MemberName"}
 		displayName := func(string) string { return "CatalogName" }
-		got := buildCompiledGraphNodeView(node, member, true, displayName)
+		got := buildCompiledGraphNodeView(node, biz.NodeTaskMeta{}, false, member, true, displayName)
 		if got.AgentDisplayName != "MemberName" {
 			t.Errorf("member.Name should win, got %q", got.AgentDisplayName)
 		}
@@ -183,7 +186,7 @@ func TestBuildCompiledGraphNodeView_DisplayNamePriorityChain(t *testing.T) {
 		node := biz.NodeDef{ID: "n1", AgentName: "key-a1", Description: "desc"}
 		member := team.MemberDef{AgentID: "a1", Name: ""}
 		displayName := func(string) string { return "CatalogName" }
-		got := buildCompiledGraphNodeView(node, member, true, displayName)
+		got := buildCompiledGraphNodeView(node, biz.NodeTaskMeta{}, false, member, true, displayName)
 		if got.AgentDisplayName != "CatalogName" {
 			t.Errorf("displayName func should win over description, got %q", got.AgentDisplayName)
 		}
@@ -193,7 +196,7 @@ func TestBuildCompiledGraphNodeView_DisplayNamePriorityChain(t *testing.T) {
 		node := biz.NodeDef{ID: "n1", AgentName: "key-a1", Description: ""}
 		member := team.MemberDef{AgentID: "a1", Name: ""}
 		displayName := func(string) string { return "" }
-		got := buildCompiledGraphNodeView(node, member, true, displayName)
+		got := buildCompiledGraphNodeView(node, biz.NodeTaskMeta{}, false, member, true, displayName)
 		if got.AgentDisplayName != "key-a1" {
 			t.Errorf("AgentName should be final fallback, got %q", got.AgentDisplayName)
 		}

@@ -230,8 +230,11 @@ export function useChatWorkspace() {
     displayTeams,
     resolveAgentId: () => appStore.selectedAgent?.id,
     markSendingDone: () => sender.markSendingDone(),
+    clearSendingTimeout: () => sender.clearSendingTimeout(),
+    onRunAccepted: () => sender.onRunAccepted(),
     onRunStatus: (env) => applyRunStatusFromEnvelope(env),
     touchRunActivity: () => sender.touchRunActivity(),
+    onFirstByteArrived: () => sender.onFirstByteArrived(),
     refreshRunStatus: refreshRunStatusForUi,
     onCompressNotice: (_sid: string, prevRatio: number, newRatio: number) => {
       const prevPct = Math.round(prevRatio * 100);

@@ -106,6 +106,8 @@ var ProviderSet = wire.NewSet(
 	NewSpiritTeamAssembler,
 	NewSpiritSynthesisService,
 	NewTeamStarter,
+	NewTaxonomyService,
+	NewSkillEvolutionService,
 )
 
 func ProvideSkillResolveRootFn(sys biz.SystemSettingRepo) func(ctx context.Context) string {

@@ -26,8 +26,11 @@ export type StreamManagerDeps = {
   displayTeams: Ref<TeamRow[]>;
   resolveAgentId: () => string | undefined;
   markSendingDone: () => void;
+  clearSendingTimeout: () => void;
+  onRunAccepted: () => void;
   onRunStatus: (env: Envelope) => void;
   touchRunActivity: () => void;
+  onFirstByteArrived: () => void;
   refreshRunStatus: (sessionId?: string) => Promise<void>;
   onCompressNotice?: (sessionId: string, prevRatio: number, newRatio: number) => void;
 };
@@ -165,6 +168,8 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         getMessages: (sid) => deps.messageStore.getMessages(sid),
         setMessages: (sid, rows) => deps.messageStore.setMessages(sid, rows),
         markSendingDone: deps.markSendingDone,
+        clearSendingTimeout: deps.clearSendingTimeout,
+        onRunAccepted: deps.onRunAccepted,
         onRunStatus: deps.onRunStatus,
         onErrorNotify: notifyError,
         onOrchestrationNotice: notifyOrchestration,
@@ -188,6 +193,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
           });
         },
         onRunActivity: deps.touchRunActivity,
+        onFirstByteArrived: deps.onFirstByteArrived,
       },
       { batched: true }
     );
@@ -232,6 +238,8 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         getMessages: (sid) => deps.messageStore.getMessages(sid),
         setMessages: (sid, rows) => deps.messageStore.setMessages(sid, rows),
         markSendingDone: deps.markSendingDone,
+        clearSendingTimeout: deps.clearSendingTimeout,
+        onRunAccepted: deps.onRunAccepted,
         onRunStatus: deps.onRunStatus,
         onErrorNotify: notifyError,
         onOrchestrationNotice: notifyOrchestration,
@@ -242,6 +250,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         },
         resolveMemberMeta: resolveTeamMemberMeta,
         onRunActivity: deps.touchRunActivity,
+        onFirstByteArrived: deps.onFirstByteArrived,
       }
     );
 

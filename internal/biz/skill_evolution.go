@@ -158,6 +158,14 @@ func (uc *SkillEvolutionUsecase) RegisterApproved(ctx context.Context, id string
 	return uc.repo.UpdateStatus(ctx, id, SkillProposalStatusRegistered, "")
 }
 
+func (uc *SkillEvolutionUsecase) GetProposal(ctx context.Context, id string) (SkillProposal, error) {
+	id, err := requireNonEmpty(id, "SKILL_EVO", "id")
+	if err != nil {
+		return SkillProposal{}, err
+	}
+	return uc.repo.GetByID(ctx, id)
+}
+
 func (uc *SkillEvolutionUsecase) ListProposals(ctx context.Context, agentID string, status string) ([]SkillProposal, error) {
 	agentID, err := requireNonEmpty(agentID, "SKILL_EVO", "agent_id")
 	if err != nil {

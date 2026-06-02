@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package kratos.skill_evolution.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+
+option go_package = "aranea-agents/api/kratos/skill_evolution/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.skill_evolution.v1";
+
+message SkillProposal {
+  string id = 1;
+  string agent_id = 2;
+  string pattern_hash = 3;
+  string pattern_desc = 4;
+  string skill_name = 5;
+  string skill_md = 6;
+  string status = 7;
+  string approved_by = 8;
+  string rejected_by = 9;
+  string created_at = 10;
+  string approved_at = 11;
+}
+
+message ListSkillProposalsRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+  string status = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message ListSkillProposalsResponse {
+  repeated SkillProposal items = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message GetSkillProposalRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message ApproveSkillProposalRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string approved_by = 2;
+}
+
+message RejectSkillProposalRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  string rejected_by = 2;
+}
+
+message RegisterSkillProposalRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message TriggerSkillDetectionRequest {
+  string agent_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message TriggerSkillDetectionResponse {
+  repeated SkillProposal proposals = 1;
+}
+
+service SkillEvolutionService {
+  rpc ListSkillProposals(ListSkillProposalsRequest) returns (ListSkillProposalsResponse) {
+    option (google.api.http) = {get: "/v1/skill-evolution/proposals"};
+  }
+  rpc GetSkillProposal(GetSkillProposalRequest) returns (SkillProposal) {
+    option (google.api.http) = {get: "/v1/skill-evolution/proposals/{id}"};
+  }
+  rpc ApproveSkillProposal(ApproveSkillProposalRequest) returns (SkillProposal) {
+    option (google.api.http) = {
+      post: "/v1/skill-evolution/proposals/{id}/approve"
+      body: "*"
+    };
+  }
+  rpc RejectSkillProposal(RejectSkillProposalRequest) returns (SkillProposal) {
+    option (google.api.http) = {
+      post: "/v1/skill-evolution/proposals/{id}/reject"
+      body: "*"
+    };
+  }
+  rpc RegisterSkillProposal(RegisterSkillProposalRequest) returns (SkillProposal) {
+    option (google.api.http) = {
+      post: "/v1/skill-evolution/proposals/{id}/register"
+      body: "*"
+    };
+  }
+  rpc TriggerSkillDetection(TriggerSkillDetectionRequest) returns (TriggerSkillDetectionResponse) {
+    option (google.api.http) = {
+      post: "/v1/skill-evolution/agents/{agent_id}/detect"
+      body: "*"
+    };
+  }
+}

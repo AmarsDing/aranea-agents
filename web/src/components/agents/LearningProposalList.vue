@@ -61,7 +61,7 @@
 </template>
 
 <script setup lang="ts">
-import type { LearningProposal } from "../../features/agents/api.learning";
+import type { LearningProposal } from "../../features/agents/learning.types";
 
 defineProps<{
   proposals: LearningProposal[];

@@ -124,7 +124,7 @@
         autogrow
         :input-style="{ minHeight: '56px' }"
         :dark="isDark"
-        :disable="inputDisabled ?? sending"
+        :disable="isRunnerActive ? false : (inputDisabled ?? sending)"
         @keydown="onInputKeydown"
         @paste="handlePaste"
         @update:model-value="$emit('update:modelValue', String($event ?? ''))"
@@ -229,7 +229,7 @@
             <q-icon name="mic" size="18px" />
           </q-btn>
           <q-btn
-            v-if="sending"
+            v-if="sending || isRunnerActive"
             dense
             unelevated
             color="negative"
@@ -288,6 +288,7 @@ const props = defineProps<{
   isDark: boolean;
   sending?: boolean;
   inputDisabled?: boolean;
+  isRunnerActive?: boolean;
   isAwaitingUser?: boolean;
   awaitKind?: string;
   awaitToolKey?: string;
@@ -359,6 +360,14 @@ function handlePaste(event: ClipboardEvent) {
 function onInputKeydown(event: KeyboardEvent) {
   if (event.key !== "Enter" || event.shiftKey || event.isComposing || event.keyCode === 229) return;
   event.preventDefault();
-  emit("send");
+  if (props.isRunnerActive) {
+    const text = props.modelValue.trim();
+    if (text) {
+      emit("enqueue-message", text);
+      emit("update:modelValue", "");
+    }
+  } else {
+    emit("send");
+  }
 }
 </script>

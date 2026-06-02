@@ -55,6 +55,7 @@
         :is-dark="layout.isDark"
         :sending="composer.sending"
         :input-disabled="composer.inputDisabled"
+        :is-runner-active="composer.isRunnerActive"
         :is-awaiting-user="composer.isAwaitingUser"
         :await-kind="composer.awaitKind"
         :await-tool-key="composer.awaitToolKey"
@@ -195,6 +196,9 @@ import { useChatWorkspace } from "../features/chat/composables/useChatWorkspace"
 import { useSpiritTeamStore } from "../stores/spirit";
 import { useQuasar } from "quasar";
 import { useI18n } from "vue-i18n";
+import type { Agent } from "../features/agents/types";
+
+const SPIRIT_AGENT_KEY = "__spirit__";
 
 const { coreReady, fileRef, layout, entity, session, composer, dialogs } = useChatWorkspace();
 const spiritStore = useSpiritTeamStore();
@@ -204,7 +208,7 @@ const { t } = useI18n();
 
 function onSelectSpirit() {
   spiritStore.returnToSpirit();
-  const spiritAgent = entity.store.agents.find((a: { agent_key: string }) => a.agent_key === "__spirit__");
+  const spiritAgent = entity.store.agents.find((a: Agent) => a.agent_key === SPIRIT_AGENT_KEY);
   if (spiritAgent && entity.store.selectedAgent?.id !== spiritAgent.id) {
     entity.selectAgent(spiritAgent);
   }
