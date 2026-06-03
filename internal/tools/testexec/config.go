@@ -72,6 +72,8 @@ func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresea
 		return tools.AssemblyConfig{EnabledTools: []string{"email"}}, true
 	case "todo_write":
 		return tools.AssemblyConfig{EnabledTools: []string{"todo"}}, true
+	case "working_memory.read", "working_memory.list", "working_memory.write", "working_memory.patch", "working_memory.delete":
+		return tools.AssemblyConfig{EnabledTools: []string{"working_memory"}}, true
 	case "await_user_reply":
 		return tools.AssemblyConfig{EnabledTools: []string{"await_user_reply"}}, true
 	case "claude_code":
@@ -82,6 +84,10 @@ func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresea
 		return cfg, true
 	case "workspace_exec":
 		return tools.AssemblyConfig{}, false
+	case "read_document":
+		return tools.AssemblyConfig{EnabledTools: []string{"read_document"}}, true
+	case "read_spreadsheet":
+		return tools.AssemblyConfig{EnabledTools: []string{"read_spreadsheet"}}, true
 	default:
 		return tools.AssemblyConfig{}, false
 	}

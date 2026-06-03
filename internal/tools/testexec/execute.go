@@ -140,6 +140,16 @@ func catalogToolNames(key string) []string {
 		return []string{"search", "arxiv_search"}
 	case "google_search":
 		return []string{"search", "google_search"}
+	case "working_memory.read":
+		return []string{"read"}
+	case "working_memory.list":
+		return []string{"list"}
+	case "working_memory.write":
+		return []string{"write"}
+	case "working_memory.patch":
+		return []string{"patch"}
+	case "working_memory.delete":
+		return []string{"delete"}
 	default:
 		return []string{key}
 	}

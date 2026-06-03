@@ -218,7 +218,9 @@ func (uc *GraphUsecase) CancelExecution(ctx context.Context, executionID string)
 	if err != nil {
 		return err
 	}
+	exec.execMu.Lock()
 	if exec.Status != "running" && exec.Status != "waiting_human" {
+		exec.execMu.Unlock()
 		return ErrGraphInvalidStatus
 	}
 	if exec.runtime != nil {
@@ -229,6 +231,7 @@ func (uc *GraphUsecase) CancelExecution(ctx context.Context, executionID string)
 	exec.Status = "cancelled"
 	now := time.Now()
 	exec.FinishedAt = &now
+	exec.execMu.Unlock()
 	return uc.runRepo.UpdateRun(ctx, exec)
 }
 
@@ -237,7 +240,9 @@ func (uc *GraphUsecase) ResumeExecution(ctx context.Context, executionID string,
 	if err != nil {
 		return nil, err
 	}
+	exec.execMu.Lock()
 	if exec.Status != "waiting_human" && exec.Status != "running" {
+		exec.execMu.Unlock()
 		return nil, ErrGraphInvalidStatus
 	}
 
@@ -252,6 +257,7 @@ func (uc *GraphUsecase) ResumeExecution(ctx context.Context, executionID string,
 			uc.lg.Warn("cancel graph runtime on resume", loggateway.Err(err))
 		}
 	}
+	exec.execMu.Unlock()
 
 	ct, err := uc.buildConfigForExecution(ctx, exec)
 	if err != nil {
@@ -263,8 +269,10 @@ func (uc *GraphUsecase) ResumeExecution(ctx context.Context, executionID string,
 		return nil, kerrors.FromError(ErrGraphResume).WithCause(err)
 	}
 
+	exec.execMu.Lock()
 	exec.runtime = runtime
 	exec.Status = "running"
+	exec.execMu.Unlock()
 	exec.interruptMu.Lock()
 	exec.interrupted = false
 	exec.InterruptNode = ""
@@ -285,15 +293,21 @@ func (uc *GraphUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntimeEvent, e
 		uc.updateExecutionFromRuntimeEvent(exec, e)
 	}
 
-	uc.mu.Lock()
+	exec.execMu.Lock()
 	if exec.Status == "running" {
 		exec.Status = "completed"
 		now := time.Now()
 		exec.FinishedAt = &now
 	}
-	uc.evictIfNeeded()
-	uc.executions[execID] = exec
-	uc.mu.Unlock()
+	wasEvicted := exec.evicted
+	exec.execMu.Unlock()
+
+	if !wasEvicted {
+		uc.mu.Lock()
+		uc.evictIfNeeded()
+		uc.executions[execID] = exec
+		uc.mu.Unlock()
+	}
 	if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
 		uc.lg.Warn("consumeRuntimeEvents: UpdateRun failed", loggateway.StepID("graph.record_fail"), loggateway.Str("exec_id", execID), loggateway.Err(err))
 	}
