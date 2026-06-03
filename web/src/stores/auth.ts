@@ -4,8 +4,8 @@ import {
   loginAdminByEmail,
   loginAdminByUsername,
   logoutAdmin,
-  type AdminSession,
 } from '../features/admin/api';
+import type { AdminSession } from '../features/admin/types';
 import { clearServerDownNotify } from '../features/heartbeat/useServerHeartbeat';
 
 export type AuthIdentityMode = 'username' | 'email';

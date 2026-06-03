@@ -1,43 +1,12 @@
 import { createSystemSettingService } from '../../services/index';
 import type { SystemSettings } from '../../services/kratos/system_setting/v1/index';
-import type { KnowledgeEmbedPatch } from './knowledge-embed';
-import type { EvalLLMForm } from './eval-llm';
-import type { WebResearchPatch } from './web-research';
+import type { UpdateSystemSettingsInput, TestWebResearchInput, TestWebResearchResult } from './types';
 
 const api = createSystemSettingService();
 
 export async function getSystemSettings(): Promise<SystemSettings> {
   return api.GetSystemSettings({});
 }
-
-export type UpdateSystemSettingsInput = {
-  rootDirectory: string;
-  workDirectory: string;
-  globalMonthlyMicroUsd?: number;
-  a2aPublicBaseUrl?: string;
-  mcpAllowAdhocHttp?: boolean;
-  knowledgeEmbed?: KnowledgeEmbedPatch;
-  evalLLM?: EvalLLMForm;
-  webResearch?: WebResearchPatch;
-};
-
-export type TestWebResearchInput = {
-  provider?: string;
-  apiKey?: string;
-  maxResults?: number;
-  fetchTop?: number;
-  searchDepth?: string;
-  timeoutSec?: number;
-  httpProxy?: string;
-};
-
-export type TestWebResearchResult = {
-  ok?: boolean;
-  message?: string;
-  provider?: string;
-  resultCount?: number;
-  latencyMs?: number;
-};
 
 export async function testWebResearch(input: TestWebResearchInput): Promise<TestWebResearchResult> {
   const res = await api.TestWebResearch({

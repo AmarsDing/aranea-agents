@@ -46,6 +46,7 @@
                   form.agent_description = v;
                 }
               "
+              @error="(msg: string) => emit('refine-error', msg)"
             />
           </div>
         </div>
@@ -268,12 +269,13 @@ withDefaults(
   },
 );
 
-defineEmits<{
+const emit = defineEmits<{
   'copy-key': [];
   'open-permissions-tab': [];
   'open-memory-tab': [];
   'open-provider-manager': [];
   'filter-provider-models': [val: string, update: (fn: () => void) => void];
   'reset-provider-model-filter': [];
+  'refine-error': [message: string];
 }>();
 </script>

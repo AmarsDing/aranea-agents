@@ -21,6 +21,8 @@ import type {
   SessionTimelineItem,
   SessionTimelineSummary,
   SessionTurn,
+  CompactSessionResult,
+  MessageSearchResult,
 } from './types';
 import type { Message } from '../../domain/types';
 import { parseMessageOptions } from '../chat/parseMessageOptions';
@@ -38,6 +40,8 @@ export type {
   SessionBatchScope,
   BatchPreviewResult,
   BatchOperationResult,
+  CompactSessionResult,
+  MessageSearchResult,
 } from './types';
 
 const sessionApi = createSessionService();
@@ -366,15 +370,6 @@ export async function clearAgentSessions(agentID: string): Promise<void> {
   await sessionApi.DeleteSessionsByAgent({ agentId: agentID });
 }
 
-export interface CompactSessionResult {
-  compacted: boolean;
-  from_turn: number;
-  to_turn: number;
-  estimated_tokens_before: number;
-  estimated_tokens_after: number;
-  compression_level: string;
-}
-
 export async function compactSession(sessionId: string, preserveInstruction?: string): Promise<CompactSessionResult> {
   const data = await sessionApi.CompactSession({
     sessionId,
@@ -442,15 +437,6 @@ export async function listSessionChatMessagesAfterRevision(
     currentRevision: Number(data.currentRevision ?? afterRevision),
   };
 }
-
-export type MessageSearchResult = {
-  id: string;
-  session_id: string;
-  role: string;
-  content_markdown: string;
-  highlight: string;
-  created_at: string;
-};
 
 /** `GET /v1/sessions/messages/search` — FTS5 全文检索（需 messages_fts 表）。 */
 export async function searchSessionMessages(params: {

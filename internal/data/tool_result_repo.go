@@ -22,7 +22,7 @@ func NewToolResultBlobRepo(data *Data) *ToolResultBlobRepo {
 }
 
 func (r *ToolResultBlobRepo) SaveBlob(ctx context.Context, blob *biz.ToolResultBlob) error {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	_, err := client.ToolResultBlob.Create().
 		SetID(blob.ID).
 		SetSessionID(blob.SessionID).
@@ -40,7 +40,7 @@ func (r *ToolResultBlobRepo) SaveBlob(ctx context.Context, blob *biz.ToolResultB
 }
 
 func (r *ToolResultBlobRepo) GetBlob(ctx context.Context, id string) (*biz.ToolResultBlob, error) {
-	client := r.data.ReadEnt()
+	client := r.data.RW().Read(ctx)
 	row, err := client.ToolResultBlob.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -49,7 +49,7 @@ func (r *ToolResultBlobRepo) GetBlob(ctx context.Context, id string) (*biz.ToolR
 }
 
 func (r *ToolResultBlobRepo) ListBlobsBySession(ctx context.Context, sessionID string, fromTurn int) ([]*biz.ToolResultBlob, error) {
-	client := r.data.ReadEnt()
+	client := r.data.RW().Read(ctx)
 	rows, err := client.ToolResultBlob.Query().
 		Where(
 			toolresultblob.SessionIDEQ(sessionID),
@@ -78,7 +78,7 @@ func NewToolResultReplacementRepo(data *Data) *ToolResultReplacementRepo {
 }
 
 func (r *ToolResultReplacementRepo) SaveReplacement(ctx context.Context, rep *biz.ToolResultReplacement) error {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	_, err := client.ToolResultReplacement.Create().
 		SetID(rep.ID).
 		SetSessionID(rep.SessionID).
@@ -94,7 +94,7 @@ func (r *ToolResultReplacementRepo) SaveReplacement(ctx context.Context, rep *bi
 }
 
 func (r *ToolResultReplacementRepo) GetReplacementByMessage(ctx context.Context, sessionID, messageID string) (*biz.ToolResultReplacement, error) {
-	client := r.data.ReadEnt()
+	client := r.data.RW().Read(ctx)
 	row, err := client.ToolResultReplacement.Query().
 		Where(
 			toolresultreplacement.SessionIDEQ(sessionID),

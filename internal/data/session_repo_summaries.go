@@ -13,7 +13,7 @@ import (
 )
 
 func (r *sessionRepo) InsertSessionSummary(ctx context.Context, row biz.SessionSummary) error {
-	if r == nil || r.data == nil || r.data.entClient == nil {
+	if r == nil || r.data == nil {
 		return kerrors.InternalServer("SESSION", "session repo unavailable")
 	}
 	row.ID = strings.TrimSpace(row.ID)
@@ -27,7 +27,7 @@ func (r *sessionRepo) InsertSessionSummary(ctx context.Context, row biz.SessionS
 	}
 	q := `INSERT INTO session_summaries (id, session_id, summary_markdown, from_turn, to_turn, token_estimate, created_at)
 VALUES (?,?,?,?,?,?,?)`
-	_, err := r.data.entClient.ExecContext(ctx, q,
+	_, err := r.data.RW().Write(ctx).ExecContext(ctx, q,
 		row.ID, row.SessionID, row.SummaryMarkdown, row.FromTurn, row.ToTurn, row.TokenEstimate, row.CreatedAt)
 	return err
 }
@@ -38,7 +38,7 @@ func (r *sessionRepo) MaxSessionSummaryToTurn(ctx context.Context, sessionID str
 		return 0, kerrors.BadRequest("SESSION", "session id is required")
 	}
 	var max int
-	err := entQueryRowScan(r.readClient(ctx), ctx,
+	err := entQueryRowScan(r.data.RW().Read(ctx), ctx,
 		`SELECT COALESCE(MAX(to_turn), 0) FROM session_summaries WHERE session_id = ?`, []any{sessionID}, &max)
 	if err != nil {
 		return 0, err
@@ -51,7 +51,7 @@ func (r *sessionRepo) ListSessionSummaries(ctx context.Context, sessionID string
 	if sessionID == "" {
 		return nil, kerrors.BadRequest("SESSION", "session id is required")
 	}
-	rows, err := r.readClient(ctx).QueryContext(ctx,
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
 		`SELECT id, session_id, summary_markdown, from_turn, to_turn, token_estimate, created_at
 FROM session_summaries WHERE session_id = ? ORDER BY created_at ASC`, sessionID)
 	if err != nil {
@@ -75,7 +75,7 @@ func (r *sessionRepo) LatestSessionSummaryTime(ctx context.Context, sessionID st
 		return "", kerrors.BadRequest("SESSION", "session id is required")
 	}
 	var created string
-	err := entQueryRowScan(r.readClient(ctx), ctx,
+	err := entQueryRowScan(r.data.RW().Read(ctx), ctx,
 		`SELECT created_at FROM session_summaries WHERE session_id = ? ORDER BY created_at DESC LIMIT 1`, []any{sessionID}, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
@@ -91,7 +91,7 @@ func (r *sessionRepo) UpdateSessionListSummary(ctx context.Context, sessionID, s
 	if sessionID == "" {
 		return kerrors.BadRequest("SESSION", "session id is required")
 	}
-	_, err := r.data.entClient.Session.Update().
+	_, err := r.data.RW().Write(ctx).Session.Update().
 		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
 		SetSummary(strings.TrimSpace(summary)).
 		SetUpdatedAt(nowRFC3339()).
@@ -105,7 +105,7 @@ func (r *sessionRepo) SessionSummaryExists(ctx context.Context, sessionID string
 		return false, kerrors.BadRequest("SESSION", "session id is required")
 	}
 	var cnt int
-	err := entQueryRowScan(r.readClient(ctx), ctx,
+	err := entQueryRowScan(r.data.RW().Read(ctx), ctx,
 		`SELECT COUNT(1) FROM session_summaries WHERE session_id = ? AND from_turn = ? AND to_turn = ?`,
 		[]any{sessionID, fromTurn, toTurn}, &cnt)
 	if err != nil {

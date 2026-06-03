@@ -28,7 +28,7 @@ func (r *agentRepo) ListExtrasForAgents(ctx context.Context, agentIDs []string) 
 		return out, nil
 	}
 
-	sessions, err := r.readClient(ctx).Session.Query().
+	sessions, err := r.data.RW().Read(ctx).Session.Query().
 		Where(
 			entsession.AgentIDIn(ids...),
 			entsession.DeletedAtEQ(""),
@@ -61,7 +61,7 @@ func (r *agentRepo) ListExtrasForAgents(ctx context.Context, agentIDs []string) 
 		out[id] = ex
 	}
 
-	pending, err := r.readClient(ctx).EvolutionSuggestion.Query().
+	pending, err := r.data.RW().Read(ctx).EvolutionSuggestion.Query().
 		Where(
 			evolutionsuggestion.AgentIDIn(ids...),
 			evolutionsuggestion.StatusEQ("pending"),

@@ -63,6 +63,7 @@
               @open-provider-manager="openProviderManager"
               @filter-provider-models="filterProviderModels"
               @reset-provider-model-filter="resetProviderModelFilter"
+              @refine-error="onRefineError"
             />
           </q-tab-panel>
 
@@ -87,10 +88,12 @@
               :file-token-by-name="fileTokenByName"
               :dirty="fileDirty"
               :agent-id="toValue(agentId)"
+              :refine-fn="refinePromptField"
               @update-file-body="updateFileBody"
               @confirm-reload="confirmFileReload"
               @reload="reloadActiveFile"
               @save="saveAgent"
+              @refine-error="onRefineError"
             />
           </q-tab-panel>
 
@@ -288,11 +291,13 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, toValue } from 'vue';
+import { useQuasar } from 'quasar';
 import { useChannelsStore } from '../stores/channels';
 import AgentAvatarPicker from '../components/avatar/AgentAvatarPicker.vue';
 import AgentEvolutionPanel from '../components/agents/AgentEvolutionPanel.vue';
 import AgentLearningLoopPanel from '../components/agents/AgentLearningLoopPanel.vue';
 import AgentFilesPanel from '../components/agents/AgentFilesPanel.vue';
+import { refinePromptField } from '../features/agents/aiRefine';
 import AgentSettingsHeader from '../components/agents/AgentSettingsHeader.vue';
 import AgentAdvancedDialog from '../components/agents/AgentAdvancedDialog.vue';
 import AgentHooksPanel from '../components/agents/AgentHooksPanel.vue';
@@ -310,6 +315,11 @@ import { useAgentSettingsPage } from '../features/agents/useAgentSettingsPage';
 import { AGENT_PROMPT_ASSEMBLY_TABLE_COLUMNS } from '../components/agents/agentTableUi';
 
 const promptSectionColumns = AGENT_PROMPT_ASSEMBLY_TABLE_COLUMNS;
+const $q = useQuasar();
+
+function onRefineError(message: string) {
+  $q.notify({ type: 'negative', message });
+}
 
 const {
   tab,

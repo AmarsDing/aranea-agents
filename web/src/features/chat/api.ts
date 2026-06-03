@@ -16,6 +16,9 @@ import type {
   IntentPassResult,
   RunStatus,
   RunStatusValue,
+  EnqueueUserMessageResult,
+  ChatBackgroundJobRow,
+  PendingMessage,
 } from './types';
 import { parseMessageOptions } from './parseMessageOptions';
 
@@ -28,6 +31,9 @@ export type {
   IntentPassResult,
   RunStatus,
   RunStatusValue,
+  EnqueueUserMessageResult,
+  ChatBackgroundJobRow,
+  PendingMessage,
 } from './types';
 
 const chatService = createChatService();
@@ -154,8 +160,6 @@ export async function stopGeneration(sessionId: string): Promise<boolean> {
   }
 }
 
-export type { PendingMessage } from './types';
-
 export async function getPendingMessages(sessionId: string): Promise<PendingMessage[]> {
   try {
     const data = await chatService.GetPendingMessages({ sessionId });
@@ -186,12 +190,6 @@ export async function updatePendingMessage(sessionId: string, pendingId: string,
   } catch (err) {
     wrapChatError(err, 'updatePendingMessage failed');
   }
-}
-
-export interface EnqueueUserMessageResult {
-  accepted: boolean;
-  queued: boolean;
-  pendingId: string;
 }
 
 /** @deprecated Use enqueueMessage */
@@ -243,25 +241,6 @@ export async function awaitUserReply(sessionId: string, reply: string, runId?: s
     wrapChatError(err, 'awaitUserReply failed');
   }
 }
-
-export type ChatBackgroundJobRow = {
-  id: string;
-  source: string;
-  session_id: string;
-  agent_id: string;
-  status: string;
-  target_type: string;
-  target_id: string;
-  graph_id?: string;
-  turn_id?: string;
-  session_run_id?: string;
-  phase?: string;
-  created_at: string;
-  updated_at: string;
-  summary?: string;
-  error_message?: string;
-  channel_id: string;
-};
 
 function wireChatBackgroundJob(raw: unknown): ChatBackgroundJobRow {
   const r = asRecord(raw);

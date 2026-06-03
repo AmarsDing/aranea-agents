@@ -33,7 +33,7 @@ func (r *sessionRepo) CountMessagesBySession(ctx context.Context, sessionID stri
 	if sessionID == "" {
 		return 0, kerrors.BadRequest("SESSION", "session id is required")
 	}
-	return r.txClient(ctx).Message.Query().Where(message.SessionIDEQ(sessionID)).Count(ctx)
+	return r.data.RW().Read(ctx).Message.Query().Where(message.SessionIDEQ(sessionID)).Count(ctx)
 }
 
 func (r *sessionRepo) ListMessagesBySession(ctx context.Context, sessionID string, limit, offset int) ([]biz.ChatMessage, error) {
@@ -47,7 +47,7 @@ func (r *sessionRepo) ListMessagesBySession(ctx context.Context, sessionID strin
 	if limit > biz.MessageListMaxLimit {
 		limit = biz.MessageListMaxLimit
 	}
-	rows, err := r.txClient(ctx).Message.Query().
+	rows, err := r.data.RW().Read(ctx).Message.Query().
 		Where(message.SessionIDEQ(sessionID)).
 		Order(message.ByTurnID(entsql.OrderAsc()), message.BySeqInTurn(entsql.OrderAsc()), message.ByCreatedAt(entsql.OrderAsc())).
 		Limit(limit).Offset(clampOffset(offset)).All(ctx)
@@ -66,7 +66,7 @@ func (r *sessionRepo) ListMessagesAfterTurn(ctx context.Context, sessionID strin
 	if sessionID == "" {
 		return nil, kerrors.BadRequest("SESSION", "session id is required")
 	}
-	turnIDs, err := r.txClient(ctx).SessionTurn.Query().
+	turnIDs, err := r.data.RW().Read(ctx).SessionTurn.Query().
 		Where(entsessionturn.SessionIDEQ(sessionID), entsessionturn.TurnNumberGT(afterTurn)).
 		All(ctx)
 	if err != nil {
@@ -79,7 +79,7 @@ func (r *sessionRepo) ListMessagesAfterTurn(ctx context.Context, sessionID strin
 	if len(ids) == 0 {
 		return []biz.ChatMessage{}, nil
 	}
-	q := r.txClient(ctx).Message.Query().Where(message.SessionIDEQ(sessionID), message.TurnIDIn(ids...))
+	q := r.data.RW().Read(ctx).Message.Query().Where(message.SessionIDEQ(sessionID), message.TurnIDIn(ids...))
 	rows, err := q.Order(message.ByTurnID(entsql.OrderAsc()), message.BySeqInTurn(entsql.OrderAsc()), message.ByCreatedAt(entsql.OrderAsc())).
 		Limit(biz.CompressMessageMaxRows).All(ctx)
 	if err != nil {
@@ -100,7 +100,7 @@ func (r *sessionRepo) ListMessagesByStatus(ctx context.Context, sessionID, statu
 	if limit <= 0 || limit > biz.ActivityCancelScanLimit {
 		limit = biz.ActivityCancelScanLimit
 	}
-	rows, err := r.txClient(ctx).Message.Query().
+	rows, err := r.data.RW().Read(ctx).Message.Query().
 		Where(message.SessionIDEQ(sessionID), message.StatusEQ(status)).
 		Order(message.ByTurnID(entsql.OrderDesc()), message.BySeqInTurn(entsql.OrderDesc()), message.ByCreatedAt(entsql.OrderDesc())).
 		Limit(limit).All(ctx)
@@ -122,7 +122,7 @@ func (r *sessionRepo) ListMessagesRecent(ctx context.Context, sessionID string, 
 	if limit <= 0 || limit > biz.TimelineMessageMaxFetch {
 		limit = biz.TimelineMessageMaxFetch
 	}
-	rows, err := r.txClient(ctx).Message.Query().
+	rows, err := r.data.RW().Read(ctx).Message.Query().
 		Where(message.SessionIDEQ(sessionID)).
 		Order(message.ByTurnID(entsql.OrderDesc()), message.BySeqInTurn(entsql.OrderDesc()), message.ByCreatedAt(entsql.OrderDesc())).
 		Limit(limit).All(ctx)
@@ -243,7 +243,7 @@ func (r *sessionRepo) AppendChatTurn(ctx context.Context, sessionID string, user
 		return kerrors.BadRequest("SESSION", "session id is required")
 	}
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		c := r.data.clientFromCtx(txCtx)
+		c := r.data.RW().Write(txCtx)
 		if _, err := c.Session.Query().Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).Only(txCtx); err != nil {
 			return err
 		}
@@ -295,7 +295,7 @@ func (r *sessionRepo) UpsertChatActivityMessage(ctx context.Context, sessionID s
 	}
 	var created bool
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		c := r.data.clientFromCtx(txCtx)
+		c := r.data.RW().Write(txCtx)
 		if _, err := c.Session.Query().Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).Only(txCtx); err != nil {
 			return err
 		}
@@ -354,7 +354,7 @@ func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, m
 		return kerrors.BadRequest("SESSION", "session id is required")
 	}
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		c := r.data.clientFromCtx(txCtx)
+		c := r.data.RW().Write(txCtx)
 		if _, err := c.Session.Query().Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).Only(txCtx); err != nil {
 			return err
 		}
@@ -385,7 +385,7 @@ func (r *sessionRepo) UpdateChatMessageStatus(ctx context.Context, sessionID, me
 	if status == "" {
 		return kerrors.BadRequest("SESSION", "status is required")
 	}
-	_, err := r.txClient(ctx).Message.Update().
+	_, err := r.data.RW().Write(ctx).Message.Update().
 		Where(message.IDEQ(messageID), message.SessionIDEQ(sessionID)).
 		SetStatus(status).
 		SetErrorMessage(strings.TrimSpace(errorMessage)).

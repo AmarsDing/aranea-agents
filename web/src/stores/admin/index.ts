@@ -5,8 +5,8 @@ import {
   loginAdminByEmail,
   logoutAdmin,
   getCurrentAdmin,
-  type AdminSession,
 } from '../../features/admin/api';
+import type { AdminSession } from '../../features/admin/types';
 
 export const useAdminStore = defineStore('admin', () => {
   const currentAdmin = ref<AdminSession | null>(null);

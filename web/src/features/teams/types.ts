@@ -198,3 +198,18 @@ export type TeamRunEvent = {
   step?: TeamRunStep;
   payload?: Record<string, unknown>;
 };
+
+export type TaskDeadLetterRow = {
+  id: string;
+  source_type: string;
+  source_id: string;
+  team_id: string;
+  team_run_id: string;
+  session_id: string;
+  graph_execution_id: string;
+  error_message: string;
+  payload_json: string;
+  status: string;
+  created_at: string;
+  resolved_at: string;
+};

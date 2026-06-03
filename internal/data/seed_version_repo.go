@@ -17,9 +17,9 @@ func NewSeedVersionRepo(d *Data) biz.SeedVersionRepo {
 }
 
 func (r *seedVersionRepo) IsApplied(ctx context.Context, version int) (bool, error) {
-	return IsSeedApplied(ctx, r.data.Ent(), version, r.data.lg)
+	return IsSeedApplied(ctx, r.data.RW().Read(ctx), version, r.data.lg)
 }
 
 func (r *seedVersionRepo) MarkApplied(ctx context.Context, version int, name string) error {
-	return MarkSeedApplied(ctx, r.data.Ent(), version, name, r.data.lg)
+	return MarkSeedApplied(ctx, r.data.RW().Write(ctx), version, name, r.data.lg)
 }

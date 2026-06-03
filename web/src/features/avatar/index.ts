@@ -1,4 +1,4 @@
-export type { AvatarAsset } from './api';
+export type { AvatarAsset } from './types';
 export { listAvatarAssets, uploadAvatarAsset, getAvatarThumbnailDataUrl } from './api';
 export * from './iconModel';
 export { useAvatarThumbnailSrc } from './useAvatarThumbnailSrc';

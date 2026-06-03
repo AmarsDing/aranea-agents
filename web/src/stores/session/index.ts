@@ -46,8 +46,8 @@ export const useSessionStore = defineStore('session', () => {
       const result: SessionListResult = await searchSessions(params ?? {});
       sessions.value = result.items ?? [];
       total.value = result.total ?? sessions.value.length;
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
     } finally {
       loading.value = false;
     }
@@ -64,8 +64,8 @@ export const useSessionStore = defineStore('session', () => {
     error.value = null;
     try {
       return await searchSessions(params);
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -76,8 +76,8 @@ export const useSessionStore = defineStore('session', () => {
       const s = await getSession(id);
       activeSession.value = s;
       return s;
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -90,8 +90,8 @@ export const useSessionStore = defineStore('session', () => {
       activeSession.value = s;
       emitSessionMutation({ type: 'update', id: s.id, session: s });
       return s;
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -161,8 +161,8 @@ export const useSessionStore = defineStore('session', () => {
     error.value = null;
     try {
       return await listSessionTurns(sessionId, limit, offset);
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -174,8 +174,8 @@ export const useSessionStore = defineStore('session', () => {
     error.value = null;
     try {
       return await getSessionTimeline(sessionId, params);
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -184,8 +184,8 @@ export const useSessionStore = defineStore('session', () => {
     error.value = null;
     try {
       return await listSessionChatMessages(sessionId);
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -204,8 +204,8 @@ export const useSessionStore = defineStore('session', () => {
     error.value = null;
     try {
       return await exportSession(id, format);
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -216,8 +216,8 @@ export const useSessionStore = defineStore('session', () => {
       const result = await restoreSession(id);
       emitSessionMutation({ type: 'update', id, session: result });
       return result;
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -230,8 +230,8 @@ export const useSessionStore = defineStore('session', () => {
     error.value = null;
     try {
       return await listSessionRuns(sessionId, limit, offset);
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -240,8 +240,8 @@ export const useSessionStore = defineStore('session', () => {
     error.value = null;
     try {
       return await listSessionParticipants(sessionId);
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }

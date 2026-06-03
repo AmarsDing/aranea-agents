@@ -37,7 +37,7 @@ func NewAdminRepo(data *Data) biz.AdminRepo {
 }
 
 func (r *adminRepo) FindByID(ctx context.Context, id int64) (*biz.Admin, error) {
-	po, err := r.data.ReadEnt().Admin.Get(ctx, id)
+	po, err := r.data.RW().Read(ctx).Admin.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil, biz.ErrAdminNotFound
@@ -48,7 +48,7 @@ func (r *adminRepo) FindByID(ctx context.Context, id int64) (*biz.Admin, error) 
 }
 
 func (r *adminRepo) FindByName(ctx context.Context, name string) (*biz.Admin, error) {
-	po, err := r.data.ReadEnt().Admin.Query().Where(admin.NameEQ(name)).Only(ctx)
+	po, err := r.data.RW().Read(ctx).Admin.Query().Where(admin.NameEQ(name)).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil, biz.ErrAdminNotFound
@@ -59,7 +59,7 @@ func (r *adminRepo) FindByName(ctx context.Context, name string) (*biz.Admin, er
 }
 
 func (r *adminRepo) FindByEmail(ctx context.Context, email string) (*biz.Admin, error) {
-	po, err := r.data.ReadEnt().Admin.Query().Where(admin.EmailEQ(email)).Only(ctx)
+	po, err := r.data.RW().Read(ctx).Admin.Query().Where(admin.EmailEQ(email)).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil, biz.ErrAdminNotFound
@@ -74,7 +74,7 @@ func (r *adminRepo) ListAdmins(ctx context.Context, opts ...biz.ListOption) ([]*
 	for _, opt := range opts {
 		opt(&o)
 	}
-	pos, err := r.data.ReadClient(ctx).Admin.Query().
+	pos, err := r.data.RW().Read(ctx).Admin.Query().
 		Where(ents.ApplyFilter(o.Filter)).
 		Order(ents.ApplyOrderBy(o.OrderBy)).
 		Offset(o.Offset).
@@ -91,7 +91,7 @@ func (r *adminRepo) ListAdmins(ctx context.Context, opts ...biz.ListOption) ([]*
 }
 
 func (r *adminRepo) CreateAdmin(ctx context.Context, admin *biz.Admin) (*biz.Admin, error) {
-	po, err := r.data.entClient.Admin.Create().
+	po, err := r.data.RW().Write(ctx).Admin.Create().
 		SetName(admin.Name).
 		SetEmail(admin.Email).
 		SetAvatar(admin.Avatar).
@@ -107,7 +107,7 @@ func (r *adminRepo) CreateAdmin(ctx context.Context, admin *biz.Admin) (*biz.Adm
 }
 
 func (r *adminRepo) UpdateAdmin(ctx context.Context, admin *biz.Admin) (*biz.Admin, error) {
-	update := r.data.entClient.Admin.UpdateOneID(admin.ID).
+	update := r.data.RW().Write(ctx).Admin.UpdateOneID(admin.ID).
 		SetName(admin.Name).
 		SetEmail(admin.Email).
 		SetAccess(admin.Access).
@@ -125,5 +125,5 @@ func (r *adminRepo) UpdateAdmin(ctx context.Context, admin *biz.Admin) (*biz.Adm
 }
 
 func (r *adminRepo) DeleteAdmin(ctx context.Context, id int64) error {
-	return r.data.entClient.Admin.DeleteOneID(id).Exec(ctx)
+	return r.data.RW().Write(ctx).Admin.DeleteOneID(id).Exec(ctx)
 }

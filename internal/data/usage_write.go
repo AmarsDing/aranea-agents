@@ -17,7 +17,7 @@ func (r *usageRepo) RecordTokenUsageEvent(ctx context.Context, e biz.TokenUsageE
 		e.CanonicalProviderCode = modelregistry.MigrateProviderCode(e.ProviderCode)
 	}
 
-	_, err := r.ent().ExecContext(ctx,
+	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
 		`INSERT INTO model_token_usage_events(
 		 id, occurred_at, date_key, hour_key, workspace_id, user_id, team_id, agent_id, agent_key, session_id, message_id, request_id,
 		 provider_code, canonical_provider_code, provider_type, provider_display_name, model_api_id, model_display_name, model_category_json, usage_kind, call_count,
@@ -43,7 +43,7 @@ func (r *usageRepo) RecordTokenUsageEvent(ctx context.Context, e biz.TokenUsageE
 }
 
 func (r *usageRepo) RollupDailyHourly(ctx context.Context, e biz.TokenUsageEvent) error {
-	c := r.ent()
+	c := r.data.RW().Write(ctx)
 	if err := upsertModelTokenUsageDaily(ctx, c, e); err != nil {
 		return err
 	}
@@ -54,7 +54,7 @@ func (r *usageRepo) RollupDailyHourly(ctx context.Context, e biz.TokenUsageEvent
 }
 
 func (r *usageRepo) PurgeUsageEventsOlderThan(ctx context.Context, retainDays int) (int64, error) {
-	result, err := r.ent().ExecContext(ctx,
+	result, err := r.data.RW().Write(ctx).ExecContext(ctx,
 		`DELETE FROM model_token_usage_events WHERE date_key < date('now', '-'||?||' days')`,
 		retainDays,
 	)

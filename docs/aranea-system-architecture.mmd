@@ -1,0 +1,116 @@
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#6366F1', 'primaryTextColor': '#fff', 'primaryBorderColor': '#4338CA', 'lineColor': '#94A3B8', 'secondaryColor': '#0EA5E9', 'tertiaryColor': '#F59E0B', 'fontSize': '14px'}, 'flowchart': {'curve': 'basis', 'padding': 20, 'nodeSpacing': 30, 'rankSpacing': 50}}}%%
+
+flowchart TB
+    subgraph FE["🖥️ Frontend Layer — Vue 3 + Quasar + Pinia + TypeScript"]
+        direction LR
+        Pages["10+ Pages<br/>Chat / Agents / Graphs / Teams / Monitor / Channels / Memory / Knowledge / Tools / Skills"]
+        Stores["43 Pinia Stores"]
+        APIs["31 API Services<br/>features/domain/api.ts → services/index.ts"]
+        WS["WebSocket Hub<br/>45 种 Envelope 类型<br/>ws-transport → globalWsHub → useEnvelopeStream → dispatcher"]
+    end
+
+    subgraph TP["🔌 Transport Layer — Kratos v2"]
+        direction LR
+        HTTP["HTTP Server<br/>recovery→tracing→logging→auth→cors"]
+        GRPC["gRPC Server"]
+        WSS["WebSocket Server<br/>/v1/ws"]
+        OAI["OpenAI Compat"]
+    end
+
+    subgraph SVC["⚙️ Service Layer — Proto ↔ Biz + Runner 编排"]
+        direction TB
+        CO["🎯 ChatOrchestrator<br/>准入→BuildAgent→NewRunner→RunTurn→EventStream<br/><i>implements: TurnExecutor / NativeTurnGateway / TurnControlGateway / DurableResumeGateway / A2ARunnerFactory</i>"]
+        direction LR
+        S1["AgentService<br/>CRUD"]
+        S2["TeamService<br/>CRUD+Run"]
+        S3["GraphService<br/>CRUD+Execute"]
+        S4["SessionService<br/>StatusGuard"]
+        S5["ChannelService<br/>Ingress+Delivery"]
+        S6["CronService"]
+        S7["A2AService"]
+        S8["MemoryService"]
+        S9["PluginService"]
+        S10["SkillService"]
+        SM["+ 20 Services<br/>Tool/Knowledge/Hook/MCP/Evaluation/Evolution/..."]
+        WIRE["Wire DI<br/>38 Services<br/>16 Bindings<br/>60 Repos"]
+    end
+
+    subgraph BIZ["📋 Biz Layer — 领域模型 + Usecase + Repo 接口"]
+        direction LR
+        B1["AgentUsecase<br/>CRUD + Prompt"]
+        B2["ChatUsecase<br/>Turn + Run + Queue"]
+        B3["TeamUsecase<br/>6 种模式"]
+        B4["GraphUsecase<br/>定义+执行+缓存"]
+        B5["SessionUsecase<br/>5态状态机"]
+        B6["ChannelUsecase<br/>路由+投递"]
+        B7["MemoryUsecase<br/>5层记忆"]
+        B8["CronUsecase"]
+        B9["A2AUsecase"]
+        B10["SpiritTeamUsecase<br/>DAG+综合"]
+        B11["EvolutionUsecase"]
+        B12["LearningLoopUsecase"]
+        BM["+ 25 Usecases"]
+        PORTS["跨模块端口接口<br/>TurnExecutorGateway<br/>NativeTurnGateway<br/>TurnControlGateway<br/>DurableResumeGateway<br/>A2ARunnerFactory<br/>GraphExecutor<br/>GraphBuilderFactory<br/>SessionStatusPublisher<br/>CronTriggerGateway"]
+    end
+
+    subgraph RT["🤖 Agent Runtime"]
+        direction TB
+        RT1["BuildTRPCAgent<br/>L1角色+L2工具+L3记忆+L4知识"]
+        RT2["NewTRPCRunner<br/>Session+Memory+Artifact+Plugin"]
+        direction LR
+        RT3["Tools Assemble<br/>28注册+37注入+MCP+Custom"]
+        RT4["LLM Provider<br/>7 Providers + HA"]
+        RT5["5-Layer Memory<br/>L0快照→L1工作→L2事件→L3知识→L4图谱"]
+        RT6["Skill System<br/>渐进加载 L0→L1→L2"]
+        RT7["Plugin System<br/>audit/modify/notify"]
+        RT8["Knowledge<br/>OCR→Chunk→Embed→Retrieve"]
+        RT9["12+ Channels<br/>飞书/钉钉/Discord/Slack/Teams/微信..."]
+        RT10["Graph Engine<br/>条件分支/并行/循环/HITL/检查点"]
+        RT11["Team 6 Modes<br/>Seq/Parallel/Coord/Critic/Swarm/Adaptive"]
+    end
+
+    subgraph DATA["💾 Data Layer"]
+        direction LR
+        SQL["SQLite 主数据库<br/>agents / sessions / messages / teams<br/>tools / hooks / plugins / crontasks<br/>graphs / channels / memory_*<br/>learning_* / skill_proposals"]
+        PG["PostgreSQL 向量存储<br/>Memory Embedding<br/>Knowledge Chunks"]
+        ENT["Ent ORM<br/>30+ DDL Patches<br/>65 编译期接口检查"]
+    end
+
+    subgraph INFRA["🏗️ Infrastructure"]
+        direction LR
+        EB["EventBus<br/>SessionBus + MonitorBus<br/>DropOldest / DropNewest / BlockUpTo"]
+        LG["LogGateway<br/>Pipeline + SinkGroup<br/>RuntimeLogAdapter"]
+        TL["Telemetry<br/>OTel + Langfuse"]
+        PM["Prometheus<br/>30+ aranea_ 指标"]
+    end
+
+    subgraph FW["🧬 trpc-agent-go Framework"]
+        FW1["Runner · Agent · Model · Tool · Session · Memory · Event · Skill · Graph · Team"]
+    end
+
+    FE --> TP
+    TP --> SVC
+    SVC --> BIZ
+    SVC --> RT
+    BIZ --> DATA
+    RT --> FW
+    SVC -.-> INFRA
+
+    style FE fill:#EEF2FF,stroke:#6366F1,stroke-width:3px,color:#4338CA
+    style TP fill:#F0F9FF,stroke:#0EA5E9,stroke-width:3px,color:#0369A1
+    style SVC fill:#F5F3FF,stroke:#8B5CF6,stroke-width:3px,color:#6D28D9
+    style BIZ fill:#FFFBEB,stroke:#F59E0B,stroke-width:3px,color:#B45309
+    style RT fill:#FEF2F2,stroke:#EF4444,stroke-width:3px,color:#B91C1C
+    style DATA fill:#ECFDF5,stroke:#10B981,stroke-width:3px,color:#047857
+    style INFRA fill:#F8FAFC,stroke:#64748B,stroke-width:3px,color:#334155
+    style FW fill:#FDF2F8,stroke:#EC4899,stroke-width:3px,color:#BE185D
+
+    style CO fill:#7C3AED,stroke:#5B21B6,color:#fff,stroke-width:2px
+    style WIRE fill:#5B21B6,stroke:#4C1D95,color:#fff,stroke-width:2px
+    style PORTS fill:#D97706,stroke:#92400E,color:#fff,stroke-width:2px
+    style RT1 fill:#EF4444,stroke:#DC2626,color:#fff,stroke-width:2px
+    style RT2 fill:#EF4444,stroke:#DC2626,color:#fff,stroke-width:2px
+    style SQL fill:#10B981,stroke:#059669,color:#fff,stroke-width:2px
+    style PG fill:#34D399,stroke:#10B981,color:#064E3B,stroke-width:2px
+    style EB fill:#64748B,stroke:#475569,color:#fff,stroke-width:2px
+    style WS fill:#4338CA,stroke:#312E81,color:#fff,stroke-width:2px

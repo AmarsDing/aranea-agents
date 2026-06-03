@@ -1,7 +1,8 @@
 import { computed, ref, watch, type Ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
-import { avatarUploadErrorMessage, validateAvatarFileForUpload, type AvatarAsset } from '../../features/avatar/api';
+import { avatarUploadErrorMessage, validateAvatarFileForUpload } from '../../features/avatar/api';
+import type { AvatarAsset } from '../../features/avatar/types';
 import { prepareAvatarUploadFile } from '../../features/avatar/prepareAvatarUpload';
 import { useAvatarCatalogStore } from '../../stores/avatar';
 

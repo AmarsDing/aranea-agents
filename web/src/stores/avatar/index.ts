@@ -4,8 +4,8 @@ import {
   listAvatarAssets,
   refreshChannelPlatformIcons,
   uploadAvatarAsset,
-  type AvatarAsset,
 } from '../../features/avatar/api';
+import type { AvatarAsset } from '../../features/avatar/types';
 import { isAvatarAssetRef } from '../../features/avatar/iconModel';
 
 /** 头像域：目录缓存 + 缩略图缓存 + 上传；对外业务均由 actions 经 api 层访问后端 */

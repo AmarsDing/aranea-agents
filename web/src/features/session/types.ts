@@ -212,3 +212,21 @@ export type SessionParticipant = {
   created_at: string;
   updated_at: string;
 };
+
+export interface CompactSessionResult {
+  compacted: boolean;
+  from_turn: number;
+  to_turn: number;
+  estimated_tokens_before: number;
+  estimated_tokens_after: number;
+  compression_level: string;
+}
+
+export type MessageSearchResult = {
+  id: string;
+  session_id: string;
+  role: string;
+  content_markdown: string;
+  highlight: string;
+  created_at: string;
+};

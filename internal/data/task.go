@@ -25,15 +25,8 @@ func NewTaskRepo(data *Data) biz.TaskRepo {
 	return &taskRepo{data: data}
 }
 
-func (r *taskRepo) readClient(ctx context.Context) *ent.Client {
-	if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
-		return tx.Client()
-	}
-	return r.data.ReadEnt()
-}
-
 func (r *taskRepo) SaveTask(ctx context.Context, task *biz.GraphTask) error {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	builder := client.GraphTask.Create().
 		SetID(task.TaskID).
 		SetNodeID(task.NodeID).
@@ -63,7 +56,7 @@ func (r *taskRepo) SaveTask(ctx context.Context, task *biz.GraphTask) error {
 }
 
 func (r *taskRepo) GetTask(ctx context.Context, taskID string) (*biz.GraphTask, error) {
-	client := r.readClient(ctx)
+	client := r.data.RW().Read(ctx)
 	row, err := client.GraphTask.Get(ctx, taskID)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -78,7 +71,7 @@ func (r *taskRepo) GetTasksByIDs(ctx context.Context, taskIDs []string) ([]*biz.
 	if len(taskIDs) == 0 {
 		return nil, nil
 	}
-	client := r.readClient(ctx)
+	client := r.data.RW().Read(ctx)
 	rows, err := client.GraphTask.Query().
 		Where(graphtask.IDIn(taskIDs...)).
 		All(ctx)
@@ -93,7 +86,7 @@ func (r *taskRepo) GetTasksByIDs(ctx context.Context, taskIDs []string) ([]*biz.
 }
 
 func (r *taskRepo) GetActiveTaskByExecutionNode(ctx context.Context, executionID, nodeID string) (*biz.GraphTask, error) {
-	client := r.readClient(ctx)
+	client := r.data.RW().Read(ctx)
 	row, err := client.GraphTask.Query().
 		Where(
 			graphtask.ExecutionIDEQ(executionID),
@@ -118,7 +111,7 @@ func (r *taskRepo) ListTasksByStatuses(ctx context.Context, statuses []biz.TaskS
 	if limit <= 0 {
 		limit = 50
 	}
-	client := r.readClient(ctx)
+	client := r.data.RW().Read(ctx)
 	strs := make([]string, 0, len(statuses))
 	for _, s := range statuses {
 		if s != "" {
@@ -141,7 +134,7 @@ func (r *taskRepo) ListTasksByStatuses(ctx context.Context, statuses []biz.TaskS
 }
 
 func (r *taskRepo) ListTasksByExecution(ctx context.Context, executionID string, status biz.TaskStatus, pageSize int, pageToken string) ([]*biz.GraphTask, string, error) {
-	client := r.readClient(ctx)
+	client := r.data.RW().Read(ctx)
 	query := client.GraphTask.Query().
 		Where(graphtask.ExecutionIDEQ(executionID)).
 		Order(ent.Asc(graphtask.FieldCreatedAt))
@@ -172,7 +165,7 @@ func (r *taskRepo) ListTasksByExecution(ctx context.Context, executionID string,
 }
 
 func (r *taskRepo) UpdateTask(ctx context.Context, task *biz.GraphTask) error {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	builder := client.GraphTask.UpdateOneID(task.TaskID).
 		SetAssignee(task.Assignee).
 		SetStatus(string(task.Status)).
@@ -199,7 +192,7 @@ func (r *taskRepo) BatchUpdateTaskStatus(ctx context.Context, taskIDs []string, 
 	if len(taskIDs) == 0 {
 		return nil
 	}
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	_, err := client.GraphTask.Update().
 		Where(graphtask.IDIn(taskIDs...)).
 		SetStatus(string(status)).
@@ -211,7 +204,7 @@ func (r *taskRepo) BatchUpdateTaskStatus(ctx context.Context, taskIDs []string, 
 }
 
 func (r *taskRepo) SaveTaskComment(ctx context.Context, comment *biz.TaskComment) error {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	_, err := client.GraphTaskComment.Create().
 		SetID(comment.CommentID).
 		SetTaskID(comment.TaskID).
@@ -227,7 +220,7 @@ func (r *taskRepo) SaveTaskComment(ctx context.Context, comment *biz.TaskComment
 }
 
 func (r *taskRepo) ListTaskComments(ctx context.Context, taskID string) ([]*biz.TaskComment, error) {
-	client := r.readClient(ctx)
+	client := r.data.RW().Read(ctx)
 	rows, err := client.GraphTaskComment.Query().
 		Where(graphtaskcomment.TaskIDEQ(taskID)).
 		Order(ent.Asc(graphtaskcomment.FieldCreatedAt)).
@@ -250,7 +243,7 @@ func (r *taskRepo) ListTaskComments(ctx context.Context, taskID string) ([]*biz.
 }
 
 func (r *taskRepo) SaveTaskLog(ctx context.Context, log *biz.TaskLog) error {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	_, err := client.GraphTaskLog.Create().
 		SetID(log.LogID).
 		SetTaskID(log.TaskID).
@@ -266,7 +259,7 @@ func (r *taskRepo) SaveTaskLog(ctx context.Context, log *biz.TaskLog) error {
 }
 
 func (r *taskRepo) ListTaskLogs(ctx context.Context, taskID string, stream string, level string, pageSize int) ([]*biz.TaskLog, error) {
-	client := r.readClient(ctx)
+	client := r.data.RW().Read(ctx)
 	query := client.GraphTaskLog.Query().
 		Where(graphtasklog.TaskIDEQ(taskID)).
 		Order(ent.Asc(graphtasklog.FieldTimestamp))
@@ -299,7 +292,7 @@ func (r *taskRepo) ListTaskLogs(ctx context.Context, taskID string, stream strin
 }
 
 func (r *taskRepo) SaveTaskRun(ctx context.Context, run *biz.TaskRun) error {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	builder := client.GraphTaskRun.Create().
 		SetID(run.RunID).
 		SetTaskID(run.TaskID).
@@ -317,7 +310,7 @@ func (r *taskRepo) SaveTaskRun(ctx context.Context, run *biz.TaskRun) error {
 }
 
 func (r *taskRepo) ListTaskRuns(ctx context.Context, taskID string) ([]*biz.TaskRun, error) {
-	client := r.readClient(ctx)
+	client := r.data.RW().Read(ctx)
 	rows, err := client.GraphTaskRun.Query().
 		Where(graphtaskrun.TaskIDEQ(taskID)).
 		Order(ent.Desc(graphtaskrun.FieldStartedAt)).
@@ -344,7 +337,7 @@ func (r *taskRepo) ListTaskRuns(ctx context.Context, taskID string) ([]*biz.Task
 }
 
 func (r *taskRepo) SaveTaskEvent(ctx context.Context, event *biz.TaskEvent) error {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	_, err := client.GraphTaskEvent.Create().
 		SetID(event.EventID).
 		SetTaskID(event.TaskID).
@@ -360,7 +353,7 @@ func (r *taskRepo) SaveTaskEvent(ctx context.Context, event *biz.TaskEvent) erro
 }
 
 func (r *taskRepo) ListTaskEvents(ctx context.Context, executionID string, taskID string, eventType string, pageSize int) ([]*biz.TaskEvent, error) {
-	client := r.readClient(ctx)
+	client := r.data.RW().Read(ctx)
 	query := client.GraphTaskEvent.Query().
 		Order(ent.Desc(graphtaskevent.FieldTimestamp))
 	// NOTE: executionID is unused because graph_task_events has no execution_id column.

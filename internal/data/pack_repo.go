@@ -121,6 +121,10 @@ func (a *PackRepoAdapter) UpdateAgent(ctx context.Context, agent biz.Agent) (biz
 	return a.agents.UpdateAgent(ctx, agent)
 }
 
+func (a *PackRepoAdapter) DeleteAgent(ctx context.Context, id string) error {
+	return a.agents.DeleteAgent(ctx, id)
+}
+
 func (a *PackRepoAdapter) GetAgentRuntimeSettings(ctx context.Context, agentID string) (biz.AgentRuntimeSettings, error) {
 	return a.agents.GetAgentRuntimeSettings(ctx, agentID)
 }

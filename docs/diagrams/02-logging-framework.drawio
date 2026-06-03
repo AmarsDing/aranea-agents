@@ -1,0 +1,597 @@
+<mxfile host="app.diagrams.net" modified="2026-06-03T00:00:00.000Z" agent="Aranea-Agents" version="24.0.0" type="device">
+  <diagram id="logging-framework" name="Logging Framework Architecture">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="2000" pageHeight="1400" math="0" shadow="1">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ============================================================ -->
+        <!-- BACKGROUND & TITLE                                           -->
+        <!-- ============================================================ -->
+        <mxCell id="bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0F172A;strokeColor=none;arcSize=2;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="0" y="0" width="2000" height="1400" as="geometry" />
+        </mxCell>
+        <mxCell id="title" value="&lt;font style=&quot;font-size:22px;font-weight:700;color:#E2E8F0;&quot;&gt;Aranea-Agents Logging Framework&lt;br&gt;&lt;font style=&quot;font-size:13px;font-weight:400;color:#94A3B8;&quot;&gt;3-Layer Async Pipeline Architecture&lt;/font&gt;&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="700" y="12" width="600" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- LAYER 1: CALLERS (调用方)                                     -->
+        <!-- ============================================================ -->
+        <mxCell id="caller_group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;strokeColor=#334155;strokeWidth=1;arcSize=8;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="540" y="80" width="920" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="caller_label" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#94A3B8;letter-spacing:1px;&quot;&gt;CALLERS&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="555" y="82" width="80" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="caller_service" value="&lt;font style=&quot;font-size:12px;color:#E2E8F0;&quot;&gt;🔧 Service 层&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#334155;strokeColor=#475569;arcSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="570" y="110" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="caller_biz" value="&lt;font style=&quot;font-size:12px;color:#E2E8F0;&quot;&gt;⚙️ Biz 层&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#334155;strokeColor=#475569;arcSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="740" y="110" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="caller_data" value="&lt;font style=&quot;font-size:12px;color:#E2E8F0;&quot;&gt;💾 Data 层&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#334155;strokeColor=#475569;arcSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="910" y="110" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="caller_runtime" value="&lt;font style=&quot;font-size:12px;color:#E2E8F0;&quot;&gt;🤖 Agent Runtime&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#334155;strokeColor=#475569;arcSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="110" width="160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="caller_flow" value="&lt;font style=&quot;font-size:12px;color:#E2E8F0;&quot;&gt;📊 FlowTracker&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#334155;strokeColor=#475569;arcSize=12;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1270" y="110" width="160" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- LAYER 2: GATEWAY / LOGGER (Indigo)                           -->
+        <!-- ============================================================ -->
+        <mxCell id="gw_group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;strokeColor=#6366F1;strokeWidth=2;arcSize=6;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="340" y="195" width="1320" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="gw_label" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#6366F1;letter-spacing:1px;&quot;&gt;LAYER 1 — GATEWAY&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="355" y="198" width="180" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- Logger Interface -->
+        <mxCell id="logger_iface" value="&lt;font style=&quot;font-size:14px;font-weight:700;color:#FFFFFF;&quot;&gt;loggateway.Logger&lt;/font&gt;&lt;hr&gt;&lt;font style=&quot;font-size:11px;color:#C7D2FE;&quot;&gt;Debug() / Info() / Warn() / Error()&lt;br&gt;With(fields...) → child logger&lt;br&gt;emitToPipeline() → serialize → LogEntry&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#6366F1;strokeColor=#818CF8;strokeWidth=2;arcSize=10;shadow=1;shadowColor=#6366F180;shadowOffsetX=0;shadowOffsetY=4;" vertex="1" parent="1">
+          <mxGeometry x="560" y="230" width="280" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Field Types -->
+        <mxCell id="fields_box" value="&lt;font style=&quot;font-size:12px;font-weight:600;color:#6366F1;&quot;&gt;Field Types&lt;/font&gt;&lt;hr&gt;&lt;font style=&quot;font-size:10px;color:#94A3B8;line-height:1.6;&quot;&gt;StepID · SessionID · TraceID · RunID&lt;br&gt;Domain · AgentKey · Phase · Duration&lt;br&gt;Err · TeamID · AgentID&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;strokeColor=#6366F1;strokeWidth=1;arcSize=8;dashed=1;dashPattern=4 3;" vertex="1" parent="1">
+          <mxGeometry x="880" y="230" width="220" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- loggerWith -->
+        <mxCell id="logger_with" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#A5B4FC;&quot;&gt;loggerWith&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#94A3B8;&quot;&gt;child logger with base fields&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#312E81;strokeColor=#6366F1;strokeWidth=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1130" y="235" width="180" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- noopLogger -->
+        <mxCell id="noop_logger" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#A5B4FC;&quot;&gt;noopLogger&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#94A3B8;&quot;&gt;null object pattern&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#312E81;strokeColor=#6366F1;strokeWidth=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1130" y="295" width="180" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Gateway main -->
+        <mxCell id="gateway_main" value="&lt;font style=&quot;font-size:14px;font-weight:700;color:#FFFFFF;&quot;&gt;loggateway.Gateway&lt;/font&gt;&lt;hr&gt;&lt;font style=&quot;font-size:11px;color:#C7D2FE;&quot;&gt;Entry point · Logger factory&lt;br&gt;Pipeline lifecycle management&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4F46E5;strokeColor=#818CF8;strokeWidth=2;arcSize=10;shadow=1;shadowColor=#6366F160;shadowOffsetX=0;shadowOffsetY=4;" vertex="1" parent="1">
+          <mxGeometry x="370" y="250" width="160" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Arrows: Callers → Gateway -->
+        <mxCell id="a_caller_gw1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6366F1;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;endArrow=blockThin;endFill=1;curved=1;" edge="1" source="caller_service" target="gateway_main" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a_caller_gw2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6366F1;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.3;entryY=0;entryDx=0;entryDy=0;endArrow=blockThin;endFill=1;curved=1;" edge="1" source="caller_biz" target="logger_iface" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a_caller_gw3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6366F1;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;endArrow=blockThin;endFill=1;curved=1;" edge="1" source="caller_data" target="logger_iface" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: Gateway → Logger -->
+        <mxCell id="a_gw_logger" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#818CF8;strokeWidth=2;endArrow=blockThin;endFill=1;curved=1;" edge="1" source="gateway_main" target="logger_iface" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: Logger → Fields -->
+        <mxCell id="a_logger_fields" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#6366F180;strokeWidth=1;dashed=1;dashPattern=4 3;endArrow=openThin;endFill=1;curved=1;" edge="1" source="logger_iface" target="fields_box" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- LAYER 3: PIPELINE (Sky Blue)                                 -->
+        <!-- ============================================================ -->
+        <mxCell id="pipe_group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;strokeColor=#0EA5E9;strokeWidth=2;arcSize=6;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="340" y="425" width="1320" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="pipe_label" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#0EA5E9;letter-spacing:1px;&quot;&gt;LAYER 2 — PIPELINE&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="355" y="428" width="180" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- Pipeline Core -->
+        <mxCell id="pipeline_core" value="&lt;font style=&quot;font-size:14px;font-weight:700;color:#FFFFFF;&quot;&gt;logpipeline.Pipeline&lt;/font&gt;&lt;hr&gt;&lt;font style=&quot;font-size:11px;color:#BAE6FD;&quot;&gt;Main channel (buf=&lt;b&gt;4096&lt;/b&gt;)&lt;br&gt;dispatchLoop goroutine&lt;br&gt;Emit() → channel → dispatch&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0EA5E9;strokeColor=#38BDF8;strokeWidth=2;arcSize=10;shadow=1;shadowColor=#0EA5E980;shadowOffsetX=0;shadowOffsetY=4;" vertex="1" parent="1">
+          <mxGeometry x="560" y="460" width="280" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- 3-Level Backpressure -->
+        <mxCell id="bp_group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0C4A6E;strokeColor=#0EA5E9;strokeWidth=1;arcSize=8;dashed=1;dashPattern=4 3;" vertex="1" parent="1">
+          <mxGeometry x="880" y="445" width="360" height="175" as="geometry" />
+        </mxCell>
+        <mxCell id="bp_label" value="&lt;font style=&quot;font-size:12px;font-weight:700;color:#38BDF8;&quot;&gt;3-Level Backpressure&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="970" y="450" width="180" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="bp_l1" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#FCA5A5;&quot;&gt;Level 1: Closed&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#94A3B8;&quot;&gt;Pipeline closed → &lt;b style=&quot;color:#FCA5A5&quot;&gt;dropped&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;strokeColor=#EF4444;strokeWidth=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="900" y="480" width="320" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="bp_l2" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#FDE68A;&quot;&gt;Level 2: Throttler&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#94A3B8;&quot;&gt;stepThrottler: token bucket per step_id prefix&lt;br&gt;ThrottleRule{Prefix, MaxPerSec} → &lt;b style=&quot;color:#FDE68A&quot;&gt;throttled&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;strokeColor=#F59E0B;strokeWidth=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="900" y="528" width="320" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="bp_l3" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#FCA5A5;&quot;&gt;Level 3: Channel Full&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#94A3B8;&quot;&gt;buf=4096 exhausted → &lt;b style=&quot;color:#FCA5A5&quot;&gt;dropped&lt;/b&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;strokeColor=#EF4444;strokeWidth=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="900" y="586" width="320" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- PipelineStats -->
+        <mxCell id="pipe_stats" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#7DD3FC;&quot;&gt;PipelineStats&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#94A3B8;&quot;&gt;Emitted / Dropped / Throttled&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0C4A6E;strokeColor=#0EA5E9;strokeWidth=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="370" y="475" width="160" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: Logger → Pipeline -->
+        <mxCell id="a_logger_pipe" value="&lt;font style=&quot;font-size:10px;color:#7DD3FC;&quot;&gt;emitToPipeline()&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0EA5E9;strokeWidth=3;endArrow=blockThin;endFill=1;curved=1;labelBackgroundColor=#0F172A00;" edge="1" source="logger_iface" target="pipeline_core" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: Pipeline → Backpressure -->
+        <mxCell id="a_pipe_bp" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0EA5E980;strokeWidth=1;dashed=1;dashPattern=4 3;endArrow=openThin;endFill=1;curved=1;" edge="1" source="pipeline_core" target="bp_group" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- LAYER 4: SINK GROUPS (Violet)                                -->
+        <!-- ============================================================ -->
+        <mxCell id="sg_group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;strokeColor=#8B5CF6;strokeWidth=2;arcSize=6;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="340" y="665" width="1320" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="sg_label" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#8B5CF6;letter-spacing:1px;&quot;&gt;LAYER 3 — SINK GROUPS&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="355" y="668" width="200" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- SinkGroup 1: File -->
+        <mxCell id="sg_file" value="&lt;font style=&quot;font-size:12px;font-weight:700;color:#FFFFFF;&quot;&gt;SinkGroup&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#C4B5FD;&quot;&gt;goroutine + channel&lt;br&gt;DropPolicy: DropNewest&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#8B5CF6;strokeColor=#A78BFA;strokeWidth=2;arcSize=10;shadow=1;shadowColor=#8B5CF680;shadowOffsetX=0;shadowOffsetY=4;" vertex="1" parent="1">
+          <mxGeometry x="380" y="700" width="200" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- SinkGroup 2: Stdout -->
+        <mxCell id="sg_stdout" value="&lt;font style=&quot;font-size:12px;font-weight:700;color:#FFFFFF;&quot;&gt;SinkGroup&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#C4B5FD;&quot;&gt;goroutine + channel&lt;br&gt;DropPolicy: DropNewest&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#8B5CF6;strokeColor=#A78BFA;strokeWidth=2;arcSize=10;shadow=1;shadowColor=#8B5CF680;shadowOffsetX=0;shadowOffsetY=4;" vertex="1" parent="1">
+          <mxGeometry x="640" y="700" width="200" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- SinkGroup 3: EventBus -->
+        <mxCell id="sg_eventbus" value="&lt;font style=&quot;font-size:12px;font-weight:700;color:#FFFFFF;&quot;&gt;SinkGroup&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;color:#C4B5FD;&quot;&gt;goroutine + channel&lt;br&gt;DropPolicy: DropBlock&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#8B5CF6;strokeColor=#A78BFA;strokeWidth=2;arcSize=10;shadow=1;shadowColor=#8B5CF680;shadowOffsetX=0;shadowOffsetY=4;" vertex="1" parent="1">
+          <mxGeometry x="900" y="700" width="200" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- Panic Recovery -->
+        <mxCell id="panic_rec" value="&lt;font style=&quot;font-size:10px;font-weight:600;color:#C4B5FD;&quot;&gt;🛡️ Panic Recovery&lt;br&gt;in run()&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4C1D95;strokeColor=#8B5CF6;strokeWidth=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="710" width="140" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- DropPolicy legend -->
+        <mxCell id="dp_legend" value="&lt;font style=&quot;font-size:10px;color:#94A3B8;&quot;&gt;DropPolicy:&lt;br&gt;&lt;b style=&quot;color:#A78BFA&quot;&gt;DropNewest&lt;/b&gt; (default) — drop newest on full&lt;br&gt;&lt;b style=&quot;color:#A78BFA&quot;&gt;DropBlock&lt;/b&gt; — block until space&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;strokeColor=#8B5CF680;strokeWidth=1;arcSize=8;dashed=1;dashPattern=4 3;" vertex="1" parent="1">
+          <mxGeometry x="1340" y="700" width="220" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Arrows: Pipeline → SinkGroups -->
+        <mxCell id="a_pipe_sg1" value="&lt;font style=&quot;font-size:9px;color:#C4B5FD;&quot;&gt;dispatch&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#8B5CF6;strokeWidth=2;endArrow=blockThin;endFill=1;curved=1;labelBackgroundColor=#0F172A00;" edge="1" source="pipeline_core" target="sg_file" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="480" y="580" />
+              <mxPoint x="480" y="700" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="a_pipe_sg2" value="&lt;font style=&quot;font-size:9px;color:#C4B5FD;&quot;&gt;dispatch&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#8B5CF6;strokeWidth=2;endArrow=blockThin;endFill=1;curved=1;labelBackgroundColor=#0F172A00;" edge="1" source="pipeline_core" target="sg_stdout" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="740" y="580" />
+              <mxPoint x="740" y="700" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="a_pipe_sg3" value="&lt;font style=&quot;font-size:9px;color:#C4B5FD;&quot;&gt;dispatch&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#8B5CF6;strokeWidth=2;endArrow=blockThin;endFill=1;curved=1;labelBackgroundColor=#0F172A00;" edge="1" source="pipeline_core" target="sg_eventbus" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1000" y="580" />
+              <mxPoint x="1000" y="700" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- SINK IMPLEMENTATIONS                                          -->
+        <!-- ============================================================ -->
+        <mxCell id="sink_group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;strokeColor=#475569;strokeWidth=1;arcSize=6;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="340" y="835" width="1320" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="sink_label" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#94A3B8;letter-spacing:1px;&quot;&gt;SINK IMPLEMENTATIONS&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="355" y="838" width="200" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- FileSink -->
+        <mxCell id="sink_file" value="&lt;font style=&quot;font-size:13px;font-weight:700;color:#FFFFFF;&quot;&gt;📄 FileSink&lt;/font&gt;&lt;hr&gt;&lt;font style=&quot;font-size:10px;color:#A7F3D0;&quot;&gt;zap JSON encoder&lt;br&gt;lumberjack rotation&lt;br&gt;MaxSize / MaxBackups / MaxAge / Compress&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#10B981;strokeColor=#34D399;strokeWidth=2;arcSize=10;shadow=1;shadowColor=#10B98180;shadowOffsetX=0;shadowOffsetY=4;" vertex="1" parent="1">
+          <mxGeometry x="380" y="868" width="250" height="85" as="geometry" />
+        </mxCell>
+
+        <!-- StdoutSink -->
+        <mxCell id="sink_stdout" value="&lt;font style=&quot;font-size:13px;font-weight:700;color:#FFFFFF;&quot;&gt;💻 StdoutSink&lt;/font&gt;&lt;hr&gt;&lt;font style=&quot;font-size:10px;color:#FDE68A;&quot;&gt;JSON → stdout&lt;br&gt;Level filtering&lt;br&gt;Dev-friendly output&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F59E0B;strokeColor=#FBBF24;strokeWidth=2;arcSize=10;shadow=1;shadowColor=#F59E0B80;shadowOffsetX=0;shadowOffsetY=4;" vertex="1" parent="1">
+          <mxGeometry x="680" y="868" width="220" height="85" as="geometry" />
+        </mxCell>
+
+        <!-- EventBusSink -->
+        <mxCell id="sink_eventbus" value="&lt;font style=&quot;font-size:13px;font-weight:700;color:#FFFFFF;&quot;&gt;📡 EventBusSink&lt;/font&gt;&lt;hr&gt;&lt;font style=&quot;font-size:10px;color:#FECACA;&quot;&gt;Publisher → EventBus&lt;br&gt;3-state Circuit Breaker&lt;br&gt;Closed → Open → HalfOpen&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#F87171;strokeWidth=2;arcSize=10;shadow=1;shadowColor=#EF444480;shadowOffsetX=0;shadowOffsetY=4;" vertex="1" parent="1">
+          <mxGeometry x="950" y="868" width="250" height="85" as="geometry" />
+        </mxCell>
+
+        <!-- Arrows: SinkGroups → Sinks -->
+        <mxCell id="a_sg_sink1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=2;endArrow=blockThin;endFill=1;curved=1;" edge="1" source="sg_file" target="sink_file" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a_sg_sink2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F59E0B;strokeWidth=2;endArrow=blockThin;endFill=1;curved=1;" edge="1" source="sg_stdout" target="sink_stdout" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a_sg_sink3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=2;endArrow=blockThin;endFill=1;curved=1;" edge="1" source="sg_eventbus" target="sink_eventbus" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- CIRCUIT BREAKER STATE MACHINE                                 -->
+        <!-- ============================================================ -->
+        <mxCell id="cb_group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;strokeColor=#EF4444;strokeWidth=1;arcSize=8;dashed=1;dashPattern=4 3;" vertex="1" parent="1">
+          <mxGeometry x="1250" y="845" width="400" height="115" as="geometry" />
+        </mxCell>
+        <mxCell id="cb_label" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#F87171;letter-spacing:1px;&quot;&gt;CIRCUIT BREAKER&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1265" y="848" width="140" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cb_closed" value="&lt;font style=&quot;font-size:11px;font-weight:700;color:#10B981;&quot;&gt;Closed&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#94A3B8;&quot;&gt;normal operation&lt;/font&gt;" style="ellipse;whiteSpace=wrap;html=1;fillColor=#064E3B;strokeColor=#10B981;strokeWidth=2;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1270" y="880" width="90" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="cb_open" value="&lt;font style=&quot;font-size:11px;font-weight:700;color:#EF4444;&quot;&gt;Open&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#94A3B8;&quot;&gt;reject all&lt;/font&gt;" style="ellipse;whiteSpace=wrap;html=1;fillColor=#7F1D1D;strokeColor=#EF4444;strokeWidth=2;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1420" y="880" width="90" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="cb_half" value="&lt;font style=&quot;font-size:11px;font-weight:700;color:#F59E0B;&quot;&gt;HalfOpen&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#94A3B8;&quot;&gt;probe&lt;/font&gt;" style="ellipse;whiteSpace=wrap;html=1;fillColor=#78350F;strokeColor=#F59E0B;strokeWidth=2;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1560" y="880" width="80" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- CB transitions -->
+        <mxCell id="a_cb_co" value="&lt;font style=&quot;font-size:9px;color:#FCA5A5;&quot;&gt;5 failures&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=2;endArrow=blockThin;endFill=1;curved=1;labelBackgroundColor=#0F172A00;" edge="1" source="cb_closed" target="cb_open" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a_cb_oh" value="&lt;font style=&quot;font-size:9px;color:#FDE68A;&quot;&gt;10s timeout&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F59E0B;strokeWidth=2;endArrow=blockThin;endFill=1;curved=1;labelBackgroundColor=#0F172A00;" edge="1" source="cb_open" target="cb_half" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a_cb_hc" value="&lt;font style=&quot;font-size:9px;color:#6EE7B7;&quot;&gt;3 successes&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=2;endArrow=blockThin;endFill=1;curved=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0;entryDx=0;entryDy=0;labelBackgroundColor=#0F172A00;" edge="1" source="cb_half" target="cb_closed" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1560" y="970" />
+              <mxPoint x="1270" y="970" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="a_cb_ho" value="&lt;font style=&quot;font-size:9px;color:#FCA5A5;&quot;&gt;failure&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1;dashed=1;dashPattern=3 2;endArrow=blockThin;endFill=1;curved=1;exitX=1;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=0;entryDx=0;entryDy=0;labelBackgroundColor=#0F172A00;" edge="1" source="cb_half" target="cb_open" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1600" y="870" />
+              <mxPoint x="1500" y="870" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Arrow: EventBusSink → Circuit Breaker -->
+        <mxCell id="a_sink_cb" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF444480;strokeWidth=1;dashed=1;dashPattern=4 3;endArrow=openThin;endFill=1;curved=1;" edge="1" source="sink_eventbus" target="cb_group" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- RUNTIME LOG ADAPTER (Pink) — LEFT SIDE                       -->
+        <!-- ============================================================ -->
+        <mxCell id="adapter_group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;strokeColor=#EC4899;strokeWidth=2;arcSize=6;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="20" y="195" width="290" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="adapter_label" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#EC4899;letter-spacing:1px;&quot;&gt;FRAMEWORK BRIDGE&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="35" y="198" width="160" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="runtime_adapter" value="&lt;font style=&quot;font-size:13px;font-weight:700;color:#FFFFFF;&quot;&gt;RuntimeLogAdapter&lt;/font&gt;&lt;hr&gt;&lt;font style=&quot;font-size:10px;color:#FBCFE8;&quot;&gt;Implements: agentlog.Logger&lt;br&gt;Delegates → loggateway.Logger&lt;br&gt;&lt;br&gt;&lt;b style=&quot;color:#F472B6&quot;&gt;⚠ Fatal bypasses pipeline&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#94A3B8;&quot;&gt;→ synchronous stderr + os.Exit(1)&lt;/font&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EC4899;strokeColor=#F472B6;strokeWidth=2;arcSize=10;shadow=1;shadowColor=#EC489980;shadowOffsetX=0;shadowOffsetY=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="230" width="250" height="150" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: Runtime → Logger -->
+        <mxCell id="a_runtime_logger" value="&lt;font style=&quot;font-size:9px;color:#F9A8D4;&quot;&gt;delegates&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EC4899;strokeWidth=2;endArrow=blockThin;endFill=1;curved=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;labelBackgroundColor=#0F172A00;" edge="1" source="runtime_adapter" target="gateway_main" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: Caller Runtime → Adapter -->
+        <mxCell id="a_caller_runtime" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EC4899;strokeWidth=2;exitX=0;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;endArrow=blockThin;endFill=1;curved=1;" edge="1" source="caller_runtime" target="runtime_adapter" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="165" y="170" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- FLOW TRACKING (Orange) — LEFT SIDE                           -->
+        <!-- ============================================================ -->
+        <mxCell id="flow_group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;strokeColor=#F97316;strokeWidth=2;arcSize=6;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="20" y="425" width="290" height="370" as="geometry" />
+        </mxCell>
+        <mxCell id="flow_label" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#F97316;letter-spacing:1px;&quot;&gt;FLOW TRACKING&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="35" y="428" width="120" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- TraceContext -->
+        <mxCell id="trace_ctx" value="&lt;font style=&quot;font-size:12px;font-weight:700;color:#FFFFFF;&quot;&gt;TraceContext&lt;/font&gt;&lt;hr&gt;&lt;font style=&quot;font-size:9px;color:#FED7AA;line-height:1.5;&quot;&gt;TraceID · SessionID · RunID&lt;br&gt;TeamID · Domain · AgentKey&lt;br&gt;AgentID&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F97316;strokeColor=#FB923C;strokeWidth=2;arcSize=10;shadow=1;shadowColor=#F9731680;shadowOffsetX=0;shadowOffsetY=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="460" width="250" height="85" as="geometry" />
+        </mxCell>
+
+        <!-- FlowTracker -->
+        <mxCell id="flow_tracker" value="&lt;font style=&quot;font-size:12px;font-weight:700;color:#FFFFFF;&quot;&gt;FlowTracker&lt;/font&gt;&lt;hr&gt;&lt;font style=&quot;font-size:9px;color:#FED7AA;line-height:1.5;&quot;&gt;LogStart · LogDone · LogError&lt;br&gt;LogSkip · LogWarn · LogCritical&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C2410C;strokeColor=#F97316;strokeWidth=2;arcSize=10;shadow=1;shadowColor=#F9731660;shadowOffsetX=0;shadowOffsetY=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="560" width="250" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- FlowContext -->
+        <mxCell id="flow_ctx" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#FDBA74;&quot;&gt;FlowContext&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#94A3B8;&quot;&gt;step timing&lt;br&gt;RecordStart / TakeTiming&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#431407;strokeColor=#F97316;strokeWidth=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="40" y="645" width="120" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- SpanCollector -->
+        <mxCell id="span_collector" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#FDBA74;&quot;&gt;SpanCollector&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#94A3B8;&quot;&gt;span tree&lt;br&gt;chat.turn → llm.call&lt;br&gt;→ tool.call&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#431407;strokeColor=#F97316;strokeWidth=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="170" y="645" width="120" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- UsageAggregator -->
+        <mxCell id="usage_agg" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#FDBA74;&quot;&gt;UsageAggregator&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#94A3B8;&quot;&gt;observe framework events&lt;br&gt;auto-create LLM/tool spans&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#431407;strokeColor=#F97316;strokeWidth=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="40" y="715" width="250" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: Caller FlowTracker → FlowTracker -->
+        <mxCell id="a_caller_flow" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F97316;strokeWidth=2;exitX=0;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;endArrow=blockThin;endFill=1;curved=1;" edge="1" source="caller_flow" target="flow_tracker" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="165" y="170" />
+              <mxPoint x="165" y="430" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Arrow: FlowTracker → Pipeline (emits log events) -->
+        <mxCell id="a_flow_pipe" value="&lt;font style=&quot;font-size:9px;color:#FB923C;&quot;&gt;log events&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F97316;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;endArrow=blockThin;endFill=1;curved=1;labelBackgroundColor=#0F172A00;" edge="1" source="flow_tracker" target="pipeline_core" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- DUAL BUS ROUTING (Slate) — BOTTOM                            -->
+        <!-- ============================================================ -->
+        <mxCell id="bus_group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;strokeColor=#64748B;strokeWidth=2;arcSize=6;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="340" y="1000" width="1320" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="bus_label" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#64748B;letter-spacing:1px;&quot;&gt;DUAL BUS ROUTING — INFRA&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="355" y="1003" width="220" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- LogPipelinePublisher -->
+        <mxCell id="log_pub" value="&lt;font style=&quot;font-size:13px;font-weight:700;color:#FFFFFF;&quot;&gt;LogPipelinePublisher&lt;/font&gt;&lt;hr&gt;&lt;font style=&quot;font-size:10px;color:#CBD5E1;&quot;&gt;Adapts logpipeline.Publisher → EventBus&lt;br&gt;KindFlow → EnvelopeTypeFlowLog&lt;br&gt;KindLog → EnvelopeTypeLog&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#475569;strokeColor=#94A3B8;strokeWidth=2;arcSize=10;shadow=1;shadowColor=#64748B80;shadowOffsetX=0;shadowOffsetY=4;" vertex="1" parent="1">
+          <mxGeometry x="380" y="1035" width="260" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- SessionBus -->
+        <mxCell id="session_bus" value="&lt;font style=&quot;font-size:13px;font-weight:700;color:#FFFFFF;&quot;&gt;🚌 SessionBus&lt;/font&gt;&lt;hr&gt;&lt;font style=&quot;font-size:10px;color:#CBD5E1;&quot;&gt;chat / team / graph events&lt;br&gt;Alert / MCP health (dual)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#334155;strokeColor=#64748B;strokeWidth=2;arcSize=10;shadow=1;shadowColor=#64748B60;shadowOffsetX=0;shadowOffsetY=4;" vertex="1" parent="1">
+          <mxGeometry x="740" y="1035" width="220" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- MonitorBus -->
+        <mxCell id="monitor_bus" value="&lt;font style=&quot;font-size:13px;font-weight:700;color:#FFFFFF;&quot;&gt;🚌 MonitorBus&lt;/font&gt;&lt;hr&gt;&lt;font style=&quot;font-size:10px;color:#CBD5E1;&quot;&gt;flow_log / log events&lt;br&gt;Alert / MCP health (dual)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#334155;strokeColor=#64748B;strokeWidth=2;arcSize=10;shadow=1;shadowColor=#64748B60;shadowOffsetX=0;shadowOffsetY=4;" vertex="1" parent="1">
+          <mxGeometry x="740" y="1125" width="220" height="65" as="geometry" />
+        </mxCell>
+
+        <!-- Routing Decision Tree -->
+        <mxCell id="route_tree" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;strokeColor=#64748B;strokeWidth=1;arcSize=8;dashed=1;dashPattern=4 3;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="1020" width="620" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="route_label" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#94A3B8;letter-spacing:1px;&quot;&gt;ROUTING DECISION TREE&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1035" y="1023" width="200" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- Decision nodes -->
+        <mxCell id="dec_split" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#E2E8F0;&quot;&gt;Split Mode&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#94A3B8;&quot;&gt;(default)&lt;/font&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#475569;strokeColor=#94A3B8;strokeWidth=1;arcSize=10;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="1055" width="120" height="70" as="geometry" />
+        </mxCell>
+        <mxCell id="dec_flow" value="&lt;font style=&quot;font-size:10px;font-weight:600;color:#F97316;&quot;&gt;flow_log&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#431407;strokeColor=#F97316;strokeWidth=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="1055" width="90" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="dec_log" value="&lt;font style=&quot;font-size:10px;font-weight:600;color:#0EA5E9;&quot;&gt;log&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0C4A6E;strokeColor=#0EA5E9;strokeWidth=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="1100" width="90" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="dec_monitor" value="&lt;font style=&quot;font-size:10px;font-weight:600;color:#64748B;&quot;&gt;→ MonitorBus&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#94A3B8;&quot;&gt;only&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#334155;strokeColor=#64748B;strokeWidth=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="1050" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="dec_both" value="&lt;font style=&quot;font-size:10px;font-weight:600;color:#EF4444;&quot;&gt;→ Both Buses&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#94A3B8;&quot;&gt;Alert / MCP health&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7F1D1D;strokeColor=#EF4444;strokeWidth=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="1100" width="130" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="dec_session_only" value="&lt;font style=&quot;font-size:10px;font-weight:600;color:#64748B;&quot;&gt;→ SessionBus&lt;br&gt;&lt;font style=&quot;font-size:9px;color:#94A3B8;&quot;&gt;chat/team/graph&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#334155;strokeColor=#64748B;strokeWidth=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1500" y="1050" width="120" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Decision arrows -->
+        <mxCell id="a_dec_flow" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F97316;strokeWidth=1;endArrow=blockThin;endFill=1;curved=1;exitX=1;exitY=0.3;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;labelBackgroundColor=#0F172A00;" edge="1" source="dec_split" target="dec_flow" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a_dec_log" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0EA5E9;strokeWidth=1;endArrow=blockThin;endFill=1;curved=1;exitX=1;exitY=0.7;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;labelBackgroundColor=#0F172A00;" edge="1" source="dec_split" target="dec_log" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a_flow_monitor" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1;endArrow=blockThin;endFill=1;curved=1;" edge="1" source="dec_flow" target="dec_monitor" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a_log_both" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#EF4444;strokeWidth=1;endArrow=blockThin;endFill=1;curved=1;" edge="1" source="dec_log" target="dec_both" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="a_monitor_session" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=1;dashed=1;dashPattern=3 2;endArrow=openThin;endFill=1;curved=1;" edge="1" source="dec_monitor" target="dec_session_only" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Arrows: EventBusSink → LogPipelinePublisher -->
+        <mxCell id="a_sink_pub" value="&lt;font style=&quot;font-size:9px;color:#94A3B8;&quot;&gt;Publisher&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=2;endArrow=blockThin;endFill=1;curved=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;labelBackgroundColor=#0F172A00;" edge="1" source="sink_eventbus" target="log_pub" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1075" y="960" />
+              <mxPoint x="510" y="960" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Arrow: LogPipelinePublisher → SessionBus -->
+        <mxCell id="a_pub_session" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=2;endArrow=blockThin;endFill=1;curved=1;" edge="1" source="log_pub" target="session_bus" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: LogPipelinePublisher → MonitorBus -->
+        <mxCell id="a_pub_monitor" value="&lt;font style=&quot;font-size:9px;color:#94A3B8;&quot;&gt;flow_log&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#64748B;strokeWidth=2;endArrow=blockThin;endFill=1;curved=1;exitX=1;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;labelBackgroundColor=#0F172A00;" edge="1" source="log_pub" target="monitor_bus" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- FLOW TRACKING → MONITOR BUS CONNECTION                       -->
+        <!-- ============================================================ -->
+        <mxCell id="a_flow_monitor_bus" value="&lt;font style=&quot;font-size:9px;color:#FB923C;&quot;&gt;flow events&lt;/font&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F97316;strokeWidth=2;exitX=1;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;endArrow=blockThin;endFill=1;curved=1;labelBackgroundColor=#0F172A00;" edge="1" source="usage_agg" target="monitor_bus" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="340" y="1157" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- DATA FLOW LEGEND                                              -->
+        <!-- ============================================================ -->
+        <mxCell id="legend_group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1E293B;strokeColor=#334155;strokeWidth=1;arcSize=6;shadow=0;" vertex="1" parent="1">
+          <mxGeometry x="20" y="835" width="290" height="365" as="geometry" />
+        </mxCell>
+        <mxCell id="legend_label" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#94A3B8;letter-spacing:1px;&quot;&gt;LEGEND&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="35" y="838" width="70" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- Color Legend -->
+        <mxCell id="leg_gw" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#6366F1;strokeColor=none;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="870" width="20" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_gw_t" value="&lt;font style=&quot;font-size:10px;color:#CBD5E1;&quot;&gt;Gateway / Logger&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="70" y="863" width="120" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg_pipe" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0EA5E9;strokeColor=none;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="894" width="20" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_pipe_t" value="&lt;font style=&quot;font-size:10px;color:#CBD5E1;&quot;&gt;Pipeline&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="70" y="887" width="70" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg_sg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#8B5CF6;strokeColor=none;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="918" width="20" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_sg_t" value="&lt;font style=&quot;font-size:10px;color:#CBD5E1;&quot;&gt;SinkGroup&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="70" y="911" width="80" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg_file" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#10B981;strokeColor=none;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="942" width="20" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_file_t" value="&lt;font style=&quot;font-size:10px;color:#CBD5E1;&quot;&gt;FileSink&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="70" y="935" width="70" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg_stdout" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F59E0B;strokeColor=none;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="966" width="20" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_stdout_t" value="&lt;font style=&quot;font-size:10px;color:#CBD5E1;&quot;&gt;StdoutSink&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="70" y="959" width="80" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg_eb" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=none;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="990" width="20" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_eb_t" value="&lt;font style=&quot;font-size:10px;color:#CBD5E1;&quot;&gt;EventBusSink&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="70" y="983" width="100" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg_adapter" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EC4899;strokeColor=none;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1014" width="20" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_adapter_t" value="&lt;font style=&quot;font-size:10px;color:#CBD5E1;&quot;&gt;RuntimeLogAdapter&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="70" y="1007" width="130" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg_flow" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F97316;strokeColor=none;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1038" width="20" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_flow_t" value="&lt;font style=&quot;font-size:10px;color:#CBD5E1;&quot;&gt;Flow Tracking&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="70" y="1031" width="100" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg_bus" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#64748B;strokeColor=none;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1062" width="20" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="leg_bus_t" value="&lt;font style=&quot;font-size:10px;color:#CBD5E1;&quot;&gt;EventBus / Dual Bus&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="70" y="1055" width="130" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow Legend -->
+        <mxCell id="leg_arrow1" value="" style="endArrow=blockThin;html=1;strokeColor=#E2E8F0;strokeWidth=2;rounded=1;curved=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="40" y="1105" as="sourcePoint" />
+            <mxPoint x="100" y="1105" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="leg_arrow1_t" value="&lt;font style=&quot;font-size:10px;color:#CBD5E1;&quot;&gt;Sync data flow&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="110" y="1093" width="100" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg_arrow2" value="" style="endArrow=openThin;html=1;strokeColor=#94A3B8;strokeWidth=1;dashed=1;dashPattern=4 3;rounded=1;curved=1;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="40" y="1130" as="sourcePoint" />
+            <mxPoint x="100" y="1130" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="leg_arrow2_t" value="&lt;font style=&quot;font-size:10px;color:#CBD5E1;&quot;&gt;Reference / metadata&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="110" y="1118" width="130" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- Key Numbers -->
+        <mxCell id="key_nums" value="&lt;font style=&quot;font-size:11px;font-weight:600;color:#E2E8F0;&quot;&gt;Key Numbers&lt;/font&gt;&lt;hr&gt;&lt;font style=&quot;font-size:10px;color:#94A3B8;line-height:1.8;&quot;&gt;• Pipeline buffer: &lt;b style=&quot;color:#38BDF8&quot;&gt;4096&lt;/b&gt;&lt;br&gt;• CB Closed→Open: &lt;b style=&quot;color:#EF4444&quot;&gt;5 failures&lt;/b&gt;&lt;br&gt;• CB Open→HalfOpen: &lt;b style=&quot;color:#F59E0B&quot;&gt;10s timeout&lt;/b&gt;&lt;br&gt;• CB HalfOpen→Closed: &lt;b style=&quot;color:#10B981&quot;&gt;3 successes&lt;/b&gt;&lt;br&gt;• DropPolicy: &lt;b style=&quot;color:#A78BFA&quot;&gt;DropNewest&lt;/b&gt; / DropBlock&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0F172A;strokeColor=#334155;strokeWidth=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1155" width="250" height="130" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- DATA FLOW SUMMARY ARROW (main pipeline path)                 -->
+        <!-- ============================================================ -->
+        <mxCell id="flow_summary" value="&lt;font style=&quot;font-size:10px;font-weight:600;color:#475569;letter-spacing:2px;&quot;&gt;DATA FLOW:  调用方 → Logger → Pipeline → SinkGroup[] → Sink[]&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="530" y="1225" width="500" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- Main flow big arrow (decorative) -->
+        <mxCell id="big_arrow" value="" style="shape=mxgraph.arrows2.arrow;dy=0.6;dx=40;notch=0;whiteSpace=wrap;html=1;fillColor=#6366F115;strokeColor=#6366F130;strokeWidth=1;rotation=90;" vertex="1" parent="1">
+          <mxGeometry x="1680" y="230" width="60" height="680" as="geometry" />
+        </mxCell>
+        <mxCell id="big_arrow_label" value="&lt;font style=&quot;font-size:11px;font-weight:700;color:#6366F1;letter-spacing:1px;writing-mode=tb;&quot;&gt;ASYNC PIPELINE&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1755" y="480" width="30" height="160" as="geometry" />
+        </mxCell>
+
+        <!-- ============================================================ -->
+        <!-- VERSION / FOOTER                                              -->
+        <!-- ============================================================ -->
+        <mxCell id="footer" value="&lt;font style=&quot;font-size:9px;color:#475569;&quot;&gt;Aranea-Agents Logging Framework · 3-Layer Async Pipeline · Generated 2026-06-03&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="620" y="1260" width="440" height="20" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

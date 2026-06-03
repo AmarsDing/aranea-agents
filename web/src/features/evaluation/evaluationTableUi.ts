@@ -25,7 +25,7 @@ export const EVAL_RESULT_TABLE_COLUMNS: QTableColumn<EvalCaseResult>[] = [
   registryCol<EvalCaseResult>('contains_match', 'Contains', 'contains_match', 'center', REGISTRY_COL_W.narrow),
   registryCol<EvalCaseResult>('human_pass', '人工', 'human_pass', 'center', REGISTRY_COL_W.narrow),
   registryCol<EvalCaseResult>('human_score', '分数', 'human_score', 'center', REGISTRY_COL_W.narrow),
-  registryCol<EvalCaseResult>('human_comment', '评语', 'human_comment', 'left', '12%'),
+  registryCol<EvalCaseResult>('human_comment', '评语', 'human_comment', 'left', REGISTRY_COL_W.name),
   registryCol<EvalCaseResult>('annotate', '', 'id', 'right', REGISTRY_COL_W.actions),
 ];
 

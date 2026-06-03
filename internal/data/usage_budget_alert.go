@@ -31,7 +31,7 @@ func entBudgetAlertToBiz(row *entpkg.BudgetAlert) biz.BudgetAlert {
 func (r *usageRepo) ListBudgetAlerts(ctx context.Context, scopeType, scopeID string) ([]biz.BudgetAlert, error) {
 	scopeType = strings.TrimSpace(scopeType)
 	scopeID = strings.TrimSpace(scopeID)
-	q := r.readClient(ctx).BudgetAlert.Query()
+	q := r.data.RW().Read(ctx).BudgetAlert.Query()
 	if scopeType != "" {
 		q = q.Where(budgetalert.ScopeTypeEQ(scopeType))
 	}
@@ -60,7 +60,7 @@ func (r *usageRepo) SetBudgetAlert(ctx context.Context, alert biz.BudgetAlert) (
 	if id == "" {
 		id = uuid.NewString()
 	}
-	err := r.ent().BudgetAlert.Create().
+	err := r.data.RW().Write(ctx).BudgetAlert.Create().
 		SetID(id).
 		SetScopeType(scopeType).
 		SetScopeID(scopeID).
@@ -91,7 +91,7 @@ func (r *usageRepo) SetBudgetAlert(ctx context.Context, alert biz.BudgetAlert) (
 }
 
 func (r *usageRepo) UpdateBudgetAlertLastFired(ctx context.Context, id, firedAt string) error {
-	return r.ent().BudgetAlert.UpdateOneID(strings.TrimSpace(id)).
+	return r.data.RW().Write(ctx).BudgetAlert.UpdateOneID(strings.TrimSpace(id)).
 		SetLastFiredAt(firedAt).
 		SetUpdatedAt(nowRFC3339()).
 		Exec(ctx)

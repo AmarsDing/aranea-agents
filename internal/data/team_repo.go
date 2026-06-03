@@ -115,15 +115,8 @@ func entTeamRunStepToBiz(e *ent.TeamRunStep) biz.TeamRunStep {
 	}
 }
 
-func (r *teamRepo) readClient(ctx context.Context) *ent.Client {
-	if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
-		return tx.Client()
-	}
-	return r.data.ReadEnt()
-}
-
 func (r *teamRepo) ListTeams(ctx context.Context) ([]biz.Team, error) {
-	c := r.readClient(ctx)
+	c := r.data.RW().Read(ctx)
 	rows, err := c.Team.Query().Where(team.DeletedAtEQ("")).
 		Order(team.ByIsDefault(entsql.OrderDesc()), team.ByCreatedAt(entsql.OrderDesc())).
 		All(ctx)
@@ -138,7 +131,7 @@ func (r *teamRepo) ListTeams(ctx context.Context) ([]biz.Team, error) {
 }
 
 func (r *teamRepo) GetTeamByID(ctx context.Context, id string) (biz.Team, error) {
-	c := r.readClient(ctx)
+	c := r.data.RW().Read(ctx)
 	row, err := c.Team.Query().Where(team.IDEQ(id), team.DeletedAtEQ("")).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -161,7 +154,7 @@ func (r *teamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 	if t.Status == "" {
 		t.Status = "active"
 	}
-	_, err := r.data.entClient.Team.Create().
+	_, err := r.data.RW().Write(ctx).Team.Create().
 		SetID(t.ID).
 		SetTeamKey(t.TeamKey).
 		SetDisplayName(t.DisplayName).
@@ -196,7 +189,7 @@ func (r *teamRepo) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 	if t.Status == "" {
 		t.Status = "active"
 	}
-	_, err := r.data.entClient.Team.UpdateOneID(t.ID).
+	_, err := r.data.RW().Write(ctx).Team.UpdateOneID(t.ID).
 		SetTeamKey(t.TeamKey).
 		SetDisplayName(t.DisplayName).
 		SetStatus(t.Status).
@@ -227,7 +220,7 @@ func (r *teamRepo) DeleteTeam(ctx context.Context, id string) error {
 		return kerrors.BadRequest("TEAM", "id is required")
 	}
 	now := nowRFC3339()
-	_, err := r.data.entClient.Team.UpdateOneID(id).
+	_, err := r.data.RW().Write(ctx).Team.UpdateOneID(id).
 		SetDeletedAt(now).
 		SetStatus("deleted").
 		SetUpdatedAt(now).
@@ -240,7 +233,7 @@ func (r *teamRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionID st
 	if spiritSessionID == "" {
 		return nil, nil
 	}
-	rows, err := r.readClient(ctx).Team.Query().
+	rows, err := r.data.RW().Read(ctx).Team.Query().
 		Where(team.SpiritSessionIDEQ(spiritSessionID), team.DeletedAtEQ("")).
 		Order(team.ByCreatedAt(entsql.OrderDesc())).
 		All(ctx)
@@ -258,7 +251,7 @@ func (r *teamRepo) ListTeamRuns(ctx context.Context, teamID string, limit int) (
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	q := r.readClient(ctx).TeamRun.Query().Order(teamrun.ByCreatedAt(entsql.OrderDesc()))
+	q := r.data.RW().Read(ctx).TeamRun.Query().Order(teamrun.ByCreatedAt(entsql.OrderDesc()))
 	if teamID != "" {
 		q = q.Where(teamrun.TeamIDEQ(teamID))
 	}
@@ -274,7 +267,7 @@ func (r *teamRepo) ListTeamRuns(ctx context.Context, teamID string, limit int) (
 }
 
 func (r *teamRepo) HasActiveTeamRun(ctx context.Context, teamID string) (bool, error) {
-	count, err := r.readClient(ctx).TeamRun.Query().
+	count, err := r.data.RW().Read(ctx).TeamRun.Query().
 		Where(
 			teamrun.TeamIDEQ(teamID),
 			teamrun.StatusIn(biz.TeamRunStatusRunning, biz.TeamRunStatusPending),
@@ -288,7 +281,7 @@ func (r *teamRepo) HasActiveTeamRun(ctx context.Context, teamID string) (bool, e
 }
 
 func (r *teamRepo) GetTeamRunByID(ctx context.Context, id string) (biz.TeamRun, error) {
-	row, err := r.readClient(ctx).TeamRun.Get(ctx, id)
+	row, err := r.data.RW().Read(ctx).TeamRun.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.TeamRun{}, sql.ErrNoRows
@@ -299,7 +292,7 @@ func (r *teamRepo) GetTeamRunByID(ctx context.Context, id string) (biz.TeamRun, 
 }
 
 func (r *teamRepo) ListTeamRunSteps(ctx context.Context, runID string) ([]biz.TeamRunStep, error) {
-	rows, err := r.readClient(ctx).TeamRunStep.Query().
+	rows, err := r.data.RW().Read(ctx).TeamRunStep.Query().
 		Where(teamrunstep.RunIDEQ(runID)).
 		Order(teamrunstep.BySortOrder(entsql.OrderAsc()), teamrunstep.ByCreatedAt(entsql.OrderAsc())).
 		All(ctx)
@@ -333,7 +326,7 @@ func (r *teamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRun) (biz.Team
 	if run.TopologyJSON == "" {
 		run.TopologyJSON = "{}"
 	}
-	_, err := r.data.entClient.TeamRun.Create().
+	_, err := r.data.RW().Write(ctx).TeamRun.Create().
 		SetID(run.ID).
 		SetTeamID(run.TeamID).
 		SetSessionID(run.SessionID).
@@ -359,7 +352,7 @@ func (r *teamRepo) CreateTeamRun(ctx context.Context, run biz.TeamRun) (biz.Team
 	if err != nil {
 		return biz.TeamRun{}, err
 	}
-	row, err := r.data.ReadClient(ctx).TeamRun.Get(ctx, run.ID)
+	row, err := r.data.RW().Read(ctx).TeamRun.Get(ctx, run.ID)
 	if err != nil {
 		return biz.TeamRun{}, err
 	}
@@ -371,7 +364,7 @@ func (r *teamRepo) UpdateTeamRun(ctx context.Context, run biz.TeamRun) error {
 		return kerrors.BadRequest("TEAM_RUN", "team run id is required")
 	}
 	now := nowRFC3339()
-	_, err := r.data.entClient.TeamRun.UpdateOneID(run.ID).
+	_, err := r.data.RW().Write(ctx).TeamRun.UpdateOneID(run.ID).
 		SetStatus(run.Status).
 		SetOutputPreview(run.OutputPreview).
 		SetTokenIn(run.TokenIn).
@@ -397,7 +390,7 @@ func (r *teamRepo) CreateTeamRunStep(ctx context.Context, step biz.TeamRunStep) 
 	if step.Status == "" {
 		step.Status = biz.TeamMemberStepStatusOK
 	}
-	_, err := r.data.entClient.TeamRunStep.Create().
+	_, err := r.data.RW().Write(ctx).TeamRunStep.Create().
 		SetID(step.ID).
 		SetRunID(step.RunID).
 		SetTeamID(step.TeamID).
@@ -422,7 +415,7 @@ func (r *teamRepo) CreateTeamRunStep(ctx context.Context, step biz.TeamRunStep) 
 	if err != nil {
 		return biz.TeamRunStep{}, err
 	}
-	row, err := r.data.ReadClient(ctx).TeamRunStep.Get(ctx, step.ID)
+	row, err := r.data.RW().Read(ctx).TeamRunStep.Get(ctx, step.ID)
 	if err != nil {
 		return biz.TeamRunStep{}, err
 	}
@@ -434,7 +427,7 @@ func (r *teamRepo) UpdateTeamRunSummaryJSON(ctx context.Context, runID, summaryJ
 		return kerrors.BadRequest("TEAM_RUN", "team run id is required")
 	}
 	now := nowRFC3339()
-	_, err := r.data.entClient.ExecContext(ctx,
+	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
 		`UPDATE team_runs SET summary_json=?, updated_at=? WHERE id=?`,
 		summaryJSON, now, runID)
 	return err
@@ -445,7 +438,7 @@ func (r *teamRepo) UpdateTeamRunGraphExecutionID(ctx context.Context, runID, gra
 		return kerrors.BadRequest("TEAM_RUN", "team run id is required")
 	}
 	now := nowRFC3339()
-	_, err := r.data.entClient.ExecContext(ctx,
+	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
 		`UPDATE team_runs SET graph_execution_id=?, updated_at=? WHERE id=?`,
 		graphExecutionID, now, runID)
 	return err
@@ -456,7 +449,7 @@ func (r *teamRepo) UpdateTeamRunTraceID(ctx context.Context, runID, traceID stri
 		return kerrors.BadRequest("TEAM_RUN", "team run id is required")
 	}
 	now := nowRFC3339()
-	_, err := r.data.entClient.ExecContext(ctx,
+	_, err := r.data.RW().Write(ctx).ExecContext(ctx,
 		`UPDATE team_runs SET trace_id=?, updated_at=? WHERE id=?`,
 		traceID, now, runID)
 	return err
@@ -475,7 +468,7 @@ func (r *teamRepo) BatchCreateOrchestrationSteps(ctx context.Context, steps []bi
 		if createdAt == "" {
 			createdAt = nowRFC3339()
 		}
-		builders = append(builders, r.data.entClient.OrchestrationStep.Create().
+		builders = append(builders, r.data.RW().Write(ctx).OrchestrationStep.Create().
 			SetID(step.ID).
 			SetTeamRunID(step.TeamRunID).
 			SetGraphExecutionID(step.GraphExecutionID).
@@ -489,7 +482,7 @@ func (r *teamRepo) BatchCreateOrchestrationSteps(ctx context.Context, steps []bi
 	if len(builders) == 0 {
 		return nil
 	}
-	_, err := r.data.entClient.OrchestrationStep.CreateBulk(builders...).Save(ctx)
+	_, err := r.data.RW().Write(ctx).OrchestrationStep.CreateBulk(builders...).Save(ctx)
 	return err
 }
 
@@ -501,7 +494,7 @@ func (r *teamRepo) ListOrchestrationSteps(ctx context.Context, teamRunID, nodeID
 	if limit <= 0 {
 		limit = 100
 	}
-	q := r.readClient(ctx).OrchestrationStep.Query().
+	q := r.data.RW().Read(ctx).OrchestrationStep.Query().
 		Where(orchestrationstep.TeamRunIDEQ(teamRunID)).
 		Order(orchestrationstep.ByCreatedAt(entsql.OrderAsc())).
 		Limit(limit)
@@ -527,7 +520,7 @@ func (r *teamRepo) CreateTaskDeadLetter(ctx context.Context, dl biz.TaskDeadLett
 	if payload == "" {
 		payload = "{}"
 	}
-	_, err := r.data.entClient.TaskDeadLetter.Create().
+	_, err := r.data.RW().Write(ctx).TaskDeadLetter.Create().
 		SetID(dl.ID).
 		SetSourceType(strings.TrimSpace(dl.SourceType)).
 		SetSourceID(strings.TrimSpace(dl.SourceID)).
@@ -545,7 +538,7 @@ func (r *teamRepo) CreateTaskDeadLetter(ctx context.Context, dl biz.TaskDeadLett
 }
 
 func (r *teamRepo) ListTaskDeadLetters(ctx context.Context, filter biz.TaskDeadLetterListFilter) ([]biz.TaskDeadLetter, error) {
-	q := r.readClient(ctx).TaskDeadLetter.Query()
+	q := r.data.RW().Read(ctx).TaskDeadLetter.Query()
 	if sid := strings.TrimSpace(filter.SessionID); sid != "" {
 		q = q.Where(taskdeadletter.SessionIDEQ(sid))
 	}
@@ -578,7 +571,7 @@ func (r *teamRepo) ResolveTaskDeadLetter(ctx context.Context, id string) (biz.Ta
 	if id == "" {
 		return biz.TaskDeadLetter{}, kerrors.BadRequest("TASK_DEAD_LETTER", "task dead letter id is required")
 	}
-	existing, err := r.readClient(ctx).TaskDeadLetter.Get(ctx, id)
+	existing, err := r.data.RW().Read(ctx).TaskDeadLetter.Get(ctx, id)
 	if err != nil {
 		return biz.TaskDeadLetter{}, err
 	}
@@ -589,7 +582,7 @@ func (r *teamRepo) ResolveTaskDeadLetter(ctx context.Context, id string) (biz.Ta
 		return biz.TaskDeadLetter{}, kerrors.BadRequest("TASK_DEAD_LETTER", "task dead letter "+id+" is not pending")
 	}
 	now := nowRFC3339()
-	row, err := r.data.entClient.TaskDeadLetter.UpdateOneID(id).
+	row, err := r.data.RW().Write(ctx).TaskDeadLetter.UpdateOneID(id).
 		SetStatus(biz.TaskDeadLetterStatusResolved).
 		SetResolvedAt(now).
 		Save(ctx)

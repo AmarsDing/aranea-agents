@@ -1,5 +1,6 @@
 import { onMounted, ref, watch, type Ref } from 'vue';
-import { listTaskDeadLetters, resolveTaskDeadLetter, type TaskDeadLetterRow } from '../teams/api';
+import { listTaskDeadLetters, resolveTaskDeadLetter } from '../teams/api';
+import type { TaskDeadLetterRow } from '../teams/types';
 
 export function useTaskDeadLetters(sessionId: Ref<string | undefined>, refreshNonce?: Ref<number | undefined>) {
   const loading = ref(false);

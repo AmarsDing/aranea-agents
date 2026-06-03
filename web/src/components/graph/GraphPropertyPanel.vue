@@ -588,7 +588,7 @@ function updateNodeField<K extends keyof NodeDef>(field: K, value: NodeDef[K]) {
   if (props.selectedNode) {
     const oldValue = props.selectedNode[field];
     if (props.undoRedo) {
-      props.undoRedo.pushSetProperty(props.selectedNode.id, field as string, oldValue, value);
+      props.undoRedo.pushSetProperty(props.selectedNode.id, field, oldValue, value);
     } else {
       props.selectedNode[field] = value;
       notifyChange();
@@ -596,25 +596,25 @@ function updateNodeField<K extends keyof NodeDef>(field: K, value: NodeDef[K]) {
   }
 }
 
-function updateGraphField(field: string, value: unknown) {
+function updateGraphField<K extends keyof GraphDefinition>(field: K, value: GraphDefinition[K]) {
   if (props.graphDef) {
-    const oldValue = (props.graphDef as any)[field];
+    const oldValue = props.graphDef[field];
     if (props.undoRedo) {
       props.undoRedo.pushSetGraphProperty(field, oldValue, value);
     } else {
-      (props.graphDef as any)[field] = value;
+      props.graphDef[field] = value;
       notifyChange();
     }
   }
 }
 
-function updateStateField(idx: number, field: string, value: unknown) {
+function updateStateField<K extends keyof StateFieldDef>(idx: number, field: K, value: StateFieldDef[K]) {
   if (props.graphDef && props.graphDef.stateFields[idx]) {
-    const oldValue = (props.graphDef.stateFields[idx] as any)[field];
+    const oldValue = props.graphDef.stateFields[idx][field];
     if (props.undoRedo) {
       props.undoRedo.pushSetStateProperty(idx, field, oldValue, value);
     } else {
-      (props.graphDef.stateFields[idx] as any)[field] = value;
+      props.graphDef.stateFields[idx][field] = value;
       notifyChange();
     }
   }

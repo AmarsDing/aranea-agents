@@ -1,3 +1,4 @@
+import type { Agent } from '../features/agents/types';
 import type { Session } from '../features/session/types';
 import { ref } from 'vue';
 
@@ -7,7 +8,8 @@ type SessionMutation =
   | { type: 'archive'; id: string }
   | { type: 'refresh' }
   | { type: 'status_changed'; id: string; status: string; statusReason: string; statusChangedAt: string }
-  | { type: 'agent_removed'; agentId: string };
+  | { type: 'agent_removed'; agentId: string }
+  | { type: 'agent_updated'; agent: Agent };
 
 type MutationHandler = (mutation: SessionMutation) => void;
 

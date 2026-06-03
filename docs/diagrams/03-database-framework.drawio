@@ -1,0 +1,566 @@
+<mxfile host="app.diagrams.net" modified="2026-06-03T15:00:00.000Z" agent="Aranea-Agents" version="24.0.0" type="device">
+  <diagram id="db-framework" name="Database Framework Architecture">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="2200" pageHeight="1600" math="0" shadow="1">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ========== BACKGROUND ========== -->
+        <mxCell id="bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=none;shadow=0;arcSize=2;" vertex="1" parent="1">
+          <mxGeometry x="0" y="0" width="2200" height="1600" as="geometry" />
+        </mxCell>
+
+        <!-- ========== TITLE ========== -->
+        <mxCell id="title" value="&lt;font style=&quot;font-size:28px;&quot;&gt;&lt;b&gt;Aranea-Agents Database Framework Architecture&lt;/b&gt;&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontColor=#1E293B;" vertex="1" parent="1">
+          <mxGeometry x="620" y="20" width="960" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="subtitle" value="&lt;font style=&quot;font-size:14px;&quot; color=&quot;#64748B&quot;&gt;Dual Database &amp;middot; Read/Write Split &amp;middot; Ent ORM + Raw SQL &amp;middot; 56 Schemas &amp;middot; 37 Migrations &amp;middot; 65 Wire Providers&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="540" y="65" width="1120" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- ========== DATA STRUCT (CENTRAL HUB) ========== -->
+        <mxCell id="data-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=2;shadow=1;arcSize=8;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="40" y="110" width="520" height="520" as="geometry" />
+        </mxCell>
+        <mxCell id="data-title" value="&lt;b&gt;&lt;font style=&quot;font-size:18px;&quot; color=&quot;#6366F1&quot;&gt;Data Struct&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px;&quot; color=&quot;#6366F1&quot;&gt;internal/data/data.go&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="200" y="118" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Data fields - Write side -->
+        <mxCell id="data-entclient" value="&lt;b&gt;entClient&lt;/b&gt; &lt;font color=&quot;#64748B&quot;&gt;*ent.Client&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#10B981&quot;&gt;write &amp;middot; MaxOpenConns=1&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;strokeWidth=1.5;shadow=1;arcSize=12;spacingLeft=8;spacingRight=8;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="175" width="230" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="data-rawdb" value="&lt;b&gt;rawDB&lt;/b&gt; &lt;font color=&quot;#64748B&quot;&gt;*sql.DB&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#10B981&quot;&gt;write&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;strokeWidth=1.5;shadow=1;arcSize=12;spacingLeft=8;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="230" width="230" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Data fields - Read side -->
+        <mxCell id="data-readclient" value="&lt;b&gt;readClient&lt;/b&gt; &lt;font color=&quot;#64748B&quot;&gt;*ent.Client&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#0EA5E9&quot;&gt;read &amp;middot; MaxOpenConns=2&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;strokeWidth=1.5;shadow=1;arcSize=12;spacingLeft=8;align=left;" vertex="1" parent="1">
+          <mxGeometry x="310" y="175" width="230" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="data-readdb" value="&lt;b&gt;readDB&lt;/b&gt; &lt;font color=&quot;#64748B&quot;&gt;*sql.DB&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#0EA5E9&quot;&gt;read&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;strokeWidth=1.5;shadow=1;arcSize=12;spacingLeft=8;align=left;" vertex="1" parent="1">
+          <mxGeometry x="310" y="230" width="230" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Write/Read labels -->
+        <mxCell id="write-label" value="&lt;font style=&quot;font-size:11px;&quot; color=&quot;#10B981&quot;&gt;&lt;b&gt;WRITE&lt;/b&gt;&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="130" y="155" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="read-label" value="&lt;font style=&quot;font-size:11px;&quot; color=&quot;#0EA5E9&quot;&gt;&lt;b&gt;READ&lt;/b&gt;&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="395" y="155" width="50" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Data fields - Other -->
+        <mxCell id="data-pg" value="&lt;b&gt;pg&lt;/b&gt; &lt;font color=&quot;#64748B&quot;&gt;*sql.DB&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#3B82F6&quot;&gt;PostgreSQL (optional)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;strokeWidth=1.5;shadow=1;arcSize=12;spacingLeft=8;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="290" width="230" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="data-rw" value="&lt;b&gt;rw&lt;/b&gt; &lt;font color=&quot;#64748B&quot;&gt;*ReadWriteClient&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#0EA5E9&quot;&gt;Ent layer router&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;strokeWidth=1.5;shadow=1;arcSize=12;spacingLeft=8;align=left;" vertex="1" parent="1">
+          <mxGeometry x="310" y="290" width="230" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="data-rwdb" value="&lt;b&gt;rwDB&lt;/b&gt; &lt;font color=&quot;#64748B&quot;&gt;*ReadWriteDB&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#0EA5E9&quot;&gt;Raw SQL router&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;strokeWidth=1.5;shadow=1;arcSize=12;spacingLeft=8;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="345" width="230" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="data-vectordim" value="&lt;b&gt;vectorDim&lt;/b&gt; &lt;font color=&quot;#64748B&quot;&gt;1536&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#3B82F6&quot;&gt;Embedding dimension&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;strokeWidth=1.5;shadow=1;arcSize=12;spacingLeft=8;align=left;" vertex="1" parent="1">
+          <mxGeometry x="310" y="345" width="230" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="data-readiness" value="&lt;b&gt;readiness&lt;/b&gt; &lt;font color=&quot;#64748B&quot;&gt;*ReadinessGate&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#EC4899&quot;&gt;Migration-aware gating&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;strokeWidth=1.5;shadow=1;arcSize=12;spacingLeft=8;align=left;" vertex="1" parent="1">
+          <mxGeometry x="60" y="400" width="230" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="data-seeders" value="&lt;b&gt;lazySeeders&lt;/b&gt; &lt;font color=&quot;#64748B&quot;&gt;[]LazySeeder&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#EC4899&quot;&gt;Deferred data seeding&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6366F1;strokeWidth=1.5;shadow=1;arcSize=12;spacingLeft=8;align=left;" vertex="1" parent="1">
+          <mxGeometry x="310" y="400" width="230" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Key numbers badge -->
+        <mxCell id="data-badge" value="&lt;font style=&quot;font-size:12px;&quot; color=&quot;#6366F1&quot;&gt;&lt;b&gt;56&lt;/b&gt; schemas &amp;middot; &lt;b&gt;37&lt;/b&gt; migrations &amp;middot; &lt;b&gt;65&lt;/b&gt; providers&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C7D2FE;strokeColor=#6366F1;strokeWidth=1;shadow=0;arcSize=20;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="120" y="465" width="280" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Compile-time checks badge -->
+        <mxCell id="data-checks" value="&lt;font style=&quot;font-size:11px;&quot; color=&quot;#6366F1&quot;&gt;&lt;b&gt;26+&lt;/b&gt; compile-time interface checks&lt;br&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;var _ biz.XxxRepo = (*xxxRepo)(nil)&lt;/font&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1;shadow=0;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="100" y="505" width="320" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ========== READWRITE CLIENT (ENT LAYER) ========== -->
+        <mxCell id="rw-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0F9FF;strokeColor=#0EA5E9;strokeWidth=2;shadow=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="600" y="110" width="360" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="rw-title" value="&lt;b&gt;&lt;font style=&quot;font-size:16px;&quot; color=&quot;#0EA5E9&quot;&gt;ReadWriteClient&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#0EA5E9&quot;&gt;Ent ORM Layer Router&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="680" y="118" width="200" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="rw-write" value="&lt;b&gt;Write&lt;/b&gt;(ctx)&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#64748B&quot;&gt;check tx client → entClient&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=1.5;shadow=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="620" y="170" width="155" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="rw-read" value="&lt;b&gt;Read&lt;/b&gt;(ctx)&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#64748B&quot;&gt;check tx client → readClient&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0EA5E9;strokeWidth=1.5;shadow=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="790" y="170" width="155" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="rw-tx-note" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#0EA5E9&quot;&gt;If ctx has tx client → use tx client&lt;br&gt;Otherwise → route by read/write&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="640" y="235" width="280" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ========== READWRITE DB (RAW SQL LAYER) ========== -->
+        <mxCell id="rwdb-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0F9FF;strokeColor=#0EA5E9;strokeWidth=2;shadow=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="600" y="360" width="360" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="rwdb-title" value="&lt;b&gt;&lt;font style=&quot;font-size:16px;&quot; color=&quot;#0EA5E9&quot;&gt;ReadWriteDB&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#0EA5E9&quot;&gt;Raw SQL Layer Router&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="690" y="368" width="180" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="rwdb-write" value="&lt;b&gt;WriteDB&lt;/b&gt;(ctx)&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#64748B&quot;&gt;check tx → rawDB&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#10B981;strokeWidth=1.5;shadow=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="620" y="420" width="155" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="rwdb-read" value="&lt;b&gt;ReadDB&lt;/b&gt;(ctx)&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#64748B&quot;&gt;check tx → readDB&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0EA5E9;strokeWidth=1.5;shadow=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="790" y="420" width="155" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="rwdb-tx-note" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#0EA5E9&quot;&gt;If ctx has sql.Tx → use tx&lt;br&gt;Otherwise → route by read/write&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="650" y="485" width="260" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ========== ARROWS: Data → ReadWrite ========== -->
+        <mxCell id="arrow-data-rw" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0EA5E9;strokeWidth=2;exitX=1;exitY=0.35;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="data-rw" target="rw-group">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-data-rwdb" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0EA5E9;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="data-rwdb" target="rwdb-group">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== SQLITE DATABASE ========== -->
+        <mxCell id="sqlite-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#10B981;strokeWidth=2.5;shadow=1;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="110" width="560" height="480" as="geometry" />
+        </mxCell>
+        <mxCell id="sqlite-title" value="&lt;b&gt;&lt;font style=&quot;font-size:20px;&quot; color=&quot;#10B981&quot;&gt;SQLite&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px;&quot; color=&quot;#10B981&quot;&gt;Primary Database&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1210" y="118" width="180" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- SQLite Config -->
+        <mxCell id="sqlite-config" value="&lt;font style=&quot;font-size:11px;&quot; color=&quot;#065F46&quot;&gt;&lt;b&gt;WAL mode&lt;/b&gt; &amp;middot; foreign_keys=ON&lt;br&gt;&lt;b&gt;busy_timeout&lt;/b&gt;=30000 &amp;middot; synchronous=NORMAL&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#10B981;strokeWidth=1;shadow=0;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="170" width="480" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Ent ORM Section -->
+        <mxCell id="ent-section" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F3FF;strokeColor=#8B5CF6;strokeWidth=1.5;shadow=0;arcSize=8;dashed=1;dashPattern=5 3;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="225" width="260" height="340" as="geometry" />
+        </mxCell>
+        <mxCell id="ent-title" value="&lt;b&gt;&lt;font style=&quot;font-size:14px;&quot; color=&quot;#8B5CF6&quot;&gt;Ent ORM&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#8B5CF6&quot;&gt;Type-safe CRUD&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1100" y="230" width="140" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Ent schemas list -->
+        <mxCell id="ent-schemas" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#5B21B6&quot;&gt;&lt;b&gt;56 Schemas&lt;/b&gt;&lt;br&gt;agents &amp;middot; sessions &amp;middot; teams&lt;br&gt;graphs &amp;middot; channels &amp;middot; tools&lt;br&gt;hooks &amp;middot; plugins &amp;middot; crontasks&lt;br&gt;messages &amp;middot; knowledge &amp;middot; memory&lt;br&gt;users &amp;middot; roles &amp;middot; permissions&lt;br&gt;flows &amp;middot; steps &amp;middot; variables&lt;br&gt;... and 38 more&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8B5CF6;strokeWidth=1;shadow=1;arcSize=10;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="275" width="220" height="130" as="geometry" />
+        </mxCell>
+
+        <!-- Shared connection pool -->
+        <mxCell id="ent-pool" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#8B5CF6&quot;&gt;&lt;b&gt;entsql.OpenDB&lt;/b&gt;&lt;br&gt;Shared connection pool&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#8B5CF6;strokeWidth=1;shadow=0;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="415" width="220" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Ent codegen -->
+        <mxCell id="ent-codegen" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#8B5CF6&quot;&gt;&lt;b&gt;go generate&lt;/b&gt; ./internal/data/ent&lt;br&gt;Auto-generated CRUD&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#8B5CF6;strokeWidth=1;shadow=0;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="465" width="220" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Raw SQL Section -->
+        <mxCell id="raw-section" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#F59E0B;strokeWidth=1.5;shadow=0;arcSize=8;dashed=1;dashPattern=5 3;" vertex="1" parent="1">
+          <mxGeometry x="1320" y="225" width="240" height="340" as="geometry" />
+        </mxCell>
+        <mxCell id="raw-title" value="&lt;b&gt;&lt;font style=&quot;font-size:14px;&quot; color=&quot;#F59E0B&quot;&gt;Raw SQL&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#F59E0B&quot;&gt;Complex queries&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1375" y="230" width="130" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Memory tables -->
+        <mxCell id="raw-tables" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#92400E&quot;&gt;&lt;b&gt;50+ Memory Tables&lt;/b&gt;&lt;br&gt;L0: session_snapshot&lt;br&gt;L1: short_term_memory&lt;br&gt;L2: long_term_memory&lt;br&gt;L3: core_memory&lt;br&gt;L4: episodic_memory&lt;br&gt;&lt;br&gt;Complex UPSERT&lt;br&gt;Vector similarity&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F59E0B;strokeWidth=1;shadow=1;arcSize=10;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="1340" y="275" width="200" height="140" as="geometry" />
+        </mxCell>
+
+        <!-- Raw SQL patterns -->
+        <mxCell id="raw-patterns" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#92400E&quot;&gt;&lt;b&gt;Direct sql.DB&lt;/b&gt;&lt;br&gt;db.QueryRow / db.Exec&lt;br&gt;sqlx named queries&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1;shadow=0;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="1340" y="425" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ========== POSTGRESQL DATABASE ========== -->
+        <mxCell id="pg-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;strokeWidth=2.5;shadow=1;arcSize=6;" vertex="1" parent="1">
+          <mxGeometry x="1620" y="110" width="540" height="480" as="geometry" />
+        </mxCell>
+        <mxCell id="pg-title" value="&lt;b&gt;&lt;font style=&quot;font-size:20px;&quot; color=&quot;#3B82F6&quot;&gt;PostgreSQL&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px;&quot; color=&quot;#3B82F6&quot;&gt;Vector Database (Optional)&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1780" y="118" width="220" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- pgvector -->
+        <mxCell id="pg-pgvector" value="&lt;b&gt;&lt;font style=&quot;font-size:14px;&quot; color=&quot;#3B82F6&quot;&gt;pgvector&lt;/b&gt;&lt;/font&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#3B82F6&quot;&gt;Extension for vector similarity&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#3B82F6;strokeWidth=1.5;shadow=0;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="1660" y="170" width="460" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Knowledge tables -->
+        <mxCell id="pg-knowledge" value="&lt;font style=&quot;font-size:11px;&quot; color=&quot;#1E40AF&quot;&gt;&lt;b&gt;Knowledge Tables&lt;/b&gt;&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1660" y="220" width="150" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="pg-collections" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;knowledge_collections&lt;/b&gt;&lt;br&gt;id, name, description, dim&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3B82F6;strokeWidth=1;shadow=1;arcSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1660" y="250" width="210" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="pg-documents" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;knowledge_documents&lt;/b&gt;&lt;br&gt;id, collection_id, content, metadata&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3B82F6;strokeWidth=1;shadow=1;arcSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1660" y="300" width="210" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="pg-chunks" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;knowledge_chunks&lt;/b&gt;&lt;br&gt;id, document_id, content, embedding&lt;br&gt;&lt;font color=&quot;#3B82F6&quot;&gt;ivfflat + GIN indexes&lt;/font&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3B82F6;strokeWidth=1.5;shadow=1;arcSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1660" y="350" width="210" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Agent memory tables -->
+        <mxCell id="pg-agent-mem" value="&lt;font style=&quot;font-size:11px;&quot; color=&quot;#1E40AF&quot;&gt;&lt;b&gt;Agent Memory Tables&lt;/b&gt;&lt;/font&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1660" y="410" width="170" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="pg-agent-mem-table" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;agent_memory_{dim}&lt;/b&gt;&lt;br&gt;Per-dimension tables&lt;br&gt;agent_memory_1536&lt;br&gt;agent_memory_768 ...&lt;br&gt;&lt;font color=&quot;#3B82F6&quot;&gt;ivfflat index on embedding&lt;/font&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3B82F6;strokeWidth=1;shadow=1;arcSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1660" y="440" width="210" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- PG SQL pattern -->
+        <mxCell id="pg-sql" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#1E40AF&quot;&gt;&lt;b&gt;Pattern 3&lt;/b&gt;: Pure pgvector&lt;br&gt;pg.QueryRow / pg.Exec&lt;br&gt;$1::vector cosine ops&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#3B82F6;strokeWidth=1;shadow=0;arcSize=12;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1900" y="250" width="230" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- PG connection info -->
+        <mxCell id="pg-conn" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#1E40AF&quot;&gt;Separate sql.DB connection&lt;br&gt;Independent transaction mgmt&lt;br&gt;PostgresExecInTx&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#3B82F6;strokeWidth=1;shadow=0;arcSize=12;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1900" y="320" width="230" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ========== ARROWS: ReadWrite → Databases ========== -->
+        <mxCell id="arrow-rw-write-sqlite" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#10B981;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.3;entryDx=0;entryDy=0;" edge="1" parent="1" source="rw-write" target="sqlite-group">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-rw-read-sqlite" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#0EA5E9;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;" edge="1" parent="1" source="rw-read" target="sqlite-group">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-rwdb-write-sqlite" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F59E0B;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.7;entryDx=0;entryDy=0;" edge="1" parent="1" source="rwdb-write" target="sqlite-group">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-rwdb-read-sqlite" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#F59E0B;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.85;entryDx=0;entryDy=0;dashed=1;" edge="1" parent="1" source="rwdb-read" target="sqlite-group">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Arrow: Data.pg → PostgreSQL -->
+        <mxCell id="arrow-data-pg" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#3B82F6;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="data-pg" target="pg-group">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="560" y="313" />
+              <mxPoint x="560" y="350" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ========== TRANSACTION MANAGEMENT ========== -->
+        <mxCell id="tx-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF1F2;strokeColor=#EC4899;strokeWidth=2;shadow=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="660" width="520" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="tx-title" value="&lt;b&gt;&lt;font style=&quot;font-size:16px;&quot; color=&quot;#EC4899&quot;&gt;Transaction Management&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#EC4899&quot;&gt;ExecInTx / PostgresExecInTx&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="150" y="668" width="300" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- SQLite Tx flow -->
+        <mxCell id="tx-sqlite-title" value="&lt;b&gt;&lt;font style=&quot;font-size:12px;&quot; color=&quot;#10B981&quot;&gt;SQLite Transaction&lt;/font&gt;&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="60" y="715" width="180" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="tx-step1" value="&lt;font style=&quot;font-size:10px;&quot;&gt;entClient.Tx(ctx)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#EC4899;strokeWidth=1;shadow=1;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="60" y="745" width="130" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="tx-step2" value="&lt;font style=&quot;font-size:10px;&quot;&gt;context.WithValue&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#EC4899;strokeWidth=1;shadow=1;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="210" y="745" width="130" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="tx-step3" value="&lt;font style=&quot;font-size:10px;&quot;&gt;fn(tx)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#EC4899;strokeWidth=1;shadow=1;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="360" y="745" width="80" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="tx-step4" value="&lt;font style=&quot;font-size:10px;&quot;&gt;Commit / Rollback&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#EC4899;strokeWidth=1;shadow=1;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="360" y="790" width="130" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Arrows between tx steps -->
+        <mxCell id="arrow-tx-1-2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#EC4899;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="tx-step1" target="tx-step2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-tx-2-3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#EC4899;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="tx-step2" target="tx-step3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-tx-3-4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#EC4899;strokeWidth=1.5;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="tx-step3" target="tx-step4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Nested tx detection -->
+        <mxCell id="tx-nested" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#9D174D&quot;&gt;&lt;b&gt;Nested tx detection&lt;/b&gt;&lt;br&gt;If ctx already has tx → reuse&lt;br&gt;No savepoint nesting&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE4E6;strokeColor=#EC4899;strokeWidth=1;shadow=0;arcSize=12;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="60" y="840" width="200" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- PG Tx -->
+        <mxCell id="tx-pg-title" value="&lt;b&gt;&lt;font style=&quot;font-size:12px;&quot; color=&quot;#3B82F6&quot;&gt;PostgreSQL Transaction&lt;/font&gt;&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="300" y="840" width="200" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="tx-pg" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#1E40AF&quot;&gt;&lt;b&gt;PostgresExecInTx&lt;/b&gt;&lt;br&gt;Separate sql.Tx&lt;br&gt;Independent from SQLite tx&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#3B82F6;strokeWidth=1;shadow=0;arcSize=12;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="300" y="870" width="230" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ========== DDL MIGRATION SYSTEM ========== -->
+        <mxCell id="ddl-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF1F2;strokeColor=#EC4899;strokeWidth=2;shadow=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="600" y="660" width="500" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="ddl-title" value="&lt;b&gt;&lt;font style=&quot;font-size:16px;&quot; color=&quot;#EC4899&quot;&gt;DDL Migration System&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#EC4899&quot;&gt;37 Versioned Migrations&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="720" y="668" width="260" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Migration flow -->
+        <mxCell id="ddl-check" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;isMigrationApplied&lt;/b&gt;&lt;br&gt;schema_migrations table&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#EC4899;strokeWidth=1.5;shadow=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="620" y="720" width="160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="ddl-run" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;run&lt;/b&gt;()&lt;br&gt;Execute DDL&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#EC4899;strokeWidth=1.5;shadow=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="810" y="720" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="ddl-record" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;recordMigrationApplied&lt;/b&gt;&lt;br&gt;INSERT version&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#EC4899;strokeWidth=1.5;shadow=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="960" y="720" width="120" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Arrows between migration steps -->
+        <mxCell id="arrow-ddl-1-2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#EC4899;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="ddl-check" target="ddl-run">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-ddl-2-3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#EC4899;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="ddl-run" target="ddl-record">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Migration versions -->
+        <mxCell id="ddl-versions" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#9D174D&quot;&gt;&lt;b&gt;37 Migrations&lt;/b&gt; (20260601 ~ 20260707)&lt;br&gt;Each migration: idempotent DDL&lt;br&gt;CREATE TABLE IF NOT EXISTS&lt;br&gt;CREATE INDEX IF NOT EXISTS&lt;br&gt;ALTER TABLE ADD COLUMN IF NOT EXISTS&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE4E6;strokeColor=#EC4899;strokeWidth=1;shadow=0;arcSize=12;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="620" y="780" width="250" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- schema_migrations table -->
+        <mxCell id="ddl-schema-table" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#9D174D&quot;&gt;&lt;b&gt;schema_migrations&lt;/b&gt;&lt;br&gt;version (PK)&lt;br&gt;applied_at (TIMESTAMP)&lt;br&gt;dirty (BOOLEAN)&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#EC4899;strokeWidth=1;shadow=1;arcSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="900" y="780" width="180" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- ========== INITIALIZATION FLOW ========== -->
+        <mxCell id="init-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#64748B;strokeWidth=2;shadow=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="660" width="1020" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="init-title" value="&lt;b&gt;&lt;font style=&quot;font-size:16px;&quot; color=&quot;#64748B&quot;&gt;Initialization Flow (NewData)&lt;/font&gt;&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1490" y="668" width="320" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Sync phase -->
+        <mxCell id="init-sync-label" value="&lt;font style=&quot;font-size:12px;&quot; color=&quot;#10B981&quot;&gt;&lt;b&gt;SYNC&lt;/b&gt;&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="700" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="init-sqlite" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;initSQLite&lt;/b&gt;&lt;br&gt;WAL + FK + pool&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#10B981;strokeWidth=1.5;shadow=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="730" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="init-pg" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;initPostgres&lt;/b&gt;&lt;br&gt;pgvector + pool&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#3B82F6;strokeWidth=1.5;shadow=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1300" y="730" width="120" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="init-seed-admin" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;seedAdminUsers&lt;/b&gt;&lt;br&gt;Default admin&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;shadow=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1440" y="730" width="120" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Sync arrows -->
+        <mxCell id="arrow-init-1-2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#10B981;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="init-sqlite" target="init-pg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-init-2-3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#3B82F6;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="init-pg" target="init-seed-admin">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Async P1 phase -->
+        <mxCell id="init-async-label" value="&lt;font style=&quot;font-size:12px;&quot; color=&quot;#EC4899&quot;&gt;&lt;b&gt;ASYNC P1&lt;/b&gt;&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="790" width="90" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="init-ddl" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;ensureSchemaDDL&lt;/b&gt;&lt;br&gt;37 migrations&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE4E6;strokeColor=#EC4899;strokeWidth=1.5;shadow=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="820" width="130" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="init-pg-schema" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;ensurePostgresSchemas&lt;/b&gt;&lt;br&gt;pgvector tables&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#3B82F6;strokeWidth=1.5;shadow=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1310" y="820" width="150" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="init-data-mig" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;runPendingDataMigrations&lt;/b&gt;&lt;br&gt;Data transforms&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;shadow=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1480" y="820" width="150" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="init-seed-p1" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;seedP1Data&lt;/b&gt;&lt;br&gt;Lazy seeders&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;shadow=1;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1650" y="820" width="120" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Async arrows -->
+        <mxCell id="arrow-async-1-2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#EC4899;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="init-ddl" target="init-pg-schema">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-async-2-3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#3B82F6;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="init-pg-schema" target="init-data-mig">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-async-3-4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#F59E0B;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="init-data-mig" target="init-seed-p1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Readiness gate note -->
+        <mxCell id="init-readiness" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#64748B&quot;&gt;&lt;b&gt;ReadinessGate&lt;/b&gt; blocks traffic until async P1 completes&lt;br&gt;HTTP /healthz returns 503 until ready&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#64748B;strokeWidth=1;shadow=0;arcSize=12;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1810" y="810" width="330" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- ========== THREE SQL PATTERNS ========== -->
+        <mxCell id="patterns-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#64748B;strokeWidth=2;shadow=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="980" width="2120" height="280" as="geometry" />
+        </mxCell>
+        <mxCell id="patterns-title" value="&lt;b&gt;&lt;font style=&quot;font-size:16px;&quot; color=&quot;#64748B&quot;&gt;Three SQL Usage Patterns&lt;/font&gt;&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="920" y="988" width="260" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Pattern 1: Ent CRUD -->
+        <mxCell id="pat1-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F3FF;strokeColor=#8B5CF6;strokeWidth=2;shadow=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1025" width="660" height="215" as="geometry" />
+        </mxCell>
+        <mxCell id="pat1-title" value="&lt;b&gt;&lt;font style=&quot;font-size:14px;&quot; color=&quot;#8B5CF6&quot;&gt;Pattern 1: Ent CRUD&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#8B5CF6&quot;&gt;agent_repo.go &amp;middot; session_repo.go &amp;middot; ...&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="220" y="1033" width="260" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="pat1-code" value="&lt;font style=&quot;font-size:10px;font-family:monospace;&quot; color=&quot;#5B21B6&quot;&gt;// Type-safe Ent CRUD&lt;br&gt;func (r *agentRepo) Create(ctx, req) {&lt;br&gt;  client := r.data.rw.Write(ctx)&lt;br&gt;  return client.Agent.Create()&lt;br&gt;    .SetName(req.Name)&lt;br&gt;    .SetModel(req.Model)&lt;br&gt;    .Save(ctx)&lt;br&gt;}&lt;br&gt;&lt;br&gt;func (r *agentRepo) Get(ctx, id) {&lt;br&gt;  client := r.data.rw.Read(ctx)&lt;br&gt;  return client.Agent.Get(ctx, id)&lt;br&gt;}&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#8B5CF6;strokeWidth=1;shadow=1;arcSize=6;align=left;spacingLeft=12;spacingRight=12;" vertex="1" parent="1">
+          <mxGeometry x="80" y="1078" width="280" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="pat1-flow" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#5B21B6&quot;&gt;&lt;b&gt;Flow&lt;/b&gt;:&lt;br&gt;Repo → ReadWriteClient&lt;br&gt;→ Ent Client&lt;br&gt;→ SQLite (via entsql)&lt;br&gt;&lt;br&gt;&lt;b&gt;Traits&lt;/b&gt;:&lt;br&gt;✓ Type-safe&lt;br&gt;✓ Auto-generated&lt;br&gt;✓ Read/Write split&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#8B5CF6;strokeWidth=1;shadow=0;arcSize=10;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="380" y="1078" width="200" height="150" as="geometry" />
+        </mxCell>
+
+        <!-- Pattern 2: Raw SQL -->
+        <mxCell id="pat2-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#F59E0B;strokeWidth=2;shadow=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="740" y="1025" width="660" height="215" as="geometry" />
+        </mxCell>
+        <mxCell id="pat2-title" value="&lt;b&gt;&lt;font style=&quot;font-size:14px;&quot; color=&quot;#F59E0B&quot;&gt;Pattern 2: Raw SQL (SessionMemory)&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#F59E0B&quot;&gt;store_l0_snapshot.go &amp;middot; store_l1_short_term.go &amp;middot; ...&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="860" y="1033" width="360" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="pat2-code" value="&lt;font style=&quot;font-size:10px;font-family:monospace;&quot; color=&quot;#92400E&quot;&gt;// Complex upsert + vector&lt;br&gt;func (s *L0Store) Upsert(ctx, snap) {&lt;br&gt;  db := s.data.rwDB.WriteDB(ctx)&lt;br&gt;  _, err := db.ExecContext(ctx,&lt;br&gt;    `INSERT INTO l0_snapshot&lt;br&gt;     (session_id, data, updated_at)&lt;br&gt;     VALUES ($1, $2, $3)&lt;br&gt;     ON CONFLICT(session_id)&lt;br&gt;     DO UPDATE SET data=$2`,&lt;br&gt;    snap.SessionID, snap.Data, now)&lt;br&gt;}&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F59E0B;strokeWidth=1;shadow=1;arcSize=6;align=left;spacingLeft=12;spacingRight=12;" vertex="1" parent="1">
+          <mxGeometry x="760" y="1078" width="280" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="pat2-flow" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#92400E&quot;&gt;&lt;b&gt;Flow&lt;/b&gt;:&lt;br&gt;Store → ReadWriteDB&lt;br&gt;→ sql.DB&lt;br&gt;→ SQLite (raw)&lt;br&gt;&lt;br&gt;&lt;b&gt;Traits&lt;/b&gt;:&lt;br&gt;✓ Complex UPSERT&lt;br&gt;✓ Vector operations&lt;br&gt;✓ L0-L4 memory layers&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1;shadow=0;arcSize=10;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="1078" width="200" height="150" as="geometry" />
+        </mxCell>
+
+        <!-- Pattern 3: PostgreSQL -->
+        <mxCell id="pat3-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EFF6FF;strokeColor=#3B82F6;strokeWidth=2;shadow=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1420" y="1025" width="720" height="215" as="geometry" />
+        </mxCell>
+        <mxCell id="pat3-title" value="&lt;b&gt;&lt;font style=&quot;font-size:14px;&quot; color=&quot;#3B82F6&quot;&gt;Pattern 3: Knowledge PostgreSQL&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px;&quot; color=&quot;#3B82F6&quot;&gt;knowledge.go &amp;middot; vector_search.go&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1580" y="1033" width="300" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="pat3-code" value="&lt;font style=&quot;font-size:10px;font-family:monospace;&quot; color=&quot;#1E40AF&quot;&gt;// Pure pgvector similarity&lt;br&gt;func (r *knowledgeRepo) Search(ctx, q) {&lt;br&gt;  db := r.data.pg  // direct pg&lt;br&gt;  rows, err := db.QueryContext(ctx,&lt;br&gt;    `SELECT id, content,&lt;br&gt;     1 - (embedding &lt;=&gt; $1::vector)&lt;br&gt;     AS similarity&lt;br&gt;     FROM knowledge_chunks&lt;br&gt;     ORDER BY embedding &lt;=&gt; $1::vector&lt;br&gt;     LIMIT $2`, q.Embedding, q.Limit)&lt;br&gt;}&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#3B82F6;strokeWidth=1;shadow=1;arcSize=6;align=left;spacingLeft=12;spacingRight=12;" vertex="1" parent="1">
+          <mxGeometry x="1440" y="1078" width="300" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="pat3-flow" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#1E40AF&quot;&gt;&lt;b&gt;Flow&lt;/b&gt;:&lt;br&gt;Repo → data.pg&lt;br&gt;→ PostgreSQL&lt;br&gt;→ pgvector ops&lt;br&gt;&lt;br&gt;&lt;b&gt;Traits&lt;/b&gt;:&lt;br&gt;✓ Cosine similarity&lt;br&gt;✓ ivfflat index&lt;br&gt;✓ Independent tx&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DBEAFE;strokeColor=#3B82F6;strokeWidth=1;shadow=0;arcSize=10;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="1760" y="1078" width="200" height="150" as="geometry" />
+        </mxCell>
+
+        <!-- ========== WIRE DI ========== -->
+        <mxCell id="wire-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#64748B;strokeWidth=2;shadow=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="1300" width="2120" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="wire-title" value="&lt;b&gt;&lt;font style=&quot;font-size:16px;&quot; color=&quot;#64748B&quot;&gt;Wire Dependency Injection&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:11px;&quot; color=&quot;#64748B&quot;&gt;65 Providers &amp;middot; Compile-time DI &amp;middot; wire_gen.go&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="870" y="1308" width="360" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Wire provider groups -->
+        <mxCell id="wire-data" value="&lt;font style=&quot;font-size:11px;&quot; color=&quot;#6366F1&quot;&gt;&lt;b&gt;Data Layer&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;NewData&lt;br&gt;NewReadWriteClient&lt;br&gt;NewReadWriteDB&lt;br&gt;NewEntClient&lt;br&gt;NewReadClient&lt;br&gt;NewRawDB&lt;br&gt;NewReadDB&lt;br&gt;NewPostgresDB&lt;/font&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1.5;shadow=1;arcSize=10;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="1360" width="170" height="130" as="geometry" />
+        </mxCell>
+
+        <mxCell id="wire-repos" value="&lt;font style=&quot;font-size:11px;&quot; color=&quot;#8B5CF6&quot;&gt;&lt;b&gt;26+ Repos&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;NewAgentRepo&lt;br&gt;NewSessionRepo&lt;br&gt;NewChannelRepo&lt;br&gt;NewKnowledgeRepo&lt;br&gt;NewMemoryRepo&lt;br&gt;NewToolRepo&lt;br&gt;NewHookRepo&lt;br&gt;NewPluginRepo&lt;br&gt;NewCronTaskRepo&lt;br&gt;NewTeamRepo&lt;br&gt;NewGraphRepo&lt;br&gt;... 15+ more&lt;/font&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#8B5CF6;strokeWidth=1.5;shadow=1;arcSize=10;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="250" y="1360" width="170" height="170" as="geometry" />
+        </mxCell>
+
+        <mxCell id="wire-biz" value="&lt;font style=&quot;font-size:11px;&quot; color=&quot;#10B981&quot;&gt;&lt;b&gt;Biz Usecases&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;NewAgentUsecase&lt;br&gt;NewSessionUsecase&lt;br&gt;NewChannelUsecase&lt;br&gt;NewKnowledgeUsecase&lt;br&gt;NewMemoryUsecase&lt;br&gt;NewToolUsecase&lt;br&gt;NewTeamUsecase&lt;br&gt;NewGraphUsecase&lt;br&gt;...&lt;/font&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#10B981;strokeWidth=1.5;shadow=1;arcSize=10;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="440" y="1360" width="170" height="150" as="geometry" />
+        </mxCell>
+
+        <mxCell id="wire-service" value="&lt;font style=&quot;font-size:11px;&quot; color=&quot;#0EA5E9&quot;&gt;&lt;b&gt;Services&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;NewAgentService&lt;br&gt;NewSessionService&lt;br&gt;NewChannelService&lt;br&gt;NewKnowledgeService&lt;br&gt;NewMemoryService&lt;br&gt;NewToolService&lt;br&gt;NewTeamService&lt;br&gt;NewGraphService&lt;br&gt;...&lt;/font&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F2FE;strokeColor=#0EA5E9;strokeWidth=1.5;shadow=1;arcSize=10;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="630" y="1360" width="170" height="150" as="geometry" />
+        </mxCell>
+
+        <mxCell id="wire-infra" value="&lt;font style=&quot;font-size:11px;&quot; color=&quot;#F59E0B&quot;&gt;&lt;b&gt;Infrastructure&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;NewReadinessGate&lt;br&gt;NewLogger&lt;br&gt;NewEventBus&lt;br&gt;NewRegistry&lt;br&gt;NewConfig&lt;br&gt;NewTracer&lt;br&gt;NewMeter&lt;br&gt;...&lt;/font&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#F59E0B;strokeWidth=1.5;shadow=1;arcSize=10;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="820" y="1360" width="170" height="150" as="geometry" />
+        </mxCell>
+
+        <!-- Wire flow arrows -->
+        <mxCell id="arrow-wire-1-2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64748B;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="wire-data" target="wire-repos">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-wire-2-3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64748B;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="wire-repos" target="wire-biz">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-wire-3-4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64748B;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="wire-biz" target="wire-service">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Compile-time check badge -->
+        <mxCell id="wire-checks" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#64748B&quot;&gt;&lt;b&gt;26+ Compile-time Checks&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;font-family:monospace;&quot;&gt;var _ biz.AgentRepo = (*agentRepo)(nil)&lt;br&gt;var _ biz.SessionRepo = (*sessionRepo)(nil)&lt;br&gt;var _ biz.ChannelRepo = (*channelRepo)(nil)&lt;br&gt;var _ biz.KnowledgeRepo = (*knowledgeRepo)(nil)&lt;br&gt;var _ biz.MemoryRepo = (*memoryRepo)(nil)&lt;br&gt;var _ biz.ToolRepo = (*toolRepo)(nil)&lt;br&gt;var _ biz.HookRepo = (*hookRepo)(nil)&lt;br&gt;... 19+ more&lt;/font&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#64748B;strokeWidth=1.5;shadow=1;arcSize=8;align=left;spacingLeft=10;" vertex="1" parent="1">
+          <mxGeometry x="1040" y="1360" width="280" height="170" as="geometry" />
+        </mxCell>
+
+        <!-- Wire DI flow diagram -->
+        <mxCell id="wire-flow-title" value="&lt;font style=&quot;font-size:11px;&quot; color=&quot;#64748B&quot;&gt;&lt;b&gt;Wire DI Flow&lt;/b&gt;&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1440" y="1360" width="100" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="wire-flow-config" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;Config&lt;/b&gt;&lt;br&gt;conf.proto&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#64748B;strokeWidth=1;shadow=1;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="1380" y="1390" width="90" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="wire-flow-data" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;Data&lt;/b&gt;&lt;br&gt;65 providers&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0E7FF;strokeColor=#6366F1;strokeWidth=1;shadow=1;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="1500" y="1390" width="90" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="wire-flow-biz" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;Biz&lt;/b&gt;&lt;br&gt;Usecases&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D1FAE5;strokeColor=#10B981;strokeWidth=1;shadow=1;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="1620" y="1390" width="90" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="wire-flow-svc" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;Service&lt;/b&gt;&lt;br&gt;HTTP/gRPC&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E0F2FE;strokeColor=#0EA5E9;strokeWidth=1;shadow=1;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="1740" y="1390" width="90" height="35" as="geometry" />
+        </mxCell>
+        <mxCell id="wire-flow-server" value="&lt;font style=&quot;font-size:10px;&quot;&gt;&lt;b&gt;Server&lt;/b&gt;&lt;br&gt;Kratos&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFE4E6;strokeColor=#EC4899;strokeWidth=1;shadow=1;arcSize=15;" vertex="1" parent="1">
+          <mxGeometry x="1860" y="1390" width="90" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Wire flow arrows -->
+        <mxCell id="arrow-wf-1-2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64748B;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="wire-flow-config" target="wire-flow-data">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-wf-2-3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64748B;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="wire-flow-data" target="wire-flow-biz">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-wf-3-4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64748B;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="wire-flow-biz" target="wire-flow-svc">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="arrow-wf-4-5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#64748B;strokeWidth=1.5;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="wire-flow-svc" target="wire-flow-server">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Wire compile note -->
+        <mxCell id="wire-compile" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#64748B&quot;&gt;&lt;b&gt;wire_gen.go&lt;/b&gt; auto-generated&lt;br&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;make wire &amp;rarr; go generate&lt;br&gt;Compile-time safety guarantee&lt;/font&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#64748B;strokeWidth=1;shadow=0;arcSize=12;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1380" y="1440" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Interface check note -->
+        <mxCell id="wire-iface-note" value="&lt;font style=&quot;font-size:10px;&quot; color=&quot;#64748B&quot;&gt;&lt;b&gt;Interface compliance&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:9px;&quot;&gt;If repo doesn't satisfy interface&lt;br&gt;→ compile error, not runtime panic&lt;/font&gt;&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F1F5F9;strokeColor=#64748B;strokeWidth=1;shadow=0;arcSize=12;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="1610" y="1440" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ========== LEGEND ========== -->
+        <mxCell id="legend-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#E2E8F0;strokeWidth=1;shadow=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="1620" y="540" width="540" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-data" value="&lt;font style=&quot;font-size:9px;&quot; color=&quot;#6366F1&quot;&gt;■ Data&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1630" y="550" width="50" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-sqlite" value="&lt;font style=&quot;font-size:9px;&quot; color=&quot;#10B981&quot;&gt;■ SQLite&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1690" y="550" width="55" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-pg" value="&lt;font style=&quot;font-size:9px;&quot; color=&quot;#3B82F6&quot;&gt;■ PostgreSQL&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1755" y="550" width="75" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-ent" value="&lt;font style=&quot;font-size:9px;&quot; color=&quot;#8B5CF6&quot;&gt;■ Ent ORM&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1840" y="550" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-raw" value="&lt;font style=&quot;font-size:9px;&quot; color=&quot;#F59E0B&quot;&gt;■ Raw SQL&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1910" y="550" width="60" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-rw" value="&lt;font style=&quot;font-size:9px;&quot; color=&quot;#0EA5E9&quot;&gt;■ ReadWrite&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1980" y="550" width="70" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-mig" value="&lt;font style=&quot;font-size:9px;&quot; color=&quot;#EC4899&quot;&gt;■ Migration&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="2060" y="550" width="70" height="25" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

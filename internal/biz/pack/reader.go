@@ -19,15 +19,16 @@ const (
 	graphsDir    = "graphs/"
 
 	// 安全限制常量
-	maxTarEntries     = 1000  // 单个 Pack 最多 1000 个 tar 条目
-	maxEntrySize  int64 = 10 * 1024 * 1024 // 单个条目最大 10MB
-	maxTotalSize  int64 = 200 * 1024 * 1024 // Pack 解压后总大小上限 200MB
+	MaxTarEntries     = 1000  // 单个 Pack 最多 1000 个 tar 条目
+	MaxEntrySize  int64 = 10 * 1024 * 1024 // 单个条目最大 10MB
+	MaxTotalSize  int64 = 200 * 1024 * 1024 // Pack 解压后总大小上限 200MB
+	MaxPackSize         = 200 * 1024 * 1024 // Pack 原始文件大小上限 200MB
 )
 
 // ReadPack 从 tar.gz 读取 .arpack 并解析为内存模型。
 func ReadPack(r io.Reader) (*Pack, error) {
 	// 使用 LimitedReader 限制总解压大小，防止 gzip 炸弹
-	lr := io.LimitReader(r, maxTotalSize)
+	lr := io.LimitReader(r, MaxTotalSize)
 
 	gzr, err := gzip.NewReader(lr)
 	if err != nil {
@@ -52,27 +53,34 @@ func ReadPack(r io.Reader) (*Pack, error) {
 		}
 
 		entryCount++
-		if entryCount > maxTarEntries {
-			return nil, fmt.Errorf("pack: tar 条目数超过上限 %d", maxTarEntries)
+		if entryCount > MaxTarEntries {
+			return nil, fmt.Errorf("pack: tar 条目数超过上限 %d", MaxTarEntries)
 		}
 
 		// 路径遍历检查：清洗路径后验证
 		cleanName := filepath.ToSlash(filepath.Clean(hdr.Name))
-		if strings.Contains(cleanName, "..") {
+		// filepath.Clean 已解析 ..，所以检查清洗前原始路径是否包含 ..
+		// 同时验证清洗后路径不以 / 开头（绝对路径）
+		if strings.Contains(hdr.Name, "..") || strings.HasPrefix(cleanName, "/") {
 			return nil, fmt.Errorf("pack: 条目路径包含非法遍历: %s", hdr.Name)
 		}
 
+		// 跳过符号链接和硬链接
+		if hdr.Typeflag == tar.TypeSymlink || hdr.Typeflag == tar.TypeLink {
+			continue
+		}
+
 		// 单条目大小检查
-		if hdr.Size > maxEntrySize {
-			return nil, fmt.Errorf("pack: 条目 %s 大小 %d 超过上限 %d", hdr.Name, hdr.Size, maxEntrySize)
+		if hdr.Size > MaxEntrySize {
+			return nil, fmt.Errorf("pack: 条目 %s 大小 %d 超过上限 %d", hdr.Name, hdr.Size, MaxEntrySize)
 		}
 
 		// 使用 LimitedReader 读取条目内容
-		data, err := io.ReadAll(io.LimitReader(tr, maxEntrySize+1))
+		data, err := io.ReadAll(io.LimitReader(tr, MaxEntrySize+1))
 		if err != nil {
 			return nil, fmt.Errorf("pack: 读取 %s 内容失败: %w", hdr.Name, err)
 		}
-		if int64(len(data)) > maxEntrySize {
+		if int64(len(data)) > MaxEntrySize {
 			return nil, fmt.Errorf("pack: 条目 %s 内容超过大小上限", hdr.Name)
 		}
 

@@ -232,8 +232,13 @@ type TeamPackSpec struct {
 	// 编排配置
 	MaxConcurrency    int                 `yaml:"max_concurrency,omitempty"`
 	TimeoutSeconds    int                 `yaml:"timeout_seconds,omitempty"`
+	RunTimeoutSec     int                 `yaml:"run_timeout_sec,omitempty"`
+	TurnTimeoutSec    int                 `yaml:"turn_timeout_sec,omitempty"`
+	FirstByteTimeoutSec int               `yaml:"first_byte_timeout_sec,omitempty"`
 	LoopMaxIter       int                 `yaml:"loop_max_iter,omitempty"`
 	EnableCheckpoint  bool                `yaml:"enable_checkpoint,omitempty"`
+	RuntimeEngine     string              `yaml:"runtime_engine,omitempty"`
+	TeamGraphRuntime  bool                `yaml:"team_graph_runtime,omitempty"`
 
 	// 成员通过 agent_key 引用
 	Members           []TeamMemberPackSpec `yaml:"members,omitempty"`
@@ -266,8 +271,9 @@ type TeamMemberPackSpec struct {
 type TeamGraphPackSpec struct {
 	Linked bool                `yaml:"linked,omitempty"` // true=外部链接, false=内嵌定义
 	// 内嵌图定义（Linked=false 时使用）
-	Nodes []TeamGraphNodeSpec `yaml:"nodes,omitempty"`
-	Edges []TeamGraphEdgeSpec `yaml:"edges,omitempty"`
+	Layout string              `yaml:"layout,omitempty"`
+	Nodes  []TeamGraphNodeSpec `yaml:"nodes,omitempty"`
+	Edges  []TeamGraphEdgeSpec `yaml:"edges,omitempty"`
 	// 外部链接（Linked=true 时使用，引用 graphs/ 目录中的 Graph ID）
 	LinkedGraphID string `yaml:"linked_graph_id,omitempty"`
 }
@@ -297,9 +303,31 @@ type TeamGraphEdgeSpec struct {
 
 // TeamFailurePolicySpec Team 失败策略。
 type TeamFailurePolicySpec struct {
-	Default      string            `yaml:"default,omitempty"` // retry_then_block | skip | fail_fast
-	ParallelFail string            `yaml:"parallel_fail,omitempty"`
-	OnError      string            `yaml:"on_error,omitempty"`
+	Default        string                       `yaml:"default,omitempty"` // retry_then_block | skip | fail_fast
+	Retry          *TeamRetryPolicySpec         `yaml:"retry,omitempty"`
+	NodeOverrides  map[string]TeamNodeFailureOverrideSpec `yaml:"node_overrides,omitempty"`
+	ParallelFail   string                       `yaml:"parallel_fail,omitempty"`
+	CircuitBreaker *CircuitBreakerPolicySpec    `yaml:"circuit_breaker,omitempty"`
+	OnError        string                       `yaml:"on_error,omitempty"`
+}
+
+// TeamRetryPolicySpec Team 重试策略。
+type TeamRetryPolicySpec struct {
+	MaxAttempts     int     `yaml:"max_attempts,omitempty"`
+	InitialIntervalMs int   `yaml:"initial_interval_ms,omitempty"`
+	BackoffFactor   float64 `yaml:"backoff_factor,omitempty"`
+}
+
+// TeamNodeFailureOverrideSpec 节点级失败策略覆盖。
+type TeamNodeFailureOverrideSpec struct {
+	Action string `yaml:"action,omitempty"` // retry | skip | fail
+}
+
+// CircuitBreakerPolicySpec 熔断策略。
+type CircuitBreakerPolicySpec struct {
+	FailureThreshold int     `yaml:"failure_threshold,omitempty"`
+	RecoveryTimeoutMs int   `yaml:"recovery_timeout_ms,omitempty"`
+	HalfOpenMaxCalls int    `yaml:"half_open_max_calls,omitempty"`
 }
 
 // CriticLoopPackSpec Critic Loop 配置。
@@ -318,10 +346,15 @@ type GraphPackSpec struct {
 	EnableCheckpoint bool                  `yaml:"enable_checkpoint,omitempty"`
 	EntryPoint       string                `yaml:"entry_point"`
 	FinishPoint      string                `yaml:"finish_point,omitempty"`
+	Version          int                   `yaml:"version,omitempty"`
+	SortOrder        int                   `yaml:"sort_order,omitempty"`
 	StateFields      []StateFieldPackSpec  `yaml:"state_fields,omitempty"`
 	Nodes            []GraphNodePackSpec   `yaml:"nodes,omitempty"`
 	Edges            []GraphEdgePackSpec   `yaml:"edges,omitempty"`
 	ConditionalEdges []GraphCondEdgePackSpec `yaml:"conditional_edges,omitempty"`
+	Subgraphs        []SubgraphPackSpec    `yaml:"subgraphs,omitempty"`
+	InterruptBefore  []string              `yaml:"interrupt_before,omitempty"`
+	InterruptAfter   []string              `yaml:"interrupt_after,omitempty"`
 }
 
 // StateFieldPackSpec Graph 状态字段。
@@ -336,21 +369,27 @@ type StateFieldPackSpec struct {
 
 // GraphNodePackSpec Graph 节点。
 type GraphNodePackSpec struct {
-	ID               string   `yaml:"id"`
-	Type             string   `yaml:"type,omitempty"`
-	Label            string   `yaml:"label,omitempty"`
-	Description      string   `yaml:"description,omitempty"`
-	FuncRef          string   `yaml:"func_ref,omitempty"`
-	Instruction      string   `yaml:"instruction,omitempty"`
-	ModelName        string   `yaml:"model_name,omitempty"`
-	ToolNames        []string `yaml:"tool_names,omitempty"`
-	AgentKey         string   `yaml:"agent_key,omitempty"`
-	InterruptBefore  bool     `yaml:"interrupt_before,omitempty"`
-	InterruptAfter   bool     `yaml:"interrupt_after,omitempty"`
-	Destinations     []string `yaml:"destinations,omitempty"`
-	RetryMaxAttempts int      `yaml:"retry_max_attempts,omitempty"`
-	FailureAction    string   `yaml:"failure_action,omitempty"`
-	FallbackAgent    string   `yaml:"fallback_agent,omitempty"`
+	ID                   string   `yaml:"id"`
+	Type                 string   `yaml:"type,omitempty"`
+	Label                string   `yaml:"label,omitempty"`
+	Description          string   `yaml:"description,omitempty"`
+	FuncRef              string   `yaml:"func_ref,omitempty"`
+	Instruction          string   `yaml:"instruction,omitempty"`
+	ModelName            string   `yaml:"model_name,omitempty"`
+	ToolNames            []string `yaml:"tool_names,omitempty"`
+	AgentKey             string   `yaml:"agent_key,omitempty"`
+	InterruptBefore      bool     `yaml:"interrupt_before,omitempty"`
+	InterruptAfter       bool     `yaml:"interrupt_after,omitempty"`
+	Destinations         []string `yaml:"destinations,omitempty"`
+	RetryMaxAttempts     int      `yaml:"retry_max_attempts,omitempty"`
+	FailureAction        string   `yaml:"failure_action,omitempty"`
+	FallbackAgent        string   `yaml:"fallback_agent,omitempty"`
+	InputMapperJSON      string   `yaml:"input_mapper_json,omitempty"`
+	OutputMapperJSON     string   `yaml:"output_mapper_json,omitempty"`
+	IsolatedMessages     bool     `yaml:"isolated_messages,omitempty"`
+	InputFromLastResponse bool   `yaml:"input_from_last_response,omitempty"`
+	CacheEnabled         bool     `yaml:"cache_enabled,omitempty"`
+	CacheTTLSeconds      int      `yaml:"cache_ttl_seconds,omitempty"`
 }
 
 // GraphEdgePackSpec Graph 普通边。
@@ -365,6 +404,16 @@ type GraphCondEdgePackSpec struct {
 	From        string            `yaml:"from"`
 	CondFuncRef string            `yaml:"cond_func_ref,omitempty"`
 	PathMap     map[string]string `yaml:"path_map,omitempty"`
+}
+
+// SubgraphPackSpec Graph 子图定义。
+type SubgraphPackSpec struct {
+	ID          string              `yaml:"id"`
+	Name        string              `yaml:"name,omitempty"`
+	EntryPoint  string              `yaml:"entry_point"`
+	FinishPoint string              `yaml:"finish_point,omitempty"`
+	Nodes       []GraphNodePackSpec `yaml:"nodes,omitempty"`
+	Edges       []GraphEdgePackSpec `yaml:"edges,omitempty"`
 }
 
 // ConflictStrategy 冲突策略。
@@ -402,6 +451,7 @@ type ImportResult struct {
 	GraphsCreated int          `yaml:"graphs_created"`
 	TaxonomyNodes int          `yaml:"taxonomy_nodes"`
 	Failures      []ImportFailure `yaml:"failures,omitempty"`
+	Warnings      []string        `yaml:"warnings,omitempty"`
 }
 
 // ImportFailure 导入失败项。

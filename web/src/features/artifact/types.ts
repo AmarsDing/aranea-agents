@@ -43,3 +43,8 @@ export type ArtifactPreview = {
   text_content: string;
   data_base64: string;
 };
+
+export type SignDownloadUrlResult = {
+  url: string;
+  expires_at: string;
+};

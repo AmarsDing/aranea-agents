@@ -98,7 +98,7 @@
         @focus-turn="session.focusSessionTurn"
         @navigate="onNavigate"
         @cancel-job="composer.cancelBackgroundJob"
-        @paste-unsupported="onPasteUnsupported"
+        @paste-unsupported="composer.onPasteUnsupported"
         @new-session="session.addAgentSession"
         @focus-turn-cleared="session.clearFocusTurn"
         @toggle-reasoning-sidebar="session.toggleReasoningSidebar"
@@ -109,7 +109,7 @@
         @retry="composer.retryFailedMessage"
         @dismiss-failed="composer.dismissFailedMessage"
         @regenerate="composer.regenerateMessage"
-        @compact="onCompactSession"
+        @compact="session.onCompactSession"
       />
       <input ref="fileRef" type="file" hidden multiple :accept="session.fileAccept" @change="composer.onFileChange" />
     </div>
@@ -189,8 +189,6 @@ import SessionTimelineDialog from '../components/chat/SessionTimelineDialog.vue'
 import { useRouter } from 'vue-router';
 import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace';
 import { useSpiritTeamStore } from '../stores/spirit';
-import { useQuasar } from 'quasar';
-import { useI18n } from 'vue-i18n';
 import type { Agent } from '../features/agents/types';
 
 const SPIRIT_AGENT_KEY = '__spirit__';
@@ -198,8 +196,6 @@ const SPIRIT_AGENT_KEY = '__spirit__';
 const { coreReady, fileRef, layout, entity, session, composer, dialogs } = useChatWorkspace();
 const spiritStore = useSpiritTeamStore();
 const router = useRouter();
-const $q = useQuasar();
-const { t } = useI18n();
 
 function onSelectSpirit() {
   spiritStore.returnToSpirit();
@@ -215,33 +211,5 @@ function onSelectSpirit() {
 
 function onNavigate(route: { name: string; params: Record<string, string> }) {
   router.push(route);
-}
-
-function onPasteUnsupported() {
-  $q.notify({ type: 'warning', message: t('chat.clipboardFileUnsupported', '当前模型不支持此类型的文件粘贴') });
-}
-
-async function onCompactSession(sessionId: string) {
-  try {
-    const result = await session.compactSessionAction(sessionId);
-    if (result.compacted) {
-      const before = Math.round((result.estimated_tokens_before / 1000) * 10) / 10;
-      const after = Math.round((result.estimated_tokens_after / 1000) * 10) / 10;
-      $q.notify({
-        type: 'positive',
-        message: t('chat.contextManuallyCompressed', `上下文已压缩 (${before}k → ${after}k tokens)`),
-        timeout: 4000,
-      });
-    } else {
-      $q.notify({
-        type: 'info',
-        message: t('chat.contextNoCompactionNeeded', '当前上下文无需压缩'),
-        timeout: 3000,
-      });
-    }
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    $q.notify({ type: 'negative', message: t('chat.contextCompactFailed', '压缩失败') + `: ${msg}`, timeout: 5000 });
-  }
 }
 </script>

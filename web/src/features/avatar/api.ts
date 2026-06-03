@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { createAvatarService } from '../../services';
 import { requestHandler } from '../../services/axiosHandler';
+import type { AvatarAsset } from './types';
 
 /** 与后端 `internal/biz/avatar.go` 一致 */
 export const AVATAR_MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -64,24 +65,6 @@ function mapAvatarBackendMessage(message: string): string {
   }
   return message;
 }
-
-export type AvatarAsset = {
-  id: string;
-  key: string;
-  name: string;
-  description: string;
-  mime_type: string;
-  workspace_id: string;
-  owner_user_id: string;
-  source: 'system' | 'upload';
-  is_system: boolean;
-  category: 'agent' | 'channel';
-  file_size_bytes: number;
-  width_px: number;
-  height_px: number;
-  sort_order: number;
-  created_at: string;
-};
 
 function mapSvcAvatarRow(row: unknown): AvatarAsset {
   const r = row as Record<string, unknown>;

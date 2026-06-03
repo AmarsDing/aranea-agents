@@ -9,7 +9,7 @@ import (
 
 func (r *usageRepo) ListModelUsageHourlyTrends(ctx context.Context, query biz.UsageQuery) ([]biz.UsageTrendPoint, error) {
 	where, args := usageHourlyWhere(query)
-	rows, err := r.readClient(ctx).QueryContext(ctx,
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
 		`SELECT hour_key,
 		 COALESCE(SUM(call_count), 0),
 		 COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),

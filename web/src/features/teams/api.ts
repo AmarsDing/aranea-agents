@@ -1,5 +1,5 @@
 import { createTeamService } from '../../services';
-import type { Team, TeamRun, TeamRunEvent, TeamRunStep, TeamRunSummary } from './types';
+import type { Team, TeamRun, TeamRunEvent, TeamRunStep, TeamRunSummary, TaskDeadLetterRow } from './types';
 import type {
   Team as WireTeam,
   TeamRun as WireTeamRun,
@@ -22,6 +22,7 @@ export type {
   TeamRunEvent,
   TeamRunStep,
   TeamRunSummary,
+  TaskDeadLetterRow,
 } from './types';
 
 function wireTeam(t: WireTeam | null | undefined): Team {
@@ -275,21 +276,6 @@ export function subscribeTeamRunEventsWs(
     connected: stream.connected,
   };
 }
-
-export type TaskDeadLetterRow = {
-  id: string;
-  source_type: string;
-  source_id: string;
-  team_id: string;
-  team_run_id: string;
-  session_id: string;
-  graph_execution_id: string;
-  error_message: string;
-  payload_json: string;
-  status: string;
-  created_at: string;
-  resolved_at: string;
-};
 
 function wireTaskDeadLetter(
   row:

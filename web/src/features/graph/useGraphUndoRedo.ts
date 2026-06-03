@@ -165,28 +165,37 @@ export function useGraphUndoRedo(graphDef: GraphDefinition, markDirty: () => voi
     });
   }
 
-  function pushSetProperty(nodeId: string, field: string, oldValue: unknown, newValue: unknown) {
+  function pushSetProperty<K extends keyof NodeDef>(
+    nodeId: string,
+    field: K,
+    oldValue: NodeDef[K],
+    newValue: NodeDef[K],
+  ) {
     execute({
-      label: `修改 ${nodeId}.${field}`,
+      label: `修改 ${nodeId}.${String(field)}`,
       undo: () => {
         const node = graphDef.nodes.find((n) => n.id === nodeId);
-        if (node) (node as any)[field] = oldValue;
+        if (node) node[field] = oldValue;
       },
       redo: () => {
         const node = graphDef.nodes.find((n) => n.id === nodeId);
-        if (node) (node as any)[field] = newValue;
+        if (node) node[field] = newValue;
       },
     });
   }
 
-  function pushSetGraphProperty(field: string, oldValue: unknown, newValue: unknown) {
+  function pushSetGraphProperty<K extends keyof GraphDefinition>(
+    field: K,
+    oldValue: GraphDefinition[K],
+    newValue: GraphDefinition[K],
+  ) {
     execute({
-      label: `修改 Graph ${field}`,
+      label: `修改 Graph ${String(field)}`,
       undo: () => {
-        (graphDef as any)[field] = oldValue;
+        graphDef[field] = oldValue;
       },
       redo: () => {
-        (graphDef as any)[field] = newValue;
+        graphDef[field] = newValue;
       },
     });
   }
@@ -207,17 +216,22 @@ export function useGraphUndoRedo(graphDef: GraphDefinition, markDirty: () => voi
     });
   }
 
-  function pushSetStateProperty(idx: number, field: string, oldValue: unknown, newValue: unknown) {
+  function pushSetStateProperty<K extends keyof StateFieldDef>(
+    idx: number,
+    field: K,
+    oldValue: StateFieldDef[K],
+    newValue: StateFieldDef[K],
+  ) {
     execute({
-      label: `修改 StateField[${idx}].${field}`,
+      label: `修改 StateField[${idx}].${String(field)}`,
       undo: () => {
         if (graphDef.stateFields[idx]) {
-          (graphDef.stateFields[idx] as any)[field] = oldValue;
+          graphDef.stateFields[idx][field] = oldValue;
         }
       },
       redo: () => {
         if (graphDef.stateFields[idx]) {
-          (graphDef.stateFields[idx] as any)[field] = newValue;
+          graphDef.stateFields[idx][field] = newValue;
         }
       },
     });

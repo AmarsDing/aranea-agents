@@ -18,7 +18,7 @@ func (r *usageRepo) GetModelUsageSummaryFromDaily(ctx context.Context, query biz
 		 COALESCE(SUM(avg_tokens_per_second * request_count) / NULLIF(SUM(request_count), 0), 0)
 		 FROM model_token_usage_daily` + where
 	var v biz.UsageSummary
-	err := entQueryRowScan(r.readClient(ctx), ctx, q, args,
+	err := entQueryRowScan(r.data.RW().Read(ctx), ctx, q, args,
 		&v.CallCount, &v.RequestCount, &v.SuccessCount, &v.FailedCount, &v.CancelledCount,
 		&v.InputTokens, &v.OutputTokens, &v.TotalTokens, &v.TotalCostMicroUSD, &v.AvgLatencyMS, &v.AvgTokensPerSecond)
 	if err != nil {
@@ -32,7 +32,7 @@ func (r *usageRepo) GetModelUsageSummaryFromDaily(ctx context.Context, query biz
 
 func (r *usageRepo) ListModelUsageDailyTrends(ctx context.Context, query biz.UsageQuery) ([]biz.UsageTrendPoint, error) {
 	where, args := usageDailyWhere(query)
-	rows, err := r.readClient(ctx).QueryContext(ctx,
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
 		`SELECT date_key,
 		 COALESCE(SUM(call_count), 0),
 		 COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
@@ -63,7 +63,7 @@ func (r *usageRepo) ListModelUsageDailyTrends(ctx context.Context, query biz.Usa
 func (r *usageRepo) ListTopModelUsageFromDaily(ctx context.Context, query biz.UsageQuery) ([]biz.UsageBreakdownRow, error) {
 	where, args := usageDailyWhere(query)
 	args = append(args, usageLimit(query.Limit))
-	rows, err := r.readClient(ctx).QueryContext(ctx,
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
 		`SELECT provider_code, model_api_id,
 		 COALESCE(SUM(call_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0),
@@ -92,7 +92,7 @@ func (r *usageRepo) ListTopModelUsageFromDaily(ctx context.Context, query biz.Us
 func (r *usageRepo) ListTopAgentUsageFromDaily(ctx context.Context, query biz.UsageQuery) ([]biz.UsageBreakdownRow, error) {
 	where, args := usageDailyWhere(query)
 	args = append(args, usageLimit(query.Limit))
-	rows, err := r.readClient(ctx).QueryContext(ctx,
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
 		`SELECT agent_id, agent_key,
 		 COALESCE(SUM(call_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0),

@@ -4,16 +4,9 @@
  */
 import { createAdminService } from '../../services';
 import type { Admin, LoginRequest } from '../../services/kratos/admin/v1/index';
+import type { AdminSession } from './types';
 
 const adminSvc = createAdminService();
-
-export type AdminSession = {
-  id: number;
-  name: string;
-  email: string;
-  access: string;
-  avatar: string;
-};
 
 function mapAdmin(raw: unknown): AdminSession {
   const r = raw as Record<string, unknown>;

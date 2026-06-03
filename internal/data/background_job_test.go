@@ -32,7 +32,7 @@ func openTestData(t *testing.T) *Data {
 	if err := client.Schema.Create(context.Background(), migrate.WithDropIndex(true)); err != nil {
 		t.Fatalf("schema create: %v", err)
 	}
-	return &Data{entClient: client}
+	return &Data{entClient: client, rw: NewReadWriteClient(client, client)}
 }
 
 func TestBackgroundJobRepo_CreateAndGet(t *testing.T) {

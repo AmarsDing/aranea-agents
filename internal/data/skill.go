@@ -35,10 +35,6 @@ func NewSkillRepo(d *Data) biz.SkillRepo {
 	return &skillRepo{data: d}
 }
 
-func (r *skillRepo) client() *dataent.Client {
-	return r.data.entClient
-}
-
 func invocationTimeGTE(threshold string) predicate.SkillInvocation {
 	return predicate.SkillInvocation(func(s *entsql.Selector) {
 		s.Where(entsql.ExprP(
@@ -209,7 +205,7 @@ func mergeTaxonomyPaths(lg loggateway.Logger, meta, cfg string) []string {
 }
 
 func (r *skillRepo) enrichSkill(ctx context.Context, e *dataent.PlatformSkill) (biz.Skill, error) {
-	c := r.client()
+	c := r.data.RW().Read(ctx)
 	id := e.ID
 	item := biz.Skill{
 		ID:                e.ID,
@@ -323,7 +319,7 @@ func coalesceTime(startedAt, createdAt string) string {
 }
 
 func (r *skillRepo) SearchSkills(ctx context.Context, q biz.SkillListQuery) (biz.SkillListResult, error) {
-	c := r.client()
+	c := r.data.RW().Read(ctx)
 	preds := skillListPredicates(q)
 	total, err := c.PlatformSkill.Query().Where(preds...).Count(ctx)
 	if err != nil {
@@ -350,7 +346,7 @@ func (r *skillRepo) SearchSkills(ctx context.Context, q biz.SkillListQuery) (biz
 }
 
 func (r *skillRepo) GetSkillByID(ctx context.Context, id string) (biz.Skill, error) {
-	e, err := r.client().PlatformSkill.Query().
+	e, err := r.data.RW().Read(ctx).PlatformSkill.Query().
 		Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -366,7 +362,7 @@ func (r *skillRepo) UpdateSkillEnabled(ctx context.Context, id string, enabled b
 	if id == "" {
 		return biz.Skill{}, errors.New("skill id is required")
 	}
-	err := r.client().PlatformSkill.UpdateOneID(id).
+	err := r.data.RW().Write(ctx).PlatformSkill.UpdateOneID(id).
 		SetEnabled(enabled).
 		SetUpdatedAt(nowRFC3339()).
 		Exec(ctx)
@@ -380,7 +376,7 @@ func (r *skillRepo) UpdateSkillEnabled(ctx context.Context, id string, enabled b
 }
 
 func (r *skillRepo) DuplicateSkill(ctx context.Context, id string) (biz.Skill, error) {
-	cur, err := r.client().PlatformSkill.Query().
+	cur, err := r.data.RW().Read(ctx).PlatformSkill.Query().
 		Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -389,7 +385,7 @@ func (r *skillRepo) DuplicateSkill(ctx context.Context, id string) (biz.Skill, e
 		}
 		return biz.Skill{}, err
 	}
-	latestVer, _ := r.client().SkillVersion.Query().
+	latestVer, _ := r.data.RW().Read(ctx).SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(id)).
 		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
 		First(ctx)
@@ -399,7 +395,7 @@ func (r *skillRepo) DuplicateSkill(ctx context.Context, id string) (biz.Skill, e
 		newKey = newID
 	}
 	now := nowRFC3339()
-	tx, err := r.client().Tx(ctx)
+	tx, err := r.data.RW().Write(ctx).Tx(ctx)
 	if err != nil {
 		return biz.Skill{}, err
 	}
@@ -447,7 +443,7 @@ func (r *skillRepo) DuplicateSkill(ctx context.Context, id string) (biz.Skill, e
 
 func (r *skillRepo) DeleteSkill(ctx context.Context, id string) error {
 	now := nowRFC3339()
-	return r.client().PlatformSkill.UpdateOneID(id).
+	return r.data.RW().Write(ctx).PlatformSkill.UpdateOneID(id).
 		SetDeletedAt(now).
 		SetStatus("deleted").
 		SetUpdatedAt(now).
@@ -473,7 +469,7 @@ func runPredicates(q biz.SkillRunQuery) []predicate.SkillInvocation {
 }
 
 func (r *skillRepo) SearchSkillInvocations(ctx context.Context, query biz.SkillRunQuery) (biz.SkillRunResult, error) {
-	c := r.client()
+	c := r.data.RW().Read(ctx)
 	preds := runPredicates(query)
 	base := c.SkillInvocation.Query()
 	if len(preds) > 0 {
@@ -561,7 +557,7 @@ func (r *skillRepo) SearchSkillInvocations(ctx context.Context, query biz.SkillR
 }
 
 func (r *skillRepo) GetSkillStorageDir(ctx context.Context, id string) (string, error) {
-	e, err := r.client().PlatformSkill.Query().
+	e, err := r.data.RW().Read(ctx).PlatformSkill.Query().
 		Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -593,7 +589,7 @@ func previewSkillBody(body string, limit int) string {
 }
 
 func (r *skillRepo) ListSkillSimilaritySources(ctx context.Context) ([]biz.SkillSimilaritySource, error) {
-	c := r.client()
+	c := r.data.RW().Read(ctx)
 	rows, err := c.PlatformSkill.Query().
 		Where(platformskill.DeletedAtEQ("")).
 		Order(platformskill.ByUpdatedAt(entsql.OrderDesc()), platformskill.ByCreatedAt(entsql.OrderDesc())).
@@ -643,7 +639,7 @@ func (r *skillRepo) CreateSkillWithVersion(ctx context.Context, in biz.SkillCrea
 		return biz.Skill{}, err
 	}
 	now := nowRFC3339()
-	tx, err := r.client().Tx(ctx)
+	tx, err := r.data.RW().Write(ctx).Tx(ctx)
 	if err != nil {
 		return biz.Skill{}, err
 	}
@@ -689,7 +685,7 @@ func (r *skillRepo) GetSkillBySkillKey(ctx context.Context, skillKey string) (bi
 	if skillKey == "" {
 		return biz.Skill{}, errors.New("skill key is required")
 	}
-	e, err := r.client().PlatformSkill.Query().
+	e, err := r.data.RW().Read(ctx).PlatformSkill.Query().
 		Where(platformskill.SkillKeyEQ(skillKey), platformskill.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -706,7 +702,7 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 	if in.Name == "" || in.Slug == "" || in.Body == "" {
 		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, errors.New("skill name, slug and body are required")
 	}
-	skillRow, err := r.client().PlatformSkill.Query().
+	skillRow, err := r.data.RW().Read(ctx).PlatformSkill.Query().
 		Where(platformskill.SkillKeyEQ(in.Slug), platformskill.DeletedAtEQ("")).
 		Only(ctx)
 	if dataent.IsNotFound(err) {
@@ -731,13 +727,13 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 	if err != nil {
 		return biz.Skill{}, biz.SkillDiskSyncOutcome{}, err
 	}
-	update := r.client().PlatformSkill.UpdateOneID(skillRow.ID).
+	update := r.data.RW().Write(ctx).PlatformSkill.UpdateOneID(skillRow.ID).
 		SetName(in.Name).
 		SetDescription(in.Description).
 		SetMetadataJSON(string(metaJSON)).
 		SetUpdatedAt(now).
 		SetFilesystemMissing(false)
-	sv, err := r.client().SkillVersion.Query().
+	sv, err := r.data.RW().Read(ctx).SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(skillRow.ID)).
 		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
 		First(ctx)
@@ -746,7 +742,7 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 	}
 	if strings.TrimSpace(sv.ContentMarkdown) != in.Body {
 		outcome.ContentChanged = true
-		if _, err := r.client().SkillVersion.UpdateOneID(sv.ID).
+		if _, err := r.data.RW().Write(ctx).SkillVersion.UpdateOneID(sv.ID).
 			SetContentMarkdown(in.Body).
 			SetUpdatedAt(now).
 			Save(ctx); err != nil {
@@ -765,7 +761,7 @@ func (r *skillRepo) UpsertSkillFromDisk(ctx context.Context, in biz.SkillDiskSyn
 }
 
 func (r *skillRepo) ListRegisteredSlugs(ctx context.Context) ([]string, error) {
-	rows, err := r.client().PlatformSkill.Query().
+	rows, err := r.data.RW().Read(ctx).PlatformSkill.Query().
 		Where(platformskill.DeletedAtEQ("")).
 		All(ctx)
 	if err != nil {
@@ -781,7 +777,7 @@ func (r *skillRepo) ListRegisteredSlugs(ctx context.Context) ([]string, error) {
 }
 
 func (r *skillRepo) ListEnabledPublishedSkillKeys(ctx context.Context) ([]string, error) {
-	rows, err := r.client().PlatformSkill.Query().
+	rows, err := r.data.RW().Read(ctx).PlatformSkill.Query().
 		Where(
 			platformskill.DeletedAtEQ(""),
 			platformskill.EnabledEQ(true),
@@ -799,7 +795,7 @@ func (r *skillRepo) ListEnabledPublishedSkillKeys(ctx context.Context) ([]string
 }
 
 func (r *skillRepo) ListEnabledPublishedSkillCandidates(ctx context.Context) ([]biz.SkillRuntimeCandidate, error) {
-	rows, err := r.client().PlatformSkill.Query().
+	rows, err := r.data.RW().Read(ctx).PlatformSkill.Query().
 		Where(
 			platformskill.DeletedAtEQ(""),
 			platformskill.EnabledEQ(true),
@@ -845,7 +841,7 @@ func (r *skillRepo) RecordSkillInvocation(ctx context.Context, in biz.SkillInvoc
 	if status == "" {
 		status = "success"
 	}
-	_, err := r.client().SkillInvocation.Create().
+	_, err := r.data.RW().Write(ctx).SkillInvocation.Create().
 		SetID(id).
 		SetSkillID(strings.TrimSpace(in.SkillID)).
 		SetAgentID(strings.TrimSpace(in.AgentID)).
@@ -877,7 +873,7 @@ func (r *skillRepo) GetLatestSkillMarkdown(ctx context.Context, skillID string) 
 	if skillID == "" {
 		return "", errors.New("skill id is required")
 	}
-	sv, err := r.client().SkillVersion.Query().
+	sv, err := r.data.RW().Read(ctx).SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(skillID)).
 		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
 		First(ctx)
@@ -894,7 +890,7 @@ func (r *skillRepo) BatchGetSkillMarkdownBySlugs(ctx context.Context, slugs []st
 	if len(slugs) == 0 {
 		return map[string]string{}, nil
 	}
-	skills, err := r.client().PlatformSkill.Query().
+	skills, err := r.data.RW().Read(ctx).PlatformSkill.Query().
 		Where(platformskill.SkillKeyIn(slugs...)).
 		All(ctx)
 	if err != nil {
@@ -909,7 +905,7 @@ func (r *skillRepo) BatchGetSkillMarkdownBySlugs(ctx context.Context, slugs []st
 	if len(skillIDs) == 0 {
 		return map[string]string{}, nil
 	}
-	rows, err := r.client().SkillVersion.Query().
+	rows, err := r.data.RW().Read(ctx).SkillVersion.Query().
 		Where(skillversion.SkillIDIn(skillIDs...)).
 		Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
 		All(ctx)
@@ -966,7 +962,7 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 	if id == "" {
 		return biz.Skill{}, errors.New("skill id is required")
 	}
-	e, err := r.client().PlatformSkill.Query().
+	e, err := r.data.RW().Read(ctx).PlatformSkill.Query().
 		Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -976,7 +972,7 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 		return biz.Skill{}, err
 	}
 	now := nowRFC3339()
-	upd := r.client().PlatformSkill.UpdateOneID(id).SetUpdatedAt(now)
+	upd := r.data.RW().Write(ctx).PlatformSkill.UpdateOneID(id).SetUpdatedAt(now)
 	if patch.HasName {
 		upd.SetName(strings.TrimSpace(patch.Name))
 	}
@@ -997,20 +993,20 @@ func (r *skillRepo) PatchSkill(ctx context.Context, id string, patch biz.SkillUp
 	}
 	if patch.HasBody {
 		body := strings.TrimSpace(patch.Body)
-		sv, err := r.client().SkillVersion.Query().
+		sv, err := r.data.RW().Read(ctx).SkillVersion.Query().
 			Where(skillversion.SkillIDEQ(id)).
 			Order(skillversion.ByCreatedAt(entsql.OrderDesc())).
 			First(ctx)
 		if err != nil {
 			return biz.Skill{}, err
 		}
-		if _, err := r.client().SkillVersion.UpdateOneID(sv.ID).
+		if _, err := r.data.RW().Write(ctx).SkillVersion.UpdateOneID(sv.ID).
 			SetContentMarkdown(body).
 			SetUpdatedAt(now).
 			Save(ctx); err != nil {
 			return biz.Skill{}, err
 		}
-		fresh, err := r.client().PlatformSkill.Query().
+		fresh, err := r.data.RW().Read(ctx).PlatformSkill.Query().
 			Where(platformskill.IDEQ(id), platformskill.DeletedAtEQ("")).
 			Only(ctx)
 		if err != nil {
@@ -1035,7 +1031,7 @@ func (r *skillRepo) PublishSkill(ctx context.Context, id string) (biz.Skill, err
 		return biz.Skill{}, errors.New("skill id is required")
 	}
 	now := nowRFC3339()
-	tx, err := r.client().Tx(ctx)
+	tx, err := r.data.RW().Write(ctx).Tx(ctx)
 	if err != nil {
 		return biz.Skill{}, err
 	}
@@ -1074,7 +1070,7 @@ func (r *skillRepo) MarkSkillFilesystemMissing(ctx context.Context, slug string,
 	if slug == "" {
 		return errors.New("skill slug is required")
 	}
-	n, err := r.client().PlatformSkill.Update().
+	n, err := r.data.RW().Write(ctx).PlatformSkill.Update().
 		Where(platformskill.SkillKeyEQ(slug), platformskill.DeletedAtEQ("")).
 		SetFilesystemMissing(missing).
 		SetUpdatedAt(nowRFC3339()).
@@ -1089,7 +1085,7 @@ func (r *skillRepo) MarkSkillFilesystemMissing(ctx context.Context, slug string,
 }
 
 func (r *skillRepo) FilesystemHealthStats(ctx context.Context) (biz.SkillFilesystemHealthStats, error) {
-	c := r.client()
+	c := r.data.RW().Read(ctx)
 	missing, err := c.PlatformSkill.Query().
 		Where(platformskill.DeletedAtEQ(""), platformskill.FilesystemMissingEQ(true)).
 		Count(ctx)
@@ -1114,7 +1110,7 @@ func (r *skillRepo) FilesystemHealthStats(ctx context.Context) (biz.SkillFilesys
 }
 
 func (r *skillRepo) ListSkillVersions(ctx context.Context, q biz.SkillVersionListQuery) (biz.SkillVersionListResult, error) {
-	c := r.client()
+	c := r.data.RW().Read(ctx)
 	exists, err := c.PlatformSkill.Query().
 		Where(platformskill.IDEQ(q.SkillID), platformskill.DeletedAtEQ("")).
 		Exist(ctx)
@@ -1152,7 +1148,7 @@ func (r *skillRepo) ListSkillVersions(ctx context.Context, q biz.SkillVersionLis
 }
 
 func (r *skillRepo) RollbackSkillVersion(ctx context.Context, skillID string, versionID string) (biz.Skill, error) {
-	_, err := r.client().PlatformSkill.Query().
+	_, err := r.data.RW().Read(ctx).PlatformSkill.Query().
 		Where(platformskill.IDEQ(skillID), platformskill.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -1161,7 +1157,7 @@ func (r *skillRepo) RollbackSkillVersion(ctx context.Context, skillID string, ve
 		}
 		return biz.Skill{}, err
 	}
-	targetVer, err := r.client().SkillVersion.Query().
+	targetVer, err := r.data.RW().Read(ctx).SkillVersion.Query().
 		Where(skillversion.SkillIDEQ(skillID), skillversion.IDEQ(versionID)).
 		Only(ctx)
 	if err != nil {
@@ -1172,7 +1168,7 @@ func (r *skillRepo) RollbackSkillVersion(ctx context.Context, skillID string, ve
 	}
 	now := nowRFC3339()
 	newVerID := fmt.Sprintf("sv_%d", time.Now().UTC().UnixNano())
-	tx, err := r.client().Tx(ctx)
+	tx, err := r.data.RW().Write(ctx).Tx(ctx)
 	if err != nil {
 		return biz.Skill{}, err
 	}

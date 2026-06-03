@@ -29,7 +29,7 @@ func (r *planRepo) Create(ctx context.Context, plan *biz.Plan) (*biz.Plan, error
 	now := time.Now().UTC().Format(time.RFC3339)
 	const q = `INSERT INTO plans (id, session_id, agent_key, goal, steps_json, status, surface_id, graph_id, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	_, err = r.data.Ent().ExecContext(ctx, q,
+	_, err = r.data.RW().Write(ctx).ExecContext(ctx, q,
 		plan.ID, plan.SessionID, plan.AgentKey, plan.Goal, string(stepsJSON),
 		string(plan.Status), plan.SurfaceID, plan.GraphID, now, now,
 	)
@@ -41,7 +41,7 @@ func (r *planRepo) Create(ctx context.Context, plan *biz.Plan) (*biz.Plan, error
 
 func (r *planRepo) Get(ctx context.Context, id string) (*biz.Plan, error) {
 	const q = `SELECT id, session_id, agent_key, goal, steps_json, status, surface_id, graph_id, created_at, updated_at FROM plans WHERE id = ?`
-	row, qErr := r.data.ReadEnt().QueryContext(ctx, q, id)
+	row, qErr := r.data.RW().Read(ctx).QueryContext(ctx, q, id)
 	if qErr != nil {
 		return nil, kerrors.InternalServer("PLAN", qErr.Error())
 	}
@@ -79,7 +79,7 @@ func (r *planRepo) Update(ctx context.Context, plan *biz.Plan) (*biz.Plan, error
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	const q = `UPDATE plans SET goal=?, steps_json=?, status=?, surface_id=?, graph_id=?, updated_at=? WHERE id=?`
-	_, err = r.data.Ent().ExecContext(ctx, q,
+	_, err = r.data.RW().Write(ctx).ExecContext(ctx, q,
 		plan.Goal, string(stepsJSON), string(plan.Status), plan.SurfaceID, plan.GraphID, now, plan.ID,
 	)
 	if err != nil {
@@ -90,7 +90,7 @@ func (r *planRepo) Update(ctx context.Context, plan *biz.Plan) (*biz.Plan, error
 
 func (r *planRepo) ListBySession(ctx context.Context, sessionID string) ([]*biz.Plan, error) {
 	const q = `SELECT id, session_id, agent_key, goal, steps_json, status, surface_id, graph_id, created_at, updated_at FROM plans WHERE session_id = ? ORDER BY created_at DESC`
-	rows, err := r.data.ReadEnt().QueryContext(ctx, q, sessionID)
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx, q, sessionID)
 	if err != nil {
 		return nil, kerrors.InternalServer("PLAN", err.Error())
 	}

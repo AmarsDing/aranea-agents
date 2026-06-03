@@ -15,13 +15,6 @@ type systemSettingRepo struct {
 
 var _ biz.SystemSettingRepo = (*systemSettingRepo)(nil)
 
-func (r *systemSettingRepo) readClient(ctx context.Context) *ent.Client {
-	if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
-		return tx.Client()
-	}
-	return r.data.ReadEnt()
-}
-
 // NewSystemSettingRepo implements biz.SystemSettingRepo and registers DB-backed credential key resolution.
 func NewSystemSettingRepo(d *Data) biz.SystemSettingRepo {
 	repo := &systemSettingRepo{data: d}
@@ -93,7 +86,7 @@ func entToEvalLLM(e *ent.SystemSetting) biz.EvalLLMSetting {
 }
 
 func (r *systemSettingRepo) Get(ctx context.Context) (biz.SystemSetting, error) {
-	row, err := r.readClient(ctx).SystemSetting.Get(ctx, systemSettingSingletonID)
+	row, err := r.data.RW().Read(ctx).SystemSetting.Get(ctx, systemSettingSingletonID)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.SystemSetting{}, sql.ErrNoRows
@@ -114,7 +107,7 @@ func (r *systemSettingRepo) Get(ctx context.Context) (biz.SystemSetting, error) 
 // getRefineLLMRedacted loads refine_llm_* columns without the api_key field.
 // Used by Get() to populate biz.SystemSetting.DefaultRefineLLM safely.
 func (r *systemSettingRepo) getRefineLLMRedacted(ctx context.Context) (biz.RefineLLMSetting, error) {
-	rows, err := r.readClient(ctx).QueryContext(ctx,
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
 		`SELECT refine_llm_provider, refine_llm_model, refine_llm_base_url
 		 FROM system_settings WHERE id = ? LIMIT 1`, systemSettingSingletonID)
 	if err != nil {
@@ -132,11 +125,11 @@ func (r *systemSettingRepo) getRefineLLMRedacted(ctx context.Context) (biz.Refin
 }
 
 func (r *systemSettingRepo) EnsureCredentialEncryptionKey(ctx context.Context) (string, error) {
-	return ensureCredentialEncryptionKeyOnClient(ctx, r.data.entClient)
+	return ensureCredentialEncryptionKeyOnClient(ctx, r.data.RW().Write(ctx))
 }
 
 func (r *systemSettingRepo) Update(ctx context.Context, rootDir, workDir string, globalMonthlyMicroUSD int64, a2aPublicBaseURL string, mcpAllowAdHocHTTP bool) (biz.SystemSetting, error) {
-	row, err := r.data.entClient.SystemSetting.UpdateOneID(systemSettingSingletonID).
+	row, err := r.data.RW().Write(ctx).SystemSetting.UpdateOneID(systemSettingSingletonID).
 		SetRootDirectory(rootDir).
 		SetWorkDirectory(workDir).
 		SetGlobalMonthlyMicroUsd(globalMonthlyMicroUSD).
@@ -153,7 +146,7 @@ func (r *systemSettingRepo) Update(ctx context.Context, rootDir, workDir string,
 }
 
 func (r *systemSettingRepo) GetKnowledgeEmbed(ctx context.Context) (biz.KnowledgeEmbedSetting, error) {
-	row, err := r.readClient(ctx).SystemSetting.Get(ctx, systemSettingSingletonID)
+	row, err := r.data.RW().Read(ctx).SystemSetting.Get(ctx, systemSettingSingletonID)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.KnowledgeEmbedSetting{}, sql.ErrNoRows
@@ -166,7 +159,7 @@ func (r *systemSettingRepo) GetKnowledgeEmbed(ctx context.Context) (biz.Knowledg
 }
 
 func (r *systemSettingRepo) UpdateKnowledgeEmbed(ctx context.Context, patch biz.KnowledgeEmbedSetting, updateAPIKey bool) (biz.KnowledgeEmbedSetting, error) {
-	up := r.data.entClient.SystemSetting.UpdateOneID(systemSettingSingletonID).
+	up := r.data.RW().Write(ctx).SystemSetting.UpdateOneID(systemSettingSingletonID).
 		SetKnowledgeEmbedProvider(patch.Provider).
 		SetKnowledgeEmbedBaseURL(patch.BaseURL).
 		SetKnowledgeEmbedModel(patch.Model).
@@ -185,7 +178,7 @@ func (r *systemSettingRepo) UpdateKnowledgeEmbed(ctx context.Context, patch biz.
 }
 
 func (r *systemSettingRepo) GetWebResearch(ctx context.Context) (biz.WebResearchSetting, error) {
-	row, err := r.readClient(ctx).SystemSetting.Get(ctx, systemSettingSingletonID)
+	row, err := r.data.RW().Read(ctx).SystemSetting.Get(ctx, systemSettingSingletonID)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.WebResearchSetting{}, sql.ErrNoRows
@@ -198,7 +191,7 @@ func (r *systemSettingRepo) GetWebResearch(ctx context.Context) (biz.WebResearch
 }
 
 func (r *systemSettingRepo) UpdateWebResearch(ctx context.Context, patch biz.WebResearchSetting, updateAPIKey bool) (biz.WebResearchSetting, error) {
-	up := r.data.entClient.SystemSetting.UpdateOneID(systemSettingSingletonID).
+	up := r.data.RW().Write(ctx).SystemSetting.UpdateOneID(systemSettingSingletonID).
 		SetWebResearchProvider(defaultWebResearchProvider(patch.Provider)).
 		SetWebResearchMaxResults(defaultWebResearchMaxResults(patch.MaxResults)).
 		SetWebResearchFetchTop(defaultWebResearchFetchTop(patch.FetchTop)).
@@ -256,7 +249,7 @@ func defaultWebResearchTimeoutSec(n int) int {
 }
 
 func (r *systemSettingRepo) UpdateEvalLLM(ctx context.Context, patch biz.EvalLLMSetting) (biz.EvalLLMSetting, error) {
-	row, err := r.data.entClient.SystemSetting.UpdateOneID(systemSettingSingletonID).
+	row, err := r.data.RW().Write(ctx).SystemSetting.UpdateOneID(systemSettingSingletonID).
 		SetEvalSimProvider(patch.SimProvider).
 		SetEvalSimModel(patch.SimModel).
 		SetEvalJudgeProvider(patch.JudgeProvider).
@@ -274,7 +267,7 @@ func (r *systemSettingRepo) UpdateEvalLLM(ctx context.Context, patch biz.EvalLLM
 // GetRefineLLM returns the stored platform default LLM for AI refinement (API key included).
 // Uses raw SQL because the ent generator cannot be run due to a tablewriter version conflict.
 func (r *systemSettingRepo) GetRefineLLM(ctx context.Context) (biz.RefineLLMSetting, error) {
-	rows, err := r.readClient(ctx).QueryContext(ctx,
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
 		`SELECT refine_llm_provider, refine_llm_model, refine_llm_base_url, refine_llm_api_key
 		 FROM system_settings WHERE id = ? LIMIT 1`, systemSettingSingletonID)
 	if err != nil {
@@ -295,14 +288,14 @@ func (r *systemSettingRepo) GetRefineLLM(ctx context.Context) (biz.RefineLLMSett
 // Uses raw SQL because the ent generator cannot be run due to a tablewriter version conflict.
 func (r *systemSettingRepo) UpdateRefineLLM(ctx context.Context, patch biz.RefineLLMSetting, updateAPIKey bool) (biz.RefineLLMSetting, error) {
 	if updateAPIKey {
-		_, err := r.data.entClient.ExecContext(ctx,
+		_, err := r.data.RW().Write(ctx).ExecContext(ctx,
 			`UPDATE system_settings SET refine_llm_provider=?, refine_llm_model=?, refine_llm_base_url=?, refine_llm_api_key=? WHERE id=?`,
 			patch.Provider, patch.Model, patch.BaseURL, strings.TrimSpace(patch.APIKey), systemSettingSingletonID)
 		if err != nil {
 			return biz.RefineLLMSetting{}, err
 		}
 	} else {
-		_, err := r.data.entClient.ExecContext(ctx,
+		_, err := r.data.RW().Write(ctx).ExecContext(ctx,
 			`UPDATE system_settings SET refine_llm_provider=?, refine_llm_model=?, refine_llm_base_url=? WHERE id=?`,
 			patch.Provider, patch.Model, patch.BaseURL, systemSettingSingletonID)
 		if err != nil {
@@ -313,7 +306,7 @@ func (r *systemSettingRepo) UpdateRefineLLM(ctx context.Context, patch biz.Refin
 }
 
 func (r *systemSettingRepo) UpdateMemoryPlatform(ctx context.Context, patch biz.MemoryPlatformSetting) (biz.MemoryPlatformSetting, error) {
-	row, err := r.data.entClient.SystemSetting.UpdateOneID(systemSettingSingletonID).
+	row, err := r.data.RW().Write(ctx).SystemSetting.UpdateOneID(systemSettingSingletonID).
 		SetMemoryPolicyStrict(patch.PolicyStrict).
 		SetMemoryEpisodeBackfillDisabled(patch.EpisodeBackfillDisabled).
 		Save(ctx)

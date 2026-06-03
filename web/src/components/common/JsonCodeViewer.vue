@@ -14,7 +14,6 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import { useQuasar } from 'quasar';
 import { formatJsonText, highlightJsonHtml } from '../../utils/jsonFormat';
 
 const props = withDefaults(
@@ -30,7 +29,10 @@ const props = withDefaults(
   },
 );
 
-const $q = useQuasar();
+const emit = defineEmits<{
+  (e: 'copy-success'): void;
+  (e: 'copy-error', message: string): void;
+}>();
 const displayText = ref('');
 const parseError = ref('');
 
@@ -62,9 +64,9 @@ function formatInPlace() {
 async function copyText() {
   try {
     await navigator.clipboard.writeText(displayText.value);
-    $q.notify({ type: 'positive', message: '已复制', timeout: 1200 });
+    emit('copy-success');
   } catch {
-    $q.notify({ type: 'warning', message: '复制失败' });
+    emit('copy-error', '复制失败');
   }
 }
 </script>

@@ -425,7 +425,7 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 	if categoryID == "" {
 		return nil, nil
 	}
-	node, err := r.readClient(ctx).IndustryTaxonomy.Query().
+	node, err := r.data.RW().Read(ctx).IndustryTaxonomy.Query().
 		Where(
 			industrytaxonomy.IDEQ(categoryID),
 			industrytaxonomy.DeletedAtEQ(""),
@@ -441,7 +441,7 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 	case "position":
 		return []string{node.ID}, nil
 	case "department":
-		return r.readClient(ctx).IndustryTaxonomy.Query().
+		return r.data.RW().Read(ctx).IndustryTaxonomy.Query().
 			Where(
 				industrytaxonomy.ParentIDEQ(categoryID),
 				industrytaxonomy.LevelEQ("position"),
@@ -449,7 +449,7 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 			).
 			IDs(ctx)
 	case "industry":
-		deptIDs, err := r.readClient(ctx).IndustryTaxonomy.Query().
+		deptIDs, err := r.data.RW().Read(ctx).IndustryTaxonomy.Query().
 			Where(
 				industrytaxonomy.ParentIDEQ(categoryID),
 				industrytaxonomy.LevelEQ("department"),
@@ -462,7 +462,7 @@ func (r *agentRepo) categoryPositionIDsForFilter(ctx context.Context, categoryID
 		if len(deptIDs) == 0 {
 			return []string{}, nil
 		}
-		return r.readClient(ctx).IndustryTaxonomy.Query().
+		return r.data.RW().Read(ctx).IndustryTaxonomy.Query().
 			Where(
 				industrytaxonomy.ParentIDIn(deptIDs...),
 				industrytaxonomy.LevelEQ("position"),
@@ -523,7 +523,7 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 		preds = append(preds, agent.KindEQ(agent.Kind(q.Ownership)))
 	}
 	where := agent.And(preds...)
-	c := r.readClient(ctx)
+	c := r.data.RW().Read(ctx)
 	total, err := c.Agent.Query().Where(where).Count(ctx)
 	if err != nil {
 		return biz.AgentListResult{}, err
@@ -544,7 +544,7 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 }
 
 func (r *agentRepo) ListAgentCreators(ctx context.Context) ([]biz.AgentCreator, error) {
-	rows, err := r.readClient(ctx).Agent.Query().
+	rows, err := r.data.RW().Read(ctx).Agent.Query().
 		Where(agent.DeletedAtEQ(""), agent.CreatedByNEQ("")).
 		Select(agent.FieldCreatedBy).
 		GroupBy(agent.FieldCreatedBy).
@@ -577,7 +577,7 @@ func creatorLabel(userID string) string {
 }
 
 func (r *agentRepo) GetAgentByID(ctx context.Context, id string) (biz.Agent, error) {
-	row, err := r.readClient(ctx).Agent.Query().Where(agent.IDEQ(id), agent.DeletedAtEQ("")).Only(ctx)
+	row, err := r.data.RW().Read(ctx).Agent.Query().Where(agent.IDEQ(id), agent.DeletedAtEQ("")).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.Agent{}, sql.ErrNoRows
@@ -592,7 +592,7 @@ func (r *agentRepo) GetAgentByAgentKey(ctx context.Context, agentKey string) (bi
 	if agentKey == "" {
 		return biz.Agent{}, sql.ErrNoRows
 	}
-	row, err := r.readClient(ctx).Agent.Query().Where(agent.AgentKeyEQ(agentKey), agent.DeletedAtEQ("")).Only(ctx)
+	row, err := r.data.RW().Read(ctx).Agent.Query().Where(agent.AgentKeyEQ(agentKey), agent.DeletedAtEQ("")).Only(ctx)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.Agent{}, sql.ErrNoRows
@@ -614,7 +614,7 @@ func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 	if a.Status == "" {
 		a.Status = "active"
 	}
-	_, err := r.txClient(ctx).Agent.Create().
+	_, err := r.data.RW().Write(ctx).Agent.Create().
 		SetID(a.ID).
 		SetAgentKey(a.AgentKey).
 		SetDisplayName(a.DisplayName).
@@ -670,7 +670,7 @@ func (r *agentRepo) UpdateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 	}
 	a.CreatedAt = current.CreatedAt
 	a.UpdatedAt = nowRFC3339()
-	_, err = r.txClient(ctx).Agent.UpdateOneID(a.ID).
+	_, err = r.data.RW().Write(ctx).Agent.UpdateOneID(a.ID).
 		SetDisplayName(a.DisplayName).
 		SetProvider(a.Provider).
 		SetModel(a.Model).
@@ -701,7 +701,7 @@ func (r *agentRepo) DeleteAgent(ctx context.Context, id string) error {
 		return fmt.Errorf("id is required")
 	}
 	now := nowRFC3339()
-	_, err := r.txClient(ctx).Agent.UpdateOneID(id).
+	_, err := r.data.RW().Write(ctx).Agent.UpdateOneID(id).
 		SetDeletedAt(now).
 		SetStatus("deleted").
 		SetUpdatedAt(now).
@@ -710,7 +710,7 @@ func (r *agentRepo) DeleteAgent(ctx context.Context, id string) error {
 }
 
 func (r *agentRepo) GetAgentRuntimeSettings(ctx context.Context, agentID string) (biz.AgentRuntimeSettings, error) {
-	row, err := r.readClient(ctx).AgentRuntimeSetting.Get(ctx, agentID)
+	row, err := r.data.RW().Read(ctx).AgentRuntimeSetting.Get(ctx, agentID)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.AgentRuntimeSettings{}, sql.ErrNoRows
@@ -729,7 +729,7 @@ func (r *agentRepo) UpsertAgentRuntimeSettings(ctx context.Context, v biz.AgentR
 		v.CreatedAt = now
 	}
 	v.UpdatedAt = now
-	b := r.txClient(ctx).AgentRuntimeSetting.Create().SetID(v.AgentID)
+	b := r.data.RW().Write(ctx).AgentRuntimeSetting.Create().SetID(v.AgentID)
 	applyBizRuntimeToCreate(b, v, r.data.lg)
 	if err := b.OnConflict(
 		entsql.ConflictColumns(agentruntimesetting.FieldID),
@@ -737,7 +737,7 @@ func (r *agentRepo) UpsertAgentRuntimeSettings(ctx context.Context, v biz.AgentR
 	).Exec(ctx); err != nil {
 		return biz.AgentRuntimeSettings{}, err
 	}
-	row, err := r.txClient(ctx).AgentRuntimeSetting.Get(ctx, v.AgentID)
+	row, err := r.data.RW().Write(ctx).AgentRuntimeSetting.Get(ctx, v.AgentID)
 	if err != nil {
 		return biz.AgentRuntimeSettings{}, err
 	}
@@ -745,7 +745,7 @@ func (r *agentRepo) UpsertAgentRuntimeSettings(ctx context.Context, v biz.AgentR
 }
 
 func (r *agentRepo) ListAgentPromptFiles(ctx context.Context, agentID string) ([]biz.AgentPromptFile, error) {
-	rows, err := r.readClient(ctx).AgentPromptFile.Query().
+	rows, err := r.data.RW().Read(ctx).AgentPromptFile.Query().
 		Where(agentpromptfile.AgentIDEQ(agentID)).
 		Order(agentpromptfile.BySortOrder(), agentpromptfile.ByFileName()).
 		All(ctx)
@@ -764,7 +764,7 @@ func (r *agentRepo) ReplaceAgentPromptFiles(ctx context.Context, agentID string,
 		return nil, fmt.Errorf("agent id is required")
 	}
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		if _, err := r.txClient(txCtx).AgentPromptFile.Delete().Where(agentpromptfile.AgentIDEQ(agentID)).Exec(txCtx); err != nil {
+		if _, err := r.data.RW().Write(txCtx).AgentPromptFile.Delete().Where(agentpromptfile.AgentIDEQ(agentID)).Exec(txCtx); err != nil {
 			return err
 		}
 		now := nowRFC3339()
@@ -780,7 +780,7 @@ func (r *agentRepo) ReplaceAgentPromptFiles(ctx context.Context, agentID string,
 			if sortOrder == 0 {
 				sortOrder = (i + 1) * 10
 			}
-			if _, err := r.txClient(txCtx).AgentPromptFile.Create().
+			if _, err := r.data.RW().Write(txCtx).AgentPromptFile.Create().
 				SetID(id).
 				SetAgentID(agentID).
 				SetFileName(strings.TrimSpace(file.Name)).
@@ -809,7 +809,7 @@ func (r *agentRepo) CreateAgentPromptFile(ctx context.Context, f biz.AgentPrompt
 		id = fmt.Sprintf("%s_%s", f.AgentID, sanitizePromptFileID(f.Name))
 	}
 	now := nowRFC3339()
-	created, err := r.txClient(ctx).AgentPromptFile.Create().
+	created, err := r.data.RW().Write(ctx).AgentPromptFile.Create().
 		SetID(id).
 		SetAgentID(f.AgentID).
 		SetFileName(strings.TrimSpace(f.Name)).
@@ -828,7 +828,7 @@ func (r *agentRepo) UpdateAgentPromptFile(ctx context.Context, f biz.AgentPrompt
 	if f.ID == "" || f.AgentID == "" {
 		return biz.AgentPromptFile{}, fmt.Errorf("id and agent_id are required")
 	}
-	update := r.txClient(ctx).AgentPromptFile.UpdateOneID(f.ID).
+	update := r.data.RW().Write(ctx).AgentPromptFile.UpdateOneID(f.ID).
 		SetUpdatedAt(nowRFC3339())
 	if strings.TrimSpace(f.Name) != "" {
 		update = update.SetFileName(strings.TrimSpace(f.Name))
@@ -853,27 +853,10 @@ func (r *agentRepo) DeleteAgentPromptFile(ctx context.Context, agentID, id strin
 	if agentID == "" || id == "" {
 		return fmt.Errorf("agent_id and id are required")
 	}
-	_, err := r.txClient(ctx).AgentPromptFile.Delete().
+	_, err := r.data.RW().Write(ctx).AgentPromptFile.Delete().
 		Where(agentpromptfile.IDEQ(id), agentpromptfile.AgentIDEQ(agentID)).
 		Exec(ctx)
 	return err
-}
-
-func (r *agentRepo) txClient(ctx context.Context) *ent.Client {
-	if c := txClientFromCtx(ctx); c != nil {
-		return c
-	}
-	if r.data == nil {
-		return nil
-	}
-	return r.data.entClient
-}
-
-func (r *agentRepo) readClient(ctx context.Context) *ent.Client {
-	if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
-		return tx.Client()
-	}
-	return r.data.ReadEnt()
 }
 
 func (r *agentRepo) ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error {

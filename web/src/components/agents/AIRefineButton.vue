@@ -93,7 +93,6 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { useQuasar } from 'quasar';
 import type { FieldScope, FieldGuide } from '../../features/agents/fieldGuides';
 import { getFieldGuide } from '../../features/agents/fieldGuides';
 import type { RefineResponse } from '../../features/agents/aiRefine';
@@ -132,13 +131,13 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   (e: 'apply', refined: string): void;
+  (e: 'error', message: string): void;
 }>();
 
 // ──────────────────────────────────────────────────────────────────────────────
 // State
 // ──────────────────────────────────────────────────────────────────────────────
 
-const $q = useQuasar();
 const loading = ref(false);
 const showResult = ref(false);
 const resultView = ref<'result' | 'diff'>('result');
@@ -186,10 +185,7 @@ async function handleRefine() {
     editedResult.value = res.refined;
     showResult.value = true;
   } catch (e: unknown) {
-    $q.notify({
-      type: 'negative',
-      message: e instanceof Error ? e.message : 'AI 优化失败，请重试',
-    });
+    emit('error', e instanceof Error ? e.message : 'AI 优化失败，请重试');
   } finally {
     loading.value = false;
   }

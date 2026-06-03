@@ -13,6 +13,7 @@ import type {
   ListArtifactsParams,
   ListArtifactsResult,
   UploadArtifactInput,
+  SignDownloadUrlResult,
 } from './types';
 
 const svc = createArtifactService();
@@ -79,11 +80,6 @@ export async function deleteArtifact(id: string): Promise<void> {
 export async function deleteArtifactVersion(id: string, version: number): Promise<void> {
   await svc.DeleteArtifactVersion({ id, version });
 }
-
-export type SignDownloadUrlResult = {
-  url: string;
-  expires_at: string;
-};
 
 export async function signDownloadUrl(
   id: string,

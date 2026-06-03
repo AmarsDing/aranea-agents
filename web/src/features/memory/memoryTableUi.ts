@@ -14,8 +14,10 @@ export const CASCADE_SAGA_TABLE_COLUMNS: QTableColumn<CascadeProposal>[] = [
 /** MemoryCenter — Facts 表 */
 export function buildMemoryFactTableColumns(formatDate: (value: string) => string) {
   return [
-    registryCol<MemoryFact>('scope', 'Scope', 'scope_type', 'center', '12%', { sortable: false }),
-    registryCol<MemoryFact>('confidence', 'Confidence', 'confidence', 'left', '15%', { sortable: false }),
+    registryCol<MemoryFact>('scope', 'Scope', 'scope_type', 'center', REGISTRY_COL_W.metric, { sortable: false }),
+    registryCol<MemoryFact>('confidence', 'Confidence', 'confidence', 'left', REGISTRY_COL_W.category, {
+      sortable: false,
+    }),
     registryCol<MemoryFact>('source', 'Source', 'source_kind', 'left', REGISTRY_COL_W.category, { sortable: false }),
     registryCol<MemoryFact>('updated', 'Updated', 'updated_at', 'left', REGISTRY_COL_W.time, {
       sortable: false,

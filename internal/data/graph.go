@@ -30,7 +30,7 @@ func NewGraphRepo(data *Data) biz.GraphRepo {
 }
 
 func (r *graphRepo) SaveDefinition(ctx context.Context, def *biz.GraphDefinition) (*biz.GraphDefinition, error) {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	stateFieldsJSON, _ := json.Marshal(def.StateFields)
 	nodesJSON, _ := json.Marshal(def.Nodes)
 	edgesJSON, _ := json.Marshal(def.Edges)
@@ -79,7 +79,7 @@ func (r *graphRepo) SaveDefinition(ctx context.Context, def *biz.GraphDefinition
 }
 
 func (r *graphRepo) GetDefinition(ctx context.Context, id string) (*biz.GraphDefinition, error) {
-	client := r.data.ReadEnt()
+	client := r.data.RW().Read(ctx)
 	row, err := client.GraphDefinition.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -91,7 +91,7 @@ func (r *graphRepo) GetDefinition(ctx context.Context, id string) (*biz.GraphDef
 }
 
 func (r *graphRepo) ListDefinitions(ctx context.Context, pageSize int, pageToken string) ([]*biz.GraphDefinition, string, error) {
-	client := r.data.ReadEnt()
+	client := r.data.RW().Read(ctx)
 	query := client.GraphDefinition.Query().Order(ent.Asc(graphdefinition.FieldSortOrder), ent.Asc(graphdefinition.FieldCreatedAt))
 	if pageSize <= 0 {
 		pageSize = 20
@@ -131,7 +131,7 @@ func (r *graphRepo) ListUserTemplateDefinitions(ctx context.Context, pageSize in
 }
 
 func (r *graphRepo) DeleteDefinition(ctx context.Context, id string) error {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	err := client.GraphDefinition.DeleteOneID(id).Exec(ctx)
 	if err != nil && !ent.IsNotFound(err) {
 		return fmt.Errorf("graph repo delete: %w", err)
@@ -140,7 +140,7 @@ func (r *graphRepo) DeleteDefinition(ctx context.Context, id string) error {
 }
 
 func (r *graphRepo) UpdateDefinition(ctx context.Context, def *biz.GraphDefinition) (*biz.GraphDefinition, error) {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	stateFieldsJSON, _ := json.Marshal(def.StateFields)
 	nodesJSON, _ := json.Marshal(def.Nodes)
 	edgesJSON, _ := json.Marshal(def.Edges)
@@ -219,7 +219,7 @@ func entGraphToBiz(row *ent.GraphDefinition, lg loggateway.Logger) *biz.GraphDef
 }
 
 func (r *graphRepo) ReorderGraphs(ctx context.Context, ids []string) error {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	for i, id := range ids {
 		_, err := client.GraphDefinition.UpdateOneID(id).
 			SetSortOrder(i + 1).
@@ -240,7 +240,7 @@ func NewGraphRunRepo(data *Data) biz.GraphRunRepo {
 }
 
 func (r *graphRunRepo) SaveRun(ctx context.Context, exec *biz.GraphExecution) error {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	currentStateJSON, _ := json.Marshal(exec.CurrentState)
 	stepsJSON, _ := json.Marshal(exec.Steps)
 
@@ -267,7 +267,7 @@ func (r *graphRunRepo) SaveRun(ctx context.Context, exec *biz.GraphExecution) er
 }
 
 func (r *graphRunRepo) GetRun(ctx context.Context, id string) (*biz.GraphExecution, error) {
-	client := r.data.ReadEnt()
+	client := r.data.RW().Read(ctx)
 	row, err := client.GraphExecution.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
@@ -279,7 +279,7 @@ func (r *graphRunRepo) GetRun(ctx context.Context, id string) (*biz.GraphExecuti
 }
 
 func (r *graphRunRepo) ListRunsByGraph(ctx context.Context, graphID string, pageSize int, pageToken string, opts ...biz.GraphRunListOption) ([]*biz.GraphExecution, string, error) {
-	client := r.data.ReadEnt()
+	client := r.data.RW().Read(ctx)
 	query := client.GraphExecution.Query().
 		Where(graphexecution.GraphIDEQ(graphID)).
 		Order(ent.Desc(graphexecution.FieldStartedAt))
@@ -320,7 +320,7 @@ func (r *graphRunRepo) ListRunsByGraph(ctx context.Context, graphID string, page
 }
 
 func (r *graphRunRepo) UpdateRun(ctx context.Context, exec *biz.GraphExecution) error {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	currentStateJSON, _ := json.Marshal(exec.CurrentState)
 	stepsJSON, _ := json.Marshal(exec.Steps)
 

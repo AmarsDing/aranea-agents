@@ -275,8 +275,18 @@ func (e *Exporter) buildTeamSpec(ctx context.Context, team biz.Team) (TeamPackSp
 	spec.Description = ospec.Description
 	spec.MaxConcurrency = ospec.MaxConcurrency
 	spec.TimeoutSeconds = ospec.TimeoutSeconds
+	spec.RunTimeoutSec = ospec.RunTimeoutSec
+	spec.TurnTimeoutSec = ospec.TurnTimeoutSec
+	spec.FirstByteTimeoutSec = ospec.FirstByteTimeoutSec
 	spec.LoopMaxIter = ospec.LoopMaxIterations
 	spec.EnableCheckpoint = ospec.EnableCheckpoint
+	spec.RuntimeEngine = ospec.RuntimeEngine
+	spec.TeamGraphRuntime = ospec.TeamGraphRuntime
+
+	// FailurePolicy
+	if ospec.FailurePolicy != nil {
+		spec.FailurePolicy = buildFailurePolicySpec(ospec.FailurePolicy)
+	}
 
 	// 成员：agent_id → agent_key 转换
 	for _, m := range ospec.Members {
@@ -335,6 +345,7 @@ func (e *Exporter) buildTeamSpec(ctx context.Context, team biz.Team) (TeamPackSp
 // buildEmbeddedGraphSpec 从 EmbeddedGraphSpec 构建 TeamGraphPackSpec。
 func (e *Exporter) buildEmbeddedGraphSpec(ctx context.Context, eg *biz.EmbeddedGraphSpec) *TeamGraphPackSpec {
 	spec := &TeamGraphPackSpec{Linked: false}
+	spec.Layout = eg.Layout
 	for _, n := range eg.Nodes {
 		nodeSpec := TeamGraphNodeSpec{
 			ID:               n.ID,
@@ -695,6 +706,10 @@ func graphDefToPackSpec(def *biz.GraphDefinition) GraphPackSpec {
 		EntryPoint:       def.EntryPoint,
 		FinishPoint:      def.FinishPoint,
 		EnableCheckpoint: def.EnableCheckpoint,
+		Version:          def.Version,
+		SortOrder:        def.SortOrder,
+		InterruptBefore:  def.InterruptBefore,
+		InterruptAfter:   def.InterruptAfter,
 	}
 	if def.ExecutionEngine != "" {
 		spec.ExecutionEngine = string(def.ExecutionEngine)
@@ -710,22 +725,7 @@ func graphDefToPackSpec(def *biz.GraphDefinition) GraphPackSpec {
 		})
 	}
 	for _, n := range def.Nodes {
-		spec.Nodes = append(spec.Nodes, GraphNodePackSpec{
-			ID:               n.ID,
-			Type:             n.Type,
-			Description:      n.Description,
-			FuncRef:          n.FuncRef,
-			Instruction:      n.Instruction,
-			ModelName:        n.ModelName,
-			ToolNames:        n.ToolNames,
-			AgentKey:         n.AgentName, // AgentName 即 agent_key
-			InterruptBefore:  n.InterruptBefore,
-			InterruptAfter:   n.InterruptAfter,
-			Destinations:     n.Destinations,
-			RetryMaxAttempts: n.RetryMaxAttempts,
-			FailureAction:    n.FailureAction,
-			FallbackAgent:    n.FallbackAgent,
-		})
+		spec.Nodes = append(spec.Nodes, nodeDefToPackSpec(n))
 	}
 	for _, e := range def.Edges {
 		spec.Edges = append(spec.Edges, GraphEdgePackSpec{From: e.From, To: e.To, Kind: e.Kind})
@@ -736,6 +736,9 @@ func graphDefToPackSpec(def *biz.GraphDefinition) GraphPackSpec {
 			CondFuncRef: ce.CondFuncRef,
 			PathMap:     ce.PathMap,
 		})
+	}
+	for _, sg := range def.Subgraphs {
+		spec.Subgraphs = append(spec.Subgraphs, subgraphDefToPackSpec(sg))
 	}
 	return spec
 }
@@ -795,4 +798,78 @@ func buildContentRefsFromGraphSpecs(specs []GraphPackSpec) []PackContentRef {
 		refs[i] = PackContentRef{Key: s.ID}
 	}
 	return refs
+}
+
+// buildFailurePolicySpec 从 biz.TeamFailurePolicy 构建 TeamFailurePolicySpec。
+func buildFailurePolicySpec(fp *biz.TeamFailurePolicy) *TeamFailurePolicySpec {
+	spec := &TeamFailurePolicySpec{
+		Default:      fp.Default,
+		ParallelFail: fp.ParallelFail,
+		OnError:      fp.OnError,
+	}
+	// Retry
+	spec.Retry = &TeamRetryPolicySpec{
+		MaxAttempts:       fp.Retry.MaxAttempts,
+		InitialIntervalMs: fp.Retry.InitialIntervalMs,
+		BackoffFactor:     fp.Retry.BackoffFactor,
+	}
+	// NodeOverrides
+	if len(fp.NodeOverrides) > 0 {
+		spec.NodeOverrides = make(map[string]TeamNodeFailureOverrideSpec, len(fp.NodeOverrides))
+		for k, v := range fp.NodeOverrides {
+			spec.NodeOverrides[k] = TeamNodeFailureOverrideSpec{
+				Action: v.Policy,
+			}
+		}
+	}
+	// CircuitBreaker
+	if fp.CircuitBreaker != nil {
+		spec.CircuitBreaker = &CircuitBreakerPolicySpec{
+			FailureThreshold:  fp.CircuitBreaker.FailureThreshold,
+			RecoveryTimeoutMs: fp.CircuitBreaker.ResetTimeoutSeconds * 1000,
+		}
+	}
+	return spec
+}
+
+// nodeDefToPackSpec 从 biz.NodeDef 构建 GraphNodePackSpec。
+func nodeDefToPackSpec(n biz.NodeDef) GraphNodePackSpec {
+	return GraphNodePackSpec{
+		ID:                    n.ID,
+		Type:                  n.Type,
+		Description:           n.Description,
+		FuncRef:               n.FuncRef,
+		Instruction:           n.Instruction,
+		ModelName:             n.ModelName,
+		ToolNames:             n.ToolNames,
+		AgentKey:              n.AgentName,
+		InterruptBefore:       n.InterruptBefore,
+		InterruptAfter:        n.InterruptAfter,
+		Destinations:          n.Destinations,
+		RetryMaxAttempts:      n.RetryMaxAttempts,
+		FailureAction:         n.FailureAction,
+		FallbackAgent:         n.FallbackAgent,
+		InputMapperJSON:       n.InputMapperJSON,
+		OutputMapperJSON:      n.OutputMapperJSON,
+		IsolatedMessages:      n.IsolatedMessages,
+		InputFromLastResponse: n.InputFromLastResponse,
+		CacheEnabled:          n.CacheEnabled,
+		CacheTTLSeconds:       n.CacheTTLSeconds,
+	}
+}
+
+// subgraphDefToPackSpec 从 biz.SubgraphDef 构建 SubgraphPackSpec。
+func subgraphDefToPackSpec(sg biz.SubgraphDef) SubgraphPackSpec {
+	out := SubgraphPackSpec{
+		ID:          sg.ID,
+		EntryPoint:  sg.BuildConfig.EntryPoint,
+		FinishPoint: sg.BuildConfig.FinishPoint,
+	}
+	for _, n := range sg.BuildConfig.Nodes {
+		out.Nodes = append(out.Nodes, nodeDefToPackSpec(n))
+	}
+	for _, e := range sg.BuildConfig.Edges {
+		out.Edges = append(out.Edges, GraphEdgePackSpec{From: e.From, To: e.To, Kind: e.Kind})
+	}
+	return out
 }

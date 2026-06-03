@@ -2,8 +2,8 @@ import type { KnowledgeDocument } from './types';
 import { REGISTRY_COL_W, registryCol, registryColActions } from '../ui/registryTableColumns';
 
 export const KNOWLEDGE_DOC_TABLE_COLUMNS = [
-  registryCol<KnowledgeDocument>('source', '来源', 'source', 'left', '22%'),
-  registryCol<KnowledgeDocument>('mime_type', '类型', 'mime_type', 'left', '14%'),
+  registryCol<KnowledgeDocument>('source', '来源', 'source', 'left', REGISTRY_COL_W.stats),
+  registryCol<KnowledgeDocument>('mime_type', '类型', 'mime_type', 'left', REGISTRY_COL_W.name),
   registryCol<KnowledgeDocument>('status', '状态', 'status', 'left', REGISTRY_COL_W.status),
   registryCol<KnowledgeDocument>('chunk_count', '分块', 'chunk_count', 'right', REGISTRY_COL_W.metric),
   registryCol<KnowledgeDocument>('size_bytes', '大小', 'size_bytes', 'right', REGISTRY_COL_W.metric),

@@ -2,9 +2,8 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import {
   listSessionEvents,
-  type ListSessionEventsParams,
-  type ListSessionEventsResult,
 } from '../../features/event/api';
+import type { ListSessionEventsParams, ListSessionEventsResult } from '../../features/event/types';
 import type { Envelope } from '../../realtime/envelope';
 
 export const useEventStore = defineStore('event', () => {

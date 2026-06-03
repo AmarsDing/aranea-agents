@@ -50,7 +50,7 @@ func entSessionTurnToBiz(e *ent.SessionTurn) biz.SessionTurn {
 }
 
 func (r *sessionRepo) CreateSessionTurn(ctx context.Context, turn biz.SessionTurn) (biz.SessionTurn, error) {
-	c := r.data.entClient
+	c := r.data.RW().Write(ctx)
 	saved, err := c.SessionTurn.Create().
 		SetID(turn.ID).
 		SetSessionID(turn.SessionID).
@@ -90,7 +90,7 @@ func (r *sessionRepo) CreateSessionTurn(ctx context.Context, turn biz.SessionTur
 }
 
 func (r *sessionRepo) UpdateSessionTurn(ctx context.Context, id string, fields biz.SessionTurnUpdateFields) (biz.SessionTurn, error) {
-	c := r.data.entClient
+	c := r.data.RW().Write(ctx)
 	upd := c.SessionTurn.UpdateOneID(id)
 	if fields.Status != nil {
 		upd = upd.SetStatus(*fields.Status)
@@ -174,7 +174,7 @@ func (r *sessionRepo) ListSessionTurns(ctx context.Context, sessionID string, li
 	if sessionID == "" {
 		return biz.SessionTurnListResult{}, kerrors.BadRequest("SESSION_TURN", "session_id is required")
 	}
-	c := r.readClient(ctx)
+	c := r.data.RW().Read(ctx)
 	where := entsessionturn.SessionIDEQ(sessionID)
 	total, err := c.SessionTurn.Query().Where(where).Count(ctx)
 	if err != nil {
@@ -197,7 +197,7 @@ func (r *sessionRepo) ListSessionTurns(ctx context.Context, sessionID string, li
 }
 
 func (r *sessionRepo) GetSessionTurn(ctx context.Context, id string) (biz.SessionTurn, error) {
-	c := r.readClient(ctx)
+	c := r.data.RW().Read(ctx)
 	row, err := c.SessionTurn.Get(ctx, id)
 	if err != nil {
 		return biz.SessionTurn{}, err

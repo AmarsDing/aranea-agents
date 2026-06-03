@@ -21,6 +21,7 @@ type ImporterRepo interface {
 	GetAgentByAgentKey(ctx context.Context, agentKey string) (biz.Agent, error)
 	CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, error)
 	UpdateAgent(ctx context.Context, a biz.Agent) (biz.Agent, error)
+	DeleteAgent(ctx context.Context, id string) error
 	GetAgentRuntimeSettings(ctx context.Context, agentID string) (biz.AgentRuntimeSettings, error)
 	UpsertAgentRuntimeSettings(ctx context.Context, v biz.AgentRuntimeSettings) (biz.AgentRuntimeSettings, error)
 	ReplaceAgentPromptFiles(ctx context.Context, agentID string, files []biz.AgentPromptFile) ([]biz.AgentPromptFile, error)
@@ -52,11 +53,12 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 
 	// Phase 1: Taxonomy
 	if p.Taxonomy != nil {
-		count, err := im.importTaxonomy(ctx, p.Taxonomy, strategy, mapper)
+		count, warns, err := im.importTaxonomy(ctx, p.Taxonomy, strategy, mapper)
 		if err != nil {
 			return result, fmt.Errorf("pack import: Phase 1 (Taxonomy) 失败: %w", err)
 		}
 		result.TaxonomyNodes = count
+		result.Warnings = append(result.Warnings, warns...)
 	}
 
 	// Phase 2: Agents
@@ -109,8 +111,9 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 }
 
 // importTaxonomy 导入行业分类树。
-func (im *Importer) importTaxonomy(ctx context.Context, spec *TaxonomyPackSpec, strategy ConflictStrategy, mapper *KeyMapper) (int, error) {
+func (im *Importer) importTaxonomy(ctx context.Context, spec *TaxonomyPackSpec, strategy ConflictStrategy, mapper *KeyMapper) (int, []string, error) {
 	count := 0
+	var warnings []string
 
 	for _, ind := range spec.Industries {
 		indNode, err := im.upsertTaxonomyNode(ctx, biz.TaxonomyNode{
@@ -122,7 +125,7 @@ func (im *Importer) importTaxonomy(ctx context.Context, spec *TaxonomyPackSpec, 
 			IsSystem:    true,
 		}, strategy)
 		if err != nil {
-			return count, fmt.Errorf("导入行业 %s 失败: %w", ind.Key, err)
+			return count, warnings, fmt.Errorf("导入行业 %s 失败: %w", ind.Key, err)
 		}
 		mapper.RegisterTaxonomy(ind.Key, indNode.ID)
 		count++
@@ -138,6 +141,7 @@ func (im *Importer) importTaxonomy(ctx context.Context, spec *TaxonomyPackSpec, 
 				IsSystem:    true,
 			}, strategy)
 			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("导入部门 %s/%s 失败，跳过其子节点", ind.Key, dept.Key))
 				continue
 			}
 			deptKey := BuildTaxonomyKey(ind.Key, dept.Key, "")
@@ -155,6 +159,7 @@ func (im *Importer) importTaxonomy(ctx context.Context, spec *TaxonomyPackSpec, 
 					IsSystem:    true,
 				}, strategy)
 				if err != nil {
+					warnings = append(warnings, fmt.Sprintf("导入岗位 %s/%s/%s 失败", ind.Key, dept.Key, pos.Key))
 					continue
 				}
 				posKey := BuildTaxonomyKey(ind.Key, dept.Key, pos.Key)
@@ -164,7 +169,7 @@ func (im *Importer) importTaxonomy(ctx context.Context, spec *TaxonomyPackSpec, 
 		}
 	}
 
-	return count, nil
+	return count, warnings, nil
 }
 
 // importAgent 导入单个 Agent。
@@ -182,9 +187,18 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 			mapper.RegisterAgent(spec.Key, existing.ID)
 			return 0, 0, 1, nil
 		case ConflictDuplicate:
-			spec.Key = spec.Key + "-copy"
+			// 循环追加后缀直到找到不冲突的 key
+			newKey := spec.Key + "-copy"
+			for i := 2; ; i++ {
+				_, err := im.repo.GetAgentByAgentKey(ctx, newKey)
+				if err != nil {
+					break // key 可用
+				}
+				newKey = fmt.Sprintf("%s-copy-%d", spec.Key, i)
+			}
+			spec.Key = newKey
 		case ConflictOverwrite:
-			// 继续更新
+			// 继续更新，保留原始 Status/Readonly/Source
 		}
 	}
 
@@ -204,6 +218,13 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 		Status:             "active",
 		Readonly:           false,
 		Source:             "imported",
+	}
+
+	// overwrite 时保留原始 Status/Readonly/Source
+	if findErr == nil && strategy == ConflictOverwrite {
+		agent.Status = existing.Status
+		agent.Readonly = existing.Readonly
+		agent.Source = existing.Source
 	}
 
 	// 解析 position_key → taxonomy_position_id
@@ -273,7 +294,14 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 			})
 		}
 		if _, err := im.repo.ReplaceAgentPromptFiles(ctx, agentID, promptFiles); err != nil {
-			return created, updated, skipped, fmt.Errorf("写入 Agent %s 文件失败: %w", spec.Key, err)
+			// 回滚：删除已创建的 Agent
+			if created == 1 {
+				if delErr := im.repo.DeleteAgent(ctx, agentID); delErr != nil {
+					// 回滚失败：记录到错误信息中
+					return 0, 0, 0, fmt.Errorf("写入 Agent %s 文件失败: %w（回滚删除也失败: %v）", spec.Key, err, delErr)
+				}
+			}
+			return 0, 0, 0, fmt.Errorf("写入 Agent %s 文件失败: %w", spec.Key, err)
 		}
 	}
 
@@ -281,7 +309,13 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 	if spec.Runtime != nil {
 		settings := im.buildRuntimeSettings(agentID, spec)
 		if _, err := im.repo.UpsertAgentRuntimeSettings(ctx, settings); err != nil {
-			return created, updated, skipped, fmt.Errorf("写入 Agent %s 运行时设置失败: %w", spec.Key, err)
+			// 回滚：删除已创建的 Agent（Files 已通过 Replace 覆盖，无需单独清理）
+			if created == 1 {
+				if delErr := im.repo.DeleteAgent(ctx, agentID); delErr != nil {
+					return 0, 0, 0, fmt.Errorf("写入 Agent %s 运行时设置失败: %w（回滚删除也失败: %v）", spec.Key, err, delErr)
+				}
+			}
+			return 0, 0, 0, fmt.Errorf("写入 Agent %s 运行时设置失败: %w", spec.Key, err)
 		}
 	}
 
@@ -296,6 +330,10 @@ func (im *Importer) importGraph(ctx context.Context, spec GraphPackSpec, mapper 
 		EntryPoint:       spec.EntryPoint,
 		FinishPoint:      spec.FinishPoint,
 		EnableCheckpoint: spec.EnableCheckpoint,
+		Version:          spec.Version,
+		SortOrder:        spec.SortOrder,
+		InterruptBefore:  spec.InterruptBefore,
+		InterruptAfter:   spec.InterruptAfter,
 	}
 	if spec.ExecutionEngine != "" {
 		def.ExecutionEngine = biz.ExecutionEngineType(spec.ExecutionEngine)
@@ -316,20 +354,26 @@ func (im *Importer) importGraph(ctx context.Context, spec GraphPackSpec, mapper 
 	// Nodes
 	for _, n := range spec.Nodes {
 		nodeDef := biz.NodeDef{
-			ID:               n.ID,
-			Type:             n.Type,
-			Description:      n.Description,
-			FuncRef:          n.FuncRef,
-			Instruction:      n.Instruction,
-			ModelName:        n.ModelName,
-			ToolNames:        n.ToolNames,
-			AgentName:        n.AgentKey, // AgentName 存储 agent_key
-			InterruptBefore:  n.InterruptBefore,
-			InterruptAfter:   n.InterruptAfter,
-			Destinations:     n.Destinations,
-			RetryMaxAttempts: n.RetryMaxAttempts,
-			FailureAction:    n.FailureAction,
-			FallbackAgent:    n.FallbackAgent,
+			ID:                    n.ID,
+			Type:                  n.Type,
+			Description:           n.Description,
+			FuncRef:               n.FuncRef,
+			Instruction:           n.Instruction,
+			ModelName:             n.ModelName,
+			ToolNames:             n.ToolNames,
+			AgentName:             n.AgentKey, // AgentName 存储 agent_key
+			InterruptBefore:       n.InterruptBefore,
+			InterruptAfter:        n.InterruptAfter,
+			Destinations:          n.Destinations,
+			RetryMaxAttempts:      n.RetryMaxAttempts,
+			FailureAction:         n.FailureAction,
+			FallbackAgent:         n.FallbackAgent,
+			InputMapperJSON:       n.InputMapperJSON,
+			OutputMapperJSON:      n.OutputMapperJSON,
+			IsolatedMessages:      n.IsolatedMessages,
+			InputFromLastResponse: n.InputFromLastResponse,
+			CacheEnabled:          n.CacheEnabled,
+			CacheTTLSeconds:       n.CacheTTLSeconds,
 		}
 		def.Nodes = append(def.Nodes, nodeDef)
 	}
@@ -348,6 +392,52 @@ func (im *Importer) importGraph(ctx context.Context, spec GraphPackSpec, mapper 
 		})
 	}
 
+	// Subgraphs
+	for _, sg := range spec.Subgraphs {
+		subgraphDef := biz.SubgraphDef{
+			ID:          sg.ID,
+			InterruptBefore: false,
+			InterruptAfter:  false,
+		}
+		// Build subgraph's BuildConfig
+		var nodes []biz.NodeDef
+		for _, n := range sg.Nodes {
+			nodes = append(nodes, biz.NodeDef{
+				ID:                    n.ID,
+				Type:                  n.Type,
+				Description:           n.Description,
+				FuncRef:               n.FuncRef,
+				Instruction:           n.Instruction,
+				ModelName:             n.ModelName,
+				ToolNames:             n.ToolNames,
+				AgentName:             n.AgentKey,
+				InterruptBefore:       n.InterruptBefore,
+				InterruptAfter:        n.InterruptAfter,
+				Destinations:          n.Destinations,
+				RetryMaxAttempts:      n.RetryMaxAttempts,
+				FailureAction:         n.FailureAction,
+				FallbackAgent:         n.FallbackAgent,
+				InputMapperJSON:       n.InputMapperJSON,
+				OutputMapperJSON:      n.OutputMapperJSON,
+				IsolatedMessages:      n.IsolatedMessages,
+				InputFromLastResponse: n.InputFromLastResponse,
+				CacheEnabled:          n.CacheEnabled,
+				CacheTTLSeconds:       n.CacheTTLSeconds,
+			})
+		}
+		var edges []biz.EdgeDef
+		for _, e := range sg.Edges {
+			edges = append(edges, biz.EdgeDef{From: e.From, To: e.To, Kind: e.Kind})
+		}
+		subgraphDef.BuildConfig = biz.GraphBuildConfig{
+			Nodes:       nodes,
+			Edges:       edges,
+			EntryPoint:  sg.EntryPoint,
+			FinishPoint: sg.FinishPoint,
+		}
+		def.Subgraphs = append(def.Subgraphs, subgraphDef)
+	}
+
 	saved, err := im.repo.SaveGraphDefinition(ctx, def)
 	if err != nil {
 		return 0, fmt.Errorf("创建 Graph %s 失败: %w", spec.ID, err)
@@ -361,14 +451,22 @@ func (im *Importer) importGraph(ctx context.Context, spec GraphPackSpec, mapper 
 func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy ConflictStrategy, mapper *KeyMapper) (created, updated, skipped int, err error) {
 	// 构建 OrchestrationSpec
 	ospec := biz.OrchestrationSpec{
-		Version:           2,
-		Mode:              spec.Mode,
-		Description:       spec.Description,
-		MaxConcurrency:    spec.MaxConcurrency,
-		TimeoutSeconds:    spec.TimeoutSeconds,
-		LoopMaxIterations: spec.LoopMaxIter,
-		EnableCheckpoint:  spec.EnableCheckpoint,
-		RuntimeEngine:     "graph",
+		Version:            2,
+		Mode:               spec.Mode,
+		Description:        spec.Description,
+		MaxConcurrency:     spec.MaxConcurrency,
+		TimeoutSeconds:     spec.TimeoutSeconds,
+		RunTimeoutSec:      spec.RunTimeoutSec,
+		TurnTimeoutSec:     spec.TurnTimeoutSec,
+		FirstByteTimeoutSec: spec.FirstByteTimeoutSec,
+		LoopMaxIterations:  spec.LoopMaxIter,
+		EnableCheckpoint:   spec.EnableCheckpoint,
+		TeamGraphRuntime:   spec.TeamGraphRuntime,
+	}
+	if spec.RuntimeEngine != "" {
+		ospec.RuntimeEngine = spec.RuntimeEngine
+	} else {
+		ospec.RuntimeEngine = "graph"
 	}
 
 	// 成员：agent_key → agent_id
@@ -417,6 +515,35 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 		}
 	}
 
+	// FailurePolicy
+	if spec.FailurePolicy != nil {
+		fp := &biz.TeamFailurePolicy{
+			Default:       spec.FailurePolicy.Default,
+			ParallelFail:  spec.FailurePolicy.ParallelFail,
+			OnError:       spec.FailurePolicy.OnError,
+		}
+		if spec.FailurePolicy.Retry != nil {
+			fp.Retry = biz.TeamRetryPolicy{
+				MaxAttempts:       spec.FailurePolicy.Retry.MaxAttempts,
+				InitialIntervalMs: spec.FailurePolicy.Retry.InitialIntervalMs,
+				BackoffFactor:     spec.FailurePolicy.Retry.BackoffFactor,
+			}
+		}
+		if len(spec.FailurePolicy.NodeOverrides) > 0 {
+			fp.NodeOverrides = make(map[string]biz.TeamNodeFailureOverride, len(spec.FailurePolicy.NodeOverrides))
+			for k, v := range spec.FailurePolicy.NodeOverrides {
+				fp.NodeOverrides[k] = biz.TeamNodeFailureOverride{Policy: v.Action}
+			}
+		}
+		if spec.FailurePolicy.CircuitBreaker != nil {
+			fp.CircuitBreaker = &biz.CircuitBreakerPolicy{
+				FailureThreshold:    spec.FailurePolicy.CircuitBreaker.FailureThreshold,
+				ResetTimeoutSeconds: spec.FailurePolicy.CircuitBreaker.RecoveryTimeoutMs / 1000,
+			}
+		}
+		ospec.FailurePolicy = fp
+	}
+
 	// CriticLoop
 	if spec.CriticLoop != nil {
 		ospec.CriticLoop = &biz.CriticLoopSpec{
@@ -450,12 +577,25 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 			return 0, 0, 1, nil
 		case ConflictOverwrite:
 			team.ID = existing.ID
+			// 保留原始 Status/Readonly/Source
+			team.Status = existing.Status
+			team.Readonly = existing.Readonly
+			team.Source = existing.Source
 			if _, err := im.repo.UpdateTeam(ctx, team); err != nil {
 				return 0, 0, 0, fmt.Errorf("更新 Team %s 失败: %w", spec.Key, err)
 			}
 			return 0, 1, 0, nil
 		case ConflictDuplicate:
-			team.TeamKey = spec.Key + "-copy"
+			// 循环追加后缀直到找到不冲突的 key
+			newKey := spec.Key + "-copy"
+			for i := 2; ; i++ {
+				_, err := im.repo.GetTeamByKey(ctx, newKey)
+				if err != nil {
+					break // key 可用
+				}
+				newKey = fmt.Sprintf("%s-copy-%d", spec.Key, i)
+			}
+			team.TeamKey = newKey
 		}
 	}
 
@@ -468,7 +608,7 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 
 // buildEmbeddedGraph 从 TeamGraphPackSpec 构建 EmbeddedGraphSpec。
 func (im *Importer) buildEmbeddedGraph(spec *TeamGraphPackSpec, mapper *KeyMapper) *biz.EmbeddedGraphSpec {
-	eg := &biz.EmbeddedGraphSpec{Version: 1}
+	eg := &biz.EmbeddedGraphSpec{Version: 1, Layout: spec.Layout}
 	for _, n := range spec.Nodes {
 		nodeSpec := biz.EmbeddedGraphNodeSpec{
 			ID:               n.ID,
@@ -598,6 +738,11 @@ func (im *Importer) buildRuntimeSettings(agentID string, spec AgentPackSpec) biz
 	if spec.Skills != nil {
 		s.SkillLoadMode = spec.Skills.LoadMode
 		s.SkillRuntimeJSON = buildSkillRuntimeJSON(spec.Skills)
+	}
+
+	// CodeExecutor
+	if spec.CodeExecutor != "" {
+		s.CodeExecutorType = spec.CodeExecutor
 	}
 
 	return s

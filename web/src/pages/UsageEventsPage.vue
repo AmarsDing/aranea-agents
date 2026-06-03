@@ -145,7 +145,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
@@ -155,6 +155,7 @@ import AppRegistryPagination from '../components/layout/AppRegistryPagination.vu
 import { useUsageEventsPage } from '../features/usage/useUsageEventsPage';
 import type { ModelTokenUsageEvent } from '../features/usage/types';
 import { type RegistryTableColumn } from '../features/ui/registryTableColumns';
+import { useLocalPagination } from '../composables/useLocalPagination';
 
 const $q = useQuasar();
 
@@ -178,12 +179,14 @@ const {
 
 const purging = ref(false);
 
-const page = ref(1);
-const pageSize = ref(20);
-const pageMax = computed(() => Math.max(1, Math.ceil(events.value.length / pageSize.value)));
-const pagedEvents = computed(() => {
-  const start = (page.value - 1) * pageSize.value;
-  return events.value.slice(start, start + pageSize.value);
+const {
+  page,
+  rowsPerPage: pageSize,
+  pagedRows: pagedEvents,
+  totalPages: pageMax,
+} = useLocalPagination<ModelTokenUsageEvent>({
+  rows: events,
+  defaultRowsPerPage: 20,
 });
 
 import { USAGE_EVENT_TABLE_COLUMNS } from '../features/usage/usageTableUi';

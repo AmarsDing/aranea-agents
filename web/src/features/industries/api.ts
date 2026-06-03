@@ -1,5 +1,5 @@
 import { kratosApi } from '../../services';
-import type { Industry, Department, Position, PositionPromptResult } from './types';
+import type { Industry, Department, Position, PositionPromptResult, VariantInfo } from './types';
 
 const BASE = '/v1/industries';
 
@@ -49,15 +49,10 @@ export async function getPositionPrompt(
   };
 }
 
-export interface VariantInfo {
-  key: string;
-  label: string;
-}
-
 export async function listPositionVariants(industryKey: string, positionKey: string): Promise<VariantInfo[]> {
   const { data } = await kratosApi.get(`${BASE}/${industryKey}/positions/${positionKey}/variants`);
-  return (data.variants ?? []).map((v: any) => ({
-    key: v.key ?? v.Key ?? '',
-    label: v.label ?? v.Label ?? v.key ?? v.Key ?? '',
+  return (data.variants ?? []).map((v: VariantInfo) => ({
+    key: v.key ?? '',
+    label: v.label ?? v.key ?? '',
   }));
 }

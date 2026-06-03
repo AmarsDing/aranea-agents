@@ -610,6 +610,34 @@ export function useChatWorkspace() {
     $q.notify({ type: 'info', message: t('chat.voicePlaceholder') });
   }
 
+  function onPasteUnsupported() {
+    $q.notify({ type: 'warning', message: t('chat.clipboardFileUnsupported', '当前模型不支持此类型的文件粘贴') });
+  }
+
+  async function onCompactSession(sessionId: string) {
+    try {
+      const result = await sessionStore.compactSessionAction(sessionId);
+      if (result.compacted) {
+        const before = Math.round((result.estimated_tokens_before / 1000) * 10) / 10;
+        const after = Math.round((result.estimated_tokens_after / 1000) * 10) / 10;
+        $q.notify({
+          type: 'positive',
+          message: t('chat.contextManuallyCompressed', `上下文已压缩 (${before}k → ${after}k tokens)`),
+          timeout: 4000,
+        });
+      } else {
+        $q.notify({
+          type: 'info',
+          message: t('chat.contextNoCompactionNeeded', '当前上下文无需压缩'),
+          timeout: 3000,
+        });
+      }
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      $q.notify({ type: 'negative', message: t('chat.contextCompactFailed', '压缩失败') + `: ${msg}`, timeout: 5000 });
+    }
+  }
+
   let visibleRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   async function bindSessionView(sessionId: string, replace = true) {
@@ -811,6 +839,7 @@ export function useChatWorkspace() {
       openSessionTrace,
       openSessionEvents,
       compactSessionAction: sessionStore.compactSessionAction,
+      onCompactSession,
     }),
     composer: reactive({
       inputText,
@@ -850,6 +879,7 @@ export function useChatWorkspace() {
       dismissFailedMessage: composerActions.dismissFailedMessage,
       regenerateMessage: composerActions.regenerateMessage,
       cancelBackgroundJob: composerActions.cancelBackgroundJob,
+      onPasteUnsupported,
     }),
     dialogs: useChatDialogs({
       deleteFlow,

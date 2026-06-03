@@ -171,7 +171,7 @@ func TestRecordTokenUsageEventUpdatesSessionLastModelFields(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	repo := &usageRepo{data: &Data{entClient: client}}
+	repo := &usageRepo{data: &Data{entClient: client, rw: NewReadWriteClient(client, client)}}
 	ev := biz.TokenUsageEvent{
 		ID:           "usage-ev-1",
 		SessionID:    "sess-usage-1",

@@ -4,22 +4,9 @@
 import { createEventService } from '../../services';
 import { asRecord, pickI32, pickStr } from '../../shared/wireJson';
 import type { Envelope } from '../../realtime/envelope';
+import type { ListSessionEventsParams, ListSessionEventsResult } from './types';
 
 const eventApi = createEventService();
-
-export type ListSessionEventsParams = {
-  sessionId: string;
-  since?: string;
-  until?: string;
-  type?: string;
-  limit?: number;
-  offset?: number;
-};
-
-export type ListSessionEventsResult = {
-  items: Envelope[];
-  total: number;
-};
 
 export async function listSessionEvents(params: ListSessionEventsParams): Promise<ListSessionEventsResult> {
   const data = await eventApi.ListEvents({

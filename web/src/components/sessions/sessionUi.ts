@@ -1,5 +1,5 @@
 import type { Session } from '../../features/session/types';
-import { registryCol } from '../../features/ui/registryTableColumns';
+import { REGISTRY_COL_W, registryCol } from '../../features/ui/registryTableColumns';
 
 /** 列表摘要卡片（纯展示文案来源） */
 export type SessionsSummaryCard = {
@@ -35,7 +35,7 @@ export const pageSizeSelectOptions = [10, 20, 50].map((value) => ({
   value,
 }));
 
-export const sessionsTableSelectionColumn = registryCol('select', '', 'id', 'left', '48px', { sortable: false });
+export const sessionsTableSelectionColumn = registryCol('select', '', 'id', 'left', REGISTRY_COL_W.select, { sortable: false });
 
 export const sessionsTableColumns = [
   registryCol('session', '会话', 'title', 'left', '16%; max-width: 168px', { sortable: false }),

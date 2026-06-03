@@ -13,8 +13,8 @@ export function useIndustryMarket() {
     try {
       const result = await listIndustries();
       industries.value = result.items;
-    } catch (e: any) {
-      error.value = e?.message ?? 'Failed to load industries';
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : 'Failed to load industries';
     } finally {
       loading.value = false;
     }

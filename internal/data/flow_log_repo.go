@@ -24,10 +24,10 @@ func NewFlowLogRepo(d *Data) biz.FlowLogRepo {
 }
 
 func (r *flowLogRepo) Insert(ctx context.Context, rec biz.FlowLogRecord) error {
-	if r == nil || r.data == nil || r.data.Ent() == nil {
+	if r == nil || r.data == nil {
 		return kerrors.InternalServer("FLOW_LOG", "database not configured")
 	}
-	_, err := r.data.Ent().FlowLogEvent.Create().
+	_, err := r.data.RW().Write(ctx).FlowLogEvent.Create().
 		SetID(rec.ID).
 		SetTraceID(rec.TraceID).
 		SetSessionID(rec.SessionID).
@@ -53,10 +53,10 @@ func (r *flowLogRepo) Insert(ctx context.Context, rec biz.FlowLogRecord) error {
 }
 
 func (r *flowLogRepo) List(ctx context.Context, q biz.FlowLogQuery) (biz.FlowLogListResult, error) {
-	if r == nil || r.data == nil || r.data.Ent() == nil {
+	if r == nil || r.data == nil {
 		return biz.FlowLogListResult{}, kerrors.InternalServer("FLOW_LOG", "database not configured")
 	}
-	client := r.data.ReadEnt()
+	client := r.data.RW().Read(ctx)
 	query := client.FlowLogEvent.Query()
 	if tid := strings.TrimSpace(q.TraceID); tid != "" {
 		query = query.Where(flowlogevent.TraceIDEQ(tid))
@@ -114,10 +114,10 @@ func (r *flowLogRepo) List(ctx context.Context, q biz.FlowLogQuery) (biz.FlowLog
 }
 
 func (r *flowLogRepo) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
-	if r == nil || r.data == nil || r.data.Ent() == nil {
+	if r == nil || r.data == nil {
 		return 0, kerrors.InternalServer("FLOW_LOG", "database not configured")
 	}
-	n, err := r.data.Ent().FlowLogEvent.Delete().
+	n, err := r.data.RW().Write(ctx).FlowLogEvent.Delete().
 		Where(flowlogevent.CreatedAtLT(cutoff)).
 		Exec(ctx)
 	if err != nil {

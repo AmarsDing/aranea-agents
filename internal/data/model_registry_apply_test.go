@@ -29,7 +29,7 @@ func openTestDataWithRawDB(t *testing.T) *Data {
 	if err := client.Schema.Create(context.Background(), migrate.WithDropIndex(true)); err != nil {
 		t.Fatalf("schema create: %v", err)
 	}
-	return &Data{entClient: client, rawDB: db}
+	return &Data{entClient: client, rawDB: db, rw: NewReadWriteClient(client, client)}
 }
 
 func seedAgent(t *testing.T, d *Data, id, agentKey, displayName, provider string) {

@@ -11,9 +11,8 @@ import {
   pinSession,
   unpinSession,
   updateSessionTitle,
-  type Session,
 } from '../../features/session/api';
-import type { CompactSessionResult } from '../../features/session/api';
+import type { Session, CompactSessionResult } from '../../features/session/types';
 import type { SessionContextPatch } from '../../features/chat/sessionContextPatch';
 import { reconcilePatchFromServer } from '../../features/chat/sessionContextPatch';
 import { formatSessionTime } from '../../features/chat/composables/chatWorkspaceUtils';
@@ -145,8 +144,8 @@ export const useChatSessionStore = defineStore('chatSession', () => {
       } else if (!selectedSession.value && rows.length > 0) {
         selectedSession.value = rows[0];
       }
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -156,8 +155,8 @@ export const useChatSessionStore = defineStore('chatSession', () => {
     try {
       const rows = await listTeamSessions(teamId);
       teamSessions.value[teamId] = sortSessionsForDisplay(rows).map(withTeamAt);
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -175,8 +174,8 @@ export const useChatSessionStore = defineStore('chatSession', () => {
       selectedSession.value = created;
       emitSessionMutation({ type: 'update', id: created.id, session: created });
       return created;
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -198,8 +197,8 @@ export const useChatSessionStore = defineStore('chatSession', () => {
       teamSelectedSessionId.value = created.id;
       emitSessionMutation({ type: 'update', id: created.id, session: created });
       return created;
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -210,8 +209,8 @@ export const useChatSessionStore = defineStore('chatSession', () => {
       await deleteSession(id);
       removeSessionById(id);
       emitSessionMutation({ type: 'remove', id });
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -225,8 +224,8 @@ export const useChatSessionStore = defineStore('chatSession', () => {
         teamSelectedSessionId.value = teamSessions.value[teamId]?.[0]?.id ?? null;
       }
       emitSessionMutation({ type: 'remove', id: sessionId });
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -238,8 +237,8 @@ export const useChatSessionStore = defineStore('chatSession', () => {
       updateSessionById(id, updated);
       emitSessionMutation({ type: 'update', id, session: updated });
       return updated;
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -253,8 +252,8 @@ export const useChatSessionStore = defineStore('chatSession', () => {
       ).map(withTeamAt);
       emitSessionMutation({ type: 'update', id, session: updated });
       return updated;
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -266,8 +265,8 @@ export const useChatSessionStore = defineStore('chatSession', () => {
       updateSessionById(id, updated);
       emitSessionMutation({ type: 'update', id, session: updated });
       return updated;
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -286,8 +285,8 @@ export const useChatSessionStore = defineStore('chatSession', () => {
       );
       emitSessionMutation({ type: 'update', id, session: updated });
       return updated;
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -300,8 +299,8 @@ export const useChatSessionStore = defineStore('chatSession', () => {
       sessions.value = [];
       selectedSession.value = null;
       emitSessionMutation({ type: 'refresh' });
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
       throw e;
     }
   }
@@ -394,8 +393,8 @@ export const useChatSessionStore = defineStore('chatSession', () => {
     try {
       const serverSession = await getSession(id);
       reconcileFromServer(id, serverSession);
-    } catch (e: any) {
-      error.value = e?.message ?? String(e);
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : String(e);
     }
   }
 

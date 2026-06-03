@@ -225,6 +225,10 @@ export function useTaxonomyPage() {
     }
   }
 
+  function onRefineError(message: string) {
+    $q.notify({ type: 'negative', message });
+  }
+
   return {
     isDark,
     loading,
@@ -249,5 +253,6 @@ export function useTaxonomyPage() {
     reorderNodes,
     levelLabel,
     trimmedDesc,
+    onRefineError,
   };
 }

@@ -1,3 +1,4 @@
+// Container: approved — feature-local panel; refineFn injected from Page via props.
 <template>
   <q-splitter v-model="splitterModel" class="agent-files-splitter fit">
     <template #before>
@@ -34,9 +35,10 @@
               :file-name="activeFile"
               :resource-id="agentId || undefined"
               :text="bodyModel"
-              :refine-fn="refinePromptField"
+              :refine-fn="props.refineFn"
               outline
               @apply="(v: string) => emit('update-file-body', activeFile, v)"
+              @error="(msg: string) => emit('refine-error', msg)"
             />
             <q-btn
               color="primary"
@@ -61,7 +63,7 @@ import { computed } from 'vue';
 import type { AgentFile } from './agentUi';
 import { tokenEstimateFor, tokenText } from './agentUi';
 import AiRefineButton from './AIRefineButton.vue';
-import { refinePromptField } from '../../features/agents/aiRefine';
+import type { RefineResponse } from '../../features/agents/aiRefine';
 
 const props = defineProps<{
   files: AgentFile[];
@@ -70,6 +72,7 @@ const props = defineProps<{
   dirty: boolean;
   fileTokenByName?: Record<string, number>;
   agentId?: string;
+  refineFn?: (params: { scope: string; fileName?: string; resourceId?: string; originalText: string; userHint: string; targetMode: string }) => Promise<RefineResponse>;
 }>();
 
 function fileTokenLabel(name: string, body: string) {
@@ -92,6 +95,7 @@ const emit = defineEmits<{
   'confirm-reload': [];
   reload: [];
   save: [];
+  'refine-error': [message: string];
 }>();
 
 function confirmReload() {

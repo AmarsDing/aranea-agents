@@ -144,14 +144,13 @@ Schema 版本 `flow_log/v1`，包含：
 ## 4. 初始化流程
 
 ```
-1. loggateway.New(bc.Logging)          → Gateway + zap + lumberjack
-2. logpipeline.NewPipeline(4096)       → 异步管道（单 worker, buffer=4096）
-3. pipeline.AddSink(fileSink)          → FileSink
-4. pipeline.AddSink(stdoutSink)        → StdoutSink（可配）
-5. gateway.SetPipeline(pipeline)       → Gateway 挂载 Pipeline
-6. wireApp(..., lg, pipeline)          → Wire DI
-7. BeforeStart: event.BindInfra + pipeline.AddSink(eventBusSink)
-8. AfterStop:  pipeline.Close() + gw.SetPipeline(nil)
+1. logpipeline.NewPipeline(4096)       → 异步管道（单 worker, buffer=4096）
+2. pipeline.AddSink(fileSink)          → FileSink
+3. pipeline.AddSink(stdoutSink)        → StdoutSink（可配）
+4. loggateway.New(bc.Logging, pipeline)→ Gateway 构造时注入 Pipeline
+5. wireApp(..., lg, pipeline)          → Wire DI
+6. BeforeStart: pipeline.AddSink(eventBusSink)
+7. AfterStop:  pipeline.Close()
 ```
 
 ---
@@ -195,15 +194,17 @@ type SinkGroup struct {
 
 **Bus.logDrop() 改造**：
 - `bus.logDrop()` 不再通过 EventBus 发布丢弃通知（避免递归）
-- 改为 `loggateway.Logger.Warn()` + `droppedCount` 原子计数器 + Prometheus 指标
-- 丢弃信息通过 `loggateway.StepID("event_bus.drop")` 记录，走 Pipeline 而非 EventBus
+- 改为 `fmt.Fprintf(os.Stderr, ...)` 直写 stderr + `droppedCount atomic.Uint64` 原子计数器
+- 丢弃信息不经过 Pipeline/EventBus，确保不产生反馈环
+- `droppedCount` 通过 `Pipeline.Stats()` 暴露
 
 **EventBusSink 熔断机制**：
 - 三态熔断器：`cbClosed`（正常）→ `cbOpen`（熔断）→ `cbHalfOpen`（探测）
-- 连续 5 次失败后进入 `cbOpen`，所有写入跳过，持续 10 秒
-- 10 秒后进入 `cbHalfOpen`，允许探测写入；连续 3 次成功后恢复 `cbClosed`
+- 连续 5 次超时/失败后进入 `cbOpen`，所有写入跳过，持续 10 秒
+- 10 秒后进入 `cbHalfOpen`，允许探测写入；半开状态下连续 3 次失败才重新进入 `cbOpen`
 - 熔断状态转换时写入 stderr（不经过 Pipeline/EventBus），确保不产生反馈环
 - 超时控制：`Publish` 调用设置 50ms 超时，超时视为失败
+- 熔断器指标通过 `Pipeline.Stats()` 暴露：`circuit_breaker_open`、`circuit_breaker_skipped`、`circuit_breaker_half_open_attempts`
 
 **关键文件**：`internal/event/bus.go`（logDrop）、`pkg/logpipeline/eventbus_sink.go`（熔断器）
 
@@ -311,6 +312,24 @@ func Global() *Gateway
 
 ---
 
+## 4.10 stepThrottler TTL 淘汰机制
+
+`stepThrottler` 的 `buckets` map 曾无淘汰机制，长时间运行会导致内存无界增长。现已通过 TTL 淘汰机制解决：
+
+**设计要点**：
+
+| 特性 | 说明 |
+|------|------|
+| **lastAccess 追踪** | 每个 bucket 记录 `lastAccess atomic.Int64`（Unix 时间戳），`shouldThrottle` 中更新 |
+| **后台淘汰 goroutine** | 每 5 分钟扫描 buckets，淘汰 `lastAccess > 30min` 的条目 |
+| **生命周期管理** | `Start()`/`Stop()` 方法由 Pipeline 控制，`Pipeline.Close()` 调用 `Stop()` |
+| **可配置 TTL** | `ThrottleConfig` 增加 `TTL` 和 `ScanInterval` 字段 |
+| **淘汰安全性** | 读写锁分离，淘汰不阻塞 `shouldThrottle` 热路径 |
+
+**关键文件**：`pkg/logpipeline/pipeline.go`
+
+---
+
 ## 5. 配置规格
 
 ### 5.1 Proto 定义（conf.Logging）
@@ -362,9 +381,9 @@ func Global() *Gateway
 | P0 | 基础设施（loggateway + Zap Core + lumberjack + BusHook + KratosAdapter） | ✅ 已完成 |
 | P1 | 迁移 Kratos log.NewHelper（78 处） | ✅ 已完成 |
 | P2 | 迁移 FlowLog SysLog*（262 处 → 调用归零） | ✅ 已完成 |
-| P3 | 迁移 CtxFlowLog* + TraceEmitter（154 处） | ⏳ 待实施 |
+| P3 | 迁移 CtxFlowLog* + TraceEmitter（54 处 → 调用归零） | ✅ 已完成 |
 
-P3 方式：`With()` 替代 TraceContext 绑定，`BeginStep/Done` 替代 `LogStart/LogDone`，TraceEmitter Usage 追踪保留为独立 `UsageTracker`。
+P3 方式：`loggateway.Logger` + `With()` 预设字段替代 CtxFlowLog*，CtxFlowLog*/FlowLog* 函数已标记 deprecated。
 
 ### 7.2 LogPipeline 渐进式实施
 
@@ -416,8 +435,8 @@ P3 方式：`With()` 替代 TraceContext 绑定，`BeginStep/Done` 替代 `LogSt
 
 | 编号 | 严重性 | 描述 | 文件 |
 |------|--------|------|------|
-| R4-2/R5-1 | 黄 | TraceEmitter 仍用 `bus Bus` + `boundInfraRef()` 而非 `logpipeline.Pipeline` | `internal/event/trace_emitter.go` |
-| R5-2 | 黄 | `stepThrottler.buckets` map 无淘汰机制，长时间运行可能内存增长 | `pkg/logpipeline/pipeline.go` |
+| R4-2/R5-1 | ~~黄~~ ✅ | ~~TraceEmitter 仍用 `bus Bus` + `boundInfraRef()` 而非 `logpipeline.Pipeline`~~ | 已通过 FlowTracker 构造注入 Infra 解决，`boundInfraRef()` 和 `BindInfra()` 已标记 deprecated |
+| R5-2 | ~~黄~~ ✅ | ~~`stepThrottler.buckets` map 无淘汰机制，长时间运行可能内存增长~~ | 已通过 TTL 淘汰机制解决（详见 §4.10） |
 | F-2 | 黄 | `defaultOutputDir()` 在 gateway.go 和 file_sink.go 重复 | 两文件 |
 | B-1 | 黄 | `Envelope.Clone()` 对 Metadata 浅拷贝，当前 subscriber 只读风险低 | `internal/event/contract/envelope.go` |
 

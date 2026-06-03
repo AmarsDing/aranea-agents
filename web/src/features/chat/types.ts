@@ -137,3 +137,28 @@ export type PendingMessage = {
   status: string;
   created_at: string;
 };
+
+export interface EnqueueUserMessageResult {
+  accepted: boolean;
+  queued: boolean;
+  pendingId: string;
+}
+
+export type ChatBackgroundJobRow = {
+  id: string;
+  source: string;
+  session_id: string;
+  agent_id: string;
+  status: string;
+  target_type: string;
+  target_id: string;
+  graph_id?: string;
+  turn_id?: string;
+  session_run_id?: string;
+  phase?: string;
+  created_at: string;
+  updated_at: string;
+  summary?: string;
+  error_message?: string;
+  channel_id: string;
+};

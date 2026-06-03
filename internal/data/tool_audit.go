@@ -10,7 +10,7 @@ import (
 )
 
 func (r *toolRepo) RecordToolInvocationAudit(ctx context.Context, in biz.ToolInvocationAuditWrite) error {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	if client == nil {
 		return kerrors.InternalServer("TOOL", "ent client unavailable")
 	}
@@ -52,7 +52,7 @@ func (r *toolRepo) RecordToolInvocationAudit(ctx context.Context, in biz.ToolInv
 }
 
 func (r *toolRepo) SearchToolInvocationAudits(ctx context.Context, q biz.ToolAuditQuery) (biz.ToolAuditResult, error) {
-	client := r.readClient(ctx)
+	client := r.data.RW().Read(ctx)
 	if client == nil {
 		return biz.ToolAuditResult{}, kerrors.InternalServer("TOOL", "ent client unavailable")
 	}
@@ -119,7 +119,7 @@ func (r *toolRepo) SearchToolInvocationAudits(ctx context.Context, q biz.ToolAud
 }
 
 func (r *toolRepo) PurgeToolInvocationAuditsBefore(ctx context.Context, cutoffRFC3339 string) (int64, error) {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	if client == nil {
 		return 0, kerrors.InternalServer("TOOL", "ent client unavailable")
 	}

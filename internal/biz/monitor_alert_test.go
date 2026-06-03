@@ -116,7 +116,7 @@ func (r *alertMonitorRepo) LatencyPercentilesSince(_ context.Context, _ string) 
 func TestEvaluateAlerts_cooldownSuppressesRepeatFire(t *testing.T) {
 	repo := &alertMonitorRepo{total: 10, errors: 8}
 	spy := &alertNotifySpy{}
-	uc := NewMonitorUsecase(repo, spy)
+	uc := NewMonitorUsecase(repo, repo, repo, repo, repo, spy)
 	ctx := context.Background()
 
 	uc.EvaluateAlerts(ctx)
@@ -132,7 +132,7 @@ func TestEvaluateAlerts_cooldownSuppressesRepeatFire(t *testing.T) {
 func TestEvaluateAlerts_skillFilesystemMissingCount(t *testing.T) {
 	repo := &alertMonitorRepo{}
 	spy := &alertNotifySpy{}
-	uc := NewMonitorUsecase(repo, spy, WithFilesystemHealthReader(filesystemHealthStub{missing: 3}))
+	uc := NewMonitorUsecase(repo, repo, repo, repo, repo, spy, WithFilesystemHealthReader(filesystemHealthStub{missing: 3}))
 	ctx := context.Background()
 
 	rules := []MonitorAlertRule{{
@@ -156,7 +156,7 @@ func (s filesystemHealthStub) FilesystemHealthStats(_ context.Context) (int, int
 }
 
 func TestShouldFireAlert_respectsCooldown(t *testing.T) {
-	uc := NewMonitorUsecase(nil, nil)
+	uc := NewMonitorUsecase(nil, nil, nil, nil, nil, nil)
 	rule := MonitorAlertRule{ID: "x", CooldownMinutes: 30}
 	now := time.Now()
 	if !uc.ShouldFireAlert(rule, now) {

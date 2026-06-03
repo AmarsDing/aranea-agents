@@ -107,7 +107,7 @@ func TestBuildRunnerCompletionMetadataJSON_v1(t *testing.T) {
 
 func TestRecordRunnerCompletion_idempotent(t *testing.T) {
 	repo := &completionMonitorRepo{exists: true}
-	uc := NewMonitorUsecase(repo, nil)
+	uc := NewMonitorUsecase(repo, repo, repo, repo, repo, nil)
 	de := DomainEvent{SessionID: "s1", InvocationID: "r1", RunID: "r1", Timestamp: time.Now()}
 	if err := RecordRunnerCompletion(context.Background(), uc, de); err != nil {
 		t.Fatal(err)
@@ -122,7 +122,7 @@ func TestRecordRunnerCompletion_appliesPendingUsageWhenExists(t *testing.T) {
 	de := DomainEvent{SessionID: "s1", RunID: "r1", InvocationID: "r1", Timestamp: time.Now()}
 	bridge.RegisterTurnUsage("s1", "r1", "usage-1", "tr-1", "", "")
 	repo := &completionMonitorRepo{exists: true, patchResult: true}
-	uc := NewMonitorUsecase(repo, nil)
+	uc := NewMonitorUsecase(repo, repo, repo, repo, repo, nil)
 	old := defaultTurnCompletionBridge
 	defaultTurnCompletionBridge = bridge
 	defer func() { defaultTurnCompletionBridge = old }()
@@ -145,7 +145,7 @@ func TestRecordRunnerCompletion_appliesPendingUsageWhenExists(t *testing.T) {
 func TestLinkRunnerCompletionUsage_stagesBeforeCompletionRow(t *testing.T) {
 	bridge := &TurnCompletionBridge{}
 	repo := &completionMonitorRepo{patchResult: false}
-	uc := NewMonitorUsecase(repo, nil)
+	uc := NewMonitorUsecase(repo, repo, repo, repo, repo, nil)
 	old := defaultTurnCompletionBridge
 	defaultTurnCompletionBridge = bridge
 	defer func() { defaultTurnCompletionBridge = old }()

@@ -81,7 +81,7 @@ func (r *avatarRepo) ListAvatarAssets(ctx context.Context, scope, workspaceID, o
 		))
 	}
 
-	rows, err := r.data.ReadEnt().AvatarAsset.Query().
+	rows, err := r.data.RW().Read(ctx).AvatarAsset.Query().
 		Where(avatarasset.And(preds...)).
 		Order(
 			avatarasset.ByIsSystem(entsql.OrderDesc()),
@@ -104,7 +104,7 @@ func (r *avatarRepo) GetAvatarAssetByKey(ctx context.Context, assetKey string) (
 	if assetKey == "" {
 		return biz.AvatarAsset{}, sql.ErrNoRows
 	}
-	po, err := r.data.ReadEnt().AvatarAsset.Query().
+	po, err := r.data.RW().Read(ctx).AvatarAsset.Query().
 		Where(
 			avatarasset.AssetKeyEQ(assetKey),
 			avatarasset.DeletedAtEQ(""),
@@ -124,7 +124,7 @@ func (r *avatarRepo) GetAvatarImage(ctx context.Context, id string, thumbnail bo
 	if id == "" {
 		return biz.AvatarImage{}, errors.New("avatar id is required")
 	}
-	po, err := r.data.ReadEnt().AvatarAsset.Get(ctx, id)
+	po, err := r.data.RW().Read(ctx).AvatarAsset.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.AvatarImage{}, sql.ErrNoRows
@@ -172,7 +172,7 @@ func (r *avatarRepo) CreateAvatarAsset(ctx context.Context, asset biz.AvatarAsse
 		asset.FileSizeBytes = len(imageData)
 	}
 	now := nowRFC3339()
-	cr := r.data.Ent().AvatarAsset.Create().
+	cr := r.data.RW().Write(ctx).AvatarAsset.Create().
 		SetID(asset.ID).
 		SetAssetKey(asset.Key).
 		SetName(asset.Name).
@@ -225,7 +225,7 @@ func (r *avatarRepo) UpdateAvatarAssetImages(ctx context.Context, id string, ima
 		fileSize = len(imageData)
 	}
 	now := nowRFC3339()
-	up := r.data.Ent().AvatarAsset.UpdateOneID(id).
+	up := r.data.RW().Write(ctx).AvatarAsset.UpdateOneID(id).
 		SetMimeType(mime).
 		SetFileSizeBytes(fileSize).
 		SetWidthPx(width).
@@ -247,7 +247,7 @@ func (r *avatarRepo) UpdateAvatarAssetImages(ctx context.Context, id string, ima
 
 func (r *avatarRepo) SoftDeleteAvatarAsset(ctx context.Context, id string) error {
 	now := nowRFC3339()
-	_, err := r.data.Ent().AvatarAsset.UpdateOneID(id).
+	_, err := r.data.RW().Write(ctx).AvatarAsset.UpdateOneID(id).
 		SetDeletedAt(now).
 		SetStatus("deleted").
 		SetUpdatedAt(now).

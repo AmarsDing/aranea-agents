@@ -1,0 +1,342 @@
+<mxfile host="draw.io" modified="2026-06-03" agent="Aranea-Agents" version="24.0.0" type="device">
+  <diagram id="skill-evolution" name="Skill Evolution System">
+    <mxGraphModel dx="2200" dy="1800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="2400" pageHeight="1600" math="0" shadow="1">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ========== TITLE ========== -->
+        <mxCell id="title" value="&lt;b style='font-size:22px;color:#1E293B'&gt;Skill Evolution System&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:12px;color:#64748B'&gt;Three Parallel Pipelines · Cron Triggers · Butler Tools · Guidance Injection&lt;/span&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="600" y="20" width="600" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ========== PIPELINE 1: SkillEvolutionUsecase (#EF4444) ========== -->
+        <mxCell id="p1-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF2F2;strokeColor=#EF4444;strokeWidth=2;arcSize=8;shadow=1;dashed=0;" vertex="1" parent="1">
+          <mxGeometry x="30" y="100" width="700" height="580" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-title" value="&lt;b style='font-size:15px;color:#EF4444'&gt;Pipeline 1: SkillEvolutionUsecase&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:11px;color:#991B1B'&gt;detect → propose → approve → register&lt;/span&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="200" y="110" width="340" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- DetectAndPropose -->
+        <mxCell id="p1-detect" value="&lt;b style='color:#fff'&gt;DetectAndPropose&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#B91C1C;strokeWidth=2;arcSize=20;shadow=1;fontSize=13;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="60" y="170" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-detect-detail" value="&lt;div style='font-size:10px;color:#7F1D1D;text-align:left;padding:4px'&gt;• Read Pattern(detected, kind=tool_call, confidence≥0.15)&lt;br&gt;• patternHash dedup&lt;br&gt;• LLM generate SKILL.md&lt;br&gt;• → SkillProposal(pending)&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#FECACA;strokeWidth=1;arcSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="60" y="225" width="200" height="80" as="geometry" />
+        </mxCell>
+
+        <!-- ApproveProposal -->
+        <mxCell id="p1-approve" value="&lt;b style='color:#fff'&gt;ApproveProposal&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#B91C1C;strokeWidth=2;arcSize=20;shadow=1;fontSize=13;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="60" y="330" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-approve-detail" value="&lt;div style='font-size:10px;color:#7F1D1D;text-align:left;padding:4px'&gt;• pending → approved&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#FECACA;strokeWidth=1;arcSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="60" y="385" width="200" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- RegisterApproved -->
+        <mxCell id="p1-register" value="&lt;b style='color:#fff'&gt;RegisterApproved&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#B91C1C;strokeWidth=2;arcSize=20;shadow=1;fontSize=13;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="60" y="450" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-register-detail" value="&lt;div style='font-size:10px;color:#7F1D1D;text-align:left;padding:4px'&gt;• approved → registrar.SkillExists&lt;br&gt;• RegisterSkill → registered&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#FECACA;strokeWidth=1;arcSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="60" y="505" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ScanAndProposeAll -->
+        <mxCell id="p1-scan" value="&lt;b style='color:#fff'&gt;ScanAndProposeAll&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DC2626;strokeColor=#991B1B;strokeWidth=2;arcSize=20;shadow=1;fontSize=12;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="400" y="170" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-scan-detail" value="&lt;div style='font-size:10px;color:#7F1D1D;text-align:left;padding:4px'&gt;• Iterate active agents&lt;br&gt;• Check EvolutionSkillEvolve switch&lt;br&gt;• Call DetectAndPropose per agent&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEE2E2;strokeColor=#FECACA;strokeWidth=1;arcSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="400" y="225" width="220" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- Pipeline 1 arrows -->
+        <mxCell id="p1-a1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#EF4444;strokeWidth=2;shadow=1;" edge="1" source="p1-detect" target="p1-approve" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-a2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#EF4444;strokeWidth=2;shadow=1;" edge="1" source="p1-approve" target="p1-register" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-a3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#DC2626;strokeWidth=1.5;dashed=1;shadow=1;" edge="1" source="p1-scan" target="p1-detect" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Status badges Pipeline 1 -->
+        <mxCell id="p1-badge-pending" value="pending" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FBBF24;strokeColor=#D97706;strokeWidth=1;arcSize=50;fontSize=9;fontColor=#78350F;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="270" y="178" width="60" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-badge-approved" value="approved" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#34D399;strokeColor=#059669;strokeWidth=1;arcSize=50;fontSize=9;fontColor=#064E3B;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="270" y="338" width="65" height="22" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-badge-registered" value="registered" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#60A5FA;strokeColor=#2563EB;strokeWidth=1;arcSize=50;fontSize=9;fontColor=#1E3A5F;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="270" y="458" width="70" height="22" as="geometry" />
+        </mxCell>
+
+        <!-- ========== PIPELINE 2: LearningLoopUsecase (#F59E0B) ========== -->
+        <mxCell id="p2-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#F59E0B;strokeWidth=2;arcSize=8;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="760" y="100" width="780" height="580" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-title" value="&lt;b style='font-size:15px;color:#D97706'&gt;Pipeline 2: LearningLoopUsecase&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:11px;color:#92400E'&gt;observation → pattern → proposal → validation → registration&lt;/span&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="920" y="110" width="440" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- RecordObservation -->
+        <mxCell id="p2-record" value="&lt;b style='color:#fff'&gt;RecordObservation&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F59E0B;strokeColor=#B45309;strokeWidth=2;arcSize=20;shadow=1;fontSize=12;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="790" y="170" width="170" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-record-detail" value="&lt;div style='font-size:9px;color:#78350F;text-align:left;padding:3px'&gt;• tool_call / feedback&lt;br&gt;• memory_hit / memory_miss&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#FDE68A;strokeWidth=1;arcSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="790" y="220" width="170" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- DetectPatterns -->
+        <mxCell id="p2-patterns" value="&lt;b style='color:#fff'&gt;DetectPatterns&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F59E0B;strokeColor=#B45309;strokeWidth=2;arcSize=20;shadow=1;fontSize=12;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="790" y="290" width="170" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-patterns-detail" value="&lt;div style='font-size:9px;color:#78350F;text-align:left;padding:3px'&gt;• 30d observations&lt;br&gt;• ≥3 obs per bucket&lt;br&gt;• confidence = bucket/total ≥ 0.1&lt;br&gt;• patternHash dedup&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#FDE68A;strokeWidth=1;arcSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="790" y="340" width="170" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- GenerateProposals -->
+        <mxCell id="p2-generate" value="&lt;b style='color:#fff'&gt;GenerateProposals&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F59E0B;strokeColor=#B45309;strokeWidth=2;arcSize=20;shadow=1;fontSize=12;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="170" width="170" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-generate-detail" value="&lt;div style='font-size:9px;color:#78350F;text-align:left;padding:3px'&gt;• confidence ≥ 0.15&lt;br&gt;• tool_call → prompt&lt;br&gt;• feedback → persona&lt;br&gt;• memory_* → skill&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#FDE68A;strokeWidth=1;arcSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="220" width="170" height="70" as="geometry" />
+        </mxCell>
+
+        <!-- ValidateProposal -->
+        <mxCell id="p2-validate" value="&lt;b style='color:#fff'&gt;ValidateProposal&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F59E0B;strokeColor=#B45309;strokeWidth=2;arcSize=20;shadow=1;fontSize=12;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="320" width="170" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-validate-detail" value="&lt;div style='font-size:9px;color:#78350F;text-align:left;padding:3px'&gt;• Check conflict&lt;br&gt;• → validated or conflict&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#FDE68A;strokeWidth=1;arcSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="370" width="170" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- RegisterKnowledge -->
+        <mxCell id="p2-register" value="&lt;b style='color:#fff'&gt;RegisterKnowledge&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D97706;strokeColor=#92400E;strokeWidth=2;arcSize=20;shadow=1;fontSize=12;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="445" width="170" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-register-detail" value="&lt;div style='font-size:9px;color:#78350F;text-align:left;padding:3px'&gt;• kind=prompt →&lt;br&gt;  EvolutionUsecase.ensurePendingSuggestion&lt;br&gt;• status → applied&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#FDE68A;strokeWidth=1;arcSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="495" width="170" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- RunLoop -->
+        <mxCell id="p2-runloop" value="&lt;b style='color:#fff'&gt;RunLoop&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#92400E;strokeColor=#78350F;strokeWidth=2;arcSize=20;shadow=1;fontSize=12;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="1230" y="170" width="170" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-runloop-detail" value="&lt;div style='font-size:9px;color:#78350F;text-align:left;padding:3px'&gt;• DetectPatterns → GenerateProposals&lt;br&gt;→ Validate → auto-apply&lt;br&gt;• if EvoAutoApply switch ON&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF3C7;strokeColor=#FDE68A;strokeWidth=1;arcSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="1230" y="225" width="170" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Pipeline 2 arrows -->
+        <mxCell id="p2-a1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#F59E0B;strokeWidth=2;shadow=1;" edge="1" source="p2-record" target="p2-patterns" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-a2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#F59E0B;strokeWidth=2;shadow=1;" edge="1" source="p2-patterns" target="p2-generate" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="980" y="312" />
+              <mxPoint x="980" y="192" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p2-a3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#F59E0B;strokeWidth=2;shadow=1;" edge="1" source="p2-generate" target="p2-validate" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1085" y="300" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="p2-a4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#F59E0B;strokeWidth=2;shadow=1;" edge="1" source="p2-validate" target="p2-register" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-a5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#92400E;strokeWidth=1.5;dashed=1;shadow=1;" edge="1" source="p2-runloop" target="p2-generate" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== PIPELINE 3: EvolutionUsecase (#8B5CF6) ========== -->
+        <mxCell id="p3-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F3FF;strokeColor=#8B5CF6;strokeWidth=2;arcSize=8;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1570" y="100" width="580" height="580" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-title" value="&lt;b style='font-size:15px;color:#7C3AED'&gt;Pipeline 3: EvolutionUsecase&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:11px;color:#5B21B6'&gt;metrics → suggestion → apply&lt;/span&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1710" y="110" width="300" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- GetEvolutionMetrics -->
+        <mxCell id="p3-metrics" value="&lt;b style='color:#fff'&gt;GetEvolutionMetrics&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#8B5CF6;strokeColor=#6D28D9;strokeWidth=2;arcSize=20;shadow=1;fontSize=12;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="170" width="200" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-metrics-detail" value="&lt;div style='font-size:9px;color:#4C1D95;text-align:left;padding:3px'&gt;• ToolSuccessRate&lt;br&gt;• RetrievalQuality&lt;br&gt;• Episodes&lt;br&gt;• NegativeFeedback&lt;br&gt;• (from ToolInvocation + Session)&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#DDD6FE;strokeWidth=1;arcSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="220" width="200" height="85" as="geometry" />
+        </mxCell>
+
+        <!-- ScanAgent -->
+        <mxCell id="p3-scan" value="&lt;b style='color:#fff'&gt;ScanAgent&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#8B5CF6;strokeColor=#6D28D9;strokeWidth=2;arcSize=20;shadow=1;fontSize=12;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="340" width="200" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-scan-detail" value="&lt;div style='font-size:9px;color:#4C1D95;text-align:left;padding:3px'&gt;• success &lt; 0.75 → prompt&lt;br&gt;• quality &lt; 0.60 → skill&lt;br&gt;• negFeedback ≥ min → persona&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#DDD6FE;strokeWidth=1;arcSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="390" width="200" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ApplySuggestion -->
+        <mxCell id="p3-apply" value="&lt;b style='color:#fff'&gt;ApplySuggestion&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7C3AED;strokeColor=#5B21B6;strokeWidth=2;arcSize=20;shadow=1;fontSize=12;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="480" width="200" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-apply-detail" value="&lt;div style='font-size:9px;color:#4C1D95;text-align:left;padding:3px'&gt;• persona → IDENTITY.md&lt;br&gt;• prompt → AGENTS_CORE.md&lt;br&gt;• prompt → AGENTS_TASK.md&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EDE9FE;strokeColor=#DDD6FE;strokeWidth=1;arcSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="1600" y="530" width="200" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- Pipeline 3 arrows -->
+        <mxCell id="p3-a1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#8B5CF6;strokeWidth=2;shadow=1;" edge="1" source="p3-metrics" target="p3-scan" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-a2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#8B5CF6;strokeWidth=2;shadow=1;" edge="1" source="p3-scan" target="p3-apply" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Threshold badges -->
+        <mxCell id="p3-th1" value="&lt;0.75" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCA5A5;strokeColor=#EF4444;strokeWidth=1;arcSize=50;fontSize=9;fontColor=#7F1D1D;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1810" y="348" width="50" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-th2" value="&lt;0.60" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCA5A5;strokeColor=#EF4444;strokeWidth=1;arcSize=50;fontSize=9;fontColor=#7F1D1D;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1810" y="372" width="50" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="p3-th3" value="≥min" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FCA5A5;strokeColor=#EF4444;strokeWidth=1;arcSize=50;fontSize=9;fontColor=#7F1D1D;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1810" y="396" width="50" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- ========== CRON TRIGGERS (#64748B) ========== -->
+        <mxCell id="cron-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#64748B;strokeWidth=2;arcSize=8;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="720" width="2120" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="cron-title" value="&lt;b style='font-size:14px;color:#475569'&gt;⏱ Cron Triggers&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="50" y="730" width="140" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="cron1" value="&lt;b style='color:#fff'&gt;SkillEvolutionScanner&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:10px'&gt;60 min&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#64748B;strokeColor=#475569;strokeWidth=2;arcSize=20;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="200" y="745" width="200" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="cron2" value="&lt;b style='color:#fff'&gt;EvolutionScanner&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:10px'&gt;30 min&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#64748B;strokeColor=#475569;strokeWidth=2;arcSize=20;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="500" y="745" width="200" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="cron3" value="&lt;b style='color:#fff'&gt;LearningLoopScanner&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:10px'&gt;60 min&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#64748B;strokeColor=#475569;strokeWidth=2;arcSize=20;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="800" y="745" width="200" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- Cron to Pipeline arrows -->
+        <mxCell id="cron-a1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeColor=#94A3B8;strokeWidth=1.5;dashed=1;shadow=1;" edge="1" source="cron1" target="p1-scan" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cron-a2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeColor=#94A3B8;strokeWidth=1.5;dashed=1;shadow=1;" edge="1" source="cron2" target="p3-scan" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="cron-a3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeColor=#94A3B8;strokeWidth=1.5;dashed=1;shadow=1;" edge="1" source="cron3" target="p2-runloop" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== SKILLS BUTLER TOOLS (#10B981) ========== -->
+        <mxCell id="tools-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#10B981;strokeWidth=2;arcSize=8;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="880" width="1060" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="tools-title" value="&lt;b style='font-size:14px;color:#059669'&gt;🔧 Skills Butler Tools&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:10px;color:#065F46'&gt;4 tools Agent can call directly&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="50" y="890" width="200" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="tool1" value="&lt;b style='color:#fff'&gt;evolve_skill&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px'&gt;Create SkillProposal&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#10B981;strokeColor=#059669;strokeWidth=2;arcSize=20;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="60" y="940" width="200" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="tool2" value="&lt;b style='color:#fff'&gt;optimize_skill&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px'&gt;Assess: healthy / warning / critical&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#10B981;strokeColor=#059669;strokeWidth=2;arcSize=20;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="300" y="940" width="220" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="tool3" value="&lt;b style='color:#fff'&gt;recommend_skills&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px'&gt;Pending proposals + usage warnings&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#10B981;strokeColor=#059669;strokeWidth=2;arcSize=20;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="560" y="940" width="230" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="tool4" value="&lt;b style='color:#fff'&gt;analyze_skill_usage&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px'&gt;Time-range statistics&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#10B981;strokeColor=#059669;strokeWidth=2;arcSize=20;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="830" y="940" width="220" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Tool to Pipeline arrows -->
+        <mxCell id="tool-a1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;strokeColor=#34D399;strokeWidth=1.5;dashed=1;shadow=1;" edge="1" source="tool1" target="p1-detect" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== SKILL GUIDANCE INJECTION (#0EA5E9) ========== -->
+        <mxCell id="inject-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0F9FF;strokeColor=#0EA5E9;strokeWidth=2;arcSize=8;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1120" y="880" width="1030" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="inject-title" value="&lt;b style='font-size:14px;color:#0284C7'&gt;💉 Skill Guidance Injection&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="890" width="220" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="inject-eager" value="&lt;b style='color:#fff'&gt;Eager Mode&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px'&gt;Full Skill guidance → system prompt&lt;br&gt;4000 char limit&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0EA5E9;strokeColor=#0284C7;strokeWidth=2;arcSize=20;shadow=1;fontSize=12;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="1150" y="935" width="250" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="inject-prog" value="&lt;b style='color:#fff'&gt;Progressive Mode&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px'&gt;L0(names+desc) → skill_load tool → L1/L2(details)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0EA5E9;strokeColor=#0284C7;strokeWidth=2;arcSize=20;shadow=1;fontSize=12;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="1450" y="935" width="340" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- Progressive flow -->
+        <mxCell id="inject-l0" value="&lt;b&gt;L0&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:8px'&gt;names+desc&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#BAE6FD;strokeColor=#7DD3FC;strokeWidth=1;arcSize=20;shadow=1;fontSize=10;fontColor=#0C4A6E;" vertex="1" parent="1">
+          <mxGeometry x="1840" y="935" width="80" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="inject-tool" value="&lt;b&gt;skill_load&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:8px'&gt;tool call&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#BAE6FD;strokeColor=#7DD3FC;strokeWidth=1;arcSize=20;shadow=1;fontSize=10;fontColor=#0C4A6E;" vertex="1" parent="1">
+          <mxGeometry x="1940" y="935" width="80" height="45" as="geometry" />
+        </mxCell>
+        <mxCell id="inject-l12" value="&lt;b&gt;L1/L2&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:8px'&gt;details&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#BAE6FD;strokeColor=#7DD3FC;strokeWidth=1;arcSize=20;shadow=1;fontSize=10;fontColor=#0C4A6E;" vertex="1" parent="1">
+          <mxGeometry x="2040" y="935" width="80" height="45" as="geometry" />
+        </mxCell>
+
+        <mxCell id="inject-a1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#0EA5E9;strokeWidth=1.5;shadow=1;" edge="1" source="inject-l0" target="inject-tool" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="inject-a2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#0EA5E9;strokeWidth=1.5;shadow=1;" edge="1" source="inject-tool" target="inject-l12" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Cross-pipeline connections -->
+        <mxCell id="cross-a1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#A78BFA;strokeWidth=1.5;dashed=1;shadow=1;labelBackgroundColor=#F5F3FF;fontFamily=Helvetica;fontSize=9;fontColor=#6D28D9;" edge="1" source="p2-register" target="p3-apply" parent="1">
+          <mxGeometry x="0.2" y="10" relative="1" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="1550" y="467" />
+              <mxPoint x="1550" y="502" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="cross-a1-label" value="ensurePendingSuggestion" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=9;fontColor=#6D28D9;" vertex="1" parent="1">
+          <mxGeometry x="1500" y="460" width="130" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Legend -->
+        <mxCell id="legend-bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#E2E8F0;strokeWidth=1;arcSize=8;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="1060" width="2120" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="leg1" value="Pipeline 1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#B91C1C;strokeWidth=1;arcSize=50;fontSize=10;fontColor=#fff;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="50" y="1070" width="80" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="leg2" value="Pipeline 2" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F59E0B;strokeColor=#B45309;strokeWidth=1;arcSize=50;fontSize=10;fontColor=#fff;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="150" y="1070" width="80" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="leg3" value="Pipeline 3" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#8B5CF6;strokeColor=#6D28D9;strokeWidth=1;arcSize=50;fontSize=10;fontColor=#fff;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="250" y="1070" width="80" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="leg4" value="Cron" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#64748B;strokeColor=#475569;strokeWidth=1;arcSize=50;fontSize=10;fontColor=#fff;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="350" y="1070" width="60" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="leg5" value="Tools" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#10B981;strokeColor=#059669;strokeWidth=1;arcSize=50;fontSize=10;fontColor=#fff;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="430" y="1070" width="60" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="leg6" value="Injection" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0EA5E9;strokeColor=#0284C7;strokeWidth=1;arcSize=50;fontSize=10;fontColor=#fff;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="510" y="1070" width="75" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="leg7" value="─── Data Flow" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=10;fontColor=#475569;" vertex="1" parent="1">
+          <mxGeometry x="620" y="1070" width="100" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="leg8" value="- - - Trigger / Cross-ref" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;fontSize=10;fontColor=#475569;" vertex="1" parent="1">
+          <mxGeometry x="740" y="1070" width="150" height="28" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

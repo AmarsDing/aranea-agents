@@ -862,8 +862,8 @@ export async function inspectProviderModel(payload: InspectProviderModelInput): 
   };
 }
 
-/** @deprecated 请从 `features/avatar/api` 导入 */
-export type { AvatarAsset } from '../avatar/api';
+/** @deprecated 请从 `features/avatar/types` 导入 */
+export type { AvatarAsset } from '../avatar/types';
 /** @deprecated 请从 `features/avatar/api` 导入 */
 export { listAvatarAssets, uploadAvatarAsset } from '../avatar/api';
 

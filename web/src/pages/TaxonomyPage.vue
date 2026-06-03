@@ -154,6 +154,7 @@
                     form.description = v;
                   }
                 "
+                @error="(msg: string) => onRefineError(msg)"
               />
             </div>
           </div>
@@ -208,6 +209,7 @@ const {
   removeNode,
   toggleNodeEnabled,
   levelLabel,
+  onRefineError,
 } = useTaxonomyPage();
 
 const currentLevelNum = computed(() => parseLevelNumber(form.level));

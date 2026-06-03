@@ -62,15 +62,8 @@ func entToBizPM(lg loggateway.Logger, e *ent.LlmProviderModel) biz.ProviderModel
 	}
 }
 
-func (r *llmProviderModelRepo) readClient(ctx context.Context) *ent.Client {
-	if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
-		return tx.Client()
-	}
-	return r.data.ReadEnt()
-}
-
 func (r *llmProviderModelRepo) ListProviderModels(ctx context.Context) ([]biz.ProviderModel, error) {
-	rows, err := r.readClient(ctx).LlmProviderModel.Query().
+	rows, err := r.data.RW().Read(ctx).LlmProviderModel.Query().
 		Where(llmprovidermodel.DeletedAtEQ("")).
 		Order(
 			llmprovidermodel.BySortOrder(),
@@ -88,7 +81,7 @@ func (r *llmProviderModelRepo) ListProviderModels(ctx context.Context) ([]biz.Pr
 }
 
 func (r *llmProviderModelRepo) GetProviderModel(ctx context.Context, id string) (biz.ProviderModel, error) {
-	row, err := r.readClient(ctx).LlmProviderModel.Query().
+	row, err := r.data.RW().Read(ctx).LlmProviderModel.Query().
 		Where(llmprovidermodel.IDEQ(id), llmprovidermodel.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -101,7 +94,7 @@ func (r *llmProviderModelRepo) GetProviderModel(ctx context.Context, id string) 
 }
 
 func (r *llmProviderModelRepo) GetProviderModelByProviderAndModel(ctx context.Context, provider, model string) (biz.ProviderModel, error) {
-	row, err := r.readClient(ctx).LlmProviderModel.Query().
+	row, err := r.data.RW().Read(ctx).LlmProviderModel.Query().
 		Where(
 			llmprovidermodel.ProviderEQ(provider),
 			llmprovidermodel.ModelEQ(model),
@@ -122,7 +115,7 @@ func (r *llmProviderModelRepo) ValidateProviderPair(ctx context.Context, provide
 	if strings.TrimSpace(provider) == "" || strings.TrimSpace(model) == "" {
 		return false, nil
 	}
-	n, err := r.readClient(ctx).LlmProviderModel.Query().
+	n, err := r.data.RW().Read(ctx).LlmProviderModel.Query().
 		Where(
 			llmprovidermodel.ProviderEQ(strings.TrimSpace(provider)),
 			llmprovidermodel.ModelEQ(strings.TrimSpace(model)),
@@ -139,7 +132,7 @@ func (r *llmProviderModelRepo) CreateProviderModel(ctx context.Context, m biz.Pr
 		m.CreatedAt = now
 	}
 	m.UpdatedAt = now
-	saved, err := r.data.entClient.LlmProviderModel.Create().
+	saved, err := r.data.RW().Write(ctx).LlmProviderModel.Create().
 		SetID(m.ID).
 		SetModelKey(m.Key).
 		SetName(m.Name).
@@ -172,7 +165,7 @@ func (r *llmProviderModelRepo) CreateProviderModel(ctx context.Context, m biz.Pr
 
 func (r *llmProviderModelRepo) UpdateProviderModel(ctx context.Context, m biz.ProviderModel) (biz.ProviderModel, error) {
 	m.UpdatedAt = nowRFC3339()
-	err := r.data.entClient.LlmProviderModel.UpdateOneID(m.ID).
+	err := r.data.RW().Write(ctx).LlmProviderModel.UpdateOneID(m.ID).
 		SetModelKey(m.Key).
 		SetName(m.Name).
 		SetDescription(m.Description).
@@ -202,7 +195,7 @@ func (r *llmProviderModelRepo) UpdateProviderModel(ctx context.Context, m biz.Pr
 
 func (r *llmProviderModelRepo) DeleteProviderModel(ctx context.Context, id string) error {
 	now := nowRFC3339()
-	return r.data.entClient.LlmProviderModel.UpdateOneID(id).
+	return r.data.RW().Write(ctx).LlmProviderModel.UpdateOneID(id).
 		SetDeletedAt(now).
 		SetStatus("deleted").
 		SetUpdatedAt(now).
@@ -211,7 +204,7 @@ func (r *llmProviderModelRepo) DeleteProviderModel(ctx context.Context, id strin
 
 func (r *llmProviderModelRepo) UpdateProviderModelStatus(ctx context.Context, id string, status string) error {
 	now := nowRFC3339()
-	return r.data.entClient.LlmProviderModel.UpdateOneID(id).
+	return r.data.RW().Write(ctx).LlmProviderModel.UpdateOneID(id).
 		SetStatus(status).
 		SetUpdatedAt(now).
 		Exec(ctx)
@@ -234,7 +227,7 @@ func (r *llmProviderModelRepo) UpsertModelPricingRule(ctx context.Context, rule 
 	if rule.MetadataJSON == "" {
 		rule.MetadataJSON = "{}"
 	}
-	tx, err := r.data.entClient.Tx(ctx)
+	tx, err := r.data.RW().Write(ctx).Tx(ctx)
 	if err != nil {
 		return err
 	}

@@ -102,6 +102,6 @@ describe('hydrateSessionForChannelFocus', () => {
       'sess-1',
       true,
     );
-    expect(loadMessages).toHaveBeenCalledWith({ sessionId: 'sess-1' });
+    expect(loadMessages).toHaveBeenCalledWith({ sessionId: 'sess-1', replace: true });
   });
 });

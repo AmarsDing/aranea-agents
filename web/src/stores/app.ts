@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { createAgent, deleteAgent, listAgents, updateAgent, type Agent } from '../features/agents/api';
-import { emitSessionMutation } from './sessionSync';
+import { emitSessionMutation, onSessionMutation } from './sessionSync';
 
 export const useAppStore = defineStore('app', {
   state: () => ({
@@ -52,4 +52,10 @@ export const useAppStore = defineStore('app', {
       return created;
     },
   },
+});
+
+onSessionMutation((mutation) => {
+  if (mutation.type === 'agent_updated') {
+    useAppStore().upsertAgent(mutation.agent);
+  }
 });

@@ -25,14 +25,6 @@ func NewChannelRepo(d *Data) biz.ChannelRepo {
 	return &channelRepo{data: d}
 }
 
-func (r *channelRepo) entClient() *ent.Client {
-	return r.data.Ent()
-}
-
-func (r *channelRepo) readClient(ctx context.Context) *ent.Client {
-	return r.data.ReadClient(ctx)
-}
-
 func entToChannel(e *ent.PlatformChannel) biz.Channel {
 	return biz.Channel{
 		ID:           e.ID,
@@ -52,7 +44,7 @@ func entToChannel(e *ent.PlatformChannel) biz.Channel {
 }
 
 func (r *channelRepo) List(ctx context.Context) ([]biz.Channel, error) {
-	rows, err := r.readClient(ctx).PlatformChannel.Query().
+	rows, err := r.data.RW().Read(ctx).PlatformChannel.Query().
 		Where(platformchannel.DeletedAtEQ("")).
 		Order(platformchannel.BySortOrder(sql.OrderAsc()), platformchannel.ByCreatedAt(sql.OrderDesc())).
 		All(ctx)
@@ -71,7 +63,7 @@ func (r *channelRepo) Get(ctx context.Context, id string) (biz.Channel, error) {
 	if id == "" {
 		return biz.Channel{}, errors.New("channel id is required")
 	}
-	e, err := r.readClient(ctx).PlatformChannel.Query().
+	e, err := r.data.RW().Read(ctx).PlatformChannel.Query().
 		Where(
 			platformchannel.IDEQ(id),
 			platformchannel.DeletedAtEQ(""),
@@ -88,7 +80,7 @@ func (r *channelRepo) GetByKey(ctx context.Context, key string) (biz.Channel, er
 	if key == "" {
 		return biz.Channel{}, errors.New("channel key is required")
 	}
-	e, err := r.readClient(ctx).PlatformChannel.Query().
+	e, err := r.data.RW().Read(ctx).PlatformChannel.Query().
 		Where(
 			platformchannel.ChannelKeyEQ(key),
 			platformchannel.DeletedAtEQ(""),
@@ -106,7 +98,7 @@ func (r *channelRepo) Create(ctx context.Context, row biz.Channel) (biz.Channel,
 		row.CreatedAt = now
 	}
 	row.UpdatedAt = now
-	b := r.entClient().PlatformChannel.Create().
+	b := r.data.RW().Write(ctx).PlatformChannel.Create().
 		SetID(row.ID).
 		SetChannelKey(row.Key).
 		SetName(row.Name).
@@ -127,7 +119,7 @@ func (r *channelRepo) Create(ctx context.Context, row biz.Channel) (biz.Channel,
 }
 
 func (r *channelRepo) Update(ctx context.Context, row biz.Channel) (biz.Channel, error) {
-	e, err := r.entClient().PlatformChannel.UpdateOneID(row.ID).
+	e, err := r.data.RW().Write(ctx).PlatformChannel.UpdateOneID(row.ID).
 		SetChannelKey(row.Key).
 		SetName(row.Name).
 		SetDescription(row.Description).
@@ -146,7 +138,7 @@ func (r *channelRepo) Update(ctx context.Context, row biz.Channel) (biz.Channel,
 
 func (r *channelRepo) Delete(ctx context.Context, id string) error {
 	now := nowRFC3339()
-	_, err := r.entClient().PlatformChannel.UpdateOneID(strings.TrimSpace(id)).
+	_, err := r.data.RW().Write(ctx).PlatformChannel.UpdateOneID(strings.TrimSpace(id)).
 		SetDeletedAt(now).
 		SetStatus("deleted").
 		SetUpdatedAt(now).
@@ -169,7 +161,7 @@ func credentialEntToBiz(e *ent.PlatformChannelCredential) biz.ChannelCredential 
 }
 
 func (r *channelRepo) ListCredentials(ctx context.Context, channelID string) ([]biz.ChannelCredential, error) {
-	rows, err := r.readClient(ctx).PlatformChannelCredential.Query().
+	rows, err := r.data.RW().Read(ctx).PlatformChannelCredential.Query().
 		Where(
 			platformchannelcredential.ChannelIDEQ(strings.TrimSpace(channelID)),
 			platformchannelcredential.DeletedAtEQ(""),
@@ -192,7 +184,7 @@ func (r *channelRepo) UpsertCredential(ctx context.Context, cred biz.ChannelCred
 	if cred.ID == "" || cred.ChannelID == "" || cred.CredentialKey == "" {
 		return biz.ChannelCredential{}, errors.New("id, channel_id and credential_key are required")
 	}
-	existing, err := r.readClient(ctx).PlatformChannelCredential.Query().
+	existing, err := r.data.RW().Read(ctx).PlatformChannelCredential.Query().
 		Where(
 			platformchannelcredential.ChannelIDEQ(cred.ChannelID),
 			platformchannelcredential.CredentialKeyEQ(cred.CredentialKey),
@@ -210,7 +202,7 @@ func (r *channelRepo) UpsertCredential(ctx context.Context, cred biz.ChannelCred
 			cred.CreatedAt = now
 		}
 		cred.UpdatedAt = now
-		e, err := r.entClient().PlatformChannelCredential.Create().
+		e, err := r.data.RW().Write(ctx).PlatformChannelCredential.Create().
 			SetID(cred.ID).
 			SetChannelID(cred.ChannelID).
 			SetCredentialKey(cred.CredentialKey).
@@ -229,7 +221,7 @@ func (r *channelRepo) UpsertCredential(ctx context.Context, cred biz.ChannelCred
 	if err != nil {
 		return biz.ChannelCredential{}, err
 	}
-	e, err := r.entClient().PlatformChannelCredential.UpdateOneID(existing.ID).
+	e, err := r.data.RW().Write(ctx).PlatformChannelCredential.UpdateOneID(existing.ID).
 		SetStatus(cred.Status).
 		SetSecretRef(cred.SecretRef).
 		SetMetadataJSON(cred.MetadataJSON).
@@ -244,7 +236,7 @@ func (r *channelRepo) UpsertCredential(ctx context.Context, cred biz.ChannelCred
 
 func (r *channelRepo) DeleteCredential(ctx context.Context, channelID, credentialKey string) error {
 	now := nowRFC3339()
-	_, err := r.entClient().PlatformChannelCredential.Update().
+	_, err := r.data.RW().Write(ctx).PlatformChannelCredential.Update().
 		Where(
 			platformchannelcredential.ChannelIDEQ(strings.TrimSpace(channelID)),
 			platformchannelcredential.CredentialKeyEQ(strings.TrimSpace(credentialKey)),
@@ -273,7 +265,7 @@ func (r *channelRepo) ListDeliveries(ctx context.Context, channelID string, limi
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	rows, err := r.readClient(ctx).PlatformChannelDelivery.Query().
+	rows, err := r.data.RW().Read(ctx).PlatformChannelDelivery.Query().
 		Where(platformchanneldelivery.ChannelIDEQ(strings.TrimSpace(channelID))).
 		Order(platformchanneldelivery.ByCreatedAt(sql.OrderDesc())).
 		Limit(limit).
@@ -300,7 +292,7 @@ func (r *channelRepo) AddDelivery(ctx context.Context, d biz.ChannelDelivery) (b
 		d.CreatedAt = now
 	}
 	d.UpdatedAt = now
-	b := r.entClient().PlatformChannelDelivery.Create().
+	b := r.data.RW().Write(ctx).PlatformChannelDelivery.Create().
 		SetID(d.ID).
 		SetChannelID(d.ChannelID).
 		SetAgentID(strings.TrimSpace(d.AgentID)).
@@ -320,7 +312,7 @@ func (r *channelRepo) ListPendingDeliveries(ctx context.Context, limit int) ([]b
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	rows, err := r.readClient(ctx).PlatformChannelDelivery.Query().
+	rows, err := r.data.RW().Read(ctx).PlatformChannelDelivery.Query().
 		Where(
 			platformchanneldelivery.StatusIn(
 				biz.ChannelDeliveryStatusPending,
@@ -341,7 +333,7 @@ func (r *channelRepo) ListPendingDeliveries(ctx context.Context, limit int) ([]b
 }
 
 func (r *channelRepo) UpdateDelivery(ctx context.Context, d biz.ChannelDelivery) error {
-	_, err := r.entClient().PlatformChannelDelivery.UpdateOneID(strings.TrimSpace(d.ID)).
+	_, err := r.data.RW().Write(ctx).PlatformChannelDelivery.UpdateOneID(strings.TrimSpace(d.ID)).
 		SetStatus(strings.TrimSpace(d.Status)).
 		SetPayloadJSON(defaultJSON(d.PayloadJSON)).
 		SetErrorMessage(strings.TrimSpace(d.ErrorMessage)).

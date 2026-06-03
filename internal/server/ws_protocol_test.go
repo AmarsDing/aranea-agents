@@ -23,7 +23,7 @@ func newTestWSServer(bus event.Bus, buf *event.Buffer, canceller RunCanceller, s
 
 func TestCountGlobalMonitorConnsExcludesProbe(t *testing.T) {
 	srv := newTestWSServer(event.NewBus(), event.NewBuffer(), nil, nil)
-	srv.conns["*"] = []*wsConn{
+	srv.store.conns["*"] = []*wsConn{
 		{probeMode: true},
 		{probeMode: false},
 		{probeMode: false},

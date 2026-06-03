@@ -16,7 +16,8 @@ import type { PlatformResource, PlatformResourceTreeNode } from '../../features/
 import { flattenCategoryPositions, formatContext } from '../../components/agents/agentUi';
 import { buildAgentTableColumns } from '../../components/agents/agentTableUi';
 import { findTaxonomyPath, formatTaxonomyPath } from '../../features/platform/taxonomyTreeUtils';
-import { useAppStore } from '../app';
+import { emitSessionMutation } from '../sessionSync';
+// TECH-DEBT: direct cross-store call for dependency data loading; consider event-based initialization
 import { useAvatarCatalogStore } from '../avatar';
 
 /** Agent 列表页：筛选、分页、依赖数据与列表 CRUD；Agent HTTP 经 features/agents/api（Kratos）。 */
@@ -104,7 +105,7 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
     try {
       const updated = await toggleAgentFavoriteApi(id);
       agents.value = agents.value.map((item) => (item.id === id ? updated : item));
-      useAppStore().upsertAgent(updated);
+      emitSessionMutation({ type: 'agent_updated', agent: updated });
     } catch (error) {
       agent.is_favorite = previous;
       throw error;

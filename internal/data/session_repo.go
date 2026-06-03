@@ -24,17 +24,6 @@ type sessionRepo struct {
 	data *Data
 }
 
-func (r *sessionRepo) txClient(ctx context.Context) *ent.Client {
-	return r.data.clientFromCtx(ctx)
-}
-
-func (r *sessionRepo) readClient(ctx context.Context) *ent.Client {
-	if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
-		return tx.Client()
-	}
-	return r.data.ReadEnt()
-}
-
 var (
 	_ biz.SessionReader        = (*sessionRepo)(nil)
 	_ biz.SessionWriter        = (*sessionRepo)(nil)
@@ -135,7 +124,7 @@ func clampOffset(off int) int {
 }
 
 func (r *sessionRepo) SearchSessions(ctx context.Context, q biz.SessionSearchQuery) (biz.SessionListResult, error) {
-	c := r.readClient(ctx)
+	c := r.data.RW().Read(ctx)
 	limit := clampSessionLimit(q.Limit)
 	offset := clampOffset(q.Offset)
 
@@ -170,7 +159,7 @@ func (r *sessionRepo) SearchSessions(ctx context.Context, q biz.SessionSearchQue
 }
 
 func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Session, error) {
-	c := r.txClient(ctx)
+	c := r.data.RW().Write(ctx)
 	if strings.TrimSpace(in.ID) == "" || strings.TrimSpace(in.Title) == "" {
 		return biz.Session{}, kerrors.BadRequest("SESSION", "missing required fields")
 	}
@@ -242,7 +231,7 @@ func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Se
 }
 
 func (r *sessionRepo) GetSessionByID(ctx context.Context, id string) (biz.Session, error) {
-	c := r.readClient(ctx)
+	c := r.data.RW().Read(ctx)
 	row, err := c.Session.Query().
 		Where(entsession.IDEQ(id), entsession.DeletedAtEQ("")).
 		Only(ctx)
@@ -256,7 +245,7 @@ func (r *sessionRepo) GetSessionByID(ctx context.Context, id string) (biz.Sessio
 }
 
 func (r *sessionRepo) UpdateSessionTitle(ctx context.Context, id, title string) (biz.Session, error) {
-	c := r.txClient(ctx)
+	c := r.data.RW().Write(ctx)
 	_, err := c.Session.Update().
 		Where(entsession.IDEQ(id), entsession.DeletedAtEQ("")).
 		SetTitle(title).
@@ -269,7 +258,7 @@ func (r *sessionRepo) UpdateSessionTitle(ctx context.Context, id, title string) 
 }
 
 func (r *sessionRepo) UpdateSession(ctx context.Context, id string, fields biz.SessionUpdateFields) (biz.Session, error) {
-	c := r.txClient(ctx)
+	c := r.data.RW().Write(ctx)
 	upd := c.Session.Update().
 		Where(entsession.IDEQ(id), entsession.DeletedAtEQ("")).
 		SetUpdatedAt(nowRFC3339())
@@ -311,7 +300,7 @@ func (r *sessionRepo) UpdateSession(ctx context.Context, id string, fields biz.S
 }
 
 func (r *sessionRepo) RestoreSession(ctx context.Context, id string) (biz.Session, error) {
-	c := r.txClient(ctx)
+	c := r.data.RW().Write(ctx)
 	now := nowRFC3339()
 	_, err := c.Session.Update().
 		Where(entsession.IDEQ(id)).
@@ -338,7 +327,7 @@ func (r *sessionRepo) PinSession(ctx context.Context, id string) (biz.Session, e
 		return biz.Session{}, kerrors.BadRequest("SESSION", "session id is required")
 	}
 	now := nowRFC3339()
-	_, err := r.txClient(ctx).Session.Update().
+	_, err := r.data.RW().Write(ctx).Session.Update().
 		Where(entsession.IDEQ(id), entsession.DeletedAtEQ("")).
 		SetPinnedAt(now).
 		SetUpdatedAt(now).
@@ -355,7 +344,7 @@ func (r *sessionRepo) UnpinSession(ctx context.Context, id string) (biz.Session,
 		return biz.Session{}, kerrors.BadRequest("SESSION", "session id is required")
 	}
 	now := nowRFC3339()
-	_, err := r.txClient(ctx).Session.Update().
+	_, err := r.data.RW().Write(ctx).Session.Update().
 		Where(entsession.IDEQ(id), entsession.DeletedAtEQ("")).
 		SetPinnedAt("").
 		SetUpdatedAt(now).
@@ -367,7 +356,7 @@ func (r *sessionRepo) UnpinSession(ctx context.Context, id string) (biz.Session,
 }
 
 func (r *sessionRepo) ArchiveSession(ctx context.Context, id string) (int, error) {
-	c := r.txClient(ctx)
+	c := r.data.RW().Write(ctx)
 	now := nowRFC3339()
 	n, err := c.Session.Update().
 		Where(entsession.IDEQ(id), entsession.DeletedAtEQ(""), entsession.ArchivedAtEQ(""), entsession.StatusNEQ(string(session.SessionStatusRunning)), entsession.StatusNEQ(string(session.SessionStatusAwaitingConfirmation))).
@@ -381,7 +370,7 @@ func (r *sessionRepo) ArchiveSession(ctx context.Context, id string) (int, error
 }
 
 func (r *sessionRepo) DeleteSession(ctx context.Context, id string) (int, error) {
-	c := r.txClient(ctx)
+	c := r.data.RW().Write(ctx)
 	now := nowRFC3339()
 	n, err := c.Session.Update().
 		Where(entsession.IDEQ(id), entsession.DeletedAtEQ(""), entsession.StatusNEQ(string(session.SessionStatusRunning)), entsession.StatusNEQ(string(session.SessionStatusAwaitingConfirmation))).
@@ -401,7 +390,7 @@ func (r *sessionRepo) DeleteSession(ctx context.Context, id string) (int, error)
 }
 
 func (r *sessionRepo) DeleteSessionsByAgentID(ctx context.Context, agentID string) error {
-	c := r.txClient(ctx)
+	c := r.data.RW().Write(ctx)
 	now := nowRFC3339()
 	_, err := c.Session.Update().
 		Where(entsession.AgentIDEQ(agentID), entsession.DeletedAtEQ("")).
@@ -421,7 +410,7 @@ func (r *sessionRepo) ListToolInvocationsBySession(ctx context.Context, sessionI
 	if limit <= 0 || limit > 100 {
 		limit = 100
 	}
-	c := r.readClient(ctx)
+	c := r.data.RW().Read(ctx)
 	rows, err := c.ToolInvocation.Query().
 		Where(toolinvocationpkg.SessionIDEQ(sessionID)).
 		Order(toolinvocationpkg.ByStartedAt(entsql.OrderDesc()), toolinvocationpkg.ByCreatedAt(entsql.OrderDesc())).
@@ -479,7 +468,7 @@ func (r *sessionRepo) ListSkillInvocationsBySession(ctx context.Context, session
 	if limit <= 0 || limit > 100 {
 		limit = 100
 	}
-	c := r.readClient(ctx)
+	c := r.data.RW().Read(ctx)
 	rows, err := c.SkillInvocation.Query().
 		Where(skillinvocationpkg.SessionIDEQ(sessionID)).
 		Order(skillinvocationpkg.ByStartedAt(entsql.OrderDesc()), skillinvocationpkg.ByCreatedAt(entsql.OrderDesc())).
@@ -584,7 +573,7 @@ func (r *sessionRepo) UpdateRunnerSnapshotJSON(ctx context.Context, sessionID st
 	if sessionID == "" {
 		return kerrors.BadRequest("SESSION", "session id is required")
 	}
-	_, err := r.txClient(ctx).Session.Update().
+	_, err := r.data.RW().Write(ctx).Session.Update().
 		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
 		SetRunnerSnapshotJSON(snapshotJSON).
 		SetUpdatedAt(nowRFC3339()).
@@ -638,7 +627,7 @@ func (r *sessionRepo) UpdateSessionContextAfterCompression(ctx context.Context, 
 		tok = 0
 	}
 	ratio := llmcontext.ContextRatio(tok, contextWindow)
-	_, err := r.txClient(ctx).Session.Update().
+	_, err := r.data.RW().Write(ctx).Session.Update().
 		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
 		SetContextUsedTokens(tok).
 		SetContextUsedRatio(ratio).
@@ -684,7 +673,7 @@ func (r *sessionRepo) ApplyMetricsDelta(ctx context.Context, d *session.SessionM
 	if sessionID == "" {
 		return nil
 	}
-	upd := r.txClient(ctx).Session.UpdateOneID(sessionID).SetUpdatedAt(nowRFC3339())
+	upd := r.data.RW().Write(ctx).Session.UpdateOneID(sessionID).SetUpdatedAt(nowRFC3339())
 	if d.MessageCount != 0 {
 		upd = upd.AddMessageCount(d.MessageCount)
 	}
@@ -741,7 +730,7 @@ func (r *sessionRepo) BumpSessionRevision(ctx context.Context, sessionID string)
 		return 0, kerrors.BadRequest("SESSION", "session id is required")
 	}
 	var rev int64
-	err := entQueryRowScan(r.txClient(ctx), ctx,
+	err := entQueryRowScan(r.data.RW().Write(ctx), ctx,
 		`UPDATE sessions SET session_revision = session_revision + 1, updated_at = ? WHERE id = ? AND deleted_at = '' RETURNING session_revision`,
 		[]any{nowRFC3339(), sessionID},
 		&rev,
@@ -758,7 +747,7 @@ func (r *sessionRepo) GetSessionRevision(ctx context.Context, sessionID string) 
 	if sessionID == "" {
 		return 0, kerrors.BadRequest("SESSION", "session id is required")
 	}
-	row, err := r.readClient(ctx).Session.Query().
+	row, err := r.data.RW().Read(ctx).Session.Query().
 		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -773,7 +762,7 @@ func (r *sessionRepo) TryIncrementCompressVersion(ctx context.Context, sessionID
 		return 0, kerrors.BadRequest("SESSION", "session id is required")
 	}
 	var old int64
-	err := entQueryRowScan(r.txClient(ctx), ctx,
+	err := entQueryRowScan(r.data.RW().Write(ctx), ctx,
 		`UPDATE sessions SET compress_version = compress_version + 1, updated_at = ? WHERE id = ? AND deleted_at = '' RETURNING compress_version - 1`,
 		[]any{nowRFC3339(), sessionID}, &old)
 	if err != nil {
@@ -791,7 +780,7 @@ func (r *sessionRepo) ListByParentSessionID(ctx context.Context, parentSessionID
 	if parentSessionID == "" {
 		return nil, kerrors.BadRequest("SESSION", "parent_session_id is required")
 	}
-	c := r.readClient(ctx)
+	c := r.data.RW().Read(ctx)
 	rows, err := c.Session.Query().
 		Where(entsession.ParentSessionIDEQ(parentSessionID), entsession.DeletedAtEQ("")).
 		Order(entsession.ByCreatedAt(entsql.OrderAsc())).

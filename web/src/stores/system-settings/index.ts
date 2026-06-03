@@ -4,8 +4,8 @@ import {
   getSystemSettings,
   updateSystemSettings,
   testWebResearch,
-  type UpdateSystemSettingsInput,
 } from '../../features/system-settings/api';
+import type { UpdateSystemSettingsInput } from '../../features/system-settings/types';
 import type { SystemSettings } from '../../services/kratos/system_setting/v1/index';
 
 export const useSystemSettingsStore = defineStore('systemSettings', () => {

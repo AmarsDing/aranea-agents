@@ -23,10 +23,10 @@ func NewEventStoreRepo(d *Data) biz.EventStoreRepo {
 }
 
 func (r *eventStoreRepo) Insert(ctx context.Context, rec biz.EventStoreRecord) error {
-	if r == nil || r.data == nil || r.data.Ent() == nil {
+	if r == nil || r.data == nil {
 		return kerrors.InternalServer("EVENT_STORE", "database not configured")
 	}
-	_, err := r.data.Ent().EventStore.Create().
+	_, err := r.data.RW().Write(ctx).EventStore.Create().
 		SetID(rec.ID).
 		SetSessionID(rec.SessionID).
 		SetType(rec.Type).
@@ -45,10 +45,10 @@ func (r *eventStoreRepo) Insert(ctx context.Context, rec biz.EventStoreRecord) e
 }
 
 func (r *eventStoreRepo) List(ctx context.Context, q biz.EventStoreQuery) (biz.EventStoreListResult, error) {
-	if r == nil || r.data == nil || r.data.Ent() == nil {
+	if r == nil || r.data == nil {
 		return biz.EventStoreListResult{}, kerrors.InternalServer("EVENT_STORE", "database not configured")
 	}
-	client := r.data.ReadEnt()
+	client := r.data.RW().Read(ctx)
 	query := client.EventStore.Query().
 		Where(eventstore.SessionIDEQ(strings.TrimSpace(q.SessionID)))
 	if !q.Since.IsZero() {
@@ -88,10 +88,10 @@ func (r *eventStoreRepo) List(ctx context.Context, q biz.EventStoreQuery) (biz.E
 }
 
 func (r *eventStoreRepo) DeleteOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
-	if r == nil || r.data == nil || r.data.Ent() == nil {
+	if r == nil || r.data == nil {
 		return 0, kerrors.InternalServer("EVENT_STORE", "database not configured")
 	}
-	n, err := r.data.Ent().EventStore.Delete().
+	n, err := r.data.RW().Write(ctx).EventStore.Delete().
 		Where(eventstore.CreatedAtLT(cutoff)).
 		Exec(ctx)
 	if err != nil {

@@ -38,8 +38,8 @@ export const useIndustryStore = defineStore('industry', () => {
     try {
       const result = await listIndustries();
       industries.value = result.items;
-    } catch (e: any) {
-      error.value = e?.message ?? 'Failed to load industries';
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : 'Failed to load industries';
     } finally {
       loadingIndustries.value = false;
     }

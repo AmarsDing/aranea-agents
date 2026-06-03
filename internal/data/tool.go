@@ -28,13 +28,6 @@ func NewToolRepo(d *Data) biz.ToolRepo {
 	return &toolRepo{data: d}
 }
 
-func (r *toolRepo) readClient(ctx context.Context) *ent.Client {
-	if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
-		return tx.Client()
-	}
-	return r.data.ReadEnt()
-}
-
 func adminToolPerms() biz.ToolPermissions {
 	return biz.ToolPermissions{CanManage: true}
 }
@@ -186,7 +179,7 @@ func (r *toolRepo) computeToolSummary(ctx context.Context, client *ent.Client, q
 }
 
 func (r *toolRepo) SearchTools(ctx context.Context, q biz.ToolListQuery) (biz.ToolListResult, error) {
-	client := r.readClient(ctx)
+	client := r.data.RW().Read(ctx)
 	if client == nil {
 		return biz.ToolListResult{}, kerrors.InternalServer("TOOL", "ent client unavailable")
 	}
@@ -230,7 +223,7 @@ func (r *toolRepo) SearchTools(ctx context.Context, q biz.ToolListQuery) (biz.To
 }
 
 func (r *toolRepo) GetTool(ctx context.Context, idOrKey string) (biz.Tool, error) {
-	client := r.readClient(ctx)
+	client := r.data.RW().Read(ctx)
 	if client == nil {
 		return biz.Tool{}, kerrors.InternalServer("TOOL", "ent client unavailable")
 	}
@@ -293,7 +286,7 @@ func (r *toolRepo) CreateTool(ctx context.Context, in biz.ToolUpsertInput) (biz.
 		id = uniqueToolID("tool")
 	}
 	now := nowRFC3339()
-	err := r.data.Ent().PlatformTool.Create().
+	err := r.data.RW().Write(ctx).PlatformTool.Create().
 		SetID(id).
 		SetToolKey(strings.TrimSpace(in.Key)).
 		SetDisplayName(strings.TrimSpace(in.DisplayName)).
@@ -323,7 +316,7 @@ func (r *toolRepo) CreateTool(ctx context.Context, in biz.ToolUpsertInput) (biz.
 }
 
 func (r *toolRepo) toolByIDOrKey(ctx context.Context, idOrKey string) (*ent.PlatformTool, error) {
-	return r.readClient(ctx).PlatformTool.Query().
+	return r.data.RW().Read(ctx).PlatformTool.Query().
 		Where(
 			platformtool.DeletedAtEQ(""),
 			platformtool.Or(platformtool.IDEQ(idOrKey), platformtool.ToolKeyEQ(idOrKey)),
@@ -345,7 +338,7 @@ func (r *toolRepo) UpdateTool(ctx context.Context, idOrKey string, in biz.ToolUp
 		key = ex.ToolKey
 	}
 	now := nowRFC3339()
-	err = r.data.Ent().PlatformTool.UpdateOneID(ex.ID).
+	err = r.data.RW().Write(ctx).PlatformTool.UpdateOneID(ex.ID).
 		SetToolKey(key).
 		SetDisplayName(strings.TrimSpace(in.DisplayName)).
 		SetDescription(strings.TrimSpace(in.Description)).
@@ -381,7 +374,7 @@ func (r *toolRepo) DeleteTool(ctx context.Context, idOrKey string) error {
 		return err
 	}
 	now := nowRFC3339()
-	err = r.data.Ent().PlatformTool.UpdateOneID(ex.ID).
+	err = r.data.RW().Write(ctx).PlatformTool.UpdateOneID(ex.ID).
 		SetDeletedAt(now).
 		SetUpdatedAt(now).
 		Exec(ctx)
@@ -396,7 +389,7 @@ func (r *toolRepo) UpdateToolEnabled(ctx context.Context, idOrKey string, enable
 		}
 		return biz.Tool{}, err
 	}
-	err = r.data.Ent().PlatformTool.UpdateOneID(ex.ID).
+	err = r.data.RW().Write(ctx).PlatformTool.UpdateOneID(ex.ID).
 		SetEnabled(enabled).
 		SetUpdatedAt(nowRFC3339()).
 		Exec(ctx)
@@ -414,7 +407,7 @@ func (r *toolRepo) UpdateToolConfig(ctx context.Context, idOrKey string, configJ
 		}
 		return biz.Tool{}, err
 	}
-	err = r.data.Ent().PlatformTool.UpdateOneID(ex.ID).
+	err = r.data.RW().Write(ctx).PlatformTool.UpdateOneID(ex.ID).
 		SetConfigJSON(configJSON).
 		SetUpdatedAt(nowRFC3339()).
 		Exec(ctx)
@@ -425,7 +418,7 @@ func (r *toolRepo) UpdateToolConfig(ctx context.Context, idOrKey string, configJ
 }
 
 func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery) (biz.ToolRunResult, error) {
-	client := r.readClient(ctx)
+	client := r.data.RW().Read(ctx)
 	if client == nil {
 		return biz.ToolRunResult{}, kerrors.InternalServer("TOOL", "ent client unavailable")
 	}
@@ -513,7 +506,7 @@ func (r *toolRepo) SearchToolInvocations(ctx context.Context, q biz.ToolRunQuery
 }
 
 func (r *toolRepo) RecordToolInvocation(ctx context.Context, in biz.ToolInvocationWrite) error {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	if client == nil {
 		return kerrors.InternalServer("TOOL", "ent client unavailable")
 	}
@@ -646,11 +639,11 @@ func invocationMetaJSON(in biz.ToolInvocationWrite) string {
 }
 
 func (r *toolRepo) SyncBuiltinTools(ctx context.Context) error {
-	return syncBuiltinToolsFromRegistry(ctx, r.data.Ent(), r.data.lg)
+	return syncBuiltinToolsFromRegistry(ctx, r.data.RW().Write(ctx), r.data.lg)
 }
 
 func (r *toolRepo) ListToolAgentOverridesByAgent(ctx context.Context, agentID string) ([]biz.ToolAgentOverride, error) {
-	client := r.readClient(ctx)
+	client := r.data.RW().Read(ctx)
 	if client == nil {
 		return nil, kerrors.InternalServer("TOOL", "ent client unavailable")
 	}
@@ -671,7 +664,7 @@ func (r *toolRepo) ListToolAgentOverridesByAgent(ctx context.Context, agentID st
 }
 
 func (r *toolRepo) ListToolAgentOverrides(ctx context.Context, toolKey string) ([]biz.ToolAgentOverride, error) {
-	client := r.readClient(ctx)
+	client := r.data.RW().Read(ctx)
 	if client == nil {
 		return nil, kerrors.InternalServer("TOOL", "ent client unavailable")
 	}
@@ -704,7 +697,7 @@ func scanToolAgentOverrides(rows *sql.Rows) ([]biz.ToolAgentOverride, error) {
 }
 
 func (r *toolRepo) UpsertToolAgentOverride(ctx context.Context, in biz.ToolAgentOverrideInput, toolID string) (biz.ToolAgentOverride, error) {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	if client == nil {
 		return biz.ToolAgentOverride{}, kerrors.InternalServer("TOOL", "ent client unavailable")
 	}
@@ -743,7 +736,7 @@ func (r *toolRepo) UpsertToolAgentOverride(ctx context.Context, in biz.ToolAgent
 }
 
 func (r *toolRepo) DeleteToolAgentOverride(ctx context.Context, toolKey string, agentID string) error {
-	client := r.data.Ent()
+	client := r.data.RW().Write(ctx)
 	if client == nil {
 		return kerrors.InternalServer("TOOL", "ent client unavailable")
 	}
@@ -757,7 +750,7 @@ func (r *toolRepo) DeleteToolAgentOverride(ctx context.Context, toolKey string, 
 }
 
 func (r *toolRepo) GetToolInvocationParams(ctx context.Context, invocationID string) (biz.ToolInvocationParam, error) {
-	client := r.readClient(ctx)
+	client := r.data.RW().Read(ctx)
 	if client == nil {
 		return biz.ToolInvocationParam{}, kerrors.InternalServer("TOOL", "ent client unavailable")
 	}

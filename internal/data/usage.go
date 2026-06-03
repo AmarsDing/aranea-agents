@@ -6,7 +6,6 @@ import (
 
 	"aranea-agents/internal/biz"
 	bizusage "aranea-agents/internal/biz/usage"
-	"aranea-agents/internal/data/ent"
 )
 
 type usageRepo struct {
@@ -20,17 +19,6 @@ func NewUsageRepo(d *Data) biz.UsageRepo {
 	return &usageRepo{data: d}
 }
 
-func (r *usageRepo) ent() *ent.Client {
-	return r.data.Ent()
-}
-
-func (r *usageRepo) readClient(ctx context.Context) *ent.Client {
-	if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
-		return tx.Client()
-	}
-	return r.data.ReadEnt()
-}
-
 func (r *usageRepo) GetModelUsageSummary(ctx context.Context, query biz.UsageQuery) (biz.UsageSummary, error) {
 	where, args := usageWhere(query, true)
 	q := `SELECT
@@ -42,7 +30,7 @@ func (r *usageRepo) GetModelUsageSummary(ctx context.Context, query biz.UsageQue
 		 COALESCE(SUM(total_cost_micro_usd), 0), COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0)
 		 FROM model_token_usage_events` + where
 	var v biz.UsageSummary
-	err := entQueryRowScan(r.readClient(ctx), ctx, q, args,
+	err := entQueryRowScan(r.data.RW().Read(ctx), ctx, q, args,
 		&v.CallCount, &v.RequestCount, &v.SuccessCount, &v.FailedCount, &v.CancelledCount,
 		&v.InputTokens, &v.OutputTokens, &v.TotalTokens, &v.TotalCostMicroUSD, &v.AvgLatencyMS, &v.AvgTokensPerSecond)
 	if err != nil {
@@ -56,7 +44,7 @@ func (r *usageRepo) GetModelUsageSummary(ctx context.Context, query biz.UsageQue
 
 func (r *usageRepo) ListModelUsageTrends(ctx context.Context, query biz.UsageQuery) ([]biz.UsageTrendPoint, error) {
 	where, args := usageWhere(query, true)
-	rows, err := r.readClient(ctx).QueryContext(ctx,
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
 		`SELECT date_key,
 		 COALESCE(SUM(call_count), 0),
 		 COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
@@ -86,7 +74,7 @@ func (r *usageRepo) ListModelUsageTrends(ctx context.Context, query biz.UsageQue
 func (r *usageRepo) ListTopModelUsage(ctx context.Context, query biz.UsageQuery) ([]biz.UsageBreakdownRow, error) {
 	where, args := usageWhere(query, true)
 	args = append(args, usageLimit(query.Limit))
-	rows, err := r.readClient(ctx).QueryContext(ctx,
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
 		`SELECT provider_code, model_api_id, MAX(model_display_name),
 		 COALESCE(SUM(call_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0), COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0),
@@ -112,7 +100,7 @@ func (r *usageRepo) ListTopModelUsage(ctx context.Context, query biz.UsageQuery)
 func (r *usageRepo) ListModelUsageEvents(ctx context.Context, query biz.UsageQuery) ([]biz.TokenUsageEvent, error) {
 	where, args := usageWhere(query, false)
 	args = append(args, usageLimit(query.Limit))
-	rows, err := r.readClient(ctx).QueryContext(ctx,
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
 		`SELECT id, occurred_at, date_key, hour_key, workspace_id, user_id, team_id, agent_id, agent_key, session_id, message_id, request_id,
 		 provider_code, COALESCE(canonical_provider_code, ''), provider_type, provider_display_name, model_api_id, model_display_name, model_category_json, usage_kind, call_count,
 		 input_tokens, output_tokens, cached_input_tokens, COALESCE(cache_write_tokens, 0), reasoning_tokens, embedding_tokens, total_tokens,
@@ -141,7 +129,7 @@ func (r *usageRepo) ListModelUsageEvents(ctx context.Context, query biz.UsageQue
 func (r *usageRepo) ListTopAgentUsage(ctx context.Context, query biz.UsageQuery) ([]biz.UsageBreakdownRow, error) {
 	where, args := usageWhere(query, true)
 	args = append(args, usageLimit(query.Limit))
-	rows, err := r.readClient(ctx).QueryContext(ctx,
+	rows, err := r.data.RW().Read(ctx).QueryContext(ctx,
 		`SELECT agent_id, agent_key,
 		 COALESCE(SUM(call_count), 0), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0), COALESCE(SUM(total_tokens), 0),
 		 COALESCE(SUM(total_cost_micro_usd), 0), COALESCE(AVG(latency_ms), 0), COALESCE(AVG(tokens_per_second), 0),

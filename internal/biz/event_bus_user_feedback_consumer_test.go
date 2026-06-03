@@ -85,7 +85,7 @@ func (e *testFeedbackEnqueuer) EnqueueFeedbackMemory(sessionID, messageID, ratin
 
 func TestRecordUserFeedbackMonitor(t *testing.T) {
 	repo := &feedbackMonitorRepo{}
-	uc := NewMonitorUsecase(repo, nil)
+	uc := NewMonitorUsecase(repo, repo, repo, repo, repo, nil)
 	if err := RecordUserFeedbackMonitor(context.Background(), uc, "sess-1", "msg-1", "negative", "too verbose"); err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestRecordUserFeedbackMonitor(t *testing.T) {
 
 func TestUserFeedbackConsumer_handle(t *testing.T) {
 	repo := &feedbackMonitorRepo{}
-	uc := NewMonitorUsecase(repo, nil)
+	uc := NewMonitorUsecase(repo, repo, repo, repo, repo, nil)
 	feedback := &testFeedbackEnqueuer{}
 	worker := NewTurnMemoryWorker(feedback, noopSessionLogWriter{})
 

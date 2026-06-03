@@ -80,9 +80,9 @@ func (s *PackService) ImportPack(ctx context.Context, req *packv1.ImportPackRequ
 	if len(data) == 0 {
 		return nil, kerrors.BadRequest("PACK", "data is required")
 	}
-	// 限制上传 Pack 大小（200MB）
-	if len(data) > 200*1024*1024 {
-		return nil, kerrors.BadRequest("PACK", "pack file exceeds 200MB limit")
+	// 限制上传 Pack 大小
+	if len(data) > pack.MaxPackSize {
+		return nil, kerrors.BadRequest("PACK", "pack file exceeds size limit")
 	}
 
 	// Parse pack
@@ -133,9 +133,9 @@ func (s *PackService) ValidatePack(ctx context.Context, req *packv1.ValidatePack
 	if len(data) == 0 {
 		return nil, kerrors.BadRequest("PACK", "data is required")
 	}
-	// 限制上传 Pack 大小（200MB）
-	if len(data) > 200*1024*1024 {
-		return nil, kerrors.BadRequest("PACK", "pack file exceeds 200MB limit")
+	// 限制上传 Pack 大小
+	if len(data) > pack.MaxPackSize {
+		return nil, kerrors.BadRequest("PACK", "pack file exceeds size limit")
 	}
 
 	// Parse pack

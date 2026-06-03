@@ -2,7 +2,7 @@ import { onMounted, reactive, ref } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useQuasar } from 'quasar';
 import { useEcosystemStore } from '../../stores/ecosystem';
-import type { EcosystemProduct } from './api';
+import type { EcosystemProduct } from './types';
 
 export function useEcosystemPage() {
   const $q = useQuasar();

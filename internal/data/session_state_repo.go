@@ -18,7 +18,7 @@ func (r *sessionRepo) GetSessionState(ctx context.Context, sessionID string) (ma
 	if sessionID == "" {
 		return nil, kerrors.BadRequest("SESSION", "session id is required")
 	}
-	row, err := r.txClient(ctx).Session.Get(ctx, sessionID)
+	row, err := r.data.RW().Read(ctx).Session.Get(ctx, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func (r *sessionRepo) SaveSessionState(ctx context.Context, sessionID string, st
 	if err != nil {
 		return err
 	}
-	_, err = r.txClient(ctx).Session.Update().
+	_, err = r.data.RW().Write(ctx).Session.Update().
 		Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).
 		SetStateJSON(string(raw)).
 		SetUpdatedAt(nowRFC3339()).
@@ -82,7 +82,7 @@ func (r *sessionRepo) PatchSessionState(ctx context.Context, sessionID string, s
 		"UPDATE sessions SET state_json = %s, updated_at = ? WHERE id = ? AND deleted_at = ''",
 		expr,
 	)
-	_, err := r.txClient(ctx).ExecContext(ctx, query, args...)
+	_, err := r.data.RW().Write(ctx).ExecContext(ctx, query, args...)
 	return err
 }
 

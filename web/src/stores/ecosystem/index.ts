@@ -4,8 +4,8 @@ import {
   installEcosystemProduct,
   listEcosystemProducts,
   publishEcosystemProduct,
-  type EcosystemProduct,
 } from '../../features/ecosystem/api';
+import type { EcosystemProduct } from '../../features/ecosystem/types';
 
 export const useEcosystemStore = defineStore('ecosystem', () => {
   const products = ref<EcosystemProduct[]>([]);

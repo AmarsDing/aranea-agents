@@ -16,9 +16,8 @@ import {
   stopGeneration,
   submitMessageFeedback as apiSubmitFeedback,
   updatePendingMessage,
-  type PendingMessage,
 } from '../../features/chat/api';
-import type { ChatOption, RunStatus } from '../../features/chat/types';
+import type { ChatOption, RunStatus, PendingMessage } from '../../features/chat/types';
 
 export const useChatRuntimeStore = defineStore('chatRuntime', () => {
   const wsConnectedBySession = ref<Record<string, boolean>>({});

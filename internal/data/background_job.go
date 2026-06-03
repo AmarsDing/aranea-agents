@@ -25,10 +25,6 @@ func NewBackgroundJobRepo(d *Data) backgroundjob.Repo {
 	return &backgroundJobRepo{data: d}
 }
 
-func (r *backgroundJobRepo) client() *ent.Client {
-	return r.data.entClient
-}
-
 func (r *backgroundJobRepo) Create(ctx context.Context, req backgroundjob.CreateRequest) (*backgroundjob.Job, error) {
 	priority := req.Priority
 	if priority <= 0 {
@@ -47,7 +43,7 @@ func (r *backgroundJobRepo) Create(ctx context.Context, req backgroundjob.Create
 		schedMS = req.ScheduledAt.UnixMilli()
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	row, err := r.client().BackgroundJob.Create().
+	row, err := r.data.RW().Write(ctx).BackgroundJob.Create().
 		SetID(uuid.NewString()).
 		SetKind(req.Kind).
 		SetOwnerType(string(req.OwnerType)).
@@ -68,7 +64,7 @@ func (r *backgroundJobRepo) Create(ctx context.Context, req backgroundjob.Create
 }
 
 func (r *backgroundJobRepo) Get(ctx context.Context, id string) (*backgroundjob.Job, error) {
-	row, err := r.client().BackgroundJob.Get(ctx, id)
+	row, err := r.data.RW().Read(ctx).BackgroundJob.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return nil, fmt.Errorf("backgroundjob %s: %w", id, backgroundjob.ErrNotFound)
@@ -79,7 +75,7 @@ func (r *backgroundJobRepo) Get(ctx context.Context, id string) (*backgroundjob.
 }
 
 func (r *backgroundJobRepo) List(ctx context.Context, f backgroundjob.ListFilter) ([]*backgroundjob.Job, error) {
-	q := r.client().BackgroundJob.Query().
+	q := r.data.RW().Read(ctx).BackgroundJob.Query().
 		Order(ent.Asc(entbgjob.FieldPriority), ent.Asc(entbgjob.FieldCreatedAt))
 	if f.OwnerType != "" {
 		q = q.Where(entbgjob.OwnerTypeEQ(string(f.OwnerType)))
@@ -117,7 +113,7 @@ func (r *backgroundJobRepo) List(ctx context.Context, f backgroundjob.ListFilter
 // claim: we SELECT the candidate, then UPDATE WHERE status='queued' to detect races.
 func (r *backgroundJobRepo) TryClaim(ctx context.Context, workerID string, kinds []string) (*backgroundjob.Job, error) {
 	nowMS := time.Now().UnixMilli()
-	q := r.client().BackgroundJob.Query().
+	q := r.data.RW().Read(ctx).BackgroundJob.Query().
 		Where(
 			entbgjob.StatusEQ(string(backgroundjob.StatusQueued)),
 			entbgjob.ScheduledAtLTE(nowMS),
@@ -140,13 +136,13 @@ func (r *backgroundJobRepo) TryClaim(ctx context.Context, workerID string, kinds
 		}
 		// Skip jobs whose parent has not yet succeeded.
 		if cand.ParentJobID != "" {
-			parent, perr := r.client().BackgroundJob.Get(ctx, cand.ParentJobID)
+			parent, perr := r.data.RW().Read(ctx).BackgroundJob.Get(ctx, cand.ParentJobID)
 			if perr != nil || parent.Status != string(backgroundjob.StatusSucceeded) {
 				continue
 			}
 		}
 		// Optimistic claim: UPDATE WHERE status='queued'.
-		n, uerr := r.client().BackgroundJob.Update().
+		n, uerr := r.data.RW().Write(ctx).BackgroundJob.Update().
 			Where(entbgjob.IDEQ(cand.ID), entbgjob.StatusEQ(string(backgroundjob.StatusQueued))).
 			SetStatus(string(backgroundjob.StatusClaimed)).
 			SetWorkerID(workerID).
@@ -161,7 +157,7 @@ func (r *backgroundJobRepo) TryClaim(ctx context.Context, workerID string, kinds
 			continue // another worker won the race
 		}
 		// Re-read to get the fresh state.
-		fresh, gerr := r.client().BackgroundJob.Get(ctx, cand.ID)
+		fresh, gerr := r.data.RW().Read(ctx).BackgroundJob.Get(ctx, cand.ID)
 		if gerr != nil {
 			return nil, fmt.Errorf("backgroundjob TryClaim re-read: %w", gerr)
 		}
@@ -172,7 +168,7 @@ func (r *backgroundJobRepo) TryClaim(ctx context.Context, workerID string, kinds
 
 func (r *backgroundJobRepo) MarkRunning(ctx context.Context, id, workerID string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := r.client().BackgroundJob.UpdateOneID(id).
+	_, err := r.data.RW().Write(ctx).BackgroundJob.UpdateOneID(id).
 		SetStatus(string(backgroundjob.StatusClaimed)).
 		SetWorkerID(workerID).
 		SetUpdatedAt(now).
@@ -183,7 +179,7 @@ func (r *backgroundJobRepo) MarkRunning(ctx context.Context, id, workerID string
 func (r *backgroundJobRepo) MarkSucceeded(ctx context.Context, id string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	nowMS := time.Now().UnixMilli()
-	_, err := r.client().BackgroundJob.UpdateOneID(id).
+	_, err := r.data.RW().Write(ctx).BackgroundJob.UpdateOneID(id).
 		SetStatus(string(backgroundjob.StatusSucceeded)).
 		SetFinishedAt(nowMS).
 		SetUpdatedAt(now).
@@ -197,7 +193,7 @@ func (r *backgroundJobRepo) MarkFailed(ctx context.Context, id, errMsg string) e
 	if len(errMsg) > 1024 {
 		errMsg = errMsg[:1024]
 	}
-	_, err := r.client().BackgroundJob.UpdateOneID(id).
+	_, err := r.data.RW().Write(ctx).BackgroundJob.UpdateOneID(id).
 		SetStatus(string(backgroundjob.StatusFailed)).
 		SetLastError(errMsg).
 		SetFinishedAt(nowMS).
@@ -209,7 +205,7 @@ func (r *backgroundJobRepo) MarkFailed(ctx context.Context, id, errMsg string) e
 func (r *backgroundJobRepo) Cancel(ctx context.Context, id string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	nowMS := time.Now().UnixMilli()
-	n, err := r.client().BackgroundJob.Update().
+	n, err := r.data.RW().Write(ctx).BackgroundJob.Update().
 		Where(
 			entbgjob.IDEQ(id),
 			entbgjob.StatusIn(
@@ -231,7 +227,7 @@ func (r *backgroundJobRepo) Cancel(ctx context.Context, id string) error {
 func (r *backgroundJobRepo) CancelByOwner(ctx context.Context, ownerType backgroundjob.OwnerType, ownerID string) (int, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	nowMS := time.Now().UnixMilli()
-	n, err := r.client().BackgroundJob.Update().
+	n, err := r.data.RW().Write(ctx).BackgroundJob.Update().
 		Where(
 			entbgjob.OwnerTypeEQ(string(ownerType)),
 			entbgjob.OwnerIDEQ(ownerID),
@@ -252,7 +248,7 @@ func (r *backgroundJobRepo) CancelByOwner(ctx context.Context, ownerType backgro
 
 func (r *backgroundJobRepo) DeleteTerminated(ctx context.Context, f backgroundjob.ListFilter) (int, error) {
 	cutoffMS := time.Now().Add(-48 * time.Hour).UnixMilli()
-	q := r.client().BackgroundJob.Delete().
+	q := r.data.RW().Write(ctx).BackgroundJob.Delete().
 		Where(
 			entbgjob.StatusIn(
 				string(backgroundjob.StatusSucceeded),
