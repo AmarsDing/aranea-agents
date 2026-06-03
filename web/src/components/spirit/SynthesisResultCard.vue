@@ -7,13 +7,7 @@
       <div class="col min-width-0">
         <div class="synthesis-result-card__title">综合结果</div>
       </div>
-      <q-chip
-        dense
-        size="sm"
-        outline
-        :label="strategyLabel"
-        class="synthesis-result-card__strategy"
-      />
+      <q-chip dense size="sm" outline :label="strategyLabel" class="synthesis-result-card__strategy" />
     </div>
 
     <div class="synthesis-result-card__content">
@@ -46,8 +40,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { SynthesisOutput, SynthesisStrategy } from "../../features/spirit/types";
+import { computed } from 'vue';
+import type { SynthesisOutput, SynthesisStrategy } from '../../features/spirit/types';
 
 const props = defineProps<{
   result: SynthesisOutput;
@@ -55,19 +49,19 @@ const props = defineProps<{
 
 const strategyLabel = computed(() => {
   const labels: Record<SynthesisStrategy, string> = {
-    template: "模板合成",
-    prompt: "Prompt 合成",
-    hybrid: "混合合成",
+    template: '模板合成',
+    prompt: 'Prompt 合成',
+    hybrid: '混合合成',
   };
   return labels[props.result.strategy] ?? props.result.strategy;
 });
 
 const renderedContent = computed(() => {
   let text = props.result.content;
-  text = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  text = text.replace(/^### (.+)$/gm, "<strong>$1</strong>");
-  text = text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-  text = text.replace(/\n/g, "<br />");
+  text = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  text = text.replace(/^### (.+)$/gm, '<strong>$1</strong>');
+  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  text = text.replace(/\n/g, '<br />');
   return text;
 });
 </script>

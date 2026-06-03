@@ -31,8 +31,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { ModelTokenUsageEvent } from "../../features/usage/types";
+import { computed } from 'vue';
+import type { ModelTokenUsageEvent } from '../../features/usage/types';
 
 const props = defineProps<{
   anomalies: ModelTokenUsageEvent[];
@@ -48,25 +48,25 @@ type FallbackEvent = {
 
 const events = computed<FallbackEvent[]>(() => {
   return props.anomalies
-    .filter((e) => e.status === "failed" || e.status === "timeout" || (e.retry_count ?? 0) > 0)
+    .filter((e) => e.status === 'failed' || e.status === 'timeout' || (e.retry_count ?? 0) > 0)
     .slice(0, 10)
     .map((e) => {
       const isRetry = (e.retry_count ?? 0) > 0;
-      const isTimeout = e.status === "timeout";
+      const isTimeout = e.status === 'timeout';
       return {
-        icon: isRetry ? "autorenew" : isTimeout ? "schedule" : "error_outline",
-        iconColor: isRetry ? "warning" : "negative",
+        icon: isRetry ? 'autorenew' : isTimeout ? 'schedule' : 'error_outline',
+        iconColor: isRetry ? 'warning' : 'negative',
         label: `${e.provider_code} / ${e.model_display_name || e.model_api_id}`,
         detail: isRetry
-          ? `重试 ${e.retry_count ?? 0} 次 · ${e.agent_key || "未知 Agent"}`
-          : `${e.status} · ${e.error_message?.slice(0, 60) || "无错误信息"}`,
-        time: formatTime(e.occurred_at)
+          ? `重试 ${e.retry_count ?? 0} 次 · ${e.agent_key || '未知 Agent'}`
+          : `${e.status} · ${e.error_message?.slice(0, 60) || '无错误信息'}`,
+        time: formatTime(e.occurred_at),
       };
     });
 });
 
 function formatTime(value: string) {
-  if (!value) return "—";
+  if (!value) return '—';
   try {
     return new Date(value).toLocaleString();
   } catch {

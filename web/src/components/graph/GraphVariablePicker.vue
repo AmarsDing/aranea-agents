@@ -19,12 +19,7 @@
   <q-menu v-model="showPicker" anchor="bottom right" self="top right" :offset="[0, 4]">
     <q-list dense style="min-width: 200px" class="graph-variable-picker">
       <q-item-label header>节点输出</q-item-label>
-      <q-item
-        v-for="node in nodes"
-        :key="node.id"
-        clickable
-        @click="insertVariable(node.id, 'output')"
-      >
+      <q-item v-for="node in nodes" :key="node.id" clickable @click="insertVariable(node.id, 'output')">
         <q-item-section side>
           <q-badge :color="nodeTypeColor(node.type)" :label="node.type" />
         </q-item-section>
@@ -36,12 +31,7 @@
       <template v-if="stateFields.length > 0">
         <q-separator />
         <q-item-label header>状态字段</q-item-label>
-        <q-item
-          v-for="field in stateFields"
-          :key="field.name"
-          clickable
-          @click="insertVariable('state', field.name)"
-        >
+        <q-item v-for="field in stateFields" :key="field.name" clickable @click="insertVariable('state', field.name)">
           <q-item-section side>
             <q-badge color="grey" label="state" />
           </q-item-section>
@@ -56,8 +46,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import type { NodeDef, StateFieldDef } from "../../features/graph/types";
+import { ref } from 'vue';
+import type { NodeDef, StateFieldDef } from '../../features/graph/types';
 
 const props = defineProps<{
   modelValue: string;
@@ -67,7 +57,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:modelValue": [value: string];
+  'update:modelValue': [value: string];
 }>();
 
 const showPicker = ref(false);
@@ -75,15 +65,15 @@ const inputRef = ref<{ input?: HTMLInputElement } | null>(null);
 
 function nodeTypeColor(type: string): string {
   const map: Record<string, string> = {
-    llm: "blue",
-    agent: "green",
-    tool: "amber",
-    function: "purple",
-    router: "grey",
-    join: "purple",
-    hitl: "orange",
+    llm: 'blue',
+    agent: 'green',
+    tool: 'amber',
+    function: 'purple',
+    router: 'grey',
+    join: 'purple',
+    hitl: 'orange',
   };
-  return map[type] ?? "grey";
+  return map[type] ?? 'grey';
 }
 
 function insertVariable(source: string, field: string) {
@@ -94,9 +84,9 @@ function insertVariable(source: string, field: string) {
     const end = el.selectionEnd ?? start;
     const before = props.modelValue.slice(0, start);
     const after = props.modelValue.slice(end);
-    emit("update:modelValue", before + variable + after);
+    emit('update:modelValue', before + variable + after);
   } else {
-    emit("update:modelValue", props.modelValue + variable);
+    emit('update:modelValue', props.modelValue + variable);
   }
   showPicker.value = false;
 }

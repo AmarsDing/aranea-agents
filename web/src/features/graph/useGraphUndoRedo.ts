@@ -1,6 +1,6 @@
-import { ref, computed } from "vue";
-import type { GraphDefinition, NodeDef, EdgeDef, ConditionalEdgeDef, StateFieldDef } from "./types";
-import { writeGraphNodePosition } from "./editor/graphLayout";
+import { ref, computed } from 'vue';
+import type { GraphDefinition, NodeDef, EdgeDef, ConditionalEdgeDef, StateFieldDef } from './types';
+import { writeGraphNodePosition } from './editor/graphLayout';
 
 interface GraphCommand {
   label: string;
@@ -80,7 +80,9 @@ export function useGraphUndoRedo(graphDef: GraphDefinition, markDirty: () => voi
     });
   }
 
-  function pushDeleteNodes(deleted: { node: NodeDef; index: number; edges: EdgeDef[]; condEdges: ConditionalEdgeDef[] }[]) {
+  function pushDeleteNodes(
+    deleted: { node: NodeDef; index: number; edges: EdgeDef[]; condEdges: ConditionalEdgeDef[] }[],
+  ) {
     execute({
       label: `批量删除 ${deleted.length} 个节点`,
       undo: () => {
@@ -248,7 +250,11 @@ export function useGraphUndoRedo(graphDef: GraphDefinition, markDirty: () => voi
     });
   }
 
-  function pushSetConditionalPathMap(ceIdx: number, oldPathMap: Record<string, string>, newPathMap: Record<string, string>) {
+  function pushSetConditionalPathMap(
+    ceIdx: number,
+    oldPathMap: Record<string, string>,
+    newPathMap: Record<string, string>,
+  ) {
     execute({
       label: `修改条件路由 pathMap[${ceIdx}]`,
       undo: () => {
@@ -293,7 +299,9 @@ export function useGraphUndoRedo(graphDef: GraphDefinition, markDirty: () => voi
     });
   }
 
-  function pushMoveNodes(moves: { nodeId: string; oldPos: { x: number; y: number }; newPos: { x: number; y: number } }[]) {
+  function pushMoveNodes(
+    moves: { nodeId: string; oldPos: { x: number; y: number }; newPos: { x: number; y: number } }[],
+  ) {
     if (moves.length === 0) return;
     execute({
       label: moves.length === 1 ? `移动节点 ${moves[0].nodeId}` : `移动 ${moves.length} 个节点`,

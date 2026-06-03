@@ -3,9 +3,7 @@
     <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
       <q-card-section class="app-glass-dialog__head">
         <div class="app-glass-dialog__title">人工确认</div>
-        <div class="app-glass-dialog__subtitle">
-          节点 {{ interrupt?.nodeId || "—" }} 等待审批后继续执行
-        </div>
+        <div class="app-glass-dialog__subtitle">节点 {{ interrupt?.nodeId || '—' }} 等待审批后继续执行</div>
       </q-card-section>
       <q-separator />
       <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md">
@@ -42,7 +40,7 @@
 </template>
 
 <script setup lang="ts">
-import type { GraphInterruptInfo } from "../../features/graph/runtime/graphExecutionProjection";
+import type { GraphInterruptInfo } from '../../features/graph/runtime/graphExecutionProjection';
 
 defineProps<{
   open: boolean;
@@ -54,11 +52,11 @@ defineProps<{
 const emit = defineEmits<{
   approve: [];
   dismiss: [];
-  "update:advancedJson": [value: string];
-  "update:open": [value: boolean];
+  'update:advancedJson': [value: string];
+  'update:open': [value: boolean];
 }>();
 
 function onDialogUpdate(value: boolean) {
-  if (!value) emit("update:open", false);
+  if (!value) emit('update:open', false);
 }
 </script>

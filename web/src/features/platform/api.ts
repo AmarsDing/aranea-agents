@@ -4,7 +4,7 @@
  *
  * **`validateModel`** / **`inspectProviderModel`**：**`llm_provider_model/v1`**。
  */
-import type { CreateProviderModelRequest, ProviderModel } from "../../services/kratos/llm_provider_model/v1/index";
+import type { CreateProviderModelRequest, ProviderModel } from '../../services/kratos/llm_provider_model/v1/index';
 import {
   createIndustryTaxonomyService,
   createTaxonomyService,
@@ -14,15 +14,15 @@ import {
   createHookService,
   createLlmProviderModelService,
   createMonitorService,
-  createSkillService
-} from "../../services";
-import { listAvatarAssets } from "../avatar/api";
-import { asRecord, pickBool, pickOptionalBoolDefaultTrue, pickI32, pickNum, pickStr } from "../../shared/wireJson";
-import { createMcpServer, deleteMcpServer, listMcpServers, updateMcpServer } from "../mcp/api";
-import { listSkills } from "../skills/api";
-import type { Skill } from "../skills/types";
-import { listModelUsageEvents } from "../usage/api";
-import type { ModelTokenUsageEvent } from "../usage/types";
+  createSkillService,
+} from '../../services';
+import { listAvatarAssets } from '../avatar/api';
+import { asRecord, pickBool, pickOptionalBoolDefaultTrue, pickI32, pickNum, pickStr } from '../../shared/wireJson';
+import { createMcpServer, deleteMcpServer, listMcpServers, updateMcpServer } from '../mcp/api';
+import { listSkills } from '../skills/api';
+import type { Skill } from '../skills/types';
+import { listModelUsageEvents } from '../usage/api';
+import type { ModelTokenUsageEvent } from '../usage/types';
 
 export type {
   PlatformResourceName,
@@ -32,8 +32,8 @@ export type {
   ValidateModelResult,
   InspectProviderModelInput,
   InspectProviderModelResult,
-  RevealProviderCredentialsResult
-} from "./types";
+  RevealProviderCredentialsResult,
+} from './types';
 
 import type {
   PlatformResourceName,
@@ -43,8 +43,8 @@ import type {
   ValidateModelResult,
   InspectProviderModelInput,
   InspectProviderModelResult,
-  RevealProviderCredentialsResult
-} from "./types";
+  RevealProviderCredentialsResult,
+} from './types';
 
 const llmModels = createLlmProviderModelService();
 
@@ -55,50 +55,50 @@ function unsupported(op: string, resource: PlatformResourceName): Error {
 function industryTaxonomyWireToPlatform(raw: unknown): PlatformResource {
   const r = asRecord(raw);
   return {
-    id: pickStr(r, "id", "id"),
-    resource: "taxonomy-nodes",
-    key: pickStr(r, "key", "key"),
-    name: pickStr(r, "name", "name"),
-    description: pickStr(r, "description", "description"),
-    status: pickStr(r, "status", "status"),
-    enabled: pickBool(r, "enabled", "enabled"),
-    sort_order: pickI32(r, "sort_order", "sortOrder"),
-    parent_id: pickStr(r, "parent_id", "parentId"),
-    level: pickStr(r, "level", "level"),
-    agent_id: "",
-    provider: "",
-    model: "",
-    is_system: pickBool(r, "is_system", "isSystem"),
-    config_json: pickStr(r, "config_json", "configJson") || "{}",
-    metadata_json: pickStr(r, "metadata_json", "metadataJson") || "{}",
-    created_at: pickStr(r, "created_at", "createdAt"),
-    updated_at: pickStr(r, "updated_at", "updatedAt"),
-    deleted_at: pickStr(r, "deleted_at", "deletedAt")
+    id: pickStr(r, 'id', 'id'),
+    resource: 'taxonomy-nodes',
+    key: pickStr(r, 'key', 'key'),
+    name: pickStr(r, 'name', 'name'),
+    description: pickStr(r, 'description', 'description'),
+    status: pickStr(r, 'status', 'status'),
+    enabled: pickBool(r, 'enabled', 'enabled'),
+    sort_order: pickI32(r, 'sort_order', 'sortOrder'),
+    parent_id: pickStr(r, 'parent_id', 'parentId'),
+    level: pickStr(r, 'level', 'level'),
+    agent_id: '',
+    provider: '',
+    model: '',
+    is_system: pickBool(r, 'is_system', 'isSystem'),
+    config_json: pickStr(r, 'config_json', 'configJson') || '{}',
+    metadata_json: pickStr(r, 'metadata_json', 'metadataJson') || '{}',
+    created_at: pickStr(r, 'created_at', 'createdAt'),
+    updated_at: pickStr(r, 'updated_at', 'updatedAt'),
+    deleted_at: pickStr(r, 'deleted_at', 'deletedAt'),
   };
 }
 
 function taxonomyWireToPlatform(raw: unknown): PlatformResource {
   const r = asRecord(raw);
   return {
-    id: pickStr(r, "id", "id"),
-    resource: "taxonomy",
-    key: pickStr(r, "key", "key"),
-    name: pickStr(r, "name", "name"),
-    description: pickStr(r, "description", "description"),
-    status: pickStr(r, "status", "status"),
-    enabled: pickBool(r, "enabled", "enabled"),
-    sort_order: pickI32(r, "sort_order", "sortOrder"),
-    parent_id: pickStr(r, "parent_id", "parentId"),
-    level: pickStr(r, "level", "level"),
-    agent_id: "",
-    provider: "",
-    model: "",
-    is_system: pickBool(r, "is_system", "isSystem"),
-    config_json: pickStr(r, "config_json", "configJson") || "{}",
-    metadata_json: pickStr(r, "metadata_json", "metadataJson") || "{}",
-    created_at: pickStr(r, "created_at", "createdAt"),
-    updated_at: pickStr(r, "updated_at", "updatedAt"),
-    deleted_at: pickStr(r, "deleted_at", "deletedAt")
+    id: pickStr(r, 'id', 'id'),
+    resource: 'taxonomy',
+    key: pickStr(r, 'key', 'key'),
+    name: pickStr(r, 'name', 'name'),
+    description: pickStr(r, 'description', 'description'),
+    status: pickStr(r, 'status', 'status'),
+    enabled: pickBool(r, 'enabled', 'enabled'),
+    sort_order: pickI32(r, 'sort_order', 'sortOrder'),
+    parent_id: pickStr(r, 'parent_id', 'parentId'),
+    level: pickStr(r, 'level', 'level'),
+    agent_id: '',
+    provider: '',
+    model: '',
+    is_system: pickBool(r, 'is_system', 'isSystem'),
+    config_json: pickStr(r, 'config_json', 'configJson') || '{}',
+    metadata_json: pickStr(r, 'metadata_json', 'metadataJson') || '{}',
+    created_at: pickStr(r, 'created_at', 'createdAt'),
+    updated_at: pickStr(r, 'updated_at', 'updatedAt'),
+    deleted_at: pickStr(r, 'deleted_at', 'deletedAt'),
   };
 }
 
@@ -124,155 +124,154 @@ function llmProviderWireToPlatform(raw: unknown): PlatformResource {
   const r = asRecord(raw);
   const caps = asRecord(r.capabilities ?? r.Capabilities);
   return {
-    id: pickStr(r, "id", "id"),
-    resource: "llm-provider-models",
-    key: pickStr(r, "key", "key"),
-    name: pickStr(r, "name", "name"),
-    description: pickStr(r, "description", "description"),
-    status: pickStr(r, "status", "status"),
-    enabled: pickOptionalBoolDefaultTrue(r, "enabled", "enabled"),
-    sort_order: pickI32(r, "sort_order", "sortOrder"),
-    parent_id: "",
-    level: "",
-    agent_id: "",
-    provider: pickStr(r, "provider", "provider"),
-    model: pickStr(r, "model", "model"),
+    id: pickStr(r, 'id', 'id'),
+    resource: 'llm-provider-models',
+    key: pickStr(r, 'key', 'key'),
+    name: pickStr(r, 'name', 'name'),
+    description: pickStr(r, 'description', 'description'),
+    status: pickStr(r, 'status', 'status'),
+    enabled: pickOptionalBoolDefaultTrue(r, 'enabled', 'enabled'),
+    sort_order: pickI32(r, 'sort_order', 'sortOrder'),
+    parent_id: '',
+    level: '',
+    agent_id: '',
+    provider: pickStr(r, 'provider', 'provider'),
+    model: pickStr(r, 'model', 'model'),
     is_system: false,
-    config_json: pickStr(r, "config_json", "configJson") || "{}",
-    metadata_json: pickStr(r, "metadata_json", "metadataJson") || "{}",
+    config_json: pickStr(r, 'config_json', 'configJson') || '{}',
+    metadata_json: pickStr(r, 'metadata_json', 'metadataJson') || '{}',
     capabilities: {
-      text: pickBool(caps, "text", "text"),
-      vision: pickBool(caps, "vision", "vision"),
-      image: pickBool(caps, "vision", "vision"),
-      audio: pickBool(caps, "audio", "audio"),
-      file: pickBool(caps, "file", "file"),
-      tool_call: pickBool(caps, "tool_call", "toolCall"),
-      cache: pickBool(caps, "cache", "cache"),
-      thinking: pickBool(caps, "thinking", "thinking"),
-      text_only: pickBool(caps, "text_only", "textOnly")
+      text: pickBool(caps, 'text', 'text'),
+      vision: pickBool(caps, 'vision', 'vision'),
+      image: pickBool(caps, 'vision', 'vision'),
+      audio: pickBool(caps, 'audio', 'audio'),
+      file: pickBool(caps, 'file', 'file'),
+      tool_call: pickBool(caps, 'tool_call', 'toolCall'),
+      cache: pickBool(caps, 'cache', 'cache'),
+      thinking: pickBool(caps, 'thinking', 'thinking'),
+      text_only: pickBool(caps, 'text_only', 'textOnly'),
     },
-    created_at: pickStr(r, "created_at", "createdAt"),
-    updated_at: pickStr(r, "updated_at", "updatedAt"),
-    deleted_at: pickStr(r, "deleted_at", "deletedAt")
+    created_at: pickStr(r, 'created_at', 'createdAt'),
+    updated_at: pickStr(r, 'updated_at', 'updatedAt'),
+    deleted_at: pickStr(r, 'deleted_at', 'deletedAt'),
   };
 }
 
 function hookWireToPlatform(raw: unknown): PlatformResource {
   const r = asRecord(raw);
   return {
-    id: pickStr(r, "id", "id"),
-    resource: "hooks",
-    key: pickStr(r, "key", "key"),
-    name: pickStr(r, "name", "name"),
-    description: pickStr(r, "description", "description"),
-    status: pickStr(r, "status", "status"),
-    enabled: pickBool(r, "enabled", "enabled"),
-    sort_order: pickI32(r, "sort_order", "sortOrder"),
-    parent_id: "",
-    level: "",
-    agent_id: "",
-    provider: "",
-    model: "",
+    id: pickStr(r, 'id', 'id'),
+    resource: 'hooks',
+    key: pickStr(r, 'key', 'key'),
+    name: pickStr(r, 'name', 'name'),
+    description: pickStr(r, 'description', 'description'),
+    status: pickStr(r, 'status', 'status'),
+    enabled: pickBool(r, 'enabled', 'enabled'),
+    sort_order: pickI32(r, 'sort_order', 'sortOrder'),
+    parent_id: '',
+    level: '',
+    agent_id: '',
+    provider: '',
+    model: '',
     is_system: false,
-    config_json: pickStr(r, "config_json", "configJson") || "{}",
-    metadata_json: pickStr(r, "metadata_json", "metadataJson") || "{}",
-    created_at: pickStr(r, "created_at", "createdAt"),
-    updated_at: pickStr(r, "updated_at", "updatedAt"),
-    deleted_at: pickStr(r, "deleted_at", "deletedAt")
+    config_json: pickStr(r, 'config_json', 'configJson') || '{}',
+    metadata_json: pickStr(r, 'metadata_json', 'metadataJson') || '{}',
+    created_at: pickStr(r, 'created_at', 'createdAt'),
+    updated_at: pickStr(r, 'updated_at', 'updatedAt'),
+    deleted_at: pickStr(r, 'deleted_at', 'deletedAt'),
   };
 }
 
 function channelWireToPlatform(raw: unknown): PlatformResource {
   const r = asRecord(raw);
   return {
-    id: pickStr(r, "id", "id"),
-    resource: "channels",
-    key: pickStr(r, "key", "key"),
-    name: pickStr(r, "name", "name"),
-    description: pickStr(r, "description", "description"),
-    status: pickStr(r, "status", "status"),
-    enabled: pickBool(r, "enabled", "enabled"),
-    sort_order: pickI32(r, "sort_order", "sortOrder"),
-    parent_id: pickStr(r, "parent_id", "parentId"),
-    level: pickStr(r, "level", "level"),
-    agent_id: pickStr(r, "agent_id", "agentId"),
-    provider: pickStr(r, "provider", "provider"),
-    model: pickStr(r, "model", "model"),
+    id: pickStr(r, 'id', 'id'),
+    resource: 'channels',
+    key: pickStr(r, 'key', 'key'),
+    name: pickStr(r, 'name', 'name'),
+    description: pickStr(r, 'description', 'description'),
+    status: pickStr(r, 'status', 'status'),
+    enabled: pickBool(r, 'enabled', 'enabled'),
+    sort_order: pickI32(r, 'sort_order', 'sortOrder'),
+    parent_id: pickStr(r, 'parent_id', 'parentId'),
+    level: pickStr(r, 'level', 'level'),
+    agent_id: pickStr(r, 'agent_id', 'agentId'),
+    provider: pickStr(r, 'provider', 'provider'),
+    model: pickStr(r, 'model', 'model'),
     is_system: false,
-    config_json: pickStr(r, "config_json", "configJson") || "{}",
-    metadata_json: pickStr(r, "metadata_json", "metadataJson") || "{}",
-    created_at: pickStr(r, "created_at", "createdAt"),
-    updated_at: pickStr(r, "updated_at", "updatedAt"),
-    deleted_at: pickStr(r, "deleted_at", "deletedAt")
+    config_json: pickStr(r, 'config_json', 'configJson') || '{}',
+    metadata_json: pickStr(r, 'metadata_json', 'metadataJson') || '{}',
+    created_at: pickStr(r, 'created_at', 'createdAt'),
+    updated_at: pickStr(r, 'updated_at', 'updatedAt'),
+    deleted_at: pickStr(r, 'deleted_at', 'deletedAt'),
   };
 }
 
 function cronWireToPlatform(raw: unknown): PlatformResource {
   const r = asRecord(raw);
   return {
-    id: pickStr(r, "id", "id"),
-    resource: "cron-tasks",
-    key: pickStr(r, "task_key", "taskKey"),
-    name: pickStr(r, "name", "name"),
-    description: pickStr(r, "description", "description"),
-    status: pickStr(r, "status", "status"),
-    enabled: pickBool(r, "enabled", "enabled"),
-    sort_order: pickI32(r, "sort_order", "sortOrder"),
-    parent_id: "",
-    level: "",
-    agent_id: pickStr(r, "agent_id", "agentId"),
-    provider: "",
-    model: "",
+    id: pickStr(r, 'id', 'id'),
+    resource: 'cron-tasks',
+    key: pickStr(r, 'task_key', 'taskKey'),
+    name: pickStr(r, 'name', 'name'),
+    description: pickStr(r, 'description', 'description'),
+    status: pickStr(r, 'status', 'status'),
+    enabled: pickBool(r, 'enabled', 'enabled'),
+    sort_order: pickI32(r, 'sort_order', 'sortOrder'),
+    parent_id: '',
+    level: '',
+    agent_id: pickStr(r, 'agent_id', 'agentId'),
+    provider: '',
+    model: '',
     is_system: false,
-    config_json: pickStr(r, "config_json", "configJson") || "{}",
-    metadata_json: pickStr(r, "metadata_json", "metadataJson") || "{}",
-    created_at: pickStr(r, "created_at", "createdAt"),
-    updated_at: pickStr(r, "updated_at", "updatedAt"),
-    deleted_at: pickStr(r, "deleted_at", "deletedAt")
+    config_json: pickStr(r, 'config_json', 'configJson') || '{}',
+    metadata_json: pickStr(r, 'metadata_json', 'metadataJson') || '{}',
+    created_at: pickStr(r, 'created_at', 'createdAt'),
+    updated_at: pickStr(r, 'updated_at', 'updatedAt'),
+    deleted_at: pickStr(r, 'deleted_at', 'deletedAt'),
   };
 }
 
 function monitorEventWireToPlatform(raw: unknown): PlatformResource {
   const r = asRecord(raw);
-  const kind = pickStr(r, "resource", "resource");
-  const resName: PlatformResourceName =
-    kind === "monitor-traces" ? "monitor-traces" : "monitor-events";
+  const kind = pickStr(r, 'resource', 'resource');
+  const resName: PlatformResourceName = kind === 'monitor-traces' ? 'monitor-traces' : 'monitor-events';
   return {
-    id: pickStr(r, "id", "id"),
+    id: pickStr(r, 'id', 'id'),
     resource: resName,
-    key: pickStr(r, "key", "key"),
-    name: pickStr(r, "name", "name"),
-    description: pickStr(r, "description", "description"),
-    status: pickStr(r, "status", "status"),
-    enabled: pickBool(r, "enabled", "enabled"),
-    sort_order: pickI32(r, "sort_order", "sortOrder"),
-    parent_id: pickStr(r, "parent_id", "parentId"),
-    level: pickStr(r, "level", "level"),
-    agent_id: pickStr(r, "agent_id", "agentId"),
-    provider: pickStr(r, "provider", "provider"),
-    model: pickStr(r, "model", "model"),
+    key: pickStr(r, 'key', 'key'),
+    name: pickStr(r, 'name', 'name'),
+    description: pickStr(r, 'description', 'description'),
+    status: pickStr(r, 'status', 'status'),
+    enabled: pickBool(r, 'enabled', 'enabled'),
+    sort_order: pickI32(r, 'sort_order', 'sortOrder'),
+    parent_id: pickStr(r, 'parent_id', 'parentId'),
+    level: pickStr(r, 'level', 'level'),
+    agent_id: pickStr(r, 'agent_id', 'agentId'),
+    provider: pickStr(r, 'provider', 'provider'),
+    model: pickStr(r, 'model', 'model'),
     is_system: false,
-    config_json: pickStr(r, "config_json", "configJson") || "{}",
-    metadata_json: pickStr(r, "metadata_json", "metadataJson") || "{}",
-    created_at: pickStr(r, "created_at", "createdAt"),
-    updated_at: pickStr(r, "updated_at", "updatedAt"),
-    deleted_at: pickStr(r, "deleted_at", "deletedAt")
+    config_json: pickStr(r, 'config_json', 'configJson') || '{}',
+    metadata_json: pickStr(r, 'metadata_json', 'metadataJson') || '{}',
+    created_at: pickStr(r, 'created_at', 'createdAt'),
+    updated_at: pickStr(r, 'updated_at', 'updatedAt'),
+    deleted_at: pickStr(r, 'deleted_at', 'deletedAt'),
   };
 }
 
 function usageEventToPlatformTrace(e: ModelTokenUsageEvent): PlatformResource {
-  const name = [e.model_display_name || e.model_api_id, e.agent_key].filter(Boolean).join(" · ") || e.id;
+  const name = [e.model_display_name || e.model_api_id, e.agent_key].filter(Boolean).join(' · ') || e.id;
   return {
     id: e.id,
-    resource: "monitor-traces",
+    resource: 'monitor-traces',
     key: e.message_id || e.id,
     name,
-    description: e.error_message || e.status || "",
+    description: e.error_message || e.status || '',
     status: e.status,
     enabled: true,
     sort_order: 0,
-    parent_id: "",
-    level: "",
+    parent_id: '',
+    level: '',
     agent_id: e.agent_id,
     provider: e.provider_code,
     model: e.model_api_id,
@@ -281,42 +280,42 @@ function usageEventToPlatformTrace(e: ModelTokenUsageEvent): PlatformResource {
       session_id: e.session_id,
       latency_ms: e.latency_ms,
       total_tokens: e.total_tokens,
-      total_cost_micro_usd: e.total_cost_micro_usd
+      total_cost_micro_usd: e.total_cost_micro_usd,
     }),
-    metadata_json: "{}",
+    metadata_json: '{}',
     created_at: e.occurred_at,
     updated_at: e.occurred_at,
-    deleted_at: ""
+    deleted_at: '',
   };
 }
 
 function skillToPlatform(s: Skill): PlatformResource {
   return {
     id: s.id,
-    resource: "skills",
+    resource: 'skills',
     key: s.slug,
     name: s.name,
     description: s.description,
     status: s.status,
     enabled: s.enabled,
     sort_order: 0,
-    parent_id: "",
-    level: "",
-    agent_id: s.last_agent_id ?? "",
-    provider: "",
-    model: "",
+    parent_id: '',
+    level: '',
+    agent_id: s.last_agent_id ?? '',
+    provider: '',
+    model: '',
     is_system: false,
     config_json: JSON.stringify({
       tags: s.tags,
       extends_skill_id: s.extends_skill_id,
       invoke_count: s.invoke_count,
       success_count: s.success_count,
-      failure_count: s.failure_count
+      failure_count: s.failure_count,
     }),
     metadata_json: JSON.stringify(s.current_version ?? {}),
     created_at: s.created_at,
     updated_at: s.updated_at,
-    deleted_at: ""
+    deleted_at: '',
   };
 }
 
@@ -338,18 +337,18 @@ function avatarAssetToPlatform(row: {
 }): PlatformResource {
   return {
     id: row.id,
-    resource: "avatar-assets",
+    resource: 'avatar-assets',
     key: row.key,
     name: row.name,
     description: row.description,
-    status: "active",
+    status: 'active',
     enabled: true,
     sort_order: row.sort_order,
-    parent_id: "",
-    level: "",
-    agent_id: "",
-    provider: "",
-    model: "",
+    parent_id: '',
+    level: '',
+    agent_id: '',
+    provider: '',
+    model: '',
     is_system: row.is_system ?? false,
     config_json: JSON.stringify({
       mime_type: row.mime_type,
@@ -359,12 +358,12 @@ function avatarAssetToPlatform(row: {
       is_system: row.is_system,
       file_size_bytes: row.file_size_bytes,
       width_px: row.width_px,
-      height_px: row.height_px
+      height_px: row.height_px,
     }),
-    metadata_json: "{}",
+    metadata_json: '{}',
     created_at: row.created_at,
     updated_at: row.created_at,
-    deleted_at: ""
+    deleted_at: '',
   };
 }
 
@@ -372,14 +371,14 @@ function providerInputToCreateBody(payload: PlatformResourceInput): CreateProvid
   return {
     key: payload.key,
     name: payload.name,
-    description: payload.description ?? "",
-    status: payload.status ?? "active",
+    description: payload.description ?? '',
+    status: payload.status ?? 'active',
     enabled: payload.enabled ?? true,
     sortOrder: payload.sort_order ?? 0,
-    provider: payload.provider ?? "",
-    model: payload.model ?? "",
-    configJson: payload.config_json ?? "{}",
-    metadataJson: payload.metadata_json ?? "{}"
+    provider: payload.provider ?? '',
+    model: payload.model ?? '',
+    configJson: payload.config_json ?? '{}',
+    metadataJson: payload.metadata_json ?? '{}',
   };
 }
 
@@ -388,7 +387,7 @@ function providerModelConfigJsonFromWire(base: ProviderModel): string | undefine
   const v = r.configJson ?? r.config_json;
   if (v === undefined || v === null) return undefined;
   const s = String(v);
-  return s === "" ? undefined : s;
+  return s === '' ? undefined : s;
 }
 
 function providerModelMetadataJsonFromWire(base: ProviderModel): string | undefined {
@@ -396,7 +395,7 @@ function providerModelMetadataJsonFromWire(base: ProviderModel): string | undefi
   const v = r.metadataJson ?? r.metadata_json;
   if (v === undefined || v === null) return undefined;
   const s = String(v);
-  return s === "" ? undefined : s;
+  return s === '' ? undefined : s;
 }
 
 function mergeProviderModel(base: ProviderModel, patch: Partial<PlatformResourceInput>): ProviderModel {
@@ -412,64 +411,68 @@ function mergeProviderModel(base: ProviderModel, patch: Partial<PlatformResource
     sortOrder: patch.sort_order ?? base.sortOrder,
     provider: patch.provider ?? base.provider,
     model: patch.model ?? base.model,
-    configJson: patch.config_json ?? baseConfig ?? base.configJson ?? "{}",
-    metadataJson: patch.metadata_json ?? baseMeta ?? base.metadataJson ?? "{}",
+    configJson: patch.config_json ?? baseConfig ?? base.configJson ?? '{}',
+    metadataJson: patch.metadata_json ?? baseMeta ?? base.metadataJson ?? '{}',
     createdAt: base.createdAt,
     updatedAt: base.updatedAt,
-    deletedAt: base.deletedAt
+    deletedAt: base.deletedAt,
   };
 }
 
 export async function listPlatformResources(resource: PlatformResourceName): Promise<PlatformResource[]> {
   switch (resource) {
-    case "avatar-assets": {
+    case 'avatar-assets': {
       const rows = await listAvatarAssets();
       return rows.map(avatarAssetToPlatform);
     }
-    case "taxonomy-nodes": {
+    case 'taxonomy-nodes': {
       const svc = createIndustryTaxonomyService();
       const res = await svc.ListIndustryTaxonomies({});
       return (res.items ?? []).map((row: unknown) => industryTaxonomyWireToPlatform(row));
     }
-    case "taxonomy": {
+    case 'taxonomy': {
       const svc = createTaxonomyService();
       const res = await svc.ListTaxonomy({});
       return (res.items ?? []).map((row: unknown) => taxonomyWireToPlatform(row));
     }
-    case "llm-provider-models": {
+    case 'llm-provider-models': {
       const res = await llmModels.ListProviderModels({});
       return (res.items ?? []).map((row: unknown) => llmProviderWireToPlatform(row));
     }
-    case "hooks": {
+    case 'hooks': {
       const svc = createHookService();
       const res = await svc.ListHooks({});
       return (res.items ?? []).map((row: unknown) => hookWireToPlatform(row));
     }
-    case "channels": {
+    case 'channels': {
       const svc = createChannelService();
       const res = await svc.ListChannels({});
       return (res.items ?? []).map((row: unknown) => channelWireToPlatform(row));
     }
-    case "mcp-servers": {
+    case 'mcp-servers': {
       return listMcpServers();
     }
-    case "skills": {
+    case 'skills': {
       const { items } = await listSkills({ page: 1, page_size: 500 });
       return items.map(skillToPlatform);
     }
-    case "cron-tasks": {
+    case 'cron-tasks': {
       const svc = createCronService();
       const res = await svc.ListCronTasks({});
       return (res.items ?? []).map((row: unknown) => cronWireToPlatform(row));
     }
-    case "monitor-events": {
+    case 'monitor-events': {
       const svc = createMonitorService();
       const res = await svc.ListMonitorEvents({
-        limit: undefined, offset: undefined, eventType: undefined, agentId: undefined, status: undefined
+        limit: undefined,
+        offset: undefined,
+        eventType: undefined,
+        agentId: undefined,
+        status: undefined,
       });
       return (res.items ?? []).map((row: unknown) => monitorEventWireToPlatform(row));
     }
-    case "monitor-traces": {
+    case 'monitor-traces': {
       const events = await listModelUsageEvents({ limit: 200 });
       return events.map(usageEventToPlatformTrace);
     }
@@ -478,8 +481,10 @@ export async function listPlatformResources(resource: PlatformResourceName): Pro
   }
 }
 
-export async function listPlatformResourceTree(resource: "taxonomy-nodes" | "taxonomy"): Promise<PlatformResourceTreeNode[]> {
-  if (resource === "taxonomy") {
+export async function listPlatformResourceTree(
+  resource: 'taxonomy-nodes' | 'taxonomy',
+): Promise<PlatformResourceTreeNode[]> {
+  if (resource === 'taxonomy') {
     const svc = createTaxonomyService();
     const res = await svc.ListTaxonomyTree({});
     const items = res.items ?? [];
@@ -493,86 +498,86 @@ export async function listPlatformResourceTree(resource: "taxonomy-nodes" | "tax
 
 export async function createPlatformResource(
   resource: PlatformResourceName,
-  payload: PlatformResourceInput
+  payload: PlatformResourceInput,
 ): Promise<PlatformResource> {
   switch (resource) {
-    case "avatar-assets":
-      throw unsupported("create", resource);
-    case "taxonomy-nodes": {
+    case 'avatar-assets':
+      throw unsupported('create', resource);
+    case 'taxonomy-nodes': {
       const svc = createIndustryTaxonomyService();
       const row = await svc.CreateIndustryTaxonomy({
         key: payload.key,
         name: payload.name,
         description: payload.description,
-        status: payload.status ?? "active",
+        status: payload.status ?? 'active',
         enabled: payload.enabled ?? true,
         sortOrder: payload.sort_order ?? 0,
         parentId: payload.parent_id || undefined,
         level: payload.level || undefined,
         workspaceId: undefined,
         ownerUserId: undefined,
-        configJson: payload.config_json ?? "{}",
-        metadataJson: payload.metadata_json ?? "{}"
+        configJson: payload.config_json ?? '{}',
+        metadataJson: payload.metadata_json ?? '{}',
       });
       return industryTaxonomyWireToPlatform(row);
     }
-    case "taxonomy": {
+    case 'taxonomy': {
       const svc = createTaxonomyService();
       const row = await svc.CreateTaxonomy({
         key: payload.key,
         name: payload.name,
         description: payload.description,
-        status: payload.status ?? "active",
+        status: payload.status ?? 'active',
         enabled: payload.enabled ?? true,
         sortOrder: payload.sort_order ?? 0,
         parentId: payload.parent_id || undefined,
         level: payload.level || undefined,
         workspaceId: undefined,
         ownerUserId: undefined,
-        configJson: payload.config_json ?? "{}",
-        metadataJson: payload.metadata_json ?? "{}"
+        configJson: payload.config_json ?? '{}',
+        metadataJson: payload.metadata_json ?? '{}',
       });
       return taxonomyWireToPlatform(row);
     }
-    case "llm-provider-models": {
+    case 'llm-provider-models': {
       const row = await llmModels.CreateProviderModel(providerInputToCreateBody(payload));
       return llmProviderWireToPlatform(row);
     }
-    case "hooks": {
+    case 'hooks': {
       const svc = createHookService();
       const row = await svc.CreateHook({
         key: payload.key,
         name: payload.name,
         description: payload.description,
-        status: payload.status ?? "active",
+        status: payload.status ?? 'active',
         enabled: payload.enabled ?? true,
         sortOrder: payload.sort_order ?? 0,
-        configJson: payload.config_json ?? "{}",
-        metadataJson: payload.metadata_json ?? "{}"
+        configJson: payload.config_json ?? '{}',
+        metadataJson: payload.metadata_json ?? '{}',
       });
       return hookWireToPlatform(row);
     }
-    case "channels": {
+    case 'channels': {
       const svc = createChannelService();
       const row = await svc.CreateChannel({
         key: payload.key,
         name: payload.name,
-        description: payload.description ?? "",
-        status: payload.status ?? "active",
+        description: payload.description ?? '',
+        status: payload.status ?? 'active',
         enabled: payload.enabled ?? true,
         sortOrder: payload.sort_order ?? 0,
-        configJson: payload.config_json ?? "{}",
-        metadataJson: payload.metadata_json ?? "{}",
-        credentials: []
+        configJson: payload.config_json ?? '{}',
+        metadataJson: payload.metadata_json ?? '{}',
+        credentials: [],
       });
       return channelWireToPlatform(row);
     }
-    case "mcp-servers": {
+    case 'mcp-servers': {
       return createMcpServer(payload);
     }
-    case "skills":
+    case 'skills':
       throw new Error('Create skill via Skills page or ZIP import (`features/skills/api`).');
-    case "cron-tasks": {
+    case 'cron-tasks': {
       const svc = createCronService();
       const row = await svc.CreateCronTask({
         taskKey: payload.key,
@@ -583,31 +588,31 @@ export async function createPlatformResource(
         sortOrder: payload.sort_order,
         agentId: payload.agent_id,
         configJson: payload.config_json,
-        metadataJson: payload.metadata_json
+        metadataJson: payload.metadata_json,
       });
       return cronWireToPlatform(row);
     }
-    case "monitor-events":
-    case "monitor-traces":
-      throw unsupported("create", resource);
+    case 'monitor-events':
+    case 'monitor-traces':
+      throw unsupported('create', resource);
     default:
-      throw unsupported("create", resource);
+      throw unsupported('create', resource);
   }
 }
 
 export async function updatePlatformResource(
   resource: PlatformResourceName,
   id: string,
-  payload: Partial<PlatformResourceInput>
+  payload: Partial<PlatformResourceInput>,
 ): Promise<PlatformResource> {
   switch (resource) {
-    case "avatar-assets":
-      throw unsupported("update", resource);
-    case "taxonomy-nodes": {
+    case 'avatar-assets':
+      throw unsupported('update', resource);
+    case 'taxonomy-nodes': {
       const svc = createIndustryTaxonomyService();
       const cur = await svc.GetIndustryTaxonomy({ id });
-      const curIsSystem = pickBool(asRecord(cur), "is_system", "isSystem");
-      const curEnabled = pickBool(asRecord(cur), "enabled", "enabled");
+      const curIsSystem = pickBool(asRecord(cur), 'is_system', 'isSystem');
+      const curEnabled = pickBool(asRecord(cur), 'enabled', 'enabled');
       const merged = {
         id: cur.id,
         key: payload.key ?? cur.key,
@@ -625,16 +630,16 @@ export async function updatePlatformResource(
         metadataJson: payload.metadata_json ?? cur.metadataJson,
         createdAt: cur.createdAt,
         updatedAt: cur.updatedAt,
-        deletedAt: cur.deletedAt
+        deletedAt: cur.deletedAt,
       };
       const row = await svc.UpdateIndustryTaxonomy({ id, industryTaxonomy: merged });
       return industryTaxonomyWireToPlatform(row);
     }
-    case "taxonomy": {
+    case 'taxonomy': {
       const svc = createTaxonomyService();
       const cur = await svc.GetTaxonomy({ id });
-      const curIsSystem = pickBool(asRecord(cur), "is_system", "isSystem");
-      const curEnabled = pickBool(asRecord(cur), "enabled", "enabled");
+      const curIsSystem = pickBool(asRecord(cur), 'is_system', 'isSystem');
+      const curEnabled = pickBool(asRecord(cur), 'enabled', 'enabled');
       const merged = {
         id: cur.id,
         key: payload.key ?? cur.key,
@@ -652,18 +657,18 @@ export async function updatePlatformResource(
         metadataJson: payload.metadata_json ?? cur.metadataJson,
         createdAt: cur.createdAt,
         updatedAt: cur.updatedAt,
-        deletedAt: cur.deletedAt
+        deletedAt: cur.deletedAt,
       };
       const row = await svc.UpdateTaxonomy({ id, node: merged });
       return taxonomyWireToPlatform(row);
     }
-    case "llm-provider-models": {
+    case 'llm-provider-models': {
       const cur = (await llmModels.GetProviderModel({ id })) as ProviderModel;
       const merged = mergeProviderModel(cur, payload);
       const row = await llmModels.UpdateProviderModel({ id, providerModel: merged });
       return llmProviderWireToPlatform(row);
     }
-    case "hooks": {
+    case 'hooks': {
       const svc = createHookService();
       const cur = await svc.GetHook({ id });
       const merged = {
@@ -678,12 +683,12 @@ export async function updatePlatformResource(
         metadataJson: payload.metadata_json ?? cur.metadataJson,
         createdAt: cur.createdAt,
         updatedAt: cur.updatedAt,
-        deletedAt: cur.deletedAt
+        deletedAt: cur.deletedAt,
       };
       const row = await svc.UpdateHook({ id, hook: merged });
       return hookWireToPlatform(row);
     }
-    case "channels": {
+    case 'channels': {
       const svc = createChannelService();
       const cur = await svc.GetChannel({ id });
       const row = await svc.UpdateChannel({
@@ -696,16 +701,16 @@ export async function updatePlatformResource(
         sortOrder: payload.sort_order ?? cur.sortOrder,
         configJson: payload.config_json ?? cur.configJson,
         metadataJson: payload.metadata_json ?? cur.metadataJson,
-        credentials: []
+        credentials: [],
       });
       return channelWireToPlatform(row);
     }
-    case "mcp-servers": {
+    case 'mcp-servers': {
       return updateMcpServer(id, payload);
     }
-    case "skills":
+    case 'skills':
       throw new Error('Update skill via Skills management UI (`features/skills/api`).');
-    case "cron-tasks": {
+    case 'cron-tasks': {
       const svc = createCronService();
       const cur = await svc.GetCronTask({ id });
       const row = await svc.UpdateCronTask({
@@ -723,76 +728,76 @@ export async function updatePlatformResource(
           metadataJson: payload.metadata_json ?? cur.metadataJson,
           createdAt: cur.createdAt,
           updatedAt: cur.updatedAt,
-          deletedAt: cur.deletedAt
-        }
+          deletedAt: cur.deletedAt,
+        },
       });
       return cronWireToPlatform(row);
     }
-    case "monitor-events":
-    case "monitor-traces":
-      throw unsupported("update", resource);
+    case 'monitor-events':
+    case 'monitor-traces':
+      throw unsupported('update', resource);
     default:
-      throw unsupported("update", resource);
+      throw unsupported('update', resource);
   }
 }
 
 export async function deletePlatformResource(resource: PlatformResourceName, id: string): Promise<void> {
   switch (resource) {
-    case "avatar-assets": {
+    case 'avatar-assets': {
       const svc = createAvatarService();
       await svc.DeleteAvatarAsset({ id });
       return;
     }
-    case "taxonomy-nodes": {
+    case 'taxonomy-nodes': {
       const svc = createIndustryTaxonomyService();
       await svc.DeleteIndustryTaxonomy({ id });
       return;
     }
-    case "taxonomy": {
+    case 'taxonomy': {
       const svc = createTaxonomyService();
       await svc.DeleteTaxonomy({ id });
       return;
     }
-    case "llm-provider-models": {
+    case 'llm-provider-models': {
       await llmModels.DeleteProviderModel({ id });
       return;
     }
-    case "hooks": {
+    case 'hooks': {
       const svc = createHookService();
       await svc.DeleteHook({ id });
       return;
     }
-    case "channels": {
+    case 'channels': {
       const svc = createChannelService();
       await svc.DeleteChannel({ id });
       return;
     }
-    case "mcp-servers": {
+    case 'mcp-servers': {
       await deleteMcpServer(id);
       return;
     }
-    case "skills": {
+    case 'skills': {
       const svc = createSkillService();
       await svc.DeleteSkill({ id });
       return;
     }
-    case "cron-tasks": {
+    case 'cron-tasks': {
       const svc = createCronService();
       await svc.DeleteCronTask({ id });
       return;
     }
-    case "monitor-events":
-    case "monitor-traces":
-      throw unsupported("delete", resource);
+    case 'monitor-events':
+    case 'monitor-traces':
+      throw unsupported('delete', resource);
     default:
-      throw unsupported("delete", resource);
+      throw unsupported('delete', resource);
   }
 }
 
 export async function validateModel(provider: string, model: string): Promise<ValidateModelResult> {
   const raw = await llmModels.ValidateProviderPair({ provider, model });
   const r = asRecord(raw);
-  return { ok: pickBool(r, "ok", "ok"), message: pickStr(r, "message", "message") };
+  return { ok: pickBool(r, 'ok', 'ok'), message: pickStr(r, 'message', 'message') };
 }
 
 export async function revealProviderModelCredentials(id: string): Promise<RevealProviderCredentialsResult> {
@@ -801,17 +806,17 @@ export async function revealProviderModelCredentials(id: string): Promise<Reveal
   const haRaw = r.ha_candidates ?? r.haCandidates;
   const haList = Array.isArray(haRaw) ? haRaw : [];
   return {
-    api_key: pickStr(r, "api_key", "apiKey"),
-    secret_key: pickStr(r, "secret_key", "secretKey"),
-    has_api_key: pickBool(r, "has_api_key", "hasApiKey"),
-    has_secret_key: pickBool(r, "has_secret_key", "hasSecretKey"),
+    api_key: pickStr(r, 'api_key', 'apiKey'),
+    secret_key: pickStr(r, 'secret_key', 'secretKey'),
+    has_api_key: pickBool(r, 'has_api_key', 'hasApiKey'),
+    has_secret_key: pickBool(r, 'has_secret_key', 'hasSecretKey'),
     ha_candidates: haList.map((item) => {
       const row = asRecord(item);
       return {
-        name: pickStr(row, "name", "name"),
-        api_key: pickStr(row, "api_key", "apiKey")
+        name: pickStr(row, 'name', 'name'),
+        api_key: pickStr(row, 'api_key', 'apiKey'),
       };
-    })
+    }),
   };
 }
 
@@ -826,37 +831,41 @@ export async function inspectProviderModel(payload: InspectProviderModelInput): 
     variant: payload.variant,
     secretId: payload.secret_id,
     secretKey: payload.secret_key,
-    awsRegion: payload.aws_region
+    awsRegion: payload.aws_region,
   });
   const r = asRecord(raw);
   return {
-    ok: pickBool(r, "ok", "ok"),
-    message: pickStr(r, "message", "message"),
-    provider_code: pickStr(r, "provider_code", "providerCode"),
-    provider_type: pickStr(r, "provider_type", "providerType"),
-    model_api_id: pickStr(r, "model_api_id", "modelApiId"),
-    model_display_name: pickStr(r, "model_display_name", "modelDisplayName"),
-    model_size_label: pickStr(r, "model_size_label", "modelSizeLabel"),
-    context_window_k: pickNum(r, "context_window_k", "contextWindowK"),
-    max_output_tokens: pickNum(r, "max_output_tokens", "maxOutputTokens"),
-    input_price_micro_usd_per_1k: pickNum(r, "input_price_micro_usd_per_1k", "inputPriceMicroUsdPer1k"),
-    output_price_micro_usd_per_1k: pickNum(r, "output_price_micro_usd_per_1k", "outputPriceMicroUsdPer1k"),
-    cached_input_price_micro_usd_per_1k: pickNum(r, "cached_input_price_micro_usd_per_1k", "cachedInputPriceMicroUsdPer1k"),
-    reasoning_price_micro_usd_per_1k: pickNum(r, "reasoning_price_micro_usd_per_1k", "reasoningPriceMicroUsdPer1k"),
-    embedding_price_micro_usd_per_1k: pickNum(r, "embedding_price_micro_usd_per_1k", "embeddingPriceMicroUsdPer1k"),
-    source: pickStr(r, "source", "source"),
-    raw_metadata_json: pickStr(r, "raw_metadata_json", "rawMetadataJson"),
-    variant: pickStr(r, "variant", "variant"),
-    enable_token_tailoring: pickBool(r, "enable_token_tailoring", "enableTokenTailoring"),
-    supports_cache: pickBool(r, "supports_cache", "supportsCache"),
-    supports_thinking: pickBool(r, "supports_thinking", "supportsThinking")
+    ok: pickBool(r, 'ok', 'ok'),
+    message: pickStr(r, 'message', 'message'),
+    provider_code: pickStr(r, 'provider_code', 'providerCode'),
+    provider_type: pickStr(r, 'provider_type', 'providerType'),
+    model_api_id: pickStr(r, 'model_api_id', 'modelApiId'),
+    model_display_name: pickStr(r, 'model_display_name', 'modelDisplayName'),
+    model_size_label: pickStr(r, 'model_size_label', 'modelSizeLabel'),
+    context_window_k: pickNum(r, 'context_window_k', 'contextWindowK'),
+    max_output_tokens: pickNum(r, 'max_output_tokens', 'maxOutputTokens'),
+    input_price_micro_usd_per_1k: pickNum(r, 'input_price_micro_usd_per_1k', 'inputPriceMicroUsdPer1k'),
+    output_price_micro_usd_per_1k: pickNum(r, 'output_price_micro_usd_per_1k', 'outputPriceMicroUsdPer1k'),
+    cached_input_price_micro_usd_per_1k: pickNum(
+      r,
+      'cached_input_price_micro_usd_per_1k',
+      'cachedInputPriceMicroUsdPer1k',
+    ),
+    reasoning_price_micro_usd_per_1k: pickNum(r, 'reasoning_price_micro_usd_per_1k', 'reasoningPriceMicroUsdPer1k'),
+    embedding_price_micro_usd_per_1k: pickNum(r, 'embedding_price_micro_usd_per_1k', 'embeddingPriceMicroUsdPer1k'),
+    source: pickStr(r, 'source', 'source'),
+    raw_metadata_json: pickStr(r, 'raw_metadata_json', 'rawMetadataJson'),
+    variant: pickStr(r, 'variant', 'variant'),
+    enable_token_tailoring: pickBool(r, 'enable_token_tailoring', 'enableTokenTailoring'),
+    supports_cache: pickBool(r, 'supports_cache', 'supportsCache'),
+    supports_thinking: pickBool(r, 'supports_thinking', 'supportsThinking'),
   };
 }
 
 /** @deprecated 请从 `features/avatar/api` 导入 */
-export type { AvatarAsset } from "../avatar/api";
+export type { AvatarAsset } from '../avatar/api';
 /** @deprecated 请从 `features/avatar/api` 导入 */
-export { listAvatarAssets, uploadAvatarAsset } from "../avatar/api";
+export { listAvatarAssets, uploadAvatarAsset } from '../avatar/api';
 
 export async function reorderTaxonomy(ids: string[]): Promise<void> {
   const svc = createTaxonomyService();

@@ -8,7 +8,7 @@
 </template>
 
 <script setup lang="ts">
-import type { BulkProgress } from "../../features/session/types";
+import type { BulkProgress } from '../../features/session/types';
 
 defineProps<{
   progress: BulkProgress;

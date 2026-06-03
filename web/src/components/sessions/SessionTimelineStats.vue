@@ -15,7 +15,7 @@
 </template>
 
 <script setup lang="ts">
-import type { TimelineStat } from "./sessionTimelineUi";
+import type { TimelineStat } from './sessionTimelineUi';
 
 defineProps<{
   stats: TimelineStat[];

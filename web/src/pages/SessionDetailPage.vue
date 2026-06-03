@@ -21,15 +21,29 @@
         <div class="col">
           <div class="row items-center q-gutter-sm">
             <div class="text-h5" style="color: var(--color-text-primary)">{{ session.title || '未命名会话' }}</div>
-            <q-chip dense :color="ownerChipColor(session.owner_type)" text-color="white">{{ ownerLabel(session.owner_type) }}</q-chip>
-            <SessionStatusBadge :status="session.status" :status-reason="session.status_reason" :status-changed-at="session.status_changed_at" />
+            <q-chip dense :color="ownerChipColor(session.owner_type)" text-color="white">{{
+              ownerLabel(session.owner_type)
+            }}</q-chip>
+            <SessionStatusBadge
+              :status="session.status"
+              :status-reason="session.status_reason"
+              :status-changed-at="session.status_changed_at"
+            />
           </div>
           <div class="text-caption text-grey-7 q-mt-xs">
-            {{ session.id }} · 创建 {{ formatSessionDate(session.created_at) }} · 最后活跃 {{ formatSessionDate(session.last_message_at || session.updated_at) }}
+            {{ session.id }} · 创建 {{ formatSessionDate(session.created_at) }} · 最后活跃
+            {{ formatSessionDate(session.last_message_at || session.updated_at) }}
           </div>
         </div>
         <div class="row q-gutter-sm">
-          <q-btn-dropdown outline rounded icon="download" label="导出" class="sessions-btn-accent-outline" :loading="exporting">
+          <q-btn-dropdown
+            outline
+            rounded
+            icon="download"
+            label="导出"
+            class="sessions-btn-accent-outline"
+            :loading="exporting"
+          >
             <q-list dense>
               <q-item v-close-popup clickable @click="handleExport('markdown')">
                 <q-item-section avatar><q-icon name="description" /></q-item-section>
@@ -41,9 +55,32 @@
               </q-item>
             </q-list>
           </q-btn-dropdown>
-          <q-btn v-if="!!session.archived_at" outline rounded icon="restore" label="恢复" class="sessions-btn-accent-outline" @click="handleRestore" />
-          <q-btn outline rounded icon="chat" label="继续会话" class="sessions-btn-accent-outline" :to="{ name: 'chat', query: { session: session.id } }" />
-          <q-btn flat rounded icon="archive" label="归档" class="sessions-btn-ghost" :disable="!!session.archived_at" @click="handleArchive" />
+          <q-btn
+            v-if="!!session.archived_at"
+            outline
+            rounded
+            icon="restore"
+            label="恢复"
+            class="sessions-btn-accent-outline"
+            @click="handleRestore"
+          />
+          <q-btn
+            outline
+            rounded
+            icon="chat"
+            label="继续会话"
+            class="sessions-btn-accent-outline"
+            :to="{ name: 'chat', query: { session: session.id } }"
+          />
+          <q-btn
+            flat
+            rounded
+            icon="archive"
+            label="归档"
+            class="sessions-btn-ghost"
+            :disable="!!session.archived_at"
+            @click="handleArchive"
+          />
         </div>
       </div>
 
@@ -51,9 +88,16 @@
         <q-card-section class="row q-col-gutter-md">
           <div class="col-12 col-md-4">
             <div class="text-caption text-grey-7">Context</div>
-            <q-linear-progress rounded size="12px" :value="ratioValue(session.context_used_ratio)" :color="contextProgressColor(session.context_status)" class="q-mt-sm" />
+            <q-linear-progress
+              rounded
+              size="12px"
+              :value="ratioValue(session.context_used_ratio)"
+              :color="contextProgressColor(session.context_status)"
+              class="q-mt-sm"
+            />
             <div class="text-caption text-grey-7 q-mt-xs">
-              当前 {{ formatPercent(session.context_used_ratio) }} · 最高 {{ formatPercent(session.max_context_used_ratio) }}
+              当前 {{ formatPercent(session.context_used_ratio) }} · 最高
+              {{ formatPercent(session.max_context_used_ratio) }}
             </div>
           </div>
           <div class="col-6 col-md-2">
@@ -70,12 +114,22 @@
           </div>
           <div class="col-6 col-md-2">
             <div class="text-caption text-grey-7">费用</div>
-            <div class="text-h6" style="color: var(--color-text-primary)">{{ formatCostMicroUsd(session.total_cost_micro_usd) }}</div>
+            <div class="text-h6" style="color: var(--color-text-primary)">
+              {{ formatCostMicroUsd(session.total_cost_micro_usd) }}
+            </div>
           </div>
         </q-card-section>
       </q-card>
 
-      <q-tabs v-model="activeTab" dense class="text-grey-7" active-color="primary" indicator-color="primary" align="left" narrow-indicator>
+      <q-tabs
+        v-model="activeTab"
+        dense
+        class="text-grey-7"
+        active-color="primary"
+        indicator-color="primary"
+        align="left"
+        narrow-indicator
+      >
         <q-tab name="turns" icon="sync_alt" label="Turns" />
         <q-tab name="runs" icon="play_circle" label="Runs" />
         <q-tab v-if="showParticipants" name="participants" icon="groups" label="Participants" />
@@ -138,15 +192,15 @@ import {
   formatSessionDate,
   ownerChipColor,
   ownerLabel,
-  ratioValue
-} from "../components/sessions/sessionUi";
-import SessionStatusBadge from "../components/sessions/SessionStatusBadge.vue";
-import SessionTurnsPanel from "../components/sessions/SessionTurnsPanel.vue";
-import SessionRunsPanel from "../components/sessions/SessionRunsPanel.vue";
-import SessionParticipantsPanel from "../components/sessions/SessionParticipantsPanel.vue";
-import SessionMessagesPanel from "../components/sessions/SessionMessagesPanel.vue";
-import SessionTimelinePanel from "../components/sessions/SessionTimelinePanel.vue";
-import { useSessionDetailPage } from "../features/session/useSessionDetailPage";
+  ratioValue,
+} from '../components/sessions/sessionUi';
+import SessionStatusBadge from '../components/sessions/SessionStatusBadge.vue';
+import SessionTurnsPanel from '../components/sessions/SessionTurnsPanel.vue';
+import SessionRunsPanel from '../components/sessions/SessionRunsPanel.vue';
+import SessionParticipantsPanel from '../components/sessions/SessionParticipantsPanel.vue';
+import SessionMessagesPanel from '../components/sessions/SessionMessagesPanel.vue';
+import SessionTimelinePanel from '../components/sessions/SessionTimelinePanel.vue';
+import { useSessionDetailPage } from '../features/session/useSessionDetailPage';
 
 const {
   router,
@@ -160,8 +214,6 @@ const {
   handleArchive,
   handleRestore,
   handleExport,
-  timelinePanel
+  timelinePanel,
 } = useSessionDetailPage();
-
-
 </script>

@@ -4,7 +4,15 @@
 <template>
   <div class="app-grid-span-full">
     <div class="section-label q-mb-sm">目标类型</div>
-    <q-btn-toggle v-model="form.target_type" spread no-caps unelevated toggle-color="primary" class="cron-btn-toggle" :options="cronTargetToggleOptions" />
+    <q-btn-toggle
+      v-model="form.target_type"
+      spread
+      no-caps
+      unelevated
+      toggle-color="primary"
+      class="cron-btn-toggle"
+      :options="cronTargetToggleOptions"
+    />
   </div>
 
   <q-select
@@ -35,13 +43,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { Agent } from "../../features/agents/types";
-import type { CronTaskFormValue } from "../../features/cron/types";
-import type { Team } from "../../features/teams/types";
-import { cronAgentSelectOptions, cronTargetToggleOptions, cronTeamRule, cronTeamSelectOptions } from "./cronTaskUtils";
+import { computed } from 'vue';
+import type { Agent } from '../../features/agents/types';
+import type { CronTaskFormValue } from '../../features/cron/types';
+import type { Team } from '../../features/teams/types';
+import { cronAgentSelectOptions, cronTargetToggleOptions, cronTeamRule, cronTeamSelectOptions } from './cronTaskUtils';
 
-const form = defineModel<CronTaskFormValue>("form", { required: true });
+const form = defineModel<CronTaskFormValue>('form', { required: true });
 
 const props = defineProps<{
   agents: Agent[];

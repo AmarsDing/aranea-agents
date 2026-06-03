@@ -1,5 +1,5 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
   listMcpServers,
   createMcpServer,
@@ -11,11 +11,16 @@ import {
   upsertMcpUserCredential,
   deleteMcpUserCredential,
   type PlatformResource,
-  type PlatformResourceInput
-} from "../../features/mcp/api";
-import type { McpServerTestResult, McpServerValidateResult, McpUserCredential, McpUserCredentialInput } from "../../features/mcp/types";
+  type PlatformResourceInput,
+} from '../../features/mcp/api';
+import type {
+  McpServerTestResult,
+  McpServerValidateResult,
+  McpUserCredential,
+  McpUserCredentialInput,
+} from '../../features/mcp/types';
 
-export const useMcpStore = defineStore("mcp", () => {
+export const useMcpStore = defineStore('mcp', () => {
   const servers = ref<PlatformResource[]>([]);
   const loading = ref(false);
 
@@ -76,6 +81,6 @@ export const useMcpStore = defineStore("mcp", () => {
     validate,
     fetchUserCredentials,
     saveUserCredential,
-    removeUserCredential
+    removeUserCredential,
   };
 });

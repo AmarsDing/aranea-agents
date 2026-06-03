@@ -10,8 +10,8 @@
 </template>
 
 <script setup lang="ts">
-import GraphContextMenu from "./GraphContextMenu.vue";
-import type { ContextMenuItem } from "./GraphContextMenu.vue";
+import GraphContextMenu from './GraphContextMenu.vue';
+import type { ContextMenuItem } from './GraphContextMenu.vue';
 
 defineProps<{
   visible: boolean;

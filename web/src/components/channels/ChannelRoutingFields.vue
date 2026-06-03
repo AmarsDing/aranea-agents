@@ -4,7 +4,7 @@
 <template>
   <div class="channel-routing-fields">
     <div class="app-grid-span-full">
-      <div class="section-label q-mb-sm">{{ t("channelEditor.routingTargetLabel") }}</div>
+      <div class="section-label q-mb-sm">{{ t('channelEditor.routingTargetLabel') }}</div>
       <q-btn-toggle
         v-model="targetType"
         spread
@@ -34,7 +34,7 @@
         :disable="loading || !agentOptions.length"
         :placeholder="t('channelEditor.routingAgentPlaceholder')"
       />
-      <span v-else class="text-grey-7">{{ t("channelEditor.routingAgentDisabledHint") }}</span>
+      <span v-else class="text-grey-7">{{ t('channelEditor.routingAgentDisabledHint') }}</span>
       <q-banner
         v-if="targetType === 'agent' && agentId && routingAgentProvider && routingAgentModel"
         dense
@@ -43,17 +43,17 @@
         :class="routingAgentModelBannerClass"
       >
         <template v-if="routingAgentModelChecking">
-          {{ t("channelEditor.routingAgentModelChecking") }}
+          {{ t('channelEditor.routingAgentModelChecking') }}
         </template>
         <template v-else-if="routingAgentModelOk === true">
-          {{ t("channelEditor.routingAgentModelOk", { provider: routingAgentProvider, model: routingAgentModel }) }}
+          {{ t('channelEditor.routingAgentModelOk', { provider: routingAgentProvider, model: routingAgentModel }) }}
         </template>
         <template v-else-if="routingAgentModelOk === false">
           {{
-            t("channelEditor.routingAgentModelFail", {
+            t('channelEditor.routingAgentModelFail', {
               provider: routingAgentProvider,
               model: routingAgentModel,
-              detail: routingAgentModelMessage || t("channelEditor.routingAgentModelFailDefault")
+              detail: routingAgentModelMessage || t('channelEditor.routingAgentModelFailDefault'),
             })
           }}
         </template>
@@ -94,44 +94,40 @@
         :disable="loading || !teamOptions.length"
         :placeholder="t('channelEditor.routingTeamPlaceholder')"
       />
-      <span v-else class="text-grey-7">{{ t("channelEditor.routingTeamDisabledHint") }}</span>
+      <span v-else class="text-grey-7">{{ t('channelEditor.routingTeamDisabledHint') }}</span>
     </channel-config-row>
 
     <div class="app-grid-span-full q-mt-md">
-      <channel-routing-rules-editor
-        v-model="routingRules"
-        :agents="agents"
-        :teams="teams"
-      />
+      <channel-routing-rules-editor v-model="routingRules" :agents="agents" :teams="teams" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { useI18n } from "vue-i18n";
-import ChannelConfigRow from "./ChannelConfigRow.vue";
-import ChannelRoutingRulesEditor, { type ChannelRoutingRulePayload } from "./ChannelRoutingRulesEditor.vue";
-import type { Agent } from "../../features/agents/types";
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import ChannelConfigRow from './ChannelConfigRow.vue';
+import ChannelRoutingRulesEditor, { type ChannelRoutingRulePayload } from './ChannelRoutingRulesEditor.vue';
+import type { Agent } from '../../features/agents/types';
 import {
   channelAgentSelectOptions,
   channelRoutingTargetToggleOptions,
   channelTeamSelectOptions,
-  type ChannelRoutingTargetType
-} from "../../features/channels/channelRoutingUtils";
-import type { Team } from "../../features/teams/types";
+  type ChannelRoutingTargetType,
+} from '../../features/channels/channelRoutingUtils';
+import type { Team } from '../../features/teams/types';
 
 const { t } = useI18n();
 
-const targetType = defineModel<ChannelRoutingTargetType>("targetType", { required: true });
-const agentId = defineModel<string>("agentId", { required: true });
-const teamId = defineModel<string>("teamId", { required: true });
-const dmScope = defineModel<string>("dmScope", { required: true });
-const routingRules = defineModel<ChannelRoutingRulePayload[]>("routingRules", { required: true });
+const targetType = defineModel<ChannelRoutingTargetType>('targetType', { required: true });
+const agentId = defineModel<string>('agentId', { required: true });
+const teamId = defineModel<string>('teamId', { required: true });
+const dmScope = defineModel<string>('dmScope', { required: true });
+const routingRules = defineModel<ChannelRoutingRulePayload[]>('routingRules', { required: true });
 
 const dmScopeOptions = [
-  { label: t("channelEditor.dmScope.perChannelPeer"), value: "per-channel-peer" },
-  { label: t("channelEditor.dmScope.main"), value: "main" },
+  { label: t('channelEditor.dmScope.perChannelPeer'), value: 'per-channel-peer' },
+  { label: t('channelEditor.dmScope.main'), value: 'main' },
 ];
 
 const props = withDefaults(
@@ -147,21 +143,21 @@ const props = withDefaults(
   }>(),
   {
     loading: false,
-    routingAgentProvider: "",
-    routingAgentModel: "",
+    routingAgentProvider: '',
+    routingAgentModel: '',
     routingAgentModelChecking: false,
     routingAgentModelOk: null,
-    routingAgentModelMessage: ""
-  }
+    routingAgentModelMessage: '',
+  },
 );
 
 const agentOptions = computed(() => channelAgentSelectOptions(props.agents));
 const teamOptions = computed(() => channelTeamSelectOptions(props.teams));
 
 const routingAgentModelBannerClass = computed(() => {
-  if (props.routingAgentModelChecking) return "bg-blue-grey-2 text-blue-grey-9";
-  if (props.routingAgentModelOk === true) return "bg-positive text-white";
-  if (props.routingAgentModelOk === false) return "bg-negative text-white";
-  return "bg-grey-3";
+  if (props.routingAgentModelChecking) return 'bg-blue-grey-2 text-blue-grey-9';
+  if (props.routingAgentModelOk === true) return 'bg-positive text-white';
+  if (props.routingAgentModelOk === false) return 'bg-negative text-white';
+  return 'bg-grey-3';
 });
 </script>

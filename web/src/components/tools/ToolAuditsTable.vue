@@ -31,14 +31,16 @@
 
       <template #body-cell-actor="props">
         <q-td :props="props">
-          <div class="app-registry-cell-primary ellipsis">{{ props.row.agent_id || "—" }}</div>
-          <div class="app-registry-cell-sub ellipsis">{{ props.row.user_id || props.row.session_id || "—" }}</div>
+          <div class="app-registry-cell-primary ellipsis">{{ props.row.agent_id || '—' }}</div>
+          <div class="app-registry-cell-sub ellipsis">{{ props.row.user_id || props.row.session_id || '—' }}</div>
         </q-td>
       </template>
 
       <template #body-cell-status="props">
         <q-td :props="props">
-          <q-badge rounded :color="toolInvocationStatusColor(props.row.status)">{{ toolInvocationStatusLabel(props.row.status) }}</q-badge>
+          <q-badge rounded :color="toolInvocationStatusColor(props.row.status)">{{
+            toolInvocationStatusLabel(props.row.status)
+          }}</q-badge>
         </q-td>
       </template>
 
@@ -53,17 +55,17 @@
 </template>
 
 <script setup lang="ts">
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
-import ToolGlassPanel from "./ToolGlassPanel.vue";
-import type { ToolInvocationAudit } from "../../features/tools/types";
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import ToolGlassPanel from './ToolGlassPanel.vue';
+import type { ToolInvocationAudit } from '../../features/tools/types';
 import {
   TOOL_AUDITS_TABLE_COLUMNS,
   clipPreview,
   formatInvocationWhen,
   toolInvocationStatusColor,
-  toolInvocationStatusLabel
-} from "./toolUi";
+  toolInvocationStatusLabel,
+} from './toolUi';
 
 defineProps<{
   rows: ToolInvocationAudit[];

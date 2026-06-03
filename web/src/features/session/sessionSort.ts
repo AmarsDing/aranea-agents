@@ -17,12 +17,7 @@ function sessionSortKey(session: SortableSession): number {
 }
 
 function sessionTimeValue(session: SortableSession): number {
-  const raw =
-    session.last_message_at ||
-    session.updated_at ||
-    session.created_at ||
-    session.timeline_at ||
-    session.at;
+  const raw = session.last_message_at || session.updated_at || session.created_at || session.timeline_at || session.at;
   if (!raw) return 0;
   const value = new Date(raw).getTime();
   return Number.isFinite(value) ? value : 0;

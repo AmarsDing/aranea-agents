@@ -11,7 +11,7 @@
 export type GraphNodeState = {
   nodeId: string;
   nodeType: string;
-  status: "pending" | "running" | "completed" | "error" | "interrupted";
+  status: 'pending' | 'running' | 'completed' | 'error' | 'interrupted';
   startTime?: string;
   endTime?: string;
   durationNs?: number;
@@ -22,7 +22,7 @@ export type GraphNodeState = {
 export type GraphExecutionState = {
   executionId: string;
   graphId: string;
-  status: "pending" | "running" | "completed" | "failed" | "cancelled" | "waiting_human";
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'waiting_human';
   currentNode?: string;
   totalSteps?: number;
   durationNs?: number;

@@ -38,15 +38,32 @@
       @update:model-value="$emit('update:statusFilter', String($event ?? ''))"
     />
     <template #actions>
-      <q-btn flat rounded no-caps icon="restart_alt" :label="t('channelsPage.reset')" class="app-entity-toolbar-btn" @click="$emit('reset')" />
-      <q-btn flat rounded no-caps icon="refresh" :label="t('channelsPage.refresh')" class="app-entity-toolbar-btn" :loading="loading" @click="$emit('refresh')" />
+      <q-btn
+        flat
+        rounded
+        no-caps
+        icon="restart_alt"
+        :label="t('channelsPage.reset')"
+        class="app-entity-toolbar-btn"
+        @click="$emit('reset')"
+      />
+      <q-btn
+        flat
+        rounded
+        no-caps
+        icon="refresh"
+        :label="t('channelsPage.refresh')"
+        class="app-entity-toolbar-btn"
+        :loading="loading"
+        @click="$emit('refresh')"
+      />
     </template>
   </AppPageToolbar>
 </template>
 
 <script setup lang="ts">
-import { useI18n } from "vue-i18n";
-import AppPageToolbar from "../layout/AppPageToolbar.vue";
+import { useI18n } from 'vue-i18n';
+import AppPageToolbar from '../layout/AppPageToolbar.vue';
 
 const { t } = useI18n();
 
@@ -62,9 +79,9 @@ defineProps<{
 }>();
 
 defineEmits<{
-  "update:search": [v: string];
-  "update:typeFilter": [v: string];
-  "update:statusFilter": [v: string];
+  'update:search': [v: string];
+  'update:typeFilter': [v: string];
+  'update:statusFilter': [v: string];
   reset: [];
   refresh: [];
 }>();

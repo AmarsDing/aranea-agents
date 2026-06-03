@@ -8,8 +8,8 @@ export type Tool = {
   display_name: string;
   description: string;
   category: string;
-  source: "builtin" | "mcp" | "system" | "external" | string;
-  risk_level: "low" | "medium" | "high" | "critical" | string;
+  source: 'builtin' | 'mcp' | 'system' | 'external' | string;
+  risk_level: 'low' | 'medium' | 'high' | 'critical' | string;
   enabled: boolean;
   readonly: boolean;
   requires_confirmation: boolean;
@@ -21,8 +21,8 @@ export type Tool = {
   config_json: string;
   default_config_json: string;
   metadata_json: string;
-  runtime_status?: "available" | "catalog_only" | "disabled" | string;
-  runtime_kind?: "function" | "streaming" | "approval" | string;
+  runtime_status?: 'available' | 'catalog_only' | 'disabled' | string;
+  runtime_kind?: 'function' | 'streaming' | 'approval' | string;
   invoke_count: number;
   invoke_count_24h: number;
   success_count: number;
@@ -99,7 +99,7 @@ export type ToolInvocation = {
   message_id: string;
   user_id: string;
   source: string;
-  status: "success" | "error" | "blocked" | "cancelled" | string;
+  status: 'success' | 'error' | 'blocked' | 'cancelled' | string;
   started_at: string;
   ended_at: string;
   duration_ms: number;
@@ -167,7 +167,7 @@ export type ToolAgentOverride = {
   tool_key: string;
   agent_id: string;
   enabled: boolean;
-  mode: "inherit" | "allow" | "deny" | string;
+  mode: 'inherit' | 'allow' | 'deny' | string;
   config_override_json: string;
   requires_confirmation: boolean;
   created_at: string;
@@ -189,7 +189,7 @@ export type AgentEffectiveTool = {
   category: string;
   source: string;
   enabled: boolean;
-  effective_state: "allowed" | "denied" | string;
+  effective_state: 'allowed' | 'denied' | string;
   reason: string;
 };
 

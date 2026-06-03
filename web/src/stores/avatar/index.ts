@@ -1,15 +1,15 @@
-import { defineStore } from "pinia";
+import { defineStore } from 'pinia';
 import {
   getAvatarThumbnailDataUrl,
   listAvatarAssets,
   refreshChannelPlatformIcons,
   uploadAvatarAsset,
-  type AvatarAsset
-} from "../../features/avatar/api";
-import { isAvatarAssetRef } from "../../features/avatar/iconModel";
+  type AvatarAsset,
+} from '../../features/avatar/api';
+import { isAvatarAssetRef } from '../../features/avatar/iconModel';
 
 /** 头像域：目录缓存 + 缩略图缓存 + 上传；对外业务均由 actions 经 api 层访问后端 */
-export const useAvatarCatalogStore = defineStore("avatarCatalog", {
+export const useAvatarCatalogStore = defineStore('avatarCatalog', {
   state: () => ({
     agentsCatalog: [] as AvatarAsset[],
     agentsCatalogLoaded: false,
@@ -17,7 +17,7 @@ export const useAvatarCatalogStore = defineStore("avatarCatalog", {
     pickerMine: [] as AvatarAsset[],
     pickerLoaded: false,
     /** assetId → data URL，空字符串表示已请求过但无图 */
-    thumbnailById: {} as Record<string, string>
+    thumbnailById: {} as Record<string, string>,
   }),
   actions: {
     async ensureAgentsCatalog() {
@@ -27,14 +27,14 @@ export const useAvatarCatalogStore = defineStore("avatarCatalog", {
     },
     async ensurePickerAssets(force = false) {
       if (this.pickerLoaded && !force) return;
-      const [system, mine] = await Promise.all([listAvatarAssets("system"), listAvatarAssets("mine")]);
+      const [system, mine] = await Promise.all([listAvatarAssets('system'), listAvatarAssets('mine')]);
       this.pickerSystem = system;
       this.pickerMine = mine;
       this.pickerLoaded = true;
     },
     /** 丢弃缩略图缓存项（用于路由切换后强制重拉，或清理错误写入的空串缓存） */
     forgetThumbnail(rawId: string) {
-      const trimmed = String(rawId || "").trim();
+      const trimmed = String(rawId || '').trim();
       if (!trimmed) return;
       if (!Object.prototype.hasOwnProperty.call(this.thumbnailById, trimmed)) return;
       const next = { ...this.thumbnailById };
@@ -43,7 +43,7 @@ export const useAvatarCatalogStore = defineStore("avatarCatalog", {
     },
     /** 拉取并写入缩略图缓存（幂等：已有 key 则跳过，含空串表示已请求过） */
     async ensureThumbnail(rawId: string) {
-      const trimmed = String(rawId || "").trim();
+      const trimmed = String(rawId || '').trim();
       if (!trimmed || /^(https?:|data:|blob:)/i.test(trimmed)) return;
       if (!isAvatarAssetRef(trimmed)) return;
       if (Object.prototype.hasOwnProperty.call(this.thumbnailById, trimmed)) return;
@@ -76,6 +76,6 @@ export const useAvatarCatalogStore = defineStore("avatarCatalog", {
       const result = await refreshChannelPlatformIcons();
       this.invalidateAll();
       return result;
-    }
-  }
+    },
+  },
 });

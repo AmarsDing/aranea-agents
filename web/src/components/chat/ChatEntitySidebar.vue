@@ -20,10 +20,7 @@
 
       <q-scroll-area class="col">
         <div class="chat-side__content">
-          <SpiritEntry
-            :active="selectedKind === 'spirit'"
-            @click="$emit('select-spirit')"
-          />
+          <SpiritEntry :active="selectedKind === 'spirit'" @click="$emit('select-spirit')" />
 
           <ChatSectionHeader
             icon="groups"
@@ -77,13 +74,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { useI18n } from "vue-i18n";
-import ChatSectionHeader from "./ChatSectionHeader.vue";
-import SpiritEntry from "../spirit/SpiritEntry.vue";
-import TeamTaskCard from "../spirit/TeamTaskCard.vue";
-import type { SpiritTeam } from "../../features/spirit/types";
-import { useChatEntityCollapse } from "../../features/chat/composables/useChatEntityCollapse";
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import ChatSectionHeader from './ChatSectionHeader.vue';
+import SpiritEntry from '../spirit/SpiritEntry.vue';
+import TeamTaskCard from '../spirit/TeamTaskCard.vue';
+import type { SpiritTeam } from '../../features/spirit/types';
+import { useChatEntityCollapse } from '../../features/chat/composables/useChatEntityCollapse';
 
 const props = defineProps<{
   open: boolean;
@@ -96,22 +93,18 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  "update:search": [value: string];
-  "select-spirit": [];
-  "select-spirit-team": [teamId: string];
-  "toggle-team-expand": [teamId: string];
+  'update:search': [value: string];
+  'select-spirit': [];
+  'select-spirit-team': [teamId: string];
+  'toggle-team-expand': [teamId: string];
 }>();
 
 const { t } = useI18n();
 const collapse = useChatEntityCollapse();
 
-const activeTeamList = computed(() =>
-  props.spiritTeams.filter((t) => t.status !== "completed")
-);
+const activeTeamList = computed(() => props.spiritTeams.filter((t) => t.status !== 'completed'));
 
-const completedTeamList = computed(() =>
-  props.spiritTeams.filter((t) => t.status === "completed")
-);
+const completedTeamList = computed(() => props.spiritTeams.filter((t) => t.status === 'completed'));
 </script>
 
 <style scoped>

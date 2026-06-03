@@ -10,11 +10,11 @@
  * The `turn_number` field is preserved for display/sorting but is NOT used for
  * grouping decisions — `turn_id` is the authoritative FK.
  */
-import type { Message, ReactToolLinkIndex } from "./types";
-import { toolEventFromMessage } from "./envelopeToolCall";
-import { isActivityMessage, isInFlightLocalRow } from "./mergeSessionMessages";
-import { isToolLinkedInReactIndex } from "./reactToolLinkIndex";
-import { isTeamMemberOrigin, ensureOrigin } from "./messageOrigin";
+import type { Message, ReactToolLinkIndex } from './types';
+import { toolEventFromMessage } from './envelopeToolCall';
+import { isActivityMessage, isInFlightLocalRow } from './mergeSessionMessages';
+import { isToolLinkedInReactIndex } from './reactToolLinkIndex';
+import { isTeamMemberOrigin, ensureOrigin } from './messageOrigin';
 
 export type TurnBlockGroup = {
   /** Sequential block index (0-based). */
@@ -36,17 +36,17 @@ export function isTeamMemberStreamMessage(message: Message): boolean {
  */
 function messageSortRank(message: Message, index: number): [number, string, number] {
   const inFlight = isInFlightLocalRow(message) ? 1 : 0;
-  return [inFlight, message.created_at || "", index];
+  return [inFlight, message.created_at || '', index];
 }
 
 function getEffectiveTurnId(msg: Message): string {
-  return msg.turn_id?.trim() || "";
+  return msg.turn_id?.trim() || '';
 }
 
 function shouldStartNewBlock(current: TurnBlockGroup | null, msg: Message, effectiveTurnId: string): boolean {
   if (!current) return true;
   if (effectiveTurnId) return current.turnId !== effectiveTurnId;
-  return msg.role === "user";
+  return msg.role === 'user';
 }
 
 /**
@@ -93,13 +93,13 @@ export function groupMessagesByTurn(messages: Message[]): TurnBlockGroup[] {
     }
 
     // Distribute into current block by role/origin
-    if (msg.role === "user") {
+    if (msg.role === 'user') {
       current.user = msg;
     } else if (isTeamMemberStreamMessage(msg)) {
       current.members.push(msg);
     } else if (isActivityMessage(msg)) {
       current.tools.push(msg);
-    } else if (msg.role === "assistant") {
+    } else if (msg.role === 'assistant') {
       current.assistant = msg;
     }
   }
@@ -127,7 +127,7 @@ function consolidateOrphanToolBlocks(blocks: TurnBlockGroup[]): TurnBlockGroup[]
 export function lastAssistantTurnBlockIndex(blocks: TurnBlockGroup[]): number {
   for (let i = blocks.length - 1; i >= 0; i--) {
     const b = blocks[i]!;
-    if (b.assistant && (b.assistant.content_markdown ?? "").trim()) return i;
+    if (b.assistant && (b.assistant.content_markdown ?? '').trim()) return i;
     if (b.user && !b.assistant && b.tools.length > 0) return i;
   }
   return Math.max(0, blocks.length - 1);
@@ -141,17 +141,14 @@ export function toolStripSummary(tools: Message[]): {
   let failed = 0;
   let totalMs = 0;
   for (const t of tools) {
-    if (t.status === "tool_failed") failed++;
+    if (t.status === 'tool_failed') failed++;
     totalMs += t.latency_ms ?? 0;
   }
   return { count: tools.length, failed, totalMs };
 }
 
 /** CC-C-UX-03: omit tools already rendered under ReAct ACTION in the assistant row. */
-export function filterToolsForToolStrip(
-  tools: Message[],
-  reactLinkIndex: ReactToolLinkIndex
-): Message[] {
+export function filterToolsForToolStrip(tools: Message[], reactLinkIndex: ReactToolLinkIndex): Message[] {
   if (!tools.length) return tools;
   return tools.filter((tool) => {
     if (!isActivityMessage(tool)) return true;

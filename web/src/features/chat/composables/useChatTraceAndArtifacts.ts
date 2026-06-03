@@ -1,31 +1,31 @@
-import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
-import { useI18n } from "vue-i18n";
-import { useRouter } from "vue-router";
-import { useArtifactStore } from "../../../stores/artifact";
-import type { ArtifactMeta } from "../../artifact/types";
-import type { ChatEntityKind } from "../../../components/chat/types";
-import type { useChatStreamManager } from "./useChatStreamManager";
+import { computed, ref, watch, type ComputedRef, type Ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { useRouter } from 'vue-router';
+import { useArtifactStore } from '../../../stores/artifact';
+import type { ArtifactMeta } from '../../artifact/types';
+import type { ChatEntityKind } from '../../../components/chat/types';
+import type { useChatStreamManager } from './useChatStreamManager';
 
 type StreamManager = ReturnType<typeof useChatStreamManager>;
 
 export function useChatTraceDialog(
   selectedEntityKind: Ref<ChatEntityKind>,
   displaySessions: ComputedRef<Array<{ id: string; title?: string }>>,
-  streamManager: StreamManager
+  streamManager: StreamManager,
 ) {
   const { t } = useI18n();
   const traceOpen = ref(false);
   const traceSessionId = ref<string | null>(null);
-  const traceSessionTitle = ref("");
-  const traceInitialTab = ref<"trace" | "events">("trace");
-  const traceSessionOwnerKind = ref<"agent" | "team">("agent");
+  const traceSessionTitle = ref('');
+  const traceInitialTab = ref<'trace' | 'events'>('trace');
+  const traceSessionOwnerKind = ref<'agent' | 'team'>('agent');
 
-  function openSessionTrace(sessionId: string, tab: "trace" | "events" = "trace") {
+  function openSessionTrace(sessionId: string, tab: 'trace' | 'events' = 'trace') {
     const session = displaySessions.value.find((item) => item.id === sessionId);
     traceSessionId.value = sessionId;
-    traceSessionTitle.value = session?.title ?? t("chat.untitledSession");
+    traceSessionTitle.value = session?.title ?? t('chat.untitledSession');
     traceInitialTab.value = tab;
-    traceSessionOwnerKind.value = selectedEntityKind.value === "team" ? "team" : "agent";
+    traceSessionOwnerKind.value = selectedEntityKind.value === 'team' ? 'team' : 'agent';
     traceOpen.value = true;
   }
 
@@ -36,7 +36,7 @@ export function useChatTraceDialog(
 
   function openSessionEvents(selectedSessionId: string | undefined) {
     if (!selectedSessionId) return;
-    openSessionTrace(selectedSessionId, "events");
+    openSessionTrace(selectedSessionId, 'events');
   }
 
   return {
@@ -71,9 +71,9 @@ export function useChatSessionArtifacts(sessionId: ComputedRef<string | undefine
   }
 
   watch(
-    () => sessionId.value ?? "",
+    () => sessionId.value ?? '',
     (sid) => void loadSessionArtifacts(sid),
-    { immediate: true }
+    { immediate: true },
   );
 
   function openSessionArtifact(id: string) {
@@ -82,13 +82,13 @@ export function useChatSessionArtifacts(sessionId: ComputedRef<string | undefine
         const artifactStore = useArtifactStore();
         const signed = await artifactStore.signDownload(id);
         if (signed.url) {
-          window.open(artifactStore.artifactDownloadHref(signed.url), "_blank", "noopener,noreferrer");
+          window.open(artifactStore.artifactDownloadHref(signed.url), '_blank', 'noopener,noreferrer');
           return;
         }
       } catch {
         // fall through to artifacts page
       }
-      void router.push({ path: "/artifacts", query: { id } });
+      void router.push({ path: '/artifacts', query: { id } });
     })();
   }
 

@@ -69,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import AppPageToolbar from "../layout/AppPageToolbar.vue";
+import AppPageToolbar from '../layout/AppPageToolbar.vue';
 
 defineProps<{
   search: string;
@@ -81,34 +81,34 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:search": [value: string];
-  "update:enabled": [value: boolean | null];
-  "update:status": [value: string];
-  "update:syncOrigin": [value: string];
-  "update:filesystemMissing": [value: boolean | null];
+  'update:search': [value: string];
+  'update:enabled': [value: boolean | null];
+  'update:status': [value: string];
+  'update:syncOrigin': [value: string];
+  'update:filesystemMissing': [value: boolean | null];
   reset: [];
   refresh: [];
 }>();
 
 const enabledOptions = [
-  { label: "仅启用", value: true },
-  { label: "仅停用", value: false }
+  { label: '仅启用', value: true },
+  { label: '仅停用', value: false },
 ];
 
 const statusOptions = [
-  { label: "草稿", value: "draft" },
-  { label: "已发布", value: "published" },
-  { label: "已归档", value: "archived" }
+  { label: '草稿', value: 'draft' },
+  { label: '已发布', value: 'published' },
+  { label: '已归档', value: 'archived' },
 ];
 
 const originOptions = [
-  { label: "磁盘导入", value: "filesystem" },
-  { label: "ZIP 导入", value: "import" },
-  { label: "手动创建", value: "manual" }
+  { label: '磁盘导入', value: 'filesystem' },
+  { label: 'ZIP 导入', value: 'import' },
+  { label: '手动创建', value: 'manual' },
 ];
 
 const filesystemOptions = [
-  { label: "磁盘缺失", value: true },
-  { label: "磁盘正常", value: false }
+  { label: '磁盘缺失', value: true },
+  { label: '磁盘正常', value: false },
 ];
 </script>

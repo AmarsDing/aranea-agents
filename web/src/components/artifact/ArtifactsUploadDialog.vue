@@ -29,7 +29,13 @@
           placeholder="application/octet-stream"
           @update:model-value="$emit('update:mimeType', String($event ?? ''))"
         />
-        <q-file :model-value="file" label="选择文件" outlined dense @update:model-value="$emit('update:file', $event)" />
+        <q-file
+          :model-value="file"
+          label="选择文件"
+          outlined
+          dense
+          @update:model-value="$emit('update:file', $event)"
+        />
         <div class="text-caption text-grey-7">{{ maxSizeHint }}</div>
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
@@ -52,11 +58,11 @@ defineProps<{
 }>();
 
 defineEmits<{
-  "update:open": [value: boolean];
-  "update:file": [value: File | null];
-  "update:sessionId": [value: string];
-  "update:name": [value: string];
-  "update:mimeType": [value: string];
+  'update:open': [value: boolean];
+  'update:file': [value: File | null];
+  'update:sessionId': [value: string];
+  'update:name': [value: string];
+  'update:mimeType': [value: string];
   submit: [];
 }>();
 </script>

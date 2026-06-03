@@ -16,20 +16,14 @@
 
     <div v-if="members.length > 0" class="team-assembly-card__members q-mt-sm">
       <div class="row items-center q-gutter-xs">
-        <q-avatar
-          v-for="member in members.slice(0, 5)"
-          :key="member.agentId"
-          size="24px"
-        >
+        <q-avatar v-for="member in members.slice(0, 5)" :key="member.agentId" size="24px">
           <img v-if="member.avatarUrl" :src="member.avatarUrl" :alt="member.displayName" />
           <q-icon v-else name="person" size="14px" color="grey-6" />
         </q-avatar>
-        <span v-if="members.length > 5" class="text-caption text-grey-6">
-          +{{ members.length - 5 }}
-        </span>
+        <span v-if="members.length > 5" class="text-caption text-grey-6"> +{{ members.length - 5 }} </span>
       </div>
       <div class="text-caption text-grey-6 q-mt-xs">
-        {{ members.map((m) => m.displayName).join(" · ") }}
+        {{ members.map((m) => m.displayName).join(' · ') }}
       </div>
     </div>
 
@@ -48,11 +42,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { SpiritMember } from "../../features/spirit/types";
+import { computed } from 'vue';
+import type { SpiritMember } from '../../features/spirit/types';
 
 const props = defineProps<{
-  status: "assembling" | "assembled" | "completed" | "failed";
+  status: 'assembling' | 'assembled' | 'completed' | 'failed';
   teamName: string;
   taskSummary: string;
   mode: string;
@@ -60,17 +54,17 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  "view-team": [];
+  'view-team': [];
 }>();
 
 const modeLabel = computed(() => {
   const m = props.mode;
-  if (!m) return "";
+  if (!m) return '';
   const labels: Record<string, string> = {
-    sequential: "顺序",
-    parallel: "并行",
-    graph: "图编排",
-    debate: "辩论",
+    sequential: '顺序',
+    parallel: '并行',
+    graph: '图编排',
+    debate: '辩论',
   };
   return labels[m] ?? m;
 });

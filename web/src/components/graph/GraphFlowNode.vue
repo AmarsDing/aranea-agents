@@ -28,7 +28,13 @@
           :display-status="displayStatus"
           :fine-status="fineStatusKey"
         />
-        <q-badge v-else-if="data.execStatus" dense rounded class="graph-flow-node__status-badge" :class="statusBadgeClass">
+        <q-badge
+          v-else-if="data.execStatus"
+          dense
+          rounded
+          class="graph-flow-node__status-badge"
+          :class="statusBadgeClass"
+        >
           {{ statusLabel }}
         </q-badge>
       </div>
@@ -47,13 +53,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { Handle, Position } from "@vue-flow/core";
-import { NODE_TYPE_STYLES, EXECUTION_STATUS_STYLES, type NodeType } from "../../features/graph/types";
-import { truncate } from "../../features/graph/utils";
-import { AGENT_NODE_STATUS_STYLES, DISPLAY_STATUS_STYLES } from "../../features/orchestration/agentNodeStatusStyles";
-import type { AgentNodeStatus, DisplayStatus } from "../../features/orchestration/types";
-import OrchestrationStatusChip from "../orchestration/OrchestrationStatusChip.vue";
+import { computed } from 'vue';
+import { Handle, Position } from '@vue-flow/core';
+import { NODE_TYPE_STYLES, EXECUTION_STATUS_STYLES, type NodeType } from '../../features/graph/types';
+import { truncate } from '../../features/graph/utils';
+import { AGENT_NODE_STATUS_STYLES, DISPLAY_STATUS_STYLES } from '../../features/orchestration/agentNodeStatusStyles';
+import type { AgentNodeStatus, DisplayStatus } from '../../features/orchestration/types';
+import OrchestrationStatusChip from '../orchestration/OrchestrationStatusChip.vue';
 
 const props = defineProps<{
   id: string;
@@ -78,47 +84,47 @@ const props = defineProps<{
 const styleConfig = computed(() => NODE_TYPE_STYLES[props.data.nodeType] ?? NODE_TYPE_STYLES.function);
 
 const nodeStyle = computed(() => ({
-  "--node-accent": styleConfig.value.borderColor,
+  '--node-accent': styleConfig.value.borderColor,
 }));
 
 const statusConfig = computed(() => {
-  const status = props.data.execStatus ?? "idle";
+  const status = props.data.execStatus ?? 'idle';
   return EXECUTION_STATUS_STYLES[status] ?? EXECUTION_STATUS_STYLES.idle;
 });
 
 const statusLabel = computed(() => statusConfig.value.label);
 
-const showStatusChip = computed(() => props.data.nodeType === "agent");
+const showStatusChip = computed(() => props.data.nodeType === 'agent');
 
-const fineStatusKey = computed(() => (props.data.fineStatus as AgentNodeStatus | undefined) ?? "idle");
+const fineStatusKey = computed(() => (props.data.fineStatus as AgentNodeStatus | undefined) ?? 'idle');
 
 const displayStatus = computed<DisplayStatus>(() => {
-  const status = props.data.execStatus ?? "waiting";
+  const status = props.data.execStatus ?? 'waiting';
   if (status in DISPLAY_STATUS_STYLES) {
     return status as DisplayStatus;
   }
-  if (status === "running" || status === "active") return "active";
-  if (status === "completed" || status === "success") return "success";
-  if (status === "failed" || status === "error") return "failed";
-  return "waiting";
+  if (status === 'running' || status === 'active') return 'active';
+  if (status === 'completed' || status === 'success') return 'success';
+  if (status === 'failed' || status === 'error') return 'failed';
+  return 'waiting';
 });
 
 const primaryLabel = computed(() => props.data.label || props.data.nodeId);
 
 const roleLabel = computed(() => {
-  if (props.data.nodeType !== "agent" || !props.data.role) return "";
+  if (props.data.nodeType !== 'agent' || !props.data.role) return '';
   return props.data.role;
 });
 
 const agentKeyLine = computed(() => {
-  if (props.data.nodeType !== "agent" || !props.data.agentName) return "";
-  if (props.data.agentName === primaryLabel.value) return "";
+  if (props.data.nodeType !== 'agent' || !props.data.agentName) return '';
+  if (props.data.agentName === primaryLabel.value) return '';
   return props.data.agentName;
 });
 
 const responsibilityLine = computed(() => {
-  if (props.data.nodeType !== "agent") return props.data.instruction ?? "";
-  return props.data.instruction || props.data.description || "";
+  if (props.data.nodeType !== 'agent') return props.data.instruction ?? '';
+  return props.data.instruction || props.data.description || '';
 });
 
 const ioPreviewLine = computed(() => {
@@ -131,12 +137,12 @@ const ioPreviewLine = computed(() => {
   if (props.data.currentActivity) {
     return `做：${props.data.currentActivity}`;
   }
-  return "";
+  return '';
 });
 
 const fineStatusLabel = computed(() => {
   const key = props.data.fineStatus as AgentNodeStatus | undefined;
-  if (!key) return "";
+  if (!key) return '';
   return AGENT_NODE_STATUS_STYLES[key]?.label ?? key;
 });
 
@@ -148,12 +154,10 @@ const toolChips = computed(() => {
 
 const statusBadgeClass = computed(() => {
   const s = props.data.execStatus;
-  if (s === "running") return "graph-flow-node__status-badge--running";
-  if (s === "completed") return "graph-flow-node__status-badge--completed";
-  if (s === "error" || s === "failed") return "graph-flow-node__status-badge--failed";
-  if (s === "interrupted") return "graph-flow-node__status-badge--interrupted";
-  return "";
+  if (s === 'running') return 'graph-flow-node__status-badge--running';
+  if (s === 'completed') return 'graph-flow-node__status-badge--completed';
+  if (s === 'error' || s === 'failed') return 'graph-flow-node__status-badge--failed';
+  if (s === 'interrupted') return 'graph-flow-node__status-badge--interrupted';
+  return '';
 });
-
-
 </script>

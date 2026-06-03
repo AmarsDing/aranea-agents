@@ -1,11 +1,11 @@
-import type { CatalogModelSummary } from "../../services/kratos/model_catalog/v1/index";
-import { runtimeProfileFor } from "../../config/providerRuntimeOverlay";
-import { inferModelCategoryValues, modelCategoriesFromValues, type ModelCategoryOption } from "./catalogCategories";
+import type { CatalogModelSummary } from '../../services/kratos/model_catalog/v1/index';
+import { runtimeProfileFor } from '../../config/providerRuntimeOverlay';
+import { inferModelCategoryValues, modelCategoriesFromValues, type ModelCategoryOption } from './catalogCategories';
 
 export type CapabilityChip = {
   key: string;
   label: string;
-  source: "catalog" | "custom";
+  source: 'catalog' | 'custom';
 };
 
 export type CatalogCostForm = {
@@ -19,27 +19,27 @@ export type CatalogCostForm = {
 
 export function buildCapabilityChips(model: CatalogModelSummary): CapabilityChip[] {
   const chips: CapabilityChip[] = [];
-  const add = (key: string, label: string) => chips.push({ key, label, source: "catalog" });
-  if (model.toolCall) add("tool_call", "工具调用");
-  if (model.reasoning) add("reasoning", "推理");
-  if (model.attachment) add("attachment", "附件");
-  if (model.structuredOutput) add("structured_output", "结构化输出");
-  if (model.temperature) add("temperature", "Temperature");
-  if (model.openWeights) add("open_weights", "开放权重");
+  const add = (key: string, label: string) => chips.push({ key, label, source: 'catalog' });
+  if (model.toolCall) add('tool_call', '工具调用');
+  if (model.reasoning) add('reasoning', '推理');
+  if (model.attachment) add('attachment', '附件');
+  if (model.structuredOutput) add('structured_output', '结构化输出');
+  if (model.temperature) add('temperature', 'Temperature');
+  if (model.openWeights) add('open_weights', '开放权重');
   const mods = [...(model.modalityInput ?? []), ...(model.modalityOutput ?? [])];
-  if (mods.some((m) => m === "image" || m === "video")) add("vision", "视觉");
-  if (model.status === "deprecated") add("deprecated", "已废弃");
-  if (model.status === "beta") add("beta", "Beta");
-  if (model.status === "alpha") add("alpha", "Alpha");
+  if (mods.some((m) => m === 'image' || m === 'video')) add('vision', '视觉');
+  if (model.status === 'deprecated') add('deprecated', '已废弃');
+  if (model.status === 'beta') add('beta', 'Beta');
+  if (model.status === 'alpha') add('alpha', 'Alpha');
   return chips;
 }
 
 export function catalogModelToCost(model: CatalogModelSummary): CatalogCostForm {
   const reasoningUsd =
     (model.reasoningUsdPer1m ?? 0) > 0
-      ? model.reasoningUsdPer1m ?? 0
+      ? (model.reasoningUsdPer1m ?? 0)
       : model.reasoning
-        ? model.outputUsdPer1m ?? 0
+        ? (model.outputUsdPer1m ?? 0)
         : 0;
   return {
     input_usd_per_1m: model.inputUsdPer1m ?? 0,
@@ -77,18 +77,15 @@ export type CatalogApplyTarget = {
 export function applyCatalogProviderFields(
   providerId: string,
   providerName: string,
-  catalogApi?: string
-): Pick<
-  CatalogApplyTarget,
-  "provider_code" | "provider_display_name" | "provider_type" | "variant" | "api_base_url"
-> {
+  catalogApi?: string,
+): Pick<CatalogApplyTarget, 'provider_code' | 'provider_display_name' | 'provider_type' | 'variant' | 'api_base_url'> {
   const rt = runtimeProfileFor(providerId);
-  const base = (catalogApi || rt.apiBaseUrl || "").trim();
+  const base = (catalogApi || rt.apiBaseUrl || '').trim();
   return {
     provider_code: providerId,
     provider_display_name: providerName || providerId,
     provider_type: rt.providerType,
-    variant: rt.variant ?? "openai",
+    variant: rt.variant ?? 'openai',
     api_base_url: base,
   };
 }
@@ -96,7 +93,7 @@ export function applyCatalogProviderFields(
 export function applyCatalogModelFields(
   providerId: string,
   model: CatalogModelSummary,
-  overwrite = false
+  overwrite = false,
 ): Partial<CatalogApplyTarget> & { reasoning_backfill?: boolean } {
   const cost = catalogModelToCost(model);
   const ctxK = model.contextTokens ? Math.round(model.contextTokens / 1000) : null;
@@ -110,14 +107,14 @@ export function applyCatalogModelFields(
     }
   }
   const reasoningBackfill =
-    model.reasoning && interleaved != null && typeof interleaved === "object" && interleaved !== null
+    model.reasoning && interleaved != null && typeof interleaved === 'object' && interleaved !== null
       ? Boolean((interleaved as { field?: string }).field?.trim())
       : model.reasoning
         ? true
         : undefined;
   return {
-    model_api_id: model.id ?? "",
-    model_display_name: model.name || model.id || "",
+    model_api_id: model.id ?? '',
+    model_display_name: model.name || model.id || '',
     context_window_k: ctxK,
     max_output_tokens: model.outputTokens ? Number(model.outputTokens) : 4096,
     input_price_usd_per_1m: cost.input_usd_per_1m,
@@ -128,9 +125,9 @@ export function applyCatalogModelFields(
     embedding_price_usd_per_1m: cost.embedding_usd_per_1m,
     capability_chips: chips,
     model_category: modelCategoriesFromValues(inferModelCategoryValues(model)),
-    metadata_source: "models.dev",
+    metadata_source: 'models.dev',
     raw_metadata_json: JSON.stringify({
-      source: "models.dev",
+      source: 'models.dev',
       provider: providerId,
       model: {
         id: model.id,

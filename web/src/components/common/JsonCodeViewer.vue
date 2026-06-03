@@ -13,9 +13,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { useQuasar } from "quasar";
-import { formatJsonText, highlightJsonHtml } from "../../utils/jsonFormat";
+import { computed, ref, watch } from 'vue';
+import { useQuasar } from 'quasar';
+import { formatJsonText, highlightJsonHtml } from '../../utils/jsonFormat';
 
 const props = withDefaults(
   defineProps<{
@@ -24,23 +24,23 @@ const props = withDefaults(
     showToolbar?: boolean;
   }>(),
   {
-    text: "",
-    scrollHeight: "320px",
-    showToolbar: true
-  }
+    text: '',
+    scrollHeight: '320px',
+    showToolbar: true,
+  },
 );
 
 const $q = useQuasar();
-const displayText = ref("");
-const parseError = ref("");
+const displayText = ref('');
+const parseError = ref('');
 
 watch(
   () => props.text,
   (value) => {
-    displayText.value = formatJsonText(value || "");
-    parseError.value = "";
+    displayText.value = formatJsonText(value || '');
+    parseError.value = '';
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 const highlightedHtml = computed(() => highlightJsonHtml(displayText.value));
@@ -51,20 +51,20 @@ function formatInPlace() {
     try {
       JSON.parse(displayText.value);
     } catch (e) {
-      parseError.value = e instanceof Error ? e.message : "JSON 格式错误";
+      parseError.value = e instanceof Error ? e.message : 'JSON 格式错误';
       return;
     }
   }
   displayText.value = next;
-  parseError.value = "";
+  parseError.value = '';
 }
 
 async function copyText() {
   try {
     await navigator.clipboard.writeText(displayText.value);
-    $q.notify({ type: "positive", message: "已复制", timeout: 1200 });
+    $q.notify({ type: 'positive', message: '已复制', timeout: 1200 });
   } catch {
-    $q.notify({ type: "warning", message: "复制失败" });
+    $q.notify({ type: 'warning', message: '复制失败' });
   }
 }
 </script>

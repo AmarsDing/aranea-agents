@@ -1,14 +1,14 @@
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
-import { useQuasar } from "quasar";
-import { onBeforeRouteLeave, useRoute, useRouter } from "vue-router";
-import type { GraphDefinition, NodeDef, ValidationError, ValidationWarning } from "./types";
-import { applyAutoLayout } from "./editor/graphLayout";
-import { useGraphStore } from "../../stores/graph";
-import { useToolsStore } from "../../stores/tools";
-import { useGraphEditorAssets } from "./useGraphEditorAssets";
-import { useGraphExecute } from "./useGraphExecute";
-import { useGraphUndoRedo } from "./useGraphUndoRedo";
-import { useGraphLocalValidation } from "./useGraphLocalValidation";
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { useQuasar } from 'quasar';
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
+import type { GraphDefinition, NodeDef, ValidationError, ValidationWarning } from './types';
+import { applyAutoLayout } from './editor/graphLayout';
+import { useGraphStore } from '../../stores/graph';
+import { useToolsStore } from '../../stores/tools';
+import { useGraphEditorAssets } from './useGraphEditorAssets';
+import { useGraphExecute } from './useGraphExecute';
+import { useGraphUndoRedo } from './useGraphUndoRedo';
+import { useGraphLocalValidation } from './useGraphLocalValidation';
 
 export function useGraphEditorPage() {
   const $q = useQuasar();
@@ -19,8 +19,8 @@ export function useGraphEditorPage() {
   const graphExecute = useGraphExecute(router);
 
   const isDark = computed(() => $q.dark.isActive);
-  const isNew = computed(() => route.name === "graph-editor-new");
-  const graphId = computed(() => (route.params.id as string) ?? "");
+  const isNew = computed(() => route.name === 'graph-editor-new');
+  const graphId = computed(() => (route.params.id as string) ?? '');
 
   const saving = ref(false);
   const dirty = ref(false);
@@ -31,24 +31,24 @@ export function useGraphEditorPage() {
   const validationValid = ref(true);
 
   const graphDef = reactive<GraphDefinition>({
-    id: "",
-    name: "",
-    description: "",
+    id: '',
+    name: '',
+    description: '',
     stateFields: [],
     nodes: [],
     edges: [],
     conditionalEdges: [],
     subgraphs: [],
-    entryPoint: "",
-    finishPoint: "",
+    entryPoint: '',
+    finishPoint: '',
     enableCheckpoint: true,
-    executionEngine: "bsp",
+    executionEngine: 'bsp',
     interruptBefore: [],
     interruptAfter: [],
     metadata: {},
     version: 0,
-    createdAt: "",
-    updatedAt: "",
+    createdAt: '',
+    updatedAt: '',
   });
 
   const assets = useGraphEditorAssets(graphDef, () => isNew.value);
@@ -65,7 +65,7 @@ export function useGraphEditorPage() {
   const mergedValidationErrors = computed<ValidationError[]>(() => {
     const serverKeys = new Set(validationErrors.value.map((e) => `${e.code}:${e.nodeId}:${e.field}`));
     const filtered = localValidation.localErrors.value.filter(
-      (e) => !serverKeys.has(`${e.code}:${e.nodeId}:${e.field}`)
+      (e) => !serverKeys.has(`${e.code}:${e.nodeId}:${e.field}`),
     );
     return [...validationErrors.value, ...filtered];
   });
@@ -73,14 +73,12 @@ export function useGraphEditorPage() {
   const mergedValidationWarnings = computed<ValidationWarning[]>(() => {
     const serverKeys = new Set(validationWarnings.value.map((w) => `${w.code}:${w.nodeId}:${w.field}`));
     const filtered = localValidation.localWarnings.value.filter(
-      (w) => !serverKeys.has(`${w.code}:${w.nodeId}:${w.field}`)
+      (w) => !serverKeys.has(`${w.code}:${w.nodeId}:${w.field}`),
     );
     return [...validationWarnings.value, ...filtered];
   });
 
-  const mergedValidationValid = computed(
-    () => validationValid.value && localValidation.localValid.value
-  );
+  const mergedValidationValid = computed(() => validationValid.value && localValidation.localValid.value);
 
   async function loadToolOptions() {
     try {
@@ -113,7 +111,7 @@ export function useGraphEditorPage() {
         await runValidation(graphDef.id);
       }
     } catch {
-      $q.notify({ type: "negative", message: "加载 Graph 失败" });
+      $q.notify({ type: 'negative', message: '加载 Graph 失败' });
     }
   }
 
@@ -132,9 +130,9 @@ export function useGraphEditorPage() {
   function onFocusPropertyPanel(nodeId: string, panelEl?: HTMLElement | null) {
     selectedNodeId.value = nodeId;
     nextTick(() => {
-      const panel = panelEl ?? document.querySelector(".graph-property-panel");
+      const panel = panelEl ?? document.querySelector('.graph-property-panel');
       if (panel) {
-        const firstInput = panel.querySelector("input, textarea, select") as HTMLElement | null;
+        const firstInput = panel.querySelector('input, textarea, select') as HTMLElement | null;
         if (firstInput) {
           firstInput.focus();
         }
@@ -154,7 +152,7 @@ export function useGraphEditorPage() {
         persisted = await graphStore.addGraph(graphDef);
         Object.assign(graphDef, persisted);
         dirty.value = false;
-        router.replace({ name: "graph-editor", params: { id: persisted.id } });
+        router.replace({ name: 'graph-editor', params: { id: persisted.id } });
       } else {
         persisted = await graphStore.editGraph(graphDef.id, graphDef);
         Object.assign(graphDef, persisted);
@@ -163,12 +161,12 @@ export function useGraphEditorPage() {
 
       const validation = await runValidation(persisted.id);
       if (!validation.valid) {
-        $q.notify({ type: "warning", message: "Graph 已保存，但校验未通过，请查看右侧面板" });
+        $q.notify({ type: 'warning', message: 'Graph 已保存，但校验未通过，请查看右侧面板' });
         return;
       }
-      $q.notify({ type: "positive", message: "Graph 已保存" });
+      $q.notify({ type: 'positive', message: 'Graph 已保存' });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "保存失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存失败' });
     } finally {
       saving.value = false;
     }
@@ -188,10 +186,10 @@ export function useGraphEditorPage() {
       }
       dirty.value = false;
       undoRedo.clear();
-      $q.notify({ type: "positive", message: "已从模板创建 Graph" });
-      router.replace({ name: "graph-editor", params: { id: created.id } });
+      $q.notify({ type: 'positive', message: '已从模板创建 Graph' });
+      router.replace({ name: 'graph-editor', params: { id: created.id } });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "模板创建失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '模板创建失败' });
     }
   }
 
@@ -217,7 +215,7 @@ export function useGraphEditorPage() {
   }
 
   function goBack() {
-    router.push({ name: "graphs" });
+    router.push({ name: 'graphs' });
   }
 
   async function openVersionDialog() {
@@ -243,26 +241,26 @@ export function useGraphEditorPage() {
   function isEditableTarget(el: EventTarget | null): boolean {
     if (!el || !(el instanceof HTMLElement)) return false;
     const tag = el.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
     if (el.isContentEditable) return true;
     return false;
   }
 
   function onGlobalKeydown(e: KeyboardEvent) {
     if (isEditableTarget(e.target)) return;
-    if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
       if (canSave.value && !saving.value) {
         save();
       }
       return;
     }
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "Z") {
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'Z') {
       e.preventDefault();
       undoRedo.redo();
       return;
     }
-    if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
       e.preventDefault();
       undoRedo.undo();
       return;
@@ -270,22 +268,21 @@ export function useGraphEditorPage() {
   }
 
   onMounted(() => {
-    document.addEventListener("keydown", onGlobalKeydown);
+    document.addEventListener('keydown', onGlobalKeydown);
   });
 
   onUnmounted(() => {
-    document.removeEventListener("keydown", onGlobalKeydown);
+    document.removeEventListener('keydown', onGlobalKeydown);
   });
 
   onBeforeRouteLeave((_to, _from, next) => {
     if (dirty.value) {
-      $q
-        .dialog({
-          title: "未保存的更改",
-          message: "当前 Graph 有未保存修改，确定离开吗？",
-          cancel: true,
-          persistent: true,
-        })
+      $q.dialog({
+        title: '未保存的更改',
+        message: '当前 Graph 有未保存修改，确定离开吗？',
+        cancel: true,
+        persistent: true,
+      })
         .onOk(() => next())
         .onCancel(() => next(false));
     } else {
@@ -341,7 +338,7 @@ export function useGraphEditorPage() {
     saveTemplate: assets.saveTemplate,
     goBack,
     autoLayout,
-    goToExecutions: () => router.push({ name: "graph-executions", params: { id: graphDef.id || route.params.id } }),
+    goToExecutions: () => router.push({ name: 'graph-executions', params: { id: graphDef.id || route.params.id } }),
     canUndo: undoRedo.canUndo,
     canRedo: undoRedo.canRedo,
     undo: undoRedo.undo,

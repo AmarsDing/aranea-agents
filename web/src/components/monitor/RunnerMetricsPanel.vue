@@ -73,50 +73,46 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { RunnerMetricsSummary } from "../../features/monitor/types";
+import { computed } from 'vue';
+import type { RunnerMetricsSummary } from '../../features/monitor/types';
 
 const props = withDefaults(
   defineProps<{
     metrics: RunnerMetricsSummary | null;
     loading: boolean;
     windowMinutes: number;
-    variant?: "monitor" | "overview";
+    variant?: 'monitor' | 'overview';
     scopeHint?: string;
   }>(),
-  { variant: "monitor", scopeHint: "" }
+  { variant: 'monitor', scopeHint: '' },
 );
 
 const emit = defineEmits<{
-  "update:windowMinutes": [value: number];
+  'update:windowMinutes': [value: number];
   refresh: [];
   drill: [];
 }>();
 
-const panelClass = computed(() =>
-  props.variant === "overview" ? "overview-panel q-mb-md" : "monitor-card q-mb-md"
-);
+const panelClass = computed(() => (props.variant === 'overview' ? 'overview-panel q-mb-md' : 'monitor-card q-mb-md'));
 
 const drillHint = computed(() =>
-  props.variant === "overview"
-    ? "点击指标下钻到 Monitor → Runs（Traces）"
-    : "点击指标下钻到 Runs（Traces）列表"
+  props.variant === 'overview' ? '点击指标下钻到 Monitor → Runs（Traces）' : '点击指标下钻到 Runs（Traces）列表',
 );
 
 const windowOptions = [
-  { label: "15 分钟", value: 15 },
-  { label: "1 小时", value: 60 },
-  { label: "6 小时", value: 360 },
-  { label: "24 小时", value: 1440 }
+  { label: '15 分钟', value: 15 },
+  { label: '1 小时', value: 60 },
+  { label: '6 小时', value: 360 },
+  { label: '24 小时', value: 1440 },
 ];
 
 function formatPercent(v: number): string {
-  if (!Number.isFinite(v)) return "-";
+  if (!Number.isFinite(v)) return '-';
   return `${(v * 100).toFixed(1)}%`;
 }
 
 function formatLatency(v?: number): string {
-  if (v == null || !Number.isFinite(v)) return "-";
+  if (v == null || !Number.isFinite(v)) return '-';
   if (v >= 1000) return `${(v / 1000).toFixed(1)}s`;
   return `${Math.round(v)}ms`;
 }

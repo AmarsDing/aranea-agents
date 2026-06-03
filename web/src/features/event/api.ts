@@ -1,9 +1,9 @@
 /**
  * Event 回放：**`createEventService()`** → **`GET /v1/events`**。
  */
-import { createEventService } from "../../services";
-import { asRecord, pickI32, pickStr } from "../../shared/wireJson";
-import type { Envelope } from "../../realtime/envelope";
+import { createEventService } from '../../services';
+import { asRecord, pickI32, pickStr } from '../../shared/wireJson';
+import type { Envelope } from '../../realtime/envelope';
 
 const eventApi = createEventService();
 
@@ -40,7 +40,7 @@ export async function listSessionEvents(params: ListSessionEventsParams): Promis
 
 function parseEnvelopeRecord(row: unknown): Envelope | null {
   const r = asRecord(row);
-  const raw = pickStr(r, "envelope_json", "envelopeJson")?.trim();
+  const raw = pickStr(r, 'envelope_json', 'envelopeJson')?.trim();
   if (raw) {
     try {
       return JSON.parse(raw) as Envelope;
@@ -48,21 +48,21 @@ function parseEnvelopeRecord(row: unknown): Envelope | null {
       return null;
     }
   }
-  const id = pickStr(r, "id", "id");
-  const type = pickStr(r, "type", "type");
+  const id = pickStr(r, 'id', 'id');
+  const type = pickStr(r, 'type', 'type');
   if (!id || !type) return null;
   return {
     id,
-    type: type as Envelope["type"],
-    author: pickStr(r, "author", "author") ?? "",
-    session_id: pickStr(r, "session_id", "sessionId") ?? "",
-    timestamp: pickStr(r, "created_at", "createdAt") ?? "",
+    type: type as Envelope['type'],
+    author: pickStr(r, 'author', 'author') ?? '',
+    session_id: pickStr(r, 'session_id', 'sessionId') ?? '',
+    timestamp: pickStr(r, 'created_at', 'createdAt') ?? '',
     version: 1,
-    channel: pickStr(r, "channel", "channel"),
+    channel: pickStr(r, 'channel', 'channel'),
   };
 }
 
 export function mapListEventsTotal(raw: unknown): number {
   const r = asRecord(raw);
-  return pickI32(r, "total", "total") ?? 0;
+  return pickI32(r, 'total', 'total') ?? 0;
 }

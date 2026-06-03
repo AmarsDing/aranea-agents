@@ -74,14 +74,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import type { TeamDefinition } from "../../features/teams/types";
-import {
-  failureDefaultOptions,
-  failurePolicySummary,
-  runtimeEngineLabel,
-  runtimeEngineOptions,
-} from "./teamUtils";
+import { computed, ref, watch } from 'vue';
+import type { TeamDefinition } from '../../features/teams/types';
+import { failureDefaultOptions, failurePolicySummary, runtimeEngineLabel, runtimeEngineOptions } from './teamUtils';
 
 const props = withDefaults(
   defineProps<{
@@ -97,23 +92,21 @@ const emit = defineEmits<{
 }>();
 
 const runtimeEngineValue = computed(() =>
-  String(props.definition?.runtime_engine || "graph").toLowerCase() === "native" ? "native" : "graph",
+  String(props.definition?.runtime_engine || 'graph').toLowerCase() === 'native' ? 'native' : 'graph',
 );
 const runtimeLabel = computed(() => runtimeEngineLabel(props.definition?.runtime_engine));
-const runtimeBadgeColor = computed(() => (runtimeEngineValue.value === "graph" ? "primary" : "grey-7"));
-const failureSummary = computed(() => (props.definition ? failurePolicySummary(props.definition) : "—"));
+const runtimeBadgeColor = computed(() => (runtimeEngineValue.value === 'graph' ? 'primary' : 'grey-7'));
+const failureSummary = computed(() => (props.definition ? failurePolicySummary(props.definition) : '—'));
 const timeoutSec = computed(() => props.definition?.timeout_seconds ?? 0);
 
 const filteredRuntimeOptions = computed(() =>
-  props.isPlatformAdmin ? runtimeEngineOptions : runtimeEngineOptions.filter((o) => o.value !== "native"),
+  props.isPlatformAdmin ? runtimeEngineOptions : runtimeEngineOptions.filter((o) => o.value !== 'native'),
 );
 
-const nativeLocked = computed(
-  () => !props.isPlatformAdmin && runtimeEngineValue.value === "native",
-);
+const nativeLocked = computed(() => !props.isPlatformAdmin && runtimeEngineValue.value === 'native');
 
 const localRuntime = ref(runtimeEngineValue.value);
-const localFailureDefault = ref(props.definition?.failure_policy?.default ?? "retry_then_block");
+const localFailureDefault = ref(props.definition?.failure_policy?.default ?? 'retry_then_block');
 const localRetryMax = ref(props.definition?.failure_policy?.retry?.max_attempts ?? 3);
 
 watch(
@@ -121,30 +114,30 @@ watch(
   (def) => {
     if (!def) return;
     localRuntime.value = runtimeEngineValue.value;
-    localFailureDefault.value = def.failure_policy?.default ?? "retry_then_block";
+    localFailureDefault.value = def.failure_policy?.default ?? 'retry_then_block';
     localRetryMax.value = def.failure_policy?.retry?.max_attempts ?? 3;
   },
   { deep: true },
 );
 
-function emitRuntime(value: "native" | "graph") {
-  if (value === "native" && !props.isPlatformAdmin) {
-    emit("patch", { runtime_engine: "graph", team_graph_runtime: true });
-    localRuntime.value = "graph";
+function emitRuntime(value: 'native' | 'graph') {
+  if (value === 'native' && !props.isPlatformAdmin) {
+    emit('patch', { runtime_engine: 'graph', team_graph_runtime: true });
+    localRuntime.value = 'graph';
     return;
   }
-  emit("patch", {
+  emit('patch', {
     runtime_engine: value,
-    team_graph_runtime: value === "graph",
+    team_graph_runtime: value === 'graph',
   });
 }
 
 function emitFailure() {
   const prev = props.definition?.failure_policy ?? {};
-  emit("patch", {
+  emit('patch', {
     failure_policy: {
       ...prev,
-      default: localFailureDefault.value || "retry_then_block",
+      default: localFailureDefault.value || 'retry_then_block',
       retry: { ...(prev.retry ?? {}), max_attempts: Math.max(0, Math.floor(Number(localRetryMax.value) || 0)) },
     },
   });

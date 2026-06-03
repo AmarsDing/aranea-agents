@@ -1172,6 +1172,185 @@ body.body--dark .app-entity-page--warm:not(.app-standard-page),
   .taxonomy-toolbar__toggle
     justify-content: space-between
 
+// ── Taxonomy Card Grid ──────────────────────────────────────────
+.taxonomy-grid
+  display: grid
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr))
+  gap: 18px
+
+.taxonomy-industry-card
+  display: flex
+  flex-direction: column
+  overflow: hidden
+  border: 1px solid var(--glass-border)
+  border-radius: 20px
+  background: var(--glass-surface)
+  box-shadow: var(--shadow-entity-panel)
+  backdrop-filter: blur(16px)
+  -webkit-backdrop-filter: blur(16px)
+  transition: border-color 160ms ease, transform 160ms ease
+
+  &:hover
+    transform: translateY(-1px)
+    border-color: color-mix(in srgb, var(--color-link) 22%, var(--glass-border))
+
+.taxonomy-industry-card--disabled
+  opacity: 0.55
+
+.taxonomy-industry-card__inner
+  display: flex
+  flex: 1
+  flex-direction: column
+  gap: 10px
+  min-height: 0
+  overflow: hidden
+  padding: 14px 16px 12px
+
+.taxonomy-industry-card__head
+  display: flex
+  align-items: flex-start
+  gap: 10px
+
+.taxonomy-industry-card__head-main
+  flex: 1
+  min-width: 0
+
+.taxonomy-industry-card__title-row
+  display: flex
+  flex-wrap: wrap
+  align-items: center
+  gap: 6px 8px
+
+.taxonomy-industry-card__avatar
+  flex-shrink: 0
+
+.taxonomy-industry-card__name
+  margin: 0
+  color: var(--color-text-heading)
+  font-size: 16px
+  font-weight: 800
+  line-height: 1.25
+
+.taxonomy-industry-card__desc
+  margin: 4px 0 0
+  color: var(--color-text-secondary)
+  font-size: 12px
+  line-height: 1.4
+
+.taxonomy-industry-card__stats
+  display: flex
+  gap: 16px
+  padding: 8px 0
+  border-top: 1px solid var(--glass-border)
+  border-bottom: 1px solid var(--glass-border)
+
+.taxonomy-industry-card__stat
+  display: flex
+  align-items: baseline
+  gap: 4px
+  font-size: 12px
+  color: var(--color-text-secondary)
+
+  strong
+    font-size: 18px
+    font-weight: 700
+    color: var(--color-text-heading)
+
+.taxonomy-industry-card__departments
+  flex: 1
+  min-height: 0
+  overflow-y: auto
+  display: flex
+  flex-direction: column
+  gap: 8px
+
+.taxonomy-industry-card__dept
+  border: 1px solid var(--glass-border)
+  border-radius: 14px
+  background: color-mix(in srgb, var(--color-page-tint) 40%, var(--glass-surface))
+  overflow: hidden
+
+.taxonomy-industry-card__dept-head
+  display: flex
+  align-items: center
+  gap: 6px
+  padding: 6px 10px
+  font-size: 13px
+  font-weight: 600
+  color: var(--color-text-heading)
+
+.taxonomy-industry-card__dept-name
+  flex: 1
+  min-width: 0
+
+.taxonomy-industry-card__dept-count
+  font-size: 11px
+  color: var(--color-text-tertiary)
+  white-space: nowrap
+
+.taxonomy-industry-card__positions
+  padding: 4px 10px 8px 28px
+  display: flex
+  flex-direction: column
+  gap: 3px
+
+.taxonomy-industry-card__position
+  display: flex
+  align-items: center
+  gap: 5px
+  font-size: 12px
+  color: var(--color-text-secondary)
+
+.taxonomy-industry-card__pos-off,
+.taxonomy-industry-card__status-off
+  background: color-mix(in srgb, var(--color-negative) 12%, transparent)
+  color: var(--color-negative)
+
+.taxonomy-industry-card__foot
+  display: flex
+  align-items: center
+  justify-content: space-between
+  padding-top: 8px
+  border-top: 1px solid var(--glass-border)
+
+.taxonomy-industry-card__action-group
+  display: flex
+  align-items: center
+  gap: 2px
+
+.taxonomy-industry-card-add
+  display: flex
+  flex-direction: column
+  align-items: center
+  justify-content: center
+  gap: 8px
+  min-height: 180px
+  border: 2px dashed var(--glass-border)
+  border-radius: 20px
+  background: transparent
+  cursor: pointer
+  color: var(--color-text-tertiary)
+  font-size: 14px
+  transition: border-color 160ms ease, color 160ms ease
+
+  &:hover
+    border-color: var(--color-link)
+    color: var(--color-link)
+
+// Dark mode
+.taxonomy-industry-card.is-dark
+  background: color-mix(in srgb, var(--glass-elevated) 60%, transparent)
+
+  .taxonomy-industry-card__dept
+    background: color-mix(in srgb, var(--color-page-tint) 20%, var(--glass-elevated))
+
+body.body--dark .taxonomy-industry-card
+  background: color-mix(in srgb, var(--glass-elevated) 60%, transparent)
+
+  .taxonomy-industry-card__dept
+    background: color-mix(in srgb, var(--color-page-tint) 20%, var(--glass-elevated))
+
+// ── Taxonomy Tree (legacy) ─────────────────────────────────────
 .taxonomy-tree-shell
   margin-top: 0
 

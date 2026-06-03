@@ -12,26 +12,51 @@
       <q-separator />
       <q-card-section class="app-dialog-body">
         <q-inner-loading :showing="loading" />
-        <div v-if="!loading && items.length === 0" class="text-caption text-grey-7 q-mb-md">尚未配置凭据。保存后 Agent 会话方可调用此 MCP。</div>
+        <div v-if="!loading && items.length === 0" class="text-caption text-grey-7 q-mb-md">
+          尚未配置凭据。保存后 Agent 会话方可调用此 MCP。
+        </div>
         <q-list v-if="items.length" bordered separator class="rounded-borders q-mb-md">
           <q-item v-for="cred in items" :key="cred.credential_key">
             <q-item-section>
               <q-item-label>{{ cred.credential_key }}</q-item-label>
               <q-item-label caption>
-                {{ cred.configured ? cred.masked_preview || "已配置" : "未配置" }}
+                {{ cred.configured ? cred.masked_preview || '已配置' : '未配置' }}
                 <span v-if="cred.status"> · {{ cred.status }}</span>
               </q-item-label>
             </q-item-section>
             <q-item-section side>
-              <q-btn flat dense round icon="delete" color="negative" aria-label="删除" @click="confirmRemove(cred.credential_key)" />
+              <q-btn
+                flat
+                dense
+                round
+                icon="delete"
+                color="negative"
+                aria-label="删除"
+                @click="confirmRemove(cred.credential_key)"
+              />
             </q-item-section>
           </q-item>
         </q-list>
         <q-form class="app-form-field-grid app-form-field-grid--2col" @submit.prevent="save">
-          <q-input v-model="form.credential_key" dense outlined label="凭据键" hint="通常为 Authorization 或 API 头名" />
+          <q-input
+            v-model="form.credential_key"
+            dense
+            outlined
+            label="凭据键"
+            hint="通常为 Authorization 或 API 头名"
+          />
           <q-input v-model="form.secret" dense outlined type="password" label="密钥 / Token" />
           <div class="app-actions-bar app-actions-bar--start">
-            <q-btn color="primary" unelevated rounded no-caps label="保存凭据" type="submit" :loading="saving" :disable="!canSave" />
+            <q-btn
+              color="primary"
+              unelevated
+              rounded
+              no-caps
+              label="保存凭据"
+              type="submit"
+              :loading="saving"
+              :disable="!canSave"
+            />
           </div>
         </q-form>
       </q-card-section>
@@ -40,10 +65,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
-import { useQuasar } from "quasar";
-import type { McpUserCredential } from "./types";
-import { useMcpStore } from "../../stores/mcp";
+import { computed, reactive, ref, watch } from 'vue';
+import { useQuasar } from 'quasar';
+import type { McpUserCredential } from './types';
+import { useMcpStore } from '../../stores/mcp';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -53,7 +78,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:modelValue": [value: boolean];
+  'update:modelValue': [value: boolean];
   saved: [];
 }>();
 
@@ -62,15 +87,17 @@ const mcpStore = useMcpStore();
 const loading = ref(false);
 const saving = ref(false);
 const items = ref<McpUserCredential[]>([]);
-let form = reactive({ credential_key: "Authorization", secret: "" });
+let form = reactive({ credential_key: 'Authorization', secret: '' });
 
-const canSave = computed(() => Boolean(props.mcpServerId && props.userId && form.credential_key.trim() && form.secret.trim()));
+const canSave = computed(() =>
+  Boolean(props.mcpServerId && props.userId && form.credential_key.trim() && form.secret.trim()),
+);
 
 watch(
   () => [props.modelValue, props.mcpServerId, props.userId] as const,
   ([open, serverId, uid]) => {
     if (open && serverId && uid) void reload();
-  }
+  },
 );
 
 async function reload() {
@@ -79,7 +106,7 @@ async function reload() {
   try {
     items.value = await mcpStore.fetchUserCredentials(props.mcpServerId, props.userId);
   } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "加载凭据失败" });
+    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '加载凭据失败' });
   } finally {
     loading.value = false;
   }
@@ -91,14 +118,14 @@ async function save() {
   try {
     await mcpStore.saveUserCredential(props.mcpServerId, props.userId, {
       credential_key: form.credential_key.trim(),
-      secret: form.secret.trim()
+      secret: form.secret.trim(),
     });
-    form.secret = "";
+    form.secret = '';
     await reload();
-    emit("saved");
-    $q.notify({ type: "positive", message: "凭据已保存" });
+    emit('saved');
+    $q.notify({ type: 'positive', message: '凭据已保存' });
   } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "保存失败" });
+    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存失败' });
   } finally {
     saving.value = false;
   }
@@ -108,18 +135,18 @@ async function remove(credentialKey: string) {
   try {
     await mcpStore.removeUserCredential(props.mcpServerId, props.userId, credentialKey);
     await reload();
-    $q.notify({ type: "positive", message: "已删除" });
+    $q.notify({ type: 'positive', message: '已删除' });
   } catch (err) {
-    $q.notify({ type: "negative", message: err instanceof Error ? err.message : "删除失败" });
+    $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
   }
 }
 
 function confirmRemove(credentialKey: string) {
   $q.dialog({
-    title: "删除凭据",
+    title: '删除凭据',
     message: `确定删除凭据「${credentialKey}」？删除后 Agent 将无法使用该凭据访问 MCP 服务。`,
     cancel: true,
-    persistent: true
+    persistent: true,
   }).onOk(() => void remove(credentialKey));
 }
 </script>

@@ -67,24 +67,24 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, ref } from "vue";
-import type { MonitorLogHub } from "../../features/monitor/useLogStreamHub";
-import type { MonitorLogLine, StreamState } from "../../features/monitor/types";
-import LogLevelToggle, { type LogLevel } from "./LogLevelToggle.vue";
+import { computed, inject, ref } from 'vue';
+import type { MonitorLogHub } from '../../features/monitor/useLogStreamHub';
+import type { MonitorLogLine, StreamState } from '../../features/monitor/types';
+import LogLevelToggle, { type LogLevel } from './LogLevelToggle.vue';
 
-const props = defineProps<{ }>();
+const props = defineProps<{}>();
 const emit = defineEmits<{
   clear: [];
 }>();
 
-const _hub = inject<MonitorLogHub>("monitorLogHub");
+const _hub = inject<MonitorLogHub>('monitorLogHub');
 if (!_hub) {
-  throw new Error("FlowLogStream requires monitorLogHub");
+  throw new Error('FlowLogStream requires monitorLogHub');
 }
 const hub: MonitorLogHub = _hub;
 
-const keyword = ref("");
-const level = ref<LogLevel>("INFO");
+const keyword = ref('');
+const level = ref<LogLevel>('INFO');
 
 const levelRank: Record<string, number> = { DEBUG: 10, INFO: 20, WARN: 30, ERROR: 40 };
 
@@ -95,41 +95,43 @@ const filteredLines = computed(() => {
     if ((levelRank[line.level] ?? 20) < minRank) return false;
     if (!q) return true;
     return [line.level, line.message, line.source, line.title, line.step_id, line.trace_id].some((value) =>
-      String(value || "").toLowerCase().includes(q)
+      String(value || '')
+        .toLowerCase()
+        .includes(q),
     );
   });
 });
 
 const stateTextMap: Record<StreamState, string> = {
-  connecting: "连接中",
-  connected: "已连接",
-  live: "实时",
-  paused: "已暂停",
-  error: "连接异常"
+  connecting: '连接中',
+  connected: '已连接',
+  live: '实时',
+  paused: '已暂停',
+  error: '连接异常',
 };
 
 const stateText = computed(() => stateTextMap[hub.flowState.value]);
 const stateColor = computed(() => {
   const s = hub.flowState.value;
-  if (s === "live" || s === "connected") return "positive";
-  if (s === "error") return "negative";
-  if (s === "paused") return "grey";
-  return "orange";
+  if (s === 'live' || s === 'connected') return 'positive';
+  if (s === 'error') return 'negative';
+  if (s === 'paused') return 'grey';
+  return 'orange';
 });
 
 const emptyText = computed(() => {
-  if (hub.flowState.value === "connected") {
-    return "已连接，等待业务事件（发起一次对话后可看到流程日志）";
+  if (hub.flowState.value === 'connected') {
+    return '已连接，等待业务事件（发起一次对话后可看到流程日志）';
   }
-  if (hub.flowState.value === "connecting") {
-    return "正在连接 WebSocket…";
+  if (hub.flowState.value === 'connecting') {
+    return '正在连接 WebSocket…';
   }
-  return "暂无流程日志";
+  return '暂无流程日志';
 });
 
 function lineClass(line: MonitorLogLine): string {
   const base = `monitor-log-line--${line.level.toLowerCase()}`;
-  const sev = (line.severity || "info").toLowerCase();
+  const sev = (line.severity || 'info').toLowerCase();
   return `${base} monitor-log-line--flow monitor-log-line--flow-${sev}`;
 }
 

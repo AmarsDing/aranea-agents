@@ -9,9 +9,9 @@
       <template #avatar>
         <q-icon name="gpp_maybe" color="warning" />
       </template>
-      <div class="text-body2">{{ t("chat.toolConfirmHint") }}</div>
+      <div class="text-body2">{{ t('chat.toolConfirmHint') }}</div>
       <div v-if="awaitToolKey" class="text-caption q-mt-xs">
-        {{ t("chat.toolConfirmTool") }}: <code>{{ awaitToolKey }}</code>
+        {{ t('chat.toolConfirmTool') }}: <code>{{ awaitToolKey }}</code>
       </div>
       <template #action>
         <q-btn
@@ -37,7 +37,7 @@
       <template #avatar>
         <q-icon name="hourglass_top" color="amber-9" />
       </template>
-      {{ t("chat.awaitingUserHint") }}
+      {{ t('chat.awaitingUserHint') }}
       <template #action>
         <q-btn
           flat
@@ -50,16 +50,11 @@
       </template>
     </q-banner>
 
-    <q-banner
-      v-if="contextPressureLevel === 'critical'"
-      rounded
-      class="q-mb-sm app-banner-warning"
-      dense
-    >
+    <q-banner v-if="contextPressureLevel === 'critical'" rounded class="q-mb-sm app-banner-warning" dense>
       <template #avatar>
         <q-icon name="warning" color="negative" />
       </template>
-      <div class="text-body2">{{ t("chat.contextPressureCritical", "上下文窗口接近满载，回复可能被截断") }}</div>
+      <div class="text-body2">{{ t('chat.contextPressureCritical', '上下文窗口接近满载，回复可能被截断') }}</div>
       <template #action>
         <q-btn
           flat
@@ -71,16 +66,11 @@
         />
       </template>
     </q-banner>
-    <q-banner
-      v-else-if="contextPressureLevel === 'warning'"
-      rounded
-      class="q-mb-sm app-banner-warning"
-      dense
-    >
+    <q-banner v-else-if="contextPressureLevel === 'warning'" rounded class="q-mb-sm app-banner-warning" dense>
       <template #avatar>
         <q-icon name="info" color="warning" />
       </template>
-      {{ t("chat.contextPressureWarning", "上下文窗口使用率较高，建议开启新会话以获得更好效果") }}
+      {{ t('chat.contextPressureWarning', '上下文窗口使用率较高，建议开启新会话以获得更好效果') }}
     </q-banner>
 
     <div class="chat-composer-inner">
@@ -95,7 +85,8 @@
             class="q-mr-xs"
           />
           <q-icon v-else name="insert_drive_file" size="20px" class="q-mr-xs" color="primary" />
-          <span class="ellipsis text-caption" style="max-width: 140px">{{ file.name }}</span><q-tooltip>{{ file.name }}</q-tooltip>
+          <span class="ellipsis text-caption" style="max-width: 140px">{{ file.name }}</span
+          ><q-tooltip>{{ file.name }}</q-tooltip>
           <q-btn
             icon="close"
             class="chat-file-tile__close"
@@ -215,7 +206,13 @@
             @click="$emit('pick-file')"
           >
             <q-icon name="attach_file" size="18px" />
-            <q-tooltip>{{ fileSupported === false ? t('chat.fileNotSupported') : (fileAccept ? t('chat.limitedFileTypes') : artifactMaxSizeHint()) }}</q-tooltip>
+            <q-tooltip>{{
+              fileSupported === false
+                ? t('chat.fileNotSupported')
+                : fileAccept
+                  ? t('chat.limitedFileTypes')
+                  : artifactMaxSizeHint()
+            }}</q-tooltip>
           </q-btn>
           <q-btn
             dense
@@ -258,16 +255,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { useI18n } from "vue-i18n";
-import ChatEnqueueMessage from "./ChatEnqueueMessage.vue";
-import ChatSessionArtifactsPanel from "./ChatSessionArtifactsPanel.vue";
-import ChatBackgroundJobsPanel from "./ChatBackgroundJobsPanel.vue";
-import { AWAIT_KIND_TOOL_CONFIRM } from "../../features/chat/awaitConstants";
-import type { ChatAttachment } from "./types";
-import type { ComposerUsageSnapshot } from "../../features/chat/composerUsageMetrics";
-import type { ArtifactMeta } from "../../features/artifact/types";
-import { artifactMaxSizeHint } from "../../features/artifact/limits";
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import ChatEnqueueMessage from './ChatEnqueueMessage.vue';
+import ChatSessionArtifactsPanel from './ChatSessionArtifactsPanel.vue';
+import ChatBackgroundJobsPanel from './ChatBackgroundJobsPanel.vue';
+import { AWAIT_KIND_TOOL_CONFIRM } from '../../features/chat/awaitConstants';
+import type { ChatAttachment } from './types';
+import type { ComposerUsageSnapshot } from '../../features/chat/composerUsageMetrics';
+import type { ArtifactMeta } from '../../features/artifact/types';
+import { artifactMaxSizeHint } from '../../features/artifact/limits';
 
 type Option = { label: string; value: string; caption?: string };
 
@@ -304,35 +301,35 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:modelValue": [value: string];
-  "update:dialogMode": [value: string];
-  "update:modelProvider": [value: string];
-  "update:selectedKnowledgeBases": [value: string[]];
-  "remove-attachment": [id: string];
-  "pick-file": [];
+  'update:modelValue': [value: string];
+  'update:dialogMode': [value: string];
+  'update:modelProvider': [value: string];
+  'update:selectedKnowledgeBases': [value: string[]];
+  'remove-attachment': [id: string];
+  'pick-file': [];
   voice: [];
   send: [];
   stop: [];
-  "enqueue-message": [content: string];
-  "submit-await-reply": [];
-  "submit-tool-confirm": [approved: boolean];
-  "open-artifact": [id: string];
-  "attachment-deleted": [id: string];
-  "paste-file": [file: File];
-  "focus-turn": [turnId: string];
+  'enqueue-message': [content: string];
+  'submit-await-reply': [];
+  'submit-tool-confirm': [approved: boolean];
+  'open-artifact': [id: string];
+  'attachment-deleted': [id: string];
+  'paste-file': [file: File];
+  'focus-turn': [turnId: string];
   navigate: [route: { name: string; params: Record<string, string> }];
-  "cancel-job": [job: { id: string; source: string }];
-  "paste-unsupported": [];
-  "new-session": [];
+  'cancel-job': [job: { id: string; source: string }];
+  'paste-unsupported': [];
+  'new-session': [];
 }>();
 
 const { t } = useI18n();
 
-const contextPressureLevel = computed<"warning" | "critical" | null>(() => {
+const contextPressureLevel = computed<'warning' | 'critical' | null>(() => {
   const ratio = props.contextRatio ?? 0;
   const status = props.contextStatus?.trim();
-  if (status === "exceeded" || status === "critical" || ratio >= 0.8) return "critical";
-  if (status === "warning" || ratio >= 0.6) return "warning";
+  if (status === 'exceeded' || status === 'critical' || ratio >= 0.8) return 'critical';
+  if (status === 'warning' || ratio >= 0.6) return 'warning';
   return null;
 });
 
@@ -341,33 +338,34 @@ function handlePaste(event: ClipboardEvent) {
   if (!items || props.fileSupported === false) return;
 
   for (const item of Array.from(items)) {
-    if (item.kind === "file") {
+    if (item.kind === 'file') {
       const file = item.getAsFile();
       if (!file) continue;
-      const isImage = file.type?.toLowerCase().startsWith("image/") || /\.(png|jpe?g|gif|webp|bmp|svg|heic|heif)$/i.test(file.name);
+      const isImage =
+        file.type?.toLowerCase().startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|svg|heic|heif)$/i.test(file.name);
       if (props.fileAccept && isImage) {
         event.preventDefault();
-        emit("paste-unsupported");
+        emit('paste-unsupported');
         return;
       }
       event.preventDefault();
-      emit("paste-file", file);
+      emit('paste-file', file);
       return;
     }
   }
 }
 
 function onInputKeydown(event: KeyboardEvent) {
-  if (event.key !== "Enter" || event.shiftKey || event.isComposing || event.keyCode === 229) return;
+  if (event.key !== 'Enter' || event.shiftKey || event.isComposing || event.keyCode === 229) return;
   event.preventDefault();
   if (props.isRunnerActive) {
     const text = props.modelValue.trim();
     if (text) {
-      emit("enqueue-message", text);
-      emit("update:modelValue", "");
+      emit('enqueue-message', text);
+      emit('update:modelValue', '');
     }
   } else {
-    emit("send");
+    emit('send');
   }
 }
 </script>

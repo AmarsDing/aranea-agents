@@ -7,12 +7,28 @@
     >
       <template #actions>
         <q-btn outline rounded no-caps icon="rule" :label="t('hooksPage.deliveries.btnHookRules')" to="/hooks" />
-        <q-btn outline rounded no-caps icon="history" :label="t('hooksPage.deliveries.btnBlockErrors')" to="/plugins/runs" />
+        <q-btn
+          outline
+          rounded
+          no-caps
+          icon="history"
+          :label="t('hooksPage.deliveries.btnBlockErrors')"
+          to="/plugins/runs"
+        />
       </template>
     </AppPageHero>
 
     <AppPageToolbar>
-      <q-input v-model="hookKey" class="app-page-toolbar__field" dense outlined clearable debounce="350" :label="t('hooksPage.deliveries.filterHookKey')" @update:model-value="onFilterChange" />
+      <q-input
+        v-model="hookKey"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        debounce="350"
+        :label="t('hooksPage.deliveries.filterHookKey')"
+        @update:model-value="onFilterChange"
+      />
       <q-select
         v-model="status"
         class="app-page-toolbar__field"
@@ -25,11 +41,44 @@
         :options="statusOptions"
         @update:model-value="onFilterChange"
       />
-      <q-input v-model="from" class="app-page-toolbar__field" dense outlined clearable type="datetime-local" :label="t('hooksPage.deliveries.filterFrom')" @update:model-value="onFilterChange" />
-      <q-input v-model="to" class="app-page-toolbar__field" dense outlined clearable type="datetime-local" :label="t('hooksPage.deliveries.filterTo')" @update:model-value="onFilterChange" />
+      <q-input
+        v-model="from"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        type="datetime-local"
+        :label="t('hooksPage.deliveries.filterFrom')"
+        @update:model-value="onFilterChange"
+      />
+      <q-input
+        v-model="to"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        type="datetime-local"
+        :label="t('hooksPage.deliveries.filterTo')"
+        @update:model-value="onFilterChange"
+      />
       <template #actions>
-        <q-btn flat rounded no-caps icon="restart_alt" :label="t('hooksPage.deliveries.btnReset')" @click="resetFilters" />
-        <q-btn flat rounded no-caps icon="refresh" :label="t('hooksPage.deliveries.btnRefresh')" :loading="loading" @click="() => loadRows()" />
+        <q-btn
+          flat
+          rounded
+          no-caps
+          icon="restart_alt"
+          :label="t('hooksPage.deliveries.btnReset')"
+          @click="resetFilters"
+        />
+        <q-btn
+          flat
+          rounded
+          no-caps
+          icon="refresh"
+          :label="t('hooksPage.deliveries.btnRefresh')"
+          :loading="loading"
+          @click="() => loadRows()"
+        />
       </template>
     </AppPageToolbar>
 
@@ -58,7 +107,10 @@
         </template>
         <template #body-cell-status="props">
           <q-td :props="props">
-            <AppRegistryHoverTip :text="props.row.payload_json" :indicator="Boolean(String(props.row.payload_json ?? '').trim())">
+            <AppRegistryHoverTip
+              :text="props.row.payload_json"
+              :indicator="Boolean(String(props.row.payload_json ?? '').trim())"
+            >
               <q-chip
                 dense
                 :color="statusColor(props.row.status)"
@@ -87,7 +139,7 @@
       <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
         <q-card-section class="app-glass-dialog__head row items-center justify-between">
           <div class="app-glass-dialog__title">{{ t('hooksPage.deliveries.dialogTitle') }}</div>
-          <q-btn flat round dense icon="close" v-close-popup />
+          <q-btn v-close-popup flat round dense icon="close" />
         </q-card-section>
         <q-separator />
         <div class="app-glass-dialog__scroll">
@@ -99,7 +151,7 @@
         </div>
         <q-separator />
         <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-          <q-btn flat no-caps :label="t('hooksPage.deliveries.btnClose')" v-close-popup />
+          <q-btn v-close-popup flat no-caps :label="t('hooksPage.deliveries.btnClose')" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -107,46 +159,46 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
-import { storeToRefs } from "pinia";
-import { useRoute } from "vue-router";
-import { useI18n } from "vue-i18n";
-import AppPageHero from "../components/layout/AppPageHero.vue";
-import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
-import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../components/layout/AppRegistryHoverTip.vue";
-import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
+import { computed, onMounted, ref, watch } from 'vue';
+import { storeToRefs } from 'pinia';
+import { useRoute } from 'vue-router';
+import { useI18n } from 'vue-i18n';
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
+import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
+import AppRegistryHoverTip from '../components/layout/AppRegistryHoverTip.vue';
+import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
 
-import { createHookDeliveryTableColumns } from "../components/hooks/hookTableUi";
-import type { HookDeliveryRow } from "../features/hooks/deliveries";
-import { useHooksStore } from "../stores/hooks";
+import { createHookDeliveryTableColumns } from '../components/hooks/hookTableUi';
+import type { HookDeliveryRow } from '../features/hooks/deliveries';
+import { useHooksStore } from '../stores/hooks';
 
 const { t } = useI18n();
 const route = useRoute();
 const hooksStore = useHooksStore();
 const { deliveries: rows, deliveriesTotal: total, deliveriesLoading: loading } = storeToRefs(hooksStore);
 
-const hookKey = ref("");
-const status = ref("");
-const from = ref("");
-const to = ref("");
-const error = ref("");
+const hookKey = ref('');
+const status = ref('');
+const from = ref('');
+const to = ref('');
+const error = ref('');
 const page = ref(1);
 const pageSize = ref(20);
 const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 const detailOpen = ref(false);
-const detailText = ref("");
-const detailUrl = ref("");
-const detailError = ref("");
+const detailText = ref('');
+const detailUrl = ref('');
+const detailError = ref('');
 
-const statusOptions = ["pending", "success", "failed"];
+const statusOptions = ['pending', 'success', 'failed'];
 
 const columns = createHookDeliveryTableColumns(t);
 
 function statusColor(st: string) {
-  if (st === "failed") return "negative";
-  if (st === "success") return "positive";
-  return "grey";
+  if (st === 'failed') return 'negative';
+  if (st === 'success') return 'positive';
+  return 'grey';
 }
 
 function toRFC3339(local: string): string | undefined {
@@ -158,7 +210,7 @@ function toRFC3339(local: string): string | undefined {
 }
 
 async function loadRows(nextPage = page.value, nextPageSize = pageSize.value) {
-  error.value = "";
+  error.value = '';
   try {
     await hooksStore.loadDeliveries({
       hook_key: hookKey.value.trim() || undefined,
@@ -166,10 +218,10 @@ async function loadRows(nextPage = page.value, nextPageSize = pageSize.value) {
       from: toRFC3339(from.value),
       to: toRFC3339(to.value),
       page: nextPage,
-      page_size: nextPageSize
+      page_size: nextPageSize,
     });
   } catch (err) {
-    error.value = err instanceof Error ? err.message : t("hooksPage.deliveries.loadFailed");
+    error.value = err instanceof Error ? err.message : t('hooksPage.deliveries.loadFailed');
   }
 }
 
@@ -181,10 +233,10 @@ function onFilterChange() {
 watch([page, pageSize], () => void loadRows());
 
 function resetFilters() {
-  hookKey.value = "";
-  status.value = "";
-  from.value = "";
-  to.value = "";
+  hookKey.value = '';
+  status.value = '';
+  from.value = '';
+  to.value = '';
   page.value = 1;
   void loadRows(1, pageSize.value);
 }
@@ -198,7 +250,7 @@ function openDetail(row: HookDeliveryRow) {
 
 onMounted(() => {
   const qk = route.query.hook_key;
-  if (typeof qk === "string" && qk.trim()) hookKey.value = qk.trim();
+  if (typeof qk === 'string' && qk.trim()) hookKey.value = qk.trim();
   void loadRows();
 });
 </script>

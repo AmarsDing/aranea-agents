@@ -53,14 +53,23 @@
       @update:model-value="$emit('update:industryFilter', String($event ?? ''))"
     />
     <template #actions>
-      <q-btn flat rounded no-caps color="primary" icon="refresh" label="刷新" :loading="loading" @click="$emit('refresh')" />
+      <q-btn
+        flat
+        rounded
+        no-caps
+        color="primary"
+        icon="refresh"
+        label="刷新"
+        :loading="loading"
+        @click="$emit('refresh')"
+      />
     </template>
   </AppPageToolbar>
 </template>
 
 <script setup lang="ts">
-import AppPageToolbar from "../layout/AppPageToolbar.vue";
-import { modeOptions, statusOptions } from "./teamUtils";
+import AppPageToolbar from '../layout/AppPageToolbar.vue';
+import { modeOptions, statusOptions } from './teamUtils';
 
 defineProps<{
   search: string;
@@ -73,10 +82,10 @@ defineProps<{
 }>();
 
 defineEmits<{
-  "update:search": [value: string];
-  "update:modeFilter": [value: string];
-  "update:statusFilter": [value: string];
-  "update:industryFilter": [value: string];
+  'update:search': [value: string];
+  'update:modeFilter': [value: string];
+  'update:statusFilter': [value: string];
+  'update:industryFilter': [value: string];
   refresh: [];
 }>();
 </script>

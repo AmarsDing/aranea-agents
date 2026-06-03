@@ -26,9 +26,7 @@
         rounded
         :color="activeCount >= maxParallel ? 'negative' : 'accent'"
       />
-      <div class="text-caption text-grey-6 q-mt-xs">
-        {{ activeCount }} / {{ maxParallel }} 并行配额
-      </div>
+      <div class="text-caption text-grey-6 q-mt-xs">{{ activeCount }} / {{ maxParallel }} 并行配额</div>
     </div>
 
     <div v-if="allCompleted" class="parallel-team-overview__all-done q-mb-sm">
@@ -51,10 +49,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import TeamProgressCard from "./TeamProgressCard.vue";
-import SynthesisResultCard from "./SynthesisResultCard.vue";
-import type { SpiritTeam, SynthesisOutput } from "../../features/spirit/types";
+import { computed } from 'vue';
+import TeamProgressCard from './TeamProgressCard.vue';
+import SynthesisResultCard from './SynthesisResultCard.vue';
+import type { SpiritTeam, SynthesisOutput } from '../../features/spirit/types';
 
 const props = defineProps<{
   teams: SpiritTeam[];
@@ -64,17 +62,15 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  "select-team": [teamId: string];
-  "cancel-team": [teamId: string];
+  'select-team': [teamId: string];
+  'cancel-team': [teamId: string];
 }>();
 
-const activeCount = computed(() =>
-  props.teams.filter((t) => t.status !== "completed" && t.status !== "failed" && t.status !== "cancelled").length
+const activeCount = computed(
+  () => props.teams.filter((t) => t.status !== 'completed' && t.status !== 'failed' && t.status !== 'cancelled').length,
 );
 
-const completedCount = computed(() =>
-  props.teams.filter((t) => t.status === "completed").length
-);
+const completedCount = computed(() => props.teams.filter((t) => t.status === 'completed').length);
 </script>
 
 <style scoped lang="sass">

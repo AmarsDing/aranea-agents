@@ -3,15 +3,15 @@
     class="app-page-cream chat-page chat-workspace-shell fit column no-wrap"
     :class="{
       'chat-workspace-shell--compact': compact,
-      'chat-workspace-shell--dark': isDark
+      'chat-workspace-shell--dark': isDark,
     }"
     style="min-height: 0"
   >
     <header v-if="!compact" class="chat-workspace-hero">
       <div class="chat-workspace-hero__text">
-        <div class="chat-workspace-kicker">{{ t("chat.workspaceKicker") }}</div>
-        <h1 class="chat-workspace-title">{{ t("chat.workspaceTitle") }}</h1>
-        <p class="chat-workspace-subtitle">{{ t("chat.workspaceSubtitle") }}</p>
+        <div class="chat-workspace-kicker">{{ t('chat.workspaceKicker') }}</div>
+        <h1 class="chat-workspace-title">{{ t('chat.workspaceTitle') }}</h1>
+        <p class="chat-workspace-subtitle">{{ t('chat.workspaceSubtitle') }}</p>
       </div>
     </header>
 
@@ -24,17 +24,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { useQuasar } from "quasar";
-import { useI18n } from "vue-i18n";
+import { computed } from 'vue';
+import { useQuasar } from 'quasar';
+import { useI18n } from 'vue-i18n';
 
 withDefaults(
   defineProps<{
     compact?: boolean;
   }>(),
   {
-    compact: true
-  }
+    compact: true,
+  },
 );
 
 const { t } = useI18n();

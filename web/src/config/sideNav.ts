@@ -13,59 +13,59 @@ export type NavGroup = {
 
 export const sideNavGroups: NavGroup[] = [
   {
-    labelKey: "menu.groupWorkspace",
+    labelKey: 'menu.groupWorkspace',
     items: [
-      { to: "/overview", icon: "dashboard", labelKey: "menu.overview" },
-      { to: "/usage/events", icon: "receipt_long", labelKey: "menu.usageEvents" },
-      { to: "/chat", icon: "chat", labelKey: "menu.chat" },
-      { to: "/sessions", icon: "history", labelKey: "menu.sessions", exact: false },
-      { to: "/memory", icon: "psychology", labelKey: "menu.memory", exact: false }
-    ]
+      { to: '/overview', icon: 'dashboard', labelKey: 'menu.overview' },
+      { to: '/usage/events', icon: 'receipt_long', labelKey: 'menu.usageEvents' },
+      { to: '/chat', icon: 'chat', labelKey: 'menu.chat' },
+      { to: '/sessions', icon: 'history', labelKey: 'menu.sessions', exact: false },
+      { to: '/memory', icon: 'psychology', labelKey: 'menu.memory', exact: false },
+    ],
   },
   {
-    labelKey: "menu.groupAgents",
+    labelKey: 'menu.groupAgents',
     items: [
-      { to: "/agents", icon: "smart_toy", labelKey: "menu.agents" },
-      { to: "/settings/taxonomy", icon: "account_tree", labelKey: "menu.taxonomy" },
-      { to: "/team", icon: "groups", labelKey: "menu.team" },
-      { to: "/graphs", icon: "hub", labelKey: "menu.graphs" }
-    ]
+      { to: '/agents', icon: 'smart_toy', labelKey: 'menu.agents' },
+      { to: '/settings/taxonomy', icon: 'account_tree', labelKey: 'menu.taxonomy' },
+      { to: '/team', icon: 'groups', labelKey: 'menu.team' },
+      { to: '/graphs', icon: 'hub', labelKey: 'menu.graphs' },
+    ],
   },
   {
-    labelKey: "menu.groupModels",
+    labelKey: 'menu.groupModels',
     items: [
-      { to: "/models", icon: "model_training", labelKey: "menu.models" },
-      { to: "/channels", icon: "hub", labelKey: "menu.channels" }
-    ]
+      { to: '/models', icon: 'model_training', labelKey: 'menu.models' },
+      { to: '/channels', icon: 'hub', labelKey: 'menu.channels' },
+    ],
   },
   {
-    labelKey: "menu.groupTools",
+    labelKey: 'menu.groupTools',
     items: [
-      { to: "/mcp-servers", icon: "extension", labelKey: "menu.mcp" },
-      { to: "/tools", icon: "handyman", labelKey: "menu.tools" },
-      { to: "/skills", icon: "psychology", labelKey: "menu.skills" },
-      { to: "/plugins", icon: "tune", labelKey: "menu.plugins" },
-      { to: "/hooks", icon: "link", labelKey: "menu.hooks" },
-      { to: "/webhooks", icon: "webhook", labelKey: "menu.webhooks" },
-      { to: "/a2a", icon: "swap_horiz", labelKey: "menu.a2a" }
-    ]
+      { to: '/mcp-servers', icon: 'extension', labelKey: 'menu.mcp' },
+      { to: '/tools', icon: 'handyman', labelKey: 'menu.tools' },
+      { to: '/skills', icon: 'psychology', labelKey: 'menu.skills' },
+      { to: '/plugins', icon: 'tune', labelKey: 'menu.plugins' },
+      { to: '/hooks', icon: 'link', labelKey: 'menu.hooks' },
+      { to: '/webhooks', icon: 'webhook', labelKey: 'menu.webhooks' },
+      { to: '/a2a', icon: 'swap_horiz', labelKey: 'menu.a2a' },
+    ],
   },
   {
-    labelKey: "menu.groupKnowledge",
+    labelKey: 'menu.groupKnowledge',
     items: [
-      { to: "/knowledge", icon: "menu_book", labelKey: "menu.knowledge" },
-      { to: "/artifacts", icon: "inventory_2", labelKey: "menu.artifacts" },
-      { to: "/evaluation", icon: "fact_check", labelKey: "menu.evaluation" }
-    ]
+      { to: '/knowledge', icon: 'menu_book', labelKey: 'menu.knowledge' },
+      { to: '/artifacts', icon: 'inventory_2', labelKey: 'menu.artifacts' },
+      { to: '/evaluation', icon: 'fact_check', labelKey: 'menu.evaluation' },
+    ],
   },
   {
-    labelKey: "menu.groupOps",
+    labelKey: 'menu.groupOps',
     items: [
-      { to: "/cron", icon: "schedule", labelKey: "menu.cron" },
-      { to: "/monitor/logs", icon: "monitor_heart", labelKey: "menu.monitor", exact: false },
-      { to: "/shop", icon: "storefront", labelKey: "menu.shop" },
-      { to: "/industries", icon: "store", labelKey: "menu.industryMarket" },
-      { to: "/settings", icon: "settings", labelKey: "menu.settings" }
-    ]
-  }
+      { to: '/cron', icon: 'schedule', labelKey: 'menu.cron' },
+      { to: '/monitor/logs', icon: 'monitor_heart', labelKey: 'menu.monitor', exact: false },
+      { to: '/shop', icon: 'storefront', labelKey: 'menu.shop' },
+      { to: '/industries', icon: 'store', labelKey: 'menu.industryMarket' },
+      { to: '/settings', icon: 'settings', labelKey: 'menu.settings' },
+    ],
+  },
 ];

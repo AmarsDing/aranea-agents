@@ -1,4 +1,4 @@
-import { useRouter } from "vue-router";
+import { useRouter } from 'vue-router';
 
 export type MonitorRunNavQuery = {
   tab?: string;
@@ -13,22 +13,22 @@ export function useMonitorRunNavigation() {
   function openChatSession(sessionId: string) {
     const sid = sessionId.trim();
     if (!sid) return;
-    void router.push({ path: "/chat", query: { session: sid } });
+    void router.push({ path: '/chat', query: { session: sid } });
   }
 
   function openRunsTab(extra: MonitorRunNavQuery = {}) {
-    openMonitorTab(extra.tab || "traces", extra);
+    openMonitorTab(extra.tab || 'traces', extra);
   }
 
   function openMonitorTab(tab: string, extra: MonitorRunNavQuery = {}) {
     void router.push({
-      path: "/monitor",
+      path: '/monitor',
       query: {
         tab,
         ...(extra.session ? { session: extra.session } : {}),
         ...(extra.trace ? { trace: extra.trace } : {}),
-        ...(extra.usageEventId ? { usage_event_id: extra.usageEventId } : {})
-      }
+        ...(extra.usageEventId ? { usage_event_id: extra.usageEventId } : {}),
+      },
     });
   }
 

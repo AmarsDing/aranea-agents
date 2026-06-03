@@ -1,17 +1,17 @@
 /** 平台资源 UI / Kratos 映射类型（与 `platform/api` 响应字段对齐）。 */
 
 export type PlatformResourceName =
-  | "avatar-assets"
-  | "taxonomy-nodes"
-  | "taxonomy"
-  | "llm-provider-models"
-  | "hooks"
-  | "channels"
-  | "mcp-servers"
-  | "skills"
-  | "cron-tasks"
-  | "monitor-events"
-  | "monitor-traces";
+  | 'avatar-assets'
+  | 'taxonomy-nodes'
+  | 'taxonomy'
+  | 'llm-provider-models'
+  | 'hooks'
+  | 'channels'
+  | 'mcp-servers'
+  | 'skills'
+  | 'cron-tasks'
+  | 'monitor-events'
+  | 'monitor-traces';
 
 export type PlatformResource = {
   id: string;
@@ -50,7 +50,9 @@ export type PlatformResourceTreeNode = PlatformResource & {
   children?: PlatformResourceTreeNode[];
 };
 
-export type PlatformResourceInput = Partial<Omit<PlatformResource, "id" | "resource" | "created_at" | "updated_at" | "deleted_at">> & {
+export type PlatformResourceInput = Partial<
+  Omit<PlatformResource, 'id' | 'resource' | 'created_at' | 'updated_at' | 'deleted_at'>
+> & {
   key: string;
   name: string;
 };
@@ -176,7 +178,7 @@ export type HACandidateForm = {
 };
 
 export type ProviderHAForm = {
-  haMode: "" | "failover" | "hedge";
+  haMode: '' | 'failover' | 'hedge';
   haCandidates: HACandidateForm[];
   haHedgeDelayMs: number;
 };
@@ -220,4 +222,3 @@ export type ProviderForm = {
   keep_alive_minutes: number;
   rate_limit_rpm: number;
 };
-

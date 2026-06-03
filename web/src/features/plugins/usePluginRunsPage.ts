@@ -1,36 +1,36 @@
-import { computed, onMounted, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import {
   CALLBACK_POINT_OPTIONS,
   PLUGIN_RUN_KEY_PRESETS,
   PLUGIN_RUN_STATUS_OPTIONS,
-  pluginRunsQueryFromRoute
-} from "../callback/constants";
-import type { PluginRun } from "./types";
+  pluginRunsQueryFromRoute,
+} from '../callback/constants';
+import type { PluginRun } from './types';
 
-import { PLUGIN_RUN_TABLE_COLUMNS } from "./pluginRunsTableUi";
-import { usePluginsStore } from "../../stores/plugins";
+import { PLUGIN_RUN_TABLE_COLUMNS } from './pluginRunsTableUi';
+import { usePluginsStore } from '../../stores/plugins';
 
 export function usePluginRunsPage() {
   const route = useRoute();
   const router = useRouter();
   const pluginsStore = usePluginsStore();
 
-  const pluginKey = ref("");
-  const agentId = ref("");
-  const callbackPoint = ref("");
-  const status = ref("");
-  const from = ref("");
-  const to = ref("");
+  const pluginKey = ref('');
+  const agentId = ref('');
+  const callbackPoint = ref('');
+  const status = ref('');
+  const from = ref('');
+  const to = ref('');
   const rows = ref<PluginRun[]>([]);
   const loading = ref(false);
-  const error = ref("");
+  const error = ref('');
   const total = ref(0);
   const page = ref(1);
   const pageSize = ref(20);
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
   const detailOpen = ref(false);
-  const detailText = ref("");
+  const detailText = ref('');
 
   const callbackPointOptions = CALLBACK_POINT_OPTIONS;
   const statusOptions = PLUGIN_RUN_STATUS_OPTIONS;
@@ -41,14 +41,16 @@ export function usePluginRunsPage() {
   function filterPluginKeys(val: string, update: (fn: () => void) => void) {
     update(() => {
       const needle = val.toLowerCase();
-      pluginKeyOptions.value = PLUGIN_RUN_KEY_PRESETS.map((p) => p.value).filter((k) => k.toLowerCase().includes(needle));
+      pluginKeyOptions.value = PLUGIN_RUN_KEY_PRESETS.map((p) => p.value).filter((k) =>
+        k.toLowerCase().includes(needle),
+      );
     });
   }
 
   function statusColor(st: string) {
-    if (st === "blocked") return "orange";
-    if (st === "error") return "negative";
-    return "positive";
+    if (st === 'blocked') return 'orange';
+    if (st === 'error') return 'negative';
+    return 'positive';
   }
 
   function toRFC3339(local: string): string | undefined {
@@ -61,7 +63,7 @@ export function usePluginRunsPage() {
 
   async function loadRows(nextPage = page.value, nextPageSize = pageSize.value) {
     loading.value = true;
-    error.value = "";
+    error.value = '';
     try {
       const data = await pluginsStore.loadPluginRuns({
         plugin_key: pluginKey.value.trim() || undefined,
@@ -71,12 +73,12 @@ export function usePluginRunsPage() {
         from: toRFC3339(from.value),
         to: toRFC3339(to.value),
         page: nextPage,
-        page_size: nextPageSize
+        page_size: nextPageSize,
       });
       rows.value = data.items;
       total.value = data.total;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : "加载运行记录失败";
+      error.value = err instanceof Error ? err.message : '加载运行记录失败';
     } finally {
       loading.value = false;
     }
@@ -103,12 +105,12 @@ export function usePluginRunsPage() {
   }
 
   function resetFilters() {
-    pluginKey.value = "";
-    agentId.value = "";
-    callbackPoint.value = "";
-    status.value = "";
-    from.value = "";
-    to.value = "";
+    pluginKey.value = '';
+    agentId.value = '';
+    callbackPoint.value = '';
+    status.value = '';
+    from.value = '';
+    to.value = '';
     page.value = 1;
     void router.replace({ query: {} });
     void loadRows(1, pageSize.value);
@@ -120,7 +122,7 @@ export function usePluginRunsPage() {
   }
 
   function detailPreview(row: PluginRun) {
-    return row.detail_json?.trim() || "";
+    return row.detail_json?.trim() || '';
   }
 
   function applyRouteQuery() {
@@ -134,7 +136,7 @@ export function usePluginRunsPage() {
   }
 
   function toDatetimeLocal(iso: string): string {
-    if (!iso) return "";
+    if (!iso) return '';
     const match = iso.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
     return match ? match[0] : iso.slice(0, 16);
   }
@@ -172,6 +174,6 @@ export function usePluginRunsPage() {
     onFilterChange,
     resetFilters,
     openDetail,
-    detailPreview
+    detailPreview,
   };
 }

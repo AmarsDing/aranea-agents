@@ -7,7 +7,9 @@
           <q-badge :color="stateColor">{{ stateText }}</q-badge>
           <q-badge outline color="primary">{{ filteredLines.length }}/{{ hub.processLines.value.length }}</q-badge>
         </div>
-        <div class="text-caption text-grey-7">Gateway / 插件 stderr（由 configs/config.yaml server.monitor.process_log_enabled 控制）</div>
+        <div class="text-caption text-grey-7">
+          Gateway / 插件 stderr（由 configs/config.yaml server.monitor.process_log_enabled 控制）
+        </div>
       </div>
       <div class="monitor-log-toolbar-controls">
         <q-input
@@ -79,32 +81,32 @@
 </template>
 
 <script setup lang="ts">
-import { computed, inject, ref, type Ref } from "vue";
-import type { MonitorLogHub } from "../../features/monitor/useLogStreamHub";
-import type { StreamState } from "../../features/monitor/types";
-import LogLevelToggle, { type LogLevel } from "./LogLevelToggle.vue";
+import { computed, inject, ref, type Ref } from 'vue';
+import type { MonitorLogHub } from '../../features/monitor/useLogStreamHub';
+import type { StreamState } from '../../features/monitor/types';
+import LogLevelToggle, { type LogLevel } from './LogLevelToggle.vue';
 
-const _hub = inject<MonitorLogHub>("monitorLogHub");
-const _processLogConfigured = inject<Ref<boolean>>("processLogConfigured");
+const _hub = inject<MonitorLogHub>('monitorLogHub');
+const _processLogConfigured = inject<Ref<boolean>>('processLogConfigured');
 if (!_hub) {
-  throw new Error("ProcessLogStream requires monitorLogHub");
+  throw new Error('ProcessLogStream requires monitorLogHub');
 }
 if (!_processLogConfigured) {
-  throw new Error("ProcessLogStream requires processLogConfigured");
+  throw new Error('ProcessLogStream requires processLogConfigured');
 }
 const hub: MonitorLogHub = _hub;
 const processLogConfigured: Ref<boolean> = _processLogConfigured;
 
-const keyword = ref("");
+const keyword = ref('');
 const sourceFilter = ref<string | null>(null);
-const level = ref<LogLevel>("INFO");
+const level = ref<LogLevel>('INFO');
 
 const levelRank: Record<string, number> = { DEBUG: 10, INFO: 20, WARN: 30, ERROR: 40 };
 
 const sourceOptions = computed(() => {
   const seen = new Set<string>();
   for (const line of hub.processLines.value) {
-    const source = String(line.source || "").trim();
+    const source = String(line.source || '').trim();
     if (source) seen.add(source);
   }
   return Array.from(seen)
@@ -114,56 +116,58 @@ const sourceOptions = computed(() => {
 
 const filteredLines = computed(() => {
   const q = keyword.value.trim().toLowerCase();
-  const src = (sourceFilter.value || "").trim();
+  const src = (sourceFilter.value || '').trim();
   const minRank = levelRank[level.value] ?? 20;
   return hub.processLines.value.filter((line) => {
     if ((levelRank[line.level] ?? 20) < minRank) return false;
-    if (src && String(line.source || "") !== src) return false;
+    if (src && String(line.source || '') !== src) return false;
     if (!q) return true;
     return [line.level, line.message, line.source].some((value) =>
-      String(value || "").toLowerCase().includes(q)
+      String(value || '')
+        .toLowerCase()
+        .includes(q),
     );
   });
 });
 
 const stateTextMap: Record<StreamState, string> = {
-  connecting: "连接中",
-  connected: "已连接",
-  live: "实时",
-  paused: "已暂停",
-  error: "连接异常"
+  connecting: '连接中',
+  connected: '已连接',
+  live: '实时',
+  paused: '已暂停',
+  error: '连接异常',
 };
 
 const configEnabled = computed(() => processLogConfigured?.value ?? hub.processEnabled.value);
 
 const stateText = computed(() => {
-  if (!configEnabled.value) return "已关闭";
+  if (!configEnabled.value) return '已关闭';
   return stateTextMap[hub.processState.value];
 });
 
 const stateColor = computed(() => {
-  if (!configEnabled.value) return "grey";
+  if (!configEnabled.value) return 'grey';
   const s = hub.processState.value;
-  if (s === "live" || s === "connected") return "positive";
-  if (s === "error") return "negative";
-  if (s === "paused") return "grey";
-  return "orange";
+  if (s === 'live' || s === 'connected') return 'positive';
+  if (s === 'error') return 'negative';
+  if (s === 'paused') return 'grey';
+  return 'orange';
 });
 
 const emptyText = computed(() => {
   if (!configEnabled.value) {
-    return "进程日志已在 config.yaml 中关闭（server.monitor.process_log_enabled: false）。";
+    return '进程日志已在 config.yaml 中关闭（server.monitor.process_log_enabled: false）。';
   }
   if (hub.processPaused.value) {
-    return "已暂停接收，点击「恢复」开始显示进程日志。";
+    return '已暂停接收，点击「恢复」开始显示进程日志。';
   }
-  if (hub.processState.value === "connected") {
-    return "已连接，等待进程日志…";
+  if (hub.processState.value === 'connected') {
+    return '已连接，等待进程日志…';
   }
-  if (hub.processState.value === "connecting") {
-    return "正在连接 WebSocket…";
+  if (hub.processState.value === 'connecting') {
+    return '正在连接 WebSocket…';
   }
-  return "暂无进程日志";
+  return '暂无进程日志';
 });
 
 function togglePause() {

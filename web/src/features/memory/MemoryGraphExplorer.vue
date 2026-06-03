@@ -11,8 +11,8 @@
           <q-item
             v-for="entity in entities"
             :key="entity.id"
-            clickable
             v-ripple
+            clickable
             :active="entity.id === selectedId"
             active-class="memory-active-item"
             @click="selectEntity(entity.id)"
@@ -26,7 +26,10 @@
                   class="q-ml-xs"
                 />
               </q-item-label>
-              <q-item-label caption>{{ entity.entity_type }} · {{ entity.scope_type }} · {{ (entity.confidence * 100).toFixed(0) }}%</q-item-label>
+              <q-item-label caption
+                >{{ entity.entity_type }} · {{ entity.scope_type }} ·
+                {{ (entity.confidence * 100).toFixed(0) }}%</q-item-label
+              >
             </q-item-section>
           </q-item>
           <q-item v-if="!entities.length && !loadingEntities">
@@ -42,7 +45,14 @@
           <div class="text-h6">Neighborhood BFS</div>
           <q-space />
           <q-select v-model="hops" :options="hopOptions" dense outlined class="memory-graph-hops-select" label="Hops" />
-          <q-btn color="primary" dense label="展开" :loading="loadingGraph" :disable="!selectedId" @click="loadNeighborhood" />
+          <q-btn
+            color="primary"
+            dense
+            label="展开"
+            :loading="loadingGraph"
+            :disable="!selectedId"
+            @click="loadNeighborhood"
+          />
         </q-card-section>
 
         <q-banner v-if="graphError" rounded class="bg-negative text-white q-ma-md">{{ graphError }}</q-banner>
@@ -50,7 +60,9 @@
         <q-card-section v-if="neighborhood">
           <div class="text-subtitle2 q-mb-sm">
             中心：{{ neighborhood.center?.name || selectedId }}
-            <span class="text-grey-7"> · {{ neighborhood.entities.length }} nodes · {{ neighborhood.relations.length }} edges</span>
+            <span class="text-grey-7">
+              · {{ neighborhood.entities.length }} nodes · {{ neighborhood.relations.length }} edges</span
+            >
           </div>
 
           <div class="memory-graph-canvas q-mb-md">
@@ -75,16 +87,14 @@
                   stroke="var(--q-primary)"
                   stroke-width="1"
                 />
-                <text :x="node.x" :y="node.y + 24" text-anchor="middle" class="memory-graph-label">{{ node.label }}</text>
+                <text :x="node.x" :y="node.y + 24" text-anchor="middle" class="memory-graph-label">
+                  {{ node.label }}
+                </text>
               </g>
             </svg>
           </div>
 
-          <AppRegistryMarkupTable
-            :rows="neighborhood.relations"
-            :columns="relationColumns"
-            row-key="id"
-          >
+          <AppRegistryMarkupTable :rows="neighborhood.relations" :columns="relationColumns" row-key="id">
             <template #cell-source_id="{ row }">
               {{ entityName(String(row.source_id)) }}
             </template>
@@ -109,17 +119,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import AppRegistryMarkupTable from "../../components/layout/AppRegistryMarkupTable.vue";
-import { REGISTRY_COL_W, registryCol } from "../ui/registryTableColumns";
-import type { GraphNeighborhood, MemoryEntity } from "./types";
-import { getMemoryNeighborhood } from "./api";
+import { computed, ref, watch } from 'vue';
+import AppRegistryMarkupTable from '../../components/layout/AppRegistryMarkupTable.vue';
+import { REGISTRY_COL_W, registryCol } from '../ui/registryTableColumns';
+import type { GraphNeighborhood, MemoryEntity } from './types';
+import { getMemoryNeighborhood } from './api';
 
 const relationColumns = [
-  registryCol("source_id", "Source", "source_id", "left", REGISTRY_COL_W.name),
-  registryCol("relation_type", "Relation", "relation_type", "left", "11%"),
-  registryCol("target_id", "Target", "target_id", "left", REGISTRY_COL_W.name),
-  registryCol("weight", "Weight", "weight", "right", REGISTRY_COL_W.metric)
+  registryCol('source_id', 'Source', 'source_id', 'left', REGISTRY_COL_W.name),
+  registryCol('relation_type', 'Relation', 'relation_type', 'left', '11%'),
+  registryCol('target_id', 'Target', 'target_id', 'left', REGISTRY_COL_W.name),
+  registryCol('weight', 'Weight', 'weight', 'right', REGISTRY_COL_W.metric),
 ];
 
 const props = defineProps<{
@@ -134,7 +144,7 @@ const hops = ref(2);
 const hopOptions = [1, 2, 3];
 const neighborhood = ref<GraphNeighborhood | null>(null);
 const loadingGraph = ref(false);
-const graphError = ref("");
+const graphError = ref('');
 
 const svgW = 520;
 const svgH = 320;
@@ -162,7 +172,7 @@ const layoutNodes = computed(() => {
       id: n.id,
       label: truncate(n.name || n.id, 12),
       x: isCenter ? cx : cx + r * Math.cos(angle),
-      y: isCenter ? cy : cy + r * Math.sin(angle)
+      y: isCenter ? cy : cy + r * Math.sin(angle),
     };
   });
 });
@@ -187,7 +197,7 @@ watch(
       selectedId.value = null;
       neighborhood.value = null;
     }
-  }
+  },
 );
 
 function selectEntity(id: string) {
@@ -198,12 +208,12 @@ function selectEntity(id: string) {
 async function loadNeighborhood() {
   if (!selectedId.value) return;
   loadingGraph.value = true;
-  graphError.value = "";
+  graphError.value = '';
   try {
     neighborhood.value = await getMemoryNeighborhood(selectedId.value, { hops: hops.value, max_nodes: 48 });
   } catch (err) {
     neighborhood.value = null;
-    graphError.value = err instanceof Error ? err.message : "加载 neighborhood 失败";
+    graphError.value = err instanceof Error ? err.message : '加载 neighborhood 失败';
   } finally {
     loadingGraph.value = false;
   }
@@ -218,15 +228,15 @@ function truncate(s: string, n: number) {
 }
 
 function confidenceTierLabel(confidence: number) {
-  if (confidence >= 0.7) return "高";
-  if (confidence >= 0.4) return "中";
-  return "低";
+  if (confidence >= 0.7) return '高';
+  if (confidence >= 0.4) return '中';
+  return '低';
 }
 
 function confidenceTierColor(confidence: number) {
-  if (confidence >= 0.7) return "positive";
-  if (confidence >= 0.4) return "warning";
-  return "negative";
+  if (confidence >= 0.7) return 'positive';
+  if (confidence >= 0.4) return 'warning';
+  return 'negative';
 }
 </script>
 

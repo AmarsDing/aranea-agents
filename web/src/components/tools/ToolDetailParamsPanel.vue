@@ -9,9 +9,9 @@
 </template>
 
 <script setup lang="ts">
-import type { Tool } from "../../features/tools/types";
-import ToolJsonBlock from "./ToolJsonBlock.vue";
-import { prettyJSON } from "./toolUi";
+import type { Tool } from '../../features/tools/types';
+import ToolJsonBlock from './ToolJsonBlock.vue';
+import { prettyJSON } from './toolUi';
 
 defineProps<{ tool: Tool | null }>();
 </script>

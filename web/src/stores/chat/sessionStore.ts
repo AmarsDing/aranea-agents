@@ -1,5 +1,5 @@
-import { ref } from "vue";
-import { defineStore } from "pinia";
+import { ref } from 'vue';
+import { defineStore } from 'pinia';
 import {
   clearAgentSessions,
   compactSession,
@@ -12,14 +12,14 @@ import {
   unpinSession,
   updateSessionTitle,
   type Session,
-} from "../../features/session/api";
-import type { CompactSessionResult } from "../../features/session/api";
-import type { SessionContextPatch } from "../../features/chat/sessionContextPatch";
-import { reconcilePatchFromServer } from "../../features/chat/sessionContextPatch";
-import { formatSessionTime } from "../../features/chat/composables/chatWorkspaceUtils";
-import type { ChatEntityKind } from "../../components/chat/types";
-import { emitSessionMutation, onSessionMutation } from "../sessionSync";
-import { sortSessionsForDisplay } from "../../features/session/sessionSort";
+} from '../../features/session/api';
+import type { CompactSessionResult } from '../../features/session/api';
+import type { SessionContextPatch } from '../../features/chat/sessionContextPatch';
+import { reconcilePatchFromServer } from '../../features/chat/sessionContextPatch';
+import { formatSessionTime } from '../../features/chat/composables/chatWorkspaceUtils';
+import type { ChatEntityKind } from '../../components/chat/types';
+import { emitSessionMutation, onSessionMutation } from '../sessionSync';
+import { sortSessionsForDisplay } from '../../features/session/sessionSort';
 
 export type TeamSessionRow = Session & { at: string };
 
@@ -43,7 +43,7 @@ function patchSessionInList(rows: Session[], sessionId: string, patch: SessionCo
 function patchTeamSessionInMap(
   map: Record<string, TeamSessionRow[]>,
   sessionId: string,
-  patch: SessionContextPatch
+  patch: SessionContextPatch,
 ): Record<string, TeamSessionRow[]> {
   let changed = false;
   const out: Record<string, TeamSessionRow[]> = {};
@@ -65,8 +65,8 @@ function withTeamAt(session: Session): TeamSessionRow {
   };
 }
 
-export const useChatSessionStore = defineStore("chatSession", () => {
-  const entityKind = ref<ChatEntityKind>("agent");
+export const useChatSessionStore = defineStore('chatSession', () => {
+  const entityKind = ref<ChatEntityKind>('agent');
   const selectedTeamId = ref<string | null>(null);
   const teamSelectedSessionId = ref<string | null>(null);
 
@@ -79,24 +79,24 @@ export const useChatSessionStore = defineStore("chatSession", () => {
 
   onSessionMutation((mutation) => {
     switch (mutation.type) {
-      case "remove":
+      case 'remove':
         removeSessionById(mutation.id);
         break;
-      case "archive":
+      case 'archive':
         removeSessionById(mutation.id);
         break;
-      case "update":
+      case 'update':
         updateSessionById(mutation.id, mutation.session);
         break;
-      case "refresh":
+      case 'refresh':
         if (_currentAgentId) {
           loadAgentSessions(_currentAgentId, { refreshOnly: true });
         }
         break;
-      case "status_changed":
+      case 'status_changed':
         patchSessionStatus(mutation.id, mutation.status, mutation.statusReason, mutation.statusChangedAt);
         break;
-      case "agent_removed":
+      case 'agent_removed':
         if (_currentAgentId === mutation.agentId) {
           resetForAgentSwitch();
         }
@@ -105,18 +105,18 @@ export const useChatSessionStore = defineStore("chatSession", () => {
   });
 
   function currentSessionId(): string | null {
-    if (entityKind.value === "team") return teamSelectedSessionId.value;
+    if (entityKind.value === 'team') return teamSelectedSessionId.value;
     return selectedSession.value?.id ?? null;
   }
 
   function resetForAgentSwitch() {
-    entityKind.value = "agent";
+    entityKind.value = 'agent';
     selectedTeamId.value = null;
     teamSelectedSessionId.value = null;
   }
 
   function resetForTeamSwitch(teamId: string) {
-    entityKind.value = "team";
+    entityKind.value = 'team';
     selectedTeamId.value = teamId;
     selectedSession.value = null;
     teamSelectedSessionId.value = null;
@@ -141,8 +141,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
 
       const selectedID = selectedSession.value?.id;
       if (selectedID) {
-        selectedSession.value =
-          rows.find((session) => session.id === selectedID) ?? rows[0] ?? null;
+        selectedSession.value = rows.find((session) => session.id === selectedID) ?? rows[0] ?? null;
       } else if (!selectedSession.value && rows.length > 0) {
         selectedSession.value = rows[0];
       }
@@ -166,7 +165,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
   async function addAgentSession(
     agentId: string,
     title: string,
-    options?: { dialog_mode?: string; default_provider?: string; default_model?: string }
+    options?: { dialog_mode?: string; default_provider?: string; default_model?: string },
   ) {
     if (!agentId) return null;
     error.value = null;
@@ -174,7 +173,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
       const created = await createSession({ agent_id: agentId, title, ...options });
       sessions.value.unshift(created);
       selectedSession.value = created;
-      emitSessionMutation({ type: "update", id: created.id, session: created });
+      emitSessionMutation({ type: 'update', id: created.id, session: created });
       return created;
     } catch (e: any) {
       error.value = e?.message ?? String(e);
@@ -185,22 +184,19 @@ export const useChatSessionStore = defineStore("chatSession", () => {
   async function addTeamSession(
     teamId: string,
     title: string,
-    options?: { dialog_mode?: string; default_provider?: string; default_model?: string }
+    options?: { dialog_mode?: string; default_provider?: string; default_model?: string },
   ) {
     error.value = null;
     try {
       const created = await createSession({
-        owner_type: "team",
+        owner_type: 'team',
         team_id: teamId,
         title,
         ...options,
       });
-      teamSessions.value[teamId] = [
-        withTeamAt(created),
-        ...(teamSessions.value[teamId] ?? []),
-      ];
+      teamSessions.value[teamId] = [withTeamAt(created), ...(teamSessions.value[teamId] ?? [])];
       teamSelectedSessionId.value = created.id;
-      emitSessionMutation({ type: "update", id: created.id, session: created });
+      emitSessionMutation({ type: 'update', id: created.id, session: created });
       return created;
     } catch (e: any) {
       error.value = e?.message ?? String(e);
@@ -213,7 +209,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     try {
       await deleteSession(id);
       removeSessionById(id);
-      emitSessionMutation({ type: "remove", id });
+      emitSessionMutation({ type: 'remove', id });
     } catch (e: any) {
       error.value = e?.message ?? String(e);
       throw e;
@@ -224,13 +220,11 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     error.value = null;
     try {
       await deleteSession(sessionId);
-      teamSessions.value[teamId] = (teamSessions.value[teamId] ?? []).filter(
-        (session) => session.id !== sessionId
-      );
+      teamSessions.value[teamId] = (teamSessions.value[teamId] ?? []).filter((session) => session.id !== sessionId);
       if (teamSelectedSessionId.value === sessionId) {
         teamSelectedSessionId.value = teamSessions.value[teamId]?.[0]?.id ?? null;
       }
-      emitSessionMutation({ type: "remove", id: sessionId });
+      emitSessionMutation({ type: 'remove', id: sessionId });
     } catch (e: any) {
       error.value = e?.message ?? String(e);
       throw e;
@@ -242,7 +236,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     try {
       const updated = pinned ? await pinSession(id) : await unpinSession(id);
       updateSessionById(id, updated);
-      emitSessionMutation({ type: "update", id, session: updated });
+      emitSessionMutation({ type: 'update', id, session: updated });
       return updated;
     } catch (e: any) {
       error.value = e?.message ?? String(e);
@@ -255,9 +249,9 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     try {
       const updated = pinned ? await pinSession(id) : await unpinSession(id);
       teamSessions.value[teamId] = sortSessionsForDisplay(
-        (teamSessions.value[teamId] ?? []).map((session) => (session.id === id ? updated : session))
+        (teamSessions.value[teamId] ?? []).map((session) => (session.id === id ? updated : session)),
       ).map(withTeamAt);
-      emitSessionMutation({ type: "update", id, session: updated });
+      emitSessionMutation({ type: 'update', id, session: updated });
       return updated;
     } catch (e: any) {
       error.value = e?.message ?? String(e);
@@ -270,7 +264,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     try {
       const updated = await updateSessionTitle(id, title);
       updateSessionById(id, updated);
-      emitSessionMutation({ type: "update", id, session: updated });
+      emitSessionMutation({ type: 'update', id, session: updated });
       return updated;
     } catch (e: any) {
       error.value = e?.message ?? String(e);
@@ -288,9 +282,9 @@ export const useChatSessionStore = defineStore("chatSession", () => {
               ...updated,
               at: formatSessionTime(updated.last_message_at || updated.updated_at || updated.created_at),
             }
-          : session
+          : session,
       );
-      emitSessionMutation({ type: "update", id, session: updated });
+      emitSessionMutation({ type: 'update', id, session: updated });
       return updated;
     } catch (e: any) {
       error.value = e?.message ?? String(e);
@@ -305,7 +299,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
       await clearAgentSessions(agentId);
       sessions.value = [];
       selectedSession.value = null;
-      emitSessionMutation({ type: "refresh" });
+      emitSessionMutation({ type: 'refresh' });
     } catch (e: any) {
       error.value = e?.message ?? String(e);
       throw e;
@@ -351,7 +345,12 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     const next = sessions.value.map((session) => {
       if (session.id !== id) return session;
       changed = true;
-      return { ...session, status: status as Session["status"], status_reason: statusReason as Session["status_reason"], status_changed_at: statusChangedAt };
+      return {
+        ...session,
+        status: status as Session['status'],
+        status_reason: statusReason as Session['status_reason'],
+        status_changed_at: statusChangedAt,
+      };
     });
     if (changed) sessions.value = next;
 
@@ -361,7 +360,12 @@ export const useChatSessionStore = defineStore("chatSession", () => {
       const nextRows = rows.map((session) => {
         if (session.id !== id) return session;
         teamChanged = true;
-        return { ...session, status: status as Session["status"], status_reason: statusReason as Session["status_reason"], status_changed_at: statusChangedAt };
+        return {
+          ...session,
+          status: status as Session['status'],
+          status_reason: statusReason as Session['status_reason'],
+          status_changed_at: statusChangedAt,
+        };
       });
       out[teamId] = nextRows;
     }
@@ -370,8 +374,8 @@ export const useChatSessionStore = defineStore("chatSession", () => {
     if (selectedSession.value?.id === id) {
       selectedSession.value = {
         ...selectedSession.value,
-        status: status as Session["status"],
-        status_reason: statusReason as Session["status_reason"],
+        status: status as Session['status'],
+        status_reason: statusReason as Session['status_reason'],
         status_changed_at: statusChangedAt,
       };
     }
@@ -398,9 +402,7 @@ export const useChatSessionStore = defineStore("chatSession", () => {
   function removeSessionById(id: string) {
     sessions.value = sessions.value.filter((s) => s.id !== id);
     for (const teamId of Object.keys(teamSessions.value)) {
-      teamSessions.value[teamId] = (teamSessions.value[teamId] ?? []).filter(
-        (session) => session.id !== id
-      );
+      teamSessions.value[teamId] = (teamSessions.value[teamId] ?? []).filter((session) => session.id !== id);
     }
     if (selectedSession.value?.id === id) {
       selectedSession.value = sessions.value[0] ?? null;
@@ -414,12 +416,10 @@ export const useChatSessionStore = defineStore("chatSession", () => {
   }
 
   function updateSessionById(id: string, updated: Session) {
-    sessions.value = sortSessionsForDisplay(
-      sessions.value.map((session) => (session.id === id ? updated : session))
-    );
+    sessions.value = sortSessionsForDisplay(sessions.value.map((session) => (session.id === id ? updated : session)));
     for (const teamId of Object.keys(teamSessions.value)) {
       teamSessions.value[teamId] = (teamSessions.value[teamId] ?? []).map((session) =>
-        session.id === id ? withTeamAt(updated) : session
+        session.id === id ? withTeamAt(updated) : session,
       );
     }
     if (selectedSession.value?.id === id) {

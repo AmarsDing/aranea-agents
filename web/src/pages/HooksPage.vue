@@ -1,19 +1,31 @@
 <template>
   <q-page class="app-standard-page app-registry-page hooks-page">
-    <AppPageHero
-      :kicker="t('hooksPage.kicker')"
-      :title="t('hooksPage.title')"
-      :subtitle="t('hooksPage.subtitle')"
-    >
+    <AppPageHero :kicker="t('hooksPage.kicker')" :title="t('hooksPage.title')" :subtitle="t('hooksPage.subtitle')">
       <template #actions>
         <q-btn outline rounded no-caps icon="send" :label="t('hooksPage.btnDeliveries')" to="/hooks/deliveries" />
         <q-btn outline rounded no-caps icon="history" :label="t('hooksPage.btnPluginRuns')" to="/plugins/runs" />
-        <q-btn color="primary" rounded unelevated no-caps icon="add" :label="t('hooksPage.btnCreate')" @click="openCreate" />
+        <q-btn
+          color="primary"
+          rounded
+          unelevated
+          no-caps
+          icon="add"
+          :label="t('hooksPage.btnCreate')"
+          @click="openCreate"
+        />
       </template>
     </AppPageHero>
 
     <AppPageToolbar>
-      <q-input v-model="search" class="app-page-toolbar__search" dense outlined clearable debounce="200" :label="t('hooksPage.search')">
+      <q-input
+        v-model="search"
+        class="app-page-toolbar__search"
+        dense
+        outlined
+        clearable
+        debounce="200"
+        :label="t('hooksPage.search')"
+      >
         <template #prepend><q-icon name="search" /></template>
       </q-input>
       <q-select
@@ -29,7 +41,15 @@
       />
       <template #actions>
         <q-btn flat rounded no-caps icon="restart_alt" :label="t('hooksPage.btnReset')" @click="resetFilters" />
-        <q-btn flat rounded no-caps icon="refresh" :label="t('hooksPage.btnRefresh')" :loading="loading" @click="loadRows" />
+        <q-btn
+          flat
+          rounded
+          no-caps
+          icon="refresh"
+          :label="t('hooksPage.btnRefresh')"
+          :loading="loading"
+          @click="loadRows"
+        />
       </template>
     </AppPageToolbar>
 
@@ -63,25 +83,49 @@
     <q-dialog v-model="editorOpen" persistent>
       <q-card class="app-dialog-card app-dialog-card--xl app-glass-dialog">
         <q-card-section class="app-glass-dialog__head row items-center justify-between">
-          <div class="app-glass-dialog__title">{{ editingId ? t("hooksPage.dialogTitleEdit") : t("hooksPage.dialogTitleCreate") }}</div>
-          <q-btn flat round dense icon="close" v-close-popup />
+          <div class="app-glass-dialog__title">
+            {{ editingId ? t('hooksPage.dialogTitleEdit') : t('hooksPage.dialogTitleCreate') }}
+          </div>
+          <q-btn v-close-popup flat round dense icon="close" />
         </q-card-section>
         <q-separator />
         <div class="app-glass-dialog__scroll">
           <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md app-form-wide">
             <div class="app-form-field-grid app-form-field-grid--2col">
-              <q-input v-model="form.key" dense outlined :label="t('hooksPage.fieldKey')" :disable="Boolean(editingId)" />
+              <q-input
+                v-model="form.key"
+                dense
+                outlined
+                :label="t('hooksPage.fieldKey')"
+                :disable="Boolean(editingId)"
+              />
               <q-input v-model="form.name" dense outlined :label="t('hooksPage.fieldName')" />
               <q-toggle v-model="form.enabled" :label="t('hooksPage.fieldEnabled')" />
             </div>
-            <q-input v-model="form.description" class="app-field-long" dense outlined type="textarea" autogrow :label="t('hooksPage.fieldDescription')" />
+            <q-input
+              v-model="form.description"
+              class="app-field-long"
+              dense
+              outlined
+              type="textarea"
+              autogrow
+              :label="t('hooksPage.fieldDescription')"
+            />
             <callback-editor v-model="form.rule" v-model:sort-order="form.sort_order" />
           </q-card-section>
         </div>
         <q-separator />
         <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-          <q-btn flat no-caps :label="t('hooksPage.btnCancel')" v-close-popup />
-          <q-btn color="primary" unelevated no-caps :label="t('hooksPage.btnSave')" :loading="saving" :disable="!form.key?.trim() || !form.name?.trim()" @click="saveHook" />
+          <q-btn v-close-popup flat no-caps :label="t('hooksPage.btnCancel')" />
+          <q-btn
+            color="primary"
+            unelevated
+            no-caps
+            :label="t('hooksPage.btnSave')"
+            :loading="saving"
+            :disable="!form.key?.trim() || !form.name?.trim()"
+            @click="saveHook"
+          />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -89,19 +133,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from "vue";
-import { storeToRefs } from "pinia";
-import { useI18n } from "vue-i18n";
-import { useQuasar } from "quasar";
-import AppPageHero from "../components/layout/AppPageHero.vue";
-import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
-import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
-import CallbackEditor from "../components/hooks/CallbackEditor.vue";
-import HooksTable from "../components/hooks/HooksTable.vue";
-import { hookRuleOf } from "../components/hooks/hookTableUi";
-import { useCallbackPointOptions } from "../features/callback/constants";
-import { defaultHookRuleConfig, type HookRow, type HookRuleConfig } from "../features/hooks/types";
-import { useHooksStore } from "../stores/hooks";
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { storeToRefs } from 'pinia';
+import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
+import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import CallbackEditor from '../components/hooks/CallbackEditor.vue';
+import HooksTable from '../components/hooks/HooksTable.vue';
+import { hookRuleOf } from '../components/hooks/hookTableUi';
+import { useCallbackPointOptions } from '../features/callback/constants';
+import { defaultHookRuleConfig, type HookRow, type HookRuleConfig } from '../features/hooks/types';
+import { useHooksStore } from '../stores/hooks';
 
 const { t } = useI18n();
 const $q = useQuasar();
@@ -109,21 +153,21 @@ const hooksStore = useHooksStore();
 const { hooks: storeRows, loading: storeLoading } = storeToRefs(hooksStore);
 const loading = storeLoading;
 const saving = ref(false);
-const error = ref("");
-const search = ref("");
-const filterPoint = ref("");
+const error = ref('');
+const search = ref('');
+const filterPoint = ref('');
 const callbackPointOptions = useCallbackPointOptions();
 const rows = storeRows;
 const editorOpen = ref(false);
-const editingId = ref("");
-const busyId = ref("");
+const editingId = ref('');
+const busyId = ref('');
 const form = reactive({
-  key: "",
-  name: "",
-  description: "",
+  key: '',
+  name: '',
+  description: '',
   enabled: true,
   sort_order: 0,
-  rule: defaultHookRuleConfig() as HookRuleConfig
+  rule: defaultHookRuleConfig() as HookRuleConfig,
 });
 
 const filteredRows = computed(() => {
@@ -146,8 +190,8 @@ const pagedRows = computed(() => {
 });
 
 function resetFilters() {
-  search.value = "";
-  filterPoint.value = "";
+  search.value = '';
+  filterPoint.value = '';
   page.value = 1;
 }
 
@@ -160,7 +204,7 @@ function ruleOf(row: HookRow) {
 }
 
 async function loadRows() {
-  error.value = "";
+  error.value = '';
   try {
     await hooksStore.loadHooks();
   } catch (e) {
@@ -169,10 +213,10 @@ async function loadRows() {
 }
 
 function openCreate() {
-  editingId.value = "";
-  form.key = "";
-  form.name = "";
-  form.description = "";
+  editingId.value = '';
+  form.key = '';
+  form.name = '';
+  form.description = '';
   form.enabled = true;
   form.sort_order = 0;
   form.rule = defaultHookRuleConfig();
@@ -192,7 +236,7 @@ function openEdit(row: HookRow) {
 
 async function saveHook() {
   if (!form.key.trim() || !form.name.trim()) {
-    $q.notify({ type: "warning", message: t("hooksPage.notifyRequired") });
+    $q.notify({ type: 'warning', message: t('hooksPage.notifyRequired') });
     return;
   }
   saving.value = true;
@@ -204,7 +248,7 @@ async function saveHook() {
         description: form.description,
         enabled: form.enabled,
         sort_order: form.sort_order,
-        rule: form.rule
+        rule: form.rule,
       });
     } else {
       await hooksStore.addHook({
@@ -213,13 +257,13 @@ async function saveHook() {
         description: form.description,
         enabled: form.enabled,
         sort_order: form.sort_order,
-        rule: form.rule
+        rule: form.rule,
       });
     }
     editorOpen.value = false;
-    $q.notify({ type: "positive", message: t("hooksPage.notifySaved") });
+    $q.notify({ type: 'positive', message: t('hooksPage.notifySaved') });
   } catch (e) {
-    $q.notify({ type: "negative", message: e instanceof Error ? e.message : String(e) });
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
   } finally {
     saving.value = false;
   }
@@ -230,23 +274,23 @@ async function toggleEnabled(row: HookRow, enabled: boolean) {
   try {
     await hooksStore.saveHook(row.id, { enabled });
   } catch (e) {
-    $q.notify({ type: "negative", message: e instanceof Error ? e.message : String(e) });
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
   } finally {
-    busyId.value = "";
+    busyId.value = '';
   }
 }
 
 function confirmDelete(row: HookRow) {
   $q.dialog({
-    title: t("hooksPage.confirmDeleteTitle"),
-    message: t("hooksPage.confirmDeleteMessage", { name: row.name }),
+    title: t('hooksPage.confirmDeleteTitle'),
+    message: t('hooksPage.confirmDeleteMessage', { name: row.name }),
     cancel: true,
-    persistent: true
+    persistent: true,
   }).onOk(async () => {
     try {
       await hooksStore.removeHook(row.id);
     } catch (e) {
-      $q.notify({ type: "negative", message: e instanceof Error ? e.message : String(e) });
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
     }
   });
 }

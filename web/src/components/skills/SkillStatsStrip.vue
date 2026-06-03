@@ -21,14 +21,14 @@
 </template>
 
 <script setup lang="ts">
-import type { Skill } from "../../features/skills/types";
+import type { Skill } from '../../features/skills/types';
 
 defineProps<{
   skill: Skill;
 }>();
 
 function formatDuration(value?: number | null) {
-  if (value === undefined || value === null) return "-";
+  if (value === undefined || value === null) return '-';
   if (value < 1000) return `${Math.round(value)}ms`;
   return `${(value / 1000).toFixed(1)}s`;
 }

@@ -1,24 +1,21 @@
-import { onMounted, onUnmounted, type Ref } from "vue";
-import {
-  acquireGlobalWsConsumer,
-  releaseGlobalWsConsumer,
-} from "../globalWsHub";
-import type { Envelope } from "../envelope";
-import type { UseEnvelopeStreamReturn } from "../useEnvelopeStream";
-import type { useAppStore } from "../../../stores/app";
-import type { useChatSessionStore } from "../../../stores/chat/sessionStore";
-import type { useChatMessageStore } from "../../../stores/chat/messageStore";
-import { useChatConversationStore } from "../../../stores/chat/conversationStore";
-import { useChatStreamingSnapshots } from "../../../stores/chatStreamingSnapshots";
-import { runStatusFromEnvelope } from "../envelopeRunStatus";
-import { SESSION_RUN_STATUS } from "../sessionRunStatus";
+import { onMounted, onUnmounted, type Ref } from 'vue';
+import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from '../globalWsHub';
+import type { Envelope } from '../envelope';
+import type { UseEnvelopeStreamReturn } from '../useEnvelopeStream';
+import type { useAppStore } from '../../../stores/app';
+import type { useChatSessionStore } from '../../../stores/chat/sessionStore';
+import type { useChatMessageStore } from '../../../stores/chat/messageStore';
+import { useChatConversationStore } from '../../../stores/chat/conversationStore';
+import { useChatStreamingSnapshots } from '../../../stores/chatStreamingSnapshots';
+import { runStatusFromEnvelope } from '../envelopeRunStatus';
+import { SESSION_RUN_STATUS } from '../sessionRunStatus';
 import {
   envelopeSessionRevision,
   envelopeSource,
   isSessionRevisionSyncEnvelope,
   isTurnCompleteEnvelope,
   shouldSkipHydrate,
-} from "../inboundSyncEnvelope";
+} from '../inboundSyncEnvelope';
 import {
   shouldGlobalHubFinalizeTurn,
   shouldGlobalHubHandleStream,
@@ -26,23 +23,17 @@ import {
   shouldSkipMessageReloadOnChannelFocus,
   isStreamEnvelopeType,
   type ChannelFocusOptions,
-} from "../inboundSyncRouting";
-import {
-  isSessionCompressNotice,
-  sessionContextPatchFromEnvelope,
-} from "../sessionContextPatch";
-import { createMessageBatchWriter } from "../messageStoreBatch";
-import { patchStreamingEnvelope } from "../streamHandlers";
-import { upsertToolMessage } from "../envelopeToolCall";
-import { refreshAgentSessionsForChannel } from "../channelInboundSessionRefresh";
-import {
-  isChannelInboundSession,
-  resolveInboundAgentId,
-} from "../channelInboundSession";
-import { noteChannelWsEnvelope } from "../channelWsCursor";
-import { projectConversationEnvelope } from "../conversationEventDispatcher";
-import { emitSessionMutation } from "../../../stores/sessionSync";
-import { useSpiritTeamStore } from "../../../stores/spirit";
+} from '../inboundSyncRouting';
+import { isSessionCompressNotice, sessionContextPatchFromEnvelope } from '../sessionContextPatch';
+import { createMessageBatchWriter } from '../messageStoreBatch';
+import { patchStreamingEnvelope } from '../streamHandlers';
+import { upsertToolMessage } from '../envelopeToolCall';
+import { refreshAgentSessionsForChannel } from '../channelInboundSessionRefresh';
+import { isChannelInboundSession, resolveInboundAgentId } from '../channelInboundSession';
+import { noteChannelWsEnvelope } from '../channelWsCursor';
+import { projectConversationEnvelope } from '../conversationEventDispatcher';
+import { emitSessionMutation } from '../../../stores/sessionSync';
+import { useSpiritTeamStore } from '../../../stores/spirit';
 
 export type ChatInboundSyncDeps = {
   appStore: ReturnType<typeof useAppStore>;
@@ -55,11 +46,7 @@ export type ChatInboundSyncDeps = {
   shouldAutoFocusChannel?: () => boolean;
   onTurnComplete?: (sessionId: string) => void;
   onHydrateError?: (sessionId: string, message: string) => void;
-  focusChannelSession?: (
-    sessionId: string,
-    agentId: string,
-    options?: ChannelFocusOptions
-  ) => void | Promise<void>;
+  focusChannelSession?: (sessionId: string, agentId: string, options?: ChannelFocusOptions) => void | Promise<void>;
   ensureChatStream: (sessionId: string) => UseEnvelopeStreamReturn;
   ensureTeamStream: (sessionId: string) => UseEnvelopeStreamReturn;
   loadTeamSessions?: (teamId: string) => Promise<void>;
@@ -82,12 +69,9 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
   const conversationStore = useChatConversationStore();
   let hubId: string | null = null;
   let hydrateTimer: ReturnType<typeof setTimeout> | null = null;
-  let pendingHydrateSessionId = "";
+  let pendingHydrateSessionId = '';
   const sealedTurnBySession = new Map<string, TurnStreamSeal>();
-  const inboundWriters = new Map<
-    string,
-    ReturnType<typeof createMessageBatchWriter>
-  >();
+  const inboundWriters = new Map<string, ReturnType<typeof createMessageBatchWriter>>();
   const hydrateInFlight = new Map<string, Promise<void>>();
   const focusInFlight = new Set<string>();
 
@@ -96,7 +80,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     if (!writer) {
       writer = createMessageBatchWriter(
         () => deps.messageStore.getMessages(sessionId),
-        (rows) => deps.messageStore.setMessages(sessionId, rows)
+        (rows) => deps.messageStore.setMessages(sessionId, rows),
       );
       inboundWriters.set(sessionId, writer);
     }
@@ -121,31 +105,31 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
 
   function isStaleStreamEnvelope(sessionId: string, env: Envelope): boolean {
     if (!sealedTurnBySession.has(sessionId)) return false;
-    return env.type === "text_delta" || env.type === "text_done";
+    return env.type === 'text_delta' || env.type === 'text_done';
   }
 
   function agentIdFromEnvelope(env: Envelope): string {
     const md = env.metadata as Record<string, unknown> | undefined;
-    const fromMeta = typeof md?.agent_id === "string" ? md.agent_id.trim() : "";
+    const fromMeta = typeof md?.agent_id === 'string' ? md.agent_id.trim() : '';
     if (fromMeta) return fromMeta;
-    const sid = (env.session_id ?? "").trim();
-    if (!sid) return "";
+    const sid = (env.session_id ?? '').trim();
+    if (!sid) return '';
     const sess =
       deps.sessionStore.sessions.find((s) => s.id === sid) ??
       (deps.sessionStore.selectedSession?.id === sid ? deps.sessionStore.selectedSession : null);
-    return sess?.agent_id?.trim() ?? "";
+    return sess?.agent_id?.trim() ?? '';
   }
 
   function teamIdFromEnvelope(env: Envelope): string {
     if (env.team_id?.trim()) return env.team_id.trim();
-    const sid = (env.session_id ?? "").trim();
-    if (!sid) return "";
+    const sid = (env.session_id ?? '').trim();
+    if (!sid) return '';
     const sess = deps.sessionStore.sessions.find((s) => s.id === sid);
-    return sess?.team_id?.trim() ?? "";
+    return sess?.team_id?.trim() ?? '';
   }
 
   function matchesSelectedEntity(env: Envelope): boolean {
-    if (deps.sessionStore.entityKind === "team") {
+    if (deps.sessionStore.entityKind === 'team') {
       const tid = deps.sessionStore.selectedTeamId?.trim();
       return !!tid && teamIdFromEnvelope(env) === tid;
     }
@@ -155,19 +139,19 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
 
   function isViewingSession(sessionId: string, agentId: string): boolean {
     if (deps.selectedSessionId.value !== sessionId) return false;
-    const selectedAgent = deps.selectedAgentId.value?.trim() ?? "";
+    const selectedAgent = deps.selectedAgentId.value?.trim() ?? '';
     return !agentId || selectedAgent === agentId.trim();
   }
 
   async function refreshSessionsAfterTurn(sessionId: string) {
-    if (deps.sessionStore.entityKind === "agent") {
+    if (deps.sessionStore.entityKind === 'agent') {
       const aid = deps.selectedAgentId.value?.trim();
       if (aid) await deps.sessionStore.loadAgentSessions(aid, { refreshOnly: true });
       const sessAgent = agentIdFromEnvelope({ session_id: sessionId } as Envelope);
       if (sessAgent && sessAgent !== aid) {
         await deps.sessionStore.loadAgentSessions(sessAgent, { refreshOnly: true });
       }
-    } else if (deps.sessionStore.entityKind === "team") {
+    } else if (deps.sessionStore.entityKind === 'team') {
       const tid = deps.sessionStore.selectedTeamId?.trim();
       if (tid && deps.loadTeamSessions) {
         await deps.loadTeamSessions(tid);
@@ -187,26 +171,21 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     }, HYDRATE_DEBOUNCE_MS);
   }
 
-  async function hydrateCurrentSession(
-    sessionId: string,
-    dropStaleInFlight = false,
-    clearStreaming = true
-  ) {
+  async function hydrateCurrentSession(sessionId: string, dropStaleInFlight = false, clearStreaming = true) {
     const inFlight = hydrateInFlight.get(sessionId);
     if (inFlight) {
       await inFlight;
       return;
     }
     const task = (async () => {
-      if (deps.sessionStore.entityKind === "team") {
+      if (deps.sessionStore.entityKind === 'team') {
         deps.ensureTeamStream(sessionId);
       } else {
         deps.ensureChatStream(sessionId);
       }
       flushInboundWriter(sessionId);
       try {
-        const afterRevision =
-          deps.messageStore.sessionRevisionBySession[sessionId] ?? 0;
+        const afterRevision = deps.messageStore.sessionRevisionBySession[sessionId] ?? 0;
         await deps.messageStore.loadMessages({
           sessionId,
           afterRevision: afterRevision > 0 ? afterRevision : undefined,
@@ -215,9 +194,9 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
         if (clearStreaming) {
           streamingSnapshots.clear(sessionId);
         }
-        deps.onHydrateError?.(sessionId, "");
+        deps.onHydrateError?.(sessionId, '');
       } catch (err) {
-        const message = err instanceof Error ? err.message : "hydrate failed";
+        const message = err instanceof Error ? err.message : 'hydrate failed';
         deps.onHydrateError?.(sessionId, message);
       }
     })();
@@ -238,75 +217,57 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     await hydrateCurrentSession(sessionId, true, true);
   }
 
-  function scheduleChannelFocus(
-    sessionId: string,
-    agentId: string,
-    skipMessageReload: boolean
-  ) {
+  function scheduleChannelFocus(sessionId: string, agentId: string, skipMessageReload: boolean) {
     if (!deps.focusChannelSession || focusInFlight.has(sessionId)) return;
     flushInboundWriter(sessionId);
     focusInFlight.add(sessionId);
-    void Promise.resolve(
-      deps.focusChannelSession(sessionId, agentId, { skipMessageReload })
-    ).catch((err) => {
-      console.warn("[chat] channel focus failed:", sessionId, err);
-    }).finally(() => {
+    void Promise.resolve(deps.focusChannelSession(sessionId, agentId, { skipMessageReload }))
+      .catch((err) => {
+        console.warn('[chat] channel focus failed:', sessionId, err);
+      })
+      .finally(() => {
         focusInFlight.delete(sessionId);
       });
   }
 
-  function patchChannelStreamEnvelope(
-    sessionId: string,
-    env: Envelope,
-    channelInbound: boolean
-  ): boolean {
-    if (
-      !shouldGlobalHubHandleStream(
-        channelInbound,
-        deps.sessionStore.entityKind,
-        env
-      )
-    ) {
+  function patchChannelStreamEnvelope(sessionId: string, env: Envelope, channelInbound: boolean): boolean {
+    if (!shouldGlobalHubHandleStream(channelInbound, deps.sessionStore.entityKind, env)) {
       return false;
     }
     const streamId = inboundStreamRowId(sessionId);
     const writer = inboundWriter(sessionId);
-    if (env.type === "text_delta" && (env.content?.text || env.content?.reasoning)) {
+    if (env.type === 'text_delta' && (env.content?.text || env.content?.reasoning)) {
       if (isStaleStreamEnvelope(sessionId, env)) return true;
       streamingSnapshots.put(sessionId, {
         reasoning: env.content?.reasoning,
         partialText: env.content?.text,
       });
-      writer.update((cur) =>
-        patchStreamingEnvelope(cur, sessionId, streamId, env, false)
-      );
+      writer.update((cur) => patchStreamingEnvelope(cur, sessionId, streamId, env, false));
       return true;
     }
-    if (env.type === "text_done") {
+    if (env.type === 'text_done') {
       if (isStaleStreamEnvelope(sessionId, env)) return true;
       streamingSnapshots.put(sessionId, {
         reasoning: env.content?.reasoning,
         partialText: env.content?.text,
         replace: true,
       });
-      writer.update((cur) =>
-        patchStreamingEnvelope(cur, sessionId, streamId, env, true)
-      );
+      writer.update((cur) => patchStreamingEnvelope(cur, sessionId, streamId, env, true));
       return true;
     }
-    if (env.type === "tool_call" && env.tool_call) {
-      writer.update((cur) => upsertToolMessage(cur, sessionId, env, "before"));
+    if (env.type === 'tool_call' && env.tool_call) {
+      writer.update((cur) => upsertToolMessage(cur, sessionId, env, 'before'));
       return true;
     }
-    if (env.type === "tool_result" && env.tool_call) {
-      writer.update((cur) => upsertToolMessage(cur, sessionId, env, "after"));
+    if (env.type === 'tool_result' && env.tool_call) {
+      writer.update((cur) => upsertToolMessage(cur, sessionId, env, 'after'));
       return true;
     }
     return false;
   }
 
   async function handleInboundEnvelope(env: Envelope) {
-    const sessionId = (env.session_id ?? "").trim();
+    const sessionId = (env.session_id ?? '').trim();
     if (!sessionId) return;
     const projection = projectConversationEnvelope(env, {
       currentSessionId: deps.selectedSessionId.value,
@@ -327,24 +288,24 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       }
     }
 
-    if (env.type === "context_usage" && env.usage) {
+    if (env.type === 'context_usage' && env.usage) {
       const patch = sessionContextPatchFromEnvelope(env);
       if (patch) {
         deps.sessionStore.patchSessionMetricsLocal(sessionId, patch);
       }
     }
 
-    if (env.type === "session.status_changed" && env.metadata) {
+    if (env.type === 'session.status_changed' && env.metadata) {
       const md = env.metadata as Record<string, unknown>;
-      const status = typeof md.status === "string" ? md.status : "";
-      const statusReason = typeof md.status_reason === "string" ? md.status_reason : "";
-      const statusChangedAt = typeof md.status_changed_at === "string" ? md.status_changed_at : "";
+      const status = typeof md.status === 'string' ? md.status : '';
+      const statusReason = typeof md.status_reason === 'string' ? md.status_reason : '';
+      const statusChangedAt = typeof md.status_changed_at === 'string' ? md.status_changed_at : '';
       if (status) {
-        emitSessionMutation({ type: "status_changed", id: sessionId, status, statusReason, statusChangedAt });
+        emitSessionMutation({ type: 'status_changed', id: sessionId, status, statusReason, statusChangedAt });
       }
     }
 
-    if (env.type.startsWith("spirit_team") || env.type === "spirit_synthesis_completed") {
+    if (env.type.startsWith('spirit_team') || env.type === 'spirit_synthesis_completed') {
       const spiritStore = useSpiritTeamStore();
       spiritStore.handleSpiritEnvelope(env);
     }
@@ -353,17 +314,14 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     const localRev = deps.messageStore.sessionRevisionBySession[sessionId] ?? 0;
     const inboundSource = projection?.source ?? envelopeSource(env);
     const channelInbound =
-      inboundSource === "channel" ||
-      (await isChannelInboundSession(sessionId, inboundSource, deps.sessionStore));
+      inboundSource === 'channel' || (await isChannelInboundSession(sessionId, inboundSource, deps.sessionStore));
 
-    let channelAgentId = "";
-    let channelRunStatus = "";
+    let channelAgentId = '';
+    let channelRunStatus = '';
     if (channelInbound) {
       channelAgentId = await resolveInboundAgentId(sessionId, env, deps.sessionStore);
       const shouldRefreshSessions =
-        env.type === "run_status" ||
-        isSessionRevisionSyncEnvelope(env) ||
-        isTurnCompleteEnvelope(env);
+        env.type === 'run_status' || isSessionRevisionSyncEnvelope(env) || isTurnCompleteEnvelope(env);
       if (channelAgentId && shouldRefreshSessions) {
         void refreshAgentSessionsForChannel(deps.sessionStore, channelAgentId, {
           entityKind: deps.sessionStore.entityKind,
@@ -371,8 +329,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
         });
       }
 
-      channelRunStatus =
-        env.type === "run_status" ? runStatusFromEnvelope(env)?.status ?? "" : "";
+      channelRunStatus = env.type === 'run_status' ? (runStatusFromEnvelope(env)?.status ?? '') : '';
       if (channelRunStatus === SESSION_RUN_STATUS.RUNNING) {
         unsealTurnStream(sessionId);
       }
@@ -381,19 +338,14 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
     const isCurrent = deps.selectedSessionId.value === sessionId;
     const entityMatch = matchesSelectedEntity(env);
     const turnComplete = isTurnCompleteEnvelope(env);
-    const ownsEnvelope =
-      isCurrent ||
-      entityMatch ||
-      (channelInbound && (isStreamEnvelopeType(env) || turnComplete));
+    const ownsEnvelope = isCurrent || entityMatch || (channelInbound && (isStreamEnvelopeType(env) || turnComplete));
 
     if (ownsEnvelope && patchChannelStreamEnvelope(sessionId, env, channelInbound)) {
       return;
     }
 
     if (channelInbound && channelAgentId) {
-      const focusTrigger =
-        channelRunStatus === SESSION_RUN_STATUS.RUNNING ||
-        isSessionRevisionSyncEnvelope(env);
+      const focusTrigger = channelRunStatus === SESSION_RUN_STATUS.RUNNING || isSessionRevisionSyncEnvelope(env);
       if (
         shouldScheduleChannelFocus({
           channelInbound,
@@ -405,19 +357,15 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
           hasFocusHandler: Boolean(deps.focusChannelSession),
         })
       ) {
-        scheduleChannelFocus(
-          sessionId,
-          channelAgentId,
-          shouldSkipMessageReloadOnChannelFocus(channelRunStatus)
-        );
+        scheduleChannelFocus(sessionId, channelAgentId, shouldSkipMessageReloadOnChannelFocus(channelRunStatus));
       }
     }
 
-    if (isCurrent && env.type === "run_status") {
+    if (isCurrent && env.type === 'run_status') {
       const rs = runStatusFromEnvelope(env);
       if (rs?.status === SESSION_RUN_STATUS.RUNNING) {
         unsealTurnStream(sessionId);
-        if (deps.sessionStore.entityKind === "team") {
+        if (deps.sessionStore.entityKind === 'team') {
           deps.ensureTeamStream(sessionId);
         } else {
           deps.ensureChatStream(sessionId);
@@ -455,10 +403,10 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
 
   onMounted(() => {
     hubId = acquireGlobalWsConsumer({
-      channels: ["chat"],
+      channels: ['chat'],
       logEnabled: false,
       onEnvelope: (env) => {
-        if (env.channel !== "chat") return;
+        if (env.channel !== 'chat') return;
         void handleInboundEnvelope(env);
       },
     });

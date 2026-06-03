@@ -1,58 +1,58 @@
-import type { Envelope } from "./envelope";
-import type { ActivityKind, ToolUseEvent } from "./types";
-import type { Message } from "./types";
-import { MESSAGE_STATUS } from "../../domain/types";
-import { classifyActivityKind } from "./activityPresentation";
-import { toolEventToMessage } from "./toolEventMarkdown";
+import type { Envelope } from './envelope';
+import type { ActivityKind, ToolUseEvent } from './types';
+import type { Message } from './types';
+import { MESSAGE_STATUS } from '../../domain/types';
+import { classifyActivityKind } from './activityPresentation';
+import { toolEventToMessage } from './toolEventMarkdown';
 
 function parseJSONRecord(raw: string | undefined): Record<string, unknown> {
   if (!raw?.trim()) return {};
   try {
     const v = JSON.parse(raw) as unknown;
-    return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : { value: v };
+    return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : { value: v };
   } catch {
     return { raw };
   }
 }
 
-function normalizeToolStatus(status: string): ToolUseEvent["status"] {
+function normalizeToolStatus(status: string): ToolUseEvent['status'] {
   const s = status.toLowerCase();
-  if (s === "calling" || s === "running" || s === "in_progress") return "running";
-  if (s === "failed" || s === "error") return "failed";
-  if (s === "blocked") return "blocked";
-  if (s === "cancelled") return "cancelled";
-  return "success";
+  if (s === 'calling' || s === 'running' || s === 'in_progress') return 'running';
+  if (s === 'failed' || s === 'error') return 'failed';
+  if (s === 'blocked') return 'blocked';
+  if (s === 'cancelled') return 'cancelled';
+  return 'success';
 }
 
 function activityMessageId(event: ToolUseEvent): string {
   if (event.id?.trim()) return `act-${event.id.trim()}`;
-  return `tool-${event.agent_id || event.agent_key || "agent"}-${event.tool_name}`;
+  return `tool-${event.agent_id || event.agent_key || 'agent'}-${event.tool_name}`;
 }
 
 /** Build a {@link ToolUseEvent} from a tool_call / tool_result Envelope. */
-export function envelopeToToolEvent(env: Envelope, phase: "before" | "after"): ToolUseEvent | null {
+export function envelopeToToolEvent(env: Envelope, phase: 'before' | 'after'): ToolUseEvent | null {
   const tc = env.tool_call;
   if (!tc?.name && !tc?.id) return null;
   const args = parseJSONRecord(tc.arguments_json);
   const result = parseJSONRecord(tc.result_json);
-  const toolName = tc.name || "tool";
+  const toolName = tc.name || 'tool';
   const kind = (tc.activity_kind || classifyActivityKind(toolName)) as ActivityKind;
   return {
     id: tc.id || env.id,
     phase,
-    status: normalizeToolStatus(tc.status || (phase === "before" ? "running" : "success")),
-    agent_id: tc.agent_id || "",
-    agent_key: tc.agent_key || env.author || "",
-    agent_name: tc.agent_name || env.author || "Agent",
-    agent_icon: "",
+    status: normalizeToolStatus(tc.status || (phase === 'before' ? 'running' : 'success')),
+    agent_id: tc.agent_id || '',
+    agent_key: tc.agent_key || env.author || '',
+    agent_name: tc.agent_name || env.author || 'Agent',
+    agent_icon: '',
     tool_name: toolName,
     tool_label: tc.display_label || tc.name,
     arguments: args,
-    result: phase === "after" || Object.keys(result).length > 0 ? result : undefined,
+    result: phase === 'after' || Object.keys(result).length > 0 ? result : undefined,
     error:
-      typeof result.error === "string"
+      typeof result.error === 'string'
         ? result.error
-        : tc.error_code && tc.status === "failed"
+        : tc.error_code && tc.status === 'failed'
           ? tc.error_code
           : undefined,
     occurred_at: tc.finished_at || tc.started_at || env.timestamp || new Date().toISOString(),
@@ -83,8 +83,7 @@ export function mergeToolEvents(existing: ToolUseEvent, incoming: ToolUseEvent):
     icon_key: incoming.icon_key || existing.icon_key,
     summary: incoming.summary || existing.summary,
     activity_kind: incoming.activity_kind || existing.activity_kind,
-    arguments:
-      Object.keys(incoming.arguments ?? {}).length > 0 ? incoming.arguments : existing.arguments,
+    arguments: Object.keys(incoming.arguments ?? {}).length > 0 ? incoming.arguments : existing.arguments,
     result: incoming.result ?? existing.result,
     error: incoming.error || existing.error,
     duration_ms: incoming.duration_ms ?? existing.duration_ms,
@@ -106,7 +105,7 @@ export function upsertToolMessage(
   messages: Message[],
   sessionId: string,
   env: Envelope,
-  phase: "before" | "after"
+  phase: 'before' | 'after',
 ): Message[] {
   const event = envelopeToToolEvent(env, phase);
   if (!event) return messages;
@@ -127,37 +126,40 @@ export function upsertToolMessage(
 }
 
 /** Mark in-flight tool activity rows as cancelled when run_status=cancelled. */
-export function cancelRunningToolMessages(messages: Message[], reason = "用户已停止生成"): Message[] {
-  return patchOrphanToolMessages(messages, reason, "cancelled", MESSAGE_STATUS.TOOL_CANCELLED, [MESSAGE_STATUS.TOOL_RUNNING, MESSAGE_STATUS.TOOL_BLOCKED]);
+export function cancelRunningToolMessages(messages: Message[], reason = '用户已停止生成'): Message[] {
+  return patchOrphanToolMessages(messages, reason, 'cancelled', MESSAGE_STATUS.TOOL_CANCELLED, [
+    MESSAGE_STATUS.TOOL_RUNNING,
+    MESSAGE_STATUS.TOOL_BLOCKED,
+  ]);
 }
 
 /** Mark orphan in-flight tool rows when a turn ends without tool_result. */
 export function finalizeOrphanToolMessages(
   messages: Message[],
-  reason = "Turn 已完成，未收到工具结果",
-  statuses: string[] = [MESSAGE_STATUS.TOOL_RUNNING, MESSAGE_STATUS.TOOL_BLOCKED]
+  reason = 'Turn 已完成，未收到工具结果',
+  statuses: string[] = [MESSAGE_STATUS.TOOL_RUNNING, MESSAGE_STATUS.TOOL_BLOCKED],
 ): Message[] {
-  return patchOrphanToolMessages(messages, reason, "failed", MESSAGE_STATUS.TOOL_FAILED, statuses);
+  return patchOrphanToolMessages(messages, reason, 'failed', MESSAGE_STATUS.TOOL_FAILED, statuses);
 }
 
 function patchOrphanToolMessages(
   messages: Message[],
   reason: string,
-  eventStatus: ToolUseEvent["status"],
+  eventStatus: ToolUseEvent['status'],
   messageStatus: string,
-  statuses: string[]
+  statuses: string[],
 ): Message[] {
   const allowed = new Set(statuses);
   let changed = false;
   const next = messages.map((msg) => {
-    if (!allowed.has(msg.status || "")) return msg;
+    if (!allowed.has(msg.status || '')) return msg;
     const event = toolEventFromMessage(msg);
     if (!event) return msg;
     changed = true;
     const patched: ToolUseEvent = {
       ...event,
       status: eventStatus,
-      phase: "after",
+      phase: 'after',
       error: event.error || reason,
       finished_at: new Date().toISOString(),
     };
@@ -169,11 +171,11 @@ function patchOrphanToolMessages(
 }
 
 export function toolEventFromMessage(message: Message): ToolUseEvent | null {
-  if (message.tool_event && typeof message.tool_event === "object") {
+  if (message.tool_event && typeof message.tool_event === 'object') {
     return message.tool_event as ToolUseEvent;
   }
   try {
-    const raw = JSON.parse(message.options_json || "{}") as { tool_event?: ToolUseEvent };
+    const raw = JSON.parse(message.options_json || '{}') as { tool_event?: ToolUseEvent };
     return raw.tool_event ?? null;
   } catch {
     return null;

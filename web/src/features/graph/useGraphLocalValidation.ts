@@ -1,6 +1,6 @@
-import { computed, ref, watch } from "vue";
-import type { Ref } from "vue";
-import type { GraphDefinition, ValidationError, ValidationWarning } from "./types";
+import { computed, ref, watch } from 'vue';
+import type { Ref } from 'vue';
+import type { GraphDefinition, ValidationError, ValidationWarning } from './types';
 
 export function useGraphLocalValidation(graphDef: Ref<GraphDefinition>) {
   const cycleWarnings = ref<ValidationWarning[]>([]);
@@ -15,16 +15,16 @@ export function useGraphLocalValidation(graphDef: Ref<GraphDefinition>) {
     if (def.nodes.length === 0) return errors;
 
     if (!def.entryPoint) {
-      errors.push({ code: "no_entry_point", nodeId: "", field: "entryPoint", message: "缺少入口节点" });
+      errors.push({ code: 'no_entry_point', nodeId: '', field: 'entryPoint', message: '缺少入口节点' });
     } else if (!nodeIds.has(def.entryPoint)) {
-      errors.push({ code: "no_entry_point", nodeId: def.entryPoint, field: "entryPoint", message: "入口节点不存在" });
+      errors.push({ code: 'no_entry_point', nodeId: def.entryPoint, field: 'entryPoint', message: '入口节点不存在' });
     }
 
     const seen = new Map<string, number>();
     for (const n of def.nodes) {
       const prev = seen.get(n.id);
       if (prev !== undefined) {
-        errors.push({ code: "duplicate_node", nodeId: n.id, field: "id", message: `节点 ID 重复: ${n.id}` });
+        errors.push({ code: 'duplicate_node', nodeId: n.id, field: 'id', message: `节点 ID 重复: ${n.id}` });
       } else {
         seen.set(n.id, 1);
       }
@@ -32,21 +32,31 @@ export function useGraphLocalValidation(graphDef: Ref<GraphDefinition>) {
 
     for (const e of def.edges) {
       if (!nodeIds.has(e.from)) {
-        errors.push({ code: "edge_source_missing", nodeId: "", field: "from", message: `边源节点不存在: ${e.from}` });
+        errors.push({ code: 'edge_source_missing', nodeId: '', field: 'from', message: `边源节点不存在: ${e.from}` });
       }
       if (!nodeIds.has(e.to)) {
-        errors.push({ code: "edge_target_missing", nodeId: e.from, field: "to", message: `边目标节点不存在: ${e.to}` });
+        errors.push({ code: 'edge_target_missing', nodeId: e.from, field: 'to', message: `边目标节点不存在: ${e.to}` });
       }
     }
     for (const ce of def.conditionalEdges) {
       if (!nodeIds.has(ce.from)) {
-        errors.push({ code: "edge_source_missing", nodeId: "", field: "from", message: `条件边源节点不存在: ${ce.from}` });
+        errors.push({
+          code: 'edge_source_missing',
+          nodeId: '',
+          field: 'from',
+          message: `条件边源节点不存在: ${ce.from}`,
+        });
         continue;
       }
       const targets = Object.values(ce.pathMap ?? {});
       for (const t of targets) {
         if (!nodeIds.has(t)) {
-          errors.push({ code: "edge_target_missing", nodeId: ce.from, field: "pathMap", message: `条件边目标节点不存在: ${t}` });
+          errors.push({
+            code: 'edge_target_missing',
+            nodeId: ce.from,
+            field: 'pathMap',
+            message: `条件边目标节点不存在: ${t}`,
+          });
         }
       }
     }
@@ -71,7 +81,7 @@ export function useGraphLocalValidation(graphDef: Ref<GraphDefinition>) {
       }
       for (const n of def.nodes) {
         if (!reachable.has(n.id)) {
-          errors.push({ code: "unreachable_node", nodeId: n.id, field: "", message: `节点不可达: ${n.id}` });
+          errors.push({ code: 'unreachable_node', nodeId: n.id, field: '', message: `节点不可达: ${n.id}` });
         }
       }
     }
@@ -122,7 +132,7 @@ export function useGraphLocalValidation(graphDef: Ref<GraphDefinition>) {
       }
     }
     if (hasUnconditionalCycle) {
-      errors.push({ code: "loop_no_exit", nodeId: "", field: "", message: "图中存在无条件循环（死循环）" });
+      errors.push({ code: 'loop_no_exit', nodeId: '', field: '', message: '图中存在无条件循环（死循环）' });
     } else {
       let hasConditionalCycle = false;
       const cv = new Set<string>();
@@ -138,7 +148,12 @@ export function useGraphLocalValidation(graphDef: Ref<GraphDefinition>) {
         }
       }
       if (hasConditionalCycle) {
-        cycleWarnings.value.push({ code: "conditional_loop", nodeId: "", field: "", message: "图中存在条件循环（运行时可能回退）" });
+        cycleWarnings.value.push({
+          code: 'conditional_loop',
+          nodeId: '',
+          field: '',
+          message: '图中存在条件循环（运行时可能回退）',
+        });
       }
     }
 
@@ -163,7 +178,7 @@ export function useGraphLocalValidation(graphDef: Ref<GraphDefinition>) {
 
     for (const n of def.nodes) {
       if (!connectedNodes.has(n.id)) {
-        warnings.push({ code: "orphan_node", nodeId: n.id, field: "", message: `孤立节点（无连接）: ${n.id}` });
+        warnings.push({ code: 'orphan_node', nodeId: n.id, field: '', message: `孤立节点（无连接）: ${n.id}` });
       }
     }
 

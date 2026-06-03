@@ -1,5 +1,5 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
   listGraphs,
   getGraph,
@@ -52,9 +52,9 @@ import {
   type TaskRun,
   type TaskEvent,
   type TaskStatus,
-} from "../../features/graph/api";
+} from '../../features/graph/api';
 
-export const useGraphStore = defineStore("graph", () => {
+export const useGraphStore = defineStore('graph', () => {
   const graphs = ref<GraphDefinition[]>([]);
   const activeGraph = ref<GraphDefinition | null>(null);
   const loading = ref(false);
@@ -63,9 +63,9 @@ export const useGraphStore = defineStore("graph", () => {
   const lastValidation = ref<ValidationResult | null>(null);
   const executionHistory = ref<GraphExecutionSummary[]>([]);
   const executionHistoryLoading = ref(false);
-  const executionHistoryNextToken = ref("");
+  const executionHistoryNextToken = ref('');
 
-  async function loadGraphs(pageSize = 50, pageToken = "") {
+  async function loadGraphs(pageSize = 50, pageToken = '') {
     loading.value = true;
     try {
       const result = await listGraphs(pageSize, pageToken);
@@ -126,7 +126,7 @@ export const useGraphStore = defineStore("graph", () => {
   ) {
     executionHistoryLoading.value = true;
     try {
-      const token = append ? executionHistoryNextToken.value : "";
+      const token = append ? executionHistoryNextToken.value : '';
       const result = await listGraphExecutions(graphId, pageSize, token, filters);
       if (append) {
         executionHistory.value.push(...result.items);
@@ -173,7 +173,7 @@ export const useGraphStore = defineStore("graph", () => {
     return listCheckpoints(executionId, limit);
   }
 
-  async function fetchStateSnapshot(executionId: string, checkpointId: string, namespace = "") {
+  async function fetchStateSnapshot(executionId: string, checkpointId: string, namespace = '') {
     return getStateSnapshot(executionId, checkpointId, namespace);
   }
 
@@ -202,19 +202,19 @@ export const useGraphStore = defineStore("graph", () => {
     return claimTask(taskId, agentKey);
   }
 
-  async function submitTask(taskId: string, output: string, summary: string, metadata = "") {
+  async function submitTask(taskId: string, output: string, summary: string, metadata = '') {
     return submitTaskResult(taskId, output, summary, metadata);
   }
 
-  async function reportTaskBlocked(taskId: string, reason: string, metadata = "") {
+  async function reportTaskBlocked(taskId: string, reason: string, metadata = '') {
     return reportBlocked(taskId, reason, metadata);
   }
 
-  async function unblockTaskByOperator(taskId: string, comment = "") {
+  async function unblockTaskByOperator(taskId: string, comment = '') {
     return unblockTask(taskId, comment);
   }
 
-  async function reviewTaskResult(taskId: string, reviewerAgent: string, approved: boolean, comment = "") {
+  async function reviewTaskResult(taskId: string, reviewerAgent: string, approved: boolean, comment = '') {
     return reviewTask(taskId, reviewerAgent, approved, comment);
   }
 
@@ -222,7 +222,7 @@ export const useGraphStore = defineStore("graph", () => {
     return listTaskComments(taskId);
   }
 
-  async function postTaskComment(taskId: string, author: string, content: string, type = "suggestion") {
+  async function postTaskComment(taskId: string, author: string, content: string, type = 'suggestion') {
     return addTaskComment(taskId, author, content, type);
   }
 
@@ -234,7 +234,12 @@ export const useGraphStore = defineStore("graph", () => {
     return listTaskRuns(taskId);
   }
 
-  async function fetchTaskEvents(executionId: string, taskId = "", eventType = "", pageSize = 100): Promise<TaskEvent[]> {
+  async function fetchTaskEvents(
+    executionId: string,
+    taskId = '',
+    eventType = '',
+    pageSize = 100,
+  ): Promise<TaskEvent[]> {
     return listTaskEvents(executionId, taskId, eventType, pageSize);
   }
 
@@ -242,7 +247,7 @@ export const useGraphStore = defineStore("graph", () => {
     return exportGraph(graphId);
   }
 
-  async function importGraphDefinition(json: string, name = "", description = "") {
+  async function importGraphDefinition(json: string, name = '', description = '') {
     const created = await importGraph(json, name, description);
     graphs.value.unshift(created);
     activeGraph.value = created;
@@ -260,14 +265,32 @@ export const useGraphStore = defineStore("graph", () => {
     return updated;
   }
 
-  async function saveAsTemplate(graphId: string, templateName: string, category = "custom", description = "") {
+  async function saveAsTemplate(graphId: string, templateName: string, category = 'custom', description = '') {
     const result = await saveGraphAsTemplate(graphId, templateName, category, description);
     await loadTemplates();
     return result;
   }
 
-  async function createNewTask(executionId: string, nodeId: string, requiredRole = "", assignmentMode = "", assignmentStrategy = "", input = "", context = "", parentTaskIds: string[] = []): Promise<Task> {
-    return createTask(executionId, nodeId, requiredRole, assignmentMode, assignmentStrategy, input, context, parentTaskIds);
+  async function createNewTask(
+    executionId: string,
+    nodeId: string,
+    requiredRole = '',
+    assignmentMode = '',
+    assignmentStrategy = '',
+    input = '',
+    context = '',
+    parentTaskIds: string[] = [],
+  ): Promise<Task> {
+    return createTask(
+      executionId,
+      nodeId,
+      requiredRole,
+      assignmentMode,
+      assignmentStrategy,
+      input,
+      context,
+      parentTaskIds,
+    );
   }
 
   async function linkTaskRelation(parentTaskId: string, childTaskId: string): Promise<void> {

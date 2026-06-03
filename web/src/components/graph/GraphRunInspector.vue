@@ -61,17 +61,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import GraphRunSidebar from "./GraphRunSidebar.vue";
-import GraphCheckpointPanel from "./GraphCheckpointPanel.vue";
-import GraphTimeTravelPanel from "./GraphTimeTravelPanel.vue";
-import GraphTaskKanban from "./GraphTaskKanban.vue";
-import type {
-  CheckpointInfo,
-  GraphExecution,
-  GraphRunExecutionSummary,
-  Task,
-} from "../../features/graph/types";
+import { computed } from 'vue';
+import GraphRunSidebar from './GraphRunSidebar.vue';
+import GraphCheckpointPanel from './GraphCheckpointPanel.vue';
+import GraphTimeTravelPanel from './GraphTimeTravelPanel.vue';
+import GraphTaskKanban from './GraphTaskKanban.vue';
+import type { CheckpointInfo, GraphExecution, GraphRunExecutionSummary, Task } from '../../features/graph/types';
 
 const props = defineProps<{
   execution: GraphExecution | null;
@@ -97,22 +92,22 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:tab": [value: string];
+  'update:tab': [value: string];
   refreshCheckpoints: [];
   selectCheckpoint: [checkpoint: CheckpointInfo];
   restoreCheckpoint: [checkpoint: CheckpointInfo];
-  "update:statePatchJson": [value: string];
-  "update:stepIndex": [value: number];
+  'update:statePatchJson': [value: string];
+  'update:stepIndex': [value: number];
   timeTravel: [];
   applyEdit: [];
   refreshTasks: [];
   selectTask: [taskId: string];
-  kanbanAdminAction: [payload: { taskId: string; action: "unblock" | "approve" }];
+  kanbanAdminAction: [payload: { taskId: string; action: 'unblock' | 'approve' }];
 }>();
 
 const tab = computed({
   get: () => props.tab,
-  set: (value: string) => emit("update:tab", value),
+  set: (value: string) => emit('update:tab', value),
 });
 
 const maxStep = computed(() => {

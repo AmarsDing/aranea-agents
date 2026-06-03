@@ -13,7 +13,9 @@
       >
         <q-item-section>
           <q-item-label>{{ ds.name }}</q-item-label>
-          <q-item-label caption :class="selectedId === ds.id ? 'text-white' : ''">{{ ds.case_count }} 用例</q-item-label>
+          <q-item-label caption :class="selectedId === ds.id ? 'text-white' : ''"
+            >{{ ds.case_count }} 用例</q-item-label
+          >
         </q-item-section>
       </q-item>
     </q-list>
@@ -22,7 +24,7 @@
 </template>
 
 <script setup lang="ts">
-import type { EvalDataset } from "../../features/evaluation/types";
+import type { EvalDataset } from '../../features/evaluation/types';
 
 defineProps<{
   datasets: EvalDataset[];

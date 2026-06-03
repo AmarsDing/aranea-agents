@@ -10,9 +10,25 @@
     </q-card-section>
 
     <AppPageToolbar class="monitor-events-toolbar">
-      <q-select v-model="category" class="app-page-toolbar__field" dense outlined emit-value map-options label="分类" :options="categoryOptions" />
+      <q-select
+        v-model="category"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        emit-value
+        map-options
+        label="分类"
+        :options="categoryOptions"
+      />
       <template #actions>
-        <q-btn flat rounded no-caps :icon="paused ? 'play_arrow' : 'pause'" :label="paused ? '恢复' : '暂停'" @click="toggleStream" />
+        <q-btn
+          flat
+          rounded
+          no-caps
+          :icon="paused ? 'play_arrow' : 'pause'"
+          :label="paused ? '恢复' : '暂停'"
+          @click="toggleStream"
+        />
         <q-btn flat rounded no-caps icon="delete_sweep" label="清除" @click="$emit('clear')" />
       </template>
     </AppPageToolbar>
@@ -28,58 +44,66 @@
           hide-pagination
           :pagination="{ rowsPerPage: 0 }"
         >
-        <template #body-cell-title="props">
-          <q-td :props="props" class="cursor-pointer" @click="openDetail(props.row)">
-            <AppRegistryHoverTip :text="props.row.subtitle">
-              <div class="app-registry-cell-primary ellipsis">{{ props.row.title }}</div>
-            </AppRegistryHoverTip>
-          </q-td>
-        </template>
-        <template #body-cell-tags="props">
-          <q-td :props="props">
-            <div class="app-registry-chip-wrap">
-              <q-chip dense outline>{{ props.row.source }}</q-chip>
-              <q-chip dense :color="eventColor(props.row.type)" text-color="white">{{ props.row.type }}</q-chip>
-            </div>
-          </q-td>
-        </template>
-        <template #body-cell-time="props">
-          <q-td :props="props">
-            <span class="app-registry-cell-sub">{{ props.row.time }}</span>
-          </q-td>
-        </template>
-        <template #body-cell-actions="props">
-          <q-td :props="props">
-            <div class="app-registry-cell-actions">
-              <q-btn
-                v-if="props.row.canOpenInRuns && props.row.completionMeta"
-                flat
-                dense
-                round
-                icon="timeline"
-                color="primary"
-                aria-label="在 Runs 中查看"
-                @click="openLinkedRun(props.row)"
-              >
-                <q-tooltip>在 Runs 中查看</q-tooltip>
-              </q-btn>
-              <q-btn
-                v-else-if="props.row.completionSessionId"
-                flat
-                dense
-                round
-                icon="chat"
-                color="primary"
-                aria-label="打开会话"
-                @click="openChatSession(props.row.completionSessionId!)"
-              >
-                <q-tooltip>打开会话</q-tooltip>
-              </q-btn>
-              <q-btn flat dense round icon="visibility" color="primary" aria-label="查看详情" @click="openDetail(props.row)" />
-            </div>
-          </q-td>
-        </template>
-      </AppRegistryTable>
+          <template #body-cell-title="props">
+            <q-td :props="props" class="cursor-pointer" @click="openDetail(props.row)">
+              <AppRegistryHoverTip :text="props.row.subtitle">
+                <div class="app-registry-cell-primary ellipsis">{{ props.row.title }}</div>
+              </AppRegistryHoverTip>
+            </q-td>
+          </template>
+          <template #body-cell-tags="props">
+            <q-td :props="props">
+              <div class="app-registry-chip-wrap">
+                <q-chip dense outline>{{ props.row.source }}</q-chip>
+                <q-chip dense :color="eventColor(props.row.type)" text-color="white">{{ props.row.type }}</q-chip>
+              </div>
+            </q-td>
+          </template>
+          <template #body-cell-time="props">
+            <q-td :props="props">
+              <span class="app-registry-cell-sub">{{ props.row.time }}</span>
+            </q-td>
+          </template>
+          <template #body-cell-actions="props">
+            <q-td :props="props">
+              <div class="app-registry-cell-actions">
+                <q-btn
+                  v-if="props.row.canOpenInRuns && props.row.completionMeta"
+                  flat
+                  dense
+                  round
+                  icon="timeline"
+                  color="primary"
+                  aria-label="在 Runs 中查看"
+                  @click="openLinkedRun(props.row)"
+                >
+                  <q-tooltip>在 Runs 中查看</q-tooltip>
+                </q-btn>
+                <q-btn
+                  v-else-if="props.row.completionSessionId"
+                  flat
+                  dense
+                  round
+                  icon="chat"
+                  color="primary"
+                  aria-label="打开会话"
+                  @click="openChatSession(props.row.completionSessionId!)"
+                >
+                  <q-tooltip>打开会话</q-tooltip>
+                </q-btn>
+                <q-btn
+                  flat
+                  dense
+                  round
+                  icon="visibility"
+                  color="primary"
+                  aria-label="查看详情"
+                  @click="openDetail(props.row)"
+                />
+              </div>
+            </q-td>
+          </template>
+        </AppRegistryTable>
 
         <AppRegistryPagination
           v-model:page="page"
@@ -105,7 +129,7 @@
           <div class="app-glass-dialog__title">事件详情</div>
           <div class="app-glass-dialog__subtitle">{{ selected?.type }}</div>
         </div>
-        <q-btn flat round dense icon="close" v-close-popup />
+        <q-btn v-close-popup flat round dense icon="close" />
       </q-card-section>
       <q-separator />
       <div class="app-glass-dialog__scroll">
@@ -122,15 +146,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, toRef, watch } from "vue";
-import AppPageToolbar from "../layout/AppPageToolbar.vue";
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
-import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
+import { computed, ref, toRef, watch } from 'vue';
+import AppPageToolbar from '../layout/AppPageToolbar.vue';
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
 
-import type { PlatformResource, MonitorTraceEvent } from "../../features/monitor/types";
-import { useMonitorRealtimeEvents, type MonitorViewEvent } from "../../features/monitor/useMonitorRealtimeEvents";
-import { MONITOR_EVENTS_TABLE_COLUMNS } from "./monitorTableUi";
+import type { PlatformResource, MonitorTraceEvent } from '../../features/monitor/types';
+import { useMonitorRealtimeEvents, type MonitorViewEvent } from '../../features/monitor/useMonitorRealtimeEvents';
+import { MONITOR_EVENTS_TABLE_COLUMNS } from './monitorTableUi';
 
 const props = defineProps<{
   persistedEvents: PlatformResource[];
@@ -158,8 +182,11 @@ const {
   openLinkedRun,
   openChatSession,
   copyJSON,
-  eventColor
-} = useMonitorRealtimeEvents(toRef(() => props.persistedEvents), toRef(() => props.traces));
+  eventColor,
+} = useMonitorRealtimeEvents(
+  toRef(() => props.persistedEvents),
+  toRef(() => props.traces),
+);
 
 const page = ref(1);
 const pageSize = ref(12);

@@ -18,5 +18,5 @@ defineProps<{
   disable?: boolean;
 }>();
 
-defineEmits<{ "update:modelValue": [value: string] }>();
+defineEmits<{ 'update:modelValue': [value: string] }>();
 </script>

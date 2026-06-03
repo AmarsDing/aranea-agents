@@ -1,26 +1,33 @@
-import { reactive, watch } from "vue";
+import { reactive, watch } from 'vue';
 
-const LS_SECTION_COLLAPSED = "chat:collapsed:sections";
-const LS_GROUP_COLLAPSED = "chat:collapsed:groups";
+const LS_SECTION_COLLAPSED = 'chat:collapsed:sections';
+const LS_GROUP_COLLAPSED = 'chat:collapsed:groups';
 
 export function useChatEntityCollapse() {
-  const sectionCollapsed = reactive<{ agents: boolean; teams: boolean; activeTeams: boolean; completedTeams: boolean }>({
-    agents: false,
-    teams: false,
-    activeTeams: false,
-    completedTeams: true,
-  });
+  const sectionCollapsed = reactive<{ agents: boolean; teams: boolean; activeTeams: boolean; completedTeams: boolean }>(
+    {
+      agents: false,
+      teams: false,
+      activeTeams: false,
+      completedTeams: true,
+    },
+  );
   const groupCollapsed = reactive<Record<string, boolean>>({});
 
   function restore() {
     try {
       const raw = localStorage.getItem(LS_SECTION_COLLAPSED);
       if (raw) {
-        const parsed = JSON.parse(raw) as { agents?: boolean; teams?: boolean; activeTeams?: boolean; completedTeams?: boolean };
-        if (typeof parsed.agents === "boolean") sectionCollapsed.agents = parsed.agents;
-        if (typeof parsed.teams === "boolean") sectionCollapsed.teams = parsed.teams;
-        if (typeof parsed.activeTeams === "boolean") sectionCollapsed.activeTeams = parsed.activeTeams;
-        if (typeof parsed.completedTeams === "boolean") sectionCollapsed.completedTeams = parsed.completedTeams;
+        const parsed = JSON.parse(raw) as {
+          agents?: boolean;
+          teams?: boolean;
+          activeTeams?: boolean;
+          completedTeams?: boolean;
+        };
+        if (typeof parsed.agents === 'boolean') sectionCollapsed.agents = parsed.agents;
+        if (typeof parsed.teams === 'boolean') sectionCollapsed.teams = parsed.teams;
+        if (typeof parsed.activeTeams === 'boolean') sectionCollapsed.activeTeams = parsed.activeTeams;
+        if (typeof parsed.completedTeams === 'boolean') sectionCollapsed.completedTeams = parsed.completedTeams;
       }
     } catch {
       /* ignore */
@@ -30,7 +37,7 @@ export function useChatEntityCollapse() {
       if (raw) {
         const parsed = JSON.parse(raw) as Record<string, boolean>;
         for (const [k, v] of Object.entries(parsed)) {
-          if (typeof v === "boolean") groupCollapsed[k] = v;
+          if (typeof v === 'boolean') groupCollapsed[k] = v;
         }
       }
     } catch {
@@ -54,7 +61,7 @@ export function useChatEntityCollapse() {
     }
   }
 
-  function toggleSection(section: "agents" | "teams" | "activeTeams" | "completedTeams") {
+  function toggleSection(section: 'agents' | 'teams' | 'activeTeams' | 'completedTeams') {
     sectionCollapsed[section] = !sectionCollapsed[section];
     saveSections();
   }

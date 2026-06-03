@@ -39,7 +39,7 @@
       <span v-for="(part, idx) in usageParts" :key="idx" class="chat-header-usage__chip">{{ part }}</span>
     </div>
     <span v-else class="chat-header-usage__chip chat-header-usage__chip--muted">
-      {{ t("chat.contextUsageEmpty", "暂无用量数据") }}
+      {{ t('chat.contextUsageEmpty', '暂无用量数据') }}
     </span>
     <q-btn
       v-if="showCompactBtn"
@@ -54,22 +54,22 @@
       :class="{ 'chat-header-usage__compact-btn--dark': isDark }"
       @click="onCompactClick"
     >
-      <q-tooltip :delay="400">{{ t("chat.compactSession", "压缩上下文") }}</q-tooltip>
+      <q-tooltip :delay="400">{{ t('chat.compactSession', '压缩上下文') }}</q-tooltip>
     </q-btn>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { useI18n } from "vue-i18n";
-import { useQuasar } from "quasar";
+import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
 import {
   composerContextColor,
   composerUsageParts,
   type ComposerUsageSnapshot,
-} from "../../features/chat/composerUsageMetrics";
-import type { PromptBreakdown } from "../../features/chat/contextBreakdown";
-import ChatContextBreakdownPopover from "./ChatContextBreakdownPopover.vue";
+} from '../../features/chat/composerUsageMetrics';
+import type { PromptBreakdown } from '../../features/chat/contextBreakdown';
+import ChatContextBreakdownPopover from './ChatContextBreakdownPopover.vue';
 
 const props = withDefaults(
   defineProps<{
@@ -100,20 +100,17 @@ const ringColor = computed(() => {
   const status = props.contextStatus?.trim();
   if (status) return composerContextColor(status);
   if (clampedRatio.value >= 0.8) return composerContextColor(undefined, clampedRatio.value);
-  return "accent";
+  return 'accent';
 });
 
-const usageParts = computed(() =>
-  props.usageSnapshot ? composerUsageParts(props.usageSnapshot) : [],
-);
+const usageParts = computed(() => (props.usageSnapshot ? composerUsageParts(props.usageSnapshot) : []));
 
-const hasBreakdown = computed(() =>
-  props.breakdown != null && props.breakdown.categories.length > 0,
-);
+const hasBreakdown = computed(() => props.breakdown != null && props.breakdown.categories.length > 0);
 
-const isPrecise = computed(() =>
-  props.usageSnapshot?.promptBreakdown != null &&
-  Object.values(props.usageSnapshot.promptBreakdown).some((v) => v != null && v > 0),
+const isPrecise = computed(
+  () =>
+    props.usageSnapshot?.promptBreakdown != null &&
+    Object.values(props.usageSnapshot.promptBreakdown).some((v) => v != null && v > 0),
 );
 
 function onRingClick() {
@@ -126,7 +123,7 @@ async function onCompactClick() {
   if (!props.sessionId || compactLoading.value) return;
   compactLoading.value = true;
   try {
-    emit("compact", props.sessionId);
+    emit('compact', props.sessionId);
   } finally {
     setTimeout(() => {
       compactLoading.value = false;
@@ -135,10 +132,10 @@ async function onCompactClick() {
 }
 
 const ariaLabel = computed(() => {
-  const detail = usageParts.value.join(" · ");
+  const detail = usageParts.value.join(' · ');
   return detail
-    ? `${t("chat.contextPromptUse")} ${pctLabel.value} · ${detail}`
-    : `${t("chat.contextPromptUse")} ${pctLabel.value}`;
+    ? `${t('chat.contextPromptUse')} ${pctLabel.value} · ${detail}`
+    : `${t('chat.contextPromptUse')} ${pctLabel.value}`;
 });
 </script>
 

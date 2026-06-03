@@ -71,7 +71,7 @@
     />
     <div v-if="showStatus" class="app-grid-span-full app-actions-bar app-actions-bar--start">
       <q-badge :color="configured ? 'positive' : 'warning'">
-        {{ configured ? t("settingsPage.webResearch.configured") : t("settingsPage.webResearch.notConfigured") }}
+        {{ configured ? t('settingsPage.webResearch.configured') : t('settingsPage.webResearch.notConfigured') }}
       </q-badge>
       <q-btn
         outline
@@ -89,13 +89,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { useI18n } from "vue-i18n";
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   WEB_RESEARCH_DEPTH_OPTIONS,
   WEB_RESEARCH_PROVIDER_OPTIONS,
-  type WebResearchFormState
-} from "../../features/system-settings/web-research";
+  type WebResearchFormState,
+} from '../../features/system-settings/web-research';
 
 const props = defineProps<{
   form: WebResearchFormState;
@@ -114,8 +114,8 @@ const providerOptions = WEB_RESEARCH_PROVIDER_OPTIONS;
 const depthOptions = WEB_RESEARCH_DEPTH_OPTIONS;
 
 const apiKeyLabel = computed(() =>
-  props.form.provider === "serpapi"
-    ? t("settingsPage.webResearch.serpApiKey")
-    : t("settingsPage.webResearch.tavilyApiKey")
+  props.form.provider === 'serpapi'
+    ? t('settingsPage.webResearch.serpApiKey')
+    : t('settingsPage.webResearch.tavilyApiKey'),
 );
 </script>

@@ -1,9 +1,9 @@
-import { createPluginService } from "../../services";
-import type { PaginatedResponse, Plugin, PluginListQuery, PluginRun, PluginRunListQuery } from "./types";
+import { createPluginService } from '../../services';
+import type { PaginatedResponse, Plugin, PluginListQuery, PluginRun, PluginRunListQuery } from './types';
 
 function mapPluginRow(row: unknown): Plugin {
   const r = row as Record<string, unknown>;
-  const s = (snake: string, camel: string) => String(r[snake] ?? r[camel] ?? "");
+  const s = (snake: string, camel: string) => String(r[snake] ?? r[camel] ?? '');
   const n = (snake: string, camel: string) => Number(r[snake] ?? r[camel] ?? 0);
   const b = (snake: string, camel: string) => Boolean(r[snake] ?? r[camel]);
   const rawPerms = r.permissions as Record<string, unknown> | undefined;
@@ -11,44 +11,44 @@ function mapPluginRow(row: unknown): Plugin {
   const pb = (snake: string, camel: string) => Boolean(p[snake] ?? p[camel] ?? false);
   const cbs = r.callback_points ?? r.callbackPoints;
   const callbackPoints = Array.isArray(cbs) ? cbs.map((x) => String(x)) : [];
-  const lastInvoked = s("last_invoked_at", "lastInvokedAt");
-  const lastStat = s("last_status", "lastStatus");
-  const risk = s("risk_level", "riskLevel");
+  const lastInvoked = s('last_invoked_at', 'lastInvokedAt');
+  const lastStat = s('last_status', 'lastStatus');
+  const risk = s('risk_level', 'riskLevel');
   return {
-    id: s("id", "id"),
-    key: s("key", "key"),
-    name: s("name", "name"),
-    description: s("description", "description"),
-    category: s("category", "category"),
-    risk_level: risk || "low",
-    enabled: b("enabled", "enabled"),
-    scope: s("scope", "scope"),
+    id: s('id', 'id'),
+    key: s('key', 'key'),
+    name: s('name', 'name'),
+    description: s('description', 'description'),
+    category: s('category', 'category'),
+    risk_level: risk || 'low',
+    enabled: b('enabled', 'enabled'),
+    scope: s('scope', 'scope'),
     callback_points: callbackPoints,
-    sort_order: n("sort_order", "sortOrder"),
-    config_schema_json: s("config_schema_json", "configSchemaJson"),
-    config_json: s("config_json", "configJson"),
-    default_config_json: s("default_config_json", "defaultConfigJson"),
-    invoke_count: n("invoke_count", "invokeCount"),
-    block_count: n("block_count", "blockCount"),
-    error_count: n("error_count", "errorCount"),
+    sort_order: n('sort_order', 'sortOrder'),
+    config_schema_json: s('config_schema_json', 'configSchemaJson'),
+    config_json: s('config_json', 'configJson'),
+    default_config_json: s('default_config_json', 'defaultConfigJson'),
+    invoke_count: n('invoke_count', 'invokeCount'),
+    block_count: n('block_count', 'blockCount'),
+    error_count: n('error_count', 'errorCount'),
     last_invoked_at: lastInvoked || undefined,
     last_status: lastStat || undefined,
-    created_at: s("created_at", "createdAt"),
-    updated_at: s("updated_at", "updatedAt"),
+    created_at: s('created_at', 'createdAt'),
+    updated_at: s('updated_at', 'updatedAt'),
     permissions: {
-      can_view: pb("can_view", "canView"),
-      can_toggle: pb("can_toggle", "canToggle"),
-      can_edit_config: pb("can_edit_config", "canEditConfig"),
-      can_view_logs: pb("can_view_logs", "canViewLogs")
-    }
+      can_view: pb('can_view', 'canView'),
+      can_toggle: pb('can_toggle', 'canToggle'),
+      can_edit_config: pb('can_edit_config', 'canEditConfig'),
+      can_view_logs: pb('can_view_logs', 'canViewLogs'),
+    },
   };
 }
 
 export async function listPlugins(query: PluginListQuery = {}): Promise<PaginatedResponse<Plugin>> {
   const svc = createPluginService();
   let enabled: string | undefined;
-  if (query.enabled === true) enabled = "true";
-  else if (query.enabled === false) enabled = "false";
+  if (query.enabled === true) enabled = 'true';
+  else if (query.enabled === false) enabled = 'false';
   const page = query.page ?? 1;
   const pageSize = query.page_size ?? 20;
   const res = await svc.ListPlugins({
@@ -57,14 +57,14 @@ export async function listPlugins(query: PluginListQuery = {}): Promise<Paginate
     enabled,
     callbackPoint: query.callback_point?.trim() || undefined,
     page,
-    pageSize
+    pageSize,
   });
   const items = (res.items ?? []).map(mapPluginRow);
   return {
     items,
     total: Number(res.total ?? 0),
     page: Number(res.page ?? page),
-    page_size: Number(res.pageSize ?? pageSize)
+    page_size: Number(res.pageSize ?? pageSize),
   };
 }
 
@@ -94,19 +94,19 @@ export async function updatePluginScope(id: string, scope: string): Promise<Plug
 
 function mapPluginRunRow(row: unknown): PluginRun {
   const r = row as Record<string, unknown>;
-  const s = (snake: string, camel: string) => String(r[snake] ?? r[camel] ?? "");
+  const s = (snake: string, camel: string) => String(r[snake] ?? r[camel] ?? '');
   const n = (snake: string, camel: string) => Number(r[snake] ?? r[camel] ?? 0);
   return {
-    id: s("id", "id"),
-    plugin_key: s("plugin_key", "pluginKey"),
-    plugin_id: s("plugin_id", "pluginId"),
-    session_id: s("session_id", "sessionId"),
-    agent_id: s("agent_id", "agentId"),
-    callback_point: s("callback_point", "callbackPoint"),
-    status: s("status", "status"),
-    duration_ms: n("duration_ms", "durationMs"),
-    detail_json: s("detail_json", "detailJson"),
-    created_at: s("created_at", "createdAt")
+    id: s('id', 'id'),
+    plugin_key: s('plugin_key', 'pluginKey'),
+    plugin_id: s('plugin_id', 'pluginId'),
+    session_id: s('session_id', 'sessionId'),
+    agent_id: s('agent_id', 'agentId'),
+    callback_point: s('callback_point', 'callbackPoint'),
+    status: s('status', 'status'),
+    duration_ms: n('duration_ms', 'durationMs'),
+    detail_json: s('detail_json', 'detailJson'),
+    created_at: s('created_at', 'createdAt'),
   };
 }
 
@@ -124,12 +124,12 @@ export async function listPluginRuns(query: PluginRunListQuery = {}): Promise<Pa
     from: query.from?.trim() || undefined,
     to: query.to?.trim() || undefined,
     page,
-    pageSize
+    pageSize,
   });
   return {
     items: (res.items ?? []).map(mapPluginRunRow),
     total: Number(res.total ?? 0),
     page: Number(res.page ?? page),
-    page_size: Number(res.pageSize ?? pageSize)
+    page_size: Number(res.pageSize ?? pageSize),
   };
 }

@@ -48,16 +48,9 @@
     </div>
 
     <div v-if="team.totalSteps > 0" class="team-progress-card__progress q-mt-xs">
-      <q-linear-progress
-        :value="progressValue"
-        size="3px"
-        rounded
-        :color="progressColor"
-      />
+      <q-linear-progress :value="progressValue" size="3px" rounded :color="progressColor" />
       <div class="row items-center justify-between q-mt-xs">
-        <span class="text-caption text-grey-6">
-          {{ team.completedSteps }} / {{ team.totalSteps }} 步骤
-        </span>
+        <span class="text-caption text-grey-6"> {{ team.completedSteps }} / {{ team.totalSteps }} 步骤 </span>
         <span v-if="durationText" class="text-caption text-grey-6">
           {{ durationText }}
         </span>
@@ -65,11 +58,7 @@
     </div>
 
     <div v-if="team.memberAvatars.length > 0" class="team-progress-card__avatars row items-center q-gutter-xs q-mt-xs">
-      <q-avatar
-        v-for="(url, idx) in team.memberAvatars.slice(0, 4)"
-        :key="idx"
-        size="18px"
-      >
+      <q-avatar v-for="(url, idx) in team.memberAvatars.slice(0, 4)" :key="idx" size="18px">
         <img v-if="url" :src="url" alt="" />
         <q-icon v-else name="person" size="12px" color="grey-6" />
       </q-avatar>
@@ -81,9 +70,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { SpiritTeam, TopologyType } from "../../features/spirit/types";
-import OrchestrationModeBadge from "./OrchestrationModeBadge.vue";
+import { computed } from 'vue';
+import type { SpiritTeam, TopologyType } from '../../features/spirit/types';
+import OrchestrationModeBadge from './OrchestrationModeBadge.vue';
 
 const props = defineProps<{
   team: SpiritTeam;
@@ -94,54 +83,60 @@ defineEmits<{
   cancel: [];
 }>();
 
-const modeToTopology = (mode: SpiritTeam["mode"]): TopologyType | null => {
-  const mapping: Partial<Record<SpiritTeam["mode"], TopologyType>> = {
-    parallel: "parallel",
-    sequential: "sequential",
-    coordinator: "coordinator",
-    graph: "hybrid",
-    debate: "hybrid",
+const modeToTopology = (mode: SpiritTeam['mode']): TopologyType | null => {
+  const mapping: Partial<Record<SpiritTeam['mode'], TopologyType>> = {
+    parallel: 'parallel',
+    sequential: 'sequential',
+    coordinator: 'coordinator',
+    graph: 'hybrid',
+    debate: 'hybrid',
   };
   return mapping[mode] ?? null;
 };
 
 const topology = computed(() => modeToTopology(props.team.mode));
 
-const isRunning = computed(() =>
-  props.team.status === "running" || props.team.status === "assembled" || props.team.status === "assembling"
+const isRunning = computed(
+  () => props.team.status === 'running' || props.team.status === 'assembled' || props.team.status === 'assembling',
 );
 
-const isWaitingDeps = computed(() => props.team.status === "waiting_deps");
+const isWaitingDeps = computed(() => props.team.status === 'waiting_deps');
 
-const canCancel = computed(() =>
-  props.team.status === "running" || props.team.status === "assembled" || props.team.status === "waiting_deps"
+const canCancel = computed(
+  () => props.team.status === 'running' || props.team.status === 'assembled' || props.team.status === 'waiting_deps',
 );
 
 const statusClass = computed(() => {
   switch (props.team.status) {
-    case "completed": return "completed";
-    case "failed": return "failed";
-    case "cancelled": return "cancelled";
-    case "waiting_deps": return "waiting";
-    case "running":
-    case "assembled":
-    case "assembling": return "running";
-    default: return "idle";
+    case 'completed':
+      return 'completed';
+    case 'failed':
+      return 'failed';
+    case 'cancelled':
+      return 'cancelled';
+    case 'waiting_deps':
+      return 'waiting';
+    case 'running':
+    case 'assembled':
+    case 'assembling':
+      return 'running';
+    default:
+      return 'idle';
   }
 });
 
 const progressValue = computed(() =>
-  props.team.totalSteps > 0 ? props.team.completedSteps / props.team.totalSteps : 0
+  props.team.totalSteps > 0 ? props.team.completedSteps / props.team.totalSteps : 0,
 );
 
 const progressColor = computed(() => {
-  if (props.team.status === "completed") return "positive";
-  if (props.team.status === "failed") return "negative";
-  return "accent";
+  if (props.team.status === 'completed') return 'positive';
+  if (props.team.status === 'failed') return 'negative';
+  return 'accent';
 });
 
 const durationText = computed(() => {
-  if (!props.team.durationMs) return "";
+  if (!props.team.durationMs) return '';
   const seconds = Math.floor(props.team.durationMs / 1000);
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);

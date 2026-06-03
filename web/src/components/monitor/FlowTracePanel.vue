@@ -12,7 +12,7 @@
       <div class="app-flow-trace-marker flow-trace-marker" />
       <div class="app-flow-trace-body flow-trace-body">
         <div class="row items-center q-gutter-xs">
-          <span class="text-weight-bold">{{ line.title || line.step_id || "step" }}</span>
+          <span class="text-weight-bold">{{ line.title || line.step_id || 'step' }}</span>
           <q-badge dense :color="severityColor(line.severity)" :label="line.severity || 'info'" />
         </div>
         <div v-if="showMessage(line)" class="text-body2 q-mt-xs">{{ line.message }}</div>
@@ -27,37 +27,37 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { MonitorLogLine } from "../../features/monitor/types";
-import { sortFlowLogLines } from "../../features/monitor/flow";
+import { computed } from 'vue';
+import type { MonitorLogLine } from '../../features/monitor/types';
+import { sortFlowLogLines } from '../../features/monitor/flow';
 
 const props = defineProps<{
   lines: MonitorLogLine[];
 }>();
 
-const sortedLines = computed(() => sortFlowLogLines(props.lines.filter((l) => l.kind === "flow")));
+const sortedLines = computed(() => sortFlowLogLines(props.lines.filter((l) => l.kind === 'flow')));
 
 function rowClass(line: MonitorLogLine): string {
-  return `app-flow-trace-row--${(line.severity || "info").toLowerCase()} flow-trace-row--${(line.severity || "info").toLowerCase()}`;
+  return `app-flow-trace-row--${(line.severity || 'info').toLowerCase()} flow-trace-row--${(line.severity || 'info').toLowerCase()}`;
 }
 
 function severityColor(severity?: string): string {
-  switch ((severity || "").toLowerCase()) {
-    case "critical":
-    case "error":
-      return "negative";
-    case "warn":
-      return "warning";
-    case "ok":
-      return "positive";
+  switch ((severity || '').toLowerCase()) {
+    case 'critical':
+    case 'error':
+      return 'negative';
+    case 'warn':
+      return 'warning';
+    case 'ok':
+      return 'positive';
     default:
-      return "info";
+      return 'info';
   }
 }
 
 function showMessage(line: MonitorLogLine): boolean {
-  const msg = (line.message || "").trim();
-  const title = (line.title || "").trim();
+  const msg = (line.message || '').trim();
+  const title = (line.title || '').trim();
   return Boolean(msg && msg !== title);
 }
 </script>

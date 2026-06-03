@@ -3,7 +3,7 @@
     <div class="graph-run-page__toolbar graph-workbench__toolbar">
       <q-btn flat dense round icon="arrow_back" @click="goBack" />
       <div class="graph-workbench__toolbar-meta">
-        <div class="graph-run-page__title">{{ graphDef.name || "执行监控" }}</div>
+        <div class="graph-run-page__title">{{ graphDef.name || '执行监控' }}</div>
         <div class="graph-workbench__subtitle">
           {{ displayStatus }}
           <span v-if="streamConnected"> · 实时</span>
@@ -12,11 +12,29 @@
       <q-space />
       <q-badge v-if="streamConnected" rounded class="graph-run-page__live-badge">实时</q-badge>
       <q-badge rounded :color="statusColor">{{ displayStatus }}</q-badge>
-      <span v-if="progressStepLabel && showProgressBar" class="graph-run-page__step-counter">{{ progressStepLabel }}</span>
-      <q-btn v-if="displayStatus === 'running'" flat dense round icon="stop" color="negative" @click="confirmCancelExec">
+      <span v-if="progressStepLabel && showProgressBar" class="graph-run-page__step-counter">{{
+        progressStepLabel
+      }}</span>
+      <q-btn
+        v-if="displayStatus === 'running'"
+        flat
+        dense
+        round
+        icon="stop"
+        color="negative"
+        @click="confirmCancelExec"
+      >
         <q-tooltip>取消执行</q-tooltip>
       </q-btn>
-      <q-btn v-if="displayStatus === 'waiting_human'" flat dense round icon="play_arrow" color="positive" @click="resumeExec">
+      <q-btn
+        v-if="displayStatus === 'waiting_human'"
+        flat
+        dense
+        round
+        icon="play_arrow"
+        color="positive"
+        @click="resumeExec"
+      >
         <q-tooltip>恢复执行</q-tooltip>
       </q-btn>
     </div>
@@ -28,9 +46,15 @@
       </div>
       <div class="graph-run-progress__stats">
         <span class="graph-run-progress__stat graph-run-progress__stat--completed">● {{ progressCompleted }} 完成</span>
-        <span v-if="progressRunning > 0" class="graph-run-progress__stat graph-run-progress__stat--running">● {{ progressRunning }} 运行中</span>
-        <span v-if="progressWaiting > 0" class="graph-run-progress__stat graph-run-progress__stat--waiting">○ {{ progressWaiting }} 等待</span>
-        <span v-if="progressDurationSec" class="graph-run-progress__stat graph-run-progress__stat--duration">⏱ {{ progressDurationSec }}s</span>
+        <span v-if="progressRunning > 0" class="graph-run-progress__stat graph-run-progress__stat--running"
+          >● {{ progressRunning }} 运行中</span
+        >
+        <span v-if="progressWaiting > 0" class="graph-run-progress__stat graph-run-progress__stat--waiting"
+          >○ {{ progressWaiting }} 等待</span
+        >
+        <span v-if="progressDurationSec" class="graph-run-progress__stat graph-run-progress__stat--duration"
+          >⏱ {{ progressDurationSec }}s</span
+        >
       </div>
     </div>
 
@@ -109,11 +133,11 @@
 </template>
 
 <script setup lang="ts">
-import GraphEditorCanvas from "../components/graph/GraphEditorCanvas.vue";
-import GraphRunInspector from "../components/graph/GraphRunInspector.vue";
-import GraphHitlDialog from "../components/graph/GraphHitlDialog.vue";
-import GraphTaskDetailDrawer from "../components/graph/GraphTaskDetailDrawer.vue";
-import { useGraphRunPage } from "../features/graph/useGraphRunPage";
+import GraphEditorCanvas from '../components/graph/GraphEditorCanvas.vue';
+import GraphRunInspector from '../components/graph/GraphRunInspector.vue';
+import GraphHitlDialog from '../components/graph/GraphHitlDialog.vue';
+import GraphTaskDetailDrawer from '../components/graph/GraphTaskDetailDrawer.vue';
+import { useGraphRunPage } from '../features/graph/useGraphRunPage';
 
 const {
   isDark,

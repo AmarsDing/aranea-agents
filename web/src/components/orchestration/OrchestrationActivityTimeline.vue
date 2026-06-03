@@ -36,9 +36,9 @@
           <q-icon name="timeline" color="primary" />
         </q-item-section>
         <q-item-section>
-          <q-item-label>{{ row.display_label || row.kind || "activity" }}</q-item-label>
+          <q-item-label>{{ row.display_label || row.kind || 'activity' }}</q-item-label>
           <q-item-label caption>
-            {{ row.node_id }} · {{ row.status || "—" }}
+            {{ row.node_id }} · {{ row.status || '—' }}
             <span v-if="row.duration_ms"> · {{ row.duration_ms }}ms</span>
           </q-item-label>
         </q-item-section>
@@ -51,7 +51,7 @@
 </template>
 
 <script setup lang="ts">
-import type { ActivityTimelineRow } from "../../features/orchestration/types";
+import type { ActivityTimelineRow } from '../../features/orchestration/types';
 
 withDefaults(
   defineProps<{
@@ -64,10 +64,10 @@ withDefaults(
   { nodeFilter: null, nodeFilterOptions: () => [], showToolbar: true },
 );
 
-defineEmits<{ "select-node": [nodeId: string]; refresh: []; "update:nodeFilter": [value: string | null] }>();
+defineEmits<{ 'select-node': [nodeId: string]; refresh: []; 'update:nodeFilter': [value: string | null] }>();
 
 function formatTime(value: string) {
-  if (!value) return "—";
+  if (!value) return '—';
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? value : d.toLocaleTimeString();
 }

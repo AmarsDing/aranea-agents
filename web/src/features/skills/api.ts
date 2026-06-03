@@ -1,4 +1,4 @@
-import { createSkillService, kratosApi } from "../../services";
+import { createSkillService, kratosApi } from '../../services';
 import type {
   PaginatedResponse,
   Skill,
@@ -12,8 +12,8 @@ import type {
   SkillListQuery,
   SkillRefineResult,
   SkillRunQuery,
-  SkillTag
-} from "./types";
+  SkillTag,
+} from './types';
 
 // ZIP / 冲突消解：`kratosApi` **`/v1/skills/import*`** 由 **`cmd/admin`** 内挂载（multipart + JSON）。
 // 管理列表、启停、文件编辑、运行记录等已接 Kratos `skill/v1`。
@@ -21,14 +21,14 @@ import type {
 function mapSkillTag(raw: unknown): SkillTag {
   const o = raw as Record<string, unknown>;
   return {
-    name: String(o.name ?? ""),
-    source: (String(o.source ?? "user") || "user") as SkillTag["source"]
+    name: String(o.name ?? ''),
+    source: (String(o.source ?? 'user') || 'user') as SkillTag['source'],
   };
 }
 
 function mapSkill(row: unknown): Skill {
   const r = row as Record<string, unknown>;
-  const s = (snake: string, camel: string) => String(r[snake] ?? r[camel] ?? "");
+  const s = (snake: string, camel: string) => String(r[snake] ?? r[camel] ?? '');
   const n = (snake: string, camel: string) => Number(r[snake] ?? r[camel] ?? 0);
   const b = (snake: string, camel: string) => Boolean(r[snake] ?? r[camel]);
   const rawPerms = r.permissions as Record<string, unknown> | undefined;
@@ -38,147 +38,145 @@ function mapSkill(row: unknown): Skill {
   const tags: SkillTag[] = Array.isArray(rawTags) ? rawTags.map(mapSkillTag) : [];
   const cvRaw = r.current_version ?? r.currentVersion;
   const current_version =
-    cvRaw && typeof cvRaw === "object"
+    cvRaw && typeof cvRaw === 'object'
       ? (() => {
           const c = cvRaw as Record<string, unknown>;
           return {
-            id: String(c.id ?? ""),
-            version: String(c.version ?? ""),
-            validation_status: String(
-              c.validation_status ?? c.validationStatus ?? "pass"
-            ) as NonNullable<Skill["current_version"]>["validation_status"],
-            published_at: String(c.published_at ?? c.publishedAt ?? "")
+            id: String(c.id ?? ''),
+            version: String(c.version ?? ''),
+            validation_status: String(c.validation_status ?? c.validationStatus ?? 'pass') as NonNullable<
+              Skill['current_version']
+            >['validation_status'],
+            published_at: String(c.published_at ?? c.publishedAt ?? ''),
           };
         })()
       : null;
   const rawAvg = r.avg_duration_ms ?? r.avgDurationMs;
-  const avg_duration_ms =
-    rawAvg === undefined || rawAvg === null ? null : Number(rawAvg);
+  const avg_duration_ms = rawAvg === undefined || rawAvg === null ? null : Number(rawAvg);
   const rawLastDur = r.last_duration_ms ?? r.lastDurationMs;
-  const last_duration_ms =
-    rawLastDur === undefined || rawLastDur === null ? null : Number(rawLastDur);
+  const last_duration_ms = rawLastDur === undefined || rawLastDur === null ? null : Number(rawLastDur);
   return {
-    id: s("id", "id"),
-    name: s("name", "name"),
-    slug: s("slug", "slug"),
-    description: s("description", "description"),
+    id: s('id', 'id'),
+    name: s('name', 'name'),
+    slug: s('slug', 'slug'),
+    description: s('description', 'description'),
     tags,
-    extends_skill_id: s("extends_skill_id", "extendsSkillId") || undefined,
-    status: (s("status", "status") || "draft") as Skill["status"],
-    enabled: b("enabled", "enabled"),
+    extends_skill_id: s('extends_skill_id', 'extendsSkillId') || undefined,
+    status: (s('status', 'status') || 'draft') as Skill['status'],
+    enabled: b('enabled', 'enabled'),
     current_version,
-    invoke_count: n("invoke_count", "invokeCount"),
-    success_count: n("success_count", "successCount"),
-    failure_count: n("failure_count", "failureCount"),
-    usage_count_7d: n("usage_count_7d", "usageCount7d") || 0,
+    invoke_count: n('invoke_count', 'invokeCount'),
+    success_count: n('success_count', 'successCount'),
+    failure_count: n('failure_count', 'failureCount'),
+    usage_count_7d: n('usage_count_7d', 'usageCount7d') || 0,
     avg_duration_ms,
-    last_agent_id: s("last_agent_id", "lastAgentId") || undefined,
-    last_agent_display_name: s("last_agent_display_name", "lastAgentDisplayName") || undefined,
-    last_invoked_at: s("last_invoked_at", "lastInvokedAt") || undefined,
+    last_agent_id: s('last_agent_id', 'lastAgentId') || undefined,
+    last_agent_display_name: s('last_agent_display_name', 'lastAgentDisplayName') || undefined,
+    last_invoked_at: s('last_invoked_at', 'lastInvokedAt') || undefined,
     last_duration_ms,
-    created_at: s("created_at", "createdAt"),
-    updated_at: s("updated_at", "updatedAt"),
+    created_at: s('created_at', 'createdAt'),
+    updated_at: s('updated_at', 'updatedAt'),
     permissions: {
-      can_edit: pb("can_edit", "canEdit"),
-      can_delete: pb("can_delete", "canDelete"),
-      can_toggle_enabled: pb("can_toggle_enabled", "canToggleEnabled"),
-      can_duplicate: pb("can_duplicate", "canDuplicate")
+      can_edit: pb('can_edit', 'canEdit'),
+      can_delete: pb('can_delete', 'canDelete'),
+      can_toggle_enabled: pb('can_toggle_enabled', 'canToggleEnabled'),
+      can_duplicate: pb('can_duplicate', 'canDuplicate'),
     },
-    filesystem_missing: b("filesystem_missing", "filesystemMissing"),
-    sync_origin: s("sync_origin", "syncOrigin") || undefined
+    filesystem_missing: b('filesystem_missing', 'filesystemMissing'),
+    sync_origin: s('sync_origin', 'syncOrigin') || undefined,
   };
 }
 
 function mapSkillFile(row: unknown): SkillFile {
   const r = row as Record<string, unknown>;
-  const s = (snake: string, camel: string) => String(r[snake] ?? r[camel] ?? "");
+  const s = (snake: string, camel: string) => String(r[snake] ?? r[camel] ?? '');
   const n = (snake: string, camel: string) => Number(r[snake] ?? r[camel] ?? 0);
   return {
-    path: s("path", "path"),
-    name: s("name", "name"),
-    language: s("language", "language"),
-    size: n("size", "size"),
-    updated_at: s("updated_at", "updatedAt")
+    path: s('path', 'path'),
+    name: s('name', 'name'),
+    language: s('language', 'language'),
+    size: n('size', 'size'),
+    updated_at: s('updated_at', 'updatedAt'),
   };
 }
 
 function mapSkillFileContent(row: unknown): SkillFileContent {
   const r = row as Record<string, unknown>;
-  const s = (snake: string, camel: string) => String(r[snake] ?? r[camel] ?? "");
+  const s = (snake: string, camel: string) => String(r[snake] ?? r[camel] ?? '');
   return {
-    path: s("path", "path"),
-    content: s("content", "content"),
-    language: s("language", "language")
+    path: s('path', 'path'),
+    content: s('content', 'content'),
+    language: s('language', 'language'),
   };
 }
 
 function mapSkillInvocation(row: unknown): SkillInvocation {
   const r = row as Record<string, unknown>;
-  const s = (snake: string, camel: string) => String(r[snake] ?? r[camel] ?? "");
+  const s = (snake: string, camel: string) => String(r[snake] ?? r[camel] ?? '');
   const n = (snake: string, camel: string) => Number(r[snake] ?? r[camel] ?? 0);
   const rawPerms = r.permissions as Record<string, unknown> | undefined;
   const p = rawPerms ?? {};
   const pb = (snake: string, camel: string) => Boolean(p[snake] ?? p[camel] ?? false);
   return {
-    id: s("id", "id"),
-    skill_id: s("skill_id", "skillId"),
-    skill_name: s("skill_name", "skillName"),
-    skill_version: s("skill_version", "skillVersion"),
-    agent_id: s("agent_id", "agentId"),
-    agent_display_name: s("agent_display_name", "agentDisplayName"),
-    user_id: s("user_id", "userId") || undefined,
-    session_id: s("session_id", "sessionId") || undefined,
-    status: (s("status", "status") || "pending") as SkillInvocation["status"],
-    duration_ms: n("duration_ms", "durationMs"),
-    started_at: s("started_at", "startedAt"),
-    ended_at: s("ended_at", "endedAt") || undefined,
-    input_preview: s("input_preview", "inputPreview") || undefined,
-    input_hash: s("input_hash", "inputHash") || undefined,
-    output_preview: s("output_preview", "outputPreview") || undefined,
-    error_code: s("error_code", "errorCode") || undefined,
-    error_message: s("error_message", "errorMessage") || undefined,
+    id: s('id', 'id'),
+    skill_id: s('skill_id', 'skillId'),
+    skill_name: s('skill_name', 'skillName'),
+    skill_version: s('skill_version', 'skillVersion'),
+    agent_id: s('agent_id', 'agentId'),
+    agent_display_name: s('agent_display_name', 'agentDisplayName'),
+    user_id: s('user_id', 'userId') || undefined,
+    session_id: s('session_id', 'sessionId') || undefined,
+    status: (s('status', 'status') || 'pending') as SkillInvocation['status'],
+    duration_ms: n('duration_ms', 'durationMs'),
+    started_at: s('started_at', 'startedAt'),
+    ended_at: s('ended_at', 'endedAt') || undefined,
+    input_preview: s('input_preview', 'inputPreview') || undefined,
+    input_hash: s('input_hash', 'inputHash') || undefined,
+    output_preview: s('output_preview', 'outputPreview') || undefined,
+    error_code: s('error_code', 'errorCode') || undefined,
+    error_message: s('error_message', 'errorMessage') || undefined,
     permissions: {
-      can_view_detail: pb("can_view_detail", "canViewDetail")
-    }
+      can_view_detail: pb('can_view_detail', 'canViewDetail'),
+    },
   };
 }
 
 export async function listSkills(query: SkillListQuery = {}): Promise<PaginatedResponse<Skill>> {
   const svc = createSkillService();
   let enabled: string | undefined;
-  if (query.enabled === true) enabled = "true";
-  else if (query.enabled === false) enabled = "false";
+  if (query.enabled === true) enabled = 'true';
+  else if (query.enabled === false) enabled = 'false';
   let filesystemMissing: string | undefined;
-  if (query.filesystem_missing === true) filesystemMissing = "true";
-  else if (query.filesystem_missing === false) filesystemMissing = "false";
+  if (query.filesystem_missing === true) filesystemMissing = 'true';
+  else if (query.filesystem_missing === false) filesystemMissing = 'false';
   const page = query.page ?? 1;
   const pageSize = query.page_size ?? 20;
   const res = await svc.ListSkills({
     search: query.search?.trim() || undefined,
-    tags: query.tags?.length ? query.tags.join(",") : undefined,
+    tags: query.tags?.length ? query.tags.join(',') : undefined,
     enabled,
     status: query.status?.trim() || undefined,
     filesystemMissing,
     syncOrigin: query.sync_origin?.trim() || undefined,
     page,
-    pageSize
+    pageSize,
   });
   return {
     items: (res.items ?? []).map(mapSkill),
     total: Number(res.total ?? 0),
     page: Number(res.page ?? page),
-    page_size: Number(res.pageSize ?? pageSize)
+    page_size: Number(res.pageSize ?? pageSize),
   };
 }
 
 export async function getSkillFilesystemHealth(): Promise<SkillFilesystemHealth> {
-  const { data } = await kratosApi.get("/v1/skills/filesystem-health");
+  const { data } = await kratosApi.get('/v1/skills/filesystem-health');
   const d = data as Record<string, unknown>;
   return {
     root_accessible: Boolean(d.root_accessible ?? d.rootAccessible ?? true),
-    resolved_root: String(d.resolved_root ?? d.resolvedRoot ?? ""),
+    resolved_root: String(d.resolved_root ?? d.resolvedRoot ?? ''),
     missing_count: Number(d.missing_count ?? d.missingCount ?? 0),
-    pending_filesystem_count: Number(d.pending_filesystem_count ?? d.pendingFilesystemCount ?? 0)
+    pending_filesystem_count: Number(d.pending_filesystem_count ?? d.pendingFilesystemCount ?? 0),
   };
 }
 
@@ -229,22 +227,22 @@ export async function listSkillRuns(query: SkillRunQuery = {}): Promise<Paginate
     from: query.from?.trim() || undefined,
     to: query.to?.trim() || undefined,
     page,
-    pageSize
+    pageSize,
   });
   return {
     items: (res.items ?? []).map(mapSkillInvocation),
     total: Number(res.total ?? 0),
     page: Number(res.page ?? page),
-    page_size: Number(res.pageSize ?? pageSize)
+    page_size: Number(res.pageSize ?? pageSize),
   };
 }
 
 export async function uploadSkillZip(file: File): Promise<{ job_id: string }> {
   const form = new FormData();
-  form.append("file", file);
-  const { data } = await kratosApi.post("/v1/skills/import", form);
+  form.append('file', file);
+  const { data } = await kratosApi.post('/v1/skills/import', form);
   const d = data as Record<string, unknown>;
-  return { job_id: String(d.job_id ?? d.jobId ?? "") };
+  return { job_id: String(d.job_id ?? d.jobId ?? '') };
 }
 
 export async function getSkillImportJob(jobId: string): Promise<SkillImportJob> {
@@ -255,18 +253,15 @@ export async function getSkillImportJob(jobId: string): Promise<SkillImportJob> 
 export async function refineSkillConflictGroup(
   jobId: string,
   groupId: string,
-  payload: { provider?: string; model?: string; instructions?: string }
+  payload: { provider?: string; model?: string; instructions?: string },
 ): Promise<SkillRefineResult> {
-  const { data } = await kratosApi.post(
-    `/v1/skills/import/${jobId}/conflict-groups/${groupId}/refine`,
-    payload
-  );
+  const { data } = await kratosApi.post(`/v1/skills/import/${jobId}/conflict-groups/${groupId}/refine`, payload);
   return data as SkillRefineResult;
 }
 
 export async function applySkillImport(
   jobId: string,
-  decisions: SkillImportDecision[]
+  decisions: SkillImportDecision[],
 ): Promise<SkillImportApplyResult> {
   const { data } = await kratosApi.post(`/v1/skills/import/${jobId}/apply`, { decisions });
   return data as SkillImportApplyResult;

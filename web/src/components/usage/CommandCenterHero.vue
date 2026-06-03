@@ -19,7 +19,9 @@
           <q-icon name="smart_toy" size="20px" />
         </div>
         <div class="command-center-hero__stat-body">
-          <div class="command-center-hero__stat-value command-center-hero__stat-value--tech">{{ activeAgentCount }}</div>
+          <div class="command-center-hero__stat-value command-center-hero__stat-value--tech">
+            {{ activeAgentCount }}
+          </div>
           <div class="command-center-hero__stat-label">{{ t('overviewPage.statActiveAgents') }}</div>
         </div>
       </router-link>
@@ -55,7 +57,9 @@
           <q-icon name="chat" size="20px" />
         </div>
         <div class="command-center-hero__stat-body">
-          <div class="command-center-hero__stat-value command-center-hero__stat-value--tech">{{ todaySessionCount }}</div>
+          <div class="command-center-hero__stat-value command-center-hero__stat-value--tech">
+            {{ todaySessionCount }}
+          </div>
           <div class="command-center-hero__stat-label">{{ t('overviewPage.statTodayChats') }}</div>
         </div>
       </router-link>
@@ -64,7 +68,9 @@
           <q-icon name="data_usage" size="20px" />
         </div>
         <div class="command-center-hero__stat-body">
-          <div class="command-center-hero__stat-value command-center-hero__stat-value--tech">{{ formattedTokenCount }}</div>
+          <div class="command-center-hero__stat-value command-center-hero__stat-value--tech">
+            {{ formattedTokenCount }}
+          </div>
           <div class="command-center-hero__stat-label">{{ t('overviewPage.statTodayTokens') }}</div>
         </div>
       </a>
@@ -73,9 +79,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from "vue";
-import { useI18n } from "vue-i18n";
-import { formatCount } from "../../features/usage/moneyFormat";
+import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { formatCount } from '../../features/usage/moneyFormat';
 
 const { t } = useI18n();
 
@@ -101,7 +107,7 @@ const currentTime = ref(formatTime());
 let timer: ReturnType<typeof setInterval> | null = null;
 
 function formatTime() {
-  return new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 }
 
 onMounted(() => {

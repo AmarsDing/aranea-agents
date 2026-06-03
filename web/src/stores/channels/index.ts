@@ -1,5 +1,5 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
   listChannels,
   listChannelCatalog,
@@ -16,14 +16,14 @@ import {
   type ChannelCredential,
   type ChannelResourceInput,
   type ChannelDeliveryRow,
-  type ChannelTurnJobRow
-} from "../../features/channels/api";
-import { listAgents } from "../../features/agents/api";
-import type { Agent } from "../../features/agents/types";
-import { listTeams } from "../../features/teams/api";
-import type { Team } from "../../features/teams/types";
+  type ChannelTurnJobRow,
+} from '../../features/channels/api';
+import { listAgents } from '../../features/agents/api';
+import type { Agent } from '../../features/agents/types';
+import { listTeams } from '../../features/teams/api';
+import type { Team } from '../../features/teams/types';
 
-export const useChannelsStore = defineStore("channels", () => {
+export const useChannelsStore = defineStore('channels', () => {
   const channels = ref<ChannelRow[]>([]);
   const catalog = ref<ChannelCatalogItem[]>([]);
   const loading = ref(false);
@@ -133,6 +133,6 @@ export const useChannelsStore = defineStore("channels", () => {
     testConnection,
     loadTurnJobs,
     loadDeliveries,
-    loadRoutingOptions
+    loadRoutingOptions,
   };
 });

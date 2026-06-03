@@ -1,5 +1,5 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
   listLearningObservations,
   listLearningPatterns,
@@ -9,10 +9,10 @@ import {
   runLearningLoop,
   type LearningObservation,
   type LearningPattern,
-  type LearningProposal
-} from "../../features/agents/api.learning";
+  type LearningProposal,
+} from '../../features/agents/api.learning';
 
-export const useLearningLoopStore = defineStore("learningLoop", () => {
+export const useLearningLoopStore = defineStore('learningLoop', () => {
   const observations = ref<LearningObservation[]>([]);
   const patterns = ref<LearningPattern[]>([]);
   const proposals = ref<LearningProposal[]>([]);
@@ -60,6 +60,6 @@ export const useLearningLoopStore = defineStore("learningLoop", () => {
     fetchProposals,
     approveProposal,
     rejectProposal,
-    runLoop
+    runLoop,
   };
 });

@@ -1,13 +1,13 @@
-import { storeToRefs } from "pinia";
-import { computed, onMounted, reactive, ref, watch } from "vue";
-import { copyToClipboard, useQuasar } from "quasar";
-import { mapAgentCreateFieldErrors, parseKratosApiError } from "../../utils/kratosError";
-import type { Agent, AgentKind, A2AProxyConfig, AgentTemplatePreset } from "./types";
-import type { PlatformResource } from "../platform/types";
-import { statusOptions } from "../../components/agents/agentUi";
-import { useAgentsPageStore } from "../../stores/agents";
-import { useAppStore } from "../../stores/app";
-import { useAvatarCatalogStore } from "../../stores/avatar";
+import { storeToRefs } from 'pinia';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { copyToClipboard, useQuasar } from 'quasar';
+import { mapAgentCreateFieldErrors, parseKratosApiError } from '../../utils/kratosError';
+import type { Agent, AgentKind, A2AProxyConfig, AgentTemplatePreset } from './types';
+import type { PlatformResource } from '../platform/types';
+import { statusOptions } from '../../components/agents/agentUi';
+import { useAgentsPageStore } from '../../stores/agents';
+import { useAppStore } from '../../stores/app';
+import { useAvatarCatalogStore } from '../../stores/avatar';
 
 export type CreateAgentForm = {
   agent_key: string;
@@ -22,9 +22,9 @@ export type CreateAgentForm = {
   taxonomy_position_id: string;
 };
 
-type ViewMode = "grid" | "list";
+type ViewMode = 'grid' | 'list';
 
-const LS_VIEW = "agents.viewMode";
+const LS_VIEW = 'agents.viewMode';
 
 /** Agent 列表页：组合 Pinia Store 与局部 UI（表单 / 对话框），不包含裸 HTTP（见 aranea-frontend-guide SKILL §3）。 */
 export function useAgentsPage() {
@@ -51,7 +51,7 @@ export function useAgentsPage() {
     categoryTree,
     pageMax,
     providerOptions,
-    tableColumns
+    tableColumns,
   } = storeToRefs(pageStore);
 
   const categoryLabel = pageStore.categoryLabel;
@@ -65,50 +65,52 @@ export function useAgentsPage() {
   const deleteTarget = ref<Agent | null>(null);
   const creating = ref(false);
   const selfEvolve = ref(true);
-  const agentKind = ref<AgentKind>("llm");
+  const agentKind = ref<AgentKind>('llm');
   const a2aProxy = reactive<A2AProxyConfig>({
-    remote_url: "",
+    remote_url: '',
     enable_streaming: true,
-    timeout_seconds: 30
+    timeout_seconds: 30,
   });
-  const viewMode = ref<ViewMode>((localStorage.getItem(LS_VIEW) as ViewMode) || "grid");
+  const viewMode = ref<ViewMode>((localStorage.getItem(LS_VIEW) as ViewMode) || 'grid');
 
   const form = reactive<CreateAgentForm>({
-    agent_key: "",
-    display_name: "",
-    provider: "openrouter",
-    model: "gpt-4.1-mini",
-    icon: "smart_toy",
-    agent_description: "",
-    position_key: "",
-    agent_variant: "",
-    variant_description: "",
-    taxonomy_position_id: ""
+    agent_key: '',
+    display_name: '',
+    provider: 'openrouter',
+    model: 'gpt-4.1-mini',
+    icon: 'smart_toy',
+    agent_description: '',
+    position_key: '',
+    agent_variant: '',
+    variant_description: '',
+    taxonomy_position_id: '',
   });
 
-  const selectedTemplateKey = ref("");
+  const selectedTemplateKey = ref('');
   const createTemplates = ref<AgentTemplatePreset[]>([]);
-  const agentKeyServerError = ref("");
-  const displayNameError = ref("");
-  const providerModelError = ref("");
-  const remoteUrlError = ref("");
-  const createFormError = ref("");
+  const agentKeyServerError = ref('');
+  const displayNameError = ref('');
+  const providerModelError = ref('');
+  const remoteUrlError = ref('');
+  const createFormError = ref('');
   let agentKeyCheckTimer: ReturnType<typeof setTimeout> | undefined;
 
   const avatars = computed(() => avatarCatalog.agentsCatalog);
 
   const modelOptions = computed(() =>
-    providerModels.value.filter((row: PlatformResource) => row.provider === form.provider).map((row: PlatformResource) => ({ label: row.name, value: row.model }))
+    providerModels.value
+      .filter((row: PlatformResource) => row.provider === form.provider)
+      .map((row: PlatformResource) => ({ label: row.name, value: row.model })),
   );
 
   const agentKeyError = computed(() => {
-    if (!form.agent_key) return "";
+    if (!form.agent_key) return '';
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(form.agent_key)) {
-      return "仅支持小写字母、数字、连字符";
+      return '仅支持小写字母、数字、连字符';
     }
     return agentKeyServerError.value;
   });
-  const isA2AProxyCreate = computed(() => agentKind.value === "a2a_proxy");
+  const isA2AProxyCreate = computed(() => agentKind.value === 'a2a_proxy');
   const canCreate = computed(() => {
     const base = Boolean(form.display_name && form.agent_key && !agentKeyError.value);
     if (isA2AProxyCreate.value) {
@@ -121,7 +123,7 @@ export function useAgentsPage() {
     try {
       await pageStore.loadAgentList();
     } catch (error) {
-      $q.notify({ type: "negative", message: error instanceof Error ? error.message : "Agent 列表加载失败" });
+      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : 'Agent 列表加载失败' });
     }
   }
 
@@ -138,60 +140,59 @@ export function useAgentsPage() {
   watch(
     () => form.provider,
     () => {
-      form.model = modelOptions.value[0]?.value ?? "";
+      form.model = modelOptions.value[0]?.value ?? '';
       modelCheckPassed.value = false;
-    }
+    },
   );
   watch(
     () => form.model,
     () => {
       modelCheckPassed.value = false;
-    }
+    },
   );
 
   watch(
     () => form.agent_key,
     (key) => {
-      agentKeyServerError.value = "";
+      agentKeyServerError.value = '';
       if (agentKeyCheckTimer) clearTimeout(agentKeyCheckTimer);
       const trimmed = key.trim();
       if (!trimmed || !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(trimmed)) return;
       agentKeyCheckTimer = setTimeout(() => {
-        void pageStore.verifyAgentKey(trimmed)
+        void pageStore
+          .verifyAgentKey(trimmed)
           .then((res) => {
             if (!res.available) {
-              agentKeyServerError.value = res.message === "agent_key already in use" ? "标识已被使用" : res.message;
+              agentKeyServerError.value = res.message === 'agent_key already in use' ? '标识已被使用' : res.message;
             }
           })
-          .catch(() => {
-          });
+          .catch(() => {});
       }, 500);
-    }
+    },
   );
 
   onMounted(async () => {
     try {
       const remote = await pageStore.fetchAgentTemplates();
       createTemplates.value = remote;
-    } catch {
-    }
+    } catch {}
     try {
       await Promise.all([runLoadList(), pageStore.loadAgentsDependencies()]);
     } catch (error) {
-      $q.notify({ type: "negative", message: error instanceof Error ? error.message : "依赖数据加载失败" });
+      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : '依赖数据加载失败' });
     }
     const avatarRows = avatarCatalog.agentsCatalog;
-    if (!form.icon || form.icon === "smart_toy") {
-      form.icon = avatarRows[0]?.id ?? "smart_toy";
+    if (!form.icon || form.icon === 'smart_toy') {
+      form.icon = avatarRows[0]?.id ?? 'smart_toy';
     }
   });
 
   function clearCreateFieldErrors() {
-    agentKeyServerError.value = "";
-    displayNameError.value = "";
-    providerModelError.value = "";
-    remoteUrlError.value = "";
-    createFormError.value = "";
+    agentKeyServerError.value = '';
+    displayNameError.value = '';
+    providerModelError.value = '';
+    remoteUrlError.value = '';
+    createFormError.value = '';
   }
 
   async function openCreate() {
@@ -200,12 +201,12 @@ export function useAgentsPage() {
     try {
       await pageStore.loadAgentsDependencies();
     } catch (error) {
-      $q.notify({ type: "negative", message: error instanceof Error ? error.message : "依赖数据加载失败" });
+      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : '依赖数据加载失败' });
       return;
     }
     const avatarRows = avatarCatalog.agentsCatalog;
-    if (!form.icon || form.icon === "smart_toy") {
-      form.icon = avatarRows[0]?.id ?? "smart_toy";
+    if (!form.icon || form.icon === 'smart_toy') {
+      form.icon = avatarRows[0]?.id ?? 'smart_toy';
     }
     createOpen.value = true;
   }
@@ -213,31 +214,31 @@ export function useAgentsPage() {
   async function checkModel() {
     try {
       const result = await pageStore.validateCreateModel(form.provider, form.model);
-      $q.notify({ type: result.ok ? "positive" : "negative", message: result.message });
+      $q.notify({ type: result.ok ? 'positive' : 'negative', message: result.message });
     } catch (error) {
-      $q.notify({ type: "negative", message: error instanceof Error ? error.message : "校验失败" });
+      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : '校验失败' });
     }
   }
 
   function resetForm() {
     Object.assign(form, {
-      agent_key: "",
-      display_name: "",
-      provider: "openrouter",
-      model: "gpt-4.1-mini",
-      icon: avatars.value[0]?.id ?? "smart_toy",
-      agent_description: "",
-      position_key: "",
-      agent_variant: "",
-      variant_description: "",
-      taxonomy_position_id: ""
+      agent_key: '',
+      display_name: '',
+      provider: 'openrouter',
+      model: 'gpt-4.1-mini',
+      icon: avatars.value[0]?.id ?? 'smart_toy',
+      agent_description: '',
+      position_key: '',
+      agent_variant: '',
+      variant_description: '',
+      taxonomy_position_id: '',
     });
-    selectedTemplateKey.value = "";
+    selectedTemplateKey.value = '';
     clearCreateFieldErrors();
     modelCheckPassed.value = false;
     selfEvolve.value = true;
-    agentKind.value = "llm";
-    Object.assign(a2aProxy, { remote_url: "", enable_streaming: true, timeout_seconds: 30 });
+    agentKind.value = 'llm';
+    Object.assign(a2aProxy, { remote_url: '', enable_streaming: true, timeout_seconds: 30 });
   }
 
   async function onCreate() {
@@ -250,12 +251,12 @@ export function useAgentsPage() {
         agent_kind: agentKind.value,
         config_json: JSON.stringify({
           self_evolve: selfEvolve.value,
-          description_template_key: selectedTemplateKey.value
-        })
+          description_template_key: selectedTemplateKey.value,
+        }),
       };
       if (isA2AProxyCreate.value) {
-        payload.provider = "a2a";
-        payload.model = "proxy";
+        payload.provider = 'a2a';
+        payload.model = 'proxy';
         payload.a2a_proxy_config = { ...a2aProxy };
       }
       await appStore.addAgent(payload);
@@ -263,21 +264,21 @@ export function useAgentsPage() {
       await runLoadList();
       resetForm();
       createOpen.value = false;
-      $q.notify({ type: "positive", message: "创建成功" });
+      $q.notify({ type: 'positive', message: '创建成功' });
     } catch (error) {
       const fields = mapAgentCreateFieldErrors(parseKratosApiError(error));
       if (fields.agent_key) agentKeyServerError.value = fields.agent_key;
       if (fields.display_name) displayNameError.value = fields.display_name;
       if (fields.provider || fields.model) {
-        providerModelError.value = fields.provider || fields.model || "";
+        providerModelError.value = fields.provider || fields.model || '';
       }
       if (fields.remote_url) remoteUrlError.value = fields.remote_url;
       if (fields.form) createFormError.value = fields.form;
       const hasInline = Boolean(
-        fields.agent_key || fields.display_name || fields.provider || fields.model || fields.remote_url
+        fields.agent_key || fields.display_name || fields.provider || fields.model || fields.remote_url,
       );
       if (!hasInline && fields.form) {
-        $q.notify({ type: "negative", message: fields.form });
+        $q.notify({ type: 'negative', message: fields.form });
       }
     } finally {
       creating.value = false;
@@ -289,9 +290,9 @@ export function useAgentsPage() {
       const created = await pageStore.copyAgent(agent.id);
       appStore.upsertAgent(created);
       await runLoadList();
-      $q.notify({ type: "positive", message: "Agent 已复制" });
+      $q.notify({ type: 'positive', message: 'Agent 已复制' });
     } catch (error) {
-      $q.notify({ type: "negative", message: error instanceof Error ? error.message : "复制失败" });
+      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : '复制失败' });
     }
   }
 
@@ -307,7 +308,7 @@ export function useAgentsPage() {
         modelCheckPassed.value = false;
       }
     }
-    const text = template.description?.trim() || "";
+    const text = template.description?.trim() || '';
     if (!text) return;
     form.agent_description = text;
   }
@@ -323,9 +324,9 @@ export function useAgentsPage() {
       await pageStore.removeListedAgent(deleteTarget.value.id);
       deleteOpen.value = false;
       deleteTarget.value = null;
-      $q.notify({ type: "positive", message: "已删除" });
+      $q.notify({ type: 'positive', message: '已删除' });
     } catch (error) {
-      $q.notify({ type: "negative", message: error instanceof Error ? error.message : "删除失败" });
+      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : '删除失败' });
     }
   }
 
@@ -337,13 +338,13 @@ export function useAgentsPage() {
     try {
       await pageStore.toggleAgentFavorite(id);
     } catch (error) {
-      $q.notify({ type: "negative", message: error instanceof Error ? error.message : "收藏保存失败" });
+      $q.notify({ type: 'negative', message: error instanceof Error ? error.message : '收藏保存失败' });
     }
   }
 
   async function copyAgentKey(value: string) {
     await copyToClipboard(value);
-    $q.notify({ type: "positive", message: "Agent 标识已复制" });
+    $q.notify({ type: 'positive', message: 'Agent 标识已复制' });
   }
 
   function onReorder(ids: string[]) {

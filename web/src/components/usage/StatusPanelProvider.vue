@@ -2,7 +2,11 @@
   <q-card flat class="command-center-stat-panel">
     <q-card-section class="q-pb-sm">
       <div class="command-center-stat-panel__header">
-        <q-icon name="dns" size="16px" class="command-center-stat-panel__icon command-center-stat-panel__icon--provider" />
+        <q-icon
+          name="dns"
+          size="16px"
+          class="command-center-stat-panel__icon command-center-stat-panel__icon--provider"
+        />
         <span class="command-center-stat-panel__title">Provider 健康</span>
       </div>
     </q-card-section>
@@ -19,7 +23,9 @@
         <div class="command-center-stat-panel__health-row">
           <span class="command-center-stat-panel__health-dot command-center-stat-panel__health-dot--degraded" />
           <span class="command-center-stat-panel__health-label">降级</span>
-          <span class="command-center-stat-panel__health-value command-center-stat-panel__health-value--danger">{{ degraded }}</span>
+          <span class="command-center-stat-panel__health-value command-center-stat-panel__health-value--danger">{{
+            degraded
+          }}</span>
         </div>
         <div class="command-center-stat-panel__health-row">
           <span class="command-center-stat-panel__health-label" style="margin-left: 14px">总计</span>

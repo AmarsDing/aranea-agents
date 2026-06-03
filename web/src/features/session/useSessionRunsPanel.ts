@@ -1,6 +1,6 @@
-import { computed, ref, watch, type Ref } from "vue";
-import type { SessionRunRecord } from "./types";
-import { useSessionStore } from "../../stores/session";
+import { computed, ref, watch, type Ref } from 'vue';
+import type { SessionRunRecord } from './types';
+import { useSessionStore } from '../../stores/session';
 
 const PAGE_SIZE = 20;
 
@@ -9,11 +9,11 @@ export function useSessionRunsPanel(sessionId: Ref<string>) {
   const runs = ref<SessionRunRecord[]>([]);
   const total = ref(0);
   const loading = ref(false);
-  const error = ref("");
+  const error = ref('');
   const offset = ref(0);
 
   const pageLabel = computed(
-    () => `${offset.value + 1}-${Math.min(offset.value + PAGE_SIZE, total.value)} / ${total.value}`
+    () => `${offset.value + 1}-${Math.min(offset.value + PAGE_SIZE, total.value)} / ${total.value}`,
   );
 
   async function loadRuns() {
@@ -24,13 +24,13 @@ export function useSessionRunsPanel(sessionId: Ref<string>) {
       return;
     }
     loading.value = true;
-    error.value = "";
+    error.value = '';
     try {
       const result = await sessionStore.fetchRuns(id, PAGE_SIZE, offset.value);
       runs.value = result.items;
       total.value = result.total;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : "加载 Runs 失败";
+      error.value = err instanceof Error ? err.message : '加载 Runs 失败';
     } finally {
       loading.value = false;
     }
@@ -52,7 +52,7 @@ export function useSessionRunsPanel(sessionId: Ref<string>) {
       offset.value = 0;
       void loadRuns();
     },
-    { immediate: true }
+    { immediate: true },
   );
 
   return { runs, total, loading, error, offset, pageSize: PAGE_SIZE, pageLabel, loadRuns, prevPage, nextPage };

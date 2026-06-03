@@ -13,7 +13,9 @@
           <div class="graph-detail-panel__section-title">基本信息</div>
           <div class="graph-detail-panel__field">
             <span class="graph-detail-panel__label">引擎</span>
-            <span class="graph-detail-panel__value">{{ graph.executionEngine === 'dag' ? 'DAG（并行）' : 'BSP（默认）' }}</span>
+            <span class="graph-detail-panel__value">{{
+              graph.executionEngine === 'dag' ? 'DAG（并行）' : 'BSP（默认）'
+            }}</span>
           </div>
           <div class="graph-detail-panel__field">
             <span class="graph-detail-panel__label">版本</span>
@@ -25,7 +27,9 @@
           </div>
           <div class="graph-detail-panel__field">
             <span class="graph-detail-panel__label">结束</span>
-            <span class="graph-detail-panel__value graph-detail-panel__value--mono">{{ graph.finishPoint || '—' }}</span>
+            <span class="graph-detail-panel__value graph-detail-panel__value--mono">{{
+              graph.finishPoint || '—'
+            }}</span>
           </div>
           <div class="graph-detail-panel__field">
             <span class="graph-detail-panel__label">检查点</span>
@@ -69,11 +73,7 @@
 
         <div v-if="graph.stateFields?.length" class="graph-detail-panel__section">
           <div class="graph-detail-panel__section-title">状态字段</div>
-          <div
-            v-for="field in graph.stateFields"
-            :key="field.name"
-            class="graph-detail-panel__state-row"
-          >
+          <div v-for="field in graph.stateFields" :key="field.name" class="graph-detail-panel__state-row">
             <span class="graph-detail-panel__state-name">{{ field.name }}</span>
             <span class="graph-detail-panel__state-type">{{ field.type }}</span>
             <span class="graph-detail-panel__state-reducer">{{ field.reducer }}</span>
@@ -81,7 +81,14 @@
         </div>
 
         <div class="graph-detail-panel__actions">
-          <q-btn unelevated rounded icon="edit" label="编辑" class="graph-detail-panel__action-btn" @click="emit('edit', graph.id)" />
+          <q-btn
+            unelevated
+            rounded
+            icon="edit"
+            label="编辑"
+            class="graph-detail-panel__action-btn"
+            @click="emit('edit', graph.id)"
+          />
           <q-btn flat rounded icon="play_arrow" label="执行" @click="emit('run', graph)" />
           <q-btn flat rounded icon="content_copy" label="复制" @click="emit('duplicate', graph)" />
           <q-btn flat rounded icon="delete" label="删除" color="negative" @click="emit('delete', graph)" />
@@ -98,8 +105,8 @@
 </template>
 
 <script setup lang="ts">
-import type { GraphDefinition, NodeType } from "../../features/graph/types";
-import { NODE_TYPE_STYLES } from "../../features/graph/types";
+import type { GraphDefinition, NodeType } from '../../features/graph/types';
+import { NODE_TYPE_STYLES } from '../../features/graph/types';
 
 defineProps<{
   graph: GraphDefinition | null;
@@ -117,18 +124,18 @@ const emit = defineEmits<{
 }>();
 
 const NODE_TYPE_EMOJI: Record<NodeType, string> = {
-  agent: "🤖",
-  llm: "🧠",
-  router: "🔀",
-  function: "⚙️",
-  tool: "🔧",
-  join: "🔗",
-  hitl: "✋",
+  agent: '🤖',
+  llm: '🧠',
+  router: '🔀',
+  function: '⚙️',
+  tool: '🔧',
+  join: '🔗',
+  hitl: '✋',
 };
 
 function formatDate(iso: string) {
-  if (!iso) return "—";
+  if (!iso) return '—';
   const d = new Date(iso);
-  return d.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 </script>

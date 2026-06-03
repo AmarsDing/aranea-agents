@@ -1,7 +1,7 @@
-import type { AuthType, OpenAIVariant, ProviderType } from "./providerRuntimeOverlay.types";
-import overlayData from "./provider_runtime_overlay.json";
+import type { AuthType, OpenAIVariant, ProviderType } from './providerRuntimeOverlay.types';
+import overlayData from './provider_runtime_overlay.json';
 
-export type { AuthType, OpenAIVariant, ProviderType } from "./providerRuntimeOverlay.types";
+export type { AuthType, OpenAIVariant, ProviderType } from './providerRuntimeOverlay.types';
 
 export type RuntimeProfile = {
   providerType: ProviderType;
@@ -34,29 +34,27 @@ function mapOverlay(raw: OverlayJSON): Record<string, RuntimeProfile> {
 }
 
 /** models.dev provider id → trpc 运行时（与 internal/modelcatalog/runtime_overlay.json 同步） */
-export const PROVIDER_RUNTIME_OVERLAY: Record<string, RuntimeProfile> = mapOverlay(
-  overlayData as OverlayJSON
-);
+export const PROVIDER_RUNTIME_OVERLAY: Record<string, RuntimeProfile> = mapOverlay(overlayData as OverlayJSON);
 
 export const PROVIDER_TYPE_OPTIONS: { label: string; value: ProviderType }[] = [
-  { label: "OpenAI Compatible", value: "openai" },
-  { label: "Anthropic", value: "anthropic" },
-  { label: "Gemini", value: "gemini" },
-  { label: "Ollama", value: "ollama" },
-  { label: "Hunyuan", value: "hunyuan" },
-  { label: "HuggingFace", value: "huggingface" },
-  { label: "Bedrock", value: "bedrock" },
+  { label: 'OpenAI Compatible', value: 'openai' },
+  { label: 'Anthropic', value: 'anthropic' },
+  { label: 'Gemini', value: 'gemini' },
+  { label: 'Ollama', value: 'ollama' },
+  { label: 'Hunyuan', value: 'hunyuan' },
+  { label: 'HuggingFace', value: 'huggingface' },
+  { label: 'Bedrock', value: 'bedrock' },
 ];
 
 export const VARIANT_OPTIONS: { label: string; value: OpenAIVariant }[] = [
-  { label: "OpenAI", value: "openai" },
-  { label: "DeepSeek", value: "deepseek" },
-  { label: "Qwen", value: "qwen" },
-  { label: "Hunyuan", value: "hunyuan" },
+  { label: 'OpenAI', value: 'openai' },
+  { label: 'DeepSeek', value: 'deepseek' },
+  { label: 'Qwen', value: 'qwen' },
+  { label: 'Hunyuan', value: 'hunyuan' },
 ];
 
 export function runtimeProfileFor(providerId: string): RuntimeProfile {
-  return PROVIDER_RUNTIME_OVERLAY[providerId] ?? { providerType: "openai", variant: "openai", authType: "api_key" };
+  return PROVIDER_RUNTIME_OVERLAY[providerId] ?? { providerType: 'openai', variant: 'openai', authType: 'api_key' };
 }
 
 export function usdPer1MToMicroPer1K(usdPer1M: number): number {

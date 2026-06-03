@@ -19,7 +19,8 @@
         </q-item>
       </q-list>
       <q-banner rounded class="settings-info-banner settings-info-banner--bordered q-mt-md">
-        <strong>沟通风格</strong>（SOUL.md）与下方<strong>自动提议流水线</strong>独立：前者控制是否改写语调，后者控制是否扫描并生成改进提议。
+        <strong>沟通风格</strong
+        >（SOUL.md）与下方<strong>自动提议流水线</strong>独立：前者控制是否改写语调，后者控制是否扫描并生成改进提议。
       </q-banner>
     </section>
 
@@ -164,14 +165,36 @@
           </q-item-section>
           <q-item-section side>
             <div v-if="s.status === 'pending'" class="row q-gutter-xs">
-              <q-btn flat round dense icon="check" color="positive" size="sm" :loading="applyingId === s.id" @click="emit('apply', s.id)">
+              <q-btn
+                flat
+                round
+                dense
+                icon="check"
+                color="positive"
+                size="sm"
+                :loading="applyingId === s.id"
+                @click="emit('apply', s.id)"
+              >
                 <q-tooltip>应用</q-tooltip>
               </q-btn>
-              <q-btn flat round dense icon="close" color="negative" size="sm" :loading="rejectingId === s.id" @click="emit('reject', s.id)">
+              <q-btn
+                flat
+                round
+                dense
+                icon="close"
+                color="negative"
+                size="sm"
+                :loading="rejectingId === s.id"
+                @click="emit('reject', s.id)"
+              >
                 <q-tooltip>拒绝</q-tooltip>
               </q-btn>
             </div>
-            <q-badge v-else :color="s.status === 'applied' ? 'positive' : 'grey'" :label="suggestionStatusLabel(s.status)" />
+            <q-badge
+              v-else
+              :color="s.status === 'applied' ? 'positive' : 'grey'"
+              :label="suggestionStatusLabel(s.status)"
+            />
           </q-item-section>
         </q-item>
       </q-list>
@@ -187,24 +210,38 @@
         </div>
       </div>
       <div class="app-form-field-grid app-form-field-grid--2col">
-        <q-input v-model.number="guardrails.max_change_per_period" dense outlined type="number" step="0.01" label="每周期最大变化" />
+        <q-input
+          v-model.number="guardrails.max_change_per_period"
+          dense
+          outlined
+          type="number"
+          step="0.01"
+          label="每周期最大变化"
+        />
         <q-input v-model.number="guardrails.min_data_points" dense outlined type="number" label="最少数据点" />
-        <q-input v-model.number="guardrails.rollback_on_decline_percent" dense outlined type="number" suffix="%" label="下降时回滚" />
+        <q-input
+          v-model.number="guardrails.rollback_on_decline_percent"
+          dense
+          outlined
+          type="number"
+          suffix="%"
+          label="下降时回滚"
+        />
       </div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { EvolutionKey } from "./agentUi";
-import type { EvolutionMetrics, EvolutionSuggestion } from "../../features/agents/types";
-import type { AgentRuntimeConfigForm } from "../../features/agents/agentRuntimeConfig";
+import { computed } from 'vue';
+import type { EvolutionKey } from './agentUi';
+import type { EvolutionMetrics, EvolutionSuggestion } from '../../features/agents/types';
+import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
 
 const props = defineProps<{
   agentId: string;
   evolution: Record<EvolutionKey, boolean>;
-  evolutionSettings: AgentRuntimeConfigForm["evolutionSettings"];
+  evolutionSettings: AgentRuntimeConfigForm['evolutionSettings'];
   guardrails: {
     max_change_per_period: number;
     min_data_points: number;
@@ -220,31 +257,31 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:range": [value: string];
+  'update:range': [value: string];
   apply: [id: string];
   reject: [id: string];
 }>();
 
 const rangeModel = computed({
   get: () => props.range,
-  set: (value: string) => emit("update:range", value)
+  set: (value: string) => emit('update:range', value),
 });
 
-const rangeOptions = ["7d", "30d", "90d"].map((value) => ({ label: value, value }));
+const rangeOptions = ['7d', '30d', '90d'].map((value) => ({ label: value, value }));
 const evolutionToggles: Array<{ key: EvolutionKey; title: string; caption: string }> = [
-  { key: "self_evolve", title: "允许 Agent 进化其沟通风格", caption: "允许随时间更新 SOUL.md 中的语调与风格。" },
-  { key: "skill_evolve", title: "允许从经验中创建和管理技能", caption: "提示用户将有效工作流保存为 Skill。" },
-  { key: "evolution_metrics_enabled", title: "进化指标", caption: "记录工具效果、检索质量、反馈等。" },
-  { key: "evolution_suggestions_enabled", title: "进化建议", caption: "基于指标生成改进建议。" }
+  { key: 'self_evolve', title: '允许 Agent 进化其沟通风格', caption: '允许随时间更新 SOUL.md 中的语调与风格。' },
+  { key: 'skill_evolve', title: '允许从经验中创建和管理技能', caption: '提示用户将有效工作流保存为 Skill。' },
+  { key: 'evolution_metrics_enabled', title: '进化指标', caption: '记录工具效果、检索质量、反馈等。' },
+  { key: 'evolution_suggestions_enabled', title: '进化建议', caption: '基于指标生成改进建议。' },
 ];
 
 function formatPercent(v: number | undefined): string {
-  if (v === undefined || v === null) return "—";
-  return (v * 100).toFixed(1) + "%";
+  if (v === undefined || v === null) return '—';
+  return (v * 100).toFixed(1) + '%';
 }
 
 function formatDate(iso: string): string {
-  if (!iso) return "";
+  if (!iso) return '';
   try {
     return new Date(iso).toLocaleDateString();
   } catch {
@@ -254,28 +291,27 @@ function formatDate(iso: string): string {
 
 function suggestionTypeColor(type: string): string {
   switch (type) {
-    case "persona":
-      return "purple";
-    case "prompt":
-      return "blue";
-    case "skill":
-      return "teal";
+    case 'persona':
+      return 'purple';
+    case 'prompt':
+      return 'blue';
+    case 'skill':
+      return 'teal';
     default:
-      return "grey";
+      return 'grey';
   }
 }
 
 function suggestionStatusLabel(status: string): string {
   switch (status) {
-    case "applied":
-      return "已应用";
-    case "rejected":
-      return "已拒绝";
-    case "pending":
-      return "待处理";
+    case 'applied':
+      return '已应用';
+    case 'rejected':
+      return '已拒绝';
+    case 'pending':
+      return '待处理';
     default:
       return status;
   }
 }
-
 </script>

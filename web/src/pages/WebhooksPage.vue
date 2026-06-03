@@ -6,16 +6,40 @@
       :subtitle="t('webhooksPage.subtitle')"
     >
       <template #actions>
-        <q-btn color="primary" rounded unelevated no-caps icon="add" :label="t('webhooksPage.btnCreate')" @click="openCreate" />
+        <q-btn
+          color="primary"
+          rounded
+          unelevated
+          no-caps
+          icon="add"
+          :label="t('webhooksPage.btnCreate')"
+          @click="openCreate"
+        />
       </template>
     </AppPageHero>
 
     <AppPageToolbar>
-      <q-input v-model="search" class="app-page-toolbar__search" dense outlined clearable debounce="200" :label="t('webhooksPage.search')">
+      <q-input
+        v-model="search"
+        class="app-page-toolbar__search"
+        dense
+        outlined
+        clearable
+        debounce="200"
+        :label="t('webhooksPage.search')"
+      >
         <template #prepend><q-icon name="search" /></template>
       </q-input>
       <template #actions>
-        <q-btn flat rounded no-caps icon="refresh" :label="t('webhooksPage.btnRefresh')" :loading="loading" @click="loadRows" />
+        <q-btn
+          flat
+          rounded
+          no-caps
+          icon="refresh"
+          :label="t('webhooksPage.btnRefresh')"
+          :loading="loading"
+          @click="loadRows"
+        />
       </template>
     </AppPageToolbar>
 
@@ -57,17 +81,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
-import { storeToRefs } from "pinia";
-import { useI18n } from "vue-i18n";
-import { useQuasar } from "quasar";
-import AppPageHero from "../components/layout/AppPageHero.vue";
-import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
-import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
-import WebhooksTable from "../components/webhooks/WebhooksTable.vue";
-import WebhookDialog from "../components/webhooks/WebhookDialog.vue";
-import type { WebhookRow } from "../features/webhooks/types";
-import { useWebhooksStore } from "../stores/webhooks";
+import { computed, onMounted, ref, watch } from 'vue';
+import { storeToRefs } from 'pinia';
+import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
+import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import WebhooksTable from '../components/webhooks/WebhooksTable.vue';
+import WebhookDialog from '../components/webhooks/WebhookDialog.vue';
+import type { WebhookRow } from '../features/webhooks/types';
+import { useWebhooksStore } from '../stores/webhooks';
 
 const { t } = useI18n();
 const $q = useQuasar();
@@ -75,12 +99,12 @@ const webhooksStore = useWebhooksStore();
 const { webhooks: storeRows, loading: storeLoading } = storeToRefs(webhooksStore);
 const loading = storeLoading;
 const saving = ref(false);
-const error = ref("");
-const search = ref("");
+const error = ref('');
+const search = ref('');
 const rows = storeRows;
 const editorOpen = ref(false);
-const editingId = ref("");
-const busyId = ref("");
+const editingId = ref('');
+const busyId = ref('');
 const dialogRef = ref<InstanceType<typeof WebhookDialog> | null>(null);
 
 const filteredRows = computed(() => {
@@ -102,7 +126,7 @@ watch(search, () => {
 });
 
 async function loadRows() {
-  error.value = "";
+  error.value = '';
   try {
     await webhooksStore.loadWebhooks();
   } catch (e) {
@@ -111,7 +135,7 @@ async function loadRows() {
 }
 
 function openCreate() {
-  editingId.value = "";
+  editingId.value = '';
   dialogRef.value?.reset(true);
   editorOpen.value = true;
 }
@@ -125,7 +149,7 @@ function openEdit(row: WebhookRow) {
 async function saveWebhook() {
   const payload = dialogRef.value?.getPayload();
   if (!payload || !payload.name?.trim() || !payload.url?.trim()) {
-    $q.notify({ type: "warning", message: t("webhooksPage.notifyRequired") });
+    $q.notify({ type: 'warning', message: t('webhooksPage.notifyRequired') });
     return;
   }
   saving.value = true;
@@ -136,9 +160,9 @@ async function saveWebhook() {
       await webhooksStore.addWebhook(payload);
     }
     editorOpen.value = false;
-    $q.notify({ type: "positive", message: t("webhooksPage.notifySaved") });
+    $q.notify({ type: 'positive', message: t('webhooksPage.notifySaved') });
   } catch (e) {
-    $q.notify({ type: "negative", message: e instanceof Error ? e.message : String(e) });
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
   } finally {
     saving.value = false;
   }
@@ -149,23 +173,23 @@ async function toggleEnabled(row: WebhookRow, enabled: boolean) {
   try {
     await webhooksStore.saveWebhook(row.id, { enabled });
   } catch (e) {
-    $q.notify({ type: "negative", message: e instanceof Error ? e.message : String(e) });
+    $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
   } finally {
-    busyId.value = "";
+    busyId.value = '';
   }
 }
 
 function confirmDelete(row: WebhookRow) {
   $q.dialog({
-    title: t("webhooksPage.confirmDeleteTitle"),
-    message: t("webhooksPage.confirmDeleteMessage", { name: row.name }),
+    title: t('webhooksPage.confirmDeleteTitle'),
+    message: t('webhooksPage.confirmDeleteMessage', { name: row.name }),
     cancel: true,
-    persistent: true
+    persistent: true,
   }).onOk(async () => {
     try {
       await webhooksStore.removeWebhook(row.id);
     } catch (e) {
-      $q.notify({ type: "negative", message: e instanceof Error ? e.message : String(e) });
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : String(e) });
     }
   });
 }

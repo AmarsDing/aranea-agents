@@ -24,8 +24,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { useI18n } from "vue-i18n";
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps<{
   fullText: string;
@@ -42,9 +42,9 @@ const displayLine = computed(() => {
   const prompt = props.fullText.trim();
   if (prompt) return prompt;
   if (!props.hasMessages) {
-    return (props.sessionTitle ?? "").trim() || t("chat.untitledSession");
+    return (props.sessionTitle ?? '').trim() || t('chat.untitledSession');
   }
-  return t("chat.headerPromptPlaceholder", "向上滚动查看该轮提问");
+  return t('chat.headerPromptPlaceholder', '向上滚动查看该轮提问');
 });
 
 const showTooltip = computed(() => props.fullText.trim().length > 0);

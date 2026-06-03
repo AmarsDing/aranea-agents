@@ -1,9 +1,9 @@
-import { useQuasar } from "quasar";
-import type { PlatformResource, ProviderConfig, ProviderForm } from "./types";
-import { errorMessage, getConfig } from "./providerUtils";
-import { usePlatformStore } from "../../stores/platform";
-import type { Ref, ComputedRef } from "vue";
-import type { ProviderHAForm } from "./types";
+import { useQuasar } from 'quasar';
+import type { PlatformResource, ProviderConfig, ProviderForm } from './types';
+import { errorMessage, getConfig } from './providerUtils';
+import { usePlatformStore } from '../../stores/platform';
+import type { Ref, ComputedRef } from 'vue';
+import type { ProviderHAForm } from './types';
 
 export function useProviderSave(deps: {
   editingId: Ref<string>;
@@ -14,7 +14,7 @@ export function useProviderSave(deps: {
   rows: Ref<PlatformResource[]>;
   providerForm: ProviderForm;
   providerHAForm: ProviderHAForm;
-  providerAddMode: Ref<"catalog" | "custom">;
+  providerAddMode: Ref<'catalog' | 'custom'>;
   canSubmitNewProviderModel: ComputedRef<boolean>;
   providerIdentityChanged: ComputedRef<boolean>;
   isProviderCodeValid: (value: string) => boolean;
@@ -23,12 +23,14 @@ export function useProviderSave(deps: {
   const $q = useQuasar();
 
   function buildProviderPayload() {
-    const editingRow = deps.editingId.value ? deps.rows.value.find((row) => row.id === deps.editingId.value) : undefined;
+    const editingRow = deps.editingId.value
+      ? deps.rows.value.find((row) => row.id === deps.editingId.value)
+      : undefined;
     const existingConfig = editingRow ? getConfig(editingRow) : {};
     const nextApiKey = deps.providerForm.api_key.trim();
     const config: ProviderConfig = {
       provider_type: deps.providerForm.provider_type,
-      variant: deps.providerForm.provider_type === "openai" ? deps.providerForm.variant : undefined,
+      variant: deps.providerForm.provider_type === 'openai' ? deps.providerForm.variant : undefined,
       provider_display_name: deps.providerForm.provider_display_name.trim(),
       api_base_url: deps.providerForm.api_base_url.trim(),
       api_key_set: Boolean(nextApiKey) || deps.providerForm.api_key_set,
@@ -52,7 +54,7 @@ export function useProviderSave(deps: {
         embedding_usd_per_1m: deps.providerForm.embedding_price_usd_per_1m,
       },
       capability_chips: deps.providerForm.capability_chips,
-      catalog_source: deps.providerForm.catalog_source || (deps.providerAddMode.value === "custom" ? "custom" : ""),
+      catalog_source: deps.providerForm.catalog_source || (deps.providerAddMode.value === 'custom' ? 'custom' : ''),
       catalog_managed: deps.providerForm.catalog_managed,
       raw_metadata_json: deps.providerForm.raw_metadata_json,
       metadata_source: deps.providerForm.metadata_source,
@@ -65,15 +67,15 @@ export function useProviderSave(deps: {
           name: c.name.trim(),
           provider_type: c.providerType,
           base_url: c.baseUrl.trim(),
-          api_key: c.apiKey.trim() || undefined
+          api_key: c.apiKey.trim() || undefined,
         })),
-      ha_hedge_delay_ms: deps.providerHAForm.haMode === "hedge" ? deps.providerHAForm.haHedgeDelayMs : undefined,
+      ha_hedge_delay_ms: deps.providerHAForm.haMode === 'hedge' ? deps.providerHAForm.haHedgeDelayMs : undefined,
       enable_token_tailoring: deps.providerForm.enable_token_tailoring,
       optimize_for_cache: deps.providerForm.optimize_for_cache,
       reasoning_content_backfill: deps.providerForm.reasoning_backfill,
       show_tool_call_delta: deps.providerForm.show_tool_call_delta,
       keep_alive_minutes: deps.providerForm.keep_alive_minutes,
-      rate_limit_rpm: deps.providerForm.rate_limit_rpm || undefined
+      rate_limit_rpm: deps.providerForm.rate_limit_rpm || undefined,
     };
     if (nextApiKey) {
       config.api_key = nextApiKey;
@@ -100,7 +102,7 @@ export function useProviderSave(deps: {
       provider: code,
       model,
       config_json: JSON.stringify(config),
-      metadata_json: JSON.stringify({ model_rating: deps.providerForm.model_rating })
+      metadata_json: JSON.stringify({ model_rating: deps.providerForm.model_rating }),
     };
   }
 
@@ -108,18 +110,18 @@ export function useProviderSave(deps: {
     const code = deps.providerForm.provider_code.trim();
     const model = deps.providerForm.model_api_id.trim();
     if (!code || !model || !deps.isProviderCodeValid(code)) {
-      $q.notify({ type: "negative", message: "Provider 名称和模型ID必填，名称仅支持小写字母、数字、连字符" });
+      $q.notify({ type: 'negative', message: 'Provider 名称和模型ID必填，名称仅支持小写字母、数字、连字符' });
       return;
     }
     if (!deps.canSubmitNewProviderModel.value) {
       $q.notify({
-        type: "warning",
+        type: 'warning',
         message:
-          deps.providerAddMode.value === "catalog"
-            ? "请从目录选择 Provider 与模型"
+          deps.providerAddMode.value === 'catalog'
+            ? '请从目录选择 Provider 与模型'
             : deps.editingId.value && deps.providerIdentityChanged.value
-              ? "修改 Provider ID 或模型 ID 后请先点击「检查」"
-              : "请先点击「检查」并通过验证后再创建"
+              ? '修改 Provider ID 或模型 ID 后请先点击「检查」'
+              : '请先点击「检查」并通过验证后再创建',
       });
       return;
     }
@@ -128,8 +130,8 @@ export function useProviderSave(deps: {
       const pre = await platformStore.checkModel(code, model);
       if (!pre.ok) {
         $q.notify({
-          type: "negative",
-          message: pre.message || "目录中无已启用的 provider/model，请启用本条或修正 Provider ID / 模型 ID"
+          type: 'negative',
+          message: pre.message || '目录中无已启用的 provider/model，请启用本条或修正 Provider ID / 模型 ID',
         });
         return;
       }
@@ -149,14 +151,14 @@ export function useProviderSave(deps: {
       const post = await platformStore.checkModel(code, model);
       if (!post.ok) {
         $q.notify({
-          type: "warning",
-          message: post.message || "已保存，但运行时校验未通过，请确认已启用且 Provider ID 正确"
+          type: 'warning',
+          message: post.message || '已保存，但运行时校验未通过，请确认已启用且 Provider ID 正确',
         });
       } else {
-        $q.notify({ type: "positive", message: "已保存" });
+        $q.notify({ type: 'positive', message: '已保存' });
       }
     } catch (error) {
-      $q.notify({ type: "negative", message: errorMessage(error) || "保存失败" });
+      $q.notify({ type: 'negative', message: errorMessage(error) || '保存失败' });
     } finally {
       deps.saving.value = false;
     }

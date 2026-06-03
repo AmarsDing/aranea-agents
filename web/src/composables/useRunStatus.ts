@@ -1,6 +1,6 @@
-import { ref, readonly, onUnmounted } from "vue";
-import type { RunStatus, RunStatusValue } from "../features/chat/types";
-import { useChatRuntimeStore } from "../stores/chat/runtimeStore";
+import { ref, readonly, onUnmounted } from 'vue';
+import type { RunStatus, RunStatusValue } from '../features/chat/types';
+import { useChatRuntimeStore } from '../stores/chat/runtimeStore';
 
 const POLL_INTERVAL_MS = 2000;
 
@@ -10,10 +10,10 @@ const POLL_INTERVAL_MS = 2000;
  */
 export function useRunStatus(sessionId: string) {
   const runtime = useChatRuntimeStore();
-  const status = ref<RunStatusValue>("idle");
-  const runId = ref("");
-  const errorMessage = ref("");
-  const updatedAt = ref("");
+  const status = ref<RunStatusValue>('idle');
+  const runId = ref('');
+  const errorMessage = ref('');
+  const updatedAt = ref('');
   const isAwaiting = ref(false);
 
   let timer: ReturnType<typeof setInterval> | null = null;
@@ -26,9 +26,9 @@ export function useRunStatus(sessionId: string) {
       runId.value = rs.runId;
       errorMessage.value = rs.errorMessage;
       updatedAt.value = rs.updatedAt;
-      isAwaiting.value = rs.status === "awaiting_user";
+      isAwaiting.value = rs.status === 'awaiting_user';
     } catch (err) {
-      errorMessage.value = err instanceof Error ? err.message : "fetchRunStatus failed";
+      errorMessage.value = err instanceof Error ? err.message : 'fetchRunStatus failed';
     }
   }
 
@@ -60,6 +60,6 @@ export function useRunStatus(sessionId: string) {
     startPolling,
     stopPolling,
     submitReply,
-    refresh: poll
+    refresh: poll,
   };
 }

@@ -1,6 +1,6 @@
 export function formatBytes(n: number): string {
-  if (!n) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
+  if (!n) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
   let v = n;
   let i = 0;
   while (v >= 1024 && i < units.length - 1) {
@@ -11,6 +11,6 @@ export function formatBytes(n: number): string {
 }
 
 export function formatDate(value?: string): string {
-  if (!value) return "-";
+  if (!value) return '-';
   return new Date(value).toLocaleString();
 }

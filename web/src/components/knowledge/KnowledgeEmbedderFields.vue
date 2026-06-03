@@ -18,7 +18,14 @@
       placeholder="https://api.openai.com"
     />
     <q-input v-model="form.model" class="app-field-md" dense outlined :label="t('knowledgeEmbed.model')" />
-    <q-input v-model.number="form.dim" class="app-field-sm" dense outlined type="number" :label="t('knowledgeEmbed.dim')" />
+    <q-input
+      v-model.number="form.dim"
+      class="app-field-sm"
+      dense
+      outlined
+      type="number"
+      :label="t('knowledgeEmbed.dim')"
+    />
     <q-input
       v-model="form.api_key"
       class="app-grid-span-full app-field-long"
@@ -30,7 +37,7 @@
     />
     <div v-if="showStatus" class="app-grid-span-full app-actions-bar app-actions-bar--start">
       <q-badge :color="configured ? 'positive' : 'warning'">
-        {{ configured ? t("knowledgeEmbed.configured") : t("knowledgeEmbed.notConfigured") }}
+        {{ configured ? t('knowledgeEmbed.configured') : t('knowledgeEmbed.notConfigured') }}
       </q-badge>
       <slot name="actions" />
     </div>
@@ -38,11 +45,11 @@
 </template>
 
 <script setup lang="ts">
-import { useI18n } from "vue-i18n";
+import { useI18n } from 'vue-i18n';
 import {
   KNOWLEDGE_EMBED_PROVIDER_OPTIONS,
-  type KnowledgeEmbedFormState
-} from "../../features/knowledge/embedder-constants";
+  type KnowledgeEmbedFormState,
+} from '../../features/knowledge/embedder-constants';
 
 defineProps<{
   form: KnowledgeEmbedFormState;

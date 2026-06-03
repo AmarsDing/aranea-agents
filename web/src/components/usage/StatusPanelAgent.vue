@@ -2,7 +2,11 @@
   <q-card flat class="command-center-stat-panel">
     <q-card-section class="q-pb-sm">
       <div class="command-center-stat-panel__header">
-        <q-icon name="smart_toy" size="16px" class="command-center-stat-panel__icon command-center-stat-panel__icon--agent" />
+        <q-icon
+          name="smart_toy"
+          size="16px"
+          class="command-center-stat-panel__icon command-center-stat-panel__icon--agent"
+        />
         <span class="command-center-stat-panel__title">Agent 状态</span>
       </div>
     </q-card-section>
@@ -13,8 +17,21 @@
       <template v-else>
         <div class="command-center-stat-panel__ring-wrap">
           <svg class="command-center-stat-panel__ring" viewBox="0 0 36 36">
-            <circle class="command-center-stat-panel__ring-track" cx="18" cy="18" r="15.9" fill="none" stroke-width="3" />
-            <circle class="command-center-stat-panel__ring-fill" cx="18" cy="18" r="15.9" fill="none" stroke-width="3"
+            <circle
+              class="command-center-stat-panel__ring-track"
+              cx="18"
+              cy="18"
+              r="15.9"
+              fill="none"
+              stroke-width="3"
+            />
+            <circle
+              class="command-center-stat-panel__ring-fill"
+              cx="18"
+              cy="18"
+              r="15.9"
+              fill="none"
+              stroke-width="3"
               :stroke-dasharray="`${activePercent} ${100 - activePercent}`"
               stroke-dashoffset="25"
             />
@@ -36,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed } from 'vue';
 
 const props = defineProps<{
   active: number;

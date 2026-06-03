@@ -1,14 +1,14 @@
-import { computed, ref } from "vue";
-import { defineStore } from "pinia";
+import { computed, ref } from 'vue';
+import { defineStore } from 'pinia';
 import type {
   ConversationSession,
   ConversationTarget,
   ConversationTurnSummary,
   DeliveryTarget,
-} from "../../domain/conversation";
-import type { ConversationEventProjection } from "../../features/chat/conversationEventDispatcher";
+} from '../../domain/conversation';
+import type { ConversationEventProjection } from '../../features/chat/conversationEventDispatcher';
 
-export const useChatConversationStore = defineStore("chatConversation", () => {
+export const useChatConversationStore = defineStore('chatConversation', () => {
   const currentTarget = ref<ConversationTarget | null>(null);
   const sessionsById = ref<Record<string, ConversationSession>>({});
   const turnsById = ref<Record<string, ConversationTurnSummary>>({});
@@ -18,7 +18,7 @@ export const useChatConversationStore = defineStore("chatConversation", () => {
   const inboxSessions = computed(() =>
     inboxSessionIds.value
       .map((id) => sessionsById.value[id])
-      .filter((session): session is ConversationSession => Boolean(session))
+      .filter((session): session is ConversationSession => Boolean(session)),
   );
 
   function setCurrentTarget(target: ConversationTarget | null) {
@@ -38,7 +38,7 @@ export const useChatConversationStore = defineStore("chatConversation", () => {
     const next: ConversationTurnSummary = {
       id: projection.turnId,
       sessionId: projection.sessionId,
-      status: projection.status ?? prev?.status ?? "running",
+      status: projection.status ?? prev?.status ?? 'running',
       source: projection.source,
       revision: Math.max(projection.revision, prev?.revision ?? 0),
       deliveryTargets,
@@ -50,22 +50,19 @@ export const useChatConversationStore = defineStore("chatConversation", () => {
     const existing = sessionsById.value[projection.sessionId];
     sessionsById.value[projection.sessionId] = {
       id: projection.sessionId,
-      title: existing?.title ?? "Untitled session",
+      title: existing?.title ?? 'Untitled session',
       target: existing?.target ?? {
-        type: "agent",
-        id: "",
+        type: 'agent',
+        id: '',
         source: projection.source,
       },
-      unreadCount:
-        projection.scope === "inbox"
-          ? (existing?.unreadCount ?? 0) + 1
-          : existing?.unreadCount ?? 0,
+      unreadCount: projection.scope === 'inbox' ? (existing?.unreadCount ?? 0) + 1 : (existing?.unreadCount ?? 0),
       pinnedAt: existing?.pinnedAt,
       source: existing?.source ?? projection.source,
       lastTurn: next,
     };
 
-    if (projection.scope === "inbox") {
+    if (projection.scope === 'inbox') {
       addInboxSession(projection.sessionId);
     }
   }
@@ -93,10 +90,7 @@ export const useChatConversationStore = defineStore("chatConversation", () => {
   }
 
   function addInboxSession(sessionId: string) {
-    inboxSessionIds.value = [
-      sessionId,
-      ...inboxSessionIds.value.filter((id) => id !== sessionId),
-    ];
+    inboxSessionIds.value = [sessionId, ...inboxSessionIds.value.filter((id) => id !== sessionId)];
   }
 
   return {
@@ -114,10 +108,7 @@ export const useChatConversationStore = defineStore("chatConversation", () => {
   };
 });
 
-function mergeDeliveryTargets(
-  current: DeliveryTarget[],
-  next?: DeliveryTarget
-): DeliveryTarget[] {
+function mergeDeliveryTargets(current: DeliveryTarget[], next?: DeliveryTarget): DeliveryTarget[] {
   if (!next) return current;
   const key = deliveryKey(next);
   const without = current.filter((item) => deliveryKey(item) !== key);
@@ -125,10 +116,5 @@ function mergeDeliveryTargets(
 }
 
 function deliveryKey(target: DeliveryTarget): string {
-  return [
-    target.kind,
-    target.channelId ?? "",
-    target.platform ?? "",
-    target.recipientId ?? "",
-  ].join(":");
+  return [target.kind, target.channelId ?? '', target.platform ?? '', target.recipientId ?? ''].join(':');
 }

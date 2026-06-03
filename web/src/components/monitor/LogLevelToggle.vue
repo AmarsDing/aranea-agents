@@ -7,7 +7,7 @@
       class="monitor-log-level-toggle__btn"
       :class="[
         `monitor-log-level-toggle__btn--${opt.value.toLowerCase()}`,
-        { 'monitor-log-level-toggle__btn--active': modelValue === opt.value }
+        { 'monitor-log-level-toggle__btn--active': modelValue === opt.value },
       ]"
       :aria-pressed="modelValue === opt.value"
       @click="emit('update:modelValue', opt.value)"
@@ -18,20 +18,20 @@
 </template>
 
 <script setup lang="ts">
-export type LogLevel = "DEBUG" | "INFO" | "WARN" | "ERROR";
+export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 
 defineProps<{
   modelValue: LogLevel;
 }>();
 
 const emit = defineEmits<{
-  "update:modelValue": [value: LogLevel];
+  'update:modelValue': [value: LogLevel];
 }>();
 
 const options: { label: string; value: LogLevel }[] = [
-  { label: "DEBUG", value: "DEBUG" },
-  { label: "INFO", value: "INFO" },
-  { label: "WARN", value: "WARN" },
-  { label: "ERROR", value: "ERROR" }
+  { label: 'DEBUG', value: 'DEBUG' },
+  { label: 'INFO', value: 'INFO' },
+  { label: 'WARN', value: 'WARN' },
+  { label: 'ERROR', value: 'ERROR' },
 ];
 </script>

@@ -7,12 +7,10 @@
     <q-card :class="['team-editor-dialog app-dialog-card app-glass-dialog', { 'is-dark': isDark }]">
       <q-card-section class="app-glass-dialog__head row items-start justify-between no-wrap">
         <div class="col min-width-0">
-          <div class="app-glass-dialog__title">{{ editingId ? "编辑 Team" : "新增 Team" }}</div>
-          <div class="app-glass-dialog__subtitle">
-            配置成员角色与编排模式；右侧实时编译预览拓扑结构。
-          </div>
+          <div class="app-glass-dialog__title">{{ editingId ? '编辑 Team' : '新增 Team' }}</div>
+          <div class="app-glass-dialog__subtitle">配置成员角色与编排模式；右侧实时编译预览拓扑结构。</div>
         </div>
-        <q-btn flat round dense icon="close" v-close-popup />
+        <q-btn v-close-popup flat round dense icon="close" />
       </q-card-section>
 
       <div class="app-glass-dialog__scroll">
@@ -43,10 +41,43 @@
               </header>
               <div class="app-form-field-grid app-form-field-grid--2col">
                 <q-input v-model.trim="form.display_name" class="team-control" dense outlined label="Team 名称 *" />
-                <q-input v-model.trim="form.team_key" class="team-control" dense outlined label="Team Key *" hint="小写字母、数字、连字符" />
-                <q-input v-model.trim="form.app_name" class="team-control" dense outlined label="App Name" hint="留空则使用 Team Key" />
-                <q-select v-model="form.status" class="team-control" dense outlined emit-value map-options label="状态" :options="statusOptions" />
-                <q-select v-model="form.category_industry_id" class="team-control" dense outlined emit-value map-options clearable label="行业归属" :options="industryOptions" />
+                <q-input
+                  v-model.trim="form.team_key"
+                  class="team-control"
+                  dense
+                  outlined
+                  label="Team Key *"
+                  hint="小写字母、数字、连字符"
+                />
+                <q-input
+                  v-model.trim="form.app_name"
+                  class="team-control"
+                  dense
+                  outlined
+                  label="App Name"
+                  hint="留空则使用 Team Key"
+                />
+                <q-select
+                  v-model="form.status"
+                  class="team-control"
+                  dense
+                  outlined
+                  emit-value
+                  map-options
+                  label="状态"
+                  :options="statusOptions"
+                />
+                <q-select
+                  v-model="form.category_industry_id"
+                  class="team-control"
+                  dense
+                  outlined
+                  emit-value
+                  map-options
+                  clearable
+                  label="行业归属"
+                  :options="industryOptions"
+                />
               </div>
             </section>
 
@@ -55,7 +86,16 @@
                 <h3 class="team-editor-section__title">编排模式</h3>
               </header>
               <div class="app-form-field-grid app-form-field-grid--2col">
-                <q-select v-model="definition.mode" class="team-control" dense outlined emit-value map-options label="编排模式" :options="modeOptions" />
+                <q-select
+                  v-model="definition.mode"
+                  class="team-control"
+                  dense
+                  outlined
+                  emit-value
+                  map-options
+                  label="编排模式"
+                  :options="modeOptions"
+                />
                 <q-input
                   v-if="definition.mode === 'parallel'"
                   v-model.number="definition.max_concurrency"
@@ -104,7 +144,11 @@
             </section>
 
             <div class="team-editor-expansion">
-              <q-expansion-item icon="settings" label="运行时 / 失败策略" caption="OrchestrationSpec v2 · runtime_engine · failure_policy">
+              <q-expansion-item
+                icon="settings"
+                label="运行时 / 失败策略"
+                caption="OrchestrationSpec v2 · runtime_engine · failure_policy"
+              >
                 <div class="team-editor-expansion__body">
                   <q-banner v-if="nativeLocked" dense rounded class="team-editor-notice q-mb-sm">
                     Native 执行引擎仅平台管理员可选；当前将使用 Graph。
@@ -217,9 +261,32 @@
                 <div class="team-editor-expansion__body">
                   <div class="app-form-field-grid app-form-field-grid--2col">
                     <q-toggle v-model="a2aEnabled" class="app-grid-span-full" label="启用 A2A 信封" />
-                    <q-input v-model="a2aEnvelopeVersion" class="team-control" dense outlined label="Envelope Version" />
-                    <q-select v-model="a2aMessageFormat" class="team-control" dense outlined emit-value map-options label="消息格式" :options="a2aFormatOptions" />
-                    <q-input v-model.number="a2aMaxPayloadChars" class="team-control" dense outlined type="number" min="500" label="最大载荷字符" />
+                    <q-input
+                      v-model="a2aEnvelopeVersion"
+                      class="team-control"
+                      dense
+                      outlined
+                      label="Envelope Version"
+                    />
+                    <q-select
+                      v-model="a2aMessageFormat"
+                      class="team-control"
+                      dense
+                      outlined
+                      emit-value
+                      map-options
+                      label="消息格式"
+                      :options="a2aFormatOptions"
+                    />
+                    <q-input
+                      v-model.number="a2aMaxPayloadChars"
+                      class="team-control"
+                      dense
+                      outlined
+                      type="number"
+                      min="500"
+                      label="最大载荷字符"
+                    />
                     <q-toggle v-model="a2aIncludeTrace" class="app-grid-span-full" label="包含 trace metadata" />
                   </div>
                 </div>
@@ -232,7 +299,15 @@
                   <h3 class="team-editor-section__title">成员 Agent</h3>
                   <p class="team-editor-section__hint">{{ definition.members.length }} 个成员 · 按顺序执行或并行编排</p>
                 </div>
-                <q-btn flat rounded no-caps icon="add" label="添加成员" class="team-editor-add-member" @click="$emit('addMember')" />
+                <q-btn
+                  flat
+                  rounded
+                  no-caps
+                  icon="add"
+                  label="添加成员"
+                  class="team-editor-add-member"
+                  @click="$emit('addMember')"
+                />
               </header>
 
               <div v-if="definition.members.length === 0" class="team-member-empty">
@@ -247,11 +322,44 @@
                     <q-btn flat dense round color="negative" icon="delete" @click="$emit('removeMember', index)" />
                   </div>
                   <div class="team-member-row__grid">
-                    <q-select v-model="member.agent_id" class="team-control" dense outlined emit-value map-options label="Agent" :options="agentOptions" />
-                    <q-select v-model="member.role" class="team-control" dense outlined emit-value map-options label="角色" :options="roleOptions" />
+                    <q-select
+                      v-model="member.agent_id"
+                      class="team-control"
+                      dense
+                      outlined
+                      emit-value
+                      map-options
+                      label="Agent"
+                      :options="agentOptions"
+                    />
+                    <q-select
+                      v-model="member.role"
+                      class="team-control"
+                      dense
+                      outlined
+                      emit-value
+                      map-options
+                      label="角色"
+                      :options="roleOptions"
+                    />
                     <q-input v-model="member.name" class="team-control" dense outlined label="成员名称" />
-                    <q-input v-model.number="member.sort_order" class="team-control" dense outlined type="number" label="顺序" />
-                    <q-input v-model="member.task_prompt" class="team-control team-member-row__task" dense outlined autogrow type="textarea" label="职责 / 任务说明" />
+                    <q-input
+                      v-model.number="member.sort_order"
+                      class="team-control"
+                      dense
+                      outlined
+                      type="number"
+                      label="顺序"
+                    />
+                    <q-input
+                      v-model="member.task_prompt"
+                      class="team-control team-member-row__task"
+                      dense
+                      outlined
+                      autogrow
+                      type="textarea"
+                      label="职责 / 任务说明"
+                    />
                   </div>
                 </div>
               </div>
@@ -267,29 +375,44 @@
           </div>
 
           <aside class="team-editor-workspace__aside">
-            <TeamCompilePreview
-              :team-id="editingId"
-              :definition-json="definitionJSON"
-              :is-dark="isDark"
-            />
+            <TeamCompilePreview :team-id="editingId" :definition-json="definitionJSON" :is-dark="isDark" />
           </aside>
         </div>
       </div>
 
       <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-        <q-btn flat rounded no-caps label="取消" v-close-popup />
-        <q-btn class="team-dialog-save" rounded unelevated no-caps label="保存" :loading="saving" :disable="!canSave" @click="$emit('save')" />
+        <q-btn v-close-popup flat rounded no-caps label="取消" />
+        <q-btn
+          class="team-dialog-save"
+          rounded
+          unelevated
+          no-caps
+          label="保存"
+          :loading="saving"
+          :disable="!canSave"
+          @click="$emit('save')"
+        />
       </q-card-actions>
     </q-card>
   </q-dialog>
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from "vue";
-import { useQuasar } from "quasar";
-import type { TeamDefinition } from "../../features/teams/types";
-import TeamCompilePreview from "./TeamCompilePreview.vue";
-import { failureDefaultOptions, failureOnErrorOptions, modeOptions, parallelFailOptions, roleOptions, runtimeEngineOptions, statusOptions, teamTemplateOptions, type TeamTemplateKey } from "./teamUtils";
+import { computed, watch } from 'vue';
+import { useQuasar } from 'quasar';
+import type { TeamDefinition } from '../../features/teams/types';
+import TeamCompilePreview from './TeamCompilePreview.vue';
+import {
+  failureDefaultOptions,
+  failureOnErrorOptions,
+  modeOptions,
+  parallelFailOptions,
+  roleOptions,
+  runtimeEngineOptions,
+  statusOptions,
+  teamTemplateOptions,
+  type TeamTemplateKey,
+} from './teamUtils';
 
 const $q = useQuasar();
 
@@ -314,12 +437,12 @@ const props = withDefaults(
     isDark: boolean;
     isPlatformAdmin?: boolean;
   }>(),
-  { definitionJSON: "{}", selectedTemplateKey: null, isPlatformAdmin: false },
+  { definitionJSON: '{}', selectedTemplateKey: null, isPlatformAdmin: false },
 );
 
 const emit = defineEmits<{
-  "update:modelValue": [value: boolean];
-  "update:selectedTemplateKey": [value: TeamTemplateKey | null];
+  'update:modelValue': [value: boolean];
+  'update:selectedTemplateKey': [value: TeamTemplateKey | null];
   addMember: [];
   removeMember: [index: number];
   applyTemplate: [template: TeamTemplateKey];
@@ -328,74 +451,78 @@ const emit = defineEmits<{
 
 const intentAnchorOptions = computed(() =>
   props.definition.members
-    .filter((m) => m.enabled !== false && String(m.agent_id || "").trim() !== "")
+    .filter((m) => m.enabled !== false && String(m.agent_id || '').trim() !== '')
     .map((m) => ({
-      label: [m.name, m.role].filter(Boolean).join(" · ") || String(m.agent_id).slice(0, 8),
+      label: [m.name, m.role].filter(Boolean).join(' · ') || String(m.agent_id).slice(0, 8),
       value: m.agent_id,
     })),
 );
 
 function onTemplatePick(key: TeamTemplateKey | null) {
-  emit("update:selectedTemplateKey", key);
+  emit('update:selectedTemplateKey', key);
   if (!key) return;
   $q.dialog({
-    title: "应用模板",
-    message: "应用模板将覆盖当前配置，确定继续？",
+    title: '应用模板',
+    message: '应用模板将覆盖当前配置，确定继续？',
     cancel: true,
     persistent: true,
   }).onOk(() => {
-    emit("applyTemplate", key);
+    emit('applyTemplate', key);
   });
 }
 
 const filteredRuntimeEngineOptions = computed(() =>
-  props.isPlatformAdmin ? runtimeEngineOptions : runtimeEngineOptions.filter((o) => o.value !== "native"),
+  props.isPlatformAdmin ? runtimeEngineOptions : runtimeEngineOptions.filter((o) => o.value !== 'native'),
 );
 
 const nativeLocked = computed(
-  () => !props.isPlatformAdmin && String(props.definition.runtime_engine || "graph").toLowerCase() === "native",
+  () => !props.isPlatformAdmin && String(props.definition.runtime_engine || 'graph').toLowerCase() === 'native',
 );
 
-watch(nativeLocked, (locked) => {
-  if (locked) {
-    props.definition.runtime_engine = "graph";
-    props.definition.team_graph_runtime = true;
-  }
-}, { immediate: true });
+watch(
+  nativeLocked,
+  (locked) => {
+    if (locked) {
+      props.definition.runtime_engine = 'graph';
+      props.definition.team_graph_runtime = true;
+    }
+  },
+  { immediate: true },
+);
 
 const a2aFormatOptions = [
-  { label: "Markdown + JSON", value: "markdown_json" },
-  { label: "Plain", value: "plain" }
+  { label: 'Markdown + JSON', value: 'markdown_json' },
+  { label: 'Plain', value: 'plain' },
 ];
 const a2aEnabled = computed({
   get: () => props.definition.a2a?.enabled ?? true,
   set: (value: boolean) => {
     props.definition.a2a = { ...props.definition.a2a, enabled: value };
-  }
+  },
 });
 const a2aEnvelopeVersion = computed({
-  get: () => props.definition.a2a?.envelope_version || "a2a.v1",
+  get: () => props.definition.a2a?.envelope_version || 'a2a.v1',
   set: (value: string) => {
     props.definition.a2a = { ...props.definition.a2a, envelope_version: value };
-  }
+  },
 });
 const a2aMessageFormat = computed({
-  get: () => props.definition.a2a?.message_format || "markdown_json",
+  get: () => props.definition.a2a?.message_format || 'markdown_json',
   set: (value: string) => {
     props.definition.a2a = { ...props.definition.a2a, message_format: value };
-  }
+  },
 });
 const a2aMaxPayloadChars = computed({
   get: () => props.definition.a2a?.max_payload_chars || 6000,
   set: (value: number) => {
     props.definition.a2a = { ...props.definition.a2a, max_payload_chars: value };
-  }
+  },
 });
 const a2aIncludeTrace = computed({
   get: () => props.definition.a2a?.include_trace ?? true,
   set: (value: boolean) => {
     props.definition.a2a = { ...props.definition.a2a, include_trace: value };
-  }
+  },
 });
 
 const criticLoopMaxIterations = computed({
@@ -404,38 +531,38 @@ const criticLoopMaxIterations = computed({
     const n = Number.isFinite(value) ? Math.min(32, Math.max(1, Math.floor(value))) : 2;
     const prev = props.definition.critic_loop ?? { max_iterations: 2, score_threshold: 0.8 };
     props.definition.critic_loop = { ...prev, max_iterations: n };
-  }
+  },
 });
 
 const runtimeEngine = computed({
-  get: () => (String(props.definition.runtime_engine || "graph").toLowerCase() === "native" ? "native" : "graph"),
-  set: (value: "native" | "graph") => {
+  get: () => (String(props.definition.runtime_engine || 'graph').toLowerCase() === 'native' ? 'native' : 'graph'),
+  set: (value: 'native' | 'graph') => {
     props.definition.runtime_engine = value;
-    props.definition.team_graph_runtime = value === "graph";
-  }
+    props.definition.team_graph_runtime = value === 'graph';
+  },
 });
 
 function ensureFailurePolicy() {
   if (!props.definition.failure_policy) {
-    props.definition.failure_policy = { default: "retry_then_block", parallel_fail: "continue" };
+    props.definition.failure_policy = { default: 'retry_then_block', parallel_fail: 'continue' };
   }
   return props.definition.failure_policy;
 }
 
 const failureDefault = computed({
-  get: () => props.definition.failure_policy?.default ?? "retry_then_block",
+  get: () => props.definition.failure_policy?.default ?? 'retry_then_block',
   set: (value: string | null) => {
     const policy = ensureFailurePolicy();
-    policy.default = value || "retry_then_block";
-  }
+    policy.default = value || 'retry_then_block';
+  },
 });
 
 const parallelFail = computed({
-  get: () => props.definition.failure_policy?.parallel_fail ?? "continue",
+  get: () => props.definition.failure_policy?.parallel_fail ?? 'continue',
   set: (value: string | null) => {
     const policy = ensureFailurePolicy();
-    policy.parallel_fail = value || "continue";
-  }
+    policy.parallel_fail = value || 'continue';
+  },
 });
 
 const failureRetryMax = computed({
@@ -443,7 +570,7 @@ const failureRetryMax = computed({
   set: (value: number) => {
     const policy = ensureFailurePolicy();
     policy.retry = { ...(policy.retry ?? {}), max_attempts: Math.max(0, Math.floor(Number(value) || 0)) };
-  }
+  },
 });
 
 const circuitFailureThreshold = computed({
@@ -455,16 +582,19 @@ const circuitFailureThreshold = computed({
       delete policy.circuit_breaker;
       return;
     }
-    policy.circuit_breaker = { ...(policy.circuit_breaker ?? {}), failure_threshold: n, reset_timeout_seconds: policy.circuit_breaker?.reset_timeout_seconds ?? 60 };
-  }
+    policy.circuit_breaker = {
+      ...(policy.circuit_breaker ?? {}),
+      failure_threshold: n,
+      reset_timeout_seconds: policy.circuit_breaker?.reset_timeout_seconds ?? 60,
+    };
+  },
 });
 
 const failureOnError = computed({
-  get: () => props.definition.failure_policy?.on_error ?? "",
+  get: () => props.definition.failure_policy?.on_error ?? '',
   set: (value: string | null) => {
     const policy = ensureFailurePolicy();
     policy.on_error = value || undefined;
-  }
+  },
 });
-
 </script>

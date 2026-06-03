@@ -1,19 +1,19 @@
-import type { Envelope, EnvelopeUsage, PromptTokenBreakdown } from "../../realtime/envelope";
-import type { Session } from "../session/types";
-import { contextRatioFromPrompt, contextStatusFromRatio } from "../session/contextMetrics";
+import type { Envelope, EnvelopeUsage, PromptTokenBreakdown } from '../../realtime/envelope';
+import type { Session } from '../session/types';
+import { contextRatioFromPrompt, contextStatusFromRatio } from '../session/contextMetrics';
 
 export type SessionContextPatch = Partial<
   Pick<
     Session,
-    | "context_used_ratio"
-    | "context_used_tokens"
-    | "context_status"
-    | "total_tokens"
-    | "max_context_used_ratio"
-    | "input_tokens"
-    | "output_tokens"
-    | "total_cost_micro_usd"
-    | "last_context_window_tokens"
+    | 'context_used_ratio'
+    | 'context_used_tokens'
+    | 'context_status'
+    | 'total_tokens'
+    | 'max_context_used_ratio'
+    | 'input_tokens'
+    | 'output_tokens'
+    | 'total_cost_micro_usd'
+    | 'last_context_window_tokens'
   >
 > & {
   promptBreakdown?: PromptTokenBreakdown;
@@ -33,12 +33,12 @@ export function contextRatioFromUsage(usage: EnvelopeUsage | undefined): number 
   return contextRatioFromPrompt(prompt, window);
 }
 
-export { contextStatusFromRatio } from "../session/contextMetrics";
+export { contextStatusFromRatio } from '../session/contextMetrics';
 
 export function isSessionCompressNotice(env: Envelope): boolean {
-  if (env.type !== "text_done") return false;
+  if (env.type !== 'text_done') return false;
   const md = env.metadata as Record<string, unknown> | undefined;
-  return md?.kind === "system.session.compress";
+  return md?.kind === 'system.session.compress';
 }
 
 /** Mid-turn ReAct sub-step: update context bar only (no session total_tokens increment). */
@@ -66,7 +66,7 @@ export function sessionContextPatchFromStepUsage(usage: EnvelopeUsage | undefine
 
 export function sessionContextPatchFromUsage(
   usage: EnvelopeUsage | undefined,
-  prev?: Pick<Session, "total_tokens" | "max_context_used_ratio" | "input_tokens" | "output_tokens">
+  prev?: Pick<Session, 'total_tokens' | 'max_context_used_ratio' | 'input_tokens' | 'output_tokens'>,
 ): SessionContextPatch | null {
   const ratio = contextRatioFromUsage(usage);
   if (ratio == null || !usage) return null;
@@ -108,22 +108,21 @@ export function sessionContextPatchFromUsage(
 }
 
 export function sessionContextPatchFromCompressMeta(
-  meta: Record<string, unknown> | undefined
+  meta: Record<string, unknown> | undefined,
 ): SessionContextPatch | null {
   if (!meta) return null;
-  const ratio = typeof meta.context_used_ratio === "number" ? meta.context_used_ratio : null;
+  const ratio = typeof meta.context_used_ratio === 'number' ? meta.context_used_ratio : null;
   if (ratio == null) return null;
 
   const patch: SessionContextPatch = {
     context_used_ratio: ratio,
-    context_status:
-      typeof meta.context_status === "string" ? meta.context_status : contextStatusFromRatio(ratio),
+    context_status: typeof meta.context_status === 'string' ? meta.context_status : contextStatusFromRatio(ratio),
   };
 
-  if (typeof meta.context_used_tokens === "number") {
+  if (typeof meta.context_used_tokens === 'number') {
     patch.context_used_tokens = meta.context_used_tokens;
   }
-  if (typeof meta.context_window === "number") {
+  if (typeof meta.context_window === 'number') {
     patch.last_context_window_tokens = meta.context_window;
   }
 
@@ -146,12 +145,12 @@ export function reconcilePatchFromServer(server: Session): SessionContextPatch {
 
 export function sessionContextPatchFromEnvelope(
   env: Envelope,
-  prev?: Pick<Session, "total_tokens" | "max_context_used_ratio" | "input_tokens" | "output_tokens">
+  prev?: Pick<Session, 'total_tokens' | 'max_context_used_ratio' | 'input_tokens' | 'output_tokens'>,
 ): SessionContextPatch | null {
-  if (env.type === "context_usage" && env.usage) {
+  if (env.type === 'context_usage' && env.usage) {
     return sessionContextPatchFromStepUsage(env.usage);
   }
-  if (env.type === "runner_completion" && env.usage) {
+  if (env.type === 'runner_completion' && env.usage) {
     return sessionContextPatchFromUsage(env.usage, prev);
   }
   if (isSessionCompressNotice(env)) {

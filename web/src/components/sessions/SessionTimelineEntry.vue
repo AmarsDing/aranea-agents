@@ -1,10 +1,7 @@
 <template>
   <article
     class="session-timeline-entry"
-    :class="[
-      `session-timeline-entry--${accent}`,
-      { 'session-timeline-entry--message': isMessage }
-    ]"
+    :class="[`session-timeline-entry--${accent}`, { 'session-timeline-entry--message': isMessage }]"
   >
     <div class="session-timeline-entry__axis" aria-hidden="true">
       <div class="session-timeline-entry__dot">
@@ -55,7 +52,9 @@
           <span class="session-timeline-entry__meta-val">{{ item.subtitle }}</span>
         </div>
         <pre v-if="item.content_markdown" class="session-timeline-entry__detail">{{ item.content_markdown }}</pre>
-        <pre v-else-if="item.detail_json" class="session-timeline-entry__detail">{{ prettyTimelineJSON(item.detail_json) }}</pre>
+        <pre v-else-if="item.detail_json" class="session-timeline-entry__detail">{{
+          prettyTimelineJSON(item.detail_json)
+        }}</pre>
         <div v-else class="session-timeline-entry__detail session-timeline-entry__detail--empty">暂无详情</div>
       </q-expansion-item>
     </div>
@@ -63,8 +62,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { SessionTimelineItem } from "../../features/session/types";
+import { computed } from 'vue';
+import type { SessionTimelineItem } from '../../features/session/types';
 import {
   formatTimelineDuration,
   formatTimelineTime,
@@ -72,8 +71,8 @@ import {
   prettyTimelineJSON,
   timelineEntryAccent,
   timelineEntryIcon,
-  timelineHasDetail
-} from "./sessionTimelineUi";
+  timelineHasDetail,
+} from './sessionTimelineUi';
 
 const props = defineProps<{
   item: SessionTimelineItem;
@@ -84,8 +83,8 @@ const icon = computed(() => timelineEntryIcon(props.item));
 const isMessage = computed(() => isTimelineMessage(props.item));
 
 const inlinePreview = computed(() => {
-  const text = (props.item.preview || props.item.subtitle || "").trim();
-  if (!text || !isMessage.value) return "";
+  const text = (props.item.preview || props.item.subtitle || '').trim();
+  if (!text || !isMessage.value) return '';
   return text.length > 480 ? `${text.slice(0, 480)}…` : text;
 });
 
@@ -97,15 +96,15 @@ const showExpansion = computed(() => {
 });
 
 const expansionLabel = computed(() => {
-  if (isMessage.value) return "查看完整内容";
-  return props.item.preview || props.item.subtitle || "查看详情";
+  if (isMessage.value) return '查看完整内容';
+  return props.item.preview || props.item.subtitle || '查看详情';
 });
 
 function tagKind(tag: string): string {
-  if (tag === "User") return "user";
-  if (tag === "Tool") return "tool";
-  if (tag === "Skill") return "skill";
-  if (tag === "MCP") return "mcp";
-  return "default";
+  if (tag === 'User') return 'user';
+  if (tag === 'Tool') return 'tool';
+  if (tag === 'Skill') return 'skill';
+  if (tag === 'MCP') return 'mcp';
+  return 'default';
 }
 </script>

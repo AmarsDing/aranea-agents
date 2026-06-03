@@ -1,8 +1,8 @@
-import { ref, type Ref } from "vue";
-import { useChatRuntimeStore } from "../../../stores/chat/runtimeStore";
-import type { RunStatus, RunStatusValue } from "../types";
-import type { Envelope } from "../envelope";
-import { runStatusFromEnvelope, messageQueuedFromEnvelope } from "../envelopeRunStatus";
+import { ref, type Ref } from 'vue';
+import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
+import type { RunStatus, RunStatusValue } from '../types';
+import type { Envelope } from '../envelope';
+import { runStatusFromEnvelope, messageQueuedFromEnvelope } from '../envelopeRunStatus';
 
 const HYDRATE_DELAY_MS = 400;
 
@@ -15,12 +15,12 @@ type UseChatRunStatusDeps = {
  * when WS has not yet reported for the current session (e.g. after session switch).
  */
 export function useChatRunStatus(deps: UseChatRunStatusDeps) {
-  const runStatus: Ref<RunStatusValue> = ref("idle");
+  const runStatus: Ref<RunStatusValue> = ref('idle');
   const runMeta: Ref<RunStatus | null> = ref(null);
 
   let wsAuthoritative = false;
   let hydrateTimer: ReturnType<typeof setTimeout> | null = null;
-  let hydrateSessionId = "";
+  let hydrateSessionId = '';
   /** Whether we are currently hydrating after a session switch (suppresses stale flash). */
   let hydrating = false;
 
@@ -35,8 +35,8 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
     clearHydrateTimer();
     wsAuthoritative = false;
     hydrating = false;
-    hydrateSessionId = "";
-    runStatus.value = "idle";
+    hydrateSessionId = '';
+    runStatus.value = 'idle';
     runMeta.value = null;
   }
 
@@ -54,7 +54,7 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
       awaitKind: rs.awaitKind,
       awaitToolKey: rs.awaitToolKey,
       awaitToolCallId: rs.awaitToolCallId,
-      updatedAt: "",
+      updatedAt: '',
     };
     runMeta.value = meta;
     deps.applyAwaitRunStatus(meta);
@@ -111,7 +111,7 @@ export function useChatRunStatus(deps: UseChatRunStatusDeps) {
     wsAuthoritative = true;
     clearHydrateTimer();
     runStatus.value = status;
-    if (status === "idle") {
+    if (status === 'idle') {
       runMeta.value = null;
     }
   }

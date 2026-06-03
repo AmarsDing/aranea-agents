@@ -71,7 +71,7 @@
 </template>
 
 <script setup lang="ts">
-import AppPageToolbar from "../layout/AppPageToolbar.vue";
+import AppPageToolbar from '../layout/AppPageToolbar.vue';
 
 defineProps<{
   keyword: string;
@@ -85,13 +85,13 @@ defineProps<{
 }>();
 
 defineEmits<{
-  "update:keyword": [v: string];
-  "update:ownerType": [v: string | null];
-  "update:status": [v: string | null];
-  "update:contextStatus": [v: string | null];
+  'update:keyword': [v: string];
+  'update:ownerType': [v: string | null];
+  'update:status': [v: string | null];
+  'update:contextStatus': [v: string | null];
   reset: [];
-  "toggle-selection": [];
-  "retention-archive": [];
-  "retention-delete": [];
+  'toggle-selection': [];
+  'retention-archive': [];
+  'retention-delete': [];
 }>();
 </script>

@@ -1,13 +1,13 @@
 export type HookCallbackPoint =
-  | "before_agent"
-  | "after_agent"
-  | "before_model"
-  | "after_model"
-  | "before_tool"
-  | "after_tool"
-  | "on_event";
+  | 'before_agent'
+  | 'after_agent'
+  | 'before_model'
+  | 'after_model'
+  | 'before_tool'
+  | 'after_tool'
+  | 'on_event';
 
-export type HookActionType = "log" | "notify" | "block" | "modify";
+export type HookActionType = 'log' | 'notify' | 'block' | 'modify';
 
 export type HookRuleConfig = {
   callback_point: HookCallbackPoint;
@@ -41,25 +41,25 @@ export type HookRow = {
   updated_at: string;
 };
 
-export { CALLBACK_POINT_OPTIONS } from "../callback/constants";
+export { CALLBACK_POINT_OPTIONS } from '../callback/constants';
 
 export const ACTION_TYPE_OPTIONS: { label: string; value: HookActionType }[] = [
-  { label: "Log", value: "log" },
-  { label: "Notify (Webhook)", value: "notify" },
-  { label: "Block", value: "block" },
-  { label: "Modify", value: "modify" }
+  { label: 'Log', value: 'log' },
+  { label: 'Notify (Webhook)', value: 'notify' },
+  { label: 'Block', value: 'block' },
+  { label: 'Modify', value: 'modify' },
 ];
 
-export function defaultHookRuleConfig(agentId = "", agentKey = ""): HookRuleConfig {
+export function defaultHookRuleConfig(agentId = '', agentKey = ''): HookRuleConfig {
   return {
-    callback_point: "before_tool",
+    callback_point: 'before_tool',
     condition: {
-      agent_id: agentId || agentKey || ""
+      agent_id: agentId || agentKey || '',
     },
     action: {
-      type: "log",
-      log_level: "info"
-    }
+      type: 'log',
+      log_level: 'info',
+    },
   };
 }
 

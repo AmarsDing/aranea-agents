@@ -64,17 +64,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import {
-  TOOL_FIELD_HINT_ENTRIES,
-  TOOL_FIELD_HINTS,
-  TOOL_HELP_SECTIONS
-} from "../../../features/tools/toolEditorCopy";
+import { ref } from 'vue';
+import { TOOL_FIELD_HINT_ENTRIES, TOOL_FIELD_HINTS, TOOL_HELP_SECTIONS } from '../../../features/tools/toolEditorCopy';
 
 defineProps<{ open: boolean }>();
-defineEmits<{ "update:open": [value: boolean] }>();
+defineEmits<{ 'update:open': [value: boolean] }>();
 
-const activeTab = ref<"fields" | "concepts">("fields");
+const activeTab = ref<'fields' | 'concepts'>('fields');
 const sections = TOOL_HELP_SECTIONS;
 const fieldEntries = TOOL_FIELD_HINT_ENTRIES;
 const fieldHints = TOOL_FIELD_HINTS;

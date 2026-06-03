@@ -5,14 +5,54 @@
     </q-banner>
     <q-card flat bordered class="memory-card">
       <AppPageToolbar class="memory-knowledge-toolbar">
-        <q-input :model-value="factKeyword" class="app-page-toolbar__search" dense outlined clearable debounce="300" label="搜索知识、偏好或规则" @update:model-value="$emit('update:factKeyword', String($event ?? ''))">
+        <q-input
+          :model-value="factKeyword"
+          class="app-page-toolbar__search"
+          dense
+          outlined
+          clearable
+          debounce="300"
+          label="搜索知识、偏好或规则"
+          @update:model-value="$emit('update:factKeyword', String($event ?? ''))"
+        >
           <template #prepend><q-icon name="search" /></template>
         </q-input>
-        <q-select :model-value="factScope" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="Scope" :options="scopeOptions" @update:model-value="$emit('update:factScope', $event as string | null)" />
-        <q-select :model-value="factStatus" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="状态" :options="factStatusOptions" @update:model-value="$emit('update:factStatus', $event as string | null)" />
+        <q-select
+          :model-value="factScope"
+          class="app-page-toolbar__field"
+          dense
+          outlined
+          clearable
+          emit-value
+          map-options
+          label="Scope"
+          :options="scopeOptions"
+          @update:model-value="$emit('update:factScope', $event as string | null)"
+        />
+        <q-select
+          :model-value="factStatus"
+          class="app-page-toolbar__field"
+          dense
+          outlined
+          clearable
+          emit-value
+          map-options
+          label="状态"
+          :options="factStatusOptions"
+          @update:model-value="$emit('update:factStatus', $event as string | null)"
+        />
         <template #actions>
           <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="$emit('reset')" />
-          <q-btn unelevated rounded no-caps color="primary" icon="manage_search" label="查询" :loading="loadingFacts" @click="$emit('search')" />
+          <q-btn
+            unelevated
+            rounded
+            no-caps
+            color="primary"
+            icon="manage_search"
+            label="查询"
+            :loading="loadingFacts"
+            @click="$emit('search')"
+          />
         </template>
       </AppPageToolbar>
 
@@ -34,37 +74,50 @@
             hide-pagination
             :pagination="{ rowsPerPage: 0 }"
           >
-          <template #body-cell-scope="props">
-            <q-td :props="props">
-              <AppRegistryHoverTip :text="factHoverText(props.row)">
-                <q-chip dense square color="primary" text-color="white">{{ props.row.scope_type || "agent" }}</q-chip>
-              </AppRegistryHoverTip>
-            </q-td>
-          </template>
-          <template #body-cell-confidence="props">
-            <q-td :props="props">
-              <q-linear-progress rounded size="9px" :value="bounded(props.row.confidence)" :color="scoreColor(props.row.confidence)" />
-              <div class="text-caption q-mt-xs">{{ formatPercent(props.row.confidence) }}</div>
-            </q-td>
-          </template>
-          <template #body-cell-source="props">
-            <q-td :props="props">
-              <span class="app-registry-cell-sub ellipsis">{{ props.row.source_kind || "—" }}</span>
-            </q-td>
-          </template>
-          <template #body-cell-updated="props">
-            <q-td :props="props">
-              <span class="app-registry-cell-sub">{{ formatFactDate(props.row.updated_at) }}</span>
-            </q-td>
-          </template>
-          <template #body-cell-actions="props">
-            <q-td :props="props">
-              <div class="app-registry-cell-actions">
-                <q-btn flat dense round icon="visibility" color="primary" aria-label="查看知识详情" @click="$emit('openFact', props.row)" />
-              </div>
-            </q-td>
-          </template>
-        </AppRegistryTable>
+            <template #body-cell-scope="props">
+              <q-td :props="props">
+                <AppRegistryHoverTip :text="factHoverText(props.row)">
+                  <q-chip dense square color="primary" text-color="white">{{ props.row.scope_type || 'agent' }}</q-chip>
+                </AppRegistryHoverTip>
+              </q-td>
+            </template>
+            <template #body-cell-confidence="props">
+              <q-td :props="props">
+                <q-linear-progress
+                  rounded
+                  size="9px"
+                  :value="bounded(props.row.confidence)"
+                  :color="scoreColor(props.row.confidence)"
+                />
+                <div class="text-caption q-mt-xs">{{ formatPercent(props.row.confidence) }}</div>
+              </q-td>
+            </template>
+            <template #body-cell-source="props">
+              <q-td :props="props">
+                <span class="app-registry-cell-sub ellipsis">{{ props.row.source_kind || '—' }}</span>
+              </q-td>
+            </template>
+            <template #body-cell-updated="props">
+              <q-td :props="props">
+                <span class="app-registry-cell-sub">{{ formatFactDate(props.row.updated_at) }}</span>
+              </q-td>
+            </template>
+            <template #body-cell-actions="props">
+              <q-td :props="props">
+                <div class="app-registry-cell-actions">
+                  <q-btn
+                    flat
+                    dense
+                    round
+                    icon="visibility"
+                    color="primary"
+                    aria-label="查看知识详情"
+                    @click="$emit('openFact', props.row)"
+                  />
+                </div>
+              </q-td>
+            </template>
+          </AppRegistryTable>
 
           <AppRegistryPagination
             v-model:page="page"
@@ -81,13 +134,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import type { QTableProps } from "quasar";
-import AppPageToolbar from "../layout/AppPageToolbar.vue";
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
-import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
-import type { MemoryFact } from "../../features/memory/types";
+import { computed, ref, watch } from 'vue';
+import type { QTableProps } from 'quasar';
+import AppPageToolbar from '../layout/AppPageToolbar.vue';
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
+import type { MemoryFact } from '../../features/memory/types';
 
 const props = defineProps<{
   factsEndpointReady: boolean;
@@ -97,14 +150,14 @@ const props = defineProps<{
   scopeOptions: Array<{ label: string; value: string }>;
   factStatusOptions: Array<{ label: string; value: string }>;
   factRows: MemoryFact[];
-  factColumns: QTableProps["columns"];
+  factColumns: QTableProps['columns'];
   loadingFacts: boolean;
 }>();
 
 defineEmits<{
-  "update:factKeyword": [value: string];
-  "update:factScope": [value: string | null];
-  "update:factStatus": [value: string | null];
+  'update:factKeyword': [value: string];
+  'update:factScope': [value: string | null];
+  'update:factStatus': [value: string | null];
   reset: [];
   search: [];
   openFact: [fact: MemoryFact];
@@ -132,9 +185,9 @@ function bounded(value?: number) {
 
 function scoreColor(value?: number) {
   const score = bounded(value);
-  if (score >= 0.75) return "positive";
-  if (score >= 0.45) return "warning";
-  return "negative";
+  if (score >= 0.75) return 'positive';
+  if (score >= 0.45) return 'warning';
+  return 'negative';
 }
 
 function formatPercent(value?: number) {
@@ -142,7 +195,7 @@ function formatPercent(value?: number) {
 }
 
 function formatFactDate(value?: string) {
-  if (!value) return "—";
+  if (!value) return '—';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
@@ -151,7 +204,7 @@ function factHoverText(row: MemoryFact) {
   const parts = [];
   if (row.statement?.trim()) parts.push(row.statement.trim());
   if (row.details_markdown?.trim()) parts.push(row.details_markdown.trim());
-  return parts.join("\n\n");
+  return parts.join('\n\n');
 }
 </script>
 

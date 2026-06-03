@@ -47,11 +47,11 @@
     <q-card-section>
       <div class="text-caption text-grey-7 q-mb-sm">勾选 2 条以上运行记录进行 A/B 对比（以最早一条为基线）</div>
       <AppRegistryTable
+        v-model:selected="localSelected"
         :shell="false"
         :data-shell="true"
         column-persist-key="eval-compare-select"
         selection="multiple"
-        v-model:selected="localSelected"
         :rows="pagedCompareRuns"
         :columns="compareSelectColumns"
         row-key="id"
@@ -102,16 +102,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
+import { computed, ref, watch } from 'vue';
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
 
-import type { EvalRun, EvalRunComparison, EvalTrendPoint } from "../../features/evaluation/types";
+import type { EvalRun, EvalRunComparison, EvalTrendPoint } from '../../features/evaluation/types';
 import {
   EVAL_COMPARE_TABLE_COLUMNS,
   EVAL_RECENT_RUN_TABLE_COLUMNS,
-  EVAL_TREND_TABLE_COLUMNS
-} from "../../features/evaluation/evaluationTableUi";
+  EVAL_TREND_TABLE_COLUMNS,
+} from '../../features/evaluation/evaluationTableUi';
 
 const props = defineProps<{
   agentId: string;
@@ -124,8 +124,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:agentId": [value: string];
-  "refresh-trend": [];
+  'update:agentId': [value: string];
+  'refresh-trend': [];
   compare: [runIds: string[]];
 }>();
 
@@ -160,7 +160,7 @@ watch(
   () => props.agentId,
   (v) => {
     localAgentId.value = v;
-  }
+  },
 );
 
 watch(
@@ -168,21 +168,21 @@ watch(
   () => {
     localSelected.value = [];
     comparePage.value = 1;
-  }
+  },
 );
 
 watch(
   () => props.trendPoints,
   () => {
     trendPage.value = 1;
-  }
+  },
 );
 
 watch(
   () => props.comparisons,
   () => {
     comparisonPage.value = 1;
-  }
+  },
 );
 
 const trendColumns = EVAL_TREND_TABLE_COLUMNS;
@@ -190,14 +190,14 @@ const compareSelectColumns = EVAL_RECENT_RUN_TABLE_COLUMNS;
 const comparisonColumns = EVAL_COMPARE_TABLE_COLUMNS;
 
 function onAgentChange(v: string) {
-  emit("update:agentId", v);
-  emit("refresh-trend");
+  emit('update:agentId', v);
+  emit('refresh-trend');
 }
 
 function emitCompare() {
   emit(
-    "compare",
-    localSelected.value.map((r) => r.id)
+    'compare',
+    localSelected.value.map((r) => r.id),
   );
 }
 </script>

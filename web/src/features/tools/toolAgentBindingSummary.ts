@@ -1,5 +1,5 @@
-import { listAgents } from "../agents/api";
-import { getAgentEffectiveTools } from "./api";
+import { listAgents } from '../agents/api';
+import { getAgentEffectiveTools } from './api';
 
 export type ToolAgentBindingRow = {
   agent_id: string;
@@ -24,13 +24,13 @@ const EMPTY_SUMMARY: ToolAgentBindingSummary = {
   denied: 0,
   tools_disabled_agents: 0,
   override_count: 0,
-  rows: []
+  rows: [],
 };
 
 /** Scan agents and resolve effective tool state for one tool key (client-side, ≤200 agents). */
 export async function fetchToolAgentBindingSummary(
   toolKey: string,
-  overrideCount = 0
+  overrideCount = 0,
 ): Promise<ToolAgentBindingSummary> {
   const key = toolKey.trim();
   if (!key) return { ...EMPTY_SUMMARY, override_count: overrideCount };
@@ -43,24 +43,24 @@ export async function fetchToolAgentBindingSummary(
       try {
         const view = await getAgentEffectiveTools(agentId);
         const item = view.items.find((t) => t.tool_key === key);
-        const effective_state = item?.effective_state ?? "denied";
+        const effective_state = item?.effective_state ?? 'denied';
         return {
           agent_id: agentId,
           agent_name: agentName,
           effective_state,
-          reason: item?.reason ?? "未在有效工具列表中",
-          tools_enabled: view.tools_enabled
+          reason: item?.reason ?? '未在有效工具列表中',
+          tools_enabled: view.tools_enabled,
         };
       } catch {
         return {
           agent_id: agentId,
           agent_name: agentName,
-          effective_state: "unknown",
-          reason: "无法加载 Agent 工具策略",
-          tools_enabled: false
+          effective_state: 'unknown',
+          reason: '无法加载 Agent 工具策略',
+          tools_enabled: false,
         };
       }
-    })
+    }),
   );
 
   let allowed = 0;
@@ -71,7 +71,7 @@ export async function fetchToolAgentBindingSummary(
       tools_disabled_agents += 1;
       continue;
     }
-    if (row.effective_state === "allowed") allowed += 1;
+    if (row.effective_state === 'allowed') allowed += 1;
     else denied += 1;
   }
 
@@ -81,7 +81,7 @@ export async function fetchToolAgentBindingSummary(
     denied,
     tools_disabled_agents,
     override_count: overrideCount,
-    rows: rows.sort((a, b) => a.agent_name.localeCompare(b.agent_name))
+    rows: rows.sort((a, b) => a.agent_name.localeCompare(b.agent_name)),
   };
 }
 
@@ -93,5 +93,5 @@ export function bindingSummaryLine(summary: ToolAgentBindingSummary): string {
   if (summary.override_count) {
     parts.push(`${summary.override_count} 条显式覆盖`);
   }
-  return parts.join(" · ");
+  return parts.join(' · ');
 }

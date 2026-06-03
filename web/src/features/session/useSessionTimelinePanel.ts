@@ -1,7 +1,7 @@
-import { computed, ref, watch, type Ref } from "vue";
-import type { SessionTimeline } from "./types";
-import { useSessionStore } from "../../stores/session";
-import { buildTimelineStats } from "./timelineHelpers";
+import { computed, ref, watch, type Ref } from 'vue';
+import type { SessionTimeline } from './types';
+import { useSessionStore } from '../../stores/session';
+import { buildTimelineStats } from './timelineHelpers';
 
 const PAGE_SIZE = 100;
 
@@ -9,15 +9,15 @@ export function useSessionTimelinePanel(sessionId: Ref<string>) {
   const sessionStore = useSessionStore();
   const timeline = ref<SessionTimeline | null>(null);
   const loading = ref(false);
-  const error = ref("");
+  const error = ref('');
   const kindFilter = ref<string | null>(null);
-  const sortOrder = ref("desc");
+  const sortOrder = ref('desc');
   const offset = ref(0);
   const total = ref(0);
 
   const stats = computed(() => buildTimelineStats(timeline.value?.summary));
   const pageLabel = computed(
-    () => `${offset.value + 1}-${Math.min(offset.value + PAGE_SIZE, total.value)} / ${total.value}`
+    () => `${offset.value + 1}-${Math.min(offset.value + PAGE_SIZE, total.value)} / ${total.value}`,
   );
 
   async function loadTimeline() {
@@ -28,7 +28,7 @@ export function useSessionTimelinePanel(sessionId: Ref<string>) {
       return;
     }
     loading.value = true;
-    error.value = "";
+    error.value = '';
     try {
       timeline.value = await sessionStore.fetchTimeline(id, {
         limit: PAGE_SIZE,
@@ -38,7 +38,7 @@ export function useSessionTimelinePanel(sessionId: Ref<string>) {
       });
       total.value = timeline.value.summary?.total ?? timeline.value.items.length;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : "加载 Timeline 失败";
+      error.value = err instanceof Error ? err.message : '加载 Timeline 失败';
       timeline.value = null;
       total.value = 0;
     } finally {
@@ -56,10 +56,14 @@ export function useSessionTimelinePanel(sessionId: Ref<string>) {
     void loadTimeline();
   }
 
-  watch([sessionId, kindFilter, sortOrder], () => {
-    offset.value = 0;
-    void loadTimeline();
-  }, { immediate: true });
+  watch(
+    [sessionId, kindFilter, sortOrder],
+    () => {
+      offset.value = 0;
+      void loadTimeline();
+    },
+    { immediate: true },
+  );
 
   return {
     timeline,

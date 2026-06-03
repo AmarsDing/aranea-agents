@@ -6,17 +6,64 @@
       subtitle="配置 ADK Runner 运行时插件，替代手工维护 ADK_RUNNER_PLUGINS 环境变量。"
     >
       <template #actions>
-        <q-btn outline rounded no-caps class="app-outline-btn" color="primary" icon="history" label="运行记录" to="/plugins/runs" />
+        <q-btn
+          outline
+          rounded
+          no-caps
+          class="app-outline-btn"
+          color="primary"
+          icon="history"
+          label="运行记录"
+          to="/plugins/runs"
+        />
       </template>
     </AppPageHero>
 
     <AppPageToolbar>
-      <q-input v-model="search" class="app-page-toolbar__search" dense outlined clearable debounce="250" label="搜索 Plugin">
+      <q-input
+        v-model="search"
+        class="app-page-toolbar__search"
+        dense
+        outlined
+        clearable
+        debounce="250"
+        label="搜索 Plugin"
+      >
         <template #prepend><q-icon name="search" /></template>
       </q-input>
-      <q-select v-model="category" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="类型" :options="categoryOptions" />
-      <q-select v-model="enabled" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="启用状态" :options="enabledOptions" />
-      <q-select v-model="callbackPoint" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="Callback" :options="callbackPointOptions" />
+      <q-select
+        v-model="category"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        label="类型"
+        :options="categoryOptions"
+      />
+      <q-select
+        v-model="enabled"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        label="启用状态"
+        :options="enabledOptions"
+      />
+      <q-select
+        v-model="callbackPoint"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        label="Callback"
+        :options="callbackPointOptions"
+      />
       <template #actions>
         <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
         <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="() => loadRows()" />
@@ -52,9 +99,9 @@
 
     <PluginDetailDialog
       v-model:open="detailOpen"
-      :target="detailTarget"
       v-model:scope-mode="scopeMode"
       v-model:scope-agent-id="scopeAgentId"
+      :target="detailTarget"
       :saving-scope="savingScope"
       :bumping-sort="bumpingSort"
       @bump-sort="(delta) => detailTarget && bumpSort(detailTarget, delta)"
@@ -63,9 +110,9 @@
 
     <PluginConfigDialog
       v-model:open="configOpen"
-      :target="configTarget"
       v-model:config-text="configText"
       v-model:mode="configMode"
+      :target="configTarget"
       :config-error="configError"
       :saving="savingConfig"
       @save="saveConfig"
@@ -75,13 +122,13 @@
 </template>
 
 <script setup lang="ts">
-import PluginConfigDialog from "../components/plugins/PluginConfigDialog.vue";
-import PluginDetailDialog from "../components/plugins/PluginDetailDialog.vue";
-import PluginsTable from "../components/plugins/PluginsTable.vue";
-import AppPageHero from "../components/layout/AppPageHero.vue";
-import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
-import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
-import { usePluginsPage } from "../features/plugins/usePluginsPage";
+import PluginConfigDialog from '../components/plugins/PluginConfigDialog.vue';
+import PluginDetailDialog from '../components/plugins/PluginDetailDialog.vue';
+import PluginsTable from '../components/plugins/PluginsTable.vue';
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
+import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import { usePluginsPage } from '../features/plugins/usePluginsPage';
 
 const {
   rows,
@@ -119,6 +166,6 @@ const {
   saveConfig,
   bumpSort,
   saveScope,
-  onSchemaValidationError
+  onSchemaValidationError,
 } = usePluginsPage();
 </script>

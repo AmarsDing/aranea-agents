@@ -1,5 +1,5 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
   deleteArtifact,
   deleteArtifactVersion,
@@ -9,18 +9,18 @@ import {
   uploadArtifact,
   signDownloadUrl,
   artifactDownloadHref,
-  previewArtifact
-} from "../../features/artifact/api";
+  previewArtifact,
+} from '../../features/artifact/api';
 import type {
   ArtifactData,
   ArtifactMeta,
   ArtifactPreview,
   ListArtifactsParams,
   ListArtifactsResult,
-  UploadArtifactInput
-} from "../../features/artifact/types";
+  UploadArtifactInput,
+} from '../../features/artifact/types';
 
-export const useArtifactStore = defineStore("artifact", () => {
+export const useArtifactStore = defineStore('artifact', () => {
   const artifacts = ref<ArtifactMeta[]>([]);
   const total = ref(0);
   const loading = ref(false);
@@ -82,6 +82,6 @@ export const useArtifactStore = defineStore("artifact", () => {
     listVersions,
     signDownload,
     loadPreview,
-    artifactDownloadHref
+    artifactDownloadHref,
   };
 });

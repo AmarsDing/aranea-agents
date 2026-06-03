@@ -1,12 +1,18 @@
 <template>
-  <q-dialog :model-value="open" persistent transition-show="slide-up" transition-hide="slide-down" @update:model-value="$emit('update:open', $event)">
+  <q-dialog
+    :model-value="open"
+    persistent
+    transition-show="slide-up"
+    transition-hide="slide-down"
+    @update:model-value="$emit('update:open', $event)"
+  >
     <q-card class="advanced-dialog app-dialog-card app-dialog-card--md app-glass-dialog">
       <q-card-section class="app-glass-dialog__head row items-center justify-between">
         <div class="row items-center q-gutter-sm">
           <q-icon name="settings" size="22px" color="primary" />
           <div class="text-h6">高级设置</div>
         </div>
-        <q-btn flat round icon="close" v-close-popup />
+        <q-btn v-close-popup flat round icon="close" />
       </q-card-section>
 
       <q-scroll-area class="app-glass-dialog__body-scroll">
@@ -59,7 +65,14 @@
                 <div class="text-caption text-grey-7">Agent 运行时的文件系统根路径。</div>
               </div>
             </div>
-            <q-input v-model="workspace" class="app-field-long" dense outlined label="工作区路径" hint="如 ~/.aranea/workspace/{agent_key}" />
+            <q-input
+              v-model="workspace"
+              class="app-field-long"
+              dense
+              outlined
+              label="工作区路径"
+              hint="如 ~/.aranea/workspace/{agent_key}"
+            />
           </section>
 
           <section class="settings-section">
@@ -123,7 +136,7 @@
       </q-scroll-area>
 
       <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-        <q-btn flat rounded no-caps label="取消" v-close-popup />
+        <q-btn v-close-popup flat rounded no-caps label="取消" />
         <q-btn color="primary" rounded unelevated no-caps label="保存" :loading="saving" @click="onSave" />
       </q-card-actions>
     </q-card>
@@ -131,7 +144,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch } from 'vue';
 
 type ChannelOption = { label: string; value: string; caption?: string };
 
@@ -150,51 +163,53 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:open": [value: boolean];
-  save: [payload: {
-    channel_id: string;
-    chat_id: string;
-    workspace: string;
-    reasoning_mode: string;
-    reasoning_level: string;
-    context_compaction_enabled: boolean;
-    session_summary_enabled: boolean;
-  }];
+  'update:open': [value: boolean];
+  save: [
+    payload: {
+      channel_id: string;
+      chat_id: string;
+      workspace: string;
+      reasoning_mode: string;
+      reasoning_level: string;
+      context_compaction_enabled: boolean;
+      session_summary_enabled: boolean;
+    },
+  ];
 }>();
 
 const selectedChannelId = ref(props.channelId);
 const chatId = ref(props.chatIdInput);
 const workspace = ref(props.workspaceInput);
-const reasoningMode = ref(props.reasoningModeInput || "provider_default");
-const reasoningLevel = ref(props.reasoningLevelInput || "off");
+const reasoningMode = ref(props.reasoningModeInput || 'provider_default');
+const reasoningLevel = ref(props.reasoningLevelInput || 'off');
 const compactionEnabled = ref(props.compactionEnabledInput);
 const sessionSummaryEnabled = ref(props.sessionSummaryEnabledInput);
 
 const reasoningModeOptions = [
-  { label: "跟随厂商", value: "provider_default" },
-  { label: "自定义", value: "custom" }
+  { label: '跟随厂商', value: 'provider_default' },
+  { label: '自定义', value: 'custom' },
 ];
 
 const reasoningLevelOptions = [
-  { label: "关闭", value: "off" },
-  { label: "低（~4K）", value: "low" },
-  { label: "中（~10-16K）", value: "medium" },
-  { label: "高（~32K）", value: "high" }
+  { label: '关闭', value: 'off' },
+  { label: '低（~4K）', value: 'low' },
+  { label: '中（~10-16K）', value: 'medium' },
+  { label: '高（~32K）', value: 'high' },
 ];
 
 function onChannelChange() {
-  chatId.value = "";
+  chatId.value = '';
 }
 
 function onSave() {
-  emit("save", {
+  emit('save', {
     channel_id: selectedChannelId.value,
     chat_id: chatId.value,
     workspace: workspace.value,
     reasoning_mode: reasoningMode.value,
     reasoning_level: reasoningLevel.value,
     context_compaction_enabled: compactionEnabled.value,
-    session_summary_enabled: sessionSummaryEnabled.value
+    session_summary_enabled: sessionSummaryEnabled.value,
   });
 }
 
@@ -205,10 +220,10 @@ watch(
     selectedChannelId.value = props.channelId;
     chatId.value = props.chatIdInput;
     workspace.value = props.workspaceInput;
-    reasoningMode.value = props.reasoningModeInput || "provider_default";
-    reasoningLevel.value = props.reasoningLevelInput || "off";
+    reasoningMode.value = props.reasoningModeInput || 'provider_default';
+    reasoningLevel.value = props.reasoningLevelInput || 'off';
     compactionEnabled.value = props.compactionEnabledInput;
     sessionSummaryEnabled.value = props.sessionSummaryEnabledInput;
-  }
+  },
 );
 </script>

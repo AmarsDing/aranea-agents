@@ -1,16 +1,16 @@
-import { defineStore } from "pinia";
-import { ref, watch } from "vue";
-import { useQuasar } from "quasar";
-import { useToolsStore } from "./index";
+import { defineStore } from 'pinia';
+import { ref, watch } from 'vue';
+import { useQuasar } from 'quasar';
+import { useToolsStore } from './index';
 import {
   bindingSummaryLine,
   fetchToolAgentBindingSummary,
-  type ToolAgentBindingSummary
-} from "../../features/tools/toolAgentBindingSummary";
-import { toolToUpsertInput } from "../../features/tools/toolFormPatch";
-import type { Tool, ToolAgentOverride, ToolInvocation, ToolTestResult } from "../../features/tools/types";
-import { listAgents } from "../../features/agents/api";
-import type { Agent } from "../../features/agents/types";
+  type ToolAgentBindingSummary,
+} from '../../features/tools/toolAgentBindingSummary';
+import { toolToUpsertInput } from '../../features/tools/toolFormPatch';
+import type { Tool, ToolAgentOverride, ToolInvocation, ToolTestResult } from '../../features/tools/types';
+import { listAgents } from '../../features/agents/api';
+import type { Agent } from '../../features/agents/types';
 
 export type ToolOverrideForm = {
   agent_id: string;
@@ -20,20 +20,20 @@ export type ToolOverrideForm = {
   config_override_json: string;
 };
 
-export const useToolDetailStore = defineStore("toolDetail", () => {
+export const useToolDetailStore = defineStore('toolDetail', () => {
   const $q = useQuasar();
   const toolsStore = useToolsStore();
 
   const open = ref(false);
   const tool = ref<Tool | null>(null);
-  const activeTab = ref("overview");
+  const activeTab = ref('overview');
   const loading = ref(false);
 
   const overrides = ref<ToolAgentOverride[]>([]);
   const overridesLoading = ref(false);
   const recentRuns = ref<ToolInvocation[]>([]);
   const runsLoading = ref(false);
-  const testArgsJson = ref("{}");
+  const testArgsJson = ref('{}');
   const testTimeoutSec = ref(30);
   const testRunning = ref(false);
   const testResult = ref<ToolTestResult | null>(null);
@@ -41,13 +41,13 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
   const editingOverride = ref<ToolAgentOverride | null>(null);
   const overrideSaving = ref(false);
   const overrideForm = ref<ToolOverrideForm>({
-    agent_id: "",
-    mode: "inherit",
+    agent_id: '',
+    mode: 'inherit',
     enabled: true,
     requires_confirmation: false,
-    config_override_json: "{}"
+    config_override_json: '{}',
   });
-  const configJson = ref("{}");
+  const configJson = ref('{}');
   const configSaving = ref(false);
   const agentBindingSummary = ref<ToolAgentBindingSummary | null>(null);
   const agentBindingLoading = ref(false);
@@ -55,11 +55,11 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
   const agentsLoading = ref(false);
 
   function toolKey(): string {
-    return tool.value?.key?.trim() || tool.value?.id?.trim() || "";
+    return tool.value?.key?.trim() || tool.value?.id?.trim() || '';
   }
 
   function syncConfigFromTool() {
-    configJson.value = tool.value?.config_json || "{}";
+    configJson.value = tool.value?.config_json || '{}';
   }
 
   async function loadOverrides() {
@@ -108,7 +108,7 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
   async function refreshDetail() {
     loading.value = true;
     testResult.value = null;
-    testArgsJson.value = "{}";
+    testArgsJson.value = '{}';
     syncConfigFromTool();
     try {
       await loadOverrides();
@@ -121,7 +121,7 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
   async function openDetail(t: Tool) {
     tool.value = t;
     open.value = true;
-    activeTab.value = "overview";
+    activeTab.value = 'overview';
   }
 
   function closeDetail() {
@@ -131,19 +131,19 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
   async function runToolTest() {
     const t = tool.value;
     if (!t?.id) {
-      $q.notify({ type: "warning", message: "工具缺少 ID，无法执行测试" });
+      $q.notify({ type: 'warning', message: '工具缺少 ID，无法执行测试' });
       return;
     }
     testRunning.value = true;
     testResult.value = null;
     try {
       testResult.value = await toolsStore.runToolTest(t.id, testArgsJson.value, testTimeoutSec.value);
-      if (testResult.value.status === "success") {
-        $q.notify({ type: "positive", message: "工具测试成功" });
+      if (testResult.value.status === 'success') {
+        $q.notify({ type: 'positive', message: '工具测试成功' });
       }
       await loadRecentRuns();
     } catch (e) {
-      $q.notify({ type: "negative", message: e instanceof Error ? e.message : "工具测试失败" });
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '工具测试失败' });
     } finally {
       testRunning.value = false;
     }
@@ -157,15 +157,15 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
         mode: o.mode,
         enabled: o.enabled,
         requires_confirmation: o.requires_confirmation,
-        config_override_json: o.config_override_json
+        config_override_json: o.config_override_json,
       };
     } else {
       overrideForm.value = {
-        agent_id: "",
-        mode: "inherit",
+        agent_id: '',
+        mode: 'inherit',
         enabled: true,
         requires_confirmation: false,
-        config_override_json: "{}"
+        config_override_json: '{}',
       };
     }
     overrideEditorOpen.value = true;
@@ -179,7 +179,7 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
       const agents: Agent[] = await listAgents({ limit: 200 });
       agentOptions.value = agents.map((a) => ({
         label: a.display_name || a.agent_key || a.id,
-        value: a.id
+        value: a.id,
       }));
     } catch {
       agentOptions.value = [];
@@ -199,13 +199,13 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
         enabled: overrideForm.value.enabled,
         mode: overrideForm.value.mode,
         config_override_json: overrideForm.value.config_override_json,
-        requires_confirmation: overrideForm.value.requires_confirmation
+        requires_confirmation: overrideForm.value.requires_confirmation,
       });
       overrideEditorOpen.value = false;
       await loadOverrides();
       await loadAgentBindingSummary();
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "保存覆盖失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存覆盖失败' });
     } finally {
       overrideSaving.value = false;
     }
@@ -215,17 +215,17 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
     const key = toolKey();
     if (!key) return;
     $q.dialog({
-      title: "删除覆盖",
+      title: '删除覆盖',
       message: `确认删除 Agent ${o.agent_id} 的覆盖？`,
       cancel: true,
-      persistent: true
+      persistent: true,
     }).onOk(async () => {
       try {
         await toolsStore.removeOverride(key, o.agent_id);
         await loadOverrides();
         await loadAgentBindingSummary();
       } catch (err) {
-        $q.notify({ type: "negative", message: err instanceof Error ? err.message : "删除覆盖失败" });
+        $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除覆盖失败' });
       }
     });
   }
@@ -234,11 +234,11 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
     const t = tool.value;
     if (!t?.id) return;
     try {
-      JSON.parse(schemaJson || "{}");
+      JSON.parse(schemaJson || '{}');
     } catch (err) {
       $q.notify({
-        type: "negative",
-        message: err instanceof Error ? `Schema JSON 无效：${err.message}` : "Schema JSON 无效"
+        type: 'negative',
+        message: err instanceof Error ? `Schema JSON 无效：${err.message}` : 'Schema JSON 无效',
       });
       return;
     }
@@ -246,9 +246,9 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
     try {
       const updated = await toolsStore.editTool(t.id, toolToUpsertInput(t, { config_schema_json: schemaJson }));
       tool.value = updated;
-      $q.notify({ type: "positive", message: "配置 Schema 已保存" });
+      $q.notify({ type: 'positive', message: '配置 Schema 已保存' });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "保存 Schema 失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存 Schema 失败' });
     } finally {
       configSaving.value = false;
     }
@@ -258,11 +258,11 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
     const t = tool.value;
     if (!t?.id) return;
     try {
-      JSON.parse(configJson.value || "{}");
+      JSON.parse(configJson.value || '{}');
     } catch (err) {
       $q.notify({
-        type: "negative",
-        message: err instanceof Error ? `配置 JSON 无效：${err.message}` : "配置 JSON 无效"
+        type: 'negative',
+        message: err instanceof Error ? `配置 JSON 无效：${err.message}` : '配置 JSON 无效',
       });
       return;
     }
@@ -271,9 +271,9 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
       const updated = await toolsStore.editToolConfig(t.id, configJson.value);
       tool.value = updated;
       configJson.value = updated.config_json || configJson.value;
-      $q.notify({ type: "positive", message: "配置已保存" });
+      $q.notify({ type: 'positive', message: '配置已保存' });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "保存配置失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存配置失败' });
     } finally {
       configSaving.value = false;
     }
@@ -316,6 +316,6 @@ export const useToolDetailStore = defineStore("toolDetail", () => {
     openOverrideEditor,
     saveOverride,
     confirmRemoveOverride,
-    bindingSummaryLine
+    bindingSummaryLine,
   };
 });

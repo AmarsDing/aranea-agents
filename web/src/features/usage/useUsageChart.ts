@@ -1,12 +1,12 @@
-import { onBeforeUnmount, onMounted, shallowRef, watch, type Ref } from "vue";
-import type { EChartsCoreOption, EChartsType } from "echarts/core";
-import { echarts, ensureUsageEcharts } from "./usageEcharts";
+import { onBeforeUnmount, onMounted, shallowRef, watch, type Ref } from 'vue';
+import type { EChartsCoreOption, EChartsType } from 'echarts/core';
+import { echarts, ensureUsageEcharts } from './usageEcharts';
 
 const RESIZE_DEBOUNCE_MS = 150;
 
 function watchBodyClass(onChange: () => void) {
   const observer = new MutationObserver(onChange);
-  observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
   return () => observer.disconnect();
 }
 
@@ -16,7 +16,7 @@ function watchBodyClass(onChange: () => void) {
 export function useUsageChart(
   chartEl: Ref<HTMLElement | null>,
   buildOption: () => EChartsCoreOption,
-  deps: () => unknown[]
+  deps: () => unknown[],
 ) {
   const chartRef = shallowRef<EChartsType | null>(null);
   let resizeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -39,12 +39,12 @@ export function useUsageChart(
 
   onMounted(() => {
     render();
-    window.addEventListener("resize", scheduleRender);
+    window.addEventListener('resize', scheduleRender);
     stopThemeWatch = watchBodyClass(scheduleRender);
   });
 
   onBeforeUnmount(() => {
-    window.removeEventListener("resize", scheduleRender);
+    window.removeEventListener('resize', scheduleRender);
     stopThemeWatch?.();
     if (resizeTimer) clearTimeout(resizeTimer);
     chartRef.value?.dispose();

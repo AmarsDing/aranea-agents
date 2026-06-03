@@ -35,12 +35,17 @@
           </template>
           <template #body-cell-display_name="props">
             <q-td :props="props">
-              <span class="app-registry-cell-sub ellipsis" :title="props.row.display_name">{{ props.row.display_name || "—" }}</span>
+              <span class="app-registry-cell-sub ellipsis" :title="props.row.display_name">{{
+                props.row.display_name || '—'
+              }}</span>
             </q-td>
           </template>
           <template #body-cell-effective_state="props">
             <q-td :props="props">
-              <q-badge :color="props.row.enabled ? 'positive' : 'grey'" :label="effectiveStateLabel(props.row.effective_state)" />
+              <q-badge
+                :color="props.row.enabled ? 'positive' : 'grey'"
+                :label="effectiveStateLabel(props.row.effective_state)"
+              />
             </q-td>
           </template>
           <template #body-cell-requires_confirmation="props">
@@ -60,7 +65,7 @@
             <q-td :props="props">
               <div class="app-registry-cell-actions">
                 <q-btn flat dense round icon="edit" size="sm" @click="$emit('edit', props.row)">
-                  <q-tooltip>{{ props.row.override ? "编辑覆盖" : "添加覆盖" }}</q-tooltip>
+                  <q-tooltip>{{ props.row.override ? '编辑覆盖' : '添加覆盖' }}</q-tooltip>
                 </q-btn>
                 <q-btn
                   v-if="props.row.override"
@@ -108,14 +113,11 @@
 </template>
 
 <script setup lang="ts">
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import AgentToolOverrideEditorDialog from "./AgentToolOverrideEditorDialog.vue";
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AgentToolOverrideEditorDialog from './AgentToolOverrideEditorDialog.vue';
 
-import type {
-  AgentToolOverrideForm,
-  AgentToolOverrideRow
-} from "../../features/agents/useAgentToolOverrides";
-import { AGENT_TOOL_OVERRIDE_TABLE_COLUMNS } from "./agentTableUi";
+import type { AgentToolOverrideForm, AgentToolOverrideRow } from '../../features/agents/useAgentToolOverrides';
+import { AGENT_TOOL_OVERRIDE_TABLE_COLUMNS } from './agentTableUi';
 
 defineProps<{
   loading: boolean;
@@ -135,11 +137,11 @@ defineProps<{
 defineEmits<{
   refresh: [];
   edit: [row: AgentToolOverrideRow];
-  "request-remove": [row: AgentToolOverrideRow];
-  "confirm-remove": [];
-  "cancel-remove": [];
+  'request-remove': [row: AgentToolOverrideRow];
+  'confirm-remove': [];
+  'cancel-remove': [];
   save: [];
-  "update:editorOpen": [value: boolean];
-  "update:form": [value: AgentToolOverrideForm];
+  'update:editorOpen': [value: boolean];
+  'update:form': [value: AgentToolOverrideForm];
 }>();
 </script>

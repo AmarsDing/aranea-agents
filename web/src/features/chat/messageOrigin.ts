@@ -1,4 +1,4 @@
-import type { Message, MessageOrigin } from "../../domain/types";
+import type { Message, MessageOrigin } from '../../domain/types';
 
 export type { MessageOrigin };
 
@@ -14,37 +14,38 @@ export type { MessageOrigin };
  * flip `ensureOrigin` to throw on missing origin, then remove `originFromId`.
  */
 export function originFromId(id: string, role: string): MessageOrigin {
-  if (id.startsWith("pending-user-")) return { kind: "pending_user", localId: id };
-  if (id.startsWith("ws-stream-") || id.startsWith("ws-team-stream-")) return { kind: "streaming", sessionId: id.replace(/^ws-(team-)?stream-/, "") };
-  if (id.startsWith("member-")) return { kind: "team_member", agentKey: id.replace(/^member-/, "") };
-  if (id.startsWith("act-") || id.startsWith("tool-")) return { kind: "tool_activity", toolEventId: id };
-  return { kind: "persisted" };
+  if (id.startsWith('pending-user-')) return { kind: 'pending_user', localId: id };
+  if (id.startsWith('ws-stream-') || id.startsWith('ws-team-stream-'))
+    return { kind: 'streaming', sessionId: id.replace(/^ws-(team-)?stream-/, '') };
+  if (id.startsWith('member-')) return { kind: 'team_member', agentKey: id.replace(/^member-/, '') };
+  if (id.startsWith('act-') || id.startsWith('tool-')) return { kind: 'tool_activity', toolEventId: id };
+  return { kind: 'persisted' };
 }
 
 export function isEphemeralOrigin(origin: MessageOrigin | undefined): boolean {
   if (!origin) return false;
-  return origin.kind !== "persisted";
+  return origin.kind !== 'persisted';
 }
 
 export function isInFlightOrigin(origin: MessageOrigin | undefined): boolean {
   if (!origin) return false;
-  return origin.kind === "pending_user" || origin.kind === "streaming" || origin.kind === "tool_activity";
+  return origin.kind === 'pending_user' || origin.kind === 'streaming' || origin.kind === 'tool_activity';
 }
 
 export function isPendingUserOrigin(origin: MessageOrigin | undefined): boolean {
-  return origin?.kind === "pending_user";
+  return origin?.kind === 'pending_user';
 }
 
 export function isStreamingOrigin(origin: MessageOrigin | undefined): boolean {
-  return origin?.kind === "streaming";
+  return origin?.kind === 'streaming';
 }
 
 export function isTeamMemberOrigin(origin: MessageOrigin | undefined): boolean {
-  return origin?.kind === "team_member";
+  return origin?.kind === 'team_member';
 }
 
 export function isToolActivityOrigin(origin: MessageOrigin | undefined): boolean {
-  return origin?.kind === "tool_activity";
+  return origin?.kind === 'tool_activity';
 }
 
 export function ensureOrigin(message: Message): Message {

@@ -1,12 +1,8 @@
-import { nextTick, onBeforeUnmount, onMounted, ref, watch, type ComputedRef, type Ref } from "vue";
-import type { QVirtualScroll } from "quasar";
-import { isActivityMessage } from "../mergeSessionMessages";
-import {
-  groupMessagesByTurn,
-  lastAssistantTurnBlockIndex,
-  type TurnBlockGroup,
-} from "../groupMessagesByTurn";
-import type { Message } from "../types";
+import { nextTick, onBeforeUnmount, onMounted, ref, watch, type ComputedRef, type Ref } from 'vue';
+import type { QVirtualScroll } from 'quasar';
+import { isActivityMessage } from '../mergeSessionMessages';
+import { groupMessagesByTurn, lastAssistantTurnBlockIndex, type TurnBlockGroup } from '../groupMessagesByTurn';
+import type { Message } from '../types';
 
 const SCROLL_BOTTOM_THRESHOLD = 80;
 
@@ -74,12 +70,8 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
     }
     for (let i = opts.messages.value.length - 1; i >= 0; i--) {
       const m = opts.messages.value[i]!;
-      if (m.role === "user" && (m.content_markdown ?? "").trim()) return i;
-      if (
-        m.role === "assistant" &&
-        !isActivityMessage(m) &&
-        (m.content_markdown ?? "").trim()
-      ) {
+      if (m.role === 'user' && (m.content_markdown ?? '').trim()) return i;
+      if (m.role === 'assistant' && !isActivityMessage(m) && (m.content_markdown ?? '').trim()) {
         return i;
       }
     }
@@ -92,7 +84,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
       for (let attempt = 0; attempt < 4; attempt++) {
         await nextTick();
         if (opts.virtualScrollRef.value) {
-          opts.virtualScrollRef.value.scrollTo(idx, smooth ? "start" : "start-force");
+          opts.virtualScrollRef.value.scrollTo(idx, smooth ? 'start' : 'start-force');
           stickToBottom.value = true;
           showScrollBtn.value = false;
           return;
@@ -103,12 +95,10 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
     }
     const el = opts.messagesScrollEl.value;
     if (el) {
-      const rows = el.querySelectorAll<HTMLElement>(
-        opts.useTurnBlockMode.value ? ".turn-block" : ".chat-q-message"
-      );
+      const rows = el.querySelectorAll<HTMLElement>(opts.useTurnBlockMode.value ? '.turn-block' : '.chat-q-message');
       const target = rows[idx];
       if (target) {
-        target.scrollIntoView({ block: "start", behavior: smooth ? "smooth" : "auto" });
+        target.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' });
         stickToBottom.value = true;
         showScrollBtn.value = false;
         return;
@@ -122,10 +112,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
       for (let attempt = 0; attempt < 3; attempt++) {
         await nextTick();
         if (opts.virtualScrollRef.value) {
-          opts.virtualScrollRef.value.scrollTo(
-            opts.timelineItemsLength.value - 1,
-            smooth ? "start" : "start-force"
-          );
+          opts.virtualScrollRef.value.scrollTo(opts.timelineItemsLength.value - 1, smooth ? 'start' : 'start-force');
           stickToBottom.value = true;
           showScrollBtn.value = false;
           return;
@@ -138,7 +125,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
     if (!el) return;
     clampScrollTop(el, true);
     const top = maxScrollTop(el);
-    el.scrollTo({ top, behavior: smooth ? "smooth" : "auto" });
+    el.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' });
     stickToBottom.value = true;
     showScrollBtn.value = false;
   }
@@ -169,7 +156,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
       stickToBottom.value = true;
       showScrollBtn.value = false;
       void alignMessageScroll(true);
-    }
+    },
   );
 
   watch(
@@ -183,7 +170,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
       }
       if (!stickToBottom.value) return;
       void scrollToBottom(false);
-    }
+    },
   );
 
   onMounted(() => {
@@ -202,7 +189,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
   let scrollStickRaf = 0;
   let scrollStickThrottle = 0;
   watch(
-    () => opts.messages.value[opts.messages.value.length - 1]?.content_markdown ?? "",
+    () => opts.messages.value[opts.messages.value.length - 1]?.content_markdown ?? '',
     () => {
       if (!stickToBottom.value) return;
       if (scrollStickRaf) return;
@@ -220,7 +207,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
         scrollStickRaf = 0;
         void scrollToBottom(false);
       });
-    }
+    },
   );
 
   onBeforeUnmount(() => {
@@ -233,11 +220,9 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
     if (!id || !opts.useTurnBlockMode.value) return;
     await nextTick();
     if (opts.useVirtualMessageList.value && opts.virtualScrollRef.value) {
-      const idx = opts.turnBlocks.value.findIndex(
-        (b) => b.turnId === id || b.user?.id === id
-      );
+      const idx = opts.turnBlocks.value.findIndex((b) => b.turnId === id || b.user?.id === id);
       if (idx >= 0) {
-        opts.virtualScrollRef.value.scrollTo(idx, smooth ? "start" : "start-force");
+        opts.virtualScrollRef.value.scrollTo(idx, smooth ? 'start' : 'start-force');
         flashTurnHighlight(id);
       }
       return;
@@ -246,7 +231,7 @@ export function useChatMessageScroll(opts: ChatMessageScrollOpts) {
     if (!el) return;
     const target = el.querySelector<HTMLElement>(`[data-turn-id="${CSS.escape(id)}"]`);
     if (target) {
-      target.scrollIntoView({ block: "start", behavior: smooth ? "smooth" : "auto" });
+      target.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' });
       flashTurnHighlight(id);
     }
   }
@@ -266,25 +251,28 @@ export function useChatCodeCopy() {
   function handleMessagesClick(event: MouseEvent) {
     const target = event.target as HTMLElement | null;
     if (!target) return;
-    const btn = target.closest<HTMLButtonElement>(".code-block__copy");
+    const btn = target.closest<HTMLButtonElement>('.code-block__copy');
     if (!btn) return;
     event.preventDefault();
-    const block = btn.closest<HTMLElement>(".code-block");
-    const code = block?.querySelector<HTMLElement>("pre code")?.innerText ?? "";
+    const block = btn.closest<HTMLElement>('.code-block');
+    const code = block?.querySelector<HTMLElement>('pre code')?.innerText ?? '';
     if (!code) return;
     const apply = () => {
-      btn.classList.add("is-copied");
-      const textEl = btn.querySelector<HTMLElement>(".code-block__copy-text");
-      const original = textEl?.textContent ?? "复制";
-      if (textEl) textEl.textContent = "已复制";
+      btn.classList.add('is-copied');
+      const textEl = btn.querySelector<HTMLElement>('.code-block__copy-text');
+      const original = textEl?.textContent ?? '复制';
+      if (textEl) textEl.textContent = '已复制';
       if (copyResetTimer) clearTimeout(copyResetTimer);
       copyResetTimer = setTimeout(() => {
-        btn.classList.remove("is-copied");
+        btn.classList.remove('is-copied');
         if (textEl) textEl.textContent = original;
       }, 1400);
     };
     if (navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(code).then(apply).catch(() => fallbackCopy(code, apply));
+      void navigator.clipboard
+        .writeText(code)
+        .then(apply)
+        .catch(() => fallbackCopy(code, apply));
     } else {
       fallbackCopy(code, apply);
     }
@@ -292,13 +280,13 @@ export function useChatCodeCopy() {
 
   function fallbackCopy(text: string, onSuccess: () => void) {
     try {
-      const ta = document.createElement("textarea");
+      const ta = document.createElement('textarea');
       ta.value = text;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
       document.body.appendChild(ta);
       ta.select();
-      document.execCommand("copy");
+      document.execCommand('copy');
       document.body.removeChild(ta);
       onSuccess();
     } catch {

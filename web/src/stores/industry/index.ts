@@ -1,16 +1,22 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
   listIndustries,
   getIndustry,
   listDepartments,
   listPositions,
   getPositionPrompt,
-  listPositionVariants
-} from "../../features/industries/api";
-import type { Industry, Department, Position, PositionPromptResult, VariantInfo } from "../../features/industries/types";
+  listPositionVariants,
+} from '../../features/industries/api';
+import type {
+  Industry,
+  Department,
+  Position,
+  PositionPromptResult,
+  VariantInfo,
+} from '../../features/industries/types';
 
-export const useIndustryStore = defineStore("industry", () => {
+export const useIndustryStore = defineStore('industry', () => {
   const industries = ref<Industry[]>([]);
   const currentIndustry = ref<Industry | null>(null);
   const departments = ref<Department[]>([]);
@@ -33,7 +39,7 @@ export const useIndustryStore = defineStore("industry", () => {
       const result = await listIndustries();
       industries.value = result.items;
     } catch (e: any) {
-      error.value = e?.message ?? "Failed to load industries";
+      error.value = e?.message ?? 'Failed to load industries';
     } finally {
       loadingIndustries.value = false;
     }
@@ -82,7 +88,7 @@ export const useIndustryStore = defineStore("industry", () => {
     try {
       variantList.value = await listPositionVariants(industryKey, positionKey);
     } catch {
-      variantList.value = [{ key: "general", label: "通用" }];
+      variantList.value = [{ key: 'general', label: '通用' }];
     } finally {
       loadingVariants.value = false;
     }
@@ -108,6 +114,6 @@ export const useIndustryStore = defineStore("industry", () => {
     loadDepartments,
     loadPositions,
     loadPositionPrompt,
-    loadPositionVariants
+    loadPositionVariants,
   };
 });

@@ -84,25 +84,25 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
-import SessionsBulkProgressBar from "../components/sessions/SessionsBulkProgressBar.vue";
-import SessionsBulkSelectionBar from "../components/sessions/SessionsBulkSelectionBar.vue";
-import SessionDeleteConfirmDialog from "../components/sessions/SessionDeleteConfirmDialog.vue";
-import SessionRetentionDialog from "../components/sessions/SessionRetentionDialog.vue";
-import SessionsErrorBanner from "../components/sessions/SessionsErrorBanner.vue";
-import SessionsFilterBar from "../components/sessions/SessionsFilterBar.vue";
-import SessionsPageHero from "../components/sessions/SessionsPageHero.vue";
-import SessionsSelectedDetail from "../components/sessions/SessionsSelectedDetail.vue";
-import SessionsSummaryCards from "../components/sessions/SessionsSummaryCards.vue";
-import SessionsTableSection from "../components/sessions/SessionsTableSection.vue";
+import { computed, onMounted } from 'vue';
+import SessionsBulkProgressBar from '../components/sessions/SessionsBulkProgressBar.vue';
+import SessionsBulkSelectionBar from '../components/sessions/SessionsBulkSelectionBar.vue';
+import SessionDeleteConfirmDialog from '../components/sessions/SessionDeleteConfirmDialog.vue';
+import SessionRetentionDialog from '../components/sessions/SessionRetentionDialog.vue';
+import SessionsErrorBanner from '../components/sessions/SessionsErrorBanner.vue';
+import SessionsFilterBar from '../components/sessions/SessionsFilterBar.vue';
+import SessionsPageHero from '../components/sessions/SessionsPageHero.vue';
+import SessionsSelectedDetail from '../components/sessions/SessionsSelectedDetail.vue';
+import SessionsSummaryCards from '../components/sessions/SessionsSummaryCards.vue';
+import SessionsTableSection from '../components/sessions/SessionsTableSection.vue';
 import {
   buildSessionsSummaryCards,
   contextFilterOptions,
   ownerFilterOptions,
   pageSizeSelectOptions,
-  statusFilterOptions
-} from "../components/sessions/sessionUi";
-import { useSessionsPage } from "../features/session/useSessionsPage";
+  statusFilterOptions,
+} from '../components/sessions/sessionUi';
+import { useSessionsPage } from '../features/session/useSessionsPage';
 
 const {
   rows,
@@ -148,7 +148,7 @@ const {
   promptDeleteSelected,
   archiveSelected,
   exportSession,
-  exportSelectedDetail
+  exportSelectedDetail,
 } = useSessionsPage();
 
 const summaryCards = computed(() => buildSessionsSummaryCards(rows.value, total.value));

@@ -17,7 +17,7 @@
         <q-list v-else bordered separator class="rounded-borders">
           <q-item v-for="item in versions" :key="item.version">
             <q-item-section>
-              <q-item-label>v{{ item.version }} · {{ item.name || "未命名" }}</q-item-label>
+              <q-item-label>v{{ item.version }} · {{ item.name || '未命名' }}</q-item-label>
               <q-item-label caption>{{ formatTime(item.savedAt) }}</q-item-label>
             </q-item-section>
             <q-item-section side>
@@ -38,9 +38,9 @@
 </template>
 
 <script setup lang="ts">
-import { useQuasar } from "quasar";
-import type { GraphVersionInfo } from "../../features/graph/types";
-import { formatTime } from "../../features/graph/utils";
+import { useQuasar } from 'quasar';
+import type { GraphVersionInfo } from '../../features/graph/types';
+import { formatTime } from '../../features/graph/utils';
 
 const $q = useQuasar();
 
@@ -52,20 +52,18 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:modelValue": [value: boolean];
+  'update:modelValue': [value: boolean];
   rollback: [version: number];
 }>();
 
 function confirmRollback(version: number) {
   $q.dialog({
-    title: "回滚版本",
+    title: '回滚版本',
     message: `确定回滚到 v${version}？当前版本将被覆盖。`,
     cancel: true,
     persistent: true,
   }).onOk(() => {
-    emit("rollback", version);
+    emit('rollback', version);
   });
 }
-
-
 </script>

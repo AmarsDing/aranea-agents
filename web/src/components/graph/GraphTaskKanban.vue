@@ -36,24 +36,22 @@
           />
         </template>
       </draggable>
-      <div v-if="columnItems(column.key).length === 0" class="workflow-kanban-board__empty">
-        暂无任务
-      </div>
+      <div v-if="columnItems(column.key).length === 0" class="workflow-kanban-board__empty">暂无任务</div>
     </template>
   </WorkflowKanbanBoard>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch, type ComponentPublicInstance } from "vue";
-import draggable from "vuedraggable";
-import type { Task } from "../../features/graph/types";
+import { computed, nextTick, reactive, ref, watch, type ComponentPublicInstance } from 'vue';
+import draggable from 'vuedraggable';
+import type { Task } from '../../features/graph/types';
 import {
   GRAPH_TASK_KANBAN_COLUMNS,
   GRAPH_TASK_KANBAN_EMPTY_HINT,
   kanbanAdminActionForDrop,
-} from "../../features/graph/tasks/kanbanColumns";
-import WorkflowKanbanBoard from "../workflow/WorkflowKanbanBoard.vue";
-import GraphTaskKanbanCard from "./GraphTaskKanbanCard.vue";
+} from '../../features/graph/tasks/kanbanColumns';
+import WorkflowKanbanBoard from '../workflow/WorkflowKanbanBoard.vue';
+import GraphTaskKanbanCard from './GraphTaskKanbanCard.vue';
 
 const props = defineProps<{
   tasks: Task[];
@@ -67,7 +65,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   refresh: [];
   selectTask: [taskId: string];
-  adminAction: [payload: { taskId: string; action: "unblock" | "approve" }];
+  adminAction: [payload: { taskId: string; action: 'unblock' | 'approve' }];
 }>();
 
 const emptyHint = GRAPH_TASK_KANBAN_EMPTY_HINT;
@@ -117,7 +115,7 @@ watch(
   (taskId) => {
     if (!taskId) return;
     nextTick(() => {
-      cardRefs.value.get(taskId)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      cardRefs.value.get(taskId)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
   },
 );
@@ -133,7 +131,7 @@ function onDragChange(targetColumnKey: string, evt: DragChangeEvent) {
   syncColumns();
   const action = kanbanAdminActionForDrop(targetColumnKey, task.status);
   if (action) {
-    emit("adminAction", { taskId: task.taskId, action });
+    emit('adminAction', { taskId: task.taskId, action });
   }
 }
 </script>

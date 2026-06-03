@@ -1,5 +1,5 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
   listL0Snapshots,
   listMemoryFacts,
@@ -16,8 +16,8 @@ import {
   previewCascadeApprove,
   getCascadeSagaSteps,
   retryCascadeApprove,
-  compensateCascadeApprove
-} from "../../features/memory/api";
+  compensateCascadeApprove,
+} from '../../features/memory/api';
 import type {
   L0AssemblySnapshot,
   L1Task,
@@ -32,8 +32,8 @@ import type {
   EvolutionMetricsReport,
   CascadePreview,
   CascadeProposal,
-  CascadeSagaStep
-} from "../../features/memory/types";
+  CascadeSagaStep,
+} from '../../features/memory/types';
 
 export type MemoryEvolutionBundle = {
   entities: MemoryEntity[];
@@ -44,7 +44,7 @@ export type MemoryEvolutionBundle = {
   metrics: EvolutionMetricsReport | null;
 };
 
-export const useMemoryStore = defineStore("memory", () => {
+export const useMemoryStore = defineStore('memory', () => {
   const snapshots = ref<L0AssemblySnapshot[]>([]);
   const facts = ref<MemoryFact[]>([]);
   const entities = ref<MemoryEntity[]>([]);
@@ -84,14 +84,14 @@ export const useMemoryStore = defineStore("memory", () => {
   }
 
   async function loadEvolutionForAgent(agentID: string): Promise<MemoryEvolutionBundle> {
-    const entityQuery = agentID ? { scope_type: "agent", scope_id: agentID, limit: 50 } : { limit: 50 };
+    const entityQuery = agentID ? { scope_type: 'agent', scope_id: agentID, limit: 50 } : { limit: 50 };
     const [entityResult, identity, strategy, proposals, events, metrics] = await Promise.all([
       listMemoryEntities(entityQuery),
       agentID ? getAgentIdentity(agentID).catch(() => null) : Promise.resolve(null),
       agentID ? getAgentStrategy(agentID).catch(() => null) : Promise.resolve(null),
-      agentID ? listEvolutionProposals(agentID, { status: "pending", limit: 20 }).catch(() => []) : Promise.resolve([]),
+      agentID ? listEvolutionProposals(agentID, { status: 'pending', limit: 20 }).catch(() => []) : Promise.resolve([]),
       agentID ? listEvolutionEvents(agentID, { limit: 20 }).catch(() => []) : Promise.resolve([]),
-      agentID ? getEvolutionMetrics(agentID).catch(() => null) : Promise.resolve(null)
+      agentID ? getEvolutionMetrics(agentID).catch(() => null) : Promise.resolve(null),
     ]);
     entities.value = entityResult.items;
     return {
@@ -100,7 +100,7 @@ export const useMemoryStore = defineStore("memory", () => {
       strategy,
       proposals,
       events,
-      metrics
+      metrics,
     };
   }
 
@@ -108,9 +108,9 @@ export const useMemoryStore = defineStore("memory", () => {
     loadingCascade.value = true;
     try {
       const [pending, partial, failed] = await Promise.all([
-        listCascadeProposals(agentID, { status: "pending", limit: 30 }).catch(() => []),
-        listCascadeProposals(agentID, { status: "partial", limit: 30 }).catch(() => []),
-        listCascadeProposals(agentID, { status: "failed", limit: 30 }).catch(() => [])
+        listCascadeProposals(agentID, { status: 'pending', limit: 30 }).catch(() => []),
+        listCascadeProposals(agentID, { status: 'partial', limit: 30 }).catch(() => []),
+        listCascadeProposals(agentID, { status: 'failed', limit: 30 }).catch(() => []),
       ]);
       cascadeProposals.value = [...pending, ...partial, ...failed];
       return cascadeProposals.value;
@@ -123,7 +123,7 @@ export const useMemoryStore = defineStore("memory", () => {
     return approveCascadeProposal(proposalID);
   }
 
-  async function rejectCascade(proposalID: string, reviewer = "admin", reason = "rejected from memory center") {
+  async function rejectCascade(proposalID: string, reviewer = 'admin', reason = 'rejected from memory center') {
     return rejectCascadeProposal(proposalID, reviewer, reason);
   }
 
@@ -147,11 +147,11 @@ export const useMemoryStore = defineStore("memory", () => {
     }
   }
 
-  async function retryCascade(proposalID: string, reviewer = "admin") {
+  async function retryCascade(proposalID: string, reviewer = 'admin') {
     return retryCascadeApprove(proposalID, reviewer);
   }
 
-  async function compensateCascade(proposalID: string, reviewer = "admin") {
+  async function compensateCascade(proposalID: string, reviewer = 'admin') {
     return compensateCascadeApprove(proposalID, reviewer);
   }
 
@@ -197,6 +197,6 @@ export const useMemoryStore = defineStore("memory", () => {
     clearCascadePreview,
     clearSnapshots,
     clearFacts,
-    clearEntities
+    clearEntities,
   };
 });

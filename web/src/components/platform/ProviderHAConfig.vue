@@ -88,8 +88,8 @@
 </template>
 
 <script setup lang="ts">
-import { reactive } from "vue";
-import type { HACandidateForm, ProviderHAForm } from "../../features/platform/types";
+import { reactive } from 'vue';
+import type { HACandidateForm, ProviderHAForm } from '../../features/platform/types';
 
 const props = defineProps<{
   modelValue: ProviderHAForm;
@@ -97,35 +97,35 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:modelValue": [value: ProviderHAForm];
+  'update:modelValue': [value: ProviderHAForm];
 }>();
 
 const haModeOptions = [
-  { label: "无", value: "" },
-  { label: "Failover", value: "failover" },
-  { label: "Hedge", value: "hedge" }
+  { label: '无', value: '' },
+  { label: 'Failover', value: 'failover' },
+  { label: 'Hedge', value: 'hedge' },
 ];
 
 function updateField<K extends keyof ProviderHAForm>(key: K, value: ProviderHAForm[K]) {
-  emit("update:modelValue", { ...props.modelValue, [key]: value });
+  emit('update:modelValue', { ...props.modelValue, [key]: value });
 }
 
 function updateCandidate(idx: number, key: keyof HACandidateForm, value: string) {
   const next = props.modelValue.haCandidates.map((item, i) => (i === idx ? { ...item, [key]: value } : item));
-  updateField("haCandidates", next);
+  updateField('haCandidates', next);
 }
 
 function addCandidate() {
-  updateField("haCandidates", [
+  updateField('haCandidates', [
     ...props.modelValue.haCandidates,
-    { name: "", providerType: "openai", baseUrl: "", apiKey: "" }
+    { name: '', providerType: 'openai', baseUrl: '', apiKey: '' },
   ]);
 }
 
 function removeCandidate(idx: number) {
   updateField(
-    "haCandidates",
-    props.modelValue.haCandidates.filter((_, i) => i !== idx)
+    'haCandidates',
+    props.modelValue.haCandidates.filter((_, i) => i !== idx),
   );
   Object.keys(visibleCandidateKeys).forEach((k) => {
     delete visibleCandidateKeys[Number(k)];

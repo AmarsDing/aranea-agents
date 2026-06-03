@@ -1,7 +1,5 @@
-import { createAgentService } from "../../services";
-import type {
-  CreateAgentRequest as KratosCreateAgentRequest
-} from "../../services/kratos/agent/v1/index";
+import { createAgentService } from '../../services';
+import type { CreateAgentRequest as KratosCreateAgentRequest } from '../../services/kratos/agent/v1/index';
 import type {
   Agent,
   AgentListQuery,
@@ -13,19 +11,19 @@ import type {
   EvolutionMetrics,
   EvolutionSuggestion,
   AgentPromptPreview,
-  AgentPromptSection
-} from "./types";
+  AgentPromptSection,
+} from './types';
 import {
   normalizeAgentFromService,
   normalizePromptFileFromWire,
   partialAgentToWire,
   promptFileToWire,
   runtimeSettingsToWire,
-  a2aProxyToWire
-} from "./wireNormalize";
-import type { A2AProxyConfig, AgentKind } from "./types";
-import { asRecord, pickI32, pickStr } from "../../shared/wireJson";
-import { tokenEstimateFor } from "../../components/agents/agentUi";
+  a2aProxyToWire,
+} from './wireNormalize';
+import type { A2AProxyConfig, AgentKind } from './types';
+import { asRecord, pickI32, pickStr } from '../../shared/wireJson';
+import { tokenEstimateFor } from '../../components/agents/agentUi';
 
 export type {
   Agent,
@@ -38,8 +36,8 @@ export type {
   EvolutionMetrics,
   EvolutionSuggestion,
   AgentPromptPreview,
-  AgentPromptSection
-} from "./types";
+  AgentPromptSection,
+} from './types';
 
 export async function listAgentsPaged(query: AgentListQuery = {}): Promise<AgentListResult> {
   const svc = createAgentService();
@@ -50,13 +48,13 @@ export async function listAgentsPaged(query: AgentListQuery = {}): Promise<Agent
     categoryId: query.category_id,
     createdBy: query.created_by,
     limit: query.limit,
-    offset: query.offset
+    offset: query.offset,
   });
   return {
     items: (res.items ?? []).map((row) => normalizeAgentFromService(row)),
     total: Number(res.total ?? res.items?.length ?? 0),
     limit: Number(res.limit ?? query.limit ?? 24),
-    offset: Number(res.offset ?? query.offset ?? 0)
+    offset: Number(res.offset ?? query.offset ?? 0),
   };
 }
 
@@ -103,7 +101,7 @@ export async function createAgent(payload: {
     budgetMonthlyCents: payload.budget_monthly_cents,
     configJson: payload.config_json,
     settings: payload.settings ? runtimeSettingsToWire(payload.settings) : undefined,
-    files: payload.files?.map(promptFileToWire)
+    files: payload.files?.map(promptFileToWire),
   };
   const svc = createAgentService();
   const data = await svc.CreateAgent(req);
@@ -120,7 +118,7 @@ export async function updateAgent(id: string, payload: Partial<Agent>): Promise<
   const svc = createAgentService();
   const data = await svc.UpdateAgent({
     id,
-    agent: partialAgentToWire(payload)
+    agent: partialAgentToWire(payload),
   });
   return normalizeAgentFromService(data);
 }
@@ -129,13 +127,13 @@ export async function listAgentTemplates(): Promise<AgentTemplatePreset[]> {
   const svc = createAgentService();
   const res = await svc.ListAgentTemplates({});
   return (res.items ?? []).map((row) => ({
-    key: row.key ?? "",
-    label: row.label ?? "",
-    icon: row.icon ?? "",
-    description: row.description ?? "",
-    display_name: row.displayName ?? "",
-    provider: row.provider ?? "",
-    model: row.model ?? ""
+    key: row.key ?? '',
+    label: row.label ?? '',
+    icon: row.icon ?? '',
+    description: row.description ?? '',
+    display_name: row.displayName ?? '',
+    provider: row.provider ?? '',
+    model: row.model ?? '',
   }));
 }
 
@@ -143,8 +141,8 @@ export async function listAgentCreators(): Promise<AgentCreatorOption[]> {
   const svc = createAgentService();
   const res = await svc.ListAgentCreators({});
   return (res.items ?? []).map((row) => ({
-    user_id: row.userId ?? "",
-    label: row.label ?? row.userId ?? ""
+    user_id: row.userId ?? '',
+    label: row.label ?? row.userId ?? '',
   }));
 }
 
@@ -157,7 +155,7 @@ export async function duplicateAgent(id: string): Promise<Agent> {
 export async function editPromptFileByAI(
   agentId: string,
   fileId: string,
-  instruction: string
+  instruction: string,
 ): Promise<AgentPromptFile> {
   const svc = createAgentService();
   const res = await svc.EditPromptFileByAI({ agentId, fileId, instruction });
@@ -173,10 +171,10 @@ export async function estimateAgentTokens(agentId: string): Promise<{
   return {
     total_tokens: Number(res.totalTokens ?? 0),
     file_estimates: (res.fileEstimates ?? []).map((row) => ({
-      file_id: row.fileId ?? "",
-      file_name: row.fileName ?? "",
-      estimated_tokens: Number(row.estimatedTokens ?? 0)
-    }))
+      file_id: row.fileId ?? '',
+      file_name: row.fileName ?? '',
+      estimated_tokens: Number(row.estimatedTokens ?? 0),
+    })),
   };
 }
 
@@ -189,24 +187,24 @@ export async function getAgentPromptPreview(id: string, mode?: string): Promise<
     ? sectionsRaw.map((row) => {
         const s = asRecord(row);
         return {
-          key: pickStr(s, "key", "key"),
-          label: pickStr(s, "label", "label"),
-          est_tokens: pickI32(s, "est_tokens", "estTokens"),
-          source: pickStr(s, "source", "source"),
+          key: pickStr(s, 'key', 'key'),
+          label: pickStr(s, 'label', 'label'),
+          est_tokens: pickI32(s, 'est_tokens', 'estTokens'),
+          source: pickStr(s, 'source', 'source'),
         };
       })
     : [];
-  const instruction = pickStr(r, "instruction", "instruction");
-  const summary = pickStr(r, "preview", "preview");
+  const instruction = pickStr(r, 'instruction', 'instruction');
+  const summary = pickStr(r, 'preview', 'preview');
   const textForStatic = instruction || summary;
-  let staticTotal = pickI32(r, "static_total_tokens", "staticTotalTokens");
-  let runtimeOverlay = pickI32(r, "runtime_overlay_est_tokens", "runtimeOverlayEstTokens");
+  let staticTotal = pickI32(r, 'static_total_tokens', 'staticTotalTokens');
+  let runtimeOverlay = pickI32(r, 'runtime_overlay_est_tokens', 'runtimeOverlayEstTokens');
   if (staticTotal <= 0 && textForStatic) {
     staticTotal = tokenEstimateFor(textForStatic);
   }
   if (runtimeOverlay <= 0) {
     runtimeOverlay = sections
-      .filter((row) => row.source === "runtime" && row.est_tokens > 0)
+      .filter((row) => row.source === 'runtime' && row.est_tokens > 0)
       .reduce((sum, row) => sum + row.est_tokens, 0);
   }
   return {
@@ -215,7 +213,7 @@ export async function getAgentPromptPreview(id: string, mode?: string): Promise<
     sections,
     static_total_tokens: staticTotal,
     runtime_overlay_est_tokens: runtimeOverlay,
-    runtime_note: pickStr(r, "runtime_note", "runtimeNote"),
+    runtime_note: pickStr(r, 'runtime_note', 'runtimeNote'),
   };
 }
 
@@ -230,10 +228,7 @@ export async function toggleAgentFavorite(id: string): Promise<Agent> {
   return normalizeAgentFromService(res);
 }
 
-export async function getAgentEvolutionMetrics(
-  agentId: string,
-  timeRange: string = "30d"
-): Promise<EvolutionMetrics> {
+export async function getAgentEvolutionMetrics(agentId: string, timeRange: string = '30d'): Promise<EvolutionMetrics> {
   const svc = createAgentService();
   const res = await svc.GetAgentEvolutionMetrics({ agentId, timeRange });
   return {
@@ -244,51 +239,45 @@ export async function getAgentEvolutionMetrics(
     total_episodes: res.totalEpisodes ?? 0,
     negative_feedback: res.negativeFeedback ?? 0,
     tool_success_series: (res.toolSuccessSeries ?? []).map((p) => ({
-      date: p.date ?? "",
-      value: p.value ?? 0
+      date: p.date ?? '',
+      value: p.value ?? 0,
     })),
     retrieval_quality_series: (res.retrievalQualitySeries ?? []).map((p) => ({
-      date: p.date ?? "",
-      value: p.value ?? 0
-    }))
+      date: p.date ?? '',
+      value: p.value ?? 0,
+    })),
   };
 }
 
-export async function getAgentEvolutionSuggestions(
-  agentId: string,
-  status?: string
-): Promise<EvolutionSuggestion[]> {
+export async function getAgentEvolutionSuggestions(agentId: string, status?: string): Promise<EvolutionSuggestion[]> {
   const svc = createAgentService();
   const res = await svc.GetAgentEvolutionSuggestions({ agentId, status });
   return (res.items ?? []).map((item) => ({
-    id: item.id ?? "",
-    agent_id: item.agentId ?? "",
-    type: item.type ?? "",
-    title: item.title ?? "",
-    content: item.content ?? "",
-    status: item.status ?? "",
-    diff_preview: item.diffPreview ?? "",
-    created_at: item.createdAt ?? "",
-    applied_at: item.appliedAt ?? ""
+    id: item.id ?? '',
+    agent_id: item.agentId ?? '',
+    type: item.type ?? '',
+    title: item.title ?? '',
+    content: item.content ?? '',
+    status: item.status ?? '',
+    diff_preview: item.diffPreview ?? '',
+    created_at: item.createdAt ?? '',
+    applied_at: item.appliedAt ?? '',
   }));
 }
 
-export async function applyEvolutionSuggestion(
-  agentId: string,
-  suggestionId: string
-): Promise<EvolutionSuggestion> {
+export async function applyEvolutionSuggestion(agentId: string, suggestionId: string): Promise<EvolutionSuggestion> {
   const svc = createAgentService();
   const res = await svc.ApplyEvolutionSuggestion({ agentId, suggestionId });
   return {
-    id: res.id ?? "",
-    agent_id: res.agentId ?? "",
-    type: res.type ?? "",
-    title: res.title ?? "",
-    content: res.content ?? "",
-    status: res.status ?? "",
-    diff_preview: res.diffPreview ?? "",
-    created_at: res.createdAt ?? "",
-    applied_at: res.appliedAt ?? ""
+    id: res.id ?? '',
+    agent_id: res.agentId ?? '',
+    type: res.type ?? '',
+    title: res.title ?? '',
+    content: res.content ?? '',
+    status: res.status ?? '',
+    diff_preview: res.diffPreview ?? '',
+    created_at: res.createdAt ?? '',
+    applied_at: res.appliedAt ?? '',
   };
 }
 
@@ -297,31 +286,24 @@ export async function checkAgentKey(agentKey: string): Promise<{ available: bool
   const res = await svc.CheckAgentKey({ agentKey });
   return {
     available: Boolean(res.available),
-    message: res.message ?? ""
+    message: res.message ?? '',
   };
 }
 
-export async function rejectEvolutionSuggestion(
-  agentId: string,
-  suggestionId: string
-): Promise<EvolutionSuggestion> {
+export async function rejectEvolutionSuggestion(agentId: string, suggestionId: string): Promise<EvolutionSuggestion> {
   const svc = createAgentService();
   const res = await svc.RejectEvolutionSuggestion({ agentId, suggestionId });
   return {
-    id: res.id ?? "",
-    agent_id: res.agentId ?? "",
-    type: res.type ?? "",
-    title: res.title ?? "",
-    content: res.content ?? "",
-    status: res.status ?? "",
-    diff_preview: res.diffPreview ?? "",
-    created_at: res.createdAt ?? "",
-    applied_at: res.appliedAt ?? ""
+    id: res.id ?? '',
+    agent_id: res.agentId ?? '',
+    type: res.type ?? '',
+    title: res.title ?? '',
+    content: res.content ?? '',
+    status: res.status ?? '',
+    diff_preview: res.diffPreview ?? '',
+    created_at: res.createdAt ?? '',
+    applied_at: res.appliedAt ?? '',
   };
 }
 
-export {
-  listPlatformResources as listAgentDependencies,
-  validateModel,
-  type PlatformResource
-} from "../platform/api";
+export { listPlatformResources as listAgentDependencies, validateModel, type PlatformResource } from '../platform/api';

@@ -34,5 +34,5 @@ defineProps<{
   promptModes: { value: string; label: string; caption: string; tokens: string }[];
 }>();
 
-defineEmits<{ "update:systemPromptMode": [value: string] }>();
+defineEmits<{ 'update:systemPromptMode': [value: string] }>();
 </script>

@@ -1,55 +1,52 @@
-import type { Envelope } from "../../realtime/envelope";
-import type { MonitorLogLine, MonitorTraceEvent } from "./types";
-import { parseJSON } from "./utils";
+import type { Envelope } from '../../realtime/envelope';
+import type { MonitorLogLine, MonitorTraceEvent } from './types';
+import { parseJSON } from './utils';
 
-export type FlowSeverity = "ok" | "info" | "warn" | "error" | "critical";
+export type FlowSeverity = 'ok' | 'info' | 'warn' | 'error' | 'critical';
 
 function str(v: unknown): string {
-  return v == null ? "" : String(v);
+  return v == null ? '' : String(v);
 }
 
-export function flowSeverityToLevel(severity: string): MonitorLogLine["level"] {
+export function flowSeverityToLevel(severity: string): MonitorLogLine['level'] {
   switch (severity) {
-    case "critical":
-    case "error":
-      return "ERROR";
-    case "warn":
-      return "WARN";
-    case "info":
-    case "ok":
+    case 'critical':
+    case 'error':
+      return 'ERROR';
+    case 'warn':
+      return 'WARN';
+    case 'info':
+    case 'ok':
     default:
-      return "INFO";
+      return 'INFO';
   }
 }
 
 /** Map WS flow_log envelope → Monitor log line for LogStream. */
 export function monitorLogLineFromFlowEnvelope(env: Envelope): MonitorLogLine | null {
   const m = env.metadata ?? {};
-  const severity = str(m.severity || "info") as FlowSeverity;
+  const severity = str(m.severity || 'info') as FlowSeverity;
   const title = str(m.title);
   const message = str(m.message);
   const stepId = str(m.step_id);
   const phase = str(m.flow_phase);
-  const display =
-    env.content?.text?.trim() ||
-    [title, message].filter(Boolean).join(" — ") ||
-    `${stepId}.${phase}`;
+  const display = env.content?.text?.trim() || [title, message].filter(Boolean).join(' — ') || `${stepId}.${phase}`;
 
   return {
     id: str(m.flow_id || env.id),
     time: env.timestamp,
     level: flowSeverityToLevel(severity),
     message: display,
-    source: str(m.agent_key || env.author || "flow"),
+    source: str(m.agent_key || env.author || 'flow'),
     created_at: env.timestamp,
-    kind: "flow",
+    kind: 'flow',
     severity,
     title,
     step_id: stepId,
     trace_id: str(m.trace_id),
     run_id: str(m.run_id),
     session_id: str(m.session_id),
-    hint: str(m.hint)
+    hint: str(m.hint),
   };
 }
 
@@ -59,23 +56,23 @@ export function traceCorrelationFromUsageRow(row: MonitorTraceEvent): {
   runId: string;
   sessionId: string;
 } {
-  const meta = parseJSON(row.metadata_json || "");
+  const meta = parseJSON(row.metadata_json || '');
   return {
     traceId: str(meta.trace_id),
     runId: str(row.message_id || meta.run_id),
-    sessionId: str(row.session_id)
+    sessionId: str(row.session_id),
   };
 }
 
 /** Whether a live flow log line belongs to the open trace detail. */
 export function flowLogMatchesTrace(
   line: MonitorLogLine,
-  opts: { traceId?: string; runId?: string; sessionId?: string }
+  opts: { traceId?: string; runId?: string; sessionId?: string },
 ): boolean {
-  if (line.kind !== "flow") return false;
-  const traceId = (opts.traceId || "").trim();
-  const runId = (opts.runId || "").trim();
-  const sessionId = (opts.sessionId || "").trim();
+  if (line.kind !== 'flow') return false;
+  const traceId = (opts.traceId || '').trim();
+  const runId = (opts.runId || '').trim();
+  const sessionId = (opts.sessionId || '').trim();
   if (traceId && line.trace_id && line.trace_id !== traceId) return false;
   if (runId && line.run_id && line.run_id !== runId) return false;
   if (sessionId && line.session_id && line.session_id !== sessionId) return false;
@@ -108,43 +105,43 @@ export type FlowLogExportEntry = {
 
 export function flowLogExportEntryFromLine(line: MonitorLogLine): FlowLogExportEntry {
   return {
-    schema_version: "flow_log/v1",
+    schema_version: 'flow_log/v1',
     id: line.id,
     timestamp: line.time,
     correlation: {
-      trace_id: line.trace_id || "",
-      session_id: line.session_id || "",
-      run_id: line.run_id || "",
-      domain: "chat",
-      agent_key: line.source || ""
+      trace_id: line.trace_id || '',
+      session_id: line.session_id || '',
+      run_id: line.run_id || '',
+      domain: 'chat',
+      agent_key: line.source || '',
     },
-    step: { id: line.step_id || "", phase: "" },
-    severity: line.severity || "info",
-    title: line.title || "",
+    step: { id: line.step_id || '', phase: '' },
+    severity: line.severity || 'info',
+    title: line.title || '',
     message: line.message,
-    hint: line.hint || undefined
+    hint: line.hint || undefined,
   };
 }
 
 /** Build AI-friendly JSONL (bundle header + one entry per line). */
 export function buildFlowDiagnosticJsonl(traceId: string, lines: MonitorLogLine[]): string {
-  const sorted = sortFlowLogLines(lines.filter((l) => l.kind === "flow"));
+  const sorted = sortFlowLogLines(lines.filter((l) => l.kind === 'flow'));
   const header = {
-    type: "flow_diagnostic_bundle",
-    schema_version: "flow_log/v1",
+    type: 'flow_diagnostic_bundle',
+    schema_version: 'flow_log/v1',
     trace_id: traceId,
     exported_at: new Date().toISOString(),
-    entry_count: sorted.length
+    entry_count: sorted.length,
   };
   const body = sorted.map((line) => flowLogExportEntryFromLine(line));
-  return `${JSON.stringify(header)}\n${body.map((row) => JSON.stringify(row)).join("\n")}\n`;
+  return `${JSON.stringify(header)}\n${body.map((row) => JSON.stringify(row)).join('\n')}\n`;
 }
 
 export function downloadFlowDiagnosticJsonl(traceId: string, lines: MonitorLogLine[]): void {
-  const safeId = (traceId || "unknown").replace(/[^\w.-]+/g, "_").slice(0, 64);
-  const blob = new Blob([buildFlowDiagnosticJsonl(traceId, lines)], { type: "application/x-ndjson;charset=utf-8" });
+  const safeId = (traceId || 'unknown').replace(/[^\w.-]+/g, '_').slice(0, 64);
+  const blob = new Blob([buildFlowDiagnosticJsonl(traceId, lines)], { type: 'application/x-ndjson;charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
+  const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = `flow-diagnostic-${safeId}.jsonl`;
   anchor.click();

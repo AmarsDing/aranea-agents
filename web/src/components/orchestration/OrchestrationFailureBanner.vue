@@ -11,7 +11,14 @@
     </div>
     <template #action>
       <q-btn v-if="canRetry" flat dense color="primary" label="重试" @click="$emit('retry', primary?.node_id)" />
-      <q-btn v-if="canFallback" flat dense color="warning" label="切 fallback" @click="$emit('fallback', primary?.node_id)" />
+      <q-btn
+        v-if="canFallback"
+        flat
+        dense
+        color="warning"
+        label="切 fallback"
+        @click="$emit('fallback', primary?.node_id)"
+      />
       <q-btn v-if="canReview" flat dense color="primary" label="审核" @click="$emit('review', primary?.node_id)" />
       <q-btn flat dense color="negative" label="终止" @click="confirmHalt" />
     </template>
@@ -19,9 +26,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { useQuasar } from "quasar";
-import type { AgentNodeState } from "../../features/orchestration/types";
+import { computed } from 'vue';
+import { useQuasar } from 'quasar';
+import type { AgentNodeState } from '../../features/orchestration/types';
 
 const $q = useQuasar();
 
@@ -30,65 +37,72 @@ const props = defineProps<{
   runStatus?: string;
 }>();
 
-const emit = defineEmits<{ retry: [nodeId?: string]; fallback: [nodeId?: string]; review: [nodeId?: string]; halt: [] }>();
+const emit = defineEmits<{
+  retry: [nodeId?: string];
+  fallback: [nodeId?: string];
+  review: [nodeId?: string];
+  halt: [];
+}>();
 
 function confirmHalt() {
   $q.dialog({
-    title: "终止编排",
-    message: "确定终止当前编排运行？此操作不可撤销。",
+    title: '终止编排',
+    message: '确定终止当前编排运行？此操作不可撤销。',
     cancel: true,
     persistent: true,
   }).onOk(() => {
-    emit("halt");
+    emit('halt');
   });
 }
 
 const failedNodes = computed(() =>
   props.nodes.filter(
     (n) =>
-      n.status === "failed" ||
-      n.status === "waiting_review" ||
-      n.status === "blocked" ||
-      n.display_status === "failed" ||
+      n.status === 'failed' ||
+      n.status === 'waiting_review' ||
+      n.status === 'blocked' ||
+      n.display_status === 'failed' ||
       isCircuitOpen(n),
   ),
 );
 
 function isCircuitOpen(n: AgentNodeState): boolean {
-  if (n.status === "blocked") return true;
-  const msg = String(n.error_message ?? "").toLowerCase();
-  return msg.includes("circuit") || msg.includes("熔断");
+  if (n.status === 'blocked') return true;
+  const msg = String(n.error_message ?? '').toLowerCase();
+  return msg.includes('circuit') || msg.includes('熔断');
 }
 
-const visible = computed(() => failedNodes.value.length > 0 || props.runStatus === "failed");
+const visible = computed(() => failedNodes.value.length > 0 || props.runStatus === 'failed');
 
 const primary = computed(() => failedNodes.value[0]);
 
 const circuitOpen = computed(() => Boolean(primary.value && isCircuitOpen(primary.value)));
 
 const title = computed(() => {
-  if (circuitOpen.value) return "熔断器已打开 (FP-02)";
-  if (primary.value?.status === "waiting_review") return "等待人工审核 (HITL)";
-  if (primary.value?.status === "failed") return "节点执行失败";
-  return "编排运行异常";
+  if (circuitOpen.value) return '熔断器已打开 (FP-02)';
+  if (primary.value?.status === 'waiting_review') return '等待人工审核 (HITL)';
+  if (primary.value?.status === 'failed') return '节点执行失败';
+  return '编排运行异常';
 });
 
 const message = computed(() => {
   if (circuitOpen.value) {
-    return primary.value?.error_message || "节点因连续失败被熔断阻断，可重试或切换 fallback。";
+    return primary.value?.error_message || '节点因连续失败被熔断阻断，可重试或切换 fallback。';
   }
-  return primary.value?.error_message || primary.value?.output_preview || "请查看 Kanban / Graph 详情。";
+  return primary.value?.error_message || primary.value?.output_preview || '请查看 Kanban / Graph 详情。';
 });
 
 const iconName = computed(() => {
-  if (circuitOpen.value) return "bolt";
-  if (primary.value?.status === "waiting_review") return "hourglass_empty";
-  return "error";
+  if (circuitOpen.value) return 'bolt';
+  if (primary.value?.status === 'waiting_review') return 'hourglass_empty';
+  return 'error';
 });
 
-const iconColor = computed(() => (circuitOpen.value ? "orange" : "negative"));
+const iconColor = computed(() => (circuitOpen.value ? 'orange' : 'negative'));
 
-const canReview = computed(() => primary.value?.status === "waiting_review");
-const canRetry = computed(() => primary.value?.status === "failed" || circuitOpen.value);
-const canFallback = computed(() => primary.value?.status === "failed" || circuitOpen.value || primary.value?.status === "waiting_review");
+const canReview = computed(() => primary.value?.status === 'waiting_review');
+const canRetry = computed(() => primary.value?.status === 'failed' || circuitOpen.value);
+const canFallback = computed(
+  () => primary.value?.status === 'failed' || circuitOpen.value || primary.value?.status === 'waiting_review',
+);
 </script>

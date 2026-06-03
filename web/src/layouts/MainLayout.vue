@@ -1,18 +1,8 @@
 <template>
   <q-layout view="hHh LpR fFf" class="app-layout-root">
-    <q-header
-      :elevated="false"
-      :class="isDark ? 'dark-header' : 'cream-header'"
-    >
+    <q-header :elevated="false" :class="isDark ? 'dark-header' : 'cream-header'">
       <q-toolbar class="q-px-sm-md">
-        <q-btn
-          flat
-          dense
-          round
-          icon="menu"
-          aria-label="Menu"
-          @click="drawerOpen = !drawerOpen"
-        />
+        <q-btn flat dense round icon="menu" aria-label="Menu" @click="drawerOpen = !drawerOpen" />
         <q-btn
           v-if="isDesktop"
           flat
@@ -23,7 +13,7 @@
           @click="drawerMini = !drawerMini"
         />
         <q-toolbar-title class="q-pl-sm app-toolbar-title text-weight-bold">
-          {{ t("common.appTitle") }}
+          {{ t('common.appTitle') }}
         </q-toolbar-title>
         <q-space />
         <div class="row items-center q-gutter-sm q-mr-sm app-header-actions">
@@ -45,7 +35,7 @@
                 </q-item>
                 <q-separator />
                 <q-item v-close-popup clickable @click="onLogout">
-                  <q-item-section>{{ t("auth.logout") }}</q-item-section>
+                  <q-item-section>{{ t('auth.logout') }}</q-item-section>
                 </q-item>
               </q-list>
             </q-menu>
@@ -84,42 +74,34 @@
     >
       <div class="app-sidebar-card">
         <div class="app-sidebar__scroll fit">
-        <q-list class="app-sidebar-nav" :dense="drawerMini">
-          <template v-for="(group, gi) in sideNavGroups" :key="`g-${gi}`">
-            <q-item-label
-              v-show="!drawerMini"
-              header
-              class="app-sidebar-section-label"
-            >
-              {{ t(group.labelKey) }}
-            </q-item-label>
-            <div class="app-sidebar-group__items">
-              <q-item
-                v-for="(item, ii) in group.items"
-                v-ripple
-                :key="`g-${gi}-i-${ii}`"
-                clickable
-                class="app-sidebar-nav-item"
-                :active="isNavItemActive(item)"
-                active-class="app-sidebar-item--active"
-                @click="navigateTo(item.to)"
-              >
-                <q-tooltip v-if="drawerMini" anchor="center right" self="center left" :offset="[8, 0]">
-                  {{ t(item.labelKey) }}
-                </q-tooltip>
-                <q-item-section avatar>
-                  <q-icon :name="item.icon" />
-                </q-item-section>
-                <q-item-section v-show="!drawerMini">{{ t(item.labelKey) }}</q-item-section>
-              </q-item>
-            </div>
-            <q-separator
-              v-if="gi < sideNavGroups.length - 1"
-              v-show="!drawerMini"
-              class="app-sidebar-divider"
-            />
-          </template>
-        </q-list>
+          <q-list class="app-sidebar-nav" :dense="drawerMini">
+            <template v-for="(group, gi) in sideNavGroups" :key="`g-${gi}`">
+              <q-item-label v-show="!drawerMini" header class="app-sidebar-section-label">
+                {{ t(group.labelKey) }}
+              </q-item-label>
+              <div class="app-sidebar-group__items">
+                <q-item
+                  v-for="(item, ii) in group.items"
+                  :key="`g-${gi}-i-${ii}`"
+                  v-ripple
+                  clickable
+                  class="app-sidebar-nav-item"
+                  :active="isNavItemActive(item)"
+                  active-class="app-sidebar-item--active"
+                  @click="navigateTo(item.to)"
+                >
+                  <q-tooltip v-if="drawerMini" anchor="center right" self="center left" :offset="[8, 0]">
+                    {{ t(item.labelKey) }}
+                  </q-tooltip>
+                  <q-item-section avatar>
+                    <q-icon :name="item.icon" />
+                  </q-item-section>
+                  <q-item-section v-show="!drawerMini">{{ t(item.labelKey) }}</q-item-section>
+                </q-item>
+              </div>
+              <q-separator v-if="gi < sideNavGroups.length - 1" v-show="!drawerMini" class="app-sidebar-divider" />
+            </template>
+          </q-list>
         </div>
       </div>
     </q-drawer>
@@ -131,16 +113,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { useI18n } from "vue-i18n";
-import { useQuasar } from "quasar";
-import { setQuasarLangFor } from "../i18n/quasar-lang";
-import { sideNavGroups } from "../config/sideNav";
-import { useAuthStore } from "../stores/auth";
-import { useInboundNotificationStore } from "../stores/inboundNotifications";
-import InboundNotificationBell from "../components/layout/InboundNotificationBell.vue";
-import { useGlobalInboundNotifications } from "../composables/useGlobalInboundNotifications";
+import { computed, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
+import { setQuasarLangFor } from '../i18n/quasar-lang';
+import { sideNavGroups } from '../config/sideNav';
+import { useAuthStore } from '../stores/auth';
+import { useInboundNotificationStore } from '../stores/inboundNotifications';
+import InboundNotificationBell from '../components/layout/InboundNotificationBell.vue';
+import { useGlobalInboundNotifications } from '../composables/useGlobalInboundNotifications';
 
 const { t, locale } = useI18n();
 const $q = useQuasar();
@@ -157,22 +139,22 @@ const isDesktop = computed(() => $q.screen.gt.xs);
 const isDark = computed(() => $q.dark.isActive);
 
 const localeOptions = [
-  { label: "中文", value: "zh-CN" as const },
-  { label: "English", value: "en-US" as const }
+  { label: '中文', value: 'zh-CN' as const },
+  { label: 'English', value: 'en-US' as const },
 ];
 
 watch(
   () => $q.dark.isActive,
   (on) => {
-    if (typeof localStorage === "undefined") return;
-    localStorage.setItem("theme", on ? "dark" : "light");
-  }
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem('theme', on ? 'dark' : 'light');
+  },
 );
 
 watch(locale, (v) => {
   setQuasarLangFor(String(v));
-  if (v === "zh-CN" || v === "en-US") {
-    localStorage.setItem("locale", v);
+  if (v === 'zh-CN' || v === 'en-US') {
+    localStorage.setItem('locale', v);
   }
 });
 
@@ -190,11 +172,11 @@ async function navigateTo(path: string) {
 }
 
 function onOpenInboundSession(sessionId: string, agentId: string) {
-  void router.push({ name: "chat", query: { session: sessionId, agent: agentId } });
+  void router.push({ name: 'chat', query: { session: sessionId, agent: agentId } });
 }
 
 async function onLogout() {
   await auth.logout();
-  await router.push("/login");
+  await router.push('/login');
 }
 </script>

@@ -13,8 +13,6 @@ export {
   globalWsConsumerUnsubscribe,
   globalWsConsumerEnableLog,
   globalWsHubConnected,
-} from "../../realtime/globalWsHub";
+} from '../../realtime/globalWsHub';
 
-export type {
-  GlobalWsConsumer,
-} from "../../realtime/globalWsHub";
+export type { GlobalWsConsumer } from '../../realtime/globalWsHub';

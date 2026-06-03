@@ -5,7 +5,16 @@
       <q-input v-model="capability" class="app-page-toolbar__field" dense outlined clearable label="Capability" />
       <template #actions>
         <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
-        <q-btn color="primary" unelevated no-caps rounded icon="search" label="发现" :loading="loading" @click="onDiscover" />
+        <q-btn
+          color="primary"
+          unelevated
+          no-caps
+          rounded
+          icon="search"
+          label="发现"
+          :loading="loading"
+          @click="onDiscover"
+        />
       </template>
     </AppPageToolbar>
     <AppRegistryTable
@@ -23,13 +32,15 @@
       </template>
       <template #body-cell-display_name="props">
         <q-td :props="props">
-          <span class="app-registry-cell-sub ellipsis" :title="props.row.display_name">{{ props.row.display_name || "—" }}</span>
+          <span class="app-registry-cell-sub ellipsis" :title="props.row.display_name">{{
+            props.row.display_name || '—'
+          }}</span>
         </q-td>
       </template>
       <template #body-cell-enabled="props">
         <q-td :props="props">
           <q-chip dense :color="props.row.enabled ? 'positive' : 'grey'" text-color="white" size="sm">
-            {{ props.row.enabled ? "启用" : "禁用" }}
+            {{ props.row.enabled ? '启用' : '禁用' }}
           </q-chip>
         </q-td>
       </template>
@@ -53,12 +64,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import AppPageToolbar from "../layout/AppPageToolbar.vue";
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
-import type { A2AAgentCard } from "../../features/a2a/types";
-import type { RegistryTableColumn } from "../../features/ui/registryTableColumns";
+import { computed, ref, watch } from 'vue';
+import AppPageToolbar from '../layout/AppPageToolbar.vue';
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
+import type { A2AAgentCard } from '../../features/a2a/types';
+import type { RegistryTableColumn } from '../../features/ui/registryTableColumns';
 
 const props = defineProps<{
   agents: A2AAgentCard[];
@@ -66,13 +77,17 @@ const props = defineProps<{
   columns: RegistryTableColumn<A2AAgentCard>[];
 }>();
 
-const workspace = defineModel<string>("workspace", { default: "" });
-const capability = defineModel<string>("capability", { default: "" });
+const workspace = defineModel<string>('workspace', { default: '' });
+const capability = defineModel<string>('capability', { default: '' });
 
-watch(workspace, (v) => { if (v == null) workspace.value = ""; });
-watch(capability, (v) => { if (v == null) capability.value = ""; });
+watch(workspace, (v) => {
+  if (v == null) workspace.value = '';
+});
+watch(capability, (v) => {
+  if (v == null) capability.value = '';
+});
 
-const emit = defineEmits<{ discover:[] }>();
+const emit = defineEmits<{ discover: [] }>();
 
 const page = ref(1);
 const pageSize = ref(10);
@@ -83,13 +98,13 @@ const pagedRows = computed(() => {
 });
 
 function resetFilters() {
-  workspace.value = "";
-  capability.value = "";
+  workspace.value = '';
+  capability.value = '';
   page.value = 1;
 }
 
 function onDiscover() {
   page.value = 1;
-  emit("discover");
+  emit('discover');
 }
 </script>

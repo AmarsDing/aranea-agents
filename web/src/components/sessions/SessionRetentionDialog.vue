@@ -13,15 +13,11 @@
           label="保留最近（天）"
           :min="1"
         />
-        <q-checkbox
-          v-if="mode === 'delete'"
-          v-model="includeArchived"
-          dense
-          class="q-mt-sm"
-          label="包含已归档会话"
-        />
+        <q-checkbox v-if="mode === 'delete'" v-model="includeArchived" dense class="q-mt-sm" label="包含已归档会话" />
         <div v-if="preview" class="q-mt-md q-pa-sm app-glass-inset-preview">
-          <div>将{{ actionVerb }} <strong>{{ preview.matched }}</strong> 个会话</div>
+          <div>
+            将{{ actionVerb }} <strong>{{ preview.matched }}</strong> 个会话
+          </div>
           <div class="text-caption q-mt-xs">
             保留最近 {{ days }} 天
             <span v-if="preview.skipped_running">；运行中将跳过（{{ preview.skipped_running }}）</span>
@@ -59,8 +55,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import type { BatchPreviewResult, RetentionDialogMode } from "../../features/session/types";
+import { computed, ref, watch } from 'vue';
+import type { BatchPreviewResult, RetentionDialogMode } from '../../features/session/types';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -71,7 +67,7 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  "update:modelValue": [v: boolean];
+  'update:modelValue': [v: boolean];
   preview: [payload: { days: number; includeArchived: boolean }];
   confirm: [payload: { days: number; includeArchived: boolean }];
 }>();
@@ -79,14 +75,12 @@ defineEmits<{
 const days = ref(30);
 const includeArchived = ref(false);
 
-const title = computed(() => (props.mode === "archive" ? "按天数批量归档" : "按天数批量删除"));
+const title = computed(() => (props.mode === 'archive' ? '按天数批量归档' : '按天数批量删除'));
 const subtitle = computed(() =>
-  props.mode === "archive"
-    ? "归档 cutoff 之前的会话，保留最近 N 天。"
-    : "永久删除 cutoff 之外的会话，保留最近 N 天。"
+  props.mode === 'archive' ? '归档 cutoff 之前的会话，保留最近 N 天。' : '永久删除 cutoff 之外的会话，保留最近 N 天。',
 );
-const actionVerb = computed(() => (props.mode === "archive" ? "归档" : "删除"));
-const confirmLabel = computed(() => (props.mode === "archive" ? "确认归档" : "确认删除"));
+const actionVerb = computed(() => (props.mode === 'archive' ? '归档' : '删除'));
+const confirmLabel = computed(() => (props.mode === 'archive' ? '确认归档' : '确认删除'));
 
 watch(
   () => props.modelValue,
@@ -95,6 +89,6 @@ watch(
       days.value = 30;
       includeArchived.value = false;
     }
-  }
+  },
 );
 </script>

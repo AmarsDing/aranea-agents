@@ -33,7 +33,15 @@
       label="Workspace（跨工作区 Invoke）"
       hint="Admin 路径：须与 X-Workspace-ID 及被调 Agent Card 一致"
     />
-    <q-input v-model="payloadJson" dense outlined type="textarea" rows="6" label="Payload JSON" hint='例如 {"message":"你好"}' />
+    <q-input
+      v-model="payloadJson"
+      dense
+      outlined
+      type="textarea"
+      rows="6"
+      label="Payload JSON"
+      hint='例如 {"message":"你好"}'
+    />
     <q-input v-model.number="timeoutSeconds" dense outlined type="number" label="Timeout (秒)" />
     <q-btn color="primary" unelevated icon="send" label="Invoke" :loading="loading" @click="$emit('invoke')" />
     <q-card v-if="result" flat bordered class="q-pa-sm">
@@ -45,8 +53,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from "vue";
-import type { A2AAgentCard, A2AInvokeResult } from "../../features/a2a/types";
+import { computed, watch } from 'vue';
+import type { A2AAgentCard, A2AInvokeResult } from '../../features/a2a/types';
 
 const props = defineProps<{
   loading: boolean;
@@ -54,24 +62,28 @@ const props = defineProps<{
   discoveredAgents?: A2AAgentCard[];
 }>();
 
-const calleeAgentId = defineModel<string>("calleeAgentId", { default: "" });
-const capability = defineModel<string>("capability", { default: "" });
-const payloadJson = defineModel<string>("payloadJson", { default: "{}" });
-const timeoutSeconds = defineModel<number>("timeoutSeconds", { default: 30 });
-const workspace = defineModel<string>("workspace", { default: "" });
+const calleeAgentId = defineModel<string>('calleeAgentId', { default: '' });
+const capability = defineModel<string>('capability', { default: '' });
+const payloadJson = defineModel<string>('payloadJson', { default: '{}' });
+const timeoutSeconds = defineModel<number>('timeoutSeconds', { default: 30 });
+const workspace = defineModel<string>('workspace', { default: '' });
 
 defineEmits<{ invoke: [] }>();
 
-watch(calleeAgentId, (v) => { if (v == null) calleeAgentId.value = ""; });
-watch(capability, (v) => { if (v == null) capability.value = ""; });
+watch(calleeAgentId, (v) => {
+  if (v == null) calleeAgentId.value = '';
+});
+watch(capability, (v) => {
+  if (v == null) capability.value = '';
+});
 
 const agentOptions = computed(() =>
   (props.discoveredAgents ?? [])
     .filter((a) => a.enabled)
     .map((a) => ({
       label: `${a.display_name || a.agent_id} (${a.agent_id})`,
-      value: a.agent_id
-    }))
+      value: a.agent_id,
+    })),
 );
 
 const capabilityOptions = computed(() => {

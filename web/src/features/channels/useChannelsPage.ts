@@ -1,10 +1,10 @@
-import { computed, onMounted, ref } from "vue";
-import { useI18n } from "vue-i18n";
-import { useQuasar } from "quasar";
-import { storeToRefs } from "pinia";
-import { channelConfig, channelMetadata, copyChannelWebhookURL } from "../../components/channels/channelUi";
-import { useChannelsStore } from "../../stores/channels";
-import type { ChannelCredential, ChannelRow } from "./types";
+import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
+import { storeToRefs } from 'pinia';
+import { channelConfig, channelMetadata, copyChannelWebhookURL } from '../../components/channels/channelUi';
+import { useChannelsStore } from '../../stores/channels';
+import type { ChannelCredential, ChannelRow } from './types';
 
 export function useChannelsPage() {
   const { t } = useI18n();
@@ -12,24 +12,24 @@ export function useChannelsPage() {
   const channelsStore = useChannelsStore();
   const { channels: rows, catalog, loading } = storeToRefs(channelsStore);
 
-  const error = ref("");
-  const search = ref("");
-  const typeFilter = ref("");
-  const statusFilter = ref("");
-  const togglingId = ref("");
-  const testingId = ref("");
+  const error = ref('');
+  const search = ref('');
+  const typeFilter = ref('');
+  const statusFilter = ref('');
+  const togglingId = ref('');
+  const testingId = ref('');
   const editorOpen = ref(false);
   const editingRow = ref<ChannelRow | null>(null);
   const editingCredentials = ref<ChannelCredential[]>([]);
-  const opsChannelId = ref("");
+  const opsChannelId = ref('');
 
   const typeOptions = computed(() => catalog.value.map((item) => ({ label: item.label, value: item.type })));
   const statusOptions = computed(() => [
-    { label: t("channelsPage.enabled"), value: "enabled" },
-    { label: t("channelsPage.disabled"), value: "disabled" },
-    { label: t("channelsPage.statusActive"), value: "active" },
-    { label: t("channelsPage.statusPendingAuth"), value: "pending_auth" },
-    { label: t("channelsPage.statusError"), value: "error" }
+    { label: t('channelsPage.enabled'), value: 'enabled' },
+    { label: t('channelsPage.disabled'), value: 'disabled' },
+    { label: t('channelsPage.statusActive'), value: 'active' },
+    { label: t('channelsPage.statusPendingAuth'), value: 'pending_auth' },
+    { label: t('channelsPage.statusError'), value: 'error' },
   ]);
 
   const filteredRows = computed(() => {
@@ -38,12 +38,14 @@ export function useChannelsPage() {
       const cfg = channelConfig(row);
       const meta = channelMetadata(row);
       if (typeFilter.value && cfg.type !== typeFilter.value) return false;
-      if (statusFilter.value === "enabled" && !row.enabled) return false;
-      if (statusFilter.value === "disabled" && row.enabled) return false;
-      if (!["", "enabled", "disabled"].includes(statusFilter.value) && row.status !== statusFilter.value) return false;
+      if (statusFilter.value === 'enabled' && !row.enabled) return false;
+      if (statusFilter.value === 'disabled' && row.enabled) return false;
+      if (!['', 'enabled', 'disabled'].includes(statusFilter.value) && row.status !== statusFilter.value) return false;
       if (!keyword) return true;
       return [row.name, row.key, row.description, cfg.type, meta.external_id].some((value) =>
-        String(value || "").toLowerCase().includes(keyword)
+        String(value || '')
+          .toLowerCase()
+          .includes(keyword),
       );
     });
   });
@@ -60,18 +62,18 @@ export function useChannelsPage() {
   onMounted(() => void loadAll());
 
   function resetFilters() {
-    search.value = "";
-    typeFilter.value = "";
-    statusFilter.value = "";
+    search.value = '';
+    typeFilter.value = '';
+    statusFilter.value = '';
     page.value = 1;
   }
 
   async function loadAll() {
-    error.value = "";
+    error.value = '';
     try {
       await channelsStore.loadAll();
     } catch (err) {
-      error.value = err instanceof Error ? err.message : t("channelsPage.loadFailed");
+      error.value = err instanceof Error ? err.message : t('channelsPage.loadFailed');
     }
   }
 
@@ -96,7 +98,7 @@ export function useChannelsPage() {
   }
 
   function closeOps() {
-    opsChannelId.value = "";
+    opsChannelId.value = '';
   }
 
   async function toggleRow(row: ChannelRow, enabled: boolean) {
@@ -105,13 +107,13 @@ export function useChannelsPage() {
       const updated = await channelsStore.toggle(row.id, enabled);
       onSaved(updated);
       $q.notify({
-        type: "positive",
-        message: enabled ? t("channelsPage.toggleOkEnabled") : t("channelsPage.toggleOkDisabled")
+        type: 'positive',
+        message: enabled ? t('channelsPage.toggleOkEnabled') : t('channelsPage.toggleOkDisabled'),
       });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : t("channelsPage.toggleFailed") });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('channelsPage.toggleFailed') });
     } finally {
-      togglingId.value = "";
+      togglingId.value = '';
     }
   }
 
@@ -119,39 +121,42 @@ export function useChannelsPage() {
     testingId.value = row.id;
     try {
       const result = await channelsStore.testConnection(row.id);
-      $q.notify({ type: result.ok ? "positive" : "warning", message: result.message || result.status });
+      $q.notify({ type: result.ok ? 'positive' : 'warning', message: result.message || result.status });
       await loadAll();
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : t("channelsPage.testFailed") });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('channelsPage.testFailed') });
     } finally {
-      testingId.value = "";
+      testingId.value = '';
     }
   }
 
   async function copyWebhook(row: ChannelRow) {
     try {
       const url = await copyChannelWebhookURL(row);
-      $q.notify({ type: "positive", message: t("channelsPage.copyWebhookOk", { url }) });
+      $q.notify({ type: 'positive', message: t('channelsPage.copyWebhookOk', { url }) });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : t("channelsPage.copyWebhookFailed") });
+      $q.notify({
+        type: 'negative',
+        message: err instanceof Error ? err.message : t('channelsPage.copyWebhookFailed'),
+      });
     }
   }
 
   function confirmDelete(row: ChannelRow) {
     $q.dialog({
-      title: t("channelsPage.deleteTitle"),
-      message: t("channelsPage.deleteMessage"),
+      title: t('channelsPage.deleteTitle'),
+      message: t('channelsPage.deleteMessage'),
       cancel: true,
-      persistent: true
+      persistent: true,
     }).onOk(async () => {
       try {
         await channelsStore.removeChannel(row.id);
         if (opsChannelId.value === row.id) {
           closeOps();
         }
-        $q.notify({ type: "positive", message: t("channelsPage.deleteOk") });
+        $q.notify({ type: 'positive', message: t('channelsPage.deleteOk') });
       } catch (err) {
-        $q.notify({ type: "negative", message: err instanceof Error ? err.message : t("channelsPage.deleteFailed") });
+        $q.notify({ type: 'negative', message: err instanceof Error ? err.message : t('channelsPage.deleteFailed') });
       }
     });
   }
@@ -187,6 +192,6 @@ export function useChannelsPage() {
     toggleRow,
     testRow,
     copyWebhook,
-    confirmDelete
+    confirmDelete,
   };
 }

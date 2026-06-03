@@ -1,13 +1,13 @@
-import { createTeamService } from "../../services";
-import type { AgentNodeState, ActivitySnapshot, TeamRunObservatory } from "./types";
-import { wireCompileResponse } from "./compileApi";
+import { createTeamService } from '../../services';
+import type { AgentNodeState, ActivitySnapshot, TeamRunObservatory } from './types';
+import { wireCompileResponse } from './compileApi';
 
-export type { TeamRunObservatory } from "./types";
+export type { TeamRunObservatory } from './types';
 import type {
   AgentNodeStateView,
   ActivitySnapshotView,
   GetTeamRunObservatoryResponse,
-} from "../../services/kratos/team/v1/index";
+} from '../../services/kratos/team/v1/index';
 
 function wireActivity(a: ActivitySnapshotView | null | undefined): ActivitySnapshot | undefined {
   if (!a) return undefined;
@@ -30,14 +30,14 @@ function wireNode(n: AgentNodeStateView): AgentNodeState {
   return {
     run_id: undefined,
     team_id: undefined,
-    node_id: n.nodeId ?? "",
+    node_id: n.nodeId ?? '',
     agent_id: n.agentId,
     agent_key: n.agentKey,
     agent_name: n.agentName,
     role: n.role,
-    status: (n.status ?? "idle") as AgentNodeState["status"],
-    display_status: (n.displayStatus ?? "waiting") as AgentNodeState["display_status"],
-    phase: (n.phase ?? "received") as AgentNodeState["phase"],
+    status: (n.status ?? 'idle') as AgentNodeState['status'],
+    display_status: (n.displayStatus ?? 'waiting') as AgentNodeState['display_status'],
+    phase: (n.phase ?? 'received') as AgentNodeState['phase'],
     retry_count: n.retryCount,
     input_preview: n.inputPreview,
     output_preview: n.outputPreview,
@@ -49,14 +49,14 @@ function wireNode(n: AgentNodeStateView): AgentNodeState {
 
 function wireObservatory(res: GetTeamRunObservatoryResponse): TeamRunObservatory {
   return {
-    run_id: res.runId ?? "",
-    team_id: res.teamId ?? "",
-    session_id: res.sessionId ?? "",
-    status: res.status ?? "",
-    mode: res.mode ?? "",
-    graph_execution_id: res.graphExecutionId ?? "",
-    trace_id: res.traceId ?? "",
-    definition_snapshot_json: res.definitionSnapshotJson ?? "",
+    run_id: res.runId ?? '',
+    team_id: res.teamId ?? '',
+    session_id: res.sessionId ?? '',
+    status: res.status ?? '',
+    mode: res.mode ?? '',
+    graph_execution_id: res.graphExecutionId ?? '',
+    trace_id: res.traceId ?? '',
+    definition_snapshot_json: res.definitionSnapshotJson ?? '',
     compiled_topology: res.compiledTopology ? wireCompileResponse(res.compiledTopology) : undefined,
     nodes: (res.nodes ?? []).map(wireNode),
   };
@@ -70,8 +70,8 @@ export async function getTeamRunObservatory(runId: string): Promise<TeamRunObser
 
 export async function getTeamRunObservatoryTimeline(
   runId: string,
-  opts?: { nodeId?: string; limit?: number }
-): Promise<{ rows: import("./types").ActivityTimelineRow[]; trace_id: string }> {
+  opts?: { nodeId?: string; limit?: number },
+): Promise<{ rows: import('./types').ActivityTimelineRow[]; trace_id: string }> {
   const svc = createTeamService();
   const res = await svc.GetTeamRunObservatoryTimeline({
     runId,
@@ -79,9 +79,9 @@ export async function getTeamRunObservatoryTimeline(
     limit: opts?.limit,
   });
   return {
-    trace_id: res.traceId ?? "",
+    trace_id: res.traceId ?? '',
     rows: (res.rows ?? []).map((row) => ({
-      node_id: row.nodeId ?? "",
+      node_id: row.nodeId ?? '',
       kind: row.kind,
       display_label: row.displayLabel,
       status: row.status,

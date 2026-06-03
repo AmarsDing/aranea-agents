@@ -60,11 +60,18 @@
       </draggable>
     </section>
 
-    <q-card v-if="!loading && teamIndustryGroups.length === 0" flat bordered :class="['app-entity-empty', { 'is-dark': isDark }, 'q-mt-lg']">
+    <q-card
+      v-if="!loading && teamIndustryGroups.length === 0"
+      flat
+      bordered
+      :class="['app-entity-empty', { 'is-dark': isDark }, 'q-mt-lg']"
+    >
       <q-card-section class="column items-center text-center q-pa-xl">
         <q-avatar size="72px" color="primary" text-color="white" icon="hub" />
         <div class="text-h6 q-mt-md">暂无 Team</div>
-        <div class="text-body2 app-text-secondary q-mt-sm">创建一个 Team，把多个 Agent 组织成顺序、并行或评审闭环。</div>
+        <div class="text-body2 app-text-secondary q-mt-sm">
+          创建一个 Team，把多个 Agent 组织成顺序、并行或评审闭环。
+        </div>
         <q-btn class="q-mt-md" color="primary" rounded unelevated icon="add" label="新增 Team" @click="openCreate" />
       </q-card-section>
     </q-card>
@@ -83,8 +90,22 @@
           class="app-registry-pagination__page-size app-glass-control"
         />
         <span class="app-registry-pagination__page-label">第 {{ currentPage }} / {{ pageMax }} 页</span>
-        <q-btn round dense flat icon="chevron_left" :disable="currentPage <= 1" @click="currentPage = Math.max(1, currentPage - 1)" />
-        <q-btn round dense flat icon="chevron_right" :disable="currentPage >= pageMax" @click="currentPage = Math.min(pageMax, currentPage + 1)" />
+        <q-btn
+          round
+          dense
+          flat
+          icon="chevron_left"
+          :disable="currentPage <= 1"
+          @click="currentPage = Math.max(1, currentPage - 1)"
+        />
+        <q-btn
+          round
+          dense
+          flat
+          icon="chevron_right"
+          :disable="currentPage >= pageMax"
+          @click="currentPage = Math.min(pageMax, currentPage + 1)"
+        />
       </div>
     </footer>
 
@@ -141,18 +162,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, watchEffect, type WritableComputedRef } from "vue";
-import draggable from "vuedraggable";
-import AppPageHero from "../components/layout/AppPageHero.vue";
-import TeamCard from "../components/teams/TeamCard.vue";
-import TeamEditorDialog from "../components/teams/TeamEditorDialog.vue";
-import TeamRunsDialog from "../components/teams/TeamRunsDialog.vue";
-import TeamTestDialog from "../components/teams/TeamTestDialog.vue";
-import TeamToolbar from "../components/teams/TeamToolbar.vue";
-import { useTeamsPage } from "../features/teams/useTeamsPage";
-import { storeToRefs } from "pinia";
-import { useAuthStore } from "../stores/auth";
-import type { Team } from "../features/teams/types";
+import { computed, reactive, watchEffect, type WritableComputedRef } from 'vue';
+import draggable from 'vuedraggable';
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import TeamCard from '../components/teams/TeamCard.vue';
+import TeamEditorDialog from '../components/teams/TeamEditorDialog.vue';
+import TeamRunsDialog from '../components/teams/TeamRunsDialog.vue';
+import TeamTestDialog from '../components/teams/TeamTestDialog.vue';
+import TeamToolbar from '../components/teams/TeamToolbar.vue';
+import { useTeamsPage } from '../features/teams/useTeamsPage';
+import { storeToRefs } from 'pinia';
+import { useAuthStore } from '../stores/auth';
+import type { Team } from '../features/teams/types';
 
 const authStore = useAuthStore();
 const { isPlatformAdmin } = storeToRefs(authStore);
@@ -217,7 +238,7 @@ const {
   openTeamObservatory,
   loadRuns,
   loadRunSteps,
-  reorderTeams
+  reorderTeams,
 } = useTeamsPage();
 
 const draggableTeamsMap = reactive<Record<string, WritableComputedRef<Team[]>>>({});

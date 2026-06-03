@@ -1,10 +1,10 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
-import { createHook, deleteHook, listHooks, updateHook } from "../../features/hooks/api";
-import { listHookDeliveries, type HookDeliveryListQuery, type HookDeliveryRow } from "../../features/hooks/deliveries";
-import type { HookRow, HookRuleConfig } from "../../features/hooks/types";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
+import { createHook, deleteHook, listHooks, updateHook } from '../../features/hooks/api';
+import { listHookDeliveries, type HookDeliveryListQuery, type HookDeliveryRow } from '../../features/hooks/deliveries';
+import type { HookRow, HookRuleConfig } from '../../features/hooks/types';
 
-export const useHooksStore = defineStore("hooks", () => {
+export const useHooksStore = defineStore('hooks', () => {
   const hooks = ref<HookRow[]>([]);
   const loading = ref(false);
 
@@ -37,9 +37,9 @@ export const useHooksStore = defineStore("hooks", () => {
 
   async function saveHook(
     id: string,
-    patch: Partial<Pick<HookRow, "key" | "name" | "description" | "enabled" | "sort_order" | "status">> & {
+    patch: Partial<Pick<HookRow, 'key' | 'name' | 'description' | 'enabled' | 'sort_order' | 'status'>> & {
       rule?: HookRuleConfig;
-    }
+    },
   ): Promise<HookRow> {
     const updated = await updateHook(id, patch);
     hooks.value = hooks.value.map((row) => (row.id === updated.id ? updated : row));
@@ -51,7 +51,9 @@ export const useHooksStore = defineStore("hooks", () => {
     hooks.value = hooks.value.filter((row) => row.id !== id);
   }
 
-  async function loadDeliveries(query: HookDeliveryListQuery = {}): Promise<{ items: HookDeliveryRow[]; total: number }> {
+  async function loadDeliveries(
+    query: HookDeliveryListQuery = {},
+  ): Promise<{ items: HookDeliveryRow[]; total: number }> {
     deliveriesLoading.value = true;
     try {
       const data = await listHookDeliveries(query);
@@ -63,5 +65,16 @@ export const useHooksStore = defineStore("hooks", () => {
     }
   }
 
-  return { hooks, loading, loadHooks, addHook, saveHook, removeHook, deliveries, deliveriesTotal, deliveriesLoading, loadDeliveries };
+  return {
+    hooks,
+    loading,
+    loadHooks,
+    addHook,
+    saveHook,
+    removeHook,
+    deliveries,
+    deliveriesTotal,
+    deliveriesLoading,
+    loadDeliveries,
+  };
 });

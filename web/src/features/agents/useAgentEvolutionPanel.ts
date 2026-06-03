@@ -1,8 +1,8 @@
-import { computed, ref, watch } from "vue";
-import { useQuasar } from "quasar";
-import type { EvolutionKey } from "../../components/agents/agentUi";
-import type { EvolutionMetrics, EvolutionSuggestion } from "./types";
-import { useAgentDetailStore } from "../../stores/agents/detail";
+import { computed, ref, watch } from 'vue';
+import { useQuasar } from 'quasar';
+import type { EvolutionKey } from '../../components/agents/agentUi';
+import type { EvolutionMetrics, EvolutionSuggestion } from './types';
+import { useAgentDetailStore } from '../../stores/agents/detail';
 
 export function useAgentEvolutionPanel(agentId: () => string, range: () => string) {
   const $q = useQuasar();
@@ -12,7 +12,7 @@ export function useAgentEvolutionPanel(agentId: () => string, range: () => strin
   const suggestions = ref<EvolutionSuggestion[]>([]);
   const applyingId = ref<string | null>(null);
   const rejectingId = ref<string | null>(null);
-  const pendingSuggestionsCount = computed(() => suggestions.value.filter((s) => s.status === "pending").length);
+  const pendingSuggestionsCount = computed(() => suggestions.value.filter((s) => s.status === 'pending').length);
 
   async function fetchMetrics() {
     const id = agentId();
@@ -31,7 +31,7 @@ export function useAgentEvolutionPanel(agentId: () => string, range: () => strin
     const id = agentId();
     if (!id) return;
     try {
-      suggestions.value = await agentDetailStore.fetchEvolutionSuggestions(id, "pending");
+      suggestions.value = await agentDetailStore.fetchEvolutionSuggestions(id, 'pending');
     } catch {
       suggestions.value = [];
     }
@@ -41,10 +41,10 @@ export function useAgentEvolutionPanel(agentId: () => string, range: () => strin
     const aid = agentId();
     if (!aid) return;
     $q.dialog({
-      title: "应用进化建议",
-      message: "确定应用此进化建议？将修改 Agent 的相关配置。",
+      title: '应用进化建议',
+      message: '确定应用此进化建议？将修改 Agent 的相关配置。',
       cancel: true,
-      persistent: true
+      persistent: true,
     }).onOk(async () => {
       applyingId.value = id;
       try {
@@ -75,7 +75,7 @@ export function useAgentEvolutionPanel(agentId: () => string, range: () => strin
       void fetchMetrics();
       void fetchSuggestions();
     },
-    { immediate: true }
+    { immediate: true },
   );
 
   return {
@@ -86,6 +86,6 @@ export function useAgentEvolutionPanel(agentId: () => string, range: () => strin
     rejectingId,
     pendingSuggestionsCount,
     onApply,
-    onReject
+    onReject,
   };
 }

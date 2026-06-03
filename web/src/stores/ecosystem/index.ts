@@ -1,17 +1,17 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
   installEcosystemProduct,
   listEcosystemProducts,
   publishEcosystemProduct,
-  type EcosystemProduct
-} from "../../features/ecosystem/api";
+  type EcosystemProduct,
+} from '../../features/ecosystem/api';
 
-export const useEcosystemStore = defineStore("ecosystem", () => {
+export const useEcosystemStore = defineStore('ecosystem', () => {
   const products = ref<EcosystemProduct[]>([]);
   const loading = ref(false);
 
-  async function load(search = "") {
+  async function load(search = '') {
     loading.value = true;
     try {
       products.value = await listEcosystemProducts(search.trim());

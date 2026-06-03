@@ -1,6 +1,14 @@
 // Container: approved — feature-local panel/dialog; data from Page composable via props.
 <template>
-  <q-drawer :model-value="modelValue" side="right" overlay bordered :width="520" class="memory-drawer" @update:model-value="$emit('update:modelValue', $event)">
+  <q-drawer
+    :model-value="modelValue"
+    side="right"
+    overlay
+    bordered
+    :width="520"
+    class="memory-drawer"
+    @update:model-value="$emit('update:modelValue', $event)"
+  >
     <q-scroll-area class="fit">
       <div class="q-pa-md">
         <div class="row items-center justify-between q-mb-md">
@@ -10,8 +18,14 @@
           </div>
           <q-btn flat round icon="close" aria-label="关闭快照详情" @click="$emit('update:modelValue', false)" />
         </div>
-        <q-expansion-item v-for="segment in segments" :key="`${segment.section}-${segment.source}`" expand-separator :label="segment.section" :caption="`${segment.tokens || 0} tokens · ${segment.source}`">
-          <pre class="memory-pre">{{ segment.preview || segment.content || "无预览" }}</pre>
+        <q-expansion-item
+          v-for="segment in segments"
+          :key="`${segment.section}-${segment.source}`"
+          expand-separator
+          :label="segment.section"
+          :caption="`${segment.tokens || 0} tokens · ${segment.source}`"
+        >
+          <pre class="memory-pre">{{ segment.preview || segment.content || '无预览' }}</pre>
         </q-expansion-item>
       </div>
     </q-scroll-area>
@@ -19,8 +33,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { L0AssemblySegment, L0AssemblySnapshot } from "./types";
+import { computed } from 'vue';
+import type { L0AssemblySegment, L0AssemblySnapshot } from './types';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -28,14 +42,16 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  "update:modelValue": [value: boolean];
+  'update:modelValue': [value: boolean];
 }>();
 
-const segments = computed(() => (props.snapshot ? parseJSON<L0AssemblySegment[]>(props.snapshot.segments_json, []) : []));
+const segments = computed(() =>
+  props.snapshot ? parseJSON<L0AssemblySegment[]>(props.snapshot.segments_json, []) : [],
+);
 
 function parseJSON<T>(raw: string, fallback: T): T {
   try {
-    const parsed = JSON.parse(raw || "");
+    const parsed = JSON.parse(raw || '');
     return parsed ?? fallback;
   } catch {
     return fallback;

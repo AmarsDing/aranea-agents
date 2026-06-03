@@ -13,14 +13,10 @@
 
     <div v-if="!showJson" class="column q-gutter-sm">
       <q-banner rounded dense class="settings-info-banner">
-        字段视图仅支持扁平 <code>object.properties</code>（string / number / integer / boolean）。
-        嵌套 object、array、oneOf 等请切换到 JSON 模式编辑，切回字段视图可能丢失复杂结构。
+        字段视图仅支持扁平 <code>object.properties</code>（string / number / integer / boolean）。 嵌套
+        object、array、oneOf 等请切换到 JSON 模式编辑，切回字段视图可能丢失复杂结构。
       </q-banner>
-      <div
-        v-for="(row, idx) in rows"
-        :key="row.key || `row-${idx}`"
-        class="tool-schema-builder__field-card"
-      >
+      <div v-for="(row, idx) in rows" :key="row.key || `row-${idx}`" class="tool-schema-builder__field-card">
         <div class="app-form-field-grid app-form-field-grid--2col">
           <q-input
             :model-value="row.key"
@@ -100,14 +96,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch } from 'vue';
 import {
   buildSchemaFromFields,
   emptySchemaField,
   parseSchemaFields,
   type SchemaFieldRow,
-  type SchemaFieldType
-} from "../../../features/tools/jsonSchemaBuilder";
+  type SchemaFieldType,
+} from '../../../features/tools/jsonSchemaBuilder';
 
 const props = defineProps<{
   modelValue: string;
@@ -116,17 +112,17 @@ const props = defineProps<{
   readonly?: boolean;
 }>();
 
-const emit = defineEmits<{ "update:modelValue": [value: string] }>();
+const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
 
 const showJson = ref(false);
 const rows = ref<SchemaFieldRow[]>([]);
 const dirty = ref(false);
 
 const typeOptions = [
-  { label: "字符串", value: "string" },
-  { label: "数字", value: "number" },
-  { label: "整数", value: "integer" },
-  { label: "布尔", value: "boolean" }
+  { label: '字符串', value: 'string' },
+  { label: '数字', value: 'number' },
+  { label: '整数', value: 'integer' },
+  { label: '布尔', value: 'boolean' },
 ];
 
 function syncRowsFromJson(json: string) {
@@ -139,12 +135,12 @@ watch(
   (v) => {
     if (!showJson.value && !dirty.value) syncRowsFromJson(v);
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 function emitSchema() {
   dirty.value = true;
-  emit("update:modelValue", buildSchemaFromFields(rows.value));
+  emit('update:modelValue', buildSchemaFromFields(rows.value));
 }
 
 function updateRow(idx: number, patch: Partial<SchemaFieldRow>) {

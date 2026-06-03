@@ -9,8 +9,8 @@
           clearable
           debounce="350"
           label="Tool Key"
-        @update:model-value="onToolKey($event)"
-      />
+          @update:model-value="onToolKey($event)"
+        />
       </div>
       <div class="col-12 col-md-3">
         <q-input
@@ -55,7 +55,7 @@
 </template>
 
 <script setup lang="ts">
-import ToolGlassPanel from "./ToolGlassPanel.vue";
+import ToolGlassPanel from './ToolGlassPanel.vue';
 
 defineProps<{
   toolKey: string | null;
@@ -67,16 +67,16 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:toolKey": [v: string | null];
-  "update:agentId": [v: string | null];
-  "update:status": [v: string | null];
-  "update:from": [v: string | null];
+  'update:toolKey': [v: string | null];
+  'update:agentId': [v: string | null];
+  'update:status': [v: string | null];
+  'update:from': [v: string | null];
   reset: [];
   refresh: [];
 }>();
 
-const onToolKey = (v: string | number | null) => emit("update:toolKey", v == null ? null : String(v));
-const onAgentId = (v: string | number | null) => emit("update:agentId", v == null ? null : String(v));
-const onStatus = (v: string | number | null) => emit("update:status", v == null ? null : String(v));
-const onFrom = (v: string | number | null) => emit("update:from", v == null ? null : String(v));
+const onToolKey = (v: string | number | null) => emit('update:toolKey', v == null ? null : String(v));
+const onAgentId = (v: string | number | null) => emit('update:agentId', v == null ? null : String(v));
+const onStatus = (v: string | number | null) => emit('update:status', v == null ? null : String(v));
+const onFrom = (v: string | number | null) => emit('update:from', v == null ? null : String(v));
 </script>

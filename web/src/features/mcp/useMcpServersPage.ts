@@ -1,10 +1,10 @@
-import { computed, onMounted, ref, watch } from "vue";
-import { useQuasar } from "quasar";
-import { storeToRefs } from "pinia";
-import type { McpServerConfig, McpServerMetadata, McpServerRow } from "./types";
-import { parseJSON } from "./utils";
-import { useMcpStore } from "../../stores/mcp";
-import { useAuthStore } from "../../stores/auth";
+import { computed, onMounted, ref, watch } from 'vue';
+import { useQuasar } from 'quasar';
+import { storeToRefs } from 'pinia';
+import type { McpServerConfig, McpServerMetadata, McpServerRow } from './types';
+import { parseJSON } from './utils';
+import { useMcpStore } from '../../stores/mcp';
+import { useAuthStore } from '../../stores/auth';
 
 export function useMcpServersPage() {
   const $q = useQuasar();
@@ -13,12 +13,12 @@ export function useMcpServersPage() {
   const { user } = storeToRefs(auth);
 
   const rows = ref<McpServerRow[]>([]);
-  const search = ref("");
+  const search = ref('');
   const page = ref(1);
   const pageSize = ref(12);
   const loading = ref(false);
-  const error = ref("");
-  const testingId = ref("");
+  const error = ref('');
+  const testingId = ref('');
   const editorOpen = ref(false);
   const editingRow = ref<McpServerRow | null>(null);
   const credDialogOpen = ref(false);
@@ -26,7 +26,7 @@ export function useMcpServersPage() {
 
   const credUserId = computed(() => {
     const id = user.value?.id;
-    return id != null && id > 0 ? String(id) : "";
+    return id != null && id > 0 ? String(id) : '';
   });
 
   const enabledCount = computed(() => rows.value.filter((row) => row.enabled).length);
@@ -45,8 +45,12 @@ export function useMcpServersPage() {
         config.command,
         config.tool_prefix,
         metadata.health_status,
-        metadata.last_error_message
-      ].some((value) => String(value || "").toLowerCase().includes(keyword));
+        metadata.last_error_message,
+      ].some((value) =>
+        String(value || '')
+          .toLowerCase()
+          .includes(keyword),
+      );
     });
   });
 
@@ -68,12 +72,12 @@ export function useMcpServersPage() {
 
   async function loadRows() {
     loading.value = true;
-    error.value = "";
+    error.value = '';
     try {
       await mcpStore.loadServers();
       rows.value = mcpStore.servers as McpServerRow[];
     } catch (err) {
-      error.value = err instanceof Error ? err.message : "加载 MCP 服务器失败";
+      error.value = err instanceof Error ? err.message : '加载 MCP 服务器失败';
     } finally {
       loading.value = false;
     }
@@ -91,7 +95,7 @@ export function useMcpServersPage() {
 
   function openCredentials(row: McpServerRow) {
     if (!credUserId.value) {
-      $q.notify({ type: "warning", message: "请先登录后再配置用户凭据" });
+      $q.notify({ type: 'warning', message: '请先登录后再配置用户凭据' });
       return;
     }
     credServer.value = row;
@@ -111,51 +115,52 @@ export function useMcpServersPage() {
     testingId.value = row.id;
     try {
       const result = await mcpStore.test(row.id);
-      $q.notify({ type: result.ok ? "positive" : "warning", message: result.message || result.status });
+      $q.notify({ type: result.ok ? 'positive' : 'warning', message: result.message || result.status });
       await loadRows();
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "测试连接失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '测试连接失败' });
     } finally {
-      testingId.value = "";
+      testingId.value = '';
     }
   }
 
   function confirmDelete(row: McpServerRow) {
     $q.dialog({
-      title: "确认删除该 MCP 服务器？",
-      message: "删除后依赖该服务器的工具将不可用。",
+      title: '确认删除该 MCP 服务器？',
+      message: '删除后依赖该服务器的工具将不可用。',
       cancel: true,
-      persistent: true
+      persistent: true,
     }).onOk(async () => {
       try {
         await mcpStore.removeServer(row.id);
         rows.value = rows.value.filter((item) => item.id !== row.id);
-        $q.notify({ type: "positive", message: "MCP 服务器已删除" });
+        $q.notify({ type: 'positive', message: 'MCP 服务器已删除' });
       } catch (err) {
-        $q.notify({ type: "negative", message: err instanceof Error ? err.message : "删除失败" });
+        $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
       }
     });
   }
 
   function healthTone(row: McpServerRow) {
     const metadata = parseJSON<McpServerMetadata>(row.metadata_json, {});
-    if (metadata.health_status === "ok") return "ok";
-    if (metadata.health_status === "error") return "error";
-    if (metadata.health_status === "degraded") return "degraded";
-    if (metadata.last_error_message) return "error";
-    return "unknown";
+    if (metadata.health_status === 'ok') return 'ok';
+    if (metadata.health_status === 'error') return 'error';
+    if (metadata.health_status === 'degraded') return 'degraded';
+    if (metadata.last_error_message) return 'error';
+    return 'unknown';
   }
 
   function healthTooltip(row: McpServerRow) {
     const metadata = parseJSON<McpServerMetadata>(row.metadata_json, {});
     if (metadata.last_error_message) return metadata.last_error_message;
-    if (metadata.health_status === "ok" && metadata.last_health_at) return `最近成功：${formatDate(metadata.last_health_at)}`;
-    if (!row.enabled) return "未启用 / 未检测";
-    return "未检测";
+    if (metadata.health_status === 'ok' && metadata.last_health_at)
+      return `最近成功：${formatDate(metadata.last_health_at)}`;
+    if (!row.enabled) return '未启用 / 未检测';
+    return '未检测';
   }
 
   function formatDate(value: string) {
-    if (!value) return "-";
+    if (!value) return '-';
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
   }
@@ -185,6 +190,6 @@ export function useMcpServersPage() {
     testRow,
     confirmDelete,
     healthTone,
-    healthTooltip
+    healthTooltip,
   };
 }

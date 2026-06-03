@@ -1,10 +1,7 @@
-import { onMounted, onUnmounted, ref, watch, type Ref } from "vue";
-import { listChatBackgroundJobs, type ChatBackgroundJobRow } from "./api";
-import {
-  acquireGlobalWsConsumer,
-  releaseGlobalWsConsumer,
-} from "./globalWsHub";
-import type { Envelope } from "./envelope";
+import { onMounted, onUnmounted, ref, watch, type Ref } from 'vue';
+import { listChatBackgroundJobs, type ChatBackgroundJobRow } from './api';
+import { acquireGlobalWsConsumer, releaseGlobalWsConsumer } from './globalWsHub';
+import type { Envelope } from './envelope';
 
 // Backoff steps: 5s → 10s → 15s → 30s (max)
 const BACKOFF_STEPS = [5_000, 10_000, 15_000, 30_000];
@@ -12,7 +9,7 @@ const BACKOFF_STEPS = [5_000, 10_000, 15_000, 30_000];
 function isBackgroundJobRefreshEnvelope(env: Envelope, sessionId?: string): boolean {
   const md = env.metadata as Record<string, unknown> | undefined;
   if (!md?.background_job_refresh) return false;
-  const sid = (env.session_id ?? "").trim();
+  const sid = (env.session_id ?? '').trim();
   if (sessionId && sid && sid !== sessionId.trim()) return false;
   return true;
 }
@@ -20,10 +17,10 @@ function isBackgroundJobRefreshEnvelope(env: Envelope, sessionId?: string): bool
 export function useChatBackgroundJobs(
   sessionId: Ref<string | undefined>,
   agentId: Ref<string | undefined>,
-  refreshNonce?: Ref<number | undefined>
+  refreshNonce?: Ref<number | undefined>,
 ) {
   const loading = ref(false);
-  const error = ref("");
+  const error = ref('');
   const rows = ref<ChatBackgroundJobRow[]>([]);
   let hubId: string | null = null;
   let pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -40,7 +37,7 @@ export function useChatBackgroundJobs(
     }
     loadInFlight = true;
     loading.value = true;
-    error.value = "";
+    error.value = '';
     try {
       rows.value = await listChatBackgroundJobs({
         sessionId: sid,
@@ -48,7 +45,7 @@ export function useChatBackgroundJobs(
         limit: 50,
       });
     } catch (err) {
-      error.value = err instanceof Error ? err.message : "load failed";
+      error.value = err instanceof Error ? err.message : 'load failed';
     } finally {
       loading.value = false;
       loadInFlight = false;
@@ -101,10 +98,14 @@ export function useChatBackgroundJobs(
     }
   });
 
-  watch([sessionId, agentId], () => {
-    backoffIndex = 0;
-    void load();
-  }, { immediate: false });
+  watch(
+    [sessionId, agentId],
+    () => {
+      backoffIndex = 0;
+      void load();
+    },
+    { immediate: false },
+  );
 
   if (refreshNonce) {
     watch(refreshNonce, () => void load());
@@ -113,10 +114,10 @@ export function useChatBackgroundJobs(
   onMounted(() => {
     void load();
     hubId = acquireGlobalWsConsumer({
-      channels: ["chat"],
+      channels: ['chat'],
       logEnabled: false,
       onEnvelope: (env) => {
-        if (env.channel !== "chat") return;
+        if (env.channel !== 'chat') return;
         if (isBackgroundJobRefreshEnvelope(env, sessionId.value)) {
           // WS event arrived → immediate load + reset backoff
           cancelPoll();
@@ -134,10 +135,9 @@ export function useChatBackgroundJobs(
     }
   });
 
-  const ACTIVE_STATUSES = ["running", "accepted", "async_queued", "queued", "interactive", "escalating", "durable"];
+  const ACTIVE_STATUSES = ['running', 'accepted', 'async_queued', 'queued', 'interactive', 'escalating', 'durable'];
 
-  const runningCount = () =>
-    rows.value.filter((r) => ACTIVE_STATUSES.includes(r.status)).length;
+  const runningCount = () => rows.value.filter((r) => ACTIVE_STATUSES.includes(r.status)).length;
 
   return { loading, error, rows, load, runningCount };
 }

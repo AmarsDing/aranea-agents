@@ -12,14 +12,16 @@
     >
       <q-icon :name="mimeIcon(item.mime_type)" size="16px" class="q-mr-xs" />
       <span class="chat-message-attachments__name ellipsis">{{ item.name }}</span>
-      <span v-if="item.size" class="chat-message-attachments__size text-caption q-ml-xs">{{ formatBytes(item.size) }}</span>
+      <span v-if="item.size" class="chat-message-attachments__size text-caption q-ml-xs">{{
+        formatBytes(item.size)
+      }}</span>
     </div>
 
     <q-dialog v-model="previewOpen" transition-show="slide-up" transition-hide="slide-down">
       <q-card class="app-dialog-card app-dialog-card--sm">
         <q-card-section class="row items-center q-pb-none">
           <div class="text-subtitle1 ellipsis col">{{ previewMeta?.name }}</div>
-          <q-btn flat round dense icon="close" v-close-popup />
+          <q-btn v-close-popup flat round dense icon="close" />
         </q-card-section>
         <q-card-section v-if="previewMeta" class="q-pt-sm text-caption text-grey-7">
           {{ previewMeta.mime_type }}
@@ -28,26 +30,26 @@
         <q-card-section v-if="previewId">
           <ArtifactPreview :artifact-id="previewId" :show-download="true" @download="onDownload" />
         </q-card-section>
-      <q-card-actions align="right" class="app-actions-bar">
-        <q-btn flat no-caps color="negative" icon="delete" label="删除" @click="onDelete" />
-        <q-space />
-        <q-btn flat no-caps label="关闭" v-close-popup />
-      </q-card-actions>
-    </q-card>
-  </q-dialog>
+        <q-card-actions align="right" class="app-actions-bar">
+          <q-btn flat no-caps color="negative" icon="delete" label="删除" @click="onDelete" />
+          <q-space />
+          <q-btn v-close-popup flat no-caps label="关闭" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import { useI18n } from "vue-i18n";
-import ArtifactPreview from "../../features/artifact/ArtifactPreview.vue";
-import type { ArtifactMeta } from "../../features/artifact/types";
+import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+import ArtifactPreview from '../../features/artifact/ArtifactPreview.vue';
+import type { ArtifactMeta } from '../../features/artifact/types';
 import {
   attachmentMimeIcon,
   formatAttachmentBytes,
   type MessageAttachmentRef,
-} from "../../features/chat/messageAttachments";
+} from '../../features/chat/messageAttachments';
 
 const props = defineProps<{
   attachments: MessageAttachmentRef[];
@@ -60,7 +62,7 @@ const emit = defineEmits<{
 
 const previewOpen = ref(false);
 const previewMeta = ref<MessageAttachmentRef | null>(null);
-const previewId = ref("");
+const previewId = ref('');
 
 function mimeIcon(mime: string) {
   return attachmentMimeIcon(mime);
@@ -77,12 +79,12 @@ function openPreview(item: MessageAttachmentRef) {
 }
 
 async function onDownload(meta: ArtifactMeta) {
-  emit("download", meta);
+  emit('download', meta);
 }
 
 async function onDelete() {
   if (!previewId.value || !previewMeta.value) return;
-  emit("deleted", previewId.value);
+  emit('deleted', previewId.value);
   previewOpen.value = false;
 }
 </script>

@@ -1,1 +1,1 @@
-export { buildHealthWsUrl } from "../../config/runtime";
+export { buildHealthWsUrl } from '../../config/runtime';

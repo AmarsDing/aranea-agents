@@ -28,7 +28,7 @@
 </template>
 
 <script setup lang="ts">
-import type { A2UIComponentCtx } from "../../../../features/chat/a2ui/useA2UIComponent";
+import type { A2UIComponentCtx } from '../../../../features/chat/a2ui/useA2UIComponent';
 
 defineProps<{
   kind: string;

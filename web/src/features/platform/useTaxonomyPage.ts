@@ -1,8 +1,8 @@
-import { computed, onMounted, reactive, ref } from "vue";
-import { useQuasar } from "quasar";
-import type { PlatformResourceInput, PlatformResourceTreeNode } from "./types";
-import { errorMessage } from "./providerUtils";
-import { usePlatformStore } from "../../stores/platform";
+import { computed, onMounted, reactive, ref } from 'vue';
+import { useQuasar } from 'quasar';
+import type { PlatformResourceInput, PlatformResourceTreeNode } from './types';
+import { errorMessage } from './providerUtils';
+import { usePlatformStore } from '../../stores/platform';
 import {
   taxonomyTreeStats,
   collectDefaultExpandedIds,
@@ -12,11 +12,11 @@ import {
   parseIsSystem,
   patchTaxonomyTreeNode,
   trimmedDesc,
-  type TaxonomyLevel
-} from "./taxonomyTreeUtils";
-import { reorderTaxonomy } from "./api";
+  type TaxonomyLevel,
+} from './taxonomyTreeUtils';
+import { reorderTaxonomy } from './api';
 
-const CATEGORY_RESOURCE = "taxonomy" as const;
+const CATEGORY_RESOURCE = 'taxonomy' as const;
 
 export function useTaxonomyPage() {
   const $q = useQuasar();
@@ -25,35 +25,35 @@ export function useTaxonomyPage() {
   const isDark = computed(() => $q.dark.isActive);
   const loading = ref(false);
   const saving = ref(false);
-  const keyword = ref("");
+  const keyword = ref('');
   const onlyCustom = ref(false);
   const dialogOpen = ref(false);
-  const editingId = ref("");
+  const editingId = ref('');
   const parentNode = ref<PlatformResourceTreeNode | null>(null);
   const tree = ref<PlatformResourceTreeNode[]>([]);
   const togglingIds = ref<Set<string>>(new Set());
 
   const form = reactive<PlatformResourceInput & { level: TaxonomyLevel }>({
-    key: "",
-    name: "",
-    description: "",
+    key: '',
+    name: '',
+    description: '',
     enabled: true,
     sort_order: 0,
-    parent_id: "",
-    level: "industry",
-    config_json: "{}",
-    metadata_json: "{}"
+    parent_id: '',
+    level: 'industry',
+    config_json: '{}',
+    metadata_json: '{}',
   });
 
   const filteredTree = computed(() =>
     filterTaxonomyTree(
-      tree.value.filter((node) => node.level === "industry"),
+      tree.value.filter((node) => node.level === 'industry'),
       keyword.value,
-      onlyCustom.value
-    )
+      onlyCustom.value,
+    ),
   );
   const stats = computed(() => taxonomyTreeStats(tree.value));
-  const parentName = computed(() => parentNode.value?.name || "无");
+  const parentName = computed(() => parentNode.value?.name || '无');
 
   async function loadTree(opts?: { silent?: boolean }) {
     if (!opts?.silent) loading.value = true;
@@ -71,20 +71,20 @@ export function useTaxonomyPage() {
   }
 
   function openCreate(level: TaxonomyLevel, parent?: PlatformResourceTreeNode) {
-    const canonicalParent = parent ? findNode(parent.id) ?? parent : null;
-    editingId.value = "";
+    const canonicalParent = parent ? (findNode(parent.id) ?? parent) : null;
+    editingId.value = '';
     parentNode.value = canonicalParent;
     Object.assign(form, {
-      key: "",
-      name: "",
-      description: "",
+      key: '',
+      name: '',
+      description: '',
       enabled: true,
       sort_order: nextSortOrder(canonicalParent ?? undefined),
-      parent_id: canonicalParent?.id ?? "",
+      parent_id: canonicalParent?.id ?? '',
       level,
       is_system: false,
-      config_json: "{}",
-      metadata_json: "{}"
+      config_json: '{}',
+      metadata_json: '{}',
     });
     dialogOpen.value = true;
   }
@@ -101,8 +101,8 @@ export function useTaxonomyPage() {
       parent_id: node.parent_id,
       level: node.level as TaxonomyLevel,
       is_system: node.is_system,
-      config_json: node.config_json || "{}",
-      metadata_json: node.metadata_json || "{}"
+      config_json: node.config_json || '{}',
+      metadata_json: node.metadata_json || '{}',
     });
     dialogOpen.value = true;
   }
@@ -110,7 +110,7 @@ export function useTaxonomyPage() {
   async function saveNode() {
     const trimmedName = form.name.trim();
     if (!trimmedName) {
-      $q.notify({ type: "negative", message: "名称必填" });
+      $q.notify({ type: 'negative', message: '名称必填' });
       return;
     }
     saving.value = true;
@@ -119,8 +119,8 @@ export function useTaxonomyPage() {
         ...form,
         name: trimmedName,
         key: editingId.value ? form.key : buildKey(form.level, trimmedName),
-        parent_id: form.parent_id || "",
-        metadata_json: form.metadata_json || "{}"
+        parent_id: form.parent_id || '',
+        metadata_json: form.metadata_json || '{}',
       };
       if (editingId.value) {
         await platformStore.editResource(CATEGORY_RESOURCE, editingId.value, payload);
@@ -129,9 +129,9 @@ export function useTaxonomyPage() {
       }
       dialogOpen.value = false;
       await loadTree();
-      $q.notify({ type: "positive", message: "已保存分类" });
+      $q.notify({ type: 'positive', message: '已保存分类' });
     } catch (error) {
-      $q.notify({ type: "negative", message: errorMessage(error) || "保存分类失败" });
+      $q.notify({ type: 'negative', message: errorMessage(error) || '保存分类失败' });
     } finally {
       saving.value = false;
     }
@@ -139,31 +139,33 @@ export function useTaxonomyPage() {
 
   async function removeNode(node: PlatformResourceTreeNode) {
     if (parseIsSystem(node)) {
-      $q.notify({ type: "warning", message: "系统预置分类不可删除" });
+      $q.notify({ type: 'warning', message: '系统预置分类不可删除' });
       return;
     }
     if ((node.children?.length ?? 0) > 0) {
-      $q.notify({ type: "warning", message: "请先删除或迁移子分类" });
+      $q.notify({ type: 'warning', message: '请先删除或迁移子分类' });
       return;
     }
     return new Promise<void>((resolve) => {
       $q.dialog({
-        title: "确认删除",
+        title: '确认删除',
         message: `确定要删除分类「${node.name}」吗？此操作不可撤销。`,
-        cancel: { label: "取消", flat: true, rounded: true, noCaps: true },
-        ok: { label: "删除", color: "negative", rounded: true, unelevated: true, noCaps: true },
-        persistent: true
-      }).onOk(async () => {
-        try {
-          await platformStore.removeResource(CATEGORY_RESOURCE, node.id);
-          await loadTree();
-          $q.notify({ type: "positive", message: "已删除分类" });
-        } catch (error) {
-          $q.notify({ type: "negative", message: errorMessage(error) || "删除分类失败" });
-        } finally {
-          resolve();
-        }
-      }).onCancel(() => resolve());
+        cancel: { label: '取消', flat: true, rounded: true, noCaps: true },
+        ok: { label: '删除', color: 'negative', rounded: true, unelevated: true, noCaps: true },
+        persistent: true,
+      })
+        .onOk(async () => {
+          try {
+            await platformStore.removeResource(CATEGORY_RESOURCE, node.id);
+            await loadTree();
+            $q.notify({ type: 'positive', message: '已删除分类' });
+          } catch (error) {
+            $q.notify({ type: 'negative', message: errorMessage(error) || '删除分类失败' });
+          } finally {
+            resolve();
+          }
+        })
+        .onCancel(() => resolve());
     });
   }
 
@@ -177,10 +179,10 @@ export function useTaxonomyPage() {
     try {
       const updated = await platformStore.editResource(CATEGORY_RESOURCE, node.id, { enabled });
       syncTreePatch(node.id, { enabled: updated.enabled });
-      $q.notify({ type: "positive", message: enabled ? "分类已启用" : "分类已停用" });
+      $q.notify({ type: 'positive', message: enabled ? '分类已启用' : '分类已停用' });
     } catch (error) {
       syncTreePatch(node.id, { enabled: previous });
-      $q.notify({ type: "negative", message: errorMessage(error) || "更新分类状态失败" });
+      $q.notify({ type: 'negative', message: errorMessage(error) || '更新分类状态失败' });
     } finally {
       const next = new Set(togglingIds.value);
       next.delete(node.id);
@@ -189,7 +191,7 @@ export function useTaxonomyPage() {
   }
 
   function nextSortOrder(parent?: PlatformResourceTreeNode) {
-    const siblings = parent ? parent.children ?? [] : tree.value.filter((node) => node.level === "industry");
+    const siblings = parent ? (parent.children ?? []) : tree.value.filter((node) => node.level === 'industry');
     return siblings.length > 0 ? Math.max(...siblings.map((node) => node.sort_order || 0)) + 10 : 10;
   }
 
@@ -201,11 +203,16 @@ export function useTaxonomyPage() {
   function buildKey(level: string, name: string) {
     const ascii = name
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "");
-    const parentPart = form.parent_id ? form.parent_id.replace(/[^a-z0-9]+/gi, "").slice(-8).toLowerCase() : "root";
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+    const parentPart = form.parent_id
+      ? form.parent_id
+          .replace(/[^a-z0-9]+/gi, '')
+          .slice(-8)
+          .toLowerCase()
+      : 'root';
     const entropy = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-    return `${level}-${parentPart}-${ascii || "node"}-${entropy}`;
+    return `${level}-${parentPart}-${ascii || 'node'}-${entropy}`;
   }
 
   onMounted(loadTree);
@@ -214,7 +221,7 @@ export function useTaxonomyPage() {
     try {
       await reorderTaxonomy(ids);
     } catch {
-      $q.notify({ type: "negative", message: "排序保存失败" });
+      $q.notify({ type: 'negative', message: '排序保存失败' });
     }
   }
 
@@ -241,6 +248,6 @@ export function useTaxonomyPage() {
     toggleNodeEnabled,
     reorderNodes,
     levelLabel,
-    trimmedDesc
+    trimmedDesc,
   };
 }

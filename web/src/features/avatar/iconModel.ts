@@ -10,7 +10,7 @@ function isPlausibleMaterialIconName(v: string): boolean {
 
 /** Agent `icon` 库内资源引用判定：`avatar_*`、`channel_*`、24 位 hex、UUID（与 avatar_assets.id 对齐）。 */
 export function isAvatarAssetRef(value: string) {
-  const trimmed = String(value || "").trim();
+  const trimmed = String(value || '').trim();
   if (!trimmed) return false;
   if (/^(https?:|data:|blob:)/i.test(trimmed)) return true;
   if (/^avatar_/i.test(trimmed)) return true;
@@ -22,7 +22,7 @@ export function isAvatarAssetRef(value: string) {
 
 /** 服务端存储的头像 asset id（走 Store 拉缩略图），不含 http(s)/data/blob，也不是纯 Quasar icon 名。 */
 export function isStoredAvatarAssetId(icon: string | undefined | null): boolean {
-  const v = String(icon ?? "").trim();
+  const v = String(icon ?? '').trim();
   if (!v || /^(https?:|data:|blob:)/i.test(v)) return false;
   return isAvatarAssetRef(v);
 }
@@ -30,14 +30,14 @@ export function isStoredAvatarAssetId(icon: string | undefined | null): boolean 
 /** `q-avatar` 的 `icon`：有库内头像时留空用 `<img>`，否则用 Material 名或默认。 */
 export function quasarAvatarIconForAgentField(icon: string | undefined | null): string | undefined {
   if (isStoredAvatarAssetId(icon)) return undefined;
-  const v = String(icon ?? "").trim();
-  if (!v || !isPlausibleMaterialIconName(v)) return "smart_toy";
+  const v = String(icon ?? '').trim();
+  if (!v || !isPlausibleMaterialIconName(v)) return 'smart_toy';
   return v;
 }
 
 /** 会话气泡等：是否挂载 ResolvedAvatarImg（与 useAvatarThumbnailSrc 解析策略对齐）。 */
 export function shouldRenderAgentAvatarImage(icon: string | undefined | null): boolean {
-  const v = String(icon ?? "").trim();
+  const v = String(icon ?? '').trim();
   if (!v) return false;
   if (/^(https?:|data:|blob:)/i.test(v)) return true;
   if (isStoredAvatarAssetId(v)) return true;

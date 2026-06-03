@@ -78,9 +78,26 @@
                 class="col"
                 @update:model-value="setArrayItem(key, idx, String($event ?? ''))"
               />
-              <q-btn flat dense round icon="close" size="sm" class="app-registry-icon-btn" @click="removeArrayItem(key, idx)" />
+              <q-btn
+                flat
+                dense
+                round
+                icon="close"
+                size="sm"
+                class="app-registry-icon-btn"
+                @click="removeArrayItem(key, idx)"
+              />
             </div>
-            <q-btn flat dense no-caps icon="add" label="添加" size="sm" class="app-registry-accent-btn" @click="addArrayItem(key)" />
+            <q-btn
+              flat
+              dense
+              no-caps
+              icon="add"
+              label="添加"
+              size="sm"
+              class="app-registry-accent-btn"
+              @click="addArrayItem(key)"
+            />
           </div>
         </div>
       </template>
@@ -100,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive } from "vue";
+import { computed, reactive } from 'vue';
 
 type SchemaProperty = {
   type?: string;
@@ -119,14 +136,14 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:modelValue": [value: string];
+  'update:modelValue': [value: string];
 }>();
 
 const showPassword = reactive<Record<string, boolean>>({});
 
 const schema = computed(() => {
   try {
-    return JSON.parse(props.schemaJson || "{}");
+    return JSON.parse(props.schemaJson || '{}');
   } catch {
     return {};
   }
@@ -138,14 +155,14 @@ const hasProperties = computed(() => Object.keys(properties.value).length > 0);
 
 const data = computed<Record<string, unknown>>(() => {
   try {
-    return JSON.parse(props.modelValue || "{}");
+    return JSON.parse(props.modelValue || '{}');
   } catch {
     return {};
   }
 });
 
 function isPassword(def: SchemaProperty): boolean {
-  return def.format === "password" || def.format === "secret";
+  return def.format === 'password' || def.format === 'secret';
 }
 
 function togglePassword(key: string) {
@@ -153,14 +170,14 @@ function togglePassword(key: string) {
 }
 
 function getValue(key: string): string | number | boolean | null {
-  const v = data.value[key] ?? properties.value[key]?.default ?? "";
-  if (typeof v === "boolean" || typeof v === "number") return v;
+  const v = data.value[key] ?? properties.value[key]?.default ?? '';
+  if (typeof v === 'boolean' || typeof v === 'number') return v;
   return v == null ? null : String(v);
 }
 
 function getInputValue(key: string): string | number | null {
   const v = getValue(key);
-  if (typeof v === "boolean") return v ? 1 : 0;
+  if (typeof v === 'boolean') return v ? 1 : 0;
   return v;
 }
 
@@ -172,17 +189,17 @@ function getArrayValue(key: string): string[] {
 
 function getObjectValue(key: string): string {
   const v = data.value[key];
-  if (v && typeof v === "object") return JSON.stringify(v, null, 2);
-  return "{}";
+  if (v && typeof v === 'object') return JSON.stringify(v, null, 2);
+  return '{}';
 }
 
 function objectSchemaJson(def: SchemaProperty): string {
-  return JSON.stringify({ type: "object", properties: def.properties ?? {} });
+  return JSON.stringify({ type: 'object', properties: def.properties ?? {} });
 }
 
 function setValue(key: string, val: unknown) {
   let parsed = val;
-  if (typeof val === "string" && properties.value[key]?.type === "object") {
+  if (typeof val === 'string' && properties.value[key]?.type === 'object') {
     try {
       parsed = JSON.parse(val);
     } catch {
@@ -190,26 +207,26 @@ function setValue(key: string, val: unknown) {
     }
   }
   const next = { ...data.value, [key]: parsed };
-  emit("update:modelValue", JSON.stringify(next, null, 2));
+  emit('update:modelValue', JSON.stringify(next, null, 2));
 }
 
 function setArrayItem(key: string, idx: number, val: string) {
   const arr = [...getArrayValue(key)];
   arr[idx] = val;
   const next = { ...data.value, [key]: arr };
-  emit("update:modelValue", JSON.stringify(next, null, 2));
+  emit('update:modelValue', JSON.stringify(next, null, 2));
 }
 
 function addArrayItem(key: string) {
-  const arr = [...getArrayValue(key), ""];
+  const arr = [...getArrayValue(key), ''];
   const next = { ...data.value, [key]: arr };
-  emit("update:modelValue", JSON.stringify(next, null, 2));
+  emit('update:modelValue', JSON.stringify(next, null, 2));
 }
 
 function removeArrayItem(key: string, idx: number) {
   const arr = [...getArrayValue(key)];
   arr.splice(idx, 1);
   const next = { ...data.value, [key]: arr };
-  emit("update:modelValue", JSON.stringify(next, null, 2));
+  emit('update:modelValue', JSON.stringify(next, null, 2));
 }
 </script>

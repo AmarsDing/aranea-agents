@@ -1,9 +1,9 @@
-import { ref } from "vue";
-import { buildHealthWsUrl } from "./api";
-import { getCurrentAdmin } from "../admin/api";
-import { useAuthStore } from "../../stores/auth";
-import { Notify } from "quasar";
-import { getBackendOrigin, isWsSameOriginAsPage, readAccessTokenCookie } from "../../config/runtime";
+import { ref } from 'vue';
+import { buildHealthWsUrl } from './api';
+import { getCurrentAdmin } from '../admin/api';
+import { useAuthStore } from '../../stores/auth';
+import { Notify } from 'quasar';
+import { getBackendOrigin, isWsSameOriginAsPage, readAccessTokenCookie } from '../../config/runtime';
 
 export type ServerHeartbeatOptions = {
   pingInterval?: number;
@@ -43,9 +43,9 @@ export function getServerHeartbeatState() {
 
 export async function checkBackendHealth(): Promise<boolean> {
   const origin = getBackendOrigin();
-  const baseUrl = origin ? `${origin}/healthz` : "/healthz";
+  const baseUrl = origin ? `${origin}/healthz` : '/healthz';
   try {
-    const resp = await fetch(baseUrl, { method: "GET", cache: "no-store", signal: AbortSignal.timeout(5000) });
+    const resp = await fetch(baseUrl, { method: 'GET', cache: 'no-store', signal: AbortSignal.timeout(5000) });
     return resp.ok;
   } catch {
     return false;
@@ -88,10 +88,10 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
   let dismissDownNotify: (() => void) | null = null;
   let pageHidden = false;
 
-  if (typeof document !== "undefined") {
-    pageHidden = document.visibilityState === "hidden";
-    document.addEventListener("visibilitychange", () => {
-      pageHidden = document.visibilityState === "hidden";
+  if (typeof document !== 'undefined') {
+    pageHidden = document.visibilityState === 'hidden';
+    document.addEventListener('visibilitychange', () => {
+      pageHidden = document.visibilityState === 'hidden';
       if (!pageHidden) {
         touchLastAlive();
         sendPingNow();
@@ -109,7 +109,7 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
 
   function sendPingNow(): void {
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ direction: "client_to_server", channel: "system", type: "ping" }));
+      ws.send(JSON.stringify({ direction: 'client_to_server', channel: 'system', type: 'ping' }));
     }
   }
 
@@ -160,10 +160,10 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
     ws.onmessage = (ev: MessageEvent) => {
       try {
         const msg = JSON.parse(ev.data as string);
-        if (msg.direction === "server_to_client") {
+        if (msg.direction === 'server_to_client') {
           touchLastAlive();
         }
-        if (msg.type === "server_shutdown") {
+        if (msg.type === 'server_shutdown') {
           shutdownReceived = true;
           void handleProbeFailure();
         }
@@ -204,7 +204,7 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
       ws.onclose = null;
       ws.onerror = null;
       ws.onmessage = null;
-      ws.close(1000, "heartbeat disconnect");
+      ws.close(1000, 'heartbeat disconnect');
       ws = null;
     }
     connected.value = false;
@@ -294,7 +294,7 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
     notifiedDown = false;
     if (ws) {
       ws.onclose = null;
-      ws.close(1000, "heartbeat reconnect");
+      ws.close(1000, 'heartbeat reconnect');
       ws = null;
     }
     connected.value = false;
@@ -309,8 +309,8 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
       if (!degradedNotified) {
         degradedNotified = true;
         Notify.create({
-          type: "info",
-          message: "实时连接中断，正在重连…",
+          type: 'info',
+          message: '实时连接中断，正在重连…',
           timeout: 4000,
         });
       }
@@ -327,16 +327,16 @@ function createHeartbeat(options?: ServerHeartbeatOptions) {
 
     dismissDownNotify?.();
     dismissDownNotify = Notify.create({
-      type: "warning",
-      message: shutdownReceived ? "服务器已关闭，请重新登录" : "服务器连接超时，请重新登录",
+      type: 'warning',
+      message: shutdownReceived ? '服务器已关闭，请重新登录' : '服务器连接超时，请重新登录',
       timeout: 0,
-      actions: [{ label: "重新登录", color: "white", handler: () => {} }],
+      actions: [{ label: '重新登录', color: 'white', handler: () => {} }],
     }) as () => void;
 
-    const { default: router } = await import("../../router");
+    const { default: router } = await import('../../router');
     const current = router.currentRoute.value;
-    if (current.path !== "/login") {
-      router.replace({ path: "/login", query: { redirect: current.fullPath } });
+    if (current.path !== '/login') {
+      router.replace({ path: '/login', query: { redirect: current.fullPath } });
     }
   }
 

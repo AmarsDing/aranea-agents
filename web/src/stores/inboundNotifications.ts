@@ -1,7 +1,7 @@
-import { computed, ref } from "vue";
-import { defineStore } from "pinia";
+import { computed, ref } from 'vue';
+import { defineStore } from 'pinia';
 
-export type InboundNotificationKind = "running" | "completed";
+export type InboundNotificationKind = 'running' | 'completed';
 
 export type InboundNotification = {
   id: string;
@@ -17,19 +17,19 @@ export type InboundNotification = {
 
 const MAX_ITEMS = 20;
 
-export const useInboundNotificationStore = defineStore("inboundNotifications", () => {
+export const useInboundNotificationStore = defineStore('inboundNotifications', () => {
   const items = ref<InboundNotification[]>([]);
 
   const unreadCount = computed(() => items.value.filter((n) => !n.read).length);
 
-  function upsert(payload: Omit<InboundNotification, "read"> & { read?: boolean }) {
+  function upsert(payload: Omit<InboundNotification, 'read'> & { read?: boolean }) {
     const idx = items.value.findIndex((n) => n.id === payload.id);
     const row: InboundNotification = {
       ...payload,
       read: payload.read ?? false,
     };
     if (idx >= 0) {
-      items.value[idx] = { ...row, read: row.kind === "completed" ? false : items.value[idx].read };
+      items.value[idx] = { ...row, read: row.kind === 'completed' ? false : items.value[idx].read };
     } else {
       items.value.unshift(row);
     }

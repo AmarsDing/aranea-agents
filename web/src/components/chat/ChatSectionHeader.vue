@@ -21,7 +21,7 @@ defineProps<{
 }>();
 
 defineEmits<{
-  "update:collapsed": [value: boolean];
+  'update:collapsed': [value: boolean];
 }>();
 </script>
 

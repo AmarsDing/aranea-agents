@@ -5,7 +5,9 @@
       <q-card flat bordered class="memory-card">
         <q-card-section>
           <div class="text-h6">记忆流向</div>
-          <div class="text-caption text-grey-7">L0 负责本次 prompt，L1/L2/L3/L4 分别提供任务状态、事件、知识和长期画像。</div>
+          <div class="text-caption text-grey-7">
+            L0 负责本次 prompt，L1/L2/L3/L4 分别提供任务状态、事件、知识和长期画像。
+          </div>
         </q-card-section>
         <q-card-section>
           <div class="memory-flow">

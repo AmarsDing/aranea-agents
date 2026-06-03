@@ -1,12 +1,12 @@
-import { computed, ref, watch } from "vue";
-import { useRoute } from "vue-router";
-import { useQuasar } from "quasar";
-import { formatBatchNotifyMessage } from "./batchNotify";
-import type { BatchPreviewResult, BulkProgress, RetentionDialogMode, SessionBatchScope } from "./types";
-import type { Session } from "./types";
-import { useSessionStore } from "../../stores/session/index";
-import { sortSessionsForDisplay } from "./sessionSort";
-import { downloadTextFile } from "./downloadExport";
+import { computed, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
+import { useQuasar } from 'quasar';
+import { formatBatchNotifyMessage } from './batchNotify';
+import type { BatchPreviewResult, BulkProgress, RetentionDialogMode, SessionBatchScope } from './types';
+import type { Session } from './types';
+import { useSessionStore } from '../../stores/session/index';
+import { sortSessionsForDisplay } from './sessionSort';
+import { downloadTextFile } from './downloadExport';
 
 export function useSessionsPage() {
   const $q = useQuasar();
@@ -17,9 +17,9 @@ export function useSessionsPage() {
   const selected = ref<Session | null>(null);
   const total = ref(0);
   const loading = ref(false);
-  const error = ref("");
+  const error = ref('');
 
-  const keyword = ref("");
+  const keyword = ref('');
   const ownerType = ref<string | null>(null);
   const status = ref<string | null>(null);
   const contextStatus = ref<string | null>(null);
@@ -29,7 +29,7 @@ export function useSessionsPage() {
   const selectionMode = ref(false);
   const selectedIds = ref<Set<string>>(new Set());
 
-  const bulkProgress = ref<BulkProgress>({ active: false, label: "", indeterminate: true });
+  const bulkProgress = ref<BulkProgress>({ active: false, label: '', indeterminate: true });
   const bulkArchiving = ref(false);
   const bulkDeleting = ref(false);
 
@@ -38,7 +38,7 @@ export function useSessionsPage() {
   const deleteLoading = ref(false);
 
   const retentionOpen = ref(false);
-  const retentionMode = ref<RetentionDialogMode>("archive");
+  const retentionMode = ref<RetentionDialogMode>('archive');
   const retentionPreview = ref<BatchPreviewResult | null>(null);
   const retentionPreviewLoading = ref(false);
   const retentionLoading = ref(false);
@@ -50,7 +50,7 @@ export function useSessionsPage() {
     owner_type: ownerType.value || undefined,
     status: status.value || undefined,
     context_status: contextStatus.value || undefined,
-    keyword: keyword.value || undefined
+    keyword: keyword.value || undefined,
   }));
 
   function clearSelection() {
@@ -71,15 +71,15 @@ export function useSessionsPage() {
     () => route.params.sessionId,
     () => {
       void loadSelected();
-    }
+    },
   );
 
   function onKeywordUpdate(value: string | number | null) {
-    keyword.value = value == null || value === "" ? "" : String(value);
+    keyword.value = value == null || value === '' ? '' : String(value);
   }
 
   function resetFilters() {
-    keyword.value = "";
+    keyword.value = '';
     ownerType.value = null;
     status.value = null;
     contextStatus.value = null;
@@ -120,7 +120,7 @@ export function useSessionsPage() {
 
   async function loadRows() {
     loading.value = true;
-    error.value = "";
+    error.value = '';
     try {
       const result = await sessionStore.searchPage({
         keyword: keyword.value || undefined,
@@ -128,20 +128,20 @@ export function useSessionsPage() {
         status: status.value || undefined,
         context_status: contextStatus.value || undefined,
         limit: pageSize.value,
-        offset: (page.value - 1) * pageSize.value
+        offset: (page.value - 1) * pageSize.value,
       });
       rows.value = sortSessionsForDisplay(result.items);
       total.value = result.total;
       await loadSelected();
     } catch (err) {
-      error.value = err instanceof Error ? err.message : "加载 Session 失败";
+      error.value = err instanceof Error ? err.message : '加载 Session 失败';
     } finally {
       loading.value = false;
     }
   }
 
   async function loadSelected() {
-    const id = String(route.params.sessionId || "");
+    const id = String(route.params.sessionId || '');
     if (!id) {
       selected.value = null;
       return;
@@ -154,25 +154,29 @@ export function useSessionsPage() {
   }
 
   function endBulk() {
-    bulkProgress.value = { active: false, label: "", indeterminate: true };
+    bulkProgress.value = { active: false, label: '', indeterminate: true };
   }
 
-  function notifyBatchResult(action: "archive" | "delete", result: Awaited<ReturnType<typeof sessionStore.batchArchive>>, requested?: number) {
-    const type = result.failed_ids.length > 0 || result.truncated ? "warning" : "positive";
+  function notifyBatchResult(
+    action: 'archive' | 'delete',
+    result: Awaited<ReturnType<typeof sessionStore.batchArchive>>,
+    requested?: number,
+  ) {
+    const type = result.failed_ids.length > 0 || result.truncated ? 'warning' : 'positive';
     $q.notify({ type, message: formatBatchNotifyMessage(action, result, requested) });
   }
 
   async function runBatchArchive(ids: string[]) {
     if (!ids.length) return;
     bulkArchiving.value = true;
-    startBulk("正在归档…");
+    startBulk('正在归档…');
     try {
       const result = await sessionStore.batchArchive({ ids });
-      notifyBatchResult("archive", result, ids.length);
+      notifyBatchResult('archive', result, ids.length);
       clearSelection();
       await loadRows();
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "归档失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '归档失败' });
     } finally {
       bulkArchiving.value = false;
       endBulk();
@@ -182,14 +186,14 @@ export function useSessionsPage() {
   async function runBatchDelete(ids: string[]) {
     if (!ids.length) return;
     bulkDeleting.value = true;
-    startBulk("正在删除…");
+    startBulk('正在删除…');
     try {
       const result = await sessionStore.batchDelete({ ids });
-      notifyBatchResult("delete", result, ids.length);
+      notifyBatchResult('delete', result, ids.length);
       clearSelection();
       await loadRows();
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "删除失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
     } finally {
       bulkDeleting.value = false;
       endBulk();
@@ -208,7 +212,7 @@ export function useSessionsPage() {
     try {
       if (ids.length === 1) {
         await sessionStore.removeSession(ids[0]);
-        $q.notify({ type: "positive", message: "会话已删除" });
+        $q.notify({ type: 'positive', message: '会话已删除' });
         deleteDialogOpen.value = false;
         deleteTargetIds.value = [];
         await loadRows();
@@ -219,7 +223,7 @@ export function useSessionsPage() {
         await runBatchDelete(ids);
       }
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "删除失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
     } finally {
       deleteLoading.value = false;
     }
@@ -238,10 +242,10 @@ export function useSessionsPage() {
         mode: retentionMode.value,
         older_than_days: payload.days,
         scope: batchScope.value,
-        include_archived: payload.includeArchived
+        include_archived: payload.includeArchived,
       });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "预览失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '预览失败' });
     } finally {
       retentionPreviewLoading.value = false;
     }
@@ -250,22 +254,22 @@ export function useSessionsPage() {
   async function confirmRetention(payload: { days: number; includeArchived: boolean }) {
     retentionLoading.value = true;
     const action = retentionMode.value;
-    startBulk(action === "archive" ? "正在批量归档…" : "正在批量删除…");
+    startBulk(action === 'archive' ? '正在批量归档…' : '正在批量删除…');
     try {
       const result =
-        action === "archive"
+        action === 'archive'
           ? await sessionStore.batchArchive({ older_than_days: payload.days, scope: batchScope.value })
           : await sessionStore.batchDelete({
               older_than_days: payload.days,
               scope: batchScope.value,
-              include_archived: payload.includeArchived
+              include_archived: payload.includeArchived,
             });
       notifyBatchResult(action, result);
       retentionOpen.value = false;
       retentionPreview.value = null;
       await loadRows();
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "操作失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '操作失败' });
     } finally {
       retentionLoading.value = false;
       endBulk();
@@ -280,7 +284,7 @@ export function useSessionsPage() {
       }
       await loadRows();
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "归档失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '归档失败' });
     }
   }
 
@@ -291,20 +295,23 @@ export function useSessionsPage() {
       if (selected.value?.id === id) {
         selected.value = updated;
       }
-      $q.notify({ type: "positive", message: pinned ? "已置顶" : "已取消置顶" });
+      $q.notify({ type: 'positive', message: pinned ? '已置顶' : '已取消置顶' });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : pinned ? "置顶失败" : "取消置顶失败" });
+      $q.notify({
+        type: 'negative',
+        message: err instanceof Error ? err.message : pinned ? '置顶失败' : '取消置顶失败',
+      });
     }
   }
 
-  async function exportSelectedDetail(format: "markdown" | "json") {
+  async function exportSelectedDetail(format: 'markdown' | 'json') {
     if (!selected.value) return;
     try {
       const payload = await sessionStore.exportSession(selected.value.id, format);
       downloadTextFile(payload.content, payload.filename, payload.content_type);
-      $q.notify({ type: "positive", message: "导出成功" });
+      $q.notify({ type: 'positive', message: '导出成功' });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "导出失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '导出失败' });
     }
   }
 
@@ -353,6 +360,6 @@ export function useSessionsPage() {
     promptDeleteSelected: () => promptDelete([...selectedIds.value]),
     archiveSelected: () => runBatchArchive([...selectedIds.value]),
     exportSession: sessionStore.exportSession,
-    exportSelectedDetail
+    exportSelectedDetail,
   };
 }

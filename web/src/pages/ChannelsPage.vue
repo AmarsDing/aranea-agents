@@ -75,19 +75,10 @@
     <section v-if="opsChannel" ref="opsSectionRef" class="channel-ops-section">
       <div class="row items-center justify-between q-mb-sm">
         <div>
-          <div class="text-subtitle1 text-weight-medium">{{ t("channelsPage.opsTitle") }}</div>
-          <div class="text-caption text-grey-7">
-            {{ opsChannel.name }} · {{ opsChannel.key }}
-          </div>
+          <div class="text-subtitle1 text-weight-medium">{{ t('channelsPage.opsTitle') }}</div>
+          <div class="text-caption text-grey-7">{{ opsChannel.name }} · {{ opsChannel.key }}</div>
         </div>
-        <q-btn
-          flat
-          dense
-          no-caps
-          icon="close"
-          :label="t('channelsPage.opsClose')"
-          @click="closeOps"
-        />
+        <q-btn flat dense no-caps icon="close" :label="t('channelsPage.opsClose')" @click="closeOps" />
       </div>
       <div class="channel-ops-grid">
         <ChannelTurnJobsPanel :channel-id="opsChannel.id" />
@@ -107,15 +98,15 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref, watch } from "vue";
-import ChannelCatalogFilters from "../components/channels/ChannelCatalogFilters.vue";
-import ChannelHeroSection from "../components/channels/ChannelHeroSection.vue";
-import ChannelsTable from "../components/channels/ChannelsTable.vue";
-import ChannelEditorDialog from "../features/channels/ChannelEditorDialog.vue";
-import ChannelDeliveriesPanel from "../features/channels/ChannelDeliveriesPanel.vue";
-import ChannelTurnJobsPanel from "../features/channels/ChannelTurnJobsPanel.vue";
-import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
-import { useChannelsPage } from "../features/channels/useChannelsPage";
+import { nextTick, ref, watch } from 'vue';
+import ChannelCatalogFilters from '../components/channels/ChannelCatalogFilters.vue';
+import ChannelHeroSection from '../components/channels/ChannelHeroSection.vue';
+import ChannelsTable from '../components/channels/ChannelsTable.vue';
+import ChannelEditorDialog from '../features/channels/ChannelEditorDialog.vue';
+import ChannelDeliveriesPanel from '../features/channels/ChannelDeliveriesPanel.vue';
+import ChannelTurnJobsPanel from '../features/channels/ChannelTurnJobsPanel.vue';
+import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import { useChannelsPage } from '../features/channels/useChannelsPage';
 
 const {
   t,
@@ -148,7 +139,7 @@ const {
   toggleRow,
   testRow,
   copyWebhook,
-  confirmDelete
+  confirmDelete,
 } = useChannelsPage();
 
 const opsSectionRef = ref<HTMLElement | null>(null);
@@ -156,7 +147,7 @@ const opsSectionRef = ref<HTMLElement | null>(null);
 watch(opsChannel, async (row) => {
   if (!row) return;
   await nextTick();
-  opsSectionRef.value?.scrollIntoView({ behavior: "smooth", block: "start" });
+  opsSectionRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 </script>
 

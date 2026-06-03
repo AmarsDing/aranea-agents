@@ -1,16 +1,16 @@
-import { computed, ref } from "vue";
-import { listTools } from "../tools/api";
-import type { AgentRuntimeConfigForm } from "./agentRuntimeConfig";
+import { computed, ref } from 'vue';
+import { listTools } from '../tools/api';
+import type { AgentRuntimeConfigForm } from './agentRuntimeConfig';
 
 const defaultNativeToolKeys = [
-  "datetime",
-  "web_search",
-  "web_fetch",
-  "list_files",
-  "read_file",
-  "write_file",
-  "edit_file",
-  "shell_exec",
+  'datetime',
+  'web_search',
+  'web_fetch',
+  'list_files',
+  'read_file',
+  'write_file',
+  'edit_file',
+  'shell_exec',
 ];
 
 /** Tool catalog loading and select options for Agent settings. */
@@ -24,10 +24,10 @@ export function useAgentToolsCatalog(config: AgentRuntimeConfigForm) {
       const res = await listTools({ page: 1, page_size: 500 });
       catalogTools.value = (res.items ?? [])
         .map((t) => ({
-          key: String(t.key ?? "").trim(),
-          display_name: String(t.display_name ?? "").trim() || String(t.key ?? "").trim(),
+          key: String(t.key ?? '').trim(),
+          display_name: String(t.display_name ?? '').trim() || String(t.key ?? '').trim(),
         }))
-        .filter((t) => t.key !== "");
+        .filter((t) => t.key !== '');
     } catch {
       catalogTools.value = [];
     } finally {
@@ -46,12 +46,12 @@ export function useAgentToolsCatalog(config: AgentRuntimeConfigForm) {
     }
     const extra = [...config.tools.allow, ...config.tools.deny, ...config.tools.concurrent_allow];
     for (const raw of extra) {
-      const key = String(raw ?? "").trim();
+      const key = String(raw ?? '').trim();
       if (key && !byKey.has(key)) {
         byKey.set(key, { label: `${key} · 已保存`, value: key });
       }
     }
-    return Array.from(byKey.values()).sort((a, b) => a.label.localeCompare(b.label, "zh-CN"));
+    return Array.from(byKey.values()).sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'));
   });
 
   const toolConflicts = computed(() => config.tools.allow.filter((tool) => config.tools.deny.includes(tool)));

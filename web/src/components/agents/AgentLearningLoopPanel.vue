@@ -40,11 +40,11 @@
 </template>
 
 <script setup lang="ts">
-import { toValue } from "vue";
-import LearningLoopOverview from "./LearningLoopOverview.vue";
-import LearningPatternList from "./LearningPatternList.vue";
-import LearningProposalList from "./LearningProposalList.vue";
-import { useLearningLoopPanel } from "../../features/agents/useLearningLoopPanel";
+import { toValue } from 'vue';
+import LearningLoopOverview from './LearningLoopOverview.vue';
+import LearningPatternList from './LearningPatternList.vue';
+import LearningProposalList from './LearningProposalList.vue';
+import { useLearningLoopPanel } from '../../features/agents/useLearningLoopPanel';
 
 const props = defineProps<{
   agentId: string | (() => string);
@@ -65,6 +65,6 @@ const {
   registeredKnowledgeCount,
   onApprove,
   onReject,
-  onRunLoop
+  onRunLoop,
 } = useLearningLoopPanel(agentIdFn);
 </script>

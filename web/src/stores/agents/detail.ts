@@ -1,15 +1,22 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
-  getAgent, getAgentPromptPreview, updateAgent, toggleAgentFavorite as toggleAgentFavoriteApi,
-  getAgentEvolutionMetrics, getAgentEvolutionSuggestions,
-  applyEvolutionSuggestion, rejectEvolutionSuggestion,
-  type Agent, type EvolutionMetrics, type EvolutionSuggestion
-} from "../../features/agents/api";
-import type { AgentPromptPreview } from "../../features/agents/types";
+  getAgent,
+  getAgentPromptPreview,
+  updateAgent,
+  toggleAgentFavorite as toggleAgentFavoriteApi,
+  getAgentEvolutionMetrics,
+  getAgentEvolutionSuggestions,
+  applyEvolutionSuggestion,
+  rejectEvolutionSuggestion,
+  type Agent,
+  type EvolutionMetrics,
+  type EvolutionSuggestion,
+} from '../../features/agents/api';
+import type { AgentPromptPreview } from '../../features/agents/types';
 
 /** Agent 详情 / 设置页：HTTP 仅在此 Store actions（aranea-frontend-guide SKILL §3.1）。 */
-export const useAgentDetailStore = defineStore("agentDetail", () => {
+export const useAgentDetailStore = defineStore('agentDetail', () => {
   const loading = ref(false);
   const saving = ref(false);
   const previewLoading = ref(false);
@@ -72,6 +79,6 @@ export const useAgentDetailStore = defineStore("agentDetail", () => {
     fetchEvolutionMetrics,
     fetchEvolutionSuggestions,
     applyEvolution,
-    rejectEvolution
+    rejectEvolution,
   };
 });

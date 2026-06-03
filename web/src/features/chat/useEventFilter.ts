@@ -1,6 +1,6 @@
-import { computed, ref } from "vue";
-import type { Envelope, EnvelopeType } from "../chat/envelope";
-import { matchFilterKey } from "../chat/dispatcher";
+import { computed, ref } from 'vue';
+import type { Envelope, EnvelopeType } from '../chat/envelope';
+import { matchFilterKey } from '../chat/dispatcher';
 
 export type EventFilterOptions = {
   types?: EnvelopeType[];
@@ -41,7 +41,7 @@ export function useEventFilter(events: () => Envelope[], initialFilter?: EventFi
           e.content?.text?.toLowerCase().includes(kw) ||
           e.tool_call?.name?.toLowerCase().includes(kw) ||
           e.filter_key?.toLowerCase().includes(kw) ||
-          e.error?.message?.toLowerCase().includes(kw)
+          e.error?.message?.toLowerCase().includes(kw),
       );
     }
     return list;

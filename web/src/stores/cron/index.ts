@@ -1,5 +1,5 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
   listCronTasks,
   listCronAgents,
@@ -11,13 +11,13 @@ import {
   triggerCronTask,
   resetCronTaskFailures,
   type PlatformResource,
-  type PlatformResourceInput
-} from "../../features/cron/api";
-import type { Agent } from "../../features/agents/types";
-import type { Team } from "../../features/teams/types";
-import type { CronTaskRun, CronTaskRunQuery } from "../../features/cron/types";
+  type PlatformResourceInput,
+} from '../../features/cron/api';
+import type { Agent } from '../../features/agents/types';
+import type { Team } from '../../features/teams/types';
+import type { CronTaskRun, CronTaskRunQuery } from '../../features/cron/types';
 
-export const useCronStore = defineStore("cron", () => {
+export const useCronStore = defineStore('cron', () => {
   const tasks = ref<PlatformResource[]>([]);
   const runs = ref<CronTaskRun[]>([]);
   const agents = ref<Agent[]>([]);
@@ -99,6 +99,6 @@ export const useCronStore = defineStore("cron", () => {
     editTask,
     removeTask,
     triggerTask,
-    resetFailures
+    resetFailures,
   };
 });

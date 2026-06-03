@@ -25,7 +25,7 @@ export type MessageTeamMemberRef = {
 
 /** Message source metadata for UserBubble badges (M55 CC-B-07). */
 export type MessageSourceMeta = {
-  source: "web" | "channel" | "cron" | "a2a" | "api" | "";
+  source: 'web' | 'channel' | 'cron' | 'a2a' | 'api' | '';
   platform?: string;
   channelKey?: string;
 };
@@ -40,44 +40,48 @@ export type MessageAttachmentRef = {
 
 /** Message origin — replaces ID prefix conventions for lifecycle tracking. */
 export type MessageOrigin =
-  | { kind: "persisted" }
-  | { kind: "pending_user"; localId: string }
-  | { kind: "streaming"; sessionId: string }
-  | { kind: "team_member"; agentKey: string }
-  | { kind: "tool_activity"; toolEventId: string };
+  | { kind: 'persisted' }
+  | { kind: 'pending_user'; localId: string }
+  | { kind: 'streaming'; sessionId: string }
+  | { kind: 'team_member'; agentKey: string }
+  | { kind: 'tool_activity'; toolEventId: string };
 
 /** Message status values — replaces bare string comparisons. */
 export type MessageStatus =
-  | "ok"
-  | "streaming"
-  | "tool_running"
-  | "tool_blocked"
-  | "tool_success"
-  | "tool_failed"
-  | "tool_cancelled"
-  | "failed"
-  | "pending"
-  | "queued";
+  | 'ok'
+  | 'streaming'
+  | 'tool_running'
+  | 'tool_blocked'
+  | 'tool_success'
+  | 'tool_failed'
+  | 'tool_cancelled'
+  | 'failed'
+  | 'pending'
+  | 'queued';
 
 export const MESSAGE_STATUS = {
-  OK: "ok" as const,
-  STREAMING: "streaming" as const,
-  TOOL_RUNNING: "tool_running" as const,
-  TOOL_BLOCKED: "tool_blocked" as const,
-  TOOL_SUCCESS: "tool_success" as const,
-  TOOL_FAILED: "tool_failed" as const,
-  TOOL_CANCELLED: "tool_cancelled" as const,
-  FAILED: "failed" as const,
-  PENDING: "pending" as const,
-  QUEUED: "queued" as const,
+  OK: 'ok' as const,
+  STREAMING: 'streaming' as const,
+  TOOL_RUNNING: 'tool_running' as const,
+  TOOL_BLOCKED: 'tool_blocked' as const,
+  TOOL_SUCCESS: 'tool_success' as const,
+  TOOL_FAILED: 'tool_failed' as const,
+  TOOL_CANCELLED: 'tool_cancelled' as const,
+  FAILED: 'failed' as const,
+  PENDING: 'pending' as const,
+  QUEUED: 'queued' as const,
 };
 
 export function isInFlightStatus(status: string): boolean {
-  return status === MESSAGE_STATUS.STREAMING || status === MESSAGE_STATUS.TOOL_RUNNING || status === MESSAGE_STATUS.TOOL_BLOCKED;
+  return (
+    status === MESSAGE_STATUS.STREAMING ||
+    status === MESSAGE_STATUS.TOOL_RUNNING ||
+    status === MESSAGE_STATUS.TOOL_BLOCKED
+  );
 }
 
 export function isToolStatus(status: string): boolean {
-  return status.startsWith("tool_");
+  return status.startsWith('tool_');
 }
 
 /** Core message model shared across chat, session, graph, and teams. */
@@ -114,14 +118,14 @@ export type Message = {
 
 /** Run status values shared across chat, graph, and teams. */
 export type RunStatusValue =
-  | "idle"
-  | "pending"
-  | "running"
-  | "awaiting_user"
-  | "sync"
-  | "completed"
-  | "failed"
-  | "cancelled";
+  | 'idle'
+  | 'pending'
+  | 'running'
+  | 'awaiting_user'
+  | 'sync'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 
 /** Run status metadata shared across chat, graph, and teams. */
 export interface RunStatus {

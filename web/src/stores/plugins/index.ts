@@ -1,16 +1,22 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
   listPlugins,
   listPluginRuns,
   togglePluginEnabled,
   updatePluginConfig,
   updatePluginScope,
-  updatePluginSortOrder
-} from "../../features/plugins/api";
-import type { Plugin, PluginListQuery, PluginRunListQuery, PluginRun, PaginatedResponse } from "../../features/plugins/types";
+  updatePluginSortOrder,
+} from '../../features/plugins/api';
+import type {
+  Plugin,
+  PluginListQuery,
+  PluginRunListQuery,
+  PluginRun,
+  PaginatedResponse,
+} from '../../features/plugins/types';
 
-export const usePluginsStore = defineStore("plugins", () => {
+export const usePluginsStore = defineStore('plugins', () => {
   const plugins = ref<Plugin[]>([]);
   const total = ref(0);
   const loading = ref(false);

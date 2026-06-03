@@ -163,15 +163,23 @@
       </q-list>
     </section>
 
-    <q-banner v-if="!loading && patterns.length === 0 && proposals.length === 0 && observations.length === 0" rounded class="settings-info-banner settings-info-banner--bordered q-mt-md">
+    <q-banner
+      v-if="!loading && patterns.length === 0 && proposals.length === 0 && observations.length === 0"
+      rounded
+      class="settings-info-banner settings-info-banner--bordered q-mt-md"
+    >
       暂无学习数据。点击「手动触发」启动学习循环，或等待 Agent 在对话中自动积累观察。
     </q-banner>
   </div>
 </template>
 
 <script setup lang="ts">
-import { useQuasar } from "quasar";
-import type { LearningObservation, LearningPattern, LearningProposal as KnowledgeProposal } from "../../features/agents/learning.types";
+import { useQuasar } from 'quasar';
+import type {
+  LearningObservation,
+  LearningPattern,
+  LearningProposal as KnowledgeProposal,
+} from '../../features/agents/learning.types';
 
 const $q = useQuasar();
 
@@ -195,17 +203,17 @@ const emit = defineEmits<{
 
 function confirmApprove(proposalId: string) {
   $q.dialog({
-    title: "批准知识提议",
-    message: "确定批准此知识提议？批准后将注册为 Agent 的持久知识。",
+    title: '批准知识提议',
+    message: '确定批准此知识提议？批准后将注册为 Agent 的持久知识。',
     cancel: true,
-    persistent: true
+    persistent: true,
   }).onOk(() => {
-    emit("approve", proposalId);
+    emit('approve', proposalId);
   });
 }
 
 function formatDate(iso: string): string {
-  if (!iso) return "";
+  if (!iso) return '';
   try {
     return new Date(iso).toLocaleDateString();
   } catch {
@@ -214,51 +222,51 @@ function formatDate(iso: string): string {
 }
 
 function formatConfidence(v: number): string {
-  if (v === undefined || v === null) return "—";
-  return (v * 100).toFixed(1) + "%";
+  if (v === undefined || v === null) return '—';
+  return (v * 100).toFixed(1) + '%';
 }
 
 function truncateContent(text: string, max = 80): string {
-  if (!text) return "";
-  return text.length > max ? text.slice(0, max) + "…" : text;
+  if (!text) return '';
+  return text.length > max ? text.slice(0, max) + '…' : text;
 }
 
 function patternKindColor(kind: string): string {
   switch (kind) {
-    case "behavior":
-      return "blue";
-    case "preference":
-      return "teal";
-    case "error":
-      return "red";
-    case "efficiency":
-      return "orange";
+    case 'behavior':
+      return 'blue';
+    case 'preference':
+      return 'teal';
+    case 'error':
+      return 'red';
+    case 'efficiency':
+      return 'orange';
     default:
-      return "grey";
+      return 'grey';
   }
 }
 
 function patternStatusColor(status: string): string {
   switch (status) {
-    case "active":
-      return "positive";
-    case "superseded":
-      return "grey";
-    case "invalidated":
-      return "negative";
+    case 'active':
+      return 'positive';
+    case 'superseded':
+      return 'grey';
+    case 'invalidated':
+      return 'negative';
     default:
-      return "grey";
+      return 'grey';
   }
 }
 
 function patternStatusLabel(status: string): string {
   switch (status) {
-    case "active":
-      return "活跃";
-    case "superseded":
-      return "已替代";
-    case "invalidated":
-      return "已失效";
+    case 'active':
+      return '活跃';
+    case 'superseded':
+      return '已替代';
+    case 'invalidated':
+      return '已失效';
     default:
       return status;
   }
@@ -266,27 +274,27 @@ function patternStatusLabel(status: string): string {
 
 function proposalKindColor(kind: string): string {
   switch (kind) {
-    case "fact":
-      return "primary";
-    case "rule":
-      return "deep-purple";
-    case "preference":
-      return "teal";
-    case "skill":
-      return "orange";
+    case 'fact':
+      return 'primary';
+    case 'rule':
+      return 'deep-purple';
+    case 'preference':
+      return 'teal';
+    case 'skill':
+      return 'orange';
     default:
-      return "grey";
+      return 'grey';
   }
 }
 
 function proposalStatusLabel(status: string): string {
   switch (status) {
-    case "approved":
-      return "已批准";
-    case "rejected":
-      return "已拒绝";
-    case "pending":
-      return "待审批";
+    case 'approved':
+      return '已批准';
+    case 'rejected':
+      return '已拒绝';
+    case 'pending':
+      return '待审批';
     default:
       return status;
   }

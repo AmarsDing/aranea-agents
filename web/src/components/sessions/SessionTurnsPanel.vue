@@ -31,8 +31,12 @@
             <div>IN {{ turn.input_tokens }} · OUT {{ turn.output_tokens }}</div>
             <div v-if="turn.total_tokens">Total {{ turn.total_tokens }}</div>
             <div class="q-mt-xs">
-              <q-badge v-if="turn.model_call_count" color="blue-grey" outline class="q-mr-xs">模型 {{ turn.model_call_count }}</q-badge>
-              <q-badge v-if="turn.tool_call_count" color="info" outline class="q-mr-xs">工具 {{ turn.tool_call_count }}</q-badge>
+              <q-badge v-if="turn.model_call_count" color="blue-grey" outline class="q-mr-xs"
+                >模型 {{ turn.model_call_count }}</q-badge
+              >
+              <q-badge v-if="turn.tool_call_count" color="info" outline class="q-mr-xs"
+                >工具 {{ turn.tool_call_count }}</q-badge
+              >
               <q-badge v-if="turn.skill_call_count" color="teal" outline>技能 {{ turn.skill_call_count }}</q-badge>
             </div>
           </div>
@@ -49,9 +53,9 @@
 </template>
 
 <script setup lang="ts">
-import { toRef } from "vue";
-import { useSessionTurnsPanel } from "../../features/session/useSessionTurnsPanel";
-import { formatSessionDate } from "./sessionUi";
+import { toRef } from 'vue';
+import { useSessionTurnsPanel } from '../../features/session/useSessionTurnsPanel';
+import { formatSessionDate } from './sessionUi';
 
 const props = defineProps<{ sessionId: string }>();
 
@@ -65,9 +69,9 @@ function formatDuration(ms: number) {
 }
 
 function turnStatusColor(status: string) {
-  if (status === "completed") return "positive";
-  if (status === "running") return "warning";
-  if (status === "failed") return "negative";
-  return "grey";
+  if (status === 'completed') return 'positive';
+  if (status === 'running') return 'warning';
+  if (status === 'failed') return 'negative';
+  return 'grey';
 }
 </script>

@@ -9,13 +9,21 @@
     <div class="chat-diff-viewer__hunks">
       <div v-for="(hunk, idx) in hunks" :key="idx" class="chat-diff-viewer__hunk">
         <div v-if="hunk.searchLines.length" class="chat-diff-viewer__section chat-diff-viewer__section--old">
-          <div v-for="(line, li) in hunk.searchLines" :key="'o' + li" class="chat-diff-viewer__line chat-diff-viewer__line--old">
+          <div
+            v-for="(line, li) in hunk.searchLines"
+            :key="'o' + li"
+            class="chat-diff-viewer__line chat-diff-viewer__line--old"
+          >
             <span class="chat-diff-viewer__marker">-</span>
             <span class="chat-diff-viewer__text">{{ line }}</span>
           </div>
         </div>
         <div v-if="hunk.replaceLines.length" class="chat-diff-viewer__section chat-diff-viewer__section--new">
-          <div v-for="(line, li) in hunk.replaceLines" :key="'n' + li" class="chat-diff-viewer__line chat-diff-viewer__line--new">
+          <div
+            v-for="(line, li) in hunk.replaceLines"
+            :key="'n' + li"
+            class="chat-diff-viewer__line chat-diff-viewer__line--new"
+          >
             <span class="chat-diff-viewer__marker">+</span>
             <span class="chat-diff-viewer__text">{{ line }}</span>
           </div>
@@ -48,9 +56,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { useI18n } from "vue-i18n";
-import type { DiffEditHunk } from "../../features/chat/types";
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import type { DiffEditHunk } from '../../features/chat/types';
 
 const props = withDefaults(
   defineProps<{
@@ -74,9 +82,9 @@ const { t } = useI18n();
 const summary = computed(() => {
   const total = props.hunks.length;
   if (props.appliedCount > 0) {
-    return t("chat.diffAppliedCount", `${props.appliedCount} applied`);
+    return t('chat.diffAppliedCount', `${props.appliedCount} applied`);
   }
-  return t("chat.diffHunkCount", `${total} hunk(s)`);
+  return t('chat.diffHunkCount', `${total} hunk(s)`);
 });
 </script>
 

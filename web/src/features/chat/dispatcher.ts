@@ -5,12 +5,6 @@
  * New code should import from "realtime/dispatcher" directly.
  */
 
-export {
-  EnvelopeDispatcher,
-  matchFilterKey,
-} from "../../realtime/dispatcher";
+export { EnvelopeDispatcher, matchFilterKey } from '../../realtime/dispatcher';
 
-export type {
-  EnvelopeHandler,
-  DispatcherFilter,
-} from "../../realtime/dispatcher";
+export type { EnvelopeHandler, DispatcherFilter } from '../../realtime/dispatcher';

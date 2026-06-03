@@ -38,8 +38,12 @@
 
     <template #body-cell-owner="props">
       <q-td :props="props">
-        <q-chip dense :color="ownerChipColor(props.row.owner_type)" text-color="white">{{ ownerLabel(props.row.owner_type) }}</q-chip>
-        <div class="app-registry-cell-sub ellipsis">{{ props.row.owner_type === "team" ? props.row.team_id : props.row.agent_id }}</div>
+        <q-chip dense :color="ownerChipColor(props.row.owner_type)" text-color="white">{{
+          ownerLabel(props.row.owner_type)
+        }}</q-chip>
+        <div class="app-registry-cell-sub ellipsis">
+          {{ props.row.owner_type === 'team' ? props.row.team_id : props.row.agent_id }}
+        </div>
       </q-td>
     </template>
 
@@ -51,7 +55,9 @@
           :value="ratioValue(props.row.context_used_ratio)"
           :color="contextProgressColor(props.row.context_status)"
         />
-        <div class="app-registry-cell-sub q-mt-xs">{{ formatPercent(props.row.context_used_ratio) }} · {{ props.row.context_status }}</div>
+        <div class="app-registry-cell-sub q-mt-xs">
+          {{ formatPercent(props.row.context_used_ratio) }} · {{ props.row.context_status }}
+        </div>
       </q-td>
     </template>
 
@@ -59,54 +65,88 @@
       <q-td :props="props">
         <div class="app-registry-cell-primary">{{ formatNumber(props.row.total_tokens) }} tokens</div>
         <div class="app-registry-cell-sub">
-          {{ props.row.model_call_count }} model · {{ props.row.tool_call_count + props.row.skill_call_count + props.row.mcp_call_count }} calls
+          {{ props.row.model_call_count }} model ·
+          {{ props.row.tool_call_count + props.row.skill_call_count + props.row.mcp_call_count }} calls
         </div>
       </q-td>
     </template>
 
     <template #body-cell-time="props">
       <q-td :props="props">
-        <div class="app-registry-cell-primary">{{ formatSessionDate(props.row.last_message_at || props.row.updated_at) }}</div>
+        <div class="app-registry-cell-primary">
+          {{ formatSessionDate(props.row.last_message_at || props.row.updated_at) }}
+        </div>
         <div class="app-registry-cell-sub">创建 {{ formatSessionDate(props.row.created_at) }}</div>
       </q-td>
     </template>
 
     <template #body-cell-status="props">
       <q-td :props="props">
-        <SessionStatusBadge :status="props.row.status" :status-reason="props.row.status_reason" :status-changed-at="props.row.status_changed_at" />
+        <SessionStatusBadge
+          :status="props.row.status"
+          :status-reason="props.row.status_reason"
+          :status-changed-at="props.row.status_changed_at"
+        />
       </q-td>
     </template>
 
     <template #body-cell-actions="props">
       <q-td :props="props">
         <div class="app-registry-cell-actions">
-        <q-btn flat dense round icon="visibility" color="primary" :to="{ name: 'session-detail', params: { sessionId: props.row.id } }">
-          <q-tooltip>查看详情</q-tooltip>
-        </q-btn>
-        <q-btn
-          flat
-          dense
-          round
-          icon="push_pin"
-          :color="isSessionPinned(props.row) ? 'primary' : 'grey-6'"
-          @click="$emit('toggle-pin', props.row.id, !isSessionPinned(props.row))"
-        >
-          <q-tooltip>{{ isSessionPinned(props.row) ? "取消置顶" : "置顶" }}</q-tooltip>
-        </q-btn>
-        <q-btn flat dense round icon="archive" color="primary" :disable="!!props.row.archived_at || props.row.status === 'running' || props.row.status === 'awaiting_confirmation'" @click="$emit('archive-row', props.row.id)">
-          <q-tooltip>{{ props.row.status === 'running' || props.row.status === 'awaiting_confirmation' ? '执行中不可归档' : !!props.row.archived_at ? '已归档' : '归档' }}</q-tooltip>
-        </q-btn>
-        <q-btn
-          flat
-          dense
-          round
-          icon="delete"
-          color="negative"
-          :disable="props.row.status === 'running' || props.row.status === 'awaiting_confirmation'"
-          @click="$emit('delete-row', props.row.id)"
-        >
-          <q-tooltip>{{ props.row.status === 'running' || props.row.status === 'awaiting_confirmation' ? '执行中或等待确认时不可删除' : '永久删除' }}</q-tooltip>
-        </q-btn>
+          <q-btn
+            flat
+            dense
+            round
+            icon="visibility"
+            color="primary"
+            :to="{ name: 'session-detail', params: { sessionId: props.row.id } }"
+          >
+            <q-tooltip>查看详情</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
+            icon="push_pin"
+            :color="isSessionPinned(props.row) ? 'primary' : 'grey-6'"
+            @click="$emit('toggle-pin', props.row.id, !isSessionPinned(props.row))"
+          >
+            <q-tooltip>{{ isSessionPinned(props.row) ? '取消置顶' : '置顶' }}</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
+            icon="archive"
+            color="primary"
+            :disable="
+              !!props.row.archived_at || props.row.status === 'running' || props.row.status === 'awaiting_confirmation'
+            "
+            @click="$emit('archive-row', props.row.id)"
+          >
+            <q-tooltip>{{
+              props.row.status === 'running' || props.row.status === 'awaiting_confirmation'
+                ? '执行中不可归档'
+                : !!props.row.archived_at
+                  ? '已归档'
+                  : '归档'
+            }}</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
+            icon="delete"
+            color="negative"
+            :disable="props.row.status === 'running' || props.row.status === 'awaiting_confirmation'"
+            @click="$emit('delete-row', props.row.id)"
+          >
+            <q-tooltip>{{
+              props.row.status === 'running' || props.row.status === 'awaiting_confirmation'
+                ? '执行中或等待确认时不可删除'
+                : '永久删除'
+            }}</q-tooltip>
+          </q-btn>
         </div>
       </q-td>
     </template>
@@ -139,10 +179,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import SessionStatusBadge from "./SessionStatusBadge.vue";
-import type { Session } from "../../features/session/types";
+import { computed } from 'vue';
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import SessionStatusBadge from './SessionStatusBadge.vue';
+import type { Session } from '../../features/session/types';
 import {
   contextProgressColor,
   formatNumber,
@@ -153,8 +193,8 @@ import {
   ownerLabel,
   ratioValue,
   sessionsTableColumns,
-  sessionsTableSelectionColumn
-} from "./sessionUi";
+  sessionsTableSelectionColumn,
+} from './sessionUi';
 
 const props = defineProps<{
   rows: Session[];
@@ -170,16 +210,16 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  "update:page": [v: number];
-  "update:pageSize": [v: number];
-  "archive-row": [id: string];
-  "delete-row": [id: string];
-  "toggle-pin": [id: string, pinned: boolean];
-  "toggle-row": [id: string, checked: boolean];
-  "toggle-page": [checked: boolean];
+  'update:page': [v: number];
+  'update:pageSize': [v: number];
+  'archive-row': [id: string];
+  'delete-row': [id: string];
+  'toggle-pin': [id: string, pinned: boolean];
+  'toggle-row': [id: string, checked: boolean];
+  'toggle-page': [checked: boolean];
 }>();
 
 const tableColumns = computed(() =>
-  props.selectionMode ? [sessionsTableSelectionColumn, ...sessionsTableColumns] : sessionsTableColumns
+  props.selectionMode ? [sessionsTableSelectionColumn, ...sessionsTableColumns] : sessionsTableColumns,
 );
 </script>

@@ -2,23 +2,23 @@
  * 模型用量：`usage/v1` —— `createUsageService()`（见 `services/index.ts`），映射为 `types.ts` snake_case 形状。
  * **`recordModelTokenUsageEvent`** → **`POST /v1/usage/token-events`**（body 与 Go **`json:"…"`** 标签一致为 snake_case；生成的 **`JSON.stringify(TokenUsageEvent)`** 为 camelCase，不经由该方法）。
  */
-import { createUsageService } from "../../services/index";
-import { kratosApi } from "../../services/axiosHandler";
+import { createUsageService } from '../../services/index';
+import { kratosApi } from '../../services/axiosHandler';
 import type {
   UsageTrendPoint as KTrend,
   TokenUsageEvent as KEvent,
   UsageQuery as KUsageQuery,
   ListUsageTrendsResponse,
-  ListUsageEventsResponse
-} from "../../services/kratos/usage/v1/index";
+  ListUsageEventsResponse,
+} from '../../services/kratos/usage/v1/index';
 import type {
   ModelTokenUsageEvent,
   ModelUsageBreakdownRow,
   ModelUsageOverview,
   ModelUsageQuery,
   ModelUsageTrendPoint,
-  ModelUsageSummary
-} from "./types";
+  ModelUsageSummary,
+} from './types';
 
 export type {
   ModelTokenUsageEvent,
@@ -26,16 +26,16 @@ export type {
   ModelUsageOverview,
   ModelUsageQuery,
   ModelUsageTrendPoint,
-  ModelUsageSummary
-} from "./types";
+  ModelUsageSummary,
+} from './types';
 
 const usage = createUsageService();
 
 function num(v: unknown): number {
-  if (typeof v === "number" && !Number.isNaN(v)) {
+  if (typeof v === 'number' && !Number.isNaN(v)) {
     return v;
   }
-  if (typeof v === "string" && v.trim() !== "") {
+  if (typeof v === 'string' && v.trim() !== '') {
     const n = Number(v);
     return Number.isNaN(n) ? 0 : n;
   }
@@ -43,7 +43,7 @@ function num(v: unknown): number {
 }
 
 function obj(v: unknown): Record<string, unknown> {
-  return v !== null && typeof v === "object" ? (v as Record<string, unknown>) : {};
+  return v !== null && typeof v === 'object' ? (v as Record<string, unknown>) : {};
 }
 
 function summaryFromUnknown(raw: unknown): ModelUsageSummary {
@@ -60,14 +60,14 @@ function summaryFromUnknown(raw: unknown): ModelUsageSummary {
     total_cost_micro_usd: num(s.total_cost_micro_usd ?? s.totalCostMicroUsd),
     avg_latency_ms: num(s.avg_latency_ms ?? s.avgLatencyMs),
     avg_tokens_per_second: num(s.avg_tokens_per_second ?? s.avgTokensPerSecond),
-    success_rate: num(s.success_rate ?? s.successRate)
+    success_rate: num(s.success_rate ?? s.successRate),
   };
 }
 
 function trendFromUnknown(raw: unknown): ModelUsageTrendPoint {
   const t = obj(raw);
   return {
-    date_key: String(t.date_key ?? t.dateKey ?? ""),
+    date_key: String(t.date_key ?? t.dateKey ?? ''),
     call_count: num(t.call_count ?? t.callCount),
     input_tokens: num(t.input_tokens ?? t.inputTokens),
     output_tokens: num(t.output_tokens ?? t.outputTokens),
@@ -77,18 +77,18 @@ function trendFromUnknown(raw: unknown): ModelUsageTrendPoint {
     failed_count: num(t.failed_count ?? t.failedCount),
     cancelled_count: num(t.cancelled_count ?? t.cancelledCount),
     avg_latency_ms: num(t.avg_latency_ms ?? t.avgLatencyMs),
-    avg_tokens_per_second: num(t.avg_tokens_per_second ?? t.avgTokensPerSecond)
+    avg_tokens_per_second: num(t.avg_tokens_per_second ?? t.avgTokensPerSecond),
   };
 }
 
 function breakdownFromUnknown(raw: unknown): ModelUsageBreakdownRow {
   const r = obj(raw);
   return {
-    provider_code: String(r.provider_code ?? r.providerCode ?? ""),
-    model_api_id: String(r.model_api_id ?? r.modelApiId ?? ""),
-    model_display_name: String(r.model_display_name ?? r.modelDisplayName ?? ""),
-    agent_id: String(r.agent_id ?? r.agentId ?? ""),
-    agent_key: String(r.agent_key ?? r.agentKey ?? ""),
+    provider_code: String(r.provider_code ?? r.providerCode ?? ''),
+    model_api_id: String(r.model_api_id ?? r.modelApiId ?? ''),
+    model_display_name: String(r.model_display_name ?? r.modelDisplayName ?? ''),
+    agent_id: String(r.agent_id ?? r.agentId ?? ''),
+    agent_key: String(r.agent_key ?? r.agentKey ?? ''),
     call_count: num(r.call_count ?? r.callCount),
     input_tokens: num(r.input_tokens ?? r.inputTokens),
     output_tokens: num(r.output_tokens ?? r.outputTokens),
@@ -96,31 +96,31 @@ function breakdownFromUnknown(raw: unknown): ModelUsageBreakdownRow {
     total_cost_micro_usd: num(r.total_cost_micro_usd ?? r.totalCostMicroUsd),
     avg_latency_ms: num(r.avg_latency_ms ?? r.avgLatencyMs),
     avg_tokens_per_second: num(r.avg_tokens_per_second ?? r.avgTokensPerSecond),
-    success_rate: num(r.success_rate ?? r.successRate)
+    success_rate: num(r.success_rate ?? r.successRate),
   };
 }
 
 function tokenEventFromUnknown(raw: unknown): ModelTokenUsageEvent {
   const e = obj(raw);
   return {
-    id: String(e.id ?? ""),
-    occurred_at: String(e.occurred_at ?? e.occurredAt ?? ""),
-    date_key: String(e.date_key ?? e.dateKey ?? ""),
-    hour_key: String(e.hour_key ?? e.hourKey ?? ""),
-    user_id: String(e.user_id ?? e.userId ?? ""),
-    team_id: String(e.team_id ?? e.teamId ?? ""),
-    request_id: String(e.request_id ?? e.requestId ?? ""),
-    agent_id: String(e.agent_id ?? e.agentId ?? ""),
-    agent_key: String(e.agent_key ?? e.agentKey ?? ""),
-    session_id: String(e.session_id ?? e.sessionId ?? ""),
-    message_id: String(e.message_id ?? e.messageId ?? ""),
-    provider_code: String(e.provider_code ?? e.providerCode ?? ""),
-    provider_type: String(e.provider_type ?? e.providerType ?? ""),
-    provider_display_name: String(e.provider_display_name ?? e.providerDisplayName ?? ""),
-    model_api_id: String(e.model_api_id ?? e.modelApiId ?? ""),
-    model_display_name: String(e.model_display_name ?? e.modelDisplayName ?? ""),
-    model_category_json: String(e.model_category_json ?? e.modelCategoryJson ?? ""),
-    usage_kind: String(e.usage_kind ?? e.usageKind ?? ""),
+    id: String(e.id ?? ''),
+    occurred_at: String(e.occurred_at ?? e.occurredAt ?? ''),
+    date_key: String(e.date_key ?? e.dateKey ?? ''),
+    hour_key: String(e.hour_key ?? e.hourKey ?? ''),
+    user_id: String(e.user_id ?? e.userId ?? ''),
+    team_id: String(e.team_id ?? e.teamId ?? ''),
+    request_id: String(e.request_id ?? e.requestId ?? ''),
+    agent_id: String(e.agent_id ?? e.agentId ?? ''),
+    agent_key: String(e.agent_key ?? e.agentKey ?? ''),
+    session_id: String(e.session_id ?? e.sessionId ?? ''),
+    message_id: String(e.message_id ?? e.messageId ?? ''),
+    provider_code: String(e.provider_code ?? e.providerCode ?? ''),
+    provider_type: String(e.provider_type ?? e.providerType ?? ''),
+    provider_display_name: String(e.provider_display_name ?? e.providerDisplayName ?? ''),
+    model_api_id: String(e.model_api_id ?? e.modelApiId ?? ''),
+    model_display_name: String(e.model_display_name ?? e.modelDisplayName ?? ''),
+    model_category_json: String(e.model_category_json ?? e.modelCategoryJson ?? ''),
+    usage_kind: String(e.usage_kind ?? e.usageKind ?? ''),
     call_count: num(e.call_count ?? e.callCount),
     input_tokens: num(e.input_tokens ?? e.inputTokens),
     output_tokens: num(e.output_tokens ?? e.outputTokens),
@@ -128,30 +128,53 @@ function tokenEventFromUnknown(raw: unknown): ModelTokenUsageEvent {
     reasoning_tokens: e.reasoning_tokens != null ? num(e.reasoning_tokens ?? e.reasoningTokens) : undefined,
     embedding_tokens: e.embedding_tokens != null ? num(e.embedding_tokens ?? e.embeddingTokens) : undefined,
     total_tokens: num(e.total_tokens ?? e.totalTokens),
-    input_price_micro_usd_per_1k: e.input_price_micro_usd_per_1k != null ? num(e.input_price_micro_usd_per_1k ?? e.inputPriceMicroUsdPer1k) : undefined,
-    output_price_micro_usd_per_1k: e.output_price_micro_usd_per_1k != null ? num(e.output_price_micro_usd_per_1k ?? e.outputPriceMicroUsdPer1k) : undefined,
-    cached_input_price_micro_usd_per_1k: e.cached_input_price_micro_usd_per_1k != null ? num(e.cached_input_price_micro_usd_per_1k ?? e.cachedInputPriceMicroUsdPer1k) : undefined,
-    reasoning_price_micro_usd_per_1k: e.reasoning_price_micro_usd_per_1k != null ? num(e.reasoning_price_micro_usd_per_1k ?? e.reasoningPriceMicroUsdPer1k) : undefined,
-    embedding_price_micro_usd_per_1k: e.embedding_price_micro_usd_per_1k != null ? num(e.embedding_price_micro_usd_per_1k ?? e.embeddingPriceMicroUsdPer1k) : undefined,
-    input_cost_micro_usd: e.input_cost_micro_usd != null ? num(e.input_cost_micro_usd ?? e.inputCostMicroUsd) : undefined,
-    output_cost_micro_usd: e.output_cost_micro_usd != null ? num(e.output_cost_micro_usd ?? e.outputCostMicroUsd) : undefined,
-    cached_input_cost_micro_usd: e.cached_input_cost_micro_usd != null ? num(e.cached_input_cost_micro_usd ?? e.cachedInputCostMicroUsd) : undefined,
-    reasoning_cost_micro_usd: e.reasoning_cost_micro_usd != null ? num(e.reasoning_cost_micro_usd ?? e.reasoningCostMicroUsd) : undefined,
-    embedding_cost_micro_usd: e.embedding_cost_micro_usd != null ? num(e.embedding_cost_micro_usd ?? e.embeddingCostMicroUsd) : undefined,
+    input_price_micro_usd_per_1k:
+      e.input_price_micro_usd_per_1k != null
+        ? num(e.input_price_micro_usd_per_1k ?? e.inputPriceMicroUsdPer1k)
+        : undefined,
+    output_price_micro_usd_per_1k:
+      e.output_price_micro_usd_per_1k != null
+        ? num(e.output_price_micro_usd_per_1k ?? e.outputPriceMicroUsdPer1k)
+        : undefined,
+    cached_input_price_micro_usd_per_1k:
+      e.cached_input_price_micro_usd_per_1k != null
+        ? num(e.cached_input_price_micro_usd_per_1k ?? e.cachedInputPriceMicroUsdPer1k)
+        : undefined,
+    reasoning_price_micro_usd_per_1k:
+      e.reasoning_price_micro_usd_per_1k != null
+        ? num(e.reasoning_price_micro_usd_per_1k ?? e.reasoningPriceMicroUsdPer1k)
+        : undefined,
+    embedding_price_micro_usd_per_1k:
+      e.embedding_price_micro_usd_per_1k != null
+        ? num(e.embedding_price_micro_usd_per_1k ?? e.embeddingPriceMicroUsdPer1k)
+        : undefined,
+    input_cost_micro_usd:
+      e.input_cost_micro_usd != null ? num(e.input_cost_micro_usd ?? e.inputCostMicroUsd) : undefined,
+    output_cost_micro_usd:
+      e.output_cost_micro_usd != null ? num(e.output_cost_micro_usd ?? e.outputCostMicroUsd) : undefined,
+    cached_input_cost_micro_usd:
+      e.cached_input_cost_micro_usd != null
+        ? num(e.cached_input_cost_micro_usd ?? e.cachedInputCostMicroUsd)
+        : undefined,
+    reasoning_cost_micro_usd:
+      e.reasoning_cost_micro_usd != null ? num(e.reasoning_cost_micro_usd ?? e.reasoningCostMicroUsd) : undefined,
+    embedding_cost_micro_usd:
+      e.embedding_cost_micro_usd != null ? num(e.embedding_cost_micro_usd ?? e.embeddingCostMicroUsd) : undefined,
     total_cost_micro_usd: num(e.total_cost_micro_usd ?? e.totalCostMicroUsd),
     latency_ms: num(e.latency_ms ?? e.latencyMs),
-    time_to_first_token_ms: e.time_to_first_token_ms != null ? num(e.time_to_first_token_ms ?? e.timeToFirstTokenMs) : undefined,
+    time_to_first_token_ms:
+      e.time_to_first_token_ms != null ? num(e.time_to_first_token_ms ?? e.timeToFirstTokenMs) : undefined,
     tokens_per_second: num(e.tokens_per_second ?? e.tokensPerSecond),
-    status: String(e.status ?? ""),
-    error_code: String(e.error_code ?? e.errorCode ?? ""),
-    error_message: String(e.error_message ?? e.errorMessage ?? ""),
+    status: String(e.status ?? ''),
+    error_code: String(e.error_code ?? e.errorCode ?? ''),
+    error_message: String(e.error_message ?? e.errorMessage ?? ''),
     retry_count: e.retry_count != null ? num(e.retry_count ?? e.retryCount) : undefined,
-    prompt_mode: String(e.prompt_mode ?? e.promptMode ?? ""),
+    prompt_mode: String(e.prompt_mode ?? e.promptMode ?? ''),
     max_output_tokens: num(e.max_output_tokens ?? e.maxOutputTokens),
     context_window_k: num(e.context_window_k ?? e.contextWindowK),
     stream_enabled: Boolean(e.stream_enabled ?? e.streamEnabled),
-    metadata_json: String(e.metadata_json ?? e.metadataJson ?? ""),
-    created_at: String(e.created_at ?? e.createdAt ?? "")
+    metadata_json: String(e.metadata_json ?? e.metadataJson ?? ''),
+    created_at: String(e.created_at ?? e.createdAt ?? ''),
   };
 }
 
@@ -180,16 +203,16 @@ function overviewToLegacy(body: unknown): ModelUsageOverview {
       ? inefficientRaw.map((raw: unknown) => {
           const m = obj(raw);
           return {
-            provider_code: String(m.provider_code ?? m.providerCode ?? ""),
-            model_api_id: String(m.model_api_id ?? m.modelApiId ?? ""),
-            model_display_name: String(m.model_display_name ?? m.modelDisplayName ?? ""),
+            provider_code: String(m.provider_code ?? m.providerCode ?? ''),
+            model_api_id: String(m.model_api_id ?? m.modelApiId ?? ''),
+            model_display_name: String(m.model_display_name ?? m.modelDisplayName ?? ''),
             call_count: num(m.call_count ?? m.callCount),
             total_tokens: num(m.total_tokens ?? m.totalTokens),
             total_cost_micro_usd: num(m.total_cost_micro_usd ?? m.totalCostMicroUsd),
             avg_latency_ms: num(m.avg_latency_ms ?? m.avgLatencyMs),
             avg_tokens_per_second: num(m.avg_tokens_per_second ?? m.avgTokensPerSecond),
             success_rate: num(m.success_rate ?? m.successRate),
-            flags: Array.isArray(m.flags) ? m.flags.map((f) => String(f)) : []
+            flags: Array.isArray(m.flags) ? m.flags.map((f) => String(f)) : [],
           };
         })
       : [],
@@ -198,9 +221,9 @@ function overviewToLegacy(body: unknown): ModelUsageOverview {
           configured_count: num(dash.configured_count ?? dash.configuredCount),
           total_cap_micro_usd: num(dash.total_cap_micro_usd ?? dash.totalCapMicroUsd),
           total_spent_micro_usd: num(dash.total_spent_micro_usd ?? dash.totalSpentMicroUsd),
-          max_utilization_ratio: num(dash.max_utilization_ratio ?? dash.maxUtilizationRatio)
+          max_utilization_ratio: num(dash.max_utilization_ratio ?? dash.maxUtilizationRatio),
         }
-      : undefined
+      : undefined,
   };
 }
 
@@ -215,8 +238,8 @@ function queryToKratos(q: ModelUsageQuery): KUsageQuery {
     status: q.status,
     limit: q.limit,
     granularity: q.granularity,
-    teamId: q.team_id?.trim() ?? "",
-    usageKind: q.usage_kind?.trim() ?? ""
+    teamId: q.team_id?.trim() ?? '',
+    usageKind: q.usage_kind?.trim() ?? '',
   };
   if (q.team_id?.trim()) out.teamId = q.team_id.trim();
   if (q.usage_kind?.trim()) out.usageKind = q.usage_kind.trim();
@@ -244,11 +267,11 @@ function usageTokenEventIngestBody(e: ModelTokenUsageEvent): Record<string, unkn
     latency_ms: Math.trunc(e.latency_ms),
     tokens_per_second: Number(e.tokens_per_second),
     status: e.status,
-    error_message: e.error_message ?? "",
+    error_message: e.error_message ?? '',
     prompt_mode: e.prompt_mode,
     max_output_tokens: Math.trunc(e.max_output_tokens),
     context_window_k: Math.trunc(e.context_window_k),
-    stream_enabled: Boolean(e.stream_enabled)
+    stream_enabled: Boolean(e.stream_enabled),
   };
   if (e.occurred_at) {
     out.occurred_at = e.occurred_at;
@@ -354,17 +377,19 @@ export async function listModelUsageEvents(query: ModelUsageQuery = {}): Promise
 /** Persists one usage row + session counters + daily rollup (`usage/v1` ingest). */
 export async function exportUsageEventsCsv(query: ModelUsageQuery = {}): Promise<string> {
   const raw = await usage.ExportUsageEvents(queryToKratos(query));
-  return String((raw as { csv?: string }).csv ?? "");
+  return String((raw as { csv?: string }).csv ?? '');
 }
 
 export async function recordModelTokenUsageEvent(e: ModelTokenUsageEvent): Promise<ModelTokenUsageEvent> {
-  const { data } = await kratosApi.post<unknown>("/v1/usage/token-events", usageTokenEventIngestBody(e), {
-    headers: { "Content-Type": "application/json" }
+  const { data } = await kratosApi.post<unknown>('/v1/usage/token-events', usageTokenEventIngestBody(e), {
+    headers: { 'Content-Type': 'application/json' },
   });
   return tokenEventFromUnknown(data);
 }
 
 export async function purgeUsageEvents(retainDays: number): Promise<{ deleted_count: number }> {
   const raw = await usage.PurgeUsageEvents({ retainDays });
-  return { deleted_count: num((raw as Record<string, unknown>).deletedCount ?? (raw as Record<string, unknown>).deleted_count) };
+  return {
+    deleted_count: num((raw as Record<string, unknown>).deletedCount ?? (raw as Record<string, unknown>).deleted_count),
+  };
 }

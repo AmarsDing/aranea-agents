@@ -14,8 +14,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { useAgentAvatarPreview } from "../../features/avatar/useAgentAvatarPreview";
+import { computed } from 'vue';
+import { useAgentAvatarPreview } from '../../features/avatar/useAgentAvatarPreview';
 
 const props = withDefaults(
   defineProps<{
@@ -25,7 +25,7 @@ const props = withDefaults(
     rounded?: boolean;
     avatarClass?: string;
   }>(),
-  { alt: "", size: "56px", rounded: false, avatarClass: "" }
+  { alt: '', size: '56px', rounded: false, avatarClass: '' },
 );
 
 defineEmits<{
@@ -36,5 +36,5 @@ const iconRef = computed(() => props.icon);
 const { avatarSrc, avatarIcon } = useAgentAvatarPreview(iconRef);
 
 /** 有 `<img>` 时不传 `icon`；缩略图加载前显示占位图标 */
-const resolvedIcon = computed(() => (avatarSrc.value ? undefined : avatarIcon.value ?? "smart_toy"));
+const resolvedIcon = computed(() => (avatarSrc.value ? undefined : (avatarIcon.value ?? 'smart_toy')));
 </script>

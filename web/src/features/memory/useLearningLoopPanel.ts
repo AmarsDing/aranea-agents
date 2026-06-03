@@ -1,6 +1,10 @@
-import { computed, ref, watch } from "vue";
-import { useLearningLoopStore } from "../../stores/learningLoop";
-import type { LearningProposal as KnowledgeProposal, LearningObservation, LearningPattern } from "../agents/api.learning";
+import { computed, ref, watch } from 'vue';
+import { useLearningLoopStore } from '../../stores/learningLoop';
+import type {
+  LearningProposal as KnowledgeProposal,
+  LearningObservation,
+  LearningPattern,
+} from '../agents/api.learning';
 
 export function useLearningLoopPanel(agentId: () => string) {
   const store = useLearningLoopStore();
@@ -13,8 +17,8 @@ export function useLearningLoopPanel(agentId: () => string) {
   const proposals = computed<KnowledgeProposal[]>(() => store.proposals);
   const loading = computed(() => store.loading);
 
-  const pendingProposals = computed(() => proposals.value.filter((p) => p.status === "pending"));
-  const approvedProposals = computed(() => proposals.value.filter((p) => p.status === "approved"));
+  const pendingProposals = computed(() => proposals.value.filter((p) => p.status === 'pending'));
+  const approvedProposals = computed(() => proposals.value.filter((p) => p.status === 'approved'));
   const patternCount = computed(() => patterns.value.length);
   const pendingCount = computed(() => pendingProposals.value.length);
   const knowledgeCount = computed(() => approvedProposals.value.length);
@@ -22,11 +26,7 @@ export function useLearningLoopPanel(agentId: () => string) {
   async function fetchAll() {
     const id = agentId();
     if (!id) return;
-    await Promise.all([
-      store.fetchObservations(id),
-      store.fetchPatterns(id),
-      store.fetchProposals(id)
-    ]);
+    await Promise.all([store.fetchObservations(id), store.fetchPatterns(id), store.fetchProposals(id)]);
   }
 
   async function onApprove(proposalId: string) {
@@ -67,8 +67,10 @@ export function useLearningLoopPanel(agentId: () => string) {
 
   watch(
     () => agentId(),
-    () => { void fetchAll(); },
-    { immediate: true }
+    () => {
+      void fetchAll();
+    },
+    { immediate: true },
   );
 
   return {
@@ -86,6 +88,6 @@ export function useLearningLoopPanel(agentId: () => string) {
     fetchAll,
     onApprove,
     onReject,
-    onRun
+    onRun,
   };
 }

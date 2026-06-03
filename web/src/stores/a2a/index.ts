@@ -1,5 +1,5 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
   discoverAgents,
   discoverRemoteAgent,
@@ -10,8 +10,8 @@ import {
   listA2AAudit,
   listRemoteAgents,
   registerRemoteAgent,
-  updateAgentCard
-} from "../../features/a2a/api";
+  updateAgentCard,
+} from '../../features/a2a/api';
 import type {
   A2AAgentCard,
   A2AAuditEntry,
@@ -24,10 +24,10 @@ import type {
   ListAuditParams,
   ListAuditResult,
   RegisterRemoteAgentInput,
-  UpdateAgentCardInput
-} from "../../features/a2a/types";
+  UpdateAgentCardInput,
+} from '../../features/a2a/types';
 
-export const useA2AStore = defineStore("a2a", () => {
+export const useA2AStore = defineStore('a2a', () => {
   const agentCards = ref<A2AAgentCard[]>([]);
   const auditLog = ref<A2AAuditEntry[]>([]);
   const auditTotal = ref(0);
@@ -78,7 +78,7 @@ export const useA2AStore = defineStore("a2a", () => {
     return result;
   }
 
-  async function loadRemoteAgents(workspace = ""): Promise<A2ARemoteAgent[]> {
+  async function loadRemoteAgents(workspace = ''): Promise<A2ARemoteAgent[]> {
     remoteAgents.value = await listRemoteAgents(workspace);
     return remoteAgents.value;
   }
@@ -114,6 +114,6 @@ export const useA2AStore = defineStore("a2a", () => {
     loadRemoteAgents,
     registerRemote,
     removeRemote,
-    previewRemote
+    previewRemote,
   };
 });

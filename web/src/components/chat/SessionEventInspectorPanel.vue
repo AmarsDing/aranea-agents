@@ -17,11 +17,7 @@
     <div v-else class="row col q-col-gutter-md inspector-body">
       <div class="col-12 col-md-4 inspector-branch">
         <div class="text-caption text-weight-bold q-mb-sm">调用树</div>
-        <BranchTree
-          :nodes="branchTree"
-          :selected-id="selectedInvocationId"
-          @select="selectedInvocationId = $event"
-        />
+        <BranchTree :nodes="branchTree" :selected-id="selectedInvocationId" @select="selectedInvocationId = $event" />
       </div>
       <div class="col-12 col-md-8 inspector-list">
         <div class="text-caption text-weight-bold q-mb-sm">{{ displayEvents.length }} 个事件</div>
@@ -55,16 +51,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, toRef } from "vue";
+import { computed, toRef } from 'vue';
 import {
   useChatEventInspector,
   type ChatEventInspectorStreamDeps,
-} from "../../features/chat/composables/useChatEventInspector";
-import type { EventFilterState } from "../../features/chat/eventFilter";
-import BranchTree from "./BranchTree.vue";
-import EventFilterBar from "./EventFilterBar.vue";
-import StateDeltaIndicator from "./StateDeltaIndicator.vue";
-import TransferBadge from "./TransferBadge.vue";
+} from '../../features/chat/composables/useChatEventInspector';
+import type { EventFilterState } from '../../features/chat/eventFilter';
+import BranchTree from './BranchTree.vue';
+import EventFilterBar from './EventFilterBar.vue';
+import StateDeltaIndicator from './StateDeltaIndicator.vue';
+import TransferBadge from './TransferBadge.vue';
 
 const props = defineProps<{
   sessionId: string;
@@ -72,20 +68,11 @@ const props = defineProps<{
   streamDeps?: ChatEventInspectorStreamDeps;
 }>();
 
-const sessionRef = toRef(props, "sessionId");
-const activeRef = toRef(props, "active");
+const sessionRef = toRef(props, 'sessionId');
+const activeRef = toRef(props, 'active');
 
-const {
-  paused,
-  loading,
-  error,
-  filters,
-  filteredEvents,
-  branchTree,
-  selectedInvocationId,
-  clearEvents,
-  reload,
-} = useChatEventInspector(sessionRef, activeRef, props.streamDeps);
+const { paused, loading, error, filters, filteredEvents, branchTree, selectedInvocationId, clearEvents, reload } =
+  useChatEventInspector(sessionRef, activeRef, props.streamDeps);
 
 const displayEvents = computed(() => {
   const sel = selectedInvocationId.value;

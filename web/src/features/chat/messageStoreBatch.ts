@@ -1,4 +1,4 @@
-import type { Message } from "./types";
+import type { Message } from './types';
 
 type MessageWriter = {
   update: (updater: (current: Message[]) => Message[]) => void;
@@ -8,7 +8,7 @@ type MessageWriter = {
 /** Coalesce rapid WS tool/text patches into one render per animation frame. */
 export function createMessageBatchWriter(
   getMessages: () => Message[],
-  setMessages: (rows: Message[]) => void
+  setMessages: (rows: Message[]) => void,
 ): MessageWriter {
   let pending: Message[] | null = null;
   let rafId = 0;

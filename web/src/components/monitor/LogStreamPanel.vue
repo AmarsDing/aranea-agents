@@ -16,9 +16,9 @@
 </template>
 
 <script setup lang="ts">
-import { useMonitorLogStreamPanel } from "../../features/monitor/useMonitorLogStreamPanel";
-import FlowLogStream from "./FlowLogStream.vue";
-import ProcessLogStream from "./ProcessLogStream.vue";
+import { useMonitorLogStreamPanel } from '../../features/monitor/useMonitorLogStreamPanel';
+import FlowLogStream from './FlowLogStream.vue';
+import ProcessLogStream from './ProcessLogStream.vue';
 
 const { subTab } = useMonitorLogStreamPanel();
 

@@ -1,4 +1,4 @@
-import type { BatchOperationResult, BatchPreviewResult } from "./types";
+import type { BatchOperationResult, BatchPreviewResult } from './types';
 
 /** Rows matched at resolve time but not updated (state changed before SQL, or partial chunk skip). */
 export function skippedAtExecute(result: BatchOperationResult): number {
@@ -7,11 +7,11 @@ export function skippedAtExecute(result: BatchOperationResult): number {
 }
 
 export function formatBatchNotifyMessage(
-  action: "archive" | "delete",
+  action: 'archive' | 'delete',
   result: BatchOperationResult,
-  requested?: number
+  requested?: number,
 ): string {
-  const verb = action === "archive" ? "归档" : "删除";
+  const verb = action === 'archive' ? '归档' : '删除';
   let msg = `已${verb} ${result.processed} 个会话`;
   const extras: string[] = [];
   if (requested != null && requested > 0 && requested !== result.processed) {
@@ -34,10 +34,10 @@ export function formatBatchNotifyMessage(
     extras.push(`失败 ${result.failed_ids.length}`);
   }
   if (result.truncated) {
-    extras.push("扫描达上限，请再次执行以处理剩余");
+    extras.push('扫描达上限，请再次执行以处理剩余');
   }
   if (extras.length > 0) {
-    msg += `（${extras.join("；")}）`;
+    msg += `（${extras.join('；')}）`;
   }
   return msg;
 }
@@ -51,7 +51,7 @@ export function formatBatchPreviewHint(preview: BatchPreviewResult): string {
     parts.push(`未找到 ${preview.skipped_not_found}`);
   }
   if (preview.truncated) {
-    parts.push("扫描达上限，结果可能不完整");
+    parts.push('扫描达上限，结果可能不完整');
   }
-  return parts.join("；");
+  return parts.join('；');
 }

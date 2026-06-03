@@ -1,14 +1,14 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { createPinia, setActivePinia } from "pinia";
-import { useChatRunStatus } from "./useChatRunStatus";
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { createPinia, setActivePinia } from 'pinia';
+import { useChatRunStatus } from './useChatRunStatus';
 
-vi.mock("../api", () => ({
+vi.mock('../api', () => ({
   getRunStatus: vi.fn(),
 }));
 
-import { getRunStatus } from "../api";
+import { getRunStatus } from '../api';
 
-describe("useChatRunStatus", () => {
+describe('useChatRunStatus', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.useFakeTimers();
@@ -19,12 +19,12 @@ describe("useChatRunStatus", () => {
     vi.useRealTimers();
   });
 
-  it("prefers WS envelope over delayed HTTP hydrate", async () => {
+  it('prefers WS envelope over delayed HTTP hydrate', async () => {
     vi.mocked(getRunStatus).mockResolvedValue({
-      status: "running",
-      runId: "http-run",
-      errorMessage: "",
-      updatedAt: "",
+      status: 'running',
+      runId: 'http-run',
+      errorMessage: '',
+      updatedAt: '',
     });
 
     const applyAwaitRunStatus = vi.fn();
@@ -32,40 +32,40 @@ describe("useChatRunStatus", () => {
       applyAwaitRunStatus,
     });
 
-    onSessionSwitch("sess-1");
+    onSessionSwitch('sess-1');
     applyFromEnvelope({
-      id: "e1",
-      type: "run_status",
-      author: "test",
-      session_id: "sess-1",
-      timestamp: "",
+      id: 'e1',
+      type: 'run_status',
+      author: 'test',
+      session_id: 'sess-1',
+      timestamp: '',
       version: 1,
-      metadata: { status: "completed", run_id: "ws-run" },
+      metadata: { status: 'completed', run_id: 'ws-run' },
     });
 
-    expect(runStatus.value).toBe("completed");
+    expect(runStatus.value).toBe('completed');
     vi.advanceTimersByTime(500);
     await Promise.resolve();
     expect(getRunStatus).not.toHaveBeenCalled();
   });
 
-  it("hydrates from HTTP when WS silent after session switch", async () => {
+  it('hydrates from HTTP when WS silent after session switch', async () => {
     vi.mocked(getRunStatus).mockResolvedValue({
-      status: "awaiting_user",
-      runId: "run-1",
-      errorMessage: "",
-      updatedAt: "",
-      awaitKind: "reply",
+      status: 'awaiting_user',
+      runId: 'run-1',
+      errorMessage: '',
+      updatedAt: '',
+      awaitKind: 'reply',
     });
 
     const applyAwaitRunStatus = vi.fn();
     const { runStatus, onSessionSwitch } = useChatRunStatus({ applyAwaitRunStatus });
 
-    onSessionSwitch("sess-2");
+    onSessionSwitch('sess-2');
     await vi.advanceTimersByTimeAsync(400);
 
-    expect(getRunStatus).toHaveBeenCalledWith("sess-2");
-    expect(runStatus.value).toBe("awaiting_user");
+    expect(getRunStatus).toHaveBeenCalledWith('sess-2');
+    expect(runStatus.value).toBe('awaiting_user');
     expect(applyAwaitRunStatus).toHaveBeenCalled();
   });
 });

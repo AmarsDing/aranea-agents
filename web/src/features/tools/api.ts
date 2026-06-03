@@ -1,14 +1,14 @@
-import { createAgentService, createToolService } from "../../services/index";
+import { createAgentService, createToolService } from '../../services/index';
 import type {
   AgentEffectiveToolsView,
-  EffectiveAgentTool as KratosEffectiveTool
-} from "../../services/kratos/agent/v1/index";
+  EffectiveAgentTool as KratosEffectiveTool,
+} from '../../services/kratos/agent/v1/index';
 import type {
   Tool as KratosTool,
   ToolAgentOverride as KratosToolAgentOverride,
   ToolInvocation as KratosInvocation,
-  ToolSummary as KratosSummary
-} from "../../services/kratos/tool/v1/index";
+  ToolSummary as KratosSummary,
+} from '../../services/kratos/tool/v1/index';
 import type {
   AgentEffectiveTools,
   PaginatedResponse,
@@ -21,16 +21,16 @@ import type {
   ToolAuditQuery,
   ToolInvocationAudit,
   ToolTestResult,
-  ToolUpsertInput
-} from "./types";
+  ToolUpsertInput,
+} from './types';
 
 const toolApi = createToolService();
 const agentApi = createAgentService();
 
 /** Coerce legacy string booleans ("true"/"false") from forms before proto bool fields. */
 export function toolBool(v: unknown): boolean {
-  if (typeof v === "boolean") return v;
-  if (typeof v === "string") return v.trim().toLowerCase() === "true";
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'string') return v.trim().toLowerCase() === 'true';
   return Boolean(v);
 }
 
@@ -40,42 +40,42 @@ function toolUpsertBools(input: ToolUpsertInput) {
     readonly: toolBool(input.readonly),
     requiresConfirmation: toolBool(input.requires_confirmation),
     supportsStreaming: toolBool(input.supports_streaming),
-    supportsConcurrency: toolBool(input.supports_concurrency)
+    supportsConcurrency: toolBool(input.supports_concurrency),
   };
 }
 
-function enabledFilter(enabled: ToolListQuery["enabled"]): string | undefined {
+function enabledFilter(enabled: ToolListQuery['enabled']): string | undefined {
   if (enabled === true) {
-    return "true";
+    return 'true';
   }
   if (enabled === false) {
-    return "false";
+    return 'false';
   }
   return undefined;
 }
 
 function kratosToolToLegacy(t: KratosTool): Tool {
   return {
-    id: t.id ?? "",
-    key: t.key ?? "",
-    display_name: t.displayName ?? "",
-    description: t.description ?? "",
-    category: t.category ?? "",
-    source: (t.source ?? "") as Tool["source"],
-    risk_level: (t.riskLevel ?? "") as Tool["risk_level"],
+    id: t.id ?? '',
+    key: t.key ?? '',
+    display_name: t.displayName ?? '',
+    description: t.description ?? '',
+    category: t.category ?? '',
+    source: (t.source ?? '') as Tool['source'],
+    risk_level: (t.riskLevel ?? '') as Tool['risk_level'],
     enabled: Boolean(t.enabled),
     readonly: Boolean(t.readonly),
     requires_confirmation: Boolean(t.requiresConfirmation),
     supports_streaming: Boolean(t.supportsStreaming),
     supports_concurrency: Boolean(t.supportsConcurrency),
-    parameters_schema_json: t.parametersSchemaJson ?? "",
-    result_schema_json: t.resultSchemaJson ?? "",
-    config_schema_json: t.configSchemaJson ?? "",
-    config_json: t.configJson ?? "",
-    default_config_json: t.defaultConfigJson ?? "",
-    metadata_json: t.metadataJson ?? "",
-    runtime_status: (t.runtimeStatus ?? "") as Tool["runtime_status"],
-    runtime_kind: (t.runtimeKind ?? "") as Tool["runtime_kind"],
+    parameters_schema_json: t.parametersSchemaJson ?? '',
+    result_schema_json: t.resultSchemaJson ?? '',
+    config_schema_json: t.configSchemaJson ?? '',
+    config_json: t.configJson ?? '',
+    default_config_json: t.defaultConfigJson ?? '',
+    metadata_json: t.metadataJson ?? '',
+    runtime_status: (t.runtimeStatus ?? '') as Tool['runtime_status'],
+    runtime_kind: (t.runtimeKind ?? '') as Tool['runtime_kind'],
     invoke_count: t.invokeCount ?? 0,
     invoke_count_24h: t.invokeCount24h ?? 0,
     success_count: t.successCount ?? 0,
@@ -84,11 +84,11 @@ function kratosToolToLegacy(t: KratosTool): Tool {
     agent_override_count: t.agentOverrideCount ?? 0,
     avg_duration_ms: t.avgDurationMs ?? null,
     p95_duration_ms: t.p95DurationMs ?? 0,
-    last_invoked_at: t.lastInvokedAt ?? "",
-    last_status: t.lastStatus ?? "",
-    created_at: t.createdAt ?? "",
-    updated_at: t.updatedAt ?? "",
-    permissions: { can_manage: Boolean(t.permissions?.canManage) }
+    last_invoked_at: t.lastInvokedAt ?? '',
+    last_status: t.lastStatus ?? '',
+    created_at: t.createdAt ?? '',
+    updated_at: t.updatedAt ?? '',
+    permissions: { can_manage: Boolean(t.permissions?.canManage) },
   };
 }
 
@@ -98,40 +98,40 @@ function kratosSummaryToLegacy(s?: KratosSummary) {
     enabled_tools: s?.enabledTools ?? 0,
     high_risk_enabled: s?.highRiskEnabled ?? 0,
     calls_24h: s?.calls24h ?? 0,
-    failure_rate_24h: s?.failureRate24h ?? 0
+    failure_rate_24h: s?.failureRate24h ?? 0,
   };
 }
 
 function kratosInvocationToLegacy(x: KratosInvocation): ToolInvocation {
   return {
-    id: x.id ?? "",
-    request_id: x.requestId ?? "",
-    invocation_id: x.invocationId ?? "",
-    tool_id: x.toolId ?? "",
-    tool_key: x.toolKey ?? "",
-    tool_display_name: x.toolDisplayName ?? "",
-    agent_id: x.agentId ?? "",
-    agent_key: x.agentKey ?? "",
-    agent_display_name: x.agentDisplayName ?? "",
-    session_id: x.sessionId ?? "",
-    message_id: x.messageId ?? "",
-    user_id: x.userId ?? "",
-    source: x.source ?? "",
-    status: (x.status ?? "") as ToolInvocation["status"],
-    started_at: x.startedAt ?? "",
-    ended_at: x.endedAt ?? "",
+    id: x.id ?? '',
+    request_id: x.requestId ?? '',
+    invocation_id: x.invocationId ?? '',
+    tool_id: x.toolId ?? '',
+    tool_key: x.toolKey ?? '',
+    tool_display_name: x.toolDisplayName ?? '',
+    agent_id: x.agentId ?? '',
+    agent_key: x.agentKey ?? '',
+    agent_display_name: x.agentDisplayName ?? '',
+    session_id: x.sessionId ?? '',
+    message_id: x.messageId ?? '',
+    user_id: x.userId ?? '',
+    source: x.source ?? '',
+    status: (x.status ?? '') as ToolInvocation['status'],
+    started_at: x.startedAt ?? '',
+    ended_at: x.endedAt ?? '',
     duration_ms: x.durationMs ?? 0,
-    input_preview: x.inputPreview ?? "",
-    input_hash: x.inputHash ?? "",
-    output_preview: x.outputPreview ?? "",
-    output_hash: x.outputHash ?? "",
-    error_code: x.errorCode ?? "",
-    error_message: x.errorMessage ?? "",
+    input_preview: x.inputPreview ?? '',
+    input_hash: x.inputHash ?? '',
+    output_preview: x.outputPreview ?? '',
+    output_hash: x.outputHash ?? '',
+    error_code: x.errorCode ?? '',
+    error_message: x.errorMessage ?? '',
     redaction_applied: Boolean(x.redactionApplied),
-    metadata_json: x.metadataJson ?? "",
-    created_at: x.createdAt ?? "",
+    metadata_json: x.metadataJson ?? '',
+    created_at: x.createdAt ?? '',
     streaming: Boolean(x.streaming),
-    chunk_count: x.chunkCount ?? 0
+    chunk_count: x.chunkCount ?? 0,
   };
 }
 
@@ -144,7 +144,7 @@ export async function listTools(query: ToolListQuery = {}): Promise<ToolListResp
     enabled: enabledFilter(query.enabled),
     sort: query.sort,
     page: query.page,
-    pageSize: query.page_size
+    pageSize: query.page_size,
   });
   const items = (data.items ?? []).map(kratosToolToLegacy);
   return {
@@ -152,7 +152,7 @@ export async function listTools(query: ToolListQuery = {}): Promise<ToolListResp
     page: data.page ?? query.page ?? 1,
     page_size: data.pageSize ?? query.page_size ?? 20,
     total: data.total ?? items.length,
-    summary: kratosSummaryToLegacy(data.summary)
+    summary: kratosSummaryToLegacy(data.summary),
   };
 }
 
@@ -176,7 +176,7 @@ export async function createTool(input: ToolUpsertInput): Promise<Tool> {
     configSchemaJson: input.config_schema_json,
     configJson: input.config_json,
     defaultConfigJson: input.default_config_json,
-    metadataJson: input.metadata_json
+    metadataJson: input.metadata_json,
   });
   return kratosToolToLegacy(data);
 }
@@ -197,7 +197,7 @@ export async function updateTool(id: string, input: ToolUpsertInput): Promise<To
     configSchemaJson: input.config_schema_json,
     configJson: input.config_json,
     defaultConfigJson: input.default_config_json,
-    metadataJson: input.metadata_json
+    metadataJson: input.metadata_json,
   });
   return kratosToolToLegacy(data);
 }
@@ -216,7 +216,10 @@ export async function updateToolConfig(id: string, configJson: string): Promise<
   return kratosToolToLegacy(data);
 }
 
-export async function listToolRunsForTool(id: string, query: ToolRunQuery = {}): Promise<PaginatedResponse<ToolInvocation>> {
+export async function listToolRunsForTool(
+  id: string,
+  query: ToolRunQuery = {},
+): Promise<PaginatedResponse<ToolInvocation>> {
   const data = await toolApi.ListToolRunsForTool({
     toolId: id,
     agentId: query.agent_id,
@@ -225,14 +228,14 @@ export async function listToolRunsForTool(id: string, query: ToolRunQuery = {}):
     from: query.from,
     to: query.to,
     page: query.page,
-    pageSize: query.page_size
+    pageSize: query.page_size,
   });
   const items = (data.items ?? []).map(kratosInvocationToLegacy);
   return {
     items,
     page: data.page ?? query.page ?? 1,
     page_size: data.pageSize ?? query.page_size ?? 20,
-    total: data.total ?? items.length
+    total: data.total ?? items.length,
   };
 }
 
@@ -246,14 +249,14 @@ export async function listToolRuns(query: ToolRunQuery = {}): Promise<PaginatedR
     to: query.to,
     hasError: query.has_error,
     page: query.page,
-    pageSize: query.page_size
+    pageSize: query.page_size,
   });
   const items = (data.items ?? []).map(kratosInvocationToLegacy);
   return {
     items,
     page: data.page ?? query.page ?? 1,
     page_size: data.pageSize ?? query.page_size ?? 20,
-    total: data.total ?? items.length
+    total: data.total ?? items.length,
   };
 }
 
@@ -263,15 +266,15 @@ export async function getAgentEffectiveTools(agentId: string): Promise<AgentEffe
   return kratosAgentEffectiveToolsToLegacy(view);
 }
 
-function kratosEffectiveToolRow(row: KratosEffectiveTool | undefined): AgentEffectiveTools["items"][number] {
+function kratosEffectiveToolRow(row: KratosEffectiveTool | undefined): AgentEffectiveTools['items'][number] {
   return {
-    tool_key: row?.toolKey ?? "",
-    display_name: row?.displayName ?? "",
-    category: row?.category ?? "",
-    source: row?.source ?? "",
+    tool_key: row?.toolKey ?? '',
+    display_name: row?.displayName ?? '',
+    category: row?.category ?? '',
+    source: row?.source ?? '',
     enabled: row?.enabled ?? false,
-    effective_state: (row?.effectiveState ?? "denied") as AgentEffectiveTools["items"][number]["effective_state"],
-    reason: row?.reason ?? ""
+    effective_state: (row?.effectiveState ?? 'denied') as AgentEffectiveTools['items'][number]['effective_state'],
+    reason: row?.reason ?? '',
   };
 }
 
@@ -279,25 +282,25 @@ function kratosAgentEffectiveToolsToLegacy(view: AgentEffectiveToolsView): Agent
   const items = (view.items ?? []).map(kratosEffectiveToolRow);
   return {
     tools_enabled: view.toolsEnabled ?? false,
-    profile: view.profile ?? "",
+    profile: view.profile ?? '',
     allow: view.allow ?? [],
     deny: view.deny ?? [],
-    items
+    items,
   };
 }
 
 function kratosOverrideToLegacy(o: KratosToolAgentOverride): ToolAgentOverride {
   return {
-    id: o.id ?? "",
-    tool_id: o.toolId ?? "",
-    tool_key: o.toolKey ?? "",
-    agent_id: o.agentId ?? "",
+    id: o.id ?? '',
+    tool_id: o.toolId ?? '',
+    tool_key: o.toolKey ?? '',
+    agent_id: o.agentId ?? '',
     enabled: Boolean(o.enabled),
-    mode: o.mode ?? "inherit",
-    config_override_json: o.configOverrideJson ?? "{}",
+    mode: o.mode ?? 'inherit',
+    config_override_json: o.configOverrideJson ?? '{}',
     requires_confirmation: Boolean(o.requiresConfirmation),
-    created_at: o.createdAt ?? "",
-    updated_at: o.updatedAt ?? ""
+    created_at: o.createdAt ?? '',
+    updated_at: o.updatedAt ?? '',
   };
 }
 
@@ -325,7 +328,7 @@ export async function upsertToolAgentOverride(input: {
     enabled: input.enabled,
     mode: input.mode,
     configOverrideJson: input.config_override_json,
-    requiresConfirmation: input.requires_confirmation
+    requiresConfirmation: input.requires_confirmation,
   });
   return kratosOverrideToLegacy(data);
 }
@@ -334,27 +337,25 @@ export async function deleteToolAgentOverride(toolId: string, agentId: string): 
   await toolApi.DeleteToolAgentOverride({ toolId, agentId });
 }
 
-export type { ToolTestResult } from "./types";
+export type { ToolTestResult } from './types';
 
-export async function testTool(
-  toolId: string,
-  argumentsJson = "{}",
-  timeoutSec = 30
-): Promise<ToolTestResult> {
+export async function testTool(toolId: string, argumentsJson = '{}', timeoutSec = 30): Promise<ToolTestResult> {
   const data = await toolApi.TestTool({
     id: toolId,
     argumentsJson,
-    timeoutSec
+    timeoutSec,
   });
   return {
-    status: data.status ?? "error",
-    result_preview: data.resultPreview ?? "",
-    error_message: data.errorMessage ?? "",
-    duration_ms: Number(data.durationMs ?? 0)
+    status: data.status ?? 'error',
+    result_preview: data.resultPreview ?? '',
+    error_message: data.errorMessage ?? '',
+    duration_ms: Number(data.durationMs ?? 0),
   };
 }
 
-export async function listToolInvocationAudits(query: ToolAuditQuery = {}): Promise<PaginatedResponse<ToolInvocationAudit>> {
+export async function listToolInvocationAudits(
+  query: ToolAuditQuery = {},
+): Promise<PaginatedResponse<ToolInvocationAudit>> {
   const data = await toolApi.ListToolInvocationAudits({
     toolKey: query.tool_key,
     agentId: query.agent_id,
@@ -364,25 +365,25 @@ export async function listToolInvocationAudits(query: ToolAuditQuery = {}): Prom
     from: query.from,
     to: query.to,
     page: query.page,
-    pageSize: query.page_size
+    pageSize: query.page_size,
   });
   const items = (data.items ?? []).map((x) => ({
-    id: x.id ?? "",
-    invocation_id: x.invocationId ?? "",
-    tool_key: x.toolKey ?? "",
-    agent_id: x.agentId ?? "",
-    user_id: x.userId ?? "",
-    session_id: x.sessionId ?? "",
-    action: x.action ?? "",
-    result_summary: x.resultSummary ?? "",
-    status: x.status ?? "",
-    source: x.source ?? "",
-    created_at: x.createdAt ?? ""
+    id: x.id ?? '',
+    invocation_id: x.invocationId ?? '',
+    tool_key: x.toolKey ?? '',
+    agent_id: x.agentId ?? '',
+    user_id: x.userId ?? '',
+    session_id: x.sessionId ?? '',
+    action: x.action ?? '',
+    result_summary: x.resultSummary ?? '',
+    status: x.status ?? '',
+    source: x.source ?? '',
+    created_at: x.createdAt ?? '',
   }));
   return {
     items,
     page: data.page ?? query.page ?? 1,
     page_size: data.pageSize ?? query.page_size ?? 20,
-    total: data.total ?? items.length
+    total: data.total ?? items.length,
   };
 }

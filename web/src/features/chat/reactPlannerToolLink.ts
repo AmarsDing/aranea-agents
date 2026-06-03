@@ -1,11 +1,11 @@
 /** Link ReAct ACTION steps to nearby tool_call activity rows (51 envelope projection). */
 
-import { toolEventFromMessage } from "./envelopeToolCall";
-import { isActivityMessage } from "./mergeSessionMessages";
-import type { ReactStep } from "./reactPlannerTypes";
-import type { Message, ReactStepWithTools, ToolUseEvent } from "./types";
+import { toolEventFromMessage } from './envelopeToolCall';
+import { isActivityMessage } from './mergeSessionMessages';
+import type { ReactStep } from './reactPlannerTypes';
+import type { Message, ReactStepWithTools, ToolUseEvent } from './types';
 
-export type { ReactStepWithTools } from "./types";
+export type { ReactStepWithTools } from './types';
 
 const TOOL_NAME_PATTERNS = [
   /functions\.([a-zA-Z0-9_-]+)/g,
@@ -15,14 +15,14 @@ const TOOL_NAME_PATTERNS = [
 ];
 
 export function extractToolNamesFromActionBody(body: string): string[] {
-  const text = (body || "").trim();
+  const text = (body || '').trim();
   if (!text) return [];
   const found = new Set<string>();
   for (const re of TOOL_NAME_PATTERNS) {
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(text)) !== null) {
-      const name = String(m[1] ?? "").trim();
+      const name = String(m[1] ?? '').trim();
       if (name.length >= 2) found.add(name);
     }
   }
@@ -30,18 +30,15 @@ export function extractToolNamesFromActionBody(body: string): string[] {
 }
 
 /** Tool activity rows immediately after an assistant ReAct message (until next substantive assistant). */
-export function collectToolEventsAfterMessage(
-  messages: Message[],
-  assistantIndex: number
-): ToolUseEvent[] {
+export function collectToolEventsAfterMessage(messages: Message[], assistantIndex: number): ToolUseEvent[] {
   if (assistantIndex < 0 || assistantIndex >= messages.length) return [];
   const out: ToolUseEvent[] = [];
   for (let i = assistantIndex + 1; i < messages.length; i++) {
     const row = messages[i];
-    if (row.role === "assistant" && !isActivityMessage(row) && (row.content_markdown ?? "").trim()) {
+    if (row.role === 'assistant' && !isActivityMessage(row) && (row.content_markdown ?? '').trim()) {
       break;
     }
-    if (row.role === "user") break;
+    if (row.role === 'user') break;
     const ev = toolEventFromMessage(row);
     if (ev) out.push(ev);
   }
@@ -50,19 +47,15 @@ export function collectToolEventsAfterMessage(
 
 function toolMatchesHints(event: ToolUseEvent, hints: string[]): boolean {
   if (hints.length === 0) return true;
-  const name = (event.tool_name || "").toLowerCase();
-  const label = (event.display_label || event.tool_label || "").toLowerCase();
+  const name = (event.tool_name || '').toLowerCase();
+  const label = (event.display_label || event.tool_label || '').toLowerCase();
   return hints.some((h) => {
     const hint = h.toLowerCase();
     return name.includes(hint) || hint.includes(name) || label.includes(hint);
   });
 }
 
-function pickToolForAction(
-  pool: ToolUseEvent[],
-  used: Set<string>,
-  hints: string[]
-): ToolUseEvent | null {
+function pickToolForAction(pool: ToolUseEvent[], used: Set<string>, hints: string[]): ToolUseEvent | null {
   const available = pool.filter((e) => !used.has(e.id));
   if (available.length === 0) return null;
   if (hints.length > 0) {
@@ -76,12 +69,12 @@ function pickToolForAction(
 export function enrichReactStepsWithToolEvents(
   steps: ReactStep[],
   assistantMessageIndex: number,
-  messages: Message[]
+  messages: Message[],
 ): ReactStepWithTools[] {
   const pool = collectToolEventsAfterMessage(messages, assistantMessageIndex);
   const used = new Set<string>();
   return steps.map((step) => {
-    if (step.kind !== "action") {
+    if (step.kind !== 'action') {
       return { ...step, linkedTools: [] };
     }
     const hints = extractToolNamesFromActionBody(step.body);

@@ -49,28 +49,81 @@
         </template>
         <template #body-cell-affected="props">
           <q-td :props="props">
-            <q-chip dense square color="blue-grey" text-color="white">{{ props.row.affected_entities?.length ?? 0 }}</q-chip>
+            <q-chip dense square color="blue-grey" text-color="white">{{
+              props.row.affected_entities?.length ?? 0
+            }}</q-chip>
           </q-td>
         </template>
         <template #body-cell-actions="props">
           <q-td :props="props">
             <div class="app-registry-cell-actions">
-              <q-btn v-if="props.row.status === 'pending'" dense flat round color="info" icon="visibility" @click="$emit('preview', props.row)">
+              <q-btn
+                v-if="props.row.status === 'pending'"
+                dense
+                flat
+                round
+                color="info"
+                icon="visibility"
+                @click="$emit('preview', props.row)"
+              >
                 <q-tooltip>Dry-Run 预览</q-tooltip>
               </q-btn>
-              <q-btn v-if="props.row.status === 'pending'" dense flat round color="positive" icon="check" :loading="actingId === props.row.id" @click="$emit('approve', props.row)">
+              <q-btn
+                v-if="props.row.status === 'pending'"
+                dense
+                flat
+                round
+                color="positive"
+                icon="check"
+                :loading="actingId === props.row.id"
+                @click="$emit('approve', props.row)"
+              >
                 <q-tooltip>批准</q-tooltip>
               </q-btn>
-              <q-btn v-if="props.row.status === 'pending'" dense flat round color="negative" icon="close" :loading="actingId === props.row.id" @click="$emit('reject', props.row)">
+              <q-btn
+                v-if="props.row.status === 'pending'"
+                dense
+                flat
+                round
+                color="negative"
+                icon="close"
+                :loading="actingId === props.row.id"
+                @click="$emit('reject', props.row)"
+              >
                 <q-tooltip>拒绝</q-tooltip>
               </q-btn>
-              <q-btn v-if="props.row.status === 'partial'" dense flat round color="warning" icon="replay" :loading="actingId === props.row.id" @click="$emit('retry', props.row)">
+              <q-btn
+                v-if="props.row.status === 'partial'"
+                dense
+                flat
+                round
+                color="warning"
+                icon="replay"
+                :loading="actingId === props.row.id"
+                @click="$emit('retry', props.row)"
+              >
                 <q-tooltip>重试</q-tooltip>
               </q-btn>
-              <q-btn v-if="props.row.status === 'partial' || props.row.status === 'failed'" dense flat round color="deep-orange" icon="undo" :loading="actingId === props.row.id" @click="$emit('compensate', props.row)">
+              <q-btn
+                v-if="props.row.status === 'partial' || props.row.status === 'failed'"
+                dense
+                flat
+                round
+                color="deep-orange"
+                icon="undo"
+                :loading="actingId === props.row.id"
+                @click="$emit('compensate', props.row)"
+              >
                 <q-tooltip>补偿回滚</q-tooltip>
               </q-btn>
-              <q-btn v-if="props.row.status !== 'pending'" dense flat round icon="account_tree" @click="$emit('saga', props.row)">
+              <q-btn
+                v-if="props.row.status !== 'pending'"
+                dense
+                flat
+                round
+                icon="account_tree"
+                @click="$emit('saga', props.row)"
+              >
                 <q-tooltip>Saga 步骤</q-tooltip>
               </q-btn>
             </div>
@@ -86,7 +139,7 @@
             <div class="app-glass-dialog__title">Dry-Run 预览</div>
             <div class="app-glass-dialog__subtitle">只读预览批准后的变更，不会实际执行。</div>
           </div>
-          <q-btn flat dense round icon="close" v-close-popup />
+          <q-btn v-close-popup flat dense round icon="close" />
         </q-card-section>
         <q-separator />
         <div class="app-glass-dialog__scroll">
@@ -129,14 +182,20 @@
                   <q-item v-for="d in preview.fact_diffs" :key="d.fact_id">
                     <q-item-section>
                       <q-item-label caption>{{ d.scope }} · {{ d.fact_id.slice(0, 8) }}</q-item-label>
-                      <q-item-label class="text-grey-7" style="text-decoration: line-through">{{ d.before_statement }}</q-item-label>
+                      <q-item-label class="text-grey-7" style="text-decoration: line-through">{{
+                        d.before_statement
+                      }}</q-item-label>
                       <q-item-label class="text-weight-medium">{{ d.after_statement }}</q-item-label>
                     </q-item-section>
                   </q-item>
                 </q-list>
               </div>
 
-              <q-banner v-if="!preview.entity_renames.length && !preview.fact_diffs.length" rounded class="memory-info-banner q-mt-sm">
+              <q-banner
+                v-if="!preview.entity_renames.length && !preview.fact_diffs.length"
+                rounded
+                class="memory-info-banner q-mt-sm"
+              >
                 预览无变更，批准操作不会产生副作用。
               </q-banner>
             </template>
@@ -144,7 +203,7 @@
         </div>
         <q-separator />
         <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-          <q-btn flat label="取消" v-close-popup />
+          <q-btn v-close-popup flat label="取消" />
           <q-btn
             unelevated
             label="确认批准"
@@ -177,9 +236,7 @@
                 <span class="text-weight-medium">{{ stepDisplayName(step.step_name) }}</span>
                 <q-badge v-if="step.is_critical" color="deep-orange" label="关键" class="q-ml-xs" />
               </q-item-label>
-              <q-item-label caption>
-                状态: {{ step.state }} · 尝试: {{ step.attempts }}
-              </q-item-label>
+              <q-item-label caption> 状态: {{ step.state }} · 尝试: {{ step.attempts }} </q-item-label>
               <q-item-label v-if="step.started_at" caption>
                 {{ step.started_at ? formatStepTime(step.started_at) : '' }}
                 <template v-if="step.finished_at"> → {{ formatStepTime(step.finished_at) }}</template>
@@ -198,12 +255,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import AppRegistryTable from "../../components/layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../../components/layout/AppRegistryHoverTip.vue";
+import { computed } from 'vue';
+import AppRegistryTable from '../../components/layout/AppRegistryTable.vue';
+import AppRegistryHoverTip from '../../components/layout/AppRegistryHoverTip.vue';
 
-import type { CascadePreview, CascadeProposal, CascadeSagaStep } from "./types";
-import { CASCADE_SAGA_TABLE_COLUMNS } from "./memoryTableUi";
+import type { CascadePreview, CascadeProposal, CascadeSagaStep } from './types';
+import { CASCADE_SAGA_TABLE_COLUMNS } from './memoryTableUi';
 
 const props = defineProps<{
   agentId: string | null;
@@ -228,102 +285,102 @@ const emit = defineEmits<{
   saga: [row: CascadeProposal];
   retry: [row: CascadeProposal];
   compensate: [row: CascadeProposal];
-  "update:previewOpen": [value: boolean];
-  "update:sagaDrawerOpen": [value: boolean];
+  'update:previewOpen': [value: boolean];
+  'update:sagaDrawerOpen': [value: boolean];
 }>();
 
 const sagaDrawerOpen = computed({
   get: () => props.sagaDrawerOpen,
-  set: (v) => emit("update:sagaDrawerOpen", v)
+  set: (v) => emit('update:sagaDrawerOpen', v),
 });
 
 const previewOpen = computed({
   get: () => props.previewOpen,
-  set: (v) => emit("update:previewOpen", v)
+  set: (v) => emit('update:previewOpen', v),
 });
 
 function onConfirmFromPreview() {
   if (props.previewProposalId) {
-    emit("confirmPreview", props.previewProposalId);
+    emit('confirmPreview', props.previewProposalId);
   }
 }
 
 function riskColor(level?: string) {
-  switch ((level || "").toLowerCase()) {
-    case "high":
-      return "negative";
-    case "medium":
-      return "warning";
+  switch ((level || '').toLowerCase()) {
+    case 'high':
+      return 'negative';
+    case 'medium':
+      return 'warning';
     default:
-      return "grey-7";
+      return 'grey-7';
   }
 }
 
 function statusColor(status: string) {
   switch (status) {
-    case "pending":
-      return "grey-7";
-    case "applied":
-      return "positive";
-    case "partial":
-      return "warning";
-    case "failed":
-      return "negative";
-    case "rejected":
-      return "deep-orange";
+    case 'pending':
+      return 'grey-7';
+    case 'applied':
+      return 'positive';
+    case 'partial':
+      return 'warning';
+    case 'failed':
+      return 'negative';
+    case 'rejected':
+      return 'deep-orange';
     default:
-      return "grey-7";
+      return 'grey-7';
   }
 }
 
 function stepIcon(state: string) {
   switch (state) {
-    case "succeeded":
-      return "check_circle";
-    case "running":
-      return "sync";
-    case "failed":
-      return "error";
-    case "compensated":
-      return "undo";
-    case "skipped":
-      return "skip_next";
+    case 'succeeded':
+      return 'check_circle';
+    case 'running':
+      return 'sync';
+    case 'failed':
+      return 'error';
+    case 'compensated':
+      return 'undo';
+    case 'skipped':
+      return 'skip_next';
     default:
-      return "radio_button_unchecked";
+      return 'radio_button_unchecked';
   }
 }
 
 function stepColor(state: string) {
   switch (state) {
-    case "succeeded":
-      return "positive";
-    case "running":
-      return "primary";
-    case "failed":
-      return "negative";
-    case "compensated":
-      return "deep-orange";
-    case "skipped":
-      return "grey-7";
+    case 'succeeded':
+      return 'positive';
+    case 'running':
+      return 'primary';
+    case 'failed':
+      return 'negative';
+    case 'compensated':
+      return 'deep-orange';
+    case 'skipped':
+      return 'grey-7';
     default:
-      return "grey-6";
+      return 'grey-6';
   }
 }
 
 function stepDisplayName(name: string) {
   const map: Record<string, string> = {
-    upsert_entity: "更新实体",
-    touch_affected: "触碰受影响节点",
-    replace_facts: "替换 Fact 语句",
-    sync_index: "同步索引"
+    upsert_entity: '更新实体',
+    touch_affected: '触碰受影响节点',
+    replace_facts: '替换 Fact 语句',
+    sync_index: '同步索引',
   };
   return map[name] || name;
 }
 
 function formatStepTime(value: string) {
-  if (!value) return "-";
+  if (!value) return '-';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return date.toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 </script>

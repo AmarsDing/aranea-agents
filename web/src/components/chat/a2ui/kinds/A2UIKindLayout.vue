@@ -10,10 +10,10 @@
 </template>
 
 <script setup lang="ts">
-import type { A2UIComponentCtx } from "../../../../features/chat/a2ui/useA2UIComponent";
-import type { A2UISurfaceState } from "../../../../features/chat/a2uiSurfaceState";
-import type { A2UIUserActionPayload } from "../../../../features/chat/a2uiUserAction";
-import A2UIChildList from "../A2UIChildList.vue";
+import type { A2UIComponentCtx } from '../../../../features/chat/a2ui/useA2UIComponent';
+import type { A2UISurfaceState } from '../../../../features/chat/a2uiSurfaceState';
+import type { A2UIUserActionPayload } from '../../../../features/chat/a2uiUserAction';
+import A2UIChildList from '../A2UIChildList.vue';
 
 defineProps<{
   kind: string;
@@ -22,6 +22,6 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "user-action": [payload: A2UIUserActionPayload];
+  'user-action': [payload: A2UIUserActionPayload];
 }>();
 </script>

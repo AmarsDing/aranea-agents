@@ -12,7 +12,9 @@
         </q-item-section>
         <q-item-section>
           <q-item-label class="text-weight-medium">{{ row.model_display_name || row.model_api_id }}</q-item-label>
-          <q-item-label caption class="overview-item-caption">{{ row.provider_code }} / {{ row.model_api_id }}</q-item-label>
+          <q-item-label caption class="overview-item-caption"
+            >{{ row.provider_code }} / {{ row.model_api_id }}</q-item-label
+          >
         </q-item-section>
         <q-item-section side>
           <div class="text-right">
@@ -31,8 +33,8 @@
 </template>
 
 <script setup lang="ts">
-import type { ModelUsageBreakdownRow } from "../../features/usage/types";
-import { formatUsdFromMicro, formatCount, formatTps } from "../../features/usage/moneyFormat";
+import type { ModelUsageBreakdownRow } from '../../features/usage/types';
+import { formatUsdFromMicro, formatCount, formatTps } from '../../features/usage/moneyFormat';
 
 defineProps<{
   rows: ModelUsageBreakdownRow[];

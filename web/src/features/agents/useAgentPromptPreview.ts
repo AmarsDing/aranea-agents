@@ -1,27 +1,24 @@
-import { ref, watch, type Ref } from "vue";
-import { promptModes, type PromptMode } from "../../components/agents/agentUi";
-import { useAgentDetailStore } from "../../stores/agents";
-import type { AgentPromptPreview } from "./types";
+import { ref, watch, type Ref } from 'vue';
+import { promptModes, type PromptMode } from '../../components/agents/agentUi';
+import { useAgentDetailStore } from '../../stores/agents';
+import type { AgentPromptPreview } from './types';
 
 function emptyPromptPreview(): AgentPromptPreview {
   return {
-    summary: "",
-    instruction: "",
+    summary: '',
+    instruction: '',
     sections: [],
     static_total_tokens: 0,
     runtime_overlay_est_tokens: 0,
-    runtime_note: "",
+    runtime_note: '',
   };
 }
 
 /** System prompt preview dialog: mode tabs + fetched preview report. */
-export function useAgentPromptPreview(
-  agentId: Ref<string>,
-  systemPromptMode: Ref<string>,
-) {
+export function useAgentPromptPreview(agentId: Ref<string>, systemPromptMode: Ref<string>) {
   const detailStore = useAgentDetailStore();
   const promptDialog = ref(false);
-  const previewMode = ref<PromptMode>("complete");
+  const previewMode = ref<PromptMode>('complete');
   const promptPreview = ref<AgentPromptPreview>(emptyPromptPreview());
 
   async function loadPromptPreview() {
@@ -31,13 +28,13 @@ export function useAgentPromptPreview(
   }
 
   function syncPreviewModeFromAgent(mode?: string) {
-    previewMode.value = (String(mode ?? "").trim() as PromptMode) || "complete";
+    previewMode.value = (String(mode ?? '').trim() as PromptMode) || 'complete';
   }
 
   watch(previewMode, () => void loadPromptPreview());
 
   watch(systemPromptMode, (value) => {
-    previewMode.value = (value as PromptMode) || "complete";
+    previewMode.value = (value as PromptMode) || 'complete';
   });
 
   watch(promptDialog, (open) => {

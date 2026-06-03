@@ -1,23 +1,23 @@
-import { ref, reactive, computed, type Ref, type ComputedRef } from "vue";
-import { useQuasar } from "quasar";
-import { useRouter } from "vue-router";
-import { useI18n } from "vue-i18n";
-import { useChatRuntimeStore } from "../../../stores/chat/runtimeStore";
-import { useChatSessionStore } from "../../../stores/chat/sessionStore";
-import { useChatMessageStore } from "../../../stores/chat/messageStore";
-import { useAuthStore } from "../../../stores/auth";
-import { useAppStore } from "../../../stores/app";
-import { checkBackendHealth, getServerHeartbeatState } from "../../heartbeat/useServerHeartbeat";
-import type { ChatAttachment, ChatEntityKind } from "../../../components/chat/types";
-import type { UseEnvelopeStreamReturn } from "../useEnvelopeStream";
-import type { WsUpstream } from "../envelope";
-import { createPlaceholderMessage } from "../streamHandlers";
-import { shouldBlockAttachmentsForModel } from "../modelCapabilities";
+import { ref, reactive, computed, type Ref, type ComputedRef } from 'vue';
+import { useQuasar } from 'quasar';
+import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
+import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
+import { useChatSessionStore } from '../../../stores/chat/sessionStore';
+import { useChatMessageStore } from '../../../stores/chat/messageStore';
+import { useAuthStore } from '../../../stores/auth';
+import { useAppStore } from '../../../stores/app';
+import { checkBackendHealth, getServerHeartbeatState } from '../../heartbeat/useServerHeartbeat';
+import type { ChatAttachment, ChatEntityKind } from '../../../components/chat/types';
+import type { UseEnvelopeStreamReturn } from '../useEnvelopeStream';
+import type { WsUpstream } from '../envelope';
+import { createPlaceholderMessage } from '../streamHandlers';
+import { shouldBlockAttachmentsForModel } from '../modelCapabilities';
 // TECH-DEBT: direct API call; move to store — chat optimization
-import { sendMessage } from "../api";
-import { AWAIT_KIND_TOOL_CONFIRM } from "../awaitConstants";
+import { sendMessage } from '../api';
+import { AWAIT_KIND_TOOL_CONFIRM } from '../awaitConstants';
 
-import type { RunStatusValue } from "../types";
+import type { RunStatusValue } from '../types';
 
 type SessionStore = ReturnType<typeof useChatSessionStore>;
 type MessageStore = ReturnType<typeof useChatMessageStore>;
@@ -26,7 +26,13 @@ type SendStrategy = {
   resolveSessionId: () => string | undefined;
   ensureSession: (title: string) => Promise<void>;
   resolveProviderModel: () => { provider: string; model: string };
-  buildWsPayload: (sessionId: string, pendingUserId: string, content: string, provider: string, model: string) => WsUpstream;
+  buildWsPayload: (
+    sessionId: string,
+    pendingUserId: string,
+    content: string,
+    provider: string,
+    model: string,
+  ) => WsUpstream;
   ensureStream: (sessionId: string) => UseEnvelopeStreamReturn;
   httpFallbackKeys: { agentKey: string | undefined; teamId: string | undefined };
   errorLabel: string;
@@ -43,11 +49,14 @@ export type SenderDeps = {
   awaitingRunId: Ref<string>;
   awaitKind: Ref<string>;
   runStatus: Ref<string>;
-  selectedProviderModel: ComputedRef<{
-    provider: string;
-    model: string;
-    capabilities?: { vision?: boolean; image?: boolean; text_only?: boolean };
-  } | undefined>;
+  selectedProviderModel: ComputedRef<
+    | {
+        provider: string;
+        model: string;
+        capabilities?: { vision?: boolean; image?: boolean; text_only?: boolean };
+      }
+    | undefined
+  >;
   selectedKnowledgeBases: Ref<string[]>;
   ensureChatStream: (sessionId: string) => UseEnvelopeStreamReturn;
   ensureTeamStream: (sessionId: string) => UseEnvelopeStreamReturn;
@@ -94,8 +103,8 @@ export function useChatSender(deps: SenderDeps) {
       if (!sending.value || lastRunEventAt === 0) return;
       if (Date.now() - lastRunEventAt > RUN_STALL_TIMEOUT_MS) {
         $q.notify({
-          type: "warning",
-          message: t("chat.runStallWarning", "响应时间较长，请耐心等待或停止生成"),
+          type: 'warning',
+          message: t('chat.runStallWarning', '响应时间较长，请耐心等待或停止生成'),
           timeout: 8000,
         });
         clearStallCheck();
@@ -109,7 +118,7 @@ export function useChatSender(deps: SenderDeps) {
     sendingTimeout = setTimeout(() => {
       if (sending.value) {
         sending.value = false;
-        $q.notify({ type: "warning", message: t("chat.sendDispatchTimeout", "消息发送超时，请检查网络连接") });
+        $q.notify({ type: 'warning', message: t('chat.sendDispatchTimeout', '消息发送超时，请检查网络连接') });
       }
     }, SEND_DISPATCH_TIMEOUT_MS);
     startStallCheck();
@@ -145,8 +154,8 @@ export function useChatSender(deps: SenderDeps) {
     firstByteTimeout = setTimeout(() => {
       if (sending.value) {
         $q.notify({
-          type: "warning",
-          message: t("chat.firstByteTimeout", "响应等待时间较长，模型可能正在思考中"),
+          type: 'warning',
+          message: t('chat.firstByteTimeout', '响应等待时间较长，模型可能正在思考中'),
           timeout: 8000,
         });
         clearFirstByteTimeout();
@@ -190,14 +199,17 @@ export function useChatSender(deps: SenderDeps) {
     }
     if (!backendUp) {
       const msg = import.meta.env.DEV
-        ? t("chat.backendUnavailableDev", "后端不可用，请确认 admin 是否在 :8000 运行（页面应使用 http://localhost:9001）")
-        : t("chat.backendUnavailable", "后端服务不可用，请重新登录");
-      $q.notify({ type: "negative", message: msg, timeout: import.meta.env.DEV ? 8000 : 0 });
+        ? t(
+            'chat.backendUnavailableDev',
+            '后端不可用，请确认 admin 是否在 :8000 运行（页面应使用 http://localhost:9001）',
+          )
+        : t('chat.backendUnavailable', '后端服务不可用，请重新登录');
+      $q.notify({ type: 'negative', message: msg, timeout: import.meta.env.DEV ? 8000 : 0 });
       if (!import.meta.env.DEV) {
         const auth = useAuthStore();
         auth.user = null;
         auth.sessionChecked = true;
-        router.push({ name: "login" });
+        router.push({ name: 'login' });
       }
       return false;
     }
@@ -206,7 +218,7 @@ export function useChatSender(deps: SenderDeps) {
 
   function isActiveRun(): boolean {
     const s = deps.runStatus.value;
-    return s === "running" || s === "pending";
+    return s === 'running' || s === 'pending';
   }
 
   const inputDisabled = computed(() => {
@@ -221,16 +233,16 @@ export function useChatSender(deps: SenderDeps) {
 
     if (deps.isAwaitingUser.value) {
       if (deps.awaitKind.value === AWAIT_KIND_TOOL_CONFIRM) {
-        $q.notify({ type: "info", message: t("chat.toolConfirmUseButtons", "请使用批准或拒绝按钮来确认工具调用") });
+        $q.notify({ type: 'info', message: t('chat.toolConfirmUseButtons', '请使用批准或拒绝按钮来确认工具调用') });
         return;
       }
       await submitAwaitingReply();
       return;
     }
 
-    if (deps.sessionStore.entityKind === "agent") {
+    if (deps.sessionStore.entityKind === 'agent') {
       await sendAgentMessage(content);
-    } else if (deps.sessionStore.entityKind === "team" && deps.sessionStore.selectedTeamId) {
+    } else if (deps.sessionStore.entityKind === 'team' && deps.sessionStore.selectedTeamId) {
       await sendTeamMessage(content);
     }
   }
@@ -239,7 +251,7 @@ export function useChatSender(deps: SenderDeps) {
     failedPendingIds.delete(pendingUserId);
     deps.messageStore.setMessages(
       sessionId,
-      deps.messageStore.getMessages(sessionId).filter((m) => m.id !== pendingUserId)
+      deps.messageStore.getMessages(sessionId).filter((m) => m.id !== pendingUserId),
     );
   }
 
@@ -248,11 +260,7 @@ export function useChatSender(deps: SenderDeps) {
     const msgs = deps.messageStore.getMessages(sessionId);
     deps.messageStore.setMessages(
       sessionId,
-      msgs.map((m) =>
-        m.id === pendingUserId
-          ? { ...m, status: "failed", error_message: errorMsg }
-          : m
-      )
+      msgs.map((m) => (m.id === pendingUserId ? { ...m, status: 'failed', error_message: errorMsg } : m)),
     );
   }
 
@@ -261,16 +269,14 @@ export function useChatSender(deps: SenderDeps) {
     if (!sid) return;
     const msgs = deps.messageStore.getMessages(sid);
     const failed = msgs.find((m) => m.id === pendingUserId);
-    if (!failed || failed.status !== "failed") return;
+    if (!failed || failed.status !== 'failed') return;
     failedPendingIds.delete(pendingUserId);
     deps.messageStore.setMessages(
       sid,
-      msgs.map((m) =>
-        m.id === pendingUserId ? { ...m, status: "ok", error_message: "" } : m
-      )
+      msgs.map((m) => (m.id === pendingUserId ? { ...m, status: 'ok', error_message: '' } : m)),
     );
     const entityKind = deps.sessionStore.entityKind;
-    if (entityKind === "team") {
+    if (entityKind === 'team') {
       await sendTeamMessage(failed.content_markdown, pendingUserId);
     } else {
       await sendAgentUserContent(failed.content_markdown, pendingUserId);
@@ -284,29 +290,29 @@ export function useChatSender(deps: SenderDeps) {
       if (res.accepted) {
         dropPendingUserRow(sessionId, pendingUserId);
         $q.notify({
-          type: "positive",
+          type: 'positive',
           message: res.queued
-            ? t("chat.enqueueQueued", "Message queued for after the current run")
-            : t("chat.enqueueAccepted", "Message will be injected at the next tool boundary"),
+            ? t('chat.enqueueQueued', 'Message queued for after the current run')
+            : t('chat.enqueueAccepted', 'Message will be injected at the next tool boundary'),
         });
         await deps.refreshPendingMessages?.();
         return;
       }
       dropPendingUserRow(sessionId, pendingUserId);
-      deps.setRunStatus("idle");
-      await sendUserContent("agent", content);
+      deps.setRunStatus('idle');
+      await sendUserContent('agent', content);
     } catch (err: unknown) {
       dropPendingUserRow(sessionId, pendingUserId);
-      const errMessage = err instanceof Error ? err.message : "";
-      if (errMessage.includes("CHAT_RUN_ENDED")) {
-        deps.setRunStatus("idle");
-        await sendUserContent("agent", content);
-      } else if (errMessage.includes("CHAT_QUEUE_FULL")) {
-        $q.notify({ type: "warning", message: t("chat.enqueueQueueFull", "排队消息已满，请稍后再试") });
+      const errMessage = err instanceof Error ? err.message : '';
+      if (errMessage.includes('CHAT_RUN_ENDED')) {
+        deps.setRunStatus('idle');
+        await sendUserContent('agent', content);
+      } else if (errMessage.includes('CHAT_QUEUE_FULL')) {
+        $q.notify({ type: 'warning', message: t('chat.enqueueQueueFull', '排队消息已满，请稍后再试') });
       } else {
         $q.notify({
-          type: "negative",
-          message: err instanceof Error ? err.message : t("chat.enqueueRejected", "Could not enqueue message"),
+          type: 'negative',
+          message: err instanceof Error ? err.message : t('chat.enqueueRejected', 'Could not enqueue message'),
         });
       }
     }
@@ -323,7 +329,7 @@ export function useChatSender(deps: SenderDeps) {
       model: string;
       attachments: ChatAttachment[];
       knowledgeBases: string[];
-    }
+    },
   ): Promise<void> {
     await sendMessage({
       session_id: sessionId,
@@ -342,8 +348,8 @@ export function useChatSender(deps: SenderDeps) {
 
   function notifyUnsupportedImageModel() {
     $q.notify({
-      type: "warning",
-      message: t("chat.imageModelUnsupported", "当前模型不支持图片理解，请移除图片附件或切换到支持视觉的模型"),
+      type: 'warning',
+      message: t('chat.imageModelUnsupported', '当前模型不支持图片理解，请移除图片附件或切换到支持视觉的模型'),
     });
   }
 
@@ -359,18 +365,15 @@ export function useChatSender(deps: SenderDeps) {
           selectedModel?.provider ||
           deps.sessionStore.selectedSession?.provider ||
           deps.appStore.selectedAgent?.provider ||
-          "";
+          '';
         const model =
-          selectedModel?.model ||
-          deps.sessionStore.selectedSession?.model ||
-          deps.appStore.selectedAgent?.model ||
-          "";
+          selectedModel?.model || deps.sessionStore.selectedSession?.model || deps.appStore.selectedAgent?.model || '';
         return { provider, model };
       },
       buildWsPayload: (sessionId, pendingUserId, content, provider, model) => ({
-        direction: "client_to_server",
-        channel: "chat",
-        type: "user_message",
+        direction: 'client_to_server',
+        channel: 'chat',
+        type: 'user_message',
         request_id: pendingUserId,
         payload: {
           session_id: sessionId,
@@ -387,7 +390,7 @@ export function useChatSender(deps: SenderDeps) {
       }),
       ensureStream: deps.ensureChatStream,
       httpFallbackKeys: { agentKey: deps.appStore.selectedAgent?.agent_key, teamId: undefined },
-      errorLabel: t("chat.sendFailed", "发送失败，请稍后重试"),
+      errorLabel: t('chat.sendFailed', '发送失败，请稍后重试'),
     };
   }
 
@@ -401,16 +404,16 @@ export function useChatSender(deps: SenderDeps) {
         const selectedModel = deps.selectedProviderModel.value;
         const teamId = deps.sessionStore.selectedTeamId!;
         const session = deps.sessionStore.teamSessions[teamId]?.find(
-          (item) => item.id === deps.sessionStore.teamSelectedSessionId
+          (item) => item.id === deps.sessionStore.teamSelectedSessionId,
         );
-        const provider = selectedModel?.provider || session?.provider || "";
-        const model = selectedModel?.model || session?.model || "";
+        const provider = selectedModel?.provider || session?.provider || '';
+        const model = selectedModel?.model || session?.model || '';
         return { provider, model };
       },
       buildWsPayload: (sessionId, pendingUserId, content, provider, model) => ({
-        direction: "client_to_server",
-        channel: "chat",
-        type: "user_message",
+        direction: 'client_to_server',
+        channel: 'chat',
+        type: 'user_message',
         request_id: pendingUserId,
         payload: {
           session_id: sessionId,
@@ -427,16 +430,12 @@ export function useChatSender(deps: SenderDeps) {
       }),
       ensureStream: deps.ensureTeamStream,
       httpFallbackKeys: { agentKey: undefined, teamId: deps.sessionStore.selectedTeamId ?? undefined },
-      errorLabel: t("chat.teamSendFailed", "Team 发送失败"),
+      errorLabel: t('chat.teamSendFailed', 'Team 发送失败'),
     };
   }
 
-  async function sendUserContent(
-    entityKind: ChatEntityKind,
-    content: string,
-    reusePendingId?: string
-  ) {
-    const strategy = entityKind === "team" ? getTeamStrategy() : getAgentStrategy();
+  async function sendUserContent(entityKind: ChatEntityKind, content: string, reusePendingId?: string) {
+    const strategy = entityKind === 'team' ? getTeamStrategy() : getAgentStrategy();
     const text = content.trim();
     if (!text) return;
     const followUp = isActiveRun();
@@ -448,7 +447,7 @@ export function useChatSender(deps: SenderDeps) {
       await strategy.ensureSession(deps.makeSessionTitle(text));
       const sessionId = strategy.resolveSessionId();
       if (!sessionId) {
-        $q.notify({ type: "negative", message: t("chat.sessionCreateFailed", "未创建会话或会话无效，请重试") });
+        $q.notify({ type: 'negative', message: t('chat.sessionCreateFailed', '未创建会话或会话无效，请重试') });
         if (!followUp) markSendingDone();
         return;
       }
@@ -458,20 +457,26 @@ export function useChatSender(deps: SenderDeps) {
 
       const pendingUserId = reusePendingId ?? `pending-user-${crypto.randomUUID()}`;
       if (!reusePendingId) {
-        deps.inputText.value = "";
+        deps.inputText.value = '';
         deps.messageStore.setMessages(sessionId, [
           ...deps.messageStore.getMessages(sessionId),
-          createPlaceholderMessage(pendingUserId, sessionId, "user", text),
+          createPlaceholderMessage(pendingUserId, sessionId, 'user', text),
         ]);
       }
 
       const { provider, model } = strategy.resolveProviderModel();
       const selectedModel = deps.selectedProviderModel.value;
-      const blockReason = shouldBlockAttachmentsForModel({ provider, model, capabilities: selectedModel?.capabilities }, deps.attachments.value);
+      const blockReason = shouldBlockAttachmentsForModel(
+        { provider, model, capabilities: selectedModel?.capabilities },
+        deps.attachments.value,
+      );
       if (blockReason) {
         clearAttachments = false;
-        if (blockReason === "ATTACHMENT_UNSUPPORTED") {
-          $q.notify({ type: "warning", message: t("chat.fileModelUnsupported", "当前模型不支持文件附件，请移除附件或切换模型") });
+        if (blockReason === 'ATTACHMENT_UNSUPPORTED') {
+          $q.notify({
+            type: 'warning',
+            message: t('chat.fileModelUnsupported', '当前模型不支持文件附件，请移除附件或切换模型'),
+          });
         } else {
           notifyUnsupportedImageModel();
         }
@@ -481,7 +486,7 @@ export function useChatSender(deps: SenderDeps) {
       }
 
       if (!(await checkBackendAvailability())) {
-        markPendingUserFailed(sessionId, pendingUserId, t("chat.sendFailedBackend", "后端不可用"));
+        markPendingUserFailed(sessionId, pendingUserId, t('chat.sendFailedBackend', '后端不可用'));
         if (!followUp) markSendingDone();
         return;
       }
@@ -495,7 +500,7 @@ export function useChatSender(deps: SenderDeps) {
         const stream = strategy.ensureStream(sessionId);
         deps.sendChatViaWs(stream, strategy.buildWsPayload(sessionId, pendingUserId, text, provider, model));
       } catch (wsError) {
-        $q.notify({ type: "info", message: t("chat.wsFallbackHttp", "WebSocket 不可用，正在通过 HTTP 发送…") });
+        $q.notify({ type: 'info', message: t('chat.wsFallbackHttp', 'WebSocket 不可用，正在通过 HTTP 发送…') });
         try {
           await sendViaHttpFallback(
             sessionId,
@@ -508,28 +513,28 @@ export function useChatSender(deps: SenderDeps) {
               model,
               attachments: deps.attachments.value,
               knowledgeBases: deps.selectedKnowledgeBases.value,
-            }
+            },
           );
           dropPendingUserRow(sessionId, pendingUserId);
           await deps.messageStore.loadMessages({ sessionId });
         } catch (httpError) {
-          markPendingUserFailed(sessionId, pendingUserId, t("chat.sendFailedRetry", "发送失败，请点击重试"));
+          markPendingUserFailed(sessionId, pendingUserId, t('chat.sendFailedRetry', '发送失败，请点击重试'));
           if (!followUp) markSendingDone();
         }
       }
     } catch (error) {
-      if (!(error instanceof DOMException && error.name === "AbortError")) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) {
         const sid = strategy.resolveSessionId();
         if (sid) {
-          const pendingId = deps.messageStore.getMessages(sid).find(
-            (m) => m.content_markdown === text && m.id.startsWith("pending-user-")
-          )?.id;
+          const pendingId = deps.messageStore
+            .getMessages(sid)
+            .find((m) => m.content_markdown === text && m.id.startsWith('pending-user-'))?.id;
           if (pendingId) {
-            markPendingUserFailed(sid, pendingId, t("chat.sendFailedRetry", "发送失败，请点击重试"));
+            markPendingUserFailed(sid, pendingId, t('chat.sendFailedRetry', '发送失败，请点击重试'));
           }
         }
         $q.notify({
-          type: "negative",
+          type: 'negative',
           message: error instanceof Error ? error.message : strategy.errorLabel,
         });
         if (!followUp) markSendingDone();
@@ -542,7 +547,7 @@ export function useChatSender(deps: SenderDeps) {
   }
 
   async function sendAgentUserContent(content: string, reusePendingId?: string) {
-    await sendUserContent("agent", content, reusePendingId);
+    await sendUserContent('agent', content, reusePendingId);
   }
 
   async function sendAgentMessage(content: string) {
@@ -550,7 +555,7 @@ export function useChatSender(deps: SenderDeps) {
   }
 
   async function sendTeamMessage(content: string, reusePendingId?: string) {
-    await sendUserContent("team", content, reusePendingId);
+    await sendUserContent('team', content, reusePendingId);
   }
 
   return {

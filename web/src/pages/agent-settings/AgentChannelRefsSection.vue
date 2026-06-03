@@ -1,8 +1,8 @@
 <template>
   <q-card flat bordered class="settings-section q-mt-md">
     <q-card-section>
-      <div class="text-subtitle2">{{ t("agentSettings.channelRefsTitle") }}</div>
-      <div class="text-caption text-grey-7 q-mb-sm">{{ t("agentSettings.channelRefsHint") }}</div>
+      <div class="text-subtitle2">{{ t('agentSettings.channelRefsTitle') }}</div>
+      <div class="text-caption text-grey-7 q-mb-sm">{{ t('agentSettings.channelRefsHint') }}</div>
 
       <div v-if="loading" class="text-center q-pa-md">
         <q-spinner-dots size="28px" color="primary" />
@@ -16,7 +16,7 @@
       </q-banner>
 
       <div v-else-if="refs.length === 0" class="text-grey-7 q-pa-sm">
-        {{ t("agentSettings.noChannelRefs") }}
+        {{ t('agentSettings.noChannelRefs') }}
       </div>
 
       <q-list v-else dense separator>
@@ -35,8 +35,8 @@
 </template>
 
 <script setup lang="ts">
-import { useI18n } from "vue-i18n";
-import { useAgentChannelRefs } from "../../features/agents/useAgentChannelRefs";
+import { useI18n } from 'vue-i18n';
+import { useAgentChannelRefs } from '../../features/agents/useAgentChannelRefs';
 
 const props = defineProps<{
   agentId: string;
@@ -47,6 +47,6 @@ const { t } = useI18n();
 
 const { refs, loading, loadError, channelTypeLabel, openChannels, reload } = useAgentChannelRefs(
   () => props.agentId,
-  () => props.agentKey
+  () => props.agentKey,
 );
 </script>

@@ -14,7 +14,7 @@
           <q-avatar class="overview-agent-avatar" icon="smart_toy" />
         </q-item-section>
         <q-item-section>
-          <q-item-label class="text-weight-medium">{{ row.agent_key || row.agent_id || "未归属 Agent" }}</q-item-label>
+          <q-item-label class="text-weight-medium">{{ row.agent_key || row.agent_id || '未归属 Agent' }}</q-item-label>
           <q-item-label caption class="overview-item-caption">
             成功率 {{ formatPercent(row.success_rate) }} · 延迟 {{ formatLatency(row.avg_latency_ms) }}
           </q-item-label>
@@ -34,8 +34,8 @@
 </template>
 
 <script setup lang="ts">
-import type { ModelUsageBreakdownRow } from "../../features/usage/types";
-import { formatUsdFromMicro, formatCount, formatPercent, formatLatencyMs } from "../../features/usage/moneyFormat";
+import type { ModelUsageBreakdownRow } from '../../features/usage/types';
+import { formatUsdFromMicro, formatCount, formatPercent, formatLatencyMs } from '../../features/usage/moneyFormat';
 
 defineProps<{
   rows: ModelUsageBreakdownRow[];

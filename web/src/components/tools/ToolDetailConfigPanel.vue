@@ -67,7 +67,7 @@
       />
 
       <q-banner v-if="extraKeys.length" rounded class="settings-warning-banner q-mt-sm">
-        Schema 未声明字段：{{ extraKeys.join(", ") }}
+        Schema 未声明字段：{{ extraKeys.join(', ') }}
       </q-banner>
     </section>
 
@@ -101,12 +101,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { configExtraKeys, configDiffSummary } from "../../features/tools/jsonSchemaBuilder";
-import { prettyJSON } from "./toolUi";
-import type { Tool } from "../../features/tools/types";
-import ToolSchemaForm from "./ToolSchemaForm.vue";
-import ToolJsonBlock from "./ToolJsonBlock.vue";
+import { computed, ref } from 'vue';
+import { configExtraKeys, configDiffSummary } from '../../features/tools/jsonSchemaBuilder';
+import { prettyJSON } from './toolUi';
+import type { Tool } from '../../features/tools/types';
+import ToolSchemaForm from './ToolSchemaForm.vue';
+import ToolJsonBlock from './ToolJsonBlock.vue';
 
 const props = defineProps<{
   tool: Tool | null;
@@ -114,11 +114,11 @@ const props = defineProps<{
   saving: boolean;
 }>();
 
-defineEmits<{ save: []; "update:configJson": [value: string]; "update:configSchemaJson": [value: string] }>();
+defineEmits<{ save: []; 'update:configJson': [value: string]; 'update:configSchemaJson': [value: string] }>();
 
 const hasConfigSchema = computed(() => {
   try {
-    const s = JSON.parse(props.tool?.config_schema_json || "{}");
+    const s = JSON.parse(props.tool?.config_schema_json || '{}');
     return s.properties && Object.keys(s.properties).length > 0;
   } catch {
     return false;
@@ -130,31 +130,31 @@ const extraKeys = computed(() => {
   return configExtraKeys(props.configJson, props.tool.config_schema_json);
 });
 
-const prettySchemaJson = computed(() => prettyJSON(props.tool?.config_schema_json || "{}"));
+const prettySchemaJson = computed(() => prettyJSON(props.tool?.config_schema_json || '{}'));
 
-const prettyDefaultConfig = computed(() => prettyJSON(props.tool?.default_config_json || "{}"));
+const prettyDefaultConfig = computed(() => prettyJSON(props.tool?.default_config_json || '{}'));
 
 const diffLines = computed(() => {
   if (!props.tool) return [];
-  return configDiffSummary(props.configJson, props.tool.default_config_json || "{}");
+  return configDiffSummary(props.configJson, props.tool.default_config_json || '{}');
 });
 
-const schemaEditJson = ref("");
-const schemaParseError = ref("");
+const schemaEditJson = ref('');
+const schemaParseError = ref('');
 
 function onSchemaEdit(val: string) {
   schemaEditJson.value = val;
   try {
-    JSON.parse(val || "{}");
-    schemaParseError.value = "";
+    JSON.parse(val || '{}');
+    schemaParseError.value = '';
   } catch (err) {
-    schemaParseError.value = err instanceof Error ? err.message : "JSON 格式错误";
+    schemaParseError.value = err instanceof Error ? err.message : 'JSON 格式错误';
   }
 }
 
 const schemaEditDirty = computed(() => {
   try {
-    return schemaEditJson.value.trim() !== "" && schemaEditJson.value.trim() !== prettySchemaJson.value.trim();
+    return schemaEditJson.value.trim() !== '' && schemaEditJson.value.trim() !== prettySchemaJson.value.trim();
   } catch {
     return false;
   }

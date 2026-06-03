@@ -6,10 +6,10 @@
  * Chat-specific helpers (useChatStream, useTeamStream, useMonitorStream,
  * useGraphStream) remain in their respective feature directories.
  */
-import { onUnmounted, ref, shallowRef } from "vue";
-import { createWsTransport, type WsTransport } from "./ws-transport";
-import { EnvelopeDispatcher } from "./dispatcher";
-import type { Envelope, EnvelopeType } from "./envelope";
+import { onUnmounted, ref, shallowRef } from 'vue';
+import { createWsTransport, type WsTransport } from './ws-transport';
+import { EnvelopeDispatcher } from './dispatcher';
+import type { Envelope, EnvelopeType } from './envelope';
 import {
   acquireGlobalWsConsumer,
   globalWsConsumerEnableLog,
@@ -17,19 +17,19 @@ import {
   globalWsConsumerUnsubscribe,
   releaseGlobalWsConsumer,
   shouldUseGlobalWsHub,
-} from "./globalWsHub";
+} from './globalWsHub';
 export type {
   GraphNodeState,
   GraphExecutionState,
   GraphStreamInterrupt,
   GraphStreamExecutionSummary,
-} from "./graphState";
+} from './graphState';
 import type {
   GraphNodeState,
   GraphExecutionState,
   GraphStreamInterrupt,
   GraphStreamExecutionSummary,
-} from "./graphState";
+} from './graphState';
 
 export type UseEnvelopeStreamOptions = {
   sessionId: string;
@@ -68,7 +68,7 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
   const transport = shallowRef<WsTransport | null>(null);
   const dispatcher = new EnvelopeDispatcher();
 
-  const channels = opts.channels ?? ["chat", "system"];
+  const channels = opts.channels ?? ['chat', 'system'];
   let globalHubId: string | null = null;
 
   function connect(): void {
@@ -111,7 +111,7 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
         connected.value = true;
         lastEventId.value = info.lastEventId;
         for (const ch of channels) {
-          if (ch !== "chat" && ch !== "system") {
+          if (ch !== 'chat' && ch !== 'system') {
             t.subscribe(ch);
           }
         }

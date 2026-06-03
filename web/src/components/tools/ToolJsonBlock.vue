@@ -7,6 +7,6 @@ withDefaults(
   defineProps<{
     text?: string;
   }>(),
-  { text: "" }
+  { text: '' },
 );
 </script>

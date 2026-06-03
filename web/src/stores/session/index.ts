@@ -1,5 +1,5 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
   searchSessions,
   getSession,
@@ -18,18 +18,26 @@ import {
   pinSession,
   restoreSession,
   unpinSession,
-  exportSession
-} from "../../features/session/api";
-import type { Session, SessionListResult, SessionRunRecord, SessionParticipant, BatchOperationResult, BatchPreviewResult, SessionBatchScope } from "../../features/session/types";
-import { emitSessionMutation } from "../sessionSync";
+  exportSession,
+} from '../../features/session/api';
+import type {
+  Session,
+  SessionListResult,
+  SessionRunRecord,
+  SessionParticipant,
+  BatchOperationResult,
+  BatchPreviewResult,
+  SessionBatchScope,
+} from '../../features/session/types';
+import { emitSessionMutation } from '../sessionSync';
 
-export const useSessionStore = defineStore("session", () => {
+export const useSessionStore = defineStore('session', () => {
   const sessions = ref<Session[]>([]);
   const activeSession = ref<Session | null>(null);
   const loading = ref(false);
   const error = ref<string | null>(null);
   const total = ref(0);
-  const keyword = ref("");
+  const keyword = ref('');
 
   async function loadSessions(params?: { keyword?: string; agent_id?: string; limit?: number; offset?: number }) {
     loading.value = true;
@@ -77,10 +85,10 @@ export const useSessionStore = defineStore("session", () => {
   async function newSession(payload: { agent_id?: string; team_id?: string; owner_type?: string; title?: string }) {
     error.value = null;
     try {
-      const s = await createSession({ ...payload, title: payload.title ?? "" });
+      const s = await createSession({ ...payload, title: payload.title ?? '' });
       sessions.value.unshift(s);
       activeSession.value = s;
-      emitSessionMutation({ type: "update", id: s.id, session: s });
+      emitSessionMutation({ type: 'update', id: s.id, session: s });
       return s;
     } catch (e: any) {
       error.value = e?.message ?? String(e);
@@ -91,26 +99,26 @@ export const useSessionStore = defineStore("session", () => {
   async function removeSession(id: string) {
     await deleteSession(id);
     removeSessionLocal(id);
-    emitSessionMutation({ type: "remove", id });
+    emitSessionMutation({ type: 'remove', id });
   }
 
   async function archive(id: string) {
     await archiveSession(id);
     removeSessionLocal(id);
-    emitSessionMutation({ type: "archive", id });
+    emitSessionMutation({ type: 'archive', id });
   }
 
   async function rename(id: string, title: string) {
     const updated = await updateSession(id, { title });
     updateSessionLocal(id, updated);
-    emitSessionMutation({ type: "update", id, session: updated });
+    emitSessionMutation({ type: 'update', id, session: updated });
     return updated;
   }
 
   async function setPinned(id: string, pinned: boolean) {
     const updated = pinned ? await pinSession(id) : await unpinSession(id);
     updateSessionLocal(id, updated);
-    emitSessionMutation({ type: "update", id, session: updated });
+    emitSessionMutation({ type: 'update', id, session: updated });
     return updated;
   }
 
@@ -119,7 +127,7 @@ export const useSessionStore = defineStore("session", () => {
   }
 
   async function previewBatch(payload: {
-    mode: "archive" | "delete";
+    mode: 'archive' | 'delete';
     ids?: string[];
     older_than_days?: number;
     scope?: SessionBatchScope;
@@ -134,7 +142,7 @@ export const useSessionStore = defineStore("session", () => {
     scope?: SessionBatchScope;
   }): Promise<BatchOperationResult> {
     const result = await batchArchiveSessions(payload);
-    emitSessionMutation({ type: "refresh" });
+    emitSessionMutation({ type: 'refresh' });
     return result;
   }
 
@@ -145,7 +153,7 @@ export const useSessionStore = defineStore("session", () => {
     include_archived?: boolean;
   }): Promise<BatchOperationResult> {
     const result = await batchDeleteSessions(payload);
-    emitSessionMutation({ type: "refresh" });
+    emitSessionMutation({ type: 'refresh' });
     return result;
   }
 
@@ -161,7 +169,7 @@ export const useSessionStore = defineStore("session", () => {
 
   async function fetchTimeline(
     sessionId: string,
-    params?: { limit?: number; offset?: number; kind_filter?: string; sort_order?: string }
+    params?: { limit?: number; offset?: number; kind_filter?: string; sort_order?: string },
   ) {
     error.value = null;
     try {
@@ -192,7 +200,7 @@ export const useSessionStore = defineStore("session", () => {
     if (activeSession.value?.id === id) activeSession.value = updated;
   }
 
-  async function exportSessionAction(id: string, format: "markdown" | "json") {
+  async function exportSessionAction(id: string, format: 'markdown' | 'json') {
     error.value = null;
     try {
       return await exportSession(id, format);
@@ -206,7 +214,7 @@ export const useSessionStore = defineStore("session", () => {
     error.value = null;
     try {
       const result = await restoreSession(id);
-      emitSessionMutation({ type: "update", id, session: result });
+      emitSessionMutation({ type: 'update', id, session: result });
       return result;
     } catch (e: any) {
       error.value = e?.message ?? String(e);
@@ -214,7 +222,11 @@ export const useSessionStore = defineStore("session", () => {
     }
   }
 
-  async function fetchRuns(sessionId: string, limit = 20, offset = 0): Promise<{ items: SessionRunRecord[]; total: number }> {
+  async function fetchRuns(
+    sessionId: string,
+    limit = 20,
+    offset = 0,
+  ): Promise<{ items: SessionRunRecord[]; total: number }> {
     error.value = null;
     try {
       return await listSessionRuns(sessionId, limit, offset);

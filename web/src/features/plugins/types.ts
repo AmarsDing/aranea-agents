@@ -18,7 +18,7 @@ export type Plugin = {
   name: string;
   description: string;
   category: string;
-  risk_level: "low" | "medium" | "high" | string;
+  risk_level: 'low' | 'medium' | 'high' | string;
   enabled: boolean;
   scope: string;
   callback_points: string[];

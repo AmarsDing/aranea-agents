@@ -15,7 +15,7 @@ export function createChatFocusCoordinator() {
   const focusSessionInflight = new Map<string, InflightEntry>();
 
   function focusKey(sessionId: string, agentId?: string): string {
-    return `${sessionId.trim()}:${agentId?.trim() ?? ""}`;
+    return `${sessionId.trim()}:${agentId?.trim() ?? ''}`;
   }
 
   function isRouteSessionWatchSuppressed(): boolean {
@@ -38,7 +38,7 @@ export function createChatFocusCoordinator() {
   function runFocusOnce(
     key: string,
     options: FocusSessionOptions | undefined,
-    task: (resolveSkipReload: () => boolean) => Promise<void>
+    task: (resolveSkipReload: () => boolean) => Promise<void>,
   ): Promise<void> {
     const wantsSkip = Boolean(options?.skipMessageReload);
     const existing = focusSessionInflight.get(key);
@@ -50,7 +50,7 @@ export function createChatFocusCoordinator() {
     const entry: InflightEntry = { skipMessageReload: wantsSkip, promise: undefined! };
     entry.promise = task(() => entry.skipMessageReload)
       .catch((err) => {
-        console.warn("[chat] focus session failed:", key, err);
+        console.warn('[chat] focus session failed:', key, err);
         throw err;
       })
       .finally(() => {

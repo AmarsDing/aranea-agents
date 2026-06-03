@@ -1,6 +1,6 @@
-import { ref, type Ref } from "vue";
-import { useAvatarCatalogStore } from "../../stores/avatar";
-import { resolveAvatarAssetFetchId } from "../avatar/resolveAvatarAssetFetchId";
+import { ref, type Ref } from 'vue';
+import { useAvatarCatalogStore } from '../../stores/avatar';
+import { resolveAvatarAssetFetchId } from '../avatar/resolveAvatarAssetFetchId';
 
 /** Agent settings avatar: picker dialog + thumbnail cache warmup after load/save. */
 export function useAgentAvatarIcon(icon: Ref<string | undefined | null>) {

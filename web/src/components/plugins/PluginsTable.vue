@@ -131,9 +131,9 @@
 </template>
 
 <script setup lang="ts">
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
-import type { Plugin } from "../../features/plugins/types";
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import type { Plugin } from '../../features/plugins/types';
 import {
   PLUGIN_TABLE_COLUMNS,
   formatCallbacksSummary,
@@ -144,8 +144,8 @@ import {
   riskTagClass,
   scopeLabel,
   scopeTooltip,
-  visibleCallbackPoints
-} from "./pluginUi";
+  visibleCallbackPoints,
+} from './pluginUi';
 
 withDefaults(
   defineProps<{
@@ -154,7 +154,7 @@ withDefaults(
     togglingId: string;
     shell?: boolean;
   }>(),
-  { shell: false }
+  { shell: false },
 );
 
 defineEmits<{

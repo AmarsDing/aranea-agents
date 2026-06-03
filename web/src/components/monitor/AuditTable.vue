@@ -58,40 +58,40 @@
           hide-pagination
           :pagination="{ rowsPerPage: 0 }"
         >
-        <template #body-cell-event="props">
-          <q-td :props="props" class="cursor-pointer" @click="openDetail(props.row)">
-            <q-chip dense square :color="eventColor(props.row.action)" text-color="white">
-              {{ props.row.action }}.{{ props.row.resource }}
-            </q-chip>
-          </q-td>
-        </template>
-        <template #body-cell-resource="props">
-          <q-td :props="props">
-            <AppRegistryHoverTip :text="props.row.detail">
-              <div class="min-width-0">
-                <div class="app-registry-cell-primary ellipsis">{{ props.row.resource }}</div>
-                <div class="app-registry-cell-sub ellipsis">{{ props.row.resource_id || "—" }}</div>
-              </div>
-            </AppRegistryHoverTip>
-          </q-td>
-        </template>
-        <template #body-cell-actor="props">
-          <q-td :props="props">
-            <div class="app-registry-cell-primary ellipsis">{{ props.row.actor || "system" }}</div>
-            <div v-if="props.row.ip" class="app-registry-cell-sub">{{ props.row.ip }}</div>
-          </q-td>
-        </template>
-        <template #body-cell-request="props">
-          <q-td :props="props">
-            <code class="monitor-code ellipsis">{{ props.row.request_id || "—" }}</code>
-          </q-td>
-        </template>
-        <template #body-cell-created="props">
-          <q-td :props="props">
-            <span class="app-registry-cell-sub">{{ formatDate(props.row.created_at) }}</span>
-          </q-td>
-        </template>
-      </AppRegistryTable>
+          <template #body-cell-event="props">
+            <q-td :props="props" class="cursor-pointer" @click="openDetail(props.row)">
+              <q-chip dense square :color="eventColor(props.row.action)" text-color="white">
+                {{ props.row.action }}.{{ props.row.resource }}
+              </q-chip>
+            </q-td>
+          </template>
+          <template #body-cell-resource="props">
+            <q-td :props="props">
+              <AppRegistryHoverTip :text="props.row.detail">
+                <div class="min-width-0">
+                  <div class="app-registry-cell-primary ellipsis">{{ props.row.resource }}</div>
+                  <div class="app-registry-cell-sub ellipsis">{{ props.row.resource_id || '—' }}</div>
+                </div>
+              </AppRegistryHoverTip>
+            </q-td>
+          </template>
+          <template #body-cell-actor="props">
+            <q-td :props="props">
+              <div class="app-registry-cell-primary ellipsis">{{ props.row.actor || 'system' }}</div>
+              <div v-if="props.row.ip" class="app-registry-cell-sub">{{ props.row.ip }}</div>
+            </q-td>
+          </template>
+          <template #body-cell-request="props">
+            <q-td :props="props">
+              <code class="monitor-code ellipsis">{{ props.row.request_id || '—' }}</code>
+            </q-td>
+          </template>
+          <template #body-cell-created="props">
+            <q-td :props="props">
+              <span class="app-registry-cell-sub">{{ formatDate(props.row.created_at) }}</span>
+            </q-td>
+          </template>
+        </AppRegistryTable>
 
         <AppRegistryPagination
           v-model:page="page"
@@ -112,7 +112,7 @@
             <div class="app-glass-dialog__title">Audit 详情</div>
             <div class="app-glass-dialog__subtitle">{{ selected?.action }}.{{ selected?.resource }}</div>
           </div>
-          <q-btn flat round dense icon="close" v-close-popup />
+          <q-btn v-close-popup flat round dense icon="close" />
         </q-card-section>
         <q-separator />
         <div class="app-glass-dialog__scroll">
@@ -146,16 +146,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { copyToClipboard } from "quasar";
-import AppPageToolbar from "../layout/AppPageToolbar.vue";
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
-import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
+import { computed, ref, watch } from 'vue';
+import { copyToClipboard } from 'quasar';
+import AppPageToolbar from '../layout/AppPageToolbar.vue';
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
 
-import type { AuditLog } from "../../features/monitor/types";
-import { compactJSON, formatDate } from "../../features/monitor/utils";
-import { AUDIT_TABLE_COLUMNS } from "./monitorTableUi";
+import type { AuditLog } from '../../features/monitor/types';
+import { compactJSON, formatDate } from '../../features/monitor/utils';
+import { AUDIT_TABLE_COLUMNS } from './monitorTableUi';
 
 const props = defineProps<{
   rows: AuditLog[];
@@ -164,10 +164,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   reload: [];
-  notify: [payload: { message: string; type: "positive" | "negative" | "warning" }];
+  notify: [payload: { message: string; type: 'positive' | 'negative' | 'warning' }];
 }>();
 
-const keyword = ref("");
+const keyword = ref('');
 const actionFilter = ref<string | null>(null);
 const resourceFilter = ref<string | null>(null);
 const selected = ref<AuditLog | null>(null);
@@ -197,10 +197,10 @@ const filteredRows = computed(() => {
   if (q) {
     result = result.filter((row) =>
       [row.action, row.resource, row.resource_id, row.request_id, row.detail, row.actor].some((value) =>
-        String(value || "")
+        String(value || '')
           .toLowerCase()
-          .includes(q)
-      )
+          .includes(q),
+      ),
     );
   }
   return result;
@@ -219,7 +219,7 @@ watch([keyword, actionFilter, resourceFilter], () => {
 const selectedJSON = computed(() => compactJSON(selected.value ?? {}));
 
 function resetFilters() {
-  keyword.value = "";
+  keyword.value = '';
   actionFilter.value = null;
   resourceFilter.value = null;
   page.value = 1;
@@ -231,23 +231,23 @@ function openDetail(row: AuditLog) {
 }
 
 function eventColor(action: string) {
-  if (action.includes("delete")) return "negative";
-  if (action.includes("create")) return "positive";
-  if (action.includes("toggle")) return "orange";
-  if (action.includes("credentials")) return "purple";
-  if (action.includes("update")) return "primary";
-  return "grey";
+  if (action.includes('delete')) return 'negative';
+  if (action.includes('create')) return 'positive';
+  if (action.includes('toggle')) return 'orange';
+  if (action.includes('credentials')) return 'purple';
+  if (action.includes('update')) return 'primary';
+  return 'grey';
 }
 
 function severityColor(severity: string) {
-  if (severity === "critical" || severity === "high") return "negative";
-  if (severity === "warning" || severity === "medium") return "orange";
-  return "positive";
+  if (severity === 'critical' || severity === 'high') return 'negative';
+  if (severity === 'warning' || severity === 'medium') return 'orange';
+  return 'positive';
 }
 
 async function copyJSON() {
   await copyToClipboard(selectedJSON.value);
-  emit("notify", { message: "已复制", type: "positive" });
+  emit('notify', { message: '已复制', type: 'positive' });
 }
 </script>
 

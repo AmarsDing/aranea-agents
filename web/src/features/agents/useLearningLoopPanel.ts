@@ -1,7 +1,7 @@
-import { computed, ref, watch } from "vue";
-import { useQuasar } from "quasar";
-import { useLearningLoopStore } from "../../stores/learningLoop";
-import type { LearningObservation, LearningPattern, LearningProposal } from "./api.learning";
+import { computed, ref, watch } from 'vue';
+import { useQuasar } from 'quasar';
+import { useLearningLoopStore } from '../../stores/learningLoop';
+import type { LearningObservation, LearningPattern, LearningProposal } from './api.learning';
 
 export function useLearningLoopPanel(agentId: () => string) {
   const $q = useQuasar();
@@ -10,18 +10,14 @@ export function useLearningLoopPanel(agentId: () => string) {
   const runningLoop = ref(false);
   const approvingId = ref<string | null>(null);
   const rejectingId = ref<string | null>(null);
-  const patternStatusFilter = ref<string>("");
+  const patternStatusFilter = ref<string>('');
 
   const observations = computed<LearningObservation[]>(() => store.observations);
   const patterns = computed<LearningPattern[]>(() => store.patterns);
   const proposals = computed<LearningProposal[]>(() => store.proposals);
 
-  const pendingProposalsCount = computed(() =>
-    proposals.value.filter((p) => p.status === "pending").length
-  );
-  const registeredKnowledgeCount = computed(() =>
-    proposals.value.filter((p) => p.status === "approved").length
-  );
+  const pendingProposalsCount = computed(() => proposals.value.filter((p) => p.status === 'pending').length);
+  const registeredKnowledgeCount = computed(() => proposals.value.filter((p) => p.status === 'approved').length);
 
   async function fetchAll() {
     const id = agentId();
@@ -31,7 +27,7 @@ export function useLearningLoopPanel(agentId: () => string) {
       await Promise.all([
         store.fetchObservations(id),
         store.fetchPatterns(id, patternStatusFilter.value || undefined),
-        store.fetchProposals(id)
+        store.fetchProposals(id),
       ]);
     } finally {
       loading.value = false;
@@ -42,10 +38,10 @@ export function useLearningLoopPanel(agentId: () => string) {
     const id = agentId();
     if (!id) return;
     $q.dialog({
-      title: "审批知识提议",
-      message: "确定审批此知识提议？审批后将注册到 Agent 知识库。",
+      title: '审批知识提议',
+      message: '确定审批此知识提议？审批后将注册到 Agent 知识库。',
       cancel: true,
-      persistent: true
+      persistent: true,
     }).onOk(async () => {
       approvingId.value = proposalId;
       try {
@@ -86,7 +82,7 @@ export function useLearningLoopPanel(agentId: () => string) {
     () => {
       void fetchAll();
     },
-    { immediate: true }
+    { immediate: true },
   );
 
   return {
@@ -103,6 +99,6 @@ export function useLearningLoopPanel(agentId: () => string) {
     onApprove,
     onReject,
     onRunLoop,
-    fetchAll
+    fetchAll,
   };
 }

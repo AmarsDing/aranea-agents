@@ -14,14 +14,28 @@
         @update:model-value="emit('update:pageSize', Number($event))"
       />
       <span class="app-registry-pagination__page-label">第 {{ page }} / {{ pageMax }} 页</span>
-      <q-btn round dense flat icon="chevron_left" :disable="page <= 1 || loading" @click="emit('update:page', page - 1)" />
-      <q-btn round dense flat icon="chevron_right" :disable="page >= pageMax || loading" @click="emit('update:page', page + 1)" />
+      <q-btn
+        round
+        dense
+        flat
+        icon="chevron_left"
+        :disable="page <= 1 || loading"
+        @click="emit('update:page', page - 1)"
+      />
+      <q-btn
+        round
+        dense
+        flat
+        icon="chevron_right"
+        :disable="page >= pageMax || loading"
+        @click="emit('update:page', page + 1)"
+      />
     </div>
   </footer>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed } from 'vue';
 
 const props = withDefaults(
   defineProps<{
@@ -36,17 +50,15 @@ const props = withDefaults(
   }>(),
   {
     loading: false,
-    label: "条",
+    label: '条',
     pageSizeOptions: () => [10, 20, 50],
   },
 );
 
 const emit = defineEmits<{
-  "update:page": [value: number];
-  "update:pageSize": [value: number];
+  'update:page': [value: number];
+  'update:pageSize': [value: number];
 }>();
 
-const pageSizeOptionsResolved = computed(() =>
-  props.pageSizeOptions.map((value) => ({ label: String(value), value })),
-);
+const pageSizeOptionsResolved = computed(() => props.pageSizeOptions.map((value) => ({ label: String(value), value })));
 </script>

@@ -1,4 +1,4 @@
-import type { Envelope } from "./envelope";
+import type { Envelope } from './envelope';
 
 export type EventFilterState = {
   typeFilter: string;
@@ -9,11 +9,11 @@ export type EventFilterState = {
 };
 
 export const defaultEventFilterState = (): EventFilterState => ({
-  typeFilter: "all",
-  branchPrefix: "",
-  tag: "",
-  keyword: "",
-  filterKey: "",
+  typeFilter: 'all',
+  branchPrefix: '',
+  tag: '',
+  keyword: '',
+  filterKey: '',
 });
 
 export type BranchNode = {
@@ -29,40 +29,32 @@ export type BranchNode = {
 function envelopeContainsTag(tagField: string | undefined, tag: string): boolean {
   if (!tag || !tagField) return false;
   if (tagField === tag) return true;
-  return tagField.split(",").some((part) => part.trim() === tag);
+  return tagField.split(',').some((part) => part.trim() === tag);
 }
 
 function matchFilterKeyPrefix(subscriberKey: string, eventKey: string): boolean {
   if (!subscriberKey || !eventKey) return true;
-  const sk = subscriberKey + "/";
-  const ek = eventKey + "/";
+  const sk = subscriberKey + '/';
+  const ek = eventKey + '/';
   return sk.startsWith(ek) || ek.startsWith(sk);
 }
 
 export function filterEnvelopes(events: Envelope[], filters: EventFilterState): Envelope[] {
   const kw = filters.keyword.trim().toLowerCase();
   return events.filter((env) => {
-    if (filters.typeFilter !== "all" && env.type !== filters.typeFilter) return false;
+    if (filters.typeFilter !== 'all' && env.type !== filters.typeFilter) return false;
     if (filters.branchPrefix.trim()) {
-      const branch = env.branch ?? "";
+      const branch = env.branch ?? '';
       if (!branch.startsWith(filters.branchPrefix.trim())) return false;
     }
     if (filters.tag.trim() && !envelopeContainsTag(env.tag, filters.tag.trim())) return false;
-    if (filters.filterKey.trim() && !matchFilterKeyPrefix(filters.filterKey.trim(), env.filter_key ?? "")) {
+    if (filters.filterKey.trim() && !matchFilterKeyPrefix(filters.filterKey.trim(), env.filter_key ?? '')) {
       return false;
     }
     if (kw) {
-      const hay = [
-        env.type,
-        env.author,
-        env.branch,
-        env.filter_key,
-        env.tag,
-        env.content?.text,
-        env.tool_call?.name,
-      ]
+      const hay = [env.type, env.author, env.branch, env.filter_key, env.tag, env.content?.text, env.tool_call?.name]
         .filter(Boolean)
-        .join(" ")
+        .join(' ')
         .toLowerCase();
       if (!hay.includes(kw)) return false;
     }

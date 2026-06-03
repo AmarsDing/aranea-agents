@@ -1,7 +1,7 @@
-import { ref } from "vue";
-import { listSkills } from "../skills/api";
-import { getCodeExecutorCapabilities } from "../monitor/api";
-import type { CodeExecutorCapability } from "../monitor/types";
+import { ref } from 'vue';
+import { listSkills } from '../skills/api';
+import { getCodeExecutorCapabilities } from '../monitor/api';
+import type { CodeExecutorCapability } from '../monitor/types';
 
 /** Skill slug options and code-executor capabilities for Agent settings. */
 export function useAgentSkillCatalog() {
@@ -16,11 +16,17 @@ export function useAgentSkillCatalog() {
       const seen = new Set<string>();
       const next: { label: string; value: string }[] = [];
       for (const s of data.items) {
-        const slug = String(s.slug ?? "").trim();
+        const slug = String(s.slug ?? '').trim();
         if (!slug || seen.has(slug)) continue;
         seen.add(slug);
         const statusTip =
-          s.status === "published" ? "已发布" : s.status === "draft" ? "草稿" : s.status === "archived" ? "已归档" : s.status;
+          s.status === 'published'
+            ? '已发布'
+            : s.status === 'draft'
+              ? '草稿'
+              : s.status === 'archived'
+                ? '已归档'
+                : s.status;
         next.push({
           label: `${s.name || slug} · ${slug} · ${statusTip}`,
           value: slug,

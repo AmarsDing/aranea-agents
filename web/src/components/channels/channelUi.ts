@@ -1,12 +1,22 @@
-import type { QTableColumn } from "quasar";
-import type { ChannelCatalogItem, ChannelConfig, ChannelDeliveryRow, ChannelMetadata, ChannelRow } from "../../features/channels/types";
-import { buildChannelWebhookURL, isLocalhostOrigin, resolvePublicWebhookOrigin } from "../../features/channels/publicWebhookOrigin";
+import type { QTableColumn } from 'quasar';
+import type {
+  ChannelCatalogItem,
+  ChannelConfig,
+  ChannelDeliveryRow,
+  ChannelMetadata,
+  ChannelRow,
+} from '../../features/channels/types';
+import {
+  buildChannelWebhookURL,
+  isLocalhostOrigin,
+  resolvePublicWebhookOrigin,
+} from '../../features/channels/publicWebhookOrigin';
 import {
   REGISTRY_COL_W,
   registryCol,
   registryColActions,
-  registryColEnabled
-} from "../../features/ui/registryTableColumns";
+  registryColEnabled,
+} from '../../features/ui/registryTableColumns';
 
 export function parseJSON<T>(value: string | undefined, fallback: T): T {
   if (!value) return fallback;
@@ -26,11 +36,11 @@ export function channelMetadata(row: ChannelRow): ChannelMetadata {
 }
 
 export function channelType(row: ChannelRow): string {
-  return channelConfig(row).type || "unknown";
+  return channelConfig(row).type || 'unknown';
 }
 
 export function receiveMode(row: ChannelRow): string {
-  return channelConfig(row).receive_mode || "-";
+  return channelConfig(row).receive_mode || '-';
 }
 
 export function catalogLabelForType(catalog: ChannelCatalogItem[], type: string): string {
@@ -39,19 +49,19 @@ export function catalogLabelForType(catalog: ChannelCatalogItem[], type: string)
 
 /** Quasar 语义色；对齐 UX §2 success / warning / danger */
 export function statusQuasarColor(status: string): string {
-  if (status === "active") return "positive";
-  if (status === "error") return "negative";
-  if (status === "pending_auth") return "warning";
-  return "grey";
+  if (status === 'active') return 'positive';
+  if (status === 'error') return 'negative';
+  if (status === 'pending_auth') return 'warning';
+  return 'grey';
 }
 
 export function channelStatusBadgeText(row: ChannelRow): string {
-  return row.enabled ? statusText(row) : "disabled";
+  return row.enabled ? statusText(row) : 'disabled';
 }
 
 function statusText(row: ChannelRow): string {
-  if (isChannelConnected(row)) return "connected";
-  return row.status || "unknown";
+  if (isChannelConnected(row)) return 'connected';
+  return row.status || 'unknown';
 }
 
 export function isChannelConnected(row: ChannelRow): boolean {
@@ -59,27 +69,27 @@ export function isChannelConnected(row: ChannelRow): boolean {
   if (meta.runtime_connected === true) {
     return row.enabled;
   }
-  return row.enabled && row.status === "active" && !meta.last_error_message;
+  return row.enabled && row.status === 'active' && !meta.last_error_message;
 }
 
 export function formatChannelDate(value: string): string {
-  if (!value) return "-";
+  if (!value) return '-';
   return new Date(value).toLocaleString();
 }
 
 export function channelWebhookPath(row: ChannelRow): string {
   const cfg = channelConfig(row);
-  const configured = String(cfg.webhook?.path ?? "").trim();
+  const configured = String(cfg.webhook?.path ?? '').trim();
   if (configured) {
-    return configured.startsWith("/") ? configured : `/${configured}`;
+    return configured.startsWith('/') ? configured : `/${configured}`;
   }
-  const key = String(row.key || "").trim();
-  return key ? `/webhooks/${key}` : "";
+  const key = String(row.key || '').trim();
+  return key ? `/webhooks/${key}` : '';
 }
 
 export function channelWebhookURL(row: ChannelRow): string {
   const path = channelWebhookPath(row);
-  if (!path) return "";
+  if (!path) return '';
   const meta = channelMetadata(row);
   return buildChannelWebhookURL(path, meta);
 }
@@ -96,24 +106,24 @@ export function channelSupportsWebhook(row: ChannelRow, catalog: ChannelCatalogI
   const type = channelType(row);
   const item = catalog.find((entry) => entry.type === type);
   if (item) return item.supports_webhook;
-  return channelConfig(row).receive_mode === "webhook" || channelConfig(row).receive_mode === "event";
+  return channelConfig(row).receive_mode === 'webhook' || channelConfig(row).receive_mode === 'event';
 }
 
 export function channelExternalID(row: ChannelRow): string {
   const meta = channelMetadata(row);
   if (meta.external_id?.trim()) return meta.external_id.trim();
   const cfg = channelConfig(row).config ?? {};
-  for (const key of ["app_id", "page_id", "bot_id", "team_id"]) {
-    const value = String((cfg as Record<string, unknown>)[key] ?? "").trim();
+  for (const key of ['app_id', 'page_id', 'bot_id', 'team_id']) {
+    const value = String((cfg as Record<string, unknown>)[key] ?? '').trim();
     if (value) return value.length > 24 ? `${value.slice(0, 24)}…` : value;
   }
-  return "—";
+  return '—';
 }
 
 export async function copyChannelWebhookURL(row: ChannelRow): Promise<string> {
   const url = channelWebhookURL(row);
-  if (!url) throw new Error("Webhook URL not available");
-  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+  if (!url) throw new Error('Webhook URL not available');
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(url);
   }
   return url;
@@ -121,30 +131,42 @@ export async function copyChannelWebhookURL(row: ChannelRow): Promise<string> {
 
 export function channelTableColumns(t: (key: string) => string): QTableColumn<ChannelRow>[] {
   return [
-    registryCol<ChannelRow>("name", t("channelsPage.colName"), "name", "left", REGISTRY_COL_W.name),
-    registryCol<ChannelRow>("type", t("channelsPage.colType"), "config_json", "left", "15%"),
-    registryCol<ChannelRow>("external_id", t("channelsPage.colExternalId"), "metadata_json", "left", "16%"),
-    registryCol<ChannelRow>("status", t("channelsPage.colStatus"), "status", "left", "12%"),
+    registryCol<ChannelRow>('name', t('channelsPage.colName'), 'name', 'left', REGISTRY_COL_W.name),
+    registryCol<ChannelRow>('type', t('channelsPage.colType'), 'config_json', 'left', '15%'),
+    registryCol<ChannelRow>('external_id', t('channelsPage.colExternalId'), 'metadata_json', 'left', '16%'),
+    registryCol<ChannelRow>('status', t('channelsPage.colStatus'), 'status', 'left', '12%'),
     registryColEnabled<ChannelRow>(),
-    registryCol<ChannelRow>("updated", t("channelsPage.colUpdated"), "updated_at", "left", REGISTRY_COL_W.time),
-    registryColActions<ChannelRow>("80px")
+    registryCol<ChannelRow>('updated', t('channelsPage.colUpdated'), 'updated_at', 'left', REGISTRY_COL_W.time),
+    registryColActions<ChannelRow>('80px'),
   ];
 }
 
 export function channelTurnJobsColumns(t: (key: string) => string) {
   return [
-    registryCol("status", t("channelsPage.colStatus"), "status", "left", REGISTRY_COL_W.status),
-    registryCol("peer_id", t("channelsPage.colPeerId"), "peer_id", "left", REGISTRY_COL_W.name),
-    registryCol("session_id", t("channelsPage.colSessionId"), "session_id", "left", REGISTRY_COL_W.name),
-    registryCol("updated_at", t("channelsPage.colUpdated"), "updated_at", "left", REGISTRY_COL_W.time)
+    registryCol('status', t('channelsPage.colStatus'), 'status', 'left', REGISTRY_COL_W.status),
+    registryCol('peer_id', t('channelsPage.colPeerId'), 'peer_id', 'left', REGISTRY_COL_W.name),
+    registryCol('session_id', t('channelsPage.colSessionId'), 'session_id', 'left', REGISTRY_COL_W.name),
+    registryCol('updated_at', t('channelsPage.colUpdated'), 'updated_at', 'left', REGISTRY_COL_W.time),
   ];
 }
 
 export function channelDeliveriesColumns(t: (key: string) => string): QTableColumn<ChannelDeliveryRow>[] {
   return [
-    registryCol<ChannelDeliveryRow>("status", t("channelsPage.colStatus"), "status", "left", REGISTRY_COL_W.status),
-    registryCol<ChannelDeliveryRow>("agent_id", t("channelsPage.colAgentId"), "agent_id", "left", REGISTRY_COL_W.name),
-    registryCol<ChannelDeliveryRow>("payload", t("channelsPage.colPayload"), "payload_json", "left", REGISTRY_COL_W.name),
-    registryCol<ChannelDeliveryRow>("updated_at", t("channelsPage.colUpdated"), "updated_at", "left", REGISTRY_COL_W.time)
+    registryCol<ChannelDeliveryRow>('status', t('channelsPage.colStatus'), 'status', 'left', REGISTRY_COL_W.status),
+    registryCol<ChannelDeliveryRow>('agent_id', t('channelsPage.colAgentId'), 'agent_id', 'left', REGISTRY_COL_W.name),
+    registryCol<ChannelDeliveryRow>(
+      'payload',
+      t('channelsPage.colPayload'),
+      'payload_json',
+      'left',
+      REGISTRY_COL_W.name,
+    ),
+    registryCol<ChannelDeliveryRow>(
+      'updated_at',
+      t('channelsPage.colUpdated'),
+      'updated_at',
+      'left',
+      REGISTRY_COL_W.time,
+    ),
   ];
 }

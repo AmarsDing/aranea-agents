@@ -1,11 +1,7 @@
 <template>
   <div v-if="guide" class="field-guide-hint">
     <!-- Trigger icon -->
-    <q-icon
-      name="help_outline"
-      size="18px"
-      class="field-guide-hint__icon text-grey-6 cursor-pointer"
-    >
+    <q-icon name="help_outline" size="18px" class="field-guide-hint__icon text-grey-6 cursor-pointer">
       <q-popup-proxy :offset="[0, 8]" max-width="340px">
         <q-card flat bordered class="field-guide-card q-pa-md">
           <div class="text-subtitle2 text-primary q-mb-xs">{{ guide.titleZh }}</div>
@@ -51,16 +47,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { FieldScope } from '../../features/agents/fieldGuides'
-import { getFieldGuide } from '../../features/agents/fieldGuides'
+import { computed } from 'vue';
+import type { FieldScope } from '../../features/agents/fieldGuides';
+import { getFieldGuide } from '../../features/agents/fieldGuides';
 
 const props = defineProps<{
-  scope: FieldScope
-  fileName?: string
-}>()
+  scope: FieldScope;
+  fileName?: string;
+}>();
 
-const guide = computed(() => getFieldGuide(props.scope, props.fileName))
+const guide = computed(() => getFieldGuide(props.scope, props.fileName));
 </script>
 
 <style scoped>

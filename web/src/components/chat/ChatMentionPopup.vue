@@ -9,7 +9,7 @@
   >
     <div class="chat-mention-popup" :class="{ 'chat-mention-popup--dark': isDark }">
       <div class="chat-mention-popup__header text-caption text-weight-medium">
-        {{ t("chat.mentionTitle", "引用上下文") }}
+        {{ t('chat.mentionTitle', '引用上下文') }}
       </div>
       <q-input
         v-model="filter"
@@ -23,8 +23,8 @@
         <q-item
           v-for="item in filteredItems"
           :key="item.key"
-          clickable
           v-ripple
+          clickable
           class="chat-mention-popup__item"
           @click="onSelect(item)"
         >
@@ -38,7 +38,7 @@
         </q-item>
         <q-item v-if="filteredItems.length === 0" class="chat-mention-popup__empty">
           <q-item-section>
-            <q-item-label caption>{{ t("chat.mentionEmpty", "无匹配项") }}</q-item-label>
+            <q-item-label caption>{{ t('chat.mentionEmpty', '无匹配项') }}</q-item-label>
           </q-item-section>
         </q-item>
       </q-list>
@@ -47,9 +47,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { useI18n } from "vue-i18n";
-import type { ContextRefItem } from "../../features/chat/types";
+import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+import type { ContextRefItem } from '../../features/chat/types';
 
 const props = withDefaults(
   defineProps<{
@@ -61,12 +61,12 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  "update:open": [value: boolean];
+  'update:open': [value: boolean];
   select: [item: ContextRefItem];
 }>();
 
 const { t } = useI18n();
-const filter = ref("");
+const filter = ref('');
 
 const filteredItems = computed(() => {
   const q = filter.value.trim().toLowerCase();
@@ -80,9 +80,9 @@ const filteredItems = computed(() => {
 });
 
 function onSelect(item: ContextRefItem) {
-  emit("select", item);
-  emit("update:open", false);
-  filter.value = "";
+  emit('select', item);
+  emit('update:open', false);
+  filter.value = '';
 }
 </script>
 

@@ -2,7 +2,7 @@
   <q-dialog :model-value="open" persistent @update:model-value="$emit('update:open', $event)">
     <q-card class="app-dialog-card app-dialog-card--sm">
       <q-card-section class="row items-center justify-between">
-        <div class="text-h6">{{ editing ? "编辑 Agent 覆盖" : "添加 Agent 覆盖" }}</div>
+        <div class="text-h6">{{ editing ? '编辑 Agent 覆盖' : '添加 Agent 覆盖' }}</div>
         <q-btn flat dense round icon="close" class="app-dialog-icon-btn" @click="$emit('update:open', false)" />
       </q-card-section>
       <q-separator />
@@ -60,8 +60,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import type { ToolOverrideForm } from "../../stores/tools/toolDetail";
+import { ref } from 'vue';
+import type { ToolOverrideForm } from '../../stores/tools/toolDetail';
 
 const props = defineProps<{
   open: boolean;
@@ -73,29 +73,29 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:open": [value: boolean];
+  'update:open': [value: boolean];
   save: [];
-  "update:form": [value: ToolOverrideForm];
+  'update:form': [value: ToolOverrideForm];
 }>();
 
 const modeOptions = [
-  { label: "继承 (inherit)", value: "inherit" },
-  { label: "允许 (allow)", value: "allow" },
-  { label: "拒绝 (deny)", value: "deny" }
+  { label: '继承 (inherit)', value: 'inherit' },
+  { label: '允许 (allow)', value: 'allow' },
+  { label: '拒绝 (deny)', value: 'deny' },
 ];
 
-const configJsonError = ref("");
+const configJsonError = ref('');
 
 function emitFormPatch(patch: Partial<ToolOverrideForm>) {
-  emit("update:form", { ...props.form, ...patch });
+  emit('update:form', { ...props.form, ...patch });
 }
 
 function onConfigJsonInput(val: string) {
   try {
-    JSON.parse(val || "{}");
-    configJsonError.value = "";
+    JSON.parse(val || '{}');
+    configJsonError.value = '';
   } catch (err) {
-    configJsonError.value = err instanceof Error ? err.message : "JSON 格式错误";
+    configJsonError.value = err instanceof Error ? err.message : 'JSON 格式错误';
   }
   emitFormPatch({ config_override_json: val });
 }

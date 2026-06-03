@@ -26,7 +26,8 @@
             v-for="evt in parseEventTypes(props.row.event_types_json)"
             :key="evt"
             class="webhook-tag webhook-tag--event"
-          >{{ evt }}</span>
+            >{{ evt }}</span
+          >
           <span v-if="parseEventTypes(props.row.event_types_json).length === 0" class="app-registry-cell-sub">—</span>
         </div>
       </q-td>
@@ -47,10 +48,26 @@
     <template #body-cell-actions="props">
       <q-td :props="props" class="webhooks-data-table__actions-cell">
         <div class="app-registry-cell-actions">
-          <q-btn flat dense round class="app-registry-icon-btn" color="primary" icon="edit" @click="$emit('edit', props.row)">
+          <q-btn
+            flat
+            dense
+            round
+            class="app-registry-icon-btn"
+            color="primary"
+            icon="edit"
+            @click="$emit('edit', props.row)"
+          >
             <q-tooltip>{{ t('webhooksPage.tooltipEdit') }}</q-tooltip>
           </q-btn>
-          <q-btn flat dense round class="app-registry-icon-btn" color="negative" icon="delete" @click="$emit('remove', props.row)">
+          <q-btn
+            flat
+            dense
+            round
+            class="app-registry-icon-btn"
+            color="negative"
+            icon="delete"
+            @click="$emit('remove', props.row)"
+          >
             <q-tooltip>{{ t('webhooksPage.tooltipDelete') }}</q-tooltip>
           </q-btn>
         </div>
@@ -60,11 +77,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { useI18n } from "vue-i18n";
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import type { WebhookRow } from "../../features/webhooks/types";
-import { createWebhookColumns } from "./webhookTableUi";
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import type { WebhookRow } from '../../features/webhooks/types';
+import { createWebhookColumns } from './webhookTableUi';
 
 const { t } = useI18n();
 
@@ -76,9 +93,9 @@ const props = withDefaults(
     shell?: boolean;
   }>(),
   {
-    togglingId: "",
-    shell: false
-  }
+    togglingId: '',
+    shell: false,
+  },
 );
 
 defineEmits<{

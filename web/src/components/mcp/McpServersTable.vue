@@ -5,7 +5,6 @@
     :columns="MCP_SERVER_TABLE_COLUMNS"
     row-key="id"
     :loading="loading"
-    
     hide-pagination
     :pagination="{ rowsPerPage: 0 }"
   >
@@ -43,7 +42,7 @@
     <template #body-cell-enabled="props">
       <q-td :props="props">
         <q-chip dense square :color="props.row.enabled ? 'primary' : 'grey'" text-color="white">
-          {{ props.row.enabled ? "enabled" : "disabled" }}
+          {{ props.row.enabled ? 'enabled' : 'disabled' }}
         </q-chip>
       </q-td>
     </template>
@@ -62,7 +61,15 @@
           >
             <q-tooltip>用户凭据</q-tooltip>
           </q-btn>
-          <q-btn flat dense round icon="science" color="primary" :loading="testingId === props.row.id" @click="$emit('test', props.row)">
+          <q-btn
+            flat
+            dense
+            round
+            icon="science"
+            color="primary"
+            :loading="testingId === props.row.id"
+            @click="$emit('test', props.row)"
+          >
             <q-tooltip>测试连接</q-tooltip>
           </q-btn>
           <q-btn flat dense round icon="edit" color="primary" @click="$emit('edit', props.row)">
@@ -78,11 +85,11 @@
 </template>
 
 <script setup lang="ts">
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
-import type { McpServerConfig, McpServerMetadata, McpServerRow } from "../../features/mcp/types";
-import { parseJSON } from "../../features/mcp/utils";
-import { MCP_SERVER_TABLE_COLUMNS } from "./mcpServerTableUi";
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import type { McpServerConfig, McpServerMetadata, McpServerRow } from '../../features/mcp/types';
+import { parseJSON } from '../../features/mcp/utils';
+import { MCP_SERVER_TABLE_COLUMNS } from './mcpServerTableUi';
 
 defineProps<{
   rows: McpServerRow[];
@@ -113,24 +120,24 @@ function displayName(row: McpServerRow) {
 
 function transportLabel(row: McpServerRow) {
   const config = rowConfig(row);
-  if (config.transport === "streamable_http") return "Streamable HTTP";
-  if (config.transport === "sse") return "SSE";
-  return "stdio";
+  if (config.transport === 'streamable_http') return 'Streamable HTTP';
+  if (config.transport === 'sse') return 'SSE';
+  return 'stdio';
 }
 
 function endpointLabel(row: McpServerRow) {
   const config = rowConfig(row);
-  if (config.transport === "stdio") {
-    return [config.command, ...(config.args ?? [])].filter(Boolean).join(" ") || "—";
+  if (config.transport === 'stdio') {
+    return [config.command, ...(config.args ?? [])].filter(Boolean).join(' ') || '—';
   }
-  return config.url || "—";
+  return config.url || '—';
 }
 
 function healthColor(row: McpServerRow) {
   const status = rowMetadata(row).health_status;
-  if (status === "ok") return "positive";
-  if (status === "error") return "negative";
-  if (status === "degraded") return "warning";
-  return "grey";
+  if (status === 'ok') return 'positive';
+  if (status === 'error') return 'negative';
+  if (status === 'degraded') return 'warning';
+  return 'grey';
 }
 </script>

@@ -4,11 +4,7 @@
       <slot name="header" />
     </div>
     <div class="workflow-kanban-board__columns">
-      <section
-        v-for="column in columns"
-        :key="column.key"
-        class="workflow-kanban-board__column"
-      >
+      <section v-for="column in columns" :key="column.key" class="workflow-kanban-board__column">
         <header class="workflow-kanban-board__column-head">
           <span class="workflow-kanban-board__column-title">{{ column.label }}</span>
           <span class="workflow-kanban-board__column-count">{{ column.items.length }}</span>
@@ -43,7 +39,7 @@
 </template>
 
 <script setup lang="ts">
-import draggable from "vuedraggable";
+import draggable from 'vuedraggable';
 
 export type WorkflowKanbanColumn<T> = {
   key: string;
@@ -60,7 +56,7 @@ withDefaults(
   }>(),
   {
     emptyLabel: undefined,
-    groupName: "workflow-kanban",
+    groupName: 'workflow-kanban',
   },
 );
 
@@ -69,6 +65,6 @@ const emit = defineEmits<{
 }>();
 
 function onReorder(columnKey: string, items: unknown[]) {
-  emit("reorder", { columnKey, items });
+  emit('reorder', { columnKey, items });
 }
 </script>

@@ -1,5 +1,5 @@
-import type { Session } from "../../features/session/types";
-import { registryCol } from "../../features/ui/registryTableColumns";
+import type { Session } from '../../features/session/types';
+import { registryCol } from '../../features/ui/registryTableColumns';
 
 /** 列表摘要卡片（纯展示文案来源） */
 export type SessionsSummaryCard = {
@@ -9,39 +9,46 @@ export type SessionsSummaryCard = {
 };
 
 export const ownerFilterOptions = [
-  { label: "Agent", value: "agent" },
-  { label: "Team", value: "team" }
+  { label: 'Agent', value: 'agent' },
+  { label: 'Team', value: 'team' },
 ];
 
-export const statusFilterOptions = ["idle", "running", "completed", "interrupted", "awaiting_confirmation", "archived"].map((value) => ({
+export const statusFilterOptions = [
+  'idle',
+  'running',
+  'completed',
+  'interrupted',
+  'awaiting_confirmation',
+  'archived',
+].map((value) => ({
   label: value,
-  value
+  value,
 }));
 
-export const contextFilterOptions = ["normal", "warning", "critical", "exceeded"].map((value) => ({
+export const contextFilterOptions = ['normal', 'warning', 'critical', 'exceeded'].map((value) => ({
   label: value,
-  value
+  value,
 }));
 
 export const pageSizeSelectOptions = [10, 20, 50].map((value) => ({
   label: `${value} / 页`,
-  value
+  value,
 }));
 
-export const sessionsTableSelectionColumn = registryCol("select", "", "id", "left", "48px", { sortable: false });
+export const sessionsTableSelectionColumn = registryCol('select', '', 'id', 'left', '48px', { sortable: false });
 
 export const sessionsTableColumns = [
-  registryCol("session", "会话", "title", "left", "16%; max-width: 168px", { sortable: false }),
-  registryCol("owner", "类型 / 归属", "owner_type", "left", "128px", { sortable: false }),
-  registryCol("context", "上下文", "context_used_ratio", "left", "108px", { sortable: false }),
-  registryCol("usage", "消耗", "total_tokens", "left", "108px", { sortable: false }),
-  registryCol("time", "时间", "last_message_at", "left", "128px", { sortable: false }),
-  registryCol("status", "状态", "status", "left", "80px", { sortable: false }),
-  registryCol("actions", "操作", "id", "right", "168px", {
+  registryCol('session', '会话', 'title', 'left', '16%; max-width: 168px', { sortable: false }),
+  registryCol('owner', '类型 / 归属', 'owner_type', 'left', '128px', { sortable: false }),
+  registryCol('context', '上下文', 'context_used_ratio', 'left', '108px', { sortable: false }),
+  registryCol('usage', '消耗', 'total_tokens', 'left', '108px', { sortable: false }),
+  registryCol('time', '时间', 'last_message_at', 'left', '128px', { sortable: false }),
+  registryCol('status', '状态', 'status', 'left', '80px', { sortable: false }),
+  registryCol('actions', '操作', 'id', 'right', '168px', {
     sortable: false,
-    classes: "app-registry-col-actions",
-    headerClasses: "app-registry-col-actions"
-  })
+    classes: 'app-registry-col-actions',
+    headerClasses: 'app-registry-col-actions',
+  }),
 ];
 
 export function buildSessionsSummaryCards(rows: Session[], total: number): SessionsSummaryCard[] {
@@ -52,11 +59,11 @@ export function buildSessionsSummaryCards(rows: Session[], total: number): Sessi
     : 0;
   const tokens = rows.reduce((sum, item) => sum + (item.total_tokens || 0), 0);
   return [
-    { label: "当前页会话", value: rows.length, hint: `总计 ${total}` },
-    { label: "活跃 / 运行", value: active, hint: "当前页统计" },
-    { label: "置顶", value: pinned, hint: "当前页已置顶" },
-    { label: "平均上下文", value: formatPercent(avgContext), hint: "当前页平均值" },
-    { label: "Token", value: formatNumber(tokens), hint: "当前页累计" }
+    { label: '当前页会话', value: rows.length, hint: `总计 ${total}` },
+    { label: '活跃 / 运行', value: active, hint: '当前页统计' },
+    { label: '置顶', value: pinned, hint: '当前页已置顶' },
+    { label: '平均上下文', value: formatPercent(avgContext), hint: '当前页平均值' },
+    { label: 'Token', value: formatNumber(tokens), hint: '当前页累计' },
   ];
 }
 
@@ -65,24 +72,30 @@ export function isSessionPinned(session: Session) {
 }
 
 export function ownerLabel(value: string) {
-  return value === "team" ? "Team" : "Agent";
+  return value === 'team' ? 'Team' : 'Agent';
 }
 
 /** Quasar chip：日间 primary / team 用 secondary 语义；与全局主题兼容 */
 export function ownerChipColor(value: string) {
-  return value === "team" ? "teal" : "primary";
+  return value === 'team' ? 'teal' : 'primary';
 }
 
 export function statusBadgeColor(value: string) {
-  if (value === "interrupted") return "warning";
-  if (value === "running") return "primary";
-  if (value === "awaiting_confirmation") return "info";
-  if (value === "idle") return "grey";
-  return "positive";
+  if (value === 'interrupted') return 'warning';
+  if (value === 'running') return 'primary';
+  if (value === 'awaiting_confirmation') return 'info';
+  if (value === 'idle') return 'grey';
+  return 'positive';
 }
 
 export function contextProgressColor(value: string) {
-  return value === "exceeded" ? "purple" : value === "critical" ? "negative" : value === "warning" ? "warning" : "positive";
+  return value === 'exceeded'
+    ? 'purple'
+    : value === 'critical'
+      ? 'negative'
+      : value === 'warning'
+        ? 'warning'
+        : 'positive';
 }
 
 export function ratioValue(value: number) {
@@ -102,7 +115,7 @@ export function formatCostMicroUsd(value: number) {
 }
 
 export function formatSessionDate(value: string) {
-  if (!value) return "—";
+  if (!value) return '—';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
   return d.toLocaleString();

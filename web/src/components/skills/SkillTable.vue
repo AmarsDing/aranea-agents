@@ -22,7 +22,14 @@
     <template #body-cell-tags="props">
       <q-td :props="props">
         <div class="app-registry-chip-wrap">
-          <q-chip v-for="tag in props.row.tags" :key="tag.name" dense :outline="tag.source === 'system'" color="primary" text-color="white">
+          <q-chip
+            v-for="tag in props.row.tags"
+            :key="tag.name"
+            dense
+            :outline="tag.source === 'system'"
+            color="primary"
+            text-color="white"
+          >
             {{ tag.name }}
           </q-chip>
           <span v-if="!props.row.tags?.length" class="text-caption text-grey-6">无标签</span>
@@ -32,7 +39,14 @@
 
     <template #body-cell-origin="props">
       <q-td :props="props">
-        <q-chip v-if="props.row.sync_origin" dense size="sm" :outline="props.row.sync_origin !== 'filesystem'" color="primary" text-color="white">
+        <q-chip
+          v-if="props.row.sync_origin"
+          dense
+          size="sm"
+          :outline="props.row.sync_origin !== 'filesystem'"
+          color="primary"
+          text-color="white"
+        >
           {{ originLabel(props.row.sync_origin) }}
         </q-chip>
         <span v-else class="text-caption text-grey-6">—</span>
@@ -50,7 +64,7 @@
       <q-td :props="props">
         <div class="skill-status-cell">
           <q-badge rounded :color="statusColor(props.row.status)">{{ statusLabel(props.row.status) }}</q-badge>
-          <span class="skill-status-cell__version">{{ props.row.current_version?.version ?? "无版本" }}</span>
+          <span class="skill-status-cell__version">{{ props.row.current_version?.version ?? '无版本' }}</span>
         </div>
       </q-td>
     </template>
@@ -75,7 +89,7 @@
 
     <template #body-cell-last="props">
       <q-td :props="props">
-        <div>{{ props.row.last_agent_display_name || "未调用" }}</div>
+        <div>{{ props.row.last_agent_display_name || '未调用' }}</div>
         <div class="text-caption text-grey-7">{{ formatDate(props.row.last_invoked_at) }}</div>
       </q-td>
     </template>
@@ -83,25 +97,41 @@
     <template #body-cell-actions="props">
       <q-td :props="props">
         <div class="app-registry-cell-actions">
-        <q-btn
-          v-if="props.row.status !== 'published'"
-          flat
-          dense
-          round
-          color="positive"
-          icon="publish"
-          :disable="!props.row.permissions.can_edit || publishingId === props.row.id"
-          :loading="publishingId === props.row.id"
-          @click="emit('publish', props.row)"
-        >
-          <q-tooltip>发布（发布后才能在运行时挂载并启用）</q-tooltip>
-        </q-btn>
-        <q-btn flat dense round color="primary" icon="edit" :disable="!props.row.permissions.can_edit" @click="emit('edit', props.row)">
-          <q-tooltip>编辑 Skill 文件</q-tooltip>
-        </q-btn>
-        <q-btn flat dense round color="negative" icon="delete" :disable="!props.row.permissions.can_delete" @click="emit('delete', props.row)">
-          <q-tooltip>删除</q-tooltip>
-        </q-btn>
+          <q-btn
+            v-if="props.row.status !== 'published'"
+            flat
+            dense
+            round
+            color="positive"
+            icon="publish"
+            :disable="!props.row.permissions.can_edit || publishingId === props.row.id"
+            :loading="publishingId === props.row.id"
+            @click="emit('publish', props.row)"
+          >
+            <q-tooltip>发布（发布后才能在运行时挂载并启用）</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
+            color="primary"
+            icon="edit"
+            :disable="!props.row.permissions.can_edit"
+            @click="emit('edit', props.row)"
+          >
+            <q-tooltip>编辑 Skill 文件</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
+            color="negative"
+            icon="delete"
+            :disable="!props.row.permissions.can_delete"
+            @click="emit('delete', props.row)"
+          >
+            <q-tooltip>删除</q-tooltip>
+          </q-btn>
         </div>
       </q-td>
     </template>
@@ -109,11 +139,11 @@
 </template>
 
 <script setup lang="ts">
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
-import SkillStatsStrip from "./SkillStatsStrip.vue";
-import type { Skill } from "../../features/skills/types";
-import { SKILL_TABLE_COLUMNS } from "./skillTableUi";
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import SkillStatsStrip from './SkillStatsStrip.vue';
+import type { Skill } from '../../features/skills/types';
+import { SKILL_TABLE_COLUMNS } from './skillTableUi';
 
 defineProps<{
   rows: Skill[];
@@ -124,7 +154,7 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "toggle-enabled": [skill: Skill, enabled: boolean];
+  'toggle-enabled': [skill: Skill, enabled: boolean];
   publish: [skill: Skill];
   edit: [skill: Skill];
   delete: [skill: Skill];
@@ -133,19 +163,19 @@ const emit = defineEmits<{
 const tablePagination = { rowsPerPage: 0 };
 
 function statusLabel(status: string) {
-  return ({ draft: "草稿", published: "已发布", archived: "已归档" } as Record<string, string>)[status] ?? status;
+  return ({ draft: '草稿', published: '已发布', archived: '已归档' } as Record<string, string>)[status] ?? status;
 }
 
 function statusColor(status: string) {
-  return status === "published" ? "positive" : status === "draft" ? "warning" : "grey";
+  return status === 'published' ? 'positive' : status === 'draft' ? 'warning' : 'grey';
 }
 
 function originLabel(origin: string) {
-  return ({ filesystem: "磁盘", import: "ZIP", manual: "手动" } as Record<string, string>)[origin] ?? origin;
+  return ({ filesystem: '磁盘', import: 'ZIP', manual: '手动' } as Record<string, string>)[origin] ?? origin;
 }
 
 function formatDate(value?: string) {
-  if (!value) return "-";
+  if (!value) return '-';
   return new Date(value).toLocaleString();
 }
 </script>

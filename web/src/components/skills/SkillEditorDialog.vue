@@ -15,7 +15,13 @@
             <q-item v-if="filesLoading">
               <q-item-section>正在加载文件...</q-item-section>
             </q-item>
-            <q-item v-for="file in files" :key="file.path" clickable :active="file.path === selectedFile?.path" @click="selectFile(file.path)">
+            <q-item
+              v-for="file in files"
+              :key="file.path"
+              clickable
+              :active="file.path === selectedFile?.path"
+              @click="selectFile(file.path)"
+            >
               <q-item-section avatar>
                 <q-icon :name="fileIcon(file.language)" />
               </q-item-section>
@@ -32,15 +38,24 @@
         <q-card flat bordered class="app-dual-column-editor__main app-glass-panel">
           <q-card-section class="app-dual-column-editor__toolbar row items-center justify-between">
             <div>
-              <div class="text-subtitle1">{{ selectedFile?.path || "请选择文件" }}</div>
+              <div class="text-subtitle1">{{ selectedFile?.path || '请选择文件' }}</div>
               <div class="text-caption text-grey-7">
-                {{ selectedFile?.language || "text" }}
+                {{ selectedFile?.language || 'text' }}
                 <span v-if="hasChanges"> · 有未保存修改</span>
               </div>
             </div>
             <div class="row q-gutter-sm">
               <q-btn flat rounded icon="undo" label="取消" :disable="!hasChanges || savingFile" @click="cancelEdit" />
-              <q-btn color="primary" rounded unelevated icon="save" label="保存" :disable="!selectedFile || !hasChanges || readingFile" :loading="savingFile" @click="saveFile" />
+              <q-btn
+                color="primary"
+                rounded
+                unelevated
+                icon="save"
+                label="保存"
+                :disable="!selectedFile || !hasChanges || readingFile"
+                :loading="savingFile"
+                @click="saveFile"
+              />
             </div>
           </q-card-section>
           <q-separator />
@@ -62,8 +77,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import type { Skill, SkillFile, SkillFileContent } from "../../features/skills/types";
+import { computed, ref, watch } from 'vue';
+import type { Skill, SkillFile, SkillFileContent } from '../../features/skills/types';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -75,16 +90,22 @@ const props = defineProps<{
   /** 由 composable 注入通知函数，展示层不直接 useQuasar */
   notify: (opts: { type: string; message: string }) => void;
   /** 由 composable 注入确认对话框函数，展示层不直接 useQuasar */
-  confirm: (opts: { title: string; message: string; okLabel?: string; cancelLabel?: string; okColor?: string }) => Promise<boolean>;
+  confirm: (opts: {
+    title: string;
+    message: string;
+    okLabel?: string;
+    cancelLabel?: string;
+    okColor?: string;
+  }) => Promise<boolean>;
 }>();
 
 const emit = defineEmits<{
-  "update:modelValue": [value: boolean];
+  'update:modelValue': [value: boolean];
 }>();
 const files = ref<SkillFile[]>([]);
 const selectedFile = ref<SkillFile | null>(null);
-const content = ref("");
-const originalContent = ref("");
+const content = ref('');
+const originalContent = ref('');
 const filesLoading = ref(false);
 const readingFile = ref(false);
 const savingFile = ref(false);
@@ -100,7 +121,7 @@ watch(
     if (!open) {
       resetEditor();
     }
-  }
+  },
 );
 
 async function loadFiles() {
@@ -109,12 +130,12 @@ async function loadFiles() {
   filesLoading.value = true;
   try {
     files.value = await props.listSkillFiles(props.skill.id);
-    const preferred = files.value.find((file) => file.path.toLowerCase() === "skill.md") ?? files.value[0];
+    const preferred = files.value.find((file) => file.path.toLowerCase() === 'skill.md') ?? files.value[0];
     if (preferred) {
       await selectFile(preferred.path);
     }
   } catch (err) {
-    props.notify({ type: "negative", message: err instanceof Error ? err.message : "加载 Skill 文件失败" });
+    props.notify({ type: 'negative', message: err instanceof Error ? err.message : '加载 Skill 文件失败' });
   } finally {
     filesLoading.value = false;
   }
@@ -124,11 +145,11 @@ async function selectFile(path: string) {
   if (!props.skill) return;
   if (hasChanges.value) {
     const confirmed = await props.confirm({
-      title: "未保存的更改",
-      message: "当前文件有未保存的修改，切换文件将丢失更改，确定继续？",
-      okLabel: "放弃更改",
-      okColor: "negative",
-      cancelLabel: "留在当前文件"
+      title: '未保存的更改',
+      message: '当前文件有未保存的修改，切换文件将丢失更改，确定继续？',
+      okLabel: '放弃更改',
+      okColor: 'negative',
+      cancelLabel: '留在当前文件',
     });
     if (!confirmed) return;
   }
@@ -141,7 +162,7 @@ async function selectFile(path: string) {
     content.value = data.content;
     originalContent.value = data.content;
   } catch (err) {
-    props.notify({ type: "negative", message: err instanceof Error ? err.message : "读取文件失败" });
+    props.notify({ type: 'negative', message: err instanceof Error ? err.message : '读取文件失败' });
   } finally {
     readingFile.value = false;
   }
@@ -154,9 +175,9 @@ async function saveFile() {
     const data = await props.updateSkillFile(props.skill.id, selectedFile.value.path, content.value);
     content.value = data.content;
     originalContent.value = data.content;
-    props.notify({ type: "positive", message: "文件已保存" });
+    props.notify({ type: 'positive', message: '文件已保存' });
   } catch (err) {
-    props.notify({ type: "negative", message: err instanceof Error ? err.message : "保存文件失败" });
+    props.notify({ type: 'negative', message: err instanceof Error ? err.message : '保存文件失败' });
   } finally {
     savingFile.value = false;
   }
@@ -169,30 +190,38 @@ function cancelEdit() {
 function resetEditor() {
   files.value = [];
   selectedFile.value = null;
-  content.value = "";
-  originalContent.value = "";
+  content.value = '';
+  originalContent.value = '';
   filesLoading.value = false;
   readingFile.value = false;
   savingFile.value = false;
 }
 
 function fileIcon(language: string) {
-  return language === "markdown" ? "description" : language === "python" ? "data_object" : language === "javascript" || language === "typescript" ? "code" : "insert_drive_file";
+  return language === 'markdown'
+    ? 'description'
+    : language === 'python'
+      ? 'data_object'
+      : language === 'javascript' || language === 'typescript'
+        ? 'code'
+        : 'insert_drive_file';
 }
 
 function tryClose() {
   if (hasChanges.value) {
-    void props.confirm({
-      title: "未保存的更改",
-      message: "当前文件有未保存的修改，确定要关闭吗？",
-      okLabel: "放弃更改",
-      okColor: "negative",
-      cancelLabel: "继续编辑"
-    }).then((ok) => {
-      if (ok) emit("update:modelValue", false);
-    });
+    void props
+      .confirm({
+        title: '未保存的更改',
+        message: '当前文件有未保存的修改，确定要关闭吗？',
+        okLabel: '放弃更改',
+        okColor: 'negative',
+        cancelLabel: '继续编辑',
+      })
+      .then((ok) => {
+        if (ok) emit('update:modelValue', false);
+      });
   } else {
-    emit("update:modelValue", false);
+    emit('update:modelValue', false);
   }
 }
 

@@ -1,6 +1,6 @@
 /** Lightweight JSON Schema object builder for Tool parameters/config definitions. */
 
-export type SchemaFieldType = "string" | "number" | "integer" | "boolean";
+export type SchemaFieldType = 'string' | 'number' | 'integer' | 'boolean';
 
 export type SchemaFieldRow = {
   key: string;
@@ -18,13 +18,13 @@ export type JsonSchemaObject = {
 };
 
 export function emptySchemaField(): SchemaFieldRow {
-  return { key: "", type: "string", title: "", description: "", required: false, enumValues: "" };
+  return { key: '', type: 'string', title: '', description: '', required: false, enumValues: '' };
 }
 
 export function parseSchemaFields(schemaJson: string): SchemaFieldRow[] {
   let schema: JsonSchemaObject;
   try {
-    schema = JSON.parse(schemaJson || "{}") as JsonSchemaObject;
+    schema = JSON.parse(schemaJson || '{}') as JsonSchemaObject;
   } catch {
     return [];
   }
@@ -33,11 +33,11 @@ export function parseSchemaFields(schemaJson: string): SchemaFieldRow[] {
   return Object.entries(props).map(([key, def]) => {
     const row: SchemaFieldRow = {
       key,
-      type: (def.type as SchemaFieldType) ?? "string",
-      title: String(def.title ?? ""),
-      description: String(def.description ?? ""),
+      type: (def.type as SchemaFieldType) ?? 'string',
+      title: String(def.title ?? ''),
+      description: String(def.description ?? ''),
       required: required.has(key),
-      enumValues: Array.isArray(def.enum) ? (def.enum as string[]).join(", ") : ""
+      enumValues: Array.isArray(def.enum) ? (def.enum as string[]).join(', ') : '',
     };
     return row;
   });
@@ -54,14 +54,14 @@ export function buildSchemaFromFields(rows: SchemaFieldRow[]): string {
     if (row.description.trim()) def.description = row.description.trim();
     if (row.enumValues.trim()) {
       def.enum = row.enumValues
-        .split(",")
+        .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
     }
     properties[key] = def;
     if (row.required) required.push(key);
   }
-  const schema: JsonSchemaObject = { type: "object", properties };
+  const schema: JsonSchemaObject = { type: 'object', properties };
   if (required.length) schema.required = required;
   return JSON.stringify(schema, null, 2);
 }
@@ -71,12 +71,12 @@ export function configExtraKeys(configJson: string, schemaJson: string): string[
   let config: Record<string, unknown> = {};
   let schema: JsonSchemaObject = {};
   try {
-    config = JSON.parse(configJson || "{}") as Record<string, unknown>;
+    config = JSON.parse(configJson || '{}') as Record<string, unknown>;
   } catch {
     return [];
   }
   try {
-    schema = JSON.parse(schemaJson || "{}") as JsonSchemaObject;
+    schema = JSON.parse(schemaJson || '{}') as JsonSchemaObject;
   } catch {
     return Object.keys(config);
   }
@@ -89,21 +89,21 @@ export function configDiffSummary(currentJson: string, defaultJson: string): str
   let current: Record<string, unknown> = {};
   let defaults: Record<string, unknown> = {};
   try {
-    current = JSON.parse(currentJson || "{}") as Record<string, unknown>;
+    current = JSON.parse(currentJson || '{}') as Record<string, unknown>;
   } catch {
-    return ["当前配置 JSON 无效"];
+    return ['当前配置 JSON 无效'];
   }
   try {
-    defaults = JSON.parse(defaultJson || "{}") as Record<string, unknown>;
+    defaults = JSON.parse(defaultJson || '{}') as Record<string, unknown>;
   } catch {
-    return ["默认配置 JSON 无效"];
+    return ['默认配置 JSON 无效'];
   }
   const lines: string[] = [];
   const keys = new Set([...Object.keys(current), ...Object.keys(defaults)]);
   for (const k of keys) {
     const a = JSON.stringify(current[k]);
     const b = JSON.stringify(defaults[k]);
-    if (a !== b) lines.push(`${k}: 默认 ${b ?? "—"} → 当前 ${a ?? "—"}`);
+    if (a !== b) lines.push(`${k}: 默认 ${b ?? '—'} → 当前 ${a ?? '—'}`);
   }
-  return lines.length ? lines : ["与出厂默认一致"];
+  return lines.length ? lines : ['与出厂默认一致'];
 }

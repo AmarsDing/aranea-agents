@@ -3,7 +3,7 @@
     <q-card class="app-dialog-card app-dialog-card--xl app-glass-dialog">
       <q-card-section class="app-glass-dialog__head row items-center justify-between no-wrap">
         <div class="app-glass-dialog__title">执行历史</div>
-        <q-btn flat dense round icon="close" v-close-popup />
+        <q-btn v-close-popup flat dense round icon="close" />
       </q-card-section>
       <q-separator />
 
@@ -62,7 +62,9 @@
               <template #body-cell-task="props">
                 <q-td :props="props">
                   <div class="min-width-0">
-                    <div class="app-registry-cell-primary">{{ props.row.task_name || taskLabel(props.row.task_id) }}</div>
+                    <div class="app-registry-cell-primary">
+                      {{ props.row.task_name || taskLabel(props.row.task_id) }}
+                    </div>
                     <div class="app-registry-cell-sub">{{ props.row.task_id }}</div>
                   </div>
                 </q-td>
@@ -76,17 +78,29 @@
               <template #body-cell-status="props">
                 <q-td :props="props">
                   <q-badge :color="runStatusColor(props.row.status)">{{ runStatusLabel(props.row.status) }}</q-badge>
-                  <div v-if="props.row.error_message" class="app-registry-cell-sub ellipsis q-mt-xs" :title="props.row.error_message">{{ props.row.error_message }}</div>
+                  <div
+                    v-if="props.row.error_message"
+                    class="app-registry-cell-sub ellipsis q-mt-xs"
+                    :title="props.row.error_message"
+                  >
+                    {{ props.row.error_message }}
+                  </div>
                 </q-td>
               </template>
               <template #body-cell-trigger="props">
                 <q-td :props="props">
-                  <q-badge outline :color="triggerColor(props.row.trigger)">{{ triggerLabel(props.row.trigger) }}</q-badge>
+                  <q-badge outline :color="triggerColor(props.row.trigger)">{{
+                    triggerLabel(props.row.trigger)
+                  }}</q-badge>
                 </q-td>
               </template>
               <template #body-cell-run="props">
                 <q-td :props="props">
-                  <router-link v-if="props.row.run_id" :to="{ name: 'session-detail', params: { sessionId: props.row.run_id } }" class="app-registry-cell-link">
+                  <router-link
+                    v-if="props.row.run_id"
+                    :to="{ name: 'session-detail', params: { sessionId: props.row.run_id } }"
+                    class="app-registry-cell-link"
+                  >
                     {{ props.row.run_id.slice(0, 8) }}
                   </router-link>
                   <span v-else class="app-registry-cell-sub">—</span>
@@ -113,10 +127,10 @@
 </template>
 
 <script setup lang="ts">
-import type { QTableColumn } from "quasar";
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
-import type { CronTaskRun } from "../../features/cron/types";
+import type { QTableColumn } from 'quasar';
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
+import type { CronTaskRun } from '../../features/cron/types';
 
 defineProps<{
   loading: boolean;
@@ -134,11 +148,11 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:modelValue": [value: boolean];
-  "update:taskId": [value: string];
-  "update:status": [value: string];
-  "update:page": [value: number];
-  "update:pageSize": [value: number];
+  'update:modelValue': [value: boolean];
+  'update:taskId': [value: string];
+  'update:status': [value: string];
+  'update:page': [value: number];
+  'update:pageSize': [value: number];
   load: [];
   reset: [];
 }>();
@@ -146,42 +160,42 @@ const emit = defineEmits<{
 const modelOpen = defineModel<boolean>({ required: true });
 
 const TRIGGER_LABELS: Record<string, string> = {
-  schedule: "定时",
-  manual: "手动",
-  api: "API"
+  schedule: '定时',
+  manual: '手动',
+  api: 'API',
 };
 
 function taskLabel(id: string) {
-  return id || "—";
+  return id || '—';
 }
 
 function runStatusLabel(value: string) {
-  if (value === "success") return "成功";
-  if (value === "failure") return "失败";
-  if (value === "skipped") return "跳过";
-  if (value === "pending") return "待执行";
+  if (value === 'success') return '成功';
+  if (value === 'failure') return '失败';
+  if (value === 'skipped') return '跳过';
+  if (value === 'pending') return '待执行';
   return value;
 }
 
 function runStatusColor(value: string) {
-  if (value === "success") return "positive";
-  if (value === "failure") return "negative";
-  if (value === "skipped") return "grey";
-  return "warning";
+  if (value === 'success') return 'positive';
+  if (value === 'failure') return 'negative';
+  if (value === 'skipped') return 'grey';
+  return 'warning';
 }
 
 function triggerLabel(value: string) {
-  return TRIGGER_LABELS[value] || value || "定时";
+  return TRIGGER_LABELS[value] || value || '定时';
 }
 
 function triggerColor(value: string) {
-  if (value === "manual") return "primary";
-  if (value === "api") return "accent";
-  return "grey-7";
+  if (value === 'manual') return 'primary';
+  if (value === 'api') return 'accent';
+  return 'grey-7';
 }
 
 function formatDate(value?: string) {
-  if (!value) return "—";
+  if (!value) return '—';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }

@@ -7,9 +7,9 @@
  * reach into the chat domain for hub-level infrastructure.
  */
 
-import { GLOBAL_WS_SESSION_ID } from "../config/runtime";
-import { createWsTransport, type WsTransport } from "./ws-transport";
-import type { Envelope } from "./envelope";
+import { GLOBAL_WS_SESSION_ID } from '../config/runtime';
+import { createWsTransport, type WsTransport } from './ws-transport';
+import type { Envelope } from './envelope';
 
 export type GlobalWsConsumer = {
   id: string;
@@ -33,7 +33,7 @@ function syncHubSubscriptions(): void {
   let logEnabled = false;
   for (const c of consumers.values()) {
     for (const ch of c.channels) {
-      if (ch !== "chat" && ch !== "system") {
+      if (ch !== 'chat' && ch !== 'system') {
         extraChannels.add(ch);
       }
     }
@@ -85,15 +85,15 @@ function ensureHubTransport(): WsTransport {
 
 /** Share one `session_id=*` WebSocket across monitor/team consumers (excludes probe heartbeat). */
 export function shouldUseGlobalWsHub(sessionId: string, lastEventId?: string): boolean {
-  return sessionId === GLOBAL_WS_SESSION_ID && !String(lastEventId ?? "").trim();
+  return sessionId === GLOBAL_WS_SESSION_ID && !String(lastEventId ?? '').trim();
 }
 
 export function acquireGlobalWsConsumer(
-  opts: Omit<GlobalWsConsumer, "id" | "channels"> & { channels: Iterable<string> }
+  opts: Omit<GlobalWsConsumer, 'id' | 'channels'> & { channels: Iterable<string> },
 ): string {
   const id = `gws-${++nextConsumerId}`;
   const channels = new Set(opts.channels);
-  for (const ch of ["chat", "system"] as const) {
+  for (const ch of ['chat', 'system'] as const) {
     channels.add(ch);
   }
   consumers.set(id, {
@@ -135,7 +135,7 @@ export function globalWsConsumerSubscribe(id: string, channel: string): void {
 
 export function globalWsConsumerUnsubscribe(id: string, channel: string): void {
   const c = consumers.get(id);
-  if (!c || channel === "chat" || channel === "system") return;
+  if (!c || channel === 'chat' || channel === 'system') return;
   c.channels.delete(channel);
   syncHubSubscriptions();
 }

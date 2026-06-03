@@ -1,13 +1,13 @@
-import type { TeamRow, SessionView } from "../../../components/chat/types";
-import type { Agent } from "../../agents/types";
-import type { Session } from "../../session/api";
+import type { TeamRow, SessionView } from '../../../components/chat/types';
+import type { Agent } from '../../agents/types';
+import type { Session } from '../../session/api';
 
-export const LS_AG_ORDER = "chat:order:agents";
-export const LS_TM_ORDER = "chat:order:teams";
-export const LS_AG_GROUP_ORDER_PREFIX = "chat:order:agents:";
+export const LS_AG_ORDER = 'chat:order:agents';
+export const LS_TM_ORDER = 'chat:order:teams';
+export const LS_AG_GROUP_ORDER_PREFIX = 'chat:order:agents:';
 
 export function formatSessionTime(iso: string) {
-  if (!iso) return "—";
+  if (!iso) return '—';
   try {
     return new Date(iso).toLocaleString();
   } catch {
@@ -18,7 +18,7 @@ export function formatSessionTime(iso: string) {
 export function sessionToView(session: Session, t: (key: string) => string): SessionView {
   return {
     id: session.id,
-    title: session.title || t("chat.untitledSession"),
+    title: session.title || t('chat.untitledSession'),
     context_used_ratio: session.context_used_ratio,
     context_status: session.context_status,
     context_used_tokens: session.context_used_tokens,
@@ -44,7 +44,7 @@ export function applyStoredOrder<T extends { id: string }>(items: T[], key: stri
   const byId = new Map(items.map((item) => [item.id, item] as const));
   const ordered: T[] = [];
   try {
-    const ids = JSON.parse(localStorage.getItem(key) || "[]") as string[];
+    const ids = JSON.parse(localStorage.getItem(key) || '[]') as string[];
     for (const id of ids) {
       const item = byId.get(id);
       if (item) ordered.push(item);
@@ -60,8 +60,7 @@ export function applyStoredOrder<T extends { id: string }>(items: T[], key: stri
 
 export function loadAgentOrder(agents: Agent[], defaultId: string | null): Agent[] {
   if (agents.length === 0) return [];
-  const defaultResolved =
-    defaultId && agents.some((agent) => agent.id === defaultId) ? defaultId : agents[0]!.id;
+  const defaultResolved = defaultId && agents.some((agent) => agent.id === defaultId) ? defaultId : agents[0]!.id;
   const ordered = applyStoredOrder(agents, LS_AG_ORDER);
   const fixed = ordered.find((agent) => agent.id === defaultResolved) ?? ordered[0]!;
   return [fixed, ...ordered.filter((agent) => agent.id !== fixed.id)];
@@ -74,7 +73,7 @@ export function loadTeamOrder(teams: TeamRow[], defaultTeamId: string): TeamRow[
 }
 
 export function isAgentWorking(agent: { status?: string }) {
-  return /work|run|busy|ing/i.test(agent.status || "");
+  return /work|run|busy|ing/i.test(agent.status || '');
 }
 
 export function loadGroupOrder<T extends { id: string }>(items: T[], groupKey: string, pinnedId?: string | null): T[] {

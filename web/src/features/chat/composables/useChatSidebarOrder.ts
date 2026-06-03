@@ -1,19 +1,13 @@
-import type { Ref } from "vue";
-import type { TeamRow } from "../../../components/chat/types";
-import type { Agent } from "../../agents/types";
-import {
-  LS_AG_ORDER,
-  LS_TM_ORDER,
-  loadAgentOrder,
-  loadTeamOrder,
-  saveGroupOrder,
-} from "./chatWorkspaceUtils";
+import type { Ref } from 'vue';
+import type { TeamRow } from '../../../components/chat/types';
+import type { Agent } from '../../agents/types';
+import { LS_AG_ORDER, LS_TM_ORDER, loadAgentOrder, loadTeamOrder, saveGroupOrder } from './chatWorkspaceUtils';
 
 export function useChatSidebarOrder(
   displayAgents: Ref<Agent[]>,
   displayTeams: Ref<TeamRow[]>,
   defaultAgentId: Ref<string | null>,
-  defaultTeamId: Ref<string>
+  defaultTeamId: Ref<string>,
 ) {
   function onEndAgent() {
     if (defaultAgentId.value) {

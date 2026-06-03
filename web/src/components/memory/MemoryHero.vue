@@ -18,13 +18,22 @@
         class="memory-select"
         @update:model-value="$emit('update:selectedAgentId', $event as string | null)"
       />
-      <q-btn color="primary" rounded unelevated no-caps icon="refresh" label="刷新" :loading="loading" @click="$emit('refresh')" />
+      <q-btn
+        color="primary"
+        rounded
+        unelevated
+        no-caps
+        icon="refresh"
+        label="刷新"
+        :loading="loading"
+        @click="$emit('refresh')"
+      />
     </template>
   </AppPageHero>
 </template>
 
 <script setup lang="ts">
-import AppPageHero from "../layout/AppPageHero.vue";
+import AppPageHero from '../layout/AppPageHero.vue';
 
 defineProps<{
   selectedAgentId: string | null;
@@ -33,7 +42,7 @@ defineProps<{
 }>();
 
 defineEmits<{
-  "update:selectedAgentId": [value: string | null];
+  'update:selectedAgentId': [value: string | null];
   refresh: [];
 }>();
 </script>

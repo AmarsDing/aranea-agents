@@ -1,11 +1,11 @@
-import type { Tool, ToolUpsertInput } from "./types";
+import type { Tool, ToolUpsertInput } from './types';
 
 const BOOL_FIELDS = new Set<keyof ToolUpsertInput>([
-  "enabled",
-  "readonly",
-  "requires_confirmation",
-  "supports_streaming",
-  "supports_concurrency"
+  'enabled',
+  'readonly',
+  'requires_confirmation',
+  'supports_streaming',
+  'supports_concurrency',
 ]);
 
 export function toolToUpsertInput(tool: Tool, overrides?: Partial<ToolUpsertInput>): ToolUpsertInput {
@@ -21,13 +21,13 @@ export function toolToUpsertInput(tool: Tool, overrides?: Partial<ToolUpsertInpu
     requires_confirmation: tool.requires_confirmation,
     supports_streaming: tool.supports_streaming,
     supports_concurrency: tool.supports_concurrency,
-    parameters_schema_json: tool.parameters_schema_json || "{}",
-    result_schema_json: tool.result_schema_json || "{}",
-    config_schema_json: tool.config_schema_json || "{}",
-    config_json: tool.config_json || "{}",
-    default_config_json: tool.default_config_json || "{}",
-    metadata_json: tool.metadata_json || "{}",
-    ...overrides
+    parameters_schema_json: tool.parameters_schema_json || '{}',
+    result_schema_json: tool.result_schema_json || '{}',
+    config_schema_json: tool.config_schema_json || '{}',
+    config_json: tool.config_json || '{}',
+    default_config_json: tool.default_config_json || '{}',
+    metadata_json: tool.metadata_json || '{}',
+    ...overrides,
   };
 }
 
@@ -38,6 +38,6 @@ export function patchToolForm(form: ToolUpsertInput, p: Partial<ToolUpsertInput>
       (form as Record<string, unknown>)[k] = Boolean(v);
       continue;
     }
-    (form as Record<string, unknown>)[k] = v == null ? "" : String(v);
+    (form as Record<string, unknown>)[k] = v == null ? '' : String(v);
   }
 }

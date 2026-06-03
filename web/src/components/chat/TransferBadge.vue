@@ -5,7 +5,7 @@
 </template>
 
 <script setup lang="ts">
-import type { EnvelopeTransfer } from "../../features/chat/envelope";
+import type { EnvelopeTransfer } from '../../features/chat/envelope';
 
 defineProps<{
   transfer?: EnvelopeTransfer | null;

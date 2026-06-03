@@ -1,34 +1,34 @@
-import { computed, onMounted, ref } from "vue";
-import { useQuasar } from "quasar";
-import { useRouter } from "vue-router";
-import { storeToRefs } from "pinia";
-import { useGraphStore } from "../../stores/graph";
-import type { GraphDefinition, NodeType } from "./types";
-import { NODE_TYPE_STYLES } from "./types";
-import { relativeTime } from "./utils";
-import { useGraphExecute } from "./useGraphExecute";
-import type { ContextMenuItem } from "../../components/graph/GraphContextMenu.vue";
+import { computed, onMounted, ref } from 'vue';
+import { useQuasar } from 'quasar';
+import { useRouter } from 'vue-router';
+import { storeToRefs } from 'pinia';
+import { useGraphStore } from '../../stores/graph';
+import type { GraphDefinition, NodeType } from './types';
+import { NODE_TYPE_STYLES } from './types';
+import { relativeTime } from './utils';
+import { useGraphExecute } from './useGraphExecute';
+import type { ContextMenuItem } from '../../components/graph/GraphContextMenu.vue';
 
 const SORT_OPTIONS = [
-  { label: "更新时间", value: "updatedAt" },
-  { label: "名称", value: "name" },
-  { label: "节点数", value: "nodes" },
+  { label: '更新时间', value: 'updatedAt' },
+  { label: '名称', value: 'name' },
+  { label: '节点数', value: 'nodes' },
 ];
 
 const ENGINE_FILTER_OPTIONS = [
-  { label: "全部引擎", value: "" },
-  { label: "BSP（默认）", value: "bsp" },
-  { label: "DAG（并行）", value: "dag" },
+  { label: '全部引擎', value: '' },
+  { label: 'BSP（默认）', value: 'bsp' },
+  { label: 'DAG（并行）', value: 'dag' },
 ];
 
 const NODE_TYPE_EMOJI: Record<NodeType, string> = {
-  agent: "🤖",
-  llm: "🧠",
-  router: "🔀",
-  function: "⚙️",
-  tool: "🔧",
-  join: "🔗",
-  hitl: "✋",
+  agent: '🤖',
+  llm: '🧠',
+  router: '🔀',
+  function: '⚙️',
+  tool: '🔧',
+  join: '🔗',
+  hitl: '✋',
 };
 
 export function useGraphsPage() {
@@ -39,7 +39,7 @@ export function useGraphsPage() {
   const { graphs: rows, loading } = storeToRefs(graphStore);
 
   const isDark = computed(() => $q.dark.isActive);
-  const error = ref("");
+  const error = ref('');
   const runDialogGraph = ref<GraphDefinition | null>(null);
 
   const selectedGraphId = ref<string | null>(null);
@@ -54,41 +54,39 @@ export function useGraphsPage() {
   });
 
   const ctxMenuItems = computed<ContextMenuItem[]>(() => [
-    { icon: "✏️", label: "编辑", shortcut: "Enter", action: "edit" },
-    { icon: "▶️", label: "执行", action: "run", success: true },
-    { icon: "📋", label: "复制", shortcut: "Ctrl+D", action: "duplicate" },
-    { icon: "🗑️", label: "删除", shortcut: "Del", action: "delete", danger: true },
+    { icon: '✏️', label: '编辑', shortcut: 'Enter', action: 'edit' },
+    { icon: '▶️', label: '执行', action: 'run', success: true },
+    { icon: '📋', label: '复制', shortcut: 'Ctrl+D', action: 'duplicate' },
+    { icon: '🗑️', label: '删除', shortcut: 'Del', action: 'delete', danger: true },
   ]);
 
-  const searchQuery = ref("");
-  const engineFilter = ref("");
-  const sortKey = ref("updatedAt");
-  const sortOrder = ref("desc");
+  const searchQuery = ref('');
+  const engineFilter = ref('');
+  const sortKey = ref('updatedAt');
+  const sortOrder = ref('desc');
 
   const filteredRows = computed(() => {
     let list = rows.value.slice();
     const q = searchQuery.value.trim().toLowerCase();
     if (q) {
-      list = list.filter(
-        (g) =>
-          g.name.toLowerCase().includes(q) ||
-          (g.description ?? "").toLowerCase().includes(q),
-      );
+      list = list.filter((g) => g.name.toLowerCase().includes(q) || (g.description ?? '').toLowerCase().includes(q));
     }
     if (engineFilter.value) {
       list = list.filter((g) => g.executionEngine === engineFilter.value);
     }
-    if (sortKey.value === "updatedAt" && sortOrder.value === "desc") {
-      list.sort((a, b) => a.sortOrder - b.sortOrder || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    if (sortKey.value === 'updatedAt' && sortOrder.value === 'desc') {
+      list.sort(
+        (a, b) => a.sortOrder - b.sortOrder || new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
     } else {
-      const dir = sortOrder.value === "asc" ? 1 : -1;
+      const dir = sortOrder.value === 'asc' ? 1 : -1;
       list.sort((a, b) => {
         switch (sortKey.value) {
-          case "name":
+          case 'name':
             return dir * a.name.localeCompare(b.name);
-          case "nodes":
+          case 'nodes':
             return dir * ((a.nodes?.length ?? 0) - (b.nodes?.length ?? 0));
-          case "updatedAt":
+          case 'updatedAt':
           default:
             return dir * (new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime());
         }
@@ -106,28 +104,26 @@ export function useGraphsPage() {
   }
 
   function nodeTypeBorderColor(type: string): string {
-    return (NODE_TYPE_STYLES as Record<string, { borderColor: string }>)[type]?.borderColor ?? "var(--color-accent)";
+    return (NODE_TYPE_STYLES as Record<string, { borderColor: string }>)[type]?.borderColor ?? 'var(--color-accent)';
   }
-
-
 
   onMounted(() => void loadRows());
 
   async function loadRows() {
-    error.value = "";
+    error.value = '';
     try {
       await graphStore.loadGraphs();
     } catch (err) {
-      error.value = err instanceof Error ? err.message : "加载 Graph 列表失败";
+      error.value = err instanceof Error ? err.message : '加载 Graph 列表失败';
     }
   }
 
   function openCreate() {
-    router.push({ name: "graph-editor-new" });
+    router.push({ name: 'graph-editor-new' });
   }
 
   function openEditor(id: string) {
-    router.push({ name: "graph-editor", params: { id } });
+    router.push({ name: 'graph-editor', params: { id } });
   }
 
   function openRunDialog(graph: GraphDefinition) {
@@ -158,15 +154,15 @@ export function useGraphsPage() {
         interruptAfter: graph.interruptAfter,
         metadata: graph.metadata,
       });
-      $q.notify({ type: "positive", message: "Graph 已复制" });
+      $q.notify({ type: 'positive', message: 'Graph 已复制' });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "复制失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '复制失败' });
     }
   }
 
   function confirmRemoveGraph(graph: GraphDefinition) {
     $q.dialog({
-      title: "删除 Graph",
+      title: '删除 Graph',
       message: `确定删除「${graph.name}」？此操作不可撤销。`,
       cancel: true,
       persistent: true,
@@ -176,9 +172,9 @@ export function useGraphsPage() {
   async function doRemoveGraph(graph: GraphDefinition) {
     try {
       await graphStore.removeGraph(graph.id);
-      $q.notify({ type: "info", message: "Graph 已删除" });
+      $q.notify({ type: 'info', message: 'Graph 已删除' });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "删除失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
     }
   }
 
@@ -186,7 +182,7 @@ export function useGraphsPage() {
     try {
       await graphStore.reorderGraphList(ids);
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "排序保存失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '排序保存失败' });
     }
   }
 
@@ -212,16 +208,16 @@ export function useGraphsPage() {
     closeCtxMenu();
     if (!graph) return;
     switch (action) {
-      case "edit":
+      case 'edit':
         openEditor(graph.id);
         break;
-      case "run":
+      case 'run':
         openRunDialog(graph);
         break;
-      case "duplicate":
+      case 'duplicate':
         duplicateGraph(graph);
         break;
-      case "delete":
+      case 'delete':
         confirmRemoveGraph(graph);
         break;
     }

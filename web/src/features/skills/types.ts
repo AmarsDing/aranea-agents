@@ -1,12 +1,12 @@
 export type SkillTag = {
   name: string;
-  source: "system" | "user" | string;
+  source: 'system' | 'user' | string;
 };
 
 export type SkillVersionSummary = {
   id: string;
   version: string;
-  validation_status: "pass" | "warn" | "block" | string;
+  validation_status: 'pass' | 'warn' | 'block' | string;
   published_at: string;
 };
 
@@ -24,7 +24,7 @@ export type Skill = {
   description: string;
   tags: SkillTag[];
   extends_skill_id?: string;
-  status: "draft" | "published" | "archived" | string;
+  status: 'draft' | 'published' | 'archived' | string;
   enabled: boolean;
   current_version: SkillVersionSummary | null;
   invoke_count: number;
@@ -40,7 +40,7 @@ export type Skill = {
   updated_at: string;
   permissions: SkillPermissions;
   filesystem_missing?: boolean;
-  sync_origin?: "filesystem" | "import" | "manual" | string;
+  sync_origin?: 'filesystem' | 'import' | 'manual' | string;
 };
 
 export type SkillFilesystemHealth = {
@@ -74,7 +74,7 @@ export type SkillInvocation = {
   agent_display_name: string;
   user_id?: string;
   session_id?: string;
-  status: "success" | "failure" | "pending" | string;
+  status: 'success' | 'failure' | 'pending' | string;
   duration_ms: number;
   started_at: string;
   ended_at?: string;
@@ -108,8 +108,8 @@ export type SkillSimilarityMetrics = {
   body_similarity: number;
   trigger_similarity: number;
   tool_similarity: number;
-  conflict_risk: "low" | "medium" | "high" | string;
-  recommendation: "keep_separate" | "suggest_refine" | "block_duplicate" | string;
+  conflict_risk: 'low' | 'medium' | 'high' | string;
+  recommendation: 'keep_separate' | 'suggest_refine' | 'block_duplicate' | string;
   confidence: number;
 };
 
@@ -120,7 +120,7 @@ export type SkillImportCandidate = {
   description: string;
   body_preview: string;
   target_dir: string;
-  validation_status: "pass" | "warn" | "block" | string;
+  validation_status: 'pass' | 'warn' | 'block' | string;
   status_icon: string;
   warnings: SkillImportIssue[];
   blocks: SkillImportIssue[];
@@ -148,8 +148,8 @@ export type SkillConflictGroup = {
 
 export type SkillImportJob = {
   job_id: string;
-  status: "processing" | "completed" | "failed" | string;
-  validation_status: "pass" | "warn" | "block" | string;
+  status: 'processing' | 'completed' | 'failed' | string;
+  validation_status: 'pass' | 'warn' | 'block' | string;
   storage_root: string;
   candidates: SkillImportCandidate[];
   conflict_groups: SkillConflictGroup[];
@@ -168,7 +168,7 @@ export type SkillRefineResult = {
 export type SkillImportDecision = {
   candidate_id?: string;
   group_id?: string;
-  action: "import_passed" | "skip_group" | "merge_group_with_ai" | "approve_risky_import" | "reject_risky_upload";
+  action: 'import_passed' | 'skip_group' | 'merge_group_with_ai' | 'approve_risky_import' | 'reject_risky_upload';
   merged_name?: string;
   merged_description?: string;
   merged_body?: string;

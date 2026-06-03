@@ -4,8 +4,8 @@
       <q-page class="row items-center justify-center login-page">
         <q-card flat bordered class="login-card">
           <q-card-section class="text-center">
-            <div class="text-h5 text-weight-bold">{{ t("common.appTitle") }}</div>
-            <div class="text-caption text-grey-7 q-mt-xs">{{ t("auth.subtitle") }}</div>
+            <div class="text-h5 text-weight-bold">{{ t('common.appTitle') }}</div>
+            <div class="text-caption text-grey-7 q-mt-xs">{{ t('auth.subtitle') }}</div>
           </q-card-section>
           <q-separator />
 
@@ -22,7 +22,7 @@
                 <template #avatar>
                   <q-icon name="cloud_off" />
                 </template>
-                {{ t("auth.backendDown") }}
+                {{ t('auth.backendDown') }}
               </q-banner>
               <div class="text-center q-mt-md">
                 <q-btn outline color="primary" :loading="rechecking" label="重新检测" @click="recheckBackend" />
@@ -68,7 +68,14 @@
                 @keyup.enter="submit"
               >
                 <template #append>
-                  <q-btn flat round dense :icon="showPwd ? 'visibility_off' : 'visibility'" tabindex="-1" @click.stop="showPwd = !showPwd" />
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    :icon="showPwd ? 'visibility_off' : 'visibility'"
+                    tabindex="-1"
+                    @click.stop="showPwd = !showPwd"
+                  />
                 </template>
               </q-input>
 
@@ -78,11 +85,18 @@
             </q-card-section>
 
             <q-banner v-if="authBypass" rounded dense class="bg-info text-white q-mx-md q-mb-sm">
-              {{ t("auth.devBypassHint") }}
+              {{ t('auth.devBypassHint') }}
             </q-banner>
 
             <q-card-actions vertical class="q-px-md q-pb-lg">
-              <q-btn color="primary" unelevated :loading="auth.loginLoading" :label="t('auth.submit')" padding="sm md" @click="submit" />
+              <q-btn
+                color="primary"
+                unelevated
+                :loading="auth.loginLoading"
+                :label="t('auth.submit')"
+                padding="sm md"
+                @click="submit"
+              />
               <q-btn
                 v-if="authBypass"
                 flat
@@ -91,7 +105,7 @@
                 label="进入系统（免登录）"
                 @click="enterWithoutLogin"
               />
-              <div class="text-caption text-grey-7 text-center q-mt-sm">{{ t("auth.backendHint") }}</div>
+              <div class="text-caption text-grey-7 text-center q-mt-sm">{{ t('auth.backendHint') }}</div>
             </q-card-actions>
           </template>
         </q-card>
@@ -101,14 +115,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { useQuasar } from "quasar";
-import { useI18n } from "vue-i18n";
-import { useAuthStore, type AuthIdentityMode } from "../stores/auth";
-import { fetchAuthHealth } from "../config/authHealth";
-import { formatLoginError } from "../features/admin/loginErrors";
-import { checkBackendHealth, getServerHeartbeatState } from "../features/heartbeat/useServerHeartbeat";
+import { ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { useQuasar } from 'quasar';
+import { useI18n } from 'vue-i18n';
+import { useAuthStore, type AuthIdentityMode } from '../stores/auth';
+import { fetchAuthHealth } from '../config/authHealth';
+import { formatLoginError } from '../features/admin/loginErrors';
+import { checkBackendHealth, getServerHeartbeatState } from '../features/heartbeat/useServerHeartbeat';
 
 const { t } = useI18n();
 const $q = useQuasar();
@@ -116,11 +130,11 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 
-const mode = ref<AuthIdentityMode>("username");
-const identity = ref("");
-const password = ref("");
+const mode = ref<AuthIdentityMode>('username');
+const identity = ref('');
+const password = ref('');
 const showPwd = ref(false);
-const localError = ref("");
+const localError = ref('');
 
 const backendChecking = ref(true);
 const backendHealthy = ref(false);
@@ -128,7 +142,7 @@ const rechecking = ref(false);
 const authBypass = ref(false);
 
 watch(mode, () => {
-  localError.value = "";
+  localError.value = '';
 });
 
 async function checkBackend() {
@@ -140,10 +154,10 @@ async function checkBackend() {
     return;
   }
   const health = await fetchAuthHealth();
-  if (health?.auth_mode === "bypass") {
+  if (health?.auth_mode === 'bypass') {
     authBypass.value = true;
   }
-  const healthy = health?.status === "ok" || (await checkBackendHealth());
+  const healthy = health?.status === 'ok' || (await checkBackendHealth());
   backendHealthy.value = healthy;
   backendChecking.value = false;
 }
@@ -151,8 +165,8 @@ async function checkBackend() {
 async function recheckBackend() {
   rechecking.value = true;
   const health = await fetchAuthHealth();
-  authBypass.value = health?.auth_mode === "bypass";
-  const healthy = health?.status === "ok" || (await checkBackendHealth());
+  authBypass.value = health?.auth_mode === 'bypass';
+  const healthy = health?.status === 'ok' || (await checkBackendHealth());
   backendHealthy.value = healthy;
   rechecking.value = false;
 }
@@ -162,28 +176,34 @@ async function bootstrapIfAlreadyAuthed() {
   if (!backendHealthy.value) return;
   await auth.ensureSession();
   if (auth.user) {
-    await router.replace(typeof route.query.redirect === "string" ? route.query.redirect : "/overview");
+    await router.replace(typeof route.query.redirect === 'string' ? route.query.redirect : '/overview');
   }
 }
 
 void bootstrapIfAlreadyAuthed();
 
 async function enterWithoutLogin() {
-  const redirect = typeof route.query.redirect === "string" && route.query.redirect.startsWith("/") ? route.query.redirect : "/overview";
-  await router.replace(redirect || "/overview");
+  const redirect =
+    typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/')
+      ? route.query.redirect
+      : '/overview';
+  await router.replace(redirect || '/overview');
 }
 
 async function submit() {
-  localError.value = "";
+  localError.value = '';
   try {
     await auth.login(mode.value, identity.value, password.value);
-    password.value = "";
-    const redirect = typeof route.query.redirect === "string" && route.query.redirect.startsWith("/") ? route.query.redirect : "/overview";
-    await router.replace(redirect || "/overview");
+    password.value = '';
+    const redirect =
+      typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/')
+        ? route.query.redirect
+        : '/overview';
+    await router.replace(redirect || '/overview');
   } catch (err) {
     const info = formatLoginError(err, t);
     localError.value = info.message;
-    $q.notify({ type: "negative", message: info.message });
+    $q.notify({ type: 'negative', message: info.message });
   }
 }
 </script>

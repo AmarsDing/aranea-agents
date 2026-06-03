@@ -1,6 +1,6 @@
-import { onUnmounted, ref, watch } from "vue";
-import { createWsTransport } from "../../realtime/ws-transport";
-import type { Envelope } from "../../realtime/envelope";
+import { onUnmounted, ref, watch } from 'vue';
+import { createWsTransport } from '../../realtime/ws-transport';
+import type { Envelope } from '../../realtime/envelope';
 
 /** Subscribe to knowledge ingest progress over /v1/ws (EP-KN-02). */
 export function useKnowledgeIngestWs(collectionId: () => string, onProgress: () => void) {
@@ -24,18 +24,18 @@ export function useKnowledgeIngestWs(collectionId: () => string, onProgress: () 
       sessionId: cid,
       logEnabled: false,
       onEnvelope: (env: Envelope) => {
-        if (env.type !== "knowledge_ingest") return;
+        if (env.type !== 'knowledge_ingest') return;
         const meta = env.metadata as Record<string, unknown> | undefined;
-        if (String(meta?.collection_id ?? "") !== cid) return;
+        if (String(meta?.collection_id ?? '') !== cid) return;
         onProgress();
       },
       onConnected: () => {
         connected.value = true;
-        transport?.subscribe("knowledge");
+        transport?.subscribe('knowledge');
       },
       onDisconnected: () => {
         connected.value = false;
-      }
+      },
     });
     transport.connect();
   }

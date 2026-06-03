@@ -4,43 +4,40 @@
  */
 export const FEISHU_IM_PREVIEW_DEFAULTS: Record<string, string | number | boolean> = {
   streaming_enabled: true,
-  ack_message: "收到，正在处理…",
-  im_render_mode: "transcript",
-  im_tool_detail: "label_summary",
+  ack_message: '收到，正在处理…',
+  im_render_mode: 'transcript',
+  im_tool_detail: 'label_summary',
   im_show_reasoning: true,
   im_reasoning_max_chars: 800,
   im_max_preview_chars: 4000,
   im_split_overflow: true,
-  im_tool_card_mode: "off",
+  im_tool_card_mode: 'off',
   turn_timeout_sec: 600,
   first_byte_timeout_sec: 120,
   progress_quiet_sec: 30,
-  heartbeat_message: "仍在处理中… {{elapsed}}",
-  execution_mode: "sync",
-  progress_mode: "text"
+  heartbeat_message: '仍在处理中… {{elapsed}}',
+  execution_mode: 'sync',
+  progress_mode: 'text',
 };
 
 export const IM_PREVIEW_TEXT_KEYS = [
-  "im_render_mode",
-  "im_tool_detail",
-  "im_reasoning_max_chars",
-  "im_max_preview_chars",
-  "im_tool_card_mode",
-  "im_team_mode"
+  'im_render_mode',
+  'im_tool_detail',
+  'im_reasoning_max_chars',
+  'im_max_preview_chars',
+  'im_tool_card_mode',
+  'im_team_mode',
 ] as const;
 
-export const IM_PREVIEW_BOOL_KEYS = new Set<string>(["im_show_reasoning", "im_split_overflow"]);
+export const IM_PREVIEW_BOOL_KEYS = new Set<string>(['im_show_reasoning', 'im_split_overflow']);
 
 export function isImPreviewFormKey(key: string): boolean {
   return IM_PREVIEW_BOOL_KEYS.has(key) || (IM_PREVIEW_TEXT_KEYS as readonly string[]).includes(key);
 }
 
-export function applyFeishuImPreviewDefaults(
-  boolDraft: Record<string, boolean>,
-  textDraft: Record<string, string>
-) {
+export function applyFeishuImPreviewDefaults(boolDraft: Record<string, boolean>, textDraft: Record<string, string>) {
   for (const [key, value] of Object.entries(FEISHU_IM_PREVIEW_DEFAULTS)) {
-    if (typeof value === "boolean") {
+    if (typeof value === 'boolean') {
       boolDraft[key] = value;
     } else {
       textDraft[key] = String(value);

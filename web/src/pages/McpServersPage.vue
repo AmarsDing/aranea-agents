@@ -1,6 +1,10 @@
 <template>
   <q-page class="app-standard-page app-registry-page mcp-page">
-    <AppPageHero kicker="Model Context Protocol" title="MCP 服务器" subtitle="管理 Model Context Protocol 服务器连接、传输配置与健康状态。">
+    <AppPageHero
+      kicker="Model Context Protocol"
+      title="MCP 服务器"
+      subtitle="管理 Model Context Protocol 服务器连接、传输配置与健康状态。"
+    >
       <template #actions>
         <q-btn color="primary" rounded unelevated icon="add" label="添加服务器" @click="openCreate" />
         <q-btn outline rounded color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
@@ -8,12 +12,18 @@
     </AppPageHero>
 
     <AppPageToolbar>
-      <q-input v-model="search" class="app-page-toolbar__search" dense outlined clearable debounce="200" placeholder="搜索服务器...">
+      <q-input
+        v-model="search"
+        class="app-page-toolbar__search"
+        dense
+        outlined
+        clearable
+        debounce="200"
+        placeholder="搜索服务器..."
+      >
         <template #prepend><q-icon name="search" /></template>
       </q-input>
-      <div class="app-page-toolbar__meta">
-        共 {{ filteredRows.length }} 个服务器，{{ enabledCount }} 个已启用
-      </div>
+      <div class="app-page-toolbar__meta">共 {{ filteredRows.length }} 个服务器，{{ enabledCount }} 个已启用</div>
     </AppPageToolbar>
 
     <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
@@ -68,13 +78,13 @@
 </template>
 
 <script setup lang="ts">
-import AppPageHero from "../components/layout/AppPageHero.vue";
-import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
-import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
-import McpServersTable from "../components/mcp/McpServersTable.vue";
-import McpServerFormDialog from "../features/mcp/McpServerFormDialog.vue";
-import McpUserCredentialDialog from "../features/mcp/McpUserCredentialDialog.vue";
-import { useMcpServersPage } from "../features/mcp/useMcpServersPage";
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
+import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import McpServersTable from '../components/mcp/McpServersTable.vue';
+import McpServerFormDialog from '../features/mcp/McpServerFormDialog.vue';
+import McpUserCredentialDialog from '../features/mcp/McpUserCredentialDialog.vue';
+import { useMcpServersPage } from '../features/mcp/useMcpServersPage';
 
 const {
   search,
@@ -100,6 +110,6 @@ const {
   testRow,
   confirmDelete,
   healthTone,
-  healthTooltip
+  healthTooltip,
 } = useMcpServersPage();
 </script>

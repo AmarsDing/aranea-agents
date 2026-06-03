@@ -18,7 +18,7 @@
           <div v-else-if="summaryText" class="text-caption text-grey-7 ellipsis">{{ summaryText }}</div>
         </div>
         <q-chip v-if="isLongRunning" dense size="sm" color="orange" text-color="white" icon="schedule">
-          {{ t("chat.toolLongRunning", "长任务") }}
+          {{ t('chat.toolLongRunning', '长任务') }}
         </q-chip>
         <q-space />
         <span v-if="durationLabel" class="text-caption text-grey-7">{{ durationLabel }}</span>
@@ -45,42 +45,45 @@
       />
       <template v-else>
         <div v-if="hasArgs" class="chat-execution-card__section">
-          <div class="text-caption text-weight-medium q-mb-xs">{{ t("chat.toolArgs", "参数") }}</div>
+          <div class="text-caption text-weight-medium q-mb-xs">{{ t('chat.toolArgs', '参数') }}</div>
           <pre class="chat-execution-card__pre">{{ argsText }}</pre>
         </div>
         <div v-if="hasResult" class="chat-execution-card__section q-mt-sm">
-          <div class="text-caption text-weight-medium q-mb-xs">{{ t("chat.toolResult", "结果") }}</div>
+          <div class="text-caption text-weight-medium q-mb-xs">{{ t('chat.toolResult', '结果') }}</div>
           <pre class="chat-execution-card__pre">{{ resultText }}</pre>
         </div>
       </template>
       <div v-if="errorText" class="text-caption text-negative q-mt-sm">{{ errorText }}</div>
       <div v-if="hasMetadata" class="chat-execution-card__section q-mt-sm">
-        <div class="text-caption text-weight-medium q-mb-xs">{{ t("chat.activity.metadata", "元数据") }}</div>
+        <div class="text-caption text-weight-medium q-mb-xs">{{ t('chat.activity.metadata', '元数据') }}</div>
         <div class="text-caption text-grey-7 column q-gutter-xs">
           <div v-if="event.run_id"><span class="text-weight-medium">run_id:</span> {{ event.run_id }}</div>
           <div v-if="event.trace_id"><span class="text-weight-medium">trace_id:</span> {{ event.trace_id }}</div>
         </div>
       </div>
-      <div v-if="expanded && (hasArgs || hasResult)" class="chat-execution-card__audit text-caption text-grey-6 q-mt-sm">
-        {{ t("chat.activity.copyAuditHint", "复制内容可能包含敏感信息；完整审计请前往 Monitor → Traces。") }}
+      <div
+        v-if="expanded && (hasArgs || hasResult)"
+        class="chat-execution-card__audit text-caption text-grey-6 q-mt-sm"
+      >
+        {{ t('chat.activity.copyAuditHint', '复制内容可能包含敏感信息；完整审计请前往 Monitor → Traces。') }}
       </div>
     </div>
   </q-expansion-item>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { useI18n } from "vue-i18n";
-import { useQuasar } from "quasar";
+import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
 import {
   formatDurationLabel,
   maskSensitiveJSON,
   resolveActivityIcon,
   resolveDisplayLabel,
-} from "../../features/chat/activityPresentation";
-import type { ToolUseEvent, FileEditResult } from "../../features/chat/types";
-import { isFileEditTool, extractDiffHunks, extractFileName } from "../../features/chat/diffEditHelpers";
-import ChatDiffViewer from "./ChatDiffViewer.vue";
+} from '../../features/chat/activityPresentation';
+import type { ToolUseEvent, FileEditResult } from '../../features/chat/types';
+import { isFileEditTool, extractDiffHunks, extractFileName } from '../../features/chat/diffEditHelpers';
+import ChatDiffViewer from './ChatDiffViewer.vue';
 
 const props = defineProps<{
   event: ToolUseEvent;
@@ -88,8 +91,8 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  "apply-diff": [payload: { toolName: string; fileName: string }];
-  "reject-diff": [payload: { toolName: string; fileName: string }];
+  'apply-diff': [payload: { toolName: string; fileName: string }];
+  'reject-diff': [payload: { toolName: string; fileName: string }];
 }>();
 
 const { t } = useI18n();
@@ -105,41 +108,39 @@ const appliedCount = computed(() => {
   const result = props.event.result as FileEditResult | undefined;
   return result?.applied_edits ?? result?.applied_hunks ?? 0;
 });
-const showDiffActions = computed(() => isFileEdit.value && props.event.status === "success");
+const showDiffActions = computed(() => isFileEdit.value && props.event.status === 'success');
 
 const status = computed(() => props.event.status);
 const isLongRunning = computed(() => Boolean(props.event.is_long_running));
 const title = computed(() => resolveDisplayLabel(props.event));
-const summaryText = computed(() => props.event.summary?.trim() || "");
+const summaryText = computed(() => props.event.summary?.trim() || '');
 const memberLabel = computed(() => {
-  if (props.showMemberLabel === false) return "";
+  if (props.showMemberLabel === false) return '';
   const key = props.event.agent_key?.trim();
   const name = props.event.agent_name?.trim();
-  if (!key && !name) return "";
+  if (!key && !name) return '';
   if (name && key && name !== key) return `${name} · ${key}`;
-  return name || key || "";
+  return name || key || '';
 });
 const activityIcon = computed(() => resolveActivityIcon(props.event));
 
-const isFailed = computed(
-  () => status.value === "failed" || status.value === "error"
-);
+const isFailed = computed(() => status.value === 'failed' || status.value === 'error');
 
 const statusIconColor = computed(() => {
-  if (status.value === "running" || status.value === "blocked") return "warning";
-  if (isFailed.value) return "negative";
-  if (status.value === "cancelled") return "grey";
-  return "primary";
+  if (status.value === 'running' || status.value === 'blocked') return 'warning';
+  if (isFailed.value) return 'negative';
+  if (status.value === 'cancelled') return 'grey';
+  return 'primary';
 });
 
 const durationLabel = computed(() => formatDurationLabel(props.event.duration_ms));
 
 const statusText = computed(() => {
-  if (status.value === "running") return t("chat.activity.running", "正在执行");
-  if (status.value === "blocked") return t("chat.activity.blocked", "待确认");
-  if (status.value === "cancelled") return t("chat.activity.cancelled", "已取消");
-  if (isFailed.value) return t("chat.activity.failed", "失败");
-  return "";
+  if (status.value === 'running') return t('chat.activity.running', '正在执行');
+  if (status.value === 'blocked') return t('chat.activity.blocked', '待确认');
+  if (status.value === 'cancelled') return t('chat.activity.cancelled', '已取消');
+  if (isFailed.value) return t('chat.activity.failed', '失败');
+  return '';
 });
 
 const headerAriaLabel = computed(() => {
@@ -149,17 +150,17 @@ const headerAriaLabel = computed(() => {
 });
 
 const statusTextClass = computed(() => {
-  if (status.value === "running") return "text-warning";
-  if (isFailed.value) return "text-negative";
-  if (status.value === "blocked") return "text-warning";
-  if (status.value === "cancelled") return "text-grey-6";
-  return "text-grey-7";
+  if (status.value === 'running') return 'text-warning';
+  if (isFailed.value) return 'text-negative';
+  if (status.value === 'blocked') return 'text-warning';
+  if (status.value === 'cancelled') return 'text-grey-6';
+  return 'text-grey-7';
 });
 
 const cardClass = computed(() => ({
-  "chat-execution-card--running": status.value === "running",
-  "chat-execution-card--failed": isFailed.value,
-  "chat-execution-card--cancelled": status.value === "cancelled",
+  'chat-execution-card--running': status.value === 'running',
+  'chat-execution-card--failed': isFailed.value,
+  'chat-execution-card--cancelled': status.value === 'cancelled',
 }));
 
 function onExpanded(value: boolean) {
@@ -176,9 +177,9 @@ function prettyJSON(value: unknown): string {
 
 const argsText = computed(() => prettyJSON(props.event.arguments ?? {}));
 const resultText = computed(() => prettyJSON(props.event.result ?? {}));
-const errorText = computed(() => props.event.error?.trim() ?? "");
+const errorText = computed(() => props.event.error?.trim() ?? '');
 const hasArgs = computed(() => Object.keys(props.event.arguments ?? {}).length > 0);
-const hasResult = computed(() => status.value !== "running" && Object.keys(props.event.result ?? {}).length > 0);
+const hasResult = computed(() => status.value !== 'running' && Object.keys(props.event.result ?? {}).length > 0);
 const hasMetadata = computed(() => Boolean(props.event.run_id?.trim() || props.event.trace_id?.trim()));
 </script>
 

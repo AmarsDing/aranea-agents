@@ -1,10 +1,10 @@
-import { computed, onBeforeUnmount, ref } from "vue";
-import type { QTableProps } from "quasar";
-import { normalizeRegistryColumns } from "./registryTableColumns";
+import { computed, onBeforeUnmount, ref } from 'vue';
+import type { QTableProps } from 'quasar';
+import { normalizeRegistryColumns } from './registryTableColumns';
 
-type RegistryColumn = NonNullable<QTableProps["columns"]>[number];
+type RegistryColumn = NonNullable<QTableProps['columns']>[number];
 
-const STORAGE_PREFIX = "aranea.registry-table.cols.v2.";
+const STORAGE_PREFIX = 'aranea.registry-table.cols.v2.';
 const MIN_COL_WIDTH = 48;
 
 type StoredWidthsPayload = {
@@ -17,34 +17,34 @@ function buildWidthCss(px: number): string {
   return `width: ${width}px; min-width: ${width}px; max-width: ${width}px`;
 }
 
-function derivePersistKey(columns: QTableProps["columns"], explicit?: string): string {
+function derivePersistKey(columns: QTableProps['columns'], explicit?: string): string {
   if (explicit) return explicit;
-  if (!Array.isArray(columns)) return "default";
+  if (!Array.isArray(columns)) return 'default';
   return columns
-    .map((col) => (col && typeof col === "object" ? String(col.name ?? "") : ""))
+    .map((col) => (col && typeof col === 'object' ? String(col.name ?? '') : ''))
     .filter(Boolean)
-    .join("|");
+    .join('|');
 }
 
 /** 列定义变更时使 localStorage 中的拖拽宽度失效，让 columns 里的默认宽度重新生效 */
-function buildColumnSchemaFingerprint(columns: QTableProps["columns"]): string {
-  if (!Array.isArray(columns)) return "";
+function buildColumnSchemaFingerprint(columns: QTableProps['columns']): string {
+  if (!Array.isArray(columns)) return '';
   return columns
     .map((col) => {
-      if (!col || typeof col !== "object") return "";
+      if (!col || typeof col !== 'object') return '';
       const entry = col as RegistryColumn;
-      const style = typeof entry.style === "string" ? entry.style : "";
-      return `${String(entry.name ?? "")}:${style}`;
+      const style = typeof entry.style === 'string' ? entry.style : '';
+      return `${String(entry.name ?? '')}:${style}`;
     })
     .filter(Boolean)
-    .join("|");
+    .join('|');
 }
 
 function normalizeWidthMap(value: unknown): Record<string, number> {
-  if (!value || typeof value !== "object") return {};
+  if (!value || typeof value !== 'object') return {};
   const out: Record<string, number> = {};
   for (const [name, v] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof v === "number" && Number.isFinite(v)) {
+    if (typeof v === 'number' && Number.isFinite(v)) {
       out[name] = v;
     }
   }
@@ -56,9 +56,9 @@ function loadStoredWidths(key: string, schema: string): Record<string, number> {
     const raw = localStorage.getItem(STORAGE_PREFIX + key);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object") return {};
+    if (!parsed || typeof parsed !== 'object') return {};
 
-    if ("widths" in parsed) {
+    if ('widths' in parsed) {
       const payload = parsed as StoredWidthsPayload;
       return payload.schema === schema ? normalizeWidthMap(payload.widths) : {};
     }
@@ -80,7 +80,7 @@ function saveStoredWidths(key: string, schema: string, widths: Record<string, nu
 }
 
 export function useResizableRegistryColumns(
-  columnsSource: () => QTableProps["columns"] | undefined,
+  columnsSource: () => QTableProps['columns'] | undefined,
   options: {
     enabled: () => boolean;
     persistKey?: () => string | undefined;
@@ -89,10 +89,10 @@ export function useResizableRegistryColumns(
   const widthOverrides = ref<Record<string, number>>({});
   const activeResize = ref<{ colName: string; startX: number; startWidth: number } | null>(null);
 
-  let loadedPersistKey = "";
-  let loadedSchema = "";
+  let loadedPersistKey = '';
+  let loadedSchema = '';
 
-  function ensureLoaded(columns: QTableProps["columns"]) {
+  function ensureLoaded(columns: QTableProps['columns']) {
     const key = derivePersistKey(columns, options.persistKey?.());
     const schema = buildColumnSchemaFingerprint(columns);
     if (key === loadedPersistKey && schema === loadedSchema) return;
@@ -110,9 +110,9 @@ export function useResizableRegistryColumns(
 
     return normalizeRegistryColumns(
       raw.map((col) => {
-        if (!col || typeof col !== "object") return col;
+        if (!col || typeof col !== 'object') return col;
         const entry = col as RegistryColumn;
-        const name = String(entry.name ?? "");
+        const name = String(entry.name ?? '');
         const px = widthOverrides.value[name];
         if (px == null) return entry;
         const css = buildWidthCss(px);
@@ -136,21 +136,21 @@ export function useResizableRegistryColumns(
       saveStoredWidths(loadedPersistKey, loadedSchema, widthOverrides.value);
     }
     activeResize.value = null;
-    document.body.classList.remove("app-registry-col-resizing");
-    document.removeEventListener("mousemove", onResizeMove);
-    document.removeEventListener("mouseup", onResizeEnd);
+    document.body.classList.remove('app-registry-col-resizing');
+    document.removeEventListener('mousemove', onResizeMove);
+    document.removeEventListener('mouseup', onResizeEnd);
   }
 
   function onResizeStart(colName: string, event: MouseEvent) {
     if (!options.enabled()) return;
 
-    const th = (event.currentTarget as HTMLElement | null)?.closest("th");
+    const th = (event.currentTarget as HTMLElement | null)?.closest('th');
     const startWidth = th?.getBoundingClientRect().width ?? MIN_COL_WIDTH;
 
     activeResize.value = { colName, startX: event.clientX, startWidth };
-    document.body.classList.add("app-registry-col-resizing");
-    document.addEventListener("mousemove", onResizeMove);
-    document.addEventListener("mouseup", onResizeEnd);
+    document.body.classList.add('app-registry-col-resizing');
+    document.addEventListener('mousemove', onResizeMove);
+    document.addEventListener('mouseup', onResizeEnd);
   }
 
   onBeforeUnmount(onResizeEnd);

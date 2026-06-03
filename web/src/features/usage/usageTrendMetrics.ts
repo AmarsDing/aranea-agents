@@ -1,12 +1,12 @@
-import type { ModelUsageTrendPoint } from "./types";
+import type { ModelUsageTrendPoint } from './types';
 
-export type UsageTrendMetric = "tokens" | "calls" | "cost" | "success_rate";
+export type UsageTrendMetric = 'tokens' | 'calls' | 'cost' | 'success_rate';
 
 export const USAGE_TREND_METRIC_OPTIONS: { label: string; value: UsageTrendMetric }[] = [
-  { label: "Token", value: "tokens" },
-  { label: "调用次数", value: "calls" },
-  { label: "费用", value: "cost" },
-  { label: "成功率", value: "success_rate" }
+  { label: 'Token', value: 'tokens' },
+  { label: '调用次数', value: 'calls' },
+  { label: '费用', value: 'cost' },
+  { label: '成功率', value: 'success_rate' },
 ];
 
 export function formatTrendLabel(key: string, hourly: boolean): string {
@@ -24,13 +24,13 @@ export function trendSuccessRate(point: ModelUsageTrendPoint): number {
 
 export function trendMetricValue(point: ModelUsageTrendPoint, metric: UsageTrendMetric): number {
   switch (metric) {
-    case "tokens":
+    case 'tokens':
       return point.total_tokens ?? 0;
-    case "calls":
+    case 'calls':
       return point.call_count ?? 0;
-    case "cost":
+    case 'cost':
       return (point.total_cost_micro_usd ?? 0) / 1_000_000;
-    case "success_rate":
+    case 'success_rate':
       return trendSuccessRate(point) * 100;
     default:
       return 0;
@@ -43,21 +43,21 @@ export function successRateStackFromPoint(point: ModelUsageTrendPoint): SuccessR
   const rate = trendSuccessRate(point);
   return {
     successPct: Math.round(rate * 1000) / 10,
-    failurePct: Math.round((1 - rate) * 1000) / 10
+    failurePct: Math.round((1 - rate) * 1000) / 10,
   };
 }
 
 export function trendMetricYAxisName(metric: UsageTrendMetric): string {
   switch (metric) {
-    case "tokens":
-      return "Token";
-    case "calls":
-      return "次";
-    case "cost":
-      return "USD";
-    case "success_rate":
-      return "%";
+    case 'tokens':
+      return 'Token';
+    case 'calls':
+      return '次';
+    case 'cost':
+      return 'USD';
+    case 'success_rate':
+      return '%';
     default:
-      return "";
+      return '';
   }
 }

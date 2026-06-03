@@ -1,6 +1,11 @@
 <template>
   <q-page class="app-standard-page memory-page">
-    <memory-hero v-model:selected-agent-id="selectedAgentId" :agent-options="agentOptions" :loading="loading" @refresh="loadAll" />
+    <memory-hero
+      v-model:selected-agent-id="selectedAgentId"
+      :agent-options="agentOptions"
+      :loading="loading"
+      @refresh="loadAll"
+    />
 
     <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
       {{ error }}
@@ -12,7 +17,15 @@
     <memory-metric-cards :cards="overviewCards" />
 
     <q-card flat class="memory-tabs-card">
-      <q-tabs v-model="tab" align="left" active-color="primary" indicator-color="primary" no-caps outside-arrows mobile-arrows>
+      <q-tabs
+        v-model="tab"
+        align="left"
+        active-color="primary"
+        indicator-color="primary"
+        no-caps
+        outside-arrows
+        mobile-arrows
+      >
         <q-tab name="overview" icon="hub" label="总览" />
         <q-tab name="knowledge" icon="psychology" label="知识库" />
         <q-tab name="cascade" icon="sync_alt" label="Cascade" />
@@ -46,15 +59,15 @@
 
       <q-tab-panel name="cascade">
         <memory-cascade-panel
+          v-model:preview-open="cascadePreviewOpen"
+          v-model:saga-drawer-open="cascadeSagaDrawerOpen"
           :agent-id="selectedAgentId"
           :rows="cascadeProposals"
           :loading="loadingCascade"
           :acting-id="cascadeActingId"
-          v-model:preview-open="cascadePreviewOpen"
           :preview-loading="loadingCascadePreview"
           :preview="cascadePreviewData"
           :preview-proposal-id="cascadePreviewProposalId"
-          v-model:saga-drawer-open="cascadeSagaDrawerOpen"
           :saga-loading="loadingCascadeSaga"
           :saga-steps="sagaSteps"
           @refresh="loadCascade"
@@ -92,8 +105,16 @@
       <q-tab-panel name="settings">
         <div class="column q-gutter-md">
           <memory-platform-settings-panel />
-          <memory-worker-status-panel :status="workerStatus" :loading="loadingWorkerStatus" @refresh="loadWorkerStatus" />
-          <memory-dead-letter-panel ref="deadLetterPanelRef" @replay="onDeadLetterReplay" @abandon="onDeadLetterAbandon" />
+          <memory-worker-status-panel
+            :status="workerStatus"
+            :loading="loadingWorkerStatus"
+            @refresh="loadWorkerStatus"
+          />
+          <memory-dead-letter-panel
+            ref="deadLetterPanelRef"
+            @replay="onDeadLetterReplay"
+            @abandon="onDeadLetterAbandon"
+          />
           <memory-recall-tester-panel :agent-id="selectedAgentId" :session-id="selectedSessionId" />
           <memory-settings-status-panel :items="settingChecklist" />
         </div>
@@ -106,23 +127,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import MemoryDeadLetterPanel from "../features/memory/MemoryDeadLetterPanel.vue";
-import MemoryPlatformSettingsPanel from "../features/memory/MemoryPlatformSettingsPanel.vue";
-import MemoryGraphExplorer from "../features/memory/MemoryGraphExplorer.vue";
-import MemoryRecallTesterPanel from "../features/memory/MemoryRecallTesterPanel.vue";
-import MemoryWorkerStatusPanel from "../components/memory/MemoryWorkerStatusPanel.vue";
-import MemoryCascadePanel from "../features/memory/MemoryCascadePanel.vue";
-import MemoryEvolutionPanel from "../components/memory/MemoryEvolutionPanel.vue";
-import MemoryFactDrawer from "../features/memory/MemoryFactDrawer.vue";
-import MemoryHero from "../components/memory/MemoryHero.vue";
-import MemoryKnowledgePanel from "../features/memory/MemoryKnowledgePanel.vue";
-import MemoryMetricCards from "../components/memory/MemoryMetricCards.vue";
-import MemoryOverviewPanel from "../components/memory/MemoryOverviewPanel.vue";
-import MemorySessionsPanel from "../features/memory/MemorySessionsPanel.vue";
-import MemorySettingsStatusPanel from "../components/memory/MemorySettingsStatusPanel.vue";
-import MemorySnapshotDrawer from "../features/memory/MemorySnapshotDrawer.vue";
-import { useMemoryCenterPage } from "../features/memory/useMemoryCenterPage";
+import { ref } from 'vue';
+import MemoryDeadLetterPanel from '../features/memory/MemoryDeadLetterPanel.vue';
+import MemoryPlatformSettingsPanel from '../features/memory/MemoryPlatformSettingsPanel.vue';
+import MemoryGraphExplorer from '../features/memory/MemoryGraphExplorer.vue';
+import MemoryRecallTesterPanel from '../features/memory/MemoryRecallTesterPanel.vue';
+import MemoryWorkerStatusPanel from '../components/memory/MemoryWorkerStatusPanel.vue';
+import MemoryCascadePanel from '../features/memory/MemoryCascadePanel.vue';
+import MemoryEvolutionPanel from '../components/memory/MemoryEvolutionPanel.vue';
+import MemoryFactDrawer from '../features/memory/MemoryFactDrawer.vue';
+import MemoryHero from '../components/memory/MemoryHero.vue';
+import MemoryKnowledgePanel from '../features/memory/MemoryKnowledgePanel.vue';
+import MemoryMetricCards from '../components/memory/MemoryMetricCards.vue';
+import MemoryOverviewPanel from '../components/memory/MemoryOverviewPanel.vue';
+import MemorySessionsPanel from '../features/memory/MemorySessionsPanel.vue';
+import MemorySettingsStatusPanel from '../components/memory/MemorySettingsStatusPanel.vue';
+import MemorySnapshotDrawer from '../features/memory/MemorySnapshotDrawer.vue';
+import { useMemoryCenterPage } from '../features/memory/useMemoryCenterPage';
 
 const deadLetterPanelRef = ref<InstanceType<typeof MemoryDeadLetterPanel> | null>(null);
 
@@ -191,7 +212,7 @@ const {
   handleDeadLetterAbandon,
   workerStatus,
   loadingWorkerStatus,
-  loadWorkerStatus
+  loadWorkerStatus,
 } = useMemoryCenterPage();
 
 async function onDeadLetterReplay(id: number) {

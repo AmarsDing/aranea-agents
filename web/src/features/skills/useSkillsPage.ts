@@ -1,17 +1,17 @@
-import { computed, onMounted, ref, watch } from "vue";
-import { useQuasar } from "quasar";
-import type { Skill, SkillFilesystemHealth } from "./types";
-import { useSkillsStore } from "../../stores/skills";
+import { computed, onMounted, ref, watch } from 'vue';
+import { useQuasar } from 'quasar';
+import type { Skill, SkillFilesystemHealth } from './types';
+import { useSkillsStore } from '../../stores/skills';
 
 export function useSkillsPage() {
   const $q = useQuasar();
   const skillsStore = useSkillsStore();
 
   const uploadRef = ref<{ openDialog: () => void } | null>(null);
-  const search = ref("");
+  const search = ref('');
   const enabled = ref<boolean | null>(null);
-  const status = ref("");
-  const syncOrigin = ref("");
+  const status = ref('');
+  const syncOrigin = ref('');
   const filesystemMissing = ref<boolean | null>(null);
   const filesystemHealth = ref<SkillFilesystemHealth | null>(null);
   const page = ref(1);
@@ -19,9 +19,9 @@ export function useSkillsPage() {
   const rows = ref<Skill[]>([]);
   const total = ref(0);
   const loading = ref(false);
-  const error = ref("");
-  const togglingId = ref("");
-  const publishingId = ref("");
+  const error = ref('');
+  const togglingId = ref('');
+  const publishingId = ref('');
   const deleteOpen = ref(false);
   const deleteTarget = ref<Skill | null>(null);
   const deleting = ref(false);
@@ -34,15 +34,23 @@ export function useSkillsPage() {
     $q.notify(opts);
   }
 
-  async function confirm(opts: { title: string; message: string; okLabel?: string; cancelLabel?: string; okColor?: string }): Promise<boolean> {
+  async function confirm(opts: {
+    title: string;
+    message: string;
+    okLabel?: string;
+    cancelLabel?: string;
+    okColor?: string;
+  }): Promise<boolean> {
     return new Promise((resolve) => {
       $q.dialog({
         title: opts.title,
         message: opts.message,
         cancel: opts.cancelLabel ? { label: opts.cancelLabel, flat: true, noCaps: true } : true,
-        ok: { label: opts.okLabel ?? "确定", noCaps: true, color: opts.okColor ?? "primary" },
+        ok: { label: opts.okLabel ?? '确定', noCaps: true, color: opts.okColor ?? 'primary' },
         persistent: true,
-      }).onOk(() => resolve(true)).onCancel(() => resolve(false));
+      })
+        .onOk(() => resolve(true))
+        .onCancel(() => resolve(false));
     });
   }
 
@@ -60,7 +68,7 @@ export function useSkillsPage() {
 
   async function loadRows() {
     loading.value = true;
-    error.value = "";
+    error.value = '';
     try {
       const data = await skillsStore.loadSkills({
         search: search.value,
@@ -69,31 +77,31 @@ export function useSkillsPage() {
         sync_origin: syncOrigin.value || undefined,
         filesystem_missing: filesystemMissing.value,
         page: page.value,
-        page_size: pageSize.value
+        page_size: pageSize.value,
       });
       rows.value = data.items;
       total.value = data.total;
       await loadFilesystemHealth();
     } catch (err) {
-      error.value = err instanceof Error ? err.message : "加载 Skill 失败";
+      error.value = err instanceof Error ? err.message : '加载 Skill 失败';
     } finally {
       loading.value = false;
     }
   }
 
   function resetFilters() {
-    search.value = "";
+    search.value = '';
     enabled.value = null;
-    status.value = "";
-    syncOrigin.value = "";
+    status.value = '';
+    syncOrigin.value = '';
     filesystemMissing.value = null;
     page.value = 1;
     void loadRows();
   }
 
   function filterPendingFilesystem() {
-    syncOrigin.value = "filesystem";
-    status.value = "draft";
+    syncOrigin.value = 'filesystem';
+    status.value = 'draft';
     filesystemMissing.value = null;
     page.value = 1;
     void loadRows();
@@ -110,11 +118,11 @@ export function useSkillsPage() {
     try {
       const updated = await skillsStore.publish(skill.id);
       rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
-      $q.notify({ type: "positive", message: "Skill 已发布；请在列表中打开「启用」以便 Agent 运行时挂载" });
+      $q.notify({ type: 'positive', message: 'Skill 已发布；请在列表中打开「启用」以便 Agent 运行时挂载' });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "发布失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '发布失败' });
     } finally {
-      publishingId.value = "";
+      publishingId.value = '';
     }
   }
 
@@ -123,11 +131,11 @@ export function useSkillsPage() {
     try {
       const updated = await skillsStore.toggle(skill.id, next);
       rows.value = rows.value.map((row) => (row.id === updated.id ? updated : row));
-      $q.notify({ type: "positive", message: next ? "Skill 已启用" : "Skill 已停用" });
+      $q.notify({ type: 'positive', message: next ? 'Skill 已启用' : 'Skill 已停用' });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "更新启用状态失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '更新启用状态失败' });
     } finally {
-      togglingId.value = "";
+      togglingId.value = '';
     }
   }
 
@@ -147,14 +155,14 @@ export function useSkillsPage() {
     try {
       await skillsStore.remove(deleteTarget.value.id);
       deleteOpen.value = false;
-      $q.notify({ type: "positive", message: "Skill 已删除" });
+      $q.notify({ type: 'positive', message: 'Skill 已删除' });
       await loadRows();
       if (rows.value.length === 0 && page.value > 1) {
         page.value = Math.max(1, page.value - 1);
         await loadRows();
       }
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "删除失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
     } finally {
       deleting.value = false;
     }
@@ -213,6 +221,6 @@ export function useSkillsPage() {
     readSkillFile: skillsStore.readSkillFile,
     updateSkillFile: skillsStore.updateSkillFile,
     notify,
-    confirm
+    confirm,
   };
 }

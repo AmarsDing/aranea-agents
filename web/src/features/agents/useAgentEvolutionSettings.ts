@@ -1,11 +1,11 @@
-import { computed, ref, watch } from "vue";
-import { isAgentEvolving } from "../../components/agents/agentUi";
-import type { Agent } from "./types";
-import type { AgentRuntimeConfigForm } from "./agentRuntimeConfig";
+import { computed, ref, watch } from 'vue';
+import { isAgentEvolving } from '../../components/agents/agentUi';
+import type { Agent } from './types';
+import type { AgentRuntimeConfigForm } from './agentRuntimeConfig';
 
 /** Evolution tab range + header chip + self_evolve bidirectional sync with runtime config. */
 export function useAgentEvolutionSettings(form: Agent, config: AgentRuntimeConfigForm) {
-  const evolutionRange = ref("30d");
+  const evolutionRange = ref('30d');
   const showEvolving = computed(() => isAgentEvolving(form));
 
   watch(

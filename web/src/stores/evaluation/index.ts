@@ -1,6 +1,6 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
-import { listAgents } from "../../features/agents/api";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
+import { listAgents } from '../../features/agents/api';
 import {
   annotateCaseResult,
   compareEvalRuns,
@@ -12,8 +12,8 @@ import {
   listDatasets,
   listRuns,
   runEvaluation,
-  uploadCases
-} from "../../features/evaluation/api";
+  uploadCases,
+} from '../../features/evaluation/api';
 import type {
   AnnotateCaseResultInput,
   CreateDatasetInput,
@@ -27,10 +27,10 @@ import type {
   ListDatasetsResult,
   ListRunsParams,
   ListRunsResult,
-  RunEvaluationInput
-} from "../../features/evaluation/types";
+  RunEvaluationInput,
+} from '../../features/evaluation/types';
 
-export const useEvaluationStore = defineStore("evaluation", () => {
+export const useEvaluationStore = defineStore('evaluation', () => {
   const datasets = ref<EvalDataset[]>([]);
   const datasetsTotal = ref(0);
   const runs = ref<EvalRun[]>([]);
@@ -99,7 +99,7 @@ export const useEvaluationStore = defineStore("evaluation", () => {
 
   async function loadRunResults(
     runId: string,
-    params: { limit?: number; offset?: number } = {}
+    params: { limit?: number; offset?: number } = {},
   ): Promise<GetRunResultsResult> {
     return getRunResults(runId, params);
   }
@@ -138,6 +138,6 @@ export const useEvaluationStore = defineStore("evaluation", () => {
     loadRunResults,
     annotateResult,
     loadAgentTrend,
-    compareRuns
+    compareRuns,
   };
 });

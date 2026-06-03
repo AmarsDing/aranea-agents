@@ -1,5 +1,5 @@
-import type { useAvatarCatalogStore } from "../../stores/avatar";
-import { isAvatarAssetRef } from "./iconModel";
+import type { useAvatarCatalogStore } from '../../stores/avatar';
+import { isAvatarAssetRef } from './iconModel';
 
 type AvatarCatalogStore = ReturnType<typeof useAvatarCatalogStore>;
 
@@ -11,7 +11,7 @@ export async function resolveAvatarAssetFetchId(
   store: AvatarCatalogStore,
   icon: string | undefined | null,
 ): Promise<string | null> {
-  const raw = String(icon ?? "").trim();
+  const raw = String(icon ?? '').trim();
   if (!raw || /^(https?:|data:|blob:)/i.test(raw)) return null;
   if (isAvatarAssetRef(raw)) return raw;
   await store.ensureAgentsCatalog();

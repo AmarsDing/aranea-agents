@@ -2,16 +2,27 @@
   <div class="command-center-status-panels">
     <StatusPanelAgent :active="agentStats.active" :total="agentStats.total" :loading="loading" />
     <StatusPanelSession :active-count="sessionActiveCount" :sparkline="sessionSparkline" :loading="loading" />
-    <StatusPanelProvider :active="providerHealth.active" :degraded="providerHealth.degraded" :total="providerHealth.total" :loading="loading" />
-    <StatusPanelRunner :total-runs="runnerStats.totalRuns" :error-runs="runnerStats.errorRuns" :success-rate="runnerStats.successRate" :error-rate="runnerStats.errorRate" :loading="loading" />
+    <StatusPanelProvider
+      :active="providerHealth.active"
+      :degraded="providerHealth.degraded"
+      :total="providerHealth.total"
+      :loading="loading"
+    />
+    <StatusPanelRunner
+      :total-runs="runnerStats.totalRuns"
+      :error-runs="runnerStats.errorRuns"
+      :success-rate="runnerStats.successRate"
+      :error-rate="runnerStats.errorRate"
+      :loading="loading"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import StatusPanelAgent from "./StatusPanelAgent.vue";
-import StatusPanelSession from "./StatusPanelSession.vue";
-import StatusPanelProvider from "./StatusPanelProvider.vue";
-import StatusPanelRunner from "./StatusPanelRunner.vue";
+import StatusPanelAgent from './StatusPanelAgent.vue';
+import StatusPanelSession from './StatusPanelSession.vue';
+import StatusPanelProvider from './StatusPanelProvider.vue';
+import StatusPanelRunner from './StatusPanelRunner.vue';
 
 defineProps<{
   agentStats: { active: number; total: number };

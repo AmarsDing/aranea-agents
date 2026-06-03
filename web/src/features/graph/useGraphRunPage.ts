@@ -1,12 +1,12 @@
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
-import { useQuasar } from "quasar";
-import { useRoute, useRouter } from "vue-router";
-import type { CheckpointInfo, GraphDefinition, GraphExecution } from "./types";
-import { useGraphStore } from "../../stores/graph";
-import { useGraphTimeTravel } from "./runtime/useGraphTimeTravel";
-import { useGraphRunStream } from "./runtime/useGraphRunStream";
-import { useGraphRunTasks } from "./useGraphRunTasks";
-import { useGraphRunHitl } from "./useGraphRunHitl";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { useQuasar } from 'quasar';
+import { useRoute, useRouter } from 'vue-router';
+import type { CheckpointInfo, GraphDefinition, GraphExecution } from './types';
+import { useGraphStore } from '../../stores/graph';
+import { useGraphTimeTravel } from './runtime/useGraphTimeTravel';
+import { useGraphRunStream } from './runtime/useGraphRunStream';
+import { useGraphRunTasks } from './useGraphRunTasks';
+import { useGraphRunHitl } from './useGraphRunHitl';
 
 export function useGraphRunPage() {
   const $q = useQuasar();
@@ -16,28 +16,28 @@ export function useGraphRunPage() {
   let loadSeq = 0;
 
   const isDark = computed(() => $q.dark.isActive);
-  const graphId = computed(() => (route.params.id as string) ?? "");
-  const execId = computed(() => (route.params.execId as string) ?? "");
+  const graphId = computed(() => (route.params.id as string) ?? '');
+  const execId = computed(() => (route.params.execId as string) ?? '');
 
   const graphDef = reactive<GraphDefinition>({
-    id: "",
-    name: "",
-    description: "",
+    id: '',
+    name: '',
+    description: '',
     stateFields: [],
     nodes: [],
     edges: [],
     conditionalEdges: [],
     subgraphs: [],
-    entryPoint: "",
-    finishPoint: "",
+    entryPoint: '',
+    finishPoint: '',
     enableCheckpoint: false,
-    executionEngine: "bsp",
+    executionEngine: 'bsp',
     interruptBefore: [],
     interruptAfter: [],
     metadata: {},
     version: 0,
-    createdAt: "",
-    updatedAt: "",
+    createdAt: '',
+    updatedAt: '',
   });
 
   const execution = ref<GraphExecution | null>(null);
@@ -52,12 +52,12 @@ export function useGraphRunPage() {
 
   const statusColor = computed(() => {
     const s = displayStatus.value;
-    if (s === "completed") return "positive";
-    if (s === "running") return "blue";
-    if (s === "failed") return "negative";
-    if (s === "waiting_human") return "warning";
-    if (s === "cancelled") return "grey";
-    return "grey";
+    if (s === 'completed') return 'positive';
+    if (s === 'running') return 'blue';
+    if (s === 'failed') return 'negative';
+    if (s === 'waiting_human') return 'warning';
+    if (s === 'cancelled') return 'grey';
+    return 'grey';
   });
 
   async function refreshExecution() {
@@ -67,15 +67,9 @@ export function useGraphRunPage() {
     await tasks.loadTasks(execId.value);
   }
 
-  const inspectorTab = ref("overview");
+  const inspectorTab = ref('overview');
 
-  const hitl = useGraphRunHitl(
-    execId,
-    stream.interrupt,
-    displayStatus,
-    stream.clearInterrupt,
-    refreshExecution,
-  );
+  const hitl = useGraphRunHitl(execId, stream.interrupt, displayStatus, stream.clearInterrupt, refreshExecution);
 
   async function loadPageData() {
     const seq = ++loadSeq;
@@ -86,7 +80,7 @@ export function useGraphRunPage() {
         Object.assign(graphDef, graph);
       } catch {
         if (seq !== loadSeq) return;
-        $q.notify({ type: "negative", message: "加载 Graph 失败" });
+        $q.notify({ type: 'negative', message: '加载 Graph 失败' });
       }
     }
     if (execId.value) {
@@ -98,7 +92,7 @@ export function useGraphRunPage() {
         await Promise.all([tasks.loadTasks(execId.value), timeTravel.loadCheckpoints()]);
       } catch {
         if (seq !== loadSeq) return;
-        $q.notify({ type: "negative", message: "加载执行记录失败" });
+        $q.notify({ type: 'negative', message: '加载执行记录失败' });
       }
     }
   }
@@ -120,12 +114,12 @@ export function useGraphRunPage() {
     selectedNodeId.value = nodeId;
     tasks.focusTaskForNode(stream.taskList.value, nodeId);
     if (nodeId && stream.taskList.value.some((task) => task.nodeId === nodeId)) {
-      inspectorTab.value = "tasks";
+      inspectorTab.value = 'tasks';
     }
   }
 
   function onSelectTask(taskId: string) {
-    inspectorTab.value = "tasks";
+    inspectorTab.value = 'tasks';
     void tasks.openTaskDetail(taskId, (nodeId) => {
       selectedNodeId.value = nodeId;
     });
@@ -133,8 +127,8 @@ export function useGraphRunPage() {
 
   function confirmCancelExec() {
     $q.dialog({
-      title: "取消执行",
-      message: "确定取消当前执行？正在运行的节点将被中断。",
+      title: '取消执行',
+      message: '确定取消当前执行？正在运行的节点将被中断。',
       cancel: true,
       persistent: true,
     }).onOk(() => void cancelExec());
@@ -144,10 +138,10 @@ export function useGraphRunPage() {
     if (!execId.value) return;
     try {
       await graphStore.cancelExecution(execId.value);
-      $q.notify({ type: "info", message: "已请求取消执行" });
+      $q.notify({ type: 'info', message: '已请求取消执行' });
       await refreshExecution();
     } catch {
-      $q.notify({ type: "negative", message: "取消失败" });
+      $q.notify({ type: 'negative', message: '取消失败' });
     }
   }
 
@@ -158,9 +152,9 @@ export function useGraphRunPage() {
   async function onTimeTravel() {
     try {
       await timeTravel.travelToStep(timeTravel.stepIndexInput.value);
-      $q.notify({ type: "positive", message: "已加载步骤状态快照" });
+      $q.notify({ type: 'positive', message: '已加载步骤状态快照' });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "回溯失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '回溯失败' });
     }
   }
 
@@ -168,11 +162,11 @@ export function useGraphRunPage() {
     try {
       const result = await timeTravel.applyEditState();
       if (result) {
-        $q.notify({ type: "positive", message: `已创建检查点 ${result.newCheckpointId}` });
+        $q.notify({ type: 'positive', message: `已创建检查点 ${result.newCheckpointId}` });
         await timeTravel.loadCheckpoints();
       }
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "编辑状态失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '编辑状态失败' });
     }
   }
 
@@ -180,12 +174,12 @@ export function useGraphRunPage() {
     try {
       const result = await timeTravel.applyEditState();
       if (result) {
-        $q.notify({ type: "positive", message: `已回退至检查点 ${result.newCheckpointId}` });
+        $q.notify({ type: 'positive', message: `已回退至检查点 ${result.newCheckpointId}` });
         await timeTravel.loadCheckpoints();
         await refreshExecution();
       }
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "回退检查点失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '回退检查点失败' });
     }
   }
 
@@ -197,16 +191,14 @@ export function useGraphRunPage() {
     timeTravel.stepIndexInput.value = value;
   }
 
-
-
   function goBack() {
-    router.push({ name: "graphs" });
+    router.push({ name: 'graphs' });
   }
 
   const progressCompleted = computed(() => {
     let count = 0;
     for (const state of stream.execNodeStates.value.values()) {
-      if (state.status === "completed") count++;
+      if (state.status === 'completed') count++;
     }
     return count;
   });
@@ -214,7 +206,7 @@ export function useGraphRunPage() {
   const progressRunning = computed(() => {
     let count = 0;
     for (const state of stream.execNodeStates.value.values()) {
-      if (state.status === "running") count++;
+      if (state.status === 'running') count++;
     }
     return count;
   });
@@ -222,7 +214,7 @@ export function useGraphRunPage() {
   const progressWaiting = computed(() => {
     let count = 0;
     for (const state of stream.execNodeStates.value.values()) {
-      if (state.status === "waiting" || state.status === "idle") count++;
+      if (state.status === 'waiting' || state.status === 'idle') count++;
     }
     return count;
   });
@@ -245,13 +237,13 @@ export function useGraphRunPage() {
     if (progressTotal.value > 0) {
       return `Step ${progressCompleted.value}/${progressTotal.value}`;
     }
-    return "";
+    return '';
   });
 
   const progressDurationSec = computed(() => {
     const ms = stream.executionSummary.value?.durationMs;
     if (ms && ms > 0) return (ms / 1000).toFixed(1);
-    return "";
+    return '';
   });
 
   const showProgressBar = computed(() => stream.execNodeStates.value.size > 0);

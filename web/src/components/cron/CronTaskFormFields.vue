@@ -3,7 +3,11 @@
   皮肤：UX token，见父级 CronTaskFormDialog 与同文件 scoped :deep。
 -->
 <template>
-  <q-form ref="formRef" class="app-form-field-grid app-form-field-grid--2col cron-form-fields-root" @submit.prevent="$emit('submit')">
+  <q-form
+    ref="formRef"
+    class="app-form-field-grid app-form-field-grid--2col cron-form-fields-root"
+    @submit.prevent="$emit('submit')"
+  >
     <q-input
       v-model="form.name"
       class="cron-field"
@@ -14,7 +18,15 @@
       :rules="[cronSlugRule]"
     />
     <q-input v-model="form.display_name" class="cron-field" dense outlined label="展示名称" />
-    <q-input v-model="form.description" class="cron-field app-grid-span-full" dense outlined autogrow type="textarea" label="描述" />
+    <q-input
+      v-model="form.description"
+      class="cron-field app-grid-span-full"
+      dense
+      outlined
+      autogrow
+      type="textarea"
+      label="描述"
+    />
 
     <CronTaskFormTargetFields v-model:form="form" :agents="agents" :teams="teams" />
     <CronTaskFormScheduleFields v-model:form="form" />
@@ -49,14 +61,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import type { QForm } from "quasar";
-import type { Agent } from "../../features/agents/types";
-import type { CronTaskFormValue } from "../../features/cron/types";
-import type { Team } from "../../features/teams/types";
-import CronTaskFormScheduleFields from "./CronTaskFormScheduleFields.vue";
-import CronTaskFormTargetFields from "./CronTaskFormTargetFields.vue";
-import { cronMessageRule, cronSlugRule } from "./cronTaskUtils";
+import { ref } from 'vue';
+import type { QForm } from 'quasar';
+import type { Agent } from '../../features/agents/types';
+import type { CronTaskFormValue } from '../../features/cron/types';
+import type { Team } from '../../features/teams/types';
+import CronTaskFormScheduleFields from './CronTaskFormScheduleFields.vue';
+import CronTaskFormTargetFields from './CronTaskFormTargetFields.vue';
+import { cronMessageRule, cronSlugRule } from './cronTaskUtils';
 
 defineProps<{
   agents: Agent[];
@@ -68,12 +80,11 @@ defineEmits<{
   submit: [];
 }>();
 
-const form = defineModel<CronTaskFormValue>("form", { required: true });
+const form = defineModel<CronTaskFormValue>('form', { required: true });
 
 const formRef = ref<QForm>();
 
 defineExpose({
-  validate: () => formRef.value?.validate()
+  validate: () => formRef.value?.validate(),
 });
-
 </script>

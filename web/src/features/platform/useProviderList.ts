@@ -1,9 +1,9 @@
-import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
-import { useQuasar } from "quasar";
-import type { PlatformResource, PlatformResourceName } from "./types";
-import { errorMessage, getConfig, getCategories } from "./providerUtils";
-import { usePlatformStore } from "../../stores/platform";
-import { useProviderTrendDialog } from "../usage/useProviderTrendDialog";
+import { computed, ref, watch, type ComputedRef, type Ref } from 'vue';
+import { useQuasar } from 'quasar';
+import type { PlatformResource, PlatformResourceName } from './types';
+import { errorMessage, getConfig, getCategories } from './providerUtils';
+import { usePlatformStore } from '../../stores/platform';
+import { useProviderTrendDialog } from '../usage/useProviderTrendDialog';
 
 export function useProviderList(deps: {
   resource: ComputedRef<PlatformResourceName>;
@@ -15,7 +15,7 @@ export function useProviderList(deps: {
 
   const rows = ref<PlatformResource[]>([]);
   const loading = ref(false);
-  const keyword = ref("");
+  const keyword = ref('');
   const page = ref(1);
   const rowsPerPage = ref(20);
   const providerTypeFilter = ref<string[]>([]);
@@ -26,7 +26,7 @@ export function useProviderList(deps: {
   const listKeyById = ref<Record<string, ListKeyEntry>>({});
 
   function listKeyState(id: string): ListKeyEntry {
-    return listKeyById.value[id] ?? { visible: false, revealing: false, value: "" };
+    return listKeyById.value[id] ?? { visible: false, revealing: false, value: '' };
   }
 
   function setListKeyState(id: string, patch: Partial<ListKeyEntry>) {
@@ -38,32 +38,29 @@ export function useProviderList(deps: {
     const id = row.id;
     const cur = listKeyState(id);
     if (cur.visible) {
-      setListKeyState(id, { visible: false, revealing: false, value: "" });
+      setListKeyState(id, { visible: false, revealing: false, value: '' });
       return;
     }
     setListKeyState(id, { revealing: true });
     try {
       const creds = await platformStore.revealCredentials(id);
       const cfg = getConfig(row);
-      const plain = creds.api_key?.trim() || creds.secret_key?.trim() || "";
+      const plain = creds.api_key?.trim() || creds.secret_key?.trim() || '';
       if (!plain) {
         const cannotDecrypt =
-          creds.has_api_key ||
-          creds.has_secret_key ||
-          cfg.api_key_set ||
-          Boolean(cfg.secret_id?.trim());
+          creds.has_api_key || creds.has_secret_key || cfg.api_key_set || Boolean(cfg.secret_id?.trim());
         $q.notify({
-          type: "warning",
+          type: 'warning',
           message: cannotDecrypt
-            ? "密钥已保存，但无法解密显示。请在「系统设置」确认凭据加密密钥，或在编辑页重新保存 API Key。"
-            : "未找到可显示的密钥，请在编辑页配置。"
+            ? '密钥已保存，但无法解密显示。请在「系统设置」确认凭据加密密钥，或在编辑页重新保存 API Key。'
+            : '未找到可显示的密钥，请在编辑页配置。',
         });
         return;
       }
       setListKeyState(id, { visible: true, revealing: false, value: plain });
     } catch (error) {
       setListKeyState(id, { revealing: false });
-      $q.notify({ type: "negative", message: errorMessage(error) });
+      $q.notify({ type: 'negative', message: errorMessage(error) });
     }
   }
 
@@ -75,7 +72,7 @@ export function useProviderList(deps: {
     let list = rows.value;
     if (deps.isProviderResource.value && providerTypeFilter.value.length) {
       const allowed = new Set(providerTypeFilter.value.map((v) => v.toLowerCase()));
-      list = list.filter((row) => allowed.has((getConfig(row).provider_type || "openai").toLowerCase()));
+      list = list.filter((row) => allowed.has((getConfig(row).provider_type || 'openai').toLowerCase()));
     }
     const q = keyword.value.trim().toLowerCase();
     if (!q) return list;
@@ -88,10 +85,8 @@ export function useProviderList(deps: {
         row.model,
         row.agent_id,
         getConfig(row).provider_display_name,
-        ...getCategories(row).map((category) => category.label)
-      ].some((value) =>
-        (value || "").toLowerCase().includes(q)
-      )
+        ...getCategories(row).map((category) => category.label),
+      ].some((value) => (value || '').toLowerCase().includes(q)),
     );
   });
 
@@ -114,7 +109,7 @@ export function useProviderList(deps: {
         void platformStore.loadCredentialStatus();
       }
     } catch (error) {
-      $q.notify({ type: "negative", message: errorMessage(error) || "加载资源列表失败" });
+      $q.notify({ type: 'negative', message: errorMessage(error) || '加载资源列表失败' });
     } finally {
       loading.value = false;
     }
@@ -126,7 +121,7 @@ export function useProviderList(deps: {
       const updated = await platformStore.editResource(deps.resource.value, row.id, { enabled });
       rows.value = rows.value.map((item) => (item.id === updated.id ? updated : item));
     } catch (error) {
-      $q.notify({ type: "negative", message: errorMessage(error) || "切换启用状态失败" });
+      $q.notify({ type: 'negative', message: errorMessage(error) || '切换启用状态失败' });
     } finally {
       deps.saving.value = false;
     }
@@ -134,10 +129,10 @@ export function useProviderList(deps: {
 
   function confirmRemoveRow(row: PlatformResource) {
     $q.dialog({
-      title: "确认删除",
+      title: '确认删除',
       message: `确定删除「${row.name}」吗？`,
       cancel: true,
-      persistent: true
+      persistent: true,
     }).onOk(() => {
       void removeRow(row);
     });
@@ -147,9 +142,9 @@ export function useProviderList(deps: {
     try {
       await platformStore.removeResource(deps.resource.value, row.id);
       rows.value = rows.value.filter((item) => item.id !== row.id);
-      $q.notify({ type: "positive", message: "已删除" });
+      $q.notify({ type: 'positive', message: '已删除' });
     } catch (error) {
-      $q.notify({ type: "negative", message: errorMessage(error) || "删除失败" });
+      $q.notify({ type: 'negative', message: errorMessage(error) || '删除失败' });
     }
   }
 

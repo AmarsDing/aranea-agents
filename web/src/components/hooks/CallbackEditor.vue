@@ -39,7 +39,13 @@
       </div>
     </section>
 
-    <q-expansion-item dense-toggle default-opened icon="filter_alt" :label="t('hooksPage.callbackEditor.expansionCondition')" header-class="callback-editor__expansion-head">
+    <q-expansion-item
+      dense-toggle
+      default-opened
+      icon="filter_alt"
+      :label="t('hooksPage.callbackEditor.expansionCondition')"
+      header-class="callback-editor__expansion-head"
+    >
       <div class="callback-editor__panel app-form-field-grid">
         <q-input
           v-model="localRule.condition.agent_id"
@@ -73,7 +79,13 @@
       </div>
     </q-expansion-item>
 
-    <q-expansion-item dense-toggle default-opened icon="bolt" :label="t('hooksPage.callbackEditor.expansionAction')" header-class="callback-editor__expansion-head">
+    <q-expansion-item
+      dense-toggle
+      default-opened
+      icon="bolt"
+      :label="t('hooksPage.callbackEditor.expansionAction')"
+      header-class="callback-editor__expansion-head"
+    >
       <div class="callback-editor__panel q-gutter-md">
         <template v-if="showNotifyFields">
           <q-input
@@ -155,22 +167,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { useI18n } from "vue-i18n";
-import {
-  actionTagClass,
-  actionTypeLabel
-} from "./callbackEditorUi";
-import { useCallbackEditor } from "./useCallbackEditor";
-import type { HookRuleConfig } from "../../features/hooks/types";
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { actionTagClass, actionTypeLabel } from './callbackEditorUi';
+import { useCallbackEditor } from './useCallbackEditor';
+import type { HookRuleConfig } from '../../features/hooks/types';
 
 const { t } = useI18n();
 
 const logLevelOptions = computed(() => [
-  { label: "debug", value: "debug" },
-  { label: "info", value: "info" },
-  { label: "warn", value: "warn" },
-  { label: "error", value: "error" }
+  { label: 'debug', value: 'debug' },
+  { label: 'info', value: 'info' },
+  { label: 'warn', value: 'warn' },
+  { label: 'error', value: 'error' },
 ]);
 
 const props = defineProps<{
@@ -181,8 +190,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:modelValue": [HookRuleConfig];
-  "update:sortOrder": [number];
+  'update:modelValue': [HookRuleConfig];
+  'update:sortOrder': [number];
 }>();
 
 const {
@@ -200,6 +209,6 @@ const {
   showMessageField,
   emitChange,
   emitMeta,
-  onModifyPatchInput
+  onModifyPatchInput,
 } = useCallbackEditor(props, emit);
 </script>

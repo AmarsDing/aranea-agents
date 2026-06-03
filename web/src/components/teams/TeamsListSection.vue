@@ -36,12 +36,12 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, watch } from "vue";
-import draggable from "vuedraggable";
-import TeamCard from "./TeamCard.vue";
-import type { TeamIndustryGroup } from "./teamUtils";
-import type { Agent } from "../../features/agents/types";
-import type { Team } from "../../features/teams/types";
+import { reactive, watch } from 'vue';
+import draggable from 'vuedraggable';
+import TeamCard from './TeamCard.vue';
+import type { TeamIndustryGroup } from './teamUtils';
+import type { Agent } from '../../features/agents/types';
+import type { Team } from '../../features/teams/types';
 
 const props = defineProps<{
   groups: TeamIndustryGroup[];
@@ -51,10 +51,10 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "copy-key": [value: string];
-  "open-runs": [team: Team];
-  "open-observatory": [team: Team];
-  "run-test": [team: Team];
+  'copy-key': [value: string];
+  'open-runs': [team: Team];
+  'open-observatory': [team: Team];
+  'run-test': [team: Team];
   duplicate: [team: Team];
   edit: [team: Team];
   remove: [team: Team];
@@ -75,11 +75,7 @@ watch(
     for (const snap of groupSnapshots) {
       const existing = groupTeamsList[snap.id];
       const incomingIds = snap.teamIds;
-      if (
-        !existing ||
-        existing.length !== incomingIds.length ||
-        existing.some((t, i) => t.id !== incomingIds[i])
-      ) {
+      if (!existing || existing.length !== incomingIds.length || existing.some((t, i) => t.id !== incomingIds[i])) {
         const group = props.groups.find((g) => g.id === snap.id);
         groupTeamsList[snap.id] = group ? group.teams.slice() : [];
       }
@@ -91,7 +87,10 @@ watch(
 function onGroupChange(groupId: string) {
   const list = groupTeamsList[groupId];
   if (list) {
-    emit("reorder", list.map((t) => t.id));
+    emit(
+      'reorder',
+      list.map((t) => t.id),
+    );
   }
 }
 </script>

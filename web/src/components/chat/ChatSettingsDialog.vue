@@ -11,14 +11,7 @@
           dense
           @update:model-value="$emit('update:name', String($event ?? ''))"
         />
-        <q-input
-          :model-value="agentKey"
-          class="app-field-md"
-          :label="t('chat.keyField')"
-          outlined
-          dense
-          readonly
-        />
+        <q-input :model-value="agentKey" class="app-field-md" :label="t('chat.keyField')" outlined dense readonly />
         <q-input
           :model-value="provider"
           class="app-field-sm"
@@ -47,7 +40,7 @@
         />
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
-        <q-btn flat no-caps :label="t('chat.cancel')" :disable="saving" v-close-popup />
+        <q-btn v-close-popup flat no-caps :label="t('chat.cancel')" :disable="saving" />
         <q-btn unelevated no-caps color="primary" :label="t('chat.save')" :loading="saving" @click="$emit('save')" />
       </q-card-actions>
     </q-card>
@@ -55,8 +48,8 @@
 </template>
 
 <script setup lang="ts">
-import { useI18n } from "vue-i18n";
-import type { ChatEntityKind } from "./types";
+import { useI18n } from 'vue-i18n';
+import type { ChatEntityKind } from './types';
 
 defineProps<{
   modelValue: boolean;
@@ -70,10 +63,10 @@ defineProps<{
 }>();
 
 defineEmits<{
-  "update:modelValue": [value: boolean];
-  "update:name": [value: string];
-  "update:provider": [value: string];
-  "update:model": [value: string];
+  'update:modelValue': [value: boolean];
+  'update:name': [value: string];
+  'update:provider': [value: string];
+  'update:model': [value: string];
   save: [];
 }>();
 

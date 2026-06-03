@@ -1,5 +1,5 @@
-import type { Envelope } from "../../realtime/envelope";
-import { resolveEnvelopeTurnId, resolveEnvelopeSource, resolveEnvelopeRevision } from "../../realtime/envelope";
+import type { Envelope } from '../../realtime/envelope';
+import { resolveEnvelopeTurnId, resolveEnvelopeSource, resolveEnvelopeRevision } from '../../realtime/envelope';
 import {
   type ConversationSource,
   type ConversationTurnStatus,
@@ -7,9 +7,9 @@ import {
   type DeliveryTarget,
   runStatusToTurnStatus,
   deliveryStatusFromChannelStatus,
-} from "../../domain/conversation";
+} from '../../domain/conversation';
 
-export type ConversationEventScope = "current-session" | "inbox";
+export type ConversationEventScope = 'current-session' | 'inbox';
 
 export type ConversationEventProjection = {
   key: string;
@@ -30,9 +30,9 @@ export type ConversationEventDispatcherOptions = {
 
 export function projectConversationEnvelope(
   env: Envelope,
-  options: ConversationEventDispatcherOptions = {}
+  options: ConversationEventDispatcherOptions = {},
 ): ConversationEventProjection | null {
-  const sessionId = (env.session_id ?? "").trim();
+  const sessionId = (env.session_id ?? '').trim();
   if (!sessionId) return null;
 
   const source = conversationSourceFromEnvelope(env);
@@ -43,7 +43,7 @@ export function projectConversationEnvelope(
 
   return {
     key: conversationEventKey(env, turnId, revision),
-    scope: sessionId === options.currentSessionId ? "current-session" : "inbox",
+    scope: sessionId === options.currentSessionId ? 'current-session' : 'inbox',
     sessionId,
     turnId,
     source,
@@ -57,36 +57,36 @@ export function projectConversationEnvelope(
 
 export function conversationEventKey(env: Envelope, turnId?: string, revision = 0): string {
   const tid = turnId || resolveEnvelopeTurnId(env);
-  return [env.session_id, tid, env.type, revision || "", env.id].filter(Boolean).join(":");
+  return [env.session_id, tid, env.type, revision || '', env.id].filter(Boolean).join(':');
 }
 
 export function conversationSourceFromEnvelope(env: Envelope): ConversationSource {
   const raw = resolveEnvelopeSource(env).trim().toLowerCase();
   switch (raw) {
-    case "channel":
-      return "channel";
-    case "cron":
-      return "cron";
-    case "a2a":
-      return "a2a";
-    case "durable":
-    case "job":
-    case "background":
-      return "durable";
-    case "ws":
-      return "ws";
+    case 'channel':
+      return 'channel';
+    case 'cron':
+      return 'cron';
+    case 'a2a':
+      return 'a2a';
+    case 'durable':
+    case 'job':
+    case 'background':
+      return 'durable';
+    case 'ws':
+      return 'ws';
     default:
-      return "web";
+      return 'web';
   }
 }
 
 export function turnStatusFromEnvelope(env: Envelope): ConversationTurnStatus | undefined {
-  if (env.type === "runner_completion") return "completed";
-  if (env.type === "error") return "failed";
+  if (env.type === 'runner_completion') return 'completed';
+  if (env.type === 'error') return 'failed';
   const raw =
-    stringValue(metadataValue(env, "status")) ||
-    stringValue(metadataValue(env, "phase")) ||
-    stringValue(metadataValue(env, "run_status"));
+    stringValue(metadataValue(env, 'status')) ||
+    stringValue(metadataValue(env, 'phase')) ||
+    stringValue(metadataValue(env, 'run_status'));
   return raw ? runStatusToTurnStatus(raw) : undefined;
 }
 
@@ -95,29 +95,33 @@ export function deliveryTargetFromEnvelope(env: Envelope): DeliveryTarget | unde
   const status = deliveryStatusFromMetadata(md);
   if (!status) return undefined;
   return {
-    kind: "channel",
-    channelId: stringValue(metadataValue(env, "channel_id")),
-    platform: stringValue(metadataValue(env, "platform")),
-    recipientId: stringValue(metadataValue(env, "recipient_id")) || stringValue(metadataValue(env, "peer_id")),
+    kind: 'channel',
+    channelId: stringValue(metadataValue(env, 'channel_id')),
+    platform: stringValue(metadataValue(env, 'platform')),
+    recipientId: stringValue(metadataValue(env, 'recipient_id')) || stringValue(metadataValue(env, 'peer_id')),
     status,
-    error: stringValue(metadataValue(env, "error")) || stringValue(metadataValue(env, "error_message")),
+    error: stringValue(metadataValue(env, 'error')) || stringValue(metadataValue(env, 'error_message')),
     updatedAt: env.timestamp,
   };
 }
 
-function shouldHydrateAfterEnvelope(env: Envelope, status: ConversationTurnStatus | undefined, revision: number): boolean {
-  if (env.type === "runner_completion") return true;
-  if (status === "completed" || status === "failed" || status === "cancelled") return true;
-  return revision > 0 && env.type === "run_status";
+function shouldHydrateAfterEnvelope(
+  env: Envelope,
+  status: ConversationTurnStatus | undefined,
+  revision: number,
+): boolean {
+  if (env.type === 'runner_completion') return true;
+  if (status === 'completed' || status === 'failed' || status === 'cancelled') return true;
+  return revision > 0 && env.type === 'run_status';
 }
 
 function isStreamEnvelope(env: Envelope): boolean {
   return (
-    env.type === "text_delta" ||
-    env.type === "text_done" ||
-    env.type === "tool_call" ||
-    env.type === "tool_result" ||
-    env.type === "member_delta"
+    env.type === 'text_delta' ||
+    env.type === 'text_done' ||
+    env.type === 'tool_call' ||
+    env.type === 'tool_result' ||
+    env.type === 'member_delta'
   );
 }
 
@@ -134,5 +138,5 @@ function metadataValue(env: Envelope, key: string): unknown {
 }
 
 function stringValue(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
+  return typeof value === 'string' ? value.trim() : '';
 }

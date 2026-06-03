@@ -109,24 +109,29 @@
               <q-item>
                 <q-item-section>
                   <q-item-label caption>成员 / 工具</q-item-label>
-                  <q-item-label>{{ runSummary.member_count }} 成员 · {{ runSummary.tool_call_count }} 工具调用</q-item-label>
+                  <q-item-label
+                    >{{ runSummary.member_count }} 成员 · {{ runSummary.tool_call_count }} 工具调用</q-item-label
+                  >
                 </q-item-section>
               </q-item>
             </q-list>
             <div v-else class="text-caption text-grey-7 q-pa-sm">暂无 Run Summary</div>
           </q-tab-panel>
           <q-tab-panel name="hitl" class="q-pa-none">
-            <div v-if="!waitingReviewNodes.length" class="text-caption text-grey-7 q-pa-sm">
-              当前无等待审核节点。
-            </div>
+            <div v-if="!waitingReviewNodes.length" class="text-caption text-grey-7 q-pa-sm">当前无等待审核节点。</div>
             <q-list v-else dense bordered separator class="rounded-borders">
-              <q-item v-for="node in waitingReviewNodes" :key="node.node_id" clickable @click="openHitlForNode(node.node_id)">
+              <q-item
+                v-for="node in waitingReviewNodes"
+                :key="node.node_id"
+                clickable
+                @click="openHitlForNode(node.node_id)"
+              >
                 <q-item-section avatar>
                   <q-icon name="hourglass_empty" color="warning" />
                 </q-item-section>
                 <q-item-section>
                   <q-item-label>{{ node.agent_name || node.node_id }}</q-item-label>
-                  <q-item-label caption>{{ node.error_message || node.output_preview || "等待审核" }}</q-item-label>
+                  <q-item-label caption>{{ node.error_message || node.output_preview || '等待审核' }}</q-item-label>
                 </q-item-section>
                 <q-item-section side>
                   <q-btn flat dense color="primary" label="审核" @click.stop="openHitlForNode(node.node_id)" />
@@ -147,9 +152,7 @@
               @select-task="onSelectTask"
               @admin-action="onKanbanAdminAction"
             />
-            <div v-else class="text-caption text-grey-7 q-pa-sm">
-              当前 Team Run 未绑定 Graph 执行，任务看板不可用。
-            </div>
+            <div v-else class="text-caption text-grey-7 q-pa-sm">当前 Team Run 未绑定 Graph 执行，任务看板不可用。</div>
           </q-tab-panel>
         </q-tab-panels>
       </section>
@@ -168,14 +171,14 @@
 </template>
 
 <script setup lang="ts">
-import { useRouter } from "vue-router";
-import GraphEditorCanvas from "../components/graph/GraphEditorCanvas.vue";
-import GraphTaskKanban from "../components/graph/GraphTaskKanban.vue";
-import OrchestrationActivityTimeline from "../components/orchestration/OrchestrationActivityTimeline.vue";
-import OrchestrationFailureBanner from "../components/orchestration/OrchestrationFailureBanner.vue";
-import OrchestrationHitlReviewDialog from "../components/orchestration/OrchestrationHitlReviewDialog.vue";
-import OrchestrationKanban from "../components/orchestration/OrchestrationKanban.vue";
-import { useTeamRunObservatoryPage } from "../features/teams/useTeamRunObservatoryPage";
+import { useRouter } from 'vue-router';
+import GraphEditorCanvas from '../components/graph/GraphEditorCanvas.vue';
+import GraphTaskKanban from '../components/graph/GraphTaskKanban.vue';
+import OrchestrationActivityTimeline from '../components/orchestration/OrchestrationActivityTimeline.vue';
+import OrchestrationFailureBanner from '../components/orchestration/OrchestrationFailureBanner.vue';
+import OrchestrationHitlReviewDialog from '../components/orchestration/OrchestrationHitlReviewDialog.vue';
+import OrchestrationKanban from '../components/orchestration/OrchestrationKanban.vue';
+import { useTeamRunObservatoryPage } from '../features/teams/useTeamRunObservatoryPage';
 
 const {
   isDark,
@@ -225,7 +228,7 @@ const router = useRouter();
 
 function openTrace() {
   if (!observatory.value?.trace_id) return;
-  router.push({ name: "monitor-logs", query: { trace_id: observatory.value.trace_id } });
+  router.push({ name: 'monitor-logs', query: { trace_id: observatory.value.trace_id } });
 }
 
 function onKanbanSelectNode(nodeId: string) {

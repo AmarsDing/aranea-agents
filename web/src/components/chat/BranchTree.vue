@@ -12,8 +12,8 @@
 </template>
 
 <script setup lang="ts">
-import type { BranchNode } from "../../features/chat/eventFilter";
-import BranchTreeNode from "./BranchTreeNode.vue";
+import type { BranchNode } from '../../features/chat/eventFilter';
+import BranchTreeNode from './BranchTreeNode.vue';
 
 defineProps<{
   nodes: BranchNode[];

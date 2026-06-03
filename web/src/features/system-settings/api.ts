@@ -1,8 +1,8 @@
-import { createSystemSettingService } from "../../services/index";
-import type { SystemSettings } from "../../services/kratos/system_setting/v1/index";
-import type { KnowledgeEmbedPatch } from "./knowledge-embed";
-import type { EvalLLMForm } from "./eval-llm";
-import type { WebResearchPatch } from "./web-research";
+import { createSystemSettingService } from '../../services/index';
+import type { SystemSettings } from '../../services/kratos/system_setting/v1/index';
+import type { KnowledgeEmbedPatch } from './knowledge-embed';
+import type { EvalLLMForm } from './eval-llm';
+import type { WebResearchPatch } from './web-research';
 
 const api = createSystemSettingService();
 
@@ -41,20 +41,20 @@ export type TestWebResearchResult = {
 
 export async function testWebResearch(input: TestWebResearchInput): Promise<TestWebResearchResult> {
   const res = await api.TestWebResearch({
-    provider: input.provider ?? "tavily",
+    provider: input.provider ?? 'tavily',
     apiKey: input.apiKey,
     maxResults: input.maxResults ?? 8,
     fetchTop: input.fetchTop ?? 5,
-    searchDepth: input.searchDepth ?? "basic",
+    searchDepth: input.searchDepth ?? 'basic',
     timeoutSec: input.timeoutSec ?? 15,
-    httpProxy: input.httpProxy ?? ""
+    httpProxy: input.httpProxy ?? '',
   });
   return {
     ok: res.ok,
     message: res.message,
     provider: res.provider,
     resultCount: res.resultCount,
-    latencyMs: res.latencyMs
+    latencyMs: res.latencyMs,
   };
 }
 
@@ -63,11 +63,11 @@ export async function updateSystemSettings(input: UpdateSystemSettingsInput): Pr
     rootDirectory,
     workDirectory,
     globalMonthlyMicroUsd = 0,
-    a2aPublicBaseUrl = "",
+    a2aPublicBaseUrl = '',
     mcpAllowAdhocHttp = false,
     knowledgeEmbed,
     evalLLM,
-    webResearch
+    webResearch,
   } = input;
   return api.UpdateSystemSettings({
     rootDirectory,
@@ -80,16 +80,16 @@ export async function updateSystemSettings(input: UpdateSystemSettingsInput): Pr
     knowledgeEmbedModel: knowledgeEmbed?.model,
     knowledgeEmbedDim: knowledgeEmbed?.dim,
     knowledgeEmbedApiKey: knowledgeEmbed?.apiKey,
-    evalSimProvider: evalLLM?.simProvider?.trim() ?? "",
-    evalSimModel: evalLLM?.simModel?.trim() ?? "",
-    evalJudgeProvider: evalLLM?.judgeProvider?.trim() ?? "",
-    evalJudgeModel: evalLLM?.judgeModel?.trim() ?? "",
-    webResearchProvider: webResearch?.provider ?? "tavily",
+    evalSimProvider: evalLLM?.simProvider?.trim() ?? '',
+    evalSimModel: evalLLM?.simModel?.trim() ?? '',
+    evalJudgeProvider: evalLLM?.judgeProvider?.trim() ?? '',
+    evalJudgeModel: evalLLM?.judgeModel?.trim() ?? '',
+    webResearchProvider: webResearch?.provider ?? 'tavily',
     webResearchApiKey: webResearch?.apiKey,
     webResearchMaxResults: webResearch?.maxResults ?? 8,
     webResearchFetchTop: webResearch?.fetchTop ?? 5,
-    webResearchSearchDepth: webResearch?.searchDepth ?? "basic",
+    webResearchSearchDepth: webResearch?.searchDepth ?? 'basic',
     webResearchTimeoutSec: webResearch?.timeoutSec ?? 15,
-    webResearchHttpProxy: webResearch?.httpProxy ?? ""
+    webResearchHttpProxy: webResearch?.httpProxy ?? '',
   });
 }

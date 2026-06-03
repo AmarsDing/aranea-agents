@@ -34,14 +34,12 @@
         </q-item-section>
       </q-item>
     </q-list>
-    <q-banner v-else-if="!loading" rounded class="settings-placeholder-banner">
-      暂无学习模式数据。
-    </q-banner>
+    <q-banner v-else-if="!loading" rounded class="settings-placeholder-banner"> 暂无学习模式数据。 </q-banner>
   </section>
 </template>
 
 <script setup lang="ts">
-import type { LearningPattern } from "../../features/agents/learning.types";
+import type { LearningPattern } from '../../features/agents/learning.types';
 
 defineProps<{
   patterns: LearningPattern[];
@@ -50,63 +48,63 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:status-filter": [value: string];
+  'update:status-filter': [value: string];
 }>();
 
 const statusOptions = [
-  { label: "全部", value: "" },
-  { label: "活跃", value: "active" },
-  { label: "已归档", value: "archived" }
+  { label: '全部', value: '' },
+  { label: '活跃', value: 'active' },
+  { label: '已归档', value: 'archived' },
 ];
 
 function patternKindColor(kind: string): string {
   switch (kind) {
-    case "tool_usage":
-      return "blue";
-    case "error":
-      return "red";
-    case "behavior":
-      return "teal";
-    case "preference":
-      return "purple";
+    case 'tool_usage':
+      return 'blue';
+    case 'error':
+      return 'red';
+    case 'behavior':
+      return 'teal';
+    case 'preference':
+      return 'purple';
     default:
-      return "grey";
+      return 'grey';
   }
 }
 
 function patternStatusColor(status: string): string {
   switch (status) {
-    case "active":
-      return "positive";
-    case "archived":
-      return "grey";
-    case "superseded":
-      return "warning";
+    case 'active':
+      return 'positive';
+    case 'archived':
+      return 'grey';
+    case 'superseded':
+      return 'warning';
     default:
-      return "grey";
+      return 'grey';
   }
 }
 
 function patternStatusLabel(status: string): string {
   switch (status) {
-    case "active":
-      return "活跃";
-    case "archived":
-      return "已归档";
-    case "superseded":
-      return "已替代";
+    case 'active':
+      return '活跃';
+    case 'archived':
+      return '已归档';
+    case 'superseded':
+      return '已替代';
     default:
       return status;
   }
 }
 
 function formatConfidence(v: number): string {
-  if (v === 0) return "—";
-  return (v * 100).toFixed(1) + "%";
+  if (v === 0) return '—';
+  return (v * 100).toFixed(1) + '%';
 }
 
 function formatDate(iso: string): string {
-  if (!iso) return "";
+  if (!iso) return '';
   try {
     return new Date(iso).toLocaleDateString();
   } catch {

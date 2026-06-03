@@ -1,13 +1,13 @@
-import dagre from "dagre";
-import type { GraphDefinition, GraphLayoutMetadata } from "../types";
-import { GRAPH_LAYOUT_METADATA_KEY, NODE_DEFAULT_WIDTH, NODE_DEFAULT_HEIGHT } from "../types";
+import dagre from 'dagre';
+import type { GraphDefinition, GraphLayoutMetadata } from '../types';
+import { GRAPH_LAYOUT_METADATA_KEY, NODE_DEFAULT_WIDTH, NODE_DEFAULT_HEIGHT } from '../types';
 
 export function readGraphLayout(graphDef: GraphDefinition): GraphLayoutMetadata {
   const raw = graphDef.metadata?.[GRAPH_LAYOUT_METADATA_KEY];
-  if (!raw || typeof raw !== "object") return {};
+  if (!raw || typeof raw !== 'object') return {};
   const layout: GraphLayoutMetadata = {};
   for (const [nodeId, pos] of Object.entries(raw as Record<string, unknown>)) {
-    if (!pos || typeof pos !== "object") continue;
+    if (!pos || typeof pos !== 'object') continue;
     const point = pos as { x?: unknown; y?: unknown };
     const x = Number(point.x);
     const y = Number(point.y);
@@ -56,7 +56,7 @@ export function applyAutoLayout(graphDef: GraphDefinition): NodeMoveInfo[] {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({
-    rankdir: "LR",
+    rankdir: 'LR',
     nodesep: 60,
     ranksep: 120,
     marginx: 40,

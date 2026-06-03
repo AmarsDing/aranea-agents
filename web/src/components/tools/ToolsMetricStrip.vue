@@ -11,7 +11,7 @@
 </template>
 
 <script setup lang="ts">
-import type { ToolMetricCard } from "./toolUi";
+import type { ToolMetricCard } from './toolUi';
 
 defineProps<{
   cards: ToolMetricCard[];

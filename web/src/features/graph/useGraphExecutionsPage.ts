@@ -1,9 +1,9 @@
-import { ref, computed, onMounted, watch } from "vue";
-import { useQuasar } from "quasar";
-import { useGraphStore } from "../../stores/graph";
-import { storeToRefs } from "pinia";
-import { useRoute, useRouter } from "vue-router";
-import { timeRangeStart } from "./graphExecutionsUi";
+import { ref, computed, onMounted, watch } from 'vue';
+import { useQuasar } from 'quasar';
+import { useGraphStore } from '../../stores/graph';
+import { storeToRefs } from 'pinia';
+import { useRoute, useRouter } from 'vue-router';
+import { timeRangeStart } from './graphExecutionsUi';
 
 export function useGraphExecutionsPage() {
   const $q = useQuasar();
@@ -15,9 +15,9 @@ export function useGraphExecutionsPage() {
 
   const isDark = computed(() => $q.dark.isActive);
   const graphId = ref(route.params.id as string);
-  const graphName = ref("");
-  const statusFilter = ref("");
-  const timeRangeFilter = ref("");
+  const graphName = ref('');
+  const statusFilter = ref('');
+  const timeRangeFilter = ref('');
 
   const serverFilters = computed(() => ({
     status: statusFilter.value || undefined,
@@ -53,12 +53,15 @@ export function useGraphExecutionsPage() {
     await reload();
   });
 
-  watch(() => route.params.id, (newId) => {
-    if (newId && typeof newId === "string") {
-      graphId.value = newId;
-      reload();
-    }
-  });
+  watch(
+    () => route.params.id,
+    (newId) => {
+      if (newId && typeof newId === 'string') {
+        graphId.value = newId;
+        reload();
+      }
+    },
+  );
 
   watch([statusFilter, timeRangeFilter], () => {
     reload();
@@ -71,11 +74,11 @@ export function useGraphExecutionsPage() {
   }
 
   function goToRun(executionId: string) {
-    router.push({ name: "graph-run", params: { id: graphId.value, execId: executionId } });
+    router.push({ name: 'graph-run', params: { id: graphId.value, execId: executionId } });
   }
 
   function goBack() {
-    router.push({ name: "graphs" });
+    router.push({ name: 'graphs' });
   }
 
   return {

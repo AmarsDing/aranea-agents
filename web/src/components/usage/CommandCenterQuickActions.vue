@@ -15,10 +15,34 @@
 
 <script setup lang="ts">
 const actions = [
-  { to: "/chat", icon: "chat", iconClass: "command-center-quick-action__icon--chat", title: "新建对话", desc: "与 AI 智能体对话" },
-  { to: "/agents", icon: "smart_toy", iconClass: "command-center-quick-action__icon--agent", title: "创建 Agent", desc: "配置新的智能体" },
-  { to: "/cron", icon: "schedule", iconClass: "command-center-quick-action__icon--cron", title: "定时任务", desc: "管理自动化任务" },
-  { to: "/settings", icon: "settings", iconClass: "command-center-quick-action__icon--settings", title: "系统设置", desc: "系统参数配置" }
+  {
+    to: '/chat',
+    icon: 'chat',
+    iconClass: 'command-center-quick-action__icon--chat',
+    title: '新建对话',
+    desc: '与 AI 智能体对话',
+  },
+  {
+    to: '/agents',
+    icon: 'smart_toy',
+    iconClass: 'command-center-quick-action__icon--agent',
+    title: '创建 Agent',
+    desc: '配置新的智能体',
+  },
+  {
+    to: '/cron',
+    icon: 'schedule',
+    iconClass: 'command-center-quick-action__icon--cron',
+    title: '定时任务',
+    desc: '管理自动化任务',
+  },
+  {
+    to: '/settings',
+    icon: 'settings',
+    iconClass: 'command-center-quick-action__icon--settings',
+    title: '系统设置',
+    desc: '系统参数配置',
+  },
 ];
 </script>
 

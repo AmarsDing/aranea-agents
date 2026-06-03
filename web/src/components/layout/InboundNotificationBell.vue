@@ -4,7 +4,7 @@
     <q-menu anchor="bottom right" self="top right" :offset="[0, 8]" class="inbound-notification-menu">
       <q-list dense>
         <q-item>
-          <q-item-section class="text-weight-medium">{{ t("chat.inboundNotify.title", "渠道通知") }}</q-item-section>
+          <q-item-section class="text-weight-medium">{{ t('chat.inboundNotify.title', '渠道通知') }}</q-item-section>
           <q-item-section side>
             <q-btn
               v-if="items.length"
@@ -18,13 +18,15 @@
         </q-item>
         <q-separator />
         <q-item v-if="!items.length">
-          <q-item-section class="text-caption text-grey">{{ t("chat.inboundNotify.empty", "暂无通知") }}</q-item-section>
+          <q-item-section class="text-caption text-grey">{{
+            t('chat.inboundNotify.empty', '暂无通知')
+          }}</q-item-section>
         </q-item>
         <q-item
           v-for="item in items"
           :key="item.id"
-          clickable
           v-close-popup
+          clickable
           :class="{ 'bg-grey-2': !item.read && !$q.dark.isActive, 'bg-grey-9': !item.read && $q.dark.isActive }"
           @click="onOpen(item)"
         >
@@ -42,9 +44,9 @@
 </template>
 
 <script setup lang="ts">
-import { useI18n } from "vue-i18n";
-import { useQuasar } from "quasar";
-import type { InboundNotification } from "../../stores/inboundNotifications";
+import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
+import type { InboundNotification } from '../../stores/inboundNotifications';
 
 const props = defineProps<{
   items: InboundNotification[];
@@ -62,12 +64,12 @@ const $q = useQuasar();
 
 function formatTs(ts: number): string {
   const d = new Date(ts);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 function onOpen(item: InboundNotification) {
-  emit("markRead", item.id);
-  emit("openSession", item.sessionId, item.agentId);
+  emit('markRead', item.id);
+  emit('openSession', item.sessionId, item.agentId);
 }
 </script>
 

@@ -46,11 +46,7 @@
       <SessionTimelineStats :stats="stats" class="q-mb-lg" />
 
       <div class="session-timeline__rail">
-        <SessionTimelineEntry
-          v-for="item in timeline.items"
-          :key="`${item.kind}:${item.id}`"
-          :item="item"
-        />
+        <SessionTimelineEntry v-for="item in timeline.items" :key="`${item.kind}:${item.id}`" :item="item" />
       </div>
 
       <div v-if="total > pageSize" class="row justify-center q-mt-md q-gutter-sm">
@@ -63,11 +59,11 @@
 </template>
 
 <script setup lang="ts">
-import type { SessionTimeline } from "../../features/session/types";
-import type { TimelineStat } from "./sessionTimelineUi";
-import SessionTimelineEntry from "./SessionTimelineEntry.vue";
-import SessionTimelineStats from "./SessionTimelineStats.vue";
-import { timelineKindFilterOptions, timelineSortOptions } from "./sessionTimelineUi";
+import type { SessionTimeline } from '../../features/session/types';
+import type { TimelineStat } from './sessionTimelineUi';
+import SessionTimelineEntry from './SessionTimelineEntry.vue';
+import SessionTimelineStats from './SessionTimelineStats.vue';
+import { timelineKindFilterOptions, timelineSortOptions } from './sessionTimelineUi';
 
 defineProps<{
   sessionId: string;
@@ -87,9 +83,9 @@ defineProps<{
 
 const emit = defineEmits<{
   refresh: [];
-  "update:kindFilter": [value: string | null];
-  "update:sortOrder": [value: string];
-  "prev-page": [];
-  "next-page": [];
+  'update:kindFilter': [value: string | null];
+  'update:sortOrder': [value: string];
+  'prev-page': [];
+  'next-page': [];
 }>();
 </script>

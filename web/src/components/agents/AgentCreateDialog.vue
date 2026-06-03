@@ -1,9 +1,19 @@
 <template>
   <q-dialog v-model="dialogModel" persistent>
-    <q-card :class="['create-agent-card app-dialog-card app-dialog-card--2xl create-agent-card--tall', { 'create-agent-card--dark': isDark }]">
+    <q-card
+      :class="[
+        'create-agent-card app-dialog-card app-dialog-card--2xl create-agent-card--tall',
+        { 'create-agent-card--dark': isDark },
+      ]"
+    >
       <q-toolbar class="create-agent-card__toolbar">
         <div class="avatar-picker-hit cursor-pointer" @click="avatarPickerOpen = true">
-          <agent-avatar-q size="42px" avatar-class="avatar-picker--toolbar" :icon="form.icon" :alt="form.display_name || 'Agent avatar'" />
+          <agent-avatar-q
+            size="42px"
+            avatar-class="avatar-picker--toolbar"
+            :icon="form.icon"
+            :alt="form.display_name || 'Agent avatar'"
+          />
           <q-tooltip>点击更换头像</q-tooltip>
         </div>
         <div class="q-ml-sm">
@@ -11,7 +21,7 @@
           <div class="text-caption create-agent-card__subtitle">最小字段创建，模型检查通过后才能提交。</div>
         </div>
         <q-space />
-        <q-btn flat round dense icon="close" v-close-popup />
+        <q-btn v-close-popup flat round dense icon="close" />
       </q-toolbar>
       <q-separator />
 
@@ -73,36 +83,54 @@
               :error-message="remoteUrlError"
             />
             <q-toggle v-model="a2aProxy.enable_streaming" color="primary" label="流式响应" />
-            <q-input v-model.number="a2aProxy.timeout_seconds" class="agent-dialog-control" dense outlined type="number" min="5" label="超时（秒）" />
+            <q-input
+              v-model.number="a2aProxy.timeout_seconds"
+              class="agent-dialog-control"
+              dense
+              outlined
+              type="number"
+              min="5"
+              label="超时（秒）"
+            />
           </template>
           <template v-else>
-          <q-select
-            v-model="form.provider"
-            class="agent-dialog-control"
-            dense
-            outlined
-            emit-value
-            map-options
-            label="Provider *"
-            :options="providerOptions"
-            :error="Boolean(providerModelError)"
-            :error-message="providerModelError"
-          />
-          <q-select
-            v-model="form.model"
-            class="agent-dialog-control"
-            dense
-            outlined
-            emit-value
-            map-options
-            label="模型 *"
-            :options="modelOptions"
-            :error="Boolean(providerModelError)"
-          />
-          <div class="create-agent-inline-actions">
-            <q-btn class="model-check-btn" outline rounded no-caps color="primary" label="检查" :disable="!form.provider || !form.model" :loading="checkingModel" @click="$emit('check-model')" />
-            <q-toggle v-model="selfEvolveModel" color="primary" label="自我进化" dense />
-          </div>
+            <q-select
+              v-model="form.provider"
+              class="agent-dialog-control"
+              dense
+              outlined
+              emit-value
+              map-options
+              label="Provider *"
+              :options="providerOptions"
+              :error="Boolean(providerModelError)"
+              :error-message="providerModelError"
+            />
+            <q-select
+              v-model="form.model"
+              class="agent-dialog-control"
+              dense
+              outlined
+              emit-value
+              map-options
+              label="模型 *"
+              :options="modelOptions"
+              :error="Boolean(providerModelError)"
+            />
+            <div class="create-agent-inline-actions">
+              <q-btn
+                class="model-check-btn"
+                outline
+                rounded
+                no-caps
+                color="primary"
+                label="检查"
+                :disable="!form.provider || !form.model"
+                :loading="checkingModel"
+                @click="$emit('check-model')"
+              />
+              <q-toggle v-model="selfEvolveModel" color="primary" label="自我进化" dense />
+            </div>
           </template>
         </div>
 
@@ -136,8 +164,16 @@
       </q-card-section>
 
       <q-card-actions align="right" class="create-agent-card__actions app-actions-bar">
-        <q-btn flat rounded label="取消" v-close-popup />
-        <q-btn color="primary" rounded unelevated label="创建" :disable="!canCreate" :loading="creating" @click="$emit('create')" />
+        <q-btn v-close-popup flat rounded label="取消" />
+        <q-btn
+          color="primary"
+          rounded
+          unelevated
+          label="创建"
+          :disable="!canCreate"
+          :loading="creating"
+          @click="$emit('create')"
+        />
       </q-card-actions>
     </q-card>
     <agent-avatar-picker v-model="form.icon" v-model:open="avatarPickerOpen" />
@@ -145,13 +181,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { useQuasar } from "quasar";
-import AgentAvatarPicker from "../avatar/AgentAvatarPicker.vue";
-import AgentAvatarQ from "../avatar/AgentAvatarQ.vue";
-import TaxonomyPicker from "./TaxonomyPicker.vue";
-import type { AgentKind, AgentTemplatePreset, A2AProxyConfig } from "../../features/agents/types";
-import type { PlatformResourceTreeNode } from "../../features/platform/types";
+import { computed, ref } from 'vue';
+import { useQuasar } from 'quasar';
+import AgentAvatarPicker from '../avatar/AgentAvatarPicker.vue';
+import AgentAvatarQ from '../avatar/AgentAvatarQ.vue';
+import TaxonomyPicker from './TaxonomyPicker.vue';
+import type { AgentKind, AgentTemplatePreset, A2AProxyConfig } from '../../features/agents/types';
+import type { PlatformResourceTreeNode } from '../../features/platform/types';
 
 type CreateForm = {
   agent_key: string;
@@ -191,12 +227,12 @@ const props = defineProps<{
 const templates = computed<AgentTemplatePreset[]>(() => props.templates ?? []);
 
 const emit = defineEmits<{
-  "update:modelValue": [value: boolean];
-  "update:selfEvolve": [value: boolean];
-  "update:agentKind": [value: AgentKind];
-  "update:a2aProxy": [value: A2AProxyConfig];
-  "apply-template": [template: AgentTemplatePreset];
-  "check-model": [];
+  'update:modelValue': [value: boolean];
+  'update:selfEvolve': [value: boolean];
+  'update:agentKind': [value: AgentKind];
+  'update:a2aProxy': [value: A2AProxyConfig];
+  'apply-template': [template: AgentTemplatePreset];
+  'check-model': [];
   create: [];
 }>();
 
@@ -204,27 +240,27 @@ const $q = useQuasar();
 const isDark = computed(() => $q.dark.isActive);
 const dialogModel = computed({
   get: () => props.modelValue,
-  set: (value: boolean) => emit("update:modelValue", value)
+  set: (value: boolean) => emit('update:modelValue', value),
 });
 
 const selfEvolveModel = computed({
   get: () => props.selfEvolve,
-  set: (value: boolean) => emit("update:selfEvolve", value)
+  set: (value: boolean) => emit('update:selfEvolve', value),
 });
 
 function onCategoryPick(value: string | null) {
-  props.form.taxonomy_position_id = value ?? ""
+  props.form.taxonomy_position_id = value ?? '';
 }
 
 const avatarPickerOpen = ref(false);
 
 const agentKindOptions = [
-  { label: "LLM 智能体", value: "llm" },
-  { label: "A2A 远程代理", value: "a2a_proxy" }
+  { label: 'LLM 智能体', value: 'llm' },
+  { label: 'A2A 远程代理', value: 'a2a_proxy' },
 ];
 
 const agentKindModel = computed({
-  get: () => props.agentKind || "llm",
-  set: (value: AgentKind) => emit("update:agentKind", value)
+  get: () => props.agentKind || 'llm',
+  set: (value: AgentKind) => emit('update:agentKind', value),
 });
 </script>

@@ -13,8 +13,8 @@
 </template>
 
 <script setup lang="ts">
-import type { Industry } from '../../features/industries/types'
+import type { Industry } from '../../features/industries/types';
 
-defineProps<{ industry: Industry }>()
-defineEmits<{ select: [industry: Industry] }>()
+defineProps<{ industry: Industry }>();
+defineEmits<{ select: [industry: Industry] }>();
 </script>

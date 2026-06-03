@@ -6,7 +6,7 @@
           <div class="app-glass-dialog__title">{{ t('overviewPage.tokenTrendTitle') }}</div>
           <div class="app-glass-dialog__subtitle">{{ t('overviewPage.tokenTrendSubtitle') }}</div>
         </div>
-        <q-btn flat dense round icon="close" v-close-popup />
+        <q-btn v-close-popup flat dense round icon="close" />
       </q-card-section>
       <q-separator />
       <div class="app-glass-dialog__scroll">
@@ -19,10 +19,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { useI18n } from "vue-i18n";
-import type { ModelUsageTrendPoint } from "../../features/usage/types";
-import UsageTrendChart from "./UsageTrendChart.vue";
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import type { ModelUsageTrendPoint } from '../../features/usage/types';
+import UsageTrendChart from './UsageTrendChart.vue';
 
 const { t } = useI18n();
 
@@ -37,6 +37,6 @@ const emit = defineEmits<{
 
 const dialogOpen = computed({
   get: () => props.open,
-  set: (v: boolean) => emit('update:open', v)
+  set: (v: boolean) => emit('update:open', v),
 });
 </script>

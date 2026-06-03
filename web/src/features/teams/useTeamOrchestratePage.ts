@@ -1,17 +1,17 @@
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
-import { useQuasar } from "quasar";
-import { useRoute, useRouter } from "vue-router";
-import { compiledGraphToGraphDef } from "../orchestration/compileApi";
-import type { CompileTeamGraphResult } from "../orchestration/compileApi";
-import type { GraphDefinition } from "../graph/types";
-import type { Team, TeamDefinition, TeamRun } from "./types";
-import { findActiveTeamRun } from "./api";
-import { parseDefinition, definitionToJSON, withGraph } from "../../components/teams/teamUtils";
-import { useTeamsStore } from "../../stores/teams";
-import { useOrchestrationStore } from "../../stores/orchestration";
-import { useOrchestrationStream } from "../orchestration/useOrchestrationStream";
-import { buildExecNodeStates } from "../orchestration/teamGraphAdapter";
-import type { AgentNodeState, TeamRunObservatory } from "../orchestration/types";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { useQuasar } from 'quasar';
+import { useRoute, useRouter } from 'vue-router';
+import { compiledGraphToGraphDef } from '../orchestration/compileApi';
+import type { CompileTeamGraphResult } from '../orchestration/compileApi';
+import type { GraphDefinition } from '../graph/types';
+import type { Team, TeamDefinition, TeamRun } from './types';
+import { findActiveTeamRun } from './api';
+import { parseDefinition, definitionToJSON, withGraph } from '../../components/teams/teamUtils';
+import { useTeamsStore } from '../../stores/teams';
+import { useOrchestrationStore } from '../../stores/orchestration';
+import { useOrchestrationStream } from '../orchestration/useOrchestrationStream';
+import { buildExecNodeStates } from '../orchestration/teamGraphAdapter';
+import type { AgentNodeState, TeamRunObservatory } from '../orchestration/types';
 
 export function useTeamOrchestratePage() {
   const $q = useQuasar();
@@ -21,15 +21,15 @@ export function useTeamOrchestratePage() {
   const orchestrationStore = useOrchestrationStore();
 
   const isDark = computed(() => $q.dark.isActive);
-  const teamId = computed(() => String(route.params.teamId ?? ""));
+  const teamId = computed(() => String(route.params.teamId ?? ''));
 
   const loading = ref(true);
   const saving = ref(false);
   const dirty = ref(false);
-  const error = ref("");
+  const error = ref('');
   const teamRow = ref<Team | null>(null);
   const compiled = ref<CompileTeamGraphResult | null>(null);
-  const linkedGraphId = ref("");
+  const linkedGraphId = ref('');
   const definition = ref<TeamDefinition | null>(null);
   const readOnly = ref(false);
 
@@ -39,24 +39,24 @@ export function useTeamOrchestratePage() {
   const stream = ref<ReturnType<typeof useOrchestrationStream> | null>(null);
 
   const graphDef = reactive<GraphDefinition>({
-    id: "",
-    name: "",
-    description: "",
+    id: '',
+    name: '',
+    description: '',
     stateFields: [],
     nodes: [],
     edges: [],
     conditionalEdges: [],
     subgraphs: [],
-    entryPoint: "",
-    finishPoint: "",
+    entryPoint: '',
+    finishPoint: '',
     enableCheckpoint: false,
-    executionEngine: "bsp",
+    executionEngine: 'bsp',
     interruptBefore: [],
     interruptAfter: [],
     metadata: {},
     version: 0,
-    createdAt: "",
-    updatedAt: ""
+    createdAt: '',
+    updatedAt: '',
   });
 
   const liveConnected = computed(() => stream.value?.connected ?? false);
@@ -75,12 +75,12 @@ export function useTeamOrchestratePage() {
   const idleExecNodeStates = ref(new Map<string, { status: string; fineStatus?: string }>());
 
   watch(
-    () => graphDef.nodes.map((n) => `${n.id}:${n.type}`).join("\0"),
+    () => graphDef.nodes.map((n) => `${n.id}:${n.type}`).join('\0'),
     () => {
       const map = new Map<string, { status: string; fineStatus?: string }>();
       for (const node of graphDef.nodes) {
-        if (node.type === "agent") {
-          map.set(node.id, { status: "waiting", fineStatus: "idle" });
+        if (node.type === 'agent') {
+          map.set(node.id, { status: 'waiting', fineStatus: 'idle' });
         }
       }
       idleExecNodeStates.value = map;
@@ -116,7 +116,7 @@ export function useTeamOrchestratePage() {
 
   function applyCompiled(result: CompileTeamGraphResult) {
     compiled.value = result;
-    Object.assign(graphDef, compiledGraphToGraphDef(result, teamRow.value?.display_name || "team-orchestration"));
+    Object.assign(graphDef, compiledGraphToGraphDef(result, teamRow.value?.display_name || 'team-orchestration'));
   }
 
   function disconnectLiveRun() {
@@ -142,14 +142,14 @@ export function useTeamOrchestratePage() {
       stream.value = s;
       s.seed(obs.nodes);
     } catch (e) {
-      const message = e instanceof Error ? e.message : "连接运行观测流失败";
-      $q.notify({ type: "warning", message });
+      const message = e instanceof Error ? e.message : '连接运行观测流失败';
+      $q.notify({ type: 'warning', message });
     }
   }
 
   async function reload() {
     loading.value = true;
-    error.value = "";
+    error.value = '';
     try {
       const team = await teamsStore.fetchTeam(teamId.value);
       teamRow.value = team;
@@ -172,7 +172,7 @@ export function useTeamOrchestratePage() {
   }
 
   function readLinkedGraphId(def: TeamDefinition & { linked_graph_id?: string }) {
-    return String((def as { linked_graph_id?: string }).linked_graph_id ?? "");
+    return String((def as { linked_graph_id?: string }).linked_graph_id ?? '');
   }
 
   function graphToDefinitionGraph() {
@@ -188,7 +188,7 @@ export function useTeamOrchestratePage() {
           id: n.id,
           type: n.type,
           label: n.agentName || n.id,
-          agent_id: prior?.agent_id || n.agentName || "",
+          agent_id: prior?.agent_id || n.agentName || '',
           role: n.requiredRole || prior?.role,
           x: prior?.x,
           y: prior?.y,
@@ -209,18 +209,18 @@ export function useTeamOrchestratePage() {
       const nextDef = withGraph({
         ...definition.value,
         graph: graphToDefinitionGraph(),
-        linked_graph_id: linkedGraphId.value.trim() || undefined
+        linked_graph_id: linkedGraphId.value.trim() || undefined,
       } as TeamDefinition & { linked_graph_id?: string });
       const updated = await teamsStore.editTeam(teamId.value, {
         definition_json: definitionToJSON(nextDef),
-        linked_graph_id: linkedGraphId.value.trim()
+        linked_graph_id: linkedGraphId.value.trim(),
       });
       teamRow.value = updated;
       definition.value = parseDefinition(updated);
       dirty.value = false;
-      $q.notify({ type: "positive", message: "编排 graph 已保存" });
+      $q.notify({ type: 'positive', message: '编排 graph 已保存' });
     } catch (e) {
-      $q.notify({ type: "negative", message: e instanceof Error ? e.message : "保存失败" });
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '保存失败' });
     } finally {
       saving.value = false;
     }
@@ -233,13 +233,13 @@ export function useTeamOrchestratePage() {
   function openObservatory() {
     if (!activeRun.value) return;
     router.push({
-      name: "team-run-observatory",
+      name: 'team-run-observatory',
       params: { teamId: teamId.value, runId: activeRun.value.id },
     });
   }
 
   function goBack() {
-    router.push({ name: "team" });
+    router.push({ name: 'team' });
   }
 
   onMounted(reload);
@@ -274,6 +274,6 @@ export function useTeamOrchestratePage() {
     saveGraph,
     onSelectNode,
     openObservatory,
-    goBack
+    goBack,
   };
 }

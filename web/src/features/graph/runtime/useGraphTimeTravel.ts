@@ -1,6 +1,6 @@
-import { ref, type Ref } from "vue";
-import type { CheckpointInfo } from "../types";
-import { useGraphStore } from "../../../stores/graph";
+import { ref, type Ref } from 'vue';
+import type { CheckpointInfo } from '../types';
+import { useGraphStore } from '../../../stores/graph';
 
 export function useGraphTimeTravel(executionId: Ref<string>) {
   const graphStore = useGraphStore();
@@ -8,7 +8,7 @@ export function useGraphTimeTravel(executionId: Ref<string>) {
   const checkpointsLoading = ref(false);
   const selectedCheckpoint = ref<CheckpointInfo | null>(null);
   const stateSnapshot = ref<Record<string, unknown> | null>(null);
-  const statePatchJson = ref("");
+  const statePatchJson = ref('');
   const snapshotLoading = ref(false);
   const editLoading = ref(false);
   const timeTravelLoading = ref(false);
@@ -48,7 +48,7 @@ export function useGraphTimeTravel(executionId: Ref<string>) {
       try {
         patch = JSON.parse(statePatchJson.value) as Record<string, unknown>;
       } catch {
-        throw new Error("状态 JSON 格式无效，请检查编辑内容");
+        throw new Error('状态 JSON 格式无效，请检查编辑内容');
       }
       return await graphStore.editStateSnapshot(
         executionId.value,

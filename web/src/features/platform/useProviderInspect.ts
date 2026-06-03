@@ -1,13 +1,13 @@
-import { computed, ref } from "vue";
-import { useQuasar } from "quasar";
-import { errorMessage } from "./providerUtils";
-import { usePlatformStore } from "../../stores/platform";
-import { findModelPreset, type ProviderModelPreset } from "../../config/providerPresets";
-import type { Ref, ComputedRef } from "vue";
+import { computed, ref } from 'vue';
+import { useQuasar } from 'quasar';
+import { errorMessage } from './providerUtils';
+import { usePlatformStore } from '../../stores/platform';
+import { findModelPreset, type ProviderModelPreset } from '../../config/providerPresets';
+import type { Ref, ComputedRef } from 'vue';
 
 export function useProviderInspect(deps: {
   providerForm: Record<string, any>;
-  providerAddMode: Ref<"catalog" | "custom">;
+  providerAddMode: Ref<'catalog' | 'custom'>;
   providerCreateInspectFingerprint: Ref<string>;
   providerEditIdentityAtOpen: Ref<string>;
   editingId: Ref<string>;
@@ -25,7 +25,7 @@ export function useProviderInspect(deps: {
   const checkingModel = ref(false);
 
   const isLocalProviderModel = computed(() => {
-    if (deps.providerForm.provider_type === "ollama") return true;
+    if (deps.providerForm.provider_type === 'ollama') return true;
     const raw = deps.providerForm.api_base_url.trim();
     if (!raw) return false;
     return /^(https?|wss?):\/\/(localhost|127\.0\.0\.1|\[::1\])([/:?#]|$)/i.test(raw);
@@ -61,8 +61,8 @@ export function useProviderInspect(deps: {
       deps.providerForm.variant.trim(),
       deps.providerForm.secret_id.trim(),
       deps.providerForm.secret_key.trim(),
-      deps.providerForm.aws_region.trim()
-    ].join("\0");
+      deps.providerForm.aws_region.trim(),
+    ].join('\0');
   }
 
   const canSubmitNewProviderModel = computed(() => {
@@ -77,7 +77,7 @@ export function useProviderInspect(deps: {
       return true;
     }
     if (
-      deps.providerAddMode.value === "catalog" &&
+      deps.providerAddMode.value === 'catalog' &&
       deps.catalogProviderId.value &&
       deps.providerForm.catalog_managed &&
       deps.providerForm.model_api_id.trim()
@@ -93,11 +93,11 @@ export function useProviderInspect(deps: {
     const code = deps.providerForm.provider_code.trim();
     const model = deps.providerForm.model_api_id.trim();
     if (!code || !model) {
-      $q.notify({ type: "negative", message: "请先填写 Provider 名称和模型ID" });
+      $q.notify({ type: 'negative', message: '请先填写 Provider 名称和模型ID' });
       return;
     }
     if (!canInspectProviderModel.value) {
-      $q.notify({ type: "warning", message: "非本地模型需填写 API 密钥后才能检查" });
+      $q.notify({ type: 'warning', message: '非本地模型需填写 API 密钥后才能检查' });
       return;
     }
     checkingModel.value = true;
@@ -112,11 +112,11 @@ export function useProviderInspect(deps: {
         variant: deps.providerForm.variant,
         secret_id: deps.providerForm.secret_id.trim(),
         secret_key: deps.providerForm.secret_key.trim(),
-        aws_region: deps.providerForm.aws_region.trim()
+        aws_region: deps.providerForm.aws_region.trim(),
       });
       if (!result.ok) {
         if (!deps.editingId.value) {
-          deps.providerCreateInspectFingerprint.value = "";
+          deps.providerCreateInspectFingerprint.value = '';
         }
         const preset = findModelPreset(deps.currentProviderPreset.value?.key || code, model);
         const catalogModel = deps.findCatalogModel(model);
@@ -126,17 +126,24 @@ export function useProviderInspect(deps: {
           if (!deps.editingId.value) {
             deps.providerCreateInspectFingerprint.value = providerCreateInspectFingerprintValue();
           }
-          $q.notify({ type: "warning", message: `${result.message || "未获取到模型参数"}；已使用 models.dev 目录参数回填` });
+          $q.notify({
+            type: 'warning',
+            message: `${result.message || '未获取到模型参数'}；已使用 models.dev 目录参数回填`,
+          });
           return;
         }
         if (preset) {
           deps.applyModelPresetValues(preset, true);
           deps.providerForm.metadata_source = `${deps.currentProviderPreset.value?.key || code}-preset`;
-          deps.providerForm.raw_metadata_json = JSON.stringify({ source: "frontend-provider-preset", provider: deps.currentProviderPreset.value?.key || code, model });
-          $q.notify({ type: "warning", message: `${result.message || "未获取到模型参数"}；已使用前端预设参数回填` });
+          deps.providerForm.raw_metadata_json = JSON.stringify({
+            source: 'frontend-provider-preset',
+            provider: deps.currentProviderPreset.value?.key || code,
+            model,
+          });
+          $q.notify({ type: 'warning', message: `${result.message || '未获取到模型参数'}；已使用前端预设参数回填` });
           return;
         }
-        $q.notify({ type: "warning", message: result.message || "未获取到模型参数，也没有匹配的预设参数" });
+        $q.notify({ type: 'warning', message: result.message || '未获取到模型参数，也没有匹配的预设参数' });
         return;
       }
       if (!deps.editingId.value) {
@@ -158,12 +165,12 @@ export function useProviderInspect(deps: {
       if (result.raw_metadata_json && !deps.providerForm.raw_metadata_json.trim()) {
         deps.providerForm.raw_metadata_json = result.raw_metadata_json;
       }
-      $q.notify({ type: "positive", message: result.message || "已验证 Provider 连通性" });
+      $q.notify({ type: 'positive', message: result.message || '已验证 Provider 连通性' });
     } catch (error) {
       if (!deps.editingId.value) {
-        deps.providerCreateInspectFingerprint.value = "";
+        deps.providerCreateInspectFingerprint.value = '';
       }
-      $q.notify({ type: "negative", message: errorMessage(error) });
+      $q.notify({ type: 'negative', message: errorMessage(error) });
     } finally {
       checkingModel.value = false;
     }

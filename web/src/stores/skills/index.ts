@@ -1,5 +1,5 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
   listSkills,
   listSkillRuns,
@@ -14,11 +14,17 @@ import {
   getSkillImportJob,
   refineSkillConflictGroup,
   applySkillImport,
-  getSkillFilesystemHealth
-} from "../../features/skills/api";
-import type { Skill, SkillListQuery, SkillRunQuery, SkillFilesystemHealth, PaginatedResponse } from "../../features/skills/types";
+  getSkillFilesystemHealth,
+} from '../../features/skills/api';
+import type {
+  Skill,
+  SkillListQuery,
+  SkillRunQuery,
+  SkillFilesystemHealth,
+  PaginatedResponse,
+} from '../../features/skills/types';
 
-export const useSkillsStore = defineStore("skills", () => {
+export const useSkillsStore = defineStore('skills', () => {
   const skills = ref<Skill[]>([]);
   const total = ref(0);
   const loading = ref(false);
@@ -83,6 +89,6 @@ export const useSkillsStore = defineStore("skills", () => {
     uploadSkillZip,
     getSkillImportJob,
     refineSkillConflictGroup,
-    applySkillImport
+    applySkillImport,
   };
 });

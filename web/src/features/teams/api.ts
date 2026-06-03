@@ -1,23 +1,16 @@
-
-import { createTeamService } from "../../services";
-import type {
-  Team,
-  TeamRun,
-  TeamRunEvent,
-  TeamRunStep,
-  TeamRunSummary
-} from "./types";
+import { createTeamService } from '../../services';
+import type { Team, TeamRun, TeamRunEvent, TeamRunStep, TeamRunSummary } from './types';
 import type {
   Team as WireTeam,
   TeamRun as WireTeamRun,
   TeamRunStep as WireTeamRunStep,
   TeamRunSummary as WireTeamRunSummary,
-  TeamRunMemberSummary as WireTeamRunMemberSummary
-} from "../../services/kratos/team/v1/index";
-import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
-import { createEnvelopeStream } from "../../realtime/useEnvelopeStream";
-import { TEAM_RUNTIME_ENVELOPE_TYPES, teamRunEventFromEnvelope } from "./teamRunEventFromEnvelope";
-import type { Envelope } from "../../realtime/envelope";
+  TeamRunMemberSummary as WireTeamRunMemberSummary,
+} from '../../services/kratos/team/v1/index';
+import { GLOBAL_WS_SESSION_ID } from '../../config/runtime';
+import { createEnvelopeStream } from '../../realtime/useEnvelopeStream';
+import { TEAM_RUNTIME_ENVELOPE_TYPES, teamRunEventFromEnvelope } from './teamRunEventFromEnvelope';
+import type { Envelope } from '../../realtime/envelope';
 
 export type {
   Team,
@@ -28,111 +21,111 @@ export type {
   TeamRun,
   TeamRunEvent,
   TeamRunStep,
-  TeamRunSummary
-} from "./types";
+  TeamRunSummary,
+} from './types';
 
 function wireTeam(t: WireTeam | null | undefined): Team {
   return {
-    id: t?.id ?? "",
-    team_key: t?.teamKey ?? "",
-    display_name: t?.displayName ?? "",
-    status: t?.status ?? "",
+    id: t?.id ?? '',
+    team_key: t?.teamKey ?? '',
+    display_name: t?.displayName ?? '',
+    status: t?.status ?? '',
     is_default: t?.isDefault ?? false,
-    definition_json: t?.definitionJson ?? "",
-    app_name: t?.adkAppName ?? "",
-    linked_graph_id: t?.linkedGraphId ?? "",
+    definition_json: t?.definitionJson ?? '',
+    app_name: t?.adkAppName ?? '',
+    linked_graph_id: t?.linkedGraphId ?? '',
     has_active_run: t?.hasActiveRun ?? false,
-    category_industry_id: t?.categoryIndustryId ?? "",
+    category_industry_id: t?.categoryIndustryId ?? '',
     readonly: t?.readonly ?? false,
-    source: t?.source ?? "",
-    created_at: t?.createdAt ?? "",
-    updated_at: t?.updatedAt ?? "",
-    deleted_at: t?.deletedAt ?? ""
+    source: t?.source ?? '',
+    created_at: t?.createdAt ?? '',
+    updated_at: t?.updatedAt ?? '',
+    deleted_at: t?.deletedAt ?? '',
   };
 }
 
 function wireRun(r: WireTeamRun | null | undefined): TeamRun {
   return {
-    id: r?.id ?? "",
-    team_id: r?.teamId ?? "",
-    session_id: r?.sessionId ?? "",
-    message_id: r?.messageId ?? "",
-    mode: r?.mode ?? "",
-    status: r?.status ?? "",
-    input_preview: r?.inputPreview ?? "",
-    output_preview: r?.outputPreview ?? "",
+    id: r?.id ?? '',
+    team_id: r?.teamId ?? '',
+    session_id: r?.sessionId ?? '',
+    message_id: r?.messageId ?? '',
+    mode: r?.mode ?? '',
+    status: r?.status ?? '',
+    input_preview: r?.inputPreview ?? '',
+    output_preview: r?.outputPreview ?? '',
     token_in: r?.tokenIn ?? 0,
     token_out: r?.tokenOut ?? 0,
     cost_micro_usd: Number(r?.costMicroUsd ?? 0),
     duration_ms: r?.durationMs ?? 0,
-    error_message: r?.errorMessage ?? "",
-    topology_json: r?.topologyJson ?? "",
-    graph_execution_id: r?.graphExecutionId ?? "",
-    started_at: r?.startedAt ?? "",
-    finished_at: r?.finishedAt ?? "",
-    created_at: r?.createdAt ?? "",
-    updated_at: r?.updatedAt ?? ""
+    error_message: r?.errorMessage ?? '',
+    topology_json: r?.topologyJson ?? '',
+    graph_execution_id: r?.graphExecutionId ?? '',
+    started_at: r?.startedAt ?? '',
+    finished_at: r?.finishedAt ?? '',
+    created_at: r?.createdAt ?? '',
+    updated_at: r?.updatedAt ?? '',
   };
 }
 
 function wireStep(s: WireTeamRunStep | null | undefined): TeamRunStep {
   return {
-    id: s?.id ?? "",
-    run_id: s?.runId ?? "",
-    team_id: s?.teamId ?? "",
-    agent_id: s?.agentId ?? "",
-    agent_key: s?.agentKey ?? "",
-    agent_name: s?.agentName ?? "",
-    role: s?.role ?? "",
+    id: s?.id ?? '',
+    run_id: s?.runId ?? '',
+    team_id: s?.teamId ?? '',
+    agent_id: s?.agentId ?? '',
+    agent_key: s?.agentKey ?? '',
+    agent_name: s?.agentName ?? '',
+    role: s?.role ?? '',
     sort_order: s?.sortOrder ?? 0,
-    status: s?.status ?? "",
-    input_preview: s?.inputPreview ?? "",
-    output_preview: s?.outputPreview ?? "",
+    status: s?.status ?? '',
+    input_preview: s?.inputPreview ?? '',
+    output_preview: s?.outputPreview ?? '',
     token_in: s?.tokenIn ?? 0,
     token_out: s?.tokenOut ?? 0,
     cost_micro_usd: Number(s?.costMicroUsd ?? 0),
     duration_ms: s?.durationMs ?? 0,
-    error_message: s?.errorMessage ?? "",
-    started_at: s?.startedAt ?? "",
-    finished_at: s?.finishedAt ?? "",
-    created_at: s?.createdAt ?? "",
-    tool_call_count: s?.toolCallCount ?? 0
+    error_message: s?.errorMessage ?? '',
+    started_at: s?.startedAt ?? '',
+    finished_at: s?.finishedAt ?? '',
+    created_at: s?.createdAt ?? '',
+    tool_call_count: s?.toolCallCount ?? 0,
   };
 }
 
 function wireMemberSummary(m: WireTeamRunMemberSummary | null | undefined) {
   return {
-    agent_id: m?.agentId ?? "",
-    agent_key: m?.agentKey ?? "",
-    agent_name: m?.agentName ?? "",
-    role: m?.role ?? "",
+    agent_id: m?.agentId ?? '',
+    agent_key: m?.agentKey ?? '',
+    agent_name: m?.agentName ?? '',
+    role: m?.role ?? '',
     sort_order: m?.sortOrder ?? 0,
-    status: m?.status ?? "",
+    status: m?.status ?? '',
     token_in: m?.tokenIn ?? 0,
     token_out: m?.tokenOut ?? 0,
     duration_ms: m?.durationMs ?? 0,
     cost_micro_usd: Number(m?.costMicroUsd ?? 0),
-    output_preview: m?.outputPreview ?? "",
-    tool_call_count: m?.toolCallCount ?? 0
+    output_preview: m?.outputPreview ?? '',
+    tool_call_count: m?.toolCallCount ?? 0,
   };
 }
 
 function wireRunSummary(s: WireTeamRunSummary | null | undefined): TeamRunSummary {
   return {
-    run_id: s?.runId ?? "",
-    team_id: s?.teamId ?? "",
-    session_id: s?.sessionId ?? "",
-    mode: s?.mode ?? "",
-    status: s?.status ?? "",
+    run_id: s?.runId ?? '',
+    team_id: s?.teamId ?? '',
+    session_id: s?.sessionId ?? '',
+    mode: s?.mode ?? '',
+    status: s?.status ?? '',
     duration_ms: s?.durationMs ?? 0,
     token_in: s?.tokenIn ?? 0,
     token_out: s?.tokenOut ?? 0,
     cost_micro_usd: Number(s?.costMicroUsd ?? 0),
     member_count: s?.memberCount ?? 0,
     tool_call_count: s?.toolCallCount ?? 0,
-    output_preview: s?.outputPreview ?? "",
-    error_message: s?.errorMessage ?? "",
-    members: (s?.members ?? []).map(wireMemberSummary)
+    output_preview: s?.outputPreview ?? '',
+    error_message: s?.errorMessage ?? '',
+    members: (s?.members ?? []).map(wireMemberSummary),
   };
 }
 
@@ -167,7 +160,7 @@ export async function createTeam(payload: Partial<Team>): Promise<Team> {
     status: payload.status,
     definitionJson: payload.definition_json,
     adkAppName: payload.app_name,
-    categoryIndustryId: payload.category_industry_id
+    categoryIndustryId: payload.category_industry_id,
   });
   return wireTeam(data);
 }
@@ -196,7 +189,7 @@ export async function listTeamRuns(teamID?: string, limit = 50): Promise<TeamRun
   return items.map(wireRun);
 }
 
-const ACTIVE_RUN_STATUSES = new Set(["running", "pending"]);
+const ACTIVE_RUN_STATUSES = new Set(['running', 'pending']);
 
 export async function findActiveTeamRun(teamID: string): Promise<TeamRun | null> {
   const runs = await listTeamRuns(teamID, 50);
@@ -215,7 +208,7 @@ export async function runTeamTest(teamID: string, content?: string): Promise<{ r
   const res = await svc.RunTeamTest({ id: teamID, content: content?.trim() || undefined });
   return {
     run: wireRun(res.run),
-    reply: res.reply ?? ""
+    reply: res.reply ?? '',
   };
 }
 
@@ -227,14 +220,14 @@ export async function getTeamRunSummary(runID: string): Promise<TeamRunSummary> 
 
 export async function resumeTeamRunExecution(
   runID: string,
-  resumeValue?: Record<string, unknown>
+  resumeValue?: Record<string, unknown>,
 ): Promise<{ runId: string; graphExecutionId: string; status: string }> {
   const svc = createTeamService();
   const res = await svc.ResumeTeamRunExecution({ runId: runID, resumeValue });
   return {
     runId: res.runId ?? runID,
-    graphExecutionId: res.graphExecutionId ?? "",
-    status: res.status ?? ""
+    graphExecutionId: res.graphExecutionId ?? '',
+    status: res.status ?? '',
   };
 }
 
@@ -247,15 +240,14 @@ export function subscribeTeamRunEventsWs(
   teamID: string,
   onEvent: (event: TeamRunEvent) => void,
   onError?: (error: string) => void,
-  onReplayState?: (replaying: boolean) => void
+  onReplayState?: (replaying: boolean) => void,
 ) {
-  const effectiveSession =
-    sessionId.trim() === "" || sessionId === "team-monitor" ? GLOBAL_WS_SESSION_ID : sessionId;
+  const effectiveSession = sessionId.trim() === '' || sessionId === 'team-monitor' ? GLOBAL_WS_SESSION_ID : sessionId;
   const stream = createEnvelopeStream({
     sessionId: effectiveSession,
-    channels: ["team", "monitor", "system"],
+    channels: ['team', 'monitor', 'system'],
     autoConnect: false,
-    onReplayState: (replaying) => onReplayState?.(replaying)
+    onReplayState: (replaying) => onReplayState?.(replaying),
   });
 
   stream.onType(TEAM_RUNTIME_ENVELOPE_TYPES, (env: Envelope) => {
@@ -265,15 +257,15 @@ export function subscribeTeamRunEventsWs(
     }
   });
 
-  stream.onType("log", (env: Envelope) => {
+  stream.onType('log', (env: Envelope) => {
     const mapped = teamRunEventFromEnvelope(env, teamID);
     if (mapped) {
       onEvent(mapped);
     }
   });
 
-  stream.onType("error", (env: Envelope) => {
-    onError?.(env.error?.message ?? "team ws error");
+  stream.onType('error', (env: Envelope) => {
+    onError?.(env.error?.message ?? 'team ws error');
   });
 
   stream.connect();
@@ -299,33 +291,38 @@ export type TaskDeadLetterRow = {
   resolved_at: string;
 };
 
-function wireTaskDeadLetter(row: {
-  id?: string;
-  sourceType?: string;
-  sourceId?: string;
-  teamId?: string;
-  teamRunId?: string;
-  sessionId?: string;
-  graphExecutionId?: string;
-  errorMessage?: string;
-  payloadJson?: string;
-  status?: string;
-  createdAt?: string;
-  resolvedAt?: string;
-} | null | undefined): TaskDeadLetterRow {
+function wireTaskDeadLetter(
+  row:
+    | {
+        id?: string;
+        sourceType?: string;
+        sourceId?: string;
+        teamId?: string;
+        teamRunId?: string;
+        sessionId?: string;
+        graphExecutionId?: string;
+        errorMessage?: string;
+        payloadJson?: string;
+        status?: string;
+        createdAt?: string;
+        resolvedAt?: string;
+      }
+    | null
+    | undefined,
+): TaskDeadLetterRow {
   return {
-    id: row?.id ?? "",
-    source_type: row?.sourceType ?? "",
-    source_id: row?.sourceId ?? "",
-    team_id: row?.teamId ?? "",
-    team_run_id: row?.teamRunId ?? "",
-    session_id: row?.sessionId ?? "",
-    graph_execution_id: row?.graphExecutionId ?? "",
-    error_message: row?.errorMessage ?? "",
-    payload_json: row?.payloadJson ?? "",
-    status: row?.status ?? "",
-    created_at: row?.createdAt ?? "",
-    resolved_at: row?.resolvedAt ?? "",
+    id: row?.id ?? '',
+    source_type: row?.sourceType ?? '',
+    source_id: row?.sourceId ?? '',
+    team_id: row?.teamId ?? '',
+    team_run_id: row?.teamRunId ?? '',
+    session_id: row?.sessionId ?? '',
+    graph_execution_id: row?.graphExecutionId ?? '',
+    error_message: row?.errorMessage ?? '',
+    payload_json: row?.payloadJson ?? '',
+    status: row?.status ?? '',
+    created_at: row?.createdAt ?? '',
+    resolved_at: row?.resolvedAt ?? '',
   };
 }
 

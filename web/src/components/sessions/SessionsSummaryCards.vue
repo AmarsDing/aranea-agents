@@ -11,7 +11,7 @@
 </template>
 
 <script setup lang="ts">
-import type { SessionsSummaryCard } from "./sessionUi";
+import type { SessionsSummaryCard } from './sessionUi';
 
 defineProps<{ cards: SessionsSummaryCard[] }>();
 </script>

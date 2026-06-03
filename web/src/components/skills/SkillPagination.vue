@@ -12,7 +12,7 @@
 </template>
 
 <script setup lang="ts">
-import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
+import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
 
 defineProps<{
   page: number;
@@ -24,7 +24,7 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:page": [value: number];
-  "update:pageSize": [value: number];
+  'update:page': [value: number];
+  'update:pageSize': [value: number];
 }>();
 </script>

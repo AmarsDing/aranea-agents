@@ -1,7 +1,7 @@
 /** Teams UI / WS Envelope snake_case 形状（与 Kratos wire 对齐）。 */
 
-export type { OrchestrationSpec } from "./orchestrationSpec";
-export { toOrchestrationSpec, fromOrchestrationSpec } from "./orchestrationSpec";
+export type { OrchestrationSpec } from './orchestrationSpec';
+export { toOrchestrationSpec, fromOrchestrationSpec } from './orchestrationSpec';
 
 export type Team = {
   id: string;
@@ -23,7 +23,7 @@ export type Team = {
 
 export type TeamDefinitionMember = {
   agent_id: string;
-  role: "coordinator" | "worker" | "synthesizer" | "critic" | "generator" | string;
+  role: 'coordinator' | 'worker' | 'synthesizer' | 'critic' | 'generator' | string;
   name: string;
   task_prompt?: string;
   enabled: boolean;
@@ -32,7 +32,7 @@ export type TeamDefinitionMember = {
 
 export type TeamDefinitionGraphNode = {
   id: string;
-  type: "start" | "agent" | "join" | "end" | string;
+  type: 'start' | 'agent' | 'join' | 'end' | string;
   label: string;
   agent_id?: string;
   role?: string;
@@ -49,8 +49,8 @@ export type TeamDefinitionGraphEdge = {
 };
 
 export type TeamFailurePolicy = {
-  default?: "retry_then_block" | "skip" | "fail_fast" | string;
-  parallel_fail?: "continue" | "abort" | string;
+  default?: 'retry_then_block' | 'skip' | 'fail_fast' | string;
+  parallel_fail?: 'continue' | 'abort' | string;
   retry?: {
     max_attempts?: number;
     initial_interval_ms?: number;
@@ -61,7 +61,7 @@ export type TeamFailurePolicy = {
     string,
     {
       policy?: string;
-      retry?: TeamFailurePolicy["retry"];
+      retry?: TeamFailurePolicy['retry'];
       fallback_agent?: string;
     }
   >;
@@ -70,20 +70,20 @@ export type TeamFailurePolicy = {
     reset_timeout_seconds?: number;
     fallback_node?: string;
   };
-  on_error?: "await_review" | "halt" | string;
+  on_error?: 'await_review' | 'halt' | string;
 };
 
 export type TeamDefinition = {
   version: number;
   description?: string;
   /** Graph 执行引擎（默认 graph）；Native 仅在后端 ARANEA_TEAM_NATIVE=1 应急时可用 */
-  runtime_engine?: "native" | "graph" | string;
+  runtime_engine?: 'native' | 'graph' | string;
   /** 兼容旧字段，等效 runtime_engine=graph */
   team_graph_runtime?: boolean;
   /** 关联 persisted graph 资产 id（M53 linked_graph） */
   linked_graph_id?: string;
   failure_policy?: TeamFailurePolicy;
-  mode: "sequential" | "parallel" | "coordinator" | "critic_loop" | "adaptive" | string;
+  mode: 'sequential' | 'parallel' | 'coordinator' | 'critic_loop' | 'adaptive' | string;
   max_concurrency?: number;
   timeout_seconds?: number;
   /** coordinator / adaptive：外圈 LoopAgent 迭代上限；0 表示后端默认 3 */
@@ -95,13 +95,13 @@ export type TeamDefinition = {
   a2a?: {
     enabled?: boolean;
     envelope_version?: string;
-    message_format?: "markdown_json" | "plain" | string;
+    message_format?: 'markdown_json' | 'plain' | string;
     include_trace?: boolean;
     max_payload_chars?: number;
   };
   graph?: {
     version?: number;
-    layout?: "linear" | "parallel" | "loop" | "coordinator" | string;
+    layout?: 'linear' | 'parallel' | 'loop' | 'coordinator' | string;
     nodes: TeamDefinitionGraphNode[];
     edges: TeamDefinitionGraphEdge[];
   };

@@ -1,10 +1,7 @@
-import { computed, reactive, ref, watch, type Ref } from "vue";
-import type { AgentPromptFile } from "./types";
-import { editPromptFileByAI, estimateAgentTokens } from "./api";
-import {
-  defaultAgentFiles,
-  type AgentFile,
-} from "../../components/agents/agentUi";
+import { computed, reactive, ref, watch, type Ref } from 'vue';
+import type { AgentPromptFile } from './types';
+import { editPromptFileByAI, estimateAgentTokens } from './api';
+import { defaultAgentFiles, type AgentFile } from '../../components/agents/agentUi';
 
 // PGO-1: only non-optional files are created by default.
 const coreAgentFiles = defaultAgentFiles.filter((f) => !f.optional);
@@ -14,11 +11,11 @@ type NotifyFn = (opts: { type: string; message: string }) => void;
 /** Prompt file editor state for Agent settings. */
 export function useAgentPromptFiles(agentId: Ref<string>, notify: NotifyFn) {
   const fileSplitter = ref(28);
-  const activeFile = ref("AGENTS_CORE.md");
+  const activeFile = ref('AGENTS_CORE.md');
   const initialFileBodies = ref<Record<string, string>>({});
   const aiEditOpen = ref(false);
   const aiEditing = ref(false);
-  const aiInstruction = ref("");
+  const aiInstruction = ref('');
   const fileTokenByName = ref<Record<string, number>>({});
 
   // PGO-1: start with core (non-optional) files only.
@@ -27,24 +24,21 @@ export function useAgentPromptFiles(agentId: Ref<string>, notify: NotifyFn) {
   const activeFileMeta = computed(() => files.find((file) => file.name === activeFile.value) ?? files[0]);
 
   const activeFileBody = computed({
-    get: () => activeFileMeta.value?.body ?? "",
+    get: () => activeFileMeta.value?.body ?? '',
     set: (value: string) => {
       const row = activeFileMeta.value;
       if (row) row.body = value;
     },
   });
 
-  const fileDirty = computed(
-    () => activeFileBody.value !== (initialFileBodies.value[activeFile.value] ?? ""),
-  );
+  const fileDirty = computed(() => activeFileBody.value !== (initialFileBodies.value[activeFile.value] ?? ''));
 
   /**
    * PGO-1: optional files defined in defaultAgentFiles that haven't been added yet.
    * Used to populate "Add optional file" picker.
    */
   const availableOptionalFiles = computed(() =>
-    defaultAgentFiles
-      .filter((f) => f.optional && !files.some((existing) => existing.name === f.name))
+    defaultAgentFiles.filter((f) => f.optional && !files.some((existing) => existing.name === f.name)),
   );
 
   /**
@@ -83,13 +77,13 @@ export function useAgentPromptFiles(agentId: Ref<string>, notify: NotifyFn) {
     }
     for (const saved of savedFiles) {
       if (!files.some((file) => file.name === saved.name)) {
-        files.push({ id: saved.id, name: saved.name, caption: "自定义 Prompt 文件", body: saved.body });
+        files.push({ id: saved.id, name: saved.name, caption: '自定义 Prompt 文件', body: saved.body });
       }
     }
   }
 
   async function refreshFileTokenEstimates(formId: string) {
-    const id = String(formId ?? "").trim();
+    const id = String(formId ?? '').trim();
     if (!id) {
       fileTokenByName.value = {};
       return;
@@ -98,7 +92,7 @@ export function useAgentPromptFiles(agentId: Ref<string>, notify: NotifyFn) {
       const est = await estimateAgentTokens(id);
       const byName: Record<string, number> = {};
       for (const row of est.file_estimates) {
-        const name = String(row.file_name ?? "").trim();
+        const name = String(row.file_name ?? '').trim();
         if (name) byName[name] = row.estimated_tokens;
       }
       fileTokenByName.value = byName;
@@ -109,13 +103,13 @@ export function useAgentPromptFiles(agentId: Ref<string>, notify: NotifyFn) {
 
   async function applyAiEdit(formId: string) {
     const instruction = aiInstruction.value.trim();
-    const fileId = String(activeFileMeta.value?.id ?? "").trim();
+    const fileId = String(activeFileMeta.value?.id ?? '').trim();
     if (!instruction) {
-      notify({ type: "warning", message: "请输入编辑指令" });
+      notify({ type: 'warning', message: '请输入编辑指令' });
       return;
     }
     if (!formId || !fileId) {
-      notify({ type: "warning", message: "请先保存 Agent 后再使用 AI 编辑" });
+      notify({ type: 'warning', message: '请先保存 Agent 后再使用 AI 编辑' });
       return;
     }
     aiEditing.value = true;
@@ -125,11 +119,11 @@ export function useAgentPromptFiles(agentId: Ref<string>, notify: NotifyFn) {
       const row = files.find((f) => f.name === activeFile.value);
       if (row) row.id = updated.id;
       snapshotFiles();
-      aiInstruction.value = "";
+      aiInstruction.value = '';
       aiEditOpen.value = false;
-      notify({ type: "positive", message: "AI 修订已应用" });
+      notify({ type: 'positive', message: 'AI 修订已应用' });
     } catch (e) {
-      notify({ type: "negative", message: e instanceof Error ? e.message : "AI 编辑失败" });
+      notify({ type: 'negative', message: e instanceof Error ? e.message : 'AI 编辑失败' });
     } finally {
       aiEditing.value = false;
     }
@@ -169,12 +163,8 @@ export function useAgentPromptFiles(agentId: Ref<string>, notify: NotifyFn) {
 }
 
 /** Call when files tab is selected to refresh token estimates. */
-export function useAgentPromptFilesTabWatcher(
-  tab: Ref<string>,
-  formId: Ref<string>,
-  refresh: (id: string) => void,
-) {
+export function useAgentPromptFilesTabWatcher(tab: Ref<string>, formId: Ref<string>, refresh: (id: string) => void) {
   watch(tab, (name) => {
-    if (name === "files") void refresh(formId.value);
+    if (name === 'files') void refresh(formId.value);
   });
 }

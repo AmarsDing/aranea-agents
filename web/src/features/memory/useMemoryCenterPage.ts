@@ -1,7 +1,7 @@
-import { computed, onMounted, ref, watch } from "vue";
-import { storeToRefs } from "pinia";
-import type { Agent } from "../agents/types";
-import type { Session } from "../session/types";
+import { computed, onMounted, ref, watch } from 'vue';
+import { storeToRefs } from 'pinia';
+import type { Agent } from '../agents/types';
+import type { Session } from '../session/types';
 import type {
   AgentIdentity,
   AgentStrategyProfile,
@@ -15,16 +15,13 @@ import type {
   L1Task,
   MemoryEntity,
   MemoryFact,
-  MemoryWorkerStatus
-} from "./types";
-import {
-  buildMemoryAssemblyTableColumns,
-  buildMemoryFactTableColumns
-} from "./memoryTableUi";
-import { replayMemoryDeadLetter, abandonMemoryDeadLetter, getMemoryWorkerStatus } from "./api"; // TECH-DEBT: bypass store for dead-letter admin actions
-import { useAgentsCatalogStore } from "../../stores/agents/catalog";
-import { useSessionStore } from "../../stores/session";
-import { useMemoryStore } from "../../stores/memory";
+  MemoryWorkerStatus,
+} from './types';
+import { buildMemoryAssemblyTableColumns, buildMemoryFactTableColumns } from './memoryTableUi';
+import { replayMemoryDeadLetter, abandonMemoryDeadLetter, getMemoryWorkerStatus } from './api'; // TECH-DEBT: bypass store for dead-letter admin actions
+import { useAgentsCatalogStore } from '../../stores/agents/catalog';
+import { useSessionStore } from '../../stores/session';
+import { useMemoryStore } from '../../stores/memory';
 
 export function useMemoryCenterPage() {
   const agentsCatalog = useAgentsCatalogStore();
@@ -39,10 +36,10 @@ export function useMemoryCenterPage() {
     cascadeProposals: storeCascadeProposals,
     loadingCascade: storeLoadingCascade,
     loadingCascadePreview,
-    loadingCascadeSaga
+    loadingCascadeSaga,
   } = storeToRefs(memoryStore);
 
-  const tab = ref("overview");
+  const tab = ref('overview');
   const agents = ref<Agent[]>([]);
   const sessions = ref<Session[]>([]);
   const facts = storeFacts;
@@ -59,9 +56,9 @@ export function useMemoryCenterPage() {
   const selectedSessionId = ref<string | null>(null);
   const selectedSnapshot = ref<L0AssemblySnapshot | null>(null);
   const selectedFact = ref<MemoryFact | null>(null);
-  const factKeyword = ref("");
+  const factKeyword = ref('');
   const factScope = ref<string | null>(null);
-  const factStatus = ref<string | null>("active");
+  const factStatus = ref<string | null>('active');
   const loadingAgents = ref(false);
   const loadingSessions = ref(false);
   const loadingFacts = ref(false);
@@ -78,7 +75,7 @@ export function useMemoryCenterPage() {
   const cascadeSagaDrawerOpen = ref(false);
   const cascadePreviewProposalId = ref<string | null>(null);
   const cascadeSagaProposalId = ref<string | null>(null);
-  const error = ref("");
+  const error = ref('');
   const workerStatus = ref<MemoryWorkerStatus | null>(null);
   const loadingWorkerStatus = ref(false);
 
@@ -90,9 +87,11 @@ export function useMemoryCenterPage() {
       loadingSnapshots.value ||
       loadingTasks.value ||
       loadingEvolution.value ||
-      loadingCascade.value
+      loadingCascade.value,
   );
-  const agentOptions = computed(() => agents.value.map((agent) => ({ label: agent.display_name || agent.agent_key, value: agent.id })));
+  const agentOptions = computed(() =>
+    agents.value.map((agent) => ({ label: agent.display_name || agent.agent_key, value: agent.id })),
+  );
   const sessionRows = computed(() => sessions.value);
   const factRows = computed(() => facts.value);
   const snapshotRows = computed(() => snapshots.value);
@@ -105,87 +104,196 @@ export function useMemoryCenterPage() {
     const avgContext = sessions.value.length
       ? sessions.value.reduce((sum, session) => sum + (session.context_used_ratio || 0), 0) / sessions.value.length
       : 0;
-    const riskySessions = sessions.value.filter((session) => ["warning", "critical", "exceeded"].includes(session.context_status)).length;
-    const activeTasks = tasks.value.filter((task) => task.status === "active" || task.status === "paused").length;
+    const riskySessions = sessions.value.filter((session) =>
+      ['warning', 'critical', 'exceeded'].includes(session.context_status),
+    ).length;
+    const activeTasks = tasks.value.filter((task) => task.status === 'active' || task.status === 'paused').length;
     return [
-      { label: "上下文风险", value: riskySessions, hint: `平均占用 ${formatPercent(avgContext)}`, icon: "speed", color: contextRatioColor(avgContext) },
-      { label: "活跃任务", value: activeTasks, hint: "L1 working memory tasks", icon: "assignment", color: "primary" },
-      { label: "长期知识", value: factsTotal.value, hint: factsEndpointReady.value ? "已加载 L3 facts" : "L3 facts 暂不可用", icon: "psychology", color: "deep-purple" },
-      { label: "图谱实体", value: entities.value.length, hint: "L4 entities", icon: "device_hub", color: "teal" },
-      { label: "Prompt 快照", value: snapshots.value.length, hint: "最近 L0 assembly snapshots", icon: "preview", color: "blue-grey" }
+      {
+        label: '上下文风险',
+        value: riskySessions,
+        hint: `平均占用 ${formatPercent(avgContext)}`,
+        icon: 'speed',
+        color: contextRatioColor(avgContext),
+      },
+      { label: '活跃任务', value: activeTasks, hint: 'L1 working memory tasks', icon: 'assignment', color: 'primary' },
+      {
+        label: '长期知识',
+        value: factsTotal.value,
+        hint: factsEndpointReady.value ? '已加载 L3 facts' : 'L3 facts 暂不可用',
+        icon: 'psychology',
+        color: 'deep-purple',
+      },
+      { label: '图谱实体', value: entities.value.length, hint: 'L4 entities', icon: 'device_hub', color: 'teal' },
+      {
+        label: 'Prompt 快照',
+        value: snapshots.value.length,
+        hint: '最近 L0 assembly snapshots',
+        icon: 'preview',
+        color: 'blue-grey',
+      },
     ];
   });
 
   const actionItems = computed(() => [
-    { title: "上下文接近上限", caption: "建议检查摘要阈值和注入片段数量。", count: sessions.value.filter((s) => ["warning", "critical", "exceeded"].includes(s.context_status)).length, icon: "report", color: "warning" },
-    { title: "知识冲突待办", caption: "L3 conflict API 接入后展示需要仲裁的 facts。", count: facts.value.reduce((sum, fact) => sum + (fact.conflict_count || 0), 0), icon: "rule", color: "negative" },
-    { title: "待审核进化提议", caption: "来自 Agent Evolution proposal queue。", count: evolutionProposals.value.length, icon: "auto_awesome", color: "info" },
-    { title: "Cascade 更名待审", caption: "L4 冲突门控产生的图谱/L3 级联审核。", count: cascadeProposals.value.filter((p) => p.status === "pending").length, icon: "sync_alt", color: "deep-orange" }
+    {
+      title: '上下文接近上限',
+      caption: '建议检查摘要阈值和注入片段数量。',
+      count: sessions.value.filter((s) => ['warning', 'critical', 'exceeded'].includes(s.context_status)).length,
+      icon: 'report',
+      color: 'warning',
+    },
+    {
+      title: '知识冲突待办',
+      caption: 'L3 conflict API 接入后展示需要仲裁的 facts。',
+      count: facts.value.reduce((sum, fact) => sum + (fact.conflict_count || 0), 0),
+      icon: 'rule',
+      color: 'negative',
+    },
+    {
+      title: '待审核进化提议',
+      caption: '来自 Agent Evolution proposal queue。',
+      count: evolutionProposals.value.length,
+      icon: 'auto_awesome',
+      color: 'info',
+    },
+    {
+      title: 'Cascade 更名待审',
+      caption: 'L4 冲突门控产生的图谱/L3 级联审核。',
+      count: cascadeProposals.value.filter((p) => p.status === 'pending').length,
+      icon: 'sync_alt',
+      color: 'deep-orange',
+    },
   ]);
 
   const memoryLayers = computed(() => [
-    { key: "l0", title: "上下文窗口 L0", caption: "下一次模型调用实际看到的材料。", icon: "preview", color: "primary", status: "已接入", statusColor: "positive" },
-    { key: "l1", title: "工作记忆 L1", caption: "当前任务目标、约束、决策和中间结果。", icon: "assignment", color: "indigo", status: "已接入", statusColor: "positive" },
-    { key: "l2", title: "事件记忆 L2", caption: "会话 timeline、episode、marks 与巩固队列。", icon: "timeline", color: "teal", status: "已接入", statusColor: "positive" },
-    { key: "l3", title: "知识记忆 L3", caption: "跨会话 facts、偏好、规则、冲突与反馈。", icon: "psychology", color: "deep-purple", status: factsEndpointReady.value ? "已接入" : "不可用", statusColor: factsEndpointReady.value ? "positive" : "warning" },
-    { key: "l4", title: "图谱与进化 L4", caption: "实体关系、Agent identity、strategy 和 proposal。", icon: "auto_awesome", color: "orange", status: entities.value.length || agentIdentity.value ? "已接入" : "已注册", statusColor: "positive" }
+    {
+      key: 'l0',
+      title: '上下文窗口 L0',
+      caption: '下一次模型调用实际看到的材料。',
+      icon: 'preview',
+      color: 'primary',
+      status: '已接入',
+      statusColor: 'positive',
+    },
+    {
+      key: 'l1',
+      title: '工作记忆 L1',
+      caption: '当前任务目标、约束、决策和中间结果。',
+      icon: 'assignment',
+      color: 'indigo',
+      status: '已接入',
+      statusColor: 'positive',
+    },
+    {
+      key: 'l2',
+      title: '事件记忆 L2',
+      caption: '会话 timeline、episode、marks 与巩固队列。',
+      icon: 'timeline',
+      color: 'teal',
+      status: '已接入',
+      statusColor: 'positive',
+    },
+    {
+      key: 'l3',
+      title: '知识记忆 L3',
+      caption: '跨会话 facts、偏好、规则、冲突与反馈。',
+      icon: 'psychology',
+      color: 'deep-purple',
+      status: factsEndpointReady.value ? '已接入' : '不可用',
+      statusColor: factsEndpointReady.value ? 'positive' : 'warning',
+    },
+    {
+      key: 'l4',
+      title: '图谱与进化 L4',
+      caption: '实体关系、Agent identity、strategy 和 proposal。',
+      icon: 'auto_awesome',
+      color: 'orange',
+      status: entities.value.length || agentIdentity.value ? '已接入' : '已注册',
+      statusColor: 'positive',
+    },
   ]);
 
   const evolutionPanels = computed(() => [
     {
-      title: "知识图谱",
-      caption: "实体、关系、证据链和邻居召回。",
+      title: '知识图谱',
+      caption: '实体、关系、证据链和邻居召回。',
       state: `${entities.value.length} 个实体已加载`,
-      icon: "device_hub",
-      color: "teal",
-      items: entities.value.slice(0, 5).map((entity) => `${entity.name} · ${entity.entity_type} · ${entity.scope_type}`)
+      icon: 'device_hub',
+      color: 'teal',
+      items: entities.value
+        .slice(0, 5)
+        .map((entity) => `${entity.name} · ${entity.entity_type} · ${entity.scope_type}`),
     },
     {
-      title: "Agent Identity",
-      caption: "persona、values、tone、domains 和用户期望。",
-      state: agentIdentity.value ? `${agentIdentity.value.current_phase || "active"} · ${agentIdentity.value.tone || "tone unset"}` : "选择 Agent 后加载 identity",
-      icon: "badge",
-      color: "primary",
+      title: 'Agent Identity',
+      caption: 'persona、values、tone、domains 和用户期望。',
+      state: agentIdentity.value
+        ? `${agentIdentity.value.current_phase || 'active'} · ${agentIdentity.value.tone || 'tone unset'}`
+        : '选择 Agent 后加载 identity',
+      icon: 'badge',
+      color: 'primary',
       items: agentIdentity.value
-        ? [agentIdentity.value.persona || "Persona 尚未填写", ...(agentIdentity.value.domains || []).slice(0, 4).map((domain) => `Domain: ${domain}`)]
-        : []
+        ? [
+            agentIdentity.value.persona || 'Persona 尚未填写',
+            ...(agentIdentity.value.domains || []).slice(0, 4).map((domain) => `Domain: ${domain}`),
+          ]
+        : [],
     },
     {
-      title: "Strategy Profile",
-      caption: "探索度、简洁度、谨慎度、工具偏好和模型偏好。",
-      state: agentStrategy.value ? `exploration=${formatScore(agentStrategy.value.exploration)} · caution=${formatScore(agentStrategy.value.caution)}` : "选择 Agent 后加载 strategy",
-      icon: "tune",
-      color: "deep-purple",
+      title: 'Strategy Profile',
+      caption: '探索度、简洁度、谨慎度、工具偏好和模型偏好。',
+      state: agentStrategy.value
+        ? `exploration=${formatScore(agentStrategy.value.exploration)} · caution=${formatScore(agentStrategy.value.caution)}`
+        : '选择 Agent 后加载 strategy',
+      icon: 'tune',
+      color: 'deep-purple',
       items: agentStrategy.value
         ? [
             `conciseness=${formatScore(agentStrategy.value.conciseness)}`,
             `delegation=${formatScore(agentStrategy.value.delegation)}`,
-            `blacklist=${(agentStrategy.value.tool_blacklist || []).join(", ") || "empty"}`
+            `blacklist=${(agentStrategy.value.tool_blacklist || []).join(', ') || 'empty'}`,
           ]
-        : []
+        : [],
     },
     {
-      title: "Evolution Proposals",
-      caption: "待审核的自我修正建议和回滚日志。",
+      title: 'Evolution Proposals',
+      caption: '待审核的自我修正建议和回滚日志。',
       state: `${evolutionProposals.value.length} pending · ${evolutionMetrics.value?.events_total ?? evolutionEvents.value.length} events`,
-      icon: "rule",
-      color: "orange",
-      items: evolutionProposals.value.slice(0, 5).map((proposal) => `${proposal.target_field}: ${proposal.rationale || proposal.expected_impact || proposal.status}`)
-    }
+      icon: 'rule',
+      color: 'orange',
+      items: evolutionProposals.value
+        .slice(0, 5)
+        .map(
+          (proposal) =>
+            `${proposal.target_field}: ${proposal.rationale || proposal.expected_impact || proposal.status}`,
+        ),
+    },
   ]);
 
   const settingChecklist = computed(() => [
-    { label: "基础 memory_* 设置", caption: "Agent 设置页已有旧版记忆启用、结果数和最低分数。", done: true },
-    { label: "L0 上下文策略", caption: "Prompt snapshot / preview API 已接入。", done: true },
-    { label: "L1 工作记忆预算", caption: "L1 task/field API 已接入。", done: true },
-    { label: "L3 语义记忆设置", caption: "Facts / recall：`memory/v1` 由 cmd/admin SQLite（sessionmemory）提供。", done: factsEndpointReady.value },
-    { label: "巩固 Worker 模型", caption: "Agent 设置 → 记忆 Tab：`memory_worker_*` / `l0_compress_*`。", done: true },
-    { label: "平台 Policy Strict / Backfill", caption: "记忆中心 → 设置 Tab：MEMORY_POLICY_STRICT / MEMORY_EPISODE_BACKFILL_DISABLED（DB + env）。", done: true },
-    { label: "L4 图谱与进化设置", caption: "Entities / neighborhood / evolution API 已注册并在本页读取。", done: true }
+    { label: '基础 memory_* 设置', caption: 'Agent 设置页已有旧版记忆启用、结果数和最低分数。', done: true },
+    { label: 'L0 上下文策略', caption: 'Prompt snapshot / preview API 已接入。', done: true },
+    { label: 'L1 工作记忆预算', caption: 'L1 task/field API 已接入。', done: true },
+    {
+      label: 'L3 语义记忆设置',
+      caption: 'Facts / recall：`memory/v1` 由 cmd/admin SQLite（sessionmemory）提供。',
+      done: factsEndpointReady.value,
+    },
+    { label: '巩固 Worker 模型', caption: 'Agent 设置 → 记忆 Tab：`memory_worker_*` / `l0_compress_*`。', done: true },
+    {
+      label: '平台 Policy Strict / Backfill',
+      caption: '记忆中心 → 设置 Tab：MEMORY_POLICY_STRICT / MEMORY_EPISODE_BACKFILL_DISABLED（DB + env）。',
+      done: true,
+    },
+    { label: 'L4 图谱与进化设置', caption: 'Entities / neighborhood / evolution API 已注册并在本页读取。', done: true },
   ]);
 
-  const scopeOptions = ["user", "agent", "team", "workspace", "global"].map((value) => ({ label: value, value }));
-  const factStatusOptions = ["active", "archived", "disputed", "deprecated", "deleted"].map((value) => ({ label: value, value }));
+  const scopeOptions = ['user', 'agent', 'team', 'workspace', 'global'].map((value) => ({ label: value, value }));
+  const factStatusOptions = ['active', 'archived', 'disputed', 'deprecated', 'deleted'].map((value) => ({
+    label: value,
+    value,
+  }));
 
   const factColumns = buildMemoryFactTableColumns(formatDate);
   const snapshotColumns = buildMemoryAssemblyTableColumns(formatDate);
@@ -202,12 +310,12 @@ export function useMemoryCenterPage() {
   });
 
   async function loadAll() {
-    error.value = "";
+    error.value = '';
     try {
       await loadAgents();
       await Promise.all([loadSessions(), loadFacts(), loadEvolution(), loadCascade()]);
     } catch (err) {
-      error.value = err instanceof Error ? err.message : "记忆中心加载失败";
+      error.value = err instanceof Error ? err.message : '记忆中心加载失败';
     }
   }
 
@@ -237,7 +345,7 @@ export function useMemoryCenterPage() {
   }
 
   async function loadCascade() {
-    const agentID = selectedAgentId.value || agents.value[0]?.id || "";
+    const agentID = selectedAgentId.value || agents.value[0]?.id || '';
     if (!agentID) {
       return;
     }
@@ -311,7 +419,7 @@ export function useMemoryCenterPage() {
   async function loadEvolution() {
     loadingEvolution.value = true;
     try {
-      const agentID = selectedAgentId.value || agents.value[0]?.id || "";
+      const agentID = selectedAgentId.value || agents.value[0]?.id || '';
       const bundle = await memoryStore.loadEvolutionForAgent(agentID);
       agentIdentity.value = bundle.identity;
       agentStrategy.value = bundle.strategy;
@@ -337,7 +445,7 @@ export function useMemoryCenterPage() {
         keyword: factKeyword.value || undefined,
         scope_type: factScope.value || undefined,
         status: factStatus.value || undefined,
-        limit: 50
+        limit: 50,
       });
       factsTotal.value = result.total;
       factsEndpointReady.value = true;
@@ -384,9 +492,9 @@ export function useMemoryCenterPage() {
   }
 
   function resetFactFilters() {
-    factKeyword.value = "";
+    factKeyword.value = '';
     factScope.value = null;
-    factStatus.value = "active";
+    factStatus.value = 'active';
   }
 
   function openSnapshot(row: L0AssemblySnapshot) {
@@ -401,9 +509,9 @@ export function useMemoryCenterPage() {
 
   function contextRatioColor(value?: number) {
     const ratio = Math.max(0, Math.min(1, Number(value) || 0));
-    if (ratio >= 0.85) return "negative";
-    if (ratio >= 0.6) return "warning";
-    return "positive";
+    if (ratio >= 0.85) return 'negative';
+    if (ratio >= 0.6) return 'warning';
+    return 'positive';
   }
 
   function formatPercent(value?: number) {
@@ -415,10 +523,10 @@ export function useMemoryCenterPage() {
   }
 
   function formatDate(value?: string) {
-    if (!value) return "-";
+    if (!value) return '-';
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+    return date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
   }
 
   async function handleDeadLetterReplay(id: number) {
@@ -505,6 +613,6 @@ export function useMemoryCenterPage() {
     handleDeadLetterAbandon,
     workerStatus,
     loadingWorkerStatus,
-    loadWorkerStatus
+    loadWorkerStatus,
   };
 }

@@ -4,7 +4,7 @@ import type {
   MessageTeamMemberRef,
   MessageSourceMeta,
   MessageAttachmentRef,
-} from "../../domain/types";
+} from '../../domain/types';
 
 type RawOptions = {
   schema?: string;
@@ -42,14 +42,14 @@ function parseOptionsJson(raw: string): RawOptions {
 function extractAgentRef(opts: RawOptions): MessageAgentRef | null {
   const a = opts.agent;
   if (!a) return null;
-  const key = a.agent_key?.trim() ?? "";
+  const key = a.agent_key?.trim() ?? '';
   const name = a.name?.trim() || a.display_name?.trim() || key;
   if (!key && !a.id) return null;
   return {
-    id: a.id?.trim() ?? "",
+    id: a.id?.trim() ?? '',
     agent_key: key,
     name,
-    icon: a.icon?.trim() ?? "",
+    icon: a.icon?.trim() ?? '',
   };
 }
 
@@ -59,36 +59,36 @@ function extractTeamMember(opts: RawOptions): MessageTeamMemberRef | null {
     return {
       agent_id: tm.agent_id.trim(),
       name: tm.name?.trim() || tm.agent_id,
-      role: tm.role?.trim() ?? "",
+      role: tm.role?.trim() ?? '',
       icon: tm.icon?.trim() || undefined,
     };
   }
   if (opts.member_agent_key?.trim()) {
     return {
-      agent_id: "",
+      agent_id: '',
       name: opts.display_name?.trim() || opts.member_agent_key,
-      role: "",
+      role: '',
     };
   }
   return null;
 }
 
-export const VALID_SOURCES = new Set<string>(["web", "channel", "cron", "a2a", "api", ""]);
+export const VALID_SOURCES = new Set<string>(['web', 'channel', 'cron', 'a2a', 'api', '']);
 
 function extractSourceMeta(opts: RawOptions): MessageSourceMeta | null {
-  const src = (opts.source ?? "").trim().toLowerCase();
+  const src = (opts.source ?? '').trim().toLowerCase();
   if (!src || !VALID_SOURCES.has(src)) return null;
   return {
-    source: src as MessageSourceMeta["source"],
-    platform: (opts.platform ?? opts.channel ?? "").trim() || undefined,
-    channelKey: (opts.channel_key ?? "").trim() || undefined,
+    source: src as MessageSourceMeta['source'],
+    platform: (opts.platform ?? opts.channel ?? '').trim() || undefined,
+    channelKey: (opts.channel_key ?? '').trim() || undefined,
   };
 }
 
 function extractReasoning(opts: RawOptions): string | undefined {
-  const md = (opts.reasoning_markdown ?? "").trim();
+  const md = (opts.reasoning_markdown ?? '').trim();
   if (md) return md;
-  const rc = (opts.reasoning_content ?? "").trim();
+  const rc = (opts.reasoning_content ?? '').trim();
   return rc || undefined;
 }
 
@@ -96,31 +96,33 @@ function extractAttachments(opts: RawOptions): MessageAttachmentRef[] | undefine
   if (!Array.isArray(opts.attachments) || opts.attachments.length === 0) return undefined;
   const out: MessageAttachmentRef[] = [];
   for (const item of opts.attachments) {
-    if (!item || typeof item !== "object") continue;
+    if (!item || typeof item !== 'object') continue;
     const rec = item as Record<string, unknown>;
-    const id = typeof rec.id === "string" ? rec.id.trim() : "";
+    const id = typeof rec.id === 'string' ? rec.id.trim() : '';
     if (!id) continue;
     out.push({
       id,
-      name: typeof rec.name === "string" ? rec.name : id,
-      mime_type: typeof rec.mime_type === "string" ? rec.mime_type : "application/octet-stream",
-      size: typeof rec.size === "number" ? rec.size : undefined,
+      name: typeof rec.name === 'string' ? rec.name : id,
+      mime_type: typeof rec.mime_type === 'string' ? rec.mime_type : 'application/octet-stream',
+      size: typeof rec.size === 'number' ? rec.size : undefined,
     });
   }
   return out.length > 0 ? out : undefined;
 }
 
-export function parseMessageOptions(optionsJson: string): Pick<
+export function parseMessageOptions(
+  optionsJson: string,
+): Pick<
   Message,
-  | "agent_ref"
-  | "team_member"
-  | "source_meta"
-  | "reasoning_markdown"
-  | "dialog_mode"
-  | "provider"
-  | "model"
-  | "attachments"
-  | "tool_event"
+  | 'agent_ref'
+  | 'team_member'
+  | 'source_meta'
+  | 'reasoning_markdown'
+  | 'dialog_mode'
+  | 'provider'
+  | 'model'
+  | 'attachments'
+  | 'tool_event'
 > {
   const opts = parseOptionsJson(optionsJson);
   return {

@@ -1,6 +1,14 @@
-export type SpiritTeamStatus = "assembling" | "assembled" | "running" | "completed" | "failed" | "waiting_human" | "waiting_deps" | "cancelled";
+export type SpiritTeamStatus =
+  | 'assembling'
+  | 'assembled'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'waiting_human'
+  | 'waiting_deps'
+  | 'cancelled';
 
-export type SpiritTeamMode = "coordinator" | "sequential" | "parallel" | "graph" | "debate";
+export type SpiritTeamMode = 'coordinator' | 'sequential' | 'parallel' | 'graph' | 'debate';
 
 export type SpiritMember = {
   agentId: string;
@@ -30,7 +38,7 @@ export type SpiritTeam = {
   topologyReason?: string;
 };
 
-export type SpiritPanelMode = "spirit" | "team" | "member";
+export type SpiritPanelMode = 'spirit' | 'team' | 'member';
 
 export type TeamProgressView = {
   teamId: string;
@@ -60,9 +68,9 @@ export type TaskNode = {
   agentKeys: string[];
 };
 
-export type TopologyType = "parallel" | "sequential" | "hybrid" | "coordinator";
+export type TopologyType = 'parallel' | 'sequential' | 'hybrid' | 'coordinator';
 
-export type SynthesisStrategy = "template" | "prompt" | "hybrid";
+export type SynthesisStrategy = 'template' | 'prompt' | 'hybrid';
 
 export type TeamSynthesisResult = {
   teamId: string;

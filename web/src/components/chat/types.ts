@@ -42,5 +42,5 @@ export type ChatAttachment = {
   timer?: ReturnType<typeof setInterval>;
 };
 
-export type ChatEntityKind = "agent" | "team";
-export type DeleteKind = ChatEntityKind | "session" | "all";
+export type ChatEntityKind = 'agent' | 'team';
+export type DeleteKind = ChatEntityKind | 'session' | 'all';

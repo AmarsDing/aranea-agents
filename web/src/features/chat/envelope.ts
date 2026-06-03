@@ -19,4 +19,4 @@ export type {
   Envelope,
   WsDownstream,
   WsUpstream,
-} from "../../realtime/envelope";
+} from '../../realtime/envelope';

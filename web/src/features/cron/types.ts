@@ -1,11 +1,11 @@
-import type { PlatformResource } from "../platform/types";
+import type { PlatformResource } from '../platform/types';
 
-export type CronScheduleType = "interval" | "cron" | "once";
-export type CronTaskStatus = "active" | "paused" | "dead" | string;
-export type CronRunStatus = "pending" | "success" | "failure" | "skipped" | string;
+export type CronScheduleType = 'interval' | 'cron' | 'once';
+export type CronTaskStatus = 'active' | 'paused' | 'dead' | string;
+export type CronRunStatus = 'pending' | 'success' | 'failure' | 'skipped' | string;
 
 export type CronTaskConfig = {
-  target_type?: "agent" | "team";
+  target_type?: 'agent' | 'team';
   team_id?: string;
   schedule_type?: CronScheduleType;
   cron_expression?: string;
@@ -37,7 +37,7 @@ export type CronTaskFormValue = {
   name: string;
   display_name: string;
   description: string;
-  target_type: "agent" | "team";
+  target_type: 'agent' | 'team';
   agent_id: string;
   team_id: string;
   schedule_type: CronScheduleType;

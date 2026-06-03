@@ -13,12 +13,12 @@
     <A2ARuntimeConfigBanner :config="runtimeConfig" />
 
     <div class="app-tab-shell">
-    <q-tabs v-model="tab" dense align="left" class="text-primary">
-      <q-tab name="discover" label="发现" />
-      <q-tab name="remote" label="远程注册" />
-      <q-tab name="audit" label="审计" />
-      <q-tab name="invoke" label="Invoke" />
-    </q-tabs>
+      <q-tabs v-model="tab" dense align="left" class="text-primary">
+        <q-tab name="discover" label="发现" />
+        <q-tab name="remote" label="远程注册" />
+        <q-tab name="audit" label="审计" />
+        <q-tab name="invoke" label="Invoke" />
+      </q-tabs>
     </div>
 
     <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
@@ -73,7 +73,9 @@
           <template #body-cell-display_name="props">
             <q-td :props="props">
               <AppRegistryHoverTip :text="props.row.remote_url" empty-label="暂无 URL">
-                <span class="app-registry-cell-primary ellipsis">{{ props.row.display_name || props.row.remote_url || "—" }}</span>
+                <span class="app-registry-cell-primary ellipsis">{{
+                  props.row.display_name || props.row.remote_url || '—'
+                }}</span>
               </AppRegistryHoverTip>
             </q-td>
           </template>
@@ -90,14 +92,28 @@
           <template #body-cell-actions="props">
             <q-td :props="props">
               <div class="app-registry-cell-actions">
-                <q-btn flat dense round color="negative" icon="delete" aria-label="删除" @click="confirmRemoveRemote(props.row.id, props.row.display_name)" />
+                <q-btn
+                  flat
+                  dense
+                  round
+                  color="negative"
+                  icon="delete"
+                  aria-label="删除"
+                  @click="confirmRemoveRemote(props.row.id, props.row.display_name)"
+                />
               </div>
             </q-td>
           </template>
         </AppRegistryTable>
       </q-tab-panel>
       <q-tab-panel name="audit" class="q-pa-none">
-        <A2AAuditPanel :rows="auditRows" :total="auditTotal" :loading="auditLoading" :columns="auditColumns" :status-color="auditStatusColor" />
+        <A2AAuditPanel
+          :rows="auditRows"
+          :total="auditTotal"
+          :loading="auditLoading"
+          :columns="auditColumns"
+          :status-color="auditStatusColor"
+        />
       </q-tab-panel>
       <q-tab-panel name="invoke" class="q-pa-none">
         <A2AInvokePanel
@@ -117,20 +133,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import { useQuasar } from "quasar";
-import AppPageHero from "../components/layout/AppPageHero.vue";
-import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
-import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../components/layout/AppRegistryHoverTip.vue";
-import A2ADiscoverPanel from "../components/a2a/A2ADiscoverPanel.vue";
-import A2AAuditPanel from "../components/a2a/A2AAuditPanel.vue";
-import A2AInvokePanel from "../components/a2a/A2AInvokePanel.vue";
-import A2ARemoteAgentPanel from "../components/a2a/A2ARemoteAgentPanel.vue";
-import A2ARuntimeConfigBanner from "../components/a2a/A2ARuntimeConfigBanner.vue";
-import { useA2APage } from "../features/a2a/useA2APage";
-import { a2aAuthTypeLabel } from "../features/a2a/a2aTableUi";
-import type { RegisterRemoteAgentInput } from "../features/a2a/types";
+import { ref } from 'vue';
+import { useQuasar } from 'quasar';
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
+import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
+import AppRegistryHoverTip from '../components/layout/AppRegistryHoverTip.vue';
+import A2ADiscoverPanel from '../components/a2a/A2ADiscoverPanel.vue';
+import A2AAuditPanel from '../components/a2a/A2AAuditPanel.vue';
+import A2AInvokePanel from '../components/a2a/A2AInvokePanel.vue';
+import A2ARemoteAgentPanel from '../components/a2a/A2ARemoteAgentPanel.vue';
+import A2ARuntimeConfigBanner from '../components/a2a/A2ARuntimeConfigBanner.vue';
+import { useA2APage } from '../features/a2a/useA2APage';
+import { a2aAuthTypeLabel } from '../features/a2a/a2aTableUi';
+import type { RegisterRemoteAgentInput } from '../features/a2a/types';
 
 const {
   agents,
@@ -162,7 +178,7 @@ const {
   previewRemote,
   removeRemote,
   reload,
-  runtimeConfig
+  runtimeConfig,
 } = useA2APage();
 
 const $q = useQuasar();
@@ -176,10 +192,10 @@ async function onRemoteRegister(input: RegisterRemoteAgentInput) {
 
 function confirmRemoveRemote(id: string, name: string) {
   $q.dialog({
-    title: "确认删除",
+    title: '确认删除',
     message: `确定要删除远程 Agent「${name || id}」吗？`,
     cancel: true,
-    persistent: true
+    persistent: true,
   }).onOk(() => {
     removeRemote(id);
   });

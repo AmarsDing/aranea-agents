@@ -10,7 +10,15 @@
       <q-btn flat rounded icon="refresh" label="刷新" :loading="loading" class="q-ml-sm" @click="load" />
     </div>
 
-    <q-input v-model="search" dense outlined clearable label="搜索" class="q-mb-md" @update:model-value="debouncedLoad" />
+    <q-input
+      v-model="search"
+      dense
+      outlined
+      clearable
+      label="搜索"
+      class="q-mb-md"
+      @update:model-value="debouncedLoad"
+    />
 
     <div class="row q-col-gutter-md">
       <div v-for="p in products" :key="p.id" class="col-12 col-md-6 col-lg-4">
@@ -18,7 +26,7 @@
           <q-card-section>
             <div class="text-subtitle1 text-weight-bold">{{ p.display_name || p.name }}</div>
             <div class="text-caption text-grey-7">{{ p.type }} · v{{ p.version }}</div>
-            <div class="text-body2 q-mt-sm">{{ p.description || "暂无描述" }}</div>
+            <div class="text-body2 q-mt-sm">{{ p.description || '暂无描述' }}</div>
             <div class="text-caption q-mt-sm">安装 {{ p.install_count }} 次</div>
           </q-card-section>
           <q-card-actions align="right">
@@ -42,7 +50,15 @@
         <q-card-section class="app-dialog-body q-gutter-sm q-pt-none">
           <q-input v-model="draft.name" class="app-field-md" dense outlined label="标识名" />
           <q-input v-model="draft.display_name" class="app-field-md" dense outlined label="显示名" />
-          <q-input v-model="draft.description" class="app-field-long" dense outlined autogrow type="textarea" label="描述" />
+          <q-input
+            v-model="draft.description"
+            class="app-field-long"
+            dense
+            outlined
+            autogrow
+            type="textarea"
+            label="描述"
+          />
           <q-select
             v-model="draft.type"
             dense
@@ -52,8 +68,16 @@
           />
         </q-card-section>
         <q-card-actions align="right" class="app-actions-bar">
-          <q-btn flat no-caps label="取消" v-close-popup />
-          <q-btn color="primary" unelevated no-caps label="发布" :loading="publishing" :disable="!draft.name || !draft.display_name || !draft.type" @click="publish" />
+          <q-btn v-close-popup flat no-caps label="取消" />
+          <q-btn
+            color="primary"
+            unelevated
+            no-caps
+            label="发布"
+            :loading="publishing"
+            :disable="!draft.name || !draft.display_name || !draft.type"
+            @click="publish"
+          />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -61,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { useEcosystemPage } from "../features/ecosystem/useEcosystemPage";
+import { useEcosystemPage } from '../features/ecosystem/useEcosystemPage';
 
 const {
   products,

@@ -20,8 +20,8 @@
 </template>
 
 <script setup lang="ts">
-const page = defineModel<number>("page", { required: true });
-const rowsPerPage = defineModel<number>("rowsPerPage", { required: true });
+const page = defineModel<number>('page', { required: true });
+const rowsPerPage = defineModel<number>('rowsPerPage', { required: true });
 
 const props = defineProps<{
   total: number;

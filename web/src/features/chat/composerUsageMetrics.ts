@@ -1,6 +1,6 @@
-import { formatUsdCompact } from "../usage/moneyFormat";
-import { contextProgressColor } from "../../components/sessions/sessionUi";
-import type { PromptTokenBreakdown } from "../../realtime/envelope";
+import { formatUsdCompact } from '../usage/moneyFormat';
+import { contextProgressColor } from '../../components/sessions/sessionUi';
+import type { PromptTokenBreakdown } from '../../realtime/envelope';
 
 export type ComposerUsageSnapshot = {
   contextRatio: number;
@@ -45,7 +45,7 @@ export function formatComposerUsageDetail(snapshot: ComposerUsageSnapshot): stri
   if (snapshot.totalCostMicroUsd > 0) {
     parts.push(formatUsdCompact(snapshot.totalCostMicroUsd));
   }
-  return parts.join(" · ");
+  return parts.join(' · ');
 }
 
 /** Segments for header usage row (wider spacing via flex gap in UI). */
@@ -70,8 +70,8 @@ export function composerContextColor(contextStatus?: string, contextRatio = 0): 
   if (contextStatus?.trim()) {
     return contextProgressColor(contextStatus);
   }
-  if (contextRatio >= 0.95) return "purple";
-  if (contextRatio >= 0.8) return "negative";
-  if (contextRatio >= 0.6) return "warning";
-  return "primary";
+  if (contextRatio >= 0.95) return 'purple';
+  if (contextRatio >= 0.8) return 'negative';
+  if (contextRatio >= 0.6) return 'warning';
+  return 'primary';
 }

@@ -9,49 +9,49 @@
  */
 
 export type EnvelopeType =
-  | "text_delta"
-  | "text_done"
-  | "tool_call"
-  | "tool_result"
-  | "state_delta"
-  | "transfer"
-  | "runner_completion"
-  | "context_usage"
-  | "run_status"
-  | "error"
-  | "log"
-  | "flow_log"
-  | "graph_node_start"
-  | "graph_node_end"
-  | "checkpoint"
-  | "intent_pass"
-  | "member_message_start"
-  | "member_delta"
-  | "member_message_done"
-  | "team_run_started"
-  | "team_run_finished"
-  | "team_run_failed"
-  | "team_summary"
-  | "team_step_started"
-  | "team_step_finished"
-  | "graph_step"
-  | "graph_execution_done"
-  | "graph_node_error"
-  | "graph_node_custom"
-  | "graph_task_status"
-  | "knowledge_ingest"
-  | "user_feedback"
-  | "mcp.session.reconnect"
-  | "mcp.health.alert"
-  | "orchestration_agent_status"
-  | "alert.notify"
-  | "session.status_changed"
-  | "spirit_team_assembled"
-  | "spirit_team_completed"
-  | "spirit_team_failed"
-  | "spirit_team_progress"
-  | "spirit_teams_all_completed"
-  | "spirit_synthesis_completed";
+  | 'text_delta'
+  | 'text_done'
+  | 'tool_call'
+  | 'tool_result'
+  | 'state_delta'
+  | 'transfer'
+  | 'runner_completion'
+  | 'context_usage'
+  | 'run_status'
+  | 'error'
+  | 'log'
+  | 'flow_log'
+  | 'graph_node_start'
+  | 'graph_node_end'
+  | 'checkpoint'
+  | 'intent_pass'
+  | 'member_message_start'
+  | 'member_delta'
+  | 'member_message_done'
+  | 'team_run_started'
+  | 'team_run_finished'
+  | 'team_run_failed'
+  | 'team_summary'
+  | 'team_step_started'
+  | 'team_step_finished'
+  | 'graph_step'
+  | 'graph_execution_done'
+  | 'graph_node_error'
+  | 'graph_node_custom'
+  | 'graph_task_status'
+  | 'knowledge_ingest'
+  | 'user_feedback'
+  | 'mcp.session.reconnect'
+  | 'mcp.health.alert'
+  | 'orchestration_agent_status'
+  | 'alert.notify'
+  | 'session.status_changed'
+  | 'spirit_team_assembled'
+  | 'spirit_team_completed'
+  | 'spirit_team_failed'
+  | 'spirit_team_progress'
+  | 'spirit_teams_all_completed'
+  | 'spirit_synthesis_completed';
 
 export type EnvelopeContent = {
   text: string;
@@ -168,7 +168,7 @@ export type Envelope = {
 };
 
 export type WsDownstream = {
-  direction: "server_to_client";
+  direction: 'server_to_client';
   channel: string;
   type?: string;
   payload?: unknown;
@@ -176,7 +176,7 @@ export type WsDownstream = {
 };
 
 export type WsUpstream = {
-  direction: "client_to_server";
+  direction: 'client_to_server';
   channel: string;
   type: string;
   request_id?: string;
@@ -185,25 +185,25 @@ export type WsUpstream = {
 
 export function resolveEnvelopeTurnId(env: Envelope): string {
   return (
-    (env.turn_id ?? "").trim() ||
+    (env.turn_id ?? '').trim() ||
     stringValue(env.metadata?.turn_id) ||
     stringValue(env.metadata?.run_id) ||
-    (env.request_id ?? "").trim() ||
+    (env.request_id ?? '').trim() ||
     env.id
   );
 }
 
 export function resolveEnvelopeSource(env: Envelope): string {
-  return ((env.source ?? "").trim() || stringValue(env.metadata?.source));
+  return (env.source ?? '').trim() || stringValue(env.metadata?.source);
 }
 
 export function resolveEnvelopeRevision(env: Envelope): number {
-  if (typeof env.session_revision === "number" && env.session_revision > 0) return env.session_revision;
+  if (typeof env.session_revision === 'number' && env.session_revision > 0) return env.session_revision;
   const fromMeta = env.metadata?.session_revision;
-  if (typeof fromMeta === "number" && fromMeta > 0) return fromMeta;
+  if (typeof fromMeta === 'number' && fromMeta > 0) return fromMeta;
   return 0;
 }
 
 function stringValue(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
+  return typeof value === 'string' ? value.trim() : '';
 }

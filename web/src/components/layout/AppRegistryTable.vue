@@ -4,10 +4,7 @@
       <template v-for="name in forwardedSlotNames" #[name]="slotData">
         <slot :name="name" v-bind="slotData ?? {}" />
       </template>
-      <template
-        v-for="colName in resizableHeaderColumns"
-        #[headerCellSlot(colName)]="slotData"
-      >
+      <template v-for="colName in resizableHeaderColumns" #[headerCellSlot(colName)]="slotData">
         <q-th :props="slotData" class="app-registry-th-resizable">
           {{ slotData.col.label }}
           <span
@@ -26,10 +23,7 @@
       <template v-for="name in forwardedSlotNames" #[name]="slotData">
         <slot :name="name" v-bind="slotData ?? {}" />
       </template>
-      <template
-        v-for="colName in resizableHeaderColumns"
-        #[headerCellSlot(colName)]="slotData"
-      >
+      <template v-for="colName in resizableHeaderColumns" #[headerCellSlot(colName)]="slotData">
         <q-th :props="slotData" class="app-registry-th-resizable">
           {{ slotData.col.label }}
           <span
@@ -46,9 +40,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, useAttrs, useSlots } from "vue";
-import type { QTableProps } from "quasar";
-import { useResizableRegistryColumns } from "../../features/ui/useResizableRegistryColumns";
+import { computed, useAttrs, useSlots } from 'vue';
+import type { QTableProps } from 'quasar';
+import { useResizableRegistryColumns } from '../../features/ui/useResizableRegistryColumns';
 
 defineOptions({ inheritAttrs: false });
 
@@ -72,12 +66,12 @@ const props = withDefaults(
   {
     shell: true,
     dataShell: false,
-    tableClass: "",
+    tableClass: '',
     externalPagination: true,
     dense: true,
     flat: true,
     resizable: true,
-    columnPersistKey: "",
+    columnPersistKey: '',
   },
 );
 
@@ -86,17 +80,14 @@ const slots = useSlots();
 
 const sourceColumns = computed(() => {
   const bind = attrs as Record<string, unknown>;
-  const columns = bind.columns as QTableProps["columns"] | undefined;
+  const columns = bind.columns as QTableProps['columns'] | undefined;
   return Array.isArray(columns) ? columns : undefined;
 });
 
-const { displayColumns, onResizeStart } = useResizableRegistryColumns(
-  () => sourceColumns.value,
-  {
-    enabled: () => props.resizable,
-    persistKey: () => props.columnPersistKey || undefined,
-  },
-);
+const { displayColumns, onResizeStart } = useResizableRegistryColumns(() => sourceColumns.value, {
+  enabled: () => props.resizable,
+  persistKey: () => props.columnPersistKey || undefined,
+});
 
 /** 将 columns.style 同步到 headerStyle，并应用用户拖拽后的列宽 */
 const tableBind = computed(() => {
@@ -110,7 +101,7 @@ const tableBind = computed(() => {
 const resizableHeaderColumns = computed(() => {
   if (!props.resizable || !displayColumns.value) return [];
   return displayColumns.value
-    .map((col) => (col && typeof col === "object" ? String(col.name ?? "") : ""))
+    .map((col) => (col && typeof col === 'object' ? String(col.name ?? '') : ''))
     .filter((name) => name && !slots[`header-cell-${name}`]);
 });
 
@@ -120,15 +111,13 @@ function headerCellSlot(colName: string) {
   return `header-cell-${colName}`;
 }
 
-const shellClasses = computed(() =>
-  props.dataShell ? "app-data-table-shell" : "app-registry-table-shell",
-);
+const shellClasses = computed(() => (props.dataShell ? 'app-data-table-shell' : 'app-registry-table-shell'));
 
 const tableClasses = computed(() => {
-  const classes = ["app-registry-table"];
+  const classes = ['app-registry-table'];
   if (props.tableClass) classes.push(props.tableClass);
-  if (props.externalPagination) classes.push("app-registry-table--external-pagination");
-  if (props.resizable) classes.push("app-registry-table--resizable");
+  if (props.externalPagination) classes.push('app-registry-table--external-pagination');
+  if (props.resizable) classes.push('app-registry-table--resizable');
   return classes;
 });
 </script>

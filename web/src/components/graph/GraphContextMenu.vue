@@ -31,7 +31,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 
 export interface ContextMenuItem {
   icon: string;
@@ -76,32 +76,32 @@ const hasDangerItem = computed(() => props.items.some((i) => i.danger));
 
 function onItemClick(item: ContextMenuItem) {
   if (item.disabled) return;
-  emit("select", item.action);
+  emit('select', item.action);
 }
 
 function onDocClick(e: MouseEvent) {
   if (!props.visible) return;
   if (menuRef.value && !menuRef.value.contains(e.target as Node)) {
-    emit("close");
+    emit('close');
   }
 }
 
 function onDocKeydown(e: KeyboardEvent) {
   if (!props.visible) return;
-  if (e.key === "Escape") {
+  if (e.key === 'Escape') {
     e.preventDefault();
-    emit("close");
+    emit('close');
   }
 }
 
 onMounted(() => {
-  document.addEventListener("mousedown", onDocClick, true);
-  document.addEventListener("keydown", onDocKeydown, true);
+  document.addEventListener('mousedown', onDocClick, true);
+  document.addEventListener('keydown', onDocKeydown, true);
 });
 
 onUnmounted(() => {
-  document.removeEventListener("mousedown", onDocClick, true);
-  document.removeEventListener("keydown", onDocKeydown, true);
+  document.removeEventListener('mousedown', onDocClick, true);
+  document.removeEventListener('keydown', onDocKeydown, true);
 });
 
 watch(
@@ -111,6 +111,6 @@ watch(
       await nextTick();
       menuRef.value?.focus({ preventScroll: true });
     }
-  }
+  },
 );
 </script>

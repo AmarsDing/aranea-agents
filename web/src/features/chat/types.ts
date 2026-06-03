@@ -4,10 +4,10 @@
  * compatibility and defines chat-specific types.
  */
 
-import type { ReactStep } from "./reactPlannerTypes";
+import type { ReactStep } from './reactPlannerTypes';
 
 // Re-export shared domain types
-export type { Message, RunStatus, RunStatusValue } from "../../domain/types";
+export type { Message, RunStatus, RunStatusValue } from '../../domain/types';
 
 export type ChatOption = {
   type: string;
@@ -27,7 +27,7 @@ export type SendMessageOptions = {
   context_refs?: ContextRef[];
 };
 
-import type { Message } from "../../domain/types";
+import type { Message } from '../../domain/types';
 
 export type SendMessageResult = {
   user_message: Message;
@@ -44,12 +44,12 @@ export type IntentPassResult = {
   search_hints_count?: number;
 };
 
-export type ActivityKind = "tool" | "skill" | "mcp" | "subagent" | "memory" | "knowledge" | "session";
+export type ActivityKind = 'tool' | 'skill' | 'mcp' | 'subagent' | 'memory' | 'knowledge' | 'session';
 
 export type ToolUseEvent = {
   id: string;
-  phase: "before" | "after" | string;
-  status: "running" | "success" | "error" | "failed" | "blocked" | string;
+  phase: 'before' | 'after' | string;
+  status: 'running' | 'success' | 'error' | 'failed' | 'blocked' | string;
   agent_id: string;
   agent_key: string;
   agent_name: string;
@@ -103,7 +103,7 @@ export type FileEditResult = {
   error?: string;
 };
 
-export type ContextRefKind = "file" | "folder" | "knowledge_base" | "artifact";
+export type ContextRefKind = 'file' | 'folder' | 'knowledge_base' | 'artifact';
 
 export type ContextRefItem = {
   key: string;

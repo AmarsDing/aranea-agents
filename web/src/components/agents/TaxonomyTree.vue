@@ -87,17 +87,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
-import TaxonomyPositionCard from "./TaxonomyPositionCard.vue";
-import TaxonomyNodeHeader from "./TaxonomyNodeHeader.vue";
-import type { PlatformResourceTreeNode } from "../../features/platform/types";
+import { ref, watch } from 'vue';
+import TaxonomyPositionCard from './TaxonomyPositionCard.vue';
+import TaxonomyNodeHeader from './TaxonomyNodeHeader.vue';
+import type { PlatformResourceTreeNode } from '../../features/platform/types';
 import {
   collectDefaultExpandedIds,
   collectExpandedIdsForFilter,
   departmentPositions,
   nodeMatchesKeyword,
-  type TaxonomyLevel
-} from "../../features/platform/taxonomyTreeUtils";
+  type TaxonomyLevel,
+} from '../../features/platform/taxonomyTreeUtils';
 
 const props = withDefaults(
   defineProps<{
@@ -109,19 +109,19 @@ const props = withDefaults(
     togglingIds?: Set<string>;
   }>(),
   {
-    keyword: "",
+    keyword: '',
     readonly: false,
     showSystemChip: true,
     defaultExpandAll: true,
-    togglingIds: () => new Set<string>()
-  }
+    togglingIds: () => new Set<string>(),
+  },
 );
 
 defineEmits<{
   edit: [node: PlatformResourceTreeNode];
-  "create-child": [level: TaxonomyLevel, parent: PlatformResourceTreeNode];
+  'create-child': [level: TaxonomyLevel, parent: PlatformResourceTreeNode];
   remove: [node: PlatformResourceTreeNode];
-  "toggle-enabled": [node: PlatformResourceTreeNode, enabled: boolean];
+  'toggle-enabled': [node: PlatformResourceTreeNode, enabled: boolean];
 }>();
 
 const expandedIds = ref<Set<string>>(new Set());
@@ -135,7 +135,7 @@ watch(
       return;
     }
     expandedIds.value = new Set(collectExpandedIdsForFilter(props.tree, q));
-  }
+  },
 );
 
 watch(
@@ -145,7 +145,7 @@ watch(
     if (expandedIds.value.size > 0) return;
     expandedIds.value = collectDefaultExpandedIds(tree);
   },
-  { immediate: true, deep: false }
+  { immediate: true, deep: false },
 );
 
 function isToggling(id: string) {
@@ -164,7 +164,7 @@ function setExpanded(id: string, open: boolean) {
 }
 
 function departmentNodes(industry: PlatformResourceTreeNode) {
-  return (industry.children ?? []).filter((node) => node.level === "department");
+  return (industry.children ?? []).filter((node) => node.level === 'department');
 }
 
 function positionNodes(department: PlatformResourceTreeNode) {

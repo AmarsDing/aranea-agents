@@ -1,7 +1,7 @@
-import { computed, onMounted, ref, watch, type Ref } from "vue";
-import { useQuasar } from "quasar";
-import type { AgentEffectiveTools, Tool, ToolAgentOverride } from "../tools/types";
-import { useToolsStore } from "../../stores/tools";
+import { computed, onMounted, ref, watch, type Ref } from 'vue';
+import { useQuasar } from 'quasar';
+import type { AgentEffectiveTools, Tool, ToolAgentOverride } from '../tools/types';
+import { useToolsStore } from '../../stores/tools';
 
 export type AgentToolOverrideRow = {
   tool_key: string;
@@ -21,14 +21,14 @@ export type AgentToolOverrideForm = {
 };
 
 const modeOptions = [
-  { label: "继承 (inherit)", value: "inherit" },
-  { label: "允许 (allow)", value: "allow" },
-  { label: "拒绝 (deny)", value: "deny" }
+  { label: '继承 (inherit)', value: 'inherit' },
+  { label: '允许 (allow)', value: 'allow' },
+  { label: '拒绝 (deny)', value: 'deny' },
 ];
 
 const effectiveStateLabels: Record<string, string> = {
-  allowed: "允许",
-  denied: "拒绝"
+  allowed: '允许',
+  denied: '拒绝',
 };
 
 /** Agent settings: effective tools matrix + per-agent overrides (store lives here, not in components). */
@@ -45,10 +45,10 @@ export function useAgentToolOverrides(agentId: Ref<string>) {
   const confirmRemoveOpen = ref(false);
   const pendingRemoveRow = ref<AgentToolOverrideRow | null>(null);
   const form = ref<AgentToolOverrideForm>({
-    mode: "inherit",
+    mode: 'inherit',
     enabled: true,
     requires_confirmation: false,
-    config_override_json: "{}"
+    config_override_json: '{}',
   });
 
   const rows = computed<AgentToolOverrideRow[]>(() => {
@@ -65,7 +65,7 @@ export function useAgentToolOverrides(agentId: Ref<string>) {
         effective_state: it.effective_state,
         effective_requires_confirmation: catalogConfirm || Boolean(ov?.requires_confirmation),
         tool_id: it.tool_key,
-        override: ov
+        override: ov,
       };
     });
   });
@@ -88,7 +88,7 @@ export function useAgentToolOverrides(agentId: Ref<string>) {
       const [eff, ovs, catalog] = await Promise.all([
         toolsStore.fetchEffectiveTools(id),
         toolsStore.fetchOverridesByAgent(id),
-        toolsStore.fetchCatalog({ page: 1, page_size: 500 })
+        toolsStore.fetchCatalog({ page: 1, page_size: 500 }),
       ]);
       effective.value = eff;
       overrides.value = ovs;
@@ -98,7 +98,7 @@ export function useAgentToolOverrides(agentId: Ref<string>) {
       }
       catalogByKey.value = map;
     } catch (e) {
-      $q.notify({ type: "negative", message: e instanceof Error ? e.message : "加载工具覆盖失败" });
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '加载工具覆盖失败' });
     } finally {
       loading.value = false;
     }
@@ -108,10 +108,10 @@ export function useAgentToolOverrides(agentId: Ref<string>) {
     editingRow.value = row;
     const o = row.override;
     form.value = {
-      mode: o?.mode ?? "inherit",
+      mode: o?.mode ?? 'inherit',
       enabled: o?.enabled ?? true,
       requires_confirmation: o?.requires_confirmation ?? false,
-      config_override_json: o?.config_override_json ?? "{}"
+      config_override_json: o?.config_override_json ?? '{}',
     };
     editorOpen.value = true;
   }
@@ -128,13 +128,13 @@ export function useAgentToolOverrides(agentId: Ref<string>) {
         mode: form.value.mode,
         enabled: form.value.enabled,
         requires_confirmation: form.value.requires_confirmation,
-        config_override_json: form.value.config_override_json
+        config_override_json: form.value.config_override_json,
       });
       editorOpen.value = false;
-      $q.notify({ type: "positive", message: "已保存工具覆盖" });
+      $q.notify({ type: 'positive', message: '已保存工具覆盖' });
       await reload();
     } catch (e) {
-      $q.notify({ type: "negative", message: e instanceof Error ? e.message : "保存失败" });
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '保存失败' });
     } finally {
       saving.value = false;
     }
@@ -154,10 +154,10 @@ export function useAgentToolOverrides(agentId: Ref<string>) {
     confirmRemoveOpen.value = false;
     try {
       await toolsStore.removeOverride(row.tool_id, id);
-      $q.notify({ type: "positive", message: "已删除" });
+      $q.notify({ type: 'positive', message: '已删除' });
       await reload();
     } catch (e) {
-      $q.notify({ type: "negative", message: e instanceof Error ? e.message : "删除失败" });
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '删除失败' });
     } finally {
       pendingRemoveRow.value = null;
     }
@@ -189,6 +189,6 @@ export function useAgentToolOverrides(agentId: Ref<string>) {
     saveOverride,
     requestRemoveOverride,
     confirmRemoveOverride,
-    cancelRemoveOverride
+    cancelRemoveOverride,
   };
 }

@@ -18,15 +18,11 @@
     <div class="graphs-page__body">
       <div class="graphs-page__list">
         <section class="graphs-filter-bar q-mt-md">
-          <q-input
-            v-model="searchQuery"
-            dense
-            outlined
-            placeholder="搜索 Graph..."
-            class="graphs-filter-bar__search"
-          >
+          <q-input v-model="searchQuery" dense outlined placeholder="搜索 Graph..." class="graphs-filter-bar__search">
             <template #prepend><q-icon name="search" /></template>
-            <template v-if="searchQuery" #append><q-icon name="close" class="cursor-pointer" @click="searchQuery = ''" /></template>
+            <template v-if="searchQuery" #append
+              ><q-icon name="close" class="cursor-pointer" @click="searchQuery = ''"
+            /></template>
           </q-input>
           <q-select
             v-model="engineFilter"
@@ -90,8 +86,12 @@
                     <span
                       v-if="count"
                       class="graph-card__chip"
-                      :style="{ borderColor: nodeTypeBorderColor(type as string), color: nodeTypeBorderColor(type as string) }"
-                    >{{ (NODE_TYPE_EMOJI as any)[type] }}×{{ count }}</span>
+                      :style="{
+                        borderColor: nodeTypeBorderColor(type as string),
+                        color: nodeTypeBorderColor(type as string),
+                      }"
+                      >{{ (NODE_TYPE_EMOJI as any)[type] }}×{{ count }}</span
+                    >
                   </template>
                 </div>
                 <div class="row items-center justify-between no-wrap">
@@ -100,7 +100,9 @@
                     <span v-else class="graph-card__tag">BSP</span>
                     <span v-if="graph.enableCheckpoint" class="graph-card__tag">检查点</span>
                   </div>
-                  <span class="graph-card__summary">{{ graph.nodes?.length ?? 0 }}节点·{{ graph.edges?.length ?? 0 }}线</span>
+                  <span class="graph-card__summary"
+                    >{{ graph.nodes?.length ?? 0 }}节点·{{ graph.edges?.length ?? 0 }}线</span
+                  >
                 </div>
               </div>
             </q-card>
@@ -119,8 +121,17 @@
           <q-card-section class="column items-center text-center q-pa-xl">
             <q-avatar size="72px" color="primary" text-color="white" icon="account_tree" />
             <div class="text-h6 q-mt-md">暂无 Graph</div>
-            <div class="text-body2 app-text-secondary q-mt-sm">创建一个 Graph 工作流，可视化编排 Agent、条件路由和并行分支。</div>
-            <q-btn class="q-mt-md graphs-page__create-btn" rounded unelevated icon="add" label="新增 Graph" @click="openCreate" />
+            <div class="text-body2 app-text-secondary q-mt-sm">
+              创建一个 Graph 工作流，可视化编排 Agent、条件路由和并行分支。
+            </div>
+            <q-btn
+              class="q-mt-md graphs-page__create-btn"
+              rounded
+              unelevated
+              icon="add"
+              label="新增 Graph"
+              @click="openCreate"
+            />
           </q-card-section>
         </q-card>
       </div>
@@ -159,14 +170,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import draggable from "vuedraggable";
-import AppPageHero from "../components/layout/AppPageHero.vue";
-import GraphRunDialog from "../components/graph/GraphRunDialog.vue";
-import GraphDetailPanel from "../components/graph/GraphDetailPanel.vue";
-import GraphCardContextMenu from "../components/graph/GraphCardContextMenu.vue";
-import { useGraphsPage } from "../features/graph/useGraphsPage";
-import type { GraphDefinition } from "../features/graph/types";
+import { computed, ref, watch } from 'vue';
+import draggable from 'vuedraggable';
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import GraphRunDialog from '../components/graph/GraphRunDialog.vue';
+import GraphDetailPanel from '../components/graph/GraphDetailPanel.vue';
+import GraphCardContextMenu from '../components/graph/GraphCardContextMenu.vue';
+import { useGraphsPage } from '../features/graph/useGraphsPage';
+import type { GraphDefinition } from '../features/graph/types';
 
 const {
   isDark,
@@ -209,7 +220,7 @@ const {
   onCtxMenuAction,
 } = useGraphsPage();
 
-const isDefaultSort = computed(() => sortKey.value === "updatedAt" && sortOrder.value === "desc");
+const isDefaultSort = computed(() => sortKey.value === 'updatedAt' && sortOrder.value === 'desc');
 
 const localGraphs = ref<GraphDefinition[]>([]);
 

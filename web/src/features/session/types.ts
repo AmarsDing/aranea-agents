@@ -1,11 +1,6 @@
-import type { PromptTokenBreakdown } from "../../realtime/envelope";
+import type { PromptTokenBreakdown } from '../../realtime/envelope';
 
-export type SessionStatus =
-  | 'idle'
-  | 'running'
-  | 'completed'
-  | 'interrupted'
-  | 'awaiting_confirmation'
+export type SessionStatus = 'idle' | 'running' | 'completed' | 'interrupted' | 'awaiting_confirmation';
 
 export type SessionStatusReason =
   | 'user_cancelled'
@@ -19,7 +14,7 @@ export type SessionStatusReason =
   | 'tool_confirmation'
   | 'agent_awaiting_reply'
   | 'manual_override'
-  | ''
+  | '';
 
 export type Session = {
   id: string;
@@ -82,8 +77,8 @@ export type SessionListResult = {
 
 export type SessionTimelineItem = {
   id: string;
-  kind: "message" | "tool" | "skill" | "mcp" | string;
-  side: "left" | "right" | string;
+  kind: 'message' | 'tool' | 'skill' | 'mcp' | string;
+  side: 'left' | 'right' | string;
   title: string;
   subtitle: string;
   actor_id: string;
@@ -176,7 +171,7 @@ export type BulkProgress = {
   indeterminate?: boolean;
 };
 
-export type RetentionDialogMode = "archive" | "delete";
+export type RetentionDialogMode = 'archive' | 'delete';
 
 export type SessionRunRecord = {
   id: string;

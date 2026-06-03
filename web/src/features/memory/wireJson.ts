@@ -9,5 +9,5 @@ export {
   pickOptionalI32,
   pickStr,
   pickStrArray,
-  parseJsonArray
-} from "../../shared/wireJson";
+  parseJsonArray,
+} from '../../shared/wireJson';

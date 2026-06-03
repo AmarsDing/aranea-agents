@@ -5,8 +5,13 @@
         <div class="team-compile-preview__title">编译预览</div>
         <div class="team-compile-preview__subtitle">CompileTeamGraph 实时拓扑</div>
       </div>
-      <q-badge v-if="compiled" rounded class="team-compile-preview__badge" :class="compiled.valid ? 'is-valid' : 'is-invalid'">
-        {{ compiled.valid ? "通过" : "失败" }}
+      <q-badge
+        v-if="compiled"
+        rounded
+        class="team-compile-preview__badge"
+        :class="compiled.valid ? 'is-valid' : 'is-invalid'"
+      >
+        {{ compiled.valid ? '通过' : '失败' }}
       </q-badge>
     </div>
 
@@ -36,8 +41,13 @@
         </div>
       </div>
       <div v-if="issues.length" class="q-mt-sm">
-        <div v-for="(issue, idx) in issues" :key="idx" class="text-caption" :class="issue.warning ? 'text-warning' : 'text-negative'">
-          {{ issue.warning ? "⚠" : "✕" }} {{ issue.message || issue.code }}
+        <div
+          v-for="(issue, idx) in issues"
+          :key="idx"
+          class="text-caption"
+          :class="issue.warning ? 'text-warning' : 'text-negative'"
+        >
+          {{ issue.warning ? '⚠' : '✕' }} {{ issue.message || issue.code }}
         </div>
       </div>
     </template>
@@ -46,8 +56,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
-import { compileTeamGraph, type CompileTeamGraphResult } from "../../features/orchestration/compileApi";
+import { ref, watch } from 'vue';
+import { compileTeamGraph, type CompileTeamGraphResult } from '../../features/orchestration/compileApi';
 
 const props = defineProps<{
   teamId: string;
@@ -56,7 +66,7 @@ const props = defineProps<{
 }>();
 
 const loading = ref(false);
-const error = ref("");
+const error = ref('');
 const compiled = ref<CompileTeamGraphResult | null>(null);
 const issues = ref<Array<{ message?: string; code?: string; warning?: boolean }>>([]);
 
@@ -64,14 +74,14 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function refresh() {
   const json = props.definitionJson?.trim();
-  if (!json || json === "{}" || !json.includes("members")) {
+  if (!json || json === '{}' || !json.includes('members')) {
     compiled.value = null;
     return;
   }
   loading.value = true;
-  error.value = "";
+  error.value = '';
   try {
-    const teamId = props.teamId?.trim() || "draft-preview";
+    const teamId = props.teamId?.trim() || 'draft-preview';
     compiled.value = await compileTeamGraph(teamId, json);
     issues.value = (compiled.value.issues ?? []).map((i) => ({
       message: i.message,

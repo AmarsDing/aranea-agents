@@ -1,15 +1,15 @@
-import { onMounted, provide, ref } from "vue";
-import { useMonitorLogHub } from "./useLogStreamHub";
-import { useMonitorStore } from "../../stores/monitor/index";
+import { onMounted, provide, ref } from 'vue';
+import { useMonitorLogHub } from './useLogStreamHub';
+import { useMonitorStore } from '../../stores/monitor/index';
 
 export function useMonitorLogStreamPanel() {
-  const subTab = ref<"flow" | "process">("flow");
+  const subTab = ref<'flow' | 'process'>('flow');
   const hub = useMonitorLogHub();
   const monitorStore = useMonitorStore();
   const processLogConfigured = ref(false);
 
-  provide("monitorLogHub", hub);
-  provide("processLogConfigured", processLogConfigured);
+  provide('monitorLogHub', hub);
+  provide('processLogConfigured', processLogConfigured);
 
   onMounted(async () => {
     try {

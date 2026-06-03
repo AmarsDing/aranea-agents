@@ -174,7 +174,9 @@
           <div class="section-title">
             <span class="section-title__text">巩固 Worker 模型</span>
           </div>
-          <p class="settings-section__hint">Turn 完成后 AutoMemory LLM 提取所用模型；留空时依次回退 L0 摘要模型、聊天模型。</p>
+          <p class="settings-section__hint">
+            Turn 完成后 AutoMemory LLM 提取所用模型；留空时依次回退 L0 摘要模型、聊天模型。
+          </p>
         </div>
       </div>
       <div class="app-form-field-grid app-form-field-grid--2col">
@@ -421,11 +423,7 @@
         <q-toggle v-model="config.memoryL4.enabled" label="启用 L4" :disable="memoryLayersDisabled" />
       </div>
       <div class="app-form-field-grid app-form-field-grid--2col">
-        <q-toggle
-          v-model="config.memoryL4.graph_inject_neighbors"
-          label="注入图邻居"
-          :disable="memoryLayersDisabled"
-        />
+        <q-toggle v-model="config.memoryL4.graph_inject_neighbors" label="注入图邻居" :disable="memoryLayersDisabled" />
         <q-input
           v-model.number="config.memoryL4.graph_max_neighbors"
           dense
@@ -475,7 +473,10 @@
       </q-banner>
     </section>
 
-    <section class="settings-section settings-section--muted" :class="{ 'settings-section--disabled': memoryLayersDisabled }">
+    <section
+      class="settings-section settings-section--muted"
+      :class="{ 'settings-section--disabled': memoryLayersDisabled }"
+    >
       <div class="section-heading">
         <div class="section-heading__main">
           <div class="section-title">
@@ -519,16 +520,10 @@
   </div>
 </template>
 
-<style scoped>
-.memory-heartbeat-banner {
-  background: color-mix(in srgb, var(--q-warning) 10%, transparent);
-}
-</style>
-
 <script setup lang="ts">
-import { computed } from "vue";
-import type { AgentFile } from "../../components/agents/agentUi";
-import type { AgentRuntimeConfigForm } from "../../features/agents/agentRuntimeConfig";
+import { computed } from 'vue';
+import type { AgentFile } from '../../components/agents/agentUi';
+import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
 
 const props = withDefaults(
   defineProps<{
@@ -545,9 +540,15 @@ const props = withDefaults(
 );
 
 defineEmits<{
-  "open-evolution-tab": [];
-  "add-optional-file": [name: string];
+  'open-evolution-tab': [];
+  'add-optional-file': [name: string];
 }>();
 
 const memoryLayersDisabled = computed(() => !props.config.memory.enabled);
 </script>
+
+<style scoped>
+.memory-heartbeat-banner {
+  background: color-mix(in srgb, var(--q-warning) 10%, transparent);
+}
+</style>

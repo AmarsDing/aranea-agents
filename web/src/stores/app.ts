@@ -1,8 +1,8 @@
-import { defineStore } from "pinia";
-import { createAgent, deleteAgent, listAgents, updateAgent, type Agent } from "../features/agents/api";
-import { emitSessionMutation } from "./sessionSync";
+import { defineStore } from 'pinia';
+import { createAgent, deleteAgent, listAgents, updateAgent, type Agent } from '../features/agents/api';
+import { emitSessionMutation } from './sessionSync';
 
-export const useAppStore = defineStore("app", {
+export const useAppStore = defineStore('app', {
   state: () => ({
     loading: false,
     agents: [] as Agent[],
@@ -14,7 +14,7 @@ export const useAppStore = defineStore("app", {
       this.agents = this.agents.filter((a) => a.id !== id);
       if (this.selectedAgent?.id === id) {
         this.selectedAgent = this.agents[0] ?? null;
-        emitSessionMutation({ type: "agent_removed", agentId: id });
+        emitSessionMutation({ type: 'agent_removed', agentId: id });
       }
     },
     async updateSelectedAgent(payload: Partial<Agent>) {
@@ -51,5 +51,5 @@ export const useAppStore = defineStore("app", {
       this.selectedAgent = created;
       return created;
     },
-  }
+  },
 });

@@ -67,7 +67,9 @@
 
     <template #body-cell-external_id="props">
       <q-td :props="props">
-        <span class="app-registry-cell-sub ellipsis" :title="channelExternalID(props.row)">{{ channelExternalID(props.row) }}</span>
+        <span class="app-registry-cell-sub ellipsis" :title="channelExternalID(props.row)">{{
+          channelExternalID(props.row)
+        }}</span>
       </q-td>
     </template>
 
@@ -85,14 +87,7 @@
           >
             <q-tooltip>{{ t('channelsPage.copyWebhook') }}</q-tooltip>
           </q-btn>
-          <q-btn
-            flat
-            dense
-            round
-            class="channel-icon-btn"
-            icon="work_history"
-            @click="$emit('ops', props.row)"
-          >
+          <q-btn flat dense round class="channel-icon-btn" icon="work_history" @click="$emit('ops', props.row)">
             <q-tooltip>{{ t('channelsPage.viewOps') }}</q-tooltip>
           </q-btn>
           <q-btn
@@ -109,7 +104,14 @@
           <q-btn flat dense round class="channel-icon-btn" icon="edit" @click="$emit('edit', props.row)">
             <q-tooltip>{{ t('channelsPage.edit') }}</q-tooltip>
           </q-btn>
-          <q-btn flat dense round class="channel-icon-btn channel-icon-btn--danger" icon="delete" @click="$emit('remove', props.row)">
+          <q-btn
+            flat
+            dense
+            round
+            class="channel-icon-btn channel-icon-btn--danger"
+            icon="delete"
+            @click="$emit('remove', props.row)"
+          >
             <q-tooltip>{{ t('channelsPage.delete') }}</q-tooltip>
           </q-btn>
         </div>
@@ -119,11 +121,11 @@
 </template>
 
 <script setup lang="ts">
-import { useI18n } from "vue-i18n";
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
-import ChannelPlatformAvatar from "./ChannelPlatformAvatar.vue";
-import type { ChannelCatalogItem, ChannelRow } from "../../features/channels/types";
+import { useI18n } from 'vue-i18n';
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import ChannelPlatformAvatar from './ChannelPlatformAvatar.vue';
+import type { ChannelCatalogItem, ChannelRow } from '../../features/channels/types';
 
 import {
   channelTableColumns,
@@ -136,8 +138,8 @@ import {
   formatChannelDate,
   isChannelConnected,
   receiveMode,
-  statusQuasarColor
-} from "./channelUi";
+  statusQuasarColor,
+} from './channelUi';
 
 const { t } = useI18n();
 

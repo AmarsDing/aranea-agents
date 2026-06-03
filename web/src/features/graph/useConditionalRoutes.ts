@@ -1,7 +1,7 @@
-import { computed, toValue } from "vue";
-import type { ComputedRef, Ref } from "vue";
-import type { GraphDefinition, ConditionalEdgeDef } from "./types";
-import type { useGraphUndoRedo } from "./useGraphUndoRedo";
+import { computed, toValue } from 'vue';
+import type { ComputedRef, Ref } from 'vue';
+import type { GraphDefinition, ConditionalEdgeDef } from './types';
+import type { useGraphUndoRedo } from './useGraphUndoRedo';
 
 type MaybeRef<T> = Ref<T> | ComputedRef<T> | T;
 
@@ -115,7 +115,7 @@ export function useConditionalRoutes(
       idx++;
       newLabel = `route_${idx}`;
     }
-    const firstTarget = toValue(destinationOptions)[0]?.value ?? "";
+    const firstTarget = toValue(destinationOptions)[0]?.value ?? '';
     const newPathMap = { ...ce.pathMap, [newLabel]: firstTarget };
     ce.pathMap = newPathMap;
     if (ur) {
@@ -132,8 +132,8 @@ export function useConditionalRoutes(
     if (!nodeId || !gd) return;
     const ce: ConditionalEdgeDef = {
       from: nodeId,
-      condFuncRef: "",
-      pathMap: { default: toValue(destinationOptions)[0]?.value ?? "" },
+      condFuncRef: '',
+      pathMap: { default: toValue(destinationOptions)[0]?.value ?? '' },
     };
     const idx = gd.conditionalEdges.length;
     gd.conditionalEdges.push(ce);

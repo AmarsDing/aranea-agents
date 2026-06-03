@@ -1,9 +1,9 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
-import { createWebhook, deleteWebhook, listWebhooks, updateWebhook } from "../../features/webhooks/api";
-import type { WebhookRow } from "../../features/webhooks/types";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
+import { createWebhook, deleteWebhook, listWebhooks, updateWebhook } from '../../features/webhooks/api';
+import type { WebhookRow } from '../../features/webhooks/types';
 
-export const useWebhooksStore = defineStore("webhooks", () => {
+export const useWebhooksStore = defineStore('webhooks', () => {
   const webhooks = ref<WebhookRow[]>([]);
   const loading = ref(false);
 
@@ -39,7 +39,7 @@ export const useWebhooksStore = defineStore("webhooks", () => {
       secret?: string;
       headers?: Record<string, string>;
       enabled?: boolean;
-    }
+    },
   ): Promise<WebhookRow> {
     const updated = await updateWebhook(id, patch);
     webhooks.value = webhooks.value.map((row) => (row.id === updated.id ? updated : row));

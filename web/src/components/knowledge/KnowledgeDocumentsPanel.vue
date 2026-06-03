@@ -24,12 +24,14 @@
       </template>
       <template #body-cell-mime_type="props">
         <q-td :props="props">
-          <span class="text-caption">{{ props.row.mime_type || "—" }}</span>
+          <span class="text-caption">{{ props.row.mime_type || '—' }}</span>
         </q-td>
       </template>
       <template #body-cell-status="props">
         <q-td :props="props">
-          <q-chip dense :color="statusColor(props.row.status)" text-color="white" size="sm">{{ props.row.status }}</q-chip>
+          <q-chip dense :color="statusColor(props.row.status)" text-color="white" size="sm">{{
+            props.row.status
+          }}</q-chip>
           <q-tooltip v-if="props.row.status === 'error' && props.row.error_message" max-width="360px">
             {{ props.row.error_message }}
           </q-tooltip>
@@ -58,7 +60,15 @@
       <template #body-cell-actions="props">
         <q-td :props="props">
           <div class="app-registry-cell-actions">
-            <q-btn flat dense round color="negative" icon="delete" aria-label="删除" @click="$emit('delete-document', props.row)" />
+            <q-btn
+              flat
+              dense
+              round
+              color="negative"
+              icon="delete"
+              aria-label="删除"
+              @click="$emit('delete-document', props.row)"
+            />
           </div>
         </q-td>
       </template>
@@ -75,18 +85,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import AppPageToolbar from "../layout/AppPageToolbar.vue";
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
-import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
+import { computed, ref, watch } from 'vue';
+import AppPageToolbar from '../layout/AppPageToolbar.vue';
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
 import {
   formatKnowledgeDocSize,
   formatKnowledgeTime,
   KNOWLEDGE_DOC_TABLE_COLUMNS,
-  knowledgeStatusColor
-} from "../../features/knowledge/knowledgeUi";
-import type { KnowledgeDocument } from "../../features/knowledge/types";
+  knowledgeStatusColor,
+} from '../../features/knowledge/knowledgeUi';
+import type { KnowledgeDocument } from '../../features/knowledge/types';
 
 const props = defineProps<{
   documents: KnowledgeDocument[];
@@ -94,9 +104,9 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  "open-ingest": [];
+  'open-ingest': [];
   refresh: [];
-  "delete-document": [doc: KnowledgeDocument];
+  'delete-document': [doc: KnowledgeDocument];
 }>();
 
 const columns = KNOWLEDGE_DOC_TABLE_COLUMNS;
@@ -114,6 +124,6 @@ watch(
   () => props.documents.length,
   () => {
     if (page.value > pageMax.value) page.value = pageMax.value;
-  }
+  },
 );
 </script>

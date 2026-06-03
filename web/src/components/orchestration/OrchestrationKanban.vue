@@ -36,10 +36,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch, type ComponentPublicInstance } from "vue";
-import type { AgentNodeState, DisplayStatus } from "../../features/orchestration/types";
-import { DISPLAY_STATUS_STYLES } from "../../features/orchestration/agentNodeStatusStyles";
-import OrchestrationKanbanCard from "./OrchestrationKanbanCard.vue";
+import { computed, nextTick, ref, watch, type ComponentPublicInstance } from 'vue';
+import type { AgentNodeState, DisplayStatus } from '../../features/orchestration/types';
+import { DISPLAY_STATUS_STYLES } from '../../features/orchestration/agentNodeStatusStyles';
+import OrchestrationKanbanCard from './OrchestrationKanbanCard.vue';
 
 const props = withDefaults(
   defineProps<{
@@ -49,7 +49,7 @@ const props = withDefaults(
     selectedNodeId?: string | null;
     emptyLabel?: string;
   }>(),
-  { emptyLabel: "暂无 Agent" },
+  { emptyLabel: '暂无 Agent' },
 );
 
 defineEmits<{ selectNode: [nodeId: string] }>();
@@ -71,7 +71,7 @@ watch(
   (nodeId) => {
     if (!nodeId) return;
     nextTick(() => {
-      cardRefs.value.get(nodeId)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      cardRefs.value.get(nodeId)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
   },
 );

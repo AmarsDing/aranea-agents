@@ -6,10 +6,10 @@ export const CONTEXT_STATUS_CRITICAL = 0.8;
 export const CONTEXT_STATUS_WARNING = 0.6;
 
 export function contextStatusFromRatio(ratio: number): string {
-  if (ratio >= CONTEXT_STATUS_EXCEEDED) return "exceeded";
-  if (ratio >= CONTEXT_STATUS_CRITICAL) return "critical";
-  if (ratio >= CONTEXT_STATUS_WARNING) return "warning";
-  return "normal";
+  if (ratio >= CONTEXT_STATUS_EXCEEDED) return 'exceeded';
+  if (ratio >= CONTEXT_STATUS_CRITICAL) return 'critical';
+  if (ratio >= CONTEXT_STATUS_WARNING) return 'warning';
+  return 'normal';
 }
 
 export function contextRatioFromPrompt(promptTokens: number, contextWindow: number): number | null {

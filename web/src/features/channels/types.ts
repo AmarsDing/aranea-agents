@@ -1,4 +1,4 @@
-import type { PlatformResource } from "../platform/types";
+import type { PlatformResource } from '../platform/types';
 
 export type ChannelTurnJobRow = {
   id: string;

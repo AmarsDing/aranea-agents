@@ -7,15 +7,42 @@
     >
       <template #actions>
         <q-btn flat rounded no-caps icon="history" label="执行历史" @click="openRuns()" />
-        <q-btn color="orange" text-color="white" rounded unelevated no-caps icon="add" label="新建任务" @click="openCreate" />
+        <q-btn
+          color="orange"
+          text-color="white"
+          rounded
+          unelevated
+          no-caps
+          icon="add"
+          label="新建任务"
+          @click="openCreate"
+        />
       </template>
     </AppPageHero>
 
     <AppPageToolbar>
-      <q-input v-model="search" class="app-page-toolbar__search" dense outlined clearable debounce="300" placeholder="搜索定时任务...">
+      <q-input
+        v-model="search"
+        class="app-page-toolbar__search"
+        dense
+        outlined
+        clearable
+        debounce="300"
+        placeholder="搜索定时任务..."
+      >
         <template #prepend><q-icon name="search" /></template>
       </q-input>
-      <q-select v-model="statusFilter" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="状态" :options="statusOptions" />
+      <q-select
+        v-model="statusFilter"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        label="状态"
+        :options="statusOptions"
+      />
       <div class="app-page-toolbar__meta">共 {{ filteredRows.length }} 个任务，{{ activeCount }} 个启用</div>
       <template #actions>
         <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
@@ -35,7 +62,17 @@
         <q-avatar size="80px" color="grey-9" text-color="grey-5" icon="schedule" />
         <div class="text-h6 q-mt-md">暂无定时任务</div>
         <div class="text-body2 text-grey-7 q-mt-sm">创建定时任务以安排定期 Agent 任务。</div>
-        <q-btn class="q-mt-md" color="orange" text-color="white" rounded unelevated no-caps icon="add" label="新建任务" @click="openCreate" />
+        <q-btn
+          class="q-mt-md"
+          color="orange"
+          text-color="white"
+          rounded
+          unelevated
+          no-caps
+          icon="add"
+          label="新建任务"
+          @click="openCreate"
+        />
       </q-card-section>
     </q-card>
 
@@ -57,7 +94,9 @@
 
         <template #body-cell-schedule="props">
           <q-td :props="props">
-            <span class="app-registry-cell-sub ellipsis" :title="scheduleLabel(props.row)">{{ scheduleLabel(props.row) }}</span>
+            <span class="app-registry-cell-sub ellipsis" :title="scheduleLabel(props.row)">{{
+              scheduleLabel(props.row)
+            }}</span>
           </q-td>
         </template>
 
@@ -82,7 +121,7 @@
         <template #body-cell-status="props">
           <q-td :props="props">
             <q-chip dense square :color="statusColor(props.row)" text-color="white">
-              {{ props.row.enabled ? props.row.status || "active" : "paused" }}
+              {{ props.row.enabled ? props.row.status || 'active' : 'paused' }}
             </q-chip>
           </q-td>
         </template>
@@ -123,9 +162,16 @@
                     <q-item v-close-popup clickable :disable="triggeringId === props.row.id" @click="runNow(props.row)">
                       <q-item-section avatar><q-icon name="play_arrow" /></q-item-section>
                       <q-item-section>立即执行</q-item-section>
-                      <q-item-section v-if="triggeringId === props.row.id" side><q-spinner size="18px" /></q-item-section>
+                      <q-item-section v-if="triggeringId === props.row.id" side
+                        ><q-spinner size="18px"
+                      /></q-item-section>
                     </q-item>
-                    <q-item v-if="props.row.status === 'dead'" v-close-popup clickable @click="resetDeadTask(props.row)">
+                    <q-item
+                      v-if="props.row.status === 'dead'"
+                      v-close-popup
+                      clickable
+                      @click="resetDeadTask(props.row)"
+                    >
                       <q-item-section avatar><q-icon name="restart_alt" color="warning" /></q-item-section>
                       <q-item-section>重置失败计数</q-item-section>
                     </q-item>
@@ -177,8 +223,14 @@
       :page-size="runsPageSize"
       :page-max="runsPageMax"
       :total="runs.length"
-      @update:task-id="runsTaskId = $event; void loadRuns()"
-      @update:status="runsStatus = $event; void loadRuns()"
+      @update:task-id="
+        runsTaskId = $event;
+        void loadRuns();
+      "
+      @update:status="
+        runsStatus = $event;
+        void loadRuns();
+      "
       @update:page="runsPage = $event"
       @update:page-size="runsPageSize = $event"
       @load="loadRuns"
@@ -188,13 +240,13 @@
 </template>
 
 <script setup lang="ts">
-import AppPageHero from "../components/layout/AppPageHero.vue";
-import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
-import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
-import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
-import CronTaskFormDialog from "../components/cron/CronTaskFormDialog.vue";
-import CronRunsDialog from "../components/cron/CronRunsDialog.vue";
-import { useCronTasksPage } from "../features/cron/useCronTasksPage";
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
+import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
+import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import CronTaskFormDialog from '../components/cron/CronTaskFormDialog.vue';
+import CronRunsDialog from '../components/cron/CronRunsDialog.vue';
+import { useCronTasksPage } from '../features/cron/useCronTasksPage';
 
 const {
   agents,
@@ -245,12 +297,12 @@ const {
   runsPageMax,
   runsPaged,
   loadRuns,
-  resetRunsFilters
+  resetRunsFilters,
 } = useCronTasksPage();
 
 function resetFilters() {
-  search.value = "";
-  statusFilter.value = "";
+  search.value = '';
+  statusFilter.value = '';
   page.value = 1;
 }
 </script>

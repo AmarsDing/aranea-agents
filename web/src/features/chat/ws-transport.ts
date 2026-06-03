@@ -5,11 +5,6 @@
  * New code should import from "realtime/ws-transport" directly.
  */
 
-export {
-  createWsTransport,
-} from "../../realtime/ws-transport";
+export { createWsTransport } from '../../realtime/ws-transport';
 
-export type {
-  WsTransportOptions,
-  WsTransport,
-} from "../../realtime/ws-transport";
+export type { WsTransportOptions, WsTransport } from '../../realtime/ws-transport';

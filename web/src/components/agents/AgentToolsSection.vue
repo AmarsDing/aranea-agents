@@ -34,9 +34,9 @@
 
 <script setup lang="ts">
 // Container: Agent 设置「能力」Tab 内工具覆盖区块；编排 useAgentToolOverrides，子 Panel 仅展示。
-import { toRef } from "vue";
-import AgentToolOverridesPanel from "./AgentToolOverridesPanel.vue";
-import { useAgentToolOverrides } from "../../features/agents/useAgentToolOverrides";
+import { toRef } from 'vue';
+import AgentToolOverridesPanel from './AgentToolOverridesPanel.vue';
+import { useAgentToolOverrides } from '../../features/agents/useAgentToolOverrides';
 
 const props = defineProps<{
   agentId: string;
@@ -60,6 +60,6 @@ const {
   saveOverride,
   requestRemoveOverride,
   confirmRemoveOverride,
-  cancelRemoveOverride
-} = useAgentToolOverrides(toRef(props, "agentId"));
+  cancelRemoveOverride,
+} = useAgentToolOverrides(toRef(props, 'agentId'));
 </script>

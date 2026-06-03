@@ -1,6 +1,6 @@
-import type { AgentRuntimeSettings } from "./types";
-import type { AgentAdvancedSettingsForm, AgentRuntimeConfigForm } from "./agentRuntimeConfig";
-import { stringifySkillRuntimeJSON } from "./agentSkillRuntimeConfig";
+import type { AgentRuntimeSettings } from './types';
+import type { AgentAdvancedSettingsForm, AgentRuntimeConfigForm } from './agentRuntimeConfig';
+import { stringifySkillRuntimeJSON } from './agentSkillRuntimeConfig';
 
 type PromptFileRow = { name: string; body: string };
 
@@ -101,7 +101,7 @@ export function buildRuntimeSettingsPayload(
     guardrail_min_data_points: config.evolution_guardrails.min_data_points,
     guardrail_rollback_on_decline_percent: config.evolution_guardrails.rollback_on_decline_percent,
     skill_runtime_json: stringifySkillRuntimeJSON(config.skillRuntime),
-    code_executor_type: config.code_executor_type || "local",
+    code_executor_type: config.code_executor_type || 'local',
     intent_pass_enabled: config.intent_pass.enabled,
     channel_id: advanced.channel_id,
     chat_id: advanced.chat_id,

@@ -31,9 +31,9 @@
     </q-select>
 
     <q-banner v-if="form.kind === ''" rounded dense class="q-mt-sm settings-info-banner">
-      <strong>空 kind 三态</strong>：① API 保存时 <code>planner_config_json</code> 只能为
-      <code>{}</code>；② 运行时 Builtin 仅当本会话 <code>dialog_mode=plan</code>（深思考）；③
-      Chat 历史消息仍可按正文标签展示 ReAct/A2UI，与持久化 kind 无关。
+      <strong>空 kind 三态</strong>：① API 保存时 <code>planner_config_json</code> 只能为 <code>{}</code>；② 运行时
+      Builtin 仅当本会话 <code>dialog_mode=plan</code>（深思考）；③ Chat 历史消息仍可按正文标签展示 ReAct/A2UI，与持久化
+      kind 无关。
     </q-banner>
 
     <div v-if="form.kind === 'builtin'" class="q-mt-md app-form-field-grid">
@@ -78,7 +78,14 @@
 
     <div v-else-if="form.kind === 'a2ui'" class="q-mt-md q-gutter-sm">
       <div class="text-subtitle2">A2UI 协议</div>
-      <q-input v-model="form.a2ui.instruction" class="app-field-long" outlined autogrow type="textarea" label="自定义指令 (instruction)" />
+      <q-input
+        v-model="form.a2ui.instruction"
+        class="app-field-long"
+        outlined
+        autogrow
+        type="textarea"
+        label="自定义指令 (instruction)"
+      />
       <q-expansion-item
         dense
         expand-separator
@@ -104,14 +111,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { PlannerFormState } from "../../features/agents/plannerConfig";
-import {
-  PLANNER_KIND_OPTIONS,
-  reasoningEffortOptions,
-} from "../../features/agents/plannerConfig";
+import { computed } from 'vue';
+import type { PlannerFormState } from '../../features/agents/plannerConfig';
+import { PLANNER_KIND_OPTIONS, reasoningEffortOptions } from '../../features/agents/plannerConfig';
 
-const form = defineModel<PlannerFormState>("form", { required: true });
+const form = defineModel<PlannerFormState>('form', { required: true });
 
 const props = defineProps<{
   modelProvider?: string;
@@ -119,41 +123,41 @@ const props = defineProps<{
 
 const kindOptions = PLANNER_KIND_OPTIONS;
 
-const effortOptions = computed(() => reasoningEffortOptions(props.modelProvider ?? ""));
+const effortOptions = computed(() => reasoningEffortOptions(props.modelProvider ?? ''));
 
 const effortHint = computed(() => {
-  const p = (props.modelProvider ?? "").toLowerCase();
-  if (p.includes("deepseek")) return "DeepSeek v4: high / max";
-  return "OpenAI o 系: low / medium / high";
+  const p = (props.modelProvider ?? '').toLowerCase();
+  if (p.includes('deepseek')) return 'DeepSeek v4: high / max';
+  return 'OpenAI o 系: low / medium / high';
 });
 
 const thinkingEnabledOptions = [
-  { label: "未设置", value: "unset" },
-  { label: "启用", value: "true" },
-  { label: "禁用", value: "false" },
+  { label: '未设置', value: 'unset' },
+  { label: '启用', value: 'true' },
+  { label: '禁用', value: 'false' },
 ];
 
 const thinkingEnabledChoice = computed({
   get() {
     const v = form.value.builtin.thinking_enabled;
-    if (v === null || v === undefined) return "unset";
-    return v ? "true" : "false";
+    if (v === null || v === undefined) return 'unset';
+    return v ? 'true' : 'false';
   },
   set(raw: string) {
-    if (raw === "unset") form.value.builtin.thinking_enabled = null;
-    else form.value.builtin.thinking_enabled = raw === "true";
+    if (raw === 'unset') form.value.builtin.thinking_enabled = null;
+    else form.value.builtin.thinking_enabled = raw === 'true';
   },
 });
 
-const a2uiSchemaFields: { key: keyof PlannerFormState["a2ui"]; label: string }[] = [
+const a2uiSchemaFields: { key: keyof PlannerFormState['a2ui']; label: string }[] = [
   {
-    key: "server_to_client_with_standard_catalog_schema_json",
-    label: "server_to_client_with_standard_catalog_schema_json",
+    key: 'server_to_client_with_standard_catalog_schema_json',
+    label: 'server_to_client_with_standard_catalog_schema_json',
   },
-  { key: "client_to_server_schema_json", label: "client_to_server_schema_json" },
-  { key: "client_capabilities_schema_json", label: "client_capabilities_schema_json" },
-  { key: "server_to_client_only_schema_json", label: "server_to_client_only_schema_json" },
-  { key: "standard_catalog_definition_json", label: "standard_catalog_definition_json" },
-  { key: "catalog_description_schema_json", label: "catalog_description_schema_json" },
+  { key: 'client_to_server_schema_json', label: 'client_to_server_schema_json' },
+  { key: 'client_capabilities_schema_json', label: 'client_capabilities_schema_json' },
+  { key: 'server_to_client_only_schema_json', label: 'server_to_client_only_schema_json' },
+  { key: 'standard_catalog_definition_json', label: 'standard_catalog_definition_json' },
+  { key: 'catalog_description_schema_json', label: 'catalog_description_schema_json' },
 ];
 </script>

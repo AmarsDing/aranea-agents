@@ -8,11 +8,20 @@
             <span class="section-title__text">Skill 挂载策略</span>
           </div>
           <p class="settings-section__hint">
-            控制 ADK 可见的已发布 Skill：白名单/黑名单、必选标签与意图收窄。运行时仅挂载<strong>已发布且已启用</strong>的平台 Skill。
+            控制 ADK 可见的已发布
+            Skill：白名单/黑名单、必选标签与意图收窄。运行时仅挂载<strong>已发布且已启用</strong>的平台 Skill。
           </p>
         </div>
         <div class="settings-section__actions">
-          <q-btn flat rounded dense no-caps label="刷新列表" :loading="loadingSkillSlugs" @click="$emit('load-skill-slugs')" />
+          <q-btn
+            flat
+            rounded
+            dense
+            no-caps
+            label="刷新列表"
+            :loading="loadingSkillSlugs"
+            @click="$emit('load-skill-slugs')"
+          />
           <q-btn flat rounded dense no-caps label="恢复默认" @click="confirmReset" />
         </div>
       </div>
@@ -130,14 +139,16 @@
             hint="chat_only / read_only / coding / research / full"
             :options="toolProfileOptions"
           />
-          <q-banner
-            v-if="config.tools.profile === 'full'"
-            class="app-grid-span-full settings-warning-banner"
-            rounded
-          >
+          <q-banner v-if="config.tools.profile === 'full'" class="app-grid-span-full settings-warning-banner" rounded>
             <strong>full</strong> 配置文件会暴露平台全部工具，仅建议在受信环境使用。
           </q-banner>
-          <q-input v-model="config.tools.tool_call_prefix" dense outlined label="工具调用前缀" hint="如 proxy_，解析前会从工具名剥离" />
+          <q-input
+            v-model="config.tools.tool_call_prefix"
+            dense
+            outlined
+            label="工具调用前缀"
+            hint="如 proxy_，解析前会从工具名剥离"
+          />
           <q-select
             v-model="config.tools.allow"
             class="app-grid-span-full"
@@ -177,7 +188,7 @@
           />
         </div>
         <q-banner v-if="toolConflicts.length" rounded class="settings-warning-banner q-mb-md">
-          以下工具同时出现在允许与拒绝中，运行时按拒绝优先：{{ toolConflicts.join(", ") }}
+          以下工具同时出现在允许与拒绝中，运行时按拒绝优先：{{ toolConflicts.join(', ') }}
         </q-banner>
 
         <div class="settings-subsection settings-subsection--flat q-mb-md">
@@ -189,10 +200,36 @@
             <q-toggle v-model="config.tools.retry.enabled" />
           </div>
           <div v-if="config.tools.retry.enabled" class="app-form-field-grid app-form-field-grid--2col">
-            <q-input v-model.number="config.tools.retry.max_attempts" dense outlined type="number" label="最大重试次数" hint="含首次调用" />
-            <q-input v-model.number="config.tools.retry.initial_interval_ms" dense outlined type="number" label="初始间隔 (ms)" />
-            <q-input v-model.number="config.tools.retry.backoff_factor" dense outlined type="number" step="0.1" label="退避因子" />
-            <q-input v-model.number="config.tools.retry.max_interval_ms" dense outlined type="number" label="最大间隔 (ms)" />
+            <q-input
+              v-model.number="config.tools.retry.max_attempts"
+              dense
+              outlined
+              type="number"
+              label="最大重试次数"
+              hint="含首次调用"
+            />
+            <q-input
+              v-model.number="config.tools.retry.initial_interval_ms"
+              dense
+              outlined
+              type="number"
+              label="初始间隔 (ms)"
+            />
+            <q-input
+              v-model.number="config.tools.retry.backoff_factor"
+              dense
+              outlined
+              type="number"
+              step="0.1"
+              label="退避因子"
+            />
+            <q-input
+              v-model.number="config.tools.retry.max_interval_ms"
+              dense
+              outlined
+              type="number"
+              label="最大间隔 (ms)"
+            />
             <q-toggle v-model="config.tools.retry.jitter" label="随机抖动" />
           </div>
         </div>
@@ -240,16 +277,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import AgentToolsSection from "../../components/agents/AgentToolsSection.vue";
-import type { CodeExecutorCapability } from "../../features/monitor/types";
-import type { AgentRuntimeConfigForm } from "../../features/agents/agentRuntimeConfig";
+import { computed } from 'vue';
+import AgentToolsSection from '../../components/agents/AgentToolsSection.vue';
+import type { CodeExecutorCapability } from '../../features/monitor/types';
+import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
 
 const baseExecutorOptions = [
-  { label: "Local（子进程，开发用）", value: "local" },
-  { label: "Docker（容器隔离，推荐生产）", value: "docker" },
-  { label: "E2B（云端沙箱，需 E2B_API_KEY）", value: "e2b" },
-  { label: "Container（框架引擎，需 build tag）", value: "container" }
+  { label: 'Local（子进程，开发用）', value: 'local' },
+  { label: 'Docker（容器隔离，推荐生产）', value: 'docker' },
+  { label: 'E2B（云端沙箱，需 E2B_API_KEY）', value: 'e2b' },
+  { label: 'Container（框架引擎，需 build tag）', value: 'container' },
 ];
 
 const props = withDefaults(
@@ -265,7 +302,7 @@ const props = withDefaults(
     toolConflicts?: string[];
   }>(),
   {
-    agentId: "",
+    agentId: '',
     codeExecutorCapabilities: () => [],
     toolProfileOptions: () => [],
     toolSelectOptions: () => [],
@@ -275,12 +312,12 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  "load-skill-slugs": [];
-  "reset-skill-defaults": [];
+  'load-skill-slugs': [];
+  'reset-skill-defaults': [];
 }>();
 
 function confirmReset() {
-  emit("reset-skill-defaults");
+  emit('reset-skill-defaults');
 }
 
 const capabilityByType = computed(() => {
@@ -298,18 +335,18 @@ const codeExecutorOptions = computed(() =>
     return {
       ...opt,
       disable: unavailable,
-      label: unavailable && cap?.reason ? `${opt.label}（不可用：${cap.reason}）` : opt.label
+      label: unavailable && cap?.reason ? `${opt.label}（不可用：${cap.reason}）` : opt.label,
     };
-  })
+  }),
 );
 
 const fallbackHint = computed(() => {
-  const selected = String(props.config.code_executor_type ?? "local");
+  const selected = String(props.config.code_executor_type ?? 'local');
   const cap = capabilityByType.value.get(selected);
   if (!cap || cap.available) {
-    return "";
+    return '';
   }
-  const reason = cap.reason ? `（${cap.reason}）` : "";
+  const reason = cap.reason ? `（${cap.reason}）` : '';
   return `当前选择「${selected}」在本环境不可用${reason}，运行时将自动回退到 local 执行器。`;
 });
 </script>

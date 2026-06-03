@@ -4,7 +4,15 @@
 <template>
   <div class="app-grid-span-full">
     <div class="section-label q-mb-sm">计划类型</div>
-    <q-btn-toggle v-model="form.schedule_type" spread no-caps unelevated toggle-color="primary" class="cron-btn-toggle" :options="cronScheduleToggleOptions" />
+    <q-btn-toggle
+      v-model="form.schedule_type"
+      spread
+      no-caps
+      unelevated
+      toggle-color="primary"
+      class="cron-btn-toggle"
+      :options="cronScheduleToggleOptions"
+    />
   </div>
 
   <q-input
@@ -31,7 +39,15 @@
     :rules="[cronExpressionRule]"
   />
   <template v-if="form.schedule_type === 'once'">
-    <q-input v-model="form.run_at_date" class="cron-field" dense outlined mask="####-##-##" label="执行日期 *" placeholder="2026-04-22">
+    <q-input
+      v-model="form.run_at_date"
+      class="cron-field"
+      dense
+      outlined
+      mask="####-##-##"
+      label="执行日期 *"
+      placeholder="2026-04-22"
+    >
       <template #append>
         <q-icon name="event" class="cursor-pointer">
           <q-popup-proxy cover transition-show="scale" transition-hide="scale">
@@ -40,7 +56,15 @@
         </q-icon>
       </template>
     </q-input>
-    <q-input v-model="form.run_at_time" class="cron-field" dense outlined mask="##:##" label="执行时间 *" placeholder="09:00">
+    <q-input
+      v-model="form.run_at_time"
+      class="cron-field"
+      dense
+      outlined
+      mask="##:##"
+      label="执行时间 *"
+      placeholder="09:00"
+    >
       <template #append>
         <q-icon name="access_time" class="cursor-pointer">
           <q-popup-proxy cover transition-show="scale" transition-hide="scale">
@@ -53,12 +77,8 @@
 </template>
 
 <script setup lang="ts">
-import type { CronTaskFormValue } from "../../features/cron/types";
-import {
-  cronExpressionRule,
-  cronPositiveMinutesRule,
-  cronScheduleToggleOptions
-} from "./cronTaskUtils";
+import type { CronTaskFormValue } from '../../features/cron/types';
+import { cronExpressionRule, cronPositiveMinutesRule, cronScheduleToggleOptions } from './cronTaskUtils';
 
-const form = defineModel<CronTaskFormValue>("form", { required: true });
+const form = defineModel<CronTaskFormValue>('form', { required: true });
 </script>

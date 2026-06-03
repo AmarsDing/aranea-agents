@@ -3,9 +3,15 @@
     <q-card-section class="row items-start justify-between q-gutter-md">
       <div class="col min-width-0">
         <div class="row items-center q-gutter-sm wrap">
-          <div class="app-registry-cell-primary text-h6">{{ session.title || "未命名会话" }}</div>
-          <q-chip dense :color="ownerChipColor(session.owner_type)" text-color="white">{{ ownerLabel(session.owner_type) }}</q-chip>
-          <SessionStatusBadge :status="session.status" :status-reason="session.status_reason" :status-changed-at="session.status_changed_at" />
+          <div class="app-registry-cell-primary text-h6">{{ session.title || '未命名会话' }}</div>
+          <q-chip dense :color="ownerChipColor(session.owner_type)" text-color="white">{{
+            ownerLabel(session.owner_type)
+          }}</q-chip>
+          <SessionStatusBadge
+            :status="session.status"
+            :status-reason="session.status_reason"
+            :status-changed-at="session.status_changed_at"
+          />
           <q-chip v-if="isSessionPinned(session)" dense icon="push_pin" color="primary" text-color="white">置顶</q-chip>
         </div>
         <div class="app-registry-cell-sub q-mt-xs">
@@ -15,7 +21,15 @@
         <div v-if="session.summary" class="app-registry-cell-desc q-mt-sm">{{ session.summary }}</div>
       </div>
       <div class="row q-gutter-sm shrink-0">
-        <q-btn outline rounded no-caps color="primary" icon="chat" label="继续会话" :to="chatRoute || { name: 'chat', query: { session: session?.id } }" />
+        <q-btn
+          outline
+          rounded
+          no-caps
+          color="primary"
+          icon="chat"
+          label="继续会话"
+          :to="chatRoute || { name: 'chat', query: { session: session?.id } }"
+        />
         <q-btn-dropdown flat rounded no-caps icon="download" label="导出">
           <q-list dense>
             <q-item v-close-popup clickable @click="$emit('export', 'markdown')">
@@ -36,7 +50,15 @@
           :label="isSessionPinned(session) ? '取消置顶' : '置顶'"
           @click="$emit('toggle-pin')"
         />
-        <q-btn flat rounded no-caps icon="archive" label="归档" :disable="!!session.archived_at" @click="$emit('archive')" />
+        <q-btn
+          flat
+          rounded
+          no-caps
+          icon="archive"
+          label="归档"
+          :disable="!!session.archived_at"
+          @click="$emit('archive')"
+        />
       </div>
     </q-card-section>
     <q-separator />
@@ -51,7 +73,8 @@
           class="q-mt-sm"
         />
         <div class="app-registry-cell-sub q-mt-xs">
-          当前 {{ formatPercent(session.context_used_ratio) }} · 最高 {{ formatPercent(session.max_context_used_ratio) }}
+          当前 {{ formatPercent(session.context_used_ratio) }} · 最高
+          {{ formatPercent(session.max_context_used_ratio) }}
         </div>
       </div>
       <div class="col-6 col-md-2">
@@ -75,8 +98,8 @@
 </template>
 
 <script setup lang="ts">
-import type { RouteLocationRaw } from "vue-router";
-import type { Session } from "../../features/session/types";
+import type { RouteLocationRaw } from 'vue-router';
+import type { Session } from '../../features/session/types';
 import {
   contextProgressColor,
   formatCostMicroUsd,
@@ -86,9 +109,9 @@ import {
   isSessionPinned,
   ownerChipColor,
   ownerLabel,
-  ratioValue
-} from "./sessionUi";
-import SessionStatusBadge from "./SessionStatusBadge.vue";
+  ratioValue,
+} from './sessionUi';
+import SessionStatusBadge from './SessionStatusBadge.vue';
 
 withDefaults(
   defineProps<{
@@ -96,9 +119,9 @@ withDefaults(
     chatRoute?: RouteLocationRaw;
   }>(),
   {
-    chatRoute: undefined
-  }
+    chatRoute: undefined,
+  },
 );
 
-defineEmits<{ archive: []; "toggle-pin": []; export: [format: "markdown" | "json"] }>();
+defineEmits<{ archive: []; 'toggle-pin': []; export: [format: 'markdown' | 'json'] }>();
 </script>

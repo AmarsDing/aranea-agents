@@ -18,7 +18,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed } from 'vue';
 
 const props = withDefaults(
   defineProps<{
@@ -32,16 +32,16 @@ const props = withDefaults(
     block?: boolean;
   }>(),
   {
-    text: "",
+    text: '',
     emptyLabel: false,
     indicator: true,
     block: true,
   },
 );
 
-const normalized = computed(() => String(props.text ?? "").trim());
+const normalized = computed(() => String(props.text ?? '').trim());
 
 const showTip = computed(() => normalized.value.length > 0 || props.emptyLabel !== false);
 
-const displayText = computed(() => normalized.value || (props.emptyLabel === false ? "" : props.emptyLabel || ""));
+const displayText = computed(() => normalized.value || (props.emptyLabel === false ? '' : props.emptyLabel || ''));
 </script>

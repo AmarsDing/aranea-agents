@@ -1,6 +1,6 @@
 /** Agent runtime form defaults and shared helpers (settings ↔ config_json). */
 
-import type { EvolutionKey } from "../../components/agents/agentUi";
+import type { EvolutionKey } from '../../components/agents/agentUi';
 
 export type AgentRuntimeConfigForm = ReturnType<typeof defaultAgentRuntimeConfig>;
 
@@ -8,11 +8,11 @@ export type AgentAdvancedSettingsForm = ReturnType<typeof defaultAgentAdvancedSe
 
 export function defaultAgentAdvancedSettings() {
   return {
-    channel_id: "",
-    chat_id: "",
-    workspace: "",
-    reasoning_mode: "provider_default",
-    reasoning_level: "off",
+    channel_id: '',
+    chat_id: '',
+    workspace: '',
+    reasoning_mode: 'provider_default',
+    reasoning_level: 'off',
     context_compaction_enabled: false,
     session_summary_enabled: false,
   };
@@ -28,12 +28,12 @@ export function defaultAgentRuntimeConfig() {
       max_children_per_agent: 5,
       archive_after_minutes: 60,
       max_retries: 2,
-      model_override: "",
+      model_override: '',
     },
     tools: {
       enabled: true,
-      profile: "coding",
-      tool_call_prefix: "",
+      profile: 'coding',
+      tool_call_prefix: '',
       allow: [] as string[],
       deny: [] as string[],
       concurrent_allow: [] as string[],
@@ -59,29 +59,29 @@ export function defaultAgentRuntimeConfig() {
       recent_window_tokens: 0,
       summary_threshold: 0.6,
       summary_keep_turns: 4,
-      compress_provider: "",
-      compress_model: "",
-      truncate_strategy: "summary",
+      compress_provider: '',
+      compress_model: '',
+      truncate_strategy: 'summary',
       inject_l1: true,
       inject_l3: true,
       inject_l4: false,
       l3_max_chunks: 5,
       l4_max_paths: 3,
-      snapshot_mode: "on_warning",
+      snapshot_mode: 'on_warning',
     },
     memoryL1: {
       enabled: true,
       budget_tokens: 8192,
       field_max_tokens: 2048,
       history_keep_revisions: 10,
-      default_schema_id: "",
+      default_schema_id: '',
       archive_on_idle_minutes: 60,
     },
     memoryL2: {
       episode_enabled: true,
       episode_min_importance: 0.3,
       index_enabled: true,
-      index_embedding_model: "",
+      index_embedding_model: '',
       recall_enabled: false,
       recall_max: 3,
       retention_days: 90,
@@ -91,16 +91,16 @@ export function defaultAgentRuntimeConfig() {
       enabled: true,
       recall_top_k: 5,
       recall_min_score: 0.55,
-      recall_scopes: ["agent", "user", "team", "workspace"] as string[],
-      embedding_model: "",
+      recall_scopes: ['agent', 'user', 'team', 'workspace'] as string[],
+      embedding_model: '',
       decay_interval_hours: 24,
       archive_threshold: 0.2,
       max_per_recall_chars: 1500,
-      pii_policy: "redact",
+      pii_policy: 'redact',
     },
     memoryWorker: {
-      provider: "",
-      model: "",
+      provider: '',
+      model: '',
     },
     memoryL4: {
       enabled: true,
@@ -110,7 +110,7 @@ export function defaultAgentRuntimeConfig() {
       identity_inject: true,
       strategy_inject: false,
       decay_interval_hours: 168,
-      decay_overrides_json: "",
+      decay_overrides_json: '',
     },
     evolutionSettings: {
       enabled: false,
@@ -145,7 +145,7 @@ export function defaultAgentRuntimeConfig() {
       denied_slugs: [] as string[],
       allowed_tags: [] as string[],
     },
-    code_executor_type: "local",
+    code_executor_type: 'local',
     intent_pass: {
       enabled: false,
     },
@@ -154,7 +154,7 @@ export function defaultAgentRuntimeConfig() {
 
 export function parseJSONList(raw: string) {
   try {
-    const parsed = JSON.parse(raw || "[]");
+    const parsed = JSON.parse(raw || '[]');
     return Array.isArray(parsed) ? parsed.map(String) : [];
   } catch {
     return [];
@@ -162,34 +162,34 @@ export function parseJSONList(raw: string) {
 }
 
 const truncateStrategyLabels: Record<string, string> = {
-  summary: "摘要优先",
-  drop_oldest: "丢弃最旧",
-  drop_tool_results: "丢弃工具结果",
-  hybrid: "混合",
+  summary: '摘要优先',
+  drop_oldest: '丢弃最旧',
+  drop_tool_results: '丢弃工具结果',
+  hybrid: '混合',
 };
 
-export const truncateStrategyOptions = ["summary", "drop_oldest", "drop_tool_results", "hybrid"].map((value) => ({
+export const truncateStrategyOptions = ['summary', 'drop_oldest', 'drop_tool_results', 'hybrid'].map((value) => ({
   label: truncateStrategyLabels[value] ?? value,
   value,
 }));
 
-export const snapshotModeOptions = ["always", "on_warning", "off"].map((value) => ({ label: value, value }));
+export const snapshotModeOptions = ['always', 'on_warning', 'off'].map((value) => ({ label: value, value }));
 
-export const memoryScopeOptions = ["agent", "user", "team", "workspace", "global"].map((value) => ({
+export const memoryScopeOptions = ['agent', 'user', 'team', 'workspace', 'global'].map((value) => ({
   label: value,
   value,
 }));
 
 export const piiPolicyOptions = [
-  { label: "redact · 脱敏写入（默认）", value: "redact" },
-  { label: "block · 阻断写入", value: "block" },
-  { label: "review · 人工审核", value: "review" },
+  { label: 'redact · 脱敏写入（默认）', value: 'redact' },
+  { label: 'block · 阻断写入', value: 'block' },
+  { label: 'review · 人工审核', value: 'review' },
 ];
 
 export const toolProfileOptions = [
-  { label: "chat_only · 仅对话（无工具）", value: "chat_only" },
-  { label: "read_only · 只读 + 时间", value: "read_only" },
-  { label: "coding · 文件读写 + 网页 + 技能", value: "coding" },
-  { label: "research · 网页 + 检索 + 技能", value: "research" },
-  { label: "full · 全工具（高权限，慎用）", value: "full" },
+  { label: 'chat_only · 仅对话（无工具）', value: 'chat_only' },
+  { label: 'read_only · 只读 + 时间', value: 'read_only' },
+  { label: 'coding · 文件读写 + 网页 + 技能', value: 'coding' },
+  { label: 'research · 网页 + 检索 + 技能', value: 'research' },
+  { label: 'full · 全工具（高权限，慎用）', value: 'full' },
 ];

@@ -66,14 +66,14 @@
       </div>
     </q-card>
     <div v-if="rules.length === 0" class="text-caption text-grey-7">
-      {{ t("plugins.rulesEmptyHint") }}
+      {{ t('plugins.rulesEmptyHint') }}
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
-import { useI18n } from "vue-i18n";
+import { ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 export type ModelRouterRule = {
   id: string;
@@ -84,7 +84,7 @@ export type ModelRouterRule = {
   priority: number;
 };
 
-export type ModelRouterRulePayload = Omit<ModelRouterRule, "id">;
+export type ModelRouterRulePayload = Omit<ModelRouterRule, 'id'>;
 
 const props = defineProps<{
   modelValue: ModelRouterRulePayload[];
@@ -92,7 +92,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:modelValue": [value: ModelRouterRulePayload[]];
+  'update:modelValue': [value: ModelRouterRulePayload[]];
 }>();
 
 const { t } = useI18n();
@@ -105,9 +105,9 @@ function newRuleId() {
 function normalizeRule(raw: Partial<ModelRouterRule>, fallbackId?: string): ModelRouterRule {
   return {
     id: String(raw.id ?? fallbackId ?? newRuleId()),
-    model: String(raw.model ?? ""),
+    model: String(raw.model ?? ''),
     contains: Array.isArray(raw.contains) ? raw.contains.map(String) : [],
-    regex: String(raw.regex ?? ""),
+    regex: String(raw.regex ?? ''),
     min_chars: Number(raw.min_chars ?? 0) || 0,
     priority: Number(raw.priority ?? 0) || 0,
   };
@@ -120,18 +120,17 @@ watch(
       ? val.map((r, idx) => normalizeRule(r as Partial<ModelRouterRule>, `rule-${idx}`))
       : [];
   },
-  { immediate: true, deep: true }
+  { immediate: true, deep: true },
 );
 
 function regexError(rule: ModelRouterRule): string {
   const pat = rule.regex.trim();
-  if (!pat) return "";
+  if (!pat) return '';
   try {
-    // eslint-disable-next-line no-new
     new RegExp(pat);
-    return "";
+    return '';
   } catch {
-    return t("plugins.rulesRegexInvalid");
+    return t('plugins.rulesRegexInvalid');
   }
 }
 
@@ -140,23 +139,23 @@ function emitRules() {
     return;
   }
   emit(
-    "update:modelValue",
+    'update:modelValue',
     rules.value.map((r) => ({
       model: r.model.trim(),
       contains: r.contains.map((s) => s.trim()).filter(Boolean),
       regex: r.regex.trim(),
       min_chars: r.min_chars > 0 ? r.min_chars : 0,
       priority: r.priority || 0,
-    }))
+    })),
   );
 }
 
 function addRule() {
   rules.value.push({
     id: newRuleId(),
-    model: "",
+    model: '',
     contains: [],
-    regex: "",
+    regex: '',
     min_chars: 0,
     priority: 0,
   });
@@ -168,7 +167,7 @@ function removeRule(id: string) {
 }
 
 function containsText(rule: ModelRouterRule) {
-  return (rule.contains ?? []).join("\n");
+  return (rule.contains ?? []).join('\n');
 }
 
 function setContains(rule: ModelRouterRule, text: string) {

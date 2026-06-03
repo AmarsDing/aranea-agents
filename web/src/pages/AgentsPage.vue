@@ -40,7 +40,7 @@
       v-model:agent-kind="agentKind"
       :form="form"
       :a2a-proxy="a2aProxy"
-      :isA2AProxy="isA2AProxyCreate"
+      :is-a2-a-proxy="isA2AProxyCreate"
       :category-tree="categoryTree"
       :provider-options="providerOptions"
       :model-options="modelOptions"
@@ -63,10 +63,12 @@
       <q-card class="app-dialog-card app-dialog-card--sm">
         <q-card-section>
           <div class="text-h6">删除 Agent</div>
-          <div class="text-body2 text-grey-7 q-mt-sm">确认删除「{{ deleteTarget?.display_name }}」？此操作会软删除，列表中不再显示。</div>
+          <div class="text-body2 text-grey-7 q-mt-sm">
+            确认删除「{{ deleteTarget?.display_name }}」？此操作会软删除，列表中不再显示。
+          </div>
         </q-card-section>
         <q-card-actions align="right" class="app-actions-bar">
-          <q-btn flat rounded no-caps label="取消" v-close-popup />
+          <q-btn v-close-popup flat rounded no-caps label="取消" />
           <q-btn color="negative" rounded unelevated no-caps label="删除" @click="deleteAgentTarget" />
         </q-card-actions>
       </q-card>
@@ -79,7 +81,7 @@
           <div class="text-body2 text-grey-7 q-mt-sm">导入、导出、批量映射与冲突处理功能正在开发中，敬请期待。</div>
         </q-card-section>
         <q-card-actions align="right" class="app-actions-bar">
-          <q-btn color="primary" flat rounded no-caps label="知道了" v-close-popup />
+          <q-btn v-close-popup color="primary" flat rounded no-caps label="知道了" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -91,12 +93,12 @@
  * 路由容器：组装列表视图子组件，调度用例（由 useAgentsPage 提供）。
  * 表现与交互块在 components/agents/*；领域胶水在 features/agents/useAgentsPage.ts。
  */
-import AgentCreateDialog from "../components/agents/AgentCreateDialog.vue";
-import AgentsFiltersCard from "../components/agents/AgentsFiltersCard.vue";
-import AgentsListSection from "../components/agents/AgentsListSection.vue";
-import AgentsPaginationBar from "../components/agents/AgentsPaginationBar.vue";
-import AgentsWorkspaceHero from "../components/agents/AgentsWorkspaceHero.vue";
-import { useAgentsPage } from "../features/agents/useAgentsPage";
+import AgentCreateDialog from '../components/agents/AgentCreateDialog.vue';
+import AgentsFiltersCard from '../components/agents/AgentsFiltersCard.vue';
+import AgentsListSection from '../components/agents/AgentsListSection.vue';
+import AgentsPaginationBar from '../components/agents/AgentsPaginationBar.vue';
+import AgentsWorkspaceHero from '../components/agents/AgentsWorkspaceHero.vue';
+import { useAgentsPage } from '../features/agents/useAgentsPage';
 
 const {
   isDark,

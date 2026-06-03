@@ -12,14 +12,7 @@
         label="步骤索引"
         @update:model-value="$emit('update:stepIndex', Number($event))"
       />
-      <q-btn
-        color="primary"
-        outline
-        dense
-        label="回溯"
-        :loading="timeTravelLoading"
-        @click="$emit('timeTravel')"
-      />
+      <q-btn color="primary" outline dense label="回溯" :loading="timeTravelLoading" @click="$emit('timeTravel')" />
     </div>
 
     <q-slider
@@ -30,8 +23,8 @@
       label
       label-always
       color="primary"
-      @update:model-value="$emit('update:stepIndex', Number($event))"
       class="q-mb-md"
+      @update:model-value="$emit('update:stepIndex', Number($event))"
     />
 
     <template v-if="selectedCheckpoint">
@@ -52,14 +45,7 @@
         @update:model-value="$emit('update:statePatchJson', String($event ?? ''))"
       />
       <div class="row q-gutter-sm q-mt-sm">
-        <q-btn
-          color="primary"
-          flat
-          dense
-          label="应用编辑"
-          :loading="editLoading"
-          @click="$emit('applyEdit')"
-        />
+        <q-btn color="primary" flat dense label="应用编辑" :loading="editLoading" @click="$emit('applyEdit')" />
       </div>
     </template>
     <div v-else class="text-caption app-text-secondary">选择检查点或按步骤索引回溯以查看状态。</div>
@@ -67,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import type { CheckpointInfo } from "../../features/graph/types";
+import type { CheckpointInfo } from '../../features/graph/types';
 
 defineProps<{
   selectedCheckpoint: CheckpointInfo | null;
@@ -80,8 +66,8 @@ defineProps<{
 }>();
 
 defineEmits<{
-  "update:statePatchJson": [value: string];
-  "update:stepIndex": [value: number];
+  'update:statePatchJson': [value: string];
+  'update:stepIndex': [value: number];
   timeTravel: [];
   applyEdit: [];
 }>();

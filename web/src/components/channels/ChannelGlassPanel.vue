@@ -9,6 +9,6 @@ withDefaults(
   defineProps<{
     dense?: boolean;
   }>(),
-  { dense: false }
+  { dense: false },
 );
 </script>

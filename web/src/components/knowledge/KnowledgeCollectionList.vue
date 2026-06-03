@@ -34,8 +34,8 @@
 </template>
 
 <script setup lang="ts">
-import type { KnowledgeCollection } from "../../features/knowledge/types";
-import { knowledgeStatusColor } from "../../features/knowledge/knowledgeUi";
+import type { KnowledgeCollection } from '../../features/knowledge/types';
+import { knowledgeStatusColor } from '../../features/knowledge/knowledgeUi';
 
 defineProps<{
   collections: KnowledgeCollection[];

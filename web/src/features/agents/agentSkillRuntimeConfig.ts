@@ -1,7 +1,7 @@
-import { nextTick, ref, watch, type Ref } from "vue";
-import type { AgentRuntimeConfigForm } from "./agentRuntimeConfig";
+import { nextTick, ref, watch, type Ref } from 'vue';
+import type { AgentRuntimeConfigForm } from './agentRuntimeConfig';
 
-export type SkillRuntimeForm = AgentRuntimeConfigForm["skillRuntime"];
+export type SkillRuntimeForm = AgentRuntimeConfigForm['skillRuntime'];
 
 export function parseSkillRuntimeForm(raw?: string): SkillRuntimeForm {
   const out: SkillRuntimeForm = {
@@ -13,18 +13,17 @@ export function parseSkillRuntimeForm(raw?: string): SkillRuntimeForm {
     allowed_tags: [],
   };
   try {
-    const o = JSON.parse(String(raw ?? "{}").trim() || "{}");
-    if (typeof o.intent_routing_enabled === "boolean") out.intent_routing_enabled = o.intent_routing_enabled;
-    if (typeof o.intent_max_paths === "number" && Number.isFinite(o.intent_max_paths)) {
+    const o = JSON.parse(String(raw ?? '{}').trim() || '{}');
+    if (typeof o.intent_routing_enabled === 'boolean') out.intent_routing_enabled = o.intent_routing_enabled;
+    if (typeof o.intent_max_paths === 'number' && Number.isFinite(o.intent_max_paths)) {
       const n = Math.floor(o.intent_max_paths);
       if (n >= 1 && n <= 32) out.intent_max_paths = n;
     }
-    if (typeof o.max_skills_in_toolset === "number" && Number.isFinite(o.max_skills_in_toolset)) {
+    if (typeof o.max_skills_in_toolset === 'number' && Number.isFinite(o.max_skills_in_toolset)) {
       const n = Math.floor(o.max_skills_in_toolset);
       if (n >= 1 && n <= 256) out.max_skills_in_toolset = n;
     }
-    const strList = (v: unknown) =>
-      Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean) : [];
+    const strList = (v: unknown) => (Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean) : []);
     out.allowed_slugs = strList(o.allowed_slugs);
     out.denied_slugs = strList(o.denied_slugs);
     out.allowed_tags = strList(o.allowed_tags);
@@ -35,7 +34,9 @@ export function parseSkillRuntimeForm(raw?: string): SkillRuntimeForm {
 }
 
 function normSkillSlug(s: string): string {
-  return String(s ?? "").trim().toLowerCase();
+  return String(s ?? '')
+    .trim()
+    .toLowerCase();
 }
 
 function reconcileSkillSlugListsDenyWins(rt: SkillRuntimeForm) {
@@ -48,7 +49,7 @@ function reconcileSkillSlugListsDenyWins(rt: SkillRuntimeForm) {
 export function normalizeSkillRuntimeState(rt: SkillRuntimeForm) {
   rt.intent_max_paths = Math.min(32, Math.max(1, Math.floor(Number(rt.intent_max_paths) || 3)));
   rt.max_skills_in_toolset = Math.min(256, Math.max(1, Math.floor(Number(rt.max_skills_in_toolset) || 32)));
-  for (const key of ["allowed_slugs", "denied_slugs", "allowed_tags"] as const) {
+  for (const key of ['allowed_slugs', 'denied_slugs', 'allowed_tags'] as const) {
     if (!Array.isArray(rt[key])) rt[key] = [];
     rt[key] = rt[key].map((x) => String(x).trim()).filter(Boolean);
   }
@@ -123,11 +124,8 @@ export function useSkillRuntimeSlugSync(config: { skillRuntime: SkillRuntimeForm
   return { normalizeWithSync };
 }
 
-export function resetSkillRuntimeDefaults(
-  config: AgentRuntimeConfigForm,
-  notify: (msg: string) => void,
-) {
-  Object.assign(config.skillRuntime, parseSkillRuntimeForm("{}"));
+export function resetSkillRuntimeDefaults(config: AgentRuntimeConfigForm, notify: (msg: string) => void) {
+  Object.assign(config.skillRuntime, parseSkillRuntimeForm('{}'));
   normalizeSkillRuntimeState(config.skillRuntime);
-  notify("Skill 策略已恢复默认（尚未保存）");
+  notify('Skill 策略已恢复默认（尚未保存）');
 }

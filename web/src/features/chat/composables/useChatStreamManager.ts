@@ -1,23 +1,19 @@
-import { ref, type Ref } from "vue";
-import { useI18n } from "vue-i18n";
-import { useQuasar } from "quasar";
-import { useRouter } from "vue-router";
-import { useChatStreamingSnapshots } from "../../../stores/chatStreamingSnapshots";
-import { useAuthStore } from "../../../stores/auth";
-import { useChatSessionStore } from "../../../stores/chat/sessionStore";
-import { useChatMessageStore } from "../../../stores/chat/messageStore";
-import { useChatRuntimeStore } from "../../../stores/chat/runtimeStore";
-import {
-  createChatStream,
-  createTeamStream,
-  type UseEnvelopeStreamReturn,
-} from "../useEnvelopeStream";
-import type { Envelope, EnvelopeType, WsUpstream } from "../envelope";
-import { bindStreamHandlers, patchStreamingEnvelope } from "../streamHandlers";
-import { getChannelWsCursor } from "../channelWsCursor";
-import { reloadSessionAfterCompletion } from "../sessionCompletionReload";
-import type { TeamRow } from "../../../components/chat/types";
-import type { TeamDefinition } from "../../teams/types";
+import { ref, type Ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
+import { useRouter } from 'vue-router';
+import { useChatStreamingSnapshots } from '../../../stores/chatStreamingSnapshots';
+import { useAuthStore } from '../../../stores/auth';
+import { useChatSessionStore } from '../../../stores/chat/sessionStore';
+import { useChatMessageStore } from '../../../stores/chat/messageStore';
+import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
+import { createChatStream, createTeamStream, type UseEnvelopeStreamReturn } from '../useEnvelopeStream';
+import type { Envelope, EnvelopeType, WsUpstream } from '../envelope';
+import { bindStreamHandlers, patchStreamingEnvelope } from '../streamHandlers';
+import { getChannelWsCursor } from '../channelWsCursor';
+import { reloadSessionAfterCompletion } from '../sessionCompletionReload';
+import type { TeamRow } from '../../../components/chat/types';
+import type { TeamDefinition } from '../../teams/types';
 
 export type StreamManagerDeps = {
   sessionStore: ReturnType<typeof useChatSessionStore>;
@@ -47,7 +43,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
   let teamStreamSessionId: string | null = null;
 
   const wsReplaying = ref(false);
-  let lastErrorNotifyMessage = "";
+  let lastErrorNotifyMessage = '';
   let lastErrorNotifyAt = 0;
 
   function notifyError(message: string) {
@@ -57,11 +53,11 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     }
     lastErrorNotifyMessage = message;
     lastErrorNotifyAt = now;
-    $q.notify({ type: "negative", message, group: "chat-stream-error" });
+    $q.notify({ type: 'negative', message, group: 'chat-stream-error' });
   }
 
   function notifyOrchestration(message: string) {
-    $q.notify({ type: "info", message, timeout: 4000, group: false });
+    $q.notify({ type: 'info', message, timeout: 4000, group: false });
   }
 
   async function reloadSessionMessagesAfterCompletion(sessionId: string) {
@@ -74,7 +70,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         resolveAgentId: deps.resolveAgentId,
       });
     } catch (err) {
-      notifyError(err instanceof Error ? err.message : t("chat.loadMessagesFailed", "加载消息失败"));
+      notifyError(err instanceof Error ? err.message : t('chat.loadMessagesFailed', '加载消息失败'));
     }
   }
 
@@ -90,7 +86,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     return {
       agent_key: agentKey,
       name: member?.name || agentKey,
-      role: member?.role || "",
+      role: member?.role || '',
     };
   }
 
@@ -137,25 +133,25 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       },
       onServerShutdown: () => {
         $q.notify({
-          type: "warning",
-          message: t("chat.serverShutdown", "服务器已关闭，请重新登录"),
+          type: 'warning',
+          message: t('chat.serverShutdown', '服务器已关闭，请重新登录'),
           timeout: 0,
-          actions: [{ label: t("chat.relogin", "重新登录"), color: "white", handler: () => {} }],
+          actions: [{ label: t('chat.relogin', '重新登录'), color: 'white', handler: () => {} }],
         });
         const auth = useAuthStore();
         auth.user = null;
         auth.sessionChecked = true;
-        router.push({ name: "login" });
+        router.push({ name: 'login' });
       },
       onReplayState: (replaying) => {
         wsReplaying.value = replaying;
       },
       onReconnectFailed: () => {
         $q.notify({
-          type: "negative",
-          message: t("chat.reconnectFailed", "连接已断开，请刷新页面重试"),
+          type: 'negative',
+          message: t('chat.reconnectFailed', '连接已断开，请刷新页面重试'),
           timeout: 0,
-          actions: [{ label: t("chat.refresh", "刷新页面"), color: "white", handler: () => window.location.reload() }],
+          actions: [{ label: t('chat.refresh', '刷新页面'), color: 'white', handler: () => window.location.reload() }],
         });
       },
     });
@@ -195,7 +191,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
         onRunActivity: deps.touchRunActivity,
         onFirstByteArrived: deps.onFirstByteArrived,
       },
-      { batched: true }
+      { batched: true },
     );
 
     chatStream.connect();
@@ -217,10 +213,10 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       },
       onReconnectFailed: () => {
         $q.notify({
-          type: "negative",
-          message: t("chat.reconnectFailed", "连接已断开，请刷新页面重试"),
+          type: 'negative',
+          message: t('chat.reconnectFailed', '连接已断开，请刷新页面重试'),
           timeout: 0,
-          actions: [{ label: t("chat.refresh", "刷新页面"), color: "white", handler: () => window.location.reload() }],
+          actions: [{ label: t('chat.refresh', '刷新页面'), color: 'white', handler: () => window.location.reload() }],
         });
       },
       onConnected: () => {
@@ -229,30 +225,27 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
       },
     });
 
-    bindStreamHandlers(
-      teamStream,
-      {
-        sessionId,
-        streamIdPrefix: "ws-team-stream",
-        resolveActiveSessionId: () => deps.sessionStore.teamSelectedSessionId,
-        getMessages: (sid) => deps.messageStore.getMessages(sid),
-        setMessages: (sid, rows) => deps.messageStore.setMessages(sid, rows),
-        markSendingDone: deps.markSendingDone,
-        clearSendingTimeout: deps.clearSendingTimeout,
-        onRunAccepted: deps.onRunAccepted,
-        onRunStatus: deps.onRunStatus,
-        onErrorNotify: notifyError,
-        onOrchestrationNotice: notifyOrchestration,
-        onReloadAfterCompletion: reloadSessionMessagesAfterCompletion,
-        ...sessionContextHandlers(sessionId),
-        setLastIntentPass: (value) => {
-          deps.messageStore.lastIntentPass = value;
-        },
-        resolveMemberMeta: resolveTeamMemberMeta,
-        onRunActivity: deps.touchRunActivity,
-        onFirstByteArrived: deps.onFirstByteArrived,
-      }
-    );
+    bindStreamHandlers(teamStream, {
+      sessionId,
+      streamIdPrefix: 'ws-team-stream',
+      resolveActiveSessionId: () => deps.sessionStore.teamSelectedSessionId,
+      getMessages: (sid) => deps.messageStore.getMessages(sid),
+      setMessages: (sid, rows) => deps.messageStore.setMessages(sid, rows),
+      markSendingDone: deps.markSendingDone,
+      clearSendingTimeout: deps.clearSendingTimeout,
+      onRunAccepted: deps.onRunAccepted,
+      onRunStatus: deps.onRunStatus,
+      onErrorNotify: notifyError,
+      onOrchestrationNotice: notifyOrchestration,
+      onReloadAfterCompletion: reloadSessionMessagesAfterCompletion,
+      ...sessionContextHandlers(sessionId),
+      setLastIntentPass: (value) => {
+        deps.messageStore.lastIntentPass = value;
+      },
+      resolveMemberMeta: resolveTeamMemberMeta,
+      onRunActivity: deps.touchRunActivity,
+      onFirstByteArrived: deps.onFirstByteArrived,
+    });
 
     teamStream.connect();
     teamStreamSessionId = sessionId;
@@ -263,7 +256,7 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
     stream.connect();
     const transport = stream.transport.value;
     if (!transport) {
-      throw new Error("WebSocket transport unavailable");
+      throw new Error('WebSocket transport unavailable');
     }
     transport.send(upstream);
   }
@@ -299,17 +292,17 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
   function patchAgentMessages(sessionId: string, streamId: string, env: Envelope, isDone: boolean) {
     deps.messageStore.setMessages(
       sessionId,
-      patchStreamingEnvelope(deps.messageStore.getMessages(sessionId), sessionId, streamId, env, isDone)
+      patchStreamingEnvelope(deps.messageStore.getMessages(sessionId), sessionId, streamId, env, isDone),
     );
   }
 
   function subscribeSessionStream(
     sessionId: string,
-    ownerKind: "agent" | "team",
+    ownerKind: 'agent' | 'team',
     types: EnvelopeType[],
     handler: (env: Envelope) => void,
   ): () => void {
-    const stream = ownerKind === "team" ? ensureTeamStream(sessionId) : ensureChatStream(sessionId);
+    const stream = ownerKind === 'team' ? ensureTeamStream(sessionId) : ensureChatStream(sessionId);
     return stream.onType(types, handler);
   }
 

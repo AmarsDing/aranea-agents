@@ -1,12 +1,9 @@
-import { onMounted, ref, watch, type Ref } from "vue";
-import { listTaskDeadLetters, resolveTaskDeadLetter, type TaskDeadLetterRow } from "../teams/api";
+import { onMounted, ref, watch, type Ref } from 'vue';
+import { listTaskDeadLetters, resolveTaskDeadLetter, type TaskDeadLetterRow } from '../teams/api';
 
-export function useTaskDeadLetters(
-  sessionId: Ref<string | undefined>,
-  refreshNonce?: Ref<number | undefined>
-) {
+export function useTaskDeadLetters(sessionId: Ref<string | undefined>, refreshNonce?: Ref<number | undefined>) {
   const loading = ref(false);
-  const error = ref("");
+  const error = ref('');
   const rows = ref<TaskDeadLetterRow[]>([]);
 
   async function load() {
@@ -16,11 +13,11 @@ export function useTaskDeadLetters(
       return;
     }
     loading.value = true;
-    error.value = "";
+    error.value = '';
     try {
-      rows.value = await listTaskDeadLetters({ sessionId: sid, status: "pending", limit: 50 });
+      rows.value = await listTaskDeadLetters({ sessionId: sid, status: 'pending', limit: 50 });
     } catch (err) {
-      error.value = err instanceof Error ? err.message : "load failed";
+      error.value = err instanceof Error ? err.message : 'load failed';
     } finally {
       loading.value = false;
     }
@@ -37,7 +34,7 @@ export function useTaskDeadLetters(
   }
   onMounted(() => void load());
 
-  const pendingCount = () => rows.value.filter((r) => r.status === "pending").length;
+  const pendingCount = () => rows.value.filter((r) => r.status === 'pending').length;
 
   return { loading, error, rows, load, resolve, pendingCount };
 }

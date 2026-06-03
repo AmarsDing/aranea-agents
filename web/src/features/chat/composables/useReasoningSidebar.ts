@@ -1,6 +1,6 @@
-import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
-import type { Message } from "../types";
-import { reasoningMarkdown } from "../streamContentPatch";
+import { computed, ref, watch, type ComputedRef, type Ref } from 'vue';
+import type { Message } from '../types';
+import { reasoningMarkdown } from '../streamContentPatch';
 
 export type ReasoningSidebarState = {
   open: Ref<boolean>;
@@ -26,9 +26,9 @@ export function useReasoningSidebar(deps: {
     const msgs = deps.messages.value;
     return msgs.find(
       (m) =>
-        m.role === "assistant" &&
-        (m.status === "streaming" || m.status === "tool_running") &&
-        (reasoningMarkdown(m)?.trim() ?? "").length > 0
+        m.role === 'assistant' &&
+        (m.status === 'streaming' || m.status === 'tool_running') &&
+        (reasoningMarkdown(m)?.trim() ?? '').length > 0,
     );
   });
 
@@ -41,7 +41,7 @@ export function useReasoningSidebar(deps: {
   const activeReasoning = computed(() => {
     const stream = streamingMessage.value;
     if (stream) {
-      const r = reasoningMarkdown(stream) ?? "";
+      const r = reasoningMarkdown(stream) ?? '';
       if (r.trim()) {
         return {
           messageId: stream.id,
@@ -52,7 +52,7 @@ export function useReasoningSidebar(deps: {
     }
     const pinned = pinnedMessage.value;
     if (pinned) {
-      const r = reasoningMarkdown(pinned) ?? "";
+      const r = reasoningMarkdown(pinned) ?? '';
       if (r.trim()) {
         return {
           messageId: pinned.id,
@@ -65,8 +65,8 @@ export function useReasoningSidebar(deps: {
       const msgs = deps.messages.value;
       for (let i = msgs.length - 1; i >= 0; i--) {
         const m = msgs[i];
-        if (m.role === "assistant" && m.status === "ok") {
-          const r = reasoningMarkdown(m) ?? "";
+        if (m.role === 'assistant' && m.status === 'ok') {
+          const r = reasoningMarkdown(m) ?? '';
           if (r.trim()) {
             return {
               messageId: m.id,

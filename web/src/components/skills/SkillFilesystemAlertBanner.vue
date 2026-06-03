@@ -8,23 +8,37 @@
       Skill 根目录：{{ health.resolved_root }}
     </div>
     <template #action>
-      <q-btn v-if="health && health.pending_filesystem_count > 0" flat no-caps color="primary" label="仅看待审核" @click="emit('filter-pending')" />
-      <q-btn v-if="health && health.missing_count > 0" flat no-caps color="primary" label="仅看磁盘缺失" @click="emit('filter-missing')" />
+      <q-btn
+        v-if="health && health.pending_filesystem_count > 0"
+        flat
+        no-caps
+        color="primary"
+        label="仅看待审核"
+        @click="emit('filter-pending')"
+      />
+      <q-btn
+        v-if="health && health.missing_count > 0"
+        flat
+        no-caps
+        color="primary"
+        label="仅看磁盘缺失"
+        @click="emit('filter-missing')"
+      />
     </template>
   </q-banner>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { SkillFilesystemHealth } from "../../features/skills/types";
+import { computed } from 'vue';
+import type { SkillFilesystemHealth } from '../../features/skills/types';
 
 const props = defineProps<{
   health: SkillFilesystemHealth | null;
 }>();
 
 const emit = defineEmits<{
-  "filter-pending": [];
-  "filter-missing": [];
+  'filter-pending': [];
+  'filter-missing': [];
 }>();
 
 const visible = computed(() => {
@@ -35,24 +49,24 @@ const visible = computed(() => {
 
 const bannerClass = computed(() => {
   if (!props.health?.root_accessible || (props.health?.missing_count ?? 0) > 0) {
-    return "bg-orange-2 text-orange-10";
+    return 'bg-orange-2 text-orange-10';
   }
-  return "bg-blue-1 text-blue-10";
+  return 'bg-blue-1 text-blue-10';
 });
 
 const icon = computed(() => {
   if (!props.health?.root_accessible || (props.health?.missing_count ?? 0) > 0) {
-    return "warning";
+    return 'warning';
   }
-  return "folder_open";
+  return 'folder_open';
 });
 
 const message = computed(() => {
   const h = props.health;
-  if (!h) return "";
+  if (!h) return '';
   const parts: string[] = [];
   if (!h.root_accessible) {
-    parts.push("Skill 根目录不可访问，请检查系统设置中的工作目录。");
+    parts.push('Skill 根目录不可访问，请检查系统设置中的工作目录。');
   }
   if (h.missing_count > 0) {
     parts.push(`${h.missing_count} 个 Skill 磁盘目录缺失。`);
@@ -60,6 +74,6 @@ const message = computed(() => {
   if (h.pending_filesystem_count > 0) {
     parts.push(`${h.pending_filesystem_count} 个磁盘导入 Skill 待发布/启用。`);
   }
-  return parts.join(" ");
+  return parts.join(' ');
 });
 </script>

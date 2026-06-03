@@ -1,6 +1,6 @@
 /** ReAct planner shared types (parse / tool-link / presentation; no parsing logic). */
 
-export type ReactStepKind = "planning" | "reasoning" | "action" | "replanning";
+export type ReactStepKind = 'planning' | 'reasoning' | 'action' | 'replanning';
 
 export type ReactStep = {
   kind: ReactStepKind;

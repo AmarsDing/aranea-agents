@@ -1,5 +1,5 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
   listPlatformResources,
   listPlatformResourceTree,
@@ -8,19 +8,19 @@ import {
   deletePlatformResource,
   revealProviderModelCredentials,
   validateModel,
-  inspectProviderModel
-} from "../../features/platform/api";
-import { getSystemSettings } from "../../features/system-settings/api";
+  inspectProviderModel,
+} from '../../features/platform/api';
+import { getSystemSettings } from '../../features/system-settings/api';
 import type {
   PlatformResource,
   PlatformResourceTreeNode,
   PlatformResourceInput,
   PlatformResourceName,
   InspectProviderModelInput,
-  InspectProviderModelResult
-} from "../../features/platform/types";
+  InspectProviderModelResult,
+} from '../../features/platform/types';
 
-export const usePlatformStore = defineStore("platform", () => {
+export const usePlatformStore = defineStore('platform', () => {
   const providerModels = ref<PlatformResource[]>([]);
   const categoryTree = ref<PlatformResourceTreeNode[]>([]);
   const loading = ref(false);
@@ -29,13 +29,13 @@ export const usePlatformStore = defineStore("platform", () => {
   async function loadProviderModels() {
     loading.value = true;
     try {
-      providerModels.value = await listPlatformResources("llm-provider-models");
+      providerModels.value = await listPlatformResources('llm-provider-models');
     } finally {
       loading.value = false;
     }
   }
 
-  async function loadCategoryTree(resource: "taxonomy-nodes" | "taxonomy" = "taxonomy") {
+  async function loadCategoryTree(resource: 'taxonomy-nodes' | 'taxonomy' = 'taxonomy') {
     categoryTree.value = await listPlatformResourceTree(resource);
   }
 
@@ -90,6 +90,6 @@ export const usePlatformStore = defineStore("platform", () => {
     checkModel,
     revealCredentials,
     inspectModel,
-    loadCredentialStatus
+    loadCredentialStatus,
   };
 });

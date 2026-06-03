@@ -6,7 +6,10 @@
       </template>
     </AppPageHero>
 
-    <div v-if="executionHistory.length > 0 || statusFilter || timeRangeFilter" class="graph-executions-page__filters q-mt-md row q-gutter-sm items-center">
+    <div
+      v-if="executionHistory.length > 0 || statusFilter || timeRangeFilter"
+      class="graph-executions-page__filters q-mt-md row q-gutter-sm items-center"
+    >
       <q-btn-toggle
         v-model="statusFilter"
         flat
@@ -47,7 +50,11 @@
             <div class="graph-executions-page__card-meta text-caption text-grey-7">
               {{ formatTime(exec.startedAt) }}
               <span v-if="exec.finishedAt"> → {{ formatTime(exec.finishedAt) }}</span>
-              <span v-if="execDuration(exec.startedAt, exec.finishedAt)" class="graph-executions-page__duration q-ml-sm">{{ execDuration(exec.startedAt, exec.finishedAt) }}</span>
+              <span
+                v-if="execDuration(exec.startedAt, exec.finishedAt)"
+                class="graph-executions-page__duration q-ml-sm"
+                >{{ execDuration(exec.startedAt, exec.finishedAt) }}</span
+              >
             </div>
           </div>
           <q-badge
@@ -83,9 +90,14 @@
 </template>
 
 <script setup lang="ts">
-import { useGraphExecutionsPage } from "../features/graph/useGraphExecutionsPage";
-import { formatTime, execDuration } from "../features/graph/utils";
-import { STATUS_FILTER_OPTIONS, TIME_RANGE_OPTIONS, statusColor, statusLabel } from "../features/graph/graphExecutionsUi";
+import { useGraphExecutionsPage } from '../features/graph/useGraphExecutionsPage';
+import { formatTime, execDuration } from '../features/graph/utils';
+import {
+  STATUS_FILTER_OPTIONS,
+  TIME_RANGE_OPTIONS,
+  statusColor,
+  statusLabel,
+} from '../features/graph/graphExecutionsUi';
 
 const {
   isDark,

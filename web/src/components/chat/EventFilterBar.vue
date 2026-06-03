@@ -51,33 +51,35 @@
 </template>
 
 <script setup lang="ts">
-import type { EnvelopeType } from "../../features/chat/envelope";
-import type { EventFilterState } from "../../features/chat/eventFilter";
+import type { EnvelopeType } from '../../features/chat/envelope';
+import type { EventFilterState } from '../../features/chat/eventFilter';
 
 const props = defineProps<{
   filters: EventFilterState;
 }>();
 
 const emit = defineEmits<{
-  "update:filters": [value: EventFilterState];
+  'update:filters': [value: EventFilterState];
 }>();
 
 const typeOptions = [
-  { label: "全部", value: "all" },
-  ...([
-    "tool_call",
-    "tool_result",
-    "state_delta",
-    "transfer",
-    "text_delta",
-    "runner_completion",
-    "error",
-    "team_run_started",
-    "team_run_finished",
-  ] as EnvelopeType[]).map((t) => ({ label: t, value: t })),
+  { label: '全部', value: 'all' },
+  ...(
+    [
+      'tool_call',
+      'tool_result',
+      'state_delta',
+      'transfer',
+      'text_delta',
+      'runner_completion',
+      'error',
+      'team_run_started',
+      'team_run_finished',
+    ] as EnvelopeType[]
+  ).map((t) => ({ label: t, value: t })),
 ];
 
 function update<K extends keyof EventFilterState>(key: K, value: EventFilterState[K]): void {
-  emit("update:filters", { ...props.filters, [key]: value });
+  emit('update:filters', { ...props.filters, [key]: value });
 }
 </script>

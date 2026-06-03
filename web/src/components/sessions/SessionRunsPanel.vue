@@ -8,10 +8,10 @@
     <q-list v-else separator>
       <q-item v-for="run in runs" :key="run.id" class="app-interactive-list-item">
         <q-item-section>
-          <q-item-label overline class="text-grey-7">{{ run.phase }} · {{ run.source || "native" }}</q-item-label>
+          <q-item-label overline class="text-grey-7">{{ run.phase }} · {{ run.source || 'native' }}</q-item-label>
           <q-item-label>{{ run.id }}</q-item-label>
           <q-item-label caption class="text-grey-6">
-            Turn {{ run.turn_id || "—" }}
+            Turn {{ run.turn_id || '—' }}
             <span v-if="run.started_at"> · {{ formatSessionDate(run.started_at) }}</span>
             <span v-if="run.error_message" class="text-negative"> · {{ run.error_message }}</span>
           </q-item-label>
@@ -31,20 +31,20 @@
 </template>
 
 <script setup lang="ts">
-import { toRef } from "vue";
-import { useSessionRunsPanel } from "../../features/session/useSessionRunsPanel";
-import { formatSessionDate } from "./sessionUi";
+import { toRef } from 'vue';
+import { useSessionRunsPanel } from '../../features/session/useSessionRunsPanel';
+import { formatSessionDate } from './sessionUi';
 
 const props = defineProps<{ sessionId: string }>();
 
 const { runs, total, loading, error, offset, pageSize, pageLabel, prevPage, nextPage } = useSessionRunsPanel(
-  toRef(() => props.sessionId)
+  toRef(() => props.sessionId),
 );
 
 function phaseColor(phase: string) {
-  if (phase === "completed") return "positive";
-  if (phase === "failed") return "negative";
-  if (phase === "durable" || phase === "escalating") return "warning";
-  return "primary";
+  if (phase === 'completed') return 'positive';
+  if (phase === 'failed') return 'negative';
+  if (phase === 'durable' || phase === 'escalating') return 'warning';
+  return 'primary';
 }
 </script>

@@ -1,5 +1,5 @@
 /** Global monitor WS session: receives all sessions' monitor/team/graph events (server limit: 3 conns). */
-export const GLOBAL_WS_SESSION_ID = "*";
+export const GLOBAL_WS_SESSION_ID = '*';
 
 type RuntimeConfig = {
   backendUrl?: string;
@@ -10,7 +10,7 @@ let runtimeConfig: RuntimeConfig = {};
 
 export async function loadRuntimeConfig(): Promise<void> {
   try {
-    const resp = await fetch("/assets/config/runtime-config.json", { cache: "no-store" });
+    const resp = await fetch('/assets/config/runtime-config.json', { cache: 'no-store' });
     if (!resp.ok) return;
     runtimeConfig = await resp.json();
   } catch {
@@ -29,16 +29,16 @@ export async function loadRuntimeConfig(): Promise<void> {
  */
 export function getBackendOrigin(): string {
   if (runtimeConfig.backendUrl && runtimeConfig.backendUrl.trim().length > 0) {
-    return runtimeConfig.backendUrl.replace(/\/$/, "");
+    return runtimeConfig.backendUrl.replace(/\/$/, '');
   }
   if (import.meta.env.DEV) {
-    return "";
+    return '';
   }
   // Production build: same-origin (nginx / admin 反代) — admin HTTP 默认 :8000，勿写死 :8080。
-  if (typeof window !== "undefined" && window.location?.origin) {
+  if (typeof window !== 'undefined' && window.location?.origin) {
     return window.location.origin;
   }
-  return "";
+  return '';
 }
 
 /** @deprecated 使用 {@link getBackendOrigin} */
@@ -49,22 +49,22 @@ export const getAdminServiceBaseURL = getBackendOrigin;
  */
 export function getBackendBaseURL(): string {
   const origin = getBackendOrigin();
-  if (origin === "") {
-    return "/api/v1";
+  if (origin === '') {
+    return '/api/v1';
   }
   return `${origin}/api/v1`;
 }
 
 export function getWsOrigin(): string {
-  if (runtimeConfig.wsOrigin && runtimeConfig.wsOrigin.trim() !== "") {
-    return runtimeConfig.wsOrigin.replace(/\/$/, "");
+  if (runtimeConfig.wsOrigin && runtimeConfig.wsOrigin.trim() !== '') {
+    return runtimeConfig.wsOrigin.replace(/\/$/, '');
   }
   return getBackendOrigin();
 }
 
 /** True when WS uses the same origin as the SPA (Vite proxy); HttpOnly session cookies are sent automatically. */
 export function isWsSameOriginAsPage(): boolean {
-  return getWsOrigin() === "";
+  return getWsOrigin() === '';
 }
 
 export function buildWsUrl(params: {
@@ -77,21 +77,21 @@ export function buildWsUrl(params: {
   probe?: boolean;
 }): string {
   const origin = getWsOrigin();
-  const protocol = origin.startsWith("https") ? "wss" : "ws";
+  const protocol = origin.startsWith('https') ? 'wss' : 'ws';
   const wsOrigin = origin.replace(/^https?/, protocol);
   const q = new URLSearchParams({ session_id: params.sessionId });
   if (params.lastEventId) {
-    q.set("last_event_id", params.lastEventId);
+    q.set('last_event_id', params.lastEventId);
   }
   const token = params.token?.trim();
   if (token && !isWsSameOriginAsPage()) {
-    q.set("token", token);
+    q.set('token', token);
   }
   if (params.logEnabled) {
-    q.set("log_enabled", "1");
+    q.set('log_enabled', '1');
   }
   if (params.probe) {
-    q.set("probe", "1");
+    q.set('probe', '1');
   }
   return `${wsOrigin}/v1/ws?${q.toString()}`;
 }
@@ -105,7 +105,7 @@ export function buildHealthWsUrl(): string {
  * Cross-origin integrations should use Bearer token or explicit `token` query on WS URL.
  */
 export function readAccessTokenCookie(): string | undefined {
-  if (typeof document === "undefined") return undefined;
+  if (typeof document === 'undefined') return undefined;
   const match = document.cookie.match(/(?:^|;\s*)access_token=([^;]*)/);
   return match ? decodeURIComponent(match[1]) : undefined;
 }

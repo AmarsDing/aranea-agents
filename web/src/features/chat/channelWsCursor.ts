@@ -1,14 +1,14 @@
 /** Latest WS envelope id per session — skip EventBuffer replay on session WS connect. */
 const lastEnvelopeIdBySession = new Map<string, string>();
 
-const STORAGE_PREFIX = "aranea:channel-ws-cursor:";
+const STORAGE_PREFIX = 'aranea:channel-ws-cursor:';
 
 function storageKey(sessionId: string): string {
   return `${STORAGE_PREFIX}${sessionId.trim()}`;
 }
 
 function readCursorFromStorage(sessionId: string): string | undefined {
-  if (typeof sessionStorage === "undefined") return undefined;
+  if (typeof sessionStorage === 'undefined') return undefined;
   try {
     const value = sessionStorage.getItem(storageKey(sessionId));
     return value?.trim() || undefined;
@@ -18,7 +18,7 @@ function readCursorFromStorage(sessionId: string): string | undefined {
 }
 
 function writeCursorToStorage(sessionId: string, envelopeId: string): void {
-  if (typeof sessionStorage === "undefined") return;
+  if (typeof sessionStorage === 'undefined') return;
   try {
     sessionStorage.setItem(storageKey(sessionId), envelopeId);
   } catch {
@@ -27,7 +27,7 @@ function writeCursorToStorage(sessionId: string, envelopeId: string): void {
 }
 
 function removeCursorFromStorage(sessionId: string): void {
-  if (typeof sessionStorage === "undefined") return;
+  if (typeof sessionStorage === 'undefined') return;
   try {
     sessionStorage.removeItem(storageKey(sessionId));
   } catch {

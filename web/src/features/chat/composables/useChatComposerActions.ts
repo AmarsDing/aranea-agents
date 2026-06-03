@@ -1,9 +1,9 @@
-import type { Ref } from "vue";
-import type { useChatSessionStore } from "../../../stores/chat/sessionStore";
-import type { useChatMessageStore } from "../../../stores/chat/messageStore";
-import type { useChatRuntimeStore } from "../../../stores/chat/runtimeStore";
-import type { useChatStreamManager } from "./useChatStreamManager";
-import type { useChatSender } from "./useChatSender";
+import type { Ref } from 'vue';
+import type { useChatSessionStore } from '../../../stores/chat/sessionStore';
+import type { useChatMessageStore } from '../../../stores/chat/messageStore';
+import type { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
+import type { useChatStreamManager } from './useChatStreamManager';
+import type { useChatSender } from './useChatSender';
 
 export interface ComposerActionDeps {
   sessionStore: ReturnType<typeof useChatSessionStore>;
@@ -19,7 +19,18 @@ export interface ComposerActionDeps {
 }
 
 export function useChatComposerActions(deps: ComposerActionDeps) {
-  const { sessionStore, messageStore, runtimeStore, streamManager, sender, runStatus, selectedSessionId, notify, t, sessionDrafts } = deps;
+  const {
+    sessionStore,
+    messageStore,
+    runtimeStore,
+    streamManager,
+    sender,
+    runStatus,
+    selectedSessionId,
+    notify,
+    t,
+    sessionDrafts,
+  } = deps;
 
   async function onSend() {
     const sid = selectedSessionId.value;
@@ -32,30 +43,30 @@ export function useChatComposerActions(deps: ComposerActionDeps) {
     if (!sid) return;
     messageStore.setMessages(
       sid,
-      messageStore.getMessages(sid).filter((m) => m.id !== messageId)
+      messageStore.getMessages(sid).filter((m) => m.id !== messageId),
     );
   }
 
   function regenerateMessage(message: { id: string; content_markdown: string; role: string }) {
     const sid = selectedSessionId.value;
     if (!sid) return;
-    if (runStatus.value === "running" || runStatus.value === "pending") {
+    if (runStatus.value === 'running' || runStatus.value === 'pending') {
       streamManager.cancelActiveStream();
       sender.stopStreaming(sid);
     }
     const msgs = messageStore.getMessages(sid);
     const userIdx = msgs.findIndex((m) => m.id === message.id);
     if (userIdx < 0) return;
-    let userMsg = "";
+    let userMsg = '';
     for (let i = userIdx - 1; i >= 0; i--) {
-      if (msgs[i].role === "user") {
+      if (msgs[i].role === 'user') {
         userMsg = msgs[i].content_markdown;
         break;
       }
     }
     if (!userMsg) return;
     const entityKind = sessionStore.entityKind;
-    if (entityKind === "team") {
+    if (entityKind === 'team') {
       sender.sendTeamMessage(userMsg);
     } else {
       sender.sendAgentUserContent(userMsg);
@@ -66,12 +77,12 @@ export function useChatComposerActions(deps: ComposerActionDeps) {
     try {
       const ok = await runtimeStore.cancelBackgroundJob(job.id, job.source);
       if (ok) {
-        notify({ type: "positive", message: t("chat.job.cancelled", "任务已取消") });
+        notify({ type: 'positive', message: t('chat.job.cancelled', '任务已取消') });
       } else {
-        notify({ type: "warning", message: t("chat.job.cancelFailed", "取消失败") });
+        notify({ type: 'warning', message: t('chat.job.cancelFailed', '取消失败') });
       }
     } catch {
-      notify({ type: "warning", message: t("chat.job.cancelFailed", "取消失败") });
+      notify({ type: 'warning', message: t('chat.job.cancelFailed', '取消失败') });
     }
   }
 

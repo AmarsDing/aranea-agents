@@ -1,4 +1,4 @@
-import type { Message } from "./types";
+import type { Message } from './types';
 
 type StreamExtras = {
   reasoning_markdown?: string;
@@ -6,12 +6,12 @@ type StreamExtras = {
 };
 
 function reasoningFromExtras(extras: StreamExtras): string {
-  return (extras.reasoning_markdown ?? extras.reasoning_content ?? "").trim();
+  return (extras.reasoning_markdown ?? extras.reasoning_content ?? '').trim();
 }
 
 export function parseMessageExtras(optionsJson: string): StreamExtras {
   try {
-    return JSON.parse(optionsJson || "{}") as StreamExtras;
+    return JSON.parse(optionsJson || '{}') as StreamExtras;
   } catch {
     return {};
   }
@@ -25,7 +25,7 @@ export function mergeMessageExtras(optionsJson: string, patch: StreamExtras): st
 export function patchStreamingMessage(
   messages: Message[],
   messageId: string,
-  patch: { text?: string; reasoning?: string; replaceText?: string; replaceReasoning?: string; status?: string }
+  patch: { text?: string; reasoning?: string; replaceText?: string; replaceReasoning?: string; status?: string },
 ): Message[] {
   return messages.map((m) => {
     if (m.id !== messageId) return m;

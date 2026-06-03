@@ -1,13 +1,13 @@
-import { computed, ref, type ComputedRef, type Ref } from "vue";
-import { useI18n } from "vue-i18n";
-import { useQuasar } from "quasar";
-import { useTeamsStore } from "../../../stores/teams";
-import type { DeleteKind, SessionView, TeamRow } from "../../../components/chat/types";
-import type { Agent } from "../../agents/types";
-import { isAgentWorking, LS_AG_ORDER, LS_TM_ORDER } from "./chatWorkspaceUtils";
-import type { useAppStore } from "../../../stores/app";
-import type { useChatSessionStore } from "../../../stores/chat/sessionStore";
-import type { useChatMessageStore } from "../../../stores/chat/messageStore";
+import { computed, ref, type ComputedRef, type Ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
+import { useTeamsStore } from '../../../stores/teams';
+import type { DeleteKind, SessionView, TeamRow } from '../../../components/chat/types';
+import type { Agent } from '../../agents/types';
+import { isAgentWorking, LS_AG_ORDER, LS_TM_ORDER } from './chatWorkspaceUtils';
+import type { useAppStore } from '../../../stores/app';
+import type { useChatSessionStore } from '../../../stores/chat/sessionStore';
+import type { useChatMessageStore } from '../../../stores/chat/messageStore';
 
 type AppStore = ReturnType<typeof useAppStore>;
 type SessionStore = ReturnType<typeof useChatSessionStore>;
@@ -29,66 +29,63 @@ export function useChatDeleteFlow(deps: DeleteFlowDeps) {
   const $q = useQuasar();
 
   const deleteOpen = ref(false);
-  const deleteKind = ref<DeleteKind>("agent");
+  const deleteKind = ref<DeleteKind>('agent');
   const deleteTargetId = ref<string | null>(null);
-  const deleteNameInput = ref("");
+  const deleteNameInput = ref('');
   const deleteBlockBusy = ref(false);
   const deleteBlockDefault = ref(false);
   const deleting = ref(false);
 
   const expectedDeleteName = computed(() => {
-    if (deleteKind.value === "agent" && deleteTargetId.value) {
+    if (deleteKind.value === 'agent' && deleteTargetId.value) {
       return (
         deps.appStore.agents.find((agent) => agent.id === deleteTargetId.value)?.display_name ??
         deps.displayAgents.value.find((agent) => agent.id === deleteTargetId.value)?.display_name ??
-        ""
+        ''
       );
     }
-    if (deleteKind.value === "team") {
-      return deps.displayTeams.value.find((team) => team.id === deleteTargetId.value)?.display_name ?? "";
+    if (deleteKind.value === 'team') {
+      return deps.displayTeams.value.find((team) => team.id === deleteTargetId.value)?.display_name ?? '';
     }
-    if (deleteKind.value === "session") {
-      return deps.displaySessions.value.find((session) => session.id === deleteTargetId.value)?.title ?? "";
+    if (deleteKind.value === 'session') {
+      return deps.displaySessions.value.find((session) => session.id === deleteTargetId.value)?.title ?? '';
     }
-    return "";
+    return '';
   });
 
-  const deleteNameError = computed(
-    () => deleteNameInput.value && deleteNameInput.value !== expectedDeleteName.value
-  );
+  const deleteNameError = computed(() => deleteNameInput.value && deleteNameInput.value !== expectedDeleteName.value);
 
   const canConfirmDelete = computed(() => {
     if (deleteBlockBusy.value || deleteBlockDefault.value) return false;
-    if (deleteKind.value === "all" || deleteKind.value === "session") return true;
+    if (deleteKind.value === 'all' || deleteKind.value === 'session') return true;
     return deleteNameInput.value === expectedDeleteName.value;
   });
 
   const deleteTitleText = computed(() => {
-    if (deleteKind.value === "agent") return t("chat.deleteTitleAgent");
-    if (deleteKind.value === "team") return t("chat.deleteTitleTeam");
-    if (deleteKind.value === "session") return t("chat.deleteTitleSession");
-    return t("chat.deleteAllTitle");
+    if (deleteKind.value === 'agent') return t('chat.deleteTitleAgent');
+    if (deleteKind.value === 'team') return t('chat.deleteTitleTeam');
+    if (deleteKind.value === 'session') return t('chat.deleteTitleSession');
+    return t('chat.deleteAllTitle');
   });
 
   function openDelete(kind: DeleteKind, id: string) {
     deleteKind.value = kind;
     deleteTargetId.value = id;
-    deleteNameInput.value = "";
+    deleteNameInput.value = '';
     deleteBlockBusy.value = false;
     deleteBlockDefault.value = false;
 
-    if (kind === "agent" && id) {
+    if (kind === 'agent' && id) {
       const agent =
-        deps.appStore.agents.find((item) => item.id === id) ??
-        deps.displayAgents.value.find((item) => item.id === id);
+        deps.appStore.agents.find((item) => item.id === id) ?? deps.displayAgents.value.find((item) => item.id === id);
       deleteBlockBusy.value = agent ? isAgentWorking(agent) : false;
     }
 
-    if (kind === "team" && id) {
+    if (kind === 'team' && id) {
       const team = deps.displayTeams.value.find((item) => item.id === id);
       if (team?.isDefault) {
         deleteBlockDefault.value = true;
-        $q.notify({ type: "warning", message: t("chat.deleteBlockedDefault") });
+        $q.notify({ type: 'warning', message: t('chat.deleteBlockedDefault') });
         return;
       }
       deleteBlockBusy.value = team?.isWorking ?? false;
@@ -98,7 +95,7 @@ export function useChatDeleteFlow(deps: DeleteFlowDeps) {
   }
 
   async function deleteSession(id: string) {
-    if (deps.sessionStore.entityKind === "team" && deps.sessionStore.selectedTeamId) {
+    if (deps.sessionStore.entityKind === 'team' && deps.sessionStore.selectedTeamId) {
       await deps.sessionStore.removeTeamSessionLocal(deps.sessionStore.selectedTeamId, id);
       return;
     }
@@ -109,12 +106,12 @@ export function useChatDeleteFlow(deps: DeleteFlowDeps) {
   }
 
   async function clearSessions() {
-    if (deps.sessionStore.entityKind === "agent") {
+    if (deps.sessionStore.entityKind === 'agent') {
       const agentId = deps.appStore.selectedAgent?.id;
       if (agentId) await deps.sessionStore.clearAllAgentSessions(agentId);
       return;
     }
-    if (deps.sessionStore.entityKind === "team" && deps.sessionStore.selectedTeamId) {
+    if (deps.sessionStore.entityKind === 'team' && deps.sessionStore.selectedTeamId) {
       deps.sessionStore.clearTeamSessions(deps.sessionStore.selectedTeamId);
     }
   }
@@ -123,14 +120,14 @@ export function useChatDeleteFlow(deps: DeleteFlowDeps) {
     const id = deleteTargetId.value;
     if (deleteBlockBusy.value || deleteBlockDefault.value) return;
 
-    if (deleteKind.value === "agent" && id) {
+    if (deleteKind.value === 'agent' && id) {
       deleting.value = true;
       try {
         localStorage.removeItem(LS_AG_ORDER);
         await deps.appStore.removeAgentFromList(id);
         deps.displayAgents.value = deps.displayAgents.value.filter((agent) => agent.id !== id);
         deps.defaultAgentId.value = deps.appStore.agents[0]?.id ?? null;
-        if (deps.sessionStore.entityKind === "agent") {
+        if (deps.sessionStore.entityKind === 'agent') {
           if (deps.appStore.selectedAgent) {
             await deps.sessionStore.loadAgentSessions(deps.appStore.selectedAgent.id);
             deps.sessionStore.selectedSession = deps.sessionStore.sessions[0] ?? null;
@@ -145,20 +142,20 @@ export function useChatDeleteFlow(deps: DeleteFlowDeps) {
       } finally {
         deleting.value = false;
       }
-    } else if (deleteKind.value === "team" && id) {
+    } else if (deleteKind.value === 'team' && id) {
       const teamsStore = useTeamsStore();
       await teamsStore.remove(id);
       localStorage.removeItem(LS_TM_ORDER);
       deps.displayTeams.value = deps.displayTeams.value.filter((team) => team.id !== id);
       if (deps.sessionStore.selectedTeamId === id) deps.sessionStore.selectedTeamId = null;
-    } else if (deleteKind.value === "session" && id) {
+    } else if (deleteKind.value === 'session' && id) {
       await deleteSession(id);
-    } else if (deleteKind.value === "all") {
+    } else if (deleteKind.value === 'all') {
       await clearSessions();
     }
 
     deleteOpen.value = false;
-    $q.notify({ type: "info", message: t("chat.deleteSuccess") });
+    $q.notify({ type: 'info', message: t('chat.deleteSuccess') });
   }
 
   return {

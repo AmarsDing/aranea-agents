@@ -1,10 +1,10 @@
-import { reactive } from "vue";
-import type { ComputedRef, Ref } from "vue";
-import type { useChatDeleteFlow } from "./useChatDeleteFlow";
-import type { useChatSettingsDialog } from "./useChatSettingsDialog";
-import type { ChatEventInspectorStreamDeps } from "./useChatEventInspector";
-import type { SessionInspectorTab } from "../../../components/chat/SessionTimelineDialog.vue";
-import type { PlatformResource } from "../../platform/types";
+import { reactive } from 'vue';
+import type { ComputedRef, Ref } from 'vue';
+import type { useChatDeleteFlow } from './useChatDeleteFlow';
+import type { useChatSettingsDialog } from './useChatSettingsDialog';
+import type { ChatEventInspectorStreamDeps } from './useChatEventInspector';
+import type { SessionInspectorTab } from '../../../components/chat/SessionTimelineDialog.vue';
+import type { PlatformResource } from '../../platform/types';
 
 export interface ChatDialogsDeps {
   deleteFlow: ReturnType<typeof useChatDeleteFlow>;

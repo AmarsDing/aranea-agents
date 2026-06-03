@@ -65,6 +65,6 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "run-loop": [];
+  'run-loop': [];
 }>();
 </script>

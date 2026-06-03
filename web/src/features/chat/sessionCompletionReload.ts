@@ -1,6 +1,6 @@
-import type { useChatSessionStore } from "../../stores/chat/sessionStore";
-import type { useChatMessageStore } from "../../stores/chat/messageStore";
-import type { useChatStreamingSnapshots } from "../../stores/chatStreamingSnapshots";
+import type { useChatSessionStore } from '../../stores/chat/sessionStore';
+import type { useChatMessageStore } from '../../stores/chat/messageStore';
+import type { useChatStreamingSnapshots } from '../../stores/chatStreamingSnapshots';
 
 type SessionStore = ReturnType<typeof useChatSessionStore>;
 type MessageStore = ReturnType<typeof useChatMessageStore>;
@@ -27,7 +27,7 @@ export async function reloadSessionAfterCompletion(input: {
 
   await input.sessionStore.fetchAndReconcileSession(sessionId);
 
-  if (input.sessionStore.entityKind === "agent") {
+  if (input.sessionStore.entityKind === 'agent') {
     const agentId = input.resolveAgentId?.()?.trim();
     if (agentId) {
       await input.sessionStore.loadAgentSessions(agentId, { refreshOnly: true });
@@ -35,7 +35,7 @@ export async function reloadSessionAfterCompletion(input: {
     return;
   }
 
-  if (input.sessionStore.entityKind === "team") {
+  if (input.sessionStore.entityKind === 'team') {
     const teamId = input.sessionStore.selectedTeamId?.trim();
     if (teamId) {
       await input.sessionStore.loadTeamSessions(teamId);

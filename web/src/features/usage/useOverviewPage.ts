@@ -1,50 +1,50 @@
-import { computed, onMounted, reactive, ref } from "vue";
-import { useRoute } from "vue-router";
-import { storeToRefs } from "pinia";
-import { useI18n } from "vue-i18n";
-import { useUsageStore } from "../../stores/usage";
-import { usePlatformStore } from "../../stores/platform";
-import { useMonitorStore } from "../../stores/monitor";
-import { useAgentsCatalogStore } from "../../stores/agents/catalog";
-import type { ModelUsageQuery } from "./types";
-import { formatUsdFromMicro, formatCount as fmtCount, formatPercent as fmtPercent } from "./moneyFormat";
-import { useMonitorRunNavigation } from "../monitor/useMonitorRunNavigation";
-import { listTeams } from "../teams/api";
-import { listPlatformResources } from "../platform/api";
+import { computed, onMounted, reactive, ref } from 'vue';
+import { useRoute } from 'vue-router';
+import { storeToRefs } from 'pinia';
+import { useI18n } from 'vue-i18n';
+import { useUsageStore } from '../../stores/usage';
+import { usePlatformStore } from '../../stores/platform';
+import { useMonitorStore } from '../../stores/monitor';
+import { useAgentsCatalogStore } from '../../stores/agents/catalog';
+import type { ModelUsageQuery } from './types';
+import { formatUsdFromMicro, formatCount as fmtCount, formatPercent as fmtPercent } from './moneyFormat';
+import { useMonitorRunNavigation } from '../monitor/useMonitorRunNavigation';
+import { listTeams } from '../teams/api';
+import { listPlatformResources } from '../platform/api';
 
-const VALID_RANGES = new Set(["today", "7d", "30d", "month"]);
+const VALID_RANGES = new Set(['today', '7d', '30d', 'month']);
 
 export function useOverviewPage() {
   const { t } = useI18n();
   const route = useRoute();
   const usageStore = useUsageStore();
   const { overview, loading, error } = storeToRefs(usageStore);
-  const trendGranularity = ref<"day" | "hour">("day");
-  const initialRange = String(route.query.range || "30d");
+  const trendGranularity = ref<'day' | 'hour'>('day');
+  const initialRange = String(route.query.range || '30d');
   const filters = reactive<ModelUsageQuery>({
-    range: VALID_RANGES.has(initialRange) ? initialRange : "30d",
-    provider_code: "",
-    model_api_id: "",
-    status: ""
+    range: VALID_RANGES.has(initialRange) ? initialRange : '30d',
+    provider_code: '',
+    model_api_id: '',
+    status: '',
   });
 
   const rangeOptions = computed(() => [
-    { label: t("overviewPage.rangeToday"), value: "today" },
-    { label: t("overviewPage.range7d"), value: "7d" },
-    { label: t("overviewPage.range30d"), value: "30d" },
-    { label: t("overviewPage.rangeMonth"), value: "month" }
+    { label: t('overviewPage.rangeToday'), value: 'today' },
+    { label: t('overviewPage.range7d'), value: '7d' },
+    { label: t('overviewPage.range30d'), value: '30d' },
+    { label: t('overviewPage.rangeMonth'), value: 'month' },
   ]);
 
   const statusOptions = computed(() => [
-    { label: t("overviewPage.statusSuccess"), value: "success" },
-    { label: t("overviewPage.statusFailed"), value: "failed" },
-    { label: t("overviewPage.statusCancelled"), value: "cancelled" },
-    { label: t("overviewPage.statusTimeout"), value: "timeout" }
+    { label: t('overviewPage.statusSuccess'), value: 'success' },
+    { label: t('overviewPage.statusFailed'), value: 'failed' },
+    { label: t('overviewPage.statusCancelled'), value: 'cancelled' },
+    { label: t('overviewPage.statusTimeout'), value: 'timeout' },
   ]);
 
   const granularityOptions = computed(() => [
-    { label: t("overviewPage.granularityDay"), value: "day" },
-    { label: t("overviewPage.granularityHour"), value: "hour" }
+    { label: t('overviewPage.granularityDay'), value: 'day' },
+    { label: t('overviewPage.granularityHour'), value: 'hour' },
   ]);
 
   const platformStore = usePlatformStore();
@@ -53,7 +53,7 @@ export function useOverviewPage() {
   const providerOptions = computed(() => {
     const seen = new Map<string, string>();
     for (const m of providerModels.value) {
-      const code = m.provider ?? "";
+      const code = m.provider ?? '';
       const name = m.name ?? code;
       if (code && !seen.has(code)) {
         seen.set(code, name);
@@ -67,7 +67,7 @@ export function useOverviewPage() {
     const seen = new Map<string, string>();
     for (const m of providerModels.value) {
       if (provider && m.provider !== provider) continue;
-      const apiId = m.model ?? "";
+      const apiId = m.model ?? '';
       const name = m.name ?? apiId;
       if (apiId && !seen.has(apiId)) {
         seen.set(apiId, name);
@@ -80,7 +80,7 @@ export function useOverviewPage() {
     const currentModel = filters.model_api_id;
     if (currentModel) {
       const valid = modelOptions.value.some((o) => o.value === currentModel);
-      if (!valid) filters.model_api_id = "";
+      if (!valid) filters.model_api_id = '';
     }
     loadOverview();
   }
@@ -130,8 +130,8 @@ export function useOverviewPage() {
     try {
       const list = await agentsCatalogStore.fetchAgents({ limit: 1000 });
       agentStats.value = {
-        active: list.filter((a: { status: string }) => a.status === "active" || !a.status).length,
-        total: list.length
+        active: list.filter((a: { status: string }) => a.status === 'active' || !a.status).length,
+        total: list.length,
       };
     } catch {
       // silent
@@ -141,7 +141,7 @@ export function useOverviewPage() {
   const providerCount = computed(() => {
     const seen = new Set<string>();
     for (const m of providerModels.value) {
-      const code = m.provider ?? "";
+      const code = m.provider ?? '';
       if (code) seen.add(code);
     }
     return seen.size;
@@ -152,7 +152,7 @@ export function useOverviewPage() {
 
   async function loadCategoryCount() {
     try {
-      const rows = await listPlatformResources("taxonomy");
+      const rows = await listPlatformResources('taxonomy');
       categoryCount.value = rows.length;
     } catch {
       // silent
@@ -176,7 +176,7 @@ export function useOverviewPage() {
 
   const username = computed(() => {
     try {
-      const raw = localStorage.getItem("auth_user");
+      const raw = localStorage.getItem('auth_user');
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed.username) return parsed.username;
@@ -184,13 +184,13 @@ export function useOverviewPage() {
     } catch {
       // silent
     }
-    return "Admin";
+    return 'Admin';
   });
 
   const providerHealthSummary = computed(() => {
     const models = providerModels.value;
-    const active = models.filter((m: { status: string }) => m.status === "active" || !m.status).length;
-    const degraded = models.filter((m: { status: string }) => m.status === "degraded").length;
+    const active = models.filter((m: { status: string }) => m.status === 'active' || !m.status).length;
+    const degraded = models.filter((m: { status: string }) => m.status === 'degraded').length;
     return { active, degraded, total: models.length };
   });
 
@@ -205,7 +205,7 @@ export function useOverviewPage() {
     totalRuns: runnerMetrics.value?.total_runs ?? 0,
     errorRuns: runnerMetrics.value?.error_runs ?? 0,
     successRate: (runnerMetrics.value?.success_rate ?? 0) * 100,
-    errorRate: (runnerMetrics.value?.error_rate ?? 0) * 100
+    errorRate: (runnerMetrics.value?.error_rate ?? 0) * 100,
   }));
 
   onMounted(() => {
@@ -250,6 +250,6 @@ export function useOverviewPage() {
     providerHealthSummary,
     sessionActiveCount,
     sessionSparkline,
-    runnerStats
+    runnerStats,
   };
 }

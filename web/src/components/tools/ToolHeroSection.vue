@@ -7,7 +7,7 @@
 </template>
 
 <script setup lang="ts">
-import AppPageHero from "../layout/AppPageHero.vue";
+import AppPageHero from '../layout/AppPageHero.vue';
 
 defineProps<{
   kicker: string;

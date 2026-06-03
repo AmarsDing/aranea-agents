@@ -8,7 +8,16 @@
       <template #actions>
         <q-btn outline rounded no-caps color="primary" icon="upload_file" label="上传 Skill" @click="openUpload" />
         <q-btn outline rounded no-caps color="primary" icon="history" label="运行记录" to="/skills/runs" />
-        <q-btn color="primary" unelevated rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
+        <q-btn
+          color="primary"
+          unelevated
+          rounded
+          no-caps
+          icon="refresh"
+          label="刷新"
+          :loading="loading"
+          @click="loadRows"
+        />
       </template>
     </AppPageHero>
 
@@ -50,7 +59,7 @@
     <q-card v-if="!loading && rows.length === 0" flat class="app-registry-empty app-empty-state-center">
       <q-card-section class="column items-center text-center q-pa-xl">
         <q-avatar size="72px" color="primary" text-color="white" icon="psychology" />
-        <div class="text-h6 q-mt-md">{{ search ? "没有匹配的 Skill" : "暂无 Skill" }}</div>
+        <div class="text-h6 q-mt-md">{{ search ? '没有匹配的 Skill' : '暂无 Skill' }}</div>
         <div class="text-body2 text-grey-7 q-mt-sm">上传能力将在后续版本启用；当前可先查看已有 Skill 与运行统计。</div>
       </q-card-section>
     </q-card>
@@ -67,7 +76,14 @@
         @delete="confirmDelete"
       />
 
-      <skill-pagination v-model:page="page" v-model:page-size="pageSize" :page-max="pageMax" :total="total" :loading="loading" label="条 Skill" />
+      <skill-pagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :page-max="pageMax"
+        :total="total"
+        :loading="loading"
+        label="条 Skill"
+      />
     </template>
     <skill-delete-dialog v-model="deleteOpen" :skill="deleteTarget" :loading="deleting" @confirm="deleteTargetSkill" />
     <skill-editor-dialog
@@ -83,15 +99,15 @@
 </template>
 
 <script setup lang="ts">
-import AppPageHero from "../components/layout/AppPageHero.vue";
-import SkillDeleteDialog from "../components/skills/SkillDeleteDialog.vue";
-import SkillEditorDialog from "../components/skills/SkillEditorDialog.vue";
-import SkillFilesystemAlertBanner from "../components/skills/SkillFilesystemAlertBanner.vue";
-import SkillFilterBar from "../components/skills/SkillFilterBar.vue";
-import SkillPagination from "../components/skills/SkillPagination.vue";
-import SkillTable from "../components/skills/SkillTable.vue";
-import SkillUploadPlaceholder from "../components/skills/SkillUploadPlaceholder.vue";
-import { useSkillsPage } from "../features/skills/useSkillsPage";
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import SkillDeleteDialog from '../components/skills/SkillDeleteDialog.vue';
+import SkillEditorDialog from '../components/skills/SkillEditorDialog.vue';
+import SkillFilesystemAlertBanner from '../components/skills/SkillFilesystemAlertBanner.vue';
+import SkillFilterBar from '../components/skills/SkillFilterBar.vue';
+import SkillPagination from '../components/skills/SkillPagination.vue';
+import SkillTable from '../components/skills/SkillTable.vue';
+import SkillUploadPlaceholder from '../components/skills/SkillUploadPlaceholder.vue';
+import { useSkillsPage } from '../features/skills/useSkillsPage';
 
 const {
   uploadRef,
@@ -133,6 +149,6 @@ const {
   readSkillFile,
   updateSkillFile,
   notify,
-  confirm
+  confirm,
 } = useSkillsPage();
 </script>

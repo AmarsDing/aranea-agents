@@ -9,7 +9,7 @@
           <div class="tool-editor-shell__breadcrumb">
             <span class="tool-editor-shell__breadcrumb-prefix">Tools</span>
             <q-icon name="chevron_right" size="xs" color="grey-6" />
-            <span class="tool-editor-shell__breadcrumb-current">{{ editingId ? "编辑" : "新建" }}</span>
+            <span class="tool-editor-shell__breadcrumb-current">{{ editingId ? '编辑' : '新建' }}</span>
           </div>
           <div v-if="editingId && form.display_name" class="tool-editor-shell__entity">{{ form.display_name }}</div>
         </div>
@@ -41,8 +41,16 @@
 
           <div class="tool-editor-aside__validation">
             <div class="tool-editor-aside__nav-title">校验状态</div>
-            <div v-for="check in validationChecks" :key="check.key" class="tool-editor-aside__check row items-center q-gutter-xs">
-              <q-icon :name="check.ok ? 'check_circle' : 'error'" :color="check.ok ? 'positive' : 'warning'" size="xs" />
+            <div
+              v-for="check in validationChecks"
+              :key="check.key"
+              class="tool-editor-aside__check row items-center q-gutter-xs"
+            >
+              <q-icon
+                :name="check.ok ? 'check_circle' : 'error'"
+                :color="check.ok ? 'positive' : 'warning'"
+                size="xs"
+              />
               <span class="text-caption">{{ check.label }}</span>
             </div>
           </div>
@@ -50,7 +58,11 @@
           <div v-if="editingId && diffLines.length" class="tool-editor-aside__diff">
             <div class="tool-editor-aside__nav-title">变更预览</div>
             <div class="tool-editor-aside__diff-list">
-              <div v-for="(line, i) in diffLines.slice(0, 6)" :key="i" class="tool-editor-aside__diff-line text-caption">
+              <div
+                v-for="(line, i) in diffLines.slice(0, 6)"
+                :key="i"
+                class="tool-editor-aside__diff-line text-caption"
+              >
                 {{ line }}
               </div>
               <div v-if="diffLines.length > 6" class="text-caption text-grey">…还有 {{ diffLines.length - 6 }} 项</div>
@@ -61,13 +73,14 @@
         <main class="tool-editor-main">
           <div ref="scrollContainer" class="tool-editor-main__scroll" @scroll="onScroll">
             <div class="tool-editor-main__content">
-
               <section id="section-basic" class="tool-editor-section">
                 <div class="tool-editor-section__header">
                   <div class="tool-editor-section__step">1</div>
                   <div>
                     <h3 class="tool-editor-section__title">基础信息</h3>
-                    <p class="tool-editor-section__desc">填写工具的名称和用途说明，让团队成员一眼理解这个工具做什么。</p>
+                    <p class="tool-editor-section__desc">
+                      填写工具的名称和用途说明，让团队成员一眼理解这个工具做什么。
+                    </p>
                   </div>
                 </div>
 
@@ -163,7 +176,8 @@
                 </div>
 
                 <q-banner v-if="registryLocked" rounded class="settings-warning-banner q-mb-sm">
-                  内置 / 只读工具：「需确认 / 流式 / 并发」由代码 registry 维护，保存后重启可能被同步覆盖。日常启停请用列表页开关。
+                  内置 / 只读工具：「需确认 / 流式 / 并发」由代码 registry
+                  维护，保存后重启可能被同步覆盖。日常启停请用列表页开关。
                 </q-banner>
 
                 <div class="app-form-field-grid app-form-field-grid--2col">
@@ -209,7 +223,10 @@
                     :disable="registryLocked"
                     @update:model-value="$emit('patch-form', { supports_concurrency: Boolean($event) })"
                   >
-                    <q-tooltip>目录标记：适合与其他只读工具同轮并行。实际并行取决于 Agent「并行工具调用」与 allow 列表。</q-tooltip>
+                    <q-tooltip
+                      >目录标记：适合与其他只读工具同轮并行。实际并行取决于 Agent「并行工具调用」与 allow
+                      列表。</q-tooltip
+                    >
                   </q-toggle>
                 </div>
 
@@ -226,8 +243,10 @@
                   <div>
                     <h3 class="tool-editor-section__title">调用参数</h3>
                     <p class="tool-editor-section__desc">
-                      定义 AI 在调用此工具时需要传递哪些参数。<strong>什么时候需要配置：</strong>当你想让 AI 知道该传什么信息给工具（如搜索关键词、文件路径等）。
-                      <strong>配置后的效果：</strong>AI 会按照定义的参数结构生成调用请求，缺少必填参数时会自动补充或向用户询问。
+                      定义 AI 在调用此工具时需要传递哪些参数。<strong>什么时候需要配置：</strong>当你想让 AI
+                      知道该传什么信息给工具（如搜索关键词、文件路径等）。
+                      <strong>配置后的效果：</strong>AI
+                      会按照定义的参数结构生成调用请求，缺少必填参数时会自动补充或向用户询问。
                     </p>
                   </div>
                 </div>
@@ -241,8 +260,9 @@
                 <q-expansion-item dense-toggle label="返回结构说明（可选）" class="q-mt-md">
                   <div class="q-pt-sm">
                     <p class="tool-editor-section__desc">
-                      定义工具返回数据的结构。<strong>什么时候需要配置：</strong>当 AI 需要根据返回结果做后续决策时（如判断搜索是否有结果）。
-                      不配置不影响工具运行，但 AI 无法预知返回格式。
+                      定义工具返回数据的结构。<strong>什么时候需要配置：</strong>当 AI
+                      需要根据返回结果做后续决策时（如判断搜索是否有结果）。 不配置不影响工具运行，但 AI
+                      无法预知返回格式。
                     </p>
                     <tool-schema-builder
                       :model-value="form.result_schema_json"
@@ -276,7 +296,8 @@
                 >
                   <div class="q-pt-sm">
                     <p class="tool-editor-section__desc">
-                      定义此工具接受哪些配置项（如 api_key、timeout）。<strong>什么时候需要配置：</strong>首次创建工具或需要新增配置项时。
+                      定义此工具接受哪些配置项（如
+                      api_key、timeout）。<strong>什么时候需要配置：</strong>首次创建工具或需要新增配置项时。
                       已有配置项的工具通常不需要修改此区域。
                     </p>
                     <tool-schema-builder
@@ -318,7 +339,7 @@
                   @update:model-value="$emit('patch-form', { config_json: String($event ?? '{}') })"
                 />
                 <q-banner v-if="extraConfigKeys.length" rounded class="settings-warning-banner q-mt-sm">
-                  以下字段不在配置 Schema 中，保存时可能被后端拒绝：{{ extraConfigKeys.join(", ") }}
+                  以下字段不在配置 Schema 中，保存时可能被后端拒绝：{{ extraConfigKeys.join(', ') }}
                 </q-banner>
               </section>
 
@@ -329,7 +350,8 @@
                     <h3 class="tool-editor-section__title">高级选项</h3>
                     <p class="tool-editor-section__desc">
                       出厂默认配置和元数据，通常无需修改。<strong>什么时候需要配置：</strong>需要为新创建的工具设定默认配置值，
-                      或添加供其他系统读取的扩展信息时。<strong>配置后的效果：</strong>新 Agent 绑定此工具时会继承出厂默认配置。
+                      或添加供其他系统读取的扩展信息时。<strong>配置后的效果：</strong>新 Agent
+                      绑定此工具时会继承出厂默认配置。
                     </p>
                   </div>
                 </div>
@@ -354,7 +376,15 @@
                       :error-message="jsonErrors.default_config_json"
                       @update:model-value="$emit('patch-form', { default_config_json: String($event ?? '{}') })"
                     />
-                    <q-btn v-if="!registryLocked" flat dense no-caps size="sm" label="从当前配置复制" @click="$emit('patch-form', { default_config_json: form.config_json })" />
+                    <q-btn
+                      v-if="!registryLocked"
+                      flat
+                      dense
+                      no-caps
+                      size="sm"
+                      label="从当前配置复制"
+                      @click="$emit('patch-form', { default_config_json: form.config_json })"
+                    />
                   </div>
                 </q-expansion-item>
                 <q-expansion-item dense-toggle label="扩展元数据">
@@ -394,13 +424,20 @@
                   </div>
                 </q-expansion-item>
               </section>
-
             </div>
           </div>
 
           <div class="tool-editor-main__footer">
             <q-btn outline no-caps label="取消" @click="tryClose" />
-            <q-btn no-caps unelevated class="app-registry-primary-btn" icon="save" label="保存" :loading="saving" @click="$emit('save')" />
+            <q-btn
+              no-caps
+              unelevated
+              class="app-registry-primary-btn"
+              icon="save"
+              label="保存"
+              :loading="saving"
+              @click="$emit('save')"
+            />
           </div>
         </main>
       </div>
@@ -411,16 +448,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { useQuasar } from "quasar";
-import { TOOL_CREATE_TEMPLATES, TOOL_FIELD_HINTS, isRegistryLockedTool } from "../../features/tools/toolEditorCopy";
-import { configExtraKeys, configDiffSummary } from "../../features/tools/jsonSchemaBuilder";
-import type { ToolUpsertInput } from "../../features/tools/types";
-import { toolEditorJsonKeys, validateToolJsonFields, categoryFilterOptions, riskLevelOptions, sourceSuggestions } from "./toolUi";
-import ToolFieldHintInput from "./editor/ToolFieldHintInput.vue";
-import ToolEditorHelpDrawer from "./editor/ToolEditorHelpDrawer.vue";
-import ToolSchemaBuilder from "./editor/ToolSchemaBuilder.vue";
-import ToolSchemaForm from "./ToolSchemaForm.vue";
+import { computed, ref } from 'vue';
+import { useQuasar } from 'quasar';
+import { TOOL_CREATE_TEMPLATES, TOOL_FIELD_HINTS, isRegistryLockedTool } from '../../features/tools/toolEditorCopy';
+import { configExtraKeys, configDiffSummary } from '../../features/tools/jsonSchemaBuilder';
+import type { ToolUpsertInput } from '../../features/tools/types';
+import {
+  toolEditorJsonKeys,
+  validateToolJsonFields,
+  categoryFilterOptions,
+  riskLevelOptions,
+  sourceSuggestions,
+} from './toolUi';
+import ToolFieldHintInput from './editor/ToolFieldHintInput.vue';
+import ToolEditorHelpDrawer from './editor/ToolEditorHelpDrawer.vue';
+import ToolSchemaBuilder from './editor/ToolSchemaBuilder.vue';
+import ToolSchemaForm from './ToolSchemaForm.vue';
 
 const props = defineProps<{
   open: boolean;
@@ -433,17 +476,17 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:open": [value: boolean];
+  'update:open': [value: boolean];
   save: [];
   close: [];
-  "apply-template": [id: string];
-  "patch-form": [p: Record<string, unknown>];
+  'apply-template': [id: string];
+  'patch-form': [p: Record<string, unknown>];
 }>();
 
 const $q = useQuasar();
 
 const helpOpen = ref(false);
-const activeSection = ref("basic");
+const activeSection = ref('basic');
 const scrollContainer = ref<HTMLElement | null>(null);
 
 const hints = TOOL_FIELD_HINTS;
@@ -451,11 +494,11 @@ const templates = TOOL_CREATE_TEMPLATES;
 const sourceOptions = sourceSuggestions;
 
 const navSections = [
-  { id: "basic", label: "基础信息", hint: "名称、分类、描述", icon: "info" },
-  { id: "policy", label: "运行策略", hint: "启用、确认、流式", icon: "policy" },
-  { id: "params", label: "调用参数", hint: "AI 传递的参数", icon: "data_object" },
-  { id: "config", label: "管理员配置", hint: "密钥、超时等", icon: "tune" },
-  { id: "advanced", label: "高级选项", hint: "默认值、元数据", icon: "more_horiz" }
+  { id: 'basic', label: '基础信息', hint: '名称、分类、描述', icon: 'info' },
+  { id: 'policy', label: '运行策略', hint: '启用、确认、流式', icon: 'policy' },
+  { id: 'params', label: '调用参数', hint: 'AI 传递的参数', icon: 'data_object' },
+  { id: 'config', label: '管理员配置', hint: '密钥、超时等', icon: 'tune' },
+  { id: 'advanced', label: '高级选项', hint: '默认值、元数据', icon: 'more_horiz' },
 ];
 
 const registryLocked = computed(() => isRegistryLockedTool(props.form));
@@ -463,7 +506,7 @@ const schemaReadonly = computed(() => registryLocked.value);
 
 const hasConfigSchema = computed(() => {
   try {
-    const s = JSON.parse(props.form.config_schema_json || "{}");
+    const s = JSON.parse(props.form.config_schema_json || '{}');
     return s.properties && Object.keys(s.properties).length > 0;
   } catch {
     return false;
@@ -486,26 +529,26 @@ const validationChecks = computed(() => {
       acc[k] = props.form[k];
       return acc;
     },
-    {} as Record<string, string>
+    {} as Record<string, string>,
   );
   const errors = validateToolJsonFields(fieldObj, keys);
   return [
-    { key: "json", label: "JSON 格式", ok: Object.keys(errors).length === 0 },
-    { key: "extra", label: "多余配置字段", ok: extraConfigKeys.value.length === 0 }
+    { key: 'json', label: 'JSON 格式', ok: Object.keys(errors).length === 0 },
+    { key: 'extra', label: '多余配置字段', ok: extraConfigKeys.value.length === 0 },
   ];
 });
 
 const rawFields = [
-  { key: "parameters_schema_json" as const, label: "参数 Schema JSON" },
-  { key: "result_schema_json" as const, label: "返回 Schema JSON" },
-  { key: "config_schema_json" as const, label: "配置 Schema JSON" }
+  { key: 'parameters_schema_json' as const, label: '参数 Schema JSON' },
+  { key: 'result_schema_json' as const, label: '返回 Schema JSON' },
+  { key: 'config_schema_json' as const, label: '配置 Schema JSON' },
 ];
 
 function scrollToSection(id: string) {
   activeSection.value = id;
   const el = document.getElementById(`section-${id}`);
   if (el && scrollContainer.value) {
-    scrollContainer.value.scrollTo({ top: el.offsetTop - 16, behavior: "smooth" });
+    scrollContainer.value.scrollTo({ top: el.offsetTop - 16, behavior: 'smooth' });
   }
 }
 
@@ -514,7 +557,7 @@ function onScroll() {
   const scrollTop = scrollContainer.value.scrollTop;
   const sectionEls = navSections.map((s) => ({
     id: s.id,
-    el: document.getElementById(`section-${s.id}`)
+    el: document.getElementById(`section-${s.id}`),
   }));
   for (let i = sectionEls.length - 1; i >= 0; i--) {
     const sec = sectionEls[i];
@@ -527,13 +570,13 @@ function onScroll() {
 
 function confirmDiscardAndClose() {
   $q.dialog({
-    title: "未保存的更改",
-    message: "当前有未保存的更改，确定要关闭吗？",
-    cancel: { label: "继续编辑", flat: true, noCaps: true },
-    ok: { label: "放弃更改", noCaps: true, color: "negative" },
+    title: '未保存的更改',
+    message: '当前有未保存的更改，确定要关闭吗？',
+    cancel: { label: '继续编辑', flat: true, noCaps: true },
+    ok: { label: '放弃更改', noCaps: true, color: 'negative' },
     persistent: true,
   }).onOk(() => {
-    emit("close");
+    emit('close');
   });
 }
 
@@ -541,7 +584,7 @@ function tryClose() {
   if (props.dirty) {
     confirmDiscardAndClose();
   } else {
-    emit("close");
+    emit('close');
   }
 }
 
@@ -550,7 +593,7 @@ function onDialogUpdate(val: boolean) {
     if (props.dirty) {
       confirmDiscardAndClose();
     } else {
-      emit("close");
+      emit('close');
     }
   }
 }

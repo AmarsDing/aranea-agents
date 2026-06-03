@@ -1,11 +1,11 @@
-import { reactive } from "vue";
+import { reactive } from 'vue';
 import {
   defaultPlannerForm,
   plannerFormFromSettings,
   serializePlannerForm,
   validatePlannerForm,
   type PlannerFormState,
-} from "./plannerConfig";
+} from './plannerConfig';
 
 /** Planner slice for Agent settings — form state, hydrate, validate, serialize. */
 export function useAgentPlannerForm() {

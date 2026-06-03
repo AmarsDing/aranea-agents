@@ -11,7 +11,7 @@
           <div class="row items-center q-gutter-xs no-wrap">
             <span class="position-card__title ellipsis">{{ position.name }}</span>
             <q-chip dense square size="sm" :class="isSystem ? 'system-chip' : 'custom-chip'">
-              {{ isSystem ? "系统" : "自建" }}
+              {{ isSystem ? '系统' : '自建' }}
             </q-chip>
             <q-chip v-if="!position.enabled" dense square size="sm" class="position-card__status-off">已停用</q-chip>
           </div>
@@ -24,16 +24,24 @@
 
       <div v-if="!readonly" class="position-card__foot row items-center justify-end q-gutter-xs">
         <q-btn flat dense round color="primary" icon="edit" aria-label="编辑职位" @click="$emit('edit', position)" />
-        <q-btn flat dense round color="negative" icon="delete" aria-label="删除职位" @click="$emit('remove', position)" />
+        <q-btn
+          flat
+          dense
+          round
+          color="negative"
+          icon="delete"
+          aria-label="删除职位"
+          @click="$emit('remove', position)"
+        />
       </div>
     </div>
   </article>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { PlatformResourceTreeNode } from "../../features/platform/types";
-import { parseIsSystem, trimmedDesc } from "../../features/platform/taxonomyTreeUtils";
+import { computed } from 'vue';
+import type { PlatformResourceTreeNode } from '../../features/platform/types';
+import { parseIsSystem, trimmedDesc } from '../../features/platform/taxonomyTreeUtils';
 
 const props = defineProps<{
   position: PlatformResourceTreeNode;

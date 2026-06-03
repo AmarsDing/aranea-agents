@@ -2,8 +2,8 @@
  * Admin：`AdminService.Login` POST **`/v1/admins/login`**（body：`password` + **`username`** 或 **`email`** 择一，camelCase）。
  * **`SetCookie`** 由服务端经 **`access_token`**（可 `KRATOS_AUTH_COOKIE`）下发；前端 **`kratosApi.withCredentials`** 携带。
  */
-import { createAdminService } from "../../services";
-import type { Admin, LoginRequest } from "../../services/kratos/admin/v1/index";
+import { createAdminService } from '../../services';
+import type { Admin, LoginRequest } from '../../services/kratos/admin/v1/index';
 
 const adminSvc = createAdminService();
 
@@ -20,10 +20,10 @@ function mapAdmin(raw: unknown): AdminSession {
   const id = Number(r.id ?? r.Id ?? 0);
   return {
     id,
-    name: String(r.name ?? r.Name ?? ""),
-    email: String(r.email ?? r.Email ?? ""),
-    access: String(r.access ?? r.Access ?? ""),
-    avatar: String(r.avatar ?? r.Avatar ?? "")
+    name: String(r.name ?? r.Name ?? ''),
+    email: String(r.email ?? r.Email ?? ''),
+    access: String(r.access ?? r.Access ?? ''),
+    avatar: String(r.avatar ?? r.Avatar ?? ''),
   };
 }
 

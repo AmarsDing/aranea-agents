@@ -1,20 +1,20 @@
-import { createHookService } from "../../services";
-import type { HookRow } from "./types";
-import { parseHookConfig, serializeHookConfig, type HookRuleConfig } from "./types";
+import { createHookService } from '../../services';
+import type { HookRow } from './types';
+import { parseHookConfig, serializeHookConfig, type HookRuleConfig } from './types';
 
 function wireToHook(raw: Record<string, unknown>): HookRow {
   return {
-    id: String(raw.id ?? ""),
-    key: String(raw.key ?? ""),
-    name: String(raw.name ?? ""),
-    description: String(raw.description ?? ""),
-    status: String(raw.status ?? "active"),
+    id: String(raw.id ?? ''),
+    key: String(raw.key ?? ''),
+    name: String(raw.name ?? ''),
+    description: String(raw.description ?? ''),
+    status: String(raw.status ?? 'active'),
     enabled: Boolean(raw.enabled),
     sort_order: Number(raw.sortOrder ?? raw.sort_order ?? 0),
-    config_json: String(raw.configJson ?? raw.config_json ?? "{}"),
-    metadata_json: String(raw.metadataJson ?? raw.metadata_json ?? "{}"),
-    created_at: String(raw.createdAt ?? raw.created_at ?? ""),
-    updated_at: String(raw.updatedAt ?? raw.updated_at ?? "")
+    config_json: String(raw.configJson ?? raw.config_json ?? '{}'),
+    metadata_json: String(raw.metadataJson ?? raw.metadata_json ?? '{}'),
+    created_at: String(raw.createdAt ?? raw.created_at ?? ''),
+    updated_at: String(raw.updatedAt ?? raw.updated_at ?? ''),
   };
 }
 
@@ -36,21 +36,21 @@ export async function createHook(input: {
   const row = await svc.CreateHook({
     key: input.key,
     name: input.name,
-    description: input.description ?? "",
-    status: "active",
+    description: input.description ?? '',
+    status: 'active',
     enabled: input.enabled ?? true,
     sortOrder: input.sort_order ?? 0,
     configJson: serializeHookConfig(input.rule),
-    metadataJson: "{}"
+    metadataJson: '{}',
   });
   return wireToHook(row as Record<string, unknown>);
 }
 
 export async function updateHook(
   id: string,
-  patch: Partial<Pick<HookRow, "key" | "name" | "description" | "enabled" | "sort_order" | "status">> & {
+  patch: Partial<Pick<HookRow, 'key' | 'name' | 'description' | 'enabled' | 'sort_order' | 'status'>> & {
     rule?: HookRuleConfig;
-  }
+  },
 ): Promise<HookRow> {
   const svc = createHookService();
   const cur = await svc.GetHook({ id });
@@ -66,7 +66,7 @@ export async function updateHook(
     metadataJson: cur.metadataJson,
     createdAt: cur.createdAt,
     updatedAt: cur.updatedAt,
-    deletedAt: cur.deletedAt
+    deletedAt: cur.deletedAt,
   };
   const row = await svc.UpdateHook({ id, hook: merged });
   return wireToHook(row as Record<string, unknown>);

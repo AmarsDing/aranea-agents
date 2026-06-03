@@ -1,5 +1,5 @@
-import { applyStreamingSnapshotToSession } from "../../stores/chatStreamingSnapshots";
-import type { Message } from "./types";
+import { applyStreamingSnapshotToSession } from '../../stores/chatStreamingSnapshots';
+import type { Message } from './types';
 
 export type ChannelFocusLoadDeps = {
   getMessages: (sessionId: string) => Message[];
@@ -15,14 +15,12 @@ export type ChannelFocusLoadDeps = {
 export async function hydrateSessionForChannelFocus(
   deps: ChannelFocusLoadDeps,
   sessionId: string,
-  skipMessageReload?: boolean
+  skipMessageReload?: boolean,
 ): Promise<void> {
   const sid = sessionId.trim();
   if (!sid) return;
 
-  const hasUserContent = deps
-    .getMessages(sid)
-    .some((m) => m.role === "user" && (m.content_markdown ?? "").trim());
+  const hasUserContent = deps.getMessages(sid).some((m) => m.role === 'user' && (m.content_markdown ?? '').trim());
 
   if (!skipMessageReload || !hasUserContent) {
     await deps.loadMessages({ sessionId: sid, replace: true });
@@ -31,7 +29,7 @@ export async function hydrateSessionForChannelFocus(
   applyStreamingSnapshotToSession(
     (s) => deps.getMessages(s),
     (s, rows) => deps.setMessages(s, rows),
-    sid
+    sid,
   );
   deps.ensureChatStream(sid);
 }

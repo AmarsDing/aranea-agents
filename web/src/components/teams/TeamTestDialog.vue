@@ -7,7 +7,7 @@
       <q-card-section class="row items-center justify-between">
         <div>
           <div class="text-h6">运行测试</div>
-          <div class="text-caption text-grey-7">{{ team?.display_name || "Team" }}</div>
+          <div class="text-caption text-grey-7">{{ team?.display_name || 'Team' }}</div>
         </div>
         <q-btn flat round icon="close" @click="$emit('update:modelValue', false)" />
       </q-card-section>
@@ -34,15 +34,22 @@
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
         <q-btn flat label="关闭" @click="$emit('update:modelValue', false)" />
-        <q-btn color="primary" unelevated icon="science" label="执行测试" :loading="loading" @click="$emit('run', localContent)" />
+        <q-btn
+          color="primary"
+          unelevated
+          icon="science"
+          label="执行测试"
+          :loading="loading"
+          @click="$emit('run', localContent)"
+        />
       </q-card-actions>
     </q-card>
   </q-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
-import type { Team, TeamRun } from "../../features/teams/types";
+import { ref, watch } from 'vue';
+import type { Team, TeamRun } from '../../features/teams/types';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -55,18 +62,18 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  "update:modelValue": [value: boolean];
+  'update:modelValue': [value: boolean];
   run: [content: string];
 }>();
 
-const localContent = ref("");
+const localContent = ref('');
 
 watch(
   () => props.modelValue,
   (open) => {
     if (open) {
-      localContent.value = "";
+      localContent.value = '';
     }
-  }
+  },
 );
 </script>

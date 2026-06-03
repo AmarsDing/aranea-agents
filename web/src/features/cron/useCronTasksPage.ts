@@ -1,12 +1,12 @@
-import { computed, onMounted, ref, watch } from "vue";
-import { storeToRefs } from "pinia";
-import { useQuasar } from "quasar";
+import { computed, onMounted, ref, watch } from 'vue';
+import { storeToRefs } from 'pinia';
+import { useQuasar } from 'quasar';
 
-import { parseCronConfig, parseCronMetadata } from "./api";
-import type { PlatformResourceInput } from "../platform/types";
-import type { CronFailureSummary, CronTaskConfig, CronTaskMetadata, CronTaskRow } from "./types";
-import { CRON_TASK_TABLE_COLUMNS, CRON_RUN_TABLE_COLUMNS } from "./cronTableUi";
-import { useCronStore } from "../../stores/cron";
+import { parseCronConfig, parseCronMetadata } from './api';
+import type { PlatformResourceInput } from '../platform/types';
+import type { CronFailureSummary, CronTaskConfig, CronTaskMetadata, CronTaskRow } from './types';
+import { CRON_TASK_TABLE_COLUMNS, CRON_RUN_TABLE_COLUMNS } from './cronTableUi';
+import { useCronStore } from '../../stores/cron';
 
 export function useCronTasksPage() {
   const $q = useQuasar();
@@ -14,21 +14,21 @@ export function useCronTasksPage() {
   const { tasks: rows, agents, teams, runs } = storeToRefs(cronStore);
 
   const loading = ref(false);
-  const error = ref("");
-  const search = ref("");
-  const statusFilter = ref("");
+  const error = ref('');
+  const search = ref('');
+  const statusFilter = ref('');
   const editorOpen = ref(false);
   const editingRow = ref<CronTaskRow | null>(null);
-  const savingId = ref("");
-  const triggeringId = ref("");
+  const savingId = ref('');
+  const triggeringId = ref('');
   const formSubmitting = ref(false);
-  const formServerError = ref("");
+  const formServerError = ref('');
 
   const columns = CRON_TASK_TABLE_COLUMNS;
   const statusOptions = [
-    { label: "运行中", value: "active" },
-    { label: "已暂停", value: "paused" },
-    { label: "已失败", value: "dead" }
+    { label: '运行中', value: 'active' },
+    { label: '已暂停', value: 'paused' },
+    { label: '已失败', value: 'dead' },
   ];
   const activeCount = computed(() => rows.value.filter((row) => row.enabled).length);
   const page = ref(1);
@@ -37,12 +37,23 @@ export function useCronTasksPage() {
     const keyword = search.value.trim().toLowerCase();
     return rows.value.filter((row) => {
       const cfg = config(row);
-      if (statusFilter.value === "active" && !(row.enabled && row.status !== "dead")) return false;
-      if (statusFilter.value === "paused" && !(!row.enabled && row.status !== "dead")) return false;
-      if (statusFilter.value === "dead" && row.status !== "dead") return false;
+      if (statusFilter.value === 'active' && !(row.enabled && row.status !== 'dead')) return false;
+      if (statusFilter.value === 'paused' && !(!row.enabled && row.status !== 'dead')) return false;
+      if (statusFilter.value === 'dead' && row.status !== 'dead') return false;
       if (!keyword) return true;
-      return [row.key, row.name, row.description, cfg.schedule_type, cfg.cron_expression, cfg.message, targetLabel(row)]
-        .some((value) => String(value || "").toLowerCase().includes(keyword));
+      return [
+        row.key,
+        row.name,
+        row.description,
+        cfg.schedule_type,
+        cfg.cron_expression,
+        cfg.message,
+        targetLabel(row),
+      ].some((value) =>
+        String(value || '')
+          .toLowerCase()
+          .includes(keyword),
+      );
     });
   });
   const pageMax = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / pageSize.value)));
@@ -58,11 +69,11 @@ export function useCronTasksPage() {
   onMounted(() => void loadAll());
 
   watch(editorOpen, (open) => {
-    if (open) formServerError.value = "";
+    if (open) formServerError.value = '';
   });
 
   async function onFormSubmit(payload: PlatformResourceInput) {
-    formServerError.value = "";
+    formServerError.value = '';
     formSubmitting.value = true;
     try {
       if (editingRow.value) {
@@ -71,10 +82,10 @@ export function useCronTasksPage() {
         await cronStore.addTask(payload);
       }
       editorOpen.value = false;
-      $q.notify({ type: "positive", message: "定时任务已保存" });
+      $q.notify({ type: 'positive', message: '定时任务已保存' });
     } catch (err) {
-      formServerError.value = err instanceof Error ? err.message : "保存失败";
-      $q.notify({ type: "negative", message: formServerError.value });
+      formServerError.value = err instanceof Error ? err.message : '保存失败';
+      $q.notify({ type: 'negative', message: formServerError.value });
     } finally {
       formSubmitting.value = false;
     }
@@ -82,11 +93,11 @@ export function useCronTasksPage() {
 
   async function loadAll() {
     loading.value = true;
-    error.value = "";
+    error.value = '';
     try {
       await cronStore.loadAll();
     } catch (err) {
-      error.value = err instanceof Error ? err.message : "加载定时任务失败";
+      error.value = err instanceof Error ? err.message : '加载定时任务失败';
     } finally {
       loading.value = false;
     }
@@ -105,46 +116,46 @@ export function useCronTasksPage() {
   async function toggleRow(row: CronTaskRow, enabled: boolean) {
     savingId.value = row.id;
     try {
-      await cronStore.editTask(row.id, { enabled, status: enabled ? "active" : "paused" });
-      $q.notify({ type: "positive", message: enabled ? "任务已启用" : "任务已暂停" });
+      await cronStore.editTask(row.id, { enabled, status: enabled ? 'active' : 'paused' });
+      $q.notify({ type: 'positive', message: enabled ? '任务已启用' : '任务已暂停' });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "更新失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '更新失败' });
     } finally {
-      savingId.value = "";
+      savingId.value = '';
     }
   }
 
   function confirmDelete(row: CronTaskRow) {
     $q.dialog({
-      title: "删除定时任务",
+      title: '删除定时任务',
       message: `确定删除「${row.name}」？此操作不可撤销。`,
       cancel: true,
-      persistent: true
+      persistent: true,
     }).onOk(async () => {
       try {
         await cronStore.removeTask(row.id);
-        $q.notify({ type: "positive", message: "任务已删除" });
+        $q.notify({ type: 'positive', message: '任务已删除' });
       } catch (err) {
-        $q.notify({ type: "negative", message: err instanceof Error ? err.message : "删除失败" });
+        $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '删除失败' });
       }
     });
   }
 
   const runsOpen = ref(false);
-  const runsTaskId = ref("");
-  const runsStatus = ref("");
+  const runsTaskId = ref('');
+  const runsStatus = ref('');
   const runsLoading = ref(false);
-  const runsError = ref("");
+  const runsError = ref('');
   const runsPage = ref(1);
   const runsPageSize = ref(15);
 
   const runsColumns = CRON_RUN_TABLE_COLUMNS;
   const runsTaskOptions = computed(() => rows.value.map((task) => ({ label: task.name, value: task.id })));
   const runsStatusOptions = [
-    { label: "成功", value: "success" },
-    { label: "失败", value: "failure" },
-    { label: "跳过", value: "skipped" },
-    { label: "待执行", value: "pending" }
+    { label: '成功', value: 'success' },
+    { label: '失败', value: 'failure' },
+    { label: '跳过', value: 'skipped' },
+    { label: '待执行', value: 'pending' },
   ];
   const runsPageMax = computed(() => Math.max(1, Math.ceil(runs.value.length / runsPageSize.value)));
   const runsPaged = computed(() => {
@@ -156,8 +167,8 @@ export function useCronTasksPage() {
     runsPage.value = 1;
   });
 
-  function openRuns(row?: CronTaskRow, status = "") {
-    runsTaskId.value = row?.id || "";
+  function openRuns(row?: CronTaskRow, status = '') {
+    runsTaskId.value = row?.id || '';
     runsStatus.value = status;
     runsOpen.value = true;
     void loadRuns();
@@ -165,23 +176,23 @@ export function useCronTasksPage() {
 
   async function loadRuns() {
     runsLoading.value = true;
-    runsError.value = "";
+    runsError.value = '';
     try {
       await cronStore.loadRuns({
         cron_task_id: runsTaskId.value || undefined,
         status: runsStatus.value || undefined,
-        limit: 200
+        limit: 200,
       });
     } catch (err) {
-      runsError.value = err instanceof Error ? err.message : "加载执行历史失败";
+      runsError.value = err instanceof Error ? err.message : '加载执行历史失败';
     } finally {
       runsLoading.value = false;
     }
   }
 
   function resetRunsFilters() {
-    runsTaskId.value = "";
-    runsStatus.value = "";
+    runsTaskId.value = '';
+    runsStatus.value = '';
     void loadRuns();
   }
 
@@ -189,11 +200,11 @@ export function useCronTasksPage() {
     savingId.value = row.id;
     try {
       await cronStore.resetFailures(row.id);
-      $q.notify({ type: "positive", message: "失败计数已重置，任务恢复运行" });
+      $q.notify({ type: 'positive', message: '失败计数已重置，任务恢复运行' });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "重置失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '重置失败' });
     } finally {
-      savingId.value = "";
+      savingId.value = '';
     }
   }
 
@@ -201,52 +212,52 @@ export function useCronTasksPage() {
     triggeringId.value = row.id;
     try {
       const run = await cronStore.triggerTask(row.id);
-      if (run.status === "pending") {
+      if (run.status === 'pending') {
         await loadAll();
-        $q.notify({ type: "info", message: "任务已提交，请在执行历史中查看进度" });
+        $q.notify({ type: 'info', message: '任务已提交，请在执行历史中查看进度' });
         openRuns(row);
         return;
       }
       await loadAll();
       $q.notify({
-        type: run.status === "success" ? "positive" : "negative",
-        message: run.status === "success" ? "执行成功" : run.error_message || "执行失败"
+        type: run.status === 'success' ? 'positive' : 'negative',
+        message: run.status === 'success' ? '执行成功' : run.error_message || '执行失败',
       });
     } catch (err) {
-      $q.notify({ type: "negative", message: err instanceof Error ? err.message : "触发失败" });
+      $q.notify({ type: 'negative', message: err instanceof Error ? err.message : '触发失败' });
     } finally {
-      triggeringId.value = "";
+      triggeringId.value = '';
     }
   }
 
   function scheduleLabel(row: CronTaskRow) {
     const cfg = config(row);
-    if (cfg.schedule_type === "cron") return `cron: ${cfg.cron_expression || "-"}`;
-    if (cfg.schedule_type === "once") return `once @ ${formatDate(cfg.run_at)}`;
+    if (cfg.schedule_type === 'cron') return `cron: ${cfg.cron_expression || '-'}`;
+    if (cfg.schedule_type === 'once') return `once @ ${formatDate(cfg.run_at)}`;
     return `每 ${Math.max(1, Math.round((cfg.interval_seconds || 0) / 60))} 分钟`;
   }
 
   function agentLabel(agentId: string) {
-    if (!agentId) return "未指定";
+    if (!agentId) return '未指定';
     const agent = agents.value.find((item) => item.id === agentId);
     return agent?.display_name || agent?.agent_key || agentId;
   }
 
   function teamLabel(teamId: string) {
     const team = teams.value.find((item) => item.id === teamId);
-    return team?.display_name || team?.team_key || teamId || "未知 Team";
+    return team?.display_name || team?.team_key || teamId || '未知 Team';
   }
 
   function targetLabel(row: CronTaskRow) {
     const cfg = config(row);
-    if (cfg.target_type === "team" || cfg.team_id) return `Team: ${teamLabel(cfg.team_id || "")}`;
+    if (cfg.target_type === 'team' || cfg.team_id) return `Team: ${teamLabel(cfg.team_id || '')}`;
     return `Agent: ${agentLabel(row.agent_id)}`;
   }
 
   function statusColor(row: CronTaskRow) {
-    if (!row.enabled || row.status === "paused") return "grey";
-    if (row.status === "dead") return "negative";
-    return "positive";
+    if (!row.enabled || row.status === 'paused') return 'grey';
+    if (row.status === 'dead') return 'negative';
+    return 'positive';
   }
 
   function recentFailures(row: CronTaskRow): CronFailureSummary[] {
@@ -263,7 +274,7 @@ export function useCronTasksPage() {
   }
 
   function formatDate(value?: string) {
-    if (!value) return "-";
+    if (!value) return '-';
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
   }
@@ -319,6 +330,6 @@ export function useCronTasksPage() {
     runsPageMax,
     runsPaged,
     loadRuns,
-    resetRunsFilters
+    resetRunsFilters,
   };
 }

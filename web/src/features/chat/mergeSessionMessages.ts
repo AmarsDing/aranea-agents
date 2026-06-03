@@ -1,7 +1,7 @@
-import type { Message } from "./types";
-import { normalizeServerMessageOptions } from "./streamContentPatch";
-import { parseMessageOptions } from "./parseMessageOptions";
-import { isInFlightStatus } from "../../domain/types";
+import type { Message } from './types';
+import { normalizeServerMessageOptions } from './streamContentPatch';
+import { parseMessageOptions } from './parseMessageOptions';
+import { isInFlightStatus } from '../../domain/types';
 import {
   ensureOrigin,
   isEphemeralOrigin,
@@ -9,11 +9,11 @@ import {
   isPendingUserOrigin,
   isStreamingOrigin,
   isTeamMemberOrigin,
-} from "./messageOrigin";
+} from './messageOrigin';
 
 function normalizeMessage(m: Message): Message {
   const withOrigin = ensureOrigin(m);
-  const normalized = { ...withOrigin, options_json: normalizeServerMessageOptions(withOrigin.options_json ?? "") };
+  const normalized = { ...withOrigin, options_json: normalizeServerMessageOptions(withOrigin.options_json ?? '') };
   const parsed = parseMessageOptions(normalized.options_json);
   return { ...normalized, ...parsed };
 }
@@ -25,12 +25,12 @@ function isEphemeralMessage(message: Message): boolean {
 /** Whether this row is a local-only in-flight message (not yet persisted by server). */
 export function isInFlightLocalRow(message: Message): boolean {
   if (isEphemeralMessage(message)) return true;
-  return isInFlightStatus(message.status || "");
+  return isInFlightStatus(message.status || '');
 }
 
 function messageOrder(message: Message): [number, string] {
   const inFlight = isInFlightLocalRow(message) ? 1 : 0;
-  return [inFlight, message.created_at || ""];
+  return [inFlight, message.created_at || ''];
 }
 
 /** Drop optimistic user placeholders after the server turn completes. */
@@ -40,12 +40,12 @@ export function dropPendingUserPlaceholders(messages: Message[]): Message[] {
 
 function shouldDropStaleInFlight(message: Message): boolean {
   const origin = message.origin;
-  if (isPendingUserOrigin(origin)) return message.status !== "failed";
+  if (isPendingUserOrigin(origin)) return message.status !== 'failed';
   if (isStreamingOrigin(origin)) {
-    return !isInFlightStatus(message.status || "");
+    return !isInFlightStatus(message.status || '');
   }
   if (isTeamMemberOrigin(origin)) return false;
-  return isInFlightStatus(message.status || "");
+  return isInFlightStatus(message.status || '');
 }
 
 /**
@@ -55,7 +55,7 @@ function shouldDropStaleInFlight(message: Message): boolean {
 export function mergeIncrementalSessionMessages(
   incremental: Message[],
   local: Message[],
-  opts?: { dropStaleInFlight?: boolean }
+  opts?: { dropStaleInFlight?: boolean },
 ): Message[] {
   if (incremental.length === 0) return local;
   const normalizedIncremental = incremental.map(normalizeMessage);
@@ -72,7 +72,7 @@ const PENDING_MATCH_TIME_WINDOW_MS = 5_000;
 /** Match a pending-user placeholder to a server-persisted user message by content. */
 function isPendingUserMatch(pending: Message, serverUser: Message): boolean {
   if (!isPendingUserOrigin(pending.origin)) return false;
-  if (pending.role !== "user" || serverUser.role !== "user") return false;
+  if (pending.role !== 'user' || serverUser.role !== 'user') return false;
   if (pending.session_id !== serverUser.session_id) return false;
   if (pending.content_markdown !== serverUser.content_markdown) return false;
 
@@ -93,7 +93,7 @@ function isPendingUserMatch(pending: Message, serverUser: Message): boolean {
 function buildServerUserContentMap(server: Message[]): Map<string, Message[]> {
   const map = new Map<string, Message[]>();
   for (const m of server) {
-    if (m.role !== "user") continue;
+    if (m.role !== 'user') continue;
     const key = `${m.session_id}::${m.content_markdown}`;
     const arr = map.get(key) ?? [];
     arr.push(m);
@@ -102,7 +102,11 @@ function buildServerUserContentMap(server: Message[]): Map<string, Message[]> {
   return map;
 }
 
-function findServerMatchForPending(pending: Message, serverMap: Map<string, Message[]>, matched: Set<string>): Message | null {
+function findServerMatchForPending(
+  pending: Message,
+  serverMap: Map<string, Message[]>,
+  matched: Set<string>,
+): Message | null {
   const key = `${pending.session_id}::${pending.content_markdown}`;
   const candidates = serverMap.get(key);
   if (!candidates) return null;
@@ -119,7 +123,7 @@ function findServerMatchForPending(pending: Message, serverMap: Map<string, Mess
 export function mergeSessionMessages(
   server: Message[],
   local: Message[],
-  opts?: { dropStaleInFlight?: boolean }
+  opts?: { dropStaleInFlight?: boolean },
 ): Message[] {
   const normalizedServer = server.map(normalizeMessage);
   if (local.length === 0) return normalizedServer;
@@ -129,8 +133,8 @@ export function mergeSessionMessages(
   const pendingReplacedBy = new Map<string, Message>();
   const matchedServerIDs = new Set<string>();
   for (const row of local) {
-    if (!isPendingUserOrigin(row.origin) || row.role !== "user") continue;
-    if (row.status === "failed") continue;
+    if (!isPendingUserOrigin(row.origin) || row.role !== 'user') continue;
+    if (row.status === 'failed') continue;
     const serverMatch = findServerMatchForPending(row, serverUserByContent, matchedServerIDs);
     if (serverMatch) {
       pendingReplacedBy.set(row.id, serverMatch);
@@ -157,9 +161,9 @@ export function mergeSessionMessages(
 export function isActivityMessage(message: Message): boolean {
   if (message.tool_event) return true;
   try {
-    const raw = JSON.parse(message.options_json || "{}") as { schema?: string; tool_event?: unknown };
-    return raw.schema === "chat.activity/v1" || Boolean(raw.tool_event);
+    const raw = JSON.parse(message.options_json || '{}') as { schema?: string; tool_event?: unknown };
+    return raw.schema === 'chat.activity/v1' || Boolean(raw.tool_event);
   } catch {
-    return message.status.startsWith("tool_");
+    return message.status.startsWith('tool_');
   }
 }

@@ -1,5 +1,5 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
   listFlowLogs,
   listMonitorAlertRules,
@@ -10,10 +10,10 @@ import {
   getRunnerMetrics,
   putMonitorAlertRules,
   subscribeMonitorRuntimeEventsWs,
-  subscribeMonitorLogsWs
-} from "../../features/monitor/api";
-import type { MonitorAlertRule } from "../../features/monitor/types";
-import { listChannels } from "../../features/channels/api";
+  subscribeMonitorLogsWs,
+} from '../../features/monitor/api';
+import type { MonitorAlertRule } from '../../features/monitor/types';
+import { listChannels } from '../../features/channels/api';
 import type {
   AuditLog,
   PlatformResource,
@@ -23,10 +23,10 @@ import type {
   AuditQuery,
   ModelUsageQuery,
   PaginatedResult,
-  RunnerMetricsSummary
-} from "../../features/monitor/types";
+  RunnerMetricsSummary,
+} from '../../features/monitor/types';
 
-export const useMonitorStore = defineStore("monitor", () => {
+export const useMonitorStore = defineStore('monitor', () => {
   const auditLogs = ref<AuditLog[]>([]);
   const auditTotal = ref(0);
   const events = ref<PlatformResource[]>([]);
@@ -87,7 +87,7 @@ export const useMonitorStore = defineStore("monitor", () => {
     onEvent: (event: TeamRunEvent) => void,
     onError?: (error: string) => void,
     onConnected?: () => void,
-    onDisconnected?: () => void
+    onDisconnected?: () => void,
   ) {
     return subscribeMonitorRuntimeEventsWs(sessionId, onEvent, onError, onConnected, onDisconnected);
   }
@@ -96,7 +96,7 @@ export const useMonitorStore = defineStore("monitor", () => {
     sessionId: string,
     onLine: (line: MonitorLogLine) => void,
     onError?: (error: string) => void,
-    onConnected?: () => void
+    onConnected?: () => void,
   ) {
     return subscribeMonitorLogsWs(sessionId, onLine, onError, onConnected);
   }
@@ -120,7 +120,7 @@ export const useMonitorStore = defineStore("monitor", () => {
       const rows = await listChannels();
       alertChannelOptions.value = rows.map((c) => ({
         label: `${c.name || c.key} (${c.id})`,
-        value: c.id
+        value: c.id,
       }));
     } catch {
       alertChannelOptions.value = [];
@@ -198,6 +198,6 @@ export const useMonitorStore = defineStore("monitor", () => {
     eventsPaused,
     setFlowPaused,
     setProcessPaused,
-    setEventsPaused
+    setEventsPaused,
   };
 });

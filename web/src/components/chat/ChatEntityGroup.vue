@@ -42,10 +42,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import draggable from "vuedraggable";
-import ChatSectionHeader from "./ChatSectionHeader.vue";
-import ChatEntityItem from "./ChatEntityItem.vue";
+import { computed } from 'vue';
+import draggable from 'vuedraggable';
+import ChatSectionHeader from './ChatSectionHeader.vue';
+import ChatEntityItem from './ChatEntityItem.vue';
 
 export type EntityItem = {
   id: string;
@@ -83,7 +83,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:collapsed": [value: boolean];
+  'update:collapsed': [value: boolean];
   select: [item: EntityItem];
   settings: [id: string];
   delete: [id: string];
@@ -93,7 +93,10 @@ const emit = defineEmits<{
 const localItems = computed({
   get: () => props.items,
   set: (value: EntityItem[]) => {
-    emit("reorder", value.map((item) => item.id));
+    emit(
+      'reorder',
+      value.map((item) => item.id),
+    );
   },
 });
 
@@ -111,33 +114,36 @@ function onDragEnd() {
     if (pinnedIndex > 0) {
       const [pinned] = current.splice(pinnedIndex, 1);
       current.unshift(pinned);
-      emit("reorder", current.map((item) => item.id));
+      emit(
+        'reorder',
+        current.map((item) => item.id),
+      );
     }
   }
 }
 
 function isWorking(item: EntityItem) {
-  return /work|run|busy|ing/i.test(item.status || "");
+  return /work|run|busy|ing/i.test(item.status || '');
 }
 
 function isInactive(item: EntityItem) {
-  return /inactive|disabled|stop|pause/i.test(item.status || "");
+  return /inactive|disabled|stop|pause/i.test(item.status || '');
 }
 
 function statusIconFor(item: EntityItem) {
-  return isWorking(item) ? "bolt" : "task_alt";
+  return isWorking(item) ? 'bolt' : 'task_alt';
 }
 
 function statusColorFor(item: EntityItem) {
-  if (isWorking(item)) return "negative";
-  if (isInactive(item)) return "grey";
-  return "positive";
+  if (isWorking(item)) return 'negative';
+  if (isInactive(item)) return 'grey';
+  return 'positive';
 }
 
 function statusLabelFor(item: EntityItem) {
-  if (isWorking(item)) return "工作中";
-  if (isInactive(item)) return "已停用";
-  return "空闲";
+  if (isWorking(item)) return '工作中';
+  if (isInactive(item)) return '已停用';
+  return '空闲';
 }
 </script>
 
@@ -152,7 +158,9 @@ function statusLabelFor(item: EntityItem) {
 
 .chat-group-collapse-enter-active,
 .chat-group-collapse-leave-active {
-  transition: max-height 0.25s ease, opacity 0.2s ease;
+  transition:
+    max-height 0.25s ease,
+    opacity 0.2s ease;
   max-height: 2000px;
   opacity: 1;
 }

@@ -76,7 +76,12 @@
     <q-list v-if="results.length" bordered separator class="rounded-borders">
       <q-item v-for="chunk in results" :key="chunk.id">
         <q-item-section>
-          <q-item-label caption>score {{ chunk.score.toFixed(2) }} · chunk #{{ chunk.chunk_index }}<template v-if="chunk.doc_id"> · {{ docSourceMap?.[chunk.doc_id] ?? chunk.doc_id.slice(0, 8) }}</template></q-item-label>
+          <q-item-label caption
+            >score {{ chunk.score.toFixed(2) }} · chunk #{{ chunk.chunk_index
+            }}<template v-if="chunk.doc_id">
+              · {{ docSourceMap?.[chunk.doc_id] ?? chunk.doc_id.slice(0, 8) }}</template
+            ></q-item-label
+          >
           <q-item-label class="q-mt-xs">{{ chunk.content }}</q-item-label>
         </q-item-section>
       </q-item>
@@ -86,11 +91,11 @@
 </template>
 
 <script setup lang="ts">
-import type { KnowledgeChunk } from "../../features/knowledge/types";
+import type { KnowledgeChunk } from '../../features/knowledge/types';
 import {
   KNOWLEDGE_HYBRID_MODE_OPTIONS,
-  KNOWLEDGE_REWRITE_STRATEGY_OPTIONS
-} from "../../features/knowledge/knowledgeUi";
+  KNOWLEDGE_REWRITE_STRATEGY_OPTIONS,
+} from '../../features/knowledge/knowledgeUi';
 
 defineProps<{
   query: string;
@@ -106,12 +111,12 @@ defineProps<{
 }>();
 
 defineEmits<{
-  "update:query": [value: string];
-  "update:topK": [value: number];
-  "update:minScore": [value: number];
-  "update:hybridMode": [value: string];
-  "update:rewriteStrategy": [value: string];
-  "update:useRerank": [value: boolean];
+  'update:query': [value: string];
+  'update:topK': [value: number];
+  'update:minScore': [value: number];
+  'update:hybridMode': [value: string];
+  'update:rewriteStrategy': [value: string];
+  'update:useRerank': [value: boolean];
   search: [];
 }>();
 

@@ -1,6 +1,6 @@
 <template>
   <section class="app-settings-section knowledge-embedder-panel">
-    <h3 class="app-settings-section__title">{{ t("knowledgeEmbed.title") }}</h3>
+    <h3 class="app-settings-section__title">{{ t('knowledgeEmbed.title') }}</h3>
     <knowledge-embedder-fields
       :form="form"
       :configured="config?.configured"
@@ -11,16 +11,16 @@
         <q-btn color="primary" unelevated no-caps :label="t('knowledgeEmbed.save')" :loading="saving" @click="save" />
       </template>
     </knowledge-embedder-fields>
-    <p class="app-settings-section__hint q-mb-none q-mt-md">{{ t("knowledgeEmbed.hint") }}</p>
+    <p class="app-settings-section__hint q-mb-none q-mt-md">{{ t('knowledgeEmbed.hint') }}</p>
   </section>
 </template>
 
 <script setup lang="ts">
-import { reactive, watch } from "vue";
-import { useI18n } from "vue-i18n";
-import type { EmbedderConfig, UpdateEmbedderConfigInput } from "../../features/knowledge/types";
-import { DEFAULT_KNOWLEDGE_EMBED_FORM } from "../../features/knowledge/embedder-constants";
-import KnowledgeEmbedderFields from "./KnowledgeEmbedderFields.vue";
+import { reactive, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
+import type { EmbedderConfig, UpdateEmbedderConfigInput } from '../../features/knowledge/types';
+import { DEFAULT_KNOWLEDGE_EMBED_FORM } from '../../features/knowledge/embedder-constants';
+import KnowledgeEmbedderFields from './KnowledgeEmbedderFields.vue';
 
 const props = defineProps<{
   config: EmbedderConfig | null;
@@ -40,21 +40,21 @@ watch(
   (cfg) => {
     if (!cfg) return;
     form.provider = cfg.provider || DEFAULT_KNOWLEDGE_EMBED_FORM.provider;
-    form.base_url = cfg.base_url || "";
+    form.base_url = cfg.base_url || '';
     form.model = cfg.model || DEFAULT_KNOWLEDGE_EMBED_FORM.model;
     form.dim = cfg.dim || DEFAULT_KNOWLEDGE_EMBED_FORM.dim;
-    form.api_key = "";
+    form.api_key = '';
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 function save() {
-  emit("save", {
+  emit('save', {
     provider: form.provider,
     base_url: form.base_url.trim(),
     model: form.model.trim(),
     dim: form.dim,
-    api_key: form.api_key.trim() || undefined
+    api_key: form.api_key.trim() || undefined,
   });
 }
 </script>

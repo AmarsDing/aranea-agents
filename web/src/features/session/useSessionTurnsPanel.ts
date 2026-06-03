@@ -1,6 +1,6 @@
-import { computed, ref, watch, type Ref } from "vue";
-import type { SessionTurn } from "./types";
-import { useSessionStore } from "../../stores/session/index";
+import { computed, ref, watch, type Ref } from 'vue';
+import type { SessionTurn } from './types';
+import { useSessionStore } from '../../stores/session/index';
 
 const PAGE_SIZE = 20;
 
@@ -9,7 +9,7 @@ export function useSessionTurnsPanel(sessionId: Ref<string>) {
   const turns = ref<SessionTurn[]>([]);
   const total = ref(0);
   const loading = ref(false);
-  const error = ref("");
+  const error = ref('');
   const offset = ref(0);
 
   const pageLabel = computed(
@@ -24,13 +24,13 @@ export function useSessionTurnsPanel(sessionId: Ref<string>) {
       return;
     }
     loading.value = true;
-    error.value = "";
+    error.value = '';
     try {
       const result = await sessionStore.fetchTurns(id, PAGE_SIZE, offset.value);
       turns.value = result.items;
       total.value = result.total;
     } catch (err) {
-      error.value = err instanceof Error ? err.message : "加载 Turn 失败";
+      error.value = err instanceof Error ? err.message : '加载 Turn 失败';
     } finally {
       loading.value = false;
     }

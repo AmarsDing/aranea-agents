@@ -2,7 +2,7 @@
 <template>
   <div class="channel-turn-jobs-panel">
     <div class="row items-center justify-between q-mb-sm">
-      <div class="text-subtitle2">{{ t("channelEditor.turnJobsTitle") }}</div>
+      <div class="text-subtitle2">{{ t('channelEditor.turnJobsTitle') }}</div>
       <q-btn
         flat
         dense
@@ -13,7 +13,7 @@
         @click="load"
       />
     </div>
-    <p class="text-caption text-grey-7 q-mb-sm">{{ t("channelEditor.turnJobsHint") }}</p>
+    <p class="text-caption text-grey-7 q-mb-sm">{{ t('channelEditor.turnJobsHint') }}</p>
     <q-banner v-if="error" dense rounded class="bg-negative text-white q-mb-sm">{{ error }}</q-banner>
     <AppRegistryTable
       :rows="rows"
@@ -27,7 +27,7 @@
       <template #body-cell-peer_id="props">
         <q-td :props="props">
           <AppRegistryHoverTip :text="props.row.content_preview" :empty-label="t('channelEditor.noContent')">
-            <span class="app-registry-cell-primary ellipsis">{{ props.row.peer_id || "—" }}</span>
+            <span class="app-registry-cell-primary ellipsis">{{ props.row.peer_id || '—' }}</span>
           </AppRegistryHoverTip>
         </q-td>
       </template>
@@ -37,16 +37,16 @@
         </q-td>
       </template>
       <template #no-data>
-        <div class="full-width text-center text-grey-6 q-pa-md">{{ t("channelEditor.turnJobsEmpty") }}</div>
+        <div class="full-width text-center text-grey-6 q-pa-md">{{ t('channelEditor.turnJobsEmpty') }}</div>
       </template>
     </AppRegistryTable>
   </div>
 </template>
 
 <script setup lang="ts">
-import AppRegistryTable from "../../components/layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../../components/layout/AppRegistryHoverTip.vue";
-import { useChannelTurnJobsPanel } from "./useChannelTurnJobsPanel";
+import AppRegistryTable from '../../components/layout/AppRegistryTable.vue';
+import AppRegistryHoverTip from '../../components/layout/AppRegistryHoverTip.vue';
+import { useChannelTurnJobsPanel } from './useChannelTurnJobsPanel';
 
 const props = defineProps<{ channelId: string }>();
 

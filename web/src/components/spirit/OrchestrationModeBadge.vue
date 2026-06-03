@@ -7,8 +7,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { TopologyType } from "../../features/spirit/types";
+import { computed } from 'vue';
+import type { TopologyType } from '../../features/spirit/types';
 
 const props = defineProps<{
   topology: TopologyType;
@@ -17,22 +17,22 @@ const props = defineProps<{
 
 const topologyLabel = computed(() => {
   const labels: Record<TopologyType, string> = {
-    parallel: "并行",
-    sequential: "顺序",
-    hybrid: "混合",
-    coordinator: "协调",
+    parallel: '并行',
+    sequential: '顺序',
+    hybrid: '混合',
+    coordinator: '协调',
   };
   return labels[props.topology] ?? props.topology;
 });
 
 const topologyIcon = computed(() => {
   const icons: Record<TopologyType, string> = {
-    parallel: "view_column",
-    sequential: "format_list_numbered",
-    hybrid: "account_tree",
-    coordinator: "hub",
+    parallel: 'view_column',
+    sequential: 'format_list_numbered',
+    hybrid: 'account_tree',
+    coordinator: 'hub',
   };
-  return icons[props.topology] ?? "hub";
+  return icons[props.topology] ?? 'hub';
 });
 </script>
 

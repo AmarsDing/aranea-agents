@@ -25,7 +25,9 @@
         <div class="overview-provider-health__stat">
           <span class="health-dot health-dot--degraded" />
           <span class="overview-provider-health__label">降级</span>
-          <span class="overview-provider-health__value overview-provider-health__value--danger">{{ degradedCount }}</span>
+          <span class="overview-provider-health__value overview-provider-health__value--danger">{{
+            degradedCount
+          }}</span>
         </div>
         <div v-if="otherCount > 0" class="overview-provider-health__stat">
           <span class="health-dot health-dot--other" />
@@ -48,26 +50,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { PlatformResource } from "../../features/platform/types";
+import { computed } from 'vue';
+import type { PlatformResource } from '../../features/platform/types';
 
 const props = defineProps<{
   models: PlatformResource[];
   loading: boolean;
 }>();
 
-const activeCount = computed(() => props.models.filter((m) => m.status === "active" || !m.status).length);
-const degradedCount = computed(() => props.models.filter((m) => m.status === "degraded").length);
+const activeCount = computed(() => props.models.filter((m) => m.status === 'active' || !m.status).length);
+const degradedCount = computed(() => props.models.filter((m) => m.status === 'degraded').length);
 const otherCount = computed(() => props.models.length - activeCount.value - degradedCount.value);
 
-const degradedModels = computed(() =>
-  props.models
-    .filter((m) => m.status === "degraded")
-    .slice(0, 5)
-);
+const degradedModels = computed(() => props.models.filter((m) => m.status === 'degraded').slice(0, 5));
 
 const healthIconClass = computed(() => {
-  if (degradedCount.value > 0) return "overview-provider-health__icon--warn";
-  return "overview-provider-health__icon--ok";
+  if (degradedCount.value > 0) return 'overview-provider-health__icon--warn';
+  return 'overview-provider-health__icon--ok';
 });
 </script>

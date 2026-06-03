@@ -23,7 +23,14 @@
         <q-select v-model="form.status" dense outlined emit-value map-options label="状态" :options="statusOptions" />
         <q-toggle v-model="form.is_default" label="默认 Agent" />
         <div class="app-grid-span-full">
-          <q-input v-model="form.agent_description" class="app-field-long" outlined autogrow type="textarea" label="专业摘要 / 能力描述" />
+          <q-input
+            v-model="form.agent_description"
+            class="app-field-long"
+            outlined
+            autogrow
+            type="textarea"
+            label="专业摘要 / 能力描述"
+          />
           <!-- PGO-3-WEB-03: AI Refine button for agent description -->
           <div class="row justify-end q-mt-xs">
             <AIRefineButton
@@ -33,7 +40,11 @@
               flat
               size="sm"
               label="AI 优化描述"
-              @apply="(v: string) => { form.agent_description = v }"
+              @apply="
+                (v: string) => {
+                  form.agent_description = v;
+                }
+              "
             />
           </div>
         </div>
@@ -104,24 +115,14 @@
           />
         </div>
       </div>
-      <q-banner
-        v-if="orphanProviderModel"
-        rounded
-        class="q-mt-sm settings-warning-banner"
-        dense
-      >
-        当前指向 <code>{{ form.provider }} / {{ form.model }}</code>，但 Provider 目录中无匹配的已启用条目。
-        Web、飞书等渠道的消息将无法调用模型。
+      <q-banner v-if="orphanProviderModel" rounded class="q-mt-sm settings-warning-banner" dense>
+        当前指向 <code>{{ form.provider }} / {{ form.model }}</code
+        >，但 Provider 目录中无匹配的已启用条目。 Web、飞书等渠道的消息将无法调用模型。
         <template #action>
           <q-btn flat no-caps color="primary" label="打开模型管理" @click="$emit('open-provider-manager')" />
         </template>
       </q-banner>
-      <q-banner
-        v-else-if="disabledCatalogMatch"
-        rounded
-        class="q-mt-sm settings-warning-banner"
-        dense
-      >
+      <q-banner v-else-if="disabledCatalogMatch" rounded class="q-mt-sm settings-warning-banner" dense>
         目录中存在该模型但已禁用，请启用或更换其他模型。
         <template #action>
           <q-btn flat no-caps color="primary" label="打开模型管理" @click="$emit('open-provider-manager')" />
@@ -157,12 +158,42 @@
             <q-toggle v-model="config.subagents.enabled" />
           </div>
           <div v-if="config.subagents.enabled" class="app-form-field-grid app-form-field-grid--2col">
-            <q-input v-model.number="config.subagents.max_concurrency" dense outlined type="number" label="最大并发数" />
-            <q-input v-model.number="config.subagents.max_generation_depth" dense outlined type="number" label="最大生成深度" />
-            <q-input v-model.number="config.subagents.max_children_per_agent" dense outlined type="number" label="每 Agent 最大子数" />
-            <q-input v-model.number="config.subagents.archive_after_minutes" dense outlined type="number" label="归档时间 (分钟)" />
+            <q-input
+              v-model.number="config.subagents.max_concurrency"
+              dense
+              outlined
+              type="number"
+              label="最大并发数"
+            />
+            <q-input
+              v-model.number="config.subagents.max_generation_depth"
+              dense
+              outlined
+              type="number"
+              label="最大生成深度"
+            />
+            <q-input
+              v-model.number="config.subagents.max_children_per_agent"
+              dense
+              outlined
+              type="number"
+              label="每 Agent 最大子数"
+            />
+            <q-input
+              v-model.number="config.subagents.archive_after_minutes"
+              dense
+              outlined
+              type="number"
+              label="归档时间 (分钟)"
+            />
             <q-input v-model.number="config.subagents.max_retries" dense outlined type="number" label="最大重试次数" />
-            <q-input v-model="config.subagents.model_override" dense outlined label="模型覆盖" placeholder="继承自 Agent" />
+            <q-input
+              v-model="config.subagents.model_override"
+              dense
+              outlined
+              label="模型覆盖"
+              placeholder="继承自 Agent"
+            />
           </div>
         </div>
 
@@ -192,18 +223,18 @@
 </template>
 
 <script setup lang="ts">
-import type { Agent } from "../../features/agents/types";
-import AgentChannelRefsSection from "./AgentChannelRefsSection.vue";
-import AgentSettingsPromptSection from "./AgentSettingsPromptSection.vue";
-import AgentPlannerSection from "../../components/agents/AgentPlannerSection.vue";
-import AgentRalphLoopSection from "../../components/agents/AgentRalphLoopSection.vue";
-import AiRefineButton from "../../components/agents/AIRefineButton.vue";
-import type { PlannerFormState } from "../../features/agents/plannerConfig";
-import type { RalphLoopFormState } from "../../features/agents/ralphLoopConfig";
+import type { Agent } from '../../features/agents/types';
+import AgentChannelRefsSection from './AgentChannelRefsSection.vue';
+import AgentSettingsPromptSection from './AgentSettingsPromptSection.vue';
+import AgentPlannerSection from '../../components/agents/AgentPlannerSection.vue';
+import AgentRalphLoopSection from '../../components/agents/AgentRalphLoopSection.vue';
+import AiRefineButton from '../../components/agents/AIRefineButton.vue';
+import type { PlannerFormState } from '../../features/agents/plannerConfig';
+import type { RalphLoopFormState } from '../../features/agents/ralphLoopConfig';
 
-const plannerForm = defineModel<PlannerFormState>("plannerForm", { required: true });
-const ralphLoopForm = defineModel<RalphLoopFormState>("ralphLoopForm", { required: true });
-const selectedProviderModelId = defineModel<string>("selectedProviderModelId", { default: "" });
+const plannerForm = defineModel<PlannerFormState>('plannerForm', { required: true });
+const ralphLoopForm = defineModel<RalphLoopFormState>('ralphLoopForm', { required: true });
+const selectedProviderModelId = defineModel<string>('selectedProviderModelId', { default: '' });
 
 withDefaults(
   defineProps<{
@@ -222,7 +253,7 @@ withDefaults(
     agentModelCheckMessage?: string;
   }>(),
   {
-    agentId: "",
+    agentId: '',
     promptModes: () => [],
     statusOptions: () => [],
     filteredProviderModelOptions: () => [],
@@ -231,16 +262,16 @@ withDefaults(
     disabledCatalogMatch: false,
     checkingAgentModel: false,
     agentModelCheckOk: null,
-    agentModelCheckMessage: "",
-  }
+    agentModelCheckMessage: '',
+  },
 );
 
 defineEmits<{
-  "copy-key": [];
-  "open-permissions-tab": [];
-  "open-memory-tab": [];
-  "open-provider-manager": [];
-  "filter-provider-models": [val: string, update: (fn: () => void) => void];
-  "reset-provider-model-filter": [];
+  'copy-key': [];
+  'open-permissions-tab': [];
+  'open-memory-tab': [];
+  'open-provider-manager': [];
+  'filter-provider-models': [val: string, update: (fn: () => void) => void];
+  'reset-provider-model-filter': [];
 }>();
 </script>

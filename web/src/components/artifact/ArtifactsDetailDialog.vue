@@ -6,7 +6,9 @@
       <q-card-section v-if="meta" class="app-dialog-body q-gutter-sm q-pt-none text-body2">
         <div><b>ID：</b>{{ meta.id }}</div>
         <div><b>Session：</b>{{ meta.session_id }}</div>
-        <div><b>SHA256：</b><span class="text-caption">{{ meta.sha256 }}</span></div>
+        <div>
+          <b>SHA256：</b><span class="text-caption">{{ meta.sha256 }}</span>
+        </div>
         <div><b>存储：</b>{{ meta.storage_kind }} — {{ meta.storage_uri }}</div>
         <div><b>大小：</b>{{ formatBytes(meta.size) }} · v{{ meta.version }}</div>
         <div v-if="versions.length > 1" class="q-mt-sm">
@@ -35,15 +37,15 @@
         />
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
-        <q-btn flat no-caps label="关闭" v-close-popup />
+        <q-btn v-close-popup flat no-caps label="关闭" />
       </q-card-actions>
     </q-card>
   </q-dialog>
 </template>
 
 <script setup lang="ts">
-import ArtifactPreview from "../../features/artifact/ArtifactPreview.vue";
-import type { ArtifactMeta } from "../../features/artifact/types";
+import ArtifactPreview from '../../features/artifact/ArtifactPreview.vue';
+import type { ArtifactMeta } from '../../features/artifact/types';
 
 defineProps<{
   open: boolean;
@@ -55,8 +57,8 @@ defineProps<{
 }>();
 
 defineEmits<{
-  "update:open": [value: boolean];
-  "select-version": [meta: ArtifactMeta];
+  'update:open': [value: boolean];
+  'select-version': [meta: ArtifactMeta];
   download: [meta: ArtifactMeta];
 }>();
 </script>

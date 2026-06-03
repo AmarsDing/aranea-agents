@@ -8,5 +8,5 @@ export async function readFileAsBase64(file: File): Promise<string> {
     const slice = bytes.subarray(i, i + chunkSize);
     chunks.push(String.fromCharCode(...slice));
   }
-  return btoa(chunks.join(""));
+  return btoa(chunks.join(''));
 }

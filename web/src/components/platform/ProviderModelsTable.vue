@@ -21,7 +21,7 @@
               <span class="model-name ellipsis">{{ modelDisplayName(props.row) }}</span>
             </div>
             <div class="provider-tags">
-              <span class="provider-tag provider-tag--provider">{{ props.row.provider || "未设置" }}</span>
+              <span class="provider-tag provider-tag--provider">{{ props.row.provider || '未设置' }}</span>
               <span v-if="rowConfig(props.row).provider_type" class="provider-tag provider-tag--type">
                 {{ rowConfig(props.row).provider_type }}
               </span>
@@ -67,7 +67,7 @@
 
     <template #body-cell-size="props">
       <q-td :props="props">
-        <span class="stat-value">{{ rowConfig(props.row).model_size_label || "—" }}</span>
+        <span class="stat-value">{{ rowConfig(props.row).model_size_label || '—' }}</span>
       </q-td>
     </template>
 
@@ -98,10 +98,11 @@
               />
             </div>
             <q-tooltip>
-              近30天调用：{{ formatCount(rowConfig(props.row).usage_call_count_30d) }}；
-              Token：{{ formatCount(rowConfig(props.row).usage_total_tokens_30d) }}；
-              费用：{{ formatMicroUsd(rowConfig(props.row).usage_cost_micro_usd_30d) }}；
-              成功率：{{ formatPercent(rowConfig(props.row).success_rate_30d) }}
+              近30天调用：{{ formatCount(rowConfig(props.row).usage_call_count_30d) }}； Token：{{
+                formatCount(rowConfig(props.row).usage_total_tokens_30d)
+              }}； 费用：{{ formatMicroUsd(rowConfig(props.row).usage_cost_micro_usd_30d) }}； 成功率：{{
+                formatPercent(rowConfig(props.row).success_rate_30d)
+              }}
             </q-tooltip>
           </div>
           <span class="usage-meta">
@@ -192,9 +193,9 @@
 </template>
 
 <script setup lang="ts">
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import ProviderLogo from "./ProviderLogo.vue";
-import type { PlatformResource } from "../../features/platform/types";
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import ProviderLogo from './ProviderLogo.vue';
+import type { PlatformResource } from '../../features/platform/types';
 import {
   PROVIDER_MODEL_TABLE_COLUMNS,
   formatContextWindow,
@@ -215,8 +216,8 @@ import {
   providerDisplayName,
   providerHasApiKey,
   rowPricingNotConfigured,
-  showVariantChip
-} from "./providerModelUi";
+  showVariantChip,
+} from './providerModelUi';
 
 type ListKeyEntry = { visible: boolean; revealing: boolean; value: string };
 
@@ -230,8 +231,8 @@ withDefaults(
   }>(),
   {
     saving: false,
-    shell: false
-  }
+    shell: false,
+  },
 );
 
 defineEmits<{

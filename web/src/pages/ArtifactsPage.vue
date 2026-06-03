@@ -11,9 +11,36 @@
     </AppPageHero>
 
     <AppPageToolbar>
-      <q-input v-model="sessionFilter" class="app-page-toolbar__field" dense outlined clearable debounce="300" label="按 Session ID 筛选" @update:model-value="onSessionFilterChange" />
-      <q-input v-model="search" class="app-page-toolbar__search" dense outlined clearable debounce="300" label="搜索名称 / MIME / Session" @update:model-value="onSearchChange" />
-      <q-select v-model="mimeFilter" class="app-page-toolbar__field" dense outlined emit-value map-options :options="mimeFilterOptions" label="MIME" />
+      <q-input
+        v-model="sessionFilter"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        debounce="300"
+        label="按 Session ID 筛选"
+        @update:model-value="onSessionFilterChange"
+      />
+      <q-input
+        v-model="search"
+        class="app-page-toolbar__search"
+        dense
+        outlined
+        clearable
+        debounce="300"
+        label="搜索名称 / MIME / Session"
+        @update:model-value="onSearchChange"
+      />
+      <q-select
+        v-model="mimeFilter"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        emit-value
+        map-options
+        :options="mimeFilterOptions"
+        label="MIME"
+      />
       <template #actions>
         <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
         <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="loadRows" />
@@ -111,13 +138,13 @@
 </template>
 
 <script setup lang="ts">
-import AppPageHero from "../components/layout/AppPageHero.vue";
-import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
-import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
-import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
-import ArtifactsDetailDialog from "../components/artifact/ArtifactsDetailDialog.vue";
-import ArtifactsUploadDialog from "../components/artifact/ArtifactsUploadDialog.vue";
-import { useArtifactsPage } from "../features/artifact/useArtifactsPage";
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
+import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
+import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import ArtifactsDetailDialog from '../components/artifact/ArtifactsDetailDialog.vue';
+import ArtifactsUploadDialog from '../components/artifact/ArtifactsUploadDialog.vue';
+import { useArtifactsPage } from '../features/artifact/useArtifactsPage';
 
 const {
   loading,

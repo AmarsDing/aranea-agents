@@ -1,5 +1,5 @@
-import { createEcosystemService } from "../../services";
-import type { Product } from "../../services/kratos/ecosystem/v1/index";
+import { createEcosystemService } from '../../services';
+import type { Product } from '../../services/kratos/ecosystem/v1/index';
 
 export type EcosystemProduct = {
   id: string;
@@ -14,18 +14,18 @@ export type EcosystemProduct = {
 
 function mapProduct(raw: Product): EcosystemProduct {
   return {
-    id: String(raw.id ?? ""),
-    name: String(raw.name ?? ""),
-    display_name: String(raw.displayName ?? ""),
-    description: String(raw.description ?? ""),
-    type: String(raw.type ?? ""),
-    version: String(raw.version ?? ""),
+    id: String(raw.id ?? ''),
+    name: String(raw.name ?? ''),
+    display_name: String(raw.displayName ?? ''),
+    description: String(raw.description ?? ''),
+    type: String(raw.type ?? ''),
+    version: String(raw.version ?? ''),
     install_count: Number(raw.installCount ?? 0),
-    installed: Boolean(raw.installed ?? false)
+    installed: Boolean(raw.installed ?? false),
   };
 }
 
-export async function listEcosystemProducts(search = ""): Promise<EcosystemProduct[]> {
+export async function listEcosystemProducts(search = ''): Promise<EcosystemProduct[]> {
   const svc = createEcosystemService();
   const res = await svc.ListProducts({ search: search || undefined, limit: 100, type: undefined, offset: undefined });
   const items = res.items ?? [];

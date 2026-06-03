@@ -1,12 +1,12 @@
-import { createModelCatalogService } from "../../services/index";
-import { normalizeCatalogSearchBlocks } from "./catalogSearchUtils";
-import { normalizeCatalogModelSummary, normalizeCatalogProviderSummary } from "./catalogWire";
+import { createModelCatalogService } from '../../services/index';
+import { normalizeCatalogSearchBlocks } from './catalogSearchUtils';
+import { normalizeCatalogModelSummary, normalizeCatalogProviderSummary } from './catalogWire';
 import type {
   ModelCatalogPolicy,
   ModelCatalogStatus,
   ModelCatalogSyncLogEntry,
-  SyncModelCatalogResponse
-} from "../../services/kratos/model_catalog/v1/index";
+  SyncModelCatalogResponse,
+} from '../../services/kratos/model_catalog/v1/index';
 
 const api = createModelCatalogService();
 
@@ -22,10 +22,10 @@ export async function getModelCatalogPolicy(): Promise<ModelCatalogPolicy> {
 
 export async function updateModelCatalogPolicy(policy: ModelCatalogPolicy): Promise<ModelCatalogPolicy> {
   return api.UpdateModelCatalogPolicy({
-    sourceUrl: policy.sourceUrl ?? "",
-    syncPolicy: policy.syncPolicy ?? "scheduled",
+    sourceUrl: policy.sourceUrl ?? '',
+    syncPolicy: policy.syncPolicy ?? 'scheduled',
     syncIntervalHours: policy.syncIntervalHours ?? 24,
-    autoApply: policy.autoApply ?? "metadata_and_pricing"
+    autoApply: policy.autoApply ?? 'metadata_and_pricing',
   });
 }
 
@@ -35,7 +35,7 @@ export async function syncModelCatalog(dryRun = false): Promise<SyncModelCatalog
 
 export async function getModelCatalogRaw(): Promise<{ jsonPretty: string; bytes: number }> {
   const res = await api.GetModelCatalogRaw({});
-  return { jsonPretty: res.jsonPretty ?? "", bytes: res.bytes ?? 0 };
+  return { jsonPretty: res.jsonPretty ?? '', bytes: res.bytes ?? 0 };
 }
 
 export async function listModelCatalogSyncLogs(limit = 30): Promise<ModelCatalogSyncLogEntry[]> {
@@ -43,7 +43,7 @@ export async function listModelCatalogSyncLogs(limit = 30): Promise<ModelCatalog
   return res.items ?? [];
 }
 
-export async function listCatalogProviders(q = "", limit = 200, offset = 0) {
+export async function listCatalogProviders(q = '', limit = 200, offset = 0) {
   const res = await api.ListCatalogProviders({ q, limit, offset });
   return {
     items: (res.items ?? []).map(normalizeCatalogProviderSummary),
@@ -51,7 +51,13 @@ export async function listCatalogProviders(q = "", limit = 200, offset = 0) {
   };
 }
 
-export async function listCatalogModels(providerId: string, q = "", includeDeprecated = false, limit = 500, offset = 0) {
+export async function listCatalogModels(
+  providerId: string,
+  q = '',
+  includeDeprecated = false,
+  limit = 500,
+  offset = 0,
+) {
   const res = await api.ListCatalogModels({ providerId, q, includeDeprecated, limit, offset });
   return {
     items: (res.items ?? []).map(normalizeCatalogModelSummary),
@@ -61,21 +67,21 @@ export async function listCatalogModels(providerId: string, q = "", includeDepre
 
 /** Paginated provider browse for empty search — builds full provider JSON client-side. */
 export async function browseCatalogProviderBlocks(offset = 0, limit = 1) {
-  const res = await api.ListCatalogProviders({ q: "", limit, offset });
+  const res = await api.ListCatalogProviders({ q: '', limit, offset });
   const blocks: string[] = [];
   for (const p of res.items ?? []) {
-    const pid = (p.id ?? "").trim();
+    const pid = (p.id ?? '').trim();
     if (!pid) continue;
     const modelsRes = await api.ListCatalogModels({
       providerId: pid,
-      q: "",
+      q: '',
       includeDeprecated: true,
       limit: 500,
       offset: 0,
     });
     const models: Record<string, unknown> = {};
     for (const m of modelsRes.items ?? []) {
-      const mid = (m.id ?? "").trim();
+      const mid = (m.id ?? '').trim();
       if (mid) models[mid] = m;
     }
     blocks.push(
@@ -90,8 +96,8 @@ export async function browseCatalogProviderBlocks(offset = 0, limit = 1) {
           models,
         },
         null,
-        2
-      )
+        2,
+      ),
     );
   }
   return {
@@ -103,7 +109,7 @@ export async function browseCatalogProviderBlocks(offset = 0, limit = 1) {
   };
 }
 
-export async function searchCatalogBlocks(q = "", limit = 10, offset = 0) {
+export async function searchCatalogBlocks(q = '', limit = 10, offset = 0) {
   const query = q.trim();
   if (!query) {
     return browseCatalogProviderBlocks(offset, limit);
@@ -121,9 +127,15 @@ export async function searchCatalogBlocks(q = "", limit = 10, offset = 0) {
 }
 
 /** @deprecated use searchCatalogBlocks */
-export async function searchCatalogRaw(q = "", limit = 10, offset = 0) {
+export async function searchCatalogRaw(q = '', limit = 10, offset = 0) {
   const res = await searchCatalogBlocks(q, limit, offset);
-  return { lines: res.blocks, total: res.total, offset: res.offset, truncated: res.truncated, legacyLineMode: res.legacyLineMode };
+  return {
+    lines: res.blocks,
+    total: res.total,
+    offset: res.offset,
+    truncated: res.truncated,
+    legacyLineMode: res.legacyLineMode,
+  };
 }
 
 export async function previewModelCatalogMigration() {

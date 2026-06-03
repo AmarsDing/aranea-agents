@@ -1,22 +1,18 @@
-import type { Agent, AgentRuntimeSettings } from "./types";
+import type { Agent, AgentRuntimeSettings } from './types';
 import {
   defaultAgentAdvancedSettings,
   defaultAgentRuntimeConfig,
   parseJSONList,
   type AgentAdvancedSettingsForm,
   type AgentRuntimeConfigForm,
-} from "./agentRuntimeConfig";
-import { parseSkillRuntimeForm } from "./agentSkillRuntimeConfig";
+} from './agentRuntimeConfig';
+import { parseSkillRuntimeForm } from './agentSkillRuntimeConfig';
 
 type AgentFileLike = { name: string; body: string; id?: string };
 
-export function hydrateRuntimeFromConfigJson(
-  config: AgentRuntimeConfigForm,
-  raw: string,
-  files?: AgentFileLike[],
-) {
+export function hydrateRuntimeFromConfigJson(config: AgentRuntimeConfigForm, raw: string, files?: AgentFileLike[]) {
   try {
-    const parsed = JSON.parse(raw || "{}");
+    const parsed = JSON.parse(raw || '{}');
     Object.assign(config, {
       ...config,
       ...parsed,
@@ -35,7 +31,11 @@ export function hydrateRuntimeFromConfigJson(
       memoryL4: { ...config.memoryL4, ...(parsed.memoryL4 || {}) },
       evolutionSettings: { ...config.evolutionSettings, ...(parsed.evolutionSettings || {}) },
       heartbeat: { ...config.heartbeat, ...(parsed.heartbeat || {}) },
-      evolution: { ...config.evolution, ...(parsed.evolution || {}), self_evolve: parsed.self_evolve ?? config.self_evolve },
+      evolution: {
+        ...config.evolution,
+        ...(parsed.evolution || {}),
+        self_evolve: parsed.self_evolve ?? config.self_evolve,
+      },
       evolution_guardrails: { ...config.evolution_guardrails, ...(parsed.evolution_guardrails || {}) },
       skillRuntime: { ...config.skillRuntime, ...(parsed.skillRuntime || {}) },
       intent_pass: { ...config.intent_pass, ...(parsed.intent_pass || {}) },
@@ -51,16 +51,13 @@ export function hydrateRuntimeFromConfigJson(
   }
 }
 
-export function hydrateAdvancedFromSettings(
-  advanced: AgentAdvancedSettingsForm,
-  settings: AgentRuntimeSettings,
-) {
+export function hydrateAdvancedFromSettings(advanced: AgentAdvancedSettingsForm, settings: AgentRuntimeSettings) {
   Object.assign(advanced, {
-    channel_id: settings.channel_id || "",
-    chat_id: settings.chat_id || "",
-    workspace: settings.workspace || "",
-    reasoning_mode: settings.reasoning_mode || "provider_default",
-    reasoning_level: settings.reasoning_level || "off",
+    channel_id: settings.channel_id || '',
+    chat_id: settings.chat_id || '',
+    workspace: settings.workspace || '',
+    reasoning_mode: settings.reasoning_mode || 'provider_default',
+    reasoning_level: settings.reasoning_level || 'off',
     context_compaction_enabled: settings.context_compaction_enabled ?? false,
     session_summary_enabled: settings.session_summary_enabled ?? false,
   });
@@ -173,7 +170,8 @@ export function hydrateRuntimeFromSettings(
       throttle_hours: settings.evo_throttle_hours ?? config.evolutionSettings.throttle_hours,
       proposal_ttl_days: settings.evo_proposal_ttl_days ?? config.evolutionSettings.proposal_ttl_days,
       persona_max_chars: settings.evo_persona_max_chars ?? config.evolutionSettings.persona_max_chars,
-      system_prompt_max_appends: settings.evo_system_prompt_max_appends ?? config.evolutionSettings.system_prompt_max_appends,
+      system_prompt_max_appends:
+        settings.evo_system_prompt_max_appends ?? config.evolutionSettings.system_prompt_max_appends,
     },
     heartbeat: {
       enabled: settings.heartbeat_enabled,
@@ -191,7 +189,7 @@ export function hydrateRuntimeFromSettings(
       rollback_on_decline_percent: settings.guardrail_rollback_on_decline_percent,
     },
     skillRuntime: parseSkillRuntimeForm(settings.skill_runtime_json),
-    code_executor_type: settings.code_executor_type || "local",
+    code_executor_type: settings.code_executor_type || 'local',
     intent_pass: {
       enabled: settings.intent_pass_enabled ?? false,
     },
@@ -208,10 +206,10 @@ export function hydrateAgentRuntime(
 ) {
   if (agent.settings) {
     hydrateRuntimeFromSettings(config, advanced, agent.settings);
-    return "settings" as const;
+    return 'settings' as const;
   }
   hydrateRuntimeFromConfigJson(config, agent.config_json, files);
-  return "config_json" as const;
+  return 'config_json' as const;
 }
 
 export function applyAdvancedSaveToRuntime(
@@ -223,10 +221,7 @@ export function applyAdvancedSaveToRuntime(
 }
 
 /** Reset config/advanced to defaults (e.g. new agent). */
-export function resetAgentRuntimeForm(
-  config: AgentRuntimeConfigForm,
-  advanced: AgentAdvancedSettingsForm,
-) {
+export function resetAgentRuntimeForm(config: AgentRuntimeConfigForm, advanced: AgentAdvancedSettingsForm) {
   Object.assign(config, defaultAgentRuntimeConfig());
   Object.assign(advanced, defaultAgentAdvancedSettings());
 }

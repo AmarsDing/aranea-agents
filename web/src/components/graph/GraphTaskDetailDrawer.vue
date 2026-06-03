@@ -1,14 +1,15 @@
 <template>
   <q-dialog :model-value="open" persistent @update:model-value="onDialogUpdate">
-    <q-card class="graph-task-drawer app-dialog-card app-glass-dialog" :style="{ minWidth: '480px', maxWidth: '600px' }">
+    <q-card
+      class="graph-task-drawer app-dialog-card app-glass-dialog"
+      :style="{ minWidth: '480px', maxWidth: '600px' }"
+    >
       <q-card-section class="app-glass-dialog__head row items-start justify-between no-wrap">
         <div class="col min-width-0">
           <div class="app-glass-dialog__title">任务详情</div>
-          <div v-if="task" class="app-glass-dialog__subtitle">
-            {{ task.nodeId }} · {{ statusLabel }}
-          </div>
+          <div v-if="task" class="app-glass-dialog__subtitle">{{ task.nodeId }} · {{ statusLabel }}</div>
         </div>
-        <q-btn flat dense round icon="close" v-close-popup />
+        <q-btn v-close-popup flat dense round icon="close" />
       </q-card-section>
       <q-separator />
       <div class="app-glass-dialog__scroll">
@@ -86,20 +87,8 @@
                 <q-input v-model="reviewerAgent" dense outlined label="审核 Agent" />
                 <q-input v-model="reviewComment" dense outlined autogrow type="textarea" label="审核意见" />
                 <div class="row q-gutter-sm">
-                  <q-btn
-                    color="positive"
-                    outline
-                    label="通过"
-                    :loading="actionLoading"
-                    @click="onReview(true)"
-                  />
-                  <q-btn
-                    color="negative"
-                    outline
-                    label="拒绝"
-                    :loading="actionLoading"
-                    @click="onReview(false)"
-                  />
+                  <q-btn color="positive" outline label="通过" :loading="actionLoading" @click="onReview(true)" />
+                  <q-btn color="negative" outline label="拒绝" :loading="actionLoading" @click="onReview(false)" />
                 </div>
               </div>
             </q-tab-panel>
@@ -167,9 +156,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import type { Task, TaskComment, TaskEvent, TaskLog, TaskRun } from "../../features/graph/types";
-import { TASK_STATUS_LABELS } from "../../features/graph/types";
+import { computed, ref, watch } from 'vue';
+import type { Task, TaskComment, TaskEvent, TaskLog, TaskRun } from '../../features/graph/types';
+import { TASK_STATUS_LABELS } from '../../features/graph/types';
 
 const props = defineProps<{
   open: boolean;
@@ -183,7 +172,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:open": [value: boolean];
+  'update:open': [value: boolean];
   claim: [payload: { taskId: string; agentKey: string }];
   submit: [payload: { taskId: string; output: string; summary: string }];
   reportBlocked: [payload: { taskId: string; reason: string }];
@@ -192,51 +181,47 @@ const emit = defineEmits<{
   addComment: [payload: { taskId: string; author: string; content: string }];
 }>();
 
-const tab = ref("detail");
-const agentKey = ref("");
-const submitOutput = ref("");
-const submitSummary = ref("");
-const blockedReason = ref("");
-const unblockComment = ref("");
-const reviewerAgent = ref("");
-const reviewComment = ref("");
-const commentAuthor = ref("");
-const commentContent = ref("");
+const tab = ref('detail');
+const agentKey = ref('');
+const submitOutput = ref('');
+const submitSummary = ref('');
+const blockedReason = ref('');
+const unblockComment = ref('');
+const reviewerAgent = ref('');
+const reviewComment = ref('');
+const commentAuthor = ref('');
+const commentContent = ref('');
 
-const statusLabel = computed(() =>
-  props.task ? (TASK_STATUS_LABELS[props.task.status] ?? props.task.status) : "",
+const statusLabel = computed(() => (props.task ? (TASK_STATUS_LABELS[props.task.status] ?? props.task.status) : ''));
+
+const canClaim = computed(
+  () => props.task?.status === 'TASK_PENDING' || props.task?.status === 'TASK_PENDING_ASSIGNMENT',
 );
 
-const canClaim = computed(() =>
-  props.task?.status === "TASK_PENDING" || props.task?.status === "TASK_PENDING_ASSIGNMENT",
+const canSubmit = computed(
+  () => props.task?.status === 'TASK_CLAIMED' || props.task?.status === 'TASK_REVIEW_REQUIRED',
 );
 
-const canSubmit = computed(() =>
-  props.task?.status === "TASK_CLAIMED" || props.task?.status === "TASK_REVIEW_REQUIRED",
-);
+const canReportBlocked = computed(() => props.task?.status === 'TASK_CLAIMED' || props.task?.status === 'TASK_PENDING');
 
-const canReportBlocked = computed(() =>
-  props.task?.status === "TASK_CLAIMED" || props.task?.status === "TASK_PENDING",
-);
+const canUnblock = computed(() => props.task?.status === 'TASK_BLOCKED');
 
-const canUnblock = computed(() => props.task?.status === "TASK_BLOCKED");
-
-const canReview = computed(() => props.task?.status === "TASK_REVIEW_REQUIRED");
+const canReview = computed(() => props.task?.status === 'TASK_REVIEW_REQUIRED');
 
 function onReportBlocked() {
   if (!props.task) return;
-  const reason = blockedReason.value.trim() || submitSummary.value.trim() || "blocked";
-  emit("reportBlocked", { taskId: props.task.taskId, reason });
+  const reason = blockedReason.value.trim() || submitSummary.value.trim() || 'blocked';
+  emit('reportBlocked', { taskId: props.task.taskId, reason });
 }
 
 function onUnblock() {
   if (!props.task) return;
-  emit("unblock", { taskId: props.task.taskId, comment: unblockComment.value.trim() });
+  emit('unblock', { taskId: props.task.taskId, comment: unblockComment.value.trim() });
 }
 
 function onReview(approved: boolean) {
   if (!props.task) return;
-  emit("review", {
+  emit('review', {
     taskId: props.task.taskId,
     reviewerAgent: reviewerAgent.value,
     approved,
@@ -247,20 +232,20 @@ function onReview(approved: boolean) {
 watch(
   () => props.task?.taskId,
   () => {
-    tab.value = "detail";
-    submitOutput.value = props.task?.output ?? "";
-    submitSummary.value = props.task?.summary ?? "";
-    commentContent.value = "";
-    unblockComment.value = "";
-    agentKey.value = "";
-    reviewerAgent.value = "";
-    commentAuthor.value = "";
-    blockedReason.value = "";
-    reviewComment.value = "";
+    tab.value = 'detail';
+    submitOutput.value = props.task?.output ?? '';
+    submitSummary.value = props.task?.summary ?? '';
+    commentContent.value = '';
+    unblockComment.value = '';
+    agentKey.value = '';
+    reviewerAgent.value = '';
+    commentAuthor.value = '';
+    blockedReason.value = '';
+    reviewComment.value = '';
   },
 );
 
 function onDialogUpdate(value: boolean) {
-  emit("update:open", value);
+  emit('update:open', value);
 }
 </script>

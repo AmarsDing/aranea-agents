@@ -1,15 +1,9 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
-import {
-  listTeams,
-  createTeam,
-  updateTeam,
-  duplicateTeam,
-  deleteTeam
-} from "../../features/teams/api";
-import type { Team } from "../../features/teams/types";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
+import { listTeams, createTeam, updateTeam, duplicateTeam, deleteTeam } from '../../features/teams/api';
+import type { Team } from '../../features/teams/types';
 
-export const useTeamsStore = defineStore("teams", () => {
+export const useTeamsStore = defineStore('teams', () => {
   const teams = ref<Team[]>([]);
   const activeTeam = ref<Team | null>(null);
   const loading = ref(false);
@@ -56,7 +50,7 @@ export const useTeamsStore = defineStore("teams", () => {
       team = teams.value.find((t) => t.id === id) ?? null;
     }
     if (!team) {
-      throw new Error("Team not found");
+      throw new Error('Team not found');
     }
     activeTeam.value = team;
     return team;

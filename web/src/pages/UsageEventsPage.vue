@@ -11,13 +11,77 @@
     </AppPageHero>
 
     <AppPageToolbar>
-      <q-select v-model="filters.range" class="app-page-toolbar__field" dense outlined emit-value map-options label="范围" :options="rangeOptions" @update:model-value="onFilterChange" />
-      <q-input v-model="filters.provider_code" class="app-page-toolbar__field" dense outlined clearable label="Provider" @clear="onFilterChange" />
-      <q-input v-model="filters.model_api_id" class="app-page-toolbar__field" dense outlined clearable label="模型" @clear="onFilterChange" />
-      <q-input v-model="filters.agent_id" class="app-page-toolbar__field" dense outlined clearable label="Agent ID" @clear="onFilterChange" />
-      <q-input v-model="filters.team_id" class="app-page-toolbar__field" dense outlined clearable label="Team ID" @clear="onFilterChange" />
-      <q-select v-model="filters.usage_kind" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="来源" :options="usageKindOptions" @update:model-value="onFilterChange" />
-      <q-select v-model="filters.status" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="状态" :options="statusOptions" @update:model-value="onFilterChange" />
+      <q-select
+        v-model="filters.range"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        emit-value
+        map-options
+        label="范围"
+        :options="rangeOptions"
+        @update:model-value="onFilterChange"
+      />
+      <q-input
+        v-model="filters.provider_code"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        label="Provider"
+        @clear="onFilterChange"
+      />
+      <q-input
+        v-model="filters.model_api_id"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        label="模型"
+        @clear="onFilterChange"
+      />
+      <q-input
+        v-model="filters.agent_id"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        label="Agent ID"
+        @clear="onFilterChange"
+      />
+      <q-input
+        v-model="filters.team_id"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        label="Team ID"
+        @clear="onFilterChange"
+      />
+      <q-select
+        v-model="filters.usage_kind"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        label="来源"
+        :options="usageKindOptions"
+        @update:model-value="onFilterChange"
+      />
+      <q-select
+        v-model="filters.status"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        label="状态"
+        :options="statusOptions"
+        @update:model-value="onFilterChange"
+      />
       <template #actions>
         <q-btn flat rounded no-caps label="重置" icon="restart_alt" @click="onResetFilters" />
         <q-btn flat rounded no-caps label="查询" icon="manage_search" :loading="loading" @click="load" />
@@ -53,7 +117,12 @@
         </template>
         <template #body-cell-status="props">
           <q-td :props="props">
-            <q-chip dense :color="props.row.status === 'success' || props.row.status === 'ok' ? 'positive' : 'negative'" text-color="white" size="sm">
+            <q-chip
+              dense
+              :color="props.row.status === 'success' || props.row.status === 'ok' ? 'positive' : 'negative'"
+              text-color="white"
+              size="sm"
+            >
               {{ props.row.status }}
             </q-chip>
           </q-td>
@@ -76,16 +145,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
-import { useQuasar } from "quasar";
-import AppPageHero from "../components/layout/AppPageHero.vue";
-import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
-import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../components/layout/AppRegistryHoverTip.vue";
-import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
-import { useUsageEventsPage } from "../features/usage/useUsageEventsPage";
-import type { ModelTokenUsageEvent } from "../features/usage/types";
-import { type RegistryTableColumn } from "../features/ui/registryTableColumns";
+import { computed, onMounted, ref, watch } from 'vue';
+import { useQuasar } from 'quasar';
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
+import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
+import AppRegistryHoverTip from '../components/layout/AppRegistryHoverTip.vue';
+import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import { useUsageEventsPage } from '../features/usage/useUsageEventsPage';
+import type { ModelTokenUsageEvent } from '../features/usage/types';
+import { type RegistryTableColumn } from '../features/ui/registryTableColumns';
 
 const $q = useQuasar();
 
@@ -104,7 +173,7 @@ const {
   purgeEvents,
   resetFilters,
   formatMoney,
-  truncate
+  truncate,
 } = useUsageEventsPage();
 
 const purging = ref(false);
@@ -117,7 +186,7 @@ const pagedEvents = computed(() => {
   return events.value.slice(start, start + pageSize.value);
 });
 
-import { USAGE_EVENT_TABLE_COLUMNS } from "../features/usage/usageTableUi";
+import { USAGE_EVENT_TABLE_COLUMNS } from '../features/usage/usageTableUi';
 
 const columns = USAGE_EVENT_TABLE_COLUMNS satisfies RegistryTableColumn<ModelTokenUsageEvent>[];
 
@@ -142,19 +211,19 @@ function onFilterChange() {
 function onPurgeConfirm() {
   const days = retainDays.value;
   $q.dialog({
-    class: "app-dialog-card app-dialog-card--sm",
-    title: "确认删除",
+    class: 'app-dialog-card app-dialog-card--sm',
+    title: '确认删除',
     message: `将只保留最近 ${days} 天的数据，其他用量事件将全部删除。此操作不可撤销，确认继续？`,
-    cancel: { label: "取消", flat: true, rounded: true, noCaps: true },
-    ok: { label: "确认删除", color: "negative", flat: true, rounded: true, noCaps: true },
-    persistent: true
+    cancel: { label: '取消', flat: true, rounded: true, noCaps: true },
+    ok: { label: '确认删除', color: 'negative', flat: true, rounded: true, noCaps: true },
+    persistent: true,
   }).onOk(async () => {
     purging.value = true;
     try {
       const deleted = await purgeEvents();
-      $q.notify({ type: "positive", message: `已删除 ${deleted} 条用量事件` });
+      $q.notify({ type: 'positive', message: `已删除 ${deleted} 条用量事件` });
     } catch {
-      $q.notify({ type: "negative", message: "删除用量事件失败" });
+      $q.notify({ type: 'negative', message: '删除用量事件失败' });
     } finally {
       purging.value = false;
     }

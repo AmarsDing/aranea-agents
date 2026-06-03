@@ -1,5 +1,5 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
   createCollection,
   deleteCollection,
@@ -10,8 +10,8 @@ import {
   listDocuments,
   searchKnowledge,
   getEmbedderConfig,
-  updateEmbedderConfig
-} from "../../features/knowledge/api";
+  updateEmbedderConfig,
+} from '../../features/knowledge/api';
 import type {
   CreateCollectionInput,
   IngestDocumentInput,
@@ -22,10 +22,10 @@ import type {
   ListDocumentsResult,
   SearchKnowledgeQuery,
   EmbedderConfig,
-  UpdateEmbedderConfigInput
-} from "../../features/knowledge/types";
+  UpdateEmbedderConfigInput,
+} from '../../features/knowledge/types';
 
-export const useKnowledgeStore = defineStore("knowledge", () => {
+export const useKnowledgeStore = defineStore('knowledge', () => {
   const collections = ref<KnowledgeCollection[]>([]);
   const collectionsTotal = ref(0);
   /** Documents keyed by collection_id */
@@ -67,7 +67,7 @@ export const useKnowledgeStore = defineStore("knowledge", () => {
 
   async function loadDocuments(
     collectionId: string,
-    params: { limit?: number; offset?: number } = {}
+    params: { limit?: number; offset?: number } = {},
   ): Promise<ListDocumentsResult> {
     const result = await listDocuments(collectionId, params);
     documentsByCollection.value[collectionId] = result.items;
@@ -84,9 +84,7 @@ export const useKnowledgeStore = defineStore("knowledge", () => {
   async function removeDocument(id: string, collectionId: string): Promise<void> {
     await deleteDocument(id);
     if (documentsByCollection.value[collectionId]) {
-      documentsByCollection.value[collectionId] = documentsByCollection.value[collectionId].filter(
-        (d) => d.id !== id
-      );
+      documentsByCollection.value[collectionId] = documentsByCollection.value[collectionId].filter((d) => d.id !== id);
     }
   }
 
@@ -121,6 +119,6 @@ export const useKnowledgeStore = defineStore("knowledge", () => {
     removeDocument,
     search,
     loadEmbedderConfig,
-    saveEmbedderConfig
+    saveEmbedderConfig,
   };
 });

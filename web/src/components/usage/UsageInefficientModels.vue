@@ -22,14 +22,7 @@
           </q-item-section>
           <q-item-section side>
             <div class="row q-gutter-xs justify-end">
-              <q-chip
-                v-for="f in row.flags"
-                :key="f"
-                dense
-                size="sm"
-                outline
-                class="overview-flag-chip"
-              >
+              <q-chip v-for="f in row.flags" :key="f" dense size="sm" outline class="overview-flag-chip">
                 {{ flagLabel(f) }}
               </q-chip>
             </div>
@@ -41,8 +34,8 @@
 </template>
 
 <script setup lang="ts">
-import type { UsageModelInsight } from "../../features/usage/types";
-import { formatUsdFromMicro } from "../../features/usage/moneyFormat";
+import type { UsageModelInsight } from '../../features/usage/types';
+import { formatUsdFromMicro } from '../../features/usage/moneyFormat';
 
 defineProps<{
   rows: UsageModelInsight[];
@@ -54,12 +47,12 @@ function formatMoney(value?: number) {
 
 function flagLabel(f: string) {
   switch (f) {
-    case "low_tps":
-      return "低 TPS";
-    case "high_failure":
-      return "高失败率";
-    case "high_cost":
-      return "高费用";
+    case 'low_tps':
+      return '低 TPS';
+    case 'high_failure':
+      return '高失败率';
+    case 'high_cost':
+      return '高费用';
     default:
       return f;
   }

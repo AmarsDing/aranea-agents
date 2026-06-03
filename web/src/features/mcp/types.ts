@@ -1,7 +1,7 @@
-import type { PlatformResource } from "../platform/types";
+import type { PlatformResource } from '../platform/types';
 
-export type McpTransport = "stdio" | "sse" | "streamable_http";
-export type McpHealthStatus = "ok" | "error" | "unknown" | "degraded" | string;
+export type McpTransport = 'stdio' | 'sse' | 'streamable_http';
+export type McpHealthStatus = 'ok' | 'error' | 'unknown' | 'degraded' | string;
 
 export type McpKeyValue = {
   key: string;
@@ -9,7 +9,7 @@ export type McpKeyValue = {
 };
 
 export type McpAuthConfig = {
-  type?: "api_key" | "bearer" | "oauth2" | "oauth2_client_credentials" | "oauth2_refresh" | "oauth2_static" | string;
+  type?: 'api_key' | 'bearer' | 'oauth2' | 'oauth2_client_credentials' | 'oauth2_refresh' | 'oauth2_static' | string;
   api_key?: string;
   header_name?: string;
   token_url?: string;

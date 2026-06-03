@@ -30,20 +30,12 @@
 
     <div v-if="expanded" class="team-task-card__detail q-mt-sm">
       <div class="row items-center q-gutter-xs q-mb-xs">
-        <SessionStatusBadge
-          :status="team.status as any"
-          :status-reason="undefined"
-          :status-changed-at="undefined"
-        />
+        <SessionStatusBadge :status="team.status as any" :status-reason="undefined" :status-changed-at="undefined" />
         <q-chip v-if="team.mode" dense size="sm" outline :label="modeLabel" class="team-task-card__mode" />
       </div>
 
       <div v-if="team.memberAvatars.length > 0" class="team-task-card__avatars row items-center q-gutter-xs q-mb-xs">
-        <q-avatar
-          v-for="(url, idx) in team.memberAvatars.slice(0, 5)"
-          :key="idx"
-          size="22px"
-        >
+        <q-avatar v-for="(url, idx) in team.memberAvatars.slice(0, 5)" :key="idx" size="22px">
           <img v-if="url" :src="url" alt="" />
           <q-icon v-else name="person" size="14px" color="grey-6" />
         </q-avatar>
@@ -60,18 +52,16 @@
           color="accent"
           class="q-mt-xs"
         />
-        <div class="text-caption text-grey-6 q-mt-xs">
-          {{ team.completedSteps }} / {{ team.totalSteps }} 步骤
-        </div>
+        <div class="text-caption text-grey-6 q-mt-xs">{{ team.completedSteps }} / {{ team.totalSteps }} 步骤</div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import SessionStatusBadge from "../sessions/SessionStatusBadge.vue";
-import type { SpiritTeam } from "../../features/spirit/types";
+import { computed } from 'vue';
+import SessionStatusBadge from '../sessions/SessionStatusBadge.vue';
+import type { SpiritTeam } from '../../features/spirit/types';
 
 const props = defineProps<{
   team: SpiritTeam;
@@ -81,17 +71,17 @@ const props = defineProps<{
 
 defineEmits<{
   click: [];
-  "toggle-expand": [];
+  'toggle-expand': [];
 }>();
 
 const modeLabel = computed(() => {
   const m = props.team.mode;
-  if (!m) return "";
+  if (!m) return '';
   const labels: Record<string, string> = {
-    sequential: "顺序",
-    parallel: "并行",
-    graph: "图编排",
-    debate: "辩论",
+    sequential: '顺序',
+    parallel: '并行',
+    graph: '图编排',
+    debate: '辩论',
   };
   return labels[m] ?? m;
 });

@@ -32,7 +32,16 @@
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
         <q-btn flat rounded no-caps label="检查用量" :loading="checking" :disable="!agentId" @click="runCheck" />
-        <q-btn color="primary" rounded unelevated no-caps label="保存配额" :loading="saving" :disable="!agentId" @click="saveQuota" />
+        <q-btn
+          color="primary"
+          rounded
+          unelevated
+          no-caps
+          label="保存配额"
+          :loading="saving"
+          :disable="!agentId"
+          @click="saveQuota"
+        />
       </q-card-actions>
     </q-card>
 
@@ -56,7 +65,16 @@
           <q-toggle v-model="alertEnabled" label="启用" />
         </div>
         <div class="app-actions-bar app-actions-bar--start q-mt-md">
-          <q-btn color="primary" rounded unelevated no-caps label="保存告警" :loading="alertSaving" :disable="!agentId" @click="saveAlert" />
+          <q-btn
+            color="primary"
+            rounded
+            unelevated
+            no-caps
+            label="保存告警"
+            :loading="alertSaving"
+            :disable="!agentId"
+            @click="saveAlert"
+          />
         </div>
       </q-card-section>
     </q-card>
@@ -90,8 +108,8 @@
 </template>
 
 <script setup lang="ts">
-import { toRef } from "vue";
-import { useAgentUsageQuota } from "../../features/usage/useAgentUsageQuota";
+import { toRef } from 'vue';
+import { useAgentUsageQuota } from '../../features/usage/useAgentUsageQuota';
 
 const props = defineProps<{
   agentId: string;
@@ -112,6 +130,6 @@ const {
   loadQuota,
   runCheck,
   saveQuota,
-  saveAlert
-} = useAgentUsageQuota(toRef(props, "agentId"));
+  saveAlert,
+} = useAgentUsageQuota(toRef(props, 'agentId'));
 </script>

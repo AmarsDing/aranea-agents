@@ -46,22 +46,16 @@
               <q-tooltip>拒绝</q-tooltip>
             </q-btn>
           </div>
-          <q-badge
-            v-else
-            :color="proposalStatusColor(p.status)"
-            :label="proposalStatusLabel(p.status)"
-          />
+          <q-badge v-else :color="proposalStatusColor(p.status)" :label="proposalStatusLabel(p.status)" />
         </q-item-section>
       </q-item>
     </q-list>
-    <q-banner v-else-if="!loading" rounded class="settings-placeholder-banner">
-      暂无知识提议。
-    </q-banner>
+    <q-banner v-else-if="!loading" rounded class="settings-placeholder-banner"> 暂无知识提议。 </q-banner>
   </section>
 </template>
 
 <script setup lang="ts">
-import type { LearningProposal } from "../../features/agents/learning.types";
+import type { LearningProposal } from '../../features/agents/learning.types';
 
 defineProps<{
   proposals: LearningProposal[];
@@ -77,47 +71,47 @@ const emit = defineEmits<{
 
 function proposalKindColor(kind: string): string {
   switch (kind) {
-    case "tool_optimization":
-      return "blue";
-    case "prompt_refinement":
-      return "purple";
-    case "skill_creation":
-      return "teal";
-    case "behavior_adjustment":
-      return "orange";
+    case 'tool_optimization':
+      return 'blue';
+    case 'prompt_refinement':
+      return 'purple';
+    case 'skill_creation':
+      return 'teal';
+    case 'behavior_adjustment':
+      return 'orange';
     default:
-      return "grey";
+      return 'grey';
   }
 }
 
 function proposalStatusColor(status: string): string {
   switch (status) {
-    case "approved":
-      return "positive";
-    case "rejected":
-      return "negative";
-    case "pending":
-      return "warning";
+    case 'approved':
+      return 'positive';
+    case 'rejected':
+      return 'negative';
+    case 'pending':
+      return 'warning';
     default:
-      return "grey";
+      return 'grey';
   }
 }
 
 function proposalStatusLabel(status: string): string {
   switch (status) {
-    case "approved":
-      return "已审批";
-    case "rejected":
-      return "已拒绝";
-    case "pending":
-      return "待审批";
+    case 'approved':
+      return '已审批';
+    case 'rejected':
+      return '已拒绝';
+    case 'pending':
+      return '待审批';
     default:
       return status;
   }
 }
 
 function formatDate(iso: string): string {
-  if (!iso) return "";
+  if (!iso) return '';
   try {
     return new Date(iso).toLocaleDateString();
   } catch {

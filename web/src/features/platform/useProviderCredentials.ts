@@ -1,10 +1,10 @@
-import { ref, type Ref } from "vue";
-import { useQuasar } from "quasar";
-import type { ProviderConfig, ProviderForm } from "./types";
-import { errorMessage, toNumber } from "./providerUtils";
-import { usePlatformStore } from "../../stores/platform";
-import type { ProviderHAForm } from "./types";
-import { microPer1KToUsdPer1M } from "../../config/providerRuntimeOverlay";
+import { ref, type Ref } from 'vue';
+import { useQuasar } from 'quasar';
+import type { ProviderConfig, ProviderForm } from './types';
+import { errorMessage, toNumber } from './providerUtils';
+import { usePlatformStore } from '../../stores/platform';
+import type { ProviderHAForm } from './types';
+import { microPer1KToUsdPer1M } from '../../config/providerRuntimeOverlay';
 
 export function useProviderCredentials(deps: {
   providerForm: ProviderForm;
@@ -22,9 +22,9 @@ export function useProviderCredentials(deps: {
 
   function clearRevealedCredentialsFromForm() {
     if (credentialsLoadedFromServer.value) {
-      deps.providerForm.api_key = "";
-      deps.providerForm.secret_key = "";
-      deps.providerHAForm.haCandidates = deps.providerHAForm.haCandidates.map((c) => ({ ...c, apiKey: "" }));
+      deps.providerForm.api_key = '';
+      deps.providerForm.secret_key = '';
+      deps.providerHAForm.haCandidates = deps.providerHAForm.haCandidates.map((c) => ({ ...c, apiKey: '' }));
       credentialsLoadedFromServer.value = false;
     }
   }
@@ -44,7 +44,7 @@ export function useProviderCredentials(deps: {
       }
       credentialsLoadedFromServer.value = true;
     } catch (error) {
-      $q.notify({ type: "negative", message: errorMessage(error) });
+      $q.notify({ type: 'negative', message: errorMessage(error) });
       throw error;
     } finally {
       revealingCredentials.value = false;
@@ -52,7 +52,12 @@ export function useProviderCredentials(deps: {
   }
 
   async function toggleApiKeyVisibility() {
-    if (!showApiKey.value && deps.editingId.value && deps.providerForm.api_key_set && !deps.providerForm.api_key.trim()) {
+    if (
+      !showApiKey.value &&
+      deps.editingId.value &&
+      deps.providerForm.api_key_set &&
+      !deps.providerForm.api_key.trim()
+    ) {
       try {
         await loadRevealedCredentials();
         showApiKey.value = true;
@@ -70,7 +75,12 @@ export function useProviderCredentials(deps: {
   }
 
   async function toggleSecretKeyVisibility() {
-    if (!showSecretKey.value && deps.editingId.value && deps.providerForm.secret_id.trim() && !deps.providerForm.secret_key.trim()) {
+    if (
+      !showSecretKey.value &&
+      deps.editingId.value &&
+      deps.providerForm.secret_id.trim() &&
+      !deps.providerForm.secret_key.trim()
+    ) {
       try {
         await loadRevealedCredentials();
         showSecretKey.value = true;
@@ -81,10 +91,10 @@ export function useProviderCredentials(deps: {
     }
     if (showSecretKey.value) {
       if (credentialsLoadedFromServer.value) {
-        deps.providerForm.secret_key = "";
+        deps.providerForm.secret_key = '';
         if (!showApiKey.value) {
-          deps.providerForm.api_key = "";
-          deps.providerHAForm.haCandidates = deps.providerHAForm.haCandidates.map((c) => ({ ...c, apiKey: "" }));
+          deps.providerForm.api_key = '';
+          deps.providerHAForm.haCandidates = deps.providerHAForm.haCandidates.map((c) => ({ ...c, apiKey: '' }));
           credentialsLoadedFromServer.value = false;
         }
       }
@@ -96,7 +106,7 @@ export function useProviderCredentials(deps: {
 
   function loadUsdPricingFromConfig(config: ProviderConfig) {
     const cost = config.cost;
-    if (cost && typeof cost === "object") {
+    if (cost && typeof cost === 'object') {
       deps.providerForm.input_price_usd_per_1m = toNumber(cost.input_usd_per_1m, 0);
       deps.providerForm.output_price_usd_per_1m = toNumber(cost.output_usd_per_1m, 0);
       deps.providerForm.cache_read_usd_per_1m = toNumber(cost.cache_read_usd_per_1m, 0);
@@ -107,9 +117,15 @@ export function useProviderCredentials(deps: {
     }
     deps.providerForm.input_price_usd_per_1m = microPer1KToUsdPer1M(toNumber(config.input_price_micro_usd_per_1k, 0));
     deps.providerForm.output_price_usd_per_1m = microPer1KToUsdPer1M(toNumber(config.output_price_micro_usd_per_1k, 0));
-    deps.providerForm.cache_read_usd_per_1m = microPer1KToUsdPer1M(toNumber(config.cached_input_price_micro_usd_per_1k, 0));
-    deps.providerForm.reasoning_price_usd_per_1m = microPer1KToUsdPer1M(toNumber(config.reasoning_price_micro_usd_per_1k, 0));
-    deps.providerForm.embedding_price_usd_per_1m = microPer1KToUsdPer1M(toNumber(config.embedding_price_micro_usd_per_1k, 0));
+    deps.providerForm.cache_read_usd_per_1m = microPer1KToUsdPer1M(
+      toNumber(config.cached_input_price_micro_usd_per_1k, 0),
+    );
+    deps.providerForm.reasoning_price_usd_per_1m = microPer1KToUsdPer1M(
+      toNumber(config.reasoning_price_micro_usd_per_1k, 0),
+    );
+    deps.providerForm.embedding_price_usd_per_1m = microPer1KToUsdPer1M(
+      toNumber(config.embedding_price_micro_usd_per_1k, 0),
+    );
   }
 
   return {

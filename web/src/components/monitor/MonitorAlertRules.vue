@@ -6,15 +6,30 @@
       <div class="app-actions-bar">
         <q-btn flat rounded no-caps icon="add" label="新增" @click="addRule" />
         <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="$emit('reload')" />
-        <q-btn unelevated rounded no-caps class="app-accent-btn" icon="save" label="保存" :loading="saving" :disable="!editableRules.length || editableRules.some(r => !r.name?.trim() || !r.metric_key?.trim())" @click="onSave" />
+        <q-btn
+          unelevated
+          rounded
+          no-caps
+          class="app-accent-btn"
+          icon="save"
+          label="保存"
+          :loading="saving"
+          :disable="!editableRules.length || editableRules.some((r) => !r.name?.trim() || !r.metric_key?.trim())"
+          @click="onSave"
+        />
       </div>
     </q-card-section>
     <q-separator />
     <q-card-section>
       <q-banner rounded class="monitor-info-banner q-mb-md">
-        默认冷却 60 分钟。指标示例：runner.error_rate。超阈后写入 alert.fired 与 Events，并按规则出站 Webhook / Channel。
+        默认冷却 60 分钟。指标示例：runner.error_rate。超阈后写入 alert.fired 与 Events，并按规则出站 Webhook /
+        Channel。
       </q-banner>
-      <div v-for="(rule, idx) in editableRules" :key="rule.id || idx" class="monitor-alert-rule-row q-mb-md q-pa-md rounded-borders">
+      <div
+        v-for="(rule, idx) in editableRules"
+        :key="rule.id || idx"
+        class="monitor-alert-rule-row q-mb-md q-pa-md rounded-borders"
+      >
         <div class="app-form-field-grid">
           <q-input v-model="rule.name" dense outlined label="名称" />
           <q-input v-model="rule.metric_key" dense outlined label="指标键" />
@@ -43,8 +58,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, toRaw } from "vue";
-import type { MonitorAlertRule } from "../../features/monitor/types";
+import { ref, watch, toRaw } from 'vue';
+import type { MonitorAlertRule } from '../../features/monitor/types';
 
 const props = defineProps<{
   rules: MonitorAlertRule[];
@@ -60,22 +75,26 @@ const emit = defineEmits<{
 
 const editableRules = ref<MonitorAlertRule[]>([]);
 
-watch(() => props.rules, (newRules) => {
-  editableRules.value = newRules.map(r => ({ ...toRaw(r) }));
-}, { immediate: true });
+watch(
+  () => props.rules,
+  (newRules) => {
+    editableRules.value = newRules.map((r) => ({ ...toRaw(r) }));
+  },
+  { immediate: true },
+);
 
 function addRule() {
   editableRules.value.push({
-    id: "",
-    name: "",
-    metric_key: "",
+    id: '',
+    name: '',
+    metric_key: '',
     threshold: 0,
     window_minutes: 60,
     enabled: true,
-    severity: "warning",
-    notify_webhook_url: "",
-    notify_channel_id: "",
-    cooldown_minutes: 60
+    severity: 'warning',
+    notify_webhook_url: '',
+    notify_channel_id: '',
+    cooldown_minutes: 60,
   });
 }
 
@@ -84,6 +103,9 @@ function removeRule(idx: number) {
 }
 
 function onSave() {
-  emit("save", editableRules.value.map(r => ({ ...toRaw(r) })));
+  emit(
+    'save',
+    editableRules.value.map((r) => ({ ...toRaw(r) })),
+  );
 }
 </script>

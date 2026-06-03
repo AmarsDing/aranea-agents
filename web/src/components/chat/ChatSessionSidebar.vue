@@ -2,17 +2,13 @@
   <transition name="chat-side">
     <aside v-show="open" class="chat-side chat-side--right column no-wrap">
       <div class="chat-session-header row items-center justify-between no-wrap">
-        <div class="text-caption text-cream-muted text-uppercase chat-session-header__label">
-          Session
-        </div>
+        <div class="text-caption text-cream-muted text-uppercase chat-session-header__label">Session</div>
         <span class="chat-session-count-badge">{{ sessions.length }}</span>
       </div>
       <q-scroll-area class="col chat-session-scroll">
         <q-list class="chat-session-list" dense>
           <template v-if="inboxSessions.length">
-            <q-item-label header class="chat-timeline-label">
-              外部消息
-            </q-item-label>
+            <q-item-label header class="chat-timeline-label"> 外部消息 </q-item-label>
             <q-item
               v-for="inbox in inboxSessions"
               :key="`inbox-${inbox.id}`"
@@ -28,12 +24,7 @@
                       {{ inbox.title }}
                     </div>
                   </div>
-                  <q-badge
-                    v-if="inbox.unreadCount > 0"
-                    rounded
-                    color="negative"
-                    :label="inbox.unreadCount"
-                  />
+                  <q-badge v-if="inbox.unreadCount > 0" rounded color="negative" :label="inbox.unreadCount" />
                 </div>
                 <div class="chat-session-meta-row row items-center no-wrap">
                   <q-badge dense outline color="teal" :label="sourceLabel(inbox.source)" />
@@ -107,11 +98,7 @@
                     class="q-mr-xs chat-session-channel-badge"
                     :label="sessionChannelLabel(session)"
                   />
-                  <q-badge
-                    class="chat-session-time-badge"
-                    rounded
-                    :label="shortTime(session)"
-                  />
+                  <q-badge class="chat-session-time-badge" rounded :label="shortTime(session)" />
                   <q-circular-progress
                     :value="session.context_used_ratio * 100"
                     show-value
@@ -135,47 +122,59 @@
                     :aria-label="t('chat.sessionMore')"
                     @click.stop
                   >
-                      <q-menu anchor="bottom right" self="top right" class="chat-session-menu">
-                        <q-list dense style="min-width: 136px">
-                          <q-item clickable v-close-popup @click="renameSession(session)">
-                            <q-item-section avatar><q-icon name="edit" size="18px" /></q-item-section>
-                            <q-item-section>{{ t("chat.rename") }}</q-item-section>
-                          </q-item>
-                          <q-item clickable v-close-popup @click="togglePin(session)">
-                            <q-item-section avatar>
-                              <q-icon :name="isPinned(session) ? 'push_pin' : 'push_pin'" size="18px" />
-                            </q-item-section>
-                            <q-item-section>{{ isPinned(session) ? t("chat.unpin") : t("chat.pin") }}</q-item-section>
-                          </q-item>
-                          <q-item clickable v-close-popup @click="toggleFavorite(session.id)">
-                            <q-item-section avatar>
-                              <q-icon :name="isFavorite(session.id) ? 'star' : 'star_border'" size="18px" />
-                            </q-item-section>
-                            <q-item-section>{{ isFavorite(session.id) ? t("chat.unfavorite") : t("chat.favorite") }}</q-item-section>
-                          </q-item>
-                          <q-item clickable v-close-popup @click.stop="openTrace(session.id)">
-                            <q-item-section avatar><q-icon name="timeline" size="18px" /></q-item-section>
-                            <q-item-section>历史追踪</q-item-section>
-                          </q-item>
-                          <q-item clickable v-close-popup @click.stop="openDetail(session.id)">
-                            <q-item-section avatar><q-icon name="open_in_new" size="18px" /></q-item-section>
-                            <q-item-section>详情页</q-item-section>
-                          </q-item>
-                          <q-item v-if="session.archived_at" clickable v-close-popup @click.stop="$emit('restore', session.id)">
-                            <q-item-section avatar><q-icon name="restore" size="18px" /></q-item-section>
-                            <q-item-section>恢复会话</q-item-section>
-                          </q-item>
-                          <q-item v-else clickable v-close-popup @click.stop="$emit('archive', session.id)">
-                            <q-item-section avatar><q-icon name="archive" size="18px" /></q-item-section>
-                            <q-item-section>归档</q-item-section>
-                          </q-item>
-                          <q-item clickable v-close-popup class="text-negative" @click="$emit('delete', 'session', session.id)">
-                            <q-item-section avatar><q-icon name="delete" size="18px" /></q-item-section>
-                            <q-item-section>{{ t("chat.remove") }}</q-item-section>
-                          </q-item>
-                        </q-list>
-                      </q-menu>
-                    </q-btn>
+                    <q-menu anchor="bottom right" self="top right" class="chat-session-menu">
+                      <q-list dense style="min-width: 136px">
+                        <q-item v-close-popup clickable @click="renameSession(session)">
+                          <q-item-section avatar><q-icon name="edit" size="18px" /></q-item-section>
+                          <q-item-section>{{ t('chat.rename') }}</q-item-section>
+                        </q-item>
+                        <q-item v-close-popup clickable @click="togglePin(session)">
+                          <q-item-section avatar>
+                            <q-icon :name="isPinned(session) ? 'push_pin' : 'push_pin'" size="18px" />
+                          </q-item-section>
+                          <q-item-section>{{ isPinned(session) ? t('chat.unpin') : t('chat.pin') }}</q-item-section>
+                        </q-item>
+                        <q-item v-close-popup clickable @click="toggleFavorite(session.id)">
+                          <q-item-section avatar>
+                            <q-icon :name="isFavorite(session.id) ? 'star' : 'star_border'" size="18px" />
+                          </q-item-section>
+                          <q-item-section>{{
+                            isFavorite(session.id) ? t('chat.unfavorite') : t('chat.favorite')
+                          }}</q-item-section>
+                        </q-item>
+                        <q-item v-close-popup clickable @click.stop="openTrace(session.id)">
+                          <q-item-section avatar><q-icon name="timeline" size="18px" /></q-item-section>
+                          <q-item-section>历史追踪</q-item-section>
+                        </q-item>
+                        <q-item v-close-popup clickable @click.stop="openDetail(session.id)">
+                          <q-item-section avatar><q-icon name="open_in_new" size="18px" /></q-item-section>
+                          <q-item-section>详情页</q-item-section>
+                        </q-item>
+                        <q-item
+                          v-if="session.archived_at"
+                          v-close-popup
+                          clickable
+                          @click.stop="$emit('restore', session.id)"
+                        >
+                          <q-item-section avatar><q-icon name="restore" size="18px" /></q-item-section>
+                          <q-item-section>恢复会话</q-item-section>
+                        </q-item>
+                        <q-item v-else v-close-popup clickable @click.stop="$emit('archive', session.id)">
+                          <q-item-section avatar><q-icon name="archive" size="18px" /></q-item-section>
+                          <q-item-section>归档</q-item-section>
+                        </q-item>
+                        <q-item
+                          v-close-popup
+                          clickable
+                          class="text-negative"
+                          @click="$emit('delete', 'session', session.id)"
+                        >
+                          <q-item-section avatar><q-icon name="delete" size="18px" /></q-item-section>
+                          <q-item-section>{{ t('chat.remove') }}</q-item-section>
+                        </q-item>
+                      </q-list>
+                    </q-menu>
+                  </q-btn>
                 </div>
               </q-item-section>
             </q-item>
@@ -193,33 +192,26 @@
           :label="t('chat.newSession')"
           @click="$emit('new-session')"
         />
-        <q-btn
-          flat
-          dense
-          color="grey-7"
-          no-caps
-          :label="t('chat.clearAllSession')"
-          @click="confirmClearAll"
-        />
+        <q-btn flat dense color="grey-7" no-caps :label="t('chat.clearAllSession')" @click="confirmClearAll" />
       </div>
     </aside>
   </transition>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { useI18n } from "vue-i18n";
-import { useQuasar } from "quasar";
-import type { DeleteKind, SessionView } from "./types";
-import { isChannelSession, parseChannelSessionMeta } from "../../features/chat/channelSessionMeta";
-import type { ConversationSession, ConversationTurnStatus } from "../../domain/conversation";
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
+import type { DeleteKind, SessionView } from './types';
+import { isChannelSession, parseChannelSessionMeta } from '../../features/chat/channelSessionMeta';
+import type { ConversationSession, ConversationTurnStatus } from '../../domain/conversation';
 import {
   presentDeliveryStatus,
   presentConversationSource,
   presentTurnStatus,
   toneToQuasarColor,
-} from "../../domain/conversationPresentation";
-import { sortSessionsForDisplay } from "../../features/session/sessionSort";
+} from '../../domain/conversationPresentation';
+import { sortSessionsForDisplay } from '../../features/session/sessionSort';
 
 const props = defineProps<{
   open: boolean;
@@ -232,15 +224,15 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   select: [id: string];
-  "new-session": [];
+  'new-session': [];
   rename: [payload: { id: string; title: string }];
   delete: [kind: DeleteKind, id: string];
   trace: [id: string];
   restore: [id: string];
   archive: [id: string];
   detail: [id: string];
-  "toggle-pin": [payload: { id: string; pinned: boolean }];
-  "toggle-favorite": [id: string];
+  'toggle-pin': [payload: { id: string; pinned: boolean }];
+  'toggle-favorite': [id: string];
 }>();
 
 const { t } = useI18n();
@@ -254,14 +246,14 @@ const timelineGroups = computed(() => {
   const regular = sorted.filter((session) => !isPinned(session));
   const groups: Array<{ key: string; label: string; sessions: SessionView[] }> = [];
 
-  if (pinned.length) groups.push({ key: "pinned", label: t("chat.pinnedSessions"), sessions: pinned });
+  if (pinned.length) groups.push({ key: 'pinned', label: t('chat.pinnedSessions'), sessions: pinned });
   const buckets = new Map<string, { label: string; sessions: SessionView[] }>();
   for (const session of regular) {
     const bucket = timelineBucket(session);
     if (!buckets.has(bucket.key)) buckets.set(bucket.key, { label: bucket.label, sessions: [] });
     buckets.get(bucket.key)!.sessions.push(session);
   }
-  for (const key of ["today", "yesterday", "seven", "thirty", "older"]) {
+  for (const key of ['today', 'yesterday', 'seven', 'thirty', 'older']) {
     const bucket = buckets.get(key);
     if (bucket?.sessions.length) groups.push({ key, ...bucket });
   }
@@ -270,36 +262,36 @@ const timelineGroups = computed(() => {
 
 function confirmClearAll() {
   $q.dialog({
-    title: t("chat.clearAllSession"),
-    message: t("chat.clearAllConfirm", "确定要清除全部会话吗？此操作不可撤销。"),
+    title: t('chat.clearAllSession'),
+    message: t('chat.clearAllConfirm', '确定要清除全部会话吗？此操作不可撤销。'),
     cancel: true,
     persistent: true,
   }).onOk(() => {
-    emit("delete", "all", "");
+    emit('delete', 'all', '');
   });
 }
 
 function renameSession(session: SessionView) {
   $q.dialog({
-    title: t("chat.rename"),
+    title: t('chat.rename'),
     prompt: {
       model: session.title,
-      type: "text",
-      isValid: (value) => Boolean(String(value ?? "").trim())
+      type: 'text',
+      isValid: (value) => Boolean(String(value ?? '').trim()),
     },
     cancel: true,
-    persistent: true
+    persistent: true,
   }).onOk((value) => {
-    emit("rename", { id: session.id, title: String(value ?? "").trim() });
+    emit('rename', { id: session.id, title: String(value ?? '').trim() });
   });
 }
 
 function openTrace(sessionID: string) {
-  emit("trace", sessionID);
+  emit('trace', sessionID);
 }
 
 function openDetail(sessionID: string) {
-  emit("detail", sessionID);
+  emit('detail', sessionID);
 }
 
 function isPinned(session: SessionView) {
@@ -311,17 +303,17 @@ function isFavorite(id: string) {
 }
 
 function togglePin(session: SessionView) {
-  emit("toggle-pin", { id: session.id, pinned: !isPinned(session) });
+  emit('toggle-pin', { id: session.id, pinned: !isPinned(session) });
 }
 
 function toggleFavorite(id: string) {
-  emit("toggle-favorite", id);
+  emit('toggle-favorite', id);
 }
 
 function sessionProgressColor(sessionId: string) {
   const active = props.selectedSessionId === sessionId;
-  if (active) return props.isDark ? "cyan-4" : "amber-8";
-  return props.isDark ? "blue-grey-5" : "brown-5";
+  if (active) return props.isDark ? 'cyan-4' : 'amber-8';
+  return props.isDark ? 'blue-grey-5' : 'brown-5';
 }
 
 function sessionChannelLabel(session: SessionView): string {
@@ -330,8 +322,8 @@ function sessionChannelLabel(session: SessionView): string {
     const key = meta.channel_key?.trim();
     return key ? `${meta.platform} · ${key}` : meta.platform;
   }
-  if (isChannelSession(session.metadata_json, session.title)) return "channel";
-  return "";
+  if (isChannelSession(session.metadata_json, session.title)) return 'channel';
+  return '';
 }
 
 function sourceLabel(source: string | undefined): string {
@@ -348,10 +340,10 @@ function turnBadgeColor(status: ConversationTurnStatus): string {
 
 function inboxDeliveryLabel(session: ConversationSession): string {
   const target = latestDeliveryTarget(session);
-  if (session.lastTurn?.status === "failed" && target?.status !== "failed") {
-    return "";
+  if (session.lastTurn?.status === 'failed' && target?.status !== 'failed') {
+    return '';
   }
-  return target ? presentDeliveryStatus(target.status).label : "";
+  return target ? presentDeliveryStatus(target.status).label : '';
 }
 
 function inboxDeliveryColor(session: ConversationSession): string {
@@ -366,24 +358,24 @@ function latestDeliveryTarget(session: ConversationSession) {
 
 function shortTime(session: SessionView) {
   const time = sessionTime(session);
-  if (!time) return session.at || "—";
-  return new Intl.DateTimeFormat([], { hour: "2-digit", minute: "2-digit" }).format(new Date(time));
+  if (!time) return session.at || '—';
+  return new Intl.DateTimeFormat([], { hour: '2-digit', minute: '2-digit' }).format(new Date(time));
 }
 
 function timelineBucket(session: SessionView) {
   const time = sessionTime(session);
-  if (!time) return { key: "older", label: t("chat.timelineOlder") };
+  if (!time) return { key: 'older', label: t('chat.timelineOlder') };
   const date = new Date(time);
   const now = new Date();
   const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const startYesterday = startToday - 24 * 60 * 60 * 1000;
   const value = date.getTime();
-  if (value >= startToday) return { key: "today", label: t("chat.timelineToday") };
-  if (value >= startYesterday) return { key: "yesterday", label: t("chat.timelineYesterday") };
+  if (value >= startToday) return { key: 'today', label: t('chat.timelineToday') };
+  if (value >= startYesterday) return { key: 'yesterday', label: t('chat.timelineYesterday') };
   const days = (Date.now() - value) / (24 * 60 * 60 * 1000);
-  if (days <= 7) return { key: "seven", label: t("chat.timelineSevenDays") };
-  if (days <= 30) return { key: "thirty", label: t("chat.timelineThirtyDays") };
-  return { key: "older", label: t("chat.timelineOlder") };
+  if (days <= 7) return { key: 'seven', label: t('chat.timelineSevenDays') };
+  if (days <= 30) return { key: 'thirty', label: t('chat.timelineThirtyDays') };
+  return { key: 'older', label: t('chat.timelineOlder') };
 }
 
 function sessionTime(session: SessionView) {
@@ -391,7 +383,6 @@ function sessionTime(session: SessionView) {
   const value = raw ? new Date(raw).getTime() : 0;
   return Number.isFinite(value) ? value : 0;
 }
-
 </script>
 
 <style scoped>
@@ -485,7 +476,9 @@ function sessionTime(session: SessionView) {
   color: var(--color-accent);
   border-color: color-mix(in srgb, var(--color-accent) 48%, var(--glass-border));
   background: color-mix(in srgb, var(--color-accent) 22%, var(--glass-elevated));
-  box-shadow: var(--glass-inner-highlight), 0 0 14px color-mix(in srgb, var(--color-accent) 12%, transparent);
+  box-shadow:
+    var(--glass-inner-highlight),
+    0 0 14px color-mix(in srgb, var(--color-accent) 12%, transparent);
 }
 
 .chat-session-item {
@@ -691,11 +684,15 @@ function sessionTime(session: SessionView) {
 }
 
 .chat-session-item--active {
-  box-shadow: var(--glass-inner-highlight), inset 3px 0 0 var(--color-accent);
+  box-shadow:
+    var(--glass-inner-highlight),
+    inset 3px 0 0 var(--color-accent);
 }
 
 :global(.body--dark) .chat-session-item--active {
-  box-shadow: var(--glass-inner-highlight), inset 3px 0 0 color-mix(in srgb, var(--color-accent) 72%, transparent);
+  box-shadow:
+    var(--glass-inner-highlight),
+    inset 3px 0 0 color-mix(in srgb, var(--color-accent) 72%, transparent);
 }
 
 @media (width <= 900px) {

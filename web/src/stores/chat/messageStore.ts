@@ -2,26 +2,23 @@
  * Chat message store — manages per-session message state, revision tracking,
  * and message merge logic. Split from the monolithic useChatStore.
  */
-import { ref } from "vue";
-import { defineStore } from "pinia";
+import { ref } from 'vue';
+import { defineStore } from 'pinia';
 import {
   listSessionChatMessages as listMessages,
   listSessionChatMessagesAfterRevision,
-} from "../../features/session/api";
-import type { IntentPassResult, Message } from "../../features/chat/types";
-import {
-  mergeIncrementalSessionMessages,
-  mergeSessionMessages,
-} from "../../features/chat/mergeSessionMessages";
-import { onSessionMutation } from "../sessionSync";
+} from '../../features/session/api';
+import type { IntentPassResult, Message } from '../../features/chat/types';
+import { mergeIncrementalSessionMessages, mergeSessionMessages } from '../../features/chat/mergeSessionMessages';
+import { onSessionMutation } from '../sessionSync';
 
-export const useChatMessageStore = defineStore("chatMessage", () => {
+export const useChatMessageStore = defineStore('chatMessage', () => {
   const messagesBySession = ref<Record<string, Message[]>>({});
   const sessionRevisionBySession = ref<Record<string, number>>({});
   const lastIntentPass = ref<IntentPassResult | null>(null);
 
   onSessionMutation((mutation) => {
-    if (mutation.type === "agent_removed") {
+    if (mutation.type === 'agent_removed') {
       clearAllMessages();
     }
   });
@@ -57,10 +54,7 @@ export const useChatMessageStore = defineStore("chatMessage", () => {
     const mergeOpts = opts.dropStaleInFlight ? { dropStaleInFlight: true } : undefined;
 
     if (opts.afterRevision != null && opts.afterRevision > 0) {
-      const { items, currentRevision } = await listSessionChatMessagesAfterRevision(
-        sid,
-        opts.afterRevision
-      );
+      const { items, currentRevision } = await listSessionChatMessagesAfterRevision(sid, opts.afterRevision);
       sessionRevisionBySession.value[sid] = currentRevision;
       if (items.length > 0) {
         setMessages(sid, mergeIncrementalSessionMessages(items, local, mergeOpts));

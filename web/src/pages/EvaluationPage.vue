@@ -1,9 +1,22 @@
 <template>
   <q-page class="app-standard-page app-registry-page evaluation-page">
-    <AppPageHero kicker="EvalSet / metrics" title="评估管理" subtitle="EvalSet + FrameworkBridge（LLM UserSim / 扩展指标 / 趋势对比已接入）。">
+    <AppPageHero
+      kicker="EvalSet / metrics"
+      title="评估管理"
+      subtitle="EvalSet + FrameworkBridge（LLM UserSim / 扩展指标 / 趋势对比已接入）。"
+    >
       <template #actions>
         <q-btn color="primary" rounded unelevated no-caps icon="add" label="新建数据集" @click="createOpen = true" />
-        <q-btn outline rounded no-caps color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadDatasets" />
+        <q-btn
+          outline
+          rounded
+          no-caps
+          color="primary"
+          icon="refresh"
+          label="刷新"
+          :loading="loading"
+          @click="loadDatasets"
+        />
       </template>
     </AppPageHero>
 
@@ -27,7 +40,7 @@
           <q-card-section class="row items-center justify-between">
             <div>
               <div class="text-h6">{{ selectedDataset.name }}</div>
-              <div class="text-caption text-grey-7">{{ selectedDataset.description || "无描述" }}</div>
+              <div class="text-caption text-grey-7">{{ selectedDataset.description || '无描述' }}</div>
             </div>
             <div class="app-actions-bar app-actions-bar--start">
               <q-btn outline no-caps color="primary" icon="play_arrow" label="启动评估" @click="runOpen = true" />
@@ -54,13 +67,23 @@
               </template>
               <template #body-cell-status="props">
                 <q-td :props="props">
-                  <q-chip dense :color="runStatusColor(props.row.status)" text-color="white" size="sm">{{ props.row.status }}</q-chip>
+                  <q-chip dense :color="runStatusColor(props.row.status)" text-color="white" size="sm">{{
+                    props.row.status
+                  }}</q-chip>
                 </q-td>
               </template>
               <template #body-cell-actions="props">
                 <q-td :props="props">
                   <div class="app-registry-cell-actions">
-                    <q-btn flat dense round icon="analytics" color="primary" aria-label="查看结果" @click="openResults(props.row)" />
+                    <q-btn
+                      flat
+                      dense
+                      round
+                      icon="analytics"
+                      color="primary"
+                      aria-label="查看结果"
+                      @click="openResults(props.row)"
+                    />
                   </div>
                 </q-td>
               </template>
@@ -83,8 +106,8 @@
 
         <evaluation-analytics-panel
           v-if="selectedDataset"
-          class="q-mt-md"
           v-model:agent-id="trendAgentId"
+          class="q-mt-md"
           :agent-options="agentOptions"
           :runs="runs"
           :trend-points="trendPoints"
@@ -128,16 +151,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import AppPageHero from "../components/layout/AppPageHero.vue";
-import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
-import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
-import EvaluationAnalyticsPanel from "../components/evaluation/EvaluationAnalyticsPanel.vue";
-import EvaluationDatasetList from "../components/evaluation/EvaluationDatasetList.vue";
-import EvaluationCreateDialog from "../components/evaluation/EvaluationCreateDialog.vue";
-import EvaluationRunDialog from "../components/evaluation/EvaluationRunDialog.vue";
-import EvaluationResultsDialog from "../components/evaluation/EvaluationResultsDialog.vue";
-import { useEvaluationPage } from "../features/evaluation/useEvaluationPage";
+import { computed, ref, watch } from 'vue';
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
+import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import EvaluationAnalyticsPanel from '../components/evaluation/EvaluationAnalyticsPanel.vue';
+import EvaluationDatasetList from '../components/evaluation/EvaluationDatasetList.vue';
+import EvaluationCreateDialog from '../components/evaluation/EvaluationCreateDialog.vue';
+import EvaluationRunDialog from '../components/evaluation/EvaluationRunDialog.vue';
+import EvaluationResultsDialog from '../components/evaluation/EvaluationResultsDialog.vue';
+import { useEvaluationPage } from '../features/evaluation/useEvaluationPage';
 
 const {
   datasets,
@@ -176,7 +199,7 @@ const {
   comparisons,
   compareLoading,
   loadTrend,
-  submitCompare
+  submitCompare,
 } = useEvaluationPage();
 
 const runsPage = ref(1);
@@ -191,7 +214,7 @@ watch(
   () => runs.value.length,
   () => {
     if (runsPage.value > runsPageMax.value) runsPage.value = runsPageMax.value;
-  }
+  },
 );
 
 watch(selectedDatasetId, () => {

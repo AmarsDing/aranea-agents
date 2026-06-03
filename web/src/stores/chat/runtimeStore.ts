@@ -3,8 +3,8 @@
  * await-reply, stop-generation, and chat API gateway.
  * Split from the monolithic useChatStore.
  */
-import { ref } from "vue";
-import { defineStore } from "pinia";
+import { ref } from 'vue';
+import { defineStore } from 'pinia';
 import {
   awaitUserReply,
   cancelChatBackgroundJob,
@@ -17,10 +17,10 @@ import {
   submitMessageFeedback as apiSubmitFeedback,
   updatePendingMessage,
   type PendingMessage,
-} from "../../features/chat/api";
-import type { ChatOption, RunStatus } from "../../features/chat/types";
+} from '../../features/chat/api';
+import type { ChatOption, RunStatus } from '../../features/chat/types';
 
-export const useChatRuntimeStore = defineStore("chatRuntime", () => {
+export const useChatRuntimeStore = defineStore('chatRuntime', () => {
   const wsConnectedBySession = ref<Record<string, boolean>>({});
 
   function setWsConnected(sessionId: string, connected: boolean) {
@@ -59,11 +59,7 @@ export const useChatRuntimeStore = defineStore("chatRuntime", () => {
     return updatePendingMessage(sessionId, pendingId, content);
   }
 
-  async function submitFeedback(payload: {
-    session_id: string;
-    message_id: string;
-    rating: "positive" | "negative";
-  }) {
+  async function submitFeedback(payload: { session_id: string; message_id: string; rating: 'positive' | 'negative' }) {
     return apiSubmitFeedback(payload);
   }
 

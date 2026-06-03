@@ -20,13 +20,11 @@
       >
         <q-item-section>
           <q-item-label class="graph-checkpoint-panel__mono">{{ cp.checkpointId }}</q-item-label>
-          <q-item-label caption>
-            step {{ cp.step }} · {{ cp.source || "checkpoint" }}
-          </q-item-label>
+          <q-item-label caption> step {{ cp.step }} · {{ cp.source || 'checkpoint' }} </q-item-label>
           <q-item-label caption>{{ formatTime(cp.timestamp) }}</q-item-label>
         </q-item-section>
         <q-item-section side>
-          <q-badge rounded color="blue-grey">{{ cp.namespace || "default" }}</q-badge>
+          <q-badge rounded color="blue-grey">{{ cp.namespace || 'default' }}</q-badge>
         </q-item-section>
       </q-item>
     </q-list>
@@ -57,10 +55,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { useQuasar } from "quasar";
-import type { CheckpointInfo } from "../../features/graph/types";
-import { formatTime } from "../../features/graph/utils";
+import { computed, ref } from 'vue';
+import { useQuasar } from 'quasar';
+import type { CheckpointInfo } from '../../features/graph/types';
+import { formatTime } from '../../features/graph/utils';
 
 const props = defineProps<{
   checkpoints: CheckpointInfo[];
@@ -80,7 +78,7 @@ const emit = defineEmits<{
 const $q = useQuasar();
 
 const snapshotJson = computed(() => {
-  if (!props.stateSnapshot) return "";
+  if (!props.stateSnapshot) return '';
   try {
     return JSON.stringify(props.stateSnapshot, null, 2);
   } catch {
@@ -92,12 +90,12 @@ function confirmRestore() {
   const cp = props.checkpoints.find((c) => c.checkpointId === props.selectedCheckpointId);
   if (!cp) return;
   $q.dialog({
-    title: "确认回退",
+    title: '确认回退',
     message: `将回退至检查点 ${cp.checkpointId}（step ${cp.step}），当前执行状态将被替换。确定继续？`,
     cancel: true,
     persistent: true,
   }).onOk(() => {
-    emit("restore", cp);
+    emit('restore', cp);
   });
 }
 </script>

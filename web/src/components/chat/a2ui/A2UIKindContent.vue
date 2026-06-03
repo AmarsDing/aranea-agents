@@ -15,19 +15,19 @@
     :surface="surface"
     @user-action="(p) => emit('user-action', p)"
   />
-  <div v-else class="text-caption text-grey-7">{{ kind || "Unknown" }} ({{ componentId }})</div>
+  <div v-else class="text-caption text-grey-7">{{ kind || 'Unknown' }} ({{ componentId }})</div>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { resolveA2UIKindRoute } from "../../../features/chat/a2ui/a2uiKindRegistry";
-import type { A2UIComponentCtx } from "../../../features/chat/a2ui/useA2UIComponent";
-import type { A2UISurfaceState } from "../../../features/chat/a2uiSurfaceState";
-import type { A2UIUserActionPayload } from "../../../features/chat/a2uiUserAction";
-import A2UIKindContainer from "./kinds/A2UIKindContainer.vue";
-import A2UIKindForm from "./kinds/A2UIKindForm.vue";
-import A2UIKindLayout from "./kinds/A2UIKindLayout.vue";
-import A2UIKindPrimitive from "./kinds/A2UIKindPrimitive.vue";
+import { computed } from 'vue';
+import { resolveA2UIKindRoute } from '../../../features/chat/a2ui/a2uiKindRegistry';
+import type { A2UIComponentCtx } from '../../../features/chat/a2ui/useA2UIComponent';
+import type { A2UISurfaceState } from '../../../features/chat/a2uiSurfaceState';
+import type { A2UIUserActionPayload } from '../../../features/chat/a2uiUserAction';
+import A2UIKindContainer from './kinds/A2UIKindContainer.vue';
+import A2UIKindForm from './kinds/A2UIKindForm.vue';
+import A2UIKindLayout from './kinds/A2UIKindLayout.vue';
+import A2UIKindPrimitive from './kinds/A2UIKindPrimitive.vue';
 
 const props = defineProps<{
   componentId: string;
@@ -37,7 +37,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "user-action": [payload: A2UIUserActionPayload];
+  'user-action': [payload: A2UIUserActionPayload];
 }>();
 
 const route = computed(() => resolveA2UIKindRoute(props.kind));

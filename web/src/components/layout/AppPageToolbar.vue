@@ -16,12 +16,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed } from 'vue';
 
 const props = withDefaults(
   defineProps<{
     /** registry：标准列表页；entity：Agents / Team 等实体页（圆角更大、带边框） */
-    variant?: "registry" | "entity";
+    variant?: 'registry' | 'entity';
     /** 实体页 Hero 下方间距 */
     offset?: boolean;
     /** 紧凑内边距 */
@@ -32,7 +32,7 @@ const props = withDefaults(
     isDark?: boolean;
   }>(),
   {
-    variant: "registry",
+    variant: 'registry',
     offset: false,
     dense: false,
     stacked: false,
@@ -41,11 +41,11 @@ const props = withDefaults(
 );
 
 const toolbarClass = computed(() => [
-  "app-page-toolbar",
+  'app-page-toolbar',
   `app-page-toolbar--${props.variant}`,
   {
-    "app-page-toolbar--offset": props.offset,
-    "is-dark": props.isDark,
+    'app-page-toolbar--offset': props.offset,
+    'is-dark': props.isDark,
   },
 ]);
 </script>

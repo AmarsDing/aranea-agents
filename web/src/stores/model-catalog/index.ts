@@ -1,5 +1,5 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
   getModelCatalogStatus,
   getModelCatalogPolicy,
@@ -10,19 +10,19 @@ import {
   searchCatalogBlocks,
   previewModelCatalogMigration,
   getProviderMigrationRules,
-  applyProviderMigration
-} from "../../features/model-catalog/api";
+  applyProviderMigration,
+} from '../../features/model-catalog/api';
 import {
   fetchProviderLogoSvg as fetchProviderLogoSvgFromApi,
-  clearProviderLogoCache
-} from "../../features/model-catalog/providerLogo";
+  clearProviderLogoCache,
+} from '../../features/model-catalog/providerLogo';
 import {
   ensureProviderMigrationMap,
-  resetProviderMigrationCache
-} from "../../features/model-catalog/providerMigration";
-import type { ModelCatalogPolicy, ModelCatalogStatus } from "../../services/kratos/model_catalog/v1/index";
+  resetProviderMigrationCache,
+} from '../../features/model-catalog/providerMigration';
+import type { ModelCatalogPolicy, ModelCatalogStatus } from '../../services/kratos/model_catalog/v1/index';
 
-export const useModelCatalogStore = defineStore("model-catalog", () => {
+export const useModelCatalogStore = defineStore('model-catalog', () => {
   const status = ref<ModelCatalogStatus | null>(null);
   const policy = ref<ModelCatalogPolicy | null>(null);
   const loading = ref(false);
@@ -50,11 +50,11 @@ export const useModelCatalogStore = defineStore("model-catalog", () => {
     return listModelCatalogSyncLogs(limit);
   }
 
-  async function loadProviders(q = "", limit = 200, offset = 0) {
+  async function loadProviders(q = '', limit = 200, offset = 0) {
     return listCatalogProviders(q, limit, offset);
   }
 
-  async function searchBlocks(q = "", limit = 10, offset = 0) {
+  async function searchBlocks(q = '', limit = 10, offset = 0) {
     return searchCatalogBlocks(q, limit, offset);
   }
 
@@ -103,6 +103,6 @@ export const useModelCatalogStore = defineStore("model-catalog", () => {
     fetchProviderLogoSvg,
     clearLogoCache,
     loadMigrationMap,
-    resetMigrationCache
+    resetMigrationCache,
   };
 });

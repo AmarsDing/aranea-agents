@@ -49,14 +49,31 @@
       @update:model-value="$emit('update:enabled', $event ?? null)"
     />
     <template #actions>
-      <q-btn flat rounded no-caps icon="restart_alt" label="重置" class="app-entity-toolbar-btn" @click="$emit('reset')" />
-      <q-btn flat rounded no-caps icon="refresh" label="刷新" class="app-entity-toolbar-btn" :loading="loading" @click="$emit('refresh')" />
+      <q-btn
+        flat
+        rounded
+        no-caps
+        icon="restart_alt"
+        label="重置"
+        class="app-entity-toolbar-btn"
+        @click="$emit('reset')"
+      />
+      <q-btn
+        flat
+        rounded
+        no-caps
+        icon="refresh"
+        label="刷新"
+        class="app-entity-toolbar-btn"
+        :loading="loading"
+        @click="$emit('refresh')"
+      />
     </template>
   </AppPageToolbar>
 </template>
 
 <script setup lang="ts">
-import AppPageToolbar from "../layout/AppPageToolbar.vue";
+import AppPageToolbar from '../layout/AppPageToolbar.vue';
 
 type Opt<T = string> = { label: string; value: T };
 
@@ -72,10 +89,10 @@ defineProps<{
 }>();
 
 defineEmits<{
-  "update:search": [v: string];
-  "update:category": [v: string];
-  "update:riskLevel": [v: string];
-  "update:enabled": [v: boolean | null];
+  'update:search': [v: string];
+  'update:category': [v: string];
+  'update:riskLevel': [v: string];
+  'update:enabled': [v: boolean | null];
   reset: [];
   refresh: [];
 }>();

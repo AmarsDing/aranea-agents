@@ -1,19 +1,16 @@
-import { computed, onBeforeUnmount, ref, watch, type Ref } from "vue";
-import { GLOBAL_WS_SESSION_ID } from "../../config/runtime";
-import { useMonitorStore } from "../../stores/monitor/index";
-import type { MonitorLogLine, MonitorTraceEvent } from "./types";
-import { flowLogMatchesTrace, sortFlowLogLines, traceCorrelationFromUsageRow } from "./flow";
+import { computed, onBeforeUnmount, ref, watch, type Ref } from 'vue';
+import { GLOBAL_WS_SESSION_ID } from '../../config/runtime';
+import { useMonitorStore } from '../../stores/monitor/index';
+import type { MonitorLogLine, MonitorTraceEvent } from './types';
+import { flowLogMatchesTrace, sortFlowLogLines, traceCorrelationFromUsageRow } from './flow';
 
-export function useMonitorTraceFlow(
-  detail: Ref<MonitorTraceEvent | null>,
-  detailOpen: Ref<boolean>
-) {
+export function useMonitorTraceFlow(detail: Ref<MonitorTraceEvent | null>, detailOpen: Ref<boolean>) {
   const monitorStore = useMonitorStore();
   const flowLines = ref<MonitorLogLine[]>([]);
   let flowWsSub: ReturnType<typeof monitorStore.startLogsStream> | null = null;
 
   const activeCorrelation = computed(() => {
-    if (!detail.value) return { traceId: "", runId: "", sessionId: "" };
+    if (!detail.value) return { traceId: '', runId: '', sessionId: '' };
     return traceCorrelationFromUsageRow(detail.value);
   });
 
@@ -25,7 +22,7 @@ export function useMonitorTraceFlow(
         traceId: corr.traceId || undefined,
         runId: corr.runId || undefined,
         sessionId: corr.sessionId || undefined,
-        limit: 500
+        limit: 500,
       });
       const seen = new Set<string>();
       const merged = [...items, ...flowLines.value].filter((line) => {
@@ -76,6 +73,6 @@ export function useMonitorTraceFlow(
     loadFlowHistory,
     startFlowStream,
     stopFlowStream,
-    openTraceDetail
+    openTraceDetail,
   };
 }

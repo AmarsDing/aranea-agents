@@ -1,38 +1,28 @@
-import { computed, ref } from "vue";
-import type { Envelope } from "../../../realtime/envelope";
-import { useGraphStream } from "./useGraphStream";
-import type { GraphStepSnapshot, Task } from "../types";
-import {
-  buildExecNodeStatesFromGraphNodes,
-  seedGraphNodeStatesFromSteps,
-} from "./graphExecutionProjection";
-import {
-  stepEventFromEnvelopeMetadata,
-  upsertStepFromStreamEvent,
-} from "./stepStreamProjection";
-import {
-  applyTaskStatusMetadata,
-  seedTaskMap,
-  tasksToList,
-} from "../tasks/taskStreamProjection";
+import { computed, ref } from 'vue';
+import type { Envelope } from '../../../realtime/envelope';
+import { useGraphStream } from './useGraphStream';
+import type { GraphStepSnapshot, Task } from '../types';
+import { buildExecNodeStatesFromGraphNodes, seedGraphNodeStatesFromSteps } from './graphExecutionProjection';
+import { stepEventFromEnvelopeMetadata, upsertStepFromStreamEvent } from './stepStreamProjection';
+import { applyTaskStatusMetadata, seedTaskMap, tasksToList } from '../tasks/taskStreamProjection';
 
 function emptyTask(taskId: string, executionId: string, nodeId: string): Task {
   return {
     taskId,
     nodeId,
     executionId,
-    assignee: "",
-    status: "TASK_PENDING",
-    context: "",
-    input: "",
-    output: "",
-    summary: "",
-    metadata: "",
-    requiredRole: "",
-    assignmentMode: "",
-    createdAt: "",
-    claimedAt: "",
-    completedAt: "",
+    assignee: '',
+    status: 'TASK_PENDING',
+    context: '',
+    input: '',
+    output: '',
+    summary: '',
+    metadata: '',
+    requiredRole: '',
+    assignmentMode: '',
+    createdAt: '',
+    claimedAt: '',
+    completedAt: '',
   };
 }
 
@@ -60,21 +50,21 @@ export function useGraphExecutionStream(
     liveSteps.value = upsertStepFromStreamEvent(liveSteps.value, event);
   }
 
-  stream.onType("graph_node_start", (env) => {
-    applyStepEvent(env, "running");
+  stream.onType('graph_node_start', (env) => {
+    applyStepEvent(env, 'running');
   });
-  stream.onType("graph_node_end", (env) => {
-    applyStepEvent(env, "completed");
+  stream.onType('graph_node_end', (env) => {
+    applyStepEvent(env, 'completed');
   });
-  stream.onType("graph_node_error", (env) => {
-    applyStepEvent(env, "failed");
+  stream.onType('graph_node_error', (env) => {
+    applyStepEvent(env, 'failed');
   });
 
-  stream.onType("graph_task_status", (env: Envelope) => {
-    if (String(env.metadata?.execution_id ?? "") !== executionId) return;
-    const taskId = String(env.metadata?.task_id ?? "");
+  stream.onType('graph_task_status', (env: Envelope) => {
+    if (String(env.metadata?.execution_id ?? '') !== executionId) return;
+    const taskId = String(env.metadata?.task_id ?? '');
     if (!taskId) return;
-    const nodeId = String(env.metadata?.node_id ?? "");
+    const nodeId = String(env.metadata?.node_id ?? '');
     const next = new Map(tasks.value);
     const existing = next.get(taskId) ?? emptyTask(taskId, executionId, nodeId);
     next.set(taskId, applyTaskStatusMetadata(existing, env.metadata ?? {}));

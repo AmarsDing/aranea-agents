@@ -8,7 +8,7 @@
  * reach into the chat domain for protocol-level infrastructure.
  */
 
-import type { Envelope, EnvelopeType } from "./envelope";
+import type { Envelope, EnvelopeType } from './envelope';
 
 export type EnvelopeHandler = (env: Envelope) => void;
 
@@ -56,7 +56,7 @@ export class EnvelopeDispatcher {
         sub.handler(env);
       } catch (err) {
         if (import.meta.env.DEV) {
-          console.warn("[EnvelopeDispatcher] handler error:", err, env);
+          console.warn('[EnvelopeDispatcher] handler error:', err, env);
         }
       }
     }
@@ -82,7 +82,7 @@ export class EnvelopeDispatcher {
 
 export function matchFilterKey(subscriberKey: string, eventKey: string): boolean {
   if (!subscriberKey || !eventKey) return true;
-  const sk = subscriberKey + "/";
-  const ek = eventKey + "/";
+  const sk = subscriberKey + '/';
+  const ek = eventKey + '/';
   return sk.startsWith(ek) || ek.startsWith(sk);
 }

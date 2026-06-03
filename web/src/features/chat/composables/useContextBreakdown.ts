@@ -1,7 +1,7 @@
-import { computed, type ComputedRef } from "vue";
-import type { PromptBreakdown, PromptPreviewReport } from "../contextBreakdown";
-import { computeBreakdown } from "../contextBreakdown";
-import type { ComposerUsageSnapshot } from "../composerUsageMetrics";
+import { computed, type ComputedRef } from 'vue';
+import type { PromptBreakdown, PromptPreviewReport } from '../contextBreakdown';
+import { computeBreakdown } from '../contextBreakdown';
+import type { ComposerUsageSnapshot } from '../composerUsageMetrics';
 
 export function useContextBreakdown(deps: {
   usageSnapshot: ComputedRef<ComposerUsageSnapshot | null>;

@@ -69,8 +69,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import ModelRouterRulesEditor, { type ModelRouterRulePayload } from "./ModelRouterRulesEditor.vue";
+import { computed } from 'vue';
+import ModelRouterRulesEditor, { type ModelRouterRulePayload } from './ModelRouterRulesEditor.vue';
 
 type SchemaProperty = {
   type?: string;
@@ -87,13 +87,13 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:modelValue": [value: string];
-  "validationError": [message: string];
+  'update:modelValue': [value: string];
+  validationError: [message: string];
 }>();
 
 const schema = computed(() => {
   try {
-    return JSON.parse(props.schemaJson || "{}");
+    return JSON.parse(props.schemaJson || '{}');
   } catch {
     return {};
   }
@@ -104,7 +104,7 @@ const hasProperties = computed(() => Object.keys(properties.value).length > 0);
 
 const data = computed<Record<string, unknown>>(() => {
   try {
-    return JSON.parse(props.modelValue || "{}");
+    return JSON.parse(props.modelValue || '{}');
   } catch {
     return {};
   }
@@ -115,31 +115,31 @@ function fieldLabel(key: string, def: SchemaProperty) {
 }
 
 function stringArrayItem(def: SchemaProperty) {
-  return def.items?.type === "string";
+  return def.items?.type === 'string';
 }
 
 function getValue(key: string): string | number | boolean | null {
-  const v = data.value[key] ?? properties.value[key]?.default ?? "";
-  if (typeof v === "boolean" || typeof v === "number") return v;
+  const v = data.value[key] ?? properties.value[key]?.default ?? '';
+  if (typeof v === 'boolean' || typeof v === 'number') return v;
   return v == null ? null : String(v);
 }
 
 function getInputValue(key: string): string {
   const v = getValue(key);
-  if (typeof v === "boolean") return v ? "1" : "0";
-  if (v == null) return "";
+  if (typeof v === 'boolean') return v ? '1' : '0';
+  if (v == null) return '';
   return String(v);
 }
 
 function setValue(key: string, val: unknown) {
   const next = { ...data.value, [key]: val === undefined ? null : val };
-  emit("update:modelValue", JSON.stringify(next, null, 2));
+  emit('update:modelValue', JSON.stringify(next, null, 2));
 }
 
 function arrayText(key: string): string {
   const raw = data.value[key];
-  if (!Array.isArray(raw)) return "";
-  return raw.map((item) => String(item)).join("\n");
+  if (!Array.isArray(raw)) return '';
+  return raw.map((item) => String(item)).join('\n');
 }
 
 function setArrayLines(key: string, text: string) {
@@ -158,20 +158,20 @@ function rulesValue(key: string): ModelRouterRulePayload[] {
 
 function jsonFieldText(key: string): string {
   const raw = data.value[key];
-  if (raw == null) return "[]";
+  if (raw == null) return '[]';
   try {
     return JSON.stringify(raw, null, 2);
   } catch {
-    return "[]";
+    return '[]';
   }
 }
 
 function setJSONField(key: string, text: string) {
   try {
-    const parsed = JSON.parse(text || "[]");
+    const parsed = JSON.parse(text || '[]');
     setValue(key, parsed);
   } catch {
-    emit("validationError", "JSON 格式错误");
+    emit('validationError', 'JSON 格式错误');
   }
 }
 </script>

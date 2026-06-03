@@ -9,7 +9,7 @@
       <q-icon name="drag_indicator" size="16px" class="graph-task-card__drag-handle q-mr-xs" />
       <div class="col min-width-0">
         <div class="text-weight-medium">{{ task.nodeId || task.taskId }}</div>
-        <div class="text-caption app-text-secondary">{{ task.requiredRole || "worker" }}</div>
+        <div class="text-caption app-text-secondary">{{ task.requiredRole || 'worker' }}</div>
       </div>
       <q-badge rounded :color="statusColor">{{ statusLabel }}</q-badge>
     </q-card-section>
@@ -23,10 +23,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { Task } from "../../features/graph/types";
-import { TASK_STATUS_COLORS, TASK_STATUS_LABELS } from "../../features/graph/types";
-import { truncate } from "../../features/graph/utils";
+import { computed } from 'vue';
+import type { Task } from '../../features/graph/types';
+import { TASK_STATUS_COLORS, TASK_STATUS_LABELS } from '../../features/graph/types';
+import { truncate } from '../../features/graph/utils';
 
 const props = defineProps<{
   task: Task;
@@ -37,7 +37,5 @@ const props = defineProps<{
 defineEmits<{ select: [] }>();
 
 const statusLabel = computed(() => TASK_STATUS_LABELS[props.task.status] ?? props.task.status);
-const statusColor = computed(() => TASK_STATUS_COLORS[props.task.status] ?? "grey");
-
-
+const statusColor = computed(() => TASK_STATUS_COLORS[props.task.status] ?? 'grey');
 </script>

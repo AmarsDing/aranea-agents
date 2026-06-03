@@ -1,7 +1,7 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
-import { listAgents } from "../../features/agents/api";
-import type { Agent } from "../../features/agents/types";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
+import { listAgents } from '../../features/agents/api';
+import type { Agent } from '../../features/agents/types';
 import {
   createTeam,
   deleteTeam,
@@ -12,12 +12,12 @@ import {
   listTeams,
   runTeamTest,
   subscribeTeamRunEventsWs,
-  updateTeam
-} from "../../features/teams/api";
-import type { Team, TeamRun, TeamRunEvent, TeamRunStep, TeamRunSummary } from "../../features/teams/types";
+  updateTeam,
+} from '../../features/teams/api';
+import type { Team, TeamRun, TeamRunEvent, TeamRunStep, TeamRunSummary } from '../../features/teams/types';
 
 /** Teams 列表页：运行历史、测试与 WS 事件（HTTP 仅在此 Store actions）。 */
-export const useTeamsPageStore = defineStore("teamsPage", () => {
+export const useTeamsPageStore = defineStore('teamsPage', () => {
   const agents = ref<Agent[]>([]);
 
   async function loadAgents() {
@@ -83,6 +83,6 @@ export const useTeamsPageStore = defineStore("teamsPage", () => {
     loadRunSteps,
     loadRunSummary,
     testTeam,
-    subscribeRunEvents
+    subscribeRunEvents,
   };
 });

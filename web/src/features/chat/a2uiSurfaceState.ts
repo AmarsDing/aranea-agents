@@ -1,6 +1,6 @@
 /** Accumulate A2UI surface state from server-to-client JSONL messages. */
 
-import type { A2UIParseLine } from "./a2uiParse";
+import type { A2UIParseLine } from './a2uiParse';
 
 export type A2UIComponentRecord = {
   id: string;
@@ -18,8 +18,8 @@ export type A2UISurfaceState = {
 };
 
 const emptySurface = (): A2UISurfaceState => ({
-  surfaceId: "",
-  rootId: "",
+  surfaceId: '',
+  rootId: '',
   components: {},
   dataModel: {},
   ready: false,
@@ -29,16 +29,16 @@ const emptySurface = (): A2UISurfaceState => ({
 function applyDataModelContents(
   model: Record<string, unknown>,
   path: string | undefined,
-  contents: unknown
+  contents: unknown,
 ): Record<string, unknown> {
   const next = { ...model };
-  const p = (path ?? "").trim();
+  const p = (path ?? '').trim();
   if (!Array.isArray(contents)) return next;
   const map: Record<string, unknown> = {};
   for (const item of contents) {
-    if (!item || typeof item !== "object") continue;
+    if (!item || typeof item !== 'object') continue;
     const row = item as Record<string, unknown>;
-    const key = String(row.key ?? "").trim();
+    const key = String(row.key ?? '').trim();
     if (!key) continue;
     if (row.valueString !== undefined) map[key] = row.valueString;
     else if (row.valueNumber !== undefined) map[key] = row.valueNumber;
@@ -46,9 +46,9 @@ function applyDataModelContents(
     else if (Array.isArray(row.valueMap)) {
       const nested: Record<string, unknown> = {};
       for (const ent of row.valueMap) {
-        if (!ent || typeof ent !== "object") continue;
+        if (!ent || typeof ent !== 'object') continue;
         const e = ent as Record<string, unknown>;
-        const k = String(e.key ?? "").trim();
+        const k = String(e.key ?? '').trim();
         if (!k) continue;
         if (e.valueString !== undefined) nested[k] = e.valueString;
         else if (e.valueNumber !== undefined) nested[k] = e.valueNumber;
@@ -57,16 +57,16 @@ function applyDataModelContents(
       map[key] = nested;
     }
   }
-  if (!p || p === "/") {
+  if (!p || p === '/') {
     return { ...next, ...map };
   }
-  const parts = p.split("/").filter(Boolean);
+  const parts = p.split('/').filter(Boolean);
   if (parts.length === 0) return { ...next, ...map };
   let cursor: Record<string, unknown> = next;
   for (let i = 0; i < parts.length - 1; i++) {
     const seg = parts[i];
     const child = cursor[seg];
-    if (!child || typeof child !== "object" || Array.isArray(child)) {
+    if (!child || typeof child !== 'object' || Array.isArray(child)) {
       cursor[seg] = {};
     }
     cursor = cursor[seg] as Record<string, unknown>;
@@ -76,7 +76,7 @@ function applyDataModelContents(
 }
 
 function applyServerMessage(state: A2UISurfaceState, payload: Record<string, unknown>): A2UISurfaceState {
-  if (payload.beginRendering && typeof payload.beginRendering === "object") {
+  if (payload.beginRendering && typeof payload.beginRendering === 'object') {
     const br = payload.beginRendering as Record<string, unknown>;
     const surfaceId = String(br.surfaceId ?? state.surfaceId);
     const rootId = String(br.root ?? state.rootId);
@@ -88,28 +88,28 @@ function applyServerMessage(state: A2UISurfaceState, payload: Record<string, unk
       deleted: false,
     };
   }
-  if (payload.surfaceUpdate && typeof payload.surfaceUpdate === "object") {
+  if (payload.surfaceUpdate && typeof payload.surfaceUpdate === 'object') {
     const su = payload.surfaceUpdate as Record<string, unknown>;
     const surfaceId = String(su.surfaceId ?? state.surfaceId);
     const components = { ...state.components };
     const list = su.components;
     if (Array.isArray(list)) {
       for (const item of list) {
-        if (!item || typeof item !== "object") continue;
+        if (!item || typeof item !== 'object') continue;
         const row = item as Record<string, unknown>;
-        const id = String(row.id ?? "").trim();
+        const id = String(row.id ?? '').trim();
         const comp = row.component;
-        if (!id || !comp || typeof comp !== "object") continue;
+        if (!id || !comp || typeof comp !== 'object') continue;
         components[id] = {
           id,
           component: comp as Record<string, unknown>,
-          weight: typeof row.weight === "number" ? row.weight : undefined,
+          weight: typeof row.weight === 'number' ? row.weight : undefined,
         };
       }
     }
     return { ...state, surfaceId, components };
   }
-  if (payload.dataModelUpdate && typeof payload.dataModelUpdate === "object") {
+  if (payload.dataModelUpdate && typeof payload.dataModelUpdate === 'object') {
     const dm = payload.dataModelUpdate as Record<string, unknown>;
     const surfaceId = String(dm.surfaceId ?? state.surfaceId);
     return {
@@ -117,14 +117,14 @@ function applyServerMessage(state: A2UISurfaceState, payload: Record<string, unk
       surfaceId,
       dataModel: applyDataModelContents(
         state.dataModel,
-        typeof dm.path === "string" ? dm.path : undefined,
-        dm.contents
+        typeof dm.path === 'string' ? dm.path : undefined,
+        dm.contents,
       ),
     };
   }
-  if (payload.deleteSurface && typeof payload.deleteSurface === "object") {
+  if (payload.deleteSurface && typeof payload.deleteSurface === 'object') {
     const ds = payload.deleteSurface as Record<string, unknown>;
-    return { ...emptySurface(), surfaceId: String(ds.surfaceId ?? ""), deleted: true };
+    return { ...emptySurface(), surfaceId: String(ds.surfaceId ?? ''), deleted: true };
   }
   return state;
 }

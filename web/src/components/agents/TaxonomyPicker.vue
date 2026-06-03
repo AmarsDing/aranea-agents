@@ -21,14 +21,7 @@
       </div>
     </template>
 
-    <q-menu
-      v-model="menuOpen"
-      anchor="bottom left"
-      self="top left"
-      fit
-      :offset="[0, 6]"
-      class="taxonomy-field-menu"
-    >
+    <q-menu v-model="menuOpen" anchor="bottom left" self="top left" fit :offset="[0, 6]" class="taxonomy-field-menu">
       <q-card flat class="taxonomy-field-menu__card">
         <q-card-section class="q-pb-sm">
           <q-input
@@ -60,7 +53,7 @@
                   :class="{
                     'app-taxonomy-tree-node--selectable': prop.node.selectable || selectableLevel === 'any',
                     'app-taxonomy-tree-node--selected': modelValue === prop.node.id,
-                    'cursor-pointer': prop.node.selectable || selectableLevel === 'any'
+                    'cursor-pointer': prop.node.selectable || selectableLevel === 'any',
                   }"
                   @click.stop="onPick(prop.node)"
                 >
@@ -87,10 +80,10 @@
 </template>
 
 <script setup lang="ts">
-import { toRef } from "vue";
-import type { PlatformResourceTreeNode } from "../../features/platform/types";
-import { useTaxonomyTreeField } from "../../features/platform/useCategoryTreeField";
-import type { TaxonomyLevel } from "../../features/platform/taxonomyTreeUtils";
+import { toRef } from 'vue';
+import type { PlatformResourceTreeNode } from '../../features/platform/types';
+import { useTaxonomyTreeField } from '../../features/platform/useCategoryTreeField';
+import type { TaxonomyLevel } from '../../features/platform/taxonomyTreeUtils';
 
 const props = withDefaults(
   defineProps<{
@@ -101,25 +94,25 @@ const props = withDefaults(
     disable?: boolean;
     clearable?: boolean;
     /** position：创建 Agent 绑定职位；any：列表按行业/部门/职位筛选 */
-    selectableLevel?: CategoryLevel | "any";
-    captionMode?: "level" | "description";
+    selectableLevel?: CategoryLevel | 'any';
+    captionMode?: 'level' | 'description';
     icon?: string;
     controlClass?: string;
   }>(),
   {
-    label: "业务分类",
-    placeholder: "选择行业 / 部门 / 职位",
+    label: '业务分类',
+    placeholder: '选择行业 / 部门 / 职位',
     disable: false,
     clearable: true,
-    selectableLevel: "position",
-    captionMode: "description",
-    icon: "account_tree",
-    controlClass: "agent-dialog-control"
-  }
+    selectableLevel: 'position',
+    captionMode: 'description',
+    icon: 'account_tree',
+    controlClass: 'agent-dialog-control',
+  },
 );
 
 const emit = defineEmits<{
-  "update:modelValue": [value: string | null];
+  'update:modelValue': [value: string | null];
 }>();
 
 const {
@@ -131,11 +124,11 @@ const {
   levelLabel,
   onPick,
   clearSelection,
-  onExpandedUpdate
+  onExpandedUpdate,
 } = useTaxonomyTreeField({
-  modelValue: toRef(props, "modelValue"),
-  tree: toRef(props, "tree"),
-  selectableLevel: toRef(props, "selectableLevel"),
-  onUpdate: (value) => emit("update:modelValue", value)
+  modelValue: toRef(props, 'modelValue'),
+  tree: toRef(props, 'tree'),
+  selectableLevel: toRef(props, 'selectableLevel'),
+  onUpdate: (value) => emit('update:modelValue', value),
 });
 </script>

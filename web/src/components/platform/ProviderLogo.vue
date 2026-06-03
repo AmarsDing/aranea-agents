@@ -6,8 +6,8 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
-import { fetchProviderLogoSvg } from "../../features/model-catalog/providerLogo";
+import { onMounted, ref, watch } from 'vue';
+import { fetchProviderLogoSvg } from '../../features/model-catalog/providerLogo';
 
 const props = withDefaults(
   defineProps<{
@@ -16,17 +16,17 @@ const props = withDefaults(
     fallbackIcon?: string;
   }>(),
   {
-    size: "32px",
-    fallbackIcon: "memory"
-  }
+    size: '32px',
+    fallbackIcon: 'memory',
+  },
 );
 
-const svg = ref("");
+const svg = ref('');
 
 async function load() {
   const id = props.providerId.trim();
   if (!id) {
-    svg.value = "";
+    svg.value = '';
     return;
   }
   svg.value = await fetchProviderLogoSvg(id);
@@ -40,6 +40,6 @@ watch(
   () => props.providerId,
   () => {
     void load();
-  }
+  },
 );
 </script>

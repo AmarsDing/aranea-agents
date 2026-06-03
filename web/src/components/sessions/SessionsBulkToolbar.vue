@@ -23,8 +23,8 @@ defineProps<{
 }>();
 
 defineEmits<{
-  "toggle-selection": [];
-  "retention-archive": [];
-  "retention-delete": [];
+  'toggle-selection': [];
+  'retention-archive': [];
+  'retention-delete': [];
 }>();
 </script>

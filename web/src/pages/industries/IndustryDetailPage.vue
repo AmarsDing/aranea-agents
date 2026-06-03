@@ -1,6 +1,12 @@
 <template>
   <q-page padding>
-    <q-btn flat icon="arrow_back" label="行业模板库" @click="router.push({ name: 'industry-market' })" class="q-mb-md" />
+    <q-btn
+      flat
+      icon="arrow_back"
+      label="行业模板库"
+      class="q-mb-md"
+      @click="router.push({ name: 'industry-market' })"
+    />
 
     <div v-if="loading" class="row justify-center q-pa-lg">
       <q-spinner-dots size="40px" />
@@ -17,7 +23,9 @@
 
       <div class="text-h5 q-mb-md">部门</div>
       <q-list bordered separator>
-        <q-expansion-item v-for="dep in departments" :key="dep.key"
+        <q-expansion-item
+          v-for="dep in departments"
+          :key="dep.key"
           :label="dep.name"
           :caption="dep.description"
           @show="fetchPositions(dep.key)"
@@ -35,14 +43,14 @@
                 drag-class="position-item--dragging"
                 :animation="200"
                 :delay="100"
-                @update:modelValue="(val: Position[]) => reorderPositions(dep.key, val)"
+                @update:model-value="(val: Position[]) => reorderPositions(dep.key, val)"
               >
                 <template #item="{ element: pos }">
                   <q-item>
                     <q-item-section>
                       <q-item-label>{{ pos.name }}</q-item-label>
                       <q-item-label caption>{{ pos.description }}</q-item-label>
-                      <q-item-label caption v-if="pos.seniority_level">职级：{{ pos.seniority_level }}</q-item-label>
+                      <q-item-label v-if="pos.seniority_level" caption>职级：{{ pos.seniority_level }}</q-item-label>
                     </q-item-section>
                   </q-item>
                 </template>
@@ -56,16 +64,19 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import draggable from 'vuedraggable'
-import { useIndustryDetail } from '../../features/industries/useIndustryDetail'
-import type { Position } from '../../features/industries/types'
+import { onMounted } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
+import draggable from 'vuedraggable';
+import { useIndustryDetail } from '../../features/industries/useIndustryDetail';
+import type { Position } from '../../features/industries/types';
 
-const router = useRouter()
-const route = useRoute()
-const industryKey = route.params.key as string
-const { industry, departments, departmentPositions, loading, fetchDetail, fetchPositions, reorderPositions } = useIndustryDetail(industryKey)
+const router = useRouter();
+const route = useRoute();
+const industryKey = route.params.key as string;
+const { industry, departments, departmentPositions, loading, fetchDetail, fetchPositions, reorderPositions } =
+  useIndustryDetail(industryKey);
 
-onMounted(() => { void fetchDetail() })
+onMounted(() => {
+  void fetchDetail();
+});
 </script>

@@ -1,4 +1,4 @@
-import { computed, ref } from "vue";
+import { computed, ref } from 'vue';
 import {
   createPlatformResource,
   deletePlatformResource,
@@ -6,19 +6,19 @@ import {
   updatePlatformResource,
   type PlatformResource,
   type PlatformResourceInput,
-  type PlatformResourceName
-} from "./api";
+  type PlatformResourceName,
+} from './api';
 
 export function usePlatformResource(resource: PlatformResourceName) {
   const rows = ref<PlatformResource[]>([]);
   const loading = ref(false);
-  const keyword = ref("");
+  const keyword = ref('');
 
   const filteredRows = computed(() => {
     const q = keyword.value.trim().toLowerCase();
     if (!q) return rows.value;
     return rows.value.filter((row) =>
-      [row.key, row.name, row.description, row.provider, row.model].some((value) => value.toLowerCase().includes(q))
+      [row.key, row.name, row.description, row.provider, row.model].some((value) => value.toLowerCase().includes(q)),
     );
   });
 
@@ -56,6 +56,6 @@ export function usePlatformResource(resource: PlatformResourceName) {
     load,
     create,
     update,
-    remove
+    remove,
   };
 }

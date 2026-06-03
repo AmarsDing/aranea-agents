@@ -1,18 +1,18 @@
-import { onMounted, reactive, ref } from "vue";
-import { storeToRefs } from "pinia";
-import { useQuasar } from "quasar";
-import { useEcosystemStore } from "../../stores/ecosystem";
-import type { EcosystemProduct } from "./api";
+import { onMounted, reactive, ref } from 'vue';
+import { storeToRefs } from 'pinia';
+import { useQuasar } from 'quasar';
+import { useEcosystemStore } from '../../stores/ecosystem';
+import type { EcosystemProduct } from './api';
 
 export function useEcosystemPage() {
   const $q = useQuasar();
   const store = useEcosystemStore();
   const { products, loading } = storeToRefs(store);
-  const search = ref("");
+  const search = ref('');
   const publishing = ref(false);
   const publishOpen = ref(false);
-  const installingId = ref("");
-  const draft = reactive({ name: "", display_name: "", description: "", type: "skill_pack" });
+  const installingId = ref('');
+  const draft = reactive({ name: '', display_name: '', description: '', type: 'skill_pack' });
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -25,7 +25,7 @@ export function useEcosystemPage() {
     try {
       await store.load(search.value);
     } catch (e) {
-      $q.notify({ type: "negative", message: e instanceof Error ? e.message : "加载失败" });
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '加载失败' });
     }
   }
 
@@ -33,11 +33,11 @@ export function useEcosystemPage() {
     installingId.value = p.id;
     try {
       await store.install(p.id);
-      $q.notify({ type: "positive", message: "安装成功" });
+      $q.notify({ type: 'positive', message: '安装成功' });
     } catch (e) {
-      $q.notify({ type: "negative", message: e instanceof Error ? e.message : "安装失败" });
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '安装失败' });
     } finally {
-      installingId.value = "";
+      installingId.value = '';
     }
   }
 
@@ -46,9 +46,9 @@ export function useEcosystemPage() {
     try {
       await store.publish({ ...draft });
       publishOpen.value = false;
-      $q.notify({ type: "positive", message: "已发布" });
+      $q.notify({ type: 'positive', message: '已发布' });
     } catch (e) {
-      $q.notify({ type: "negative", message: e instanceof Error ? e.message : "发布失败" });
+      $q.notify({ type: 'negative', message: e instanceof Error ? e.message : '发布失败' });
     } finally {
       publishing.value = false;
     }
@@ -67,6 +67,6 @@ export function useEcosystemPage() {
     load,
     debouncedLoad,
     install,
-    publish
+    publish,
   };
 }

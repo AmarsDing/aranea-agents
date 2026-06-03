@@ -7,18 +7,23 @@
     >
       <template #actions>
         <q-btn color="primary" unelevated rounded no-caps icon="add" label="新建集合" @click="openCreateCollection" />
-        <q-btn outline rounded no-caps color="primary" icon="refresh" label="刷新" :loading="loading" @click="loadCollections" />
+        <q-btn
+          outline
+          rounded
+          no-caps
+          color="primary"
+          icon="refresh"
+          label="刷新"
+          :loading="loading"
+          @click="loadCollections"
+        />
       </template>
     </AppPageHero>
 
     <q-banner v-if="unavailable" rounded class="app-banner-warning q-mb-md">
       知识库服务不可用：{{ unavailable }}。请确认 Postgres / pgvector 已配置。
     </q-banner>
-    <knowledge-embedder-panel
-      :config="embedderConfig"
-      :saving="embedderSaving"
-      @save="saveEmbedderConfig"
-    />
+    <knowledge-embedder-panel :config="embedderConfig" :saving="embedderSaving" @save="saveEmbedderConfig" />
     <q-banner v-if="error" rounded class="bg-negative text-white q-mb-md">
       {{ error }}
       <template #action>
@@ -40,7 +45,7 @@
             <div class="row items-center justify-between">
               <div>
                 <div class="app-registry-cell-primary text-h6">{{ selectedCollection.name }}</div>
-                <div class="app-registry-cell-sub">{{ selectedCollection.description || "无描述" }}</div>
+                <div class="app-registry-cell-sub">{{ selectedCollection.description || '无描述' }}</div>
               </div>
               <q-btn flat no-caps color="negative" icon="delete" label="删除集合" @click="confirmDeleteCollection" />
             </div>
@@ -50,7 +55,9 @@
               <span>文档: {{ selectedCollection.document_count }}</span>
               <span>分块: {{ selectedCollection.chunk_count }}</span>
               <span v-if="selectedCollection.workspace">工作区: {{ selectedCollection.workspace }}</span>
-              <span v-if="selectedCollection.created_at">创建: {{ formatKnowledgeTime(selectedCollection.created_at) }}</span>
+              <span v-if="selectedCollection.created_at"
+                >创建: {{ formatKnowledgeTime(selectedCollection.created_at) }}</span
+              >
             </div>
           </q-card-section>
           <div class="app-tab-shell app-tab-shell--inset">
@@ -119,18 +126,18 @@
 </template>
 
 <script setup lang="ts">
-import { useQuasar } from "quasar";
-import AppPageHero from "../components/layout/AppPageHero.vue";
-import { onMounted } from "vue";
-import KnowledgeEmbedderPanel from "../components/knowledge/KnowledgeEmbedderPanel.vue";
-import KnowledgeCollectionList from "../components/knowledge/KnowledgeCollectionList.vue";
-import KnowledgeDocumentsPanel from "../components/knowledge/KnowledgeDocumentsPanel.vue";
-import KnowledgeSearchPanel from "../components/knowledge/KnowledgeSearchPanel.vue";
-import KnowledgeCreateDialog from "../components/knowledge/KnowledgeCreateDialog.vue";
-import KnowledgeIngestDialog from "../components/knowledge/KnowledgeIngestDialog.vue";
-import { useKnowledgePage } from "../features/knowledge/useKnowledgePage";
-import { useKnowledgeStore } from "../stores/knowledge";
-import { formatKnowledgeTime } from "../features/knowledge/knowledgeUi";
+import { useQuasar } from 'quasar';
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import { onMounted } from 'vue';
+import KnowledgeEmbedderPanel from '../components/knowledge/KnowledgeEmbedderPanel.vue';
+import KnowledgeCollectionList from '../components/knowledge/KnowledgeCollectionList.vue';
+import KnowledgeDocumentsPanel from '../components/knowledge/KnowledgeDocumentsPanel.vue';
+import KnowledgeSearchPanel from '../components/knowledge/KnowledgeSearchPanel.vue';
+import KnowledgeCreateDialog from '../components/knowledge/KnowledgeCreateDialog.vue';
+import KnowledgeIngestDialog from '../components/knowledge/KnowledgeIngestDialog.vue';
+import { useKnowledgePage } from '../features/knowledge/useKnowledgePage';
+import { useKnowledgeStore } from '../stores/knowledge';
+import { formatKnowledgeTime } from '../features/knowledge/knowledgeUi';
 
 const $q = useQuasar();
 const knowledgeStore = useKnowledgeStore();
@@ -173,14 +180,14 @@ const {
   onIngestFile,
   submitIngest,
   confirmDeleteDocument,
-  runSearch
+  runSearch,
 } = useKnowledgePage();
 
 onMounted(() => {
   void loadCollections();
   void knowledgeStore.loadEmbedderConfig().catch((e) => {
-    console.warn("[knowledge] embedder config load failed", e);
-    $q.notify({ type: "warning", message: "Embedder 配置加载失败，检索功能可能不可用" });
+    console.warn('[knowledge] embedder config load failed', e);
+    $q.notify({ type: 'warning', message: 'Embedder 配置加载失败，检索功能可能不可用' });
   });
 });
 </script>

@@ -1,8 +1,20 @@
 <template>
   <q-page class="app-standard-page tool-runs-page">
-    <tool-hero-section kicker="Tool observability" title="Tool 调用记录" subtitle="查看工具调用参数摘要、结果摘要、耗时、状态和错误信息。">
+    <tool-hero-section
+      kicker="Tool observability"
+      title="Tool 调用记录"
+      subtitle="查看工具调用参数摘要、结果摘要、耗时、状态和错误信息。"
+    >
       <template #actions>
-        <q-btn outline rounded no-caps class="app-outline-btn" icon="arrow_back" label="返回 Tools 管理" :to="{ name: 'tools' }" />
+        <q-btn
+          outline
+          rounded
+          no-caps
+          class="app-outline-btn"
+          icon="arrow_back"
+          label="返回 Tools 管理"
+          :to="{ name: 'tools' }"
+        />
       </template>
     </tool-hero-section>
 
@@ -30,16 +42,23 @@
 
     <tool-runs-table :rows="rows" :loading="loading" />
 
-    <app-registry-pagination v-model:page="page" v-model:page-size="pageSize" :page-max="pageMax" :total="total" :loading="loading" label="条调用记录" />
+    <app-registry-pagination
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :page-max="pageMax"
+      :total="total"
+      :loading="loading"
+      label="条调用记录"
+    />
   </q-page>
 </template>
 
 <script setup lang="ts">
-import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
-import ToolHeroSection from "../components/tools/ToolHeroSection.vue";
-import ToolRunsFilters from "../components/tools/ToolRunsFilters.vue";
-import ToolRunsTable from "../components/tools/ToolRunsTable.vue";
-import { useToolRunsPage } from "../features/tools/useToolRunsPage";
+import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import ToolHeroSection from '../components/tools/ToolHeroSection.vue';
+import ToolRunsFilters from '../components/tools/ToolRunsFilters.vue';
+import ToolRunsTable from '../components/tools/ToolRunsTable.vue';
+import { useToolRunsPage } from '../features/tools/useToolRunsPage';
 
 const {
   toolKey,
@@ -55,6 +74,6 @@ const {
   pageMax,
   statusOptions,
   resetFilters,
-  loadRows
+  loadRows,
 } = useToolRunsPage();
 </script>

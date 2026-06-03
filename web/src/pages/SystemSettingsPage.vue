@@ -9,7 +9,14 @@
       />
 
       <q-card flat class="app-settings-shell">
-        <q-tabs v-model="settingsTab" dense align="left" class="app-settings-tabs" active-color="primary" indicator-color="primary">
+        <q-tabs
+          v-model="settingsTab"
+          dense
+          align="left"
+          class="app-settings-tabs"
+          active-color="primary"
+          indicator-color="primary"
+        >
           <q-tab name="general" label="常规" icon="tune" />
           <q-tab name="catalog" label="模型目录" icon="dns" />
         </q-tabs>
@@ -25,14 +32,27 @@
                     <div class="section-heading__main">
                       <div class="section-title">
                         <q-icon name="folder_open" size="sm" color="primary" />
-                        <span class="section-title__text">{{ t("settingsPage.pathsTitle", "路径") }}</span>
+                        <span class="section-title__text">{{ t('settingsPage.pathsTitle', '路径') }}</span>
                       </div>
-                      <p class="settings-section__hint">{{ t("settingsPage.rootDirHint") }}</p>
+                      <p class="settings-section__hint">{{ t('settingsPage.rootDirHint') }}</p>
                     </div>
                   </div>
                   <div class="settings-field-stack">
-                    <q-input v-model="rootDir" class="app-field-long" :label="t('settingsPage.rootDir')" outlined dense />
-                    <q-input v-model="workDir" class="app-field-long" :label="t('settingsPage.workDir')" :hint="t('settingsPage.workDirHint')" outlined dense />
+                    <q-input
+                      v-model="rootDir"
+                      class="app-field-long"
+                      :label="t('settingsPage.rootDir')"
+                      outlined
+                      dense
+                    />
+                    <q-input
+                      v-model="workDir"
+                      class="app-field-long"
+                      :label="t('settingsPage.workDir')"
+                      :hint="t('settingsPage.workDirHint')"
+                      outlined
+                      dense
+                    />
                   </div>
                 </section>
 
@@ -41,12 +61,19 @@
                     <div class="section-heading__main">
                       <div class="section-title">
                         <q-icon name="link" size="sm" color="primary" />
-                        <span class="section-title__text">{{ t("settingsPage.a2aPublicBaseTitle") }}</span>
+                        <span class="section-title__text">{{ t('settingsPage.a2aPublicBaseTitle') }}</span>
                       </div>
-                      <p class="settings-section__hint">{{ t("settingsPage.a2aPublicBaseHint") }}</p>
+                      <p class="settings-section__hint">{{ t('settingsPage.a2aPublicBaseHint') }}</p>
                     </div>
                   </div>
-                  <q-input v-model.trim="a2aPublicBaseUrl" class="app-field-long" :label="t('settingsPage.a2aPublicBaseUrl')" :hint="effectiveA2AHint" outlined dense />
+                  <q-input
+                    v-model.trim="a2aPublicBaseUrl"
+                    class="app-field-long"
+                    :label="t('settingsPage.a2aPublicBaseUrl')"
+                    :hint="effectiveA2AHint"
+                    outlined
+                    dense
+                  />
                 </section>
 
                 <section class="settings-section">
@@ -54,19 +81,26 @@
                     <div class="section-heading__main">
                       <div class="section-title">
                         <q-icon name="vpn_key" size="sm" color="primary" />
-                        <span class="section-title__text">{{ t("settingsPage.credentialKeyTitle") }}</span>
+                        <span class="section-title__text">{{ t('settingsPage.credentialKeyTitle') }}</span>
                       </div>
-                      <p class="settings-section__hint">{{ t("settingsPage.credentialKeyHint") }}</p>
+                      <p class="settings-section__hint">{{ t('settingsPage.credentialKeyHint') }}</p>
                     </div>
                   </div>
-                  <q-banner dense rounded :class="credentialKeyConfigured ? 'settings-info-banner' : 'settings-warning-banner'">
+                  <q-banner
+                    dense
+                    rounded
+                    :class="credentialKeyConfigured ? 'settings-info-banner' : 'settings-warning-banner'"
+                  >
                     <template #avatar>
-                      <q-icon :name="credentialKeyConfigured ? 'lock' : 'lock_open'" :color="credentialKeyConfigured ? 'positive' : 'warning'" />
+                      <q-icon
+                        :name="credentialKeyConfigured ? 'lock' : 'lock_open'"
+                        :color="credentialKeyConfigured ? 'positive' : 'warning'"
+                      />
                     </template>
                     {{
                       credentialKeyConfigured
-                        ? t("settingsPage.credentialKeyConfigured")
-                        : t("settingsPage.credentialKeyPending")
+                        ? t('settingsPage.credentialKeyConfigured')
+                        : t('settingsPage.credentialKeyPending')
                     }}
                   </q-banner>
                 </section>
@@ -76,12 +110,22 @@
                     <div class="section-heading__main">
                       <div class="section-title">
                         <q-icon name="account_balance_wallet" size="sm" color="primary" />
-                        <span class="section-title__text">{{ t("settingsPage.globalQuotaTitle") }}</span>
+                        <span class="section-title__text">{{ t('settingsPage.globalQuotaTitle') }}</span>
                       </div>
-                      <p class="settings-section__hint">{{ t("settingsPage.globalQuotaHint") }}</p>
+                      <p class="settings-section__hint">{{ t('settingsPage.globalQuotaHint') }}</p>
                     </div>
                   </div>
-                  <q-input v-model.number="globalMonthlyUsd" class="app-field-sm" :label="t('settingsPage.globalQuotaUsd')" outlined dense type="number" min="0" step="0.01" prefix="$" />
+                  <q-input
+                    v-model.number="globalMonthlyUsd"
+                    class="app-field-sm"
+                    :label="t('settingsPage.globalQuotaUsd')"
+                    outlined
+                    dense
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    prefix="$"
+                  />
                 </section>
 
                 <section class="settings-section">
@@ -89,9 +133,9 @@
                     <div class="section-heading__main">
                       <div class="section-title">
                         <q-icon name="travel_explore" size="sm" color="primary" />
-                        <span class="section-title__text">{{ t("settingsPage.webResearchTitle") }}</span>
+                        <span class="section-title__text">{{ t('settingsPage.webResearchTitle') }}</span>
                       </div>
-                      <p class="settings-section__hint">{{ t("settingsPage.webResearchHint") }}</p>
+                      <p class="settings-section__hint">{{ t('settingsPage.webResearchHint') }}</p>
                     </div>
                   </div>
                   <web-research-fields
@@ -109,9 +153,9 @@
                     <div class="section-heading__main">
                       <div class="section-title">
                         <q-icon name="hub" size="sm" color="primary" />
-                        <span class="section-title__text">{{ t("settingsPage.mcpAdhocTitle") }}</span>
+                        <span class="section-title__text">{{ t('settingsPage.mcpAdhocTitle') }}</span>
                       </div>
-                      <p class="settings-section__hint">{{ t("settingsPage.mcpAdhocHint") }}</p>
+                      <p class="settings-section__hint">{{ t('settingsPage.mcpAdhocHint') }}</p>
                     </div>
                   </div>
                   <q-toggle v-model="mcpAllowAdhocHttp" :label="t('settingsPage.mcpAdhocToggle')" />
@@ -122,9 +166,9 @@
                     <div class="section-heading__main">
                       <div class="section-title">
                         <q-icon name="model_training" size="sm" color="primary" />
-                        <span class="section-title__text">{{ t("settingsPage.knowledgeEmbedTitle") }}</span>
+                        <span class="section-title__text">{{ t('settingsPage.knowledgeEmbedTitle') }}</span>
                       </div>
-                      <p class="settings-section__hint">{{ t("settingsPage.knowledgeEmbedHint") }}</p>
+                      <p class="settings-section__hint">{{ t('settingsPage.knowledgeEmbedHint') }}</p>
                     </div>
                   </div>
                   <knowledge-embedder-fields
@@ -140,22 +184,42 @@
                     <div class="section-heading__main">
                       <div class="section-title">
                         <q-icon name="rate_review" size="sm" color="primary" />
-                        <span class="section-title__text">{{ t("settingsPage.evalLLM.title") }}</span>
+                        <span class="section-title__text">{{ t('settingsPage.evalLLM.title') }}</span>
                       </div>
-                      <p class="settings-section__hint">{{ t("settingsPage.evalLLM.hint") }}</p>
+                      <p class="settings-section__hint">{{ t('settingsPage.evalLLM.hint') }}</p>
                     </div>
                   </div>
                   <div class="app-form-field-grid app-form-field-grid--2col">
-                    <q-input v-model="evalLLMForm.simProvider" :label="t('settingsPage.evalLLM.simProvider')" outlined dense />
-                    <q-input v-model="evalLLMForm.simModel" :label="t('settingsPage.evalLLM.simModel')" outlined dense />
-                    <q-input v-model="evalLLMForm.judgeProvider" :label="t('settingsPage.evalLLM.judgeProvider')" outlined dense />
-                    <q-input v-model="evalLLMForm.judgeModel" :label="t('settingsPage.evalLLM.judgeModel')" outlined dense />
+                    <q-input
+                      v-model="evalLLMForm.simProvider"
+                      :label="t('settingsPage.evalLLM.simProvider')"
+                      outlined
+                      dense
+                    />
+                    <q-input
+                      v-model="evalLLMForm.simModel"
+                      :label="t('settingsPage.evalLLM.simModel')"
+                      outlined
+                      dense
+                    />
+                    <q-input
+                      v-model="evalLLMForm.judgeProvider"
+                      :label="t('settingsPage.evalLLM.judgeProvider')"
+                      outlined
+                      dense
+                    />
+                    <q-input
+                      v-model="evalLLMForm.judgeModel"
+                      :label="t('settingsPage.evalLLM.judgeModel')"
+                      outlined
+                      dense
+                    />
                   </div>
                   <q-banner v-if="evalLLMConfigured" dense rounded class="settings-info-banner q-mt-md">
                     <template #avatar>
                       <q-icon name="check_circle" color="positive" />
                     </template>
-                    {{ t("settingsPage.evalLLM.configured") }}
+                    {{ t('settingsPage.evalLLM.configured') }}
                   </q-banner>
                 </section>
               </div>
@@ -163,8 +227,24 @@
               <div class="settings-footer">
                 <div v-if="lastSavedLabel" class="settings-footer__timestamp">{{ lastSavedLabel }}</div>
                 <div class="settings-footer__actions">
-                  <q-btn outline color="primary" no-caps :loading="loading" :label="t('settingsPage.reload')" icon="refresh" @click="load" />
-                  <q-btn color="primary" unelevated no-caps :loading="saving" :label="t('settingsPage.save')" icon="save" @click="save" />
+                  <q-btn
+                    outline
+                    color="primary"
+                    no-caps
+                    :loading="loading"
+                    :label="t('settingsPage.reload')"
+                    icon="refresh"
+                    @click="load"
+                  />
+                  <q-btn
+                    color="primary"
+                    unelevated
+                    no-caps
+                    :loading="saving"
+                    :label="t('settingsPage.save')"
+                    icon="save"
+                    @click="save"
+                  />
                 </div>
               </div>
             </q-card-section>
@@ -179,35 +259,32 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
-import { useI18n } from "vue-i18n";
-import { useQuasar } from "quasar";
-import { useSystemSettingsStore } from "../stores/system-settings";
-import { useA2AStore } from "../stores/a2a";
-import {
-  knowledgeEmbedFromSettings,
-  knowledgeEmbedToPatch
-} from "../features/system-settings/knowledge-embed";
-import { DEFAULT_EVAL_LLM_FORM, evalLLMFromSettings } from "../features/system-settings/eval-llm";
+import { computed, onMounted, reactive, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
+import { useSystemSettingsStore } from '../stores/system-settings';
+import { useA2AStore } from '../stores/a2a';
+import { knowledgeEmbedFromSettings, knowledgeEmbedToPatch } from '../features/system-settings/knowledge-embed';
+import { DEFAULT_EVAL_LLM_FORM, evalLLMFromSettings } from '../features/system-settings/eval-llm';
 import {
   DEFAULT_WEB_RESEARCH_FORM,
   webResearchFromSettings,
-  webResearchToPatch
-} from "../features/system-settings/web-research";
-import { DEFAULT_KNOWLEDGE_EMBED_FORM } from "../features/knowledge/embedder-constants";
-import KnowledgeEmbedderFields from "../components/knowledge/KnowledgeEmbedderFields.vue";
-import AppPageHero from "../components/layout/AppPageHero.vue";
-import WebResearchFields from "../components/settings/WebResearchFields.vue";
-import SystemSettingsCatalogTab from "./SystemSettingsCatalogTab.vue";
+  webResearchToPatch,
+} from '../features/system-settings/web-research';
+import { DEFAULT_KNOWLEDGE_EMBED_FORM } from '../features/knowledge/embedder-constants';
+import KnowledgeEmbedderFields from '../components/knowledge/KnowledgeEmbedderFields.vue';
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import WebResearchFields from '../components/settings/WebResearchFields.vue';
+import SystemSettingsCatalogTab from './SystemSettingsCatalogTab.vue';
 const { t } = useI18n();
-const settingsTab = ref("general");
+const settingsTab = ref('general');
 const $q = useQuasar();
 const settingsStore = useSystemSettingsStore();
 const a2aStore = useA2AStore();
-const rootDir = ref("");
-const workDir = ref("");
-const a2aPublicBaseUrl = ref("");
-const effectiveA2AUrl = ref("");
+const rootDir = ref('');
+const workDir = ref('');
+const a2aPublicBaseUrl = ref('');
+const effectiveA2AUrl = ref('');
 const globalMonthlyUsd = ref<number | null>(null);
 const mcpAllowAdhocHttp = ref(false);
 const credentialKeyConfigured = ref(false);
@@ -223,17 +300,17 @@ const evalLLMConfigured = ref(false);
 const updateTime = ref<string | undefined>(undefined);
 const loading = ref(false);
 const saving = ref(false);
-const error = ref("");
+const error = ref('');
 
 const lastSavedLabel = computed(() => {
   const ts = updateTime.value;
-  if (!ts) return "";
-  return t("settingsPage.lastSaved", { time: ts });
+  if (!ts) return '';
+  return t('settingsPage.lastSaved', { time: ts });
 });
 
 const effectiveA2AHint = computed(() => {
-  if (!effectiveA2AUrl.value) return t("settingsPage.a2aPublicBaseEmptyHint");
-  return t("settingsPage.a2aPublicBaseEffective", { url: effectiveA2AUrl.value });
+  if (!effectiveA2AUrl.value) return t('settingsPage.a2aPublicBaseEmptyHint');
+  return t('settingsPage.a2aPublicBaseEffective', { url: effectiveA2AUrl.value });
 });
 
 function usdToMicroUsd(usd: number | null | undefined): number {
@@ -250,16 +327,16 @@ onMounted(load);
 
 async function load() {
   loading.value = true;
-  error.value = "";
+  error.value = '';
   try {
     await settingsStore.loadSettings();
     const res = settingsStore.settings;
     if (!res) return;
     const a2aCfg = await a2aStore.loadRuntimeConfig().catch(() => null);
-    rootDir.value = res.rootDirectory ?? "";
-    workDir.value = res.workDirectory ?? "";
-    a2aPublicBaseUrl.value = res.a2aPublicBaseUrl ?? "";
-    effectiveA2AUrl.value = a2aCfg?.public_base_url ?? "";
+    rootDir.value = res.rootDirectory ?? '';
+    workDir.value = res.workDirectory ?? '';
+    a2aPublicBaseUrl.value = res.a2aPublicBaseUrl ?? '';
+    effectiveA2AUrl.value = a2aCfg?.public_base_url ?? '';
     globalMonthlyUsd.value = microUsdToUsd(res.globalMonthlyMicroUsd);
     mcpAllowAdhocHttp.value = Boolean(res.mcpAllowAdhocHttp);
     credentialKeyConfigured.value = Boolean(res.credentialEncryptionKeyConfigured);
@@ -281,7 +358,7 @@ async function load() {
 
 async function testWebResearchConnection() {
   webResearchTesting.value = true;
-  error.value = "";
+  error.value = '';
   try {
     const patch = webResearchToPatch(webResearchForm);
     const res = await settingsStore.testWebResearchConnection({
@@ -291,22 +368,22 @@ async function testWebResearchConnection() {
       fetchTop: patch.fetchTop,
       searchDepth: patch.searchDepth,
       timeoutSec: patch.timeoutSec,
-      httpProxy: patch.httpProxy
+      httpProxy: patch.httpProxy,
     });
     if (res.ok) {
       $q.notify({
-        type: "positive",
-        message: res.message || t("settingsPage.webResearch.testOk")
+        type: 'positive',
+        message: res.message || t('settingsPage.webResearch.testOk'),
       });
     } else {
       $q.notify({
-        type: "negative",
-        message: res.message || t("settingsPage.webResearch.testFailed")
+        type: 'negative',
+        message: res.message || t('settingsPage.webResearch.testFailed'),
       });
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    $q.notify({ type: "negative", message: msg || t("settingsPage.webResearch.testFailed") });
+    $q.notify({ type: 'negative', message: msg || t('settingsPage.webResearch.testFailed') });
   } finally {
     webResearchTesting.value = false;
   }
@@ -314,7 +391,7 @@ async function testWebResearchConnection() {
 
 async function save() {
   saving.value = true;
-  error.value = "";
+  error.value = '';
   try {
     const res = await settingsStore.saveAll({
       rootDirectory: rootDir.value,
@@ -324,13 +401,13 @@ async function save() {
       mcpAllowAdhocHttp: mcpAllowAdhocHttp.value,
       knowledgeEmbed: knowledgeEmbedToPatch(knowledgeEmbedForm),
       evalLLM: evalLLMForm,
-      webResearch: webResearchToPatch(webResearchForm)
+      webResearch: webResearchToPatch(webResearchForm),
     });
-    rootDir.value = res.rootDirectory ?? "";
-    workDir.value = res.workDirectory ?? "";
-    a2aPublicBaseUrl.value = res.a2aPublicBaseUrl ?? "";
+    rootDir.value = res.rootDirectory ?? '';
+    workDir.value = res.workDirectory ?? '';
+    a2aPublicBaseUrl.value = res.a2aPublicBaseUrl ?? '';
     const a2aCfg = await a2aStore.loadRuntimeConfig().catch(() => null);
-    effectiveA2AUrl.value = a2aCfg?.public_base_url ?? "";
+    effectiveA2AUrl.value = a2aCfg?.public_base_url ?? '';
     globalMonthlyUsd.value = microUsdToUsd(res.globalMonthlyMicroUsd);
     mcpAllowAdhocHttp.value = Boolean(res.mcpAllowAdhocHttp);
     credentialKeyConfigured.value = Boolean(res.credentialEncryptionKeyConfigured);
@@ -343,10 +420,10 @@ async function save() {
     webResearchHasApiKey.value = Boolean(res.webResearch?.hasApiKey);
     evalLLMConfigured.value = Boolean(res.evalLlm?.configured);
     updateTime.value = res.updateTime;
-    $q.notify({ type: "positive", message: t("settingsPage.saveOk") });
+    $q.notify({ type: 'positive', message: t('settingsPage.saveOk') });
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : String(e);
-    $q.notify({ type: "negative", message: t("settingsPage.saveFailed") });
+    $q.notify({ type: 'negative', message: t('settingsPage.saveFailed') });
   } finally {
     saving.value = false;
   }

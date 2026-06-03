@@ -40,13 +40,7 @@
         label="验证命令 (verify_command)"
         hint="每轮结束后执行的 shell 命令；退出码 0 才视为通过"
       />
-      <q-input
-        v-model="form.verify_work_dir"
-        dense
-        outlined
-        label="验证命令工作目录"
-        placeholder="留空使用进程 cwd"
-      />
+      <q-input v-model="form.verify_work_dir" dense outlined label="验证命令工作目录" placeholder="留空使用进程 cwd" />
       <q-input
         v-model.number="form.verify_timeout_seconds"
         dense
@@ -56,26 +50,14 @@
         suffix="秒"
         label="验证超时"
       />
-      <q-input
-        v-model="form.promise_tag_open"
-        dense
-        outlined
-        label="承诺开始标签"
-        placeholder="&lt;promise&gt;"
-      />
-      <q-input
-        v-model="form.promise_tag_close"
-        dense
-        outlined
-        label="承诺结束标签"
-        placeholder="&lt;/promise&gt;"
-      />
+      <q-input v-model="form.promise_tag_open" dense outlined label="承诺开始标签" placeholder="&lt;promise&gt;" />
+      <q-input v-model="form.promise_tag_close" dense outlined label="承诺结束标签" placeholder="&lt;/promise&gt;" />
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import type { RalphLoopFormState } from "../../features/agents/ralphLoopConfig";
+import type { RalphLoopFormState } from '../../features/agents/ralphLoopConfig';
 
-const form = defineModel<RalphLoopFormState>("form", { required: true });
+const form = defineModel<RalphLoopFormState>('form', { required: true });
 </script>

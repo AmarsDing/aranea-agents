@@ -8,7 +8,16 @@
       <q-separator />
       <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md">
         <q-input v-model="sessionId" class="app-field-md" dense outlined label="Session ID" hint="关联的会话 ID" />
-        <q-input v-model="initialState" class="app-field-long" dense outlined autogrow type="textarea" label="初始状态 (JSON)" hint="可选，JSON 格式的初始状态" />
+        <q-input
+          v-model="initialState"
+          class="app-field-long"
+          dense
+          outlined
+          autogrow
+          type="textarea"
+          label="初始状态 (JSON)"
+          hint="可选，JSON 格式的初始状态"
+        />
       </q-card-section>
       <q-separator />
       <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
@@ -21,8 +30,8 @@
 
 <script setup lang="ts">
 const open = defineModel<boolean>({ required: true });
-const sessionId = defineModel<string>("sessionId", { required: true });
-const initialState = defineModel<string>("initialState", { required: true });
+const sessionId = defineModel<string>('sessionId', { required: true });
+const initialState = defineModel<string>('initialState', { required: true });
 
 defineProps<{
   graphName?: string;

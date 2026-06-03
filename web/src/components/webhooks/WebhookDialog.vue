@@ -2,8 +2,10 @@
   <q-dialog v-model="open" persistent>
     <q-card class="app-dialog-card app-dialog-card--lg app-glass-dialog">
       <q-card-section class="app-glass-dialog__head row items-center justify-between">
-        <div class="app-glass-dialog__title">{{ editingId ? t("webhooksPage.dialogTitleEdit") : t("webhooksPage.dialogTitleCreate") }}</div>
-        <q-btn flat round dense icon="close" v-close-popup />
+        <div class="app-glass-dialog__title">
+          {{ editingId ? t('webhooksPage.dialogTitleEdit') : t('webhooksPage.dialogTitleCreate') }}
+        </div>
+        <q-btn v-close-popup flat round dense icon="close" />
       </q-card-section>
       <q-separator />
       <div class="app-glass-dialog__scroll">
@@ -36,20 +38,28 @@
       </div>
       <q-separator />
       <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-        <q-btn flat no-caps :label="t('webhooksPage.btnCancel')" v-close-popup />
-        <q-btn color="primary" unelevated no-caps :label="t('webhooksPage.btnSave')" :loading="saving" :disable="!form.name?.trim() || !form.url?.trim()" @click="$emit('save')" />
+        <q-btn v-close-popup flat no-caps :label="t('webhooksPage.btnCancel')" />
+        <q-btn
+          color="primary"
+          unelevated
+          no-caps
+          :label="t('webhooksPage.btnSave')"
+          :loading="saving"
+          :disable="!form.name?.trim() || !form.url?.trim()"
+          @click="$emit('save')"
+        />
       </q-card-actions>
     </q-card>
   </q-dialog>
 </template>
 
 <script setup lang="ts">
-import { reactive } from "vue";
-import { useI18n } from "vue-i18n";
+import { reactive } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n();
 
-const open = defineModel<boolean>("open", { required: true });
+const open = defineModel<boolean>('open', { required: true });
 
 const props = defineProps<{
   editingId: string;
@@ -59,28 +69,35 @@ const props = defineProps<{
 defineEmits<{ save: [] }>();
 
 const form = reactive({
-  name: "",
-  url: "",
-  secret: "",
-  event_types_json: "[]",
-  headers_json: "{}",
-  enabled: true
+  name: '',
+  url: '',
+  secret: '',
+  event_types_json: '[]',
+  headers_json: '{}',
+  enabled: true,
 });
 
 function reset(create: boolean) {
-  form.name = "";
-  form.url = "";
-  form.secret = "";
-  form.event_types_json = "[]";
-  form.headers_json = "{}";
+  form.name = '';
+  form.url = '';
+  form.secret = '';
+  form.event_types_json = '[]';
+  form.headers_json = '{}';
   form.enabled = true;
 }
 
-function fill(row: { name: string; url: string; secret: string; event_types_json: string; headers: Record<string, string>; enabled: boolean }) {
+function fill(row: {
+  name: string;
+  url: string;
+  secret: string;
+  event_types_json: string;
+  headers: Record<string, string>;
+  enabled: boolean;
+}) {
   form.name = row.name;
   form.url = row.url;
   form.secret = row.secret;
-  form.event_types_json = row.event_types_json || "[]";
+  form.event_types_json = row.event_types_json || '[]';
   form.headers_json = JSON.stringify(row.headers ?? {}, null, 2);
   form.enabled = row.enabled;
 }
@@ -88,7 +105,7 @@ function fill(row: { name: string; url: string; secret: string; event_types_json
 function getPayload() {
   let headers: Record<string, string> = {};
   try {
-    headers = JSON.parse(form.headers_json || "{}");
+    headers = JSON.parse(form.headers_json || '{}');
   } catch {}
   return {
     name: form.name,
@@ -96,7 +113,7 @@ function getPayload() {
     secret: form.secret,
     event_types_json: form.event_types_json,
     headers,
-    enabled: form.enabled
+    enabled: form.enabled,
   };
 }
 

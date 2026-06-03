@@ -2,7 +2,15 @@
   <q-splitter v-model="splitterModel" class="agent-files-splitter fit">
     <template #before>
       <q-list bordered separator class="agent-file-list">
-        <q-item v-for="file in files" :key="file.name" clickable :active="activeFile === file.name" active-class="agent-file-item--active" class="agent-file-item" @click="$emit('update:activeFile', file.name)">
+        <q-item
+          v-for="file in files"
+          :key="file.name"
+          clickable
+          :active="activeFile === file.name"
+          active-class="agent-file-item--active"
+          class="agent-file-item"
+          @click="$emit('update:activeFile', file.name)"
+        >
           <q-item-section>
             <q-item-label>{{ file.name }}</q-item-label>
             <q-item-label caption>{{ fileTokenLabel(file.name, file.body) }}</q-item-label>
@@ -29,7 +37,15 @@
               outline
               @apply="(v: string) => emit('update-file-body', activeFile, v)"
             />
-            <q-btn color="primary" rounded unelevated icon="save" label="保存" :disable="!dirty" @click="$emit('save')" />
+            <q-btn
+              color="primary"
+              rounded
+              unelevated
+              icon="save"
+              label="保存"
+              :disable="!dirty"
+              @click="$emit('save')"
+            />
           </div>
         </div>
         <q-input v-model="bodyModel" class="q-mt-md app-markdown-editor" outlined type="textarea" label="Markdown" />
@@ -40,10 +56,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { AgentFile } from "./agentUi";
-import { tokenEstimateFor, tokenText } from "./agentUi";
-import AiRefineButton from "./AIRefineButton.vue";
+import { computed } from 'vue';
+import type { AgentFile } from './agentUi';
+import { tokenEstimateFor, tokenText } from './agentUi';
+import AiRefineButton from './AIRefineButton.vue';
 
 const props = defineProps<{
   files: AgentFile[];
@@ -52,7 +68,7 @@ const props = defineProps<{
   dirty: boolean;
   fileTokenByName?: Record<string, number>;
   agentId?: string;
-}>(); 
+}>();
 
 function fileTokenLabel(name: string, body: string) {
   const n = props.fileTokenByName?.[name];
@@ -68,27 +84,27 @@ const activeTokenCount = computed(() => {
 });
 
 const emit = defineEmits<{
-  "update:activeFile": [value: string];
-  "update:splitter": [value: number];
-  "update-file-body": [fileName: string, body: string];
-  "confirm-reload": [];
+  'update:activeFile': [value: string];
+  'update:splitter': [value: number];
+  'update-file-body': [fileName: string, body: string];
+  'confirm-reload': [];
   reload: [];
   save: [];
 }>();
 
 function confirmReload() {
-  emit("confirm-reload");
+  emit('confirm-reload');
 }
 
 const splitterModel = computed({
   get: () => props.splitter,
-  set: (value: number) => emit("update:splitter", value)
+  set: (value: number) => emit('update:splitter', value),
 });
 
 const activeFileMeta = computed(() => props.files.find((file) => file.name === props.activeFile) ?? props.files[0]);
 
 const bodyModel = computed({
-  get: () => activeFileMeta.value?.body ?? "",
-  set: (value: string) => emit("update-file-body", props.activeFile, value)
+  get: () => activeFileMeta.value?.body ?? '',
+  set: (value: string) => emit('update-file-body', props.activeFile, value),
 });
 </script>

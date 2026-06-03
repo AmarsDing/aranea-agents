@@ -1,6 +1,6 @@
-import type { AxiosError } from "axios";
+import type { AxiosError } from 'axios';
 
-export type LoginErrorKind = "network" | "credentials" | "server" | "unknown";
+export type LoginErrorKind = 'network' | 'credentials' | 'server' | 'unknown';
 
 export type LoginErrorInfo = {
   kind: LoginErrorKind;
@@ -8,9 +8,9 @@ export type LoginErrorInfo = {
 };
 
 function kratosMessage(data: unknown): string | undefined {
-  if (!data || typeof data !== "object") return undefined;
+  if (!data || typeof data !== 'object') return undefined;
   const msg = (data as Record<string, unknown>).message;
-  return typeof msg === "string" && msg.trim() ? msg.trim() : undefined;
+  return typeof msg === 'string' && msg.trim() ? msg.trim() : undefined;
 }
 
 /** Map login API failures to user-actionable messages (design: admin-auth §5). */
@@ -18,15 +18,15 @@ export function formatLoginError(err: unknown, t: (key: string) => string): Logi
   const axiosErr = err as AxiosError | undefined;
   if (!axiosErr?.isAxiosError) {
     return {
-      kind: "unknown",
-      message: t("auth.loginFailedUnknown")
+      kind: 'unknown',
+      message: t('auth.loginFailedUnknown'),
     };
   }
 
   if (!axiosErr.response) {
     return {
-      kind: "network",
-      message: t("auth.loginFailedNetwork")
+      kind: 'network',
+      message: t('auth.loginFailedNetwork'),
     };
   }
 
@@ -35,20 +35,20 @@ export function formatLoginError(err: unknown, t: (key: string) => string): Logi
 
   if (status === 401 || status === 400) {
     return {
-      kind: "credentials",
-      message: apiMsg || t("auth.loginFailedCredentials")
+      kind: 'credentials',
+      message: apiMsg || t('auth.loginFailedCredentials'),
     };
   }
 
   if (status >= 500) {
     return {
-      kind: "server",
-      message: apiMsg || t("auth.loginFailedServer")
+      kind: 'server',
+      message: apiMsg || t('auth.loginFailedServer'),
     };
   }
 
   return {
-    kind: "unknown",
-    message: apiMsg || t("auth.loginFailed")
+    kind: 'unknown',
+    message: apiMsg || t('auth.loginFailed'),
   };
 }

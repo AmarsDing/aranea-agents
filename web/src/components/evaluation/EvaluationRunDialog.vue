@@ -37,7 +37,15 @@
       </q-card-section>
       <q-card-actions align="right" class="app-actions-bar">
         <q-btn flat no-caps label="取消" @click="$emit('update:open', false)" />
-        <q-btn color="primary" unelevated no-caps label="运行" :loading="loading" :disable="!agentId" @click="$emit('submit')" />
+        <q-btn
+          color="primary"
+          unelevated
+          no-caps
+          label="运行"
+          :loading="loading"
+          :disable="!agentId"
+          @click="$emit('submit')"
+        />
       </q-card-actions>
     </q-card>
   </q-dialog>
@@ -53,10 +61,10 @@ defineProps<{
   agentOptions: { label: string; value: string }[];
 }>();
 defineEmits<{
-  "update:open": [value: boolean];
-  "update:agentId": [value: string];
-  "update:metrics": [value: string];
-  "update:numRuns": [value: number];
+  'update:open': [value: boolean];
+  'update:agentId': [value: string];
+  'update:metrics': [value: string];
+  'update:numRuns': [value: number];
   submit: [];
 }>();
 </script>

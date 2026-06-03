@@ -1,4 +1,4 @@
-export type AgentKind = "" | "llm" | "a2a_proxy";
+export type AgentKind = '' | 'llm' | 'a2a_proxy';
 
 export type A2AProxyConfig = {
   remote_url: string;

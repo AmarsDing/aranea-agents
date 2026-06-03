@@ -10,7 +10,7 @@
       <div class="chat-reasoning-drawer__header row items-center no-wrap">
         <div class="chat-reasoning-drawer__title text-subtitle2 text-weight-medium">
           <q-icon name="psychology" size="18px" class="q-mr-xs" />
-          {{ t("chat.reasoningTitle", "思考过程") }}
+          {{ t('chat.reasoningTitle', '思考过程') }}
           <span v-if="activeReasoning.streaming" class="chat-reasoning-drawer__live" aria-hidden="true" />
         </div>
         <q-btn flat dense round icon="close" size="sm" @click="emit('close')" />
@@ -25,16 +25,16 @@
         />
       </div>
       <div v-if="canScroll && !followTail" class="chat-reasoning-drawer__hint text-caption">
-        {{ t("chat.reasoningScrollHint", "滚轮查看更多") }}
+        {{ t('chat.reasoningScrollHint', '滚轮查看更多') }}
       </div>
     </aside>
   </transition>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
-import { useI18n } from "vue-i18n";
-import { renderChatMarkdownForMessage } from "../../features/chat/chatMessageMarkdown";
+import { computed, nextTick, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
 
 const props = defineProps<{
   open: boolean;
@@ -58,7 +58,7 @@ const maxScroll = ref(0);
 const followTail = ref(true);
 
 const renderedHtml = computed(() => {
-  if (!props.activeReasoning) return "";
+  if (!props.activeReasoning) return '';
   return renderChatMarkdownForMessage(
     props.activeReasoning.messageId,
     props.activeReasoning.reasoning,
@@ -69,7 +69,7 @@ const renderedHtml = computed(() => {
 const canScroll = computed(() => maxScroll.value > 0);
 
 const contentStyle = computed(() =>
-  scrollOffset.value > 0 ? { transform: `translateY(-${scrollOffset.value}px)` } : undefined
+  scrollOffset.value > 0 ? { transform: `translateY(-${scrollOffset.value}px)` } : undefined,
 );
 
 function measureScroll() {
@@ -104,7 +104,7 @@ watch(
   () => {
     void nextTick(applyTailFollow);
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(
@@ -114,15 +114,18 @@ watch(
       followTail.value = true;
       void nextTick(scrollToTail);
     }
-  }
+  },
 );
 
-watch(() => props.open, (isOpen) => {
-  if (isOpen) {
-    followTail.value = true;
-    void nextTick(scrollToTail);
-  }
-});
+watch(
+  () => props.open,
+  (isOpen) => {
+    if (isOpen) {
+      followTail.value = true;
+      void nextTick(scrollToTail);
+    }
+  },
+);
 
 function onWheel(e: WheelEvent) {
   if (maxScroll.value <= 0) return;

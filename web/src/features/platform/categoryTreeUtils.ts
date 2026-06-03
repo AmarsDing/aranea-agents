@@ -20,5 +20,5 @@ export {
   toQTreeNodes,
   inferCascadeFromPosition,
   patchCategoryTreeNode,
-  collectDefaultExpandedIds
-} from "./taxonomyTreeUtils";
+  collectDefaultExpandedIds,
+} from './taxonomyTreeUtils';

@@ -11,9 +11,35 @@
     </AppPageHero>
 
     <AppPageToolbar>
-      <q-input v-model="skillId" class="app-page-toolbar__field" dense outlined clearable debounce="350" label="Skill ID" />
-      <q-input v-model="agentId" class="app-page-toolbar__field" dense outlined clearable debounce="350" label="Agent ID" />
-      <q-select v-model="status" class="app-page-toolbar__field" dense outlined clearable emit-value map-options label="结果" :options="statusOptions" />
+      <q-input
+        v-model="skillId"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        debounce="350"
+        label="Skill ID"
+      />
+      <q-input
+        v-model="agentId"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        debounce="350"
+        label="Agent ID"
+      />
+      <q-select
+        v-model="status"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        emit-value
+        map-options
+        label="结果"
+        :options="statusOptions"
+      />
       <q-input v-model="from" class="app-page-toolbar__field" dense outlined clearable type="date" label="开始日期" />
       <q-input v-model="to" class="app-page-toolbar__field" dense outlined clearable type="date" label="结束日期" />
       <template #actions>
@@ -31,16 +57,23 @@
 
     <skill-runs-table :rows="rows" :loading="loading" />
 
-    <skill-pagination v-model:page="page" v-model:page-size="pageSize" :page-max="pageMax" :total="total" :loading="loading" label="条运行记录" />
+    <skill-pagination
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :page-max="pageMax"
+      :total="total"
+      :loading="loading"
+      label="条运行记录"
+    />
   </q-page>
 </template>
 
 <script setup lang="ts">
-import AppPageHero from "../components/layout/AppPageHero.vue";
-import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
-import SkillPagination from "../components/skills/SkillPagination.vue";
-import SkillRunsTable from "../components/skills/SkillRunsTable.vue";
-import { useSkillRunsPage } from "../features/skills/useSkillRunsPage";
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
+import SkillPagination from '../components/skills/SkillPagination.vue';
+import SkillRunsTable from '../components/skills/SkillRunsTable.vue';
+import { useSkillRunsPage } from '../features/skills/useSkillRunsPage';
 
 const {
   skillId,
@@ -57,6 +90,6 @@ const {
   statusOptions,
   pageMax,
   resetFilters,
-  loadRows
+  loadRows,
 } = useSkillRunsPage();
 </script>

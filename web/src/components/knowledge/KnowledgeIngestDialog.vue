@@ -3,12 +3,19 @@
     <q-card class="app-dialog-card app-dialog-card--sm app-glass-dialog">
       <q-card-section class="app-glass-dialog__head row items-center justify-between">
         <div class="app-glass-dialog__title">文档入库</div>
-        <q-btn flat round dense icon="close" v-close-popup />
+        <q-btn v-close-popup flat round dense icon="close" />
       </q-card-section>
       <q-separator />
       <div class="app-glass-dialog__scroll">
         <q-card-section class="app-dialog-body app-glass-dialog__body q-gutter-md">
-          <q-input :model-value="source" class="app-field-md" dense outlined label="来源标识" @update:model-value="$emit('update:source', String($event ?? ''))" />
+          <q-input
+            :model-value="source"
+            class="app-field-md"
+            dense
+            outlined
+            label="来源标识"
+            @update:model-value="$emit('update:source', String($event ?? ''))"
+          />
           <q-input
             :model-value="mimeType"
             class="app-field-sm"
@@ -84,7 +91,7 @@
       </div>
       <q-separator />
       <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-        <q-btn flat no-caps label="取消" v-close-popup />
+        <q-btn v-close-popup flat no-caps label="取消" />
         <q-btn color="primary" unelevated no-caps label="入库" :loading="loading" @click="$emit('submit')" />
       </q-card-actions>
     </q-card>
@@ -92,7 +99,7 @@
 </template>
 
 <script setup lang="ts">
-import { KNOWLEDGE_CHUNK_STRATEGY_OPTIONS } from "../../features/knowledge/knowledgeUi";
+import { KNOWLEDGE_CHUNK_STRATEGY_OPTIONS } from '../../features/knowledge/knowledgeUi';
 
 defineProps<{
   open: boolean;
@@ -106,14 +113,14 @@ defineProps<{
   loading: boolean;
 }>();
 defineEmits<{
-  "update:open": [value: boolean];
-  "update:source": [value: string];
-  "update:mimeType": [value: string];
-  "update:text": [value: string];
-  "update:file": [value: File | null];
-  "update:chunkStrategy": [value: string];
-  "update:chunkSize": [value: number];
-  "update:chunkOverlap": [value: number];
+  'update:open': [value: boolean];
+  'update:source': [value: string];
+  'update:mimeType': [value: string];
+  'update:text': [value: string];
+  'update:file': [value: File | null];
+  'update:chunkStrategy': [value: string];
+  'update:chunkSize': [value: number];
+  'update:chunkOverlap': [value: number];
   submit: [];
 }>();
 

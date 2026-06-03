@@ -4,7 +4,7 @@
       <q-card-section class="app-glass-dialog__head row items-start justify-between no-wrap">
         <div class="col min-width-0">
           <div class="app-glass-dialog__subtitle">Session Inspector</div>
-          <div class="app-glass-dialog__title">{{ sessionTitle || "Untitled session" }}</div>
+          <div class="app-glass-dialog__title">{{ sessionTitle || 'Untitled session' }}</div>
           <q-tabs v-model="activeTab" dense align="left" class="q-mt-sm" active-color="primary">
             <q-tab name="trace" label="历史 Trace" />
             <q-tab name="events" label="实时 Envelope" />
@@ -34,11 +34,7 @@
               <div class="q-mt-sm sessions-muted">No trace events yet.</div>
             </div>
             <div v-else class="session-timeline__rail">
-              <SessionTimelineEntry
-                v-for="item in timeline.items"
-                :key="`${item.kind}:${item.id}`"
-                :item="item"
-              />
+              <SessionTimelineEntry v-for="item in timeline.items" :key="`${item.kind}:${item.id}`" :item="item" />
             </div>
           </q-card-section>
         </q-tab-panel>
@@ -57,15 +53,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, toRef, watch } from "vue";
-import type { ChatEventInspectorStreamDeps } from "../../features/chat/composables/useChatEventInspector";
-import { useSessionTimelineInspector } from "../../features/session/useSessionTimelineInspector";
-import { buildTimelineStats } from "../../features/session/timelineHelpers";
-import SessionEventInspectorPanel from "./SessionEventInspectorPanel.vue";
-import SessionTimelineEntry from "../sessions/SessionTimelineEntry.vue";
-import SessionTimelineStats from "../sessions/SessionTimelineStats.vue";
+import { computed, ref, toRef, watch } from 'vue';
+import type { ChatEventInspectorStreamDeps } from '../../features/chat/composables/useChatEventInspector';
+import { useSessionTimelineInspector } from '../../features/session/useSessionTimelineInspector';
+import { buildTimelineStats } from '../../features/session/timelineHelpers';
+import SessionEventInspectorPanel from './SessionEventInspectorPanel.vue';
+import SessionTimelineEntry from '../sessions/SessionTimelineEntry.vue';
+import SessionTimelineStats from '../sessions/SessionTimelineStats.vue';
 
-export type SessionInspectorTab = "trace" | "events";
+export type SessionInspectorTab = 'trace' | 'events';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -76,20 +72,20 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:modelValue": [value: boolean];
+  'update:modelValue': [value: boolean];
 }>();
 
-const activeTab = ref<SessionInspectorTab>(props.initialTab ?? "trace");
+const activeTab = ref<SessionInspectorTab>(props.initialTab ?? 'trace');
 
 const dialogOpen = computed({
   get: () => props.modelValue,
-  set: (value: boolean) => emit("update:modelValue", value),
+  set: (value: boolean) => emit('update:modelValue', value),
 });
 
 const { timeline, loading, error } = useSessionTimelineInspector({
   open: dialogOpen,
   sessionId: toRef(() => props.sessionId),
-  traceTabActive: computed(() => activeTab.value === "trace"),
+  traceTabActive: computed(() => activeTab.value === 'trace'),
 });
 
 const stats = computed(() => buildTimelineStats(timeline.value?.summary));

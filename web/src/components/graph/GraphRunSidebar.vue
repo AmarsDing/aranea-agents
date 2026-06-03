@@ -65,7 +65,13 @@
             :subtitle="formatTime(step.timestamp)"
             :icon="stepIcon(step.status)"
             :color="stepColor(step.status)"
-            :class="['graph-run-step', { 'graph-run-step--error': step.status === 'failed' || step.status === 'error', 'graph-run-step--expanded': expandedSteps.has(step.stepIndex) }]"
+            :class="[
+              'graph-run-step',
+              {
+                'graph-run-step--error': step.status === 'failed' || step.status === 'error',
+                'graph-run-step--expanded': expandedSteps.has(step.stepIndex),
+              },
+            ]"
           >
             <div class="graph-run-step__header row items-center no-wrap">
               <q-badge
@@ -105,9 +111,9 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, computed } from "vue";
-import type { GraphExecution, GraphRunExecutionSummary } from "../../features/graph/types";
-import { formatTime, stepIcon, stepColor } from "../../features/graph/utils";
+import { reactive, computed } from 'vue';
+import type { GraphExecution, GraphRunExecutionSummary } from '../../features/graph/types';
+import { formatTime, stepIcon, stepColor } from '../../features/graph/utils';
 
 const props = defineProps<{
   execution: GraphExecution | null;
@@ -146,7 +152,7 @@ function toggleAll() {
 }
 
 function formatDurationMs(ms: number) {
-  if (!ms) return "—";
+  if (!ms) return '—';
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
 }
@@ -154,7 +160,7 @@ function formatDurationMs(ms: number) {
 const JSON_PREVIEW_MAX = 4096;
 
 function formatJson(state: Record<string, unknown> | undefined): string {
-  if (!state) return "";
+  if (!state) return '';
   try {
     const raw = JSON.stringify(state, null, 2);
     return raw.length > JSON_PREVIEW_MAX ? `${raw.slice(0, JSON_PREVIEW_MAX)}\n… (已截断，共 ${raw.length} 字符)` : raw;

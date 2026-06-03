@@ -4,7 +4,9 @@
     <q-card flat bordered class="memory-card">
       <q-card-section>
         <div class="text-h6">Recall 调试器</div>
-        <div class="text-caption text-grey-7">输入 query 查看 L2/L3 rerank 分数分解（keyword / vector / importance / recency / cross-encoder）。</div>
+        <div class="text-caption text-grey-7">
+          输入 query 查看 L2/L3 rerank 分数分解（keyword / vector / importance / recency / cross-encoder）。
+        </div>
       </q-card-section>
       <q-card-section class="q-gutter-md">
         <div class="row q-col-gutter-md">
@@ -19,8 +21,21 @@
           </div>
         </div>
         <div class="row q-gutter-sm">
-          <q-btn color="primary" label="Debug Recall" :loading="loadingDebug" :disable="!agentId || !query.trim()" @click="runDebug" />
-          <q-btn outline color="secondary" label="Composite Search" :loading="loadingComposite" :disable="!agentId || !query.trim()" @click="runComposite" />
+          <q-btn
+            color="primary"
+            label="Debug Recall"
+            :loading="loadingDebug"
+            :disable="!agentId || !query.trim()"
+            @click="runDebug"
+          />
+          <q-btn
+            outline
+            color="secondary"
+            label="Composite Search"
+            :loading="loadingComposite"
+            :disable="!agentId || !query.trim()"
+            @click="runComposite"
+          />
         </div>
         <q-banner v-if="error" rounded class="bg-negative text-white">{{ error }}</q-banner>
       </q-card-section>
@@ -32,11 +47,7 @@
           <q-card-section>
             <div class="text-subtitle1">Composite Search（L2 + L3 融合）</div>
           </q-card-section>
-          <AppRegistryMarkupTable
-            :rows="compositeRows"
-            :columns="compositeColumns"
-            row-key="row_uid"
-          >
+          <AppRegistryMarkupTable :rows="compositeRows" :columns="compositeColumns" row-key="row_uid">
             <template #cell-layer="{ row }">
               <AppRegistryHoverTip :text="String(row.text || row.id)" empty-label="暂无文本">
                 <q-badge :color="row.layer === 'L2' ? 'teal' : 'deep-purple'">{{ row.layer }}</q-badge>
@@ -62,29 +73,27 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import type { CompositeSearchHit, MemoryRecallHit } from "./types";
-import { compositeSearchMemories, debugMemoryRecall } from "./api";
-import RecallHitTable from "../../components/memory/RecallHitTable.vue";
-import AppRegistryHoverTip from "../../components/layout/AppRegistryHoverTip.vue";
-import AppRegistryMarkupTable from "../../components/layout/AppRegistryMarkupTable.vue";
-import { REGISTRY_COL_W, registryCol } from "../ui/registryTableColumns";
+import { computed, ref, watch } from 'vue';
+import type { CompositeSearchHit, MemoryRecallHit } from './types';
+import { compositeSearchMemories, debugMemoryRecall } from './api';
+import RecallHitTable from '../../components/memory/RecallHitTable.vue';
+import AppRegistryHoverTip from '../../components/layout/AppRegistryHoverTip.vue';
+import AppRegistryMarkupTable from '../../components/layout/AppRegistryMarkupTable.vue';
+import { REGISTRY_COL_W, registryCol } from '../ui/registryTableColumns';
 
 const compositeColumns = [
-  registryCol("layer", "Layer", "layer", "left", REGISTRY_COL_W.nameWide),
-  registryCol("score", "Score", "score", "right", REGISTRY_COL_W.metric)
+  registryCol('layer', 'Layer', 'layer', 'left', REGISTRY_COL_W.nameWide),
+  registryCol('score', 'Score', 'score', 'right', REGISTRY_COL_W.metric),
 ];
 
-const compositeRows = computed(() =>
-  compositeHits.value.map((row) => ({ ...row, row_uid: `${row.layer}-${row.id}` }))
-);
+const compositeRows = computed(() => compositeHits.value.map((row) => ({ ...row, row_uid: `${row.layer}-${row.id}` })));
 
 const props = defineProps<{
   agentId: string | null;
   sessionId?: string | null;
 }>();
 
-const query = ref("");
+const query = ref('');
 const l2Limit = ref(5);
 const l3Limit = ref(8);
 const l2Hits = ref<MemoryRecallHit[]>([]);
@@ -92,7 +101,7 @@ const l3Hits = ref<MemoryRecallHit[]>([]);
 const compositeHits = ref<CompositeSearchHit[]>([]);
 const loadingDebug = ref(false);
 const loadingComposite = ref(false);
-const error = ref("");
+const error = ref('');
 
 watch(
   () => props.agentId,
@@ -100,26 +109,26 @@ watch(
     l2Hits.value = [];
     l3Hits.value = [];
     compositeHits.value = [];
-    error.value = "";
-  }
+    error.value = '';
+  },
 );
 
 async function runDebug() {
   if (!props.agentId || !query.value.trim()) return;
   loadingDebug.value = true;
-  error.value = "";
+  error.value = '';
   try {
     const res = await debugMemoryRecall({
       agent_id: props.agentId,
       session_id: props.sessionId || undefined,
       query: query.value.trim(),
       l2_limit: l2Limit.value,
-      l3_limit: l3Limit.value
+      l3_limit: l3Limit.value,
     });
     l2Hits.value = res.l2_hits;
     l3Hits.value = res.l3_hits;
   } catch (err) {
-    error.value = err instanceof Error ? err.message : "Recall debug failed";
+    error.value = err instanceof Error ? err.message : 'Recall debug failed';
   } finally {
     loadingDebug.value = false;
   }
@@ -128,16 +137,16 @@ async function runDebug() {
 async function runComposite() {
   if (!props.agentId || !query.value.trim()) return;
   loadingComposite.value = true;
-  error.value = "";
+  error.value = '';
   try {
     compositeHits.value = await compositeSearchMemories({
       agent_id: props.agentId,
       session_id: props.sessionId || undefined,
       query: query.value.trim(),
-      limit: 10
+      limit: 10,
     });
   } catch (err) {
-    error.value = err instanceof Error ? err.message : "Composite search failed";
+    error.value = err instanceof Error ? err.message : 'Composite search failed';
   } finally {
     loadingComposite.value = false;
   }

@@ -20,11 +20,9 @@
         <template #cell-occurred_at="{ value }">
           <span class="overview-anomaly-time">{{ formatTime(String(value)) }}</span>
         </template>
-        <template #cell-model_api_id="{ row }">
-          {{ row.provider_code }} / {{ row.model_api_id }}
-        </template>
+        <template #cell-model_api_id="{ row }"> {{ row.provider_code }} / {{ row.model_api_id }} </template>
         <template #cell-agent_id="{ row }">
-          {{ row.agent_key || "—" }}
+          {{ row.agent_key || '—' }}
         </template>
         <template #cell-status="{ row }">
           <AppRegistryHoverTip :text="String(row.error_message ?? '')" empty-label="暂无错误信息">
@@ -38,10 +36,10 @@
 </template>
 
 <script setup lang="ts">
-import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
-import AppRegistryMarkupTable from "../layout/AppRegistryMarkupTable.vue";
-import { usageAnomalyColumns } from "./usageAnomalyTableUi";
-import type { ModelTokenUsageEvent } from "../../features/usage/types";
+import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import AppRegistryMarkupTable from '../layout/AppRegistryMarkupTable.vue';
+import { usageAnomalyColumns } from './usageAnomalyTableUi';
+import type { ModelTokenUsageEvent } from '../../features/usage/types';
 
 defineProps<{
   rows: ModelTokenUsageEvent[];
@@ -50,7 +48,7 @@ defineProps<{
 const columns = usageAnomalyColumns;
 
 function formatTime(value: string) {
-  if (!value) return "—";
+  if (!value) return '—';
   try {
     return new Date(value).toLocaleString();
   } catch {

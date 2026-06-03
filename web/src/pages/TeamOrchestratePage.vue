@@ -3,7 +3,7 @@
     <div class="team-orchestrate-page__toolbar graph-editor-page__toolbar">
       <q-btn flat dense round icon="arrow_back" @click="goBack" />
       <div class="graph-workbench__toolbar-meta">
-        <div class="team-orchestrate-page__title">{{ teamRow?.display_name || "Team 编排" }}</div>
+        <div class="team-orchestrate-page__title">{{ teamRow?.display_name || 'Team 编排' }}</div>
         <div v-if="compiled" class="graph-workbench__subtitle">
           {{ compiled.mode }} · 模板 {{ compiled.template_id }}
           <span v-if="liveMode"> · 运行中</span>
@@ -12,7 +12,7 @@
       <q-space />
       <q-badge v-if="liveConnected" rounded class="team-orchestrate-page__live-badge">实时</q-badge>
       <q-badge v-if="compiled" rounded :color="compiled.valid ? 'positive' : 'negative'">
-        {{ compiled.valid ? "校验通过" : "校验失败" }}
+        {{ compiled.valid ? '校验通过' : '校验失败' }}
       </q-badge>
       <q-btn
         v-if="liveMode && activeRun"
@@ -26,7 +26,16 @@
       <q-btn flat dense round icon="refresh" :loading="loading" @click="reload">
         <q-tooltip>重新编译</q-tooltip>
       </q-btn>
-      <q-btn flat dense round icon="save" color="primary" :loading="saving" :disable="readOnly || !dirty" @click="saveGraph">
+      <q-btn
+        flat
+        dense
+        round
+        icon="save"
+        color="primary"
+        :loading="saving"
+        :disable="readOnly || !dirty"
+        @click="saveGraph"
+      >
         <q-tooltip>保存 graph 到 definition</q-tooltip>
       </q-btn>
     </div>
@@ -34,13 +43,27 @@
     <q-banner v-if="readOnly" dense rounded class="q-ma-md bg-orange-1 text-dark">
       <div class="row items-center wrap q-gutter-sm">
         <span>团队有进行中的 Run，编排定义只读。画布与看板已切换为实时模式。</span>
-        <q-btn v-if="activeRun" flat dense color="primary" icon="insights" label="打开观测台" @click="openObservatory" />
+        <q-btn
+          v-if="activeRun"
+          flat
+          dense
+          color="primary"
+          icon="insights"
+          label="打开观测台"
+          @click="openObservatory"
+        />
       </div>
     </q-banner>
 
-    <q-banner v-if="issues.length" dense rounded class="q-ma-md" :class="compiled?.valid ? 'bg-warning text-dark' : 'bg-red-1 text-dark'">
+    <q-banner
+      v-if="issues.length"
+      dense
+      rounded
+      class="q-ma-md"
+      :class="compiled?.valid ? 'bg-warning text-dark' : 'bg-red-1 text-dark'"
+    >
       <div v-for="(issue, idx) in issues" :key="idx" class="text-caption">
-        {{ issue.warning ? "⚠" : "✕" }} {{ issue.message || issue.code }}
+        {{ issue.warning ? '⚠' : '✕' }} {{ issue.message || issue.code }}
         <span v-if="issue.nodeId"> · {{ issue.nodeId }}</span>
       </div>
     </q-banner>
@@ -99,9 +122,9 @@
         <q-separator class="q-my-md" />
         <div class="text-subtitle2 q-mb-sm">编译拓扑</div>
         <div class="text-caption text-grey-7">入口</div>
-        <div class="text-body2 q-mb-sm">{{ compiled?.entry_point || "—" }}</div>
+        <div class="text-body2 q-mb-sm">{{ compiled?.entry_point || '—' }}</div>
         <div class="text-caption text-grey-7">出口</div>
-        <div class="text-body2 q-mb-md">{{ compiled?.finish_point || "—" }}</div>
+        <div class="text-body2 q-mb-md">{{ compiled?.finish_point || '—' }}</div>
         <q-input
           v-model="linkedGraphId"
           dense
@@ -116,7 +139,7 @@
           <q-item v-for="n in compiled?.nodes ?? []" :key="n.id">
             <q-item-section>
               <q-item-label>{{ n.description || n.agentName || n.id }}</q-item-label>
-              <q-item-label caption>{{ n.role || n.type }} · {{ n.agentName || "—" }}</q-item-label>
+              <q-item-label caption>{{ n.role || n.type }} · {{ n.agentName || '—' }}</q-item-label>
             </q-item-section>
           </q-item>
         </q-list>
@@ -126,20 +149,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import GraphEditorCanvas from "../components/graph/GraphEditorCanvas.vue";
-import OrchestrationKanban from "../components/orchestration/OrchestrationKanban.vue";
-import TeamMemberKanban from "../components/teams/TeamMemberKanban.vue";
-import TeamOrchestrateRuntimePanel from "../components/teams/TeamOrchestrateRuntimePanel.vue";
-import TeamOrchestrateNodePanel from "../components/teams/TeamOrchestrateNodePanel.vue";
-import { useTeamOrchestratePage } from "../features/teams/useTeamOrchestratePage";
-import { storeToRefs } from "pinia";
-import { useAuthStore } from "../stores/auth";
+import { ref } from 'vue';
+import GraphEditorCanvas from '../components/graph/GraphEditorCanvas.vue';
+import OrchestrationKanban from '../components/orchestration/OrchestrationKanban.vue';
+import TeamMemberKanban from '../components/teams/TeamMemberKanban.vue';
+import TeamOrchestrateRuntimePanel from '../components/teams/TeamOrchestrateRuntimePanel.vue';
+import TeamOrchestrateNodePanel from '../components/teams/TeamOrchestrateNodePanel.vue';
+import { useTeamOrchestratePage } from '../features/teams/useTeamOrchestratePage';
+import { storeToRefs } from 'pinia';
+import { useAuthStore } from '../stores/auth';
 
 const authStore = useAuthStore();
 const { isPlatformAdmin } = storeToRefs(authStore);
 
-const activeTab = ref("canvas");
+const activeTab = ref('canvas');
 
 const {
   isDark,
@@ -170,12 +193,12 @@ const {
   goBack,
 } = useTeamOrchestratePage();
 
-function onRuntimePatch(patch: Partial<import("../features/teams/types").TeamDefinition>) {
+function onRuntimePatch(patch: Partial<import('../features/teams/types').TeamDefinition>) {
   patchDefinition(patch);
 }
 
 function onKanbanSelectNode(nodeId: string) {
   onSelectNode(nodeId);
-  activeTab.value = "canvas";
+  activeTab.value = 'canvas';
 }
 </script>

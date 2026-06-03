@@ -3,7 +3,7 @@
 </template>
 
 <script setup lang="ts">
-import type { MonitorLogLine } from "../../features/monitor/types";
+import type { MonitorLogLine } from '../../features/monitor/types';
 
 defineProps<{
   traceId: string;

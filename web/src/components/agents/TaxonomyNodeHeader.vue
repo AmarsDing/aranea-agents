@@ -11,7 +11,7 @@
           size="sm"
           :class="parseIsSystem(node) ? 'system-chip' : 'custom-chip'"
         >
-          {{ parseIsSystem(node) ? "系统" : "自建" }}
+          {{ parseIsSystem(node) ? '系统' : '自建' }}
         </q-chip>
         <q-chip v-if="!node.enabled" dense square size="sm" class="taxonomy-tree-node__status-off">已停用</q-chip>
       </div>
@@ -56,9 +56,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { PlatformResourceTreeNode } from "../../features/platform/types";
-import { parseIsSystem, trimmedDesc } from "../../features/platform/taxonomyTreeUtils";
+import { computed } from 'vue';
+import type { PlatformResourceTreeNode } from '../../features/platform/types';
+import { parseIsSystem, trimmedDesc } from '../../features/platform/taxonomyTreeUtils';
 
 const props = defineProps<{
   node: PlatformResourceTreeNode;
@@ -69,15 +69,15 @@ const props = defineProps<{
 
 defineEmits<{
   edit: [];
-  "create-child": [];
+  'create-child': [];
   remove: [];
-  "toggle-enabled": [enabled: boolean];
+  'toggle-enabled': [enabled: boolean];
 }>();
 
 const icon = computed(() => {
-  if (props.node.level === "industry") return "domain";
-  if (props.node.level === "department") return "lan";
-  return "badge";
+  if (props.node.level === 'industry') return 'domain';
+  if (props.node.level === 'department') return 'lan';
+  return 'badge';
 });
 
 const caption = computed(() => trimmedDesc(props.node.description));

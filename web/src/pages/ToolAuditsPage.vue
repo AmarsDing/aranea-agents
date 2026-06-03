@@ -6,7 +6,15 @@
       subtitle="结构化审计谁在何时调用了什么工具；默认保留 90 天。"
     >
       <template #actions>
-        <q-btn outline rounded no-caps class="tool-audits-outline-btn" icon="arrow_back" label="返回 Tools 管理" :to="{ name: 'tools' }" />
+        <q-btn
+          outline
+          rounded
+          no-caps
+          class="tool-audits-outline-btn"
+          icon="arrow_back"
+          label="返回 Tools 管理"
+          :to="{ name: 'tools' }"
+        />
       </template>
     </tool-hero-section>
 
@@ -34,16 +42,23 @@
 
     <tool-audits-table :rows="rows" :loading="loading" />
 
-    <app-registry-pagination v-model:page="page" v-model:page-size="pageSize" :page-max="pageMax" :total="total" :loading="loading" label="条审计记录" />
+    <app-registry-pagination
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :page-max="pageMax"
+      :total="total"
+      :loading="loading"
+      label="条审计记录"
+    />
   </q-page>
 </template>
 
 <script setup lang="ts">
-import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
-import ToolAuditsFilters from "../components/tools/ToolAuditsFilters.vue";
-import ToolAuditsTable from "../components/tools/ToolAuditsTable.vue";
-import ToolHeroSection from "../components/tools/ToolHeroSection.vue";
-import { useToolAuditsPage } from "../features/tools/useToolAuditsPage";
+import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import ToolAuditsFilters from '../components/tools/ToolAuditsFilters.vue';
+import ToolAuditsTable from '../components/tools/ToolAuditsTable.vue';
+import ToolHeroSection from '../components/tools/ToolHeroSection.vue';
+import { useToolAuditsPage } from '../features/tools/useToolAuditsPage';
 
 const {
   toolKey,
@@ -59,6 +74,6 @@ const {
   pageMax,
   statusOptions,
   loadRows,
-  resetFilters
+  resetFilters,
 } = useToolAuditsPage();
 </script>

@@ -1,30 +1,48 @@
-import { defineStore } from "pinia";
-import { ref } from "vue";
+import { defineStore } from 'pinia';
+import { ref } from 'vue';
 import {
-  listTools, getTool, createTool, updateTool, deleteTool, toggleToolEnabled, updateToolConfig,
-  getAgentEffectiveTools, listToolAgentOverrides, listToolAgentOverridesByAgent,
-  upsertToolAgentOverride, deleteToolAgentOverride,   listToolRunsForTool,
+  listTools,
+  getTool,
+  createTool,
+  updateTool,
+  deleteTool,
+  toggleToolEnabled,
+  updateToolConfig,
+  getAgentEffectiveTools,
+  listToolAgentOverrides,
+  listToolAgentOverridesByAgent,
+  upsertToolAgentOverride,
+  deleteToolAgentOverride,
+  listToolRunsForTool,
   listToolRuns,
   listToolInvocationAudits,
-  testTool
-} from "../../features/tools/api";
-import type { ToolTestResult } from "../../features/tools/types";
+  testTool,
+} from '../../features/tools/api';
+import type { ToolTestResult } from '../../features/tools/types';
 import type {
-  Tool, ToolListQuery, ToolUpsertInput, ToolListResponse,
-  AgentEffectiveTools, ToolAgentOverride, ToolInvocation, ToolRunQuery,
-  ToolAuditQuery, ToolInvocationAudit, PaginatedResponse
-} from "../../features/tools/types";
+  Tool,
+  ToolListQuery,
+  ToolUpsertInput,
+  ToolListResponse,
+  AgentEffectiveTools,
+  ToolAgentOverride,
+  ToolInvocation,
+  ToolRunQuery,
+  ToolAuditQuery,
+  ToolInvocationAudit,
+  PaginatedResponse,
+} from '../../features/tools/types';
 
-export const useToolsStore = defineStore("tools", () => {
+export const useToolsStore = defineStore('tools', () => {
   const tools = ref<Tool[]>([]);
   const activeTool = ref<Tool | null>(null);
   const total = ref(0);
-  const summary = ref<ToolListResponse["summary"]>({
+  const summary = ref<ToolListResponse['summary']>({
     total_tools: 0,
     enabled_tools: 0,
     high_risk_enabled: 0,
     calls_24h: 0,
-    failure_rate_24h: 0
+    failure_rate_24h: 0,
   });
   const loading = ref(false);
 
@@ -94,7 +112,14 @@ export const useToolsStore = defineStore("tools", () => {
     return listTools(query);
   }
 
-  async function saveOverride(input: { tool_id: string; agent_id: string; mode: string; enabled: boolean; requires_confirmation: boolean; config_override_json: string }): Promise<ToolAgentOverride> {
+  async function saveOverride(input: {
+    tool_id: string;
+    agent_id: string;
+    mode: string;
+    enabled: boolean;
+    requires_confirmation: boolean;
+    config_override_json: string;
+  }): Promise<ToolAgentOverride> {
     return upsertToolAgentOverride(input);
   }
 
@@ -119,9 +144,27 @@ export const useToolsStore = defineStore("tools", () => {
   }
 
   return {
-    tools, activeTool, total, summary, loading,
-    loadTools, fetchTool, addTool, editTool, editToolConfig, remove, toggle,
-    fetchCatalog, fetchEffectiveTools, fetchOverrides, fetchOverridesByAgent,
-    saveOverride, removeOverride, fetchToolRuns, loadToolRuns, loadToolAudits, runToolTest
+    tools,
+    activeTool,
+    total,
+    summary,
+    loading,
+    loadTools,
+    fetchTool,
+    addTool,
+    editTool,
+    editToolConfig,
+    remove,
+    toggle,
+    fetchCatalog,
+    fetchEffectiveTools,
+    fetchOverrides,
+    fetchOverridesByAgent,
+    saveOverride,
+    removeOverride,
+    fetchToolRuns,
+    loadToolRuns,
+    loadToolAudits,
+    runToolTest,
   };
 });

@@ -8,12 +8,7 @@
     @click="$emit('click')"
   >
     <q-item-section side class="chat-status-icon">
-      <q-icon
-        :name="statusIcon"
-        :color="statusColor"
-        size="xs"
-        dense
-      />
+      <q-icon :name="statusIcon" :color="statusColor" size="xs" dense />
     </q-item-section>
     <q-item-section class="chat-entity-main">
       <q-item-label class="chat-entity-name" lines="1">
@@ -54,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed } from 'vue';
 
 const props = defineProps<{
   name: string;
@@ -73,9 +68,9 @@ defineEmits<{
 }>();
 
 const statusPillClass = computed(() => {
-  if (props.statusIcon === "bolt") return "is-working";
-  if (props.statusColor === "grey") return "is-inactive";
-  return "is-idle";
+  if (props.statusIcon === 'bolt') return 'is-working';
+  if (props.statusColor === 'grey') return 'is-inactive';
+  return 'is-idle';
 });
 </script>
 

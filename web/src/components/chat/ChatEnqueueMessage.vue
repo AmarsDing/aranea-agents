@@ -20,14 +20,14 @@
       :aria-label="t('chat.enqueueSend', 'Enqueue message')"
       @click="submit"
     >
-      <q-tooltip>{{ t("chat.enqueueHint", "Injected at the next safe tool boundary") }}</q-tooltip>
+      <q-tooltip>{{ t('chat.enqueueHint', 'Injected at the next safe tool boundary') }}</q-tooltip>
     </q-btn>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
-import { useI18n } from "vue-i18n";
+import { ref, computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps<{
   visible?: boolean;
@@ -38,15 +38,15 @@ const props = defineProps<{
 const emit = defineEmits<{ enqueue: [content: string] }>();
 
 const { t } = useI18n();
-const draft = ref("");
+const draft = ref('');
 
 const visible = computed(() => props.visible !== false);
 
 function submit() {
   const text = draft.value.trim();
   if (!text || props.disabled) return;
-  emit("enqueue", text);
-  draft.value = "";
+  emit('enqueue', text);
+  draft.value = '';
 }
 </script>
 

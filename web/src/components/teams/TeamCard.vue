@@ -22,7 +22,7 @@
       </header>
 
       <div class="team-card__meta">
-        <p class="team-description">{{ definition.description || "暂无说明" }}</p>
+        <p class="team-description">{{ definition.description || '暂无说明' }}</p>
         <div v-if="topologyNodes.length" class="topology-strip">
           <div v-for="node in topologyNodes" :key="node.label" class="topology-node">
             <q-icon :name="node.icon" size="14px" />
@@ -45,7 +45,7 @@
               <span class="member-label">{{ member.name || agentName(agents, member.agent_id) }}</span>
             </div>
             <q-badge dense rounded class="member-row__badge" :color="member.enabled ? 'positive' : 'grey'">
-              {{ member.enabled ? "启用" : "停用" }}
+              {{ member.enabled ? '启用' : '停用' }}
             </q-badge>
           </div>
         </div>
@@ -53,7 +53,9 @@
       <div v-else class="team-empty team-card__members">尚未配置成员 Agent。</div>
 
       <footer class="team-card__foot">
-        <span class="team-card__foot-meta">成员 {{ definition.members.length }} · {{ formatDate(team.updated_at) }}</span>
+        <span class="team-card__foot-meta"
+          >成员 {{ definition.members.length }} · {{ formatDate(team.updated_at) }}</span
+        >
         <div class="team-card__action-group">
           <q-btn flat dense round size="sm" color="primary" icon="account_tree" :to="`/teams/${team.id}/orchestrate`">
             <q-tooltip>编排 Graph</q-tooltip>
@@ -81,7 +83,16 @@
           </q-btn>
           <q-btn flat dense round size="sm" color="primary" icon="content_copy" @click="$emit('duplicate', team)" />
           <q-btn flat dense round size="sm" color="primary" icon="edit" @click="$emit('edit', team)" />
-          <q-btn flat dense round size="sm" color="negative" icon="delete" :disable="team.is_default || !!team.readonly" @click="$emit('remove', team)" />
+          <q-btn
+            flat
+            dense
+            round
+            size="sm"
+            color="negative"
+            icon="delete"
+            :disable="team.is_default || !!team.readonly"
+            @click="$emit('remove', team)"
+          />
           <q-chip v-if="team.readonly" dense square size="sm" icon="verified_user">内置</q-chip>
         </div>
       </footer>
@@ -90,10 +101,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { Agent } from "../../features/agents/types";
-import type { Team } from "../../features/teams/types";
-import { agentName, formatDate, memberIcon, parseDefinition, topologyNodesFromDefinition } from "./teamUtils";
+import { computed } from 'vue';
+import type { Agent } from '../../features/agents/types';
+import type { Team } from '../../features/teams/types';
+import { agentName, formatDate, memberIcon, parseDefinition, topologyNodesFromDefinition } from './teamUtils';
 
 const props = defineProps<{
   team: Team;

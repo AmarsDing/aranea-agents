@@ -13,9 +13,17 @@
     >
       <template #prepend><q-icon name="search" size="16px" /></template>
       <template #append>
-        <span class="graph-node-search__count" v-if="matchCount > 0">{{ matchIndex + 1 }}/{{ matchCount }}</span>
+        <span v-if="matchCount > 0" class="graph-node-search__count">{{ matchIndex + 1 }}/{{ matchCount }}</span>
         <q-btn flat dense round icon="keyboard_arrow_up" size="xs" :disable="matchCount <= 1" @click="$emit('prev')" />
-        <q-btn flat dense round icon="keyboard_arrow_down" size="xs" :disable="matchCount <= 1" @click="$emit('next')" />
+        <q-btn
+          flat
+          dense
+          round
+          icon="keyboard_arrow_down"
+          size="xs"
+          :disable="matchCount <= 1"
+          @click="$emit('next')"
+        />
         <q-btn flat dense round icon="close" size="xs" @click="$emit('close')" />
       </template>
     </q-input>
@@ -23,7 +31,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from "vue";
+import { ref, watch, nextTick } from 'vue';
 
 const props = defineProps<{
   visible: boolean;
@@ -38,13 +46,16 @@ defineEmits<{
   close: [];
 }>();
 
-const query = ref("");
+const query = ref('');
 const inputRef = ref<any>(null);
 
-watch(() => props.visible, (v) => {
-  if (v) {
-    query.value = "";
-    nextTick(() => inputRef.value?.focus());
-  }
-});
+watch(
+  () => props.visible,
+  (v) => {
+    if (v) {
+      query.value = '';
+      nextTick(() => inputRef.value?.focus());
+    }
+  },
+);
 </script>

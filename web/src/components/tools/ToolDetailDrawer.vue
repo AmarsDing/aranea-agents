@@ -1,11 +1,7 @@
 <template>
   <teleport to=".q-layout">
     <transition name="drawer-backdrop">
-      <div
-        v-if="open"
-        class="tool-detail-backdrop"
-        @click="$emit('close')"
-      />
+      <div v-if="open" class="tool-detail-backdrop" @click="$emit('close')" />
     </transition>
   </teleport>
   <q-drawer
@@ -28,7 +24,15 @@
           <q-btn flat dense round icon="edit" class="app-registry-icon-btn" @click="onEdit">
             <q-tooltip>编辑</q-tooltip>
           </q-btn>
-          <q-btn flat dense round icon="delete" color="negative" class="app-registry-icon-btn" @click="$emit('remove-tool', tool)">
+          <q-btn
+            flat
+            dense
+            round
+            icon="delete"
+            color="negative"
+            class="app-registry-icon-btn"
+            @click="$emit('remove-tool', tool)"
+          >
             <q-tooltip>删除</q-tooltip>
           </q-btn>
           <q-btn flat dense round icon="close" class="app-registry-icon-btn" @click="$emit('close')">
@@ -40,7 +44,7 @@
 
       <div class="tool-detail-drawer__meta">
         <q-chip dense :color="tool.enabled ? 'positive' : 'grey'" text-color="white">
-          {{ tool.enabled ? "已启用" : "已停用" }}
+          {{ tool.enabled ? '已启用' : '已停用' }}
         </q-chip>
         <q-chip dense :color="riskQuasarColor(tool.risk_level)" text-color="white">
           {{ riskLabel(tool.risk_level) }}
@@ -57,7 +61,9 @@
           {{ policyChip.supports_concurrency.label }}
           <q-tooltip>{{ policyChip.supports_concurrency.tooltip }}</q-tooltip>
         </q-chip>
-        <q-chip dense outline :color="runtimeStatusColor(tool.runtime_status)">{{ runtimeStatusLabel(tool.runtime_status) }}</q-chip>
+        <q-chip dense outline :color="runtimeStatusColor(tool.runtime_status)">{{
+          runtimeStatusLabel(tool.runtime_status)
+        }}</q-chip>
       </div>
 
       <q-tabs
@@ -76,10 +82,14 @@
       </q-tabs>
 
       <div class="tool-detail-drawer__body">
-        <q-tab-panels :model-value="activeTab" class="app-registry-detail-panels bg-transparent" @update:model-value="onActiveTabChange">
+        <q-tab-panels
+          :model-value="activeTab"
+          class="app-registry-detail-panels bg-transparent"
+          @update:model-value="onActiveTabChange"
+        >
           <q-tab-panel name="overview" class="q-pa-none">
             <q-banner rounded class="app-registry-detail-banner q-mb-md">
-              {{ tool.description || "暂无描述" }}
+              {{ tool.description || '暂无描述' }}
             </q-banner>
 
             <div class="tool-detail-metrics q-mb-md">
@@ -96,7 +106,9 @@
                 <div class="tool-detail-metrics__label">成功</div>
               </div>
               <div class="tool-detail-metrics__card">
-                <div class="tool-detail-metrics__value" :class="tool.failure_count > 0 ? 'text-negative' : ''">{{ tool.failure_count }}</div>
+                <div class="tool-detail-metrics__value" :class="tool.failure_count > 0 ? 'text-negative' : ''">
+                  {{ tool.failure_count }}
+                </div>
                 <div class="tool-detail-metrics__label">失败</div>
               </div>
             </div>
@@ -108,12 +120,7 @@
               <div class="col-6"><span class="text-weight-medium">风险：</span>{{ riskLabel(tool.risk_level) }}</div>
             </div>
 
-            <q-expansion-item
-              dense-toggle
-              default-opened
-              label="参数 Schema"
-              class="q-mb-md"
-            >
+            <q-expansion-item dense-toggle default-opened label="参数 Schema" class="q-mb-md">
               <div class="q-pt-sm">
                 <p class="app-registry-muted-caption">LLM 调用此工具时可传的参数（JSON Schema）。</p>
                 <tool-json-block :text="prettyParamsSchema" />
@@ -160,7 +167,11 @@
                     @click="$emit('run-test')"
                   />
                 </div>
-                <q-banner v-if="testResult" rounded :class="testResult.status === 'success' ? 'bg-green-1' : 'bg-red-1'">
+                <q-banner
+                  v-if="testResult"
+                  rounded
+                  :class="testResult.status === 'success' ? 'bg-green-1' : 'bg-red-1'"
+                >
                   <template #avatar>
                     <q-icon
                       :name="testResult.status === 'success' ? 'check_circle' : 'error'"
@@ -169,7 +180,11 @@
                   </template>
                   <div class="text-body2">{{ testResult.status }} · {{ testResult.duration_ms }}ms</div>
                   <div v-if="testResult.error_message" class="text-caption q-mt-xs">{{ testResult.error_message }}</div>
-                  <tool-json-block v-else-if="testResult.result_preview" class="q-mt-xs" :text="testResult.result_preview" />
+                  <tool-json-block
+                    v-else-if="testResult.result_preview"
+                    class="q-mt-xs"
+                    :text="testResult.result_preview"
+                  />
                 </q-banner>
               </q-card-section>
             </q-card>
@@ -226,8 +241,7 @@
             </div>
             <template v-else>
               <q-banner v-if="agentBindingSummary" rounded dense class="settings-info-banner q-mb-md">
-                <strong>生效摘要：</strong>{{ bindingSummaryLine(agentBindingSummary) }}。
-                Profile / allow / deny 在
+                <strong>生效摘要：</strong>{{ bindingSummaryLine(agentBindingSummary) }}。 Profile / allow / deny 在
                 <router-link :to="{ name: 'agents' }" class="text-primary">Agent 列表</router-link>
                 → 能力 Tab 配置。
               </q-banner>
@@ -269,7 +283,11 @@
               <q-list v-if="overrides.length" separator dense class="rounded-borders">
                 <q-item v-for="o in overrides" :key="o.id" class="app-registry-list-item">
                   <q-item-section avatar>
-                    <q-icon :name="o.enabled ? 'check_circle' : 'cancel'" :color="o.enabled ? 'positive' : 'negative'" size="sm" />
+                    <q-icon
+                      :name="o.enabled ? 'check_circle' : 'cancel'"
+                      :color="o.enabled ? 'positive' : 'negative'"
+                      size="sm"
+                    />
                   </q-item-section>
                   <q-item-section>
                     <q-item-label>{{ agentNameById(o.agent_id) }}</q-item-label>
@@ -279,10 +297,26 @@
                   </q-item-section>
                   <q-item-section side>
                     <div class="row q-gutter-xs">
-                      <q-btn flat dense round icon="edit" size="sm" class="app-registry-icon-btn" @click="$emit('edit-override', o)">
+                      <q-btn
+                        flat
+                        dense
+                        round
+                        icon="edit"
+                        size="sm"
+                        class="app-registry-icon-btn"
+                        @click="$emit('edit-override', o)"
+                      >
                         <q-tooltip>编辑覆盖</q-tooltip>
                       </q-btn>
-                      <q-btn flat dense round icon="delete" size="sm" class="app-registry-icon-btn" @click="$emit('delete-override', o)">
+                      <q-btn
+                        flat
+                        dense
+                        round
+                        icon="delete"
+                        size="sm"
+                        class="app-registry-icon-btn"
+                        @click="$emit('delete-override', o)"
+                      >
                         <q-tooltip>删除覆盖</q-tooltip>
                       </q-btn>
                     </div>
@@ -290,7 +324,14 @@
                 </q-item>
               </q-list>
               <div v-else class="text-caption q-pa-sm">暂无 Agent 覆盖配置</div>
-              <q-btn flat no-caps icon="add" label="添加覆盖" class="app-registry-accent-btn q-mt-sm" @click="$emit('edit-override', null)" />
+              <q-btn
+                flat
+                no-caps
+                icon="add"
+                label="添加覆盖"
+                class="app-registry-accent-btn q-mt-sm"
+                @click="$emit('edit-override', null)"
+              />
             </template>
           </q-tab-panel>
         </q-tab-panels>
@@ -314,18 +355,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { TOOL_POLICY_CHIP_COPY } from "../../features/tools/toolEditorCopy";
-import { bindingSummaryLine } from "../../features/tools/toolAgentBindingSummary";
-import type { ToolAgentBindingRow, ToolAgentBindingSummary } from "../../features/tools/toolAgentBindingSummary";
-import type { Tool, ToolAgentOverride, ToolInvocation, ToolTestResult } from "../../features/tools/types";
-import type { ToolOverrideForm } from "../../stores/tools/toolDetail";
-import { registryCol, REGISTRY_COL_W } from "../../features/ui/registryTableColumns";
-import { riskLabel, riskQuasarColor, runtimeStatusLabel, runtimeStatusColor, prettyJSON } from "./toolUi";
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import ToolDetailConfigPanel from "./ToolDetailConfigPanel.vue";
-import ToolJsonBlock from "./ToolJsonBlock.vue";
-import ToolOverrideEditorDialog from "./ToolOverrideEditorDialog.vue";
+import { computed } from 'vue';
+import { TOOL_POLICY_CHIP_COPY } from '../../features/tools/toolEditorCopy';
+import { bindingSummaryLine } from '../../features/tools/toolAgentBindingSummary';
+import type { ToolAgentBindingRow, ToolAgentBindingSummary } from '../../features/tools/toolAgentBindingSummary';
+import type { Tool, ToolAgentOverride, ToolInvocation, ToolTestResult } from '../../features/tools/types';
+import type { ToolOverrideForm } from '../../stores/tools/toolDetail';
+import { registryCol, REGISTRY_COL_W } from '../../features/ui/registryTableColumns';
+import { riskLabel, riskQuasarColor, runtimeStatusLabel, runtimeStatusColor, prettyJSON } from './toolUi';
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import ToolDetailConfigPanel from './ToolDetailConfigPanel.vue';
+import ToolJsonBlock from './ToolJsonBlock.vue';
+import ToolOverrideEditorDialog from './ToolOverrideEditorDialog.vue';
 
 const props = defineProps<{
   open: boolean;
@@ -353,30 +394,30 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:open": [value: boolean];
-  "update:activeTab": [value: string];
-  "update:testArgsJson": [value: string];
-  "update:testTimeoutSec": [value: number];
-  "run-test": [];
-  "update:configJson": [value: string];
-  "update:configSchemaJson": [value: string];
-  "save-config": [];
-  "edit-override": [row: ToolAgentOverride | null];
-  "delete-override": [row: ToolAgentOverride];
-  "update:overrideEditorOpen": [value: boolean];
-  "update:overrideForm": [value: ToolOverrideForm];
-  "save-override": [];
-  "edit-tool": [tool: Tool];
-  "remove-tool": [tool: Tool];
+  'update:open': [value: boolean];
+  'update:activeTab': [value: string];
+  'update:testArgsJson': [value: string];
+  'update:testTimeoutSec': [value: number];
+  'run-test': [];
+  'update:configJson': [value: string];
+  'update:configSchemaJson': [value: string];
+  'save-config': [];
+  'edit-override': [row: ToolAgentOverride | null];
+  'delete-override': [row: ToolAgentOverride];
+  'update:overrideEditorOpen': [value: boolean];
+  'update:overrideForm': [value: ToolOverrideForm];
+  'save-override': [];
+  'edit-tool': [tool: Tool];
+  'remove-tool': [tool: Tool];
   close: [];
 }>();
 
 const policyChip = TOOL_POLICY_CHIP_COPY;
 
 const modeOptions = [
-  { label: "继承 (inherit)", value: "inherit" },
-  { label: "允许 (allow)", value: "allow" },
-  { label: "拒绝 (deny)", value: "deny" }
+  { label: '继承 (inherit)', value: 'inherit' },
+  { label: '允许 (allow)', value: 'allow' },
+  { label: '拒绝 (deny)', value: 'deny' },
 ];
 
 function modeLabel(mode: string): string {
@@ -390,58 +431,58 @@ function agentNameById(id: string): string {
 }
 
 function runStatusIcon(status: string): string {
-  if (status === "success") return "check_circle";
-  if (status === "error") return "error";
-  if (status === "blocked") return "block";
-  return "help";
+  if (status === 'success') return 'check_circle';
+  if (status === 'error') return 'error';
+  if (status === 'blocked') return 'block';
+  return 'help';
 }
 
 function runStatusColor(status: string): string {
-  if (status === "success") return "positive";
-  if (status === "error") return "negative";
-  if (status === "blocked") return "warning";
-  return "grey";
+  if (status === 'success') return 'positive';
+  if (status === 'error') return 'negative';
+  if (status === 'blocked') return 'warning';
+  return 'grey';
 }
 
 const successRate = computed(() => {
   const t = props.tool;
-  if (!t || (t.success_count + t.failure_count) === 0) return "—";
-  return ((t.success_count / (t.success_count + t.failure_count)) * 100).toFixed(1) + "%";
+  if (!t || t.success_count + t.failure_count === 0) return '—';
+  return ((t.success_count / (t.success_count + t.failure_count)) * 100).toFixed(1) + '%';
 });
 
 const successRateClass = computed(() => {
   const t = props.tool;
-  if (!t || (t.success_count + t.failure_count) === 0) return "";
+  if (!t || t.success_count + t.failure_count === 0) return '';
   const rate = t.success_count / (t.success_count + t.failure_count);
-  if (rate >= 0.95) return "text-positive";
-  if (rate >= 0.8) return "text-warning";
-  return "text-negative";
+  if (rate >= 0.95) return 'text-positive';
+  if (rate >= 0.8) return 'text-warning';
+  return 'text-negative';
 });
 
-const prettyParamsSchema = computed(() => prettyJSON(props.tool?.parameters_schema_json || "{}"));
-const prettyResultSchema = computed(() => prettyJSON(props.tool?.result_schema_json || "{}"));
+const prettyParamsSchema = computed(() => prettyJSON(props.tool?.parameters_schema_json || '{}'));
+const prettyResultSchema = computed(() => prettyJSON(props.tool?.result_schema_json || '{}'));
 const hasResultSchema = computed(() => {
   const raw = props.tool?.result_schema_json;
-  return raw && raw.trim() !== "{}";
+  return raw && raw.trim() !== '{}';
 });
 
 const agentBindingColumns = [
-  registryCol<ToolAgentBindingRow>("agent_name", "Agent", "agent_name", "left", REGISTRY_COL_W.name),
-  registryCol<ToolAgentBindingRow>("state", "生效状态", "effective_state", "left", REGISTRY_COL_W.status),
-  registryCol<ToolAgentBindingRow>("reason", "来源 / 原因", "reason", "left", REGISTRY_COL_W.desc)
+  registryCol<ToolAgentBindingRow>('agent_name', 'Agent', 'agent_name', 'left', REGISTRY_COL_W.name),
+  registryCol<ToolAgentBindingRow>('state', '生效状态', 'effective_state', 'left', REGISTRY_COL_W.status),
+  registryCol<ToolAgentBindingRow>('reason', '来源 / 原因', 'reason', 'left', REGISTRY_COL_W.desc),
 ];
 
 function onDrawerUpdate(val: boolean) {
-  if (!val) emit("close");
+  if (!val) emit('close');
 }
 
 function onActiveTabChange(val: string | number) {
-  emit("update:activeTab", String(val));
+  emit('update:activeTab', String(val));
 }
 
 function onEdit() {
   if (props.tool) {
-    emit("edit-tool", props.tool);
+    emit('edit-tool', props.tool);
   }
 }
 </script>

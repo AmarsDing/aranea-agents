@@ -63,14 +63,7 @@
         >
           {{ userSourceLabel }}
         </q-chip>
-        <q-chip
-          v-if="row.teamMemberMeta(message)?.role"
-          dense
-          size="sm"
-          outline
-          color="primary"
-          class="q-ml-xs"
-        >
+        <q-chip v-if="row.teamMemberMeta(message)?.role" dense size="sm" outline color="primary" class="q-ml-xs">
           {{ row.teamMemberMeta(message)?.role }}
         </q-chip>
         <span class="message-stamp">{{ formatStamp(message.created_at) }}</span>
@@ -89,214 +82,214 @@
         }"
         :style="row.bubbleAccentStyle(message)"
       >
-      <ChatExecutionCard
-        v-if="bundle.structuredToolEvent"
-        :event="bundle.structuredToolEvent"
-        :show-member-label="isTeamSession"
-      />
-      <details v-else-if="row.isCollapsibleToolDetail(message)" class="chat-tool-details">
-        <summary class="chat-tool-details__summary">
-          <span class="chat-tool-details__summary-text">{{ row.toolCollapseSummary(message) }}</span>
-          <span class="chat-tool-details__hint text-caption" aria-hidden="true" />
-        </summary>
-        <div
-          class="chat-message-content chat-message-prose chat-tool-details__body"
-          :class="{
-            'chat-message-content--sent': message.role === 'user',
-            'chat-message-content--dark': message.role !== 'user' && isDark,
-          }"
-          v-html="renderMarkdown(row.toolCollapseDetail(message))"
+        <ChatExecutionCard
+          v-if="bundle.structuredToolEvent"
+          :event="bundle.structuredToolEvent"
+          :show-member-label="isTeamSession"
         />
-      </details>
-      <template v-else>
-        <ChatReasoningPeek
-          v-if="!reasoningSidebarOpen && (bundle.presentation.reasoning?.trim() || showThinkingIndicator)"
-          :message-id="message.id"
-          :reasoning="bundle.presentation.reasoning || ' '"
-          :is-dark="isDark"
-          :streaming="row.isStreaming(message)"
-          :thinking-only="showThinkingIndicator"
-        />
-        <div
-          v-if="reasoningSidebarOpen && (bundle.presentation.reasoning?.trim() || showThinkingIndicator)"
-          class="chat-reasoning-inline-hint text-caption"
-          @click="emit('pin-reasoning', message.id)"
-        >
-          <q-icon name="psychology_alt" size="14px" class="q-mr-xs" />
-          {{ row.t("chat.reasoningInSidebar", "思考过程 → 侧栏") }}
-        </div>
-        <ChatReactSteps
-          v-if="bundle.reactStepsWithTools.length"
-          :steps="bundle.reactStepsWithTools"
-          :is-dark="isDark"
-        />
-        <ChatA2UIPreview
-          v-if="bundle.presentation.mode === 'a2ui' && bundle.presentation.a2uiLines"
-          :lines="bundle.presentation.a2uiLines"
-          @user-action="(p) => emit('a2ui-user-action', p)"
-        />
-        <ChatMessageAttachments
-          v-if="messageAttachments.length"
-          :attachments="messageAttachments"
-          @deleted="(id) => emit('attachment-deleted', id)"
-          @download="(meta) => emit('download-artifact', meta)"
-        />
-        <div
-          v-if="bundle.presentation.bodyMarkdown"
-          class="chat-formal-body"
-        >
+        <details v-else-if="row.isCollapsibleToolDetail(message)" class="chat-tool-details">
+          <summary class="chat-tool-details__summary">
+            <span class="chat-tool-details__summary-text">{{ row.toolCollapseSummary(message) }}</span>
+            <span class="chat-tool-details__hint text-caption" aria-hidden="true" />
+          </summary>
           <div
-            v-if="bundle.presentation.reasoning?.trim()"
-            class="chat-formal-body__label text-caption text-weight-medium"
-          >
-            {{ row.t("chat.formalBodyTitle", "正文") }}
-          </div>
-          <div
-            class="chat-message-content chat-message-prose"
+            class="chat-message-content chat-message-prose chat-tool-details__body"
             :class="{
               'chat-message-content--sent': message.role === 'user',
               'chat-message-content--dark': message.role !== 'user' && isDark,
             }"
-            v-html="
-              row.isStreaming(message)
-                ? renderStreamingMarkdown(bundle.presentation.bodyMarkdown)
-                : renderMarkdown(bundle.presentation.bodyMarkdown)
-            "
+            v-html="renderMarkdown(row.toolCollapseDetail(message))"
+          />
+        </details>
+        <template v-else>
+          <ChatReasoningPeek
+            v-if="!reasoningSidebarOpen && (bundle.presentation.reasoning?.trim() || showThinkingIndicator)"
+            :message-id="message.id"
+            :reasoning="bundle.presentation.reasoning || ' '"
+            :is-dark="isDark"
+            :streaming="row.isStreaming(message)"
+            :thinking-only="showThinkingIndicator"
+          />
+          <div
+            v-if="reasoningSidebarOpen && (bundle.presentation.reasoning?.trim() || showThinkingIndicator)"
+            class="chat-reasoning-inline-hint text-caption"
+            @click="emit('pin-reasoning', message.id)"
+          >
+            <q-icon name="psychology_alt" size="14px" class="q-mr-xs" />
+            {{ row.t('chat.reasoningInSidebar', '思考过程 → 侧栏') }}
+          </div>
+          <ChatReactSteps
+            v-if="bundle.reactStepsWithTools.length"
+            :steps="bundle.reactStepsWithTools"
+            :is-dark="isDark"
+          />
+          <ChatA2UIPreview
+            v-if="bundle.presentation.mode === 'a2ui' && bundle.presentation.a2uiLines"
+            :lines="bundle.presentation.a2uiLines"
+            @user-action="(p) => emit('a2ui-user-action', p)"
+          />
+          <ChatMessageAttachments
+            v-if="messageAttachments.length"
+            :attachments="messageAttachments"
+            @deleted="(id) => emit('attachment-deleted', id)"
+            @download="(meta) => emit('download-artifact', meta)"
+          />
+          <div v-if="bundle.presentation.bodyMarkdown" class="chat-formal-body">
+            <div
+              v-if="bundle.presentation.reasoning?.trim()"
+              class="chat-formal-body__label text-caption text-weight-medium"
+            >
+              {{ row.t('chat.formalBodyTitle', '正文') }}
+            </div>
+            <div
+              class="chat-message-content chat-message-prose"
+              :class="{
+                'chat-message-content--sent': message.role === 'user',
+                'chat-message-content--dark': message.role !== 'user' && isDark,
+              }"
+              v-html="
+                row.isStreaming(message)
+                  ? renderStreamingMarkdown(bundle.presentation.bodyMarkdown)
+                  : renderMarkdown(bundle.presentation.bodyMarkdown)
+              "
+            />
+          </div>
+        </template>
+        <div
+          v-if="message.role !== 'user' && message.status === 'error' && row.assistantErrorDetail(message)"
+          class="row items-center q-gutter-xs q-mt-xs chat-assistant-error"
+        >
+          <q-icon name="error_outline" color="negative" size="16px" />
+          <span class="text-caption text-negative">{{ row.assistantErrorDetail(message) }}</span>
+          <q-btn
+            flat
+            dense
+            no-caps
+            color="primary"
+            size="sm"
+            icon="refresh"
+            :label="t('chat.regenerate', '重新生成')"
+            @click="emit('regenerate', message)"
           />
         </div>
-      </template>
-      <div
-        v-if="message.role !== 'user' && message.status === 'error' && row.assistantErrorDetail(message)"
-        class="row items-center q-gutter-xs q-mt-xs chat-assistant-error"
-      >
-        <q-icon name="error_outline" color="negative" size="16px" />
-        <span class="text-caption text-negative">{{ row.assistantErrorDetail(message) }}</span>
-        <q-btn
-          flat
-          dense
-          no-caps
-          color="primary"
-          size="sm"
-          icon="refresh"
-          :label="t('chat.regenerate', '重新生成')"
-          @click="emit('regenerate', message)"
-        />
-      </div>
-      <div
-        v-if="message.role === 'assistant' && message.status === 'ok' && message.id"
-        class="row items-center q-gutter-xs q-mt-xs message-feedback"
-      >
-        <q-btn
-          flat
-          dense
-          round
-          size="sm"
-          :icon="userFeedback === 'positive' ? 'thumb_up' : 'thumb_up_off_alt'"
-          :color="userFeedback === 'positive' ? 'primary' : undefined"
-          :aria-label="row.t('chat.feedbackPositive')"
-          @click="userFeedback = 'positive'; emit('feedback', { messageId: message.id, rating: 'positive' })"
+        <div
+          v-if="message.role === 'assistant' && message.status === 'ok' && message.id"
+          class="row items-center q-gutter-xs q-mt-xs message-feedback"
         >
-          <q-tooltip>{{ row.t("chat.feedbackPositive") }}</q-tooltip>
-        </q-btn>
-        <q-btn
-          flat
-          dense
-          round
-          size="sm"
-          :icon="userFeedback === 'negative' ? 'thumb_down' : 'thumb_down_off_alt'"
-          :color="userFeedback === 'negative' ? 'negative' : undefined"
-          :aria-label="row.t('chat.feedbackNegative')"
-          @click="userFeedback = 'negative'; emit('feedback', { messageId: message.id, rating: 'negative' })"
+          <q-btn
+            flat
+            dense
+            round
+            size="sm"
+            :icon="userFeedback === 'positive' ? 'thumb_up' : 'thumb_up_off_alt'"
+            :color="userFeedback === 'positive' ? 'primary' : undefined"
+            :aria-label="row.t('chat.feedbackPositive')"
+            @click="
+              userFeedback = 'positive';
+              emit('feedback', { messageId: message.id, rating: 'positive' });
+            "
+          >
+            <q-tooltip>{{ row.t('chat.feedbackPositive') }}</q-tooltip>
+          </q-btn>
+          <q-btn
+            flat
+            dense
+            round
+            size="sm"
+            :icon="userFeedback === 'negative' ? 'thumb_down' : 'thumb_down_off_alt'"
+            :color="userFeedback === 'negative' ? 'negative' : undefined"
+            :aria-label="row.t('chat.feedbackNegative')"
+            @click="
+              userFeedback = 'negative';
+              emit('feedback', { messageId: message.id, rating: 'negative' });
+            "
+          >
+            <q-tooltip>{{ row.t('chat.feedbackNegative') }}</q-tooltip>
+          </q-btn>
+        </div>
+        <div
+          v-if="message.role === 'user' && message.status === 'failed'"
+          class="row items-center q-gutter-xs q-mt-xs message-failed-banner"
         >
-          <q-tooltip>{{ row.t("chat.feedbackNegative") }}</q-tooltip>
-        </q-btn>
-      </div>
-      <div
-        v-if="message.role === 'user' && message.status === 'failed'"
-        class="row items-center q-gutter-xs q-mt-xs message-failed-banner"
-      >
-        <q-icon name="error_outline" color="negative" size="18px" />
-        <span class="text-caption text-negative">{{ message.error_message || t("chat.sendFailed", "发送失败") }}</span>
-        <q-btn
-          flat
-          dense
-          no-caps
-          color="primary"
-          size="sm"
-          icon="refresh"
-          :label="t('chat.retry', '重试')"
-          @click="emit('retry', message.id)"
-        />
-        <q-btn
-          flat
-          dense
-          no-caps
-          color="grey"
-          size="sm"
-          icon="close"
-          :label="t('chat.dismiss', '移除')"
-          @click="emit('dismiss-failed', message.id)"
-        />
-      </div>
-      <div
-        v-if="message.role === 'user' && row.userSendTagLine(message)"
-        class="message-send-tags message-send-tags--sent text-caption"
-      >
-        {{ row.userSendTagLine(message) }}
-      </div>
-      <span v-if="row.isStreaming(message)" class="chat-typing" aria-label="正在输入">
-        <i /><i /><i />
-      </span>
+          <q-icon name="error_outline" color="negative" size="18px" />
+          <span class="text-caption text-negative">{{
+            message.error_message || t('chat.sendFailed', '发送失败')
+          }}</span>
+          <q-btn
+            flat
+            dense
+            no-caps
+            color="primary"
+            size="sm"
+            icon="refresh"
+            :label="t('chat.retry', '重试')"
+            @click="emit('retry', message.id)"
+          />
+          <q-btn
+            flat
+            dense
+            no-caps
+            color="grey"
+            size="sm"
+            icon="close"
+            :label="t('chat.dismiss', '移除')"
+            @click="emit('dismiss-failed', message.id)"
+          />
+        </div>
+        <div
+          v-if="message.role === 'user' && row.userSendTagLine(message)"
+          class="message-send-tags message-send-tags--sent text-caption"
+        >
+          {{ row.userSendTagLine(message) }}
+        </div>
+        <span v-if="row.isStreaming(message)" class="chat-typing" aria-label="正在输入"> <i /><i /><i /> </span>
       </div>
     </div>
   </q-chat-message>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, toRef } from "vue";
-import { useI18n } from "vue-i18n";
-import ResolvedAvatarImg from "../avatar/ResolvedAvatarImg.vue";
+import { computed, ref, toRef } from 'vue';
+import { useI18n } from 'vue-i18n';
+import ResolvedAvatarImg from '../avatar/ResolvedAvatarImg.vue';
 import {
   messageSourceChipFallback,
   messageSourceChipKey,
   messageSourceFromMessage,
-} from "../../features/chat/messageSourceMeta";
-import { messageAttachmentsFromMessage } from "../../features/chat/messageAttachments";
-import { userPromptText } from "../../features/chat/useChatScrollTitle";
-import ChatExecutionCard from "./ChatExecutionCard.vue";
-import ChatReasoningPeek from "./ChatReasoningPeek.vue";
-import ChatReactSteps from "./ChatReactSteps.vue";
-import ChatA2UIPreview from "./ChatA2UIPreview.vue";
-import ChatMessageAttachments from "./ChatMessageAttachments.vue";
-import { buildMessagePresentation } from "../../features/chat/messagePlannerPresentation";
-import { parseMessageAttachments } from "../../features/chat/messageAttachments";
-import type { Message, ReactToolLinkIndex } from "../../features/chat/types";
-import { shouldRenderAgentAvatarImage } from "../../features/avatar/iconModel";
-import {
-  formatMessageStamp,
-  renderChatMarkdownForMessage,
-} from "../../features/chat/chatMessageMarkdown";
+} from '../../features/chat/messageSourceMeta';
+import { messageAttachmentsFromMessage } from '../../features/chat/messageAttachments';
+import { userPromptText } from '../../features/chat/useChatScrollTitle';
+import ChatExecutionCard from './ChatExecutionCard.vue';
+import ChatReasoningPeek from './ChatReasoningPeek.vue';
+import ChatReactSteps from './ChatReactSteps.vue';
+import ChatA2UIPreview from './ChatA2UIPreview.vue';
+import ChatMessageAttachments from './ChatMessageAttachments.vue';
+import { buildMessagePresentation } from '../../features/chat/messagePlannerPresentation';
+import { parseMessageAttachments } from '../../features/chat/messageAttachments';
+import type { Message, ReactToolLinkIndex } from '../../features/chat/types';
+import { shouldRenderAgentAvatarImage } from '../../features/avatar/iconModel';
+import { formatMessageStamp, renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
 import {
   CHAT_MESSAGE_AVATAR_ICON_SIZE,
   CHAT_MESSAGE_AVATAR_SIZE,
   useChatMessageRow,
-} from "../../features/chat/useChatMessageRow";
-import type { A2UIUserActionPayload } from "../../features/chat/a2uiUserAction";
+} from '../../features/chat/useChatMessageRow';
+import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
 
 const emit = defineEmits<{
-  "a2ui-user-action": [payload: A2UIUserActionPayload];
-  feedback: [payload: { messageId: string; rating: "positive" | "negative" }];
+  'a2ui-user-action': [payload: A2UIUserActionPayload];
+  feedback: [payload: { messageId: string; rating: 'positive' | 'negative' }];
   retry: [messageId: string];
-  "dismiss-failed": [messageId: string];
-  "attachment-deleted": [id: string];
-  "download-artifact": [meta: import("../../features/artifact/types").ArtifactMeta];
+  'dismiss-failed': [messageId: string];
+  'attachment-deleted': [id: string];
+  'download-artifact': [meta: import('../../features/artifact/types').ArtifactMeta];
   regenerate: [message: Message];
-  "pin-reasoning": [messageId: string];
+  'pin-reasoning': [messageId: string];
 }>();
 
 const { t } = useI18n();
 
-const userFeedback = ref<"positive" | "negative" | null>(null);
+const userFeedback = ref<'positive' | 'negative' | null>(null);
 
 const props = defineProps<{
   message: Message;
@@ -313,37 +306,28 @@ const messagesRef = computed(() => props.messages);
 const row = useChatMessageRow(messagesRef);
 
 const bundle = computed(() =>
-  buildMessagePresentation(
-    props.plannerKind ?? "",
-    props.message,
-    props.index,
-    props.reactToolLinkIndex
-  )
+  buildMessagePresentation(props.plannerKind ?? '', props.message, props.index, props.reactToolLinkIndex),
 );
 const avatarSize = CHAT_MESSAGE_AVATAR_SIZE;
 const avatarIconSize = CHAT_MESSAGE_AVATAR_ICON_SIZE;
 
-const userPromptAttr = computed(() =>
-  props.message.role === "user" ? userPromptText(props.message) : "",
-);
+const userPromptAttr = computed(() => (props.message.role === 'user' ? userPromptText(props.message) : ''));
 
-const userSourceMeta = computed(() =>
-  props.message.role === "user" ? messageSourceFromMessage(props.message) : null
-);
+const userSourceMeta = computed(() => (props.message.role === 'user' ? messageSourceFromMessage(props.message) : null));
 const userSourceLabel = computed(() => {
   const meta = userSourceMeta.value;
-  if (!meta) return "";
+  if (!meta) return '';
   const key = messageSourceChipKey(meta);
   return key ? t(key, messageSourceChipFallback(meta)) : messageSourceChipFallback(meta);
 });
 
 const showThinkingIndicator = computed(() => {
-  if (props.message.role === "user") return false;
+  if (props.message.role === 'user') return false;
   if (!row.isStreaming(props.message)) return false;
-  const body = (bundle.value.presentation.bodyMarkdown ?? "").trim();
+  const body = (bundle.value.presentation.bodyMarkdown ?? '').trim();
   if (body) return false;
   if (bundle.value.reactStepsWithTools.length > 0) return false;
-  if ((bundle.value.presentation.reasoning ?? "").trim()) return false;
+  if ((bundle.value.presentation.reasoning ?? '').trim()) return false;
   return true;
 });
 
@@ -368,8 +352,13 @@ function renderStreamingMarkdown(content: string) {
 }
 
 @keyframes chat-pulse {
-  0%, 100% { opacity: 100%; }
-  50% { opacity: 40%; }
+  0%,
+  100% {
+    opacity: 100%;
+  }
+  50% {
+    opacity: 40%;
+  }
 }
 
 .chat-reasoning-inline-hint {
@@ -379,7 +368,9 @@ function renderStreamingMarkdown(content: string) {
   border-radius: 6px;
   cursor: pointer;
   color: var(--color-text-secondary);
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 
 .chat-reasoning-inline-hint:hover {

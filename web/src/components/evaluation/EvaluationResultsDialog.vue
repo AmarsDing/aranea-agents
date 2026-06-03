@@ -30,7 +30,7 @@
                 :options="[
                   { label: '-', value: 'unset' },
                   { label: 'Pass', value: 'pass' },
-                  { label: 'Fail', value: 'fail' }
+                  { label: 'Fail', value: 'fail' },
                 ]"
                 @update:model-value="(v: string) => onPassChange(props.row, v)"
               />
@@ -65,7 +65,16 @@
           <template #body-cell-annotate="props">
             <q-td :props="props">
               <div class="app-registry-cell-actions">
-                <q-btn dense flat round icon="save" color="primary" aria-label="保存" :loading="savingId === props.row.id" @click="$emit('annotate', props.row)" />
+                <q-btn
+                  dense
+                  flat
+                  round
+                  icon="save"
+                  color="primary"
+                  aria-label="保存"
+                  :loading="savingId === props.row.id"
+                  @click="$emit('annotate', props.row)"
+                />
               </div>
             </q-td>
           </template>
@@ -105,13 +114,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
-import AppRegistryPagination from "../layout/AppRegistryPagination.vue";
-import { exportEvalRunCsv, exportEvalRunJson } from "../../features/evaluation/exportRunResults";
-import type { EvalCaseResult, EvalRun } from "../../features/evaluation/types";
-import type { RegistryTableColumn } from "../../features/ui/registryTableColumns";
+import { computed, ref, watch } from 'vue';
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
+import { exportEvalRunCsv, exportEvalRunJson } from '../../features/evaluation/exportRunResults';
+import type { EvalCaseResult, EvalRun } from '../../features/evaluation/types';
+import type { RegistryTableColumn } from '../../features/ui/registryTableColumns';
 
 const props = defineProps<{
   open: boolean;
@@ -135,14 +144,14 @@ watch(
   () => props.runId,
   () => {
     page.value = 1;
-  }
+  },
 );
 
 watch(
   () => props.rows.length,
   () => {
     if (page.value > pageMax.value) page.value = pageMax.value;
-  }
+  },
 );
 
 function onExportCsv(): void {
@@ -156,33 +165,33 @@ function onExportJson(): void {
 }
 
 const emit = defineEmits<{
-  "update:open": [value: boolean];
+  'update:open': [value: boolean];
   annotate: [row: EvalCaseResult];
-  "update-row": [row: EvalCaseResult];
+  'update-row': [row: EvalCaseResult];
 }>();
 
 function passValue(row: EvalCaseResult) {
-  if (row.human_pass === true) return "pass";
-  if (row.human_pass === false) return "fail";
-  return "unset";
+  if (row.human_pass === true) return 'pass';
+  if (row.human_pass === false) return 'fail';
+  return 'unset';
 }
 
 function onPassChange(row: EvalCaseResult, v: string) {
   const next = { ...row };
-  if (v === "pass") next.human_pass = true;
-  else if (v === "fail") next.human_pass = false;
+  if (v === 'pass') next.human_pass = true;
+  else if (v === 'fail') next.human_pass = false;
   else next.human_pass = null;
-  emit("update-row", next);
+  emit('update-row', next);
 }
 
 function onScoreChange(row: EvalCaseResult, v: string | number | null) {
   const next = { ...row };
-  if (v === "" || v === null) next.human_score = null;
+  if (v === '' || v === null) next.human_score = null;
   else next.human_score = Number(v);
-  emit("update-row", next);
+  emit('update-row', next);
 }
 
 function onCommentChange(row: EvalCaseResult, v: string) {
-  emit("update-row", { ...row, human_comment: v });
+  emit('update-row', { ...row, human_comment: v });
 }
 </script>

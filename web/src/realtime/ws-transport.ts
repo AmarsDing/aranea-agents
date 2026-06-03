@@ -8,8 +8,8 @@
  * reach into the chat domain for transport-level infrastructure.
  */
 
-import { buildWsUrl } from "../config/runtime";
-import type { Envelope, WsDownstream, WsUpstream } from "./envelope";
+import { buildWsUrl } from '../config/runtime';
+import type { Envelope, WsDownstream, WsUpstream } from './envelope';
 
 export type WsTransportOptions = {
   sessionId: string;
@@ -62,7 +62,7 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
       sessionId: opts.sessionId,
       lastEventId: _lastEventId,
       token: opts.token,
-      logEnabled: opts.logEnabled
+      logEnabled: opts.logEnabled,
     });
     ws = new WebSocket(url);
 
@@ -76,32 +76,32 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
     ws.onmessage = (ev: MessageEvent) => {
       try {
         const msg = JSON.parse(ev.data as string) as WsDownstream;
-        if (msg.direction !== "server_to_client") return;
+        if (msg.direction !== 'server_to_client') return;
 
-        if (msg.type === "connected" && msg.payload) {
+        if (msg.type === 'connected' && msg.payload) {
           const payload = msg.payload as Record<string, unknown>;
           _lastEventId = (payload.last_event_id as string) || _lastEventId;
           opts.onConnected?.({ sessionId: opts.sessionId, lastEventId: _lastEventId });
           return;
         }
 
-        if (msg.type === "pong") return;
+        if (msg.type === 'pong') return;
 
-        if (msg.type === "replay_start") {
+        if (msg.type === 'replay_start') {
           const payload = msg.payload as Record<string, unknown> | undefined;
-          const count = typeof payload?.count === "number" ? payload.count : undefined;
+          const count = typeof payload?.count === 'number' ? payload.count : undefined;
           opts.onReplayState?.(true, count);
           return;
         }
 
-        if (msg.type === "replay_end") {
+        if (msg.type === 'replay_end') {
           opts.onReplayState?.(false);
           return;
         }
 
-        if (msg.type === "server_shutdown") {
+        if (msg.type === 'server_shutdown') {
           const payload = msg.payload as Record<string, unknown> | undefined;
-          const reason = (payload?.reason as string) || "server_shutting_down";
+          const reason = (payload?.reason as string) || 'server_shutting_down';
           shutdownReceived = true;
           opts.onServerShutdown?.(reason);
           return;
@@ -169,7 +169,7 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
     pendingQueue.length = 0;
     if (ws) {
       ws.onclose = null;
-      ws.close(1000, "client disconnect");
+      ws.close(1000, 'client disconnect');
       ws = null;
     }
     _connected = false;
@@ -195,43 +195,43 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
 
   function subscribe(channel: string): void {
     send({
-      direction: "client_to_server",
-      channel: "system",
-      type: "subscribe",
+      direction: 'client_to_server',
+      channel: 'system',
+      type: 'subscribe',
       payload: { channel },
     });
   }
 
   function unsubscribe(channel: string): void {
     send({
-      direction: "client_to_server",
-      channel: "system",
-      type: "unsubscribe",
+      direction: 'client_to_server',
+      channel: 'system',
+      type: 'unsubscribe',
       payload: { channel },
     });
   }
 
   function ping(): void {
     send({
-      direction: "client_to_server",
-      channel: "system",
-      type: "ping",
+      direction: 'client_to_server',
+      channel: 'system',
+      type: 'ping',
     });
   }
 
   function cancel(): void {
     send({
-      direction: "client_to_server",
-      channel: "chat",
-      type: "cancel",
+      direction: 'client_to_server',
+      channel: 'chat',
+      type: 'cancel',
     });
   }
 
   function enableLog(enabled: boolean): void {
     send({
-      direction: "client_to_server",
-      channel: "system",
-      type: "enable_log",
+      direction: 'client_to_server',
+      channel: 'system',
+      type: 'enable_log',
       payload: { enabled },
     });
   }

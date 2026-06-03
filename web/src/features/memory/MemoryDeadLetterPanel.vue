@@ -28,16 +28,36 @@
             <td>{{ r.id }}</td>
             <td class="ellipsis-cell" style="max-width: 120px">{{ r.session_id }}</td>
             <td>{{ r.app_name }}</td>
-            <td><q-badge :color="priorityColor(r.priority)">{{ priorityLabel(r.priority) }}</q-badge></td>
+            <td>
+              <q-badge :color="priorityColor(r.priority)">{{ priorityLabel(r.priority) }}</q-badge>
+            </td>
             <td class="ellipsis-cell" style="max-width: 200px" :title="r.drop_reason">{{ r.drop_reason }}</td>
             <td>{{ r.attempts }}</td>
-            <td><q-badge :color="stateColor(r.state)">{{ r.state }}</q-badge></td>
+            <td>
+              <q-badge :color="stateColor(r.state)">{{ r.state }}</q-badge>
+            </td>
             <td>{{ formatTime(r.failed_at) }}</td>
             <td class="q-gutter-xs">
-              <q-btn v-if="r.state === 'pending'" flat dense color="primary" icon="replay" size="sm" @click="replay(r.id)">
+              <q-btn
+                v-if="r.state === 'pending'"
+                flat
+                dense
+                color="primary"
+                icon="replay"
+                size="sm"
+                @click="replay(r.id)"
+              >
                 <q-tooltip>重试</q-tooltip>
               </q-btn>
-              <q-btn v-if="r.state === 'pending'" flat dense color="negative" icon="delete_outline" size="sm" @click="abandon(r.id)">
+              <q-btn
+                v-if="r.state === 'pending'"
+                flat
+                dense
+                color="negative"
+                icon="delete_outline"
+                size="sm"
+                @click="abandon(r.id)"
+              >
                 <q-tooltip>放弃</q-tooltip>
               </q-btn>
             </td>
@@ -50,46 +70,50 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
-import type { MemoryDeadLetterEntry } from "./types";
-import { listMemoryDeadLetters } from "./api";
+import { onMounted, ref } from 'vue';
+import type { MemoryDeadLetterEntry } from './types';
+import { listMemoryDeadLetters } from './api';
 
 const emit = defineEmits<{
-  (e: "replay", id: number): void;
-  (e: "abandon", id: number): void;
+  (e: 'replay', id: number): void;
+  (e: 'abandon', id: number): void;
 }>();
 
 const rows = ref<MemoryDeadLetterEntry[]>([]);
 const loading = ref(false);
 
 function priorityLabel(p: number) {
-  if (p >= 2) return "High";
-  if (p === 1) return "Normal";
-  return "Low";
+  if (p >= 2) return 'High';
+  if (p === 1) return 'Normal';
+  return 'Low';
 }
 
 function priorityColor(p: number) {
-  if (p >= 2) return "negative";
-  if (p === 1) return "warning";
-  return "grey";
+  if (p >= 2) return 'negative';
+  if (p === 1) return 'warning';
+  return 'grey';
 }
 
 function stateColor(s: string) {
-  if (s === "pending") return "warning";
-  if (s === "replayed") return "positive";
-  if (s === "abandoned") return "grey";
-  return "dark";
+  if (s === 'pending') return 'warning';
+  if (s === 'replayed') return 'positive';
+  if (s === 'abandoned') return 'grey';
+  return 'dark';
 }
 
 function formatTime(t: string) {
-  if (!t) return "-";
-  try { return new Date(t).toLocaleString(); } catch { return t; }
+  if (!t) return '-';
+  try {
+    return new Date(t).toLocaleString();
+  } catch {
+    return t;
+  }
 }
 
 async function load() {
   loading.value = true;
   try {
-    rows.value = await listMemoryDeadLetters("pending", 50);
+    rows.value = await listMemoryDeadLetters('pending', 50);
   } catch {
     rows.value = [];
   } finally {
@@ -98,11 +122,11 @@ async function load() {
 }
 
 function replay(id: number) {
-  emit("replay", id);
+  emit('replay', id);
 }
 
 function abandon(id: number) {
-  emit("abandon", id);
+  emit('abandon', id);
 }
 
 onMounted(load);

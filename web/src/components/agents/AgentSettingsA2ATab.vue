@@ -29,7 +29,13 @@
         :label="proxyForm.auth_type === 'bearer' ? 'Bearer Token' : 'API Key'"
       >
         <template #append>
-          <q-btn flat dense round :icon="showSecret ? 'visibility_off' : 'visibility'" @click="showSecret = !showSecret" />
+          <q-btn
+            flat
+            dense
+            round
+            :icon="showSecret ? 'visibility_off' : 'visibility'"
+            @click="showSecret = !showSecret"
+          />
         </template>
       </q-input>
       <template v-if="proxyForm.auth_type === 'mtls'">
@@ -45,8 +51,8 @@
 </template>
 
 <script setup lang="ts">
-import type { A2AProxyConfig } from "../../features/agents/types";
-import { useAgentA2AProxyTab } from "../../features/agents/useAgentA2AProxyTab";
+import type { A2AProxyConfig } from '../../features/agents/types';
+import { useAgentA2AProxyTab } from '../../features/agents/useAgentA2AProxyTab';
 
 const props = defineProps<{
   agentId: string;
@@ -60,6 +66,6 @@ const emit = defineEmits<{
 const { saving, showSecret, authSecret, mtls, authTypeOptions, proxyForm, saveProxy } = useAgentA2AProxyTab(
   () => props.agentId,
   () => props.a2aProxy,
-  () => emit("saved")
+  () => emit('saved'),
 );
 </script>

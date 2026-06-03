@@ -61,8 +61,26 @@
         :options="statusOptions"
         @update:model-value="onFilterChange"
       />
-      <q-input v-model="from" class="app-page-toolbar__field" dense outlined clearable type="datetime-local" label="起始时间" @update:model-value="onFilterChange" />
-      <q-input v-model="to" class="app-page-toolbar__field" dense outlined clearable type="datetime-local" label="结束时间" @update:model-value="onFilterChange" />
+      <q-input
+        v-model="from"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        type="datetime-local"
+        label="起始时间"
+        @update:model-value="onFilterChange"
+      />
+      <q-input
+        v-model="to"
+        class="app-page-toolbar__field"
+        dense
+        outlined
+        clearable
+        type="datetime-local"
+        label="结束时间"
+        @update:model-value="onFilterChange"
+      />
       <template #actions>
         <q-btn flat rounded no-caps icon="restart_alt" label="重置" @click="resetFilters" />
         <q-btn flat rounded no-caps icon="refresh" label="刷新" :loading="loading" @click="() => loadRows()" />
@@ -105,7 +123,9 @@
       </template>
       <template #body-cell-agent_id="props">
         <q-td :props="props">
-          <span class="app-registry-cell-sub ellipsis" :title="props.row.agent_id">{{ props.row.agent_id || "—" }}</span>
+          <span class="app-registry-cell-sub ellipsis" :title="props.row.agent_id">{{
+            props.row.agent_id || '—'
+          }}</span>
         </q-td>
       </template>
       <template #body-cell-status="props">
@@ -131,7 +151,7 @@
           <pre class="plugin-run-detail app-code-block">{{ detailText }}</pre>
         </q-card-section>
         <q-card-actions align="right" class="app-actions-bar">
-          <q-btn flat no-caps label="关闭" v-close-popup />
+          <q-btn v-close-popup flat no-caps label="关闭" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -139,12 +159,12 @@
 </template>
 
 <script setup lang="ts">
-import AppPageHero from "../components/layout/AppPageHero.vue";
-import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
-import AppRegistryTable from "../components/layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../components/layout/AppRegistryHoverTip.vue";
-import AppRegistryPagination from "../components/layout/AppRegistryPagination.vue";
-import { usePluginRunsPage } from "../features/plugins/usePluginRunsPage";
+import AppPageHero from '../components/layout/AppPageHero.vue';
+import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
+import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
+import AppRegistryHoverTip from '../components/layout/AppRegistryHoverTip.vue';
+import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
+import { usePluginRunsPage } from '../features/plugins/usePluginRunsPage';
 
 const {
   pluginKey,
@@ -172,6 +192,6 @@ const {
   onFilterChange,
   resetFilters,
   openDetail,
-  detailPreview
+  detailPreview,
 } = usePluginRunsPage();
 </script>

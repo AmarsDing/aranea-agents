@@ -7,15 +7,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { EnvelopeStateDelta } from "../../features/chat/envelope";
+import { computed } from 'vue';
+import type { EnvelopeStateDelta } from '../../features/chat/envelope';
 
 const props = defineProps<{
   delta: EnvelopeStateDelta;
 }>();
 
 const previewValue = computed(() => {
-  const raw = props.delta.value_json ?? "";
+  const raw = props.delta.value_json ?? '';
   return raw.length > 120 ? `${raw.slice(0, 120)}…` : raw;
 });
 </script>

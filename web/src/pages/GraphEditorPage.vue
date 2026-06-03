@@ -4,7 +4,9 @@
       <q-btn flat dense round icon="arrow_back" @click="goBack" />
       <div class="graph-workbench__toolbar-meta">
         <div class="graph-editor-page__title">{{ isNew ? '新增 Graph' : graphDef.name || '编辑 Graph' }}</div>
-        <div class="graph-workbench__subtitle">{{ isNew ? '拖拽组件到画布开始编排' : `v${graphDef.version || 0} · ${graphDef.nodes.length} 节点` }}</div>
+        <div class="graph-workbench__subtitle">
+          {{ isNew ? '拖拽组件到画布开始编排' : `v${graphDef.version || 0} · ${graphDef.nodes.length} 节点` }}
+        </div>
       </div>
       <q-space />
       <q-btn flat dense round icon="undo" :disable="!canUndo" @click="undo">
@@ -127,13 +129,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import GraphNodePalette from "../components/graph/GraphNodePalette.vue";
-import GraphEditorCanvas from "../components/graph/GraphEditorCanvas.vue";
-import GraphPropertyPanel from "../components/graph/GraphPropertyPanel.vue";
-import GraphVersionPanel from "../components/graph/GraphVersionPanel.vue";
-import GraphRunDialog from "../components/graph/GraphRunDialog.vue";
-import { useGraphEditorPage } from "../features/graph/useGraphEditorPage";
+import { ref } from 'vue';
+import GraphNodePalette from '../components/graph/GraphNodePalette.vue';
+import GraphEditorCanvas from '../components/graph/GraphEditorCanvas.vue';
+import GraphPropertyPanel from '../components/graph/GraphPropertyPanel.vue';
+import GraphVersionPanel from '../components/graph/GraphVersionPanel.vue';
+import GraphRunDialog from '../components/graph/GraphRunDialog.vue';
+import { useGraphEditorPage } from '../features/graph/useGraphEditorPage';
 
 const propertyPanelRef = ref<InstanceType<typeof GraphPropertyPanel> | null>(null);
 

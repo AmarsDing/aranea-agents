@@ -1,13 +1,13 @@
-import { computed, onMounted, reactive, ref, watch } from "vue";
-import { useRoute } from "vue-router";
-import { useQuasar } from "quasar";
-import type { PlatformResourceInput, PlatformResourceName } from "./types";
-import { errorMessage, getCategories } from "./providerUtils";
-import { usePlatformStore } from "../../stores/platform";
-import { pricingWarningMessage } from "../usage/pricingWarning";
-import { PLATFORM_RESOURCE_TABLE_COLUMNS } from "../../components/platform/providerModelUi";
-import { useProviderList } from "./useProviderList";
-import { useProviderWizard } from "./useProviderWizard";
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
+import { useQuasar } from 'quasar';
+import type { PlatformResourceInput, PlatformResourceName } from './types';
+import { errorMessage, getCategories } from './providerUtils';
+import { usePlatformStore } from '../../stores/platform';
+import { pricingWarningMessage } from '../usage/pricingWarning';
+import { PLATFORM_RESOURCE_TABLE_COLUMNS } from '../../components/platform/providerModelUi';
+import { useProviderList } from './useProviderList';
+import { useProviderWizard } from './useProviderWizard';
 
 const columns = PLATFORM_RESOURCE_TABLE_COLUMNS;
 
@@ -19,57 +19,57 @@ export function useResourceManagerPage() {
 
   const saving = ref(false);
   const dialogOpen = ref(false);
-  const editingId = ref("");
+  const editingId = ref('');
 
   const resource = computed(() => route.meta.resource as PlatformResourceName);
-  const isProviderResource = computed(() => resource.value === "llm-provider-models");
-  const pageTitle = computed(() => (route.meta.title as string) || "资源管理");
-  const pageSubtitle = computed(() => (route.meta.subtitle as string) || "管理平台资源、启用状态与运行配置。");
+  const isProviderResource = computed(() => resource.value === 'llm-provider-models');
+  const pageTitle = computed(() => (route.meta.title as string) || '资源管理');
+  const pageSubtitle = computed(() => (route.meta.subtitle as string) || '管理平台资源、启用状态与运行配置。');
 
   const list = useProviderList({ resource, isProviderResource, saving });
   const wizard = useProviderWizard({ editingId, dialogOpen, saving, resource, isProviderResource, rows: list.rows });
 
   const form = reactive<PlatformResourceInput>({
-    key: "",
-    name: "",
-    description: "",
+    key: '',
+    name: '',
+    description: '',
     enabled: true,
     sort_order: 0,
-    parent_id: "",
-    level: "",
-    agent_id: "",
-    provider: "",
-    model: "",
-    config_json: "{}",
-    metadata_json: "{}"
+    parent_id: '',
+    level: '',
+    agent_id: '',
+    provider: '',
+    model: '',
+    config_json: '{}',
+    metadata_json: '{}',
   });
 
   function resetForm() {
     Object.assign(form, {
-      key: "",
-      name: "",
-      description: "",
+      key: '',
+      name: '',
+      description: '',
       enabled: true,
       sort_order: 0,
-      parent_id: "",
-      level: "",
-      agent_id: "",
-      provider: "",
-      model: "",
-      config_json: "{}",
-      metadata_json: "{}"
+      parent_id: '',
+      level: '',
+      agent_id: '',
+      provider: '',
+      model: '',
+      config_json: '{}',
+      metadata_json: '{}',
     });
     wizard.resetProviderForm();
   }
 
   function openCreate() {
-    editingId.value = "";
+    editingId.value = '';
     resetForm();
     dialogOpen.value = true;
     void wizard.ensureCatalogLoaded();
   }
 
-  async function openEdit(row: typeof list.rows.value[number]) {
+  async function openEdit(row: (typeof list.rows.value)[number]) {
     editingId.value = row.id;
     Object.assign(form, {
       key: row.key,
@@ -82,14 +82,14 @@ export function useResourceManagerPage() {
       agent_id: row.agent_id,
       provider: row.provider,
       model: row.model,
-      config_json: row.config_json || "{}",
-      metadata_json: row.metadata_json || "{}"
+      config_json: row.config_json || '{}',
+      metadata_json: row.metadata_json || '{}',
     });
     if (isProviderResource.value) {
       try {
         await wizard.populateProviderForm(row);
       } catch (error) {
-        $q.notify({ type: "warning", message: `加载目录数据失败：${errorMessage(error)}` });
+        $q.notify({ type: 'warning', message: `加载目录数据失败：${errorMessage(error)}` });
       }
     }
     dialogOpen.value = true;
@@ -101,7 +101,7 @@ export function useResourceManagerPage() {
       return;
     }
     if (!form.key || !form.name) {
-      $q.notify({ type: "negative", message: "Key 和 Name 必填" });
+      $q.notify({ type: 'negative', message: 'Key 和 Name 必填' });
       return;
     }
     saving.value = true;
@@ -114,9 +114,9 @@ export function useResourceManagerPage() {
         list.rows.value = [created, ...list.rows.value];
       }
       dialogOpen.value = false;
-      $q.notify({ type: "positive", message: "已保存" });
+      $q.notify({ type: 'positive', message: '已保存' });
     } catch (error) {
-      $q.notify({ type: "negative", message: errorMessage(error) || "保存失败" });
+      $q.notify({ type: 'negative', message: errorMessage(error) || '保存失败' });
     } finally {
       saving.value = false;
     }
@@ -125,7 +125,7 @@ export function useResourceManagerPage() {
   onMounted(list.loadRows);
 
   watch(resource, () => {
-    list.keyword.value = "";
+    list.keyword.value = '';
     list.page.value = 1;
     void list.loadRows();
   });

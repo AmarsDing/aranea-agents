@@ -53,12 +53,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { useI18n } from "vue-i18n";
-import type { A2UIComponentCtx } from "../../../../features/chat/a2ui/useA2UIComponent";
-import type { A2UISurfaceState } from "../../../../features/chat/a2uiSurfaceState";
-import type { A2UIUserActionPayload } from "../../../../features/chat/a2uiUserAction";
-import A2UIComponentNode from "../../A2UIComponentNode.vue";
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import type { A2UIComponentCtx } from '../../../../features/chat/a2ui/useA2UIComponent';
+import type { A2UISurfaceState } from '../../../../features/chat/a2uiSurfaceState';
+import type { A2UIUserActionPayload } from '../../../../features/chat/a2uiUserAction';
+import A2UIComponentNode from '../../A2UIComponentNode.vue';
 
 defineProps<{
   kind: string;
@@ -67,11 +67,11 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "user-action": [payload: A2UIUserActionPayload];
+  'user-action': [payload: A2UIUserActionPayload];
 }>();
 
 const { t } = useI18n();
-const closeLabel = computed(() => t("common.close", "关闭"));
+const closeLabel = computed(() => t('common.close', '关闭'));
 </script>
 
 <style scoped>

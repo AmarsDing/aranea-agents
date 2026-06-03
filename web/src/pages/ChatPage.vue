@@ -19,17 +19,12 @@
     <ChatSideToggle
       :open="layout.leftOpen"
       :icon="layout.leftOpen ? 'chevron_left' : 'chevron_right'"
-      :ariaLabel="layout.t('chat.collapseList')"
+      :aria-label="layout.t('chat.collapseList')"
       @toggle="layout.leftOpen = !layout.leftOpen"
     />
 
     <div class="chat-workspace-main col column no-wrap">
-      <q-banner
-        v-if="session.inboundHydrateError"
-        dense
-        rounded
-        class="app-banner-warning q-mx-sm q-mt-sm"
-      >
+      <q-banner v-if="session.inboundHydrateError" dense rounded class="app-banner-warning q-mx-sm q-mt-sm">
         {{ session.inboundHydrateError }}
       </q-banner>
       <ChatMessagePanel
@@ -122,7 +117,7 @@
     <ChatSideToggle
       :open="layout.rightOpen"
       :icon="layout.rightOpen ? 'chevron_right' : 'chevron_left'"
-      :ariaLabel="layout.t('chat.collapseSession')"
+      :aria-label="layout.t('chat.collapseSession')"
       @toggle="layout.rightOpen = !layout.rightOpen"
     />
 
@@ -183,22 +178,22 @@
 </template>
 
 <script setup lang="ts">
-import ChatDeleteDialog from "../components/chat/ChatDeleteDialog.vue";
-import ChatEntitySidebar from "../components/chat/ChatEntitySidebar.vue";
-import ChatMessagePanel from "../components/chat/ChatMessagePanel.vue";
-import ChatSessionSidebar from "../components/chat/ChatSessionSidebar.vue";
-import ChatSideToggle from "../components/chat/ChatSideToggle.vue";
-import ChatSettingsDialog from "../components/chat/ChatSettingsDialog.vue";
-import ChatWorkspaceShell from "../components/chat/ChatWorkspaceShell.vue";
-import SessionTimelineDialog from "../components/chat/SessionTimelineDialog.vue";
-import { useRouter } from "vue-router";
-import { useChatWorkspace } from "../features/chat/composables/useChatWorkspace";
-import { useSpiritTeamStore } from "../stores/spirit";
-import { useQuasar } from "quasar";
-import { useI18n } from "vue-i18n";
-import type { Agent } from "../features/agents/types";
+import ChatDeleteDialog from '../components/chat/ChatDeleteDialog.vue';
+import ChatEntitySidebar from '../components/chat/ChatEntitySidebar.vue';
+import ChatMessagePanel from '../components/chat/ChatMessagePanel.vue';
+import ChatSessionSidebar from '../components/chat/ChatSessionSidebar.vue';
+import ChatSideToggle from '../components/chat/ChatSideToggle.vue';
+import ChatSettingsDialog from '../components/chat/ChatSettingsDialog.vue';
+import ChatWorkspaceShell from '../components/chat/ChatWorkspaceShell.vue';
+import SessionTimelineDialog from '../components/chat/SessionTimelineDialog.vue';
+import { useRouter } from 'vue-router';
+import { useChatWorkspace } from '../features/chat/composables/useChatWorkspace';
+import { useSpiritTeamStore } from '../stores/spirit';
+import { useQuasar } from 'quasar';
+import { useI18n } from 'vue-i18n';
+import type { Agent } from '../features/agents/types';
 
-const SPIRIT_AGENT_KEY = "__spirit__";
+const SPIRIT_AGENT_KEY = '__spirit__';
 
 const { coreReady, fileRef, layout, entity, session, composer, dialogs } = useChatWorkspace();
 const spiritStore = useSpiritTeamStore();
@@ -209,8 +204,12 @@ const { t } = useI18n();
 function onSelectSpirit() {
   spiritStore.returnToSpirit();
   const spiritAgent = entity.store.agents.find((a: Agent) => a.agent_key === SPIRIT_AGENT_KEY);
-  if (spiritAgent && entity.store.selectedAgent?.id !== spiritAgent.id) {
-    entity.selectAgent(spiritAgent);
+  if (spiritAgent) {
+    // Always re-select when coming from team mode or when agent differs.
+    const needsReselect = entity.store.selectedAgent?.id !== spiritAgent.id || entity.selectedEntityKind !== 'agent';
+    if (needsReselect) {
+      entity.selectAgent(spiritAgent);
+    }
   }
 }
 
@@ -219,7 +218,7 @@ function onNavigate(route: { name: string; params: Record<string, string> }) {
 }
 
 function onPasteUnsupported() {
-  $q.notify({ type: "warning", message: t("chat.clipboardFileUnsupported", "当前模型不支持此类型的文件粘贴") });
+  $q.notify({ type: 'warning', message: t('chat.clipboardFileUnsupported', '当前模型不支持此类型的文件粘贴') });
 }
 
 async function onCompactSession(sessionId: string) {
@@ -229,20 +228,20 @@ async function onCompactSession(sessionId: string) {
       const before = Math.round((result.estimated_tokens_before / 1000) * 10) / 10;
       const after = Math.round((result.estimated_tokens_after / 1000) * 10) / 10;
       $q.notify({
-        type: "positive",
-        message: t("chat.contextManuallyCompressed", `上下文已压缩 (${before}k → ${after}k tokens)`),
+        type: 'positive',
+        message: t('chat.contextManuallyCompressed', `上下文已压缩 (${before}k → ${after}k tokens)`),
         timeout: 4000,
       });
     } else {
       $q.notify({
-        type: "info",
-        message: t("chat.contextNoCompactionNeeded", "当前上下文无需压缩"),
+        type: 'info',
+        message: t('chat.contextNoCompactionNeeded', '当前上下文无需压缩'),
         timeout: 3000,
       });
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    $q.notify({ type: "negative", message: t("chat.contextCompactFailed", "压缩失败") + `: ${msg}`, timeout: 5000 });
+    $q.notify({ type: 'negative', message: t('chat.contextCompactFailed', '压缩失败') + `: ${msg}`, timeout: 5000 });
   }
 }
 </script>

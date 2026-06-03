@@ -1,9 +1,9 @@
-import type { Envelope } from "../realtime/envelope";
-import type { Message, RunStatusValue } from "./types";
+import type { Envelope } from '../realtime/envelope';
+import type { Message, RunStatusValue } from './types';
 
-export type ConversationSource = "web" | "ws" | "channel" | "cron" | "a2a" | "durable";
+export type ConversationSource = 'web' | 'ws' | 'channel' | 'cron' | 'a2a' | 'durable';
 
-export type ConversationTargetType = "agent" | "team";
+export type ConversationTargetType = 'agent' | 'team';
 
 export type ConversationTarget = {
   type: ConversationTargetType;
@@ -24,24 +24,18 @@ export type ConversationSession = {
 };
 
 export type ConversationTurnStatus =
-  | "queued"
-  | "running"
-  | "awaiting_user"
-  | "background"
-  | "completed"
-  | "failed"
-  | "cancelled";
+  | 'queued'
+  | 'running'
+  | 'awaiting_user'
+  | 'background'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 
-export type DeliveryStatus =
-  | "not_required"
-  | "pending"
-  | "sending"
-  | "delivered"
-  | "failed"
-  | "skipped";
+export type DeliveryStatus = 'not_required' | 'pending' | 'sending' | 'delivered' | 'failed' | 'skipped';
 
 export type DeliveryTarget = {
-  kind: "chat" | "channel" | "monitor" | string;
+  kind: 'chat' | 'channel' | 'monitor' | string;
   channelId?: string;
   platform?: string;
   recipientId?: string;
@@ -62,7 +56,7 @@ export type ConversationTurnSummary = {
 };
 
 export type ConversationTimelineItem = {
-  kind: "message" | "event";
+  kind: 'message' | 'event';
   turnId?: string;
   message?: Message;
   envelope?: Envelope;
@@ -70,19 +64,19 @@ export type ConversationTimelineItem = {
 
 export function runStatusToTurnStatus(status: RunStatusValue | string): ConversationTurnStatus | undefined {
   switch (status) {
-    case "pending":
-      return "queued";
-    case "running":
-    case "sync":
-      return "running";
-    case "awaiting_user":
-      return "awaiting_user";
-    case "completed":
-      return "completed";
-    case "failed":
-      return "failed";
-    case "cancelled":
-      return "cancelled";
+    case 'pending':
+      return 'queued';
+    case 'running':
+    case 'sync':
+      return 'running';
+    case 'awaiting_user':
+      return 'awaiting_user';
+    case 'completed':
+      return 'completed';
+    case 'failed':
+      return 'failed';
+    case 'cancelled':
+      return 'cancelled';
     default:
       return undefined;
   }
@@ -90,27 +84,27 @@ export function runStatusToTurnStatus(status: RunStatusValue | string): Conversa
 
 export function deliveryStatusFromChannelStatus(status: string): DeliveryStatus | undefined {
   switch (status.trim().toLowerCase()) {
-    case "queued":
-    case "pending":
-      return "pending";
-    case "sending":
-    case "streaming":
-    case "streamed":
-      return "sending";
-    case "sent":
-    case "delivered":
-    case "ok":
-    case "success":
-      return "delivered";
-    case "failed":
-    case "error":
-    case "timeout":
-      return "failed";
-    case "skipped":
-    case "skipped_duplicate":
-    case "skipped_access":
-    case "skipped_empty":
-      return "skipped";
+    case 'queued':
+    case 'pending':
+      return 'pending';
+    case 'sending':
+    case 'streaming':
+    case 'streamed':
+      return 'sending';
+    case 'sent':
+    case 'delivered':
+    case 'ok':
+    case 'success':
+      return 'delivered';
+    case 'failed':
+    case 'error':
+    case 'timeout':
+      return 'failed';
+    case 'skipped':
+    case 'skipped_duplicate':
+    case 'skipped_access':
+    case 'skipped_empty':
+      return 'skipped';
     default:
       return undefined;
   }

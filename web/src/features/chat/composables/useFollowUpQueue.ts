@@ -1,13 +1,13 @@
-import { onUnmounted, ref, type Ref } from "vue";
-import { useChatRuntimeStore } from "../../../stores/chat/runtimeStore";
-import type { PendingMessage } from "../api";
-import { messageQueuedFromEnvelope, type RunStatusFromWs } from "../envelopeRunStatus";
-import type { Envelope } from "../envelope";
+import { onUnmounted, ref, type Ref } from 'vue';
+import { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
+import type { PendingMessage } from '../api';
+import { messageQueuedFromEnvelope, type RunStatusFromWs } from '../envelopeRunStatus';
+import type { Envelope } from '../envelope';
 
 export function useFollowUpQueue(
   sessionId: Ref<string | undefined>,
   sending: Ref<boolean>,
-  notifyError?: (message: string) => void
+  notifyError?: (message: string) => void,
 ) {
   const pendingMessages = ref<PendingMessage[]>([]);
   /** One-shot poll timer: fires once after run starts, then WS events take over. */
@@ -23,7 +23,7 @@ export function useFollowUpQueue(
     try {
       pendingMessages.value = await runtime.fetchPendingMessages(sid);
     } catch (err) {
-      notifyError?.(err instanceof Error ? err.message : "加载排队消息失败");
+      notifyError?.(err instanceof Error ? err.message : '加载排队消息失败');
       pendingMessages.value = [];
     }
   }
@@ -52,8 +52,8 @@ export function useFollowUpQueue(
     }
     // Also refresh on run completion to clear stale pending items
     const meta = env.metadata ?? {};
-    const rs = String(meta.status ?? "");
-    if (rs === "completed" || rs === "cancelled" || rs === "failed") {
+    const rs = String(meta.status ?? '');
+    if (rs === 'completed' || rs === 'cancelled' || rs === 'failed') {
       void refreshPendingMessages();
     }
   }
@@ -67,10 +67,10 @@ export function useFollowUpQueue(
       if (ok) {
         pendingMessages.value = pendingMessages.value.filter((pm) => pm.id !== pendingId);
       } else {
-        notifyError?.("取消排队消息失败");
+        notifyError?.('取消排队消息失败');
       }
     } catch (err) {
-      notifyError?.(err instanceof Error ? err.message : "取消排队消息失败");
+      notifyError?.(err instanceof Error ? err.message : '取消排队消息失败');
     }
   }
 
@@ -82,13 +82,13 @@ export function useFollowUpQueue(
       const ok = await runtime.updatePending(sid, pendingId, content.trim());
       if (ok) {
         pendingMessages.value = pendingMessages.value.map((pm) =>
-          pm.id === pendingId ? { ...pm, content: content.trim() } : pm
+          pm.id === pendingId ? { ...pm, content: content.trim() } : pm,
         );
       } else {
-        notifyError?.("更新排队消息失败");
+        notifyError?.('更新排队消息失败');
       }
     } catch (err) {
-      notifyError?.(err instanceof Error ? err.message : "更新排队消息失败");
+      notifyError?.(err instanceof Error ? err.message : '更新排队消息失败');
     }
   }
 
@@ -112,6 +112,6 @@ export function useFollowUpQueue(
     onRunStatusEnvelope,
     onCancelPending,
     onUpdatePending,
-    watchSending
+    watchSending,
   };
 }

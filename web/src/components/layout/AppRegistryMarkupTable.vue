@@ -35,12 +35,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed } from 'vue';
 import {
   normalizeRegistryColumns,
   registryFieldValue,
-  type RegistryTableColumn
-} from "../../features/ui/registryTableColumns";
+  type RegistryTableColumn,
+} from '../../features/ui/registryTableColumns';
 
 const props = withDefaults(
   defineProps<{
@@ -52,15 +52,15 @@ const props = withDefaults(
     emptyCellClass?: string;
   }>(),
   {
-    rowKey: "id",
+    rowKey: 'id',
     wrapCells: true,
-    tableClass: "",
-    emptyCellClass: "text-center text-grey-7"
-  }
+    tableClass: '',
+    emptyCellClass: 'text-center text-grey-7',
+  },
 );
 
 const tableClasses = computed(() => {
-  const classes = ["app-registry-markup-table"];
+  const classes = ['app-registry-markup-table'];
   if (props.tableClass) classes.push(props.tableClass);
   return classes;
 });
@@ -68,18 +68,18 @@ const tableClasses = computed(() => {
 const normalizedColumns = computed(() => normalizeRegistryColumns(props.columns) ?? []);
 
 function cellAlignClass(align?: string) {
-  if (align === "right") return "text-right";
-  if (align === "center") return "text-center";
-  return "text-left";
+  if (align === 'right') return 'text-right';
+  if (align === 'center') return 'text-center';
+  return 'text-left';
 }
 
 function resolveRowKey(row: Record<string, unknown>) {
   return row[props.rowKey] ?? row.id ?? JSON.stringify(row);
 }
 
-function cellValue(row: Record<string, unknown>, field: RegistryTableColumn["field"]) {
+function cellValue(row: Record<string, unknown>, field: RegistryTableColumn['field']) {
   const value = registryFieldValue(row, field);
-  if (value == null || value === "") return "—";
+  if (value == null || value === '') return '—';
   return value;
 }
 </script>

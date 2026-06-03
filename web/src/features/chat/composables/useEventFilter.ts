@@ -1,12 +1,12 @@
-import { computed, ref, type Ref } from "vue";
-import type { Envelope } from "../envelope";
+import { computed, ref, type Ref } from 'vue';
+import type { Envelope } from '../envelope';
 import {
   buildBranchTree,
   defaultEventFilterState,
   filterEnvelopes,
   type BranchNode,
   type EventFilterState,
-} from "../eventFilter";
+} from '../eventFilter';
 
 export function useEventFilter(source: Ref<Envelope[]>) {
   const filters = ref<EventFilterState>(defaultEventFilterState());

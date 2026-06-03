@@ -1,7 +1,7 @@
 /** True when text is a complete JSON object (not a pretty-print line fragment). */
 export function isCatalogJsonBlock(text: string): boolean {
   const t = text.trim();
-  if (!t.startsWith("{") || !t.endsWith("}")) return false;
+  if (!t.startsWith('{') || !t.endsWith('}')) return false;
   try {
     JSON.parse(t);
     return true;

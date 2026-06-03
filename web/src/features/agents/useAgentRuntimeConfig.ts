@@ -1,5 +1,5 @@
-import { reactive } from "vue";
-import type { Agent } from "./types";
+import { reactive } from 'vue';
+import type { Agent } from './types';
 import {
   defaultAgentAdvancedSettings,
   defaultAgentRuntimeConfig,
@@ -8,15 +8,15 @@ import {
   snapshotModeOptions,
   truncateStrategyOptions,
   toolProfileOptions,
-} from "./agentRuntimeConfig";
+} from './agentRuntimeConfig';
 import {
   applyAdvancedSaveToRuntime,
   hydrateAgentRuntime,
   hydrateRuntimeFromConfigJson,
-} from "./agentRuntimeConfigHydrate";
-import { buildAgentConfigJson, buildRuntimeSettingsPayload } from "./agentRuntimeConfigSerialize";
-import type { AgentAdvancedSettingsForm } from "./agentRuntimeConfig";
-import { normalizeSkillRuntimeState, useSkillRuntimeSlugSync } from "./agentSkillRuntimeConfig";
+} from './agentRuntimeConfigHydrate';
+import { buildAgentConfigJson, buildRuntimeSettingsPayload } from './agentRuntimeConfigSerialize';
+import type { AgentAdvancedSettingsForm } from './agentRuntimeConfig';
+import { normalizeSkillRuntimeState, useSkillRuntimeSlugSync } from './agentSkillRuntimeConfig';
 
 export type AgentRuntimeHydrateHooks = {
   onFromSettings?: (agent: Agent) => void;
@@ -32,7 +32,7 @@ export function useAgentRuntimeConfig() {
 
   function hydrateSettings(agent: Agent, hooks?: AgentRuntimeHydrateHooks) {
     const source = hydrateAgentRuntime(config, advancedState, agent);
-    if (source === "settings") {
+    if (source === 'settings') {
       hooks?.onFromSettings?.(agent);
     } else {
       hooks?.onFromConfigJson?.();
@@ -53,10 +53,7 @@ export function useAgentRuntimeConfig() {
     return buildAgentConfigJson(config, files);
   }
 
-  async function onAdvancedSave(
-    payload: AgentAdvancedSettingsForm,
-    save: () => void | Promise<void>,
-  ) {
+  async function onAdvancedSave(payload: AgentAdvancedSettingsForm, save: () => void | Promise<void>) {
     applyAdvancedSaveToRuntime(config, advancedState, payload);
     await save();
   }

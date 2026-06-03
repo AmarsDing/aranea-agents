@@ -13,8 +13,8 @@
 </template>
 
 <script setup lang="ts">
-import type { PlatformResourceTreeNode } from "../../features/platform/types";
-import TaxonomyPicker from "./TaxonomyPicker.vue";
+import type { PlatformResourceTreeNode } from '../../features/platform/types';
+import TaxonomyPicker from './TaxonomyPicker.vue';
 
 defineProps<{
   modelValue: string | null;
@@ -22,6 +22,6 @@ defineProps<{
 }>();
 
 defineEmits<{
-  "update:modelValue": [value: string | null];
+  'update:modelValue': [value: string | null];
 }>();
 </script>

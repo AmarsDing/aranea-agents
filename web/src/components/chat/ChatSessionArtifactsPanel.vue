@@ -17,8 +17,8 @@
     <q-dialog v-model="dialogOpen" transition-show="scale" transition-hide="scale">
       <q-card class="app-dialog-card app-dialog-card--md app-glass-dialog" :class="{ 'is-dark': isDark }">
         <q-card-section class="row items-center q-pb-none">
-          <div class="text-h6 col">{{ t("chat.sessionArtifacts.title", "会话制品") }}</div>
-          <q-btn flat round dense icon="close" v-close-popup :aria-label="t('chat.cancel')" />
+          <div class="text-h6 col">{{ t('chat.sessionArtifacts.title', '会话制品') }}</div>
+          <q-btn v-close-popup flat round dense icon="close" :aria-label="t('chat.cancel')" />
         </q-card-section>
         <q-card-section class="app-dialog-body q-pt-sm">
           <ArtifactList :items="items" :loading="loading" @open="onOpen" @deleted="(id) => emit('deleted', id)" />
@@ -29,10 +29,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { useI18n } from "vue-i18n";
-import ArtifactList from "../../features/artifact/ArtifactList.vue";
-import type { ArtifactMeta } from "../../features/artifact/types";
+import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+import ArtifactList from '../../features/artifact/ArtifactList.vue';
+import type { ArtifactMeta } from '../../features/artifact/types';
 
 const props = defineProps<{
   sessionId: string;
@@ -50,11 +50,11 @@ const { t } = useI18n();
 const dialogOpen = ref(false);
 
 const triggerLabel = computed(() => {
-  const base = t("chat.sessionArtifacts.title", "会话制品");
+  const base = t('chat.sessionArtifacts.title', '会话制品');
   return props.items.length ? `${base} (${props.items.length})` : base;
 });
 
 function onOpen(id: string) {
-  emit("open", id);
+  emit('open', id);
 }
 </script>

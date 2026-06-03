@@ -45,11 +45,64 @@
 
       <div class="overview-filter-bar">
         <div class="overview-filter-bar__inner">
-          <q-select v-model="filters.range" dense outlined emit-value map-options :label="t('overviewPage.filterRange')" :options="rangeOptions" class="overview-filter-field" @update:model-value="loadOverview" />
-          <q-select v-model="filters.provider_code" dense outlined clearable emit-value map-options :label="t('overviewPage.filterProvider')" :options="providerOptions" class="overview-filter-field" @update:model-value="onProviderChange" />
-          <q-select v-model="filters.model_api_id" dense outlined clearable emit-value map-options :label="t('overviewPage.filterModel')" :options="modelOptions" class="overview-filter-field" @update:model-value="loadOverview" />
-          <q-select v-model="filters.status" dense outlined clearable emit-value map-options :label="t('overviewPage.filterStatus')" :options="statusOptions" class="overview-filter-field" @update:model-value="loadOverview" />
-          <q-select v-model="trendGranularity" dense outlined emit-value map-options :label="t('overviewPage.filterGranularity')" :options="granularityOptions" class="overview-filter-field" @update:model-value="loadOverview" />
+          <q-select
+            v-model="filters.range"
+            dense
+            outlined
+            emit-value
+            map-options
+            :label="t('overviewPage.filterRange')"
+            :options="rangeOptions"
+            class="overview-filter-field"
+            @update:model-value="loadOverview"
+          />
+          <q-select
+            v-model="filters.provider_code"
+            dense
+            outlined
+            clearable
+            emit-value
+            map-options
+            :label="t('overviewPage.filterProvider')"
+            :options="providerOptions"
+            class="overview-filter-field"
+            @update:model-value="onProviderChange"
+          />
+          <q-select
+            v-model="filters.model_api_id"
+            dense
+            outlined
+            clearable
+            emit-value
+            map-options
+            :label="t('overviewPage.filterModel')"
+            :options="modelOptions"
+            class="overview-filter-field"
+            @update:model-value="loadOverview"
+          />
+          <q-select
+            v-model="filters.status"
+            dense
+            outlined
+            clearable
+            emit-value
+            map-options
+            :label="t('overviewPage.filterStatus')"
+            :options="statusOptions"
+            class="overview-filter-field"
+            @update:model-value="loadOverview"
+          />
+          <q-select
+            v-model="trendGranularity"
+            dense
+            outlined
+            emit-value
+            map-options
+            :label="t('overviewPage.filterGranularity')"
+            :options="granularityOptions"
+            class="overview-filter-field"
+            @update:model-value="loadOverview"
+          />
         </div>
       </div>
 
@@ -89,7 +142,9 @@
                   </div>
                   <div class="overview-summary-item">
                     <div class="overview-summary-item__label">{{ t('overviewPage.totalCost') }}</div>
-                    <div class="overview-summary-item__value overview-summary-item__value--accent">{{ formatMoney(overview?.range.total_cost_micro_usd) }}</div>
+                    <div class="overview-summary-item__value overview-summary-item__value--accent">
+                      {{ formatMoney(overview?.range.total_cost_micro_usd) }}
+                    </div>
                   </div>
                   <div class="overview-summary-item">
                     <div class="overview-summary-item__label">{{ t('overviewPage.successRate') }}</div>
@@ -99,7 +154,9 @@
               </q-card-section>
               <q-separator class="overview-separator" />
               <q-card-section>
-                <div class="overview-section-title" style="font-size:0.85rem">{{ t('overviewPage.tokenComposition') }}</div>
+                <div class="overview-section-title" style="font-size: 0.85rem">
+                  {{ t('overviewPage.tokenComposition') }}
+                </div>
                 <UsageTokenComposition :summary="overview?.range" />
               </q-card-section>
             </q-card>
@@ -122,14 +179,20 @@
             :metrics="runnerMetrics"
             :loading="runnerLoading"
             :window-minutes="runnerWindowMinutes"
-            @update:window-minutes="runnerWindowMinutes = $event; reloadRunnerMetrics()"
+            @update:window-minutes="
+              runnerWindowMinutes = $event;
+              reloadRunnerMetrics();
+            "
             @refresh="reloadRunnerMetrics()"
             @drill="openRunsTab({ tab: 'traces' })"
           />
         </div>
 
-        <div class="overview-alert-stack" ref="alertStackRef">
-          <UsageInefficientModels v-if="(overview?.inefficient_models?.length ?? 0) > 0" :rows="overview?.inefficient_models ?? []" />
+        <div ref="alertStackRef" class="overview-alert-stack">
+          <UsageInefficientModels
+            v-if="(overview?.inefficient_models?.length ?? 0) > 0"
+            :rows="overview?.inefficient_models ?? []"
+          />
           <div class="overview-alert-stack__row">
             <UsageAnomalyList :rows="overview?.anomalies ?? []" />
             <UsageFallbackEvents :anomalies="overview?.anomalies ?? []" />
@@ -137,45 +200,64 @@
         </div>
       </div>
     </div>
-
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
-import { useOverviewPage } from "../features/usage/useOverviewPage";
-import CommandCenterHero from "../components/usage/CommandCenterHero.vue";
-import CommandCenterStatusPanels from "../components/usage/CommandCenterStatusPanels.vue";
-import CommandCenterQuickActions from "../components/usage/CommandCenterQuickActions.vue";
-import OverviewMonitorQuickLinks from "../components/usage/OverviewMonitorQuickLinks.vue";
-import OverviewRunnerMetrics from "../components/usage/OverviewRunnerMetrics.vue";
-import OverviewProviderHealth from "../components/usage/OverviewProviderHealth.vue";
-import UsageAnomalyList from "../components/usage/UsageAnomalyList.vue";
-import UsageFallbackEvents from "../components/usage/UsageFallbackEvents.vue";
-import UsageInefficientModels from "../components/usage/UsageInefficientModels.vue";
-import UsageMetricCards from "../components/usage/UsageMetricCards.vue";
-import UsageTokenComposition from "../components/usage/UsageTokenComposition.vue";
-import UsageTopAgents from "../components/usage/UsageTopAgents.vue";
-import UsageTopModels from "../components/usage/UsageTopModels.vue";
-import UsageModelCostPie from "../components/usage/UsageModelCostPie.vue";
-import UsageProviderCostPie from "../components/usage/UsageProviderCostPie.vue";
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { useOverviewPage } from '../features/usage/useOverviewPage';
+import CommandCenterHero from '../components/usage/CommandCenterHero.vue';
+import CommandCenterStatusPanels from '../components/usage/CommandCenterStatusPanels.vue';
+import CommandCenterQuickActions from '../components/usage/CommandCenterQuickActions.vue';
+import OverviewMonitorQuickLinks from '../components/usage/OverviewMonitorQuickLinks.vue';
+import OverviewRunnerMetrics from '../components/usage/OverviewRunnerMetrics.vue';
+import OverviewProviderHealth from '../components/usage/OverviewProviderHealth.vue';
+import UsageAnomalyList from '../components/usage/UsageAnomalyList.vue';
+import UsageFallbackEvents from '../components/usage/UsageFallbackEvents.vue';
+import UsageInefficientModels from '../components/usage/UsageInefficientModels.vue';
+import UsageMetricCards from '../components/usage/UsageMetricCards.vue';
+import UsageTokenComposition from '../components/usage/UsageTokenComposition.vue';
+import UsageTopAgents from '../components/usage/UsageTopAgents.vue';
+import UsageTopModels from '../components/usage/UsageTopModels.vue';
+import UsageModelCostPie from '../components/usage/UsageModelCostPie.vue';
+import UsageProviderCostPie from '../components/usage/UsageProviderCostPie.vue';
 
-const UsageTrendChart = defineAsyncComponent(() => import("../components/usage/UsageTrendChart.vue"));
+const UsageTrendChart = defineAsyncComponent(() => import('../components/usage/UsageTrendChart.vue'));
 
 const {
   t,
-  overview, loading, error,
-  trendGranularity, filters,
-  rangeOptions, statusOptions, granularityOptions,
-  providerOptions, modelOptions, onProviderChange,
-  loadOverview, formatCount, formatMoney, formatPercent,
-  providerModels, providerHealthLoading,
-  runnerMetrics, runnerLoading, runnerWindowMinutes,
-  reloadRunnerMetrics, openRunsTab,
-  agentStats, providerCount, categoryCount, teamCount,
-  username, providerHealthSummary,
-  sessionActiveCount, sessionSparkline, runnerStats
+  overview,
+  loading,
+  error,
+  trendGranularity,
+  filters,
+  rangeOptions,
+  statusOptions,
+  granularityOptions,
+  providerOptions,
+  modelOptions,
+  onProviderChange,
+  loadOverview,
+  formatCount,
+  formatMoney,
+  formatPercent,
+  providerModels,
+  providerHealthLoading,
+  runnerMetrics,
+  runnerLoading,
+  runnerWindowMinutes,
+  reloadRunnerMetrics,
+  openRunsTab,
+  agentStats,
+  providerCount,
+  categoryCount,
+  teamCount,
+  username,
+  providerHealthSummary,
+  sessionActiveCount,
+  sessionSparkline,
+  runnerStats,
 } = useOverviewPage();
 
 const alertStackRef = ref<HTMLElement | null>(null);
@@ -183,21 +265,21 @@ const alertStackRef = ref<HTMLElement | null>(null);
 const router = useRouter();
 
 function scrollToAlerts() {
-  alertStackRef.value?.scrollIntoView({ behavior: "smooth" });
+  alertStackRef.value?.scrollIntoView({ behavior: 'smooth' });
 }
 
 function onMetricNavigate(action: string) {
-  if (action === "tokens") {
+  if (action === 'tokens') {
     router.push(eventsPageQuery.value);
   }
 }
 
 const eventsPageQuery = computed(() => {
-  const query: Record<string, string> = { range: filters.range || "30d" };
+  const query: Record<string, string> = { range: filters.range || '30d' };
   if (filters.provider_code) query.provider_code = filters.provider_code;
   if (filters.model_api_id) query.model_api_id = filters.model_api_id;
   if (filters.status) query.status = filters.status;
-  return { path: "/usage/events", query };
+  return { path: '/usage/events', query };
 });
 
 onMounted(() => void loadOverview());

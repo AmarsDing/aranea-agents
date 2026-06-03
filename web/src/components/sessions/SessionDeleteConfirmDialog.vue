@@ -16,7 +16,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed } from 'vue';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -25,14 +25,14 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  "update:modelValue": [v: boolean];
+  'update:modelValue': [v: boolean];
   confirm: [];
 }>();
 
 const message = computed(() => {
   const n = props.count ?? 1;
   if (n <= 1) {
-    return "删除后无法在历史列表中恢复（usage 统计仍保留）。确定要永久删除该会话吗？";
+    return '删除后无法在历史列表中恢复（usage 统计仍保留）。确定要永久删除该会话吗？';
   }
   return `将永久删除 ${n} 个会话，删除后无法在历史列表中恢复（usage 统计仍保留）。确定继续吗？`;
 });

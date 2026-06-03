@@ -1,9 +1,9 @@
-import { ref, type Ref, type ComputedRef, toValue } from "vue";
-import type { Node } from "@vue-flow/core";
-import { NODE_DEFAULT_WIDTH, NODE_DEFAULT_HEIGHT } from "./types";
+import { ref, type Ref, type ComputedRef, toValue } from 'vue';
+import type { Node } from '@vue-flow/core';
+import { NODE_DEFAULT_WIDTH, NODE_DEFAULT_HEIGHT } from './types';
 
 interface SnapLine {
-  orientation: "horizontal" | "vertical";
+  orientation: 'horizontal' | 'vertical';
   position: number;
   from: number;
   to: number;
@@ -31,9 +31,7 @@ function getNodesBounds(nodes: Node[]) {
   return result;
 }
 
-export function useSnapGuide(
-  internalNodes: Ref<Node[]> | ComputedRef<Node[]>,
-) {
+export function useSnapGuide(internalNodes: Ref<Node[]> | ComputedRef<Node[]>) {
   const snapLines = ref<SnapLine[]>([]);
 
   function computeSnapLines(draggedNodeIds: Set<string>) {
@@ -58,7 +56,7 @@ export function useSnapGuide(
       for (const sb of staticBounds) {
         if (Math.abs(db.cx - sb.cx) < SNAP_THRESHOLD) {
           lines.push({
-            orientation: "vertical",
+            orientation: 'vertical',
             position: sb.cx,
             from: Math.min(db.top, sb.top),
             to: Math.max(db.bottom, sb.bottom),
@@ -66,7 +64,7 @@ export function useSnapGuide(
         }
         if (Math.abs(db.left - sb.left) < SNAP_THRESHOLD) {
           lines.push({
-            orientation: "vertical",
+            orientation: 'vertical',
             position: sb.left,
             from: Math.min(db.top, sb.top),
             to: Math.max(db.bottom, sb.bottom),
@@ -74,7 +72,7 @@ export function useSnapGuide(
         }
         if (Math.abs(db.right - sb.right) < SNAP_THRESHOLD) {
           lines.push({
-            orientation: "vertical",
+            orientation: 'vertical',
             position: sb.right,
             from: Math.min(db.top, sb.top),
             to: Math.max(db.bottom, sb.bottom),
@@ -82,7 +80,7 @@ export function useSnapGuide(
         }
         if (Math.abs(db.cy - sb.cy) < SNAP_THRESHOLD) {
           lines.push({
-            orientation: "horizontal",
+            orientation: 'horizontal',
             position: sb.cy,
             from: Math.min(db.left, sb.left),
             to: Math.max(db.right, sb.right),
@@ -90,7 +88,7 @@ export function useSnapGuide(
         }
         if (Math.abs(db.top - sb.top) < SNAP_THRESHOLD) {
           lines.push({
-            orientation: "horizontal",
+            orientation: 'horizontal',
             position: sb.top,
             from: Math.min(db.left, sb.left),
             to: Math.max(db.right, sb.right),
@@ -98,7 +96,7 @@ export function useSnapGuide(
         }
         if (Math.abs(db.bottom - sb.bottom) < SNAP_THRESHOLD) {
           lines.push({
-            orientation: "horizontal",
+            orientation: 'horizontal',
             position: sb.bottom,
             from: Math.min(db.left, sb.left),
             to: Math.max(db.right, sb.right),

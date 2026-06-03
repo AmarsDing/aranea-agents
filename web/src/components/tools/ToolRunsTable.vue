@@ -22,7 +22,9 @@
         <q-td :props="props">
           <AppRegistryHoverTip :text="toolRunHoverText(props.row)" empty-label="无参数 / 结果摘要">
             <div class="min-width-0">
-              <div class="app-registry-cell-primary ellipsis">{{ props.row.tool_display_name || props.row.tool_key }}</div>
+              <div class="app-registry-cell-primary ellipsis">
+                {{ props.row.tool_display_name || props.row.tool_key }}
+              </div>
               <div class="app-registry-cell-sub ellipsis">{{ props.row.tool_key }}</div>
             </div>
           </AppRegistryHoverTip>
@@ -38,13 +40,17 @@
 
       <template #body-cell-status="props">
         <q-td :props="props">
-          <q-badge rounded :color="toolInvocationStatusColor(props.row.status)">{{ toolInvocationStatusLabel(props.row.status) }}</q-badge>
+          <q-badge rounded :color="toolInvocationStatusColor(props.row.status)">{{
+            toolInvocationStatusLabel(props.row.status)
+          }}</q-badge>
         </q-td>
       </template>
 
       <template #body-cell-session_id="props">
         <q-td :props="props">
-          <span class="app-registry-cell-sub ellipsis" :title="props.row.session_id">{{ props.row.session_id || "—" }}</span>
+          <span class="app-registry-cell-sub ellipsis" :title="props.row.session_id">{{
+            props.row.session_id || '—'
+          }}</span>
         </q-td>
       </template>
 
@@ -59,10 +65,10 @@
 </template>
 
 <script setup lang="ts">
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
-import ToolGlassPanel from "./ToolGlassPanel.vue";
-import type { ToolInvocation } from "../../features/tools/types";
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import ToolGlassPanel from './ToolGlassPanel.vue';
+import type { ToolInvocation } from '../../features/tools/types';
 import {
   TOOL_RUNS_TABLE_COLUMNS,
   clipPreview,
@@ -70,8 +76,8 @@ import {
   formatInvocationWhen,
   invocationAgentLine,
   toolInvocationStatusColor,
-  toolInvocationStatusLabel
-} from "./toolUi";
+  toolInvocationStatusLabel,
+} from './toolUi';
 
 defineProps<{
   rows: ToolInvocation[];
@@ -84,6 +90,6 @@ function toolRunHoverText(row: ToolInvocation) {
   const parts = [];
   if (input) parts.push(`参数：${input}`);
   if (output) parts.push(`结果：${output}`);
-  return parts.join("\n\n");
+  return parts.join('\n\n');
 }
 </script>

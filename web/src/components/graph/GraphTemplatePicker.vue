@@ -24,12 +24,7 @@
             <q-spinner v-if="loading" color="primary" size="32px" class="q-ma-md" />
             <div v-else-if="!templates.length" class="text-caption app-text-secondary">暂无可用模板。</div>
             <q-list v-else bordered separator class="rounded-borders">
-              <q-item
-                v-for="template in templates"
-                :key="template.id"
-                clickable
-                @click="selectTemplate(template.id)"
-              >
+              <q-item v-for="template in templates" :key="template.id" clickable @click="selectTemplate(template.id)">
                 <q-item-section>
                   <q-item-label>{{ template.name }}</q-item-label>
                   <q-item-label caption>{{ template.description }}</q-item-label>
@@ -44,7 +39,7 @@
         </div>
         <q-separator />
         <q-card-actions align="right" class="app-actions-bar app-glass-dialog__actions">
-          <q-btn flat rounded label="关闭" v-close-popup />
+          <q-btn v-close-popup flat rounded label="关闭" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -52,8 +47,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
-import type { GraphTemplateInfo } from "../../features/graph/types";
+import { ref, watch } from 'vue';
+import type { GraphTemplateInfo } from '../../features/graph/types';
 
 const props = defineProps<{
   templates: GraphTemplateInfo[];
@@ -69,12 +64,12 @@ const dialogOpen = ref(false);
 
 watch(dialogOpen, (open) => {
   if (open && !props.templates.length) {
-    emit("requestTemplates");
+    emit('requestTemplates');
   }
 });
 
 function selectTemplate(templateId: string) {
-  emit("createFromTemplate", templateId);
+  emit('createFromTemplate', templateId);
   dialogOpen.value = false;
 }
 </script>

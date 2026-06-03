@@ -1,6 +1,6 @@
 <template>
   <div v-if="messages.length" class="chat-pending-list">
-    <div class="chat-pending-label">{{ t("chat.pendingQueue") }}</div>
+    <div class="chat-pending-label">{{ t('chat.pendingQueue') }}</div>
     <div v-for="pm in messages" :key="pm.id" class="chat-pending-item">
       <div v-if="editingId === pm.id" class="chat-pending-item__edit">
         <q-input
@@ -70,8 +70,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import { useI18n } from "vue-i18n";
+import { ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 export type PendingMessageRow = {
   id: string;
@@ -86,16 +86,16 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "cancel-pending": [pendingId: string];
-  "update-pending": [pendingId: string, content: string];
+  'cancel-pending': [pendingId: string];
+  'update-pending': [pendingId: string, content: string];
 }>();
 
 const { t } = useI18n();
-const editingId = ref("");
-const editingContent = ref("");
+const editingId = ref('');
+const editingContent = ref('');
 
 function formatStamp(iso: string) {
-  if (!iso) return "";
+  if (!iso) return '';
   try {
     return new Date(iso).toLocaleString();
   } catch {
@@ -111,13 +111,13 @@ function startEdit(pm: PendingMessageRow) {
 function confirmEdit(pendingId: string) {
   const content = editingContent.value.trim();
   if (!content) return;
-  emit("update-pending", pendingId, content);
-  editingId.value = "";
-  editingContent.value = "";
+  emit('update-pending', pendingId, content);
+  editingId.value = '';
+  editingContent.value = '';
 }
 
 function cancelEdit() {
-  editingId.value = "";
-  editingContent.value = "";
+  editingId.value = '';
+  editingContent.value = '';
 }
 </script>

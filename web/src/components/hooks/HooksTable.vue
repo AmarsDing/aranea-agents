@@ -67,7 +67,15 @@
           >
             <q-tooltip>{{ t('hooksPage.tooltipViewRuns') }}</q-tooltip>
           </q-btn>
-          <q-btn flat dense round class="app-registry-icon-btn" color="primary" icon="edit" @click="$emit('edit', props.row)">
+          <q-btn
+            flat
+            dense
+            round
+            class="app-registry-icon-btn"
+            color="primary"
+            icon="edit"
+            @click="$emit('edit', props.row)"
+          >
             <q-tooltip>{{ t('hooksPage.tooltipEdit') }}</q-tooltip>
           </q-btn>
           <q-btn
@@ -89,19 +97,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { useI18n } from "vue-i18n";
-import AppRegistryTable from "../layout/AppRegistryTable.vue";
-import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
-import type { HookRow } from "../../features/hooks/types";
-import { actionTagClass, actionTypeLabel } from "./callbackEditorUi";
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import AppRegistryTable from '../layout/AppRegistryTable.vue';
+import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
+import type { HookRow } from '../../features/hooks/types';
+import { actionTagClass, actionTypeLabel } from './callbackEditorUi';
 import {
   createHooksAgentTableColumns,
   createHooksTableColumns,
   hookConditionHint,
   hookRuleOf,
-  hookRunsTo
-} from "./hookTableUi";
+  hookRunsTo,
+} from './hookTableUi';
 
 const { t } = useI18n();
 
@@ -110,14 +118,14 @@ const props = withDefaults(
     rows: HookRow[];
     loading: boolean;
     togglingId?: string;
-    variant?: "page" | "agent";
+    variant?: 'page' | 'agent';
     shell?: boolean;
   }>(),
   {
-    togglingId: "",
-    variant: "page",
-    shell: false
-  }
+    togglingId: '',
+    variant: 'page',
+    shell: false,
+  },
 );
 
 defineEmits<{
@@ -127,10 +135,8 @@ defineEmits<{
 }>();
 
 const tableColumns = computed(() =>
-  props.variant === "agent" ? createHooksAgentTableColumns(t) : createHooksTableColumns(t)
+  props.variant === 'agent' ? createHooksAgentTableColumns(t) : createHooksTableColumns(t),
 );
 
-const columnPersistKey = computed(() =>
-  props.variant === "agent" ? "hooks-agent-table" : "hooks-table"
-);
+const columnPersistKey = computed(() => (props.variant === 'agent' ? 'hooks-agent-table' : 'hooks-table'));
 </script>

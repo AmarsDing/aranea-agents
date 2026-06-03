@@ -36,13 +36,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { GraphDefinition } from "../../features/graph/types";
-import type { CompileTeamGraphResult } from "../../features/orchestration/compileApi";
-import { resolveTeamNodeDisplay } from "../../features/orchestration/teamNodeDisplay";
-import type { AgentNodeState } from "../../features/orchestration/types";
-import type { TeamDefinition } from "../../features/teams/types";
-import OrchestrationStatusChip from "../orchestration/OrchestrationStatusChip.vue";
+import { computed } from 'vue';
+import type { GraphDefinition } from '../../features/graph/types';
+import type { CompileTeamGraphResult } from '../../features/orchestration/compileApi';
+import { resolveTeamNodeDisplay } from '../../features/orchestration/teamNodeDisplay';
+import type { AgentNodeState } from '../../features/orchestration/types';
+import type { TeamDefinition } from '../../features/teams/types';
+import OrchestrationStatusChip from '../orchestration/OrchestrationStatusChip.vue';
 
 const props = defineProps<{
   selectedNodeId: string | null;
@@ -56,24 +56,19 @@ const props = defineProps<{
 const display = computed(() => {
   if (!props.selectedNodeId) return null;
   const node = props.graphDef.nodes.find((n) => n.id === props.selectedNodeId);
-  if (!node || node.type !== "agent") return null;
+  if (!node || node.type !== 'agent') return null;
   return resolveTeamNodeDisplay(node, props.compiled, props.definition);
 });
 
-const inputBody = computed(() => props.liveState?.input_preview?.trim() || display.value?.inputHint || "—");
+const inputBody = computed(() => props.liveState?.input_preview?.trim() || display.value?.inputHint || '—');
 
 const doingBody = computed(() => {
   const activity = props.liveState?.current_activity;
   if (activity) {
-    return (
-      activity.display_label?.trim() ||
-      activity.tool_name?.trim() ||
-      activity.kind?.trim() ||
-      "处理中…"
-    );
+    return activity.display_label?.trim() || activity.tool_name?.trim() || activity.kind?.trim() || '处理中…';
   }
-  if (props.liveState?.phase === "doing") return "处理中…";
-  return display.value?.responsibility || "—";
+  if (props.liveState?.phase === 'doing') return '处理中…';
+  return display.value?.responsibility || '—';
 });
 
 const outputBody = computed(
@@ -81,6 +76,6 @@ const outputBody = computed(
     props.liveState?.output_preview?.trim() ||
     props.liveState?.error_message?.trim() ||
     display.value?.outputHint ||
-    "—",
+    '—',
 );
 </script>

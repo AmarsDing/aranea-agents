@@ -1,14 +1,6 @@
 <template>
-  <article
-    class="turn-block"
-    :class="{ 'turn-block--focused': focused }"
-    :data-turn-id="block.turnId"
-  >
-    <div
-      v-if="turnSourceLabel"
-      class="turn-block__channel-bar text-caption"
-      :aria-label="turnSourceLabel"
-    >
+  <article class="turn-block" :class="{ 'turn-block--focused': focused }" :data-turn-id="block.turnId">
+    <div v-if="turnSourceLabel" class="turn-block__channel-bar text-caption" :aria-label="turnSourceLabel">
       {{ turnSourceLabel }}
     </div>
     <ChatMessageRow
@@ -73,19 +65,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { useI18n } from "vue-i18n";
-import ChatMessageRow from "./ChatMessageRow.vue";
-import ToolStrip from "./ToolStrip.vue";
-import type { TurnBlockGroup } from "../../features/chat/groupMessagesByTurn";
-import { filterToolsForToolStrip } from "../../features/chat/groupMessagesByTurn";
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
+import ChatMessageRow from './ChatMessageRow.vue';
+import ToolStrip from './ToolStrip.vue';
+import type { TurnBlockGroup } from '../../features/chat/groupMessagesByTurn';
+import { filterToolsForToolStrip } from '../../features/chat/groupMessagesByTurn';
 import {
   messageSourceChipFallback,
   messageSourceChipKey,
   messageSourceFromMessage,
-} from "../../features/chat/messageSourceMeta";
-import type { A2UIUserActionPayload } from "../../features/chat/a2uiUserAction";
-import type { Message, ReactToolLinkIndex } from "../../features/chat/types";
+} from '../../features/chat/messageSourceMeta';
+import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
+import type { Message, ReactToolLinkIndex } from '../../features/chat/types';
 
 const props = defineProps<{
   block: TurnBlockGroup;
@@ -99,26 +91,24 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "a2ui-user-action": [payload: A2UIUserActionPayload];
-  feedback: [payload: { messageId: string; rating: "positive" | "negative" }];
+  'a2ui-user-action': [payload: A2UIUserActionPayload];
+  feedback: [payload: { messageId: string; rating: 'positive' | 'negative' }];
   regenerate: [message: Message];
   retry: [messageId: string];
-  "dismiss-failed": [messageId: string];
-  "pin-reasoning": [messageId: string];
+  'dismiss-failed': [messageId: string];
+  'pin-reasoning': [messageId: string];
 }>();
 
 const { t } = useI18n();
 
 const turnSourceLabel = computed(() => {
   const meta = messageSourceFromMessage(props.block.user ?? null);
-  if (!meta) return "";
+  if (!meta) return '';
   const key = messageSourceChipKey(meta);
   return key ? t(key, messageSourceChipFallback(meta)) : messageSourceChipFallback(meta);
 });
 
-const visibleTools = computed(() =>
-  filterToolsForToolStrip(props.block.tools, props.reactToolLinkIndex)
-);
+const visibleTools = computed(() => filterToolsForToolStrip(props.block.tools, props.reactToolLinkIndex));
 </script>
 
 <style scoped lang="sass">

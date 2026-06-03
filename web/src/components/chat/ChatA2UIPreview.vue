@@ -12,11 +12,7 @@
       />
     </div>
 
-    <ChatA2UISurface
-      v-if="surface.ready"
-      :surface="surface"
-      @user-action="(p) => emit('user-action', p)"
-    />
+    <ChatA2UISurface v-if="surface.ready" :surface="surface" @user-action="(p) => emit('user-action', p)" />
 
     <div v-if="hasErrors || (showRaw && lines.length)" class="q-mt-sm">
       <div
@@ -46,18 +42,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import type { A2UIParseLine } from "../../features/chat/a2uiParse";
-import { reduceA2UISurface } from "../../features/chat/a2uiSurfaceState";
-import type { A2UIUserActionPayload } from "../../features/chat/a2uiUserAction";
-import ChatA2UISurface from "./ChatA2UISurface.vue";
+import { computed, ref } from 'vue';
+import type { A2UIParseLine } from '../../features/chat/a2uiParse';
+import { reduceA2UISurface } from '../../features/chat/a2uiSurfaceState';
+import type { A2UIUserActionPayload } from '../../features/chat/a2uiUserAction';
+import ChatA2UISurface from './ChatA2UISurface.vue';
 
 const props = defineProps<{
   lines: A2UIParseLine[];
 }>();
 
 const emit = defineEmits<{
-  "user-action": [payload: A2UIUserActionPayload];
+  'user-action': [payload: A2UIUserActionPayload];
 }>();
 
 const showRaw = ref(false);

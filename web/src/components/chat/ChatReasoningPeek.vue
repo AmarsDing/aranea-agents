@@ -14,11 +14,11 @@
     @keydown.escape="clearSelection"
   >
     <div class="chat-reasoning-peek__label text-caption text-weight-medium">
-      {{ t("chat.reasoningTitle", "思考过程") }}
+      {{ t('chat.reasoningTitle', '思考过程') }}
       <span v-if="streaming" class="chat-reasoning-peek__live" aria-hidden="true">…</span>
     </div>
     <div v-if="thinkingOnly" class="chat-reasoning-peek__thinking chat-thinking-pulse text-caption text-grey-7">
-      {{ t("chat.thinking", "正在思考…") }}
+      {{ t('chat.thinking', '正在思考…') }}
     </div>
     <div v-else ref="viewportRef" class="chat-reasoning-peek__viewport">
       <div
@@ -29,15 +29,15 @@
       />
     </div>
     <div v-if="expanded && canScroll && !followTail" class="chat-reasoning-peek__hint text-caption">
-      {{ t("chat.reasoningScrollHint", "滚轮查看更多") }}
+      {{ t('chat.reasoningScrollHint', '滚轮查看更多') }}
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
-import { useI18n } from "vue-i18n";
-import { renderChatMarkdownForMessage } from "../../features/chat/chatMessageMarkdown";
+import { computed, nextTick, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { renderChatMarkdownForMessage } from '../../features/chat/chatMessageMarkdown';
 
 const props = defineProps<{
   messageId: string;
@@ -57,13 +57,13 @@ const maxScroll = ref(0);
 const followTail = ref(true);
 
 const renderedHtml = computed(() =>
-  renderChatMarkdownForMessage(props.messageId, props.reasoning, Boolean(props.streaming))
+  renderChatMarkdownForMessage(props.messageId, props.reasoning, Boolean(props.streaming)),
 );
 
 const canScroll = computed(() => maxScroll.value > 0);
 
 const contentStyle = computed(() =>
-  scrollOffset.value > 0 ? { transform: `translateY(-${scrollOffset.value}px)` } : undefined
+  scrollOffset.value > 0 ? { transform: `translateY(-${scrollOffset.value}px)` } : undefined,
 );
 
 function measureScroll() {
@@ -98,7 +98,7 @@ watch(
   () => {
     void nextTick(applyTailFollow);
   },
-  { immediate: true }
+  { immediate: true },
 );
 
 watch(expanded, () => {
@@ -112,7 +112,7 @@ watch(
       followTail.value = true;
       void nextTick(scrollToTail);
     }
-  }
+  },
 );
 
 function onClick() {

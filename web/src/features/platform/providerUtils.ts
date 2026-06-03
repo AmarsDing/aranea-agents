@@ -1,15 +1,15 @@
-import type { ModelCategory, PlatformResource, ProviderConfig } from "./types";
+import type { ModelCategory, PlatformResource, ProviderConfig } from './types';
 
 export function errorMessage(error: unknown): string {
-  if (typeof error === "object" && error && "response" in error) {
+  if (typeof error === 'object' && error && 'response' in error) {
     const response = (error as { response?: { data?: { error?: string } } }).response;
     if (response?.data?.error) return response.data.error;
   }
-  return error instanceof Error ? error.message : "模型检查失败";
+  return error instanceof Error ? error.message : '模型检查失败';
 }
 
 export function toNullableNumber(value: unknown): number | null {
-  if (value === "" || value === null || value === undefined) return null;
+  if (value === '' || value === null || value === undefined) return null;
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : null;
 }
@@ -23,7 +23,7 @@ export function getConfig(row: PlatformResource): ProviderConfig {
   if (!row.config_json) return {};
   try {
     const value = JSON.parse(row.config_json) as ProviderConfig;
-    return value && typeof value === "object" ? value : {};
+    return value && typeof value === 'object' ? value : {};
   } catch {
     return {};
   }
@@ -43,9 +43,14 @@ export function hasPricingConfigured(config: ProviderConfig): boolean {
   if (toNullableNumber(config.embedding_price_micro_usd_per_1k)) return true;
   const cost = config.cost;
   if (cost) {
-    if ((cost.input_usd_per_1m ?? 0) > 0 || (cost.output_usd_per_1m ?? 0) > 0 ||
-      (cost.cache_read_usd_per_1m ?? 0) > 0 || (cost.cache_write_usd_per_1m ?? 0) > 0 ||
-      (cost.reasoning_usd_per_1m ?? 0) > 0 || (cost.embedding_usd_per_1m ?? 0) > 0) {
+    if (
+      (cost.input_usd_per_1m ?? 0) > 0 ||
+      (cost.output_usd_per_1m ?? 0) > 0 ||
+      (cost.cache_read_usd_per_1m ?? 0) > 0 ||
+      (cost.cache_write_usd_per_1m ?? 0) > 0 ||
+      (cost.reasoning_usd_per_1m ?? 0) > 0 ||
+      (cost.embedding_usd_per_1m ?? 0) > 0
+    ) {
       return true;
     }
   }

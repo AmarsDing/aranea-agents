@@ -1,20 +1,20 @@
-import DOMPurify from "dompurify";
-import MarkdownIt from "markdown-it";
+import DOMPurify from 'dompurify';
+import MarkdownIt from 'markdown-it';
 
 const markdown = new MarkdownIt({
   breaks: true,
   html: false,
   linkify: true,
 });
-markdown.enable(["table", "strikethrough"]);
+markdown.enable(['table', 'strikethrough']);
 
 markdown.renderer.rules.fence = (tokens, idx) => {
   const token = tokens[idx]!;
-  const info = (token.info || "").trim();
-  const lang = info ? info.split(/\s+/)[0]! : "";
-  const langLabel = lang || "code";
+  const info = (token.info || '').trim();
+  const lang = info ? info.split(/\s+/)[0]! : '';
+  const langLabel = lang || 'code';
   const safeCode = markdown.utils.escapeHtml(token.content);
-  const codeClass = lang ? ` class="language-${markdown.utils.escapeHtml(lang)}"` : "";
+  const codeClass = lang ? ` class="language-${markdown.utils.escapeHtml(lang)}"` : '';
   return `<div class="code-block">
     <div class="code-block__header">
       <span class="code-block__lang">${markdown.utils.escapeHtml(langLabel)}</span>
@@ -28,27 +28,27 @@ markdown.renderer.rules.fence = (tokens, idx) => {
 };
 
 export function formatMessageStamp(iso: string): string {
-  if (!iso) return "";
+  if (!iso) return '';
   try {
     const d = new Date(iso);
     const now = new Date();
     const sameDay = d.toDateString() === now.toDateString();
     if (sameDay) {
-      return d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+      return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
     }
     const diffDays = Math.floor((now.getTime() - d.getTime()) / 86_400_000);
     if (diffDays < 7) {
       return d.toLocaleString(undefined, {
-        weekday: "short",
-        hour: "2-digit",
-        minute: "2-digit",
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
       });
     }
     return d.toLocaleString(undefined, {
-      month: "short",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
     });
   } catch {
     return iso;
@@ -56,9 +56,9 @@ export function formatMessageStamp(iso: string): string {
 }
 
 export function renderChatMarkdown(content: string): string {
-  return DOMPurify.sanitize(markdown.render(content || ""), {
-    ADD_TAGS: ["button"],
-    ADD_ATTR: ["type", "aria-label", "aria-hidden"],
+  return DOMPurify.sanitize(markdown.render(content || ''), {
+    ADD_TAGS: ['button'],
+    ADD_ATTR: ['type', 'aria-label', 'aria-hidden'],
   });
 }
 
@@ -66,13 +66,13 @@ const MD_CACHE_MAX = 400;
 const mdCache = new Map<string, string>();
 
 function markdownCacheKey(messageId: string, content: string, streaming: boolean): string {
-  const id = messageId || "anon";
+  const id = messageId || 'anon';
   const len = content.length;
   // Use a hash-like key: combine length with head and tail to avoid collisions
   // where different content shares the same length and tail (common during streaming).
   const head = len > 48 ? content.slice(0, 48) : content;
-  const tail = len > 48 ? content.slice(-48) : "";
-  return `${id}:${streaming ? "s" : "f"}:${len}:${head}:${tail}`;
+  const tail = len > 48 ? content.slice(-48) : '';
+  return `${id}:${streaming ? 's' : 'f'}:${len}:${head}:${tail}`;
 }
 
 function trimMarkdownCache() {
@@ -84,11 +84,7 @@ function trimMarkdownCache() {
 }
 
 /** Cached markdown render for chat rows (avoids re-parsing 100+ messages on each WS tick). */
-export function renderChatMarkdownForMessage(
-  messageId: string,
-  content: string,
-  streaming = false
-): string {
+export function renderChatMarkdownForMessage(messageId: string, content: string, streaming = false): string {
   const key = markdownCacheKey(messageId, content, streaming);
   const hit = mdCache.get(key);
   if (hit !== undefined) return hit;
@@ -105,5 +101,5 @@ export function clearChatMarkdownCache() {
 export function renderStreamingChatMarkdown(content: string): string {
   // During streaming, avoid full markdown-it parsing on every token. The final
   // text_done render still uses complete Markdown above.
-  return markdown.utils.escapeHtml(content || "").replace(/\n/g, "<br>");
+  return markdown.utils.escapeHtml(content || '').replace(/\n/g, '<br>');
 }

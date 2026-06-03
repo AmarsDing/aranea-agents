@@ -1,5 +1,5 @@
-import { defineStore } from "pinia";
-import { computed, ref } from "vue";
+import { defineStore } from 'pinia';
+import { computed, ref } from 'vue';
 import {
   checkAgentKey,
   deleteAgent as deleteAgentApi,
@@ -8,24 +8,20 @@ import {
   listAgentTemplates,
   listAgentsPaged,
   toggleAgentFavorite as toggleAgentFavoriteApi,
-  updateAgent
-} from "../../features/agents/api";
-import type { Agent, AgentCreatorOption, AgentTemplatePreset } from "../../features/agents/types";
-import {
-  listPlatformResources,
-  listPlatformResourceTree,
-  validateModel
-} from "../../features/platform/api";
-import type { PlatformResource, PlatformResourceTreeNode } from "../../features/platform/types";
-import { flattenCategoryPositions, formatContext } from "../../components/agents/agentUi";
-import { buildAgentTableColumns } from "../../components/agents/agentTableUi";
-import { findTaxonomyPath, formatTaxonomyPath } from "../../features/platform/taxonomyTreeUtils";
-import { useAppStore } from "../app";
-import { useAvatarCatalogStore } from "../avatar";
+  updateAgent,
+} from '../../features/agents/api';
+import type { Agent, AgentCreatorOption, AgentTemplatePreset } from '../../features/agents/types';
+import { listPlatformResources, listPlatformResourceTree, validateModel } from '../../features/platform/api';
+import type { PlatformResource, PlatformResourceTreeNode } from '../../features/platform/types';
+import { flattenCategoryPositions, formatContext } from '../../components/agents/agentUi';
+import { buildAgentTableColumns } from '../../components/agents/agentTableUi';
+import { findTaxonomyPath, formatTaxonomyPath } from '../../features/platform/taxonomyTreeUtils';
+import { useAppStore } from '../app';
+import { useAvatarCatalogStore } from '../avatar';
 
 /** Agent 列表页：筛选、分页、依赖数据与列表 CRUD；Agent HTTP 经 features/agents/api（Kratos）。 */
-export const useAgentsPageStore = defineStore("agentsPage", () => {
-  const keyword = ref("");
+export const useAgentsPageStore = defineStore('agentsPage', () => {
+  const keyword = ref('');
   const selectedStatus = ref<string | null>(null);
   const selectedProvider = ref<string | null>(null);
   const selectedCategory = ref<string | null>(null);
@@ -43,22 +39,22 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
   const checkingModel = ref(false);
   const modelCheckPassed = ref(false);
 
-  const industryNodes = computed(() => categoryTree.value.filter((row) => row.level === "industry" && row.enabled));
+  const industryNodes = computed(() => categoryTree.value.filter((row) => row.level === 'industry' && row.enabled));
   const categoryPositionOptions = computed(() => flattenCategoryPositions(industryNodes.value));
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / rowsPerPage.value)));
 
   const providerOptions = computed(() =>
     Array.from(new Set(providerModels.value.map((row) => row.provider).filter(Boolean))).map((provider) => ({
       label: provider,
-      value: provider
-    }))
+      value: provider,
+    })),
   );
 
   function categoryLabel(id: string) {
-    if (!id) return "未分类";
+    if (!id) return '未分类';
     const path = findTaxonomyPath(categoryTree.value, id);
     if (path.length) return formatTaxonomyPath(path);
-    return categoryPositionOptions.value.find((item) => item.value === id)?.label ?? "未分类";
+    return categoryPositionOptions.value.find((item) => item.value === id)?.label ?? '未分类';
   }
 
   const tableColumns = computed(() => buildAgentTableColumns(categoryLabel, formatContext));
@@ -71,10 +67,9 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
         status: selectedStatus.value || undefined,
         provider: selectedProvider.value || undefined,
         category_id: selectedCategory.value || undefined,
-        created_by:
-          selectedCreator.value && selectedCreator.value !== "" ? selectedCreator.value : undefined,
+        created_by: selectedCreator.value && selectedCreator.value !== '' ? selectedCreator.value : undefined,
         limit: rowsPerPage.value,
-        offset: (page.value - 1) * rowsPerPage.value
+        offset: (page.value - 1) * rowsPerPage.value,
       });
       agents.value = result.items;
       total.value = result.total;
@@ -85,13 +80,13 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
 
   async function loadAgentsDependencies() {
     const [treeRows, providerRows, creators] = await Promise.all([
-      listPlatformResourceTree("taxonomy"),
-      listPlatformResources("llm-provider-models"),
-      listAgentCreators().catch(() => [] as AgentCreatorOption[])
+      listPlatformResourceTree('taxonomy'),
+      listPlatformResources('llm-provider-models'),
+      listAgentCreators().catch(() => [] as AgentCreatorOption[]),
     ]);
     categoryTree.value = treeRows;
     providerModels.value = providerRows;
-    creatorOptions.value = [{ user_id: "", label: "所有创建者" }, ...creators];
+    creatorOptions.value = [{ user_id: '', label: '所有创建者' }, ...creators];
     const avatarCatalog = useAvatarCatalogStore();
     await avatarCatalog.ensureAgentsCatalog();
   }
@@ -140,7 +135,7 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
   }
 
   function resetListFiltersAfterCreate() {
-    keyword.value = "";
+    keyword.value = '';
     selectedStatus.value = null;
     selectedProvider.value = null;
     selectedCategory.value = null;
@@ -186,8 +181,8 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
     verifyAgentKey,
     fetchAgentTemplates,
     copyAgent,
-    reorderAgents
+    reorderAgents,
   };
 });
 
-export { useAgentDetailStore } from "./detail";
+export { useAgentDetailStore } from './detail';

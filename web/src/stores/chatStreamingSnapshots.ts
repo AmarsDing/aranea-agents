@@ -1,7 +1,7 @@
-import { ref } from "vue";
-import type { Message } from "../features/chat/types";
-import { createPlaceholderMessage } from "../features/chat/streamHandlers";
-import { patchStreamingMessage } from "../features/chat/streamContentPatch";
+import { ref } from 'vue';
+import type { Message } from '../features/chat/types';
+import { createPlaceholderMessage } from '../features/chat/streamHandlers';
+import { patchStreamingMessage } from '../features/chat/streamContentPatch';
 
 export type ChatStreamingSnapshot = {
   reasoning: string;
@@ -14,24 +14,22 @@ const snapshots = ref<Record<string, ChatStreamingSnapshot>>({});
 export function useChatStreamingSnapshots() {
   function put(
     sessionId: string,
-    patch: Partial<Pick<ChatStreamingSnapshot, "reasoning" | "partialText">> & { replace?: boolean }
+    patch: Partial<Pick<ChatStreamingSnapshot, 'reasoning' | 'partialText'>> & { replace?: boolean },
   ) {
     const sid = sessionId.trim();
     if (!sid) return;
     if (patch.replace) {
       snapshots.value[sid] = {
-        reasoning: patch.reasoning ?? "",
-        partialText: patch.partialText ?? "",
+        reasoning: patch.reasoning ?? '',
+        partialText: patch.partialText ?? '',
         updatedAt: Date.now(),
       };
       return;
     }
-    const cur = snapshots.value[sid] ?? { reasoning: "", partialText: "", updatedAt: 0 };
+    const cur = snapshots.value[sid] ?? { reasoning: '', partialText: '', updatedAt: 0 };
     snapshots.value[sid] = {
-      reasoning:
-        patch.reasoning !== undefined ? `${cur.reasoning}${patch.reasoning}` : cur.reasoning,
-      partialText:
-        patch.partialText !== undefined ? `${cur.partialText}${patch.partialText}` : cur.partialText,
+      reasoning: patch.reasoning !== undefined ? `${cur.reasoning}${patch.reasoning}` : cur.reasoning,
+      partialText: patch.partialText !== undefined ? `${cur.partialText}${patch.partialText}` : cur.partialText,
       updatedAt: Date.now(),
     };
   }
@@ -54,7 +52,7 @@ export function useChatStreamingSnapshots() {
 export function applyStreamingSnapshotToSession(
   getMessages: (sessionId: string) => Message[],
   setMessages: (sessionId: string, rows: Message[]) => void,
-  sessionId: string
+  sessionId: string,
 ) {
   const store = useChatStreamingSnapshots();
   const snap = store.get(sessionId);
@@ -69,19 +67,19 @@ export function applyStreamingSnapshotToSession(
       .reverse()
       .find(
         (m) =>
-          m.role === "assistant" &&
-          !String(m.id).startsWith("ws-stream-") &&
-          !String(m.id).startsWith("ws-team-stream-")
+          m.role === 'assistant' &&
+          !String(m.id).startsWith('ws-stream-') &&
+          !String(m.id).startsWith('ws-team-stream-'),
       );
-    if (lastPersistedAssistant?.status === "ok" && lastPersistedAssistant.content_markdown?.trim()) {
+    if (lastPersistedAssistant?.status === 'ok' && lastPersistedAssistant.content_markdown?.trim()) {
       store.clear(sessionId);
       return;
     }
     rows = [
       ...rows,
       {
-        ...createPlaceholderMessage(streamId, sessionId, "assistant", ""),
-        status: "streaming",
+        ...createPlaceholderMessage(streamId, sessionId, 'assistant', ''),
+        status: 'streaming',
       },
     ];
   }
@@ -91,7 +89,7 @@ export function applyStreamingSnapshotToSession(
     patchStreamingMessage(rows, streamId, {
       reasoning: snap.reasoning || undefined,
       text: snap.partialText || undefined,
-      status: existingStream?.status === "ok" ? "ok" : "streaming",
-    })
+      status: existingStream?.status === 'ok' ? 'ok' : 'streaming',
+    }),
   );
 }

@@ -32,14 +32,14 @@
     </div>
     <q-card v-if="preview" flat bordered class="q-pa-sm">
       <div class="text-caption">预览：{{ preview.display_name }} ({{ preview.agent_id }})</div>
-      <div class="text-caption">能力：{{ preview.capabilities.map((c) => c.name).join(", ") || "—" }}</div>
+      <div class="text-caption">能力：{{ preview.capabilities.map((c) => c.name).join(', ') || '—' }}</div>
     </q-card>
   </q-card>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from "vue";
-import type { A2AAgentCard, DiscoverRemoteInput, RegisterRemoteAgentInput } from "../../features/a2a/types";
+import { reactive, ref } from 'vue';
+import type { A2AAgentCard, DiscoverRemoteInput, RegisterRemoteAgentInput } from '../../features/a2a/types';
 
 defineProps<{
   loading: boolean;
@@ -53,37 +53,37 @@ const emit = defineEmits<{
 }>();
 
 const showSecret = ref(false);
-const authSecret = ref("");
+const authSecret = ref('');
 const form = reactive<RegisterRemoteAgentInput>({
-  workspace: "",
-  remote_url: "",
-  display_name: "",
-  auth_type: "none"
+  workspace: '',
+  remote_url: '',
+  display_name: '',
+  auth_type: 'none',
 });
-const mtls = reactive({ cert_file: "", key_file: "", ca_file: "" });
+const mtls = reactive({ cert_file: '', key_file: '', ca_file: '' });
 
 const authTypeOptions = [
-  { label: "无", value: "none" },
-  { label: "API Key", value: "api_key" },
-  { label: "Bearer", value: "bearer" },
-  { label: "mTLS", value: "mtls" }
+  { label: '无', value: 'none' },
+  { label: 'API Key', value: 'api_key' },
+  { label: 'Bearer', value: 'bearer' },
+  { label: 'mTLS', value: 'mtls' },
 ];
 
 function buildAuthJSON() {
-  if (form.auth_type === "mtls") {
+  if (form.auth_type === 'mtls') {
     return JSON.stringify({
       cert_file: mtls.cert_file.trim(),
       key_file: mtls.key_file.trim(),
-      ca_file: mtls.ca_file.trim()
+      ca_file: mtls.ca_file.trim(),
     });
   }
-  if (form.auth_type === "api_key") {
+  if (form.auth_type === 'api_key') {
     return JSON.stringify({ api_key: authSecret.value.trim() });
   }
-  if (form.auth_type === "bearer") {
+  if (form.auth_type === 'bearer') {
     return JSON.stringify({ token: authSecret.value.trim() });
   }
-  return "";
+  return '';
 }
 
 function payload(): RegisterRemoteAgentInput {
@@ -93,31 +93,31 @@ function payload(): RegisterRemoteAgentInput {
     display_name: form.display_name?.trim(),
     auth_type: form.auth_type,
     auth_config_json: buildAuthJSON(),
-    enabled: true
+    enabled: true,
   };
 }
 
 function onDiscover() {
-  emit("discover", {
+  emit('discover', {
     remote_url: form.remote_url.trim(),
     auth_type: form.auth_type,
-    auth_config_json: buildAuthJSON()
+    auth_config_json: buildAuthJSON(),
   });
 }
 
 function onRegister() {
-  emit("register", payload());
+  emit('register', payload());
 }
 
 function resetForm() {
-  form.workspace = "";
-  form.remote_url = "";
-  form.display_name = "";
-  form.auth_type = "none";
-  authSecret.value = "";
-  mtls.cert_file = "";
-  mtls.key_file = "";
-  mtls.ca_file = "";
+  form.workspace = '';
+  form.remote_url = '';
+  form.display_name = '';
+  form.auth_type = 'none';
+  authSecret.value = '';
+  mtls.cert_file = '';
+  mtls.key_file = '';
+  mtls.ca_file = '';
 }
 
 defineExpose({ resetForm });

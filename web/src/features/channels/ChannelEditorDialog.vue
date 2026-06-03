@@ -5,7 +5,7 @@
       <q-card-section class="app-glass-dialog__head row items-start justify-between no-wrap">
         <div class="col min-width-0">
           <div class="app-glass-dialog__title">
-            {{ row ? t("channelEditor.editTitle") : t("channelEditor.createTitle") }}
+            {{ row ? t('channelEditor.editTitle') : t('channelEditor.createTitle') }}
           </div>
         </div>
         <q-btn
@@ -22,8 +22,8 @@
       <div class="app-glass-dialog__scroll">
         <q-card-section class="app-dialog-body app-glass-dialog__body">
           <section v-if="!row" class="app-dialog-section channel-editor-platform-pick">
-            <h3 class="channel-editor-platform-pick__title">{{ t("channelEditor.pickPlatformTitle") }}</h3>
-            <p class="channel-editor-platform-pick__hint">{{ t("channelEditor.pickPlatformHint") }}</p>
+            <h3 class="channel-editor-platform-pick__title">{{ t('channelEditor.pickPlatformTitle') }}</h3>
+            <p class="channel-editor-platform-pick__hint">{{ t('channelEditor.pickPlatformHint') }}</p>
             <div class="channel-catalog-shell">
               <ChannelCatalogPicker v-model="selectedType" :catalog="catalog" />
             </div>
@@ -50,7 +50,7 @@
               <p v-if="catalogDescription" class="channel-editor-config-intro__desc">
                 {{ catalogDescription }}
               </p>
-              <p class="channel-editor-config-intro__note">{{ t("channelEditor.credentialsNote") }}</p>
+              <p class="channel-editor-config-intro__note">{{ t('channelEditor.credentialsNote') }}</p>
             </header>
 
             <section
@@ -110,7 +110,7 @@
                           :metadata="iconPreviewMetadata"
                           size="48px"
                         />
-                        <span class="channel-icon-pick__hint">{{ t("channelEditor.changeIcon") }}</span>
+                        <span class="channel-icon-pick__hint">{{ t('channelEditor.changeIcon') }}</span>
                       </div>
                       <q-btn
                         v-if="iconAssetId"
@@ -229,11 +229,11 @@
                   <q-icon name="info" color="warning" />
                 </template>
                 <div class="webhook-local-banner__body">
-                  <div>{{ t("channelEditor.webhookLocalTitle") }}</div>
+                  <div>{{ t('channelEditor.webhookLocalTitle') }}</div>
                   <ol class="webhook-local-steps">
-                    <li>{{ t("channelEditor.webhookLocalStep1") }}</li>
-                    <li>{{ t("channelEditor.webhookLocalStep2") }}</li>
-                    <li>{{ t("channelEditor.webhookLocalStep3") }}</li>
+                    <li>{{ t('channelEditor.webhookLocalStep1') }}</li>
+                    <li>{{ t('channelEditor.webhookLocalStep2') }}</li>
+                    <li>{{ t('channelEditor.webhookLocalStep3') }}</li>
                   </ol>
                 </div>
               </q-banner>
@@ -247,7 +247,7 @@
               header-class="text-weight-medium"
             >
               <p class="channel-editor-platform-pick__hint q-px-md q-pt-sm q-mb-none">
-                {{ t("channelEditor.advancedHint") }}
+                {{ t('channelEditor.advancedHint') }}
               </p>
               <div class="app-form-field-grid q-pt-sm q-px-md q-pb-md">
                 <q-input
@@ -311,19 +311,19 @@
 </template>
 
 <script setup lang="ts">
-import { toRef, computed, ref } from "vue";
-import { useI18n } from "vue-i18n";
-import { useQuasar } from "quasar";
-import ChannelCatalogPicker from "./ChannelCatalogPicker.vue";
-import ChannelConfigRow from "../../components/channels/ChannelConfigRow.vue";
-import ChannelRoutingFields from "../../components/channels/ChannelRoutingFields.vue";
-import ChannelPlatformAvatar from "../../components/channels/ChannelPlatformAvatar.vue";
-import AgentAvatarPicker from "../../components/avatar/AgentAvatarPicker.vue";
-import ChannelTurnJobsPanel from "./ChannelTurnJobsPanel.vue";
-import { useChannelEditorForm } from "./useChannelEditorForm";
-import { useChannelEditorLabels } from "./useChannelEditorLabels";
-import { useAvatarCatalogStore } from "../../stores/avatar";
-import type { ChannelCatalogItem, ChannelCredential, ChannelRow } from "./types";
+import { toRef, computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { useQuasar } from 'quasar';
+import ChannelCatalogPicker from './ChannelCatalogPicker.vue';
+import ChannelConfigRow from '../../components/channels/ChannelConfigRow.vue';
+import ChannelRoutingFields from '../../components/channels/ChannelRoutingFields.vue';
+import ChannelPlatformAvatar from '../../components/channels/ChannelPlatformAvatar.vue';
+import AgentAvatarPicker from '../../components/avatar/AgentAvatarPicker.vue';
+import ChannelTurnJobsPanel from './ChannelTurnJobsPanel.vue';
+import { useChannelEditorForm } from './useChannelEditorForm';
+import { useChannelEditorLabels } from './useChannelEditorLabels';
+import { useAvatarCatalogStore } from '../../stores/avatar';
+import type { ChannelCatalogItem, ChannelCredential, ChannelRow } from './types';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -333,7 +333,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  "update:modelValue": [value: boolean];
+  'update:modelValue': [value: boolean];
   saved: [row: ChannelRow];
   tested: [];
 }>();
@@ -383,15 +383,23 @@ const {
   fieldStatus,
   save,
   saveAndTest,
-  copyWebhookPreview
-} = useChannelEditorForm(props, toRef(props, "modelValue"), emit);
+  copyWebhookPreview,
+} = useChannelEditorForm(props, toRef(props, 'modelValue'), emit);
 
-const { catalogDescription, sectionTitle, sectionHint, fieldLabel, fieldHelp, fieldStatusLabel, fieldPlaceholder, selectOptions } =
-  useChannelEditorLabels(selectedCatalog);
+const {
+  catalogDescription,
+  sectionTitle,
+  sectionHint,
+  fieldLabel,
+  fieldHelp,
+  fieldStatusLabel,
+  fieldPlaceholder,
+  selectOptions,
+} = useChannelEditorLabels(selectedCatalog);
 
 const longTaskPresetHelp = computed(() => ({
-  description: t("channelEditor.longTaskPresetHelp"),
-  example: t("channelEditor.longTaskPresetExample")
+  description: t('channelEditor.longTaskPresetHelp'),
+  example: t('channelEditor.longTaskPresetExample'),
 }));
 
 function sectionDomId(id: string) {
@@ -407,12 +415,12 @@ async function onRefreshPlatformIcons() {
   try {
     const result = await avatarStore.refreshChannelIcons();
     $q.notify({
-      type: result.failed > 0 ? "warning" : "positive",
-      message: t("channelEditor.refreshIconsResult", { updated: result.updated, failed: result.failed }),
-      position: "top"
+      type: result.failed > 0 ? 'warning' : 'positive',
+      message: t('channelEditor.refreshIconsResult', { updated: result.updated, failed: result.failed }),
+      position: 'top',
     });
   } catch {
-    $q.notify({ type: "negative", message: t("channelEditor.refreshIconsFailed"), position: "top" });
+    $q.notify({ type: 'negative', message: t('channelEditor.refreshIconsFailed'), position: 'top' });
   } finally {
     refreshingIcons.value = false;
   }

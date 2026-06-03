@@ -27,18 +27,20 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import IndustryCard from '../../components/industries/IndustryCard.vue'
-import { useIndustryMarket } from '../../features/industries/useIndustryMarket'
-import type { Industry } from '../../features/industries/types'
+import { onMounted } from 'vue';
+import { useRouter } from 'vue-router';
+import IndustryCard from '../../components/industries/IndustryCard.vue';
+import { useIndustryMarket } from '../../features/industries/useIndustryMarket';
+import type { Industry } from '../../features/industries/types';
 
-const router = useRouter()
-const { industries, loading, error, fetchIndustries } = useIndustryMarket()
+const router = useRouter();
+const { industries, loading, error, fetchIndustries } = useIndustryMarket();
 
 function navigateToDetail(ind: Industry) {
-  void router.push({ name: 'industry-detail', params: { key: ind.key } })
+  void router.push({ name: 'industry-detail', params: { key: ind.key } });
 }
 
-onMounted(() => { void fetchIndustries() })
+onMounted(() => {
+  void fetchIndustries();
+});
 </script>

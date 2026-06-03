@@ -1,8 +1,8 @@
-import { ref } from "vue";
-import { createEnvelopeStream } from "../../realtime/useEnvelopeStream";
-import type { Envelope } from "../../realtime/envelope";
-import { ORCHESTRATION_STATUS_ENVELOPE } from "./agentNodeStatusStyles";
-import { agentNodeStateFromMetadata, type AgentNodeState, type OrchestrationAgentStatusMetadata } from "./types";
+import { ref } from 'vue';
+import { createEnvelopeStream } from '../../realtime/useEnvelopeStream';
+import type { Envelope } from '../../realtime/envelope';
+import { ORCHESTRATION_STATUS_ENVELOPE } from './agentNodeStatusStyles';
+import { agentNodeStateFromMetadata, type AgentNodeState, type OrchestrationAgentStatusMetadata } from './types';
 
 export function useOrchestrationStream(sessionId: string, runId: string) {
   const nodes = ref(new Map<string, AgentNodeState>());
@@ -25,7 +25,7 @@ export function useOrchestrationStream(sessionId: string, runId: string) {
 
   function applyEnvelope(env: Envelope) {
     const meta = (env.metadata ?? {}) as OrchestrationAgentStatusMetadata;
-    if (String(meta.run_id ?? "") !== runId) return;
+    if (String(meta.run_id ?? '') !== runId) return;
     const state = agentNodeStateFromMetadata(meta);
     if (!state.node_id) return;
     const next = new Map(nodes.value);
@@ -34,9 +34,7 @@ export function useOrchestrationStream(sessionId: string, runId: string) {
       ...prev,
       ...state,
       run_id: runId,
-      activity_history: state.activity_history?.length
-        ? state.activity_history
-        : prev?.activity_history,
+      activity_history: state.activity_history?.length ? state.activity_history : prev?.activity_history,
     });
     nodes.value = next;
   }
@@ -44,7 +42,7 @@ export function useOrchestrationStream(sessionId: string, runId: string) {
   if (sessionId.trim() && runId.trim()) {
     stream = createEnvelopeStream({
       sessionId,
-      channels: ["team", "graph", "monitor"],
+      channels: ['team', 'graph', 'monitor'],
       autoConnect: false,
     });
     stream.onType([ORCHESTRATION_STATUS_ENVELOPE], applyEnvelope);
