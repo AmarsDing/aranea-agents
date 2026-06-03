@@ -72,7 +72,15 @@ func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresea
 		return tools.AssemblyConfig{EnabledTools: []string{"email"}}, true
 	case "todo_write":
 		return tools.AssemblyConfig{EnabledTools: []string{"todo"}}, true
-	case "working_memory.read", "working_memory.list", "working_memory.write", "working_memory.patch", "working_memory.delete":
+	case "working_memory.read", "working_memory_read":
+		return tools.AssemblyConfig{EnabledTools: []string{"working_memory"}}, true
+	case "working_memory.list", "working_memory_list":
+		return tools.AssemblyConfig{EnabledTools: []string{"working_memory"}}, true
+	case "working_memory.write", "working_memory_write":
+		return tools.AssemblyConfig{EnabledTools: []string{"working_memory"}}, true
+	case "working_memory.patch", "working_memory_patch":
+		return tools.AssemblyConfig{EnabledTools: []string{"working_memory"}}, true
+	case "working_memory.delete", "working_memory_delete":
 		return tools.AssemblyConfig{EnabledTools: []string{"working_memory"}}, true
 	case "await_user_reply":
 		return tools.AssemblyConfig{EnabledTools: []string{"await_user_reply"}}, true
@@ -88,6 +96,28 @@ func AssemblyForCatalogKey(key string, merged map[string]any, platform *webresea
 		return tools.AssemblyConfig{EnabledTools: []string{"read_document"}}, true
 	case "read_spreadsheet":
 		return tools.AssemblyConfig{EnabledTools: []string{"read_spreadsheet"}}, true
+	case "list_butlers", "query_butler_status", "assess_complexity":
+		return tools.AssemblyConfig{}, true // handled via CustomTools in Execute
+	case "read_tool_result":
+		return tools.AssemblyConfig{}, true // handled via CustomTools in Execute
+	case "kanban_show", "kanban_list", "kanban_complete", "kanban_block",
+		"kanban_unblock", "kanban_heartbeat", "kanban_comment",
+		"kanban_create", "kanban_link":
+		return tools.AssemblyConfig{}, true // handled via CustomTools in Execute
+	case "memory_search", "memory_get", "memory_add", "memory_update", "memory_delete":
+		return tools.AssemblyConfig{}, true // handled via CustomTools in Execute
+	case "kanban":
+		return tools.AssemblyConfig{}, false // requires Bridge, use kanban_* sub-keys
+	case "assemble_team", "check_team_progress", "cancel_team", "synthesize_results":
+		return tools.AssemblyConfig{}, false // requires spirit session context or port interfaces
+	case "skill_search", "use_skill":
+		return tools.AssemblyConfig{}, false // session-bound, no runtime factory
+	case "read_image", "create_image", "tts":
+		return tools.AssemblyConfig{}, false // no runtime implementation
+	case "model_registry_sync":
+		return tools.AssemblyConfig{}, false // metadata-only, no factory
+	case "datetime":
+		return tools.AssemblyConfig{}, false // no runtime implementation
 	default:
 		return tools.AssemblyConfig{}, false
 	}

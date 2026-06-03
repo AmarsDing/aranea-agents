@@ -1,0 +1,17 @@
+﻿tool_read_file|success|0ms|err=
+tool_list_file|success|0ms|err=
+tool_search_file|success|0ms|err=
+tool_save_file|success|0ms|err=
+tool_replace_content|success|0ms|err=
+tool_read_file|success|0ms|err=
+tool_web_fetch|success|0ms|err=
+tool_wikipedia_search|ERROR|0ms|err=操作超时
+tool_await_user_reply|success|0ms|err=
+tool_shell_exec|success|9ms|err=
+tool_todo_write|success|0ms|err=
+tool_working_memory_list|HTTP_400|0ms|err=
+tool_working_memory_read|HTTP_400|0ms|err=
+tool_read_document|HTTP_400|0ms|err=
+tool_read_spreadsheet|HTTP_400|0ms|err=
+tool_send_email|error|0ms|err=checkMailBoxType ERROR: parse email address ERROR: mail: no address addr:
+tool_claude_code|error|0ms|err=error: code = 404 reason = TOOL message = callable tool not found in assembly (tried [claude_code]) metadata = map[] cause = <nil>

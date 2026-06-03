@@ -62,7 +62,7 @@ func TestValidRolesForMode(t *testing.T) {
 		{"critic_loop", []string{"generator", "critic", "synthesizer"}, false},
 		{"parallel", []string{"synthesizer"}, false},
 		{"coordinator", []string{"synthesizer"}, false},
-		{"sequential", nil, true},
+		{"sequential", []string{"worker"}, false},
 		{"swarm", nil, true},
 		{"adaptive", nil, true},
 		{"unknown", nil, true},

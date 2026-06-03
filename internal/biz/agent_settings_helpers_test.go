@@ -396,7 +396,7 @@ func TestComposePromptPreview(t *testing.T) {
 			Model:       "gpt-4",
 		}
 		got := biz.ComposePromptPreview(agent, "none")
-		if !strings.Contains(got, "No description configured") {
+		if !strings.Contains(got, "未配置描述") {
 			t.Fatalf("should contain fallback description")
 		}
 	})
@@ -410,7 +410,7 @@ func TestComposePromptPreview(t *testing.T) {
 			CategoryResponsibilityPreview:  "You are a senior engineer",
 		}
 		got := biz.ComposePromptPreview(agent, "none")
-		if !strings.Contains(got, "Role Responsibility") {
+		if !strings.Contains(got, "角色职责") {
 			t.Fatalf("should contain Role Responsibility section")
 		}
 		if !strings.Contains(got, "senior engineer") {

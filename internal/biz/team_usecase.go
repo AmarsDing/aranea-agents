@@ -162,7 +162,9 @@ func validRolesForMode(mode string) map[string]bool {
 		return map[string]bool{"synthesizer": true, "worker": true}
 	case "coordinator":
 		return map[string]bool{"coordinator": true, "worker": true, "synthesizer": true}
-	case "sequential", "swarm", "adaptive":
+	case "sequential":
+		return map[string]bool{"worker": true}
+	case "swarm", "adaptive":
 		// These modes accept any role; no restriction.
 		return nil
 	default:
@@ -559,3 +561,98 @@ func (uc *TeamUsecase) ResolveTaskDeadLetter(ctx context.Context, id string) (Ta
 }
 
 func boolPtr(v bool) *bool { return &v }
+
+// ResolveMemberAgentKeys 将 Team definition_json 中的 agent_key 解析为 agent_id。
+// 用于 Pack 导入场景：导入时 Team 成员使用 agent_key 引用，需转为实际 agent_id。
+// agentKeyResolver 接收 agent_key 返回 (agent_id, error)。
+func (u *TeamUsecase) ResolveMemberAgentKeys(ctx context.Context, raw string, agentKeyResolver func(string) (string, error)) (string, error) {
+	if strings.TrimSpace(raw) == "" || agentKeyResolver == nil {
+		return raw, nil
+	}
+	spec, err := ParseOrchestrationSpec(raw)
+	if err != nil {
+		return "", kerrors.BadRequest("TEAM", "invalid definition_json: "+err.Error())
+	}
+	for i := range spec.Members {
+		m := &spec.Members[i]
+		if strings.TrimSpace(m.AgentID) == "" {
+			continue
+		}
+		// 如果 AgentID 看起来像 agent_key（非 hex 格式），尝试解析
+		if !isHexID(m.AgentID) {
+			resolved, err := agentKeyResolver(m.AgentID)
+			if err != nil {
+				return "", kerrors.BadRequest("TEAM", "agent_key "+m.AgentID+" 解析失败: "+err.Error())
+			}
+			m.AgentID = resolved
+		}
+	}
+	if spec.IntentAnchorAgentID != "" && !isHexID(spec.IntentAnchorAgentID) {
+		resolved, err := agentKeyResolver(spec.IntentAnchorAgentID)
+		if err == nil {
+			spec.IntentAnchorAgentID = resolved
+		}
+	}
+	if spec.SynthesizerAgentID != "" && !isHexID(spec.SynthesizerAgentID) {
+		resolved, err := agentKeyResolver(spec.SynthesizerAgentID)
+		if err == nil {
+			spec.SynthesizerAgentID = resolved
+		}
+	}
+	return OrchestrationSpecToDefinitionJSON(spec)
+}
+
+// isHexID 判断字符串是否为 hex 格式的数据库 ID（24 位 hex）。
+func isHexID(s string) bool {
+	if len(s) != 24 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+// SaveTeamWithGraph 保存 Team 并关联 Graph。
+// 如果 OrchestrationSpec 包含 linked_graph_id，确保 Graph 存在后保存 Team。
+// graphSaver 接收 graph_id，返回 (new_graph_id, error)，用于 ID 映射。
+func (u *TeamUsecase) SaveTeamWithGraph(ctx context.Context, team Team, graphIDMapper func(string) (string, error)) (Team, error) {
+	team.TeamKey = strings.TrimSpace(team.TeamKey)
+	team.DisplayName = strings.TrimSpace(team.DisplayName)
+	if team.TeamKey == "" || team.DisplayName == "" {
+		return Team{}, kerrors.BadRequest("TEAM", "team_key and display_name are required")
+	}
+
+	// 处理 linked_graph_id 映射
+	if graphIDMapper != nil && strings.TrimSpace(team.DefinitionJSON) != "" {
+		spec, err := ParseOrchestrationSpec(team.DefinitionJSON)
+		if err == nil && spec.LinkedGraphID != "" {
+			newID, err := graphIDMapper(spec.LinkedGraphID)
+			if err == nil {
+				spec.LinkedGraphID = newID
+				updated, err := OrchestrationSpecToDefinitionJSON(spec)
+				if err == nil {
+					team.DefinitionJSON = updated
+				}
+			}
+		}
+	}
+
+	if team.ID == "" {
+		team.ID = newAgentCatalogID()
+	}
+	if team.Status == "" {
+		team.Status = "active"
+	}
+	if team.DefinitionJSON == "" {
+		team.DefinitionJSON = defaultTeamDefinitionJSON()
+	} else {
+		team.DefinitionJSON = EnsureGraphRuntimeDefault(team.DefinitionJSON)
+	}
+	if err := validateTeamDefinition(team.DefinitionJSON); err != nil {
+		return Team{}, err
+	}
+	return u.repo.CreateTeam(ctx, team)
+}

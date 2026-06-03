@@ -9,9 +9,6 @@ import (
 
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
-
-	"github.com/go-kratos/kratos/v2/errors"
-	"github.com/google/uuid"
 )
 
 // ReducerType controls how state field values are merged.
@@ -216,14 +213,13 @@ type GraphRunListOption struct {
 }
 
 type GraphUsecase struct {
-	repo             GraphRepo
+	defUC            *GraphDefinitionUsecase
 	runRepo          GraphRunRepo
 	factory          GraphBuilderFactory
 	execObserver     GraphExecutionObserver
 	taskCoord        GraphTaskCoordinator
 	compiledTeamRepo CompiledTeamRepo
 	mu               sync.RWMutex
-	defs             map[string]*GraphDefinition
 	executions       map[string]*GraphExecution
 	teamBuildConfigs map[string]*CompiledTeam
 	lg               loggateway.Logger
@@ -231,18 +227,20 @@ type GraphUsecase struct {
 
 func NewGraphUsecase(repo GraphRepo, runRepo GraphRunRepo, factory GraphBuilderFactory, observer GraphExecutionObserver, compiledTeamRepo CompiledTeamRepo, lg loggateway.Logger) *GraphUsecase {
 	uc := &GraphUsecase{
-		repo:             repo,
+		defUC:            NewGraphDefinitionUsecase(repo, factory, lg),
 		runRepo:          runRepo,
 		factory:          factory,
 		execObserver:     observer,
 		compiledTeamRepo: compiledTeamRepo,
-		defs:             make(map[string]*GraphDefinition),
 		executions:       make(map[string]*GraphExecution),
 		lg:               lg,
 	}
 	safego.Go(context.Background(), "graph-gc-loop", func() { uc.gcLoop() })
 	return uc
 }
+
+// DefUC returns the embedded GraphDefinitionUsecase for callers that only need definition operations.
+func (uc *GraphUsecase) DefUC() *GraphDefinitionUsecase { return uc.defUC }
 
 func (uc *GraphUsecase) SetTaskCoordinator(c GraphTaskCoordinator) {
 	uc.taskCoord = c
