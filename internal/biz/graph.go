@@ -155,6 +155,20 @@ type GraphExecution struct {
 	runtime       GraphRuntime
 	StartedAt     time.Time
 	FinishedAt    *time.Time
+	execMu        sync.RWMutex // protects Status, CurrentNode, LineageID, ErrorMessage, Steps, runtime, FinishedAt
+	evicted       bool         // set by GC before removing from map; not persisted
+}
+
+func (e *GraphExecution) GetStatus() string {
+	e.execMu.RLock()
+	defer e.execMu.RUnlock()
+	return e.Status
+}
+
+func (e *GraphExecution) IsEvicted() bool {
+	e.execMu.RLock()
+	defer e.execMu.RUnlock()
+	return e.evicted
 }
 
 func (e *GraphExecution) IsInterrupted() bool {
@@ -320,249 +334,75 @@ func (uc *GraphUsecase) gc() {
 }
 
 func (uc *GraphUsecase) CreateGraph(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error) {
-	if def.ID == "" {
-		def.ID = uuid.New().String()
-	}
-	now := time.Now()
-	def.CreatedAt = now
-	def.UpdatedAt = now
-	if def.Version <= 0 {
-		def.Version = 1
-	}
-	syncVersionMetadata(def)
-	saved, err := uc.repo.SaveDefinition(ctx, def)
-	if err != nil {
-		return nil, err
-	}
-	uc.mu.Lock()
-	uc.defs[saved.ID] = saved
-	uc.mu.Unlock()
-	return saved, nil
+	return uc.defUC.CreateGraph(ctx, def)
 }
 
 func (uc *GraphUsecase) GetGraph(ctx context.Context, id string) (*GraphDefinition, error) {
-	uc.mu.RLock()
-	if def, ok := uc.defs[id]; ok {
-		uc.mu.RUnlock()
-		return def, nil
-	}
-	uc.mu.RUnlock()
-	def, err := uc.repo.GetDefinition(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	uc.mu.Lock()
-	uc.defs[id] = def
-	uc.mu.Unlock()
-	return def, nil
+	return uc.defUC.GetGraph(ctx, id)
 }
 
 func (uc *GraphUsecase) ListGraphs(ctx context.Context, pageSize int, pageToken string) ([]*GraphDefinition, string, error) {
-	return uc.repo.ListDefinitions(ctx, pageSize, pageToken)
+	return uc.defUC.ListGraphs(ctx, pageSize, pageToken)
 }
 
 func (uc *GraphUsecase) UpdateGraph(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error) {
-	previous, err := uc.repo.GetDefinition(ctx, def.ID)
-	if err != nil {
-		return nil, err
-	}
-	appendVersionHistory(def, previous, uc.lg)
-	now := time.Now()
-	def.UpdatedAt = now
-	syncVersionMetadata(def)
-	saved, err := uc.repo.UpdateDefinition(ctx, def)
-	if err != nil {
-		return nil, err
-	}
-	syncVersionMetadata(saved)
-	uc.mu.Lock()
-	uc.defs[saved.ID] = saved
-	uc.mu.Unlock()
-	return saved, nil
+	return uc.defUC.UpdateGraph(ctx, def)
 }
 
 func (uc *GraphUsecase) DeleteGraph(ctx context.Context, id string) error {
-	err := uc.repo.DeleteDefinition(ctx, id)
-	if err != nil {
-		return err
-	}
-	uc.mu.Lock()
-	delete(uc.defs, id)
-	uc.mu.Unlock()
-	return nil
+	return uc.defUC.DeleteGraph(ctx, id)
 }
 
 func (uc *GraphUsecase) ReorderGraphs(ctx context.Context, ids []string) error {
-	return uc.repo.ReorderGraphs(ctx, ids)
+	return uc.defUC.ReorderGraphs(ctx, ids)
 }
 
 func (uc *GraphUsecase) VisualizeGraph(ctx context.Context, graphID string, format string) (any, error) {
-	def, err := uc.GetGraph(ctx, graphID)
-	if err != nil {
-		return nil, err
-	}
-	cfg := defToBuildConfig(def)
-	return uc.factory.Visualize(ctx, cfg)
+	return uc.defUC.VisualizeGraph(ctx, graphID, format)
 }
 
 func (uc *GraphUsecase) ValidateGraph(ctx context.Context, graphID string) (*GraphValidationResult, error) {
-	def, err := uc.GetGraph(ctx, graphID)
-	if err != nil {
-		return nil, err
-	}
-	cfg := defToBuildConfig(def)
-	return uc.factory.Validate(ctx, cfg)
+	return uc.defUC.ValidateGraph(ctx, graphID)
 }
 
 func (uc *GraphUsecase) ListGraphTemplates(ctx context.Context) any {
-	return uc.factory.ListTemplates()
+	return uc.defUC.ListGraphTemplates(ctx)
 }
 
 func (uc *GraphUsecase) CreateGraphFromTemplate(ctx context.Context, templateID string, name string, description string) (*GraphDefinition, error) {
-	if strings.HasPrefix(templateID, UserTemplateIDPrefix) {
-		graphID := strings.TrimPrefix(templateID, UserTemplateIDPrefix)
-		src, err := uc.GetGraph(ctx, graphID)
-		if err != nil {
-			return nil, err
-		}
-		if ReadUserTemplateMeta(src) == nil {
-			return nil, ErrGraphTemplateNotFound
-		}
-		def := cloneGraphDefinition(src, uc.lg)
-		def.ID = ""
-		def.Name = name
-		def.Description = description
-		def.Version = 0
-		if def.Metadata != nil {
-			delete(def.Metadata, GraphMetadataUserTemplateKey)
-			delete(def.Metadata, GraphMetadataVersionHistoryKey)
-		}
-		return uc.CreateGraph(ctx, def)
-	}
-	tmpl, ok := uc.factory.GetTemplate(templateID)
-	if !ok {
-		return nil, ErrGraphTemplateNotFound
-	}
-	def := uc.factory.TemplateToDef(tmpl, name, description)
-	return uc.CreateGraph(ctx, def)
+	return uc.defUC.CreateGraphFromTemplate(ctx, templateID, name, description)
 }
 
 func (uc *GraphUsecase) ExportGraph(ctx context.Context, graphID string) ([]byte, *GraphDefinition, error) {
-	def, err := uc.GetGraph(ctx, graphID)
-	if err != nil {
-		return nil, nil, err
-	}
-	export := cloneGraphDefinition(def, uc.lg)
-	syncVersionMetadata(export)
-	raw, err := json.Marshal(export)
-	if err != nil {
-		return nil, nil, err
-	}
-	return raw, export, nil
+	return uc.defUC.ExportGraph(ctx, graphID)
 }
 
 func (uc *GraphUsecase) ImportGraph(ctx context.Context, raw []byte, name, description string) (*GraphDefinition, error) {
-	var def GraphDefinition
-	if err := json.Unmarshal(raw, &def); err != nil {
-		return nil, errors.BadRequest("GRAPH", "invalid graph json")
-	}
-	def.ID = ""
-	if strings.TrimSpace(name) != "" {
-		def.Name = name
-	}
-	if strings.TrimSpace(description) != "" {
-		def.Description = description
-	}
-	def.Version = 0
-	if def.Metadata != nil {
-		delete(def.Metadata, GraphMetadataVersionHistoryKey)
-	}
-	cfg := BuildConfigFromGraphDefinition(&def)
-	if err := uc.ensureValidBuildConfig(ctx, cfg); err != nil {
-		return nil, err
-	}
-	return uc.CreateGraph(ctx, &def)
-}
-
-func (uc *GraphUsecase) ensureValidBuildConfig(ctx context.Context, cfg GraphBuildConfig) error {
-	result, err := uc.factory.Validate(ctx, cfg)
-	if err != nil {
-		return err
-	}
-	if result != nil && result.HasErrors() {
-		return errors.BadRequest("GRAPH", "graph failed validation")
-	}
-	return nil
+	return uc.defUC.ImportGraph(ctx, raw, name, description)
 }
 
 func (uc *GraphUsecase) ListGraphVersions(ctx context.Context, graphID string) ([]GraphVersionEntry, error) {
-	def, err := uc.GetGraph(ctx, graphID)
-	if err != nil {
-		return nil, err
-	}
-	return ListGraphVersionEntries(def), nil
+	return uc.defUC.ListGraphVersions(ctx, graphID)
 }
 
 func (uc *GraphUsecase) RollbackGraphVersion(ctx context.Context, graphID string, version int) (*GraphDefinition, error) {
-	current, err := uc.GetGraph(ctx, graphID)
-	if err != nil {
-		return nil, err
-	}
-	snapshot := FindGraphVersionSnapshot(current, version, uc.lg)
-	if snapshot == nil {
-		return nil, errors.NotFound("GRAPH", "graph version not found")
-	}
-	restored := cloneGraphDefinition(snapshot, uc.lg)
-	restored.ID = graphID
-	restored.CreatedAt = current.CreatedAt
-	return uc.UpdateGraph(ctx, restored)
+	return uc.defUC.RollbackGraphVersion(ctx, graphID, version)
 }
 
 func (uc *GraphUsecase) SaveGraphAsTemplate(ctx context.Context, graphID, templateName, category, description string) (*UserTemplateMeta, error) {
-	def, err := uc.GetGraph(ctx, graphID)
-	if err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(category) == "" {
-		category = "custom"
-	}
-	meta := UserTemplateMeta{
-		TemplateID:  UserTemplateIDPrefix + graphID,
-		Name:        templateName,
-		Category:    category,
-		Description: description,
-	}
-	WriteUserTemplateMeta(def, meta)
-	def.UpdatedAt = time.Now()
-	saved, err := uc.repo.UpdateDefinition(ctx, def)
-	if err != nil {
-		return nil, err
-	}
-	uc.mu.Lock()
-	uc.defs[saved.ID] = saved
-	uc.mu.Unlock()
-	return ReadUserTemplateMeta(saved), nil
+	return uc.defUC.SaveGraphAsTemplate(ctx, graphID, templateName, category, description)
 }
 
 func (uc *GraphUsecase) ListUserTemplateGraphs(ctx context.Context) ([]*GraphDefinition, error) {
-	return uc.repo.ListUserTemplateDefinitions(ctx, 200)
+	return uc.defUC.ListUserTemplateGraphs(ctx)
 }
 
 func (uc *GraphUsecase) FindNodeDef(ctx context.Context, graphID string, nodeID string) *NodeTaskMeta {
-	def, err := uc.GetGraph(ctx, graphID)
-	if err != nil {
-		return nil
-	}
-	cfg := defToBuildConfig(def)
-	return uc.factory.FindNodeDef(cfg, nodeID)
+	return uc.defUC.FindNodeDef(ctx, graphID, nodeID)
 }
 
 func (uc *GraphUsecase) FindGraphNode(ctx context.Context, graphID string, nodeID string) *NodeDef {
-	def, err := uc.GetGraph(ctx, graphID)
-	if err != nil {
-		return nil
-	}
-	return nodeDefFromConfig(defToBuildConfig(def), nodeID)
+	return uc.defUC.FindGraphNode(ctx, graphID, nodeID)
 }
 
 func defToBuildConfig(def *GraphDefinition) GraphBuildConfig {

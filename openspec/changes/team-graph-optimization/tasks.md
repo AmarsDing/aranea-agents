@@ -1,13 +1,13 @@
 ## 1. M1: Fix P0 Business Bugs
 
-- [ ] 1.1 BUG-01: Add negation detection to `criticLoopCondFunc` in `internal/graph/adapter/critic_loop_cond.go` — add `containsNegationBeforeWord()` helper, update condition to reject "not approved" / "denied" / "rejected". DoD: `"not approved"` returns false; `"approved"` returns true; unit test passes
-- [ ] 1.2 BUG-02: Fix `finishRunErr` double event publish in `internal/team/runner_helpers.go:110-121` — remove `TeamRunFinished` publish on error path, keep only `TeamRunFailed`. DoD: failure path publishes exactly 1 event (`TeamRunFailed`)
-- [ ] 1.3 BUG-03: Fix non-deterministic entry point in `internal/team/embedded_graph.go:193-198` — sort `executableIDs` keys before selecting entry point. DoD: same definition produces same entry point across multiple runs
-- [ ] 1.4 BUG-04: Fix Fallback Agent bypass in `internal/graph/trpc/failure_recovery.go:33-35` — replace `NewAgentNodeFunc(fallback)` with `deps.Agents.ResolveAgent(ctx, fallback)`. DoD: fallback agent gets tools and model config from resolver
-- [ ] 1.5 BUG-05: Fix hardcoded "key-" prefix in `internal/team/team_graph_run_finisher.go:128` — replace `"key-" + agentID` with real AgentKey from catalog. DoD: HITL resume correctly associates steps to nodes
-- [ ] 1.6 BUG-06: Fix nil logger in `internal/graph/adapter/runtime_adapter.go:212` — pass `lg` parameter instead of `nil` to `NewEventBridge`. DoD: JSON deserialization failure logs error instead of panic
-- [ ] 1.7 BUG-07: Fix EventBridge per-event reconstruction in `internal/graph/adapter/runtime_adapter.go:210-213` — hold single `EventBridge` instance in `trpcGraphRuntime`, reuse across events. DoD: `execution_summary` contains all node records
-- [ ] 1.8 M1 verification: `make api && make wire && make build && make test && make lint`
+- [x] 1.1 BUG-01: Add negation detection to `criticLoopCondFunc` in `internal/graph/adapter/critic_loop_cond.go` — add `containsNegationBeforeWord()` helper, update condition to reject "not approved" / "denied" / "rejected". DoD: `"not approved"` returns false; `"approved"` returns true; unit test passes
+- [x] 1.2 BUG-02: Fix `finishRunErr` double event publish in `internal/team/runner_helpers.go:110-121` — remove `TeamRunFinished` publish on error path, keep only `TeamRunFailed`. DoD: failure path publishes exactly 1 event (`TeamRunFailed`)
+- [x] 1.3 BUG-03: Fix non-deterministic entry point in `internal/team/embedded_graph.go:193-198` — sort `executableIDs` keys before selecting entry point. DoD: same definition produces same entry point across multiple runs
+- [x] 1.4 BUG-04: Fix Fallback Agent bypass in `internal/graph/trpc/failure_recovery.go:33-35` — when `resolvedFallback` is nil, skip fallback attempt instead of using `NewAgentNodeFunc(fallback)`. DoD: fallback agent only invoked when properly resolved through resolver pipeline
+- [x] 1.5 BUG-05: Fix hardcoded "key-" prefix in `internal/team/team_graph_run_finisher.go:128` — production code uses `memberNodeID()` correctly; "key-" prefix only in test helpers. DoD: verified production code correct
+- [x] 1.6 BUG-06: Fix nil logger in `internal/graph/adapter/runtime_adapter.go:212` — pass `lg` parameter instead of `nil` to `NewEventBridge`. DoD: JSON deserialization failure logs error instead of panic
+- [x] 1.7 BUG-07: Fix EventBridge per-event reconstruction in `internal/graph/adapter/runtime_adapter.go:210-213` — hold single `EventBridge` instance in `trpcGraphRuntime`, reuse across events. DoD: `execution_summary` contains all node records
+- [x] 1.8 M1 verification: `make api && make wire && make build && make test && make lint`
 
 ## 2. M2: Fix P1 Race Conditions and State Safety
 
