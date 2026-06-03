@@ -16,15 +16,12 @@ jobs:
       - name: Collect metrics
         id: metrics
         run: |
-          # Get current week info
           WEEK=$(date -u +%Y-W%V)
           echo "week=$WEEK" >> $GITHUB_OUTPUT
 
-          # Coverage from recent CI runs (placeholder - would need artifact download)
           COVERAGE="N/A"
           echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
 
-          # Auto-fix stats
           if [ -f .auto-fix/stats.json ]; then
             TOTAL_ATTEMPTS=$(jq -r '.total_attempts // 0' .auto-fix/stats.json)
             TOTAL_SUCCESSES=$(jq -r '.total_successes // 0' .auto-fix/stats.json)
@@ -41,7 +38,6 @@ jobs:
           echo "fix_attempts=$TOTAL_ATTEMPTS" >> $GITHUB_OUTPUT
           echo "fix_success_rate=$SUCCESS_RATE%" >> $GITHUB_OUTPUT
 
-          # Release count this week
           RELEASE_COUNT=$(gh release list --limit 50 2>/dev/null | grep -c "$(date -u +%Y-%m)" || echo "0")
           echo "releases=$RELEASE_COUNT" >> $GITHUB_OUTPUT
         env:
@@ -50,7 +46,7 @@ jobs:
       - name: Generate report
         id: report
         run: |
-          cat > dashboard.md << REPORT
+          cat > dashboard.md << 'REPORT'
           # Iteration Dashboard - ${{ steps.metrics.outputs.week }}
 
           ## Auto-fix Stats
