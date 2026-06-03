@@ -49,18 +49,21 @@ Aranea-Agents 当前 CI 流水线包含 6 个 Job（lint / test-go / test-web / 
 
 ## Decisions
 
-### D1: 自动修复引擎 — GitHub Actions + LLM API
+### D1: 自动修复引擎 — GitHub Actions + 自托管 Agent（项目自身 LLM 能力）
 
-**选择**：GitHub Actions workflow（`workflow_run` 触发）+ LLM API（OpenAI/Claude）
+**选择**：GitHub Actions workflow（`workflow_run` 触发）+ 自托管 Agent API（项目自身的 Chat API）
 
 **理由**：
-- GitHub Actions 原生集成 CI 失败事件，无需额外服务
-- LLM 可处理非结构化失败日志，生成针对性修复
+- 项目本身就是一个 AI Agent 平台，已有完整的 LLM 集成（trpc-agent-go 运行时）
+- 通过 `POST /v1/chat/messages` 调用自身的 Agent 来诊断 CI 失败，无需外部 API key
+- Agent 使用项目已配置的 LLM provider（OpenAI/Claude/等），LLM API key 只需在 aranea-agents 后端配置一次
+- 这正是"火箭发动机自我迭代"的精髓——用自身的 AI 能力修复自身
 - 修复 PR 需人工 review，保证安全性
 
 **备选方案**：
-- A) 自建修复服务（需额外运维，过重）→ 否决
-- B) 仅用规则匹配修复（覆盖面窄，无法处理复杂问题）→ 作为简单修复的补充
+- A) 直接调用 OpenAI API（需要额外的 OPENAI_API_KEY secret）→ 否决，违反自我迭代原则
+- B) 仅用规则匹配修复（覆盖面窄，无法处理复杂问题）→ 作为 Agent 不可用时的回退方案
+- C) 自建修复服务（需额外运维，过重）→ 否决
 
 **设计**：
 
@@ -74,8 +77,12 @@ workflow_run (conclusion: failure)
   │
   ├─ 判断失败类型
   │   ├─ lint 错误 → 规则修复 (golangci-lint --fix / eslint --fix)
-  │   ├─ 测试失败 → LLM 诊断 + 修复
-  │   └─ 构建失败 → LLM 诊断 + 修复
+  │   ├─ 测试/构建失败 → 自托管 Agent 诊断 + 修复
+  │   │   ├─ ARANEA_API_URL 已配置？
+  │   │   │   ├─ 是 → 调用 POST /v1/chat/messages 请求 Agent 生成 patch
+  │   │   │   └─ 否 → 回退到 pattern-fix.sh（基于已知修复模板的模式匹配）
+  │   │   └─ Agent 返回 patch → git apply → 验证
+  │   └─ Proto/Wire 同步 → make api && make wire
   │
   ├─ 生成修复 patch
   │

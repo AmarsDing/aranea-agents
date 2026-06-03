@@ -27,8 +27,9 @@ func RedactAndTruncate(raw string, maxLen int) string {
 	s = phoneRE.ReplaceAllString(s, "[phone redacted]")
 	s = secretKVRE.ReplaceAllString(s, `"[secret redacted]"`)
 	s = secretRE.ReplaceAllString(s, "[secret redacted]")
-	if len(s) > maxLen {
-		return s[:maxLen]
+	runes := []rune(s)
+	if len(runes) > maxLen {
+		return string(runes[:maxLen])
 	}
 	return s
 }

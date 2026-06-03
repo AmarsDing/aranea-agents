@@ -75,5 +75,5 @@ func ResolveGeminiFetchModel(cfg *ToolsetConfig, agentProvider, agentModel strin
 
 func isGeminiLikeProvider(provider string) bool {
 	p := strings.ToLower(strings.TrimSpace(provider))
-	return strings.Contains(p, "gemini") || strings.Contains(p, "google")
+	return p == "gemini" || p == "google" || strings.HasPrefix(p, "gemini-") || strings.HasPrefix(p, "google-")
 }

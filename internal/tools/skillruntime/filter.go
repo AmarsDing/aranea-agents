@@ -84,17 +84,18 @@ func (c *filterCache) Stats() (hits, misses, evicts int64) {
 // AgentVisibilityFilter narrows visible skills per invocation using Layer A + Layer B
 // policy from agent_runtime_settings.skill_runtime_json and the turn query in RuntimeState.
 type AgentVisibilityFilter struct {
-	skillUC SkillResolver
-	runtime RuntimeSettings
-	cache   filterCache
-	lg      loggateway.Logger
+	skillUC  SkillResolver
+	runtime  RuntimeSettings
+	cache    filterCache
+	lg       loggateway.Logger
+	agentKey string
 }
 
-func NewAgentVisibilityFilter(skillUC SkillResolver, runtime RuntimeSettings, lg loggateway.Logger) trpcskill.VisibilityFilter {
+func NewAgentVisibilityFilter(skillUC SkillResolver, runtime RuntimeSettings, lg loggateway.Logger, agentKey string) trpcskill.VisibilityFilter {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	f := &AgentVisibilityFilter{skillUC: skillUC, runtime: runtime, lg: lg}
+	f := &AgentVisibilityFilter{skillUC: skillUC, runtime: runtime, lg: lg, agentKey: agentKey}
 	return f.allow
 }
 
@@ -118,6 +119,12 @@ func (f *AgentVisibilityFilter) allowedSlugs(ctx context.Context) map[string]boo
 	if inv, ok := trpcagent.InvocationFromContext(ctx); ok && inv != nil {
 		if id := strings.TrimSpace(inv.InvocationID); id != "" {
 			cacheKey = id
+		}
+	}
+	// Include agent key to prevent cross-agent cache leakage when no invocation ID is available.
+	if cacheKey == "default" {
+		if key := strings.TrimSpace(f.agentKey); key != "" {
+			cacheKey = "agent:" + key
 		}
 	}
 	if v, ok := f.cache.Load(cacheKey); ok {

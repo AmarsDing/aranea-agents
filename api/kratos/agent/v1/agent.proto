@@ -209,7 +209,7 @@ message Agent {
   string position_key = 29;
   string agent_variant = 30;
   string variant_description = 31;
-  // source: user | system | imported (maps from DB kind column).
+  // source: user | system | system_builtin | industry_template | marketplace | certified (maps from DB kind column).
   string source = 32;
 }
 

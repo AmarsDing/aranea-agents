@@ -90,9 +90,28 @@ func redactSensitiveValues(output string, values []sensitiveValue) string {
 		if item.Value == "" {
 			continue
 		}
-		redacted = strings.ReplaceAll(redacted, item.Value, redactedName(item.Name))
+		redacted = replaceValueWithBoundary(redacted, item.Value, redactedName(item.Name))
 	}
 	return redacted
+}
+
+// replaceValueWithBoundary replaces occurrences of value that appear as whole words
+// or within structured contexts (quotes, assignments), avoiding partial matches
+// in unrelated text.
+func replaceValueWithBoundary(output, value, replacement string) string {
+	// Try word-boundary replacement first for values that look like tokens/keys.
+	// For short or common values, fall back to ReplaceAll to avoid missing structured contexts.
+	if len(value) >= minSensitiveValueLength {
+		// Use regexp with word boundaries for longer, more specific values
+		pattern := regexp.QuoteMeta(value)
+		re := regexp.MustCompile(`\b` + pattern + `\b`)
+		result := re.ReplaceAllString(output, replacement)
+		// Also replace in quoted/structured contexts (no word boundary before quote)
+		reQuoted := regexp.MustCompile(`["'` + "`" + `]` + pattern + `["'` + "`" + `]`)
+		result = reQuoted.ReplaceAllString(result, `"`+replacement+`"`)
+		return result
+	}
+	return strings.ReplaceAll(output, value, replacement)
 }
 
 func redactSensitiveKeyValueLines(output string) string {

@@ -104,7 +104,7 @@ function taxonomyWireToPlatform(raw: unknown): PlatformResource {
 
 function mapIndustryTaxonomyTreeNode(raw: unknown): PlatformResourceTreeNode {
   const o = asRecord(raw);
-  const cat = asRecord(o.category ?? o.Category);
+  const cat = asRecord(o.industryTaxonomy ?? o.IndustryTaxonomy);
   const base = industryTaxonomyWireToPlatform(cat);
   const childrenRaw = o.children ?? o.Children;
   const children = Array.isArray(childrenRaw) ? childrenRaw.map(mapIndustryTaxonomyTreeNode) : [];

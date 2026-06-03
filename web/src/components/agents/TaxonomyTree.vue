@@ -1,17 +1,17 @@
 <template>
-  <q-card flat bordered class="app-entity-glass-panel category-tree-panel">
-    <q-card-section class="category-tree-panel__body">
-      <q-list class="category-tree-list">
+  <q-card flat bordered class="app-entity-glass-panel taxonomy-tree-panel">
+    <q-card-section class="taxonomy-tree-panel__body">
+      <q-list class="taxonomy-tree-list">
         <q-expansion-item
           v-for="industry in tree"
           :key="industry.id"
           :model-value="isExpanded(industry.id)"
           expand-icon="keyboard_arrow_down"
-          class="category-tree-industry"
+          class="taxonomy-tree-industry"
           @update:model-value="setExpanded(industry.id, $event)"
         >
           <template #header>
-            <category-tree-node-header
+            <taxonomy-node-header
               :node="industry"
               :show-system-chip="showSystemChip"
               :readonly="readonly"
@@ -23,17 +23,17 @@
             />
           </template>
 
-          <div class="category-tree-industry__body">
+          <div class="taxonomy-tree-industry__body">
             <q-expansion-item
               v-for="department in departmentNodes(industry)"
               :key="department.id"
               :model-value="isExpanded(department.id)"
               expand-icon="keyboard_arrow_down"
-              class="category-tree-department"
+              class="taxonomy-tree-department"
               @update:model-value="setExpanded(department.id, $event)"
             >
               <template #header>
-                <category-tree-node-header
+                <taxonomy-node-header
                   :node="department"
                   :show-system-chip="showSystemChip"
                   :readonly="readonly"
@@ -89,15 +89,15 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import TaxonomyPositionCard from "./TaxonomyPositionCard.vue";
-import CategoryTreeNodeHeader from "./CategoryTreeNodeHeader.vue";
+import TaxonomyNodeHeader from "./TaxonomyNodeHeader.vue";
 import type { PlatformResourceTreeNode } from "../../features/platform/types";
 import {
   collectDefaultExpandedIds,
   collectExpandedIdsForFilter,
   departmentPositions,
   nodeMatchesKeyword,
-  type CategoryLevel
-} from "../../features/platform/categoryTreeUtils";
+  type TaxonomyLevel
+} from "../../features/platform/taxonomyTreeUtils";
 
 const props = withDefaults(
   defineProps<{
@@ -119,7 +119,7 @@ const props = withDefaults(
 
 defineEmits<{
   edit: [node: PlatformResourceTreeNode];
-  "create-child": [level: CategoryLevel, parent: PlatformResourceTreeNode];
+  "create-child": [level: TaxonomyLevel, parent: PlatformResourceTreeNode];
   remove: [node: PlatformResourceTreeNode];
   "toggle-enabled": [node: PlatformResourceTreeNode, enabled: boolean];
 }>();

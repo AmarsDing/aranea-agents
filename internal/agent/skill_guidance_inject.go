@@ -11,6 +11,8 @@ import (
 	"aranea-agents/internal/skill/render"
 	"aranea-agents/internal/tools/skillruntime"
 
+	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+	trpcllmagent "trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -79,6 +81,12 @@ func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		result, err := skillruntime.ResolveSkillSlugsDetailed(ctx, deps.SkillUC, opts, deps.LG)
 		if err != nil || len(result.Slugs) == 0 {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
+		// Store routed skill names in invocation state so the
+		// SkillsRequestProcessor can mark them as [routed] in the
+		// overview on subsequent turns.
+		if inv, ok := trpcagent.InvocationFromContext(ctx); ok {
+			inv.SetState(trpcllmagent.RoutedSkillsStateKey, result.Slugs)
 		}
 		entries, err := deps.SkillUC.BatchGetSkillGuidance(ctx, result.Slugs)
 		if err != nil || len(entries) == 0 {

@@ -1,0 +1,91 @@
+name: Doc Sync
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main, master]
+
+jobs:
+  doc-sync:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Detect changed files
+        id: changes
+        run: |
+          FILES=$(gh pr diff ${{ github.event.pull_request.number }} --name-only)
+          echo "files<<EOF" >> $GITHUB_OUTPUT
+          echo "$FILES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          # Determine affected docs
+          AFFECTED_SPECS=""
+          CRITICAL_SPECS=""
+          if echo "$FILES" | grep -q "^api/kratos/"; then
+            AFFECTED_SPECS="$AFFECTED_SPECS openspec/specs/architecture-blueprint.md"
+            CRITICAL_SPECS="$CRITICAL_SPECS openspec/specs/architecture-blueprint.md"
+          fi
+          if echo "$FILES" | grep -q "^internal/biz/\|^internal/service/"; then
+            AFFECTED_SPECS="$AFFECTED_SPECS openspec/specs/module-cross-reference.md"
+            CRITICAL_SPECS="$CRITICAL_SPECS openspec/specs/module-cross-reference.md"
+          fi
+          echo "affected_specs=$AFFECTED_SPECS" >> $GITHUB_OUTPUT
+          echo "critical_specs=$CRITICAL_SPECS" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Regenerate OpenAPI on proto change
+        if: contains(steps.changes.outputs.files, 'api/kratos/')
+        run: |
+          sudo apt-get update -y && sudo apt-get install -y protobuf-compiler
+          make init && make api
+
+      - name: Notify on critical spec changes
+        if: steps.changes.outputs.critical_specs != ''
+        run: |
+          gh issue create \
+            --title "Docs: spec update needed for PR #${{ github.event.pull_request.number }}" \
+            --body "PR #${{ github.event.pull_request.number }} affects critical spec files that require manual review:
+
+          ${{ steps.changes.outputs.critical_specs }}
+
+          Please review and update the documentation manually." \
+            --label "docs"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create changelog entry
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          TITLE=$(gh pr view ${{ github.event.pull_request.number }} --json title -q .title)
+          AUTHOR=$(gh pr view ${{ github.event.pull_request.number }} --json author -q .author.login)
+          LABELS=$(gh pr view ${{ github.event.pull_request.number }} --json labels -q '.labels[].name' | tr '\n' ',' | sed 's/,$//')
+
+          mkdir -p openspec/changelog
+          cat > "openspec/changelog/${DATE}-pr${{ github.event.pull_request.number }}.md" << EOF
+          # ${TITLE}
+
+          - **PR**: #${{ github.event.pull_request.number }}
+          - **Author**: @${AUTHOR}
+          - **Labels**: ${LABELS}
+          - **Date**: ${DATE}
+          EOF
+
+          git add openspec/changelog/
+          git diff --cached --quiet || git commit -m "changelog: PR #${{ github.event.pull_request.number }}"
+          git push
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}

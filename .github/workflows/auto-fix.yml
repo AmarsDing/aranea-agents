@@ -1,0 +1,222 @@
+name: Auto Fix
+
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    conclusion: failure
+
+jobs:
+  auto-fix:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+          repository: ${{ github.event.workflow_run.repository.full_name }}
+          ref: ${{ github.event.workflow_run.head_branch }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Check daily fix limit
+        id: limit
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          STATS=$(cat .auto-fix/stats.json 2>/dev/null || echo '{"daily_count":0,"daily_date":""}')
+          STATS_DATE=$(echo "$STATS" | jq -r '.daily_date')
+          if [ "$STATS_DATE" = "$TODAY" ]; then
+            COUNT=$(echo "$STATS" | jq -r '.daily_count')
+          else
+            COUNT=0
+          fi
+          if [ "$COUNT" -ge 10 ]; then
+            echo "Daily fix limit reached ($COUNT/10). Skipping."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Get failure logs
+        if: steps.limit.outputs.skip != 'true'
+        id: logs
+        run: |
+          gh run view ${{ github.event.workflow_run.id }} --log-failed > failure-logs.txt 2>/dev/null || echo "Could not fetch logs" > failure-logs.txt
+          # Truncate to last 200 lines to avoid oversized prompts
+          tail -200 failure-logs.txt > failure-logs-truncated.txt
+          echo "logs_fetched=true" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Classify and attempt fix
+        if: steps.limit.outputs.skip != 'true'
+        id: fix
+        run: |
+          # Classify failure type
+          if grep -qE "golangci-lint|araneactl lint|stylelint|eslint" failure-logs.txt; then
+            echo "type=lint-error" >> $GITHUB_OUTPUT
+            # Rule-based fix for lint errors (no LLM needed)
+            go run ./cmd/araneactl/lint --root . --fix
+            cd web && pnpm install --frozen-lockfile && pnpm exec eslint --fix "src/**/*.{ts,vue}" && pnpm exec stylelint --fix "src/**/*.{vue,css}" --config .stylelintrc.json || true
+            cd ..
+          else
+            # Determine failure type for LLM diagnosis
+            if grep -qE "FAIL|panic|fatal error" failure-logs.txt; then
+              echo "type=test-failure" >> $GITHUB_OUTPUT
+            else
+              echo "type=build-failure" >> $GITHUB_OUTPUT
+            fi
+
+            # ── Self-hosted Agent diagnosis ──────────────────────────
+            # Use the project's own Agent runtime to diagnose the failure.
+            # The ARANEA_API_URL points to a running aranea-agents instance
+            # (self-hosted or staging). The Agent uses the LLM provider
+            # configured in that instance — no external API key needed.
+            ARANEA_URL="${{ secrets.ARANEA_API_URL }}"
+            ARANEA_SESSION="${{ secrets.ARANEA_AUTO_FIX_SESSION }}"
+
+            if [ -z "$ARANEA_URL" ] || [ -z "$ARANEA_SESSION" ]; then
+              echo "ARANEA_API_URL or ARANEA_AUTO_FIX_SESSION not configured."
+              echo "Falling back to known-fixes pattern matching."
+
+              # Pattern-based fallback (no LLM)
+              ./.auto-fix/scripts/pattern-fix.sh failure-logs-truncated.txt
+            else
+              echo "Requesting diagnosis from self-hosted Agent..."
+
+              # Build the prompt with failure context
+              FAILURE_LOG=$(cat failure-logs-truncated.txt | head -100)
+              CHANGED_FILES=$(git diff --name-only HEAD~1 2>/dev/null || echo "unknown")
+
+              # Call the project's own Chat API to get an Agent diagnosis
+              DIAGNOSIS=$(curl -s -X POST "${ARANEA_URL}/v1/chat/messages" \
+                -H "Content-Type: application/json" \
+                -H "Authorization: Bearer ${{ secrets.ARANEA_API_TOKEN }}" \
+                -d "{
+                  \"session_id\": \"${ARANEA_SESSION}\",
+                  \"content\": \"CI failure diagnosis request:\\n\\nFailure logs (last 100 lines):\\n\\\`\\\`\\\`\\n${FAILURE_LOG}\\n\\\`\\\`\\\`\\n\\nChanged files: ${CHANGED_FILES}\\n\\nRepository: ${{ github.event.workflow_run.repository.full_name }}\\nBranch: ${{ github.event.workflow_run.head_branch }}\\n\\nAnalyze the failure and provide a unified diff patch to fix it. Output ONLY the patch, no explanation. If you cannot fix it, output NOFIX.\"
+                }" 2>/dev/null || echo "AGENT_CALL_FAILED")
+
+              if echo "$DIAGNOSIS" | grep -q "NOFIX\|AGENT_CALL_FAILED"; then
+                echo "Agent could not diagnose or API call failed."
+                echo "fix_applied=false" >> $GITHUB_OUTPUT
+                exit 0
+              fi
+
+              # Extract patch from agent response
+              echo "$DIAGNOSIS" | jq -r '.agent_message.content // .agent_message // empty' 2>/dev/null > agent-patch.diff || true
+
+              if [ -s agent-patch.diff ]; then
+                # Try to apply the patch
+                if git apply agent-patch.diff 2>/dev/null; then
+                  echo "Agent patch applied successfully."
+                else
+                  echo "Agent patch could not be applied cleanly."
+                  echo "fix_applied=false" >> $GITHUB_OUTPUT
+                  exit 0
+                fi
+              else
+                echo "No valid patch from agent."
+                echo "fix_applied=false" >> $GITHUB_OUTPUT
+                exit 0
+              fi
+            fi
+          fi
+
+          # Check if there are any changes
+          if git diff --quiet; then
+            echo "fix_applied=false" >> $GITHUB_OUTPUT
+          else
+            echo "fix_applied=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Verify fix
+        if: steps.fix.outputs.fix_applied == 'true'
+        run: |
+          # Verify the fix doesn't break anything
+          go vet ./...
+          cd web && pnpm install --frozen-lockfile && pnpm build
+
+      - name: Check protected files
+        if: steps.fix.outputs.fix_applied == 'true'
+        run: |
+          # Reject fixes that touch protected files
+          PROTECTED=".github/workflows/ Makefile go.mod go.sum"
+          for file in $PROTECTED; do
+            if git diff --name-only | grep -q "^$file"; then
+              echo "Fix touches protected file: $file. Rejecting."
+              git checkout -- .
+              exit 1
+            fi
+          done
+          # Also check proto files
+          if git diff --name-only | grep -q "^api/kratos/.*\.proto$"; then
+            echo "Fix touches proto files. Rejecting."
+            git checkout -- .
+            exit 1
+          fi
+
+      - name: Create auto-fix PR
+        if: steps.fix.outputs.fix_applied == 'true'
+        run: |
+          BRANCH="auto-fix/${{ github.event.workflow_run.id }}"
+          git checkout -b "$BRANCH"
+          git add -A
+          git commit -m "fix: auto-fix for CI failure #${{ github.event.workflow_run.id }}"
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "fix: auto-fix for CI failure #${{ github.event.workflow_run.id }}" \
+            --body "Automated fix generated by the auto-fix engine.
+
+          **Failure type:** ${{ steps.fix.outputs.type }}
+          **Source CI run:** #${{ github.event.workflow_run.id }}
+          **Diagnosis method:** ${{ steps.fix.outputs.type == 'lint-error' && 'rule-based' || 'self-hosted-agent' }}
+
+          Please review the changes carefully before merging." \
+            --label "auto-fix"
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+
+      - name: Record failure pattern
+        if: always() && steps.limit.outputs.skip != 'true'
+        run: |
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          FIX_SUCCESS="${{ steps.fix.outputs.fix_applied }}"
+          FIX_TYPE="${{ steps.fix.outputs.type }}"
+          echo "{\"timestamp\":\"$TIMESTAMP\",\"run_id\":\"${{ github.event.workflow_run.id }}\",\"type\":\"$FIX_TYPE\",\"fix_succeeded\":\"$FIX_SUCCESS\"}" >> .auto-fix/patterns.jsonl
+
+          # Update stats
+          TODAY=$(date -u +%Y-%m-%d)
+          STATS=$(cat .auto-fix/stats.json 2>/dev/null || echo '{}')
+          STATS_DATE=$(echo "$STATS" | jq -r '.daily_date // empty')
+          if [ "$STATS_DATE" = "$TODAY" ]; then
+            NEW_COUNT=$(echo "$STATS" | jq '.daily_count + 1')
+            NEW_TOTAL=$(echo "$STATS" | jq '.total_attempts + 1')
+            NEW_SUCCESS=$(echo "$STATS" | jq --arg s "$FIX_SUCCESS" 'if $s == "true" then .total_successes + 1 else .total_successes end')
+            jq --arg c "$NEW_COUNT" --arg t "$NEW_TOTAL" --arg s "$NEW_SUCCESS" \
+              '.daily_count=($c|tonumber) | .total_attempts=($t|tonumber) | .total_successes=($s|tonumber)' \
+              .auto-fix/stats.json > .auto-fix/stats.json.tmp && mv .auto-fix/stats.json.tmp .auto-fix/stats.json
+          else
+            jq -n --arg d "$TODAY" '{daily_count:1, daily_date:$d, total_attempts:1, total_successes:(if "'$FIX_SUCCESS'" == "true" then 1 else 0 end)}' > .auto-fix/stats.json
+          fi
+
+          git add .auto-fix/patterns.jsonl .auto-fix/stats.json
+          git diff --cached --quiet || git commit -m "chore: record auto-fix pattern" && git push || true
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}

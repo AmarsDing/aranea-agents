@@ -74,7 +74,7 @@ func ConfigString(m map[string]any, keys ...string) string {
 }
 
 func RegistryByTag(tag string) []*ToolRegistration {
-	tag = strings.TrimSpace(strings.ToLower(tag))
+	tag = strings.TrimSpace(tag)
 	if tag == "" {
 		return nil
 	}
@@ -91,7 +91,7 @@ func RegistryByTag(tag string) []*ToolRegistration {
 }
 
 func RegistryByCategory(category string) []*ToolRegistration {
-	category = strings.TrimSpace(strings.ToLower(category))
+	category = strings.TrimSpace(category)
 	if category == "" {
 		return nil
 	}

@@ -3323,3 +3323,140 @@ func TestSkillsRequestProcessor_ProgressiveMode_ClearsSkillStatePerTurn(t *testi
 	require.True(t, ok, "key should still exist after clear")
 	require.Empty(t, loadedVal, "progressive mode should clear loaded skill state at turn start")
 }
+
+func TestSkillsRequestProcessor_RoutedSkillsResolver(t *testing.T) {
+	repo := &mockRepo{
+		sums: []skill.Summary{
+			{Name: "skill-a", Description: "Alpha skill"},
+			{Name: "skill-b", Description: "Beta skill"},
+		},
+		full: map[string]*skill.Skill{},
+	}
+	inv := &agent.Invocation{
+		InvocationID: "inv1",
+		AgentName:    "tester",
+		Session:      &session.Session{},
+	}
+	req := &model.Request{
+		Messages: []model.Message{
+			model.NewSystemMessage("sys"),
+		},
+	}
+	p := NewSkillsRequestProcessor(
+		repo,
+		WithRoutedSkillsResolver(func(inv *agent.Invocation) []string {
+			return []string{"skill-b"}
+		}),
+		WithSkillsCapabilityGuidance(""),
+		WithSkillsToolingGuidance(""),
+	)
+	p.ProcessRequest(context.Background(), inv, req, nil)
+
+	sys := req.Messages[0].Content
+	require.NotContains(t, sys, "skill-a [routed]")
+	require.Contains(t, sys, "skill-b: Beta skill [routed]")
+}
+
+func TestSkillsRequestProcessor_RoutedSkillsResolverOverridesStatic(t *testing.T) {
+	repo := &mockRepo{
+		sums: []skill.Summary{
+			{Name: "skill-a", Description: "Alpha skill"},
+			{Name: "skill-b", Description: "Beta skill"},
+		},
+		full: map[string]*skill.Skill{},
+	}
+	inv := &agent.Invocation{
+		InvocationID: "inv1",
+		AgentName:    "tester",
+		Session:      &session.Session{},
+	}
+	req := &model.Request{
+		Messages: []model.Message{
+			model.NewSystemMessage("sys"),
+		},
+	}
+	// Static list routes skill-a, but resolver takes precedence and routes skill-b.
+	p := NewSkillsRequestProcessor(
+		repo,
+		WithRoutedSkills([]string{"skill-a"}),
+		WithRoutedSkillsResolver(func(inv *agent.Invocation) []string {
+			return []string{"skill-b"}
+		}),
+		WithSkillsCapabilityGuidance(""),
+		WithSkillsToolingGuidance(""),
+	)
+	p.ProcessRequest(context.Background(), inv, req, nil)
+
+	sys := req.Messages[0].Content
+	require.NotContains(t, sys, "skill-a [routed]")
+	require.Contains(t, sys, "skill-b: Beta skill [routed]")
+}
+
+func TestSkillsRequestProcessor_RoutedSkillsFromState(t *testing.T) {
+	repo := &mockRepo{
+		sums: []skill.Summary{
+			{Name: "skill-a", Description: "Alpha skill"},
+			{Name: "skill-b", Description: "Beta skill"},
+		},
+		full: map[string]*skill.Skill{},
+	}
+	inv := &agent.Invocation{
+		InvocationID: "inv1",
+		AgentName:    "tester",
+		Session:      &session.Session{},
+	}
+	// Simulate a hook writing routed skills into invocation state.
+	inv.SetState(RoutedSkillsStateKey, []string{"skill-a"})
+
+	req := &model.Request{
+		Messages: []model.Message{
+			model.NewSystemMessage("sys"),
+		},
+	}
+	p := NewSkillsRequestProcessor(
+		repo,
+		WithSkillsCapabilityGuidance(""),
+		WithSkillsToolingGuidance(""),
+	)
+	p.ProcessRequest(context.Background(), inv, req, nil)
+
+	sys := req.Messages[0].Content
+	require.Contains(t, sys, "skill-a: Alpha skill [routed]")
+	require.NotContains(t, sys, "skill-b [routed]")
+}
+
+func TestSkillsRequestProcessor_RoutedSkillsResolverOverridesState(t *testing.T) {
+	repo := &mockRepo{
+		sums: []skill.Summary{
+			{Name: "skill-a", Description: "Alpha skill"},
+			{Name: "skill-b", Description: "Beta skill"},
+		},
+		full: map[string]*skill.Skill{},
+	}
+	inv := &agent.Invocation{
+		InvocationID: "inv1",
+		AgentName:    "tester",
+		Session:      &session.Session{},
+	}
+	// State has skill-a routed...
+	inv.SetState(RoutedSkillsStateKey, []string{"skill-a"})
+	// ...but resolver takes precedence and routes skill-b instead.
+	req := &model.Request{
+		Messages: []model.Message{
+			model.NewSystemMessage("sys"),
+		},
+	}
+	p := NewSkillsRequestProcessor(
+		repo,
+		WithRoutedSkillsResolver(func(inv *agent.Invocation) []string {
+			return []string{"skill-b"}
+		}),
+		WithSkillsCapabilityGuidance(""),
+		WithSkillsToolingGuidance(""),
+	)
+	p.ProcessRequest(context.Background(), inv, req, nil)
+
+	sys := req.Messages[0].Content
+	require.NotContains(t, sys, "skill-a [routed]")
+	require.Contains(t, sys, "skill-b: Beta skill [routed]")
+}

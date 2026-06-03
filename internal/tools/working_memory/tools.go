@@ -2,7 +2,6 @@ package working_memory
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"aranea-agents/internal/biz"
@@ -400,6 +399,3 @@ func Tools() []trpctool.Tool {
 		NewDeleteTool(),
 	}
 }
-
-// Compile-time check: ReadOutput must be JSON-serializable.
-var _ json.Marshaler // used implicitly by trpcfunction

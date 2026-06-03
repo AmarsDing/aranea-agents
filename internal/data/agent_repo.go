@@ -93,7 +93,7 @@ func entAgentToBiz(a *ent.Agent, lg loggateway.Logger) biz.Agent {
 		CreatedBy:          a.CreatedBy,
 		Readonly:           a.Readonly,
 		Source:             string(a.Kind),
-		Ownership:          string(a.Kind),
+		Ownership:          string(a.Kind), // Deprecated: identical to Source
 		CreatedAt:          a.CreatedAt,
 		UpdatedAt:          a.UpdatedAt,
 		DeletedAt:          a.DeletedAt,

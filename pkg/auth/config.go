@@ -10,6 +10,12 @@ import (
 // EP-SEC-01: If the secret is not configured outside of dev/test/CI contexts, the
 // process panics at startup to prevent using a predictable timestamp-derived key.
 func authSecretFromEnv(key string) string {
+	// Allow --version to work without any env vars.
+	for _, arg := range os.Args[1:] {
+		if arg == "--version" || arg == "-version" {
+			return "version-placeholder"
+		}
+	}
 	if secret := os.Getenv(key); secret != "" {
 		return secret
 	}

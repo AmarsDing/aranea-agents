@@ -268,7 +268,7 @@ export default {
     sessions: "Session history",
     memory: "Memory Center",
     agents: "Agent management",
-    agentCategories: "Agent categories",
+    taxonomy: "Industry Taxonomy",
     team: "Team management",
     graphs: "Graph Workflow",
     models: "Model management",

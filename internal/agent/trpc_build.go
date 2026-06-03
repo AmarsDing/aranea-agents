@@ -227,7 +227,7 @@ func buildSkillDeps(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (tr
 	if ag.Settings != nil {
 		runtime = ag.Settings
 	}
-	filter := skillruntime.NewAgentVisibilityFilter(deps.SkillUC, runtime, deps.LG)
+	filter := skillruntime.NewAgentVisibilityFilter(deps.SkillUC, runtime, deps.LG, ag.AgentKey)
 
 	execType := ""
 	if runtime != nil {

@@ -38,7 +38,7 @@
             clearable
             debounce="150"
             placeholder="搜索行业、部门或职位..."
-            class="category-control"
+            class="taxonomy-control"
           >
             <template #prepend><q-icon name="search" /></template>
           </q-input>
@@ -56,10 +56,10 @@
             >
               <template #default-header="prop">
                 <div
-                  class="app-category-tree-node row items-center no-wrap full-width"
+                  class="app-taxonomy-tree-node row items-center no-wrap full-width"
                   :class="{
-                    'app-category-tree-node--selectable': prop.node.selectable || selectableLevel === 'any',
-                    'app-category-tree-node--selected': modelValue === prop.node.id,
+                    'app-taxonomy-tree-node--selectable': prop.node.selectable || selectableLevel === 'any',
+                    'app-taxonomy-tree-node--selected': modelValue === prop.node.id,
                     'cursor-pointer': prop.node.selectable || selectableLevel === 'any'
                   }"
                   @click.stop="onPick(prop.node)"
@@ -67,10 +67,10 @@
                   <q-icon :name="prop.node.icon" color="primary" size="16px" class="q-mr-sm" />
                   <div class="col min-width-0">
                     <div class="ellipsis">{{ prop.node.label }}</div>
-                    <div v-if="captionMode === 'level'" class="app-category-tree-node__caption">
+                    <div v-if="captionMode === 'level'" class="app-taxonomy-tree-node__caption">
                       {{ levelLabel(prop.node.level) }}
                     </div>
-                    <div v-else-if="prop.node.caption" class="app-category-tree-node__caption ellipsis">
+                    <div v-else-if="prop.node.caption" class="app-taxonomy-tree-node__caption ellipsis">
                       {{ prop.node.caption }}
                     </div>
                   </div>
@@ -89,8 +89,8 @@
 <script setup lang="ts">
 import { toRef } from "vue";
 import type { PlatformResourceTreeNode } from "../../features/platform/types";
-import { useCategoryTreeField } from "../../features/platform/useCategoryTreeField";
-import type { CategoryLevel } from "../../features/platform/categoryTreeUtils";
+import { useTaxonomyTreeField } from "../../features/platform/useCategoryTreeField";
+import type { TaxonomyLevel } from "../../features/platform/taxonomyTreeUtils";
 
 const props = withDefaults(
   defineProps<{
@@ -132,7 +132,7 @@ const {
   onPick,
   clearSelection,
   onExpandedUpdate
-} = useCategoryTreeField({
+} = useTaxonomyTreeField({
   modelValue: toRef(props, "modelValue"),
   tree: toRef(props, "tree"),
   selectableLevel: toRef(props, "selectableLevel"),

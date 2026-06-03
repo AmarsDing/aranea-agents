@@ -81,7 +81,7 @@ func (r *usageRepo) GetActiveModelPricing(ctx context.Context, providerCode, mod
 	}
 	var inputUSD, outputUSD, cacheUSD, cacheWriteUSD, reasonUSD, embedUSD float64
 	var inputMicro, outputMicro, cacheMicro, cacheWriteMicro, reasonMicro, embedMicro int64
-	err := entQueryRowScan(r.ent(), ctx,
+	err := entQueryRowScan(r.readClient(ctx), ctx,
 		`SELECT input_price_micro_usd_per_1k, output_price_micro_usd_per_1k,
 		        cached_input_price_micro_usd_per_1k, COALESCE(cache_write_price_micro_usd_per_1k, 0),
 		        reasoning_price_micro_usd_per_1k, embedding_price_micro_usd_per_1k,
@@ -121,7 +121,7 @@ func (r *usageRepo) GetActiveModelPricing(ctx context.Context, providerCode, mod
 
 func (r *usageRepo) pricingFromProviderModelConfig(ctx context.Context, providerCode, modelAPIID string) (biz.ModelPricingSnapshot, bool, error) {
 	var cfgJSON string
-	err := entQueryRowScan(r.ent(), ctx,
+	err := entQueryRowScan(r.readClient(ctx), ctx,
 		`SELECT config_json FROM llm_provider_models
 		 WHERE provider = ? AND model = ? AND deleted_at = '' AND enabled = 1
 		 ORDER BY sort_order ASC, created_at DESC LIMIT 1`,

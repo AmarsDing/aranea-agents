@@ -78,6 +78,21 @@ const (
 	// SkillLoadModeSession keeps loaded skill content available across
 	// invocations until cleared or the session expires.
 	SkillLoadModeSession = processor.SkillLoadModeSession
+	// SkillLoadModeProgressive enables 3-phase progressive loading:
+	// L0 manifest only in prompt, L1 body via skill_load tool,
+	// L2 refs via skill_select_docs. Loaded content is materialized
+	// into tool results instead of the system prompt.
+	SkillLoadModeProgressive = processor.SkillLoadModeProgressive
+
+	// RoutedSkillsStateKey is the invocation state key under which
+	// external hooks store the list of skill names that have been
+	// routed for the current turn. The SkillsRequestProcessor reads
+	// this key to mark skills as [routed] in the overview.
+	//
+	// Expected value type: []string (slice of skill names).
+	// Set via inv.SetState(RoutedSkillsStateKey, []string{...}).
+	// Read via agent.GetStateValue[[]string](inv, RoutedSkillsStateKey).
+	RoutedSkillsStateKey = processor.RoutedSkillsStateKey
 
 	// SessionSummaryInjectionSystem injects the session summary as a system
 	// message (default behavior).
@@ -853,6 +868,7 @@ func WithAllowedSkillTools(tools ...SkillTool) Option {
 //   - SkillLoadModeTurn (default)
 //   - SkillLoadModeOnce
 //   - SkillLoadModeSession (legacy)
+//   - SkillLoadModeProgressive (3-phase progressive loading)
 func WithSkillLoadMode(mode string) Option {
 	return func(opts *Options) {
 		opts.SkillLoadMode = mode
@@ -883,6 +899,8 @@ func WithSkillsLoadedContentInToolResults(enable bool) Option {
 // WithSkillsRoutedSkills marks specific skills as routed in the overview,
 // appending a [routed] suffix to their summary lines. This guides the
 // LLM to prioritize loading these skills via skill_load.
+//
+// Priority: WithSkillsRoutedSkillsResolver > WithSkillsRoutedSkills > RoutedSkillsStateKey.
 func WithSkillsRoutedSkills(names []string) Option {
 	return func(opts *Options) {
 		opts.skillsRoutedSkills = names
@@ -891,7 +909,10 @@ func WithSkillsRoutedSkills(names []string) Option {
 
 // WithSkillsRoutedSkillsResolver sets an invocation-aware resolver that
 // returns the set of skill names to mark as [routed] in the overview.
-// When set, it takes precedence over the static WithSkillsRoutedSkills list.
+// When set, it takes precedence over the static WithSkillsRoutedSkills list
+// and the RoutedSkillsStateKey invocation state fallback.
+//
+// Priority: WithSkillsRoutedSkillsResolver > WithSkillsRoutedSkills > RoutedSkillsStateKey.
 func WithSkillsRoutedSkillsResolver(
 	resolver func(*agent.Invocation) []string,
 ) Option {

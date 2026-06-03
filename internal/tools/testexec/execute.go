@@ -133,10 +133,16 @@ func failResult(started time.Time, err error) Result {
 }
 
 func catalogToolNames(key string) []string {
-	if key == "shell_exec" {
+	switch key {
+	case "shell_exec":
 		return []string{"shell_exec", "exec_command"}
+	case "arxiv_search":
+		return []string{"search", "arxiv_search"}
+	case "google_search":
+		return []string{"search", "google_search"}
+	default:
+		return []string{key}
 	}
-	return []string{key}
 }
 
 func findCallable(ctx context.Context, ts *tools.AssembledToolsets, names ...string) (trpctool.CallableTool, error) {
@@ -188,10 +194,11 @@ func previewValue(v any) string {
 }
 
 func truncate(s string, n int) string {
-	if len(s) <= n {
+	runes := []rune(s)
+	if len(runes) <= n {
 		return s
 	}
-	return s[:n]
+	return string(runes[:n])
 }
 
 type openAPIMeta struct {
@@ -203,8 +210,8 @@ type openAPIMeta struct {
 
 func mergeConfigJSON(baseJSON, defaultJSON string) map[string]any {
 	out := map[string]any{}
-	mergeJSONInto(out, baseJSON)
 	mergeJSONInto(out, defaultJSON)
+	mergeJSONInto(out, baseJSON)
 	return out
 }
 

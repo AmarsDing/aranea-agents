@@ -246,3 +246,16 @@ export function collectDefaultExpandedIds(tree: PlatformResourceTreeNode[]) {
   }
   return ids;
 }
+
+// --- Legacy aliases (categoryTreeUtils compatibility) ---
+// TECH-DEBT: remove after all consumers migrated to Taxonomy* names
+export type CategoryLevel = TaxonomyLevel;
+export type CategoryQTreeNode = TaxonomyQTreeNode;
+export const flattenCategoryTree = flattenTaxonomyTree;
+export const findCategoryNode = findTaxonomyNode;
+export const findCategoryPath = findTaxonomyPath;
+export const formatCategoryPath = formatTaxonomyPath;
+export const flattenCategoryPositions = flattenTaxonomyPositions;
+export const filterCategoryTree = filterTaxonomyTree;
+export const categoryTreeStats = taxonomyTreeStats;
+export const patchCategoryTreeNode = patchTaxonomyTreeNode;

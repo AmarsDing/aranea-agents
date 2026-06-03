@@ -1,4 +1,0 @@
-{
-  "arguments_json": "{\"file_name\":\"_test_tool.txt\",\"patch\":\"--- a/_test_tool.txt\\n+++ b/_test_tool.txt\\n@@ -1 +1 @@\\n-hello world\\n+HELLO WORLD\\n\"}",
-  "timeout_sec": 30
-}

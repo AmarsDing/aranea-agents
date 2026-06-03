@@ -1,0 +1,66 @@
+name: E2E Nightly
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install web dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Build backend
+        run: go build -o bin/admin ./cmd/admin
+
+      - name: Start backend
+        run: |
+          KRATOS_HTTP_AUTH_DISABLED=1 DEPLOY_ENV=dev ./bin/admin -conf ./configs &
+          sleep 5
+
+      - name: Build frontend
+        working-directory: web
+        run: pnpm build
+
+      - name: Start frontend preview
+        working-directory: web
+        run: |
+          npx vite preview --port 9000 --host 0.0.0.0 &
+          sleep 3
+
+      - name: Run E2E tests
+        working-directory: web
+        run: npx playwright test
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:9000
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: web/test-results/

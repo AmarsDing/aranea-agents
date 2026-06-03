@@ -287,6 +287,14 @@ type SkillsRequestProcessor struct {
 
 const (
 	skillsTurnInitStateKey = "processor:skills:turn_init"
+	// RoutedSkillsStateKey is the invocation state key under which
+	// external hooks (e.g. progressive guidance hooks) store the
+	// list of skill names that have been routed for the current turn.
+	// The processor reads this key when no static or resolver-based
+	// routed skills are configured.
+	//
+	// Expected value type: []string (slice of skill names).
+	RoutedSkillsStateKey = "processor:skills:routed"
 )
 
 // NewSkillsRequestProcessor creates a processor instance.
@@ -307,6 +315,7 @@ func NewSkillsRequestProcessor(
 		var err error
 		flags, err = skillprofile.ResolveFlags(options.toolProfile, nil)
 		if err != nil {
+			log.Warnf("skill profile resolution failed, degrading to empty flags: profile=%s err=%v", options.toolProfile, err)
 			flags = skillprofile.Flags{}
 		}
 	}
@@ -685,7 +694,7 @@ func (p *SkillsRequestProcessor) maybeClearSkillStateForTurn(
 	inv *agent.Invocation,
 	ch chan<- *event.Event,
 ) {
-	if p.loadMode != SkillLoadModeTurn && p.loadMode != SkillLoadModeProgressive || inv == nil || inv.Session == nil {
+	if (p.loadMode != SkillLoadModeTurn && p.loadMode != SkillLoadModeProgressive) || inv == nil || inv.Session == nil {
 		return
 	}
 	if _, ok := inv.GetState(skillsTurnInitStateKey); ok {
@@ -780,59 +789,33 @@ func (p *SkillsRequestProcessor) injectOverview(
 		for _, name := range p.routedSkillsResolver(inv) {
 			routedSet[name] = struct{}{}
 		}
-	} else {
+	} else if len(p.routedSkills) > 0 {
 		for _, name := range p.routedSkills {
 			routedSet[name] = struct{}{}
+		}
+	} else if inv != nil {
+		if names, ok := agent.GetStateValue[[]string](inv, RoutedSkillsStateKey); ok {
+			for _, name := range names {
+				routedSet[name] = struct{}{}
+			}
 		}
 	}
 	var b strings.Builder
 	flags := p.toolFlagsForInvocation(inv)
-	if protocol := p.protocolGuidanceText(flags); protocol != "" {
+	protocol := p.protocolGuidanceText(flags)
+	if protocol != "" {
 		b.WriteString(protocol)
 		b.WriteString("\n")
-		b.WriteString(skillsOverviewHeader)
-		b.WriteString("\n")
-		if p.directoryHints || p.filePathHints {
-			if rootsText := buildSkillRootsText(repo); rootsText != "" {
-				b.WriteString(rootsText)
-			}
+	}
+	b.WriteString(skillsOverviewHeader)
+	b.WriteString("\n")
+	if p.directoryHints || p.filePathHints {
+		if rootsText := buildSkillRootsText(repo); rootsText != "" {
+			b.WriteString(rootsText)
 		}
-		for _, s := range sums {
-			routedMark := ""
-			if _, ok := routedSet[s.Name]; ok {
-				routedMark = " [routed]"
-			}
-			line := fmt.Sprintf(
-				"- %s: %s%s%s\n",
-				s.Name,
-				s.Description,
-				p.skillOverviewSuffix(ctx, repo, s.Name),
-				routedMark,
-			)
-			b.WriteString(line)
-		}
-	} else {
-		b.WriteString(skillsOverviewHeader)
-		b.WriteString("\n")
-		if p.directoryHints || p.filePathHints {
-			if rootsText := buildSkillRootsText(repo); rootsText != "" {
-				b.WriteString(rootsText)
-			}
-		}
-		for _, s := range sums {
-			routedMark := ""
-			if _, ok := routedSet[s.Name]; ok {
-				routedMark = " [routed]"
-			}
-			line := fmt.Sprintf(
-				"- %s: %s%s%s\n",
-				s.Name,
-				s.Description,
-				p.skillOverviewSuffix(ctx, repo, s.Name),
-				routedMark,
-			)
-			b.WriteString(line)
-		}
+	}
+	p.writeSkillOverviewLines(&b, ctx, repo, sums, routedSet)
+	if protocol == "" {
 		if capability := p.capabilityGuidanceText(flags); capability != "" {
 			b.WriteString(capability)
 		}
@@ -1202,6 +1185,31 @@ func (p *SkillsRequestProcessor) skillOverviewSuffix(
 		}
 	}
 	return ""
+}
+
+// writeSkillOverviewLines writes one summary line per skill into b.
+// Skills present in routedSet are suffixed with " [routed]".
+func (p *SkillsRequestProcessor) writeSkillOverviewLines(
+	b *strings.Builder,
+	ctx context.Context,
+	repo skill.Repository,
+	sums []skill.Summary,
+	routedSet map[string]struct{},
+) {
+	for _, s := range sums {
+		routedMark := ""
+		if _, ok := routedSet[s.Name]; ok {
+			routedMark = " [routed]"
+		}
+		line := fmt.Sprintf(
+			"- %s: %s%s%s\n",
+			s.Name,
+			s.Description,
+			p.skillOverviewSuffix(ctx, repo, s.Name),
+			routedMark,
+		)
+		b.WriteString(line)
+	}
 }
 
 func skillDirectoryLocator(

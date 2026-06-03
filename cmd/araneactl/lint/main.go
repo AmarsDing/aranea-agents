@@ -26,12 +26,21 @@ type violation struct {
 
 func main() {
 	root := flag.String("root", ".", "repository root directory")
+	fix := flag.Bool("fix", false, "automatically fix lint violations where possible")
 	flag.Parse()
 
 	abs, err := filepath.Abs(*root)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "araneactl lint: cannot resolve root: %v\n", err)
 		os.Exit(2)
+	}
+
+	if *fix {
+		if err := RunAutoFix(*root); err != nil {
+			fmt.Fprintf(os.Stderr, "araneactl lint --fix: %v\n", err)
+			os.Exit(2)
+		}
+		// Re-run lint after fixes to report remaining violations
 	}
 
 	var violations []violation

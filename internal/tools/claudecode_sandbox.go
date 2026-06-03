@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
-	trpcclaudecode "trpc.group/trpc-go/trpc-agent-go/tool/claudecode"
 )
 
 // ClaudeCodeSandboxConfig defines security constraints for ClaudeCode tools.
@@ -20,18 +19,6 @@ type ClaudeCodeSandboxConfig struct {
 	// CommandAllowList restricts shell commands to this list.
 	// When empty, no command restriction is applied.
 	CommandAllowList []string
-}
-
-// ApplySandboxOptions converts sandbox config to claudecode ToolSet options.
-// Returns the options slice with sandbox-relevant options appended.
-func ApplySandboxOptions(cfg ClaudeCodeSandboxConfig, opts []trpcclaudecode.Option) []trpcclaudecode.Option {
-	if cfg.BaseDir != "" {
-		opts = append(opts, trpcclaudecode.WithBaseDir(cfg.BaseDir))
-	}
-	if cfg.ReadOnly {
-		opts = append(opts, trpcclaudecode.WithReadOnly(true))
-	}
-	return opts
 }
 
 // SandboxedToolSet wraps a ToolSet to enforce command allowlist on the bash tool.
@@ -81,8 +68,6 @@ func (w *whitelistedBashTool) Declaration() *trpctool.Declaration {
 }
 
 func (w *whitelistedBashTool) Call(ctx context.Context, args []byte) (any, error) {
-	// Parse the command from args to check against allowlist.
-	// The args are JSON with a "command" field.
 	var input struct {
 		Command string `json:"command"`
 	}
@@ -93,10 +78,12 @@ func (w *whitelistedBashTool) Call(ctx context.Context, args []byte) (any, error
 	if cmd == "" {
 		return w.inner.Call(ctx, args)
 	}
-	// Check if the command starts with any allowed prefix.
+	// Extract the first token (command name) for allowlist matching.
+	// This prevents prefix-based bypasses like "gitrm" matching "git".
+	cmdName := firstCommandToken(cmd)
 	allowed := false
-	for _, prefix := range w.allowList {
-		if strings.HasPrefix(cmd, strings.TrimSpace(prefix)) {
+	for _, entry := range w.allowList {
+		if strings.TrimSpace(entry) == cmdName {
 			allowed = true
 			break
 		}
@@ -107,9 +94,23 @@ func (w *whitelistedBashTool) Call(ctx context.Context, args []byte) (any, error
 	return w.inner.Call(ctx, args)
 }
 
+// firstCommandToken extracts the first token of a shell command,
+// handling common shell operators and pipes.
+func firstCommandToken(cmd string) string {
+	// Strip leading shell operators/whitespace
+	cmd = strings.TrimLeft(cmd, "|&;<>() \t\n")
+	// Split by whitespace to get the command name
+	fields := strings.Fields(cmd)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
+}
+
 func truncate(s string, n int) string {
-	if len(s) <= n {
+	runes := []rune(s)
+	if len(runes) <= n {
 		return s
 	}
-	return s[:n] + "..."
+	return string(runes[:n]) + "..."
 }

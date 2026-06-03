@@ -144,7 +144,7 @@ func (uc *MemoryAdminUsecase) UpsertFactRow(ctx context.Context, in FactUpsert) 
 	if err := uc.requireAdmin(); err != nil {
 		return nil, err
 	}
-	raw, err := uc.admin.UpsertFactRow(ctx, in)
+	raw, err := uc.factWriter.UpsertFactRow(ctx, in)
 	if err != nil {
 		return nil, err
 	}

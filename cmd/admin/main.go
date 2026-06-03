@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -45,10 +46,12 @@ var (
 	Version  string
 	id, _    = os.Hostname()
 	flagconf string
+	flagver  bool
 )
 
 func init() {
 	flag.StringVar(&flagconf, "conf", "../../configs", "config path, eg: -conf config.yaml")
+	flag.BoolVar(&flagver, "version", false, "print version and exit")
 }
 
 func newApp(
@@ -150,6 +153,14 @@ func newApp(
 }
 
 func main() {
+	// Check --version before flag.Parse to avoid triggering init-time panics (e.g. auth).
+	for _, arg := range os.Args[1:] {
+		if arg == "--version" || arg == "-version" {
+			fmt.Printf("%s %s\n", Name, Version)
+			os.Exit(0)
+		}
+	}
+
 	flag.Parse()
 
 	logger := log.With(log.NewStdLogger(os.Stdout),

@@ -54,6 +54,7 @@ type RepoStatsRecorder struct {
 	ch   chan CallbackEvent
 	done chan struct{}
 	wg   sync.WaitGroup
+	closeOnce sync.Once
 }
 
 func NewRepoStatsRecorder(repo biz.PluginRepo, runs biz.PluginRunRepo, lg loggateway.Logger) *RepoStatsRecorder {
@@ -104,7 +105,9 @@ func (r *RepoStatsRecorder) Close() {
 	if r == nil {
 		return
 	}
-	close(r.done)
+	r.closeOnce.Do(func() {
+		close(r.done)
+	})
 	r.wg.Wait()
 }
 

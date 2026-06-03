@@ -453,8 +453,8 @@
 - `internal/agent/skill_guidance_inject.go`（progressive guidance hook）
 - `internal/agent/trpc_build.go`（构建时注入 RoutedSkills 选项）
 - `internal/agent/prompt_mode.go`（Prompt 模式适配）
-- `pkg/trpc-agent-go/internal/flow/processor/skills.go`（processor 层 SkillLoadModeProgressive + WithRoutedSkills）
-- `pkg/trpc-agent-go/agent/llmagent/option.go`（WithSkillsRoutedSkills 选项）
+- `pkg/trpc-agent-go/internal/flow/processor/skills.go`（processor 层 SkillLoadModeProgressive + RoutedSkillsStateKey + WithRoutedSkillsResolver）
+- `pkg/trpc-agent-go/agent/llmagent/option.go`（导出 SkillLoadModeProgressive + RoutedSkillsStateKey + WithSkillsRoutedSkillsResolver）
 - `pkg/trpc-agent-go/agent/llmagent/llm_agent.go`（选项消费）
 - `api/kratos/agent/v1/agent.proto`（skill_load_mode 枚举注释）
 
@@ -462,7 +462,7 @@
 |------|------|
 | **上游依赖** | `biz`（Agent 类型、SkillLoadMode 配置、`GetSkillLoadMode`）、`pkg/trpc-agent-go/processor/skills`（SkillsRequestProcessor）、`pkg/trpc-agent-go/agent/llmagent`（WithSkillsRoutedSkills 选项） |
 | **下游影响** | `agent`（BuildTRPCAgent 根据 skill_load_mode 选择注入策略）、所有使用 Skill 的 Agent |
-| **核心导出** | `biz.IsProgressiveSkillLoad(mode) bool`、`biz.SkillLoadModeProgressive = "progressive"`、`processor.SkillLoadModeProgressive = "progressive"`、`processor.WithRoutedSkills(names []string)`、`llmagent.WithSkillsRoutedSkills(names []string)`、`newProgressiveSkillGuidanceHook` |
+| **核心导出** | `biz.IsProgressiveSkillLoad(mode) bool`、`biz.SkillLoadModeProgressive = "progressive"`、`processor.SkillLoadModeProgressive = "progressive"`、`llmagent.SkillLoadModeProgressive`（re-export from processor）、`processor.RoutedSkillsStateKey = "processor:skills:routed"`（invocation state key，期望值类型 `[]string`）、`llmagent.RoutedSkillsStateKey`（re-export from processor）、`processor.WithRoutedSkills(names []string)`、`processor.WithRoutedSkillsResolver(func(*agent.Invocation) []string)`、`llmagent.WithSkillsRoutedSkills(names []string)`（优先级：`WithSkillsRoutedSkillsResolver > WithSkillsRoutedSkills > RoutedSkillsStateKey`）、`llmagent.WithSkillsRoutedSkillsResolver(func(*agent.Invocation) []string)`（优先级同上）、`processor.writeSkillOverviewLines`（helper method，处理 `[routed]` 标记渲染）、`newProgressiveSkillGuidanceHook` |
 | **实现接口** | 无（修改现有 guidance hook 行为，新增 `newProgressiveSkillGuidanceHook`） |
 | **共享类型** | 无新增（复用现有 `skill_load_mode` 字段） |
 | **事件生产** | 无 |
@@ -473,10 +473,17 @@
 **⚠️ 开发注意**：
 - progressive 模式下 `newProgressiveSkillGuidanceHook` 替代原有 `newSkillGuidanceBeforeHook`，返回 nil（不注入 guidance），LLM 必须通过 `skill_load` 工具按需获取 Skill 正文
 - progressive 模式自动启用 `WithSkillsLoadedContentInToolResults(true)`，避免 loaded body 再次注入 system prompt
-- `injectOverview` 增加 `[routed]` 标记，引导 LLM 优先加载被路由的 Skill
-- `WithRoutedSkills`（processor 层）和 `WithSkillsRoutedSkills`（llmagent 层）用于将路由匹配的 Skill 名称传递给框架，实现按需加载
+- `injectOverview` 已简化为单一线性流程：写 protocol（如有）→ header → roots → skill lines → capability+tooling guidance（如无 protocol），不再有双分支
+- `writeSkillOverviewLines` helper method 统一处理 skill 行渲染，包括 `[routed]` 标记
+- `ResolveFlags` 降级时通过 `log.Warnf` 记录警告（而非静默降级）
+- `RoutedSkillsStateKey` godoc 标注期望值类型：`[]string`
+- `WithSkillsRoutedSkills` 和 `WithSkillsRoutedSkillsResolver` godoc 标注优先级：`WithSkillsRoutedSkillsResolver > WithSkillsRoutedSkills > RoutedSkillsStateKey`
+- **Routed Skills 解析优先级**：`routedSkillsResolver`（最高）> 静态 `routedSkills` 列表 > `RoutedSkillsStateKey` 从 invocation state 读取（fallback）
+- **`RoutedSkillsStateKey`** 是 progressive guidance hook 与 processor 之间的集成点：hook 在 `BeforeModel` 中写入 routed slugs（`inv.SetState(trpcllmagent.RoutedSkillsStateKey, result.Slugs)`），processor 在下一轮 `ProcessRequest` 中读取
+- `llmagent.SkillLoadModeProgressive` 和 `llmagent.RoutedSkillsStateKey` 在 `pkg/trpc-agent-go/agent/llmagent/option.go` 中从 processor re-export
+- `processor.WithRoutedSkillsResolver(func(*agent.Invocation) []string)` 支持动态解析 routed skills（优先级最高），`llmagent.WithSkillsRoutedSkillsResolver` 为其 llmagent 层包装
 - 修改 `skill_load_mode` 枚举时，需同步更新 `api/kratos/agent/v1/agent.proto` 注释
-- `SkillLoadModeProgressive` 常量在 `biz` 和 `processor` 两层各有一份定义，修改时需同步
+- `SkillLoadModeProgressive` 常量在 `biz`、`processor`、`llmagent` 三层有定义/re-export，修改时需同步
 
 ---
 

@@ -33,7 +33,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { PlatformResourceTreeNode } from "../../features/platform/types";
-import { parseIsSystem, trimmedDesc } from "../../features/platform/categoryTreeUtils";
+import { parseIsSystem, trimmedDesc } from "../../features/platform/taxonomyTreeUtils";
 
 const props = defineProps<{
   position: PlatformResourceTreeNode;

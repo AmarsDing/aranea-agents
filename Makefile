@@ -128,6 +128,11 @@ test:
 smoke:
 	go build -o bin/admin-smoke ./cmd/admin 2>&1 && echo "smoke: build OK" && rm -f bin/admin-smoke
 
+.PHONY: release
+# create a release using GoReleaser (requires goreleaser installed)
+release:
+	goreleaser release --clean
+
 .PHONY: ci
 # full CI pipeline: lint, test, smoke
 ci:

@@ -1,4 +1,0 @@
-{
-  "arguments_json": "{\"file_name\":\"_test_tool.txt\",\"contents\":\"hello world\\nsecond line\\nthird line\",\"overwrite\":true}",
-  "timeout_sec": 30
-}

@@ -101,7 +101,11 @@ func newPkgInstallFromURLTool(deps Deps) trpctool.Tool {
 }
 
 func validateRepoURL(raw string) error {
-	if strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "./") || strings.HasPrefix(raw, "../") || len(raw) >= 2 && raw[1] == ':' {
+	if strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "./") || strings.HasPrefix(raw, "../") {
+		return nil
+	}
+	// Windows drive letter: C:/path or C:\path
+	if len(raw) >= 2 && raw[1] == ':' && isAlpha(rune(raw[0])) {
 		return nil
 	}
 	u, err := url.Parse(raw)
@@ -125,14 +129,35 @@ func validateRepoURL(raw string) error {
 			}
 		}
 		return nil
-	case "file", "":
+	case "file":
+		return nil
+	case "":
+		// No scheme: treat as SCP-style Git URL (e.g. github.com/user/repo).
+		// Parse the first path segment as the host and validate it.
+		host := u.Path
+		if slashIdx := strings.Index(host, "/"); slashIdx > 0 {
+			host = host[:slashIdx]
+		}
+		if host == "" {
+			return fmt.Errorf("cannot determine host from URL %q", raw)
+		}
+		ips, err := net.LookupIP(host)
+		if err != nil {
+			return fmt.Errorf("lookup host %q: %w", host, err)
+		}
+		for _, ip := range ips {
+			if isPrivateIP(ip) {
+				return fmt.Errorf("host %q resolves to private/internal IP %s; not allowed", host, ip)
+			}
+		}
 		return nil
 	default:
-		if len(u.Scheme) == 1 {
-			return nil
-		}
 		return fmt.Errorf("scheme %q is not allowed; only https, http, and file are permitted", u.Scheme)
 	}
+}
+
+func isAlpha(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
 }
 
 func isPrivateIP(ip net.IP) bool {

@@ -30,7 +30,7 @@ type Agent struct {
 	MetadataJSON       string
 	Roles              []string
 	Kind                 string // llm | a2a_proxy
-	Ownership            string `json:"ownership,omitempty"` // derived from DB kind column: user | system | system_builtin | industry_template | marketplace | certified
+	Ownership            string `json:"ownership,omitempty"` // Deprecated: identical to Source, use Source instead. Derived from DB kind column.
 	A2AProxy             *A2AProxyConfig
 	A2AEndpointEnabled   bool // list/get enrichment from a2a_agent_cards.enabled
 	LastRunStatus        string // list enrichment: latest session runtime.status or idle/completed
@@ -38,7 +38,7 @@ type Agent struct {
 	PendingEvolutionCount int
 	CreatedBy            string
 	Readonly             bool
-	Source               string // user | system | imported (maps from DB kind column)
+	Source               string // user | system | system_builtin | industry_template | marketplace | certified (maps from DB kind column)
 	CreatedAt            string
 	UpdatedAt          string
 	DeletedAt          string
@@ -427,7 +427,7 @@ type AgentListQuery struct {
 	CategoryID string
 	CreatedBy  string
 	Role       string
-	Ownership  string
+	Ownership  string // Deprecated: use Source-based filtering via agent.Kind instead
 	Limit      int
 	Offset     int
 }

@@ -3,7 +3,7 @@
  * 类型来自 `features/teams/api`（仅 type import）。
  */
 import type { Agent } from "../../features/agents/types";
-import { findCategoryPath } from "../../features/platform/categoryTreeUtils";
+import { findTaxonomyPath } from "../../features/platform/taxonomyTreeUtils";
 import type { PlatformResourceTreeNode } from "../../features/platform/types";
 import type { Team, TeamDefinition, TeamDefinitionGraphNode } from "../../features/teams/types";
 
@@ -413,7 +413,7 @@ export function inferTeamIndustryId(team: Team, agents: Agent[], categoryTree: P
   for (const member of def.members.filter((row) => row.enabled !== false)) {
     const agent = agents.find((row) => row.id === member.agent_id);
     if (!agent?.taxonomy_position_id) continue;
-    const industry = findCategoryPath(categoryTree, agent.taxonomy_position_id).find((node) => node.level === "industry");
+    const industry = findTaxonomyPath(categoryTree, agent.taxonomy_position_id).find((node) => node.level === "industry");
     if (!industry) continue;
     counts.set(industry.id, (counts.get(industry.id) ?? 0) + 1);
   }

@@ -31,7 +31,7 @@ func entBudgetAlertToBiz(row *entpkg.BudgetAlert) biz.BudgetAlert {
 func (r *usageRepo) ListBudgetAlerts(ctx context.Context, scopeType, scopeID string) ([]biz.BudgetAlert, error) {
 	scopeType = strings.TrimSpace(scopeType)
 	scopeID = strings.TrimSpace(scopeID)
-	q := r.ent().BudgetAlert.Query()
+	q := r.readClient(ctx).BudgetAlert.Query()
 	if scopeType != "" {
 		q = q.Where(budgetalert.ScopeTypeEQ(scopeType))
 	}

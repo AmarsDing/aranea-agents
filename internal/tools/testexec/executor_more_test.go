@@ -154,10 +154,10 @@ func TestMergeConfigJSON(t *testing.T) {
 			want:  map[string]any{"b": "2"},
 		},
 		{
-			name:  "both present default overwrites",
+			name:  "both present base overwrites default",
 			base:  `{"a":"1"}`,
 			deflt: `{"a":"2","c":"3"}`,
-			want:  map[string]any{"a": "2", "c": "3"},
+			want:  map[string]any{"a": "1", "c": "3"},
 		},
 		{
 			name:  "invalid base json",

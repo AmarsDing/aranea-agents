@@ -204,11 +204,19 @@ func TestObserverForServer_noBusNoPanic(t *testing.T) {
 }
 
 func TestObserverForServer_metadataRecorderCalled(t *testing.T) {
+	var mu sync.Mutex
 	var recordedKey string
 	var recordedAt time.Time
+	done := make(chan struct{}, 1)
 	rec := func(_ context.Context, key string, at time.Time) {
+		mu.Lock()
 		recordedKey = key
 		recordedAt = at
+		mu.Unlock()
+		select {
+		case done <- struct{}{}:
+		default:
+		}
 	}
 	SetMetadataRecorder(rec)
 	defer SetMetadataRecorder(nil)
@@ -217,11 +225,19 @@ func TestObserverForServer_metadataRecorderCalled(t *testing.T) {
 	obs := ObserverForServer("rec-srv")
 	obs(context.Background(), trpcmcp.ReconnectEvent{Success: true, ServerName: "rec-name"})
 
-	time.Sleep(50 * time.Millisecond)
-	if recordedKey != "rec-name" {
-		t.Errorf("recordedKey = %q, want %q", recordedKey, "rec-name")
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for metadata recorder callback")
 	}
-	if recordedAt.IsZero() {
+	mu.Lock()
+	gotKey := recordedKey
+	gotAt := recordedAt
+	mu.Unlock()
+	if gotKey != "rec-name" {
+		t.Errorf("recordedKey = %q, want %q", gotKey, "rec-name")
+	}
+	if gotAt.IsZero() {
 		t.Error("recordedAt should not be zero")
 	}
 }

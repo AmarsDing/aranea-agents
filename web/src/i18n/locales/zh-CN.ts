@@ -267,7 +267,7 @@ export default {
     sessions: "会话历史",
     memory: "记忆中心",
     agents: "Agent 管理",
-    agentCategories: "Agent 分类",
+    taxonomy: "行业分类",
     team: "Team 管理",
     graphs: "Graph 工作流",
     models: "模型管理",

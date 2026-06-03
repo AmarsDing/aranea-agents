@@ -71,12 +71,8 @@ func Registry() []*ToolRegistration {
 				Category:    "filesystem",
 				Tags:        []string{"filesystem", "read", "write", "search"},
 				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-					baseDir := FilesystemDirFromContext(ctx)
-					if baseDir == "" {
-						return nil, nil
-					}
-					return trpcfile.NewToolSet(trpcfile.WithBaseDir(baseDir))
-				},
+				return nil, nil
+			},
 				EnabledByDefault:    true,
 				RiskLevel:           "low",
 				SupportsConcurrency: true,
@@ -152,20 +148,20 @@ func Registry() []*ToolRegistration {
 				},
 			},
 			{
-			Name:        "google_search",
-			Description: "Google Custom Search ToolSet",
-			Category:    "search",
-			Tags:        []string{"search", "web", "google"},
-			ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
-				return nil, nil
+				Name:        "google_search",
+				Description: "Google Custom Search ToolSet",
+				Category:    "search",
+				Tags:        []string{"search", "web", "google"},
+				ToolSetFactory: func(ctx context.Context) (ToolSet, error) {
+					return nil, nil
+				},
+				EnabledByDefault: false,
+				RiskLevel:        "medium",
+				Group:            "web_search",
+				Examples: []ToolUseExample{
+					{UserQuery: "search Google for latest research papers on transformers", ToolName: "google_search", Explanation: "Google Custom Search with API key"},
+				},
 			},
-			EnabledByDefault: false,
-			RiskLevel:        "medium",
-			Group:            "web_search",
-			Examples: []ToolUseExample{
-				{UserQuery: "search Google for latest research papers on transformers", ToolName: "google_search", Explanation: "Google Custom Search with API key"},
-			},
-		},
 			{
 				Name:        "arxiv_search",
 				Description: "ArXiv paper search ToolSet",

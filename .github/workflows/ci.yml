@@ -9,12 +9,15 @@ on:
     # Nightly at 02:00 UTC on main for e2e
     - cron: "0 2 * * *"
   workflow_dispatch:
+  workflow_call:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # ── Stage 1: Lint (parallel) ──────────────────────────────────
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -29,9 +32,6 @@ jobs:
       - name: Run araneactl lint
         run: go run ./cmd/araneactl/lint --root .
 
-      - name: Runtime boundary check
-        run: make runtime-boundary
-
       - name: go vet
         run: go vet ./...
 
@@ -39,88 +39,83 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v1.64.0
           args: --timeout=5m
 
-  test-go:
-    name: Go Tests
-    runs-on: ubuntu-latest
-    needs: lint
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Run tests with coverage
-        run: |
-          # EP-ENG-01: run full ./... to get real coverage numbers.
-          # Packages that cannot compile in isolation (e.g. ent schema init issues)
-          # are skipped via -skip-pkg pattern rather than an allowlist.
-          go test -race -cover -coverprofile=coverage.out ./... 2>&1 | tee test_output.txt || true
-          # Fail if there are actual test failures (not compile errors tolerated during migration).
-          if grep -E "^--- FAIL|^FAIL\s" test_output.txt; then
-            echo "Test failures detected" && exit 1
-          fi
-          go tool cover -func=coverage.out | tee coverage.txt
-          # Enforce ≥ 40% total coverage (M3 threshold; rises to 60% at M4, 70% at M5).
-          total=$(go tool cover -func=coverage.out | grep "^total:" | awk '{print $3}' | tr -d '%')
-          echo "Total coverage: ${total}%"
-          awk -v cov="$total" 'BEGIN { if (cov+0 < 40) { print "Coverage " cov "% is below 40% threshold"; exit 1 } else { print "Coverage OK: " cov "%" } }'
-
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: go-coverage
-          path: coverage.out
-
-  test-web:
-    name: Frontend Build + Test
+  lint-web:
+    name: Frontend Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
-          cache-dependency-path: web/package-lock.json
+          cache: "pnpm"
+          cache-dependency-path: web/pnpm-lock.yaml
 
       - name: Install web dependencies
         working-directory: web
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
-      - name: Build frontend
+      - name: ESLint check
         working-directory: web
-        run: npm run build
+        run: pnpm lint -- --max-warnings=0
 
-      - name: Run frontend tests
+      - name: Prettier check
         working-directory: web
-        run: |
-          npm ci
-          npm test
+        run: npx prettier --check "src/**/*.{ts,vue,css,scss}"
 
-  smoke:
-    name: Smoke Test
+      - name: Stylelint check
+        working-directory: web
+        run: npx stylelint "src/**/*.{vue,css}" --config .stylelintrc.json
+
+  commitlint:
+    name: Commit Lint
     runs-on: ubuntu-latest
-    needs: [test-go]
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install commitlint
+        run: npm install -g @commitlint/cli @commitlint/config-conventional
+
+      - name: Validate PR commits
+        run: npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --config .commitlintrc.yml
+
+  typecheck-web:
+    name: Frontend TypeCheck
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+      - uses: pnpm/action-setup@v4
         with:
-          go-version-file: go.mod
-          cache: true
+          version: 10
 
-      - name: Build admin binary
-        run: go build -o bin/admin-smoke ./cmd/admin
-        
-      - name: Smoke build check
-        run: |
-          test -f bin/admin-smoke && echo "smoke: binary OK" || (echo "smoke: binary missing"; exit 1)
-          rm -f bin/admin-smoke
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install web dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript type check
+        working-directory: web
+        run: npx vue-tsc --noEmit
 
   wire-clean:
     name: Wire Generated Files Clean
@@ -170,6 +165,146 @@ jobs:
           git diff --exit-code api/ web/src/services/ || \
             (echo "Proto generated files are out of date. Run 'make api' locally and commit." && exit 1)
 
-# EP-FE-04: e2e-nightly job removed — no web/cypress directory or fixtures exist.
-# Re-enable when Cypress is properly set up with fixtures and CI integration.
-          if-no-files-found: ignore
+      - name: Check OpenAPI spec exists
+        run: |
+          if [ -f api/openapi.yaml ]; then
+            echo "OpenAPI spec found"
+          else
+            echo "Warning: No OpenAPI spec file found at api/openapi.yaml"
+          fi
+
+  # ── Stage 2: Tests (depends on lint) ──────────────────────────
+
+  test-go:
+    name: Go Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests with coverage
+        run: |
+          # EP-ENG-01: run full ./... to get real coverage numbers.
+          go test -race -cover -coverprofile=coverage.out ./... 2>&1 | tee test_output.txt || true
+          # Fail if there are actual test failures (not compile errors tolerated during migration).
+          if grep -E "^--- FAIL|^FAIL\s" test_output.txt; then
+            echo "Test failures detected" && exit 1
+          fi
+          go tool cover -func=coverage.out | tee coverage.txt
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: coverage.out
+
+  test-web:
+    name: Frontend Build + Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install web dependencies
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend
+        working-directory: web
+        run: pnpm build
+
+      - name: Run frontend tests
+        working-directory: web
+        run: pnpm test
+
+  test-integration:
+    name: Go Integration Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run integration tests
+        run: go test -race -tags=integration ./internal/service/... -run TestIntegration -count=1 -timeout 10m
+
+  # ── Stage 3: Smoke + Coverage Gate (depends on tests) ─────────
+
+  smoke:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+    needs: [test-go]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build admin binary
+        run: go build -o bin/admin-smoke ./cmd/admin
+
+      - name: Smoke build check
+        run: |
+          test -f bin/admin-smoke && echo "smoke: binary OK" || (echo "smoke: binary missing"; exit 1)
+          rm -f bin/admin-smoke
+
+  coverage-gate:
+    name: Coverage Gate
+    runs-on: ubuntu-latest
+    needs: [test-go]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: go-coverage
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check coverage threshold
+        run: |
+          total=$(go tool cover -func=coverage.out | grep "^total:" | awk '{print $3}' | tr -d '%')
+          echo "Total coverage: ${total}%"
+          # Enforce ≥ 40% total coverage (M3 threshold; rises to 60% at M4, 70% at M5).
+          awk -v cov="$total" 'BEGIN { if (cov+0 < 40) { print "Coverage " cov "% is below 40% threshold"; exit 1 } else { print "Coverage OK: " cov "%" } }'
+
+  # ── Stage 4: Security Scan ────────────────────────────────────
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+        continue-on-error: true

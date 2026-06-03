@@ -1,0 +1,82 @@
+name: Iteration Dashboard
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  dashboard:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Collect metrics
+        id: metrics
+        run: |
+          # Get current week info
+          WEEK=$(date -u +%Y-W%V)
+          echo "week=$WEEK" >> $GITHUB_OUTPUT
+
+          # Coverage from recent CI runs (placeholder - would need artifact download)
+          COVERAGE="N/A"
+          echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
+
+          # Auto-fix stats
+          if [ -f .auto-fix/stats.json ]; then
+            TOTAL_ATTEMPTS=$(jq -r '.total_attempts // 0' .auto-fix/stats.json)
+            TOTAL_SUCCESSES=$(jq -r '.total_successes // 0' .auto-fix/stats.json)
+            if [ "$TOTAL_ATTEMPTS" -gt 0 ]; then
+              SUCCESS_RATE=$((TOTAL_SUCCESSES * 100 / TOTAL_ATTEMPTS))
+            else
+              SUCCESS_RATE=0
+            fi
+          else
+            TOTAL_ATTEMPTS=0
+            TOTAL_SUCCESSES=0
+            SUCCESS_RATE=0
+          fi
+          echo "fix_attempts=$TOTAL_ATTEMPTS" >> $GITHUB_OUTPUT
+          echo "fix_success_rate=$SUCCESS_RATE%" >> $GITHUB_OUTPUT
+
+          # Release count this week
+          RELEASE_COUNT=$(gh release list --limit 50 2>/dev/null | grep -c "$(date -u +%Y-%m)" || echo "0")
+          echo "releases=$RELEASE_COUNT" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate report
+        id: report
+        run: |
+          cat > dashboard.md << REPORT
+          # Iteration Dashboard - ${{ steps.metrics.outputs.week }}
+
+          ## Auto-fix Stats
+          | Metric | Value |
+          |--------|-------|
+          | Total fix attempts | ${{ steps.metrics.outputs.fix_attempts }} |
+          | Fix success rate | ${{ steps.metrics.outputs.fix_success_rate }} |
+
+          ## Releases
+          | Metric | Value |
+          |--------|-------|
+          | Releases this month | ${{ steps.metrics.outputs.releases }} |
+
+          ## Coverage
+          | Metric | Value |
+          |--------|-------|
+          | Go coverage | ${{ steps.metrics.outputs.coverage }} |
+          REPORT
+
+          echo "report_file=dashboard.md" >> $GITHUB_OUTPUT
+
+      - name: Create dashboard issue
+        run: |
+          gh issue create \
+            --title "Iteration Dashboard - ${{ steps.metrics.outputs.week }}" \
+            --body-file dashboard.md \
+            --label "dashboard"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

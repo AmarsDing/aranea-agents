@@ -1,0 +1,94 @@
+project_name: aranea-agents
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: admin
+    main: ./cmd/admin
+    binary: admin
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.Name=aranea-agents
+
+  - id: araneactl
+    main: ./cmd/aranea
+    binary: araneactl
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+
+archives:
+  - id: admin-archive
+    ids: [admin]
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+
+  - id: araneactl-archive
+    ids: [araneactl]
+    format: tar.gz
+    name_template: >-
+      araneactl_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    format_overrides:
+      - goos: windows
+        format: zip
+
+dockers:
+  - id: admin
+    ids: [admin]
+    dockerfile: Dockerfile
+    tags:
+      - "aranea-agents:{{.Version}}"
+      - "aranea-agents:latest"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+  groups:
+    - title: Features
+      regexp: '^.*feat[(\w)]*:+.*$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*fix[(\w)]*:+.*$'
+      order: 1
+    - title: Others
+      order: 999
+
+release:
+  prerelease: auto
+  mode: replace

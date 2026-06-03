@@ -19,7 +19,7 @@ import {
 import type { PlatformResource, PlatformResourceTreeNode } from "../../features/platform/types";
 import { flattenCategoryPositions, formatContext } from "../../components/agents/agentUi";
 import { buildAgentTableColumns } from "../../components/agents/agentTableUi";
-import { findCategoryPath, formatCategoryPath } from "../../features/platform/categoryTreeUtils";
+import { findTaxonomyPath, formatTaxonomyPath } from "../../features/platform/taxonomyTreeUtils";
 import { useAppStore } from "../app";
 import { useAvatarCatalogStore } from "../avatar";
 
@@ -56,8 +56,8 @@ export const useAgentsPageStore = defineStore("agentsPage", () => {
 
   function categoryLabel(id: string) {
     if (!id) return "未分类";
-    const path = findCategoryPath(categoryTree.value, id);
-    if (path.length) return formatCategoryPath(path);
+    const path = findTaxonomyPath(categoryTree.value, id);
+    if (path.length) return formatTaxonomyPath(path);
     return categoryPositionOptions.value.find((item) => item.value === id)?.label ?? "未分类";
   }
 
