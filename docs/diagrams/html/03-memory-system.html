@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aranea-Agents 五层记忆系统架构</title>
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --l0: #94A3B8;
+    --l1: #60A5FA;
+    --l2: #34D399;
+    --l3: #FBBF24;
+    --l4: #F87171;
+    --cross: #A78BFA;
+    --bg: #0F1117;
+    --surface: #181B25;
+    --surface2: #1E2230;
+    --border: #2A2E3D;
+    --text: #E2E8F0;
+    --text2: #94A3B8;
+    --text3: #64748B;
+    --mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Cascadia Code', Consolas, monospace;
+    --sans: 'Inter', 'SF Pro Text', -apple-system, 'Segoe UI', system-ui, sans-serif;
+  }
+
+  html { font-size: 14px; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Header ── */
+  .header {
+    padding: 2.5rem 3rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .header h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text);
+  }
+  .header p {
+    margin-top: 0.35rem;
+    font-size: 0.8rem;
+    color: var(--text3);
+    font-family: var(--mono);
+  }
+
+  /* ── Main Grid ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 0;
+    min-height: calc(100vh - 100px);
+  }
+
+  /* ── Layers Column ── */
+  .layers-col {
+    padding: 1.5rem 2rem 2rem 2.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+  }
+
+  /* ── Layer Card ── */
+  .layer-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.1rem 1.3rem;
+    border-left: 3px solid var(--layer-color);
+    position: relative;
+    opacity: 0;
+    transform: translateY(12px);
+    animation: fadeIn 0.5s ease forwards;
+  }
+  .layer-card:nth-child(1) { animation-delay: 0.1s; }
+  .layer-card:nth-child(3) { animation-delay: 0.2s; }
+  .layer-card:nth-child(5) { animation-delay: 0.3s; }
+  .layer-card:nth-child(7) { animation-delay: 0.4s; }
+  .layer-card:nth-child(9) { animation-delay: 0.5s; }
+
+  @keyframes fadeIn {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .layer-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    margin-bottom: 0.65rem;
+  }
+  .layer-tag {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--layer-color);
+    background: color-mix(in srgb, var(--layer-color) 12%, transparent);
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .layer-name {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .layer-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem 1.5rem;
+  }
+
+  .field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .field-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text3);
+    margin-bottom: 0.1rem;
+  }
+  .field-value {
+    font-size: 0.78rem;
+    color: var(--text2);
+    line-height: 1.55;
+  }
+  .field-value code {
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    background: var(--surface2);
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+    color: var(--text);
+  }
+
+  /* ── Recall Weights Bar ── */
+  .recall-bars {
+    grid-column: 1 / -1;
+    margin-top: 0.3rem;
+  }
+  .recall-bars .field-label { margin-bottom: 0.3rem; }
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.2rem;
+  }
+  .bar-label {
+    font-size: 0.65rem;
+    font-family: var(--mono);
+    color: var(--text3);
+    width: 52px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .bar-track {
+    flex: 1;
+    height: 6px;
+    background: var(--surface2);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--layer-color);
+    transition: width 0.8s ease;
+  }
+  .bar-pct {
+    font-size: 0.6rem;
+    font-family: var(--mono);
+    color: var(--text3);
+    width: 28px;
+    flex-shrink: 0;
+  }
+
+  /* ── Arrow between layers ── */
+  .flow-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    position: relative;
+    opacity: 0;
+    animation: fadeIn 0.4s ease forwards;
+  }
+  .flow-arrow:nth-child(2) { animation-delay: 0.15s; }
+  .flow-arrow:nth-child(4) { animation-delay: 0.25s; }
+  .flow-arrow:nth-child(6) { animation-delay: 0.35s; }
+  .flow-arrow:nth-child(8) { animation-delay: 0.45s; }
+
+  .flow-arrow svg { overflow: visible; }
+  .flow-arrow .arrow-label {
+    font-size: 0.6rem;
+    font-family: var(--mono);
+    color: var(--text3);
+    position: absolute;
+    white-space: nowrap;
+  }
+  .flow-arrow .arrow-label-left {
+    left: 0;
+  }
+  .flow-arrow .arrow-label-right {
+    right: 0;
+  }
+
+  /* ── Cross-cutting Panel ── */
+  .cross-col {
+    border-left: 1px solid var(--border);
+    padding: 1.5rem 1.5rem 2rem;
+    background: color-mix(in srgb, var(--cross) 3%, var(--bg));
+    opacity: 0;
+    animation: fadeIn 0.6s ease 0.3s forwards;
+  }
+  .cross-col h2 {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--cross);
+    letter-spacing: 0.02em;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .cross-section {
+    margin-bottom: 1.2rem;
+  }
+  .cross-section h3 {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 0.35rem;
+  }
+  .cross-section p,
+  .cross-section li {
+    font-size: 0.73rem;
+    color: var(--text2);
+    line-height: 1.6;
+  }
+  .cross-section ul {
+    list-style: none;
+    padding: 0;
+  }
+  .cross-section li::before {
+    content: '>';
+    color: var(--cross);
+    font-family: var(--mono);
+    font-weight: 700;
+    margin-right: 0.4rem;
+  }
+  .cross-section code {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    background: var(--surface2);
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    color: var(--text);
+  }
+
+  .cross-flow {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin: 0.3rem 0;
+    font-size: 0.68rem;
+    font-family: var(--mono);
+    color: var(--text2);
+  }
+  .cross-flow .cf-arrow {
+    color: var(--cross);
+    font-weight: 700;
+  }
+
+  /* ── Bottom Table ── */
+  .bottom-section {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--border);
+    padding: 1.5rem 2.5rem 2rem;
+    opacity: 0;
+    animation: fadeIn 0.6s ease 0.6s forwards;
+  }
+  .bottom-section h2 {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 0.8rem;
+    letter-spacing: 0.01em;
+  }
+
+  .recall-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.73rem;
+  }
+  .recall-table th {
+    text-align: left;
+    font-weight: 600;
+    color: var(--text3);
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 0.45rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .recall-table td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+    color: var(--text2);
+    vertical-align: middle;
+  }
+  .recall-table tr:hover td {
+    background: var(--surface);
+  }
+  .recall-table .layer-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    margin-right: 0.4rem;
+    vertical-align: middle;
+  }
+  .recall-table .mini-bar {
+    display: inline-block;
+    height: 4px;
+    border-radius: 2px;
+    vertical-align: middle;
+    margin-right: 0.3rem;
+  }
+  .recall-table .weight-cell {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    white-space: nowrap;
+  }
+
+  /* ── Responsive ── */
+  @media (max-width: 1100px) {
+    .main-grid {
+      grid-template-columns: 1fr;
+    }
+    .cross-col {
+      border-left: none;
+      border-top: 1px solid var(--border);
+    }
+    .bottom-section {
+      grid-column: 1;
+    }
+  }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <h1>Aranea-Agents 五层记忆系统架构</h1>
+  <p>memory_l0 .. memory_l4 &mdash; trpc-agent-go runtime &mdash; CompositeRecall</p>
+</header>
+
+<div class="main-grid">
+  <!-- Left: Layers -->
+  <div class="layers-col">
+
+    <!-- L0 -->
+    <div class="layer-card" style="--layer-color: var(--l0)">
+      <div class="layer-head">
+        <span class="layer-tag">L0</span>
+        <span class="layer-name">Prompt 组装快照层</span>
+      </div>
+      <div class="layer-body">
+        <div class="field-group">
+          <span class="field-label">数据表</span>
+          <span class="field-value"><code>memory_l0_assembly_snapshots</code></span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">内容</span>
+          <span class="field-value">Prompt 组装观测数据：上下文窗口大小、各层记忆注入 token 统计、截断策略</span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">写入</span>
+          <span class="field-value"><code>persistL0AssemblySnapshot()</code> 模型调用前触发</span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">更新 / 读取</span>
+          <span class="field-value">模型返回后回填实际 token 数 / 仅管理后台</span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">Cron</span>
+          <span class="field-value">无</span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">特征</span>
+          <span class="field-value">纯观测层，不参与召回；记录每次模型调用的 prompt 构成快照</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Arrow L0→L1 -->
+    <div class="flow-arrow">
+      <svg width="100%" height="28" preserveAspectRatio="none">
+        <line x1="50%" y1="2" x2="50%" y2="22" stroke="#2A2E3D" stroke-width="1" stroke-dasharray="3,3"/>
+        <polygon points="50%,28 46%,20 54%,20" fill="#2A2E3D"/>
+      </svg>
+    </div>
+
+    <!-- L1 -->
+    <div class="layer-card" style="--layer-color: var(--l1)">
+      <div class="layer-head">
+        <span class="layer-tag">L1</span>
+        <span class="layer-name">工作记忆层</span>
+      </div>
+      <div class="layer-body">
+        <div class="field-group">
+          <span class="field-label">数据表</span>
+          <span class="field-value"><code>memory_l1_tasks</code> <code>memory_l1_fields</code> <code>memory_l1_field_history</code></span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">内容</span>
+          <span class="field-value">会话级任务/字段工作状态 (Task + Field 两级模型)</span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">写入</span>
+          <span class="field-value"><code>working_memory</code> 工具集 (write/patch/delete)</span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">读取</span>
+          <span class="field-value">pinned 字段注入 system prompt</span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">Hook</span>
+          <span class="field-value">拦截 <code>working_memory_*</code> 工具调用注入依赖</span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">Cron</span>
+          <span class="field-value"><code>MemoryL1ArchiveWorker</code> (5min, 归档空闲&gt;60min 任务)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Arrow L1→L2 -->
+    <div class="flow-arrow">
+      <svg width="100%" height="28" preserveAspectRatio="none">
+        <line x1="50%" y1="2" x2="50%" y2="22" stroke="var(--l1)" stroke-width="1.5" stroke-opacity="0.5"/>
+        <polygon points="50%,28 46%,20 54%,20" fill="var(--l1)" fill-opacity="0.7"/>
+      </svg>
+      <span class="arrow-label arrow-label-left">EndL1Task</span>
+      <span class="arrow-label arrow-label-right">archiveAndCreateEpisode</span>
+    </div>
+
+    <!-- L2 -->
+    <div class="layer-card" style="--layer-color: var(--l2)">
+      <div class="layer-head">
+        <span class="layer-tag">L2</span>
+        <span class="layer-name">情景记忆层</span>
+      </div>
+      <div class="layer-body">
+        <div class="field-group">
+          <span class="field-label">数据表</span>
+          <span class="field-value"><code>memory_episodes</code> <code>memory_l2_index_meta</code></span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">内容</span>
+          <span class="field-value">交互片段摘要 (标题/结果/重要性/embedding)</span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">写入路径 1</span>
+          <span class="field-value">L1 归档 → <code>InsertL1ArchiveEpisode</code> (kind=l1_archive, consolidated)</span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">写入路径 2</span>
+          <span class="field-value">AutoMemory → <code>InsertEpisodeRow</code> (kind=auto_memory, pending)</span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">半衰期 / 默认</span>
+          <span class="field-value">14 天 / top 3</span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">Cron</span>
+          <span class="field-value"><code>ConsolidateWorker</code>(10min) <code>DecayWorker</code>(24h, 因子0.95, 保留90d)</span>
+        </div>
+        <div class="recall-bars">
+          <span class="field-label">召回权重</span>
+          <div class="bar-row"><span class="bar-label">关键词</span><div class="bar-track"><div class="bar-fill" style="width:35%"></div></div><span class="bar-pct">35%</span></div>
+          <div class="bar-row"><span class="bar-label">向量</span><div class="bar-track"><div class="bar-fill" style="width:45%"></div></div><span class="bar-pct">45%</span></div>
+          <div class="bar-row"><span class="bar-label">重要性</span><div class="bar-track"><div class="bar-fill" style="width:15%"></div></div><span class="bar-pct">15%</span></div>
+          <div class="bar-row"><span class="bar-label">亲和</span><div class="bar-track"><div class="bar-fill" style="width:5%"></div></div><span class="bar-pct">5%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Arrow L2→L3 -->
+    <div class="flow-arrow">
+      <svg width="100%" height="28" preserveAspectRatio="none">
+        <line x1="50%" y1="2" x2="50%" y2="22" stroke="var(--l2)" stroke-width="1.5" stroke-opacity="0.5"/>
+        <polygon points="50%,28 46%,20 54%,20" fill="var(--l2)" fill-opacity="0.7"/>
+      </svg>
+      <span class="arrow-label arrow-label-left">AutoMemory</span>
+      <span class="arrow-label arrow-label-right">Consolidator.Extract</span>
+    </div>
+
+    <!-- L3 -->
+    <div class="layer-card" style="--layer-color: var(--l3)">
+      <div class="layer-head">
+        <span class="layer-tag">L3</span>
+        <span class="layer-name">语义事实层</span>
+      </div>
+      <div class="layer-body">
+        <div class="field-group">
+          <span class="field-label">数据表</span>
+          <span class="field-value"><code>memory_facts</code> <code>memory_fact_versions</code> <code>memory_fact_feedback</code> <code>memory_fact_conflicts</code> <code>memory_fact_index</code></span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">内容</span>
+          <span class="field-value">结构化事实知识 (fingerprint去重/confidence/importance/quality_score/PII标记)</span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">去重</span>
+          <span class="field-value"><code>fingerprint = SHA256(statement_normalized + scope_type + scope_id)</code></span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">PII / 半衰期</span>
+          <span class="field-value">写入前自动检测 / 30天, 候选池60条, 默认 top 12</span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">pgvector 同步</span>
+          <span class="field-value"><code>syncIndexBestEffort</code> → stale → <code>ReconcilerWorker</code></span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">Cron</span>
+          <span class="field-value"><code>DecayWorker</code>(24h, 因子0.97) <code>IndexReconcilerWorker</code></span>
+        </div>
+        <div class="recall-bars">
+          <span class="field-label">召回权重</span>
+          <div class="bar-row"><span class="bar-label">关键词</span><div class="bar-track"><div class="bar-fill" style="width:25%"></div></div><span class="bar-pct">25%</span></div>
+          <div class="bar-row"><span class="bar-label">向量</span><div class="bar-track"><div class="bar-fill" style="width:30%"></div></div><span class="bar-pct">30%</span></div>
+          <div class="bar-row"><span class="bar-label">重要性</span><div class="bar-track"><div class="bar-fill" style="width:20%"></div></div><span class="bar-pct">20%</span></div>
+          <div class="bar-row"><span class="bar-label">时效性</span><div class="bar-track"><div class="bar-fill" style="width:15%"></div></div><span class="bar-pct">15%</span></div>
+          <div class="bar-row"><span class="bar-label">质量</span><div class="bar-track"><div class="bar-fill" style="width:10%"></div></div><span class="bar-pct">10%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Arrow L3↔L4 -->
+    <div class="flow-arrow">
+      <svg width="100%" height="28" preserveAspectRatio="none">
+        <line x1="50%" y1="2" x2="50%" y2="22" stroke="var(--l3)" stroke-width="1.5" stroke-opacity="0.5"/>
+        <polygon points="50%,28 46%,20 54%,20" fill="var(--l4)" fill-opacity="0.7"/>
+        <line x1="52%" y1="22" x2="52%" y2="4" stroke="var(--l4)" stroke-width="1" stroke-opacity="0.3" stroke-dasharray="2,2"/>
+        <polygon points="52%,2 48%,8 56%,8" fill="var(--l4)" fill-opacity="0.4"/>
+      </svg>
+      <span class="arrow-label arrow-label-left">UpsertFacts</span>
+      <span class="arrow-label arrow-label-right">replace_facts</span>
+    </div>
+
+    <!-- L4 -->
+    <div class="layer-card" style="--layer-color: var(--l4)">
+      <div class="layer-head">
+        <span class="layer-tag">L4</span>
+        <span class="layer-name">知识图谱层</span>
+      </div>
+      <div class="layer-body">
+        <div class="field-group">
+          <span class="field-label">数据表</span>
+          <span class="field-value"><code>memory_entities</code> <code>memory_relations</code> <code>memory_cascade_proposals</code> <code>cascade_saga_steps</code></span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">内容</span>
+          <span class="field-value">实体-关系图 (person/preference/event/concept + knows_as/prefers)</span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">写入</span>
+          <span class="field-value"><code>WriteFromUserText</code> 从用户消息正则提取</span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">冲突 / Saga</span>
+          <span class="field-value">名称冲突 → <code>CascadeProposal</code>(pending) / 4步: upsert_entity → touch_affected → replace_facts → sync_index</span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">补偿</span>
+          <span class="field-value">关键步骤失败时逆序回滚</span>
+        </div>
+        <div class="field-group">
+          <span class="field-label">衰减 / Cron</span>
+          <span class="field-value">person_core=180d person=60d preference=90d event=14d concept=270d / <code>DecayWorker</code>(24h)</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right: Cross-cutting -->
+  <div class="cross-col">
+    <h2>横切关注点</h2>
+
+    <div class="cross-section">
+      <h3>trpc-agent-go 桥接</h3>
+      <ul>
+        <li><code>sqliteMemoryService</code> 实现 6 个工具</li>
+        <li>Add / Update / Delete / Clear / Search / Load</li>
+        <li>Agent 运行时通过工具集操作记忆</li>
+      </ul>
+    </div>
+
+    <div class="cross-section">
+      <h3>记忆注入流程</h3>
+      <div class="cross-flow"><code>BeforeModelHook</code></div>
+      <div class="cross-flow"><span class="cf-arrow">↓</span> L1 pinned 字段</div>
+      <div class="cross-flow"><span class="cf-arrow">↓</span> Composite(L2+L3) 召回</div>
+      <div class="cross-flow"><span class="cf-arrow">↓</span> L4 实体关系</div>
+      <div class="cross-flow"><span class="cf-arrow">↓</span> 注入 system prompt</div>
+    </div>
+
+    <div class="cross-section">
+      <h3>AutoMemory 队列</h3>
+      <ul>
+        <li>对话结束后入队</li>
+        <li><code>Consolidator.Extract</code> 提取</li>
+        <li><code>UpsertFactsAndEpisodeBatch</code> 写入</li>
+      </ul>
+    </div>
+
+    <div class="cross-section">
+      <h3>CompositeRecall</h3>
+      <ul>
+        <li>融合 L2 + L3 召回结果</li>
+        <li>去重 + 重排序</li>
+        <li>统一注入上下文窗口</li>
+      </ul>
+    </div>
+
+    <div class="cross-section">
+      <h3>PolicyEngine</h3>
+      <ul>
+        <li>审计日志 <code>memory_action_log</code></li>
+        <li>PII 检测与脱敏</li>
+        <li>作用域隔离 (scope_type + scope_id)</li>
+      </ul>
+    </div>
+
+    <div class="cross-section">
+      <h3>数据流总览</h3>
+      <div class="cross-flow">用户消息 <span class="cf-arrow">→</span> L1 工作记忆</div>
+      <div class="cross-flow">L1 归档 <span class="cf-arrow">→</span> L2 情景片段</div>
+      <div class="cross-flow">AutoMemory <span class="cf-arrow">→</span> L2 + L3</div>
+      <div class="cross-flow">L3 事实 <span class="cf-arrow">↔</span> L4 实体关系</div>
+      <div class="cross-flow">CompositeRecall <span class="cf-arrow">→</span> system prompt</div>
+    </div>
+  </div>
+
+  <!-- Bottom: Recall comparison table -->
+  <div class="bottom-section">
+    <h2>召回算法权重对比</h2>
+    <table class="recall-table">
+      <thead>
+        <tr>
+          <th>层级</th>
+          <th>关键词</th>
+          <th>向量</th>
+          <th>重要性</th>
+          <th>时效性</th>
+          <th>质量</th>
+          <th>会话亲和</th>
+          <th>半衰期</th>
+          <th>候选池</th>
+          <th>默认返回</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="layer-dot" style="background:var(--l2)"></span>L2 情景记忆</td>
+          <td class="weight-cell"><span class="mini-bar" style="width:35px;background:var(--l2)"></span>35%</td>
+          <td class="weight-cell"><span class="mini-bar" style="width:45px;background:var(--l2)"></span>45%</td>
+          <td class="weight-cell"><span class="mini-bar" style="width:15px;background:var(--l2)"></span>15%</td>
+          <td class="weight-cell">—</td>
+          <td class="weight-cell">—</td>
+          <td class="weight-cell"><span class="mini-bar" style="width:5px;background:var(--l2)"></span>5%</td>
+          <td>14 天</td>
+          <td>—</td>
+          <td>top 3</td>
+        </tr>
+        <tr>
+          <td><span class="layer-dot" style="background:var(--l3)"></span>L3 语义事实</td>
+          <td class="weight-cell"><span class="mini-bar" style="width:25px;background:var(--l3)"></span>25%</td>
+          <td class="weight-cell"><span class="mini-bar" style="width:30px;background:var(--l3)"></span>30%</td>
+          <td class="weight-cell"><span class="mini-bar" style="width:20px;background:var(--l3)"></span>20%</td>
+          <td class="weight-cell"><span class="mini-bar" style="width:15px;background:var(--l3)"></span>15%</td>
+          <td class="weight-cell"><span class="mini-bar" style="width:10px;background:var(--l3)"></span>10%</td>
+          <td class="weight-cell">—</td>
+          <td>30 天</td>
+          <td>60 条</td>
+          <td>top 12</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+</body>
+</html>

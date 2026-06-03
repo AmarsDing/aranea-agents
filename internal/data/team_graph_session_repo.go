@@ -18,11 +18,18 @@ func NewTeamGraphSessionRepo(d *Data) biz.TeamGraphSessionRepo {
 	return &teamGraphSessionRepo{data: d}
 }
 
-func (r *teamGraphSessionRepo) db() *sql.DB {
+func (r *teamGraphSessionRepo) readDB(ctx context.Context) execer {
 	if r == nil || r.data == nil {
 		return nil
 	}
-	return r.data.RawDB()
+	return r.data.RWDB().ReadDB(ctx)
+}
+
+func (r *teamGraphSessionRepo) writeDB(ctx context.Context) execer {
+	if r == nil || r.data == nil {
+		return nil
+	}
+	return r.data.RWDB().WriteDB(ctx)
 }
 
 const teamGraphSessionSelectSQL = `
@@ -44,7 +51,7 @@ func scanTeamGraphSessionRow(scanner interface {
 }
 
 func (r *teamGraphSessionRepo) SaveSession(ctx context.Context, sess biz.TeamGraphSession) error {
-	db := r.db()
+	db := r.writeDB(ctx)
 	if db == nil {
 		return nil
 	}
@@ -75,7 +82,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 }
 
 func (r *teamGraphSessionRepo) UpdateSessionStatus(ctx context.Context, execID, status string) error {
-	db := r.db()
+	db := r.writeDB(ctx)
 	if db == nil {
 		return nil
 	}
@@ -89,17 +96,24 @@ WHERE exec_id=?`,
 }
 
 func (r *teamGraphSessionRepo) GetSession(ctx context.Context, execID string) (biz.TeamGraphSession, error) {
-	db := r.db()
+	db := r.readDB(ctx)
 	if db == nil {
 		return biz.TeamGraphSession{}, sql.ErrNoRows
 	}
-	row := db.QueryRowContext(ctx, teamGraphSessionSelectSQL+` WHERE exec_id=? LIMIT 1`,
+	rows, err := db.QueryContext(ctx, teamGraphSessionSelectSQL+` WHERE exec_id=? LIMIT 1`,
 		strings.TrimSpace(execID))
-	return scanTeamGraphSessionRow(row)
+	if err != nil {
+		return biz.TeamGraphSession{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return biz.TeamGraphSession{}, sql.ErrNoRows
+	}
+	return scanTeamGraphSessionRow(rows)
 }
 
 func (r *teamGraphSessionRepo) ListActiveSessions(ctx context.Context) ([]biz.TeamGraphSession, error) {
-	db := r.db()
+	db := r.readDB(ctx)
 	if db == nil {
 		return nil, nil
 	}
@@ -122,7 +136,7 @@ func (r *teamGraphSessionRepo) ListActiveSessions(ctx context.Context) ([]biz.Te
 }
 
 func (r *teamGraphSessionRepo) DeleteSession(ctx context.Context, execID string) error {
-	db := r.db()
+	db := r.writeDB(ctx)
 	if db == nil {
 		return nil
 	}
@@ -132,7 +146,7 @@ func (r *teamGraphSessionRepo) DeleteSession(ctx context.Context, execID string)
 }
 
 func (r *teamGraphSessionRepo) MarkOrphanedSessionsTerminal(ctx context.Context) (int, error) {
-	db := r.db()
+	db := r.writeDB(ctx)
 	if db == nil {
 		return 0, nil
 	}

@@ -32,7 +32,10 @@ func NewMemoryJobDeadLetterRepo(d *Data) *MemoryJobDeadLetterRepo {
 }
 
 func (r *MemoryJobDeadLetterRepo) ensureTable() {
-	db := r.data.RawDB()
+	db := r.data.RWDB().WriteHandle()
+	if db == nil {
+		return
+	}
 	_, err := db.Exec(`
 CREATE TABLE IF NOT EXISTS memory_job_deadletter (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,7 +84,7 @@ func (r *MemoryJobDeadLetterRepo) WriteMemoryDeadLetter(
 	now := time.Now().UnixMilli()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	res, err := r.data.RawDB().ExecContext(ctx, `
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
 UPDATE memory_job_deadletter
    SET attempts = attempts + 1,
        last_error = ?,
@@ -96,7 +99,7 @@ UPDATE memory_job_deadletter
 			return
 		}
 	}
-	_, err = r.data.RawDB().ExecContext(ctx, `
+	_, err = r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
 INSERT INTO memory_job_deadletter
   (enqueued_at, failed_at, session_id, app_name, user_id, feedback_msg_id,
    payload_json, drop_reason, priority, attempts, last_error, state)
@@ -118,7 +121,7 @@ func (r *MemoryJobDeadLetterRepo) ListDeadLetters(ctx context.Context, state str
 	if limit <= 0 {
 		limit = 100
 	}
-	rows, err := r.data.RawDB().QueryContext(ctx, `
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, `
 SELECT id, enqueued_at, failed_at, session_id, app_name, drop_reason, priority, attempts, state, last_error
 FROM memory_job_deadletter
 WHERE state = ?
@@ -146,27 +149,31 @@ LIMIT ?`, state, limit)
 
 // MarkDeadLetterReplayed marks a dead-letter job as replayed.
 func (r *MemoryJobDeadLetterRepo) MarkDeadLetterReplayed(ctx context.Context, id int64) error {
-	_, err := r.data.RawDB().ExecContext(ctx,
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`UPDATE memory_job_deadletter SET state='replayed', attempts=attempts+1 WHERE id=?`, id)
 	return err
 }
 
 // MarkDeadLetterAbandoned marks a dead-letter job as permanently abandoned.
 func (r *MemoryJobDeadLetterRepo) MarkDeadLetterAbandoned(ctx context.Context, id int64, reason string) error {
-	_, err := r.data.RawDB().ExecContext(ctx,
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`UPDATE memory_job_deadletter SET state='abandoned', last_error=?, attempts=attempts+1 WHERE id=?`, reason, id)
 	return err
 }
 
 func (r *MemoryJobDeadLetterRepo) GetDeadLetter(ctx context.Context, id int64) (biz.MemoryDeadLetterEntry, error) {
+	db := r.data.RWDB().ReadDB(ctx)
+	if db == nil {
+		return biz.MemoryDeadLetterEntry{}, sql.ErrNoRows
+	}
 	var row biz.MemoryDeadLetterEntry
 	var enqueuedMs, failedMs int64
-	err := r.data.RawDB().QueryRowContext(ctx, `
+	err := queryRowScan(ctx, db, `
 SELECT id, enqueued_at, failed_at, session_id, app_name, drop_reason, priority, attempts, state, last_error
-FROM memory_job_deadletter WHERE id=?`, id).
-		Scan(&row.ID, &enqueuedMs, &failedMs,
-			&row.SessionID, &row.AppName, &row.DropReason,
-			&row.Priority, &row.Attempts, &row.State, &row.LastError)
+FROM memory_job_deadletter WHERE id=?`, []any{id},
+		&row.ID, &enqueuedMs, &failedMs,
+		&row.SessionID, &row.AppName, &row.DropReason,
+		&row.Priority, &row.Attempts, &row.State, &row.LastError)
 	if err != nil {
 		return biz.MemoryDeadLetterEntry{}, err
 	}
@@ -177,7 +184,7 @@ FROM memory_job_deadletter WHERE id=?`, id).
 
 // CountDeadLettersByState returns counts grouped by state.
 func (r *MemoryJobDeadLetterRepo) CountDeadLettersByState(ctx context.Context) (pending, replayed, abandoned int64, err error) {
-	rows, err := r.data.RawDB().QueryContext(ctx,
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		`SELECT state, COUNT(*) FROM memory_job_deadletter GROUP BY state`)
 	if err != nil {
 		return
@@ -212,13 +219,17 @@ func (r *MemoryJobDeadLetterRepo) ReplayDeadLetterIntoQueue(
 	id int64,
 	enqueue func(sessionID, appName, userID, feedbackMsgID string, priority biz.MemoryJobPriority),
 ) error {
+	db := r.data.RWDB().ReadDB(ctx)
+	if db == nil {
+		return nil
+	}
 	var payloadJSON, sessionID, appName, userID, feedbackMsgID string
 	var priority int
 	var enqueuedMs int64
-	err := r.data.RawDB().QueryRowContext(ctx,
+	err := queryRowScan(ctx, db,
 		`SELECT payload_json, session_id, app_name, user_id, feedback_msg_id, priority, enqueued_at
-         FROM memory_job_deadletter WHERE id=? AND state='pending'`, id).
-		Scan(&payloadJSON, &sessionID, &appName, &userID, &feedbackMsgID, &priority, &enqueuedMs)
+         FROM memory_job_deadletter WHERE id=? AND state='pending'`, []any{id},
+		&payloadJSON, &sessionID, &appName, &userID, &feedbackMsgID, &priority, &enqueuedMs)
 	if err == sql.ErrNoRows {
 		return nil // already replayed or abandoned
 	}

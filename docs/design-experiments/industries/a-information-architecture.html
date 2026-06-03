@@ -325,7 +325,7 @@
     .ind-table .ind-mono::after { display: none; }
 
     /* Side drawer */
-    .drawer-mask { position: fixed; inset: 0; background: rgba(44, 34, 24, 0.18); backdrop-filter: blur(2px); z-index: 50; animation: fadeIn 0.18s ease; }
+    .drawer-mask { position: fixed; inset: 0; background: rgba(44, 34, 24, 0.5); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); z-index: 50; animation: fadeIn 0.18s ease; }
     .drawer {
       position: fixed; top: 0; right: 0; bottom: 0;
       width: 480px; max-width: 100%;
@@ -682,11 +682,17 @@
 
     // ── Main: Industry Market Page ──
     function IndustryMarketPage() {
-      const [query, setQuery] = useState('');
-      const [statusFilter, setStatusFilter] = useState('all');
-      const [sourceFilter, setSourceFilter] = useState('all');
-      const [view, setView] = useState('grid'); // 'grid' | 'table'
-      const [openKey, setOpenKey] = useState(null);
+      // Read URL hash for shareable states: #view=table | #open=softwaredev | #q=soft | #status=disabled
+      const initialHash = (typeof window !== 'undefined' ? window.location.hash : '') || '';
+      const hashParams = Object.fromEntries(
+        initialHash.replace(/^#/, '').split('&').filter(Boolean).map((kv) => kv.split('='))
+      );
+
+      const [query, setQuery] = useState(hashParams.q || '');
+      const [statusFilter, setStatusFilter] = useState(hashParams.status || 'all');
+      const [sourceFilter, setSourceFilter] = useState(hashParams.source || 'all');
+      const [view, setView] = useState(hashParams.view || 'grid'); // 'grid' | 'table'
+      const [openKey, setOpenKey] = useState(hashParams.open || null);
 
       const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();

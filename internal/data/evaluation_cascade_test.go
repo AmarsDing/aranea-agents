@@ -19,7 +19,7 @@ func TestEvalDeleteCascade(t *testing.T) {
 	if err := EnsureEvalSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	repo := NewEvalRepo(&Data{rawDB: db, lg: loggateway.NewNoop()}, loggateway.NewNoop())
+	repo := NewEvalRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop()}, loggateway.NewNoop())
 
 	ds, err := repo.CreateDataset(ctx, biz.EvalDataset{ID: "ds-1", Name: "test"})
 	if err != nil {
@@ -74,7 +74,7 @@ func TestEvalDeleteRun(t *testing.T) {
 	if err := EnsureEvalSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	repo := NewEvalRepo(&Data{rawDB: db, lg: loggateway.NewNoop()}, loggateway.NewNoop())
+	repo := NewEvalRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop()}, loggateway.NewNoop())
 	ds, err := repo.CreateDataset(ctx, biz.EvalDataset{ID: "ds-r", Name: "rt"})
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +108,7 @@ func TestEvalUpdateDataset(t *testing.T) {
 	if err := EnsureEvalSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	repo := NewEvalRepo(&Data{rawDB: db, lg: loggateway.NewNoop()}, loggateway.NewNoop())
+	repo := NewEvalRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop()}, loggateway.NewNoop())
 	if _, err := repo.CreateDataset(ctx, biz.EvalDataset{ID: "ds-2", Name: "old", Description: "desc"}); err != nil {
 		t.Fatal(err)
 	}

@@ -20,7 +20,7 @@ func TestChannelTurnJobCreateReturnsStableIDOnConflict(t *testing.T) {
 	if err := EnsureChannelTurnJobSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	repo := NewChannelTurnJobRepo(&Data{rawDB: db})
+	repo := NewChannelTurnJobRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db)})
 
 	firstID, err := repo.Create(ctx, biz.ChannelTurnJob{
 		ID:             "job-1",
@@ -59,7 +59,7 @@ func TestChannelTurnJobCreatePreservesAsyncQueuedOnConflict(t *testing.T) {
 	if err := EnsureChannelTurnJobSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	repo := NewChannelTurnJobRepo(&Data{rawDB: db})
+	repo := NewChannelTurnJobRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db)})
 
 	id, err := repo.Create(ctx, biz.ChannelTurnJob{
 		ID:             "job-a",
@@ -105,7 +105,7 @@ func TestChannelTurnJobUpdateStatusQueued(t *testing.T) {
 	if err := EnsureChannelTurnJobSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	repo := NewChannelTurnJobRepo(&Data{rawDB: db})
+	repo := NewChannelTurnJobRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db)})
 
 	id, err := repo.Create(ctx, biz.ChannelTurnJob{
 		ID:             "job-q",

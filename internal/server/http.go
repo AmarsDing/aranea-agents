@@ -52,6 +52,8 @@ import (
 
 type ReadinessProbe interface {
 	IsReady() bool
+	IsFailed() bool
+	FailedReason() string
 }
 
 func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, readiness ReadinessProbe, lg loggateway.Logger) *kratoshttp.Server {
@@ -170,6 +172,14 @@ func registerInfrastructureRoutes(srv *kratoshttp.Server, readiness ReadinessPro
 	srv.Route("/").GET("/healthz", func(ctx kratoshttp.Context) error {
 		w := ctx.Response()
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		if readiness != nil && readiness.IsFailed() {
+			w.WriteHeader(nethttp.StatusServiceUnavailable)
+			return json.NewEncoder(w).Encode(map[string]string{
+				"status":    "failed",
+				"reason":    readiness.FailedReason(),
+				"auth_mode": auth.HealthAuthInfo().AuthMode,
+			})
+		}
 		if readiness != nil && !readiness.IsReady() {
 			w.WriteHeader(nethttp.StatusServiceUnavailable)
 			return json.NewEncoder(w).Encode(map[string]string{

@@ -23,7 +23,7 @@ func NewHookDeliveryRepo(data *Data) biz.HookDeliveryRepo {
 }
 
 func (r *hookDeliveryRepo) Insert(ctx context.Context, d biz.HookDelivery) error {
-	if r == nil || r.data == nil || r.data.RawDB() == nil {
+	if r == nil || r.data == nil || r.data.RWDB() == nil {
 		return nil
 	}
 	id := strings.TrimSpace(d.ID)
@@ -44,7 +44,7 @@ func (r *hookDeliveryRepo) Insert(ctx context.Context, d biz.HookDelivery) error
 	}
 	idempotencyKey := strings.TrimSpace(d.IdempotencyKey)
 	if idempotencyKey != "" {
-		_, err := r.data.RawDB().ExecContext(ctx, `
+		_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
 INSERT OR IGNORE INTO hook_deliveries (id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, idempotency_key, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			id, d.HookKey, d.HookID, d.WebhookURL, d.WebhookSecret, d.PayloadJSON, string(biz.NormalizeHookDeliveryStatus(string(d.Status))),
@@ -52,7 +52,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		)
 		return err
 	}
-	_, err := r.data.RawDB().ExecContext(ctx, `
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
 INSERT INTO hook_deliveries (id, hook_key, hook_id, webhook_url, webhook_secret, payload_json, status, attempt_count, max_attempts, last_error, idempotency_key, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, d.HookKey, d.HookID, d.WebhookURL, d.WebhookSecret, d.PayloadJSON, string(biz.NormalizeHookDeliveryStatus(string(d.Status))),
@@ -62,7 +62,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 }
 
 func (r *hookDeliveryRepo) UpdateResult(ctx context.Context, id string, status biz.HookDeliveryStatus, attemptCount int, lastError string) error {
-	if r == nil || r.data == nil || r.data.RawDB() == nil {
+	if r == nil || r.data == nil || r.data.RWDB() == nil {
 		return nil
 	}
 	id = strings.TrimSpace(id)
@@ -70,7 +70,7 @@ func (r *hookDeliveryRepo) UpdateResult(ctx context.Context, id string, status b
 		return nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := r.data.RawDB().ExecContext(ctx, `
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
 UPDATE hook_deliveries SET status = ?, attempt_count = ?, last_error = ?, updated_at = ? WHERE id = ?`,
 		string(status), attemptCount, lastError, now, id,
 	)
@@ -81,7 +81,7 @@ func (r *hookDeliveryRepo) List(ctx context.Context, q biz.HookDeliveryQuery) (b
 	if r == nil || r.data == nil {
 		return biz.HookDeliveryListResult{}, nil
 	}
-	readDB := r.data.ReadDB()
+	readDB := r.data.RWDB().ReadDB(ctx)
 	if readDB == nil {
 		return biz.HookDeliveryListResult{}, nil
 	}
@@ -115,7 +115,7 @@ func (r *hookDeliveryRepo) List(ctx context.Context, q biz.HookDeliveryQuery) (b
 		args = append(args, k)
 	}
 	var total int32
-	if err := readDB.QueryRowContext(ctx, "SELECT COUNT(*) FROM hook_deliveries"+where, args...).Scan(&total); err != nil {
+	if err := queryRowScan(ctx, readDB, "SELECT COUNT(*) FROM hook_deliveries"+where, args, &total); err != nil {
 		return biz.HookDeliveryListResult{}, err
 	}
 	listArgs := append(append([]any{}, args...), limit, offset)
@@ -147,7 +147,7 @@ func (r *hookDeliveryRepo) ListStalePending(ctx context.Context, updatedBefore t
 	if r == nil || r.data == nil {
 		return nil, nil
 	}
-	readDB := r.data.ReadDB()
+	readDB := r.data.RWDB().ReadDB(ctx)
 	if readDB == nil {
 		return nil, nil
 	}
@@ -186,11 +186,11 @@ LIMIT ?`, cutoff, limit)
 // (this instance should proceed), false when another pod already claimed it.
 // (OUT-02 / HK-01 — multi-pod safe optimistic lock)
 func (r *hookDeliveryRepo) TryClaimForRetry(ctx context.Context, id string, expectedAttemptCount int) (bool, error) {
-	if r == nil || r.data == nil || r.data.RawDB() == nil {
+	if r == nil || r.data == nil || r.data.RWDB() == nil {
 		return false, nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := r.data.RawDB().ExecContext(ctx, `
+	result, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
 UPDATE hook_deliveries
    SET attempt_count = attempt_count + 1,
        updated_at    = ?

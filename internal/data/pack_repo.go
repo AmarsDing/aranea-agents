@@ -6,14 +6,16 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/pack"
+	"aranea-agents/internal/tools"
 )
 
 // PackRepoAdapter adapts existing biz repos to satisfy pack engine interfaces.
 type PackRepoAdapter struct {
-	agents   biz.AgentRepository
-	teams    biz.TeamRepository
-	taxonomy biz.TaxonomyRepo
-	graphs   biz.GraphRepo
+	agents      biz.AgentRepository
+	teams       biz.TeamRepository
+	taxonomy    biz.TaxonomyRepo
+	graphs      biz.GraphRepo
+	skillLookup biz.SkillLookupReader
 }
 
 var _ pack.ExporterRepo = (*PackRepoAdapter)(nil)
@@ -26,12 +28,14 @@ func NewPackRepoAdapter(
 	teams biz.TeamRepository,
 	taxonomy biz.TaxonomyRepo,
 	graphs biz.GraphRepo,
+	skillLookup biz.SkillLookupReader,
 ) *PackRepoAdapter {
 	return &PackRepoAdapter{
-		agents:   agents,
-		teams:    teams,
-		taxonomy: taxonomy,
-		graphs:   graphs,
+		agents:      agents,
+		teams:       teams,
+		taxonomy:    taxonomy,
+		graphs:      graphs,
+		skillLookup: skillLookup,
 	}
 }
 
@@ -198,11 +202,21 @@ func (a *PackRepoAdapter) TaxonomyKeyExists(ctx context.Context, key string) (bo
 }
 
 func (a *PackRepoAdapter) SkillExists(ctx context.Context, slug string) (bool, error) {
-	// TODO(debt): implement real Skill existence check via skill registry
+	if a.skillLookup == nil {
+		return false, nil
+	}
+	_, err := a.skillLookup.GetSkillBySkillKey(ctx, slug)
+	if err != nil {
+		return false, nil
+	}
 	return true, nil
 }
 
 func (a *PackRepoAdapter) FuncRefExists(funcRef string) bool {
-	// TODO(debt): implement real FuncRef existence check via function registry
-	return true
+	for _, reg := range tools.Registry() {
+		if reg.Name == funcRef {
+			return true
+		}
+	}
+	return false
 }

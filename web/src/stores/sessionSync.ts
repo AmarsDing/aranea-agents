@@ -9,7 +9,8 @@ type SessionMutation =
   | { type: 'refresh' }
   | { type: 'status_changed'; id: string; status: string; statusReason: string; statusChangedAt: string }
   | { type: 'agent_removed'; agentId: string }
-  | { type: 'agent_updated'; agent: Agent };
+  | { type: 'agent_updated'; agent: Agent }
+  | { type: 'agents_dependencies_loaded' };
 
 type MutationHandler = (mutation: SessionMutation) => void;
 

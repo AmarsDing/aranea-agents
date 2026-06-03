@@ -20,7 +20,7 @@ func NewSkillInvocationStatsRepo(data *Data) biz.SkillInvocationStatsReader {
 }
 
 func (r *skillInvocationStatsRepo) GetSkillInvocationStats(ctx context.Context, agentID string, since time.Time) ([]biz.SkillInvocationStat, error) {
-	rows, err := r.data.ReadEnt().ToolInvocation.Query().
+	rows, err := r.data.RW().Read(ctx).ToolInvocation.Query().
 		Where(
 			toolinvocationpkg.AgentIDEQ(agentID),
 			toolinvocationpkg.CreatedAtGTE(since.Format(time.RFC3339)),

@@ -43,3 +43,21 @@ func (db *ReadWriteDB) WriteDB(ctx context.Context) execer {
 	}
 	return db.write
 }
+
+// WriteHandle returns the underlying write *sql.DB without transaction awareness.
+// Use this only for DDL operations (CREATE TABLE, ALTER TABLE).
+func (db *ReadWriteDB) WriteHandle() *sql.DB {
+	if db == nil {
+		return nil
+	}
+	return db.write
+}
+
+// ReadHandle returns the underlying read *sql.DB without transaction awareness.
+// Use this only when a raw *sql.DB is required (e.g., for QueryRowContext compatibility).
+func (db *ReadWriteDB) ReadHandle() *sql.DB {
+	if db == nil {
+		return nil
+	}
+	return db.read
+}

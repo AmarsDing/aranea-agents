@@ -12,6 +12,16 @@ export interface Industry {
   scenario_key: string;
   enabled: boolean;
   sort_order: number;
+  /**
+   * 客户端并行计算填充（useIndustryMarket.fetchIndustries 内部）：
+   * 部门 / 岗位 / Agent 数量。当前后端 list endpoint 不返回，故为可选。
+   * 未来后端聚合时移除并行 fetch。
+   */
+  deptCount?: number;
+  posCount?: number;
+  agentCount?: number;
+  /** 已部署实例数（运营侧统计）。当前类型未提供，固定 0。 */
+  installed?: number;
 }
 
 export interface PositionPromptResult {

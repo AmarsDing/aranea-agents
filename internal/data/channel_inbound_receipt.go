@@ -26,7 +26,7 @@ func (r *channelInboundReceiptRepo) TryClaim(ctx context.Context, channelID, ide
 	if channelID == "" || idempotencyKey == "" {
 		return true, nil
 	}
-	db := r.data.RawDB()
+	db := r.data.RWDB().WriteDB(ctx)
 	if db == nil {
 		return true, nil
 	}

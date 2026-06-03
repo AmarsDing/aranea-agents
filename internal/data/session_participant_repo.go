@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"strings"
 	"time"
@@ -24,11 +23,18 @@ func NewSessionParticipantRepo(d *Data) bizsess.SessionParticipantRepository {
 	return &sessionParticipantRepo{data: d}
 }
 
-func (r *sessionParticipantRepo) db() *sql.DB {
+func (r *sessionParticipantRepo) readDB(ctx context.Context) execer {
 	if r == nil || r.data == nil {
 		return nil
 	}
-	return r.data.RawDB()
+	return r.data.RWDB().ReadDB(ctx)
+}
+
+func (r *sessionParticipantRepo) writeDB(ctx context.Context) execer {
+	if r == nil || r.data == nil {
+		return nil
+	}
+	return r.data.RWDB().WriteDB(ctx)
 }
 
 type participantAgg struct {
@@ -93,7 +99,7 @@ func (r *sessionParticipantRepo) SyncFromSession(ctx context.Context, sess bizse
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		e := TxExecerFromCtx(txCtx, r.data.RawDB())
+		e := r.data.RWDB().WriteDB(txCtx)
 		if _, err := e.ExecContext(txCtx, `DELETE FROM session_participants WHERE session_id=?`, sessionID); err != nil {
 			return err
 		}
@@ -163,7 +169,7 @@ func firstNonEmpty(values ...string) string {
 }
 
 func (r *sessionParticipantRepo) ListBySession(ctx context.Context, sessionID string) ([]bizsess.SessionParticipant, error) {
-	db := r.db()
+	db := r.readDB(ctx)
 	if db == nil {
 		return nil, nil
 	}

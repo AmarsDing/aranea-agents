@@ -124,7 +124,10 @@ func (d *Data) Ent() *ent.Client {
 	return d.entClient
 }
 
-// RawDB returns the underlying SQLite *sql.DB shared by Ent and trpc adapters (session / checkpoint).
+// RawDB returns the write *sql.DB handle.
+//
+// Deprecated: Use d.RWDB().WriteDB(ctx) for transaction-aware raw SQL writes,
+// or d.RWDB().ReadDB(ctx) for reads. Direct RawDB() bypasses transaction awareness.
 func (d *Data) RawDB() *sql.DB {
 	if d == nil {
 		return nil
@@ -132,6 +135,9 @@ func (d *Data) RawDB() *sql.DB {
 	return d.rawDB
 }
 
+// ReadDB returns the read-only *sql.DB handle.
+//
+// Deprecated: Use d.RWDB().ReadDB(ctx) for transaction-aware raw SQL reads.
 func (d *Data) ReadDB() *sql.DB {
 	if d == nil {
 		return nil
@@ -139,6 +145,9 @@ func (d *Data) ReadDB() *sql.DB {
 	return d.readDB
 }
 
+// ReadEnt returns the read-only Ent client.
+//
+// Deprecated: Use d.RW().Read(ctx) for transaction-aware Ent reads.
 func (d *Data) ReadEnt() *ent.Client {
 	if d == nil {
 		return nil
@@ -146,6 +155,9 @@ func (d *Data) ReadEnt() *ent.Client {
 	return d.readClient
 }
 
+// ReadClient returns the appropriate Ent client for read operations.
+//
+// Deprecated: Use d.RW().Read(ctx) for transaction-aware Ent reads.
 func (d *Data) ReadClient(ctx context.Context) *ent.Client {
 	if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
 		return tx.Client()
@@ -199,6 +211,20 @@ func (d *Data) IsReady() bool {
 		return true
 	}
 	return d.readiness.IsReady()
+}
+
+func (d *Data) IsFailed() bool {
+	if d == nil || d.readiness == nil {
+		return false
+	}
+	return d.readiness.IsFailed()
+}
+
+func (d *Data) FailedReason() string {
+	if d == nil || d.readiness == nil {
+		return ""
+	}
+	return d.readiness.FailedReason()
 }
 
 func (d *Data) SeedLazy(ctx context.Context, name string) error {
@@ -353,16 +379,18 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 
 	safego.Go(context.Background(), "startup.p1", func() {
 		defer close(p1Done)
-		defer st.readiness.MarkReady()
 
+		var p1Err error
 		if err := runStartupStep("ensureSchemaDDL", func() error {
 			return ensureSchemaDDL(rawDB, entClient, st.lg)
 		}, st.lg); err != nil {
 			if p1Ctx.Err() != nil {
 				return
 			}
-			st.lg.Warn("P1 startup step failed",
+			p1Err = err
+			st.lg.Error("P1 startup step failed",
 				loggateway.StepID("data.p1"), loggateway.Str("step", "ensureSchemaDDL"), loggateway.Err(err))
+			st.readiness.MarkFailed("ensureSchemaDDL: " + err.Error())
 			return
 		}
 
@@ -372,8 +400,10 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 			if p1Ctx.Err() != nil {
 				return
 			}
-			st.lg.Warn("P1 startup step failed",
+			p1Err = err
+			st.lg.Error("P1 startup step failed",
 				loggateway.StepID("data.p1"), loggateway.Str("step", "ensurePostgresSchemas"), loggateway.Err(err))
+			st.readiness.MarkFailed("ensurePostgresSchemas: " + err.Error())
 			return
 		}
 
@@ -383,8 +413,10 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 			if p1Ctx.Err() != nil {
 				return
 			}
-			st.lg.Warn("P1 startup step failed",
+			p1Err = err
+			st.lg.Error("P1 startup step failed",
 				loggateway.StepID("data.p1"), loggateway.Str("step", "dataMigrations"), loggateway.Err(err))
+			st.readiness.MarkFailed("dataMigrations: " + err.Error())
 			return
 		}
 
@@ -394,10 +426,17 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 			if p1Ctx.Err() != nil {
 				return
 			}
-			st.lg.Warn("P1 startup step failed",
+			p1Err = err
+			st.lg.Error("P1 startup step failed",
 				loggateway.StepID("data.p1"), loggateway.Str("step", "seedP1Data"), loggateway.Err(err))
+			st.readiness.MarkFailed("seedP1Data: " + err.Error())
 			return
 		}
+
+		if p1Err == nil {
+			st.readiness.MarkReady()
+		}
+		_ = p1Err
 	})
 
 	safego.Go(context.Background(), "startup.lazy_seeds", func() {
@@ -651,7 +690,7 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 			return SeedAgentTemplates(ctx, client, scenarioDir, lg)
 		}, lg),
 		"industry_agents": NewLazySeeder(entClient, func(ctx context.Context, client *ent.Client) error {
-			return SeedIndustryAgentsRawSQL(ctx, d.RawDB(), scenarioDir, lg)
+			return SeedIndustryAgentsRawSQL(ctx, d.RWDB().WriteHandle(), scenarioDir, lg)
 		}, lg),
 	}
 

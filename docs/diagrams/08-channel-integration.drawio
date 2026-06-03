@@ -1,0 +1,455 @@
+<mxfile host="draw.io" modified="2026-06-04" agent="Aranea-Agents" version="24.0.0" type="device">
+  <diagram id="channel-integration" name="Channel Integration Architecture">
+    <mxGraphModel dx="2800" dy="2000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="2400" pageHeight="1600" math="0" shadow="1">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ========== TITLE ========== -->
+        <mxCell id="title" value="&lt;b style='font-size:26px;color:#1E293B'&gt;渠道集成架构 — 12+ IM 平台适配&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:12px;color:#64748B'&gt;入站 Webhook → 消息处理 → Turn 执行 → 出站投递 · 统一接口适配多平台&lt;/span&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="650" y="10" width="900" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ========== LEFT: EXTERNAL PLATFORMS (#0EA5E9) ========== -->
+        <mxCell id="plat-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F0F9FF;strokeColor=#0EA5E9;strokeWidth=2;arcSize=6;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="30" y="80" width="280" height="1480" as="geometry" />
+        </mxCell>
+        <mxCell id="plat-title" value="&lt;b style='font-size:16px;color:#0284C7'&gt;外部平台&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:10px;color:#64748B'&gt;12+ IM 平台&lt;/span&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="90" y="90" width="160" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Platform cards - Column 1 -->
+        <mxCell id="p-feishu" value="&lt;b style='color:#fff'&gt;飞书 / Lark&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0EA5E9;strokeColor=#0284C7;strokeWidth=1.5;arcSize=20;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="50" y="145" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p-dingtalk" value="&lt;b style='color:#fff'&gt;钉钉&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0EA5E9;strokeColor=#0284C7;strokeWidth=1.5;arcSize=20;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="50" y="200" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p-discord" value="&lt;b style='color:#fff'&gt;Discord&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0EA5E9;strokeColor=#0284C7;strokeWidth=1.5;arcSize=20;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="50" y="255" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p-slack" value="&lt;b style='color:#fff'&gt;Slack&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0EA5E9;strokeColor=#0284C7;strokeWidth=1.5;arcSize=20;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="50" y="310" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p-teams" value="&lt;b style='color:#fff'&gt;Teams&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0EA5E9;strokeColor=#0284C7;strokeWidth=1.5;arcSize=20;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="50" y="365" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p-wechat" value="&lt;b style='color:#fff'&gt;微信&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0EA5E9;strokeColor=#0284C7;strokeWidth=1.5;arcSize=20;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="50" y="420" width="110" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Platform cards - Column 2 -->
+        <mxCell id="p-wecom" value="&lt;b style='color:#fff'&gt;企业微信&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0EA5E9;strokeColor=#0284C7;strokeWidth=1.5;arcSize=20;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="175" y="145" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p-line" value="&lt;b style='color:#fff'&gt;Line&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0EA5E9;strokeColor=#0284C7;strokeWidth=1.5;arcSize=20;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="175" y="200" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p-mattermost" value="&lt;b style='color:#fff'&gt;Mattermost&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0EA5E9;strokeColor=#0284C7;strokeWidth=1.5;arcSize=20;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="175" y="255" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p-qq" value="&lt;b style='color:#fff'&gt;QQ&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0EA5E9;strokeColor=#0284C7;strokeWidth=1.5;arcSize=20;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="175" y="310" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p-onebot" value="&lt;b style='color:#fff'&gt;OneBot&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0EA5E9;strokeColor=#0284C7;strokeWidth=1.5;arcSize=20;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="175" y="365" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="p-more" value="&lt;b style='color:#0284C7'&gt;...更多&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#BAE6FD;strokeColor=#7DD3FC;strokeWidth=1.5;arcSize=20;shadow=1;fontSize=11;fontColor=#0284C7;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="175" y="420" width="110" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Platform connection type labels -->
+        <mxCell id="plat-webhook-label" value="&lt;span style='font-size:10px;color:#0369A1'&gt;Webhook 回调&lt;/span&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="100" y="490" width="100" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="plat-ws-label" value="&lt;span style='font-size:10px;color:#0369A1'&gt;WS 长连接 / 轮询&lt;/span&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="90" y="515" width="120" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- ========== MIDDLE: THREE LAYER INTERFACES ========== -->
+
+        <!-- ===== LAYER 1: Runner Interface (#8B5CF6 Purple) ===== -->
+        <mxCell id="runner-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F3FF;strokeColor=#8B5CF6;strokeWidth=2;arcSize=6;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="370" y="80" width="760" height="220" as="geometry" />
+        </mxCell>
+        <mxCell id="runner-title" value="&lt;b style='font-size:16px;color:#7C3AED'&gt;Runner — 长连接运行&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:10px;color:#64748B'&gt;各平台适配器实现此接口&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="390" y="90" width="200" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="runner-iface" value="&lt;b style='color:#fff'&gt;Runner 接口&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#8B5CF6;strokeColor=#7C3AED;strokeWidth=2;arcSize=15;shadow=1;fontSize=13;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="400" y="140" width="160" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="runner-ws" value="&lt;b style='color:#fff'&gt;WS 连接&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px'&gt;WebSocket 长连接&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7C3AED;strokeColor=#6D28D9;strokeWidth=1.5;arcSize=15;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="600" y="130" width="140" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="runner-poll" value="&lt;b style='color:#fff'&gt;轮询 Bot&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px'&gt;HTTP 轮询模式&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#7C3AED;strokeColor=#6D28D9;strokeWidth=1.5;arcSize=15;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="770" y="130" width="140" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="runner-adapters" value="&lt;div style='font-size:10px;color:#5B21B6;text-align:left;padding:2px'&gt;适配器：FeishuRunner · DingTalkRunner · DiscordRunner&lt;br&gt;SlackRunner · TeamsRunner · WeComRunner · LineRunner&lt;br&gt;MattermostRunner · QQRunner · OneBotRunner ...&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#DDD6FE;strokeColor=#C4B5FD;strokeWidth=1;arcSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="600" y="195" width="310" height="65" as="geometry" />
+        </mxCell>
+
+        <!-- Runner arrows -->
+        <mxCell id="runner-a1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#8B5CF6;strokeWidth=1.5;shadow=1;" edge="1" source="runner-iface" target="runner-ws" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="runner-a2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#8B5CF6;strokeWidth=1.5;shadow=1;" edge="1" source="runner-ws" target="runner-poll" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ===== LAYER 2: OutboundText Interface (#10B981 Emerald) ===== -->
+        <mxCell id="out-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ECFDF5;strokeColor=#10B981;strokeWidth=2;arcSize=6;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="370" y="330" width="760" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="out-title" value="&lt;b style='font-size:16px;color:#059669'&gt;OutboundText — 出站消息投递&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:10px;color:#64748B'&gt;通过 OutboundRouter 统一路由&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="390" y="340" width="260" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="out-iface" value="&lt;b style='color:#fff'&gt;OutboundText 接口&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px'&gt;SendText(ctx, target, text)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#10B981;strokeColor=#059669;strokeWidth=2;arcSize=15;shadow=1;fontSize=12;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="400" y="390" width="200" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="out-router" value="&lt;b style='color:#fff'&gt;OutboundRouter&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px'&gt;按 ChannelID 路由&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#059669;strokeColor=#047857;strokeWidth=1.5;arcSize=15;shadow=1;fontSize=12;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="650" y="390" width="160" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="out-senders" value="&lt;div style='font-size:10px;color:#065F46;text-align:left;padding:2px'&gt;注册：TextSender / MessageSender&lt;br&gt;路由：ChannelID → 对应平台 Sender&lt;br&gt;投递：异步队列 → 平台 API&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#A7F3D0;strokeColor=#6EE7B7;strokeWidth=1;arcSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="650" y="460" width="200" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- Outbound arrows -->
+        <mxCell id="out-a1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#10B981;strokeWidth=1.5;shadow=1;" edge="1" source="out-iface" target="out-router" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ===== LAYER 3: InboundHandler Interface (#F59E0B Amber) ===== -->
+        <mxCell id="in-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFBEB;strokeColor=#F59E0B;strokeWidth=2;arcSize=6;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="370" y="560" width="760" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="in-title" value="&lt;b style='font-size:16px;color:#D97706'&gt;InboundHandler — 入站消息处理&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:10px;color:#64748B'&gt;实现：ChannelIngress&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="390" y="570" width="260" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="in-iface" value="&lt;b style='color:#fff'&gt;InboundHandler 接口&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F59E0B;strokeColor=#D97706;strokeWidth=2;arcSize=15;shadow=1;fontSize=12;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="400" y="620" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="in-ingress" value="&lt;b style='color:#fff'&gt;ChannelIngress&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px'&gt;ProcessInbound(channel, InboundEvent)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#D97706;strokeColor=#B45309;strokeWidth=1.5;arcSize=15;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="650" y="615" width="240" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- Inbound arrows -->
+        <mxCell id="in-a1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#F59E0B;strokeWidth=1.5;shadow=1;" edge="1" source="in-iface" target="in-ingress" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== INBOUND FLOW (Left to Right) ========== -->
+        <mxCell id="flow-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF7ED;strokeColor=#FB923C;strokeWidth=2;arcSize=6;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="370" y="780" width="760" height="480" as="geometry" />
+        </mxCell>
+        <mxCell id="flow-title" value="&lt;b style='font-size:16px;color:#EA580C'&gt;入站流程&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:10px;color:#64748B'&gt;Webhook → 消息处理 → Turn 执行 → 出站投递&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="390" y="790" width="320" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Step 1: Webhook -->
+        <mxCell id="f-webhook" value="&lt;b style='color:#fff'&gt;Webhook&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px'&gt;平台回调&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EA580C;strokeColor=#C2410C;strokeWidth=1.5;arcSize=15;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="390" y="845" width="110" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Step 2: ChannelService -->
+        <mxCell id="f-chsvc" value="&lt;b style='color:#fff'&gt;ChannelService&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px'&gt;ReceiveWebhook()&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EA580C;strokeColor=#C2410C;strokeWidth=1.5;arcSize=15;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="530" y="845" width="150" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Step 3: ChannelIngress -->
+        <mxCell id="f-ingress" value="&lt;b style='color:#fff'&gt;ChannelIngress&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px'&gt;ProcessInbound()&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EA580C;strokeColor=#C2410C;strokeWidth=1.5;arcSize=15;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="710" y="845" width="160" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Step 4: Parse + Dedup -->
+        <mxCell id="f-parse" value="&lt;b style='color:#92400E'&gt;① 消息解析 + 去重&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px;color:#78350F'&gt;InboundReceiptRepo&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FED7AA;strokeColor=#FDBA74;strokeWidth=1;arcSize=12;shadow=1;fontSize=10;fontColor=#92400E;" vertex="1" parent="1">
+          <mxGeometry x="390" y="920" width="180" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Step 5: Route Match -->
+        <mxCell id="f-route" value="&lt;b style='color:#92400E'&gt;② 路由匹配&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px;color:#78350F'&gt;ChannelRoutingRules&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FED7AA;strokeColor=#FDBA74;strokeWidth=1;arcSize=12;shadow=1;fontSize=10;fontColor=#92400E;" vertex="1" parent="1">
+          <mxGeometry x="590" y="920" width="180" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Step 6: Build TurnInput -->
+        <mxCell id="f-turninput" value="&lt;b style='color:#92400E'&gt;③ 构建 biz.TurnInput&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px;color:#78350F'&gt;组装 Turn 输入&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FED7AA;strokeColor=#FDBA74;strokeWidth=1;arcSize=12;shadow=1;fontSize=10;fontColor=#92400E;" vertex="1" parent="1">
+          <mxGeometry x="790" y="920" width="160" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Step 7: ExecuteTurn -->
+        <mxCell id="f-turn" value="&lt;b style='color:#fff'&gt;④ Turn 执行&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px'&gt;NativeTurnGateway.ExecuteTurn(TurnInput)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C2410C;strokeColor=#9A3412;strokeWidth=2;arcSize=12;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="390" y="995" width="320" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- Step 8: Event Stream -->
+        <mxCell id="f-event" value="&lt;b style='color:#92400E'&gt;⑤ 事件流&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px;color:#78350F'&gt;→ 出站投递队列&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FED7AA;strokeColor=#FDBA74;strokeWidth=1;arcSize=12;shadow=1;fontSize=10;fontColor=#92400E;" vertex="1" parent="1">
+          <mxGeometry x="740" y="1000" width="150" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Step 9: Delivery Worker -->
+        <mxCell id="f-worker" value="&lt;b style='color:#92400E'&gt;⑥ ChannelDeliveryWorker&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px;color:#78350F'&gt;轮询出站队列&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FED7AA;strokeColor=#FDBA74;strokeWidth=1;arcSize=12;shadow=1;fontSize=10;fontColor=#92400E;" vertex="1" parent="1">
+          <mxGeometry x="390" y="1075" width="230" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Step 10: SendText -->
+        <mxCell id="f-send" value="&lt;b style='color:#92400E'&gt;OutboundText.SendText()&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px;color:#78350F'&gt;投递到目标平台&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FED7AA;strokeColor=#FDBA74;strokeWidth=1;arcSize=12;shadow=1;fontSize=10;fontColor=#92400E;" vertex="1" parent="1">
+          <mxGeometry x="650" y="1075" width="200" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Inbound flow arrows -->
+        <mxCell id="fa-1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#EA580C;strokeWidth=2;shadow=1;" edge="1" source="f-webhook" target="f-chsvc" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fa-2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#EA580C;strokeWidth=2;shadow=1;" edge="1" source="f-chsvc" target="f-ingress" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fa-3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#EA580C;strokeWidth=1.5;shadow=1;" edge="1" source="f-ingress" target="f-route" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fa-4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#EA580C;strokeWidth=1.5;shadow=1;" edge="1" source="f-route" target="f-parse" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fa-5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#EA580C;strokeWidth=1.5;shadow=1;" edge="1" source="f-route" target="f-turninput" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fa-6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#EA580C;strokeWidth=1.5;shadow=1;" edge="1" source="f-turninput" target="f-turn" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fa-7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#EA580C;strokeWidth=1.5;shadow=1;" edge="1" source="f-turn" target="f-event" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fa-8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#EA580C;strokeWidth=1.5;shadow=1;dashed=1;" edge="1" source="f-event" target="f-send" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="fa-9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#EA580C;strokeWidth=1.5;shadow=1;" edge="1" source="f-send" target="f-worker" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== OUTBOUND ROUTING (#6366F1 Indigo) ========== -->
+        <mxCell id="ob-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF2FF;strokeColor=#6366F1;strokeWidth=2;arcSize=6;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="370" y="1300" width="760" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="ob-title" value="&lt;b style='font-size:16px;color:#4F46E5'&gt;出站消息路由 — OutboundRouter&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:10px;color:#64748B'&gt;按 ChannelID 路由 · Session Metadata 解析 · RuntimeState 注入&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="390" y="1310" width="380" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ob-router" value="&lt;b style='color:#fff'&gt;OutboundRouter&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px'&gt;按 ChannelID 路由&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#6366F1;strokeColor=#4F46E5;strokeWidth=2;arcSize=15;shadow=1;fontSize=12;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="400" y="1365" width="170" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ob-register" value="&lt;b style='color:#fff'&gt;注册&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px'&gt;TextSender&lt;br&gt;MessageSender&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4F46E5;strokeColor=#4338CA;strokeWidth=1.5;arcSize=15;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="600" y="1360" width="130" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ob-msgtool" value="&lt;b style='color:#fff'&gt;MessageTool&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px'&gt;message 内置工具&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#4F46E5;strokeColor=#4338CA;strokeWidth=1.5;arcSize=15;shadow=1;fontSize=11;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="760" y="1360" width="140" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ob-session" value="&lt;b style='color:#3730A3'&gt;SessionResolver&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px;color:#4338CA'&gt;从 Session Metadata 解析&lt;br&gt;ChannelID / PeerID&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C7D2FE;strokeColor=#A5B4FC;strokeWidth=1;arcSize=12;shadow=1;fontSize=10;fontColor=#3730A3;" vertex="1" parent="1">
+          <mxGeometry x="400" y="1445" width="190" height="55" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ob-runtime" value="&lt;b style='color:#3730A3'&gt;RuntimeState 注入&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:9px;color:#4338CA'&gt;aranea.delivery.channel&lt;br&gt;aranea.delivery.target&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C7D2FE;strokeColor=#A5B4FC;strokeWidth=1;arcSize=12;shadow=1;fontSize=10;fontColor=#3730A3;" vertex="1" parent="1">
+          <mxGeometry x="620" y="1445" width="200" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- Outbound routing arrows -->
+        <mxCell id="ob-a1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6366F1;strokeWidth=1.5;shadow=1;" edge="1" source="ob-router" target="ob-register" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ob-a2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6366F1;strokeWidth=1.5;shadow=1;" edge="1" source="ob-register" target="ob-msgtool" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ob-a3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;exitY=1;entryDx=0;entryDy=0;strokeColor=#6366F1;strokeWidth=1;shadow=1;dashed=1;" edge="1" source="ob-session" target="ob-router" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ob-a4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;exitY=1;entryDx=0;entryDy=0;strokeColor=#6366F1;strokeWidth=1;shadow=1;dashed=1;" edge="1" source="ob-runtime" target="ob-msgtool" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== RIGHT: CORE SERVICES (#EF4444 Red) ========== -->
+        <mxCell id="svc-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FEF2F2;strokeColor=#EF4444;strokeWidth=2;arcSize=6;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1200" y="80" width="380" height="1480" as="geometry" />
+        </mxCell>
+        <mxCell id="svc-title" value="&lt;b style='font-size:16px;color:#DC2626'&gt;核心服务&lt;/b&gt;&lt;br&gt;&lt;span style='font-size:10px;color:#64748B'&gt;通过 Gateway 端口访问渠道能力&lt;/span&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="90" width="260" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- ChatService -->
+        <mxCell id="svc-chat" value="&lt;b style='color:#fff'&gt;ChatService&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#DC2626;strokeWidth=2;arcSize=15;shadow=1;fontSize=14;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="150" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="svc-chat-port1" value="&lt;span style='font-size:10px;color:#991B1B'&gt;→ NativeTurnGateway&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FECACA;strokeColor=#FCA5A5;strokeWidth=1;arcSize=10;shadow=1;fontSize=10;fontColor=#991B1B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="220" width="180" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="svc-chat-port2" value="&lt;span style='font-size:10px;color:#991B1B'&gt;→ TurnControlGateway&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FECACA;strokeColor=#FCA5A5;strokeWidth=1;arcSize=10;shadow=1;fontSize=10;fontColor=#991B1B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="260" width="180" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- GraphService -->
+        <mxCell id="svc-graph" value="&lt;b style='color:#fff'&gt;GraphService&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#DC2626;strokeWidth=2;arcSize=15;shadow=1;fontSize=14;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="320" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="svc-graph-port" value="&lt;span style='font-size:10px;color:#991B1B'&gt;→ GraphExecutor&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FECACA;strokeColor=#FCA5A5;strokeWidth=1;arcSize=10;shadow=1;fontSize=10;fontColor=#991B1B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="390" width="180" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- CronService -->
+        <mxCell id="svc-cron" value="&lt;b style='color:#fff'&gt;CronService&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#DC2626;strokeWidth=2;arcSize=15;shadow=1;fontSize=14;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="450" width="260" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="svc-cron-port" value="&lt;span style='font-size:10px;color:#991B1B'&gt;→ CronTriggerGateway&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FECACA;strokeColor=#FCA5A5;strokeWidth=1;arcSize=10;shadow=1;fontSize=10;fontColor=#991B1B;align=left;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="520" width="200" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Service arrows to ports -->
+        <mxCell id="svc-a1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#EF4444;strokeWidth=1;shadow=1;" edge="1" source="svc-chat" target="svc-chat-port1" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="svc-a2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#EF4444;strokeWidth=1;shadow=1;" edge="1" source="svc-graph" target="svc-graph-port" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="svc-a3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#EF4444;strokeWidth=1;shadow=1;" edge="1" source="svc-cron" target="svc-cron-port" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Service → Inbound flow connection -->
+        <mxCell id="svc-flow-note" value="&lt;div style='font-size:10px;color:#7F1D1D;text-align:left;padding:3px'&gt;服务通过 Gateway 端口&lt;br&gt;触发 Turn 执行&lt;br&gt;Turn 产出事件流&lt;br&gt;→ 出站投递队列&lt;br&gt;→ OutboundRouter 路由&lt;br&gt;→ 平台 API 投递&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FECACA;strokeColor=#FCA5A5;strokeWidth=1;arcSize=10;align=left;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="1260" y="580" width="200" height="100" as="geometry" />
+        </mxCell>
+
+        <!-- ========== CROSS-SECTION ARROWS ========== -->
+
+        <!-- Platforms → Runner (WS connections) -->
+        <mxCell id="cross-a1" value="&lt;span style='font-size:9px;color:#7C3AED'&gt;WS/轮询&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#8B5CF6;strokeWidth=1.5;shadow=1;dashed=1;" edge="1" source="p-discord" target="runner-iface" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Platforms → InboundHandler (Webhook) -->
+        <mxCell id="cross-a2" value="&lt;span style='font-size:9px;color:#D97706'&gt;Webhook&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#F59E0B;strokeWidth=2;shadow=1;" edge="1" source="p-feishu" target="in-iface" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Platforms → OutboundText (outbound) -->
+        <mxCell id="cross-a3" value="&lt;span style='font-size:9px;color:#059669'&gt;出站&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#10B981;strokeWidth=1.5;shadow=1;dashed=1;" edge="1" source="p-wecom" target="out-iface" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- OutboundText → Platforms (return path) -->
+        <mxCell id="cross-a4" value="&lt;span style='font-size:9px;color:#059669'&gt;投递&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0;entryDx=0;entryDy=0;strokeColor=#10B981;strokeWidth=2;shadow=1;" edge="1" source="out-router" target="p-slack" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="340" y="460" />
+              <mxPoint x="340" y="330" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Services → Turn execution -->
+        <mxCell id="cross-a5" value="&lt;span style='font-size:9px;color:#DC2626'&gt;触发 Turn&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#EF4444;strokeWidth=2;shadow=1;" edge="1" source="svc-chat" target="f-turn" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1180" y="178" />
+              <mxPoint x="1180" y="1022" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Services → OutboundRouter -->
+        <mxCell id="cross-a6" value="&lt;span style='font-size:9px;color:#4F46E5'&gt;出站路由&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#6366F1;strokeWidth=1.5;shadow=1;dashed=1;" edge="1" source="svc-cron" target="ob-router" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1180" y="478" />
+              <mxPoint x="1180" y="1392" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- InboundHandler → Inbound flow -->
+        <mxCell id="cross-a7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#F59E0B;strokeWidth=2;shadow=1;" edge="1" source="in-ingress" target="flow-group" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Delivery → OutboundRouter -->
+        <mxCell id="cross-a8" value="&lt;span style='font-size:9px;color:#4F46E5'&gt;出站路由&lt;/span&gt;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;strokeColor=#6366F1;strokeWidth=1.5;shadow=1;" edge="1" source="f-send" target="ob-router" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== LEGEND ========== -->
+        <mxCell id="legend-group" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8FAFC;strokeColor=#CBD5E1;strokeWidth=1;arcSize=8;shadow=1;" vertex="1" parent="1">
+          <mxGeometry x="1650" y="80" width="300" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="legend-title" value="&lt;b style='font-size:13px;color:#334155'&gt;图例&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1670" y="90" width="60" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg-1" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#0EA5E9;strokeColor=#0284C7;strokeWidth=1;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="1670" y="120" width="20" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-1t" value="&lt;span style='font-size:10px;color:#334155'&gt;外部平台&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1700" y="114" width="70" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg-2" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#8B5CF6;strokeColor=#7C3AED;strokeWidth=1;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="1670" y="145" width="20" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-2t" value="&lt;span style='font-size:10px;color:#334155'&gt;Runner 接口&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1700" y="139" width="80" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg-3" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#10B981;strokeColor=#059669;strokeWidth=1;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="1670" y="170" width="20" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-3t" value="&lt;span style='font-size:10px;color:#334155'&gt;OutboundText 接口&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1700" y="164" width="110" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg-4" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F59E0B;strokeColor=#D97706;strokeWidth=1;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="1670" y="195" width="20" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-4t" value="&lt;span style='font-size:10px;color:#334155'&gt;InboundHandler 接口&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1700" y="189" width="120" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg-5" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#6366F1;strokeColor=#4F46E5;strokeWidth=1;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="1670" y="220" width="20" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-5t" value="&lt;span style='font-size:10px;color:#334155'&gt;出站消息路由&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1700" y="214" width="90" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg-6" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EF4444;strokeColor=#DC2626;strokeWidth=1;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="1670" y="245" width="20" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-6t" value="&lt;span style='font-size:10px;color:#334155'&gt;核心服务&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1700" y="239" width="70" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="leg-7" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EA580C;strokeColor=#C2410C;strokeWidth=1;arcSize=20;" vertex="1" parent="1">
+          <mxGeometry x="1670" y="270" width="20" height="14" as="geometry" />
+        </mxCell>
+        <mxCell id="leg-7t" value="&lt;span style='font-size:10px;color:#334155'&gt;入站流程&lt;/span&gt;" style="text;html=1;align=left;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1700" y="264" width="70" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- ========== FLOW DIRECTION INDICATORS ========== -->
+        <mxCell id="dir-inbound" value="&lt;b style='font-size:11px;color:#EA580C'&gt;入站 →&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="390" y="760" width="70" height="25" as="geometry" />
+        </mxCell>
+
+        <mxCell id="dir-outbound" value="&lt;b style='font-size:11px;color:#6366F1'&gt;← 出站&lt;/b&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+          <mxGeometry x="1020" y="1290" width="70" height="25" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

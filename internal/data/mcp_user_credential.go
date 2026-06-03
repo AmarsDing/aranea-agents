@@ -33,7 +33,7 @@ func (r *mcpServerRepo) ListMCPServerUserCredentials(ctx context.Context, mcpSer
 	if mcpServerID == "" {
 		return nil, errors.New("mcp_server_id is required")
 	}
-	q := r.data.ReadClient(ctx).PlatformMCPUserCredential.Query().
+	q := r.data.RW().Read(ctx).PlatformMCPUserCredential.Query().
 		Where(
 			platformmcpusercredential.McpServerIDEQ(mcpServerID),
 			platformmcpusercredential.DeletedAtEQ(""),
@@ -59,7 +59,7 @@ func (r *mcpServerRepo) UpsertMCPServerUserCredential(ctx context.Context, cred 
 	if cred.ID == "" || cred.MCPServerID == "" || cred.UserID == "" || cred.CredentialKey == "" {
 		return biz.MCPServerUserCredential{}, errors.New("id, mcp_server_id, user_id and credential_key are required")
 	}
-	existing, err := r.data.ReadClient(ctx).PlatformMCPUserCredential.Query().
+	existing, err := r.data.RW().Read(ctx).PlatformMCPUserCredential.Query().
 		Where(
 			platformmcpusercredential.McpServerIDEQ(cred.MCPServerID),
 			platformmcpusercredential.UserIDEQ(cred.UserID),
@@ -78,7 +78,7 @@ func (r *mcpServerRepo) UpsertMCPServerUserCredential(ctx context.Context, cred 
 			cred.CreatedAt = now
 		}
 		cred.UpdatedAt = now
-		e, err := r.data.entClient.PlatformMCPUserCredential.Create().
+		e, err := r.data.RW().Write(ctx).PlatformMCPUserCredential.Create().
 			SetID(cred.ID).
 			SetMcpServerID(cred.MCPServerID).
 			SetUserID(cred.UserID).
@@ -98,7 +98,7 @@ func (r *mcpServerRepo) UpsertMCPServerUserCredential(ctx context.Context, cred 
 	if err != nil {
 		return biz.MCPServerUserCredential{}, err
 	}
-	e, err := r.data.entClient.PlatformMCPUserCredential.UpdateOneID(existing.ID).
+	e, err := r.data.RW().Write(ctx).PlatformMCPUserCredential.UpdateOneID(existing.ID).
 		SetStatus(cred.Status).
 		SetSecretRef(cred.SecretRef).
 		SetMetadataJSON(cred.MetadataJSON).
@@ -113,7 +113,7 @@ func (r *mcpServerRepo) UpsertMCPServerUserCredential(ctx context.Context, cred 
 
 func (r *mcpServerRepo) DeleteMCPServerUserCredential(ctx context.Context, mcpServerID, userID, credentialKey string) error {
 	now := nowRFC3339()
-	_, err := r.data.entClient.PlatformMCPUserCredential.Update().
+	_, err := r.data.RW().Write(ctx).PlatformMCPUserCredential.Update().
 		Where(
 			platformmcpusercredential.McpServerIDEQ(strings.TrimSpace(mcpServerID)),
 			platformmcpusercredential.UserIDEQ(strings.TrimSpace(userID)),

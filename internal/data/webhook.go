@@ -67,7 +67,7 @@ func (r *webhookRepo) Create(ctx context.Context, w biz.WebhookConfig) (biz.Webh
 		w.CreatedAt = now
 	}
 	w.UpdatedAt = now
-	row, err := r.data.entClient.GatewayWebhook.Create().
+	row, err := r.data.RW().Write(ctx).GatewayWebhook.Create().
 		SetID(w.ID).
 		SetName(w.Name).
 		SetURL(w.URL).
@@ -85,7 +85,7 @@ func (r *webhookRepo) Create(ctx context.Context, w biz.WebhookConfig) (biz.Webh
 }
 
 func (r *webhookRepo) Get(ctx context.Context, id string) (biz.WebhookConfig, error) {
-	row, err := r.data.ReadClient(ctx).GatewayWebhook.Get(ctx, strings.TrimSpace(id))
+	row, err := r.data.RW().Read(ctx).GatewayWebhook.Get(ctx, strings.TrimSpace(id))
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.WebhookConfig{}, sql.ErrNoRows
@@ -96,7 +96,7 @@ func (r *webhookRepo) Get(ctx context.Context, id string) (biz.WebhookConfig, er
 }
 
 func (r *webhookRepo) List(ctx context.Context) ([]biz.WebhookConfig, error) {
-	rows, err := r.data.ReadClient(ctx).GatewayWebhook.Query().
+	rows, err := r.data.RW().Read(ctx).GatewayWebhook.Query().
 		Order(gatewaywebhook.ByCreatedAt()).
 		All(ctx)
 	if err != nil {
@@ -106,7 +106,7 @@ func (r *webhookRepo) List(ctx context.Context) ([]biz.WebhookConfig, error) {
 }
 
 func (r *webhookRepo) ListEnabled(ctx context.Context) ([]biz.WebhookConfig, error) {
-	rows, err := r.data.ReadClient(ctx).GatewayWebhook.Query().
+	rows, err := r.data.RW().Read(ctx).GatewayWebhook.Query().
 		Where(gatewaywebhook.EnabledEQ(true)).
 		Order(gatewaywebhook.ByCreatedAt()).
 		All(ctx)
@@ -125,7 +125,7 @@ func entRowsToWebhooks(lg loggateway.Logger, rows []*ent.GatewayWebhook) []biz.W
 }
 
 func (r *webhookRepo) Update(ctx context.Context, w biz.WebhookConfig) (biz.WebhookConfig, error) {
-	row, err := r.data.entClient.GatewayWebhook.UpdateOneID(w.ID).
+	row, err := r.data.RW().Write(ctx).GatewayWebhook.UpdateOneID(w.ID).
 		SetName(w.Name).
 		SetURL(w.URL).
 		SetEventTypesJSON(w.EventTypesJSON).
@@ -141,5 +141,5 @@ func (r *webhookRepo) Update(ctx context.Context, w biz.WebhookConfig) (biz.Webh
 }
 
 func (r *webhookRepo) Delete(ctx context.Context, id string) error {
-	return r.data.entClient.GatewayWebhook.DeleteOneID(strings.TrimSpace(id)).Exec(ctx)
+	return r.data.RW().Write(ctx).GatewayWebhook.DeleteOneID(strings.TrimSpace(id)).Exec(ctx)
 }

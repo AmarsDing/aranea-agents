@@ -7,6 +7,7 @@ import {
 } from '../../features/avatar/api';
 import type { AvatarAsset } from '../../features/avatar/types';
 import { isAvatarAssetRef } from '../../features/avatar/iconModel';
+import { onSessionMutation } from '../sessionSync';
 
 /** 头像域：目录缓存 + 缩略图缓存 + 上传；对外业务均由 actions 经 api 层访问后端 */
 export const useAvatarCatalogStore = defineStore('avatarCatalog', {
@@ -78,4 +79,11 @@ export const useAvatarCatalogStore = defineStore('avatarCatalog', {
       return result;
     },
   },
+});
+
+onSessionMutation((mutation) => {
+  if (mutation.type === 'agents_dependencies_loaded') {
+    const store = useAvatarCatalogStore();
+    store.ensureAgentsCatalog();
+  }
 });

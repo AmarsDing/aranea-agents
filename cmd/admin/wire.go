@@ -698,7 +698,7 @@ func provideSQLiteRawDB(d *data.Data) *sql.DB {
 	if d == nil {
 		return nil
 	}
-	return d.RawDB()
+	return d.RWDB().WriteHandle()
 }
 
 func provideTRPCSessionService(rawDB *sql.DB, lg loggateway.Logger) trpcsession.Service {
@@ -1319,6 +1319,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		wire.Bind(new(server.ReadinessProbe), new(*data.Data)),
 		wire.Bind(new(biz.TaskGraphResolver), new(*biz.GraphUsecase)),
 		wire.Bind(new(importer.SkillImportRepo), new(biz.SkillRepo)),
+		wire.Bind(new(biz.SkillLookupReader), new(biz.SkillRepo)),
 		wire.Bind(new(biz.MCPServerReader), new(biz.MCPServerRepo)),
 		wire.Bind(new(biz.TeamReader), new(biz.TeamRepository)),
 		wire.Bind(new(biz.TeamRunRepo), new(biz.TeamRepository)),

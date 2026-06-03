@@ -462,8 +462,6 @@ function scheduleCompileRefresh() {
   compileDebounceTimer = setTimeout(refreshCompile, 400);
 }
 
-watch(() => [props.editingId, props.definitionJSON], scheduleCompileRefresh, { immediate: true });
-
 const props = withDefaults(
   defineProps<{
     modelValue: boolean;
@@ -496,6 +494,8 @@ const emit = defineEmits<{
   applyTemplate: [template: TeamTemplateKey];
   save: [];
 }>();
+
+watch(() => [props.editingId, props.definitionJSON], scheduleCompileRefresh, { immediate: true });
 
 const intentAnchorOptions = computed(() =>
   props.definition.members

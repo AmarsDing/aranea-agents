@@ -21,7 +21,7 @@ func NewEvolutionMetricsRepo(data *Data) biz.EvolutionMetricsRepo {
 }
 
 func (r *evolutionMetricsRepo) GetToolSuccessRate(ctx context.Context, agentID string, since time.Time) (float64, []biz.MetricDataPoint, error) {
-	rows, err := r.data.ReadClient(ctx).ToolInvocation.Query().
+	rows, err := r.data.RW().Read(ctx).ToolInvocation.Query().
 		Where(
 			toolinvocationpkg.AgentIDEQ(agentID),
 			toolinvocationpkg.CreatedAtGTE(since.Format(time.RFC3339)),
@@ -55,7 +55,7 @@ func (r *evolutionMetricsRepo) GetToolSuccessRate(ctx context.Context, agentID s
 
 func (r *evolutionMetricsRepo) GetRetrievalQuality(ctx context.Context, agentID string, since time.Time) (float64, []biz.MetricDataPoint, error) {
 	memoryToolKeys := []string{"memory_search", "memory_load", "memory_recall"}
-	rows, err := r.data.ReadClient(ctx).ToolInvocation.Query().
+	rows, err := r.data.RW().Read(ctx).ToolInvocation.Query().
 		Where(
 			toolinvocationpkg.AgentIDEQ(agentID),
 			toolinvocationpkg.CreatedAtGTE(since.Format(time.RFC3339)),
@@ -89,7 +89,7 @@ func (r *evolutionMetricsRepo) GetRetrievalQuality(ctx context.Context, agentID 
 }
 
 func (r *evolutionMetricsRepo) GetEpisodeCount(ctx context.Context, agentID string, since time.Time) (int, error) {
-	count, err := r.data.ReadClient(ctx).Session.Query().
+	count, err := r.data.RW().Read(ctx).Session.Query().
 		Where(
 			entsession.AgentIDEQ(agentID),
 			entsession.CreatedAtGTE(since.Format(time.RFC3339)),
@@ -102,7 +102,7 @@ func (r *evolutionMetricsRepo) GetEpisodeCount(ctx context.Context, agentID stri
 }
 
 func (r *evolutionMetricsRepo) GetNegativeFeedbackCount(ctx context.Context, agentID string, since time.Time) (int, error) {
-	count, err := r.data.ReadClient(ctx).ToolInvocation.Query().
+	count, err := r.data.RW().Read(ctx).ToolInvocation.Query().
 		Where(
 			toolinvocationpkg.AgentIDEQ(agentID),
 			toolinvocationpkg.CreatedAtGTE(since.Format(time.RFC3339)),

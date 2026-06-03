@@ -173,490 +173,76 @@
 
           <div class="provider-wizard-scroll">
             <q-card-section class="provider-wizard-body">
-              <div v-show="providerStep === 1" class="provider-wizard-panel">
-                <h3 class="provider-step-heading">连接与身份</h3>
-                <p class="provider-step-hint">从 models.dev 目录选择或手动添加本地/自定义 Provider。</p>
-                <div v-if="!editingId" class="app-grid-span-full q-mb-md">
-                  <q-btn-toggle
-                    v-model="providerAddMode"
-                    spread
-                    no-caps
-                    toggle-color="primary"
-                    :options="[
-                      { label: '目录选择', value: 'catalog' },
-                      { label: '自定义', value: 'custom' },
-                    ]"
-                    @update:model-value="setProviderAddMode($event === 'custom' ? 'custom' : 'catalog')"
-                  />
-                </div>
-                <div class="app-form-field-grid app-form-field-grid--2col">
-                  <q-input
-                    v-if="providerAddMode === 'catalog'"
-                    v-model="catalogProviderSearch"
-                    dense
-                    outlined
-                    clearable
-                    debounce="300"
-                    label="搜索供应商"
-                    class="app-grid-span-full"
-                    @update:model-value="reloadCatalogProviders()"
-                  />
-                  <q-select
-                    v-if="providerAddMode === 'catalog'"
-                    v-model="catalogProviderId"
-                    dense
-                    outlined
-                    emit-value
-                    map-options
-                    label="供应商（models.dev）"
-                    :loading="catalogLoading"
-                    :options="catalogProviderOptions"
-                    @update:model-value="applyCatalogProvider(String($event ?? ''))"
-                  >
-                    <template #option="scope">
-                      <q-item v-bind="scope.itemProps">
-                        <q-item-section>
-                          <q-item-label>{{ scope.opt.label }}</q-item-label>
-                          <q-item-label caption>{{ scope.opt.caption }}</q-item-label>
-                        </q-item-section>
-                      </q-item>
-                    </template>
-                  </q-select>
-                  <div
-                    v-if="providerAddMode === 'catalog' && (catalogProviderHint || catalogProviderDocUrl)"
-                    class="app-grid-span-full row items-center q-gutter-sm q-mb-sm"
-                  >
-                    <span v-if="catalogProviderHint" class="text-caption text-grey-7">{{ catalogProviderHint }}</span>
-                    <a
-                      v-if="catalogProviderDocUrl"
-                      :href="catalogProviderDocUrl"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      class="text-caption text-primary"
-                    >
-                      查看 Provider 文档 ↗
-                    </a>
-                  </div>
-                  <q-select
-                    v-else
-                    v-model="providerPresetKey"
-                    dense
-                    outlined
-                    emit-value
-                    map-options
-                    label="供应商预设（可选）"
-                    :options="providerPresetOptions"
-                    clearable
-                    @update:model-value="applyProviderPreset(String($event ?? ''))"
-                  >
-                    <template #option="scope">
-                      <q-item v-bind="scope.itemProps">
-                        <q-item-section>
-                          <q-item-label>{{ scope.opt.label }}</q-item-label>
-                          <q-item-label caption>{{ scope.opt.caption }}</q-item-label>
-                        </q-item-section>
-                      </q-item>
-                    </template>
-                  </q-select>
-                  <q-select
-                    v-if="providerRuntimeLocked"
-                    dense
-                    outlined
-                    readonly
-                    disable
-                    label="运行时类型"
-                    :model-value="providerRuntimeSummary"
-                    hint="由 models.dev 目录 / runtime overlay 自动决定，无需手动选择"
-                  />
-                  <q-select
-                    v-else
-                    v-model="providerForm.provider_type"
-                    dense
-                    outlined
-                    emit-value
-                    map-options
-                    label="Provider类型 *"
-                    :options="providerTypeOptions"
-                  />
-                  <q-input
-                    v-model="providerForm.api_key"
-                    dense
-                    outlined
-                    :type="showApiKey ? 'text' : 'password'"
-                    label="API 密钥"
-                    :hint="apiKeyFieldHint"
-                    :placeholder="apiKeyMaskedPlaceholder"
-                    :loading="revealingCredentials"
-                  >
-                    <template #append>
-                      <q-btn
-                        flat
-                        dense
-                        round
-                        :icon="showApiKey ? 'visibility_off' : 'visibility'"
-                        :aria-label="showApiKey ? '隐藏密钥' : '显示密钥'"
-                        :disable="revealingCredentials"
-                        @click="toggleApiKeyVisibility"
-                      />
-                    </template>
-                  </q-input>
-                  <div v-if="catalogModelsHint" class="app-grid-span-full text-caption text-grey-7 q-mb-xs">
-                    {{ catalogModelsHint }}
-                  </div>
-                  <q-select
-                    v-model="providerForm.model_api_id"
-                    dense
-                    outlined
-                    :use-input="useCatalogModelPicker"
-                    :fill-input="false"
-                    :hide-selected="false"
-                    input-debounce="0"
-                    emit-value
-                    map-options
-                    label="模型"
-                    :loading="catalogModelsLoading"
-                    :options="providerModelOptions"
-                    @filter="
-                      (val, update) =>
-                        useCatalogModelPicker ? filterCatalogModelsLocal(val, update) : update(() => {})
-                    "
-                    @new-value="setCustomModelValue"
-                    @update:model-value="
-                      useCatalogModelPicker
-                        ? applyCatalogModel(String($event ?? ''))
-                        : applyModelPreset(String($event ?? ''))
-                    "
-                  >
-                    <template #append>
-                      <q-btn
-                        flat
-                        dense
-                        no-caps
-                        class="provider-inspect-btn"
-                        label="检查"
-                        :loading="checkingModel"
-                        :disable="!canInspectProviderModel"
-                        @click.stop="inspectCurrentProviderModel"
-                      />
-                    </template>
-                    <template #option="scope">
-                      <q-item v-bind="scope.itemProps">
-                        <q-item-section>
-                          <q-item-label>{{ scope.opt.label }}</q-item-label>
-                          <q-item-label caption>{{ scope.opt.caption }}</q-item-label>
-                        </q-item-section>
-                      </q-item>
-                    </template>
-                  </q-select>
-                  <q-input
-                    v-model="providerForm.provider_code"
-                    dense
-                    outlined
-                    label="Provider ID *"
-                    hint="厂商 ID（如 deepseek），勿填模型名；目录模式下为 models.dev 供应商 id"
-                    :readonly="providerAddMode === 'catalog'"
-                    :rules="[providerCodeRule]"
-                  />
-                  <q-banner
-                    v-if="providerRuntimeBindingPreview"
-                    dense
-                    rounded
-                    class="app-grid-span-full bg-info text-white text-caption"
-                  >
-                    {{ providerRuntimeBindingPreview }}
-                  </q-banner>
-                  <q-banner
-                    v-if="editingId && providerIdentityChanged"
-                    dense
-                    rounded
-                    class="app-grid-span-full app-banner-warning text-caption"
-                  >
-                    已修改 Provider ID 或模型 ID，保存前请点击模型旁的「检查」验证连通性。
-                  </q-banner>
-                  <q-input
-                    v-model="providerForm.provider_display_name"
-                    dense
-                    outlined
-                    label="供应商名称"
-                    :readonly="providerAddMode === 'catalog'"
-                    hint="来自 catalog 的 name 字段"
-                  />
-                  <q-input v-model="providerForm.model_display_name" dense outlined label="模型展示名" />
-                  <q-input
-                    v-model="providerForm.api_base_url"
-                    dense
-                    outlined
-                    label="API 基础 URL"
-                    placeholder="https://..."
-                  />
-                  <q-toggle v-model="providerForm.enabled" label="已启用" />
-                  <q-select
-                    v-if="!providerRuntimeLocked && providerForm.provider_type === 'openai'"
-                    v-model="providerForm.variant"
-                    dense
-                    outlined
-                    emit-value
-                    map-options
-                    label="Variant"
-                    :options="variantOptions"
-                  />
-                  <template v-if="currentAuthType === 'secret_id_key'">
-                    <q-input v-model="providerForm.secret_id" dense outlined label="Secret ID" />
-                    <q-input
-                      v-model="providerForm.secret_key"
-                      dense
-                      outlined
-                      :type="showSecretKey ? 'text' : 'password'"
-                      label="Secret Key"
-                      :hint="editingId ? '留空表示不修改' : undefined"
-                      :placeholder="secretKeyMaskedPlaceholder"
-                      :loading="revealingCredentials"
-                    >
-                      <template #append>
-                        <q-btn
-                          flat
-                          dense
-                          round
-                          :icon="showSecretKey ? 'visibility_off' : 'visibility'"
-                          :aria-label="showSecretKey ? '隐藏 Secret Key' : '显示 Secret Key'"
-                          :disable="revealingCredentials"
-                          @click="toggleSecretKeyVisibility"
-                        />
-                      </template>
-                    </q-input>
-                  </template>
-                  <q-input
-                    v-if="currentAuthType === 'aws_config'"
-                    v-model="providerForm.aws_region"
-                    dense
-                    outlined
-                    label="AWS Region"
-                    placeholder="us-east-1"
-                  />
-                </div>
-              </div>
+              <ProviderWizardStep1Connect
+                v-show="providerStep === 1"
+                :provider-form="providerForm"
+                :editing-id="editingId"
+                :provider-add-mode="providerAddMode"
+                :catalog-provider-search="catalogProviderSearch"
+                :catalog-provider-id="catalogProviderId"
+                :catalog-provider-hint="catalogProviderHint"
+                :catalog-provider-doc-url="catalogProviderDocUrl"
+                :catalog-provider-options="catalogProviderOptions"
+                :catalog-loading="catalogLoading"
+                :catalog-models-hint="catalogModelsHint"
+                :catalog-models-loading="catalogModelsLoading"
+                :provider-preset-key="providerPresetKey"
+                :provider-preset-options="providerPresetOptions"
+                :provider-runtime-locked="providerRuntimeLocked"
+                :provider-runtime-summary="providerRuntimeSummary"
+                :provider-type-options="providerTypeOptions"
+                :show-api-key="showApiKey"
+                :api-key-field-hint="apiKeyFieldHint"
+                :api-key-masked-placeholder="apiKeyMaskedPlaceholder"
+                :revealing-credentials="revealingCredentials"
+                :use-catalog-model-picker="useCatalogModelPicker"
+                :provider-model-options="providerModelOptions"
+                :provider-code-rule="providerCodeRule"
+                :provider-runtime-binding-preview="providerRuntimeBindingPreview"
+                :provider-identity-changed="providerIdentityChanged"
+                :variant-options="variantOptions"
+                :current-auth-type="currentAuthType"
+                :show-secret-key="showSecretKey"
+                :secret-key-masked-placeholder="secretKeyMaskedPlaceholder"
+                :can-inspect-provider-model="canInspectProviderModel"
+                :checking-model="checkingModel"
+                :filter-catalog-models-local="filterCatalogModelsLocal"
+                @update:provider-add-mode="setProviderAddMode($event === 'custom' ? 'custom' : 'catalog')"
+                @update:catalog-provider-search="
+                  catalogProviderSearch = $event;
+                  reloadCatalogProviders();
+                "
+                @update:catalog-provider-id="applyCatalogProvider($event)"
+                @update:provider-preset-key="applyProviderPreset($event)"
+                @toggle-api-key-visibility="toggleApiKeyVisibility"
+                @set-custom-model-value="setCustomModelValue"
+                @update:model-api-id="
+                  useCatalogModelPicker
+                    ? applyCatalogModel(String($event ?? ''))
+                    : applyModelPreset(String($event ?? ''))
+                "
+                @inspect-current-provider-model="inspectCurrentProviderModel"
+                @toggle-secret-key-visibility="toggleSecretKeyVisibility"
+              />
 
-              <div v-show="providerStep === 2" class="provider-wizard-panel">
-                <h3 class="provider-step-heading">模型规格</h3>
-                <p class="provider-step-hint">能力分类、上下文窗口、评级与价格快照。</p>
-                <div class="app-form-field-grid">
-                  <div class="section-label app-grid-span-full">模型分类（能力说明）</div>
-                  <q-select
-                    v-model="providerForm.model_category"
-                    class="app-grid-span-full"
-                    dense
-                    outlined
-                    multiple
-                    use-chips
-                    label="模型类型"
-                    :options="categoryOptions"
-                    option-label="label"
-                    option-value="value"
-                  >
-                    <template #option="scope">
-                      <q-item v-bind="scope.itemProps">
-                        <q-item-section>
-                          <q-item-label>{{ scope.opt.label }}</q-item-label>
-                          <q-item-label caption>{{ scope.opt.tooltip }}</q-item-label>
-                        </q-item-section>
-                      </q-item>
-                    </template>
-                  </q-select>
+              <ProviderWizardStep2Specs
+                v-show="providerStep === 2"
+                :provider-form="providerForm"
+                :provider-add-mode="providerAddMode"
+                :category-options="categoryOptions"
+                :catalog-pricing-missing="catalogPricingMissing"
+                :show-pricing-warning="showPricingWarning"
+                :pricing-warning-message="pricingWarningMessage"
+              />
 
-                  <q-input
-                    v-model="providerForm.model_size_label"
-                    dense
-                    outlined
-                    label="模型大小"
-                    placeholder="7B / 70B"
-                  />
-                  <q-input
-                    v-model.number="providerForm.context_window_k"
-                    dense
-                    outlined
-                    type="number"
-                    min="0"
-                    suffix="K"
-                    label="上下文大小"
-                    hint="单位 K，例如 128 表示 128K"
-                  />
-                  <q-input
-                    v-model.number="providerForm.max_output_tokens"
-                    dense
-                    outlined
-                    type="number"
-                    min="1"
-                    label="最大输出 Token"
-                    hint="长回复输出上限，默认 4096"
-                  />
-                  <q-input
-                    v-model.number="providerForm.model_rating"
-                    dense
-                    outlined
-                    type="number"
-                    min="1"
-                    max="100"
-                    label="模型评级"
-                    hint="越高表示认为模型越强"
-                  />
-                  <q-slider
-                    v-model="providerForm.model_rating"
-                    class="app-grid-span-full q-px-sm provider-rating-slider"
-                    :min="1"
-                    :max="100"
-                    label
-                  />
-                  <div class="section-label app-grid-span-full">目录能力标签</div>
-                  <div v-if="providerForm.capability_chips.length" class="app-grid-span-full q-gutter-xs">
-                    <q-chip
-                      v-for="chip in providerForm.capability_chips"
-                      :key="chip.key"
-                      dense
-                      square
-                      color="blue-grey-1"
-                      text-color="blue-grey-9"
-                    >
-                      {{ chip.label }}
-                    </q-chip>
-                  </div>
-                  <div v-else class="text-caption text-grey-7 app-grid-span-full q-mb-sm">
-                    从目录选择模型后自动填充；自定义模型可留空。
-                  </div>
+              <ProviderWizardStep3HA
+                v-show="providerStep === 3"
+                :provider-h-a-form="providerHAForm"
+                :ha-candidate-provider-type-options="haCandidateProviderTypeOptions"
+                @update:ha-form="updateHAForm"
+              />
 
-                  <div class="section-label app-grid-span-full">价格快照（USD / 1M tokens）</div>
-                  <q-banner
-                    v-if="providerAddMode === 'catalog' && catalogPricingMissing"
-                    dense
-                    rounded
-                    class="app-banner-warning app-grid-span-full q-mb-sm"
-                  >
-                    目录中该模型未提供定价（或尚未同步 models.dev）。请前往「系统设置 →
-                    模型目录」执行同步，或在此手动填写价格。
-                  </q-banner>
-                  <q-banner
-                    v-else-if="showPricingWarning"
-                    dense
-                    rounded
-                    class="app-banner-warning app-grid-span-full q-mb-sm"
-                  >
-                    {{ pricingWarningMessage() }}
-                  </q-banner>
-                  <q-input
-                    v-model.number="providerForm.input_price_usd_per_1m"
-                    dense
-                    outlined
-                    type="number"
-                    min="0"
-                    step="0.0001"
-                    label="输入价格"
-                  />
-                  <q-input
-                    v-model.number="providerForm.output_price_usd_per_1m"
-                    dense
-                    outlined
-                    type="number"
-                    min="0"
-                    step="0.0001"
-                    label="输出价格"
-                  />
-                  <q-input
-                    v-model.number="providerForm.cache_read_usd_per_1m"
-                    dense
-                    outlined
-                    type="number"
-                    min="0"
-                    step="0.0001"
-                    label="缓存读取价格"
-                  />
-                  <q-input
-                    v-model.number="providerForm.cache_write_usd_per_1m"
-                    dense
-                    outlined
-                    type="number"
-                    min="0"
-                    step="0.0001"
-                    label="缓存写入价格"
-                  />
-                  <q-input
-                    v-model.number="providerForm.reasoning_price_usd_per_1m"
-                    dense
-                    outlined
-                    type="number"
-                    min="0"
-                    step="0.0001"
-                    label="推理 Token 价格"
-                  />
-                  <q-input
-                    v-model.number="providerForm.embedding_price_usd_per_1m"
-                    dense
-                    outlined
-                    type="number"
-                    min="0"
-                    step="0.0001"
-                    label="Embedding 价格"
-                  />
-                  <q-input v-model.number="providerForm.sort_order" dense outlined type="number" label="排序" />
-                  <q-input
-                    v-model="providerForm.description"
-                    class="app-grid-span-full"
-                    dense
-                    outlined
-                    autogrow
-                    type="textarea"
-                    label="描述"
-                  />
-                </div>
-              </div>
-
-              <div v-show="providerStep === 3" class="provider-wizard-panel">
-                <h3 class="provider-step-heading">高可用</h3>
-                <p class="provider-step-hint">配置 failover 链路与备用 Provider。</p>
-                <ProviderHAConfig
-                  :model-value="providerHAForm"
-                  :provider-type-options="haCandidateProviderTypeOptions"
-                  @update:model-value="updateHAForm"
-                />
-              </div>
-
-              <div v-show="providerStep === 4" class="provider-wizard-panel">
-                <h3 class="provider-step-heading">高级选项</h3>
-                <p class="provider-step-hint">Token tailoring、缓存优化与速率限制。</p>
-                <div class="app-form-field-grid app-form-field-grid--2col">
-                  <q-toggle v-model="providerForm.enable_token_tailoring" label="Token Tailoring" />
-                  <q-toggle
-                    v-if="providerForm.provider_type === 'openai'"
-                    v-model="providerForm.optimize_for_cache"
-                    label="Prompt Cache 优化"
-                  />
-                  <q-toggle
-                    v-if="providerForm.provider_type === 'openai' && providerForm.variant === 'deepseek'"
-                    v-model="providerForm.reasoning_backfill"
-                    label="Reasoning 回填"
-                  />
-                  <q-toggle
-                    v-if="['openai', 'anthropic'].includes(providerForm.provider_type)"
-                    v-model="providerForm.show_tool_call_delta"
-                    label="Tool Call Delta"
-                  />
-                  <q-input
-                    v-model.number="providerForm.rate_limit_rpm"
-                    dense
-                    outlined
-                    type="number"
-                    min="0"
-                    label="速率限制 (RPM)"
-                  />
-                  <q-input
-                    v-if="providerForm.provider_type === 'ollama'"
-                    v-model.number="providerForm.keep_alive_minutes"
-                    dense
-                    outlined
-                    type="number"
-                    min="0"
-                    label="Keep Alive (分钟)"
-                  />
-                </div>
-              </div>
+              <ProviderWizardStep4Advanced v-show="providerStep === 4" :provider-form="providerForm" />
             </q-card-section>
           </div>
         </template>
@@ -743,9 +329,12 @@
 import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
-import ProviderHAConfig from '../components/platform/ProviderHAConfig.vue';
 import ProviderModelsTable from '../components/platform/ProviderModelsTable.vue';
 import ProviderTrendDialog from '../components/platform/ProviderTrendDialog.vue';
+import ProviderWizardStep1Connect from '../components/platform/ProviderWizardStep1Connect.vue';
+import ProviderWizardStep2Specs from '../components/platform/ProviderWizardStep2Specs.vue';
+import ProviderWizardStep3HA from '../components/platform/ProviderWizardStep3HA.vue';
+import ProviderWizardStep4Advanced from '../components/platform/ProviderWizardStep4Advanced.vue';
 import { useResourceManagerPage } from '../features/platform/useResourceManagerPage';
 
 const providerWizardSteps = [

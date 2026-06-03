@@ -19,7 +19,7 @@ func TestEvalCaseResultAnnotation(t *testing.T) {
 	if err := EnsureEvalSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	repo := NewEvalRepo(&Data{rawDB: db, lg: loggateway.NewNoop()}, loggateway.NewNoop())
+	repo := NewEvalRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop()}, loggateway.NewNoop())
 	runID := "run-1"
 	if err := repo.InsertCaseResult(ctx, biz.EvalCaseResult{
 		ID:     "res-1",

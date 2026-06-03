@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>行业模板库 · Direction C · 东方极简</title>
+  <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.7/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500&family=Noto+Serif+JP:wght@300;400&family=JetBrains+Mono:wght@300;400&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    :root {
+      --paper: #F7F3EB;
+      --paper-warm: #EFE9DD;
+      --paper-deep: #E8E0CF;
+      --ink: #1F1A14;
+      --ink-soft: #5C5145;
+      --ink-muted: #8A7F70;
+      --line: rgba(31, 26, 20, 0.12);
+      --line-soft: rgba(31, 26, 20, 0.06);
+      --accent: #8A6E3D;
+      --accent-soft: rgba(138, 110, 61, 0.08);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: var(--paper);
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      font-weight: 300;
+    }
+    /* Subtle paper texture (layered noise via gradients, no asset) */
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image:
+        radial-gradient(rgba(31, 26, 20, 0.012) 1px, transparent 1px),
+        radial-gradient(rgba(31, 26, 20, 0.008) 1px, transparent 1px);
+      background-size: 3px 3px, 5px 5px;
+      background-position: 0 0, 1.5px 1.5px;
+    }
+    /* A single vertical rule accent on the left edge (Kenya Hara signature) */
+    body::after {
+      content: ''; position: fixed; left: 32px; top: 0; bottom: 0; width: 1px; pointer-events: none; z-index: 0;
+      background: var(--line-soft);
+    }
+
+    .mono { font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace; font-feature-settings: 'tnum' 1; }
+    .serif { font-family: 'Fraunces', 'Source Serif Pro', 'Noto Serif JP', Georgia, serif; font-optical-sizing: auto; }
+    .ja { font-family: 'Noto Serif JP', 'Fraunces', serif; }
+    button { font-family: inherit; cursor: pointer; border: none; background: none; padding: 0; color: inherit; }
+    input { font-family: inherit; }
+
+    .app-shell { position: relative; z-index: 1; display: flex; min-height: 100vh; }
+    .sidebar {
+      width: 200px; flex-shrink: 0;
+      padding: 32px 24px;
+    }
+    .sidebar-brand {
+      display: flex; align-items: baseline; gap: 8px;
+      font-weight: 400; font-size: 14px; letter-spacing: 0.04em;
+      color: var(--ink);
+    }
+    .sidebar-brand-mark {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+    }
+    .sidebar-section { font-size: 10px; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-muted); padding: 32px 0 8px; }
+    .sidebar-item {
+      display: block;
+      padding: 6px 0; font-size: 13.5px; color: var(--ink-soft);
+      transition: color 0.12s;
+      border: none; background: none; text-align: left; width: 100%;
+    }
+    .sidebar-item:hover { color: var(--ink); }
+    .sidebar-item--active { color: var(--ink); font-weight: 400; }
+    .sidebar-item--active::before { content: '— '; color: var(--accent); margin-right: 2px; }
+
+    .main { flex: 1; min-width: 0; padding: 80px 96px 120px; max-width: 1200px; }
+
+    /* Page header — editorial, restrained */
+    .page-head { margin-bottom: 96px; }
+    .page-num { font-size: 11px; color: var(--ink-muted); letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 20px; }
+    .page-num span { color: var(--accent); }
+    .page-title {
+      font-family: 'Fraunces', serif;
+      font-size: clamp(36px, 4vw, 52px);
+      font-weight: 300;
+      letter-spacing: -0.025em;
+      line-height: 1.1;
+      margin: 0;
+      color: var(--ink);
+    }
+    .page-title em { font-style: italic; font-weight: 400; }
+    .page-rule { width: 32px; height: 1px; background: var(--accent); margin: 28px 0; }
+    .page-meta { display: flex; gap: 24px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-soft); }
+    .page-meta .item { display: flex; flex-direction: column; gap: 4px; }
+    .page-meta .item .k { font-size: 10px; color: var(--ink-muted); letter-spacing: 0.12em; text-transform: uppercase; }
+    .page-meta .item .v { font-family: 'Fraunces', serif; font-size: 18px; font-weight: 300; color: var(--ink); }
+    .page-actions { margin-top: 40px; display: flex; gap: 12px; align-items: center; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 20px; border-radius: 0;
+      font-size: 12.5px; font-weight: 400; letter-spacing: 0.04em;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
+    }
+    .btn-primary { background: var(--ink); color: var(--paper); border: 1px solid var(--ink); }
+    .btn-primary:hover { background: transparent; color: var(--ink); }
+    .btn-ghost { background: transparent; color: var(--ink-soft); border: 1px solid var(--line); }
+    .btn-ghost:hover { color: var(--ink); border-color: var(--ink); }
+
+    /* Section header (museum catalog style) */
+    .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 0 0 32px; }
+    .section-head h2 { font-family: 'Fraunces', serif; font-size: 16px; font-weight: 400; letter-spacing: 0.02em; margin: 0; }
+    .section-head h2 .ja { font-size: 13px; color: var(--ink-muted); margin-left: 12px; }
+    .section-head__count { font-size: 11px; color: var(--ink-muted); letter-spacing: 0.1em; text-transform: uppercase; }
+
+    /* Filter chips (underline style) */
+    .chips { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; margin-bottom: 48px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+    .chip {
+      font-size: 12.5px; color: var(--ink-muted); padding: 4px 0;
+      transition: color 0.12s;
+      position: relative;
+    }
+    .chip:hover { color: var(--ink-soft); }
+    .chip--active { color: var(--ink); font-weight: 500; }
+    .chip--active::after { content: ''; position: absolute; left: 0; right: 0; bottom: -17px; height: 1px; background: var(--accent); }
+    .chip__count { font-size: 10.5px; color: var(--ink-muted); margin-left: 4px; font-feature-settings: 'tnum' 1; }
+
+    /* Industry list (C: horizontal rows, museum specimen style) */
+    .ind-list { display: flex; flex-direction: column; }
+    .ind-row {
+      display: grid;
+      grid-template-columns: 60px 1fr auto;
+      gap: 32px;
+      align-items: start;
+      padding: 32px 0;
+      border-top: 1px solid var(--line-soft);
+      transition: padding 0.3s ease;
+      cursor: pointer;
+      position: relative;
+    }
+    .ind-row:first-child { border-top: 1px solid var(--line); }
+    .ind-row:last-child { border-bottom: 1px solid var(--line); }
+    .ind-row:hover { padding-left: 16px; padding-right: 16px; background: var(--paper-warm); }
+    .ind-row:hover .ind-num { color: var(--accent); }
+    .ind-row::before {
+      content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--accent);
+      transition: width 0.3s ease;
+    }
+    .ind-row:hover::before { width: 2px; }
+
+    .ind-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; color: var(--ink-muted); letter-spacing: 0.1em;
+      padding-top: 8px;
+    }
+
+    .ind-main { min-width: 0; }
+    .ind-name {
+      font-family: 'Fraunces', serif;
+      font-size: 32px;
+      font-weight: 300;
+      letter-spacing: -0.015em;
+      line-height: 1.1;
+      color: var(--ink);
+    }
+    .ind-key { font-size: 11.5px; color: var(--ink-muted); margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+    .ind-desc { font-size: 14px; color: var(--ink-soft); margin: 14px 0 0; line-height: 1.65; max-width: 48rem; }
+
+    .ind-meta {
+      display: flex; flex-direction: column; gap: 4px;
+      text-align: right;
+      padding-top: 4px;
+    }
+    .ind-meta__num { font-family: 'Fraunces', serif; font-size: 28px; font-weight: 300; line-height: 1; }
+    .ind-meta__lbl { font-size: 10px; color: var(--ink-muted); letter-spacing: 0.12em; text-transform: uppercase; }
+
+    /* Geometric specimen mark (single line drawing) */
+    .ind-mark {
+      position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+      width: 60px; height: 60px;
+      opacity: 0.6; transition: opacity 0.3s;
+    }
+    .ind-row:hover .ind-mark { opacity: 1; }
+
+    .ind-foot { padding: 24px 0; border-top: 1px solid var(--line); }
+    .ind-foot a { font-size: 12.5px; color: var(--ink-soft); margin-right: 24px; transition: color 0.12s; }
+    .ind-foot a:hover { color: var(--ink); }
+    .ind-foot a::after { content: ' →'; }
+    .ind-foot .more { color: var(--accent); }
+
+    /* CTA row */
+    .ind-row--cta { border-top: 1px solid var(--line); }
+    .ind-row--cta .ind-name { font-style: italic; color: var(--ink-soft); }
+    .ind-row--cta .ind-desc { color: var(--ink-muted); }
+    .ind-row--cta:hover .ind-name { color: var(--accent); }
+
+    /* Footer signature — single, restrained */
+    .signature {
+      margin-top: 120px; padding: 40px 0;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 32px;
+      color: var(--ink-muted); font-size: 11.5px; letter-spacing: 0.04em;
+      border-top: 1px solid var(--line);
+    }
+    .signature .quote {
+      font-family: 'Fraunces', serif; font-style: italic; color: var(--ink-soft);
+      font-size: 16px; line-height: 1.6;
+    }
+    .signature .quote::before { content: '「'; color: var(--accent); margin-right: 4px; }
+    .signature .quote::after { content: '」'; color: var(--accent); margin-left: 4px; }
+    .signature__meta { display: flex; flex-direction: column; gap: 6px; align-items: flex-end; text-align: right; }
+
+    /* Tweak */
+    .tweaks { position: fixed; bottom: 24px; right: 24px; z-index: 100; }
+    .tweaks-panel {
+      background: rgba(247, 243, 235, 0.92); backdrop-filter: blur(12px);
+      border: 1px solid var(--line); border-radius: 0;
+      padding: 12px 16px; box-shadow: 0 4px 18px rgba(31, 26, 20, 0.06);
+      font-size: 11px; color: var(--ink-soft);
+      max-width: 240px;
+    }
+    .tweaks-panel b { color: var(--ink); font-weight: 500; letter-spacing: 0.04em; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState } = React;
+
+    const INDUSTRIES = [
+      { num: '001', key: 'softwaredev', name: '软件开发', desc: '系统开发 / UE 游戏 / 全栈 / DevOps — 覆盖服务端、客户端、游戏、运维全栈岗位的工程师团队。', deptCount: 10, posCount: 45, agentCount: 96 },
+      { num: '002', key: 'selfmedia', name: '自媒体 · 内容创作', desc: '网文小说 / 短视频 / 图文 / 直播 — 内容创作全流程的编剧、剪辑、运营团队。', deptCount: 5, posCount: 28, agentCount: 54 },
+      { num: '003', key: 'finance', name: '金融 · 投资', desc: '证券研究 / 量化交易 / 固收 / 财富管理 — 研究、策略、交易、风控一体化的金融智能团队。', deptCount: 6, posCount: 32, agentCount: 58 },
+    ];
+
+    const NAV = [
+      { section: '', items: [
+        { key: 'overview', label: '总览' },
+        { key: 'monitor', label: '监控' },
+      ]},
+      { section: '配置', items: [
+        { key: 'agents', label: 'Agent' },
+        { key: 'teams', label: 'Team' },
+        { key: 'industries', label: '行业模板', active: true },
+        { key: 'taxonomy', label: '分类体系' },
+      ]},
+      { section: '能力', items: [
+        { key: 'tools', label: '工具' },
+        { key: 'skills', label: '技能' },
+        { key: 'knowledge', label: '知识库' },
+      ]},
+    ];
+
+    function Sidebar() {
+      return (
+        <aside className="sidebar">
+          <div className="sidebar-brand">
+            <div className="sidebar-brand-mark" />
+            <span>Aranea</span>
+          </div>
+          {NAV.map((sec) => (
+            <div key={sec.section || 'empty'}>
+              {sec.section && <div className="sidebar-section">{sec.section}</div>}
+              {sec.items.map((it) => (
+                <button key={it.key} className={'sidebar-item' + (it.active ? ' sidebar-item--active' : '')}>
+                  {it.label}
+                </button>
+              ))}
+            </div>
+          ))}
+        </aside>
+      );
+    }
+
+    // Tiny line-drawing specimens (no fill, single stroke — Kenya Hara)
+    function SpecimenMark({ key: k }) {
+      // 60x60 line drawing unique per industry
+      const stroke = 'var(--ink)';
+      const sw = 0.8;
+      if (k === 'softwaredev') {
+        // grid of dots (like a code editor)
+        return (
+          <svg className="ind-mark" viewBox="0 0 60 60" fill="none">
+            {Array.from({ length: 6 }).map((_, r) =>
+              Array.from({ length: 6 }).map((_, c) => (
+                <circle key={`${r}-${c}`} cx={6 + c * 9} cy={6 + r * 9} r={1.2} fill={stroke} />
+              ))
+            )}
+          </svg>
+        );
+      }
+      if (k === 'selfmedia') {
+        // 3 stacked rectangles
+        return (
+          <svg className="ind-mark" viewBox="0 0 60 60" fill="none">
+            <rect x="6" y="8" width="48" height="13" stroke={stroke} strokeWidth={sw} />
+            <rect x="6" y="24" width="48" height="13" stroke={stroke} strokeWidth={sw} />
+            <rect x="6" y="40" width="48" height="13" stroke={stroke} strokeWidth={sw} />
+            <line x1="11" y1="14.5" x2="20" y2="14.5" stroke={stroke} strokeWidth={sw} />
+            <line x1="11" y1="30.5" x2="20" y2="30.5" stroke={stroke} strokeWidth={sw} />
+            <line x1="11" y1="46.5" x2="20" y2="46.5" stroke={stroke} strokeWidth={sw} />
+          </svg>
+        );
+      }
+      if (k === 'finance') {
+        // 4 vertical bars of different heights
+        return (
+          <svg className="ind-mark" viewBox="0 0 60 60" fill="none">
+            <line x1="10" y1="48" x2="10" y2="32" stroke={stroke} strokeWidth={sw} />
+            <line x1="22" y1="48" x2="22" y2="20" stroke={stroke} strokeWidth={sw} />
+            <line x1="34" y1="48" x2="34" y2="28" stroke={stroke} strokeWidth={sw} />
+            <line x1="46" y1="48" x2="46" y2="14" stroke={stroke} strokeWidth={sw} />
+            <line x1="2" y1="48" x2="58" y2="48" stroke={stroke} strokeWidth={sw} />
+          </svg>
+        );
+      }
+      return null;
+    }
+
+    function IndustryRow({ ind, isLast }) {
+      return (
+        <div className="ind-row">
+          <div className="ind-num">No. {ind.num}</div>
+          <div className="ind-main">
+            <div className="ind-name">{ind.name}</div>
+            <div className="ind-key">/ {ind.key}</div>
+            <p className="ind-desc">{ind.desc}</p>
+            <div className="ind-foot">
+              <a href="#">查看部门</a>
+              <a href="#">查看 Prompt</a>
+              <a href="#" className="more">安装此行业</a>
+            </div>
+          </div>
+          <div className="ind-meta">
+            <div className="ind-meta__num">{ind.deptCount}</div>
+            <div className="ind-meta__lbl">部门</div>
+            <div className="ind-meta__num" style={{ marginTop: 14 }}>{ind.posCount}</div>
+            <div className="ind-meta__lbl">岗位</div>
+            <div className="ind-meta__num" style={{ marginTop: 14 }}>{ind.agentCount}</div>
+            <div className="ind-meta__lbl">Agent</div>
+          </div>
+          <SpecimenMark key={ind.key} />
+        </div>
+      );
+    }
+
+    function IndustryMarketPage() {
+      const [tab, setTab] = useState('all');
+      const totalAgents = INDUSTRIES.reduce((s, i) => s + i.agentCount, 0);
+      const totalDepts = INDUSTRIES.reduce((s, i) => s + i.deptCount, 0);
+      const totalPos = INDUSTRIES.reduce((s, i) => s + i.posCount, 0);
+      return (
+        <main className="main">
+          <div className="page-head">
+            <div className="page-num">Collection <span>·</span> 行业 / Industries · 2026 春</div>
+            <h1 className="page-title">选一行业，<em>得一团队</em>。</h1>
+            <div className="page-rule" />
+            <p style={{ maxWidth: '36rem', color: 'var(--ink-soft)', fontSize: 14, lineHeight: 1.7, margin: 0 }}>
+              每个行业是一个内置完整岗位级 Agent 团队的场景包。
+              选一个，按下安装，便拥有了它。
+            </p>
+            <div className="page-meta" style={{ marginTop: 32 }}>
+              <div className="item"><span className="k">已收录</span><span className="v">{INDUSTRIES.length}</span></div>
+              <div className="item"><span className="k">部门</span><span className="v">{totalDepts}</span></div>
+              <div className="item"><span className="k">岗位</span><span className="v">{totalPos}</span></div>
+              <div className="item"><span className="k">Agent</span><span className="v">{totalAgents}</span></div>
+            </div>
+            <div className="page-actions">
+              <button className="btn btn-primary">浏览全部行业</button>
+              <button className="btn btn-ghost">申请新行业</button>
+            </div>
+          </div>
+
+          <div className="section-head">
+            <h2>所有行业 <span className="ja">— 全ての業界</span></h2>
+            <div className="section-head__count">{INDUSTRIES.length} ITEMS · 3 OF 3 SHOWN</div>
+          </div>
+
+          <div className="chips">
+            {[
+              { k: 'all', l: '全部', n: 3 },
+              { k: 'system', l: '系统', n: 3 },
+              { k: 'custom', l: '自建', n: 0 },
+              { k: 'draft', l: '草稿', n: 0 },
+            ].map((c) => (
+              <button key={c.k} className={'chip' + (tab === c.k ? ' chip--active' : '')} onClick={() => setTab(c.k)}>
+                {c.l}<span className="chip__count mono">{c.n}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="ind-list">
+            {INDUSTRIES.map((ind) => <IndustryRow key={ind.key} ind={ind} />)}
+            <div className="ind-row ind-row--cta">
+              <div className="ind-num">No. 000</div>
+              <div className="ind-main">
+                <div className="ind-name">申请新行业</div>
+                <div className="ind-key">/ request</div>
+                <p className="ind-desc">没有你的行业？告诉我们你的业务场景，平台团队会评估并发布。</p>
+              </div>
+              <div className="ind-meta">
+                <a href="#" style={{ color: 'var(--accent)', fontSize: 12.5 }}>提交申请 →</a>
+              </div>
+            </div>
+          </div>
+
+          <div className="signature">
+            <div className="quote">克制即专业，<br />留白即信任。</div>
+            <div className="signature__meta">
+              <div>Aranea · Industry Template Library</div>
+              <div>2026 春 · 第三版</div>
+              <div>3 / 3 · 已收录</div>
+            </div>
+          </div>
+        </main>
+      );
+    }
+
+    function App() {
+      return (
+        <div className="app-shell">
+          <Sidebar />
+          <IndustryMarketPage />
+        </div>
+      );
+    }
+
+    function Tweaks() {
+      return (
+        <div className="tweaks">
+          <div className="tweaks-panel">
+            <b>Direction C</b> · 东方极简 (Kenya Hara / MUJI)
+            <br />博物馆标本陈列 · 衬线 + 极淡纸张纹理 · 留白即设计
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<><App /><Tweaks /></>);
+  </script>
+</body>
+</html>

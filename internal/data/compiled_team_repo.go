@@ -21,11 +21,18 @@ func NewCompiledTeamRepo(d *Data) biz.CompiledTeamRepo {
 	return &compiledTeamRepo{data: d}
 }
 
-func (r *compiledTeamRepo) db() *sql.DB {
+func (r *compiledTeamRepo) readDB(ctx context.Context) execer {
 	if r == nil || r.data == nil {
 		return nil
 	}
-	return r.data.RawDB()
+	return r.data.RWDB().ReadDB(ctx)
+}
+
+func (r *compiledTeamRepo) writeDB(ctx context.Context) execer {
+	if r == nil || r.data == nil {
+		return nil
+	}
+	return r.data.RWDB().WriteDB(ctx)
 }
 
 func compiledTeamRowID(teamID, graphID string) string {
@@ -33,7 +40,7 @@ func compiledTeamRowID(teamID, graphID string) string {
 }
 
 func (r *compiledTeamRepo) Save(ctx context.Context, teamID, graphID string, ct *biz.CompiledTeam) error {
-	db := r.db()
+	db := r.writeDB(ctx)
 	if db == nil {
 		return nil
 	}
@@ -64,7 +71,7 @@ VALUES (?, ?, ?, ?, ?, ?)`,
 }
 
 func (r *compiledTeamRepo) Load(ctx context.Context, teamID, graphID string) (*biz.CompiledTeam, error) {
-	db := r.db()
+	db := r.readDB(ctx)
 	if db == nil {
 		return nil, sql.ErrNoRows
 	}
@@ -72,9 +79,7 @@ func (r *compiledTeamRepo) Load(ctx context.Context, teamID, graphID string) (*b
 	graphID = strings.TrimSpace(graphID)
 	id := compiledTeamRowID(teamID, graphID)
 	var configJSON string
-	err := db.QueryRowContext(ctx,
-		`SELECT config_json FROM compiled_teams WHERE id = ? LIMIT 1`, id,
-	).Scan(&configJSON)
+	err := queryRowScan(ctx, db, `SELECT config_json FROM compiled_teams WHERE id = ? LIMIT 1`, []any{id}, &configJSON)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("compiled_team repo load: not found: %s", id)
@@ -89,7 +94,7 @@ func (r *compiledTeamRepo) Load(ctx context.Context, teamID, graphID string) (*b
 }
 
 func (r *compiledTeamRepo) Delete(ctx context.Context, teamID, graphID string) error {
-	db := r.db()
+	db := r.writeDB(ctx)
 	if db == nil {
 		return nil
 	}

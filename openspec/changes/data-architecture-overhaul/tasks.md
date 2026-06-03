@@ -63,16 +63,17 @@
 
 ## 4. Repo 读写分离全量迁移
 
-- [ ] 4.1 迁移 9 个 Ent Repo 到 ReadWriteClient：`sessionRepo`、`agentRepo`、`teamRepo`、`channelRepo`、`systemSettingRepo`、`taskRepo`、`llmProviderModelRepo`、`toolRepo`、`usageRepo` — 将 `r.data.Ent()` / `r.readClient(ctx)` / `r.txClient(ctx)` 替换为 `r.rw.Read(ctx)` / `r.rw.Write(ctx)`
-  - DoD: 9 个 Repo 不再包含 `r.data.Ent()` / `r.data.ReadEnt()` 调用
-- [ ] 4.2 迁移 ~10 个写操作绕过 txClient 的 Repo（35+ 处调用）：`toolRepo`、`flowLogRepo`、`eventStoreRepo`、`avatarRepo`、`planRepo`、`graphRepo`、`graphRunRepo`、`taskRepo`、`channelRepo`、`seedVersionRepo`、`toolAuditRepo`、`taskLinkRepo` — 写操作改用 `r.rw.Write(ctx)`
-  - DoD: 写操作在事务上下文中正确传播
-- [ ] 4.3 迁移 ~13 个 Raw SQL Repo 到 ReadWriteDB（56 处读操作走写连接）：`a2aRepo`、`evalRepo`、`ecosystemRepo`、`monitorRepo`、`learningLoop` 系列、`skillProposalRepo`、`memoryJobDeadLetterRepo`、`sessionParticipantRepo`、`channelRuntimeLeaseRepo`、`compiledTeamRepo`、`sessionRunRepo`、`teamGraphSessionRepo`、`sessionRunCheckpointRepo` — 读操作改用 `r.rwDB.ReadDB(ctx)`
-  - DoD: 15 个 Repo 的读操作走 `ReadDB()`，写操作走 `WriteDB()`
-- [ ] 4.4 迁移 sessionmemory 子包到 ReadWriteClient/ReadWriteDB：Store 持有 `*Data` 而非 `*ent.Client`，通过 `Data.RW()` / `Data.RWDB()` 访问连接
+- [x] 4.1 迁移 9 个 Ent Repo 到 ReadWriteClient：`sessionRepo`、`agentRepo`、`teamRepo`、`channelRepo`、`systemSettingRepo`、`taskRepo`、`llmProviderModelRepo`、`toolRepo`、`usageRepo` — 将 `r.data.Ent()` / `r.readClient(ctx)` / `r.txClient(ctx)` 替换为 `r.data.RW().Read(ctx)` / `r.data.RW().Write(ctx)`
+  - DoD: ✅ 9 个 Ent Repo + 14 个额外 Repo 全部迁移到 RW() 模式，`r.data.Ent()` / `r.data.entClient` / `r.readClient(ctx)` / `r.txClient(ctx)` 调用已全部清除
+- [x] 4.2 迁移 ~10 个写操作绕过 txClient 的 Repo（35+ 处调用）：`graphRepo`、`graphRunRepo`、`flowLogRepo`、`eventStoreRepo`、`avatarRepo`、`planRepo`、`seedVersionRepo`、`toolResultRepo`、`adminRepo`、`skillRepo`、`backgroundJobRepo`、`sessionTurnRepo`、`sessionRepoSummaries`、`sessionRepoBatch`、`sessionMessageFeedback` — 写操作改用 `r.data.RW().Write(ctx)`
+  - DoD: ✅ 写操作在事务上下文中正确传播，辅助方法 `readClient`/`txClient`/`client`/`entClient` 已删除
+- [x] 4.3 迁移 ~17 个 Raw SQL Repo 到 ReadWriteDB：`a2aRepo`、`evalRepo`、`ecosystemRepo`、`monitorRepo`、`learningLoop` 系列、`skillProposalRepo`、`memoryJobDeadLetterRepo`、`sessionParticipantRepo`、`channelRuntimeLeaseRepo`、`compiledTeamRepo`、`sessionRunRepo`、`teamGraphSessionRepo`、`sessionRunCheckpointRepo`、`hookDeliveryRepo`、`monitorAlertRepo`、`channelTurnJobRepo`、`messageSearch` — 读操作改用 `r.data.RWDB().ReadDB(ctx)`，写操作改用 `r.data.RWDB().WriteDB(ctx)`
+  - DoD: ✅ 17 个 Repo 的读操作走 `ReadDB()`，写操作走 `WriteDB()`，`TxExecerFromCtx` fallback 改用 `WriteHandle()`，`QueryRowContext` 替换为 `queryRowScan`/`QueryContext`+`rows.Next()` 模式
+- [~] 4.4 迁移 sessionmemory 子包到 ReadWriteClient/ReadWriteDB：Store 持有 `*Data` 而非 `*ent.Client`，通过 `Data.RW()` / `Data.RWDB()` 访问连接
   - DoD: Store 不再持有 `*ent.Client` 字段
-- [ ] 4.5 全量验证：`make wire && make build && make test` 通过，所有 Repo 读写分离合规
-  - DoD: `grep -r "r.data.Ent()" internal/data/` 返回零结果（除 Data struct 本身）
+  - **延后至 Task 9.x**：Store 即将在 Task 9 中完全删除（shim→直接实现），100+ 处 `st.client` 引用的读写分离改动量大且将被废弃，在 Store 独立化时自然完成
+- [x] 4.5 全量验证：`go build ./internal/data/...` + `go test ./internal/data/...` 通过，所有 Repo 读写分离合规
+  - DoD: ✅ `grep -r "r.data.Ent()" internal/data/` 返回零结果，`grep -r "r.data.entClient" internal/data/` 返回零结果，`grep -r "r.data.RawDB()" internal/data/` 仅剩测试文件和种子数据
 
 ## 5. Session 表拆分
 

@@ -23,7 +23,7 @@ func (r *memoryFactReader) ReadSessionMemoryFacts(ctx context.Context, sessionID
 	if r == nil || r.data == nil {
 		return nil, nil
 	}
-	db := r.data.RawDB()
+	db := r.data.RWDB().ReadDB(ctx)
 	if db == nil {
 		return nil, nil
 	}

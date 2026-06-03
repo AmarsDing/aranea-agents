@@ -87,7 +87,7 @@ func entToBizCronTaskRun(e *ent.CronTaskRun, taskName string) biz.CronTaskRun {
 }
 
 func (r *cronRepo) ListCronTasks(ctx context.Context) ([]biz.CronTask, error) {
-	rows, err := r.data.ReadClient(ctx).CronTask.Query().
+	rows, err := r.data.RW().Read(ctx).CronTask.Query().
 		Where(crontask.DeletedAtEQ("")).
 		Order(
 			crontask.BySortOrder(),
@@ -105,7 +105,7 @@ func (r *cronRepo) ListCronTasks(ctx context.Context) ([]biz.CronTask, error) {
 }
 
 func (r *cronRepo) GetCronTask(ctx context.Context, id string) (biz.CronTask, error) {
-	row, err := r.data.ReadClient(ctx).CronTask.Query().
+	row, err := r.data.RW().Read(ctx).CronTask.Query().
 		Where(crontask.IDEQ(id), crontask.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -123,7 +123,7 @@ func (r *cronRepo) CreateCronTask(ctx context.Context, t biz.CronTask) (biz.Cron
 		t.CreatedAt = now
 	}
 	t.UpdatedAt = now
-	saved, err := r.data.entClient.CronTask.Create().
+	saved, err := r.data.RW().Write(ctx).CronTask.Create().
 		SetID(t.ID).
 		SetTaskKey(t.TaskKey).
 		SetName(t.Name).
@@ -146,7 +146,7 @@ func (r *cronRepo) CreateCronTask(ctx context.Context, t biz.CronTask) (biz.Cron
 
 func (r *cronRepo) UpdateCronTask(ctx context.Context, t biz.CronTask) (biz.CronTask, error) {
 	t.UpdatedAt = nowRFC3339()
-	err := r.data.entClient.CronTask.UpdateOneID(t.ID).
+	err := r.data.RW().Write(ctx).CronTask.UpdateOneID(t.ID).
 		SetTaskKey(t.TaskKey).
 		SetName(t.Name).
 		SetDescription(t.Description).
@@ -166,7 +166,7 @@ func (r *cronRepo) UpdateCronTask(ctx context.Context, t biz.CronTask) (biz.Cron
 
 func (r *cronRepo) DeleteCronTask(ctx context.Context, id string) error {
 	now := nowRFC3339()
-	return r.data.entClient.CronTask.UpdateOneID(id).
+	return r.data.RW().Write(ctx).CronTask.UpdateOneID(id).
 		SetDeletedAt(now).
 		SetStatus("deleted").
 		SetUpdatedAt(now).
@@ -174,7 +174,7 @@ func (r *cronRepo) DeleteCronTask(ctx context.Context, id string) error {
 }
 
 func (r *cronRepo) GetCronTaskRun(ctx context.Context, id string) (biz.CronTaskRun, error) {
-	run, err := r.data.ReadClient(ctx).CronTaskRun.Query().
+	run, err := r.data.RW().Read(ctx).CronTaskRun.Query().
 		Where(crontaskrun.IDEQ(id)).
 		Only(ctx)
 	if err != nil {
@@ -199,7 +199,7 @@ func (r *cronRepo) ListCronTaskRuns(ctx context.Context, q biz.CronTaskRunQuery)
 	if limit > 500 {
 		limit = 500
 	}
-	query := r.data.ReadClient(ctx).CronTaskRun.Query().
+	query := r.data.RW().Read(ctx).CronTaskRun.Query().
 		Order(crontaskrun.ByCreatedAt(entsql.OrderDesc())).
 		Limit(limit)
 	if tid := strings.TrimSpace(q.TaskID); tid != "" {
@@ -224,7 +224,7 @@ func (r *cronRepo) ListCronTaskRuns(ctx context.Context, q biz.CronTaskRunQuery)
 		seen[run.TaskID] = struct{}{}
 		ids = append(ids, run.TaskID)
 	}
-	tasks, err := r.data.ReadClient(ctx).CronTask.Query().
+	tasks, err := r.data.RW().Read(ctx).CronTask.Query().
 		Where(crontask.IDIn(ids...)).
 		All(ctx)
 	if err != nil {
@@ -243,7 +243,7 @@ func (r *cronRepo) ListCronTaskRuns(ctx context.Context, q biz.CronTaskRunQuery)
 }
 
 func (r *cronRepo) InsertCronTaskRun(ctx context.Context, in biz.CronTaskRunInput) error {
-	_, err := r.data.entClient.CronTaskRun.Create().
+	_, err := r.data.RW().Write(ctx).CronTaskRun.Create().
 		SetID(in.ID).
 		SetTaskID(in.TaskID).
 		SetStatus(in.Status).
@@ -257,7 +257,7 @@ func (r *cronRepo) InsertCronTaskRun(ctx context.Context, in biz.CronTaskRunInpu
 }
 
 func (r *cronRepo) UpdateCronTaskRun(ctx context.Context, id, status, finishedAt, outputJSON, errorMessage string) error {
-	return r.data.entClient.CronTaskRun.UpdateOneID(id).
+	return r.data.RW().Write(ctx).CronTaskRun.UpdateOneID(id).
 		SetStatus(status).
 		SetFinishedAt(finishedAt).
 		SetOutputJSON(outputJSON).

@@ -41,7 +41,7 @@ func (r *monitorRepo) InsertAuditLog(ctx context.Context, entry biz.AuditLog) er
 	if strings.TrimSpace(entry.CreatedAt) == "" {
 		entry.CreatedAt = now
 	}
-	_, err := r.data.RawDB().ExecContext(ctx,
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`INSERT INTO audit_logs (id, action, resource, resource_id, request_id, detail, created_at, actor, ip, user_agent, severity, metadata_json)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, entry.Action, entry.Resource, entry.ResourceID, entry.RequestID, entry.Detail, entry.CreatedAt,
@@ -57,7 +57,7 @@ func (r *monitorRepo) InsertMonitorEvent(ctx context.Context, ev biz.MonitorEven
 	if status == "" {
 		status = "ok"
 	}
-	_, err := r.data.RawDB().ExecContext(ctx,
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`INSERT INTO monitor_events (id, event_key, name, description, status, metadata_json, created_at, updated_at, deleted_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, '')`,
 		id, ev.EventKey, ev.Name, ev.Description, status, ev.MetadataJSON, now, now,
@@ -88,11 +88,11 @@ func (r *monitorRepo) ListAuditLogs(ctx context.Context, query biz.AuditQuery) (
 	args = append(args, limit, offset)
 
 	var total int32
-	if err := r.data.RawDB().QueryRowContext(ctx, countSQL, args[:len(args)-2]...).Scan(&total); err != nil {
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), countSQL, args[:len(args)-2], &total); err != nil {
 		return biz.AuditListResult{}, err
 	}
 
-	rows, err := r.data.RawDB().QueryContext(ctx, listSQL, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, listSQL, args...)
 	if err != nil {
 		return biz.AuditListResult{}, err
 	}
@@ -167,11 +167,11 @@ func (r *monitorRepo) ListMonitorEvents(ctx context.Context, query biz.MonitorEv
 	listArgs := append(args, limit, offset)
 
 	var total int32
-	if err := r.data.RawDB().QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), countSQL, args, &total); err != nil {
 		return biz.MonitorListResult{}, err
 	}
 
-	rows, err := r.data.RawDB().QueryContext(ctx, listSQL, listArgs...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, listSQL, listArgs...)
 	if err != nil {
 		return biz.MonitorListResult{}, err
 	}
@@ -206,7 +206,7 @@ func monitorEventsWhere(q biz.MonitorEventsQuery) (string, []any) {
 }
 
 func (r *monitorRepo) GetMonitorEvent(ctx context.Context, id string) (biz.MonitorPlatformRow, error) {
-	rows, err := r.data.RawDB().QueryContext(ctx, sqlMonitorEventsGet, id)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlMonitorEventsGet, id)
 	if err != nil {
 		return biz.MonitorPlatformRow{}, err
 	}
@@ -233,11 +233,11 @@ func (r *monitorRepo) ListMonitorTraces(ctx context.Context, query biz.MonitorTr
 	listArgs := append(args, limit, offset)
 
 	var total int32
-	if err := r.data.RawDB().QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), countSQL, args, &total); err != nil {
 		return biz.MonitorListResult{}, err
 	}
 
-	rows, err := r.data.RawDB().QueryContext(ctx, listSQL, listArgs...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, listSQL, listArgs...)
 	if err != nil {
 		return biz.MonitorListResult{}, err
 	}
@@ -282,12 +282,11 @@ func (r *monitorRepo) ExistsRunnerCompletion(ctx context.Context, sessionID, inv
 		return false, nil
 	}
 	var n int
-	err := r.data.RawDB().QueryRowContext(ctx,
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
 		`SELECT COUNT(*) FROM monitor_events WHERE deleted_at = '' AND event_key = 'runner.completion'
 		 AND COALESCE(meta_session_id, json_extract(metadata_json, '$.session_id')) = ?
 		 AND COALESCE(meta_invocation_id, json_extract(metadata_json, '$.invocation_id')) = ?`,
-		sessionID, invocationID,
-	).Scan(&n)
+		[]any{sessionID, invocationID}, &n)
 	if err != nil {
 		return false, err
 	}
@@ -320,13 +319,13 @@ func (r *monitorRepo) PatchRunnerCompletionMetadata(ctx context.Context, session
 
 func (r *monitorRepo) patchRunnerCompletionByDualKey(ctx context.Context, sessionID, invocationID, runID, patchJSON string) (bool, error) {
 	var id, existing string
-	err := r.data.RawDB().QueryRowContext(ctx,
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
 		`SELECT id, metadata_json FROM monitor_events WHERE deleted_at = '' AND event_key = 'runner.completion'
 		 AND json_extract(metadata_json, '$.session_id') = ?
 		 AND json_extract(metadata_json, '$.invocation_id') = ?
 		 AND json_extract(metadata_json, '$.run_id') = ?
-		 ORDER BY created_at DESC LIMIT 1`, sessionID, invocationID, runID,
-	).Scan(&id, &existing)
+		 ORDER BY created_at DESC LIMIT 1`, []any{sessionID, invocationID, runID},
+		&id, &existing)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}
@@ -338,7 +337,7 @@ func (r *monitorRepo) patchRunnerCompletionByDualKey(ctx context.Context, sessio
 		return false, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	res, err := r.data.RawDB().ExecContext(ctx,
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`UPDATE monitor_events SET metadata_json = ?, updated_at = ? WHERE id = ?`,
 		merged, now, id,
 	)
@@ -360,7 +359,7 @@ func (r *monitorRepo) patchRunnerCompletionByKey(ctx context.Context, sessionID,
 		 AND json_extract(metadata_json, '$.session_id') = ?
 		 AND json_extract(metadata_json, '$.%s') = ?
 		 ORDER BY created_at DESC LIMIT 1`, jsonKey)
-	err := r.data.RawDB().QueryRowContext(ctx, query, sessionID, jsonValue).Scan(&id, &existing)
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), query, []any{sessionID, jsonValue}, &id, &existing)
 	if err == sql.ErrNoRows {
 		return false, nil
 	}
@@ -372,7 +371,7 @@ func (r *monitorRepo) patchRunnerCompletionByKey(ctx context.Context, sessionID,
 		return false, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	res, err := r.data.RawDB().ExecContext(ctx,
+	res, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`UPDATE monitor_events SET metadata_json = ?, updated_at = ? WHERE id = ?`,
 		merged, now, id,
 	)
@@ -407,7 +406,7 @@ func mergeJSONMetadata(lg loggateway.Logger, existing, patch string) (string, er
 }
 
 func (r *monitorRepo) GetMonitorTrace(ctx context.Context, id string) (biz.MonitorPlatformRow, error) {
-	rows, err := r.data.RawDB().QueryContext(ctx, sqlMonitorTracesGet, id)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlMonitorTracesGet, id)
 	if err != nil {
 		return biz.MonitorPlatformRow{}, err
 	}

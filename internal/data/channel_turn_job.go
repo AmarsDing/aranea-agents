@@ -20,7 +20,7 @@ func NewChannelTurnJobRepo(d *Data) biz.ChannelTurnJobRepo {
 }
 
 func (r *channelTurnJobRepo) Create(ctx context.Context, job biz.ChannelTurnJob) (string, error) {
-	db := r.data.RawDB()
+	db := r.data.RWDB().WriteDB(ctx)
 	if db == nil {
 		return strings.TrimSpace(job.ID), nil
 	}
@@ -64,7 +64,7 @@ ON CONFLICT(channel_id, idempotency_key) DO UPDATE SET
 }
 
 func (r *channelTurnJobRepo) UpdateStatus(ctx context.Context, id, status, errMsg, previewMsgID, contentPreview string) error {
-	db := r.data.RawDB()
+	db := r.data.RWDB().WriteDB(ctx)
 	if db == nil || strings.TrimSpace(id) == "" {
 		return nil
 	}
@@ -93,7 +93,7 @@ WHERE id=?`,
 }
 
 func (r *channelTurnJobRepo) UpdateAsyncTarget(ctx context.Context, id, targetType, targetID string) error {
-	db := r.data.RawDB()
+	db := r.data.RWDB().WriteDB(ctx)
 	if db == nil || strings.TrimSpace(id) == "" {
 		return nil
 	}
@@ -113,22 +113,29 @@ WHERE id=?`,
 }
 
 func (r *channelTurnJobRepo) GetByIdempotency(ctx context.Context, channelID, idempotencyKey string) (biz.ChannelTurnJob, error) {
-	db := r.data.RawDB()
+	db := r.data.RWDB().ReadDB(ctx)
 	if db == nil {
 		return biz.ChannelTurnJob{}, sql.ErrNoRows
 	}
-	row := db.QueryRowContext(ctx, `
+	rows, err := db.QueryContext(ctx, `
 SELECT id, channel_id, session_id, peer_id, peer_key, idempotency_key, status,
   preview_message_id, content_preview, async_target_type, async_target_id,
   error_message, started_at, finished_at, created_at, updated_at
 FROM channel_turn_job WHERE channel_id=? AND idempotency_key=? LIMIT 1`,
 		strings.TrimSpace(channelID), strings.TrimSpace(idempotencyKey),
 	)
-	return scanChannelTurnJob(row)
+	if err != nil {
+		return biz.ChannelTurnJob{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return biz.ChannelTurnJob{}, sql.ErrNoRows
+	}
+	return scanChannelTurnJobRows(rows)
 }
 
 func (r *channelTurnJobRepo) ListByChannel(ctx context.Context, channelID string, limit int) ([]biz.ChannelTurnJob, error) {
-	db := r.data.RawDB()
+	db := r.data.RWDB().ReadDB(ctx)
 	if db == nil {
 		return nil, nil
 	}
@@ -156,7 +163,7 @@ FROM channel_turn_job WHERE channel_id=? ORDER BY created_at DESC LIMIT ?`,
 }
 
 func (r *channelTurnJobRepo) ListFiltered(ctx context.Context, q biz.ChannelTurnJobListQuery) ([]biz.ChannelTurnJob, error) {
-	db := r.data.RawDB()
+	db := r.data.RWDB().ReadDB(ctx)
 	if db == nil {
 		return nil, nil
 	}
@@ -210,16 +217,6 @@ func scanChannelTurnJobListRow(rows *sql.Rows) (biz.ChannelTurnJob, error) {
 		&j.PreviewMessageID, &j.ContentPreview, &j.AsyncTargetType, &j.AsyncTargetID,
 		&j.ErrorMessage, &j.StartedAt, &j.FinishedAt, &j.CreatedAt, &j.UpdatedAt,
 		&j.AgentID, &j.GraphID,
-	)
-	return j, err
-}
-
-func scanChannelTurnJob(row *sql.Row) (biz.ChannelTurnJob, error) {
-	var j biz.ChannelTurnJob
-	err := row.Scan(
-		&j.ID, &j.ChannelID, &j.SessionID, &j.PeerID, &j.PeerKey, &j.IdempotencyKey, &j.Status,
-		&j.PreviewMessageID, &j.ContentPreview, &j.AsyncTargetType, &j.AsyncTargetID,
-		&j.ErrorMessage, &j.StartedAt, &j.FinishedAt, &j.CreatedAt, &j.UpdatedAt,
 	)
 	return j, err
 }

@@ -35,7 +35,7 @@ func (r *ecosystemRepo) ListProducts(ctx context.Context, q biz.EcosystemQuery) 
 	}
 	wsql := strings.Join(where, " AND ")
 	var total int32
-	if err := r.data.RawDB().QueryRowContext(ctx, `SELECT COUNT(*) FROM ecosystem_products WHERE `+wsql, args...).Scan(&total); err != nil {
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), `SELECT COUNT(*) FROM ecosystem_products WHERE `+wsql, args, &total); err != nil {
 		return biz.EcosystemListResult{}, err
 	}
 	limit := int(q.Limit)
@@ -46,7 +46,7 @@ func (r *ecosystemRepo) ListProducts(ctx context.Context, q biz.EcosystemQuery) 
 	if offset < 0 {
 		offset = 0
 	}
-	rows, err := r.data.RawDB().QueryContext(ctx, `
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, `
 SELECT id, name, display_name, description, type, author_id, version, price_model, price_cents,
        rating, install_count, config_json, status, created_at, updated_at
 FROM ecosystem_products WHERE `+wsql+` ORDER BY install_count DESC, created_at DESC LIMIT ? OFFSET ?`,
@@ -68,19 +68,26 @@ FROM ecosystem_products WHERE `+wsql+` ORDER BY install_count DESC, created_at D
 }
 
 func (r *ecosystemRepo) GetProduct(ctx context.Context, id string) (biz.EcosystemProduct, error) {
-	row := r.data.RawDB().QueryRowContext(ctx, `
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, `
 SELECT id, name, display_name, description, type, author_id, version, price_model, price_cents,
        rating, install_count, config_json, status, created_at, updated_at
 FROM ecosystem_products WHERE id = ? AND deleted_at = ''`, id)
-	p, err := scanProductRow(row)
-	if err == sql.ErrNoRows {
+	if err != nil {
+		return biz.EcosystemProduct{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
 		return biz.EcosystemProduct{}, fmt.Errorf("product not found")
 	}
-	return p, err
+	p, err := scanProduct(rows)
+	if err != nil {
+		return biz.EcosystemProduct{}, err
+	}
+	return p, rows.Err()
 }
 
 func (r *ecosystemRepo) CreateProduct(ctx context.Context, p biz.EcosystemProduct) (biz.EcosystemProduct, error) {
-	_, err := r.data.RawDB().ExecContext(ctx, `
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
 INSERT INTO ecosystem_products (id, name, display_name, description, type, author_id, version, price_model,
   price_cents, rating, install_count, config_json, status, created_at, updated_at, deleted_at)
 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'')`,
@@ -93,7 +100,7 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'')`,
 func (r *ecosystemRepo) RecordInstall(ctx context.Context, productID, refID string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		e := TxExecerFromCtx(txCtx, r.data.RawDB())
+		e := r.data.RWDB().WriteDB(txCtx)
 		if _, err := e.ExecContext(txCtx, `
 INSERT INTO ecosystem_installs (id, product_id, installed_ref_id, created_at, deleted_at)
 VALUES (?,?,?,?,'')`, refID, productID, refID, now); err != nil {
@@ -108,28 +115,21 @@ VALUES (?,?,?,?,'')`, refID, productID, refID, now); err != nil {
 
 func (r *ecosystemRepo) RemoveInstall(ctx context.Context, productID string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := r.data.RawDB().ExecContext(ctx, `
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
 UPDATE ecosystem_installs SET deleted_at = ? WHERE product_id = ? AND deleted_at = ''`, now, productID)
 	return err
 }
 
 func (r *ecosystemRepo) IsInstalled(ctx context.Context, productID string) (bool, error) {
 	var n int
-	err := r.data.RawDB().QueryRowContext(ctx, `
-SELECT COUNT(*) FROM ecosystem_installs WHERE product_id = ? AND deleted_at = ''`, productID).Scan(&n)
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), `
+SELECT COUNT(*) FROM ecosystem_installs WHERE product_id = ? AND deleted_at = ''`, []any{productID}, &n)
 	return n > 0, err
 }
 
 func scanProduct(rows *sql.Rows) (biz.EcosystemProduct, error) {
 	var p biz.EcosystemProduct
 	err := rows.Scan(&p.ID, &p.Name, &p.DisplayName, &p.Description, &p.Type, &p.AuthorID, &p.Version,
-		&p.PriceModel, &p.PriceCents, &p.Rating, &p.InstallCount, &p.ConfigJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt)
-	return p, err
-}
-
-func scanProductRow(row *sql.Row) (biz.EcosystemProduct, error) {
-	var p biz.EcosystemProduct
-	err := row.Scan(&p.ID, &p.Name, &p.DisplayName, &p.Description, &p.Type, &p.AuthorID, &p.Version,
 		&p.PriceModel, &p.PriceCents, &p.Rating, &p.InstallCount, &p.ConfigJSON, &p.Status, &p.CreatedAt, &p.UpdatedAt)
 	return p, err
 }

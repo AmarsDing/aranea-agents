@@ -17,8 +17,6 @@ import { flattenCategoryPositions, formatContext } from '../../components/agents
 import { buildAgentTableColumns } from '../../components/agents/agentTableUi';
 import { findTaxonomyPath, formatTaxonomyPath } from '../../features/platform/taxonomyTreeUtils';
 import { emitSessionMutation } from '../sessionSync';
-// TECH-DEBT: direct cross-store call for dependency data loading; consider event-based initialization
-import { useAvatarCatalogStore } from '../avatar';
 
 /** Agent 列表页：筛选、分页、依赖数据与列表 CRUD；Agent HTTP 经 features/agents/api（Kratos）。 */
 export const useAgentsPageStore = defineStore('agentsPage', () => {
@@ -88,8 +86,7 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
     categoryTree.value = treeRows;
     providerModels.value = providerRows;
     creatorOptions.value = [{ user_id: '', label: '所有创建者' }, ...creators];
-    const avatarCatalog = useAvatarCatalogStore();
-    await avatarCatalog.ensureAgentsCatalog();
+    emitSessionMutation({ type: 'agents_dependencies_loaded' });
   }
 
   async function removeListedAgent(id: string) {

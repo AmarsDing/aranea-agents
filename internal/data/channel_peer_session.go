@@ -42,7 +42,7 @@ func (r *channelPeerSessionRepo) GetByChannelAndPeer(ctx context.Context, channe
 	if channelID == "" {
 		return biz.ChannelPeerSession{}, sql.ErrNoRows
 	}
-	e, err := r.data.ReadClient(ctx).PlatformChannelPeerSession.Query().
+	e, err := r.data.RW().Read(ctx).PlatformChannelPeerSession.Query().
 		Where(
 			platformchannelpeersession.ChannelIDEQ(channelID),
 			platformchannelpeersession.PeerKeyEQ(peerKey),
@@ -63,7 +63,7 @@ func (r *channelPeerSessionRepo) UpdateSessionID(ctx context.Context, channelID,
 	if channelID == "" || sessionID == "" {
 		return biz.ChannelPeerSession{}, kerrors.BadRequest("CHANNEL_PEER_SESSION", "missing channel_id or session_id")
 	}
-	n, err := r.data.entClient.PlatformChannelPeerSession.Update().
+	n, err := r.data.RW().Write(ctx).PlatformChannelPeerSession.Update().
 		Where(
 			platformchannelpeersession.ChannelIDEQ(channelID),
 			platformchannelpeersession.PeerKeyEQ(peerKey),
@@ -89,7 +89,7 @@ func (r *channelPeerSessionRepo) Create(ctx context.Context, row biz.ChannelPeer
 		row.CreatedAt = now
 	}
 	row.UpdatedAt = now
-	e, err := r.data.entClient.PlatformChannelPeerSession.Create().
+	e, err := r.data.RW().Write(ctx).PlatformChannelPeerSession.Create().
 		SetID(row.ID).
 		SetChannelID(row.ChannelID).
 		SetPeerKey(row.PeerKey).
@@ -108,7 +108,7 @@ func (r *channelPeerSessionRepo) DeleteByChannelID(ctx context.Context, channelI
 	if channelID == "" {
 		return 0, nil
 	}
-	n, err := r.data.entClient.PlatformChannelPeerSession.Delete().
+	n, err := r.data.RW().Write(ctx).PlatformChannelPeerSession.Delete().
 		Where(platformchannelpeersession.ChannelIDEQ(channelID)).
 		Exec(ctx)
 	if err != nil {
@@ -123,7 +123,7 @@ func (r *channelPeerSessionRepo) DeleteBySessionID(ctx context.Context, sessionI
 	if sessionID == "" {
 		return 0, nil
 	}
-	n, err := r.data.entClient.PlatformChannelPeerSession.Delete().
+	n, err := r.data.RW().Write(ctx).PlatformChannelPeerSession.Delete().
 		Where(platformchannelpeersession.SessionIDEQ(sessionID)).
 		Exec(ctx)
 	if err != nil {

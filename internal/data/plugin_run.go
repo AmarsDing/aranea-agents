@@ -20,14 +20,14 @@ func NewPluginRunRepo(data *Data) biz.PluginRunRepo {
 }
 
 func (r *pluginRunRepo) Insert(ctx context.Context, run biz.PluginRun) error {
-	if r == nil || r.data == nil || r.data.RawDB() == nil {
+	if r == nil || r.data == nil || r.data.RWDB() == nil {
 		return nil
 	}
 	now := strings.TrimSpace(run.CreatedAt)
 	if now == "" {
 		now = time.Now().UTC().Format(time.RFC3339)
 	}
-	_, err := r.data.RawDB().ExecContext(ctx, `
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
 INSERT INTO plugin_runs (id, plugin_key, plugin_id, session_id, agent_id, callback_point, status, duration_ms, detail_json, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		run.ID, run.PluginKey, run.PluginID, run.SessionID, run.AgentID, run.CallbackPoint, run.Status, run.DurationMS, run.DetailJSON, now,
@@ -36,7 +36,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 }
 
 func (r *pluginRunRepo) List(ctx context.Context, q biz.PluginRunQuery) (biz.PluginRunListResult, error) {
-	if r == nil || r.data == nil || r.data.RawDB() == nil {
+	if r == nil || r.data == nil || r.data.RWDB() == nil {
 		return biz.PluginRunListResult{}, nil
 	}
 	limit := int(q.Limit)
@@ -90,11 +90,11 @@ func (r *pluginRunRepo) List(ctx context.Context, q biz.PluginRunQuery) (biz.Plu
 		args = append(args, k)
 	}
 	var total int32
-	if err := r.data.RawDB().QueryRowContext(ctx, "SELECT COUNT(*) FROM plugin_runs"+where, args...).Scan(&total); err != nil {
+	if err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), "SELECT COUNT(*) FROM plugin_runs"+where, args, &total); err != nil {
 		return biz.PluginRunListResult{}, err
 	}
 	listArgs := append(append([]any{}, args...), limit, offset)
-	rows, err := r.data.RawDB().QueryContext(ctx, `
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, `
 SELECT id, plugin_key, plugin_id, session_id, agent_id, callback_point, status, duration_ms, detail_json, created_at
 FROM plugin_runs`+where+` ORDER BY created_at DESC LIMIT ? OFFSET ?`, listArgs...)
 	if err != nil {

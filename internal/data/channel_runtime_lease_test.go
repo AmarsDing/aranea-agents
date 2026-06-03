@@ -21,7 +21,7 @@ func TestChannelRuntimeLeaseRepoAcquireRenewRelease(t *testing.T) {
 	if err := EnsureChannelRuntimeLeaseSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	repo := NewChannelRuntimeLeaseRepo(&Data{rawDB: db})
+	repo := NewChannelRuntimeLeaseRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db)})
 	now := time.Now().UTC()
 	lease := biz.NewChannelRuntimeLease("ch-1", "lark", "node-a", time.Minute, now)
 	claimed, err := repo.TryAcquireRuntimeLease(ctx, lease)

@@ -42,7 +42,7 @@ func entToBizMCP(e *ent.PlatformMCPServer) biz.MCPServer {
 }
 
 func (r *mcpServerRepo) ListMCPServers(ctx context.Context) ([]biz.MCPServer, error) {
-	rows, err := r.data.ReadClient(ctx).PlatformMCPServer.Query().
+	rows, err := r.data.RW().Read(ctx).PlatformMCPServer.Query().
 		Where(platformmcpserver.DeletedAtEQ("")).
 		Order(
 			platformmcpserver.BySortOrder(),
@@ -60,7 +60,7 @@ func (r *mcpServerRepo) ListMCPServers(ctx context.Context) ([]biz.MCPServer, er
 }
 
 func (r *mcpServerRepo) GetMCPServer(ctx context.Context, id string) (biz.MCPServer, error) {
-	row, err := r.data.ReadClient(ctx).PlatformMCPServer.Query().
+	row, err := r.data.RW().Read(ctx).PlatformMCPServer.Query().
 		Where(platformmcpserver.IDEQ(id), platformmcpserver.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -73,7 +73,7 @@ func (r *mcpServerRepo) GetMCPServer(ctx context.Context, id string) (biz.MCPSer
 }
 
 func (r *mcpServerRepo) GetMCPServerByKey(ctx context.Context, key string) (biz.MCPServer, error) {
-	row, err := r.data.ReadClient(ctx).PlatformMCPServer.Query().
+	row, err := r.data.RW().Read(ctx).PlatformMCPServer.Query().
 		Where(platformmcpserver.ServerKeyEQ(key), platformmcpserver.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -86,7 +86,7 @@ func (r *mcpServerRepo) GetMCPServerByKey(ctx context.Context, key string) (biz.
 }
 
 func (r *mcpServerRepo) UpdateMCPServerMetadata(ctx context.Context, id string, metadataJSON string, status string) error {
-	update := r.data.entClient.PlatformMCPServer.UpdateOneID(id).
+	update := r.data.RW().Write(ctx).PlatformMCPServer.UpdateOneID(id).
 		SetMetadataJSON(metadataJSON).
 		SetUpdatedAt(nowRFC3339())
 	if status != "" {
@@ -101,7 +101,7 @@ func (r *mcpServerRepo) CreateMCPServer(ctx context.Context, m biz.MCPServer) (b
 		m.CreatedAt = now
 	}
 	m.UpdatedAt = now
-	saved, err := r.data.entClient.PlatformMCPServer.Create().
+	saved, err := r.data.RW().Write(ctx).PlatformMCPServer.Create().
 		SetID(m.ID).
 		SetServerKey(m.Key).
 		SetName(m.Name).
@@ -123,7 +123,7 @@ func (r *mcpServerRepo) CreateMCPServer(ctx context.Context, m biz.MCPServer) (b
 
 func (r *mcpServerRepo) UpdateMCPServer(ctx context.Context, m biz.MCPServer) (biz.MCPServer, error) {
 	m.UpdatedAt = nowRFC3339()
-	err := r.data.entClient.PlatformMCPServer.UpdateOneID(m.ID).
+	err := r.data.RW().Write(ctx).PlatformMCPServer.UpdateOneID(m.ID).
 		SetServerKey(m.Key).
 		SetName(m.Name).
 		SetDescription(m.Description).
@@ -142,7 +142,7 @@ func (r *mcpServerRepo) UpdateMCPServer(ctx context.Context, m biz.MCPServer) (b
 
 func (r *mcpServerRepo) DeleteMCPServer(ctx context.Context, id string) error {
 	now := nowRFC3339()
-	return r.data.entClient.PlatformMCPServer.UpdateOneID(id).
+	return r.data.RW().Write(ctx).PlatformMCPServer.UpdateOneID(id).
 		SetDeletedAt(now).
 		SetStatus("deleted").
 		SetUpdatedAt(now).

@@ -110,8 +110,13 @@ func validateDependencies(ctx context.Context, p *Pack, repo ValidatorRepo, resu
 	// Skill 依赖
 	for _, slug := range p.Manifest.Dependencies.Skills {
 		exists, err := repo.SkillExists(ctx, slug)
-		if err == nil && !exists {
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("Skill %s 存在性检查失败: %v", slug, err))
+			continue
+		}
+		if !exists {
 			result.MissingSkills = append(result.MissingSkills, slug)
+			result.Valid = false
 		}
 	}
 

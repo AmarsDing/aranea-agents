@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +17,7 @@ var eventSchemaOnce sync.Once
 func (r *monitorRepo) EnsureTraceSchema(ctx context.Context) error {
 	var firstErr error
 	traceSchemaOnce.Do(func() {
-		db := r.data.RawDB()
+		db := r.data.RWDB().WriteDB(ctx)
 		patches := []struct {
 			table string
 			col   string
@@ -80,7 +79,7 @@ CREATE TABLE IF NOT EXISTS monitor_trace_spans (
 	})
 
 	eventSchemaOnce.Do(func() {
-		db := r.data.RawDB()
+		db := r.data.RWDB().WriteDB(ctx)
 		eventPatches := []struct {
 			table string
 			col   string
@@ -120,7 +119,7 @@ CREATE TABLE IF NOT EXISTS monitor_trace_spans (
 	return firstErr
 }
 
-func columnExists(ctx context.Context, db *sql.DB, table, column string) (bool, error) {
+func columnExists(ctx context.Context, db execer, table, column string) (bool, error) {
 	rows, err := db.QueryContext(ctx, "SELECT 1 FROM pragma_table_info(?) WHERE name = ? LIMIT 1", table, column)
 	if err != nil {
 		return false, err
@@ -139,7 +138,7 @@ func (r *monitorRepo) InsertMonitorTrace(ctx context.Context, tw biz.MonitorTrac
 		status = "running"
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := r.data.RawDB().ExecContext(ctx,
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`INSERT OR IGNORE INTO monitor_traces
 		 (id, trace_key, name, description, status, metadata_json, created_at, updated_at, deleted_at,
 		  session_id, run_id, invocation_id, agent_id, team_id, parent_trace_id,
@@ -153,7 +152,7 @@ func (r *monitorRepo) InsertMonitorTrace(ctx context.Context, tw biz.MonitorTrac
 }
 
 func (r *monitorRepo) UpsertMonitorTraceSpan(ctx context.Context, sw biz.MonitorTraceSpanWrite) error {
-	_, err := r.data.RawDB().ExecContext(ctx,
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`INSERT INTO monitor_trace_spans (trace_id, span_id, parent_span_id, kind, name, started_at, ended_at, status, attributes_json, error_json)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(trace_id, span_id) DO UPDATE SET
@@ -173,7 +172,7 @@ func (r *monitorRepo) UpdateMonitorTraceCompletion(ctx context.Context, traceID 
 		return nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := r.data.RawDB().ExecContext(ctx,
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`UPDATE monitor_traces SET status = ?, duration_ms = ?, span_count = ?, error_count = ?,
 		 total_tokens = ?, total_cost_usd = ?, updated_at = ?
 		 WHERE id = ? AND deleted_at = ''`,
@@ -187,7 +186,7 @@ func (r *monitorRepo) ListRecentRunnerCompletions(ctx context.Context, since tim
 		limit = 1000
 	}
 	sinceStr := time.Now().UTC().Add(-since).Format(time.RFC3339)
-	rows, err := r.data.RawDB().QueryContext(ctx,
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
 		`SELECT COALESCE(meta_trace_id, json_extract(metadata_json, '$.trace_id'), '') AS trace_id,
 		        COALESCE(meta_session_id, json_extract(metadata_json, '$.session_id'), event_key) AS session_id,
 		        COALESCE(json_extract(metadata_json, '$.run_id'), '') AS run_id,

@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aranea-Agents 日志管线架构</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --c-gateway:#6366F1;--c-pipeline:#0EA5E9;--c-sinkgroup:#8B5CF6;
+  --c-file:#10B981;--c-stdout:#F59E0B;--c-eventbus:#EF4444;
+  --c-adapter:#EC4899;--c-flow:#F97316;--c-bus:#64748B;
+  --bg:#0F172A;--surface:#1E293B;--surface2:#334155;--text:#E2E8F0;--text2:#94A3B8;--text3:#64748B;
+  --mono:'Cascadia Code','Fira Code','SF Mono',Consolas,monospace;
+  --sans:'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+html{font-size:13px;background:var(--bg);color:var(--text);font-family:var(--sans)}
+body{min-height:100vh;padding:2rem 3rem}
+
+.page-title{font-size:1.8rem;font-weight:700;letter-spacing:-0.03em;margin-bottom:.25rem}
+.page-sub{font-size:.85rem;color:var(--text2);margin-bottom:2.5rem;font-family:var(--mono)}
+
+/* Pipeline flow */
+.pipeline-flow{display:flex;align-items:flex-start;gap:0;margin-bottom:3rem;position:relative}
+.stage{flex:1;min-width:0}
+.stage-header{padding:.6rem 1rem;border-radius:6px 6px 0 0;font-weight:700;font-size:.95rem;letter-spacing:.02em;display:flex;align-items:center;gap:.5rem}
+.stage-header .tag{font-size:.65rem;font-family:var(--mono);opacity:.7;font-weight:400}
+.stage-body{background:var(--surface);border-radius:0 0 6px 6px;padding:1rem;border:1px solid rgba(255,255,255,.06);border-top:none}
+.stage-body code{font-family:var(--mono);font-size:.75rem;color:var(--text2)}
+
+.arrow-col{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:60px;padding-top:2.5rem}
+.arrow-col svg{filter:drop-shadow(0 0 4px rgba(255,255,255,.1))}
+
+/* Detail items */
+.detail-list{list-style:none;display:flex;flex-direction:column;gap:.35rem}
+.detail-list li{font-size:.78rem;color:var(--text2);display:flex;gap:.4rem;line-height:1.4}
+.detail-list li::before{content:'';display:inline-block;width:4px;height:4px;border-radius:50%;margin-top:.45rem;flex-shrink:0}
+.detail-list li .fn{font-family:var(--mono);color:var(--text);font-size:.72rem}
+
+/* Colors per stage */
+.s-gateway .stage-header{background:var(--c-gateway)}
+.s-gateway .detail-list li::before{background:var(--c-gateway)}
+.s-pipeline .stage-header{background:var(--c-pipeline)}
+.s-pipeline .detail-list li::before{background:var(--c-pipeline)}
+.s-sinkgroup .stage-header{background:var(--c-sinkgroup)}
+.s-sinkgroup .detail-list li::before{background:var(--c-sinkgroup)}
+
+/* Sinks row */
+.sinks-row{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:2.5rem}
+.sink-card{background:var(--surface);border:1px solid rgba(255,255,255,.06);border-radius:6px;overflow:hidden}
+.sink-card-header{padding:.5rem .8rem;font-weight:600;font-size:.82rem;display:flex;align-items:center;gap:.4rem}
+.sink-card-header .dot{width:8px;height:8px;border-radius:50%}
+.sink-card-body{padding:.6rem .8rem .8rem}
+.sink-card-body ul{list-style:none;display:flex;flex-direction:column;gap:.25rem}
+.sink-card-body li{font-size:.72rem;color:var(--text2);font-family:var(--mono);line-height:1.35}
+
+.sink-file .sink-card-header{color:var(--c-file)}.sink-file .dot{background:var(--c-file)}
+.sink-stdout .sink-card-header{color:var(--c-stdout)}.sink-stdout .dot{background:var(--c-stdout)}
+.sink-eventbus .sink-card-header{color:var(--c-eventbus)}.sink-eventbus .dot{background:var(--c-eventbus)}
+
+/* Circuit breaker */
+.circuit-breaker{background:var(--surface);border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:1.2rem;margin-bottom:2.5rem}
+.cb-title{font-size:.85rem;font-weight:600;color:var(--c-eventbus);margin-bottom:1rem}
+.cb-states{display:flex;align-items:center;justify-content:center;gap:0;flex-wrap:nowrap}
+.cb-state{padding:.5rem 1rem;border-radius:4px;font-size:.78rem;font-weight:600;text-align:center;min-width:80px}
+.cb-state.closed{background:rgba(16,185,129,.15);color:#10B981;border:1px solid rgba(16,185,129,.3)}
+.cb-state.open{background:rgba(239,68,68,.15);color:#EF4444;border:1px solid rgba(239,68,68,.3)}
+.cb-state.halfopen{background:rgba(245,158,11,.15);color:#F59E0B;border:1px solid rgba(245,158,11,.3)}
+.cb-transition{display:flex;flex-direction:column;align-items:center;gap:.15rem;min-width:60px}
+.cb-transition svg{flex-shrink:0}
+.cb-transition span{font-size:.6rem;color:var(--text3);font-family:var(--mono);white-space:nowrap}
+
+/* Bottom grid */
+.bottom-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-bottom:2rem}
+.panel{background:var(--surface);border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:1rem 1.2rem}
+.panel-title{font-size:.85rem;font-weight:600;margin-bottom:.7rem;display:flex;align-items:center;gap:.4rem}
+.panel-title .dot{width:8px;height:8px;border-radius:50%}
+.panel ul{list-style:none;display:flex;flex-direction:column;gap:.3rem}
+.panel li{font-size:.75rem;color:var(--text2);line-height:1.4}
+.panel li code{font-family:var(--mono);color:var(--text);font-size:.7rem;background:rgba(255,255,255,.05);padding:.1rem .3rem;border-radius:3px}
+
+.p-adapter .panel-title{color:var(--c-adapter)}.p-adapter .dot{background:var(--c-adapter)}
+.p-flow .panel-title{color:var(--c-flow)}.p-flow .dot{background:var(--c-flow)}
+.p-bus .panel-title{color:var(--c-bus)}.p-bus .dot{background:var(--c-bus)}
+
+/* Bus routing table */
+.bus-table{width:100%;border-collapse:collapse;font-size:.72rem;font-family:var(--mono)}
+.bus-table th{text-align:left;color:var(--text3);font-weight:500;padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.08)}
+.bus-table td{padding:.3rem .5rem;color:var(--text2);border-bottom:1px solid rgba(255,255,255,.04)}
+.bus-table .tag{display:inline-block;padding:.1rem .35rem;border-radius:3px;font-size:.62rem;font-weight:600}
+.tag-session{background:rgba(99,102,241,.15);color:#818CF8}
+.tag-monitor{background:rgba(14,165,233,.15);color:#38BDF8}
+.tag-both{background:rgba(139,92,246,.15);color:#A78BFA}
+
+/* Field tags */
+.field-grid{display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.4rem}
+.field-tag{font-family:var(--mono);font-size:.62rem;padding:.15rem .4rem;border-radius:3px;background:rgba(99,102,241,.1);color:#A5B4FC;border:1px solid rgba(99,102,241,.2)}
+
+/* Backpressure */
+.bp-flow{display:flex;align-items:center;gap:.5rem;margin-top:.5rem}
+.bp-step{padding:.3rem .6rem;border-radius:3px;font-size:.68rem;font-family:var(--mono);text-align:center}
+.bp-step.bp-closed{background:rgba(239,68,68,.12);color:#FCA5A5;border:1px solid rgba(239,68,68,.2)}
+.bp-step.bp-throttle{background:rgba(245,158,11,.12);color:#FCD34D;border:1px solid rgba(245,158,11,.2)}
+.bp-step.bp-full{background:rgba(239,68,68,.12);color:#FCA5A5;border:1px solid rgba(239,68,68,.2)}
+.bp-arrow{color:var(--text3);font-size:.7rem}
+
+/* Animations */
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.pipeline-flow .stage:nth-child(1){animation:fadeUp .5s ease both}
+.pipeline-flow .arrow-col:nth-child(2){animation:fadeUp .5s ease .1s both}
+.pipeline-flow .stage:nth-child(3){animation:fadeUp .5s ease .2s both}
+.pipeline-flow .arrow-col:nth-child(4){animation:fadeUp .5s ease .3s both}
+.pipeline-flow .stage:nth-child(5){animation:fadeUp .5s ease .4s both}
+.sinks-row .sink-card:nth-child(1){animation:fadeUp .5s ease .5s both}
+.sinks-row .sink-card:nth-child(2){animation:fadeUp .5s ease .6s both}
+.sinks-row .sink-card:nth-child(3){animation:fadeUp .5s ease .7s both}
+.circuit-breaker{animation:fadeUp .5s ease .8s both}
+.bottom-grid .panel:nth-child(1){animation:fadeUp .5s ease .9s both}
+.bottom-grid .panel:nth-child(2){animation:fadeUp .5s ease 1s both}
+.bottom-grid .panel:nth-child(3){animation:fadeUp .5s ease 1.1s both}
+.bottom-grid .panel:nth-child(4){animation:fadeUp .5s ease 1.2s both}
+
+@media(max-width:900px){
+  body{padding:1rem}
+  .pipeline-flow{flex-direction:column}
+  .arrow-col{min-width:auto;padding:0;transform:rotate(90deg)}
+  .sinks-row{grid-template-columns:1fr}
+  .bottom-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="page-title">Aranea-Agents 日志管线架构</div>
+<div class="page-sub">loggateway.Gateway &rarr; logpipeline.Pipeline &rarr; SinkGroup &rarr; Sink</div>
+
+<!-- ═══ Main Pipeline Flow ═══ -->
+<div class="pipeline-flow">
+  <!-- Stage 1: Gateway -->
+  <div class="stage s-gateway">
+    <div class="stage-header">loggateway.Gateway <span class="tag">调用方入口</span></div>
+    <div class="stage-body">
+      <ul class="detail-list">
+        <li><span class="fn">Logger</span> 接口: Debug / Info / Warn / Error</li>
+        <li><span class="fn">With(fields)</span> 子 logger 预设字段链式追加</li>
+        <li><span class="fn">emitToPipeline</span> 序列化 Fields &rarr; 构造 LogEntry &rarr; pipeline.Emit</li>
+        <li><span class="fn">noopLogger</span> 空实现，静默丢弃</li>
+      </ul>
+      <div style="margin-top:.6rem">
+        <div style="font-size:.68rem;color:var(--text3);margin-bottom:.3rem">Field 类型</div>
+        <div class="field-grid">
+          <span class="field-tag">StepID</span><span class="field-tag">SessionID</span>
+          <span class="field-tag">TraceID</span><span class="field-tag">RunID</span>
+          <span class="field-tag">Domain</span><span class="field-tag">AgentKey</span>
+          <span class="field-tag">Phase</span><span class="field-tag">Duration</span>
+          <span class="field-tag">Err</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Arrow 1 -->
+  <div class="arrow-col">
+    <svg width="40" height="20" viewBox="0 0 40 20"><path d="M0 10 L30 10" stroke="#6366F1" stroke-width="2" fill="none"/><path d="M28 5 L36 10 L28 15" stroke="#6366F1" stroke-width="2" fill="none"/></svg>
+  </div>
+
+  <!-- Stage 2: Pipeline -->
+  <div class="stage s-pipeline">
+    <div class="stage-header">logpipeline.Pipeline <span class="tag">异步管道</span></div>
+    <div class="stage-body">
+      <ul class="detail-list">
+        <li>主 channel 缓冲=<span class="fn">4096</span></li>
+        <li><span class="fn">dispatchLoop</span> 独立 goroutine 消费</li>
+      </ul>
+      <div style="margin-top:.6rem">
+        <div style="font-size:.68rem;color:var(--text3);margin-bottom:.3rem">3 级背压策略</div>
+        <div class="bp-flow">
+          <div class="bp-step bp-closed">closed &rarr; dropped</div>
+          <span class="bp-arrow">&rarr;</span>
+          <div class="bp-step bp-throttle">throttler &rarr; throttled</div>
+          <span class="bp-arrow">&rarr;</span>
+          <div class="bp-step bp-full">channel 满 &rarr; dropped</div>
+        </div>
+      </div>
+      <div style="margin-top:.6rem">
+        <div style="font-size:.68rem;color:var(--text3);margin-bottom:.25rem">令牌桶限流</div>
+        <ul class="detail-list">
+          <li><span class="fn">stepThrottler</span> 按 step_id 前缀匹配</li>
+          <li><span class="fn">ThrottleRule{Prefix, MaxPerSec}</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Arrow 2 -->
+  <div class="arrow-col">
+    <svg width="40" height="20" viewBox="0 0 40 20"><path d="M0 10 L30 10" stroke="#0EA5E9" stroke-width="2" fill="none"/><path d="M28 5 L36 10 L28 15" stroke="#0EA5E9" stroke-width="2" fill="none"/></svg>
+  </div>
+
+  <!-- Stage 3: SinkGroup -->
+  <div class="stage s-sinkgroup">
+    <div class="stage-header">SinkGroup <span class="tag">隔离输出</span></div>
+    <div class="stage-body">
+      <ul class="detail-list">
+        <li>每个 Sink 独立 SinkGroup 隔离</li>
+        <li>独立 goroutine + 独立 channel</li>
+        <li><span class="fn">DropPolicy</span>: DropNewest(默认) / DropBlock</li>
+        <li>Panic recovery 自动恢复</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Sinks ═══ -->
+<div class="sinks-row">
+  <div class="sink-card sink-file">
+    <div class="sink-card-header"><span class="dot"></span>FileSink</div>
+    <div class="sink-card-body">
+      <ul>
+        <li>zap JSON 编码</li>
+        <li>lumberjack 日志轮转</li>
+        <li>按大小/日期自动切割</li>
+        <li>持久化落盘存储</li>
+      </ul>
+    </div>
+  </div>
+  <div class="sink-card sink-stdout">
+    <div class="sink-card-header"><span class="dot"></span>StdoutSink</div>
+    <div class="sink-card-body">
+      <ul>
+        <li>JSON &rarr; stdout 输出</li>
+        <li>级别过滤 LevelFilter</li>
+        <li>开发环境调试用</li>
+        <li>零持久化开销</li>
+      </ul>
+    </div>
+  </div>
+  <div class="sink-card sink-eventbus">
+    <div class="sink-card-header"><span class="dot"></span>EventBusSink</div>
+    <div class="sink-card-body">
+      <ul>
+        <li>Publisher &rarr; EventBus</li>
+        <li>断路器保护 (CircuitBreaker)</li>
+        <li>失败自动熔断隔离</li>
+        <li>半开探测恢复机制</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Circuit Breaker ═══ -->
+<div class="circuit-breaker">
+  <div class="cb-title">断路器状态机 &mdash; EventBusSink 保护</div>
+  <div class="cb-states">
+    <div class="cb-state closed">Closed<br><span style="font-size:.6rem;font-weight:400;opacity:.7">正常通过</span></div>
+    <div class="cb-transition">
+      <svg width="50" height="14" viewBox="0 0 50 14"><path d="M0 7 L40 7" stroke="#EF4444" stroke-width="1.5" fill="none"/><path d="M38 3 L44 7 L38 11" stroke="#EF4444" stroke-width="1.5" fill="none"/></svg>
+      <span>5 次失败</span>
+    </div>
+    <div class="cb-state open">Open<br><span style="font-size:.6rem;font-weight:400;opacity:.7">熔断拒绝</span></div>
+    <div class="cb-transition">
+      <svg width="50" height="14" viewBox="0 0 50 14"><path d="M0 7 L40 7" stroke="#F59E0B" stroke-width="1.5" fill="none"/><path d="M38 3 L44 7 L38 11" stroke="#F59E0B" stroke-width="1.5" fill="none"/></svg>
+      <span>10 秒超时</span>
+    </div>
+    <div class="cb-state halfopen">HalfOpen<br><span style="font-size:.6rem;font-weight:400;opacity:.7">探测恢复</span></div>
+    <div class="cb-transition">
+      <svg width="50" height="14" viewBox="0 0 50 14"><path d="M0 7 L40 7" stroke="#10B981" stroke-width="1.5" fill="none"/><path d="M38 3 L44 7 L38 11" stroke="#10B981" stroke-width="1.5" fill="none"/></svg>
+      <span>3 次成功</span>
+    </div>
+    <div class="cb-state closed">Closed<br><span style="font-size:.6rem;font-weight:400;opacity:.7">恢复通过</span></div>
+  </div>
+  <div style="text-align:center;margin-top:.6rem;font-size:.65rem;color:var(--text3);font-family:var(--mono)">
+    HalfOpen &rarr; 1 次失败 &rarr; Open &nbsp;&nbsp;|&nbsp;&nbsp; Closed &rarr; 5 次连续失败 &rarr; Open
+  </div>
+</div>
+
+<!-- ═══ Bottom Grid ═══ -->
+<div class="bottom-grid">
+  <!-- RuntimeLogAdapter -->
+  <div class="panel p-adapter">
+    <div class="panel-title"><span class="dot"></span>RuntimeLogAdapter</div>
+    <ul>
+      <li>桥接 <code>trpc-agent-go</code> 运行时日志到 loggateway</li>
+      <li>实现 <code>logging.Logger</code> 接口适配</li>
+      <li><code>Fatal</code> 级别旁路管线，直接 <code>os.Exit(1)</code></li>
+      <li>Debug/Info/Warn/Error 走正常管线流程</li>
+      <li>运行时日志零额外配置接入</li>
+    </ul>
+  </div>
+
+  <!-- Flow Tracking -->
+  <div class="panel p-flow">
+    <div class="panel-title"><span class="dot"></span>Flow Tracking 追踪体系</div>
+    <ul>
+      <li><code>TraceContext</code> &mdash; 链路上下文传递</li>
+      <li><code>FlowTracker</code> &mdash; 流程追踪器，关联 step/run</li>
+      <li><code>FlowContext</code> &mdash; 流程上下文，携带 Span 信息</li>
+      <li><code>SpanCollector</code> &mdash; Span 采集聚合</li>
+      <li><code>UsageAggregator</code> &mdash; 用量统计聚合 (token/time)</li>
+    </ul>
+  </div>
+
+  <!-- Dual Bus Routing -->
+  <div class="panel p-bus" style="grid-column:1/-1">
+    <div class="panel-title"><span class="dot"></span>双总线路由 &mdash; Split 模式</div>
+    <table class="bus-table">
+      <thead>
+        <tr><th>事件类型</th><th>SessionBus</th><th>MonitorBus</th><th>路由规则</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>flow_log</td><td></td><td><span class="tag tag-monitor">Monitor</span></td><td>仅监控总线</td></tr>
+        <tr><td>alert</td><td><span class="tag tag-session">Session</span></td><td><span class="tag tag-monitor">Monitor</span></td><td>双发</td></tr>
+        <tr><td>其他事件</td><td><span class="tag tag-session">Session</span></td><td></td><td>仅会话总线</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</body>
+</html>

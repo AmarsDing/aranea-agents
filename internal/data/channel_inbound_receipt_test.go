@@ -18,7 +18,7 @@ func TestChannelInboundReceipt_TryClaimDedup(t *testing.T) {
 	if err := EnsureChannelInboundSchema(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	repo := NewChannelInboundReceiptRepo(&Data{rawDB: db})
+	repo := NewChannelInboundReceiptRepo(&Data{rawDB: db, readDB: db, rwDB: NewReadWriteDB(db, db)})
 	claimed, err := repo.TryClaim(ctx, "ch1", "feishu:msg-1", "ou_x", "你好")
 	if err != nil || !claimed {
 		t.Fatalf("first claim: claimed=%v err=%v", claimed, err)

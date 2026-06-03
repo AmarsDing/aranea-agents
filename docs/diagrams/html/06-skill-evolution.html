@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aranea-Agents Skill 进化系统架构</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --red:#EF4444;--amber:#F59E0B;--violet:#8B5CF6;
+  --slate:#64748B;--emerald:#10B981;--sky:#0EA5E9;
+  --bg:#0A0A0B;--surface:#111113;--surface2:#18181B;
+  --border:#27272A;--text:#E4E4E7;--text2:#A1A1AA;--text3:#71717A;
+  --mono:'SF Mono','Cascadia Code','Fira Code',Consolas,monospace;
+  --sans:'Inter','SF Pro Text',-apple-system,'Segoe UI',sans-serif;
+}
+html{font-size:14px;background:var(--bg);color:var(--text);font-family:var(--sans)}
+body{padding:40px 48px;max-width:1600px;margin:0 auto}
+
+/* Header */
+.header{margin-bottom:48px;opacity:0;animation:fadeIn .6s ease forwards}
+.header h1{font-size:1.75rem;font-weight:600;letter-spacing:-.02em;color:var(--text)}
+.header .sub{font-size:.8rem;color:var(--text3);margin-top:6px;font-family:var(--mono);letter-spacing:.04em}
+
+/* Layout */
+.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-bottom:32px}
+.col{display:flex;flex-direction:column;gap:16px}
+
+/* Pipeline Card */
+.pipeline{background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;opacity:0;animation:fadeIn .5s ease forwards}
+.pipeline:nth-child(1){animation-delay:.1s}
+.pipeline:nth-child(2){animation-delay:.2s}
+.pipeline:nth-child(3){animation-delay:.3s}
+
+.pipeline-head{padding:14px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border)}
+.pipeline-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.pipeline-title{font-size:.85rem;font-weight:600;letter-spacing:.02em}
+.pipeline-sub{font-size:.65rem;color:var(--text3);font-family:var(--mono);margin-left:auto}
+
+.pipeline-body{padding:12px 0}
+
+/* Step */
+.step{display:flex;align-items:stretch;min-height:44px;position:relative}
+.step-marker{width:48px;display:flex;flex-direction:column;align-items:center;position:relative;flex-shrink:0}
+.step-line{width:1px;background:var(--border);flex:1}
+.step-dot{width:7px;height:7px;border-radius:50%;margin:6px 0;flex-shrink:0;position:relative;z-index:1}
+.step:first-child .step-line:first-child{background:transparent}
+.step:last-child .step-line:last-child{background:transparent}
+
+.step-content{flex:1;padding:4px 14px 12px 0;min-width:0}
+.step-name{font-size:.78rem;font-weight:600;margin-bottom:3px;font-family:var(--mono)}
+.step-desc{font-size:.68rem;color:var(--text2);line-height:1.55}
+.step-desc code{font-family:var(--mono);font-size:.62rem;background:var(--surface2);padding:1px 5px;border-radius:3px;color:var(--text)}
+
+/* Arrow between steps */
+.step-arrow{display:flex;align-items:center;justify-content:center;padding:2px 0}
+.step-arrow svg{opacity:.35}
+
+/* Bottom Section */
+.bottom-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-bottom:32px}
+.bottom-grid .pipeline{animation-delay:.4s}
+
+/* Cron Section */
+.cron-section{margin-bottom:32px;opacity:0;animation:fadeIn .5s ease .5s forwards}
+.cron-row{display:flex;gap:16px;flex-wrap:wrap}
+.cron-item{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:10px 14px;display:flex;align-items:center;gap:10px;flex:1;min-width:200px}
+.cron-icon{width:6px;height:6px;border-radius:50%;background:var(--slate)}
+.cron-name{font-size:.75rem;font-weight:600;font-family:var(--mono)}
+.cron-interval{font-size:.65rem;color:var(--text3);font-family:var(--mono);margin-left:auto}
+
+/* Cross-pipeline */
+.cross-section{margin-bottom:32px;opacity:0;animation:fadeIn .5s ease .6s forwards}
+.cross-card{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:16px 20px}
+.cross-title{font-size:.75rem;font-weight:600;color:var(--text2);margin-bottom:12px;text-transform:uppercase;letter-spacing:.08em}
+.cross-flow{display:flex;flex-direction:column;gap:10px}
+.cross-item{display:flex;align-items:center;gap:8px;font-size:.72rem;font-family:var(--mono)}
+.cross-item .arrow{color:var(--text3)}
+.cross-item .src{color:var(--amber)}
+.cross-item .dst{color:var(--violet)}
+
+/* Butler Tools */
+.tool-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tool-item{background:var(--surface2);border-radius:4px;padding:8px 10px}
+.tool-name{font-size:.72rem;font-weight:600;font-family:var(--mono);color:var(--emerald)}
+.tool-desc{font-size:.62rem;color:var(--text3);margin-top:2px}
+
+/* Skill Guidance */
+.guidance-section{margin-top:0}
+.guidance-mode{background:var(--surface2);border-radius:4px;padding:10px 12px;margin-bottom:8px}
+.guidance-mode-title{font-size:.72rem;font-weight:600;font-family:var(--mono);color:var(--sky)}
+.guidance-mode-desc{font-size:.62rem;color:var(--text2);margin-top:3px;line-height:1.5}
+.guidance-mode code{font-family:var(--mono);font-size:.6rem;background:var(--surface);padding:1px 4px;border-radius:2px}
+
+/* Section Label */
+.section-label{font-size:.65rem;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;font-weight:600}
+
+/* Animations */
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+/* Responsive */
+@media(max-width:1200px){.grid,.bottom-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:800px){.grid,.bottom-grid{grid-template-columns:1fr}body{padding:24px 16px}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Skill 进化系统架构</h1>
+  <div class="sub">aranea-agents / skill-evolution / learning-loop / evolution</div>
+</div>
+
+<!-- 3 Parallel Pipelines -->
+<div class="grid">
+
+  <!-- Pipeline 1: SkillEvolutionUsecase -->
+  <div class="pipeline">
+    <div class="pipeline-head">
+      <div class="pipeline-dot" style="background:var(--red)"></div>
+      <span class="pipeline-title">SkillEvolutionUsecase</span>
+      <span class="pipeline-sub">管线1</span>
+    </div>
+    <div class="pipeline-body">
+      <div class="step">
+        <div class="step-marker"><div class="step-line"></div><div class="step-dot" style="background:var(--red)"></div><div class="step-line"></div></div>
+        <div class="step-content">
+          <div class="step-name" style="color:var(--red)">detect</div>
+          <div class="step-desc">读取 <code>Pattern(detected, kind=tool_call, confidence>=0.15)</code> → <code>patternHash</code> 去重</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-marker"><div class="step-line"></div><div class="step-dot" style="background:var(--red)"></div><div class="step-line"></div></div>
+        <div class="step-content">
+          <div class="step-name" style="color:var(--red)">propose</div>
+          <div class="step-desc">LLM 生成 <code>SKILL.md</code> → 创建 <code>SkillProposal(pending)</code></div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-marker"><div class="step-line"></div><div class="step-dot" style="background:var(--red)"></div><div class="step-line"></div></div>
+        <div class="step-content">
+          <div class="step-name" style="color:var(--red)">approve</div>
+          <div class="step-desc"><code>ApproveProposal</code>: <code>pending → approved</code></div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-marker"><div class="step-line"></div><div class="step-dot" style="background:var(--red)"></div><div class="step-line"></div></div>
+        <div class="step-content">
+          <div class="step-name" style="color:var(--red)">register</div>
+          <div class="step-desc"><code>RegisterApproved</code>: <code>approved → SkillExists → RegisterSkill → registered</code></div>
+        </div>
+      </div>
+      <div style="padding:8px 16px 4px 48px">
+        <div style="font-size:.62rem;color:var(--text3);border-top:1px solid var(--border);padding-top:8px;font-family:var(--mono)">
+          ScanAndProposeAll: 遍历活跃 Agent, 检查 <code>EvolutionSkillEvolve</code> 开关
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pipeline 2: LearningLoopUsecase -->
+  <div class="pipeline">
+    <div class="pipeline-head">
+      <div class="pipeline-dot" style="background:var(--amber)"></div>
+      <span class="pipeline-title">LearningLoopUsecase</span>
+      <span class="pipeline-sub">管线2</span>
+    </div>
+    <div class="pipeline-body">
+      <div class="step">
+        <div class="step-marker"><div class="step-line"></div><div class="step-dot" style="background:var(--amber)"></div><div class="step-line"></div></div>
+        <div class="step-content">
+          <div class="step-name" style="color:var(--amber)">observation</div>
+          <div class="step-desc"><code>RecordObservation</code>: 写入 <code>Observation(tool_call / feedback / memory_hit / memory_miss)</code></div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-marker"><div class="step-line"></div><div class="step-dot" style="background:var(--amber)"></div><div class="step-line"></div></div>
+        <div class="step-content">
+          <div class="step-name" style="color:var(--amber)">pattern</div>
+          <div class="step-desc">30天观察窗口, >=3条, 按 kind 分桶<br><code>confidence = 桶/总 >= 0.1</code></div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-marker"><div class="step-line"></div><div class="step-dot" style="background:var(--amber)"></div><div class="step-line"></div></div>
+        <div class="step-content">
+          <div class="step-name" style="color:var(--amber)">proposal</div>
+          <div class="step-desc"><code>GenerateProposals</code>: <code>confidence>=0.15</code><br>kind→type: <code>tool_call→prompt</code> <code>feedback→persona</code> <code>memory_*→skill</code></div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-marker"><div class="step-line"></div><div class="step-dot" style="background:var(--amber)"></div><div class="step-line"></div></div>
+        <div class="step-content">
+          <div class="step-name" style="color:var(--amber)">validation</div>
+          <div class="step-desc"><code>ValidateProposal</code>: 冲突检查 → <code>validated / conflict</code></div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-marker"><div class="step-line"></div><div class="step-dot" style="background:var(--amber)"></div><div class="step-line"></div></div>
+        <div class="step-content">
+          <div class="step-name" style="color:var(--amber)">registration</div>
+          <div class="step-desc"><code>RegisterKnowledge</code>: kind=prompt → <code>EvolutionUsecase.ensurePendingSuggestion</code><br>status → <code>applied</code></div>
+        </div>
+      </div>
+      <div style="padding:8px 16px 4px 48px">
+        <div style="font-size:.62rem;color:var(--text3);border-top:1px solid var(--border);padding-top:8px;font-family:var(--mono)">
+          RunLoop: 全流程自动化, <code>EvoAutoApply</code> 时自动应用
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pipeline 3: EvolutionUsecase -->
+  <div class="pipeline">
+    <div class="pipeline-head">
+      <div class="pipeline-dot" style="background:var(--violet)"></div>
+      <span class="pipeline-title">EvolutionUsecase</span>
+      <span class="pipeline-sub">管线3</span>
+    </div>
+    <div class="pipeline-body">
+      <div class="step">
+        <div class="step-marker"><div class="step-line"></div><div class="step-dot" style="background:var(--violet)"></div><div class="step-line"></div></div>
+        <div class="step-content">
+          <div class="step-name" style="color:var(--violet)">metrics</div>
+          <div class="step-desc">
+            指标采集:<br>
+            <code>ToolSuccessRate</code> / <code>RetrievalQuality</code> / <code>Episodes</code> / <code>NegativeFeedback</code>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-marker"><div class="step-line"></div><div class="step-dot" style="background:var(--violet)"></div><div class="step-line"></div></div>
+        <div class="step-content">
+          <div class="step-name" style="color:var(--violet)">suggestion</div>
+          <div class="step-desc">
+            阈值触发:<br>
+            <code>成功率 &lt; 0.75 → prompt</code><br>
+            <code>质量 &lt; 0.60 → skill</code><br>
+            <code>负反馈 >= min → persona</code>
+          </div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-marker"><div class="step-line"></div><div class="step-dot" style="background:var(--violet)"></div><div class="step-line"></div></div>
+        <div class="step-content">
+          <div class="step-name" style="color:var(--violet)">apply</div>
+          <div class="step-desc">
+            <code>ApplySuggestion</code>:<br>
+            <code>persona → IDENTITY.md</code><br>
+            <code>prompt → AGENTS_CORE.md / AGENTS_TASK.md</code>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Cron Triggers -->
+<div class="cron-section">
+  <div class="section-label">Cron 触发器</div>
+  <div class="cron-row">
+    <div class="cron-item">
+      <div class="cron-icon"></div>
+      <span class="cron-name">SkillEvolutionScanner</span>
+      <span class="cron-interval">60 min</span>
+    </div>
+    <div class="cron-item">
+      <div class="cron-icon"></div>
+      <span class="cron-name">EvolutionScanner</span>
+      <span class="cron-interval">30 min</span>
+    </div>
+    <div class="cron-item">
+      <div class="cron-icon"></div>
+      <span class="cron-name">LearningLoopScanner</span>
+      <span class="cron-interval">60 min</span>
+    </div>
+  </div>
+</div>
+
+<!-- Bottom: Butler + Guidance + Cross -->
+<div class="bottom-grid">
+
+  <!-- Skills Butler Tools -->
+  <div class="pipeline">
+    <div class="pipeline-head">
+      <div class="pipeline-dot" style="background:var(--emerald)"></div>
+      <span class="pipeline-title">Skills Butler 工具</span>
+      <span class="pipeline-sub">4 Agent可调用</span>
+    </div>
+    <div class="pipeline-body" style="padding:12px 14px">
+      <div class="tool-grid">
+        <div class="tool-item">
+          <div class="tool-name">evolve_skill</div>
+          <div class="tool-desc">创建 SkillProposal</div>
+        </div>
+        <div class="tool-item">
+          <div class="tool-name">optimize_skill</div>
+          <div class="tool-desc">健康度评估 healthy / warning / critical</div>
+        </div>
+        <div class="tool-item">
+          <div class="tool-name">recommend_skills</div>
+          <div class="tool-desc">待审批提案 + 使用告警</div>
+        </div>
+        <div class="tool-item">
+          <div class="tool-name">analyze_skill_usage</div>
+          <div class="tool-desc">时间范围统计</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Skill Guidance Injection -->
+  <div class="pipeline">
+    <div class="pipeline-head">
+      <div class="pipeline-dot" style="background:var(--sky)"></div>
+      <span class="pipeline-title">Skill Guidance 注入</span>
+      <span class="pipeline-sub">运行时</span>
+    </div>
+    <div class="pipeline-body" style="padding:12px 14px">
+      <div class="guidance-mode">
+        <div class="guidance-mode-title">Eager 模式</div>
+        <div class="guidance-mode-desc">全量注入, <code>4000字符</code> 上限</div>
+      </div>
+      <div class="guidance-mode">
+        <div class="guidance-mode-title">Progressive 模式</div>
+        <div class="guidance-mode-desc">
+          <code>L0</code> 名称+描述 → <code>skill_load</code> 工具 → <code>L1/L2</code> 详情按需加载
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cross-Pipeline Interactions -->
+  <div class="pipeline">
+    <div class="pipeline-head">
+      <div class="pipeline-dot" style="background:var(--text3)"></div>
+      <span class="pipeline-title">跨管线交互</span>
+      <span class="pipeline-sub">cross-pipeline</span>
+    </div>
+    <div class="pipeline-body" style="padding:12px 14px">
+      <div class="cross-flow">
+        <div class="cross-item">
+          <span class="src">LearningLoop</span>
+          <span class="arrow">.RegisterKnowledge →</span>
+          <span class="dst">Evolution.ensurePendingSuggestion</span>
+        </div>
+        <div class="cross-item">
+          <span class="src">SkillEvolution</span>
+          <span class="arrow">← PatternReader</span>
+          <span class="dst">(reads LearningLoop's patterns)</span>
+        </div>
+        <div class="cross-item" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
+          <span style="font-size:.62rem;color:var(--text3)">管线2产出Pattern → 管线1消费Pattern → 管线3应用Suggestion</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

@@ -67,13 +67,6 @@ type execer interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
-func TxExecerFromCtx(ctx context.Context, fallback *sql.DB) execer {
-	if tx, ok := ctx.Value(rawTxKey{}).(*ent.Tx); ok {
-		return tx.Client()
-	}
-	return fallback
-}
-
 func (d *Data) PostgresExecInTx(ctx context.Context, fn func(ctx context.Context, tx *sql.Tx) error) error {
 	if d == nil {
 		return kerrors.InternalServer("DATA", "data not initialized")

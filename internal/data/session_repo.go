@@ -594,7 +594,7 @@ func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sess
 		ratio = llmcontext.ContextRatio(promptTokens, contextWindow)
 	}
 	now := nowRFC3339()
-	_, err := r.data.RawDB().ExecContext(ctx,
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx,
 		`UPDATE sessions
 		 SET context_used_ratio = ?,
 		     max_context_used_ratio = MAX(max_context_used_ratio, ?),

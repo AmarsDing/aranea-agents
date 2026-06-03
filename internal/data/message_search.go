@@ -12,7 +12,7 @@ import (
 )
 
 func (r *sessionRepo) SearchMessages(ctx context.Context, q biz.MessageSearchQuery) (biz.MessageSearchResult, error) {
-	db := r.data.RawDB()
+	db := r.data.RWDB().ReadDB(ctx)
 	if db == nil {
 		return biz.MessageSearchResult{}, kerrors.InternalServer("SESSION", "database not configured")
 	}
@@ -41,14 +41,14 @@ func (r *sessionRepo) SearchMessages(ctx context.Context, q biz.MessageSearchQue
 	return r.searchMessagesLike(ctx, db, q, keyword, limit, offset)
 }
 
-func tableExists(ctx context.Context, db *sql.DB, name string) bool {
+func tableExists(ctx context.Context, db execer, name string) bool {
 	var n int
-	err := db.QueryRowContext(ctx,
-		`SELECT COUNT(1) FROM sqlite_master WHERE type IN ('table','view') AND name = ?`, name).Scan(&n)
+	err := queryRowScan(ctx, db,
+		`SELECT COUNT(1) FROM sqlite_master WHERE type IN ('table','view') AND name = ?`, []any{name}, &n)
 	return err == nil && n > 0
 }
 
-func (r *sessionRepo) searchMessagesFTS(ctx context.Context, db *sql.DB, q biz.MessageSearchQuery, keyword string, limit, offset int) (biz.MessageSearchResult, error) {
+func (r *sessionRepo) searchMessagesFTS(ctx context.Context, db execer, q biz.MessageSearchQuery, keyword string, limit, offset int) (biz.MessageSearchResult, error) {
 	match := ftsMatchQuery(keyword)
 	args := []any{match}
 	where := "messages_fts MATCH ?"
@@ -58,7 +58,7 @@ func (r *sessionRepo) searchMessagesFTS(ctx context.Context, db *sql.DB, q biz.M
 	}
 	countSQL := fmt.Sprintf(`SELECT COUNT(1) FROM messages_fts WHERE %s`, where)
 	var total int
-	if err := db.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
+	if err := queryRowScan(ctx, db, countSQL, args, &total); err != nil {
 		return biz.MessageSearchResult{}, err
 	}
 	listSQL := fmt.Sprintf(`
@@ -78,7 +78,7 @@ LIMIT ? OFFSET ?`, where)
 	return scanMessageSearchRows(rows, total)
 }
 
-func (r *sessionRepo) searchMessagesLike(ctx context.Context, db *sql.DB, q biz.MessageSearchQuery, keyword string, limit, offset int) (biz.MessageSearchResult, error) {
+func (r *sessionRepo) searchMessagesLike(ctx context.Context, db execer, q biz.MessageSearchQuery, keyword string, limit, offset int) (biz.MessageSearchResult, error) {
 	pattern := "%" + escapeLike(keyword) + "%"
 	args := []any{pattern}
 	where := "content_markdown LIKE ? ESCAPE '\\'"
@@ -88,7 +88,7 @@ func (r *sessionRepo) searchMessagesLike(ctx context.Context, db *sql.DB, q biz.
 	}
 	countSQL := fmt.Sprintf(`SELECT COUNT(1) FROM messages WHERE %s`, where)
 	var total int
-	if err := db.QueryRowContext(ctx, countSQL, args...).Scan(&total); err != nil {
+	if err := queryRowScan(ctx, db, countSQL, args, &total); err != nil {
 		return biz.MessageSearchResult{}, err
 	}
 	listSQL := fmt.Sprintf(`

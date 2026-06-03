@@ -37,7 +37,7 @@ func entSuggestionToBiz(row *ent.EvolutionSuggestion) biz.EvolutionSuggestion {
 }
 
 func (r *evolutionSuggestionRepo) ListByAgent(ctx context.Context, agentID string, status string) ([]biz.EvolutionSuggestion, error) {
-	query := r.data.ReadClient(ctx).EvolutionSuggestion.Query().
+	query := r.data.RW().Read(ctx).EvolutionSuggestion.Query().
 		Where(evolutionsuggestion.AgentIDEQ(agentID))
 	if status != "" {
 		query = query.Where(evolutionsuggestion.StatusEQ(status))
@@ -54,7 +54,7 @@ func (r *evolutionSuggestionRepo) ListByAgent(ctx context.Context, agentID strin
 }
 
 func (r *evolutionSuggestionRepo) GetByID(ctx context.Context, id string) (biz.EvolutionSuggestion, error) {
-	row, err := r.data.ReadClient(ctx).EvolutionSuggestion.Get(ctx, id)
+	row, err := r.data.RW().Read(ctx).EvolutionSuggestion.Get(ctx, id)
 	if err != nil {
 		if ent.IsNotFound(err) {
 			return biz.EvolutionSuggestion{}, fmt.Errorf("suggestion not found")
@@ -66,7 +66,7 @@ func (r *evolutionSuggestionRepo) GetByID(ctx context.Context, id string) (biz.E
 
 func (r *evolutionSuggestionRepo) Create(ctx context.Context, s biz.EvolutionSuggestion) (biz.EvolutionSuggestion, error) {
 	now := nowRFC3339()
-	row, err := r.data.entClient.EvolutionSuggestion.Create().
+	row, err := r.data.RW().Write(ctx).EvolutionSuggestion.Create().
 		SetID(s.ID).
 		SetAgentID(s.AgentID).
 		SetType(s.Type).
@@ -83,7 +83,7 @@ func (r *evolutionSuggestionRepo) Create(ctx context.Context, s biz.EvolutionSug
 }
 
 func (r *evolutionSuggestionRepo) UpdateStatus(ctx context.Context, id string, status string) (biz.EvolutionSuggestion, error) {
-	update := r.data.entClient.EvolutionSuggestion.UpdateOneID(id).
+	update := r.data.RW().Write(ctx).EvolutionSuggestion.UpdateOneID(id).
 		SetStatus(status)
 	if status == "applied" {
 		update = update.SetAppliedAt(nowRFC3339())

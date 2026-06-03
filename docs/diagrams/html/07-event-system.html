@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aranea-Agents 事件与实时通信架构</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --c-backend:#0EA5E9;--c-ws:#8B5CF6;--c-events:#F59E0B;--c-frontend:#6366F1;
+  --c-reconnect:#10B981;--c-buffer:#EF4444;--c-priority:#EC4899;
+  --bg:#0F172A;--surface:#1E293B;--surface2:#334155;--text:#E2E8F0;--text2:#94A3B8;--text3:#64748B;
+  --mono:'Cascadia Code','Fira Code','SF Mono',Consolas,monospace;
+  --sans:'Inter','SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+html{font-size:13px;background:var(--bg);color:var(--text);font-family:var(--sans)}
+body{min-height:100vh;padding:2rem 3rem}
+
+.page-title{font-size:1.8rem;font-weight:700;letter-spacing:-0.03em;margin-bottom:.25rem}
+.page-sub{font-size:.85rem;color:var(--text2);margin-bottom:2.5rem;font-family:var(--mono)}
+
+/* Backend flow */
+.backend-flow{display:flex;align-items:flex-start;gap:0;margin-bottom:2.5rem}
+.bf-stage{flex:1;min-width:0}
+.bf-header{padding:.55rem .8rem;border-radius:6px 6px 0 0;font-weight:700;font-size:.85rem;display:flex;align-items:center;gap:.4rem}
+.bf-header .tag{font-size:.6rem;font-family:var(--mono);opacity:.7;font-weight:400}
+.bf-body{background:var(--surface);border-radius:0 0 6px 6px;padding:.8rem;border:1px solid rgba(255,255,255,.06);border-top:none}
+.bf-body ul{list-style:none;display:flex;flex-direction:column;gap:.25rem}
+.bf-body li{font-size:.72rem;color:var(--text2);line-height:1.35}
+.bf-body li code{font-family:var(--mono);color:var(--text);font-size:.68rem;background:rgba(255,255,255,.05);padding:.1rem .3rem;border-radius:3px}
+
+.bf-source .bf-header{background:var(--c-backend)}
+.bf-infra .bf-header{background:var(--c-ws)}
+.bf-bus .bf-header{background:var(--c-events)}
+
+.bf-arrow{display:flex;align-items:center;justify-content:center;min-width:50px;padding-top:1.5rem}
+
+/* Buffer & Reconnect */
+.buffer-reconnect{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem;margin-bottom:2.5rem}
+.br-card{background:var(--surface);border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:1rem 1.2rem}
+.br-title{font-size:.82rem;font-weight:600;margin-bottom:.6rem;display:flex;align-items:center;gap:.4rem}
+.br-title .dot{width:8px;height:8px;border-radius:50%}
+.br-card ul{list-style:none;display:flex;flex-direction:column;gap:.25rem}
+.br-card li{font-size:.72rem;color:var(--text2);line-height:1.4}
+.br-card li code{font-family:var(--mono);color:var(--text);font-size:.68rem;background:rgba(255,255,255,.05);padding:.1rem .3rem;border-radius:3px}
+
+.br-buffer .br-title{color:var(--c-buffer)}.br-buffer .dot{background:var(--c-buffer)}
+.br-reconnect .br-title{color:var(--c-reconnect)}.br-reconnect .dot{background:var(--c-reconnect)}
+
+/* Reconnect flow */
+.reconnect-flow{display:flex;align-items:center;gap:.3rem;margin-top:.5rem;flex-wrap:wrap}
+.rc-step{font-size:.65rem;font-family:var(--mono);padding:.2rem .4rem;border-radius:3px;background:rgba(16,185,129,.08);color:#6EE7B7;border:1px solid rgba(16,185,129,.15)}
+.rc-arrow{color:var(--text3);font-size:.65rem}
+
+/* WebSocket server */
+.ws-section{background:var(--surface);border:1px solid rgba(139,92,246,.15);border-radius:8px;padding:1.2rem;margin-bottom:2.5rem}
+.ws-title{font-size:.88rem;font-weight:600;color:var(--c-ws);margin-bottom:1rem}
+.ws-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem}
+.ws-left ul{list-style:none;display:flex;flex-direction:column;gap:.25rem}
+.ws-left li{font-size:.72rem;color:var(--text2);line-height:1.4}
+.ws-left li code{font-family:var(--mono);color:var(--text);font-size:.68rem;background:rgba(255,255,255,.05);padding:.1rem .3rem;border-radius:3px}
+
+/* Priority queues */
+.pq-list{display:flex;flex-direction:column;gap:.5rem}
+.pq-item{border:1px solid rgba(255,255,255,.08);border-radius:4px;overflow:hidden}
+.pq-header{padding:.3rem .6rem;font-size:.72rem;font-weight:600;display:flex;align-items:center;gap:.4rem}
+.pq-header .pq-cap{font-size:.6rem;font-family:var(--mono);opacity:.6;font-weight:400}
+.pq-body{padding:.3rem .6rem .5rem;font-size:.68rem;color:var(--text2);line-height:1.35}
+.pq-high .pq-header{background:rgba(239,68,68,.12);color:#FCA5A5}
+.pq-normal .pq-header{background:rgba(139,92,246,.12);color:#C4B5FD}
+.pq-low .pq-header{background:rgba(14,165,233,.12);color:#7DD3FC}
+
+.write-pump{margin-top:.6rem;padding:.4rem .6rem;background:rgba(139,92,246,.06);border-radius:4px;border:1px solid rgba(139,92,246,.12)}
+.write-pump .wp-title{font-size:.7rem;font-weight:600;color:var(--c-ws);margin-bottom:.2rem}
+.write-pump .wp-desc{font-size:.65rem;color:var(--text2);font-family:var(--mono)}
+
+/* Event types grid */
+.events-section{background:var(--surface);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:1.2rem;margin-bottom:2.5rem}
+.events-title{font-size:.88rem;font-weight:600;color:var(--c-events);margin-bottom:1rem}
+.events-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.8rem}
+.ev-category{border:1px solid rgba(255,255,255,.06);border-radius:6px;overflow:hidden}
+.ev-cat-header{padding:.35rem .6rem;font-size:.72rem;font-weight:600;display:flex;align-items:center;gap:.3rem}
+.ev-cat-header .ev-count{font-size:.58rem;font-family:var(--mono);opacity:.6;font-weight:400}
+.ev-cat-body{padding:.4rem .6rem .6rem}
+.ev-cat-body ul{list-style:none;display:flex;flex-direction:column;gap:.15rem}
+.ev-cat-body li{font-size:.62rem;color:var(--text2);font-family:var(--mono);line-height:1.3}
+
+.ev-chat .ev-cat-header{background:rgba(99,102,241,.1);color:#A5B4FC}
+.ev-monitor .ev-cat-header{background:rgba(14,165,233,.1);color:#38BDF8}
+.ev-mcp .ev-cat-header{background:rgba(239,68,68,.1);color:#FCA5A5}
+.ev-team .ev-cat-header{background:rgba(139,92,246,.1);color:#C4B5FD}
+.ev-graph .ev-cat-header{background:rgba(16,185,129,.1);color:#6EE7B7}
+.ev-knowledge .ev-cat-header{background:rgba(245,158,11,.1);color:#FCD34D}
+.ev-spirit .ev-cat-header{background:rgba(236,72,153,.1);color:#F9A8D4}
+
+/* Frontend flow */
+.frontend-section{background:var(--surface);border:1px solid rgba(99,102,241,.15);border-radius:8px;padding:1.2rem;margin-bottom:2.5rem}
+.fe-title{font-size:.88rem;font-weight:600;color:var(--c-frontend);margin-bottom:1rem}
+.fe-flow{display:flex;align-items:flex-start;gap:0}
+.fe-stage{flex:1;min-width:0}
+.fe-header{padding:.4rem .7rem;font-size:.75rem;font-weight:600;font-family:var(--mono);background:rgba(99,102,241,.1);color:#A5B4FC;border-radius:4px 4px 0 0}
+.fe-body{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.06);border-top:none;border-radius:0 0 4px 4px;padding:.5rem .7rem}
+.fe-body ul{list-style:none;display:flex;flex-direction:column;gap:.15rem}
+.fe-body li{font-size:.65rem;color:var(--text2);font-family:var(--mono);line-height:1.3}
+.fe-arrow{display:flex;align-items:center;justify-content:center;min-width:40px;padding-top:.8rem}
+
+/* Animations */
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.backend-flow{animation:fadeUp .5s ease both}
+.buffer-reconnect{animation:fadeUp .5s ease .1s both}
+.ws-section{animation:fadeUp .5s ease .2s both}
+.events-section{animation:fadeUp .5s ease .3s both}
+.frontend-section{animation:fadeUp .5s ease .4s both}
+
+@media(max-width:900px){
+  body{padding:1rem}
+  .backend-flow,.fe-flow{flex-direction:column}
+  .bf-arrow,.fe-arrow{min-width:auto;padding:0;transform:rotate(90deg)}
+  .buffer-reconnect,.ws-grid{grid-template-columns:1fr}
+  .events-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:600px){
+  .events-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="page-title">Aranea-Agents 事件与实时通信架构</div>
+<div class="page-sub">Service/Biz &rarr; Infra.Publish &rarr; Bus &rarr; WebSocket &rarr; Frontend</div>
+
+<!-- ═══ Backend Event Flow ═══ -->
+<div class="backend-flow">
+  <div class="bf-stage bf-source">
+    <div class="bf-header">Service / Biz <span class="tag">事件源</span></div>
+    <div class="bf-body">
+      <ul>
+        <li>业务逻辑触发事件</li>
+        <li><code>Infra.Publish()</code> 统一发布</li>
+        <li>携带 sessionID / type / payload</li>
+      </ul>
+    </div>
+  </div>
+  <div class="bf-arrow">
+    <svg width="36" height="16" viewBox="0 0 36 16"><path d="M0 8 L26 8" stroke="#0EA5E9" stroke-width="1.5"/><path d="M24 4 L30 8 L24 12" stroke="#0EA5E9" stroke-width="1.5" fill="none"/></svg>
+  </div>
+  <div class="bf-stage bf-infra">
+    <div class="bf-header">Infra.Publish <span class="tag">路由分发</span></div>
+    <div class="bf-body">
+      <ul>
+        <li>Split 模式路由规则</li>
+        <li><code>flow_log</code> &rarr; MonitorBus</li>
+        <li><code>alert</code> &rarr; 双发</li>
+        <li>其他 &rarr; SessionBus</li>
+      </ul>
+    </div>
+  </div>
+  <div class="bf-arrow">
+    <svg width="36" height="16" viewBox="0 0 36 16"><path d="M0 8 L26 8" stroke="#8B5CF6" stroke-width="1.5"/><path d="M24 4 L30 8 L24 12" stroke="#8B5CF6" stroke-width="1.5" fill="none"/></svg>
+  </div>
+  <div class="bf-stage bf-bus">
+    <div class="bf-header">SessionBus / MonitorBus <span class="tag">事件总线</span></div>
+    <div class="bf-body">
+      <ul>
+        <li><code>SessionBus</code> 会话级事件</li>
+        <li><code>MonitorBus</code> 监控级事件</li>
+        <li>订阅者模式分发</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Buffer & Reconnect ═══ -->
+<div class="buffer-reconnect">
+  <div class="br-card br-buffer">
+    <div class="br-title"><span class="dot"></span>环形缓冲 &mdash; 断线重连保障</div>
+    <ul>
+      <li>环形缓冲容量: <code>200 / 会话</code></li>
+      <li>TTL: <code>30 分钟</code> 自动过期</li>
+      <li>Replay: 断线重连时回放丢失事件</li>
+      <li>按 <code>event_id</code> 顺序回放</li>
+      <li>内存开销可控，自动淘汰旧事件</li>
+    </ul>
+  </div>
+  <div class="br-card br-reconnect">
+    <div class="br-title"><span class="dot"></span>断线重连流程</div>
+    <ul>
+      <li>客户端携带 <code>last_event_id</code> 重连</li>
+      <li>服务端 Buffer 查找断点位置</li>
+      <li>发送 <code>replay_start</code> 标记</li>
+      <li>回放 <code>entries</code> 事件序列</li>
+      <li>发送 <code>replay_end</code> 标记完成</li>
+    </ul>
+    <div class="reconnect-flow">
+      <span class="rc-step">last_event_id</span>
+      <span class="rc-arrow">&rarr;</span>
+      <span class="rc-step">Buffer.Replay</span>
+      <span class="rc-arrow">&rarr;</span>
+      <span class="rc-step">replay_start</span>
+      <span class="rc-arrow">&rarr;</span>
+      <span class="rc-step">entries</span>
+      <span class="rc-arrow">&rarr;</span>
+      <span class="rc-step">replay_end</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ WebSocket Server ═══ -->
+<div class="ws-section">
+  <div class="ws-title">WebSocket 服务端</div>
+  <div class="ws-grid">
+    <div class="ws-left">
+      <ul>
+        <li><code>WSServer</code>: eventBus + monitorBus + buffer + canceller</li>
+        <li><code>wsConn</code>: sessionID, channels, filterKey</li>
+        <li>每连接独立 goroutine 读写</li>
+        <li>连接级取消控制</li>
+        <li>事件过滤 <code>filterKey</code> 按类型筛选</li>
+      </ul>
+      <div class="write-pump">
+        <div class="wp-title">writePump 消费策略</div>
+        <div class="wp-desc">drainSelect: high &rarr; normal &rarr; low<br>每轮最多 8 条 low 事件</div>
+      </div>
+    </div>
+    <div class="ws-right">
+      <div class="pq-list">
+        <div class="pq-item pq-high">
+          <div class="pq-header">high <span class="pq-cap">cap=64</span></div>
+          <div class="pq-body">alert / MCP 健康 &mdash; 阻塞 5 秒后关闭连接</div>
+        </div>
+        <div class="pq-item pq-normal">
+          <div class="pq-header">normal <span class="pq-cap">cap=128</span></div>
+          <div class="pq-body">runner_completion / team / system</div>
+        </div>
+        <div class="pq-item pq-low">
+          <div class="pq-header">low <span class="pq-cap">cap=256</span></div>
+          <div class="pq-body">flow_log / log &mdash; 每轮限 8 条</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ 46 Event Types ═══ -->
+<div class="events-section">
+  <div class="events-title">46 种事件类型</div>
+  <div class="events-grid">
+    <div class="ev-category ev-chat">
+      <div class="ev-cat-header">Chat <span class="ev-count">14</span></div>
+      <div class="ev-cat-body">
+        <ul>
+          <li>text_delta</li>
+          <li>text_done</li>
+          <li>tool_call</li>
+          <li>tool_result</li>
+          <li>state_delta</li>
+          <li>transfer</li>
+          <li>runner_completion</li>
+          <li>context_usage</li>
+          <li>run_status</li>
+          <li>error</li>
+          <li>checkpoint</li>
+          <li>intent_pass</li>
+          <li>session.status_changed</li>
+          <li>user_feedback</li>
+        </ul>
+      </div>
+    </div>
+    <div class="ev-category ev-monitor">
+      <div class="ev-cat-header">Monitor <span class="ev-count">3</span></div>
+      <div class="ev-cat-body">
+        <ul>
+          <li>log</li>
+          <li>flow_log</li>
+          <li>alert.notify</li>
+        </ul>
+      </div>
+    </div>
+    <div class="ev-category ev-mcp">
+      <div class="ev-cat-header">MCP <span class="ev-count">2</span></div>
+      <div class="ev-cat-body">
+        <ul>
+          <li>mcp.session.reconnect</li>
+          <li>mcp.health.alert</li>
+        </ul>
+      </div>
+    </div>
+    <div class="ev-category ev-team">
+      <div class="ev-cat-header">Team <span class="ev-count">10</span></div>
+      <div class="ev-cat-body">
+        <ul>
+          <li>member_message_start</li>
+          <li>member_message_delta</li>
+          <li>member_message_done</li>
+          <li>team_run_started</li>
+          <li>team_run_finished</li>
+          <li>team_run_failed</li>
+          <li>team_step_started</li>
+          <li>team_step_finished</li>
+          <li>team_summary</li>
+          <li>orchestration_agent_status</li>
+        </ul>
+      </div>
+    </div>
+    <div class="ev-category ev-graph">
+      <div class="ev-cat-header">Graph <span class="ev-count">7</span></div>
+      <div class="ev-cat-body">
+        <ul>
+          <li>graph_node_start</li>
+          <li>graph_node_end</li>
+          <li>graph_node_error</li>
+          <li>graph_node_custom</li>
+          <li>graph_step</li>
+          <li>graph_execution_done</li>
+          <li>graph_task_status</li>
+        </ul>
+      </div>
+    </div>
+    <div class="ev-category ev-knowledge">
+      <div class="ev-cat-header">Knowledge <span class="ev-count">1</span></div>
+      <div class="ev-cat-body">
+        <ul>
+          <li>knowledge_ingest</li>
+        </ul>
+      </div>
+    </div>
+    <div class="ev-category ev-spirit">
+      <div class="ev-cat-header">Spirit <span class="ev-count">5</span></div>
+      <div class="ev-cat-body">
+        <ul>
+          <li>spirit_team_assembled</li>
+          <li>spirit_team_completed</li>
+          <li>spirit_team_failed</li>
+          <li>spirit_team_progress</li>
+          <li>spirit_teams_all_completed</li>
+          <li>spirit_synthesis_completed</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Frontend Flow ═══ -->
+<div class="frontend-section">
+  <div class="fe-title">前端事件流</div>
+  <div class="fe-flow">
+    <div class="fe-stage">
+      <div class="fe-header">createWsTransport</div>
+      <div class="fe-body">
+        <ul>
+          <li>WebSocket 连接管理</li>
+          <li>自动重连: 指数退避</li>
+          <li>1s &rarr; 30s 递增</li>
+          <li>最多 10 次重试</li>
+        </ul>
+      </div>
+    </div>
+    <div class="fe-arrow">
+      <svg width="30" height="14" viewBox="0 0 30 14"><path d="M0 7 L20 7" stroke="#6366F1" stroke-width="1.5"/><path d="M18 3 L24 7 L18 11" stroke="#6366F1" stroke-width="1.5" fill="none"/></svg>
+    </div>
+    <div class="fe-stage">
+      <div class="fe-header">GlobalWsHub</div>
+      <div class="fe-body">
+        <ul>
+          <li>session_id=* 单例复用</li>
+          <li>全局唯一连接</li>
+          <li>跨组件共享</li>
+          <li>避免重复连接</li>
+        </ul>
+      </div>
+    </div>
+    <div class="fe-arrow">
+      <svg width="30" height="14" viewBox="0 0 30 14"><path d="M0 7 L20 7" stroke="#6366F1" stroke-width="1.5"/><path d="M18 3 L24 7 L18 11" stroke="#6366F1" stroke-width="1.5" fill="none"/></svg>
+    </div>
+    <div class="fe-stage">
+      <div class="fe-header">EnvelopeDispatcher</div>
+      <div class="fe-body">
+        <ul>
+          <li>onType 按事件类型</li>
+          <li>onChannel 按通道</li>
+          <li>&rarr; handlers 分发</li>
+        </ul>
+      </div>
+    </div>
+    <div class="fe-arrow">
+      <svg width="30" height="14" viewBox="0 0 30 14"><path d="M0 7 L20 7" stroke="#6366F1" stroke-width="1.5"/><path d="M18 3 L24 7 L18 11" stroke="#6366F1" stroke-width="1.5" fill="none"/></svg>
+    </div>
+    <div class="fe-stage">
+      <div class="fe-header">useEnvelopeStream</div>
+      <div class="fe-body">
+        <ul>
+          <li>Vue composable</li>
+          <li>响应式事件流</li>
+          <li>组件级订阅</li>
+          <li>自动清理生命周期</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

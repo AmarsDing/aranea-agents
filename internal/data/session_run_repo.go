@@ -26,11 +26,18 @@ func NewSessionRunRepo(d *Data) biz.SessionRunRepo {
 	return &sessionRunRepo{data: d}
 }
 
-func (r *sessionRunRepo) db() *sql.DB {
+func (r *sessionRunRepo) readDB(ctx context.Context) execer {
 	if r == nil || r.data == nil {
 		return nil
 	}
-	return r.data.RawDB()
+	return r.data.RWDB().ReadDB(ctx)
+}
+
+func (r *sessionRunRepo) writeDB(ctx context.Context) execer {
+	if r == nil || r.data == nil {
+		return nil
+	}
+	return r.data.RWDB().WriteDB(ctx)
 }
 
 const sessionRunSelectSQL = `
@@ -53,7 +60,7 @@ func scanSessionRunRow(scanner interface {
 }
 
 func (r *sessionRunRepo) Create(ctx context.Context, run biz.SessionRun) (string, error) {
-	db := r.db()
+	db := r.writeDB(ctx)
 	if db == nil {
 		return run.ID, nil
 	}
@@ -90,7 +97,7 @@ INSERT INTO session_runs (
 }
 
 func (r *sessionRunRepo) UpdatePhase(ctx context.Context, id, phase string) error {
-	db := r.db()
+	db := r.writeDB(ctx)
 	if db == nil {
 		return nil
 	}
@@ -106,7 +113,7 @@ UPDATE session_runs SET phase=?, phase_changed_at=?, updated_at=? WHERE id=?`,
 }
 
 func (r *sessionRunRepo) MarkTerminal(ctx context.Context, id, phase, errMsg string) error {
-	db := r.db()
+	db := r.writeDB(ctx)
 	if db == nil {
 		return nil
 	}
@@ -122,7 +129,7 @@ UPDATE session_runs SET phase=?, error_message=?, finished_at=?, phase_changed_a
 }
 
 func (r *sessionRunRepo) UpdateCheckpointID(ctx context.Context, id, checkpointID string) error {
-	db := r.db()
+	db := r.writeDB(ctx)
 	if db == nil {
 		return nil
 	}
@@ -138,7 +145,7 @@ UPDATE session_runs SET checkpoint_id=?, updated_at=? WHERE id=?`,
 }
 
 func (r *sessionRunRepo) TryClaimDurableResume(ctx context.Context, id, staleBefore string) (bool, error) {
-	db := r.db()
+	db := r.writeDB(ctx)
 	if db == nil {
 		return false, nil
 	}
@@ -167,7 +174,7 @@ WHERE id=? AND phase='durable'
 }
 
 func (r *sessionRunRepo) ClearResumeClaim(ctx context.Context, id string) error {
-	db := r.db()
+	db := r.writeDB(ctx)
 	if db == nil {
 		return nil
 	}
@@ -185,7 +192,7 @@ UPDATE session_runs SET resume_started_at='', updated_at=? WHERE id=?`, now, id)
 }
 
 func (r *sessionRunRepo) ListByPhase(ctx context.Context, phase string, limit int) ([]biz.SessionRun, error) {
-	db := r.db()
+	db := r.readDB(ctx)
 	if db == nil {
 		return nil, nil
 	}
@@ -204,7 +211,7 @@ ORDER BY created_at ASC LIMIT ?`, phase, limit)
 }
 
 func (r *sessionRunRepo) ListForJobs(ctx context.Context, q biz.SessionRunListQuery) ([]biz.SessionRun, error) {
-	db := r.db()
+	db := r.readDB(ctx)
 	if db == nil {
 		return nil, nil
 	}
@@ -260,7 +267,7 @@ func scanSessionRunRows(rows *sql.Rows) ([]biz.SessionRun, error) {
 }
 
 func (r *sessionRunRepo) GetActiveForSession(ctx context.Context, sessionID string) (biz.SessionRun, error) {
-	db := r.db()
+	db := r.readDB(ctx)
 	if db == nil {
 		return biz.SessionRun{}, sql.ErrNoRows
 	}
@@ -268,15 +275,22 @@ func (r *sessionRunRepo) GetActiveForSession(ctx context.Context, sessionID stri
 	if sessionID == "" {
 		return biz.SessionRun{}, sql.ErrNoRows
 	}
-	row := db.QueryRowContext(ctx, sessionRunSelectSQL+`
+	rows, err := db.QueryContext(ctx, sessionRunSelectSQL+`
 WHERE session_id=? AND phase IN ('interactive','escalating','durable')
   AND (finished_at IS NULL OR finished_at='')
 ORDER BY created_at DESC LIMIT 1`, sessionID)
-	return scanSessionRunRow(row)
+	if err != nil {
+		return biz.SessionRun{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return biz.SessionRun{}, sql.ErrNoRows
+	}
+	return scanSessionRunRow(rows)
 }
 
 func (r *sessionRunRepo) ListBySession(ctx context.Context, sessionID string, limit, offset int) ([]biz.SessionRun, int, error) {
-	db := r.db()
+	db := r.readDB(ctx)
 	if db == nil {
 		return nil, 0, nil
 	}
@@ -294,7 +308,7 @@ func (r *sessionRunRepo) ListBySession(ctx context.Context, sessionID string, li
 		offset = 0
 	}
 	var total int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM session_runs WHERE session_id=?`, sessionID).Scan(&total); err != nil {
+	if err := queryRowScan(ctx, db, `SELECT COUNT(*) FROM session_runs WHERE session_id=?`, []any{sessionID}, &total); err != nil {
 		return nil, 0, err
 	}
 	rows, err := db.QueryContext(ctx, sessionRunSelectSQL+`
@@ -311,18 +325,25 @@ WHERE session_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?`, sessionID, limit,
 }
 
 func (r *sessionRunRepo) Get(ctx context.Context, id string) (biz.SessionRun, error) {
-	db := r.db()
+	db := r.readDB(ctx)
 	if db == nil {
 		return biz.SessionRun{}, sql.ErrNoRows
 	}
-	row := db.QueryRowContext(ctx, sessionRunSelectSQL+` WHERE id=? LIMIT 1`, strings.TrimSpace(id))
-	return scanSessionRunRow(row)
+	rows, err := db.QueryContext(ctx, sessionRunSelectSQL+` WHERE id=? LIMIT 1`, strings.TrimSpace(id))
+	if err != nil {
+		return biz.SessionRun{}, err
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		return biz.SessionRun{}, sql.ErrNoRows
+	}
+	return scanSessionRunRow(rows)
 }
 
 // MarkOrphanedRunsCancelled marks all active session_runs with no finished_at as cancelled.
 // Called on startup to clean up zombie runs left from a previous process crash/restart.
 func (r *sessionRunRepo) MarkOrphanedRunsCancelled(ctx context.Context) (int, error) {
-	db := r.db()
+	db := r.writeDB(ctx)
 	if db == nil {
 		return 0, nil
 	}

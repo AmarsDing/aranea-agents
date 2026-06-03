@@ -44,7 +44,7 @@ func entToBizHook(e *ent.PlatformHook) biz.Hook {
 }
 
 func (r *hookRepo) ListHooks(ctx context.Context) ([]biz.Hook, error) {
-	rows, err := r.data.ReadClient(ctx).PlatformHook.Query().
+	rows, err := r.data.RW().Read(ctx).PlatformHook.Query().
 		Where(platformhook.DeletedAtEQ("")).
 		Order(
 			platformhook.BySortOrder(),
@@ -62,7 +62,7 @@ func (r *hookRepo) ListHooks(ctx context.Context) ([]biz.Hook, error) {
 }
 
 func (r *hookRepo) GetHook(ctx context.Context, id string) (biz.Hook, error) {
-	row, err := r.data.ReadClient(ctx).PlatformHook.Query().
+	row, err := r.data.RW().Read(ctx).PlatformHook.Query().
 		Where(platformhook.IDEQ(id), platformhook.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -80,7 +80,7 @@ func (r *hookRepo) CreateHook(ctx context.Context, h biz.Hook) (biz.Hook, error)
 		h.CreatedAt = now
 	}
 	h.UpdatedAt = now
-	saved, err := r.data.entClient.PlatformHook.Create().
+	saved, err := r.data.RW().Write(ctx).PlatformHook.Create().
 		SetID(h.ID).
 		SetHookKey(h.Key).
 		SetName(h.Name).
@@ -102,7 +102,7 @@ func (r *hookRepo) CreateHook(ctx context.Context, h biz.Hook) (biz.Hook, error)
 
 func (r *hookRepo) UpdateHook(ctx context.Context, h biz.Hook) (biz.Hook, error) {
 	h.UpdatedAt = nowRFC3339()
-	err := r.data.entClient.PlatformHook.UpdateOneID(h.ID).
+	err := r.data.RW().Write(ctx).PlatformHook.UpdateOneID(h.ID).
 		SetHookKey(h.Key).
 		SetName(h.Name).
 		SetDescription(h.Description).
@@ -121,7 +121,7 @@ func (r *hookRepo) UpdateHook(ctx context.Context, h biz.Hook) (biz.Hook, error)
 
 func (r *hookRepo) DeleteHook(ctx context.Context, id string) error {
 	now := nowRFC3339()
-	return r.data.entClient.PlatformHook.UpdateOneID(id).
+	return r.data.RW().Write(ctx).PlatformHook.UpdateOneID(id).
 		SetDeletedAt(now).
 		SetStatus("deleted").
 		SetUpdatedAt(now).

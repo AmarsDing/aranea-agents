@@ -18,7 +18,7 @@ import (
 // exactly once per process lifetime (H-04: was running PRAGMA on every ListAlertRules call).
 func (r *monitorRepo) ensureMonitorAlertFiringStateCols(ctx context.Context) {
 	r.firingColsOnce.Do(func() {
-		db := r.data.RawDB()
+		db := r.data.RWDB().WriteDB(ctx)
 		rows, err := db.QueryContext(ctx, `PRAGMA table_info(monitor_alert_rules)`)
 		if err != nil {
 			r.data.lg.Warn("ensureMonitorAlertFiringStateCols: PRAGMA failed", loggateway.StepID("monitor.alert_count_fail"), loggateway.Err(err))
@@ -58,7 +58,7 @@ func (r *monitorRepo) ensureMonitorAlertFiringStateCols(ctx context.Context) {
 
 func (r *monitorRepo) ListAlertRules(ctx context.Context) ([]biz.MonitorAlertRule, error) {
 	r.ensureMonitorAlertFiringStateCols(ctx)
-	rows, err := r.data.RawDB().QueryContext(ctx, `
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, `
 SELECT id, name, metric_key, threshold, window_minutes, enabled, severity,
        COALESCE(notify_webhook_url,''), COALESCE(notify_channel_id,''), COALESCE(cooldown_minutes,60),
        created_at, updated_at,
@@ -105,7 +105,7 @@ FROM monitor_alert_rules ORDER BY created_at ASC`)
 func (r *monitorRepo) ReplaceAlertRules(ctx context.Context, rules []biz.MonitorAlertRule) error {
 	r.ensureMonitorAlertFiringStateCols(ctx)
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		e := TxExecerFromCtx(txCtx, r.data.RawDB())
+		e := r.data.RWDB().WriteDB(txCtx)
 
 		existingRows, err := e.QueryContext(txCtx, `SELECT id FROM monitor_alert_rules`)
 		if err != nil {
@@ -188,7 +188,7 @@ func (r *monitorRepo) UpdateAlertFiringState(
 	recoveredAt *time.Time,
 ) error {
 	r.ensureMonitorAlertFiringStateCols(ctx)
-	db := r.data.RawDB()
+	db := r.data.RWDB().WriteDB(ctx)
 
 	// BEGIN IMMEDIATE acquires a write lock immediately; BEGIN DEFERRED (the default)
 	// only upgrades to write on the first write statement, leaving a gap for races.
@@ -240,17 +240,17 @@ func (r *monitorRepo) CountMonitorEventsSince(ctx context.Context, eventKey, sta
 		args = append(args, status)
 	}
 	var n int32
-	err := r.data.RawDB().QueryRowContext(ctx, q, args...).Scan(&n)
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, args, &n)
 	return n, err
 }
 
 func (r *monitorRepo) AvgRunnerCompletionDurationMsSince(ctx context.Context, sinceRFC3339 string) (float64, error) {
 	var avg sql.NullFloat64
-	err := r.data.RawDB().QueryRowContext(ctx, `
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), `
 SELECT AVG(CAST(COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) AS REAL))
 FROM monitor_events
 WHERE deleted_at = '' AND event_key = 'runner.completion' AND created_at >= ?
-  AND COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) IS NOT NULL`, sinceRFC3339).Scan(&avg)
+  AND COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) IS NOT NULL`, []any{sinceRFC3339}, &avg)
 	if err != nil {
 		return 0, err
 	}
@@ -261,7 +261,7 @@ WHERE deleted_at = '' AND event_key = 'runner.completion' AND created_at >= ?
 }
 
 func (r *monitorRepo) LatencyPercentilesSince(ctx context.Context, sinceRFC3339 string) (p50, p95, p99 float64, err error) {
-	rows, qErr := r.data.RawDB().QueryContext(ctx, `
+	rows, qErr := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, `
 SELECT CAST(COALESCE(meta_duration_ms, json_extract(metadata_json, '$.duration_ms')) AS REAL) AS dur
 FROM monitor_events
 WHERE deleted_at = '' AND event_key = 'runner.completion' AND created_at >= ?

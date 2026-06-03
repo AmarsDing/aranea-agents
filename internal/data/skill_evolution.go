@@ -27,7 +27,7 @@ func (r *skillProposalRepo) ListByAgent(ctx context.Context, agentID string, sta
 		args = append(args, status)
 	}
 	q += ` ORDER BY created_at DESC`
-	rows, err := r.data.RawDB().QueryContext(ctx, q, args...)
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, kerrors.InternalServer("SKILL_EVO", "query skill proposals: "+err.Error())
 	}
@@ -63,9 +63,8 @@ func (r *skillProposalRepo) GetByID(ctx context.Context, id string) (biz.SkillPr
 	var p biz.SkillProposal
 	var createdAt string
 	var approvedAt *string
-	err := r.data.RawDB().QueryRowContext(ctx, q, id).Scan(
-		&p.ID, &p.AgentID, &p.PatternHash, &p.PatternDesc, &p.SkillName, &p.SkillMD, &p.Status, &p.ApprovedBy, &p.RejectedBy, &createdAt, &approvedAt,
-	)
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, []any{id},
+		&p.ID, &p.AgentID, &p.PatternHash, &p.PatternDesc, &p.SkillName, &p.SkillMD, &p.Status, &p.ApprovedBy, &p.RejectedBy, &createdAt, &approvedAt)
 	if err != nil {
 		return biz.SkillProposal{}, kerrors.NotFound("SKILL_EVO", "skill proposal not found")
 	}
@@ -90,9 +89,8 @@ func (r *skillProposalRepo) GetByPatternHash(ctx context.Context, agentID string
 	var p biz.SkillProposal
 	var createdAt string
 	var approvedAt *string
-	err := r.data.RawDB().QueryRowContext(ctx, q, agentID, hash).Scan(
-		&p.ID, &p.AgentID, &p.PatternHash, &p.PatternDesc, &p.SkillName, &p.SkillMD, &p.Status, &p.ApprovedBy, &p.RejectedBy, &createdAt, &approvedAt,
-	)
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx), q, []any{agentID, hash},
+		&p.ID, &p.AgentID, &p.PatternHash, &p.PatternDesc, &p.SkillName, &p.SkillMD, &p.Status, &p.ApprovedBy, &p.RejectedBy, &createdAt, &approvedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -122,7 +120,7 @@ func (r *skillProposalRepo) Create(ctx context.Context, p biz.SkillProposal) (bi
 	}
 	q := `INSERT INTO skill_proposals (id, agent_id, pattern_hash, pattern_desc, skill_name, skill_md, status, approved_by, rejected_by, created_at, approved_at)
 	      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-	_, err := r.data.RawDB().ExecContext(ctx, q,
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q,
 		p.ID, p.AgentID, p.PatternHash, p.PatternDesc, p.SkillName, p.SkillMD, string(p.Status),
 		p.ApprovedBy, p.RejectedBy,
 		p.CreatedAt.UTC().Format(time.RFC3339), approvedAt,
@@ -147,7 +145,7 @@ func (r *skillProposalRepo) UpdateStatus(ctx context.Context, id string, status 
 	}
 	q += ` WHERE id = ?`
 	args = append(args, id)
-	_, err := r.data.RawDB().ExecContext(ctx, q, args...)
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, args...)
 	if err != nil {
 		return biz.SkillProposal{}, kerrors.InternalServer("SKILL_EVO", "update skill proposal status: "+err.Error())
 	}

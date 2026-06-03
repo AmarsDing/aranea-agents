@@ -51,7 +51,7 @@ func entToBizTaxonomy(e *ent.IndustryTaxonomy) biz.TaxonomyNode {
 }
 
 func (r *TaxonomyRepo) ListTaxonomyNodes(ctx context.Context) ([]biz.TaxonomyNode, error) {
-	rows, err := r.data.ReadClient(ctx).IndustryTaxonomy.Query().
+	rows, err := r.data.RW().Read(ctx).IndustryTaxonomy.Query().
 		Where(industrytaxonomy.DeletedAtEQ("")).
 		Order(
 			industrytaxonomy.BySortOrder(),
@@ -69,7 +69,7 @@ func (r *TaxonomyRepo) ListTaxonomyNodes(ctx context.Context) ([]biz.TaxonomyNod
 }
 
 func (r *TaxonomyRepo) GetTaxonomyNode(ctx context.Context, id string) (biz.TaxonomyNode, error) {
-	row, err := r.data.ReadClient(ctx).IndustryTaxonomy.Query().
+	row, err := r.data.RW().Read(ctx).IndustryTaxonomy.Query().
 		Where(
 			industrytaxonomy.IDEQ(id),
 			industrytaxonomy.DeletedAtEQ(""),
@@ -85,7 +85,7 @@ func (r *TaxonomyRepo) GetTaxonomyNode(ctx context.Context, id string) (biz.Taxo
 }
 
 func (r *TaxonomyRepo) GetTaxonomyNodeByKey(ctx context.Context, key string) (biz.TaxonomyNode, error) {
-	row, err := r.data.ReadClient(ctx).IndustryTaxonomy.Query().
+	row, err := r.data.RW().Read(ctx).IndustryTaxonomy.Query().
 		Where(
 			industrytaxonomy.TaxonomyKeyEQ(key),
 			industrytaxonomy.DeletedAtEQ(""),
@@ -101,7 +101,7 @@ func (r *TaxonomyRepo) GetTaxonomyNodeByKey(ctx context.Context, key string) (bi
 }
 
 func (r *TaxonomyRepo) ListTaxonomyNodesByParentID(ctx context.Context, parentID string) ([]biz.TaxonomyNode, error) {
-	rows, err := r.data.ReadClient(ctx).IndustryTaxonomy.Query().
+	rows, err := r.data.RW().Read(ctx).IndustryTaxonomy.Query().
 		Where(
 			industrytaxonomy.ParentIDEQ(parentID),
 			industrytaxonomy.DeletedAtEQ(""),
@@ -119,7 +119,7 @@ func (r *TaxonomyRepo) ListTaxonomyNodesByParentID(ctx context.Context, parentID
 }
 
 func (r *TaxonomyRepo) ListTaxonomyNodesByLevel(ctx context.Context, level string) ([]biz.TaxonomyNode, error) {
-	rows, err := r.data.ReadClient(ctx).IndustryTaxonomy.Query().
+	rows, err := r.data.RW().Read(ctx).IndustryTaxonomy.Query().
 		Where(
 			industrytaxonomy.LevelEQ(level),
 			industrytaxonomy.DeletedAtEQ(""),
@@ -142,7 +142,7 @@ func (r *TaxonomyRepo) CreateTaxonomyNode(ctx context.Context, c biz.TaxonomyNod
 		c.CreatedAt = now
 	}
 	c.UpdatedAt = now
-	saved, err := r.data.entClient.IndustryTaxonomy.Create().
+	saved, err := r.data.RW().Write(ctx).IndustryTaxonomy.Create().
 		SetID(c.ID).
 		SetTaxonomyKey(c.Key).
 		SetName(c.Name).
@@ -170,7 +170,7 @@ func (r *TaxonomyRepo) CreateTaxonomyNode(ctx context.Context, c biz.TaxonomyNod
 
 func (r *TaxonomyRepo) UpdateTaxonomyNode(ctx context.Context, c biz.TaxonomyNode) (biz.TaxonomyNode, error) {
 	c.UpdatedAt = nowRFC3339()
-	err := r.data.entClient.IndustryTaxonomy.UpdateOneID(c.ID).
+	err := r.data.RW().Write(ctx).IndustryTaxonomy.UpdateOneID(c.ID).
 		SetTaxonomyKey(c.Key).
 		SetName(c.Name).
 		SetDescription(c.Description).
@@ -198,7 +198,7 @@ func (r *TaxonomyRepo) DeleteTaxonomyNode(ctx context.Context, id string) error 
 		return err
 	}
 	now := nowRFC3339()
-	return r.data.entClient.IndustryTaxonomy.UpdateOneID(id).
+	return r.data.RW().Write(ctx).IndustryTaxonomy.UpdateOneID(id).
 		SetDeletedAt(now).
 		SetStatus("deleted").
 		SetUpdatedAt(now).
@@ -206,7 +206,7 @@ func (r *TaxonomyRepo) DeleteTaxonomyNode(ctx context.Context, id string) error 
 }
 
 func (r *TaxonomyRepo) ensureNodeCanDelete(ctx context.Context, id string) error {
-	n, err := r.data.ReadClient(ctx).IndustryTaxonomy.Query().
+	n, err := r.data.RW().Read(ctx).IndustryTaxonomy.Query().
 		Where(
 			industrytaxonomy.ParentIDEQ(id),
 			industrytaxonomy.DeletedAtEQ(""),
@@ -218,7 +218,7 @@ func (r *TaxonomyRepo) ensureNodeCanDelete(ctx context.Context, id string) error
 	if n > 0 {
 		return kerrors.BadRequest("TAXONOMY", fmt.Sprintf("node has %d child nodes", n))
 	}
-	nAgents, err := r.data.ReadClient(ctx).Agent.Query().
+	nAgents, err := r.data.RW().Read(ctx).Agent.Query().
 		Where(
 			agent.TaxonomyPositionIDEQ(id),
 			agent.DeletedAtEQ(""),
@@ -234,7 +234,7 @@ func (r *TaxonomyRepo) ensureNodeCanDelete(ctx context.Context, id string) error
 }
 
 func (r *TaxonomyRepo) ReorderTaxonomyNodes(ctx context.Context, ids []string) error {
-	c := r.data.entClient
+	c := r.data.RW().Write(ctx)
 	for i, id := range ids {
 		_, err := c.IndustryTaxonomy.UpdateOneID(id).
 			SetSortOrder(i + 1).

@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>行业模板库 · Direction B · 运动诗学派</title>
+  <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.7/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+  <style>
+    :root {
+      --canvas-base: #0E0B14;
+      --canvas-warm: #18121E;
+      --ink: #F4EEE2;
+      --ink-soft: #C9BFA9;
+      --ink-muted: #8A7F6B;
+      --line: rgba(244, 238, 226, 0.08);
+      --line-soft: rgba(244, 238, 226, 0.04);
+      --accent: #E8A65A;
+      --accent-soft: rgba(232, 166, 90, 0.15);
+      --color-success: #6FCF97;
+      --color-danger: #EB6F6F;
+      --ind-dev-a: #6366F1;
+      --ind-dev-b: #4F46E5;
+      --ind-self-a: #F472B6;
+      --ind-self-b: #E11D48;
+      --ind-fin-a: #22D3EE;
+      --ind-fin-b: #0EA5E9;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: var(--canvas-base);
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.55;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    .mono { font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace; font-feature-settings: 'tnum' 1; }
+    .serif { font-family: 'Fraunces', 'Source Serif Pro', Georgia, serif; font-optical-sizing: auto; }
+    button { font-family: inherit; cursor: pointer; border: none; background: none; padding: 0; color: inherit; }
+    input { font-family: inherit; }
+
+    /* Page ambient background (subtle warm glow) */
+    .page-ambient {
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image:
+        radial-gradient(circle at 15% 10%, rgba(99, 102, 241, 0.18), transparent 50%),
+        radial-gradient(circle at 85% 90%, rgba(232, 166, 90, 0.10), transparent 50%),
+        radial-gradient(circle at 95% 5%, rgba(34, 211, 238, 0.12), transparent 45%);
+    }
+
+    .app-shell { position: relative; z-index: 1; display: flex; min-height: 100vh; }
+    .sidebar {
+      width: 240px; flex-shrink: 0;
+      padding: 18px 12px;
+      background: rgba(14, 11, 20, 0.7);
+      backdrop-filter: blur(20px) saturate(1.1);
+      -webkit-backdrop-filter: blur(20px) saturate(1.1);
+      border-right: 1px solid var(--line);
+    }
+    .sidebar-brand {
+      display: flex; align-items: center; gap: 10px;
+      padding: 4px 10px 22px;
+      font-weight: 600; font-size: 15px; letter-spacing: -0.01em;
+    }
+    .sidebar-brand-mark {
+      width: 28px; height: 28px; border-radius: 8px;
+      background: linear-gradient(135deg, #E8A65A 0%, #B57F1E 100%);
+      display: grid; place-items: center; color: #18121E; font-size: 13px; font-weight: 700;
+    }
+    .sidebar-section { font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-muted); padding: 14px 10px 6px; }
+    .sidebar-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 9px 10px; border-radius: 10px;
+      font-size: 13.5px; color: var(--ink-soft);
+      transition: background 0.12s, color 0.12s;
+    }
+    .sidebar-item:hover { background: rgba(244, 238, 226, 0.04); color: var(--ink); }
+    .sidebar-item--active { background: var(--accent-soft); color: var(--ink); font-weight: 500; box-shadow: inset 3px 0 0 var(--accent); }
+    .sidebar-item__icon { font-size: 16px; width: 18px; text-align: center; color: var(--ink-muted); }
+    .sidebar-item--active .sidebar-item__icon { color: var(--accent); }
+
+    .main { flex: 1; min-width: 0; padding: 56px 48px 96px; max-width: 1440px; }
+
+    /* Page hero (large, editorial) */
+    .page-hero { margin-bottom: 56px; }
+    .page-kicker {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 11px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;
+      color: var(--accent);
+    }
+    .page-kicker::before { content: ''; width: 18px; height: 1px; background: var(--accent); }
+    .page-title {
+      font-family: 'Fraunces', serif;
+      margin: 14px 0 0;
+      font-size: clamp(38px, 5.5vw, 64px);
+      font-weight: 400;
+      letter-spacing: -0.035em;
+      line-height: 1.05;
+      color: var(--ink);
+      max-width: 18ch;
+    }
+    .page-title em { font-style: italic; font-weight: 400; color: var(--accent); }
+    .page-subtitle { margin: 18px 0 0; max-width: 44rem; color: var(--ink-soft); font-size: 15px; line-height: 1.65; }
+
+    .page-actions {
+      display: flex; gap: 10px; align-items: center; margin-top: 28px; flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 11px 18px; border-radius: 999px;
+      font-size: 13px; font-weight: 500;
+      transition: background 0.18s, color 0.18s, transform 0.06s, box-shadow 0.18s;
+    }
+    .btn:active { transform: translateY(0.5px); }
+    .btn-primary { background: var(--accent); color: #18121E; box-shadow: 0 4px 18px rgba(232, 166, 90, 0.25); }
+    .btn-primary:hover { background: #f3b366; box-shadow: 0 6px 24px rgba(232, 166, 90, 0.4); }
+    .btn-ghost { background: transparent; border: 1px solid var(--line); color: var(--ink-soft); }
+    .btn-ghost:hover { background: rgba(244, 238, 226, 0.04); color: var(--ink); border-color: var(--ink-muted); }
+
+    /* Featured industry hero (the 120% detail) */
+    .featured {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      overflow: hidden;
+      background: linear-gradient(140deg, var(--canvas-warm) 0%, var(--canvas-base) 100%);
+      margin-bottom: 48px;
+      min-height: 360px;
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+    }
+    .featured__copy { padding: 48px 48px 40px; display: flex; flex-direction: column; justify-content: space-between; }
+    .featured__badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 999px;
+      font-size: 11px; font-weight: 500; letter-spacing: 0.04em;
+      background: var(--accent-soft); color: var(--accent);
+      align-self: flex-start;
+    }
+    .featured__badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 2.4s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .featured__title { font-family: 'Fraunces', serif; font-size: 42px; font-weight: 400; letter-spacing: -0.025em; line-height: 1.1; margin: 16px 0 8px; }
+    .featured__title em { font-style: italic; }
+    .featured__desc { color: var(--ink-soft); font-size: 14px; max-width: 32rem; line-height: 1.6; }
+    .featured__metrics { display: flex; gap: 32px; margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--line); }
+    .featured__metric .v { font-family: 'Fraunces', serif; font-size: 32px; font-weight: 400; line-height: 1; }
+    .featured__metric .l { font-size: 11px; color: var(--ink-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 4px; }
+
+    .featured__visual { position: relative; overflow: hidden; }
+    .featured__visual-inner {
+      position: absolute; inset: 0;
+      display: grid; place-items: center;
+    }
+
+    /* ── Abstract visual: 软件开发 — code editor grid ── */
+    .visual-code {
+      width: 80%; aspect-ratio: 1.4/1;
+      border-radius: 12px;
+      background: linear-gradient(160deg, rgba(99,102,241,0.15) 0%, rgba(79,70,229,0.05) 100%);
+      border: 1px solid rgba(99,102,241,0.3);
+      padding: 14px;
+      box-shadow: 0 30px 80px rgba(99, 102, 241, 0.2);
+      transform: rotate(-3deg);
+      transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .featured:hover .visual-code { transform: rotate(-1deg) translateY(-4px); }
+    .visual-code__head { display: flex; gap: 4px; margin-bottom: 12px; }
+    .visual-code__head span { width: 8px; height: 8px; border-radius: 50%; background: rgba(244,238,226,0.2); }
+    .visual-code__lines { display: flex; flex-direction: column; gap: 6px; }
+    .visual-code__line { display: flex; gap: 6px; align-items: center; }
+    .visual-code__line .num { width: 14px; height: 4px; background: rgba(244,238,226,0.15); border-radius: 2px; }
+    .visual-code__line .bar { height: 4px; border-radius: 2px; }
+    .visual-code__line .bar.a { width: 30%; background: rgba(99,102,241,0.6); }
+    .visual-code__line .bar.b { width: 50%; background: rgba(232,166,90,0.7); }
+    .visual-code__line .bar.c { width: 20%; background: rgba(244,238,226,0.4); }
+    .visual-code__line .bar.d { width: 65%; background: rgba(99,102,241,0.5); }
+    .visual-code__line .bar.e { width: 40%; background: rgba(111,207,151,0.6); }
+
+    /* Section heading */
+    .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 0 0 24px; }
+    .section-head h2 { font-family: 'Fraunces', serif; font-size: 22px; font-weight: 400; letter-spacing: -0.02em; margin: 0; }
+    .section-head h2 em { font-style: italic; color: var(--ink-soft); }
+    .section-head__count { font-size: 12px; color: var(--ink-muted); }
+
+    /* Industry grid (B direction) */
+    .ind-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    .ind-card {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--canvas-warm);
+      overflow: hidden;
+      cursor: pointer;
+      transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.3s;
+    }
+    .ind-card:hover { transform: translateY(-4px); border-color: rgba(244, 238, 226, 0.18); }
+
+    .ind-visual {
+      position: relative;
+      height: 160px;
+      overflow: hidden;
+      display: grid; place-items: center;
+    }
+    .ind-visual::after {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(180deg, transparent 50%, var(--canvas-warm) 100%);
+      pointer-events: none;
+    }
+
+    /* Visual B · 自媒体 — stacked frames */
+    .visual-frames {
+      width: 70%; aspect-ratio: 4/3;
+      display: flex; flex-direction: column; gap: 8px;
+      transform: rotate(2deg) translateY(0);
+      transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .ind-card:hover .visual-frames { transform: rotate(0deg) translateY(-3px); }
+    .visual-frames .frame {
+      flex: 1; border-radius: 6px;
+      background: linear-gradient(135deg, rgba(244, 114, 182, 0.4) 0%, rgba(225, 29, 72, 0.2) 100%);
+      border: 1px solid rgba(244, 114, 182, 0.4);
+      position: relative; overflow: hidden;
+    }
+    .visual-frames .frame::before {
+      content: ''; position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+      width: 16px; height: 16px; border-radius: 50%;
+      background: rgba(255,255,255,0.3);
+    }
+    .visual-frames .frame::after {
+      content: ''; position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+      width: 50%; height: 2px; background: rgba(255,255,255,0.15); border-radius: 2px;
+    }
+
+    /* Visual C · 金融 — candlestick bars */
+    .visual-bars {
+      width: 80%; aspect-ratio: 5/3;
+      display: flex; align-items: flex-end; justify-content: space-between; gap: 6px;
+      transform: translateY(0);
+      transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    .ind-card:hover .visual-bars { transform: translateY(-4px); }
+    .visual-bars .bar-grp { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; }
+    .visual-bars .wick { width: 2px; height: 12px; background: rgba(34, 211, 238, 0.6); border-radius: 2px; }
+    .visual-bars .body { width: 100%; border-radius: 3px; }
+    .visual-bars .up { background: linear-gradient(180deg, rgba(34,211,238,0.8), rgba(14,165,233,0.6)); box-shadow: 0 0 8px rgba(34,211,238,0.4); }
+    .visual-bars .down { background: linear-gradient(180deg, rgba(244,238,226,0.2), rgba(244,238,226,0.1)); }
+
+    .ind-body { padding: 18px 20px 20px; position: relative; }
+    .ind-name { font-family: 'Fraunces', serif; font-size: 19px; font-weight: 500; letter-spacing: -0.01em; }
+    .ind-key { font-size: 11px; color: var(--ink-muted); margin-top: 2px; letter-spacing: 0.04em; }
+    .ind-desc { font-size: 12.5px; color: var(--ink-soft); margin: 10px 0 14px; line-height: 1.5; min-height: 38px; }
+    .ind-metrics { display: flex; gap: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+    .ind-metric .v { font-family: 'Fraunces', serif; font-size: 17px; line-height: 1; }
+    .ind-metric .l { font-size: 10.5px; color: var(--ink-muted); letter-spacing: 0.04em; text-transform: uppercase; margin-top: 3px; }
+
+    .ind-foot { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+    .ind-action { font-size: 12.5px; color: var(--ink-soft); transition: color 0.12s; }
+    .ind-action:hover { color: var(--accent); }
+    .ind-action--primary { color: var(--accent); margin-left: auto; }
+
+    .ind-cta-card {
+      display: flex; align-items: center; justify-content: center; flex-direction: column;
+      gap: 12px; padding: 32px 24px; text-align: center;
+      border-style: dashed; background: transparent; color: var(--ink-muted);
+      min-height: 360px;
+    }
+    .ind-cta-card:hover { color: var(--accent); }
+    .ind-cta-card .plus {
+      width: 40px; height: 40px; border-radius: 50%;
+      border: 1.5px solid currentColor;
+      display: grid; place-items: center; font-size: 20px;
+    }
+    .ind-cta-card h3 { font-family: 'Fraunces', serif; font-style: italic; font-weight: 400; font-size: 18px; margin: 0; color: var(--ink); }
+    .ind-cta-card p { margin: 0; font-size: 12px; color: var(--ink-muted); }
+
+    /* Filter chips (minimal) */
+    .chips { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 28px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px; border-radius: 999px;
+      font-size: 12.5px; font-weight: 500;
+      background: transparent; color: var(--ink-soft);
+      border: 1px solid var(--line);
+      transition: all 0.12s;
+    }
+    .chip:hover { background: rgba(244, 238, 226, 0.04); color: var(--ink); }
+    .chip--active { background: var(--ink); color: var(--canvas-base); border-color: var(--ink); }
+    .chip__count { font-size: 11px; opacity: 0.6; }
+
+    /* Tweak (bottom-left) */
+    .tweaks { position: fixed; bottom: 16px; left: 16px; z-index: 100; }
+    .tweaks-panel {
+      background: rgba(14, 11, 20, 0.85); backdrop-filter: blur(12px);
+      border: 1px solid var(--line); border-radius: 12px;
+      padding: 10px 14px; box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+      font-size: 11.5px; color: var(--ink-soft);
+    }
+    .tweaks-panel b { color: var(--accent); font-weight: 600; }
+    .tweaks-panel kbd { font-size: 10px; padding: 1px 5px; border: 1px solid var(--line); border-radius: 3px; color: var(--ink-muted); font-family: 'JetBrains Mono', monospace; }
+
+    /* Footer signature */
+    .signature {
+      margin-top: 96px; padding: 28px 0;
+      border-top: 1px solid var(--line);
+      display: flex; align-items: center; gap: 14px;
+      color: var(--ink-muted); font-size: 12px;
+    }
+    .signature .rule { width: 32px; height: 1px; background: var(--accent); }
+    .signature em { font-family: 'Fraunces', serif; font-style: italic; color: var(--ink-soft); font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="page-ambient"></div>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState } = React;
+
+    const INDUSTRIES = [
+      {
+        key: 'softwaredev',
+        name: '软件开发',
+        desc: '系统开发 / UE 游戏 / 全栈 / DevOps 一站式岗位级 Agent 团队',
+        deptCount: 10,
+        posCount: 45,
+        agentCount: 96,
+        accent: 'var(--ind-dev-a)',
+        visual: 'code',
+      },
+      {
+        key: 'selfmedia',
+        name: '自媒体 / 内容创作',
+        desc: '网文小说 / 短视频 / 图文 / 直播，覆盖全内容形态',
+        deptCount: 5,
+        posCount: 28,
+        agentCount: 54,
+        accent: 'var(--ind-self-a)',
+        visual: 'frames',
+      },
+      {
+        key: 'finance',
+        name: '金融 / 投资',
+        desc: '证券研究 / 量化交易 / 固收 / 财富管理，研究即生产力',
+        deptCount: 6,
+        posCount: 32,
+        agentCount: 58,
+        accent: 'var(--ind-fin-a)',
+        visual: 'bars',
+      },
+    ];
+
+    const NAV = [
+      { section: '概览', items: [
+        { key: 'overview', label: '总览', icon: '◇' },
+        { key: 'monitor', label: '监控', icon: '◌' },
+      ]},
+      { section: '配置', items: [
+        { key: 'agents', label: 'Agent', icon: '◎' },
+        { key: 'teams', label: 'Team', icon: '◫' },
+        { key: 'industries', label: '行业模板', icon: '⬡', active: true },
+        { key: 'taxonomy', label: '分类体系', icon: '▤' },
+      ]},
+      { section: '能力', items: [
+        { key: 'tools', label: '工具', icon: '◐' },
+        { key: 'skills', label: '技能', icon: '✦' },
+        { key: 'knowledge', label: '知识库', icon: '◧' },
+      ]},
+    ];
+
+    function Sidebar() {
+      return (
+        <aside className="sidebar">
+          <div className="sidebar-brand">
+            <div className="sidebar-brand-mark">A</div>
+            <span>Aranea</span>
+          </div>
+          {NAV.map((sec) => (
+            <div key={sec.section}>
+              <div className="sidebar-section">{sec.section}</div>
+              {sec.items.map((it) => (
+                <div key={it.key} className={'sidebar-item' + (it.active ? ' sidebar-item--active' : '')}>
+                  <span className="sidebar-item__icon">{it.icon}</span>
+                  <span>{it.label}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </aside>
+      );
+    }
+
+    // Featured hero — 软件开发 industry
+    function FeaturedHero({ ind }) {
+      return (
+        <div className="featured">
+          <div className="featured__copy">
+            <div>
+              <span className="featured__badge">本期推荐</span>
+              <h2 className="featured__title">{ind.name}<br /><em>· 一个完整的智能团队</em></h2>
+              <p className="featured__desc">{ind.desc}</p>
+            </div>
+            <div>
+              <div className="featured__metrics">
+                <div className="featured__metric"><div className="v mono">{ind.deptCount}</div><div className="l">部门</div></div>
+                <div className="featured__metric"><div className="v mono">{ind.posCount}</div><div className="l">岗位</div></div>
+                <div className="featured__metric"><div className="v mono">{ind.agentCount}</div><div className="l">Agent</div></div>
+                <div className="featured__metric"><div className="v mono">12</div><div className="l">已部署实例</div></div>
+              </div>
+              <div className="page-actions" style={{ marginTop: 24 }}>
+                <button className="btn btn-primary">安装此行业 →</button>
+                <button className="btn btn-ghost">查看部门</button>
+              </div>
+            </div>
+          </div>
+          <div className="featured__visual">
+            <div className="featured__visual-inner">
+              <div className="visual-code">
+                <div className="visual-code__head">
+                  <span /><span /><span />
+                </div>
+                <div className="visual-code__lines">
+                  {[
+                    [['a', 50], ['b', 30]],
+                    [['c', 30], ['d', 65], ['c', 20]],
+                    [['a', 40]],
+                    [['e', 45], ['b', 20], ['c', 35]],
+                    [['d', 30], ['e', 25]],
+                    [['a', 60], ['b', 25]],
+                    [['e', 30], ['c', 50]],
+                    [['b', 40], ['a', 30]],
+                  ].map((row, i) => (
+                    <div key={i} className="visual-code__line">
+                      <div className="num" />
+                      {row.map(([k, w], j) => (
+                        <div key={j} className={'bar ' + k} style={{ width: w + '%' }} />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function VisualA() {
+      // Code editor abstraction
+      return (
+        <div className="visual-code" style={{ width: '70%' }}>
+          <div className="visual-code__head"><span /><span /><span /></div>
+          <div className="visual-code__lines">
+            <div className="visual-code__line"><div className="num" /><div className="bar a" style={{ width: '40%' }} /></div>
+            <div className="visual-code__line"><div className="num" /><div className="bar b" style={{ width: '25%' }} /><div className="bar c" style={{ width: '30%' }} /></div>
+            <div className="visual-code__line"><div className="num" /><div className="bar d" style={{ width: '55%' }} /></div>
+            <div className="visual-code__line"><div className="num" /><div className="bar e" style={{ width: '30%' }} /><div className="bar a" style={{ width: '20%' }} /></div>
+            <div className="visual-code__line"><div className="num" /><div className="bar c" style={{ width: '45%' }} /></div>
+            <div className="visual-code__line"><div className="num" /><div className="bar b" style={{ width: '35%' }} /><div className="bar d" style={{ width: '25%' }} /></div>
+          </div>
+        </div>
+      );
+    }
+
+    function VisualB() {
+      // Stacked frames (selfmedia)
+      return (
+        <div className="visual-frames">
+          <div className="frame" />
+          <div className="frame" />
+          <div className="frame" />
+        </div>
+      );
+    }
+
+    function VisualC() {
+      // Candlestick bars (finance) — 8 columns
+      const cols = [
+        { up: true, h: 60 },
+        { up: false, h: 40 },
+        { up: true, h: 80 },
+        { up: true, h: 50 },
+        { up: false, h: 30 },
+        { up: true, h: 70 },
+        { up: true, h: 90 },
+        { up: true, h: 65 },
+      ];
+      return (
+        <div className="visual-bars">
+          {cols.map((c, i) => (
+            <div key={i} className="bar-grp">
+              <div className="wick" />
+              <div className={'body ' + (c.up ? 'up' : 'down')} style={{ height: c.h + '%' }} />
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    function IndustryCard({ ind }) {
+      return (
+        <div className="ind-card">
+          <div className="ind-visual">
+            {ind.visual === 'code' && <VisualA />}
+            {ind.visual === 'frames' && <VisualB />}
+            {ind.visual === 'bars' && <VisualC />}
+          </div>
+          <div className="ind-body">
+            <div className="ind-name">{ind.name}</div>
+            <div className="ind-key mono">key · {ind.key}</div>
+            <p className="ind-desc">{ind.desc}</p>
+            <div className="ind-metrics">
+              <div className="ind-metric"><div className="v mono">{ind.deptCount}</div><div className="l">部门</div></div>
+              <div className="ind-metric"><div className="v mono">{ind.posCount}</div><div className="l">岗位</div></div>
+              <div className="ind-metric"><div className="v mono">{ind.agentCount}</div><div className="l">Agent</div></div>
+            </div>
+            <div className="ind-foot">
+              <button className="ind-action">详情</button>
+              <button className="ind-action">导出</button>
+              <button className="ind-action ind-action--primary">安装 →</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function IndustryMarketPage() {
+      const [tab, setTab] = useState('all');
+      const featured = INDUSTRIES[0];
+      return (
+        <main className="main">
+          <div className="page-hero">
+            <div className="page-kicker">Industry Template Library · 2026</div>
+            <h1 className="page-title">行业模板，<em>选一个世界</em><br />就拥有整支团队。</h1>
+            <p className="page-subtitle">
+              软件开发、自媒体、金融投资 — 每个行业都是一个内置完整岗位级 Agent 团队的场景包。
+              选择一个行业，一键安装，立刻进入团队协作。
+            </p>
+            <div className="page-actions">
+              <button className="btn btn-primary">浏览全部行业</button>
+              <button className="btn btn-ghost">↥ 申请新行业</button>
+            </div>
+          </div>
+
+          <FeaturedHero ind={featured} />
+
+          <div className="section-head">
+            <h2>所有行业 <em>· 3 个可安装</em></h2>
+            <div className="section-head__count">按字母排序 · 点击进入</div>
+          </div>
+
+          <div className="chips">
+            {[
+              { k: 'all', l: '全部' },
+              { k: 'system', l: '系统内置' },
+              { k: 'custom', l: '自建' },
+              { k: 'beta', l: 'Beta' },
+            ].map((c) => (
+              <button key={c.k} className={'chip' + (tab === c.k ? ' chip--active' : '')} onClick={() => setTab(c.k)}>
+                {c.l}
+              </button>
+            ))}
+          </div>
+
+          <div className="ind-grid">
+            {INDUSTRIES.map((ind) => <IndustryCard key={ind.key} ind={ind} />)}
+            <div className="ind-card ind-cta-card">
+              <div className="plus">+</div>
+              <h3>没有你的行业？</h3>
+              <p>提交业务场景描述<br />平台团队将为你定制</p>
+            </div>
+          </div>
+
+          <div className="signature">
+            <span className="rule" />
+            <em>"Each industry is a world you enter."</em>
+            <span>· 运动诗学派的签名细节 — 视觉即入口</span>
+          </div>
+        </main>
+      );
+    }
+
+    function App() {
+      return (
+        <div className="app-shell">
+          <Sidebar />
+          <IndustryMarketPage />
+        </div>
+      );
+    }
+
+    function Tweaks() {
+      return (
+        <div className="tweaks">
+          <div className="tweaks-panel">
+            <b>Direction B</b> · 运动诗学派 (Field.io / Apple)
+            <br />Hero 卡 hover 触发视觉 morph · 三种行业三种抽象图形
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<><App /><Tweaks /></>);
+  </script>
+</body>
+</html>

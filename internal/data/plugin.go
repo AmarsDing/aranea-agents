@@ -59,7 +59,7 @@ func entToBizPlugin(lg loggateway.Logger, e *ent.PlatformPlugin) biz.Plugin {
 }
 
 func (r *pluginRepo) pluginSearchQuery(ctx context.Context, q biz.PluginListQuery) *ent.PlatformPluginQuery {
-	pq := r.data.ReadClient(ctx).PlatformPlugin.Query().Where(platformplugin.DeletedAtEQ(""))
+	pq := r.data.RW().Read(ctx).PlatformPlugin.Query().Where(platformplugin.DeletedAtEQ(""))
 	if s := strings.TrimSpace(q.Search); s != "" {
 		pq = pq.Where(
 			platformplugin.Or(
@@ -114,7 +114,7 @@ func (r *pluginRepo) SearchPlugins(ctx context.Context, q biz.PluginListQuery) (
 }
 
 func (r *pluginRepo) GetByKey(ctx context.Context, key string) (biz.Plugin, error) {
-	row, err := r.data.ReadClient(ctx).PlatformPlugin.Query().
+	row, err := r.data.RW().Read(ctx).PlatformPlugin.Query().
 		Where(platformplugin.PluginKeyEQ(key), platformplugin.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -144,7 +144,7 @@ func (r *pluginRepo) CreatePlugin(ctx context.Context, p biz.Plugin) (biz.Plugin
 		schema = "{}"
 	}
 	now := nowRFC3339()
-	row, err := r.data.entClient.PlatformPlugin.Create().
+	row, err := r.data.RW().Write(ctx).PlatformPlugin.Create().
 		SetID(p.ID).
 		SetPluginKey(p.Key).
 		SetName(p.Name).
@@ -169,7 +169,7 @@ func (r *pluginRepo) CreatePlugin(ctx context.Context, p biz.Plugin) (biz.Plugin
 }
 
 func (r *pluginRepo) GetPlugin(ctx context.Context, id string) (biz.Plugin, error) {
-	row, err := r.data.ReadClient(ctx).PlatformPlugin.Query().
+	row, err := r.data.RW().Read(ctx).PlatformPlugin.Query().
 		Where(platformplugin.IDEQ(id), platformplugin.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -182,7 +182,7 @@ func (r *pluginRepo) GetPlugin(ctx context.Context, id string) (biz.Plugin, erro
 }
 
 func (r *pluginRepo) UpdatePluginEnabled(ctx context.Context, id string, enabled bool) (biz.Plugin, error) {
-	err := r.data.entClient.PlatformPlugin.UpdateOneID(id).
+	err := r.data.RW().Write(ctx).PlatformPlugin.UpdateOneID(id).
 		SetEnabled(enabled).
 		SetUpdatedAt(nowRFC3339()).
 		Exec(ctx)
@@ -196,7 +196,7 @@ func (r *pluginRepo) UpdatePluginEnabled(ctx context.Context, id string, enabled
 }
 
 func (r *pluginRepo) UpdatePluginConfig(ctx context.Context, id string, configJSON string) (biz.Plugin, error) {
-	err := r.data.entClient.PlatformPlugin.UpdateOneID(id).
+	err := r.data.RW().Write(ctx).PlatformPlugin.UpdateOneID(id).
 		SetConfigJSON(configJSON).
 		SetUpdatedAt(nowRFC3339()).
 		Exec(ctx)
@@ -210,7 +210,7 @@ func (r *pluginRepo) UpdatePluginConfig(ctx context.Context, id string, configJS
 }
 
 func (r *pluginRepo) UpdateSortOrder(ctx context.Context, id string, sortOrder int) (biz.Plugin, error) {
-	err := r.data.entClient.PlatformPlugin.UpdateOneID(id).
+	err := r.data.RW().Write(ctx).PlatformPlugin.UpdateOneID(id).
 		SetSortOrder(sortOrder).
 		SetUpdatedAt(nowRFC3339()).
 		Exec(ctx)
@@ -224,7 +224,7 @@ func (r *pluginRepo) UpdateSortOrder(ctx context.Context, id string, sortOrder i
 }
 
 func (r *pluginRepo) UpdatePluginScope(ctx context.Context, id string, scope string) (biz.Plugin, error) {
-	err := r.data.entClient.PlatformPlugin.UpdateOneID(id).
+	err := r.data.RW().Write(ctx).PlatformPlugin.UpdateOneID(id).
 		SetScope(strings.TrimSpace(scope)).
 		SetUpdatedAt(nowRFC3339()).
 		Exec(ctx)
@@ -242,7 +242,7 @@ func (r *pluginRepo) IncrementStats(ctx context.Context, pluginKey string, delta
 	if pluginKey == "" {
 		return nil
 	}
-	row, err := r.data.ReadClient(ctx).PlatformPlugin.Query().
+	row, err := r.data.RW().Read(ctx).PlatformPlugin.Query().
 		Where(platformplugin.PluginKeyEQ(pluginKey), platformplugin.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
@@ -255,7 +255,7 @@ func (r *pluginRepo) IncrementStats(ctx context.Context, pluginKey string, delta
 	if status == "" {
 		status = row.LastStatus
 	}
-	return r.data.entClient.PlatformPlugin.UpdateOne(row).
+	return r.data.RW().Write(ctx).PlatformPlugin.UpdateOne(row).
 		SetInvokeCount(row.InvokeCount + delta.InvokeCount).
 		SetBlockCount(row.BlockCount + delta.BlockDelta).
 		SetErrorCount(row.ErrorCount + delta.ErrorDelta).

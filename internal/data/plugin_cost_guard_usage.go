@@ -22,16 +22,15 @@ func NewPluginCostGuardUsageRepo(data *Data) biz.PluginCostGuardUsageRepo {
 }
 
 func (r *pluginCostGuardUsageRepo) GetTokens(ctx context.Context, usageDay, scopeKey string) (int, error) {
-	if r == nil || r.data == nil || r.data.RawDB() == nil {
+	if r == nil || r.data == nil || r.data.RWDB() == nil {
 		return 0, nil
 	}
 	usageDay = strings.TrimSpace(usageDay)
 	scopeKey = normalizeCostGuardScope(scopeKey)
 	var tokens int
-	err := r.data.RawDB().QueryRowContext(ctx,
+	err := queryRowScan(ctx, r.data.RWDB().ReadDB(ctx),
 		`SELECT tokens FROM plugin_cost_guard_usage WHERE usage_day = ? AND scope_key = ?`,
-		usageDay, scopeKey,
-	).Scan(&tokens)
+		[]any{usageDay, scopeKey}, &tokens)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, nil
@@ -42,13 +41,13 @@ func (r *pluginCostGuardUsageRepo) GetTokens(ctx context.Context, usageDay, scop
 }
 
 func (r *pluginCostGuardUsageRepo) AddTokens(ctx context.Context, usageDay, scopeKey string, delta int) error {
-	if r == nil || r.data == nil || r.data.RawDB() == nil || delta <= 0 {
+	if r == nil || r.data == nil || r.data.RWDB() == nil || delta <= 0 {
 		return nil
 	}
 	usageDay = strings.TrimSpace(usageDay)
 	scopeKey = normalizeCostGuardScope(scopeKey)
 	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := r.data.RawDB().ExecContext(ctx, `
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `
 INSERT INTO plugin_cost_guard_usage (usage_day, scope_key, tokens, updated_at)
 VALUES (?, ?, ?, ?)
 ON CONFLICT(usage_day, scope_key) DO UPDATE SET
