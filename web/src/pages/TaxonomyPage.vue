@@ -141,7 +141,7 @@
               :placeholder="currentDescPlaceholder"
             />
             <div class="row justify-end q-mt-xs">
-              <AIRefineButton
+              <AiRefineButton
                 :scope="levelScope(currentLevelNum)"
                 :resource-id="editingId || undefined"
                 :text="form.description ?? ''"

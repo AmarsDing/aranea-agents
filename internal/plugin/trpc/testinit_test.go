@@ -1,4 +1,4 @@
-﻿package plugintrpc
+package plugintrpc
 
 import (
 	"os"
@@ -10,6 +10,6 @@ import (
 
 func TestMain(m *testing.M) {
 	loggateway.SetGlobal(loggateway.NewNoop())
-	InitHookLogger(event.NewBus(loggateway.NewNoop()), loggateway.NewNoop())
+	InitHookLogger(event.NewBus(), loggateway.NewNoop())
 	os.Exit(m.Run())
 }

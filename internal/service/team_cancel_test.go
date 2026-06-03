@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"context"
@@ -68,7 +68,7 @@ func (r *cancelTeamRunRepo) ListBySpiritSessionID(_ context.Context, _ string) (
 }
 
 func TestCancelTeamRun_PublishesCancelledRunStatus(t *testing.T) {
-	bus := event.NewBus(loggateway.NewNoop())
+	bus := event.NewBus()
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{BufferSize: 4})
 	defer unsub()
 

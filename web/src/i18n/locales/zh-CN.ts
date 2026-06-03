@@ -1,6 +1,6 @@
 export default {
   common: {
-    appTitle: 'Arenea Agent Orchestrator',
+    appTitle: 'Aranea Agent Orchestrator',
     placeholder: '此区域内容将在后续版本完善。',
     lightMode: '白昼',
     darkMode: '深色',
@@ -68,6 +68,8 @@ export default {
     searchPlaceholder: '按名称搜索 Agent 或 Team',
     groupAgents: 'Agent',
     groupTeams: 'Team',
+    groupActiveTeams: '进行中的团队',
+    groupCompletedTeams: '已完成的团队',
     workIdle: '空闲',
     workBusy: '运行中',
     settings: '设置',
@@ -240,6 +242,9 @@ export default {
     workspaceKicker: 'ADK Multi-Agent',
     workspaceTitle: '对话工作台',
     workspaceSubtitle: '在 Agent 与 Team 之间切换会话，模型与上下文在此保持一致。',
+    hintWrite: '帮我写…',
+    hintAnalyze: '帮我分析…',
+    hintTranslate: '帮我翻译…',
   },
   plugins: {
     rulesAdd: '添加规则',
@@ -294,6 +299,7 @@ export default {
     kicker: '系统',
     title: '系统设置',
     subtitle: '全局路径、A2A、配额与嵌入模型配置。',
+    pathsTitle: '路径',
     rootDir: '系统根目录',
     rootDirHint: '平台安装或部署根路径，用于数据、资源等相对解析的基准目录。',
     workDir: '系统工作目录',
@@ -373,7 +379,7 @@ export default {
     fieldEventTypes: '事件类型 (JSON)',
     fieldEventTypesHint: 'JSON 数组，如 ["runner_completion","tool_call"]',
     fieldHeaders: '自定义请求头 (JSON)',
-    fieldHeadersHint: 'JSON 对象，如 {"Authorization":"Bearer xxx"}',
+    fieldHeadersHint: `JSON 对象，如 {'{'}"Authorization":"Bearer xxx"{'}'}`,
     btnCancel: '取消',
     btnSave: '保存',
     notifyRequired: '名称和 URL 为必填',
@@ -581,7 +587,7 @@ export default {
       progress_mode: {
         label: '进度模式',
         help: '长静默期间如何更新 IM 消息：off 不展示；text 心跳文案；steps 展示 Team 成员步骤摘要。',
-        example: '单 Agent 长生成选 text；Team 群 @ 选 steps',
+        example: `单 Agent 长生成选 text；Team 群 {'@'}选 steps`,
       },
       progress_quiet_sec: {
         label: '进度静默间隔',
@@ -595,8 +601,8 @@ export default {
       },
       heartbeat_message: {
         label: '心跳文案',
-        help: '长静默期间 PATCH 到 IM 的提示文案。支持 {{elapsed}} 占位符显示已耗时。',
-        example: '仍在处理中… {{elapsed}}',
+        help: '长静默期间 PATCH 到 IM 的提示文案。支持 {elapsed} 占位符显示已耗时。',
+        example: '仍在处理中… {elapsed}',
       },
       async_graph_id: {
         label: '异步 Graph',
@@ -666,8 +672,8 @@ export default {
         example: '["oc_group123"]',
       },
       require_mention: {
-        label: '需要 @',
-        help: '群聊中需 @ 机器人才响应，避免误触发。',
+        label: `需要 {'@'}`,
+        help: `群聊中需 {'@'} 机器人才响应，避免误触发。`,
       },
       icon_asset_id: {
         label: '图标',
@@ -698,7 +704,7 @@ export default {
       slackSocketMode: 'Socket Mode 必填',
       allowedUserIds: '允许发消息的用户 ID，JSON 数组或逗号分隔；留空=不限制。飞书填 open_id（ou_xxx）或 user_id',
       allowedGroupIds: '允许响应的群 chat_id（飞书 oc_xxx），JSON 或逗号分隔；留空=不限制。单聊不受此字段约束',
-      requireMention: '群聊需 @ 机器人才响应（飞书/钉钉等）',
+      requireMention: `群聊需 {'@'} 机器人才响应（飞书/钉钉等）`,
       avatarIcon: '留空使用平台默认图标',
     },
     sectionHints: {
@@ -710,7 +716,7 @@ export default {
     },
     placeholders: {
       ackMessage: '收到，正在处理…',
-      heartbeatMessage: '仍在处理中… {{elapsed}}',
+      heartbeatMessage: '仍在处理中… {elapsed}',
     },
     executionMode: {
       sync: 'sync — 同步等待结果',
@@ -751,7 +757,7 @@ export default {
       feishuOpsReasoningDesc: 'Transcript + 思考链；工具卡片 append；超长自动分页',
       agentHeavyTools: '单 Agent · 重工具 / 长生成',
       agentHeavyToolsDesc: '同「飞书 IM Preview」；Turn 10 分钟、首字节 120 秒',
-      teamPipeline: 'Team 流水线 · 群 @',
+      teamPipeline: `Team 流水线 · 群 {'@'}`,
       teamPipelineDesc: 'Team 成员 inline 摘要；Turn 15 分钟',
       asyncBackground: '超长任务 · Graph/Cron 异步',
       asyncBackgroundDesc: '全部入站走 async；需填写 async_team_id、async_graph_id 或 async_cron_task_id',

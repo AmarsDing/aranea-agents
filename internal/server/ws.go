@@ -173,7 +173,7 @@ func NewWSServerFromInfra(c *conf.Server, infra *event.Infra, canceller RunCance
 		return nil
 	}
 	if infra == nil {
-		infra = event.NewInfra(lg)
+		infra = event.NewInfra()
 	}
 	monitor := infra.MonitorBus
 	if monitor == nil {

@@ -75,18 +75,19 @@ func TestFileSink_Write(t *testing.T) {
 		t.Fatalf("failed to read log file: %v", err)
 	}
 
-	var got LogEntry
+	// FileSink now uses zapcore JSON encoder, parse the output
+	var got map[string]any
 	if err := json.Unmarshal(data, &got); err != nil {
-		t.Fatalf("failed to unmarshal log entry: %v", err)
+		t.Fatalf("failed to unmarshal log entry: %v\nraw: %s", err, string(data))
 	}
-	if got.Message != "file-sink-test" {
-		t.Fatalf("expected message 'file-sink-test', got %q", got.Message)
+	if got["message"] != "file-sink-test" {
+		t.Fatalf("expected message 'file-sink-test', got %v", got["message"])
 	}
-	if got.Kind != KindLog {
-		t.Fatalf("expected kind %q, got %q", KindLog, got.Kind)
+	if got["kind"] != "log" {
+		t.Fatalf("expected kind 'log', got %v", got["kind"])
 	}
-	if got.SessionID != "sess-1" {
-		t.Fatalf("expected sessionID 'sess-1', got %q", got.SessionID)
+	if got["session_id"] != "sess-1" {
+		t.Fatalf("expected session_id 'sess-1', got %v", got["session_id"])
 	}
 }
 

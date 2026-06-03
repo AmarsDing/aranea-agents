@@ -5,14 +5,13 @@ import (
 	"testing"
 
 	"aranea-agents/internal/event"
-	"aranea-agents/pkg/loggateway"
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 	trpcmodel "trpc.group/trpc-go/trpc-agent-go/model"
 )
 
 func TestProjectChatCompletionChunkToolAndTextSameChunk(t *testing.T) {
-	bus := event.NewBus(loggateway.NewNoop())
+	bus := event.NewBus()
 	p := NewEventProjector(bus, nil)
 	meta := ProjectMeta{SessionID: "sess-1"}
 

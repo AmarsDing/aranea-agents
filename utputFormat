@@ -1,6 +1,0 @@
-HTTP/1.1 400 Bad Request
-Content-Type: application/json
-Date: Wed, 03 Jun 2026 06:27:03 GMT
-Content-Length: 123
-
-{"code":400, "reason":"CODEC", "message":"body unmarshal proto: syntax error (line 1:2): invalid value \\", "metadata":{}}

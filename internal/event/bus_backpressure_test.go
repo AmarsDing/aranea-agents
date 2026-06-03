@@ -6,11 +6,10 @@ import (
 	"time"
 
 	"aranea-agents/internal/event"
-	"aranea-agents/pkg/loggateway"
 )
 
 func TestBusDropOldest(t *testing.T) {
-	bus := event.NewBus(loggateway.NewNoop())
+	bus := event.NewBus()
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{
 		BufferSize: 2,
 		DropPolicy: event.DropOldest,
@@ -41,7 +40,7 @@ loop:
 }
 
 func TestBusDropNewest(t *testing.T) {
-	bus := event.NewBus(loggateway.NewNoop())
+	bus := event.NewBus()
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{
 		BufferSize: 1,
 		DropPolicy: event.DropNewest,
@@ -64,7 +63,7 @@ func TestBusDropNewest(t *testing.T) {
 }
 
 func TestBusBlockUpTo(t *testing.T) {
-	bus := event.NewBus(loggateway.NewNoop())
+	bus := event.NewBus()
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{
 		BufferSize: 1,
 		DropPolicy: event.BlockUpTo,
@@ -86,7 +85,7 @@ func TestBusBlockUpTo(t *testing.T) {
 }
 
 func TestBusReliableOption(t *testing.T) {
-	bus := event.NewBus(loggateway.NewNoop())
+	bus := event.NewBus()
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{
 		BufferSize: 4,
 		Reliable:   true,
@@ -108,7 +107,7 @@ func TestBusReliableOption(t *testing.T) {
 }
 
 func TestBusSelectorFilter(t *testing.T) {
-	bus := event.NewBus(loggateway.NewNoop())
+	bus := event.NewBus()
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{
 		BufferSize: 8,
 		Selector: func(et event.EnvelopeType) bool {

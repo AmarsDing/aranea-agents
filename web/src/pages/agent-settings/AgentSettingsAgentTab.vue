@@ -33,7 +33,7 @@
           />
           <!-- PGO-3-WEB-03: AI Refine button for agent description -->
           <div class="row justify-end q-mt-xs">
-            <AIRefineButton
+            <AiRefineButton
               scope="agent.description"
               :resource-id="agentId"
               :text="form.agent_description ?? ''"

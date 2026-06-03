@@ -1,4 +1,4 @@
-﻿package agent
+package agent
 
 import (
 	"context"
@@ -72,7 +72,7 @@ func TestAccumulateStreamUsage_skipsTeamRootAuthor(t *testing.T) {
 }
 
 func TestConsumeEventStream_skipsToolResponseInReply(t *testing.T) {
-	bus := event.NewBus(loggateway.NewNoop())
+	bus := event.NewBus()
 	events := make(chan *trpcevent.Event, 4)
 	go func() {
 		defer close(events)
@@ -89,7 +89,7 @@ func TestConsumeEventStream_skipsToolResponseInReply(t *testing.T) {
 }
 
 func TestConsumeEventStream_accumulatesDeltaReasoning(t *testing.T) {
-	bus := event.NewBus(loggateway.NewNoop())
+	bus := event.NewBus()
 	events := make(chan *trpcevent.Event, 3)
 	go func() {
 		defer close(events)
@@ -105,7 +105,7 @@ func TestConsumeEventStream_accumulatesDeltaReasoning(t *testing.T) {
 }
 
 func TestConsumeEventStream_finalizesStuckTools(t *testing.T) {
-	bus := event.NewBus(loggateway.NewNoop())
+	bus := event.NewBus()
 	persister := &recordingPersister{}
 	events := make(chan *trpcevent.Event, 3)
 	go func() {

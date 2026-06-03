@@ -7,11 +7,10 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
-	"aranea-agents/pkg/loggateway"
 )
 
 func TestStartOrchestrationStatusProjector_PublishesStatus(t *testing.T) {
-	bus := event.NewBus(loggateway.NewNoop())
+	bus := event.NewBus()
 	reg := biz.NewOrchestrationRegistry([]biz.OrchestrationNodeRegistryEntry{
 		{NodeID: "member-1", AgentID: "a1", AgentKey: "worker-a", AgentName: "A", Role: "worker"},
 	})

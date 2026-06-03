@@ -42,6 +42,7 @@ type ServiceRegistry struct {
 	AIRefine       *service.AIRefineService
 	Taxonomy       *service.TaxonomyService
 	SkillEvo       *service.SkillEvolutionService
+	Pack           *service.PackService
 }
 
 // NewServiceRegistry assembles all services into a single registry for Wire injection.
@@ -79,6 +80,7 @@ func NewServiceRegistry(
 	aiRefine *service.AIRefineService,
 	taxonomy *service.TaxonomyService,
 	skillEvo *service.SkillEvolutionService,
+	packSvc *service.PackService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
 		Admin:          admin,
@@ -113,5 +115,6 @@ func NewServiceRegistry(
 		AIRefine:       aiRefine,
 		Taxonomy:       taxonomy,
 		SkillEvo:       skillEvo,
+		Pack:           packSvc,
 	}
 }

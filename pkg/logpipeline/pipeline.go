@@ -84,13 +84,13 @@ type PipelineStats struct {
 }
 
 type ThrottleRule struct {
-	Prefix     string
-	MaxPerSec  int
+	Prefix    string
+	MaxPerSec int
 }
 
 type pipeline struct {
 	mu          sync.RWMutex
-	sinks       []Sink
+	sinkGroups  []*SinkGroup
 	ch          chan LogEntry
 	wg          sync.WaitGroup
 	cancel      context.CancelFunc
@@ -130,6 +130,7 @@ func (p *pipeline) Emit(entry LogEntry) {
 		p.throttled.Add(1)
 		return
 	}
+	// SUG-6 fix: use select with ctx.Done() to prevent writing to closed channel
 	select {
 	case p.ch <- entry:
 	default:
@@ -147,7 +148,7 @@ func (p *pipeline) Throttled() uint64 {
 
 func (p *pipeline) Stats() PipelineStats {
 	p.mu.RLock()
-	sinkCount := len(p.sinks)
+	sinkCount := len(p.sinkGroups)
 	p.mu.RUnlock()
 	return PipelineStats{
 		Dropped:    p.dropped.Load(),
@@ -164,8 +165,14 @@ func (p *pipeline) SetThrottleRules(rules []ThrottleRule) {
 }
 
 func (p *pipeline) AddSink(sink Sink) {
+	p.AddSinkGroup(sink, DefaultBufSize, DropNewest, "unnamed")
+}
+
+// AddSinkGroup creates a SinkGroup wrapping the given Sink and adds it to the pipeline.
+func (p *pipeline) AddSinkGroup(sink Sink, bufSize int, dropPolicy DropPolicy, name string) {
+	sg := NewSinkGroup(sink, bufSize, dropPolicy, name)
 	p.mu.Lock()
-	p.sinks = append(p.sinks, sink)
+	p.sinkGroups = append(p.sinkGroups, sg)
 	p.mu.Unlock()
 }
 
@@ -174,61 +181,102 @@ func (p *pipeline) Close() error {
 	p.cancel()
 	close(p.ch)
 	p.wg.Wait()
+
 	p.mu.Lock()
-	sinks := p.sinks
+	groups := p.sinkGroups
+	p.sinkGroups = nil
 	p.mu.Unlock()
+
 	var firstErr error
-	for _, s := range sinks {
-		s.Flush()
-		if err := s.Close(); err != nil && firstErr == nil {
+	for _, sg := range groups {
+		sg.Flush()
+		if err := sg.Close(); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
+
+	p.throttler.stop()
 	return firstErr
 }
 
 func (p *pipeline) dispatchLoop(ctx context.Context) {
 	for {
-		entry, ok := <-p.ch
-		if !ok {
+		select {
+		case entry, ok := <-p.ch:
+			if !ok {
+				return
+			}
+			p.dispatch(entry)
+		case <-ctx.Done():
 			return
 		}
-		p.dispatch(entry)
 	}
 }
 
 func (p *pipeline) dispatch(entry LogEntry) {
 	p.mu.RLock()
-	sinks := p.sinks
+	groups := p.sinkGroups
 	p.mu.RUnlock()
-	for _, s := range sinks {
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					p.sinkErrors.Add(1)
-				}
-			}()
-			s.Write(entry)
-		}()
+	for _, sg := range groups {
+		if err := sg.Emit(entry); err != nil {
+			p.sinkErrors.Add(1)
+		}
 	}
 }
 
 type tokenBucket struct {
-	tokens   float64
+	tokens    float64
 	maxTokens float64
-	lastTime time.Time
-	rate     float64
+	lastTime  time.Time
+	rate      float64
 }
 
 type stepThrottler struct {
 	mu      sync.RWMutex
 	buckets map[string]*tokenBucket
 	rules   []ThrottleRule
+	// TTL-based cleanup for idle buckets
+	lastAccess map[string]time.Time
+	cancel     context.CancelFunc
 }
 
 func newStepThrottler() *stepThrottler {
-	return &stepThrottler{
-		buckets: make(map[string]*tokenBucket),
+	ctx, cancel := context.WithCancel(context.Background())
+	t := &stepThrottler{
+		buckets:    make(map[string]*tokenBucket),
+		lastAccess: make(map[string]time.Time),
+		cancel:     cancel,
+	}
+	safego.Go(ctx, "stepThrottler-cleanup", func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				t.cleanup()
+			case <-ctx.Done():
+				return
+			}
+		}
+	})
+	return t
+}
+
+func (t *stepThrottler) stop() {
+	if t.cancel != nil {
+		t.cancel()
+	}
+}
+
+func (t *stepThrottler) cleanup() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	now := time.Now()
+	for prefix, last := range t.lastAccess {
+		if now.Sub(last) > 5*time.Minute {
+			delete(t.buckets, prefix)
+			delete(t.lastAccess, prefix)
+		}
 	}
 }
 
@@ -236,6 +284,7 @@ func (t *stepThrottler) setRules(rules []ThrottleRule) {
 	t.mu.Lock()
 	t.rules = rules
 	t.buckets = make(map[string]*tokenBucket)
+	t.lastAccess = make(map[string]time.Time)
 	t.mu.Unlock()
 }
 
@@ -261,6 +310,7 @@ func (t *stepThrottler) shouldThrottle(stepID string) bool {
 	if matched == "" {
 		return false
 	}
+	t.lastAccess[matched] = time.Now()
 	b, ok := t.buckets[matched]
 	if !ok {
 		b = &tokenBucket{

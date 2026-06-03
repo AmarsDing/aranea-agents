@@ -20,26 +20,29 @@ import (
 //
 // At M2 this function should be tightened to reject unauthenticated requests in
 // production by checking DEPLOY_ENV.
-func GRPCMiddleware() middleware.Middleware {
+func GRPCMiddleware(lg loggateway.Logger) middleware.Middleware {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	return func(handler middleware.Handler) middleware.Handler {
 		return func(ctx context.Context, req interface{}) (interface{}, error) {
 			// Bypass mode: inject dev principal and continue.
 			if HTTPAuthBypassEnabled() {
-				loggateway.Global().Warn("auth bypass active: injecting dev principal (gRPC)",
+				lg.Warn("auth bypass active: injecting dev principal (gRPC)",
 					loggateway.StepID("auth.bypass"))
 				return handler(NewContext(ctx, DevBypassPrincipal()), req)
 			}
 
 			token := grpcBearerToken(ctx)
 			if token == "" {
-				loggateway.Global().Info("gRPC request without credentials (internal-only)",
+				lg.Info("gRPC request without credentials (internal-only)",
 					loggateway.StepID("grpc.unauthenticated"))
 				return handler(ctx, req)
 			}
 
 			auth, err := ParseToken(token, authSecretKey)
 			if err != nil {
-				loggateway.Global().Warn("gRPC auth rejected: token parse failed",
+				lg.Warn("gRPC auth rejected: token parse failed",
 					loggateway.StepID("grpc.token_invalid"), loggateway.Err(err))
 				return nil, ErrUnauthorized
 			}

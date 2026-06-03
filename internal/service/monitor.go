@@ -22,14 +22,15 @@ type MonitorService struct {
 	uc     *biz.MonitorUsecase
 	server *conf.Server
 	diag   *biz.DiagBundleGenerator
+	selfHeal *biz.SelfHealUsecase
 	lg     loggateway.Logger
 
 	flowLogSvc  *FlowLogService
 	codeExecSvc *CodeExecutorService
 }
 
-func NewMonitorService(uc *biz.MonitorUsecase, server *conf.Server, flowLogSvc *FlowLogService, codeExecSvc *CodeExecutorService, diag *biz.DiagBundleGenerator, lg loggateway.Logger) *MonitorService {
-	return &MonitorService{uc: uc, server: server, flowLogSvc: flowLogSvc, codeExecSvc: codeExecSvc, diag: diag, lg: lg}
+func NewMonitorService(uc *biz.MonitorUsecase, server *conf.Server, flowLogSvc *FlowLogService, codeExecSvc *CodeExecutorService, diag *biz.DiagBundleGenerator, selfHeal *biz.SelfHealUsecase, lg loggateway.Logger) *MonitorService {
+	return &MonitorService{uc: uc, server: server, flowLogSvc: flowLogSvc, codeExecSvc: codeExecSvc, diag: diag, selfHeal: selfHeal, lg: lg}
 }
 
 func bizAuditToProto(a biz.AuditLog) *v1.AuditLog {
@@ -418,5 +419,30 @@ func (s *MonitorService) GenerateDiagnosticBundle(ctx context.Context, in *v1.Ge
 		TraceJson:    bundle.TraceJSON,
 		UsageJson:    bundle.UsageJSON,
 		AlertsJsonl:  bundle.AlertsJSONL,
+	}, nil
+}
+
+func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAndHealRequest) (*v1.DiagnoseAndHealResponse, error) {
+	if s == nil || s.selfHeal == nil {
+		return nil, kerrors.New(503, "SERVICE_UNAVAILABLE", "self-heal service not available")
+	}
+	rec, err := s.selfHeal.DiagnoseAndHeal(ctx,
+		in.GetTraceId(), in.GetSessionId(), in.GetRunId(), in.GetStepId(),
+		in.GetTriggerType(), in.GetContextMinutes(),
+	)
+	if err != nil {
+		return nil, kerrors.New(500, "INTERNAL", err.Error())
+	}
+	fixParamsJSON, _ := json.Marshal(rec.FixAction.Params)
+	return &v1.DiagnoseAndHealResponse{
+		HealId:              rec.ID,
+		RuleId:              rec.RuleID,
+		Status:              rec.Status,
+		Reason:              rec.Reason,
+		Confidence:          rec.Confidence,
+		FixActionType:       rec.FixAction.Type,
+		FixActionMaxAttempts: int32(rec.FixAction.MaxAttempts),
+		FixActionParamsJson: string(fixParamsJSON),
+		CreatedAt:           rec.CreatedAt,
 	}, nil
 }

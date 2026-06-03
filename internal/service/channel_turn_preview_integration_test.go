@@ -1,4 +1,4 @@
-﻿package service
+package service
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 )
 
 func TestTurnPreviewCoordinator_eventBusWithHeartbeat(t *testing.T) {
-	bus := event.NewBus(loggateway.NewNoop())
+	bus := event.NewBus()
 	updater := &mockPreviewUpdater{}
 	lt := biz.ParseChannelLongTaskConfig(`{"config":{"im_render_mode":"transcript","progress_quiet_sec":3600}}`)
 	coord := newTurnPreviewCoordinator(turnPreviewParams{

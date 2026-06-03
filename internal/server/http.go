@@ -27,6 +27,7 @@ import (
 	memoryv1 "aranea-agents/api/kratos/memory/v1"
 	modelcatalogv1 "aranea-agents/api/kratos/model_catalog/v1"
 	monitorv1 "aranea-agents/api/kratos/monitor/v1"
+	packv1 "aranea-agents/api/kratos/pack/v1"
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
@@ -41,6 +42,7 @@ import (
 	servermw "aranea-agents/internal/server/middleware"
 	"aranea-agents/internal/service"
 	"aranea-agents/pkg/auth"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/validate"
 
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
@@ -52,11 +54,11 @@ type ReadinessProbe interface {
 	IsReady() bool
 }
 
-func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, readiness ReadinessProbe) *kratoshttp.Server {
+func NewHTTPServer(c *conf.Server, s *ServiceRegistry, wsSrv *WSServer, readiness ReadinessProbe, lg loggateway.Logger) *kratoshttp.Server {
 	var opts = []kratoshttp.ServerOption{
 		kratoshttp.Filter(
 			CorsDevFilter(),
-			auth.Middleware(),
+			auth.Middleware(lg),
 			servermw.WorkspaceFilter(),
 		),
 		kratoshttp.Middleware(
@@ -120,6 +122,7 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	gatewayv1.RegisterGatewayServiceHTTPServer(srv, s.Gateway)
 	taxonomyv1.RegisterTaxonomyServiceHTTPServer(srv, s.Taxonomy)
 	skillevov1.RegisterSkillEvolutionServiceHTTPServer(srv, s.SkillEvo)
+	packv1.RegisterPackServiceHTTPServer(srv, s.Pack)
 }
 
 // registerCustomRoutes registers cross-cutting operational routes that bypass proto

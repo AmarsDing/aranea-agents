@@ -2,25 +2,31 @@ package loggateway
 
 import (
 	"fmt"
-	"io"
 	"os"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/logpipeline"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"gopkg.in/natefinch/lumberjack.v2"
 )
 
+// LoggingConfig is a pkg-level config struct that decouples loggateway from
+// internal/conf. The caller (cmd/admin/main.go) converts conf.Logging to this.
+type LoggingConfig struct {
+	Level       string
+	OutputDir   string
+	MaxSizeMB   int
+	MaxBackups  int
+	MaxAgeDays  int
+	Compress    bool
+	Stdout      bool
+}
+
 type Gateway struct {
-	core        zapcore.Core
-	logger      *zap.Logger
 	base        []Field
 	outputDir   string
 	pipeline    atomic.Pointer[logpipeline.Pipeline]
@@ -32,73 +38,21 @@ var (
 	global   = NewNoop()
 )
 
-func New(c *conf.Logging) *Gateway {
-	level := parseLevel(c.GetLevel(), zapcore.InfoLevel)
-	outputDir := c.GetOutputDir()
+func New(c LoggingConfig, pipeline logpipeline.Pipeline) *Gateway {
+	level := parseLevel(c.Level, zapcore.InfoLevel)
+	outputDir := c.OutputDir
 	if outputDir == "" {
 		outputDir = defaultOutputDir()
 	}
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return NewNoop()
-	}
-
-	maxSize := c.GetMaxSizeMb()
-	if maxSize <= 0 {
-		maxSize = 100
-	}
-	maxBackups := c.GetMaxBackups()
-	if maxBackups <= 0 {
-		maxBackups = 10
-	}
-	maxAge := c.GetMaxAgeDays()
-	if maxAge <= 0 {
-		maxAge = 30
-	}
-
-	lw := &lumberjack.Logger{
-		Filename:   filepath.Join(outputDir, "aranea.log"),
-		MaxSize:    int(maxSize),
-		MaxBackups: int(maxBackups),
-		MaxAge:     int(maxAge),
-		Compress:   c.GetCompress(),
-		LocalTime:  true,
-	}
-
-	var ws zapcore.WriteSyncer
-	fileSyncer := zapcore.AddSync(lw)
-	if c.GetStdoutEnabled() {
-		ws = zapcore.NewMultiWriteSyncer(fileSyncer, zapcore.AddSync(os.Stdout))
-	} else {
-		ws = fileSyncer
-	}
-
-	encoderCfg := zapcore.EncoderConfig{
-		TimeKey:        "ts",
-		LevelKey:       "level",
-		NameKey:        "logger",
-		CallerKey:      "caller",
-		MessageKey:     "msg",
-		StacktraceKey:  "stacktrace",
-		LineEnding:     zapcore.DefaultLineEnding,
-		EncodeLevel:    zapcore.LowercaseLevelEncoder,
-		EncodeTime:     zapcore.ISO8601TimeEncoder,
-		EncodeDuration: zapcore.MillisDurationEncoder,
-		EncodeCaller:   zapcore.ShortCallerEncoder,
-	}
 
 	atomicLevel := zap.NewAtomicLevelAt(level)
-	core := zapcore.NewCore(
-		zapcore.NewJSONEncoder(encoderCfg),
-		ws,
-		atomicLevel,
-	)
-
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
 	g := &Gateway{
-		core:        core,
-		logger:      logger,
 		outputDir:   outputDir,
 		atomicLevel: atomicLevel,
+	}
+
+	if pipeline != nil {
+		g.pipeline.Store(&pipeline)
 	}
 
 	globalMu.Lock()
@@ -108,6 +62,7 @@ func New(c *conf.Logging) *Gateway {
 	return g
 }
 
+// Deprecated: use constructor injection instead of global singleton.
 func Global() *Gateway {
 	globalMu.RLock()
 	defer globalMu.RUnlock()
@@ -135,15 +90,7 @@ func (g *Gateway) SetLevel(level string) {
 }
 
 func NewNoop() *Gateway {
-	core := zapcore.NewCore(
-		zapcore.NewJSONEncoder(zapcore.EncoderConfig{}),
-		zapcore.AddSync(io.Discard),
-		zapcore.DebugLevel,
-	)
-	logger := zap.New(core)
 	return &Gateway{
-		core:        core,
-		logger:      logger,
 		atomicLevel: zap.NewAtomicLevelAt(zapcore.DebugLevel),
 	}
 }
@@ -153,7 +100,6 @@ func (g *Gateway) Debug(msg string, fields ...Field) {
 		return
 	}
 	all := g.withBase(fields)
-	g.logger.Debug(msg, all...)
 	g.emitToPipeline(zapcore.DebugLevel, msg, all)
 }
 
@@ -162,7 +108,6 @@ func (g *Gateway) Info(msg string, fields ...Field) {
 		return
 	}
 	all := g.withBase(fields)
-	g.logger.Info(msg, all...)
 	g.emitToPipeline(zapcore.InfoLevel, msg, all)
 }
 
@@ -171,7 +116,6 @@ func (g *Gateway) Warn(msg string, fields ...Field) {
 		return
 	}
 	all := g.withBase(fields)
-	g.logger.Warn(msg, all...)
 	g.emitToPipeline(zapcore.WarnLevel, msg, all)
 }
 
@@ -180,7 +124,6 @@ func (g *Gateway) Error(msg string, fields ...Field) {
 		return
 	}
 	all := g.withBase(fields)
-	g.logger.Error(msg, all...)
 	g.emitToPipeline(zapcore.ErrorLevel, msg, all)
 }
 
@@ -194,6 +137,8 @@ func (g *Gateway) With(fields ...Field) Logger {
 	return &loggerWith{g: g, base: newBase}
 }
 
+// SetPipeline is kept for backward compatibility but should not be needed
+// when Pipeline is injected at construction time via New().
 func (g *Gateway) SetPipeline(p logpipeline.Pipeline) {
 	if g == nil {
 		return
@@ -292,7 +237,6 @@ func (l *loggerWith) Debug(msg string, fields ...Field) {
 	all := make([]Field, 0, len(l.base)+len(fields))
 	all = append(all, l.base...)
 	all = append(all, fields...)
-	l.g.logger.Debug(msg, all...)
 	l.g.emitToPipeline(zapcore.DebugLevel, msg, all)
 }
 
@@ -300,7 +244,6 @@ func (l *loggerWith) Info(msg string, fields ...Field) {
 	all := make([]Field, 0, len(l.base)+len(fields))
 	all = append(all, l.base...)
 	all = append(all, fields...)
-	l.g.logger.Info(msg, all...)
 	l.g.emitToPipeline(zapcore.InfoLevel, msg, all)
 }
 
@@ -308,7 +251,6 @@ func (l *loggerWith) Warn(msg string, fields ...Field) {
 	all := make([]Field, 0, len(l.base)+len(fields))
 	all = append(all, l.base...)
 	all = append(all, fields...)
-	l.g.logger.Warn(msg, all...)
 	l.g.emitToPipeline(zapcore.WarnLevel, msg, all)
 }
 
@@ -316,7 +258,6 @@ func (l *loggerWith) Error(msg string, fields ...Field) {
 	all := make([]Field, 0, len(l.base)+len(fields))
 	all = append(all, l.base...)
 	all = append(all, fields...)
-	l.g.logger.Error(msg, all...)
 	l.g.emitToPipeline(zapcore.ErrorLevel, msg, all)
 }
 

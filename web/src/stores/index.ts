@@ -43,3 +43,4 @@ export { useA2AStore } from './a2a';
 export { useInboundNotificationStore } from './inboundNotifications';
 export { useEventStore } from './event';
 export { useSpiritTeamStore } from './spirit';
+export { useLearningLoopStore } from './learningLoop';

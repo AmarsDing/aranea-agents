@@ -127,7 +127,7 @@ func (a *ModelRegistrySyncAgent) Run(ctx context.Context, inv *trpcagent.Invocat
 
 func (a *ModelRegistrySyncAgent) Tools() []trpctool.Tool { return a.tools }
 func (a *ModelRegistrySyncAgent) Info() trpcagent.Info {
-	return trpcagent.Info{Name: "model-registry-sync", Description: "Model registry sync agent (programmatic)"}
+	return trpcagent.Info{Name: "model-registry-sync", Description: "模型注册同步代理（程序化）"}
 }
 func (a *ModelRegistrySyncAgent) SubAgents() []trpcagent.Agent        { return nil }
 func (a *ModelRegistrySyncAgent) FindSubAgent(string) trpcagent.Agent { return nil }

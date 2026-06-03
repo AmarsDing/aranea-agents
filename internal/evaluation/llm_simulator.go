@@ -34,7 +34,7 @@ func NewLLMUserSimulator(catalog *biz.LlmProviderModelUsecase, rt *provider.Roun
 		"eval-user-simulator",
 		llmagent.WithModel(m),
 		llmagent.WithInstruction(simSystemInstruction),
-		llmagent.WithDescription("Aranea evaluation user simulator"),
+		llmagent.WithDescription("Aranea 评估用户模拟器"),
 		llmagent.WithGenerationConfig(trpcmodel.GenerationConfig{
 			MaxTokens:   intPtr(512),
 			Temperature: floatPtr(0.3),

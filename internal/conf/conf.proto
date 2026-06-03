@@ -50,6 +50,27 @@ message Monitor {
   bool process_log_enabled = 1;
 }
 
+enum SinkType {
+  SINK_TYPE_UNSPECIFIED = 0;
+  SINK_TYPE_FILE = 1;
+  SINK_TYPE_STDOUT = 2;
+  SINK_TYPE_EVENTBUS = 3;
+}
+
+enum DropPolicy {
+  DROP_POLICY_UNSPECIFIED = 0;
+  DROP_POLICY_NEWEST = 1;
+  DROP_POLICY_BLOCK = 2;
+}
+
+message LoggingSink {
+  string name = 1;
+  SinkType type = 2;
+  int32 buffer_size = 3;
+  DropPolicy drop_policy = 4;
+  map<string, string> config = 5;
+}
+
 message Logging {
   string level = 1;
   string output_dir = 2;
@@ -59,6 +80,7 @@ message Logging {
   bool compress = 6;
   bool stdout_enabled = 7;
   string hook_level = 8;
+  repeated LoggingSink sinks = 9;
 }
 
 message DebugRecorder {

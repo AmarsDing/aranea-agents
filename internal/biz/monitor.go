@@ -28,6 +28,10 @@ type (
 	AlertMetric             = monitor.AlertMetric
 	DiagBundleGenerator     = monitor.DiagBundleGenerator
 	UsecaseOption           = monitor.UsecaseOption
+	SelfHealUsecase         = monitor.SelfHealUsecase
+	HealActionHandler       = monitor.HealActionHandler
+	HealRecord              = monitor.HealRecord
+	FixAction               = monitor.FixAction
 )
 
 var (
@@ -44,4 +48,5 @@ var (
 	NewSkillFilesystemMissingMetric = monitor.NewSkillFilesystemMissingMetric
 	NewDiagBundleGenerator          = monitor.NewDiagBundleGenerator
 	MergeRunnerCompletionUsagePatch = monitor.MergeRunnerCompletionUsagePatch
+	NewSelfHealUsecase              = monitor.NewSelfHealUsecase
 )

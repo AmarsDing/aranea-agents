@@ -64,11 +64,14 @@ func isNoAuthPath(path string) bool {
 }
 
 // Middleware is an authentication middleware for HTTP servers.
-func Middleware() httpm.FilterFunc {
+func Middleware(lg loggateway.Logger) httpm.FilterFunc {
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if HTTPAuthBypassEnabled() {
-				loggateway.Global().Warn("auth bypass active: injecting dev principal",
+				lg.Warn("auth bypass active: injecting dev principal",
 					loggateway.StepID("auth.bypass"), loggateway.Str("path", r.URL.Path))
 				next.ServeHTTP(w, r.WithContext(NewContext(r.Context(), DevBypassPrincipal())))
 				return
@@ -86,7 +89,7 @@ func Middleware() httpm.FilterFunc {
 			// non-bypass mode; the actual signature content is verified by the handler.
 			if strings.HasPrefix(r.URL.Path, "/webhooks/") {
 				if !isRegisteredWebhookPath(r.URL.Path) {
-					loggateway.Global().Warn("webhook rejected: unregistered path",
+					lg.Warn("webhook rejected: unregistered path",
 						loggateway.StepID("auth.webhook"), loggateway.Str("path", r.URL.Path))
 					http.Error(w, "Forbidden: unregistered webhook path", http.StatusForbidden)
 					return
@@ -100,14 +103,14 @@ func Middleware() httpm.FilterFunc {
 			}
 			tokenStr := TokenFromHTTPRequest(r)
 			if tokenStr == "" {
-				loggateway.Global().Info("auth rejected: no token",
+				lg.Info("auth rejected: no token",
 					loggateway.StepID("auth.no_token"), loggateway.Str("path", r.URL.Path))
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
 			auth, err := ParseToken(tokenStr, authSecretKey)
 			if err != nil {
-				loggateway.Global().Warn("auth rejected: token parse failed",
+				lg.Warn("auth rejected: token parse failed",
 					loggateway.StepID("auth.token_invalid"), loggateway.Str("path", r.URL.Path), loggateway.Err(err))
 				ec := errors.FromError(err)
 				http.Error(w, ec.Message, int(ec.Code))

@@ -13,7 +13,6 @@ import (
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
-	"aranea-agents/pkg/loggateway"
 	rt "aranea-agents/internal/runtime"
 )
 
@@ -152,7 +151,7 @@ type parityPathOutcome struct {
 func runNativePathHarness(t *testing.T, def Definition, outcomes []parityMemberOutcome) parityPathOutcome {
 	t.Helper()
 	repo := newParityMemRepo()
-	bus := event.NewBus(loggateway.NewNoop())
+	bus := event.NewBus()
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{BufferSize: 64})
 	defer unsub()
 
@@ -184,7 +183,7 @@ func runNativePathHarness(t *testing.T, def Definition, outcomes []parityMemberO
 func runGraphPathHarness(t *testing.T, def Definition, outcomes []parityMemberOutcome) parityPathOutcome {
 	t.Helper()
 	repo := newParityMemRepo()
-	bus := event.NewBus(loggateway.NewNoop())
+	bus := event.NewBus()
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{BufferSize: 64})
 	defer unsub()
 

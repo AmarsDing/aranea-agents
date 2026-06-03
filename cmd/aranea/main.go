@@ -185,5 +185,6 @@ func newRoot(ctx context.Context, bi cli.BuildInfo) *cobra.Command {
 	if pgoImportEnabled() {
 		root.AddCommand(cmdpkg.NewImportCmd())
 	}
+	root.AddCommand(cmdpkg.NewPackCmd())
 	return root
 }

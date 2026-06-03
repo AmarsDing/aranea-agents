@@ -7,34 +7,33 @@ import (
 	"testing"
 	"time"
 
-	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/logpipeline"
 
 	"go.uber.org/zap/zapcore"
 )
 
-func newTestLogging(t *testing.T) *conf.Logging {
+func newTestLoggingConfig(t *testing.T) LoggingConfig {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "loggateway-test-*")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &conf.Logging{
-		Level:         "debug",
-		OutputDir:     dir,
-		MaxSizeMb:     10,
-		MaxBackups:    2,
-		MaxAgeDays:    1,
-		Compress:      false,
-		StdoutEnabled: false,
+	return LoggingConfig{
+		Level:      "debug",
+		OutputDir:  dir,
+		MaxSizeMB:  10,
+		MaxBackups: 2,
+		MaxAgeDays: 1,
+		Compress:   false,
+		Stdout:     false,
 	}
 }
 
 func TestNew(t *testing.T) {
-	cfg := newTestLogging(t)
+	cfg := newTestLoggingConfig(t)
 	defer os.RemoveAll(cfg.OutputDir)
 
-	g := New(cfg)
+	g := New(cfg, nil)
 	if g == nil {
 		t.Fatal("New() returned nil")
 	}
@@ -43,35 +42,54 @@ func TestNew(t *testing.T) {
 	}
 }
 
-func TestNewCreatesLogFile(t *testing.T) {
-	cfg := newTestLogging(t)
+func TestNewWithPipeline(t *testing.T) {
+	cfg := newTestLoggingConfig(t)
 	defer os.RemoveAll(cfg.OutputDir)
 
-	g := New(cfg)
+	p := logpipeline.NewPipeline(64)
+	defer p.Close()
+
+	g := New(cfg, p)
 	if g == nil {
 		t.Fatal("New() returned nil")
 	}
-	g.Info("test-message")
-	_ = g.logger.Sync()
 
-	entries, err := os.ReadDir(cfg.OutputDir)
-	if err != nil {
-		t.Fatalf("read output dir: %v", err)
-	}
+	sink := &testSink{}
+	p.AddSink(sink)
+
+	g.Info("pipeline-msg", Str("key", "value"), SessionID("sess-1"))
+
+	time.Sleep(200 * time.Millisecond)
+
+	entries := sink.getEntries()
 	if len(entries) == 0 {
-		t.Error("expected log file to be created")
+		t.Fatal("expected at least one log entry in pipeline sink")
+	}
+
+	e := entries[len(entries)-1]
+	if e.Message != "pipeline-msg" {
+		t.Errorf("entry.Message = %q, want %q", e.Message, "pipeline-msg")
+	}
+	if e.Kind != logpipeline.KindLog {
+		t.Errorf("entry.Kind = %q, want %q", e.Kind, logpipeline.KindLog)
+	}
+	if e.Level != "info" {
+		t.Errorf("entry.Level = %q, want %q", e.Level, "info")
+	}
+	if e.SessionID != "sess-1" {
+		t.Errorf("entry.SessionID = %q, want %q", e.SessionID, "sess-1")
 	}
 }
 
 func TestNewInvalidOutputDir(t *testing.T) {
-	cfg := &conf.Logging{
+	cfg := LoggingConfig{
 		Level:     "info",
 		OutputDir: filepath.Join(string(os.PathSeparator), "nonexistent", "deep", "path", "that", "cannot", "be", "created"),
 	}
 	origGlobal := Global()
 	defer SetGlobal(origGlobal)
 
-	g := New(cfg)
+	g := New(cfg, nil)
 	if g == nil {
 		t.Fatal("New() with invalid dir should return noop, not nil")
 	}
@@ -108,10 +126,10 @@ func TestLogMethodsNoPanic(t *testing.T) {
 }
 
 func TestLogMethodsWithRealGateway(t *testing.T) {
-	cfg := newTestLogging(t)
+	cfg := newTestLoggingConfig(t)
 	defer os.RemoveAll(cfg.OutputDir)
 
-	g := New(cfg)
+	g := New(cfg, nil)
 	g.Debug("debug-msg", Str("k", "v"))
 	g.Info("info-msg", Str("k", "v"))
 	g.Warn("warn-msg", Str("k", "v"))
@@ -311,22 +329,22 @@ func TestWithBaseNilGateway(t *testing.T) {
 	}
 }
 
-type mockSink struct {
+type testSink struct {
 	mu      sync.Mutex
 	entries []logpipeline.LogEntry
 }
 
-func (s *mockSink) Write(entry logpipeline.LogEntry) {
+func (s *testSink) Write(entry logpipeline.LogEntry) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.entries = append(s.entries, entry)
 }
 
-func (s *mockSink) Flush() {}
+func (s *testSink) Flush() {}
 
-func (s *mockSink) Close() error { return nil }
+func (s *testSink) Close() error { return nil }
 
-func (s *mockSink) getEntries() []logpipeline.LogEntry {
+func (s *testSink) getEntries() []logpipeline.LogEntry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]logpipeline.LogEntry, len(s.entries))
@@ -340,7 +358,7 @@ func TestEmitToPipeline(t *testing.T) {
 	p := logpipeline.NewPipeline(64)
 	defer p.Close()
 
-	sink := &mockSink{}
+	sink := &testSink{}
 	p.AddSink(sink)
 
 	g.SetPipeline(p)
@@ -374,7 +392,7 @@ func TestEmitToPipelineWithStepID(t *testing.T) {
 	p := logpipeline.NewPipeline(64)
 	defer p.Close()
 
-	sink := &mockSink{}
+	sink := &testSink{}
 	p.AddSink(sink)
 
 	g.SetPipeline(p)
@@ -413,7 +431,7 @@ func TestEmitToPipelineWithLoggerWith(t *testing.T) {
 	p := logpipeline.NewPipeline(64)
 	defer p.Close()
 
-	sink := &mockSink{}
+	sink := &testSink{}
 	p.AddSink(sink)
 
 	g.SetPipeline(p)
@@ -438,10 +456,10 @@ func TestEmitToPipelineWithLoggerWith(t *testing.T) {
 }
 
 func TestOutputDir(t *testing.T) {
-	cfg := newTestLogging(t)
+	cfg := newTestLoggingConfig(t)
 	defer os.RemoveAll(cfg.OutputDir)
 
-	g := New(cfg)
+	g := New(cfg, nil)
 	dir := g.OutputDir()
 	if dir != cfg.OutputDir {
 		t.Errorf("OutputDir() = %q, want %q", dir, cfg.OutputDir)
@@ -456,11 +474,11 @@ func TestDefaultOutputDir(t *testing.T) {
 }
 
 func TestNewWithStdout(t *testing.T) {
-	cfg := newTestLogging(t)
+	cfg := newTestLoggingConfig(t)
 	defer os.RemoveAll(cfg.OutputDir)
 
-	cfg.StdoutEnabled = true
-	g := New(cfg)
+	cfg.Stdout = true
+	g := New(cfg, nil)
 	if g == nil {
 		t.Fatal("New() with stdout returned nil")
 	}

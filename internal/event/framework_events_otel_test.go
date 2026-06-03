@@ -6,17 +6,18 @@ func TestSyncOtelSpanIDsRoot(t *testing.T) {
 	em := NewTraceEmitter(nil, nil, TraceContext{TraceID: "t1", SessionID: "s1"})
 	em.SetOtelRefs("trace-1", "root-span-1")
 	em.SyncOtelSpanIDs(&otelStub{llm: "llm-span"})
-	if len(em.spans) == 0 {
+	spans := em.SpanCollector().Spans()
+	if len(spans) == 0 {
 		t.Fatal("expected spans")
 	}
 	found := false
-	for _, row := range em.spans {
+	for _, row := range spans {
 		if id, _ := row["otel_id"].(string); id == "root-span-1" || id == "llm-span" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("expected otel_id on span rows: %+v", em.spans)
+		t.Fatalf("expected otel_id on span rows: %+v", spans)
 	}
 }
 

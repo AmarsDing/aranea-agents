@@ -106,6 +106,8 @@ type Data struct {
 	rawDB       *sql.DB
 	readDB      *sql.DB
 	pg          *sql.DB
+	rw          *ReadWriteClient
+	rwDB        *ReadWriteDB
 	vectorDim   int
 	readiness   *ReadinessGate
 	lazySeeders map[string]*LazySeeder
@@ -149,6 +151,24 @@ func (d *Data) ReadClient(ctx context.Context) *ent.Client {
 		return tx.Client()
 	}
 	return d.ReadEnt()
+}
+
+// RW returns the ReadWriteClient for read-write separated Ent access.
+// Returns nil if Data is nil (nil-safety).
+func (d *Data) RW() *ReadWriteClient {
+	if d == nil {
+		return nil
+	}
+	return d.rw
+}
+
+// RWDB returns the ReadWriteDB for read-write separated raw SQL access.
+// Returns nil if Data is nil (nil-safety).
+func (d *Data) RWDB() *ReadWriteDB {
+	if d == nil {
+		return nil
+	}
+	return d.rwDB
 }
 
 // Postgres returns the Postgres DB handle for vectors, or nil if not configured.
@@ -324,7 +344,7 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 	vdim := vectorDimFromConf(c)
 	p1Ctx, p1Cancel := context.WithCancel(context.Background())
 	p1Done := make(chan struct{})
-	st = &Data{entClient: entClient, rawDB: rawDB, readClient: readClient, readDB: readDB, pg: pg, vectorDim: vdim, readiness: newReadinessGate(), p1Cancel: p1Cancel, p1Done: p1Done, lg: lg}
+	st = &Data{entClient: entClient, rawDB: rawDB, readClient: readClient, readDB: readDB, pg: pg, rw: NewReadWriteClient(entClient, readClient), rwDB: NewReadWriteDB(rawDB, readDB), vectorDim: vdim, readiness: newReadinessGate(), p1Cancel: p1Cancel, p1Done: p1Done, lg: lg}
 
 	safego.Go(context.Background(), "startup.p1", func() {
 		defer close(p1Done)
@@ -666,7 +686,7 @@ func NewA2ARepoFromData(d *Data, lg loggateway.Logger) biz.A2ARepo {
 
 // NewCLIData wraps SQLite handles opened by OpenSQLiteEntClient for offline maintenance CLIs.
 func NewCLIData(client *ent.Client, rawDB *sql.DB, lg loggateway.Logger) *Data {
-	return &Data{entClient: client, readClient: client, rawDB: rawDB, lg: lg}
+	return &Data{entClient: client, readClient: client, rawDB: rawDB, readDB: rawDB, rw: NewReadWriteClient(client, client), rwDB: NewReadWriteDB(rawDB, rawDB), lg: lg}
 }
 
 // OpenSQLiteEntClient opens SQLite for offline CLI maintenance tools (e.g. memory-migrate).

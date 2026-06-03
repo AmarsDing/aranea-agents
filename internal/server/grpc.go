@@ -22,6 +22,7 @@ import (
 	memoryv1 "aranea-agents/api/kratos/memory/v1"
 	modelcatalogv1 "aranea-agents/api/kratos/model_catalog/v1"
 	monitorv1 "aranea-agents/api/kratos/monitor/v1"
+	packv1 "aranea-agents/api/kratos/pack/v1"
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
@@ -33,6 +34,7 @@ import (
 	usagev1 "aranea-agents/api/kratos/usage/v1"
 	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/auth"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/validate"
 
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
@@ -41,13 +43,13 @@ import (
 )
 
 // NewGRPCServer new a gRPC server.
-func NewGRPCServer(c *conf.Server, s *ServiceRegistry) *grpc.Server {
+func NewGRPCServer(c *conf.Server, s *ServiceRegistry, lg loggateway.Logger) *grpc.Server {
 	var opts = []grpc.ServerOption{
 		// EP-OBS-02: tracing.Server() spans all gRPC calls when OTel is configured.
 		// EP-SEC-04: auth.GRPCMiddleware() validates Bearer JWT from gRPC metadata.
 		grpc.Middleware(
 			tracing.Server(),
-			auth.GRPCMiddleware(),
+			auth.GRPCMiddleware(lg),
 			recovery.Recovery(),
 			validate.Middleware(),
 		),
@@ -94,5 +96,6 @@ func NewGRPCServer(c *conf.Server, s *ServiceRegistry) *grpc.Server {
 	gatewayv1.RegisterGatewayServiceServer(srv, s.Gateway)
 	taxonomyv1.RegisterTaxonomyServiceServer(srv, s.Taxonomy)
 	skillevov1.RegisterSkillEvolutionServiceServer(srv, s.SkillEvo)
+	packv1.RegisterPackServiceServer(srv, s.Pack)
 	return srv
 }

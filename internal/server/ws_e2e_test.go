@@ -11,7 +11,6 @@ import (
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/event"
-	"aranea-agents/pkg/loggateway"
 
 	"github.com/gorilla/websocket"
 )
@@ -49,7 +48,7 @@ func TestWSE2E_UserMessageStream(t *testing.T) {
 	t.Setenv("DEPLOY_ENV", "dev")
 
 	const sessionID = "sess-e2e"
-	bus := event.NewBus(loggateway.NewNoop())
+	bus := event.NewBus()
 	sender := &e2eChatSender{bus: bus, sessionID: sessionID}
 	srv := newTestWSServer(bus, event.NewBuffer(), nil, sender)
 

@@ -678,7 +678,7 @@ func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, fac
 			})
 		})
 	}
-	return service.NewMemoryService(biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec, factSync, newWireL3FactWriterAdapter(memStore), lg), cascade, sysUC, deadLetterRepo, data.NewMemoryDebugRecaller(memStore), data.NewMemoryFactIndexCounter(memStore), enqueue, queueStats)
+	return service.NewMemoryService(biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec, factSync, data.NewL3FactWriterAdapter(memStore), lg), cascade, sysUC, deadLetterRepo, data.NewMemoryDebugRecaller(memStore), data.NewMemoryFactIndexCounter(memStore), enqueue, queueStats)
 }
 
 func provideL4CascadeUsecase(memStore *sessionmemory.Store, factSync biz.MemoryFactIndexSyncer, lg loggateway.Logger) *biz.L4CascadeUsecase {
@@ -840,7 +840,7 @@ func provideMemoryL2ConsolidateWorker(admin *biz.MemoryAdminUsecase, lg loggatew
 }
 
 func provideSessionAdminStore(store *sessionmemory.Store) biz.SessionAdminStore {
-	return newWireSessionAdminStoreAdapter(store)
+	return data.NewSessionAdminStoreAdapter(store)
 }
 
 func provideMemoryL1ArchiveWorker(admin biz.SessionAdminStore, agents *biz.AgentUsecase, lg loggateway.Logger) *jobs.MemoryL1ArchiveWorker {
@@ -955,6 +955,11 @@ func provideMonitorTraceBackfillWorker(repo biz.MonitorRepo, lg loggateway.Logge
 
 func provideDiagBundleGenerator(repo biz.MonitorRepo, lg loggateway.Logger) *biz.DiagBundleGenerator {
 	return biz.NewDiagBundleGenerator(repo, lg)
+}
+
+func provideSelfHealUsecase(diag *biz.DiagBundleGenerator, lg loggateway.Logger) *biz.SelfHealUsecase {
+	handler := monitor.NewDefaultHealActionHandler(lg)
+	return biz.NewSelfHealUsecase(diag, handler, lg)
 }
 
 func provideChannelDeliveryScanner(worker *service.ChannelDeliveryWorker, logger log.Logger) *jobs.ChannelDeliveryWorker {
@@ -1174,7 +1179,7 @@ func provideA2AService(
 }
 
 // wireApp init kratos application.
-func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline) (wireOut, func(), error) {
+func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline, []*conf.LoggingSink) (wireOut, func(), error) {
 	panic(wire.Build(
 		server.ProviderSet,
 		data.ProviderSet,
@@ -1270,6 +1275,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideFlowFileAppender,
 		provideMonitorTraceBackfillWorker,
 		provideDiagBundleGenerator,
+		provideSelfHealUsecase,
 		provideMCPHealthRunnerDeps,
 		provideMCPHealthRunner,
 		provideA2AGatewayHealthRunnerDeps,

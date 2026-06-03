@@ -83,9 +83,9 @@ func (uc *L4GraphUsecase) WriteFromUserText(ctx context.Context, agentID, userID
 		ScopeID:        agentID,
 		UserID:         userID,
 		EntityType:     "user_profile",
-		Name:           "User profile",
+		Name:           "用户画像",
 		NameNormalized: "user profile",
-		Description:    "Consolidated user knowledge for this agent",
+		Description:    "本 Agent 的用户知识汇总",
 		Importance:     l4AnchorImportance,
 		Confidence:     l4AnchorConfidence,
 	}); err != nil {

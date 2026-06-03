@@ -1,0 +1,114 @@
+syntax = "proto3";
+
+package kratos.pack.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+
+option go_package = "aranea-agents/api/kratos/pack/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.pack.v1";
+
+// PackService manages Aranea Pack (.arpack) export, import, and validation.
+// File upload/download is handled via custom HTTP routes (multipart/form-data).
+service PackService {
+  // ExportPack exports entities and returns the .arpack as base64-encoded bytes.
+  rpc ExportPack(ExportPackRequest) returns (ExportPackResponse) {
+    option (google.api.http) = {post: "/v1/pack/export" body: "*"};
+  }
+
+  // ImportPack imports a .arpack from base64-encoded bytes.
+  rpc ImportPack(ImportPackRequest) returns (ImportPackResponse) {
+    option (google.api.http) = {post: "/v1/pack/import" body: "*"};
+  }
+
+  // ValidatePack dry-run validates a .arpack without importing.
+  rpc ValidatePack(ValidatePackRequest) returns (ValidatePackResponse) {
+    option (google.api.http) = {post: "/v1/pack/validate" body: "*"};
+  }
+}
+
+// ExportPackRequest specifies what to export.
+message ExportPackRequest {
+  // Export granularity: "agent", "team", or "industry".
+  string kind = 1 [(google.api.field_behavior) = REQUIRED];
+  // Entity ID (agent_id, team_id) or key (industry_key) depending on kind.
+  string ref = 2 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ExportPackResponse returns the .arpack tar.gz data.
+message ExportPackResponse {
+  // .arpack tar.gz content (base64-encoded for JSON transport).
+  bytes data = 1;
+  // Manifest name from the pack.
+  string name = 2;
+  // Manifest kind.
+  string kind = 3;
+}
+
+// ImportPackRequest contains the .arpack data and import options.
+message ImportPackRequest {
+  // .arpack tar.gz content (base64-encoded for JSON transport).
+  bytes data = 1 [(google.api.field_behavior) = REQUIRED];
+  // Conflict strategy: "skip", "overwrite", or "duplicate".
+  string conflict_strategy = 2;
+}
+
+// ImportPackResponse returns the import result.
+message ImportPackResponse {
+  // Number of taxonomy nodes created.
+  int32 taxonomy_nodes = 1;
+  // Number of agents created.
+  int32 agents_created = 2;
+  // Number of agents updated.
+  int32 agents_updated = 3;
+  // Number of agents skipped (conflict with skip strategy).
+  int32 agents_skipped = 4;
+  // Number of graphs created.
+  int32 graphs_created = 5;
+  // Number of teams created.
+  int32 teams_created = 6;
+  // Number of teams updated.
+  int32 teams_updated = 7;
+  // Number of teams skipped.
+  int32 teams_skipped = 8;
+  // Conflict strategy used: "skip", "overwrite", or "duplicate".
+  string conflict_strategy = 9;
+  // Failures encountered during import.
+  repeated ImportFailure failures = 10;
+}
+
+// ImportFailure records a single entity import failure.
+message ImportFailure {
+  string entity_type = 1;
+  string key = 2;
+  string reason = 3;
+}
+
+// ValidatePackRequest contains the .arpack data to validate.
+message ValidatePackRequest {
+  // .arpack tar.gz content (base64-encoded for JSON transport).
+  bytes data = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+// ValidatePackResponse returns the validation result.
+message ValidatePackResponse {
+  // Whether the pack is valid for import.
+  bool valid = 1;
+  // Validation errors (blocking).
+  repeated string errors = 2;
+  // Validation warnings (non-blocking).
+  repeated string warnings = 3;
+  // Missing skills that need to be installed before import.
+  repeated string missing_skills = 4;
+  // Missing func_refs that need to be registered before import.
+  repeated string missing_func_refs = 5;
+  // Conflicts with existing entities.
+  repeated ConflictItem conflicts = 6;
+}
+
+// ConflictItem describes a conflict between the pack and existing entities.
+message ConflictItem {
+  string entity_type = 1;
+  string key = 2;
+}

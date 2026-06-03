@@ -453,16 +453,16 @@ func configJSONFromSettings(settings AgentRuntimeSettings, files []AgentPromptFi
 func composePromptPreview(agent Agent, mode string) string {
 	var b strings.Builder
 	settings := agent.Settings
-	b.WriteString("# Agent System Prompt\n\n")
-	b.WriteString(fmt.Sprintf("Mode: %s\nName: %s\nKey: %s\nProvider: %s\nModel: %s\n\n", mode, agent.DisplayName, agent.AgentKey, agent.Provider, agent.Model))
+	b.WriteString("# Agent 系统提示词\n\n")
+	b.WriteString(fmt.Sprintf("模式: %s\n名称: %s\n标识: %s\n提供商: %s\n模型: %s\n\n", mode, agent.DisplayName, agent.AgentKey, agent.Provider, agent.Model))
 	// Show role_responsibility block if available (injected by preview handler).
 	if cr := strings.TrimSpace(agent.CategoryResponsibilityPreview); cr != "" {
-		b.WriteString("## Role Responsibility (category, L1)\n")
+		b.WriteString("## 角色职责（分类，L1）\n")
 		b.WriteString(cr)
 		b.WriteString("\n\n")
 	}
-	b.WriteString("## Description\n")
-	b.WriteString(strFallback(agent.AgentDescription, "No description configured."))
+	b.WriteString("## 描述\n")
+	b.WriteString(strFallback(agent.AgentDescription, "未配置描述"))
 	b.WriteString("\n\n")
 	if mode != "none" {
 		for _, file := range FilesForMode(agent.Files, mode) {
@@ -472,14 +472,14 @@ func composePromptPreview(agent Agent, mode string) string {
 		}
 	}
 	if settings != nil && mode != "none" {
-		b.WriteString("## Runtime Settings\n")
-		b.WriteString(fmt.Sprintf("- Self evolve: %t\n", settings.SelfEvolve))
-		b.WriteString(fmt.Sprintf("- Subagents: enabled=%t, max_concurrency=%d, max_depth=%d\n", settings.SubagentsEnabled, settings.SubagentsMaxConcurrency, settings.SubagentsMaxGenerationDepth))
-		b.WriteString(fmt.Sprintf("- Tools: enabled=%t, profile=%s, allow=%s, deny=%s\n", settings.ToolsEnabled, settings.ToolsProfile, strings.Join(jsonList(settings.ToolsAllowJSON), ", "), strings.Join(jsonList(settings.ToolsDenyJSON), ", ")))
-		b.WriteString(fmt.Sprintf("- Intent pass: %t\n", settings.IntentPassEnabled))
-		b.WriteString(fmt.Sprintf("- Memory: enabled=%t, max_results=%d, min_score=%.2f\n", settings.MemoryEnabled, settings.MemoryMaxResults, settings.MemoryMinScore))
-		b.WriteString(fmt.Sprintf("- Heartbeat: enabled=%t, interval=%d minutes\n", settings.HeartbeatEnabled, settings.HeartbeatIntervalMinutes))
-		b.WriteString(fmt.Sprintf("- Evolution: style=%t, skill=%t, metrics=%t, suggestions=%t\n", settings.EvolutionSelfEvolve, settings.EvolutionSkillEvolve, settings.EvolutionMetricsEnabled, settings.EvolutionSuggestionsEnabled))
+		b.WriteString("## 运行时设置\n")
+		b.WriteString(fmt.Sprintf("- 自进化: %t\n", settings.SelfEvolve))
+		b.WriteString(fmt.Sprintf("- 子代理: 启用=%t, 最大并发=%d, 最大深度=%d\n", settings.SubagentsEnabled, settings.SubagentsMaxConcurrency, settings.SubagentsMaxGenerationDepth))
+		b.WriteString(fmt.Sprintf("- 工具: 启用=%t, 配置=%s, 允许=%s, 禁止=%s\n", settings.ToolsEnabled, settings.ToolsProfile, strings.Join(jsonList(settings.ToolsAllowJSON), ", "), strings.Join(jsonList(settings.ToolsDenyJSON), ", ")))
+		b.WriteString(fmt.Sprintf("- 意图传递: %t\n", settings.IntentPassEnabled))
+		b.WriteString(fmt.Sprintf("- 记忆: 启用=%t, 最大结果=%d, 最低分数=%.2f\n", settings.MemoryEnabled, settings.MemoryMaxResults, settings.MemoryMinScore))
+		b.WriteString(fmt.Sprintf("- 心跳: 启用=%t, 间隔=%d 分钟\n", settings.HeartbeatEnabled, settings.HeartbeatIntervalMinutes))
+		b.WriteString(fmt.Sprintf("- 进化: 风格=%t, 技能=%t, 指标=%t, 建议=%t\n", settings.EvolutionSelfEvolve, settings.EvolutionSkillEvolve, settings.EvolutionMetricsEnabled, settings.EvolutionSuggestionsEnabled))
 	}
 	return strings.TrimSpace(b.String())
 }

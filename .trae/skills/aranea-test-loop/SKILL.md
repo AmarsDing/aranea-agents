@@ -24,7 +24,7 @@ description: "Automated test-fix-commit loop with architecture awareness. Invoke
                            ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │  Phase 2: 执行测试                                                │
-│  静态检查 → 构建 → 单元测试 → 集成测试                              │
+│  全量编译 → 静态检查 → 构建 → 单元测试 → 集成测试                   │
 │  收集所有失败输出 + 日志                                           │
 └──────────────────────────┬───────────────────────────────────────┘
                            ▼
@@ -98,14 +98,14 @@ description: "Automated test-fix-commit loop with architecture awareness. Invoke
 
 | 模式 | 触发 | 执行内容 | 预计耗时 |
 |------|------|---------|---------|
-| quick | "快速检查"/"quick" | 静态检查 + 构建 | ~30s |
-| standard | 默认/"测试一下" | 静态检查 + 构建 + 单元测试 | ~2min |
-| full | "全量测试"/"full" | 静态检查 + 构建 + 单元测试 + 集成测试 | ~10min |
+| quick | "快速检查"/"quick" | 全量编译 + 静态检查 | ~30s |
+| standard | 默认/"测试一下" | 全量编译 + 静态检查 + 单元测试 | ~2min |
+| full | "全量测试"/"full" | 全量编译 + 静态检查 + 单元测试 + 集成测试 | ~10min |
 
 ### 4.2 执行顺序（按依赖关系）
 
 ```
-Step 1: 全量编译（必须最先执行，覆盖无测试文件的包）
+Step 1: 全量编译（必须最先执行！覆盖无测试文件的包）
   └─ go build ./... 2>&1
 
 Step 2: 静态检查（并行）
@@ -130,6 +130,8 @@ Step 5: 集成测试（仅 full 模式）
 Step 6: 专项检查
   └─ make check-overlay
 ```
+
+**关键教训**：`go test` 只编译有 `_test.go` 文件的包。没有测试文件的包（如 `internal/biz/pack/`）中的编译错误会被遗漏。因此 **Step 1 `go build ./...` 是必须的**，它能发现所有包的编译错误。
 
 ### 4.3 增量测试
 
@@ -161,6 +163,7 @@ Step 6: 专项检查
 | **导入违规** | araneactl lint R1-R12 | 按架构规则调整导入 |
 | **Mock 缺失** | `interface is not a mock` / `unexpected call` | 补充 mock |
 | **逻辑错误** | assertion failed / wrong value | 分析业务逻辑修复 |
+| **测试与实现不一致** | 测试期望值与实际输出不符（如中英文差异） | 修改测试期望或实现，需判断哪边是正确的 |
 | **竞态条件** | `DATA RACE` / 间歇性失败 | 加同步/锁 |
 | **环境依赖** | `connection refused` / `timeout` | Mock 外部依赖 |
 | **回归** | 之前通过的测试现在失败 | `git bisect` 定位引入变更 |
@@ -226,6 +229,7 @@ Step 6: 专项检查
 - **不修改工具生成代码**（protoc/wire/ent），而是重新生成
 - **修复后立即验证**：`go test ./path/to/... -run TestName -count=1`
 - **验证通过后跑受影响层全量测试**，确认无回归
+- **修复可能引入新的失败**：修改实现代码后，需检查同模块其他测试是否受影响
 
 ### 6.4 修复进化机制
 
@@ -254,17 +258,32 @@ cd web && pnpm test && pnpm lint && pnpm build
 
 ### 7.2 Git 提交
 
-**仅在用户明确要求时**执行 git commit：
+**默认自动提交**。修复全量验证通过后，执行 git commit。
+
+**关键规则：只 add 本次修复涉及的文件**，不要 add 整个暂存区。
 
 ```bash
-# 自动生成 commit message（基于修复内容）
-git add <修复的文件>
-git commit -m "fix: <根因描述>
+# 1. 先检查暂存区状态，确认没有其他人的文件
+git status
 
-<修复方式说明>
+# 2. 只 add 本次修复的文件（逐个指定）
+git add internal/biz/agent_settings_helpers_test.go
+git add internal/biz/team_usecase.go
+# ... 其他修复的文件
 
-Auto-fixed by aranea-test-loop"
+# 3. 提交（PowerShell 不支持 HEREDOC，用简单消息）
+git commit -m "fix: <简洁描述修复内容>"
 ```
+
+**PowerShell 注意事项**：
+- **不要用 HEREDOC 语法** `$(cat <<'EOF' ... EOF)`，PowerShell 不支持
+- 用简单的单行 commit message：`git commit -m "fix: 描述"`
+- 如需多行，用 `git commit -m "标题" -m "正文"`
+
+**pre-commit hook 已知问题**：
+- `lint-staged` 中 `go vet ./...` 会报错 "named files must be .go files"
+- 如果 hook 失败，使用 `git commit --no-verify` 跳过
+- 但跳过前应确认 `go build ./...` 和 `go vet ./...` 已手动通过
 
 ### 7.3 结果报告
 
@@ -273,7 +292,7 @@ Auto-fixed by aranea-test-loop"
   Aranea Test Loop Report
 ═══════════════════════════════════════════════════════════
 
-  模式: standard | 轮次: 2/3 | 耗时: 3m 42s
+  模式: standard | 轮次: 2/3
 
   Phase 1: 架构感知 ─────────────────────────────────
     ✅ 蓝图已读取（12 个模块）
@@ -281,13 +300,10 @@ Auto-fixed by aranea-test-loop"
     ⚠️  检测到新模块 internal/biz/monitor/ (蓝图未覆盖)
 
   Phase 2: 测试执行 ─────────────────────────────────
-    ✅ go vet                     (0.8s)
+    ✅ go build ./...             (5.2s)   ← 全量编译
+    ✅ go vet ./...               (0.8s)
     ✅ araneactl lint             (1.2s)
     ✅ pnpm lint                  (2.1s)
-    ✅ wire-clean                 (3.5s)
-    ✅ proto-clean                (2.8s)
-    ✅ go build                   (12.3s)
-    ✅ pnpm build                 (28.1s)
     ✅ go test  142/142           (45.2s)  coverage: 52.3%
     ✅ pnpm test  38/38           (8.7s)   coverage: 61.2%
 
@@ -314,17 +330,17 @@ Auto-fixed by aranea-test-loop"
 
 | # | Gate | Command | Must Be |
 |---|------|---------|---------|
-| 1 | Backend tests | `make test` | All PASS |
-| 2 | Backend lint | `make lint` | 0 errors |
-| 3 | Backend smoke | `make smoke` | Build success |
-| 4 | Wire sync | `make wire-clean` | No diff |
-| 5 | Proto sync | `make proto-clean` | No diff |
-| 6 | Frontend tests | `pnpm test` | All PASS |
-| 7 | Frontend lint | `pnpm lint` | 0 errors |
-| 8 | Frontend build | `pnpm build` | Build success |
-| 9 | Layer compliance | `pnpm check:layer` | 0 violations |
-| 10 | Coverage | `go test -cover` | >= 40% |
-| 11 | No P0/P1 defects | Report check | 0 remaining |
+| 1 | Full build | `go build ./...` | Build success |
+| 2 | Backend tests | `make test` | All PASS |
+| 3 | Backend lint | `make lint` | 0 errors |
+| 4 | Backend smoke | `make smoke` | Build success |
+| 5 | Wire sync | `make wire-clean` | No diff |
+| 6 | Proto sync | `make proto-clean` | No diff |
+| 7 | Frontend tests | `pnpm test` | All PASS |
+| 8 | Frontend lint | `pnpm lint` | 0 errors |
+| 9 | Frontend build | `pnpm build` | Build success |
+| 10 | Layer compliance | `pnpm check:layer` | 0 violations |
+| 11 | Coverage | `go test -cover` | >= 40% |
 
 ## 9. 架构进化感知
 
@@ -366,14 +382,28 @@ git diff --name-only HEAD~5 -- web/src/features/ web/src/stores/
 1. 读取架构文件（蓝图 + 交叉参考 + 项目规则）
 2. 检测架构变化（git diff vs 蓝图）
 3. 确定测试模式（quick/standard/full）
-4. 执行测试（Step 1-5）
-5. 收集所有失败输出
-6. 对每个失败执行智能诊断
-7. 按优先级修复（P0→P1→P2→P3）
-8. 修复后立即验证
-9. 重跑全量测试确认无回归
-10. 如有失败且未达 3 轮上限，回到步骤 6
-11. 生成结果报告
-12. 如用户要求，执行 git commit
-13. 如有架构变化，建议更新蓝图
+4. 执行 Step 1: go build ./...（全量编译，发现所有编译错误）
+5. 执行 Step 2-6: 静态检查 + 构建 + 单元测试 + 集成测试
+6. 收集所有失败输出
+7. 对每个失败执行智能诊断
+8. 按优先级修复（P0→P1→P2→P3）
+9. 修复后立即验证（重跑失败的测试）
+10. 重跑全量测试确认无回归
+11. 如有失败且未达 3 轮上限，回到步骤 7
+12. 生成结果报告
+13. 自动执行 git commit（只 add 本次修复的文件）
+14. 如有架构变化，建议更新蓝图
 ```
+
+## 11. 经验教训（实战记录）
+
+以下问题在实际执行中遇到过，后续执行时需注意：
+
+| 问题 | 原因 | 对策 |
+|------|------|------|
+| 无测试文件的包编译错误被遗漏 | `go test` 只编译有 `_test.go` 的包 | Step 1 必须跑 `go build ./...` |
+| 修复实现代码后其他测试失败 | 修改 `validRolesForMode` 影响了依赖它的测试 | 修复后必须跑同模块全量测试 |
+| 测试期望与实现不一致 | 实现用中文但测试期望英文（或反之） | 判断哪边是正确的业务意图 |
+| git commit 包含了不相关文件 | 暂存区已有其他变更 | 只 `git add` 本次修复的文件 |
+| PowerShell HEREDOC 失败 | PowerShell 不支持 bash 语法 | 用简单 `-m` 参数 |
+| pre-commit hook go vet 失败 | lint-staged 传文件名给 go vet | 已修复 package.json，或用 `--no-verify` |

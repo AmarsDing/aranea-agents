@@ -613,6 +613,91 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
+// UpsertByKey 按 agent_key 幂等创建或更新 Agent。
+// 如果 agent_key 已存在则更新，否则创建。返回最终的 Agent（含水合）。
+func (u *AgentUsecase) UpsertByKey(ctx context.Context, agent Agent) (Agent, error) {
+	agent.AgentKey = strings.TrimSpace(agent.AgentKey)
+	if agent.AgentKey == "" {
+		return Agent{}, kerrors.BadRequest("AGENT", "agent_key is required for upsert")
+	}
+	existing, err := u.repo.GetAgentByAgentKey(ctx, agent.AgentKey)
+	if err == nil {
+		// 已存在 → 更新
+		agent.ID = existing.ID
+		return u.Update(ctx, existing.ID, agent)
+	}
+	if !stderrors.Is(err, sql.ErrNoRows) {
+		return Agent{}, err
+	}
+	// 不存在 → 创建
+	return u.Create(ctx, agent)
+}
+
+// CreateWithFilesAndSettings 在事务中创建 Agent 并同时写入 Files 和 RuntimeSettings。
+// 适用于 Pack 导入等需要精确控制写入内容的场景。
+func (u *AgentUsecase) CreateWithFilesAndSettings(ctx context.Context, agent Agent, files []AgentPromptFile, settings *AgentRuntimeSettings) (Agent, error) {
+	agent.AgentKey = strings.TrimSpace(agent.AgentKey)
+	agent.DisplayName = strings.TrimSpace(agent.DisplayName)
+	agent.Kind = NormalizeAgentKind(agent.Kind)
+	HydrateAgentKind(&agent)
+
+	if agent.AgentKey == "" || agent.DisplayName == "" {
+		return Agent{}, kerrors.BadRequest("AGENT", "agent_key and display_name are required")
+	}
+	if agent.ID == "" {
+		agent.ID = newAgentCatalogID()
+	}
+	if agent.Status == "" {
+		agent.Status = "active"
+	}
+
+	// Settings
+	var s AgentRuntimeSettings
+	if settings != nil {
+		s = *settings
+	} else {
+		s = withSettingDefaults(settingsFromAgentInput(agent))
+	}
+	s.AgentID = agent.ID
+
+	// Files
+	for i := range files {
+		files[i].AgentID = agent.ID
+	}
+	files = withFileDefaults(files)
+
+	// ConfigJSON
+	if strings.TrimSpace(agent.ConfigJSON) == "" {
+		cj, err := configJSONFromSettings(s, files)
+		if err != nil {
+			return Agent{}, err
+		}
+		agent.ConfigJSON = cj
+	}
+	agent.ConfigJSON = EmbedAgentKindInConfigJSON(agent.ConfigJSON, agent.Kind, agent.A2AProxy, u.lg)
+
+	if err := u.repo.ExecInTx(ctx, func(txCtx context.Context) error {
+		if _, err := u.repo.CreateAgent(txCtx, agent); err != nil {
+			if isAgentKeyDuplicate(err) {
+				return kerrors.BadRequest("AGENT_KEY_CONFLICT", "agent_key already in use")
+			}
+			return err
+		}
+		if _, err := u.repo.UpsertAgentRuntimeSettings(txCtx, s); err != nil {
+			return err
+		}
+		if len(files) > 0 {
+			if _, err := u.repo.ReplaceAgentPromptFiles(txCtx, agent.ID, files); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return Agent{}, err
+	}
+	return u.Get(ctx, agent.ID)
+}
+
 // AgentBatchUpdateInput is LIST-04 bulk enable/disable/delete.
 type AgentBatchUpdateInput struct {
 	IDs    []string

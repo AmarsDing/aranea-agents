@@ -351,7 +351,7 @@ func (a *GraphAgent) Tools() []trpctool.Tool {
 func (a *GraphAgent) Info() trpcagent.Info {
 	return trpcagent.Info{
 		Name:        a.name,
-		Description: "graph workflow agent",
+		Description: "图工作流代理",
 	}
 }
 

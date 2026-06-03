@@ -46,7 +46,7 @@ func ensureOneAgentAvatar(ctx context.Context, repo AvatarRepo, spec AgentAvatar
 		ID:            spec.AssetKey,
 		Key:           spec.AssetKey,
 		Name:          spec.Name,
-		Description:   "Built-in agent avatar",
+		Description:   "内置 Agent 头像",
 		MimeType:      mime,
 		Source:        "system",
 		Category:      "agent",

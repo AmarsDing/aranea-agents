@@ -7,10 +7,8 @@ import {
   approveLearningProposal,
   rejectLearningProposal,
   runLearningLoop,
-  type LearningObservation,
-  type LearningPattern,
-  type LearningProposal,
 } from '../../features/agents/api.learning';
+import type { LearningObservation, LearningPattern, LearningProposal } from '../../features/agents/learning.types';
 
 export const useLearningLoopStore = defineStore('learningLoop', () => {
   const observations = ref<LearningObservation[]>([]);
@@ -20,29 +18,62 @@ export const useLearningLoopStore = defineStore('learningLoop', () => {
   const error = ref<string | null>(null);
 
   async function fetchObservations(agentId: string, since?: string): Promise<LearningObservation[]> {
-    const result = await listLearningObservations(agentId, since);
-    observations.value = result;
-    return result;
+    loading.value = true;
+    error.value = null;
+    try {
+      const result = await listLearningObservations(agentId, since);
+      observations.value = result;
+      return result;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e);
+      throw e;
+    } finally {
+      loading.value = false;
+    }
   }
 
   async function fetchPatterns(agentId: string, status?: string): Promise<LearningPattern[]> {
-    const result = await listLearningPatterns(agentId, status);
-    patterns.value = result;
-    return result;
+    loading.value = true;
+    error.value = null;
+    try {
+      const result = await listLearningPatterns(agentId, status);
+      patterns.value = result;
+      return result;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e);
+      throw e;
+    } finally {
+      loading.value = false;
+    }
   }
 
   async function fetchProposals(agentId: string, status?: string): Promise<LearningProposal[]> {
-    const result = await listLearningProposals(agentId, status);
-    proposals.value = result;
-    return result;
+    loading.value = true;
+    error.value = null;
+    try {
+      const result = await listLearningProposals(agentId, status);
+      proposals.value = result;
+      return result;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e);
+      throw e;
+    } finally {
+      loading.value = false;
+    }
   }
 
   async function approveProposal(agentId: string, proposalId: string): Promise<LearningProposal> {
-    return approveLearningProposal(agentId, proposalId);
+    const result = await approveLearningProposal(agentId, proposalId);
+    const idx = proposals.value.findIndex((p) => p.id === proposalId);
+    if (idx !== -1) proposals.value[idx] = result;
+    return result;
   }
 
   async function rejectProposal(agentId: string, proposalId: string): Promise<LearningProposal> {
-    return rejectLearningProposal(agentId, proposalId);
+    const result = await rejectLearningProposal(agentId, proposalId);
+    const idx = proposals.value.findIndex((p) => p.id === proposalId);
+    if (idx !== -1) proposals.value[idx] = result;
+    return result;
   }
 
   async function runLoop(agentId: string): Promise<void> {

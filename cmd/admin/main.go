@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"aranea-agents/internal/adapter"
 	a2ahealth "aranea-agents/internal/a2a/health"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/conf"
@@ -23,6 +24,8 @@ import (
 	loggateway "aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/logpipeline"
 	"aranea-agents/pkg/safego"
+
+	agentlog "trpc.group/trpc-go/trpc-agent-go/log"
 
 	_ "aranea-agents/internal/channel/all"
 
@@ -58,6 +61,7 @@ func newApp(
 	logger log.Logger,
 	lg loggateway.Logger,
 	pipeline logpipeline.Pipeline,
+	loggingSinks []*conf.LoggingSink,
 	gs *grpc.Server,
 	hs *http.Server,
 	wsSrv *server.WSServer,
@@ -112,8 +116,27 @@ func newApp(
 			if eventInfra != nil {
 				event.BindInfra(eventInfra)
 				if pipeline != nil {
+				if len(loggingSinks) > 0 {
+					// Config-driven: create eventbus sinks from config
+					for _, s := range loggingSinks {
+						cfg := protoSinkToConfig(s)
+						if cfg.Type != "eventbus" {
+							continue
+						}
+						sink, err := logpipeline.NewSinkFromConfig(cfg, logpipeline.SinkFactoryDeps{
+							EventBusPublisher: event.NewLogPipelinePublisher(eventInfra.MonitorBus),
+						})
+						if err != nil {
+							lg.Warn("failed to create eventbus sink from config", loggateway.Str("sink", cfg.Name), loggateway.Err(err))
+							continue
+						}
+						pipeline.AddSink(sink)
+					}
+				} else {
+					// Default: add eventbus sink with "info" level
 					pipeline.AddSink(logpipeline.NewEventBusSink(event.NewLogPipelinePublisher(eventInfra.MonitorBus), "info"))
 				}
+			}
 			}
 			logger.Log(log.LevelInfo, "msg", "event infra bound for monitor flow logs")
 			return nil
@@ -194,31 +217,63 @@ func main() {
 
 	var lg loggateway.Logger = loggateway.NewNoop()
 	var pipeline logpipeline.Pipeline
+	var loggingSinks []*conf.LoggingSink
 	if bc.Logging != nil {
-		lg = loggateway.New(bc.Logging)
 		pipeline = logpipeline.NewPipeline(4096)
-		if bc.Logging.GetStdoutEnabled() {
-			pipeline.AddSink(logpipeline.NewStdoutSink("debug"))
+		loggingSinks = bc.Logging.GetSinks()
+		if len(loggingSinks) > 0 {
+			// Config-driven sink creation; eventbus sinks are deferred to BeforeStart
+			// because they require eventInfra which is not yet available.
+			for _, s := range loggingSinks {
+				cfg := protoSinkToConfig(s)
+				if cfg.Type == "eventbus" {
+					continue // handled in BeforeStart
+				}
+				sink, err := logpipeline.NewSinkFromConfig(cfg, logpipeline.SinkFactoryDeps{})
+				if err != nil {
+					logger.Log(log.LevelWarn, "msg", "failed to create sink from config", "sink", cfg.Name, "error", err.Error())
+					continue
+				}
+				pipeline.AddSink(sink)
+			}
+		} else {
+			// Default (backward-compatible) sink setup
+			if bc.Logging.GetStdoutEnabled() {
+				pipeline.AddSink(logpipeline.NewStdoutSink("debug"))
+			}
+			pipeline.AddSink(logpipeline.NewFileSink(logpipeline.FileSinkConfig{
+				OutputDir:  bc.Logging.GetOutputDir(),
+				MaxSizeMB:  int(bc.Logging.GetMaxSizeMb()),
+				MaxBackups: int(bc.Logging.GetMaxBackups()),
+				MaxAgeDays: int(bc.Logging.GetMaxAgeDays()),
+				Compress:   bc.Logging.GetCompress(),
+			}))
 		}
-		pipeline.AddSink(logpipeline.NewFileSink(logpipeline.FileSinkConfig{
+		lg = loggateway.New(loggateway.LoggingConfig{
+			Level:      bc.Logging.GetLevel(),
 			OutputDir:  bc.Logging.GetOutputDir(),
 			MaxSizeMB:  int(bc.Logging.GetMaxSizeMb()),
 			MaxBackups: int(bc.Logging.GetMaxBackups()),
 			MaxAgeDays: int(bc.Logging.GetMaxAgeDays()),
 			Compress:   bc.Logging.GetCompress(),
-		}))
-		if gw, ok := lg.(*loggateway.Gateway); ok {
-			gw.SetPipeline(pipeline)
-		}
+			Stdout:     bc.Logging.GetStdoutEnabled(),
+		}, pipeline)
 	}
+
+	// Bridge trpc-agent-go runtime logs to loggateway Pipeline
 	if gw, ok := lg.(*loggateway.Gateway); ok {
-		loggateway.SetGlobal(gw)
+		rla := adapter.NewRuntimeLogAdapter(gw)
+		agentlog.Default = rla
+		agentlog.ContextDefault = rla
 	}
+
+	// Inject logger into auth package (replaces Global() calls)
+	auth.SetLogger(lg)
 
 	shutdownTelemetry := telemetry.Init(Name, Version, lg)
 	defer func() { _ = shutdownTelemetry(context.Background()) }()
 
-	out, cleanup, err := wireApp(bc.Server, bc.Data, nil, logger, lg, pipeline)
+	out, cleanup, err := wireApp(bc.Server, bc.Data, nil, logger, lg, pipeline, loggingSinks)
 	if err != nil {
 		panic(err)
 	}
@@ -435,5 +490,35 @@ func main() {
 
 	if err := out.App.Run(); err != nil {
 		panic(err)
+	}
+}
+
+// protoSinkToConfig converts a proto LoggingSink to a logpipeline SinkConfig.
+func protoSinkToConfig(s *conf.LoggingSink) logpipeline.SinkConfig {
+	if s == nil {
+		return logpipeline.SinkConfig{}
+	}
+	var dropPolicy logpipeline.DropPolicy
+	switch s.GetDropPolicy() {
+	case conf.DropPolicy_DROP_POLICY_BLOCK:
+		dropPolicy = logpipeline.DropBlock
+	default:
+		dropPolicy = logpipeline.DropNewest
+	}
+	var sinkType string
+	switch s.GetType() {
+	case conf.SinkType_SINK_TYPE_FILE:
+		sinkType = "file"
+	case conf.SinkType_SINK_TYPE_STDOUT:
+		sinkType = "stdout"
+	case conf.SinkType_SINK_TYPE_EVENTBUS:
+		sinkType = "eventbus"
+	}
+	return logpipeline.SinkConfig{
+		Name:       s.GetName(),
+		Type:       sinkType,
+		BufferSize: int(s.GetBufferSize()),
+		DropPolicy: dropPolicy,
+		Config:     s.GetConfig(),
 	}
 }
