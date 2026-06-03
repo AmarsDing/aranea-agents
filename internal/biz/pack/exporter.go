@@ -2,12 +2,11 @@ package pack
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"aranea-agents/internal/biz"
-
-	"gopkg.in/yaml.v3"
 )
 
 // ExporterRepo 导出引擎所需的只读仓库接口。
@@ -188,18 +187,18 @@ func (e *Exporter) ExportIndustry(ctx context.Context, industryKey string) (*Pac
 // buildAgentSpec 从 biz.Agent 构建 AgentPackSpec。
 func (e *Exporter) buildAgentSpec(ctx context.Context, agent biz.Agent) (AgentPackSpec, map[string]map[string]string, error) {
 	spec := AgentPackSpec{
-		Key:               agent.AgentKey,
-		DisplayName:       agent.DisplayName,
-		Description:       agent.AgentDescription,
-		Icon:              agent.Icon,
-		Variant:           agent.AgentVariant,
+		Key:                agent.AgentKey,
+		DisplayName:        agent.DisplayName,
+		Description:        agent.AgentDescription,
+		Icon:               agent.Icon,
+		Variant:            agent.AgentVariant,
 		VariantDescription: agent.VariantDescription,
-		Provider:          agent.Provider,
-		Model:             agent.Model,
-		SystemPromptMode:  agent.SystemPromptMode,
-		ContextWindow:     agent.ContextWindow,
-		Kind:              agent.Kind,
-		TeamRole:          "", // 从 Team 成员定义中获取
+		Provider:           agent.Provider,
+		Model:              agent.Model,
+		SystemPromptMode:   agent.SystemPromptMode,
+		ContextWindow:      agent.ContextWindow,
+		Kind:               agent.Kind,
+		TeamRole:           "", // 从 Team 成员定义中获取
 	}
 
 	// position_key 路径转换
@@ -213,11 +212,11 @@ func (e *Exporter) buildAgentSpec(ctx context.Context, agent biz.Agent) (AgentPa
 	// A2A Proxy
 	if agent.A2AProxy != nil {
 		spec.A2AProxy = &A2AProxyPackSpec{
-			RemoteURL:      agent.A2AProxy.RemoteURL,
-			AgentCardURL:   agent.A2AProxy.AgentCardURL,
+			RemoteURL:       agent.A2AProxy.RemoteURL,
+			AgentCardURL:    agent.A2AProxy.AgentCardURL,
 			EnableStreaming: agent.A2AProxy.EnableStreaming,
-			AuthType:       agent.A2AProxy.AuthType,
-			TimeoutSeconds: agent.A2AProxy.TimeoutSeconds,
+			AuthType:        agent.A2AProxy.AuthType,
+			TimeoutSeconds:  agent.A2AProxy.TimeoutSeconds,
 		}
 	}
 
@@ -262,8 +261,8 @@ func (e *Exporter) buildAgentSpec(ctx context.Context, agent biz.Agent) (AgentPa
 // buildTeamSpec 从 biz.Team 构建 TeamPackSpec。
 func (e *Exporter) buildTeamSpec(ctx context.Context, team biz.Team) (TeamPackSpec, error) {
 	spec := TeamPackSpec{
-		Key:          team.TeamKey,
-		DisplayName:  team.DisplayName,
+		Key:         team.TeamKey,
+		DisplayName: team.DisplayName,
 	}
 
 	// 解析 definition_json
@@ -658,9 +657,9 @@ func buildRuntimePackSpec(s *biz.AgentRuntimeSettings) *AgentRuntimePackSpec {
 
 	// Evolution
 	r.Evolution = &RuntimeEvolutionSpec{
-		SelfEvolve:        s.EvolutionSelfEvolve,
-		SkillEvolve:       s.EvolutionSkillEvolve,
-		MetricsEnabled:    s.EvolutionMetricsEnabled,
+		SelfEvolve:         s.EvolutionSelfEvolve,
+		SkillEvolve:        s.EvolutionSkillEvolve,
+		MetricsEnabled:     s.EvolutionMetricsEnabled,
 		SuggestionsEnabled: s.EvolutionSuggestionsEnabled,
 	}
 
@@ -741,15 +740,15 @@ func graphDefToPackSpec(def *biz.GraphDefinition) GraphPackSpec {
 	return spec
 }
 
-func parseSkillRuntime(json string) *AgentSkillsSpec {
-	if json == "" {
+func parseSkillRuntime(jsonStr string) *AgentSkillsSpec {
+	if jsonStr == "" {
 		return nil
 	}
 	var policy struct {
-		AllowedSlugs []string `yaml:"allowed_slugs" json:"allowed_slugs"`
-		DeniedSlugs  []string `yaml:"denied_slugs" json:"denied_slugs"`
+		AllowedSlugs []string `json:"allowed_slugs"`
+		DeniedSlugs  []string `json:"denied_slugs"`
 	}
-	if err := yaml.Unmarshal([]byte(json), &policy); err != nil {
+	if err := json.Unmarshal([]byte(jsonStr), &policy); err != nil {
 		return nil
 	}
 	if len(policy.AllowedSlugs) == 0 && len(policy.DeniedSlugs) == 0 {
@@ -761,12 +760,12 @@ func parseSkillRuntime(json string) *AgentSkillsSpec {
 	}
 }
 
-func jsonListToSlice(json string) []string {
-	if json == "" || json == "[]" || json == "null" {
+func jsonListToSlice(jsonStr string) []string {
+	if jsonStr == "" || jsonStr == "[]" || jsonStr == "null" {
 		return nil
 	}
 	var slice []string
-	if err := yaml.Unmarshal([]byte(json), &slice); err != nil {
+	if err := json.Unmarshal([]byte(jsonStr), &slice); err != nil {
 		return nil
 	}
 	return slice

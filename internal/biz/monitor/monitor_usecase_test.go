@@ -232,7 +232,7 @@ func TestRecordAuditLog_Success(t *testing.T) {
 			return nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.RecordAuditLog(context.Background(), monitor.AuditLog{Action: "create"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -251,7 +251,7 @@ func TestRecordAuditLog_PreservesExistingID(t *testing.T) {
 			return nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.RecordAuditLog(context.Background(), monitor.AuditLog{ID: "existing-id", Action: "delete"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -264,7 +264,7 @@ func TestRecordAuditLog_RepoError(t *testing.T) {
 			return fmt.Errorf("db error")
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.RecordAuditLog(context.Background(), monitor.AuditLog{Action: "create"})
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -280,7 +280,7 @@ func TestRecordAuditLog_NilUsecase(t *testing.T) {
 }
 
 func TestRecordAuditLog_NilRepo(t *testing.T) {
-	uc := monitor.NewUsecase(nil, nil)
+	uc := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	err := uc.RecordAuditLog(context.Background(), monitor.AuditLog{Action: "create"})
 	if err != nil {
 		t.Fatalf("nil repo should return nil, got: %v", err)
@@ -296,7 +296,7 @@ func TestRecordAuditLog_EmptyWhitespaceID(t *testing.T) {
 			return nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.RecordAuditLog(context.Background(), monitor.AuditLog{ID: "   ", Action: "update"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -314,7 +314,7 @@ func TestRecordMonitorEvent_Success(t *testing.T) {
 			return nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.RecordMonitorEvent(context.Background(), monitor.EventWrite{EventKey: "runner.completion"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -330,7 +330,7 @@ func TestRecordMonitorEvent_RepoError(t *testing.T) {
 			return fmt.Errorf("db error")
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.RecordMonitorEvent(context.Background(), monitor.EventWrite{EventKey: "runner.completion"})
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -346,7 +346,7 @@ func TestRecordMonitorEvent_NilUsecase(t *testing.T) {
 }
 
 func TestRecordMonitorEvent_NilRepo(t *testing.T) {
-	uc := monitor.NewUsecase(nil, nil)
+	uc := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	err := uc.RecordMonitorEvent(context.Background(), monitor.EventWrite{EventKey: "test"})
 	if err != nil {
 		t.Fatalf("nil repo should return nil, got: %v", err)
@@ -363,7 +363,7 @@ func TestListAuditLogs_Success(t *testing.T) {
 			return want, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	got, err := uc.ListAuditLogs(context.Background(), monitor.AuditQuery{Limit: 10})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -382,7 +382,7 @@ func TestListAuditLogs_DefaultLimit(t *testing.T) {
 			return monitor.AuditListResult{}, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	_, err := uc.ListAuditLogs(context.Background(), monitor.AuditQuery{Limit: 0})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -398,7 +398,7 @@ func TestListAuditLogs_NegativeLimit(t *testing.T) {
 			return monitor.AuditListResult{}, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	_, err := uc.ListAuditLogs(context.Background(), monitor.AuditQuery{Limit: -5})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -411,7 +411,7 @@ func TestListAuditLogs_RepoError(t *testing.T) {
 			return monitor.AuditListResult{}, fmt.Errorf("db error")
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	_, err := uc.ListAuditLogs(context.Background(), monitor.AuditQuery{Limit: 10})
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -428,7 +428,7 @@ func TestListMonitorEvents_Success(t *testing.T) {
 			return want, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	got, err := uc.ListMonitorEvents(context.Background(), monitor.EventsQuery{Limit: 50})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -447,7 +447,7 @@ func TestListMonitorEvents_DefaultLimit(t *testing.T) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	_, err := uc.ListMonitorEvents(context.Background(), monitor.EventsQuery{Limit: 0})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -460,7 +460,7 @@ func TestListMonitorEvents_RepoError(t *testing.T) {
 			return monitor.ListResult{}, fmt.Errorf("db error")
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	_, err := uc.ListMonitorEvents(context.Background(), monitor.EventsQuery{Limit: 10})
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -474,7 +474,7 @@ func TestListAlertRules_Success(t *testing.T) {
 			return rules, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	got, err := uc.ListAlertRules(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -490,7 +490,7 @@ func TestListAlertRules_Empty(t *testing.T) {
 			return nil, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	got, err := uc.ListAlertRules(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -506,7 +506,7 @@ func TestListAlertRules_RepoError(t *testing.T) {
 			return nil, fmt.Errorf("db error")
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	_, err := uc.ListAlertRules(context.Background())
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -536,7 +536,7 @@ func TestReplaceAlertRules_Success(t *testing.T) {
 			return nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.ReplaceAlertRules(context.Background(), []monitor.AlertRule{{ID: "new1"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -552,7 +552,7 @@ func TestReplaceAlertRules_DeletesStaleLastFired(t *testing.T) {
 			return nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	uc.MarkAlertFired("old1", time.Now())
 	uc.MarkAlertFired("old2", time.Now())
 
@@ -576,7 +576,7 @@ func TestReplaceAlertRules_RepoError(t *testing.T) {
 			return fmt.Errorf("db error")
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.ReplaceAlertRules(context.Background(), []monitor.AlertRule{{ID: "r1"}})
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -594,7 +594,7 @@ func TestReplaceAlertRules_ListOldRulesError(t *testing.T) {
 			return nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.ReplaceAlertRules(context.Background(), []monitor.AlertRule{{ID: "r1"}})
 	if err != nil {
 		t.Fatalf("should not fail when ListAlertRules fails, got: %v", err)
@@ -624,7 +624,7 @@ func TestReplaceAlertRules_EmptyRules(t *testing.T) {
 			return nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.ReplaceAlertRules(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -641,7 +641,7 @@ func TestGetMonitorEvent_Success(t *testing.T) {
 			return want, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	got, err := uc.GetMonitorEvent(context.Background(), "e1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -657,7 +657,7 @@ func TestGetMonitorEvent_RepoError(t *testing.T) {
 			return monitor.PlatformRow{}, fmt.Errorf("not found")
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	_, err := uc.GetMonitorEvent(context.Background(), "missing")
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -674,7 +674,7 @@ func TestListMonitorTraces_Success(t *testing.T) {
 			return want, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	got, err := uc.ListMonitorTraces(context.Background(), monitor.TracesQuery{Limit: 50})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -693,7 +693,7 @@ func TestListMonitorTraces_DefaultLimit(t *testing.T) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	_, err := uc.ListMonitorTraces(context.Background(), monitor.TracesQuery{Limit: 0})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -706,7 +706,7 @@ func TestListMonitorTraces_RepoError(t *testing.T) {
 			return monitor.ListResult{}, fmt.Errorf("db error")
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	_, err := uc.ListMonitorTraces(context.Background(), monitor.TracesQuery{Limit: 10})
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -723,7 +723,7 @@ func TestGetMonitorTrace_Success(t *testing.T) {
 			return want, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	got, err := uc.GetMonitorTrace(context.Background(), "t1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -739,7 +739,7 @@ func TestGetMonitorTrace_RepoError(t *testing.T) {
 			return monitor.PlatformRow{}, fmt.Errorf("not found")
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	_, err := uc.GetMonitorTrace(context.Background(), "missing")
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -761,7 +761,7 @@ func TestGetRunnerMetrics_Success(t *testing.T) {
 			return 200.0, 400.0, 600.0, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	got, err := uc.GetRunnerMetrics(context.Background(), 30)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -801,7 +801,7 @@ func TestGetRunnerMetrics_DefaultWindow(t *testing.T) {
 			return 0, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	got, err := uc.GetRunnerMetrics(context.Background(), 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -817,7 +817,7 @@ func TestGetRunnerMetrics_NegativeWindow(t *testing.T) {
 			return 0, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	got, err := uc.GetRunnerMetrics(context.Background(), -10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -833,7 +833,7 @@ func TestGetRunnerMetrics_ZeroTotalRuns(t *testing.T) {
 			return 0, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	got, err := uc.GetRunnerMetrics(context.Background(), 60)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -855,7 +855,7 @@ func TestGetRunnerMetrics_CountTotalError(t *testing.T) {
 			return 0, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	_, err := uc.GetRunnerMetrics(context.Background(), 60)
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -871,7 +871,7 @@ func TestGetRunnerMetrics_CountErrorsError(t *testing.T) {
 			return 100, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	_, err := uc.GetRunnerMetrics(context.Background(), 60)
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -887,7 +887,7 @@ func TestGetRunnerMetrics_AvgDurationError(t *testing.T) {
 			return 0, fmt.Errorf("avg error")
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	got, err := uc.GetRunnerMetrics(context.Background(), 60)
 	if err != nil {
 		t.Fatalf("avg error should not fail, got: %v", err)
@@ -906,7 +906,7 @@ func TestGetRunnerMetrics_PercentileError(t *testing.T) {
 			return 0, 0, 0, fmt.Errorf("percentile error")
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	got, err := uc.GetRunnerMetrics(context.Background(), 60)
 	if err != nil {
 		t.Fatalf("percentile error should not fail, got: %v", err)
@@ -954,7 +954,7 @@ func TestRecordRunnerCompletion_NewCompletion(t *testing.T) {
 	bridge := &mockRunnerCompletionBridge{
 		clearTurnFn: func(string, string) { clearCalled = true },
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.RecordRunnerCompletion(
 		context.Background(),
 		monitor.EventWrite{EventKey: "runner.completion"},
@@ -994,7 +994,7 @@ func TestRecordRunnerCompletion_ExistingCompletion(t *testing.T) {
 	bridge := &mockRunnerCompletionBridge{
 		clearTurnFn: func(string, string) {},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.RecordRunnerCompletion(
 		context.Background(),
 		monitor.EventWrite{EventKey: "runner.completion"},
@@ -1018,7 +1018,7 @@ func TestRecordRunnerCompletion_ExistsCheckError(t *testing.T) {
 		},
 	}
 	bridge := &mockRunnerCompletionBridge{}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.RecordRunnerCompletion(
 		context.Background(),
 		monitor.EventWrite{EventKey: "runner.completion"},
@@ -1039,7 +1039,7 @@ func TestRecordRunnerCompletion_InsertError(t *testing.T) {
 		},
 	}
 	bridge := &mockRunnerCompletionBridge{}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.RecordRunnerCompletion(
 		context.Background(),
 		monitor.EventWrite{EventKey: "runner.completion"},
@@ -1063,7 +1063,7 @@ func TestRecordRunnerCompletion_PatchError(t *testing.T) {
 		},
 	}
 	bridge := &mockRunnerCompletionBridge{}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.RecordRunnerCompletion(
 		context.Background(),
 		monitor.EventWrite{EventKey: "runner.completion"},
@@ -1098,7 +1098,7 @@ func TestRecordRunnerCompletion_EmptySessionID(t *testing.T) {
 		},
 	}
 	bridge := &mockRunnerCompletionBridge{}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.RecordRunnerCompletion(
 		context.Background(),
 		monitor.EventWrite{EventKey: "runner.completion"},
@@ -1128,7 +1128,7 @@ func TestRecordRunnerCompletion_UsageEventIDClearsTurn(t *testing.T) {
 	bridge := &mockRunnerCompletionBridge{
 		clearTurnFn: func(string, string) { clearCalled = true },
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.RecordRunnerCompletion(
 		context.Background(),
 		monitor.EventWrite{EventKey: "runner.completion"},
@@ -1180,7 +1180,7 @@ func TestEvaluateAlerts_RunnerErrorRateFires(t *testing.T) {
 			}
 		},
 	}
-	uc := monitor.NewUsecase(repo, notifier)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier)
 	uc.EvaluateAlerts(context.Background())
 	if !notifyCalled {
 		t.Error("Notify should be called when error rate exceeds threshold")
@@ -1214,7 +1214,7 @@ func TestEvaluateAlerts_RunnerErrorRateBelowThreshold(t *testing.T) {
 			notifyCalled = true
 		},
 	}
-	uc := monitor.NewUsecase(repo, notifier)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier)
 	uc.EvaluateAlerts(context.Background())
 	if notifyCalled {
 		t.Error("Notify should not be called when error rate is below threshold")
@@ -1240,7 +1240,7 @@ func TestEvaluateAlerts_DisabledRule(t *testing.T) {
 			notifyCalled = true
 		},
 	}
-	uc := monitor.NewUsecase(repo, notifier)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier)
 	uc.EvaluateAlerts(context.Background())
 	if notifyCalled {
 		t.Error("Disabled rule should not trigger notification")
@@ -1273,7 +1273,7 @@ func TestEvaluateAlerts_ZeroTotalRecoversFiring(t *testing.T) {
 			return nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	uc.EvaluateAlerts(context.Background())
 	if !recoveredCalled {
 		t.Error("Firing alert with zero total should recover")
@@ -1310,7 +1310,7 @@ func TestEvaluateAlerts_RegistryMetric(t *testing.T) {
 	}
 	reg := monitor.NewAlertMetricRegistry()
 	reg.Register(&stubAlertMetric{keyVal: "custom.metric", evalFn: func(context.Context, time.Duration) (float64, error) { return 80.0, nil }})
-	uc := monitor.NewUsecase(repo, notifier, monitor.WithRegistry(reg))
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier, monitor.WithRegistry(reg))
 	uc.EvaluateAlerts(context.Background())
 	if !notifyCalled {
 		t.Error("Registry metric above threshold should fire alert")
@@ -1340,7 +1340,7 @@ func TestEvaluateAlerts_RegistryMetricBelowThreshold(t *testing.T) {
 	}
 	reg := monitor.NewAlertMetricRegistry()
 	reg.Register(&stubAlertMetric{keyVal: "custom.metric", evalFn: func(context.Context, time.Duration) (float64, error) { return 30.0, nil }})
-	uc := monitor.NewUsecase(repo, notifier, monitor.WithRegistry(reg))
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier, monitor.WithRegistry(reg))
 	uc.EvaluateAlerts(context.Background())
 	if notifyCalled {
 		t.Error("Registry metric below threshold should not fire alert")
@@ -1379,7 +1379,7 @@ func TestEvaluateAlerts_RegistryMetricRecovers(t *testing.T) {
 	}
 	reg := monitor.NewAlertMetricRegistry()
 	reg.Register(&stubAlertMetric{keyVal: "custom.metric", evalFn: func(context.Context, time.Duration) (float64, error) { return 40.0, nil }})
-	uc := monitor.NewUsecase(repo, notifier, monitor.WithRegistry(reg))
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier, monitor.WithRegistry(reg))
 	uc.EvaluateAlerts(context.Background())
 	if !recoveredEvent {
 		t.Error("Firing alert with metric below recovery threshold should recover")
@@ -1419,7 +1419,7 @@ func TestEvaluateAlerts_SkillFilesystemMissingCount(t *testing.T) {
 			return 10, 0, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, notifier, monitor.WithFilesystemHealthReader(fsHealth))
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier, monitor.WithFilesystemHealthReader(fsHealth))
 	uc.EvaluateAlerts(context.Background())
 	if !notifyCalled {
 		t.Error("Missing count above threshold should fire alert")
@@ -1441,7 +1441,7 @@ func TestEvaluateAlerts_SkillFilesystemNilHealth(t *testing.T) {
 			}, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	uc.EvaluateAlerts(context.Background())
 }
 
@@ -1456,7 +1456,7 @@ func TestEvaluateAlerts_EmptyRules(t *testing.T) {
 			return nil, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	uc.EvaluateAlerts(context.Background())
 }
 
@@ -1466,7 +1466,7 @@ func TestEvaluateAlerts_ListRulesError(t *testing.T) {
 			return nil, fmt.Errorf("db error")
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	uc.EvaluateAlerts(context.Background())
 }
 
@@ -1488,7 +1488,7 @@ func TestEvaluateAlerts_CountTotalError(t *testing.T) {
 			return 0, fmt.Errorf("count error")
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	uc.EvaluateAlerts(context.Background())
 }
 
@@ -1512,7 +1512,7 @@ func TestMarkAlertFiredPersistent_Success(t *testing.T) {
 			return nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	now := time.Now().UTC()
 	uc.MarkAlertFiredPersistent(context.Background(), monitor.AlertRule{ID: "r1"}, now, 0.8)
 	if !updateCalled {
@@ -1526,7 +1526,7 @@ func TestMarkAlertFiredPersistent_RepoError(t *testing.T) {
 			return fmt.Errorf("db error")
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	uc.MarkAlertFiredPersistent(context.Background(), monitor.AlertRule{ID: "r1"}, time.Now(), 0.8)
 }
 
@@ -1536,7 +1536,7 @@ func TestMarkAlertFiredPersistent_NilUsecase(t *testing.T) {
 }
 
 func TestMarkAlertFiredPersistent_NilRepo(t *testing.T) {
-	uc := monitor.NewUsecase(nil, nil)
+	uc := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	uc.MarkAlertFiredPersistent(context.Background(), monitor.AlertRule{ID: "r1"}, time.Now(), 0.8)
 }
 
@@ -1557,7 +1557,7 @@ func TestMarkAlertRecovered_Success(t *testing.T) {
 			return nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	now := time.Now().UTC()
 	uc.MarkAlertRecovered(context.Background(), monitor.AlertRule{ID: "r1"}, now)
 	if !updateCalled {
@@ -1571,7 +1571,7 @@ func TestMarkAlertRecovered_RepoError(t *testing.T) {
 			return fmt.Errorf("db error")
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	uc.MarkAlertRecovered(context.Background(), monitor.AlertRule{ID: "r1"}, time.Now())
 }
 
@@ -1581,7 +1581,7 @@ func TestMarkAlertRecovered_NilUsecase(t *testing.T) {
 }
 
 func TestMarkAlertRecovered_NilRepo(t *testing.T) {
-	uc := monitor.NewUsecase(nil, nil)
+	uc := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	uc.MarkAlertRecovered(context.Background(), monitor.AlertRule{ID: "r1"}, time.Now())
 }
 
@@ -1594,7 +1594,7 @@ func TestRebuildRingBuffer_Success(t *testing.T) {
 			return 2, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	rb := monitor.NewMetricRingBuffer()
 	rebuilt := uc.RebuildRingBuffer(context.Background(), rb)
 	if rebuilt <= 0 {
@@ -1612,7 +1612,7 @@ func TestRebuildRingBuffer_NilUsecase(t *testing.T) {
 
 func TestRebuildRingBuffer_NilBuffer(t *testing.T) {
 	repo := &mockRepo{}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	rebuilt := uc.RebuildRingBuffer(context.Background(), nil)
 	if rebuilt != 0 {
 		t.Errorf("rebuilt = %d, want 0", rebuilt)
@@ -1620,7 +1620,7 @@ func TestRebuildRingBuffer_NilBuffer(t *testing.T) {
 }
 
 func TestRebuildRingBuffer_NilRepo(t *testing.T) {
-	uc := monitor.NewUsecase(nil, nil)
+	uc := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	rebuilt := uc.RebuildRingBuffer(context.Background(), monitor.NewMetricRingBuffer())
 	if rebuilt != 0 {
 		t.Errorf("rebuilt = %d, want 0", rebuilt)
@@ -1633,7 +1633,7 @@ func TestRebuildRingBuffer_CountError(t *testing.T) {
 			return 0, fmt.Errorf("count error")
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	rb := monitor.NewMetricRingBuffer()
 	rebuilt := uc.RebuildRingBuffer(context.Background(), rb)
 	if rebuilt != 0 {
@@ -1652,7 +1652,7 @@ func TestRebuildRingBuffer_PartialError(t *testing.T) {
 			return 5, nil
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	rb := monitor.NewMetricRingBuffer()
 	rebuilt := uc.RebuildRingBuffer(context.Background(), rb)
 	if rebuilt == 0 {
@@ -1679,7 +1679,7 @@ func TestLinkRunnerCompletionUsage_Success(t *testing.T) {
 			clearCalled = true
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.LinkRunnerCompletionUsage(context.Background(), "sess1", "run1", "usage1", "trace1", bridge)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1698,7 +1698,7 @@ func TestLinkRunnerCompletionUsage_Success(t *testing.T) {
 func TestLinkRunnerCompletionUsage_EmptySessionID(t *testing.T) {
 	repo := &mockRepo{}
 	bridge := &mockRunnerCompletionBridge{}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.LinkRunnerCompletionUsage(context.Background(), "", "run1", "usage1", "trace1", bridge)
 	if err != nil {
 		t.Fatalf("empty sessionID should return nil, got: %v", err)
@@ -1708,7 +1708,7 @@ func TestLinkRunnerCompletionUsage_EmptySessionID(t *testing.T) {
 func TestLinkRunnerCompletionUsage_EmptyRunID(t *testing.T) {
 	repo := &mockRepo{}
 	bridge := &mockRunnerCompletionBridge{}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.LinkRunnerCompletionUsage(context.Background(), "sess1", "", "usage1", "trace1", bridge)
 	if err != nil {
 		t.Fatalf("empty runID should return nil, got: %v", err)
@@ -1718,7 +1718,7 @@ func TestLinkRunnerCompletionUsage_EmptyRunID(t *testing.T) {
 func TestLinkRunnerCompletionUsage_EmptyUsageEventID(t *testing.T) {
 	repo := &mockRepo{}
 	bridge := &mockRunnerCompletionBridge{}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	err := uc.LinkRunnerCompletionUsage(context.Background(), "sess1", "run1", "", "trace1", bridge)
 	if err != nil {
 		t.Fatalf("empty usageEventID should return nil, got: %v", err)
@@ -1745,7 +1745,7 @@ func TestPatchRunnerCompletionLink_WithUsageEventID(t *testing.T) {
 		},
 	}
 	bridge := &mockRunnerCompletionBridge{}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	patched, err := uc.PatchRunnerCompletionLink(context.Background(), "sess1", "run1", "inv1", "usage1", "trace1", bridge)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1771,7 +1771,7 @@ func TestPatchRunnerCompletionLink_NoUsageEventID_BridgePending(t *testing.T) {
 			return "bridge-usage", "bridge-trace", true
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	patched, err := uc.PatchRunnerCompletionLink(context.Background(), "sess1", "run1", "inv1", "", "", bridge)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1791,7 +1791,7 @@ func TestPatchRunnerCompletionLink_NoUsageEventID_NoBridge(t *testing.T) {
 			return "", "", false
 		},
 	}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	patched, err := uc.PatchRunnerCompletionLink(context.Background(), "sess1", "run1", "inv1", "", "", bridge)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1808,7 +1808,7 @@ func TestPatchRunnerCompletionLink_PatchError(t *testing.T) {
 		},
 	}
 	bridge := &mockRunnerCompletionBridge{}
-	uc := monitor.NewUsecase(repo, nil)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, nil)
 	_, err := uc.PatchRunnerCompletionLink(context.Background(), "sess1", "run1", "inv1", "usage1", "", bridge)
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -1847,7 +1847,7 @@ func TestEvaluateAlerts_WithRingBuffer(t *testing.T) {
 	rb.RecordCompletion("error", 100)
 	rb.RecordCompletion("error", 200)
 	rb.RecordCompletion("success", 300)
-	uc := monitor.NewUsecase(repo, notifier, monitor.WithRingBuffer(rb))
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier, monitor.WithRingBuffer(rb))
 	uc.EvaluateAlerts(context.Background())
 	if !notifyCalled {
 		t.Error("Ring buffer showing 2/3 error rate should fire alert above 0.5 threshold")
@@ -1880,7 +1880,7 @@ func TestEvaluateAlerts_CooldownPreventsFire(t *testing.T) {
 			notifyCalled = true
 		},
 	}
-	uc := monitor.NewUsecase(repo, notifier)
+	uc := monitor.NewUsecase(repo, repo, repo, repo, repo, notifier)
 	uc.EvaluateAlerts(context.Background())
 	if notifyCalled {
 		t.Error("Alert within cooldown should not fire")

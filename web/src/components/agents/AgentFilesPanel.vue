@@ -34,6 +34,7 @@
               :file-name="activeFile"
               :resource-id="agentId || undefined"
               :text="bodyModel"
+              :refine-fn="refinePromptField"
               outline
               @apply="(v: string) => emit('update-file-body', activeFile, v)"
             />
@@ -60,6 +61,7 @@ import { computed } from 'vue';
 import type { AgentFile } from './agentUi';
 import { tokenEstimateFor, tokenText } from './agentUi';
 import AiRefineButton from './AIRefineButton.vue';
+import { refinePromptField } from '../../features/agents/aiRefine';
 
 const props = defineProps<{
   files: AgentFile[];

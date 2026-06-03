@@ -86,7 +86,7 @@ func TestNonEmpty_Values(t *testing.T) {
 }
 
 func TestNewDiagBundleGenerator_NilRepo(t *testing.T) {
-	g := monitor.NewDiagBundleGenerator(nil, loggateway.NewNoop())
+	g := monitor.NewDiagBundleGenerator(nil, nil, loggateway.NewNoop())
 	if g != nil {
 		t.Error("NewDiagBundleGenerator(nil) should return nil")
 	}
@@ -106,7 +106,7 @@ func TestDiagBundleGenerator_Generate_DefaultContextMinutes(t *testing.T) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	g := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	bundle, err := g.Generate(context.Background(), "", "sess-1", "", "", "manual", 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -125,7 +125,7 @@ func TestDiagBundleGenerator_Generate_NegativeContextMinutes(t *testing.T) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	g := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	bundle, err := g.Generate(context.Background(), "", "sess-1", "", "", "manual", -10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -148,7 +148,7 @@ func TestDiagBundleGenerator_Generate_WithSessionID(t *testing.T) {
 			}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	g := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	bundle, err := g.Generate(context.Background(), "", "sess-1", "", "", "manual", 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -189,7 +189,7 @@ func TestDiagBundleGenerator_Generate_WithTraceID(t *testing.T) {
 			}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	g := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	bundle, err := g.Generate(context.Background(), "trace-1", "", "", "", "auto", 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -208,7 +208,7 @@ func TestDiagBundleGenerator_Generate_WithStepID(t *testing.T) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	g := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	bundle, err := g.Generate(context.Background(), "", "sess-1", "run-1", "tool-step-1", "error", 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -224,7 +224,7 @@ func TestDiagBundleGenerator_Generate_NoStepID_NoRootCauses(t *testing.T) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	g := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	bundle, err := g.Generate(context.Background(), "", "sess-1", "", "", "manual", 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -240,7 +240,7 @@ func TestDiagBundleGenerator_Generate_ManifestStructure(t *testing.T) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	g := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	bundle, err := g.Generate(context.Background(), "trace-1", "sess-1", "run-1", "step-1", "manual", 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -303,7 +303,7 @@ func TestDiagBundleGenerator_Generate_UsageRecords(t *testing.T) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	g := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	bundle, err := g.Generate(context.Background(), "trace-1", "sess-1", "", "", "manual", 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -328,7 +328,7 @@ func TestDiagBundleGenerator_Generate_ListEventsError(t *testing.T) {
 			return monitor.ListResult{}, fmt.Errorf("db error")
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	g := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	bundle, err := g.Generate(context.Background(), "", "sess-1", "", "", "manual", 5)
 	if err != nil {
 		t.Fatalf("should not return error on list failure, got: %v", err)
@@ -352,7 +352,7 @@ func TestDiagBundleGenerator_Generate_TriggerMetadataExtraction(t *testing.T) {
 			}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	g := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	bundle, err := g.Generate(context.Background(), "", "sess-1", "", "tool-step-1", "error", 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -368,7 +368,7 @@ func TestDiagBundleGenerator_Generate_EmptySessionAndTrace(t *testing.T) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	g := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	g := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	bundle, err := g.Generate(context.Background(), "", "", "", "", "manual", 5)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -375,7 +375,13 @@
           </div>
 
           <aside class="team-editor-workspace__aside">
-            <TeamCompilePreview :team-id="editingId" :definition-json="definitionJSON" :is-dark="isDark" />
+            <TeamCompilePreview
+              :is-dark="isDark"
+              :compiled="compileResult"
+              :loading="compileLoading"
+              :error="compileError"
+              :issues="compileIssues"
+            />
           </aside>
         </div>
       </div>
@@ -398,9 +404,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import type { TeamDefinition } from '../../features/teams/types';
+import { compileTeamGraph, type CompileTeamGraphResult } from '../../features/orchestration/compileApi';
 import TeamCompilePreview from './TeamCompilePreview.vue';
 import {
   failureDefaultOptions,
@@ -415,6 +422,47 @@ import {
 } from './teamUtils';
 
 const $q = useQuasar();
+
+// ── Compile preview state ──
+const compileResult = ref<CompileTeamGraphResult | null>(null);
+const compileLoading = ref(false);
+const compileError = ref('');
+const compileIssues = ref<Array<{ message?: string; code?: string; warning?: boolean }>>([]);
+
+let compileDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function refreshCompile() {
+  const json = props.definitionJSON?.trim();
+  if (!json || json === '{}' || !json.includes('members')) {
+    compileResult.value = null;
+    compileIssues.value = [];
+    return;
+  }
+  compileLoading.value = true;
+  compileError.value = '';
+  try {
+    const teamId = props.editingId?.trim() || 'draft-preview';
+    compileResult.value = await compileTeamGraph(teamId, json);
+    compileIssues.value = (compileResult.value.issues ?? []).map((i) => ({
+      message: i.message,
+      code: i.code,
+      warning: Boolean(i.warning),
+    }));
+  } catch (e) {
+    compileError.value = e instanceof Error ? e.message : String(e);
+    compileResult.value = null;
+    compileIssues.value = [];
+  } finally {
+    compileLoading.value = false;
+  }
+}
+
+function scheduleCompileRefresh() {
+  if (compileDebounceTimer) clearTimeout(compileDebounceTimer);
+  compileDebounceTimer = setTimeout(refreshCompile, 400);
+}
+
+watch(() => [props.editingId, props.definitionJSON], scheduleCompileRefresh, { immediate: true });
 
 const props = withDefaults(
   defineProps<{

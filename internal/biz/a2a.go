@@ -23,6 +23,10 @@ type (
 	A2AGatewayEntry             = a2a.GatewayEntry
 	A2AGatewayDiscoverInput     = a2a.GatewayDiscoverInput
 	A2ARepo                     = a2a.Repo
+	A2ACardRepo                 = a2a.CardRepo
+	A2AInvocationRepo           = a2a.InvocationRepo
+	A2AAuditRepo                = a2a.AuditRepo
+	A2ARemoteAgentRepo          = a2a.RemoteAgentRepo
 	A2AUsecase                  = a2a.Usecase
 )
 

@@ -5,7 +5,6 @@ import (
 
 	"aranea-agents/internal/a2a/trpc"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -16,16 +15,28 @@ import (
 func BuildTRPCAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, lg loggateway.Logger) (trpcagent.Agent, error) {
 	biz.HydrateAgentKind(&ag)
 	kind := biz.NormalizeAgentKind(ag.Kind)
-	event.CtxFlowLogDone(ctx, "agent.build", "Agent 构建开始",
-		event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey), event.P("agent_kind", kind))
+	lg.Info("Agent 构建开始",
+		loggateway.StepID("agent.build"),
+		loggateway.Str("flow_status", "done"),
+		loggateway.Str("agent_id", ag.ID),
+		loggateway.Str("agent_key", ag.AgentKey),
+		loggateway.Str("agent_kind", kind))
 	root, err := buildTRPCAgent(ctx, ag, deps, kind, lg)
 	if err != nil {
-		event.CtxFlowLogError(ctx, "agent.build", "Agent 构建失败",
-			event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey), event.P("agent_kind", kind), event.P("error", err))
+		lg.Error("Agent 构建失败",
+			loggateway.StepID("agent.build"),
+			loggateway.Str("agent_id", ag.ID),
+			loggateway.Str("agent_key", ag.AgentKey),
+			loggateway.Str("agent_kind", kind),
+			loggateway.Err(err))
 		return nil, err
 	}
-	event.CtxFlowLogDone(ctx, "agent.build", "Agent 构建完成",
-		event.P("agent_id", ag.ID), event.P("agent_key", ag.AgentKey), event.P("agent_kind", kind))
+	lg.Info("Agent 构建完成",
+		loggateway.StepID("agent.build"),
+		loggateway.Str("flow_status", "done"),
+		loggateway.Str("agent_id", ag.ID),
+		loggateway.Str("agent_key", ag.AgentKey),
+		loggateway.Str("agent_kind", kind))
 	return root, nil
 }
 

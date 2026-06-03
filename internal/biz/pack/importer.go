@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"aranea-agents/internal/biz"
 )
@@ -26,6 +27,7 @@ type ImporterRepo interface {
 
 	// Team
 	GetTeamByID(ctx context.Context, id string) (biz.Team, error)
+	GetTeamByKey(ctx context.Context, teamKey string) (biz.Team, error)
 	CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 	UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 
@@ -167,6 +169,9 @@ func (im *Importer) importTaxonomy(ctx context.Context, spec *TaxonomyPackSpec, 
 
 // importAgent 导入单个 Agent。
 func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFiles map[string]map[string]string, strategy ConflictStrategy, mapper *KeyMapper) (created, updated, skipped int, err error) {
+	// 保存原始 key（duplicate 场景下用于映射）
+	originalKey := spec.Key
+
 	// 检查是否已存在
 	existing, findErr := im.repo.GetAgentByAgentKey(ctx, spec.Key)
 
@@ -197,7 +202,7 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 		ContextWindow:      spec.ContextWindow,
 		Kind:               firstNonEmpty(spec.Kind, "llm"),
 		Status:             "active",
-		Readonly:           true,
+		Readonly:           false,
 		Source:             "imported",
 	}
 
@@ -243,20 +248,29 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 		created = 1
 	}
 
+	// 注册映射：新 key → 新 ID
 	mapper.RegisterAgent(spec.Key, agentID)
+	// duplicate 策略下，同时注册原始 key → 新 ID，确保后续 Team/Graph 引用能解析
+	if strategy == ConflictDuplicate && spec.Key != originalKey {
+		mapper.RegisterAgent(originalKey, agentID)
+	}
 
 	// 写入 Prompt Files
 	if files, ok := agentFiles[spec.Key]; ok && len(files) > 0 {
+		// 按文件名排序保证 SortOrder 确定性
+		names := make([]string, 0, len(files))
+		for name := range files {
+			names = append(names, name)
+		}
+		sort.Strings(names)
 		var promptFiles []biz.AgentPromptFile
-		i := 0
-		for name, body := range files {
+		for i, name := range names {
 			promptFiles = append(promptFiles, biz.AgentPromptFile{
 				AgentID:   agentID,
 				Name:      name,
-				Body:      body,
+				Body:      files[name],
 				SortOrder: i,
 			})
-			i++
 		}
 		if _, err := im.repo.ReplaceAgentPromptFiles(ctx, agentID, promptFiles); err != nil {
 			return created, updated, skipped, fmt.Errorf("写入 Agent %s 文件失败: %w", spec.Key, err)
@@ -427,18 +441,25 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 	}
 
 	// 检查是否已存在（通过 key 查找）
-	// 当前 TeamReader 没有 GetTeamByKey，需要通过 ListTeams 查找
-	// 简化处理：直接创建，依赖数据库唯一约束
-	_, err = im.repo.CreateTeam(ctx, team)
-	if err != nil {
-		// 如果是唯一约束冲突，根据策略处理
-		if strategy == ConflictSkip {
+	existing, findErr := im.repo.GetTeamByKey(ctx, spec.Key)
+
+	if findErr == nil {
+		// Team 已存在
+		switch strategy {
+		case ConflictSkip:
 			return 0, 0, 1, nil
+		case ConflictOverwrite:
+			team.ID = existing.ID
+			if _, err := im.repo.UpdateTeam(ctx, team); err != nil {
+				return 0, 0, 0, fmt.Errorf("更新 Team %s 失败: %w", spec.Key, err)
+			}
+			return 0, 1, 0, nil
+		case ConflictDuplicate:
+			team.TeamKey = spec.Key + "-copy"
 		}
-		if strategy == ConflictOverwrite {
-			// 需要找到已有 Team 的 ID 来更新
-			return 0, 0, 0, fmt.Errorf("Team %s 已存在，overwrite 策略需要 Team ID", spec.Key)
-		}
+	}
+
+	if _, err := im.repo.CreateTeam(ctx, team); err != nil {
 		return 0, 0, 0, fmt.Errorf("创建 Team %s 失败: %w", spec.Key, err)
 	}
 
@@ -619,15 +640,11 @@ func sliceToJSONList(items []string) string {
 	if len(items) == 0 {
 		return "[]"
 	}
-	result := "["
-	for i, item := range items {
-		if i > 0 {
-			result += ","
-		}
-		result += `"` + item + `"`
+	data, err := json.Marshal(items)
+	if err != nil {
+		return "[]"
 	}
-	result += "]"
-	return result
+	return string(data)
 }
 
 func buildSkillRuntimeJSON(spec *AgentSkillsSpec) string {

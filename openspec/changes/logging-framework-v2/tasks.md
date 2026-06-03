@@ -76,11 +76,22 @@
 ## 7. Phase 7: 遗留修复 + 文档补全
 
 - [x] 7.1 pkg/auth/ 消除 loggateway.Global() 调用：将 loggateway.Logger 注入到 auth 中间件（grpc_middleware.go/middleware.go/features.go），替换 10 处 Global() 调用。DoD: pkg/auth/ 无 Global() 调用，编译通过
-- [ ] 7.2 创建 module-cross-reference-full.md：AGENTS.md 引用的文件不存在，基于 module-cross-reference.md 扩展创建。DoD: 文件存在，包含新模块卡片
-- [ ] 7.3 更新 project_rules.md：添加日志红线 #10/#16 引用和 loggateway 使用规范。DoD: 项目规则包含日志架构约束
-- [ ] 7.4 更新 AGENTS.md：添加日志架构条目（loggateway 红线、Global() deprecated）。DoD: AI 入口文件提及日志约束
-- [ ] 7.5 统一红线编号：将 backend-layers.md 中的 #10 更新为与 SKILL 一致的编号。DoD: 编号一致
-- [ ] 7.6 更新 logging-framework.md：添加 SinkGroup 章节、TraceEmitter 拆分设计说明。DoD: 文档反映 v2 架构
-- [ ] 7.7 更新 module-cross-reference.md：添加 FlowTracker/SinkGroup/RuntimeLogAdapter/SpanCollector/UsageAggregator 模块卡片。DoD: 新模块有卡片
-- [ ] 7.8 更新 architecture-blueprint.md：添加 FlowTracker/SinkGroup/RuntimeLogAdapter 架构描述。DoD: 蓝图包含新组件
-- [ ] 7.9 验证：全量编译 + 测试 + 审查通过
+- [x] 7.2 创建 module-cross-reference-full.md：AGENTS.md 引用的文件不存在，基于 module-cross-reference.md 扩展创建。DoD: 文件存在，包含新模块卡片
+- [x] 7.3 更新 project_rules.md：添加日志红线 #10/#16 引用和 loggateway 使用规范。DoD: 项目规则包含日志架构约束
+- [x] 7.4 更新 AGENTS.md：添加日志架构条目（loggateway 红线、Global() deprecated）。DoD: AI 入口文件提及日志约束
+- [x] 7.5 统一红线编号：将 backend-layers.md 中的 #10 更新为与 SKILL 一致的编号。DoD: 编号一致
+- [x] 7.6 更新 logging-framework.md：添加 SinkGroup 章节、TraceEmitter 拆分设计说明。DoD: 文档反映 v2 架构
+- [x] 7.7 更新 module-cross-reference.md：添加 FlowTracker/SinkGroup/RuntimeLogAdapter/SpanCollector/UsageAggregator 模块卡片。DoD: 新模块有卡片
+- [x] 7.8 更新 architecture-blueprint.md：添加 FlowTracker/SinkGroup/RuntimeLogAdapter 架构描述。DoD: 蓝图包含新组件
+- [x] 7.9 验证：全量编译 + 测试 + 审查通过
+
+## 8. Phase 8: CtxFlowLog* 迁移（P3）
+
+- [x] 8.1 分析 CtxFlowLog* 调用分布：统计所有 CtxFlowLog* 调用点，按文件分组，确定迁移策略。DoD: 迁移清单完整
+- [x] 8.2 迁移 internal/agent/ 下的 CtxFlowLog* 调用：替换为 loggateway.Logger + With() 预设字段。DoD: internal/agent/ 无 CtxFlowLog* 调用
+- [x] 8.3 迁移 internal/service/ 下的 CtxFlowLog* 调用：替换为 loggateway.Logger + With() 预设字段。DoD: internal/service/ 无 CtxFlowLog* 调用
+- [x] 8.4 迁移 internal/team/ 下的 CtxFlowLog* 调用：替换为 loggateway.Logger + With() 预设字段。DoD: internal/team/ 无 CtxFlowLog* 调用
+- [x] 8.5 迁移 internal/session/ 下的 CtxFlowLog* 调用：替换为 loggateway.Logger + With() 预设字段。DoD: internal/session/ 无 CtxFlowLog* 调用
+- [x] 8.6 迁移其余文件下的 CtxFlowLog* 调用。DoD: 全项目无 CtxFlowLog* 调用（除 flow_context.go 定义本身）
+- [x] 8.7 标记 CtxFlowLog* 函数为 deprecated：在 flow_context.go 中添加 deprecated 注释。DoD: 函数有 deprecated 标注
+- [x] 8.8 验证：全量编译 + 测试 + 审查通过

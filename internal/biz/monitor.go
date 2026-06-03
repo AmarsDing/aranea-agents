@@ -18,6 +18,11 @@ type (
 	MonitorAlertRule        = monitor.AlertRule
 	MonitorAlertFiringState = monitor.AlertFiringState
 	AlertNotifier           = monitor.AlertNotifier
+	MonitorAuditRepo        = monitor.AuditRepo
+	MonitorEventRepo        = monitor.EventRepo
+	MonitorTraceRepo        = monitor.TraceRepo
+	MonitorAlertRepo        = monitor.AlertRepo
+	MonitorRunnerCompletionRepo = monitor.RunnerCompletionRepo
 	MonitorRepo             = monitor.Repo
 	MonitorUsecase          = monitor.Usecase
 	RunnerMetricsSummary    = monitor.RunnerMetricsSummary

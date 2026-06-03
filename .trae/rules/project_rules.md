@@ -70,6 +70,15 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 
 ---
 
+## 日志架构约束
+
+- **红线 #16**：禁止 `log/slog`，统一使用 `pkg/loggateway.Logger`
+- **Global() deprecated**：`loggateway.Global()` 已废弃，新代码必须通过构造注入 `loggateway.Logger`
+- **CtxFlowLog\***：`internal/event/flow_context.go` 中的 CtxFlowLog* 函数为遗留 API，新代码应使用 `loggateway.Logger` + `With()` 预设字段
+- **RuntimeLogAdapter**：trpc-agent-go 运行时日志已桥接到 loggateway Pipeline，无需额外处理
+
+---
+
 ## 三、验证命令
 
 | 改动类型 | 最小验证 |

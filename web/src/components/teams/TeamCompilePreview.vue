@@ -56,50 +56,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
-import { compileTeamGraph, type CompileTeamGraphResult } from '../../features/orchestration/compileApi';
+import type { CompileTeamGraphResult } from '../../features/orchestration/compileApi';
 
-const props = defineProps<{
-  teamId: string;
-  definitionJson: string;
+defineProps<{
   isDark: boolean;
+  compiled: CompileTeamGraphResult | null;
+  loading: boolean;
+  error: string;
+  issues: Array<{ message?: string; code?: string; warning?: boolean }>;
 }>();
-
-const loading = ref(false);
-const error = ref('');
-const compiled = ref<CompileTeamGraphResult | null>(null);
-const issues = ref<Array<{ message?: string; code?: string; warning?: boolean }>>([]);
-
-let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-async function refresh() {
-  const json = props.definitionJson?.trim();
-  if (!json || json === '{}' || !json.includes('members')) {
-    compiled.value = null;
-    return;
-  }
-  loading.value = true;
-  error.value = '';
-  try {
-    const teamId = props.teamId?.trim() || 'draft-preview';
-    compiled.value = await compileTeamGraph(teamId, json);
-    issues.value = (compiled.value.issues ?? []).map((i) => ({
-      message: i.message,
-      code: i.code,
-      warning: Boolean(i.warning),
-    }));
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e);
-    compiled.value = null;
-  } finally {
-    loading.value = false;
-  }
-}
-
-function scheduleRefresh() {
-  if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(refresh, 400);
-}
-
-watch(() => [props.teamId, props.definitionJson], scheduleRefresh, { immediate: true });
 </script>

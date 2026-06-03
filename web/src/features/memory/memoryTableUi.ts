@@ -50,3 +50,29 @@ export function buildMemoryAssemblyTableColumns(formatDate: (value: string) => s
     registryColActions<L0AssemblySnapshot>(),
   ];
 }
+
+/** Memory Session 状态颜色 */
+export function memorySessionStatusColor(status?: string) {
+  if (status === 'active' || status === 'completed') return 'positive';
+  if (status === 'paused' || status === 'pending') return 'warning';
+  if (status === 'failed' || status === 'cancelled' || status === 'timeout') return 'negative';
+  return 'blue-grey';
+}
+
+/** Memory Cascade 状态颜色 */
+export function memoryCascadeStatusColor(status: string) {
+  switch (status) {
+    case 'pending':
+      return 'grey-7';
+    case 'applied':
+      return 'positive';
+    case 'partial':
+      return 'warning';
+    case 'failed':
+      return 'negative';
+    case 'rejected':
+      return 'deep-orange';
+    default:
+      return 'grey-7';
+  }
+}

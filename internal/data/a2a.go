@@ -21,7 +21,13 @@ type a2aRepo struct {
 	lg   loggateway.Logger
 }
 
-var _ biza2a.Repo = (*a2aRepo)(nil)
+var (
+	_ biza2a.Repo           = (*a2aRepo)(nil)
+	_ biza2a.CardRepo       = (*a2aRepo)(nil)
+	_ biza2a.InvocationRepo = (*a2aRepo)(nil)
+	_ biza2a.AuditRepo      = (*a2aRepo)(nil)
+	_ biza2a.RemoteAgentRepo = (*a2aRepo)(nil)
+)
 
 func NewA2ARepo(data *Data, lg loggateway.Logger) biz.A2ARepo {
 	if data == nil || data.RawDB() == nil {

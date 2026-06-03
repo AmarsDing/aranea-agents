@@ -148,7 +148,7 @@ func newApp(
 			}
 			safego.Go(startCtx, "seed.industry_agents", func() {
 				logger.Log(log.LevelInfo, "msg", "industry agent seed started")
-				service.SeedBuiltinIndustryAgents(startCtx, agentUC, teamUC, taxonomyUC, biz.ScenarioDir(), data.NewSeedVersionRepo(d))
+				service.SeedBuiltinIndustryAgents(startCtx, agentUC, teamUC, taxonomyUC, biz.ScenarioDir(), data.NewSeedVersionRepo(d), lg)
 				logger.Log(log.LevelInfo, "msg", "industry agent seed completed")
 			})
 			return nil

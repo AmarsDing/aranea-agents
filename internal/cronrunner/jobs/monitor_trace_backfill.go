@@ -13,10 +13,11 @@ import (
 )
 
 type MonitorTraceBackfillWorker struct {
-	repo      biz.MonitorRepo
-	interval  time.Duration
-	watermark string
-	lg        loggateway.Logger
+	traceRepo         biz.MonitorTraceRepo
+	runnerCompletion  biz.MonitorRunnerCompletionRepo
+	interval          time.Duration
+	watermark         string
+	lg                loggateway.Logger
 }
 
 func defaultBackfillInterval() time.Duration {
@@ -28,16 +29,17 @@ func defaultBackfillInterval() time.Duration {
 	return 6 * time.Hour
 }
 
-func NewMonitorTraceBackfillWorker(repo biz.MonitorRepo, lg loggateway.Logger) *MonitorTraceBackfillWorker {
+func NewMonitorTraceBackfillWorker(traceRepo biz.MonitorTraceRepo, runnerCompletion biz.MonitorRunnerCompletionRepo, lg loggateway.Logger) *MonitorTraceBackfillWorker {
 	return &MonitorTraceBackfillWorker{
-		repo:     repo,
-		interval: defaultBackfillInterval(),
-		lg:       lg,
+		traceRepo:        traceRepo,
+		runnerCompletion: runnerCompletion,
+		interval:         defaultBackfillInterval(),
+		lg:               lg,
 	}
 }
 
 func (w *MonitorTraceBackfillWorker) Start(ctx context.Context) {
-	if w == nil || w.repo == nil {
+	if w == nil || w.traceRepo == nil {
 		return
 	}
 	safego.Go(ctx, "monitor.trace-backfill", func() {
@@ -56,7 +58,7 @@ func (w *MonitorTraceBackfillWorker) Start(ctx context.Context) {
 }
 
 func (w *MonitorTraceBackfillWorker) runOnce(ctx context.Context) {
-	if err := w.repo.EnsureTraceSchema(ctx); err != nil {
+	if err := w.traceRepo.EnsureTraceSchema(ctx); err != nil {
 		w.lg.Warn("backfill: EnsureTraceSchema failed", loggateway.Err(err))
 		return
 	}
@@ -69,7 +71,7 @@ func (w *MonitorTraceBackfillWorker) runOnce(ctx context.Context) {
 			}
 		}
 	}
-	rows, err := w.repo.ListRecentRunnerCompletions(ctx, since, 1000)
+	rows, err := w.runnerCompletion.ListRecentRunnerCompletions(ctx, since, 1000)
 	if err != nil {
 		w.lg.Warn("backfill: ListRecentRunnerCompletions failed", loggateway.Err(err))
 		return
@@ -88,7 +90,7 @@ func (w *MonitorTraceBackfillWorker) runOnce(ctx context.Context) {
 		if tw.TraceID == "" {
 			continue
 		}
-		if err := w.repo.InsertMonitorTrace(ctx, tw); err != nil {
+		if err := w.traceRepo.InsertMonitorTrace(ctx, tw); err != nil {
 			continue
 		}
 		inserted++

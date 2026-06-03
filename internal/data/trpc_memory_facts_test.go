@@ -20,6 +20,12 @@ import (
 
 func openTestSessionMemoryStore(t *testing.T) *sessionmemory.Store {
 	t.Helper()
+	store, _ := openTestSessionMemoryStoreWithClient(t)
+	return store
+}
+
+func openTestSessionMemoryStoreWithClient(t *testing.T) (*sessionmemory.Store, *ent.Client) {
+	t.Helper()
 	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
 	if err != nil {
 		t.Fatal(err)
@@ -70,9 +76,8 @@ func openTestSessionMemoryStore(t *testing.T) *sessionmemory.Store {
 			t.Fatal(err)
 		}
 	}
-	return sessionmemory.NewStore(client, loggateway.NewNoop())
+	return sessionmemory.NewStore(client, loggateway.NewNoop()), client
 }
-
 func TestSQLiteMemoryService_AddMemoryWritesFactVisibleToAdmin(t *testing.T) {
 	store := openTestSessionMemoryStore(t)
 	svc := trpcmem.NewSQLiteMemoryService(store, nil, nil, nil, nil, loggateway.NewNoop())

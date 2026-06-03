@@ -7,7 +7,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue';
-import { fetchProviderLogoSvg } from '../../features/model-catalog/providerLogo';
+import { useModelCatalogStore } from '../../stores/model-catalog';
 
 const props = withDefaults(
   defineProps<{
@@ -29,7 +29,7 @@ async function load() {
     svg.value = '';
     return;
   }
-  svg.value = await fetchProviderLogoSvg(id);
+  svg.value = await useModelCatalogStore().fetchProviderLogoSvg(id);
 }
 
 onMounted(() => {

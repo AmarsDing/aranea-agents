@@ -12,7 +12,7 @@ import (
 // NewLocalExecutor returns the framework local CodeExecutor (via Factory).
 func NewLocalExecutor(factory *localexec.Factory, workDir string) codeexecutor.CodeExecutor {
 	if factory == nil {
-		factory = localexec.NewFactory()
+		factory = localexec.NewFactoryWithLogger(loggateway.NewNoop())
 	}
 	return factory.Resolve(context.Background(), localexec.TypeLocal, workDir)
 }
@@ -21,7 +21,7 @@ func NewLocalExecutor(factory *localexec.Factory, workDir string) codeexecutor.C
 // agentType is AgentRuntimeSettings.CodeExecutorType; empty uses env CODE_EXECUTOR_BACKEND then local.
 func NewExecutorForAgent(ctx context.Context, factory *localexec.Factory, agentType, workDir string, lg loggateway.Logger) codeexecutor.CodeExecutor {
 	if factory == nil {
-		factory = localexec.NewFactory()
+		factory = localexec.NewFactoryWithLogger(lg)
 	}
 	exec := factory.Resolve(ctx, agentType, workDir)
 	return WrapWithArtifactSave(exec, lg)

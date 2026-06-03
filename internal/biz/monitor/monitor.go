@@ -184,27 +184,54 @@ type RunnerCompletionRow struct {
 	CreatedAt string
 }
 
-type Repo interface {
+// AuditRepo handles audit log persistence.
+type AuditRepo interface {
 	ListAuditLogs(ctx context.Context, query AuditQuery) (AuditListResult, error)
 	InsertAuditLog(ctx context.Context, entry AuditLog) error
+}
+
+// EventRepo handles monitor event persistence and queries.
+type EventRepo interface {
 	InsertMonitorEvent(ctx context.Context, ev EventWrite) error
 	ListMonitorEvents(ctx context.Context, query EventsQuery) (ListResult, error)
 	GetMonitorEvent(ctx context.Context, id string) (PlatformRow, error)
+	CountMonitorEventsSince(ctx context.Context, eventKey, status, sinceRFC3339, untilRFC3339 string) (int32, error)
+}
+
+// TraceRepo handles monitor trace persistence and queries.
+type TraceRepo interface {
 	ListMonitorTraces(ctx context.Context, query TracesQuery) (ListResult, error)
 	GetMonitorTrace(ctx context.Context, id string) (PlatformRow, error)
-	ListAlertRules(ctx context.Context) ([]AlertRule, error)
-	ReplaceAlertRules(ctx context.Context, rules []AlertRule) error
-	UpdateAlertFiringState(ctx context.Context, id string, state AlertFiringState, lastFiredAt *time.Time, lastFiredValue float64, recoveredAt *time.Time) error
-	CountMonitorEventsSince(ctx context.Context, eventKey, status, sinceRFC3339, untilRFC3339 string) (int32, error)
-	AvgRunnerCompletionDurationMsSince(ctx context.Context, sinceRFC3339 string) (float64, error)
-	LatencyPercentilesSince(ctx context.Context, sinceRFC3339 string) (p50, p95, p99 float64, err error)
-	ExistsRunnerCompletion(ctx context.Context, sessionID, invocationID string) (bool, error)
-	PatchRunnerCompletionMetadata(ctx context.Context, sessionID, runID, invocationID, patchJSON string) (bool, error)
 	InsertMonitorTrace(ctx context.Context, tw TraceWrite) error
 	UpsertMonitorTraceSpan(ctx context.Context, sw TraceSpanWrite) error
 	UpdateMonitorTraceCompletion(ctx context.Context, traceID string, status string, durationMs int64, spanCount, errorCount int, totalTokens int64, totalCostUsd float64) error
 	EnsureTraceSchema(ctx context.Context) error
+}
+
+// AlertRepo handles alert rule persistence and state.
+type AlertRepo interface {
+	ListAlertRules(ctx context.Context) ([]AlertRule, error)
+	ReplaceAlertRules(ctx context.Context, rules []AlertRule) error
+	UpdateAlertFiringState(ctx context.Context, id string, state AlertFiringState, lastFiredAt *time.Time, lastFiredValue float64, recoveredAt *time.Time) error
+}
+
+// RunnerCompletionRepo handles runner completion persistence and queries.
+type RunnerCompletionRepo interface {
+	ExistsRunnerCompletion(ctx context.Context, sessionID, invocationID string) (bool, error)
+	PatchRunnerCompletionMetadata(ctx context.Context, sessionID, runID, invocationID, patchJSON string) (bool, error)
+	AvgRunnerCompletionDurationMsSince(ctx context.Context, sinceRFC3339 string) (float64, error)
+	LatencyPercentilesSince(ctx context.Context, sinceRFC3339 string) (p50, p95, p99 float64, err error)
 	ListRecentRunnerCompletions(ctx context.Context, since time.Duration, limit int) ([]RunnerCompletionRow, error)
+}
+
+// Repo is a convenience aggregate for Wire binding.
+// Deprecated: consumers should depend on individual sub-interfaces.
+type Repo interface {
+	AuditRepo
+	EventRepo
+	TraceRepo
+	AlertRepo
+	RunnerCompletionRepo
 }
 
 // RunnerMetricsSummary aggregates runner.completion monitor events.
@@ -227,17 +254,21 @@ type FilesystemHealthReader interface {
 
 // Usecase implements monitor workflows.
 type Usecase struct {
-	repo        Repo
-	notifier    AlertNotifier
-	fsHealth    FilesystemHealthReader
-	lg          loggateway.Logger
-	lastFired   sync.Map
-	rulesCache  []AlertRule
-	rulesExpire time.Time
-	rulesMu     sync.RWMutex
-	ringBuffer  *MetricRingBuffer
-	evalWorker  *AlertEvalWorker
-	registry    *AlertMetricRegistry
+	auditRepo        AuditRepo
+	eventRepo        EventRepo
+	traceRepo        TraceRepo
+	alertRepo        AlertRepo
+	runnerCompletion RunnerCompletionRepo
+	notifier         AlertNotifier
+	fsHealth         FilesystemHealthReader
+	lg               loggateway.Logger
+	lastFired        sync.Map
+	rulesCache       []AlertRule
+	rulesExpire      time.Time
+	rulesMu          sync.RWMutex
+	ringBuffer       *MetricRingBuffer
+	evalWorker       *AlertEvalWorker
+	registry         *AlertMetricRegistry
 }
 
 const rulesCacheTTL = 5 * time.Minute
@@ -264,8 +295,8 @@ func WithLogger(lg loggateway.Logger) UsecaseOption {
 	return func(u *Usecase) { u.lg = lg }
 }
 
-func NewUsecase(repo Repo, notifier AlertNotifier, opts ...UsecaseOption) *Usecase {
-	uc := &Usecase{repo: repo, notifier: notifier}
+func NewUsecase(audit AuditRepo, event EventRepo, trace TraceRepo, alert AlertRepo, runner RunnerCompletionRepo, notifier AlertNotifier, opts ...UsecaseOption) *Usecase {
+	uc := &Usecase{auditRepo: audit, eventRepo: event, traceRepo: trace, alertRepo: alert, runnerCompletion: runner, notifier: notifier}
 	for _, opt := range opts {
 		opt(uc)
 	}
@@ -303,13 +334,13 @@ func (u *Usecase) Registry() *AlertMetricRegistry {
 
 // RecordAuditLog persists an admin audit row (best-effort, logs on failure).
 func (u *Usecase) RecordAuditLog(ctx context.Context, entry AuditLog) error {
-	if u == nil || u.repo == nil {
+	if u == nil || u.auditRepo == nil {
 		return nil
 	}
 	if strings.TrimSpace(entry.ID) == "" {
 		entry.ID = uuid.NewString()
 	}
-	if err := u.repo.InsertAuditLog(ctx, entry); err != nil {
+	if err := u.auditRepo.InsertAuditLog(ctx, entry); err != nil {
 		u.lg.Warn("RecordAuditLog failed", loggateway.StepID("monitor.audit_log_fail"), loggateway.Str("action", entry.Action), loggateway.Str("resource_id", entry.ResourceID), loggateway.Err(err))
 		return err
 	}
@@ -318,10 +349,10 @@ func (u *Usecase) RecordAuditLog(ctx context.Context, entry AuditLog) error {
 
 // RecordMonitorEvent persists a monitor_events row (best-effort, logs on failure).
 func (u *Usecase) RecordMonitorEvent(ctx context.Context, ev EventWrite) error {
-	if u == nil || u.repo == nil {
+	if u == nil || u.eventRepo == nil {
 		return nil
 	}
-	if err := u.repo.InsertMonitorEvent(ctx, ev); err != nil {
+	if err := u.eventRepo.InsertMonitorEvent(ctx, ev); err != nil {
 		u.lg.Warn("RecordMonitorEvent failed", loggateway.StepID("monitor.event_persist_fail"), loggateway.Str("event_key", ev.EventKey), loggateway.Err(err))
 		return err
 	}
@@ -333,7 +364,7 @@ func (u *Usecase) ListAuditLogs(ctx context.Context, query AuditQuery) (AuditLis
 	if query.Limit <= 0 {
 		query.Limit = 200
 	}
-	return u.repo.ListAuditLogs(ctx, query)
+	return u.auditRepo.ListAuditLogs(ctx, query)
 }
 
 // ListMonitorEvents returns paginated monitor events.
@@ -341,24 +372,24 @@ func (u *Usecase) ListMonitorEvents(ctx context.Context, query EventsQuery) (Lis
 	if query.Limit <= 0 {
 		query.Limit = 100
 	}
-	return u.repo.ListMonitorEvents(ctx, query)
+	return u.eventRepo.ListMonitorEvents(ctx, query)
 }
 
 // ListAlertRules returns all alert rules.
 func (u *Usecase) ListAlertRules(ctx context.Context) ([]AlertRule, error) {
-	if u == nil || u.repo == nil {
+	if u == nil || u.alertRepo == nil {
 		return nil, nil
 	}
-	return u.repo.ListAlertRules(ctx)
+	return u.alertRepo.ListAlertRules(ctx)
 }
 
 // ReplaceAlertRules replaces all alert rules and cleans up lastFired entries for deleted rules.
 func (u *Usecase) ReplaceAlertRules(ctx context.Context, rules []AlertRule) error {
-	if u == nil || u.repo == nil {
+	if u == nil || u.alertRepo == nil {
 		return nil
 	}
 
-	oldRules, listErr := u.repo.ListAlertRules(ctx)
+	oldRules, listErr := u.alertRepo.ListAlertRules(ctx)
 	if listErr != nil {
 		u.lg.Warn("ReplaceAlertRules: ListAlertRules failed", loggateway.StepID("monitor.alert_rules_list_fail"), loggateway.Err(listErr))
 	}
@@ -367,7 +398,7 @@ func (u *Usecase) ReplaceAlertRules(ctx context.Context, rules []AlertRule) erro
 		oldIDs[r.ID] = struct{}{}
 	}
 
-	if err := u.repo.ReplaceAlertRules(ctx, rules); err != nil {
+	if err := u.alertRepo.ReplaceAlertRules(ctx, rules); err != nil {
 		return err
 	}
 
@@ -391,7 +422,7 @@ func (u *Usecase) ReplaceAlertRules(ctx context.Context, rules []AlertRule) erro
 
 // EvaluateAlerts checks enabled rules after runner completion and records alert.fired events.
 func (u *Usecase) EvaluateAlerts(ctx context.Context) {
-	if u == nil || u.repo == nil {
+	if u == nil || u.alertRepo == nil {
 		return
 	}
 	rules := u.cachedAlertRules(ctx)
@@ -482,7 +513,7 @@ func (u *Usecase) cachedAlertRules(ctx context.Context) []AlertRule {
 	}
 	u.rulesMu.RUnlock()
 
-	rules, err := u.repo.ListAlertRules(ctx)
+	rules, err := u.alertRepo.ListAlertRules(ctx)
 	if err != nil {
 		u.lg.Warn("cachedAlertRules: ListAlertRules failed", loggateway.StepID("monitor.alert_rules_load_fail"), loggateway.Err(err))
 		return nil
@@ -497,7 +528,7 @@ func (u *Usecase) cachedAlertRules(ctx context.Context) []AlertRule {
 }
 
 func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {
-	if u == nil || u.repo == nil {
+	if u == nil || u.eventRepo == nil {
 		return
 	}
 	window := rule.WindowMinutes
@@ -515,13 +546,13 @@ func (u *Usecase) evaluateRunnerErrorRate(ctx context.Context, rule AlertRule) {
 	} else {
 		since := time.Now().UTC().Add(-time.Duration(window) * time.Minute).Format(time.RFC3339)
 		var errTotal error
-		total, errTotal = u.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since, "")
+		total, errTotal = u.eventRepo.CountMonitorEventsSince(ctx, "runner.completion", "", since, "")
 		if errTotal != nil {
 			u.lg.Warn("EvaluateAlerts: CountMonitorEventsSince(total) failed", loggateway.StepID("monitor.alert_count_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(errTotal))
 			return
 		}
 		var errErrors error
-		errors, errErrors = u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since, "")
+		errors, errErrors = u.eventRepo.CountMonitorEventsSince(ctx, "runner.completion", "error", since, "")
 		if errErrors != nil {
 			u.lg.Warn("EvaluateAlerts: CountMonitorEventsSince(errors) failed", loggateway.StepID("monitor.alert_count_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(errErrors))
 			return
@@ -600,11 +631,11 @@ func (u *Usecase) MarkAlertFired(ruleID string, now time.Time) {
 // the alert.fired event is published (MON-OPT-02). It also advances the state machine
 // from idle/recovered → firing.
 func (u *Usecase) MarkAlertFiredPersistent(ctx context.Context, rule AlertRule, now time.Time, metricValue float64) {
-	if u == nil || u.repo == nil {
+	if u == nil || u.alertRepo == nil {
 		return
 	}
 	u.lastFired.Store(rule.ID, now)
-	if err := u.repo.UpdateAlertFiringState(ctx, rule.ID, AlertFiringStateFiring, &now, metricValue, nil); err != nil {
+	if err := u.alertRepo.UpdateAlertFiringState(ctx, rule.ID, AlertFiringStateFiring, &now, metricValue, nil); err != nil {
 		u.lg.Warn("MarkAlertFiredPersistent: DB update failed", loggateway.StepID("monitor.mark_fired_db_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
 	}
 	// Invalidate rules cache so next evaluation round reads fresh DB state.
@@ -615,10 +646,10 @@ func (u *Usecase) MarkAlertFiredPersistent(ctx context.Context, rule AlertRule, 
 
 // MarkAlertRecovered transitions a firing alert to recovered and persists it (MON-OPT-02).
 func (u *Usecase) MarkAlertRecovered(ctx context.Context, rule AlertRule, now time.Time) {
-	if u == nil || u.repo == nil {
+	if u == nil || u.alertRepo == nil {
 		return
 	}
-	if err := u.repo.UpdateAlertFiringState(ctx, rule.ID, AlertFiringStateRecovered, rule.LastFiredAt, rule.LastFiredValue, &now); err != nil {
+	if err := u.alertRepo.UpdateAlertFiringState(ctx, rule.ID, AlertFiringStateRecovered, rule.LastFiredAt, rule.LastFiredValue, &now); err != nil {
 		u.lg.Warn("MarkAlertRecovered: DB update failed", loggateway.StepID("monitor.mark_recovered_db_fail"), loggateway.Str("rule_id", rule.ID), loggateway.Err(err))
 	}
 	u.rulesMu.Lock()
@@ -649,7 +680,7 @@ func (u *Usecase) CleanupStaleLastFired(now time.Time, maxAge time.Duration) {
 
 // GetMonitorEvent returns one monitor event by ID.
 func (u *Usecase) GetMonitorEvent(ctx context.Context, id string) (PlatformRow, error) {
-	return u.repo.GetMonitorEvent(ctx, id)
+	return u.eventRepo.GetMonitorEvent(ctx, id)
 }
 
 // ListMonitorTraces returns paginated monitor traces.
@@ -657,18 +688,18 @@ func (u *Usecase) ListMonitorTraces(ctx context.Context, query TracesQuery) (Lis
 	if query.Limit <= 0 {
 		query.Limit = 100
 	}
-	return u.repo.ListMonitorTraces(ctx, query)
+	return u.traceRepo.ListMonitorTraces(ctx, query)
 }
 
 // GetMonitorTrace returns one monitor trace by ID.
 func (u *Usecase) GetMonitorTrace(ctx context.Context, id string) (PlatformRow, error) {
-	return u.repo.GetMonitorTrace(ctx, id)
+	return u.traceRepo.GetMonitorTrace(ctx, id)
 }
 
 // GetRunnerMetrics aggregates runner.completion monitor events.
 func (u *Usecase) GetRunnerMetrics(ctx context.Context, windowMinutes int) (RunnerMetricsSummary, error) {
 	out := RunnerMetricsSummary{WindowMinutes: windowMinutes}
-	if u == nil || u.repo == nil {
+	if u == nil || u.eventRepo == nil {
 		return out, nil
 	}
 	if windowMinutes <= 0 {
@@ -676,11 +707,11 @@ func (u *Usecase) GetRunnerMetrics(ctx context.Context, windowMinutes int) (Runn
 	}
 	out.WindowMinutes = windowMinutes
 	since := time.Now().UTC().Add(-time.Duration(windowMinutes) * time.Minute).Format(time.RFC3339)
-	total, err := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since, "")
+	total, err := u.eventRepo.CountMonitorEventsSince(ctx, "runner.completion", "", since, "")
 	if err != nil {
 		return out, err
 	}
-	errors, err := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since, "")
+	errors, err := u.eventRepo.CountMonitorEventsSince(ctx, "runner.completion", "error", since, "")
 	if err != nil {
 		return out, err
 	}
@@ -690,10 +721,10 @@ func (u *Usecase) GetRunnerMetrics(ctx context.Context, windowMinutes int) (Runn
 		out.ErrorRate = float64(errors) / float64(total)
 		out.SuccessRate = 1 - out.ErrorRate
 	}
-	if avg, err := u.repo.AvgRunnerCompletionDurationMsSince(ctx, since); err == nil {
+	if avg, err := u.runnerCompletion.AvgRunnerCompletionDurationMsSince(ctx, since); err == nil {
 		out.AvgDurationMs = avg
 	}
-	if p50, p95, p99, err := u.repo.LatencyPercentilesSince(ctx, since); err == nil {
+	if p50, p95, p99, err := u.runnerCompletion.LatencyPercentilesSince(ctx, since); err == nil {
 		out.P50DurationMs = p50
 		out.P95DurationMs = p95
 		out.P99DurationMs = p99
@@ -703,11 +734,11 @@ func (u *Usecase) GetRunnerMetrics(ctx context.Context, windowMinutes int) (Runn
 
 // RecordRunnerCompletion persists a runner.completion event and patches metadata.
 func (u *Usecase) RecordRunnerCompletion(ctx context.Context, write EventWrite, sessionID, runID, invocationID, usageEventID, traceID string, bridge RunnerCompletionBridge) error {
-	if u == nil || u.repo == nil {
+	if u == nil || u.eventRepo == nil {
 		return nil
 	}
 	if sessionID != "" && invocationID != "" {
-		exists, err := u.repo.ExistsRunnerCompletion(ctx, sessionID, invocationID)
+		exists, err := u.runnerCompletion.ExistsRunnerCompletion(ctx, sessionID, invocationID)
 		if err != nil {
 			return err
 		}
@@ -722,7 +753,7 @@ func (u *Usecase) RecordRunnerCompletion(ctx context.Context, write EventWrite, 
 			return nil
 		}
 	}
-	if err := u.repo.InsertMonitorEvent(ctx, write); err != nil {
+	if err := u.eventRepo.InsertMonitorEvent(ctx, write); err != nil {
 		return err
 	}
 	patched, err := u.PatchRunnerCompletionLink(ctx, sessionID, runID, invocationID, usageEventID, traceID, bridge)
@@ -737,7 +768,7 @@ func (u *Usecase) RecordRunnerCompletion(ctx context.Context, write EventWrite, 
 
 // LinkRunnerCompletionUsage patches the latest completion row with usage_event_id.
 func (u *Usecase) LinkRunnerCompletionUsage(ctx context.Context, sessionID, runID, usageEventID, traceID string, bridge RunnerCompletionBridge) error {
-	if u == nil || u.repo == nil {
+	if u == nil || u.runnerCompletion == nil {
 		return nil
 	}
 	sessionID = strings.TrimSpace(sessionID)
@@ -773,7 +804,7 @@ func (u *Usecase) PatchRunnerCompletionLink(ctx context.Context, sessionID, runI
 		return false, nil
 	}
 	patch := MergeRunnerCompletionUsagePatch(usageEventID, traceID)
-	return u.repo.PatchRunnerCompletionMetadata(ctx, sessionID, runID, invocationID, patch)
+	return u.runnerCompletion.PatchRunnerCompletionMetadata(ctx, sessionID, runID, invocationID, patch)
 }
 
 // RunnerCompletionBridge links runner.completion rows with usage rows.
@@ -800,7 +831,7 @@ func MergeRunnerCompletionUsagePatch(usageEventID, traceID string) string {
 }
 
 func (u *Usecase) RebuildRingBuffer(ctx context.Context, rb *MetricRingBuffer) int {
-	if u == nil || u.repo == nil || rb == nil {
+	if u == nil || u.eventRepo == nil || rb == nil {
 		return 0
 	}
 	now := time.Now().UTC()
@@ -810,11 +841,11 @@ func (u *Usecase) RebuildRingBuffer(ctx context.Context, rb *MetricRingBuffer) i
 		bucketStart := now.Add(-time.Duration(i) * time.Minute).Truncate(rb.bucketSize)
 		since := bucketStart.Format(time.RFC3339)
 		until := bucketStart.Add(rb.bucketSize).Format(time.RFC3339)
-		total, errT := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "", since, until)
+		total, errT := u.eventRepo.CountMonitorEventsSince(ctx, "runner.completion", "", since, until)
 		if errT != nil {
 			continue
 		}
-		errors, errE := u.repo.CountMonitorEventsSince(ctx, "runner.completion", "error", since, until)
+		errors, errE := u.eventRepo.CountMonitorEventsSince(ctx, "runner.completion", "error", since, until)
 		if errE != nil {
 			continue
 		}

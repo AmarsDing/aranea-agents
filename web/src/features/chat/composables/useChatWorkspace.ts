@@ -222,8 +222,6 @@ export function useChatWorkspace() {
   const { fileRef, attachments, pickFile, onFileChange, uploadFile, removeAttachment } =
     useChatAttachments(sessionIdForArtifacts);
 
-  let applyRunStatusFromEnvelope!: (env: Envelope) => void;
-
   const streamManager = useChatStreamManager({
     sessionStore,
     messageStore,
@@ -348,7 +346,7 @@ export function useChatWorkspace() {
 
   function makeSessionTitle(content: string) {
     const plain = content
-      .replace(/[#>*_`~\[\]()]/g, '')
+      .replace(/[#>*_`~[\]()]/g, '')
       .replace(/\s+/g, ' ')
       .trim();
     if (!plain) return t('chat.untitledSession');
@@ -403,7 +401,7 @@ export function useChatWorkspace() {
     loadTeamSessions: (teamId: string) => entityNav.loadTeamSessions(teamId),
   });
 
-  let refreshPendingMessagesFn: (() => Promise<void>) | undefined;
+  const pendingMsgRef = { fn: undefined as (() => Promise<void>) | undefined };
 
   const sender = useChatSender({
     appStore,
@@ -427,18 +425,18 @@ export function useChatWorkspace() {
     setRunStatus: forceSetRunStatus,
     submitAwaitingReply: awaitSubmit.submitAwaitingReply,
     submitToolConfirm: awaitSubmit.submitToolConfirm,
-    refreshPendingMessages: () => refreshPendingMessagesFn?.() ?? Promise.resolve(),
+    refreshPendingMessages: () => pendingMsgRef.fn?.() ?? Promise.resolve(),
   });
 
   const followUp = useFollowUpQueue(sessionIdForPending, sender.sending, (message) =>
     $q.notify({ type: 'negative', message }),
   );
   const { pendingMessages, refreshPendingMessages, onCancelPending, onUpdatePending } = followUp;
-  refreshPendingMessagesFn = refreshPendingMessages;
+  pendingMsgRef.fn = refreshPendingMessages;
 
   watch(sender.sending, (val) => followUp.watchSending(val));
 
-  applyRunStatusFromEnvelope = (env: Envelope) => {
+  function applyRunStatusFromEnvelope(env: Envelope) {
     followUp.onRunStatusEnvelope(env);
     applyFromEnvelope(env);
     const rs = runStatusFromEnvelope(env);
@@ -448,7 +446,7 @@ export function useChatWorkspace() {
         messageStore.setMessages(sid, cancelRunningToolMessages(messageStore.getMessages(sid)));
       }
     }
-  };
+  }
 
   const { loadAgentOrder, loadTeamOrder, onEndAgent, onEndTeam, onGroupReorder } = useChatSidebarOrder(
     displayAgents,

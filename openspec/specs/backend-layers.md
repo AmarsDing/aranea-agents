@@ -145,7 +145,7 @@ api/**/*.proto → internal/service → internal/biz → internal/data
 | # | 约束 | 说明 |
 |---|------|------|
 | 1 | 所有 `go func()` 必须走 `pkg/safego` | 禁止裸 `go func()` 不处理 panic（红线 #9） |
-| 2 | 禁止 `log/slog` | 统一使用 `pkg/loggateway.Logger`（红线 #10） |
+| 2 | 禁止 `log/slog` | 统一使用 `pkg/loggateway.Logger`（红线 #16，原 #10） |
 | 3 | 跨模块调用通过 biz 级窄接口 | 禁止持有对方 Service 具体类型（红线 #7） |
 | 4 | 异步事件通过 Broker 发布/订阅 | 禁止全局变量共享状态 |
 | 5 | 框架 plugin 回调不得直接写数据库 | 经 broker/async 异步写（红线 #8） |

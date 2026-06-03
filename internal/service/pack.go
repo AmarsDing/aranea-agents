@@ -80,6 +80,10 @@ func (s *PackService) ImportPack(ctx context.Context, req *packv1.ImportPackRequ
 	if len(data) == 0 {
 		return nil, kerrors.BadRequest("PACK", "data is required")
 	}
+	// 限制上传 Pack 大小（200MB）
+	if len(data) > 200*1024*1024 {
+		return nil, kerrors.BadRequest("PACK", "pack file exceeds 200MB limit")
+	}
 
 	// Parse pack
 	p, err := pack.ReadPack(bytes.NewReader(data))
@@ -128,6 +132,10 @@ func (s *PackService) ValidatePack(ctx context.Context, req *packv1.ValidatePack
 	data := req.GetData()
 	if len(data) == 0 {
 		return nil, kerrors.BadRequest("PACK", "data is required")
+	}
+	// 限制上传 Pack 大小（200MB）
+	if len(data) > 200*1024*1024 {
+		return nil, kerrors.BadRequest("PACK", "pack file exceeds 200MB limit")
 	}
 
 	// Parse pack

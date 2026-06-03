@@ -20,7 +20,7 @@
       />
     </div>
     <q-dialog v-model="ctx.modalOpen">
-      <q-card class="a2ui-modal-card">
+      <q-card class="a2ui-modal-card app-dialog-card">
         <q-card-section>
           <A2UIComponentNode
             v-if="ctx.modalContentId"

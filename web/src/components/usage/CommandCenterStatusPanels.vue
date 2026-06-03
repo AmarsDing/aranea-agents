@@ -50,11 +50,11 @@ defineProps<{
 .command-center-stat-panel
   border-radius: 14px
   background: var(--color-background-elevated, rgba(128, 128, 128, 0.04))
-  border: 1px solid rgba(128, 128, 128, 0.08)
+  border: 1px solid var(--glass-border, rgba(128, 128, 128, 0.08))
   transition: border-color 0.2s ease, background 0.2s ease
 
   &:hover
-    border-color: rgba(128, 128, 128, 0.18)
+    border-color: var(--glass-border-hover, rgba(128, 128, 128, 0.18))
 
   &__header
     display: flex
@@ -119,11 +119,11 @@ defineProps<{
     font-weight: 800
     line-height: 1.1
     text-align: center
-    background: linear-gradient(135deg, var(--color-accent-cyan, #00E5FF), var(--color-accent-indigo-light, #A78BFA))
+    background: linear-gradient(135deg, var(--color-accent-cyan, #2563EB), var(--color-accent-indigo-light, #818CF8))
     -webkit-background-clip: text
     -webkit-text-fill-color: transparent
     background-clip: text
-    filter: drop-shadow(0 0 12px var(--color-accent-cyan-soft, rgba(0, 229, 255, 0.35)))
+    filter: drop-shadow(0 0 12px var(--color-accent-cyan-soft, rgba(37, 99, 235, 0.25)))
     letter-spacing: -0.03em
     font-variant-numeric: tabular-nums
 
@@ -228,11 +228,11 @@ defineProps<{
 
 body.body--dark
   .command-center-stat-panel
-    background: rgba(255, 255, 255, 0.025)
-    border-color: rgba(255, 255, 255, 0.05)
+    background: var(--color-background-elevated, rgba(255, 255, 255, 0.025))
+    border-color: var(--glass-border, rgba(255, 255, 255, 0.05))
     &:hover
-      border-color: rgba(255, 255, 255, 0.12)
+      border-color: var(--glass-border-hover, rgba(255, 255, 255, 0.12))
 
   .command-center-stat-panel__gauge-bar
-    background: rgba(255, 255, 255, 0.06)
+    background: var(--color-background-elevated, rgba(255, 255, 255, 0.06))
 </style>

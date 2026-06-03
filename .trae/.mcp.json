@@ -3,6 +3,16 @@
     "drawio": {
       "command": "npx",
       "args": ["@next-ai-drawio/mcp-server@latest"]
+    },
+    "codegraph": {
+      "type": "stdio",
+      "command": "codegraph",
+      "args": [
+        "serve",
+        "--mcp",
+        "--path",
+        "${workspaceFolder}"
+      ]
     }
   }
 }

@@ -24,15 +24,16 @@ type DiagBundle struct {
 }
 
 type DiagBundleGenerator struct {
-	repo   Repo
-	engine *RootCauseEngine
+	eventRepo EventRepo
+	traceRepo TraceRepo
+	engine    *RootCauseEngine
 }
 
-func NewDiagBundleGenerator(repo Repo, lg loggateway.Logger) *DiagBundleGenerator {
-	if repo == nil {
+func NewDiagBundleGenerator(eventRepo EventRepo, traceRepo TraceRepo, lg loggateway.Logger) *DiagBundleGenerator {
+	if eventRepo == nil || traceRepo == nil {
 		return nil
 	}
-	return &DiagBundleGenerator{repo: repo, engine: NewRootCauseEngine(lg)}
+	return &DiagBundleGenerator{eventRepo: eventRepo, traceRepo: traceRepo, engine: NewRootCauseEngine(lg)}
 }
 
 func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, runID, stepID, triggerType string, contextMinutes int32) (*DiagBundle, error) {
@@ -71,7 +72,7 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 	total := 0
 
 	if sessionID != "" || traceID != "" {
-		events, err := g.repo.ListMonitorEvents(ctx, EventsQuery{
+		events, err := g.eventRepo.ListMonitorEvents(ctx, EventsQuery{
 			Limit:  500,
 			Offset: 0,
 			Status: "",
@@ -111,7 +112,7 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 	var traceData map[string]any
 	spanCount := 0
 	if traceID != "" {
-		traceRow, err := g.repo.GetMonitorTrace(ctx, traceID)
+		traceRow, err := g.traceRepo.GetMonitorTrace(ctx, traceID)
 		if err == nil {
 			traceData = map[string]any{
 				"id": traceRow.ID, "name": traceRow.Name, "status": traceRow.Status,
@@ -133,7 +134,7 @@ func (g *DiagBundleGenerator) Generate(ctx context.Context, traceID, sessionID, 
 
 	var usageData map[string]any
 	var usageRows []map[string]any
-	usageEvents, err := g.repo.ListMonitorEvents(ctx, EventsQuery{
+	usageEvents, err := g.eventRepo.ListMonitorEvents(ctx, EventsQuery{
 		Limit:  50,
 		Offset: 0,
 		Status: "",

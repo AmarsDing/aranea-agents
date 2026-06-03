@@ -44,3 +44,5 @@ export { useInboundNotificationStore } from './inboundNotifications';
 export { useEventStore } from './event';
 export { useSpiritTeamStore } from './spirit';
 export { useLearningLoopStore } from './learningLoop';
+export { useModelCatalogStore } from './model-catalog';
+export { useIndustryStore } from './industry';

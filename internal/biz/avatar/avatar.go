@@ -51,12 +51,13 @@ type Repo interface {
 
 // Usecase implements avatar workflows.
 type Usecase struct {
-	repo Repo
+	repo      Repo
+	refresher ChannelIconRefresher
 }
 
 // NewUsecase constructs an avatar Usecase.
-func NewUsecase(repo Repo) *Usecase {
-	return &Usecase{repo: repo}
+func NewUsecase(repo Repo, refresher ChannelIconRefresher) *Usecase {
+	return &Usecase{repo: repo, refresher: refresher}
 }
 
 // ListAvatarAssets lists avatar assets with optional scope/workspace/owner filters.
@@ -130,25 +131,15 @@ type RefreshChannelPlatformIconsResult struct {
 	Failed  int
 }
 
-// ChannelIconRefresher is a function type that refreshes channel platform icons.
-// The biz package registers the actual implementation at init time to avoid circular imports.
-type ChannelIconRefresher func(ctx context.Context, repo Repo) (*RefreshChannelPlatformIconsResult, error)
-
-// channelIconRefresher is the package-level hook set by the biz package at init.
-var channelIconRefresher ChannelIconRefresher
-
-// SetChannelIconRefresher registers the channel icon refresh implementation.
-func SetChannelIconRefresher(fn ChannelIconRefresher) {
-	channelIconRefresher = fn
+// ChannelIconRefresher refreshes channel platform icons from Iconify API.
+type ChannelIconRefresher interface {
+	RefreshChannelPlatformIcons(ctx context.Context, repo Repo) (*RefreshChannelPlatformIconsResult, error)
 }
 
 // RefreshChannelPlatformIcons re-fetches channel platform icons from Iconify API
 // and upserts them into the avatar_assets table.
 func (uc *Usecase) RefreshChannelPlatformIcons(ctx context.Context) (*RefreshChannelPlatformIconsResult, error) {
-	if channelIconRefresher == nil {
-		return nil, errors.InternalServer("AVATAR", "channel icon refresher not registered")
-	}
-	return channelIconRefresher(ctx, uc.repo)
+	return uc.refresher.RefreshChannelPlatformIcons(ctx, uc.repo)
 }
 
 // DeleteAvatarAsset soft-deletes an avatar asset.

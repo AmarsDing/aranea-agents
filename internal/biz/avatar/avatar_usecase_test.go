@@ -22,6 +22,12 @@ type mockAvatarRepo struct {
 	softDeleteAvatarAssetFn   func(ctx context.Context, id string) error
 }
 
+type noopChannelIconRefresher struct{}
+
+func (noopChannelIconRefresher) RefreshChannelPlatformIcons(_ context.Context, _ avatar.Repo) (*avatar.RefreshChannelPlatformIconsResult, error) {
+	return &avatar.RefreshChannelPlatformIconsResult{}, nil
+}
+
 func (m *mockAvatarRepo) ListAvatarAssets(ctx context.Context, scope, workspaceID, ownerUserID string) ([]avatar.Asset, error) {
 	if m.listAvatarAssetsFn != nil {
 		return m.listAvatarAssetsFn(ctx, scope, workspaceID, ownerUserID)
@@ -84,7 +90,7 @@ func TestUsecase_ListAvatarAssets(t *testing.T) {
 				return []avatar.Asset{{ID: "a1"}}, nil
 			},
 		}
-		uc := avatar.NewUsecase(repo)
+		uc := avatar.NewUsecase(repo, noopChannelIconRefresher{})
 		items, err := uc.ListAvatarAssets(context.Background(), "  global  ", "  ws1  ", "  u1  ")
 		if err != nil {
 			t.Fatal(err)
@@ -100,7 +106,7 @@ func TestUsecase_ListAvatarAssets(t *testing.T) {
 				return nil, fmt.Errorf("db fail")
 			},
 		}
-		uc := avatar.NewUsecase(repo)
+		uc := avatar.NewUsecase(repo, noopChannelIconRefresher{})
 		_, err := uc.ListAvatarAssets(context.Background(), "", "", "")
 		if err == nil {
 			t.Fatal("expected error")
@@ -113,7 +119,7 @@ func TestUsecase_ListAvatarAssets(t *testing.T) {
 				return nil, nil
 			},
 		}
-		uc := avatar.NewUsecase(repo)
+		uc := avatar.NewUsecase(repo, noopChannelIconRefresher{})
 		items, err := uc.ListAvatarAssets(context.Background(), "", "", "")
 		if err != nil {
 			t.Fatal(err)
@@ -135,7 +141,7 @@ func TestUsecase_GetAvatarImage(t *testing.T) {
 				return want, nil
 			},
 		}
-		uc := avatar.NewUsecase(repo)
+		uc := avatar.NewUsecase(repo, noopChannelIconRefresher{})
 		got, err := uc.GetAvatarImage(context.Background(), "a1", true)
 		if err != nil {
 			t.Fatal(err)
@@ -151,7 +157,7 @@ func TestUsecase_GetAvatarImage(t *testing.T) {
 				return avatar.Image{}, fmt.Errorf("not found")
 			},
 		}
-		uc := avatar.NewUsecase(repo)
+		uc := avatar.NewUsecase(repo, noopChannelIconRefresher{})
 		_, err := uc.GetAvatarImage(context.Background(), "missing", false)
 		if err == nil {
 			t.Fatal("expected error")
@@ -161,7 +167,7 @@ func TestUsecase_GetAvatarImage(t *testing.T) {
 
 func TestUsecase_UploadAvatar(t *testing.T) {
 	t.Run("empty_data", func(t *testing.T) {
-		uc := avatar.NewUsecase(&mockAvatarRepo{})
+		uc := avatar.NewUsecase(&mockAvatarRepo{}, noopChannelIconRefresher{})
 		_, err := uc.UploadAvatar(context.Background(), nil, "avatar.png", "ws1", "u1")
 		if err == nil {
 			t.Fatal("expected error for empty data")
@@ -173,7 +179,7 @@ func TestUsecase_UploadAvatar(t *testing.T) {
 	})
 
 	t.Run("exceeds_2mb", func(t *testing.T) {
-		uc := avatar.NewUsecase(&mockAvatarRepo{})
+		uc := avatar.NewUsecase(&mockAvatarRepo{}, noopChannelIconRefresher{})
 		big := make([]byte, 2*1024*1024+1)
 		_, err := uc.UploadAvatar(context.Background(), big, "big.png", "ws1", "u1")
 		if err == nil {
@@ -186,7 +192,7 @@ func TestUsecase_UploadAvatar(t *testing.T) {
 	})
 
 	t.Run("unsupported_type", func(t *testing.T) {
-		uc := avatar.NewUsecase(&mockAvatarRepo{})
+		uc := avatar.NewUsecase(&mockAvatarRepo{}, noopChannelIconRefresher{})
 		pdfData := []byte("%PDF-1.4 fake pdf content that is long enough for detection")
 		_, err := uc.UploadAvatar(context.Background(), pdfData, "doc.pdf", "ws1", "u1")
 		if err == nil {
@@ -223,7 +229,7 @@ func TestUsecase_UploadAvatar(t *testing.T) {
 				return asset, nil
 			},
 		}
-		uc := avatar.NewUsecase(repo)
+		uc := avatar.NewUsecase(repo, noopChannelIconRefresher{})
 		got, err := uc.UploadAvatar(context.Background(), pngData, "avatar.png", "ws1", "u1")
 		if err != nil {
 			t.Fatal(err)
@@ -246,7 +252,7 @@ func TestUsecase_UploadAvatar(t *testing.T) {
 				return asset, nil
 			},
 		}
-		uc := avatar.NewUsecase(repo)
+		uc := avatar.NewUsecase(repo, noopChannelIconRefresher{})
 		got, err := uc.UploadAvatar(context.Background(), pngData, "", "ws1", "u1")
 		if err != nil {
 			t.Fatal(err)
@@ -266,7 +272,7 @@ func TestUsecase_UploadAvatar(t *testing.T) {
 				return asset, nil
 			},
 		}
-		uc := avatar.NewUsecase(repo)
+		uc := avatar.NewUsecase(repo, noopChannelIconRefresher{})
 		got, err := uc.UploadAvatar(context.Background(), pngData, "   ", "ws1", "u1")
 		if err != nil {
 			t.Fatal(err)
@@ -283,7 +289,7 @@ func TestUsecase_UploadAvatar(t *testing.T) {
 				return avatar.Asset{}, fmt.Errorf("db fail")
 			},
 		}
-		uc := avatar.NewUsecase(repo)
+		uc := avatar.NewUsecase(repo, noopChannelIconRefresher{})
 		_, err := uc.UploadAvatar(context.Background(), pngData, "a.png", "ws1", "u1")
 		if err == nil {
 			t.Fatal("expected error")
@@ -293,7 +299,7 @@ func TestUsecase_UploadAvatar(t *testing.T) {
 
 func TestUsecase_DeleteAvatarAsset(t *testing.T) {
 	t.Run("empty_id", func(t *testing.T) {
-		uc := avatar.NewUsecase(&mockAvatarRepo{})
+		uc := avatar.NewUsecase(&mockAvatarRepo{}, noopChannelIconRefresher{})
 		err := uc.DeleteAvatarAsset(context.Background(), "")
 		if err == nil {
 			t.Fatal("expected error for empty id")
@@ -305,7 +311,7 @@ func TestUsecase_DeleteAvatarAsset(t *testing.T) {
 	})
 
 	t.Run("whitespace_id", func(t *testing.T) {
-		uc := avatar.NewUsecase(&mockAvatarRepo{})
+		uc := avatar.NewUsecase(&mockAvatarRepo{}, noopChannelIconRefresher{})
 		err := uc.DeleteAvatarAsset(context.Background(), "   ")
 		if err == nil {
 			t.Fatal("expected error for whitespace id")
@@ -323,7 +329,7 @@ func TestUsecase_DeleteAvatarAsset(t *testing.T) {
 				return nil
 			},
 		}
-		uc := avatar.NewUsecase(repo)
+		uc := avatar.NewUsecase(repo, noopChannelIconRefresher{})
 		if err := uc.DeleteAvatarAsset(context.Background(), "a1"); err != nil {
 			t.Fatal(err)
 		}
@@ -338,7 +344,7 @@ func TestUsecase_DeleteAvatarAsset(t *testing.T) {
 				return fmt.Errorf("db fail")
 			},
 		}
-		uc := avatar.NewUsecase(repo)
+		uc := avatar.NewUsecase(repo, noopChannelIconRefresher{})
 		err := uc.DeleteAvatarAsset(context.Background(), "a1")
 		if err == nil {
 			t.Fatal("expected error")

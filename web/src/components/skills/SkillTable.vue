@@ -143,7 +143,7 @@ import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import SkillStatsStrip from './SkillStatsStrip.vue';
 import type { Skill } from '../../features/skills/types';
-import { SKILL_TABLE_COLUMNS } from './skillTableUi';
+import { SKILL_TABLE_COLUMNS, skillStatusLabel as statusLabel, skillStatusColor as statusColor, skillOriginLabel as originLabel } from './skillTableUi';
 
 defineProps<{
   rows: Skill[];
@@ -161,18 +161,6 @@ const emit = defineEmits<{
 }>();
 
 const tablePagination = { rowsPerPage: 0 };
-
-function statusLabel(status: string) {
-  return ({ draft: '草稿', published: '已发布', archived: '已归档' } as Record<string, string>)[status] ?? status;
-}
-
-function statusColor(status: string) {
-  return status === 'published' ? 'positive' : status === 'draft' ? 'warning' : 'grey';
-}
-
-function originLabel(origin: string) {
-  return ({ filesystem: '磁盘', import: 'ZIP', manual: '手动' } as Record<string, string>)[origin] ?? origin;
-}
 
 function formatDate(value?: string) {
   if (!value) return '-';

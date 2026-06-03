@@ -25,6 +25,7 @@ func newRuntimeCueBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callb
 			Agents:              deps.Agents,
 			AgentUC:             deps.AgentUC,
 			SQLiteSessionMemory: deps.HasMemory,
+			LG:                  deps.Logger(),
 		}
 		cue := RuntimeCapabilityCue(ctx, promptDeps, ag)
 		if cue == "" {

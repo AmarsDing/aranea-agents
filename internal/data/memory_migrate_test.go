@@ -5,14 +5,28 @@ import (
 	"testing"
 
 	"aranea-agents/internal/data"
+	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/pkg/loggateway"
 )
 
+// openTestStoreWithData creates a sessionmemory.Store and a *Data sharing the same
+// SQLite connection, so that schema_migrations and memory_* tables are visible to both.
+// It reuses openTestSessionMemoryStore from trpc_memory_facts_test.go for the Store,
+// then wraps the same client in a Data for migration helpers.
+func openTestStoreWithData(t *testing.T) (*sessionmemory.Store, *data.Data) {
+	t.Helper()
+	store, client := openTestSessionMemoryStoreWithClient(t)
+	d := &data.Data{}
+	d.SetEntClientForTest(client)
+	return store, d
+}
+
 func TestRunLegacyTRPCMemoryMigration_versionGate(t *testing.T) {
-	store := openTestSessionMemoryStore(t)
+	store, d := openTestStoreWithData(t)
 	ctx := context.Background()
 
-	_, err := store.Client().ExecContext(ctx, `
+	client := d.ClientFromCtx(ctx)
+	_, err := client.ExecContext(ctx, `
 INSERT INTO memory_entities (
  id, scope_type, scope_id, workspace_id, user_id,
  entity_type, name, name_normalized, aliases_json, description, attributes_json,
@@ -30,7 +44,7 @@ INSERT INTO memory_entities (
 		t.Fatal(err)
 	}
 
-	migrated, skipped, err := data.RunLegacyTRPCMemoryMigration(ctx, store, loggateway.NewNoop())
+	migrated, skipped, err := data.RunLegacyTRPCMemoryMigration(ctx, store, d, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +55,7 @@ INSERT INTO memory_entities (
 		t.Fatalf("expected migrated=1, got %d", migrated)
 	}
 
-	migrated, skipped, err = data.RunLegacyTRPCMemoryMigration(ctx, store, loggateway.NewNoop())
+	migrated, skipped, err = data.RunLegacyTRPCMemoryMigration(ctx, store, d, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,10 +68,11 @@ INSERT INTO memory_entities (
 }
 
 func TestRunLegacyTRPCMemoryMigration_completesWithSkippedInvalid(t *testing.T) {
-	store := openTestSessionMemoryStore(t)
+	store, d := openTestStoreWithData(t)
 	ctx := context.Background()
 
-	_, err := store.Client().ExecContext(ctx, `
+	client := d.ClientFromCtx(ctx)
+	_, err := client.ExecContext(ctx, `
 INSERT INTO memory_entities (
  id, scope_type, scope_id, workspace_id, user_id,
  entity_type, name, name_normalized, aliases_json, description, attributes_json,
@@ -75,7 +90,7 @@ INSERT INTO memory_entities (
 		t.Fatal(err)
 	}
 
-	migrated, skipped, err := data.RunLegacyTRPCMemoryMigration(ctx, store, loggateway.NewNoop())
+	migrated, skipped, err := data.RunLegacyTRPCMemoryMigration(ctx, store, d, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +101,7 @@ INSERT INTO memory_entities (
 		t.Fatalf("expected migrated=0, got %d", migrated)
 	}
 
-	migrated, skipped, err = data.RunLegacyTRPCMemoryMigration(ctx, store, loggateway.NewNoop())
+	migrated, skipped, err = data.RunLegacyTRPCMemoryMigration(ctx, store, d, loggateway.NewNoop())
 	if err != nil {
 		t.Fatal(err)
 	}

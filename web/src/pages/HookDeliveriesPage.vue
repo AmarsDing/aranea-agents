@@ -169,7 +169,10 @@ import AppRegistryTable from '../components/layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../components/layout/AppRegistryHoverTip.vue';
 import AppRegistryPagination from '../components/layout/AppRegistryPagination.vue';
 
-import { createHookDeliveryTableColumns } from '../components/hooks/hookTableUi';
+import {
+  createHookDeliveryTableColumns,
+  hookDeliveryStatusColor as statusColor,
+} from '../components/hooks/hookTableUi';
 import type { HookDeliveryRow } from '../features/hooks/deliveries';
 import { useHooksStore } from '../stores/hooks';
 
@@ -194,12 +197,6 @@ const detailError = ref('');
 const statusOptions = ['pending', 'success', 'failed'];
 
 const columns = createHookDeliveryTableColumns(t);
-
-function statusColor(st: string) {
-  if (st === 'failed') return 'negative';
-  if (st === 'success') return 'positive';
-  return 'grey';
-}
 
 function toRFC3339(local: string): string | undefined {
   const val = local.trim();

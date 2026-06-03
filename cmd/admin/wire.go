@@ -385,8 +385,8 @@ func providePendingMessageQueue(lg loggateway.Logger) *rt.PendingMessageQueue {
 	return rt.NewPendingMessageQueueWithDirAndLogger("", lg)
 }
 
-func provideCodeExecutorFactory() *localexec.Factory {
-	return localexec.NewFactory()
+func provideCodeExecutorFactory(lg loggateway.Logger) *localexec.Factory {
+	return localexec.NewFactoryWithLogger(lg)
 }
 
 func provideChannelRunEscalationNotifier(channels *biz.ChannelUsecase, sessions *biz.SessionUsecase, lg loggateway.Logger) service.SessionRunEscalationNotifier {
@@ -401,9 +401,9 @@ func provideMonitorAlertNotifier(channels *biz.ChannelUsecase, eventBus event.Bu
 	return service.NewMonitorAlertNotifier(channels, eventBus, lg)
 }
 
-func provideMonitorUsecase(repo biz.MonitorRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, lg loggateway.Logger) *biz.MonitorUsecase {
+func provideMonitorUsecase(audit biz.MonitorAuditRepo, event biz.MonitorEventRepo, trace biz.MonitorTraceRepo, alert biz.MonitorAlertRepo, runner biz.MonitorRunnerCompletionRepo, notifier biz.AlertNotifier, fsHealth biz.FilesystemHealthReader, lg loggateway.Logger) *biz.MonitorUsecase {
 	rb := monitor.NewMetricRingBuffer()
-	uc := biz.NewMonitorUsecase(repo, notifier,
+	uc := biz.NewMonitorUsecase(audit, event, trace, alert, runner, notifier,
 		biz.WithFilesystemHealthReader(fsHealth),
 		biz.WithRingBuffer(rb),
 		monitor.WithLogger(lg),
@@ -411,7 +411,7 @@ func provideMonitorUsecase(repo biz.MonitorRepo, notifier biz.AlertNotifier, fsH
 	w := monitor.NewAlertEvalWorker(uc, rb, lg)
 	uc.SetEvalWorker(w)
 	reg := monitor.NewAlertMetricRegistry()
-	reg.Register(monitor.NewRunnerErrorRateMetric(repo, rb))
+	reg.Register(monitor.NewRunnerErrorRateMetric(event, rb))
 	if fsHealth != nil {
 		reg.Register(monitor.NewSkillFilesystemMissingMetric(fsHealth))
 	}
@@ -686,8 +686,8 @@ func provideL4CascadeUsecase(memStore *sessionmemory.Store, factSync biz.MemoryF
 		return nil
 	}
 	repo := data.NewL4GraphRepo(memStore)
-	cgs := data.NewCascadeGraphStore(memStore)
-	uc := biz.NewL4CascadeUsecase(cgs, cgs, cgs, cgs, repo, lg)
+	cascade := data.NewCascadeRepo(memStore)
+	uc := biz.NewL4CascadeUsecase(cascade, cascade, cascade, cascade, repo, lg)
 	if uc != nil {
 		uc.SetIndexSync(factSync)
 	}
@@ -930,13 +930,13 @@ func provideMonitorAlertEvalWorker(uc *biz.MonitorUsecase) *monitor.AlertEvalWor
 	return uc.EvalWorker()
 }
 
-func provideTraceProjector(repo biz.MonitorRepo, infra *event.Infra, lg loggateway.Logger) *monitor.TraceProjector {
+func provideTraceProjector(traceRepo biz.MonitorTraceRepo, infra *event.Infra, lg loggateway.Logger) *monitor.TraceProjector {
 	var sessionBus, monitorBus event.Bus
 	if infra != nil {
 		sessionBus = infra.SessionBus
 		monitorBus = infra.MonitorBus
 	}
-	return monitor.NewTraceProjector(repo, lg, sessionBus, monitorBus)
+	return monitor.NewTraceProjector(traceRepo, lg, sessionBus, monitorBus)
 }
 
 func provideFlowFileAppender(lg loggateway.Logger) *monitor.FlowFileAppender {
@@ -949,12 +949,12 @@ func provideFlowFileAppender(lg loggateway.Logger) *monitor.FlowFileAppender {
 	return monitor.NewFlowFileAppender(dir, lg)
 }
 
-func provideMonitorTraceBackfillWorker(repo biz.MonitorRepo, lg loggateway.Logger) *jobs.MonitorTraceBackfillWorker {
-	return jobs.NewMonitorTraceBackfillWorker(repo, lg)
+func provideMonitorTraceBackfillWorker(traceRepo biz.MonitorTraceRepo, runnerCompletion biz.MonitorRunnerCompletionRepo, lg loggateway.Logger) *jobs.MonitorTraceBackfillWorker {
+	return jobs.NewMonitorTraceBackfillWorker(traceRepo, runnerCompletion, lg)
 }
 
-func provideDiagBundleGenerator(repo biz.MonitorRepo, lg loggateway.Logger) *biz.DiagBundleGenerator {
-	return biz.NewDiagBundleGenerator(repo, lg)
+func provideDiagBundleGenerator(eventRepo biz.MonitorEventRepo, traceRepo biz.MonitorTraceRepo, lg loggateway.Logger) *biz.DiagBundleGenerator {
+	return biz.NewDiagBundleGenerator(eventRepo, traceRepo, lg)
 }
 
 func provideSelfHealUsecase(diag *biz.DiagBundleGenerator, lg loggateway.Logger) *biz.SelfHealUsecase {
@@ -1280,6 +1280,15 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideMCPHealthRunner,
 		provideA2AGatewayHealthRunnerDeps,
 		provideA2AGatewayHealthRunner,
+		wire.Bind(new(biz.A2ACardRepo), new(biz.A2ARepo)),
+		wire.Bind(new(biz.A2AInvocationRepo), new(biz.A2ARepo)),
+		wire.Bind(new(biz.A2AAuditRepo), new(biz.A2ARepo)),
+		wire.Bind(new(biz.A2ARemoteAgentRepo), new(biz.A2ARepo)),
+		wire.Bind(new(biz.MonitorAuditRepo), new(biz.MonitorRepo)),
+		wire.Bind(new(biz.MonitorEventRepo), new(biz.MonitorRepo)),
+		wire.Bind(new(biz.MonitorTraceRepo), new(biz.MonitorRepo)),
+		wire.Bind(new(biz.MonitorAlertRepo), new(biz.MonitorRepo)),
+		wire.Bind(new(biz.MonitorRunnerCompletionRepo), new(biz.MonitorRepo)),
 		provideMonitorAlertNotifier,
 		provideChannelRunEscalationNotifier,
 		provideSessionRunDurableWorker,

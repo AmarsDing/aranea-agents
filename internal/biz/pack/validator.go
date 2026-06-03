@@ -181,5 +181,22 @@ func validateReferences(p *Pack, result *ValidationResult) {
 		if t.SynthesizerKey != "" && !agentKeys[t.SynthesizerKey] {
 			result.Errors = append(result.Errors, fmt.Sprintf("Team %s synthesizer_key %s 引用的 agent_key 不在 Pack 中", t.Key, t.SynthesizerKey))
 		}
+		// 检查 Team 内嵌 Graph 节点的 agent_key 引用
+		if t.Graph != nil {
+			for _, n := range t.Graph.Nodes {
+				if n.AgentKey != "" && !agentKeys[n.AgentKey] {
+					result.Errors = append(result.Errors, fmt.Sprintf("Team %s Graph 节点 %s 引用的 agent_key %s 不在 Pack 中", t.Key, n.ID, n.AgentKey))
+				}
+			}
+		}
+	}
+
+	// 检查 Graph 节点的 agent_key 引用
+	for _, g := range p.Graphs {
+		for _, n := range g.Nodes {
+			if n.AgentKey != "" && !agentKeys[n.AgentKey] {
+				result.Errors = append(result.Errors, fmt.Sprintf("Graph %s 节点 %s 引用的 agent_key %s 不在 Pack 中", g.ID, n.ID, n.AgentKey))
+			}
+		}
 	}
 }

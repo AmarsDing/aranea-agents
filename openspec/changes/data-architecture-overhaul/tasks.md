@@ -35,29 +35,31 @@
   - DoD: ✅ 编译期接口检查通过（2 个接口），go build 通过，aranea-review 审查通过
 - [x] 2.6 创建 `internal/data/memory_shim_cascade.go`：`cascadeRepo` 实现 `biz.CascadeProposalStore` + `biz.CascadeGraphReader` + `biz.CascadeFactMutator` + `biz.CascadeSagaStore`（14 方法），委托到 Store（含 CascadeProposalInsert/CascadeSagaStep 适配）
   - DoD: ✅ 编译期接口检查通过（4 个接口），go build 通过，aranea-review 审查通过
-- [ ] 2.7 创建 data 层 DTO 类型：在 `internal/data/memory/dto.go` 中定义 `L0SnapshotInsert`、`L1TaskInsert`、`L1FieldInsert`、`L1ArchiveEpisodeInsert`、`ReinforcementSignal`、`L4DecayConfig` 等 data 层 DTO，替代 biz 层类型
+- [~] 2.7 创建 data 层 DTO 类型：在 `internal/data/memory/dto.go` 中定义 `L0SnapshotInsert`、`L1TaskInsert`、`L1FieldInsert`、`L1ArchiveEpisodeInsert`、`ReinforcementSignal`、`L4DecayConfig` 等 data 层 DTO，替代 biz 层类型
   - DoD: 6 个 DTO struct 定义完成，与 biz 层对应类型字段一致
-- [ ] 2.8 各 Repo 方法参数改为 data 层 DTO：将 6 个 Repo 中接受 biz DTO 的方法参数替换为 data DTO，在 adapter 层做转换
+  - **延后至 Task 9.x**：shim repo 必须实现 biz 接口（方法签名使用 biz 类型），在 shim 阶段创建 data DTO 无法消除 biz import，会增加不必要的中间层。真正的 DTO 解耦在 Store 独立化（shim→直接实现）时自然完成
+- [~] 2.8 各 Repo 方法参数改为 data 层 DTO：将 6 个 Repo 中接受 biz DTO 的方法参数替换为 data DTO，在 adapter 层做转换
   - DoD: `internal/data/memory/` 包不再 import `biz.L0AssemblySnapshotInsert` 等 6 个类型
-- [ ] 2.9 Wire 适配器归位：将 `cmd/admin/wire_memory.go` 中的 `wireSessionAdminStoreAdapter` 和 `wireL3FactWriterAdapter` 移到 `internal/data/memory_admin_adapter.go` 和 `internal/data/memory_l3_fact_writer_adapter.go`
-  - DoD: `cmd/admin/wire_memory.go` 不再包含 data 层适配器代码
-- [ ] 2.10 消除 Store 直接满足 biz 接口：Store 当前直接满足 22 个 biz 接口（L0AdminStore, L1AdminReader, L1TaskWriter, L1FieldWriter, L1IdleTaskReader, L2EpisodeWriter, L2ConsolidationStore, L2RecallStore, L3FactReader, L3ConflictStore, PIIReviewStore, L4EntityStore, SessionL2RecallStore, SessionL3RecallStore, MemoryActionLogWriter, CascadeGraphReader, CascadeFactMutator, MemoryFactIndexMaintainer, MemoryEpisodeDecayer, MemoryFactDecayer, MemoryFactIndexCounter, L4DecayWriter）。为每个创建显式 adapter，替代 `*sessionmemory.Store` 直接作为实现
-  - DoD: `biz` 层零直接引用 `sessionmemory.Store` 具体类型
-- [ ] 2.11 更新 Wire 绑定：将所有 Store 相关的 Wire 绑定更新为使用新 Repo，`make wire && go build ./cmd/admin` 通过
-  - DoD: `make wire && make build` 通过
-- [ ] 2.12 移除 Store.Client()：删除 `sessionmemory.Store.Client()` 方法，`memory_migrate.go` 改为接受 `*Data` 参数
-  - DoD: `Store` struct 无 `Client()` 方法，`memory_migrate.go` 使用 `Data.ClientFromCtx`
+  - **延后至 Task 9.x**：同 2.7，shim 阶段改方法参数会破坏 biz 接口契约满足
+- [x] 2.9 Wire 适配器归位：将 `cmd/admin/wire_memory.go` 中的 `wireSessionAdminStoreAdapter` 和 `wireL3FactWriterAdapter` 移到 `internal/data/memory_admin_adapter.go` 和 `internal/data/memory_l3_fact_writer_adapter.go`
+  - DoD: ✅ `cmd/admin/wire_memory.go` 不再包含 data 层适配器代码，wire.go 第681行替换为 data.NewL3FactWriterAdapter，wire_gen.go 重新生成，go build 通过
+- [x] 2.10 消除 Store 直接满足 biz 接口：Store 当前直接满足 22 个 biz 接口（L0AdminStore, L1AdminReader, L1TaskWriter, L1FieldWriter, L1IdleTaskReader, L2EpisodeWriter, L2ConsolidationStore, L2RecallStore, L3FactReader, L3ConflictStore, PIIReviewStore, L4EntityStore, SessionL2RecallStore, SessionL3RecallStore, MemoryActionLogWriter, CascadeGraphReader, CascadeFactMutator, MemoryFactIndexMaintainer, MemoryEpisodeDecayer, MemoryFactDecayer, MemoryFactIndexCounter, L4DecayWriter）。为每个创建显式 adapter，替代 `*sessionmemory.Store` 直接作为实现
+  - DoD: ✅ `biz` 层零直接引用 `sessionmemory.Store` 具体类型，所有 biz 接口通过 data 层适配器桥接
+- [x] 2.11 更新 Wire 绑定：将所有 Store 相关的 Wire 绑定更新为使用新 Repo，`make wire && go build ./cmd/admin` 通过
+  - DoD: ✅ 修复 PackRepoAdapter 重复绑定、auth.Middleware 缺失参数，wire 重新生成，`go build ./cmd/admin` 通过
+- [x] 2.12 移除 Store.Client()：删除 `sessionmemory.Store.Client()` 方法，`memory_migrate.go` 改为接受 `*Data` 参数
+  - DoD: ✅ `Store` struct 无 `Client()` 方法，`memory_migrate.go` 使用 `Data.ClientFromCtx`，`runPendingDataMigrations` 接受 `*Data` 完整参数（消除部分构造 Data 的 nil 风险），编译时接口检查 + nil guard 已添加，测试通过
 
 ## 3. 接口拆分补全
 
-- [ ] 3.1 拆分 `biz.monitor.Repo`（19 方法）为 4 个子接口：`MonitorEventRepo`（5）、`MonitorTraceRepo`（5）、`MonitorAlertRepo`（4）、`MonitorAuditRepo`（3）+ 组合接口 `MonitorRepo`
-  - DoD: 编译期接口检查通过，消费者按需依赖窄接口
-- [ ] 3.2 拆分 `biz.a2a.Repo`（14 方法）为 3 个子接口：`A2ACardRepo`（4）、`A2AInvocationRepo`（3）、`A2ARemoteRepo`（5）+ 组合接口 `A2ARepo`
-  - DoD: 编译期接口检查通过
-- [ ] 3.3 拆分 `biz.CascadeGraphStore` 为 `CascadeProposalRepo` + `CascadeSagaRepo`
-  - DoD: 所有消费者迁移到子接口，`CascadeGraphStore` 标记 Deprecated
-- [ ] 3.4 Delta 溢出安全阀：在 `SessionMetricsDelta` 中实现 `maxDeltaAge`（5 分钟）和 `maxDeltaCount`（1000）限制，超限强制 flush
-  - DoD: 单元测试验证超限 flush 触发
+- [x] 3.1 拆分 `biz.monitor.Repo`（20 方法）为 5 个子接口：`AuditRepo`（2）、`EventRepo`（4）、`TraceRepo`（6）、`AlertRepo`（3）、`RunnerCompletionRepo`（5）+ 组合接口 `MonitorRepo`（Deprecated）
+  - DoD: ✅ 编译期接口检查通过，消费者按需依赖窄接口（TraceProjector→TraceRepo, MonitorTraceBackfillWorker→TraceRepo+RunnerCompletionRepo, DiagBundleGenerator→EventRepo+TraceRepo, RunnerErrorRateMetric→EventRepo），Wire 绑定更新，aranea-review 审查通过（无阻断项）
+- [x] 3.2 拆分 `biz.a2a.Repo`（14 方法）为 4 个子接口：`CardRepo`（3）、`InvocationRepo`（2）、`AuditRepo`（2）、`RemoteAgentRepo`（7）+ 组合接口 `A2ARepo`（Deprecated）
+  - DoD: ✅ 编译期接口检查通过，Usecase 持有 4 个子接口，Wire 绑定更新，aranea-review 审查通过（无阻断项）
+- [x] 3.3 删除 `biz.CascadeGraphStore` 聚合接口和旧实现 `memory_cascade.go`，Wire 改用 `NewCascadeRepo`
+  - DoD: ✅ `CascadeGraphStore` 已删除，`memory_cascade.go` 已删除，4 个子接口保留，消费者已全部迁移
+- [x] 3.4 Delta 溢出安全阀：`MaxDeltaAge` 改为 5 分钟，`MaxDeltaCount` 改为 1000，超限强制 flush
+  - DoD: ✅ 5 个单元测试覆盖（基本累积、计数溢出 flush、年龄溢出 flush、全量 flush、单条 flush）
 
 ## 4. Repo 读写分离全量迁移
 

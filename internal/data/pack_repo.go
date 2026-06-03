@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"fmt"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/pack"
@@ -136,6 +137,19 @@ func (a *PackRepoAdapter) GetTeamByID(ctx context.Context, id string) (biz.Team,
 	return a.teams.GetTeamByID(ctx, id)
 }
 
+func (a *PackRepoAdapter) GetTeamByKey(ctx context.Context, teamKey string) (biz.Team, error) {
+	teams, err := a.teams.ListTeams(ctx)
+	if err != nil {
+		return biz.Team{}, err
+	}
+	for _, t := range teams {
+		if t.TeamKey == teamKey {
+			return t, nil
+		}
+	}
+	return biz.Team{}, fmt.Errorf("team with key %q not found", teamKey)
+}
+
 func (a *PackRepoAdapter) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error) {
 	return a.teams.CreateTeam(ctx, t)
 }
@@ -180,13 +194,11 @@ func (a *PackRepoAdapter) TaxonomyKeyExists(ctx context.Context, key string) (bo
 }
 
 func (a *PackRepoAdapter) SkillExists(ctx context.Context, slug string) (bool, error) {
-	// Skill existence check is not yet implemented in the data layer.
-	// Return true to avoid false negatives during validation.
+	// TODO(debt): implement real Skill existence check via skill registry
 	return true, nil
 }
 
 func (a *PackRepoAdapter) FuncRefExists(funcRef string) bool {
-	// FuncRef existence check is not yet implemented.
-	// Return true to avoid false negatives during validation.
+	// TODO(debt): implement real FuncRef existence check via function registry
 	return true
 }

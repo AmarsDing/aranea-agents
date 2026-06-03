@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/event"
 	"aranea-agents/pkg/ctxuser"
+	loggateway "aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/trpcscope"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -21,6 +21,7 @@ const trpcSessionEventsTable = "trpc_session_events"
 
 type RunnerRollbackStore struct {
 	db *sql.DB
+	lg loggateway.Logger
 }
 
 type rollbackCursor struct {
@@ -30,11 +31,11 @@ type rollbackCursor struct {
 	EventID   int64  `json:"event_id"`
 }
 
-func NewRunnerRollbackStore(db *sql.DB) *RunnerRollbackStore {
+func NewRunnerRollbackStore(db *sql.DB, lg loggateway.Logger) *RunnerRollbackStore {
 	if db == nil {
 		return nil
 	}
-	return &RunnerRollbackStore{db: db}
+	return &RunnerRollbackStore{db: db, lg: lg}
 }
 
 func (s *RunnerRollbackStore) MarkBoundary(ctx context.Context, sessionID, _, _ string) (string, error) {
@@ -55,8 +56,7 @@ func (s *RunnerRollbackStore) MarkBoundary(ctx context.Context, sessionID, _, _ 
 		cur.AppName, cur.UserID, cur.SessionID,
 	).Scan(&maxID)
 	if err != nil {
-		event.CtxFlowLogWarn(ctx, "system.session.rollback_fail", "runner rollback mark failed",
-			event.P("session_id", sessionID), event.P("error", err.Error()))
+		s.lg.Warn("runner rollback mark failed", loggateway.StepID("system.session.rollback_fail"), loggateway.Str("session_id", sessionID), loggateway.Err(err))
 		return "", kerrors.InternalServer("SESSION", "runner rollback mark: "+err.Error())
 	}
 	if maxID.Valid {
@@ -74,8 +74,7 @@ func (s *RunnerRollbackStore) RollbackToBoundary(ctx context.Context, sessionID,
 		return err
 	}
 	if sid := strings.TrimSpace(sessionID); sid != "" && sid != cur.SessionID {
-		event.CtxFlowLogWarn(ctx, "system.session.rollback_fail", "runner rollback session mismatch",
-			event.P("boundary_session", cur.SessionID), event.P("target_session", sid))
+		s.lg.Warn("runner rollback session mismatch", loggateway.StepID("system.session.rollback_fail"), loggateway.Str("boundary_session", cur.SessionID), loggateway.Str("target_session", sid))
 		return kerrors.BadRequest("SESSION", fmt.Sprintf("runner rollback: boundary session %q does not match %q", cur.SessionID, sid))
 	}
 	now := time.Now().UTC().UnixNano()
@@ -84,8 +83,7 @@ func (s *RunnerRollbackStore) RollbackToBoundary(ctx context.Context, sessionID,
 		now, now, cur.AppName, cur.UserID, cur.SessionID, cur.EventID,
 	)
 	if err != nil {
-		event.CtxFlowLogWarn(ctx, "system.session.rollback_fail", "runner rollback update failed",
-			event.P("session_id", cur.SessionID), event.P("error", err.Error()))
+		s.lg.Warn("runner rollback update failed", loggateway.StepID("system.session.rollback_fail"), loggateway.Str("session_id", cur.SessionID), loggateway.Err(err))
 		return kerrors.InternalServer("SESSION", "runner rollback: "+err.Error())
 	}
 	return nil

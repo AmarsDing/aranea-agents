@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
-	"aranea-agents/internal/event"
 	"net/http"
 	"os"
 	"regexp"
@@ -15,6 +13,7 @@ import (
 
 	"aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 // Artifact is the structured output of the intent pass (subset of design doc).
@@ -173,12 +172,12 @@ func MonitorLogEntry(r RunResult, scope string, meta RunMeta) (level, msg string
 }
 
 // Run calls a small chat completion to produce an Artifact. On skip or failure Artifact is nil with Outcome set.
-func Run(ctx context.Context, agentIntentPassEnabled bool, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, provider, model, userText string) (res RunResult) {
-	return runWithSystem(ctx, agentIntentPassEnabled, intentSystemCoding, catalog, httpClient, provider, model, userText)
+func Run(ctx context.Context, agentIntentPassEnabled bool, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, provider, model, userText string, lg loggateway.Logger) (res RunResult) {
+	return runWithSystem(ctx, agentIntentPassEnabled, intentSystemCoding, catalog, httpClient, provider, model, userText, lg)
 }
 
 // RunForAgent runs the intent pass with agent-aware gating and prompt template selection.
-func RunForAgent(ctx context.Context, ag biz.Agent, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, provider, model, userText string) (res RunResult) {
+func RunForAgent(ctx context.Context, ag biz.Agent, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, provider, model, userText string, lg loggateway.Logger) (res RunResult) {
 	if !ShouldRun(ag, userText) {
 		res.Outcome = "skipped_disabled"
 		if PassEffective(IntentPassFromAgent(ag)) && strings.TrimSpace(userText) != "" && len([]rune(strings.TrimSpace(userText))) < minIntentPassRunes {
@@ -186,10 +185,10 @@ func RunForAgent(ctx context.Context, ag biz.Agent, catalog *biz.LlmProviderMode
 		}
 		return res
 	}
-	return runWithSystem(ctx, IntentPassFromAgent(ag), IntentSystemForAgent(ag), catalog, httpClient, provider, model, userText)
+	return runWithSystem(ctx, IntentPassFromAgent(ag), IntentSystemForAgent(ag), catalog, httpClient, provider, model, userText, lg)
 }
 
-func runWithSystem(ctx context.Context, agentIntentPassEnabled bool, systemPrompt string, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, provider, model, userText string) (res RunResult) {
+func runWithSystem(ctx context.Context, agentIntentPassEnabled bool, systemPrompt string, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, provider, model, userText string, lg loggateway.Logger) (res RunResult) {
 	start := time.Now()
 	defer func() { res.Duration = time.Since(start) }()
 
@@ -230,7 +229,10 @@ func runWithSystem(ctx context.Context, agentIntentPassEnabled bool, systemPromp
 		res.Outcome = "skipped_parse"
 		return
 	}
-	event.CtxFlowLogDone(ctx, "chat.intent.pass", "意图识别完成", event.P("intent_kind", art.IntentKind), event.P("refined_goal_len", len(art.RefinedGoal)))
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
+	lg.Info("意图识别完成", loggateway.StepID("chat.intent.pass"), loggateway.Str("flow_status", "done"), loggateway.Str("intent_kind", art.IntentKind), loggateway.Int("refined_goal_len", len(art.RefinedGoal)))
 	res.Artifact = art
 	res.RawJSON = raw
 	res.Outcome = "completed"

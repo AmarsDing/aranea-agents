@@ -1,6 +1,6 @@
 export default {
   common: {
-    appTitle: 'Arenea Agent Orchestrator',
+    appTitle: 'Aranea Agent Orchestrator',
     placeholder: 'This section will be fleshed out in a later release.',
     lightMode: 'Light',
     darkMode: 'Dark',
@@ -68,6 +68,11 @@ export default {
     searchPlaceholder: 'Search agent or team by name',
     groupAgents: 'Agents',
     groupTeams: 'Teams',
+    groupActiveTeams: 'Active teams',
+    groupCompletedTeams: 'Completed teams',
+    hintWrite: 'Help me write…',
+    hintAnalyze: 'Help me analyze…',
+    hintTranslate: 'Help me translate…',
     workIdle: 'Idle',
     workBusy: 'Running',
     settings: 'Settings',
@@ -296,6 +301,7 @@ export default {
     kicker: 'System',
     title: 'System settings',
     subtitle: 'Global paths, A2A, quotas, and embedder model configuration.',
+    pathsTitle: 'Paths',
     rootDir: 'System root directory',
     rootDirHint: 'Install or deployment root; base path for data and resources.',
     workDir: 'Working directory',
@@ -570,8 +576,8 @@ export default {
       },
       heartbeat_message: {
         label: 'Heartbeat message',
-        help: 'Text PATCHed to IM during long silence. Supports {{elapsed}} for elapsed time.',
-        example: 'Still working… {{elapsed}}',
+        help: 'Text PATCHed to IM during long silence. Supports {elapsed} for elapsed time.',
+        example: 'Still working… {elapsed}',
       },
       async_graph_id: {
         label: 'Async graph',
@@ -641,8 +647,8 @@ export default {
         example: '["oc_group123"]',
       },
       require_mention: {
-        label: 'Require @mention',
-        help: 'In groups, only respond when the bot is @mentioned.',
+        label: `Require {'@'}mention`,
+        help: `In groups, only respond when the bot is {'@'}mentioned.`,
       },
       icon_asset_id: {
         label: 'Icon',
@@ -687,7 +693,7 @@ export default {
     },
     placeholders: {
       ackMessage: 'Received, processing…',
-      heartbeatMessage: 'Still processing… {{elapsed}}',
+      heartbeatMessage: 'Still processing… {elapsed}',
     },
     executionMode: {
       sync: 'sync — wait for result',
@@ -919,7 +925,7 @@ export default {
     fieldEventTypes: 'Event types (JSON)',
     fieldEventTypesHint: 'JSON array, e.g. ["runner_completion","tool_call"]',
     fieldHeaders: 'Custom headers (JSON)',
-    fieldHeadersHint: 'JSON object, e.g. {"Authorization":"Bearer xxx"}',
+    fieldHeadersHint: `JSON object, e.g. {'{'}"Authorization":"Bearer xxx"{'}'}`,
     btnCancel: 'Cancel',
     btnSave: 'Save',
     notifyRequired: 'Name and URL are required',

@@ -19,6 +19,22 @@
 - **WHEN** Pack 中的 agent_key 与目标系统已有 Agent 冲突
 - **THEN** 校验结果 SHALL 报告冲突的实体列表，包含 key、类型和冲突详情
 
+#### Scenario: 引用完整性校验
+- **WHEN** Pack 中 Graph 节点或 Team 内嵌 Graph 节点引用的 agent_key 不在 Pack 的 Agents 列表中
+- **THEN** 校验结果 SHALL 报告引用错误，包含 Graph ID、节点 ID 和缺失的 agent_key
+
+### Requirement: ValidatorRepo 接口
+系统 SHALL 定义 `ValidatorRepo` 接口（`internal/biz/pack/validator.go`），提供校验引擎所需的只读仓库方法。
+
+#### Scenario: ValidatorRepo 方法列表
+- **GIVEN** ValidatorRepo 接口定义
+- **THEN** SHALL 包含以下方法：
+  - `AgentKeyExists(ctx, agentKey) (bool, error)` — 检查 agent_key 是否已存在
+  - `TeamKeyExists(ctx, teamKey) (bool, error)` — 检查 team_key 是否已存在
+  - `TaxonomyKeyExists(ctx, key) (bool, error)` — 检查 taxonomy key 是否已存在
+  - `SkillExists(ctx, slug) (bool, error)` — 检查 Skill slug 是否可用
+  - `FuncRefExists(funcRef) bool` — 检查 func_ref 是否在注册表中（无 ctx，纯内存查询）
+
 ### Requirement: 四阶段导入写入
 系统 SHALL 按依赖顺序分四阶段写入：Taxonomy → Agent → Graph → Team。
 
@@ -28,7 +44,7 @@
 
 #### Scenario: Phase 2 — Agent 写入
 - **WHEN** Pack 包含 agents/ 目录
-- **THEN** 系统 SHALL 为每个 Agent 创建或更新记录，包含 Files 和 RuntimeSettings；position_key 路径解析为 taxonomy_position_id
+- **THEN** 系统 SHALL 为每个 Agent 创建或更新记录，包含 Files 和 RuntimeSettings；position_key 路径解析为 taxonomy_position_id；Agent 的 `Readonly` 字段 SHALL 默认为 `false`；Agent 的 `Source` 字段 SHALL 设为 `"imported"`
 
 #### Scenario: Phase 3 — Graph 写入
 - **WHEN** Pack 包含 graphs/ 目录
@@ -37,6 +53,21 @@
 #### Scenario: Phase 4 — Team 写入
 - **WHEN** Pack 包含 teams/ 目录
 - **THEN** 系统 SHALL 为每个 Team 创建或更新记录，members 中的 agent_key 映射为 agent_id，graph 引用映射为新创建的 graph_id
+
+### Requirement: ImporterRepo 接口
+系统 SHALL 定义 `ImporterRepo` 接口（`internal/biz/pack/importer.go`），提供导入引擎所需的写入仓库方法。
+
+#### Scenario: ImporterRepo 方法列表
+- **GIVEN** ImporterRepo 接口定义
+- **THEN** SHALL 包含以下方法：
+  - **Taxonomy**：`CreateTaxonomyNode`、`UpdateTaxonomyNode`、`GetTaxonomyNodeByKey`、`ListTaxonomyNodesByParentID`
+  - **Agent**：`GetAgentByAgentKey`、`CreateAgent`、`UpdateAgent`、`GetAgentRuntimeSettings`、`UpsertAgentRuntimeSettings`、`ReplaceAgentPromptFiles`
+  - **Team**：`GetTeamByID`、`GetTeamByKey`、`CreateTeam`、`UpdateTeam`
+  - **Graph**：`SaveGraphDefinition`
+
+#### Scenario: GetTeamByKey 方法
+- **GIVEN** ImporterRepo 接口
+- **THEN** SHALL 包含 `GetTeamByKey(ctx, teamKey)` 方法，用于 Team overwrite 策略中按 key 查找已有 Team
 
 ### Requirement: Key→ID 映射
 系统 SHALL 在导入过程中维护 key→ID 映射表，用于跨实体引用解析。
@@ -60,9 +91,13 @@
 - **WHEN** 冲突策略为 skip 且目标系统已存在相同 agent_key 的 Agent
 - **THEN** 系统 SHALL 跳过该 Agent，不修改已有记录，但仍将其 agent_id 加入映射表
 
-#### Scenario: overwrite 策略
+#### Scenario: overwrite 策略（Agent）
 - **WHEN** 冲突策略为 overwrite 且目标系统已存在相同 agent_key 的 Agent
 - **THEN** 系统 SHALL 更新已有 Agent 的可修改字段，保留原 ID 和 created_at
+
+#### Scenario: overwrite 策略（Team）
+- **WHEN** 冲突策略为 overwrite 且目标系统已存在相同 team_key 的 Team
+- **THEN** 系统 SHALL 通过 `GetTeamByKey` 查找已有 Team，更新其 definition_json 和其他可修改字段，保留原 ID
 
 #### Scenario: duplicate 策略
 - **WHEN** 冲突策略为 duplicate 且目标系统已存在相同 agent_key 的 Agent
@@ -77,11 +112,11 @@
 
 #### Scenario: 成功导入报告
 - **WHEN** 导入完成
-- **THEN** 系统 SHALL 返回导入统计：创建的 Agent 数、更新的 Agent 数、创建的 Team 数、创建的 Graph 数、创建的 Taxonomy 节点数
+- **THEN** 系统 SHALL 返回导入统计：创建的 Agent 数、更新的 Agent 数、跳过的 Agent 数、创建的 Team 数、更新的 Team 数、跳过的 Team 数、创建的 Graph 数、创建的 Taxonomy 节点数
 
 #### Scenario: 部分失败报告
 - **WHEN** 导入过程中部分实体写入失败
-- **THEN** 系统 SHALL 返回已成功的统计和失败实体列表（包含 key、类型、错误原因）
+- **THEN** 系统 SHALL 返回已成功的统计和失败实体列表（包含 entity_type、key、reason）
 
 ### Requirement: 导入使用 ORM 路径写入
 系统 SHALL 通过 biz 层 Usecase 的 ORM 路径写入数据库，不使用 RawSQL。
@@ -89,3 +124,18 @@
 #### Scenario: Agent 写入通过 AgentUsecase
 - **WHEN** 导入 Agent
 - **THEN** 系统 SHALL 调用 `AgentUsecase.Create` 或 `AgentUsecase.Update`，确保 biz 层校验和事件触发
+
+### Requirement: JSON 序列化工具函数
+系统 SHALL 使用 `encoding/json` 进行 slice ↔ JSON list 的序列化/反序列化。
+
+#### Scenario: sliceToJSONList
+- **WHEN** 将 `[]string` 转为 JSON 数组字符串
+- **THEN** 系统 SHALL 使用 `json.Marshal` 进行序列化（非手动拼接）
+
+#### Scenario: jsonListToSlice
+- **WHEN** 将 JSON 数组字符串转为 `[]string`
+- **THEN** 系统 SHALL 使用 `json.Unmarshal` 进行反序列化（非 yaml.Unmarshal）
+
+#### Scenario: parseSkillRuntime
+- **WHEN** 解析 SkillRuntimeJSON 字段
+- **THEN** 系统 SHALL 使用 `json.Unmarshal` 解析 `{allowed_slugs: [...], denied_slugs: [...]}` 结构

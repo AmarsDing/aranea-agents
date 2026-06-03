@@ -167,7 +167,7 @@ func TestEvalIntervalFromEnv_MinutesFormat(t *testing.T) {
 
 func TestAlertEvalWorker_Evaluate_CallsUsecase(t *testing.T) {
 	repo := &workerTestRepo{}
-	uc := NewUsecase(repo, nil)
+	uc := NewUsecase(repo, repo, repo, repo, repo, nil)
 	rb := NewMetricRingBuffer()
 	w := NewAlertEvalWorker(uc, rb, loggateway.Global())
 	w.ready.Store(true)
@@ -182,7 +182,7 @@ func TestAlertEvalWorker_Evaluate_CallsUsecase(t *testing.T) {
 
 func TestAlertEvalWorker_Evaluate_NotReady(t *testing.T) {
 	repo := &workerTestRepo{}
-	uc := NewUsecase(repo, nil)
+	uc := NewUsecase(repo, repo, repo, repo, repo, nil)
 	rb := NewMetricRingBuffer()
 	w := NewAlertEvalWorker(uc, rb, loggateway.Global())
 	w.ready.Store(false)
@@ -197,7 +197,7 @@ func TestAlertEvalWorker_Evaluate_NotReady(t *testing.T) {
 
 func TestAlertEvalWorker_RebuildFromDB_SetsReady(t *testing.T) {
 	repo := &workerTestRepo{}
-	uc := NewUsecase(repo, nil)
+	uc := NewUsecase(repo, repo, repo, repo, repo, nil)
 	rb := NewMetricRingBuffer()
 	w := NewAlertEvalWorker(uc, rb, loggateway.Global())
 	w.rebuildFromDB(context.Background())
@@ -215,7 +215,7 @@ func TestAlertEvalWorker_RebuildFromDB_SetsReady(t *testing.T) {
 
 func TestAlertEvalWorker_RebuildFromDB_NilBuffer(t *testing.T) {
 	repo := &workerTestRepo{}
-	uc := NewUsecase(repo, nil)
+	uc := NewUsecase(repo, repo, repo, repo, repo, nil)
 	w := NewAlertEvalWorker(uc, nil, loggateway.Global())
 	w.rebuildFromDB(context.Background())
 	time.Sleep(200 * time.Millisecond)
@@ -226,7 +226,7 @@ func TestAlertEvalWorker_RebuildFromDB_NilBuffer(t *testing.T) {
 
 func TestNewAlertEvalWorker_SetsInterval(t *testing.T) {
 	t.Setenv("MONITOR_ALERT_EVAL_INTERVAL", "15s")
-	uc := NewUsecase(nil, nil)
+	uc := NewUsecase(nil, nil, nil, nil, nil, nil)
 	rb := NewMetricRingBuffer()
 	w := NewAlertEvalWorker(uc, rb, loggateway.Global())
 	if w.interval != 15*time.Second {
@@ -235,7 +235,7 @@ func TestNewAlertEvalWorker_SetsInterval(t *testing.T) {
 }
 
 func TestNewAlertEvalWorker_DefaultInterval(t *testing.T) {
-	uc := NewUsecase(nil, nil)
+	uc := NewUsecase(nil, nil, nil, nil, nil, nil)
 	rb := NewMetricRingBuffer()
 	w := NewAlertEvalWorker(uc, rb, loggateway.Global())
 	if w.interval != defaultEvalInterval {

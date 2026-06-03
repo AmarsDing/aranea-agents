@@ -272,7 +272,7 @@ func TestDiscover(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &mockUsecaseRepo{}
 			tt.setup(repo)
-			uc := NewUsecase(repo)
+			uc := NewUsecase(repo, repo, repo, repo)
 			cards, err := uc.Discover(context.Background(), tt.workspace, tt.capability)
 			if tt.wantErr {
 				if err == nil {
@@ -388,7 +388,7 @@ func TestGatewayDiscover(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &mockUsecaseRepo{}
 			tt.setup(repo)
-			uc := NewUsecase(repo)
+			uc := NewUsecase(repo, repo, repo, repo)
 			entries, err := uc.GatewayDiscover(context.Background(), tt.input, tt.publicBaseURL)
 			if tt.wantErr {
 				if err == nil {
@@ -471,7 +471,7 @@ func TestUpdateAgentCard(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo)
+			uc := NewUsecase(repo, repo, repo, repo)
 			card, err := uc.UpdateAgentCard(context.Background(), tt.card)
 			if tt.wantErr {
 				if err == nil {
@@ -556,7 +556,7 @@ func TestMapEndpointEnabled(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &mockUsecaseRepo{}
 			tt.setup(repo)
-			uc := NewUsecase(repo)
+			uc := NewUsecase(repo, repo, repo, repo)
 			m, err := uc.MapEndpointEnabled(context.Background(), tt.ids)
 			if tt.wantErr {
 				if err == nil {

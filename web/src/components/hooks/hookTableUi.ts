@@ -72,3 +72,10 @@ export function hookConditionHint(row: HookRow, t?: (key: string) => string) {
     parts.push(`${t ? t('hooksPage.conditionEvent') : 'Event'}: ${rule.condition.event_type.trim()}`);
   return parts.length ? parts.join('\n') : '';
 }
+
+/** Hook Delivery 状态颜色 */
+export function hookDeliveryStatusColor(st: string) {
+  if (st === 'failed') return 'negative';
+  if (st === 'success') return 'positive';
+  return 'grey';
+}

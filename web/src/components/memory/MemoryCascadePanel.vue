@@ -259,7 +259,7 @@ import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 
 import type { CascadePreview, CascadeProposal, CascadeSagaStep } from '../../features/memory/types';
-import { CASCADE_SAGA_TABLE_COLUMNS } from '../../features/memory/memoryTableUi';
+import { CASCADE_SAGA_TABLE_COLUMNS, memoryCascadeStatusColor as statusColor } from '../../features/memory/memoryTableUi';
 
 const props = defineProps<{
   agentId: string | null;
@@ -310,23 +310,6 @@ function riskColor(level?: string) {
       return 'negative';
     case 'medium':
       return 'warning';
-    default:
-      return 'grey-7';
-  }
-}
-
-function statusColor(status: string) {
-  switch (status) {
-    case 'pending':
-      return 'grey-7';
-    case 'applied':
-      return 'positive';
-    case 'partial':
-      return 'warning';
-    case 'failed':
-      return 'negative';
-    case 'rejected':
-      return 'deep-orange';
     default:
       return 'grey-7';
   }

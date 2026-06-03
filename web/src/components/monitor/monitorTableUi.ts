@@ -29,3 +29,11 @@ export const MONITOR_TRACES_TABLE_COLUMNS: QTableColumn<MonitorTraceEvent>[] = [
   registryCol<MonitorTraceEvent>('time', '时间', 'occurred_at', 'left', '18%'),
   registryColActions<MonitorTraceEvent>('30px', ''),
 ];
+
+/** Trace 状态颜色 */
+export function traceStatusColor(status?: string) {
+  if (status === 'ok' || status === 'success') return 'positive';
+  if (status === 'cancelled') return 'grey';
+  if (status === 'timeout') return 'orange';
+  return 'negative';
+}

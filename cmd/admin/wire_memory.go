@@ -93,7 +93,7 @@ func providePersistenceSet(
 	}
 	var rollback rt.RunnerSessionRollbackStore
 	if d != nil {
-		rollback = sessiontrpc.NewRunnerRollbackStore(d.RawDB())
+		rollback = sessiontrpc.NewRunnerRollbackStore(d.RawDB(), lg)
 	}
 	return rt.PersistenceSet{Session: sess, Memory: mem, AgentMCP: mcp, Artifact: artifact, ArtifactUC: artifactUC, RunnerRollback: rollback}
 }

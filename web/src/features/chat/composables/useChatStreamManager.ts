@@ -76,12 +76,13 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
   function resolveTeamMemberMeta(agentKey: string) {
     const team = deps.displayTeams.value.find((row) => row.id === deps.sessionStore.selectedTeamId);
-    let def: TeamDefinition | null = null;
-    try {
-      def = team?.definition_json ? (JSON.parse(team.definition_json) as TeamDefinition) : null;
-    } catch {
-      def = null;
-    }
+    const def: TeamDefinition | null = (() => {
+      try {
+        return team?.definition_json ? (JSON.parse(team.definition_json) as TeamDefinition) : null;
+      } catch {
+        return null;
+      }
+    })();
     const member = def?.members?.find((m) => m.agent_id === agentKey || m.name === agentKey);
     return {
       agent_key: agentKey,

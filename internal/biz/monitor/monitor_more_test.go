@@ -38,14 +38,14 @@ func (m *mockBus) Subscribe(_ contract.SubscribeOptions) (<-chan contract.Envelo
 func (m *mockBus) DropCount() uint64 { return m.dropCnt }
 
 func TestAlertEvalWorker_OnCompletion_Success(t *testing.T) {
-	uc := monitor.NewUsecase(nil, nil)
+	uc := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	rb := monitor.NewMetricRingBuffer()
 	w := monitor.NewAlertEvalWorker(uc, rb, loggateway.NewNoop())
 	w.OnCompletion("success", 150)
 }
 
 func TestAlertEvalWorker_OnCompletion_Error(t *testing.T) {
-	uc := monitor.NewUsecase(nil, nil)
+	uc := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	rb := monitor.NewMetricRingBuffer()
 	w := monitor.NewAlertEvalWorker(uc, rb, loggateway.NewNoop())
 	w.OnCompletion("error", 300)
@@ -57,13 +57,13 @@ func TestAlertEvalWorker_OnCompletion_NilWorker(t *testing.T) {
 }
 
 func TestAlertEvalWorker_OnCompletion_NilBuffer(t *testing.T) {
-	uc := monitor.NewUsecase(nil, nil)
+	uc := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	w := monitor.NewAlertEvalWorker(uc, nil, loggateway.NewNoop())
 	w.OnCompletion("success", 100)
 }
 
 func TestAlertEvalWorker_Ready_BeforeStart(t *testing.T) {
-	uc := monitor.NewUsecase(nil, nil)
+	uc := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	rb := monitor.NewMetricRingBuffer()
 	w := monitor.NewAlertEvalWorker(uc, rb, loggateway.NewNoop())
 	if w.Ready() {
@@ -85,7 +85,7 @@ func TestAlertEvalWorker_NilUsecase(t *testing.T) {
 	}
 }
 
-func newTestTraceProjector(repo monitor.Repo) *monitor.TraceProjector {
+func newTestTraceProjector(repo monitor.TraceRepo) *monitor.TraceProjector {
 	return monitor.NewTraceProjector(repo, loggateway.Global(), newMockBus())
 }
 

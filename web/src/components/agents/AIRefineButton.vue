@@ -22,7 +22,7 @@
 
   <!-- Result dialog -->
   <q-dialog v-model="showResult" persistent>
-    <q-card class="ai-refine-dialog-card">
+    <q-card class="ai-refine-dialog-card app-dialog-card">
       <q-card-section class="row items-center">
         <div class="text-h6">AI 优化结果</div>
         <q-space />
@@ -96,7 +96,6 @@ import { computed, ref } from 'vue';
 import { useQuasar } from 'quasar';
 import type { FieldScope, FieldGuide } from '../../features/agents/fieldGuides';
 import { getFieldGuide } from '../../features/agents/fieldGuides';
-import { refinePromptField } from '../../features/agents/aiRefine';
 import type { RefineResponse } from '../../features/agents/aiRefine';
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -115,6 +114,14 @@ const props = withDefaults(
     flat?: boolean;
     outline?: boolean;
     rounded?: boolean;
+    refineFn: (params: {
+      scope: string;
+      fileName?: string;
+      resourceId?: string;
+      originalText: string;
+      userHint: string;
+      targetMode: string;
+    }) => Promise<RefineResponse>;
   }>(),
   {
     targetMode: 'complete',
@@ -167,7 +174,7 @@ const btnColor = computed(() => props.color ?? 'primary');
 async function handleRefine() {
   loading.value = true;
   try {
-    const res = await refinePromptField({
+    const res = await props.refineFn({
       scope: props.scope,
       fileName: props.fileName,
       resourceId: props.resourceId,

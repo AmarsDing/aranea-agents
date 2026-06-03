@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"aranea-agents/pkg/ctxuser"
+	loggateway "aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/trpcscope"
 
 	_ "github.com/glebarez/go-sqlite/compat"
@@ -38,14 +39,15 @@ func TestRunnerRollbackStoreSoftDeletesEventsAfterBoundary(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	lg := loggateway.NewNoop()
 	insertEvent()
-	boundary, err := NewRunnerRollbackStore(db).MarkBoundary(ctx, "s1", "run-1", "turn-1")
+	boundary, err := NewRunnerRollbackStore(db, lg).MarkBoundary(ctx, "s1", "run-1", "turn-1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	insertEvent()
 	insertEvent()
-	if err := NewRunnerRollbackStore(db).RollbackToBoundary(context.Background(), "s1", boundary); err != nil {
+	if err := NewRunnerRollbackStore(db, lg).RollbackToBoundary(context.Background(), "s1", boundary); err != nil {
 		t.Fatal(err)
 	}
 	var live int

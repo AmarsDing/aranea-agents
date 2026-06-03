@@ -17,6 +17,7 @@ import (
 	knowledgetool "aranea-agents/internal/tools/knowledge"
 	"aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/internal/tools/skillruntime"
+	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/strutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -80,7 +81,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		ctx = event.WithTraceEmitter(ctx, teamEmitter)
 		if tid := strings.TrimSpace(teamBridge.TraceID()); tid != "" {
 			if uerr := r.teams.UpdateTeamRunTraceID(ctx, run.ID, tid); uerr != nil {
-				event.CtxFlowLogWarn(ctx, "team.run.trace_id", "trace_id 持久化失败", event.P("error", uerr.Error()))
+				r.lg.Warn("trace_id 持久化失败", loggateway.StepID("team.run.trace_id"), loggateway.Err(uerr))
 			}
 		}
 		teamEmitter.LogStart("team.run.start", "开始团队协作",
@@ -146,7 +147,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 	if graphExecID != "" {
 		run.GraphExecutionID = graphExecID
 		if uerr := r.teams.UpdateTeamRunGraphExecutionID(ctx, run.ID, graphExecID); uerr != nil {
-			event.CtxFlowLogWarn(ctx, "team.graph_runtime.persist", "graph_execution_id 持久化失败", event.P("error", uerr.Error()))
+			r.lg.Warn("graph_execution_id 持久化失败", loggateway.StepID("team.graph_runtime.persist"), loggateway.Err(uerr))
 		}
 	}
 
@@ -169,8 +170,8 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 
 	rl := agent.ResolveRalphLoopTurn(ar.agent.Settings)
 	if rl.SkipErr != nil {
-		event.CtxFlowLogWarn(ctx, "team.runner.ralph_loop", "Ralph Loop 配置无效，已跳过",
-			event.P("agent_id", ar.agent.ID), event.P("error", rl.SkipErr.Error()))
+		r.lg.Warn("Ralph Loop 配置无效，已跳过",
+			loggateway.StepID("team.runner.ralph_loop"), loggateway.Str("agent_id", ar.agent.ID), loggateway.Err(rl.SkipErr))
 	}
 	runnerMgr := r.td.CoalesceRunnerManager()
 	runner, err := runnerMgr.NewTurnRunner(root, rt.TurnRunnerSpec{
@@ -197,8 +198,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		}
 		rollbackDone = true
 		if rberr := runnerMgr.RollbackToBoundary(context.Background(), rollbackBoundary); rberr != nil {
-			event.CtxFlowLogWarn(context.Background(), "team.run.rollback_fail", "RollbackToBoundary failed",
-				event.P("boundary", rollbackBoundary), event.P("error", rberr.Error()))
+			r.lg.Warn("RollbackToBoundary failed", loggateway.StepID("team.run.rollback_fail"), loggateway.Str("boundary", rollbackBoundary.BoundaryID), loggateway.Err(rberr))
 		}
 	}
 	defer func() {
@@ -433,7 +433,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 
 	if graphExecID != "" && r.teamGraphCoord != nil {
 		if deferred, derr := r.teamGraphCoord.DeferTeamRunSuccessIfHITL(ctx, graphExecID, &run); derr != nil {
-			event.CtxFlowLogWarn(ctx, "team.graph_runtime.hitl", "HITL defer 失败", event.P("error", derr.Error()))
+			r.lg.Warn("HITL defer 失败", loggateway.StepID("team.graph_runtime.hitl"), loggateway.Err(derr))
 		} else if deferred {
 			r.recordTeamRunUsage(ctx, run, teamRow.ID, ar.agent, promptTok, completionTok, ar.prov, ar.mod, dialogMode)
 			if teamEmitter != nil {

@@ -439,7 +439,8 @@ func (m *memA2ARepo) UpdateRemoteAgentHealth(_ context.Context, _ string, _ bool
 }
 
 func TestA2AUsecase_UpdateAndGetCard(t *testing.T) {
-	uc := biz.NewA2AUsecase(newMemA2ARepo())
+	repo := newMemA2ARepo()
+	uc := biz.NewA2AUsecase(repo, repo, repo, repo)
 	card, err := uc.UpdateAgentCard(context.Background(), biz.A2AAgentCard{
 		AgentID: "agent-1",
 		Enabled: true,
@@ -463,7 +464,8 @@ func TestA2AUsecase_UpdateAndGetCard(t *testing.T) {
 }
 
 func TestA2AUsecase_DisabledByDefault(t *testing.T) {
-	uc := biz.NewA2AUsecase(newMemA2ARepo())
+	repo := newMemA2ARepo()
+	uc := biz.NewA2AUsecase(repo, repo, repo, repo)
 	// Agent doesn't exist → ErrNotFound
 	_, err := uc.GetAgentCard(context.Background(), "unknown")
 	if err == nil {
@@ -472,7 +474,8 @@ func TestA2AUsecase_DisabledByDefault(t *testing.T) {
 }
 
 func TestA2AUsecase_StartInvocation(t *testing.T) {
-	uc := biz.NewA2AUsecase(newMemA2ARepo())
+	repo := newMemA2ARepo()
+	uc := biz.NewA2AUsecase(repo, repo, repo, repo)
 	inv, err := uc.StartInvocation(context.Background(), biz.A2AInvocation{
 		CalleeAgentID: "agent-2",
 		Capability:    "summarize",

@@ -221,7 +221,7 @@ func TestRegisterRemoteAgent(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo)
+			uc := NewUsecase(repo, repo, repo, repo)
 			agent, err := uc.RegisterRemoteAgent(context.Background(), tt.input)
 			if tt.wantErr {
 				if err == nil {
@@ -367,7 +367,7 @@ func TestDiscoverRemoteAgent(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo)
+			uc := NewUsecase(repo, repo, repo, repo)
 			card, err := uc.DiscoverRemoteAgent(context.Background(), tt.input)
 			if tt.wantErr {
 				if err == nil {
@@ -486,7 +486,7 @@ func TestUpdateAgentCard_EdgeCases(t *testing.T) {
 			if tt.setup != nil {
 				tt.setup(repo)
 			}
-			uc := NewUsecase(repo)
+			uc := NewUsecase(repo, repo, repo, repo)
 			card, err := uc.UpdateAgentCard(context.Background(), tt.card)
 			if tt.wantErr {
 				if err == nil {

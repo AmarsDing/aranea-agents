@@ -162,7 +162,7 @@ onUnmounted(() => {
     min-height: 88px
     border-radius: 14px
     background: var(--color-background-elevated, rgba(128, 128, 128, 0.04))
-    border: 1px solid rgba(128, 128, 128, 0.08)
+    border: 1px solid var(--glass-border, rgba(128, 128, 128, 0.08))
     transition: border-color 0.2s ease, background 0.2s ease, transform 0.15s ease
     text-decoration: none
     cursor: pointer
@@ -225,8 +225,8 @@ onUnmounted(() => {
 
 body.body--dark
   .command-center-hero__stat
-    background: rgba(255, 255, 255, 0.025)
-    border-color: rgba(255, 255, 255, 0.05)
+    background: var(--color-background-elevated, rgba(255, 255, 255, 0.025))
+    border-color: var(--glass-border, rgba(255, 255, 255, 0.05))
     &--link:hover
       border-color: rgba(255, 255, 255, 0.14)
 

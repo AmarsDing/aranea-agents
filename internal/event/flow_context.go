@@ -33,6 +33,7 @@ func FlowLoggerFromContext(ctx context.Context) *TraceEmitter {
 	return TraceEmitterFromContext(ctx)
 }
 
+// Deprecated: use loggateway.Logger with StepID field instead of FlowLog* functions.
 func FlowLogError(bus Bus, buffer *Buffer, sessionID, agentKey, step, msg string, extra ...Pair) {
 	tc := TraceContext{SessionID: sessionID, AgentKey: agentKey, Domain: TraceDomainChat}
 	if tc.TraceID == "" {
@@ -41,16 +42,19 @@ func FlowLogError(bus Bus, buffer *Buffer, sessionID, agentKey, step, msg string
 	NewTraceEmitter(bus, buffer, tc).LogError(step, msg, extra...)
 }
 
+// Deprecated: use loggateway.Logger with StepID field instead of FlowLog* functions.
 func FlowLogSkip(bus Bus, buffer *Buffer, sessionID, agentKey, step, msg string, extra ...Pair) {
 	tc := NewTraceContext(context.Background(), TraceOpts{SessionID: sessionID, AgentKey: agentKey, Domain: TraceDomainChat})
 	NewTraceEmitter(bus, buffer, tc).LogSkip(step, msg, extra...)
 }
 
+// Deprecated: use loggateway.Logger with StepID field instead of FlowLog* functions.
 func FlowLogDone(bus Bus, buffer *Buffer, sessionID, agentKey, step, msg string, extra ...Pair) {
 	tc := NewTraceContext(context.Background(), TraceOpts{SessionID: sessionID, AgentKey: agentKey, Domain: TraceDomainChat})
 	NewTraceEmitter(bus, buffer, tc).LogDone(step, msg, extra...)
 }
 
+// Deprecated: use loggateway.Logger with StepID field instead of CtxFlowLog* functions.
 func CtxFlowLogError(ctx context.Context, step, msg string, extra ...Pair) {
 	if e := TraceEmitterFromContext(ctx); e != nil {
 		e.LogError(step, msg, extra...)
@@ -59,6 +63,7 @@ func CtxFlowLogError(ctx context.Context, step, msg string, extra ...Pair) {
 	NewTraceEmitter(nil, nil, TraceContext{}).LogError(step, msg, extra...)
 }
 
+// Deprecated: use loggateway.Logger with StepID field instead of CtxFlowLog* functions.
 func CtxFlowLogSkip(ctx context.Context, step, msg string, extra ...Pair) {
 	if e := TraceEmitterFromContext(ctx); e != nil {
 		e.LogSkip(step, msg, extra...)
@@ -67,6 +72,7 @@ func CtxFlowLogSkip(ctx context.Context, step, msg string, extra ...Pair) {
 	NewTraceEmitter(nil, nil, TraceContext{}).LogSkip(step, msg, extra...)
 }
 
+// Deprecated: use loggateway.Logger with StepID field instead of CtxFlowLog* functions.
 func CtxFlowLogDone(ctx context.Context, step, msg string, extra ...Pair) {
 	if e := TraceEmitterFromContext(ctx); e != nil {
 		e.LogDone(step, msg, extra...)
@@ -75,6 +81,7 @@ func CtxFlowLogDone(ctx context.Context, step, msg string, extra ...Pair) {
 	NewTraceEmitter(nil, nil, TraceContext{}).LogDone(step, msg, extra...)
 }
 
+// Deprecated: use loggateway.Logger with StepID field instead of CtxFlowLog* functions.
 func CtxFlowLogWarn(ctx context.Context, step, msg string, extra ...Pair) {
 	if e := TraceEmitterFromContext(ctx); e != nil {
 		e.LogWarn(step, "", msg, extra...)

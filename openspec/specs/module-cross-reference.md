@@ -305,6 +305,114 @@
 
 ---
 
+### 1.12b FlowTracker (`internal/event/flow_tracker.go`)
+
+**职责**：流程追踪核心，持有 FlowContext + SpanCollector + UsageAggregator，提供 LogStart/LogDone/LogError 等方法签名。替代原 TraceEmitter 的核心逻辑。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `event`（Infra/Buffer/TraceContext/FlowContext/SpanCollector/UsageAggregator） |
+| **下游影响** | `TraceEmitter`（embedding wrapper）、所有使用 FlowLog 的模块（通过 TraceEmitter 间接使用） |
+| **核心导出** | `NewFlowTracker()`、`LogStart/LogDone/LogSkip/LogWarn/LogError/LogCritical`、`SpanCollector()`、`UsageAggregator()`、`FlowContextState()`、`FinishRoot()`、`SetOtelRefs()`、`CompleteToolCall()`、`MetadataJSON()` |
+| **共享契约** | `TraceContext`（关联 ID）、`Pair`（键值对）、`FlowPhase`/`FlowSeverity` 枚举 |
+| **事件生产** | `EnvelopeTypeFlowLog`（通过 Infra.Publish） |
+| **事件消费** | 无 |
+| **数据库** | 无直接访问（通过 EventBus → FlowLogRepo 间接持久化） |
+| **前端对应** | MonitorPage FlowLogStream.vue、FlowTracePanel.vue |
+
+**⚠️ 开发注意**：
+- FlowTracker 是 TraceEmitter 拆分后的核心组件，修改 LogStart/LogDone 签名时需同步所有调用方
+- `emit()` 方法内部检查 `ft.infra == nil` 安全返回，无需 nil guard 包装
+
+---
+
+### 1.12c SpanCollector (`internal/event/span_collector.go`)
+
+**职责**：Span 树管理，管理 LLM/Tool span 的生命周期，生成 usage.metadata_json。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `event`（SpanContext/UsageContext/TraceContext） |
+| **下游影响** | `FlowTracker`（持有 SpanCollector）、`UsageAggregator`（通过 FlowTracker 间接使用） |
+| **核心导出** | `NewSpanCollector()`、`StartLLMSpan()`、`OpenToolSpan()`、`CompleteToolCall()`、`FinishRoot()`、`Spans()`、`MetadataJSON()`、`SyncOtelSpanIDs()` |
+| **共享契约** | `SpanContext`（span 树状态）、`UsageContext`（OTel 关联 ID） |
+| **事件生产** | 无（数据通过 `MetadataJSON()` 供 usage 记录消费） |
+| **事件消费** | 无 |
+| **数据库** | 无直接访问（metadata_json 通过 UsageUsecase 写入 usage_events 表） |
+| **前端对应** | 无直接对应（usage 数据通过 UsageEventsPage 展示） |
+
+**⚠️ 开发注意**：
+- `MetadataJSON()` 输出被 `usage.metadata_json` 列消费，修改格式需同步 UsageUsecase
+- LLM span 自动合并（多次 LLM 调用合并为单个 llm.call span），Tool span 需显式 CompleteToolCall
+
+---
+
+### 1.12d UsageAggregator (`internal/event/usage_aggregator.go`)
+
+**职责**：用量聚合，观察 trpc-agent-go 框架事件并聚合 usage 元数据，桥接框架事件流到 SpanCollector。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `event`（SpanCollector/UsageContext/TraceContext）、`trpc-agent-go/event`（框架事件类型） |
+| **下游影响** | `FlowTracker`（持有 UsageAggregator） |
+| **核心导出** | `NewUsageAggregator()`、`ObserveFrameworkEvent()`、`SetOtelRefs()`、`SyncOtelSpanIDs()`、`MetadataJSON()` |
+| **共享契约** | `trpcevent.Event`（框架事件结构）、`model.Usage`（token 用量） |
+| **事件生产** | 无（数据写入 SpanCollector） |
+| **事件消费** | 消费 trpc-agent-go 事件流（通过 `TraceEmitter.ObserveFrameworkEvent` 间接调用） |
+| **数据库** | 无直接访问 |
+| **前端对应** | 无直接对应 |
+
+**⚠️ 开发注意**：
+- `ObserveFrameworkEvent` 是 trpc-agent-go 事件流与 Aranea 日志系统的桥接点
+- 修改框架事件结构时需同步此方法的解析逻辑
+
+---
+
+### 1.12e RuntimeLogAdapter (`internal/adapter/runtime_log.go`)
+
+**职责**：桥接 trpc-agent-go 运行时日志到 loggateway Pipeline，实现 `agentlog.Logger` 接口。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `loggateway`（Logger 接口）、`trpc-agent-go/log`（agentlog.Logger 接口） |
+| **下游影响** | `trpc-agent-go` 运行时（通过 `agentlog.Logger` 接口注入） |
+| **核心导出** | `NewRuntimeLogAdapter()`、`With()`（不可变字段追加） |
+| **实现接口** | `agentlog.Logger`（Debug/Info/Warn/Error/Fatal 及格式化版本） |
+| **共享契约** | `loggateway.Field`（字段构造）、`agentlog.Logger`（框架日志接口） |
+| **事件生产** | 无（日志走 loggateway Pipeline） |
+| **事件消费** | 无 |
+| **数据库** | 无直接访问（通过 Pipeline → FileSink 间接落盘） |
+| **前端对应** | MonitorPage ProcessLogStream.vue |
+
+**⚠️ 开发注意**：
+- Fatal/Fatalf 特殊处理：直写 stderr + 独立 zap.SugaredLogger + `os.Exit(1)`，不走异步 Pipeline
+- `With()` 返回新实例（不可变模式），不修改原始 adapter
+- 修改 `agentlog.Logger` 接口时需同步此适配器
+
+---
+
+### 1.12f SinkGroup (`pkg/logpipeline/sink_group.go`)
+
+**职责**：独立 goroutine + channel + DropPolicy 的 Sink 包装器，确保慢 Sink 不影响其他 Sink。
+
+| 维度 | 内容 |
+|------|------|
+| **上游依赖** | `logpipeline`（Sink 接口/LogEntry）、`safego`（安全 goroutine 启动） |
+| **下游影响** | `logpipeline.Pipeline`（内部维护 `[]*SinkGroup`） |
+| **核心导出** | `NewSinkGroup()`、`Emit()`、`Close()`、`Flush()`、`Stats()`、`DropPolicy` 枚举（DropNewest/DropBlock）、`SinkGroupStats` |
+| **共享契约** | `DropPolicy` 枚举（被 Pipeline 和 sink_factory 共享） |
+| **事件生产** | 无 |
+| **事件消费** | 无 |
+| **数据库** | 无 |
+| **前端对应** | 无（后端基础设施） |
+
+**⚠️ 开发注意**：
+- Pipeline 的 `AddSink()` 自动包装为默认 SinkGroup（bufSize=4096, DropNewest），`AddSinkGroup()` 允许自定义参数
+- `Close()` 先 cancel context → close channel → WaitGroup 等待 → 关闭底层 Sink，顺序不可调换
+- Sink.Write 的 panic 会被 recover，SinkGroup 继续处理后续条目
+
+---
+
 ### 1.13 知识库 (`internal/knowledge/`)
 
 **职责**：文档摄入管线（上传 → OCR → 分块 → Embedding → pgvector → 检索）。

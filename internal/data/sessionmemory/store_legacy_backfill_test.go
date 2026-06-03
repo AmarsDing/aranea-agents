@@ -15,10 +15,10 @@ import (
 )
 
 func TestBackfillLegacyTRPCMemoryEntities_migratesAndIdempotent(t *testing.T) {
-	store := openLegacyBackfillStore(t)
+	store, client := openLegacyBackfillStore(t)
 	ctx := context.Background()
 
-	insertLegacyEntity(t, store, "leg-1", "agent-1", "user-1", "Alice prefers tea", `{"topics":["pref"]}`, 0.8)
+	insertLegacyEntity(t, client, "leg-1", "agent-1", "user-1", "Alice prefers tea", `{"topics":["pref"]}`, 0.8)
 
 	n, skipped, err := store.BackfillLegacyTRPCMemoryEntities(ctx)
 	if err != nil {
@@ -60,10 +60,10 @@ func TestBackfillLegacyTRPCMemoryEntities_migratesAndIdempotent(t *testing.T) {
 }
 
 func TestBackfillLegacyTRPCMemoryEntities_skipsInvalidRows(t *testing.T) {
-	store := openLegacyBackfillStore(t)
+	store, client := openLegacyBackfillStore(t)
 	ctx := context.Background()
 
-	insertLegacyEntity(t, store, "leg-invalid", "", "user-1", "", "{}", 0.5)
+	insertLegacyEntity(t, client, "leg-invalid", "", "user-1", "", "{}", 0.5)
 
 	n, skipped, err := store.BackfillLegacyTRPCMemoryEntities(ctx)
 	if err != nil {
@@ -84,7 +84,7 @@ func TestBackfillLegacyTRPCMemoryEntities_skipsInvalidRows(t *testing.T) {
 	}
 }
 
-func openLegacyBackfillStore(t *testing.T) *sessionmemory.Store {
+func openLegacyBackfillStore(t *testing.T) (*sessionmemory.Store, *ent.Client) {
 	t.Helper()
 	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
 	if err != nil {
@@ -136,16 +136,12 @@ func openLegacyBackfillStore(t *testing.T) *sessionmemory.Store {
 			t.Fatal(err)
 		}
 	}
-	return sessionmemory.NewStore(client, loggateway.NewNoop())
+	return sessionmemory.NewStore(client, loggateway.NewNoop()), client
 }
 
-func insertLegacyEntity(t *testing.T, store *sessionmemory.Store, id, scopeID, userID, desc, meta string, importance float64) {
+func insertLegacyEntity(t *testing.T, client *ent.Client, id, scopeID, userID, desc, meta string, importance float64) {
 	t.Helper()
 	ctx := context.Background()
-	client := store.Client()
-	if client == nil {
-		t.Fatal("store client nil")
-	}
 	_, err := client.ExecContext(ctx, `
 INSERT INTO memory_entities (
  id, scope_type, scope_id, workspace_id, user_id,

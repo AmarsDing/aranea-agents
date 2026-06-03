@@ -15,7 +15,7 @@ import (
 )
 
 type TraceProjector struct {
-	repo  Repo
+	repo  TraceRepo
 	buses []contract.Bus
 	lg    loggateway.Logger
 
@@ -37,7 +37,7 @@ type activeTrace struct {
 	costUsd   float64
 }
 
-func NewTraceProjector(repo Repo, lg loggateway.Logger, buses ...contract.Bus) *TraceProjector {
+func NewTraceProjector(repo TraceRepo, lg loggateway.Logger, buses ...contract.Bus) *TraceProjector {
 	if repo == nil {
 		return nil
 	}

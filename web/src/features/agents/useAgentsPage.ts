@@ -175,7 +175,9 @@ export function useAgentsPage() {
     try {
       const remote = await pageStore.fetchAgentTemplates();
       createTemplates.value = remote;
-    } catch {}
+    } catch {
+      // intentional empty — template fetch is non-critical
+    }
     try {
       await Promise.all([runLoadList(), pageStore.loadAgentsDependencies()]);
     } catch (error) {

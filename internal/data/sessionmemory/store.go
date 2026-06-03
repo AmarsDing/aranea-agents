@@ -53,14 +53,6 @@ func NewStore(client *ent.Client, lg loggateway.Logger, opts ...StoreOption) *St
 	return s
 }
 
-// Client returns the shared Ent client (SQLite).
-func (st *Store) Client() *ent.Client {
-	if st == nil {
-		return nil
-	}
-	return st.client
-}
-
 func queryOne(ctx context.Context, client *ent.Client, query string, args []any, dest ...any) error {
 	rows, err := client.QueryContext(ctx, query, args...)
 	if err != nil {

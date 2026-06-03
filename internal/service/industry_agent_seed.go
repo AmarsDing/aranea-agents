@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/scenario/loader"
+	"aranea-agents/pkg/loggateway"
 )
 
 func SeedBuiltinIndustryAgents(
@@ -16,12 +16,12 @@ func SeedBuiltinIndustryAgents(
 	taxonomyUC *biz.TaxonomyUsecase,
 	scenarioDir string,
 	seedRepo biz.SeedVersionRepo,
+	lg loggateway.Logger,
 ) {
 	if seedRepo != nil {
 		applied, err := seedRepo.IsApplied(ctx, biz.SeedVersionIndustryAgentsV1)
 		if err != nil {
-			event.CtxFlowLogError(ctx, "seed.industry_agents", "版本门控查询失败",
-				event.P("error", err.Error()))
+			lg.Error("版本门控查询失败", loggateway.StepID("seed.industry_agents"), loggateway.Err(err))
 			return
 		}
 		if applied {
@@ -42,8 +42,7 @@ func SeedBuiltinIndustryAgents(
 	for _, ind := range industries {
 		ac, tc, err := loader.SeedFromYAML(ctx, deps, ind, false)
 		if err != nil {
-			event.CtxFlowLogError(ctx, "seed.industry_agents", fmt.Sprintf("种子 %s 失败", ind),
-				event.P("industry", ind), event.P("error", err.Error()))
+			lg.Error(fmt.Sprintf("种子 %s 失败", ind), loggateway.StepID("seed.industry_agents"), loggateway.Str("industry", ind), loggateway.Err(err))
 			hasError = true
 			continue
 		}
@@ -52,15 +51,14 @@ func SeedBuiltinIndustryAgents(
 	}
 
 	if totalAgents > 0 || totalTeams > 0 {
-		event.CtxFlowLogDone(ctx, "seed.industry_agents", "行业模板种子完成",
-			event.P("agents", fmt.Sprintf("%d", totalAgents)),
-			event.P("teams", fmt.Sprintf("%d", totalTeams)))
+		lg.Info("行业模板种子完成", loggateway.StepID("seed.industry_agents"), loggateway.Str("flow_status", "done"),
+			loggateway.Str("agents", fmt.Sprintf("%d", totalAgents)),
+			loggateway.Str("teams", fmt.Sprintf("%d", totalTeams)))
 	}
 
 	if !hasError && seedRepo != nil {
 		if err := seedRepo.MarkApplied(ctx, biz.SeedVersionIndustryAgentsV1, "industry_agents_v1"); err != nil {
-			event.CtxFlowLogError(ctx, "seed.industry_agents", "版本标记失败",
-				event.P("error", err.Error()))
+			lg.Error("版本标记失败", loggateway.StepID("seed.industry_agents"), loggateway.Err(err))
 		}
 	}
 }

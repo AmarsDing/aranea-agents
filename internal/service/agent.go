@@ -10,7 +10,7 @@ import (
 	v1 "aranea-agents/api/kratos/agent/v1"
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
@@ -27,10 +27,11 @@ type AgentService struct {
 	a2aUC           *biz.A2AUsecase
 	promptAI        *PromptFileAIEditor
 	agentTemplateUC *biz.AgentTemplateUsecase
+	lg              loggateway.Logger
 }
 
-func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase, mon *biz.MonitorUsecase, a2aUC *biz.A2AUsecase, promptAI *PromptFileAIEditor, agentTemplateUC *biz.AgentTemplateUsecase) *AgentService {
-	return &AgentService{uc: uc, evoUC: evoUC, mon: mon, a2aUC: a2aUC, promptAI: promptAI, agentTemplateUC: agentTemplateUC}
+func NewAgentService(uc *biz.AgentUsecase, evoUC *biz.EvolutionUsecase, mon *biz.MonitorUsecase, a2aUC *biz.A2AUsecase, promptAI *PromptFileAIEditor, agentTemplateUC *biz.AgentTemplateUsecase, lg loggateway.Logger) *AgentService {
+	return &AgentService{uc: uc, evoUC: evoUC, mon: mon, a2aUC: a2aUC, promptAI: promptAI, agentTemplateUC: agentTemplateUC, lg: lg}
 }
 
 func fromProtoRuntime(pb *v1.AgentRuntimeSettings) *biz.AgentRuntimeSettings {
@@ -658,7 +659,7 @@ func (s *AgentService) GetAgentPromptPreview(ctx context.Context, req *v1.GetAge
 		return nil, err
 	}
 	mode := strings.TrimSpace(req.GetMode())
-	report := chatagent.BuildPreviewReport(ctx, a, mode, chatagent.Deps{AgentUC: s.uc})
+	report := chatagent.BuildPreviewReport(ctx, a, mode, chatagent.Deps{AgentUC: s.uc, LG: s.lg})
 	sections := make([]*v1.PromptSectionEstimate, 0, len(report.Sections))
 	for _, sec := range report.Sections {
 		sections = append(sections, &v1.PromptSectionEstimate{
@@ -839,7 +840,7 @@ func (s *AgentService) EditPromptFileByAI(ctx context.Context, req *v1.EditPromp
 		return nil, err
 	}
 	invalidateAgentBuildCache(agentID)
-	event.CtxFlowLogDone(ctx, "agent.prompt.ai_edit", "AI 修订提示文件完成", event.P("agent_id", agentID), event.P("file_id", fileID))
+	s.lg.Info("AI 修订提示文件完成", loggateway.StepID("agent.prompt.ai_edit"), loggateway.Str("flow_status", "done"), loggateway.Str("agent_id", agentID), loggateway.Str("file_id", fileID))
 	return &v1.EditPromptFileByAIResponse{File: toProtoFile(updated)}, nil
 }
 

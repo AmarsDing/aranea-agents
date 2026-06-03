@@ -238,7 +238,7 @@ import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../layout/AppRegistryHoverTip.vue';
 import AppPageToolbar from '../layout/AppPageToolbar.vue';
 import AppRegistryPagination from '../layout/AppRegistryPagination.vue';
-import { MONITOR_TRACES_TABLE_COLUMNS } from './monitorTableUi';
+import { MONITOR_TRACES_TABLE_COLUMNS, traceStatusColor as statusColor } from './monitorTableUi';
 
 type TreeNode = {
   id: string;
@@ -367,12 +367,7 @@ function onExportFlow() {
   emit('notify', { message: '已下载流程诊断 JSONL', type: 'positive' });
 }
 
-function statusColor(status?: string) {
-  if (status === 'ok' || status === 'success') return 'positive';
-  if (status === 'cancelled') return 'grey';
-  if (status === 'timeout') return 'orange';
-  return 'negative';
-}
+
 </script>
 
 <style scoped>

@@ -59,11 +59,11 @@ func (r *AlertMetricRegistry) List() []AlertMetric {
 }
 
 type RunnerErrorRateMetric struct {
-	repo Repo
+	repo EventRepo
 	rb   *MetricRingBuffer
 }
 
-func NewRunnerErrorRateMetric(repo Repo, rb *MetricRingBuffer) *RunnerErrorRateMetric {
+func NewRunnerErrorRateMetric(repo EventRepo, rb *MetricRingBuffer) *RunnerErrorRateMetric {
 	return &RunnerErrorRateMetric{repo: repo, rb: rb}
 }
 

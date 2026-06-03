@@ -212,6 +212,11 @@ func (d *Data) SeedLazy(ctx context.Context, name string) error {
 	return seeder.SeedIfNeeded(ctx)
 }
 
+// SetEntClientForTest sets the ent client for test purposes only.
+func (d *Data) SetEntClientForTest(client *ent.Client) {
+	d.entClient = client
+}
+
 const defaultVectorDim = 1536
 
 func vectorDimFromConf(c *conf.Data) int {
@@ -373,7 +378,7 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 		}
 
 		if err := runStartupStep("dataMigrations", func() error {
-			return runPendingDataMigrations(entClient, st.lg)
+			return runPendingDataMigrations(st)
 		}, st.lg); err != nil {
 			if p1Ctx.Err() != nil {
 				return
@@ -529,38 +534,39 @@ func ensureSchemaDDL(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger)
 }
 
 // runPendingDataMigrations applies one-time data migrations (schema_migrations gate).
-func runPendingDataMigrations(entClient *ent.Client, lg loggateway.Logger) error {
+func runPendingDataMigrations(d *Data) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	migrated, skipped, err := RunLegacyTRPCMemoryMigration(ctx, sessionmemory.NewStore(entClient, lg), lg)
+	entClient := d.Ent()
+	migrated, skipped, err := RunLegacyTRPCMemoryMigration(ctx, sessionmemory.NewStore(entClient, d.lg), d, d.lg)
 	if err != nil {
-		lg.Error("migration step failed", loggateway.StepID("data.migration.legacy_trpc_memory"), loggateway.Err(err))
+		d.lg.Error("migration step failed", loggateway.StepID("data.migration.legacy_trpc_memory"), loggateway.Err(err))
 		return fmt.Errorf("legacy trpc memory backfill: %w", err)
 	}
 	if skipped {
-		lg.Info("legacy trpc memory backfill skipped",
+		d.lg.Info("legacy trpc memory backfill skipped",
 			loggateway.StepID("data.startup"), loggateway.Int("migration", MigrationLegacyTRPCMemoryFacts))
 	} else if migrated > 0 {
-		lg.Info("legacy trpc memory backfill migrated",
+		d.lg.Info("legacy trpc memory backfill migrated",
 			loggateway.StepID("data.startup"), loggateway.Int("migrated", migrated))
 	}
-	if err := RunTurnIndexToTurnIDMigration(ctx, entClient, lg); err != nil {
-		lg.Error("migration step failed", loggateway.StepID("data.migration.turn_index_to_turn_id"), loggateway.Err(err))
+	if err := RunTurnIndexToTurnIDMigration(ctx, entClient, d.lg); err != nil {
+		d.lg.Error("migration step failed", loggateway.StepID("data.migration.turn_index_to_turn_id"), loggateway.Err(err))
 		return fmt.Errorf("turn_index migration: %w", err)
 	}
-	if err := RunSessionStatusIdleMigration(ctx, entClient, lg); err != nil {
-		lg.Error("migration step failed", loggateway.StepID("data.migration.session_status_idle"), loggateway.Err(err))
+	if err := RunSessionStatusIdleMigration(ctx, entClient, d.lg); err != nil {
+		d.lg.Error("migration step failed", loggateway.StepID("data.migration.session_status_idle"), loggateway.Err(err))
 		return fmt.Errorf("session status migration: %w", err)
 	}
 	return nil
 }
 
 // ensureAllSchemas applies DDL patches and pending data migrations (compat wrapper for tests).
-func ensureAllSchemas(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
-	if err := ensureSchemaDDL(rawDB, entClient, lg); err != nil {
+func ensureAllSchemas(rawDB *sql.DB, d *Data, lg loggateway.Logger) error {
+	if err := ensureSchemaDDL(rawDB, d.Ent(), lg); err != nil {
 		return err
 	}
-	return runPendingDataMigrations(entClient, lg)
+	return runPendingDataMigrations(d)
 }
 
 // initPostgres opens the optional Postgres vector store connection.

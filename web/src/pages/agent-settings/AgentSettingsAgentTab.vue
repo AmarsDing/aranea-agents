@@ -37,6 +37,7 @@
               scope="agent.description"
               :resource-id="agentId"
               :text="form.agent_description ?? ''"
+              :refine-fn="refinePromptField"
               flat
               size="sm"
               label="AI 优化描述"
@@ -224,11 +225,13 @@
 
 <script setup lang="ts">
 import type { Agent } from '../../features/agents/types';
+import type { AgentRuntimeConfigForm } from '../../features/agents/agentRuntimeConfig';
 import AgentChannelRefsSection from './AgentChannelRefsSection.vue';
 import AgentSettingsPromptSection from './AgentSettingsPromptSection.vue';
 import AgentPlannerSection from '../../components/agents/AgentPlannerSection.vue';
 import AgentRalphLoopSection from '../../components/agents/AgentRalphLoopSection.vue';
 import AiRefineButton from '../../components/agents/AIRefineButton.vue';
+import { refinePromptField } from '../../features/agents/aiRefine';
 import type { PlannerFormState } from '../../features/agents/plannerConfig';
 import type { RalphLoopFormState } from '../../features/agents/ralphLoopConfig';
 
@@ -239,8 +242,7 @@ const selectedProviderModelId = defineModel<string>('selectedProviderModelId', {
 withDefaults(
   defineProps<{
     form: Agent;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    config: any;
+    config: AgentRuntimeConfigForm;
     agentId?: string;
     promptModes?: { value: string; label: string; caption: string; tokens: string }[];
     statusOptions?: { label: string; value: string }[];

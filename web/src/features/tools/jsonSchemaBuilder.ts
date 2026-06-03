@@ -68,8 +68,8 @@ export function buildSchemaFromFields(rows: SchemaFieldRow[]): string {
 
 /** Keys in config_json not declared in config_schema properties. */
 export function configExtraKeys(configJson: string, schemaJson: string): string[] {
-  let config: Record<string, unknown> = {};
-  let schema: JsonSchemaObject = {};
+  let config: Record<string, unknown>;
+  let schema: JsonSchemaObject;
   try {
     config = JSON.parse(configJson || '{}') as Record<string, unknown>;
   } catch {
@@ -86,8 +86,8 @@ export function configExtraKeys(configJson: string, schemaJson: string): string[
 
 /** Shallow diff labels for default vs current config. */
 export function configDiffSummary(currentJson: string, defaultJson: string): string[] {
-  let current: Record<string, unknown> = {};
-  let defaults: Record<string, unknown> = {};
+  let current: Record<string, unknown>;
+  let defaults: Record<string, unknown>;
   try {
     current = JSON.parse(currentJson || '{}') as Record<string, unknown>;
   } catch {

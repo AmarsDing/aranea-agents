@@ -11,7 +11,6 @@ import (
 	"aranea-agents/internal/agent/a2ui"
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	"aranea-agents/internal/provider"
 	"aranea-agents/internal/skill/storage"
 	skilltrpc "aranea-agents/internal/skill/trpc"
@@ -62,7 +61,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 	}
 	if indCtx := BuildIndustryContext(ctx, Deps{
 		Agents: deps.Agents, AgentUC: deps.AgentUC,
-		Taxonomy: deps.Taxonomy,
+		Taxonomy: deps.Taxonomy, LG: deps.Logger(),
 	}, ag); indCtx != "" {
 		if catResp != "" {
 			catResp += "\n\n" + indCtx
@@ -158,8 +157,9 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 
 	if biz.ResolveMemoryRuntimePolicy(ag.Settings).MasterEnabled {
 		if !deps.HasMemory {
-			event.CtxFlowLogWarn(ctx, "agent.memory_disabled", "Agent 已启用记忆但未配置 MemoryService，记忆工具已禁用",
-				event.P("agent_id", ag.ID))
+			lg.Warn("Agent 已启用记忆但未配置 MemoryService，记忆工具已禁用",
+				loggateway.StepID("agent.memory_disabled"),
+				loggateway.Str("agent_id", ag.ID))
 		}
 	}
 
@@ -195,12 +195,19 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 // Layer A + B routing is applied via skillruntime.AgentVisibilityFilter using
 // agent_runtime_settings.skill_runtime_json and the turn query in RuntimeState.
 func buildSkillDeps(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (trpcskill.Repository, trpcskill.VisibilityFilter, codeexecutor.CodeExecutor, error) {
+	lg := deps.LG
 	slugs, err := deps.SkillUC.ListEnabledPublishedSkillKeys(ctx)
 	if err != nil || len(slugs) == 0 {
-		event.CtxFlowLogWarn(ctx, "agent.skill_build", "技能构建：无可用技能", event.P("error", err), event.P("slug_count", len(slugs)))
+		lg.Warn("技能构建：无可用技能",
+			loggateway.StepID("agent.skill_build"),
+			loggateway.Err(err),
+			loggateway.Str("slug_count", fmt.Sprintf("%v", len(slugs))))
 		return nil, nil, nil, err
 	}
-	event.CtxFlowLogDone(ctx, "agent.skill_build", "技能构建：解析中", event.P("slug_count", len(slugs)))
+	lg.Info("技能构建：解析中",
+		loggateway.StepID("agent.skill_build"),
+		loggateway.Str("flow_status", "done"),
+		loggateway.Str("slug_count", fmt.Sprintf("%v", len(slugs))))
 
 	// Always resolve rootDir so the executor has a valid path regardless of
 	// which repo backend is selected.
@@ -235,10 +242,14 @@ func buildSkillDeps(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (tr
 	}
 	factory := deps.CodeExecFactory
 	if factory == nil {
-		factory = localexec.NewFactory()
+		factory = localexec.NewFactoryWithLogger(deps.LG)
 	}
 	exec := skilltrpc.NewExecutorForAgent(ctx, factory, execType, rootDir, deps.LG)
-	event.CtxFlowLogDone(ctx, "agent.skill_build", "技能构建完成", event.P("slug_count", len(slugs)), event.P("repo_type", fmt.Sprintf("%T", repo)))
+	lg.Info("技能构建完成",
+		loggateway.StepID("agent.skill_build"),
+		loggateway.Str("flow_status", "done"),
+		loggateway.Str("slug_count", fmt.Sprintf("%v", len(slugs))),
+		loggateway.Str("repo_type", fmt.Sprintf("%T", repo)))
 	return repo, filter, exec, nil
 }
 

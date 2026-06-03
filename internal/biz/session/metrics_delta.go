@@ -19,6 +19,6 @@ type SessionMetricsDelta struct {
 }
 
 const (
-	MaxDeltaAge   = 30 * time.Second
-	MaxDeltaCount = 100
+	MaxDeltaAge   = 5 * time.Minute
+	MaxDeltaCount = 1000
 )

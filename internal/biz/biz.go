@@ -21,6 +21,7 @@ var ProviderSet = wire.NewSet(
 	NewTurnMemoryWorker,
 	NewAdminUsecase,
 	NewAvatarUsecase,
+	NewChannelIconRefresher,
 	NewMemoryUsecase,
 	NewTeamUsecase,
 	NewHookUsecase,

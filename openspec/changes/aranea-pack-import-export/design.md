@@ -152,24 +152,33 @@ internal/biz/pack/
 
 **理由**：Pack 引擎是 biz 层业务逻辑，不依赖 trpc-agent-go 或 api proto，符合分层规范。
 
-### D8: API 设计 — 新增 pack.proto
+### D8: API 设计 — 新增 pack.proto（unary RPC + bytes 传输）
 
-**选择**：新增 `api/kratos/pack/v1/pack.proto`
+**选择**：新增 `api/kratos/pack/v1/pack.proto`，使用 unary RPC + bytes 字段传输 .arpack 数据
 
 ```protobuf
 service PackService {
-  rpc ExportPack(ExportPackRequest) returns (stream ExportPackResponse);  // 流式下载
-  rpc ImportPack(stream ImportPackRequest) returns (ImportPackResponse);  // 流式上传
-  rpc ValidatePack(stream ValidatePackRequest) returns (ValidatePackResponse);
+  rpc ExportPack(ExportPackRequest) returns (ExportPackResponse);    // unary，bytes 返回
+  rpc ImportPack(ImportPackRequest) returns (ImportPackResponse);    // unary，bytes 上传
+  rpc ValidatePack(ValidatePackRequest) returns (ValidatePackResponse); // unary，bytes 上传
 }
 ```
 
-HTTP 映射：
-- `POST /v1/packs/export` → ExportPack
-- `POST /v1/packs/import` → ImportPack
-- `POST /v1/packs/validate` → ValidatePack
+- `ExportPackRequest`：`kind`（agent/team/industry）+ `ref`（ID 或 key）
+- `ExportPackResponse`：`data`（bytes，.arpack tar.gz 内容）+ `name` + `kind`
+- `ImportPackRequest`：`data`（bytes，.arpack tar.gz 内容）+ `conflict_strategy`
+- `ImportPackResponse`：各实体创建/更新/跳过计数 + `conflict_strategy` + `failures[]`
+- `ValidatePackRequest`：`data`（bytes）
+- `ValidatePackResponse`：`valid` + `errors[]` + `warnings[]` + `missing_skills[]` + `missing_func_refs[]` + `conflicts[]`
 
-**替代方案**：复用现有 Agent/Team/Graph API 逐个导入——无法保证事务性和依赖顺序。
+HTTP 映射：
+- `POST /v1/pack/export` → ExportPack（body: JSON）
+- `POST /v1/pack/import` → ImportPack（body: JSON）
+- `POST /v1/pack/validate` → ValidatePack（body: JSON）
+
+**替代方案**：
+- (A) 流式 RPC（stream ExportPackResponse / stream ImportPackRequest）——首版采用 unary + bytes 更简单，protobuf bytes 字段天然支持 base64 JSON 传输，避免流式 HTTP 的复杂度
+- (B) 复用现有 Agent/Team/Graph API 逐个导入——无法保证事务性和依赖顺序
 
 ## Risks / Trade-offs
 

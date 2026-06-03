@@ -41,14 +41,12 @@ func (r *Runner) PersistGraphRunStep(ctx context.Context, stepCtx *GraphRunStepC
 	}
 	ag, err := r.catalogAgent(ctx, m.AgentID)
 	if err != nil {
-		event.CtxFlowLogWarn(ctx, "team.graph.step.persist", "catalog agent lookup failed",
-			event.P("run_id", stepCtx.TeamRunID), event.P("node_id", nodeID), event.P("agent_id", m.AgentID), event.P("error", err.Error()))
+		r.lg.Warn("catalog agent lookup failed", loggateway.StepID("team.graph.step.persist"), loggateway.Str("run_id", stepCtx.TeamRunID), loggateway.Str("node_id", nodeID), loggateway.Str("agent_id", m.AgentID), loggateway.Err(err))
 		return
 	}
 	run, err := r.teams.GetTeamRunByID(ctx, stepCtx.TeamRunID)
 	if err != nil {
-		event.CtxFlowLogWarn(ctx, "team.graph.step.persist", "team run lookup failed",
-			event.P("run_id", stepCtx.TeamRunID), event.P("node_id", nodeID), event.P("error", err.Error()))
+		r.lg.Warn("team run lookup failed", loggateway.StepID("team.graph.step.persist"), loggateway.Str("run_id", stepCtx.TeamRunID), loggateway.Str("node_id", nodeID), loggateway.Err(err))
 		return
 	}
 	status := biz.TeamMemberStepStatusOK
@@ -101,8 +99,7 @@ func (r *Runner) FinalizeGraphTeamRun(ctx context.Context, stepCtx *GraphRunStep
 	run.UpdatedAt = now
 	run.DurationMS = int(time.Since(t0).Milliseconds())
 	if err := r.teams.UpdateTeamRun(ctx, run); err != nil {
-		event.CtxFlowLogWarn(ctx, "team.graph.finisher_update_fail", "UpdateTeamRun failed in FinalizeGraphTeamRun",
-			event.P("team_run_id", run.ID), event.P("update_error", err.Error()))
+		r.lg.Warn("UpdateTeamRun failed in FinalizeGraphTeamRun", loggateway.StepID("team.graph.finisher_update_fail"), loggateway.Str("team_run_id", run.ID), loggateway.Err(err))
 	}
 	if r.td.Pipeline.Bus != nil {
 		cp := run

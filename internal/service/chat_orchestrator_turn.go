@@ -686,7 +686,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	if !biz.IsA2AProxyAgent(ag) {
 		if intent.ShouldRun(ag, content) {
 			emitter.LogStart("chat.intent.pass", "意图识别开始", event.P("provider", prov), event.P("model", mod), event.P("content_len", len(content)))
-			intRes := intent.RunForAgent(ctx, ag, o.td.Catalog.LLM, o.td.LLMHTTP, prov, mod, content)
+			intRes := intent.RunForAgent(ctx, ag, o.td.Catalog.LLM, o.td.LLMHTTP, prov, mod, content, o.lg)
 			if intRes.Artifact != nil {
 				emitter.LogDone("chat.intent.pass", "意图识别完成", event.P("outcome", intRes.Outcome), event.P("intent_kind", intRes.Artifact.IntentKind), event.P("refined_goal_len", len(intRes.Artifact.RefinedGoal)), event.P("duration_ms", intRes.Duration.Milliseconds()))
 				if strings.TrimSpace(intRes.RawJSON) != "" {
@@ -729,7 +729,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	defer func() {
 		if userMsgPersisted && turnStatus != "ok" {
 			if err := o.td.Sessions.UpdateChatMessageStatus(ctx, sessionID, userMsg.ID, "failed", turnErrMsg); err != nil {
-				event.CtxFlowLogWarn(ctx, "chat.user_msg_status_fail", "用户消息失败状态更新失败", event.P("message_id", userMsg.ID), event.P("error", err.Error()))
+				o.lg.Warn("用户消息失败状态更新失败", loggateway.StepID("chat.user_msg_status_fail"), loggateway.Str("message_id", userMsg.ID), loggateway.Err(err))
 			}
 		}
 	}()
@@ -978,7 +978,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	}
 	if userMsgPersisted {
 		if err := o.td.Sessions.UpdateChatMessageStatus(ctx, sessionID, userMsg.ID, "ok", ""); err != nil {
-			event.CtxFlowLogWarn(ctx, "chat.user_msg_status_fail", "用户消息成功状态更新失败", event.P("message_id", userMsg.ID), event.P("error", err.Error()))
+			o.lg.Warn("用户消息成功状态更新失败", loggateway.StepID("chat.user_msg_status_fail"), loggateway.Str("message_id", userMsg.ID), loggateway.Err(err))
 		} else {
 			userMsg.Status = "ok"
 		}
@@ -1090,7 +1090,7 @@ func (o *ChatOrchestrator) recordSessionTurn(ctx context.Context, sessionID stri
 			FinalContentPreview: ptrString(preview),
 		})
 		if err != nil {
-			event.CtxFlowLogWarn(ctx, "chat.usage_record_fail", "会话轮次更新失败", event.P("session_id", sessionID), event.P("turn_id", turnID), event.P("error", err.Error()))
+			o.lg.Warn("会话轮次更新失败", loggateway.StepID("chat.usage_record_fail"), loggateway.Str("session_id", sessionID), loggateway.Str("turn_id", turnID), loggateway.Err(err))
 		}
 		return
 	}
@@ -1112,7 +1112,7 @@ func (o *ChatOrchestrator) recordSessionTurn(ctx context.Context, sessionID stri
 		FinalContentPreview: preview,
 	}
 	if _, err := o.td.Sessions.CreateTurn(ctx, turn); err != nil {
-		event.CtxFlowLogWarn(ctx, "chat.usage_record_fail", "会话轮次记录失败", event.P("session_id", sessionID), event.P("error", err.Error()))
+		o.lg.Warn("会话轮次记录失败", loggateway.StepID("chat.usage_record_fail"), loggateway.Str("session_id", sessionID), loggateway.Err(err))
 	}
 }
 
@@ -1140,7 +1140,7 @@ func (o *ChatOrchestrator) recordTeamSessionTurn(ctx context.Context, sessionID,
 			FinalContentPreview: ptrString(preview),
 		})
 		if err != nil {
-			event.CtxFlowLogWarn(ctx, "chat.usage_record_fail", "团队会话轮次更新失败", event.P("session_id", sessionID), event.P("turn_id", turnID), event.P("error", err.Error()))
+			o.lg.Warn("团队会话轮次更新失败", loggateway.StepID("chat.usage_record_fail"), loggateway.Str("session_id", sessionID), loggateway.Str("turn_id", turnID), loggateway.Err(err))
 		}
 		return
 	}
@@ -1162,7 +1162,7 @@ func (o *ChatOrchestrator) recordTeamSessionTurn(ctx context.Context, sessionID,
 		FinalContentPreview: preview,
 	}
 	if _, err := o.td.Sessions.CreateTurn(ctx, turn); err != nil {
-		event.CtxFlowLogWarn(ctx, "chat.usage_record_fail", "会话轮次记录失败", event.P("session_id", sessionID), event.P("error", err.Error()))
+		o.lg.Warn("会话轮次记录失败", loggateway.StepID("chat.usage_record_fail"), loggateway.Str("session_id", sessionID), loggateway.Err(err))
 	}
 }
 

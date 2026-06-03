@@ -106,7 +106,9 @@ function getPayload() {
   let headers: Record<string, string> = {};
   try {
     headers = JSON.parse(form.headers_json || '{}');
-  } catch {}
+  } catch {
+    // intentional empty — invalid headers fall back to empty object
+  }
   return {
     name: form.name,
     url: form.url,

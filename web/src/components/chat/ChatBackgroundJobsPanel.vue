@@ -180,6 +180,7 @@ import { useChatBackgroundJobs } from '../../features/chat/useChatBackgroundJobs
 import { useTaskDeadLetters } from '../../features/chat/useTaskDeadLetters';
 import { formatElapsed, phaseLabel } from '../../features/chat/jobFormatters';
 import { ACTIVE_RUN_STATUSES } from '../../features/chat/sessionRunStatus';
+import { backgroundJobStatusColor as statusColor } from './chatUi';
 
 type ChatBackgroundJobRow = ReturnType<typeof useChatBackgroundJobs>['rows']['value'][number];
 type TaskDeadLetterRow = ReturnType<typeof useTaskDeadLetters>['rows']['value'][number];
@@ -284,28 +285,7 @@ async function cancelJob(job: ChatBackgroundJobRow) {
   });
 }
 
-function statusColor(status: string) {
-  switch (status) {
-    case 'running':
-    case 'accepted':
-    case 'interactive':
-    case 'escalating':
-    case 'durable':
-      return 'info';
-    case 'completed':
-      return 'positive';
-    case 'failed':
-    case 'timeout':
-      return 'negative';
-    case 'async_queued':
-    case 'queued':
-      return 'purple';
-    case 'cancelled':
-      return 'warning';
-    default:
-      return 'grey';
-  }
-}
+
 
 function deadLetterStatusColor(status: string) {
   switch (status) {

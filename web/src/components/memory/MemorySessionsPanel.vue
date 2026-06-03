@@ -172,6 +172,7 @@ import type { QTableProps } from 'quasar';
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import type { Session } from '../../features/session/types';
 import type { L0AssemblySegment, L0AssemblySnapshot, L1Task } from '../../features/memory/types';
+import { memorySessionStatusColor as statusColor } from '../../features/memory/memoryTableUi';
 
 defineProps<{
   sessionRows: Session[];
@@ -229,13 +230,6 @@ function contextRatioColor(value?: number) {
   if (ratio >= 0.85) return 'negative';
   if (ratio >= 0.6) return 'warning';
   return 'positive';
-}
-
-function statusColor(status?: string) {
-  if (status === 'active' || status === 'completed') return 'positive';
-  if (status === 'paused' || status === 'pending') return 'warning';
-  if (status === 'failed' || status === 'cancelled' || status === 'timeout') return 'negative';
-  return 'blue-grey';
 }
 
 function formatPercent(value?: number) {

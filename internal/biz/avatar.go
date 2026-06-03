@@ -6,10 +6,12 @@ import (
 
 // Re-export avatar types from sub-package for backward compatibility.
 type (
-	AvatarAsset   = avatar.Asset
-	AvatarImage   = avatar.Image
-	AvatarRepo    = avatar.Repo
-	AvatarUsecase = avatar.Usecase
+	AvatarAsset                    = avatar.Asset
+	AvatarImage                    = avatar.Image
+	AvatarRepo                     = avatar.Repo
+	AvatarUsecase                  = avatar.Usecase
+	AvatarChannelIconRefresher     = avatar.ChannelIconRefresher
+	RefreshChannelPlatformIconsResult = avatar.RefreshChannelPlatformIconsResult
 )
 
 // Re-export avatar constructor for backward compatibility.

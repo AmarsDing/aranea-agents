@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	mcpconfig "aranea-agents/internal/mcp/config"
 	"aranea-agents/internal/skill/storage"
 	"aranea-agents/internal/tools"
@@ -22,6 +21,7 @@ import (
 )
 
 func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (*tooltrpc.AssembledToolsets, error) {
+	lg := deps.LG
 	var cfg tooltrpc.ToolsetConfig
 	var eff map[string]bool
 
@@ -69,8 +69,9 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 			cfg.Kanban = true
 			cfg.KanbanBridge = deps.KanbanBridge
 		} else {
-			event.CtxFlowLogWarn(ctx, "agent.tool_build", "kanban 已启用但 KanbanBridge 未注入，跳过看板工具",
-				event.P("agent_id", ag.ID))
+			lg.Warn("kanban 已启用但 KanbanBridge 未注入，跳过看板工具",
+				loggateway.StepID("agent.tool_build"),
+				loggateway.Str("agent_id", ag.ID))
 		}
 	}
 
@@ -93,28 +94,28 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 	cfg.SubAgentService = deps.SubAgentService
 
 	if !tooltrpc.ToolsetConfigHasAny(cfg) {
-		event.CtxFlowLogDone(ctx, "agent.tool_build", "工具构建：未启用任何工具", event.P("agent_id", ag.ID))
+		lg.Info("工具构建：未启用任何工具", loggateway.StepID("agent.tool_build"), loggateway.Str("flow_status", "done"), loggateway.Str("agent_id", ag.ID))
 		return nil, nil
 	}
-	event.CtxFlowLogDone(ctx, "agent.tool_build", "工具构建中", event.P("agent_id", ag.ID), event.P("filesystem", cfg.Filesystem), event.P("mcp_servers", len(cfg.MCPServers)))
+	lg.Info("工具构建中", loggateway.StepID("agent.tool_build"), loggateway.Str("flow_status", "done"), loggateway.Str("agent_id", ag.ID), loggateway.Bool("filesystem", cfg.Filesystem), loggateway.Int("mcp_servers", len(cfg.MCPServers)))
 	applyRuntimeToolConfigs(ctx, ag.ID, eff, deps, &cfg)
 	applyWebResearchPlatformDefaults(ctx, deps, &cfg)
 	tooltrpc.ResolveGeminiFetchModel(&cfg, ag.Provider, ag.Model)
 	if skipped := tooltrpc.PruneUnconfiguredToolFlags(&cfg); len(skipped) > 0 {
-		event.CtxFlowLogWarn(ctx, "agent.tool_build", "已跳过未配置凭证的工具，避免构建失败",
-			event.P("agent_id", ag.ID), event.P("skipped_tools", skipped))
+		lg.Warn("已跳过未配置凭证的工具，避免构建失败",
+			loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Str("skipped_tools", fmt.Sprintf("%v", skipped)))
 	}
 	if err := applyToolWorkspaceDirs(ctx, ag, deps, &cfg); err != nil {
-		event.CtxFlowLogError(ctx, "agent.tool_build", "工具构建失败", event.P("agent_id", ag.ID), event.P("error", err))
+		lg.Error("工具构建失败", loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
 		return nil, err
 	}
 	ts, err := tooltrpc.BuildToolsets(ctx, cfg, deps.LG)
 	if err != nil || ts == nil {
-		event.CtxFlowLogError(ctx, "agent.tool_build", "工具构建失败", event.P("agent_id", ag.ID), event.P("error", err))
+		lg.Error("工具构建失败", loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
 		return ts, err
 	}
 	toolCount := len(ts.Tools) + len(ts.ToolSets)
-	event.CtxFlowLogDone(ctx, "agent.tool_build", "工具构建完成", event.P("agent_id", ag.ID), event.P("tool_count", toolCount))
+	lg.Info("工具构建完成", loggateway.StepID("agent.tool_build"), loggateway.Str("flow_status", "done"), loggateway.Str("agent_id", ag.ID), loggateway.Int("tool_count", toolCount))
 	if gate := buildToolConfirmGate(ctx, ag, deps); gate != nil {
 		tooltrpc.ApplyConfirmationPolicy(ts, gate.confirmationMap())
 	}
@@ -210,8 +211,8 @@ func applyToolWorkspaceDirs(ctx context.Context, ag biz.Agent, deps TRPCBuilderD
 		if shellDir == "" {
 			cfg.ShellExecDir = root
 		} else if err := ensureToolWorkspaceDir(shellDir); err != nil {
-			event.CtxFlowLogWarn(ctx, "agent.tool_build", "Shell 工作目录无效，回退到统一工作区",
-				event.P("agent_id", ag.ID), event.P("configured_dir", shellDir), event.P("error", err))
+			deps.Logger().Warn("Shell 工作目录无效，回退到统一工作区",
+				loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Str("configured_dir", shellDir), loggateway.Err(err))
 			cfg.ShellExecDir = root
 		}
 	}
@@ -229,8 +230,8 @@ func resolveAgentFilesystemDir(ctx context.Context, ag biz.Agent, deps TRPCBuild
 	configured = strings.TrimSpace(configured)
 	if configured != "" {
 		if err := ensureToolWorkspaceDir(configured); err != nil {
-			event.CtxFlowLogWarn(ctx, "agent.tool_build", "工具工作区路径无效，回退到默认目录",
-				event.P("agent_id", ag.ID), event.P("configured_dir", configured), event.P("error", err))
+			deps.Logger().Warn("工具工作区路径无效，回退到默认目录",
+				loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Str("configured_dir", configured), loggateway.Err(err))
 		} else {
 			return configured, nil
 		}

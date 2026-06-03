@@ -137,7 +137,7 @@ func TestShouldFireAlert_NilUsecase(t *testing.T) {
 }
 
 func TestShouldFireAlert_NoLastFired(t *testing.T) {
-	u := monitor.NewUsecase(nil, nil)
+	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	rule := monitor.AlertRule{ID: "r1", CooldownMinutes: 60}
 	if !u.ShouldFireAlert(rule, time.Now()) {
 		t.Error("ShouldFireAlert() = false, want true (no last fired)")
@@ -145,7 +145,7 @@ func TestShouldFireAlert_NoLastFired(t *testing.T) {
 }
 
 func TestShouldFireAlert_WithinCooldown(t *testing.T) {
-	u := monitor.NewUsecase(nil, nil)
+	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	now := time.Now()
 	lastFired := now.Add(-30 * time.Minute)
 	rule := monitor.AlertRule{ID: "r1", CooldownMinutes: 60, LastFiredAt: &lastFired}
@@ -155,7 +155,7 @@ func TestShouldFireAlert_WithinCooldown(t *testing.T) {
 }
 
 func TestShouldFireAlert_AfterCooldown(t *testing.T) {
-	u := monitor.NewUsecase(nil, nil)
+	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	now := time.Now()
 	lastFired := now.Add(-61 * time.Minute)
 	rule := monitor.AlertRule{ID: "r1", CooldownMinutes: 60, LastFiredAt: &lastFired}
@@ -165,7 +165,7 @@ func TestShouldFireAlert_AfterCooldown(t *testing.T) {
 }
 
 func TestShouldFireAlert_ZeroCooldown(t *testing.T) {
-	u := monitor.NewUsecase(nil, nil)
+	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	now := time.Now()
 	lastFired := now.Add(-30 * time.Minute)
 	rule := monitor.AlertRule{ID: "r1", CooldownMinutes: 0, LastFiredAt: &lastFired}
@@ -175,7 +175,7 @@ func TestShouldFireAlert_ZeroCooldown(t *testing.T) {
 }
 
 func TestShouldFireAlert_RecoveredWithinCooldown(t *testing.T) {
-	u := monitor.NewUsecase(nil, nil)
+	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	now := time.Now()
 	recoveredAt := now.Add(-10 * time.Minute)
 	rule := monitor.AlertRule{
@@ -190,7 +190,7 @@ func TestShouldFireAlert_RecoveredWithinCooldown(t *testing.T) {
 }
 
 func TestShouldFireAlert_RecoveredAfterCooldown(t *testing.T) {
-	u := monitor.NewUsecase(nil, nil)
+	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	now := time.Now()
 	recoveredAt := now.Add(-61 * time.Minute)
 	rule := monitor.AlertRule{
@@ -205,7 +205,7 @@ func TestShouldFireAlert_RecoveredAfterCooldown(t *testing.T) {
 }
 
 func TestShouldFireAlert_InMemoryFallback(t *testing.T) {
-	u := monitor.NewUsecase(nil, nil)
+	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	now := time.Now()
 	rule := monitor.AlertRule{ID: "r1", CooldownMinutes: 60}
 	u.MarkAlertFired("r1", now)
@@ -215,7 +215,7 @@ func TestShouldFireAlert_InMemoryFallback(t *testing.T) {
 }
 
 func TestShouldFireAlert_InMemoryFallbackExpired(t *testing.T) {
-	u := monitor.NewUsecase(nil, nil)
+	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	now := time.Now()
 	past := now.Add(-61 * time.Minute)
 	rule := monitor.AlertRule{ID: "r1", CooldownMinutes: 60}
@@ -226,7 +226,7 @@ func TestShouldFireAlert_InMemoryFallbackExpired(t *testing.T) {
 }
 
 func TestShouldFireAlert_DBPersistedTakesPrecedence(t *testing.T) {
-	u := monitor.NewUsecase(nil, nil)
+	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	now := time.Now()
 	lastFired := now.Add(-5 * time.Minute)
 	rule := monitor.AlertRule{ID: "r1", CooldownMinutes: 60, LastFiredAt: &lastFired}
@@ -237,7 +237,7 @@ func TestShouldFireAlert_DBPersistedTakesPrecedence(t *testing.T) {
 }
 
 func TestMarkAlertFired(t *testing.T) {
-	u := monitor.NewUsecase(nil, nil)
+	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	now := time.Now()
 	u.MarkAlertFired("r1", now)
 	rule := monitor.AlertRule{ID: "r1", CooldownMinutes: 60}
@@ -252,7 +252,7 @@ func TestMarkAlertFired_NilUsecase(t *testing.T) {
 }
 
 func TestCleanupStaleLastFired(t *testing.T) {
-	u := monitor.NewUsecase(nil, nil)
+	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	now := time.Now()
 	u.MarkAlertFired("old", now.Add(-25*time.Hour))
 	u.MarkAlertFired("recent", now.Add(-30*time.Minute))
@@ -276,13 +276,13 @@ func TestCleanupStaleLastFired_NilUsecase(t *testing.T) {
 }
 
 func TestCleanupStaleLastFired_ZeroMaxAge(t *testing.T) {
-	u := monitor.NewUsecase(nil, nil)
+	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	u.MarkAlertFired("r1", time.Now().Add(-25*time.Hour))
 	u.CleanupStaleLastFired(time.Now(), 0)
 }
 
 func TestCleanupStaleLastFired_NegativeMaxAge(t *testing.T) {
-	u := monitor.NewUsecase(nil, nil)
+	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	u.MarkAlertFired("r1", time.Now().Add(-25*time.Hour))
 	u.CleanupStaleLastFired(time.Now(), -1*time.Hour)
 }
@@ -302,7 +302,7 @@ func TestAlertFiringState_Constants(t *testing.T) {
 func TestNewUsecase_WithOptions(t *testing.T) {
 	rb := monitor.NewMetricRingBuffer()
 	reg := monitor.NewAlertMetricRegistry()
-	u := monitor.NewUsecase(nil, nil,
+	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil,
 		monitor.WithRingBuffer(rb),
 		monitor.WithRegistry(reg),
 	)
@@ -312,7 +312,7 @@ func TestNewUsecase_WithOptions(t *testing.T) {
 }
 
 func TestUsecase_SetEvalWorker(t *testing.T) {
-	u := monitor.NewUsecase(nil, nil)
+	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	w := monitor.NewAlertEvalWorker(u, monitor.NewMetricRingBuffer(), loggateway.NewNoop())
 	u.SetEvalWorker(w)
 	if u.EvalWorker() != w {
@@ -333,7 +333,7 @@ func TestUsecase_EvalWorker_NilUsecase(t *testing.T) {
 }
 
 func TestUsecase_SetRegistry(t *testing.T) {
-	u := monitor.NewUsecase(nil, nil)
+	u := monitor.NewUsecase(nil, nil, nil, nil, nil, nil)
 	reg := monitor.NewAlertMetricRegistry()
 	u.SetRegistry(reg)
 	if u.Registry() != reg {

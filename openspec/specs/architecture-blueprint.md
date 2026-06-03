@@ -519,6 +519,30 @@ Turn 级别调试事件录制，JSONL 输出，safe/full 模式。
 
 **投递策略**：`DropOldest`（默认）、`DropNewest`、`BlockUpTo`（可靠）。关键事件（tool_result、error、runner_completion）永不丢弃。
 
+**FlowTracker（流程追踪）**：TraceEmitter 已从单一 struct 拆分为三层组件：
+- **FlowTracker**（`internal/event/flow_tracker.go`）：流程追踪核心，持有 FlowContext + SpanCollector + UsageAggregator，提供 LogStart/LogDone/LogError 等方法
+- **SpanCollector**（`internal/event/span_collector.go`）：Span 树管理，管理 LLM/Tool span 生命周期，生成 usage.metadata_json
+- **UsageAggregator**（`internal/event/usage_aggregator.go`）：用量聚合，观察 trpc-agent-go 框架事件并聚合 usage 元数据
+- **TraceEmitter**（`internal/event/trace_emitter.go`）：v2 embedding wrapper，嵌入 FlowTracker，添加 `ObserveFrameworkEvent` 桥接 trpc-agent-go 事件流
+
+**SinkGroup（独立 goroutine 隔离的 Sink 包装器）**：
+- 每个 Sink 由独立 `SinkGroup`（`pkg/logpipeline/sink_group.go`）包装，独立 goroutine + channel 缓冲 + DropPolicy
+- 慢 Sink 不影响其他 Sink，Panic 自动恢复
+- DropPolicy：`DropNewest`（默认，缓冲区满时丢弃新条目）、`DropBlock`（阻塞调用方）
+- Pipeline 内部维护 `[]*SinkGroup`，`AddSink()` 自动包装为默认 SinkGroup
+
+**RuntimeLogAdapter（运行时日志桥接）**：
+- `RuntimeLogAdapter`（`internal/adapter/runtime_log.go`）实现 `agentlog.Logger` 接口
+- 将 trpc-agent-go 运行时日志（独立 zap.Sugar）桥接到 loggateway Pipeline
+- Fatal/Fatalf 特殊处理：直写 stderr + `os.Exit(1)`，不走异步 Pipeline
+- 解决了架构偏差 A-2（运行时日志未接入 loggateway）和 A-3（双日志接口无桥接）
+
+**配置驱动 Sink 注册**：
+- `conf.proto` 定义 `SinkType`（FILE/STDOUT/EVENTBUS）和 `DropPolicy`（NEWEST/BLOCK）枚举
+- `Logging.sinks` 字段（`repeated LoggingSink`）支持配置驱动的 Sink 列表
+- `sink_factory.go` 工厂模式：`NewSinkFromConfig(cfg SinkConfig, deps SinkFactoryDeps) → (Sink, error)`
+- `SinkConfig` 与 proto 解耦，cmd/admin/main.go 负责转换；EventBus Sink 的 Publisher 通过 `SinkFactoryDeps` 注入
+
 #### 运行时依赖 (`internal/runtime/`)
 
 `TurnDeps` 是每个 Chat Turn 的统一依赖集：

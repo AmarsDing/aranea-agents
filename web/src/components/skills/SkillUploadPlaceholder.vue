@@ -178,6 +178,7 @@ import type {
   SkillRefineResult,
   SkillSimilarityMetrics,
 } from '../../features/skills/types';
+import { skillCandidateStatusColor as statusColor, skillCandidateIcon as candidateIcon, skillCandidateStatusColor as candidateColor } from './skillTableUi';
 
 const props = defineProps<{
   /** `kratosApi` **`/v1/skills/import*`**（**`cmd/admin`**）；由 Page 绑定 `features/skills/api` */
@@ -320,18 +321,6 @@ async function applyImportResult() {
   } finally {
     applying.value = false;
   }
-}
-
-function statusColor(status: string) {
-  return status === 'pass' ? 'positive' : status === 'warn' ? 'warning' : 'negative';
-}
-
-function candidateIcon(status: string) {
-  return status === 'pass' ? 'check_circle' : status === 'warn' ? 'merge_type' : 'error';
-}
-
-function candidateColor(status: string) {
-  return status === 'pass' ? 'positive' : status === 'warn' ? 'warning' : 'negative';
 }
 
 function candidateRequiresRiskApproval(candidate: SkillImportJob['candidates'][number]) {

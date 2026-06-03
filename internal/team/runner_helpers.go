@@ -87,8 +87,7 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 	run.FinishedAt = agent.RFC3339Now()
 	run.DurationMS = int(time.Since(t0).Milliseconds())
 	if err := r.teams.UpdateTeamRun(ctx, *run); err != nil {
-		event.CtxFlowLogWarn(ctx, "team.run.err_update_fail", "UpdateTeamRun failed in finishRunErr",
-			event.P("team_run_id", run.ID), event.P("update_error", err.Error()))
+		r.lg.Warn("UpdateTeamRun failed in finishRunErr", loggateway.StepID("team.run.err_update_fail"), loggateway.Str("team_run_id", run.ID), loggateway.Err(err))
 	}
 	if biz.ShouldRecordTaskDeadLetter(run.DefinitionSnapshotJSON) {
 		if dlerr := r.teams.CreateTaskDeadLetter(ctx, biz.TaskDeadLetter{
@@ -103,8 +102,7 @@ func (r *Runner) finishRunErr(ctx context.Context, run *biz.TeamRun, t0 time.Tim
 			Status:           biz.TaskDeadLetterStatusPending,
 			CreatedAt:        agent.RFC3339Now(),
 		}); dlerr != nil {
-			event.CtxFlowLogWarn(ctx, "team.run.dead_letter_fail", "CreateTaskDeadLetter failed",
-				event.P("team_run_id", run.ID), event.P("error", dlerr.Error()))
+			r.lg.Warn("CreateTaskDeadLetter failed", loggateway.StepID("team.run.dead_letter_fail"), loggateway.Str("team_run_id", run.ID), loggateway.Err(dlerr))
 		}
 	}
 	if r.td.Pipeline.Bus != nil {
@@ -129,8 +127,7 @@ func (r *Runner) publishTeamRunSummary(ctx context.Context, run biz.TeamRun) {
 	summary := SummaryMapFromData(data)
 	if b, merr := json.Marshal(summary); merr == nil {
 		if uerr := r.teams.UpdateTeamRunSummaryJSON(ctx, run.ID, string(b)); uerr != nil {
-			event.CtxFlowLogWarn(ctx, "team.run.summary_update_fail", "UpdateTeamRunSummaryJSON failed",
-				event.P("team_run_id", run.ID), event.P("update_error", uerr.Error()))
+			r.lg.Warn("UpdateTeamRunSummaryJSON failed", loggateway.StepID("team.run.summary_update_fail"), loggateway.Str("team_run_id", run.ID), loggateway.Err(uerr))
 		}
 	}
 	r.td.Pipeline.Bus.Publish(ctx, TeamSummaryEnvelope(run, steps))

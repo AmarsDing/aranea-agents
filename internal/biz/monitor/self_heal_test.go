@@ -39,7 +39,7 @@ func TestNewSelfHealUsecase_NilDeps(t *testing.T) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	diag := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	diag := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	handler := &mockHealHandler{}
 
 	if monitor.NewSelfHealUsecase(nil, handler, loggateway.NewNoop()) != nil {
@@ -64,7 +64,7 @@ func TestSelfHealUsecase_NoRootCauses(t *testing.T) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	diag := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	diag := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	handler := &mockHealHandler{}
 	uc := monitor.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
 
@@ -89,7 +89,7 @@ func TestSelfHealUsecase_LowConfidenceSkipped(t *testing.T) {
 			}, nil
 		},
 	}
-	diag := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	diag := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	handler := &mockHealHandler{}
 	uc := monitor.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
 
@@ -115,7 +115,7 @@ func TestSelfHealUsecase_AppliedFix(t *testing.T) {
 			}, nil
 		},
 	}
-	diag := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	diag := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	handler := &mockHealHandler{}
 	uc := monitor.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
 
@@ -149,7 +149,7 @@ func TestSelfHealUsecase_FixActionFailed(t *testing.T) {
 			}, nil
 		},
 	}
-	diag := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	diag := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	handler := &mockHealHandler{shouldErr: true}
 	uc := monitor.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
 
@@ -174,7 +174,7 @@ func TestSelfHealUsecase_CooldownPreventsRepeat(t *testing.T) {
 			}, nil
 		},
 	}
-	diag := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	diag := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	handler := &mockHealHandler{}
 	uc := monitor.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
 
@@ -197,7 +197,7 @@ func TestSelfHealUsecase_ListHealRecords(t *testing.T) {
 			return monitor.ListResult{}, nil
 		},
 	}
-	diag := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	diag := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	handler := &mockHealHandler{}
 	uc := monitor.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
 
@@ -225,7 +225,7 @@ func TestSelfHealUsecase_ProviderTimeoutRetry(t *testing.T) {
 			}, nil
 		},
 	}
-	diag := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	diag := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	handler := &mockHealHandler{}
 	uc := monitor.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
 
@@ -256,7 +256,7 @@ func TestSelfHealUsecase_RateLimitRetry(t *testing.T) {
 			}, nil
 		},
 	}
-	diag := monitor.NewDiagBundleGenerator(repo, loggateway.NewNoop())
+	diag := monitor.NewDiagBundleGenerator(repo, repo, loggateway.NewNoop())
 	handler := &mockHealHandler{}
 	uc := monitor.NewSelfHealUsecase(diag, handler, loggateway.NewNoop())
 

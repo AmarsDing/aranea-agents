@@ -63,12 +63,16 @@ var simpleIconsSlug = map[string]string{
 	"qa-channel":      "testinglibrary",
 }
 
-func init() {
-	avatar.SetChannelIconRefresher(refreshChannelPlatformIcons)
+// channelIconRefresher implements avatar.ChannelIconRefresher via Iconify API.
+type channelIconRefresher struct{}
+
+// NewChannelIconRefresher constructs a ChannelIconRefresher implementation.
+func NewChannelIconRefresher() avatar.ChannelIconRefresher {
+	return &channelIconRefresher{}
 }
 
-// refreshChannelPlatformIcons is the implementation registered into avatar.Usecase.
-func refreshChannelPlatformIcons(ctx context.Context, repo avatar.Repo) (*avatar.RefreshChannelPlatformIconsResult, error) {
+// RefreshChannelPlatformIcons fetches channel icons from Iconify and upserts them.
+func (r *channelIconRefresher) RefreshChannelPlatformIcons(ctx context.Context, repo avatar.Repo) (*avatar.RefreshChannelPlatformIconsResult, error) {
 	if repo == nil {
 		return nil, kerrors.BadRequest("AVATAR", "avatar repo is required")
 	}

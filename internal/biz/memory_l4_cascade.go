@@ -47,15 +47,6 @@ type CascadeSagaStore interface {
 	HasCascadeSaga(ctx context.Context, proposalID string) (bool, error)
 }
 
-// CascadeGraphStore is a convenience aggregate for Wire binding.
-// Deprecated: consumers should depend on individual sub-interfaces (CascadeProposalStore, CascadeGraphReader, CascadeFactMutator, CascadeSagaStore).
-type CascadeGraphStore interface {
-	CascadeProposalStore
-	CascadeGraphReader
-	CascadeFactMutator
-	CascadeSagaStore
-}
-
 func NewL4CascadeUsecase(proposals CascadeProposalStore, reader CascadeGraphReader, mutator CascadeFactMutator, saga CascadeSagaStore, entityWriter L4EntityWriter, lg loggateway.Logger) *L4CascadeUsecase {
 	if proposals == nil {
 		return nil

@@ -9,8 +9,8 @@ import (
 	a2atrpc "aranea-agents/internal/a2a/trpc"
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
 	rt "aranea-agents/internal/runtime"
+	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	trpcplugin "trpc.group/trpc-go/trpc-agent-go/plugin"
@@ -102,8 +102,8 @@ func (s *ChatService) BuildA2ARunner(ctx context.Context, agentID, publicURL str
 	}
 	rl := chatagent.ResolveRalphLoopTurn(ag.Settings)
 	if rl.SkipErr != nil {
-		event.CtxFlowLogWarn(ctx, "a2a.runner.ralph_loop", "Ralph Loop 配置无效，已跳过",
-			event.P("agent_id", ag.ID), event.P("error", rl.SkipErr.Error()))
+		s.lg.Warn("Ralph Loop 配置无效，已跳过",
+			loggateway.StepID("a2a.runner.ralph_loop"), loggateway.Str("agent_id", ag.ID), loggateway.Err(rl.SkipErr))
 	}
 	runner, err := s.orch.td.CoalesceRunnerManager().NewTurnRunner(root, rt.TurnRunnerSpec{
 		Plugins:          plugins,

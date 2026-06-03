@@ -72,7 +72,8 @@ import type { MonitorLogHub } from '../../features/monitor/useLogStreamHub';
 import type { MonitorLogLine, StreamState } from '../../features/monitor/types';
 import LogLevelToggle, { type LogLevel } from './LogLevelToggle.vue';
 
-const props = defineProps<{}>();
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+defineProps<{}>();
 const emit = defineEmits<{
   clear: [];
 }>();

@@ -1,10 +1,10 @@
 <template>
   <div v-if="shell" :class="shellClasses">
     <q-table v-bind="tableBind" :flat="flat" :dense="dense" :class="tableClasses">
-      <template v-for="name in forwardedSlotNames" #[name]="slotData">
+      <template v-for="name in forwardedSlotNames" :key="name" #[name]="slotData">
         <slot :name="name" v-bind="slotData ?? {}" />
       </template>
-      <template v-for="colName in resizableHeaderColumns" #[headerCellSlot(colName)]="slotData">
+      <template v-for="colName in resizableHeaderColumns" :key="colName" #[headerCellSlot(colName)]="slotData">
         <q-th :props="slotData" class="app-registry-th-resizable">
           {{ slotData.col.label }}
           <span
@@ -20,10 +20,10 @@
   </div>
   <div v-else>
     <q-table v-bind="tableBind" :flat="flat" :dense="dense" :class="tableClasses">
-      <template v-for="name in forwardedSlotNames" #[name]="slotData">
+      <template v-for="name in forwardedSlotNames" :key="name" #[name]="slotData">
         <slot :name="name" v-bind="slotData ?? {}" />
       </template>
-      <template v-for="colName in resizableHeaderColumns" #[headerCellSlot(colName)]="slotData">
+      <template v-for="colName in resizableHeaderColumns" :key="colName" #[headerCellSlot(colName)]="slotData">
         <q-th :props="slotData" class="app-registry-th-resizable">
           {{ slotData.col.label }}
           <span

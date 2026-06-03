@@ -38,6 +38,15 @@
 |------|------|------|
 | Agent 运行时 | `pkg/trpc-agent-go/docs/` | 框架真相源 |
 
+### 日志架构
+
+| 约束 | 说明 |
+|------|------|
+| 红线 #16 | 禁止 `log/slog`，统一使用 `pkg/loggateway.Logger` |
+| Global() deprecated | 新代码必须通过构造注入 `loggateway.Logger`，禁止使用 `loggateway.Global()` |
+| CtxFlowLog* | 遗留 API，新代码使用 `loggateway.Logger` + `With()` |
+| 运行时日志 | trpc-agent-go 运行时日志已通过 RuntimeLogAdapter 桥接到 Pipeline |
+
 ## 模块关联（开发前必读）
 
 > **模块不是孤岛。改任何模块前，必须先读关联文档。**

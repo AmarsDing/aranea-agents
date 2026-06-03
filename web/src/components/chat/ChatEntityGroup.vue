@@ -21,7 +21,7 @@
           :move="onMove"
           @end="onDragEnd"
         >
-          <template #item="{ element: item, index }">
+          <template #item="{ element: item }">
             <ChatEntityItem
               :name="item.display_name"
               :active="activeId === item.id"
@@ -46,6 +46,11 @@ import { computed } from 'vue';
 import draggable from 'vuedraggable';
 import ChatSectionHeader from './ChatSectionHeader.vue';
 import ChatEntityItem from './ChatEntityItem.vue';
+import {
+  entityStatusIconFor as statusIconFor,
+  entityStatusColorFor as statusColorFor,
+  entityStatusLabelFor as statusLabelFor,
+} from './chatUi';
 
 export type EntityItem = {
   id: string;
@@ -122,29 +127,7 @@ function onDragEnd() {
   }
 }
 
-function isWorking(item: EntityItem) {
-  return /work|run|busy|ing/i.test(item.status || '');
-}
 
-function isInactive(item: EntityItem) {
-  return /inactive|disabled|stop|pause/i.test(item.status || '');
-}
-
-function statusIconFor(item: EntityItem) {
-  return isWorking(item) ? 'bolt' : 'task_alt';
-}
-
-function statusColorFor(item: EntityItem) {
-  if (isWorking(item)) return 'negative';
-  if (isInactive(item)) return 'grey';
-  return 'positive';
-}
-
-function statusLabelFor(item: EntityItem) {
-  if (isWorking(item)) return '工作中';
-  if (isInactive(item)) return '已停用';
-  return '空闲';
-}
 </script>
 
 <style scoped>
@@ -177,7 +160,7 @@ function statusLabelFor(item: EntityItem) {
 }
 
 .chat-entity-item--chosen {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px var(--glass-border, rgba(0, 0, 0, 0.15));
   transform: translateY(-2px);
 }
 

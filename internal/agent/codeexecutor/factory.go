@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 
-	"aranea-agents/internal/event"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagentcodeexec "trpc.group/trpc-go/trpc-agent-go/codeexecutor"
@@ -30,6 +29,7 @@ type Factory struct {
 	lg        loggateway.Logger
 }
 
+// Deprecated: use NewFactoryWithLogger for proper logger injection.
 func NewFactory() *Factory {
 	return &Factory{env: LoadEnvConfig()}
 }
@@ -137,11 +137,18 @@ func (f *Factory) Resolve(ctx context.Context, agentType, workDir string) trpcag
 	}
 }
 
+func (f *Factory) logger() loggateway.Logger {
+	if f.lg != nil {
+		return f.lg
+	}
+	return loggateway.NewNoop()
+}
+
 func (f *Factory) applyAvailabilityFallback(ctx context.Context, typ string) string {
 	if typ == TypeDocker && !DockerAvailable() {
-		event.CtxFlowLogWarn(ctx, "codeexec.docker_fallback",
-			"Docker 不可用，回退到 local 执行器",
-			event.P("requested", TypeDocker))
+		f.logger().Warn("Docker 不可用，回退到 local 执行器",
+			loggateway.StepID("codeexec.docker_fallback"),
+			loggateway.Str("requested", TypeDocker))
 		return TypeLocal
 	}
 	if typ == TypeE2B && !f.IsBackendAvailable(TypeE2B) {
@@ -156,18 +163,18 @@ func (f *Factory) applyAvailabilityFallback(ctx context.Context, typ string) str
 }
 
 func (f *Factory) warnResolveFallback(ctx context.Context, requested string) {
-	event.CtxFlowLogWarn(ctx, "codeexec.resolve_fallback",
-		"请求的执行器不可用，回退到 local",
-		event.P("requested", requested))
+	f.logger().Warn("请求的执行器不可用，回退到 local",
+		loggateway.StepID("codeexec.resolve_fallback"),
+		loggateway.Str("requested", requested))
 }
 
 func (f *Factory) warnLocalInProd(ctx context.Context, typ string) {
 	if typ != TypeLocal || f.env.AllowLocalInProd || !isProductionEnv() {
 		return
 	}
-	event.CtxFlowLogWarn(ctx, "codeexec.local_in_prod",
-		"生产环境使用 local 执行器（无隔离）；建议配置 docker 或设置 CODE_EXECUTOR_ALLOW_LOCAL_IN_PROD=1",
-		event.P("backend", TypeLocal))
+	f.logger().Warn("生产环境使用 local 执行器（无隔离）；建议配置 docker 或设置 CODE_EXECUTOR_ALLOW_LOCAL_IN_PROD=1",
+		loggateway.StepID("codeexec.local_in_prod"),
+		loggateway.Str("backend", TypeLocal))
 }
 
 func isProductionEnv() bool {

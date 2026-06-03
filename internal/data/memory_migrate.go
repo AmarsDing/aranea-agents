@@ -15,15 +15,15 @@ type LegacyTRPCMigrationStatus struct {
 }
 
 // GetLegacyTRPCMigrationStatus returns counts of unmigrated trpc_memory entities and gate state.
-func GetLegacyTRPCMigrationStatus(ctx context.Context, store *sessionmemory.Store, lg loggateway.Logger) (LegacyTRPCMigrationStatus, error) {
+func GetLegacyTRPCMigrationStatus(ctx context.Context, store *sessionmemory.Store, d *Data, lg loggateway.Logger) (LegacyTRPCMigrationStatus, error) {
 	var out LegacyTRPCMigrationStatus
 	if store == nil {
 		return out, fmt.Errorf("legacy trpc migration: store required")
 	}
-	client := store.Client()
-	if client == nil {
-		return out, fmt.Errorf("legacy trpc migration: ent client required")
+	if d == nil {
+		return out, fmt.Errorf("legacy trpc migration: data required")
 	}
+	client := d.ClientFromCtx(ctx)
 	applied, err := isMigrationApplied(ctx, client, MigrationLegacyTRPCMemoryFacts, lg)
 	if err != nil {
 		return out, err
@@ -40,14 +40,14 @@ func GetLegacyTRPCMigrationStatus(ctx context.Context, store *sessionmemory.Stor
 	return out, nil
 }
 
-func RunLegacyTRPCMemoryMigration(ctx context.Context, store *sessionmemory.Store, lg loggateway.Logger) (migrated int, skipped bool, err error) {
+func RunLegacyTRPCMemoryMigration(ctx context.Context, store *sessionmemory.Store, d *Data, lg loggateway.Logger) (migrated int, skipped bool, err error) {
 	if store == nil {
 		return 0, false, fmt.Errorf("legacy trpc migration: store required")
 	}
-	client := store.Client()
-	if client == nil {
-		return 0, false, fmt.Errorf("legacy trpc migration: ent client required")
+	if d == nil {
+		return 0, false, fmt.Errorf("legacy trpc migration: data required")
 	}
+	client := d.ClientFromCtx(ctx)
 	applied, err := isMigrationApplied(ctx, client, MigrationLegacyTRPCMemoryFacts, lg)
 	if err != nil {
 		return 0, false, err

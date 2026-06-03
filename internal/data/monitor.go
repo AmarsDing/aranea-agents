@@ -22,6 +22,11 @@ type monitorRepo struct {
 }
 
 var _ bizmonitor.Repo = (*monitorRepo)(nil)
+var _ bizmonitor.AuditRepo = (*monitorRepo)(nil)
+var _ bizmonitor.EventRepo = (*monitorRepo)(nil)
+var _ bizmonitor.TraceRepo = (*monitorRepo)(nil)
+var _ bizmonitor.AlertRepo = (*monitorRepo)(nil)
+var _ bizmonitor.RunnerCompletionRepo = (*monitorRepo)(nil)
 
 func NewMonitorRepo(d *Data) biz.MonitorRepo {
 	return &monitorRepo{data: d}

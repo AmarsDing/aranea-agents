@@ -132,23 +132,34 @@ func (a *memoryEpisodeBackfillReaderAdapter) ListEpisodesPendingEmbedding(ctx co
 
 type memoryLegacyMigratorAdapter struct {
 	store *sessionmemory.Store
+	data  *Data
 	lg    loggateway.Logger
 }
 
-func NewMemoryLegacyMigratorAdapter(store *sessionmemory.Store, lg loggateway.Logger) biz.MemoryLegacyMigrator {
-	if store == nil {
+func NewMemoryLegacyMigratorAdapter(store *sessionmemory.Store, data *Data, lg loggateway.Logger) biz.MemoryLegacyMigrator {
+	if store == nil || data == nil {
 		return nil
 	}
-	return &memoryLegacyMigratorAdapter{store: store, lg: lg}
+	return &memoryLegacyMigratorAdapter{store: store, data: data, lg: lg}
 }
 
 func (a *memoryLegacyMigratorAdapter) RunLegacyMigration(ctx context.Context) (int, bool, error) {
-	return RunLegacyTRPCMemoryMigration(ctx, a.store, a.lg)
+	return RunLegacyTRPCMemoryMigration(ctx, a.store, a.data, a.lg)
 }
 
 func (a *memoryLegacyMigratorAdapter) LegacyMigrationVersion() int {
 	return MigrationLegacyTRPCMemoryFacts
 }
+
+// Compile-time interface checks.
+var (
+	_ biz.MemoryLegacyMigrator          = (*memoryLegacyMigratorAdapter)(nil)
+	_ biz.MemoryConsolidationWriter     = (*memoryConsolidationWriterAdapter)(nil)
+	_ biz.MemoryFactIndexMaintainer     = (*memoryFactIndexMaintainerAdapter)(nil)
+	_ biz.MemoryEpisodeDecayer          = (*memoryEpisodeDecayerAdapter)(nil)
+	_ biz.MemoryFactDecayer             = (*memoryFactDecayerAdapter)(nil)
+	_ biz.MemoryEpisodeBackfillReader   = (*memoryEpisodeBackfillReaderAdapter)(nil)
+)
 
 func bizFactWriteToData(f biz.MemoryFactWrite) sessionmemory.MemoryFactUpsert {
 	return sessionmemory.MemoryFactUpsert{

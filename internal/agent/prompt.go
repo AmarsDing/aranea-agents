@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/event"
+	"aranea-agents/pkg/loggateway"
 )
 
 // Deps is a minimal bundle for prompt / runtime helpers (biz facades).
@@ -16,6 +16,7 @@ type Deps struct {
 	ToolsCatalog biz.ToolCatalogReader
 	SQLiteSessionMemory bool
 	Taxonomy      *biz.TaxonomyUsecase
+	LG            loggateway.Logger
 }
 
 // BuildSystemPrompt joins agent description and prompt files, filtered by system_prompt_mode.
@@ -70,16 +71,18 @@ func BuildIndustryContext(ctx context.Context, d Deps, ag biz.Agent) string {
 	if d.Taxonomy == nil {
 		return ""
 	}
+	lg := d.LG
+	if lg == nil {
+		lg = loggateway.NewNoop()
+	}
 	posNode, err := d.Taxonomy.GetByKey(ctx, ag.PositionKey)
 	if err != nil {
-		event.CtxFlowLogError(ctx, "agent.industry_context", "行业上下文构建失败：无法获取岗位节点",
-			event.P("position_key", ag.PositionKey), event.P("error", err))
+		lg.Error("行业上下文构建失败：无法获取岗位节点", loggateway.StepID("agent.industry_context"), loggateway.Str("position_key", ag.PositionKey), loggateway.Err(err))
 		return ""
 	}
 	anc, err := d.Taxonomy.GetAncestors(ctx, posNode.ID)
 	if err != nil {
-		event.CtxFlowLogError(ctx, "agent.industry_context", "行业上下文构建失败：无法获取岗位祖先链",
-			event.P("position_key", ag.PositionKey), event.P("error", err))
+		lg.Error("行业上下文构建失败：无法获取岗位祖先链", loggateway.StepID("agent.industry_context"), loggateway.Str("position_key", ag.PositionKey), loggateway.Err(err))
 		return ""
 	}
 	var b strings.Builder

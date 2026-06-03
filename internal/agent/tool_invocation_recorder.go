@@ -159,9 +159,10 @@ func recordToolInvocationWrite(ctx context.Context, write biz.ToolInvocationWrit
 
 	safego.Go(ctx, "recordToolInvocation", func() {
 		bg := context.Background()
+		lg := deps.Logger()
 		if deps.ToolUC != nil {
 			if err := deps.ToolUC.RecordToolInvocation(bg, write); err != nil {
-				event.CtxFlowLogWarn(ctx, "agent.tool.record_fail", "工具调用记录失败", event.P("tool", write.ToolKey), event.P("error", err))
+				lg.Warn("工具调用记录失败", loggateway.StepID("agent.tool.record_fail"), loggateway.Str("tool", write.ToolKey), loggateway.Err(err))
 			}
 			auditWrite := biz.ToolInvocationAuditWrite{
 				InvocationID:  write.ToolCallID,
@@ -178,7 +179,7 @@ func recordToolInvocationWrite(ctx context.Context, write biz.ToolInvocationWrit
 				auditWrite.ResultSummary = write.ErrorMessage
 			}
 			if err := deps.ToolUC.RecordToolInvocationAudit(bg, auditWrite); err != nil {
-				event.CtxFlowLogWarn(ctx, "agent.tool.audit_fail", "工具调用审计写入失败", event.P("tool", write.ToolKey), event.P("error", err))
+				lg.Warn("工具调用审计写入失败", loggateway.StepID("agent.tool.audit_fail"), loggateway.Str("tool", write.ToolKey), loggateway.Err(err))
 			}
 		}
 		if countSession {

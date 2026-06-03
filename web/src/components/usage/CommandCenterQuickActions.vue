@@ -66,14 +66,14 @@ const actions = [
   padding: 14px 16px
   border-radius: 14px
   background: var(--color-background-elevated, rgba(128, 128, 128, 0.04))
-  border: 1px solid rgba(128, 128, 128, 0.08)
+  border: 1px solid var(--glass-border, rgba(128, 128, 128, 0.08))
   text-decoration: none
   color: inherit
   transition: border-color 0.2s ease, background 0.2s ease
   cursor: pointer
 
   &:hover
-    border-color: rgba(128, 128, 128, 0.18)
+    border-color: var(--glass-border-hover, rgba(128, 128, 128, 0.18))
 
   &__icon
     width: 40px
@@ -114,10 +114,10 @@ const actions = [
 
 body.body--dark
   .command-center-quick-action
-    background: rgba(255, 255, 255, 0.025)
-    border-color: rgba(255, 255, 255, 0.05)
+    background: var(--color-background-elevated, rgba(255, 255, 255, 0.025))
+    border-color: var(--glass-border, rgba(255, 255, 255, 0.05))
     &:hover
-      border-color: rgba(255, 255, 255, 0.12)
+      border-color: var(--glass-border-hover, rgba(255, 255, 255, 0.12))
 
   .command-center-quick-action__icon--chat
     background: var(--color-accent-blue, #3B82F6)

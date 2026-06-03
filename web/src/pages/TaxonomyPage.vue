@@ -145,6 +145,7 @@
                 :scope="levelScope(currentLevelNum)"
                 :resource-id="editingId || undefined"
                 :text="form.description ?? ''"
+                :refine-fn="refinePromptField"
                 flat
                 size="sm"
                 label="AI 优化描述"
@@ -179,6 +180,7 @@ import AppPageHero from '../components/layout/AppPageHero.vue';
 import AppPageToolbar from '../components/layout/AppPageToolbar.vue';
 import TaxonomyIndustryCard from '../components/agents/TaxonomyIndustryCard.vue';
 import AiRefineButton from '../components/agents/AIRefineButton.vue';
+import { refinePromptField } from '../features/agents/aiRefine';
 import { useTaxonomyPage } from '../features/platform/useTaxonomyPage';
 import {
   descriptionLabel,

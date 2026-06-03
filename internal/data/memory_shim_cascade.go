@@ -18,7 +18,7 @@ var (
 	_ biz.CascadeSagaStore     = (*cascadeRepo)(nil)
 )
 
-func newCascadeRepo(store *sessionmemory.Store) *cascadeRepo {
+func NewCascadeRepo(store *sessionmemory.Store) *cascadeRepo {
 	if store == nil {
 		return nil
 	}

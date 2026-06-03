@@ -59,10 +59,12 @@ import { onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import AppRegistryTable from '../../components/layout/AppRegistryTable.vue';
 import AppRegistryHoverTip from '../../components/layout/AppRegistryHoverTip.vue';
-import { deliveryStatusFromChannelStatus } from '../../domain/conversation';
-import { presentDeliveryStatus, toneToQuasarColor } from '../../domain/conversationPresentation';
 import { useChannelsStore } from '../../stores/channels';
-import { channelDeliveriesColumns } from '../../components/channels/channelUi';
+import {
+  channelDeliveriesColumns,
+  deliveryStatusColor as statusColor,
+  deliveryStatusLabel as statusLabel,
+} from '../../components/channels/channelUi';
 import type { ChannelDeliveryRow } from './types';
 import type { Agent } from '../agents/types';
 
@@ -80,18 +82,6 @@ function agentNameById(id: string): string {
   if (!id) return '—';
   const agent = agentCache.value.find((a) => a.id === id);
   return agent ? agent.display_name || agent.agent_key || id : id;
-}
-
-function presentation(status: string) {
-  return presentDeliveryStatus(deliveryStatusFromChannelStatus(status));
-}
-
-function statusColor(status: string) {
-  return toneToQuasarColor(presentation(status).tone);
-}
-
-function statusLabel(status: string) {
-  return deliveryStatusFromChannelStatus(status) ? presentation(status).label : status || '—';
 }
 
 function payloadPreview(raw: string) {

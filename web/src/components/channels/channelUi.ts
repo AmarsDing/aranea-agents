@@ -11,6 +11,8 @@ import {
   isLocalhostOrigin,
   resolvePublicWebhookOrigin,
 } from '../../features/channels/publicWebhookOrigin';
+import { deliveryStatusFromChannelStatus } from '../../domain/conversation';
+import { presentDeliveryStatus, toneToQuasarColor } from '../../domain/conversationPresentation';
 import {
   REGISTRY_COL_W,
   registryCol,
@@ -169,4 +171,14 @@ export function channelDeliveriesColumns(t: (key: string) => string): QTableColu
       REGISTRY_COL_W.time,
     ),
   ];
+}
+
+/** Channel Delivery 状态颜色 */
+export function deliveryStatusColor(status: string) {
+  return toneToQuasarColor(presentDeliveryStatus(deliveryStatusFromChannelStatus(status)).tone);
+}
+
+/** Channel Delivery 状态标签 */
+export function deliveryStatusLabel(status: string) {
+  return deliveryStatusFromChannelStatus(status) ? presentDeliveryStatus(deliveryStatusFromChannelStatus(status)).label : status || '—';
 }
