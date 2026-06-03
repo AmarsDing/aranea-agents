@@ -12,7 +12,7 @@
   "lint-staged": {
     "*.go": [
       "gofmt -w",
-      "go vet"
+      "go vet ./..."
     ],
     "web/src/**/*.{ts,vue}": [
       "cd web && npx eslint --fix --max-warnings=0",
