@@ -148,7 +148,9 @@ func (r *Runner) finishTaskRun(
 	task, err := r.deps.Cron.GetCronTask(ctx, taskID)
 	if err != nil {
 		finished := time.Now().UTC().Format(time.RFC3339)
-		_ = r.deps.Cron.UpdateCronTaskRun(ctx, runID, "failure", finished, "{}", err.Error())
+		if uerr := r.deps.Cron.UpdateCronTaskRun(ctx, runID, "failure", finished, "{}", err.Error()); uerr != nil {
+			r.lg.Warn("update cron_task_run on reload failure failed", loggateway.Str("task_id", taskID), loggateway.Str("run_id", runID), loggateway.Err(uerr))
+		}
 		r.lg.Warn("reload task before finalize failed", loggateway.Str("task_id", taskID), loggateway.Str("run_id", runID), loggateway.Err(err))
 		return
 	}
@@ -179,7 +181,9 @@ func (r *Runner) runManualTask(ctx context.Context, taskID, runID, started strin
 	task, err := r.deps.Cron.GetCronTask(ctx, taskID)
 	if err != nil {
 		finished := time.Now().UTC().Format(time.RFC3339)
-		_ = r.deps.Cron.UpdateCronTaskRun(ctx, runID, "failure", finished, "{}", err.Error())
+		if uerr := r.deps.Cron.UpdateCronTaskRun(ctx, runID, "failure", finished, "{}", err.Error()); uerr != nil {
+			r.lg.Warn("update cron_task_run on manual reload failure failed", loggateway.Str("task_id", taskID), loggateway.Str("run_id", runID), loggateway.Err(uerr))
+		}
 		return
 	}
 	outcome := r.runDispatch(ctx, task, cfg)

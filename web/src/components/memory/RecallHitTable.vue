@@ -31,7 +31,7 @@
 import { computed } from "vue";
 import AppRegistryHoverTip from "../layout/AppRegistryHoverTip.vue";
 import AppRegistryMarkupTable from "../layout/AppRegistryMarkupTable.vue";
-import { REGISTRY_COL_W, registryCol, type RegistryTableColumn } from "../../features/ui/registryTableColumns";
+import { recallHitColumns } from "./recallHitTableUi";
 import type { MemoryRecallHit } from "../../features/memory/types";
 
 const props = defineProps<{
@@ -42,11 +42,7 @@ const props = defineProps<{
 
 const rowRecords = computed(() => props.rows as unknown as Record<string, unknown>[]);
 
-const columns: RegistryTableColumn<MemoryRecallHit>[] = [
-  registryCol("id", "ID", "id", "left", REGISTRY_COL_W.nameWide),
-  registryCol("total", "Total", (row) => row.scores.total, "right", REGISTRY_COL_W.metric),
-  registryCol("cross_encoder", "CE", (row) => row.scores.cross_encoder, "right", REGISTRY_COL_W.metric)
-];
+const columns = recallHitColumns;
 
 function hitRow(row: Record<string, unknown>) {
   return row as unknown as MemoryRecallHit;

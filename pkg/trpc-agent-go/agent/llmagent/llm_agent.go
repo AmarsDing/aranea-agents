@@ -335,6 +335,18 @@ func buildRequestProcessorsWithAgent(a *LLMAgent, options *Options) []flow.Reque
 			processor.WithSkillsLoadedContentInToolResults(true),
 		)
 	}
+	if len(options.skillsRoutedSkills) > 0 {
+		skillsOpts = append(
+			skillsOpts,
+			processor.WithRoutedSkills(options.skillsRoutedSkills),
+		)
+	}
+	if options.skillsRoutedSkillsResolver != nil {
+		skillsOpts = append(
+			skillsOpts,
+			processor.WithRoutedSkillsResolver(options.skillsRoutedSkillsResolver),
+		)
+	}
 	skillsProcessor := processor.NewSkillsRequestProcessor(
 		options.skillsRepository,
 		skillsOpts...,

@@ -88,6 +88,10 @@ func doHTTPProbe(rawURL string, headers map[string]string, client *http.Client) 
 			Details: map[string]any{"status_code": resp.StatusCode},
 		}
 	}
+	// ConnectivityProbe: 401/403 means network is reachable but auth is needed.
+	// OK=true because the probe only validates network connectivity, not auth.
+	// AuthAwareProbe returns OK=false for the same status (auth failure).
+	// The health runner handles this difference: isHardFailure excludes auth_required.
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		return TestResult{
 			OK:      true,

@@ -1,0 +1,4 @@
+{
+  "arguments_json": "{\"path\":\"_test_tool_output.txt\",\"content\":\"hello from tool test\"}",
+  "timeout_sec": 30
+}

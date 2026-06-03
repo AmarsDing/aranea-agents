@@ -13,11 +13,18 @@ import {
   mergeIncrementalSessionMessages,
   mergeSessionMessages,
 } from "../../features/chat/mergeSessionMessages";
+import { onSessionMutation } from "../sessionSync";
 
 export const useChatMessageStore = defineStore("chatMessage", () => {
   const messagesBySession = ref<Record<string, Message[]>>({});
   const sessionRevisionBySession = ref<Record<string, number>>({});
   const lastIntentPass = ref<IntentPassResult | null>(null);
+
+  onSessionMutation((mutation) => {
+    if (mutation.type === "agent_removed") {
+      clearAllMessages();
+    }
+  });
 
   function getMessages(sessionId: string): Message[] {
     return messagesBySession.value[sessionId] ?? [];

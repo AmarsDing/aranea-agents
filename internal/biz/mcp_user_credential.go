@@ -171,16 +171,11 @@ func (u *MCPServerUsecase) ResolveUserAuthHeaders(ctx context.Context, serverKey
 }
 
 func (u *MCPServerUsecase) findServerByKey(ctx context.Context, serverKey string) (MCPServer, error) {
-	rows, err := u.repo.ListMCPServers(ctx)
+	row, err := u.repo.GetMCPServerByKey(ctx, serverKey)
 	if err != nil {
 		return MCPServer{}, err
 	}
-	for _, row := range rows {
-		if strings.TrimSpace(row.Key) == serverKey {
-			return row, nil
-		}
-	}
-	return MCPServer{}, errors.NotFound("MCP_SERVER", "mcp server not found")
+	return row, nil
 }
 
 func (u *MCPServerUsecase) userCredRepo() (MCPServerUserCredentialRepo, error) {

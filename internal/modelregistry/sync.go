@@ -57,7 +57,9 @@ func (s *Syncer) Sync(ctx context.Context, in SyncInput) (SyncOutput, error) {
 		entry.Status = "failed"
 		entry.Message = err.Error()
 		entry.FinishedAt = s.now().UTC().Format(time.RFC3339)
-		_ = AppendSyncLog(s.store, entry)
+		if err := AppendSyncLog(s.store, entry); err != nil {
+			s.lg.Error("append sync log failed", loggateway.StepID("model_registry.sync.log_fail"), loggateway.Str("log_id", logID), loggateway.Err(err))
+		}
 		s.lg.Error("Model registry fetch directory failed", loggateway.StepID("model_registry.sync.fetch_fail"), loggateway.Str("source_url", policy.SourceURL), loggateway.Err(err))
 		return SyncOutput{Log: entry, Status: "failed", Message: err.Error(), Policy: policy}, err
 	}
@@ -69,7 +71,9 @@ func (s *Syncer) Sync(ctx context.Context, in SyncInput) (SyncOutput, error) {
 			entry.ETag = prevMeta.ETag
 		}
 		entry.FinishedAt = s.now().UTC().Format(time.RFC3339)
-		_ = AppendSyncLog(s.store, entry)
+		if err := AppendSyncLog(s.store, entry); err != nil {
+			s.lg.Error("append sync log failed", loggateway.StepID("model_registry.sync.log_fail"), loggateway.Str("log_id", logID), loggateway.Err(err))
+		}
 		return SyncOutput{
 			Log:     entry,
 			Status:  "ok",
@@ -84,7 +88,9 @@ func (s *Syncer) Sync(ctx context.Context, in SyncInput) (SyncOutput, error) {
 		entry.Status = "failed"
 		entry.Message = err.Error()
 		entry.FinishedAt = s.now().UTC().Format(time.RFC3339)
-		_ = AppendSyncLog(s.store, entry)
+		if err := AppendSyncLog(s.store, entry); err != nil {
+			s.lg.Error("append sync log failed", loggateway.StepID("model_registry.sync.log_fail"), loggateway.Str("log_id", logID), loggateway.Err(err))
+		}
 		s.lg.Error("Model registry parse directory failed", loggateway.StepID("model_registry.sync.parse_fail"), loggateway.Err(err))
 		return SyncOutput{Log: entry, Status: "failed", Message: err.Error(), Policy: policy}, err
 	}
@@ -106,7 +112,9 @@ func (s *Syncer) Sync(ctx context.Context, in SyncInput) (SyncOutput, error) {
 		entry.Status = "ok"
 		entry.Message = "dry run: catalog validated, not written"
 		entry.FinishedAt = s.now().UTC().Format(time.RFC3339)
-		_ = AppendSyncLog(s.store, entry)
+		if err := AppendSyncLog(s.store, entry); err != nil {
+			s.lg.Error("append sync log failed", loggateway.StepID("model_registry.sync.log_fail"), loggateway.Str("log_id", logID), loggateway.Err(err))
+		}
 		return SyncOutput{
 			Log:     entry,
 			Status:  "ok",
@@ -120,7 +128,9 @@ func (s *Syncer) Sync(ctx context.Context, in SyncInput) (SyncOutput, error) {
 		entry.Status = "failed"
 		entry.Message = err.Error()
 		entry.FinishedAt = s.now().UTC().Format(time.RFC3339)
-		_ = AppendSyncLog(s.store, entry)
+		if err := AppendSyncLog(s.store, entry); err != nil {
+			s.lg.Error("append sync log failed", loggateway.StepID("model_registry.sync.log_fail"), loggateway.Str("log_id", logID), loggateway.Err(err))
+		}
 		s.lg.Error("Model registry save directory failed", loggateway.StepID("model_registry.sync.save_fail"), loggateway.Err(err))
 		return SyncOutput{Log: entry, Status: "failed", Message: err.Error(), Policy: policy}, err
 	}
@@ -128,7 +138,9 @@ func (s *Syncer) Sync(ctx context.Context, in SyncInput) (SyncOutput, error) {
 	entry.Status = "ok"
 	entry.Message = fmt.Sprintf("synced %d providers, %d models", pCount, mCount)
 	entry.FinishedAt = s.now().UTC().Format(time.RFC3339)
-	_ = AppendSyncLog(s.store, entry)
+	if err := AppendSyncLog(s.store, entry); err != nil {
+		s.lg.Error("append sync log failed", loggateway.StepID("model_registry.sync.log_fail"), loggateway.Str("log_id", logID), loggateway.Err(err))
+	}
 
 	s.lg.Info("Model registry sync completed", loggateway.StepID("model_registry.sync"), loggateway.Int("providers", pCount), loggateway.Int("models", mCount))
 

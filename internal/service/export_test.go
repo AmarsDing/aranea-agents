@@ -46,7 +46,7 @@ var (
 	WebhookToProtoWithSecret      = webhookToProtoWithSecret
 	WebhookFromCreate             = webhookFromCreate
 	ToProtoMCP                    = toProtoMCP
-	PatchFromProtoMCP             = patchFromProtoMCP
+	PatchFromProtoMCPWithDiff = patchFromProtoMCPWithDiff
 	ToProtoMCPUserCred            = toProtoMCPUserCred
 	BizToolToProto                = bizToolToProto
 	BizSummaryToProto             = bizSummaryToProto

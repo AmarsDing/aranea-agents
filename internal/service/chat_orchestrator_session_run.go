@@ -272,12 +272,22 @@ func (o *ChatOrchestrator) finishSessionRunLifecycle(ctx context.Context, sessio
 	}
 	o.sessionRunBindings.Delete(strings.TrimSpace(sessionID))
 	if turnErr != nil {
-		_ = o.chTurn.SessionRuns.Fail(ctx, sessionRunID, turnErr.Error())
+		if err := o.chTurn.SessionRuns.Fail(ctx, sessionRunID, turnErr.Error()); err != nil {
+			o.lg.Error("session run fail transition failed",
+				loggateway.StepID("chat.session_run_fail"),
+				loggateway.Str("session_run_id", sessionRunID),
+				loggateway.Err(err))
+		}
 		return
 	}
 	cur, err := o.chTurn.SessionRuns.Get(ctx, sessionRunID)
 	if err == nil && cur.Phase == biz.SessionRunPhaseDurable {
 		return
 	}
-	_ = o.chTurn.SessionRuns.Complete(ctx, sessionRunID)
+	if err := o.chTurn.SessionRuns.Complete(ctx, sessionRunID); err != nil {
+		o.lg.Error("session run complete transition failed",
+			loggateway.StepID("chat.session_run_complete"),
+			loggateway.Str("session_run_id", sessionRunID),
+			loggateway.Err(err))
+	}
 }

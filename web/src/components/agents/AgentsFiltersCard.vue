@@ -61,7 +61,7 @@
 
 <script setup lang="ts">
 import AppPageToolbar from "../layout/AppPageToolbar.vue";
-import AgentCategoryFilter from "./AgentCategoryFilter.vue";
+import TaxonomyFilter from "./TaxonomyFilter.vue";
 import type { PlatformResourceTreeNode } from "../../features/platform/types";
 
 type SelectOption = { label: string; value: string };

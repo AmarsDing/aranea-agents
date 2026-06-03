@@ -1,6 +1,6 @@
 # Skill 渐进加载 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 将 Skill Prompt 注入策略从 Eager 全量注入改为 3 阶段渐进加载（L0 manifest → L1 body → L2 refs），通过 `skill_load_mode=progressive` 配置切换，目标降低 Skill 相关 token 消耗 50-80%。
 
@@ -29,7 +29,7 @@
 **Files:**
 - Modify: `internal/tools/skillruntime/toolset.go`
 
-- [ ] **Step 1: 在 RuntimeSettings 接口中新增 GetSkillLoadMode 方法**
+- [x] **Step 1: 在 RuntimeSettings 接口中新增 GetSkillLoadMode 方法**
 
 在 `RuntimeSettings` 接口中新增：
 
@@ -37,7 +37,7 @@
 GetSkillLoadMode() string
 ```
 
-- [ ] **Step 2: 在所有实现 RuntimeSettings 的类型中添加 GetSkillLoadMode 方法**
+- [x] **Step 2: 在所有实现 RuntimeSettings 的类型中添加 GetSkillLoadMode 方法**
 
 搜索所有实现 `RuntimeSettings` 接口的类型，为每个类型添加：
 
@@ -50,12 +50,12 @@ func (s *XXX) GetSkillLoadMode() string {
 
 具体字段名取决于各实现类型的结构。需要读取代码确认。
 
-- [ ] **Step 3: 验证编译通过**
+- [x] **Step 3: 验证编译通过**
 
 Run: `go build ./internal/tools/skillruntime/...`
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add internal/tools/skillruntime/
@@ -74,7 +74,7 @@ git commit -m "feat(skill): add GetSkillLoadMode to RuntimeSettings interface"
 **Files:**
 - Modify: `internal/agent/prompt_mode.go`
 
-- [ ] **Step 1: 新增 IsProgressiveSkillLoad 函数**
+- [x] **Step 1: 新增 IsProgressiveSkillLoad 函数**
 
 ```go
 func IsProgressiveSkillLoad(mode string) bool {
@@ -82,12 +82,12 @@ func IsProgressiveSkillLoad(mode string) bool {
 }
 ```
 
-- [ ] **Step 2: 验证编译通过**
+- [x] **Step 2: 验证编译通过**
 
 Run: `go build ./internal/agent/...`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add internal/agent/prompt_mode.go
@@ -105,7 +105,7 @@ git commit -m "feat(skill): add IsProgressiveSkillLoad helper"
 **Files:**
 - Modify: `internal/agent/skill_guidance_inject.go`
 
-- [ ] **Step 1: 在 newSkillGuidanceBeforeHook 中增加 progressive 判断**
+- [x] **Step 1: 在 newSkillGuidanceBeforeHook 中增加 progressive 判断**
 
 在 `SkillsUseFullProfile` 判断之后，新增 progressive 模式判断：
 
@@ -126,7 +126,7 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 }
 ```
 
-- [ ] **Step 2: 编写单测验证 progressive 模式返回 nil**
+- [x] **Step 2: 编写单测验证 progressive 模式返回 nil**
 
 ```go
 func TestNewSkillGuidanceBeforeHook_ProgressiveMode(t *testing.T) {
@@ -143,12 +143,12 @@ func TestNewSkillGuidanceBeforeHook_ProgressiveMode(t *testing.T) {
 
 > mock 类型和 deps 结构需要根据实际代码调整。
 
-- [ ] **Step 3: 验证编译通过**
+- [x] **Step 3: 验证编译通过**
 
 Run: `go build ./internal/agent/...`
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add internal/agent/skill_guidance_inject.go
@@ -169,7 +169,7 @@ git commit -m "feat(skill): skip guidance injection in progressive mode"
 - Modify: `pkg/trpc-agent-go/internal/flow/processor/skills.go`
 - Modify: `pkg/trpc-agent-go/internal/flow/processor/skills_test.go`
 
-- [ ] **Step 1: 在 skillsRequestProcessorOptions 中新增 routedSkills 字段**
+- [x] **Step 1: 在 skillsRequestProcessorOptions 中新增 routedSkills 字段**
 
 ```go
 type skillsRequestProcessorOptions struct {
@@ -178,7 +178,7 @@ type skillsRequestProcessorOptions struct {
 }
 ```
 
-- [ ] **Step 2: 新增 WithRoutedSkills option**
+- [x] **Step 2: 新增 WithRoutedSkills option**
 
 ```go
 func WithRoutedSkills(names []string) SkillsRequestProcessorOption {
@@ -188,7 +188,7 @@ func WithRoutedSkills(names []string) SkillsRequestProcessorOption {
 }
 ```
 
-- [ ] **Step 3: 在 SkillsRequestProcessor struct 中新增 routedSkills 字段**
+- [x] **Step 3: 在 SkillsRequestProcessor struct 中新增 routedSkills 字段**
 
 ```go
 type SkillsRequestProcessor struct {
@@ -199,7 +199,7 @@ type SkillsRequestProcessor struct {
 
 在 `NewSkillsRequestProcessor` 构造函数中赋值。
 
-- [ ] **Step 4: 修改 injectOverview 中的 Skill 行生成逻辑**
+- [x] **Step 4: 修改 injectOverview 中的 Skill 行生成逻辑**
 
 在生成每个 Skill 概览行时，检查是否在 routedSkills 中：
 
@@ -220,7 +220,7 @@ for _, s := range sums {
 }
 ```
 
-- [ ] **Step 5: 编写单测验证 `[routed]` 标记**
+- [x] **Step 5: 编写单测验证 `[routed]` 标记**
 
 ```go
 func TestSkillsRequestProcessor_RoutedMark(t *testing.T) {
@@ -231,12 +231,12 @@ func TestSkillsRequestProcessor_RoutedMark(t *testing.T) {
 }
 ```
 
-- [ ] **Step 6: 验证编译通过**
+- [x] **Step 6: 验证编译通过**
 
 Run: `cd pkg/trpc-agent-go && go build ./...`
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add pkg/trpc-agent-go/internal/flow/processor/
@@ -257,11 +257,11 @@ git commit -m "feat(skill): add [routed] mark support in SkillsRequestProcessor"
 **Files:**
 - Modify: `internal/agent/trpc_build.go`
 
-- [ ] **Step 1: 找到 Agent 构建中 SkillsRequestProcessor 的 option 配置位置**
+- [x] **Step 1: 找到 Agent 构建中 SkillsRequestProcessor 的 option 配置位置**
 
 搜索 `WithSkills` / `WithSkillLoadMode` / `SkillsRequestProcessor` 相关的构建代码。
 
-- [ ] **Step 2: 在构建时根据 skill_load_mode 传入 WithRoutedSkills**
+- [x] **Step 2: 在构建时根据 skill_load_mode 传入 WithRoutedSkills**
 
 在 Agent 构建流程中，当 `skill_load_mode == "progressive"` 时：
 1. 调用 `ResolveSkillSlugsDetailed` 获取被路由 Skill 列表
@@ -269,7 +269,7 @@ git commit -m "feat(skill): add [routed] mark support in SkillsRequestProcessor"
 
 > 注意：`ResolveSkillSlugsDetailed` 需要 `SkillResolver` 和 `SkillToolsetOptions`，需在构建时或首次请求时获取。如果构建时无法获取路由结果，可改为在 `SkillsRequestProcessor` 中通过 `repoResolver` + invocation context 延迟解析。
 
-- [ ] **Step 3: 在构建时根据 skill_load_mode 启用 toolResultMode**
+- [x] **Step 3: 在构建时根据 skill_load_mode 启用 toolResultMode**
 
 当 `skill_load_mode == "progressive"` 时，自动添加 `WithSkillsLoadedContentInToolResults(true)`：
 
@@ -279,12 +279,12 @@ if IsProgressiveSkillLoad(loadMode) {
 }
 ```
 
-- [ ] **Step 4: 验证编译通过**
+- [x] **Step 4: 验证编译通过**
 
 Run: `go build ./internal/agent/...`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/agent/trpc_build.go
@@ -304,7 +304,7 @@ git commit -m "feat(skill): auto-enable toolResultMode and routed skills in prog
 **Files:**
 - Modify: `api/kratos/agent/v1/agent.proto`
 
-- [ ] **Step 1: 更新 skill_load_mode 字段注释**
+- [x] **Step 1: 更新 skill_load_mode 字段注释**
 
 在 `skill_load_mode` 字段的注释中新增 `progressive` 值说明：
 
@@ -318,12 +318,12 @@ git commit -m "feat(skill): auto-enable toolResultMode and routed skills in prog
 string skill_load_mode = 84;
 ```
 
-- [ ] **Step 2: 运行 make api 重新生成 proto 代码**
+- [x] **Step 2: 运行 make api 重新生成 proto 代码**
 
 Run: `make api`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add api/
@@ -338,12 +338,12 @@ git commit -m "docs(skill): add progressive mode to skill_load_mode proto commen
 
 ### Task 7: 全量验证
 
-- [ ] **Step 1: 后端全量验证**
+- [x] **Step 1: 后端全量验证**
 
 Run: `make api && make wire && make build && make test && make lint`
 Expected: ALL PASS
 
-- [ ] **Step 2: 手动集成测试**
+- [x] **Step 2: 手动集成测试**
 
 1. 创建 Agent，设置 `skill_load_mode = "progressive"`
 2. 发送消息，验证 system prompt 中不包含 Skill guidance 正文
@@ -352,13 +352,13 @@ Expected: ALL PASS
 5. 验证 `skill_select_docs` 正常工作
 6. 将 `skill_load_mode` 改回 `turn`，验证 guidance 全量注入恢复
 
-- [ ] **Step 3: Token 节省基准测试**
+- [x] **Step 3: Token 节省基准测试**
 
 1. 记录 `turn` 模式下 system prompt 的 token 数
 2. 记录 `progressive` 模式下 system prompt 的 token 数
 3. 计算节省比例，目标 ≥ 50%
 
-- [ ] **Step 4: Final commit**
+- [x] **Step 4: Final commit**
 
 ```bash
 git add -A

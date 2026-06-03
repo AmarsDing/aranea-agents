@@ -44,21 +44,42 @@ func toProtoMCP(m biz.MCPServer) *v1.MCPServer {
 	}
 }
 
-func patchFromProtoMCP(pb *v1.MCPServer) biz.MCPServer {
+// patchFromProtoMCPWithDiff builds an MCPServerUpdate by comparing proto values against
+// the current persisted server. For string fields, non-empty proto values are included.
+// For bool/int fields, only values that differ from current are included — this resolves
+// proto3 zero-value ambiguity where false/0 could mean "not set" or "explicitly set to zero".
+func patchFromProtoMCPWithDiff(pb *v1.MCPServer, cur biz.MCPServer) biz.MCPServerUpdate {
 	if pb == nil {
-		return biz.MCPServer{}
+		return biz.MCPServerUpdate{}
 	}
-	return biz.MCPServer{
-		Key:          pb.GetKey(),
-		Name:         pb.GetName(),
-		Description:  pb.GetDescription(),
-		Status:       pb.GetStatus(),
-		Enabled:      pb.GetEnabled(),
-		SortOrder:    int(pb.GetSortOrder()),
-		ConfigJSON:   pb.GetConfigJson(),
-		MetadataJSON: pb.GetMetadataJson(),
+	patch := biz.MCPServerUpdate{
+		Key:          strPtrIfNonEmpty(pb.GetKey()),
+		Name:         strPtrIfNonEmpty(pb.GetName()),
+		Description:  strPtrIfNonEmpty(pb.GetDescription()),
+		Status:       strPtrIfNonEmpty(pb.GetStatus()),
+		ConfigJSON:   strPtrIfNonEmpty(pb.GetConfigJson()),
+		MetadataJSON: strPtrIfNonEmpty(pb.GetMetadataJson()),
 	}
+	// For bool/int: only set if value differs from current (proto3 zero-value ambiguity).
+	if pb.GetEnabled() != cur.Enabled {
+		patch.Enabled = boolPtr(pb.GetEnabled())
+	}
+	if int(pb.GetSortOrder()) != cur.SortOrder {
+		patch.SortOrder = intPtr(int(pb.GetSortOrder()))
+	}
+	return patch
 }
+
+func strPtrIfNonEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+func intPtr(i int) *int { return &i }
 
 func (s *MCPServerService) ListMCPServers(ctx context.Context, _ *emptypb.Empty) (*v1.ListMCPServersResponse, error) {
 	items, err := s.uc.List(ctx)

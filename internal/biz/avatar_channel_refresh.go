@@ -129,7 +129,7 @@ func downloadIconifySVG(ctx context.Context, client *http.Client, slug string) (
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("iconify API returned %d for %s", resp.StatusCode, u)
+		return nil, kerrors.New(502, "AVATAR", fmt.Sprintf("iconify API returned %d for %s", resp.StatusCode, u))
 	}
 	return io.ReadAll(resp.Body)
 }

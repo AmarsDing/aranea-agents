@@ -19,7 +19,6 @@ type Agent struct {
 	IsFavorite         bool
 	Icon               string
 	AgentDescription   string
-	CategoryPositionID string
 	TaxonomyPositionID string
 	PositionKey       string
 	AgentVariant      string

@@ -55,10 +55,10 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 		}
 	}
 	// PGO-1-AGENT-02: Inject 岗位职责 from the category tree when the flag is on
-	// and the agent has a position associated (CategoryPositionID != "").
+	// and the agent has a position associated (TaxonomyPositionID != "").
 	var catResp string
 	if shouldInjectCategoryResponsibility(ag) && deps.Taxonomy != nil {
-		catResp, _ = deps.Taxonomy.BuildResponsibility(ctx, ag.CategoryPositionID, ag.SystemPromptMode)
+		catResp, _ = deps.Taxonomy.BuildResponsibility(ctx, ag.TaxonomyPositionID, ag.SystemPromptMode)
 	}
 	if indCtx := BuildIndustryContext(ctx, Deps{
 		Agents: deps.Agents, AgentUC: deps.AgentUC,
@@ -131,6 +131,9 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 				skillProfile = trpcllmagent.SkillToolProfileKnowledgeOnly
 			}
 			dirHints = true
+			opts = append(opts,
+				trpcllmagent.WithSkillsLoadedContentInToolResults(true),
+			)
 		}
 		opts = append(opts,
 			trpcllmagent.WithSkillToolProfile(skillProfile),
@@ -305,7 +308,7 @@ func buildModelSelector(selector string) trpcagent.ModelSelector {
 
 // shouldInjectCategoryResponsibility returns true when:
 //  1. PGO_CATEGORY_RESPONSIBILITY_INJECT env flag is on, AND
-//  2. the agent has a CategoryPositionID, AND
+//  2. the agent has a TaxonomyPositionID, AND
 //  3. the agent has NOT explicitly opted out via metadata_json.
 //
 // PGO-1-AGENT-02.
@@ -314,7 +317,7 @@ func shouldInjectCategoryResponsibility(ag biz.Agent) bool {
 	if v != "1" && v != "true" && v != "yes" {
 		return false
 	}
-	if strings.TrimSpace(ag.CategoryPositionID) == "" {
+	if strings.TrimSpace(ag.TaxonomyPositionID) == "" {
 		return false
 	}
 	return !ag.SkipCategoryResponsibility()

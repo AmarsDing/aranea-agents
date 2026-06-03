@@ -1,5 +1,5 @@
 import { createAdminServiceClient } from "./kratos/admin/v1/index";
-// import { createIndustryTaxonomyServiceClient } from "./kratos/industry_taxonomy/v1/index";
+import { createIndustryTaxonomyServiceClient } from "./kratos/industry_taxonomy/v1/index";
 import { createTaxonomyServiceClient } from "./kratos/taxonomy/v1/index";
 import { createAgentServiceClient } from "./kratos/agent/v1/index";
 import { createArtifactServiceClient } from "./kratos/artifact/v1/index";
@@ -45,8 +45,7 @@ export function createChannelService() {
 }
 
 export function createIndustryTaxonomyService() {
-  // TODO: industry_taxonomy proto not yet generated; fallback to taxonomy service
-  return createTaxonomyServiceClient(requestHandler);
+  return createIndustryTaxonomyServiceClient(requestHandler);
 }
 
 export function createTaxonomyService() {

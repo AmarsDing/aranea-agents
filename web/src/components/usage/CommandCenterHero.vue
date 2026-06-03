@@ -179,11 +179,11 @@ onUnmounted(() => {
     &--provider
       background: var(--color-accent-blue, #2563EB)
     &--category
-      background: #7C3AED
+      background: var(--color-accent-indigo-dark, #7C3AED)
     &--team
-      background: #0891B2
+      background: var(--color-accent-cyan, #0891B2)
     &--session
-      background: #059669
+      background: var(--color-accent-green, #059669)
     &--token
       background: var(--color-accent, #D4891A)
 
@@ -225,20 +225,20 @@ body.body--dark
       border-color: rgba(255, 255, 255, 0.14)
 
   .command-center-hero__stat-icon--agent
-    background: var(--color-accent-indigo, #818CF8)
+    background: var(--color-accent-indigo-lighter, #818CF8)
   .command-center-hero__stat-icon--provider
     background: var(--color-accent-blue, #3B82F6)
   .command-center-hero__stat-icon--category
-    background: #A78BFA
+    background: var(--color-accent-indigo-light, #A78BFA)
   .command-center-hero__stat-icon--team
-    background: #22D3EE
+    background: var(--color-accent-cyan, #22D3EE)
   .command-center-hero__stat-icon--session
-    background: #34D399
+    background: var(--color-accent-green-light, #34D399)
   .command-center-hero__stat-icon--token
     background: var(--color-accent, #4DD8E8)
 
   .command-center-hero__stat-value--tech
-    background: linear-gradient(135deg, #818CF8, #22D3EE)
+    background: linear-gradient(135deg, var(--color-accent-indigo-lighter, #818CF8), var(--color-accent-cyan, #22D3EE))
     -webkit-background-clip: text
     -webkit-text-fill-color: transparent
     background-clip: text

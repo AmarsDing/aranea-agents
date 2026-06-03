@@ -382,13 +382,18 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 		}
 	}
 	merged.ConfigJSON = EmbedAgentKindInConfigJSON(merged.ConfigJSON, merged.Kind, merged.A2AProxy, u.lg)
-	if _, err := u.repo.UpdateAgent(ctx, merged); err != nil {
-		return Agent{}, err
-	}
-	if _, err := u.repo.UpsertAgentRuntimeSettings(ctx, settings); err != nil {
-		return Agent{}, err
-	}
-	if _, err := u.repo.ReplaceAgentPromptFiles(ctx, id, files); err != nil {
+	if err := u.repo.ExecInTx(ctx, func(txCtx context.Context) error {
+		if _, err := u.repo.UpdateAgent(txCtx, merged); err != nil {
+			return err
+		}
+		if _, err := u.repo.UpsertAgentRuntimeSettings(txCtx, settings); err != nil {
+			return err
+		}
+		if _, err := u.repo.ReplaceAgentPromptFiles(txCtx, id, files); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
 		return Agent{}, err
 	}
 	return u.Get(ctx, id)

@@ -108,11 +108,11 @@ defineProps<{
     font-weight: 800
     line-height: 1.1
     text-align: center
-    background: linear-gradient(135deg, #00E5FF, #A78BFA)
+    background: linear-gradient(135deg, var(--color-accent-cyan, #00E5FF), var(--color-accent-indigo-light, #A78BFA))
     -webkit-background-clip: text
     -webkit-text-fill-color: transparent
     background-clip: text
-    filter: drop-shadow(0 0 12px rgba(0, 229, 255, 0.35))
+    filter: drop-shadow(0 0 12px var(--color-accent-cyan-soft, rgba(0, 229, 255, 0.35)))
     letter-spacing: -0.03em
     font-variant-numeric: tabular-nums
 

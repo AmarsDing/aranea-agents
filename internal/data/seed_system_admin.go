@@ -24,7 +24,7 @@ func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, lg loggateway
 	const q = `INSERT INTO agents (
 		id, agent_key, display_name, provider, model, status,
 		is_default, is_favorite, icon, agent_description,
-		category_position_id, system_prompt_mode, context_window,
+		taxonomy_position_id, system_prompt_mode, context_window,
 		budget_monthly_cents, config_json, roles_json, created_by,
 		created_at, updated_at, deleted_at, readonly, kind,
 		position_key, agent_variant
@@ -57,7 +57,7 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 	const q = `INSERT INTO agents (
 		id, agent_key, display_name, provider, model, status,
 		is_default, is_favorite, icon, agent_description,
-		category_position_id, system_prompt_mode, context_window,
+		taxonomy_position_id, system_prompt_mode, context_window,
 		budget_monthly_cents, config_json, roles_json, created_by,
 		created_at, updated_at, deleted_at, readonly, kind,
 		position_key, agent_variant

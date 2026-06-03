@@ -313,7 +313,9 @@ func (uc *GraphUsecase) gc() {
 
 	// Persist expired executions to repo before discarding from memory.
 	for _, exec := range expired {
-		_ = uc.runRepo.UpdateRun(context.Background(), exec)
+		if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
+			uc.lg.Error("gc expired execution persist failed", loggateway.StepID("graph.gc_expired_persist"), loggateway.Str("run_id", exec.ID), loggateway.Err(err))
+		}
 	}
 }
 

@@ -141,11 +141,9 @@ func (testMCPMetadataEditor) ApplyReconnect(m map[string]any, at time.Time) {
 	m["last_reconnect_at"] = at.UTC().Format(time.RFC3339)
 	switch v := m["reconnect_count"].(type) {
 	case float64:
-		m["reconnect_count"] = int(v) + 1
-	case int:
 		m["reconnect_count"] = v + 1
 	default:
-		m["reconnect_count"] = 1
+		m["reconnect_count"] = float64(1)
 	}
 }
 

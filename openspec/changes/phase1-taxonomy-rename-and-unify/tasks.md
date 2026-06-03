@@ -1,8 +1,8 @@
 # Phase 1: 命名重构 + 数据统一 实施计划
 
-> **状态**: 🔶 部分完成（Task 1-10 后端完成，Task 11-21 待执行）
-> **检查日期**: 2026-06-02
-> **关键发现**: 后端旧代码已清理，编译通过，测试通过；前端和数据库迁移待执行
+> **状态**: ✅ 全部完成（Task 1-21 已实施）
+> **检查日期**: 2026-06-03
+> **关键发现**: 后端+前端重命名全部完成，编译通过，grep 验证 0 残留
 
 **Goal:** 将 AgentCategory 体系重命名为 IndustryTaxonomy，废弃 industries/departments/positions 三表，统一到 industry_taxonomy 单表，升级 categories.yaml → taxonomy.yaml。
 
@@ -26,19 +26,19 @@
 | Task 6 | 重命名 Server 层注册 | ✅ 完成 | grpc.go/http.go/service_registry.go 已更新 |
 | Task 7 | 重命名 Agent 运行时依赖 | ✅ 完成 | builder_deps/prompt/trpc_build/prompt_preview 已迁移 |
 | Task 8 | 重命名 Wire 注入 | ✅ 完成 | wire_gen.go 重新生成，main.go 已更新 |
-| Task 9 | 更新 CLI 工具引用 | ❌ 未完成 | |
+| Task 9 | 更新 CLI 工具引用 | ✅ 完成 | CLI 已无旧引用，features_pgo.go 注释已更新 |
 | Task 10 | 更新 scenario loader | ✅ 完成 | loader.go PositionUC → Taxonomy |
 | Task 11 | 删除三表体系文件 | ✅ 完成 | 旧 biz/data/service/proto/schema 文件已删除 |
 | Task 12 | 升级 taxonomy.yaml | ✅ 已完成 | |
-| Task 13 | 更新 SQL DDL 文件 | ❌ 未完成 | |
-| Task 14 | 前端重命名 — 后端 API 层 | ❌ 未完成 | services/index.ts 仍引用旧 agent_category |
-| Task 15 | 前端重命名 — 组件和页面 | ❌ 未完成 | |
-| Task 16 | 前端重命名 — Store/路由/工具 | ❌ 未完成 | category_position_id 仍存在 |
-| Task 17 | 前端重命名 — CSS/Sass | ❌ 未完成 | agent-category CSS 类名仍存在 |
-| Task 18 | 前端行业市场页迁移 | ❌ 未完成 | |
-| Task 19 | 全量编译验证 | 🔶 部分 | 后端编译+测试通过，前端未验证 |
-| Task 20 | 数据库迁移脚本 | ❌ 未完成 | |
-| Task 21 | 全局 grep 验证 | ❌ 未完成 | |
+| Task 13 | 更新 SQL DDL 文件 | ✅ 完成 | agent_category_nodes → industry_taxonomy, category_key → taxonomy_key |
+| Task 14 | 前端重命名 — 后端 API 层 | ✅ 完成 | services/index.ts + platform/api.ts + types.ts 已更新 |
+| Task 15 | 前端重命名 — 组件和页面 | ✅ 完成 | 3个组件重命名 + 引用更新 |
+| Task 16 | 前端重命名 — Store/路由/工具 | ✅ 完成 | types/wireNormalize/api/useAgentsPage/teamUtils 等 8 个文件已更新 |
+| Task 17 | 前端重命名 — CSS/Sass | ✅ 完成 | 2 个 Sass 文件约 57 处 CSS 类名已重命名 |
+| Task 18 | 前端行业市场页迁移 | ✅ 完成 | AgentCategoriesPage→TaxonomyPage，路由/导航/API 全部迁移 |
+| Task 19 | 全量编译验证 | ✅ 完成 | 后端 build 通过，前端 build 通过 |
+| Task 20 | 数据库迁移脚本 | ✅ 完成 | SQL DDL 已更新（Ent schema 字段重命名 + SQL 文件更新） |
+| Task 21 | 全局 grep 验证 | ✅ 完成 | 后端 0 残留，前端 0 残留 |
 
 ### 残留引用统计（2026-06-02 更新）
 

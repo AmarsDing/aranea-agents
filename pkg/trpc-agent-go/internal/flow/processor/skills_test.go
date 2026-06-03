@@ -3219,3 +3219,107 @@ func toolResponseEvent(
 		},
 	}
 }
+
+func TestSkillsRequestProcessor_RoutedMark(t *testing.T) {
+	repo := &mockRepo{
+		sums: []skill.Summary{
+			{Name: "skill-a", Description: "Alpha skill"},
+			{Name: "skill-b", Description: "Beta skill"},
+			{Name: "skill-c", Description: "Gamma skill"},
+		},
+		full: map[string]*skill.Skill{},
+	}
+	inv := &agent.Invocation{
+		InvocationID: "inv1",
+		AgentName:    "tester",
+		Session:      &session.Session{},
+	}
+	req := &model.Request{
+		Messages: []model.Message{
+			model.NewSystemMessage("sys"),
+		},
+	}
+	p := NewSkillsRequestProcessor(
+		repo,
+		WithRoutedSkills([]string{"skill-a", "skill-c"}),
+		WithSkillsCapabilityGuidance(""),
+		WithSkillsToolingGuidance(""),
+	)
+	p.ProcessRequest(context.Background(), inv, req, nil)
+
+	sys := req.Messages[0].Content
+	require.Contains(t, sys, "- skill-a: Alpha skill [routed]")
+	require.Contains(t, sys, "- skill-b: Beta skill")
+	require.Contains(t, sys, "- skill-c: Gamma skill [routed]")
+	// Ensure no double [routed] or stray marks.
+	require.NotContains(t, sys, "[routed] [routed]")
+}
+
+func TestSkillsRequestProcessor_RoutedMark_EmptyRoutedSkills(t *testing.T) {
+	repo := &mockRepo{
+		sums: []skill.Summary{
+			{Name: "skill-a", Description: "Alpha skill"},
+		},
+		full: map[string]*skill.Skill{},
+	}
+	inv := &agent.Invocation{
+		InvocationID: "inv1",
+		AgentName:    "tester",
+		Session:      &session.Session{},
+	}
+	req := &model.Request{
+		Messages: []model.Message{
+			model.NewSystemMessage("sys"),
+		},
+	}
+	p := NewSkillsRequestProcessor(
+		repo,
+		WithSkillsCapabilityGuidance(""),
+		WithSkillsToolingGuidance(""),
+	)
+	p.ProcessRequest(context.Background(), inv, req, nil)
+
+	sys := req.Messages[0].Content
+	require.Contains(t, sys, "- skill-a: Alpha skill")
+	require.NotContains(t, sys, "[routed]")
+}
+
+func TestSkillsRequestProcessor_ProgressiveMode_ClearsSkillStatePerTurn(t *testing.T) {
+	repo := &mockRepo{
+		sums: []skill.Summary{
+			{Name: "calc", Description: "math ops"},
+		},
+		full: map[string]*skill.Skill{
+			"calc": {
+				Summary: skill.Summary{Name: "calc"},
+				Body:    "Calc body",
+			},
+		},
+	}
+	inv := &agent.Invocation{
+		InvocationID: "inv1",
+		AgentName:    "tester",
+		Session: &session.Session{
+			State: session.StateMap{
+				skill.LoadedKey("tester", "calc"): []byte("1"),
+			},
+		},
+	}
+	req := &model.Request{
+		Messages: []model.Message{
+			model.NewSystemMessage("sys"),
+		},
+	}
+	ch := make(chan *event.Event, 4)
+	p := NewSkillsRequestProcessor(
+		repo,
+		WithSkillLoadMode(SkillLoadModeProgressive),
+	)
+	p.ProcessRequest(context.Background(), inv, req, ch)
+
+	// Progressive mode should clear skill state at turn start (like turn mode).
+	// The loaded key value should be cleared (nil/empty).
+	loadedVal, ok := inv.Session.GetState(skill.LoadedKey("tester", "calc"))
+	require.True(t, ok, "key should still exist after clear")
+	require.Empty(t, loadedVal, "progressive mode should clear loaded skill state at turn start")
+}

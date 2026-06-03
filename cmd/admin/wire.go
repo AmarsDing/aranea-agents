@@ -143,6 +143,13 @@ func provideSessionTitleGenerator(catalog *biz.LlmProviderModelUsecase, _ rt.Per
 	return service.NewLLMSessionTitleGenerator(catalog, &provider.RoundTrip{HTTP: httpClient}, lg)
 }
 
+// provideRefineLLMRoundTrip provides a centralized HTTP client for
+// DynamicLLMCaller (PromptRefine / Memory extraction). Uses the same
+// pattern as providePromptFileAIEditor / provideSessionTitleGenerator.
+func provideRefineLLMRoundTrip() *provider.RoundTrip {
+	return &provider.RoundTrip{HTTP: &http.Client{Timeout: 90 * time.Second}}
+}
+
 // provideSessionLogWriter moved to service.ProvideSessionLogWriter (Phase 3 decoupling).
 
 func toEventPairs(pairs []biz.LogPair) []event.Pair {
@@ -1286,6 +1293,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideEventService,
 		debug.NewRecorderFactory,
 		// PGO-3: DynamicLLMCaller → biz.LLMCaller binding, PromptRefiner.
+		provideRefineLLMRoundTrip,
 		chatagent.NewDynamicLLMCaller,
 		wire.Bind(new(biz.LLMCaller), new(*chatagent.DynamicLLMCaller)),
 		biz.NewPromptRefiner,

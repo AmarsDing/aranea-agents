@@ -113,6 +113,8 @@ func ShouldEmitHealthAlert(m map[string]any, now time.Time, after time.Duration)
 }
 
 // ApplyReconnect increments reconnect_count and sets last_reconnect_at.
+// reconnect_count is stored as float64 for consistency with JSON round-trip
+// (json.Unmarshal into map[string]any always produces float64 for numbers).
 func ApplyReconnect(m map[string]any, at time.Time) {
 	if m == nil {
 		m = map[string]any{}
@@ -120,10 +122,8 @@ func ApplyReconnect(m map[string]any, at time.Time) {
 	m[KeyLastReconnectAt] = at.UTC().Format(time.RFC3339)
 	switch v := m[KeyReconnectCount].(type) {
 	case float64:
-		m[KeyReconnectCount] = int(v) + 1
-	case int:
 		m[KeyReconnectCount] = v + 1
 	default:
-		m[KeyReconnectCount] = 1
+		m[KeyReconnectCount] = float64(1)
 	}
 }

@@ -192,10 +192,10 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 	}
 
 	// Concurrency limit: prevent too many concurrent sub-agents.
+	// Check and reserve slot atomically to avoid TOCTOU race.
 	s.mu.Lock()
-	concurrent := len(s.running)
-	s.mu.Unlock()
-	if concurrent >= defaultMaxConcurrentSubAgents {
+	if len(s.running) >= defaultMaxConcurrentSubAgents {
+		s.mu.Unlock()
 		return trpcsubagent.Run{}, kerrors.New(429, "SUBAGENT", fmt.Sprintf("too many concurrent sub-agents (limit: %d)", defaultMaxConcurrentSubAgents))
 	}
 
@@ -203,12 +203,15 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 	parentSessionID := strings.TrimSpace(req.ParentSessionID)
 	task := strings.TrimSpace(req.Task)
 	if ownerUserID == "" {
+		s.mu.Unlock()
 		return trpcsubagent.Run{}, kerrors.BadRequest("SUBAGENT", "empty owner")
 	}
 	if parentSessionID == "" {
+		s.mu.Unlock()
 		return trpcsubagent.Run{}, kerrors.BadRequest("SUBAGENT", "empty parent session id")
 	}
 	if task == "" {
+		s.mu.Unlock()
 		return trpcsubagent.Run{}, kerrors.BadRequest("SUBAGENT", "empty task")
 	}
 
@@ -225,7 +228,6 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 		OwnerUserID: ownerUserID,
 	}
 
-	s.mu.Lock()
 	s.runs[record.ID] = record
 	s.mu.Unlock()
 	if err := s.persist(); err != nil {

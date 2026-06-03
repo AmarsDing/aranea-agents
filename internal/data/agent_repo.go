@@ -82,7 +82,7 @@ func entAgentToBiz(a *ent.Agent, lg loggateway.Logger) biz.Agent {
 		IsFavorite:         a.IsFavorite,
 		Icon:               a.Icon,
 		AgentDescription:   a.AgentDescription,
-		TaxonomyPositionID: a.CategoryPositionID,
+		TaxonomyPositionID: a.TaxonomyPositionID,
 		PositionKey:        a.PositionKey,
 		AgentVariant:       a.AgentVariant,
 		VariantDescription: a.VariantDescription,
@@ -506,11 +506,11 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 			return biz.AgentListResult{}, err
 		}
 		if len(positionIDs) == 0 {
-			preds = append(preds, agent.CategoryPositionIDEQ("__no_such_category__"))
+			preds = append(preds, agent.TaxonomyPositionIDEQ("__no_such_category__"))
 		} else if len(positionIDs) == 1 {
-			preds = append(preds, agent.CategoryPositionIDEQ(positionIDs[0]))
+			preds = append(preds, agent.TaxonomyPositionIDEQ(positionIDs[0]))
 		} else {
-			preds = append(preds, agent.CategoryPositionIDIn(positionIDs...))
+			preds = append(preds, agent.TaxonomyPositionIDIn(positionIDs...))
 		}
 	}
 	if cb := strings.TrimSpace(q.CreatedBy); cb != "" {
@@ -625,7 +625,7 @@ func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetIsFavorite(a.IsFavorite).
 		SetIcon(a.Icon).
 		SetAgentDescription(a.AgentDescription).
-		SetCategoryPositionID(a.TaxonomyPositionID).
+		SetTaxonomyPositionID(a.TaxonomyPositionID).
 		SetPositionKey(a.PositionKey).
 		SetAgentVariant(a.AgentVariant).
 		SetVariantDescription(a.VariantDescription).
@@ -679,7 +679,7 @@ func (r *agentRepo) UpdateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetIsFavorite(a.IsFavorite).
 		SetIcon(a.Icon).
 		SetAgentDescription(a.AgentDescription).
-		SetCategoryPositionID(a.TaxonomyPositionID).
+		SetTaxonomyPositionID(a.TaxonomyPositionID).
 		SetPositionKey(a.PositionKey).
 		SetAgentVariant(a.AgentVariant).
 		SetVariantDescription(a.VariantDescription).

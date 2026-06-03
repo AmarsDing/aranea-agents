@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	v1 "aranea-agents/api/kratos/tool/v1"
 	"aranea-agents/internal/biz"
@@ -405,10 +406,16 @@ func (s *ToolService) TestTool(ctx context.Context, req *v1.TestToolRequest) (*v
 	}
 	return &v1.TestToolResponse{
 		Status:        res.Status,
-		ResultPreview: res.ResultPreview,
+		ResultPreview: sanitizeUTF8(res.ResultPreview),
 		ErrorMessage:  res.ErrorMessage,
 		DurationMs:    int32(res.DurationMS),
 	}, nil
+}
+
+// sanitizeUTF8 replaces invalid UTF-8 sequences with the replacement character.
+// Proto3 string fields require valid UTF-8; tool results may contain raw bytes.
+func sanitizeUTF8(s string) string {
+	return strings.ToValidUTF8(s, "�")
 }
 
 func bizToolInvocationAuditToProto(a biz.ToolInvocationAudit) *v1.ToolInvocationAudit {

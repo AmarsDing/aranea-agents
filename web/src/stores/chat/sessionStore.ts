@@ -96,6 +96,11 @@ export const useChatSessionStore = defineStore("chatSession", () => {
       case "status_changed":
         patchSessionStatus(mutation.id, mutation.status, mutation.statusReason, mutation.statusChangedAt);
         break;
+      case "agent_removed":
+        if (_currentAgentId === mutation.agentId) {
+          resetForAgentSwitch();
+        }
+        break;
     }
   });
 

@@ -285,7 +285,9 @@ func (w *AutoMemoryWorker) extract(ctx context.Context, req memtrpc.AutoMemoryJo
 			title, _ := epRow["title"].(string)
 			summary, _ := epRow["outcome_summary"].(string)
 			if epID != "" {
-				_ = w.episodeSync.SyncEpisodeIndex(ctx, agentID, epID, title, summary)
+				if serr := w.episodeSync.SyncEpisodeIndex(ctx, agentID, epID, title, summary); serr != nil {
+					w.lg.Warn("auto_memory episode index sync failed", loggateway.Err(serr))
+				}
 			}
 		}
 	}

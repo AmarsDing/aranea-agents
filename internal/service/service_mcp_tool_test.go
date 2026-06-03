@@ -70,11 +70,12 @@ func TestToProtoMCP(t *testing.T) {
 	}
 }
 
-func TestPatchFromProtoMCP(t *testing.T) {
+func TestPatchFromProtoMCPWithDiff(t *testing.T) {
 	tests := []struct {
-		name string
-		in   *mcpv1.MCPServer
-		want biz.MCPServer
+		name    string
+		in      *mcpv1.MCPServer
+		current biz.MCPServer
+		want    biz.MCPServerUpdate
 	}{
 		{
 			name: "full_fields",
@@ -82,37 +83,110 @@ func TestPatchFromProtoMCP(t *testing.T) {
 				Key: "k", Name: "n", Description: "d", Status: "active",
 				Enabled: true, SortOrder: 3, ConfigJson: `{"x":1}`, MetadataJson: `{"y":2}`,
 			},
-			want: biz.MCPServer{
-				Key: "k", Name: "n", Description: "d", Status: "active",
-				Enabled: true, SortOrder: 3, ConfigJSON: `{"x":1}`, MetadataJSON: `{"y":2}`,
+			current: biz.MCPServer{Enabled: false, SortOrder: 0},
+			want: biz.MCPServerUpdate{
+				Key:          strPtr("k"),
+				Name:         strPtr("n"),
+				Description:  strPtr("d"),
+				Status:       strPtr("active"),
+				Enabled:      boolPtr(true),
+				SortOrder:    intPtr(3),
+				ConfigJSON:   strPtr(`{"x":1}`),
+				MetadataJSON: strPtr(`{"y":2}`),
 			},
 		},
 		{
-			name: "nil_input",
-			in:   nil,
-			want: biz.MCPServer{},
+			name:    "nil_input",
+			in:      nil,
+			current: biz.MCPServer{},
+			want:    biz.MCPServerUpdate{},
+		},
+		{
+			name: "bool_same_as_current_not_included",
+			in: &mcpv1.MCPServer{
+				Key: "k", Name: "n", Enabled: false, SortOrder: 0,
+			},
+			current: biz.MCPServer{Key: "k", Name: "n", Enabled: false, SortOrder: 0},
+			want: biz.MCPServerUpdate{
+				Key:  strPtr("k"),
+				Name: strPtr("n"),
+			},
+		},
+		{
+			name: "empty_strings_not_included",
+			in: &mcpv1.MCPServer{
+				Key: "k", Name: "n", Description: "", Status: "",
+			},
+			current: biz.MCPServer{Enabled: false, SortOrder: 0},
+			want: biz.MCPServerUpdate{
+				Key:  strPtr("k"),
+				Name: strPtr("n"),
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := service.PatchFromProtoMCP(tt.in)
-			if got.Key != tt.want.Key {
-				t.Errorf("Key = %q, want %q", got.Key, tt.want.Key)
+			got := service.PatchFromProtoMCPWithDiff(tt.in, tt.current)
+			if !ptrEqualStr(got.Key, tt.want.Key) {
+				t.Errorf("Key = %v, want %v", got.Key, tt.want.Key)
 			}
-			if got.Name != tt.want.Name {
-				t.Errorf("Name = %q, want %q", got.Name, tt.want.Name)
+			if !ptrEqualStr(got.Name, tt.want.Name) {
+				t.Errorf("Name = %v, want %v", got.Name, tt.want.Name)
 			}
-			if got.Enabled != tt.want.Enabled {
+			if !ptrEqualBool(got.Enabled, tt.want.Enabled) {
 				t.Errorf("Enabled = %v, want %v", got.Enabled, tt.want.Enabled)
 			}
-			if got.SortOrder != tt.want.SortOrder {
-				t.Errorf("SortOrder = %d, want %d", got.SortOrder, tt.want.SortOrder)
+			if !ptrEqualInt(got.SortOrder, tt.want.SortOrder) {
+				t.Errorf("SortOrder = %v, want %v", got.SortOrder, tt.want.SortOrder)
 			}
-			if got.ConfigJSON != tt.want.ConfigJSON {
-				t.Errorf("ConfigJSON = %q, want %q", got.ConfigJSON, tt.want.ConfigJSON)
+			if !ptrEqualStr(got.ConfigJSON, tt.want.ConfigJSON) {
+				t.Errorf("ConfigJSON = %v, want %v", got.ConfigJSON, tt.want.ConfigJSON)
+			}
+			if !ptrEqualStr(got.Description, tt.want.Description) {
+				t.Errorf("Description = %v, want %v", got.Description, tt.want.Description)
+			}
+			if !ptrEqualStr(got.Status, tt.want.Status) {
+				t.Errorf("Status = %v, want %v", got.Status, tt.want.Status)
+			}
+			if !ptrEqualStr(got.MetadataJSON, tt.want.MetadataJSON) {
+				t.Errorf("MetadataJSON = %v, want %v", got.MetadataJSON, tt.want.MetadataJSON)
 			}
 		})
 	}
+}
+
+func strPtr(s string) *string { return &s }
+func boolPtr(b bool) *bool    { return &b }
+func intPtr(i int) *int       { return &i }
+
+func ptrEqualStr(a, b *string) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
+}
+
+func ptrEqualBool(a, b *bool) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
+}
+
+func ptrEqualInt(a, b *int) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
 }
 
 func TestToProtoMCPUserCred(t *testing.T) {
@@ -298,20 +372,20 @@ func TestToProtoMCP_RoundTrip(t *testing.T) {
 		CreatedAt: "2024-01-01", UpdatedAt: "2024-01-02",
 	}
 	pb := service.ToProtoMCP(original)
-	back := service.PatchFromProtoMCP(pb)
-	if back.Key != original.Key {
-		t.Errorf("roundtrip Key = %q, want %q", back.Key, original.Key)
+	back := service.PatchFromProtoMCPWithDiff(pb, biz.MCPServer{})
+	if back.Key == nil || *back.Key != original.Key {
+		t.Errorf("roundtrip Key = %v, want %q", back.Key, original.Key)
 	}
-	if back.Name != original.Name {
-		t.Errorf("roundtrip Name = %q, want %q", back.Name, original.Name)
+	if back.Name == nil || *back.Name != original.Name {
+		t.Errorf("roundtrip Name = %v, want %q", back.Name, original.Name)
 	}
-	if back.Enabled != original.Enabled {
+	if back.Enabled == nil || *back.Enabled != original.Enabled {
 		t.Errorf("roundtrip Enabled = %v, want %v", back.Enabled, original.Enabled)
 	}
-	if back.SortOrder != original.SortOrder {
-		t.Errorf("roundtrip SortOrder = %d, want %d", back.SortOrder, original.SortOrder)
+	if back.SortOrder == nil || *back.SortOrder != original.SortOrder {
+		t.Errorf("roundtrip SortOrder = %v, want %d", back.SortOrder, original.SortOrder)
 	}
-	if back.ConfigJSON != original.ConfigJSON {
-		t.Errorf("roundtrip ConfigJSON = %q, want %q", back.ConfigJSON, original.ConfigJSON)
+	if back.ConfigJSON == nil || *back.ConfigJSON != original.ConfigJSON {
+		t.Errorf("roundtrip ConfigJSON = %v, want %q", back.ConfigJSON, original.ConfigJSON)
 	}
 }

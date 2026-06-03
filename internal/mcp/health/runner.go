@@ -94,7 +94,8 @@ func (r *Runner) probeAll(ctx context.Context) {
 		if ctx.Err() != nil {
 			break
 		}
-		if !srv.Enabled || strings.TrimSpace(srv.DeletedAt) != "" {
+		// ListMCPServers already filters deleted rows; only skip disabled ones.
+		if !srv.Enabled {
 			continue
 		}
 		srv := srv
@@ -128,6 +129,8 @@ func (r *Runner) probeOne(ctx context.Context, srv biz.MCPServer) {
 	probeTotal.WithLabelValues(srv.Key, metricStatus).Inc()
 	probeDuration.WithLabelValues(srv.Key).Observe(elapsed.Seconds())
 
+	// TestMCPServer already persisted health metadata via persistHealth.
+	// Re-read the server to get the updated metadata_json for alert debounce logic.
 	isHardFailure := !result.OK && result.Status != "auth_required"
 	if isHardFailure {
 		updated, err := r.deps.MCP.GetMCPServer(ctx, srv.ID)

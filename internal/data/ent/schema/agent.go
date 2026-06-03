@@ -39,7 +39,6 @@ func (Agent) Fields() []ent.Field {
 		field.Bool("is_favorite").Default(false),
 		field.String("icon").Default(""),
 		field.Text("agent_description").Default(""),
-		field.String("category_position_id").Default(""),
 		field.String("system_prompt_mode").Default(""),
 		field.Int("context_window").Default(0),
 		field.Int("budget_monthly_cents").Default(0),

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/provider"
 )
 
 // OpenAICompatLLMCaller implements biz.LLMCaller using CallOpenAICompatChat
@@ -79,11 +80,13 @@ type DynamicLLMCaller struct {
 }
 
 // NewDynamicLLMCaller wires a DynamicLLMCaller for use in Wire.
-func NewDynamicLLMCaller(sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase) *DynamicLLMCaller {
+// The RoundTrip provides the centralized HTTP client; timeout is configured
+// by the Wire provider rather than created ad-hoc here.
+func NewDynamicLLMCaller(sys *biz.SystemSettingUsecase, catalog *biz.LlmProviderModelUsecase, rt *provider.RoundTrip) *DynamicLLMCaller {
 	return &DynamicLLMCaller{
 		sys:     sys,
 		catalog: catalog,
-		hc:      &http.Client{Timeout: 90 * time.Second},
+		hc:      rt.Client(),
 	}
 }
 

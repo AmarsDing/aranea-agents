@@ -443,16 +443,27 @@
 
 ---
 
-### 1.20 Skill 渐进加载 (`internal/agent/skill_guidance_inject.go` + `internal/agent/trpc_build.go` + `internal/agent/prompt_mode.go`)
+### 1.20 Skill 渐进加载 (`internal/biz/skill_load_mode.go` + `internal/agent/skill_guidance_inject.go` + `internal/agent/trpc_build.go` + `internal/agent/prompt_mode.go`)
 
 **职责**：将 Skill Prompt 注入策略从 Eager 全量注入改为 3 阶段渐进加载（L0 manifest → L1 body → L2 refs），通过 `skill_load_mode=progressive` 配置切换。
 
+**关键文件**：
+- `internal/biz/skill_load_mode.go`（模式常量 + 判断函数）
+- `internal/biz/agent_settings.go`（GetSkillLoadMode）
+- `internal/agent/skill_guidance_inject.go`（progressive guidance hook）
+- `internal/agent/trpc_build.go`（构建时注入 RoutedSkills 选项）
+- `internal/agent/prompt_mode.go`（Prompt 模式适配）
+- `pkg/trpc-agent-go/internal/flow/processor/skills.go`（processor 层 SkillLoadModeProgressive + WithRoutedSkills）
+- `pkg/trpc-agent-go/agent/llmagent/option.go`（WithSkillsRoutedSkills 选项）
+- `pkg/trpc-agent-go/agent/llmagent/llm_agent.go`（选项消费）
+- `api/kratos/agent/v1/agent.proto`（skill_load_mode 枚举注释）
+
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | `biz`（Agent 类型、SkillLoadMode 配置）、`pkg/trpc-agent-go/processor/skills`（SkillsRequestProcessor） |
+| **上游依赖** | `biz`（Agent 类型、SkillLoadMode 配置、`GetSkillLoadMode`）、`pkg/trpc-agent-go/processor/skills`（SkillsRequestProcessor）、`pkg/trpc-agent-go/agent/llmagent`（WithSkillsRoutedSkills 选项） |
 | **下游影响** | `agent`（BuildTRPCAgent 根据 skill_load_mode 选择注入策略）、所有使用 Skill 的 Agent |
-| **核心导出** | `IsProgressiveSkillLoad(mode) bool`、progressive 模式下的 guidance 注入跳过逻辑 |
-| **实现接口** | 无（修改现有 `newSkillGuidanceBeforeHook` 行为） |
+| **核心导出** | `biz.IsProgressiveSkillLoad(mode) bool`、`biz.SkillLoadModeProgressive = "progressive"`、`processor.SkillLoadModeProgressive = "progressive"`、`processor.WithRoutedSkills(names []string)`、`llmagent.WithSkillsRoutedSkills(names []string)`、`newProgressiveSkillGuidanceHook` |
+| **实现接口** | 无（修改现有 guidance hook 行为，新增 `newProgressiveSkillGuidanceHook`） |
 | **共享类型** | 无新增（复用现有 `skill_load_mode` 字段） |
 | **事件生产** | 无 |
 | **事件消费** | 无 |
@@ -460,10 +471,12 @@
 | **前端对应** | AgentSettingsPage（skill_load_mode 选项，需新增 `progressive` 选项） |
 
 **⚠️ 开发注意**：
-- progressive 模式下 `newSkillGuidanceBeforeHook` 返回 nil（不注入 guidance），LLM 必须通过 `skill_load` 工具按需获取 Skill 正文
+- progressive 模式下 `newProgressiveSkillGuidanceHook` 替代原有 `newSkillGuidanceBeforeHook`，返回 nil（不注入 guidance），LLM 必须通过 `skill_load` 工具按需获取 Skill 正文
 - progressive 模式自动启用 `WithSkillsLoadedContentInToolResults(true)`，避免 loaded body 再次注入 system prompt
 - `injectOverview` 增加 `[routed]` 标记，引导 LLM 优先加载被路由的 Skill
+- `WithRoutedSkills`（processor 层）和 `WithSkillsRoutedSkills`（llmagent 层）用于将路由匹配的 Skill 名称传递给框架，实现按需加载
 - 修改 `skill_load_mode` 枚举时，需同步更新 `api/kratos/agent/v1/agent.proto` 注释
+- `SkillLoadModeProgressive` 常量在 `biz` 和 `processor` 两层各有一份定义，修改时需同步
 
 ---
 

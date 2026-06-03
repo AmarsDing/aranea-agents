@@ -448,7 +448,7 @@ func configJSONFromSettings(settings AgentRuntimeSettings, files []AgentPromptFi
 // composePromptPreview generates a human-readable preview of what the system
 // instruction will look like for the given mode. PGO-1-BIZ-03: shows the
 // role_responsibility block when the inject flag is set and the agent has a
-// category_position_id (populated by callers that pass it via agent.Files
+// taxonomy_position_id (populated by callers that pass it via agent.Files
 // being pre-resolved or via a separate CategoryResponsibility field).
 func composePromptPreview(agent Agent, mode string) string {
 	var b strings.Builder

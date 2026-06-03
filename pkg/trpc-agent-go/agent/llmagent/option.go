@@ -449,6 +449,13 @@ type Options struct {
 	// skillsFilePathHints exposes SKILL.md file locators in prompt
 	// materialization when enabled.
 	skillsFilePathHints bool
+	// skillsRoutedSkills marks specific skills as routed in the overview,
+	// appending a [routed] suffix to their summary lines.
+	skillsRoutedSkills []string
+	// skillsRoutedSkillsResolver returns the set of skill names to mark as
+	// [routed] per invocation. When set, it takes precedence over the
+	// static skillsRoutedSkills list.
+	skillsRoutedSkillsResolver func(*agent.Invocation) []string
 	// skillLoadToolDescription overrides the built-in skill_load tool
 	// description when non-nil.
 	skillLoadToolDescription *string
@@ -870,6 +877,26 @@ func WithMaxLoadedSkills(max int) Option {
 func WithSkillsLoadedContentInToolResults(enable bool) Option {
 	return func(opts *Options) {
 		opts.SkillsLoadedContentInToolResults = enable
+	}
+}
+
+// WithSkillsRoutedSkills marks specific skills as routed in the overview,
+// appending a [routed] suffix to their summary lines. This guides the
+// LLM to prioritize loading these skills via skill_load.
+func WithSkillsRoutedSkills(names []string) Option {
+	return func(opts *Options) {
+		opts.skillsRoutedSkills = names
+	}
+}
+
+// WithSkillsRoutedSkillsResolver sets an invocation-aware resolver that
+// returns the set of skill names to mark as [routed] in the overview.
+// When set, it takes precedence over the static WithSkillsRoutedSkills list.
+func WithSkillsRoutedSkillsResolver(
+	resolver func(*agent.Invocation) []string,
+) Option {
+	return func(opts *Options) {
+		opts.skillsRoutedSkillsResolver = resolver
 	}
 }
 

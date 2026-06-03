@@ -371,6 +371,8 @@ func applyMCPAuthHeaders(ctx context.Context, serverKey string, sc mcpconfig.Ser
 	for k, v := range sc.Headers {
 		headers[k] = v
 	}
+	// When require_user_credentials is set, resolve per-user auth headers and skip
+	// OAuth/API-key processing to avoid overwriting user credentials with static auth.
 	if sc.RequireUserCredentials && deps.MCPTooling != nil && deps.MCPTooling.MCP() != nil {
 		bizSC := biz.MCPServerConfig{
 			Headers:                sc.Headers,
@@ -381,6 +383,7 @@ func applyMCPAuthHeaders(ctx context.Context, serverKey string, sc mcpconfig.Ser
 			for k, v := range merged {
 				headers[k] = v
 			}
+			return headers
 		}
 	}
 	authType := strings.ToLower(strings.TrimSpace(sc.Auth.Type))

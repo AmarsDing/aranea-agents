@@ -248,7 +248,7 @@ func (a *Applier) upsertAgent(ag AgentSpec, spec *Spec, result *ApplyResult) err
 		"provider":             ag.Provider,
 		"model":                ag.Model,
 		"agent_description":    desc,
-		"category_position_id": catPositionID,
+		"taxonomy_position_id": catPositionID,
 		"system_prompt_mode":   ag.SystemPromptMode,
 		"status":               "active",
 	}

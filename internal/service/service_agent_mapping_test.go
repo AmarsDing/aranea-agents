@@ -610,7 +610,7 @@ func TestToProtoAgent_BasicFields(t *testing.T) {
 		IsFavorite:         false,
 		Icon:               "pets",
 		AgentDescription:   "desc",
-		CategoryPositionID: "cat-1",
+		TaxonomyPositionID: "cat-1",
 		PositionKey:        "pos-1",
 		AgentVariant:       "standard",
 		VariantDescription: "vdesc",

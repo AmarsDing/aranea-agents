@@ -171,7 +171,7 @@
 
 <script setup lang="ts">
 import { useQuasar } from "quasar";
-import type { LearningObservation, LearningPattern, LearningProposal as KnowledgeProposal } from "../../features/agents/api.learning";
+import type { LearningObservation, LearningPattern, LearningProposal as KnowledgeProposal } from "../../features/agents/learning.types";
 
 const $q = useQuasar();
 

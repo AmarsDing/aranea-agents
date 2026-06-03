@@ -98,6 +98,12 @@ message AgentRuntimeSettings {
   bool memory_compact_enabled = 122;
   bool tool_result_gate_enabled = 123;
   bool session_summary_enabled = 83;
+  // skill_load_mode controls how skill content is loaded:
+  //   "once"      - load for one model request, then offload
+  //   "turn"      - load for the current invocation, offload on next (default)
+  //   "session"   - keep loaded across invocations (legacy)
+  //   "progressive" - 3-phase progressive loading: L0 manifest only in prompt,
+  //                   L1 body via skill_load tool, L2 refs via skill_select_docs
   string skill_load_mode = 84;
   string output_schema_json = 85;
   string model_selector = 86;
