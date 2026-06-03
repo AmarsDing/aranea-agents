@@ -110,7 +110,7 @@ body.body--dark
     border-width: 1px
 
 .app-glass-control--solid,
-.category-control,
+.taxonomy-control,
 .agent-dialog-control
   .q-field__control
     background: var(--color-on-accent)
@@ -220,7 +220,7 @@ body.body--dark
   // 筛选项：按内容宽度自适应
   > .app-page-toolbar__field,
   > .q-field.app-page-toolbar__field,
-  > .agent-category-field,
+  > .taxonomy-field,
   > .q-field:not(.app-page-toolbar__search)
     flex: 0 1 auto
     min-width: 120px
@@ -291,25 +291,25 @@ body.body--dark .app-entity-toolbar-btn:hover
   background: var(--glass-surface)
 
 // 分类树 picker 节点
-.app-category-tree-node
+.app-taxonomy-tree-node
   min-height: 34px
   padding: 4px 6px
   border-radius: 10px
 
-.app-category-tree-node--selectable
+.app-taxonomy-tree-node--selectable
   cursor: pointer
 
-.app-category-tree-node:not(.app-category-tree-node--selectable)
+.app-taxonomy-tree-node:not(.app-taxonomy-tree-node--selectable)
   opacity: 0.55
 
-.app-category-tree-node--selectable:hover,
-.app-category-tree-node:hover
+.app-taxonomy-tree-node--selectable:hover,
+.app-taxonomy-tree-node:hover
   background: color-mix(in srgb, var(--color-page-tint-blue) 72%, transparent)
 
-.app-category-tree-node--selected
+.app-taxonomy-tree-node--selected
   background: var(--color-info-soft)
 
-.app-category-tree-node__caption
+.app-taxonomy-tree-node__caption
   font-size: 11px
   color: var(--color-text-secondary)
 
@@ -332,7 +332,7 @@ body.body--dark
       background: color-mix(in srgb, var(--glass-surface) 88%, transparent)
 
   .app-glass-control--solid,
-  .category-control,
+  .taxonomy-control,
   .agent-dialog-control
     .q-field__control
       background: color-mix(in srgb, var(--glass-surface) 88%, transparent)

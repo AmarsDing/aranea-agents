@@ -28,7 +28,7 @@ func newWorkingMemoryContextBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callb
 			return &trpctool.BeforeToolResult{Context: ctx}, nil
 		}
 		name := args.Declaration.Name
-		if !strings.HasPrefix(name, "working_memory.") {
+		if !strings.HasPrefix(name, "working_memory_") {
 			return &trpctool.BeforeToolResult{Context: ctx}, nil
 		}
 		// Extract session and agent info from invocation context

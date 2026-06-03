@@ -74,7 +74,7 @@
 - Modify: `internal/data/agent_repo.go`
 - Modify: `internal/data/seed_system_admin.go`
 
-- [ ] **Step 1: Modify Ent Schema — extend kind enum**
+- [x] **Step 1: Modify Ent Schema — extend kind enum**
 
 In `internal/data/ent/schema/agent.go`, find the `kind` field definition and extend its values:
 
@@ -82,12 +82,12 @@ In `internal/data/ent/schema/agent.go`, find the `kind` field definition and ext
 field.Enum("kind").Values("user", "system", "system_builtin", "industry_template", "marketplace", "certified"),
 ```
 
-- [ ] **Step 2: Run `go generate` to regenerate Ent code**
+- [x] **Step 2: Run `go generate` to regenerate Ent code**
 
 Run: `cd f:\aranea-agents && go generate ./internal/data/ent/...`
 Expected: No errors. New enum values appear in generated code.
 
-- [ ] **Step 3: Add `Ownership` field to `biz.Agent` struct**
+- [x] **Step 3: Add `Ownership` field to `biz.Agent` struct**
 
 In `internal/biz/agent_types.go`, add the `Ownership` field to the `Agent` struct (after the existing `Kind` field):
 
@@ -95,7 +95,7 @@ In `internal/biz/agent_types.go`, add the `Ownership` field to the `Agent` struc
 Ownership string `json:"ownership,omitempty"`
 ```
 
-- [ ] **Step 4: Add `Ownership` field to `AgentListQuery`**
+- [x] **Step 4: Add `Ownership` field to `AgentListQuery`**
 
 In `internal/biz/agent_types.go`, add to `AgentListQuery`:
 
@@ -103,7 +103,7 @@ In `internal/biz/agent_types.go`, add to `AgentListQuery`:
 Ownership string
 ```
 
-- [ ] **Step 5: Map `Ownership` in `entAgentToBiz`**
+- [x] **Step 5: Map `Ownership` in `entAgentToBiz`**
 
 In `internal/data/agent_repo.go`, find `entAgentToBiz` and add the mapping:
 
@@ -111,7 +111,7 @@ In `internal/data/agent_repo.go`, find `entAgentToBiz` and add the mapping:
 Ownership: string(a.Kind),
 ```
 
-- [ ] **Step 6: Add `Ownership` filter in `SearchAgents` Data layer**
+- [x] **Step 6: Add `Ownership` filter in `SearchAgents` Data layer**
 
 In `internal/data/agent_repo.go`, find the `SearchAgents` method and add the WHERE clause for `Ownership`:
 
@@ -121,7 +121,7 @@ if q.Ownership != "" {
 }
 ```
 
-- [ ] **Step 7: Update `seed_system_admin.go` — set kind to `system_builtin`**
+- [x] **Step 7: Update `seed_system_admin.go` — set kind to `system_builtin`**
 
 In `internal/data/seed_system_admin.go`, find where `__system_admin__` is created and change:
 
@@ -132,12 +132,12 @@ kind: "system",
 kind: "system_builtin",
 ```
 
-- [ ] **Step 8: Build and verify**
+- [x] **Step 8: Build and verify**
 
 Run: `cd f:\aranea-agents && go build ./...`
 Expected: Build succeeds with no errors.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add internal/data/ent/schema/agent.go internal/data/ent/ internal/biz/agent_types.go internal/data/agent_repo.go internal/data/seed_system_admin.go
@@ -153,7 +153,7 @@ git commit -m "feat: add Ownership field to Agent, extend kind enum for system_b
 - Modify: `internal/biz/memory_admin_usecase.go`
 - Modify: `internal/data/memory_admin_store.go`
 
-- [ ] **Step 1: Split `L3FactAdminStore` into `L3FactReader` + `L3FactWriter`**
+- [x] **Step 1: Split `L3FactAdminStore` into `L3FactReader` + `L3FactWriter`**
 
 In `internal/biz/memory_admin_store.go`, replace `L3FactAdminStore` with two interfaces:
 
@@ -180,11 +180,11 @@ type L3FactAdminStore interface {
 }
 ```
 
-- [ ] **Step 2: Update `SessionAdminStore` composition**
+- [x] **Step 2: Update `SessionAdminStore` composition**
 
 In `internal/biz/memory_admin_store.go`, keep `SessionAdminStore` using `L3FactAdminStore` for backward compatibility (no change needed since `L3FactAdminStore` = `L3FactReader` + `L3FactWriter`).
 
-- [ ] **Step 3: Add `factWriter` field and delete methods to `MemoryAdminUsecase`**
+- [x] **Step 3: Add `factWriter` field and delete methods to `MemoryAdminUsecase`**
 
 In `internal/biz/memory_admin_usecase.go`:
 
@@ -222,7 +222,7 @@ func (uc *MemoryAdminUsecase) DeleteFactRowsByIDs(ctx context.Context, factIDs [
 }
 ```
 
-- [ ] **Step 4: Implement `DeleteFactRow`/`DeleteFactRowsByIDs` in Data layer**
+- [x] **Step 4: Implement `DeleteFactRow`/`DeleteFactRowsByIDs` in Data layer**
 
 In `internal/data/memory_admin_store.go`, add implementations:
 
@@ -240,17 +240,17 @@ func (s *sessionAdminStore) DeleteFactRowsByIDs(ctx context.Context, factIDs []s
 
 Note: The exact Ent client method names depend on the generated code. Check `internal/data/ent/` for the actual `MemoryFact` client API.
 
-- [ ] **Step 5: Run `make wire` to regenerate Wire code**
+- [x] **Step 5: Run `make wire` to regenerate Wire code**
 
 Run: `cd f:\aranea-agents && make wire`
 Expected: Wire generation succeeds. The `NewMemoryAdminUsecase` constructor now takes 4 parameters, and Wire resolves `L3FactWriter` binding.
 
-- [ ] **Step 6: Build and verify**
+- [x] **Step 6: Build and verify**
 
 Run: `cd f:\aranea-agents && go build ./...`
 Expected: Build succeeds.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add internal/biz/memory_admin_store.go internal/biz/memory_admin_usecase.go internal/data/memory_admin_store.go cmd/admin/

@@ -114,14 +114,14 @@ func ensureActiveTask(ctx context.Context, writer biz.L1TaskWriter, reader biz.L
 	return jsonutil.IfaceStr(m, "id"), nil
 }
 
-// --- working_memory.read ---
+// --- read ---
 
-// ReadInput is the input for working_memory.read.
+// ReadInput is the input for read.
 type ReadInput struct {
 	FieldPath string `json:"field_path" jsonschema:"description=The field path to read,required"`
 }
 
-// ReadOutput is the output for working_memory.read.
+// ReadOutput is the output for read.
 type ReadOutput struct {
 	FieldPath string `json:"field_path"`
 	Value     string `json:"value"`
@@ -153,17 +153,17 @@ func readExecute(ctx context.Context, input ReadInput) (ReadOutput, error) {
 	}, nil
 }
 
-// NewReadTool creates the working_memory.read tool.
+// NewReadTool creates the read tool.
 func NewReadTool() trpctool.Tool {
 	return trpcfunction.NewFunctionTool(readExecute,
-		trpcfunction.WithName("working_memory.read"),
+		trpcfunction.WithName("read"),
 		trpcfunction.WithDescription("Read a field value from the current working memory task. Use this to retrieve stored context like user preferences, task progress, or intermediate results."),
 	)
 }
 
-// --- working_memory.list ---
+// --- list ---
 
-// ListInput is the input for working_memory.list.
+// ListInput is the input for list.
 type ListInput struct{}
 
 // FieldEntry represents a single field in the list output.
@@ -174,7 +174,7 @@ type FieldEntry struct {
 	Pinned    bool   `json:"pinned"`
 }
 
-// ListOutput is the output for working_memory.list.
+// ListOutput is the output for list.
 type ListOutput struct {
 	Fields []FieldEntry `json:"fields"`
 }
@@ -207,24 +207,24 @@ func listExecute(ctx context.Context, input ListInput) (ListOutput, error) {
 	return ListOutput{Fields: fields}, nil
 }
 
-// NewListTool creates the working_memory.list tool.
+// NewListTool creates the list tool.
 func NewListTool() trpctool.Tool {
 	return trpcfunction.NewFunctionTool(listExecute,
-		trpcfunction.WithName("working_memory.list"),
+		trpcfunction.WithName("list"),
 		trpcfunction.WithDescription("List all fields in the current working memory task. Returns field paths, values, and pin status."),
 	)
 }
 
-// --- working_memory.write ---
+// --- write ---
 
-// WriteInput is the input for working_memory.write.
+// WriteInput is the input for write.
 type WriteInput struct {
 	FieldPath string `json:"field_path" jsonschema:"description=The field path to write to,required"`
 	Value     string `json:"value" jsonschema:"description=The value to store,required"`
 	Pinned    bool   `json:"pinned" jsonschema:"description=Whether to pin this field to the prompt"`
 }
 
-// WriteOutput is the output for working_memory.write.
+// WriteOutput is the output for write.
 type WriteOutput struct {
 	FieldPath string `json:"field_path"`
 	Value     string `json:"value"`
@@ -265,15 +265,15 @@ func writeExecute(ctx context.Context, input WriteInput) (WriteOutput, error) {
 	}, nil
 }
 
-// NewWriteTool creates the working_memory.write tool.
+// NewWriteTool creates the write tool.
 func NewWriteTool() trpctool.Tool {
 	return trpcfunction.NewFunctionTool(writeExecute,
-		trpcfunction.WithName("working_memory.write"),
+		trpcfunction.WithName("write"),
 		trpcfunction.WithDescription("Write a field value to the current working memory task. Creates the task if none exists. Pinned fields are included in the prompt for future turns."),
 	)
 }
 
-// --- working_memory.patch ---
+// --- patch ---
 
 // PatchField represents a single field in a patch batch.
 type PatchField struct {
@@ -282,12 +282,12 @@ type PatchField struct {
 	Pinned    bool   `json:"pinned" jsonschema:"description=Whether to pin this field to the prompt"`
 }
 
-// PatchInput is the input for working_memory.patch.
+// PatchInput is the input for patch.
 type PatchInput struct {
 	Fields []PatchField `json:"fields" jsonschema:"description=List of fields to upsert,required"`
 }
 
-// PatchOutput is the output for working_memory.patch.
+// PatchOutput is the output for patch.
 type PatchOutput struct {
 	UpdatedCount int `json:"updated_count"`
 }
@@ -325,22 +325,22 @@ func patchExecute(ctx context.Context, input PatchInput) (PatchOutput, error) {
 	return PatchOutput{UpdatedCount: len(fields)}, nil
 }
 
-// NewPatchTool creates the working_memory.patch tool.
+// NewPatchTool creates the patch tool.
 func NewPatchTool() trpctool.Tool {
 	return trpcfunction.NewFunctionTool(patchExecute,
-		trpcfunction.WithName("working_memory.patch"),
+		trpcfunction.WithName("patch"),
 		trpcfunction.WithDescription("Batch update multiple working memory fields at once. More efficient than multiple write calls."),
 	)
 }
 
-// --- working_memory.delete ---
+// --- delete ---
 
-// DeleteInput is the input for working_memory.delete.
+// DeleteInput is the input for delete.
 type DeleteInput struct {
 	FieldPath string `json:"field_path" jsonschema:"description=The field path to delete,required"`
 }
 
-// DeleteOutput is the output for working_memory.delete.
+// DeleteOutput is the output for delete.
 type DeleteOutput struct {
 	Deleted bool `json:"deleted"`
 }
@@ -364,10 +364,10 @@ func deleteExecute(ctx context.Context, input DeleteInput) (DeleteOutput, error)
 	return DeleteOutput{Deleted: true}, nil
 }
 
-// NewDeleteTool creates the working_memory.delete tool.
+// NewDeleteTool creates the delete tool.
 func NewDeleteTool() trpctool.Tool {
 	return trpcfunction.NewFunctionTool(deleteExecute,
-		trpcfunction.WithName("working_memory.delete"),
+		trpcfunction.WithName("delete"),
 		trpcfunction.WithDescription("Delete a field from the current working memory task."),
 	)
 }

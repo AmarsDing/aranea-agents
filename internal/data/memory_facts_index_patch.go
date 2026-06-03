@@ -54,14 +54,32 @@ func ensureMemoryFactsIndexStatusPatches(ctx context.Context, c *ent.Client, lg 
 		return err
 	}
 
-	extraPatches := []struct {
+	return nil
+}
+
+// ensureMemoryFactsExtraPatches adds pii_types and quality_score columns to
+// memory_facts. Split from ensureMemoryFactsIndexStatusPatches so that if the
+// original migration (20260602) was already recorded but these columns were
+// missed (e.g. partial failure), this separate migration still runs.
+func ensureMemoryFactsExtraPatches(ctx context.Context, c *ent.Client, lg loggateway.Logger) error {
+	if c == nil {
+		return nil
+	}
+	hasTable, err := sqliteTableExists(ctx, c, lg, "memory_facts")
+	if err != nil {
+		return err
+	}
+	if !hasTable {
+		return nil
+	}
+	patches := []struct {
 		column string
 		ddl    string
 	}{
 		{"pii_types", `ALTER TABLE memory_facts ADD COLUMN pii_types TEXT NOT NULL DEFAULT ''`},
 		{"quality_score", `ALTER TABLE memory_facts ADD COLUMN quality_score REAL NOT NULL DEFAULT 0`},
 	}
-	for _, p := range extraPatches {
+	for _, p := range patches {
 		has, err := sqliteColumnExists(ctx, c, lg, "memory_facts", p.column)
 		if err != nil {
 			lg.Warn("memory facts extra patch check failed", loggateway.StepID("memory.schema_patch_fail"), loggateway.Err(err))
@@ -75,6 +93,5 @@ func ensureMemoryFactsIndexStatusPatches(ctx context.Context, c *ent.Client, lg 
 			return err
 		}
 	}
-
 	return nil
 }

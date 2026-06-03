@@ -33,7 +33,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { PlatformResourceTreeNode } from "../../features/platform/types";
-import { parseIsSystem, trimmedDesc } from "../../features/platform/taxonomyTreeUtils";
+import { parseIsSystem, trimmedDesc } from "../../features/platform/categoryTreeUtils";
 
 const props = defineProps<{
   position: PlatformResourceTreeNode;
@@ -47,6 +47,6 @@ defineEmits<{
   remove: [node: PlatformResourceTreeNode];
 }>();
 
-const description = computed(() => trimmedDesc(props.position.description));
+const description = computed(() => trimmedDesc(props.position));
 const isSystem = computed(() => parseIsSystem(props.position));
 </script>

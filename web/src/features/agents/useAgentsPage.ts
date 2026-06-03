@@ -19,7 +19,7 @@ export type CreateAgentForm = {
   position_key: string;
   agent_variant: string;
   variant_description: string;
-  category_position_id: string;
+  taxonomy_position_id: string;
 };
 
 type ViewMode = "grid" | "list";
@@ -83,7 +83,7 @@ export function useAgentsPage() {
     position_key: "",
     agent_variant: "",
     variant_description: "",
-    category_position_id: ""
+    taxonomy_position_id: ""
   });
 
   const selectedTemplateKey = ref("");
@@ -230,7 +230,7 @@ export function useAgentsPage() {
       position_key: "",
       agent_variant: "",
       variant_description: "",
-      category_position_id: ""
+      taxonomy_position_id: ""
     });
     selectedTemplateKey.value = "";
     clearCreateFieldErrors();

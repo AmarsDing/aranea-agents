@@ -135,7 +135,21 @@ func (u *MCPServerUsecase) Create(ctx context.Context, in MCPServer) (MCPServer,
 	return u.repo.CreateMCPServer(ctx, in)
 }
 
-func (u *MCPServerUsecase) Update(ctx context.Context, id string, patch MCPServer) (MCPServer, error) {
+// MCPServerUpdate is a partial-update DTO where nil fields mean "do not change".
+// This solves proto3 zero-value ambiguity: bool false and int 0 cannot be
+// distinguished from "field not set" in proto3, so pointer nil is used instead.
+type MCPServerUpdate struct {
+	Key          *string
+	Name         *string
+	Description  *string
+	Status       *string
+	Enabled      *bool
+	SortOrder    *int
+	ConfigJSON   *string
+	MetadataJSON *string
+}
+
+func (u *MCPServerUsecase) Update(ctx context.Context, id string, patch MCPServerUpdate) (MCPServer, error) {
 	if strings.TrimSpace(id) == "" {
 		return MCPServer{}, errors.BadRequest("MCP_SERVER", "id is required")
 	}
@@ -144,28 +158,35 @@ func (u *MCPServerUsecase) Update(ctx context.Context, id string, patch MCPServe
 		return MCPServer{}, err
 	}
 	merged := cur
-	if patch.Key != "" {
-		merged.Key = patch.Key
+	if patch.Key != nil {
+		merged.Key = *patch.Key
 	}
-	if patch.Name != "" {
-		merged.Name = patch.Name
+	if patch.Name != nil {
+		merged.Name = *patch.Name
 	}
-	if patch.Status != "" {
-		merged.Status = patch.Status
+	if patch.Description != nil {
+		merged.Description = *patch.Description
 	}
-	merged.Description = patch.Description
-	merged.Enabled = patch.Enabled
-	merged.SortOrder = patch.SortOrder
-	merged.ConfigJSON = patch.ConfigJSON
-	merged.MetadataJSON = patch.MetadataJSON
-	if merged.Key == "" {
-		merged.Key = cur.Key
+	if patch.Status != nil {
+		merged.Status = *patch.Status
 	}
-	if merged.Name == "" {
-		merged.Name = cur.Name
+	if patch.Enabled != nil {
+		merged.Enabled = *patch.Enabled
 	}
-	if merged.Status == "" {
-		merged.Status = cur.Status
+	if patch.SortOrder != nil {
+		merged.SortOrder = *patch.SortOrder
+	}
+	if patch.ConfigJSON != nil {
+		merged.ConfigJSON = *patch.ConfigJSON
+	}
+	if patch.MetadataJSON != nil {
+		merged.MetadataJSON = *patch.MetadataJSON
+	}
+	if strings.TrimSpace(merged.Key) == "" {
+		return MCPServer{}, errors.BadRequest("MCP_SERVER", "key cannot be empty")
+	}
+	if strings.TrimSpace(merged.Name) == "" {
+		return MCPServer{}, errors.BadRequest("MCP_SERVER", "name cannot be empty")
 	}
 	return u.repo.UpdateMCPServer(ctx, merged)
 }

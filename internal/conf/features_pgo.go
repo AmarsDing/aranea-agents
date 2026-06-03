@@ -15,7 +15,7 @@ func PGODefaultFilesV2() bool {
 }
 
 // PGOCategoryResponsibilityInject controls whether the position-level
-// description (岗位职责) from agent_category_nodes is injected into the
+// description (岗位职责) from industry_taxonomy is injected into the
 // system instruction as a <role_responsibility> block.
 // PGO-1-AGENT-02: When false, BuildSystemPrompt behaves exactly as before.
 func PGOCategoryResponsibilityInject() bool {

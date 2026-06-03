@@ -53,8 +53,8 @@
             :error="Boolean(agentKeyError)"
             :error-message="agentKeyError"
           />
-          <agent-category-picker
-            :model-value="form.category_position_id || null"
+          <taxonomy-picker
+            :model-value="form.taxonomy_position_id || null"
             class="app-field-long"
             :tree="categoryTree"
             label="业务分类"
@@ -149,7 +149,7 @@ import { computed, ref } from "vue";
 import { useQuasar } from "quasar";
 import AgentAvatarPicker from "../avatar/AgentAvatarPicker.vue";
 import AgentAvatarQ from "../avatar/AgentAvatarQ.vue";
-import AgentCategoryPicker from "./AgentCategoryPicker.vue";
+import TaxonomyPicker from "./TaxonomyPicker.vue";
 import type { AgentKind, AgentTemplatePreset, A2AProxyConfig } from "../../features/agents/types";
 import type { PlatformResourceTreeNode } from "../../features/platform/types";
 
@@ -163,7 +163,7 @@ type CreateForm = {
   position_key: string;
   agent_variant: string;
   variant_description: string;
-  category_position_id: string;
+  taxonomy_position_id: string;
 };
 
 const props = defineProps<{
@@ -213,7 +213,7 @@ const selfEvolveModel = computed({
 });
 
 function onCategoryPick(value: string | null) {
-  props.form.category_position_id = value ?? ""
+  props.form.taxonomy_position_id = value ?? ""
 }
 
 const avatarPickerOpen = ref(false);

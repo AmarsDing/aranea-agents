@@ -10,7 +10,7 @@ import OverviewPage from "../pages/OverviewPage.vue";
 import UsageEventsPage from "../pages/UsageEventsPage.vue";
 import ResourceManagerPage from "../pages/ResourceManagerPage.vue";
 import EcosystemPage from "../pages/EcosystemPage.vue";
-import AgentCategoriesPage from "../pages/AgentCategoriesPage.vue";
+import TaxonomyPage from "../pages/TaxonomyPage.vue";
 import TeamsPage from "../pages/TeamsPage.vue";
 import SkillsPage from "../pages/SkillsPage.vue";
 import SkillRunsPage from "../pages/SkillRunsPage.vue";
@@ -64,7 +64,7 @@ export const routes: RouteRecordRaw[] = [
       { path: "sessions/:sessionId", name: "session-detail", component: SessionDetailPage },
       { path: "memory", name: "memory", component: MemoryCenterPage },
       { path: "agents", name: "agents", component: AgentsPage },
-      { path: "settings/agent-categories", name: "agent-categories", component: AgentCategoriesPage },
+      { path: "settings/taxonomy", name: "taxonomy", component: TaxonomyPage },
       { path: "agents/:id/settings", name: "agent-settings", component: AgentSettingsPage },
       { path: "team", name: "team", component: TeamsPage },
       { path: "teams/:teamId/runs/:runId/observatory", name: "team-run-observatory", component: TeamRunObservatoryPage },

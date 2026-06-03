@@ -6,10 +6,12 @@ import (
 
 	"aranea-agents/internal/a2a"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/outbound"
 	"aranea-agents/internal/tools"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	knowledgepkg "aranea-agents/internal/tools/knowledge"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
+	subagenttool "aranea-agents/internal/tools/subagent"
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
 	"aranea-agents/pkg/loggateway"
 
@@ -61,6 +63,8 @@ type ToolsetConfig struct {
 	ReadDocument     bool
 	ReadSpreadsheet  bool
 	WorkingMemory    bool
+	OutboundRouter   *outbound.Router
+	SubAgentService  *subagenttool.Service
 }
 
 type AgentToolConfig = tools.AgentToolConfig
@@ -212,6 +216,8 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 		MemoryTools:   cfg.MemoryTools,
 		CustomTools:   customTools,
 		BlobReader:    cfg.BlobReader,
+		OutboundRouter:  cfg.OutboundRouter,
+		SubAgentService: cfg.SubAgentService,
 		Lg:            lg,
 	})
 	if err != nil {

@@ -73,7 +73,7 @@ func TestSupervisorReconnectsAfterDisconnect(t *testing.T) {
 	uc := biz.NewChannelUsecase(repo, nil, nil, nil, nil, biz.NewCredentialCrypto(nil, loggateway.NewNoop()), loggateway.NewNoop())
 	mgr := runtime.NewManager(uc, reconnectHandler{}, func(ctx context.Context, creds []biz.ChannelCredential, key string) (string, error) {
 		return "token", nil
-	}, loggateway.NewNoop())
+	}, loggateway.NewNoop(), nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

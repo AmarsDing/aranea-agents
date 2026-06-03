@@ -1,12 +1,12 @@
 /**
- * 平台资源：**按 `PlatformResourceName` 分发**至 **`avatar` / `agent_category` / `llm_provider_model` / `hook` / `channel` / `mcp` / `cron` / `monitor` / `skill`** 等 Kratos 客户端。
+ * 平台资源：**按 `PlatformResourceName` 分发**至 **`avatar` / `industry_taxonomy` / `llm_provider_model` / `hook` / `channel` / `mcp` / `cron` / `monitor` / `skill`** 等 Kratos 客户端。
  * **不再使用 `legacyRestApi`**。
  *
  * **`validateModel`** / **`inspectProviderModel`**：**`llm_provider_model/v1`**。
  */
 import type { CreateProviderModelRequest, ProviderModel } from "../../services/kratos/llm_provider_model/v1/index";
 import {
-  createAgentCategoryService,
+  createIndustryTaxonomyService,
   createTaxonomyService,
   createAvatarService,
   createChannelService,
@@ -52,11 +52,11 @@ function unsupported(op: string, resource: PlatformResourceName): Error {
   return new Error(`${op} unsupported for resource "${resource}" via platform gateway`);
 }
 
-function agentCategoryWireToPlatform(raw: unknown): PlatformResource {
+function industryTaxonomyWireToPlatform(raw: unknown): PlatformResource {
   const r = asRecord(raw);
   return {
     id: pickStr(r, "id", "id"),
-    resource: "agent-categories",
+    resource: "taxonomy-nodes",
     key: pickStr(r, "key", "key"),
     name: pickStr(r, "name", "name"),
     description: pickStr(r, "description", "description"),
@@ -102,12 +102,12 @@ function taxonomyWireToPlatform(raw: unknown): PlatformResource {
   };
 }
 
-function mapAgentCategoryTreeNode(raw: unknown): PlatformResourceTreeNode {
+function mapIndustryTaxonomyTreeNode(raw: unknown): PlatformResourceTreeNode {
   const o = asRecord(raw);
   const cat = asRecord(o.category ?? o.Category);
-  const base = agentCategoryWireToPlatform(cat);
+  const base = industryTaxonomyWireToPlatform(cat);
   const childrenRaw = o.children ?? o.Children;
-  const children = Array.isArray(childrenRaw) ? childrenRaw.map(mapAgentCategoryTreeNode) : [];
+  const children = Array.isArray(childrenRaw) ? childrenRaw.map(mapIndustryTaxonomyTreeNode) : [];
   return { ...base, children };
 }
 
@@ -426,10 +426,10 @@ export async function listPlatformResources(resource: PlatformResourceName): Pro
       const rows = await listAvatarAssets();
       return rows.map(avatarAssetToPlatform);
     }
-    case "agent-categories": {
-      const svc = createAgentCategoryService();
-      const res = await svc.ListAgentCategories({});
-      return (res.items ?? []).map((row: unknown) => agentCategoryWireToPlatform(row));
+    case "taxonomy-nodes": {
+      const svc = createIndustryTaxonomyService();
+      const res = await svc.ListIndustryTaxonomies({});
+      return (res.items ?? []).map((row: unknown) => industryTaxonomyWireToPlatform(row));
     }
     case "taxonomy": {
       const svc = createTaxonomyService();
@@ -478,17 +478,17 @@ export async function listPlatformResources(resource: PlatformResourceName): Pro
   }
 }
 
-export async function listPlatformResourceTree(resource: "agent-categories" | "taxonomy"): Promise<PlatformResourceTreeNode[]> {
+export async function listPlatformResourceTree(resource: "taxonomy-nodes" | "taxonomy"): Promise<PlatformResourceTreeNode[]> {
   if (resource === "taxonomy") {
     const svc = createTaxonomyService();
     const res = await svc.ListTaxonomyTree({});
     const items = res.items ?? [];
     return items.map(mapTaxonomyTreeNode);
   }
-  const svc = createAgentCategoryService();
-  const res = await svc.ListAgentCategoryTree({});
+  const svc = createIndustryTaxonomyService();
+  const res = await svc.ListIndustryTaxonomyTree({});
   const items = res.items ?? [];
-  return items.map(mapAgentCategoryTreeNode);
+  return items.map(mapIndustryTaxonomyTreeNode);
 }
 
 export async function createPlatformResource(
@@ -498,9 +498,9 @@ export async function createPlatformResource(
   switch (resource) {
     case "avatar-assets":
       throw unsupported("create", resource);
-    case "agent-categories": {
-      const svc = createAgentCategoryService();
-      const row = await svc.CreateAgentCategory({
+    case "taxonomy-nodes": {
+      const svc = createIndustryTaxonomyService();
+      const row = await svc.CreateIndustryTaxonomy({
         key: payload.key,
         name: payload.name,
         description: payload.description,
@@ -514,7 +514,7 @@ export async function createPlatformResource(
         configJson: payload.config_json ?? "{}",
         metadataJson: payload.metadata_json ?? "{}"
       });
-      return agentCategoryWireToPlatform(row);
+      return industryTaxonomyWireToPlatform(row);
     }
     case "taxonomy": {
       const svc = createTaxonomyService();
@@ -603,9 +603,9 @@ export async function updatePlatformResource(
   switch (resource) {
     case "avatar-assets":
       throw unsupported("update", resource);
-    case "agent-categories": {
-      const svc = createAgentCategoryService();
-      const cur = await svc.GetAgentCategory({ id });
+    case "taxonomy-nodes": {
+      const svc = createIndustryTaxonomyService();
+      const cur = await svc.GetIndustryTaxonomy({ id });
       const curIsSystem = pickBool(asRecord(cur), "is_system", "isSystem");
       const curEnabled = pickBool(asRecord(cur), "enabled", "enabled");
       const merged = {
@@ -627,8 +627,8 @@ export async function updatePlatformResource(
         updatedAt: cur.updatedAt,
         deletedAt: cur.deletedAt
       };
-      const row = await svc.UpdateAgentCategory({ id, category: merged });
-      return agentCategoryWireToPlatform(row);
+      const row = await svc.UpdateIndustryTaxonomy({ id, industryTaxonomy: merged });
+      return industryTaxonomyWireToPlatform(row);
     }
     case "taxonomy": {
       const svc = createTaxonomyService();
@@ -743,9 +743,9 @@ export async function deletePlatformResource(resource: PlatformResourceName, id:
       await svc.DeleteAvatarAsset({ id });
       return;
     }
-    case "agent-categories": {
-      const svc = createAgentCategoryService();
-      await svc.DeleteAgentCategory({ id });
+    case "taxonomy-nodes": {
+      const svc = createIndustryTaxonomyService();
+      await svc.DeleteIndustryTaxonomy({ id });
       return;
     }
     case "taxonomy": {

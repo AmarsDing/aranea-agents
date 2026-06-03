@@ -11,11 +11,6 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-type L3FactWriter interface {
-	DeleteFactRow(ctx context.Context, factID string) error
-	DeleteFactRowsByIDs(ctx context.Context, factIDs []string) (int, error)
-}
-
 type MemoryAdminUsecase struct {
 	admin     SessionAdminStore
 	vec       *MemoryUsecase

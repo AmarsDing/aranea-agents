@@ -32,7 +32,7 @@ func SeedSystemAdminAgent(ctx context.Context, client *ent.Client, lg loggateway
 		'agent___system_admin__', ?, '系统管家', 'openrouter', 'gpt-4.1-mini',
 		'active', 0, 0, '', '系统内置管理助手，负责管理 Skill、Agent、Team 等系统资源，提供系统级运维能力。',
 		'', 'complete', 0, 0, '{"tools_profile":"system_admin"}', '[]', 'system',
-		?, ?, '', 1, 'system',
+		?, ?, '', 1, 'system_builtin',
 		'system_admin', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		display_name = excluded.display_name,
@@ -65,7 +65,7 @@ func SeedSpiritAgent(ctx context.Context, client *ent.Client, lg loggateway.Logg
 		'agent___spirit__', ?, '精灵助手', 'openrouter', 'gpt-4.1-mini',
 		'active', 0, 0, '', '系统内置总管家，用户唯一对话入口，自动组装团队并委派工作。',
 		'', 'complete', 0, 0, '{"tools_profile":"spirit"}', '[]', 'system',
-		?, ?, '', 1, 'system',
+		?, ?, '', 1, 'system_builtin',
 		'spirit', ''
 	) ON CONFLICT(agent_key) DO UPDATE SET
 		display_name = excluded.display_name,

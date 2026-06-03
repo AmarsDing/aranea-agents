@@ -12,7 +12,14 @@ package tool
 
 import (
 	"context"
+	"regexp"
+	"strings"
 )
+
+// toolNamePattern is the pattern that tool names must match for
+// compatibility with LLM providers (e.g. DeepSeek, OpenAI).
+// Only letters, digits, underscores, and hyphens are allowed.
+var toolNamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 // Tool defines the interface for tools that can be used by agents.
 // It provides a common contract for all tool implementations.
@@ -80,4 +87,41 @@ type Schema struct {
 	Ref string `json:"$ref,omitempty"`
 	// Defs contains reusable schema definitions
 	Defs map[string]*Schema `json:"$defs,omitempty"`
+}
+
+// SanitizeToolName converts a tool name into a form compatible with LLM
+// providers that require function names to match ^[a-zA-Z0-9_-]+$.
+// Characters outside the allowed set are replaced with underscores;
+// consecutive underscores are collapsed; leading/trailing underscores
+// are stripped. If the result would start with a digit, a "t_" prefix
+// is prepended. An empty or fully-invalid input returns "unnamed_tool".
+func SanitizeToolName(name string) string {
+	if toolNamePattern.MatchString(name) {
+		return name
+	}
+	var b strings.Builder
+	lastUnderscore := false
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			b.WriteRune(r)
+			lastUnderscore = false
+		} else {
+			if !lastUnderscore {
+				b.WriteByte('_')
+				lastUnderscore = true
+			}
+		}
+	}
+	result := strings.Trim(b.String(), "_-")
+	if result == "" {
+		return "unnamed_tool"
+	}
+	if result[0] >= '0' && result[0] <= '9' {
+		result = "t_" + result
+	}
+	const maxLen = 64
+	if len(result) > maxLen {
+		result = strings.TrimRight(result[:maxLen], "_-")
+	}
+	return result
 }

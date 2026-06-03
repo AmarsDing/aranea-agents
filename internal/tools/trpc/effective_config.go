@@ -31,7 +31,7 @@ func ToolsetConfigFromEffectiveKeys(eff map[string]bool) ToolsetConfig {
 		Kanban:           has(biz.ToolKeyKanban),
 		ReadDocument:     has("read_document"),
 		ReadSpreadsheet:  has("read_spreadsheet"),
-		WorkingMemory:    has("working_memory.read") || has("working_memory.list") || has("working_memory.write") || has("working_memory.patch") || has("working_memory.delete"),
+		WorkingMemory:    has("working_memory_read") || has("working_memory_list") || has("working_memory_write") || has("working_memory_patch") || has("working_memory_delete"),
 	}
 	return cfg
 }

@@ -32,7 +32,7 @@
           <div class="command-center-hero__stat-label">{{ t('overviewPage.statProviders') }}</div>
         </div>
       </router-link>
-      <router-link to="/settings/agent-categories" class="command-center-hero__stat command-center-hero__stat--link">
+      <router-link to="/settings/taxonomy" class="command-center-hero__stat command-center-hero__stat--link">
         <div class="command-center-hero__stat-icon command-center-hero__stat-icon--category">
           <q-icon name="category" size="20px" />
         </div>

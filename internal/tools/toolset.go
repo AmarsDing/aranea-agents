@@ -470,6 +470,9 @@ type AssemblyConfig struct {
 	ClaudeCodeMode        string
 	ClaudeCodeBin         string
 	ClaudeCodeWorkDir     string
+	ClaudeCodeWebFetch           *WebFetchConfig
+	ClaudeCodeWebSearch          *WebSearchConfig
+	ClaudeCodeCommandAllowList   []string
 	OpenAPISpecs          []OpenAPISpecConfig
 	AgentTools            []AgentToolConfig
 	MCPServers            []MCPServerConfig
@@ -488,6 +491,21 @@ type OpenAPISpecConfig struct {
 	Name     string
 	SpecURL  string
 	SpecData []byte
+}
+
+type WebFetchConfig struct {
+	AllowAll         bool
+	AllowedDomains   []string
+	BlockedDomains   []string
+	Timeout          time.Duration
+	MaxContentLength int
+}
+
+type WebSearchConfig struct {
+	Provider string
+	BaseURL  string
+	APIKey   string
+	EngineID string
 }
 
 type AssembledToolsets struct {
@@ -619,9 +637,31 @@ func Assemble(ctx context.Context, cfg AssemblyConfig) (*AssembledToolsets, erro
 		if cfg.ClaudeCodeMaxFileSize > 0 {
 			opts = append(opts, trpcclaudecode.WithMaxFileSize(cfg.ClaudeCodeMaxFileSize))
 		}
+		if cfg.ClaudeCodeWebFetch != nil {
+			opts = append(opts, trpcclaudecode.WithWebFetchOptions(trpcclaudecode.WebFetchOptions{
+				AllowAll:         cfg.ClaudeCodeWebFetch.AllowAll,
+				AllowedDomains:   cfg.ClaudeCodeWebFetch.AllowedDomains,
+				BlockedDomains:   cfg.ClaudeCodeWebFetch.BlockedDomains,
+				Timeout:          cfg.ClaudeCodeWebFetch.Timeout,
+				MaxContentLength: cfg.ClaudeCodeWebFetch.MaxContentLength,
+			}))
+		}
+		if cfg.ClaudeCodeWebSearch != nil {
+			opts = append(opts, trpcclaudecode.WithWebSearchOptions(trpcclaudecode.WebSearchOptions{
+				Provider: cfg.ClaudeCodeWebSearch.Provider,
+				BaseURL:  cfg.ClaudeCodeWebSearch.BaseURL,
+				APIKey:   cfg.ClaudeCodeWebSearch.APIKey,
+				EngineID: cfg.ClaudeCodeWebSearch.EngineID,
+			}))
+		}
 		ts, err := trpcclaudecode.NewToolSet(opts...)
 		if err != nil {
 			return nil, fmt.Errorf("claudecode: %w", err)
+		}
+		if len(cfg.ClaudeCodeCommandAllowList) > 0 {
+			ts = SandboxedToolSet(ts, ClaudeCodeSandboxConfig{
+				CommandAllowList: cfg.ClaudeCodeCommandAllowList,
+			})
 		}
 		out.ToolSets = append(out.ToolSets, ts)
 	}

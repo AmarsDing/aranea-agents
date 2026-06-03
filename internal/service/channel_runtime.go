@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/runtime"
+	"aranea-agents/internal/outbound"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -22,14 +23,14 @@ type ChannelRuntime struct {
 	cancel context.CancelFunc
 }
 
-func NewChannelRuntime(channels *biz.ChannelUsecase, ingress *ChannelIngress, leases biz.ChannelRuntimeLeaseRepo, lg loggateway.Logger) *ChannelRuntime {
+func NewChannelRuntime(channels *biz.ChannelUsecase, ingress *ChannelIngress, leases biz.ChannelRuntimeLeaseRepo, router *outbound.Router, lg loggateway.Logger) *ChannelRuntime {
 	if channels == nil || ingress == nil {
 		return nil
 	}
 	lookup := func(ctx context.Context, creds []biz.ChannelCredential, key string) (string, error) {
 		return resolveCredentialPlain(ctx, channels, creds, key, lg)
 	}
-	mgr := runtime.NewManager(channels, ingress, lookup, lg)
+	mgr := runtime.NewManager(channels, ingress, lookup, lg, router)
 	if leases != nil {
 		mgr = mgr.WithRuntimeLease(leases, channelRuntimeOwnerID(), 0)
 	}

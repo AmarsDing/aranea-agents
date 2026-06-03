@@ -35,7 +35,7 @@
       </template>
     </AppPageToolbar>
 
-    <q-card v-if="loading" flat bordered class="app-entity-glass-panel taxonomy-tree-shell q-mt-lg">
+    <q-card v-if="loading" flat bordered class="app-entity-glass-panel category-tree-shell q-mt-lg">
       <q-card-section>
         <q-skeleton type="text" width="32%" />
         <q-skeleton class="q-mt-md" height="240px" />
@@ -51,7 +51,7 @@
       </q-card-section>
     </q-card>
 
-    <section v-else class="taxonomy-tree-shell q-mt-lg">
+    <section v-else class="category-tree-shell q-mt-lg">
       <taxonomy-tree
         :tree="filteredTree"
         :keyword="keyword"
@@ -60,7 +60,6 @@
         @create-child="openCreate"
         @remove="removeNode"
         @toggle-enabled="toggleNodeEnabled"
-        @reorder="reorderNodes"
       />
     </section>
 
@@ -113,7 +112,6 @@
                 size="sm"
                 label="AI 优化描述"
                 @apply="(v: string) => { form.description = v }"
-                @error="onRefineError"
               />
             </div>
           </div>
@@ -136,12 +134,11 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { useQuasar } from "quasar";
 import AppPageHero from "../components/layout/AppPageHero.vue";
 import AppPageToolbar from "../components/layout/AppPageToolbar.vue";
 import TaxonomyTree from "../components/agents/TaxonomyTree.vue";
 import AiRefineButton from "../components/agents/AIRefineButton.vue";
-import { useTaxonomyPage } from "../features/platform/useTaxonomyPage";
+import { useAgentCategoriesPage } from "../features/platform/useAgentCategoriesPage";
 import { descriptionLabel, descriptionPlaceholder, levelScope, parseLevelNumber } from "../features/platform/taxonomyLabels";
 
 const {
@@ -163,15 +160,8 @@ const {
   saveNode,
   removeNode,
   toggleNodeEnabled,
-  reorderNodes,
   levelLabel
-} = useTaxonomyPage();
-
-const $q = useQuasar();
-
-function onRefineError(msg: string) {
-  $q.notify({ type: 'negative', message: msg });
-}
+} = useAgentCategoriesPage();
 
 // PGO-1-WEB-03: dynamic labels based on category level.
 const currentLevelNum = computed(() => parseLevelNumber(form.level));

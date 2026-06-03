@@ -226,7 +226,7 @@ export function normalizeAgentFromService(raw: unknown): Agent {
     position_key: pickStrOpt(w, "positionKey", "position_key"),
     agent_variant: pickStrOpt(w, "agentVariant", "agent_variant"),
     variant_description: pickStrOpt(w, "variantDescription", "variant_description"),
-    category_position_id: pickStr(w, "categoryPositionId", "category_position_id"),
+    taxonomy_position_id: pickStr(w, "taxonomyPositionId", "taxonomy_position_id"),
     system_prompt_mode: pickStr(w, "systemPromptMode", "system_prompt_mode", "complete"),
     context_window: pickNum(w, "contextWindow", "context_window", 0),
     budget_monthly_cents: pickNum(w, "budgetMonthlyCents", "budget_monthly_cents", 0),
@@ -393,7 +393,7 @@ export function partialAgentToWire(payload: Partial<Agent>): KratosAgentWire {
   if (payload.position_key !== undefined) o.positionKey = payload.position_key;
   if (payload.agent_variant !== undefined) o.agentVariant = payload.agent_variant;
   if (payload.variant_description !== undefined) o.variantDescription = payload.variant_description;
-  if (payload.category_position_id !== undefined) o.categoryPositionId = payload.category_position_id;
+  if (payload.taxonomy_position_id !== undefined) o.taxonomyPositionId = payload.taxonomy_position_id;
   if (payload.system_prompt_mode !== undefined) o.systemPromptMode = payload.system_prompt_mode;
   if (payload.context_window !== undefined) o.contextWindow = payload.context_window;
   if (payload.budget_monthly_cents !== undefined) o.budgetMonthlyCents = payload.budget_monthly_cents;

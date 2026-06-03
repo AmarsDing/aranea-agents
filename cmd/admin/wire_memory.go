@@ -57,6 +57,10 @@ func provideMemoryCompositeRecall(store *sessionmemory.Store) biz.MemoryComposit
 	return biz.NewMemoryCompositeRecallUsecase(data.NewMemoryCompositeRecallAdapter(store))
 }
 
+func provideMemoryAdminUsecase(admin biz.SessionAdminStore, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, store *sessionmemory.Store, lg loggateway.Logger) *biz.MemoryAdminUsecase {
+	return biz.NewMemoryAdminUsecase(admin, vec, factSync, newWireL3FactWriterAdapter(store), lg)
+}
+
 func providePersistenceSet(
 	d *data.Data,
 	store *sessionmemory.Store,
@@ -237,6 +241,14 @@ func (a *wireSessionAdminStoreAdapter) UpsertFactRow(ctx context.Context, in biz
 	return a.inner.UpsertFactRow(ctx, wireFactUpsertToStore(in))
 }
 
+func (a *wireSessionAdminStoreAdapter) DeleteFactRow(ctx context.Context, factID string) error {
+	return a.inner.DeleteFactByID(ctx, factID)
+}
+
+func (a *wireSessionAdminStoreAdapter) DeleteFactRowsByIDs(ctx context.Context, factIDs []string) (int, error) {
+	return a.inner.DeleteFactRowsByIDs(ctx, factIDs)
+}
+
 func (a *wireSessionAdminStoreAdapter) InsertEvolutionEventRow(ctx context.Context, in biz.EvolutionEventInsert) ([]byte, error) {
 	return a.inner.InsertEvolutionEventRow(ctx, wireEvolutionEventInsertToStore(in))
 }
@@ -255,6 +267,30 @@ func (a *wireSessionAdminStoreAdapter) ApprovePIIFact(ctx context.Context, factI
 
 func (a *wireSessionAdminStoreAdapter) RejectPIIFact(ctx context.Context, factID string) error {
 	return a.inner.RejectPIIFact(ctx, factID)
+}
+
+// wireL3FactWriterAdapter adapts sessionmemory.Store to biz.L3FactWriter.
+type wireL3FactWriterAdapter struct {
+	inner *sessionmemory.Store
+}
+
+func newWireL3FactWriterAdapter(store *sessionmemory.Store) biz.L3FactWriter {
+	if store == nil {
+		return nil
+	}
+	return &wireL3FactWriterAdapter{inner: store}
+}
+
+func (a *wireL3FactWriterAdapter) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]byte, error) {
+	return a.inner.UpsertFactRow(ctx, wireFactUpsertToStore(in))
+}
+
+func (a *wireL3FactWriterAdapter) DeleteFactRow(ctx context.Context, factID string) error {
+	return a.inner.DeleteFactByID(ctx, factID)
+}
+
+func (a *wireL3FactWriterAdapter) DeleteFactRowsByIDs(ctx context.Context, factIDs []string) (int, error) {
+	return a.inner.DeleteFactRowsByIDs(ctx, factIDs)
 }
 
 func wireFactUpsertToStore(in biz.FactUpsert) sessionmemory.MemoryFactUpsert {

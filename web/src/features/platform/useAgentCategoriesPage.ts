@@ -4,18 +4,18 @@ import type { PlatformResourceInput, PlatformResourceTreeNode } from "./types";
 import { errorMessage } from "./providerUtils";
 import { usePlatformStore } from "../../stores/platform";
 import {
-  categoryTreeStats,
+  taxonomyTreeStats,
   collectDefaultExpandedIds,
-  filterCategoryTree,
-  findCategoryNode,
+  filterTaxonomyTree,
+  findTaxonomyNode,
   levelLabel,
   parseIsSystem,
-  patchCategoryTreeNode,
+  patchTaxonomyTreeNode,
   trimmedDesc,
-  type CategoryLevel
-} from "./categoryTreeUtils";
+  type TaxonomyLevel
+} from "./taxonomyTreeUtils";
 
-const CATEGORY_RESOURCE = "agent-categories" as const;
+const CATEGORY_RESOURCE = "taxonomy" as const;
 
 export function useAgentCategoriesPage() {
   const $q = useQuasar();
@@ -32,7 +32,7 @@ export function useAgentCategoriesPage() {
   const tree = ref<PlatformResourceTreeNode[]>([]);
   const togglingIds = ref<Set<string>>(new Set());
 
-  const form = reactive<PlatformResourceInput & { level: CategoryLevel }>({
+  const form = reactive<PlatformResourceInput & { level: TaxonomyLevel }>({
     key: "",
     name: "",
     description: "",
@@ -45,13 +45,13 @@ export function useAgentCategoriesPage() {
   });
 
   const filteredTree = computed(() =>
-    filterCategoryTree(
+    filterTaxonomyTree(
       tree.value.filter((node) => node.level === "industry"),
       keyword.value,
       onlyCustom.value
     )
   );
-  const stats = computed(() => categoryTreeStats(tree.value));
+  const stats = computed(() => taxonomyTreeStats(tree.value));
   const parentName = computed(() => parentNode.value?.name || "无");
 
   async function loadTree(opts?: { silent?: boolean }) {
@@ -65,11 +65,11 @@ export function useAgentCategoriesPage() {
   }
 
   function syncTreePatch(id: string, patch: Partial<PlatformResourceTreeNode>) {
-    tree.value = patchCategoryTreeNode(tree.value, id, patch);
+    tree.value = patchTaxonomyTreeNode(tree.value, id, patch);
     platformStore.categoryTree = tree.value;
   }
 
-  function openCreate(level: CategoryLevel, parent?: PlatformResourceTreeNode) {
+  function openCreate(level: TaxonomyLevel, parent?: PlatformResourceTreeNode) {
     const canonicalParent = parent ? findNode(parent.id) ?? parent : null;
     editingId.value = "";
     parentNode.value = canonicalParent;
@@ -98,7 +98,7 @@ export function useAgentCategoriesPage() {
       enabled: node.enabled,
       sort_order: node.sort_order,
       parent_id: node.parent_id,
-      level: node.level as CategoryLevel,
+      level: node.level as TaxonomyLevel,
       is_system: node.is_system,
       config_json: node.config_json || "{}",
       metadata_json: node.metadata_json || "{}"
@@ -194,7 +194,7 @@ export function useAgentCategoriesPage() {
 
   function findNode(id: string) {
     if (!id) return null;
-    return findCategoryNode(tree.value, id);
+    return findTaxonomyNode(tree.value, id);
   }
 
   function buildKey(level: string, name: string) {

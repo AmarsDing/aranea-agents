@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	agentplanner "aranea-agents/internal/agent/planner"
+	"aranea-agents/internal/agent/a2ui"
 	localexec "aranea-agents/internal/agent/codeexecutor"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
@@ -101,7 +102,11 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 		trpcllmagent.WithGenerationConfig(trpcmodel.GenerationConfig{Stream: true}),
 	)
 
-	if p := agentplanner.Select(deps.DialogMode, plannerKind(ag), plannerConfigJSON(ag)); p != nil {
+	var pipeline *a2ui.Pipeline
+	if plannerKind(ag) == "a2ui" {
+		pipeline = a2ui.NewPipeline(lg)
+	}
+	if p := agentplanner.Select(deps.DialogMode, plannerKind(ag), plannerConfigJSON(ag), pipeline); p != nil {
 		opts = append(opts, trpcllmagent.WithPlanner(p))
 	}
 

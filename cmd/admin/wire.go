@@ -41,6 +41,7 @@ import (
 	mcpprobe "aranea-agents/internal/mcp/probe"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	"aranea-agents/internal/modelregistry"
+	"aranea-agents/internal/outbound"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
 	rt "aranea-agents/internal/runtime"
@@ -670,7 +671,7 @@ func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, fac
 			})
 		})
 	}
-	return service.NewMemoryService(biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec, factSync, nil, lg), cascade, sysUC, deadLetterRepo, data.NewMemoryDebugRecaller(memStore), data.NewMemoryFactIndexCounter(memStore), enqueue, queueStats)
+	return service.NewMemoryService(biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec, factSync, newWireL3FactWriterAdapter(memStore), lg), cascade, sysUC, deadLetterRepo, data.NewMemoryDebugRecaller(memStore), data.NewMemoryFactIndexCounter(memStore), enqueue, queueStats)
 }
 
 func provideL4CascadeUsecase(memStore *sessionmemory.Store, factSync biz.MemoryFactIndexSyncer, lg loggateway.Logger) *biz.L4CascadeUsecase {
@@ -806,11 +807,15 @@ func provideChannelDeliveryWorker(channels *biz.ChannelUsecase, ingress *service
 	return service.NewChannelDeliveryWorker(channels, ingress, lg)
 }
 
-func provideChannelRuntime(channels *biz.ChannelUsecase, ingress *service.ChannelIngress, leases biz.ChannelRuntimeLeaseRepo, lg loggateway.Logger) *service.ChannelRuntime {
+func provideChannelRuntime(channels *biz.ChannelUsecase, ingress *service.ChannelIngress, leases biz.ChannelRuntimeLeaseRepo, router *outbound.Router, lg loggateway.Logger) *service.ChannelRuntime {
 	if service.ChannelRuntimeDisabled() {
 		return nil
 	}
-	return service.NewChannelRuntime(channels, ingress, leases, lg)
+	return service.NewChannelRuntime(channels, ingress, leases, router, lg)
+}
+
+func provideOutboundRouter(lg loggateway.Logger) *outbound.Router {
+	return outbound.NewRouter(lg)
 }
 
 func provideMemoryL2DecayWorker(decayer biz.MemoryEpisodeDecayer, agents *biz.AgentUsecase, lg loggateway.Logger) *jobs.MemoryL2DecayWorker {
@@ -1237,6 +1242,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideChannelDeliveryWorker,
 		provideChannelDeliveryScanner,
 		provideChannelRuntime,
+		provideOutboundRouter,
 		provideEventStoreCleanup,
 		provideMemoryL2DecayWorker,
 		provideMemoryL2ConsolidateWorker,

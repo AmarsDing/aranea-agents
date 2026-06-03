@@ -6,9 +6,11 @@ import (
 	biztool "aranea-agents/internal/biz/tool"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
 	"aranea-agents/internal/knowledge"
+	"aranea-agents/internal/outbound"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
 	"aranea-agents/internal/provider"
 	"aranea-agents/internal/tools/deferred"
+	subagenttool "aranea-agents/internal/tools/subagent"
 	tooltrpc "aranea-agents/internal/tools/trpc"
 	"aranea-agents/pkg/loggateway"
 
@@ -122,6 +124,12 @@ type TRPCBuilderDeps struct {
 	ToolVersionHash  string
 	SkillVersionHash string
 	MCPVersionHash   string
+	// OutboundRouter enables the message tool for proactive outbound messaging.
+	// Optional: when nil, the message tool is unavailable.
+	OutboundRouter *outbound.Router
+	// SubAgentService enables subagent spawn/list/get/cancel tools.
+	// Optional: when nil, subagent tools are unavailable.
+	SubAgentService *subagenttool.Service
 }
 
 // CatalogGroup returns the catalog subset (for tests and future refactors).

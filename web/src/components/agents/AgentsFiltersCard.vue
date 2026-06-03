@@ -27,7 +27,7 @@
       option-value="user_id"
       option-label="label"
     />
-    <agent-category-filter v-model="selectedCategory" class="app-page-toolbar__field agent-category-field--toolbar" :tree="categoryTree" />
+    <taxonomy-filter v-model="selectedCategory" class="app-page-toolbar__field taxonomy-field--toolbar" :tree="categoryTree" />
     <q-select
       v-model="selectedProvider"
       class="app-page-toolbar__field agent-control"

@@ -1,0 +1,9 @@
+{
+  "agentKey": "tool-tester",
+  "displayName": "Tool Tester",
+  "provider": "openrouter",
+  "model": "gpt-4.1-mini",
+  "agentDescription": "Agent for testing tools",
+  "agentKind": "llm",
+  "configJson": "{\"agent_kind\":\"llm\",\"tools\":{\"enabled\":true,\"profile\":\"general\",\"allow\":[],\"deny\":[],\"parallel_enabled\":true,\"streaming_enabled\":true},\"memory\":{\"enabled\":false},\"l0\":{\"recent_window_turns\":12},\"subagents\":{\"enabled\":false},\"evolution\":{\"self_evolve\":false}}"
+}

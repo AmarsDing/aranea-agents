@@ -16,6 +16,7 @@ import (
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 
+	"aranea-agents/internal/outbound"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -40,6 +41,8 @@ const (
 
 	defaultStoredResultRunes  = 4000
 	defaultStoredSummaryRunes = 240
+
+	defaultMaxConcurrentSubAgents = 5
 
 	toolSubagentsSpawn  = "subagents_spawn"
 	toolSubagentsList   = "subagents_list"
@@ -71,9 +74,10 @@ type SpawnRequest struct {
 }
 
 type Service struct {
-	path   string
-	runner trpcrunner.Runner
-	lg     loggateway.Logger
+	path           string
+	runner         trpcrunner.Runner
+	lg             loggateway.Logger
+	outboundRouter *outbound.Router // optional: for completion notifications
 
 	clock func() time.Time
 
@@ -142,6 +146,14 @@ func NewService(stateDir string, r trpcrunner.Runner, lg loggateway.Logger) (*Se
 	return svc, nil
 }
 
+// WithOutboundRouter sets the outbound router for completion notifications.
+func (s *Service) WithOutboundRouter(router *outbound.Router) *Service {
+	if s != nil {
+		s.outboundRouter = router
+	}
+	return s
+}
+
 func (s *Service) Start(ctx context.Context) {
 	if s == nil {
 		return
@@ -177,6 +189,14 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 	nested, _ := trpcagent.GetRuntimeStateValueFromContext[bool](ctx, runtimeStateSubagentRun)
 	if nested {
 		return trpcsubagent.Run{}, kerrors.BadRequest("SUBAGENT", "nested subagent spawn is not allowed")
+	}
+
+	// Concurrency limit: prevent too many concurrent sub-agents.
+	s.mu.Lock()
+	concurrent := len(s.running)
+	s.mu.Unlock()
+	if concurrent >= defaultMaxConcurrentSubAgents {
+		return trpcsubagent.Run{}, kerrors.New(429, "SUBAGENT", fmt.Sprintf("too many concurrent sub-agents (limit: %d)", defaultMaxConcurrentSubAgents))
 	}
 
 	ownerUserID := strings.TrimSpace(req.OwnerUserID)
@@ -483,6 +503,42 @@ func (s *Service) finishRun(runID string, output string, runErr error) {
 			loggateway.StepID("tool.subagent_persist_fail"),
 			loggateway.Str("run_id", runID),
 			loggateway.Err(err))
+	}
+
+	// Notify via outbound router if configured
+	if s.outboundRouter != nil && record.Status == trpcsubagent.StatusCompleted {
+		s.notifyCompletion(record)
+	}
+}
+
+func (s *Service) notifyCompletion(record *runRecord) {
+	if s.outboundRouter == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	summary := record.Summary
+	if summary == "" {
+		summary = record.Result
+	}
+	if len(summary) > 200 {
+		summary = summary[:200] + "..."
+	}
+	text := fmt.Sprintf("子 Agent 任务完成: %s\n摘要: %s", record.Task, summary)
+	// Try to resolve target from parent session
+	target := outbound.DeliveryTarget{}
+	if dt, ok := outbound.ResolveTargetFromSessionID(record.ParentSessionID); ok {
+		target = dt
+	}
+	if target.Channel == "" {
+		return // no delivery target, skip notification
+	}
+	if err := s.outboundRouter.SendText(ctx, target, text); err != nil {
+		s.lg.Warn("SubAgent completion notification failed",
+			loggateway.StepID("subagent.notify.fail"),
+			loggateway.Str("run_id", record.ID),
+			loggateway.Err(err),
+		)
 	}
 }
 

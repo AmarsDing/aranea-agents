@@ -151,12 +151,26 @@ type L2RecallStore interface {
 	RecallL2Episodes(ctx context.Context, agentID, sessionID, query string, queryEmbedding []float32, limit int32) ([][]byte, error)
 }
 
-// L3FactAdminStore manages semantic facts and L3 recall.
-type L3FactAdminStore interface {
+// L3FactReader exposes read operations for semantic facts.
+type L3FactReader interface {
 	ListFactRows(ctx context.Context, scopeType, scopeID, kind, status, keyword string, limit, offset int32) ([][]byte, int32, int32, int32, error)
 	ListFactRowsForUser(ctx context.Context, scopeType, scopeID, userID, keyword string, limit, offset int32) ([][]byte, error)
 	RecallL3Facts(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32, minScore float64) ([][]byte, error)
+}
+
+// L3FactWriter exposes write operations for semantic facts.
+type L3FactWriter interface {
 	UpsertFactRow(ctx context.Context, in FactUpsert) ([]byte, error)
+	DeleteFactRow(ctx context.Context, factID string) error
+	DeleteFactRowsByIDs(ctx context.Context, factIDs []string) (int, error)
+}
+
+// L3FactAdminStore manages semantic facts and L3 recall.
+//
+// Deprecated: Use L3FactReader and L3FactWriter directly instead.
+type L3FactAdminStore interface {
+	L3FactReader
+	L3FactWriter
 }
 
 // PIIReviewStore manages PII-flagged fact review.

@@ -117,7 +117,7 @@ func (t *mcpTool) callOnce(ctx context.Context, arguments map[string]any) (any, 
 // Declaration implements the Tool interface.
 func (t *mcpTool) Declaration() *tool.Declaration {
 	return &tool.Declaration{
-		Name:         t.mcpToolRef.Name,
+		Name:         tool.SanitizeToolName(t.mcpToolRef.Name),
 		Description:  t.mcpToolRef.Description,
 		InputSchema:  t.inputSchema,
 		OutputSchema: t.outputSchema,

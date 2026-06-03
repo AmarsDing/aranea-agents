@@ -87,7 +87,7 @@ export function useAgentSettingsPage() {
     is_favorite: false,
     icon: "",
     agent_description: "",
-    category_position_id: "",
+    taxonomy_position_id: "",
     system_prompt_mode: "complete",
     context_window: 0,
     budget_monthly_cents: 0,

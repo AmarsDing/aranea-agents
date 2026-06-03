@@ -12,6 +12,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/internal/outbound"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -73,6 +74,7 @@ type Manager struct {
 	handler    port.InboundHandler
 	credLookup CredentialLookup
 	lg         loggateway.Logger
+	router     *outbound.Router
 
 	mu      sync.Mutex
 	running map[string]runningInstance
@@ -82,12 +84,13 @@ type Manager struct {
 	leaseTTL  time.Duration
 }
 
-func NewManager(channels *biz.ChannelUsecase, handler port.InboundHandler, credLookup CredentialLookup, lg loggateway.Logger) *Manager {
+func NewManager(channels *biz.ChannelUsecase, handler port.InboundHandler, credLookup CredentialLookup, lg loggateway.Logger, router *outbound.Router) *Manager {
 	return &Manager{
 		channels:   channels,
 		handler:    handler,
 		credLookup: credLookup,
 		lg:         lg,
+		router:     router,
 		running:    map[string]runningInstance{},
 	}
 }
@@ -103,6 +106,14 @@ func (m *Manager) WithRuntimeLease(repo biz.ChannelRuntimeLeaseRepo, ownerID str
 	}
 	m.leaseTTL = ttl
 	return m
+}
+
+// Router returns the outbound router, if configured.
+func (m *Manager) Router() *outbound.Router {
+	if m == nil {
+		return nil
+	}
+	return m.router
 }
 
 // Reload stops stale connectors and starts enabled runtime instances.

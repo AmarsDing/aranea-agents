@@ -69,6 +69,7 @@ func newApp(
 	guard *service.SessionStatusGuard,
 	orchCache *biz.OrchestrationCache,
 	sessions *biz.SessionUsecase,
+	chatSvc *service.ChatService,
 ) *kratos.App {
 	// EP-OBS-03: WSServer implements transport.Server (Start/Stop); register it so
 	// kratos.App orchestrates its lifecycle and Stop triggers broadcastShutdown.
@@ -129,6 +130,11 @@ func newApp(
 		kratos.AfterStop(func(ctx context.Context) error {
 			if err := guard.OnShutdown(ctx); err != nil {
 				logger.Log(log.LevelWarn, "msg", "session status guard shutdown failed", "error", err.Error())
+			}
+			if chatSvc != nil {
+				if err := chatSvc.Close(); err != nil {
+					logger.Log(log.LevelWarn, "msg", "chat service close failed", "error", err.Error())
+				}
 			}
 			consumerCancel()
 			if pipeline != nil {

@@ -29,7 +29,7 @@ export type Agent = {
   position_key?: string;
   agent_variant?: string;
   variant_description?: string;
-  category_position_id: string;
+  taxonomy_position_id: string;
   system_prompt_mode: string;
   context_window: number;
   budget_monthly_cents: number;

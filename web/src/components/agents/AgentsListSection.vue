@@ -33,7 +33,7 @@
             :key="agent.id"
             :agent="agent"
             :favorite="isFavorite(agent.id)"
-            :category-label="getCategoryLabel(agent.category_position_id)"
+            :category-label="getCategoryLabel(agent.taxonomy_position_id)"
             :context-label="formatLastRunContext(agent)"
             :evolving="isAgentEvolving(agent)"
             @toggle-favorite="$emit('toggle-favorite', $event)"
@@ -61,7 +61,7 @@
             <agent-card
               :agent="agent"
               :favorite="isFavorite(agent.id)"
-              :category-label="getCategoryLabel(agent.category_position_id)"
+              :category-label="getCategoryLabel(agent.taxonomy_position_id)"
               :context-label="formatLastRunContext(agent)"
               :evolving="isAgentEvolving(agent)"
               @toggle-favorite="$emit('toggle-favorite', $event)"
@@ -154,7 +154,7 @@ const props = defineProps<{
   rowsPerPage: number;
   tableColumns: QTableColumn<Agent>[];
   isFavorite: (id: string) => boolean;
-  getCategoryLabel: (categoryPositionId: string) => string;
+  getCategoryLabel: (taxonomyPositionId: string) => string;
 }>();
 
 const emit = defineEmits<{

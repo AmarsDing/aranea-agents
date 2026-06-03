@@ -272,9 +272,9 @@ SeedVersionRepo         ← IndustryAgentSeed 消费（查询种子版本号）
 | email / message | 通信 | high | ❌ |
 | todo | 效率 | low | ❌ |
 | await_user_reply | 交互 | low | ❌ |
-| claudecode / workspace_exec | 编码/执行 | critical | ❌ |
+| claudecode / workspace_exec | 编码/执行 | critical | ✅/❌ |
 | openapi / agent / mcp / mcpbroker / model_registry_sync | 集成 | medium | ❌ |
-| subagents_spawn / list / get / cancel | 组合 | low-medium | ❌ |
+| subagents_spawn / list / get / cancel | 组合 | low-medium | ✅ |
 | browser | 浏览器 | critical | ❌ |
 | read_document / read_spreadsheet / read_tool_result | 媒体 | low-medium | ✅/❌ |
 
@@ -399,6 +399,22 @@ LLM 模型目录的文件系统存储、远程同步、定价应用、Provider �
 #### 出站消息路由 (`internal/outbound/`)
 
 统一的出站消息路由层：Router 注册 TextSender/MessageSender，按 channel ID 路由。含 `MessageTool`（message 内置工具）。
+
+**DI 链路**：`provideOutboundRouter` (Wire) → RuntimeTooling → ChatOrchestratorDeps → TRPCBuilderDeps → ToolsetConfig → AssemblyConfig。
+
+**Runtime State 注入**：ChatOrchestrator 在 Runner 构建时注入 `aranea.delivery.channel` + `aranea.delivery.target`，MessageTool 自动从 RuntimeState 解析投递目标。
+
+**SessionResolver**：ChatService 初始化时注册，从 Session Metadata 解析 ChannelID/PeerID，为无显式 target 的出站消息提供回退解析。
+
+**渠道注册辅助**：`RegisterFromInboundEvent()` 函数，供渠道适配器在 Inbound 事件时自动注册 OutboundText sender。
+
+#### ClaudeCode 安全沙箱 (`internal/tools/claudecode_sandbox.go`)
+
+ClaudeCode 工具的安全约束层：`ClaudeCodeSandboxConfig`（BaseDir/ReadOnly/CommandAllowList）+ `SandboxedToolSet` 包装 + `whitelistedBashTool` 命令白名单。当 `CommandAllowList` 非空时，bash 工具仅允许白名单前缀的命令执行。
+
+#### SubAgent 通知闭环 (`internal/tools/subagent/service.go`)
+
+SubAgentService 完成后通过 OutboundRouter.SendText() 通知父 Agent 渠道。并发限制 `defaultMaxConcurrentSubAgents=5`，嵌套派生防护。生命周期由 ChatService 管理（Start/Close）。
 
 #### 组织架构导入 (`internal/orgimport/`)
 

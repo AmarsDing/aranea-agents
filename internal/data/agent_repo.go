@@ -93,6 +93,7 @@ func entAgentToBiz(a *ent.Agent, lg loggateway.Logger) biz.Agent {
 		CreatedBy:          a.CreatedBy,
 		Readonly:           a.Readonly,
 		Source:             string(a.Kind),
+		Ownership:          string(a.Kind),
 		CreatedAt:          a.CreatedAt,
 		UpdatedAt:          a.UpdatedAt,
 		DeletedAt:          a.DeletedAt,
@@ -517,6 +518,9 @@ func (r *agentRepo) SearchAgents(ctx context.Context, q biz.AgentListQuery) (biz
 	}
 	if role := strings.TrimSpace(q.Role); role != "" {
 		preds = append(preds, agent.RolesJSONContains(role))
+	}
+	if q.Ownership != "" {
+		preds = append(preds, agent.KindEQ(agent.Kind(q.Ownership)))
 	}
 	where := agent.And(preds...)
 	c := r.readClient(ctx)

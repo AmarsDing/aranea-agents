@@ -16,7 +16,7 @@ export function buildAgentTableColumns(
     registryCol<Agent>("name", "名称", "display_name", "left", REGISTRY_COL_W.name),
     registryCol<Agent>("status", "状态", "status", "left", REGISTRY_COL_W.status),
     registryCol<Agent>("model", "模型", (row) => `${row.provider} / ${row.model}`, "left", REGISTRY_COL_W.stats),
-    registryCol<Agent>("category", "业务分类", (row) => categoryLabel(row.category_position_id), "left", REGISTRY_COL_W.category),
+    registryCol<Agent>("category", "业务分类", (row) => categoryLabel(row.taxonomy_position_id), "left", REGISTRY_COL_W.category),
     registryCol<Agent>("ctx", "上下文", (row) => formatContext(row.context_window), "left", REGISTRY_COL_W.status),
     registryColActions<Agent>()
   ];

@@ -8,13 +8,13 @@ import (
 )
 
 func TestSelect_react(t *testing.T) {
-	if p := agentplanner.Select("", "react", ""); p == nil {
+	if p := agentplanner.Select("", "react", "", nil); p == nil {
 		t.Fatal("expected react planner")
 	}
 }
 
 func TestSelect_legacyPlanDialog(t *testing.T) {
-	p := agentplanner.Select("plan", "", "")
+	p := agentplanner.Select("plan", "", "", nil)
 	if p == nil {
 		t.Fatal("expected builtin planner for legacy plan dialog mode")
 	}
@@ -26,7 +26,7 @@ func TestSelect_legacyPlanDialog(t *testing.T) {
 func TestSelect_builtinConfig(t *testing.T) {
 	high := "high"
 	cfg := `{"reasoning_effort":"high"}`
-	p := agentplanner.Select("", "builtin", cfg)
+	p := agentplanner.Select("", "builtin", cfg, nil)
 	if p == nil {
 		t.Fatal("expected builtin planner")
 	}

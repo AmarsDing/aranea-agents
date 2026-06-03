@@ -412,8 +412,8 @@ export function inferTeamIndustryId(team: Team, agents: Agent[], categoryTree: P
   const counts = new Map<string, number>();
   for (const member of def.members.filter((row) => row.enabled !== false)) {
     const agent = agents.find((row) => row.id === member.agent_id);
-    if (!agent?.category_position_id) continue;
-    const industry = findCategoryPath(categoryTree, agent.category_position_id).find((node) => node.level === "industry");
+    if (!agent?.taxonomy_position_id) continue;
+    const industry = findCategoryPath(categoryTree, agent.taxonomy_position_id).find((node) => node.level === "industry");
     if (!industry) continue;
     counts.set(industry.id, (counts.get(industry.id) ?? 0) + 1);
   }

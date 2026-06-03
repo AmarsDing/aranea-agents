@@ -1386,6 +1386,10 @@ func (m *Model) convertTools(tools map[string]tool.Tool) []openai.ChatCompletion
 	var result []openai.ChatCompletionToolParam
 	for _, t := range toolorder.SortedTools(tools) {
 		declaration := t.Declaration()
+		sanitizedName := tool.SanitizeToolName(declaration.Name)
+		if sanitizedName != declaration.Name {
+			log.Warnf("tool name %q sanitized to %q for LLM API compatibility", declaration.Name, sanitizedName)
+		}
 		// Convert the InputSchema to JSON to correctly map to OpenAI's expected format
 		schemaBytes, err := json.Marshal(declaration.InputSchema)
 		if err != nil {

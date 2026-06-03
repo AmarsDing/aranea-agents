@@ -17,6 +17,7 @@ import (
 	artifactbiz "aranea-agents/internal/biz/artifact"
 	sessstatus "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/outbound"
 	arametrics "aranea-agents/internal/metrics"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/runtime/turn"
@@ -775,6 +776,16 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	if ag.Settings != nil {
 		if vars := chatagent.ParseVariablesJSON(ag.Settings.VariablesJSON, o.lg); vars != nil {
 			runOpts = append(runOpts, trpcagent.MergeRuntimeState(vars))
+		}
+	}
+	// Inject outbound delivery target as RuntimeState so the message tool
+	// can auto-resolve the delivery channel/target from the agent's runtime context.
+	if chMeta, ok := biz.ParseChannelSessionMeta(sess.MetadataJSON); ok {
+		if deliveryState := outbound.RuntimeStateForTarget(outbound.DeliveryTarget{
+			Channel: chMeta.ChannelID,
+			Target:  chMeta.PeerID,
+		}); len(deliveryState) > 0 {
+			runOpts = append(runOpts, trpcagent.MergeRuntimeState(deliveryState))
 		}
 	}
 	firstByteTimeout := chatagent.DefaultFirstByteTimeout

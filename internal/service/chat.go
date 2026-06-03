@@ -9,6 +9,7 @@ import (
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/outbound"
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/tools/mcpobserve"
 	"aranea-agents/pkg/loggateway"
@@ -38,7 +39,46 @@ func NewChatService(deps ChatOrchestratorDeps) *ChatService {
 			Executor: chatTurnExecutor{orch: orch},
 		}
 	}
+	// Register session resolver for outbound target resolution.
+	// When an agent calls the message tool without explicit channel/target,
+	// the resolver looks up the session's channel metadata to infer the target.
+	if deps.RT.OutboundRouter != nil && deps.Sessions != nil {
+		outbound.RegisterSessionResolver(func(sessionID string) (outbound.DeliveryTarget, bool) {
+			ctx := context.Background()
+			session, err := deps.Sessions.Get(ctx, sessionID)
+			if err != nil {
+				return outbound.DeliveryTarget{}, false
+			}
+			meta, ok := biz.ParseChannelSessionMeta(session.MetadataJSON)
+			if !ok {
+				return outbound.DeliveryTarget{}, false
+			}
+			return outbound.DeliveryTarget{
+				Channel: meta.ChannelID,
+				Target:  meta.PeerID,
+			}, true
+		})
+	}
+	// Start SubAgentService lifecycle.
+	if deps.RT.SubAgentService != nil {
+		deps.RT.SubAgentService.Start(context.Background())
+	}
 	return svc
+}
+
+// Close gracefully shuts down the ChatService, including SubAgentService and
+// orchestrator lifecycle resources.
+func (s *ChatService) Close() error {
+	var firstErr error
+	if s.orch != nil {
+		if s.orch.rt.SubAgentService != nil {
+			if err := s.orch.rt.SubAgentService.Close(); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+		s.orch.Close()
+	}
+	return firstErr
 }
 
 // ProvideChatOrchestrator extracts the ChatOrchestrator from ChatService for

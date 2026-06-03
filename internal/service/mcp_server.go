@@ -106,7 +106,19 @@ func (s *MCPServerService) UpdateMCPServer(ctx context.Context, req *v1.UpdateMC
 	if req.GetMcpServer() == nil {
 		return nil, kerrors.BadRequest("MCP_SERVER", "mcp_server body is required")
 	}
-	out, err := s.uc.Update(ctx, req.GetId(), patchFromProtoMCP(req.GetMcpServer()))
+	// Fetch current server to resolve proto3 zero-value ambiguity for bool/int fields.
+	// Proto3 cannot distinguish "field not set" from "set to zero value" (false/0),
+	// so we compare against current: only include a field in the patch when the proto
+	// value differs from the current persisted value.
+	current, err := s.uc.Get(ctx, req.GetId())
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, kerrors.NotFound("MCP_SERVER", "mcp server not found")
+		}
+		return nil, err
+	}
+	patch := patchFromProtoMCPWithDiff(req.GetMcpServer(), current)
+	out, err := s.uc.Update(ctx, req.GetId(), patch)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, kerrors.NotFound("MCP_SERVER", "mcp server not found")

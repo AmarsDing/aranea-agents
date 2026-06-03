@@ -42,7 +42,7 @@ func TestRegisterStarter(t *testing.T) {
 	handler := &stubHandler{}
 	mgr := runtime.NewManager(nil, handler, func(ctx context.Context, creds []biz.ChannelCredential, key string) (string, error) {
 		return "x", nil
-	}, loggateway.NewNoop())
+	}, loggateway.NewNoop(), nil)
 	// Manager with nil channels skips Reload safely
 	if err := mgr.Reload(context.Background()); err != nil {
 		t.Fatal(err)

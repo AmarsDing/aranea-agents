@@ -261,7 +261,7 @@ func makeRequestHeaders(headerParams map[string]any) map[string]string {
 // Declaration returns the declaration of the tool.
 func (o *openAPITool) Declaration() *tool.Declaration {
 	return &tool.Declaration{
-		Name:         o.operation.name,
+		Name:         tool.SanitizeToolName(o.operation.name),
 		Description:  o.operation.description,
 		InputSchema:  o.inputSchema,
 		OutputSchema: o.outputSchema,

@@ -46,7 +46,7 @@ describe("teamUtils.groupTeamsByIndustry", () => {
   const categoryTree = [
     {
       id: "ind-1",
-      resource: "agent-categories",
+      resource: "taxonomy-nodes",
       key: "finance",
       name: "金融",
       description: "",
@@ -63,7 +63,7 @@ describe("teamUtils.groupTeamsByIndustry", () => {
       children: [
         {
           id: "dep-1",
-          resource: "agent-categories",
+          resource: "taxonomy-nodes",
           key: "research",
           name: "研究部",
           description: "",
@@ -80,7 +80,7 @@ describe("teamUtils.groupTeamsByIndustry", () => {
           children: [
             {
               id: "pos-1",
-              resource: "agent-categories",
+              resource: "taxonomy-nodes",
               key: "analyst",
               name: "分析师",
               description: "",
@@ -105,7 +105,7 @@ describe("teamUtils.groupTeamsByIndustry", () => {
   const agents: Agent[] = [
     {
       id: "a1",
-      category_position_id: "pos-1"
+      taxonomy_position_id: "pos-1"
     } as Agent
   ];
 

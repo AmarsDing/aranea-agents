@@ -6,6 +6,8 @@ package planner
 import (
 	"strings"
 
+	"aranea-agents/internal/agent/a2ui"
+
 	trpcplanner "trpc.group/trpc-go/trpc-agent-go/planner"
 )
 
@@ -16,9 +18,9 @@ import (
 //
 // Legacy behaviour: when plannerKind is empty and dialogMode is "plan",
 // the builtin planner is used (backward compatible with S1 wiring).
-func Select(dialogMode, plannerKind, plannerConfigJSON string) trpcplanner.Planner {
+func Select(dialogMode, plannerKind, plannerConfigJSON string, pipeline *a2ui.Pipeline) trpcplanner.Planner {
 	kind := strings.ToLower(strings.TrimSpace(plannerKind))
-	if p := buildPlanner(kind, plannerConfigJSON); p != nil {
+	if p := buildPlanner(kind, plannerConfigJSON, pipeline); p != nil {
 		return p
 	}
 	// Legacy: "plan" dialog mode implicitly activates the builtin planner.

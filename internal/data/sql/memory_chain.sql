@@ -97,9 +97,9 @@ CREATE TABLE IF NOT EXISTS avatar_assets (
   deleted_at TEXT NOT NULL DEFAULT ''
 );
 
-CREATE TABLE IF NOT EXISTS agent_category_nodes (
+CREATE TABLE IF NOT EXISTS industry_taxonomy (
   id TEXT PRIMARY KEY,
-  category_key TEXT NOT NULL UNIQUE,
+  taxonomy_key TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'active',

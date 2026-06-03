@@ -1351,7 +1351,7 @@ func (at *Tool) InnerTextMode() InnerTextMode {
 // Best practice: Use ^[a-zA-Z0-9_-]+ only to ensure maximum compatibility.
 func (at *Tool) Declaration() *tool.Declaration {
 	return &tool.Declaration{
-		Name:         at.name,
+		Name:         tool.SanitizeToolName(at.name),
 		Description:  at.description,
 		InputSchema:  at.inputSchema,
 		OutputSchema: at.outputSchema,

@@ -6,7 +6,7 @@
   >
     <template #actions>
       <q-btn outline rounded no-caps color="primary" icon="sync_alt" label="Agent 迁移（即将推出）" disable @click="$emit('open-migration')" />
-      <q-btn outline rounded no-caps color="primary" icon="account_tree" label="管理分类" to="/settings/agent-categories" />
+      <q-btn outline rounded no-caps color="primary" icon="account_tree" label="管理分类" to="/settings/taxonomy" />
       <q-btn color="primary" unelevated rounded no-caps icon="add" label="创建 Agent" @click="$emit('create')" />
     </template>
   </AppPageHero>

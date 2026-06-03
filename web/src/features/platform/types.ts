@@ -2,7 +2,7 @@
 
 export type PlatformResourceName =
   | "avatar-assets"
-  | "agent-categories"
+  | "taxonomy-nodes"
   | "taxonomy"
   | "llm-provider-models"
   | "hooks"

@@ -89,6 +89,34 @@ func (st *Store) DeleteFactByID(ctx context.Context, id string) error {
 	return nil
 }
 
+// DeleteFactRowsByIDs soft-deletes multiple memory facts by their IDs and returns the number deleted.
+func (st *Store) DeleteFactRowsByIDs(ctx context.Context, ids []string) (int, error) {
+	if st == nil || st.client == nil {
+		return 0, errors.New("session memory store not wired")
+	}
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	placeholders := make([]string, len(ids))
+	args := make([]any, 0, len(ids)+2)
+	args = append(args, now, now) // deleted_at, updated_at
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args = append(args, strings.TrimSpace(id))
+	}
+	q := fmt.Sprintf(
+		`UPDATE memory_facts SET deleted_at = ?, status = 'deleted', updated_at = ? WHERE id IN (%s) AND deleted_at = ''`,
+		strings.Join(placeholders, ","),
+	)
+	res, err := st.client.ExecContext(ctx, q, args...)
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}
+
 // IncrementConflictCount increments the conflict_count for a fact and returns the new count.
 func (st *Store) IncrementConflictCount(ctx context.Context, factID string) (int32, error) {
 	if st == nil || st.client == nil {

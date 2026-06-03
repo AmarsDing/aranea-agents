@@ -513,9 +513,9 @@
 
 | 维度 | 内容 |
 |------|------|
-| **上游依赖** | `channel`（各平台 OutboundText 适配器） |
-| **下游影响** | `tools`（message 工具通过 OutboundRouter 发送）、`channel`（出站投递） |
-| **核心导出** | `Router`、`TextSender`/`MessageSender` 接口、`WrapOutboundText`、`MessageTool`、`ResolveTarget` |
+| **上游依赖** | `channel`（各平台 OutboundText 适配器）、`service/chat`（SessionResolver 注册、RuntimeState 注入）、`cmd/admin/wire.go`（provideOutboundRouter） |
+| **下游影响** | `tools`（message 工具通过 OutboundRouter 发送）、`tools/subagent`（完成通知闭环）、`channel`（出站投递）、`channel/runtime`（Manager 集成） |
+| **核心导出** | `Router`、`TextSender`/`MessageSender` 接口、`WrapOutboundText`、`MessageTool`、`ResolveTarget`、`RuntimeStateForTarget`、`RegisterSessionResolver`、`RegisterFromInboundEvent` |
 | **共享类型** | `DeliveryTarget`、`OutboundMessage`、`OutboundFile` |
 | **事件生产** | 无直接生产（通过 channel 适配器间接发送） |
 | **事件消费** | 无 |

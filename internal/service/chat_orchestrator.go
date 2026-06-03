@@ -14,7 +14,9 @@ import (
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/knowledge"
 	kanbanpkg "aranea-agents/internal/tools/kanban"
+	"aranea-agents/internal/outbound"
 	plugintrpc "aranea-agents/internal/plugin/trpc"
+	subagenttool "aranea-agents/internal/tools/subagent"
 	araneasession "aranea-agents/internal/session"
 	sessstatus "aranea-agents/internal/biz/session"
 	rt "aranea-agents/internal/runtime"
@@ -57,6 +59,8 @@ type RuntimeTooling struct {
 	DebugRecorder              *debug.RecorderFactory
 	TaxonomyUC                *biz.TaxonomyUsecase
 	ToolResultGate             *biz.ToolResultGate
+	OutboundRouter             *outbound.Router
+	SubAgentService            *subagenttool.Service
 }
 
 // TeamOrchestrationDeps groups team execution and graph compilation dependencies.
@@ -106,6 +110,8 @@ type ChatOrchestrator struct {
 	skillEvo        *biz.SkillEvolutionUsecase
 	evolution       *biz.EvolutionUsecase
 	skillStats      biz.SkillInvocationStatsReader
+	outboundRouter  *outbound.Router
+	subAgentService *subagenttool.Service
 
 	sessionRunBindings   sync.Map
 	awaitMetaCache       sync.Map
@@ -143,6 +149,8 @@ type ChatOrchestratorDeps struct {
 	SkillEvo        *biz.SkillEvolutionUsecase
 	Evolution       *biz.EvolutionUsecase
 	SkillStats      biz.SkillInvocationStatsReader
+	OutboundRouter  *outbound.Router
+	SubAgentService *subagenttool.Service
 }
 
 func coalesceRunRegistry(r *rt.RunRegistry) *rt.RunRegistry {
@@ -185,6 +193,8 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		skillEvo:        deps.SkillEvo,
 		evolution:       deps.Evolution,
 		skillStats:      deps.SkillStats,
+		outboundRouter:  deps.OutboundRouter,
+		subAgentService: deps.SubAgentService,
 	}
 	if o.turnTimeout <= 0 {
 		o.turnTimeout = chatagent.DefaultTurnTimeout

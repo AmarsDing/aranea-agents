@@ -89,6 +89,9 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		cfg.BlobReader = deps.ToolResultGate.BlobReader()
 	}
 
+	cfg.OutboundRouter = deps.OutboundRouter
+	cfg.SubAgentService = deps.SubAgentService
+
 	if !tooltrpc.ToolsetConfigHasAny(cfg) {
 		event.CtxFlowLogDone(ctx, "agent.tool_build", "工具构建：未启用任何工具", event.P("agent_id", ag.ID))
 		return nil, nil
