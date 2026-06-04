@@ -65,6 +65,7 @@ const (
 	EnvelopeTypeSpiritTeamProgress          = contract.EnvelopeTypeSpiritTeamProgress
 	EnvelopeTypeSpiritTeamsAllCompleted     = contract.EnvelopeTypeSpiritTeamsAllCompleted
 	EnvelopeTypeSpiritSynthesisCompleted    = contract.EnvelopeTypeSpiritSynthesisCompleted
+	EnvelopeTypeMetricsUpdated              = contract.EnvelopeTypeMetricsUpdated
 )
 
 // Re-export functions.

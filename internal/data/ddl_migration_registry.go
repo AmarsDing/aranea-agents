@@ -54,6 +54,7 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260705, Name: "compiled_team_schema", Func: ddlCompiledTeamSchema},
 	{Version: 20260706, Name: "skill_evolution_schema", Func: ddlSkillEvolutionSchema},
 	{Version: 20260707, Name: "memory_facts_extra_patches", Func: ddlMemoryFactsExtraPatches},
+	{Version: 20260708, Name: "session_table_split", Func: ddlSessionTableSplit},
 }
 
 func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
@@ -233,4 +234,8 @@ func ddlSkillEvolutionSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.
 
 func ddlMemoryFactsExtraPatches(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
 	return ensureMemoryFactsExtraPatches(ctx, entClient, lg)
+}
+
+func ddlSessionTableSplit(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
+	return EnsureSessionTableSplit(ctx, rawDB, lg)
 }

@@ -51,6 +51,12 @@ type (
 	SessionBatchPreview     = session.SessionBatchPreview
 	SessionBatchResult      = session.SessionBatchResult
 	SessionParticipant      = session.SessionParticipant
+	SessionMetricsReader    = session.SessionMetricsReader
+	SessionMetricsWriter    = session.SessionMetricsWriter
+	SessionRuntimeReader    = session.SessionRuntimeReader
+	SessionRuntimeWriter    = session.SessionRuntimeWriter
+	SessionMetrics          = session.SessionMetrics
+	SessionRuntime          = session.SessionRuntime
 )
 
 // Session interfaces for dependency injection.
@@ -58,6 +64,7 @@ type (
 	SessionAgentLookup       = session.AgentLookup
 	SessionTeamLookup        = session.TeamLookup
 	SessionStatusPublisher   = session.SessionStatusPublisher
+	MetricsUpdatedPublisher  = session.MetricsUpdatedPublisher
 )
 
 const (

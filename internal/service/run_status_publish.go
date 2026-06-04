@@ -113,10 +113,33 @@ func (p *sessionStatusPublisher) PublishSessionStatusChanged(sessionID, status, 
 	PublishSessionStatusChanged(p.bus, sessionID, status, statusReason, statusChangedAt)
 }
 
+// metricsUpdatedPublisher publishes metrics_updated events via EventBus.
+type metricsUpdatedPublisher struct {
+	bus event.Bus
+}
+
+func (p *metricsUpdatedPublisher) PublishMetricsUpdated(sessionID string) {
+	PublishMetricsUpdated(p.bus, sessionID)
+}
+
+// PublishMetricsUpdated emits a metrics_updated envelope for WS subscribers.
+func PublishMetricsUpdated(bus event.Bus, sessionID string) {
+	if bus == nil || strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	env := event.NewEnvelope(event.EnvelopeTypeMetricsUpdated, "session-metrics", sessionID)
+	env.Channel = event.RouteChannel(env)
+	env.Metadata = map[string]any{
+		"session_id": sessionID,
+	}
+	bus.Publish(context.Background(), env)
+}
+
 // WireSessionStatusPublisher injects the service-layer WS publisher into SessionUsecase.
 func WireSessionStatusPublisher(uc *biz.SessionUsecase, infra *event.Infra, lg loggateway.Logger) *SessionStatusGuard {
 	if uc != nil && infra != nil {
 		uc.SetStatusPublisher(&sessionStatusPublisher{bus: infra.SessionBus})
+		uc.SetMetricsUpdatedPublisher(&metricsUpdatedPublisher{bus: infra.SessionBus})
 	}
 	return NewSessionStatusGuard(uc, lg)
 }

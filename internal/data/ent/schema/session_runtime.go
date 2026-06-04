@@ -21,7 +21,7 @@ func (SessionRuntime) Annotations() []schema.Annotation {
 
 func (SessionRuntime) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("session_id").StorageKey("idx_session_runtime_session"),
+		index.Fields("id").StorageKey("idx_session_runtime_session"),
 	}
 }
 

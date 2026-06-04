@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/session"
+	"aranea-agents/internal/conf"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/agent"
 	"aranea-agents/internal/data/ent/platformskill"
@@ -21,7 +22,9 @@ import (
 )
 
 type sessionRepo struct {
-	data *Data
+	data         *Data
+	metricsWriter biz.SessionMetricsWriter  // writes to session_metrics table
+	metricsCache  *SessionMetricsCache      // optional LRU cache for session_metrics reads
 }
 
 var (
@@ -45,8 +48,8 @@ var (
 	_ biz.SessionRepo          = (*sessionRepo)(nil)
 )
 
-func NewSessionRepo(d *Data) biz.SessionRepo {
-	return &sessionRepo{data: d}
+func NewSessionRepo(d *Data, metricsWriter biz.SessionMetricsWriter, metricsCache *SessionMetricsCache) biz.SessionRepo {
+	return &sessionRepo{data: d, metricsWriter: metricsWriter, metricsCache: metricsCache}
 }
 
 func entSessionToBiz(e *ent.Session) biz.Session {
@@ -611,6 +614,24 @@ func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sess
 	if err != nil {
 		r.data.lg.Warn("update session context from llm usage failed", loggateway.StepID("data.session.context_from_llm"), loggateway.Err(err))
 	}
+
+	// dual_write: also update session_metrics table
+	if conf.DAOSessionDualWrite() || conf.DAOSessionMetricsTable() {
+		if r.metricsWriter != nil {
+			delta := &session.SessionMetricsDelta{
+				SessionID:          sessionID,
+				ContextUsedTokens:  promptTokens,
+				ContextUsedRatio:   ratio,
+				MaxContextUsedRatio: ratio,
+			}
+			if e := r.metricsWriter.ApplyMetricsDelta(ctx, delta); e != nil && err == nil {
+				err = e
+			}
+		}
+		if r.metricsCache != nil {
+			r.metricsCache.Invalidate(sessionID)
+		}
+	}
 	return err
 }
 
@@ -636,6 +657,24 @@ func (r *sessionRepo) UpdateSessionContextAfterCompression(ctx context.Context, 
 		Save(ctx)
 	if err != nil {
 		r.data.lg.Warn("update session context after compression failed", loggateway.StepID("data.session.context_after_compress"), loggateway.Err(err))
+	}
+
+	// dual_write: also update session_metrics table
+	if conf.DAOSessionDualWrite() || conf.DAOSessionMetricsTable() {
+		if r.metricsWriter != nil {
+			delta := &session.SessionMetricsDelta{
+				SessionID:           sessionID,
+				ContextUsedTokens:   tok,
+				ContextUsedRatio:    ratio,
+				MaxContextUsedRatio: ratio,
+			}
+			if e := r.metricsWriter.ApplyMetricsDelta(ctx, delta); e != nil && err == nil {
+				err = e
+			}
+		}
+		if r.metricsCache != nil {
+			r.metricsCache.Invalidate(sessionID)
+		}
 	}
 	return err
 }
@@ -673,7 +712,36 @@ func (r *sessionRepo) ApplyMetricsDelta(ctx context.Context, d *session.SessionM
 	if sessionID == "" {
 		return nil
 	}
-	upd := r.data.RW().Write(ctx).Session.UpdateOneID(sessionID).SetUpdatedAt(nowRFC3339())
+
+	var err error
+	switch {
+	case conf.DAOSessionDualWrite():
+		// 双写：同时写旧表和新表
+		if e := r.applyMetricsDeltaToSession(ctx, d); e != nil {
+			err = e
+		}
+		if e := r.metricsWriter.ApplyMetricsDelta(ctx, d); e != nil && err == nil {
+			err = e
+		}
+		if r.metricsCache != nil {
+			r.metricsCache.Invalidate(sessionID)
+		}
+	case conf.DAOSessionMetricsTable():
+		// 仅写新表
+		err = r.metricsWriter.ApplyMetricsDelta(ctx, d)
+		if r.metricsCache != nil {
+			r.metricsCache.Invalidate(sessionID)
+		}
+	default:
+		// 仅写旧表（当前行为）
+		err = r.applyMetricsDeltaToSession(ctx, d)
+	}
+	return err
+}
+
+// applyMetricsDeltaToSession writes metrics delta to the legacy sessions table.
+func (r *sessionRepo) applyMetricsDeltaToSession(ctx context.Context, d *session.SessionMetricsDelta) error {
+	upd := r.data.RW().Write(ctx).Session.UpdateOneID(strings.TrimSpace(d.SessionID)).SetUpdatedAt(nowRFC3339())
 	if d.MessageCount != 0 {
 		upd = upd.AddMessageCount(d.MessageCount)
 	}

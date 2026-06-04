@@ -24,7 +24,8 @@
         <div class="app-metrics-card__label">{{ t('industries.market.metricEnabled') }}</div>
         <span class="app-metrics-card__value app-mono">{{ summary.enabled }}</span>
         <div class="app-metrics-card__foot">
-          <span class="industry-market-page__delta-up">+1</span> {{ t('industries.market.metricEnabledFoot', { delta: '' }).replace(' {delta}', '').replace('{delta} ', '') }}
+          <span class="industry-market-page__delta-up">{{ t('industries.market.metricEnabledDelta') }}</span>
+          {{ t('industries.market.metricEnabledFootNoDelta') }}
         </div>
       </div>
       <div class="app-metrics-card">

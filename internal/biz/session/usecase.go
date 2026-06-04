@@ -467,34 +467,41 @@ type SessionStatusPublisher interface {
 	PublishSessionStatusChanged(sessionID string, status string, statusReason string, statusChangedAt string)
 }
 
+// MetricsUpdatedPublisher emits metrics_updated events to realtime observers (WS).
+// Implemented in service layer; set via SetMetricsUpdatedPublisher after construction.
+type MetricsUpdatedPublisher interface {
+	PublishMetricsUpdated(sessionID string)
+}
+
 // SessionUsecase handles session CRUD + timeline. Chat 写消息经 AppendChat* 等仓储方法，不经 SessionService RPC.
 type SessionUsecase struct {
-	sessionReader       SessionReader
-	sessionTreeReader   SessionTreeReader
-	sessionWriter       SessionWriter
-	sessionMutator      SessionMutator
-	sessionBatchMutator SessionBatchMutator
-	messageReader       MessageReader
-	messageSearchReader MessageSearchReader
-	messageWriter       MessageWriter
-	messageStatusWriter MessageStatusWriter
-	timelineReader      TimelineReader
-	invocationReader    InvocationReader
-	summaryReader       SummaryReader
-	summaryWriter       SummaryWriter
-	stateRepo           StateRepo
-	turnRepo            TurnRepo
-	contextUpdater      ContextUpdater
-	compressRepo        CompressRepo
-	agents              AgentLookup
-	teams               TeamLookup
-	titleGenerator      SessionTitleGenerator
-	participants        SessionParticipantRepository
-	lg                  loggateway.Logger
-	statusPublisher     SessionStatusPublisher
-	metricsDeltaMu      sync.Mutex
-	metricsDeltas       map[string]*SessionMetricsDelta
-	flushInterval       time.Duration
+	sessionReader          SessionReader
+	sessionTreeReader      SessionTreeReader
+	sessionWriter          SessionWriter
+	sessionMutator         SessionMutator
+	sessionBatchMutator    SessionBatchMutator
+	messageReader          MessageReader
+	messageSearchReader    MessageSearchReader
+	messageWriter          MessageWriter
+	messageStatusWriter    MessageStatusWriter
+	timelineReader         TimelineReader
+	invocationReader       InvocationReader
+	summaryReader          SummaryReader
+	summaryWriter          SummaryWriter
+	stateRepo              StateRepo
+	turnRepo               TurnRepo
+	contextUpdater         ContextUpdater
+	compressRepo           CompressRepo
+	agents                 AgentLookup
+	teams                  TeamLookup
+	titleGenerator         SessionTitleGenerator
+	participants           SessionParticipantRepository
+	lg                     loggateway.Logger
+	statusPublisher        SessionStatusPublisher
+	metricsUpdatedPublisher MetricsUpdatedPublisher
+	metricsDeltaMu         sync.Mutex
+	metricsDeltas          map[string]*SessionMetricsDelta
+	flushInterval          time.Duration
 }
 
 func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository) *SessionUsecase {
@@ -530,6 +537,10 @@ func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLooku
 
 func (uc *SessionUsecase) SetStatusPublisher(publisher SessionStatusPublisher) {
 	uc.statusPublisher = publisher
+}
+
+func (uc *SessionUsecase) SetMetricsUpdatedPublisher(publisher MetricsUpdatedPublisher) {
+	uc.metricsUpdatedPublisher = publisher
 }
 
 func (uc *SessionUsecase) TransitionStatus(ctx context.Context, sessionID string, target SessionStatus, reason SessionStatusReason) error {

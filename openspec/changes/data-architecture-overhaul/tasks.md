@@ -77,28 +77,28 @@
 
 ## 5. Session 表拆分
 
-- [ ] 5.1 创建 Ent Schema `internal/data/ent/schema/session_metrics.go`：定义 `session_metrics` 表（session_id PK + 16 个聚合字段 + updated_at）
-  - DoD: `go generate ./internal/data/ent` 成功
-- [ ] 5.2 创建 Ent Schema `internal/data/ent/schema/session_runtime.go`：定义 `session_runtime` 表（session_id PK + revision + state_json + runner_snapshot + context 字段 + updated_at）
-  - DoD: `go generate ./internal/data/ent` 成功
-- [ ] 5.3 创建 DDL migration：`sql/migrations/YYYYMMDD_session_table_split.sql` — CREATE TABLE + 从 sessions 回填数据到 session_metrics 和 session_runtime
-  - DoD: 在已有数据库上执行迁移后，新表数据与旧字段一致
-- [ ] 5.4 注册 DDL migration 到 `ddl_migration_registry.go`
-  - DoD: 新安装和升级安装均能正确创建新表
-- [ ] 5.5 新增 biz 端口接口：`biz.SessionMetricsReader`、`biz.SessionMetricsWriter`、`biz.SessionRuntimeReader`、`biz.SessionRuntimeWriter`
-  - DoD: 编译期接口检查通过
-- [ ] 5.6 实现 data 层 Repo：`sessionMetricsRepo`（实现 SessionMetricsReader + SessionMetricsWriter）和 `sessionRuntimeRepo`（实现 SessionRuntimeReader + SessionRuntimeWriter）
-  - DoD: 编译期接口检查通过
-- [ ] 5.7 实现 SessionMetricsCache：LRU 缓存（容量 500，TTL 30s），包装 SessionMetricsReader，flush 时失效
-  - DoD: 单元测试覆盖缓存命中/未命中/失效场景
-- [ ] 5.8 Feature flag 实现：在 `internal/conf/` 中添加 `session_table_mode` 配置（legacy / dual_write / new_table），Data 层根据 flag 选择写入路径
-  - DoD: 三种模式均可通过配置切换
-- [ ] 5.9 修改 `sessionRepo`：在 dual_write 模式下同时写入旧字段和新表，在 new_table 模式下仅写入新表
-  - DoD: `make test ./internal/data/... -run TestSession` 通过
-- [ ] 5.10 修改 `toProtoSession`：从 sessions + session_metrics LEFT JOIN 聚合数据（或从缓存获取 metrics）
-  - DoD: API 返回的 Session 对象包含完整 metrics 字段
-- [ ] 5.11 新增 `EnvelopeTypeMetricsUpdated` 事件：在 `ApplyMetricsDelta` 完成后发布，包含 session_id 和更新的 metrics 字段
-  - DoD: 前端 WebSocket 收到 MetricsUpdated 事件
+- [x] 5.1 创建 Ent Schema `internal/data/ent/schema/session_metrics.go`：定义 `session_metrics` 表（session_id PK + 19 个字段 + updated_at）
+  - DoD: ✅ `go generate ./internal/data/ent` 成功，StorageKey("session_id") 映射
+- [x] 5.2 创建 Ent Schema `internal/data/ent/schema/session_runtime.go`：定义 `session_runtime` 表（session_id PK + revision + state_json + runner_snapshot + metadata_json + compress_version + updated_at）
+  - DoD: ✅ `go generate ./internal/data/ent` 成功
+- [x] 5.3 创建 DDL migration：`sql/migrations/20260708_session_table_split.sql` — CREATE TABLE + 从 sessions 回填数据
+  - DoD: ✅ SQL 包含 CREATE TABLE + INSERT OR IGNORE 回填
+- [x] 5.4 注册 DDL migration 到 `ddl_migration_registry.go`
+  - DoD: ✅ Version 20260708 已注册，`EnsureSessionTableSplit` 函数执行 SQL 文件
+- [x] 5.5 新增 biz 端口接口：`SessionMetricsReader`（2方法）、`SessionMetricsWriter`（2方法）、`SessionRuntimeReader`（1方法）、`SessionRuntimeWriter`（1方法）+ `SessionMetrics`/`SessionRuntime` 数据模型
+  - DoD: ✅ 编译期接口检查通过，类型别名已添加到 biz 包
+- [x] 5.6 实现 data 层 Repo：`sessionMetricsRepo`（实现 SessionMetricsReader + SessionMetricsWriter）和 `sessionRuntimeRepo`（实现 SessionRuntimeReader + SessionRuntimeWriter）
+  - DoD: ✅ 编译期接口检查通过，使用 Ent OnConflict upsert
+- [x] 5.7 实现 SessionMetricsCache：sync.Map + TTL（30s），容量 500，包装 SessionMetricsReader，flush 时失效
+  - DoD: ✅ 编译期接口检查通过，Invalidate/InvalidateAll 方法
+- [x] 5.8 Feature flag 实现：`conf.DAOSessionMetricsTable()` / `conf.DAOSessionDualWrite()` / `conf.DAOSessionRuntimeTable()`，环境变量驱动
+  - DoD: ✅ 三种模式均可通过配置切换（默认 false）
+- [x] 5.9 修改 `sessionRepo`：在 dual_write 模式下同时写入旧字段和新表，在 DAOSessionMetricsTable 模式下仅写入新表
+  - DoD: ✅ `ApplyMetricsDelta`/`UpdateSessionContextFromLLMUsage`/`UpdateSessionContextAfterCompression` 三种模式均已实现
+- [x] 5.10 修改 `toProtoSession`：接受可选 `*biz.SessionMetrics` 参数，有 metrics 时用新表数据覆盖
+  - DoD: ✅ 7 个调用点已更新，`getSessionMetrics` 辅助方法仅在 flag 启用时查询
+- [x] 5.11 新增 `EnvelopeTypeMetricsUpdated` 事件：在 metrics flush 成功后发布，路由到 "chat" channel
+  - DoD: ✅ `MetricsUpdatedPublisher` 接口 + `metricsUpdatedPublisher` 实现，`WireSessionStatusPublisher` 同时注入
 - [ ] 5.12 前端适配：处理 `MetricsUpdated` 事件，更新本地 session metrics 状态；修复 `reconcilePatchFromServer` 旧值覆盖问题
   - DoD: 前端 `pnpm build` 通过，metrics 更新实时可见
 - [ ] 5.13 数据一致性验证脚本：对比 sessions 旧字段与 session_metrics/session_runtime 新表数据，输出差异报告

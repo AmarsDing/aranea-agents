@@ -58,6 +58,7 @@ const (
 	EnvelopeTypeSpiritTeamsAllCompleted     EnvelopeType = "spirit_teams_all_completed"
 	EnvelopeTypeSpiritSynthesisCompleted    EnvelopeType = "spirit_synthesis_completed"
 	EnvelopeTypeTokenUsage                  EnvelopeType = "token_usage"
+	EnvelopeTypeMetricsUpdated              EnvelopeType = "metrics_updated"
 )
 
 // Envelope is the universal event carrier.
@@ -254,6 +255,8 @@ func RouteChannel(env Envelope) string {
 	case EnvelopeTypeMCPSessionReconnect, EnvelopeTypeMCPHealthAlert, EnvelopeTypeAlertNotify:
 		return "monitor"
 	case EnvelopeTypeSessionStatusChanged:
+		return "chat"
+	case EnvelopeTypeMetricsUpdated:
 		return "chat"
 	case EnvelopeTypeSpiritTeamAssembled, EnvelopeTypeSpiritTeamCompleted, EnvelopeTypeSpiritTeamFailed, EnvelopeTypeSpiritTeamProgress, EnvelopeTypeSpiritTeamsAllCompleted, EnvelopeTypeSpiritSynthesisCompleted:
 		return "chat"

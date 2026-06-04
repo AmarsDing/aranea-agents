@@ -116,7 +116,7 @@ func TestToProtoSession(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := service.ToProtoSession(tt.input)
+			got := service.ToProtoSession(tt.input, nil)
 			if tt.check != nil {
 				tt.check(t, got)
 			}

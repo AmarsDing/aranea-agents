@@ -8,6 +8,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/session/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/strutil"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -19,10 +20,11 @@ import (
 type SessionService struct {
 	v1.UnimplementedSessionServiceServer
 
-	uc       *biz.SessionUsecase
-	mon      *biz.MonitorUsecase
-	runs     *biz.SessionRunUsecase
-	compress biz.ManualCompressor
+	uc           *biz.SessionUsecase
+	mon          *biz.MonitorUsecase
+	runs         *biz.SessionRunUsecase
+	compress     biz.ManualCompressor
+	metricsCache biz.SessionMetricsReader
 }
 
 func NewSessionService(
@@ -30,12 +32,13 @@ func NewSessionService(
 	mon *biz.MonitorUsecase,
 	runs *biz.SessionRunUsecase,
 	compress biz.ManualCompressor,
+	metricsCache biz.SessionMetricsReader,
 ) *SessionService {
-	return &SessionService{uc: uc, mon: mon, runs: runs, compress: compress}
+	return &SessionService{uc: uc, mon: mon, runs: runs, compress: compress, metricsCache: metricsCache}
 }
 
-func toProtoSession(s biz.Session) *v1.Session {
-	return &v1.Session{
+func toProtoSession(s biz.Session, metrics *biz.SessionMetrics) *v1.Session {
+	p := &v1.Session{
 		Id:                         s.ID,
 		WorkspaceId:                s.WorkspaceID,
 		UserId:                     s.UserID,
@@ -87,6 +90,29 @@ func toProtoSession(s biz.Session) *v1.Session {
 		RootSessionId:              s.RootSessionID,
 		AgentDepth:                 int32(s.AgentDepth),
 	}
+	// 如果有 metrics 数据，用新表数据覆盖
+	if metrics != nil {
+		p.MessageCount = int32(metrics.MessageCount)
+		p.RunCount = int32(metrics.RunCount)
+		p.ModelCallCount = int32(metrics.ModelCallCount)
+		p.ToolCallCount = int32(metrics.ToolCallCount)
+		p.SkillCallCount = int32(metrics.SkillCallCount)
+		p.McpCallCount = int32(metrics.MCPCallCount)
+		p.InputTokens = int32(metrics.InputTokens)
+		p.OutputTokens = int32(metrics.OutputTokens)
+		p.TotalTokens = int32(metrics.TotalTokens)
+		p.TotalCostMicroUsd = metrics.TotalCostMicroUSD
+		p.AvgLatencyMs = metrics.AvgLatencyMs
+		p.ErrorCount = int32(metrics.ErrorCount)
+		p.ContextUsedTokens = int32(metrics.ContextUsedTokens)
+		p.ContextUsedRatio = metrics.ContextUsedRatio
+		p.MaxContextUsedRatio = metrics.MaxContextUsedRatio
+		p.ContextStatus = metrics.ContextStatus
+		if metrics.LastMessageAt != "" {
+			p.LastMessageAt = metrics.LastMessageAt
+		}
+	}
+	return p
 }
 
 func toProtoTimeline(t biz.SessionTimeline) *v1.SessionTimeline {
@@ -161,6 +187,18 @@ func searchQueryFromProto(req *v1.SearchSessionsRequest) biz.SessionSearchQuery 
 	}
 }
 
+// getSessionMetrics returns metrics from the session_metrics table if the feature is enabled.
+func (s *SessionService) getSessionMetrics(ctx context.Context, sessionID string) *biz.SessionMetrics {
+	if !conf.DAOSessionMetricsTable() || s.metricsCache == nil {
+		return nil
+	}
+	metrics, err := s.metricsCache.GetSessionMetrics(ctx, sessionID)
+	if err != nil {
+		return nil
+	}
+	return metrics
+}
+
 // SearchSessions implements GET /v1/sessions.
 func (s *SessionService) SearchSessions(ctx context.Context, req *v1.SearchSessionsRequest) (*v1.SearchSessionsResponse, error) {
 	q := searchQueryFromProto(req)
@@ -175,7 +213,7 @@ func (s *SessionService) SearchSessions(ctx context.Context, req *v1.SearchSessi
 		Items:  make([]*v1.Session, 0, len(res.Items)),
 	}
 	for i := range res.Items {
-		out.Items = append(out.Items, toProtoSession(res.Items[i]))
+		out.Items = append(out.Items, toProtoSession(res.Items[i], s.getSessionMetrics(ctx, res.Items[i].ID)))
 	}
 	return out, nil
 }
@@ -200,7 +238,7 @@ func (s *SessionService) CreateSession(ctx context.Context, req *v1.CreateSessio
 		return nil, err
 	}
 	s.mon.RecordAdminAudit(ctx, "create.session", "session", created.ID, "title="+created.Title)
-	return toProtoSession(created), nil
+	return toProtoSession(created, s.getSessionMetrics(ctx, created.ID)), nil
 }
 
 // DeleteSessionsByAgent implements DELETE /v1/sessions.
@@ -217,7 +255,7 @@ func (s *SessionService) GetSession(ctx context.Context, req *v1.GetSessionReque
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}
-	return toProtoSession(out), nil
+	return toProtoSession(out, s.getSessionMetrics(ctx, out.ID)), nil
 }
 
 // UpdateSession implements PATCH /v1/sessions/{id}.
@@ -249,7 +287,7 @@ func (s *SessionService) UpdateSession(ctx context.Context, req *v1.UpdateSessio
 		return nil, mapSessionErr(err)
 	}
 	s.mon.RecordAdminAudit(ctx, "update.session", "session", req.GetId(), "fields updated")
-	return toProtoSession(out), nil
+	return toProtoSession(out, s.getSessionMetrics(ctx, out.ID)), nil
 }
 
 // DeleteSession implements DELETE /v1/sessions/{id}.
@@ -276,7 +314,7 @@ func (s *SessionService) RestoreSession(ctx context.Context, req *v1.RestoreSess
 	if err != nil {
 		return nil, mapSessionErr(err)
 	}
-	return toProtoSession(out), nil
+	return toProtoSession(out, s.getSessionMetrics(ctx, out.ID)), nil
 }
 
 // PinSession implements POST /v1/sessions/{id}/pin.
@@ -286,7 +324,7 @@ func (s *SessionService) PinSession(ctx context.Context, req *v1.PinSessionReque
 		return nil, mapSessionErr(err)
 	}
 	s.mon.RecordAdminAudit(ctx, "pin.session", "session", req.GetId(), "pin")
-	return toProtoSession(out), nil
+	return toProtoSession(out, s.getSessionMetrics(ctx, out.ID)), nil
 }
 
 // UnpinSession implements POST /v1/sessions/{id}/unpin.
@@ -296,7 +334,7 @@ func (s *SessionService) UnpinSession(ctx context.Context, req *v1.UnpinSessionR
 		return nil, mapSessionErr(err)
 	}
 	s.mon.RecordAdminAudit(ctx, "unpin.session", "session", req.GetId(), "unpin")
-	return toProtoSession(out), nil
+	return toProtoSession(out, s.getSessionMetrics(ctx, out.ID)), nil
 }
 
 func toProtoChatMessageRow(m biz.ChatMessage) *v1.ChatMessageRow {

@@ -66,6 +66,8 @@ func (uc *SessionUsecase) flushAllMetrics(ctx context.Context) {
 				uc.lg.Error("session_metrics.flush_failed", loggateway.Err(err), loggateway.Str("session_id", d.SessionID))
 			}
 			uc.AccumulateMetricsDelta(*d)
+		} else if uc.metricsUpdatedPublisher != nil {
+			uc.metricsUpdatedPublisher.PublishMetricsUpdated(d.SessionID)
 		}
 	}
 }
@@ -87,5 +89,7 @@ func (uc *SessionUsecase) forceFlushSingle(sessionID string) {
 			uc.lg.Error("session_metrics.force_flush_failed", loggateway.Err(err), loggateway.Str("session_id", d.SessionID))
 		}
 		uc.AccumulateMetricsDelta(*d)
+	} else if uc.metricsUpdatedPublisher != nil {
+		uc.metricsUpdatedPublisher.PublishMetricsUpdated(d.SessionID)
 	}
 }

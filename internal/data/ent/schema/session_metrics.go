@@ -21,7 +21,7 @@ func (SessionMetrics) Annotations() []schema.Annotation {
 
 func (SessionMetrics) Indexes() []ent.Index {
 	return []ent.Index{
-		index.Fields("session_id").StorageKey("idx_session_metrics_session"),
+		index.Fields("id").StorageKey("idx_session_metrics_session"),
 	}
 }
 
