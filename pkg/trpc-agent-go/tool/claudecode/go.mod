@@ -10,8 +10,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/net v0.34.0
-	golang.org/x/text v0.21.0
+	golang.org/x/net v0.38.0
 	trpc.group/trpc-go/trpc-agent-go v0.5.0
 )
 
@@ -22,6 +21,7 @@ require (
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
+	golang.org/x/text v0.23.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	trpc.group/trpc-go/trpc-a2a-go v0.2.5 // indirect
