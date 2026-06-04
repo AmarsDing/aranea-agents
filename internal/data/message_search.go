@@ -2,7 +2,6 @@ package data
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strings"
 

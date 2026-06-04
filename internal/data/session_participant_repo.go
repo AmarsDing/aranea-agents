@@ -99,7 +99,7 @@ func (r *sessionParticipantRepo) SyncFromSession(ctx context.Context, sess bizse
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		e := r.data.RWDB().WriteDB(txCtx)
+		e := TxExecerFromCtx(txCtx, r.data.RWDB().WriteHandle())
 		if _, err := e.ExecContext(txCtx, `DELETE FROM session_participants WHERE session_id=?`, sessionID); err != nil {
 			return err
 		}

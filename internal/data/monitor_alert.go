@@ -105,7 +105,7 @@ FROM monitor_alert_rules ORDER BY created_at ASC`)
 func (r *monitorRepo) ReplaceAlertRules(ctx context.Context, rules []biz.MonitorAlertRule) error {
 	r.ensureMonitorAlertFiringStateCols(ctx)
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		e := r.data.RWDB().WriteDB(txCtx)
+		e := TxExecerFromCtx(txCtx, r.data.RWDB().WriteHandle())
 
 		existingRows, err := e.QueryContext(txCtx, `SELECT id FROM monitor_alert_rules`)
 		if err != nil {

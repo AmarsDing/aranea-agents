@@ -166,7 +166,7 @@ func (r *evalRepo) ListDatasets(ctx context.Context, workspace string, limit, of
 
 func (r *evalRepo) DeleteDataset(ctx context.Context, id string) error {
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		e := r.data.RWDB().WriteDB(txCtx)
+		e := TxExecerFromCtx(txCtx, r.data.RWDB().WriteHandle())
 		if _, err := e.ExecContext(txCtx,
 			`DELETE FROM eval_case_results WHERE run_id IN (SELECT id FROM eval_runs WHERE dataset_id=?)`,
 			id); err != nil {
@@ -205,7 +205,7 @@ func (r *evalRepo) UpdateDatasetCaseCount(ctx context.Context, id string, delta 
 
 func (r *evalRepo) InsertCases(ctx context.Context, cases []biz.EvalCase) error {
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		e := r.data.RWDB().WriteDB(txCtx)
+		e := TxExecerFromCtx(txCtx, r.data.RWDB().WriteHandle())
 		for _, c := range cases {
 			if _, err := e.ExecContext(txCtx,
 				`INSERT INTO eval_cases (id,dataset_id,input,expected_output,metadata_json) VALUES (?,?,?,?,?)`,
@@ -308,7 +308,7 @@ func (r *evalRepo) UpdateRun(ctx context.Context, rn biz.EvalRun) error {
 
 func (r *evalRepo) DeleteRun(ctx context.Context, id string) error {
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		e := r.data.RWDB().WriteDB(txCtx)
+		e := TxExecerFromCtx(txCtx, r.data.RWDB().WriteHandle())
 		if _, err := e.ExecContext(txCtx, `DELETE FROM eval_case_results WHERE run_id=?`, id); err != nil {
 			return err
 		}
