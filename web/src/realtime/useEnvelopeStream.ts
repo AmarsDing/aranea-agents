@@ -125,6 +125,9 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
         connected.value = false;
         opts.onDisconnected?.();
       },
+      onError: () => {
+        connected.value = false;
+      },
       onServerShutdown: (reason) => {
         opts.onServerShutdown?.(reason);
       },
