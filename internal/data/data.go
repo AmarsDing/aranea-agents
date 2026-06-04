@@ -98,6 +98,8 @@ var ProviderSet = wire.NewSet(
 	NewSessionMetricsRepo,
 	NewSessionMetricsReader,
 	NewSessionMetricsCache,
+	NewSessionRuntimeRepo,
+	NewSessionRuntimeReader,
 	NewSpiritTransactor,
 	NewTaskPlanRepo,
 	NewOrchestrationRepo,

@@ -48,7 +48,7 @@ func (uc *GraphUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, 
 	}
 
 	if uc.compiledTeamRepo != nil {
-		if err := uc.compiledTeamRepo.Save(ctx, teamID, graphID, ct); err != nil {
+		if err := uc.compiledTeamRepo.Save(ctx, teamID, graphID, strings.TrimSpace(sessionID), ct); err != nil {
 			uc.lg.Warn("persist compiled team failed", loggateway.StepID("graph.register_team"), loggateway.Err(err))
 		}
 	}
@@ -76,17 +76,19 @@ func (uc *GraphUsecase) MarkTeamGraphInterrupt(ctx context.Context, execID, node
 	exec.interrupted = true
 	exec.InterruptNode = nodeID
 	exec.interruptMu.Unlock()
-	uc.mu.Lock()
+	var persistSnap *GraphExecution
+	exec.execMu.Lock()
 	exec.Status = TeamRunStatusWaitingHuman
 	exec.CurrentNode = nodeID
 	if lineageID != "" {
 		exec.LineageID = lineageID
 	}
-	uc.mu.Unlock()
+	persistSnap = exec.SnapshotForPersist()
+	exec.execMu.Unlock()
 	if uc.runRepo == nil {
 		return nil
 	}
-	return uc.runRepo.UpdateRun(ctx, exec)
+	return uc.runRepo.UpdateRun(ctx, persistSnap)
 }
 
 func (uc *GraphUsecase) teamBuildConfig(execID string) (*CompiledTeam, bool) {

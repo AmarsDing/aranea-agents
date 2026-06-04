@@ -71,6 +71,13 @@ const (
 	EnvelopeTypeSpiritOrchestrationCheckpoint = contract.EnvelopeTypeSpiritOrchestrationCheckpoint
 	EnvelopeTypeSpiritOrchestrationInterrupted = contract.EnvelopeTypeSpiritOrchestrationInterrupted
 	EnvelopeTypeMetricsUpdated              = contract.EnvelopeTypeMetricsUpdated
+	EnvelopeTypeButlerOrchestrationStarted  = contract.EnvelopeTypeButlerOrchestrationStarted
+	EnvelopeTypeButlerOrchestrationCompleted = contract.EnvelopeTypeButlerOrchestrationCompleted
+	EnvelopeTypeButlerOrchestrationFailed   = contract.EnvelopeTypeButlerOrchestrationFailed
+	EnvelopeTypeSkillHealthChanged          = contract.EnvelopeTypeSkillHealthChanged
+	EnvelopeTypeSkillEvolutionProposed      = contract.EnvelopeTypeSkillEvolutionProposed
+	EnvelopeTypeMonitorAutoHealed           = contract.EnvelopeTypeMonitorAutoHealed
+	EnvelopeTypeMonitorSelfCheckCompleted   = contract.EnvelopeTypeMonitorSelfCheckCompleted
 )
 
 // Re-export functions.

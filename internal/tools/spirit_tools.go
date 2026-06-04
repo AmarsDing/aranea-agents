@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
+	biztypes "aranea-agents/internal/biz/types"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
@@ -35,18 +38,19 @@ type SubTaskSummary struct {
 
 // PlanAndExecuteOutput is the output for the plan_and_execute tool.
 type PlanAndExecuteOutput struct {
-	PlanID          string           `json:"plan_id"`
-	Strategy        string           `json:"strategy"`
-	ComplexityLevel string           `json:"complexity_level"`
-	SubtaskCount    int              `json:"subtask_count"`
-	SubTasks        []SubTaskSummary `json:"sub_tasks,omitempty"`
-	OrchestrationID string           `json:"orchestration_id,omitempty"`
-	MemoryHit       bool             `json:"memory_hit"`
+	PlanID          string                          `json:"plan_id"`
+	Strategy        string                          `json:"strategy"`
+	ComplexityLevel string                          `json:"complexity_level"`
+	SubtaskCount    int                             `json:"subtask_count"`
+	SubTasks        []SubTaskSummary                `json:"sub_tasks,omitempty"`
+	OrchestrationID string                          `json:"orchestration_id,omitempty"`
+	MemoryHit       bool                            `json:"memory_hit"`
+	Steps           []biztypes.OrchestrationStepRecord `json:"steps,omitempty"`
 }
 
 // NewPlanAndExecuteTool creates the plan_and_execute tool that replaces
 // assess_complexity + assemble_team + list_butlers + query_butler_status.
-func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAllocatorPort, orchestrator biz.TaskOrchestratorPort, lg loggateway.Logger) *trpcfunction.FunctionTool[PlanAndExecuteInput, PlanAndExecuteOutput] {
+func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAllocatorPort, orchestrator biz.TaskOrchestratorPort, bus contract.Bus, lg loggateway.Logger) *trpcfunction.FunctionTool[PlanAndExecuteInput, PlanAndExecuteOutput] {
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, input PlanAndExecuteInput) (PlanAndExecuteOutput, error) {
 			spiritSessionID := spiritSessionIDFromCtx(ctx)
@@ -59,15 +63,43 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 				return PlanAndExecuteOutput{}, kerrors.BadRequest("SPIRIT", "task_prompt is required")
 			}
 
+			// Emit ButlerOrchestrationStarted event.
+			if bus != nil {
+				env := contract.NewEnvelope(contract.EnvelopeTypeButlerOrchestrationStarted, "plan_and_execute", spiritSessionID)
+				env.Metadata = map[string]any{
+					"task_prompt": taskPrompt,
+					"mode":        input.Mode,
+				}
+				bus.Publish(ctx, env)
+			}
+
+			var steps []biztypes.OrchestrationStepRecord
+
 			// Phase 1: Plan
+			planStart := time.Now().UTC().Format(time.RFC3339Nano)
 			planInput := biz.PlanInput{
 				UserMessage:     taskPrompt,
 				SpiritSessionID: spiritSessionID,
 			}
 			taskPlan, err := planner.Plan(ctx, planInput)
 			if err != nil {
-				return PlanAndExecuteOutput{}, kerrors.InternalServer("SPIRIT", "plan failed: "+err.Error())
+				stepErr := err.Error()
+				steps = append(steps, biztypes.OrchestrationStepRecord{
+					StepName:   "plan",
+					Status:     "failed",
+					Error:      stepErr,
+					StartedAt:  planStart,
+					FinishedAt: time.Now().UTC().Format(time.RFC3339Nano),
+				})
+				publishOrchestrationFailed(bus, ctx, spiritSessionID, "plan", stepErr)
+				return PlanAndExecuteOutput{Steps: steps}, kerrors.InternalServer("SPIRIT", "plan failed: "+err.Error())
 			}
+			steps = append(steps, biztypes.OrchestrationStepRecord{
+				StepName:   "plan",
+				Status:     "completed",
+				StartedAt:  planStart,
+				FinishedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			})
 
 			out := PlanAndExecuteOutput{
 				PlanID:          taskPlan.ID,
@@ -75,6 +107,7 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 				ComplexityLevel: string(taskPlan.ComplexityLevel),
 				SubtaskCount:    len(taskPlan.SubTasks),
 				MemoryHit:       taskPlan.MemoryHit != nil,
+				Steps:           steps,
 			}
 
 			for _, st := range taskPlan.SubTasks {
@@ -87,10 +120,12 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 
 			// For direct strategy, no allocation or orchestration needed.
 			if taskPlan.Strategy == biz.StrategyDirect {
+				publishOrchestrationCompleted(bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))
 				return out, nil
 			}
 
 			// Phase 2: Allocate
+			allocStart := time.Now().UTC().Format(time.RFC3339Nano)
 			allocPlan, err := allocator.Allocate(ctx, taskPlan)
 			if err != nil {
 				lg.Warn("plan_and_execute: allocation failed, returning plan only",
@@ -98,8 +133,22 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 					loggateway.Str("plan_id", taskPlan.ID),
 					loggateway.Err(err),
 				)
+				out.Steps = append(out.Steps, biztypes.OrchestrationStepRecord{
+					StepName:   "allocate",
+					Status:     "failed",
+					Error:      err.Error(),
+					StartedAt:  allocStart,
+					FinishedAt: time.Now().UTC().Format(time.RFC3339Nano),
+				})
+				publishOrchestrationCompleted(bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))
 				return out, nil
 			}
+			out.Steps = append(out.Steps, biztypes.OrchestrationStepRecord{
+				StepName:   "allocate",
+				Status:     "completed",
+				StartedAt:  allocStart,
+				FinishedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			})
 
 			// Fill agent keys from allocation into subtask summaries.
 			for i := range out.SubTasks {
@@ -112,6 +161,7 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			}
 
 			// Phase 3: Orchestrate
+			orchStart := time.Now().UTC().Format(time.RFC3339Nano)
 			handle, err := orchestrator.Orchestrate(ctx, taskPlan, allocPlan)
 			if err != nil {
 				lg.Warn("plan_and_execute: orchestration failed, returning plan only",
@@ -119,15 +169,57 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 					loggateway.Str("plan_id", taskPlan.ID),
 					loggateway.Err(err),
 				)
+				out.Steps = append(out.Steps, biztypes.OrchestrationStepRecord{
+					StepName:   "orchestrate",
+					Status:     "failed",
+					Error:      err.Error(),
+					StartedAt:  orchStart,
+					FinishedAt: time.Now().UTC().Format(time.RFC3339Nano),
+				})
+				publishOrchestrationCompleted(bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))
 				return out, nil
 			}
+			out.Steps = append(out.Steps, biztypes.OrchestrationStepRecord{
+				StepName:   "orchestrate",
+				Status:     "completed",
+				StartedAt:  orchStart,
+				FinishedAt: time.Now().UTC().Format(time.RFC3339Nano),
+			})
 
 			out.OrchestrationID = handle.ID
+			publishOrchestrationCompleted(bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))
 			return out, nil
 		},
 		trpcfunction.WithName("plan_and_execute"),
 		trpcfunction.WithDescription("规划并执行任务。自动评估复杂度、分配 Agent、启动编排。替代 assess_complexity + assemble_team 的组合调用。简单任务直接回答，复杂任务自动组建团队。"),
 	)
+}
+
+// publishOrchestrationFailed emits a ButlerOrchestrationFailed event.
+func publishOrchestrationFailed(bus contract.Bus, ctx context.Context, sessionID, phase, errMsg string) {
+	if bus == nil {
+		return
+	}
+	env := contract.NewEnvelope(contract.EnvelopeTypeButlerOrchestrationFailed, "plan_and_execute", sessionID)
+	env.Metadata = map[string]any{
+		"phase": phase,
+		"error": errMsg,
+	}
+	bus.Publish(ctx, env)
+}
+
+// publishOrchestrationCompleted emits a ButlerOrchestrationCompleted event.
+func publishOrchestrationCompleted(bus contract.Bus, ctx context.Context, sessionID, orchestrationID, strategy string, subtaskCount int) {
+	if bus == nil {
+		return
+	}
+	env := contract.NewEnvelope(contract.EnvelopeTypeButlerOrchestrationCompleted, "plan_and_execute", sessionID)
+	env.Metadata = map[string]any{
+		"orchestration_id": orchestrationID,
+		"strategy":         strategy,
+		"subtask_count":    subtaskCount,
+	}
+	bus.Publish(ctx, env)
 }
 
 // CheckOrchestrationProgressInput is the input for the check_progress tool.
@@ -217,7 +309,9 @@ func NewCancelOrchestrationTool(orchestrator biz.TaskOrchestratorPort, lg loggat
 }
 
 // ---------------------------------------------------------------------------
-// Deprecated old tools (delegate to new three-phase flow)
+// Deprecated old tools — kept for backward compatibility and test coverage.
+// These tools are NO LONGER REGISTERED in the Spirit Agent's tool list.
+// Use plan_and_execute / check_progress / cancel_orchestration instead.
 // ---------------------------------------------------------------------------
 
 type AssembleTeamInput struct {

@@ -64,6 +64,19 @@ const (
 	EnvelopeTypeSpiritOrchestrationInterrupted EnvelopeType = "spirit_orchestration_interrupted"
 	EnvelopeTypeTokenUsage                  EnvelopeType = "token_usage"
 	EnvelopeTypeMetricsUpdated              EnvelopeType = "metrics_updated"
+
+	// Butler orchestration events
+	EnvelopeTypeButlerOrchestrationStarted  EnvelopeType = "butler.orchestration.started"
+	EnvelopeTypeButlerOrchestrationCompleted EnvelopeType = "butler.orchestration.completed"
+	EnvelopeTypeButlerOrchestrationFailed   EnvelopeType = "butler.orchestration.failed"
+
+	// Skill evolution events
+	EnvelopeTypeSkillHealthChanged          EnvelopeType = "skill.health_changed"
+	EnvelopeTypeSkillEvolutionProposed      EnvelopeType = "skill.evolution_proposed"
+
+	// Monitor self-healing events
+	EnvelopeTypeMonitorAutoHealed           EnvelopeType = "monitor.auto_healed"
+	EnvelopeTypeMonitorSelfCheckCompleted   EnvelopeType = "monitor.self_check_completed"
 )
 
 // Envelope is the universal event carrier.
@@ -264,8 +277,12 @@ func RouteChannel(env Envelope) string {
 	case EnvelopeTypeMetricsUpdated:
 		return "chat"
 	case EnvelopeTypeSpiritTeamAssembled, EnvelopeTypeSpiritTeamCompleted, EnvelopeTypeSpiritTeamFailed, EnvelopeTypeSpiritTeamProgress, EnvelopeTypeSpiritTeamsAllCompleted, EnvelopeTypeSpiritSynthesisCompleted,
-		EnvelopeTypeSpiritPlanCreated, EnvelopeTypeSpiritAllocationCreated, EnvelopeTypeSpiritOrchestrationStarted, EnvelopeTypeSpiritOrchestrationCheckpoint, EnvelopeTypeSpiritOrchestrationInterrupted:
+		EnvelopeTypeSpiritPlanCreated, EnvelopeTypeSpiritAllocationCreated, EnvelopeTypeSpiritOrchestrationStarted, EnvelopeTypeSpiritOrchestrationCheckpoint, EnvelopeTypeSpiritOrchestrationInterrupted,
+		EnvelopeTypeButlerOrchestrationStarted, EnvelopeTypeButlerOrchestrationCompleted, EnvelopeTypeButlerOrchestrationFailed,
+		EnvelopeTypeSkillHealthChanged, EnvelopeTypeSkillEvolutionProposed:
 		return "chat"
+	case EnvelopeTypeMonitorAutoHealed, EnvelopeTypeMonitorSelfCheckCompleted:
+		return "monitor"
 	default:
 		if env.TeamID != "" {
 			return "team"

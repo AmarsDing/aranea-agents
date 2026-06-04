@@ -68,6 +68,7 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260711, Name: "allocation_plan_schema", Func: ddlAllocationPlanSchema},
 	{Version: 20260712, Name: "agent_performance_schema", Func: ddlAgentPerformanceSchema},
 	{Version: 20260713, Name: "orchestration_schema", Func: ddlOrchestrationSchema},
+	{Version: 20260714, Name: "compiled_team_session_id", Func: ddlCompiledTeamSessionID},
 }
 
 func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
@@ -265,4 +266,14 @@ func ddlAgentPerformanceSchema(ctx context.Context, rawDB *sql.DB, entClient *en
 
 func ddlOrchestrationSchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
 	return EnsureOrchestrationSchema(ctx, rawDB, lg)
+}
+
+func ddlCompiledTeamSessionID(ctx context.Context, rawDB *sql.DB, _ *ent.Client, _ loggateway.Logger) error {
+	if rawDB == nil {
+		return nil
+	}
+	// Add session_id column if it doesn't exist (SQLite ALTER TABLE ADD COLUMN is safe if column exists)
+	_, _ = rawDB.ExecContext(ctx, `ALTER TABLE compiled_teams ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`)
+	_, _ = rawDB.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_compiled_teams_session_id ON compiled_teams(session_id)`)
+	return nil
 }

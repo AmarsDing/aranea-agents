@@ -434,7 +434,8 @@ func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAnd
 		return nil, kerrors.New(500, "INTERNAL", err.Error())
 	}
 	fixParamsJSON, _ := json.Marshal(rec.FixAction.Params)
-	return &v1.DiagnoseAndHealResponse{
+
+	resp := &v1.DiagnoseAndHealResponse{
 		HealId:              rec.ID,
 		RuleId:              rec.RuleID,
 		Status:              rec.Status,
@@ -444,5 +445,40 @@ func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAnd
 		FixActionMaxAttempts: int32(rec.FixAction.MaxAttempts),
 		FixActionParamsJson: string(fixParamsJSON),
 		CreatedAt:           rec.CreatedAt,
-	}, nil
+	}
+
+	// Populate RootCauseCondition based on heal result.
+	switch rec.Status {
+	case "applied":
+		resp.RootCauseCondition = &v1.RootCauseCondition{
+			Condition: &v1.RootCauseCondition_AutoHealed{
+				AutoHealed: &v1.AutoHealedCondition{
+					AutoHealed:   true,
+					HealStrategy: rec.FixAction.Type,
+				},
+			},
+		}
+	case "skipped_low_confidence", "skipped_cooldown", "skipped_no_action":
+		resp.RootCauseCondition = &v1.RootCauseCondition{
+			Condition: &v1.RootCauseCondition_HealAttempts{
+				HealAttempts: &v1.HealAttemptsCondition{
+					Attempts:     0,
+					MaxAttempts:  int32(rec.FixAction.MaxAttempts),
+					LastStrategy: rec.FixAction.Type,
+				},
+			},
+		}
+	case "failed":
+		resp.RootCauseCondition = &v1.RootCauseCondition{
+			Condition: &v1.RootCauseCondition_SelfCheckStatus{
+				SelfCheckStatus: &v1.SelfCheckStatusCondition{
+					CheckName: rec.RuleID,
+					Status:    "failed",
+					Message:   rec.Reason,
+				},
+			},
+		}
+	}
+
+	return resp, nil
 }

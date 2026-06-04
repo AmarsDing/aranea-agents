@@ -122,16 +122,12 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 	allocator := o.team.AgentAllocator
 	orchestrator := o.team.TaskOrchestrator
 	if planner != nil && allocator != nil && orchestrator != nil {
-		out = append(out, tools.NewPlanAndExecuteTool(planner, allocator, orchestrator, o.lg))
+		out = append(out, tools.NewPlanAndExecuteTool(planner, allocator, orchestrator, o.td.Pipeline.Bus, o.lg))
 		out = append(out, tools.NewCheckOrchestrationProgressTool(orchestrator, o.lg))
 		out = append(out, tools.NewCancelOrchestrationTool(orchestrator, o.lg))
 	}
 
-	// Deprecated old tools (dual-write period).
-	out = append(out, tools.NewAssessComplexityTool(tools.NewComplexityRuleEngine(), planner))
-	out = append(out, tools.NewAssembleTeamTool(o.spiritAssembler, o.spiritAssembler, o.lg, planner, allocator, orchestrator))
-	out = append(out, tools.NewCheckTeamProgressTool(o.spiritAssembler, orchestrator))
-	out = append(out, tools.NewCancelTeamTool(o.spiritAssembler, orchestrator))
+	// Synthesize results tool (still actively used for post-orchestration result synthesis).
 	if o.spiritSynthesis != nil {
 		out = append(out, tools.NewSynthesizeResultsTool(o.spiritSynthesis))
 	}

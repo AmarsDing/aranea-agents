@@ -492,6 +492,7 @@ type SessionUsecase struct {
 	turnRepo               TurnRepo
 	contextUpdater         ContextUpdater
 	compressRepo           CompressRepo
+	runtimeWriter          SessionRuntimeWriter
 	agents                 AgentLookup
 	teams                  TeamLookup
 	titleGenerator         SessionTitleGenerator
@@ -543,6 +544,10 @@ func (uc *SessionUsecase) SetMetricsUpdatedPublisher(publisher MetricsUpdatedPub
 	uc.metricsUpdatedPublisher = publisher
 }
 
+func (uc *SessionUsecase) SetRuntimeWriter(w SessionRuntimeWriter) {
+	uc.runtimeWriter = w
+}
+
 func (uc *SessionUsecase) TransitionStatus(ctx context.Context, sessionID string, target SessionStatus, reason SessionStatusReason) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
@@ -559,12 +564,20 @@ func (uc *SessionUsecase) TransitionStatus(ctx context.Context, sessionID string
 	newStatus := string(machine.Status())
 	newReason := string(machine.StatusReason())
 	changedAt := machine.ChangedAt()
-	if _, err := uc.sessionWriter.UpdateSession(ctx, sessionID, SessionUpdateFields{
-		Status:          &newStatus,
-		StatusReason:    &newReason,
-		StatusChangedAt: &changedAt,
-	}); err != nil {
-		return err
+	// Route status transitions through SessionRuntimeWriter when available,
+	// falling back to direct sessionWriter for backward compatibility.
+	if uc.runtimeWriter != nil {
+		if err := uc.runtimeWriter.TransitionSessionStatus(ctx, sessionID, newStatus, newReason, changedAt); err != nil {
+			return err
+		}
+	} else {
+		if _, err := uc.sessionWriter.UpdateSession(ctx, sessionID, SessionUpdateFields{
+			Status:          &newStatus,
+			StatusReason:    &newReason,
+			StatusChangedAt: &changedAt,
+		}); err != nil {
+			return err
+		}
 	}
 	if uc.statusPublisher != nil {
 		uc.statusPublisher.PublishSessionStatusChanged(sessionID, newStatus, newReason, changedAt)

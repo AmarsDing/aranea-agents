@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
+	entsession "aranea-agents/internal/data/ent/session"
 	"aranea-agents/internal/data/ent/sessionruntime"
 	"aranea-agents/pkg/loggateway"
 )
@@ -19,7 +20,13 @@ var (
 	_ biz.SessionRuntimeWriter = (*sessionRuntimeRepo)(nil)
 )
 
-func NewSessionRuntimeRepo(data *Data) *sessionRuntimeRepo {
+func NewSessionRuntimeRepo(data *Data) biz.SessionRuntimeWriter {
+	return &sessionRuntimeRepo{data: data}
+}
+
+// NewSessionRuntimeReader provides a SessionRuntimeReader from the same sessionRuntimeRepo.
+// The returned value also implements SessionRuntimeWriter.
+func NewSessionRuntimeReader(data *Data) biz.SessionRuntimeReader {
 	return &sessionRuntimeRepo{data: data}
 }
 
@@ -84,6 +91,29 @@ func (r *sessionRuntimeRepo) UpsertSessionRuntime(ctx context.Context, sessionID
 		Exec(ctx)
 	if err != nil {
 		r.data.lg.Warn("upsert session runtime failed", loggateway.StepID("data.session_runtime.upsert"), loggateway.Err(err))
+	}
+	return err
+}
+
+// TransitionSessionStatus updates session status fields in the sessions table.
+// Routed through SessionRuntimeRepo so that all runtime-related mutations
+// (status, runtime state) flow through a single interface.
+func (r *sessionRuntimeRepo) TransitionSessionStatus(ctx context.Context, sessionID string, status string, statusReason string, statusChangedAt string) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil
+	}
+	c := r.data.RW().Write(ctx)
+	now := nowRFC3339()
+	_, err := c.Session.Update().
+		Where(entsession.IDEQ(sessionID)).
+		SetStatus(status).
+		SetStatusReason(statusReason).
+		SetStatusChangedAt(statusChangedAt).
+		SetUpdatedAt(now).
+		Save(ctx)
+	if err != nil {
+		r.data.lg.Warn("transition session status failed", loggateway.StepID("data.session_runtime.transition_status"), loggateway.Err(err))
 	}
 	return err
 }
