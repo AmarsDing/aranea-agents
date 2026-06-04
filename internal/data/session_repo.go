@@ -241,7 +241,7 @@ func (r *sessionRepo) GetSessionByID(ctx context.Context, id string) (biz.Sessio
 		Where(entsession.IDEQ(id), entsession.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
-		loggateway.Global().With(loggateway.SessionID(id)).Info("data.GetSessionByID: 失败",
+		r.data.lg.With(loggateway.SessionID(id)).Info("data.GetSessionByID: 失败",
 			loggateway.StepID("db.get_session_fail"),
 			loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()),
 			loggateway.Err(err))
@@ -630,8 +630,16 @@ func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sess
 				ContextUsedRatio:   ratio,
 				MaxContextUsedRatio: ratio,
 			}
-			if e := r.metricsWriter.ApplyMetricsDelta(ctx, delta); e != nil && err == nil {
-				err = e
+			if e := r.metricsWriter.ApplyMetricsDelta(ctx, delta); e != nil {
+				if conf.DAOSessionDualWrite() {
+					// dual_write: new table failure is non-blocking, old table is truth source
+					r.data.lg.Warn("dual_write: new table context write failed",
+						loggateway.StepID("data.session.dual_write_context"),
+						loggateway.SessionID(sessionID),
+						loggateway.Err(e))
+				} else {
+					err = e
+				}
 			}
 		}
 		if r.metricsCache != nil {
@@ -674,8 +682,15 @@ func (r *sessionRepo) UpdateSessionContextAfterCompression(ctx context.Context, 
 				ContextUsedRatio:    ratio,
 				MaxContextUsedRatio: ratio,
 			}
-			if e := r.metricsWriter.ApplyMetricsDelta(ctx, delta); e != nil && err == nil {
-				err = e
+			if e := r.metricsWriter.ApplyMetricsDelta(ctx, delta); e != nil {
+				if conf.DAOSessionDualWrite() {
+					r.data.lg.Warn("dual_write: new table context write failed",
+						loggateway.StepID("data.session.dual_write_context"),
+						loggateway.SessionID(sessionID),
+						loggateway.Err(e))
+				} else {
+					err = e
+				}
 			}
 		}
 		if r.metricsCache != nil {
@@ -722,12 +737,18 @@ func (r *sessionRepo) ApplyMetricsDelta(ctx context.Context, d *session.SessionM
 	var err error
 	switch {
 	case conf.DAOSessionDualWrite():
-		// 双写：同时写旧表和新表
+		// 双写：旧表为主，新表为辅。新表写入失败不阻塞旧表，
+		// 仅记录日志。dual_write 阶段旧表仍是真相源。
 		if e := r.applyMetricsDeltaToSession(ctx, d); e != nil {
 			err = e
 		}
-		if e := r.metricsWriter.ApplyMetricsDelta(ctx, d); e != nil && err == nil {
-			err = e
+		if r.metricsWriter != nil {
+			if e := r.metricsWriter.ApplyMetricsDelta(ctx, d); e != nil {
+				r.data.lg.Warn("dual_write: new table write failed (old table succeeded)",
+					loggateway.StepID("data.session.dual_write"),
+					loggateway.SessionID(sessionID),
+					loggateway.Err(e))
+			}
 		}
 		if r.metricsCache != nil {
 			r.metricsCache.Invalidate(sessionID)

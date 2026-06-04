@@ -1,5 +1,4 @@
-# Aranea-Agents
-
+# Aranea-Agents 产品白皮书
 
 > **一人通过精灵控制 N 家公司，自己当发号施令的总裁，助力做你想做不敢做的事。**
 
@@ -737,54 +736,5 @@ detected pattern → pending → approved → registered
 ```
 
 ---
-
-## 快速开始
-
-### 环境要求
-
-- Go 1.25+ · Node.js 20+ · SQLite 3+
-- PostgreSQL 14+（可选，向量存储）
-- [protoc](https://grpc.io/docs/protoc-installation/)（`make all` 时需要）
-
-### 一键初始化
-
-```bash
-make all
-```
-
-### 启动后端
-
-```bash
-# 开发模式 A：免登录（最快）
-# Windows PowerShell:
-$env:DEPLOY_ENV="dev"
-$env:KRATOS_HTTP_AUTH_DISABLED="1"
-go run ./cmd/admin -conf ./configs/config.yaml
-
-# Linux / macOS:
-# DEPLOY_ENV=dev KRATOS_HTTP_AUTH_DISABLED=1 go run ./cmd/admin -conf ./configs/config.yaml
-```
-
-```bash
-# 开发模式 B：真实 Cookie 登录（与生产一致）
-# $env:DEPLOY_ENV="dev"
-# $env:KRATOS_AUTH_SECRET="local-dev-only-change-me-32chars-minimum"
-# go run ./cmd/admin -conf ./configs
-```
-
-本地账号：**`dev` / `dev`** · 健康检查：`curl http://localhost:8000/healthz`
-
-WebSocket 走 HTTP 同端口 `ws://localhost:8000/v1/ws`（前端 dev 代理为 `ws://localhost:9001/v1/ws`）。
-
-### 启动前端
-
-```bash
-cd web && npm install && npm run dev
-# 浏览器打开 http://localhost:9001（:9000 为 gRPC，勿混用）
-```
----
-## License
-
-See [LICENSE](./LICENSE).
 
 *Aranea-Agents — 一人通过精灵控制 N 家公司，自己当发号施令的总裁。*

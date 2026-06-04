@@ -5,6 +5,8 @@
 ### Requirement: Session table cold-hot split
 The system SHALL split the `sessions` table into three tables: `sessions` (cold metadata), `session_metrics` (hot aggregates), and `session_runtime` (runtime state). Each table SHALL have `session_id` as primary key with `session_runtime.session_id` and `session_metrics.session_id` as foreign keys referencing `sessions.id`.
 
+**Status**: ✅ Implemented. DDL migration `20260708_session_table_split.sql` creates both tables. Ent schemas defined. Feature flag controls write path.
+
 #### Scenario: New session creation writes to all three tables
 - **WHEN** a new session is created
 - **THEN** the system SHALL INSERT a row into `sessions`, INSERT a row into `session_metrics` with zeroed counters, and INSERT a row into `session_runtime` with initial state

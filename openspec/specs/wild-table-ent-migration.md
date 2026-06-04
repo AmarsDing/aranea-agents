@@ -5,6 +5,8 @@
 ### Requirement: Batch 1 wild tables into Ent Schema
 The system SHALL create Ent Schema definitions for the following 6 high-frequency tables: `session_runs`, `session_participants`, `session_run_checkpoints`, `channel_inbound_receipts`, `channel_turn_jobs`, `channel_runtime_lease`. These tables SHALL be managed by Ent's `Schema.Create` for new installations and DDL migration for existing installations.
 
+**Status**: ✅ Implemented. All 6 Ent schemas created. Repos partially migrated (Ent API where possible, Raw SQL for ON CONFLICT/UPSERT).
+
 #### Scenario: New installation creates tables via Ent
 - **WHEN** a fresh database is initialized
 - **THEN** Ent `Schema.Create` SHALL create these 6 tables with correct columns and indexes
@@ -27,12 +29,16 @@ The system SHALL create Ent Schema definitions for the following 6 memory tables
 ### Requirement: memory_chain.sql deduplication
 The system SHALL remove table definitions from `memory_chain.sql` that overlap with Ent Schema definitions (23 tables). `memory_chain.sql` SHALL only contain the 34 Memory-specific tables not managed by Ent.
 
+**Status**: ✅ Implemented. 24 overlapping table definitions removed. `memory_chain.sql` now contains only 34 Memory-specific tables.
+
 #### Scenario: Overlapping table removed from SQL file
 - **WHEN** a table is defined in both Ent Schema and `memory_chain.sql`
 - **THEN** the `memory_chain.sql` definition SHALL be removed, and Ent Schema SHALL be the single source of truth
 
 ### Requirement: DDL migration system SQL file support
 The `ddl_migration_registry` SHALL support registering SQL file paths (embedded via `go:embed`) in addition to Go functions. This reduces inline SQL strings in Go code.
+
+**Status**: ✅ Implemented. `embed.FS` with `//go:embed sql/migrations/*.sql`. SQL files in `internal/data/sql/migrations/`.
 
 #### Scenario: Migration from SQL file
 - **WHEN** a DDL migration is registered with a `SQL` field pointing to an embedded SQL file
