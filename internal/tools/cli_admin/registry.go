@@ -45,6 +45,7 @@ type SkillRepository interface {
 type AgentRepository interface {
 	ListAgents(ctx context.Context, keyword string, limit, offset int32) ([]AgentItem, int32, error)
 	GetAgent(ctx context.Context, id string) (*AgentItem, error)
+	GetAgentByAgentKey(ctx context.Context, agentKey string) (*AgentItem, error)
 }
 
 // SkillItem is a lightweight skill representation returned by tools.

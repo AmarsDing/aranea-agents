@@ -4,26 +4,20 @@ DB = r'f:\project\aranea-agents\data\arenea.sqlite'
 c = sqlite3.connect(DB)
 c.row_factory = sqlite3.Row
 
-print('=== All agents (active) ===')
-rows = c.execute(
-    "SELECT agent_key, display_name, provider, model, kind, status, agent_variant, readonly FROM agents WHERE deleted_at = '' ORDER BY agent_key"
-).fetchall()
-for r in rows:
-    print(dict(r))
-print()
-print('=== All agents latest usage daily (any status) ===')
-rows = c.execute(
-    "SELECT agent_key, provider_code, model_api_id, request_count, success_count, failed_count, avg_latency_ms, date_key FROM model_token_usage_daily ORDER BY date_key DESC LIMIT 30"
-).fetchall()
+print('=== agents (first 30) ===')
+rows = c.execute("SELECT agent_key, name, provider, model FROM agents ORDER BY agent_key LIMIT 30").fetchall()
 for r in rows:
     d = dict(r)
-    if d['request_count'] > 0 or d['failed_count'] > 0:
-        print(d)
-print()
-print('=== Recent events with errors or long latency ===')
-rows = c.execute(
-    "SELECT agent_key, provider_code, model_api_id, status, error_code, latency_ms, occurred_at, session_id FROM model_token_usage_events WHERE status != 'success' OR latency_ms > 30000 ORDER BY occurred_at DESC LIMIT 30"
-).fetchall()
-for r in rows:
-    d = dict(r)
-    print(d)
+    print(f"  {d['agent_key']} | {d['name']} | {d['provider']}/{d['model']}")
+
+print(f'\nTotal agents: {c.execute("SELECT COUNT(*) FROM agents").fetchone()[0]}')
+
+# Check if the referenced agents exist
+for key in ['go-senior-general', 'ue-client-general', 'vue3-senior-general']:
+    row = c.execute("SELECT agent_key, name FROM agents WHERE agent_key = ?", (key,)).fetchone()
+    if row:
+        print(f"  FOUND: {key} = {dict(row)}")
+    else:
+        print(f"  MISSING: {key}")
+
+c.close()

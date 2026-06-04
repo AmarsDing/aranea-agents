@@ -83,6 +83,18 @@ func (r cliAdminAgentRepo) GetAgent(ctx context.Context, id string) (*cli_admin.
 	return &item, nil
 }
 
+func (r cliAdminAgentRepo) GetAgentByAgentKey(ctx context.Context, agentKey string) (*cli_admin.AgentItem, error) {
+	if r.uc == nil {
+		return nil, nil
+	}
+	a, err := r.uc.GetByAgentKey(ctx, agentKey)
+	if err != nil {
+		return nil, err
+	}
+	item := agentItemFromBiz(a)
+	return &item, nil
+}
+
 func (o *ChatOrchestrator) cliAdminTools(ctx context.Context, ag biz.Agent) []trpctool.Tool {
 	if o == nil || !cli_admin.IsCLIAdminAllowed(strings.TrimSpace(ag.AgentKey)) {
 		return nil

@@ -93,6 +93,10 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 	cfg.OutboundRouter = deps.OutboundRouter
 	cfg.SubAgentService = deps.SubAgentService
 
+	lg.Info("工具构建：SubAgentService 检查",
+		loggateway.StepID("agent.subagent_check"),
+		loggateway.Bool("subagent_service_nil", deps.SubAgentService == nil))
+
 	if !tooltrpc.ToolsetConfigHasAny(cfg) {
 		lg.Info("工具构建：未启用任何工具", loggateway.StepID("agent.tool_build"), loggateway.Str("flow_status", "done"), loggateway.Str("agent_id", ag.ID))
 		return nil, nil

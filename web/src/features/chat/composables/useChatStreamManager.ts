@@ -14,9 +14,6 @@ import { getChannelWsCursor } from '../channelWsCursor';
 import { reloadSessionAfterCompletion } from '../sessionCompletionReload';
 import type { TeamRow } from '../../../components/chat/types';
 import type { TeamDefinition } from '../../teams/types';
-// #region debug-point (web-chat-no-response) reporter import
-import { reportDebug } from '../../../../../.dbg/debug-reporter';
-// #endregion debug-point
 
 export type StreamManagerDeps = {
   sessionStore: ReturnType<typeof useChatSessionStore>;
@@ -117,21 +114,20 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
   function ensureChatStream(sessionId: string) {
     if (chatStream && chatStreamSessionId === sessionId) {
-      deps.runtimeStore.setWsConnected(sessionId, chatStream.connected.value ?? false);
+      // Only sync wsConnected→true when the stream reports connected;
+      // never downgrade to false here — onDisconnected is the authoritative
+      // source for disconnection and avoids stale ref reads after onError.
+      if (chatStream.connected.value) {
+        deps.runtimeStore.setWsConnected(sessionId, true);
+      }
       if (!chatStream.connected.value) {
         chatStream.connect();
       }
-      // #region debug-point (web-chat-no-response) ensureChatStream-reuse
-      reportDebug({ hypothesisId: 'H2', source: 'useChatStreamManager.ensureChatStream', data: { sessionId, reused: true, connected: chatStream.connected.value, hasTransport: !!chatStream.transport.value } });
-      // #endregion debug-point
       return chatStream;
     }
     chatStream?.disconnect();
     deps.runtimeStore.setWsConnected(sessionId, false);
 
-    // #region debug-point (web-chat-no-response) ensureChatStream-create
-    reportDebug({ hypothesisId: 'H2', source: 'useChatStreamManager.ensureChatStream', data: { sessionId, reused: false, prevSessionId: chatStreamSessionId } });
-    // #endregion debug-point
     chatStream = createChatStream(sessionId, {
       lastEventId: getChannelWsCursor(sessionId),
       onConnected: () => {
@@ -211,7 +207,10 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
   function ensureTeamStream(sessionId: string) {
     if (teamStream && teamStream.transport.value && teamStreamSessionId === sessionId) {
-      deps.runtimeStore.setWsConnected(sessionId, teamStream.connected.value ?? false);
+      // Only sync wsConnected→true; never downgrade — onDisconnected is authoritative.
+      if (teamStream.connected.value) {
+        deps.runtimeStore.setWsConnected(sessionId, true);
+      }
       return teamStream;
     }
     teamStream?.disconnect();
@@ -263,21 +262,9 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
   }
 
   function sendChatViaWs(stream: UseEnvelopeStreamReturn, upstream: WsUpstream): void {
-    // #region debug-point (web-chat-no-response) sendChatViaWs-entry
-    reportDebug({ hypothesisId: 'H2/H5', source: 'useChatStreamManager.sendChatViaWs', data: {
-      upstreamType: upstream.type,
-      hasStream: !!stream,
-      transportRef: !!stream?.transport?.value,
-      transportConnected: stream?.transport?.value?.connected ?? null,
-      lastEventId: stream?.lastEventId?.value ?? null,
-    } });
-    // #endregion debug-point
     stream.connect();
     const transport = stream.transport.value;
     if (!transport) {
-      // #region debug-point (web-chat-no-response) sendChatViaWs-no-transport
-      reportDebug({ hypothesisId: 'H5', source: 'useChatStreamManager.sendChatViaWs', level: 'error', data: { reason: 'transport_null' } });
-      // #endregion debug-point
       throw new Error('WebSocket transport unavailable');
     }
     transport.send(upstream);

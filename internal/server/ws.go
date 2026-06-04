@@ -49,7 +49,7 @@ const (
 	defaultWSPongWait            = 60 * time.Second
 	defaultWSPingPeriod          = 30 * time.Second
 	defaultWSWriteWait           = 10 * time.Second
-	defaultWSTurnTimeout         = 30 * time.Second
+	defaultWSTurnTimeout         = 5 * time.Minute
 	defaultMaxSessionConns       = 5
 	defaultMaxGlobalMonitorConns = 3
 )

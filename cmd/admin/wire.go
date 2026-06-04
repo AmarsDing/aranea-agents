@@ -51,6 +51,7 @@ import (
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/skill/watch"
 	"aranea-agents/internal/team"
+	subagenttool "aranea-agents/internal/tools/subagent"
 	"aranea-agents/internal/tools/testexec"
 	webresearchpkg "aranea-agents/internal/tools/webresearch"
 	loggateway "aranea-agents/pkg/loggateway"
@@ -468,6 +469,8 @@ func provideRuntimeTooling(
 	codeExecFactory *localexec.Factory,
 	kanbanBridge *service.KanbanToolBridge,
 	debugRecorder *debug.RecorderFactory,
+	outboundRouter *outbound.Router,
+	subAgentSvc *subagenttool.Service,
 ) service.RuntimeTooling {
 	return service.RuntimeTooling{
 		PluginRT:                    pluginRT,
@@ -481,6 +484,8 @@ func provideRuntimeTooling(
 		CodeExecFactory:             codeExecFactory,
 		KanbanBridge:                kanbanBridge,
 		DebugRecorder:               debugRecorder,
+		OutboundRouter:              outboundRouter,
+		SubAgentService:             subAgentSvc,
 	}
 }
 
@@ -584,6 +589,8 @@ func provideChatServiceDeps(
 	skillEvo *biz.SkillEvolutionUsecase,
 	evolution *biz.EvolutionUsecase,
 	skillStats biz.SkillInvocationStatsReader,
+	outboundRouter *outbound.Router,
+	subAgentSvc *subagenttool.Service,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	return service.ChatOrchestratorDeps{
@@ -625,6 +632,8 @@ func provideChatServiceDeps(
 		SkillEvo:        skillEvo,
 		Evolution:       evolution,
 		SkillStats:      skillStats,
+		OutboundRouter:  outboundRouter,
+		SubAgentService: subAgentSvc,
 	}
 }
 
@@ -665,12 +674,10 @@ func (a *wsTurnExecutorAdapter) ExecuteTurn(ctx context.Context, input server.WS
 	start := time.Now()
 	_, err := a.gateway.ExecuteTurn(ctx, bizInput)
 	elapsed := time.Since(start)
-	if lg := loggateway.FromContext(ctx); lg != nil {
-		lg.With(loggateway.SessionID(input.SessionID)).Info("wsTurnExecutorAdapter.ExecuteTurn 完成",
-			loggateway.StepID("ws.adapter_turn_done"),
-			loggateway.Any("elapsed_ms", elapsed.Milliseconds()),
-			loggateway.Any("has_error", err != nil))
-	}
+	loggateway.Global().With(loggateway.SessionID(input.SessionID)).Info("wsTurnExecutorAdapter.ExecuteTurn 完成",
+		loggateway.StepID("ws.adapter_turn_done"),
+		loggateway.Any("elapsed_ms", elapsed.Milliseconds()),
+		loggateway.Any("has_error", err != nil))
 	return err
 }
 
@@ -831,6 +838,12 @@ func provideChannelRuntime(channels *biz.ChannelUsecase, ingress *service.Channe
 
 func provideOutboundRouter(lg loggateway.Logger) *outbound.Router {
 	return outbound.NewRouter(lg)
+}
+
+func provideSubAgentService(lg loggateway.Logger) (*subagenttool.Service, error) {
+	// stateDir: use ./data as the root for subagent state files.
+	// Runner is set later via SetRunner when the first turn creates a runner.
+	return subagenttool.NewService("./data", nil, lg)
 }
 
 func provideMemoryL2DecayWorker(decayer biz.MemoryEpisodeDecayer, agents *biz.AgentUsecase, lg loggateway.Logger) *jobs.MemoryL2DecayWorker {
@@ -1263,6 +1276,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideChannelDeliveryScanner,
 		provideChannelRuntime,
 		provideOutboundRouter,
+		provideSubAgentService,
 		provideEventStoreCleanup,
 		provideMemoryL2DecayWorker,
 		provideMemoryL2ConsolidateWorker,

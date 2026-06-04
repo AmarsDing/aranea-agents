@@ -111,6 +111,7 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 	}
 	s := &biz.AgentRuntimeSettings{
 		AgentID:                       e.ID,
+		CodeExecutorType:              e.CodeExecutorType,
 		RalphLoopMaxIterations:        e.RalphLoopMaxIterations,
 		RalphLoopCompletionPromise:    e.RalphLoopCompletionPromise,
 		RalphLoopVerifyCommand:        e.RalphLoopVerifyCommand,

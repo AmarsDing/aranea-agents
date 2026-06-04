@@ -4,9 +4,6 @@ import type { useChatMessageStore } from '../../../stores/chat/messageStore';
 import type { useChatRuntimeStore } from '../../../stores/chat/runtimeStore';
 import type { useChatStreamManager } from './useChatStreamManager';
 import type { useChatSender } from './useChatSender';
-// #region debug-point (web-chat-no-response) reporter import
-import { reportDebug } from '../../../../../.dbg/debug-reporter';
-// #endregion debug-point
 
 export interface ComposerActionDeps {
   sessionStore: ReturnType<typeof useChatSessionStore>;
@@ -36,14 +33,8 @@ export function useChatComposerActions(deps: ComposerActionDeps) {
   } = deps;
 
   async function onSend() {
-    // #region debug-point (web-chat-no-response) composer-onSend-entry
-    reportDebug({ hypothesisId: 'H4', source: 'useChatComposerActions.onSend', data: { sid: selectedSessionId.value ?? null } });
-    // #endregion debug-point
     const sid = selectedSessionId.value;
     await sender.onSend();
-    // #region debug-point (web-chat-no-response) composer-onSend-sender-done
-    reportDebug({ hypothesisId: 'H4', source: 'useChatComposerActions.onSend', data: { senderReturned: true, sid } });
-    // #endregion debug-point
     if (sid) sessionDrafts.delete(sid);
   }
 

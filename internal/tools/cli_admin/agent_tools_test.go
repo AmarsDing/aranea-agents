@@ -9,8 +9,9 @@ import (
 )
 
 type mockAgentRepo struct {
-	listFn func(ctx context.Context, keyword string, limit, offset int32) ([]AgentItem, int32, error)
-	getFn  func(ctx context.Context, id string) (*AgentItem, error)
+	listFn           func(ctx context.Context, keyword string, limit, offset int32) ([]AgentItem, int32, error)
+	getFn            func(ctx context.Context, id string) (*AgentItem, error)
+	getByAgentKeyFn  func(ctx context.Context, agentKey string) (*AgentItem, error)
 }
 
 func (m *mockAgentRepo) ListAgents(ctx context.Context, keyword string, limit, offset int32) ([]AgentItem, int32, error) {
@@ -19,6 +20,13 @@ func (m *mockAgentRepo) ListAgents(ctx context.Context, keyword string, limit, o
 
 func (m *mockAgentRepo) GetAgent(ctx context.Context, id string) (*AgentItem, error) {
 	return m.getFn(ctx, id)
+}
+
+func (m *mockAgentRepo) GetAgentByAgentKey(ctx context.Context, agentKey string) (*AgentItem, error) {
+	if m.getByAgentKeyFn != nil {
+		return m.getByAgentKeyFn(ctx, agentKey)
+	}
+	return nil, fmt.Errorf("not found")
 }
 
 type mockSkillRepo struct {

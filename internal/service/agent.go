@@ -39,16 +39,17 @@ func fromProtoRuntime(pb *v1.AgentRuntimeSettings) *biz.AgentRuntimeSettings {
 		return nil
 	}
 	s := &biz.AgentRuntimeSettings{
-		AgentID:                   pb.GetAgentId(),
-		CreatedAt:                 pb.GetCreatedAt(),
-		UpdatedAt:                 pb.GetUpdatedAt(),
-		RalphLoopMaxIterations:    int(pb.GetRalphLoopMaxIterations()),
-		RalphLoopCompletionPromise: pb.GetRalphLoopCompletionPromise(),
-		RalphLoopVerifyCommand:    pb.GetRalphLoopVerifyCommand(),
+		AgentID:                       pb.GetAgentId(),
+		CreatedAt:                     pb.GetCreatedAt(),
+		UpdatedAt:                     pb.GetUpdatedAt(),
+		CodeExecutorType:              pb.GetCodeExecutorType(),
+		RalphLoopMaxIterations:        int(pb.GetRalphLoopMaxIterations()),
+		RalphLoopCompletionPromise:    pb.GetRalphLoopCompletionPromise(),
+		RalphLoopVerifyCommand:        pb.GetRalphLoopVerifyCommand(),
 		RalphLoopVerifyTimeoutSeconds: int(pb.GetRalphLoopVerifyTimeoutSeconds()),
-		RalphLoopPromiseTagOpen:   pb.GetRalphLoopPromiseTagOpen(),
-		RalphLoopPromiseTagClose:  pb.GetRalphLoopPromiseTagClose(),
-		RalphLoopVerifyWorkDir:    pb.GetRalphLoopVerifyWorkDir(),
+		RalphLoopPromiseTagOpen:       pb.GetRalphLoopPromiseTagOpen(),
+		RalphLoopPromiseTagClose:      pb.GetRalphLoopPromiseTagClose(),
+		RalphLoopVerifyWorkDir:        pb.GetRalphLoopVerifyWorkDir(),
 	}
 	s.ApplyIdentity(fromProtoIdentity(pb))
 	s.ApplyReasoning(fromProtoReasoning(pb))

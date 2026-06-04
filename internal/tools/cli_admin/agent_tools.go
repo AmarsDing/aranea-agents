@@ -71,7 +71,16 @@ func newAgentGetTool(deps Deps) trpctool.Tool {
 		if input.ID == "" {
 			return nil, fmt.Errorf("id is required")
 		}
-		return deps.AgentRepo.GetAgent(ctx, input.ID)
+		item, err := deps.AgentRepo.GetAgent(ctx, input.ID)
+		if err != nil {
+			// Fallback: try agent_key when ID lookup fails
+			byKey, keyErr := deps.AgentRepo.GetAgentByAgentKey(ctx, input.ID)
+			if keyErr != nil {
+				return nil, err // return original error
+			}
+			return byKey, nil
+		}
+		return item, nil
 	}
 	return function.NewFunctionTool(
 		execute,

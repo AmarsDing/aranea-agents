@@ -18,9 +18,6 @@ import { sendMessage } from '../api';
 import { AWAIT_KIND_TOOL_CONFIRM } from '../awaitConstants';
 
 import type { RunStatusValue } from '../types';
-// #region debug-point (web-chat-no-response) reporter import
-import { reportDebug } from '../../../../../.dbg/debug-reporter';
-// #endregion debug-point
 
 type SessionStore = ReturnType<typeof useChatSessionStore>;
 type MessageStore = ReturnType<typeof useChatMessageStore>;
@@ -174,13 +171,6 @@ export function useChatSender(deps: SenderDeps) {
       pendingTurnAck = null;
       if (!target) return;
       if (!sending.value) return;
-      // #region debug-point (web-chat-no-response) turn-ack-timeout
-      reportDebug({ hypothesisId: 'H3', source: 'useChatSender', level: 'warn', data: {
-        sessionId: target.sessionId,
-        pendingUserId: target.pendingUserId,
-        timeoutMs: TURN_ACK_TIMEOUT_MS,
-      } });
-      // #endregion debug-point
       markPendingUserFailed(
         target.sessionId,
         target.pendingUserId,
@@ -277,62 +267,28 @@ export function useChatSender(deps: SenderDeps) {
   });
 
   async function onSend() {
-    // #region debug-point (web-chat-no-response) onSend-entry
-    reportDebug({ hypothesisId: 'H4', source: 'useChatSender.onSend', data: {
-      rawInputLen: deps.inputText.value.length,
-      isActiveRun: isActiveRun(),
-      sending: sending.value,
-      isAwaitingUser: deps.isAwaitingUser.value,
-      awaitKind: deps.awaitKind.value,
-      entityKind: deps.sessionStore.entityKind,
-      hasSelectedAgent: !!deps.appStore.selectedAgent,
-      hasSelectedSession: !!deps.sessionStore.selectedSession,
-      hasTeamSelectedSessionId: !!deps.sessionStore.teamSelectedSessionId,
-    } });
-    // #endregion debug-point
     const content = deps.inputText.value.trim();
     if (!content) {
-      // #region debug-point (web-chat-no-response) onSend-early-empty
-      reportDebug({ hypothesisId: 'H4', source: 'useChatSender.onSend', data: { earlyReturn: 'empty' } });
-      // #endregion debug-point
       return;
     }
     if (!isActiveRun() && sending.value) {
-      // #region debug-point (web-chat-no-response) onSend-early-sending
-      reportDebug({ hypothesisId: 'H4', source: 'useChatSender.onSend', data: { earlyReturn: 'sending' } });
-      // #endregion debug-point
       return;
     }
 
     if (deps.isAwaitingUser.value) {
       if (deps.awaitKind.value === AWAIT_KIND_TOOL_CONFIRM) {
         $q.notify({ type: 'info', message: t('chat.toolConfirmUseButtons', '请使用批准或拒绝按钮来确认工具调用') });
-        // #region debug-point (web-chat-no-response) onSend-early-tool-confirm
-        reportDebug({ hypothesisId: 'H4', source: 'useChatSender.onSend', data: { earlyReturn: 'tool_confirm' } });
-        // #endregion debug-point
         return;
       }
       await submitAwaitingReply();
-      // #region debug-point (web-chat-no-response) onSend-redirected-await-reply
-      reportDebug({ hypothesisId: 'H4', source: 'useChatSender.onSend', data: { redirectedTo: 'submitAwaitingReply' } });
-      // #endregion debug-point
       return;
     }
 
-    // #region debug-point (web-chat-no-response) onSend-routing
-    reportDebug({ hypothesisId: 'H4', source: 'useChatSender.onSend', data: {
-      entityKind: deps.sessionStore.entityKind,
-      teamId: deps.sessionStore.selectedTeamId,
-    } });
-    // #endregion debug-point
     if (deps.sessionStore.entityKind === 'agent') {
       await sendAgentMessage(content);
     } else if (deps.sessionStore.entityKind === 'team' && deps.sessionStore.selectedTeamId) {
       await sendTeamMessage(content);
     } else {
-      // #region debug-point (web-chat-no-response) onSend-no-route
-      reportDebug({ hypothesisId: 'H4', source: 'useChatSender.onSend', level: 'error', data: { earlyReturn: 'no_route' } });
-      // #endregion debug-point
     }
   }
 
@@ -525,32 +481,16 @@ export function useChatSender(deps: SenderDeps) {
 
   async function sendUserContent(entityKind: ChatEntityKind, content: string, reusePendingId?: string) {
     const strategy = entityKind === 'team' ? getTeamStrategy() : getAgentStrategy();
-    // #region debug-point (web-chat-no-response) sendUserContent-entry
-    reportDebug({ hypothesisId: 'H2/H5', source: 'useChatSender.sendUserContent', data: {
-      entityKind,
-      contentLen: content.length,
-      reusePendingId: reusePendingId ?? null,
-    } });
-    // #endregion debug-point
     const text = content.trim();
     if (!text) return;
     const followUp = isActiveRun();
     if (!followUp) {
       markSending();
-      // #region debug-point (web-chat-no-response) markSending-after
-      reportDebug({ hypothesisId: 'H2', source: 'useChatSender.sendUserContent', data: { sendingAfterMark: sending.value } });
-      // #endregion debug-point
     }
     let clearAttachments = true;
     try {
       await strategy.ensureSession(deps.makeSessionTitle(text));
       const sessionId = strategy.resolveSessionId();
-      // #region debug-point (web-chat-no-response) ensureSession-after
-      reportDebug({ hypothesisId: 'H4/H5', source: 'useChatSender.sendUserContent', data: {
-        sessionId: sessionId ?? null,
-        selectedAgent: deps.appStore.selectedAgent?.agent_key ?? null,
-      } });
-      // #endregion debug-point
       if (!sessionId) {
         $q.notify({ type: 'negative', message: t('chat.sessionCreateFailed', '未创建会话或会话无效，请重试') });
         if (!followUp) markSendingDone();
@@ -567,12 +507,6 @@ export function useChatSender(deps: SenderDeps) {
           ...deps.messageStore.getMessages(sessionId),
           createPlaceholderMessage(pendingUserId, sessionId, 'user', text),
         ]);
-        // #region debug-point (web-chat-no-response) placeholder-created
-        reportDebug({ hypothesisId: 'H2', source: 'useChatSender.sendUserContent', data: {
-          pendingUserId,
-          msgsNow: deps.messageStore.getMessages(sessionId).length,
-        } });
-        // #endregion debug-point
       }
 
       const { provider, model } = strategy.resolveProviderModel();
@@ -609,25 +543,9 @@ export function useChatSender(deps: SenderDeps) {
 
       try {
         const stream = strategy.ensureStream(sessionId);
-        // #region debug-point (web-chat-no-response) ensureStream-after
-        reportDebug({ hypothesisId: 'H2', source: 'useChatSender.sendUserContent', data: {
-          sessionId,
-          hasStream: !!stream,
-          transportRef: !!stream?.transport?.value,
-          transportConnected: stream?.transport?.value?.connected ?? null,
-        } });
-        // #endregion debug-point
         deps.sendChatViaWs(stream, strategy.buildWsPayload(sessionId, pendingUserId, text, provider, model));
-        // #region debug-point (web-chat-no-response) sendChatViaWs-returned
-        reportDebug({ hypothesisId: 'H2', source: 'useChatSender.sendUserContent', data: { ok: true } });
-        // #endregion debug-point
         startTurnAckTimeout(sessionId, pendingUserId);
       } catch (wsError) {
-        // #region debug-point (web-chat-no-response) wsError
-        reportDebug({ hypothesisId: 'H5', source: 'useChatSender.sendUserContent', level: 'warn', data: {
-          wsError: wsError instanceof Error ? wsError.message : String(wsError),
-        } });
-        // #endregion debug-point
         $q.notify({ type: 'info', message: t('chat.wsFallbackHttp', 'WebSocket 不可用，正在通过 HTTP 发送…') });
         try {
           await sendViaHttpFallback(
@@ -643,28 +561,14 @@ export function useChatSender(deps: SenderDeps) {
               knowledgeBases: deps.selectedKnowledgeBases.value,
             },
           );
-          // #region debug-point (web-chat-no-response) httpFallback-ok
-          reportDebug({ hypothesisId: 'H5', source: 'useChatSender.sendUserContent', data: { ok: true } });
-          // #endregion debug-point
           dropPendingUserRow(sessionId, pendingUserId);
           await deps.messageStore.loadMessages({ sessionId });
         } catch (httpError) {
-          // #region debug-point (web-chat-no-response) httpFallback-fail
-          reportDebug({ hypothesisId: 'H5', source: 'useChatSender.sendUserContent', level: 'error', data: {
-            httpError: httpError instanceof Error ? httpError.message : String(httpError),
-          } });
-          // #endregion debug-point
           markPendingUserFailed(sessionId, pendingUserId, t('chat.sendFailedRetry', '发送失败，请点击重试'));
           if (!followUp) markSendingDone();
         }
       }
     } catch (error) {
-      // #region debug-point (web-chat-no-response) sendUserContent-outer-catch
-      reportDebug({ hypothesisId: 'H2/H5', source: 'useChatSender.sendUserContent', level: 'error', data: {
-        error: error instanceof Error ? error.message : String(error),
-        name: error instanceof Error ? error.name : null,
-      } });
-      // #endregion debug-point
       if (!(error instanceof DOMException && error.name === 'AbortError')) {
         const sid = strategy.resolveSessionId();
         if (sid) {

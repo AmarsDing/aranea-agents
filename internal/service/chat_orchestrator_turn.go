@@ -590,6 +590,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		KanbanBridge:          o.rt.KanbanBridge,
 		Taxonomy:              o.rt.TaxonomyUC,
 		ToolResultGate:        o.rt.ToolResultGate,
+		SubAgentService:       o.subAgentService,
 	}
 	deps.CustomTools = append(deps.CustomTools, o.spiritCustomTools(ag)...)
 	deps.CustomTools = append(deps.CustomTools, o.skillsButlerTools(ctx, ag)...)
@@ -640,6 +641,10 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	}
 	emitter.LogDone("chat.runner.create", "Runner 已创建")
 	o.runs.StoreRunner(sessionID, runID, runner)
+	// Wire the runner into SubAgentService so subagent spawn can use it.
+	if o.subAgentService != nil {
+		o.subAgentService.SetRunner(runner)
+	}
 	rollbackBoundary, rbErr := runnerMgr.MarkRollbackBoundary(ctx, sessionID, runID, "")
 	if rbErr != nil {
 		emitter.LogWarn("chat.runner.rollback_boundary", "Runner 回滚边界记录失败", "", event.P("error", rbErr.Error()))
@@ -875,7 +880,18 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
 	streamOpts := NewChatStreamConsumeOptions(o.td.Catalog.ToolUC, o.td.Catalog.Agents, o.td.Sessions)
+	o.lg.With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始消费事件流",
+		loggateway.StepID("chat.stream_consume_start"),
+		loggateway.Any("first_byte_timeout", firstByteTimeout.String()))
 	result, streamErr := chatagent.ConsumeWithFirstByteGuard(runCtx, firstByteTimeout, events, o.td.Pipeline.Bus, projectMeta, streamOpts, o.lg)
+	o.lg.With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 事件流消费完成",
+		loggateway.StepID("chat.stream_consume_done"),
+		loggateway.Any("elapsed_ms", time.Since(llmStart).Milliseconds()),
+		loggateway.Any("has_stream_error", streamErr != nil),
+		loggateway.Any("stream_error", fmt.Sprintf("%v", streamErr)),
+		loggateway.Any("has_content", result.HasContent),
+		loggateway.Any("has_error", result.HasError),
+		loggateway.Any("reply_len", result.Reply.Len()))
 	resultPromptTok = result.PromptTok
 	resultCompletionTok = result.CompletionTok
 	if streamErr != nil {

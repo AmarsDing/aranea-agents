@@ -132,7 +132,7 @@ func RuntimeCapabilityCue(ctx context.Context, d Deps, ag biz.Agent) string {
 		fmt.Fprintf(&b, "- Subagents: enabled; max_concurrency=%d, max_depth=%d, max_children_per_agent=%d\n",
 			st.SubagentsMaxConcurrency, st.SubagentsMaxGenerationDepth, st.SubagentsMaxChildrenPerAgent)
 		if level >= cueLevelStandard {
-			b.WriteString("- To delegate to another agent, use tool `transfer_to_agent` or `spawn_subagent` with JSON argument `agent_name` (sub-agent's registered name). There is no separate spawn RPC from the chat client.\n")
+			b.WriteString("- To delegate to another agent, use tool `transfer_to_agent` or `subagents_spawn` with JSON argument `agent_name` (sub-agent's registered name). There is no separate spawn RPC from the chat client.\n")
 		}
 	} else if level >= cueLevelCompact {
 		b.WriteString("- Subagents: disabled (this process runs a single agent turn; delegate via instructions only).\n")
