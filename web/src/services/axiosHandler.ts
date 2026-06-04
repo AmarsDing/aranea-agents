@@ -28,6 +28,12 @@ function resolveRequestTimeoutMs(path: string, override?: number): number {
   if (p.startsWith("v1/model-catalog/sync")) {
     return KRATOS_API_LONG_TIMEOUT_MS;
   }
+  // Agent update involves a multi-step DB transaction that may wait for
+  // SQLite write locks (busy_timeout=30s).  Use the long timeout so the
+  // frontend does not abort before the backend finishes.
+  if (/^v1\/agents\/[^/]+$/.test(p)) {
+    return KRATOS_API_LONG_TIMEOUT_MS;
+  }
   return KRATOS_API_DEFAULT_TIMEOUT_MS;
 }
 

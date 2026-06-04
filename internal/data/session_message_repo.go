@@ -3,12 +3,14 @@ package data
 import (
 	"context"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/message"
 	entsession "aranea-agents/internal/data/ent/session"
 	entsessionturn "aranea-agents/internal/data/ent/sessionturn"
+	"aranea-agents/pkg/loggateway"
 
 	entsql "entgo.io/ent/dialect/sql"
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -353,13 +355,29 @@ func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, m
 	if sessionID == "" {
 		return kerrors.BadRequest("SESSION", "session id is required")
 	}
-	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+	start := time.Now()
+	lg := loggateway.Global()
+	if lg != nil {
+		lg.With(loggateway.SessionID(sessionID)).Info("data.AppendChatMessage: 开始",
+			loggateway.StepID("db.append_msg_start"),
+			loggateway.Any("role", msg.Role),
+			loggateway.Any("msg_id", msg.ID))
+	}
+	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
 		c := r.data.RW().Write(txCtx)
 		if _, err := c.Session.Query().Where(entsession.IDEQ(sessionID), entsession.DeletedAtEQ("")).Only(txCtx); err != nil {
+			if lg != nil {
+				lg.With(loggateway.SessionID(sessionID)).Info("data.AppendChatMessage: Session 查询失败",
+					loggateway.StepID("db.append_msg_session_fail"), loggateway.Err(err))
+			}
 			return err
 		}
 		turnID, turnNum, seqInTurn, err := r.assignTurnForNewMessage(txCtx, c, sessionID, msg.Role)
 		if err != nil {
+			if lg != nil {
+				lg.With(loggateway.SessionID(sessionID)).Info("data.AppendChatMessage: assignTurn 失败",
+					loggateway.StepID("db.append_msg_turn_fail"), loggateway.Err(err))
+			}
 			return err
 		}
 		msg.TurnID = turnID
@@ -373,6 +391,13 @@ func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, m
 		}
 		return nil
 	})
+	if lg != nil {
+		lg.With(loggateway.SessionID(sessionID)).Info("data.AppendChatMessage: 完成",
+			loggateway.StepID("db.append_msg_done"),
+			loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()),
+			loggateway.Any("has_error", err != nil))
+	}
+	return err
 }
 
 func (r *sessionRepo) UpdateChatMessageStatus(ctx context.Context, sessionID, messageID, status, errorMessage string) error {

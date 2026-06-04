@@ -17,7 +17,11 @@ server:
 data:
   sqlite:
     enable: true
-    source: file:./data/arenea.sqlite?cache=shared&_fk=1
+    # NOTE: cache=shared was removed (2026-06-04 fix for agent-save-timeout).
+    # In a single-process admin, shared cache is redundant and triggers a
+    # modernc.org/sqlite + WAL deadlock that hangs every write until the
+    # SQLite connection is leaked.  Use the default per-connection cache.
+    source: file:./data/arenea.sqlite?_fk=1
   initial_admin:
     name: dev
     email: dev@local.invalid

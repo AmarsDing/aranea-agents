@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"aranea-agents/pkg/loggateway"
 
@@ -330,16 +331,34 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	}); err != nil {
 		return Agent{}, err
 	}
-	return u.Get(ctx, in.ID)
+	readCtx := ctx
+	if ctx.Err() != nil {
+		readCtx = context.Background()
+	}
+	return u.Get(readCtx, in.ID)
 }
 
 // Update merges patch into the stored agent, then rewrites settings, files, and config_json.
 func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agent, error) {
+	// #region debug-point agent.update.trace
+	// DEBUG ONLY: timing trace to identify the SQL call that hangs in AgentUsecase.Update.
+	// Remove this block once root-cause is fixed.
+	// NOTE: uses Info (not Debug) because smoke.yaml logging.level=info filters Debug.
+	traceStart := time.Now()
+	traceTrace := u.lg.With(loggateway.StepID("agent.update.trace"), loggateway.Str("agent_id", id))
+	traceTrace.Info("enter Update", loggateway.Duration(time.Since(traceStart).Milliseconds()))
+	defer func() {
+		traceTrace.Info("exit Update", loggateway.Duration(time.Since(traceStart).Milliseconds()))
+	}()
+	// #endregion debug-point
 	id, err := requireNonEmpty(id, "AGENT", "id")
 	if err != nil {
 		return Agent{}, err
 	}
 	current, err := u.Get(ctx, id)
+	// #region debug-point agent.update.trace
+	traceTrace.Info("after Get#1 (hydrate)", loggateway.Duration(time.Since(traceStart).Milliseconds()))
+	// #endregion debug-point
 	if err != nil {
 		return Agent{}, err
 	}
@@ -382,21 +401,67 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 		}
 	}
 	merged.ConfigJSON = EmbedAgentKindInConfigJSON(merged.ConfigJSON, merged.Kind, merged.A2AProxy, u.lg)
+	// #region debug-point agent.update.trace
+	traceTrace.Info("before ExecInTx", loggateway.Duration(time.Since(traceStart).Milliseconds()), loggateway.Int("files_len", len(files)))
+	// #endregion debug-point
 	if err := u.repo.ExecInTx(ctx, func(txCtx context.Context) error {
+		// #region debug-point agent.update.trace
+		traceTrace.Info("tx-body: start", loggateway.Duration(time.Since(traceStart).Milliseconds()))
+		// #endregion debug-point
+		// #region debug-point agent.update.trace
+		s1 := time.Now()
+		traceTrace.Info("tx-body: before UpdateAgent", loggateway.Duration(time.Since(traceStart).Milliseconds()))
+		// #endregion debug-point
 		if _, err := u.repo.UpdateAgent(txCtx, merged); err != nil {
 			return err
 		}
+		// #region debug-point agent.update.trace
+		traceTrace.Info("tx-body: after UpdateAgent", loggateway.Duration(time.Since(traceStart).Milliseconds()), loggateway.Duration(time.Since(s1).Milliseconds()))
+		// #endregion debug-point
+		// #region debug-point agent.update.trace
+		s2 := time.Now()
+		traceTrace.Info("tx-body: before UpsertAgentRuntimeSettings", loggateway.Duration(time.Since(traceStart).Milliseconds()))
+		// #endregion debug-point
 		if _, err := u.repo.UpsertAgentRuntimeSettings(txCtx, settings); err != nil {
 			return err
 		}
+		// #region debug-point agent.update.trace
+		traceTrace.Info("tx-body: after UpsertAgentRuntimeSettings", loggateway.Duration(time.Since(traceStart).Milliseconds()), loggateway.Duration(time.Since(s2).Milliseconds()))
+		// #endregion debug-point
+		// #region debug-point agent.update.trace
+		s3 := time.Now()
+		traceTrace.Info("tx-body: before ReplaceAgentPromptFiles", loggateway.Duration(time.Since(traceStart).Milliseconds()))
+		// #endregion debug-point
 		if _, err := u.repo.ReplaceAgentPromptFiles(txCtx, id, files); err != nil {
 			return err
 		}
+		// #region debug-point agent.update.trace
+		traceTrace.Info("tx-body: after ReplaceAgentPromptFiles", loggateway.Duration(time.Since(traceStart).Milliseconds()), loggateway.Duration(time.Since(s3).Milliseconds()))
+		// #endregion debug-point
 		return nil
 	}); err != nil {
 		return Agent{}, err
 	}
-	return u.Get(ctx, id)
+	// #region debug-point agent.update.trace
+	traceTrace.Info("after ExecInTx", loggateway.Duration(time.Since(traceStart).Milliseconds()))
+	// #endregion debug-point
+	// Use a detached context for the final read: the transaction has already
+	// committed, but the HTTP request context may have been cancelled while
+	// waiting for a SQLite write lock.  The caller still needs the updated
+	// agent data to return to the frontend.
+	readCtx := ctx
+	if ctx.Err() != nil {
+		readCtx = context.Background()
+	}
+	// #region debug-point agent.update.trace
+	s4 := time.Now()
+	traceTrace.Info("before Get#2 (final hydrate)", loggateway.Duration(time.Since(traceStart).Milliseconds()))
+	// #endregion debug-point
+	out, err := u.Get(readCtx, id)
+	// #region debug-point agent.update.trace
+	traceTrace.Info("after Get#2 (final hydrate)", loggateway.Duration(time.Since(traceStart).Milliseconds()), loggateway.Duration(time.Since(s4).Milliseconds()))
+	// #endregion debug-point
+	return out, err
 }
 
 // Delete soft-deletes the agent.
@@ -695,7 +760,11 @@ func (u *AgentUsecase) CreateWithFilesAndSettings(ctx context.Context, agent Age
 	}); err != nil {
 		return Agent{}, err
 	}
-	return u.Get(ctx, agent.ID)
+	readCtx := ctx
+	if ctx.Err() != nil {
+		readCtx = context.Background()
+	}
+	return u.Get(readCtx, agent.ID)
 }
 
 // AgentBatchUpdateInput is LIST-04 bulk enable/disable/delete.

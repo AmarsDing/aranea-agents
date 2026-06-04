@@ -44,6 +44,7 @@ var ProviderSet = wire.NewSet(
 	NewAgentService,
 	NewTeamService,
 	NewTaxonomyService,
+	NewIndustryTaxonomyService,
 	NewLlmProviderModelService,
 	NewHookService,
 	NewCronService,

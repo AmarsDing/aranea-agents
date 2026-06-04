@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/session"
@@ -234,11 +235,16 @@ func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Se
 }
 
 func (r *sessionRepo) GetSessionByID(ctx context.Context, id string) (biz.Session, error) {
+	start := time.Now()
 	c := r.data.RW().Read(ctx)
 	row, err := c.Session.Query().
 		Where(entsession.IDEQ(id), entsession.DeletedAtEQ("")).
 		Only(ctx)
 	if err != nil {
+		loggateway.Global().With(loggateway.SessionID(id)).Info("data.GetSessionByID: 失败",
+			loggateway.StepID("db.get_session_fail"),
+			loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()),
+			loggateway.Err(err))
 		if ent.IsNotFound(err) {
 			return biz.Session{}, sql.ErrNoRows
 		}

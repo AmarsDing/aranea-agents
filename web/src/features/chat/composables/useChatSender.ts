@@ -80,6 +80,14 @@ export function useChatSender(deps: SenderDeps) {
   let sendingTimeout: ReturnType<typeof setTimeout> | null = null;
   const SEND_DISPATCH_TIMEOUT_MS = 30_000;
 
+  // 30-second client-side turn-ack timeout: if backend doesn't respond with
+  // run.status=running/accepted within 30s, mark the placeholder user message
+  // as failed so the user can retry immediately instead of waiting for the
+  // (much longer) server-side 5min timeout.
+  let turnAckTimeout: ReturnType<typeof setTimeout> | null = null;
+  const TURN_ACK_TIMEOUT_MS = 30_000;
+  let pendingTurnAck: { sessionId: string; pendingUserId: string } | null = null;
+
   let firstByteTimeout: ReturnType<typeof setTimeout> | null = null;
   const FIRST_BYTE_TIMEOUT_MS = 90_000;
 
@@ -128,6 +136,7 @@ export function useChatSender(deps: SenderDeps) {
     sending.value = false;
     clearSendingTimeout();
     clearFirstByteTimeout();
+    clearTurnAckTimeout();
     clearStallCheck();
   }
 
@@ -145,12 +154,43 @@ export function useChatSender(deps: SenderDeps) {
     }
   }
 
+  function clearTurnAckTimeout() {
+    if (turnAckTimeout != null) {
+      clearTimeout(turnAckTimeout);
+      turnAckTimeout = null;
+    }
+    pendingTurnAck = null;
+  }
+
+  function startTurnAckTimeout(sessionId: string, pendingUserId: string) {
+    clearTurnAckTimeout();
+    pendingTurnAck = { sessionId, pendingUserId };
+    turnAckTimeout = setTimeout(() => {
+      turnAckTimeout = null;
+      const target = pendingTurnAck;
+      pendingTurnAck = null;
+      if (!target) return;
+      if (!sending.value) return;
+      markPendingUserFailed(
+        target.sessionId,
+        target.pendingUserId,
+        t('chat.sendTimeoutRetry', '后端 30 秒内未确认 turn，请点击重试'),
+      );
+      markSendingDone();
+      $q.notify({
+        type: 'negative',
+        message: t('chat.sendTimeoutToast', '后端响应超时，消息已标记为失败，请重试'),
+      });
+    }, TURN_ACK_TIMEOUT_MS);
+  }
+
   function onFirstByteArrived() {
     clearFirstByteTimeout();
   }
 
   function onRunAccepted() {
     clearFirstByteTimeout();
+    clearTurnAckTimeout();
     firstByteTimeout = setTimeout(() => {
       if (sending.value) {
         $q.notify({
@@ -228,8 +268,12 @@ export function useChatSender(deps: SenderDeps) {
 
   async function onSend() {
     const content = deps.inputText.value.trim();
-    if (!content) return;
-    if (!isActiveRun() && sending.value) return;
+    if (!content) {
+      return;
+    }
+    if (!isActiveRun() && sending.value) {
+      return;
+    }
 
     if (deps.isAwaitingUser.value) {
       if (deps.awaitKind.value === AWAIT_KIND_TOOL_CONFIRM) {
@@ -244,6 +288,7 @@ export function useChatSender(deps: SenderDeps) {
       await sendAgentMessage(content);
     } else if (deps.sessionStore.entityKind === 'team' && deps.sessionStore.selectedTeamId) {
       await sendTeamMessage(content);
+    } else {
     }
   }
 
@@ -499,6 +544,7 @@ export function useChatSender(deps: SenderDeps) {
       try {
         const stream = strategy.ensureStream(sessionId);
         deps.sendChatViaWs(stream, strategy.buildWsPayload(sessionId, pendingUserId, text, provider, model));
+        startTurnAckTimeout(sessionId, pendingUserId);
       } catch (wsError) {
         $q.notify({ type: 'info', message: t('chat.wsFallbackHttp', 'WebSocket 不可用，正在通过 HTTP 发送…') });
         try {

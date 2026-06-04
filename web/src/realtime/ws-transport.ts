@@ -75,7 +75,7 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
 
     ws.onmessage = (ev: MessageEvent) => {
       try {
-        const msg = JSON.parse(ev.data as string) as WsDownstream;
+        const msg = JSON.parse(ev.data) as WsDownstream;
         if (msg.direction !== 'server_to_client') return;
 
         if (msg.type === 'connected' && msg.payload) {
@@ -116,7 +116,7 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
       _connected = false;
       stopHeartbeat();
       opts.onDisconnected?.();

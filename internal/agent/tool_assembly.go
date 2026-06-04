@@ -21,7 +21,7 @@ import (
 )
 
 func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (*tooltrpc.AssembledToolsets, error) {
-	lg := deps.LG
+	lg := deps.Logger()
 	var cfg tooltrpc.ToolsetConfig
 	var eff map[string]bool
 
@@ -93,6 +93,10 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 	cfg.OutboundRouter = deps.OutboundRouter
 	cfg.SubAgentService = deps.SubAgentService
 
+	lg.Info("工具构建：SubAgentService 检查",
+		loggateway.StepID("agent.subagent_check"),
+		loggateway.Bool("subagent_service_nil", deps.SubAgentService == nil))
+
 	if !tooltrpc.ToolsetConfigHasAny(cfg) {
 		lg.Info("工具构建：未启用任何工具", loggateway.StepID("agent.tool_build"), loggateway.Str("flow_status", "done"), loggateway.Str("agent_id", ag.ID))
 		return nil, nil
@@ -109,7 +113,7 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		lg.Error("工具构建失败", loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
 		return nil, err
 	}
-	ts, err := tooltrpc.BuildToolsets(ctx, cfg, deps.LG)
+	ts, err := tooltrpc.BuildToolsets(ctx, cfg, deps.Logger())
 	if err != nil || ts == nil {
 		lg.Error("工具构建失败", loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
 		return ts, err

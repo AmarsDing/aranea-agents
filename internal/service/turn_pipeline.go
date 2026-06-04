@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 // TurnIngress normalizes a transport-specific request into a canonical intent.
@@ -40,9 +41,20 @@ type TurnPipeline struct {
 // Run executes the canonical pipeline without knowing whether the request came from Web, WS, or Channel.
 func (p TurnPipeline) Run(ctx context.Context, intent biz.TurnIntent) (biz.Turn, biz.NativeTurnResult, error) {
 	intent = intent.Canonicalize()
+	lg := loggateway.Global()
+	start := time.Now()
+
 	turn, err := p.Service.AdmitTurn(ctx, intent)
 	if err != nil {
+		if lg != nil {
+			lg.With(loggateway.SessionID(intent.SessionID)).Info("TurnPipeline.Run: AdmitTurn 失败",
+				loggateway.StepID("pipeline.admit_fail"), loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()), loggateway.Err(err))
+		}
 		return biz.Turn{}, biz.NativeTurnResult{}, err
+	}
+	if lg != nil {
+		lg.With(loggateway.SessionID(intent.SessionID)).Info("TurnPipeline.Run: AdmitTurn 完成",
+			loggateway.StepID("pipeline.admit_done"), loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()), loggateway.Any("turn_id", turn.ID))
 	}
 	p.project(ctx, biz.TurnEvent{
 		TurnID:     turn.ID,
@@ -54,6 +66,13 @@ func (p TurnPipeline) Run(ctx context.Context, intent biz.TurnIntent) (biz.Turn,
 	})
 
 	result, execErr := p.Executor.ExecuteTurn(ctx, turn, intent.TurnInput())
+	if lg != nil {
+		lg.With(loggateway.SessionID(intent.SessionID)).Info("TurnPipeline.Run: ExecuteTurn 完成",
+			loggateway.StepID("pipeline.execute_done"),
+			loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()),
+			loggateway.Any("has_error", execErr != nil),
+			loggateway.Any("outcome", string(result.Outcome)))
+	}
 	if execErr != nil {
 		failed, failErr := p.Service.FailTurn(ctx, turn, execErr)
 		if failErr == nil {

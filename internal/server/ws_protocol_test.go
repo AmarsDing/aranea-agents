@@ -244,7 +244,7 @@ func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
 	}
 }
 
-func TestWSUpstreamTurnGatewayErrorDoesNotPublishRawDuplicate(t *testing.T) {
+func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
 	bus := event.NewBus()
 	srv := NewWSServerFromInfra(
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
@@ -276,8 +276,23 @@ func TestWSUpstreamTurnGatewayErrorDoesNotPublishRawDuplicate(t *testing.T) {
 
 	select {
 	case env := <-ch:
-		t.Fatalf("unexpected duplicate error envelope: %+v", env)
-	case <-time.After(100 * time.Millisecond):
+		if env.Type != event.EnvelopeTypeError {
+			t.Fatalf("expected error envelope, got type=%s", env.Type)
+		}
+		if env.SessionID != "sess-turn" {
+			t.Fatalf("expected sessionID=sess-turn, got %s", env.SessionID)
+		}
+		if env.RequestID != "pending-user-abc" {
+			t.Fatalf("expected requestID=pending-user-abc, got %s", env.RequestID)
+		}
+		if env.Error == nil {
+			t.Fatal("expected error detail in envelope")
+		}
+		if env.Error.Type != "send_failed" {
+			t.Fatalf("expected error.type=send_failed, got %s", env.Error.Type)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for error envelope from turn gateway failure")
 	}
 }
 

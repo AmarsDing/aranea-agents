@@ -60,21 +60,50 @@ func newTurnStreamConsumer(
 }
 
 func (c *turnStreamConsumer) consume(events <-chan *trpcevent.Event) EventStreamResult {
+	evIdx := 0
 	for ev := range events {
+		evIdx++
 		if c.turnCtx.Err() != nil {
+			c.lg.With(loggateway.StepID("stream.consume_exit")).Info("stream consume: turnCtx canceled",
+				loggateway.Any("ev_count", evIdx))
 			return c.result
 		}
 		if ev == nil {
 			continue
 		}
+		// Log each event for debugging
+		evType := "unknown"
+		if ev.IsRunnerCompletion() {
+			evType = "runner_completion"
+		} else if ev.Response != nil && ev.Response.Error != nil {
+			evType = "response_error"
+		} else if ev.Response != nil {
+			evType = "response"
+			if len(ev.Response.Choices) > 0 {
+				ch := ev.Response.Choices[0]
+				if len(ch.Message.ToolCalls) > 0 {
+					evType = "tool_call"
+				} else if ch.Message.Content != "" {
+					evType = "text_delta"
+				}
+			}
+		}
+		c.lg.With(loggateway.StepID("stream.event")).Info("stream event",
+			loggateway.Any("idx", evIdx),
+			loggateway.Any("type", evType),
+			loggateway.Any("author", ev.Author))
 		c.markFirstByte(ev)
 		if c.firstByteCtx.Err() != nil && !c.received {
+			c.lg.With(loggateway.StepID("stream.first_byte_timeout")).Info("stream consume: firstByte timeout",
+				loggateway.Any("ev_count", evIdx))
 			return c.result
 		}
 		if !c.handleEvent(ev) {
 			return c.result
 		}
 	}
+	c.lg.With(loggateway.StepID("stream.consume_done")).Info("stream consume: channel closed",
+		loggateway.Any("ev_count", evIdx))
 	c.finalize()
 	return c.result
 }

@@ -198,6 +198,14 @@ func BuildToolsets(ctx context.Context, cfg ToolsetConfig, lg loggateway.Logger)
 		}
 	}
 
+	// Auto-enable subagent tools when SubAgentService is wired.
+	if cfg.SubAgentService != nil {
+		enabled = append(enabled, "subagents_spawn", "subagents_list", "subagents_get", "subagents_cancel")
+		lg.Info("subagent tools auto-enabled",
+			loggateway.StepID("tool.subagent_auto_enable"),
+			loggateway.Bool("subagent_service_wired", cfg.SubAgentService != nil))
+	}
+
 	assembled, err := tools.Assemble(ctx, tools.AssemblyConfig{
 		EnabledTools:  enabled,
 		DeferredTools: cfg.DeferredTools,

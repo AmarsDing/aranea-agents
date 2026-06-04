@@ -132,6 +132,7 @@ func TestFromProtoRuntime_RoundTrip(t *testing.T) {
 		RalphLoopPromiseTagOpen:           "<promise>",
 		RalphLoopPromiseTagClose:          "</promise>",
 		RalphLoopVerifyWorkDir:            "/tmp",
+		CodeExecutorType:                  "docker",
 		CreatedAt:                         "2024-01-01",
 		UpdatedAt:                         "2024-06-01",
 	}
@@ -283,6 +284,9 @@ func TestFromProtoRuntime_RoundTrip(t *testing.T) {
 	}
 	if bizObj.RalphLoopVerifyWorkDir != "/tmp" {
 		t.Fatalf("ralph loop workdir mismatch: got %q", bizObj.RalphLoopVerifyWorkDir)
+	}
+	if bizObj.CodeExecutorType != "docker" {
+		t.Fatalf("code_executor_type mismatch: got %q, want %q", bizObj.CodeExecutorType, "docker")
 	}
 }
 

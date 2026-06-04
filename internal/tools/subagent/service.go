@@ -116,9 +116,6 @@ func NewService(stateDir string, r trpcrunner.Runner, lg loggateway.Logger) (*Se
 	if strings.TrimSpace(stateDir) == "" {
 		return nil, kerrors.InternalServer("SUBAGENT", "empty state dir")
 	}
-	if r == nil {
-		return nil, kerrors.InternalServer("SUBAGENT", "nil runner")
-	}
 
 	path := filepath.Join(
 		strings.TrimSpace(stateDir),
@@ -144,6 +141,14 @@ func NewService(stateDir string, r trpcrunner.Runner, lg loggateway.Logger) (*Se
 		}
 	}
 	return svc, nil
+}
+
+// SetRunner sets the runner for subagent execution. This allows deferred
+// runner initialization when the runner cannot be provided at construction time.
+func (s *Service) SetRunner(r trpcrunner.Runner) {
+	if s != nil {
+		s.runner = r
+	}
 }
 
 // WithOutboundRouter sets the outbound router for completion notifications.
@@ -184,6 +189,9 @@ func (s *Service) Spawn(ctx context.Context, req SpawnRequest) (trpcsubagent.Run
 	}
 	if s.baseCtx == nil {
 		return trpcsubagent.Run{}, kerrors.InternalServer("SUBAGENT", "not started")
+	}
+	if s.runner == nil {
+		return trpcsubagent.Run{}, kerrors.InternalServer("SUBAGENT", "runner not configured")
 	}
 
 	nested, _ := trpcagent.GetRuntimeStateValueFromContext[bool](ctx, runtimeStateSubagentRun)

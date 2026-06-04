@@ -72,7 +72,9 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
   let globalHubId: string | null = null;
 
   function connect(): void {
-    if (globalHubId) return;
+    if (globalHubId) {
+      return;
+    }
 
     if (shouldUseGlobalWsHub(opts.sessionId, lastEventId.value)) {
       globalHubId = acquireGlobalWsConsumer({
@@ -94,7 +96,9 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
       return;
     }
 
-    if (transport.value?.connected) return;
+    if (transport.value?.connected) {
+      return;
+    }
     if (transport.value) {
       transport.value.connect();
       return;

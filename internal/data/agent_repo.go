@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
@@ -110,6 +111,7 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 	}
 	s := &biz.AgentRuntimeSettings{
 		AgentID:                       e.ID,
+		CodeExecutorType:              e.CodeExecutorType,
 		RalphLoopMaxIterations:        e.RalphLoopMaxIterations,
 		RalphLoopCompletionPromise:    e.RalphLoopCompletionPromise,
 		RalphLoopVerifyCommand:        e.RalphLoopVerifyCommand,
@@ -646,10 +648,25 @@ func (r *agentRepo) CreateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 }
 
 func (r *agentRepo) UpdateAgent(ctx context.Context, a biz.Agent) (biz.Agent, error) {
+	// #region debug-point data.update_agent.trace
+	// DEBUG ONLY: timing trace to identify which SQL op hangs.
+	// NOTE: uses Info (not Debug) because smoke.yaml logging.level=info filters Debug.
+	t0 := time.Now()
+	tl := r.data.lg.With(loggateway.StepID("data.update_agent.trace"), loggateway.Str("agent_id", a.ID))
+	tl.Info("enter UpdateAgent")
+	defer func() { tl.Info("exit UpdateAgent", loggateway.Duration(time.Since(t0).Milliseconds())) }()
+	// #endregion debug-point
 	if a.ID == "" {
 		return biz.Agent{}, fmt.Errorf("id is required")
 	}
+	// #region debug-point data.update_agent.trace
+	s1 := time.Now()
+	tl.Info("before GetAgentByID#1")
+	// #endregion debug-point
 	current, err := r.GetAgentByID(ctx, a.ID)
+	// #region debug-point data.update_agent.trace
+	tl.Info("after GetAgentByID#1", loggateway.Duration(time.Since(s1).Milliseconds()))
+	// #endregion debug-point
 	if err != nil {
 		return biz.Agent{}, err
 	}
@@ -670,6 +687,10 @@ func (r *agentRepo) UpdateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 	}
 	a.CreatedAt = current.CreatedAt
 	a.UpdatedAt = nowRFC3339()
+	// #region debug-point data.update_agent.trace
+	s2 := time.Now()
+	tl.Info("before Agent.UpdateOneID.Save")
+	// #endregion debug-point
 	_, err = r.data.RW().Write(ctx).Agent.UpdateOneID(a.ID).
 		SetDisplayName(a.DisplayName).
 		SetProvider(a.Provider).
@@ -690,10 +711,24 @@ func (r *agentRepo) UpdateAgent(ctx context.Context, a biz.Agent) (biz.Agent, er
 		SetReadonly(a.Readonly).
 		SetUpdatedAt(a.UpdatedAt).
 		Save(ctx)
+	// #region debug-point data.update_agent.trace
+	tl.Info("after Agent.UpdateOneID.Save", loggateway.Duration(time.Since(s2).Milliseconds()))
+	if err != nil {
+		tl.Info("Agent.UpdateOneID.Save returned error", loggateway.Err(err))
+	}
+	// #endregion debug-point
 	if err != nil {
 		return biz.Agent{}, err
 	}
-	return r.GetAgentByID(ctx, a.ID)
+	// #region debug-point data.update_agent.trace
+	s3 := time.Now()
+	tl.Info("before GetAgentByID#2")
+	// #endregion debug-point
+	out, err := r.GetAgentByID(ctx, a.ID)
+	// #region debug-point data.update_agent.trace
+	tl.Info("after GetAgentByID#2", loggateway.Duration(time.Since(s3).Milliseconds()))
+	// #endregion debug-point
+	return out, err
 }
 
 func (r *agentRepo) DeleteAgent(ctx context.Context, id string) error {
@@ -721,6 +756,12 @@ func (r *agentRepo) GetAgentRuntimeSettings(ctx context.Context, agentID string)
 }
 
 func (r *agentRepo) UpsertAgentRuntimeSettings(ctx context.Context, v biz.AgentRuntimeSettings) (biz.AgentRuntimeSettings, error) {
+	// #region debug-point data.upsert_settings.trace
+	t0 := time.Now()
+	tl := r.data.lg.With(loggateway.StepID("data.upsert_settings.trace"), loggateway.Str("agent_id", v.AgentID))
+	tl.Info("enter UpsertAgentRuntimeSettings")
+	defer func() { tl.Info("exit UpsertAgentRuntimeSettings", loggateway.Duration(time.Since(t0).Milliseconds())) }()
+	// #endregion debug-point
 	if v.AgentID == "" {
 		return biz.AgentRuntimeSettings{}, fmt.Errorf("agent id is required")
 	}
@@ -731,13 +772,31 @@ func (r *agentRepo) UpsertAgentRuntimeSettings(ctx context.Context, v biz.AgentR
 	v.UpdatedAt = now
 	b := r.data.RW().Write(ctx).AgentRuntimeSetting.Create().SetID(v.AgentID)
 	applyBizRuntimeToCreate(b, v, r.data.lg)
+	// #region debug-point data.upsert_settings.trace
+	s1 := time.Now()
+	tl.Info("before AgentRuntimeSetting.OnConflict.Exec")
+	// #endregion debug-point
 	if err := b.OnConflict(
 		entsql.ConflictColumns(agentruntimesetting.FieldID),
 		entsql.ResolveWithNewValues(),
 	).Exec(ctx); err != nil {
+		// #region debug-point data.upsert_settings.trace
+		tl.Info("AgentRuntimeSetting.OnConflict.Exec returned error", loggateway.Duration(time.Since(s1).Milliseconds()), loggateway.Err(err))
+		// #endregion debug-point
 		return biz.AgentRuntimeSettings{}, err
 	}
+	// #region debug-point data.upsert_settings.trace
+	tl.Info("after AgentRuntimeSetting.OnConflict.Exec", loggateway.Duration(time.Since(s1).Milliseconds()))
+	s2 := time.Now()
+	tl.Info("before AgentRuntimeSetting.Get")
+	// #endregion debug-point
 	row, err := r.data.RW().Write(ctx).AgentRuntimeSetting.Get(ctx, v.AgentID)
+	// #region debug-point data.upsert_settings.trace
+	tl.Info("after AgentRuntimeSetting.Get", loggateway.Duration(time.Since(s2).Milliseconds()))
+	if err != nil {
+		tl.Info("AgentRuntimeSetting.Get returned error", loggateway.Err(err))
+	}
+	// #endregion debug-point
 	if err != nil {
 		return biz.AgentRuntimeSettings{}, err
 	}
@@ -760,13 +819,29 @@ func (r *agentRepo) ListAgentPromptFiles(ctx context.Context, agentID string) ([
 }
 
 func (r *agentRepo) ReplaceAgentPromptFiles(ctx context.Context, agentID string, files []biz.AgentPromptFile) ([]biz.AgentPromptFile, error) {
+	// #region debug-point data.replace_files.trace
+	t0 := time.Now()
+	tl := r.data.lg.With(loggateway.StepID("data.replace_files.trace"), loggateway.Str("agent_id", agentID), loggateway.Int("files_len", len(files)))
+	tl.Info("enter ReplaceAgentPromptFiles")
+	defer func() { tl.Info("exit ReplaceAgentPromptFiles", loggateway.Duration(time.Since(t0).Milliseconds())) }()
+	// #endregion debug-point
 	if agentID == "" {
 		return nil, fmt.Errorf("agent id is required")
 	}
 	err := r.data.ExecInTx(ctx, func(txCtx context.Context) error {
+		// #region debug-point data.replace_files.trace
+		sd := time.Now()
+		tl.Info("before AgentPromptFile.Delete.Exec")
+		// #endregion debug-point
 		if _, err := r.data.RW().Write(txCtx).AgentPromptFile.Delete().Where(agentpromptfile.AgentIDEQ(agentID)).Exec(txCtx); err != nil {
+			// #region debug-point data.replace_files.trace
+			tl.Info("AgentPromptFile.Delete.Exec returned error", loggateway.Duration(time.Since(sd).Milliseconds()), loggateway.Err(err))
+			// #endregion debug-point
 			return err
 		}
+		// #region debug-point data.replace_files.trace
+		tl.Info("after AgentPromptFile.Delete.Exec", loggateway.Duration(time.Since(sd).Milliseconds()))
+		// #endregion debug-point
 		now := nowRFC3339()
 		for i, file := range files {
 			if strings.TrimSpace(file.Name) == "" {
@@ -780,6 +855,10 @@ func (r *agentRepo) ReplaceAgentPromptFiles(ctx context.Context, agentID string,
 			if sortOrder == 0 {
 				sortOrder = (i + 1) * 10
 			}
+			// #region debug-point data.replace_files.trace
+			si := time.Now()
+			tl.Info("before AgentPromptFile.Create.Save", loggateway.Int("i", i), loggateway.Str("file_id", id))
+			// #endregion debug-point
 			if _, err := r.data.RW().Write(txCtx).AgentPromptFile.Create().
 				SetID(id).
 				SetAgentID(agentID).
@@ -789,15 +868,29 @@ func (r *agentRepo) ReplaceAgentPromptFiles(ctx context.Context, agentID string,
 				SetCreatedAt(now).
 				SetUpdatedAt(now).
 				Save(txCtx); err != nil {
+				// #region debug-point data.replace_files.trace
+				tl.Info("AgentPromptFile.Create.Save returned error", loggateway.Int("i", i), loggateway.Duration(time.Since(si).Milliseconds()), loggateway.Err(err))
+				// #endregion debug-point
 				return err
 			}
+			// #region debug-point data.replace_files.trace
+			tl.Info("after AgentPromptFile.Create.Save", loggateway.Int("i", i), loggateway.Duration(time.Since(si).Milliseconds()))
+			// #endregion debug-point
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return r.ListAgentPromptFiles(ctx, agentID)
+	// #region debug-point data.replace_files.trace
+	sl := time.Now()
+	tl.Info("before final ListAgentPromptFiles")
+	// #endregion debug-point
+	out, err := r.ListAgentPromptFiles(ctx, agentID)
+	// #region debug-point data.replace_files.trace
+	tl.Info("after final ListAgentPromptFiles", loggateway.Duration(time.Since(sl).Milliseconds()))
+	// #endregion debug-point
+	return out, err
 }
 
 func (r *agentRepo) CreateAgentPromptFile(ctx context.Context, f biz.AgentPromptFile) (biz.AgentPromptFile, error) {

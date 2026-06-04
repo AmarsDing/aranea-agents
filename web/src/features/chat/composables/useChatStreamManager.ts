@@ -114,7 +114,12 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
   function ensureChatStream(sessionId: string) {
     if (chatStream && chatStreamSessionId === sessionId) {
-      deps.runtimeStore.setWsConnected(sessionId, chatStream.connected.value ?? false);
+      // Only sync wsConnected→true when the stream reports connected;
+      // never downgrade to false here — onDisconnected is the authoritative
+      // source for disconnection and avoids stale ref reads after onError.
+      if (chatStream.connected.value) {
+        deps.runtimeStore.setWsConnected(sessionId, true);
+      }
       if (!chatStream.connected.value) {
         chatStream.connect();
       }
@@ -202,7 +207,10 @@ export function useChatStreamManager(deps: StreamManagerDeps) {
 
   function ensureTeamStream(sessionId: string) {
     if (teamStream && teamStream.transport.value && teamStreamSessionId === sessionId) {
-      deps.runtimeStore.setWsConnected(sessionId, teamStream.connected.value ?? false);
+      // Only sync wsConnected→true; never downgrade — onDisconnected is authoritative.
+      if (teamStream.connected.value) {
+        deps.runtimeStore.setWsConnected(sessionId, true);
+      }
       return teamStream;
     }
     teamStream?.disconnect();

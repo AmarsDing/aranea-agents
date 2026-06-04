@@ -81,7 +81,6 @@ func (s *WSServer) replayEvents(wc *wsConn, sessionID, lastEventID string) {
 func (s *WSServer) setupEventSubscription(wc *wsConn, globalMode bool) (<-chan event.Envelope, <-chan event.Envelope) {
 	var eventCh <-chan event.Envelope
 	var monitorCh <-chan event.Envelope
-	wc.unsubscribe = func() {}
 
 	subOpts := event.SubscribeOptions{
 		BufferSize: 256,

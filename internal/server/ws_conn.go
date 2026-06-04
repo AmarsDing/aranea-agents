@@ -37,6 +37,17 @@ type wsConn struct {
 	closeOnce sync.Once
 }
 
+// close performs all connection cleanup: cancel context, unsubscribe from event bus,
+// and close the underlying WebSocket connection. It is safe to call multiple times.
+// The caller is still responsible for removing the connection from the store (s.removeConn).
+func (wc *wsConn) close() {
+	wc.connCancel()
+	if wc.unsubscribe != nil {
+		wc.unsubscribe()
+	}
+	wc.conn.Close()
+}
+
 // sendSystemDownstream marshals and enqueues a system-level downstream message.
 func (wc *wsConn) sendSystemDownstream(msg wsDownstream) {
 	data, err := json.Marshal(msg)
