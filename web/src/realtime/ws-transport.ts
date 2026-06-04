@@ -10,6 +10,9 @@
 
 import { buildWsUrl } from '../config/runtime';
 import type { Envelope, WsDownstream, WsUpstream } from './envelope';
+// #region debug-point (web-chat-no-response) reporter import
+import { reportDebug } from '../../../.dbg/debug-reporter';
+// #endregion debug-point
 
 export type WsTransportOptions = {
   sessionId: string;
@@ -55,6 +58,9 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
 
   function connect(): void {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+      // #region debug-point (web-chat-no-response) ws-connect-skip
+      reportDebug({ hypothesisId: 'H2', source: 'ws-transport.connect', data: { readyState: ws.readyState, url: buildWsUrl({ sessionId: opts.sessionId }) } });
+      // #endregion debug-point
       return;
     }
 
@@ -64,18 +70,37 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
       token: opts.token,
       logEnabled: opts.logEnabled,
     });
+    // #region debug-point (web-chat-no-response) ws-connect-new
+    reportDebug({ hypothesisId: 'H2', source: 'ws-transport.connect', data: { url, lastEventId: _lastEventId ?? null, logEnabled: !!opts.logEnabled } });
+    // #endregion debug-point
     ws = new WebSocket(url);
 
     ws.onopen = () => {
       _connected = true;
       reconnectAttempts = 0;
       startHeartbeat();
+      // #region debug-point (web-chat-no-response) ws-onopen
+      reportDebug({ hypothesisId: 'H2', source: 'ws-transport.connect', data: { event: 'open', queueDepth: pendingQueue.length } });
+      // #endregion debug-point
       flushPendingQueue();
     };
 
     ws.onmessage = (ev: MessageEvent) => {
+      // #region debug-point (web-chat-no-response) ws-onmessage
       try {
-        const msg = JSON.parse(ev.data as string) as WsDownstream;
+        const parsed = JSON.parse(ev.data);
+        reportDebug({ hypothesisId: 'H3', source: 'ws-transport.onmessage', data: {
+          type: parsed.type,
+          channel: parsed.channel,
+          envelopeType: parsed.envelope?.type,
+          envelopeChannel: parsed.envelope?.channel,
+        } });
+      } catch {
+        reportDebug({ hypothesisId: 'H3', source: 'ws-transport.onmessage', data: { rawLen: ev.data?.length ?? 0 } });
+      }
+      // #endregion debug-point
+      try {
+        const msg = JSON.parse(ev.data) as WsDownstream;
         if (msg.direction !== 'server_to_client') return;
 
         if (msg.type === 'connected' && msg.payload) {
@@ -116,9 +141,12 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
       _connected = false;
       stopHeartbeat();
+      // #region debug-point (web-chat-no-response) ws-onclose
+      reportDebug({ hypothesisId: 'H2', source: 'ws-transport.connect', data: { event: 'close', code: ev.code, reason: ev.reason, wasClean: ev.wasClean } });
+      // #endregion debug-point
       opts.onDisconnected?.();
       if (!shutdownReceived) {
         scheduleReconnect();
@@ -126,6 +154,9 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
     };
 
     ws.onerror = (e) => {
+      // #region debug-point (web-chat-no-response) ws-onerror
+      reportDebug({ hypothesisId: 'H2', source: 'ws-transport.connect', level: 'error', data: { event: 'error' } });
+      // #endregion debug-point
       opts.onError?.(e);
     };
   }
@@ -185,9 +216,20 @@ export function createWsTransport(opts: WsTransportOptions): WsTransport {
   function send(upstream: WsUpstream): void {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(upstream));
+      // #region debug-point (web-chat-no-response) ws-send-immediate
+      reportDebug({ hypothesisId: 'H2', source: 'ws-transport.send', data: { type: upstream.type, readyState: ws.readyState, channel: upstream.channel } });
+      // #endregion debug-point
       return;
     }
     pendingQueue.push(upstream);
+    // #region debug-point (web-chat-no-response) ws-send-queued
+    reportDebug({ hypothesisId: 'H2', source: 'ws-transport.send', level: 'warn', data: {
+      type: upstream.type,
+      readyState: ws?.readyState ?? null,
+      queueDepth: pendingQueue.length,
+      hasWs: !!ws,
+    } });
+    // #endregion debug-point
     if (!ws || ws.readyState === WebSocket.CLOSED) {
       connect();
     }

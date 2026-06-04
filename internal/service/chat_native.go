@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"strings"
+	"time"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	chatagent "aranea-agents/internal/agent"
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -86,15 +88,30 @@ func chatNowRFC3339() string {
 
 // ExecuteTurn implements biz.TurnGateway — delegates to ChatOrchestrator.Execute.
 func (s *ChatService) ExecuteTurn(ctx context.Context, input biz.TurnInput) (biz.TurnResult, error) {
+	s.lg.With(loggateway.SessionID(input.SessionID)).Info("ChatService.ExecuteTurn: 入口",
+		loggateway.StepID("chat.execute_turn_start"),
+		loggateway.Any("agent_key", input.AgentKey),
+		loggateway.Any("has_pipeline", s.turnPipeline != nil))
+	start := time.Now()
+
 	if s != nil && s.turnPipeline != nil {
 		if result, err, handled := s.tryAdmissionBeforePersistence(ctx, input); handled {
 			tr := turnResultFromNative(result)
+			s.lg.With(loggateway.SessionID(input.SessionID)).Info("ChatService.ExecuteTurn: admission handled",
+				loggateway.StepID("chat.execute_turn_admission"),
+				loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()),
+				loggateway.Any("handled", true))
 			if IsTurnMessageQueued(err) {
 				return tr, ErrTurnMessageQueued
 			}
 			return tr, err
 		}
 		_, result, err := s.turnPipeline.Run(ctx, turnIntentFromInput(input))
+		s.lg.With(loggateway.SessionID(input.SessionID)).Info("ChatService.ExecuteTurn: pipeline 完成",
+			loggateway.StepID("chat.execute_turn_pipeline_done"),
+			loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()),
+			loggateway.Any("has_error", err != nil),
+			loggateway.Any("outcome", string(result.Outcome)))
 		tr := turnResultFromNative(result)
 		if err != nil {
 			return tr, err
@@ -104,7 +121,12 @@ func (s *ChatService) ExecuteTurn(ctx context.Context, input biz.TurnInput) (biz
 		}
 		return tr, nil
 	}
-	return s.orch.Execute(ctx, input)
+	result, err := s.orch.Execute(ctx, input)
+	s.lg.With(loggateway.SessionID(input.SessionID)).Info("ChatService.ExecuteTurn: orch.Execute 完成",
+		loggateway.StepID("chat.execute_turn_orch_done"),
+		loggateway.Any("elapsed_ms", time.Since(start).Milliseconds()),
+		loggateway.Any("has_error", err != nil))
+	return result, err
 }
 
 func (s *ChatService) tryAdmissionBeforePersistence(ctx context.Context, input biz.TurnInput) (biz.NativeTurnResult, error, bool) {

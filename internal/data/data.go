@@ -456,21 +456,69 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 			return
 		case <-time.After(3 * time.Second):
 		}
+		// #region debug-point data.lazy.trace
+		st.lg.Info("lazy_seeds: loop start", loggateway.StepID("data.lazy.trace"), loggateway.Int("seeders", len(st.lazySeeders)))
+		// #endregion debug-point
 		for name := range st.lazySeeders {
 			if p1Ctx.Err() != nil {
 				return
 			}
+			// #region debug-point data.lazy.trace
+			seedStart := time.Now()
+			st.lg.Info("lazy_seeds: before SeedLazy", loggateway.StepID("data.lazy.trace"), loggateway.Str("seed", name))
+			// #endregion debug-point
 			if err := st.SeedLazy(p1Ctx, name); err != nil {
 				if p1Ctx.Err() != nil {
 					return
 				}
+				// #region debug-point data.lazy.trace
+				st.lg.Info("lazy_seeds: SeedLazy returned error", loggateway.StepID("data.lazy.trace"), loggateway.Str("seed", name), loggateway.Duration(time.Since(seedStart).Milliseconds()), loggateway.Err(err))
+				// #endregion debug-point
 				st.lg.Warn("lazy seed failed",
 					loggateway.StepID("data.lazy"), loggateway.Str("seed", name), loggateway.Err(err))
 			}
+			// #region debug-point data.lazy.trace
+			st.lg.Info("lazy_seeds: after SeedLazy", loggateway.StepID("data.lazy.trace"), loggateway.Str("seed", name), loggateway.Duration(time.Since(seedStart).Milliseconds()))
+			// #endregion debug-point
 		}
-		st.lg.Info("lazy seeds completed",
-			loggateway.StepID("data.lazy"))
+		// #region debug-point data.lazy.trace
+		st.lg.Info("lazy_seeds: loop end", loggateway.StepID("data.lazy.trace"))
+		// #endregion debug-point
+		st.lg.Info("lazy seeds completed", loggateway.StepID("data.lazy"))
 	})
+
+	// #region debug-point data.pool.trace
+	// DEBUG ONLY: periodic SQLite pool stats dump to identify connection contention.
+	safego.Go(context.Background(), "debug.pool_stats", func() {
+		t := time.NewTicker(5 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-p1Ctx.Done():
+				return
+			case <-t.C:
+				if st == nil || st.rawDB == nil || st.readDB == nil {
+					continue
+				}
+				rw := st.rawDB.Stats()
+				rd := st.readDB.Stats()
+				st.lg.Info("pool_stats: tick",
+					loggateway.StepID("data.pool.trace"),
+					loggateway.Int("raw_open", rw.OpenConnections),
+					loggateway.Int("raw_in_use", rw.InUse),
+					loggateway.Int("raw_idle", rw.Idle),
+					loggateway.Int64("raw_wait_count", rw.WaitCount),
+					loggateway.Duration(rw.WaitDuration.Milliseconds()),
+					loggateway.Int("read_open", rd.OpenConnections),
+					loggateway.Int("read_in_use", rd.InUse),
+					loggateway.Int("read_idle", rd.Idle),
+					loggateway.Int64("read_wait_count", rd.WaitCount),
+					loggateway.Duration(rd.WaitDuration.Milliseconds()),
+				)
+			}
+		}
+	})
+	// #endregion debug-point
 
 	return st, cleanup, nil
 }

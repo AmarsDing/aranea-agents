@@ -119,6 +119,11 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 		if opts, ok := payload["options"].(map[string]any); ok {
 			input.Options = buildWSTurnOptions(opts)
 		}
+		s.lg.With(loggateway.SessionID(sessionID)).Info("WS handleUserMessage: 开始处理",
+			loggateway.StepID("ws.user_msg_start"),
+			loggateway.Any("agent_key", input.AgentKey),
+			loggateway.Any("team_id", input.TeamID),
+			loggateway.Any("content_len", len(content)))
 		connCtx := wc.contextOrBackground()
 		safego.Go(context.Background(), "ws-user-message", func() {
 			ctx, cancel := context.WithTimeout(connCtx, defaultWSTurnTimeout)
@@ -132,6 +137,11 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 					Message: err.Error(),
 				}
 				s.eventBus.Publish(context.Background(), env)
+				s.lg.With(loggateway.SessionID(sessionID)).Info("WebSocket error envelope published",
+					loggateway.StepID("ws.error_envelope_published"),
+					loggateway.Any("envelope_id", env.ID),
+					loggateway.Any("channel", env.Channel),
+					loggateway.Any("request_id", requestID))
 			}
 		})
 		return

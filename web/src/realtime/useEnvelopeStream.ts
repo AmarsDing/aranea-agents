@@ -18,6 +18,9 @@ import {
   releaseGlobalWsConsumer,
   shouldUseGlobalWsHub,
 } from './globalWsHub';
+// #region debug-point (web-chat-no-response) reporter import
+import { reportDebug } from '../../../.dbg/debug-reporter';
+// #endregion debug-point
 export type {
   GraphNodeState,
   GraphExecutionState,
@@ -72,9 +75,17 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
   let globalHubId: string | null = null;
 
   function connect(): void {
-    if (globalHubId) return;
+    if (globalHubId) {
+      // #region debug-point (web-chat-no-response) envelope-connect-already-hub
+      reportDebug({ hypothesisId: 'H2', source: 'createEnvelopeStream.connect', data: { hasGlobalHubId: true } });
+      // #endregion debug-point
+      return;
+    }
 
     if (shouldUseGlobalWsHub(opts.sessionId, lastEventId.value)) {
+      // #region debug-point (web-chat-no-response) envelope-connect-global-hub
+      reportDebug({ hypothesisId: 'H5', source: 'createEnvelopeStream.connect', data: { sessionId: opts.sessionId, usingGlobalHub: true } });
+      // #endregion debug-point
       globalHubId = acquireGlobalWsConsumer({
         channels,
         logEnabled: opts.logEnabled ?? false,
@@ -94,9 +105,17 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
       return;
     }
 
-    if (transport.value?.connected) return;
+    if (transport.value?.connected) {
+      // #region debug-point (web-chat-no-response) envelope-connect-already-open
+      reportDebug({ hypothesisId: 'H2', source: 'createEnvelopeStream.connect', data: { alreadyOpen: true } });
+      // #endregion debug-point
+      return;
+    }
     if (transport.value) {
       transport.value.connect();
+      // #region debug-point (web-chat-no-response) envelope-connect-existing
+      reportDebug({ hypothesisId: 'H2', source: 'createEnvelopeStream.connect', data: { reconnecting: true } });
+      // #endregion debug-point
       return;
     }
 
@@ -138,6 +157,13 @@ export function createEnvelopeStream(opts: UseEnvelopeStreamOptions): UseEnvelop
 
     transport.value = t;
     t.connect();
+    // #region debug-point (web-chat-no-response) envelope-connect-end
+    reportDebug({ hypothesisId: 'H2', source: 'createEnvelopeStream.connect', data: {
+      sessionId: opts.sessionId,
+      hasTransport: true,
+      isGlobalHub: false,
+    } });
+    // #endregion debug-point
   }
 
   function disconnect(): void {

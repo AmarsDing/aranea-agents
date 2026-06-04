@@ -113,6 +113,13 @@ func (s *WSServer) eventPump(wc *wsConn, eventCh <-chan event.Envelope) {
 		<-wc.replayDone
 	}
 	for env := range eventCh {
+		if env.Type == event.EnvelopeTypeError {
+			s.lg.With(loggateway.SessionID(wc.sessionID)).Info("eventPump received error envelope",
+				loggateway.StepID("ws.eventPump_error"),
+				loggateway.Any("channel", env.Channel),
+				loggateway.Any("envelope_id", env.ID),
+				loggateway.Any("hasChannel", wc.hasChannel(env.Channel)))
+		}
 		if !wc.hasChannel(env.Channel) {
 			continue
 		}

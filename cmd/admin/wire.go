@@ -662,7 +662,15 @@ func (a *wsTurnExecutorAdapter) ExecuteTurn(ctx context.Context, input server.WS
 			AllowStream: input.AllowStream,
 		},
 	}
+	start := time.Now()
 	_, err := a.gateway.ExecuteTurn(ctx, bizInput)
+	elapsed := time.Since(start)
+	if lg := loggateway.FromContext(ctx); lg != nil {
+		lg.With(loggateway.SessionID(input.SessionID)).Info("wsTurnExecutorAdapter.ExecuteTurn 完成",
+			loggateway.StepID("ws.adapter_turn_done"),
+			loggateway.Any("elapsed_ms", elapsed.Milliseconds()),
+			loggateway.Any("has_error", err != nil))
+	}
 	return err
 }
 

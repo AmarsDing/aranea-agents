@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"strings"
 	"time"
@@ -93,6 +94,17 @@ func SeedIndustryAgentsRawSQL(ctx context.Context, rawDB *sql.DB, scenarioDir st
 		return fmt.Errorf("industry agent seed version check: %w", qErr)
 	}
 	if exists > 0 {
+		// 2026-06-04 fix for agent-save-timeout: the early-return path used to
+		// set `committed = true` without ever calling tx.Commit() / tx.Rollback().
+		// Go's database/sql holds the underlying connection until a Tx is
+		// finalized; combined with SQLite's MaxOpenConns=1 write pool, the
+		// dangling Tx permanently stole the only write connection and froze
+		// every subsequent write (PATCH /v1/agents/{id} etc.) until restart.
+		// Roll back explicitly — this path performed no writes, so rollback
+		// is the semantically correct way to release the connection.
+		if err := tx.Rollback(); err != nil && !stderrors.Is(err, sql.ErrTxDone) {
+			return fmt.Errorf("rollback no-op seed tx: %w", err)
+		}
 		committed = true
 		return nil
 	}

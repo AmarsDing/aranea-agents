@@ -195,7 +195,7 @@ func BuildTRPCLLMAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps, 
 // Layer A + B routing is applied via skillruntime.AgentVisibilityFilter using
 // agent_runtime_settings.skill_runtime_json and the turn query in RuntimeState.
 func buildSkillDeps(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (trpcskill.Repository, trpcskill.VisibilityFilter, codeexecutor.CodeExecutor, error) {
-	lg := deps.LG
+	lg := deps.Logger()
 	slugs, err := deps.SkillUC.ListEnabledPublishedSkillKeys(ctx)
 	if err != nil || len(slugs) == 0 {
 		lg.Warn("技能构建：无可用技能",
@@ -234,7 +234,7 @@ func buildSkillDeps(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (tr
 	if ag.Settings != nil {
 		runtime = ag.Settings
 	}
-	filter := skillruntime.NewAgentVisibilityFilter(deps.SkillUC, runtime, deps.LG, ag.AgentKey)
+	filter := skillruntime.NewAgentVisibilityFilter(deps.SkillUC, runtime, deps.Logger(), ag.AgentKey)
 
 	execType := ""
 	if runtime != nil {
@@ -242,9 +242,9 @@ func buildSkillDeps(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (tr
 	}
 	factory := deps.CodeExecFactory
 	if factory == nil {
-		factory = localexec.NewFactoryWithLogger(deps.LG)
+		factory = localexec.NewFactoryWithLogger(deps.Logger())
 	}
-	exec := skilltrpc.NewExecutorForAgent(ctx, factory, execType, rootDir, deps.LG)
+	exec := skilltrpc.NewExecutorForAgent(ctx, factory, execType, rootDir, deps.Logger())
 	lg.Info("技能构建完成",
 		loggateway.StepID("agent.skill_build"),
 		loggateway.Str("flow_status", "done"),

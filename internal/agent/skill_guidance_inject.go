@@ -34,7 +34,7 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 		}
 		runtime := ag.Settings
 		opts := &skillruntime.SkillToolsetOptions{Runtime: runtime, UserQuery: skillruntime.TurnQueryFromContext(ctx)}
-		result, err := skillruntime.ResolveSkillSlugsDetailed(ctx, deps.SkillUC, opts, deps.LG)
+		result, err := skillruntime.ResolveSkillSlugsDetailed(ctx, deps.SkillUC, opts, deps.Logger())
 		if err != nil || len(result.Slugs) == 0 {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
@@ -78,7 +78,7 @@ func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		}
 		runtime := ag.Settings
 		opts := &skillruntime.SkillToolsetOptions{Runtime: runtime, UserQuery: skillruntime.TurnQueryFromContext(ctx)}
-		result, err := skillruntime.ResolveSkillSlugsDetailed(ctx, deps.SkillUC, opts, deps.LG)
+		result, err := skillruntime.ResolveSkillSlugsDetailed(ctx, deps.SkillUC, opts, deps.Logger())
 		if err != nil || len(result.Slugs) == 0 {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}

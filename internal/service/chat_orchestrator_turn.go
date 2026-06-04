@@ -117,6 +117,8 @@ func (o *ChatOrchestrator) runNativeAgentTurnBody(ctx context.Context, input biz
 	if err != nil {
 		unlock()
 		flow.LogError("chat.session_fetch", "获取会话失败", event.P("error", err.Error()))
+		o.lg.With(loggateway.SessionID(sessionID)).Info("runNativeAgentTurnBody: Sessions.Get 失败",
+			loggateway.StepID("chat.session_get_fail"), loggateway.Err(err))
 		if errors.Is(err, sql.ErrNoRows) {
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.NotFound("SESSION", "session not found")
 		}
@@ -748,6 +750,8 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			AttachmentsCount: attN,
 		}
 		if err := o.td.Sessions.AppendChatMessage(ctx, sessionID, userMsg, false); err != nil {
+			o.lg.With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: AppendChatMessage 失败",
+				loggateway.StepID("chat.append_user_msg_fail"), loggateway.Err(err))
 			markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
 			o.publishTurnFailure(sessionID, runID, "chat-service", err, "")
 			return biz.ChatMessage{}, biz.ChatMessage{}, err
@@ -820,6 +824,12 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		}
 	})
 	emitter.LogStart("chat.llm.invoke", "正在调用语言模型")
+	o.lg.With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始构建 userMessage + 调用 LLM",
+		loggateway.StepID("chat.llm_invoke_start"),
+		loggateway.Any("provider", prov),
+		loggateway.Any("model", mod),
+		loggateway.Any("run_id", runID))
+	llmStart := time.Now()
 	userTurnMsg, err := o.buildUserMessage(runCtx, sessionID, content, input.Options.AttachmentIDs)
 	if err != nil {
 		markTurnError(&turnStatus, &turnErr, &turnErrMsg, err)
@@ -833,6 +843,10 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	llmCtx, llmSpan := traceBridge.StartChild(runCtx, "chat.llm.invoke")
 	events, err := chatagent.RunTRPCUserTurnMsg(llmCtx, runner, uid, sessionID, userTurnMsg, runOpts...)
 	turntrace.EndChild(llmSpan, err)
+	o.lg.With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: LLM 调用返回",
+		loggateway.StepID("chat.llm_invoke_done"),
+		loggateway.Any("elapsed_ms", time.Since(llmStart).Milliseconds()),
+		loggateway.Any("has_error", err != nil))
 	if err != nil {
 		turnStatus = "error"
 		turnErr = err

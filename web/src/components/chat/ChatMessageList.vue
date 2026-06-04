@@ -4,7 +4,7 @@
       v-if="!messages.length"
       ref="emptyScrollEl"
       class="col relative-position chat-messages__viewport"
-      @click="$emit('messages-click')"
+      @click="$emit('messages-click', $event)"
     >
       <div class="chat-empty-state column items-center justify-center">
         <div class="chat-empty-state__halo">
@@ -38,7 +38,7 @@
       :virtual-scroll-slice-ratio-before="2"
       :virtual-scroll-slice-ratio-after="2"
       @scroll="$emit('scroll', $event)"
-      @click="$emit('messages-click')"
+      @click="$emit('messages-click', $event)"
     >
       <TurnBlock
         v-if="useTurnBlockMode && item.kind === 'block'"
@@ -90,7 +90,7 @@
       ref="normalScrollEl"
       class="col relative-position chat-messages__viewport"
       @scroll.passive="$emit('scroll', $event)"
-      @click="$emit('messages-click')"
+      @click="$emit('messages-click', $event)"
     >
       <template v-if="useTurnBlockMode">
         <TurnBlock
@@ -185,7 +185,7 @@ const props = defineProps<{
 }>();
 
 defineEmits<{
-  'messages-click': [];
+  'messages-click': [event: MouseEvent];
   scroll: [event: Event];
   'scroll-to-bottom': [smooth: boolean];
   'a2ui-user-action': [payload: any];

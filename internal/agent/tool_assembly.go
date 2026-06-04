@@ -21,7 +21,7 @@ import (
 )
 
 func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDeps) (*tooltrpc.AssembledToolsets, error) {
-	lg := deps.LG
+	lg := deps.Logger()
 	var cfg tooltrpc.ToolsetConfig
 	var eff map[string]bool
 
@@ -109,7 +109,7 @@ func buildToolsetsForAgent(ctx context.Context, ag biz.Agent, deps TRPCBuilderDe
 		lg.Error("工具构建失败", loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
 		return nil, err
 	}
-	ts, err := tooltrpc.BuildToolsets(ctx, cfg, deps.LG)
+	ts, err := tooltrpc.BuildToolsets(ctx, cfg, deps.Logger())
 	if err != nil || ts == nil {
 		lg.Error("工具构建失败", loggateway.StepID("agent.tool_build"), loggateway.Str("agent_id", ag.ID), loggateway.Err(err))
 		return ts, err
