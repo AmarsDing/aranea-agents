@@ -1,0 +1,23 @@
+api_version: v1
+kind: industry
+name: 内置模板
+description: 系统内置 Agent 模板与 Graph 模板
+version: "1.0.0"
+author: system
+contents:
+  taxonomy: true
+  agents:
+    - key: fox
+    - key: programmer
+    - key: support
+    - key: writer
+    - key: translator
+    - key: luo
+    - key: mimi
+  graphs:
+    - key: pipeline
+    - key: approval
+    - key: parallel_review
+    - key: review_loop
+    - key: dispatch
+    - key: nested_subgraph

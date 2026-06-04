@@ -63,7 +63,7 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 	teamID := strings.TrimSpace(sess.TeamID)
 
 	if teamID != "" {
-		if _, updateErr := s.team.TeamUC.Update(ctx, teamID, biz.Team{Status: biz.TeamStatusRunning}); updateErr != nil {
+		if _, updateErr := s.team.TeamUC.TransitionStatus(ctx, teamID, biz.TeamStatusRunning); updateErr != nil {
 			s.lg.Warn("更新团队状态为 running 失败",
 				loggateway.StepID("spirit.team.running_err"),
 				loggateway.Str("team_id", teamID),
@@ -150,7 +150,7 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 	var envType event.EnvelopeType
 	if status == biz.TeamStatusCompleted {
 		envType = event.EnvelopeTypeSpiritTeamCompleted
-		if _, updateErr := s.team.TeamUC.Update(ctx, teamID, biz.Team{Status: biz.TeamStatusCompleted}); updateErr != nil {
+		if _, updateErr := s.team.TeamUC.TransitionStatus(ctx, teamID, biz.TeamStatusCompleted); updateErr != nil {
 			s.lg.Warn("更新团队状态为 completed 失败",
 				loggateway.StepID("spirit.team.completed_err"),
 				loggateway.Str("team_id", teamID),
@@ -161,7 +161,7 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		s.scheduleDependentTeams(ctx, spiritSessionID, team)
 	} else if status == biz.TeamStatusCancelled {
 		envType = event.EnvelopeTypeSpiritTeamFailed
-		if _, updateErr := s.team.TeamUC.Update(ctx, teamID, biz.Team{Status: biz.TeamStatusCancelled}); updateErr != nil {
+		if _, updateErr := s.team.TeamUC.TransitionStatus(ctx, teamID, biz.TeamStatusCancelled); updateErr != nil {
 			s.lg.Warn("更新团队状态为 cancelled 失败",
 				loggateway.StepID("spirit.team.cancelled_err"),
 				loggateway.Str("team_id", teamID),
@@ -185,7 +185,7 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		}
 	} else {
 		envType = event.EnvelopeTypeSpiritTeamFailed
-		if _, updateErr := s.team.TeamUC.Update(ctx, teamID, biz.Team{Status: biz.TeamStatusFailed}); updateErr != nil {
+		if _, updateErr := s.team.TeamUC.TransitionStatus(ctx, teamID, biz.TeamStatusFailed); updateErr != nil {
 			s.lg.Warn("更新团队状态为 failed 失败",
 				loggateway.StepID("spirit.team.failed_err"),
 				loggateway.Str("team_id", teamID),
@@ -312,7 +312,7 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 			}
 		}
 		if anyDepFailed {
-			_, uerr := s.team.TeamUC.Update(ctx, t.ID, biz.Team{Status: biz.TeamStatusFailed})
+			_, uerr := s.team.TeamUC.TransitionStatus(ctx, t.ID, biz.TeamStatusFailed)
 			if uerr != nil {
 				s.lg.Warn("更新团队状态为 failed 失败，依赖调度中断",
 					loggateway.StepID("spirit.schedule_deps.fail_err"),
@@ -351,7 +351,7 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 			)
 			continue
 		}
-		_, uerr := s.team.TeamUC.Update(ctx, t.ID, biz.Team{Status: biz.TeamStatusRunning})
+		_, uerr := s.team.TeamUC.TransitionStatus(ctx, t.ID, biz.TeamStatusRunning)
 		if uerr != nil {
 			s.lg.Warn("更新团队状态失败，依赖调度中断",
 				loggateway.StepID("spirit.schedule_deps.update_err"),

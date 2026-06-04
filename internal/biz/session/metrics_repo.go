@@ -22,7 +22,7 @@ type SessionRuntimeReader interface {
 // SessionRuntimeWriter writes session runtime state to the session_runtime table.
 type SessionRuntimeWriter interface {
 	UpsertSessionRuntime(ctx context.Context, sessionID string, runtime *SessionRuntime) error
-	TransitionSessionStatus(ctx context.Context, sessionID string, status string, statusReason string, statusChangedAt string) error
+	TransitionSessionStatus(ctx context.Context, sessionID string, currentStatus string, newStatus string, statusReason string, statusChangedAt string) error
 }
 
 // SessionMetrics holds the metrics fields for a session.

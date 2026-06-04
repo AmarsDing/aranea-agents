@@ -24,7 +24,7 @@ func (uc *SessionUsecase) BatchTransitionInterrupted(ctx context.Context, reason
 	for _, s := range sessions {
 		var updateErr error
 		if uc.runtimeWriter != nil {
-			updateErr = uc.runtimeWriter.TransitionSessionStatus(ctx, s.ID, interrupted, reasonStr, changedAt)
+			updateErr = uc.runtimeWriter.TransitionSessionStatus(ctx, s.ID, s.Status, interrupted, reasonStr, changedAt)
 		} else {
 			_, updateErr = uc.sessionWriter.UpdateSession(ctx, s.ID, SessionUpdateFields{
 				Status:          &interrupted,

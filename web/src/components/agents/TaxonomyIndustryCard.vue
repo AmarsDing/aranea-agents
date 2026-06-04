@@ -1,111 +1,124 @@
 <template>
-  <q-card
-    flat
-    bordered
-    :class="['taxonomy-industry-card', { 'is-dark': isDark, 'taxonomy-industry-card--disabled': !industry.enabled }]"
+  <article
+    :class="['taxonomy-industry-card', { 'is-dark': isDark, 'is-disabled': !industry.enabled }]"
   >
-    <div class="taxonomy-industry-card__inner">
-      <header class="taxonomy-industry-card__head">
-        <div class="taxonomy-industry-card__head-main min-width-0">
-          <div class="taxonomy-industry-card__title-row">
-            <q-avatar
-              rounded
-              color="primary"
-              text-color="white"
-              icon="domain"
-              size="36px"
-              class="taxonomy-industry-card__avatar"
-            />
-            <h3 class="taxonomy-industry-card__name ellipsis">{{ industry.name }}</h3>
-            <q-chip dense square size="sm" :class="isSystem ? 'system-chip' : 'custom-chip'">
-              {{ isSystem ? '系统' : '自建' }}
-            </q-chip>
-            <q-chip v-if="!industry.enabled" dense square size="sm" class="taxonomy-industry-card__status-off"
-              >已停用</q-chip
-            >
-          </div>
-          <p v-if="description" class="taxonomy-industry-card__desc">{{ description }}</p>
-        </div>
-      </header>
-
-      <div class="taxonomy-industry-card__stats">
-        <div class="taxonomy-industry-card__stat">
-          <strong>{{ deptCount }}</strong
-          ><span>部门</span>
-        </div>
-        <div class="taxonomy-industry-card__stat">
-          <strong>{{ posCount }}</strong
-          ><span>职位</span>
+    <!-- Header: monogram + title + status -->
+    <header class="taxonomy-industry-card__head">
+      <div class="taxonomy-industry-card__mono" :style="{ background: monoBg }" :aria-label="`行业 ${industry.name}`">
+        <span>{{ monoLetters }}</span>
+      </div>
+      <div class="taxonomy-industry-card__title">
+        <h3 class="taxonomy-industry-card__name">{{ industry.name }}</h3>
+        <div class="taxonomy-industry-card__key">
+          <span class="taxonomy-industry-card__key-prefix">key</span>
+          <span class="app-mono">{{ industry.key }}</span>
         </div>
       </div>
+      <span :class="['taxonomy-industry-card__status', industry.enabled ? 'is-on' : 'is-off']">
+        <span class="taxonomy-industry-card__status-dot" />
+        {{ industry.enabled ? '已启用' : '已停用' }}
+      </span>
+    </header>
 
-      <div v-if="departments.length" class="taxonomy-industry-card__departments">
+    <!-- Description -->
+    <p v-if="description" class="taxonomy-industry-card__desc">{{ description }}</p>
+
+    <hr class="taxonomy-industry-card__divider" />
+
+    <!-- Metrics -->
+    <div class="taxonomy-industry-card__metrics">
+      <div class="taxonomy-industry-card__metric">
+        <span class="taxonomy-industry-card__metric-value app-mono">{{ deptCount }}</span>
+        <span class="taxonomy-industry-card__metric-label">部门</span>
+      </div>
+      <div class="taxonomy-industry-card__metric">
+        <span class="taxonomy-industry-card__metric-value app-mono">{{ posCount }}</span>
+        <span class="taxonomy-industry-card__metric-label">职位</span>
+      </div>
+      <div class="taxonomy-industry-card__metric">
+        <span class="taxonomy-industry-card__metric-value app-mono">{{ isSystem ? '系统' : '自建' }}</span>
+        <span class="taxonomy-industry-card__metric-label">来源</span>
+      </div>
+    </div>
+
+    <!-- Collapsible departments -->
+    <div v-if="departments.length" class="taxonomy-industry-card__depts">
+      <button
+        type="button"
+        class="taxonomy-industry-card__depts-toggle"
+        @click="deptsExpanded = !deptsExpanded"
+      >
+        <q-icon :name="deptsExpanded ? 'expand_less' : 'expand_more'" size="18px" />
+        <span>{{ deptsExpanded ? '收起部门' : `查看 ${departments.length} 个部门` }}</span>
+      </button>
+      <div v-if="deptsExpanded" class="taxonomy-industry-card__depts-list">
         <div v-for="dept in departments" :key="dept.id" class="taxonomy-industry-card__dept">
           <div class="taxonomy-industry-card__dept-head">
-            <q-icon name="lan" size="16px" color="primary" />
+            <q-icon name="lan" size="14px" />
             <span class="taxonomy-industry-card__dept-name ellipsis">{{ dept.name }}</span>
-            <q-chip dense square size="sm" :class="parseIsSystem(dept) ? 'system-chip' : 'custom-chip'">{{
-              parseIsSystem(dept) ? '系统' : '自建'
-            }}</q-chip>
             <span class="taxonomy-industry-card__dept-count">{{ positionNodes(dept).length }} 职位</span>
+            <q-chip dense square size="sm" :class="parseIsSystem(dept) ? 'system-chip' : 'custom-chip'">
+              {{ parseIsSystem(dept) ? '系统' : '自建' }}
+            </q-chip>
           </div>
           <div v-if="positionNodes(dept).length" class="taxonomy-industry-card__positions">
             <div v-for="pos in positionNodes(dept)" :key="pos.id" class="taxonomy-industry-card__position">
-              <q-icon name="badge" size="14px" />
+              <q-icon name="badge" size="12px" />
               <span class="ellipsis">{{ pos.name }}</span>
               <q-chip v-if="!pos.enabled" dense square size="sm" class="taxonomy-industry-card__pos-off">停用</q-chip>
             </div>
           </div>
         </div>
       </div>
-
-      <footer class="taxonomy-industry-card__foot">
-        <div class="taxonomy-industry-card__action-group">
-          <q-btn
-            flat
-            dense
-            round
-            size="sm"
-            color="primary"
-            icon="add"
-            @click.stop="$emit('createChild', 'department', industry)"
-          >
-            <q-tooltip>新增部门</q-tooltip>
-          </q-btn>
-          <q-btn flat dense round size="sm" color="primary" icon="edit" @click.stop="$emit('edit', industry)">
-            <q-tooltip>编辑行业</q-tooltip>
-          </q-btn>
-          <q-btn
-            flat
-            dense
-            round
-            size="sm"
-            :color="industry.enabled ? 'negative' : 'positive'"
-            :icon="industry.enabled ? 'pause' : 'play_arrow'"
-            @click.stop="$emit('toggleEnabled', industry, !industry.enabled)"
-          >
-            <q-tooltip>{{ industry.enabled ? '停用' : '启用' }}</q-tooltip>
-          </q-btn>
-          <q-btn
-            v-if="!isSystem"
-            flat
-            dense
-            round
-            size="sm"
-            color="negative"
-            icon="delete"
-            @click.stop="$emit('remove', industry)"
-          >
-            <q-tooltip>删除</q-tooltip>
-          </q-btn>
-        </div>
-      </footer>
     </div>
-  </q-card>
+
+    <!-- Footer: actions -->
+    <footer class="taxonomy-industry-card__foot">
+      <div class="taxonomy-industry-card__action-group">
+        <q-btn
+          flat
+          dense
+          round
+          size="sm"
+          color="primary"
+          icon="add"
+          @click.stop="$emit('createChild', 'department', industry)"
+        >
+          <q-tooltip>新增部门</q-tooltip>
+        </q-btn>
+        <q-btn flat dense round size="sm" color="primary" icon="edit" @click.stop="$emit('edit', industry)">
+          <q-tooltip>编辑行业</q-tooltip>
+        </q-btn>
+        <q-btn
+          flat
+          dense
+          round
+          size="sm"
+          :color="industry.enabled ? 'negative' : 'positive'"
+          :icon="industry.enabled ? 'pause' : 'play_arrow'"
+          @click.stop="$emit('toggleEnabled', industry, !industry.enabled)"
+        >
+          <q-tooltip>{{ industry.enabled ? '停用' : '启用' }}</q-tooltip>
+        </q-btn>
+        <q-btn
+          v-if="!isSystem"
+          flat
+          dense
+          round
+          size="sm"
+          color="negative"
+          icon="delete"
+          @click.stop="$emit('remove', industry)"
+        >
+          <q-tooltip>删除</q-tooltip>
+        </q-btn>
+      </div>
+    </footer>
+  </article>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import type { PlatformResourceTreeNode } from '../../features/platform/types';
 import {
   parseIsSystem,
@@ -113,6 +126,7 @@ import {
   departmentPositions,
   type TaxonomyLevel,
 } from '../../features/platform/taxonomyTreeUtils';
+import { monoBgForKey, monoLettersForKey } from '../../features/industries/industryMonogram';
 
 const props = defineProps<{
   industry: PlatformResourceTreeNode;
@@ -126,13 +140,251 @@ defineEmits<{
   toggleEnabled: [node: PlatformResourceTreeNode, enabled: boolean];
 }>();
 
+const deptsExpanded = ref(false);
+
 const isSystem = computed(() => parseIsSystem(props.industry));
 const description = computed(() => trimmedDesc(props.industry.description));
 const departments = computed(() => (props.industry.children ?? []).filter((node) => node.level === 'department'));
 const deptCount = computed(() => departments.value.length);
 const posCount = computed(() => departments.value.reduce((sum, dept) => sum + positionNodes(dept).length, 0));
 
+const monoBg = computed(() => monoBgForKey(props.industry.key));
+const monoLetters = computed(() => monoLettersForKey(props.industry.key, props.industry.name));
+
 function positionNodes(dept: PlatformResourceTreeNode) {
   return departmentPositions(dept);
 }
 </script>
+
+<style lang="sass" scoped>
+.taxonomy-industry-card
+  position: relative
+  display: flex
+  flex-direction: column
+  padding: 18px 20px 16px
+  border: 1px solid var(--glass-border)
+  border-radius: 18px
+  background: var(--glass-surface)
+  backdrop-filter: blur(18px)
+  -webkit-backdrop-filter: blur(18px)
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45)
+  transition: transform 0.18s ease, border-color 0.18s, box-shadow 0.18s
+
+  &:hover
+    transform: translateY(-2px)
+    border-color: color-mix(in srgb, var(--color-accent) 30%, var(--glass-border))
+    box-shadow: 0 8px 24px rgba(93, 64, 55, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.45)
+
+  &.is-disabled
+    opacity: 0.55
+
+/* ── Header ── */
+.taxonomy-industry-card__head
+  display: flex
+  align-items: flex-start
+  gap: 12px
+  margin-bottom: 12px
+
+.taxonomy-industry-card__mono
+  width: 40px
+  height: 40px
+  flex-shrink: 0
+  border-radius: 10px
+  display: grid
+  place-items: center
+  font-weight: 700
+  font-size: 14px
+  letter-spacing: 0.02em
+  color: #fff
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 2px 6px rgba(0, 0, 0, 0.06)
+  user-select: none
+
+.taxonomy-industry-card__title
+  flex: 1
+  min-width: 0
+
+.taxonomy-industry-card__name
+  margin: 0
+  font-size: 15px
+  font-weight: 600
+  letter-spacing: -0.01em
+  color: var(--color-text-primary)
+
+.taxonomy-industry-card__key
+  font-size: 11.5px
+  color: var(--color-text-tertiary)
+  margin-top: 2px
+  display: flex
+  gap: 4px
+
+.taxonomy-industry-card__key-prefix
+  color: var(--color-text-tertiary)
+
+/* ── Status badge ── */
+.taxonomy-industry-card__status
+  flex-shrink: 0
+  display: flex
+  align-items: center
+  gap: 4px
+  font-size: 11.5px
+  padding: 3px 8px
+  border-radius: 999px
+  white-space: nowrap
+
+  &.is-on
+    background: var(--color-success-soft, #ECFDF3)
+    color: #2D6A4F
+
+  &.is-off
+    background: rgba(229, 92, 92, 0.1)
+    color: #B13939
+
+.taxonomy-industry-card__status-dot
+  width: 6px
+  height: 6px
+  border-radius: 50%
+  background: currentColor
+
+/* ── Description ── */
+.taxonomy-industry-card__desc
+  font-size: 12.5px
+  color: var(--color-text-secondary)
+  margin: 0 0 14px
+  min-height: 36px
+  line-height: 1.5
+  display: -webkit-box
+  -webkit-line-clamp: 2
+  -webkit-box-orient: vertical
+  overflow: hidden
+
+/* ── Divider ── */
+.taxonomy-industry-card__divider
+  border: 0
+  border-top: 1px solid var(--color-border-soft, rgba(141, 110, 99, 0.12))
+  margin: 0 0 12px
+
+/* ── Metrics ── */
+.taxonomy-industry-card__metrics
+  display: grid
+  grid-template-columns: repeat(3, 1fr)
+  gap: 4px
+  margin-bottom: 12px
+
+.taxonomy-industry-card__metric
+  display: flex
+  flex-direction: column
+  gap: 2px
+
+.taxonomy-industry-card__metric-value
+  font-size: 16px
+  font-weight: 600
+  letter-spacing: -0.01em
+  line-height: 1.1
+  color: var(--color-text-primary)
+
+.taxonomy-industry-card__metric-label
+  font-size: 10.5px
+  color: var(--color-text-tertiary)
+  letter-spacing: 0.02em
+
+/* ── Departments (collapsible) ── */
+.taxonomy-industry-card__depts
+  margin-bottom: 12px
+
+.taxonomy-industry-card__depts-toggle
+  display: inline-flex
+  align-items: center
+  gap: 4px
+  padding: 5px 10px
+  border-radius: 8px
+  font-size: 12px
+  font-weight: 500
+  background: transparent
+  border: 0
+  cursor: pointer
+  color: var(--color-text-secondary)
+  transition: background 0.12s, color 0.12s
+
+  &:hover
+    background: var(--interaction-surface-hover, #FDF6E8)
+    color: var(--color-text-primary)
+
+.taxonomy-industry-card__depts-list
+  margin-top: 8px
+  display: flex
+  flex-direction: column
+  gap: 6px
+
+.taxonomy-industry-card__dept
+  border: 1px solid var(--glass-border)
+  border-radius: 12px
+  background: color-mix(in srgb, var(--color-page-tint, #FEF3E4) 40%, var(--glass-surface))
+  overflow: hidden
+
+.taxonomy-industry-card__dept-head
+  display: flex
+  align-items: center
+  gap: 6px
+  padding: 5px 10px
+  font-size: 12.5px
+  font-weight: 600
+  color: var(--color-text-primary)
+
+.taxonomy-industry-card__dept-name
+  flex: 1
+  min-width: 0
+
+.taxonomy-industry-card__dept-count
+  font-size: 11px
+  color: var(--color-text-tertiary)
+  white-space: nowrap
+
+.taxonomy-industry-card__positions
+  padding: 2px 10px 6px 26px
+  display: flex
+  flex-direction: column
+  gap: 2px
+
+.taxonomy-industry-card__position
+  display: flex
+  align-items: center
+  gap: 5px
+  font-size: 12px
+  color: var(--color-text-secondary)
+
+.taxonomy-industry-card__pos-off
+  background: color-mix(in srgb, var(--color-negative) 12%, transparent)
+  color: var(--color-negative)
+
+/* ── Footer ── */
+.taxonomy-industry-card__foot
+  display: flex
+  align-items: center
+  justify-content: space-between
+  padding-top: 10px
+  border-top: 1px solid var(--color-border-soft, rgba(141, 110, 99, 0.12))
+
+.taxonomy-industry-card__action-group
+  display: flex
+  align-items: center
+  gap: 2px
+
+/* ── Dark mode ── */
+body.body--dark .taxonomy-industry-card
+  background: color-mix(in srgb, var(--glass-elevated) 60%, transparent)
+
+  .taxonomy-industry-card__dept
+    background: color-mix(in srgb, var(--color-page-tint, #1a1f2e) 20%, var(--glass-elevated))
+
+  .taxonomy-industry-card__status.is-on
+    background: rgba(63, 224, 160, 0.12)
+    color: #3FE0A0
+
+  .taxonomy-industry-card__status.is-off
+    background: rgba(255, 94, 122, 0.12)
+    color: #FF5E7A
+
+.app-mono
+  font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace
+  font-feature-settings: 'tnum' 1
+</style>

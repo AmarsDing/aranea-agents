@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type compiledTeamRepo struct {
@@ -52,7 +54,7 @@ func (r *compiledTeamRepo) Save(ctx context.Context, teamID, graphID, sessionID 
 	graphID = strings.TrimSpace(graphID)
 	sessionID = strings.TrimSpace(sessionID)
 	if teamID == "" || graphID == "" {
-		return fmt.Errorf("compiled_team repo save: team_id and graph_id required")
+		return kerrors.BadRequest("COMPILED_TEAM", "team_id and graph_id required")
 	}
 	configJSON, err := json.Marshal(ct)
 	if err != nil {
@@ -84,7 +86,7 @@ func (r *compiledTeamRepo) Load(ctx context.Context, teamID, graphID string) (*b
 	err := queryRowScan(ctx, db, `SELECT config_json FROM compiled_teams WHERE id = ? LIMIT 1`, []any{id}, &configJSON)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("compiled_team repo load: not found: %s", id)
+			return nil, kerrors.NotFound("COMPILED_TEAM", fmt.Sprintf("compiled_team not found: %s", id))
 		}
 		return nil, fmt.Errorf("compiled_team repo load: %w", err)
 	}
@@ -106,7 +108,7 @@ func (r *compiledTeamRepo) LoadForSession(ctx context.Context, teamID, graphID, 
 	if sessionID != "" && r.runtimeReader != nil {
 		rt, err := r.runtimeReader.GetSessionRuntime(ctx, sessionID)
 		if err != nil || rt == nil {
-			return nil, fmt.Errorf("compiled_team repo load_for_session: session %s not active", sessionID)
+			return nil, kerrors.New(412, "COMPILED_TEAM", fmt.Sprintf("session %s not active", sessionID))
 		}
 	}
 	return ct, nil

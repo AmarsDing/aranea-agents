@@ -69,7 +69,7 @@
 
 #### Scenario: 校验通过
 - **WHEN** 上传有效的 .arpack 文件进行校验
-- **THEN** 系统 SHALL 返回 ValidatePackResponse：`{valid: true, errors: [], missing_skills: [...], missing_func_refs: [...], conflicts: [...]}`
+- **THEN** 系统 SHALL 返回 ValidatePackResponse：`{valid: true, errors: [], warnings: [], missing_skills: [...], missing_func_refs: [...], conflicts: [...]}`
 
 #### Scenario: 校验发现阻断问题
 - **WHEN** 校验发现缺失的 func_ref
@@ -111,4 +111,4 @@
 
 #### Scenario: 构造方式
 - **GIVEN** NewPackRepoAdapter 函数
-- **THEN** SHALL 接受 `biz.AgentRepository`、`biz.TeamRepository`、`biz.TaxonomyRepo`、`biz.GraphRepo` 四个参数
+- **THEN** SHALL 接受 `biz.AgentRepository`、`biz.TeamRepository`、`biz.TaxonomyRepo`、`biz.GraphRepo`、`biz.SkillLookupReader` 五个参数

@@ -154,6 +154,7 @@ type GraphExecution struct {
 	FinishedAt    *time.Time
 	execMu        sync.RWMutex // protects Status, CurrentNode, LineageID, ErrorMessage, Steps, runtime, FinishedAt
 	evicted       bool         // set by GC before removing from map; not persisted
+	ctx           context.Context // detached context preserving trace info for background DB writes
 }
 
 func (e *GraphExecution) GetStatus() string {
@@ -315,7 +316,7 @@ func ShouldCreateTeamGraphTaskNode(node *NodeDef) bool {
 
 const gcInterval = 5 * time.Minute
 const executionMaxAge = 30 * time.Minute
-const maxExecutions = 500
+const maxExecutions = 500 // per-node execution cache limit; estimated at ~1KB per execution, ~500KB per node
 
 func (uc *GraphUsecase) gcLoop() {
 	ticker := time.NewTicker(gcInterval)
@@ -357,7 +358,11 @@ func (uc *GraphUsecase) gc() {
 
 	// Persist expired executions to repo before discarding from memory.
 	for _, exec := range expired {
-		if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
+		persistCtx := exec.ctx
+		if persistCtx == nil {
+			persistCtx = context.Background()
+		}
+		if err := uc.runRepo.UpdateRun(persistCtx, exec); err != nil {
 			uc.lg.Error("gc expired execution persist failed", loggateway.StepID("graph.gc_expired_persist"), loggateway.Str("run_id", exec.ID), loggateway.Err(err))
 		}
 	}

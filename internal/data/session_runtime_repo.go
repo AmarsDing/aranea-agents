@@ -95,25 +95,34 @@ func (r *sessionRuntimeRepo) UpsertSessionRuntime(ctx context.Context, sessionID
 	return err
 }
 
-// TransitionSessionStatus updates session status fields in the sessions table.
-// Routed through SessionRuntimeRepo so that all runtime-related mutations
-// (status, runtime state) flow through a single interface.
-func (r *sessionRuntimeRepo) TransitionSessionStatus(ctx context.Context, sessionID string, status string, statusReason string, statusChangedAt string) error {
+// TransitionSessionStatus updates the session status in the sessions table.
+// Although hosted on sessionRuntimeRepo, status transitions are part of the runtime
+// management domain (lifecycle control), not the metrics domain.
+// The sessions table is the single source of truth for status; session_runtime
+// holds extended runtime state.
+// currentStatus is used as a WHERE condition to prevent TOCTOU races:
+// the UPDATE only succeeds if the row still has the expected current status.
+// TODO(test): Add unit tests for TransitionSessionStatus covering: normal transition, empty sessionID, DB error, concurrent status conflict.
+func (r *sessionRuntimeRepo) TransitionSessionStatus(ctx context.Context, sessionID string, currentStatus string, newStatus string, statusReason string, statusChangedAt string) error {
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return nil
 	}
 	c := r.data.RW().Write(ctx)
 	now := nowRFC3339()
-	_, err := c.Session.Update().
-		Where(entsession.IDEQ(sessionID)).
-		SetStatus(status).
+	n, err := c.Session.Update().
+		Where(entsession.IDEQ(sessionID), entsession.StatusEQ(currentStatus)).
+		SetStatus(newStatus).
 		SetStatusReason(statusReason).
 		SetStatusChangedAt(statusChangedAt).
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {
 		r.data.lg.Warn("transition session status failed", loggateway.StepID("data.session_runtime.transition_status"), loggateway.Err(err))
+		return err
 	}
-	return err
+	if n == 0 {
+		r.data.lg.Warn("transition session status: no rows affected (status already changed?)", loggateway.StepID("data.session_runtime.transition_status_noop"), loggateway.Str("session_id", sessionID), loggateway.Str("current_status", currentStatus), loggateway.Str("new_status", newStatus))
+	}
+	return nil
 }

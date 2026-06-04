@@ -255,6 +255,8 @@ func NewEnvelope(typ EnvelopeType, author, sessionID string) Envelope {
 }
 
 // RouteChannel returns the logical channel name for routing an envelope.
+// TECH-DEBT: RouteChannel switch-case violates OCP. Consider per-domain routing tables
+// or attaching channel metadata to EnvelopeType definitions.
 func RouteChannel(env Envelope) string {
 	switch env.Type {
 	case EnvelopeTypeLog, EnvelopeTypeFlowLog:

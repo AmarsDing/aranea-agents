@@ -53,20 +53,21 @@ const emit = defineEmits<{
 
 const statusOptions = [
   { label: '全部', value: '' },
-  { label: '活跃', value: 'active' },
-  { label: '已归档', value: 'archived' },
+  { label: '已检测', value: 'detected' },
+  { label: '已确认', value: 'confirmed' },
+  { label: '已忽略', value: 'dismissed' },
 ];
 
 function patternKindColor(kind: string): string {
   switch (kind) {
-    case 'tool_usage':
+    case 'tool_call':
       return 'blue';
-    case 'error':
-      return 'red';
-    case 'behavior':
-      return 'teal';
-    case 'preference':
+    case 'feedback':
       return 'purple';
+    case 'memory_hit':
+      return 'teal';
+    case 'memory_miss':
+      return 'grey';
     default:
       return 'grey';
   }
@@ -74,12 +75,12 @@ function patternKindColor(kind: string): string {
 
 function patternStatusColor(status: string): string {
   switch (status) {
-    case 'active':
+    case 'detected':
+      return 'orange';
+    case 'confirmed':
       return 'positive';
-    case 'archived':
+    case 'dismissed':
       return 'grey';
-    case 'superseded':
-      return 'warning';
     default:
       return 'grey';
   }
@@ -87,12 +88,12 @@ function patternStatusColor(status: string): string {
 
 function patternStatusLabel(status: string): string {
   switch (status) {
-    case 'active':
-      return '活跃';
-    case 'archived':
-      return '已归档';
-    case 'superseded':
-      return '已替代';
+    case 'detected':
+      return '已检测';
+    case 'confirmed':
+      return '已确认';
+    case 'dismissed':
+      return '已忽略';
     default:
       return status;
   }

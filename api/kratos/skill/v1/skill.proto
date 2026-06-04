@@ -363,6 +363,32 @@ message RollbackSkillVersionRequest {
   string version_id = 2 [(google.api.field_behavior) = REQUIRED];
 }
 
+// Skill Intelligence messages (P0 observability)
+
+message GetSkillHealthRequest {
+  string skill_id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message SkillHealthMetric {
+  string skill_id = 1;
+  int32 total_invocations_7d = 2;
+  int32 success_count_7d = 3;
+  double success_rate_7d = 4;
+  int32 p95_duration_ms_7d = 5;
+  int32 total_invocations_30d = 6;
+  int32 success_count_30d = 7;
+  double success_rate_30d = 8;
+  int32 p95_duration_ms_30d = 9;
+  repeated SkillHealthDailyMetric daily_metrics = 10;
+}
+
+message SkillHealthDailyMetric {
+  string date = 1;
+  int32 invocations = 2;
+  int32 successes = 3;
+  double avg_duration_ms = 4;
+}
+
 service SkillService {
   rpc ListSkills(ListSkillsRequest) returns (ListSkillsResponse) {
     option (google.api.http) = {get: "/v1/skills"};
@@ -463,5 +489,8 @@ service SkillService {
       post: "/v1/skills/{skill_id}/versions/{version_id}/rollback"
       body: "*"
     };
+  }
+  rpc GetSkillHealth(GetSkillHealthRequest) returns (SkillHealthMetric) {
+    option (google.api.http) = {get: "/v1/skills/{skill_id}/health"};
   }
 }

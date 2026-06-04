@@ -1,0 +1,40 @@
+id: pipeline
+name: 顺序流水线
+description: 数据按顺序经过多个处理阶段，适用于数据处理管线、报告生成等场景
+category: pipeline
+entry_point: step_1
+finish_point: step_4
+state_fields:
+  - name: input
+    type: string
+    reducer: default
+  - name: output
+    type: string
+    reducer: default
+  - name: messages
+    type: "[]any"
+    reducer: append
+nodes:
+  - id: step_1
+    type: function
+    label: 步骤1
+    description: 第一个处理阶段
+  - id: step_2
+    type: function
+    label: 步骤2
+    description: 第二个处理阶段
+  - id: step_3
+    type: function
+    label: 步骤3
+    description: 第三个处理阶段
+  - id: step_4
+    type: function
+    label: 步骤4
+    description: 最终处理阶段
+edges:
+  - from: step_1
+    to: step_2
+  - from: step_2
+    to: step_3
+  - from: step_3
+    to: step_4

@@ -1,0 +1,50 @@
+id: parallel_review
+name: 并行评审
+description: 多个评审者并行执行评审任务，最后汇总结果
+category: parallel
+entry_point: dispatch
+finish_point: aggregate
+state_fields:
+  - name: input
+    type: string
+    reducer: default
+  - name: reviews
+    type: "[]any"
+    reducer: append
+  - name: summary
+    type: string
+    reducer: default
+nodes:
+  - id: dispatch
+    type: function
+    label: 分发任务
+    description: 将任务分发给多个评审者
+  - id: reviewer_a
+    type: function
+    label: 评审者A
+    description: 评审者A的评审
+  - id: reviewer_b
+    type: function
+    label: 评审者B
+    description: 评审者B的评审
+  - id: reviewer_c
+    type: function
+    label: 评审者C
+    description: 评审者C的评审
+  - id: aggregate
+    type: function
+    label: 汇总
+    description: 汇总所有评审结果
+edges:
+  - from: dispatch
+    to: reviewer_a
+  - from: dispatch
+    to: reviewer_b
+  - from: dispatch
+    to: reviewer_c
+  - from: reviewer_a
+    to: aggregate
+  - from: reviewer_b
+    to: aggregate
+  - from: reviewer_c
+    to: aggregate

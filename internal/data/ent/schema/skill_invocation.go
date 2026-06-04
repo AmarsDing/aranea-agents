@@ -43,6 +43,9 @@ func (SkillInvocation) Fields() []ent.Field {
 		field.String("source").Default("runtime").MaxLen(64),
 		field.String("activation_id").Default("").MaxLen(256),
 		field.String("message_id").Default("").MaxLen(256),
+		field.JSON("selection_reason", map[string]interface{}{}).Optional(),
+		field.String("outcome").Default("").MaxLen(32),
+		field.JSON("token_usage", map[string]interface{}{}).Optional(),
 	}
 }
 

@@ -74,10 +74,11 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 
 	defJSON := buildSpiritTeamDefinitionJSON(mode, params.AgentKeys, u.lg, params.ParallelConfigJSON)
 
+	// All teams start as pending regardless of depends_on.
+	// AutoStart=true teams transition to running when StartTeamTurn is called.
+	// AutoStart=false DAG root nodes stay pending until manually started or
+	// scheduled by scheduleDependentTeams.
 	initialStatus := TeamStatusPending
-	if len(params.DependsOn) > 0 {
-		initialStatus = TeamStatusPending
-	}
 
 	var result SpiritTeamResult
 	err := u.transactor.ExecInTx(ctx, func(txCtx context.Context) error {
@@ -251,16 +252,9 @@ func (u *SpiritTeamUsecase) CancelTeam(ctx context.Context, teamID string) error
 	if strings.TrimSpace(teamID) == "" {
 		return kerrors.BadRequest("SPIRIT", "team_id is required")
 	}
-	t, err := u.teamUC.Get(ctx, teamID)
+	_, err := u.teamUC.TransitionStatus(ctx, teamID, TeamStatusCancelled)
 	if err != nil {
-		return kerrors.NotFound("SPIRIT", "team not found")
-	}
-	if t.Status != TeamStatusPending && t.Status != TeamStatusRunning {
-		return kerrors.BadRequest("SPIRIT", "only pending or running teams can be cancelled")
-	}
-	_, err = u.teamUC.Update(ctx, teamID, Team{Status: TeamStatusCancelled})
-	if err != nil {
-		return kerrors.InternalServer("SPIRIT", "cancel team: "+err.Error())
+		return err
 	}
 	return nil
 }

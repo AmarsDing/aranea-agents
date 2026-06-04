@@ -69,6 +69,7 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260712, Name: "agent_performance_schema", Func: ddlAgentPerformanceSchema},
 	{Version: 20260713, Name: "orchestration_schema", Func: ddlOrchestrationSchema},
 	{Version: 20260714, Name: "compiled_team_session_id", Func: ddlCompiledTeamSessionID},
+	{Version: 20260715, Name: "self_check_report_schema", SQL: "sql/migrations/20260715_self_check_report_schema.sql"},
 }
 
 func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {

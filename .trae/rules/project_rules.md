@@ -124,6 +124,13 @@ Aranea-Agents 是基于 trpc-agent-go 的多智能体编排平台。以 Kratos v
 
 **目录约定**：活跃变更 `openspec/changes/<name>/`，主规格库 `openspec/specs/`，已归档 `openspec/changes/archive/`
 
+**文档维护纪律**（红线）：
+1. **OpenSpec 文档必须通过 OpenSpec 命令维护**，禁止手动移动、删除、重命名 `openspec/` 目录下的任何文件
+2. 归档变更：`openspec archive <change-name>`（自动同步 delta specs 到主规格库）
+3. 更新指令文件：`openspec update`（更新 OpenSpec 自身指令，非业务文档）
+4. 主规格库 `openspec/specs/` 的更新只能通过 `openspec archive` 同步，禁止直接编辑主规格文件
+5. 如需清理或重组文档结构，必须先创建 change 提案，经审批后再通过 OpenSpec 命令执行
+
 **Superpowers 纪律**（实施阶段强制）：
 1. **TDD 强制**：先写失败测试 → 最小实现 → 重构（hotfix/typo/CSS 除外）
 2. **两阶段审查**：先过规格合规，再过代码质量

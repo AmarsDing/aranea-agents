@@ -149,6 +149,7 @@ func (uc *GraphUsecase) ExecuteGraph(ctx context.Context, graphID, sessionID, ex
 		runtime:   runtime,
 		LineageID: runtime.GetLineageID(),
 		StartedAt: time.Now(),
+		ctx:       context.WithoutCancel(ctx),
 	}
 
 	if err := uc.runRepo.SaveRun(ctx, exec); err != nil {
@@ -193,6 +194,7 @@ func (uc *GraphUsecase) ExecuteGraphBuildConfig(ctx context.Context, graphID, se
 		runtime:   runtime,
 		LineageID: runtime.GetLineageID(),
 		StartedAt: time.Now(),
+		ctx:       context.WithoutCancel(ctx),
 	}
 
 	if err := uc.runRepo.SaveRun(ctx, exec); err != nil {
@@ -282,6 +284,7 @@ func (uc *GraphUsecase) ResumeExecution(ctx context.Context, executionID string,
 	exec.execMu.Lock()
 	exec.runtime = runtime
 	exec.Status = "running"
+	exec.ctx = context.WithoutCancel(ctx)
 	exec.execMu.Unlock()
 	exec.interruptMu.Lock()
 	exec.interrupted = false
@@ -324,8 +327,8 @@ func (uc *GraphUsecase) consumeRuntimeEvents(eventCh <-chan GraphRuntimeEvent, e
 		uc.executions[execID] = exec
 		uc.mu.Unlock()
 	}
-	if err := uc.runRepo.UpdateRun(context.Background(), persistSnap); err != nil {
-		uc.lg.Warn("consumeRuntimeEvents: UpdateRun failed", loggateway.StepID("graph.record_fail"), loggateway.Str("exec_id", execID), loggateway.Err(err))
+	if err := uc.runRepo.UpdateRun(exec.ctx, persistSnap); err != nil {
+		uc.lg.Warn("consumeRuntimeEvents: UpdateRun failed", loggateway.StepID("graph.record_fail"), loggateway.Str("exec_id", execID), loggateway.Err(err));
 	}
 
 	if onComplete != nil {
@@ -342,7 +345,7 @@ func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e 
 		}
 		exec.execMu.Unlock()
 		if uc.taskCoord != nil {
-			ctx := context.Background()
+			ctx := exec.ctx
 			ct, err := uc.buildConfigForExecution(ctx, exec)
 			if err == nil {
 				node := nodeDefFromConfig(ct.GraphBuildConfig, e.NodeID)
@@ -369,7 +372,7 @@ func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e 
 		})
 		persistSnap = exec.SnapshotForPersist()
 		exec.execMu.Unlock()
-		if err := uc.runRepo.UpdateRun(context.Background(), persistSnap); err != nil {
+		if err := uc.runRepo.UpdateRun(exec.ctx, persistSnap); err != nil {
 			uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for node_end", loggateway.StepID("graph.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))
 		}
 	case DomainEventGraphNodeError:
@@ -386,7 +389,7 @@ func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e 
 		})
 		persistSnap = exec.SnapshotForPersist()
 		exec.execMu.Unlock()
-		if err := uc.runRepo.UpdateRun(context.Background(), persistSnap); err != nil {
+		if err := uc.runRepo.UpdateRun(exec.ctx, persistSnap); err != nil {
 			uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for node_error", loggateway.StepID("graph.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))
 		}
 	case DomainEventGraphInterrupt:
@@ -399,7 +402,7 @@ func (uc *GraphUsecase) updateExecutionFromRuntimeEvent(exec *GraphExecution, e 
 		exec.Status = "waiting_human"
 		persistSnap = exec.SnapshotForPersist()
 		exec.execMu.Unlock()
-		if err := uc.runRepo.UpdateRun(context.Background(), persistSnap); err != nil {
+		if err := uc.runRepo.UpdateRun(exec.ctx, persistSnap); err != nil {
 			uc.lg.Warn("updateExecutionFromRuntimeEvent: UpdateRun failed for interrupt", loggateway.StepID("graph.record_fail"), loggateway.Str("execution_id", exec.ID), loggateway.Err(err))
 		}
 	}

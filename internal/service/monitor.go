@@ -10,6 +10,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/monitor/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/loggateway"
 
@@ -23,14 +24,16 @@ type MonitorService struct {
 	server *conf.Server
 	diag   *biz.DiagBundleGenerator
 	selfHeal *biz.SelfHealUsecase
+	selfCheckScheduler *monitor.SelfCheckScheduler
+	selfCheckRepo      monitor.SelfCheckReportRepo
 	lg     loggateway.Logger
 
 	flowLogSvc  *FlowLogService
 	codeExecSvc *CodeExecutorService
 }
 
-func NewMonitorService(uc *biz.MonitorUsecase, server *conf.Server, flowLogSvc *FlowLogService, codeExecSvc *CodeExecutorService, diag *biz.DiagBundleGenerator, selfHeal *biz.SelfHealUsecase, lg loggateway.Logger) *MonitorService {
-	return &MonitorService{uc: uc, server: server, flowLogSvc: flowLogSvc, codeExecSvc: codeExecSvc, diag: diag, selfHeal: selfHeal, lg: lg}
+func NewMonitorService(uc *biz.MonitorUsecase, server *conf.Server, flowLogSvc *FlowLogService, codeExecSvc *CodeExecutorService, diag *biz.DiagBundleGenerator, selfHeal *biz.SelfHealUsecase, selfCheckScheduler *monitor.SelfCheckScheduler, selfCheckRepo monitor.SelfCheckReportRepo, lg loggateway.Logger) *MonitorService {
+	return &MonitorService{uc: uc, server: server, flowLogSvc: flowLogSvc, codeExecSvc: codeExecSvc, diag: diag, selfHeal: selfHeal, selfCheckScheduler: selfCheckScheduler, selfCheckRepo: selfCheckRepo, lg: lg}
 }
 
 func bizAuditToProto(a biz.AuditLog) *v1.AuditLog {
@@ -449,7 +452,7 @@ func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAnd
 
 	// Populate RootCauseCondition based on heal result.
 	switch rec.Status {
-	case "applied":
+	case string(monitor.HealStatusApplied):
 		resp.RootCauseCondition = &v1.RootCauseCondition{
 			Condition: &v1.RootCauseCondition_AutoHealed{
 				AutoHealed: &v1.AutoHealedCondition{
@@ -458,7 +461,7 @@ func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAnd
 				},
 			},
 		}
-	case "skipped_low_confidence", "skipped_cooldown", "skipped_no_action":
+	case string(monitor.HealStatusSkippedLowConfidence), string(monitor.HealStatusSkippedCooldown), string(monitor.HealStatusSkippedNoAction):
 		resp.RootCauseCondition = &v1.RootCauseCondition{
 			Condition: &v1.RootCauseCondition_HealAttempts{
 				HealAttempts: &v1.HealAttemptsCondition{
@@ -468,7 +471,7 @@ func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAnd
 				},
 			},
 		}
-	case "failed":
+	case string(monitor.HealStatusFailed):
 		resp.RootCauseCondition = &v1.RootCauseCondition{
 			Condition: &v1.RootCauseCondition_SelfCheckStatus{
 				SelfCheckStatus: &v1.SelfCheckStatusCondition{

@@ -94,10 +94,6 @@ func (a *FlowFileAppender) SetRetentionDays(days int) {
 	a.retentionDays = days
 }
 
-func (a *FlowFileAppender) Dir() string {
-	return a.dir
-}
-
 func (a *FlowFileAppender) CloseAllFiles() {
 	a.mu.Lock()
 	defer a.mu.Unlock()

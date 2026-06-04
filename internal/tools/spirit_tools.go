@@ -48,9 +48,26 @@ type PlanAndExecuteOutput struct {
 	Steps           []biztypes.OrchestrationStepRecord `json:"steps,omitempty"`
 }
 
+// planAndExecuteDeps holds the shared dependencies for plan_and_execute phases.
+type planAndExecuteDeps struct {
+	planner      biz.TaskPlannerPort
+	allocator    biz.AgentAllocatorPort
+	orchestrator biz.TaskOrchestratorPort
+	bus          contract.Bus
+	lg           loggateway.Logger
+}
+
 // NewPlanAndExecuteTool creates the plan_and_execute tool that replaces
 // assess_complexity + assemble_team + list_butlers + query_butler_status.
 func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAllocatorPort, orchestrator biz.TaskOrchestratorPort, bus contract.Bus, lg loggateway.Logger) *trpcfunction.FunctionTool[PlanAndExecuteInput, PlanAndExecuteOutput] {
+	deps := planAndExecuteDeps{
+		planner:      planner,
+		allocator:    allocator,
+		orchestrator: orchestrator,
+		bus:          bus,
+		lg:           lg,
+	}
+
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, input PlanAndExecuteInput) (PlanAndExecuteOutput, error) {
 			spiritSessionID := spiritSessionIDFromCtx(ctx)
@@ -64,42 +81,24 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			}
 
 			// Emit ButlerOrchestrationStarted event.
-			if bus != nil {
+			if deps.bus != nil {
 				env := contract.NewEnvelope(contract.EnvelopeTypeButlerOrchestrationStarted, "plan_and_execute", spiritSessionID)
 				env.Metadata = map[string]any{
 					"task_prompt": taskPrompt,
 					"mode":        input.Mode,
 				}
-				bus.Publish(ctx, env)
+				deps.bus.Publish(ctx, env)
 			}
 
 			var steps []biztypes.OrchestrationStepRecord
 
 			// Phase 1: Plan
-			planStart := time.Now().UTC().Format(time.RFC3339Nano)
-			planInput := biz.PlanInput{
-				UserMessage:     taskPrompt,
-				SpiritSessionID: spiritSessionID,
-			}
-			taskPlan, err := planner.Plan(ctx, planInput)
+			taskPlan, planStep, err := executePlanPhase(ctx, taskPrompt, spiritSessionID, deps)
+			steps = append(steps, planStep)
 			if err != nil {
-				stepErr := err.Error()
-				steps = append(steps, biztypes.OrchestrationStepRecord{
-					StepName:   "plan",
-					Status:     "failed",
-					Error:      stepErr,
-					StartedAt:  planStart,
-					FinishedAt: time.Now().UTC().Format(time.RFC3339Nano),
-				})
-				publishOrchestrationFailed(bus, ctx, spiritSessionID, "plan", stepErr)
-				return PlanAndExecuteOutput{Steps: steps}, kerrors.InternalServer("SPIRIT", "plan failed: "+err.Error())
+				publishOrchestrationFailed(deps.bus, ctx, spiritSessionID, "plan", err.Error())
+				return PlanAndExecuteOutput{Steps: steps}, err
 			}
-			steps = append(steps, biztypes.OrchestrationStepRecord{
-				StepName:   "plan",
-				Status:     "completed",
-				StartedAt:  planStart,
-				FinishedAt: time.Now().UTC().Format(time.RFC3339Nano),
-			})
 
 			out := PlanAndExecuteOutput{
 				PlanID:          taskPlan.ID,
@@ -109,7 +108,6 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 				MemoryHit:       taskPlan.MemoryHit != nil,
 				Steps:           steps,
 			}
-
 			for _, st := range taskPlan.SubTasks {
 				out.SubTasks = append(out.SubTasks, SubTaskSummary{
 					ID:        st.ID,
@@ -120,35 +118,17 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 
 			// For direct strategy, no allocation or orchestration needed.
 			if taskPlan.Strategy == biz.StrategyDirect {
-				publishOrchestrationCompleted(bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))
+				publishOrchestrationCompleted(deps.bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))
 				return out, nil
 			}
 
 			// Phase 2: Allocate
-			allocStart := time.Now().UTC().Format(time.RFC3339Nano)
-			allocPlan, err := allocator.Allocate(ctx, taskPlan)
-			if err != nil {
-				lg.Warn("plan_and_execute: allocation failed, returning plan only",
-					loggateway.StepID("spirit.plan_and_execute.alloc_fail"),
-					loggateway.Str("plan_id", taskPlan.ID),
-					loggateway.Err(err),
-				)
-				out.Steps = append(out.Steps, biztypes.OrchestrationStepRecord{
-					StepName:   "allocate",
-					Status:     "failed",
-					Error:      err.Error(),
-					StartedAt:  allocStart,
-					FinishedAt: time.Now().UTC().Format(time.RFC3339Nano),
-				})
-				publishOrchestrationCompleted(bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))
+			allocPlan, allocStep, allocErr := executeAllocatePhase(ctx, taskPlan, deps)
+			out.Steps = append(out.Steps, allocStep)
+			if allocErr != nil {
+				publishOrchestrationCompleted(deps.bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))
 				return out, nil
 			}
-			out.Steps = append(out.Steps, biztypes.OrchestrationStepRecord{
-				StepName:   "allocate",
-				Status:     "completed",
-				StartedAt:  allocStart,
-				FinishedAt: time.Now().UTC().Format(time.RFC3339Nano),
-			})
 
 			// Fill agent keys from allocation into subtask summaries.
 			for i := range out.SubTasks {
@@ -161,38 +141,97 @@ func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAlloc
 			}
 
 			// Phase 3: Orchestrate
-			orchStart := time.Now().UTC().Format(time.RFC3339Nano)
-			handle, err := orchestrator.Orchestrate(ctx, taskPlan, allocPlan)
-			if err != nil {
-				lg.Warn("plan_and_execute: orchestration failed, returning plan only",
-					loggateway.StepID("spirit.plan_and_execute.orch_fail"),
-					loggateway.Str("plan_id", taskPlan.ID),
-					loggateway.Err(err),
-				)
-				out.Steps = append(out.Steps, biztypes.OrchestrationStepRecord{
-					StepName:   "orchestrate",
-					Status:     "failed",
-					Error:      err.Error(),
-					StartedAt:  orchStart,
-					FinishedAt: time.Now().UTC().Format(time.RFC3339Nano),
-				})
-				publishOrchestrationCompleted(bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))
+			handle, orchStep, orchErr := executeOrchestratePhase(ctx, taskPlan, allocPlan, deps)
+			out.Steps = append(out.Steps, orchStep)
+			if orchErr != nil {
+				publishOrchestrationCompleted(deps.bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))
 				return out, nil
 			}
-			out.Steps = append(out.Steps, biztypes.OrchestrationStepRecord{
-				StepName:   "orchestrate",
-				Status:     "completed",
-				StartedAt:  orchStart,
-				FinishedAt: time.Now().UTC().Format(time.RFC3339Nano),
-			})
 
 			out.OrchestrationID = handle.ID
-			publishOrchestrationCompleted(bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))
+			publishOrchestrationCompleted(deps.bus, ctx, spiritSessionID, out.OrchestrationID, out.Strategy, len(out.SubTasks))
 			return out, nil
 		},
 		trpcfunction.WithName("plan_and_execute"),
 		trpcfunction.WithDescription("规划并执行任务。自动评估复杂度、分配 Agent、启动编排。替代 assess_complexity + assemble_team 的组合调用。简单任务直接回答，复杂任务自动组建团队。"),
 	)
+}
+
+// executePlanPhase runs Phase 1 of plan_and_execute: task planning.
+func executePlanPhase(ctx context.Context, taskPrompt, spiritSessionID string, deps planAndExecuteDeps) (*biz.TaskPlan, biztypes.OrchestrationStepRecord, error) {
+	start := time.Now().UTC()
+	planInput := biz.PlanInput{
+		UserMessage:     taskPrompt,
+		SpiritSessionID: spiritSessionID,
+	}
+	taskPlan, err := deps.planner.Plan(ctx, planInput)
+	if err != nil {
+		return nil, biztypes.OrchestrationStepRecord{
+			StepName:   "plan",
+			Status:     "failed",
+			Error:      err.Error(),
+			StartedAt:  start,
+			FinishedAt: time.Now().UTC(),
+		}, kerrors.InternalServer("SPIRIT", "plan failed: "+err.Error())
+	}
+	return taskPlan, biztypes.OrchestrationStepRecord{
+		StepName:   "plan",
+		Status:     "completed",
+		StartedAt:  start,
+		FinishedAt: time.Now().UTC(),
+	}, nil
+}
+
+// executeAllocatePhase runs Phase 2 of plan_and_execute: agent allocation.
+func executeAllocatePhase(ctx context.Context, taskPlan *biz.TaskPlan, deps planAndExecuteDeps) (*biz.AllocationPlan, biztypes.OrchestrationStepRecord, error) {
+	start := time.Now().UTC()
+	allocPlan, err := deps.allocator.Allocate(ctx, taskPlan)
+	if err != nil {
+		deps.lg.Warn("plan_and_execute: allocation failed, returning plan only",
+			loggateway.StepID("spirit.plan_and_execute.alloc_fail"),
+			loggateway.Str("plan_id", taskPlan.ID),
+			loggateway.Err(err),
+		)
+		return nil, biztypes.OrchestrationStepRecord{
+			StepName:   "allocate",
+			Status:     "failed",
+			Error:      err.Error(),
+			StartedAt:  start,
+			FinishedAt: time.Now().UTC(),
+		}, err
+	}
+	return allocPlan, biztypes.OrchestrationStepRecord{
+		StepName:   "allocate",
+		Status:     "completed",
+		StartedAt:  start,
+		FinishedAt: time.Now().UTC(),
+	}, nil
+}
+
+// executeOrchestratePhase runs Phase 3 of plan_and_execute: task orchestration.
+func executeOrchestratePhase(ctx context.Context, taskPlan *biz.TaskPlan, allocPlan *biz.AllocationPlan, deps planAndExecuteDeps) (*biz.OrchestrationHandle, biztypes.OrchestrationStepRecord, error) {
+	start := time.Now().UTC()
+	handle, err := deps.orchestrator.Orchestrate(ctx, taskPlan, allocPlan)
+	if err != nil {
+		deps.lg.Warn("plan_and_execute: orchestration failed, returning plan only",
+			loggateway.StepID("spirit.plan_and_execute.orch_fail"),
+			loggateway.Str("plan_id", taskPlan.ID),
+			loggateway.Err(err),
+		)
+		return nil, biztypes.OrchestrationStepRecord{
+			StepName:   "orchestrate",
+			Status:     "failed",
+			Error:      err.Error(),
+			StartedAt:  start,
+			FinishedAt: time.Now().UTC(),
+		}, err
+	}
+	return handle, biztypes.OrchestrationStepRecord{
+		StepName:   "orchestrate",
+		Status:     "completed",
+		StartedAt:  start,
+		FinishedAt: time.Now().UTC(),
+	}, nil
 }
 
 // publishOrchestrationFailed emits a ButlerOrchestrationFailed event.
@@ -308,6 +347,10 @@ func NewCancelOrchestrationTool(orchestrator biz.TaskOrchestratorPort, lg loggat
 	)
 }
 
+// ---------------------------------------------------------------------------
+// TODO(debt): Remove deprecated tools after Spirit migration period (target: v0.4).
+// These tools are no longer registered but kept for reference and backward compatibility.
+// Ref: cross-module-coordination-unify
 // ---------------------------------------------------------------------------
 // Deprecated old tools — kept for backward compatibility and test coverage.
 // These tools are NO LONGER REGISTERED in the Spirit Agent's tool list.

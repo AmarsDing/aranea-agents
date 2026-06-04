@@ -18,6 +18,9 @@ import (
 
 const maxSkillGuidanceChars = 4000
 
+// skillSelectionReasonStateKey is the invocation state key for skill selection reasons.
+const skillSelectionReasonStateKey = "aranea.skill_selection_reasons"
+
 func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Callback {
 	if ag.Settings == nil || deps.SkillUC == nil {
 		return nil
@@ -37,6 +40,10 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 		result, err := skillruntime.ResolveSkillSlugsDetailed(ctx, deps.SkillUC, opts, deps.Logger())
 		if err != nil || len(result.Slugs) == 0 {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
+		}
+		// Persist selection reasons in invocation state for skill_invocation recording.
+		if inv, ok := trpcagent.InvocationFromContext(ctx); ok {
+			inv.SetState(skillSelectionReasonStateKey, result.Reasons)
 		}
 		entries, err := deps.SkillUC.BatchGetSkillGuidance(ctx, result.Slugs)
 		if err != nil || len(entries) == 0 {
@@ -87,6 +94,7 @@ func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		// overview on subsequent turns.
 		if inv, ok := trpcagent.InvocationFromContext(ctx); ok {
 			inv.SetState(trpcllmagent.RoutedSkillsStateKey, result.Slugs)
+			inv.SetState(skillSelectionReasonStateKey, result.Reasons)
 		}
 		entries, err := deps.SkillUC.BatchGetSkillGuidance(ctx, result.Slugs)
 		if err != nil || len(entries) == 0 {

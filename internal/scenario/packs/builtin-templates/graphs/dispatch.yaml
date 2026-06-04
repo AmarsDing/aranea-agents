@@ -1,0 +1,50 @@
+id: dispatch
+name: 条件分发
+description: 根据条件将任务分发到不同的处理分支，适用于分类处理场景
+category: dispatch
+entry_point: classify
+finish_point: done
+state_fields:
+  - name: input
+    type: string
+    reducer: default
+  - name: category
+    type: string
+    reducer: default
+  - name: result
+    type: string
+    reducer: default
+nodes:
+  - id: classify
+    type: function
+    label: 分类
+    description: 分析并分类输入
+  - id: router
+    type: router
+    label: 路由
+    description: 根据分类结果路由
+  - id: handler_a
+    type: function
+    label: 处理A
+    description: 处理A类任务
+  - id: handler_b
+    type: function
+    label: 处理B
+    description: 处理B类任务
+  - id: handler_c
+    type: function
+    label: 处理C
+    description: 处理C类任务
+  - id: done
+    type: function
+    label: 完成
+    description: 汇总结果
+edges:
+  - from: classify
+    to: router
+conditional_edges:
+  - from: router
+    path_map:
+      type_a: handler_a
+      type_b: handler_b
+      type_c: handler_c

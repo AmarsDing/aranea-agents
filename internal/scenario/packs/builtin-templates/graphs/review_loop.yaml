@@ -1,0 +1,45 @@
+id: review_loop
+name: 生成-评审循环
+description: 生成内容后评审打分，不达标则循环修改，适用于迭代优化场景
+category: loop
+entry_point: generate
+finish_point: final
+state_fields:
+  - name: input
+    type: string
+    reducer: default
+  - name: output
+    type: string
+    reducer: default
+  - name: score
+    type: float64
+    reducer: default
+  - name: iteration
+    type: int
+    reducer: default
+nodes:
+  - id: generate
+    type: function
+    label: 生成
+    description: 生成或修改内容
+  - id: evaluate
+    type: function
+    label: 评审
+    description: 评审打分
+  - id: route
+    type: router
+    label: 质量判断
+    description: 根据评分决定是否继续迭代
+  - id: final
+    type: function
+    label: 最终输出
+    description: 输出最终结果
+edges:
+  - from: generate
+    to: evaluate
+  - from: evaluate
+    to: route
+conditional_edges:
+  - from: route
+    path_map:
+      approved: final

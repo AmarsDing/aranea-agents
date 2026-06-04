@@ -15,12 +15,12 @@
 ### Task 1: 扩展 skill_invocation Ent Schema
 
 **Files:**
-- Modify: `internal/data/ent/schema/skill_invocation.go`
+- Modify: `internal/data/ent/schema/skill_invocation.go` ✅ 三个字段已添加
 
-- [ ] **Step 1:** 新增 `selection_reason` 字段（JSON 类型，默认 null），存储路由路径、候选 slug 列表、最终选中 slug、评分因子快照
-- [ ] **Step 2:** 新增 `outcome` 字段（String 类型，默认 ""），枚举值：success / failure / partial / cancelled
-- [ ] **Step 3:** 新增 `token_usage` 字段（JSON 类型，默认 null），存储 {prompt, completion, total}
-- [ ] **Step 4:** 运行 `go generate ./internal/data/ent/...`
+- [x] **Step 1:** 新增 `selection_reason` 字段（JSON 类型，默认 null），存储路由路径、候选 slug 列表、最终选中 slug、评分因子快照
+- [x] **Step 2:** 新增 `outcome` 字段（String 类型，默认 ""），枚举值：success / failure / partial / cancelled
+- [x] **Step 3:** 新增 `token_usage` 字段（JSON 类型，默认 null），存储 {prompt, completion, total}
+- [x] **Step 4:** 运行 `go generate ./internal/data/ent/...`（Ent 生成代码已包含 SelectionReason/Outcome/TokenUsage 字段）
 
 **DoD:** 三个新字段添加完成，代码生成无错误，`go build ./internal/data/...` 通过
 
@@ -29,10 +29,12 @@
 ### Task 2: 在 skillruntime 写入 selection_reason
 
 **Files:**
-- Modify: `internal/tools/skillruntime/resolve.go`
+- Modify: `internal/tools/skillruntime/resolve.go` ✅ 已有 ResolveResult.Reasons
+- Modify: `internal/agent/skill_guidance_inject.go` ✅ 已实现 invocation state 传递
+- Modify: `internal/agent/tool_invocation_recorder.go` ✅ 已实现从 state 读取并写入
 
-- [ ] **Step 1:** 在 `ResolveSkillSlugsDetailed` 返回 `ResolveResult` 时，将 `Reasons` map 序列化为 JSON 写入 `selection_reason` 字段
-- [ ] **Step 2:** 确保 `ResolveResult` 结构体包含完整的评分因子信息（taxonomy score、embedding score 等）
+- [x] **Step 1:** 在 `ResolveSkillSlugsDetailed` 返回 `ResolveResult` 时，将 `Reasons` map 序列化为 JSON 写入 `selection_reason` 字段
+- [x] **Step 2:** 确保 `ResolveResult` 结构体包含完整的评分因子信息（taxonomy score、embedding score 等）
 
 **DoD:** 每次 Skill 调用的 `skill_invocation` 记录包含 `selection_reason`，`go build ./internal/tools/...` 通过
 
@@ -41,10 +43,12 @@
 ### Task 3: 在 Skill 执行完成后写入 outcome 和 token_usage
 
 **Files:**
-- Modify: `internal/biz/skill.go`（或相关 Skill 执行追踪代码）
+- Modify: `internal/agent/tool_invocation_recorder.go` ✅ outcome 已实现
+- Modify: `internal/biz/skill/skill.go`（InvocationWrite 已含 Outcome/TokenUsage 字段）
+- Modify: `internal/data/skill.go`（RecordSkillInvocation 已支持写入）
 
-- [ ] **Step 1:** Skill 执行完成后，根据执行结果判定 `outcome`（success / failure / partial / cancelled），写入 `skill_invocation`
-- [ ] **Step 2:** 收集 LLM 调用的 token 使用量，写入 `token_usage` 字段
+- [x] **Step 1:** Skill 执行完成后，根据执行结果判定 `outcome`（success / failure / partial / cancelled），写入 `skill_invocation`（实际实现：`recordSkillInvocation` 从 `ToolInvocationWrite.Status` 推导 outcome，`"success"` → `"success"`、`"error"` → `"failure"`、其他 → `"partial"`，`cancelled` 枚举值暂未使用）
+- [ ] **Step 2:** 收集 LLM 调用的 token 使用量，写入 `token_usage` 字段（`SkillInvocationWrite.TokenUsage` 字段已存在，但调用方未填充）
 
 **DoD:** `skill_invocation` 记录包含 `outcome` 和 `token_usage`，`go build ./internal/biz/...` 通过
 
@@ -53,14 +57,16 @@
 ### Task 4: 实现 GetSkillHealth API
 
 **Files:**
-- Create: `api/kratos/skill/v1/skill_intelligence.proto`（或扩展 skill.proto）
-- Create: `internal/service/skill_intelligence.go`
-- Create: `internal/biz/skill_health.go`
+- Modify: `api/kratos/skill/v1/skill.proto`（已合并到现有 skill.proto）
+- Modify: `internal/service/skill.go`（已合并到现有 SkillService）
+- Create: `internal/biz/skill_health.go` ✅ 已创建
+- Create: `internal/data/skill_health.go` ✅ 已创建
+- Create: `internal/biz/types/skill_health.go` ✅ 已创建
 
-- [ ] **Step 1:** 定义 `GetSkillHealth` proto，包含 7d/30d 成功率、P95 耗时、每日指标
-- [ ] **Step 2:** 运行 `make api` 生成代码
-- [ ] **Step 3:** 实现 `SkillHealthUsecase`，从 `skill_invocation` 聚合计算健康度指标
-- [ ] **Step 4:** 实现 Service 层，proto↔biz 映射
+- [x] **Step 1:** 定义 `GetSkillHealth` proto，包含 7d/30d 成功率、P95 耗时、每日指标（实际返回类型为 `SkillHealthMetric`，每日指标为 `SkillHealthDailyMetric`）
+- [x] **Step 2:** 运行 `make api` 生成代码
+- [x] **Step 3:** 实现 `SkillHealthUsecase`，从 `skill_invocation` 聚合计算健康度指标
+- [x] **Step 4:** 实现 Service 层，proto↔biz 映射
 
 **DoD:** `GET /v1/skills/{skill_id}/health` 返回正确的健康度数据，`make api && go build ./...` 通过
 
@@ -84,6 +90,8 @@
 
 ### Task 6: 定义 ExperienceReport 领域模型
 
+> **注意**：代码中已存在 `ExperienceReport` 类型（`internal/biz/types/skill_health.go`），但这是 skills-butler 用的聚合型报告（SkillSlug/Period/HealthScore/SuccessRate/AvgLatencyMs/InvocationCount/FailurePatterns/OptimizationSuggestions/GeneratedAt），与 Phase 2 设计的单次调用诊断报告（ID/TenantID/SessionID/InvocationID/SkillID/IsSuccess/Score/FailureTags/FlowSummary/OptimizationAdvice/SelectionSnapshot/GeneratedSuggestionID/CreatedAt）定位不同。实施时需新建 `skill_intelligence_types.go`，不可复用现有 `ExperienceReport`。
+
 **Files:**
 - Create: `internal/biz/skill_intelligence_types.go`
 
@@ -95,6 +103,8 @@
 ---
 
 ### Task 7: 定义 Repo 端口接口
+
+> **注意**：代码中已存在 `SkillHealthReader` 端口（`internal/biz/skill_health.go`），提供 `GetSkillHealth(ctx, skillID, since7d, since30d)` 方法。Phase 2 的 `SkillHealthAggregator` 应扩展或复用此端口，避免重复定义。
 
 **Files:**
 - Create: `internal/biz/skill_intelligence_repo.go`
@@ -194,6 +204,8 @@
 
 ### Task 14: 实现 skillrecommend.Rank
 
+> **注意**：代码中已存在 `skills_butler_recommend_skills` 工具（`internal/tools/skills_butler/recommend_skills.go`），提供基于使用模式的离线推荐（检测低成功率/低使用率 Skill），但这是 Agent 维度的离线推荐工具，不是运行时路由排序。Phase 3 的 `skillrecommend.Rank` 是在 `ResolveSkillSlugsDetailed` 热路径中引入历史反馈因子重排候选。
+
 **Files:**
 - Create: `internal/tools/skillrecommend/rank.go`
 
@@ -277,6 +289,8 @@
 ---
 
 ### Task 20: 实现 Curator Agent 草案生成
+
+> **注意**：代码中已存在 `skills_butler_evolve_skill` 工具（`internal/tools/skills_butler/evolve_skill.go`），可创建 `SkillProposal`（轻量提议），但不生成草案正文。Phase 4 的 Curator Agent 需要生成包含正文修改的完整草案。
 
 **Files:**
 - Create: `internal/service/skill_curator.go`

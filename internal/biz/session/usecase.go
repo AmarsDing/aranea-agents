@@ -431,6 +431,8 @@ type CompressRepo interface {
 
 // SessionRepo aggregates all session sub-repositories for Wire binding only.
 // Consumers should depend on the specific sub-interface they need.
+// TECH-DEBT: SessionRepo aggregates 17+ methods; should be split into sub-interfaces.
+// New code should depend on narrow interfaces like SessionRuntimeWriter, SessionMetricsReader, etc.
 type SessionRepo interface {
 	SessionReader
 	SessionTreeReader
@@ -475,34 +477,34 @@ type MetricsUpdatedPublisher interface {
 
 // SessionUsecase handles session CRUD + timeline. Chat 写消息经 AppendChat* 等仓储方法，不经 SessionService RPC.
 type SessionUsecase struct {
-	sessionReader          SessionReader
-	sessionTreeReader      SessionTreeReader
-	sessionWriter          SessionWriter
-	sessionMutator         SessionMutator
-	sessionBatchMutator    SessionBatchMutator
-	messageReader          MessageReader
-	messageSearchReader    MessageSearchReader
-	messageWriter          MessageWriter
-	messageStatusWriter    MessageStatusWriter
-	timelineReader         TimelineReader
-	invocationReader       InvocationReader
-	summaryReader          SummaryReader
-	summaryWriter          SummaryWriter
-	stateRepo              StateRepo
-	turnRepo               TurnRepo
-	contextUpdater         ContextUpdater
-	compressRepo           CompressRepo
-	runtimeWriter          SessionRuntimeWriter
-	agents                 AgentLookup
-	teams                  TeamLookup
-	titleGenerator         SessionTitleGenerator
-	participants           SessionParticipantRepository
-	lg                     loggateway.Logger
-	statusPublisher        SessionStatusPublisher
+	sessionReader           SessionReader
+	sessionTreeReader       SessionTreeReader
+	sessionWriter           SessionWriter
+	sessionMutator          SessionMutator
+	sessionBatchMutator     SessionBatchMutator
+	messageReader           MessageReader
+	messageSearchReader     MessageSearchReader
+	messageWriter           MessageWriter
+	messageStatusWriter     MessageStatusWriter
+	timelineReader          TimelineReader
+	invocationReader        InvocationReader
+	summaryReader           SummaryReader
+	summaryWriter           SummaryWriter
+	stateRepo               StateRepo
+	turnRepo                TurnRepo
+	contextUpdater          ContextUpdater
+	compressRepo            CompressRepo
+	runtimeWriter           SessionRuntimeWriter
+	agents                  AgentLookup
+	teams                   TeamLookup
+	titleGenerator          SessionTitleGenerator
+	participants            SessionParticipantRepository
+	lg                      loggateway.Logger
+	statusPublisher         SessionStatusPublisher
 	metricsUpdatedPublisher MetricsUpdatedPublisher
-	metricsDeltaMu         sync.Mutex
-	metricsDeltas          map[string]*SessionMetricsDelta
-	flushInterval          time.Duration
+	metricsDeltaMu          sync.Mutex
+	metricsDeltas           map[string]*SessionMetricsDelta
+	flushInterval           time.Duration
 }
 
 func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository) *SessionUsecase {
@@ -567,7 +569,7 @@ func (uc *SessionUsecase) TransitionStatus(ctx context.Context, sessionID string
 	// Route status transitions through SessionRuntimeWriter when available,
 	// falling back to direct sessionWriter for backward compatibility.
 	if uc.runtimeWriter != nil {
-		if err := uc.runtimeWriter.TransitionSessionStatus(ctx, sessionID, newStatus, newReason, changedAt); err != nil {
+		if err := uc.runtimeWriter.TransitionSessionStatus(ctx, sessionID, current.Status, newStatus, newReason, changedAt); err != nil {
 			return err
 		}
 	} else {

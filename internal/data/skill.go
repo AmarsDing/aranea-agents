@@ -841,7 +841,7 @@ func (r *skillRepo) RecordSkillInvocation(ctx context.Context, in biz.SkillInvoc
 	if status == "" {
 		status = "success"
 	}
-	_, err := r.data.RW().Write(ctx).SkillInvocation.Create().
+	builder := r.data.RW().Write(ctx).SkillInvocation.Create().
 		SetID(id).
 		SetSkillID(strings.TrimSpace(in.SkillID)).
 		SetAgentID(strings.TrimSpace(in.AgentID)).
@@ -863,8 +863,17 @@ func (r *skillRepo) RecordSkillInvocation(ctx context.Context, in biz.SkillInvoc
 		SetActivationID(strings.TrimSpace(in.ActivationID)).
 		SetMessageID(strings.TrimSpace(in.MessageID)).
 		SetCreatedAt(now).
-		SetUpdatedAt(now).
-		Save(ctx)
+		SetUpdatedAt(now)
+	if in.SelectionReason != nil {
+		builder = builder.SetSelectionReason(in.SelectionReason)
+	}
+	if strings.TrimSpace(in.Outcome) != "" {
+		builder = builder.SetOutcome(strings.TrimSpace(in.Outcome))
+	}
+	if in.TokenUsage != nil {
+		builder = builder.SetTokenUsage(in.TokenUsage)
+	}
+	_, err := builder.Save(ctx)
 	return err
 }
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 
+	"aranea-agents/internal/biz/monitor"
+
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/wire"
 )
@@ -58,6 +60,8 @@ var ProviderSet = wire.NewSet(
 	NewTaxonomyUsecase,
 	NewToolResultGate,
 	NewExperienceAnalyticsUsecase,
+	NewSkillHealthUsecase,
+	monitor.WireProviderSet,
 	ProvideAgentExistenceChecker,
 	ProvideAgentIDExistenceChecker,
 )

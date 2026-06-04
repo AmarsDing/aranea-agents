@@ -1,0 +1,44 @@
+id: approval
+name: 审批流
+description: 包含人工审批节点的流程，适用于需要人工确认的业务场景
+category: approval
+entry_point: submit
+finish_point: result
+state_fields:
+  - name: input
+    type: string
+    reducer: default
+  - name: status
+    type: string
+    reducer: default
+  - name: review_result
+    type: string
+    reducer: default
+nodes:
+  - id: submit
+    type: function
+    label: 提交申请
+    description: 提交处理申请
+  - id: review
+    type: function
+    label: 审批
+    description: 人工审批确认节点
+  - id: approved
+    type: function
+    label: 审批通过
+    description: 审批通过后执行
+  - id: rejected
+    type: function
+    label: 审批驳回
+    description: 审批驳回后处理
+  - id: result
+    type: function
+    label: 结果
+    description: 最终结果汇总
+edges:
+  - from: submit
+    to: review
+  - from: approved
+    to: result
+  - from: rejected
+    to: result

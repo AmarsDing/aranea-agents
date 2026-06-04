@@ -118,12 +118,16 @@
 - **WHEN** 导入过程中部分实体写入失败
 - **THEN** 系统 SHALL 返回已成功的统计和失败实体列表（包含 entity_type、key、reason）
 
-### Requirement: 导入使用 ORM 路径写入
-系统 SHALL 通过 biz 层 Usecase 的 ORM 路径写入数据库，不使用 RawSQL。
+### Requirement: 导入使用 ImporterRepo 直接写入
+系统 SHALL 通过 `ImporterRepo` 接口直接调用 data 层 Repo 写入数据库，不经过 biz 层 Usecase。
 
-#### Scenario: Agent 写入通过 AgentUsecase
+#### Scenario: Agent 写入通过 ImporterRepo
 - **WHEN** 导入 Agent
-- **THEN** 系统 SHALL 调用 `AgentUsecase.Create` 或 `AgentUsecase.Update`，确保 biz 层校验和事件触发
+- **THEN** 系统 SHALL 调用 `ImporterRepo.CreateAgent` 或 `ImporterRepo.UpdateAgent`，不经过 `AgentUsecase`
+
+#### Scenario: 不触发 Usecase 业务校验
+- **WHEN** Pack 导入写入实体
+- **THEN** 系统 SHALL 不触发 Usecase 层的业务校验和事件触发逻辑
 
 ### Requirement: JSON 序列化工具函数
 系统 SHALL 使用 `encoding/json` 进行 slice ↔ JSON list 的序列化/反序列化。
@@ -139,3 +143,28 @@
 #### Scenario: parseSkillRuntime
 - **WHEN** 解析 SkillRuntimeJSON 字段
 - **THEN** 系统 SHALL 使用 `json.Unmarshal` 解析 `{allowed_slugs: [...], denied_slugs: [...]}` 结构
+
+### Requirement: overwrite 策略保留原始元数据
+系统 SHALL 在 overwrite 策略下保留原始记录的 Status、Readonly、Source 字段。
+
+#### Scenario: Agent overwrite 保留元数据
+- **WHEN** 冲突策略为 overwrite 且目标系统已存在相同 agent_key 的 Agent
+- **THEN** 系统 SHALL 保留已有 Agent 的 Status、Readonly、Source 字段，不使用 Pack 中的默认值覆盖
+
+#### Scenario: Team overwrite 保留元数据
+- **WHEN** 冲突策略为 overwrite 且目标系统已存在相同 team_key 的 Team
+- **THEN** 系统 SHALL 保留已有 Team 的 Status、Readonly、Source 字段
+
+### Requirement: duplicate 策略下原始 key 映射
+系统 SHALL 在 duplicate 策略下同时注册原始 key 和新 key 到 ID 的映射。
+
+#### Scenario: Agent duplicate 注册双映射
+- **WHEN** 冲突策略为 duplicate 且 Agent 被创建为新 key（如 `go-senior-general-copy`）
+- **THEN** 系统 SHALL 同时注册 `go-senior-general → 新ID` 和 `go-senior-general-copy → 新ID`，确保后续 Team/Graph 引用能通过原始 key 解析
+
+### Requirement: 导入结果包含 warnings
+系统 SHALL 在导入结果中包含警告信息列表。
+
+#### Scenario: Taxonomy 导入部分失败产生 warnings
+- **WHEN** Taxonomy 导入过程中某个部门或岗位写入失败
+- **THEN** 系统 SHALL 将失败信息记录为 warning 而非 error，继续导入后续节点
