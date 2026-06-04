@@ -129,6 +129,9 @@ func entRuntimeToBiz(e *ent.AgentRuntimeSetting) biz.AgentRuntimeSettings {
 	s.ApplySkills(fromEntSkills(e))
 	s.ApplyEvolution(fromEntEvolution(e))
 	s.ApplyContext(fromEntContext(e))
+	s.ForgetConfigJSON = e.ForgetPolicyJSON
+	s.ToolWeightJSON = e.ToolWeightJSON
+	s.DreamSnapshotJSON = e.DreamSnapshotJSON
 	return *s
 }
 
@@ -377,6 +380,9 @@ func applyBizRuntimeToCreate(b *ent.AgentRuntimeSettingCreate, v biz.AgentRuntim
 		SetEvoPersonaMaxChars(v.EvoPersonaMaxChars).
 		SetEvoSystemPromptMaxAppends(v.EvoSystemPromptMaxAppends).
 		SetSkillRuntimeJSON(normalizeJSONObj(v.SkillRuntimeJSON)).
+		SetForgetPolicyJSON(normalizeJSONObj(v.ForgetConfigJSON)).
+		SetToolWeightJSON(normalizeJSONObj(v.ToolWeightJSON)).
+		SetDreamSnapshotJSON(v.DreamSnapshotJSON).
 		SetIntentPassEnabled(v.IntentPassEnabled).
 		SetChannelID(v.ChannelID).
 		SetChatID(v.ChatID).

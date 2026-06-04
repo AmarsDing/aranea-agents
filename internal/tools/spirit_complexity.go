@@ -25,8 +25,8 @@ var (
 		"analyze", "compare", "design", "plan", "orchestrate",
 	}
 	simpleAvailableTools    []string
-	moderateAvailableTools  = []string{"assemble_team", "list_butlers", "query_butler_status"}
-	complexAvailableTools   = []string{"assemble_team", "list_butlers", "query_butler_status", "check_team_progress", "cancel_team", "synthesize_results"}
+	moderateAvailableTools  = []string{"assemble_team"}
+	complexAvailableTools   = []string{"assemble_team", "check_team_progress", "cancel_team", "synthesize_results"}
 )
 
 type ComplexityRuleEngine struct {

@@ -52,6 +52,7 @@ func TestEntRuntimeToBizFieldCoverage(t *testing.T) {
 		"CompressLlmCacheEnabled":   "CompressLLMCacheEnabled",
 		"CompressLlmCacheMaxEntries": "CompressLLMCacheMaxEntries",
 		"CompressLlmCacheTTLSec":    "CompressLLMCacheTTLSec",
+		"ForgetPolicyJSON":          "ForgetConfigJSON",
 	}
 
 	skipBizFields := map[string]bool{

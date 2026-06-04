@@ -24,6 +24,16 @@
 | [module-cross-reference.md](./module-cross-reference.md) | 模块交叉参考：26 个后端模块卡片 + 6 个前端域卡片（8 维度） | 跨模块影响分析 |
 | [review-dimension-checklists.md](./review-dimension-checklists.md) | 代码审查 12 维度 × 双面卡片（A 面=编码预防，B 面=Review 检查） | 代码审查清单 |
 | [built-in-tools-guide.md](./built-in-tools-guide.md) | 内置工具清单（28 注册 + ~37 运行时注入）+ 竞品对标 + 知识图谱可视化建设指南 | 工具建设参考 |
+| [logging-framework.md](./logging-framework.md) | 日志框架双轨制架构、Pipeline/Sink/EventBus、红线约束、v2 增量（单写路径/断路器/TTL/Trace 拆分） | 日志架构参考 |
+| [module-cross-reference-full.md](./module-cross-reference-full.md) | 模块交叉参考完整版（含日志架构模块卡片 + Pack 导入导出增量） | 跨模块影响分析（完整版） |
+| [data-layer-observability.md](./data-layer-observability.md) | 数据层可观测性（Ent 错误翻译/DB 延迟指标/慢查询）+ 读写分离抽象（ReadWriteClient/ReadWriteDB） | 数据层基础设施 |
+| [vector-store-strategy.md](./vector-store-strategy.md) | VectorStore 接口抽象、SQLite/Postgres 双实现策略、配置驱动选择 | 向量存储策略 |
+| [pack-import-export.md](./pack-import-export.md) | Pack 导入导出（Proto/API/格式/校验/冲突策略/种子迁移） | Pack 交换规范 |
+| [memory-skills-butler.md](./memory-skills-butler.md) | 记忆管家 + 技能管家 + 经验分析引擎（工具权重/技能健康/记忆质量/编排效率） | 记忆技能管家 |
+| [monitor-self-healing.md](./monitor-self-healing.md) | 自愈监控（诊断包/根因分析/运行时修复/自愈观察者/断路器） | 自愈监控体系 |
+| [monitor-selfcheck-repair.md](./monitor-selfcheck-repair.md) | 自检修复（SelfCheckRepairer/内置修复动作/定期调度/手动触发） | 自检修复体系 |
+| [self-iteration-engine.md](./self-iteration-engine.md) | 自迭代引擎（CI 流水线/AutoFix/发布/E2E/Lint/文档同步/仪表盘） | 自迭代引擎 |
+| [team-graph-optimization.md](./team-graph-optimization.md) | Team-Graph 编译模型（CompiledTeam/RoleManifest/TeamMediator） | Team 运行时优化 |
 
 ---
 

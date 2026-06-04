@@ -66,39 +66,14 @@
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Industry } from '../../features/industries/types';
+import { monoBgForKey, monoLettersForKey } from '../../features/industries/industryMonogram';
 
 const props = defineProps<{ industry: Industry; isOpen?: boolean }>();
 const emit = defineEmits<{ select: [industry: Industry] }>();
 const { t } = useI18n();
 
-/**
- * 行业 monogram：取 key 前 2 个字母大写，作为"icon" 视觉锚点。
- * 颜色由 key 字符的简单 hash 映射到 3 套行业色板（indigo/rose/sky），
- * 未来行业 key 池扩大后可扩为 6+ 色。
- */
-const PALETTES = [
-  'linear-gradient(135deg, #4F46E5 0%, #312E81 100%)', // indigo
-  'linear-gradient(135deg, #E55C5C 0%, #9B2226 100%)', // rose
-  'linear-gradient(135deg, #0EA5E9 0%, #075985 100%)', // sky
-  'linear-gradient(135deg, #10B981 0%, #065F46 100%)', // emerald
-  'linear-gradient(135deg, #F59E0B 0%, #92400E 100%)', // amber
-  'linear-gradient(135deg, #8B5CF6 0%, #4C1D95 100%)', // violet
-];
-
-const monoBg = computed(() => {
-  let h = 0;
-  for (let i = 0; i < props.industry.key.length; i++) {
-    h = (h * 31 + props.industry.key.charCodeAt(i)) | 0;
-  }
-  return PALETTES[Math.abs(h) % PALETTES.length];
-});
-
-const monoLetters = computed(() => {
-  const cleaned = props.industry.key.replace(/[^a-zA-Z]/g, '').toUpperCase();
-  if (cleaned.length >= 2) return cleaned.slice(0, 2);
-  if (cleaned.length === 1) return cleaned + cleaned;
-  return props.industry.name.slice(0, 2);
-});
+const monoBg = computed(() => monoBgForKey(props.industry.key));
+const monoLetters = computed(() => monoLettersForKey(props.industry.key, props.industry.name));
 </script>
 
 <style lang="sass" scoped>

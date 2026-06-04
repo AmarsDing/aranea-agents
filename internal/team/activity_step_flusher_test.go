@@ -15,7 +15,8 @@ type memStepRepo struct {
 	steps []biz.OrchestrationStep
 }
 
-func (m *memStepRepo) ListTeams(context.Context) ([]biz.Team, error) { return nil, nil }
+func (m *memStepRepo) ListTeams(context.Context) ([]biz.Team, error)                    { return nil, nil }
+func (m *memStepRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) { return nil, nil }
 func (m *memStepRepo) GetTeamByID(context.Context, string) (biz.Team, error) {
 	return biz.Team{}, nil
 }

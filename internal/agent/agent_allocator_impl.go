@@ -1,0 +1,533 @@
+package agent
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+
+	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
+
+	"github.com/google/uuid"
+	kerrors "github.com/go-kratos/kratos/v2/errors"
+)
+
+// agentAllocatorImpl implements biz.AgentAllocatorPort.
+type agentAllocatorImpl struct {
+	repo           biz.AllocationPlanRepository
+	agentReader    biz.AgentReader
+	perfRepo       biz.AgentPerformanceRepository
+	capBuilder     *AgentCapabilityBuilder
+	catalog        *biz.LlmProviderModelUsecase
+	httpClient     *http.Client
+	lg             loggateway.Logger
+}
+
+var _ biz.AgentAllocatorPort = (*agentAllocatorImpl)(nil)
+
+// NewAgentAllocator creates a new AgentAllocator implementation.
+func NewAgentAllocator(
+	repo biz.AllocationPlanRepository,
+	agentReader biz.AgentReader,
+	perfRepo biz.AgentPerformanceRepository,
+	capBuilder *AgentCapabilityBuilder,
+	catalog *biz.LlmProviderModelUsecase,
+	httpClient *http.Client,
+	lg loggateway.Logger,
+) biz.AgentAllocatorPort {
+	return &agentAllocatorImpl{
+		repo:        repo,
+		agentReader: agentReader,
+		perfRepo:    perfRepo,
+		capBuilder:  capBuilder,
+		catalog:     catalog,
+		httpClient:  httpClient,
+		lg:          lg,
+	}
+}
+
+// Allocate matches each SubTask in the TaskPlan to the best Agent or Team.
+func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.TaskPlan) (*biz.AllocationPlan, error) {
+	if taskPlan == nil {
+		return nil, kerrors.BadRequest("ALLOCATOR", "task plan is required")
+	}
+
+	traceID := taskPlan.TraceID
+	if traceID == "" {
+		traceID, _ = biz.SpiritTraceIDFromContext(ctx)
+	}
+
+	impl.lg.Info("AgentAllocator.Allocate 开始",
+		loggateway.StepID(biz.SpiritStepAllocatorMatch),
+		loggateway.Str("trace_id", traceID),
+		loggateway.Str("task_plan_id", taskPlan.ID),
+	)
+
+	// Build agent capabilities from catalog
+	capabilities, err := impl.capBuilder.BuildAll(ctx)
+	if err != nil {
+		impl.lg.Warn("构建 Agent 能力列表失败",
+			loggateway.StepID(biz.SpiritStepAllocatorMatch),
+			loggateway.Str("trace_id", traceID),
+			loggateway.Err(err),
+		)
+		return nil, kerrors.InternalServer("ALLOCATOR", "build capabilities: "+err.Error())
+	}
+
+	// Match each subtask
+	var allocations []biz.TaskAllocation
+	for _, subTask := range taskPlan.SubTasks {
+		allocation, err := impl.matchSubTask(ctx, subTask, capabilities, traceID)
+		if err != nil {
+			impl.lg.Warn("子任务匹配失败，使用降级策略",
+				loggateway.StepID(biz.SpiritStepAllocatorMatch),
+				loggateway.Str("trace_id", traceID),
+				loggateway.Str("sub_task_id", subTask.ID),
+				loggateway.Err(err),
+			)
+			// Fallback: assign to first available agent
+			allocation = impl.fallbackAllocation(subTask, capabilities)
+		}
+		allocations = append(allocations, allocation)
+	}
+
+	// If no subtasks (simple/moderate), allocate the whole plan to a single agent
+	if len(taskPlan.SubTasks) == 0 {
+		allocation, err := impl.matchWholePlan(ctx, taskPlan, capabilities, traceID)
+		if err != nil {
+			allocation = impl.fallbackWholePlanAllocation(taskPlan, capabilities)
+		}
+		allocations = append(allocations, allocation)
+	}
+
+	impl.lg.Info("子任务匹配完成",
+		loggateway.StepID(biz.SpiritStepAllocatorMatch),
+		loggateway.Str("trace_id", traceID),
+		loggateway.Int("allocation_count", len(allocations)),
+	)
+
+	// Build and persist AllocationPlan
+	plan := &biz.AllocationPlan{
+		ID:              "ap_" + uuid.NewString(),
+		TaskPlanID:      taskPlan.ID,
+		SpiritSessionID: taskPlan.SpiritSessionID,
+		TraceID:         traceID,
+		Allocations:     allocations,
+		Status:          biz.AllocationStatusDraft,
+	}
+
+	impl.lg.Info("持久化 AllocationPlan",
+		loggateway.StepID(biz.SpiritStepAllocatorPersist),
+		loggateway.Str("trace_id", traceID),
+		loggateway.Str("allocation_plan_id", plan.ID),
+	)
+
+	saved, err := impl.repo.Create(ctx, plan)
+	if err != nil {
+		impl.lg.Warn("AllocationPlan 持久化失败",
+			loggateway.StepID(biz.SpiritStepAllocatorPersist),
+			loggateway.Str("trace_id", traceID),
+			loggateway.Err(err),
+		)
+		return nil, kerrors.InternalServer("ALLOCATOR", "persist allocation plan: "+err.Error())
+	}
+	return saved, nil
+}
+
+// GetAllocation retrieves an allocation plan by ID.
+func (impl *agentAllocatorImpl) GetAllocation(ctx context.Context, allocationID string) (*biz.AllocationPlan, error) {
+	return impl.repo.GetByID(ctx, allocationID)
+}
+
+// matchSubTask matches a single subtask to the best agent/team.
+func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.SubTask, capabilities []biz.AgentCapability, traceID string) (biz.TaskAllocation, error) {
+	// Determine assigned type based on estimated complexity
+	assignedType := "agent"
+	if subTask.EstimatedComplexity >= 0.5 {
+		assignedType = "team"
+	}
+
+	// Layer 1: Exact match — find agents whose Roles overlap with required_capabilities
+	bestMatch, bestScore, matchReason := impl.exactMatch(subTask.RequiredCapabilities, capabilities)
+
+	if bestScore > 0.5 {
+		return biz.TaskAllocation{
+			SubTaskID:    subTask.ID,
+			SubTaskName:  subTask.Name,
+			AssignedType: assignedType,
+			AssignedKey:  bestMatch.AgentKey,
+			AssignedName: bestMatch.DisplayName,
+			MatchScore:   bestScore,
+			MatchLayer:   "exact",
+			MatchReason:  matchReason,
+		}, nil
+	}
+
+	// Layer 3: LLM cold start — use LLM to select from agent list
+	llmMatch, err := impl.llmColdStart(ctx, subTask, capabilities, traceID)
+	if err == nil && llmMatch != "" {
+		// Find the matched agent's display name
+		displayName := llmMatch
+		for _, cap := range capabilities {
+			if cap.AgentKey == llmMatch {
+				displayName = cap.DisplayName
+				break
+			}
+		}
+		return biz.TaskAllocation{
+			SubTaskID:    subTask.ID,
+			SubTaskName:  subTask.Name,
+			AssignedType: assignedType,
+			AssignedKey:  llmMatch,
+			AssignedName: displayName,
+			MatchScore:   bestScore, // carry forward the best exact score as fallback reference
+			MatchLayer:   "llm_cold_start",
+			MatchReason:  "LLM 冷启动匹配",
+			FallbackKey:  bestMatch.AgentKey,
+			FallbackScore: bestScore,
+		}, nil
+	}
+
+	// If LLM cold start also fails, use the best exact match (even if score < 0.5)
+	if bestMatch.AgentKey != "" {
+		return biz.TaskAllocation{
+			SubTaskID:    subTask.ID,
+			SubTaskName:  subTask.Name,
+			AssignedType: assignedType,
+			AssignedKey:  bestMatch.AgentKey,
+			AssignedName: bestMatch.DisplayName,
+			MatchScore:   bestScore,
+			MatchLayer:   "exact",
+			MatchReason:  matchReason + " (低分匹配)",
+		}, nil
+	}
+
+	return biz.TaskAllocation{}, kerrors.NotFound("ALLOCATOR", "no agent found for subtask "+subTask.ID)
+}
+
+// exactMatch performs Layer 1 matching: overlap between required_capabilities and agent Roles.
+func (impl *agentAllocatorImpl) exactMatch(requiredCapabilities []string, capabilities []biz.AgentCapability) (biz.AgentCapability, float64, string) {
+	if len(requiredCapabilities) == 0 || len(capabilities) == 0 {
+		return biz.AgentCapability{}, 0, ""
+	}
+
+	type scored struct {
+		cap   biz.AgentCapability
+		score float64
+	}
+
+	var candidates []scored
+	for _, cap := range capabilities {
+		overlapRatio := computeOverlapRatio(requiredCapabilities, cap.Roles)
+		if overlapRatio == 0 {
+			continue
+		}
+		// Score = overlap_ratio * 0.7 + historical_success_rate * 0.3
+		// For now, historical_success_rate defaults to 0.5 (no history yet)
+		historicalRate := 0.5
+		score := overlapRatio*0.7 + float64(historicalRate)*0.3
+		candidates = append(candidates, scored{cap: cap, score: score})
+	}
+
+	if len(candidates) == 0 {
+		return biz.AgentCapability{}, 0, ""
+	}
+
+	// Pick the best
+	best := candidates[0]
+	for _, c := range candidates[1:] {
+		if c.score > best.score {
+			best = c
+		}
+	}
+
+	reason := fmt.Sprintf("角色重叠率 %.2f, 综合得分 %.2f", computeOverlapRatio(requiredCapabilities, best.cap.Roles), best.score)
+	return best.cap, best.score, reason
+}
+
+// llmColdStart performs Layer 3 matching: use LLM to select the best agent.
+func (impl *agentAllocatorImpl) llmColdStart(ctx context.Context, subTask biz.SubTask, capabilities []biz.AgentCapability, traceID string) (string, error) {
+	if impl.catalog == nil || impl.httpClient == nil {
+		return "", kerrors.InternalServer("ALLOCATOR", "LLM catalog or HTTP client not configured")
+	}
+
+	prompt := buildAllocatorColdStartPrompt(subTask, capabilities)
+
+	provider, model := resolvePlannerProviderModel()
+	if provider == "" || model == "" {
+		return "", kerrors.InternalServer("ALLOCATOR", "no provider/model configured for agent allocation")
+	}
+
+	row, err := impl.catalog.GetByProviderAndModel(ctx, provider, model)
+	if err != nil {
+		return "", kerrors.InternalServer("ALLOCATOR", "get provider config: "+err.Error())
+	}
+
+	var cfg ProviderAPIConfig
+	MergeProviderConfigJSON(row.ConfigJSON, &cfg)
+
+	msgs := []OpenAICompatMessage{
+		{Role: "system", Content: prompt},
+		{Role: "user", Content: fmt.Sprintf("Select the best agent for this subtask:\n\nName: %s\nDescription: %s\nRequired Capabilities: %v", subTask.Name, subTask.Description, subTask.RequiredCapabilities)},
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	text, _, _, _, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
+	if err != nil {
+		return "", kerrors.InternalServer("ALLOCATOR", "LLM call failed: "+err.Error())
+	}
+
+	// Parse the agent_key from the response
+	return parseAllocatorColdStartResponse(text), nil
+}
+
+// matchWholePlan handles allocation for plans without subtasks (simple/moderate).
+func (impl *agentAllocatorImpl) matchWholePlan(ctx context.Context, taskPlan *biz.TaskPlan, capabilities []biz.AgentCapability, traceID string) (biz.TaskAllocation, error) {
+	// For simple/moderate plans, use the strategy to determine assignment
+	assignedType := "agent"
+	if taskPlan.Strategy == biz.StrategyCoordinator || taskPlan.Strategy == biz.StrategyParallel || taskPlan.Strategy == biz.StrategyDAG {
+		assignedType = "team"
+	}
+
+	// Try exact match using user message keywords as capability hints
+	capHints := extractCapabilityHints(taskPlan.UserMessage)
+	bestMatch, bestScore, matchReason := impl.exactMatch(capHints, capabilities)
+
+	if bestScore > 0.3 && bestMatch.AgentKey != "" {
+		return biz.TaskAllocation{
+			SubTaskID:    "whole",
+			SubTaskName:  taskPlan.UserMessage,
+			AssignedType: assignedType,
+			AssignedKey:  bestMatch.AgentKey,
+			AssignedName: bestMatch.DisplayName,
+			MatchScore:   bestScore,
+			MatchLayer:   "exact",
+			MatchReason:  matchReason,
+		}, nil
+	}
+
+	// LLM cold start for whole plan
+	llmMatch, err := impl.llmColdStartForPlan(ctx, taskPlan, capabilities, traceID)
+	if err == nil && llmMatch != "" {
+		displayName := llmMatch
+		for _, cap := range capabilities {
+			if cap.AgentKey == llmMatch {
+				displayName = cap.DisplayName
+				break
+			}
+		}
+		return biz.TaskAllocation{
+			SubTaskID:    "whole",
+			SubTaskName:  taskPlan.UserMessage,
+			AssignedType: assignedType,
+			AssignedKey:  llmMatch,
+			AssignedName: displayName,
+			MatchScore:   bestScore,
+			MatchLayer:   "llm_cold_start",
+			MatchReason:  "LLM 冷启动匹配",
+			FallbackKey:  bestMatch.AgentKey,
+			FallbackScore: bestScore,
+		}, nil
+	}
+
+	return biz.TaskAllocation{}, kerrors.NotFound("ALLOCATOR", "no agent found for plan")
+}
+
+// llmColdStartForPlan uses LLM to select an agent for a whole plan (no subtasks).
+func (impl *agentAllocatorImpl) llmColdStartForPlan(ctx context.Context, taskPlan *biz.TaskPlan, capabilities []biz.AgentCapability, traceID string) (string, error) {
+	if impl.catalog == nil || impl.httpClient == nil {
+		return "", kerrors.InternalServer("ALLOCATOR", "LLM catalog or HTTP client not configured")
+	}
+
+	prompt := buildAllocatorColdStartPromptForPlan(taskPlan, capabilities)
+
+	provider, model := resolvePlannerProviderModel()
+	if provider == "" || model == "" {
+		return "", kerrors.InternalServer("ALLOCATOR", "no provider/model configured for agent allocation")
+	}
+
+	row, err := impl.catalog.GetByProviderAndModel(ctx, provider, model)
+	if err != nil {
+		return "", kerrors.InternalServer("ALLOCATOR", "get provider config: "+err.Error())
+	}
+
+	var cfg ProviderAPIConfig
+	MergeProviderConfigJSON(row.ConfigJSON, &cfg)
+
+	msgs := []OpenAICompatMessage{
+		{Role: "system", Content: prompt},
+		{Role: "user", Content: fmt.Sprintf("Select the best agent for this task:\n\n%s", taskPlan.UserMessage)},
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	text, _, _, _, err := CallOpenAICompatChat(callCtx, impl.httpClient, cfg, model, msgs)
+	if err != nil {
+		return "", kerrors.InternalServer("ALLOCATOR", "LLM call failed: "+err.Error())
+	}
+
+	return parseAllocatorColdStartResponse(text), nil
+}
+
+// fallbackAllocation creates a fallback allocation when matching fails.
+func (impl *agentAllocatorImpl) fallbackAllocation(subTask biz.SubTask, capabilities []biz.AgentCapability) biz.TaskAllocation {
+	if len(capabilities) > 0 {
+		return biz.TaskAllocation{
+			SubTaskID:    subTask.ID,
+			SubTaskName:  subTask.Name,
+			AssignedType: "agent",
+			AssignedKey:  capabilities[0].AgentKey,
+			AssignedName: capabilities[0].DisplayName,
+			MatchScore:   0,
+			MatchLayer:   "fallback",
+			MatchReason:  "匹配失败，使用第一个可用 Agent",
+		}
+	}
+	return biz.TaskAllocation{
+		SubTaskID:    subTask.ID,
+		SubTaskName:  subTask.Name,
+		AssignedType: "agent",
+		AssignedKey:  biz.SpiritAgentKey,
+		AssignedName: "Spirit",
+		MatchScore:   0,
+		MatchLayer:   "fallback",
+		MatchReason:  "无可用 Agent，降级为 Spirit 直接回答",
+	}
+}
+
+// fallbackWholePlanAllocation creates a fallback allocation for a whole plan.
+func (impl *agentAllocatorImpl) fallbackWholePlanAllocation(taskPlan *biz.TaskPlan, capabilities []biz.AgentCapability) biz.TaskAllocation {
+	if len(capabilities) > 0 {
+		return biz.TaskAllocation{
+			SubTaskID:    "whole",
+			SubTaskName:  taskPlan.UserMessage,
+			AssignedType: "agent",
+			AssignedKey:  capabilities[0].AgentKey,
+			AssignedName: capabilities[0].DisplayName,
+			MatchScore:   0,
+			MatchLayer:   "fallback",
+			MatchReason:  "匹配失败，使用第一个可用 Agent",
+		}
+	}
+	return biz.TaskAllocation{
+		SubTaskID:    "whole",
+		SubTaskName:  taskPlan.UserMessage,
+		AssignedType: "agent",
+		AssignedKey:  biz.SpiritAgentKey,
+		AssignedName: "Spirit",
+		MatchScore:   0,
+		MatchLayer:   "fallback",
+		MatchReason:  "无可用 Agent，降级为 Spirit 直接回答",
+	}
+}
+
+// computeOverlapRatio computes the ratio of overlap between required and available.
+func computeOverlapRatio(required []string, available []string) float64 {
+	if len(required) == 0 {
+		return 0
+	}
+	availSet := make(map[string]bool, len(available))
+	for _, a := range available {
+		availSet[strings.ToLower(strings.TrimSpace(a))] = true
+	}
+	overlap := 0
+	for _, r := range required {
+		if availSet[strings.ToLower(strings.TrimSpace(r))] {
+			overlap++
+		}
+	}
+	return float64(overlap) / float64(len(required))
+}
+
+// extractCapabilityHints extracts capability hints from a user message.
+func extractCapabilityHints(userMessage string) []string {
+	// Simple keyword-based extraction
+	keywords := []string{
+		"go-backend", "go-kratos", "vue3-frontend", "quasar-ui",
+		"devops", "database", "architecture", "testing",
+		"security", "research", "documentation", "api-design",
+	}
+	var hints []string
+	msgLower := strings.ToLower(userMessage)
+	for _, kw := range keywords {
+		if strings.Contains(msgLower, strings.ReplaceAll(kw, "-", " ")) ||
+			strings.Contains(msgLower, kw) {
+			hints = append(hints, kw)
+		}
+	}
+	if len(hints) == 0 {
+		hints = append(hints, "general")
+	}
+	return hints
+}
+
+// buildAllocatorColdStartPrompt creates the system prompt for LLM-based agent selection.
+func buildAllocatorColdStartPrompt(subTask biz.SubTask, capabilities []biz.AgentCapability) string {
+	agentList := formatCapabilitiesForPrompt(capabilities)
+
+	return `You are an agent allocation specialist. Select the best agent for a given subtask.
+
+Rules:
+- Output ONLY the agent_key of the best matching agent, no markdown, no explanation
+- Consider the subtask's required capabilities and description
+- If no agent is a good fit, output "none"
+
+Available agents:
+` + agentList
+}
+
+// buildAllocatorColdStartPromptForPlan creates the system prompt for LLM-based agent selection for a whole plan.
+func buildAllocatorColdStartPromptForPlan(taskPlan *biz.TaskPlan, capabilities []biz.AgentCapability) string {
+	agentList := formatCapabilitiesForPrompt(capabilities)
+
+	return `You are an agent allocation specialist. Select the best agent for a given task.
+
+Rules:
+- Output ONLY the agent_key of the best matching agent, no markdown, no explanation
+- Consider the task description and context
+- If no agent is a good fit, output "none"
+
+Available agents:
+` + agentList
+}
+
+// formatCapabilitiesForPrompt formats agent capabilities for LLM prompt.
+func formatCapabilitiesForPrompt(capabilities []biz.AgentCapability) string {
+	var lines []string
+	for _, cap := range capabilities {
+		line := fmt.Sprintf("- agent_key: %s, display_name: %s, roles: %v, description: %s",
+			cap.AgentKey, cap.DisplayName, cap.Roles, cap.Description)
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// parseAllocatorColdStartResponse extracts the agent_key from LLM response.
+func parseAllocatorColdStartResponse(text string) string {
+	text = strings.TrimSpace(text)
+	// Strip markdown fences if present
+	if m := fenceRE.FindStringSubmatch(text); len(m) > 1 {
+		text = strings.TrimSpace(m[1])
+	}
+	// The response should be just the agent_key
+	// Try to parse as JSON first
+	var parsed struct {
+		AgentKey string `json:"agent_key"`
+	}
+	if json.Unmarshal([]byte(text), &parsed) == nil && parsed.AgentKey != "" {
+		return parsed.AgentKey
+	}
+	// Otherwise treat the whole text as the agent_key
+	text = strings.TrimPrefix(text, "- agent_key:")
+	text = strings.TrimSpace(text)
+	if text == "none" || text == "" {
+		return ""
+	}
+	return text
+}

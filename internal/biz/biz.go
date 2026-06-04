@@ -57,6 +57,7 @@ var ProviderSet = wire.NewSet(
 	NewSkillEvolutionUsecase,
 	NewTaxonomyUsecase,
 	NewToolResultGate,
+	NewExperienceAnalyticsUsecase,
 	ProvideAgentExistenceChecker,
 	ProvideAgentIDExistenceChecker,
 )

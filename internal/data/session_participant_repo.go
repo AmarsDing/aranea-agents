@@ -7,6 +7,8 @@ import (
 	"time"
 
 	bizsess "aranea-agents/internal/biz/session"
+	"aranea-agents/internal/data/ent"
+	"aranea-agents/internal/data/ent/sessionparticipant"
 	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -23,18 +25,18 @@ func NewSessionParticipantRepo(d *Data) bizsess.SessionParticipantRepository {
 	return &sessionParticipantRepo{data: d}
 }
 
-func (r *sessionParticipantRepo) readDB(ctx context.Context) execer {
+func (r *sessionParticipantRepo) readClient(ctx context.Context) *ent.Client {
 	if r == nil || r.data == nil {
 		return nil
 	}
-	return r.data.RWDB().ReadDB(ctx)
+	return r.data.RW().Read(ctx)
 }
 
-func (r *sessionParticipantRepo) writeDB(ctx context.Context) execer {
+func (r *sessionParticipantRepo) writeClient(ctx context.Context) *ent.Client {
 	if r == nil || r.data == nil {
 		return nil
 	}
-	return r.data.RWDB().WriteDB(ctx)
+	return r.data.RW().Write(ctx)
 }
 
 type participantAgg struct {
@@ -47,6 +49,32 @@ type participantAgg struct {
 	outputTokens    int
 	firstActiveAt   string
 	lastActiveAt    string
+}
+
+// entSessionParticipantToBiz converts an Ent SessionParticipant entity to a biz SessionParticipant.
+func entSessionParticipantToBiz(e *ent.SessionParticipant) bizsess.SessionParticipant {
+	if e == nil {
+		return bizsess.SessionParticipant{}
+	}
+	return bizsess.SessionParticipant{
+		ID:               e.ID,
+		SessionID:        e.SessionID,
+		ParticipantType:  e.ParticipantType,
+		ParticipantID:    e.ParticipantID,
+		DisplayName:      e.DisplayName,
+		RoleInSession:    e.RoleInSession,
+		Status:           e.Status,
+		FirstActiveAt:    e.FirstActiveAt,
+		LastActiveAt:     e.LastActiveAt,
+		MessageCount:     e.MessageCount,
+		RunStepCount:     e.RunStepCount,
+		InputTokens:      e.InputTokens,
+		OutputTokens:     e.OutputTokens,
+		ContextUsedRatio: e.ContextUsedRatio,
+		MetadataJSON:     e.MetadataJSON,
+		CreatedAt:        e.CreatedAt,
+		UpdatedAt:        e.UpdatedAt,
+	}
 }
 
 func (r *sessionParticipantRepo) SyncFromSession(ctx context.Context, sess bizsess.Session, messages []bizsess.ChatMessage) error {
@@ -99,22 +127,36 @@ func (r *sessionParticipantRepo) SyncFromSession(ctx context.Context, sess bizse
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		e := TxExecerFromCtx(txCtx, r.data.RWDB().WriteHandle())
-		if _, err := e.ExecContext(txCtx, `DELETE FROM session_participants WHERE session_id=?`, sessionID); err != nil {
+		client := r.data.RW().Write(txCtx)
+		// Delete existing participants for this session.
+		_, err := client.SessionParticipant.Delete().
+			Where(sessionparticipant.SessionIDEQ(sessionID)).
+			Exec(txCtx)
+		if err != nil {
 			return err
 		}
+		// Insert new participants.
 		for _, row := range aggs {
 			id := uuid.NewString()
-			_, err := e.ExecContext(txCtx, `
-INSERT INTO session_participants (
-  id, session_id, participant_type, participant_id, display_name, role_in_session, status,
-  first_active_at, last_active_at, message_count, run_step_count, input_tokens, output_tokens,
-  context_used_ratio, metadata_json, created_at, updated_at
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-				id, sessionID, row.participantType, row.participantID, row.displayName, row.roleInSession, "active",
-				row.firstActiveAt, row.lastActiveAt, row.messageCount, 0, row.inputTokens, row.outputTokens,
-				0, "{}", now, now,
-			)
+			_, err := client.SessionParticipant.Create().
+				SetID(id).
+				SetSessionID(sessionID).
+				SetParticipantType(row.participantType).
+				SetParticipantID(row.participantID).
+				SetDisplayName(row.displayName).
+				SetRoleInSession(row.roleInSession).
+				SetStatus("active").
+				SetFirstActiveAt(row.firstActiveAt).
+				SetLastActiveAt(row.lastActiveAt).
+				SetMessageCount(row.messageCount).
+				SetRunStepCount(0).
+				SetInputTokens(row.inputTokens).
+				SetOutputTokens(row.outputTokens).
+				SetContextUsedRatio(0).
+				SetMetadataJSON("{}").
+				SetCreatedAt(now).
+				SetUpdatedAt(now).
+				Save(txCtx)
 			if err != nil {
 				return err
 			}
@@ -169,34 +211,24 @@ func firstNonEmpty(values ...string) string {
 }
 
 func (r *sessionParticipantRepo) ListBySession(ctx context.Context, sessionID string) ([]bizsess.SessionParticipant, error) {
-	db := r.readDB(ctx)
-	if db == nil {
+	client := r.readClient(ctx)
+	if client == nil {
 		return nil, nil
 	}
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return nil, kerrors.BadRequest("SESSION", "session id is required")
 	}
-	rows, err := db.QueryContext(ctx, `
-SELECT id, session_id, participant_type, participant_id, display_name, role_in_session, status,
-  first_active_at, last_active_at, message_count, run_step_count, input_tokens, output_tokens,
-  context_used_ratio, metadata_json, created_at, updated_at
-FROM session_participants WHERE session_id=? ORDER BY message_count DESC, last_active_at DESC`, sessionID)
+	items, err := client.SessionParticipant.Query().
+		Where(sessionparticipant.SessionIDEQ(sessionID)).
+		Order(ent.Desc(sessionparticipant.FieldMessageCount), ent.Desc(sessionparticipant.FieldLastActiveAt)).
+		All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []bizsess.SessionParticipant
-	for rows.Next() {
-		var p bizsess.SessionParticipant
-		if err := rows.Scan(
-			&p.ID, &p.SessionID, &p.ParticipantType, &p.ParticipantID, &p.DisplayName, &p.RoleInSession, &p.Status,
-			&p.FirstActiveAt, &p.LastActiveAt, &p.MessageCount, &p.RunStepCount, &p.InputTokens, &p.OutputTokens,
-			&p.ContextUsedRatio, &p.MetadataJSON, &p.CreatedAt, &p.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		out = append(out, p)
+	out := make([]bizsess.SessionParticipant, len(items))
+	for i, item := range items {
+		out[i] = entSessionParticipantToBiz(item)
 	}
-	return out, rows.Err()
+	return out, nil
 }

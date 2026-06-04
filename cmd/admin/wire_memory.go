@@ -6,7 +6,6 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data"
-	"aranea-agents/internal/data/sessionmemory"
 	memtrpc "aranea-agents/internal/memory/trpc"
 	rt "aranea-agents/internal/runtime"
 	sessiontrpc "aranea-agents/internal/session/trpc"
@@ -20,29 +19,29 @@ func provideAutoMemoryQueue(lg loggateway.Logger) *memtrpc.MemoryJobQueue {
 	return memtrpc.NewMemoryJobQueue(256, 30*time.Second, lg)
 }
 
-func provideMemoryPolicyEngine(store *sessionmemory.Store, sys biz.SystemSettingRepo) *biz.MemoryPolicyEngine {
-	if store == nil {
+func provideMemoryPolicyEngine(d *data.Data, sys biz.SystemSettingRepo) *biz.MemoryPolicyEngine {
+	if d == nil {
 		return nil
 	}
-	return biz.NewMemoryPolicyEngine(data.NewMemoryActionLogWriter(store), func(ctx context.Context) bool {
+	return biz.NewMemoryPolicyEngine(data.NewMemoryActionLogWriter(d), func(ctx context.Context) bool {
 		return biz.ResolvePolicyStrict(ctx, sys)
 	})
 }
 
-func provideFactIndexSync(vec *biz.MemoryUsecase, store *sessionmemory.Store, lg loggateway.Logger) biz.MemoryFactIndexSyncer {
-	return data.NewMemoryFactIndexSync(vec, store, lg)
+func provideFactIndexSync(vec *biz.MemoryUsecase, d *data.Data, lg loggateway.Logger) biz.MemoryFactIndexSyncer {
+	return data.NewMemoryFactIndexSync(vec, d, lg)
 }
 
-func provideEpisodeIndexSync(vec *biz.MemoryUsecase, store *sessionmemory.Store) biz.EpisodeIndexSyncer {
-	return data.NewMemoryEpisodeIndexSync(vec, store)
+func provideEpisodeIndexSync(vec *biz.MemoryUsecase, d *data.Data) biz.EpisodeIndexSyncer {
+	return data.NewMemoryEpisodeIndexSync(vec, d)
 }
 
-func provideMemoryL2Recall(store *sessionmemory.Store, vec *biz.MemoryUsecase) biz.MemoryL2Recaller {
-	return biz.NewMemoryL2RecallUsecase(data.NewSessionL2RecallStore(store), vec)
+func provideMemoryL2Recall(d *data.Data, vec *biz.MemoryUsecase) biz.MemoryL2Recaller {
+	return biz.NewMemoryL2RecallUsecase(data.NewSessionL2RecallStore(d, d.VectorStore()), vec)
 }
 
-func provideMemoryL3Recall(store *sessionmemory.Store, vec *biz.MemoryUsecase) biz.MemoryL3Recaller {
-	return biz.NewMemoryL3RecallUsecase(data.NewSessionL3RecallStore(store), data.NewL3ScoredRecallAdapter(store), vec)
+func provideMemoryL3Recall(d *data.Data, vec *biz.MemoryUsecase) biz.MemoryL3Recaller {
+	return biz.NewMemoryL3RecallUsecase(data.NewSessionL3RecallStore(d, d.VectorStore()), data.NewL3ScoredRecallAdapter(d), vec)
 }
 
 func provideAutoMemoryEnqueuer(q memtrpc.AutoMemoryQueue) biz.AutoMemoryEnqueuer {
@@ -53,17 +52,16 @@ func provideFeedbackMemoryEnqueuer(q memtrpc.AutoMemoryQueue) biz.FeedbackMemory
 	return biz.FeedbackMemoryEnqueuerFunc(memtrpc.NewFeedbackMemoryEnqueuer(q))
 }
 
-func provideMemoryCompositeRecall(store *sessionmemory.Store) biz.MemoryCompositeRecaller {
-	return biz.NewMemoryCompositeRecallUsecase(data.NewMemoryCompositeRecallAdapter(store))
+func provideMemoryCompositeRecall(d *data.Data) biz.MemoryCompositeRecaller {
+	return biz.NewMemoryCompositeRecallUsecase(data.NewMemoryCompositeRecallAdapter(d))
 }
 
-func provideMemoryAdminUsecase(admin biz.SessionAdminStore, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, store *sessionmemory.Store, lg loggateway.Logger) *biz.MemoryAdminUsecase {
-	return biz.NewMemoryAdminUsecase(admin, vec, factSync, data.NewL3FactWriterAdapter(store), lg)
+func provideMemoryAdminUsecase(admin biz.SessionAdminStore, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, d *data.Data, lg loggateway.Logger) *biz.MemoryAdminUsecase {
+	return biz.NewMemoryAdminUsecase(admin, vec, factSync, data.NewL3FactWriterAdapter(d, d.VectorStore()), lg)
 }
 
 func providePersistenceSet(
 	d *data.Data,
-	store *sessionmemory.Store,
 	mcp *biz.AgentMCPTooling,
 	sess trpcsession.Service,
 	artifact trpcartifact.Service,
@@ -76,16 +74,15 @@ func providePersistenceSet(
 	l2Recall biz.MemoryL2Recaller,
 	l3Recall biz.MemoryL3Recaller,
 	compositeRecall biz.MemoryCompositeRecaller,
+	adminUC *biz.MemoryAdminUsecase,
 	lg loggateway.Logger,
 ) rt.PersistenceSet {
 	var mem rt.MemorySet
-	if store != nil {
-		if policy != nil {
-			store.SetPolicyEngine(policy)
-		}
+	if d != nil {
 		mem = rt.MemorySet{
-			TRPC:            memtrpc.NewSQLiteMemoryService(store, factSync, q, vec, memtrpc.NewAgentRuntimeSettingsLoader(agentsUC), lg),
-			Admin:           data.NewSessionAdminStoreAdapter(store),
+			TRPC:            memtrpc.NewSQLiteMemoryService(d, data.NewL3FactWriterAdapter(d, d.VectorStore()), factSync, q, vec, memtrpc.NewAgentRuntimeSettingsLoader(agentsUC), lg),
+			Admin:           data.NewSessionAdminStoreAdapter(d, d.VectorStore()),
+			AdminUsecase:    adminUC,
 			L2Recall:        l2Recall,
 			L3Recall:        l3Recall,
 			CompositeRecall: compositeRecall,
@@ -97,5 +94,3 @@ func providePersistenceSet(
 	}
 	return rt.PersistenceSet{Session: sess, Memory: mem, AgentMCP: mcp, Artifact: artifact, ArtifactUC: artifactUC, RunnerRollback: rollback}
 }
-
-

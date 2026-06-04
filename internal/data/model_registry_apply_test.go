@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/migrate"
 	"aranea-agents/internal/modelregistry"
+	"aranea-agents/pkg/loggateway"
 
 	"entgo.io/ent/dialect"
 	entsql "entgo.io/ent/dialect/sql"
@@ -29,7 +30,7 @@ func openTestDataWithRawDB(t *testing.T) *Data {
 	if err := client.Schema.Create(context.Background(), migrate.WithDropIndex(true)); err != nil {
 		t.Fatalf("schema create: %v", err)
 	}
-	return &Data{entClient: client, rawDB: db, rw: NewReadWriteClient(client, client)}
+	return &Data{entClient: client, readClient: client, rawDB: db, readDB: db, rw: NewReadWriteClient(client, client), rwDB: NewReadWriteDB(db, db), lg: loggateway.NewNoop()}
 }
 
 func seedAgent(t *testing.T, d *Data, id, agentKey, displayName, provider string) {

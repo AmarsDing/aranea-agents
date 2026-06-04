@@ -7,3 +7,5 @@ var errAgentIDRequired = kerrors.BadRequest("SKILLS_BUTLER", "agent_id is requir
 var errSkillNameRequired = kerrors.BadRequest("SKILLS_BUTLER", "skill_name is required")
 
 var errImprovementDescRequired = kerrors.BadRequest("SKILLS_BUTLER", "improvement_description is required")
+
+var errTimeRangeRequired = kerrors.BadRequest("SKILLS_BUTLER", "time_range is required")

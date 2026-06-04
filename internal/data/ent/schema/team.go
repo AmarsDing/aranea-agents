@@ -23,7 +23,7 @@ func (Team) Fields() []ent.Field {
 		field.String("id").Immutable().Unique().MaxLen(256),
 		field.String("team_key").Unique().MaxLen(512),
 		field.String("display_name").MaxLen(1024),
-		field.String("status").Default("active"),
+		field.String("status").Default("pending"),
 		field.Bool("is_default").Default(false),
 		field.Text("definition_json").Default(""),
 		field.String("adk_app_name").Default(""),

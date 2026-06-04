@@ -1038,6 +1038,9 @@ export default {
       signatureQuote: '"Spec the world, then ship it."',
       signatureCaption: '· Signature of the information architecture school — every number is traceable, every option is comparable',
       noMetricHint: '—',
+      tableDesc: 'Description',
+      tableStatus: 'Status',
+      tableSource: 'Source',
     },
   },
 };

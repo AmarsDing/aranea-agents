@@ -10,6 +10,7 @@ import (
 
 type TeamReader interface {
 	ListTeams(ctx context.Context) ([]Team, error)
+	ListTeamsByStatus(ctx context.Context, status string) ([]Team, error)
 	GetTeamByID(ctx context.Context, id string) (Team, error)
 	ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]Team, error)
 }
@@ -204,6 +205,10 @@ func (u *TeamUsecase) List(ctx context.Context) ([]Team, error) {
 	return u.repo.ListTeams(ctx)
 }
 
+func (u *TeamUsecase) ListTeamsByStatus(ctx context.Context, status string) ([]Team, error) {
+	return u.repo.ListTeamsByStatus(ctx, status)
+}
+
 func (u *TeamUsecase) ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]Team, error) {
 	return u.repo.ListBySpiritSessionID(ctx, spiritSessionID)
 }
@@ -226,7 +231,7 @@ func (u *TeamUsecase) Create(ctx context.Context, in Team) (Team, error) {
 		in.ID = newAgentCatalogID()
 	}
 	if in.Status == "" {
-		in.Status = "active"
+		in.Status = TeamStatusPending
 	}
 	if in.DefinitionJSON == "" {
 		in.DefinitionJSON = defaultTeamDefinitionJSON()
@@ -644,7 +649,7 @@ func (u *TeamUsecase) SaveTeamWithGraph(ctx context.Context, team Team, graphIDM
 		team.ID = newAgentCatalogID()
 	}
 	if team.Status == "" {
-		team.Status = "active"
+		team.Status = TeamStatusPending
 	}
 	if team.DefinitionJSON == "" {
 		team.DefinitionJSON = defaultTeamDefinitionJSON()

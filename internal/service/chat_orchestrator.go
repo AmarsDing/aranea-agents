@@ -112,6 +112,7 @@ type ChatOrchestrator struct {
 	skillStats      biz.SkillInvocationStatsReader
 	outboundRouter  *outbound.Router
 	subAgentService *subagenttool.Service
+	expAnalytics    *biz.ExperienceAnalyticsUsecase
 
 	sessionRunBindings   sync.Map
 	awaitMetaCache       sync.Map
@@ -151,6 +152,7 @@ type ChatOrchestratorDeps struct {
 	SkillStats      biz.SkillInvocationStatsReader
 	OutboundRouter  *outbound.Router
 	SubAgentService *subagenttool.Service
+	ExpAnalytics    *biz.ExperienceAnalyticsUsecase
 }
 
 func coalesceRunRegistry(r *rt.RunRegistry) *rt.RunRegistry {
@@ -195,6 +197,7 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		skillStats:      deps.SkillStats,
 		outboundRouter:  deps.OutboundRouter,
 		subAgentService: deps.SubAgentService,
+		expAnalytics:    deps.ExpAnalytics,
 	}
 	if o.turnTimeout <= 0 {
 		o.turnTimeout = chatagent.DefaultTurnTimeout

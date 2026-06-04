@@ -63,3 +63,6 @@ func (r *runSummaryRepo) ListTeamRunSteps(_ context.Context, runID string) ([]Te
 func (r *runSummaryRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]Team, error) {
 	return nil, nil
 }
+func (r *runSummaryRepo) ListTeamsByStatus(_ context.Context, _ string) ([]Team, error) {
+	return nil, nil
+}

@@ -58,6 +58,9 @@ func (r *summaryTeamRepo) GetTeamByID(_ context.Context, id string) (biz.Team, e
 func (r *summaryTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.Team, error) {
 	return nil, nil
 }
+func (r *summaryTeamRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) {
+	return nil, nil
+}
 
 func TestGetTeamRunSummary_AggregatesSteps(t *testing.T) {
 	repo := &summaryTeamRepo{

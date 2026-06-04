@@ -63,7 +63,7 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 	teamID := strings.TrimSpace(sess.TeamID)
 
 	if teamID != "" {
-		if _, updateErr := s.team.TeamUC.Update(ctx, teamID, biz.Team{Status: "running"}); updateErr != nil {
+		if _, updateErr := s.team.TeamUC.Update(ctx, teamID, biz.Team{Status: biz.TeamStatusRunning}); updateErr != nil {
 			s.lg.Warn("更新团队状态为 running 失败",
 				loggateway.StepID("spirit.team.running_err"),
 				loggateway.Str("team_id", teamID),
@@ -77,7 +77,7 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 		env.TeamID = teamID
 		env.Metadata = map[string]any{
 			"team_id":      teamID,
-			"status":       "running",
+			"status":       biz.TeamStatusRunning,
 			"progress_pct": 0,
 		}
 		s.bus.Publish(ctx, env)
@@ -114,7 +114,7 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 			loggateway.Err(err),
 		)
 		if spiritSessionID != "" && teamID != "" {
-			s.HandleTeamTurnResult(ctx, spiritSessionID, teamID, "failed", err.Error())
+			s.HandleTeamTurnResult(ctx, spiritSessionID, teamID, biz.TeamStatusFailed, err.Error())
 		}
 		return err
 	}
@@ -127,7 +127,7 @@ func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, conte
 		)
 	}
 	if spiritSessionID != "" && teamID != "" {
-		s.HandleTeamTurnResult(ctx, spiritSessionID, teamID, "completed", "")
+		s.HandleTeamTurnResult(ctx, spiritSessionID, teamID, biz.TeamStatusCompleted, "")
 	}
 	return nil
 }
@@ -148,9 +148,9 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 	}
 
 	var envType event.EnvelopeType
-	if status == "completed" {
+	if status == biz.TeamStatusCompleted {
 		envType = event.EnvelopeTypeSpiritTeamCompleted
-		if _, updateErr := s.team.TeamUC.Update(ctx, teamID, biz.Team{Status: "completed"}); updateErr != nil {
+		if _, updateErr := s.team.TeamUC.Update(ctx, teamID, biz.Team{Status: biz.TeamStatusCompleted}); updateErr != nil {
 			s.lg.Warn("更新团队状态为 completed 失败",
 				loggateway.StepID("spirit.team.completed_err"),
 				loggateway.Str("team_id", teamID),
@@ -159,9 +159,9 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		}
 		s.recordTeamCompletion(ctx, team, durationMs)
 		s.scheduleDependentTeams(ctx, spiritSessionID, team)
-	} else if status == "cancelled" {
+	} else if status == biz.TeamStatusCancelled {
 		envType = event.EnvelopeTypeSpiritTeamFailed
-		if _, updateErr := s.team.TeamUC.Update(ctx, teamID, biz.Team{Status: "cancelled"}); updateErr != nil {
+		if _, updateErr := s.team.TeamUC.Update(ctx, teamID, biz.Team{Status: biz.TeamStatusCancelled}); updateErr != nil {
 			s.lg.Warn("更新团队状态为 cancelled 失败",
 				loggateway.StepID("spirit.team.cancelled_err"),
 				loggateway.Str("team_id", teamID),
@@ -185,7 +185,7 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		}
 	} else {
 		envType = event.EnvelopeTypeSpiritTeamFailed
-		if _, updateErr := s.team.TeamUC.Update(ctx, teamID, biz.Team{Status: "failed"}); updateErr != nil {
+		if _, updateErr := s.team.TeamUC.Update(ctx, teamID, biz.Team{Status: biz.TeamStatusFailed}); updateErr != nil {
 			s.lg.Warn("更新团队状态为 failed 失败",
 				loggateway.StepID("spirit.team.failed_err"),
 				loggateway.Str("team_id", teamID),
@@ -210,7 +210,7 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 		s.bus.Publish(ctx, env)
 
 		progressPct := 100.0
-		if status == "failed" || status == "cancelled" {
+		if status == biz.TeamStatusFailed || status == biz.TeamStatusCancelled {
 			progressPct = 0
 		}
 		progressEnv := event.NewEnvelope(event.EnvelopeTypeSpiritTeamProgress, "spirit-lifecycle", spiritSessionID)
@@ -286,7 +286,7 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 	}
 	for i := range allTeams {
 		t := &allTeams[i]
-		if t.Status != "waiting_deps" {
+		if t.Status != biz.TeamStatusPending {
 			continue
 		}
 		if !containsString(t.DependsOn, completedTeam.DagNodeID) {
@@ -298,9 +298,9 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 			found := false
 			for j := range allTeams {
 				if allTeams[j].DagNodeID == depID {
-					if allTeams[j].Status == "completed" {
-						found = true
-					} else if allTeams[j].Status == "failed" || allTeams[j].Status == "cancelled" {
+					if allTeams[j].Status == biz.TeamStatusCompleted {
+					found = true
+				} else if allTeams[j].Status == biz.TeamStatusFailed || allTeams[j].Status == biz.TeamStatusCancelled {
 						anyDepFailed = true
 					}
 					break
@@ -312,7 +312,7 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 			}
 		}
 		if anyDepFailed {
-			_, uerr := s.team.TeamUC.Update(ctx, t.ID, biz.Team{Status: "failed"})
+			_, uerr := s.team.TeamUC.Update(ctx, t.ID, biz.Team{Status: biz.TeamStatusFailed})
 			if uerr != nil {
 				s.lg.Warn("更新团队状态为 failed 失败，依赖调度中断",
 					loggateway.StepID("spirit.schedule_deps.fail_err"),
@@ -343,7 +343,7 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 			continue
 		}
 		current, getErr := s.team.TeamUC.Get(ctx, t.ID)
-		if getErr != nil || current.Status != "waiting_deps" {
+		if getErr != nil || current.Status != biz.TeamStatusPending {
 			s.lg.Info("依赖调度：团队状态已变更，跳过激活",
 				loggateway.StepID("spirit.schedule_deps.stale"),
 				loggateway.Str("team_id", t.ID),
@@ -351,7 +351,7 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 			)
 			continue
 		}
-		_, uerr := s.team.TeamUC.Update(ctx, t.ID, biz.Team{Status: "active"})
+		_, uerr := s.team.TeamUC.Update(ctx, t.ID, biz.Team{Status: biz.TeamStatusRunning})
 		if uerr != nil {
 			s.lg.Warn("更新团队状态失败，依赖调度中断",
 				loggateway.StepID("spirit.schedule_deps.update_err"),
@@ -371,7 +371,7 @@ func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionI
 			env.Metadata = map[string]any{
 				"team_id":   t.ID,
 				"team_name": t.DisplayName,
-				"status":    "active",
+				"status":    biz.TeamStatusRunning,
 			}
 			s.bus.Publish(ctx, env)
 		}
@@ -421,9 +421,9 @@ func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionI
 	hasCompleted := false
 	for _, t := range teams {
 		switch t.Status {
-		case "active", "waiting_deps", "assembled", "running":
+		case biz.TeamStatusPending, biz.TeamStatusRunning:
 			return
-		case "completed":
+		case biz.TeamStatusCompleted:
 			hasCompleted = true
 		}
 	}
@@ -490,7 +490,7 @@ func (a *SpiritTeamAssembler) AssembleTeam(ctx context.Context, params biz.Spiri
 
 	a.publishSpiritTeamAssembled(ctx, spiritSessionID, result.Team, result.Session, params.Mode, params.TaskDescription, params.TopologyReason)
 
-	if params.AutoStart && a.teamStarter != nil && result.Team.Status == "active" && strings.TrimSpace(params.TaskDescription) != "" {
+	if params.AutoStart && a.teamStarter != nil && result.Team.Status == biz.TeamStatusPending && strings.TrimSpace(params.TaskDescription) != "" {
 		sessionID := result.Session.ID
 		taskDesc := params.TaskDescription
 		safego.Go(ctx, "spirit-auto-start", func() {
@@ -560,12 +560,12 @@ func (a *SpiritTeamAssembler) CancelTeam(ctx context.Context, teamID string) err
 		env.Metadata = map[string]any{
 			"team_id":   teamID,
 			"team_name": team.DisplayName,
-			"status":    "cancelled",
+			"status":    biz.TeamStatusCancelled,
 		}
 		a.bus.Publish(ctx, env)
 	}
 	if a.teamStarter != nil && spiritSessionID != "" {
-		a.teamStarter.HandleTeamTurnResult(ctx, spiritSessionID, teamID, "cancelled", "")
+		a.teamStarter.HandleTeamTurnResult(ctx, spiritSessionID, teamID, biz.TeamStatusCancelled, "")
 	}
 	return nil
 }

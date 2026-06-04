@@ -115,3 +115,23 @@ type AgentPersistTurnRecord interface {
 type AgentProjectRuntimeEvent interface {
 	ProjectAgentEvents(ctx context.Context, sessionID, runID string, outcome TurnOutcome, assistantMsg ChatMessage) error
 }
+
+// ---------------------------------------------------------------------------
+// Agent-as-Tool (Moderate Path)
+// ---------------------------------------------------------------------------
+
+// AgentMatch represents a matched agent for the moderate (single-agent) path.
+type AgentMatch struct {
+	AgentKey    string
+	DisplayName string
+	Score       float64
+	MatchReason string
+}
+
+// AgentMatcherPort finds the best agent for a given task.
+// Defined in biz to avoid import cycles (internal/agent → internal/tools → internal/biz).
+//
+// Implementations live in internal/agent. Wire binding in internal/service.
+type AgentMatcherPort interface {
+	MatchAgent(ctx context.Context, taskDescription string, requiredCapabilities []string) (*AgentMatch, error)
+}

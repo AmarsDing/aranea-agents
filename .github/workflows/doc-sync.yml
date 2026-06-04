@@ -38,9 +38,16 @@ jobs:
             AFFECTED_SPECS="$AFFECTED_SPECS openspec/specs/architecture-blueprint.md"
             CRITICAL_SPECS="$CRITICAL_SPECS openspec/specs/architecture-blueprint.md"
           fi
-          if echo "$FILES" | grep -q "^internal/biz/\|^internal/service/"; then
+          if echo "$FILES" | grep -q "^internal/biz/\|^internal/service/\|^internal/data/"; then
             AFFECTED_SPECS="$AFFECTED_SPECS openspec/specs/module-cross-reference.md"
             CRITICAL_SPECS="$CRITICAL_SPECS openspec/specs/module-cross-reference.md"
+          fi
+          if echo "$FILES" | grep -q "^web/src/"; then
+            AFFECTED_SPECS="$AFFECTED_SPECS openspec/specs/module-cross-reference.md"
+          fi
+          if echo "$FILES" | grep -q "^pkg/trpc-agent-go/"; then
+            AFFECTED_SPECS="$AFFECTED_SPECS openspec/specs/architecture-blueprint.md"
+            CRITICAL_SPECS="$CRITICAL_SPECS openspec/specs/architecture-blueprint.md"
           fi
           echo "affected_specs=$AFFECTED_SPECS" >> $GITHUB_OUTPUT
           echo "critical_specs=$CRITICAL_SPECS" >> $GITHUB_OUTPUT

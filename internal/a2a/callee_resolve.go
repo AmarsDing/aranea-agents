@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 
-	"aranea-agents/internal/biz"
+	a2abiz "aranea-agents/internal/biz/a2a"
+	"aranea-agents/internal/biz/shared"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
@@ -17,12 +18,12 @@ const (
 // InvokeTarget describes how a callee should be invoked.
 type InvokeTarget struct {
 	Kind   string
-	Local  biz.A2AAgentCard
-	Remote biz.A2ARemoteAgent
+	Local  a2abiz.AgentCard
+	Remote a2abiz.RemoteAgent
 }
 
 // ResolveInvokeTarget picks local catalog agent or remote registry entry.
-func ResolveInvokeTarget(ctx context.Context, uc *biz.A2AUsecase, calleeAgentID string) (InvokeTarget, error) {
+func ResolveInvokeTarget(ctx context.Context, uc *a2abiz.Usecase, calleeAgentID string) (InvokeTarget, error) {
 	if uc == nil {
 		return InvokeTarget{}, kerrors.InternalServer("A2A", "a2a usecase not configured")
 	}
@@ -33,12 +34,12 @@ func ResolveInvokeTarget(ctx context.Context, uc *biz.A2AUsecase, calleeAgentID 
 		}
 		return InvokeTarget{}, kerrors.Forbidden("A2A", "agent is not A2A-enabled")
 	}
-	if !errors.Is(err, biz.ErrNotFound) {
+	if !errors.Is(err, shared.ErrNotFound) {
 		return InvokeTarget{}, err
 	}
 	remote, err := uc.GetRemoteAgent(ctx, calleeAgentID)
 	if err != nil {
-		if errors.Is(err, biz.ErrNotFound) {
+		if errors.Is(err, shared.ErrNotFound) {
 			return InvokeTarget{}, kerrors.NotFound("A2A", "callee agent not found or disabled")
 		}
 		return InvokeTarget{}, err

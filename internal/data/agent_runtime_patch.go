@@ -8,67 +8,13 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
-// ensureAgentRuntimePatches applies SQLite-safe ALTERs for columns introduced after first DB creation.
-// Ent Schema.Create does not migrate existing SQLite rows for new fields.
-func ensureAgentRuntimePatches(ctx context.Context, c *ent.Client, lg loggateway.Logger) error {
-	if c == nil {
-		return nil
+// isColumnExistsErr checks if the error is due to a duplicate column.
+func isColumnExistsErr(err error) bool {
+	if err == nil {
+		return false
 	}
-	patches := []struct {
-		col string
-		ddl string
-	}{
-		{"skill_runtime_json", `ALTER TABLE agent_runtime_settings ADD COLUMN skill_runtime_json TEXT NOT NULL DEFAULT '{}'`},
-		{"l0_compress_min_gap_sec", `ALTER TABLE agent_runtime_settings ADD COLUMN l0_compress_min_gap_sec INTEGER NOT NULL DEFAULT 600`},
-		{"l0_compress_provider", `ALTER TABLE agent_runtime_settings ADD COLUMN l0_compress_provider TEXT NOT NULL DEFAULT ''`},
-		{"l0_compress_model", `ALTER TABLE agent_runtime_settings ADD COLUMN l0_compress_model TEXT NOT NULL DEFAULT ''`},
-		{"memory_worker_provider", `ALTER TABLE agent_runtime_settings ADD COLUMN memory_worker_provider TEXT NOT NULL DEFAULT ''`},
-		{"memory_worker_model", `ALTER TABLE agent_runtime_settings ADD COLUMN memory_worker_model TEXT NOT NULL DEFAULT ''`},
-		{"intent_pass_enabled", `ALTER TABLE agent_runtime_settings ADD COLUMN intent_pass_enabled INTEGER NOT NULL DEFAULT 1`},
-		{"tools_retry_enabled", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_retry_enabled INTEGER NOT NULL DEFAULT 0`},
-		{"tools_retry_max_attempts", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_retry_max_attempts INTEGER NOT NULL DEFAULT 2`},
-		{"tools_retry_initial_interval_ms", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_retry_initial_interval_ms INTEGER NOT NULL DEFAULT 500`},
-		{"tools_retry_backoff_factor", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_retry_backoff_factor REAL NOT NULL DEFAULT 2.0`},
-		{"tools_retry_max_interval_ms", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_retry_max_interval_ms INTEGER NOT NULL DEFAULT 5000`},
-		{"tools_retry_jitter", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_retry_jitter INTEGER NOT NULL DEFAULT 1`},
-		{"tools_parallel_enabled", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_parallel_enabled INTEGER NOT NULL DEFAULT 0`},
-		{"tools_streaming_enabled", `ALTER TABLE agent_runtime_settings ADD COLUMN tools_streaming_enabled INTEGER NOT NULL DEFAULT 0`},
-		{"channel_id", `ALTER TABLE agent_runtime_settings ADD COLUMN channel_id TEXT NOT NULL DEFAULT ''`},
-		{"chat_id", `ALTER TABLE agent_runtime_settings ADD COLUMN chat_id TEXT NOT NULL DEFAULT ''`},
-		{"workspace", `ALTER TABLE agent_runtime_settings ADD COLUMN workspace TEXT NOT NULL DEFAULT ''`},
-		{"reasoning_mode", `ALTER TABLE agent_runtime_settings ADD COLUMN reasoning_mode TEXT NOT NULL DEFAULT 'provider_default'`},
-		{"reasoning_level", `ALTER TABLE agent_runtime_settings ADD COLUMN reasoning_level TEXT NOT NULL DEFAULT 'off'`},
-		{"code_executor_type", `ALTER TABLE agent_runtime_settings ADD COLUMN code_executor_type TEXT NOT NULL DEFAULT 'local'`},
-		{"planner_kind", `ALTER TABLE agent_runtime_settings ADD COLUMN planner_kind TEXT NOT NULL DEFAULT ''`},
-		{"planner_config_json", `ALTER TABLE agent_runtime_settings ADD COLUMN planner_config_json TEXT NOT NULL DEFAULT '{}'`},
-		{"ralph_loop_max_iterations", `ALTER TABLE agent_runtime_settings ADD COLUMN ralph_loop_max_iterations INTEGER NOT NULL DEFAULT 0`},
-		{"ralph_loop_completion_promise", `ALTER TABLE agent_runtime_settings ADD COLUMN ralph_loop_completion_promise TEXT NOT NULL DEFAULT ''`},
-		{"ralph_loop_verify_command", `ALTER TABLE agent_runtime_settings ADD COLUMN ralph_loop_verify_command TEXT NOT NULL DEFAULT ''`},
-		{"ralph_loop_verify_timeout_seconds", `ALTER TABLE agent_runtime_settings ADD COLUMN ralph_loop_verify_timeout_seconds INTEGER NOT NULL DEFAULT 0`},
-		{"ralph_loop_promise_tag_open", `ALTER TABLE agent_runtime_settings ADD COLUMN ralph_loop_promise_tag_open TEXT NOT NULL DEFAULT ''`},
-		{"ralph_loop_promise_tag_close", `ALTER TABLE agent_runtime_settings ADD COLUMN ralph_loop_promise_tag_close TEXT NOT NULL DEFAULT ''`},
-		{"ralph_loop_verify_work_dir", `ALTER TABLE agent_runtime_settings ADD COLUMN ralph_loop_verify_work_dir TEXT NOT NULL DEFAULT ''`},
-		{"l4_decay_interval_hours", `ALTER TABLE agent_runtime_settings ADD COLUMN l4_decay_interval_hours INTEGER NOT NULL DEFAULT 0`},
-		{"l4_decay_overrides_json", `ALTER TABLE agent_runtime_settings ADD COLUMN l4_decay_overrides_json TEXT NOT NULL DEFAULT ''`},
-		{"compress_llm_cache_enabled", `ALTER TABLE agent_runtime_settings ADD COLUMN compress_llm_cache_enabled INTEGER NOT NULL DEFAULT 1`},
-		{"compress_llm_cache_max_entries", `ALTER TABLE agent_runtime_settings ADD COLUMN compress_llm_cache_max_entries INTEGER NOT NULL DEFAULT 256`},
-		{"compress_llm_cache_ttl_sec", `ALTER TABLE agent_runtime_settings ADD COLUMN compress_llm_cache_ttl_sec INTEGER NOT NULL DEFAULT 600`},
-	}
-	for _, p := range patches {
-		has, err := sqliteColumnExists(ctx, c, lg, "agent_runtime_settings", p.col)
-		if err != nil {
-			lg.Error("runtime patch column check failed", loggateway.StepID("data.startup.runtime_patch"), loggateway.Err(err))
-			return err
-		}
-		if has {
-			continue
-		}
-		if _, err := c.ExecContext(ctx, p.ddl); err != nil {
-			lg.Error("runtime patch alter table failed", loggateway.StepID("data.startup.runtime_patch"), loggateway.Str("column", p.col), loggateway.Err(err))
-			return err
-		}
-	}
-	return nil
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate column name") || strings.Contains(msg, "already exists")
 }
 
 func sqliteTableExists(ctx context.Context, c *ent.Client, lg loggateway.Logger, table string) (bool, error) {

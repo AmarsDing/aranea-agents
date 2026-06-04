@@ -26,7 +26,8 @@ func newParityMemRepo() *parityMemRepo {
 	return &parityMemRepo{runs: map[string]biz.TeamRun{}}
 }
 
-func (m *parityMemRepo) ListTeams(context.Context) ([]biz.Team, error) { return nil, nil }
+func (m *parityMemRepo) ListTeams(context.Context) ([]biz.Team, error)          { return nil, nil }
+func (m *parityMemRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) { return nil, nil }
 func (m *parityMemRepo) GetTeamByID(context.Context, string) (biz.Team, error) {
 	return biz.Team{}, biz.ErrNotFound
 }

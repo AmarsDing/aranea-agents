@@ -2,9 +2,11 @@ package data
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
 
-	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -15,11 +17,8 @@ type LegacyTRPCMigrationStatus struct {
 }
 
 // GetLegacyTRPCMigrationStatus returns counts of unmigrated trpc_memory entities and gate state.
-func GetLegacyTRPCMigrationStatus(ctx context.Context, store *sessionmemory.Store, d *Data, lg loggateway.Logger) (LegacyTRPCMigrationStatus, error) {
+func GetLegacyTRPCMigrationStatus(ctx context.Context, d *Data, lg loggateway.Logger) (LegacyTRPCMigrationStatus, error) {
 	var out LegacyTRPCMigrationStatus
-	if store == nil {
-		return out, fmt.Errorf("legacy trpc migration: store required")
-	}
 	if d == nil {
 		return out, fmt.Errorf("legacy trpc migration: data required")
 	}
@@ -32,7 +31,7 @@ func GetLegacyTRPCMigrationStatus(ctx context.Context, store *sessionmemory.Stor
 	if applied {
 		return out, nil
 	}
-	pending, err := store.CountPendingLegacyTRPCMemoryEntities(ctx)
+	pending, err := countPendingLegacyTRPCMemoryEntities(ctx, d)
 	if err != nil {
 		return out, err
 	}
@@ -40,10 +39,7 @@ func GetLegacyTRPCMigrationStatus(ctx context.Context, store *sessionmemory.Stor
 	return out, nil
 }
 
-func RunLegacyTRPCMemoryMigration(ctx context.Context, store *sessionmemory.Store, d *Data, lg loggateway.Logger) (migrated int, skipped bool, err error) {
-	if store == nil {
-		return 0, false, fmt.Errorf("legacy trpc migration: store required")
-	}
+func RunLegacyTRPCMemoryMigration(ctx context.Context, d *Data, lg loggateway.Logger) (migrated int, skipped bool, err error) {
 	if d == nil {
 		return 0, false, fmt.Errorf("legacy trpc migration: data required")
 	}
@@ -55,11 +51,11 @@ func RunLegacyTRPCMemoryMigration(ctx context.Context, store *sessionmemory.Stor
 	if applied {
 		return 0, true, nil
 	}
-	migrated, _, err = store.BackfillLegacyTRPCMemoryEntities(ctx)
+	migrated, err = backfillLegacyTRPCMemoryEntities(ctx, d)
 	if err != nil {
 		return migrated, false, err
 	}
-	remaining, err := store.CountPendingLegacyTRPCMemoryEntities(ctx)
+	remaining, err := countPendingLegacyTRPCMemoryEntities(ctx, d)
 	if err != nil {
 		return migrated, false, err
 	}
@@ -71,3 +67,69 @@ func RunLegacyTRPCMemoryMigration(ctx context.Context, store *sessionmemory.Stor
 	}
 	return migrated, false, nil
 }
+
+func countPendingLegacyTRPCMemoryEntities(ctx context.Context, d *Data) (int, error) {
+	var count int
+	err := queryRowScan(ctx, d.RWDB().ReadDB(ctx),
+		`SELECT COUNT(*) FROM trpc_memory_entities WHERE migrated = 0`, nil, &count)
+	if err != nil {
+		// Table might not exist
+		return 0, nil
+	}
+	return count, nil
+}
+
+func backfillLegacyTRPCMemoryEntities(ctx context.Context, d *Data) (int, error) {
+	rows, err := d.RWDB().ReadDB(ctx).QueryContext(ctx,
+		`SELECT id, scope_type, scope_id, user_id, agent_id, entity_type, name, statement, details, confidence, importance, source_kind, source_session_id, source_message_id, metadata_json, created_at FROM trpc_memory_entities WHERE migrated = 0 LIMIT 100`)
+	if err != nil {
+		// Table might not exist
+		return 0, nil
+	}
+	defer rows.Close()
+	var migrated int
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for rows.Next() {
+		var id, scopeType, scopeID, userID, agentID, entityType, name, statement, details string
+		var sourceKind, sourceSessionID, sourceMessageID, metadataJSON, createdAt string
+		var confidence, importance float64
+		if err := rows.Scan(&id, &scopeType, &scopeID, &userID, &agentID, &entityType, &name, &statement, &details, &confidence, &importance, &sourceKind, &sourceSessionID, &sourceMessageID, &metadataJSON, &createdAt); err != nil {
+			continue
+		}
+		fp := factFingerprint(statement, scopeType, scopeID)
+		tags := "[]"
+		meta := strings.TrimSpace(metadataJSON)
+		if meta == "" {
+			meta = "{}"
+		}
+		_, err := d.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_facts (
+			id, scope_type, scope_id, workspace_id, user_id, team_id, agent_id,
+			statement, statement_normalized, fingerprint, details_markdown,
+			fact_kind, tags_json,
+			confidence, importance, use_count, hit_count,
+			positive_feedback_count, negative_feedback_count, conflict_count,
+			source_kind, source_episode_id, source_session_id, source_message_id, source_external,
+			version, status, superseded_by,
+			pii_flag, redacted_statement,
+			quality_score, metadata_json, created_at, updated_at
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		ON CONFLICT(scope_type, scope_id, fingerprint) DO NOTHING`,
+			id, scopeType, scopeID, "", userID, "", agentID,
+			statement, strings.ToLower(statement), fp, details,
+			entityType, tags,
+			confidence, importance, 0, 0, 0, 0, 0,
+			sourceKind, "", sourceSessionID, sourceMessageID, "",
+			1, "active", "", 0, "", 0, meta, createdAt, now,
+		)
+		if err != nil {
+			continue
+		}
+		// Mark as migrated
+		d.RWDB().WriteDB(ctx).ExecContext(ctx, `UPDATE trpc_memory_entities SET migrated = 1 WHERE id = ?`, id)
+		migrated++
+	}
+	return migrated, nil
+}
+
+// ensure json is referenced
+var _ = json.Marshal

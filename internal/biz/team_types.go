@@ -8,6 +8,46 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
+// Team status constants — lifecycle states for a Team entity.
+// These replace the old raw strings ("active", "waiting_deps", "assembled").
+const (
+	TeamStatusPending     = "pending"     // Created, waiting to execute
+	TeamStatusRunning     = "running"     // Actively executing
+	TeamStatusCompleted   = "completed"   // Finished successfully
+	TeamStatusFailed      = "failed"      // Execution failed
+	TeamStatusCancelled   = "cancelled"   // Was cancelled
+	TeamStatusInterrupted = "interrupted" // Abnormally interrupted, recoverable
+)
+
+// ValidTeamStatusTransition returns true if a team status transition from→to is allowed.
+func ValidTeamStatusTransition(from, to string) bool {
+	if from == to {
+		return true
+	}
+	allowed, ok := teamStatusValidTransitions[from]
+	if !ok {
+		return false
+	}
+	for _, s := range allowed {
+		if s == to {
+			return true
+		}
+	}
+	return false
+}
+
+var teamStatusValidTransitions = map[string][]string{
+	TeamStatusPending:     {TeamStatusRunning, TeamStatusCancelled},
+	TeamStatusRunning:     {TeamStatusCompleted, TeamStatusFailed, TeamStatusCancelled, TeamStatusInterrupted},
+	TeamStatusInterrupted: {TeamStatusRunning},
+}
+
+// IsTeamStatusActive returns true if the team status means the team is
+// considered "active" (i.e. not terminal and not deleted).
+func IsTeamStatusActive(status string) bool {
+	return status == TeamStatusPending || status == TeamStatusRunning
+}
+
 const (
 	TeamRunStatusPending      = "pending"
 	TeamRunStatusRunning      = "running"

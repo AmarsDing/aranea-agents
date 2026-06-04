@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/data"
 	"aranea-agents/internal/data/ent"
-	"aranea-agents/internal/data/sessionmemory"
 	trpcmem "aranea-agents/internal/memory/trpc"
 	"aranea-agents/pkg/loggateway"
 
@@ -18,13 +18,7 @@ import (
 	trpcmemory "trpc.group/trpc-go/trpc-agent-go/memory"
 )
 
-func openTestSessionMemoryStore(t *testing.T) *sessionmemory.Store {
-	t.Helper()
-	store, _ := openTestSessionMemoryStoreWithClient(t)
-	return store
-}
-
-func openTestSessionMemoryStoreWithClient(t *testing.T) (*sessionmemory.Store, *ent.Client) {
+func openTestDataForMemory(t *testing.T) (*data.Data, *ent.Client) {
 	t.Helper()
 	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
 	if err != nil {
@@ -76,17 +70,23 @@ func openTestSessionMemoryStoreWithClient(t *testing.T) (*sessionmemory.Store, *
 			t.Fatal(err)
 		}
 	}
-	return sessionmemory.NewStore(client, loggateway.NewNoop()), client
+	// Create a minimal Data with the test client
+	d := &data.Data{}
+	d.SetEntClientForTest(client, db, loggateway.NewNoop())
+	return d, client
 }
+
 func TestSQLiteMemoryService_AddMemoryWritesFactVisibleToAdmin(t *testing.T) {
-	store := openTestSessionMemoryStore(t)
-	svc := trpcmem.NewSQLiteMemoryService(store, nil, nil, nil, nil, loggateway.NewNoop())
+	d, _ := openTestDataForMemory(t)
+	factWriter := data.NewL3FactWriterAdapter(d, nil)
+	svc := trpcmem.NewSQLiteMemoryService(d, factWriter, nil, nil, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 	uk := trpcmemory.UserKey{AppName: "agent-1", UserID: "user-1"}
 	if err := svc.AddMemory(ctx, uk, "My name is Alice", []string{"profile"}); err != nil {
 		t.Fatalf("AddMemory: %v", err)
 	}
-	rows, total, _, _, err := store.ListFactRows(ctx, "agent", "agent-1", "", "active", "", 20, 0)
+	l3 := data.NewL3FactReaderForUser(d)
+	rows, total, _, _, err := l3.ListFactRows(ctx, "agent", "agent-1", "", "active", "", 20, 0)
 	if err != nil {
 		t.Fatalf("ListFactRows: %v", err)
 	}
@@ -106,8 +106,9 @@ func TestSQLiteMemoryService_AddMemoryWritesFactVisibleToAdmin(t *testing.T) {
 }
 
 func TestSQLiteMemoryService_AddMemoryDedupByFingerprint(t *testing.T) {
-	store := openTestSessionMemoryStore(t)
-	svc := trpcmem.NewSQLiteMemoryService(store, nil, nil, nil, nil, loggateway.NewNoop())
+	d, _ := openTestDataForMemory(t)
+	factWriter := data.NewL3FactWriterAdapter(d, nil)
+	svc := trpcmem.NewSQLiteMemoryService(d, factWriter, nil, nil, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 	uk := trpcmemory.UserKey{AppName: "agent-dedup", UserID: "user-dedup"}
 	stmt := "I prefer tea in the morning"
@@ -117,7 +118,8 @@ func TestSQLiteMemoryService_AddMemoryDedupByFingerprint(t *testing.T) {
 	if err := svc.AddMemory(ctx, uk, stmt, nil); err != nil {
 		t.Fatal(err)
 	}
-	rows, total, _, _, err := store.ListFactRows(ctx, "agent", "agent-dedup", "", "active", "", 20, 0)
+	l3 := data.NewL3FactReaderForUser(d)
+	rows, total, _, _, err := l3.ListFactRows(ctx, "agent", "agent-dedup", "", "active", "", 20, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,8 +129,9 @@ func TestSQLiteMemoryService_AddMemoryDedupByFingerprint(t *testing.T) {
 }
 
 func TestSQLiteMemoryService_ReadMemoriesFromFacts(t *testing.T) {
-	store := openTestSessionMemoryStore(t)
-	svc := trpcmem.NewSQLiteMemoryService(store, nil, nil, nil, nil, loggateway.NewNoop())
+	d, _ := openTestDataForMemory(t)
+	factWriter := data.NewL3FactWriterAdapter(d, nil)
+	svc := trpcmem.NewSQLiteMemoryService(d, factWriter, nil, nil, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 	uk := trpcmemory.UserKey{AppName: "agent-2", UserID: "user-2"}
 	if err := svc.AddMemory(ctx, uk, "I prefer dark mode", nil); err != nil {
@@ -147,8 +150,9 @@ func TestSQLiteMemoryService_ReadMemoriesFromFacts(t *testing.T) {
 }
 
 func TestSQLiteMemoryService_DeleteAndClear(t *testing.T) {
-	store := openTestSessionMemoryStore(t)
-	svc := trpcmem.NewSQLiteMemoryService(store, nil, nil, nil, nil, loggateway.NewNoop())
+	d, _ := openTestDataForMemory(t)
+	factWriter := data.NewL3FactWriterAdapter(d, nil)
+	svc := trpcmem.NewSQLiteMemoryService(d, factWriter, nil, nil, nil, nil, loggateway.NewNoop())
 	ctx := context.Background()
 	uk := trpcmemory.UserKey{AppName: "agent-3", UserID: "user-3"}
 	if err := svc.AddMemory(ctx, uk, "fact one", nil); err != nil {

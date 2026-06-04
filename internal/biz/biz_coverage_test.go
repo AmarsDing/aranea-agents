@@ -26,6 +26,15 @@ func (m *memTeamRepoB) ListTeams(_ context.Context) ([]biz.Team, error) {
 	}
 	return out, nil
 }
+func (m *memTeamRepoB) ListTeamsByStatus(_ context.Context, status string) ([]biz.Team, error) {
+	out := make([]biz.Team, 0)
+	for _, t := range m.items {
+		if t.Status == status {
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
 func (m *memTeamRepoB) GetTeamByID(_ context.Context, id string) (biz.Team, error) {
 	t, ok := m.items[id]
 	if !ok {
@@ -99,8 +108,8 @@ func TestTeamUsecase_CreateAndList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if team.Status != "active" {
-		t.Errorf("default status should be active, got %s", team.Status)
+	if team.Status != biz.TeamStatusPending {
+		t.Errorf("default status should be pending, got %s", team.Status)
 	}
 
 	items, err := uc.List(ctx)

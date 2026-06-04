@@ -3,27 +3,27 @@ package data
 import (
 	"context"
 	"strings"
+	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/sessionmemory"
 )
 
 type memoryEpisodeIndexSync struct {
-	vec   *biz.MemoryUsecase
-	store *sessionmemory.Store
+	vec  *biz.MemoryUsecase
+	data *Data
 }
 
 var _ biz.EpisodeIndexSyncer = (*memoryEpisodeIndexSync)(nil)
 
-func NewMemoryEpisodeIndexSync(vec *biz.MemoryUsecase, store *sessionmemory.Store) biz.EpisodeIndexSyncer {
-	if vec == nil || store == nil {
+func NewMemoryEpisodeIndexSync(vec *biz.MemoryUsecase, data *Data) biz.EpisodeIndexSyncer {
+	if vec == nil || data == nil {
 		return nil
 	}
-	return &memoryEpisodeIndexSync{vec: vec, store: store}
+	return &memoryEpisodeIndexSync{vec: vec, data: data}
 }
 
 func (s *memoryEpisodeIndexSync) SyncEpisodeIndex(ctx context.Context, _ string, episodeID, title, summary string) error {
-	if s == nil || s.vec == nil || s.store == nil {
+	if s == nil || s.vec == nil || s.data == nil {
 		return biz.ErrMemoryUnavailable
 	}
 	episodeID = strings.TrimSpace(episodeID)
@@ -31,17 +31,15 @@ func (s *memoryEpisodeIndexSync) SyncEpisodeIndex(ctx context.Context, _ string,
 	if episodeID == "" || text == "" {
 		return nil
 	}
-	embedder := s.vec
-	return syncEpisodeEmbedding(ctx, embedder, s.store, episodeID, text)
-}
-
-func syncEpisodeEmbedding(ctx context.Context, embedder biz.EmbeddingService, store *sessionmemory.Store, episodeID, text string) error {
-	if embedder == nil {
-		return biz.ErrMemoryUnavailable
-	}
-	embedding, err := embedder.Embed(ctx, text)
+	embedding, err := s.vec.Embed(ctx, text)
 	if err != nil {
 		return err
 	}
-	return store.UpsertEpisodeEmbedding(ctx, episodeID, embedding, "memory_embedder", len(embedding))
+	blob := encodeFloat32Blob(embedding)
+	norm := vectorL2Norm(embedding)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err = s.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		`UPDATE memory_episodes SET embedding_blob = ?, embedding_norm = ?, embedding_dim = ?, embedding_status = 'fresh', embedding_model = 'memory_embedder', updated_at = ? WHERE id = ?`,
+		blob, norm, len(embedding), now, episodeID)
+	return err
 }

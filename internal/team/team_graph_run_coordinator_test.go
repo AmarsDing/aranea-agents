@@ -15,7 +15,8 @@ type memTeamRepoCoord struct {
 	runs map[string]biz.TeamRun
 }
 
-func (m *memTeamRepoCoord) ListTeams(context.Context) ([]biz.Team, error) { return nil, nil }
+func (m *memTeamRepoCoord) ListTeams(context.Context) ([]biz.Team, error)                    { return nil, nil }
+func (m *memTeamRepoCoord) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) { return nil, nil }
 func (m *memTeamRepoCoord) GetTeamByID(context.Context, string) (biz.Team, error) {
 	return biz.Team{}, biz.ErrNotFound
 }

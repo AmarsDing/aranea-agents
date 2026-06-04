@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	araneatools "aranea-agents/internal/tools"
+	"aranea-agents/internal/tools/alias"
 )
 
 const maxChatResultJSONBytes = 256 * 1024
@@ -383,13 +383,13 @@ func CatalogLookupKeysForRuntimeName(name string) []string {
 	}
 	seen := map[string]struct{}{name: {}}
 	keys := []string{name}
-	if canon, ok := araneatools.RuntimeToolNameAliases[name]; ok && canon != "" {
+	if canon, ok := alias.RuntimeToolNameAliases[name]; ok && canon != "" {
 		if _, ok := seen[canon]; !ok {
 			keys = append(keys, canon)
 			seen[canon] = struct{}{}
 		}
 	}
-	for alias, canon := range araneatools.RuntimeToolNameAliases {
+	for alias, canon := range alias.RuntimeToolNameAliases {
 		if canon == name && alias != name {
 			if _, ok := seen[alias]; !ok {
 				keys = append(keys, alias)

@@ -12,7 +12,8 @@ type stubTeamRepo struct {
 	team biz.Team
 }
 
-func (s stubTeamRepo) ListTeams(context.Context) ([]biz.Team, error) { return nil, nil }
+func (s stubTeamRepo) ListTeams(context.Context) ([]biz.Team, error)                    { return nil, nil }
+func (s stubTeamRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) { return nil, nil }
 func (s stubTeamRepo) GetTeamByID(_ context.Context, id string) (biz.Team, error) {
 	if id != s.team.ID {
 		return biz.Team{}, nil

@@ -19,7 +19,16 @@ jobs:
           WEEK=$(date -u +%Y-W%V)
           echo "week=$WEEK" >> $GITHUB_OUTPUT
 
+          # Try to download the latest Go coverage artifact from CI
           COVERAGE="N/A"
+          LATEST_CI_RUN=$(gh run list --workflow=ci.yml --status=success --limit=1 --json databaseId -q '.[0].databaseId' 2>/dev/null || echo "")
+          if [ -n "$LATEST_CI_RUN" ]; then
+            gh run download "$LATEST_CI_RUN" --name go-coverage --dir coverage-artifact 2>/dev/null || true
+            if [ -f coverage-artifact/coverage.out ]; then
+              COVERAGE=$(go tool cover -func=coverage-artifact/coverage.out 2>/dev/null | grep total | awk '{print $3}' || echo "N/A")
+            fi
+          fi
+          rm -rf coverage-artifact 2>/dev/null || true
           echo "coverage=$COVERAGE" >> $GITHUB_OUTPUT
 
           if [ -f .auto-fix/stats.json ]; then

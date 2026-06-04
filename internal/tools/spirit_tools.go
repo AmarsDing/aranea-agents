@@ -271,57 +271,6 @@ func NewSynthesizeResultsTool(synthesis SpiritSynthesisPort) *trpcfunction.Funct
 	)
 }
 
-type ListButlersInput struct{}
-
-type ListButlersOutput struct {
-	Butlers []ButlerInfo `json:"butlers"`
-}
-
-type ButlerInfo struct {
-	Name        string `json:"name"`
-	DisplayName string `json:"display_name"`
-	Description string `json:"description"`
-	Status      string `json:"status"`
-}
-
-func NewListButlersTool() *trpcfunction.FunctionTool[ListButlersInput, ListButlersOutput] {
-	return trpcfunction.NewFunctionTool(
-		func(ctx context.Context, _ ListButlersInput) (ListButlersOutput, error) {
-			return ListButlersOutput{
-				Butlers: []ButlerInfo{
-					{Name: "orchestrator", DisplayName: "编排管家", Description: "负责分析任务、选择 Agent、组建团队", Status: "available"},
-				},
-			}, nil
-		},
-		trpcfunction.WithName("list_butlers"),
-		trpcfunction.WithDescription("列出可用的管家列表。精灵可以委派任务给不同的管家。"),
-	)
-}
-
-type QueryButlerStatusInput struct {
-	ButlerName string `json:"butler_name" jsonschema:"description=管家名称"`
-}
-
-type QueryButlerStatusOutput struct {
-	Name        string `json:"name"`
-	Status      string `json:"status"`
-	ActiveTasks int    `json:"active_tasks"`
-}
-
-func NewQueryButlerStatusTool() *trpcfunction.FunctionTool[QueryButlerStatusInput, QueryButlerStatusOutput] {
-	return trpcfunction.NewFunctionTool(
-		func(ctx context.Context, input QueryButlerStatusInput) (QueryButlerStatusOutput, error) {
-			return QueryButlerStatusOutput{
-				Name:        strings.TrimSpace(input.ButlerName),
-				Status:      "available",
-				ActiveTasks: 0,
-			}, nil
-		},
-		trpcfunction.WithName("query_butler_status"),
-		trpcfunction.WithDescription("查询指定管家的当前状态和活跃任务数。"),
-	)
-}
-
 func spiritSessionIDFromCtx(ctx context.Context) string {
 	inv, ok := trpcagent.InvocationFromContext(ctx)
 	if !ok || inv == nil {

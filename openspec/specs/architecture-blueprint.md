@@ -638,6 +638,93 @@ kerrors.InternalServer("AGENT", err.Error())
 
 **错误吞没禁止**：所有无法返回给调用方的 error 必须通过 `loggateway.Logger` 记录（`lg.Warn`/`lg.Error`），禁止静默丢弃。禁止使用 `log.Printf`/`log/slog`。
 
+### 3.5 自迭代引擎自动化模块
+
+> 以下模块构成项目的自迭代引擎（Self-Iteration Engine），实现从 CI 失败检测到自动修复、从代码变更到文档同步、从手动测试到 E2E 自动化的完整闭环。
+
+#### CI Pipeline (`.github/workflows/`)
+
+**职责**：GitHub Actions CI/CD 流水线，代码推送/PR 时自动执行构建、测试、检查。
+
+| 维度 | 内容 |
+|------|------|
+| **Job 数量** | 12 个 Job（从初始 6 个扩展） |
+| **核心 Job** | `lint`（golangci-lint）、`test`（go test）、`build`（go build）、`api-check`（proto 生成一致性）、`wire-check`（Wire 生成一致性）、`frontend-lint`（ESLint + Prettier）、`frontend-test`（Vitest）、`frontend-build`（Vite build）、`e2e`（Playwright）、`auto-fix`（自动修复）、`release`（GoReleaser）、`doc-sync`（文档同步） |
+| **触发条件** | push to main/develop、PR to main、tag push、定时调度 |
+| **关键约束** | 所有 Job 必须通过才能合并 PR；`lint` 和 `test` 为硬门禁 |
+
+#### Lint System
+
+**职责**：代码质量门禁，覆盖后端 Go + 前端 TypeScript/Vue。
+
+| 维度 | 内容 |
+|------|------|
+| **后端 Lint** | golangci-lint（20+ linter 集成）、`go vet`、`goimports` |
+| **前端 Lint** | ESLint（Vue/TypeScript 规则）+ Prettier（代码格式化） |
+| **提交门禁** | Husky + lint-staged + commitlint（commit message 规范：Conventional Commits） |
+| **关键约束** | 提交前自动检查暂存文件；commit message 必须符合 `type(scope): description` 格式 |
+
+#### Auto Fix Engine (`.github/workflows/auto-fix.yml` + `.auto-fix/`)
+
+**职责**：CI 失败自动检测 → LLM 诊断 → 修复生成 → 验证 → PR 创建，形成失败自动修复闭环。
+
+| 维度 | 内容 |
+|------|------|
+| **核心流程** | CI 失败事件 → 解析失败日志 → LLM 诊断根因 → 生成修复代码 → 本地验证 → 创建修复 PR |
+| **失败模式知识库** | `.auto-fix/` 目录存储历史失败模式与修复策略，支持模式匹配和快速诊断 |
+| **上游依赖** | CI Pipeline（失败事件触发）、Lint System（修复命令参考） |
+| **下游影响** | `.auto-fix/` 目录（知识库）、`.github/workflows/auto-fix.yml`（工作流定义） |
+| **关键约束** | 修复 PR 必须通过完整 CI 才能合并；单次修复超时 10 分钟；每日最多 5 次自动修复 |
+
+#### Auto Release Pipeline (`.github/workflows/release.yml` + `.goreleaser.yml`)
+
+**职责**：GoReleaser 驱动的自动化构建/发布/变更日志生成流水线。
+
+| 维度 | 内容 |
+|------|------|
+| **核心流程** | Tag push → GoReleaser 构建（多平台二进制 + Docker 镜像）→ Staging 冒烟测试 → 生成 Changelog → GitHub Release 发布 |
+| **构建产物** | Linux/macOS/Windows 二进制、Docker 镜像（multi-arch）、Changelog |
+| **上游依赖** | CI Pipeline（CI 门禁通过后才允许发布） |
+| **下游影响** | `.goreleaser.yml`（发布配置）、`.github/workflows/release.yml`（工作流定义）、`Dockerfile`（容器构建） |
+| **关键约束** | 发布前必须通过完整 CI + Staging 冒烟测试；Changelog 从 Conventional Commits 自动生成 |
+
+#### Doc Sync Engine (`.github/workflows/doc-sync.yml` + `openspec/changelog/`)
+
+**职责**：代码变更 → 影响分析 → 文档自动更新 → PR 创建，保持文档与代码同步。
+
+| 维度 | 内容 |
+|------|------|
+| **核心流程** | PR 合并事件 → 变更文件分析 → 确定受影响文档 → LLM 生成文档更新 → 创建文档同步 PR |
+| **文档范围** | `openspec/specs/`（架构规格）、`openspec/changelog/`（变更日志）、`README.md`、API 文档 |
+| **上游依赖** | CI Pipeline（合并事件触发） |
+| **下游影响** | `.github/workflows/doc-sync.yml`（工作流定义）、`openspec/changelog/`（变更日志目录） |
+| **关键约束** | 文档同步 PR 需人工审核后合并；仅更新与代码变更直接相关的文档段落 |
+
+#### E2E Testing (`web/e2e/` + `.github/workflows/e2e-nightly.yml`)
+
+**职责**：Playwright E2E 测试框架，覆盖关键用户路径，确保全栈功能正确性。
+
+| 维度 | 内容 |
+|------|------|
+| **测试框架** | Playwright（支持 Chromium/Firefox/WebKit） |
+| **关键路径覆盖** | 登录 → Agent 创建 → 对话 → Team 编排 → Graph 执行 → 渠道集成 |
+| **运行策略** | Nightly CI（每日凌晨全量运行）+ PR 关键路径选择性运行 |
+| **上游依赖** | Web 前端（测试目标）、后端服务（API 依赖） |
+| **下游影响** | `web/e2e/`（测试用例目录）、`.github/workflows/e2e-nightly.yml`（定时工作流） |
+| **关键约束** | E2E 测试不阻塞 PR 合并（仅 nightly 报告）；关键路径失败触发告警通知 |
+
+#### Iteration Dashboard (`.github/workflows/iteration-dashboard.yml`)
+
+**职责**：迭代指标采集与周报自动生成，量化自迭代引擎运行效果。
+
+| 维度 | 内容 |
+|------|------|
+| **采集指标** | Auto Fix 成功率/响应时间、Release 频率/耗时、Doc Sync 覆盖率、E2E 通过率、CI 失败率趋势 |
+| **报告输出** | 每周自动生成迭代报告（Markdown），发布到 GitHub Issue / 飞书文档 |
+| **上游依赖** | Auto Fix Engine（修复统计数据）、Auto Release Pipeline（发布统计数据） |
+| **下游影响** | `.github/workflows/iteration-dashboard.yml`（工作流定义） |
+| **关键约束** | 指标数据从 GitHub Actions 运行记录中采集，不侵入业务代码 |
+
 ---
 
 ## 四、前端模块详解
@@ -916,6 +1003,14 @@ WS 事件流：
 | Monitor → Event | 异步消费 | 异步事件 | Bus Consumer |
 | Memory → Event | 异步消费 | 异步事件 | Bus Consumer |
 | 所有模块 → LogGateway | 直接 import | 同步调用 | `loggateway.Logger` |
+| Auto Fix Engine → CI Pipeline | GitHub Actions 事件 | 异步触发 | `workflow_run` 事件 |
+| Auto Fix Engine → Lint System | 修复命令参考 | 同步调用 | lint 规则 + fix 命令 |
+| Auto Release Pipeline → CI Pipeline | GitHub Actions 门禁 | 异步触发 | `workflow_run` 事件 |
+| Doc Sync Engine → CI Pipeline | GitHub Actions 事件 | 异步触发 | `push`/`merge` 事件 |
+| E2E Testing → Web 前端 | Playwright 浏览器 | 同步调用 | HTTP + WS |
+| E2E Testing → 后端服务 | Playwright API 请求 | 同步调用 | HTTP/gRPC |
+| Iteration Dashboard → Auto Fix Engine | GitHub Actions API | 异步采集 | 运行记录查询 |
+| Iteration Dashboard → Auto Release Pipeline | GitHub Releases API | 异步采集 | Release 数据查询 |
 
 ### 6.2 前端模块依赖关系
 
@@ -1063,6 +1158,18 @@ wire.Bind(new(biz.TeamStarterPort), new(*TeamStarter))
 
 新增前端 Store
   → stores/<域>/index.ts → stores/index.ts 具名导出
+
+新增 CI Job
+  → .github/workflows/（添加 Job 到现有 workflow 或新建 workflow）
+
+新增 E2E 测试
+  → web/e2e/（Playwright spec 文件）+ .github/workflows/e2e-nightly.yml
+
+新增自动修复模式
+  → .auto-fix/（失败模式知识库）+ .github/workflows/auto-fix.yml
+
+新增发布配置
+  → .goreleaser.yml + Dockerfile + .github/workflows/release.yml
 ```
 
 ---
@@ -1077,3 +1184,468 @@ wire.Bind(new(biz.TeamStarterPort), new(*TeamStarter))
 | Wire 注入 | `make wire && go build ./cmd/admin` |
 | 前端 | `cd web && pnpm lint && pnpm test && pnpm build` |
 | **提交前** | 后端：`make api && make wire && make build && make test && make lint`；前端：`cd web && pnpm lint && pnpm test && pnpm build` |
+
+---
+
+## memory-admin-interfaces (from data-architecture-overhaul)
+
+### Requirement: SessionAdminStore deprecated interface migration
+The `biz.SessionAdminStore` deprecated composite interface SHALL be replaced by its constituent sub-interfaces in all Wire bindings. Code that depends on `SessionAdminStore` SHALL be migrated to depend on the specific sub-interfaces it needs (e.g., `L0AdminStore`, `L1TaskWriter`, `L3FactReader`).
+
+#### Scenario: Wire binding uses specific sub-interface
+- **WHEN** a usecase needs L0 snapshot operations
+- **THEN** it SHALL depend on `biz.L0AdminStore`, NOT `biz.SessionAdminStore`
+
+#### Scenario: SessionAdminStore removed from Wire
+- **WHEN** all consumers have been migrated to specific sub-interfaces
+- **THEN** `biz.SessionAdminStore` SHALL be deleted
+
+### Requirement: CascadeGraphStore split into sub-interfaces
+The `biz.CascadeGraphStore` composite interface SHALL be split into `CascadeProposalRepo` and `CascadeSagaRepo`. Consumers SHALL depend on the specific sub-interface they need.
+
+#### Scenario: Cascade proposal operations
+- **WHEN** a usecase needs cascade proposal CRUD
+- **THEN** it SHALL depend on `biz.CascadeProposalRepo` with methods: `InsertCascadeProposal`, `GetCascadeProposalRow`, `ListCascadeProposalRows`, `UpdateCascadeProposalStatus`
+
+#### Scenario: Cascade saga operations
+- **WHEN** a usecase needs cascade saga step management
+- **THEN** it SHALL depend on `biz.CascadeSagaRepo` with methods: `InitCascadeSagaSteps`, `GetCascadeSagaSteps`, `UpdateSagaStepState`, `UpdateSagaStepResult`, `HasCascadeSaga`
+
+#### Scenario: CascadeGraphStore removed
+- **WHEN** all consumers have been migrated
+- **THEN** `biz.CascadeGraphStore` SHALL be deleted
+
+---
+
+## memory-store-decomposition (from data-architecture-overhaul)
+
+### Requirement: Store decomposition into independent Repos
+The system SHALL decompose `sessionmemory.Store` (96 methods) into 6 independent Repo structs: `L0SnapshotRepo` (4 methods), `L1WorkingMemoryRepo` (8 methods), `L2EpisodeRepo` (12 methods), `L3FactRepo` (16 methods), `L4EntityRepo` (12 methods), `CascadeRepo` (14 methods). Each Repo SHALL hold `*Data` (not `*ent.Client`).
+
+#### Scenario: Each Repo independently implements biz interfaces
+- **WHEN** a biz layer usecase needs L3 fact operations
+- **THEN** it SHALL depend on `biz.L3FactReader` / `biz.L3FactWriter` interfaces, implemented by `L3FactRepo`, without depending on other memory layer repos
+
+#### Scenario: No Store.Client() backdoor
+- **WHEN** any code needs to execute raw SQL against memory tables
+- **THEN** it SHALL use `Data.ExecInTx` / `Data.ClientFromCtx` / `ReadWriteDB`, NOT `Store.Client()`
+
+### Requirement: Wire adapter relocation
+All data-layer adapters currently in `cmd/admin/wire_memory.go` SHALL be relocated to `internal/data/`. The `wireSessionAdminStoreAdapter` and `wireL3FactWriterAdapter` SHALL become `internal/data/memory_admin_adapter.go` and `internal/data/memory_l3_fact_writer_adapter.go`.
+
+#### Scenario: Adapter in data layer
+- **WHEN** Wire assembles the dependency graph
+- **THEN** all data-layer adapters SHALL be in `internal/data/` package, not in `cmd/admin/`
+
+### Requirement: Eliminate Store satisfying biz interfaces directly
+`*sessionmemory.Store` SHALL NOT directly implement any biz interface. All biz interface satisfaction SHALL go through explicit adapter structs in `internal/data/`.
+
+#### Scenario: SessionL2RecallStore via adapter
+- **WHEN** `biz.MemoryL2RecallUsecase` needs `SessionL2RecallStore`
+- **THEN** it SHALL receive an explicit `l2RecallAdapter` struct, NOT `*sessionmemory.Store`
+
+### Requirement: Store method parameters use data-layer DTOs
+Store method parameters that currently accept `biz.L0AssemblySnapshotInsert`, `biz.L1TaskInsert`, `biz.L1FieldInsert`, `biz.L1ArchiveEpisodeInsert`, `biz.ReinforcementSignal`, `biz.L4DecayConfig` SHALL be replaced with data-layer DTOs. Conversion SHALL happen in the adapter layer.
+
+#### Scenario: L1 task insert with data DTO
+- **WHEN** `L1WorkingMemoryRepo.StartL1Task` is called
+- **THEN** it SHALL accept a `data.L1TaskInsert` DTO, and the adapter SHALL convert from `biz.L1TaskInsert` to `data.L1TaskInsert`
+
+### Requirement: Shim migration phase
+During migration, each new Repo SHALL delegate to the existing Store methods (shim pattern). This allows incremental migration without breaking existing functionality.
+
+#### Scenario: L3FactRepo delegates to Store
+- **WHEN** `L3FactRepo.UpsertFactRow` is called during shim phase
+- **THEN** it SHALL delegate to `Store.UpsertFactRow` internally
+
+#### Scenario: Store removal after full migration
+- **WHEN** all Store methods have been migrated to independent Repos
+- **THEN** the `sessionmemory.Store` struct SHALL be deleted
+
+---
+
+## session-repo-interfaces (from data-architecture-overhaul)
+
+### Requirement: Session repo interfaces for split tables
+The `biz.SessionRepo` composite interface SHALL be updated to include new sub-interfaces for `session_metrics` and `session_runtime` tables. The existing `SessionReader`, `SessionWriter`, `ContextUpdater` interfaces SHALL be modified to reflect the table split.
+
+#### Scenario: SessionMetricsReader interface
+- **WHEN** a usecase needs to read session metrics
+- **THEN** it SHALL depend on `biz.SessionMetricsReader` interface with methods: `GetSessionMetrics`, `BatchGetSessionMetrics`
+
+#### Scenario: SessionMetricsWriter interface
+- **WHEN** the delta flush mechanism writes metrics
+- **THEN** it SHALL depend on `biz.SessionMetricsWriter` interface with method: `ApplyMetricsDelta`
+
+#### Scenario: SessionRuntimeReader interface
+- **WHEN** a usecase needs to read session runtime state
+- **THEN** it SHALL depend on `biz.SessionRuntimeReader` interface with methods: `GetSessionRuntime`, `GetSessionRevision`
+
+#### Scenario: SessionRuntimeWriter interface
+- **WHEN** runtime state changes during a turn
+- **THEN** it SHALL depend on `biz.SessionRuntimeWriter` interface with methods: `PatchSessionState`, `UpdateRunnerSnapshot`, `BumpSessionRevision`
+
+#### Scenario: SessionRepo composite includes new sub-interfaces
+- **WHEN** `biz.SessionRepo` is used for Wire binding
+- **THEN** it SHALL embed `SessionMetricsReader` + `SessionMetricsWriter` + `SessionRuntimeReader` + `SessionRuntimeWriter` in addition to existing sub-interfaces
+
+---
+
+## session-table-split (from data-architecture-overhaul)
+
+### Requirement: Session table cold-hot split
+The system SHALL split the `sessions` table into three tables: `sessions` (cold metadata), `session_metrics` (hot aggregates), and `session_runtime` (runtime state). Each table SHALL have `session_id` as primary key with `session_runtime.session_id` and `session_metrics.session_id` as foreign keys referencing `sessions.id`.
+
+#### Scenario: New session creation writes to all three tables
+- **WHEN** a new session is created
+- **THEN** the system SHALL INSERT a row into `sessions`, INSERT a row into `session_metrics` with zeroed counters, and INSERT a row into `session_runtime` with initial state
+
+#### Scenario: Session metrics are written asynchronously
+- **WHEN** a chat turn completes and metrics delta is flushed
+- **THEN** the system SHALL UPDATE `session_metrics` asynchronously via the existing `SessionMetricsDelta` mechanism, without blocking the synchronous write path
+
+#### Scenario: Session runtime state is written synchronously
+- **WHEN** runtime state changes (status, state_json, revision, runner_snapshot)
+- **THEN** the system SHALL UPDATE `session_runtime` synchronously, merging multiple patches into minimal writes
+
+### Requirement: Session list query with metrics JOIN
+The system SHALL support `SearchSessions` queries that LEFT JOIN `session_metrics` to return complete session data in a single query.
+
+#### Scenario: List sessions with metrics
+- **WHEN** `SearchSessions` is called
+- **THEN** the system SHALL return sessions with metrics fields populated from `session_metrics` table via LEFT JOIN
+
+#### Scenario: Metrics cache hit
+- **WHEN** `SearchSessions` is called and session metrics are in the LRU cache
+- **THEN** the system SHALL return cached metrics without querying the `session_metrics` table
+
+### Requirement: Session metrics cache
+The system SHALL maintain an in-process LRU cache (capacity 500, TTL 30s) for `session_metrics` rows. Cache SHALL be invalidated when metrics are flushed.
+
+#### Scenario: Cache miss triggers DB read
+- **WHEN** a session's metrics are not in cache
+- **THEN** the system SHALL query `session_metrics` from DB and populate the cache
+
+#### Scenario: Metrics flush invalidates cache
+- **WHEN** `ApplyMetricsDelta` writes to `session_metrics`
+- **THEN** the system SHALL remove the affected session_id from cache
+
+### Requirement: MetricsUpdated WebSocket event
+The system SHALL publish an `EnvelopeTypeMetricsUpdated` event via EventBus when session metrics are flushed, so the frontend can update in real-time.
+
+#### Scenario: Metrics updated event published
+- **WHEN** `ApplyMetricsDelta` completes
+- **THEN** the system SHALL publish `EnvelopeTypeMetricsUpdated` with session_id and updated metrics fields
+
+### Requirement: Feature flag controlled migration
+The session table split SHALL be controlled by a feature flag with three states: `legacy` (write to old sessions columns), `dual_write` (write to both old and new tables), `new_table` (write only to new tables).
+
+#### Scenario: Legacy mode
+- **WHEN** feature flag is `legacy`
+- **THEN** the system SHALL write metrics/runtime fields to the `sessions` table as before
+
+#### Scenario: Dual write mode
+- **WHEN** feature flag is `dual_write`
+- **THEN** the system SHALL write to both old `sessions` columns and new tables, reading from new tables
+
+#### Scenario: New table mode
+- **WHEN** feature flag is `new_table`
+- **THEN** the system SHALL write only to `session_metrics` and `session_runtime`, ignoring old columns in `sessions`
+
+---
+
+## wild-table-ent-migration (from data-architecture-overhaul)
+
+### Requirement: Batch 1 wild tables into Ent Schema
+The system SHALL create Ent Schema definitions for the following 6 high-frequency tables: `session_runs`, `session_participants`, `session_run_checkpoints`, `channel_inbound_receipts`, `channel_turn_jobs`, `channel_runtime_lease`. These tables SHALL be managed by Ent's `Schema.Create` for new installations and DDL migration for existing installations.
+
+#### Scenario: New installation creates tables via Ent
+- **WHEN** a fresh database is initialized
+- **THEN** Ent `Schema.Create` SHALL create these 6 tables with correct columns and indexes
+
+#### Scenario: Existing installation migrates via DDL registry
+- **WHEN** an existing database is upgraded
+- **THEN** the DDL migration registry SHALL detect missing columns and add them via ALTER TABLE
+
+### Requirement: Batch 2 memory tables into Ent Schema
+The system SHALL create Ent Schema definitions for the following 6 memory tables: `memory_facts`, `memory_entities`, `memory_relations`, `memory_episodes`, `memory_l1_tasks`, `memory_l1_fields`. Complex queries (vector search, cascade, JSON aggregation) MAY remain as Raw SQL.
+
+#### Scenario: Memory table schema defined in Ent
+- **WHEN** a new column is added to `memory_facts`
+- **THEN** the Ent Schema SHALL be the single source of truth for the column definition
+
+#### Scenario: Complex queries remain Raw SQL
+- **WHEN** a vector similarity search is needed
+- **THEN** the Repo MAY use Raw SQL via `ReadWriteDB`, but the table structure SHALL be defined in Ent Schema
+
+### Requirement: memory_chain.sql deduplication
+The system SHALL remove table definitions from `memory_chain.sql` that overlap with Ent Schema definitions (23 tables). `memory_chain.sql` SHALL only contain the 34 Memory-specific tables not managed by Ent.
+
+#### Scenario: Overlapping table removed from SQL file
+- **WHEN** a table is defined in both Ent Schema and `memory_chain.sql`
+- **THEN** the `memory_chain.sql` definition SHALL be removed, and Ent Schema SHALL be the single source of truth
+
+### Requirement: DDL migration system SQL file support
+The `ddl_migration_registry` SHALL support registering SQL file paths (embedded via `go:embed`) in addition to Go functions. This reduces inline SQL strings in Go code.
+
+#### Scenario: Migration from SQL file
+- **WHEN** a DDL migration is registered with a `SQL` field pointing to an embedded SQL file
+- **THEN** the migration system SHALL read and execute the SQL file contents
+
+### Requirement: Zero wild tables target
+The long-term target SHALL be 0 wild tables (all 34 pure-wild tables managed by Ent Schema). Batch 3 (remaining ~28 tables after Batch 1 and 2) SHALL be migrated incrementally after Batch 1 and 2 are stable.
+
+#### Scenario: Wild table count tracking
+- **WHEN** a new table is added to the system
+- **THEN** it MUST be defined in Ent Schema first, with no raw SQL CREATE TABLE allowed
+
+---
+
+## agent-crud (from aranea-pack-import-export)
+
+### Requirement: Agent 按 agent_key 幂等 upsert
+AgentUsecase SHALL 支持通过 agent_key 进行幂等创建/更新操作，供 Pack 导入引擎使用。
+
+#### Scenario: agent_key 不存在时创建
+- **WHEN** Pack 导入引擎调用 AgentUsecase 的 upsert 方法，agent_key 在目标系统不存在
+- **THEN** 系统 SHALL 创建新 Agent，使用 Pack 中定义的 agent_key
+
+#### Scenario: agent_key 已存在时更新
+- **WHEN** Pack 导入引擎调用 AgentUsecase 的 upsert 方法，agent_key 已存在且冲突策略为 overwrite
+- **THEN** 系统 SHALL 更新已有 Agent 的可修改字段，保留原 ID 和 created_at
+
+#### Scenario: agent_key 已存在时跳过
+- **WHEN** Pack 导入引擎调用 AgentUsecase 的 upsert 方法，agent_key 已存在且冲突策略为 skip
+- **THEN** 系统 SHALL 跳过该 Agent，返回已有 Agent 的 ID
+
+### Requirement: Agent 创建时支持 Prompt 文件批量写入
+AgentUsecase SHALL 支持在创建 Agent 时批量写入 Prompt 文件。
+
+#### Scenario: 创建 Agent 同时写入文件
+- **WHEN** Pack 导入引擎创建 Agent 并提供 files 列表
+- **THEN** 系统 SHALL 在同一个事务中创建 Agent 记录和所有 Prompt 文件记录
+
+### Requirement: Agent 创建时支持 RuntimeSettings 写入
+AgentUsecase SHALL 支持在创建 Agent 时写入可移植的 RuntimeSettings。
+
+#### Scenario: 创建 Agent 同时写入 RuntimeSettings
+- **WHEN** Pack 导入引擎创建 Agent 并提供 runtime 配置
+- **THEN** 系统 SHALL 在创建 Agent 后写入 RuntimeSettings，实例绑定字段使用默认值
+
+---
+
+## graph-template (from aranea-pack-import-export)
+
+### Requirement: Graph 模板从 Pack 数据源加载
+ListGraphTemplates API SHALL 同时返回内置模板（从 .arpack 加载）和用户模板（从 DB 加载）。
+
+#### Scenario: 内置模板从 Pack 加载
+- **WHEN** 调用 ListGraphTemplates API
+- **THEN** 系统 SHALL 从 embed 的 builtin-templates.arpack 中读取内置 Graph 模板，与用户模板合并返回
+
+#### Scenario: Pack 中无 Graph 模板
+- **WHEN** builtin-templates.arpack 不包含 graphs/ 目录
+- **THEN** 系统 SHALL 只返回用户模板，不报错
+
+### Requirement: Graph 模板 YAML 与 Go 结构体互转
+系统 SHALL 支持 Graph 模板在 YAML 格式和 GraphTemplate Go 结构体之间互转。
+
+#### Scenario: YAML 转为 GraphTemplate
+- **WHEN** 从 Pack 读取 graphs/pipeline.yaml
+- **THEN** 系统 SHALL 将其反序列化为 `GraphTemplate` 结构体，与现有 `templates.go` 中的结构一致
+
+#### Scenario: GraphTemplate 转为 YAML
+- **WHEN** 导出 Graph 模板
+- **THEN** 系统 SHALL 将 `GraphTemplate` 结构体序列化为 YAML 格式写入 Pack
+
+---
+
+## pack-seed-migration (from aranea-pack-import-export)
+
+### Requirement: 内置数据转为 .arpack 格式
+系统 SHALL 将现有 YAML 数据源转换为 .arpack 目录结构，通过 go:embed 嵌入二进制。
+
+#### Scenario: 内置模板 Pack
+- **WHEN** 应用编译时
+- **THEN** `internal/scenario/packs/builtin-templates/` 目录 SHALL 包含 agent templates（fox/programmer/...）和 graph templates（pipeline/approval/...）的 .arpack 格式文件
+
+#### Scenario: 行业 Pack
+- **WHEN** 应用编译时
+- **THEN** `internal/scenario/packs/finance/`、`internal/scenario/packs/selfmedia/`、`internal/scenario/packs/softwaredev/` 目录 SHALL 包含对应行业的 .arpack 格式文件
+
+### Requirement: 启动时通过 Pack 引擎加载内置种子
+系统 SHALL 在启动时使用统一的 Pack 导入引擎加载内置 .arpack 数据，替代 RawSQL 种子。
+
+#### Scenario: P1 阶段加载基础数据
+- **WHEN** 应用启动 P1 阶段
+- **THEN** 系统 SHALL 加载 `builtin-templates.arpack`（taxonomy + agent templates + graph templates），使用 overwrite 冲突策略
+
+#### Scenario: Lazy 阶段加载行业数据
+- **WHEN** 应用启动 Lazy 阶段
+- **THEN** 系统 SHALL 依次加载 `finance.arpack`、`selfmedia.arpack`、`softwaredev.arpack`，使用 overwrite 冲突策略
+
+#### Scenario: 版本门控
+- **WHEN** 内置 Pack 的版本号与 schema_migrations 表记录一致
+- **THEN** 系统 SHALL 跳过该 Pack 的加载
+
+### Requirement: 删除 RawSQL 种子代码
+系统 SHALL 删除以下 RawSQL 种子文件，其功能由 Pack 引擎替代。
+
+#### Scenario: 删除 RawSQL 文件
+- **WHEN** Pack 种子迁移完成
+- **THEN** 系统 SHALL 删除 `seed_industry_agents_rawsql.go`、`seed_builtin_taxonomy.go`（RawSQL 版）、`seed_agent_templates.go`（RawSQL 版）
+
+### Requirement: 废弃 orgimport 包
+系统 SHALL 废弃 `internal/orgimport/` 包，其功能由 Pack 导入引擎替代。
+
+#### Scenario: orgimport 标记为废弃
+- **WHEN** Pack 导入引擎可用后
+- **THEN** `internal/orgimport/` 包 SHALL 标记为 deprecated，并在后续版本中删除
+
+### Requirement: 删除 Go 硬编码 Graph 模板
+系统 SHALL 将 `internal/graph/trpc/templates.go` 中的 6 个内置模板迁移到 .arpack 格式。
+
+#### Scenario: 模板从 Go 代码迁移到 YAML
+- **WHEN** builtin-templates.arpack 包含 pipeline.yaml、approval.yaml 等 Graph 模板
+- **THEN** `templates.go` 中的 `builtinTemplates` 变量 SHALL 从 Pack 数据源加载，而非硬编码
+
+---
+
+## team-crud (from aranea-pack-import-export)
+
+### Requirement: Team 创建时支持 agent_key 成员引用
+TeamUsecase SHALL 支持在创建/更新 Team 时，成员通过 agent_key 引用而非仅通过 agent_id。
+
+#### Scenario: 成员 agent_key 解析
+- **WHEN** Pack 导入引擎创建 Team，members 中包含 agent_key 字段
+- **THEN** 系统 SHALL 将 agent_key 解析为 agent_id，填充到 OrchestrationMember.AgentID
+
+#### Scenario: agent_key 解析失败
+- **WHEN** 成员引用的 agent_key 在目标系统不存在
+- **THEN** 系统 SHALL 返回校验错误，列出未找到的 agent_key
+
+### Requirement: Team 创建时支持 Graph 关联
+TeamUsecase SHALL 支持在创建 Team 时关联 GraphDefinition。
+
+#### Scenario: linked_graph_id 设置
+- **WHEN** Pack 导入引擎创建 Team 并提供 graph_id 引用
+- **THEN** 系统 SHALL 将解析后的 graph_id 写入 Team 的 definition_json 的 linked_graph_id 字段
+
+#### Scenario: 内嵌 Graph 定义写入
+- **WHEN** Pack 导入引擎创建 Team 并提供内嵌 Graph 定义
+- **THEN** 系统 SHALL 将 Graph 定义（节点中 agent_key 已转换为 agent_id）写入 Team 的 definition_json 的 graph 字段
+
+---
+
+## seed-version-gating (from modelregistry-refactor)
+
+### 种子数据版本门控 + 分类体系统一
+
+> 日期: 2026-05-30
+> 状态: 已批准
+
+#### 一、目标
+
+1. **版本门控**: 配置文件(YAML)驱动的种子数据，仅在版本号变更时录入数据库，日常启动零开销
+2. **分类统一**: 废弃 industries/departments/positions 三表，统一为 agent_category_nodes 单表
+3. **Agent 模版 YAML 化**: 7 个硬编码模版移入 YAML 配置，录入数据库
+4. **Team 行业归属**: Team 模型增加 category_industry_id 字段，显式存储
+
+#### 二、版本门控机制
+
+复用 `schema_migrations` 表，为每类种子分配版本号常量:
+
+```go
+const (
+    SeedCategoriesV2     = 20260530
+    SeedAgentTemplatesV1 = 20260531
+    SeedIndustryAgentsV1 = 20260601
+)
+```
+
+执行流程:
+- `isMigrationApplied(version)` → 已录入则跳过
+- 未录入 → 从 YAML 加载 → ON CONFLICT DO UPDATE 写入 → `recordMigrationApplied(version, name)`
+- 配置变更时递增版本号常量
+
+#### 三、分类体系统一
+
+**删除**:
+- `industries`/`departments`/`positions` 三张表及 Ent Schema
+- `IndustryUsecase`/`DepartmentUsecase`/`PositionUsecase` 三个 Usecase
+- `industryRepo`/`departmentRepo`/`positionRepo` 三个 Repo
+- `SeedBuiltinIndustries` 种子函数
+
+**保留**:
+- `agent_category_nodes` 单表 (已有 level/parent_id 字段)
+- `AgentCategoryUsecase` (扩展方法)
+- `SeedBuiltinAgentCategories` (改为从 YAML 加载)
+
+**新增**:
+- `agent_category_nodes` 增加 `scenario_key` 字段
+- `CategoryAncestors` 类型替代 `PositionAncestors`
+- `AgentCategoryUsecase` 增加 `ListByLevel`/`GetAncestors`/`GetPositionPrompt`/`ListPositionVariants` 方法
+
+**IndustryService 改造**:
+- 6 个 RPC 保持 HTTP 路由不变(前端兼容)
+- 内部改为查询 AgentCategoryUsecase
+
+#### 四、Agent 模版 YAML 化
+
+- 新建 `internal/scenario/agent_templates.yaml`
+- 新建 `agent_templates` 数据库表
+- `ListAgentTemplates()` 从数据库读取
+- 前端删除 `descriptionTemplates` 本地 fallback
+
+#### 五、Team 行业归属
+
+- Team 模型增加 `category_industry_id` 字段
+- 创建/编辑时从成员 Agent 推导或用户显式选择
+- 前端 `groupTeamsByIndustry` 直接读取字段
+
+#### 六、YAML 配置文件结构
+
+```
+internal/scenario/
+├── categories.yaml          ← 行业/部门/岗位层级定义
+├── agent_templates.yaml     ← Agent 预设模版
+├── finance/agents.yaml      ← 金融行业 Agent/Team
+├── selfmedia/agents.yaml    ← 自媒体行业 Agent/Team
+└── softwaredev/agents.yaml  ← 软件开发行业 Agent/Team
+```
+
+#### 七、影响面
+
+- 后端: ~29 个文件
+- 前端: ~14 个文件
+- Proto: industry.proto 保持 HTTP 路由兼容
+
+#### 八、实施顺序
+
+1. 版本门控种子机制 + categories.yaml
+2. 分类体系统一(废弃三表，IndustryService 改造)
+3. Agent 模版 YAML 化 + Team 行业归属字段
+4. 前端适配
+5. aranea-review 审查
+
+---
+
+## architecture (from team-graph-optimization)
+
+### Requirement: GraphBuildConfig field count
+The `GraphBuildConfig` struct SHALL contain 11 fields (down from 13). The `FailurePolicy *TeamFailurePolicy` and `ParallelBranchIDs []string` fields SHALL be removed.
+
+#### Scenario: GraphBuildConfig has no Team domain concepts
+- **WHEN** `GraphBuildConfig` is defined in `internal/biz/graph.go`
+- **THEN** it SHALL NOT contain any field that references Team domain types (`TeamFailurePolicy`, `ParallelBranchIDs`)
+
+#### Scenario: Graph runtime consumes only universal NodeDef fields
+- **WHEN** Graph runtime processes a node failure
+- **THEN** it SHALL read `NodeDef.FailureAction`, `NodeDef.FallbackAgent`, `NodeDef.RetryMaxAttempts` — NOT `GraphBuildConfig.FailurePolicy`
+
+### Requirement: NodeDef field count
+The `NodeDef` struct SHALL contain 20 fields (down from 28). The 8 Task metadata fields SHALL be moved to `NodeTaskMeta`.
+
+#### Scenario: NodeDef contains only graph topology and universal failure fields
+- **WHEN** `NodeDef` is defined in `internal/biz/graph.go`
+- **THEN** it SHALL NOT contain: `RequiredRole`, `AssignmentMode`, `AssignmentStrategy`, `ReviewerAgent`, `ReviewRules`, `TimeoutSeconds`, `HeartbeatIntervalSeconds`, `EnableLeaseExtension`

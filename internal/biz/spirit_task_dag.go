@@ -204,6 +204,7 @@ func (d *TaskDAG) IsComplete(completed map[TaskNodeID]bool) bool {
 type TopologyType string
 
 const (
+	TopologyDirect      TopologyType = "direct"
 	TopologyParallel    TopologyType = "parallel"
 	TopologySequential  TopologyType = "sequential"
 	TopologyHybrid      TopologyType = "hybrid"

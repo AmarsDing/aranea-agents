@@ -51,7 +51,8 @@ export type EnvelopeType =
   | 'spirit_team_failed'
   | 'spirit_team_progress'
   | 'spirit_teams_all_completed'
-  | 'spirit_synthesis_completed';
+  | 'spirit_synthesis_completed'
+  | 'metrics_updated';
 
 export type EnvelopeContent = {
   text: string;

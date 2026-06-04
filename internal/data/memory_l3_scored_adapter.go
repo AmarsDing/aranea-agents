@@ -2,50 +2,51 @@ package data
 
 import (
 	"context"
+	"encoding/json"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/sessionmemory"
 )
 
-// L3ScoredRecallAdapter exposes sessionmemory scored L3 recall as biz.RecallHit rows.
+// L3ScoredRecallAdapter exposes scored L3 recall as biz.RecallHit rows.
 type L3ScoredRecallAdapter struct {
-	store *sessionmemory.Store
+	data *Data
 }
 
-func NewL3ScoredRecallAdapter(store *sessionmemory.Store) *L3ScoredRecallAdapter {
-	if store == nil {
+func NewL3ScoredRecallAdapter(data *Data) *L3ScoredRecallAdapter {
+	if data == nil {
 		return nil
 	}
-	return &L3ScoredRecallAdapter{store: store}
+	return &L3ScoredRecallAdapter{data: data}
 }
 
 func (a *L3ScoredRecallAdapter) RecallL3Hits(ctx context.Context, scopeType, scopeID, userID, query string, queryEmbedding []float32, limit int32) ([]biz.RecallHit, error) {
-	if a == nil || a.store == nil {
+	if a == nil {
 		return nil, nil
 	}
-	rows, err := a.store.RecallL3FactsScored(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit)
+	l3 := newL3FactRepo(a.data, nil)
+	raw, err := l3.RecallL3Facts(ctx, scopeType, scopeID, userID, query, queryEmbedding, limit, 0)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]biz.RecallHit, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, biz.RecallHit{
-			Layer:     row.Layer,
-			ID:        row.ID,
-			Title:     row.Title,
-			Summary:   row.Summary,
-			Statement: row.Statement,
-			Raw:       append([]byte(nil), row.Raw...),
-			Scores: biz.RecallScoreBreakdown{
-				Keyword:      row.Scores.Keyword,
-				Vector:       row.Scores.Vector,
-				Importance:   row.Scores.Importance,
-				Recency:      row.Scores.Recency,
-				QualityScore: row.Scores.QualityScore,
-				CrossEncoder: row.Scores.CrossEncoder,
-				Total:        row.Scores.Total,
-			},
-		})
+	// For scored recall, we return the raw rows as RecallHit objects.
+	// The scoring is done internally in RecallL3Facts.
+	out := make([]biz.RecallHit, 0, len(raw))
+	for _, b := range raw {
+		hit := biz.RecallHit{
+			Layer: "L3",
+			Raw:   b,
+		}
+		// Extract id and statement from raw JSON
+		var m map[string]any
+		if err := json.Unmarshal(b, &m); err == nil {
+			if id, ok := m["id"].(string); ok {
+				hit.ID = id
+			}
+			if stmt, ok := m["statement"].(string); ok {
+				hit.Statement = stmt
+			}
+		}
+		out = append(out, hit)
 	}
 	return out, nil
 }
