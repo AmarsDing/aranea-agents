@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package kratos.industry_taxonomy.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/empty.proto";
+
+option go_package = "aranea-agents/api/kratos/industry_taxonomy/v1;industrytaxonomyv1";
+option java_multiple_files = true;
+option java_package = "api.kratos.industry_taxonomy.v1";
+
+message IndustryTaxonomy {
+  string id = 1;
+  string key = 2;
+  string name = 3;
+  string description = 4;
+  string status = 5;
+  bool enabled = 6;
+  int32 sort_order = 7;
+  string parent_id = 8;
+  string level = 9;
+  string workspace_id = 10;
+  string owner_user_id = 11;
+  bool is_system = 12;
+  string config_json = 13;
+  string metadata_json = 14;
+  string created_at = 15;
+  string updated_at = 16;
+  string deleted_at = 17;
+}
+
+message ListIndustryTaxonomiesResponse {
+  repeated IndustryTaxonomy items = 1;
+}
+
+message ListIndustryTaxonomyTreeResponse {
+  repeated IndustryTaxonomyTreeNode items = 1;
+}
+
+message IndustryTaxonomyTreeNode {
+  IndustryTaxonomy industry_taxonomy = 1;
+  repeated IndustryTaxonomyTreeNode children = 2;
+}
+
+message CreateIndustryTaxonomyRequest {
+  string key = 1 [(google.api.field_behavior) = REQUIRED];
+  string name = 2 [(google.api.field_behavior) = REQUIRED];
+  string description = 3;
+  string status = 4;
+  optional bool enabled = 5;
+  int32 sort_order = 6;
+  string parent_id = 7;
+  string level = 8;
+  string workspace_id = 9;
+  string owner_user_id = 10;
+  string config_json = 11;
+  string metadata_json = 12;
+}
+
+message GetIndustryTaxonomyRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message UpdateIndustryTaxonomyRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+  IndustryTaxonomy industry_taxonomy = 2;
+}
+
+message DeleteIndustryTaxonomyRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+service IndustryTaxonomyService {
+  rpc ListIndustryTaxonomies(google.protobuf.Empty) returns (ListIndustryTaxonomiesResponse) {
+    option (google.api.http) = {get: "/v1/industry-taxonomy"};
+  }
+  rpc ListIndustryTaxonomyTree(google.protobuf.Empty) returns (ListIndustryTaxonomyTreeResponse) {
+    option (google.api.http) = {get: "/v1/industry-taxonomy/tree"};
+  }
+  rpc CreateIndustryTaxonomy(CreateIndustryTaxonomyRequest) returns (IndustryTaxonomy) {
+    option (google.api.http) = {
+      post: "/v1/industry-taxonomy"
+      body: "*"
+    };
+  }
+  rpc GetIndustryTaxonomy(GetIndustryTaxonomyRequest) returns (IndustryTaxonomy) {
+    option (google.api.http) = {get: "/v1/industry-taxonomy/{id}"};
+  }
+  rpc UpdateIndustryTaxonomy(UpdateIndustryTaxonomyRequest) returns (IndustryTaxonomy) {
+    option (google.api.http) = {
+      patch: "/v1/industry-taxonomy/{id}"
+      body: "industry_taxonomy"
+    };
+  }
+  rpc DeleteIndustryTaxonomy(DeleteIndustryTaxonomyRequest) returns (google.protobuf.Empty) {
+    option (google.api.http) = {delete: "/v1/industry-taxonomy/{id}"};
+  }
+}

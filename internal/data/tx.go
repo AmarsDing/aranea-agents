@@ -21,17 +21,31 @@ func (d *Data) ExecInTx(ctx context.Context, fn func(ctx context.Context) error)
 	if _, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
 		return fn(ctx)
 	}
-	tx, err := d.entClient.Tx(ctx)
+	// Use a detached context for transaction begin, body, and commit so that
+	// HTTP-request cancellation (client disconnect / axios timeout) does not
+	// abort in-flight SQLite operations mid-transaction.  The original ctx is
+	// checked before commit; if the caller cancelled we roll back instead.
+	detached := context.Background()
+	tx, err := d.entClient.Tx(detached)
 	if err != nil {
 		d.lg.Error("transaction begin failed", loggateway.StepID("data.tx"), loggateway.Err(err))
 		return err
 	}
-	txCtx := context.WithValue(ctx, txClientKey{}, tx)
+	// Carry the tx reference on the detached ctx so that nested calls detect
+	// the in-progress transaction and reuse it.
+	txCtx := context.WithValue(detached, txClientKey{}, tx)
 	txCtx = context.WithValue(txCtx, rawTxKey{}, tx)
 	if err := fn(txCtx); err != nil {
 		_ = tx.Rollback()
 		d.lg.Warn("transaction rolled back", loggateway.StepID("data.tx"), loggateway.Err(err))
 		return err
+	}
+	// If the caller's context was cancelled while the transaction was running,
+	// roll back instead of committing a result nobody will read.
+	if ctx.Err() != nil {
+		_ = tx.Rollback()
+		d.lg.Warn("transaction rolled back (caller context cancelled)", loggateway.StepID("data.tx"), loggateway.Err(ctx.Err()))
+		return ctx.Err()
 	}
 	if err := tx.Commit(); err != nil {
 		d.lg.Error("transaction commit failed", loggateway.StepID("data.tx"), loggateway.Err(err))

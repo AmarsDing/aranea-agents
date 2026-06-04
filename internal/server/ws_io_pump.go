@@ -82,14 +82,12 @@ func (s *WSServer) writePump(wc *wsConn) {
 }
 
 // readPump reads messages from the WebSocket connection and dispatches them.
-func (s *WSServer) readPump(wc *wsConn, eventCh <-chan event.Envelope) {
+func (s *WSServer) readPump(wc *wsConn) {
 	defer func() {
 		// COR-03: cancel connection context so in-flight turns started by this
 		// connection are cancelled when the client disconnects.
-		wc.connCancel()
 		s.removeConn(wc)
-		wc.unsubscribe()
-		wc.conn.Close()
+		wc.close()
 	}()
 	wc.conn.SetReadLimit(defaultWSReadLimit)
 	wc.conn.SetReadDeadline(time.Now().Add(defaultWSPongWait))

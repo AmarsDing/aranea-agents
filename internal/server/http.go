@@ -21,6 +21,7 @@ import (
 	gatewayv1 "aranea-agents/api/kratos/gateway/v1"
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	hookv1 "aranea-agents/api/kratos/hook/v1"
+	industrytaxonomyv1 "aranea-agents/api/kratos/industry_taxonomy/v1"
 	knowledgev1 "aranea-agents/api/kratos/knowledge/v1"
 	llmprovidermodelv1 "aranea-agents/api/kratos/llm_provider_model/v1"
 	mcpserverv1 "aranea-agents/api/kratos/mcp_server/v1"
@@ -123,6 +124,7 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	eventv1.RegisterEventServiceHTTPServer(srv, s.Event)
 	gatewayv1.RegisterGatewayServiceHTTPServer(srv, s.Gateway)
 	taxonomyv1.RegisterTaxonomyServiceHTTPServer(srv, s.Taxonomy)
+	industrytaxonomyv1.RegisterIndustryTaxonomyServiceHTTPServer(srv, s.IndustryTaxonomy)
 	skillevov1.RegisterSkillEvolutionServiceHTTPServer(srv, s.SkillEvo)
 	packv1.RegisterPackServiceHTTPServer(srv, s.Pack)
 }

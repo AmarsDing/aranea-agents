@@ -230,7 +230,7 @@ func (s *WSServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	// Start goroutines
 	connCtx := r.Context()
 	safego.Go(connCtx, "ws-write-pump", func() { s.writePump(wc) })
-	safego.Go(connCtx, "ws-read-pump", func() { s.readPump(wc, eventCh) })
+	safego.Go(connCtx, "ws-read-pump", func() { s.readPump(wc) })
 
 	if !probeMode && !globalMode && lastEventID != "" && s.eventBuffer != nil {
 		wc.replayDone = make(chan struct{})

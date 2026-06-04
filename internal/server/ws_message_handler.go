@@ -125,6 +125,13 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 			defer cancel()
 			if err := s.turnExecutor.ExecuteTurn(ctx, input); err != nil {
 				s.lg.With(loggateway.SessionID(sessionID)).Warn("WebSocket 用户消息发送失败", loggateway.StepID("ws.send_failed"), loggateway.Err(err))
+				env := event.NewEnvelope(event.EnvelopeTypeError, "ws-handler", sessionID)
+				env.RequestID = requestID
+				env.Error = &event.EnvelopeError{
+					Type:    "send_failed",
+					Message: err.Error(),
+				}
+				s.eventBus.Publish(context.Background(), env)
 			}
 		})
 		return
