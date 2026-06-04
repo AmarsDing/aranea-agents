@@ -330,7 +330,11 @@ func (u *AgentUsecase) Create(ctx context.Context, in Agent) (Agent, error) {
 	}); err != nil {
 		return Agent{}, err
 	}
-	return u.Get(ctx, in.ID)
+	readCtx := ctx
+	if ctx.Err() != nil {
+		readCtx = context.Background()
+	}
+	return u.Get(readCtx, in.ID)
 }
 
 // Update merges patch into the stored agent, then rewrites settings, files, and config_json.
@@ -396,7 +400,15 @@ func (u *AgentUsecase) Update(ctx context.Context, id string, patch Agent) (Agen
 	}); err != nil {
 		return Agent{}, err
 	}
-	return u.Get(ctx, id)
+	// Use a detached context for the final read: the transaction has already
+	// committed, but the HTTP request context may have been cancelled while
+	// waiting for a SQLite write lock.  The caller still needs the updated
+	// agent data to return to the frontend.
+	readCtx := ctx
+	if ctx.Err() != nil {
+		readCtx = context.Background()
+	}
+	return u.Get(readCtx, id)
 }
 
 // Delete soft-deletes the agent.
@@ -695,7 +707,11 @@ func (u *AgentUsecase) CreateWithFilesAndSettings(ctx context.Context, agent Age
 	}); err != nil {
 		return Agent{}, err
 	}
-	return u.Get(ctx, agent.ID)
+	readCtx := ctx
+	if ctx.Err() != nil {
+		readCtx = context.Background()
+	}
+	return u.Get(readCtx, agent.ID)
 }
 
 // AgentBatchUpdateInput is LIST-04 bulk enable/disable/delete.
