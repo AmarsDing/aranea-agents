@@ -57,6 +57,11 @@ const (
 	EnvelopeTypeSpiritTeamProgress          EnvelopeType = "spirit_team_progress"
 	EnvelopeTypeSpiritTeamsAllCompleted     EnvelopeType = "spirit_teams_all_completed"
 	EnvelopeTypeSpiritSynthesisCompleted    EnvelopeType = "spirit_synthesis_completed"
+	EnvelopeTypeSpiritPlanCreated           EnvelopeType = "spirit_plan_created"
+	EnvelopeTypeSpiritAllocationCreated     EnvelopeType = "spirit_allocation_created"
+	EnvelopeTypeSpiritOrchestrationStarted  EnvelopeType = "spirit_orchestration_started"
+	EnvelopeTypeSpiritOrchestrationCheckpoint EnvelopeType = "spirit_orchestration_checkpoint"
+	EnvelopeTypeSpiritOrchestrationInterrupted EnvelopeType = "spirit_orchestration_interrupted"
 	EnvelopeTypeTokenUsage                  EnvelopeType = "token_usage"
 	EnvelopeTypeMetricsUpdated              EnvelopeType = "metrics_updated"
 )
@@ -258,7 +263,8 @@ func RouteChannel(env Envelope) string {
 		return "chat"
 	case EnvelopeTypeMetricsUpdated:
 		return "chat"
-	case EnvelopeTypeSpiritTeamAssembled, EnvelopeTypeSpiritTeamCompleted, EnvelopeTypeSpiritTeamFailed, EnvelopeTypeSpiritTeamProgress, EnvelopeTypeSpiritTeamsAllCompleted, EnvelopeTypeSpiritSynthesisCompleted:
+	case EnvelopeTypeSpiritTeamAssembled, EnvelopeTypeSpiritTeamCompleted, EnvelopeTypeSpiritTeamFailed, EnvelopeTypeSpiritTeamProgress, EnvelopeTypeSpiritTeamsAllCompleted, EnvelopeTypeSpiritSynthesisCompleted,
+		EnvelopeTypeSpiritPlanCreated, EnvelopeTypeSpiritAllocationCreated, EnvelopeTypeSpiritOrchestrationStarted, EnvelopeTypeSpiritOrchestrationCheckpoint, EnvelopeTypeSpiritOrchestrationInterrupted:
 		return "chat"
 	default:
 		if env.TeamID != "" {

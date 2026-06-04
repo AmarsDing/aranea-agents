@@ -58,49 +58,49 @@
 
 ## Phase 2: Agent 分配 + Graph 编排
 
-- [ ] T2.1: 实现 AgentAllocator 端口和基础实现
+- [x] T2.1: 实现 AgentAllocator 端口和基础实现
   - Spec: agent-allocator/REQ-AA-01, REQ-AA-02, REQ-AA-04, REQ-AA-07
   - 定义 AgentAllocatorPort 接口，实现 Layer 1 精确匹配 + Layer 3 LLM 冷启动。AllocationPlan 持久化。Layer 2 语义匹配在 T3.3 实现。
   - Files: internal/biz/agent_allocator.go, internal/biz/allocation_plan.go, internal/agent/agent_allocator_impl.go, internal/data/allocation_plan_repo.go, internal/data/ent/schema/allocation_plan.go
   - Acceptance: Allocate() 返回 AllocationPlan；精确匹配基于 Agent Domains + 历史成功率；LLM 冷启动兜底
 
-- [ ] T2.2: 实现 Agent 能力注册表和执行历史
+- [x] T2.2: 实现 Agent 能力注册表和执行历史
   - Spec: agent-allocator/REQ-AA-05, REQ-AA-06
   - 实现 AgentCapability 模型（从 Agent 目录自动构建）和 AgentPerformance 模型（每次编排完成后更新）。
   - Files: internal/biz/agent_capability.go, internal/biz/agent_performance.go, internal/data/agent_performance_repo.go
   - Acceptance: AgentCapability 从 Agent 目录自动构建；AgentPerformance 每次编排后更新
 
-- [ ] T2.3: 实现 TaskOrchestrator 端口和 DAG 编排
+- [x] T2.3: 实现 TaskOrchestrator 端口和 DAG 编排
   - Spec: task-orchestrator/REQ-TO-01, REQ-TO-02, REQ-TO-05
   - 定义 TaskOrchestratorPort 接口，实现 DAGToGraphCompiler（TaskDAG+AllocationPlan→Definition JSON），5 种编排策略执行。OrchestrationHandle 持久化。
   - Files: internal/biz/task_orchestrator.go, internal/agent/task_orchestrator_impl.go, internal/agent/dag_graph_compiler.go, internal/data/orchestration_repo.go, internal/data/ent/schema/orchestration.go
   - Acceptance: Orchestrate() 返回 OrchestrationHandle；DAG 编译为 Definition 后走 CompileToCompiledTeam；5 种策略均可执行
 
-- [ ] T2.4: Graph Checkpoint 集成
+- [x] T2.4: Graph Checkpoint 集成
   - Spec: task-orchestrator/REQ-TO-03
   - 在 DAG 编排中使用 SQLite CheckpointSaver，每步自动保存。OrchestrationHandle 记录最新 checkpoint_id。
   - Files: internal/agent/task_orchestrator_impl.go
   - Acceptance: DAG 编排每步保存 Checkpoint；OrchestrationHandle.CheckpointID 非空
 
-- [ ] T2.5: 合成结果持久化
+- [x] T2.5: 合成结果持久化
   - Spec: task-orchestrator/REQ-TO-04
   - SynthesisOutput 写入 OrchestrationHandle.SynthesisResultJSON，不再仅通过 EventBus 发布。
   - Files: internal/agent/task_orchestrator_impl.go, internal/service/spirit_synthesis.go
   - Acceptance: 合成结果可在 DB 中查询；异常关闭后不丢失
 
-- [ ] T2.6: Graph Checkpoint 自动恢复
+- [x] T2.6: Graph Checkpoint 自动恢复
   - Spec: spirit-recovery/REQ-SR-02
   - 启动时检测 status=interrupted 的 OrchestrationHandle，加载最新 Checkpoint，重建 GraphAgent，ResumeFromLatest。
   - Files: internal/agent/task_orchestrator_impl.go, internal/service/chat_orchestrator.go
   - Acceptance: interrupted 编排可从 Checkpoint 恢复执行
 
-- [ ] T2.7: 新增 EnvelopeType + 前端双消费
+- [x] T2.7: 新增 EnvelopeType + 前端双消费
   - Spec: spirit-observability/REQ-SO-03, REQ-SO-04
   - 新增 5 个 EnvelopeType 常量。后端双发新旧事件。前端 envelope.ts 新增类型，handleSpiritEnvelope 双消费。
   - Files: internal/event/contract/envelope.go, internal/event/envelope.go, web/src/realtime/envelope.ts, web/src/stores/spirit/index.ts
   - Acceptance: 新事件可被前端消费；旧事件仍可消费
 
-- [ ] T2.8: Wire 注入新端口
+- [x] T2.8: Wire 注入新端口
   - Spec: all
   - 在 TeamOrchestrationDeps 中新增 TaskPlanner/AgentAllocator/TaskOrchestrator 字段。修改 provideTeamOrchestrationDeps。运行 make wire。
   - Files: cmd/admin/wire.go, internal/service/chat_orchestrator.go
@@ -108,37 +108,37 @@
 
 ## Phase 3: 工具重构 + 智能增强
 
-- [ ] T3.1: Spirit 工具集重构
+- [x] T3.1: Spirit 工具集重构
   - Spec: spirit-tools/REQ-SKT-01~06
   - 实现 plan_and_execute / check_progress / cancel_orchestration 3 个新工具。旧工具双写过渡。更新 builtin_tools_seed.go。
   - Files: internal/tools/spirit_tools.go, internal/data/builtin_tools_seed.go
   - Acceptance: 新工具可调用；旧工具委托新实现；make build 通过
 
-- [ ] T3.2: Prompt 文件更新
+- [x] T3.2: Prompt 文件更新
   - Spec: spirit-tools/REQ-SKT-05
   - 更新 DECISION.md 和 CAPABILITIES.md 中的工具名引用。
   - Files: internal/scenario/system/prompts/DECISION.md, internal/scenario/system/prompts/CAPABILITIES.md
   - Acceptance: Prompt 中只引用新工具名；旧工具名标记 deprecated
 
-- [ ] T3.3: Agent 能力 Embedding（Layer 2 语义匹配）
+- [x] T3.3: Agent 能力 Embedding（Layer 2 语义匹配）
   - Spec: agent-allocator/REQ-AA-01
   - 为每个 Agent 生成能力 Embedding，使用 pgvector 做余弦相似度匹配。复用 knowledge.Embedder。
   - Files: internal/agent/agent_allocator_impl.go, internal/biz/agent_capability.go
   - Acceptance: Layer 2 匹配返回结果；score = cosine_sim * 0.6 + success_rate * 0.4
 
-- [ ] T3.4: 记忆驱动路由
+- [x] T3.4: 记忆驱动路由
   - Spec: task-planner/REQ-TP-05
   - OrchestrationCache + AgentPerformance 联合查询。记忆命中 DQ>0.7 时直接复用历史拓扑和 Agent 组合。
   - Files: internal/agent/task_planner_impl.go, internal/biz/spirit_orchestration_cache.go
   - Acceptance: 记忆命中时跳过完整评估；复用历史拓扑
 
-- [ ] T3.5: 在线学习闭环
+- [x] T3.5: 在线学习闭环
   - Spec: task-orchestrator/REQ-TO-08
   - 编排完成后更新 OrchestrationCache（DQ Score）和 AgentPerformance。DQ Score 自动调整权重和拓扑推荐。
   - Files: internal/agent/task_orchestrator_impl.go, internal/biz/spirit_orchestration_cache.go, internal/data/agent_performance_repo.go
   - Acceptance: 编排完成后 DQ Score 和 AgentPerformance 自动更新
 
-- [ ] T3.6: 全量验证
+- [x] T3.6: 全量验证
   - Spec: all
   - 运行完整验证：make api && make wire && make build && make test && make lint。前端：cd web && pnpm lint && pnpm test && pnpm build。
   - Files: all

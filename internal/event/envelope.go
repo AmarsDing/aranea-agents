@@ -65,6 +65,11 @@ const (
 	EnvelopeTypeSpiritTeamProgress          = contract.EnvelopeTypeSpiritTeamProgress
 	EnvelopeTypeSpiritTeamsAllCompleted     = contract.EnvelopeTypeSpiritTeamsAllCompleted
 	EnvelopeTypeSpiritSynthesisCompleted    = contract.EnvelopeTypeSpiritSynthesisCompleted
+	EnvelopeTypeSpiritPlanCreated           = contract.EnvelopeTypeSpiritPlanCreated
+	EnvelopeTypeSpiritAllocationCreated     = contract.EnvelopeTypeSpiritAllocationCreated
+	EnvelopeTypeSpiritOrchestrationStarted  = contract.EnvelopeTypeSpiritOrchestrationStarted
+	EnvelopeTypeSpiritOrchestrationCheckpoint = contract.EnvelopeTypeSpiritOrchestrationCheckpoint
+	EnvelopeTypeSpiritOrchestrationInterrupted = contract.EnvelopeTypeSpiritOrchestrationInterrupted
 	EnvelopeTypeMetricsUpdated              = contract.EnvelopeTypeMetricsUpdated
 )
 

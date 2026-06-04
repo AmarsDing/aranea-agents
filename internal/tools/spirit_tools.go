@@ -15,6 +15,211 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
+// ---------------------------------------------------------------------------
+// New three-phase orchestration tools (T3.1)
+// ---------------------------------------------------------------------------
+
+// PlanAndExecuteInput is the input for the plan_and_execute tool.
+type PlanAndExecuteInput struct {
+	TaskPrompt string `json:"task_prompt" jsonschema:"description=The task to plan and execute"`
+	Mode       string `json:"mode,omitempty" jsonschema:"description=Execution mode: auto|direct|single|parallel|dag|coordinator (default: auto)"`
+}
+
+// SubTaskSummary is a summary of a subtask in the plan.
+type SubTaskSummary struct {
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	AgentKey  string   `json:"agent_key,omitempty"`
+	DependsOn []string `json:"depends_on,omitempty"`
+}
+
+// PlanAndExecuteOutput is the output for the plan_and_execute tool.
+type PlanAndExecuteOutput struct {
+	PlanID          string           `json:"plan_id"`
+	Strategy        string           `json:"strategy"`
+	ComplexityLevel string           `json:"complexity_level"`
+	SubtaskCount    int              `json:"subtask_count"`
+	SubTasks        []SubTaskSummary `json:"sub_tasks,omitempty"`
+	OrchestrationID string           `json:"orchestration_id,omitempty"`
+	MemoryHit       bool             `json:"memory_hit"`
+}
+
+// NewPlanAndExecuteTool creates the plan_and_execute tool that replaces
+// assess_complexity + assemble_team + list_butlers + query_butler_status.
+func NewPlanAndExecuteTool(planner biz.TaskPlannerPort, allocator biz.AgentAllocatorPort, orchestrator biz.TaskOrchestratorPort, lg loggateway.Logger) *trpcfunction.FunctionTool[PlanAndExecuteInput, PlanAndExecuteOutput] {
+	return trpcfunction.NewFunctionTool(
+		func(ctx context.Context, input PlanAndExecuteInput) (PlanAndExecuteOutput, error) {
+			spiritSessionID := spiritSessionIDFromCtx(ctx)
+			if spiritSessionID == "" {
+				return PlanAndExecuteOutput{}, kerrors.BadRequest("SPIRIT", "spirit session id not found in context")
+			}
+
+			taskPrompt := strings.TrimSpace(input.TaskPrompt)
+			if taskPrompt == "" {
+				return PlanAndExecuteOutput{}, kerrors.BadRequest("SPIRIT", "task_prompt is required")
+			}
+
+			// Phase 1: Plan
+			planInput := biz.PlanInput{
+				UserMessage:     taskPrompt,
+				SpiritSessionID: spiritSessionID,
+			}
+			taskPlan, err := planner.Plan(ctx, planInput)
+			if err != nil {
+				return PlanAndExecuteOutput{}, kerrors.InternalServer("SPIRIT", "plan failed: "+err.Error())
+			}
+
+			out := PlanAndExecuteOutput{
+				PlanID:          taskPlan.ID,
+				Strategy:        string(taskPlan.Strategy),
+				ComplexityLevel: string(taskPlan.ComplexityLevel),
+				SubtaskCount:    len(taskPlan.SubTasks),
+				MemoryHit:       taskPlan.MemoryHit != nil,
+			}
+
+			for _, st := range taskPlan.SubTasks {
+				out.SubTasks = append(out.SubTasks, SubTaskSummary{
+					ID:        st.ID,
+					Name:      st.Name,
+					DependsOn: st.DependsOn,
+				})
+			}
+
+			// For direct strategy, no allocation or orchestration needed.
+			if taskPlan.Strategy == biz.StrategyDirect {
+				return out, nil
+			}
+
+			// Phase 2: Allocate
+			allocPlan, err := allocator.Allocate(ctx, taskPlan)
+			if err != nil {
+				lg.Warn("plan_and_execute: allocation failed, returning plan only",
+					loggateway.StepID("spirit.plan_and_execute.alloc_fail"),
+					loggateway.Str("plan_id", taskPlan.ID),
+					loggateway.Err(err),
+				)
+				return out, nil
+			}
+
+			// Fill agent keys from allocation into subtask summaries.
+			for i := range out.SubTasks {
+				for _, alloc := range allocPlan.Allocations {
+					if alloc.SubTaskID == out.SubTasks[i].ID {
+						out.SubTasks[i].AgentKey = alloc.AssignedKey
+						break
+					}
+				}
+			}
+
+			// Phase 3: Orchestrate
+			handle, err := orchestrator.Orchestrate(ctx, taskPlan, allocPlan)
+			if err != nil {
+				lg.Warn("plan_and_execute: orchestration failed, returning plan only",
+					loggateway.StepID("spirit.plan_and_execute.orch_fail"),
+					loggateway.Str("plan_id", taskPlan.ID),
+					loggateway.Err(err),
+				)
+				return out, nil
+			}
+
+			out.OrchestrationID = handle.ID
+			return out, nil
+		},
+		trpcfunction.WithName("plan_and_execute"),
+		trpcfunction.WithDescription("规划并执行任务。自动评估复杂度、分配 Agent、启动编排。替代 assess_complexity + assemble_team 的组合调用。简单任务直接回答，复杂任务自动组建团队。"),
+	)
+}
+
+// CheckOrchestrationProgressInput is the input for the check_progress tool.
+type CheckOrchestrationProgressInput struct {
+	OrchestrationID string `json:"orchestration_id" jsonschema:"description=The orchestration ID to check progress for"`
+}
+
+// TaskProgressView is a view of a single task's progress.
+type TaskProgressView struct {
+	SubTaskID   string  `json:"sub_task_id"`
+	SubTaskName string  `json:"sub_task_name"`
+	AgentKey    string  `json:"agent_key"`
+	Status      string  `json:"status"`
+	Progress    float64 `json:"progress"`
+}
+
+// CheckOrchestrationProgressOutput is the output for the check_progress tool.
+type CheckOrchestrationProgressOutput struct {
+	OrchestrationID string             `json:"orchestration_id"`
+	Status          string             `json:"status"`
+	Tasks           []TaskProgressView `json:"tasks"`
+}
+
+// NewCheckOrchestrationProgressTool creates the check_progress tool that replaces check_team_progress.
+func NewCheckOrchestrationProgressTool(orchestrator biz.TaskOrchestratorPort, lg loggateway.Logger) *trpcfunction.FunctionTool[CheckOrchestrationProgressInput, CheckOrchestrationProgressOutput] {
+	return trpcfunction.NewFunctionTool(
+		func(ctx context.Context, input CheckOrchestrationProgressInput) (CheckOrchestrationProgressOutput, error) {
+			orchestrationID := strings.TrimSpace(input.OrchestrationID)
+			if orchestrationID == "" {
+				return CheckOrchestrationProgressOutput{}, kerrors.BadRequest("SPIRIT", "orchestration_id is required")
+			}
+
+			progress, err := orchestrator.CheckProgress(ctx, orchestrationID)
+			if err != nil {
+				return CheckOrchestrationProgressOutput{}, kerrors.InternalServer("SPIRIT", "check progress: "+err.Error())
+			}
+
+			views := make([]TaskProgressView, 0, len(progress))
+			for _, p := range progress {
+				views = append(views, TaskProgressView{
+					SubTaskID:   p.SubTaskID,
+					SubTaskName: p.SubTaskName,
+					AgentKey:    p.AgentKey,
+					Status:      p.Status,
+					Progress:    p.Progress,
+				})
+			}
+			return CheckOrchestrationProgressOutput{
+				OrchestrationID: orchestrationID,
+				Status:          "running",
+				Tasks:           views,
+			}, nil
+		},
+		trpcfunction.WithName("check_progress"),
+		trpcfunction.WithDescription("查询编排执行进度。替代 check_team_progress，基于 orchestration_id 查询。"),
+	)
+}
+
+// CancelOrchestrationInput is the input for the cancel_orchestration tool.
+type CancelOrchestrationInput struct {
+	OrchestrationID string `json:"orchestration_id" jsonschema:"description=The orchestration ID to cancel"`
+}
+
+// CancelOrchestrationOutput is the output for the cancel_orchestration tool.
+type CancelOrchestrationOutput struct {
+	OrchestrationID string `json:"orchestration_id"`
+	Status          string `json:"status"`
+}
+
+// NewCancelOrchestrationTool creates the cancel_orchestration tool that replaces cancel_team.
+func NewCancelOrchestrationTool(orchestrator biz.TaskOrchestratorPort, lg loggateway.Logger) *trpcfunction.FunctionTool[CancelOrchestrationInput, CancelOrchestrationOutput] {
+	return trpcfunction.NewFunctionTool(
+		func(ctx context.Context, input CancelOrchestrationInput) (CancelOrchestrationOutput, error) {
+			orchestrationID := strings.TrimSpace(input.OrchestrationID)
+			if orchestrationID == "" {
+				return CancelOrchestrationOutput{}, kerrors.BadRequest("SPIRIT", "orchestration_id is required")
+			}
+			err := orchestrator.Cancel(ctx, orchestrationID)
+			if err != nil {
+				return CancelOrchestrationOutput{}, err
+			}
+			return CancelOrchestrationOutput{OrchestrationID: orchestrationID, Status: "cancelled"}, nil
+		},
+		trpcfunction.WithName("cancel_orchestration"),
+		trpcfunction.WithDescription("取消正在运行的编排。替代 cancel_team，基于 orchestration_id 取消。取消后释放资源。"),
+	)
+}
+
+// ---------------------------------------------------------------------------
+// Deprecated old tools (delegate to new three-phase flow)
+// ---------------------------------------------------------------------------
+
 type AssembleTeamInput struct {
 	AgentKeys   []string `json:"agent_keys"  jsonschema:"description=参与团队的 Agent key 列表"`
 	Mode        string   `json:"mode"         jsonschema:"description=团队编排模式,enum=coordinator,enum=sequential,enum=parallel"`
@@ -72,7 +277,9 @@ type SpiritSynthesisPort interface {
 	SynthesizeResults(ctx context.Context, spiritSessionID string, strategy string) (*biz.SynthesisOutput, error)
 }
 
-func NewAssembleTeamTool(assembler SpiritTeamAssemblerPort, query SpiritTeamQueryPort, lg loggateway.Logger) *trpcfunction.FunctionTool[AssembleTeamInput, AssembleTeamOutput] {
+// NewAssembleTeamTool creates the deprecated assemble_team tool.
+// DEPRECATED: Use plan_and_execute instead. This tool delegates to the new three-phase flow.
+func NewAssembleTeamTool(assembler SpiritTeamAssemblerPort, query SpiritTeamQueryPort, lg loggateway.Logger, planner biz.TaskPlannerPort, allocator biz.AgentAllocatorPort, orchestrator biz.TaskOrchestratorPort) *trpcfunction.FunctionTool[AssembleTeamInput, AssembleTeamOutput] {
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, input AssembleTeamInput) (AssembleTeamOutput, error) {
 			spiritSessionID := spiritSessionIDFromCtx(ctx)
@@ -80,6 +287,32 @@ func NewAssembleTeamTool(assembler SpiritTeamAssemblerPort, query SpiritTeamQuer
 				return AssembleTeamOutput{}, kerrors.BadRequest("SPIRIT", "spirit session id not found in context")
 			}
 
+			// Delegate to new three-phase flow when ports are available.
+			if planner != nil && allocator != nil && orchestrator != nil {
+				planInput := biz.PlanInput{
+					UserMessage:     strings.TrimSpace(input.TaskPrompt),
+					SpiritSessionID: spiritSessionID,
+				}
+				taskPlan, err := planner.Plan(ctx, planInput)
+				if err != nil {
+					return AssembleTeamOutput{}, kerrors.InternalServer("SPIRIT", "plan failed: "+err.Error())
+				}
+				allocPlan, err := allocator.Allocate(ctx, taskPlan)
+				if err != nil {
+					return AssembleTeamOutput{}, kerrors.InternalServer("SPIRIT", "allocate failed: "+err.Error())
+				}
+				handle, err := orchestrator.Orchestrate(ctx, taskPlan, allocPlan)
+				if err != nil {
+					return AssembleTeamOutput{}, kerrors.InternalServer("SPIRIT", "orchestrate failed: "+err.Error())
+				}
+				return AssembleTeamOutput{
+					TeamID:    handle.ID,
+					TeamName:  string(handle.Strategy),
+					SessionID: spiritSessionID,
+				}, nil
+			}
+
+			// Fallback to legacy flow when new ports are not available.
 			activeTeams, err := query.ListActiveTeams(ctx, spiritSessionID)
 			if err != nil {
 				return AssembleTeamOutput{}, kerrors.InternalServer("SPIRIT", "query active teams: "+err.Error())
@@ -171,7 +404,7 @@ func NewAssembleTeamTool(assembler SpiritTeamAssemblerPort, query SpiritTeamQuer
 			}, nil
 		},
 		trpcfunction.WithName("assemble_team"),
-		trpcfunction.WithDescription("组建任务团队。当用户需求复杂、需要多 Agent 协作时调用此工具。支持同一精灵会话下并行组建多个团队。系统会根据历史编排缓存自动推荐最优拓扑。简单问答请直接回复，无需调用此工具。"),
+		trpcfunction.WithDescription("[DEPRECATED] 组建任务团队。请改用 plan_and_execute 工具。当用户需求复杂、需要多 Agent 协作时调用此工具。"),
 	)
 }
 
@@ -181,13 +414,34 @@ type CheckTeamProgressOutput struct {
 	Teams []TeamProgressView `json:"teams"`
 }
 
-func NewCheckTeamProgressTool(controller SpiritTeamControllerPort) *trpcfunction.FunctionTool[CheckTeamProgressInput, CheckTeamProgressOutput] {
+// NewCheckTeamProgressTool creates the deprecated check_team_progress tool.
+// DEPRECATED: Use check_progress instead. This tool delegates to TaskOrchestratorPort.CheckProgress.
+func NewCheckTeamProgressTool(controller SpiritTeamControllerPort, orchestrator biz.TaskOrchestratorPort) *trpcfunction.FunctionTool[CheckTeamProgressInput, CheckTeamProgressOutput] {
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, _ CheckTeamProgressInput) (CheckTeamProgressOutput, error) {
 			spiritSessionID := spiritSessionIDFromCtx(ctx)
 			if spiritSessionID == "" {
 				return CheckTeamProgressOutput{}, kerrors.BadRequest("SPIRIT", "spirit session id not found in context")
 			}
+
+			// Delegate to new orchestrator when available.
+			if orchestrator != nil {
+				progress, err := orchestrator.CheckProgress(ctx, spiritSessionID)
+				if err != nil {
+					return CheckTeamProgressOutput{}, kerrors.InternalServer("SPIRIT", "check progress: "+err.Error())
+				}
+				views := make([]TeamProgressView, 0, len(progress))
+				for _, p := range progress {
+					views = append(views, TeamProgressView{
+						TeamName:    p.SubTaskName,
+						Status:      p.Status,
+						ProgressPct: p.Progress * 100,
+					})
+				}
+				return CheckTeamProgressOutput{Teams: views}, nil
+			}
+
+			// Fallback to legacy flow.
 			progress, err := controller.CheckTeamProgress(ctx, spiritSessionID)
 			if err != nil {
 				return CheckTeamProgressOutput{}, kerrors.InternalServer("SPIRIT", "check team progress: "+err.Error())
@@ -206,7 +460,7 @@ func NewCheckTeamProgressTool(controller SpiritTeamControllerPort) *trpcfunction
 			return CheckTeamProgressOutput{Teams: views}, nil
 		},
 		trpcfunction.WithName("check_team_progress"),
-		trpcfunction.WithDescription("查询当前精灵会话下所有团队的执行进度。用于监控并行任务的推进情况。"),
+		trpcfunction.WithDescription("[DEPRECATED] 查询当前精灵会话下所有团队的执行进度。请改用 check_progress 工具。"),
 	)
 }
 
@@ -219,13 +473,26 @@ type CancelTeamOutput struct {
 	Status string `json:"status"`
 }
 
-func NewCancelTeamTool(controller SpiritTeamControllerPort) *trpcfunction.FunctionTool[CancelTeamInput, CancelTeamOutput] {
+// NewCancelTeamTool creates the deprecated cancel_team tool.
+// DEPRECATED: Use cancel_orchestration instead. This tool delegates to TaskOrchestratorPort.Cancel.
+func NewCancelTeamTool(controller SpiritTeamControllerPort, orchestrator biz.TaskOrchestratorPort) *trpcfunction.FunctionTool[CancelTeamInput, CancelTeamOutput] {
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, input CancelTeamInput) (CancelTeamOutput, error) {
 			teamID := strings.TrimSpace(input.TeamID)
 			if teamID == "" {
 				return CancelTeamOutput{}, kerrors.BadRequest("SPIRIT", "team_id is required")
 			}
+
+			// Delegate to new orchestrator when available.
+			if orchestrator != nil {
+				err := orchestrator.Cancel(ctx, teamID)
+				if err != nil {
+					return CancelTeamOutput{}, err
+				}
+				return CancelTeamOutput{TeamID: teamID, Status: "cancelled"}, nil
+			}
+
+			// Fallback to legacy flow.
 			err := controller.CancelTeam(ctx, teamID)
 			if err != nil {
 				return CancelTeamOutput{}, err
@@ -233,7 +500,7 @@ func NewCancelTeamTool(controller SpiritTeamControllerPort) *trpcfunction.Functi
 			return CancelTeamOutput{TeamID: teamID, Status: "cancelled"}, nil
 		},
 		trpcfunction.WithName("cancel_team"),
-		trpcfunction.WithDescription("取消正在运行的团队。取消后释放并行团队配额。已完成的团队不可取消。"),
+		trpcfunction.WithDescription("[DEPRECATED] 取消正在运行的团队。请改用 cancel_orchestration 工具。"),
 	)
 }
 
@@ -354,21 +621,47 @@ func assembleDAGTeams(ctx context.Context, assembler SpiritTeamAssemblerPort, da
 	return outputs, nil
 }
 
-func NewAssessComplexityTool(engine *ComplexityRuleEngine) *trpcfunction.FunctionTool[AssessComplexityInput, AssessComplexityOutput] {
+// NewAssessComplexityTool creates the deprecated assess_complexity tool.
+// DEPRECATED: Use plan_and_execute instead. This tool delegates to TaskPlannerPort.Plan.
+func NewAssessComplexityTool(engine *ComplexityRuleEngine, planner biz.TaskPlannerPort) *trpcfunction.FunctionTool[AssessComplexityInput, AssessComplexityOutput] {
 	return trpcfunction.NewFunctionTool(
 		func(ctx context.Context, input AssessComplexityInput) (AssessComplexityOutput, error) {
-			level := engine.Assess(input.UserMessage)
-			path := complexityLevelToPath(level)
-			return AssessComplexityOutput{
-				Level:          string(level),
-				Reasoning:      engine.LastReasoning(),
-				SuggestedPath:  path,
-				AvailableTools: complexityAvailableTools(level),
-			}, nil
+			// Delegate to new planner when available.
+			if planner != nil {
+				spiritSessionID := spiritSessionIDFromCtx(ctx)
+				planInput := biz.PlanInput{
+					UserMessage:     input.UserMessage,
+					SpiritSessionID: spiritSessionID,
+				}
+				taskPlan, err := planner.Plan(ctx, planInput)
+				if err != nil {
+					// Fallback to rule engine on error.
+					return assessComplexityFallback(engine, input), nil
+				}
+				return AssessComplexityOutput{
+					Level:          string(taskPlan.ComplexityLevel),
+					Reasoning:      taskPlan.StrategyReason,
+					SuggestedPath:  string(taskPlan.Strategy),
+					AvailableTools: complexityAvailableTools(ComplexityLevel(taskPlan.ComplexityLevel)),
+				}, nil
+			}
+
+			return assessComplexityFallback(engine, input), nil
 		},
 		trpcfunction.WithName("assess_complexity"),
-		trpcfunction.WithDescription("评估用户消息的任务复杂度。在委派任务前必须先调用此工具，根据复杂度选择合适的处理路径：simple→直接回答，moderate→委派单一管家，complex→委派编排管家组建团队。"),
+		trpcfunction.WithDescription("[DEPRECATED] 评估用户消息的任务复杂度。请改用 plan_and_execute 工具。"),
 	)
+}
+
+func assessComplexityFallback(engine *ComplexityRuleEngine, input AssessComplexityInput) AssessComplexityOutput {
+	level := engine.Assess(input.UserMessage)
+	path := complexityLevelToPath(level)
+	return AssessComplexityOutput{
+		Level:          string(level),
+		Reasoning:      engine.LastReasoning(),
+		SuggestedPath:  path,
+		AvailableTools: complexityAvailableTools(level),
+	}
 }
 
 func complexityLevelToPath(level ComplexityLevel) string {

@@ -68,7 +68,11 @@ func (r *l4GraphRepo) UpsertEntity(ctx context.Context, params biz.L4EntityWrite
 		return err
 	}
 	// Write action log (best-effort)
-	_ = r.writeActionLog(ctx, "UPSERT", "entity", id, params.EntityType, "consolidate_v1", params.MetadataJSON)
+	if logErr := r.writeActionLog(ctx, "UPSERT", "entity", id, params.EntityType, "consolidate_v1", params.MetadataJSON); logErr != nil {
+		r.data.lg.Warn("failed to write action log",
+			loggateway.StepID("data.l4.action_log"),
+			loggateway.Err(logErr))
+	}
 	return nil
 }
 

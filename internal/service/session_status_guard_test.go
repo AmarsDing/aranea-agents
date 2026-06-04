@@ -81,7 +81,7 @@ func newTestGuardUC(repo *stubSessionRepo) *biz.SessionUsecase {
 func TestSessionStatusGuard_OnStartup(t *testing.T) {
 	repo := newStubSessionRepoForGuard("s1", "s2")
 	uc := newTestGuardUC(repo)
-	g := NewSessionStatusGuard(uc, nil, loggateway.NewNoop())
+	g := NewSessionStatusGuard(uc, nil, nil, loggateway.NewNoop())
 
 	err := g.OnStartup(context.Background())
 	if err != nil {
@@ -103,7 +103,7 @@ func TestSessionStatusGuard_OnStartup(t *testing.T) {
 func TestSessionStatusGuard_OnStartup_NoRunning(t *testing.T) {
 	repo := newStubSessionRepoForGuard()
 	uc := newTestGuardUC(repo)
-	g := NewSessionStatusGuard(uc, nil, loggateway.NewNoop())
+	g := NewSessionStatusGuard(uc, nil, nil, loggateway.NewNoop())
 
 	err := g.OnStartup(context.Background())
 	if err != nil {
@@ -117,7 +117,7 @@ func TestSessionStatusGuard_OnStartup_NoRunning(t *testing.T) {
 func TestSessionStatusGuard_OnShutdown(t *testing.T) {
 	repo := newStubSessionRepoForGuard("s1")
 	uc := newTestGuardUC(repo)
-	g := NewSessionStatusGuard(uc, nil, loggateway.NewNoop())
+	g := NewSessionStatusGuard(uc, nil, nil, loggateway.NewNoop())
 
 	err := g.OnShutdown(context.Background())
 	if err != nil {

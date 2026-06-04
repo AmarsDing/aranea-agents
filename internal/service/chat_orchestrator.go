@@ -67,14 +67,17 @@ type RuntimeTooling struct {
 // These are only used when a session is owned by a team or when graph execution
 // is triggered from the chat orchestrator.
 type TeamOrchestrationDeps struct {
-	Teams          biz.TeamRepository
-	TeamUC         *biz.TeamUsecase
-	TeamsNative    *team.Runner
-	GraphFactory   biz.GraphBuilderFactory
-	Graphs         *biz.GraphUsecase
-	Tasks          *biz.TaskUsecase
-	TeamGraphCoord *team.TeamGraphRunCoordinator
-	SpiritUC       *biz.SpiritTeamUsecase
+	Teams            biz.TeamRepository
+	TeamUC           *biz.TeamUsecase
+	TeamsNative      *team.Runner
+	GraphFactory     biz.GraphBuilderFactory
+	Graphs           *biz.GraphUsecase
+	Tasks            *biz.TaskUsecase
+	TeamGraphCoord   *team.TeamGraphRunCoordinator
+	SpiritUC         *biz.SpiritTeamUsecase
+	TaskPlanner      biz.TaskPlannerPort
+	AgentAllocator   biz.AgentAllocatorPort
+	TaskOrchestrator biz.TaskOrchestratorPort
 }
 
 // ChannelTurnDeps groups channel turn job tracking and session run management.

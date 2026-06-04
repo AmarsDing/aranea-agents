@@ -3,13 +3,17 @@ package data
 import (
 	"context"
 	"database/sql"
+	"embed"
 	"fmt"
-	"os"
+	"io/fs"
 	"strings"
 
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/pkg/loggateway"
 )
+
+//go:embed sql/migrations/*.sql
+var migrationSQLFS embed.FS
 
 type ddlMigration struct {
 	Version int
@@ -117,7 +121,7 @@ func executeSQLFile(ctx context.Context, rawDB *sql.DB, path string, lg loggatew
 	if rawDB == nil {
 		return nil
 	}
-	sqlBytes, err := os.ReadFile(path)
+	sqlBytes, err := fs.ReadFile(migrationSQLFS, path)
 	if err != nil {
 		return fmt.Errorf("read SQL file %s: %w", path, err)
 	}

@@ -309,7 +309,7 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       deps.sessionStore.fetchAndReconcileSession(sessionId);
     }
 
-    if (env.type.startsWith('spirit_team') || env.type === 'spirit_synthesis_completed') {
+    if (env.type.startsWith('spirit_')) {
       const spiritStore = useSpiritTeamStore();
       spiritStore.handleSpiritEnvelope(env);
     }

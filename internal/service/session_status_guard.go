@@ -9,13 +9,14 @@ import (
 )
 
 type SessionStatusGuard struct {
-	uc     *biz.SessionUsecase
-	teamUC *biz.TeamUsecase
-	lg     loggateway.Logger
+	uc              *biz.SessionUsecase
+	teamUC          *biz.TeamUsecase
+	orchestrator    biz.TaskOrchestratorPort
+	lg              loggateway.Logger
 }
 
-func NewSessionStatusGuard(uc *biz.SessionUsecase, teamUC *biz.TeamUsecase, lg loggateway.Logger) *SessionStatusGuard {
-	return &SessionStatusGuard{uc: uc, teamUC: teamUC, lg: lg}
+func NewSessionStatusGuard(uc *biz.SessionUsecase, teamUC *biz.TeamUsecase, orchestrator biz.TaskOrchestratorPort, lg loggateway.Logger) *SessionStatusGuard {
+	return &SessionStatusGuard{uc: uc, teamUC: teamUC, orchestrator: orchestrator, lg: lg}
 }
 
 func (g *SessionStatusGuard) OnStartup(ctx context.Context) error {
@@ -27,6 +28,10 @@ func (g *SessionStatusGuard) OnStartup(ctx context.Context) error {
 	if err := g.recoverOrphanedRunningTeams(ctx); err != nil {
 		g.lg.Error("session status guard: failed to recover orphaned teams", loggateway.Err(err))
 		// Non-fatal: session recovery already succeeded; log and continue.
+	}
+	if err := g.recoverInterruptedOrchestrations(ctx); err != nil {
+		g.lg.Error("session status guard: failed to recover interrupted orchestrations", loggateway.Err(err))
+		// Non-fatal: session and team recovery already succeeded; log and continue.
 	}
 	return nil
 }
@@ -101,4 +106,12 @@ func (g *SessionStatusGuard) recoverOrphanedRunningTeams(ctx context.Context) er
 		)
 	}
 	return nil
+}
+
+// recoverInterruptedOrchestrations recovers interrupted orchestrations on startup.
+func (g *SessionStatusGuard) recoverInterruptedOrchestrations(ctx context.Context) error {
+	if g.orchestrator == nil {
+		return nil
+	}
+	return g.orchestrator.RecoverAllInterrupted(ctx)
 }

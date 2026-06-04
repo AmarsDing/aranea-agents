@@ -86,19 +86,37 @@ func backfillLegacyTRPCMemoryEntities(ctx context.Context, d *Data) (int, error)
 		// Table might not exist
 		return 0, nil
 	}
-	defer rows.Close()
-	var migrated int
-	now := time.Now().UTC().Format(time.RFC3339Nano)
+	type legacyRow struct {
+		id, scopeType, scopeID, userID, agentID, entityType, name, statement, details string
+		sourceKind, sourceSessionID, sourceMessageID, metadataJSON, createdAt         string
+		confidence, importance                                                         float64
+	}
+	var batch []legacyRow
+	var skippedIDs []string
 	for rows.Next() {
-		var id, scopeType, scopeID, userID, agentID, entityType, name, statement, details string
-		var sourceKind, sourceSessionID, sourceMessageID, metadataJSON, createdAt string
-		var confidence, importance float64
-		if err := rows.Scan(&id, &scopeType, &scopeID, &userID, &agentID, &entityType, &name, &statement, &details, &confidence, &importance, &sourceKind, &sourceSessionID, &sourceMessageID, &metadataJSON, &createdAt); err != nil {
+		var r legacyRow
+		if err := rows.Scan(&r.id, &r.scopeType, &r.scopeID, &r.userID, &r.agentID, &r.entityType, &r.name, &r.statement, &r.details, &r.confidence, &r.importance, &r.sourceKind, &r.sourceSessionID, &r.sourceMessageID, &r.metadataJSON, &r.createdAt); err != nil {
 			continue
 		}
-		fp := factFingerprint(statement, scopeType, scopeID)
+		if strings.TrimSpace(r.statement) == "" {
+			skippedIDs = append(skippedIDs, r.id)
+			continue
+		}
+		batch = append(batch, r)
+	}
+	rows.Close()
+
+	// Mark skipped (empty statement) rows as migrated so they are not re-processed.
+	for _, sid := range skippedIDs {
+		d.RWDB().WriteDB(ctx).ExecContext(ctx, `UPDATE trpc_memory_entities SET migrated = 1 WHERE id = ?`, sid)
+	}
+
+	var migrated int
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for _, r := range batch {
+		fp := factFingerprint(r.statement, r.scopeType, r.scopeID)
 		tags := "[]"
-		meta := strings.TrimSpace(metadataJSON)
+		meta := strings.TrimSpace(r.metadataJSON)
 		if meta == "" {
 			meta = "{}"
 		}
@@ -114,18 +132,18 @@ func backfillLegacyTRPCMemoryEntities(ctx context.Context, d *Data) (int, error)
 			quality_score, metadata_json, created_at, updated_at
 		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(scope_type, scope_id, fingerprint) DO NOTHING`,
-			id, scopeType, scopeID, "", userID, "", agentID,
-			statement, strings.ToLower(statement), fp, details,
-			entityType, tags,
-			confidence, importance, 0, 0, 0, 0, 0,
-			sourceKind, "", sourceSessionID, sourceMessageID, "",
-			1, "active", "", 0, "", 0, meta, createdAt, now,
+			r.id, r.scopeType, r.scopeID, "", r.userID, "", r.agentID,
+			r.statement, strings.ToLower(r.statement), fp, r.details,
+			r.entityType, tags,
+			r.confidence, r.importance, 0, 0, 0, 0, 0,
+			r.sourceKind, "", r.sourceSessionID, r.sourceMessageID, "",
+			1, "active", "", 0, "", 0, meta, r.createdAt, now,
 		)
 		if err != nil {
 			continue
 		}
 		// Mark as migrated
-		d.RWDB().WriteDB(ctx).ExecContext(ctx, `UPDATE trpc_memory_entities SET migrated = 1 WHERE id = ?`, id)
+		d.RWDB().WriteDB(ctx).ExecContext(ctx, `UPDATE trpc_memory_entities SET migrated = 1 WHERE id = ?`, r.id)
 		migrated++
 	}
 	return migrated, nil

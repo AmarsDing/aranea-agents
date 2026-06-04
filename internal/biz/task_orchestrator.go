@@ -10,6 +10,7 @@ type TaskOrchestratorPort interface {
 	Cancel(ctx context.Context, orchestrationID string) error
 	Synthesize(ctx context.Context, orchestrationID string) (*SynthesisOutput, error)
 	Recover(ctx context.Context, orchestrationID string) error
+	RecoverAllInterrupted(ctx context.Context) error
 }
 
 // OrchestrationHandle represents a running orchestration.
@@ -46,7 +47,7 @@ type TaskProgress struct {
 	SubTaskID   string  `json:"sub_task_id"`
 	SubTaskName string  `json:"sub_task_name"`
 	AgentKey    string  `json:"agent_key"`
-	Status      string  `json:"status"` // pending/running/completed/failed
+	Status      string  `json:"status"`   // pending/running/completed/failed
 	Progress    float64 `json:"progress"` // 0.0-1.0
 	Result      string  `json:"result,omitempty"`
 }

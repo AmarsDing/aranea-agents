@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"math"
 	"strings"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
@@ -23,6 +25,7 @@ type agentAllocatorImpl struct {
 	capBuilder     *AgentCapabilityBuilder
 	catalog        *biz.LlmProviderModelUsecase
 	httpClient     *http.Client
+	bus            contract.Bus
 	lg             loggateway.Logger
 }
 
@@ -36,6 +39,7 @@ func NewAgentAllocator(
 	capBuilder *AgentCapabilityBuilder,
 	catalog *biz.LlmProviderModelUsecase,
 	httpClient *http.Client,
+	bus contract.Bus,
 	lg loggateway.Logger,
 ) biz.AgentAllocatorPort {
 	return &agentAllocatorImpl{
@@ -45,6 +49,7 @@ func NewAgentAllocator(
 		capBuilder:  capBuilder,
 		catalog:     catalog,
 		httpClient:  httpClient,
+		bus:         bus,
 		lg:          lg,
 	}
 }
@@ -134,6 +139,10 @@ func (impl *agentAllocatorImpl) Allocate(ctx context.Context, taskPlan *biz.Task
 		)
 		return nil, kerrors.InternalServer("ALLOCATOR", "persist allocation plan: "+err.Error())
 	}
+
+	// Publish spirit_allocation_created event.
+	impl.publishAllocationCreated(ctx, saved)
+
 	return saved, nil
 }
 
@@ -163,6 +172,28 @@ func (impl *agentAllocatorImpl) matchSubTask(ctx context.Context, subTask biz.Su
 			MatchScore:   bestScore,
 			MatchLayer:   "exact",
 			MatchReason:  matchReason,
+		}, nil
+	}
+
+	// Layer 2: Semantic match — keyword-based similarity between task and agent capabilities
+	semCap, semScore, semReason := impl.matchLayer2(ctx, subTask, capabilities, traceID)
+	if semScore > 0.3 && semCap.AgentKey != "" {
+		impl.lg.Info("Layer 2 语义匹配命中",
+			loggateway.StepID(biz.SpiritStepAllocatorMatch),
+			loggateway.Str("trace_id", traceID),
+			loggateway.Str("sub_task_id", subTask.ID),
+			loggateway.Str("agent_key", semCap.AgentKey),
+			loggateway.Float64("score", semScore),
+		)
+		return biz.TaskAllocation{
+			SubTaskID:    subTask.ID,
+			SubTaskName:  subTask.Name,
+			AssignedType: assignedType,
+			AssignedKey:  semCap.AgentKey,
+			AssignedName: semCap.DisplayName,
+			MatchScore:   semScore,
+			MatchLayer:   "semantic",
+			MatchReason:  semReason,
 		}, nil
 	}
 
@@ -248,6 +279,176 @@ func (impl *agentAllocatorImpl) exactMatch(requiredCapabilities []string, capabi
 	return best.cap, best.score, reason
 }
 
+// matchLayer2 performs Layer 2 matching: semantic similarity between task description and agent capabilities.
+// Uses keyword-based TF-IDF-like scoring as a placeholder; TODO: integrate pgvector for true embedding similarity.
+func (impl *agentAllocatorImpl) matchLayer2(ctx context.Context, subTask biz.SubTask, capabilities []biz.AgentCapability, traceID string) (biz.AgentCapability, float64, string) {
+	if len(capabilities) == 0 {
+		return biz.AgentCapability{}, 0, ""
+	}
+
+	taskText := subTask.Name + " " + subTask.Description
+	for _, cap := range subTask.RequiredCapabilities {
+		taskText += " " + cap
+	}
+
+	type scored struct {
+		cap   biz.AgentCapability
+		score float64
+	}
+
+	var candidates []scored
+	for _, cap := range capabilities {
+		if cap.AgentKey == biz.SpiritAgentKey {
+			continue
+		}
+		score := computeSemanticScore(taskText, cap)
+		// Combine with historical success rate if available
+		if impl.perfRepo != nil {
+			perf, err := impl.perfRepo.Get(ctx, cap.AgentKey, "general")
+			if err == nil && perf != nil {
+				score = score*0.6 + perf.SuccessRate*0.4
+			}
+		}
+		if score > 0 {
+			candidates = append(candidates, scored{cap: cap, score: score})
+		}
+	}
+
+	if len(candidates) == 0 {
+		return biz.AgentCapability{}, 0, ""
+	}
+
+	best := candidates[0]
+	for _, c := range candidates[1:] {
+		if c.score > best.score {
+			best = c
+		}
+	}
+
+	reason := fmt.Sprintf("语义匹配 (score: %.2f)", best.score)
+	return best.cap, best.score, reason
+}
+
+// matchLayer2ForPlan performs Layer 2 matching for a whole plan (no subtasks).
+func (impl *agentAllocatorImpl) matchLayer2ForPlan(ctx context.Context, taskPlan *biz.TaskPlan, capabilities []biz.AgentCapability, traceID string) (biz.AgentCapability, float64, string) {
+	if len(capabilities) == 0 {
+		return biz.AgentCapability{}, 0, ""
+	}
+
+	type scored struct {
+		cap   biz.AgentCapability
+		score float64
+	}
+
+	var candidates []scored
+	for _, cap := range capabilities {
+		if cap.AgentKey == biz.SpiritAgentKey {
+			continue
+		}
+		score := computeSemanticScore(taskPlan.UserMessage, cap)
+		if impl.perfRepo != nil {
+			perf, err := impl.perfRepo.Get(ctx, cap.AgentKey, "general")
+			if err == nil && perf != nil {
+				score = score*0.6 + perf.SuccessRate*0.4
+			}
+		}
+		if score > 0 {
+			candidates = append(candidates, scored{cap: cap, score: score})
+		}
+	}
+
+	if len(candidates) == 0 {
+		return biz.AgentCapability{}, 0, ""
+	}
+
+	best := candidates[0]
+	for _, c := range candidates[1:] {
+		if c.score > best.score {
+			best = c
+		}
+	}
+
+	reason := fmt.Sprintf("语义匹配 (score: %.2f)", best.score)
+	return best.cap, best.score, reason
+}
+
+// computeSemanticScore computes a TF-IDF-like keyword overlap score between
+// a task description and an agent's capability profile.
+// TODO: Replace with true embedding cosine similarity via pgvector or the
+// project's knowledge.Embedder when agent capability vectors are persisted.
+func computeSemanticScore(taskDesc string, cap biz.AgentCapability) float64 {
+	// Build a text corpus from the agent's capability profile
+	agentText := cap.DisplayName + " " + cap.Description
+	for _, r := range cap.Roles {
+		agentText += " " + r
+	}
+	for _, d := range cap.Domains {
+		agentText += " " + d
+	}
+	for _, t := range cap.Tools {
+		agentText += " " + t
+	}
+	for _, s := range cap.Skills {
+		agentText += " " + s
+	}
+
+	taskTokens := tokenizeForSemantic(taskDesc)
+	agentTokens := tokenizeForSemantic(agentText)
+
+	if len(taskTokens) == 0 || len(agentTokens) == 0 {
+		return 0
+	}
+
+	// Compute TF for task tokens
+	taskTF := make(map[string]float64, len(taskTokens))
+	for _, t := range taskTokens {
+		taskTF[t]++
+	}
+	for k := range taskTF {
+		taskTF[k] /= float64(len(taskTokens))
+	}
+
+	// Compute IDF-like weighting: how many agent tokens match each task token
+	agentSet := make(map[string]bool, len(agentTokens))
+	for _, t := range agentTokens {
+		agentSet[t] = true
+	}
+
+	var score float64
+	for token, tf := range taskTF {
+		if agentSet[token] {
+			// Simple IDF approximation: matched tokens get higher weight
+			score += tf * 2.0
+		}
+	}
+
+	// Normalize to [0, 1]
+	score = score / (1.0 + score)
+
+	// Apply sigmoid-like scaling for better separation
+	score = 1.0 / (1.0 + math.Exp(-6*(score-0.5)))
+
+	return score
+}
+
+// tokenizeForSemantic splits text into lowercase tokens for semantic comparison.
+func tokenizeForSemantic(text string) []string {
+	text = strings.ToLower(text)
+	// Replace common separators with spaces
+	for _, sep := range []string{"-", "_", "/", ".", ",", "，", "、", "：", "："} {
+		text = strings.ReplaceAll(text, sep, " ")
+	}
+	fields := strings.Fields(text)
+	// Filter out very short tokens
+	var result []string
+	for _, f := range fields {
+		if len(f) >= 2 {
+			result = append(result, f)
+		}
+	}
+	return result
+}
+
 // llmColdStart performs Layer 3 matching: use LLM to select the best agent.
 func (impl *agentAllocatorImpl) llmColdStart(ctx context.Context, subTask biz.SubTask, capabilities []biz.AgentCapability, traceID string) (string, error) {
 	if impl.catalog == nil || impl.httpClient == nil {
@@ -308,6 +509,27 @@ func (impl *agentAllocatorImpl) matchWholePlan(ctx context.Context, taskPlan *bi
 			MatchScore:   bestScore,
 			MatchLayer:   "exact",
 			MatchReason:  matchReason,
+		}, nil
+	}
+
+	// Layer 2: Semantic match for whole plan
+	semCap, semScore, semReason := impl.matchLayer2ForPlan(ctx, taskPlan, capabilities, traceID)
+	if semScore > 0.3 && semCap.AgentKey != "" {
+		impl.lg.Info("Layer 2 语义匹配命中 (whole plan)",
+			loggateway.StepID(biz.SpiritStepAllocatorMatch),
+			loggateway.Str("trace_id", traceID),
+			loggateway.Str("agent_key", semCap.AgentKey),
+			loggateway.Float64("score", semScore),
+		)
+		return biz.TaskAllocation{
+			SubTaskID:    "whole",
+			SubTaskName:  taskPlan.UserMessage,
+			AssignedType: assignedType,
+			AssignedKey:  semCap.AgentKey,
+			AssignedName: semCap.DisplayName,
+			MatchScore:   semScore,
+			MatchLayer:   "semantic",
+			MatchReason:  semReason,
 		}, nil
 	}
 
@@ -530,4 +752,22 @@ func parseAllocatorColdStartResponse(text string) string {
 		return ""
 	}
 	return text
+}
+
+// publishAllocationCreated publishes the spirit_allocation_created event after an AllocationPlan is persisted.
+func (impl *agentAllocatorImpl) publishAllocationCreated(ctx context.Context, plan *biz.AllocationPlan) {
+	if impl.bus == nil || plan == nil {
+		return
+	}
+	spiritSessionID := plan.SpiritSessionID
+
+	env := contract.NewEnvelope(contract.EnvelopeTypeSpiritAllocationCreated, "agent-allocator", spiritSessionID)
+	env.Metadata = map[string]any{
+		"allocation_id":      plan.ID,
+		"task_plan_id":       plan.TaskPlanID,
+		"spirit_session_id":  spiritSessionID,
+		"allocation_count":   len(plan.Allocations),
+		"status":             string(plan.Status),
+	}
+	impl.bus.Publish(ctx, env)
 }

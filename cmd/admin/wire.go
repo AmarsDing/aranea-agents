@@ -32,6 +32,7 @@ import (
 	"aranea-agents/internal/data"
 	"aranea-agents/internal/debug"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	graphadapter "aranea-agents/internal/graph/adapter"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/knowledge"
@@ -498,6 +499,8 @@ func provideTeamOrchestrationDeps(
 	tasks *biz.TaskUsecase,
 	teamGraphCoord *team.TeamGraphRunCoordinator,
 	spiritUC *biz.SpiritTeamUsecase,
+	taskPlanner biz.TaskPlannerPort,
+	agentAllocator biz.AgentAllocatorPort,
 ) service.TeamOrchestrationDeps {
 	return service.TeamOrchestrationDeps{
 		Teams:          teams,
@@ -507,6 +510,8 @@ func provideTeamOrchestrationDeps(
 		Tasks:          tasks,
 		TeamGraphCoord: teamGraphCoord,
 		SpiritUC:       spiritUC,
+		TaskPlanner:    taskPlanner,
+		AgentAllocator: agentAllocator,
 	}
 }
 
@@ -1202,9 +1207,22 @@ func provideA2AService(
 	return service.NewA2AService(uc, chat, agents, reg, store, lg)
 }
 
-func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, lg loggateway.Logger) biz.TaskPlannerPort {
+func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, bus contract.Bus, lg loggateway.Logger) biz.TaskPlannerPort {
 	httpClient := &http.Client{Timeout: 60 * time.Second}
-	return chatagent.NewTaskPlanner(repo, catalog, httpClient, lg)
+	return chatagent.NewTaskPlanner(repo, catalog, httpClient, bus, orchCache, lg)
+}
+
+func provideAgentAllocator(
+	repo biz.AllocationPlanRepository,
+	agentReader biz.AgentReader,
+	perfRepo biz.AgentPerformanceRepository,
+	catalog *biz.LlmProviderModelUsecase,
+	bus contract.Bus,
+	lg loggateway.Logger,
+) biz.AgentAllocatorPort {
+	httpClient := &http.Client{Timeout: 60 * time.Second}
+	capBuilder := chatagent.NewAgentCapabilityBuilder(agentReader, lg)
+	return chatagent.NewAgentAllocator(repo, agentReader, perfRepo, capBuilder, catalog, httpClient, bus, lg)
 }
 
 func provideTaskOrchestrator(
@@ -1212,12 +1230,29 @@ func provideTaskOrchestrator(
 	assembler *service.SpiritTeamAssembler,
 	repo biz.OrchestrationRepository,
 	matcher biz.AgentMatcherPort,
-	deps chatagent.TRPCBuilderDeps,
+	catalog *biz.LlmProviderModelUsecase,
+	agentUC *biz.AgentUsecase,
+	agents biz.AgentRepository,
+	toolUC *biz.ToolUsecase,
+	sys biz.SystemSettingRepo,
 	synthesis *service.SpiritSynthesisService,
+	checkpointSaver trpcgraph.CheckpointSaver,
+	orchCache *biz.OrchestrationCache,
+	perfRepo biz.AgentPerformanceRepository,
+	bus contract.Bus,
 	lg loggateway.Logger,
 ) biz.TaskOrchestratorPort {
+	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
+	deps := chatagent.TRPCBuilderDeps{
+		Catalog:  catalog,
+		AgentUC:  agentUC,
+		Agents:   agents,
+		RT:       rtTrip,
+		ToolUC:   toolUC,
+		Sys:      sys,
+	}
 	compiler := chatagent.NewDAGToGraphCompiler(lg)
-	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, compiler, repo, matcher, deps, synthesis, lg)
+	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, bus, lg)
 }
 
 // wireApp init kratos application.
@@ -1350,6 +1385,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideA2AService,
 		provideEventService,
 		provideTaskPlanner,
+		provideAgentAllocator,
 		chatagent.NewAgentMatcher,
 		provideTaskOrchestrator,
 		debug.NewRecorderFactory,
@@ -1374,6 +1410,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		wire.Bind(new(biz.TeamReader), new(biz.TeamRepository)),
 		wire.Bind(new(biz.TeamRunRepo), new(biz.TeamRepository)),
 		wire.Bind(new(biz.PatternReader), new(biz.PatternReadWriter)),
+		wire.Bind(new(biz.AgentReader), new(biz.AgentRepository)),
 		provideWSTurnExecutor,
 		newApp,
 		provideWireOut,

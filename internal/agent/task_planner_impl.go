@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/event/contract"
 	"aranea-agents/pkg/loggateway"
 
 	"github.com/google/uuid"
@@ -19,20 +20,24 @@ import (
 
 // taskPlannerImpl implements biz.TaskPlannerPort.
 type taskPlannerImpl struct {
-	repo     biz.TaskPlanRepository
-	catalog  *biz.LlmProviderModelUsecase
+	repo       biz.TaskPlanRepository
+	catalog    *biz.LlmProviderModelUsecase
 	httpClient *http.Client
-	lg       loggateway.Logger
+	bus        contract.Bus
+	orchCache  *biz.OrchestrationCache
+	lg         loggateway.Logger
 }
 
 var _ biz.TaskPlannerPort = (*taskPlannerImpl)(nil)
 
 // NewTaskPlanner creates a new TaskPlanner implementation.
-func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, lg loggateway.Logger) biz.TaskPlannerPort {
+func NewTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, bus contract.Bus, orchCache *biz.OrchestrationCache, lg loggateway.Logger) biz.TaskPlannerPort {
 	return &taskPlannerImpl{
 		repo:       repo,
 		catalog:    catalog,
 		httpClient: httpClient,
+		bus:        bus,
+		orchCache:  orchCache,
 		lg:         lg,
 	}
 }
@@ -49,6 +54,64 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		loggateway.Str("trace_id", traceID),
 		loggateway.Str("spirit_session_id", input.SpiritSessionID),
 	)
+
+	// Step 0: Query OrchestrationCache for memory-driven routing
+	memoryHit := impl.queryMemory(ctx, input, traceID)
+	if memoryHit != nil {
+		impl.lg.Info("编排缓存命中，跳过完整复杂度评估",
+			loggateway.StepID(biz.SpiritStepPlannerMemory),
+			loggateway.Str("trace_id", traceID),
+			loggateway.Str("cache_id", memoryHit.CacheID),
+			loggateway.Float64("dq_score", memoryHit.DQScore),
+			loggateway.Str("topology", memoryHit.TopologyUsed),
+		)
+
+		// Reuse historical topology as strategy hint
+		strategy := biz.StrategyCoordinator
+		topologyHint := biz.TopologyType(memoryHit.TopologyUsed)
+		switch topologyHint {
+		case biz.TopologyDirect:
+			strategy = biz.StrategyDirect
+		case biz.TopologyParallel:
+			strategy = biz.StrategyParallel
+		case biz.TopologyCoordinator:
+			strategy = biz.StrategyCoordinator
+		}
+
+		// Build a lightweight plan from memory hit
+		plan := &biz.TaskPlan{
+			ID:              "tp_" + uuid.NewString(),
+			SpiritSessionID: input.SpiritSessionID,
+			TraceID:         traceID,
+			UserMessage:     input.UserMessage,
+			IntentArtifactJSON: func() string {
+				if input.IntentArtifact == nil {
+					return "{}"
+				}
+				b, _ := json.Marshal(input.IntentArtifact)
+				return string(b)
+			}(),
+			ComplexityLevel: biz.ComplexityComplex,
+			ComplexityScore: memoryHit.DQScore,
+			Strategy:        strategy,
+			StrategyReason:  "基于历史编排缓存推荐策略",
+			TopologyHint:    topologyHint,
+			MemoryHit:       memoryHit,
+			Status:          biz.PlanStatusDraft,
+		}
+
+		saved, err := impl.repo.Create(ctx, plan)
+		if err != nil {
+			impl.lg.Warn("TaskPlan 持久化失败",
+				loggateway.StepID(biz.SpiritStepPlannerPersist),
+				loggateway.Str("trace_id", traceID),
+				loggateway.Err(err),
+			)
+			return nil, kerrors.InternalServer("TASK_PLANNER", "persist plan: "+err.Error())
+		}
+		impl.publishPlanCreated(ctx, saved)
+		return saved, nil
+	}
 
 	// Step 1: Assess complexity (six dimensions)
 	dimensions := impl.assessComplexity(input)
@@ -124,22 +187,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		}
 	}
 
-	// Step 4: Check memory cache
-	var memoryHit *biz.MemoryHit
-	if input.HistoryDQScore > 0.7 {
-		memoryHit = &biz.MemoryHit{
-			CacheID:      "history_dq",
-			DQScore:      input.HistoryDQScore,
-			TopologyUsed: string(topologyHint),
-		}
-		impl.lg.Info("历史编排缓存命中",
-			loggateway.StepID(biz.SpiritStepPlannerMemory),
-			loggateway.Str("trace_id", traceID),
-			loggateway.Float64("dq_score", input.HistoryDQScore),
-		)
-	}
-
-	// Step 5: Build intent artifact JSON
+	// Step 4: Build intent artifact JSON
 	intentArtifactJSON := "{}"
 	if input.IntentArtifact != nil {
 		b, err := json.Marshal(input.IntentArtifact)
@@ -164,7 +212,7 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		Strategy:            strategy,
 		StrategyReason:      strategyReason,
 		TopologyHint:        topologyHint,
-		MemoryHit:           memoryHit,
+		MemoryHit:           nil, // Memory hit is handled in Step 0; normal path has no cache hit
 		Status:              biz.PlanStatusDraft,
 	}
 
@@ -183,6 +231,10 @@ func (impl *taskPlannerImpl) Plan(ctx context.Context, input biz.PlanInput) (*bi
 		)
 		return nil, kerrors.InternalServer("TASK_PLANNER", "persist plan: "+err.Error())
 	}
+
+	// Publish spirit_plan_created event.
+	impl.publishPlanCreated(ctx, saved)
+
 	return saved, nil
 }
 
@@ -250,6 +302,43 @@ func (impl *taskPlannerImpl) ConfirmPlan(ctx context.Context, planID string, adj
 		return nil, kerrors.InternalServer("TASK_PLANNER", "update plan: "+err.Error())
 	}
 	return saved, nil
+}
+
+// queryMemory queries the OrchestrationCache for similar past orchestrations.
+// Returns a MemoryHit if a high-quality historical match is found, nil otherwise.
+func (impl *taskPlannerImpl) queryMemory(ctx context.Context, input biz.PlanInput, traceID string) *biz.MemoryHit {
+	if impl.orchCache == nil {
+		return nil
+	}
+
+	// Try SuggestTopology first for a quick hit
+	topology, hit := impl.orchCache.SuggestTopology(input.UserMessage)
+	if !hit {
+		return nil
+	}
+
+	// Query for detailed cache entries
+	cacheEntries, err := impl.orchCache.QueryByTaskPattern(ctx, input.UserMessage)
+	if err != nil || len(cacheEntries) == 0 {
+		return nil
+	}
+
+	best := cacheEntries[0]
+	if best.DQScore < 0.7 {
+		impl.lg.Info("编排缓存命中但 DQ 分数不足",
+			loggateway.StepID(biz.SpiritStepPlannerMemory),
+			loggateway.Str("trace_id", traceID),
+			loggateway.Float64("dq_score", best.DQScore),
+		)
+		return nil
+	}
+
+	return &biz.MemoryHit{
+		CacheID:       best.TaskPattern,
+		DQScore:       best.DQScore,
+		TopologyUsed:  string(topology),
+		AgentKeysUsed: best.AgentKeys,
+	}
 }
 
 // assessComplexity computes the six-dimension complexity assessment.
@@ -797,4 +886,40 @@ func stripDecompositionFences(s string) string {
 		return strings.TrimSpace(m[1])
 	}
 	return s
+}
+
+// publishPlanCreated publishes the spirit_plan_created event after a TaskPlan is persisted.
+// For dual consumption (REQ-SO-04), also publishes spirit_team_assembled (old equivalent).
+func (impl *taskPlannerImpl) publishPlanCreated(ctx context.Context, plan *biz.TaskPlan) {
+	if impl.bus == nil || plan == nil {
+		return
+	}
+	spiritSessionID := plan.SpiritSessionID
+
+	// New event: spirit_plan_created
+	env := contract.NewEnvelope(contract.EnvelopeTypeSpiritPlanCreated, "task-planner", spiritSessionID)
+	env.Metadata = map[string]any{
+		"plan_id":           plan.ID,
+		"spirit_session_id": spiritSessionID,
+		"complexity_level":  string(plan.ComplexityLevel),
+		"complexity_score":  plan.ComplexityScore,
+		"strategy":          string(plan.Strategy),
+		"strategy_reason":   plan.StrategyReason,
+		"topology_hint":     string(plan.TopologyHint),
+		"subtask_count":     len(plan.SubTasks),
+	}
+	impl.bus.Publish(ctx, env)
+
+	// Dual consumption: also publish spirit_team_assembled (old equivalent)
+	// so that the existing frontend continues to work during migration.
+	dualEnv := contract.NewEnvelope(contract.EnvelopeTypeSpiritTeamAssembled, "task-planner", spiritSessionID)
+	dualEnv.Metadata = map[string]any{
+		"team_id":         plan.ID,
+		"team_name":       "Task Plan: " + biz.TruncateRunes(plan.UserMessage, 50),
+		"task_summary":    biz.TruncateRunes(plan.UserMessage, 200),
+		"mode":            string(plan.Strategy),
+		"total_steps":     len(plan.SubTasks),
+		"spirit_session_id": spiritSessionID,
+	}
+	impl.bus.Publish(ctx, dualEnv)
 }

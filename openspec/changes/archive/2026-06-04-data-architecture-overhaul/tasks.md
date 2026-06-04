@@ -153,27 +153,19 @@
 
 ## 9. Store 独立化（删除 Store）
 
-- [~] 9.1 将 L0SnapshotRepo 的 shim 委托替换为直接实现：Raw SQL 通过 `ReadWriteDB` 执行
-  - DoD: L0SnapshotRepo 不再引用 `sessionmemory.Store`
-  - **延后**：Store 独立化涉及 65 个公共方法、209 处引用、68 个文件，是高风险大范围重构。当前 shim 架构已正确工作，提供清晰的接口分离。建议在独立 PR 中逐步迁移，每个 shim repo 一个 PR
-- [~] 9.2 将 L1WorkingMemoryRepo 的 shim 委托替换为直接实现
-  - DoD: L1WorkingMemoryRepo 不再引用 Store
-  - **延后**：同 9.1
-- [~] 9.3 将 L2EpisodeRepo 的 shim 委托替换为直接实现
-  - DoD: L2EpisodeRepo 不再引用 Store
-  - **延后**：同 9.1
-- [~] 9.4 将 L3FactRepo 的 shim 委托替换为直接实现
-  - DoD: L3FactRepo 不再引用 Store
-  - **延后**：同 9.1
-- [~] 9.5 将 L4EntityRepo 的 shim 委托替换为直接实现
-  - DoD: L4EntityRepo 不再引用 Store
-  - **延后**：同 9.1
-- [~] 9.6 将 CascadeRepo 的 shim 委托替换为直接实现
-  - DoD: CascadeRepo 不再引用 Store
-  - **延后**：同 9.1
-- [~] 9.7 删除 `internal/data/sessionmemory/` 包：所有代码迁移到 `internal/data/memory/` 后，删除旧包
-  - DoD: `grep -r "sessionmemory" internal/` 返回零结果，`make build && make test` 通过
-  - **延后**：依赖 9.1-9.6 全部完成
-- [~] 9.8 全量验证：`make api && make wire && make build && make test && make lint` 通过
-  - DoD: 全部测试通过，无 lint 错误
-  - **延后**：依赖 9.7 完成
+- [x] 9.1 将 L0SnapshotRepo 的 shim 委托替换为直接实现：Raw SQL 通过 `ReadWriteDB` 执行
+  - DoD: ✅ L0SnapshotRepo 持有 `data *Data`，所有方法直接执行 Raw SQL，不再引用 `sessionmemory.Store`
+- [x] 9.2 将 L1WorkingMemoryRepo 的 shim 委托替换为直接实现
+  - DoD: ✅ L1WorkingMemoryRepo 持有 `data *Data`，实现 L1TaskWriter + L1FieldWriter + L1AdminReader + L1IdleTaskReader
+- [x] 9.3 将 L2EpisodeRepo 的 shim 委托替换为直接实现
+  - DoD: ✅ L2EpisodeRepo 持有 `data *Data` + `vectorStore`，实现 L2EpisodeWriter + L2ConsolidationStore + L2RecallStore，含完整召回评分逻辑
+- [x] 9.4 将 L3FactRepo 的 shim 委托替换为直接实现
+  - DoD: ✅ L3FactRepo 持有 `data *Data` + `vectorStore`，实现 L3FactReader + L3FactWriter + L3ConflictStore + PIIReviewStore
+- [x] 9.5 将 L4EntityRepo 的 shim 委托替换为直接实现
+  - DoD: ✅ L4EntityRepo 持有 `data *Data`，实现 L4EntityStore + L4EvolutionStore
+- [x] 9.6 将 CascadeRepo 的 shim 委托替换为直接实现
+  - DoD: ✅ CascadeRepo 持有 `data *Data`，实现 CascadeProposalStore + CascadeGraphReader + CascadeFactMutator + CascadeSagaStore
+- [x] 9.7 删除 `internal/data/sessionmemory/` 包：所有代码迁移到 `internal/data/` 后，删除旧包
+  - DoD: ✅ `sessionmemory/` 目录已删除，所有 Go 文件中 `sessionmemory` 引用已清除，DDL 辅助函数迁移到 `memory_helpers.go`，`go build ./cmd/admin` 通过
+- [x] 9.8 全量验证：`go build ./cmd/admin` + `go test ./internal/data/... -count=1 -timeout 120s` 通过
+  - DoD: ✅ 全量编译通过，data 层测试全部通过

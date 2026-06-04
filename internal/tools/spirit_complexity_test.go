@@ -91,7 +91,7 @@ func TestComplexityRuleEngine_SimpleTakesPrecedenceOverComplex(t *testing.T) {
 
 func TestAssessComplexityTool(t *testing.T) {
 	engine := NewComplexityRuleEngine()
-	tool := NewAssessComplexityTool(engine)
+	tool := NewAssessComplexityTool(engine, nil)
 	if tool == nil {
 		t.Fatal("NewAssessComplexityTool returned nil")
 	}

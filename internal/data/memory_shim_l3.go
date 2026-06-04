@@ -505,8 +505,8 @@ func (r *l3FactRepo) UpsertFactRow(ctx context.Context, in biz.FactUpsert) ([]by
 	if err != nil {
 		return nil, err
 	}
-	// Read back the row
-	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlFactSelect+` WHERE id = ?`, id)
+	// Read back the row — use fingerprint since ON CONFLICT may keep the original id
+	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, sqlFactSelect+` WHERE fingerprint = ?`, fp)
 	if err != nil {
 		return nil, err
 	}

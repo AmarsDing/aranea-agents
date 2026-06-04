@@ -52,6 +52,11 @@ export type EnvelopeType =
   | 'spirit_team_progress'
   | 'spirit_teams_all_completed'
   | 'spirit_synthesis_completed'
+  | 'spirit_plan_created'
+  | 'spirit_allocation_created'
+  | 'spirit_orchestration_started'
+  | 'spirit_orchestration_checkpoint'
+  | 'spirit_orchestration_interrupted'
   | 'metrics_updated';
 
 export type EnvelopeContent = {
@@ -208,3 +213,48 @@ export function resolveEnvelopeRevision(env: Envelope): number {
 function stringValue(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
+
+// --- Spirit Orchestration Event Payloads ---
+
+export type SpiritPlanCreatedPayload = {
+  plan_id: string;
+  spirit_session_id: string;
+  complexity_level: string;
+  complexity_score: number;
+  strategy: string;
+  strategy_reason: string;
+  topology_hint: string;
+  subtask_count: number;
+};
+
+export type SpiritAllocationCreatedPayload = {
+  allocation_id: string;
+  task_plan_id: string;
+  spirit_session_id: string;
+  allocation_count: number;
+  status: string;
+};
+
+export type SpiritOrchestrationStartedPayload = {
+  orchestration_id: string;
+  spirit_session_id: string;
+  strategy: string;
+  status: string;
+  task_plan_id: string;
+  allocation_id: string;
+  team_ids?: string[];
+};
+
+export type SpiritOrchestrationCheckpointPayload = {
+  orchestration_id: string;
+  spirit_session_id: string;
+  checkpoint_id: string;
+  step: string;
+  status: string;
+};
+
+export type SpiritOrchestrationInterruptedPayload = {
+  orchestration_id: string;
+  spirit_session_id: string;
+  status: string;
+};
