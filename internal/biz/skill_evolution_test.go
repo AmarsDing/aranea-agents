@@ -50,7 +50,7 @@ func (m *mockProposalRepo) GetByPatternHash(_ context.Context, agentID string, h
 	return p, nil
 }
 
-func (m *mockProposalRepo) ListByAgent(_ context.Context, agentID string, status string) ([]SkillProposal, error) {
+func (m *mockProposalRepo) ListByAgent(_ context.Context, agentID string, status string, _ int, _ int) ([]SkillProposal, error) {
 	var result []SkillProposal
 	for _, p := range m.proposals {
 		if p.AgentID == agentID && (status == "" || string(p.Status) == status) {
@@ -129,6 +129,50 @@ func (m *mockSkillRegistrar) SkillExists(_ context.Context, agentID string, name
 		return false, m.err
 	}
 	return m.existing[agentID+":"+name], nil
+}
+
+func TestSkillEvolutionUsecase_RegisterApproved_EmptyMD(t *testing.T) {
+	repo := newMockProposalRepo()
+	registrar := &mockSkillRegistrar{existing: make(map[string]bool)}
+	uc := NewSkillEvolutionUsecase(repo, nil, nil, nil, registrar, loggateway.NewNoop())
+
+	repo.Create(context.Background(), SkillProposal{
+		ID:        "p1",
+		AgentID:   "a1",
+		SkillName: "empty-skill",
+		SkillMD:   "",
+		Status:    SkillProposalStatusApproved,
+	})
+
+	_, err := uc.RegisterApproved(context.Background(), "p1")
+	if err == nil {
+		t.Fatal("expected error for empty SkillMD")
+	}
+	if !kerrors.IsBadRequest(err) {
+		t.Errorf("expected BadRequest, got %v", err)
+	}
+}
+
+func TestSkillEvolutionUsecase_RegisterApproved_NilRegistrar(t *testing.T) {
+	repo := newMockProposalRepo()
+	uc := NewSkillEvolutionUsecase(repo, nil, nil, nil, nil, loggateway.NewNoop())
+
+	repo.Create(context.Background(), SkillProposal{
+		ID:        "p1",
+		AgentID:   "a1",
+		SkillName: "my-skill",
+		SkillMD:   "---\nname: my-skill\n---\nbody",
+		Status:    SkillProposalStatusApproved,
+	})
+
+	result, err := uc.RegisterApproved(context.Background(), "p1")
+	if err != nil {
+		t.Fatalf("RegisterApproved with nil registrar: %v", err)
+	}
+	// nil registrar returns empty result (graceful degradation)
+	if result.ID != "" {
+		t.Errorf("expected empty result for nil registrar, got ID=%s", result.ID)
+	}
 }
 
 func TestSkillEvolutionUsecase_ApproveProposal(t *testing.T) {
@@ -229,6 +273,7 @@ func TestSkillEvolutionUsecase_RegisterApproved_Conflict(t *testing.T) {
 		ID:        "p1",
 		AgentID:   "a1",
 		SkillName: "my-skill",
+		SkillMD:   "---\nname: my-skill\n---\nbody",
 		Status:    SkillProposalStatusApproved,
 	})
 
@@ -297,7 +342,7 @@ func TestSkillEvolutionUsecase_ListProposals(t *testing.T) {
 	repo.Create(context.Background(), SkillProposal{ID: "p2", AgentID: "a1", Status: SkillProposalStatusApproved})
 	repo.Create(context.Background(), SkillProposal{ID: "p3", AgentID: "a2", Status: SkillProposalStatusPending})
 
-	all, err := uc.ListProposals(context.Background(), "a1", "")
+	all, err := uc.ListProposals(context.Background(), "a1", "", 0, 0)
 	if err != nil {
 		t.Fatalf("ListProposals: %v", err)
 	}
@@ -305,7 +350,7 @@ func TestSkillEvolutionUsecase_ListProposals(t *testing.T) {
 		t.Errorf("expected 2 proposals, got %d", len(all))
 	}
 
-	pending, err := uc.ListProposals(context.Background(), "a1", "pending")
+	pending, err := uc.ListProposals(context.Background(), "a1", "pending", 0, 0)
 	if err != nil {
 		t.Fatalf("ListProposals with status: %v", err)
 	}

@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -355,7 +356,11 @@ func TestArchive(t *testing.T) {
 					t.Fatal("expected error, got nil")
 				}
 				if tt.wantMsg != "" {
-					assertBadRequest(t, err, tt.wantMsg)
+					if strings.Contains(tt.wantMsg, "cannot archive") && (strings.Contains(tt.wantMsg, "running") || strings.Contains(tt.wantMsg, "awaiting_confirmation")) {
+						assertConflict(t, err, tt.wantMsg)
+					} else {
+						assertBadRequest(t, err, tt.wantMsg)
+					}
 				}
 				return
 			}
@@ -521,7 +526,11 @@ func TestDelete(t *testing.T) {
 					t.Fatal("expected error, got nil")
 				}
 				if tt.wantMsg != "" {
-					assertBadRequest(t, err, tt.wantMsg)
+					if strings.Contains(tt.wantMsg, "cannot delete") && (strings.Contains(tt.wantMsg, "running") || strings.Contains(tt.wantMsg, "awaiting_confirmation")) {
+						assertConflict(t, err, tt.wantMsg)
+					} else {
+						assertBadRequest(t, err, tt.wantMsg)
+					}
 				}
 				return
 			}

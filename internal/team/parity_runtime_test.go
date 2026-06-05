@@ -32,7 +32,7 @@ func buildRuntimeGraphFromDef(t *testing.T, def Definition) int {
 	reg.RegisterCondFuncInstance(biz.CriticLoopCondFuncRef, trpcgraph.ConditionalFunc(func(ctx context.Context, state trpcgraph.State) (string, error) {
 		return "approved", nil
 	}))
-	g, agents, _, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(context.Background(), cfg, reg, &graphtrpc.BuildDeps{
+	g, agents, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(context.Background(), cfg, reg, &graphtrpc.GraphNodeResolverSet{
 		Agents: stubAgentResolver{},
 	}, nil)
 	if err != nil {

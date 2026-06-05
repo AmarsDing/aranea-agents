@@ -9,9 +9,9 @@ defaults:
   context_window: 64000
 
 agents:
-  - key: webnovel-author-data-driven
+  - key: webnovel-author-data_driven
     position_key: webnovel_author
-    variant: data-driven
+    variant: data_driven
     model_tier: fast
     skills: [selfmedia-novel-pacing]
 
@@ -45,14 +45,14 @@ agents:
     model_tier: fast
     skills: [selfmedia-novel-pacing]
 
-  - key: worldbuilding-designer-geography-history
+  - key: worldbuilding-designer-geography_history
     position_key: worldbuilding_designer
-    variant: geography-history
+    variant: geography_history
     model_tier: fast
 
-  - key: worldbuilding-designer-magic-system
+  - key: worldbuilding-designer-magic_system
     position_key: worldbuilding_designer
-    variant: magic-system
+    variant: magic_system
     model_tier: fast
 
   - key: character-writer-consistency
@@ -95,9 +95,9 @@ agents:
     model_tier: fast
     skills: [selfmedia-viral-analysis]
 
-  - key: video-scriptwriter-platform-adapt
+  - key: video-scriptwriter-platform_adapt
     position_key: video_scriptwriter
-    variant: platform-adapt
+    variant: platform_adapt
     model_tier: fast
 
   - key: video-scriptwriter-scriptwriting
@@ -249,7 +249,7 @@ teams:
         role: worker
         name: 角色创建
         sort_order: 30
-      - agent_key: worldbuilding-designer-magic-system
+      - agent_key: worldbuilding-designer-magic_system
         role: worker
         name: 世界观构建
         sort_order: 40

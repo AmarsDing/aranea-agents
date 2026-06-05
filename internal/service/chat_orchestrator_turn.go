@@ -58,6 +58,12 @@ func (o *ChatOrchestrator) RunNativeAgentTurnWithOutcome(ctx context.Context, in
 		return biz.NativeTurnResult{}, kerrors.BadRequest("CHAT_NATIVE", "session_id and content are required")
 	}
 
+	// Ensure spirit_trace_id is present in context for all Spirit orchestration paths.
+	// If not already set (e.g., by TaskPlanner), generate one at the turn entry point.
+	if _, ok := biz.SpiritTraceIDFromContext(ctx); !ok {
+		ctx = biz.ContextWithSpiritTraceID(ctx, biz.NewSpiritTraceID())
+	}
+
 	if ep := strings.TrimSpace(string(input.EntryConfig.EntryPoint)); ep != "" {
 		ctx = event.WithEnvelopeSource(ctx, ep)
 	}
@@ -880,7 +886,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		Source:           event.EnvelopeSourceFromContext(ctx),
 	}
 	events = event.WrapFrameworkEventsWithOtel(events, emitter, traceBridge, traceBridge)
-	streamOpts := NewChatStreamConsumeOptions(o.td.Catalog.ToolUC, o.td.Catalog.Agents, o.td.Sessions)
+	streamOpts := NewChatStreamConsumeOptions(toolUCCast(o.td.Catalog.ToolUC), o.td.Catalog.Agents, o.td.Sessions)
 	o.lg.With(loggateway.SessionID(sessionID)).Info("runSingleAgentViaTRPC: 开始消费事件流",
 		loggateway.StepID("chat.stream_consume_start"),
 		loggateway.Any("first_byte_timeout", firstByteTimeout.String()))
@@ -901,7 +907,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 			emitter.LogCritical("chat.first_byte_timeout", "首字节超时，模型响应过慢", event.P("timeout", firstByteTimeout.String()))
 			arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "first_byte_timeout").Observe(time.Since(turnStart).Seconds())
 			o.setRunStatus(ctx, sessionID, runID, "failed", "first byte timeout")
-			o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
+			o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonTimeout)
 			te := TurnError(TurnErrFirstByteTimeout, firstByteTimeout.String())
 			o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 			return userMsg, biz.ChatMessage{}, te
@@ -926,7 +932,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 		emitter.LogCritical("chat.turn.timeout", "对话请求超时", event.P("timeout", o.turnTimeout.String()), event.P("reason", "sync_cap"))
 		arametrics.ChatTurnDuration.WithLabelValues(ag.ID, "timeout").Observe(time.Since(turnStart).Seconds())
 		o.setRunStatus(ctx, sessionID, runID, "failed", "turn timeout")
-		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonError)
+		o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonTimeout)
 		te := TurnError(TurnErrTurnTimeout, o.turnTimeout.String())
 		o.publishTurnFailure(sessionID, runID, "chat-service", te, "")
 		return userMsg, biz.ChatMessage{}, te

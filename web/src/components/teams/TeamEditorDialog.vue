@@ -68,7 +68,7 @@
                   :options="statusOptions"
                 />
                 <q-select
-                  v-model="form.category_industry_id"
+                  v-model="form.taxonomy_industry_id"
                   class="team-control"
                   dense
                   outlined
@@ -472,7 +472,7 @@ const props = withDefaults(
       display_name: string;
       status: string;
       app_name: string;
-      category_industry_id: string;
+      taxonomy_industry_id: string;
     };
     definition: TeamDefinition;
     definitionJSON?: string;

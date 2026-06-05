@@ -717,7 +717,7 @@ export function useChatWorkspace() {
     coreReady.value = true;
 
     void Promise.all([
-      entityNav.loadCategoryTree(),
+      entityNav.loadTaxonomyTree(),
       entityNav.loadTeams(),
       (async () => {
         try {
@@ -775,7 +775,7 @@ export function useChatWorkspace() {
       selectedTeamId: computed(() => sessionStore.selectedTeamId),
       displayAgents,
       displayTeams,
-      categoryTree: entityNav.categoryTree,
+      taxonomyTree: entityNav.taxonomyTree,
       activePlannerKind,
       onEndAgent,
       onEndTeam,

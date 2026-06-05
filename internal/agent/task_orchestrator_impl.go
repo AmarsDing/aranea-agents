@@ -193,7 +193,7 @@ func (o *TaskOrchestratorImpl) orchestrateSingleAgent(ctx context.Context, taskP
 
 	_, err := BuildAgentAsTool(ctx, o.matcher, o.deps, o.lg, taskDesc, capabilities)
 	if err != nil {
-		return fmt.Errorf("build agent-as-tool: %w", err)
+		return kerrors.InternalServer("SPIRIT", "build agent-as-tool: "+err.Error())
 	}
 
 	// For now, mark as running. The actual tool invocation happens in the Spirit turn.
@@ -237,7 +237,7 @@ func (o *TaskOrchestratorImpl) orchestrateTeam(ctx context.Context, taskPlan *bi
 
 	team, _, err := o.assembler.AssembleTeam(ctx, params)
 	if err != nil {
-		return fmt.Errorf("assemble team: %w", err)
+		return kerrors.InternalServer("SPIRIT", "assemble team: "+err.Error())
 	}
 
 	handle.TeamIDs = []string{team.ID}
@@ -265,7 +265,7 @@ func (o *TaskOrchestratorImpl) orchestrateDAG(ctx context.Context, taskPlan *biz
 	// Compile DAG + AllocationPlan → Definition JSON.
 	defJSON, err := o.compiler.Compile(taskPlan.TaskDAG, allocPlan)
 	if err != nil {
-		return fmt.Errorf("compile DAG to graph: %w", err)
+		return kerrors.InternalServer("SPIRIT", "compile DAG to graph: "+err.Error())
 	}
 
 	o.lg.Info("TaskOrchestrator: DAG compiled to definition JSON",
@@ -313,13 +313,22 @@ func (o *TaskOrchestratorImpl) orchestrateDAG(ctx context.Context, taskPlan *biz
 
 	team, _, err := o.assembler.AssembleTeam(ctx, params)
 	if err != nil {
-		return fmt.Errorf("assemble DAG team: %w", err)
+		return kerrors.InternalServer("SPIRIT", "assemble DAG team: "+err.Error())
 	}
 
 	// Update the team's DefinitionJSON with the DAG-compiled version.
-	// The assembler already created the team with buildSpiritTeamDefinitionJSON,
-	// but the DAG-compiled version has the correct structure.
-	// For now, we log the compiled definition for observability.
+	// The assembler created the team with buildSpiritTeamDefinitionJSON,
+	// but the DAG-compiled version has the correct dependency structure.
+	if err := o.spiritUC.UpdateTeamDefinitionJSON(ctx, team.ID, defJSON); err != nil {
+		o.lg.Warn("TaskOrchestrator: failed to update team DefinitionJSON with DAG-compiled version",
+			loggateway.StepID(biz.SpiritStepOrchestratorGraphBuild),
+			loggateway.Str("orchestration_id", handle.ID),
+			loggateway.Str("team_id", team.ID),
+			loggateway.Err(err),
+		)
+		// Non-fatal: the team was already created with a valid definition,
+		// just without the DAG-compiled structure. Log and continue.
+	}
 	handle.TeamIDs = []string{team.ID}
 	handle.GraphExecutionID = team.ID // Team ID serves as the graph execution ID.
 	handle.Status = biz.OrchestrationStatusRunning
@@ -493,7 +502,7 @@ func (o *TaskOrchestratorImpl) Recover(ctx context.Context, orchestrationID stri
 				loggateway.Err(updateErr),
 			)
 		}
-		return fmt.Errorf("no checkpoint available for orchestration %s", orchestrationID)
+		return kerrors.NotFound("SPIRIT", "no checkpoint available for orchestration "+orchestrationID)
 	}
 
 	// Attempt to load the latest checkpoint from the CheckpointSaver.
@@ -517,7 +526,7 @@ func (o *TaskOrchestratorImpl) Recover(ctx context.Context, orchestrationID stri
 					loggateway.Err(updateErr),
 				)
 			}
-			return fmt.Errorf("failed to load checkpoint for orchestration %s: %w", orchestrationID, loadErr)
+			return kerrors.InternalServer("SPIRIT", "failed to load checkpoint for orchestration "+orchestrationID+": "+loadErr.Error())
 		}
 
 		if tuple == nil || tuple.Checkpoint == nil {
@@ -534,7 +543,7 @@ func (o *TaskOrchestratorImpl) Recover(ctx context.Context, orchestrationID stri
 					loggateway.Err(updateErr),
 				)
 			}
-			return fmt.Errorf("checkpoint %s not found for orchestration %s", handle.CheckpointID, orchestrationID)
+			return kerrors.NotFound("SPIRIT", fmt.Sprintf("checkpoint %s not found for orchestration %s", handle.CheckpointID, orchestrationID))
 		}
 
 		o.lg.Info("TaskOrchestrator: checkpoint loaded successfully",
@@ -543,11 +552,10 @@ func (o *TaskOrchestratorImpl) Recover(ctx context.Context, orchestrationID stri
 			loggateway.Str("checkpoint_id", tuple.Checkpoint.ID),
 		)
 
-		// TODO: Rebuild GraphAgent from checkpoint state and resume execution.
-		// The current implementation marks the orchestration as running and relies
-		// on the team/agent infrastructure to pick up the work. Full graph-agent
-		// rebuild from checkpoint state requires deeper integration with the
-		// trpc-agent-go executor, which will be implemented in a future iteration.
+		// TODO(debt): DEV-02 — Graph Checkpoint recovery incomplete, only marks status as running
+		// without rebuilding GraphAgent. Full graph-agent rebuild from checkpoint state requires
+		// deeper integration with the trpc-agent-go executor.
+		// See: https://github.com/aranea-agents/aranea-agents/issues/DEV-02
 	}
 
 	// Mark as running so the orchestration can be tracked.
@@ -570,10 +578,13 @@ func (o *TaskOrchestratorImpl) Recover(ctx context.Context, orchestrationID stri
 }
 
 // RecoverAllInterrupted finds all interrupted orchestrations and attempts recovery.
+// TODO(debt): DEV-07 — Phase 1/2 interruption recovery not implemented. Only OrchestrationHandle
+// is recovered, not draft TaskPlan/AllocationPlan.
+// See: https://github.com/aranea-agents/aranea-agents/issues/DEV-07
 func (o *TaskOrchestratorImpl) RecoverAllInterrupted(ctx context.Context) error {
 	handles, err := o.repo.ListByStatus(ctx, biz.OrchestrationStatusInterrupted)
 	if err != nil {
-		return fmt.Errorf("list interrupted orchestrations: %w", err)
+		return kerrors.InternalServer("SPIRIT", "list interrupted orchestrations: "+err.Error())
 	}
 
 	if len(handles) == 0 {

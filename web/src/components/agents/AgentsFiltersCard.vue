@@ -36,9 +36,9 @@
       option-label="label"
     />
     <taxonomy-filter
-      v-model="selectedCategory"
+      v-model="selectedTaxonomy"
       class="app-page-toolbar__field taxonomy-field--toolbar"
-      :tree="categoryTree"
+      :tree="taxonomyTree"
     />
     <q-select
       v-model="selectedProvider"
@@ -82,14 +82,14 @@ type ViewMode = 'grid' | 'list';
 
 const keyword = defineModel<string>('keyword', { default: '' });
 const selectedStatus = defineModel<string | null>('selectedStatus', { default: null });
-const selectedCategory = defineModel<string | null>('selectedCategory', { default: null });
+const selectedTaxonomy = defineModel<string | null>('selectedTaxonomy', { default: null });
 const selectedCreator = defineModel<string | null>('selectedCreator', { default: null });
 const selectedProvider = defineModel<string | null>('selectedProvider', { default: null });
 const viewMode = defineModel<ViewMode>('viewMode', { default: 'grid' });
 
 defineProps<{
   statusOptions: SelectOption[];
-  categoryTree: PlatformResourceTreeNode[];
+  taxonomyTree: PlatformResourceTreeNode[];
   providerOptions: SelectOption[];
   creatorOptions: { user_id: string; label: string }[];
 }>();

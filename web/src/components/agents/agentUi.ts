@@ -101,7 +101,7 @@ export function formatContext(value?: number) {
   return `${value} ctx`;
 }
 
-export function flattenCategoryPositions(
+export function flattenTaxonomyPositions(
   nodes: PlatformResourceTreeNode[],
   prefix = '',
 ): Array<{ label: string; value: string }> {
@@ -111,7 +111,7 @@ export function flattenCategoryPositions(
       if (node.level === 'position') return [{ label, value: node.id }];
       return [];
     }
-    return flattenCategoryPositions(node.children, label);
+    return flattenTaxonomyPositions(node.children, label);
   });
 }
 

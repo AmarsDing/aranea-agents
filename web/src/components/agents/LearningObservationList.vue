@@ -28,6 +28,7 @@
 
 <script setup lang="ts">
 import type { LearningObservation } from '../../features/agents/learning.types';
+import { formatDate } from '../../features/agents/learning.utils';
 
 defineProps<{
   observations: LearningObservation[];
@@ -76,15 +77,6 @@ function observationKindLabel(kind: string): string {
       return '记忆未命中';
     default:
       return kind;
-  }
-}
-
-function formatDate(iso: string): string {
-  if (!iso) return '';
-  try {
-    return new Date(iso).toLocaleDateString();
-  } catch {
-    return iso;
   }
 }
 </script>

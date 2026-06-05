@@ -17,7 +17,7 @@ import (
 // PluginCostGuardSelector switches to fallback when blocked_models or budget limits require routing.
 func PluginCostGuardSelector(
 	baseProv, baseMod string,
-	catalog *biz.LlmProviderModelUsecase,
+	catalog biz.TeamModelCatalog,
 	rt *provider.RoundTrip,
 	cfg plugintrpc.CostGuardConfig,
 	tracker *plugintrpc.CostGuardBudgetTracker,
@@ -67,7 +67,7 @@ func ChainedModelSelector(selectors ...trpcagent.ModelSelector) trpcagent.ModelS
 // PluginModelSelector returns a ModelSelector that routes to another catalog model when model_router is enabled.
 func PluginModelSelector(
 	baseProv, baseMod string,
-	catalog *biz.LlmProviderModelUsecase,
+	catalog biz.TeamModelCatalog,
 	rt *provider.RoundTrip,
 	cfg plugintrpc.ModelRouterConfig,
 	lg loggateway.Logger,

@@ -263,11 +263,11 @@ func (s *AgentRuntimeSettings) ApplySkills(cfg SkillsCfg) {
 
 func (s *AgentRuntimeSettings) GetSkillLoadMode() string {
 	if s == nil {
-		return SkillLoadModeEager
+		return ""
 	}
 	mode := strings.TrimSpace(s.SkillLoadMode)
 	if mode == "" {
-		return SkillLoadModeEager
+		return ""
 	}
 	return mode
 }

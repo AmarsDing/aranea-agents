@@ -332,11 +332,22 @@ func ConvertTaxonomySpecToPack(spec *loader.TaxonomySpec) *TaxonomyPackSpec {
 				SortOrder:   dept.SortOrder,
 			}
 			for _, pos := range dept.Positions {
+				var variants []VariantSpec
+				for _, v := range pos.Variants {
+					variants = append(variants, VariantSpec{
+						Key:  v.Key,
+						Name: v.Name,
+					})
+				}
 				deptSpec.Positions = append(deptSpec.Positions, PositionSpec{
-					Key:         pos.Key,
-					Name:        pos.Name,
-					Description: pos.Description,
-					SortOrder:   pos.SortOrder,
+					Key:              pos.Key,
+					Name:             pos.Name,
+					Description:      pos.Description,
+					SortOrder:        pos.SortOrder,
+					SeniorityLevel:   pos.SeniorityLevel,
+					SkillsRequired:   pos.SkillsRequired,
+					Responsibilities: pos.Responsibilities,
+					Variants:         variants,
 				})
 			}
 			indSpec.Departments = append(indSpec.Departments, deptSpec)

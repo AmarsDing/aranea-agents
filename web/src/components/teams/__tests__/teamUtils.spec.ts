@@ -43,7 +43,7 @@ describe('teamUtils.parseDefinition', () => {
 });
 
 describe('teamUtils.groupTeamsByIndustry', () => {
-  const categoryTree = [
+  const taxonomyTree = [
     {
       id: 'ind-1',
       resource: 'taxonomy-nodes',
@@ -129,8 +129,8 @@ describe('teamUtils.groupTeamsByIndustry', () => {
   };
 
   it('infers industry from member agents', () => {
-    expect(inferTeamIndustryId(team, agents, categoryTree)).toBe('ind-1');
-    const groups = groupTeamsByIndustry([team], agents, categoryTree);
+    expect(inferTeamIndustryId(team, agents, taxonomyTree)).toBe('ind-1');
+    const groups = groupTeamsByIndustry([team], agents, taxonomyTree);
     expect(groups).toHaveLength(1);
     expect(groups[0]?.label).toBe('金融');
     expect(groups[0]?.teams).toHaveLength(1);
@@ -139,7 +139,7 @@ describe('teamUtils.groupTeamsByIndustry', () => {
   it('still shows teams under disabled industries', () => {
     const disabledTree: PlatformResourceTreeNode[] = [
       {
-        ...categoryTree[0]!,
+        ...taxonomyTree[0]!,
         enabled: false,
       },
     ];

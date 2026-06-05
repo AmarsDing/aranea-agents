@@ -69,10 +69,20 @@ type DepartmentSpec struct {
 
 // PositionSpec 岗位级节点。
 type PositionSpec struct {
-	Key         string `yaml:"key"`
-	Name        string `yaml:"name"`
-	Description string `yaml:"description,omitempty"`
-	SortOrder   int    `yaml:"sort_order,omitempty"`
+	Key             string              `yaml:"key"`
+	Name            string              `yaml:"name"`
+	Description     string              `yaml:"description,omitempty"`
+	SortOrder       int                 `yaml:"sort_order,omitempty"`
+	SeniorityLevel  string              `yaml:"seniority_level,omitempty"`
+	SkillsRequired  []string            `yaml:"skills_required,omitempty"`
+	Responsibilities []string           `yaml:"responsibilities,omitempty"`
+	Variants        []VariantSpec       `yaml:"variants,omitempty"`
+}
+
+// VariantSpec 岗位变体。
+type VariantSpec struct {
+	Key  string `yaml:"key"`
+	Name string `yaml:"name"`
 }
 
 // AgentPackSpec 定义 Agent 完整配置（导出/导入用）。

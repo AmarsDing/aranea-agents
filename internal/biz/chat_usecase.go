@@ -240,7 +240,7 @@ func (uc *ChatUsecase) StartBackgroundGoroutines() {
 				return
 			case <-ticker.C:
 				now := time.Now()
-				uc.awaitChans.Range(func(key, val interface{}) bool {
+				uc.awaitChans.Range(func(key, val any) bool {
 					sid, ok := key.(string)
 					if !ok || strings.TrimSpace(sid) == "" {
 						uc.awaitChans.Delete(key)

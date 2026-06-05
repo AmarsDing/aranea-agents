@@ -197,6 +197,10 @@ func CompileToCompiledTeam(
 	if raw != "" && linked != nil {
 		if linkedID := LinkedGraphIDFromDefinition(raw); linkedID != "" {
 			if cfg, err := linked.LoadGraphBuildConfig(ctx, linkedID); err == nil {
+				mode := normalizeCompileMode(def.Mode)
+				if mode == "adaptive" {
+					cfg = applyAdaptiveAgentDestinations(cfg)
+				}
 				cfg = finalizeRuntimeGraphConfig(cfg, def, raw, def.FailurePolicy, nil)
 				return biz.NewCompiledTeam(cfg, nil, buildRoleManifest(cfg), def.FailurePolicy), nil
 			}

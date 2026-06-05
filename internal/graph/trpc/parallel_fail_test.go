@@ -36,7 +36,7 @@ func TestBuildStateGraph_parallelFailContinue(t *testing.T) {
 			{From: "member-2", To: "member-3"},
 		},
 	}
-	g, _, _, err := BuildStateGraphWithRegistryAndLogger(context.Background(), cfg, reg, nil, nil)
+	g, _, err := BuildStateGraphWithRegistryAndLogger(context.Background(), cfg, reg, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

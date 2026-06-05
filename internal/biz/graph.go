@@ -155,6 +155,18 @@ type GraphExecution struct {
 	ctx           context.Context // detached context preserving trace info for background DB writes
 }
 
+// NewGraphExecution creates a GraphExecution with mandatory ctx initialization.
+func NewGraphExecution(ctx context.Context, id, graphID, sessionID, status string) *GraphExecution {
+	return &GraphExecution{
+		ID:        id,
+		GraphID:   graphID,
+		SessionID: sessionID,
+		Status:    status,
+		StartedAt: time.Now(),
+		ctx:       ctx,
+	}
+}
+
 func (e *GraphExecution) GetStatus() string {
 	e.execMu.RLock()
 	defer e.execMu.RUnlock()

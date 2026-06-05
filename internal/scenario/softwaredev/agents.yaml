@@ -85,6 +85,314 @@ agents:
     description: Vue3 用户体验审计
     model_tier: fast
 
+  # ── P1 Backend Department ──
+  - key: java-senior-general
+    position_key: java_senior_engineer
+    variant: general
+    model_tier: fast
+  - key: java-senior-code-review
+    position_key: java_senior_engineer
+    variant: code_review
+    model_tier: fast
+  - key: java-senior-architect
+    position_key: java_senior_engineer
+    variant: architect
+    model_tier: strong
+  - key: python-senior-general
+    position_key: python_senior_engineer
+    variant: general
+    model_tier: fast
+  - key: python-senior-data
+    position_key: python_senior_engineer
+    variant: data
+    model_tier: fast
+  - key: rust-engineer-general
+    position_key: rust_engineer
+    variant: general
+    model_tier: strong
+  - key: rust-engineer-systems
+    position_key: rust_engineer
+    variant: systems
+    model_tier: fast
+  - key: cpp-backend-general
+    position_key: cpp_backend_engineer
+    variant: general
+    model_tier: strong
+  - key: cpp-backend-performance
+    position_key: cpp_backend_engineer
+    variant: performance
+    model_tier: fast
+  - key: dba-mysql
+    position_key: dba
+    variant: mysql
+    model_tier: fast
+  - key: dba-postgresql
+    position_key: dba
+    variant: postgresql
+    model_tier: fast
+
+  # ── P1 Frontend Department ──
+  - key: react-senior-general
+    position_key: react_senior_engineer
+    variant: general
+    model_tier: fast
+  - key: react-senior-code-review
+    position_key: react_senior_engineer
+    variant: code_review
+    model_tier: fast
+  - key: react-senior-architect
+    position_key: react_senior_engineer
+    variant: architect
+    model_tier: strong
+  - key: typescript-expert-general
+    position_key: typescript_expert
+    variant: general
+    model_tier: fast
+  - key: typescript-expert-type-design
+    position_key: typescript_expert
+    variant: type_design
+    model_tier: fast
+  - key: frontend-performance-general
+    position_key: frontend_performance_engineer
+    variant: general
+    model_tier: fast
+  - key: frontend-performance-optimization
+    position_key: frontend_performance_engineer
+    variant: optimization
+    model_tier: fast
+  - key: ui-ux-restoration-general
+    position_key: ui_ux_restoration_engineer
+    variant: general
+    model_tier: fast
+
+  # ── P1 Gamedev Department ──
+  - key: ue-gameplay-general
+    position_key: ue_gameplay_programmer
+    variant: general
+    model_tier: fast
+  - key: ue-gameplay-network
+    position_key: ue_gameplay_programmer
+    variant: network
+    model_tier: fast
+  - key: ue-graphics-general
+    position_key: ue_graphics_programmer
+    variant: general
+    model_tier: strong
+  - key: ue-graphics-shader
+    position_key: ue_graphics_programmer
+    variant: shader
+    model_tier: fast
+  - key: game-server-general
+    position_key: game_server_programmer
+    variant: general
+    model_tier: fast
+  - key: game-server-scalability
+    position_key: game_server_programmer
+    variant: scalability
+    model_tier: fast
+  - key: ta-general
+    position_key: technical_artist
+    variant: general
+    model_tier: fast
+  - key: game-designer-system
+    position_key: game_designer
+    variant: system
+    model_tier: fast
+
+  # ── P2 DevOps Department ──
+  - key: devops-engineer-general
+    position_key: devops_engineer
+    variant: general
+    model_tier: fast
+  - key: devops-engineer-k8s
+    position_key: devops_engineer
+    variant: k8s
+    model_tier: fast
+  - key: sre-engineer-general
+    position_key: sre_engineer
+    variant: general
+    model_tier: fast
+  - key: sre-engineer-incident
+    position_key: sre_engineer
+    variant: incident
+    model_tier: fast
+  - key: cloud-architect-general
+    position_key: cloud_architect
+    variant: general
+    model_tier: strong
+  - key: cloud-architect-multicloud
+    position_key: cloud_architect
+    variant: multicloud
+    model_tier: fast
+  - key: ci-cd-engineer-general
+    position_key: cicd_engineer
+    variant: general
+    model_tier: fast
+  - key: ci-cd-engineer-pipeline
+    position_key: cicd_engineer
+    variant: pipeline
+    model_tier: fast
+  - key: container-engineer-general
+    position_key: container_engineer
+    variant: general
+    model_tier: fast
+  - key: container-engineer-optimization
+    position_key: container_engineer
+    variant: optimization
+    model_tier: fast
+
+  # ── P2 Architecture Department ──
+  - key: system-architect-general
+    position_key: system_architect
+    variant: general
+    model_tier: strong
+  - key: system-architect-microservice
+    position_key: system_architect
+    variant: microservice
+    model_tier: strong
+  - key: api-architect-general
+    position_key: api_architect
+    variant: general
+    model_tier: fast
+  - key: api-architect-design
+    position_key: api_architect
+    variant: design
+    model_tier: fast
+  - key: data-architect-general
+    position_key: data_architect
+    variant: general
+    model_tier: fast
+  - key: data-architect-modeling
+    position_key: data_architect
+    variant: modeling
+    model_tier: fast
+  - key: security-architect-general
+    position_key: security_architect
+    variant: general
+    model_tier: strong
+
+  # ── P2 QA Department ──
+  - key: qa-engineer-general
+    position_key: qa_engineer
+    variant: general
+    model_tier: fast
+  - key: qa-engineer-automation
+    position_key: qa_engineer
+    variant: automation
+    model_tier: fast
+  - key: test-architect-general
+    position_key: test_architect
+    variant: general
+    model_tier: fast
+  - key: test-architect-strategy
+    position_key: test_architect
+    variant: strategy
+    model_tier: fast
+  - key: performance-tester-general
+    position_key: performance_tester
+    variant: general
+    model_tier: fast
+  - key: performance-tester-load
+    position_key: performance_tester
+    variant: load
+    model_tier: fast
+
+  # ── P3 Mobile Department ──
+  - key: ios-senior-general
+    position_key: ios_senior_engineer
+    variant: general
+    model_tier: fast
+  - key: ios-senior-swiftui
+    position_key: ios_senior_engineer
+    variant: swiftui
+    model_tier: fast
+  - key: android-senior-general
+    position_key: android_senior_engineer
+    variant: general
+    model_tier: fast
+  - key: android-senior-compose
+    position_key: android_senior_engineer
+    variant: compose
+    model_tier: fast
+  - key: flutter-engineer-general
+    position_key: flutter_engineer
+    variant: general
+    model_tier: fast
+  - key: flutter-engineer-cross-platform
+    position_key: flutter_engineer
+    variant: cross_platform
+    model_tier: fast
+  - key: rn-engineer-general
+    position_key: react_native_engineer
+    variant: general
+    model_tier: fast
+  - key: rn-engineer-bridge
+    position_key: react_native_engineer
+    variant: bridge
+    model_tier: fast
+  - key: harmony-engineer-general
+    position_key: harmony_engineer
+    variant: general
+    model_tier: fast
+
+  # ── P3 Data Engineering Department ──
+  - key: data-engineer-general
+    position_key: data_engineer
+    variant: general
+    model_tier: fast
+  - key: data-engineer-etl
+    position_key: data_engineer
+    variant: etl
+    model_tier: fast
+  - key: ml-engineer-general
+    position_key: ml_engineer
+    variant: general
+    model_tier: fast
+  - key: ml-engineer-training
+    position_key: ml_engineer
+    variant: training
+    model_tier: fast
+  - key: data-analyst-general
+    position_key: data_analyst
+    variant: general
+    model_tier: fast
+
+  # ── P3 Security Department ──
+  - key: security-engineer-general
+    position_key: security_engineer
+    variant: general
+    model_tier: fast
+  - key: security-engineer-pentest
+    position_key: security_engineer
+    variant: pentest
+    model_tier: fast
+  - key: compliance-engineer-general
+    position_key: compliance_engineer
+    variant: general
+    model_tier: fast
+  - key: compliance-engineer-audit
+    position_key: compliance_engineer
+    variant: audit
+    model_tier: fast
+
+  # ── P3 Product/PM Department ──
+  - key: product-manager-general
+    position_key: product_manager
+    variant: general
+    model_tier: fast
+  - key: product-manager-prd
+    position_key: product_manager
+    variant: prd
+    model_tier: fast
+  - key: project-manager-general
+    position_key: project_manager
+    variant: general
+    model_tier: fast
+  - key: project-manager-agile
+    position_key: project_manager
+    variant: agile
+    model_tier: fast
+
 teams:
   - key: team-fullstack-feature
     display_name: 全栈功能开发团队

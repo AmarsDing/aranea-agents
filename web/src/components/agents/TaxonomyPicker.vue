@@ -94,7 +94,7 @@ const props = withDefaults(
     disable?: boolean;
     clearable?: boolean;
     /** position：创建 Agent 绑定职位；any：列表按行业/部门/职位筛选 */
-    selectableLevel?: CategoryLevel | 'any';
+    selectableLevel?: TaxonomyLevel | 'any';
     captionMode?: 'level' | 'description';
     icon?: string;
     controlClass?: string;

@@ -108,7 +108,7 @@ describe('useAgentsPageStore', () => {
     store.keyword = 'test';
     store.selectedStatus = 'active';
     store.selectedProvider = 'openai';
-    store.selectedCategory = 'cat-1';
+    store.selectedTaxonomy = 'cat-1';
     store.selectedCreator = 'user-1';
     store.page = 3;
 
@@ -117,7 +117,7 @@ describe('useAgentsPageStore', () => {
     expect(store.keyword).toBe('');
     expect(store.selectedStatus).toBeNull();
     expect(store.selectedProvider).toBeNull();
-    expect(store.selectedCategory).toBeNull();
+    expect(store.selectedTaxonomy).toBeNull();
     expect(store.selectedCreator).toBeNull();
     expect(store.page).toBe(1);
   });

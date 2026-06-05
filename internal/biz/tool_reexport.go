@@ -37,6 +37,7 @@ type (
 	ToolUsecase              = tool.ToolUsecase
 	ToolTestResult           = tool.ToolTestResult
 	ToolSettingRepo          = tool.SettingRepo
+	WebResearchCatalogReadyFunc = tool.WebResearchCatalogReadyFunc
 )
 
 var (
@@ -47,6 +48,7 @@ var (
 	PropagateDenyAliases                 = tool.PropagateDenyAliases
 	LoadWebResearchPlatform              = tool.LoadWebResearchPlatform
 	EnrichToolCatalogRuntimeWithPlatform = tool.EnrichToolCatalogRuntimeWithPlatform
+	CheckerToCatalogReadyFunc            = tool.CheckerToCatalogReadyFunc
 	MergeToolConfigMaps                  = tool.MergeToolConfigMaps
 	MergeJSONMapInto                     = tool.MergeJSONMapInto
 	ToolRequiresConfirmation             = tool.ToolRequiresConfirmation

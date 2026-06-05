@@ -22,8 +22,8 @@ import (
 
 // TRPCCatalogDeps documents catalog/repo dependencies on TRPCBuilderDeps.
 type TRPCCatalogDeps struct {
-	Catalog  *biz.LlmProviderModelUsecase
-	AgentUC  *biz.AgentUsecase
+	Catalog  biz.TeamModelCatalog
+	AgentUC  biz.TeamAgentLookup
 	Agents   biz.AgentRepository
 	Sys      biz.SystemSettingRepo
 	Sessions *biz.SessionUsecase
@@ -39,7 +39,7 @@ type TRPCModelRouteDeps struct {
 
 // TRPCToolAssemblyDeps documents tool/MCP assembly on TRPCBuilderDeps.
 type TRPCToolAssemblyDeps struct {
-	ToolUC      *biz.ToolUsecase
+	ToolUC      biz.TeamToolLookup
 	MCPTooling  *biz.AgentMCPTooling
 	AwaitHook   tooltrpc.ReplyFunc
 	CustomTools []trpctool.Tool
@@ -65,7 +65,7 @@ type TRPCPluginDeps struct {
 
 // TRPCSkillDeps documents skill resolution on TRPCBuilderDeps.
 type TRPCSkillDeps struct {
-	SkillUC         *biz.SkillUsecase
+	SkillUC         biz.TeamSkillLookup
 	SkillDBRepo     trpcskill.Repository
 	CodeExecFactory *localexec.Factory
 }
@@ -74,8 +74,8 @@ type TRPCSkillDeps struct {
 // Field groups match TRPC*Deps types above; composite literals stay flat for Wire/service call sites.
 type TRPCBuilderDeps struct {
 	// TRPCCatalogDeps
-	Catalog  *biz.LlmProviderModelUsecase
-	AgentUC  *biz.AgentUsecase
+	Catalog  biz.TeamModelCatalog
+	AgentUC  biz.TeamAgentLookup
 	Agents   biz.AgentRepository
 	Sys      biz.SystemSettingRepo
 	Sessions *biz.SessionUsecase
@@ -85,7 +85,7 @@ type TRPCBuilderDeps struct {
 	Model      string
 	DialogMode string
 	// TRPCToolAssemblyDeps
-	ToolUC       *biz.ToolUsecase
+	ToolUC       biz.TeamToolLookup
 	MCPTooling   *biz.AgentMCPTooling
 	AwaitHook    tooltrpc.ReplyFunc
 	CustomTools  []trpctool.Tool
@@ -103,7 +103,7 @@ type TRPCBuilderDeps struct {
 	Plugins       []trpcplugin.Plugin
 	PluginManager *plugintrpc.Manager
 	// TRPCSkillDeps
-	SkillUC         *biz.SkillUsecase
+	SkillUC         biz.TeamSkillLookup
 	SkillDBRepo     trpcskill.Repository
 	CodeExecFactory *localexec.Factory
 	// PGO-1: Taxonomy is used to resolve the 岗位职责 (position description)

@@ -174,7 +174,7 @@ func (r *sessionRepo) CreateSession(ctx context.Context, in biz.Session) (biz.Se
 	in.CreatedAt = now
 	in.UpdatedAt = now
 	if in.Status == "" {
-		in.Status = "idle"
+		in.Status = string(session.SessionStatusIdle)
 	}
 	if in.ContextStatus == "" {
 		in.ContextStatus = llmcontext.ContextStatusForRatio(in.ContextUsedRatio)
@@ -313,7 +313,7 @@ func (r *sessionRepo) RestoreSession(ctx context.Context, id string) (biz.Sessio
 	now := nowRFC3339()
 	_, err := c.Session.Update().
 		Where(entsession.IDEQ(id)).
-		SetStatus("idle").
+		SetStatus(string(session.SessionStatusIdle)).
 		SetStatusReason("").
 		SetStatusChangedAt(now).
 		SetArchivedAt("").
@@ -404,9 +404,6 @@ func (r *sessionRepo) DeleteSessionsByAgentID(ctx context.Context, agentID strin
 	_, err := c.Session.Update().
 		Where(entsession.AgentIDEQ(agentID), entsession.DeletedAtEQ("")).
 		SetDeletedAt(now).
-		SetStatus("deleted").
-		SetStatusReason("manual_override").
-		SetStatusChangedAt(now).
 		SetUpdatedAt(now).
 		Save(ctx)
 	if err != nil {

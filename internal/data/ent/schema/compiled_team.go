@@ -20,13 +20,13 @@ func (CompiledTeam) Annotations() []schema.Annotation {
 
 func (CompiledTeam) Fields() []ent.Field {
 	return []ent.Field{
-		field.String("id").MaxLen(64).Unique().Immutable(),
+		field.String("id").MaxLen(192).Unique().Immutable(),
 		field.String("team_id").MaxLen(64),
 		field.String("graph_id").MaxLen(64),
 		field.String("session_id").MaxLen(64).Default(""),
 		field.Text("config_json"),
 		field.Time("created_at"),
-		field.Time("updated_at").Optional().Nillable(),
+		field.Time("updated_at"),
 	}
 }
 

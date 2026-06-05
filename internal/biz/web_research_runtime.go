@@ -3,6 +3,8 @@ package biz
 import (
 	"context"
 	"strings"
+
+	"aranea-agents/internal/biz/tool"
 )
 
 // WebResearchPlatformFields holds platform-level defaults for web_research.
@@ -56,6 +58,50 @@ func webResearchPlatformFields(s WebResearchSetting) *WebResearchPlatformFields 
 		SearchDepth: s.SearchDepth,
 		TimeoutSec:  s.TimeoutSec,
 		HTTPProxy:   s.HTTPProxy,
+	}
+}
+
+// bizToToolPlatformFields converts biz.WebResearchPlatformFields to tool.WebResearchPlatformFields.
+func bizToToolPlatformFields(p *WebResearchPlatformFields) *tool.WebResearchPlatformFields {
+	if p == nil {
+		return nil
+	}
+	return &tool.WebResearchPlatformFields{
+		HasAPIKey:   p.HasAPIKey,
+		APIKey:      p.APIKey,
+		Provider:    p.Provider,
+		MaxResults:  p.MaxResults,
+		FetchTop:    p.FetchTop,
+		SearchDepth: p.SearchDepth,
+		TimeoutSec:  p.TimeoutSec,
+		HTTPProxy:   p.HTTPProxy,
+	}
+}
+
+// checkerToCatalogReadyFunc adapts a biz.WebResearchReadinessChecker to a tool.WebResearchCatalogReadyFunc.
+func checkerToCatalogReadyFunc(c WebResearchReadinessChecker) tool.WebResearchCatalogReadyFunc {
+	if c == nil {
+		return nil
+	}
+	return func(agentMap map[string]any, platform *tool.WebResearchPlatformFields) bool {
+		return c.CatalogReady(agentMap, bizToToolPlatformFieldsReverse(platform))
+	}
+}
+
+// bizToToolPlatformFieldsReverse converts tool.WebResearchPlatformFields to biz.WebResearchPlatformFields.
+func bizToToolPlatformFieldsReverse(p *tool.WebResearchPlatformFields) *WebResearchPlatformFields {
+	if p == nil {
+		return nil
+	}
+	return &WebResearchPlatformFields{
+		HasAPIKey:   p.HasAPIKey,
+		APIKey:      p.APIKey,
+		Provider:    p.Provider,
+		MaxResults:  p.MaxResults,
+		FetchTop:    p.FetchTop,
+		SearchDepth: p.SearchDepth,
+		TimeoutSec:  p.TimeoutSec,
+		HTTPProxy:   p.HTTPProxy,
 	}
 }
 

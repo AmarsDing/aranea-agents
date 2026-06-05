@@ -9,7 +9,6 @@ const (
 	SkillProposalStatusApproved   SkillProposalStatus = "approved"
 	SkillProposalStatusRejected   SkillProposalStatus = "rejected"
 	SkillProposalStatusRegistered SkillProposalStatus = "registered"
-	SkillProposalStatusExpired    SkillProposalStatus = "expired"
 )
 
 type SkillProposal struct {

@@ -188,7 +188,7 @@ var toolProfiles = map[string][]string{
 	"minimal":      {},
 	"safe":         {"datetime", "read_file", "read_multiple_files", "list_file", "search_file", "search_content", "todo_write"},
 	"system_admin": {"group:cli_admin", "web_fetch", "datetime"},
-	"spirit":       {"assemble_team", "list_butlers", "query_butler_status", "check_team_progress", "cancel_team", "synthesize_results", "memory_search", "datetime"},
+	"spirit":       {"plan_and_execute", "check_progress", "cancel_orchestration", "assemble_team", "check_team_progress", "cancel_team", "synthesize_results", "memory_search", "datetime"},
 }
 
 func canonicalToolProfile(profile string) string {
@@ -382,7 +382,7 @@ func (u *AgentUsecase) GetEffectiveTools(ctx context.Context, agentID string) (A
 	}
 	platform := loadWebResearchPlatformFromSys(ctx, u.sys)
 	for i := range all.Items {
-		EnrichToolCatalogRuntimeWithPlatform(&all.Items[i], platform)
+		EnrichToolCatalogRuntimeWithPlatform(&all.Items[i], platform, checkerToCatalogReadyFunc(u.webResearchChecker))
 	}
 	eff := buildAgentEffectiveTools(settings, all.Items, u.lg)
 	var overrides []ToolAgentOverride
@@ -443,7 +443,7 @@ func (u *AgentUsecase) UpdateAgentToolPolicy(ctx context.Context, agentID string
 
 	platform := loadWebResearchPlatformFromSys(ctx, u.sys)
 	for i := range all.Items {
-		EnrichToolCatalogRuntimeWithPlatform(&all.Items[i], platform)
+		EnrichToolCatalogRuntimeWithPlatform(&all.Items[i], platform, checkerToCatalogReadyFunc(u.webResearchChecker))
 	}
 	eff := buildAgentEffectiveTools(settings, all.Items, u.lg)
 	var overrides []ToolAgentOverride

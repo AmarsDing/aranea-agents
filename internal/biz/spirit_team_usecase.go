@@ -47,15 +47,17 @@ type SpiritTransactor interface {
 }
 
 type SpiritTeamUsecase struct {
-	teamUC     *TeamUsecase
-	sessionUC  *SessionUsecase
-	agentUC    *AgentUsecase
-	transactor SpiritTransactor
-	lg         loggateway.Logger
+	teamUC       *TeamUsecase
+	sessionUC    *SessionUsecase
+	agentUC      *AgentUsecase
+	transactor   SpiritTransactor
+	orchCache    *OrchestrationCache
+	evolutionSugg EvolutionSuggestionRepo
+	lg           loggateway.Logger
 }
 
-func NewSpiritTeamUsecase(teamUC *TeamUsecase, sessionUC *SessionUsecase, agentUC *AgentUsecase, transactor SpiritTransactor, lg loggateway.Logger) *SpiritTeamUsecase {
-	return &SpiritTeamUsecase{teamUC: teamUC, sessionUC: sessionUC, agentUC: agentUC, transactor: transactor, lg: lg}
+func NewSpiritTeamUsecase(teamUC *TeamUsecase, sessionUC *SessionUsecase, agentUC *AgentUsecase, transactor SpiritTransactor, orchCache *OrchestrationCache, evolutionSugg EvolutionSuggestionRepo, lg loggateway.Logger) *SpiritTeamUsecase {
+	return &SpiritTeamUsecase{teamUC: teamUC, sessionUC: sessionUC, agentUC: agentUC, transactor: transactor, orchCache: orchCache, evolutionSugg: evolutionSugg, lg: lg}
 }
 
 func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamParams) (SpiritTeamResult, error) {
@@ -454,4 +456,199 @@ func (u *SpiritTeamUsecase) GetSpiritQuery(ctx context.Context, spiritSessionID 
 		}
 	}
 	return ""
+}
+
+// UpdateTeamDefinitionJSON replaces the team's DefinitionJSON with the provided value
+// and persists the change. Used by TaskOrchestrator to write DAG-compiled definitions.
+func (u *SpiritTeamUsecase) UpdateTeamDefinitionJSON(ctx context.Context, teamID string, definitionJSON string) error {
+	_, err := u.teamUC.Update(ctx, teamID, Team{DefinitionJSON: definitionJSON})
+	if err != nil {
+		return kerrors.InternalServer("SPIRIT", "update team definition: "+err.Error())
+	}
+	return nil
+}
+
+// RecordTeamCompletion records DQ Score, infers topology, and creates evolution suggestions
+// for a completed team. Returns the computed DQ Score and inferred topology.
+func (u *SpiritTeamUsecase) RecordTeamCompletion(ctx context.Context, team Team, durationMs int64) (dqScore float64, topology TopologyType) {
+	if u.orchCache == nil || team.DagNodeID == "" {
+		return 0, ""
+	}
+	dqScore = ComputeDQScore(TeamSynthesisResult{
+		TeamID:   team.ID,
+		TeamName: team.DisplayName,
+		TaskName: team.TaskDescription,
+		Status:   "completed",
+	}, durationMs)
+	taskPattern := ExtractTaskPattern(team.TaskDescription)
+	topology = InferTopologyFromTeam(team, u.lg)
+	u.orchCache.RecordCompletion(ctx, taskPattern, topology, dqScore, 1, durationMs)
+	u.lg.Info("精灵团队完成，记录 DQ Score",
+		loggateway.StepID("spirit.team.completion"),
+		loggateway.Str("team_id", team.ID),
+		loggateway.Str("task_pattern", taskPattern),
+		loggateway.Float64("dq_score", dqScore),
+	)
+
+	if dqScore < 0.5 && u.evolutionSugg != nil && team.SpiritSessionID != "" {
+		altTopology, altFound := u.orchCache.SuggestBestAlternativeTopology(team.TaskDescription, topology)
+		content := fmt.Sprintf("团队 %q 的 DQ Score 为 %.2f（低于阈值 0.5），当前拓扑 %s 执行效果不佳。", team.DisplayName, dqScore, topology)
+		if altFound {
+			content += fmt.Sprintf("建议尝试 %s 拓扑。", altTopology)
+		} else {
+			content += "暂无历史数据推荐替代拓扑，建议调整任务描述或减少团队数量。"
+		}
+		_, suggErr := u.evolutionSugg.Create(ctx, EvolutionSuggestion{
+			AgentID: team.SpiritSessionID,
+			Type:    "orchestration_optimization",
+			Title:   fmt.Sprintf("编排优化建议: %s", TruncateRunes(team.TaskDescription, 40)),
+			Content: content,
+			Status:  "pending",
+		})
+		if suggErr != nil {
+			u.lg.Warn("创建编排优化建议失败",
+				loggateway.StepID("spirit.evolution_suggestion_err"),
+				loggateway.Str("team_id", team.ID),
+				loggateway.Err(suggErr),
+			)
+		}
+	}
+	return dqScore, topology
+}
+
+// DependentTeamAction represents an action to take on a dependent team.
+type DependentTeamAction struct {
+	TeamID   string
+	TeamName string
+	DagNodeID string
+	Action   string // "activate" or "fail"
+	Reason   string
+}
+
+// ScheduleDependentTeams resolves DAG dependencies after a team completes.
+// It returns a list of actions to take (activate or fail dependent teams).
+// The caller (Service layer) is responsible for executing the actions
+// (starting runners, publishing events, etc.).
+func (u *SpiritTeamUsecase) ScheduleDependentTeams(ctx context.Context, spiritSessionID string, completedTeam Team) []DependentTeamAction {
+	if completedTeam.DagNodeID == "" {
+		return nil
+	}
+	allTeams, err := u.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
+	if err != nil {
+		u.lg.Warn("查询精灵团队列表失败，跳过依赖调度",
+			loggateway.StepID("spirit.schedule_deps.list_err"),
+			loggateway.Err(err),
+		)
+		return nil
+	}
+
+	var actions []DependentTeamAction
+	for i := range allTeams {
+		t := &allTeams[i]
+		if t.Status != TeamStatusPending {
+			continue
+		}
+		if !containsString(t.DependsOn, completedTeam.DagNodeID) {
+			continue
+		}
+		allDepsMet := true
+		anyDepFailed := false
+		for _, depID := range t.DependsOn {
+			found := false
+			for j := range allTeams {
+				if allTeams[j].DagNodeID == depID {
+					if allTeams[j].Status == TeamStatusCompleted {
+						found = true
+					} else if allTeams[j].Status == TeamStatusFailed || allTeams[j].Status == TeamStatusCancelled {
+						anyDepFailed = true
+					}
+					break
+				}
+			}
+			if !found && !anyDepFailed {
+				allDepsMet = false
+				break
+			}
+		}
+		if anyDepFailed {
+			actions = append(actions, DependentTeamAction{
+				TeamID:    t.ID,
+				TeamName:  t.DisplayName,
+				DagNodeID: t.DagNodeID,
+				Action:    "fail",
+				Reason:    "前置依赖团队执行失败",
+			})
+			continue
+		}
+		if !allDepsMet {
+			continue
+		}
+		// Re-check current status to avoid stale data.
+		current, getErr := u.teamUC.Get(ctx, t.ID)
+		if getErr != nil || current.Status != TeamStatusPending {
+			u.lg.Info("依赖调度：团队状态已变更，跳过激活",
+				loggateway.StepID("spirit.schedule_deps.stale"),
+				loggateway.Str("team_id", t.ID),
+				loggateway.Str("current_status", current.Status),
+			)
+			continue
+		}
+		actions = append(actions, DependentTeamAction{
+			TeamID:    t.ID,
+			TeamName:  t.DisplayName,
+			DagNodeID: t.DagNodeID,
+			Action:    "activate",
+		})
+	}
+	return actions
+}
+
+// AllTeamsCompletedResult holds the result of checking if all teams are completed.
+type AllTeamsCompletedResult struct {
+	AllDone  bool
+	TeamIDs  []string
+}
+
+// CheckAllTeamsCompleted checks whether all teams for a spirit session are in a terminal state.
+// Returns a result indicating if all teams are done and the list of team IDs.
+func (u *SpiritTeamUsecase) CheckAllTeamsCompleted(ctx context.Context, spiritSessionID string) AllTeamsCompletedResult {
+	teams, err := u.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
+	if err != nil {
+		u.lg.Warn("查询精灵会话团队列表失败，跳过全完成检查",
+			loggateway.StepID("spirit.teams.check_all"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Err(err),
+		)
+		return AllTeamsCompletedResult{}
+	}
+	if len(teams) == 0 {
+		return AllTeamsCompletedResult{}
+	}
+	hasCompleted := false
+	for _, t := range teams {
+		switch t.Status {
+		case TeamStatusPending, TeamStatusRunning:
+			return AllTeamsCompletedResult{}
+		case TeamStatusCompleted:
+			hasCompleted = true
+		}
+	}
+	if !hasCompleted {
+		return AllTeamsCompletedResult{}
+	}
+	var teamIDs []string
+	for _, t := range teams {
+		teamIDs = append(teamIDs, t.ID)
+	}
+	return AllTeamsCompletedResult{AllDone: true, TeamIDs: teamIDs}
+}
+
+// containsString checks if a string slice contains a given string.
+func containsString(slice []string, s string) bool {
+	for _, item := range slice {
+		if item == s {
+			return true
+		}
+	}
+	return false
 }

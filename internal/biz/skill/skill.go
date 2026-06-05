@@ -219,26 +219,26 @@ type UpdateDraft struct {
 
 // InvocationWrite inserts a skill_invocation row (filesystem sync, runtime, etc.).
 type InvocationWrite struct {
-	SkillID          string
-	SkillVersion     string
-	AgentID          string
-	UserID           string
-	SessionID        string
-	Status           string
-	DurationMS       int
-	StartedAt        string
-	EndedAt          string
-	InputPreview     string
-	InputHash        string
-	OutputPreview    string
-	ErrorCode        string
-	ErrorMessage     string
-	Source           string
-	ActivationID     string
-	MessageID        string
-	SelectionReason  map[string]interface{} // routing path, candidate slugs, scoring factors
-	Outcome          string                 // success / failure / partial / cancelled
-	TokenUsage       map[string]interface{} // {prompt, completion, total}
+	SkillID         string
+	SkillVersion    string
+	AgentID         string
+	UserID          string
+	SessionID       string
+	Status          string
+	DurationMS      int
+	StartedAt       string
+	EndedAt         string
+	InputPreview    string
+	InputHash       string
+	OutputPreview   string
+	ErrorCode       string
+	ErrorMessage    string
+	Source          string
+	ActivationID    string
+	MessageID       string
+	SelectionReason map[string]any // routing path, candidate slugs, scoring factors
+	Outcome         string         // success / failure / partial / cancelled
+	TokenUsage      map[string]any // {prompt, completion, total}
 }
 
 // DiskSyncOutcome describes side effects of a filesystem upsert.

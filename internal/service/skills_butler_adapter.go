@@ -19,7 +19,7 @@ func (a skillsButlerSkillUsecaseAdapter) ListProposals(ctx context.Context, agen
 	if a.uc == nil {
 		return nil, nil
 	}
-	return a.uc.ListProposals(ctx, agentID, status)
+	return a.uc.ListProposals(ctx, agentID, status, 0, 0)
 }
 
 func (a skillsButlerSkillUsecaseAdapter) ApproveProposal(ctx context.Context, id string, approvedBy string) (biz.SkillProposal, error) {

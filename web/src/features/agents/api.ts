@@ -95,7 +95,7 @@ export async function createAgent(payload: {
     positionKey: payload.position_key,
     agentVariant: payload.agent_variant,
     variantDescription: payload.variant_description,
-    categoryPositionId: payload.taxonomy_position_id,
+    taxonomyPositionId: payload.taxonomy_position_id,
     systemPromptMode: payload.system_prompt_mode,
     contextWindow: payload.context_window,
     budgetMonthlyCents: payload.budget_monthly_cents,

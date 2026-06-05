@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import {
   listLearningObservations,
   listLearningPatterns,
@@ -14,11 +14,12 @@ export const useLearningLoopStore = defineStore('learningLoop', () => {
   const observations = ref<LearningObservation[]>([]);
   const patterns = ref<LearningPattern[]>([]);
   const proposals = ref<LearningProposal[]>([]);
-  const loading = ref(false);
+  const pendingCount = ref(0);
+  const loading = computed(() => pendingCount.value > 0);
   const error = ref<string | null>(null);
 
   async function fetchObservations(agentId: string, since?: string): Promise<LearningObservation[]> {
-    loading.value = true;
+    pendingCount.value++;
     error.value = null;
     try {
       const result = await listLearningObservations(agentId, since);
@@ -28,12 +29,12 @@ export const useLearningLoopStore = defineStore('learningLoop', () => {
       error.value = e instanceof Error ? e.message : String(e);
       throw e;
     } finally {
-      loading.value = false;
+      pendingCount.value--;
     }
   }
 
   async function fetchPatterns(agentId: string, status?: string): Promise<LearningPattern[]> {
-    loading.value = true;
+    pendingCount.value++;
     error.value = null;
     try {
       const result = await listLearningPatterns(agentId, status);
@@ -43,12 +44,12 @@ export const useLearningLoopStore = defineStore('learningLoop', () => {
       error.value = e instanceof Error ? e.message : String(e);
       throw e;
     } finally {
-      loading.value = false;
+      pendingCount.value--;
     }
   }
 
   async function fetchProposals(agentId: string, status?: string): Promise<LearningProposal[]> {
-    loading.value = true;
+    pendingCount.value++;
     error.value = null;
     try {
       const result = await listLearningProposals(agentId, status);
@@ -58,26 +59,44 @@ export const useLearningLoopStore = defineStore('learningLoop', () => {
       error.value = e instanceof Error ? e.message : String(e);
       throw e;
     } finally {
-      loading.value = false;
+      pendingCount.value--;
     }
   }
 
   async function approveProposal(agentId: string, proposalId: string): Promise<LearningProposal> {
-    const result = await approveLearningProposal(agentId, proposalId);
-    const idx = proposals.value.findIndex((p) => p.id === proposalId);
-    if (idx !== -1) proposals.value[idx] = result;
-    return result;
+    error.value = null;
+    try {
+      const result = await approveLearningProposal(agentId, proposalId);
+      const idx = proposals.value.findIndex((p) => p.id === proposalId);
+      if (idx !== -1) proposals.value[idx] = result;
+      return result;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e);
+      throw e;
+    }
   }
 
   async function rejectProposal(agentId: string, proposalId: string): Promise<LearningProposal> {
-    const result = await rejectLearningProposal(agentId, proposalId);
-    const idx = proposals.value.findIndex((p) => p.id === proposalId);
-    if (idx !== -1) proposals.value[idx] = result;
-    return result;
+    error.value = null;
+    try {
+      const result = await rejectLearningProposal(agentId, proposalId);
+      const idx = proposals.value.findIndex((p) => p.id === proposalId);
+      if (idx !== -1) proposals.value[idx] = result;
+      return result;
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e);
+      throw e;
+    }
   }
 
   async function runLoop(agentId: string): Promise<void> {
-    return runLearningLoop(agentId);
+    error.value = null;
+    try {
+      return await runLearningLoop(agentId);
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : String(e);
+      throw e;
+    }
   }
 
   return {

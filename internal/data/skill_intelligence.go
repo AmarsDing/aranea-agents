@@ -95,7 +95,7 @@ func (r *SkillIntelligenceRepo) Create(ctx context.Context, report biz.Experienc
 		builder.SetFailureTags(report.FailureTags)
 	}
 	if report.SelectionSnapshot != nil {
-		var snap map[string]interface{}
+		var snap map[string]any
 		if err := json.Unmarshal(report.SelectionSnapshot, &snap); err == nil {
 			builder.SetSelectionSnapshot(snap)
 		}
@@ -128,7 +128,7 @@ func (r *SkillIntelligenceRepo) BatchCreate(ctx context.Context, reports []biz.E
 			builder.SetFailureTags(report.FailureTags)
 		}
 		if report.SelectionSnapshot != nil {
-			var snap map[string]interface{}
+			var snap map[string]any
 			if err := json.Unmarshal(report.SelectionSnapshot, &snap); err == nil {
 				builder.SetSelectionSnapshot(snap)
 			}

@@ -18,7 +18,7 @@ func NewSkillProposalRepo(data *Data) biz.SkillProposalReadWriter {
 	return &skillProposalRepo{data: data}
 }
 
-func (r *skillProposalRepo) ListByAgent(ctx context.Context, agentID string, status string) ([]biz.SkillProposal, error) {
+func (r *skillProposalRepo) ListByAgent(ctx context.Context, agentID string, status string, limit int, offset int) ([]biz.SkillProposal, error) {
 	q := `SELECT id, agent_id, pattern_hash, pattern_desc, skill_name, skill_md, status, approved_by, rejected_by, created_at, approved_at
 	       FROM skill_proposals WHERE agent_id = ?`
 	args := []any{agentID}
@@ -27,6 +27,10 @@ func (r *skillProposalRepo) ListByAgent(ctx context.Context, agentID string, sta
 		args = append(args, status)
 	}
 	q += ` ORDER BY created_at DESC`
+	if limit > 0 {
+		q += ` LIMIT ? OFFSET ?`
+		args = append(args, limit, offset)
+	}
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, kerrors.InternalServer("SKILL_EVO", "query skill proposals: "+err.Error())
@@ -145,9 +149,40 @@ func (r *skillProposalRepo) UpdateStatus(ctx context.Context, id string, status 
 	}
 	q += ` WHERE id = ?`
 	args = append(args, id)
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, q, args...)
-	if err != nil {
+
+	writeDB := r.data.RWDB().WriteHandle()
+	tx, txErr := writeDB.BeginTx(ctx, nil)
+	if txErr != nil {
+		return biz.SkillProposal{}, kerrors.InternalServer("SKILL_EVO", "begin tx: "+txErr.Error())
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, q, args...); err != nil {
 		return biz.SkillProposal{}, kerrors.InternalServer("SKILL_EVO", "update skill proposal status: "+err.Error())
 	}
-	return r.GetByID(ctx, id)
+
+	var p biz.SkillProposal
+	var createdAt string
+	var approvedAt *string
+	selectQ := `SELECT id, agent_id, pattern_hash, pattern_desc, skill_name, skill_md, status, approved_by, rejected_by, created_at, approved_at FROM skill_proposals WHERE id = ?`
+	if err := tx.QueryRowContext(ctx, selectQ, id).Scan(&p.ID, &p.AgentID, &p.PatternHash, &p.PatternDesc, &p.SkillName, &p.SkillMD, &p.Status, &p.ApprovedBy, &p.RejectedBy, &createdAt, &approvedAt); err != nil {
+		return biz.SkillProposal{}, kerrors.InternalServer("SKILL_EVO", "scan after update: "+err.Error())
+	}
+	if err := tx.Commit(); err != nil {
+		return biz.SkillProposal{}, kerrors.InternalServer("SKILL_EVO", "commit tx: "+err.Error())
+	}
+
+	t, err := time.Parse(time.RFC3339, createdAt)
+	if err != nil {
+		return biz.SkillProposal{}, kerrors.InternalServer("SKILL_EVO", "parse created_at: "+err.Error())
+	}
+	p.CreatedAt = t
+	if approvedAt != nil && *approvedAt != "" {
+		at, err := time.Parse(time.RFC3339, *approvedAt)
+		if err != nil {
+			return biz.SkillProposal{}, kerrors.InternalServer("SKILL_EVO", "parse approved_at: "+err.Error())
+		}
+		p.ApprovedAt = &at
+	}
+	return p, nil
 }

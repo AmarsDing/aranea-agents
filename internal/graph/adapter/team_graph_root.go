@@ -23,7 +23,7 @@ func (f *trpcGraphBuilderFactory) BuildTeamGraphRoot(ctx context.Context, cfg bi
 	if f == nil {
 		return nil, kerrors.InternalServer("GRAPH", "graph builder factory is nil")
 	}
-	g, subAgents, cbState, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, cfg, f.registry, f.resolvers.ToBuildDepsPtr(), f.lg)
+	g, subAgents, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, cfg, f.registry, &f.resolvers, f.lg)
 	if err != nil {
 		return nil, err
 	}
@@ -31,5 +31,5 @@ func (f *trpcGraphBuilderFactory) BuildTeamGraphRoot(ctx context.Context, cfg bi
 	if name == "" {
 		name = "team-graph"
 	}
-	return f.createAgent(name, g, cfg.EnableCheckpoint, cfg.ExecutionEngine, cbState, subAgents)
+	return f.createAgent(name, g, cfg.EnableCheckpoint, cfg.ExecutionEngine, subAgents)
 }

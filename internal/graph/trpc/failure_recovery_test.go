@@ -46,7 +46,7 @@ func TestBuildStateGraph_skipOnFailureRecovery(t *testing.T) {
 			ID: "fail", Type: "function", FailureAction: biz.FailureOnFailureSkip, FuncRef: "fail-func",
 		}},
 	}
-	g, _, _, err := BuildStateGraphWithRegistryAndLogger(context.Background(), cfg, reg, nil, nil)
+	g, _, err := BuildStateGraphWithRegistryAndLogger(context.Background(), cfg, reg, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

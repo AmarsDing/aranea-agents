@@ -23,7 +23,7 @@ import (
 	trpcprovider "trpc.group/trpc-go/trpc-agent-go/model/provider"
 )
 
-func TRPCModelForProviderModel(ctx context.Context, catalog *biz.LlmProviderModelUsecase, rt *RoundTrip, prov, modelAPI string, lg loggateway.Logger) (trpcmodel.Model, error) {
+func TRPCModelForProviderModel(ctx context.Context, catalog biz.TeamModelCatalog, rt *RoundTrip, prov, modelAPI string, lg loggateway.Logger) (trpcmodel.Model, error) {
 	if catalog == nil {
 		return nil, ErrNilLlmCatalog
 	}
@@ -137,7 +137,7 @@ func mapVariantFromBaseURL(baseURL string) string {
 	return ""
 }
 
-func ModelSupportsImageAttachments(ctx context.Context, catalog *biz.LlmProviderModelUsecase, prov, model string) bool {
+func ModelSupportsImageAttachments(ctx context.Context, catalog biz.TeamModelCatalog, prov, model string) bool {
 	if catalog == nil {
 		return !looksLikeDeepSeek(prov, model)
 	}
@@ -164,7 +164,7 @@ func ModelSupportsImageAttachments(ctx context.Context, catalog *biz.LlmProvider
 	return !looksLikeDeepSeek(pm.Provider, pm.Model)
 }
 
-func ModelSupportsFileAttachments(ctx context.Context, catalog *biz.LlmProviderModelUsecase, prov, model string) bool {
+func ModelSupportsFileAttachments(ctx context.Context, catalog biz.TeamModelCatalog, prov, model string) bool {
 	if catalog == nil {
 		return true
 	}

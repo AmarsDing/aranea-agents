@@ -40,6 +40,7 @@
 
 <script setup lang="ts">
 import type { LearningPattern } from '../../features/agents/learning.types';
+import { formatDate } from '../../features/agents/learning.utils';
 
 defineProps<{
   patterns: LearningPattern[];
@@ -102,14 +103,5 @@ function patternStatusLabel(status: string): string {
 function formatConfidence(v: number): string {
   if (v === 0) return '—';
   return (v * 100).toFixed(1) + '%';
-}
-
-function formatDate(iso: string): string {
-  if (!iso) return '';
-  try {
-    return new Date(iso).toLocaleDateString();
-  } catch {
-    return iso;
-  }
 }
 </script>

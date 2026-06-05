@@ -313,6 +313,23 @@ func assertBadRequest(t *testing.T, err error, wantMsg string) {
 	}
 }
 
+func assertConflict(t *testing.T, err error, wantMsg string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	e := kerrors.FromError(err)
+	if e.Code != 409 {
+		t.Fatalf("expected code 409, got %d", e.Code)
+	}
+	if e.Reason != "SESSION" {
+		t.Fatalf("expected reason SESSION, got %s", e.Reason)
+	}
+	if wantMsg != "" && e.Message != wantMsg {
+		t.Fatalf("expected message %q, got %q", wantMsg, e.Message)
+	}
+}
+
 func assertNotFound(t *testing.T, err error, wantMsg string) {
 	t.Helper()
 	if err == nil {

@@ -24,10 +24,19 @@ type TaxonomyDeptSpec struct {
 }
 
 type TaxonomyPositionSpec struct {
-	Key         string `yaml:"key"`
-	Name        string `yaml:"name"`
-	Description string `yaml:"description"`
-	SortOrder   int    `yaml:"sort_order"`
+	Key             string                    `yaml:"key"`
+	Name            string                    `yaml:"name"`
+	Description     string                    `yaml:"description"`
+	SortOrder       int                       `yaml:"sort_order"`
+	SeniorityLevel  string                    `yaml:"seniority_level"`
+	SkillsRequired  []string                  `yaml:"skills_required"`
+	Responsibilities []string                 `yaml:"responsibilities"`
+	Variants        []TaxonomyVariantSpec     `yaml:"variants"`
+}
+
+type TaxonomyVariantSpec struct {
+	Key  string `yaml:"key"`
+	Name string `yaml:"name"`
 }
 
 type TaxonomySpec struct {

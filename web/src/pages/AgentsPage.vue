@@ -5,12 +5,12 @@
     <agents-filters-card
       v-model:keyword="keyword"
       v-model:selected-status="selectedStatus"
-      v-model:selected-category="selectedCategory"
+      v-model:selected-category="selectedTaxonomy"
       v-model:selected-creator="selectedCreator"
       v-model:selected-provider="selectedProvider"
       v-model:view-mode="viewMode"
       :status-options="statusOptions"
-      :category-tree="categoryTree"
+      :category-tree="taxonomyTree"
       :provider-options="providerOptions"
       :creator-options="creatorOptions"
     />
@@ -23,7 +23,7 @@
       :rows-per-page="rowsPerPage"
       :table-columns="tableColumns"
       :is-favorite="isFavorite"
-      :get-category-label="categoryLabel"
+      :get-category-label="taxonomyLabel"
       @create="openCreate"
       @toggle-favorite="toggleFavorite"
       @copy-key="copyAgentKey"
@@ -41,7 +41,7 @@
       :form="form"
       :a2a-proxy="a2aProxy"
       :is-a2-a-proxy="isA2AProxyCreate"
-      :category-tree="categoryTree"
+      :category-tree="taxonomyTree"
       :provider-options="providerOptions"
       :model-options="modelOptions"
       :selected-template-key="selectedTemplateKey"
@@ -106,7 +106,7 @@ const {
   keyword,
   selectedStatus,
   selectedProvider,
-  selectedCategory,
+  selectedTaxonomy,
   selectedCreator,
   creatorOptions,
   page,
@@ -128,7 +128,7 @@ const {
   selectedTemplateKey,
   createTemplates,
   duplicateListedAgent,
-  categoryTree,
+  taxonomyTree,
   providerOptions,
   modelOptions,
   pageMax,
@@ -149,6 +149,6 @@ const {
   toggleFavorite,
   copyAgentKey,
   openCreate,
-  categoryLabel,
+  taxonomyLabel,
 } = useAgentsPage();
 </script>

@@ -3,6 +3,7 @@ package team
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -27,7 +28,8 @@ type StreamOptsFactory interface {
 
 type Runner struct {
 	teams           biz.TeamRepository
-	usage           *biz.UsageUsecase
+	usage           biz.TeamUsageQuerier
+	sessions        biz.TeamSessionManager
 	td              rt.TurnDeps
 	skillDBRepo     trpcskill.Repository
 	codeExecFactory *localexec.Factory
@@ -57,15 +59,15 @@ func (r *Runner) SetAwaitHookProvider(fn func(runCtx context.Context, sessionID,
 
 func NewRunner(
 	teams biz.TeamRepository,
-	usage *biz.UsageUsecase,
-	sessions *biz.SessionUsecase,
+	usage biz.TeamUsageQuerier,
+	sessions biz.TeamSessionManager,
 	agents biz.AgentRepository,
-	agentsUC *biz.AgentUsecase,
+	agentsUC biz.TeamAgentLookup,
 	toolsCatalog biz.ToolCatalogReader,
-	toolUC *biz.ToolUsecase,
-	catalog *biz.LlmProviderModelUsecase,
+	toolUC biz.TeamToolLookup,
+	catalog biz.TeamModelCatalog,
 	eventBus event.Bus,
-	skillUC *biz.SkillUsecase,
+	skillUC biz.TeamSkillLookup,
 	sys biz.SystemSettingRepo,
 	persist rt.PersistenceSet,
 	compress biz.NativeTurnCompressor,
@@ -74,9 +76,19 @@ func NewRunner(
 	lg loggateway.Logger,
 	cfg RunnerConfig,
 ) *Runner {
+	// Type-assert sessions back to concrete type for rt.TurnDeps.Sessions,
+	// which is still *biz.SessionUsecase because the chat orchestrator needs
+	// the full API. TECH-DEBT: remove once SessionUsecase is split into
+	// narrower interfaces.
+	var sessUC *biz.SessionUsecase
+	if s, ok := sessions.(*biz.SessionUsecase); ok {
+		sessUC = s
+	}
+
 	return &Runner{
 		teams:           teams,
 		usage:           usage,
+		sessions:        sessions,
 		skillDBRepo:     skillDBRepo,
 		codeExecFactory: codeExecFactory,
 		cfg:             cfg,
@@ -94,7 +106,7 @@ func NewRunner(
 			Persist:   persist,
 			Pipeline:  rt.EventPipeline{Bus: eventBus, Buffer: event.NewBuffer()},
 			LLMHTTP:   &http.Client{Timeout: 0},
-			Sessions:  sessions,
+			Sessions:  sessUC,
 			Compress:  compress,
 			RunnerMgr: rt.NewRunnerManagerFromPersist(persist, lg),
 			Lg:        lg,
@@ -130,7 +142,7 @@ func (r *Runner) RunTurnFromInput(ctx context.Context, sess biz.Session, input b
 
 	teamRow, err := r.teams.GetTeamByID(ctx, tid)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return biz.ChatMessage{}, biz.ChatMessage{}, kerrors.NotFound("TEAM", "team not found")
 		}
 		return biz.ChatMessage{}, biz.ChatMessage{}, err

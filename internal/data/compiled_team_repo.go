@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -63,9 +64,8 @@ func (r *compiledTeamRepo) Save(ctx context.Context, teamID, graphID, sessionID 
 	id := compiledTeamRowID(teamID, graphID)
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err = db.ExecContext(ctx, `
-INSERT OR REPLACE INTO compiled_teams
-  (id, team_id, graph_id, session_id, config_json, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)`,
+INSERT INTO compiled_teams (id, team_id, graph_id, session_id, config_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET team_id = excluded.team_id, graph_id = excluded.graph_id, session_id = excluded.session_id, config_json = excluded.config_json, updated_at = excluded.updated_at`,
 		id, teamID, graphID, sessionID, string(configJSON), now, now,
 	)
 	if err != nil {
@@ -85,7 +85,7 @@ func (r *compiledTeamRepo) Load(ctx context.Context, teamID, graphID string) (*b
 	var configJSON string
 	err := queryRowScan(ctx, db, `SELECT config_json FROM compiled_teams WHERE id = ? LIMIT 1`, []any{id}, &configJSON)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, kerrors.NotFound("COMPILED_TEAM", fmt.Sprintf("compiled_team not found: %s", id))
 		}
 		return nil, fmt.Errorf("compiled_team repo load: %w", err)
@@ -100,6 +100,9 @@ func (r *compiledTeamRepo) Load(ctx context.Context, teamID, graphID string) (*b
 // LoadForSession loads a compiled team and verifies the session is still active
 // via SessionRuntimeRepo. Returns the compiled team only if the session exists.
 func (r *compiledTeamRepo) LoadForSession(ctx context.Context, teamID, graphID, sessionID string) (*biz.CompiledTeam, error) {
+	if strings.TrimSpace(sessionID) == "" {
+		return nil, kerrors.BadRequest("COMPILED_TEAM", "session id required for LoadForSession")
+	}
 	ct, err := r.Load(ctx, teamID, graphID)
 	if err != nil {
 		return nil, err

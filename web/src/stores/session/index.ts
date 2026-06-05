@@ -29,7 +29,7 @@ import type {
   BatchPreviewResult,
   SessionBatchScope,
 } from '../../features/session/types';
-import { emitSessionMutation } from '../sessionSync';
+import { emitSessionMutation, onSessionMutation } from '../sessionSync';
 
 export const useSessionStore = defineStore('session', () => {
   const sessions = ref<Session[]>([]);
@@ -245,6 +245,32 @@ export const useSessionStore = defineStore('session', () => {
       throw e;
     }
   }
+
+  function patchSessionStatus(sessionId: string, status: string, statusReason: string, statusChangedAt: string) {
+    const id = sessionId.trim();
+    if (!id) return;
+    sessions.value = sessions.value.map((s) =>
+      s.id === id
+        ? { ...s, status: status as Session['status'], status_reason: statusReason as Session['status_reason'], status_changed_at: statusChangedAt }
+        : s,
+    );
+    if (activeSession.value?.id === id) {
+      activeSession.value = {
+        ...activeSession.value,
+        status: status as Session['status'],
+        status_reason: statusReason as Session['status_reason'],
+        status_changed_at: statusChangedAt,
+      };
+    }
+  }
+
+  onSessionMutation((mutation) => {
+    switch (mutation.type) {
+      case 'status_changed':
+        patchSessionStatus(mutation.id, mutation.status, mutation.statusReason, mutation.statusChangedAt);
+        break;
+    }
+  });
 
   return {
     sessions,

@@ -45,15 +45,9 @@ func newSkillGuidanceBeforeHook(ag biz.Agent, deps TRPCBuilderDeps) callbacks.Ca
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		runtime := ag.Settings
-		opts := &skillruntime.SkillToolsetOptions{Runtime: runtime, UserQuery: skillruntime.TurnQueryFromContext(ctx)}
-		result, err := skillruntime.ResolveSkillSlugsDetailed(ctx, deps.SkillUC, opts, deps.Logger())
-		if err != nil || len(result.Slugs) == 0 {
+		result := resolveAndWriteSkillState(ctx, ag.Settings, deps, false)
+		if result == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
-		}
-		// Persist selection reasons in invocation state for skill_invocation recording.
-		if inv, ok := trpcagent.InvocationFromContext(ctx); ok {
-			inv.SetState(skillSelectionReasonStateKey, result.Reasons)
 		}
 		entries, err := deps.SkillUC.BatchGetSkillGuidance(ctx, result.Slugs)
 		if err != nil || len(entries) == 0 {
@@ -93,43 +87,33 @@ func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		if args == nil || args.Request == nil {
 			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 		}
-		runtime := ag.Settings
-		opts := &skillruntime.SkillToolsetOptions{Runtime: runtime, UserQuery: skillruntime.TurnQueryFromContext(ctx)}
-		result, err := skillruntime.ResolveSkillSlugsDetailed(ctx, deps.SkillUC, opts, deps.Logger())
-		if err != nil || len(result.Slugs) == 0 {
-			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
-		}
-		// Store routed skill names in invocation state so the
-		// SkillsRequestProcessor can mark them as [routed] in the
-		// overview on subsequent turns.
-		if inv, ok := trpcagent.InvocationFromContext(ctx); ok {
-			inv.SetState(trpcllmagent.RoutedSkillsStateKey, result.Slugs)
-			inv.SetState(skillSelectionReasonStateKey, result.Reasons)
-		}
-		entries, err := deps.SkillUC.BatchGetSkillGuidance(ctx, result.Slugs)
-		if err != nil || len(entries) == 0 {
-			return &trpcmodel.BeforeModelResult{Context: ctx}, nil
-		}
-		var b strings.Builder
-		b.WriteString("## Available Skills\n\nThe following skills are available. Use the skill_load tool to load specific skill details.\n\n")
-		for _, e := range entries {
-			m := manifest.Parse(e.Guidance)
-			name := strings.TrimSpace(m.Name)
-			if name == "" {
-				name = e.Slug
-			}
-			desc := strings.TrimSpace(m.Description)
-			if desc != "" {
-				fmt.Fprintf(&b, "- **%s**: %s\n", name, desc)
-			} else {
-				fmt.Fprintf(&b, "- **%s**\n", name)
-			}
-		}
-		cue := b.String()
-		sys := trpcmodel.NewSystemMessage(cue)
-		args.Request.Messages = append([]trpcmodel.Message{sys}, args.Request.Messages...)
+		// resolveAndWriteSkillState writes routed slugs and selection
+		// reasons to invocation state. No system message is injected;
+		// injectOverview handles all Skill display with [routed] markers.
+		resolveAndWriteSkillState(ctx, ag.Settings, deps, true)
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
+}
+
+// resolveAndWriteSkillState resolves routed skill slugs and writes them to
+// invocation state. When progressive is true, routed slugs are stored under
+// RoutedSkillsStateKey so the SkillsRequestProcessor can mark them as [routed].
+// Returns nil when no skills are resolved or on error.
+func resolveAndWriteSkillState(ctx context.Context, runtime *biz.AgentRuntimeSettings, deps TRPCBuilderDeps, progressive bool) *skillruntime.ResolveResult {
+	opts := &skillruntime.SkillToolsetOptions{Runtime: runtime, UserQuery: skillruntime.TurnQueryFromContext(ctx)}
+	result, err := skillruntime.ResolveSkillSlugsDetailed(ctx, deps.SkillUC, opts, deps.Logger())
+	if err != nil || len(result.Slugs) == 0 {
+		return nil
+	}
+	inv, ok := trpcagent.InvocationFromContext(ctx)
+	if !ok {
+		return result
+	}
+	if progressive {
+		inv.SetState(trpcllmagent.RoutedSkillsStateKey, result.Slugs)
+	}
+	inv.SetState(skillSelectionReasonStateKey, result.Reasons)
+	return result
 }
 
 // newTokenUsageAccumulatorAfterHook returns an AfterModel hook that accumulates

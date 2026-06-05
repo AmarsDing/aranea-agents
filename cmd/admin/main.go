@@ -379,6 +379,11 @@ func main() {
 		logger.Log(log.LevelInfo, "msg", "learning loop scanner scheduled", "interval", "30m")
 	}
 
+	if out.SkillEvolutionScanner != nil {
+		goAfterReady("skill_evolution", func() { out.SkillEvolutionScanner.Start(cronCtx) })
+		logger.Log(log.LevelInfo, "msg", "skill evolution scanner scheduled", "interval", "60m")
+	}
+
 	if out.ProviderHealthScanner != nil {
 		goAfterReady("provider_health", func() { out.ProviderHealthScanner.Start(cronCtx) })
 		logger.Log(log.LevelInfo, "msg", "provider health scanner scheduled", "interval", "5m")

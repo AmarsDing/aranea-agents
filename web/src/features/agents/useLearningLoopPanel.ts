@@ -1,7 +1,7 @@
 import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { useLearningLoopStore } from '../../stores/learningLoop';
-import type { LearningObservation, LearningPattern, LearningProposal } from './api.learning';
+import type { LearningObservation, LearningPattern, LearningProposal } from './learning.types';
 
 export function useLearningLoopPanel(agentId: () => string) {
   const $q = useQuasar();
@@ -39,6 +39,7 @@ export function useLearningLoopPanel(agentId: () => string) {
     const id = agentId();
     if (!id) return;
     $q.dialog({
+      class: 'app-dialog-card app-dialog-card--sm',
       title: '审批知识提议',
       message: '确定审批此知识提议？审批后将注册到 Agent 知识库。',
       cancel: true,

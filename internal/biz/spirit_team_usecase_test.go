@@ -389,7 +389,7 @@ func TestAssembleTeam_InitialStatus_Pending(t *testing.T) {
 
 	teamUC := NewTeamUsecase(teamRepo, nil)
 	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil)
-	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, nil, nil, loggateway.NewNoop())
 
 	ctx := context.Background()
 
@@ -431,7 +431,7 @@ func TestAssembleTeam_DAGDependentNode_InitialStatus_Pending(t *testing.T) {
 
 	teamUC := NewTeamUsecase(teamRepo, nil)
 	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil)
-	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, nil, nil, loggateway.NewNoop())
 
 	ctx := context.Background()
 
@@ -571,7 +571,7 @@ func TestCancelTeam_UsesTransitionStatus(t *testing.T) {
 
 	teamUC := NewTeamUsecase(teamRepo, nil)
 	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil)
-	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, nil, nil, loggateway.NewNoop())
 
 	ctx := context.Background()
 
@@ -626,7 +626,7 @@ func TestAssembleTeam_TransactionRollback(t *testing.T) {
 
 	teamUC := NewTeamUsecase(teamRepo, nil)
 	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil)
-	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, nil, nil, loggateway.NewNoop())
 
 	ctx := context.Background()
 
@@ -672,7 +672,7 @@ func TestAssembleTeam_TransactionSuccess(t *testing.T) {
 
 	teamUC := NewTeamUsecase(teamRepo, nil)
 	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil)
-	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, loggateway.NewNoop())
+	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, nil, nil, loggateway.NewNoop())
 
 	ctx := context.Background()
 

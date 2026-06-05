@@ -38,6 +38,8 @@ func (uc *SessionUsecase) BatchTransitionInterrupted(ctx context.Context, reason
 				loggateway.Str("session_id", s.ID),
 				loggateway.Err(updateErr),
 			)
+		} else if uc.statusPublisher != nil {
+			uc.statusPublisher.PublishSessionStatusChanged(s.ID, interrupted, reasonStr, changedAt)
 		}
 	}
 	if failedCount > 0 {

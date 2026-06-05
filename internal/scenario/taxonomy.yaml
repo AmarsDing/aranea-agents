@@ -14,22 +14,86 @@ industries:
             name: 量化研究员
             description: 因子挖掘、回测验证与策略研发
             sort_order: 1
+            seniority_level: mid
+            skills_required:
+              - 因子挖掘
+              - 回测验证
+              - 统计建模
+            responsibilities:
+              - 因子挖掘与策略研发
+              - 回测验证与绩效评估
+            variants:
+              - key: alpha
+                name: Alpha因子
+              - key: stat_arb
+                name: 统计套利
           - key: algo_trading_engineer
             name: 算法交易工程师
             description: 执行算法与做市策略开发
             sort_order: 2
+            seniority_level: mid
+            skills_required:
+              - 执行算法
+              - 做市策略
+              - 低延迟开发
+            responsibilities:
+              - 执行算法开发与优化
+              - 做市策略实现与调优
+            variants:
+              - key: execution
+                name: 执行算法
+              - key: market_making
+                name: 做市策略
           - key: quant_developer
             name: 量化开发工程师
             description: 交易系统、数据管道与研究平台开发
             sort_order: 3
+            seniority_level: mid
+            skills_required:
+              - 交易系统开发
+              - 数据管道构建
+              - C++/Python
+            responsibilities:
+              - 交易系统核心模块开发
+              - 数据管道与研究平台建设
+            variants:
+              - key: trading_sys
+                name: 交易系统
+              - key: data_pipe
+                name: 数据管道
           - key: trading_coordinator
             name: 交易协调员
             description: 盘前准备与盘中监控协调
             sort_order: 4
+            seniority_level: entry
+            skills_required:
+              - 交易流程管理
+              - 风控监控
+            responsibilities:
+              - 盘前准备与策略部署协调
+              - 盘中监控与异常处理
+            variants:
+              - key: premarket
+                name: 盘前准备
+              - key: intraday
+                name: 盘中监控
+              - key: critic
+                name: 批判审核
           - key: quant_devops
             name: 量化运维工程师
             description: 量化系统运维与保障
             sort_order: 5
+            seniority_level: mid
+            skills_required:
+              - 系统运维
+              - 自动化部署
+              - 故障排查
+            responsibilities:
+              - 量化交易系统运维保障
+              - 自动化部署与监控体系建设
+            variants:
+              - key: general
+                name: 通用
       - key: risk_compliance
         name: 风控合规
         description: 风险评估与合规管理
@@ -39,18 +103,63 @@ industries:
             name: 风险管理经理
             description: 市场风险与信用风险评估
             sort_order: 1
+            seniority_level: senior
+            skills_required:
+              - 风险建模
+              - 压力测试
+              - 监管合规
+            responsibilities:
+              - 市场风险与信用风险评估
+              - 风险模型构建与压力测试
+            variants:
+              - key: market_risk
+                name: 市场风险
+              - key: credit_risk
+                name: 信用风险
           - key: compliance_officer
             name: 合规官
             description: 监管合规审查与报告
             sort_order: 2
+            seniority_level: entry
+            skills_required:
+              - 监管法规
+              - 合规审查
+            responsibilities:
+              - 监管合规审查与报告
+              - 合规政策制定与执行监督
+            variants:
+              - key: regulatory
+                name: 监管合规
+              - key: internal
+                name: 内部合规
           - key: aml_specialist
             name: 反洗钱专员
             description: 反洗钱调查与监控
             sort_order: 3
+            seniority_level: mid
+            skills_required:
+              - 反洗钱法规
+              - 交易监控
+            responsibilities:
+              - 可疑交易监控与调查
+              - 反洗钱合规报告编制
+            variants:
+              - key: general
+                name: 通用
           - key: risk_assessor
             name: 风险评估师
             description: 综合风险识别与评估
             sort_order: 4
+            seniority_level: mid
+            skills_required:
+              - 风险识别
+              - 评估建模
+            responsibilities:
+              - 综合风险识别与评估
+              - 风险报告与预警
+            variants:
+              - key: general
+                name: 通用
       - key: investment_research
         name: 投资研究
         description: 基本面与技术面研究
@@ -60,30 +169,115 @@ industries:
             name: 基本面分析师
             description: 企业财务与行业基本面研究
             sort_order: 1
+            seniority_level: mid
+            skills_required:
+              - 财务分析
+              - 估值建模
+              - 行业研究
+            responsibilities:
+              - 企业财务报表分析与估值
+              - 行业基本面研究与投资建议
+            variants:
+              - key: financial_stmt
+                name: 财务报表
+              - key: valuation
+                name: 估值
           - key: technical_analyst
             name: 技术分析师
             description: 技术指标与图表分析
             sort_order: 2
+            seniority_level: mid
+            skills_required:
+              - 技术指标
+              - 图表分析
+            responsibilities:
+              - 技术指标与图表形态分析
+              - 交易信号生成与趋势判断
+            variants:
+              - key: chart_pattern
+                name: 图表形态
+              - key: indicator
+                name: 技术指标
           - key: industry_analyst
             name: 行业分析师
             description: 行业趋势与竞争格局研究
             sort_order: 3
+            seniority_level: mid
+            skills_required:
+              - 行业研究
+              - 竞争分析
+            responsibilities:
+              - 行业趋势与竞争格局研究
+              - 产业链分析与投资机会挖掘
+            variants:
+              - key: sector
+                name: 行业分析
+              - key: competitive
+                name: 竞争格局
           - key: sentiment_analyst
             name: 舆情分析师
             description: 市场情绪与舆情监控
             sort_order: 4
+            seniority_level: mid
+            skills_required:
+              - 舆情监控
+              - 情绪分析
+            responsibilities:
+              - 市场情绪指标构建与监控
+              - 舆情事件影响评估
+            variants:
+              - key: social_media
+                name: 社交媒体
+              - key: news
+                name: 新闻舆情
           - key: news_analyst
             name: 新闻分析师
             description: 新闻事件解读与影响评估
             sort_order: 5
+            seniority_level: mid
+            skills_required:
+              - 事件解读
+              - 政策分析
+            responsibilities:
+              - 新闻事件解读与市场影响评估
+              - 政策变动跟踪与分析
+            variants:
+              - key: event_driven
+                name: 事件驱动
+              - key: policy
+                name: 政策解读
           - key: money_flow_analyst
             name: 资金流向分析师
             description: 资金流向与主力动向分析
             sort_order: 6
+            seniority_level: mid
+            skills_required:
+              - 资金流向分析
+              - 主力动向追踪
+            responsibilities:
+              - 资金流向与主力动向分析
+              - 大单监控与异动预警
+            variants:
+              - key: institutional
+                name: 机构资金
+              - key: retail
+                name: 散户资金
           - key: report_writer
             name: 研报撰写员
             description: 投资研究报告撰写
             sort_order: 7
+            seniority_level: mid
+            skills_required:
+              - 研报撰写
+              - 数据可视化
+            responsibilities:
+              - 投资研究报告撰写与排版
+              - 研究结论可视化呈现
+            variants:
+              - key: general
+                name: 通用研报
+              - key: chart
+                name: 图表研报
       - key: financial_engineering
         name: 金融工程
         description: 金融数据工程与基础设施
@@ -93,18 +287,68 @@ industries:
             name: 数据采集员
             description: 金融数据采集与清洗
             sort_order: 1
+            seniority_level: mid
+            skills_required:
+              - 数据采集
+              - 数据清洗
+            responsibilities:
+              - 金融数据采集与清洗
+              - 数据质量监控与异常处理
+            variants:
+              - key: market_data
+                name: 行情数据
+              - key: alt_data
+                name: 另类数据
           - key: financial_data_engineer
             name: 金融数据工程师
             description: 数据管道与实时行情处理
             sort_order: 2
+            seniority_level: mid
+            skills_required:
+              - 数据管道
+              - 实时行情处理
+              - ETL
+            responsibilities:
+              - 数据管道架构设计与实现
+              - 实时行情数据处理与分发
+            variants:
+              - key: realtime
+                name: 实时行情
+              - key: batch
+                name: 批量处理
           - key: low_latency_engineer
             name: 低延迟工程师
             description: 内核调优与网络优化
             sort_order: 3
+            seniority_level: mid
+            skills_required:
+              - 内核调优
+              - 网络优化
+              - C/C++
+            responsibilities:
+              - 交易系统内核调优
+              - 网络延迟优化与加速
+            variants:
+              - key: kernel
+                name: 内核调优
+              - key: network
+                name: 网络优化
           - key: blockchain_analyst
             name: 区块链分析师
             description: 加密资产与链上数据分析
             sort_order: 4
+            seniority_level: mid
+            skills_required:
+              - 链上分析
+              - DeFi研究
+            responsibilities:
+              - 加密资产与链上数据分析
+              - DeFi协议研究与风险评估
+            variants:
+              - key: onchain
+                name: 链上分析
+              - key: defi
+                name: DeFi
       - key: wealth_management
         name: 财富管理
         description: 客户资产配置与投资顾问
@@ -114,18 +358,64 @@ industries:
             name: 资产配置师
             description: 战略资产配置与组合构建
             sort_order: 1
+            seniority_level: mid
+            skills_required:
+              - 资产配置
+              - 组合优化
+            responsibilities:
+              - 战略资产配置与组合构建
+              - 投资组合绩效评估与再平衡
+            variants:
+              - key: strategic
+                name: 战略配置
+              - key: tactical
+                name: 战术配置
           - key: investment_advisor
             name: 投资顾问
             description: 客户画像与投资建议
             sort_order: 2
+            seniority_level: entry
+            skills_required:
+              - 投资咨询
+              - 客户画像
+            responsibilities:
+              - 客户投资需求分析与画像
+              - 个性化投资建议与方案制定
+            variants:
+              - key: retail
+                name: 零售客户
+              - key: institutional
+                name: 机构客户
           - key: client_profiler
             name: 客户画像师
             description: 财富画像与需求分析
             sort_order: 3
+            seniority_level: mid
+            skills_required:
+              - 客户画像
+              - 需求分析
+            responsibilities:
+              - 客户财富画像构建
+              - 投资需求与风险偏好分析
+            variants:
+              - key: risk_profiling
+                name: 风险画像
+              - key: wealth_profiling
+                name: 财富画像
           - key: fintech_product_manager
             name: 金融科技产品经理
             description: 金融产品设计与管理
             sort_order: 4
+            seniority_level: senior
+            skills_required:
+              - 产品设计
+              - 金融业务
+            responsibilities:
+              - 金融科技产品规划与设计
+              - 产品生命周期管理与迭代
+            variants:
+              - key: general
+                name: 通用
       - key: derivatives
         name: 衍生品
         description: 期权、期货与固定收益
@@ -135,45 +425,141 @@ industries:
             name: 衍生品定价师
             description: 期货策略与期权定价
             sort_order: 1
+            seniority_level: mid
+            skills_required:
+              - 期权定价
+              - 期货策略
+              - 数值方法
+            responsibilities:
+              - 期权定价模型构建与校准
+              - 期货策略设计与回测
+            variants:
+              - key: options
+                name: 期权定价
+              - key: futures
+                name: 期货策略
           - key: fixed_income_analyst
             name: 固定收益分析师
             description: 债券分析与信用评级
             sort_order: 2
+            seniority_level: mid
+            skills_required:
+              - 债券分析
+              - 信用评级
+            responsibilities:
+              - 债券定价与收益率分析
+              - 信用评级与违约风险评估
+            variants:
+              - key: credit
+                name: 信用评级
+              - key: rates
+                name: 利率分析
   - key: selfmedia
     name: 自媒体
     icon: video_camera_front
     description: 短视频创作、网文写作、直播运营、社媒营销等自媒体场景
     sort_order: 2
     departments:
-      - key: content_creation
-        name: 内容创作
-        description: 视频脚本、网文、小红书等内容生产
+      - key: content_graphic
+        name: 内容图文
+        description: 视频脚本、小红书、微信等内容生产与视觉设计
         sort_order: 1
         positions:
           - key: video_scriptwriter
             name: 视频编剧
             description: 短视频脚本创作与平台适配
             sort_order: 1
+            seniority_level: entry
+            skills_required:
+              - 脚本创作
+              - 平台适配
+            responsibilities:
+              - 短视频脚本创作与优化
+              - 多平台内容适配与调整
+            variants:
+              - key: platform_adapt
+                name: 平台适配
+              - key: scriptwriting
+                name: 脚本创作
           - key: short_video_director
             name: 短视频导演
             description: 短视频策划、分镜与审核
             sort_order: 2
+            seniority_level: entry
+            skills_required:
+              - 视频策划
+              - 分镜设计
+              - 内容审核
+            responsibilities:
+              - 短视频策划与分镜设计
+              - 内容质量审核与把控
+            variants:
+              - key: planning
+                name: 策划
+              - key: review
+                name: 审核
+              - key: storyboard
+                name: 分镜
           - key: xiaohongshu_creator
             name: 小红书创作者
             description: 种草笔记与 SEO 优化
             sort_order: 3
+            seniority_level: entry
+            skills_required:
+              - 种草笔记
+              - SEO优化
+            responsibilities:
+              - 种草笔记创作与发布
+              - 小红书SEO优化与流量获取
+            variants:
+              - key: planting
+                name: 种草
+              - key: seo
+                name: SEO
           - key: wechat_operator
             name: 微信公众号运营
             description: 内容创作与粉丝增长
             sort_order: 4
+            seniority_level: entry
+            skills_required:
+              - 内容运营
+              - 粉丝增长
+            responsibilities:
+              - 公众号内容创作与排版
+              - 粉丝增长与互动运营
+            variants:
+              - key: content
+                name: 内容
+              - key: growth
+                name: 增长
           - key: thumbnail_designer
             name: 封面设计师
             description: 视频封面与视觉设计
             sort_order: 5
+            seniority_level: mid
+            skills_required:
+              - 视觉设计
+              - 封面制作
+            responsibilities:
+              - 视频封面设计与制作
+              - 品牌视觉规范维护
+            variants:
+              - key: design
+                name: 设计
           - key: sound_designer
             name: 音效设计师
             description: 音效设计与配乐
             sort_order: 6
+            seniority_level: mid
+            skills_required:
+              - 音效设计
+              - 配乐选择
+            responsibilities:
+              - 音效设计与混音
+              - 背景音乐选择与配乐
+            variants:
+              - key: design
+                name: 设计
       - key: video_production
         name: 视频制作
         description: 视频剪辑、特效与后期
@@ -183,14 +569,50 @@ industries:
             name: Premiere 剪辑师
             description: 专业视频剪辑与特效
             sort_order: 1
+            seniority_level: mid
+            skills_required:
+              - Premiere剪辑
+              - 特效制作
+            responsibilities:
+              - 专业视频剪辑与后期制作
+              - 特效添加与画面调色
+            variants:
+              - key: editing
+                name: 剪辑
+              - key: effects
+                name: 特效
           - key: video_editor_capcut
             name: 剪映剪辑师
             description: 短视频模板化剪辑
             sort_order: 2
+            seniority_level: mid
+            skills_required:
+              - 剪映操作
+              - 模板应用
+            responsibilities:
+              - 短视频模板化剪辑
+              - 快速出片与批量制作
+            variants:
+              - key: editing
+                name: 剪辑
+              - key: template
+                name: 模板
           - key: motion_graphics_artist
             name: 动效设计师
             description: 动效制作与品牌视觉
             sort_order: 3
+            seniority_level: mid
+            skills_required:
+              - 动效设计
+              - 品牌视觉
+            responsibilities:
+              - 动效设计与制作
+              - 品牌视觉动效规范维护
+            variants:
+              - key: branding
+                name: 品牌
+              - key: motion
+                name: 动效
       - key: live_streaming
         name: 直播运营
         description: 直播策划、主持与数据分析
@@ -200,39 +622,123 @@ industries:
             name: 直播主持人
             description: 直播主持与互动
             sort_order: 1
+            seniority_level: entry
+            skills_required:
+              - 直播主持
+              - 互动控场
+            responsibilities:
+              - 直播主持与节奏把控
+              - 观众互动与氛围营造
+            variants:
+              - key: hosting
+                name: 主持
+              - key: interaction
+                name: 互动
           - key: live_stream_scriptwriter
             name: 直播编剧
             description: 直播脚本策划
             sort_order: 2
+            seniority_level: entry
+            skills_required:
+              - 直播脚本
+              - 话术设计
+            responsibilities:
+              - 直播脚本策划与撰写
+              - 互动话术与节奏设计
+            variants:
+              - key: script
+                name: 脚本
           - key: live_stream_analyst
             name: 直播分析师
             description: 直播数据分析与优化
             sort_order: 3
-      - key: growth_monetization
-        name: 增长变现
-        description: 粉丝增长、SEO 与商业变现
+            seniority_level: mid
+            skills_required:
+              - 数据分析
+              - 直播优化
+            responsibilities:
+              - 直播数据监控与分析
+              - 直播策略优化建议
+            variants:
+              - key: analytics
+                name: 数据分析
+      - key: distribution
+        name: 分发运营
+        description: 粉丝增长、SEO、商业变现与多平台分发
         sort_order: 4
         positions:
           - key: fan_growth_strategist
             name: 粉丝增长策略师
             description: 粉丝增长策略制定
             sort_order: 1
+            seniority_level: mid
+            skills_required:
+              - 增长策略
+              - 数据分析
+            responsibilities:
+              - 粉丝增长策略制定与执行
+              - 增长渠道拓展与效果评估
+            variants:
+              - key: strategy
+                name: 策略
           - key: seo_specialist
             name: SEO 专员
             description: 搜索引擎优化
             sort_order: 2
+            seniority_level: mid
+            skills_required:
+              - SEO优化
+              - 关键词研究
+            responsibilities:
+              - 搜索引擎优化与排名提升
+              - 关键词研究与内容优化
+            variants:
+              - key: optimization
+                name: 优化
           - key: monetization_specialist
             name: 变现专员
             description: 商业变现策略与执行
             sort_order: 3
+            seniority_level: mid
+            skills_required:
+              - 商业变现
+              - 收益优化
+            responsibilities:
+              - 商业变现策略制定与执行
+              - 收益渠道拓展与优化
+            variants:
+              - key: revenue
+                name: 变现
           - key: multi_platform_operator
             name: 多平台运营
             description: 跨平台内容适配与同步
             sort_order: 4
+            seniority_level: entry
+            skills_required:
+              - 多平台运营
+              - 内容适配
+            responsibilities:
+              - 跨平台内容适配与同步发布
+              - 各平台运营规则与策略调整
+            variants:
+              - key: adapt
+                name: 适配
+              - key: sync
+                name: 同步
           - key: knowledge_pay_writer
             name: 知识付费作者
             description: 课程内容创作
             sort_order: 5
+            seniority_level: mid
+            skills_required:
+              - 课程设计
+              - 内容创作
+            responsibilities:
+              - 知识付费课程内容创作
+              - 课程大纲设计与迭代
+            variants:
+              - key: course
+                name: 课程
       - key: fiction_writing
         name: 网文创作
         description: 网络小说创作与编辑
@@ -242,22 +748,86 @@ industries:
             name: 网文作者
             description: 网络小说正文创作
             sort_order: 1
+            seniority_level: mid
+            skills_required:
+              - 小说创作
+              - 情节设计
+            responsibilities:
+              - 网络小说正文创作与更新
+              - 读者反馈响应与内容调整
+            variants:
+              - key: data_driven
+                name: 数据驱动
+              - key: drafting
+                name: 起草
+              - key: ghostwriting
+                name: 代笔
+              - key: polishing
+                name: 润色
           - key: webnovel_plotter
             name: 网文大纲师
             description: 大纲设计与节奏控制
             sort_order: 2
+            seniority_level: mid
+            skills_required:
+              - 大纲设计
+              - 节奏把控
+            responsibilities:
+              - 小说大纲设计与规划
+              - 故事节奏与结构把控
+            variants:
+              - key: outline
+                name: 大纲
+              - key: pacing
+                name: 节奏
           - key: character_writer
             name: 角色创作者
             description: 角色创建与一致性维护
             sort_order: 3
+            seniority_level: mid
+            skills_required:
+              - 角色塑造
+              - 一致性维护
+            responsibilities:
+              - 角色创建与性格塑造
+              - 角色行为一致性维护
+            variants:
+              - key: consistency
+                name: 一致性
+              - key: creation
+                name: 创建
           - key: fiction_editor
             name: 网文编辑
             description: 审核与合规检查
             sort_order: 4
+            seniority_level: mid
+            skills_required:
+              - 内容审核
+              - 合规检查
+            responsibilities:
+              - 网文内容审核与修改建议
+              - 合规检查与风险排查
+            variants:
+              - key: compliance
+                name: 合规
+              - key: review
+                name: 审核
           - key: worldbuilding_designer
             name: 世界观设计师
             description: 魔法体系与地理历史设定
             sort_order: 5
+            seniority_level: mid
+            skills_required:
+              - 世界观构建
+              - 设定设计
+            responsibilities:
+              - 世界观体系构建与设定
+              - 设定一致性维护与扩展
+            variants:
+              - key: geography_history
+                name: 地理历史
+              - key: magic_system
+                name: 魔法体系
   - key: softwaredev
     name: 软件开发
     icon: code
@@ -273,26 +843,104 @@ industries:
             name: Go 高级工程师
             description: Go 微服务架构与代码审查
             sort_order: 1
+            seniority_level: senior
+            skills_required:
+              - Go微服务
+              - 架构设计
+              - 代码审查
+            responsibilities:
+              - Go微服务架构设计与开发
+              - 代码审查与技术决策
+            variants:
+              - key: general
+                name: 通用
+              - key: code_review
+                name: 代码审查
+              - key: architect
+                name: 架构
           - key: java_senior_engineer
             name: Java 高级工程师
             description: Java 微服务与 Spring Boot 开发
             sort_order: 2
+            seniority_level: senior
+            skills_required:
+              - Java微服务
+              - Spring Boot
+              - 架构设计
+            responsibilities:
+              - Java微服务开发与架构设计
+              - Spring Boot应用开发与优化
+            variants:
+              - key: general
+                name: 通用
+              - key: code_review
+                name: 代码审查
+              - key: architect
+                name: 架构
           - key: python_senior_engineer
             name: Python 高级工程师
             description: Python 后端与数据服务开发
             sort_order: 3
+            seniority_level: senior
+            skills_required:
+              - Python后端
+              - 数据服务
+            responsibilities:
+              - Python后端服务开发
+              - 数据服务与API设计
+            variants:
+              - key: general
+                name: 通用
+              - key: data
+                name: 数据
           - key: rust_engineer
             name: Rust 工程师
             description: Rust 系统编程与高性能服务
             sort_order: 4
+            seniority_level: mid
+            skills_required:
+              - Rust编程
+              - 系统编程
+            responsibilities:
+              - Rust高性能服务开发
+              - 系统级编程与性能优化
+            variants:
+              - key: general
+                name: 通用
+              - key: systems
+                name: 系统
           - key: cpp_backend_engineer
             name: C++ 后端工程师
             description: C++ 高性能后端与基础设施
             sort_order: 5
+            seniority_level: mid
+            skills_required:
+              - C++编程
+              - 高性能计算
+            responsibilities:
+              - C++高性能后端开发
+              - 基础设施模块构建
+            variants:
+              - key: general
+                name: 通用
+              - key: performance
+                name: 性能
           - key: dba
             name: 数据库管理员
             description: 数据库架构与性能优化
             sort_order: 6
+            seniority_level: mid
+            skills_required:
+              - 数据库架构
+              - 性能调优
+            responsibilities:
+              - 数据库架构设计与维护
+              - 性能调优与故障排查
+            variants:
+              - key: mysql
+                name: MySQL
+              - key: postgresql
+                name: PostgreSQL
       - key: frontend
         name: 前端开发
         description: 前端工程与用户体验
@@ -302,22 +950,86 @@ industries:
             name: Vue3 高级工程师
             description: Vue3 前端工程与 UX 审计
             sort_order: 1
+            seniority_level: senior
+            skills_required:
+              - Vue3开发
+              - 前端架构
+              - UX审计
+            responsibilities:
+              - Vue3前端工程架构设计
+              - UX审计与前端质量把控
+            variants:
+              - key: general
+                name: 通用
+              - key: code_review
+                name: 代码审查
+              - key: ux_auditor
+                name: UX审计
           - key: react_senior_engineer
             name: React 高级前端工程师
             description: React 前端工程与状态管理
             sort_order: 2
+            seniority_level: senior
+            skills_required:
+              - React开发
+              - 状态管理
+              - 架构设计
+            responsibilities:
+              - React前端工程开发
+              - 状态管理方案设计与实现
+            variants:
+              - key: general
+                name: 通用
+              - key: code_review
+                name: 代码审查
+              - key: architect
+                name: 架构
           - key: typescript_expert
             name: TypeScript 专家
             description: TypeScript 类型系统与工具链
             sort_order: 3
+            seniority_level: senior
+            skills_required:
+              - TypeScript类型系统
+              - 工具链
+            responsibilities:
+              - TypeScript类型系统设计
+              - 工具链配置与优化
+            variants:
+              - key: general
+                name: 通用
+              - key: type_design
+                name: 类型设计
           - key: frontend_performance_engineer
             name: 前端性能工程师
             description: 前端性能优化与监控
             sort_order: 4
+            seniority_level: mid
+            skills_required:
+              - 性能优化
+              - 前端监控
+            responsibilities:
+              - 前端性能分析与优化
+              - 性能监控体系建设
+            variants:
+              - key: general
+                name: 通用
+              - key: optimization
+                name: 优化
           - key: ui_ux_implementer
             name: UI/UX 还原工程师
             description: 设计稿高保真还原与交互实现
             sort_order: 5
+            seniority_level: mid
+            skills_required:
+              - 设计还原
+              - 交互实现
+            responsibilities:
+              - 设计稿高保真还原
+              - 交互效果实现与优化
+            variants:
+              - key: general
+                name: 通用
       - key: gamedev
         name: 游戏开发
         description: UE5 游戏客户端与服务端开发
@@ -327,22 +1039,83 @@ industries:
             name: UE 客户端程序员
             description: UE5 Gameplay、性能与网络同步
             sort_order: 1
+            seniority_level: mid
+            skills_required:
+              - UE5开发
+              - Gameplay编程
+              - 网络同步
+            responsibilities:
+              - UE5客户端Gameplay开发
+              - 性能优化与网络同步实现
+            variants:
+              - key: general
+                name: 通用
+              - key: gameplay
+                name: 游戏逻辑
+              - key: network
+                name: 网络
+              - key: performance
+                name: 性能
           - key: ue_graphics_programmer
             name: UE 图形渲染程序员
             description: UE5 渲染管线与 Shader 开发
             sort_order: 2
+            seniority_level: mid
+            skills_required:
+              - 渲染管线
+              - Shader开发
+            responsibilities:
+              - UE5渲染管线定制与优化
+              - Shader开发与视觉效果实现
+            variants:
+              - key: general
+                name: 通用
+              - key: shader
+                name: Shader
           - key: game_server_engineer
             name: 游戏服务端工程师
             description: 游戏服务端架构与网络同步
             sort_order: 3
+            seniority_level: mid
+            skills_required:
+              - 服务端架构
+              - 网络同步
+            responsibilities:
+              - 游戏服务端架构设计
+              - 高并发与扩展性优化
+            variants:
+              - key: general
+                name: 通用
+              - key: scalability
+                name: 扩展性
           - key: technical_artist
             name: 技术美术
             description: 美术工具链与 Shader 桥接
             sort_order: 4
+            seniority_level: entry
+            skills_required:
+              - 美术工具链
+              - Shader桥接
+            responsibilities:
+              - 美术工具链开发与维护
+              - Shader与美术资源桥接
+            variants:
+              - key: general
+                name: 通用
           - key: game_designer
             name: 游戏策划
             description: 系统设计与数值平衡
             sort_order: 5
+            seniority_level: mid
+            skills_required:
+              - 系统设计
+              - 数值平衡
+            responsibilities:
+              - 游戏系统设计与文档编写
+              - 数值平衡与玩法调优
+            variants:
+              - key: system
+                name: 系统
       - key: devops
         name: 运维与基础设施
         description: SRE、CI/CD、容器编排与监控
@@ -352,22 +1125,78 @@ industries:
             name: SRE 工程师
             description: 站点可靠性工程与故障管理
             sort_order: 1
+            seniority_level: mid
+            skills_required:
+              - 可靠性工程
+              - 故障管理
+            responsibilities:
+              - 站点可靠性保障与SLO管理
+              - 故障响应与事后复盘
+            variants:
+              - key: general
+                name: 通用
+              - key: incident
+                name: 故障
           - key: cicd_engineer
             name: CI/CD 工程师
             description: 持续集成与交付流水线
             sort_order: 2
+            seniority_level: mid
+            skills_required:
+              - CI/CD
+              - 流水线设计
+            responsibilities:
+              - 持续集成与交付流水线建设
+              - 构建与部署自动化
+            variants:
+              - key: general
+                name: 通用
+              - key: pipeline
+                name: 流水线
           - key: container_engineer
             name: 容器编排工程师
             description: Kubernetes 与容器化部署
             sort_order: 3
+            seniority_level: mid
+            skills_required:
+              - Kubernetes
+              - 容器化
+            responsibilities:
+              - Kubernetes集群管理与优化
+              - 容器化部署与资源调度
+            variants:
+              - key: general
+                name: 通用
+              - key: optimization
+                name: 优化
           - key: monitoring_engineer
             name: 监控工程师
             description: 可观测性与告警体系
             sort_order: 4
+            seniority_level: mid
+            skills_required:
+              - 可观测性
+              - 告警体系
+            responsibilities:
+              - 监控体系与告警规则建设
+              - 可观测性平台维护
+            variants:
+              - key: general
+                name: 通用
           - key: infra_engineer
             name: 基础设施工程师
             description: 云基础设施与资源管理
             sort_order: 5
+            seniority_level: mid
+            skills_required:
+              - 云基础设施
+              - 资源管理
+            responsibilities:
+              - 云基础设施规划与管理
+              - 资源调度与成本优化
+            variants:
+              - key: general
+                name: 通用
       - key: architecture
         name: 架构
         description: 系统架构设计与技术决策
@@ -377,14 +1206,47 @@ industries:
             name: 系统架构师
             description: 系统架构设计与技术选型
             sort_order: 1
+            seniority_level: senior
+            skills_required:
+              - 架构设计
+              - 技术选型
+              - 微服务
+            responsibilities:
+              - 系统架构设计与技术选型
+              - 架构演进规划与评审
+            variants:
+              - key: general
+                name: 通用
+              - key: microservice
+                name: 微服务
           - key: tech_lead
             name: 技术负责人
             description: 团队技术管理与决策
             sort_order: 2
+            seniority_level: senior
+            skills_required:
+              - 技术管理
+              - 团队领导
+            responsibilities:
+              - 团队技术方向与决策
+              - 技术人才培养与梯队建设
+            variants:
+              - key: general
+                name: 通用
           - key: solution_architect
             name: 解决方案架构师
             description: 跨系统解决方案设计
             sort_order: 3
+            seniority_level: senior
+            skills_required:
+              - 解决方案设计
+              - 跨系统集成
+            responsibilities:
+              - 跨系统解决方案设计
+              - 系统集成方案评审与落地
+            variants:
+              - key: general
+                name: 通用
       - key: qa
         name: 质量保障
         description: 测试工程与质量保证
@@ -394,14 +1256,46 @@ industries:
             name: 测试工程师
             description: 功能测试与质量保障
             sort_order: 1
+            seniority_level: mid
+            skills_required:
+              - 功能测试
+              - 质量保障
+            responsibilities:
+              - 功能测试用例设计与执行
+              - 缺陷跟踪与质量报告
+            variants:
+              - key: general
+                name: 通用
           - key: automation_test_engineer
             name: 自动化测试工程师
             description: 自动化测试框架与脚本
             sort_order: 2
+            seniority_level: mid
+            skills_required:
+              - 自动化测试
+              - 测试框架
+            responsibilities:
+              - 自动化测试框架搭建与维护
+              - 测试脚本编写与持续集成
+            variants:
+              - key: general
+                name: 通用
           - key: performance_test_engineer
             name: 性能测试工程师
             description: 性能压测与瓶颈分析
             sort_order: 3
+            seniority_level: mid
+            skills_required:
+              - 性能压测
+              - 瓶颈分析
+            responsibilities:
+              - 性能压测方案设计与执行
+              - 性能瓶颈定位与优化建议
+            variants:
+              - key: general
+                name: 通用
+              - key: load
+                name: 负载
       - key: mobiledev
         name: 移动开发
         description: iOS/Android/跨平台移动应用
@@ -411,14 +1305,48 @@ industries:
             name: iOS 工程师
             description: Swift/SwiftUI iOS 应用开发
             sort_order: 1
+            seniority_level: mid
+            skills_required:
+              - Swift开发
+              - iOS框架
+            responsibilities:
+              - iOS应用开发与维护
+              - SwiftUI界面实现与优化
+            variants:
+              - key: general
+                name: 通用
+              - key: swiftui
+                name: SwiftUI
           - key: android_engineer
             name: Android 工程师
             description: Kotlin/Compose Android 应用开发
             sort_order: 2
+            seniority_level: mid
+            skills_required:
+              - Kotlin开发
+              - Android框架
+            responsibilities:
+              - Android应用开发与维护
+              - Compose界面实现与优化
+            variants:
+              - key: general
+                name: 通用
+              - key: compose
+                name: Compose
           - key: cross_platform_engineer
             name: 跨平台工程师
             description: Flutter/React Native 跨平台开发
             sort_order: 3
+            seniority_level: mid
+            skills_required:
+              - 跨平台开发
+              - Flutter/React Native
+            responsibilities:
+              - 跨平台应用开发与适配
+              - 平台差异处理与性能优化
+            variants:
+              - key: general
+                name: 通用
       - key: dataeng
         name: 数据工程
         description: 数据平台与数据管道
@@ -428,10 +1356,32 @@ industries:
             name: 数据工程师
             description: 数据管道与 ETL 开发
             sort_order: 1
+            seniority_level: mid
+            skills_required:
+              - ETL开发
+              - 数据管道
+            responsibilities:
+              - 数据管道设计与ETL开发
+              - 数据质量保障与监控
+            variants:
+              - key: general
+                name: 通用
+              - key: etl
+                name: ETL
           - key: data_platform_engineer
             name: 数据平台工程师
             description: 数据平台架构与治理
             sort_order: 2
+            seniority_level: mid
+            skills_required:
+              - 数据平台
+              - 数据治理
+            responsibilities:
+              - 数据平台架构设计与建设
+              - 数据治理与元数据管理
+            variants:
+              - key: general
+                name: 通用
       - key: security
         name: 安全
         description: 网络安全与信息安全
@@ -441,14 +1391,46 @@ industries:
             name: 安全工程师
             description: 安全防护与漏洞管理
             sort_order: 1
+            seniority_level: mid
+            skills_required:
+              - 安全防护
+              - 漏洞管理
+            responsibilities:
+              - 安全防护体系建设与维护
+              - 漏洞发现与修复跟踪
+            variants:
+              - key: general
+                name: 通用
+              - key: pentest
+                name: 渗透
           - key: pentester
             name: 渗透测试工程师
             description: 渗透测试与安全评估
             sort_order: 2
+            seniority_level: mid
+            skills_required:
+              - 渗透测试
+              - 安全评估
+            responsibilities:
+              - 渗透测试与漏洞挖掘
+              - 安全评估报告编写
+            variants:
+              - key: general
+                name: 通用
           - key: security_auditor
             name: 安全审计工程师
             description: 安全合规与审计
             sort_order: 3
+            seniority_level: mid
+            skills_required:
+              - 安全审计
+              - 合规检查
+            responsibilities:
+              - 安全合规审计与检查
+              - 安全策略制定与执行监督
+            variants:
+              - key: general
+                name: 通用
       - key: productpm
         name: 产品与项目管理
         description: 产品规划与项目交付
@@ -458,7 +1440,31 @@ industries:
             name: 产品经理
             description: 产品规划与需求管理
             sort_order: 1
+            seniority_level: senior
+            skills_required:
+              - 产品规划
+              - 需求分析
+            responsibilities:
+              - 产品规划与路线图制定
+              - 需求分析与PRD编写
+            variants:
+              - key: general
+                name: 通用
+              - key: prd
+                name: PRD
           - key: project_manager
             name: 项目经理
             description: 项目进度与风险管理
             sort_order: 2
+            seniority_level: senior
+            skills_required:
+              - 项目管理
+              - 风险控制
+            responsibilities:
+              - 项目进度管理与资源协调
+              - 风险识别与应对措施制定
+            variants:
+              - key: general
+                name: 通用
+              - key: agile
+                name: 敏捷

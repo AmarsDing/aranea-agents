@@ -7,6 +7,8 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // DAGToGraphCompiler converts TaskDAG + AllocationPlan into a Team Definition JSON
@@ -32,7 +34,7 @@ type dagMember struct {
 // that can be fed into the existing CompileToCompiledTeam pipeline.
 func (c *DAGToGraphCompiler) Compile(dag *biz.PlanTaskDAG, allocPlan *biz.AllocationPlan) (string, error) {
 	if dag == nil || allocPlan == nil {
-		return "{}", fmt.Errorf("dag and allocPlan must not be nil")
+		return "{}", kerrors.BadRequest("SPIRIT", "dag and allocPlan must not be nil")
 	}
 
 	// Determine mode based on DAG structure.

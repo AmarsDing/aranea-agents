@@ -38,7 +38,7 @@ export function useAgentsPage() {
     keyword,
     selectedStatus,
     selectedProvider,
-    selectedCategory,
+    selectedTaxonomy,
     selectedCreator,
     creatorOptions,
     page,
@@ -48,13 +48,13 @@ export function useAgentsPage() {
     providerModels,
     checkingModel,
     modelCheckPassed,
-    categoryTree,
+    taxonomyTree,
     pageMax,
     providerOptions,
     tableColumns,
   } = storeToRefs(pageStore);
 
-  const categoryLabel = pageStore.categoryLabel;
+  const taxonomyLabel = pageStore.taxonomyLabel;
 
   const isDark = computed(() => $q.dark.isActive);
   const loading = listLoading;
@@ -133,7 +133,7 @@ export function useAgentsPage() {
     void runLoadList();
   });
   watch(page, () => void runLoadList());
-  watch([keyword, selectedStatus, selectedProvider, selectedCategory, selectedCreator], () => {
+  watch([keyword, selectedStatus, selectedProvider, selectedTaxonomy, selectedCreator], () => {
     page.value = 1;
     void runLoadList();
   });
@@ -359,7 +359,7 @@ export function useAgentsPage() {
     keyword,
     selectedStatus,
     selectedProvider,
-    selectedCategory,
+    selectedTaxonomy,
     selectedCreator,
     creatorOptions,
     page,
@@ -384,7 +384,7 @@ export function useAgentsPage() {
     avatars,
     providerOptions,
     modelOptions,
-    categoryTree,
+    taxonomyTree,
     pageMax,
     tableColumns,
     agentKeyError,
@@ -394,7 +394,7 @@ export function useAgentsPage() {
     createFormError,
     canCreate,
     statusOptions,
-    categoryLabel,
+    taxonomyLabel,
     isFavorite,
     toggleFavorite,
     copyAgentKey,

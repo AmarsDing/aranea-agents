@@ -10,6 +10,10 @@ import (
 type ParallelConfig struct {
 	MaxConcurrentTeams int           `json:"max_concurrent_teams"`
 	MaxTeamConcurrency int           `json:"max_team_concurrency"`
+	// TODO(debt): DEV-06 — TeamTimeoutSeconds is defined but no global pending/running Team
+	// timeout detection timer is implemented. The timeout is only applied to individual turn
+	// execution contexts, not to the overall team lifecycle.
+	// See: https://github.com/aranea-agents/aranea-agents/issues/DEV-06
 	TeamTimeoutSeconds int           `json:"team_timeout_seconds"`
 	AutoArchiveSeconds int           `json:"auto_archive_seconds"`
 	MaxSessionDepth    int           `json:"max_session_depth"`

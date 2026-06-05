@@ -19,7 +19,7 @@ func normalizeNodeType(t string) string {
 	return strings.ToLower(strings.TrimSpace(t))
 }
 
-func nodeOptions(n NodeDef, resolvedFallback trpcagent.Agent, cbState *CircuitBreakerState) []trpcgraph.Option {
+func nodeOptions(n NodeDef, resolvedFallback trpcagent.Agent) []trpcgraph.Option {
 	opts := []trpcgraph.Option{}
 	if n.InterruptBefore {
 		opts = append(opts, trpcgraph.WithInterruptBefore())
@@ -75,18 +75,18 @@ func agentMapperOptions(n NodeDef) []trpcgraph.Option {
 	return opts
 }
 
-func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *BuildDeps, cbState *CircuitBreakerState) ([]trpcagent.Agent, error) {
+func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *GraphNodeResolverSet) ([]trpcagent.Agent, error) {
 	var resolvedFallback trpcagent.Agent
 	if fb := strings.TrimSpace(n.FallbackAgent); fb != "" && deps != nil && deps.Agents != nil {
 		if fa, ferr := deps.Agents.ResolveAgent(ctx, fb); ferr == nil {
 			resolvedFallback = fa
 		}
 	}
-	opts := nodeOptions(n, resolvedFallback, cbState)
+	opts := nodeOptions(n, resolvedFallback)
 	switch normalizeNodeType(n.Type) {
 	case "llm":
 		if deps == nil || deps.Models == nil {
-			return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q type llm requires BuildDeps.Models", n.ID))
+			return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q type llm requires GraphNodeResolverSet.Models", n.ID))
 		}
 		mdl, err := deps.Models.ResolveModel(ctx, n.ModelName)
 		if err != nil {
@@ -103,7 +103,7 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Bu
 		return nil, nil
 	case "tool", "tools":
 		if deps == nil || deps.Tools == nil {
-			return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q type tool requires BuildDeps.Tools", n.ID))
+			return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q type tool requires GraphNodeResolverSet.Tools", n.ID))
 		}
 		toolMap, err := deps.Tools.ResolveTools(ctx, n.ToolNames)
 		if err != nil {
@@ -117,7 +117,7 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Bu
 			ref = strings.TrimSpace(n.ID)
 		}
 		if deps == nil || deps.Agents == nil {
-			return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q type agent requires BuildDeps.Agents", n.ID))
+			return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q type agent requires GraphNodeResolverSet.Agents", n.ID))
 		}
 		sub, err := deps.Agents.ResolveAgent(ctx, ref)
 		if err != nil {
@@ -142,6 +142,14 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Bu
 			sg.AddNode(n.ID, SkipNodeFunc(n.ID), opts...)
 			return nil, nil
 		}
+		// Try resolving via FunctionResolver if available.
+		if deps != nil && deps.Functions != nil && strings.TrimSpace(n.FuncRef) != "" {
+			ct, err := deps.Functions.ResolveFunction(ctx, n.FuncRef)
+			if err == nil && ct != nil {
+				sg.AddNode(n.ID, callableToolToNodeFunc(n.ID, ct), opts...)
+				return nil, nil
+			}
+		}
 		return nil, kerrors.BadRequest("GRAPH", fmt.Sprintf("graph: node %q type function requires Func or %q FuncRef", n.ID, biz.SkipNodeFuncRef))
 	case "router":
 		sg.AddNode(n.ID, func(ctx context.Context, state trpcgraph.State) (any, error) {
@@ -162,5 +170,17 @@ func wireNode(ctx context.Context, sg *trpcgraph.StateGraph, n NodeDef, deps *Bu
 		}
 		sg.AddNode(n.ID, n.Func, opts...)
 		return nil, nil
+	}
+}
+
+// callableToolToNodeFunc wraps a CallableTool as a NodeFunc for graph function nodes.
+func callableToolToNodeFunc(id string, ct trpctool.CallableTool) trpcgraph.NodeFunc {
+	return func(ctx context.Context, state trpcgraph.State) (any, error) {
+		result, err := ct.Call(ctx, nil)
+		if err != nil {
+			return nil, err
+		}
+		_ = result
+		return state, nil
 	}
 }

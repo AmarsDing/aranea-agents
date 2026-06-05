@@ -80,14 +80,6 @@ export function ownerChipColor(value: string) {
   return value === 'team' ? 'teal' : 'primary';
 }
 
-export function statusBadgeColor(value: string) {
-  if (value === 'interrupted') return 'warning';
-  if (value === 'running') return 'primary';
-  if (value === 'awaiting_confirmation') return 'info';
-  if (value === 'idle') return 'grey';
-  return 'positive';
-}
-
 export function contextProgressColor(value: string) {
   return value === 'exceeded'
     ? 'purple'

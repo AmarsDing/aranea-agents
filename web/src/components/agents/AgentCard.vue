@@ -42,7 +42,7 @@
       </p>
       <div class="row q-gutter-xs">
         <q-chip v-if="isBuiltin" dense square class="agent-card__chip is-system" icon="lock">系统</q-chip>
-        <q-chip v-else dense square class="agent-card__chip">{{ categoryLabel }}</q-chip>
+        <q-chip v-else dense square class="agent-card__chip">{{ taxonomyLabel }}</q-chip>
         <q-chip v-if="evolving" dense square class="agent-card__chip is-evolving" icon="auto_awesome">进化中</q-chip>
         <q-chip
           v-if="agent.agent_kind === 'a2a_proxy'"
@@ -87,7 +87,7 @@ import { statusLabel } from './agentUi';
 const props = defineProps<{
   agent: Agent;
   favorite: boolean;
-  categoryLabel: string;
+  taxonomyLabel: string;
   contextLabel: string;
   evolving: boolean;
 }>();

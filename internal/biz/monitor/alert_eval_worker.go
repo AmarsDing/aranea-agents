@@ -83,7 +83,7 @@ func (w *AlertEvalWorker) evaluate(ctx context.Context) {
 	if !w.ready.Load() {
 		return
 	}
-	_, _, _ = w.sf.Do("eval", func() (interface{}, error) {
+	_, _, _ = w.sf.Do("eval", func() (any, error) {
 		w.usecase.EvaluateAlerts(ctx)
 		return nil, nil
 	})

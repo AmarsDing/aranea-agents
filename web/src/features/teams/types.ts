@@ -13,7 +13,7 @@ export type Team = {
   app_name: string;
   linked_graph_id: string;
   has_active_run: boolean;
-  category_industry_id: string;
+  taxonomy_industry_id: string;
   readonly?: boolean;
   source?: string; // user | system | imported
   created_at: string;

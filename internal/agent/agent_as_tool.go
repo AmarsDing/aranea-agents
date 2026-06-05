@@ -7,6 +7,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 	trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
 	agenttool "trpc.group/trpc-go/trpc-agent-go/tool/agent"
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -21,7 +22,7 @@ func BuildAgentAsTool(ctx context.Context, matcher biz.AgentMatcherPort, deps TR
 		return nil, fmt.Errorf("agent matching failed: %w", err)
 	}
 	if match == nil {
-		return nil, fmt.Errorf("no matching agent found for: %s", taskDesc)
+		return nil, kerrors.NotFound("SPIRIT", "no matching agent found for: "+taskDesc)
 	}
 
 	bizAg, err := resolveBizAgentByKey(ctx, deps, match.AgentKey)

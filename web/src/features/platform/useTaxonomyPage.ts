@@ -58,8 +58,8 @@ export function useTaxonomyPage() {
   async function loadTree(opts?: { silent?: boolean }) {
     if (!opts?.silent) loading.value = true;
     try {
-      await platformStore.loadCategoryTree(CATEGORY_RESOURCE);
-      tree.value = platformStore.categoryTree;
+      await platformStore.loadTaxonomyTree(CATEGORY_RESOURCE);
+      tree.value = platformStore.taxonomyTree;
     } finally {
       if (!opts?.silent) loading.value = false;
     }
@@ -67,7 +67,7 @@ export function useTaxonomyPage() {
 
   function syncTreePatch(id: string, patch: Partial<PlatformResourceTreeNode>) {
     tree.value = patchTaxonomyTreeNode(tree.value, id, patch);
-    platformStore.categoryTree = tree.value;
+    platformStore.taxonomyTree = tree.value;
   }
 
   function openCreate(level: TaxonomyLevel, parent?: PlatformResourceTreeNode) {

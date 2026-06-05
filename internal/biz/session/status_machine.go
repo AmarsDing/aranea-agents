@@ -31,7 +31,7 @@ func NewSessionStatusMachine(status SessionStatus, reason SessionStatusReason, c
 
 func (m *SessionStatusMachine) TransitionTo(target SessionStatus, reason SessionStatusReason) error {
 	if !m.CanTransitionTo(target) {
-		return kerrors.BadRequest("SESSION", fmt.Sprintf("cannot transition session status from %s to %s", m.status, target))
+		return kerrors.Conflict("SESSION", fmt.Sprintf("cannot transition session status from %s to %s", m.status, target))
 	}
 	m.status = target
 	m.statusReason = reason

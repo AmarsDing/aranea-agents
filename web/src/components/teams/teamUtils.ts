@@ -5,7 +5,10 @@
 import type { Agent } from '../../features/agents/types';
 import { findTaxonomyPath } from '../../features/platform/taxonomyTreeUtils';
 import type { PlatformResourceTreeNode } from '../../features/platform/types';
-import type { Team, TeamDefinition, TeamDefinitionGraphNode } from '../../features/teams/types';
+import type { Team, TeamDefinition } from '../../features/teams/types';
+import { buildGraphFromDefinition } from '../../features/teams/graphUtils';
+
+export { buildGraphFromDefinition };
 
 export type TeamIndustryGroup = {
   id: string;
@@ -331,121 +334,6 @@ export function withGraph(definition: TeamDefinition): TeamDefinition {
   };
 }
 
-export function buildGraphFromDefinition(def: TeamDefinition): NonNullable<TeamDefinition['graph']> {
-  const members = [...(def.members || [])].sort((a, b) => a.sort_order - b.sort_order);
-  const layout = graphLayoutForMode(def.mode || 'sequential');
-  const mode = def.mode || 'sequential';
-  const memberNodes: TeamDefinitionGraphNode[] = members.map((member, index) => ({
-    id: graphMemberID(member, index),
-    type: 'agent',
-    label: member.name || member.role || `Agent ${index + 1}`,
-    agent_id: member.agent_id,
-    role: member.role,
-    x: graphX(mode, index, members.length),
-    y: graphY(mode, index, members.length),
-  }));
-  const nodes: TeamDefinitionGraphNode[] = [{ id: 'start', type: 'start', label: '开始', x: 0, y: 80 }, ...memberNodes];
-  if (mode === 'parallel' && memberNodes.length > 1) {
-    nodes.push({ id: 'join', type: 'join', label: '并行汇合', x: graphEndX(mode, members.length) - 90, y: 80 });
-  }
-  nodes.push({ id: 'end', type: 'end', label: '结束', x: graphEndX(mode, members.length), y: 80 });
-  return { version: 1, layout, nodes, edges: buildGraphEdges(mode, members, def.synthesizer_agent_id) };
-}
-
-function buildGraphEdges(mode: string, members: TeamDefinition['members'], synthesizerAgentId?: string) {
-  const ids = members.map(graphMemberID);
-  if (ids.length === 0) return [{ id: 'start-end', source: 'start', target: 'end', label: 'no members' }];
-  if (mode === 'adaptive') {
-    return [
-      { id: 'start-adaptive', source: 'start', target: ids[0], label: 'select topology' },
-      ...ids.slice(0, -1).map((id, index) => ({
-        id: `${id}-${ids[index + 1]}`,
-        source: id,
-        target: ids[index + 1],
-        label: 'candidate',
-      })),
-      { id: `${ids[ids.length - 1]}-end`, source: ids[ids.length - 1], target: 'end', label: 'final' },
-    ];
-  }
-  if (mode === 'parallel') {
-    const synthId = resolveSynthesizerMemberId(members, synthesizerAgentId);
-    const workerIds = synthId ? ids.filter((id) => id !== synthId) : ids;
-    const downstream = synthId || 'end';
-    const edges = workerIds.map((id) => ({ id: `start-${id}`, source: 'start', target: id, label: 'fan out' }));
-    edges.push(...workerIds.map((id) => ({ id: `${id}-join`, source: id, target: 'join', label: 'join' })));
-    edges.push({ id: 'join-downstream', source: 'join', target: downstream, label: synthId ? 'synthesize' : 'finish' });
-    if (synthId) edges.push({ id: `${synthId}-end`, source: synthId, target: 'end', label: 'final' });
-    return edges;
-  }
-  if (mode === 'critic_loop') {
-    const edges = [{ id: `start-${ids[0]}`, source: 'start', target: ids[0], label: 'draft' }];
-    for (let i = 0; i < ids.length - 1; i++)
-      edges.push({
-        id: `${ids[i]}-${ids[i + 1]}`,
-        source: ids[i],
-        target: ids[i + 1],
-        label: i === 0 ? 'review' : 'revise',
-      });
-    if (ids.length > 1)
-      edges.push({
-        id: `${ids[ids.length - 1]}-${ids[0]}-loop`,
-        source: ids[ids.length - 1],
-        target: ids[0],
-        label: 'optional loop',
-      });
-    edges.push({ id: `${ids[ids.length - 1]}-end`, source: ids[ids.length - 1], target: 'end', label: 'approved' });
-    return edges;
-  }
-  return ['start', ...ids, 'end'].slice(0, -1).map((source, index, chain) => {
-    const target = index === chain.length - 1 ? 'end' : chain[index + 1];
-    return {
-      id: `${source}-${target}`,
-      source,
-      target,
-      label: mode === 'coordinator' && index === 0 ? 'plan' : 'next',
-    };
-  });
-}
-
-function graphMemberID(member: TeamDefinition['members'][number], index: number) {
-  return `member-${member.sort_order || index + 1}`;
-}
-
-function resolveSynthesizerMemberId(members: TeamDefinition['members'], synthesizerAgentId?: string) {
-  const synthAgent = String(synthesizerAgentId || '').trim();
-  if (synthAgent) {
-    const idx = members.findIndex((m) => String(m.agent_id || '').trim() === synthAgent);
-    if (idx >= 0) return graphMemberID(members[idx], idx);
-  }
-  const synth = members.find((m) => String(m.role || '').toLowerCase() === 'synthesizer');
-  if (synth) return graphMemberID(synth, members.indexOf(synth));
-  return '';
-}
-
-function graphLayoutForMode(mode: string) {
-  if (mode === 'adaptive') return 'adaptive';
-  if (mode === 'parallel') return 'parallel';
-  if (mode === 'critic_loop') return 'loop';
-  if (mode === 'coordinator') return 'coordinator';
-  return 'linear';
-}
-
-function graphX(mode: string, index: number, total: number) {
-  if (mode === 'parallel') return 160;
-  return 160 + index * 150;
-}
-
-function graphY(mode: string, index: number, total: number) {
-  if (mode !== 'parallel') return 80;
-  const offset = (index - (total - 1) / 2) * 74;
-  return 80 + offset;
-}
-
-function graphEndX(mode: string, total: number) {
-  if (mode === 'parallel') return 360;
-  return 160 + Math.max(total, 1) * 150;
-}
-
 export function formatDate(value: string) {
   if (!value) return '-';
   return new Date(value).toLocaleString();
@@ -464,16 +352,16 @@ function teamDefinitionExtras(team: Team) {
 }
 
 /** 根据成员 Agent 所属行业投票；无成员时回退 definition 中的 category / industry_id。 */
-export function inferTeamIndustryId(team: Team, agents: Agent[], categoryTree: PlatformResourceTreeNode[]): string {
-  if (team.category_industry_id && findIndustryNode(categoryTree, team.category_industry_id)) {
-    return team.category_industry_id;
+export function inferTeamIndustryId(team: Team, agents: Agent[], taxonomyTree: PlatformResourceTreeNode[]): string {
+  if (team.taxonomy_industry_id && findIndustryNode(taxonomyTree, team.taxonomy_industry_id)) {
+    return team.taxonomy_industry_id;
   }
   const extras = teamDefinitionExtras(team);
-  if (extras.industry_id && findIndustryNode(categoryTree, extras.industry_id)) {
+  if (extras.industry_id && findIndustryNode(taxonomyTree, extras.industry_id)) {
     return extras.industry_id;
   }
 
-  const industries = categoryTree.filter((node) => node.level === 'industry');
+  const industries = taxonomyTree.filter((node) => node.level === 'industry');
   const matchByName = (name?: string) => {
     const q = String(name || '').trim();
     if (!q) return '';
@@ -487,7 +375,7 @@ export function inferTeamIndustryId(team: Team, agents: Agent[], categoryTree: P
   for (const member of def.members.filter((row) => row.enabled !== false)) {
     const agent = agents.find((row) => row.id === member.agent_id);
     if (!agent?.taxonomy_position_id) continue;
-    const industry = findTaxonomyPath(categoryTree, agent.taxonomy_position_id).find(
+    const industry = findTaxonomyPath(taxonomyTree, agent.taxonomy_position_id).find(
       (node) => node.level === 'industry',
     );
     if (!industry) continue;
@@ -506,12 +394,12 @@ export function inferTeamIndustryId(team: Team, agents: Agent[], categoryTree: P
   return bestId;
 }
 
-function findIndustryNode(categoryTree: PlatformResourceTreeNode[], industryId: string) {
-  return categoryTree.find((node) => node.level === 'industry' && node.id === industryId) ?? null;
+function findIndustryNode(taxonomyTree: PlatformResourceTreeNode[], industryId: string) {
+  return taxonomyTree.find((node) => node.level === 'industry' && node.id === industryId) ?? null;
 }
 
-export function industryOptionsFromTree(categoryTree: PlatformResourceTreeNode[]) {
-  return categoryTree
+export function industryOptionsFromTree(taxonomyTree: PlatformResourceTreeNode[]) {
+  return taxonomyTree
     .filter((node) => node.level === 'industry')
     .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name, 'zh-CN'))
     .map((node) => ({
@@ -525,19 +413,19 @@ export const BuiltinIndustryId = '__builtin__';
 export function groupTeamsByIndustry(
   teams: Team[],
   agents: Agent[],
-  categoryTree: PlatformResourceTreeNode[],
+  taxonomyTree: PlatformResourceTreeNode[],
   industryFilter = '',
 ): TeamIndustryGroup[] {
   const builtinTeams = teams.filter((t) => t.readonly);
   const nonBuiltinTeams = teams.filter((t) => !t.readonly);
 
-  const industries = categoryTree.filter((node) => node.level === 'industry');
+  const industries = taxonomyTree.filter((node) => node.level === 'industry');
   const buckets = new Map<string, Team[]>();
   buckets.set(UNCategorizedIndustryId, []);
   for (const industry of industries) buckets.set(industry.id, []);
 
   for (const team of nonBuiltinTeams) {
-    const industryId = inferTeamIndustryId(team, agents, categoryTree);
+    const industryId = inferTeamIndustryId(team, agents, taxonomyTree);
     if (!buckets.has(industryId)) buckets.set(industryId, []);
     buckets.get(industryId)!.push(team);
   }

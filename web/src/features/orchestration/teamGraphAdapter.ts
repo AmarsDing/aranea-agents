@@ -1,6 +1,6 @@
 import type { TeamDefinition } from '../teams/types';
 import type { GraphDefinition, NodeDef, EdgeDef } from '../graph/types';
-import { buildGraphFromDefinition } from '../../components/teams/teamUtils';
+import { buildGraphFromDefinition } from '../teams/graphUtils';
 import type { DisplayStatus, AgentNodeState } from './types';
 
 export function teamDefinitionToGraphDef(definition: TeamDefinition): GraphDefinition {

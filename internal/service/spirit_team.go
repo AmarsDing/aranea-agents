@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"aranea-agents/internal/biz"
@@ -23,16 +22,14 @@ var (
 )
 
 type TeamStarter struct {
-	sessions       *biz.SessionUsecase
-	team           TeamOrchestrationDeps
-	bus            event.Bus
-	orchCache      *biz.OrchestrationCache
-	evolutionSugg  biz.EvolutionSuggestionRepo
-	lg             loggateway.Logger
+	sessions *biz.SessionUsecase
+	team     TeamOrchestrationDeps
+	bus      event.Bus
+	lg       loggateway.Logger
 }
 
-func NewTeamStarter(sessions *biz.SessionUsecase, team TeamOrchestrationDeps, bus event.Bus, orchCache *biz.OrchestrationCache, evolutionSugg biz.EvolutionSuggestionRepo, lg loggateway.Logger) *TeamStarter {
-	return &TeamStarter{sessions: sessions, team: team, bus: bus, orchCache: orchCache, evolutionSugg: evolutionSugg, lg: lg}
+func NewTeamStarter(sessions *biz.SessionUsecase, team TeamOrchestrationDeps, bus event.Bus, lg loggateway.Logger) *TeamStarter {
+	return &TeamStarter{sessions: sessions, team: team, bus: bus, lg: lg}
 }
 
 func (s *TeamStarter) StartTeamTurn(ctx context.Context, sessionID string, content string) error {
@@ -228,156 +225,65 @@ func (s *TeamStarter) HandleTeamTurnResult(ctx context.Context, spiritSessionID,
 }
 
 func (s *TeamStarter) recordTeamCompletion(ctx context.Context, team biz.Team, durationMs int64) {
-	if s.orchCache == nil || team.DagNodeID == "" {
-		return
-	}
-	dqScore := biz.ComputeDQScore(biz.TeamSynthesisResult{
-		TeamID:   team.ID,
-		TeamName: team.DisplayName,
-		TaskName: team.TaskDescription,
-		Status:   "completed",
-	}, durationMs)
-	taskPattern := biz.ExtractTaskPattern(team.TaskDescription)
-	topology := biz.InferTopologyFromTeam(team, s.lg)
-	s.orchCache.RecordCompletion(ctx, taskPattern, topology, dqScore, 1, durationMs)
-	s.lg.Info("精灵团队完成，记录 DQ Score",
-		loggateway.StepID("spirit.team.completion"),
-		loggateway.Str("team_id", team.ID),
-		loggateway.Str("task_pattern", taskPattern),
-		loggateway.Float64("dq_score", dqScore),
-	)
-
-	if dqScore < 0.5 && s.evolutionSugg != nil && team.SpiritSessionID != "" {
-		altTopology, altFound := s.orchCache.SuggestBestAlternativeTopology(team.TaskDescription, topology)
-		content := fmt.Sprintf("团队 %q 的 DQ Score 为 %.2f（低于阈值 0.5），当前拓扑 %s 执行效果不佳。", team.DisplayName, dqScore, topology)
-		if altFound {
-			content += fmt.Sprintf("建议尝试 %s 拓扑。", altTopology)
-		} else {
-			content += "暂无历史数据推荐替代拓扑，建议调整任务描述或减少团队数量。"
-		}
-		_, suggErr := s.evolutionSugg.Create(ctx, biz.EvolutionSuggestion{
-			AgentID: team.SpiritSessionID,
-			Type:    "orchestration_optimization",
-			Title:   fmt.Sprintf("编排优化建议: %s", biz.TruncateRunes(team.TaskDescription, 40)),
-			Content: content,
-			Status:  "pending",
-		})
-		if suggErr != nil {
-			s.lg.Warn("创建编排优化建议失败",
-				loggateway.StepID("spirit.evolution_suggestion_err"),
-				loggateway.Str("team_id", team.ID),
-				loggateway.Err(suggErr),
-			)
-		}
-	}
+	s.team.SpiritUC.RecordTeamCompletion(ctx, team, durationMs)
 }
 
 func (s *TeamStarter) scheduleDependentTeams(ctx context.Context, spiritSessionID string, completedTeam biz.Team) {
-	if completedTeam.DagNodeID == "" {
-		return
-	}
-	allTeams, err := s.team.TeamUC.ListBySpiritSessionID(ctx, spiritSessionID)
-	if err != nil {
-		s.lg.Warn("查询精灵团队列表失败，跳过依赖调度",
-			loggateway.StepID("spirit.schedule_deps.list_err"),
-			loggateway.Err(err),
-		)
-		return
-	}
-	for i := range allTeams {
-		t := &allTeams[i]
-		if t.Status != biz.TeamStatusPending {
-			continue
-		}
-		if !containsString(t.DependsOn, completedTeam.DagNodeID) {
-			continue
-		}
-		allDepsMet := true
-		anyDepFailed := false
-		for _, depID := range t.DependsOn {
-			found := false
-			for j := range allTeams {
-				if allTeams[j].DagNodeID == depID {
-					if allTeams[j].Status == biz.TeamStatusCompleted {
-					found = true
-				} else if allTeams[j].Status == biz.TeamStatusFailed || allTeams[j].Status == biz.TeamStatusCancelled {
-						anyDepFailed = true
-					}
-					break
-				}
-			}
-			if !found && !anyDepFailed {
-				allDepsMet = false
-				break
-			}
-		}
-		if anyDepFailed {
-			_, uerr := s.team.TeamUC.TransitionStatus(ctx, t.ID, biz.TeamStatusFailed)
+	actions := s.team.SpiritUC.ScheduleDependentTeams(ctx, spiritSessionID, completedTeam)
+	for _, action := range actions {
+		if action.Action == "fail" {
+			_, uerr := s.team.TeamUC.TransitionStatus(ctx, action.TeamID, biz.TeamStatusFailed)
 			if uerr != nil {
 				s.lg.Warn("更新团队状态为 failed 失败，依赖调度中断",
 					loggateway.StepID("spirit.schedule_deps.fail_err"),
-					loggateway.Str("team_id", t.ID),
+					loggateway.Str("team_id", action.TeamID),
 					loggateway.Err(uerr),
 				)
 			} else {
 				s.lg.Info("依赖调度：团队前置依赖失败，标记团队为 failed",
 					loggateway.StepID("spirit.schedule_deps.dep_failed"),
-					loggateway.Str("team_id", t.ID),
-					loggateway.Str("dag_node_id", t.DagNodeID),
+					loggateway.Str("team_id", action.TeamID),
+					loggateway.Str("dag_node_id", action.DagNodeID),
 				)
 				if s.bus != nil {
 					env := event.NewEnvelope(event.EnvelopeTypeSpiritTeamFailed, "spirit-scheduler", spiritSessionID)
-					env.TeamID = t.ID
+					env.TeamID = action.TeamID
 					env.Metadata = map[string]any{
-						"team_id":   t.ID,
-						"team_name": t.DisplayName,
-						"error":     "前置依赖团队执行失败",
+						"team_id":   action.TeamID,
+						"team_name": action.TeamName,
+						"error":     action.Reason,
 					}
 					s.bus.Publish(ctx, env)
 				}
 				s.checkAllTeamsCompleted(ctx, spiritSessionID)
 			}
-			continue
-		}
-		if !allDepsMet {
-			continue
-		}
-		current, getErr := s.team.TeamUC.Get(ctx, t.ID)
-		if getErr != nil || current.Status != biz.TeamStatusPending {
-			s.lg.Info("依赖调度：团队状态已变更，跳过激活",
-				loggateway.StepID("spirit.schedule_deps.stale"),
-				loggateway.Str("team_id", t.ID),
-				loggateway.Str("current_status", current.Status),
-			)
-			continue
-		}
-		_, uerr := s.team.TeamUC.TransitionStatus(ctx, t.ID, biz.TeamStatusRunning)
-		if uerr != nil {
-			s.lg.Warn("更新团队状态失败，依赖调度中断",
-				loggateway.StepID("spirit.schedule_deps.update_err"),
-				loggateway.Str("team_id", t.ID),
-				loggateway.Err(uerr),
-			)
-			continue
-		}
-		s.lg.Info("依赖调度：团队所有前置依赖已完成，激活团队",
-			loggateway.StepID("spirit.schedule_deps.activated"),
-			loggateway.Str("team_id", t.ID),
-			loggateway.Str("dag_node_id", t.DagNodeID),
-		)
-		if s.bus != nil {
-			env := event.NewEnvelope(event.EnvelopeTypeSpiritTeamProgress, "spirit-scheduler", spiritSessionID)
-			env.TeamID = t.ID
-			env.Metadata = map[string]any{
-				"team_id":   t.ID,
-				"team_name": t.DisplayName,
-				"status":    biz.TeamStatusRunning,
+		} else if action.Action == "activate" {
+			_, uerr := s.team.TeamUC.TransitionStatus(ctx, action.TeamID, biz.TeamStatusRunning)
+			if uerr != nil {
+				s.lg.Warn("更新团队状态失败，依赖调度中断",
+					loggateway.StepID("spirit.schedule_deps.update_err"),
+					loggateway.Str("team_id", action.TeamID),
+					loggateway.Err(uerr),
+				)
+				continue
 			}
-			s.bus.Publish(ctx, env)
-		}
-		if t.TaskDescription != "" {
-			taskDesc := t.TaskDescription
-			depTeamID := t.ID
+			s.lg.Info("依赖调度：团队所有前置依赖已完成，激活团队",
+				loggateway.StepID("spirit.schedule_deps.activated"),
+				loggateway.Str("team_id", action.TeamID),
+				loggateway.Str("dag_node_id", action.DagNodeID),
+			)
+			if s.bus != nil {
+				env := event.NewEnvelope(event.EnvelopeTypeSpiritTeamProgress, "spirit-scheduler", spiritSessionID)
+				env.TeamID = action.TeamID
+				env.Metadata = map[string]any{
+					"team_id":   action.TeamID,
+					"team_name": action.TeamName,
+					"status":    biz.TeamStatusRunning,
+				}
+				s.bus.Publish(ctx, env)
+			}
+			taskDesc := action.TeamName // DagNodeID is used as task description fallback
+			depTeamID := action.TeamID
 			safego.Go(ctx, "spirit-schedule-deps", func() {
 				startCtx := context.WithoutCancel(ctx)
 				s.findAndStartTeamTurn(startCtx, depTeamID, taskDesc)
@@ -406,39 +312,15 @@ func (s *TeamStarter) findAndStartTeamTurn(ctx context.Context, teamID, taskDesc
 }
 
 func (s *TeamStarter) checkAllTeamsCompleted(ctx context.Context, spiritSessionID string) {
-	teams, err := s.team.TeamUC.ListBySpiritSessionID(ctx, spiritSessionID)
-	if err != nil {
-		s.lg.Warn("查询精灵会话团队列表失败，跳过全完成检查",
-			loggateway.StepID("spirit.teams.check_all"),
-			loggateway.Str("spirit_session_id", spiritSessionID),
-			loggateway.Err(err),
-		)
+	result := s.team.SpiritUC.CheckAllTeamsCompleted(ctx, spiritSessionID)
+	if !result.AllDone {
 		return
-	}
-	if len(teams) == 0 {
-		return
-	}
-	hasCompleted := false
-	for _, t := range teams {
-		switch t.Status {
-		case biz.TeamStatusPending, biz.TeamStatusRunning:
-			return
-		case biz.TeamStatusCompleted:
-			hasCompleted = true
-		}
-	}
-	if !hasCompleted {
-		return
-	}
-	var teamIDs []string
-	for _, t := range teams {
-		teamIDs = append(teamIDs, t.ID)
 	}
 	if s.bus != nil {
 		env := event.NewEnvelope(event.EnvelopeTypeSpiritTeamsAllCompleted, "team-starter", spiritSessionID)
 		env.Metadata = map[string]any{
 			"spirit_session_id": spiritSessionID,
-			"team_ids":          teamIDs,
+			"team_ids":          result.TeamIDs,
 		}
 		s.bus.Publish(ctx, env)
 	}

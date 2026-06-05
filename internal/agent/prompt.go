@@ -12,7 +12,7 @@ import (
 // Deps is a minimal bundle for prompt / runtime helpers (biz facades).
 type Deps struct {
 	Agents       biz.AgentRepository
-	AgentUC      *biz.AgentUsecase
+	AgentUC      biz.TeamAgentLookup
 	ToolsCatalog biz.ToolCatalogReader
 	SQLiteSessionMemory bool
 	Taxonomy      *biz.TaxonomyUsecase

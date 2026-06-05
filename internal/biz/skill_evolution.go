@@ -12,6 +12,11 @@ import (
 	"aranea-agents/pkg/loggateway"
 )
 
+const (
+	defaultScanAgentLimit   = 500
+	skillPatternMinConfidence = 0.15
+)
+
 type SkillAutoCreator interface {
 	GenerateSKILLMD(ctx context.Context, patternDesc string, toolHistory []ToolCallRecord) (name string, content string, err error)
 }
@@ -54,6 +59,7 @@ func (uc *SkillEvolutionUsecase) DetectAndPropose(ctx context.Context, agentID s
 		return nil, err
 	}
 	if uc.creator == nil {
+		uc.lg.Warn("skill auto creator not configured, skill auto-creation disabled", loggateway.StepID("skill_evo.detect"))
 		return nil, nil
 	}
 	patterns, err := uc.findSkillPatterns(ctx, agentID)
@@ -143,7 +149,11 @@ func (uc *SkillEvolutionUsecase) RegisterApproved(ctx context.Context, id string
 		return SkillProposal{}, kerrors.BadRequest("SKILL_EVO", "only approved proposals can be registered")
 	}
 	if uc.registrar == nil {
-		return SkillProposal{}, kerrors.InternalServer("SKILL_EVO", "skill registrar is not configured")
+		uc.lg.Warn("skill registrar not configured, registration skipped", loggateway.StepID("skill_evo.register"))
+		return SkillProposal{}, nil
+	}
+	if strings.TrimSpace(p.SkillMD) == "" {
+		return SkillProposal{}, kerrors.BadRequest("SKILL_EVO", "cannot register proposal with empty skill content")
 	}
 	exists, exErr := uc.registrar.SkillExists(ctx, p.AgentID, p.SkillName)
 	if exErr != nil {
@@ -166,12 +176,12 @@ func (uc *SkillEvolutionUsecase) GetProposal(ctx context.Context, id string) (Sk
 	return uc.repo.GetByID(ctx, id)
 }
 
-func (uc *SkillEvolutionUsecase) ListProposals(ctx context.Context, agentID string, status string) ([]SkillProposal, error) {
+func (uc *SkillEvolutionUsecase) ListProposals(ctx context.Context, agentID string, status string, limit int, offset int) ([]SkillProposal, error) {
 	agentID, err := requireNonEmpty(agentID, "SKILL_EVO", "agent_id")
 	if err != nil {
 		return nil, err
 	}
-	return uc.repo.ListByAgent(ctx, agentID, status)
+	return uc.repo.ListByAgent(ctx, agentID, status, limit, offset)
 }
 
 func (uc *SkillEvolutionUsecase) CreateProposal(ctx context.Context, proposal SkillProposal) (SkillProposal, error) {
@@ -194,23 +204,30 @@ func (uc *SkillEvolutionUsecase) ScanAndProposeAll(ctx context.Context) error {
 	if uc.agents == nil {
 		return nil
 	}
-	page, err := uc.agents.SearchAgents(ctx, AgentListQuery{Limit: 500, Offset: 0, Status: "active"})
-	if err != nil {
-		return err
-	}
 	var errs []error
-	for _, a := range page.Items {
-		settings, serr := uc.agents.GetAgentRuntimeSettings(ctx, a.ID)
-		if serr != nil {
-			continue
+	offset := 0
+	for {
+		page, err := uc.agents.SearchAgents(ctx, AgentListQuery{Limit: defaultScanAgentLimit, Offset: offset, Status: "active"})
+		if err != nil {
+			return err
 		}
-		if !settings.EvolutionSkillEvolve {
-			continue
+		for _, a := range page.Items {
+			settings, serr := uc.agents.GetAgentRuntimeSettings(ctx, a.ID)
+			if serr != nil {
+				continue
+			}
+			if !settings.EvolutionSkillEvolve {
+				continue
+			}
+			if _, dErr := uc.DetectAndPropose(ctx, a.ID); dErr != nil {
+				uc.lg.Warn("skill evolution detect", loggateway.StepID("skill_evo.scan"), loggateway.Str("agent_id", a.ID), loggateway.Err(dErr))
+				errs = append(errs, dErr)
+			}
 		}
-		if _, dErr := uc.DetectAndPropose(ctx, a.ID); dErr != nil {
-			uc.lg.Warn("skill evolution detect", loggateway.StepID("skill_evo.scan"), loggateway.Str("agent_id", a.ID), loggateway.Err(dErr))
-			errs = append(errs, dErr)
+		if len(page.Items) < defaultScanAgentLimit {
+			break
 		}
+		offset += defaultScanAgentLimit
 	}
 	if len(errs) > 0 {
 		return kerrors.InternalServer("SKILL_EVO", fmt.Sprintf("skill evolution: %d agents failed", len(errs)))
@@ -228,7 +245,7 @@ func (uc *SkillEvolutionUsecase) findSkillPatterns(ctx context.Context, agentID 
 	}
 	var skillPatterns []Pattern
 	for _, p := range all {
-		if p.Kind == string(ObservationKindToolCall) && p.Confidence >= 0.15 {
+		if p.Kind == string(ObservationKindToolCall) && p.Confidence >= skillPatternMinConfidence {
 			skillPatterns = append(skillPatterns, p)
 		}
 	}

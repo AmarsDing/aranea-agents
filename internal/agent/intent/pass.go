@@ -195,12 +195,12 @@ func MonitorLogEntry(r RunResult, scope string, meta RunMeta) (level, msg string
 }
 
 // Run calls a small chat completion to produce an Artifact. On skip or failure Artifact is nil with Outcome set.
-func Run(ctx context.Context, agentIntentPassEnabled bool, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, provider, model, userText string, lg loggateway.Logger) (res RunResult) {
+func Run(ctx context.Context, agentIntentPassEnabled bool, catalog biz.TeamModelCatalog, httpClient *http.Client, provider, model, userText string, lg loggateway.Logger) (res RunResult) {
 	return runWithSystem(ctx, agentIntentPassEnabled, intentSystemCoding, catalog, httpClient, provider, model, userText, lg)
 }
 
 // RunForAgent runs the intent pass with agent-aware gating and prompt template selection.
-func RunForAgent(ctx context.Context, ag biz.Agent, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, provider, model, userText string, lg loggateway.Logger) (res RunResult) {
+func RunForAgent(ctx context.Context, ag biz.Agent, catalog biz.TeamModelCatalog, httpClient *http.Client, provider, model, userText string, lg loggateway.Logger) (res RunResult) {
 	if !ShouldRun(ag, userText) {
 		res.Outcome = "skipped_disabled"
 		if PassEffective(IntentPassFromAgent(ag)) && strings.TrimSpace(userText) != "" && len([]rune(strings.TrimSpace(userText))) < minIntentPassRunes {
@@ -211,7 +211,7 @@ func RunForAgent(ctx context.Context, ag biz.Agent, catalog *biz.LlmProviderMode
 	return runWithSystem(ctx, IntentPassFromAgent(ag), IntentSystemForAgent(ag), catalog, httpClient, provider, model, userText, lg)
 }
 
-func runWithSystem(ctx context.Context, agentIntentPassEnabled bool, systemPrompt string, catalog *biz.LlmProviderModelUsecase, httpClient *http.Client, provider, model, userText string, lg loggateway.Logger) (res RunResult) {
+func runWithSystem(ctx context.Context, agentIntentPassEnabled bool, systemPrompt string, catalog biz.TeamModelCatalog, httpClient *http.Client, provider, model, userText string, lg loggateway.Logger) (res RunResult) {
 	start := time.Now()
 	defer func() { res.Duration = time.Since(start) }()
 

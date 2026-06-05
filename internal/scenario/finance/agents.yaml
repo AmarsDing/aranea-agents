@@ -87,6 +87,11 @@ agents:
     variant: general
     model_tier: strong
 
+  - key: report-writer-chart
+    position_key: report_writer
+    variant: chart
+    model_tier: fast
+
   - key: trading-coordinator-premarket
     position_key: trading_coordinator
     variant: premarket
@@ -95,6 +100,11 @@ agents:
   - key: trading-coordinator-intraday
     position_key: trading_coordinator
     variant: intraday
+    model_tier: strong
+
+  - key: trading-coordinator-critic
+    position_key: trading_coordinator
+    variant: critic
     model_tier: strong
 
   - key: quant-developer-data-pipeline
@@ -393,3 +403,41 @@ teams:
         name: 信用风控
       - key: aml-specialist-anti-money-laundering
         name: 反洗钱
+
+  - key: team-research-pipeline
+    display_name: 研究流水线
+    mode: sequential
+    description: "顺序式研究流水线：从研报撰写到图表生成，再到交易协调审核。"
+    max_concurrency: 1
+    timeout_seconds: 600
+    members:
+      - agent_key: report-writer-general
+        role: worker
+        name: 研报撰写
+        sort_order: 10
+      - agent_key: report-writer-chart
+        role: worker
+        name: 图表生成
+        sort_order: 20
+      - agent_key: trading-coordinator-critic
+        role: worker
+        name: 交易审核
+        sort_order: 30
+
+  - key: team-deep-dive-critic
+    display_name: 深度研报审核
+    mode: coordinator
+    description: "协调式深度研报审核：股票深度分析后由交易协调员批判性审核。"
+    max_concurrency: 2
+    timeout_seconds: 600
+    loop_max_iterations: 1
+    intent_anchor_key: analyst-stock-deep-dive
+    members:
+      - agent_key: analyst-stock-deep-dive
+        role: coordinator
+        name: 深度分析师
+        sort_order: 10
+      - agent_key: trading-coordinator-critic
+        role: worker
+        name: 批判性审核
+        sort_order: 20

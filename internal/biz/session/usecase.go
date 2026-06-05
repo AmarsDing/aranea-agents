@@ -664,7 +664,7 @@ func (uc *SessionUsecase) Archive(ctx context.Context, id string) error {
 		return err
 	}
 	if IsProtectedStatus(SessionStatus(sess.Status)) {
-		return kerrors.BadRequest("SESSION", fmt.Sprintf("session is %s, cannot archive", sess.Status))
+		return kerrors.Conflict("SESSION", fmt.Sprintf("session is %s, cannot archive", sess.Status))
 	}
 	n, err := uc.sessionMutator.ArchiveSession(ctx, id)
 	if n == 0 {
@@ -683,7 +683,7 @@ func (uc *SessionUsecase) Delete(ctx context.Context, id string) error {
 		return err
 	}
 	if IsProtectedStatus(SessionStatus(sess.Status)) {
-		return kerrors.BadRequest("SESSION", fmt.Sprintf("session is %s, cannot delete", sess.Status))
+		return kerrors.Conflict("SESSION", fmt.Sprintf("session is %s, cannot delete", sess.Status))
 	}
 	n, err := uc.sessionMutator.DeleteSession(ctx, id)
 	if n == 0 {

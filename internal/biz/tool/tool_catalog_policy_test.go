@@ -349,7 +349,6 @@ func TestHasOpenAPIMetadata(t *testing.T) {
 }
 
 func TestCatalogConfigReady(t *testing.T) {
-	SetGlobalWebResearchChecker(nil)
 
 	tests := []struct {
 		name     string

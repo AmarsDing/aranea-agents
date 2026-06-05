@@ -10,6 +10,15 @@ import (
 	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
+	"github.com/google/uuid"
+)
+
+// Scoring and analysis thresholds.
+const (
+	TimeoutThresholdMS       = 30000 // Duration above which a skill invocation is considered timed out
+	ContextOverflowThreshold = 5000  // Input preview length above which context overflow is suspected
+	MinInvocationCount       = 5     // Minimum invocations needed for a reliable score
+	DefaultNeutralScore      = 50    // Default score when insufficient data is available
 )
 
 // ScoreWeights holds configurable weights for the skill scoring model.
@@ -42,13 +51,15 @@ type SkillIntelligenceUsecase struct {
 
 // NewSkillIntelligenceUsecase constructs a SkillIntelligenceUsecase.
 func NewSkillIntelligenceUsecase(
-	repo SkillIntelligenceRepo,
+	reader ExperienceReportReader,
+	writer ExperienceReportWriter,
+	aggregator SkillHealthAggregator,
 	lg loggateway.Logger,
 ) *SkillIntelligenceUsecase {
 	return &SkillIntelligenceUsecase{
-		writer:     repo,
-		reader:     repo,
-		aggregator: repo,
+		writer:     writer,
+		reader:     reader,
+		aggregator: aggregator,
 		lg:         lg,
 		weights:    DefaultScoreWeights(),
 	}
@@ -75,7 +86,7 @@ func (uc *SkillIntelligenceUsecase) AnalyzeInvocation(ctx context.Context, inv S
 	tags := make([]string, 0, 2)
 
 	// Timeout detection: duration > 30s with error.
-	if inv.DurationMS > 30000 && inv.ErrorCode != "" {
+	if inv.DurationMS > TimeoutThresholdMS && inv.ErrorCode != "" {
 		tags = append(tags, FailureTagToolTimeout)
 	}
 
@@ -90,7 +101,7 @@ func (uc *SkillIntelligenceUsecase) AnalyzeInvocation(ctx context.Context, inv S
 	}
 
 	// Context overflow: very long input + error.
-	if len(inv.InputPreview) > 5000 && inv.Outcome == "failure" {
+	if len(inv.InputPreview) > ContextOverflowThreshold && inv.Outcome == "failure" {
 		tags = append(tags, FailureTagContextOverflow)
 	}
 
@@ -131,8 +142,8 @@ func (uc *SkillIntelligenceUsecase) ScoreSkill(ctx context.Context, skillID stri
 	}
 
 	// If not enough data, return neutral score.
-	if metrics.InvocationCount < 5 {
-		return 50, nil
+	if metrics.InvocationCount < MinInvocationCount {
+		return DefaultNeutralScore, nil
 	}
 
 	// Normalize factors.
@@ -178,7 +189,7 @@ func (uc *SkillIntelligenceUsecase) GenerateReport(ctx context.Context, inv Skil
 	isSuccess, failureTags := uc.AnalyzeInvocation(ctx, inv)
 
 	// Compute score.
-	score := 50 // default neutral
+	score := DefaultNeutralScore // default neutral
 	if uc.aggregator != nil {
 		if s, err := uc.ScoreSkill(ctx, inv.SkillID); err == nil {
 			score = s
@@ -198,18 +209,18 @@ func (uc *SkillIntelligenceUsecase) GenerateReport(ctx context.Context, inv Skil
 	optimizationAdvice := buildOptimizationAdvice(inv, isSuccess, failureTags)
 
 	report := &ExperienceReport{
-		ID:                fmt.Sprintf("rpt_%d_%s", time.Now().UnixMilli(), inv.ActivationID),
-		TenantID:          "",
-		SessionID:         inv.SessionID,
-		InvocationID:      inv.ActivationID,
-		SkillID:           inv.SkillID,
-		IsSuccess:         isSuccess,
-		Score:             score,
-		FailureTags:       failureTags,
-		FlowSummary:       flowSummary,
+		ID:                 uuid.New().String(),
+		TenantID:           "",
+		SessionID:          inv.SessionID,
+		InvocationID:       inv.ActivationID,
+		SkillID:            inv.SkillID,
+		IsSuccess:          isSuccess,
+		Score:              score,
+		FailureTags:        failureTags,
+		FlowSummary:        flowSummary,
 		OptimizationAdvice: optimizationAdvice,
-		SelectionSnapshot: selectionSnapshot,
-		CreatedAt:         time.Now().UTC(),
+		SelectionSnapshot:  selectionSnapshot,
+		CreatedAt:          time.Now().UTC(),
 	}
 
 	// Persist the report.

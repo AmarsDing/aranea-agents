@@ -23,11 +23,11 @@ func NewSkillEvolutionService(uc *biz.SkillEvolutionUsecase, lg loggateway.Logge
 }
 
 func (s *SkillEvolutionService) ListSkillProposals(ctx context.Context, req *v1.ListSkillProposalsRequest) (*v1.ListSkillProposalsResponse, error) {
-	proposals, err := s.uc.ListProposals(ctx, req.GetAgentId(), req.GetStatus())
+	limit, offset, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
+	proposals, err := s.uc.ListProposals(ctx, req.GetAgentId(), req.GetStatus(), limit, offset)
 	if err != nil {
 		return nil, err
 	}
-	_, _, page, pageSize := biz.PageToLimitOffset(req.GetPage(), req.GetPageSize())
 	resp := &v1.ListSkillProposalsResponse{
 		Total:    int32(len(proposals)),
 		Page:     page,

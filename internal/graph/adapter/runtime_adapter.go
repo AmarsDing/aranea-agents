@@ -297,12 +297,12 @@ func NewGraphBuilderFactory(
 }
 
 func (f *trpcGraphBuilderFactory) buildRuntime(ctx context.Context, cfg biz.GraphBuildConfig, sessionID, graphID, execID, lineageID string) (*trpcGraphRuntime, error) {
-	g, subAgents, cbState, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, cfg, f.registry, f.resolvers.ToBuildDepsPtr(), f.lg)
+	g, subAgents, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, cfg, f.registry, &f.resolvers, f.lg)
 	if err != nil {
 		return nil, err
 	}
 	name := cfg.EntryPoint
-	graphAgent, err := f.createAgent(name, g, cfg.EnableCheckpoint, cfg.ExecutionEngine, cbState, subAgents)
+	graphAgent, err := f.createAgent(name, g, cfg.EnableCheckpoint, cfg.ExecutionEngine, subAgents)
 	if err != nil {
 		return nil, err
 	}
@@ -342,7 +342,7 @@ func (f *trpcGraphBuilderFactory) BuildAndResume(ctx context.Context, cfg biz.Gr
 }
 
 func (f *trpcGraphBuilderFactory) Visualize(ctx context.Context, cfg biz.GraphBuildConfig) (*biz.GraphVisualization, error) {
-	g, _, _, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, cfg, f.registry, f.resolvers.ToBuildDepsPtr(), f.lg)
+	g, _, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, cfg, f.registry, &f.resolvers, f.lg)
 	if err != nil {
 		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("build state graph for visualization: %v", err))
 	}
@@ -429,11 +429,11 @@ func (f *trpcGraphBuilderFactory) FindNodeDef(cfg biz.GraphBuildConfig, taskMeta
 	return nil
 }
 
-func (f *trpcGraphBuilderFactory) createAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool, ee biz.ExecutionEngineType, cbState *graphtrpc.CircuitBreakerState, subAgents []trpcagent.Agent) (*graphtrpc.GraphAgent, error) {
+func (f *trpcGraphBuilderFactory) createAgent(name string, g *trpcgraph.Graph, enableCheckpoint bool, ee biz.ExecutionEngineType, subAgents []trpcagent.Agent) (*graphtrpc.GraphAgent, error) {
 	if f.saver != nil && enableCheckpoint {
-		return graphtrpc.NewGraphAgentWithSaver(name, g, f.saver, ee, cbState, subAgents...)
+		return graphtrpc.NewGraphAgentWithSaver(name, g, f.saver, ee, subAgents...)
 	} else if ee != "" && ee != biz.EngineBSP {
-		return graphtrpc.NewGraphAgentWithEngine(name, g, enableCheckpoint, ee, cbState, subAgents...)
+		return graphtrpc.NewGraphAgentWithEngine(name, g, enableCheckpoint, ee, subAgents...)
 	}
 	return graphtrpc.NewGraphAgent(name, g, enableCheckpoint, subAgents...)
 }

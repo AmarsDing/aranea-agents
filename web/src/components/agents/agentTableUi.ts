@@ -3,9 +3,9 @@ import type { Agent } from '../../features/agents/types';
 import type { AgentToolOverrideRow } from '../../features/agents/useAgentToolOverrides';
 import { REGISTRY_COL_W, registryCol, registryColActions } from '../../features/ui/registryTableColumns';
 
-/** AgentsListSection 列定义（categoryLabel 由 store computed 注入 field） */
+/** AgentsListSection 列定义（taxonomyLabel 由 store computed 注入 field） */
 export function buildAgentTableColumns(
-  categoryLabel: (id: string) => string,
+  taxonomyLabel: (id: string) => string,
   formatContext: (value?: number) => string,
 ): QTableColumn<Agent>[] {
   return [
@@ -15,7 +15,7 @@ export function buildAgentTableColumns(
     registryCol<Agent>(
       'category',
       '业务分类',
-      (row) => categoryLabel(row.taxonomy_position_id),
+      (row) => taxonomyLabel(row.taxonomy_position_id),
       'left',
       REGISTRY_COL_W.category,
     ),

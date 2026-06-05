@@ -13,7 +13,7 @@ import {
 import type { Agent, AgentCreatorOption, AgentTemplatePreset } from '../../features/agents/types';
 import { listPlatformResources, listPlatformResourceTree, validateModel } from '../../features/platform/api';
 import type { PlatformResource, PlatformResourceTreeNode } from '../../features/platform/types';
-import { flattenCategoryPositions, formatContext } from '../../components/agents/agentUi';
+import { flattenTaxonomyPositions, formatContext } from '../../components/agents/agentUi';
 import { buildAgentTableColumns } from '../../components/agents/agentTableUi';
 import { findTaxonomyPath, formatTaxonomyPath } from '../../features/platform/taxonomyTreeUtils';
 import { emitSessionMutation } from '../sessionSync';
@@ -23,7 +23,7 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
   const keyword = ref('');
   const selectedStatus = ref<string | null>(null);
   const selectedProvider = ref<string | null>(null);
-  const selectedCategory = ref<string | null>(null);
+  const selectedTaxonomy = ref<string | null>(null);
   const selectedCreator = ref<string | null>(null);
   const creatorOptions = ref<AgentCreatorOption[]>([]);
   const page = ref(1);
@@ -32,14 +32,14 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
   const total = ref(0);
   const listLoading = ref(false);
 
-  const categoryTree = ref<PlatformResourceTreeNode[]>([]);
+  const taxonomyTree = ref<PlatformResourceTreeNode[]>([]);
   const providerModels = ref<PlatformResource[]>([]);
 
   const checkingModel = ref(false);
   const modelCheckPassed = ref(false);
 
-  const industryNodes = computed(() => categoryTree.value.filter((row) => row.level === 'industry' && row.enabled));
-  const categoryPositionOptions = computed(() => flattenCategoryPositions(industryNodes.value));
+  const industryNodes = computed(() => taxonomyTree.value.filter((row) => row.level === 'industry' && row.enabled));
+  const taxonomyPositionOptions = computed(() => flattenTaxonomyPositions(industryNodes.value));
   const pageMax = computed(() => Math.max(1, Math.ceil(total.value / rowsPerPage.value)));
 
   const providerOptions = computed(() =>
@@ -49,14 +49,14 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
     })),
   );
 
-  function categoryLabel(id: string) {
+  function taxonomyLabel(id: string) {
     if (!id) return '未分类';
-    const path = findTaxonomyPath(categoryTree.value, id);
+    const path = findTaxonomyPath(taxonomyTree.value, id);
     if (path.length) return formatTaxonomyPath(path);
-    return categoryPositionOptions.value.find((item) => item.value === id)?.label ?? '未分类';
+    return taxonomyPositionOptions.value.find((item) => item.value === id)?.label ?? '未分类';
   }
 
-  const tableColumns = computed(() => buildAgentTableColumns(categoryLabel, formatContext));
+  const tableColumns = computed(() => buildAgentTableColumns(taxonomyLabel, formatContext));
 
   async function loadAgentList() {
     listLoading.value = true;
@@ -65,7 +65,7 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
         keyword: keyword.value || undefined,
         status: selectedStatus.value || undefined,
         provider: selectedProvider.value || undefined,
-        category_id: selectedCategory.value || undefined,
+        category_id: selectedTaxonomy.value || undefined,
         created_by: selectedCreator.value && selectedCreator.value !== '' ? selectedCreator.value : undefined,
         limit: rowsPerPage.value,
         offset: (page.value - 1) * rowsPerPage.value,
@@ -83,7 +83,7 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
       listPlatformResources('llm-provider-models'),
       listAgentCreators().catch(() => [] as AgentCreatorOption[]),
     ]);
-    categoryTree.value = treeRows;
+    taxonomyTree.value = treeRows;
     providerModels.value = providerRows;
     creatorOptions.value = [{ user_id: '', label: '所有创建者' }, ...creators];
     emitSessionMutation({ type: 'agents_dependencies_loaded' });
@@ -136,7 +136,7 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
     keyword.value = '';
     selectedStatus.value = null;
     selectedProvider.value = null;
-    selectedCategory.value = null;
+    selectedTaxonomy.value = null;
     selectedCreator.value = null;
     page.value = 1;
   }
@@ -152,7 +152,7 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
     keyword,
     selectedStatus,
     selectedProvider,
-    selectedCategory,
+    selectedTaxonomy,
     selectedCreator,
     creatorOptions,
     page,
@@ -160,15 +160,15 @@ export const useAgentsPageStore = defineStore('agentsPage', () => {
     agents,
     total,
     listLoading,
-    categoryTree,
+    taxonomyTree,
     providerModels,
     checkingModel,
     modelCheckPassed,
     industryNodes,
-    categoryPositionOptions,
+    taxonomyPositionOptions,
     pageMax,
     providerOptions,
-    categoryLabel,
+    taxonomyLabel,
     tableColumns,
     loadAgentList,
     loadAgentsDependencies,

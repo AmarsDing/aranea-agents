@@ -35,7 +35,7 @@ export function useTeamsPage() {
   const modeFilter = ref('');
   const statusFilter = ref('');
   const industryFilter = ref('');
-  const categoryTree = ref<PlatformResourceTreeNode[]>([]);
+  const taxonomyTree = ref<PlatformResourceTreeNode[]>([]);
   const currentPage = ref(1);
   const pageSize = ref(12);
   const editorOpen = ref(false);
@@ -65,7 +65,7 @@ export function useTeamsPage() {
     display_name: '',
     status: 'active',
     app_name: '',
-    category_industry_id: '',
+    taxonomy_industry_id: '',
   });
 
   const definition = reactive<TeamDefinition>({
@@ -95,7 +95,7 @@ export function useTeamsPage() {
       return matchesSearch && matchesMode && matchesStatus;
     });
   });
-  const industryOptions = computed(() => industryOptionsFromTree(categoryTree.value));
+  const industryOptions = computed(() => industryOptionsFromTree(taxonomyTree.value));
   const totalFiltered = computed(() => filteredTeams.value.length);
   const pageMax = computed(() => Math.max(1, Math.ceil(totalFiltered.value / pageSize.value)));
   const paginatedTeams = computed(() => {
@@ -103,7 +103,7 @@ export function useTeamsPage() {
     return filteredTeams.value.slice(start, start + pageSize.value);
   });
   const teamIndustryGroups = computed(() =>
-    groupTeamsByIndustry(paginatedTeams.value, agents.value, categoryTree.value, industryFilter.value),
+    groupTeamsByIndustry(paginatedTeams.value, agents.value, taxonomyTree.value, industryFilter.value),
   );
 
   watch([search, modeFilter, statusFilter, industryFilter], () => {
@@ -128,11 +128,11 @@ export function useTeamsPage() {
       const [teamRows, agentRows] = await Promise.all([
         teamsPageStore.loadTeams(),
         teamsPageStore.loadAgents(),
-        platformStore.loadCategoryTree(),
+        platformStore.loadTaxonomyTree(),
       ]);
       rows.value = teamRows;
       agents.value = agentRows;
-      categoryTree.value = platformStore.categoryTree;
+      taxonomyTree.value = platformStore.taxonomyTree;
       openRouteEdit();
     } catch (err) {
       error.value = err instanceof Error ? err.message : '加载 Team 失败';
@@ -151,7 +151,7 @@ export function useTeamsPage() {
   function openCreate() {
     editingId.value = '';
     selectedTeamTemplateKey.value = null;
-    Object.assign(form, { team_key: '', display_name: '', status: 'active', app_name: '', category_industry_id: '' });
+    Object.assign(form, { team_key: '', display_name: '', status: 'active', app_name: '', taxonomy_industry_id: '' });
     resetDefinition(definition);
     editorOpen.value = true;
   }
@@ -164,7 +164,7 @@ export function useTeamsPage() {
       display_name: team.display_name,
       status: team.status,
       app_name: team.app_name,
-      category_industry_id: team.category_industry_id || '',
+      taxonomy_industry_id: team.taxonomy_industry_id || '',
     });
     Object.assign(definition, parseDefinition(team));
     editorOpen.value = true;
@@ -233,7 +233,7 @@ export function useTeamsPage() {
         status: form.status,
         app_name: form.app_name || form.team_key,
         definition_json: definitionJSON.value,
-        category_industry_id: form.category_industry_id || '',
+        taxonomy_industry_id: form.taxonomy_industry_id || '',
       };
       const saved = editingId.value
         ? await teamsPageStore.editTeam(editingId.value, payload)
@@ -457,7 +457,7 @@ export function useTeamsPage() {
     modeFilter,
     statusFilter,
     industryFilter,
-    categoryTree,
+    taxonomyTree,
     industryOptions,
     teamIndustryGroups,
     currentPage,

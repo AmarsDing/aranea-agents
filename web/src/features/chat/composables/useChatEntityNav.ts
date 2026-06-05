@@ -40,7 +40,7 @@ export type EntityNavDeps = {
 export function useChatEntityNav(deps: EntityNavDeps) {
   const $q = useQuasar();
   const router = useRouter();
-  const categoryTree = ref<PlatformResourceTreeNode[]>([]);
+  const taxonomyTree = ref<PlatformResourceTreeNode[]>([]);
 
   function sessionOwnerIsTeam(session: Session) {
     return session.owner_type === 'team' || Boolean(session.team_id?.trim());
@@ -80,10 +80,10 @@ export function useChatEntityNav(deps: EntityNavDeps) {
     }
   }
 
-  async function loadCategoryTree() {
+  async function loadTaxonomyTree() {
     const platformStore = usePlatformStore();
-    await platformStore.loadCategoryTree();
-    categoryTree.value = platformStore.categoryTree;
+    await platformStore.loadTaxonomyTree();
+    taxonomyTree.value = platformStore.taxonomyTree;
   }
 
   function channelFocusLoadDeps() {
@@ -373,8 +373,8 @@ export function useChatEntityNav(deps: EntityNavDeps) {
   }
 
   return {
-    categoryTree,
-    loadCategoryTree,
+    taxonomyTree,
+    loadTaxonomyTree,
     loadTeams,
     loadTeamSessions,
     selectAgent,

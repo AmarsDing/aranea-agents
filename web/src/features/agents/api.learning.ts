@@ -1,8 +1,10 @@
 import { createLearningLoopService } from '../../services';
 import type { Observation, Pattern, KnowledgeProposal } from '../../services/kratos/learning_loop/v1/index';
+import type { LearningObservation, LearningPattern, LearningProposal } from './learning.types';
+
 export type { LearningObservation, LearningPattern, LearningProposal } from './learning.types';
 
-function normalizeObservation(row: Observation): import('./learning.types').LearningObservation {
+function normalizeObservation(row: Observation): LearningObservation {
   return {
     id: row.id ?? '',
     agent_id: row.agentId ?? '',
@@ -14,7 +16,7 @@ function normalizeObservation(row: Observation): import('./learning.types').Lear
   };
 }
 
-function normalizePattern(row: Pattern): import('./learning.types').LearningPattern {
+function normalizePattern(row: Pattern): LearningPattern {
   return {
     id: row.id ?? '',
     agent_id: row.agentId ?? '',
@@ -28,7 +30,7 @@ function normalizePattern(row: Pattern): import('./learning.types').LearningPatt
   };
 }
 
-function normalizeProposal(row: KnowledgeProposal): import('./learning.types').LearningProposal {
+function normalizeProposal(row: KnowledgeProposal): LearningProposal {
   return {
     id: row.id ?? '',
     agent_id: row.agentId ?? '',
@@ -47,7 +49,7 @@ function normalizeProposal(row: KnowledgeProposal): import('./learning.types').L
 export async function listLearningObservations(
   agentId: string,
   since?: string,
-): Promise<import('./learning.types').LearningObservation[]> {
+): Promise<LearningObservation[]> {
   const svc = createLearningLoopService();
   const res = await svc.ListObservations({ agentId, since });
   return (res.items ?? []).map(normalizeObservation);
@@ -56,7 +58,7 @@ export async function listLearningObservations(
 export async function listLearningPatterns(
   agentId: string,
   status?: string,
-): Promise<import('./learning.types').LearningPattern[]> {
+): Promise<LearningPattern[]> {
   const svc = createLearningLoopService();
   const res = await svc.ListPatterns({ agentId, status });
   return (res.items ?? []).map(normalizePattern);
@@ -65,7 +67,7 @@ export async function listLearningPatterns(
 export async function listLearningProposals(
   agentId: string,
   status?: string,
-): Promise<import('./learning.types').LearningProposal[]> {
+): Promise<LearningProposal[]> {
   const svc = createLearningLoopService();
   const res = await svc.ListProposals({ agentId, status });
   return (res.items ?? []).map(normalizeProposal);
@@ -74,7 +76,7 @@ export async function listLearningProposals(
 export async function approveLearningProposal(
   agentId: string,
   proposalId: string,
-): Promise<import('./learning.types').LearningProposal> {
+): Promise<LearningProposal> {
   const svc = createLearningLoopService();
   const res = await svc.ApproveProposal({ agentId, id: proposalId });
   return normalizeProposal(res);
@@ -83,7 +85,7 @@ export async function approveLearningProposal(
 export async function rejectLearningProposal(
   agentId: string,
   proposalId: string,
-): Promise<import('./learning.types').LearningProposal> {
+): Promise<LearningProposal> {
   const svc = createLearningLoopService();
   const res = await svc.RejectProposal({ agentId, id: proposalId });
   return normalizeProposal(res);

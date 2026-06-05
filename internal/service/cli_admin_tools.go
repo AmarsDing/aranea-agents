@@ -14,6 +14,26 @@ import (
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
+// agentUCCast extracts the concrete *biz.AgentUsecase from the narrow interface.
+// TECH-DEBT: cli_admin tools need the full Usecase API; remove once cli_admin
+// is refactored to use narrow interfaces.
+func agentUCCast(uc biz.TeamAgentLookup) *biz.AgentUsecase {
+	if c, ok := uc.(*biz.AgentUsecase); ok {
+		return c
+	}
+	return nil
+}
+
+// skillUCCast extracts the concrete *biz.SkillUsecase from the narrow interface.
+// TECH-DEBT: cli_admin tools need the full Usecase API; remove once cli_admin
+// is refactored to use narrow interfaces.
+func skillUCCast(uc biz.TeamSkillLookup) *biz.SkillUsecase {
+	if c, ok := uc.(*biz.SkillUsecase); ok {
+		return c
+	}
+	return nil
+}
+
 type cliAdminSkillRepo struct {
 	uc *biz.SkillUsecase
 }
@@ -101,8 +121,8 @@ func (o *ChatOrchestrator) cliAdminTools(ctx context.Context, ag biz.Agent) []tr
 		return nil
 	}
 	return cli_admin.RegisterAll(cli_admin.Deps{
-		SkillRepo:  cliAdminSkillRepo{uc: o.td.Catalog.SkillUC},
-		AgentRepo:  cliAdminAgentRepo{uc: o.td.Catalog.AgentsUC},
+		SkillRepo:  cliAdminSkillRepo{uc: skillUCCast(o.td.Catalog.SkillUC)},
+		AgentRepo:  cliAdminAgentRepo{uc: agentUCCast(o.td.Catalog.AgentsUC)},
 		APIBaseURL: cliAdminAPIBaseURL(ctx, o.td.Catalog.Settings),
 		APIToken:   cliAdminAPIToken(),
 	})
@@ -134,11 +154,11 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 	return out
 }
 
-func (o *ChatOrchestrator) skillsButlerTools(_ context.Context, ag biz.Agent) []trpctool.Tool {
+func (o *ChatOrchestrator) skillsButlerTools(ctx context.Context, ag biz.Agent) []trpctool.Tool {
 	if o == nil {
 		return nil
 	}
-	settings, err := o.td.Catalog.Agents.GetAgentRuntimeSettings(context.Background(), ag.ID)
+	settings, err := o.td.Catalog.Agents.GetAgentRuntimeSettings(ctx, ag.ID)
 	if err != nil || !settings.EvolutionSkillEvolve {
 		return nil
 	}

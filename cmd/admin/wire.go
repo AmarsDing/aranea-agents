@@ -51,6 +51,7 @@ import (
 	"aranea-agents/internal/server"
 	"aranea-agents/internal/service"
 	araneasession "aranea-agents/internal/session"
+	"aranea-agents/internal/skill"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/skill/watch"
 	"aranea-agents/internal/team"
@@ -369,7 +370,6 @@ func provideToolUsecaseWithDeps(repo biztool.ToolRepo, sys biztool.SettingRepo, 
 	uc := biztool.NewToolUsecase(repo, sys, lg)
 	uc.SetToolTester(tester)
 	uc.SetWebResearchChecker(checker)
-	biztool.SetGlobalWebResearchChecker(checker)
 	return uc
 }
 
@@ -663,12 +663,13 @@ func provideChatSender(svc *service.ChatService) server.ChatSender {
 	return svc
 }
 
-func provideWSTurnExecutor(gateway biz.TurnExecutorGateway) server.WSTurnExecutor {
-	return &wsTurnExecutorAdapter{gateway: gateway}
+func provideWSTurnExecutor(gateway biz.TurnExecutorGateway, lg loggateway.Logger) server.WSTurnExecutor {
+	return &wsTurnExecutorAdapter{gateway: gateway, lg: lg}
 }
 
 type wsTurnExecutorAdapter struct {
 	gateway biz.TurnExecutorGateway
+	lg      loggateway.Logger
 }
 
 func (a *wsTurnExecutorAdapter) ExecuteTurn(ctx context.Context, input server.WSTurnInput) error {
@@ -692,7 +693,7 @@ func (a *wsTurnExecutorAdapter) ExecuteTurn(ctx context.Context, input server.WS
 	start := time.Now()
 	_, err := a.gateway.ExecuteTurn(ctx, bizInput)
 	elapsed := time.Since(start)
-	loggateway.Global().With(loggateway.SessionID(input.SessionID)).Info("wsTurnExecutorAdapter.ExecuteTurn 完成",
+	a.lg.With(loggateway.SessionID(input.SessionID)).Info("wsTurnExecutorAdapter.ExecuteTurn 完成",
 		loggateway.StepID("ws.adapter_turn_done"),
 		loggateway.Any("elapsed_ms", elapsed.Milliseconds()),
 		loggateway.Any("has_error", err != nil))
@@ -814,8 +815,21 @@ func provideEvolutionScanner(evo *biz.EvolutionUsecase, logger log.Logger) *jobs
 	return jobs.NewEvolutionScanner(0, evo, logger)
 }
 
-func provideSkillAutoCreator() biz.SkillAutoCreator {
-	return nil
+func provideSkillAutoCreator(caller biz.LLMCaller, sys *biz.SystemSettingUsecase, lg loggateway.Logger) biz.SkillAutoCreator {
+	rl, err := sys.GetRefineLLM(context.Background())
+	if err != nil || strings.TrimSpace(rl.Provider) == "" || strings.TrimSpace(rl.Model) == "" {
+		lg.Warn("skill auto creator: no DefaultRefineLLM configured, skill auto-creation disabled")
+		return nil
+	}
+	adapter := skill.NewLLMCallerAdapter(caller, rl.Provider, rl.Model)
+	return skill.NewSkillAutoCreator(adapter, lg)
+}
+
+func provideSkillEvolutionScanner(skillEvo *biz.SkillEvolutionUsecase, lg loggateway.Logger) *jobs.SkillEvolutionScanner {
+	if strings.TrimSpace(os.Getenv("SKILL_EVOLUTION_DISABLED")) == "1" {
+		return nil
+	}
+	return jobs.NewSkillEvolutionScanner(0, skillEvo, lg)
 }
 
 func provideSkillRegistrationPort(skillUC *biz.SkillUsecase) biz.SkillRegistrationPort {
@@ -1002,12 +1016,16 @@ func provideSelfHealUsecase(diag *biz.DiagBundleGenerator, lg loggateway.Logger)
 	return biz.NewSelfHealUsecase(diag, nil, lg)
 }
 
-func provideSelfHealObserver(repo biz.HealRecordRepo, engine *monitor.RootCauseEngine, notifier biz.AlertNotifier, lg loggateway.Logger) *biz.SelfHealObserver {
+func provideSelfHealObserver(repo biz.HealRecordRepo, engine *monitor.RootCauseEngine, notifier biz.AlertNotifier, lg loggateway.Logger) (*biz.SelfHealObserver, error) {
 	return monitor.NewSelfHealObserver(repo, engine, notifier, lg)
 }
 
 func provideRootCauseEngine(lg loggateway.Logger) *monitor.RootCauseEngine {
 	return monitor.NewRootCauseEngine(lg)
+}
+
+func provideSkillIntelligenceUsecase(repo biz.SkillIntelligenceRepo, lg loggateway.Logger) *biz.SkillIntelligenceUsecase {
+	return biz.NewSkillIntelligenceUsecase(repo, repo, repo, lg)
 }
 
 func provideSelfCheckScheduler(
@@ -1127,6 +1145,7 @@ type wireOut struct {
 	A2AGatewayHealthProbe       *a2ahealth.Runner
 	EvolutionScanner            *jobs.EvolutionScanner
 	LearningLoopScanner         *jobs.LearningLoopScanner
+	SkillEvolutionScanner       *jobs.SkillEvolutionScanner
 	ProviderHealthScanner       *jobs.ProviderHealthScanner
 	ChannelHealthScanner        *jobs.ChannelHealthScanner
 	ChannelDeliveryScanner      *jobs.ChannelDeliveryWorker
@@ -1193,6 +1212,7 @@ func provideWireOut(
 	selfCheckJob *jobs.SelfCheckJob,
 	cronRepo biz.CronRepo,
 	skillIntelligence *biz.SkillIntelligenceUsecase,
+	skillEvolutionScanner *jobs.SkillEvolutionScanner,
 ) wireOut {
 	return wireOut{
 		App: app, Data: dataData, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -1213,6 +1233,7 @@ func provideWireOut(
 		SelfCheckJob:              selfCheckJob,
 		CronRepo:                  cronRepo,
 		SkillIntelligence:         skillIntelligence,
+		SkillEvolutionScanner:     skillEvolutionScanner,
 	}
 }
 
@@ -1386,6 +1407,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideEvolutionScanner,
 		provideSkillAutoCreator,
 		provideSkillRegistrationPort,
+		provideSkillEvolutionScanner,
 		provideLearningLoopScanner,
 		provideProviderHealthScanner,
 		provideChannelHealthScanner,
@@ -1417,6 +1439,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideSelfHealUsecase,
 		provideSelfHealObserver,
 		provideRootCauseEngine,
+		provideSkillIntelligenceUsecase,
 		provideMCPHealthRunnerDeps,
 		provideMCPHealthRunner,
 		provideA2AGatewayHealthRunnerDeps,
@@ -1475,6 +1498,13 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		wire.Bind(new(biz.TeamRunRepo), new(biz.TeamRepository)),
 		wire.Bind(new(biz.PatternReader), new(biz.PatternReadWriter)),
 		wire.Bind(new(biz.AgentReader), new(biz.AgentRepository)),
+		// Team-layer narrow interface bindings
+		wire.Bind(new(biz.TeamUsageQuerier), new(*biz.UsageUsecase)),
+		wire.Bind(new(biz.TeamSessionManager), new(*biz.SessionUsecase)),
+		wire.Bind(new(biz.TeamAgentLookup), new(*biz.AgentUsecase)),
+		wire.Bind(new(biz.TeamToolLookup), new(*biz.ToolUsecase)),
+		wire.Bind(new(biz.TeamModelCatalog), new(*biz.LlmProviderModelUsecase)),
+		wire.Bind(new(biz.TeamSkillLookup), new(*biz.SkillUsecase)),
 		// Self-check integration
 		provideSelfCheckScheduler,
 		provideEventBusHealthChecker,

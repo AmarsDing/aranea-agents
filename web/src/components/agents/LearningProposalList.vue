@@ -67,6 +67,7 @@
 
 <script setup lang="ts">
 import type { LearningProposal } from '../../features/agents/learning.types';
+import { formatDate } from '../../features/agents/learning.utils';
 
 defineProps<{
   proposals: LearningProposal[];
@@ -145,15 +146,6 @@ function proposalStatusLabel(status: string): string {
       return '已过期';
     default:
       return status;
-  }
-}
-
-function formatDate(iso: string): string {
-  if (!iso) return '';
-  try {
-    return new Date(iso).toLocaleDateString();
-  } catch {
-    return iso;
   }
 }
 </script>

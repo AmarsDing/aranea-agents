@@ -11,12 +11,21 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-// SeverityCooldown maps severity levels to cooldown durations.
-var SeverityCooldown = map[string]time.Duration{
+// severityCooldown maps severity levels to cooldown durations.
+var severityCooldown = map[string]time.Duration{
 	"critical": 30 * time.Minute,
 	"high":     10 * time.Minute,
 	"medium":   5 * time.Minute,
 	"low":      2 * time.Minute,
+}
+
+// GetSeverityCooldown returns the cooldown duration for a severity level.
+// Returns the "medium" cooldown for unknown severity levels.
+func GetSeverityCooldown(severity string) time.Duration {
+	if d, ok := severityCooldown[severity]; ok {
+		return d
+	}
+	return severityCooldown["medium"]
 }
 
 // SelfHealObserver observes FlowLog events, tracks auto-heal outcomes,
@@ -34,18 +43,21 @@ type SelfHealObserver struct {
 }
 
 // NewSelfHealObserver creates a new SelfHealObserver.
-func NewSelfHealObserver(repo HealRecordRepo, engine *RootCauseEngine, notifier AlertNotifier, lg loggateway.Logger) *SelfHealObserver {
-	if repo == nil || engine == nil {
-		return nil
+func NewSelfHealObserver(repo HealRecordRepo, engine *RootCauseEngine, notifier AlertNotifier, lg loggateway.Logger) (*SelfHealObserver, error) {
+	if repo == nil {
+		return nil, kerrors.InternalServer("MONITOR", "HealRecordRepo is required")
+	}
+	if engine == nil {
+		return nil, kerrors.InternalServer("MONITOR", "RootCauseEngine is required")
 	}
 	return &SelfHealObserver{
-		repo:      repo,
-		engine:    engine,
-		notifier:  notifier,
-		lg:        lg,
-		cooldowns: make(map[string]time.Time),
+		repo:       repo,
+		engine:     engine,
+		notifier:   notifier,
+		lg:         lg,
+		cooldowns:  make(map[string]time.Time),
 		failCounts: make(map[string]int),
-	}
+	}, nil
 }
 
 // ObserveFlowLogEvent processes a FlowLog event.
@@ -114,9 +126,10 @@ func (o *SelfHealObserver) ObserveFlowLogEvent(ctx context.Context, meta map[str
 			})
 
 			// Track consecutive failures and fire alert if 3+
+			var failCount int
 			o.mu.Lock()
 			o.failCounts[stepID]++
-			failCount := o.failCounts[stepID]
+			failCount = o.failCounts[stepID]
 			o.mu.Unlock()
 
 			if failCount >= 3 {
@@ -300,10 +313,7 @@ func (o *SelfHealObserver) checkCooldown(ruleID, severity string) bool {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
-	cooldown, ok := SeverityCooldown[severity]
-	if !ok {
-		cooldown = SeverityCooldown["medium"]
-	}
+	cooldown := GetSeverityCooldown(severity)
 
 	if last, ok := o.cooldowns[ruleID]; ok {
 		return time.Since(last) > cooldown

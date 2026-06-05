@@ -66,7 +66,7 @@
           <taxonomy-picker
             :model-value="form.taxonomy_position_id || null"
             class="app-field-long"
-            :tree="categoryTree"
+            :tree="taxonomyTree"
             label="业务分类"
             placeholder="选择行业 / 部门 / 职位"
             @update:model-value="onCategoryPick"
@@ -209,7 +209,7 @@ const props = defineProps<{
   isA2AProxy: boolean;
   selfEvolve: boolean;
   agentKind: AgentKind;
-  categoryTree: PlatformResourceTreeNode[];
+  taxonomyTree: PlatformResourceTreeNode[];
   providerOptions: Array<{ label: string; value: string }>;
   modelOptions: Array<{ label: string; value: string }>;
   selectedTemplateKey: string;

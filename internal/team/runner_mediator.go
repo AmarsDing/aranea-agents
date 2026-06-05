@@ -29,11 +29,13 @@ func NewTeamRunMediator() *TeamRunMediator {
 }
 
 // SetCoordinator wires the coordinator side (TeamGraphRunCoordinator implements TeamGraphCoordAccess).
+// Startup order: SetCoordinator/SetFinisher must be called before RecoverSessions.
 func (m *TeamRunMediator) SetCoordinator(c TeamGraphCoordAccess) {
 	m.coord = c
 }
 
 // SetFinisher wires the finisher side (Runner implements TeamGraphRunFinisher).
+// Startup order: SetFinisher/SetCoordinator must be called before RecoverSessions.
 func (m *TeamRunMediator) SetFinisher(f TeamGraphRunFinisher) {
 	m.finisher = f
 }

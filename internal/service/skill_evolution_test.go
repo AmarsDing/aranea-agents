@@ -43,7 +43,7 @@ func (s *stubProposalRepo) GetByPatternHash(_ context.Context, agentID string, h
 	return nil, nil
 }
 
-func (s *stubProposalRepo) ListByAgent(_ context.Context, agentID string, status string) ([]biz.SkillProposal, error) {
+func (s *stubProposalRepo) ListByAgent(_ context.Context, agentID string, status string, _ int, _ int) ([]biz.SkillProposal, error) {
 	var result []biz.SkillProposal
 	for _, p := range s.proposals {
 		if p.AgentID == agentID && (status == "" || string(p.Status) == status) {

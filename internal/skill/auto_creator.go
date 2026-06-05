@@ -17,6 +17,28 @@ type LLMSkillGenerator interface {
 	Generate(ctx context.Context, prompt string) (string, error)
 }
 
+// LLMCallerAdapter adapts biz.LLMCaller to LLMSkillGenerator.
+// It uses the platform's DefaultRefineLLM to resolve provider/model credentials.
+type LLMCallerAdapter struct {
+	caller   biz.LLMCaller
+	provider string
+	model    string
+}
+
+func NewLLMCallerAdapter(caller biz.LLMCaller, provider, model string) *LLMCallerAdapter {
+	return &LLMCallerAdapter{caller: caller, provider: provider, model: model}
+}
+
+func (a *LLMCallerAdapter) Generate(ctx context.Context, prompt string) (string, error) {
+	text, _, err := a.caller.Call(ctx, biz.LLMCallRequest{
+		Provider: a.provider,
+		Model:    a.model,
+		System:   "You are a skill definition generator for an AI agent platform. Generate valid SKILL.md files based on detected behavioral patterns.",
+		User:     prompt,
+	})
+	return text, err
+}
+
 type SkillAutoCreator struct {
 	generator LLMSkillGenerator
 	lg        loggateway.Logger

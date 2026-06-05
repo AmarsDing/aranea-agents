@@ -17,13 +17,15 @@ import (
 
 // Catalog provides read-only access to biz repositories and use-cases
 // needed during each chat turn (agent lookup, tool catalog, model catalog, …).
+// Usecase fields use narrow interfaces so consumers (team, agent, service)
+// depend only on the methods they actually call.
 type Catalog struct {
 	Agents   biz.AgentRepository
-	AgentsUC *biz.AgentUsecase
+	AgentsUC biz.TeamAgentLookup
 	Tools    biz.ToolCatalogReader
-	ToolUC   *biz.ToolUsecase
-	LLM      *biz.LlmProviderModelUsecase
-	SkillUC  *biz.SkillUsecase
+	ToolUC   biz.TeamToolLookup
+	LLM      biz.TeamModelCatalog
+	SkillUC  biz.TeamSkillLookup
 	Settings biz.SystemSettingRepo
 }
 

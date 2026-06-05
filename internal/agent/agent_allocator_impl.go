@@ -374,8 +374,10 @@ func (impl *agentAllocatorImpl) matchLayer2ForPlan(ctx context.Context, taskPlan
 
 // computeSemanticScore computes a TF-IDF-like keyword overlap score between
 // a task description and an agent's capability profile.
-// TODO: Replace with true embedding cosine similarity via pgvector or the
-// project's knowledge.Embedder when agent capability vectors are persisted.
+// TODO(debt): DEV-05 — Layer 2 uses TF-IDF placeholder. Replace with true embedding
+// cosine similarity via pgvector or the project's knowledge.Embedder when agent
+// capability vectors are persisted.
+// See: https://github.com/aranea-agents/aranea-agents/issues/DEV-05
 func computeSemanticScore(taskDesc string, cap biz.AgentCapability) float64 {
 	// Build a text corpus from the agent's capability profile
 	agentText := cap.DisplayName + " " + cap.Description

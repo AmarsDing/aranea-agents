@@ -61,7 +61,6 @@ var ProviderSet = wire.NewSet(
 	NewToolResultGate,
 	NewExperienceAnalyticsUsecase,
 	NewSkillHealthUsecase,
-	NewSkillIntelligenceUsecase,
 	monitor.WireProviderSet,
 	ProvideAgentExistenceChecker,
 	ProvideAgentIDExistenceChecker,

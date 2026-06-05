@@ -22,7 +22,7 @@ import type {
 
 export const usePlatformStore = defineStore('platform', () => {
   const providerModels = ref<PlatformResource[]>([]);
-  const categoryTree = ref<PlatformResourceTreeNode[]>([]);
+  const taxonomyTree = ref<PlatformResourceTreeNode[]>([]);
   const loading = ref(false);
   const credentialEncryptionAvailable = ref<boolean | null>(null);
 
@@ -35,8 +35,8 @@ export const usePlatformStore = defineStore('platform', () => {
     }
   }
 
-  async function loadCategoryTree(resource: 'taxonomy-nodes' | 'taxonomy' = 'taxonomy') {
-    categoryTree.value = await listPlatformResourceTree(resource);
+  async function loadTaxonomyTree(resource: 'taxonomy-nodes' | 'taxonomy' = 'taxonomy') {
+    taxonomyTree.value = await listPlatformResourceTree(resource);
   }
 
   async function loadResource(resource: PlatformResourceName) {
@@ -78,11 +78,11 @@ export const usePlatformStore = defineStore('platform', () => {
 
   return {
     providerModels,
-    categoryTree,
+    taxonomyTree,
     loading,
     credentialEncryptionAvailable,
     loadProviderModels,
-    loadCategoryTree,
+    loadTaxonomyTree,
     loadResource,
     addResource,
     editResource,
