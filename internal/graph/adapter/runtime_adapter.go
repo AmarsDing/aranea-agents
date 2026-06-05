@@ -35,7 +35,11 @@ type trpcGraphRuntime struct {
 	runCancel context.CancelFunc
 }
 
-var _ biz.GraphRuntime = (*trpcGraphRuntime)(nil)
+var (
+	_ biz.GraphExecutionControl = (*trpcGraphRuntime)(nil)
+	_ biz.GraphCheckpoint       = (*trpcGraphRuntime)(nil)
+	_ biz.GraphRuntime          = (*trpcGraphRuntime)(nil)
+)
 
 func (r *trpcGraphRuntime) setRunCancel(cancel context.CancelFunc) {
 	r.cancelMu.Lock()
@@ -161,7 +165,7 @@ func (r *trpcGraphRuntime) Cancel() error {
 	return nil
 }
 
-func (r *trpcGraphRuntime) TimeTravelGetState(ctx context.Context, lineageID, checkpointID, namespace string) (any, error) {
+func (r *trpcGraphRuntime) TimeTravelGetState(ctx context.Context, lineageID, checkpointID, namespace string) (*biz.GraphCheckpointState, error) {
 	tt, err := r.agent.TimeTravel()
 	if err != nil {
 		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("time travel not available: %v", err))
@@ -171,18 +175,26 @@ func (r *trpcGraphRuntime) TimeTravelGetState(ctx context.Context, lineageID, ch
 		Namespace:    namespace,
 		CheckpointID: checkpointID,
 	}
-	return tt.GetState(ctx, ref)
+	snapshot, err := tt.GetState(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	return convertStateSnapshot(snapshot), nil
 }
 
-func (r *trpcGraphRuntime) TimeTravelHistory(ctx context.Context, lineageID, namespace string, limit int) (any, error) {
+func (r *trpcGraphRuntime) TimeTravelHistory(ctx context.Context, lineageID, namespace string, limit int) (biz.GraphCheckpointList, error) {
 	tt, err := r.agent.TimeTravel()
 	if err != nil {
 		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("time travel not available: %v", err))
 	}
-	return tt.History(ctx, lineageID, namespace, limit)
+	infos, err := tt.History(ctx, lineageID, namespace, limit)
+	if err != nil {
+		return nil, err
+	}
+	return convertCheckpointInfoList(infos), nil
 }
 
-func (r *trpcGraphRuntime) TimeTravelEditState(ctx context.Context, lineageID, checkpointID, namespace string, patch map[string]any) (any, error) {
+func (r *trpcGraphRuntime) TimeTravelEditState(ctx context.Context, lineageID, checkpointID, namespace string, patch map[string]any) (*biz.GraphEditedState, error) {
 	tt, err := r.agent.TimeTravel()
 	if err != nil {
 		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("time travel not available: %v", err))
@@ -192,15 +204,23 @@ func (r *trpcGraphRuntime) TimeTravelEditState(ctx context.Context, lineageID, c
 		Namespace:    namespace,
 		CheckpointID: checkpointID,
 	}
-	return tt.EditState(ctx, base, patch)
+	ref, err := tt.EditState(ctx, base, patch)
+	if err != nil {
+		return nil, err
+	}
+	return &biz.GraphEditedState{Ref: convertCheckpointRef(ref)}, nil
 }
 
-func (r *trpcGraphRuntime) ListCheckpoints(ctx context.Context, lineageID, namespace string, limit int) (any, error) {
+func (r *trpcGraphRuntime) ListCheckpoints(ctx context.Context, lineageID, namespace string, limit int) (biz.GraphCheckpointList, error) {
 	tt, err := r.agent.TimeTravel()
 	if err != nil {
 		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("time travel not available: %v", err))
 	}
-	return tt.History(ctx, lineageID, namespace, limit)
+	infos, err := tt.History(ctx, lineageID, namespace, limit)
+	if err != nil {
+		return nil, err
+	}
+	return convertCheckpointInfoList(infos), nil
 }
 
 func (r *trpcGraphRuntime) GetLineageID() string {
@@ -216,7 +236,7 @@ func convertTrpcEvent(e *trpcevent.Event, bridge *graphtrpc.EventBridge, lg logg
 	}
 
 	runtimeEvt := biz.GraphRuntimeEvent{
-		RawEvent: e,
+		RawEvent: convertRawEvent(e),
 	}
 
 	switch e.Object {
@@ -321,7 +341,7 @@ func (f *trpcGraphBuilderFactory) BuildAndResume(ctx context.Context, cfg biz.Gr
 	return runtime, eventCh, nil
 }
 
-func (f *trpcGraphBuilderFactory) Visualize(ctx context.Context, cfg biz.GraphBuildConfig) (any, error) {
+func (f *trpcGraphBuilderFactory) Visualize(ctx context.Context, cfg biz.GraphBuildConfig) (*biz.GraphVisualization, error) {
 	g, _, _, err := graphtrpc.BuildStateGraphWithRegistryAndLogger(ctx, cfg, f.registry, f.resolvers.ToBuildDepsPtr(), f.lg)
 	if err != nil {
 		return nil, kerrors.InternalServer("GRAPH", fmt.Sprintf("build state graph for visualization: %v", err))
@@ -333,7 +353,7 @@ func (f *trpcGraphBuilderFactory) Visualize(ctx context.Context, cfg biz.GraphBu
 	allNodes = append(allNodes, startEnd...)
 	allNodes = append(allNodes, vg.Nodes...)
 	vg.Nodes = allNodes
-	return vg, nil
+	return convertVisualGraph(vg), nil
 }
 
 func validationResultToBiz(vr *graphtrpc.ValidationResult) *biz.GraphValidationResult {
@@ -362,23 +382,25 @@ func (f *trpcGraphBuilderFactory) Validate(ctx context.Context, cfg biz.GraphBui
 	return validationResultToBiz(graphtrpc.ValidateGraph(ctx, &cfg, checker, f.registry)), nil
 }
 
-func (f *trpcGraphBuilderFactory) ListTemplates() any {
-	return graphtrpc.ListBuiltinTemplates()
+func (f *trpcGraphBuilderFactory) ListTemplates() []biz.GraphTemplateRef {
+	templates := graphtrpc.ListBuiltinTemplates()
+	out := make([]biz.GraphTemplateRef, len(templates))
+	for i := range templates {
+		out[i] = convertGraphTemplate(templates[i])
+	}
+	return out
 }
 
-func (f *trpcGraphBuilderFactory) GetTemplate(templateID string) (any, bool) {
+func (f *trpcGraphBuilderFactory) GetTemplate(templateID string) (biz.GraphTemplateRef, bool) {
 	tmpl := graphtrpc.GetBuiltinTemplate(templateID)
 	if tmpl == nil {
-		return nil, false
+		return biz.GraphTemplateRef{}, false
 	}
-	return *tmpl, true
+	return convertGraphTemplate(*tmpl), true
 }
 
-func (f *trpcGraphBuilderFactory) TemplateToDef(template any, name, description string) *biz.GraphDefinition {
-	tmpl, ok := template.(graphtrpc.GraphTemplate)
-	if !ok {
-		return nil
-	}
+func (f *trpcGraphBuilderFactory) TemplateToDef(template biz.GraphTemplateRef, name, description string) *biz.GraphDefinition {
+	tmpl := revertGraphTemplate(template)
 	cfg := graphtrpc.TemplateToBuildConfig(tmpl)
 	return &biz.GraphDefinition{
 		Name: name, Description: description, StateFields: cfg.StateFields,
@@ -414,4 +436,125 @@ func (f *trpcGraphBuilderFactory) createAgent(name string, g *trpcgraph.Graph, e
 		return graphtrpc.NewGraphAgentWithEngine(name, g, enableCheckpoint, ee, cbState, subAgents...)
 	}
 	return graphtrpc.NewGraphAgent(name, g, enableCheckpoint, subAgents...)
+}
+
+// ---------------------------------------------------------------------------
+// Type conversion helpers: trpc-agent-go → biz layer
+// ---------------------------------------------------------------------------
+
+func convertCheckpointRef(ref trpcgraph.CheckpointRef) biz.GraphCheckpointRef {
+	return biz.GraphCheckpointRef{
+		LineageID:    ref.LineageID,
+		Namespace:    ref.Namespace,
+		CheckpointID: ref.CheckpointID,
+	}
+}
+
+func convertCheckpointInfo(info trpcgraph.CheckpointInfo) biz.GraphCheckpointInfo {
+	return biz.GraphCheckpointInfo{
+		Ref:              convertCheckpointRef(info.Ref),
+		ParentCheckpoint: info.ParentCheckpoint,
+		Source:           info.Source,
+		Step:             info.Step,
+		Timestamp:        info.Timestamp,
+	}
+}
+
+func convertCheckpointInfoList(infos []trpcgraph.CheckpointInfo) biz.GraphCheckpointList {
+	out := make(biz.GraphCheckpointList, len(infos))
+	for i := range infos {
+		out[i] = convertCheckpointInfo(infos[i])
+	}
+	return out
+}
+
+func convertStateSnapshot(snapshot *trpcgraph.StateSnapshot) *biz.GraphCheckpointState {
+	if snapshot == nil {
+		return nil
+	}
+	return &biz.GraphCheckpointState{
+		Ref:              convertCheckpointRef(snapshot.Ref),
+		ParentCheckpoint: snapshot.ParentCheckpoint,
+		Source:           snapshot.Source,
+		Step:             snapshot.Step,
+		Timestamp:        snapshot.Timestamp,
+		State:            snapshot.State,
+		NextNodes:        snapshot.NextNodes,
+		NextChannels:     snapshot.NextChannels,
+	}
+}
+
+func convertVisualGraph(vg *graphtrpc.VisualGraph) *biz.GraphVisualization {
+	if vg == nil {
+		return nil
+	}
+	nodes := make([]biz.GraphVisualizationNode, len(vg.Nodes))
+	for i, n := range vg.Nodes {
+		nodes[i] = biz.GraphVisualizationNode{
+			ID: n.ID, Label: n.Label, Type: n.Type,
+			Shape: n.Shape, FillColor: n.FillColor, BorderColor: n.BorderColor,
+		}
+	}
+	edges := make([]biz.GraphVisualizationEdge, len(vg.Edges))
+	for i, e := range vg.Edges {
+		edges[i] = biz.GraphVisualizationEdge{
+			From: e.From, To: e.To, Type: e.Type, Label: e.Label,
+		}
+	}
+	return &biz.GraphVisualization{Nodes: nodes, Edges: edges, DOT: vg.DOT}
+}
+
+func convertGraphTemplate(t graphtrpc.GraphTemplate) biz.GraphTemplateRef {
+	nodes := make([]biz.GraphTemplateNodeRef, len(t.Nodes))
+	for i, n := range t.Nodes {
+		nodes[i] = biz.GraphTemplateNodeRef{
+			NodeID: n.NodeID, Type: n.Type, Label: n.Label, Description: n.Description,
+		}
+	}
+	edges := make([]biz.GraphTemplateEdgeRef, len(t.Edges))
+	for i, e := range t.Edges {
+		edges[i] = biz.GraphTemplateEdgeRef{
+			FromNode: e.FromNode, ToNode: e.ToNode, Type: e.Type, Label: e.Label,
+		}
+	}
+	stateFields := make([]biz.StateFieldDef, len(t.StateFields))
+	copy(stateFields, t.StateFields)
+	return biz.GraphTemplateRef{
+		ID: t.ID, Name: t.Name, Description: t.Description, Category: t.Category,
+		Nodes: nodes, Edges: edges, StateFields: stateFields,
+		EntryPoint: t.EntryPoint, FinishPoint: t.FinishPoint,
+	}
+}
+
+// revertGraphTemplate converts a biz GraphTemplateRef back to the trpc layer
+// GraphTemplate so it can be fed into graphtrpc.TemplateToBuildConfig.
+func revertGraphTemplate(t biz.GraphTemplateRef) graphtrpc.GraphTemplate {
+	nodes := make([]graphtrpc.TemplateNode, len(t.Nodes))
+	for i, n := range t.Nodes {
+		nodes[i] = graphtrpc.TemplateNode{
+			NodeID: n.NodeID, Type: n.Type, Label: n.Label, Description: n.Description,
+		}
+	}
+	edges := make([]graphtrpc.TemplateEdge, len(t.Edges))
+	for i, e := range t.Edges {
+		edges[i] = graphtrpc.TemplateEdge{
+			FromNode: e.FromNode, ToNode: e.ToNode, Type: e.Type, Label: e.Label,
+		}
+	}
+	stateFields := make([]graphtrpc.StateFieldDef, len(t.StateFields))
+	copy(stateFields, t.StateFields)
+	return graphtrpc.GraphTemplate{
+		ID: t.ID, Name: t.Name, Description: t.Description, Category: t.Category,
+		Nodes: nodes, Edges: edges, StateFields: stateFields,
+		EntryPoint: t.EntryPoint, FinishPoint: t.FinishPoint,
+	}
+}
+
+func convertRawEvent(e *trpcevent.Event) biz.GraphRawEvent {
+	if e == nil {
+		return biz.GraphRawEvent{}
+	}
+	return biz.GraphRawEvent{
+		Object: e.Object,
+	}
 }

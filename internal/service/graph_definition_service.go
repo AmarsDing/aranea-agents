@@ -5,9 +5,7 @@ import (
 
 	graphv1 "aranea-agents/api/kratos/graph/v1"
 	"aranea-agents/internal/biz"
-	graphtrpc "aranea-agents/internal/graph/trpc"
 
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -197,16 +195,12 @@ func (s *GraphService) ValidateGraph(ctx context.Context, req *graphv1.ValidateG
 }
 
 func (s *GraphService) ListGraphTemplates(ctx context.Context, req *graphv1.ListGraphTemplatesRequest) (*graphv1.ListGraphTemplatesResponse, error) {
-	templates := s.uc.ListGraphTemplates(ctx)
-	tmplList, ok := templates.([]graphtrpc.GraphTemplate)
-	if !ok {
-		return nil, kerrors.InternalServer("GRAPH", "list templates: unexpected result type")
-	}
+	tmplList := s.uc.ListGraphTemplates(ctx)
 	resp := &graphv1.ListGraphTemplatesResponse{
 		Templates: make([]*graphv1.GraphTemplateInfo, 0, len(tmplList)),
 	}
 	for _, t := range tmplList {
-		resp.Templates = append(resp.Templates, templateToProto(t, s.lg))
+		resp.Templates = append(resp.Templates, bizTemplateToProto(t, s.lg))
 	}
 	userDefs, err := s.uc.ListUserTemplateGraphs(ctx)
 	if err != nil {
@@ -304,13 +298,9 @@ func (s *GraphService) SaveGraphAsTemplate(ctx context.Context, req *graphv1.Sav
 }
 
 func (s *GraphService) VisualizeGraph(ctx context.Context, req *graphv1.VisualizeGraphRequest) (*graphv1.VisualizeGraphResponse, error) {
-	result, err := s.uc.VisualizeGraph(ctx, req.GraphId, req.Format)
+	vg, err := s.uc.VisualizeGraph(ctx, req.GraphId, req.Format)
 	if err != nil {
 		return nil, err
-	}
-	vg, ok := result.(*graphtrpc.VisualGraph)
-	if !ok {
-		return nil, kerrors.InternalServer("GRAPH", "visualize: unexpected result type")
 	}
 	format := req.Format
 	if format == "" {

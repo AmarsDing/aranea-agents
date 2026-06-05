@@ -71,6 +71,7 @@ var (
 	ToProtoStep                   = toProtoStep
 	UserTemplateToProto           = userTemplateToProto
 	TemplateToProto               = templateToProto
+	BizTemplateToProto            = bizTemplateToProto
 	ToProtoTask                   = toProtoTask
 	BizTaskStatusToProto          = bizTaskStatusToProto
 	PbL0AssemblySnapshot          = pbL0AssemblySnapshot

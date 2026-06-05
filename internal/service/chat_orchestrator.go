@@ -74,6 +74,7 @@ type TeamOrchestrationDeps struct {
 	Graphs           *biz.GraphUsecase
 	Tasks            *biz.TaskUsecase
 	TeamGraphCoord   *team.TeamGraphRunCoordinator
+	TeamMediator     *team.TeamRunMediator
 	SpiritUC         *biz.SpiritTeamUsecase
 	TaskPlanner      biz.TaskPlannerPort
 	AgentAllocator   biz.AgentAllocatorPort
@@ -211,17 +212,14 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		deps.Team.TeamsNative.SetAwaitHookProvider(func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc {
 			return o.makeAwaitReplyFunc(runCtx, sessionID, runID)
 		})
-		deps.Team.TeamsNative.SetRuns(o.runs)
-		deps.Team.TeamsNative.SetStreamOptsFactory(&chatactivity.StreamOptsFactoryAdapter{
-			Tools:    deps.Catalog.ToolUC,
-			Agents:   deps.Catalog.Agents,
-			Sessions: deps.Sessions,
-		})
-		deps.Team.TeamsNative.SetAgentHelper(&chatagent.TeamAgentHelperAdapter{})
-		if deps.Team.TeamGraphCoord != nil {
-			deps.Team.TeamsNative.SetTeamGraphRunCoordinator(deps.Team.TeamGraphCoord)
-			deps.Team.TeamGraphCoord.SetFinisher(deps.Team.TeamsNative)
-			deps.Team.TeamGraphCoord.RecoverSessions(context.Background())
+		if deps.Team.TeamMediator != nil {
+			deps.Team.TeamsNative.SetMediator(deps.Team.TeamMediator)
+			deps.Team.TeamMediator.SetFinisher(deps.Team.TeamsNative)
+			if deps.Team.TeamGraphCoord != nil {
+				deps.Team.TeamMediator.SetCoordinator(deps.Team.TeamGraphCoord)
+				deps.Team.TeamGraphCoord.SetFinisher(deps.Team.TeamMediator)
+				deps.Team.TeamGraphCoord.RecoverSessions(context.Background())
+			}
 		}
 	}
 

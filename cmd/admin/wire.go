@@ -23,6 +23,7 @@ import (
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/monitor"
+	"aranea-agents/internal/chatactivity"
 	bizskill "aranea-agents/internal/biz/skill"
 	biztool "aranea-agents/internal/biz/tool"
 	bizusage "aranea-agents/internal/biz/usage"
@@ -498,6 +499,7 @@ func provideTeamOrchestrationDeps(
 	graphs *biz.GraphUsecase,
 	tasks *biz.TaskUsecase,
 	teamGraphCoord *team.TeamGraphRunCoordinator,
+	mediator *team.TeamRunMediator,
 	spiritUC *biz.SpiritTeamUsecase,
 	taskPlanner biz.TaskPlannerPort,
 	agentAllocator biz.AgentAllocatorPort,
@@ -509,6 +511,7 @@ func provideTeamOrchestrationDeps(
 		Graphs:         graphs,
 		Tasks:          tasks,
 		TeamGraphCoord: teamGraphCoord,
+		TeamMediator:   mediator,
 		SpiritUC:       spiritUC,
 		TaskPlanner:    taskPlanner,
 		AgentAllocator: agentAllocator,
@@ -525,6 +528,10 @@ func provideRunnerConfig(
 	graphs *biz.GraphUsecase,
 	graphFactory biz.GraphBuilderFactory,
 	tasks *biz.TaskUsecase,
+	runs *rt.RunRegistry,
+	tools *biz.ToolUsecase,
+	agents biz.AgentRepository,
+	sessions *biz.SessionUsecase,
 ) team.RunnerConfig {
 	cfg := team.RunnerConfig{
 		PluginRT:      pluginRT,
@@ -535,6 +542,9 @@ func provideRunnerConfig(
 			FederatedRetriever: knowledgeFederatedRetriever,
 			Evaluator:          knowledgeEvaluator,
 		},
+		Runs:              runs,
+		StreamOptsFactory: &chatactivity.StreamOptsFactoryAdapter{Tools: tools, Agents: agents, Sessions: sessions},
+		AgentHelper:       &chatagent.TeamAgentHelperAdapter{},
 	}
 	if graphs != nil {
 		cfg.GraphLoader = graphadapter.NewLinkedGraphBuildConfigLoader(graphs)

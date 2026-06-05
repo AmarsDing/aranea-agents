@@ -22,7 +22,8 @@ type GraphDefinitionProvider interface {
 // GraphDefinitionUsecase handles graph definition CRUD, templates, and versioning.
 // Separated from execution lifecycle to isolate concerns and enable independent testing.
 type GraphDefinitionUsecase struct {
-	repo    GraphRepo
+	reader  GraphReader
+	writer  GraphWriter
 	factory GraphBuilderFactory
 	mu      sync.RWMutex
 	defs    map[string]*GraphDefinition
@@ -32,7 +33,8 @@ type GraphDefinitionUsecase struct {
 // NewGraphDefinitionUsecase creates a definition usecase with in-memory definition cache.
 func NewGraphDefinitionUsecase(repo GraphRepo, factory GraphBuilderFactory, lg loggateway.Logger) *GraphDefinitionUsecase {
 	return &GraphDefinitionUsecase{
-		repo:    repo,
+		reader:  repo,
+		writer:  repo,
 		factory: factory,
 		defs:    make(map[string]*GraphDefinition),
 		lg:      lg,
@@ -50,7 +52,7 @@ func (uc *GraphDefinitionUsecase) CreateGraph(ctx context.Context, def *GraphDef
 		def.Version = 1
 	}
 	syncVersionMetadata(def)
-	saved, err := uc.repo.SaveDefinition(ctx, def)
+	saved, err := uc.writer.SaveDefinition(ctx, def)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +69,7 @@ func (uc *GraphDefinitionUsecase) GetGraph(ctx context.Context, id string) (*Gra
 		return def, nil
 	}
 	uc.mu.RUnlock()
-	def, err := uc.repo.GetDefinition(ctx, id)
+	def, err := uc.reader.GetDefinition(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -78,11 +80,11 @@ func (uc *GraphDefinitionUsecase) GetGraph(ctx context.Context, id string) (*Gra
 }
 
 func (uc *GraphDefinitionUsecase) ListGraphs(ctx context.Context, pageSize int, pageToken string) ([]*GraphDefinition, string, error) {
-	return uc.repo.ListDefinitions(ctx, pageSize, pageToken)
+	return uc.reader.ListDefinitions(ctx, pageSize, pageToken)
 }
 
 func (uc *GraphDefinitionUsecase) UpdateGraph(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error) {
-	previous, err := uc.repo.GetDefinition(ctx, def.ID)
+	previous, err := uc.reader.GetDefinition(ctx, def.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +92,7 @@ func (uc *GraphDefinitionUsecase) UpdateGraph(ctx context.Context, def *GraphDef
 	now := time.Now()
 	def.UpdatedAt = now
 	syncVersionMetadata(def)
-	saved, err := uc.repo.UpdateDefinition(ctx, def)
+	saved, err := uc.writer.UpdateDefinition(ctx, def)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +104,7 @@ func (uc *GraphDefinitionUsecase) UpdateGraph(ctx context.Context, def *GraphDef
 }
 
 func (uc *GraphDefinitionUsecase) DeleteGraph(ctx context.Context, id string) error {
-	err := uc.repo.DeleteDefinition(ctx, id)
+	err := uc.writer.DeleteDefinition(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -113,10 +115,10 @@ func (uc *GraphDefinitionUsecase) DeleteGraph(ctx context.Context, id string) er
 }
 
 func (uc *GraphDefinitionUsecase) ReorderGraphs(ctx context.Context, ids []string) error {
-	return uc.repo.ReorderGraphs(ctx, ids)
+	return uc.writer.ReorderGraphs(ctx, ids)
 }
 
-func (uc *GraphDefinitionUsecase) VisualizeGraph(ctx context.Context, graphID string, format string) (any, error) {
+func (uc *GraphDefinitionUsecase) VisualizeGraph(ctx context.Context, graphID string, format string) (*GraphVisualization, error) {
 	def, err := uc.GetGraph(ctx, graphID)
 	if err != nil {
 		return nil, err
@@ -134,7 +136,7 @@ func (uc *GraphDefinitionUsecase) ValidateGraph(ctx context.Context, graphID str
 	return uc.factory.Validate(ctx, cfg)
 }
 
-func (uc *GraphDefinitionUsecase) ListGraphTemplates(ctx context.Context) any {
+func (uc *GraphDefinitionUsecase) ListGraphTemplates(ctx context.Context) []GraphTemplateRef {
 	return uc.factory.ListTemplates()
 }
 
@@ -254,7 +256,7 @@ func (uc *GraphDefinitionUsecase) SaveGraphAsTemplate(ctx context.Context, graph
 	}
 	WriteUserTemplateMeta(def, meta)
 	def.UpdatedAt = time.Now()
-	saved, err := uc.repo.UpdateDefinition(ctx, def)
+	saved, err := uc.writer.UpdateDefinition(ctx, def)
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +267,7 @@ func (uc *GraphDefinitionUsecase) SaveGraphAsTemplate(ctx context.Context, graph
 }
 
 func (uc *GraphDefinitionUsecase) ListUserTemplateGraphs(ctx context.Context) ([]*GraphDefinition, error) {
-	return uc.repo.ListUserTemplateDefinitions(ctx, 200)
+	return uc.reader.ListUserTemplateDefinitions(ctx, 200)
 }
 
 func (uc *GraphDefinitionUsecase) FindNodeDef(ctx context.Context, graphID string, nodeID string) *NodeTaskMeta {

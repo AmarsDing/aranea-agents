@@ -105,8 +105,8 @@ func (r *Runner) compileTeamRuntime(
 	if err != nil {
 		return
 	}
-	if r.teamGraphCoord != nil {
-		if regErr := r.teamGraphCoord.RegisterTeamGraphExecution(ctx, graphExecID, sess.ID, teamRow.ID, runID, compiledTeam); regErr != nil {
+	if r.mediator != nil {
+		if regErr := r.mediator.RegisterTeamGraphExecution(ctx, graphExecID, sess.ID, teamRow.ID, runID, compiledTeam); regErr != nil {
 			r.lg.Warn("graph execution 注册失败", loggateway.StepID("team.graph_runtime.register"), loggateway.Err(regErr))
 		}
 	}

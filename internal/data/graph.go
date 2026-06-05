@@ -22,6 +22,8 @@ type graphRepo struct {
 
 var (
 	_ biz.GraphRepo    = (*graphRepo)(nil)
+	_ biz.GraphReader  = (*graphRepo)(nil)
+	_ biz.GraphWriter  = (*graphRepo)(nil)
 	_ biz.GraphRunRepo = (*graphRunRepo)(nil)
 )
 

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"aranea-agents/pkg/loggateway"
-	"aranea-agents/pkg/safego"
 )
 
 // ReducerType controls how state field values are merged.
@@ -220,14 +219,26 @@ type GraphStepSnapshot struct {
 	Timestamp   time.Time
 }
 
-type GraphRepo interface {
-	SaveDefinition(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error)
+// GraphReader provides read-only access to graph definitions.
+type GraphReader interface {
 	GetDefinition(ctx context.Context, id string) (*GraphDefinition, error)
 	ListDefinitions(ctx context.Context, pageSize int, pageToken string) ([]*GraphDefinition, string, error)
 	ListUserTemplateDefinitions(ctx context.Context, pageSize int) ([]*GraphDefinition, error)
+}
+
+// GraphWriter provides write access to graph definitions.
+type GraphWriter interface {
+	SaveDefinition(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error)
 	UpdateDefinition(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error)
 	DeleteDefinition(ctx context.Context, id string) error
 	ReorderGraphs(ctx context.Context, ids []string) error
+}
+
+// GraphRepo is the composite interface combining read and write operations.
+// Kept for backward compatibility; new code should depend on GraphReader or GraphWriter.
+type GraphRepo interface {
+	GraphReader
+	GraphWriter
 }
 
 type GraphRunRepo interface {
@@ -242,38 +253,37 @@ type GraphRunListOption struct {
 	StartedAfter *time.Time
 }
 
+// GraphUsecase is the facade that composes definition, execution, and cache
+// sub-usecases. It preserves the original public API for backward compatibility
+// while delegating internally to specialized components.
 type GraphUsecase struct {
-	defUC            *GraphDefinitionUsecase
-	runRepo          GraphRunRepo
-	factory          GraphBuilderFactory
-	execObserver     GraphExecutionObserver
-	taskCoord        GraphTaskCoordinator
-	compiledTeamRepo CompiledTeamRepo
-	mu               sync.RWMutex
-	executions       map[string]*GraphExecution
-	teamBuildConfigs map[string]*CompiledTeam
-	lg               loggateway.Logger
+	defUC   *GraphDefinitionUsecase
+	execUC  *GraphExecutionUsecase
+	cacheMgr *GraphCacheManager
 }
 
 func NewGraphUsecase(repo GraphRepo, runRepo GraphRunRepo, factory GraphBuilderFactory, observer GraphExecutionObserver, compiledTeamRepo CompiledTeamRepo, lg loggateway.Logger) *GraphUsecase {
-	uc := &GraphUsecase{
-		defUC:            NewGraphDefinitionUsecase(repo, factory, lg),
-		runRepo:          runRepo,
-		factory:          factory,
-		execObserver:     observer,
-		compiledTeamRepo: compiledTeamRepo,
-		executions:       make(map[string]*GraphExecution),
-		lg:               lg,
+	defUC := NewGraphDefinitionUsecase(repo, factory, lg)
+	cacheMgr := NewGraphCacheManager(compiledTeamRepo, defUC, lg)
+	execUC := NewGraphExecutionUsecase(runRepo, factory, observer, cacheMgr, defUC, lg)
+	return &GraphUsecase{
+		defUC:   defUC,
+		execUC:  execUC,
+		cacheMgr: cacheMgr,
 	}
-	safego.Go(context.Background(), "graph-gc-loop", func() { uc.gcLoop() })
-	return uc
 }
 
 // DefUC returns the embedded GraphDefinitionUsecase for callers that only need definition operations.
 func (uc *GraphUsecase) DefUC() *GraphDefinitionUsecase { return uc.defUC }
 
+// ExecUC returns the embedded GraphExecutionUsecase for callers that need execution operations.
+func (uc *GraphUsecase) ExecUC() *GraphExecutionUsecase { return uc.execUC }
+
+// CacheMgr returns the embedded GraphCacheManager for callers that need cache operations.
+func (uc *GraphUsecase) CacheMgr() *GraphCacheManager { return uc.cacheMgr }
+
 func (uc *GraphUsecase) SetTaskCoordinator(c GraphTaskCoordinator) {
-	uc.taskCoord = c
+	uc.execUC.SetTaskCoordinator(c)
 }
 
 func nodeDefFromConfig(cfg GraphBuildConfig, nodeID string) *NodeDef {
@@ -317,56 +327,6 @@ const gcInterval = 5 * time.Minute
 const executionMaxAge = 30 * time.Minute
 const maxExecutions = 500 // per-node execution cache limit; estimated at ~1KB per execution, ~500KB per node
 
-func (uc *GraphUsecase) gcLoop() {
-	ticker := time.NewTicker(gcInterval)
-	defer ticker.Stop()
-	for range ticker.C {
-		uc.gc()
-	}
-}
-
-func (uc *GraphUsecase) gc() {
-	uc.mu.Lock()
-	var expired []*GraphExecution
-	now := time.Now()
-	for id, exec := range uc.executions {
-		if exec.Status == "running" || exec.Status == "waiting_human" {
-			continue
-		}
-		if exec.FinishedAt != nil && now.Sub(*exec.FinishedAt) > executionMaxAge {
-			exec.SetEvicted()
-			delete(uc.executions, id)
-			delete(uc.teamBuildConfigs, id)
-		} else if exec.FinishedAt == nil && now.Sub(exec.StartedAt) > executionMaxAge {
-			if exec.runtime != nil {
-				if err := exec.runtime.Cancel(); err != nil {
-					uc.lg.Warn("cancel graph runtime on gc eviction", loggateway.Err(err))
-				}
-			}
-			exec.Status = "failed"
-			exec.ErrorMessage = "execution expired: no activity within timeout"
-			nowCopy := now
-			exec.FinishedAt = &nowCopy
-			exec.SetEvicted()
-			expired = append(expired, exec)
-			delete(uc.executions, id)
-			delete(uc.teamBuildConfigs, id)
-		}
-	}
-	uc.mu.Unlock()
-
-	// Persist expired executions to repo before discarding from memory.
-	for _, exec := range expired {
-		persistCtx := exec.ctx
-		if persistCtx == nil {
-			persistCtx = context.Background()
-		}
-		if err := uc.runRepo.UpdateRun(persistCtx, exec); err != nil {
-			uc.lg.Error("gc expired execution persist failed", loggateway.StepID("graph.gc_expired_persist"), loggateway.Str("run_id", exec.ID), loggateway.Err(err))
-		}
-	}
-}
-
 func (uc *GraphUsecase) CreateGraph(ctx context.Context, def *GraphDefinition) (*GraphDefinition, error) {
 	return uc.defUC.CreateGraph(ctx, def)
 }
@@ -391,7 +351,7 @@ func (uc *GraphUsecase) ReorderGraphs(ctx context.Context, ids []string) error {
 	return uc.defUC.ReorderGraphs(ctx, ids)
 }
 
-func (uc *GraphUsecase) VisualizeGraph(ctx context.Context, graphID string, format string) (any, error) {
+func (uc *GraphUsecase) VisualizeGraph(ctx context.Context, graphID string, format string) (*GraphVisualization, error) {
 	return uc.defUC.VisualizeGraph(ctx, graphID, format)
 }
 
@@ -399,7 +359,7 @@ func (uc *GraphUsecase) ValidateGraph(ctx context.Context, graphID string) (*Gra
 	return uc.defUC.ValidateGraph(ctx, graphID)
 }
 
-func (uc *GraphUsecase) ListGraphTemplates(ctx context.Context) any {
+func (uc *GraphUsecase) ListGraphTemplates(ctx context.Context) []GraphTemplateRef {
 	return uc.defUC.ListGraphTemplates(ctx)
 }
 
@@ -437,6 +397,71 @@ func (uc *GraphUsecase) FindNodeDef(ctx context.Context, graphID string, nodeID 
 
 func (uc *GraphUsecase) FindGraphNode(ctx context.Context, graphID string, nodeID string) *NodeDef {
 	return uc.defUC.FindGraphNode(ctx, graphID, nodeID)
+}
+
+// ---------------------------------------------------------------------------
+// Execution delegation
+// ---------------------------------------------------------------------------
+
+func (uc *GraphUsecase) ExecuteGraph(ctx context.Context, graphID, sessionID, execID string, initialState map[string]any) (*GraphExecution, error) {
+	return uc.execUC.ExecuteGraph(ctx, graphID, sessionID, execID, initialState)
+}
+
+func (uc *GraphUsecase) ExecuteGraphBuildConfig(ctx context.Context, graphID, sessionID, execID string, cfg GraphBuildConfig, initialState map[string]any) (*GraphExecution, error) {
+	return uc.execUC.ExecuteGraphBuildConfig(ctx, graphID, sessionID, execID, cfg, initialState)
+}
+
+func (uc *GraphUsecase) GetExecution(ctx context.Context, executionID string) (*GraphExecution, error) {
+	return uc.execUC.GetExecution(ctx, executionID)
+}
+
+func (uc *GraphUsecase) ListExecutions(ctx context.Context, graphID string, pageSize int, pageToken string, opts ...GraphRunListOption) ([]*GraphExecution, string, error) {
+	return uc.execUC.ListExecutions(ctx, graphID, pageSize, pageToken, opts...)
+}
+
+func (uc *GraphUsecase) CancelExecution(ctx context.Context, executionID string) error {
+	return uc.execUC.CancelExecution(ctx, executionID)
+}
+
+func (uc *GraphUsecase) ResumeExecution(ctx context.Context, executionID string, resumeValue map[string]any) (*GraphExecution, error) {
+	return uc.execUC.ResumeExecution(ctx, executionID, resumeValue)
+}
+
+func (uc *GraphUsecase) RegisterTeamGraphExecution(ctx context.Context, execID, sessionID, teamID, teamRunID string, ct *CompiledTeam) error {
+	return uc.execUC.RegisterTeamGraphExecution(ctx, execID, sessionID, teamID, teamRunID, ct)
+}
+
+func (uc *GraphUsecase) MarkTeamGraphInterrupt(ctx context.Context, execID, nodeID, lineageID string) error {
+	return uc.execUC.MarkTeamGraphInterrupt(ctx, execID, nodeID, lineageID)
+}
+
+func (uc *GraphUsecase) TimeTravelGetState(ctx context.Context, executionID string, checkpointID string, namespace string) (*GraphCheckpointState, error) {
+	return uc.execUC.TimeTravelGetState(ctx, executionID, checkpointID, namespace)
+}
+
+func (uc *GraphUsecase) TimeTravelHistory(ctx context.Context, executionID string, namespace string, limit int) (GraphCheckpointList, error) {
+	return uc.execUC.TimeTravelHistory(ctx, executionID, namespace, limit)
+}
+
+func (uc *GraphUsecase) TimeTravelEditState(ctx context.Context, executionID string, checkpointID string, namespace string, patch map[string]any) (*GraphEditedState, error) {
+	return uc.execUC.TimeTravelEditState(ctx, executionID, checkpointID, namespace, patch)
+}
+
+func (uc *GraphUsecase) ListCheckpoints(ctx context.Context, executionID string, namespace string, limit int) (GraphCheckpointList, error) {
+	return uc.execUC.ListCheckpoints(ctx, executionID, namespace, limit)
+}
+
+func (uc *GraphUsecase) GetStateSnapshot(ctx context.Context, executionID string, checkpointID string, namespace string) (*GraphCheckpointState, error) {
+	return uc.execUC.GetStateSnapshot(ctx, executionID, checkpointID, namespace)
+}
+
+func (uc *GraphUsecase) EditState(ctx context.Context, executionID string, checkpointID string, namespace string, patch map[string]any) (*GraphEditedState, error) {
+	return uc.execUC.EditState(ctx, executionID, checkpointID, namespace, patch)
+}
+
+// buildConfigForExecution delegates to the cache manager for backward-compatible test access.
+func (uc *GraphUsecase) buildConfigForExecution(ctx context.Context, exec *GraphExecution) (*CompiledTeam, error) {
+	return uc.cacheMgr.BuildConfigForExecution(ctx, exec)
 }
 
 func defToBuildConfig(def *GraphDefinition) GraphBuildConfig {

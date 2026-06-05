@@ -32,20 +32,20 @@ type Runner struct {
 	skillDBRepo     trpcskill.Repository
 	codeExecFactory *localexec.Factory
 	cfg             RunnerConfig
-	teamGraphCoord  *TeamGraphRunCoordinator
+	mediator        *TeamRunMediator
 	lg              loggateway.Logger
 }
 
-// SetTeamGraphRunCoordinator wires team graph execution lifecycle (register / HITL / task resume).
-// This is the only remaining Setter because Runner and TeamGraphRunCoordinator have a circular
-// dependency: Runner needs Coordinator, and Coordinator needs Runner via TeamGraphRunFinisher.
-// The circular dependency is resolved at construction time: Runner is created first (without
-// Coordinator), then Coordinator is created, then this Setter links them.
-func (r *Runner) SetTeamGraphRunCoordinator(c *TeamGraphRunCoordinator) {
+// SetMediator wires the TeamRunMediator that breaks the circular dependency
+// between Runner and TeamGraphRunCoordinator. Runner depends on
+// TeamGraphCoordAccess (via Mediator); Coordinator depends on
+// TeamGraphRunFinisher (via Mediator). Construction order:
+// Runner → Mediator → Coordinator → Mediator.SetCoordinator.
+func (r *Runner) SetMediator(m *TeamRunMediator) {
 	if r == nil {
 		return
 	}
-	r.teamGraphCoord = c
+	r.mediator = m
 }
 
 func (r *Runner) SetAwaitHookProvider(fn func(runCtx context.Context, sessionID, runID string) tooltrpc.ReplyFunc) {
@@ -53,27 +53,6 @@ func (r *Runner) SetAwaitHookProvider(fn func(runCtx context.Context, sessionID,
 		return
 	}
 	r.cfg.AwaitHookProvider = fn
-}
-
-func (r *Runner) SetRuns(runs *rt.RunRegistry) {
-	if r == nil {
-		return
-	}
-	r.cfg.Runs = runs
-}
-
-func (r *Runner) SetStreamOptsFactory(f StreamOptsFactory) {
-	if r == nil {
-		return
-	}
-	r.cfg.StreamOptsFactory = f
-}
-
-func (r *Runner) SetAgentHelper(h biz.TeamAgentHelper) {
-	if r == nil {
-		return
-	}
-	r.cfg.AgentHelper = h
 }
 
 func NewRunner(

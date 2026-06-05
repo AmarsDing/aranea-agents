@@ -75,13 +75,13 @@ func (r *Runner) startObservers(
 			}, r.lg)
 		}
 	}
-	if r.teamGraphCoord != nil && graphExecID != "" {
+	if r.mediator != nil && graphExecID != "" {
 		setup.stopExecTracker = StartTeamGraphExecutionTracker(ctx, r.td.Pipeline.Bus, TeamGraphExecutionTrackerConfig{
 			SessionID:        sess.ID,
 			GraphExecutionID: graphExecID,
-			Registry:         r.teamGraphCoord,
+			Registry:         r.mediator,
 		}, r.lg)
-		setup.stopGraphStepWatch = r.teamGraphCoord.StartGraphStepWatch(ctx, graphExecID)
+		setup.stopGraphStepWatch = r.mediator.StartGraphStepWatch(ctx, graphExecID)
 	}
 	return setup
 }

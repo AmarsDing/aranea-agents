@@ -49,41 +49,41 @@ func TestUpsertGraphStep(t *testing.T) {
 }
 
 func TestEvictIfNeeded(t *testing.T) {
-	uc := &GraphUsecase{
-		executions:       make(map[string]*GraphExecution),
-		teamBuildConfigs: make(map[string]*CompiledTeam),
+	execUC := &GraphExecutionUsecase{
+		executions: make(map[string]*GraphExecution),
+		cacheMgr:   &GraphCacheManager{teamBuildConfigs: make(map[string]*CompiledTeam)},
 	}
 
 	for i := 0; i < maxExecutions; i++ {
-		uc.executions[string(rune('a'+i%26))+string(rune('0'+i/26))] = &GraphExecution{
+		execUC.executions[string(rune('a'+i%26))+string(rune('0'+i/26))] = &GraphExecution{
 			ID:     string(rune('a' + i%26)),
 			Status: "completed",
 		}
 	}
-	if len(uc.executions) < maxExecutions {
-		t.Fatalf("setup: expected at least %d executions, got %d", maxExecutions, len(uc.executions))
+	if len(execUC.executions) < maxExecutions {
+		t.Fatalf("setup: expected at least %d executions, got %d", maxExecutions, len(execUC.executions))
 	}
 
-	uc.evictIfNeeded()
-	if len(uc.executions) >= maxExecutions {
-		t.Fatalf("expected eviction, still have %d executions", len(uc.executions))
+	execUC.evictIfNeeded()
+	if len(execUC.executions) >= maxExecutions {
+		t.Fatalf("expected eviction, still have %d executions", len(execUC.executions))
 	}
 }
 
 func TestEvictIfNeeded_skipsRunning(t *testing.T) {
-	uc := &GraphUsecase{
-		executions:       make(map[string]*GraphExecution),
-		teamBuildConfigs: make(map[string]*CompiledTeam),
+	execUC := &GraphExecutionUsecase{
+		executions: make(map[string]*GraphExecution),
+		cacheMgr:   &GraphCacheManager{teamBuildConfigs: make(map[string]*CompiledTeam)},
 	}
 
-	uc.executions["running-1"] = &GraphExecution{ID: "running-1", Status: "running"}
-	uc.executions["waiting-1"] = &GraphExecution{ID: "waiting-1", Status: "waiting_human"}
+	execUC.executions["running-1"] = &GraphExecution{ID: "running-1", Status: "running"}
+	execUC.executions["waiting-1"] = &GraphExecution{ID: "waiting-1", Status: "waiting_human"}
 
-	uc.evictIfNeeded()
-	if _, ok := uc.executions["running-1"]; !ok {
+	execUC.evictIfNeeded()
+	if _, ok := execUC.executions["running-1"]; !ok {
 		t.Fatal("running execution should not be evicted")
 	}
-	if _, ok := uc.executions["waiting-1"]; !ok {
+	if _, ok := execUC.executions["waiting-1"]; !ok {
 		t.Fatal("waiting_human execution should not be evicted")
 	}
 }

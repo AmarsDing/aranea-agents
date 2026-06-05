@@ -7,9 +7,6 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/telemetry/turntrace"
 
-	trpcgraph "trpc.group/trpc-go/trpc-agent-go/graph"
-
-	kerrors "github.com/go-kratos/kratos/v2/errors"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -182,13 +179,12 @@ func (s *GraphService) TimeTravelGraph(ctx context.Context, req *graphv1.TimeTra
 		}
 		return resp, nil
 	}
-	snapshot, _ := result.(*trpcgraph.StateSnapshot)
 	resp := &graphv1.TimeTravelGraphResponse{
 		ExecutionId: req.ExecutionId,
 		StepIndex:   req.StepIndex,
 	}
-	if snapshot != nil && snapshot.State != nil {
-		st, err := structpb.NewStruct(snapshot.State)
+	if result != nil && result.State != nil {
+		st, err := structpb.NewStruct(result.State)
 		if err == nil {
 			resp.StateSnapshot = st
 		}
@@ -201,13 +197,9 @@ func (s *GraphService) ListCheckpoints(ctx context.Context, req *graphv1.ListChe
 	if limit <= 0 {
 		limit = 10
 	}
-	checkpoints, err := s.uc.ListCheckpoints(ctx, req.ExecutionId, "", limit)
+	cpList, err := s.uc.ListCheckpoints(ctx, req.ExecutionId, "", limit)
 	if err != nil {
 		return nil, err
-	}
-	cpList, ok := checkpoints.([]trpcgraph.CheckpointInfo)
-	if !ok {
-		return nil, kerrors.InternalServer("GRAPH", "list checkpoints: unexpected result type")
 	}
 	items := make([]*graphv1.CheckpointInfo, len(cpList))
 	for i, cp := range cpList {
@@ -231,31 +223,30 @@ func (s *GraphService) GetStateSnapshot(ctx context.Context, req *graphv1.GetSta
 	if err != nil {
 		return nil, err
 	}
-	snapshot, _ := result.(*trpcgraph.StateSnapshot)
 	resp := &graphv1.GetStateSnapshotResponse{}
-	if snapshot != nil {
+	if result != nil {
 		info := &graphv1.CheckpointInfo{
-			LineageId:          snapshot.Ref.LineageID,
-			Namespace:          snapshot.Ref.Namespace,
-			CheckpointId:       snapshot.Ref.CheckpointID,
-			ParentCheckpointId: snapshot.ParentCheckpoint,
-			Source:             snapshot.Source,
-			Step:               int32(snapshot.Step),
+			LineageId:          result.Ref.LineageID,
+			Namespace:          result.Ref.Namespace,
+			CheckpointId:       result.Ref.CheckpointID,
+			ParentCheckpointId: result.ParentCheckpoint,
+			Source:             result.Source,
+			Step:               int32(result.Step),
 		}
-		if !snapshot.Timestamp.IsZero() {
-			info.Timestamp = timestamppb.New(snapshot.Timestamp)
+		if !result.Timestamp.IsZero() {
+			info.Timestamp = timestamppb.New(result.Timestamp)
 		}
 		resp.Snapshot = &graphv1.StateSnapshot{
 			CheckpointInfo: info,
 		}
-		if snapshot.State != nil {
-			st, err := structpb.NewStruct(snapshot.State)
+		if result.State != nil {
+			st, err := structpb.NewStruct(result.State)
 			if err == nil {
 				resp.Snapshot.State = st
 			}
 		}
-		if snapshot.NextNodes != nil {
-			resp.Snapshot.NextNodes = snapshot.NextNodes
+		if result.NextNodes != nil {
+			resp.Snapshot.NextNodes = result.NextNodes
 		}
 	}
 	return resp, nil
@@ -270,13 +261,9 @@ func (s *GraphService) EditState(ctx context.Context, req *graphv1.EditStateRequ
 	if err != nil {
 		return nil, err
 	}
-	ref, ok := result.(trpcgraph.CheckpointRef)
-	if !ok {
-		return nil, kerrors.InternalServer("GRAPH", "edit state: unexpected result type")
-	}
 	return &graphv1.EditStateResponse{
-		NewCheckpointId: ref.CheckpointID,
-		LineageId:       ref.LineageID,
-		Namespace:       ref.Namespace,
+		NewCheckpointId: result.Ref.CheckpointID,
+		LineageId:       result.Ref.LineageID,
+		Namespace:       result.Ref.Namespace,
 	}, nil
 }

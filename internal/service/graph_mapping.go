@@ -260,6 +260,40 @@ func templateToProto(t graphtrpc.GraphTemplate, lg loggateway.Logger) *graphv1.G
 	return info
 }
 
+func bizTemplateToProto(t biz.GraphTemplateRef, lg loggateway.Logger) *graphv1.GraphTemplateInfo {
+	info := &graphv1.GraphTemplateInfo{
+		Id:          t.ID,
+		Name:        t.Name,
+		Description: t.Description,
+		Category:    t.Category,
+		EntryPoint:  t.EntryPoint,
+		FinishPoint: t.FinishPoint,
+	}
+	info.Nodes = make([]*graphv1.TemplateNodeInfo, len(t.Nodes))
+	for i, n := range t.Nodes {
+		info.Nodes[i] = &graphv1.TemplateNodeInfo{
+			NodeId:      n.NodeID,
+			Type:        n.Type,
+			Label:       n.Label,
+			Description: n.Description,
+		}
+	}
+	info.Edges = make([]*graphv1.TemplateEdgeInfo, len(t.Edges))
+	for i, e := range t.Edges {
+		info.Edges[i] = &graphv1.TemplateEdgeInfo{
+			FromNode: e.FromNode,
+			ToNode:   e.ToNode,
+			Type:     e.Type,
+			Label:    e.Label,
+		}
+	}
+	info.StateFields = make([]*graphv1.StateFieldDef, len(t.StateFields))
+	for i, sf := range t.StateFields {
+		info.StateFields[i] = toProtoStateField(sf, lg)
+	}
+	return info
+}
+
 func toProtoTask(task *biz.GraphTask) *graphv1.Task {
 	pb := &graphv1.Task{
 		TaskId:         task.TaskID,

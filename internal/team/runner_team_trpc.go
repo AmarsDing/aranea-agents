@@ -431,8 +431,8 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		r.lg,
 	)
 
-	if graphExecID != "" && r.teamGraphCoord != nil {
-		if deferred, derr := r.teamGraphCoord.DeferTeamRunSuccessIfHITL(ctx, graphExecID, &run); derr != nil {
+	if graphExecID != "" && r.mediator != nil {
+		if deferred, derr := r.mediator.DeferTeamRunSuccessIfHITL(ctx, graphExecID, &run); derr != nil {
 			r.lg.Warn("HITL defer 失败", loggateway.StepID("team.graph_runtime.hitl"), loggateway.Err(derr))
 		} else if deferred {
 			r.recordTeamRunUsage(ctx, run, teamRow.ID, ar.agent, promptTok, completionTok, ar.prov, ar.mod, dialogMode)

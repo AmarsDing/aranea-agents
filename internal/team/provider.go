@@ -31,4 +31,4 @@ func ProvideTeamGraphRunCoordinator(graphs *biz.GraphUsecase, teams biz.TeamRunR
 }
 
 // ProviderSet wires team runtime.
-var ProviderSet = wire.NewSet(NewRunner, ProvideTeamGraphRunCoordinator)
+var ProviderSet = wire.NewSet(NewRunner, ProvideTeamGraphRunCoordinator, NewTeamRunMediator)
