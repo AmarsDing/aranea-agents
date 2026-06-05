@@ -104,7 +104,7 @@
 
 ### Task 7: 定义 Repo 端口接口
 
-> **注意**：代码中已存在 `SkillHealthReader` 端口（`internal/biz/skill_health.go`），提供 `GetSkillHealth(ctx, skillID, since7d, since30d)` 方法。Phase 2 的 `SkillHealthAggregator` 应扩展或复用此端口，避免重复定义。
+> **注意**：代码中已存在 `SkillHealthReader` 端口（`internal/biz/skill_health.go`），提供 `GetSkillHealth(ctx, skillID, since7d, since30d)` 方法。代码中也已存在 `SkillInvocationStatsReader` 端口（`internal/biz/skill_invocation_stats.go`），提供 `GetSkillInvocationStats(ctx, agentID, since)` 方法。Phase 2 的 `SkillHealthAggregator` 应扩展或复用这些端口，避免重复定义。
 
 **Files:**
 - Create: `internal/biz/skill_intelligence_repo.go`
@@ -261,6 +261,8 @@
 
 ### Task 18: 创建 Ent Schema skill_evolution_suggestion
 
+> **参考**：代码中已有的 `skill_proposals` 表使用原始 SQL DDL（`internal/data/sql/skill_evolution.sql`）而非 Ent Schema。Phase 4 的 `skill_evolution_suggestion` 表设计为 Ent Schema，但实施时也可考虑沿用原始 SQL 模式以保持一致性。
+
 **Files:**
 - Create: `internal/data/ent/schema/skill_evolution_suggestion.go`
 
@@ -273,6 +275,8 @@
 ---
 
 ### Task 19: 实现进化建议 Repo 与 Usecase
+
+> **注意**：代码中已存在 `SkillEvolutionUsecase`（`internal/biz/skill_evolution.go`）和 `skillProposalRepo`（`internal/data/skill_evolution.go`），但它们服务于 `skill-evolution-auto-creator` 变更，管理的是 `SkillProposal`（从零创建新 Skill 的提议）。Phase 4 的 `SkillEvolutionSuggestion` 是基于 Experience Report 触发的、针对已有 Skill 的优化建议，两者数据模型和审批队列不同。实施时需新建 `skill_evolution_suggestion` 相关代码，不可复用现有 `SkillEvolutionUsecase`。
 
 **Files:**
 - Modify: `internal/biz/skill_intelligence_repo.go`

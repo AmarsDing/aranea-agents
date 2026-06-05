@@ -1,7 +1,7 @@
 # 行业模板库审查修复设计文档
 
-> 日期：2026-05-31
-> 状态：Phase 1 已实施
+> 日期：2026-05-31（2026-06-05 文档对齐复查更新，修正 Phase 3/4 完成状态）
+> 状态：Phase 1-4 已实施（Phase 2 部分完成，Phase 3/4 仅 taxonomy+prompt+skill 完成，agents.yaml 未添加新 Agent，详见 §9 实际完成状态）
 > 审查来源：`docs/scenarios/industry-template-library.design.md` 方案执行审查
 
 ***
@@ -47,7 +47,9 @@
 
 * `IndustryTaxonomy`（行业分类学）准确反映功能
 
-* 代码中硬编码了三级约束（`normalizeAgentCategory`），命名应反映此约束
+* 代码中硬编码了三级约束（`normalizeTaxonomy`），命名应反映此约束
+
+**实现补充**：实际实现中额外创建了 `IndustryTaxonomyService`（`api/kratos/industry_taxonomy/v1/industry_taxonomy.proto`），提供 `/v1/industry-taxonomy` HTTP 路由。该服务与 `TaxonomyService` 并行存在，共享同一 `TaxonomyUsecase`，但使用不同的 Proto message 命名（`IndustryTaxonomy` vs `TaxonomyNode`）。前端通过 `taxonomy-nodes` 资源名访问 `IndustryTaxonomyService`，通过 `taxonomy` 资源名访问 `TaxonomyService`。
 
 ### 2.3 stockx 统一到 finance YAML 体系
 
@@ -93,6 +95,8 @@
 | Data 文件      | `agent_category.go`                | `taxonomy.go`                           |
 | Service      | `AgentCategoryService`             | `TaxonomyService`                       |
 | Service 文件   | `agent_category.go`                | `taxonomy.go`                           |
+| Service（额外） | —                                  | `IndustryTaxonomyService`（额外新增）        |
+| Service 文件（额外）| —                                | `industry_taxonomy.go`（额外新增）           |
 | Seed 文件      | `seed_builtin_agent_categories.go` | `seed_builtin_taxonomy.go`              |
 | Agent 字段     | `CategoryPositionID`               | `TaxonomyPositionID`                    |
 | Agent Ent 字段 | `category_position_id`             | `taxonomy_position_id`                  |
@@ -109,6 +113,9 @@
 | service `AgentCategoryService`  | `TaxonomyService`      |
 | 文件 `agent_category.proto`       | `taxonomy.proto`       |
 | 目录 `api/kratos/agent_category/` | `api/kratos/taxonomy/` |
+| Proto（额外）—                      | `industry_taxonomy.proto`（额外新增） |
+| 目录（额外）—                        | `api/kratos/industry_taxonomy/`（额外新增） |
+| `agent.proto` 中 `category_position_id` | ⚠️ 仍为 `category_position_id`（未重命名） |
 
 ### 3.3 HTTP 路由
 
@@ -122,19 +129,32 @@
 | `DELETE /v1/agent-categories/{id}` | `DELETE /v1/taxonomy/{id}` |
 | `PUT /v1/agent-categories/reorder` | `PUT /v1/taxonomy/reorder` |
 
+**额外新增路由**（`IndustryTaxonomyService`）：
+
+| 路由                                       | 说明                     |
+| ---------------------------------------- | ---------------------- |
+| `GET /v1/industry-taxonomy`              | 列表（平铺）                |
+| `GET /v1/industry-taxonomy/tree`         | 树形                     |
+| `POST /v1/industry-taxonomy`             | 创建                     |
+| `GET /v1/industry-taxonomy/{id}`         | 获取                     |
+| `PATCH /v1/industry-taxonomy/{id}`       | 更新                     |
+| `DELETE /v1/industry-taxonomy/{id}`      | 删除                     |
+
 ### 3.4 前端
 
 | 旧名                                     | 新名                         |
 | -------------------------------------- | -------------------------- |
-| API resource `agent-categories`        | `taxonomy`                 |
+| API resource `agent-categories`        | `taxonomy` + `taxonomy-nodes`（额外） |
 | 组件 `AgentCategoryTree.vue`             | `TaxonomyTree.vue`         |
 | 组件 `AgentCategoryPositionCard.vue`     | `TaxonomyPositionCard.vue` |
-| 组件 `CategoryTreeNodeHeader.vue`        | `TaxonomyNodeHeader.vue`   |
+| 组件 `CategoryTreeNodeHeader.vue`        | `TaxonomyTreeNodeHeader.vue` + `TaxonomyNodeHeader.vue`（额外） |
 | 页面 `AgentCategoriesPage.vue`           | `TaxonomyPage.vue`         |
 | Composable `useAgentCategoriesPage.ts` | `useTaxonomyPage.ts`       |
-| 工具 `categoryTreeUtils.ts`              | `taxonomyTreeUtils.ts`     |
+| 工具 `categoryTreeUtils.ts`              | `taxonomyTreeUtils.ts` + `categoryTreeUtils.ts`（兼容 re-export） |
 | Store 字段 `category_position_id`        | `taxonomy_position_id`     |
 | 路由 `/settings/agent-categories`        | `/settings/taxonomy`       |
+| 组件（额外）—                                | `TaxonomyIndustryCard.vue`（额外新增） |
+| Store 变量（保留）—                          | `categoryTree`/`loadCategoryTree`/`selectedCategory`（保留为兼容别名） |
 
 ### 3.5 YAML / Loader
 
@@ -142,7 +162,9 @@
 | ---------------------- | -------------------- |
 | `categories.yaml`      | `taxonomy.yaml`      |
 | `categories_loader.go` | `taxonomy_loader.go` |
-| `LoadCategoriesYAML`   | `LoadTaxonomyYAML`   |
+| `LoadCategoriesYAML`   | `LoadTaxonomySpec`   |
+
+⚠️ **实现偏差**: `categories.yaml` 和 `categories_loader.go` 仍存在（死代码，未被引用）
 
 ### 3.6 不改名的部分
 
@@ -193,6 +215,8 @@
 | `GET /v1/positions/{key}/prompt`       | `GET /v1/taxonomy/{id}/prompt`                     |
 | `GET /v1/positions/{key}/variants`     | `GET /v1/taxonomy/{id}/variants`                   |
 
+⚠️ **实现偏差**: 以上 API 迁移仅后端完成（TaxonomyService 已替代 IndustryService），前端未迁移。`features/industries/api.ts` 仍调用 `/v1/industries` 旧 API（后端已无此路由），行业市场页 API 调用会 404
+
 ### 4.3 前端迁移
 
 * `IndustryMarketPage` 改为读 `GET /v1/taxonomy?level=industry`
@@ -202,6 +226,8 @@
 * `IndustryPositionPicker` 改为读 taxonomy API
 
 * `features/industries/api.ts` 改为调 taxonomy API
+
+⚠️ **实现偏差**: 以上前端迁移均未执行。`features/industries/api.ts` 仍调用 `/v1/industries` 旧 API（后端已无此路由），行业市场页 API 调用会 404
 
 ***
 
@@ -252,9 +278,11 @@ industries:
 
 * 岗位 name 以 `seed-industries/main.go` 为准
 
-* 补全 softwaredev 的 10 部门 / \~17 岗位
+* 补全 softwaredev 的 10 部门 / ~17 岗位
 
 * 合并 `seed-industries` 中的 `responsibilities_json`、`skills_required`、`seniority_level` 到 YAML
+
+⚠️ **实现偏差**: 以上数据对齐规则均未执行。`taxonomy.yaml` 仅包含基础字段（key/name/description/sort_order），部门 key 未对齐（仍使用 `risk_compliance` 而非 `compliance_risk` 等），selfmedia 的 `content_creation` 未拆分，`growth_monetization` 未改为 `distribution`
 
 ### 5.3 关键部门 key 对齐
 
@@ -268,6 +296,8 @@ industries:
 | selfmedia   | `content_creation`      | (拆分为 fiction\_writing + content\_graphic) | 拆分                |
 | selfmedia   | `growth_monetization`   | `distribution`                            | `distribution`    |
 | softwaredev | `game_client`           | `gamedev`                                 | `gamedev`         |
+
+⚠️ **实现偏差**: 以上部门 key 对齐均未执行。`taxonomy.yaml` 中 finance 部门仍使用旧 key（`risk_compliance`/`investment_research`/`financial_engineering`/`wealth_management`/`derivatives`），selfmedia 的 `content_creation` 未拆分，`growth_monetization` 未改为 `distribution`。仅 softwaredev 的 `gamedev` 已对齐
 
 ***
 
@@ -313,6 +343,19 @@ stockx 的 prompt 文件从 `cmd/seed-stockx-org/` 迁移到 `internal/scenario/
 
 * 删除 stockx 相关的独立分类树定义
 
+⚠️ **实现偏差**: stockx 合并未完全执行。`cmd/seed-stockx-org/` 已删除 ✅，stockx prompt 文件已迁移（`critic.md`/`chart.md` 存在）✅，但以下内容未合并到 `finance/agents.yaml`：
+- `trading_coordinator/critic` variant（§6.1 中 `agent_critic` 的映射）未添加
+- `report_writer/chart` variant（§6.1 中 `agent_chart_builder` 的映射）未添加
+- `team-research-pipeline` 团队（§6.2 中新增）未添加
+- `team-deep-dive-critic` 团队（§6.2 中新增）未添加
+
+✅ **已纠正**: 现有 5 个 stockx 团队（`team-premarket-brief` 等）的成员引用已统一为 finance agent_key（如 `trading-coordinator-premarket`、`data-collector-general` 等），与之前偏差记录不符。
+
+⚠️ **额外实现**: finance/agents.yaml 包含 3 个设计未规划的额外 team：
+- `team-quant-strategy-research`（量化策略研发，sequential 模式）
+- `team-investment-committee`（投资决策委员会，coordinator 模式）
+- `team-risk-monitoring`（风险监控，parallel 模式）
+
 ***
 
 ## 七、补全 softwaredev Agent
@@ -353,17 +396,21 @@ stockx 的 prompt 文件从 `cmd/seed-stockx-org/` 迁移到 `internal/scenario/
 
 * 启动时自动执行，版本门控 `SeedTaxonomyV1`
 
-* 种子逻辑使用 Ent ORM（非 Raw SQL），通过 `TaxonomyRepo.Create` / `TaxonomyRepo.Update` 实现 upsert
+* ⚠️ **实现偏差**: 种子逻辑实际使用 Raw SQL（INSERT ... ON CONFLICT），而非设计要求的 Ent ORM。通过 `TaxonomyRepo.Create` / `TaxonomyRepo.Update` 实现 upsert 的方案未执行
 
 * 删除 `cmd/seed-industries/` CLI（功能已被自动 seed 替代）
 
-* 保留 `cmd/seed-industry-agents/` CLI（Agent/Team 种子仍需手动触发）
+* ⚠️ **实现偏差**: `cmd/seed-industry-agents/` CLI 也已删除（设计要求保留）
+
+* ⚠️ **实现偏差**: `metadata_json` 未存储扩展字段（responsibilities/skills_required/seniority_level），始终为空字符串
 
 ### 8.2 种子版本
 
 ```go
 const SeedTaxonomyV1 = 20260701
 ```
+
+⚠️ **实现偏差**: 实际值为 `SeedTaxonomyV1 = 20260529`，且 `SeedCategoriesV2 = 20260530` 仍保留在 `seed_versions.go` 中
 
 ***
 
@@ -402,6 +449,12 @@ Phase 4: softwaredev Agent 补全（P2+P3 批次）
   4.4 编写 Skill 文件
   4.5 运行 seed-industry-agents CLI 验证
 ```
+
+**实际完成状态**（2026-06-05 复查）：
+- Phase 1: ⚠️ 基本完成（1.6 前端行业市场页迁移未执行，1.10 selfmedia variant 连字符未修复）
+- Phase 2: ⚠️ 部分完成（2.3 prompt 迁移 ✅，2.4 删除 ✅，2.1/2.2 Agent/Team 合并未完成；⚠️ 实际 finance 团队成员引用已统一为 finance agent_key，但缺少 critic/chart variant 和 team-research-pipeline/team-deep-dive-critic；⚠️ 实际有 3 个设计未规划的额外 team：team-quant-strategy-research/team-investment-committee/team-risk-monitoring）
+- Phase 3: ⚠️ 部分完成（3.0 taxonomy.yaml ✅，3.4 prompt 文件 ✅，3.5 Skill ✅；⚠️ 3.1-3.3 agents.yaml 未添加新 Agent，仅 10 个原始 Agent，缺少约 17 个 P1 Agent）
+- Phase 4: ⚠️ 部分完成（4.3 prompt 文件 ✅，4.4 Skill ✅；⚠️ 4.1-4.2 agents.yaml 未添加 P2+P3 Agent，缺少约 45 个 Agent）
 
 ***
 
@@ -498,18 +551,18 @@ Phase 4: softwaredev Agent 补全（P2+P3 批次）
 | 1.3 | 实现 SeedBuiltinTaxonomy 自动 seed | ✅ 已完成 | 表名 industry_taxonomy，字段 taxonomy_key |
 | 1.4 | 废弃 industries/departments/positions 三表 | ✅ 已完成 | 从 Wire DI 移除，源文件保留待后续清理 |
 | 1.5 | IndustryService API 迁移到 TaxonomyService | ✅ 已完成 | TaxonomyService 已替代 IndustryService |
-| 1.6 | 前端迁移 | ✅ 已完成 | 文件名/页面名/API 函数名已重命名 |
+| 1.6 | 前端迁移 | ⚠️ 部分完成 | 文件名/页面名/API 函数名已重命名；⚠️ 行业市场页（features/industries/）未迁移到 Taxonomy API |
 | 1.7 | make api && make wire && make build && make test | ✅ 已完成 | 全量编译和测试通过 |
 | 1.8 | 前端 pnpm build | ✅ 已完成 | npx quasar build 通过 |
 | 1.9 | aranea-review 审查 + 三项专项复查 | ✅ 已完成 | 3 阻断已修复，5 建议记录备忘 |
-| 1.10 | 修复审查发现的问题 | ✅ 已完成 | data/taxonomy.go fmt.Errorf→kerrors；seed ID 前缀 cat→tax；selfmedia variant 连字符→下划线；SQL DDL 表名更新 |
+| 1.10 | 修复审查发现的问题 | ⚠️ 部分完成 | data/taxonomy.go fmt.Errorf→kerrors；seed ID 前缀 cat→tax；⚠️ selfmedia variant 连字符→下划线未实际执行（`platform-adapt`/`data-driven`/`geography-history`/`magic-system` 仍使用连字符）；SQL DDL 表名更新 |
 
 ### Phase 2: stockx 统一（金融行业包完善）
 
 | 步骤 | 描述 | 状态 | 备注 |
 |------|------|------|------|
-| 2.1 | stockx Agent 合并到 finance/agents.yaml | ✅ 已完成 | 新增 trading-coordinator-critic + report-writer-chart 两个 variant |
-| 2.2 | stockx Team 合并到 finance/agents.yaml | ✅ 已完成 | 新增 team-research-pipeline + team-deep-dive-critic |
+| 2.1 | stockx Agent 合并到 finance/agents.yaml | ⚠️ 部分完成 | trading_coordinator/critic 和 report_writer/chart variant 未添加；其余 stockx Agent 已通过原有 finance Agent 覆盖 |
+| 2.2 | stockx Team 合并到 finance/agents.yaml | ⚠️ 部分完成 | team-research-pipeline 和 team-deep-dive-critic 未添加；5 个已有 Team 成员引用已统一为 finance agent_key ✅；额外新增 3 个设计未规划的 team（team-quant-strategy-research/team-investment-committee/team-risk-monitoring） |
 | 2.3 | stockx prompt 迁移到 finance/prompts/positions/ | ✅ 已完成 | 新增 critic.md + chart.md |
 | 2.4 | 删除 cmd/seed-stockx-org/ | ✅ 已完成 | 6 个文件已删除 |
 | 2.5 | 运行 seed-industry-agents CLI 验证 | ⏳ 待验证 | 需预先修复 biz/usage + biz/monitor 编译错误 |
@@ -519,21 +572,21 @@ Phase 4: softwaredev Agent 补全（P2+P3 批次）
 | 步骤 | 描述 | 状态 | 备注 |
 |------|------|------|------|
 | 3.0 | 更新 taxonomy.yaml 添加 P1 新部门/岗位 | ✅ 已完成 | backend 6 岗位 + frontend 4 岗位 + gamedev 4 岗位 |
-| 3.1 | 补全 backend 岗位 Agent（11 个） | ✅ 已完成 | Java(3) + Python(2) + Rust(2) + C++(2) + DBA(2) |
-| 3.2 | 补全 frontend 岗位 Agent（8 个） | ✅ 已完成 | React(3) + TypeScript(2) + 性能(2) + UI/UX(1) |
-| 3.3 | 补全 gamedev 岗位 Agent（8 个） | ✅ 已完成 | UE 图形(2) + 游戏服务端(2) + TA(1) + 策划(2) + 已有 UE 客户端(4) |
-| 3.4 | 编写 P1 prompt 文件 | ✅ 已完成 | 26 个新 prompt 文件 |
-| 3.5 | 编写 P1 Skill 文件 | ✅ 已完成 | 4 个新 Skill（java-spring-boot/python-backend/react-patterns/game-server） |
+| 3.1 | 补全 backend 岗位 Agent（11 个） | ⚠️ 未完成 | agents.yaml 仅 10 个原始 Agent，未添加 Java/Python/Rust/C++/DBA 等 P1 Agent；prompt 文件已创建 |
+| 3.2 | 补全 frontend 岗位 Agent（8 个） | ⚠️ 未完成 | agents.yaml 未添加 React/TypeScript/性能/UI/UX 等 P1 Agent；prompt 文件已创建 |
+| 3.3 | 补全 gamedev 岗位 Agent（8 个） | ⚠️ 未完成 | agents.yaml 未添加 UE 图形/游戏服务端/TA/策划等 P1 Agent；prompt 文件已创建 |
+| 3.4 | 编写 P1 prompt 文件 | ✅ 已完成 | 79 个 prompt 文件（覆盖 P1+P2+P3 全部岗位） |
+| 3.5 | 编写 P1 Skill 文件 | ✅ 已完成 | 11 个 Skill（含设计未规划的 5 个额外 Skill：ddd-tactical/code-review-checklist/clean-arch/go-best-practices/ue5-gas） |
 | 3.6 | 运行 seed-industry-agents CLI 验证 | ⏳ 待验证 | 需预先修复 biz/usage + biz/monitor 编译错误 |
 
 ### Phase 4: softwaredev Agent 补全（P2+P3 批次）
 
 | 步骤 | 描述 | 状态 | 备注 |
 |------|------|------|------|
-| 4.1 | 补全 devops/architecture/qa 岗位（23 个） | ✅ 已完成 | SRE(3)+CI/CD(2)+容器(2)+监控(2)+基础设施(1)+架构(7)+测试(6) |
-| 4.2 | 补全 mobiledev/dataeng/security/productpm 岗位（22 个） | ✅ 已完成 | iOS(3)+Android(3)+跨平台(2)+数据(4)+安全(4)+产品(4) |
-| 4.3 | 编写 P2+P3 prompt 文件 | ✅ 已完成 | 43 个新 prompt 文件 |
-| 4.4 | 编写 P2+P3 Skill 文件 | ✅ 已完成 | 2 个新 Skill（sre-practices/mobile-dev） |
+| 4.1 | 补全 devops/architecture/qa 岗位（23 个） | ⚠️ 未完成 | agents.yaml 未添加 SRE/CI/CD/容器/监控/架构/测试等 P2 Agent；prompt 文件已创建 |
+| 4.2 | 补全 mobiledev/dataeng/security/productpm 岗位（22 个） | ⚠️ 未完成 | agents.yaml 未添加 iOS/Android/数据/安全/产品等 P3 Agent；prompt 文件已创建 |
+| 4.3 | 编写 P2+P3 prompt 文件 | ✅ 已完成 | 79 个 prompt 文件（覆盖 P1+P2+P3 全部岗位） |
+| 4.4 | 编写 P2+P3 Skill 文件 | ✅ 已完成 | 11 个 Skill（含 sre-practices/mobile-dev） |
 | 4.5 | 运行 seed-industry-agents CLI 验证 | ⏳ 待验证 | 需预先修复 biz/usage + biz/monitor 编译错误 |
 
 ---
@@ -578,7 +631,7 @@ Phase 4: softwaredev Agent 补全（P2+P3 批次）
 |----|------|----|------|------|------|
 | BE1 | 错误处理 | 后端 | `internal/data/taxonomy.go` | `ensureNodeCanDelete` 使用 `fmt.Errorf` 返回业务错误 | 改用 `kerrors.BadRequest` |
 | BE2 | 错误处理 | 后端 | `internal/data/taxonomy.go` | 错误消息仍用 "category" 旧名 | 更新为 "node" |
-| BR1 | Agent 配置 | 后端 | `internal/scenario/selfmedia/agents.yaml` | 4 个 variant 使用连字符（`platform-adapt`/`data-driven`/`geography-history`/`magic-system`），不匹配 `variantSafeRe` 正则 `^[a-z0-9_]+$`，导致 API 400 | 改为下划线 |
+| BR1 | Agent 配置 | 后端 | `internal/scenario/selfmedia/agents.yaml` | 4 个 variant 使用连字符（`platform-adapt`/`data-driven`/`geography-history`/`magic-system`），不匹配 `variantSafeRe` 正则 `^[a-z0-9_]+$`，导致 API 400 | ⚠️ 未修复（仍使用连字符） |
 
 ### 建议项（记录备忘，后续迭代修复）
 
@@ -588,7 +641,7 @@ Phase 4: softwaredev Agent 补全（P2+P3 批次）
 | FS2 | 数据流 | 前端 | `features/teams/useTeamsPage.ts` | Teams composable 拷贝 `categoryTree` 到本地 ref |
 | FS3 | 数据流 | 前端 | `features/chat/composables/useChatEntityNav.ts` | Chat composable 拷贝 `categoryTree` 到本地 ref |
 | FL1 | 分层 | 前端 | 多文件 | Store/Composable/变量名仍用 `category` 前缀（`categoryTree`→`taxonomyTree`、`loadCategoryTree`→`loadTaxonomyTree`、`selectedCategory`→`selectedTaxonomy`、`useCategoryTreeField`→`useTaxonomyTreeField`、`CATEGORY_RESOURCE`→`TAXONOMY_RESOURCE`、`category-*` CSS 类名→`taxonomy-*`、`category.*` FieldScope→`taxonomy.*`） |
-| SD1 | 岗位补全 | 配置 | `internal/scenario/taxonomy.yaml` | softwaredev 仅 3 个岗位，方案要求 15-20 个（Phase 3-4） |
+| SD1 | 岗位补全 | 配置 | `internal/scenario/softwaredev/agents.yaml` | softwaredev agents.yaml 仅 10 个 Agent（原始），方案要求 ~82 个（Phase 3-4）；⚠️ taxonomy.yaml 岗位定义和 prompt 文件已补全，但 agents.yaml Agent 条目未添加 |
 
 ### 合规性清单
 
@@ -607,6 +660,7 @@ Phase 4: softwaredev Agent 补全（P2+P3 批次）
 | 操作 | 文件 | 说明 |
 |------|------|------|
 | 新建 | `api/kratos/taxonomy/v1/taxonomy.proto` | Taxonomy 服务 Proto 定义 |
+| 新建 | `api/kratos/industry_taxonomy/v1/industry_taxonomy.proto` | IndustryTaxonomy 服务 Proto 定义（额外新增） |
 | 删除 | `api/kratos/agent_category/v1/agent_category.proto` | 旧分类 Proto |
 | 新建 | `internal/data/ent/schema/industry_taxonomy.go` | Ent Schema（表名 industry_taxonomy） |
 | 删除 | `internal/data/ent/schema/agent_category.go` | 旧 Ent Schema |
@@ -615,13 +669,14 @@ Phase 4: softwaredev Agent 补全（P2+P3 批次）
 | 新建 | `internal/data/taxonomy.go` | TaxonomyRepo 实现 |
 | 删除 | `internal/data/agent_category.go` | 旧 Data 层 |
 | 新建 | `internal/service/taxonomy.go` | TaxonomyService |
+| 新建 | `internal/service/industry_taxonomy.go` | IndustryTaxonomyService（额外新增） |
 | 删除 | `internal/service/agent_category.go` | 旧 Service 层 |
 | 新建 | `internal/scenario/loader/taxonomy_loader.go` | TaxonomySpec + LoadTaxonomySpec |
-| 删除 | `internal/scenario/loader/categories_loader.go` | 旧 Loader |
+| 删除 | `internal/scenario/loader/categories_loader.go` | 旧 Loader（⚠️ 仍存在为死代码） |
 | 新建 | `internal/data/seed_builtin_taxonomy.go` | SeedBuiltinTaxonomy |
 | 删除 | `internal/data/seed_builtin_agent_categories.go` | 旧 Seed |
-| 重命名 | `categories.yaml` → `taxonomy.yaml` | YAML 数据文件 |
+| 重命名 | `categories.yaml` → `taxonomy.yaml` | YAML 数据文件（⚠️ categories.yaml 仍存在） |
 | 修改 | `internal/data/ent/schema/agent.go` | category_position_id → taxonomy_position_id |
-| 修改 | `api/kratos/agent/v1/agent.proto` | category_position_id → taxonomy_position_id |
+| 修改 | `api/kratos/agent/v1/agent.proto` | ⚠️ 仍使用 category_position_id（未重命名） |
 | 修改 | 多个 Biz/Data/Service/Server/Agent/Wire/Cmd 文件 | 全链路重命名引用 |
 

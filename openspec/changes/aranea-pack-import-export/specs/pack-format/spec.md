@@ -33,6 +33,8 @@
 ### Requirement: ReadPackFromFS 从 embed.FS 读取
 系统 SHALL 支持从 `fs.FS`（如 `embed.FS`）读取 .arpack 目录结构。
 
+**注意**：`ReadPackFromFS` 不检查 `MaxPackSize` 和 `MaxTotalSize`（因为 embed.FS 没有总大小概念），但仍检查 `MaxEntrySize`（单条目大小上限）和 `MaxTarEntries`（条目数上限）。
+
 #### Scenario: 从 embed.FS 读取内置模板
 - **WHEN** 调用 `ReadPackFromFS(builtinTemplatesFS, "scenario/packs/builtin-templates")`
 - **THEN** 系统 SHALL 遍历目录结构，解析 manifest.yaml、taxonomy.yaml、agents/*.yaml、graphs/*.yaml 等，构建与 `ReadPack` 相同的内存模型
@@ -91,7 +93,9 @@
 
 #### Scenario: Team YAML 必填字段
 - **WHEN** 解析 Team YAML
-- **THEN** SHALL 包含必填字段：`key`、`display_name`、`mode`；可选字段包括：`description`、`max_concurrency`、`timeout_seconds`、`run_timeout_sec`、`turn_timeout_sec`、`first_byte_timeout_sec`、`loop_max_iter`、`enable_checkpoint`、`runtime_engine`、`team_graph_runtime`、`members`（含 `agent_key`、`role`、`name`、`task_prompt`、`enabled`、`sort_order`）、`intent_anchor_key`、`synthesizer_key`、`graph`（含 `linked`、`layout`、`nodes`、`edges`、`linked_graph_id`）、`failure_policy`、`critic_loop`
+- **THEN** SHALL 包含必填字段：`key`、`display_name`、`mode`；可选字段包括：`description`、`max_concurrency`、`timeout_seconds`、`run_timeout_sec`、`turn_timeout_sec`、`first_byte_timeout_sec`、`loop_max_iter`、`enable_checkpoint`、`runtime_engine`、`team_graph_runtime`、`members`（含 `agent_key`、`role`、`name`、`task_prompt`、`enabled`、`sort_order`）、`intent_anchor_key`、`synthesizer_key`、`graph`（含 `linked`、`layout`、`nodes`、`edges`、`linked_graph_id`）、`failure_policy`（含 `default`、`retry`（含 `max_attempts`、`initial_interval_ms`、`backoff_factor`）、`node_overrides`（map[string]TeamNodeFailureOverride）、`circuit_breaker`（含 `failure_threshold`、`recovery_timeout_ms`、`half_open_max_calls`）、`parallel_fail`、`on_error`）、`critic_loop`（含 `max_iterations`、`score_threshold`）
+
+**注意**：`circuit_breaker.half_open_max_calls` 字段在 YAML schema 中定义，但当前导出/导入引擎未映射此字段，为预留字段。
 
 #### Scenario: Team 成员通过 agent_key 引用
 - **WHEN** Team YAML 中 members 列表包含 `{agent_key: go-senior-architect, role: orchestrator}`

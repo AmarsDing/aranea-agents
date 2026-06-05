@@ -4,8 +4,8 @@ Aranea-Agents 的 Team（语义层）和 Graph（执行引擎层）通过编译-
 
 行业调研（LangGraph/Microsoft Agent Framework/AWS Strands Agents/MAN+ESM 论文）确认：Team（声明式/角色驱动）→ Graph（执行式/图驱动）的编译模式是最佳实践，Aranea 方向正确但解耦不彻底。
 
-当前架构关键数据：
-- `GraphBuildConfig`：13 字段（含 `FailurePolicy` + `ParallelBranchIDs`）
+当前架构关键数据（变更前基线）：
+- `GraphBuildConfig`：11 字段（`FailurePolicy`/`ParallelBranchIDs` 从未在此结构体上定义，它们存在于 `team.Definition` 和编译管线参数中；原始设计文档误记为 13 字段）
 - `NodeDef`：28 字段（含 8 个 Task 字段 + 3 个 Failure 字段）
 - `Runner`：20 字段 + 12 个 Setter
 - `GraphBuilderFactory`：10 方法
@@ -13,16 +13,19 @@ Aranea-Agents 的 Team（语义层）和 Graph（执行引擎层）通过编译-
 
 ### 实现后实际数据（截至当前代码）
 
-- `GraphBuildConfig`：12 字段（`FailurePolicy`/`ParallelBranchIDs` 从未在此结构体上定义，新增 `TaskMeta` 字段）
-- `NodeDef`：20 字段（8 个 Task 字段已移至 `NodeTaskMeta`，3 个 Failure 字段保留为 `RetryMaxAttempts`/`FailureAction`/`FallbackAgent`）
-- `Runner`：7 字段 + 5 个 Setter（`RunnerConfig` 合并了部分依赖，`KnowledgeFacade` 合并了 4 个 Knowledge 字段）
+- `GraphBuildConfig`（biz 层）：12 字段（`FailurePolicy`/`ParallelBranchIDs` 从未在此结构体上定义，新增 `TaskMeta` 字段）
+- `GraphBuildConfig`（trpc 层）：11 字段（不含 `TaskMeta`，含 `Nodes []NodeDef`/`Subgraphs []SubgraphDef` 等 trpc 特有类型）
+- `NodeDef`（biz 层）：20 字段（8 个 Task 字段已移至 `NodeTaskMeta`，3 个 Failure 字段保留为 `RetryMaxAttempts`/`FailureAction`/`FallbackAgent`）
+- `NodeDef`（trpc 层）：嵌入 `biz.NodeDef` + `Func trpcgraph.NodeFunc`
+- `Runner`：8 字段（`teams`/`usage`/`td`/`skillDBRepo`/`codeExecFactory`/`cfg RunnerConfig`/`teamGraphCoord`/`lg`）+ 5 个 Setter（`SetTeamGraphRunCoordinator`/`SetAwaitHookProvider`/`SetRuns`/`SetStreamOptsFactory`/`SetAgentHelper`）
 - `GraphBuilderFactory`：5 个窄接口 + 1 个复合接口（`GraphRunnerFactory` 3 方法、`GraphVisualizer` 1 方法、`GraphValidator` 1 方法、`GraphTemplateProvider` 3 方法、`GraphNodeInfoProvider` 2 方法）
 - biz/trpc 双源类型：6 组中 4 组已统一（`EdgeDef`/`StateFieldDef` 类型别名，`NodeDef`/`ConditionalEdgeDef` 嵌入），2 组待统一（`GraphBuildConfig`/`SubgraphDef`）
 - `CompiledTeam`：值嵌入 `GraphBuildConfig`，含 `RoleManifest`/`OriginalPolicy`/`CompiledAt`，提供 `TaskMetaForNode`/`RoleForNode` 访问器
-- `CompiledTeamRepo`：手写 SQL DDL（非 Ent），含 `Save`/`Load`/`LoadForSession`/`Delete`，`LoadForSession` 校验 session 活跃状态
-- `TeamRunMediator`：已定义并实现 `TeamGraphCoordAccess` + `TeamGraphRunFinisher` 双接口，但尚未集成到 Runner
+- `CompiledTeamRepo`：手写 SQL DDL + Ent Schema 双定义（Ent Schema 用于文档/DDL 追踪，实际 CRUD 使用手写 SQL），含 `Save`/`Load`/`LoadForSession`/`Delete`，`LoadForSession` 校验 session 活跃状态。DDL 迁移通过 `ddl_migration_registry.go` 注册（含初始建表 + session_id 字段增量迁移）
+- `TeamRunMediator`：已定义并实现 `TeamGraphCoordAccess`（4 方法）+ `TeamGraphRunFinisher`（2 方法）双接口，含 `SetCoordinator`/`SetFinisher` 后置接线，但尚未集成到 Runner
 - `GraphDefinitionUsecase`：已从 `GraphUsecase` 中分离，`GraphUsecase.DefUC()` 返回定义子用例
 - `GraphUsecase`：仍持有 `teamBuildConfigs` 内存缓存（与 DB 双写），`buildConfigForExecution` 实现三级回退（内存→DB→重编译）
+- `GraphNodeResolverSet`：已定义（Models/Tools/Agents/Functions/Subgraphs），注入到 `trpcGraphBuilderFactory`。`Functions` 字段已在 DI 中接线（`wire.go` 中 `CatalogFunctionResolver` 赋值），但 `wireNode` 中未消费 `deps.Functions`（函数节点仍通过 `FuncRef` 解析，未走 `FunctionResolver` 管线）；`Subgraphs` 字段已定义但同样未在 `wireNode` 中消费
 
 ## Goals / Non-Goals
 
@@ -113,7 +116,7 @@ Aranea-Agents 的 Team（语义层）和 Graph（执行引擎层）通过编译-
 
 **关键约束**：CompiledTeam 嵌入的 `GraphBuildConfig` 使用 biz 层定义（`FuncRef string`/`CondFuncRef string`），不含函数指针，可安全序列化。trpc 层的 `Func`/`CondFunc` 在运行时从引用解析，不参与持久化。
 
-**Ent Schema**：新增 `CompiledTeam` 表，字段：`team_id`, `graph_id`, `config_json`, `created_at`, `updated_at`
+**Ent Schema**：新增 `CompiledTeam` 表，字段：`team_id`, `graph_id`, `config_json`, `created_at`, `updated_at`。实际实现同时包含 Ent Schema（`internal/data/ent/schema/compiled_team.go`，用于文档/DDL 追踪）和手写 SQL DDL（`compiled_team_schema.go`），CRUD 使用手写 SQL。DDL 迁移通过 `ddl_migration_registry.go` 管理（版本 20260705 初始建表 + 版本 20260714 新增 `session_id` 字段）。
 
 ### D7：Milestone 依赖与执行顺序
 
@@ -191,13 +194,13 @@ M5 (Team 统一) ← 依赖 M4
 
 **影响**：`graph/trpc` 层仍依赖 `biz.TeamFailurePolicy` 类型，Goal 4（"Graph 运行时零 Team 类型依赖"）未完全达成。
 
-### DEV-04：CompiledTeam 持久化使用手写 SQL 而非 Ent
+### DEV-04：CompiledTeam 持久化使用手写 SQL + Ent Schema 双定义
 
 **设计**：使用 Ent Schema 定义 `compiled_team` 表。
 
-**实际**：使用手写 SQL DDL（`compiled_team_schema.go` 中的 `EnsureCompiledTeamSchema`），表结构包含 `id`/`team_id`/`graph_id`/`session_id`/`config_json`/`created_at`/`updated_at`，比设计多了 `session_id` 和 `id`（复合主键）字段。
+**实际**：同时存在 Ent Schema（`internal/data/ent/schema/compiled_team.go`，用于文档/DDL 追踪）和手写 SQL DDL（`compiled_team_schema.go` 中的 `EnsureCompiledTeamSchema`）。实际 CRUD 操作使用手写 SQL（`compiledTeamRepo` 直接执行 `INSERT OR REPLACE`/`SELECT`/`DELETE`），不使用 Ent 生成的代码。表结构包含 `id`/`team_id`/`graph_id`/`session_id`/`config_json`/`created_at`/`updated_at`，比设计多了 `session_id` 和 `id`（复合主键）字段。DDL 迁移通过 `ddl_migration_registry.go` 注册（版本 20260705 初始建表 + 版本 20260714 新增 `session_id` 字段）。
 
-**影响**：功能等价，但未使用项目统一的 Ent ORM。`LoadForSession` 方法额外校验 session 活跃状态，这是设计文档未提及的安全增强。
+**影响**：功能等价，Ent Schema 与手写 SQL 需保持同步。`LoadForSession` 方法额外校验 session 活跃状态，这是设计文档未提及的安全增强。
 
 ### DEV-05：TeamRunMediator 已定义但未完全集成
 
@@ -262,3 +265,49 @@ M5 (Team 统一) ← 依赖 M4
 **实际**：`failureRecoveryAfterNode` 中，当 `resolvedFallback` 为 nil 但 `fallback` 字符串非空时，仍使用 `trpcgraph.NewAgentNodeFunc(fallback)` 创建节点函数。这与 BUG-04 的修复意图不完全一致——`wireNode` 中已通过 `deps.Agents.ResolveAgent` 解析 fallback，但 `failureRecoveryAfterNode` 闭包捕获的 `resolvedFallback` 可能为 nil（解析失败时）。
 
 **影响**：在 `wireNode` 中 fallback 解析失败会返回错误阻止图构建，因此运行时 `resolvedFallback` 为 nil 的情况仅出现在 `fallback` 字段为空时，此时不会进入 fallback 分支。风险较低但代码意图不清晰。
+
+### DEV-13：trpc 层 GraphBuildConfig 缺少 TaskMeta 字段
+
+**设计**：biz/trpc 类型统一后，`GraphBuildConfig = biz.GraphBuildConfig` 类型别名。
+
+**实际**：trpc 层 `GraphBuildConfig` 仍为独立结构体（11 字段，不含 `TaskMeta`），与 biz 层 `GraphBuildConfig`（12 字段，含 `TaskMeta`）不同。`bizCfgToTrpc` 转换时丢弃 `TaskMeta`，`trpcCfgToBiz` 转换时不恢复 `TaskMeta`。
+
+**影响**：这是 `GraphBuildConfig` 和 `SubgraphDef` 仍为双源定义的根本原因。trpc 层不需要 `TaskMeta`（它只用于 biz 层 Task 协调），但类型不统一导致映射代码无法消除。
+
+**建议**：在 4.1 完成类型统一时，考虑让 trpc 层 `GraphBuildConfig` 嵌入 `biz.GraphBuildConfig`（类似 `NodeDef` 的嵌入模式），这样 `TaskMeta` 自然继承但 trpc 层不消费。
+
+### DEV-14：GraphNodeResolverSet 已定义但 BuildDeps 仍被使用
+
+**设计**：`FunctionResolver` 应集成到 DI 或移除。
+
+**实际**：`GraphNodeResolverSet` 已定义（含 Models/Tools/Agents/Functions/Subgraphs 五个解析器），注入到 `trpcGraphBuilderFactory`。`Functions` 字段已在 DI 中接线（`wire.go` 中 `CatalogFunctionResolver` 赋值），`Subgraphs` 字段已定义但无实现。旧版 `BuildDeps` 仍标记为 Deprecated 并通过 `ToBuildDepsPtr()` 使用（`buildRuntime` 调用 `resolvers.ToBuildDepsPtr()` 传入 `BuildStateGraphWithRegistryAndLogger`）。`wireNode` 中未消费 `deps.Functions`（函数节点仍通过 `FuncRef` 解析，未走 `FunctionResolver` 管线）。
+
+**影响**：存在两套并行的依赖注入路径（`BuildDeps` 和 `GraphNodeResolverSet`），增加维护成本。`Functions`/`Subgraphs` 解析器已定义但未在图构建管线中消费。
+
+**建议**：完成 `BuildDeps` 到 `GraphNodeResolverSet` 的迁移后，删除 `BuildDeps` 及其转换方法。
+
+### DEV-15：CompileToGraphRuntimeConfigFromJSON 返回 *biz.CompiledTeam 而非 GraphBuildConfig
+
+**设计**：`CompileToGraphRuntimeConfig` 委托给 `CompileToCompiledTeam` 后取 `.GraphBuildConfig`。
+
+**实际**：`CompileToGraphRuntimeConfigFromJSON` 直接返回 `*biz.CompiledTeam`（而非 `biz.GraphBuildConfig`），函数签名与名称不一致。调用方 `runner_team_compiler.go` 使用的是 `CompileToGraphRuntimeConfigFromJSON` 的返回值作为 `*biz.CompiledTeam`。
+
+**影响**：函数名暗示返回 `GraphBuildConfig`，但实际返回 `CompiledTeam`，可能造成混淆。功能上等价且更优（返回更多信息）。
+
+**建议**：重命名为 `CompileToCompiledTeamFromJSON` 或在函数注释中明确说明返回类型。
+
+### DEV-16：CompileToGraphBuildConfig 系列函数未在设计文档中记录
+
+**设计**：设计文档仅描述 `CompileToCompiledTeam` 和 `CompileToGraphRuntimeConfig` 两个编译入口。
+
+**实际**：`graph_compile.go` 中还存在 `CompileToGraphBuildConfig` 和 `CompileToGraphBuildConfigFromJSON` 两个函数，它们直接返回 `biz.GraphBuildConfig`（不包装为 `CompiledTeam`），用于仅需要图拓扑的场景（如可视化、模板生成）。内部实现调用 `compileToGraphBuildConfigWithLoader`，与 `CompileToCompiledTeam` 共享底层编译逻辑，但不执行 `finalizeRuntimeGraphConfig`（不应用 FailurePolicy 展开、不生成 RoleManifest）。
+
+**影响**：这些函数是合法的"纯图拓扑编译"入口，与 `CompileToCompiledTeam`（完整编译）互补。设计文档未记录可能导致维护者遗漏这些路径。
+
+### DEV-17：DDL 迁移注册机制
+
+**设计**：设计文档未描述 DDL 迁移管理机制。
+
+**实际**：`internal/data/ddl_migration_registry.go` 实现了版本化 DDL 迁移注册机制。`compiled_teams` 表有两个迁移条目：版本 20260705（初始建表）和版本 20260714（新增 `session_id` 字段 + 索引）。迁移在应用启动时按版本号顺序执行。
+
+**影响**：这是项目统一的 DDL 迁移模式，`compiled_teams` 表的 schema 变更应通过新增迁移条目管理，而非直接修改 `compiled_team_schema.go`。

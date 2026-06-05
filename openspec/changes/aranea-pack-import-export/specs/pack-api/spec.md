@@ -83,6 +83,8 @@
 - **GIVEN** ValidatePackResponse 定义
 - **THEN** SHALL 包含字段：`valid`（bool）、`errors`（repeated string，阻断性错误）、`warnings`（repeated string，非阻断性警告）、`missing_skills`（repeated string）、`missing_func_refs`（repeated string）、`conflicts`（repeated ConflictItem）
 
+**注意**：proto 定义了 `warnings` 字段，但当前 `ValidationResult` Go 结构体没有 `Warnings` 字段，service 层未映射此字段。校验逻辑将所有问题放入 `errors` 列表，未区分阻断性错误和非阻断性警告。
+
 #### Scenario: ConflictItem 消息结构
 - **GIVEN** ConflictItem 定义
 - **THEN** SHALL 包含字段：`entity_type`（string）、`key`（string）
@@ -91,19 +93,23 @@
 系统 SHALL 提供 `aranea pack` CLI 子命令。
 
 #### Scenario: CLI 导出
-- **WHEN** 执行 `aranea pack export --kind agent --id <id> -o output.arpack`
+- **WHEN** 执行 `aranea pack export --kind agent --ref <id_or_key> -o output.arpack`
 - **THEN** 系统 SHALL 生成 .arpack 文件到指定路径
 
 #### Scenario: CLI 导入
-- **WHEN** 执行 `aranea pack import -f input.arpack --conflict-strategy overwrite`
+- **WHEN** 执行 `aranea pack import <file.arpack> --strategy overwrite`
 - **THEN** 系统 SHALL 执行导入并输出结果报告
 
 #### Scenario: CLI 校验
-- **WHEN** 执行 `aranea pack validate -f input.arpack`
+- **WHEN** 执行 `aranea pack validate <file.arpack>`
 - **THEN** 系统 SHALL 输出校验结果，不实际写入数据库
+
+**注意**：CLI 导出使用 `--ref` 参数（而非 `--id`），因为 ref 可以是实体 ID 也可以是 key（如行业 key）；CLI 导入使用 `--strategy` 参数（而非 `--conflict-strategy`），更简洁。
 
 ### Requirement: PackRepoAdapter 组合适配器
 系统 SHALL 提供 `PackRepoAdapter`（`internal/data/pack_repo.go`），组合 ExporterRepo + ImporterRepo + ValidatorRepo 三个接口。
+
+**注意**：`PackService`（`internal/service/pack.go`）的构造函数 `NewPackService` 接受一个 `packExporterImporterValidator` 复合接口参数（同时满足 `pack.ExporterRepo`、`pack.ImporterRepo`、`pack.ValidatorRepo`），而非分别接受三个独立接口。`PackRepoAdapter` 实例满足此复合接口。
 
 #### Scenario: 接口满足验证
 - **GIVEN** PackRepoAdapter 定义

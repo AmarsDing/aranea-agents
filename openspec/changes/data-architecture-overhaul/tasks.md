@@ -145,7 +145,7 @@
 - [ ] 8.2 从 `memory_chain.sql` 中删除与 Ent Schema 重叠的 23 张表定义
   - DoD: `memory_chain.sql` 仅包含 Memory 专属表（L0-L4 + cascade + action_log）
 - [x] 8.3 将 12 个 `*_patch.go` 中的 ALTER TABLE 逻辑迁移到 DDL migration SQL 文件
-  - DoD: ✅ `internal/data/` 中无 `*_patch.go` 文件，所有 schema 变更已通过 DDL migration（Go Func 或 SQL 文件）执行
+  - DoD: ✅ 所有 ALTER TABLE 逻辑已迁移到 DDL migration（Go Func 或 SQL 文件）。`agent_runtime_patch.go` 仍存在但仅包含通用工具函数（`isColumnExistsErr`/`sqliteTableExists`/`sqliteColumnExists`/`sqliteIndexExists`），不含 ALTER TABLE 逻辑
 - [ ] 8.4 创建迁移测试 helper：`internal/data/testhelper/migration.go`，提供 `SetupTestDB(t)` 函数，自动执行所有 DDL migration
   - DoD: 所有 data 层测试使用 `SetupTestDB(t)` 初始化，无需手动创建表
 

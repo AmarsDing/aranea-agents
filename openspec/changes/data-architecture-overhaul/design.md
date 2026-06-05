@@ -102,7 +102,7 @@ session_runtime（运行时状态，Turn 内频繁变更）
 ```
 internal/data/
 ├── memory_shim_l0.go          l0SnapshotRepo (4 方法)
-├── memory_shim_l1.go          l1WorkingMemoryRepo (10 方法，含 L1IdleTaskReader)
+├── memory_shim_l1.go          l1WorkingMemoryRepo (8 方法，含 L1IdleTaskReader)
 ├── memory_shim_l2.go          l2EpisodeRepo (5 方法 + VectorStore recall)
 ├── memory_shim_l3.go          l3FactRepo (11 方法 + VectorStore recall)
 ├── memory_shim_l4.go          l4EntityRepo (9 方法)
@@ -113,13 +113,13 @@ internal/data/
 ├── memory_admin_adapter.go    sessionAdminStoreAdapter (组合接口)
 ├── memory_composite_adapter.go MemoryCompositeRecallAdapter (L2+L3 composite recall)
 ├── memory_l3_scored_adapter.go L3ScoredRecallAdapter (scored L3 recall → biz.RecallHit)
-├── memory_maintenance_adapter.go memoryConsolidationWriterAdapter (批量写入 facts+episode)
-├── memory_debug_recall.go     memoryDebugRecallAdapter (调试用 recall)
+├── memory_maintenance_adapter.go 多个适配器：memoryConsolidationWriterAdapter / memoryFactIndexMaintainerAdapter / memoryEpisodeDecayerAdapter / memoryFactDecayerAdapter / memoryEpisodeBackfillReaderAdapter / memoryLegacyMigratorAdapter
+├── memory_debug_recall.go     memoryDebugRecallAdapter (调试用 recall) + memoryFactIndexCounterAdapter
 ├── memory_episode_sync.go     memoryEpisodeIndexSync (episode 向量索引同步)
 ├── memory_fact_index_sync.go  memoryFactIndexSync (fact 向量索引同步)
 ├── memory_fact_reader.go      memoryFactReader (biz.MemoryFactReader)
 ├── vector_searcher_adapter.go vectorSearcherAdapter (VectorStore → 本地 VectorSearcher)
-└── memory_l4.go               L4 相关辅助
+└── memory_l4.go               l4GraphRepo + l4GraphWriterAdapter (L4 图操作)
 ```
 
 **替代方案**：
@@ -136,15 +136,21 @@ internal/data/
 |-----------|-------------|--------|
 | L0SnapshotRepo | L0AdminStore | 4 |
 | L1WorkingMemoryRepo | L1TaskWriter + L1FieldWriter + L1AdminReader + L1IdleTaskReader | 8 |
-| L2EpisodeRepo | L2ConsolidationStore + L2RecallStore + L2EpisodeWriter + MemoryEpisodeDecayer + MemoryEpisodeBackfillReader | 12 |
-| L3FactRepo | L3FactReader + L3FactWriter + L3ConflictStore + PIIReviewStore + MemoryFactDecayer + MemoryFactIndexMaintainer + MemoryFactIndexCounter | 16 |
-| L4EntityRepo | L4EntityStore + L4EvolutionStore + L4GraphRepo + L4DecayWriter | 12 |
+| L2EpisodeRepo | L2ConsolidationStore + L2RecallStore + L2EpisodeWriter | 5 |
+| L3FactRepo | L3FactReader + L3FactWriter + L3ConflictStore + PIIReviewStore | 11 |
+| L4EntityRepo | L4EntityStore + L4EvolutionStore | 9 |
 | CascadeRepo | CascadeProposalStore + CascadeGraphReader + CascadeFactMutator + CascadeSagaStore | 14 |
+| L4GraphRepo（独立） | L4GraphRepo（= L4EntityReader + L4EntityWriter + L4DecayWriter） | 9 |
+| L4GraphWriterAdapter（独立） | L4GraphWriter | 4 |
+
+> **实现备注**：L4 层实际拆分为 `l4EntityRepo`（L4EntityStore + L4EvolutionStore）和 `l4GraphRepo`（L4GraphRepo = L4EntityReader + L4EntityWriter + L4DecayWriter）+ `l4GraphWriterAdapter`（L4GraphWriter）。此外还有 `l2RecallRepo`（适配 biz.SessionL2RecallStore）、`l3RecallRepo`（适配 biz.SessionL3RecallStore）、`actionLogRepo`（适配 biz.MemoryActionLogWriter）等独立适配器。
 
 **迁移策略**：
 1. 创建 6 个新 Repo，每个方法委托到 Store 对应方法（shim 阶段）
 2. 逐步将 Store 内的 Raw SQL 迁移到新 Repo（Ent API 优先，Raw SQL 保留）
 3. 删除 Store，所有调用指向新 Repo
+
+> **实现备注**：迁移策略已简化——跳过了 data 层 DTO 中间层。6 个 Repo 直接实现 biz 接口（方法签名使用 biz 类型），因为 biz 接口本身就是 data 层的契约。引入 data DTO 会破坏接口契约满足，且增加不必要的转换层。
 
 ### Decision 3：ReadWriteClient 自动路由抽象
 

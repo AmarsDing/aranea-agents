@@ -62,7 +62,7 @@ The system SHALL expand `FailurePolicy` into `NodeDef` universal fields during c
 ### Requirement: CompileToCompiledTeam pipeline
 The system SHALL provide `CompileToCompiledTeam` that produces a `CompiledTeam` instead of `GraphBuildConfig`. The legacy `CompileToGraphRuntimeConfig` SHALL be retained as a delegate wrapper for backward compatibility.
 
-> **实现偏差（DEV-08）**：`CompileToGraphRuntimeConfig` 保留为委托包装（调用 `CompileToCompiledTeam` 后取 `.GraphBuildConfig`），`CompileToGraphRuntimeConfigFromJSON` 也委托给 `CompileToCompiledTeam`。这保持了向后兼容，但旧函数名可能造成混淆。
+> **实现偏差（DEV-08/DEV-15）**：`CompileToGraphRuntimeConfig` 保留为委托包装（调用 `CompileToCompiledTeam` 后取 `.GraphBuildConfig`），`CompileToGraphRuntimeConfigFromJSON` 也委托给 `CompileToCompiledTeam`，但返回类型为 `*biz.CompiledTeam`（而非 `biz.GraphBuildConfig`），函数名与返回类型不一致。调用方 `runner_team_compiler.go` 直接使用 `CompiledTeam` 返回值。
 
 #### Scenario: Compilation produces CompiledTeam
 - **WHEN** `CompileToCompiledTeam` is called with a Team Definition
@@ -83,7 +83,7 @@ The system SHALL provide `CompileToCompiledTeam` that produces a `CompiledTeam` 
 ### Requirement: CompiledTeam persistence
 The system SHALL persist `CompiledTeam` to SQLite via a new `CompiledTeamRepo`, replacing the in-memory `teamBuildConfigs` cache as the primary recovery mechanism. The in-memory cache SHALL be retained as a hot-path optimization.
 
-> **实现偏差（DEV-04）**：使用手写 SQL DDL（`compiled_team_schema.go` 中的 `EnsureCompiledTeamSchema`）而非 Ent ORM。表结构包含 `id`/`team_id`/`graph_id`/`session_id`/`config_json`/`created_at`/`updated_at`，比设计多了 `session_id` 和 `id`（复合主键）字段。`LoadForSession` 方法额外校验 session 活跃状态，这是设计文档未提及的安全增强。
+> **实现偏差（DEV-04）**：同时存在 Ent Schema（`internal/data/ent/schema/compiled_team.go`，用于文档/DDL 追踪）和手写 SQL DDL（`compiled_team_schema.go` 中的 `EnsureCompiledTeamSchema`），实际 CRUD 使用手写 SQL。表结构包含 `id`/`team_id`/`graph_id`/`session_id`/`config_json`/`created_at`/`updated_at`，比设计多了 `session_id` 和 `id`（复合主键）字段。`LoadForSession` 方法额外校验 session 活跃状态，这是设计文档未提及的安全增强。DDL 迁移通过 `ddl_migration_registry.go` 注册（版本 20260705 初始建表 + 版本 20260714 新增 `session_id` 字段）。
 
 #### Scenario: Team graph survives process restart
 - **WHEN** a Team Graph is compiled and persisted
@@ -108,3 +108,16 @@ The system SHALL persist `CompiledTeam` to SQLite via a new `CompiledTeamRepo`, 
 #### Scenario: buildConfigForExecution fallback chain
 - **WHEN** `buildConfigForExecution` is called for a team graph
 - **THEN** it SHALL first check in-memory cache, then DB (via `compiledTeamRepo.LoadForSession`), then fall back to recompiling from persisted graph definition
+
+### Requirement: CompileToGraphBuildConfig pure topology compilation
+The system SHALL provide `CompileToGraphBuildConfig` and `CompileToGraphBuildConfigFromJSON` that produce `biz.GraphBuildConfig` directly (without `CompiledTeam` wrapping), for scenarios that only need graph topology (visualization, template generation). These functions SHALL NOT apply `finalizeRuntimeGraphConfig` (no FailurePolicy expansion, no RoleManifest generation).
+
+> **实现偏差（DEV-16）**：设计文档未记录这些函数，但它们作为"纯图拓扑编译"入口存在于 `graph_compile.go`，与 `CompileToCompiledTeam`（完整编译）互补。
+
+#### Scenario: Pure topology compilation for visualization
+- **WHEN** `CompileToGraphBuildConfig` is called with a Team Definition
+- **THEN** it SHALL return `biz.GraphBuildConfig` without FailurePolicy expansion or RoleManifest
+
+#### Scenario: Shared compilation logic
+- **WHEN** `CompileToGraphBuildConfig` compiles a definition
+- **THEN** it SHALL use the same `compileToGraphBuildConfigWithLoader` as `CompileToCompiledTeam`

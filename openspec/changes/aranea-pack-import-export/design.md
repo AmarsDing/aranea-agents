@@ -283,6 +283,78 @@ HTTP 映射：
 
 **理由**：两种边的使用场景不同——Graph 模板边需要 `kind` 字段区分边类型，Team 内嵌 Graph 边需要 `condition` 字段支持条件路由和 `label` 字段支持可视化标注。
 
+### D20: seed_pack.go 使用独立 packImporterRepo
+
+**选择**：`seed_pack.go` 中 `SeedPackBuiltinTemplates` 和 `SeedPackIndustry` 使用独立的 `packImporterRepo` 结构体（通过 `newPackImporter` 创建），而非 `PackRepoAdapter`
+
+**理由**：种子加载发生在 DI 容器完全初始化之前（P1/Lazy 阶段），此时 `PackRepoAdapter` 所需的完整依赖（`biz.AgentRepository`、`biz.TeamRepository` 等）尚不可用。`packImporterRepo` 直接持有 `ent.Client`，通过 data 层的 Repo 实现来桥接。
+
+**注意**：当前 `packImporterRepo` 的方法尚未实现（注释说"在 seed_pack_adapter.go 中实现"，但该文件不存在），导致 `SeedPackBuiltinTemplates`/`SeedPackIndustry` 若被调用则编译失败。由于 `data.go` 中仍调用旧种子函数，这些函数当前未被调用，编译不受影响。
+
+### D21: CLI 命令参数名
+
+**选择**：CLI 命令参数名与原始设计文档略有调整
+
+- 导出命令使用 `--ref`（而非 `--id`），与 proto 的 `ref` 字段一致，因为 ref 可以是 ID 也可以是 key
+- 导入命令使用 `--strategy`（而非 `--conflict-strategy`），更简洁
+
+**实际命令**：
+- `aranea pack export --kind agent --ref <id_or_key> -o output.arpack`
+- `aranea pack import <file.arpack> --strategy overwrite`
+- `aranea pack validate <file.arpack>`
+
+### D22: CircuitBreakerPolicySpec.HalfOpenMaxCalls 未映射
+
+**选择**：`CircuitBreakerPolicySpec` 包含 `HalfOpenMaxCalls` 字段，但导出/导入引擎未映射此字段
+
+**理由**：导出时 `buildFailurePolicySpec` 从 `biz.TeamFailurePolicy.CircuitBreaker` 转换时只映射了 `FailureThreshold` 和 `RecoveryTimeoutMs`（由 `ResetTimeoutSeconds * 1000` 计算），未映射 `HalfOpenMaxCalls`。导入时同样未设置此字段。该字段当前为预留字段，后续如需支持可在导出/导入逻辑中补充。
+
+### D23: Usecase 扩展方法已实现但 Pack 导入未使用
+
+**选择**：`AgentUsecase.UpsertByKey`、`AgentUsecase.CreateWithFilesAndSettings`、`TeamUsecase.SaveTeamWithGraph` 已实现，但 Pack 导入引擎通过 `ImporterRepo` 直接写入，不调用这些 Usecase 方法
+
+**理由**：如 D3 所述，Pack 导入需要更细粒度的控制（如单独写入 Files、RuntimeSettings、按 key 查询等），直接使用 Repo 接口更灵活。这些 Usecase 方法为其他场景（如未来前端 API）预留，当前 Pack 导入路径不经过它们。
+
+### D24: ValidatePackResponse.warnings 未映射
+
+**选择**：proto `ValidatePackResponse` 定义了 `warnings` 字段（`repeated string`），但 `ValidationResult` Go 结构体没有 `Warnings` 字段，service 层也未映射此字段
+
+**理由**：当前校验逻辑将所有问题放入 `errors` 列表，未区分阻断性错误和非阻断性警告。后续如需区分，需在 `ValidationResult` 中添加 `Warnings` 字段并在 service 层映射。
+
+### D25: ImportResult.Warnings 未映射到 proto
+
+**选择**：Go 结构体 `ImportResult` 包含 `Warnings` 字段（Taxonomy 导入部分失败时记录），但 proto `ImportPackResponse` 没有 `warnings` 字段，service 层未映射
+
+**理由**：Taxonomy 导入时部门/岗位写入失败会记录为 warning 而非 error，继续导入后续节点。但这些警告信息未传递到 API 层，客户端无法看到。后续可在 proto 中添加 `warnings` 字段并映射。
+
+### D26: buildPositionKeyPath 只返回 position 级别 key
+
+**选择**：`convert.go` 中 `buildPositionKeyPath` 函数只返回 position 级别的 key（如 `quant_researcher`），而非完整的 taxonomy_key 路径（如 `finance/quant_trading/quant_researcher`）
+
+**理由**：`agents.yaml` 中的 `position_key` 只是 position 级别的 key，无法确定完整的 industry/dept/pos 路径。导入时 Taxonomy 已在 P1 阶段加载，Importer 会通过 mapper 查找。但这导致 `ConvertIndustrySpecToPack` 生成的 Pack 中 `position_key` 不是完整路径格式，与 D2 的设计有偏差——`ResolvePositionKey` 需要完整路径才能在 mapper 中找到对应 ID。
+
+**影响**：通过 `ConvertIndustrySpecToPack` 转换的行业 Pack 导入时，Agent 的 `taxonomy_position_id` 可能无法正确解析（因为 mapper 中注册的是完整路径格式的 key）。通过 `Exporter.ExportAgent/ExportIndustry` 导出的 Pack 不受影响（使用 `BuildTaxonomyKey` 构建完整路径）。
+
+### D27: Validate 函数接受 nil repo 参数
+
+**选择**：`Validate(ctx, p, repo)` 函数允许 `repo` 参数为 nil，此时跳过依赖校验和冲突预检，仅执行格式校验和引用完整性检查
+
+**理由**：支持离线校验场景（如 CLI 在无数据库连接时校验 Pack 文件格式）。当 `repo == nil` 时，`validateDependencies` 和 `validateConflicts` 被跳过，只执行 `validateManifest`、`validateAgentSpecs`、`validateTeamSpecs`、`validateGraphSpecs` 和 `validateReferences`。
+
+### D28: collectDependencies 不收集 Team 内嵌 Graph 的 FuncRef
+
+**选择**：`exporter.go` 中 `collectDependencies` 函数只从 `p.Graphs`（独立 Graph 模板）收集 FuncRef，不从 `p.Teams[].Graph`（Team 内嵌 Graph）收集
+
+**理由**：当前实现中 Team 内嵌 Graph 的节点不包含 `func_ref` 字段（`TeamGraphNodeSpec` 没有 `FuncRef` 字段），因此无需收集。但如果未来 Team 内嵌 Graph 节点支持 `func_ref`，需要在 `collectDependencies` 中补充收集逻辑。
+
+**注意**：`convert.go` 中的 `collectPackDependencies` 同样只收集 Skill 依赖，不收集 FuncRef（因为 `ConvertIndustrySpecToPack` 路径生成的 Pack 不包含独立 Graph 模板）。
+
+### D29: finance Pack manifest 已完整但 YAML 文件不完整
+
+**选择**：`internal/scenario/packs/finance/manifest.yaml` 已列出完整的 37 个 agent 和 8 个 team 引用，但 `agents/` 目录下仅创建了 `technical-analyst-general.yaml` 一个文件
+
+**理由**：manifest 是按照完整金融行业场景设计的，但 agent/team YAML 文件的拆分工作尚未完成。当前 `SeedPackIndustry` 使用 `loader.LoadIndustrySpec` + `ConvertIndustrySpecToPack` 动态转换路径加载金融行业数据，不依赖 `ReadPackFromFS` 读取 finance 目录。如果通过 `ReadPackFromFS` 读取 finance 目录，只能获取到 1 个 Agent 的数据，与 manifest 声明不一致。
+
 ## Risks / Trade-offs
 
 **[R1] 内置种子迁移风险**：将 RawSQL 替换为 Pack 引擎路径，启动性能可能下降 → 缓解：当前行业数据仍通过 `loader.LoadIndustrySpec` + `ConvertIndustrySpecToPack` 动态转换后导入，性能与旧路径基本一致；内置模板已转为 .arpack 目录格式通过 `ReadPackFromFS` 加载
@@ -293,20 +365,22 @@ HTTP 映射：
 
 **[R4] 大型行业 Pack 的导入耗时**：金融行业 37 个 Agent + 8 个 Team，ORM 逐个写入可能较慢 → 缓解：当前行业数据通过 `ConvertIndustrySpecToPack` 动态转换后逐个写入，后续可优化为批量写入
 
-**[R5] Skill 依赖校验的松耦合性**：Skill 通过 slug 引用，目标系统可能缺少对应 Skill → 缓解：validate 阶段报告缺失 Skill 列表，当前实现中 Skill 缺失会标记为 `valid=false`（阻断项），需确认是否应改为非阻断警告
+**[R5] Skill 依赖校验的松耦合性**：Skill 通过 slug 引用，目标系统可能缺少对应 Skill → 缓解：validate 阶段报告缺失 Skill 列表。**注意**：当前代码实现中 Skill 缺失会标记为 `valid=false`（阻断项），与 `pack-import/spec.md` 中"但不阻断导入"的描述不一致。代码行为（`validator.go` 第 118-119 行 `result.Valid = false`）是实际生效的逻辑，如需改为非阻断警告，需修改代码并添加 `Warnings` 字段到 `ValidationResult`
 
 **[R6] Graph FuncRef 不可移植**：Graph 节点的 `func_ref` 引用 Go 注册函数，不同版本可能不同 → 缓解：manifest 中声明 `dependencies.func_refs`，validate 阶段通过 `tools.Registry()` 校验注册表可用性
 
-**[R7] seed_pack.go 编译问题**：`SeedPackBuiltinV1`、`SeedPackFinanceV1`、`SeedPackSelfmediaV1`、`SeedPackSoftwaredevV1`、`SeedPackIndustryBase` 常量在 `seed_pack.go` 中引用但尚未在 `seed_versions.go` 中定义，当前 `seed_pack.go` 不会被 `data.go` 调用，但若调用则编译会失败 → 缓解：需在完成种子迁移前添加这些常量到 `seed_versions.go`
+**[R7] seed_pack.go 编译问题**：`SeedPackBuiltinV1`、`SeedPackFinanceV1`、`SeedPackSelfmediaV1`、`SeedPackSoftwaredevV1`、`SeedPackIndustryBase` 常量在 `seed_pack.go` 中引用但尚未在 `seed_versions.go` 中定义；同时 `packImporterRepo` 结构体的 `ImporterRepo` 接口方法尚未实现（注释说"在 seed_pack_adapter.go 中实现"，但该文件不存在）。当前 `seed_pack.go` 不会被 `data.go` 调用（仍使用旧种子函数），因此编译不受影响，但若调用则编译会失败 → 缓解：需在完成种子迁移前添加版本常量到 `seed_versions.go` 并实现 `packImporterRepo` 的接口方法
 
 **[R8] MergePacks 函数 bug**：`convert.go` 中 `MergePacks` 函数第 462 行 `result.Teams = append(result.Teams, p.Graphs...)` 应为 `result.Teams = append(result.Teams, p.Teams...)`，当前会导致 Teams 数据丢失 → 缓解：需在后续修复
+
+**[R9] ConvertIndustrySpecToPack 的 position_key 不完整**：`convert.go` 中 `buildPositionKeyPath` 函数只返回 position 级别的 key（如 `quant_researcher`），而非完整路径格式（如 `finance/quant_trading/quant_researcher`）。这导致通过 `ConvertIndustrySpecToPack` 转换的行业 Pack 导入时，Agent 的 `taxonomy_position_id` 无法正确解析——因为 `KeyMapper` 中注册的是完整路径格式的 key，而 Pack 中的 `position_key` 只是 position 级别的 key → 缓解：需修改 `buildPositionKeyPath` 构建完整路径，或在 `importAgent` 中增加 position key 的模糊匹配逻辑
 
 ## Migration Plan
 
 1. **Phase 1 — Pack 引擎 + 格式** ✅：实现 `internal/biz/pack/` 包，支持读写 .arpack 格式（spec.go、reader.go、writer.go、mapper.go、convert.go、pack_test.go）
 2. **Phase 2 — 导出引擎** ✅：实现三种粒度导出，新增 API 端点（exporter.go、service/pack.go、pack.proto、cli/cmd/pack.go）
 3. **Phase 3 — 导入引擎** ✅：实现四阶段导入 + 冲突策略，新增 API 端点（importer.go、validator.go、data/pack_repo.go）
-4. **Phase 4 — 内置种子迁移** 🔄：builtin-templates Pack 已创建（含 7 个 agent templates + 6 个 graph templates），finance Pack 已创建（含 1 个 agent），seed_pack.go 已创建 `SeedPackBuiltinTemplates` 和 `SeedPackIndustry` 函数；但 selfmedia/softwaredev Pack 目录未创建（当前通过 `ConvertIndustrySpecToPack` 动态转换）、旧种子函数仍在 `data.go` 中被调用（`SeedPackBuiltinTemplates`/`SeedPackIndustry` 尚未被调用）、版本常量未定义（`SeedPackBuiltinV1` 等未添加到 `seed_versions.go`，会导致编译失败）、templates.go 未改为 Pack 加载（`ListBuiltinTemplates` 仍从硬编码读取）
+4. **Phase 4 — 内置种子迁移** 🔄：builtin-templates Pack 已创建（含 7 个 agent templates + 6 个 graph templates），finance Pack 已创建（含 1 个 agent），seed_pack.go 已创建 `SeedPackBuiltinTemplates` 和 `SeedPackIndustry` 函数；但 selfmedia/softwaredev Pack 目录未创建（当前通过 `ConvertIndustrySpecToPack` 动态转换）、旧种子函数仍在 `data.go` 中被调用（`SeedPackBuiltinTemplates`/`SeedPackIndustry` 尚未被调用）、版本常量未定义（`SeedPackBuiltinV1` 等未添加到 `seed_versions.go`，会导致编译失败）、`packImporterRepo` 接口方法未实现（`seed_pack_adapter.go` 不存在，会导致编译失败）、templates.go 未改为 Pack 加载（`ListBuiltinTemplates` 仍从硬编码读取）
 5. **Phase 5 — 清理** ❌：RawSQL 种子文件、orgimport 包、Go 硬编码模板均未删除
 
 **回滚策略**：每个 Phase 独立可回滚。Phase 4 迁移期间保留 RawSQL 代码但注释掉，确认 Pack 加载正常后再删除。

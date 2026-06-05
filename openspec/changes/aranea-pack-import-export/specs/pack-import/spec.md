@@ -3,13 +3,17 @@
 ### Requirement: Pack 校验（validate）
 系统 SHALL 支持对 .arpack 文件进行 dry-run 校验，不实际写入数据库。
 
+**注意**：`Validate(ctx, p, repo)` 函数允许 `repo` 参数为 nil，此时跳过依赖校验和冲突预检，仅执行格式校验和引用完整性检查。这支持离线校验场景。
+
 #### Scenario: 格式校验通过
 - **WHEN** 用户提交 .arpack 文件进行校验
 - **THEN** 系统 SHALL 验证 manifest.yaml 格式正确、api_version 为 "v1"、各实体 YAML 格式正确
 
 #### Scenario: Skill 依赖缺失报告
 - **WHEN** manifest.yaml 中 dependencies.skills 包含目标系统不存在的 slug
-- **THEN** 校验结果 SHALL 报告缺失的 Skill slug 列表，但不阻断导入
+- **THEN** 校验结果 SHALL 报告缺失的 Skill slug 列表
+
+**注意**：当前代码实现中，Skill 缺失会将 `result.Valid` 设为 `false`（阻断项），与原始设计"但不阻断导入"的意图不一致。实际行为是 Skill 缺失会阻止导入。如需改为非阻断警告，需在 `ValidationResult` 中添加 `Warnings` 字段，并将 Skill 缺失从 `Errors` 移至 `Warnings`。
 
 #### Scenario: FuncRef 依赖缺失报告
 - **WHEN** manifest.yaml 中 dependencies.func_refs 包含目标系统未注册的函数
@@ -61,9 +65,11 @@
 - **GIVEN** ImporterRepo 接口定义
 - **THEN** SHALL 包含以下方法：
   - **Taxonomy**：`CreateTaxonomyNode`、`UpdateTaxonomyNode`、`GetTaxonomyNodeByKey`、`ListTaxonomyNodesByParentID`
-  - **Agent**：`GetAgentByAgentKey`、`CreateAgent`、`UpdateAgent`、`GetAgentRuntimeSettings`、`UpsertAgentRuntimeSettings`、`ReplaceAgentPromptFiles`
+  - **Agent**：`GetAgentByAgentKey`、`CreateAgent`、`UpdateAgent`、`DeleteAgent`、`GetAgentRuntimeSettings`、`UpsertAgentRuntimeSettings`、`ReplaceAgentPromptFiles`
   - **Team**：`GetTeamByID`、`GetTeamByKey`、`CreateTeam`、`UpdateTeam`
   - **Graph**：`SaveGraphDefinition`
+
+**注意**：`DeleteAgent` 方法用于导入回滚——当 Files 或 RuntimeSettings 写入失败时，通过 `DeleteAgent` 清理已创建的 Agent 记录，避免残留不完整数据。
 
 #### Scenario: GetTeamByKey 方法
 - **GIVEN** ImporterRepo 接口
@@ -79,6 +85,8 @@
 #### Scenario: taxonomy_key 路径 → taxonomy_position_id 映射
 - **WHEN** 导入 Taxonomy 成功后
 - **THEN** 系统 SHALL 记录 `industry/dept/pos → position_id` 映射，供 Agent 的 position_key 解析使用
+
+**注意**：通过 `ConvertIndustrySpecToPack` 转换的行业 Pack 中，`position_key` 只包含 position 级别的 key（如 `quant_researcher`），而非完整路径（如 `finance/quant_trading/quant_researcher`）。这导致 `ResolvePositionKey` 无法在 mapper 中找到对应 ID，Agent 的 `taxonomy_position_id` 不会被设置。通过 `Exporter` 导出的 Pack 不受此影响。
 
 #### Scenario: graph_id 映射
 - **WHEN** 导入 Graph 创建新记录后
@@ -168,3 +176,5 @@
 #### Scenario: Taxonomy 导入部分失败产生 warnings
 - **WHEN** Taxonomy 导入过程中某个部门或岗位写入失败
 - **THEN** 系统 SHALL 将失败信息记录为 warning 而非 error，继续导入后续节点
+
+**注意**：`ImportResult` Go 结构体包含 `Warnings` 字段，但 proto `ImportPackResponse` 没有 `warnings` 字段，service 层未映射。Taxonomy 导入的警告信息当前无法通过 API 传递给客户端。

@@ -1,6 +1,6 @@
 ## Why
 
-Team 和 Graph 模块之间存在 7 个耦合点，导致 `GraphBuildConfig` 成为承载过多关注点的上帝结构体（13 字段混合图拓扑、Team 领域概念、Task 元数据、运行时行为），引发因果链：类型双源定义 → Factory 膨胀 → God Usecase → God Object Runner → 12 个 Setter 注入绕过 Wire → 运行时 Bug 频发。同时存在 7 个 P0 业务逻辑 Bug（否定语义误匹配、双重事件发布、非确定性入口点、Fallback 绕过解析管线、硬编码 key 前缀、nil logger panic、EventBridge 重建导致摘要丢失）和 10 个 P1 架构级缺陷（竞态条件、全局可变状态、内存缓存驱逐导致恢复失败）。行业调研（LangGraph/Microsoft/AWS/MAN+ESM）确认 Team（声明式）→ Graph（执行式）编译模式是最佳实践，当前架构方向正确但解耦不彻底。
+Team 和 Graph 模块之间存在 7 个耦合点，导致 `GraphBuildConfig` 成为承载过多关注点的上帝结构体（实际 11 字段，原始设计误记为 13 字段；`FailurePolicy`/`ParallelBranchIDs` 从未在此结构体上定义，混合图拓扑、Team 领域概念、Task 元数据、运行时行为），引发因果链：类型双源定义 → Factory 膨胀 → God Usecase → God Object Runner → 12 个 Setter 注入绕过 Wire → 运行时 Bug 频发。同时存在 7 个 P0 业务逻辑 Bug（否定语义误匹配、双重事件发布、非确定性入口点、Fallback 绕过解析管线、硬编码 key 前缀、nil logger panic、EventBridge 重建导致摘要丢失）和 10 个 P1 架构级缺陷（竞态条件、全局可变状态、内存缓存驱逐导致恢复失败）。行业调研（LangGraph/Microsoft/AWS/MAN+ESM）确认 Team（声明式）→ Graph（执行式）编译模式是最佳实践，当前架构方向正确但解耦不彻底。
 
 ## What Changes
 
@@ -12,7 +12,7 @@ Team 和 Graph 模块之间存在 7 个耦合点，导致 `GraphBuildConfig` 成
 - 新增 `RoleManifest` 解决"角色语义编译后丢失"问题
 - `CompiledTeam` 持久化替换 `teamBuildConfigs` 内存缓存
 - biz/trpc 类型统一：trpc 层嵌入 biz 类型 + 类型别名，消除双源定义和手工映射
-- `GraphBuilderFactory` 拆分为 4 个窄接口
+- `GraphBuilderFactory` 拆分为 5 个窄接口
 - Runner 同包拆分 + `RunnerConfig` 替代 10 个非循环 Setter + `TeamRunMediator` 解决双向绑定
 - GraphUsecase 拆分为 Definition + Execution + CacheManager
 
@@ -30,10 +30,10 @@ Team 和 Graph 模块之间存在 7 个耦合点，导致 `GraphBuildConfig` 成
 
 ## Impact
 
-- **biz 层**：`graph.go`（GraphBuildConfig/NodeDef 结构体变更）、`graph_runtime.go`（Factory 拆分）、`graph_execution.go`（竞态修复）、`graph_team_execution.go`（CompiledTeam 持久化）、新增 `compiled_team.go`
-- **team 层**：`runner.go`（拆分 + RunnerConfig）、`graph_runtime_config.go`（CompileToCompiledTeam）、`runner_helpers.go`（BUG-02）、`embedded_graph.go`（BUG-03）、`team_graph_run_finisher.go`（BUG-05）、`team_graph_run_coordinator.go`（竞态修复）
-- **graph/adapter 层**：`critic_loop_cond.go`（BUG-01）、`runtime_adapter.go`（BUG-06/07 + 类型统一）
-- **graph/trpc 层**：`builder.go`（类型统一）、`failure_recovery.go`（BUG-04）、`circuit_breaker.go`（ARCH-06）、`node_wiring.go`（FailurePolicy 展开）
-- **data 层**：新增 `compiled_team_repo.go`
+- **biz 层**：`graph.go`（GraphBuildConfig/NodeDef 结构体变更）、`graph_runtime.go`（Factory 拆分）、`graph_execution.go`（竞态修复）、`graph_team_execution.go`（CompiledTeam 持久化）、`graph_definition_usecase.go`（DefinitionUsecase 拆分）、`failure_policy.go`（FailurePolicy 编译期展开）、新增 `compiled_team.go`
+- **team 层**：`runner.go`（拆分 + RunnerConfig）、`runner_config.go`（RunnerConfig + KnowledgeFacade）、`runner_mediator.go`（TeamRunMediator）、`graph_runtime_config.go`（CompileToCompiledTeam 委托）、`graph_compile.go`（CompileToCompiledTeam 实现）、`runner_helpers.go`（BUG-02）、`embedded_graph.go`（BUG-03）、`team_graph_run_finisher.go`（BUG-05）、`team_graph_run_coordinator.go`（竞态修复）
+- **graph/adapter 层**：`critic_loop_cond.go`（BUG-01）、`runtime_adapter.go`（BUG-06/07 + 类型统一）、`resolver_function.go`（FunctionResolver 实现）
+- **graph/trpc 层**：`builder.go`（类型统一）、`failure_recovery.go`（BUG-04）、`circuit_breaker.go`（ARCH-06）、`node_wiring.go`（FailurePolicy 展开）、`build_deps.go`（GraphNodeResolverSet）
+- **data 层**：新增 `compiled_team_repo.go`、`compiled_team_schema.go`、`ent/schema/compiled_team.go`，修改 `ddl_migration_registry.go`
 - **前端**：无直接影响（前端消费持久化模型，不消费编译模型）
 - **API/Proto**：无变更

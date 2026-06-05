@@ -67,6 +67,8 @@
 ### Requirement: 导出时 FuncRef 依赖收集
 系统 SHALL 在导出时收集 Graph 节点引用的 func_ref 列表，写入 manifest.yaml 的 dependencies.func_refs 字段。
 
+**注意**：当前 `collectDependencies` 只从 `p.Graphs`（独立 Graph 模板）收集 FuncRef，不从 `p.Teams[].Graph`（Team 内嵌 Graph）收集。这是因为 `TeamGraphNodeSpec` 不包含 `func_ref` 字段。如果未来 Team 内嵌 Graph 节点支持 `func_ref`，需补充收集逻辑。
+
 #### Scenario: FuncRef 收集
 - **WHEN** Graph 节点中 func_ref 包含 `aranea://func/generate`
 - **THEN** manifest.yaml 的 dependencies.func_refs SHALL 包含 `aranea://func/generate`
