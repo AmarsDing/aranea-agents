@@ -131,3 +131,29 @@ func newProgressiveSkillGuidanceHook(ag biz.Agent, deps TRPCBuilderDeps) callbac
 		return &trpcmodel.BeforeModelResult{Context: ctx}, nil
 	})
 }
+
+// newTokenUsageAccumulatorAfterHook returns an AfterModel hook that accumulates
+// token usage from each model call into invocation state. The skill invocation
+// recorder reads this state to populate the token_usage field.
+func newTokenUsageAccumulatorAfterHook() callbacks.Callback {
+	return callbacks.NewAfterModelHook(0, func(ctx context.Context, args *trpcmodel.AfterModelArgs) (*trpcmodel.AfterModelResult, error) {
+		if args == nil || args.Response == nil || args.Response.Usage == nil {
+			return &trpcmodel.AfterModelResult{Context: ctx}, nil
+		}
+		inv, ok := trpcagent.InvocationFromContext(ctx)
+		if !ok || inv == nil {
+			return &trpcmodel.AfterModelResult{Context: ctx}, nil
+		}
+		u := args.Response.Usage
+		prev, _ := inv.GetState(skillTokenUsageStateKey)
+		snap := tokenUsageSnapshot{}
+		if p, ok := prev.(tokenUsageSnapshot); ok {
+			snap = p
+		}
+		snap.PromptTokens += u.PromptTokens
+		snap.CompletionTokens += u.CompletionTokens
+		snap.TotalTokens += u.TotalTokens
+		inv.SetState(skillTokenUsageStateKey, snap)
+		return &trpcmodel.AfterModelResult{Context: ctx}, nil
+	})
+}

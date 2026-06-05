@@ -68,6 +68,7 @@ func productCallbackChainWithRegistry(ctx context.Context, ag biz.Agent, deps TR
 	if hook := newL0SnapshotAfterModelHook(deps); hook != nil {
 		entries = append(entries, hook)
 	}
+	entries = append(entries, newTokenUsageAccumulatorAfterHook())
 
 	var cbRegistry *biztool.CircuitBreakerRegistry
 	if ag.Settings != nil && ag.Settings.ToolsEnabled {

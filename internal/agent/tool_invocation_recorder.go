@@ -229,6 +229,20 @@ func recordSkillInvocation(bg context.Context, origCtx context.Context, write bi
 		}
 	}
 
+	// Read token_usage from invocation state.
+	var tokenUsage map[string]interface{}
+	if inv, ok := trpcagent.InvocationFromContext(origCtx); ok {
+		if raw, ok2 := inv.GetState(skillTokenUsageStateKey); ok2 {
+			if snap, ok3 := raw.(tokenUsageSnapshot); ok3 {
+				tokenUsage = map[string]interface{}{
+					"prompt":     snap.PromptTokens,
+					"completion": snap.CompletionTokens,
+					"total":      snap.TotalTokens,
+				}
+			}
+		}
+	}
+
 	// Resolve skill_id from tool_key (slug).
 	skillID := ""
 	slug := strings.TrimPrefix(write.ToolKey, "use_skill_")
@@ -259,6 +273,7 @@ func recordSkillInvocation(bg context.Context, origCtx context.Context, write bi
 		ActivationID:    write.ToolCallID,
 		SelectionReason: selectionReason,
 		Outcome:         outcome,
+		TokenUsage:      tokenUsage,
 	}
 	if err := deps.SkillUC.RecordInvocation(bg, skillWrite); err != nil {
 		lg.Warn("skill invocation 记录失败", loggateway.StepID("agent.skill.record_fail"), loggateway.Str("tool", write.ToolKey), loggateway.Err(err))

@@ -23,10 +23,10 @@ import (
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/monitor"
-	"aranea-agents/internal/chatactivity"
 	bizskill "aranea-agents/internal/biz/skill"
 	biztool "aranea-agents/internal/biz/tool"
 	bizusage "aranea-agents/internal/biz/usage"
+	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/cronrunner/jobs"
@@ -1153,6 +1153,7 @@ type wireOut struct {
 	SelfCheckCleanup            *jobs.SelfCheckCleanup
 	SelfCheckJob                *jobs.SelfCheckJob
 	CronRepo                    biz.CronRepo
+	SkillIntelligence           *biz.SkillIntelligenceUsecase
 }
 
 func provideWireOut(
@@ -1191,6 +1192,7 @@ func provideWireOut(
 	selfCheckCleanup *jobs.SelfCheckCleanup,
 	selfCheckJob *jobs.SelfCheckJob,
 	cronRepo biz.CronRepo,
+	skillIntelligence *biz.SkillIntelligenceUsecase,
 ) wireOut {
 	return wireOut{
 		App: app, Data: dataData, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -1210,6 +1212,7 @@ func provideWireOut(
 		SelfCheckCleanup:          selfCheckCleanup,
 		SelfCheckJob:              selfCheckJob,
 		CronRepo:                  cronRepo,
+		SkillIntelligence:         skillIntelligence,
 	}
 }
 
@@ -1302,12 +1305,12 @@ func provideTaskOrchestrator(
 ) biz.TaskOrchestratorPort {
 	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
 	deps := chatagent.TRPCBuilderDeps{
-		Catalog:  catalog,
-		AgentUC:  agentUC,
-		Agents:   agents,
-		RT:       rtTrip,
-		ToolUC:   toolUC,
-		Sys:      sys,
+		Catalog: catalog,
+		AgentUC: agentUC,
+		Agents:  agents,
+		RT:      rtTrip,
+		ToolUC:  toolUC,
+		Sys:     sys,
 	}
 	compiler := chatagent.NewDAGToGraphCompiler(lg)
 	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, bus, lg)
@@ -1463,6 +1466,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		wire.Bind(new(importer.SkillImportRepo), new(biz.SkillRepo)),
 		wire.Bind(new(biz.SkillLookupReader), new(biz.SkillRepo)),
 		wire.Bind(new(bizskill.SkillQueryReader), new(biz.SkillRepo)),
+		wire.Bind(new(biz.SkillIntelligenceRepo), new(*data.SkillIntelligenceRepo)),
 		wire.Bind(new(bizusage.AnalyticsRepo), new(biz.UsageRepo)),
 		wire.Bind(new(biz.SessionReader), new(biz.SessionRepo)),
 		wire.Bind(new(biztool.ToolInvocationReader), new(biz.ToolRepo)),
