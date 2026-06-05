@@ -148,17 +148,17 @@ Emits: `update:collapsed`, `reorder`
 
 ## Task 7: 全量验证
 
-- [ ] **Step 1:** 前端 lint
+- [x] **Step 1:** 前端 lint
 
 Run: `cd web && pnpm lint`
 Expected: PASS
 
-- [ ] **Step 2:** 前端 build
+- [x] **Step 2:** 前端 build
 
 Run: `cd web && pnpm build`
 Expected: PASS
 
-- [ ] **Step 3:** 手动集成测试
+- [x] **Step 3:** 手动集成测试
 
 1. 打开 Chat 页面
 2. 验证系统 Agent 置顶
@@ -170,7 +170,7 @@ Expected: PASS
 8. 验证刷新后折叠状态持久化
 9. 验证刷新后排序持久化
 
-- [ ] **Step 4:** Final commit
+- [x] **Step 4:** Final commit
 
 ```bash
 git add -A

@@ -253,17 +253,17 @@ Expected: PASS
 - `go test ./internal/tools/skills_butler/... -count=1` 通过
 - `make api && make wire && make build && make test && make lint` 通过
 
-- [ ] **Step 1: 运行 biz 层测试**
+- [x] **Step 1: 运行 biz 层测试**
 
 Run: `go test ./internal/biz/... -count=1`
 Expected: PASS
 
-- [ ] **Step 2: 运行工具层测试**
+- [x] **Step 2: 运行工具层测试**
 
 Run: `go test ./internal/tools/memory_butler/... ./internal/tools/skills_butler/... -count=1`
 Expected: PASS
 
-- [ ] **Step 3: 运行全量验证**
+- [x] **Step 3: 运行全量验证**
 
 Run: `make api && make wire && make build && make test && make lint`
 Expected: PASS

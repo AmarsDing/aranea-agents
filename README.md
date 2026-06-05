@@ -400,7 +400,7 @@ detected pattern → pending → approved → registered
             │  └─ 文件恢复：filesystem_missing 自动清除        │
             └──────────────────────────────────────────────┘
 ```
-
+ 
 ---
 
 **技能进化系统整体优势**：

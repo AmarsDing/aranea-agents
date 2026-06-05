@@ -635,17 +635,17 @@ git commit -m "feat(learning-loop): integrate learning loop tab into agent detai
 - 手动验证：审批/拒绝操作正常
 - 手动验证：运行闭环按钮正常
 
-- [ ] **Step 1: 前端 lint**
+- [x] **Step 1: 前端 lint**
 
 Run: `cd web && pnpm lint`
 Expected: PASS
 
-- [ ] **Step 2: 前端 build**
+- [x] **Step 2: 前端 build**
 
 Run: `cd web && pnpm build`
 Expected: PASS
 
-- [ ] **Step 3: 手动集成测试**
+- [x] **Step 3: 手动集成测试**
 
 1. 启动应用
 2. 进入 Agent 详情页 → 切换到"学习闭环"Tab
@@ -655,7 +655,7 @@ Expected: PASS
 6. 验证观察记录列表加载
 7. 验证"运行闭环"按钮
 
-- [ ] **Step 4: Final commit**
+- [x] **Step 4: Final commit**
 
 ```bash
 git add -A

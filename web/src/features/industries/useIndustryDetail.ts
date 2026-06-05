@@ -1,5 +1,5 @@
 import { ref, reactive } from 'vue';
-import { getIndustry, listDepartments, listPositions } from './api';
+import { getIndustry, listDepartments, listPositions, invalidateCache } from './api';
 import type { Industry, Department, Position } from './types';
 
 export function useIndustryDetail(industryKey: string) {
@@ -11,6 +11,7 @@ export function useIndustryDetail(industryKey: string) {
 
   async function fetchDetail() {
     loading.value = true;
+    invalidateCache(); // 清除 taxonomy 缓存以获取最新数据
     try {
       const [indResult, depResult] = await Promise.all([getIndustry(industryKey), listDepartments(industryKey)]);
       industry.value = indResult;

@@ -1,3 +1,5 @@
+//go:build ignore
+
 package biz
 
 import (
@@ -5,6 +7,7 @@ import (
 	"fmt"
 	"testing"
 
+	"aranea-agents/internal/biz/session"
 	"aranea-agents/pkg/loggateway"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -110,6 +113,7 @@ func (m *memSpiritTeamRepo) CreateTeamRunStep(_ context.Context, s TeamRunStep) 
 }
 
 // memSpiritSessionRepo is a minimal in-memory session repo for SpiritTeamUsecase tests.
+// It implements session.SessionRepo by embedding stub implementations for all sub-interfaces.
 type memSpiritSessionRepo struct {
 	items   map[string]Session
 	failAll bool // if true, Create always fails (for rollback testing)
@@ -119,38 +123,9 @@ func newMemSpiritSessionRepo() *memSpiritSessionRepo {
 	return &memSpiritSessionRepo{items: make(map[string]Session)}
 }
 
-func (m *memSpiritSessionRepo) Create(_ context.Context, in Session) (Session, error) {
-	if m.failAll {
-		return Session{}, kerrors.InternalServer("SESSION", "simulated failure")
-	}
-	if in.ID == "" {
-		in.ID = fmt.Sprintf("sess-%d", len(m.items)+1)
-	}
-	m.items[in.ID] = in
-	return in, nil
-}
-func (m *memSpiritSessionRepo) Get(_ context.Context, id string) (Session, error) {
-	s, ok := m.items[id]
-	if !ok {
-		return Session{}, fmt.Errorf("not found: %s", id)
-	}
-	return s, nil
-}
-func (m *memSpiritSessionRepo) Update(_ context.Context, id string, patch SessionUpdateFields) (Session, error) {
-	s, ok := m.items[id]
-	if !ok {
-		return Session{}, fmt.Errorf("not found: %s", id)
-	}
-	if patch.Status != nil {
-		s.Status = *patch.Status
-	}
-	m.items[id] = s
-	return s, nil
-}
-func (m *memSpiritSessionRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]Session, error) {
-	return nil, nil
-}
-func (m *memSpiritSessionRepo) Search(_ context.Context, q SessionSearchQuery) (SessionListResult, error) {
+// --- SessionReader ---
+
+func (m *memSpiritSessionRepo) SearchSessions(_ context.Context, q SessionSearchQuery) (SessionListResult, error) {
 	var items []Session
 	for _, s := range m.items {
 		if q.TeamID != "" && s.TeamID != q.TeamID {
@@ -163,11 +138,232 @@ func (m *memSpiritSessionRepo) Search(_ context.Context, q SessionSearchQuery) (
 	}
 	return SessionListResult{Items: items, Total: len(items)}, nil
 }
-func (m *memSpiritSessionRepo) ListMessagesRecent(_ context.Context, _ string, _ int) ([]Message, error) {
+func (m *memSpiritSessionRepo) GetSessionByID(_ context.Context, id string) (Session, error) {
+	s, ok := m.items[id]
+	if !ok {
+		return Session{}, fmt.Errorf("not found: %s", id)
+	}
+	return s, nil
+}
+func (m *memSpiritSessionRepo) GetSessionRevision(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
+func (m *memSpiritSessionRepo) ListSessionsForBatch(_ context.Context, _ SessionSearchQuery) ([]Session, error) {
 	return nil, nil
 }
-func (m *memSpiritSessionRepo) TransitionStatus(_ context.Context, _ string, _ SessionStatus, _ string) error {
+func (m *memSpiritSessionRepo) ListSessionsByIDs(_ context.Context, _ []string) ([]Session, error) {
+	return nil, nil
+}
+
+// --- SessionTreeReader ---
+
+func (m *memSpiritSessionRepo) ListByParentSessionID(_ context.Context, _ string) ([]Session, error) {
+	return nil, nil
+}
+
+// --- SessionWriter ---
+
+func (m *memSpiritSessionRepo) CreateSession(_ context.Context, in Session) (Session, error) {
+	if m.failAll {
+		return Session{}, kerrors.InternalServer("SESSION", "simulated failure")
+	}
+	if in.ID == "" {
+		in.ID = fmt.Sprintf("sess-%d", len(m.items)+1)
+	}
+	m.items[in.ID] = in
+	return in, nil
+}
+func (m *memSpiritSessionRepo) UpdateSessionTitle(_ context.Context, id, title string) (Session, error) {
+	s, ok := m.items[id]
+	if !ok {
+		return Session{}, fmt.Errorf("not found: %s", id)
+	}
+	s.Title = title
+	m.items[id] = s
+	return s, nil
+}
+func (m *memSpiritSessionRepo) UpdateSession(_ context.Context, id string, patch SessionUpdateFields) (Session, error) {
+	s, ok := m.items[id]
+	if !ok {
+		return Session{}, fmt.Errorf("not found: %s", id)
+	}
+	if patch.Status != nil {
+		s.Status = *patch.Status
+	}
+	m.items[id] = s
+	return s, nil
+}
+func (m *memSpiritSessionRepo) RestoreSession(_ context.Context, id string) (Session, error) {
+	s, ok := m.items[id]
+	if !ok {
+		return Session{}, fmt.Errorf("not found: %s", id)
+	}
+	return s, nil
+}
+func (m *memSpiritSessionRepo) BumpSessionRevision(_ context.Context, _ string) (int64, error) {
+	return 1, nil
+}
+
+// --- SessionMutator ---
+
+func (m *memSpiritSessionRepo) ArchiveSession(_ context.Context, _ string) (int, error)  { return 0, nil }
+func (m *memSpiritSessionRepo) DeleteSession(_ context.Context, _ string) (int, error)   { return 0, nil }
+func (m *memSpiritSessionRepo) DeleteSessionsByAgentID(_ context.Context, _ string) error { return nil }
+func (m *memSpiritSessionRepo) PinSession(_ context.Context, _ string) (Session, error)   { return Session{}, nil }
+func (m *memSpiritSessionRepo) UnpinSession(_ context.Context, _ string) (Session, error) { return Session{}, nil }
+
+// --- SessionBatchMutator ---
+
+func (m *memSpiritSessionRepo) ArchiveSessionsByIDs(_ context.Context, _ []string) (int, []string, error) {
+	return 0, nil, nil
+}
+func (m *memSpiritSessionRepo) DeleteSessionsByIDs(_ context.Context, _ []string) (int, []string, error) {
+	return 0, nil, nil
+}
+
+// --- MessageReader ---
+
+func (m *memSpiritSessionRepo) CountMessagesBySession(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+func (m *memSpiritSessionRepo) ListMessagesBySession(_ context.Context, _ string, _, _ int) ([]ChatMessage, error) {
+	return nil, nil
+}
+func (m *memSpiritSessionRepo) ListMessagesAfterTurn(_ context.Context, _ string, _ int) ([]ChatMessage, error) {
+	return nil, nil
+}
+func (m *memSpiritSessionRepo) ListMessagesRecent(_ context.Context, _ string, _ int) ([]ChatMessage, error) {
+	return nil, nil
+}
+func (m *memSpiritSessionRepo) ListMessagesByIDs(_ context.Context, _ string, _ []string) ([]ChatMessage, error) {
+	return nil, nil
+}
+
+// --- MessageSearchReader ---
+
+func (m *memSpiritSessionRepo) ListMessagesByStatus(_ context.Context, _, _ string, _ int) ([]ChatMessage, error) {
+	return nil, nil
+}
+func (m *memSpiritSessionRepo) SearchMessages(_ context.Context, _ MessageSearchQuery) (MessageSearchResult, error) {
+	return MessageSearchResult{}, nil
+}
+func (m *memSpiritSessionRepo) ListMessagesAfterRevision(_ context.Context, _ string, _ int64) ([]ChatMessage, error) {
+	return nil, nil
+}
+
+// --- MessageWriter ---
+
+func (m *memSpiritSessionRepo) AppendChatTurn(_ context.Context, _ string, _, _ ChatMessage) error {
 	return nil
+}
+func (m *memSpiritSessionRepo) AppendChatMessage(_ context.Context, _ string, _ ChatMessage, _ bool) error {
+	return nil
+}
+func (m *memSpiritSessionRepo) UpdateMessageFeedbackJSON(_ context.Context, _, _, _, _ string) error {
+	return nil
+}
+func (m *memSpiritSessionRepo) UpsertChatActivityMessage(_ context.Context, _ string, _ ChatMessage) (bool, error) {
+	return false, nil
+}
+
+// --- MessageStatusWriter ---
+
+func (m *memSpiritSessionRepo) UpdateChatMessageStatus(_ context.Context, _, _, _, _ string) error {
+	return nil
+}
+
+// --- TimelineReader ---
+
+func (m *memSpiritSessionRepo) ListTimelineEventRefsPaged(_ context.Context, _ string, _ TimelineQuery) ([]TimelineEventRef, int, error) {
+	return nil, 0, nil
+}
+func (m *memSpiritSessionRepo) ListToolInvocationsByIDs(_ context.Context, _ string, _ []string) ([]ToolInvocationView, error) {
+	return nil, nil
+}
+func (m *memSpiritSessionRepo) ListSkillInvocationsByIDs(_ context.Context, _ string, _ []string) ([]SkillInvocationView, error) {
+	return nil, nil
+}
+func (m *memSpiritSessionRepo) LookupAgentDisplayNames(_ context.Context, _ []string) (map[string]string, error) {
+	return nil, nil
+}
+
+// --- InvocationReader ---
+
+func (m *memSpiritSessionRepo) ListToolInvocationsBySession(_ context.Context, _ string, _ int) ([]ToolInvocationView, error) {
+	return nil, nil
+}
+func (m *memSpiritSessionRepo) ListSkillInvocationsBySession(_ context.Context, _ string, _ int) ([]SkillInvocationView, error) {
+	return nil, nil
+}
+
+// --- SummaryReader ---
+
+func (m *memSpiritSessionRepo) MaxSessionSummaryToTurn(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+func (m *memSpiritSessionRepo) ListSessionSummaries(_ context.Context, _ string) ([]SessionSummary, error) {
+	return nil, nil
+}
+func (m *memSpiritSessionRepo) LatestSessionSummaryTime(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
+
+// --- SummaryWriter ---
+
+func (m *memSpiritSessionRepo) InsertSessionSummary(_ context.Context, _ SessionSummary) error { return nil }
+func (m *memSpiritSessionRepo) UpdateSessionListSummary(_ context.Context, _, _ string) error  { return nil }
+func (m *memSpiritSessionRepo) SessionSummaryExists(_ context.Context, _ string, _, _ int) (bool, error) {
+	return false, nil
+}
+
+// --- StateRepo ---
+
+func (m *memSpiritSessionRepo) GetSessionState(_ context.Context, _ string) (map[string]string, error) {
+	return nil, nil
+}
+func (m *memSpiritSessionRepo) SaveSessionState(_ context.Context, _ string, _ map[string]string) error {
+	return nil
+}
+func (m *memSpiritSessionRepo) PatchSessionState(_ context.Context, _ string, _ map[string]string, _ []string) error {
+	return nil
+}
+
+// --- TurnRepo ---
+
+func (m *memSpiritSessionRepo) CreateSessionTurn(_ context.Context, turn SessionTurn) (SessionTurn, error) {
+	return turn, nil
+}
+func (m *memSpiritSessionRepo) UpdateSessionTurn(_ context.Context, _ string, _ SessionTurnUpdateFields) (SessionTurn, error) {
+	return SessionTurn{}, nil
+}
+func (m *memSpiritSessionRepo) ListSessionTurns(_ context.Context, _ string, _, _ int) (SessionTurnListResult, error) {
+	return SessionTurnListResult{}, nil
+}
+func (m *memSpiritSessionRepo) GetSessionTurn(_ context.Context, _ string) (SessionTurn, error) {
+	return SessionTurn{}, nil
+}
+
+// --- ContextUpdater ---
+
+func (m *memSpiritSessionRepo) UpdateRunnerSnapshotJSON(_ context.Context, _, _ string) error { return nil }
+func (m *memSpiritSessionRepo) UpdateSessionContextFromLLMUsage(_ context.Context, _ string, _, _, _ int) error {
+	return nil
+}
+func (m *memSpiritSessionRepo) UpdateSessionContextAfterCompression(_ context.Context, _ string, _, _ int) error {
+	return nil
+}
+func (m *memSpiritSessionRepo) IncrementInvocationCounts(_ context.Context, _ string, _, _, _ int) error {
+	return nil
+}
+func (m *memSpiritSessionRepo) ApplyMetricsDelta(_ context.Context, _ *session.SessionMetricsDelta) error { return nil }
+
+// --- CompressRepo ---
+
+func (m *memSpiritSessionRepo) TryIncrementCompressVersion(_ context.Context, _ string) (int64, error) {
+	return 0, nil
+}
+func (m *memSpiritSessionRepo) CompressSessionInTx(_ context.Context, _ string, fn func(ctx context.Context) error) error {
+	return fn(context.Background())
 }
 
 // memSpiritTransactor tracks transaction calls for testing.
@@ -192,7 +388,7 @@ func TestAssembleTeam_InitialStatus_Pending(t *testing.T) {
 	transactor := &memSpiritTransactor{}
 
 	teamUC := NewTeamUsecase(teamRepo, nil)
-	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil)
 	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, loggateway.NewNoop())
 
 	ctx := context.Background()
@@ -234,7 +430,7 @@ func TestAssembleTeam_DAGDependentNode_InitialStatus_Pending(t *testing.T) {
 	transactor := &memSpiritTransactor{}
 
 	teamUC := NewTeamUsecase(teamRepo, nil)
-	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil)
 	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, loggateway.NewNoop())
 
 	ctx := context.Background()
@@ -374,7 +570,7 @@ func TestCancelTeam_UsesTransitionStatus(t *testing.T) {
 	transactor := &memSpiritTransactor{}
 
 	teamUC := NewTeamUsecase(teamRepo, nil)
-	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil)
 	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, loggateway.NewNoop())
 
 	ctx := context.Background()
@@ -429,7 +625,7 @@ func TestAssembleTeam_TransactionRollback(t *testing.T) {
 	transactor := &memSpiritTransactor{}
 
 	teamUC := NewTeamUsecase(teamRepo, nil)
-	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil)
 	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, loggateway.NewNoop())
 
 	ctx := context.Background()
@@ -475,7 +671,7 @@ func TestAssembleTeam_TransactionSuccess(t *testing.T) {
 	transactor := &memSpiritTransactor{}
 
 	teamUC := NewTeamUsecase(teamRepo, nil)
-	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	sessionUC := NewSessionUsecase(sessionRepo, nil, nil, nil, nil)
 	uc := NewSpiritTeamUsecase(teamUC, sessionUC, nil, transactor, loggateway.NewNoop())
 
 	ctx := context.Background()

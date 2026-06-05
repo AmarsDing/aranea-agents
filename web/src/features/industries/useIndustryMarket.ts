@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue';
-import { listIndustries, listDepartments, listPositions } from './api';
+import { listIndustries, listDepartments, listPositions, invalidateCache } from './api';
 import type { Industry, Department, Position } from './types';
 import { filterIndustries, summarizeIndustries, type IndustryFilters, type IndustrySummary } from './industryMarketFilters';
 
@@ -30,6 +30,7 @@ export function useIndustryMarket() {
   async function fetchIndustries() {
     loading.value = true;
     error.value = null;
+    invalidateCache(); // 清除 taxonomy 缓存以获取最新数据
     try {
       const result = await listIndustries();
       const items = result.items;

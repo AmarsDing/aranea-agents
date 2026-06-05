@@ -391,7 +391,7 @@ func (u *SpiritTeamUsecase) CheckTeamProgress(ctx context.Context, spiritSession
 
 func buildSpiritTeamDefinitionJSON(mode string, agentKeys []string, lg loggateway.Logger, parallelCfgJSON ...string) string {
 	type member struct {
-		AgentKey string `json:"agent_key"`
+		AgentKey string `json:"agent_id"`
 		Role     string `json:"role"`
 		Enabled  *bool  `json:"enabled"`
 	}

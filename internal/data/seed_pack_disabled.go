@@ -1,9 +1,12 @@
+//go:build ignore
+
 package data
 
 import (
 	"context"
-	"embed"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/pack"
@@ -12,9 +15,6 @@ import (
 	"aranea-agents/internal/scenario/loader"
 	"aranea-agents/pkg/loggateway"
 )
-
-//go:embed scenario/packs/builtin-templates
-var builtinTemplatesFS embed.FS
 
 // SeedPackBuiltinTemplates 使用 Pack 引擎加载内置模板（taxonomy + agent templates + graph templates）。
 // 在 P1 阶段调用，使用 overwrite 冲突策略。
@@ -28,8 +28,10 @@ func SeedPackBuiltinTemplates(ctx context.Context, client *ent.Client, scenarioD
 		return nil
 	}
 
-	// 从 embed.FS 读取 builtin-templates Pack
-	p, readErr := pack.ReadPackFromFS(builtinTemplatesFS, "scenario/packs/builtin-templates")
+	// 从 scenarioDir 读取 builtin-templates Pack
+	// scenarioDir = "internal/scenario"，os.DirFS 需要以其父目录 "internal" 为根
+	fsys := os.DirFS(filepath.Join(scenarioDir, ".."))
+	p, readErr := pack.ReadPackFromFS(fsys, "scenario/packs/builtin-templates")
 	if readErr != nil {
 		return fmt.Errorf("read builtin-templates pack: %w", readErr)
 	}

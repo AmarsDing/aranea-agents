@@ -173,22 +173,22 @@
 
 ## 10. 全量验证
 
-- [ ] **10.1** 前端 lint
+- [x] **10.1** 前端 lint
 
 Run: `cd web && pnpm lint`
 Expected: PASS
 
-- [ ] **10.2** 前端 build
+- [x] **10.2** 前端 build
 
 Run: `cd web && pnpm build`
 Expected: PASS
 
-- [ ] **10.3** 前端 typecheck
+- [x] **10.3** 前端 typecheck
 
 Run: `cd web && pnpm typecheck`（或 `vue-tsc --noEmit`）
 Expected: PASS
 
-- [ ] **10.4** 手动集成测试
+- [x] **10.4** 手动集成测试
 
 1. 打开 `/industries` 路由
 2. 验证 4 metric 卡数字正确（21 部门 / 105 岗位 / 208 Agent）
@@ -201,7 +201,7 @@ Expected: PASS
 9. 验证 CTA 卡 "申请新行业" 显示正确
 10. 验证 light/dark 模式（若启用）样式 fallback
 
-- [ ] **10.5** Final commit
+- [x] **10.5** Final commit
 
 ```bash
 git add -A

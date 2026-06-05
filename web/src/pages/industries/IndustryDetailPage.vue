@@ -14,7 +14,7 @@
 
     <template v-else-if="industry">
       <div class="row items-center q-mb-lg">
-        <span class="text-h3 q-mr-md">{{ industry.icon }}</span>
+        <span class="text-h3 q-mr-md">{{ industry.icon || industry.name?.charAt(0) || '🏢' }}</span>
         <div>
           <div class="text-h4">{{ industry.name }}</div>
           <div class="text-subtitle1 text-grey">{{ industry.description }}</div>

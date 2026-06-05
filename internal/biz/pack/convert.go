@@ -459,7 +459,7 @@ func MergePacks(packs ...*Pack) *Pack {
 			result.Taxonomy = p.Taxonomy
 		}
 		result.Agents = append(result.Agents, p.Agents...)
-		result.Teams = append(result.Teams, p.Graphs...)
+		result.Teams = append(result.Teams, p.Teams...)
 		result.Graphs = append(result.Graphs, p.Graphs...)
 		for k, v := range p.AgentFiles {
 			result.AgentFiles[k] = v
