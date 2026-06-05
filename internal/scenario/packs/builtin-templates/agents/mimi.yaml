@@ -1,0 +1,8 @@
+key: mimi
+display_name: 创意助手
+description: 轻松友好，擅长创意发散、陪伴式讨论和灵感整理。
+icon: auto_awesome
+provider: openrouter
+model: gpt-4.1-mini
+system_prompt_mode: file
+context_window: 64000

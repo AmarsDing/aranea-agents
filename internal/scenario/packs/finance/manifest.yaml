@@ -1,0 +1,66 @@
+api_version: v1
+kind: industry
+name: 金融行业
+description: 量化交易、风险管理、合规审查、投资研究等金融行业场景
+version: "1.0.0"
+author: system
+dependencies:
+  skills:
+    - finance-technical-analysis
+    - finance-fundamental-analysis
+    - finance-quant-strategy
+    - finance-market-microstructure
+    - finance-risk-management
+    - finance-compliance-check
+    - finance-derivatives-pricing
+    - finance-portfolio-optimization
+contents:
+  agents:
+    - key: technical-analyst-general
+    - key: fundamental-analyst-general
+    - key: money-flow-analyst-general
+    - key: news-analyst-general
+    - key: sentiment-analyst-general
+    - key: industry-analyst-general
+    - key: risk-assessor-general
+    - key: quant-researcher-backtest
+    - key: quant-researcher-factor
+    - key: quant-researcher-ml-alpha
+    - key: quant-researcher-portfolio
+    - key: data-collector-general
+    - key: report-writer-general
+    - key: trading-coordinator-premarket
+    - key: trading-coordinator-intraday
+    - key: quant-developer-data-pipeline
+    - key: quant-developer-research-platform
+    - key: quant-developer-trading-system
+    - key: algo-trading-engineer-execution-algo
+    - key: algo-trading-engineer-market-making
+    - key: low-latency-engineer-kernel-tuning
+    - key: low-latency-engineer-network-opt
+    - key: quant-devops-operations
+    - key: fixed-income-analyst-bond-analysis
+    - key: fixed-income-analyst-credit-rating
+    - key: derivatives-pricer-futures-strategy
+    - key: derivatives-pricer-options-pricing
+    - key: compliance-officer-regulatory
+    - key: risk-manager-credit-risk
+    - key: risk-manager-market-risk
+    - key: aml-specialist-anti-money-laundering
+    - key: investment-advisor-client-profiling
+    - key: investment-advisor-portfolio-advice
+    - key: asset-allocator-strategic-allocation
+    - key: client-profiler-wealth-profiling
+    - key: fintech-product-manager-product-design
+    - key: financial-data-engineer-data-pipeline
+    - key: financial-data-engineer-real-time-feed
+    - key: blockchain-analyst-crypto-analysis
+  teams:
+    - key: team-premarket-brief
+    - key: team-stock-deep-dive
+    - key: team-sector-rotation
+    - key: team-portfolio-doctor
+    - key: team-market-recap
+    - key: team-quant-strategy-research
+    - key: team-investment-committee
+    - key: team-risk-monitoring
