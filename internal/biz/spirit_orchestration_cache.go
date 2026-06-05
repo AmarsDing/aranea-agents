@@ -18,6 +18,7 @@ type OrchestrationCacheEntry struct {
 	DQScore       float64      `json:"dq_score"`
 	TeamCount     int          `json:"team_count"`
 	AvgDurationMs int64        `json:"avg_duration_ms"`
+	AgentKeys     []string     `json:"agent_keys,omitempty"`
 	UpdatedAt     string       `json:"updated_at"`
 }
 
@@ -184,6 +185,10 @@ func ComputeDQScoreBreakdown(teamResult TeamSynthesisResult, durationMs int64) D
 }
 
 func (c *OrchestrationCache) RecordCompletion(ctx context.Context, taskPattern string, topology TopologyType, dqScore float64, teamCount int, avgDurationMs int64) {
+	c.RecordCompletionWithAgents(ctx, taskPattern, topology, dqScore, teamCount, avgDurationMs, nil)
+}
+
+func (c *OrchestrationCache) RecordCompletionWithAgents(ctx context.Context, taskPattern string, topology TopologyType, dqScore float64, teamCount int, avgDurationMs int64, agentKeys []string) {
 	existing, found := c.Get(taskPattern)
 	if found && existing.DQScore >= dqScore {
 		return
@@ -194,8 +199,20 @@ func (c *OrchestrationCache) RecordCompletion(ctx context.Context, taskPattern s
 		DQScore:       dqScore,
 		TeamCount:     teamCount,
 		AvgDurationMs: avgDurationMs,
+		AgentKeys:     agentKeys,
 	})
 	c.persistToRepo(ctx)
+}
+
+// QueryByTaskPattern returns cache entries matching the task pattern derived from
+// the given description. Returns entries sorted by DQScore descending.
+func (c *OrchestrationCache) QueryByTaskPattern(ctx context.Context, taskDescription string) ([]OrchestrationCacheEntry, error) {
+	pattern := ExtractTaskPattern(taskDescription)
+	entry, found := c.Get(pattern)
+	if !found {
+		return nil, nil
+	}
+	return []OrchestrationCacheEntry{*entry}, nil
 }
 
 func (c *OrchestrationCache) persistToRepo(ctx context.Context) {

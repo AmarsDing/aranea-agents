@@ -28,6 +28,16 @@ func (m *memTeamRepo) ListTeams(_ context.Context) ([]biz.Team, error) {
 	return out, nil
 }
 
+func (m *memTeamRepo) ListTeamsByStatus(_ context.Context, status string) ([]biz.Team, error) {
+	out := make([]biz.Team, 0)
+	for _, t := range m.teams {
+		if t.Status == status {
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
+
 func (m *memTeamRepo) GetTeamByID(_ context.Context, id string) (biz.Team, error) {
 	t, ok := m.teams[id]
 	if !ok {

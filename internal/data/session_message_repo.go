@@ -356,7 +356,7 @@ func (r *sessionRepo) AppendChatMessage(ctx context.Context, sessionID string, m
 		return kerrors.BadRequest("SESSION", "session id is required")
 	}
 	start := time.Now()
-	lg := loggateway.Global()
+	lg := r.data.lg
 	if lg != nil {
 		lg.With(loggateway.SessionID(sessionID)).Info("data.AppendChatMessage: 开始",
 			loggateway.StepID("db.append_msg_start"),

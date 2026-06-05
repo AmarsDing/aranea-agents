@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"aranea-agents/internal/agent"
+	"aranea-agents/internal/agent/llmcompat"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/loggateway"
 )
@@ -24,6 +24,12 @@ type Artifact struct {
 	Ambiguities     []string `json:"ambiguities"`
 	SearchHints     []string `json:"search_hints"`
 	RiskFlags       []string `json:"risk_flags"`
+
+	// Spirit orchestration fields — populated by intent pass, consumed by TaskPlanner.
+	ComplexityScore   float64  `json:"complexity_score,omitempty"`   // 0.0-1.0, preliminary complexity assessment
+	ComplexitySignals []string `json:"complexity_signals,omitempty"` // e.g. "multi_domain", "requires_tools", "ambiguous_scope"
+	SuggestedAgents   []string `json:"suggested_agents,omitempty"`   // agent keys that might be relevant
+	SuggestedTopology string   `json:"suggested_topology,omitempty"` // direct / coordinator / parallel / dag
 }
 
 const intentSystemCoding = `You classify and restate the user's request for a coding assistant. Reply with ONE JSON object only, no markdown fences, no commentary. Keys:
@@ -32,7 +38,11 @@ const intentSystemCoding = `You classify and restate the user's request for a co
 - success_criteria (array of strings): measurable checks (e.g. "tests pass").
 - ambiguities (array of strings): questions that still need human clarification, or [].
 - search_hints (array of strings): short literals useful for codebase search (identifiers, error substrings, file name fragments).
-- risk_flags (array of strings): e.g. touches_auth, migrations, or [].`
+- risk_flags (array of strings): e.g. touches_auth, migrations, or [].
+- complexity_score (number 0.0-1.0): estimate based on scope, domains, tool needs, ambiguity.
+- complexity_signals (array of strings): what drove the score, e.g. multi_domain, requires_database, needs_research, ambiguous_requirements, simple_query, single_domain, or [].
+- suggested_agents (array of strings): agent keys likely relevant, or [].
+- suggested_topology (string): one of direct (simple answer), coordinator (needs orchestration), parallel (independent subtasks), dag (dependent subtasks).`
 
 const intentSystemGeneral = `You classify and restate the user's request. Reply with ONE JSON object only, no markdown fences, no commentary. Keys:
 - refined_goal (string): one clear sentence of what the user wants.
@@ -40,7 +50,11 @@ const intentSystemGeneral = `You classify and restate the user's request. Reply 
 - success_criteria (array of strings): measurable checks, or [].
 - ambiguities (array of strings): questions that still need human clarification, or [].
 - search_hints (array of strings): short keywords useful for retrieval or search tools, or [].
-- risk_flags (array of strings): e.g. sensitive_data, compliance, or [].`
+- risk_flags (array of strings): e.g. sensitive_data, compliance, or [].
+- complexity_score (number 0.0-1.0): estimate based on scope, domains, tool needs, ambiguity.
+- complexity_signals (array of strings): what drove the score, e.g. multi_domain, needs_research, ambiguous_requirements, simple_query, single_domain, or [].
+- suggested_agents (array of strings): agent keys likely relevant, or [].
+- suggested_topology (string): one of direct (simple answer), coordinator (needs orchestration), parallel (independent subtasks), dag (dependent subtasks).`
 
 const minIntentPassRunes = 20
 
@@ -138,6 +152,15 @@ func BuildIntentPassPayload(r RunResult, meta RunMeta) map[string]any {
 		out["intent_kind"] = strings.TrimSpace(r.Artifact.IntentKind)
 		out["refined_goal_len"] = len(strings.TrimSpace(r.Artifact.RefinedGoal))
 		out["search_hints_count"] = len(r.Artifact.SearchHints)
+		if r.Artifact.ComplexityScore > 0 {
+			out["complexity_score"] = r.Artifact.ComplexityScore
+		}
+		if len(r.Artifact.ComplexitySignals) > 0 {
+			out["complexity_signals"] = r.Artifact.ComplexitySignals
+		}
+		if r.Artifact.SuggestedTopology != "" {
+			out["suggested_topology"] = r.Artifact.SuggestedTopology
+		}
 	}
 	return out
 }
@@ -208,17 +231,17 @@ func runWithSystem(ctx context.Context, agentIntentPassEnabled bool, systemPromp
 		res.Outcome = "skipped_catalog"
 		return
 	}
-	var cfg agent.ProviderAPIConfig
-	agent.MergeProviderConfigJSON(row.ConfigJSON, &cfg)
+	var cfg llmcompat.ProviderAPIConfig
+	llmcompat.MergeProviderConfigJSON(row.ConfigJSON, &cfg)
 
-	msgs := []agent.OpenAICompatMessage{
+	msgs := []llmcompat.OpenAICompatMessage{
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: "User message:\n\n" + userText},
 	}
 	callCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 
-	text, _, _, _, err := agent.CallOpenAICompatChat(callCtx, httpClient, cfg, model, msgs)
+	text, _, _, _, err := llmcompat.CallOpenAICompatChat(callCtx, httpClient, cfg, model, msgs)
 	if err != nil {
 		res.Outcome = "skipped_llm"
 		return
@@ -255,6 +278,13 @@ func parseArtifactJSON(text string) (*Artifact, string) {
 	}
 	if strings.TrimSpace(art.RefinedGoal) == "" {
 		return nil, ""
+	}
+	// Default new spirit orchestration fields
+	if art.ComplexitySignals == nil {
+		art.ComplexitySignals = []string{}
+	}
+	if art.SuggestedAgents == nil {
+		art.SuggestedAgents = []string{}
 	}
 	return &art, text
 }

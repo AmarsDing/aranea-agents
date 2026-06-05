@@ -562,7 +562,7 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 		TeamKey:        spec.Key,
 		DisplayName:    spec.DisplayName,
 		DefinitionJSON: defJSON,
-		Status:         "active",
+		Status:         biz.TeamStatusPending,
 		Source:         "imported",
 		Readonly:       false,
 	}

@@ -23,6 +23,7 @@ func (CompiledTeam) Fields() []ent.Field {
 		field.String("id").MaxLen(64).Unique().Immutable(),
 		field.String("team_id").MaxLen(64),
 		field.String("graph_id").MaxLen(64),
+		field.String("session_id").MaxLen(64).Default(""),
 		field.Text("config_json"),
 		field.Time("created_at"),
 		field.Time("updated_at").Optional().Nillable(),
@@ -33,6 +34,7 @@ func (CompiledTeam) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("team_id"),
 		index.Fields("graph_id"),
+		index.Fields("session_id"),
 		index.Fields("team_id", "graph_id").Unique(),
 	}
 }

@@ -23,14 +23,16 @@ import (
 	artifacttrpc "aranea-agents/internal/artifact/trpc"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/biz/monitor"
+	bizskill "aranea-agents/internal/biz/skill"
 	biztool "aranea-agents/internal/biz/tool"
+	bizusage "aranea-agents/internal/biz/usage"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
 	"aranea-agents/internal/cronrunner/jobs"
 	"aranea-agents/internal/data"
-	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/internal/debug"
 	"aranea-agents/internal/event"
+	"aranea-agents/internal/event/contract"
 	graphadapter "aranea-agents/internal/graph/adapter"
 	graphtrpc "aranea-agents/internal/graph/trpc"
 	"aranea-agents/internal/knowledge"
@@ -497,6 +499,8 @@ func provideTeamOrchestrationDeps(
 	tasks *biz.TaskUsecase,
 	teamGraphCoord *team.TeamGraphRunCoordinator,
 	spiritUC *biz.SpiritTeamUsecase,
+	taskPlanner biz.TaskPlannerPort,
+	agentAllocator biz.AgentAllocatorPort,
 ) service.TeamOrchestrationDeps {
 	return service.TeamOrchestrationDeps{
 		Teams:          teams,
@@ -506,6 +510,8 @@ func provideTeamOrchestrationDeps(
 		Tasks:          tasks,
 		TeamGraphCoord: teamGraphCoord,
 		SpiritUC:       spiritUC,
+		TaskPlanner:    taskPlanner,
+		AgentAllocator: agentAllocator,
 	}
 }
 
@@ -591,6 +597,7 @@ func provideChatServiceDeps(
 	skillStats biz.SkillInvocationStatsReader,
 	outboundRouter *outbound.Router,
 	subAgentSvc *subagenttool.Service,
+	expAnalytics *biz.ExperienceAnalyticsUsecase,
 	lg loggateway.Logger,
 ) service.ChatOrchestratorDeps {
 	return service.ChatOrchestratorDeps{
@@ -634,6 +641,7 @@ func provideChatServiceDeps(
 		SkillStats:      skillStats,
 		OutboundRouter:  outboundRouter,
 		SubAgentService: subAgentSvc,
+		ExpAnalytics:    expAnalytics,
 	}
 }
 
@@ -681,7 +689,7 @@ func (a *wsTurnExecutorAdapter) ExecuteTurn(ctx context.Context, input server.WS
 	return err
 }
 
-func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, cascade *biz.L4CascadeUsecase, sysUC *biz.SystemSettingUsecase, deadLetterRepo biz.MemoryDeadLetterAdminRepo, queue memtrpc.AutoMemoryQueue, queueStats *memtrpc.MemoryJobQueue, memStore *sessionmemory.Store, lg loggateway.Logger) *service.MemoryService {
+func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, factSync biz.MemoryFactIndexSyncer, cascade *biz.L4CascadeUsecase, sysUC *biz.SystemSettingUsecase, deadLetterRepo biz.MemoryDeadLetterAdminRepo, queue memtrpc.AutoMemoryQueue, queueStats *memtrpc.MemoryJobQueue, d *data.Data, lg loggateway.Logger) *service.MemoryService {
 	enqueue := func(ctx context.Context, id int64) error {
 		return deadLetterRepo.ReplayDeadLetterIntoQueue(ctx, id, func(sessionID, appName, userID, feedbackMsgID string, priority biz.MemoryJobPriority) {
 			queue.Enqueue(memtrpc.AutoMemoryJobRequest{
@@ -693,15 +701,15 @@ func provideMemoryService(persist rt.PersistenceSet, vec *biz.MemoryUsecase, fac
 			})
 		})
 	}
-	return service.NewMemoryService(biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec, factSync, data.NewL3FactWriterAdapter(memStore), lg), cascade, sysUC, deadLetterRepo, data.NewMemoryDebugRecaller(memStore), data.NewMemoryFactIndexCounter(memStore), enqueue, queueStats)
+	return service.NewMemoryService(biz.NewMemoryAdminUsecase(persist.Memory.Admin, vec, factSync, data.NewL3FactWriterAdapter(d, d.VectorStore()), lg), cascade, sysUC, deadLetterRepo, data.NewMemoryDebugRecaller(d), data.NewMemoryFactIndexCounter(d), enqueue, queueStats)
 }
 
-func provideL4CascadeUsecase(memStore *sessionmemory.Store, factSync biz.MemoryFactIndexSyncer, lg loggateway.Logger) *biz.L4CascadeUsecase {
-	if memStore == nil {
+func provideL4CascadeUsecase(d *data.Data, factSync biz.MemoryFactIndexSyncer, lg loggateway.Logger) *biz.L4CascadeUsecase {
+	if d == nil {
 		return nil
 	}
-	repo := data.NewL4GraphRepo(memStore)
-	cascade := data.NewCascadeRepo(memStore)
+	repo := data.NewL4GraphRepo(d)
+	cascade := data.NewCascadeRepo(d)
 	uc := biz.NewL4CascadeUsecase(cascade, cascade, cascade, cascade, repo, lg)
 	if uc != nil {
 		uc.SetIndexSync(factSync)
@@ -782,11 +790,11 @@ func provideAutoMemoryWorker(
 	return jobs.NewAutoMemoryWorker(0, sessions, agents, writer, factSync, episodeSync, l4, biz.DefaultMemoryConsolidator(extractor), queue, lg)
 }
 
-func provideL4GraphWriter(memStore *sessionmemory.Store, cascade *biz.L4CascadeUsecase, lg loggateway.Logger) biz.L4GraphWriter {
-	if memStore == nil {
+func provideL4GraphWriter(d *data.Data, cascade *biz.L4CascadeUsecase, lg loggateway.Logger) biz.L4GraphWriter {
+	if d == nil {
 		return nil
 	}
-	return data.NewL4GraphWriterAdapter(data.NewL4GraphUsecaseFromStore(memStore, cascade, lg))
+	return data.NewL4GraphWriterAdapter(data.NewL4GraphUsecaseFromData(d, cascade, lg))
 }
 
 func provideEvolutionScanner(evo *biz.EvolutionUsecase, logger log.Logger) *jobs.EvolutionScanner {
@@ -860,8 +868,8 @@ func provideMemoryL2ConsolidateWorker(admin *biz.MemoryAdminUsecase, lg loggatew
 	return jobs.NewMemoryL2ConsolidateWorker(0, admin, lg)
 }
 
-func provideSessionAdminStore(store *sessionmemory.Store) biz.SessionAdminStore {
-	return data.NewSessionAdminStoreAdapter(store)
+func provideSessionAdminStore(d *data.Data) biz.SessionAdminStore {
+	return data.NewSessionAdminStoreAdapter(d, d.VectorStore())
 }
 
 func provideMemoryL1ArchiveWorker(admin biz.SessionAdminStore, agents *biz.AgentUsecase, lg loggateway.Logger) *jobs.MemoryL1ArchiveWorker {
@@ -1199,6 +1207,54 @@ func provideA2AService(
 	return service.NewA2AService(uc, chat, agents, reg, store, lg)
 }
 
+func provideTaskPlanner(repo biz.TaskPlanRepository, catalog *biz.LlmProviderModelUsecase, orchCache *biz.OrchestrationCache, bus contract.Bus, lg loggateway.Logger) biz.TaskPlannerPort {
+	httpClient := &http.Client{Timeout: 60 * time.Second}
+	return chatagent.NewTaskPlanner(repo, catalog, httpClient, bus, orchCache, lg)
+}
+
+func provideAgentAllocator(
+	repo biz.AllocationPlanRepository,
+	agentReader biz.AgentReader,
+	perfRepo biz.AgentPerformanceRepository,
+	catalog *biz.LlmProviderModelUsecase,
+	bus contract.Bus,
+	lg loggateway.Logger,
+) biz.AgentAllocatorPort {
+	httpClient := &http.Client{Timeout: 60 * time.Second}
+	capBuilder := chatagent.NewAgentCapabilityBuilder(agentReader, lg)
+	return chatagent.NewAgentAllocator(repo, agentReader, perfRepo, capBuilder, catalog, httpClient, bus, lg)
+}
+
+func provideTaskOrchestrator(
+	spiritUC *biz.SpiritTeamUsecase,
+	assembler *service.SpiritTeamAssembler,
+	repo biz.OrchestrationRepository,
+	matcher biz.AgentMatcherPort,
+	catalog *biz.LlmProviderModelUsecase,
+	agentUC *biz.AgentUsecase,
+	agents biz.AgentRepository,
+	toolUC *biz.ToolUsecase,
+	sys biz.SystemSettingRepo,
+	synthesis *service.SpiritSynthesisService,
+	checkpointSaver trpcgraph.CheckpointSaver,
+	orchCache *biz.OrchestrationCache,
+	perfRepo biz.AgentPerformanceRepository,
+	bus contract.Bus,
+	lg loggateway.Logger,
+) biz.TaskOrchestratorPort {
+	rtTrip := &provider.RoundTrip{HTTP: &http.Client{Timeout: 120 * time.Second}}
+	deps := chatagent.TRPCBuilderDeps{
+		Catalog:  catalog,
+		AgentUC:  agentUC,
+		Agents:   agents,
+		RT:       rtTrip,
+		ToolUC:   toolUC,
+		Sys:      sys,
+	}
+	compiler := chatagent.NewDAGToGraphCompiler(lg)
+	return chatagent.NewTaskOrchestratorImpl(spiritUC, assembler, compiler, repo, matcher, deps, synthesis, checkpointSaver, orchCache, perfRepo, bus, lg)
+}
+
 // wireApp init kratos application.
 func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggateway.Logger, logpipeline.Pipeline, []*conf.LoggingSink) (wireOut, func(), error) {
 	panic(wire.Build(
@@ -1328,6 +1384,10 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideA2APublicBaseReloader,
 		provideA2AService,
 		provideEventService,
+		provideTaskPlanner,
+		provideAgentAllocator,
+		chatagent.NewAgentMatcher,
+		provideTaskOrchestrator,
 		debug.NewRecorderFactory,
 		// PGO-3: DynamicLLMCaller → biz.LLMCaller binding, PromptRefiner.
 		provideRefineLLMRoundTrip,
@@ -1342,10 +1402,15 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		wire.Bind(new(biz.TaskGraphResolver), new(*biz.GraphUsecase)),
 		wire.Bind(new(importer.SkillImportRepo), new(biz.SkillRepo)),
 		wire.Bind(new(biz.SkillLookupReader), new(biz.SkillRepo)),
+		wire.Bind(new(bizskill.SkillQueryReader), new(biz.SkillRepo)),
+		wire.Bind(new(bizusage.AnalyticsRepo), new(biz.UsageRepo)),
+		wire.Bind(new(biz.SessionReader), new(biz.SessionRepo)),
+		wire.Bind(new(biztool.ToolInvocationReader), new(biz.ToolRepo)),
 		wire.Bind(new(biz.MCPServerReader), new(biz.MCPServerRepo)),
 		wire.Bind(new(biz.TeamReader), new(biz.TeamRepository)),
 		wire.Bind(new(biz.TeamRunRepo), new(biz.TeamRepository)),
 		wire.Bind(new(biz.PatternReader), new(biz.PatternReadWriter)),
+		wire.Bind(new(biz.AgentReader), new(biz.AgentRepository)),
 		provideWSTurnExecutor,
 		newApp,
 		provideWireOut,

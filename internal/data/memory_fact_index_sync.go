@@ -3,44 +3,42 @@ package data
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/sessionmemory"
-	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/jsonutil"
+	"aranea-agents/pkg/loggateway"
 )
 
 type memoryFactIndexSync struct {
-	vec   *biz.MemoryUsecase
-	store *sessionmemory.Store
-	lg    loggateway.Logger
+	vec  *biz.MemoryUsecase
+	data *Data
+	lg   loggateway.Logger
 }
 
 // NewMemoryFactIndexSync dual-writes L3 fact vectors to pgvector (optional) and SQLite embedding_blob.
 var _ biz.MemoryFactIndexSyncer = (*memoryFactIndexSync)(nil)
 
-func NewMemoryFactIndexSync(vec *biz.MemoryUsecase, store *sessionmemory.Store, lg loggateway.Logger) biz.MemoryFactIndexSyncer {
+func NewMemoryFactIndexSync(vec *biz.MemoryUsecase, data *Data, lg loggateway.Logger) biz.MemoryFactIndexSyncer {
 	if vec == nil {
 		return nil
 	}
-	if store == nil {
+	if data == nil {
 		return vec
 	}
-	return &memoryFactIndexSync{vec: vec, store: store, lg: lg}
+	return &memoryFactIndexSync{vec: vec, data: data, lg: lg}
 }
 
 // SyncFactIndex embeds the statement and writes vectors to pgvector + SQLite.
-// On any failure it marks index_status='stale' on the SQLite row (MEM-OPT-01 Phase 1).
-// On success it marks index_status='fresh'.
 func (s *memoryFactIndexSync) SyncFactIndex(ctx context.Context, agentID, userID, factID, statement string) error {
 	if s == nil || s.vec == nil {
 		return biz.ErrMemoryUnavailable
 	}
 	markStale := func(reason error) {
-		if s.store == nil {
+		if s.data == nil {
 			return
 		}
-		if serr := s.store.MarkFactIndexStale(ctx, factID, reason.Error()); serr != nil {
+		if serr := s.markFactIndexStale(ctx, factID, reason.Error()); serr != nil {
 			s.lg.Warn("failed to mark fact index stale", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(serr))
 		}
 	}
@@ -61,8 +59,8 @@ func (s *memoryFactIndexSync) SyncFactIndex(ctx context.Context, agentID, userID
 		return err
 	}
 	// Mark fresh on full success.
-	if s.store != nil {
-		if serr := s.store.MarkFactIndexSynced(ctx, factID); serr != nil {
+	if s.data != nil {
+		if serr := s.markFactIndexSynced(ctx, factID); serr != nil {
 			s.lg.Warn("failed to mark fact index synced", loggateway.StepID("memory.l4_fail"), loggateway.Str("fact_id", factID), loggateway.Err(serr))
 		}
 	}
@@ -91,8 +89,28 @@ func (s *memoryFactIndexSync) SyncFactIndexFromRow(ctx context.Context, raw []by
 }
 
 func (s *memoryFactIndexSync) syncSQLiteBlob(ctx context.Context, factID string, embedding []float32) error {
-	if s == nil || s.store == nil || len(embedding) == 0 {
+	if s == nil || s.data == nil || len(embedding) == 0 {
 		return nil
 	}
-	return s.store.UpsertFactEmbedding(ctx, factID, embedding, "memory_embedder", len(embedding))
+	blob := encodeFloat32Blob(embedding)
+	norm := vectorL2Norm(embedding)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := s.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		`UPDATE memory_facts SET embedding_blob = ?, embedding_norm = ?, embedding_dim = ?, embedding_status = 'fresh', embedding_model = 'memory_embedder', updated_at = ? WHERE id = ?`,
+		blob, norm, len(embedding), now, factID)
+	return err
+}
+
+func (s *memoryFactIndexSync) markFactIndexStale(ctx context.Context, factID, reason string) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := s.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		`UPDATE memory_facts SET embedding_status = 'stale', updated_at = ? WHERE id = ?`, now, factID)
+	return err
+}
+
+func (s *memoryFactIndexSync) markFactIndexSynced(ctx context.Context, factID string) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	_, err := s.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		`UPDATE memory_facts SET embedding_status = 'fresh', updated_at = ? WHERE id = ?`, now, factID)
+	return err
 }

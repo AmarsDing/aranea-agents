@@ -17,7 +17,8 @@ type cancelTeamRunRepo struct {
 	runs map[string]biz.TeamRun
 }
 
-func (r *cancelTeamRunRepo) ListTeams(_ context.Context) ([]biz.Team, error) { return nil, nil }
+func (r *cancelTeamRunRepo) ListTeams(_ context.Context) ([]biz.Team, error)          { return nil, nil }
+func (r *cancelTeamRunRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) { return nil, nil }
 func (r *cancelTeamRunRepo) GetTeamByID(_ context.Context, _ string) (biz.Team, error) {
 	return biz.Team{}, biz.ErrNotFound
 }

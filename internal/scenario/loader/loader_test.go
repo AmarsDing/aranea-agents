@@ -485,8 +485,8 @@ func TestBuildBizTeam(t *testing.T) {
 		if team.DisplayName != "Risk Analysis Team" {
 			t.Errorf("DisplayName = %q, want %q", team.DisplayName, "Risk Analysis Team")
 		}
-		if team.Status != "active" {
-			t.Errorf("Status = %q, want %q", team.Status, "active")
+		if team.Status != biz.TeamStatusPending {
+			t.Errorf("Status = %q, want %q", team.Status, biz.TeamStatusPending)
 		}
 		if team.CategoryIndustryID != "fintech" {
 			t.Errorf("CategoryIndustryID = %q, want %q", team.CategoryIndustryID, "fintech")

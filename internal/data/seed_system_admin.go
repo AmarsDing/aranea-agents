@@ -126,6 +126,177 @@ func SeedSpiritPromptFiles(ctx context.Context, client *ent.Client, scenarioDir 
 	return nil
 }
 
+func SeedMemoryAgent(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
+	if client == nil {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	const q = `INSERT INTO agents (
+		id, agent_key, display_name, provider, model, status,
+		is_default, is_favorite, icon, agent_description,
+		taxonomy_position_id, system_prompt_mode, context_window,
+		budget_monthly_cents, config_json, roles_json, created_by,
+		created_at, updated_at, deleted_at, readonly, kind,
+		position_key, agent_variant
+	) VALUES (
+		'agent___memory__', ?, '记忆管家', 'openrouter', 'gpt-4.1',
+		'active', 0, 0, '', '基于学术原则的智能记忆管理者：选择性记忆、质量驱动遗忘、记忆蒸馏',
+		'', 'complete', 0, 0, '{"tools_profile":"system_memory"}', '[]', 'system',
+		?, ?, '', 1, 'system_builtin',
+		'memory', ''
+	) ON CONFLICT(agent_key) DO UPDATE SET
+		display_name = excluded.display_name,
+		agent_description = excluded.agent_description,
+		readonly = excluded.readonly,
+		kind = excluded.kind,
+		position_key = excluded.position_key,
+		agent_variant = excluded.agent_variant,
+		updated_at = excluded.updated_at`
+	if _, err := client.ExecContext(ctx, q, "__memory__", now, now); err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.memory_agent"), loggateway.Err(err))
+		return kerrors.InternalServer("SEED", "seed memory agent: "+err.Error())
+	}
+	return nil
+}
+
+func SeedSkillsAgent(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
+	if client == nil {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	const q = `INSERT INTO agents (
+		id, agent_key, display_name, provider, model, status,
+		is_default, is_favorite, icon, agent_description,
+		taxonomy_position_id, system_prompt_mode, context_window,
+		budget_monthly_cents, config_json, roles_json, created_by,
+		created_at, updated_at, deleted_at, readonly, kind,
+		position_key, agent_variant
+	) VALUES (
+		'agent___skills__', ?, '技能管家', 'openrouter', 'gpt-4.1',
+		'active', 0, 0, '', '基于使用数据的技能进化/消亡决策、工具权重优化、编排分析',
+		'', 'complete', 0, 0, '{"tools_profile":"system_skills"}', '[]', 'system',
+		?, ?, '', 1, 'system_builtin',
+		'skills', ''
+	) ON CONFLICT(agent_key) DO UPDATE SET
+		display_name = excluded.display_name,
+		agent_description = excluded.agent_description,
+		readonly = excluded.readonly,
+		kind = excluded.kind,
+		position_key = excluded.position_key,
+		agent_variant = excluded.agent_variant,
+		updated_at = excluded.updated_at`
+	if _, err := client.ExecContext(ctx, q, "__skills__", now, now); err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.skills_agent"), loggateway.Err(err))
+		return kerrors.InternalServer("SEED", "seed skills agent: "+err.Error())
+	}
+	return nil
+}
+
+func SeedButlerPromptFiles(ctx context.Context, client *ent.Client, scenarioDir string, lg loggateway.Logger) error {
+	if client == nil {
+		return nil
+	}
+	type butlerPrompt struct {
+		agentID string
+		prefix  string
+		dirName string
+	}
+	butlers := []butlerPrompt{
+		{agentID: "agent___memory__", prefix: "apf_memory_", dirName: "memory"},
+		{agentID: "agent___skills__", prefix: "apf_skills_", dirName: "skills"},
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	const q = `INSERT INTO agent_prompt_files (
+		id, agent_id, file_name, body, sort_order, created_at, updated_at
+	) VALUES (
+		?, ?, ?, ?, ?, ?, ?
+	) ON CONFLICT(id) DO UPDATE SET
+		body = excluded.body,
+		sort_order = excluded.sort_order,
+		updated_at = excluded.updated_at`
+	for _, b := range butlers {
+		promptDir := filepath.Join(scenarioDir, "system", "prompts", b.dirName)
+		entries, err := os.ReadDir(promptDir)
+		if err != nil {
+			lg.Warn("butler prompt dir not found, skipping",
+				loggateway.StepID("data.seed.butler_prompt_files"),
+				loggateway.Str("dir", promptDir),
+				loggateway.Err(err))
+			continue
+		}
+		sortOrder := 0
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+				continue
+			}
+			fileName := strings.TrimSuffix(e.Name(), ".md")
+			data, err := os.ReadFile(filepath.Join(promptDir, e.Name()))
+			if err != nil {
+				lg.Warn("seed step failed", loggateway.StepID("data.seed.butler_prompt_files"), loggateway.Str("file", e.Name()), loggateway.Err(err))
+				return kerrors.InternalServer("SEED", "read butler prompt file "+e.Name()+": "+err.Error())
+			}
+			id := b.prefix + fileName
+			if _, err := client.ExecContext(ctx, q, id, b.agentID, fileName, string(data), sortOrder, now, now); err != nil {
+				lg.Warn("seed step failed", loggateway.StepID("data.seed.butler_prompt_files"), loggateway.Str("file_name", fileName), loggateway.Err(err))
+				return kerrors.InternalServer("SEED", "seed butler prompt file "+fileName+": "+err.Error())
+			}
+			sortOrder++
+		}
+	}
+	return nil
+}
+
+func SeedCronTasks(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
+	if client == nil {
+		return nil
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	tasks := []struct {
+		id          string
+		taskKey     string
+		name        string
+		description string
+		agentID     string
+		configJSON  string
+	}{
+		{
+			id:          "cron_dream_cycle",
+			taskKey:     "dream_cycle",
+			name:        "记忆整理周期",
+			description: "每日凌晨3点触发记忆管家执行 dream_cycle：删除 misaligned 记忆、遗忘不活跃记忆、去重、蒸馏",
+			agentID:     "agent___memory__",
+			configJSON:  `{"schedule":"0 3 * * *","dry_run":true}`,
+		},
+		{
+			id:          "cron_skill_health_scan",
+			taskKey:     "skill_health_scan",
+			name:        "技能健康扫描",
+			description: "每周一凌晨4点触发技能管家执行 Skill 健康度分析",
+			agentID:     "agent___skills__",
+			configJSON:  `{"schedule":"0 4 * * 1"}`,
+		},
+	}
+	const q = `INSERT INTO cron_task (
+		id, task_key, name, description, status, enabled, sort_order,
+		agent_id, config_json, metadata_json, created_at, updated_at, deleted_at
+	) VALUES (
+		?, ?, ?, ?, 'active', 1, 0,
+		?, ?, '{}', ?, ?, ''
+	) ON CONFLICT(task_key) DO UPDATE SET
+		name = excluded.name,
+		description = excluded.description,
+		agent_id = excluded.agent_id,
+		config_json = excluded.config_json,
+		updated_at = excluded.updated_at`
+	for _, t := range tasks {
+		if _, err := client.ExecContext(ctx, q, t.id, t.taskKey, t.name, t.description, t.agentID, t.configJSON, now, now); err != nil {
+			lg.Warn("seed step failed", loggateway.StepID("data.seed.cron_tasks"), loggateway.Str("task_key", t.taskKey), loggateway.Err(err))
+			return kerrors.InternalServer("SEED", "seed cron task "+t.taskKey+": "+err.Error())
+		}
+	}
+	return nil
+}
+
 func SeedBuiltinCLIAdminTools(ctx context.Context, client *ent.Client, lg loggateway.Logger) error {
 	if client == nil {
 		return nil

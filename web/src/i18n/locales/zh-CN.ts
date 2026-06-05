@@ -1026,6 +1026,9 @@ export default {
       signatureQuote: '"Spec the world, then ship it."',
       signatureCaption: '· 信息建筑派的签名细节 — 每个数字可被追溯、每个选项可被对比',
       noMetricHint: '—',
+      tableDesc: '描述',
+      tableStatus: '状态',
+      tableSource: '来源',
     },
   },
 };

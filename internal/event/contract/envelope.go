@@ -57,8 +57,26 @@ const (
 	EnvelopeTypeSpiritTeamProgress          EnvelopeType = "spirit_team_progress"
 	EnvelopeTypeSpiritTeamsAllCompleted     EnvelopeType = "spirit_teams_all_completed"
 	EnvelopeTypeSpiritSynthesisCompleted    EnvelopeType = "spirit_synthesis_completed"
+	EnvelopeTypeSpiritPlanCreated           EnvelopeType = "spirit_plan_created"
+	EnvelopeTypeSpiritAllocationCreated     EnvelopeType = "spirit_allocation_created"
+	EnvelopeTypeSpiritOrchestrationStarted  EnvelopeType = "spirit_orchestration_started"
+	EnvelopeTypeSpiritOrchestrationCheckpoint EnvelopeType = "spirit_orchestration_checkpoint"
+	EnvelopeTypeSpiritOrchestrationInterrupted EnvelopeType = "spirit_orchestration_interrupted"
 	EnvelopeTypeTokenUsage                  EnvelopeType = "token_usage"
 	EnvelopeTypeMetricsUpdated              EnvelopeType = "metrics_updated"
+
+	// Butler orchestration events
+	EnvelopeTypeButlerOrchestrationStarted  EnvelopeType = "butler.orchestration.started"
+	EnvelopeTypeButlerOrchestrationCompleted EnvelopeType = "butler.orchestration.completed"
+	EnvelopeTypeButlerOrchestrationFailed   EnvelopeType = "butler.orchestration.failed"
+
+	// Skill evolution events
+	EnvelopeTypeSkillHealthChanged          EnvelopeType = "skill.health_changed"
+	EnvelopeTypeSkillEvolutionProposed      EnvelopeType = "skill.evolution_proposed"
+
+	// Monitor self-healing events
+	EnvelopeTypeMonitorAutoHealed           EnvelopeType = "monitor.auto_healed"
+	EnvelopeTypeMonitorSelfCheckCompleted   EnvelopeType = "monitor.self_check_completed"
 )
 
 // Envelope is the universal event carrier.
@@ -237,6 +255,8 @@ func NewEnvelope(typ EnvelopeType, author, sessionID string) Envelope {
 }
 
 // RouteChannel returns the logical channel name for routing an envelope.
+// TECH-DEBT: RouteChannel switch-case violates OCP. Consider per-domain routing tables
+// or attaching channel metadata to EnvelopeType definitions.
 func RouteChannel(env Envelope) string {
 	switch env.Type {
 	case EnvelopeTypeLog, EnvelopeTypeFlowLog:
@@ -258,8 +278,13 @@ func RouteChannel(env Envelope) string {
 		return "chat"
 	case EnvelopeTypeMetricsUpdated:
 		return "chat"
-	case EnvelopeTypeSpiritTeamAssembled, EnvelopeTypeSpiritTeamCompleted, EnvelopeTypeSpiritTeamFailed, EnvelopeTypeSpiritTeamProgress, EnvelopeTypeSpiritTeamsAllCompleted, EnvelopeTypeSpiritSynthesisCompleted:
+	case EnvelopeTypeSpiritTeamAssembled, EnvelopeTypeSpiritTeamCompleted, EnvelopeTypeSpiritTeamFailed, EnvelopeTypeSpiritTeamProgress, EnvelopeTypeSpiritTeamsAllCompleted, EnvelopeTypeSpiritSynthesisCompleted,
+		EnvelopeTypeSpiritPlanCreated, EnvelopeTypeSpiritAllocationCreated, EnvelopeTypeSpiritOrchestrationStarted, EnvelopeTypeSpiritOrchestrationCheckpoint, EnvelopeTypeSpiritOrchestrationInterrupted,
+		EnvelopeTypeButlerOrchestrationStarted, EnvelopeTypeButlerOrchestrationCompleted, EnvelopeTypeButlerOrchestrationFailed,
+		EnvelopeTypeSkillHealthChanged, EnvelopeTypeSkillEvolutionProposed:
 		return "chat"
+	case EnvelopeTypeMonitorAutoHealed, EnvelopeTypeMonitorSelfCheckCompleted:
+		return "monitor"
 	default:
 		if env.TeamID != "" {
 			return "team"

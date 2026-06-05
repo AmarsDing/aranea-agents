@@ -45,7 +45,7 @@ func (db *ReadWriteDB) WriteDB(ctx context.Context) execer {
 }
 
 // WriteHandle returns the underlying write *sql.DB without transaction awareness.
-// Use this only for DDL operations (CREATE TABLE, ALTER TABLE).
+// Use this only for DDL operations (CREATE TABLE, ALTER TABLE) or as TxExecerFromCtx fallback.
 func (db *ReadWriteDB) WriteHandle() *sql.DB {
 	if db == nil {
 		return nil

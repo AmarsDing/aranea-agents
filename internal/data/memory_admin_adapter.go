@@ -2,7 +2,7 @@ package data
 
 import (
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/internal/data/vector"
 )
 
 // sessionAdminStoreAdapter composes all memory shim repos to implement biz.SessionAdminStore.
@@ -18,16 +18,15 @@ type sessionAdminStoreAdapter struct {
 var _ biz.SessionAdminStore = (*sessionAdminStoreAdapter)(nil)
 
 // NewSessionAdminStoreAdapter creates a SessionAdminStore by composing all shim repos.
-// Returns nil if store is nil.
-func NewSessionAdminStoreAdapter(store *sessionmemory.Store) biz.SessionAdminStore {
-	if store == nil {
+func NewSessionAdminStoreAdapter(data *Data, vs vector.VectorStore) biz.SessionAdminStore {
+	if data == nil {
 		return nil
 	}
 	return &sessionAdminStoreAdapter{
-		l0SnapshotRepo:      newL0SnapshotRepo(store),
-		l1WorkingMemoryRepo: newL1WorkingMemoryRepo(store),
-		l2EpisodeRepo:       newL2EpisodeRepo(store),
-		l3FactRepo:          newL3FactRepo(store),
-		l4EntityRepo:        newL4EntityRepo(store),
+		l0SnapshotRepo:      newL0SnapshotRepo(data),
+		l1WorkingMemoryRepo: newL1WorkingMemoryRepo(data),
+		l2EpisodeRepo:       newL2EpisodeRepo(data, vs),
+		l3FactRepo:          newL3FactRepo(data, vs),
+		l4EntityRepo:        newL4EntityRepo(data),
 	}
 }

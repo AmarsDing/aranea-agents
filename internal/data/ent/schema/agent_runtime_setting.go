@@ -146,6 +146,12 @@ func (AgentRuntimeSetting) Fields() []ent.Field {
 		field.String("tools_circuit_breaker_overrides_json").Default(""),
 		field.String("tools_deferred_json").Default(""),
 		field.Bool("tools_command_safety_enabled").Default(false),
+		// ForgetPolicyJSON stores the memory butler's forget policy configuration.
+		field.String("forget_policy_json").Default("{}"),
+		// ToolWeightJSON stores tool weight analysis results for prompt priority hints.
+		field.String("tool_weight_json").Default("{}"),
+		// DreamSnapshotJSON stores dream_cycle execution snapshots for rollback.
+		field.String("dream_snapshot_json").Default(""),
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 	}

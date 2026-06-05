@@ -3,6 +3,7 @@ package biz
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -10,6 +11,7 @@ import (
 
 type TeamReader interface {
 	ListTeams(ctx context.Context) ([]Team, error)
+	ListTeamsByStatus(ctx context.Context, status string) ([]Team, error)
 	GetTeamByID(ctx context.Context, id string) (Team, error)
 	ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]Team, error)
 }
@@ -204,6 +206,10 @@ func (u *TeamUsecase) List(ctx context.Context) ([]Team, error) {
 	return u.repo.ListTeams(ctx)
 }
 
+func (u *TeamUsecase) ListTeamsByStatus(ctx context.Context, status string) ([]Team, error) {
+	return u.repo.ListTeamsByStatus(ctx, status)
+}
+
 func (u *TeamUsecase) ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]Team, error) {
 	return u.repo.ListBySpiritSessionID(ctx, spiritSessionID)
 }
@@ -226,7 +232,7 @@ func (u *TeamUsecase) Create(ctx context.Context, in Team) (Team, error) {
 		in.ID = newAgentCatalogID()
 	}
 	if in.Status == "" {
-		in.Status = "active"
+		in.Status = TeamStatusPending
 	}
 	if in.DefinitionJSON == "" {
 		in.DefinitionJSON = defaultTeamDefinitionJSON()
@@ -301,6 +307,26 @@ func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, 
 	if err := u.validateTeamMembersExist(ctx, current.DefinitionJSON); err != nil {
 		return Team{}, err
 	}
+	return u.repo.UpdateTeam(ctx, current)
+}
+
+// TransitionStatus validates and applies a team status transition.
+// It checks the transition is allowed by the state machine and updates
+// only the status field, bypassing the HasActiveRun guard (status
+// transitions are part of the team lifecycle and must work during runs).
+func (u *TeamUsecase) TransitionStatus(ctx context.Context, id string, newStatus string) (Team, error) {
+	id, err := requireNonEmpty(id, "TEAM", "id")
+	if err != nil {
+		return Team{}, err
+	}
+	current, err := u.repo.GetTeamByID(ctx, id)
+	if err != nil {
+		return Team{}, err
+	}
+	if !ValidTeamStatusTransition(current.Status, newStatus) {
+		return Team{}, kerrors.BadRequest("TEAM", fmt.Sprintf("invalid team status transition: %s → %s", current.Status, newStatus))
+	}
+	current.Status = newStatus
 	return u.repo.UpdateTeam(ctx, current)
 }
 
@@ -644,7 +670,7 @@ func (u *TeamUsecase) SaveTeamWithGraph(ctx context.Context, team Team, graphIDM
 		team.ID = newAgentCatalogID()
 	}
 	if team.Status == "" {
-		team.Status = "active"
+		team.Status = TeamStatusPending
 	}
 	if team.DefinitionJSON == "" {
 		team.DefinitionJSON = defaultTeamDefinitionJSON()

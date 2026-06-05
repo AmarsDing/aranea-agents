@@ -115,6 +115,21 @@ func entTeamRunStepToBiz(e *ent.TeamRunStep) biz.TeamRunStep {
 	}
 }
 
+func (r *teamRepo) ListTeamsByStatus(ctx context.Context, status string) ([]biz.Team, error) {
+	c := r.data.RW().Read(ctx)
+	rows, err := c.Team.Query().Where(team.StatusEQ(status), team.DeletedAtEQ("")).
+		Order(team.ByCreatedAt(entsql.OrderDesc())).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]biz.Team, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, entTeamToBiz(row, r.data.lg))
+	}
+	return out, nil
+}
+
 func (r *teamRepo) ListTeams(ctx context.Context) ([]biz.Team, error) {
 	c := r.data.RW().Read(ctx)
 	rows, err := c.Team.Query().Where(team.DeletedAtEQ("")).
@@ -152,7 +167,7 @@ func (r *teamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 	}
 	t.UpdatedAt = now
 	if t.Status == "" {
-		t.Status = "active"
+		t.Status = biz.TeamStatusPending
 	}
 	_, err := r.data.RW().Write(ctx).Team.Create().
 		SetID(t.ID).
@@ -187,7 +202,7 @@ func (r *teamRepo) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 	now := nowRFC3339()
 	t.UpdatedAt = now
 	if t.Status == "" {
-		t.Status = "active"
+		t.Status = biz.TeamStatusPending
 	}
 	_, err := r.data.RW().Write(ctx).Team.UpdateOneID(t.ID).
 		SetTeamKey(t.TeamKey).

@@ -361,6 +361,24 @@ func (a *FlowFileAppender) writeRowLocked(rf *rotatingFile, row map[string]any) 
 	}
 }
 
+// Dir returns the flow file directory path.
+func (a *FlowFileAppender) Dir() string {
+	if a == nil {
+		return ""
+	}
+	return a.dir
+}
+
+// PurgeExpiredFiles removes expired flow log files and returns the count purged.
+func (a *FlowFileAppender) PurgeExpiredFiles() int {
+	return a.purgeExpiredFiles()
+}
+
+// CompressOldFiles compresses old flow log files and returns the count compressed.
+func (a *FlowFileAppender) CompressOldFiles() int {
+	return a.compressOldFiles()
+}
+
 func (rf *rotatingFile) Close() {
 	if rf != nil && rf.file != nil {
 		rf.file.Sync()

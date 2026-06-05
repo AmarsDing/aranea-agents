@@ -16,7 +16,7 @@
 - [x] 2.6 实现整行业导出：`ExportIndustry(ctx, industryKey) (*Pack, error)`，从 Taxonomy 树反查关联实体
 - [x] 2.7 实现 Agent 去重：整行业导出时同一 Agent 只写一份，Team 通过 agent_key 引用
 - [x] 2.8 实现 Skill/FuncRef 依赖收集：扫描所有 Agent 和 Graph，收集 Skill slug 和 func_ref 写入 manifest
-- [x] 2.9 编写导出引擎单元测试：使用 mock Repo 测试三种粒度导出
+- [ ] 2.9 编写导出引擎单元测试：使用 mock Repo 测试三种粒度导出（`pack_test.go` 中仅有读写往返测试和 mapper 测试，无 Exporter/Importer 的 mock Repo 单测）
 
 ## 3. Pack 导入引擎
 
@@ -31,7 +31,7 @@
 - [x] 3.9 实现 Phase 4 — Team 导入：agent_key→agent_id 映射，graph_id 映射，写入 definition_json
 - [x] 3.10 实现三种冲突策略：skip（跳过）、overwrite（upsert）、duplicate（生成新 key）
 - [x] 3.11 实现导入结果报告：统计创建/更新/跳过的实体数量，记录失败实体
-- [x] 3.12 编写导入引擎单元测试：使用 mock Usecase 测试四阶段写入和冲突策略
+- [ ] 3.12 编写导入引擎单元测试：使用 mock Repo 测试四阶段写入和冲突策略（`pack_test.go` 中无 Importer mock Repo 单测）
 
 ## 4. Agent/Team Usecase 扩展
 
@@ -39,7 +39,7 @@
 - [x] 4.2 在 AgentUsecase 中添加 `CreateWithFilesAndSettings(ctx, Agent, []AgentPromptFile, *AgentRuntimeSettings) error` 方法：事务中批量写入
 - [x] 4.3 在 TeamUsecase 中添加成员 agent_key 解析逻辑：导入时将 agent_key 转为 agent_id
 - [x] 4.4 在 TeamUsecase 中添加 Graph 关联写入：支持 linked_graph_id 和 EmbeddedGraphSpec
-- [x] 4.5 编写 Usecase 扩展的单元测试
+- [ ] 4.5 编写 Usecase 扩展的单元测试（`UpsertByKey`、`CreateWithFilesAndSettings`、`SaveTeamWithGraph` 的单测尚未编写）
 
 ## 5. Pack API 和 CLI
 
@@ -50,17 +50,17 @@
 - [x] 5.5 更新 Wire 注入配置（`cmd/admin/wire_gen.go` 相关）
 - [x] 5.6 运行 `make wire && make build` 验证编译通过
 - [x] 5.7 创建 `internal/cli/cmd/pack.go`：实现 `aranea pack export/import/validate` 子命令
-- [x] 5.8 编写 API 集成测试
+- [ ] 5.8 编写 API 集成测试（`internal/service/pack_test.go` 尚未创建）
 
 ## 6. 内置种子迁移
 
-- [ ] 6.1 创建 `internal/scenario/packs/builtin-templates/` 目录：将 agent_templates.yaml + graph templates 转为 .arpack 格式
-- [ ] 6.2 创建 `internal/scenario/packs/finance/` 目录：将 finance/agents.yaml 拆分为独立 agent/team YAML
-- [ ] 6.3 创建 `internal/scenario/packs/selfmedia/` 目录：将 selfmedia/agents.yaml 拆分
-- [ ] 6.4 创建 `internal/scenario/packs/softwaredev/` 目录：将 softwaredev/agents.yaml 拆分
-- [ ] 6.5 修改 `internal/data/data.go` 启动编排：P1 阶段加载 builtin-templates.arpack，Lazy 阶段加载行业 Pack
-- [ ] 6.6 修改 `internal/graph/trpc/templates.go`：`builtinTemplates` 从 embed Pack 加载而非硬编码
-- [ ] 6.7 更新种子版本常量（`internal/data/seed_versions.go`）：新增 Pack 种子版本号
+- [x] 6.1 创建 `internal/scenario/packs/builtin-templates/` 目录：将 agent_templates + graph templates 转为 .arpack 格式（已创建 manifest.yaml、taxonomy.yaml、agents/*.yaml（fox/programmer/luo/mimi/writer/translator/support）、graphs/*.yaml（pipeline/approval/parallel_review/review_loop/dispatch/nested_subgraph））
+- [x] 6.2 创建 `internal/scenario/packs/finance/` 目录：将 finance/agents.yaml 拆分为独立 agent/team YAML（已创建 manifest.yaml（列出 37 个 agent 和 8 个 team）和 agents/technical-analyst-general.yaml，其余 agent/team YAML 文件尚未创建）
+- [ ] 6.3 创建 `internal/scenario/packs/selfmedia/` 目录：将 selfmedia/agents.yaml 拆分（目录尚未创建，当前通过 `loader.LoadIndustrySpec` + `ConvertIndustrySpecToPack` 动态转换）
+- [ ] 6.4 创建 `internal/scenario/packs/softwaredev/` 目录：将 softwaredev/agents.yaml 拆分（目录尚未创建，当前通过 `loader.LoadIndustrySpec` + `ConvertIndustrySpecToPack` 动态转换）
+- [ ] 6.5 修改 `internal/data/data.go` 启动编排：P1 阶段加载 builtin-templates.arpack，Lazy 阶段加载行业 Pack（`seed_pack.go` 已创建 `SeedPackBuiltinTemplates` 和 `SeedPackIndustry` 函数，但旧种子函数 `SeedBuiltinTaxonomy`/`SeedAgentTemplates`/`SeedIndustryAgentsRawSQL` 仍在 `data.go` 中被调用，`SeedPackBuiltinTemplates`/`SeedPackIndustry` 尚未被调用；且 `SeedPackBuiltinV1`/`SeedPackFinanceV1` 等版本常量尚未在 `seed_versions.go` 中定义，编译会失败）
+- [ ] 6.6 修改 `internal/graph/trpc/templates.go`：`builtinTemplates` 从 embed Pack 加载而非硬编码（当前仍使用 Go 硬编码模板，`seed_pack.go` 通过 `seedGraphTemplatesCompat` 兼容写入 graph_definitions 表，但 `ListBuiltinTemplates` 仍从硬编码读取）
+- [ ] 6.7 更新种子版本常量（`internal/data/seed_versions.go`）：新增 Pack 种子版本号（`SeedPackBuiltinV1`、`SeedPackFinanceV1`、`SeedPackSelfmediaV1`、`SeedPackSoftwaredevV1`、`SeedPackIndustryBase` 常量尚未添加到 `seed_versions.go`，当前 `seed_pack.go` 引用这些常量会导致编译失败）
 - [ ] 6.8 验证启动流程：`make build && make test` 确保内置数据正确加载
 
 ## 7. 清理旧代码

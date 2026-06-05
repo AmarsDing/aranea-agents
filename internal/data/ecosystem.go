@@ -100,7 +100,7 @@ VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'')`,
 func (r *ecosystemRepo) RecordInstall(ctx context.Context, productID, refID string) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		e := r.data.RWDB().WriteDB(txCtx)
+		e := TxExecerFromCtx(txCtx, r.data.RWDB().WriteHandle())
 		if _, err := e.ExecContext(txCtx, `
 INSERT INTO ecosystem_installs (id, product_id, installed_ref_id, created_at, deleted_at)
 VALUES (?,?,?,?,'')`, refID, productID, refID, now); err != nil {

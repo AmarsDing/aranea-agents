@@ -8,6 +8,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/tools"
 	"aranea-agents/internal/tools/cli_admin"
+	"aranea-agents/internal/tools/memory_butler"
 	"aranea-agents/internal/tools/skills_butler"
 
 	trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
@@ -115,12 +116,18 @@ func (o *ChatOrchestrator) spiritCustomTools(ag biz.Agent) []trpctool.Tool {
 		return nil
 	}
 	var out []trpctool.Tool
-	out = append(out, tools.NewAssessComplexityTool(tools.NewComplexityRuleEngine()))
-	out = append(out, tools.NewAssembleTeamTool(o.spiritAssembler, o.spiritAssembler, o.lg))
-	out = append(out, tools.NewListButlersTool())
-	out = append(out, tools.NewQueryButlerStatusTool())
-	out = append(out, tools.NewCheckTeamProgressTool(o.spiritAssembler))
-	out = append(out, tools.NewCancelTeamTool(o.spiritAssembler))
+
+	// New three-phase orchestration tools.
+	planner := o.team.TaskPlanner
+	allocator := o.team.AgentAllocator
+	orchestrator := o.team.TaskOrchestrator
+	if planner != nil && allocator != nil && orchestrator != nil {
+		out = append(out, tools.NewPlanAndExecuteTool(planner, allocator, orchestrator, o.td.Pipeline.Bus, o.lg))
+		out = append(out, tools.NewCheckOrchestrationProgressTool(orchestrator, o.lg))
+		out = append(out, tools.NewCancelOrchestrationTool(orchestrator, o.lg))
+	}
+
+	// Synthesize results tool (still actively used for post-orchestration result synthesis).
 	if o.spiritSynthesis != nil {
 		out = append(out, tools.NewSynthesizeResultsTool(o.spiritSynthesis))
 	}
@@ -139,6 +146,21 @@ func (o *ChatOrchestrator) skillsButlerTools(_ context.Context, ag biz.Agent) []
 		Skills:    skillsButlerSkillUsecaseAdapter{uc: o.skillEvo},
 		Evolution: skillsButlerEvolutionAdapter{uc: o.evolution},
 		Queries:   skillsButlerQueryAdapter{reader: o.skillStats},
+		Analytics: skillsButlerAnalyticsAdapter{uc: o.expAnalytics, agentID: ag.ID},
+	})
+}
+
+func (o *ChatOrchestrator) memoryButlerTools(_ context.Context, ag biz.Agent) []trpctool.Tool {
+	if o == nil {
+		return nil
+	}
+	if strings.TrimSpace(ag.AgentKey) != "__memory__" {
+		return nil
+	}
+	return memory_butler.RegisterAll(memory_butler.Deps{
+		Analytics:   o.expAnalytics,
+		MemoryAdmin: o.td.Persist.Memory.AdminUsecase,
+		Agents:      o.td.Catalog.Agents,
 	})
 }
 

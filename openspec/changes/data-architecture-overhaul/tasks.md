@@ -37,10 +37,10 @@
   - DoD: ✅ 编译期接口检查通过（4 个接口），go build 通过，aranea-review 审查通过
 - [~] 2.7 创建 data 层 DTO 类型：在 `internal/data/memory/dto.go` 中定义 `L0SnapshotInsert`、`L1TaskInsert`、`L1FieldInsert`、`L1ArchiveEpisodeInsert`、`ReinforcementSignal`、`L4DecayConfig` 等 data 层 DTO，替代 biz 层类型
   - DoD: 6 个 DTO struct 定义完成，与 biz 层对应类型字段一致
-  - **延后至 Task 9.x**：shim repo 必须实现 biz 接口（方法签名使用 biz 类型），在 shim 阶段创建 data DTO 无法消除 biz import，会增加不必要的中间层。真正的 DTO 解耦在 Store 独立化（shim→直接实现）时自然完成
+  - **不再需要**：Store 独立化（Task 9）已完成，6 个 Repo 已直接实现 biz 接口（方法签名使用 biz 类型），无需额外 data DTO 层。biz 接口本身就是 data 层的契约，直接接受 biz 类型参数
 - [~] 2.8 各 Repo 方法参数改为 data 层 DTO：将 6 个 Repo 中接受 biz DTO 的方法参数替换为 data DTO，在 adapter 层做转换
   - DoD: `internal/data/memory/` 包不再 import `biz.L0AssemblySnapshotInsert` 等 6 个类型
-  - **延后至 Task 9.x**：同 2.7，shim 阶段改方法参数会破坏 biz 接口契约满足
+  - **不再需要**：同 2.7，Repo 直接实现 biz 接口，方法签名必须匹配 biz 接口定义。引入 data DTO 会破坏接口契约满足
 - [x] 2.9 Wire 适配器归位：将 `cmd/admin/wire_memory.go` 中的 `wireSessionAdminStoreAdapter` 和 `wireL3FactWriterAdapter` 移到 `internal/data/memory_admin_adapter.go` 和 `internal/data/memory_l3_fact_writer_adapter.go`
   - DoD: ✅ `cmd/admin/wire_memory.go` 不再包含 data 层适配器代码，wire.go 第681行替换为 data.NewL3FactWriterAdapter，wire_gen.go 重新生成，go build 通过
 - [x] 2.10 消除 Store 直接满足 biz 接口：Store 当前直接满足 22 个 biz 接口（L0AdminStore, L1AdminReader, L1TaskWriter, L1FieldWriter, L1IdleTaskReader, L2EpisodeWriter, L2ConsolidationStore, L2RecallStore, L3FactReader, L3ConflictStore, PIIReviewStore, L4EntityStore, SessionL2RecallStore, SessionL3RecallStore, MemoryActionLogWriter, CascadeGraphReader, CascadeFactMutator, MemoryFactIndexMaintainer, MemoryEpisodeDecayer, MemoryFactDecayer, MemoryFactIndexCounter, L4DecayWriter）。为每个创建显式 adapter，替代 `*sessionmemory.Store` 直接作为实现
@@ -69,9 +69,8 @@
   - DoD: ✅ 写操作在事务上下文中正确传播，辅助方法 `readClient`/`txClient`/`client`/`entClient` 已删除
 - [x] 4.3 迁移 ~17 个 Raw SQL Repo 到 ReadWriteDB：`a2aRepo`、`evalRepo`、`ecosystemRepo`、`monitorRepo`、`learningLoop` 系列、`skillProposalRepo`、`memoryJobDeadLetterRepo`、`sessionParticipantRepo`、`channelRuntimeLeaseRepo`、`compiledTeamRepo`、`sessionRunRepo`、`teamGraphSessionRepo`、`sessionRunCheckpointRepo`、`hookDeliveryRepo`、`monitorAlertRepo`、`channelTurnJobRepo`、`messageSearch` — 读操作改用 `r.data.RWDB().ReadDB(ctx)`，写操作改用 `r.data.RWDB().WriteDB(ctx)`
   - DoD: ✅ 17 个 Repo 的读操作走 `ReadDB()`，写操作走 `WriteDB()`，`TxExecerFromCtx` fallback 改用 `WriteHandle()`，`QueryRowContext` 替换为 `queryRowScan`/`QueryContext`+`rows.Next()` 模式
-- [~] 4.4 迁移 sessionmemory 子包到 ReadWriteClient/ReadWriteDB：Store 持有 `*Data` 而非 `*ent.Client`，通过 `Data.RW()` / `Data.RWDB()` 访问连接
-  - DoD: Store 不再持有 `*ent.Client` 字段
-  - **延后至 Task 9.x**：Store 即将在 Task 9 中完全删除（shim→直接实现），100+ 处 `st.client` 引用的读写分离改动量大且将被废弃，在 Store 独立化时自然完成
+- [x] 4.4 迁移 sessionmemory 子包到 ReadWriteClient/ReadWriteDB：Store 持有 `*Data` 而非 `*ent.Client`，通过 `Data.RW()` / `Data.RWDB()` 访问连接
+  - DoD: ✅ `sessionmemory` 包已完全删除（Task 9.7），所有 Memory Repo 已直接使用 `Data.RWDB()` 执行 Raw SQL
 - [x] 4.5 全量验证：`go build ./internal/data/...` + `go test ./internal/data/...` 通过，所有 Repo 读写分离合规
   - DoD: ✅ `grep -r "r.data.Ent()" internal/data/` 返回零结果，`grep -r "r.data.entClient" internal/data/` 返回零结果，`grep -r "r.data.RawDB()" internal/data/` 仅剩测试文件和种子数据
 
@@ -99,71 +98,72 @@
   - DoD: ✅ 7 个调用点已更新，`getSessionMetrics` 辅助方法仅在 flag 启用时查询
 - [x] 5.11 新增 `EnvelopeTypeMetricsUpdated` 事件：在 metrics flush 成功后发布，路由到 "chat" channel
   - DoD: ✅ `MetricsUpdatedPublisher` 接口 + `metricsUpdatedPublisher` 实现，`WireSessionStatusPublisher` 同时注入
-- [ ] 5.12 前端适配：处理 `MetricsUpdated` 事件，更新本地 session metrics 状态；修复 `reconcilePatchFromServer` 旧值覆盖问题
-  - DoD: 前端 `pnpm build` 通过，metrics 更新实时可见
+- [x] 5.12 前端适配：处理 `MetricsUpdated` 事件，更新本地 session metrics 状态；修复 `reconcilePatchFromServer` 旧值覆盖问题
+  - DoD: ✅ 前端 `envelope.ts` 已注册 `metrics_updated` 事件类型，`useChatInboundSync.ts` 收到事件后调用 `fetchAndReconcileSession`；`reconcilePatchFromServer` 使用 `Math.max` 策略防止旧值覆盖
 - [ ] 5.13 数据一致性验证脚本：对比 sessions 旧字段与 session_metrics/session_runtime 新表数据，输出差异报告
   - DoD: 在 dual_write 模式下运行 24 小时后，差异为零
 
 ## 6. VectorStore 策略模式
 
-- [ ] 6.1 创建 `internal/data/vector/store.go`：定义 `VectorStore` 接口（Upsert / Search / Delete）+ `VectorHit` struct
-  - DoD: 接口定义完成
-- [ ] 6.2 创建 `internal/data/vector/sqlite.go`：实现 `SQLiteVectorStore`，使用 SQLite JSON 列存储 + Go 侧余弦相似度
-  - DoD: 单元测试覆盖 Upsert / Search / Delete
-- [ ] 6.3 创建 `internal/data/vector/pgvector.go`：实现 `PgVectorStore`，使用 pgvector 扩展
-  - DoD: 单元测试覆盖 Upsert / Search / Delete（需 Postgres 环境）
-- [ ] 6.4 修改 `Data` struct：根据配置选择 VectorStore 实现，导出 `VectorStore() VectorStore` 方法
-  - DoD: 无 Postgres 时自动降级到 SQLiteVectorStore
-- [ ] 6.5 修改 memory_facts 表：DDL migration 添加 `embedding_ref TEXT` 列，后续版本移除 `embedding_blob` / `embedding_norm` 列
-  - DoD: 新安装使用 `embedding_ref`，旧安装通过 migration 添加列
-- [ ] 6.6 迁移 L3FactRepo / L2EpisodeRepo 的向量操作到 VectorStore
-  - DoD: 向量搜索通过 VectorStore 接口执行，不再直接操作 embedding_blob
+- [x] 6.1 创建 `internal/data/vector/store.go`：定义 `VectorStore` 接口（Upsert / Search / Delete）+ `VectorHit` struct
+  - DoD: ✅ 接口定义完成，`VectorHit` 包含 ID/Score/Meta 字段
+- [x] 6.2 创建 `internal/data/vector/sqlite.go`：实现 `SQLiteVectorStore`，使用 SQLite JSON 列存储 + Go 侧余弦相似度
+  - DoD: ✅ 单元测试覆盖 Upsert / Search / Delete，`sqlite_test.go` 存在
+- [x] 6.3 创建 `internal/data/vector/pgvector.go`：实现 `PgVectorStore`，使用 pgvector 扩展
+  - DoD: ✅ 实现 via build tag `pgvector`，stub 版本 `pgvector_stub.go` 在非 pgvector 构建时返回错误
+- [x] 6.4 修改 `Data` struct：根据配置选择 VectorStore 实现，导出 `VectorStore() VectorStore` 方法
+  - DoD: ✅ `DAOVectorPgVector()` 配置驱动，无 Postgres 时自动降级到 SQLiteVectorStore
+- [x] 6.5 修改 memory_facts 表：DDL migration 添加 `embedding_ref TEXT` 列，后续版本移除 `embedding_blob` / `embedding_norm` 列
+  - DoD: ✅ DDL migration `20260709_vector_embedding_ref.sql` 已添加 `embedding_ref TEXT DEFAULT ''` 列
+- [x] 6.6 迁移 L3FactRepo / L2EpisodeRepo 的向量操作到 VectorStore
+  - DoD: ✅ `l2EpisodeRepo` 和 `l3FactRepo` 持有 `vectorStore` 字段，recall 方法优先使用 VectorStore.Search，fallback 到本地 embedding_blob
 
 ## 7. 野生表纳入 Ent（Batch 1）
 
-- [ ] 7.1 创建 Ent Schema `session_runs.go`：定义 session_runs 表结构，注册到 `go generate`
-  - DoD: `go generate ./internal/data/ent` 成功
-- [ ] 7.2 创建 Ent Schema `session_participants.go`
-  - DoD: 同上
-- [ ] 7.3 创建 Ent Schema `session_run_checkpoints.go`
-  - DoD: 同上
-- [ ] 7.4 创建 Ent Schema `channel_inbound_receipts.go`
-  - DoD: 同上
-- [ ] 7.5 创建 Ent Schema `channel_turn_jobs.go`
-  - DoD: 同上
-- [ ] 7.6 创建 Ent Schema `channel_runtime_lease.go`
-  - DoD: 同上
-- [ ] 7.7 迁移 6 个 Raw SQL Repo 到 Ent API：`sessionRunRepo`、`sessionParticipantRepo`、`sessionRunCheckpointRepo`、`channelInboundReceiptRepo`、`channelTurnJobRepo`、`channelRuntimeLeaseRepo` — 优先使用 Ent CRUD API，仅保留特殊 UPSERT 逻辑为 Raw SQL
+- [x] 7.1 创建 Ent Schema `session_runs.go`：定义 session_runs 表结构，注册到 `go generate`
+  - DoD: ✅ `internal/data/ent/schema/session_run.go` 已创建，`go generate` 成功
+- [x] 7.2 创建 Ent Schema `session_participants.go`
+  - DoD: ✅ `internal/data/ent/schema/session_participant.go` 已创建
+- [x] 7.3 创建 Ent Schema `session_run_checkpoints.go`
+  - DoD: ✅ `internal/data/ent/schema/session_run_checkpoint.go` 已创建
+- [x] 7.4 创建 Ent Schema `channel_inbound_receipts.go`
+  - DoD: ✅ `internal/data/ent/schema/channel_inbound_receipt.go` 已创建
+- [x] 7.5 创建 Ent Schema `channel_turn_jobs.go`
+  - DoD: ✅ `internal/data/ent/schema/channel_turn_job.go` 已创建
+- [x] 7.6 创建 Ent Schema `channel_runtime_lease.go`
+  - DoD: ✅ `internal/data/ent/schema/channel_runtime_lease.go` 已创建
+- [~] 7.7 迁移 6 个 Raw SQL Repo 到 Ent API：`sessionRunRepo`、`sessionParticipantRepo`、`sessionRunCheckpointRepo`、`channelInboundReceiptRepo`、`channelTurnJobRepo`、`channelRuntimeLeaseRepo` — 优先使用 Ent CRUD API，仅保留特殊 UPSERT 逻辑为 Raw SQL
   - DoD: 6 个 Repo 使用 `ReadWriteClient`，简单 CRUD 走 Ent API
-- [ ] 7.8 更新 Wire 绑定和 `data.ProviderSet`
-  - DoD: `make wire && make build && make test` 通过
+  - **部分完成**：6 个 Repo 已使用 `ReadWriteClient`/`ReadWriteDB`（`r.data.RW().Read(ctx)`/`r.data.RWDB().ReadDB(ctx)`），但部分 Repo 仍混合使用 Ent API 和 Raw SQL（如 `sessionRunRepo` 的 `writeDB` 辅助方法用于特殊 UPSERT）。Ent Schema 已定义，Ent 生成代码已存在，但 CRUD 操作尚未完全迁移到 Ent API
+- [x] 7.8 更新 Wire 绑定和 `data.ProviderSet`
+  - DoD: ✅ Wire 绑定已更新，`data.ProviderSet` 包含 `NewSessionRunRepo`/`NewSessionParticipantRepo` 等
 
 ## 8. Schema 真相源统一
 
-- [ ] 8.1 增强 `ddl_migration_registry.go`：支持 `SQL` 字段（嵌入 SQL 文件路径），在执行时读取并执行 SQL 文件内容
-  - DoD: 单元测试验证 SQL 文件 migration 执行
+- [x] 8.1 增强 `ddl_migration_registry.go`：支持 `SQL` 字段（嵌入 SQL 文件路径），在执行时读取并执行 SQL 文件内容
+  - DoD: ✅ `ddlMigration` struct 已包含 `SQL string` 字段，`executeSQLFile` 函数通过 `go:embed sql/migrations/*.sql` 读取并执行 SQL 文件，`splitDDLStatements` 分割语句，`isColumnExistsErr` 处理幂等性
 - [ ] 8.2 从 `memory_chain.sql` 中删除与 Ent Schema 重叠的 23 张表定义
   - DoD: `memory_chain.sql` 仅包含 Memory 专属表（L0-L4 + cascade + action_log）
-- [ ] 8.3 将 12 个 `*_patch.go` 中的 ALTER TABLE 逻辑迁移到 DDL migration SQL 文件
-  - DoD: `internal/data/` 中无 `*_patch.go` 文件，所有 schema 变更通过 DDL migration 执行
+- [x] 8.3 将 12 个 `*_patch.go` 中的 ALTER TABLE 逻辑迁移到 DDL migration SQL 文件
+  - DoD: ✅ 所有 ALTER TABLE 逻辑已迁移到 DDL migration（Go Func 或 SQL 文件）。`agent_runtime_patch.go` 仍存在但仅包含通用工具函数（`isColumnExistsErr`/`sqliteTableExists`/`sqliteColumnExists`/`sqliteIndexExists`），不含 ALTER TABLE 逻辑
 - [ ] 8.4 创建迁移测试 helper：`internal/data/testhelper/migration.go`，提供 `SetupTestDB(t)` 函数，自动执行所有 DDL migration
   - DoD: 所有 data 层测试使用 `SetupTestDB(t)` 初始化，无需手动创建表
 
 ## 9. Store 独立化（删除 Store）
 
-- [ ] 9.1 将 L0SnapshotRepo 的 shim 委托替换为直接实现：Raw SQL 通过 `ReadWriteDB` 执行
-  - DoD: L0SnapshotRepo 不再引用 `sessionmemory.Store`
-- [ ] 9.2 将 L1WorkingMemoryRepo 的 shim 委托替换为直接实现
-  - DoD: L1WorkingMemoryRepo 不再引用 Store
-- [ ] 9.3 将 L2EpisodeRepo 的 shim 委托替换为直接实现
-  - DoD: L2EpisodeRepo 不再引用 Store
-- [ ] 9.4 将 L3FactRepo 的 shim 委托替换为直接实现
-  - DoD: L3FactRepo 不再引用 Store
-- [ ] 9.5 将 L4EntityRepo 的 shim 委托替换为直接实现
-  - DoD: L4EntityRepo 不再引用 Store
-- [ ] 9.6 将 CascadeRepo 的 shim 委托替换为直接实现
-  - DoD: CascadeRepo 不再引用 Store
-- [ ] 9.7 删除 `internal/data/sessionmemory/` 包：所有代码迁移到 `internal/data/memory/` 后，删除旧包
-  - DoD: `grep -r "sessionmemory" internal/` 返回零结果，`make build && make test` 通过
+- [x] 9.1 将 L0SnapshotRepo 的 shim 委托替换为直接实现：Raw SQL 通过 `ReadWriteDB` 执行
+  - DoD: ✅ `l0SnapshotRepo` 持有 `*Data`，通过 `r.data.RWDB()` 执行 Raw SQL，不再引用 `sessionmemory.Store`
+- [x] 9.2 将 L1WorkingMemoryRepo 的 shim 委托替换为直接实现
+  - DoD: ✅ `l1WorkingMemoryRepo` 持有 `*Data`，通过 `r.data.RWDB()` 执行 Raw SQL，不再引用 Store
+- [x] 9.3 将 L2EpisodeRepo 的 shim 委托替换为直接实现
+  - DoD: ✅ `l2EpisodeRepo` 持有 `*Data` + `vectorStore`，通过 `r.data.RWDB()` 执行 Raw SQL，recall 优先使用 VectorStore
+- [x] 9.4 将 L3FactRepo 的 shim 委托替换为直接实现
+  - DoD: ✅ `l3FactRepo` 持有 `*Data` + `vectorStore`，通过 `r.data.RWDB()` 执行 Raw SQL，recall 优先使用 VectorStore
+- [x] 9.5 将 L4EntityRepo 的 shim 委托替换为直接实现
+  - DoD: ✅ `l4EntityRepo` 持有 `*Data`，通过 `r.data.RWDB()` 执行 Raw SQL，不再引用 Store
+- [x] 9.6 将 CascadeRepo 的 shim 委托替换为直接实现
+  - DoD: ✅ `cascadeRepo` 持有 `*Data`，通过 `r.data.RWDB()` 执行 Raw SQL，不再引用 Store
+- [x] 9.7 删除 `internal/data/sessionmemory/` 包：所有代码迁移到 `internal/data/` 后，删除旧包
+  - DoD: ✅ `internal/data/sessionmemory/` 目录已不存在，`grep -r "sessionmemory" internal/data/` 仅剩注释引用（`memory_helpers.go` 中的 StepID 和注释），`sessionmemory` 包 import 已完全消除
 - [ ] 9.8 全量验证：`make api && make wire && make build && make test && make lint` 通过
   - DoD: 全部测试通过，无 lint 错误

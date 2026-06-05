@@ -97,14 +97,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import type { Industry, Department, Position } from '../../features/industries/types';
-import { listDepartments, listPositions } from '../../features/industries/api';
+import type { IndustryDetail } from '../../features/industries/useIndustryMarket';
+import { monoBgForKey, monoLettersForKey } from '../../features/industries/industryMonogram';
 
 const props = defineProps<{
   modelValue: boolean;
   industry: Industry | null;
+  detail: IndustryDetail;
+  detailLoading?: boolean;
 }>();
 const emit = defineEmits<{
   'update:modelValue': [value: boolean];
@@ -114,70 +117,23 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
-const departments = ref<Department[]>([]);
-const positionsByDept = ref<Record<string, Position[]>>({});
-const loadingDepartments = ref(false);
-
-const PALETTES = [
-  'linear-gradient(135deg, #4F46E5 0%, #312E81 100%)',
-  'linear-gradient(135deg, #E55C5C 0%, #9B2226 100%)',
-  'linear-gradient(135deg, #0EA5E9 0%, #075985 100%)',
-  'linear-gradient(135deg, #10B981 0%, #065F46 100%)',
-  'linear-gradient(135deg, #F59E0B 0%, #92400E 100%)',
-  'linear-gradient(135deg, #8B5CF6 0%, #4C1D95 100%)',
-];
+const departments = computed(() => props.detail.departments);
+const positionsByDept = computed(() => props.detail.positionsByDept);
+const loadingDepartments = computed(() => props.detailLoading ?? false);
 
 const monoBg = computed(() => {
-  if (!props.industry) return PALETTES[0];
-  let h = 0;
-  for (let i = 0; i < props.industry.key.length; i++) {
-    h = (h * 31 + props.industry.key.charCodeAt(i)) | 0;
-  }
-  return PALETTES[Math.abs(h) % PALETTES.length];
+  if (!props.industry) return monoBgForKey('default');
+  return monoBgForKey(props.industry.key);
 });
 
 const monoLetters = computed(() => {
   if (!props.industry) return '·';
-  const cleaned = props.industry.key.replace(/[^a-zA-Z]/g, '').toUpperCase();
-  if (cleaned.length >= 2) return cleaned.slice(0, 2);
-  if (cleaned.length === 1) return cleaned + cleaned;
-  return props.industry.name.slice(0, 2);
+  return monoLettersForKey(props.industry.key, props.industry.name);
 });
 
 function close() {
   emit('update:modelValue', false);
 }
-
-// 当 drawer 打开且有 industry 时，按需加载部门 + 岗位
-watch(
-  () => [props.modelValue, props.industry?.key] as const,
-  async ([open, key]) => {
-    if (!open || !key) {
-      departments.value = [];
-      positionsByDept.value = {};
-      return;
-    }
-    loadingDepartments.value = true;
-    try {
-      const [deptRes, posRes] = await Promise.all([
-        listDepartments(key),
-        listPositions(key),
-      ]);
-      departments.value = deptRes.items;
-      const grouped: Record<string, Position[]> = {};
-      for (const pos of posRes.items) {
-        (grouped[pos.department_key] ??= []).push(pos);
-      }
-      positionsByDept.value = grouped;
-    } catch {
-      departments.value = [];
-      positionsByDept.value = {};
-    } finally {
-      loadingDepartments.value = false;
-    }
-  },
-  { immediate: true },
-);
 </script>
 
 <style lang="sass" scoped>

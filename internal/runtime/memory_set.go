@@ -9,10 +9,11 @@ import (
 // MemorySet groups the trpc memory.Service with the L0–L4 admin port and recall usecases for one turn.
 // Lives in runtime (not biz) because TRPC field is a trpc-agent-go type injected at Wire time.
 type MemorySet struct {
-	TRPC     trpcmemory.Service
-	Admin    biz.SessionAdminStore
-	L2Recall biz.MemoryL2Recaller
-	L3Recall biz.MemoryL3Recaller
+	TRPC            trpcmemory.Service
+	Admin           biz.SessionAdminStore
+	AdminUsecase    *biz.MemoryAdminUsecase
+	L2Recall        biz.MemoryL2Recaller
+	L3Recall        biz.MemoryL3Recaller
 	CompositeRecall biz.MemoryCompositeRecaller
 }
 

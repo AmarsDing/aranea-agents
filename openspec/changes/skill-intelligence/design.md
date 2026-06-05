@@ -1,7 +1,7 @@
 # Skill Intelligence 子系统设计文档
 
-> 日期：2026-06-02
-> 状态：Draft
+> 日期：2026-06-02（最后更新：2026-06-05，文档与代码对齐更新）
+> 状态：Draft（Phase 1 部分已实现，文档已与代码对齐）
 > 范围：Skill 调用可观测 → 经验报告诊断 → 推荐排序优化 → 半自动进化
 > 来源：`docs/_deprecated/需求/skill-lifecycle-requirements.md`
 
@@ -20,6 +20,9 @@
 | 意图路由 `skillrouter` | `internal/tools/skillrouter/detect.go` | ✅ |
 | 运行时装配 `skillruntime` | `internal/tools/skillruntime/resolve.go` | ✅ |
 | Skill 自创建提议 | `skill-evolution-auto-creator` 变更 | 🚧 |
+| Skill 进化提议 CRUD | `internal/biz/skill_evolution.go` + `internal/biz/skill_evolution_types.go` + `internal/biz/skill_evolution_repo.go` | ✅ |
+| `skill_proposals` 表 | `internal/data/skill_evolution.go` + `internal/data/sql/skill_evolution.sql`（原始 SQL，非 Ent Schema） | ✅ |
+| Skill 进化扫描 | `internal/biz/skill_evolution.go`（`ScanAndProposeAll`） | ✅ |
 
 ### 1.2 skill_invocation 现有字段
 
@@ -29,14 +32,23 @@
 | `skill_id` | String | 关联 Skill |
 | `agent_id` | String | 执行 Agent |
 | `session_id` | String | 来源会话 |
+| `user_id` | String | 用户 ID |
 | `status` | String | 当前仅 pending/running/completed/failed |
 | `duration_ms` | Int | 耗时 |
+| `started_at` | String | 开始时间 |
+| `ended_at` | String | 结束时间 |
 | `error_code` | String | 错误码 |
 | `error_message` | Text | 错误信息 |
 | `input_json` / `output_json` | Text | 输入输出 |
+| `input_preview` | Text | 输入预览（截断） |
+| `input_hash` | String | 输入哈希 |
+| `output_preview` | Text | 输出预览（截断） |
 | `skill_version` | String | 版本 |
 | `source` | String | 来源（默认 runtime） |
 | `activation_id` / `message_id` | String | 关联 ID |
+| `selection_reason` | JSON（可选） | ✅ **已实现** — 路由路径、候选 slug 列表、最终选中 slug、评分因子快照 |
+| `outcome` | String（默认 ""） | ✅ **已实现** — 枚举：success / failure / partial / cancelled |
+| `token_usage` | JSON（可选） | ✅ **Schema 已实现**，运行时暂未实际采集 token 数据写入 |
 
 ### 1.3 skillruntime 现有评分机制
 
@@ -47,6 +59,52 @@
 3. 评分：taxonomy path 精确匹配 +1000、部分匹配 +400、关键词 +100、embedding 可选
 
 **缺失**：无历史成功率、耗时、用户偏好等运行时反馈因子。
+
+### 1.4 已实现的 Skill Health 能力（Phase 1 部分）
+
+以下能力已在 Phase 1 实施过程中落地，但不在原始设计文档中：
+
+| 能力 | 实现位置 | 说明 |
+|------|----------|------|
+| `SkillHealthUsecase` | `internal/biz/skill_health.go` | 从 `skill_invocation` 聚合 7d/30d 健康度指标 |
+| `SkillHealthReader` 端口 | `internal/biz/skill_health.go` | Repo 端口接口 |
+| `skillHealthRepo` | `internal/data/skill_health.go` | Ent 实现，含 P95 计算、日维度聚合 |
+| `SkillHealthDetail` 类型 | `internal/biz/types/skill_health.go` | 7d/30d 成功率、P95 耗时、每日指标 |
+| `DailyMetric` 类型 | `internal/biz/types/skill_health.go` | 每日指标（Date/Invocations/Successes/AvgDurationMs） |
+| `GetSkillHealth` API | `api/kratos/skill/v1/skill.proto` + `internal/service/skill.go` | `GET /v1/skills/{skill_id}/health` |
+| `selection_reason` 写入 | `internal/agent/skill_guidance_inject.go` + `internal/agent/tool_invocation_recorder.go` | 通过 invocation state 传递 Reasons → 写入 skill_invocation |
+| `outcome` 推导 | `internal/agent/tool_invocation_recorder.go` | 从 tool invocation status 推导 success/failure/partial |
+| `ExperienceAnalyticsUsecase` | `internal/biz/experience_analytics.go` | skills-butler 用的分析能力（AnalyzeSkillHealth/AnalyzeToolWeights/AnalyzeOrchestration/AnalyzeMemoryQuality/AnalyzeAgentCapability） |
+| `skills_butler_analyze_skill_health` 工具 | `internal/tools/skills_butler/analyze_skill_health.go` | Agent 可主动查询 Skill 健康状态 |
+| `skillsButlerAnalyticsAdapter` | `internal/service/skills_butler_adapter.go` | 桥接 `ExperienceAnalyticsUsecase` → `AnalyticsPort`，将 `SkillHealthAnalysis.Items` 转换为 `[]biz.SkillHealth` |
+| `SkillHealth` 类型 | `internal/biz/experience_analytics_types.go` | skills-butler 用的健康报告类型（SkillID/InvokeCount7d/SuccessRate/AvgDurationMS/Trend/HealthStatus/Recommendation） |
+| `SkillHealthItem` 类型 | `internal/biz/experience_analytics.go` | ExperienceAnalytics 内部聚合类型（SkillID/SkillName/InvokeCount/SuccessCount/FailureCount/SuccessRate/AvgDurationMS/HealthStatus/Recommendation） |
+| `ExperienceReport` 类型 | `internal/biz/types/skill_health.go` | 聚合型报告（SkillSlug/Period/HealthScore/SuccessRate 等），与 Phase 2 设计的单次调用诊断报告不同 |
+| `SkillInvocationStat` 类型 | `internal/biz/skill_invocation_stats.go` | Skill 调用统计（SkillName/Count/SuccessRate/AvgDurationMs） |
+| `SkillInvocationStatsReader` 端口 | `internal/biz/skill_invocation_stats.go` | Skill 调用统计查询端口 |
+| `SkillProposal` 类型 | `internal/biz/skill_evolution_types.go` | Skill 进化提议（ID/AgentID/PatternHash/PatternDesc/SkillName/SkillMD/Status/ApprovedBy/RejectedBy/CreatedAt/ApprovedAt） |
+| `SkillProposalStatus` 枚举 | `internal/biz/skill_evolution_types.go` | pending/approved/rejected/registered/expired |
+| `SkillProposalReadWriter` 端口 | `internal/biz/skill_evolution_repo.go` | Skill 提议 CRUD 端口 |
+| `SkillEvolutionUsecase` | `internal/biz/skill_evolution.go` | Skill 进化提议生命周期管理（DetectAndPropose/ApproveProposal/RejectProposal/RegisterApproved/ScanAndProposeAll） |
+| `SkillAutoCreator` 端口 | `internal/biz/skill_evolution.go` | AI 生成 SKILL.md 的端口（GenerateSKILLMD） |
+| `SkillRegistrationPort` 端口 | `internal/biz/skill_evolution.go` | Skill 注册端口（RegisterSkill/SkillExists） |
+| `skillProposalRepo` | `internal/data/skill_evolution.go` | 原始 SQL 实现（非 Ent），使用 `skill_proposals` 表 |
+| `skill_proposals` 表 | `internal/data/sql/skill_evolution.sql` | 原始 SQL DDL，含 idx_sprop_agent_status 和 idx_sprop_pattern_hash 索引 |
+| `skill_evolution_schema.go` | `internal/data/skill_evolution_schema.go` | DDL 嵌入加载器，通过 `//go:embed sql/skill_evolution.sql` 将 DDL 嵌入二进制，`EnsureSkillEvolutionSchema` 在启动时执行建表 |
+| `SkillEvolutionUsecase` 单元测试 | `internal/biz/skill_evolution_test.go` | 覆盖 ApproveProposal/RejectProposal/RegisterApproved/GetProposal/ListProposals/DetectAndPropose/CreateProposal 等方法，含去重、低置信度过滤、冲突检测等场景 |
+| `isSuccess` 兼容逻辑 | `internal/data/skill_health.go` | `skillHealthRepo` 的 `isSuccess` 函数：优先检查 `outcome` 字段（`"success"` → true），`outcome` 为空时回退到 `status` 字段（`"completed"` 或 `"success"` → true），兼容未填充 outcome 的历史记录 |
+| `SkillService.healthUC` 注入 | `internal/service/skill.go` | `SkillService` 构造函数注入 `*biz.SkillHealthUsecase`，`GetSkillHealth` 方法在 `healthUC == nil` 时返回 `ServiceUnavailable` |
+| `skillsButlerSkillUsecaseAdapter` | `internal/service/skills_butler_adapter.go` | 桥接 `SkillEvolutionUsecase` → `SkillUsecasePort`（ListProposals/ApproveProposal/RejectProposal/RegisterApproved/CreateProposal） |
+| `skillsButlerEvolutionAdapter` | `internal/service/skills_butler_adapter.go` | 桥接 `EvolutionUsecase` → `EvolutionUsecasePort`（GetEvolutionMetrics） |
+| `skillsButlerQueryAdapter` | `internal/service/skills_butler_adapter.go` | 桥接 `SkillInvocationStatsReader` → `SkillQueryReaderPort`（GetSkillInvocationStats） |
+| `skillsButlerRegistrationAdapter` | `internal/service/skills_butler_adapter.go` | 桥接 `SkillUsecase` → `SkillRegistrationPort`（RegisterSkill/SkillExists） |
+| `skills_butler_recommend_skills` 工具 | `internal/tools/skills_butler/recommend_skills.go` | 基于 Skill 使用模式和进化建议推荐新增/优化/移除的 Skill |
+| `skills_butler_evolve_skill` 工具 | `internal/tools/skills_butler/evolve_skill.go` | 为指定 Agent 创建 Skill 进化提议（通过 SkillProposal 队列） |
+| `skills_butler_analyze_tool_weights` 工具 | `internal/tools/skills_butler/analyze_tool_weights.go` | 工具权重分析 |
+| `skills_butler_analyze_orchestration` 工具 | `internal/tools/skills_butler/analyze_orchestration.go` | 编排模式分析 |
+| `skills_butler_optimize_orchestration` 工具 | `internal/tools/skills_butler/optimize_orchestration.go` | 编排优化建议 |
+| `skills_butler_optimize_skill` 工具 | `internal/tools/skills_butler/optimize_skill.go` | Skill 优化建议 |
+| `skills_butler_analyze_skill_usage` 工具 | `internal/tools/skills_butler/analyze_skill_usage.go` | Skill 使用分析 |
 
 ---
 
@@ -110,38 +168,45 @@ internal/data                               ← ReportRepo / SuggestionRepo 实�
 
 ## 三、Phase 1 — 可观测增强
 
-### 3.1 skill_invocation 字段扩展
+> **实现状态**：大部分已完成。`selection_reason`/`outcome`/`token_usage` Schema 已落地，`GetSkillHealth` API 已实现。`token_usage` 运行时采集和前端健康度卡片尚未实现。
+
+### 3.1 skill_invocation 字段扩展 ✅ Schema 已实现（token_usage 运行时采集待实现）
 
 | 新增字段 | 类型 | 默认值 | 说明 |
 |----------|------|--------|------|
-| `selection_reason` | JSON | `null` | 路由路径、候选 slug 列表、最终选中 slug、评分因子快照 |
-| `outcome` | String | `""` | 枚举：`success` / `failure` / `partial` / `cancelled` |
-| `token_usage` | JSON | `null` | `{prompt: int, completion: int, total: int}` |
+| `selection_reason` | JSON | `null` | ✅ 路由路径、候选 slug 列表、最终选中 slug、评分因子快照 |
+| `outcome` | String | `""` | ✅ 枚举：`success` / `failure` / `partial` / `cancelled`（`cancelled` 暂未使用） |
+| `token_usage` | JSON | `null` | ⚠️ Schema + Data 层写入逻辑已实现，但运行时调用方未填充 `SkillInvocationWrite.TokenUsage` 字段 |
 
 **写入点**：`skillruntime.ResolveSkillSlugsDetailed` 返回后、`skill_invocation` 创建时，将 `ResolveResult.Reasons` 序列化写入 `selection_reason`。
 
+**实际实现**：`skill_guidance_inject.go` 在 BeforeModelHook 中调用 `ResolveSkillSlugsDetailed`，将 `result.Reasons` 通过 `inv.SetState(skillSelectionReasonStateKey, result.Reasons)` 存入 invocation state；`tool_invocation_recorder.go` 的 `recordSkillInvocation` 从 state 读取并写入 `skill_invocation.SelectionReason`。
+
 **非功能**：写入异步、不阻塞 Runner；热路径仅多写几个字段。
 
-### 3.2 GetSkillHealth API
+### 3.2 GetSkillHealth API ✅ 已实现
+
+> **注意**：实际 proto 返回类型名为 `SkillHealthMetric`（非设计中的 `SkillHealth`），每日指标类型为 `SkillHealthDailyMetric`（非设计中的 `DailyMetric`），并额外包含 `success_count_7d` 和 `success_count_30d` 字段。详见 §10.4 和 §10.8。
 
 ```protobuf
-rpc GetSkillHealth(GetSkillHealthRequest) returns (SkillHealth) {
+rpc GetSkillHealth(GetSkillHealthRequest) returns (SkillHealthMetric) {
   option (google.api.http) = { get: "/v1/skills/{skill_id}/health" };
 }
 
-message SkillHealth {
+message SkillHealthMetric {
   string skill_id = 1;
   int32 total_invocations_7d = 2;
   int32 success_count_7d = 3;
   double success_rate_7d = 4;
   int32 p95_duration_ms_7d = 5;
   int32 total_invocations_30d = 6;
-  double success_rate_30d = 7;
-  int32 p95_duration_ms_30d = 8;
-  repeated DailyMetric daily_metrics = 9;
+  int32 success_count_30d = 7;
+  double success_rate_30d = 8;
+  int32 p95_duration_ms_30d = 9;
+  repeated SkillHealthDailyMetric daily_metrics = 10;
 }
 
-message DailyMetric {
+message SkillHealthDailyMetric {
   string date = 1;
   int32 invocations = 2;
   int32 successes = 3;
@@ -149,13 +214,13 @@ message DailyMetric {
 }
 ```
 
-### 3.3 管理面健康度卡片
+### 3.3 管理面健康度卡片 ❌ 未实现
 
 Skill 详情页新增「健康度」卡片，展示 7d/30d 成功率折线、P95 耗时。
 
 ---
 
-## 四、Phase 2 — 经验报告与诊断
+## 四、Phase 2 — 经验报告与诊断 ❌ 未实现
 
 ### 4.1 ExperienceReport 领域模型
 
@@ -261,7 +326,9 @@ rpc GetExperienceReport(GetExperienceReportRequest) returns (ExperienceReport) {
 
 ---
 
-## 五、Phase 3 — 推荐排序
+## 五、Phase 3 — 推荐排序 ❌ 未实现
+
+> **已有相关实现**：`skills_butler_recommend_skills` 工具（`internal/tools/skills_butler/recommend_skills.go`）已实现基于使用模式的 Skill 推荐（检测低成功率、低使用率 Skill），但这是 Agent 维度的离线推荐，不是运行时路由排序。Phase 3 的 `skillrecommend.Rank` 是在 `ResolveSkillSlugsDetailed` 热路径中引入历史反馈因子重排候选，两者定位不同。
 
 ### 5.1 插入点
 
@@ -292,7 +359,9 @@ score = w1 * semantic_sim + w2 * success_rate_30d + w3 * (1 / norm_duration) + w
 
 ---
 
-## 六、Phase 4 — 半自动进化
+## 六、Phase 4 — 半自动进化 ❌ 未实现
+
+> **已有相关实现**：`skills_butler_evolve_skill` 工具（`internal/tools/skills_butler/evolve_skill.go`）已实现创建 Skill 进化提议的能力，但仅创建 `SkillProposal`（轻量提议，不含草案正文），走 `skill-evolution-auto-creator` 的审批队列。Phase 4 的 `SkillEvolutionSuggestion` 是基于 Experience Report 触发的、包含草案正文和 Sandbox 验证的完整进化流程，两者产出类型和审批队列不同。
 
 ### 6.1 SkillEvolutionSuggestion 领域模型
 
@@ -420,3 +489,210 @@ rpc RejectSkillEvolutionSuggestion(RejectSkillEvolutionSuggestionRequest) return
 | 推荐加剧「富者愈富」 | 新 Skill 探索加成 + 最低 invocation 阈值 |
 | 与 Agent Evolution 概念混淆 | Skill 进化管能力包；Agent Evolution 管 Agent 配置；共用 Worker 模式但分表分队列 |
 | 磁盘 watch 与 DB 草案冲突 | 进化产出仅写 DB + 文件；watch 以 DB published 为准 |
+
+---
+
+## 十、代码实现与设计差异记录
+
+> 本节记录代码实际实现与原始设计文档的差异，供后续实施参考。
+
+### 10.1 selection_reason 写入机制
+
+**设计**：在 `skillruntime.ResolveSkillSlugsDetailed` 返回后、`skill_invocation` 创建时直接写入。
+
+**实际实现**：采用两步传递机制：
+1. `skill_guidance_inject.go`（BeforeModelHook）调用 `ResolveSkillSlugsDetailed`，将 `result.Reasons` 通过 `inv.SetState(skillSelectionReasonStateKey, result.Reasons)` 存入 trpc-agent-go 的 invocation state
+2. `tool_invocation_recorder.go` 的 `recordSkillInvocation` 从 invocation state 读取，写入 `skill_invocation.SelectionReason`
+
+这种设计是因为 skill 路由发生在 BeforeModelHook 阶段，而 skill_invocation 写入发生在 AfterToolHook 阶段，两者不在同一调用栈中，需要通过 invocation state 中转。
+
+### 10.2 outcome 推导逻辑
+
+**设计**：枚举值 success / failure / partial / cancelled。
+
+**实际实现**：`recordSkillInvocation` 从 `ToolInvocationWrite.Status` 推导：
+- `"success"` → `"success"`
+- `"error"` → `"failure"`
+- 其他 → `"partial"`
+
+`cancelled` 枚举值暂未使用（blocked/confirmation_required 的 tool invocation 不记录 skill_invocation）。
+
+### 10.3 token_usage 字段
+
+**设计**：收集 LLM 调用的 token 使用量，写入 `{prompt, completion, total}`。
+
+**实际状态**：Ent Schema 和 Data 层写入逻辑已支持，但运行时暂未实际采集 token 数据写入 `token_usage` 字段。`SkillInvocationWrite.TokenUsage` 字段存在但调用方未填充。
+
+### 10.4 GetSkillHealth API 实现差异
+
+**设计**：独立 proto 文件 `skill_intelligence.proto`，独立 Service `SkillIntelligenceService`，返回类型 `SkillHealth`。
+
+**实际实现**：合并到现有 `skill.proto` 和 `SkillService` 中：
+- proto 定义在 `api/kratos/skill/v1/skill.proto` 的 `SkillService` 服务内
+- 返回类型为 `SkillHealthMetric`（非设计中的 `SkillHealth`），每日指标类型为 `SkillHealthDailyMetric`（非设计中的 `DailyMetric`）
+- Service 层实现在 `internal/service/skill.go` 的 `SkillService.GetSkillHealth` 方法
+- `SkillService` 构造函数注入 `*biz.SkillHealthUsecase`
+- Biz 层为独立的 `SkillHealthUsecase`（`internal/biz/skill_health.go`）
+- Data 层为独立的 `skillHealthRepo`（`internal/data/skill_health.go`）
+- `SkillHealthReader` 端口接口定义在 `internal/biz/skill_health.go`，方法签名 `GetSkillHealth(ctx, skillID, since7d, since30d)`
+
+### 10.5 ExperienceReport 类型差异
+
+**设计**（Phase 2）：单次调用诊断报告，字段包括 ID/TenantID/SessionID/InvocationID/SkillID/IsSuccess/Score/FailureTags/FlowSummary/OptimizationAdvice/SelectionSnapshot/GeneratedSuggestionID/CreatedAt。
+
+**实际实现**（`internal/biz/types/skill_health.go`）：聚合型报告，字段为 SkillSlug/Period/HealthScore/SuccessRate/AvgLatencyMs/InvocationCount/FailurePatterns/OptimizationSuggestions/GeneratedAt。这是 skills-butler 使用的分析能力，与 Phase 2 设计的单次调用诊断报告定位不同。Phase 2 实施时需注意区分两者。
+
+### 10.6 ExperienceAnalyticsUsecase（额外实现）
+
+代码中已实现 `ExperienceAnalyticsUsecase`（`internal/biz/experience_analytics.go`），提供以下分析能力供 skills-butler 使用：
+- `AnalyzeToolWeights`：工具权重分析（success_rate×0.5 + call_count×0.3 + 1/duration×0.2）
+- `AnalyzeSkillHealth`：Skill 健康分析（按 success_rate 分级：healthy/degraded/unstable/critical/unused）
+- `AnalyzeOrchestration`：编排模式分析（DQ = 0.4×Validity + 0.3×Specificity + 0.3×Correctness）
+- `AnalyzeMemoryQuality`：记忆质量分析（0.4×coverage + 0.4×retrieval + 0.2×(1-penalty)）
+- `AnalyzeAgentCapability`：综合能力分析（合并以上四项 + 成本摘要）
+
+依赖注入（`NewExperienceAnalyticsUsecase`）：`EvolutionMetricsRepo` / `SkillQueryReader` / `TeamRepository` / `UsageAnalyticsRepo` / `*MemoryAdminUsecase` / `SessionReader` / `ToolInvocationReader` / `loggateway.Logger`。其中 `*MemoryAdminUsecase`（指针）可为 nil（降级时跳过记忆质量分析）；`SessionReader` 当前未被任何分析方法调用，但保留为未来扩展端口；其余依赖为必需。
+
+适配层：`skillsButlerAnalyticsAdapter`（`internal/service/skills_butler_adapter.go`）将 `ExperienceAnalyticsUsecase` 的方法签名适配为 `AnalyticsPort` 接口，例如将 `AnalyzeSkillHealth(ctx, agentID, since)` 转换为 `AnalyzeSkillHealth(ctx) ([]biz.SkillHealth, error)`。
+
+这些能力与 Skill Intelligence 的 Phase 2 诊断能力有重叠但定位不同：ExperienceAnalytics 面向 Agent 维度聚合，Skill Intelligence 面向 Skill 维度诊断。
+
+### 10.7 skills_butler 工具集（额外实现）
+
+代码中已实现完整的 skills-butler 工具集（`internal/tools/skills_butler/`），通过 `RegisterAll(deps Deps)` 注册到 Agent 运行时。**注册逻辑有条件分支**：`AnalyticsPort` 为 nil 时只注册 4 个基础工具（analyze_skill_usage / recommend_skills / evolve_skill / optimize_skill），`AnalyticsPort` 非 nil 时额外注册 4 个分析工具（analyze_skill_health / analyze_tool_weights / analyze_orchestration / optimize_orchestration）。
+
+工具列表：
+
+| 工具名 | 文件 | 说明 |
+|--------|------|------|
+| `skills_butler_analyze_skill_usage` | `analyze_skill_usage.go` | Skill 使用分析 |
+| `skills_butler_recommend_skills` | `recommend_skills.go` | 基于 Skill 使用模式和进化建议推荐新增/优化/移除的 Skill |
+| `skills_butler_evolve_skill` | `evolve_skill.go` | 为指定 Agent 创建 Skill 进化提议（通过 SkillProposal 队列） |
+| `skills_butler_optimize_skill` | `optimize_skill.go` | Skill 优化建议 |
+| `skills_butler_analyze_skill_health` | `analyze_skill_health.go` | Skill 健康状态分析（依赖 AnalyticsPort） |
+| `skills_butler_analyze_tool_weights` | `analyze_tool_weights.go` | 工具权重分析（依赖 AnalyticsPort） |
+| `skills_butler_analyze_orchestration` | `analyze_orchestration.go` | 编排模式分析（依赖 AnalyticsPort） |
+| `skills_butler_optimize_orchestration` | `optimize_orchestration.go` | 编排优化建议（依赖 AnalyticsPort） |
+
+此外，`errors.go` 定义了工具级错误常量（`errAgentIDRequired` / `errSkillNameRequired` / `errImprovementDescRequired` / `errTimeRangeRequired`），`registry.go` 定义了端口接口（`SkillUsecasePort` / `EvolutionUsecasePort` / `SkillQueryReaderPort` / `AnalyticsPort`）和 `Deps` 依赖注入结构。
+
+其中 `skills_butler_evolve_skill` 与 Phase 4 的 Curator Agent 有功能重叠，但当前实现仅创建 `SkillProposal`（轻量提议），不生成 Skill 草案正文。Phase 4 实施时需注意区分 `SkillProposal`（auto-creator 产出）与 `SkillEvolutionSuggestion`（intelligence 产出）。
+
+### 10.8 SkillHealthDetail 与 proto SkillHealthMetric 字段映射
+
+设计文档 §3.2 中 proto 返回类型名为 `SkillHealth`，实际实现为 `SkillHealthMetric`。字段映射：
+
+| Biz 类型 `SkillHealthDetail` 字段 | Proto `SkillHealthMetric` 字段 | 说明 |
+|-----------------------------------|-------------------------------|------|
+| `SkillID` | `skill_id` | 一致 |
+| `TotalInvocations7d` | `total_invocations_7d` | 一致 |
+| `SuccessCount7d` | `success_count_7d` | 设计中无此字段，实际 proto 已包含 |
+| `SuccessRate7d` | `success_rate_7d` | 一致 |
+| `P95DurationMs7d` | `p95_duration_ms_7d` | 一致 |
+| `TotalInvocations30d` | `total_invocations_30d` | 一致 |
+| `SuccessCount30d` | `success_count_30d` | 设计中无此字段，实际 proto 已包含 |
+| `SuccessRate30d` | `success_rate_30d` | 一致 |
+| `P95DurationMs30d` | `p95_duration_ms_30d` | 一致 |
+| `DailyMetrics []DailyMetric` | `daily_metrics []SkillHealthDailyMetric` | proto 类型名不同 |
+
+### 10.9 SkillEvolutionUsecase 实现差异（额外实现）
+
+代码中已实现 `SkillEvolutionUsecase`（`internal/biz/skill_evolution.go`），这是 `skill-evolution-auto-creator` 变更的一部分，与 Skill Intelligence Phase 4 的进化建议有功能重叠但定位不同：
+
+| 维度 | SkillEvolutionUsecase（已实现） | SkillEvolutionSuggestion（Phase 4 设计） |
+|------|--------------------------------|------------------------------------------|
+| 触发 | 重复工具调用模式检测 | Skill 调用失败/低效 |
+| 产出 | `SkillProposal`（含 SkillMD 草案正文） | `SkillEvolutionSuggestion`（含草案版本 ID + Sandbox 验证） |
+| 审批 | `SkillProposal` 队列（pending → approved → registered） | `SkillEvolutionSuggestion` 队列（pending → approved → applied） |
+| 数据存储 | `skill_proposals` 表（原始 SQL，非 Ent Schema） | `skill_evolution_suggestion` 表（设计为 Ent Schema） |
+| AI 生成 | `SkillAutoCreator.GenerateSKILLMD` 端口 | Curator Agent（service 层 invoke） |
+| 注册 | `SkillRegistrationPort`（RegisterSkill/SkillExists） | 版本发布 + lifecycle_status 切换 |
+
+**关键实现细节**：
+- `skill_proposals` 表使用原始 SQL DDL（`internal/data/sql/skill_evolution.sql`），而非 Ent Schema，通过 `skillProposalRepo`（`internal/data/skill_evolution.go`）直接操作
+- `SkillEvolutionUsecase` 注入 `SkillAutoCreator` 端口（AI 生成 SKILL.md），该端口在 `internal/service` 层实现
+- `ScanAndProposeAll` 方法遍历所有启用了 `EvolutionSkillEvolve` 配置的 Agent，批量触发检测
+- `DetectAndPropose` 方法从 `PatternReader` 读取 `tool_call` 类型的检测模式，调用 AI 生成后创建 `SkillProposal`
+- `skills_butler_evolve_skill` 工具通过 `skillsButlerSkillUsecaseAdapter` 调用 `SkillEvolutionUsecase.CreateProposal`，仅创建轻量提议（SkillMD 为空），不触发 AI 生成
+
+### 10.10 skills_butler 适配层实现细节
+
+`internal/service/skills_butler_adapter.go` 中实现了 5 个适配器，将 Biz 层 Usecase 适配为 skills_butler 工具所需的端口接口：
+
+| 适配器 | 桥接 | 说明 |
+|--------|------|------|
+| `skillsButlerSkillUsecaseAdapter` | `SkillEvolutionUsecase` → `SkillUsecasePort` | ListProposals/ApproveProposal/RejectProposal/RegisterApproved/CreateProposal，uc 为 nil 时返回空 |
+| `skillsButlerEvolutionAdapter` | `EvolutionUsecase` → `EvolutionUsecasePort` | GetEvolutionMetrics，uc 为 nil 时返回空 |
+| `skillsButlerQueryAdapter` | `SkillInvocationStatsReader` → `SkillQueryReaderPort` | GetSkillInvocationStats，将 biz.SkillInvocationStat 转换为 skills_butler.SkillInvocationStat |
+| `skillsButlerAnalyticsAdapter` | `ExperienceAnalyticsUsecase` → `AnalyticsPort` | AnalyzeToolWeights/AnalyzeSkillHealth/AnalyzeOrchestration，将 ExperienceAnalytics 的内部类型转换为 biz 级别类型；内含 `agentID` 字段，自动填充到每次分析调用 |
+| `skillsButlerRegistrationAdapter` | `SkillUsecase` → `SkillRegistrationPort` | RegisterSkill/SkillExists，用于 SkillEvolutionUsecase 的注册端口；通过 `NewSkillsButlerRegistrationAdapter` 构造，uc 为 nil 时安全降级 |
+
+所有适配器在 uc 为 nil 时安全降级（返回 nil/空值），不抛异常。`skillsButlerRegistrationAdapter` 例外：它通过独立构造函数 `NewSkillsButlerRegistrationAdapter` 创建，而非内联初始化。
+
+### 10.11 skillHealthRepo 的 isSuccess 兼容逻辑
+
+`skillHealthRepo`（`internal/data/skill_health.go`）在聚合健康度指标时，使用 `isSuccess(outcome, status)` 函数判断调用是否成功：
+
+```go
+func isSuccess(outcome, status string) bool {
+    if outcome == "success" {
+        return true
+    }
+    if outcome == "" && (status == "completed" || status == "success") {
+        return true
+    }
+    return false
+}
+```
+
+此逻辑为**向后兼容**设计：优先检查 `outcome` 字段（Phase 1 新增），当 `outcome` 为空时回退到 `status` 字段（原始字段），确保未填充 outcome 的历史记录也能正确统计。
+
+### 10.12 SkillService 的 healthUC 注入与降级
+
+`SkillService`（`internal/service/skill.go`）通过构造函数注入 `*biz.SkillHealthUsecase`：
+
+```go
+func NewSkillService(uc *biz.SkillUsecase, agentUC *biz.AgentUsecase, healthUC *biz.SkillHealthUsecase, ...) *SkillService
+```
+
+`GetSkillHealth` 方法在 `healthUC == nil` 时返回 `ServiceUnavailable` 错误（错误域 `SKILL_INTELLIGENCE`），确保未配置健康度功能时不会 panic。
+
+### 10.13 skill_evolution_schema.go DDL 嵌入机制
+
+`internal/data/skill_evolution_schema.go` 使用 Go 的 `//go:embed` 机制将 `sql/skill_evolution.sql` DDL 嵌入二进制文件：
+
+```go
+//go:embed sql/skill_evolution.sql
+var skillEvolutionDDL string
+
+func EnsureSkillEvolutionSchema(ctx context.Context, client *ent.Client) error {
+    return execDDLFile(ctx, client, skillEvolutionDDL, "skill_evolution")
+}
+```
+
+此函数在应用启动时被调用，确保 `skill_proposals` 表和索引存在。这是原始 SQL DDL 模式（非 Ent Schema）的标准加载方式。
+
+### 10.14 SkillEvolutionUsecase 单元测试覆盖
+
+`internal/biz/skill_evolution_test.go` 包含完整的单元测试，覆盖以下场景：
+
+| 测试 | 说明 |
+|------|------|
+| `TestSkillEvolutionUsecase_ApproveProposal` | 审批 pending 提案 |
+| `TestSkillEvolutionUsecase_ApproveProposal_NotPending` | 非 pending 提案不可审批 |
+| `TestSkillEvolutionUsecase_RejectProposal` | 拒绝 pending 提案 |
+| `TestSkillEvolutionUsecase_RegisterApproved` | 注册已审批提案 |
+| `TestSkillEvolutionUsecase_RegisterApproved_Conflict` | 同名 Skill 已存在时返回 Conflict |
+| `TestSkillEvolutionUsecase_RegisterApproved_NotApproved` | 非 approved 提案不可注册 |
+| `TestSkillEvolutionUsecase_GetProposal` | 按 ID 查询提案 |
+| `TestSkillEvolutionUsecase_GetProposal_EmptyID` | 空 ID 返回错误 |
+| `TestSkillEvolutionUsecase_ListProposals` | 按 agentID + status 筛选 |
+| `TestSkillEvolutionUsecase_DetectAndPropose_NoCreator` | 无 creator 时返回空 |
+| `TestSkillEvolutionUsecase_DetectAndPropose_WithPatterns` | 有模式时生成提案 |
+| `TestSkillEvolutionUsecase_DetectAndPropose_DedupByHash` | 重复模式去重 |
+| `TestSkillEvolutionUsecase_DetectAndPropose_LowConfidence` | 低置信度模式过滤（< 0.15） |
+| `TestSkillEvolutionUsecase_CreateProposal` | 手动创建提案 |
+| `TestPatternHash_Deterministic` | 模式哈希确定性和大小写不敏感 |
+| `TestExtractToolNamesFromDesc` | 从模式描述提取工具名 |
+
+注意：这些测试属于 `skill-evolution-auto-creator` 变更的产出，不属于 Skill Intelligence Phase 1 的任务范围，但记录在此以便后续实施 Phase 4 时参考复用。

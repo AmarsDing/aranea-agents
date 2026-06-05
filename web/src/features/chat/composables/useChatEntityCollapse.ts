@@ -1,4 +1,4 @@
-import { reactive, watch } from 'vue';
+import { reactive, ref } from 'vue';
 
 const LS_SECTION_COLLAPSED = 'chat:collapsed:sections';
 const LS_GROUP_COLLAPSED = 'chat:collapsed:groups';
@@ -13,6 +13,9 @@ export function useChatEntityCollapse() {
     },
   );
   const groupCollapsed = reactive<Record<string, boolean>>({});
+
+  /** Snapshot of group collapse state before search activation, used to restore on clear. */
+  const groupSnapshot = ref<Record<string, boolean> | null>(null);
 
   function restore() {
     try {
@@ -82,6 +85,31 @@ export function useChatEntityCollapse() {
     saveGroups();
   }
 
+  /** Called when search becomes active: snapshot current group state and expand all. */
+  function onSearchActive() {
+    if (groupSnapshot.value === null) {
+      groupSnapshot.value = { ...groupCollapsed };
+    }
+    expandAllGroups();
+  }
+
+  /** Called when search is cleared: restore group state from snapshot. */
+  function onSearchClear() {
+    if (groupSnapshot.value !== null) {
+      for (const [k, v] of Object.entries(groupSnapshot.value)) {
+        groupCollapsed[k] = v;
+      }
+      // Remove keys that weren't in the snapshot
+      for (const k of Object.keys(groupCollapsed)) {
+        if (!(k in groupSnapshot.value)) {
+          delete groupCollapsed[k];
+        }
+      }
+      groupSnapshot.value = null;
+      saveGroups();
+    }
+  }
+
   restore();
 
   return {
@@ -91,5 +119,7 @@ export function useChatEntityCollapse() {
     toggleGroup,
     isGroupCollapsed,
     expandAllGroups,
+    onSearchActive,
+    onSearchClear,
   };
 }

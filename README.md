@@ -1,375 +1,740 @@
 # Aranea-Agents
 
-> **企业级 AI Agent 编排平台** — 可视化搭建、多通道触达、可观测、可扩展
 
-**Aranea-Agents** 不是「套一层 Chat API」的 Demo，而是一套 **可自托管、可二次开发** 的 Agent 平台：从 Web 管理台到飞书 / 钉钉 / 企微 IM，从单 Agent 对话到 Team / Graph 多智能体编排，从工具 / MCP / Skill 挂载到五层记忆与全链路监控，**一条主链路跑通**。
-
-```
-  Web UI ──┐
-  飞书/钉钉 ──┼──▶ 统一 RunGateway ──▶ trpc-agent-go Runner ──▶ 模型 / 工具 / 记忆
-  Cron/A2A ──┘         │                        │
-                       └──── WebSocket 实时推送 ◀┘
-```
-
-| | |
-|---|---|
-| **适合谁** | 想自建 Agent 平台的技术团队 · 需要 IM 接入的企业 · 做多 Agent 编排的开发者 |
-| **开箱即用** | 管理后台 + Chat + Agent CRUD + Team/Graph + Channel + **`/overview` 大屏** + **FlowLog 跟踪** |
-| **深度可定制** | Go 分层架构 · Proto 契约 · 本地 vendored `trpc-agent-go` · 40+ 模块文档 |
+> **一人通过精灵控制 N 家公司，自己当发号施令的总裁，助力做你想做不敢做的事。**
 
 ---
 
-## 为什么选择 Aranea
+## 一、项目定位与核心主旨
 
-### 给用户 / 业务方
+Aranea-Agents 是基于 trpc-agent-go 的企业级多智能体编排平台。以 Kratos v2 为传输壳层、trpc-agent-go 为运行时内核，提供 Agent 创建、编排、执行、监控的全生命周期管理。
 
-| 亮点 | 说明 |
+**核心主旨**：让一个人通过"精灵"（Spirit 动态编排引擎）同时控制 N 家虚拟公司。你只需发号施令，行业专家 Agent 团队自动协作完成从分析、决策到执行的全流程。模拟现实公司的组织架构——分行业、分部门、分岗位，专人专事，让 AI 真正成为你的企业级生产力。
+
+**技术栈**：Go + Kratos v2（HTTP/gRPC/WebSocket）| trpc-agent-go（Agent 运行时）| Vue 3 + Quasar + Pinia + TypeScript | SQLite（Ent ORM）| Wire（编译期 DI）
+
+---
+
+## 二、业务模块总览
+
+Aranea-Agents 包含 **36+ 个业务，横跨以下核心业务域：
+
+| 序号 | 模块 | 核心功能 |
+|------|------|----------|
+| 1 | 可观测性 | 全链路追踪、根因分析、自动自愈、实时监控 |
+| 2 | 额度与 Token 消费 | 精细计费、多维统计、配额控制、预算告警 |
+| 3 | 编排引擎 | 六模式 Team 编排 + Graph 图编排 + Spirit 动态编排 |
+| 4 | 五层记忆 | L0~L4 完整记忆架构、多 scope 融合召回、可视化 |
+| 5 | 组织架构 | 行业→部门→岗位三级分类、专人专事、模拟公司 |
+| 6 | 技能进化 | 自动发现技能融合去重，自动进化（升级/淘汰）、人机协同审批、版本管理 |
+| 7 | Agent 进化 | 运行指标采集、Persona/Prompt 自动建议、护栏机制 |
+| 8 | A2A 协议 | Google A2A 标准、联邦发现、跨组织 Agent 互操作 |
+| 9 | 多 Channel | 13 种 IM 平台一键接入、统一消息路由 |
+| 10 | MCP 支持 | Model Context Protocol、连通性探测、健康监控 |
+| 11 | 钩子系统 | 事件驱动 Webhook、精细过滤、投递保证 |
+| 12 | Plugin 系统 | 11 个内置插件、安全护栏、成本守卫 |
+| 13 | Provider 与模型目录 | models.dev 同步、六维定价、能力标记 |
+| 14 | Agent 设置 | 50+ 运行时参数、细粒度配置 |
+| 15 | 评估系统 | LLM Judge、PromptIter 优化、质量闭环 |
+| 16 | 内置行业 | 金融/自媒体/软件开发三大行业、预置团队与岗位 |
+
+---
+
+## 三、各模块功能与优势详解
+
+### 3.1 可观测性模块
+
+**功能**：
+- **审计日志**：记录所有管理操作（action/resource/actor/IP/severity），完整操作留痕
+- **链路追踪**：每次 LLM 调用的完整 Trace + Span 瀑布图
+- **Flow Log 流日志**：按 trace_id/session_id/run_id/domain/severity 多维检索
+- **根因分析引擎**：基于规则匹配自动诊断失败原因，输出 RootCauseResult + FixAction
+- **自动自愈系统**：DiagnoseAndHeal 完整闭环——故障检测 → 根因分析 → 自动修复
+  - 置信度阈值 0.7 以上自动修复
+  - 冷却期 5 分钟防抖，避免同一问题反复触发
+  - 修复动作：retry / reconnect / fallback / log_only
+- **告警系统**：AlertMetricRegistry + AlertEvalWorker 评估告警条件
+- **诊断包**：一键聚合 trace + session + run + step 信息，便于故障排查
+- **Runner 指标**：error_rate、P50/P95/P99 延迟实时统计
+
+**优势**：
+- 从故障检测到根因分析到自动修复的**完整闭环**，无需人工介入即可自愈
+- 规则引擎可扩展，支持正则匹配 + 前置条件
+- 全链路 Trace 让每次 Agent 调用的来龙去脉一目了然
+
+---
+
+### 3.2 额度与 Token 消费模块
+
+**功能**：
+- **Token 用量追踪**：每次 LLM 调用的 input/output/cached/reasoning/embedding tokens 全量记录
+- **实时统计**：今日/昨日/本月/自定义时间范围用量趋势
+- **多维拆解**：按 Provider、Model、Agent 维度拆解用量和成本
+- **成本计算**：六维定价（input/output/cached/cache_write/reasoning/embedding）× token 数量，微美元精度
+- **配额管理**：global → agent → team 三级配额控制，月度消费上限
+- **预算告警**：按消费比例阈值触发告警，60 分钟冷却防抖
+- **模型洞察**：标记低效模型（low_tps / high_failure / high_cost），推荐优化
+- **配额仪表盘**：configured_count / total_cap / total_spent / max_utilization_ratio 一目了然
+
+**优势**：
+- **微美元精度**的精细成本核算，每分钱都算得清
+- 三级配额 + 预算告警，**成本不失控**
+- 低效模型洞察，帮你**发现并替换不划算的模型**
+- 时间维度 + 模型维度 + Agent 维度三维统计，消费全透明
+
+---
+
+### 3.3 编排引擎
+
+Aranea-Agents 提供三层编排能力：
+
+#### 3.3.1 Team 多 Agent 编排
+
+**六种编排模式**：
+
+| 模式 | 说明 | 适用场景 |
+|------|------|----------|
+| **Sequential** | 顺序执行，前一步输出作为后一步输入 | 流水线式任务 |
+| **Parallel** | 并行执行 + Synthesizer 汇总 | 独立子任务并行 |
+| **Coordinator** | 协调者分派 Worker | 需要统一调度的复杂任务 |
+| **CriticLoop** | 生成-批评循环，Generator + Critic 迭代优化 | 需要反复打磨的产出 |
+| **Swarm** | 群智模式，成员间 transfer_to_agent 自由流转 | 开放式协作 |
+| **Adaptive** | 自适应模式，运行时动态选择 | 不确定最优策略时 |
+
+#### 3.3.2 Graph 图编排
+
+- **可视化图定义**：拖拽式画布编辑节点和边
+- **节点类型**：agent / llm / tool / task / review / subgraph
+- **条件边 + 子图嵌套**：支持复杂分支逻辑
+- **状态字段 + Reducer**：default / append / cover / merge 四种聚合策略
+- **Checkpoint + TimeTravel**：可回溯任意检查点的状态快照
+- **中断恢复**：InterruptBefore/After + ResumeExecution，支持人机协作
+- **失败策略 + 熔断器**：Skip / RetryThenBlock / FailFast + CircuitBreakerPolicy
+- **GC 自动回收**：30 分钟无活动自动标记失败
+
+#### 3.3.3 Spirit 动态编排
+
+Spirit 是 Aranea-Agents 的核心创新——**动态组装 Team 并行执行任务**：
+
+**三阶段管线**：
+1. **TaskPlanner**（任务规划）：评估 → 路由 → 记忆召回 → 分解 → 持久化 → 确认
+2. **AgentAllocator**（Agent 分配）：匹配专业 Agent → 冲突检测 → 持久化
+3. **TaskOrchestrator**（任务编排）：根据记忆和现状策略选择 → 图构建 → 执行 → 检查点 → 综合 → 学习 → 记录
+
+**任务 DAG**：自动构建有向无环图，环检测 + 拓扑排序 + 就绪节点计算
+
+**拓扑自动推断**：
+- 无节点 → coordinator
+- 所有节点都是根节点 → parallel
+- 深度 > 3 → coordinator
+- 宽度 > 1 → hybrid
+- 否则 → sequential
+
+**综合引擎**：template / prompt / hybrid 三种策略，自动选择最优
+
+**编排缓存 + DQ 评分**：记录历史编排结果，下次同类任务推荐最优拓扑
+
+**优势**：
+- **三层编排**覆盖从简单到复杂的全场景——单 Agent 对话、多 Agent 协作、动态任务编排
+- **Graph 即 Team**：统一底层引擎，Team 编排定义编译为 Graph 执行
+- **Spirit 让你当总裁**：只需下达任务，系统自动分解、分配、编排、执行、综合
+- **TimeTravel** 可回溯任意执行点，调试和审计无死角
+
+---
+
+### 3.4 五层记忆系统
+
+Aranea-Agents 拥有业界最完整的 Agent 记忆架构：
+
+| 层级 | 名称 | 功能 | 存储位置 |
+|------|------|------|----------|
+| **L0** | 会话上下文窗口 | 最近 N 轮对话 + 摘要压缩注入 | 会话快照 |
+| **L1** | 工作记忆 | 结构化字段（角色/偏好/约束），token 预算控制 | 内存 + 持久化 |
+| **L2** | 情景记忆 | 对话片段向量索引 + 时间衰减召回 | 向量数据库 |
+| **L3** | 语义事实 | 结构化 Fact 存储，多 scope 融合召回，五维评分 | 向量数据库 |
+| **L4** | 知识图谱 | 实体-关系图谱，人设/策略注入，级联更新 | 图数据库 |
+
+**核心机制**：
+
+- **五维评分召回**（L3）：Keyword + Vector + Importance + Recency + CrossEncoder 综合排序
+- **多 scope 融合**：L3 召回可跨 agent / user / team / workspace / global 五个 scope 聚合去重
+- **Saga 级联更新**（L4）：名称冲突检测 → Proposal → 审批 → Saga 四步原子更新（UpsertEntity → TouchAffected → ReplaceFacts → SyncIndex），失败自动补偿回滚
+- **三链整合器**：ChainConsolidator 依次尝试 LLM → 启发式正则 → 反馈提取，确保即使 LLM 不可用也能提取记忆
+- **策略审计**：MemoryPolicyEngine 记录所有记忆变更决策，strict 模式下审计失败阻塞写入
+- **6 个 Cron Workers**：L1Archive / L2Consolidate / L2Decay / L3Decay / L4Decay / FactIndexReconciler
+
+**记忆可视化**：
+- **Memory Center 页面**：五层记忆统一浏览
+- **知识图谱浏览器**（L4）：实体-关系图可视化
+- **召回测试器**：调试 L2/L3 召回质量，查看 score breakdown
+- **级联变更面板**：L4 Saga 步骤追踪
+- **进化面板**：记忆进化事件可视化
+- **Worker 状态面板**：6 个 Worker 运行状态 + 队列统计
+- **死信管理**：失败任务查看/重试/放弃
+- **PII 审查**：标记含个人隐私的 Fact，人工审核
+
+**优势**：
+- **五层记忆**让 Agent 从"金鱼脑"变成"过目不忘"——短期对话、中期经验、长期知识全覆盖
+- **多 scope 融合**让知识在 Agent/用户/团队/工作空间之间流动
+- **Saga 级联更新**保证知识图谱的一致性，改一处自动传播到所有关联
+- **可视化**让记忆不再是黑盒，你可以看到 Agent 记住了什么、为什么记住、如何使用
+
+---
+
+### 3.5 组织架构——分行业、分部门、分岗位
+
+**三级分类体系**：Industry（行业）→ Department（部门）→ Position（岗位）
+
+**功能**：
+- **行业预置**：内置金融/自媒体/软件开发三行业完整 Agent 种子
+- **岗位 Prompt 模板**：每个岗位有预置 prompt 模板，支持变体（general / technical / management），自动 fallback
+- **职责构建**：BuildResponsibility 根据岗位+部门描述生成 L1 注入内容
+- **祖先链查询**：从岗位向上追溯行业和部门
+- **FieldGuide 注册表**：9 个 scope 的写作指导（should_write / should_avoid / examples / budget），确保 prompt 质量一致
+- **组织结构抽取**：从自由 markdown 文档自动抽取为 YAML 组织规格
+
+**模拟现实公司**：
+- 分行业：金融、自媒体、软件开发……每个行业有专属部门和岗位
+- 分部门：量化交易、风控合规、投资研究……每个部门有专属 Agent
+- 分岗位：量化研究员、合规官、行业分析师……每个岗位有专业 prompt 模板
+- 专人专事：不同功能的 Agent 各司其职，协作完成复杂任务
+
+**一人多公司**：
+- 通过 workspace 隔离，一个人可以同时运营多家"虚拟公司"
+- 每家公司有独立的行业、部门、岗位、Agent、Team 配置
+- Spirit 引擎让你只需下达指令，各公司 Agent 团队自动协作
+
+**生态市场**（开发中）：
+- **公司市场**：行业公司模板一键安装，快速搭建虚拟公司
+- **部门市场**：按行业分类的部门模板，包含专属 Agent 和协作流程
+- **岗位市场**：专业岗位 Agent 模板，开箱即用的行业专家
+- **Agent 市场**：用户创建的 Agent 可发布/安装/评分，支持 certified 认证
+- **Team 市场**：预置团队编排模板，一键部署多 Agent 协作
+- **Graph 市场**：可视化工作流模板，覆盖常见业务场景
+- **Skill 市场**：可复用技能包，跨 Agent 共享专业能力
+- **MCP 市场**：MCP 服务器目录，一键接入外部工具和数据源
+
+**优势**：
+- **开箱即用**的行业知识 + 岗位模板，快速创建专业 Agent
+- **模拟真实公司**的组织架构，让 AI 协作更符合现实逻辑
+- **生态市场**：从公司到 MCP 的全品类市场，让最佳实践流动起来
+
+---
+
+### 3.6 技能进化系统
+
+技能进化是 Aranea-Agents 的核心自迭代能力，让技能从实践中诞生、在运行中优化、于低效时消亡，形成完整的生命周期闭环。
+
+**功能概览**：
+- **Skill CRUD**：创建/更新/删除/启用/禁用，支持版本管理（major.minor.patch）、标签、继承（extends）
+- **自动发现**：`SkillEvolutionUsecase.DetectAndPropose` 自动检测工具调用模式 → 生成 SKILL.md 提案
+- **相同技能去重**：基于 Pattern Hash 的确定性去重
+- **相似功能融合**：六维相似度评估 + LLM 炼化合并
+- **技能链路审批**：Proposal 生命周期状态机 + 人工审批
+- **渐进式加载**：3 阶段按需加载，节省 Token 预算
+- **技能消亡与新生**：健康度评估 + 版本回滚 + 文件系统恢复
+- **运行时路由**：SkillRuntimePolicy + 嵌入向量评分控制 Skill 激活策略
+- **文件系统同步**：Skill 与磁盘文件双向同步（fsnotify 实时监听 + 定时对账）
+- **技能管家工具**：evolve_skill / optimize_skill / recommend_skills / analyze_skill_usage / analyze_skill_health / analyze_tool_weights / analyze_orchestration / optimize_orchestration
+
+---
+
+#### 3.6.1 相同技能去重（Pattern Hash 机制）
+
+**依据**：Agent 运行时可能多次产生相同的工具调用模式，如果不做去重，同一行为会被反复提议创建 Skill，造成冗余。
+**去重范围**：同一 Agent 下相同行为模式只产生一次 Proposal。不同 Agent 发现相同模式会各自产生独立 Proposal（因为业务上下文不同）。
+
+---
+
+#### 3.6.2 相似功能融合（六维相似度 + AI 炼化）
+
+**依据**：导入或新建的 Skill 可能与已有 Skill 功能重叠，简单并存会导致 Agent 选择困难和 Token 浪费。需要智能识别相似度并建议合并。
+
+**六维相似度评估**（`SimilarityMetrics`）：
+
+| 维度 | 评估内容 |
+|------|----------|
+| NameSimilarity | 名称相似度 |
+| DescriptionSimilarity | 描述相似度 |
+| BodySimilarity | 正文/实现逻辑相似度 |
+| TriggerSimilarity | 触发条件相似度 |
+| ToolSimilarity | 工具调用相似度 |
+| SimilarityScore | 综合相似度（加权汇总） |
+
+**融合流程**：
+
+1. **相似度检测**：对每个候选 Skill 与已有 Skill 进行 LLM 对比（上限 50 次调用）
+2. **冲突组创建**：当 `SimilarityScore >= 0.2` 时，创建 `ConflictGroup`，标记为 `merge_suggested`
+3. **LLM 推荐动作**：返回 `keep_separate`（保留独立）/ `suggest_refine`（建议合并）/ `block_duplicate`（阻止重复）
+4. **AI 炼化**（`RefineConflictGroup`）：LLM 将相似 Skill 合并为新 Skill，输出 `MergedName + MergedDescription + MergedBody + MergedTags`
+5. **人工决策**：5 种 action 可选——直接导入 / 批准高风险 / 拒绝 / AI 合并 / 跳过
+6. **补偿回滚**：合并过程中任何一步失败，自动回滚所有已创建的 Skill（DB 行 + 磁盘目录）
+
+---
+
+#### 3.6.3 技能链路汇总与人工审批
+
+**依据**：自动进化必须有人类把关，否则可能产生低质量或有害 Skill。审批流程确保每一步都有据可查。
+
+**Proposal 生命周期状态机**：
+
+```
+detected pattern → pending → approved → registered
+                          → rejected
+                          → expired
+```
+
+| 状态 | 含义 | 允许的转换 |
+|------|------|-----------|
+| pending | 刚检测到，等待审批 | → approved / rejected / expired |
+| approved | 人工批准 | → registered |
+| rejected | 人工拒绝 | 终态 |
+| registered | 已注册到文件系统 | 终态 |
+| expired | 过期未审批 | 终态 |
+
+**审批流程**：
+1. **自动检测**：`DetectAndPropose` 扫描 Pattern，过滤 `Confidence >= 0.15` 的工具调用模式，生成 pending Proposal
+2. **批量扫描**：`ScanAndProposeAll` 遍历所有 active Agent，对开启了 `EvolutionSkillEvolve` 设置的 Agent 执行检测
+3. **人工审批**：`ApproveProposal` 只允许 pending 状态被批准
+4. **注册**：`RegisterApproved` 检查 Skill 是否已存在，通过 `FileSystemSkillRegistrar` 将 SKILL.md 写入 Agent 的 Skill 目录
+5. **拒绝**：`RejectProposal` 只允许 pending 状态被拒绝
+
+**安全措施**：注册时拒绝包含 `..` 或 `/\` 的 Skill 名称，防止路径穿越攻击。
+
+---
+
+#### 3.6.4 技能递进加载（Progressive Loading）
+
+**依据**：Agent 可能拥有数十个 Skill，如果全部注入系统提示，会消耗大量 Token 且干扰 LLM 判断。递进加载让 Agent 按需获取技能，既省 Token 又提精度。
+
+**四种加载模式**：
+
+| 模式 | 说明 |
 |------|------|
-| **一个平台，多种触达** | Web 聊天、飞书 / 钉钉 / 企微 Channel、定时 Cron、A2A 互联 — 共用同一套 Session 与 Run 生命周期 |
-| **三种编排，由简入繁** | **Agent** 单智能体 · **Team** 五种协作模式（主控 / 顺序 / 并行 / 群智 / 评审闭环）· **Graph** 确定性工作流（条件分支、HITL、检查点） |
-| **看得见的运行过程** | **`/overview` 运营大屏** + WebSocket 流式输出、工具卡片、Reasoning；Monitor **流程日志**逐步跟踪 + Runs 瀑布图 |
-| **记忆不丢、上下文可控** | **五层神经记忆**（非单层向量库）— L1 任务板 + L3 可纠正事实 + L4 实体级联；Memory Center 可视化治理 |
-| **模型随意换** | OpenAI / Anthropic / Gemini / Ollama / 混元 / Bedrock 等，Failover / Hedge 高可用 |
+| `once` | 下一次请求注入后卸载 |
+| `turn` | 当前 invocation 内有效（默认） |
+| `session` | 跨 invocation 直到会话过期 |
+| `progressive` | 3 阶段渐进加载 |
 
-### 给开发者
+**Progressive 模式 3 阶段**：
 
-| 亮点 | 说明 |
+| 阶段 | 名称 | 触发方式 | 注入内容 | Token 消耗 |
+|------|------|----------|----------|-----------|
+| L0 | 清单注入 | 自动（每轮） | 所有 Skill 的 name + description 摘要 | 极低 |
+| L1 | Body 按需加载 | LLM 主动调用 `skill_load` 工具 | 指定 Skill 的 SKILL.md 正文 + 可选 docs | 按需 |
+| L2 | Refs 按需加载 | LLM 主动调用 `skill_select_docs` 工具 | 辅助文档和参考资料 | 按需 |
+
+**关键机制**：
+- **Turn 级状态清理**：Progressive 模式每轮对话开始时清理上一轮的 loaded/docs 状态，确保每轮重新按需加载
+- **Tool Result 注入**：加载的 SKILL.md 内容注入 tool result 消息而非系统提示，保持系统提示稳定，有利于 prompt caching
+- **加载上限**：可配置同时加载的 Skill 数量上限，超出时按最近使用时间淘汰
+- **意图路由**：`IntentRoutingEnabled`（默认开启）+ 嵌入向量评分（权重 0.3）自动匹配最相关 Skill
+
+---
+
+#### 3.6.5 技能消亡与新生
+
+**依据**：技能和生物一样有生命周期——长期不用的技能应被识别和清理，避免运行时路由噪音；被误删或降级的技能应能恢复。
+
+**消亡机制**：
+
+| 触发条件 | 机制 | 代码依据 |
+|----------|------|----------|
+| 人工主动停用 | `ToggleEnabled` 设为 false，从运行时候选列表移除 | skill.go `ToggleEnabled` |
+| 软删除 | 设置 `deleted_at` + `status = "deleted"`，非物理删除 | data/skill.go `DeleteSkill` |
+| 磁盘文件缺失 | 标记 `filesystem_missing = true`，文件系统 Watcher 检测 | watch/runner.go `MarkFilesystemMissing` |
+| 磁盘内容变更 | 已 published 的 Skill 自动回退为 `draft` + `enabled = false` | data/skill.go `UpsertSkillFromDisk` |
+| 健康度评估 | Skills Butler 工具基于调用统计评估 | skills_butler/analyze_skill_usage.go |
+
+**健康度评估标准**（`assessHealth`）：
+
+| 等级 | 条件 | 建议 |
+|------|------|------|
+| healthy | 周均调用 > 5 且成功率 >= 80% | 正常运行 |
+| warning | 周均调用 > 5 且成功率 >= 60%，或中等使用率 | 关注优化 |
+| critical | 周均调用 < 2 或成功率 < 60% | 评估是否保留 |
+
+**消亡建议**（`optimize_skill` 工具）：
+
+| 触发条件 | 建议 | 优先级 |
+|----------|------|--------|
+| 近 30 天无调用 | 评估是否仍需要此 Skill | high |
+| 成功率 < 60% | 检查 Skill 实现逻辑 | high |
+| 成功率 < 80% | 增加错误处理 | medium |
+| 平均耗时 > 5000ms | 优化执行路径 | medium |
+| 周均调用 < 2 | 评估是否需要保留 | medium |
+
+**新生/重生机制**：
+
+| 场景 | 机制 | 代码依据 |
+|------|------|----------|
+| 磁盘文件恢复 | `filesystem_missing` 标记自动清除，触发 `skill.filesystem.recovered` 事件 | watch/runner.go |
+| 版本回滚 | 基于历史版本创建新版本（patch +1），状态恢复为 `published` | data/skill.go `RollbackSkillVersion` |
+| 重新发布 | 将 `draft` 状态的 Skill 重新 `PublishSkill` | data/skill.go `PublishSkill` |
+| 自动进化 | 从工具调用模式中检测到新 Pattern → 生成 Proposal → 审批 → 注册 | skill_evolution.go |
+
+**技能生命周期全景**：
+
+```
+            ┌──────────────────────────────────────────────┐
+            │              技能生命周期                       │
+            │                                              │
+            │  新生                                         │
+            │  ├─ 自动检测：Pattern → Proposal → 审批 → 注册  │
+            │  ├─ 手动创建：CRUD → Publish                   │
+            │  └─ 导入融合：冲突检测 → AI 炼化 → 合并注册      │
+            │                                              │
+            │  成长                                         │
+            │  ├─ 渐进加载：L0 清单 → L1 Body → L2 Refs      │
+            │  ├─ 版本迭代：major.minor.patch 版本管理         │
+            │  └─ 优化建议：Skills Butler 健康度分析           │
+            │                                              │
+            │  消亡                                         │
+            │  ├─ 自然消亡：30天无调用 / 成功率 < 60%          │
+            │  ├─ 人工停用：ToggleEnabled → false             │
+            │  └─ 软删除：deleted_at 标记                     │
+            │                                              │
+            │  重生                                         │
+            │  ├─ 版本回滚：历史版本恢复                       │
+            │  ├─ 重新发布：draft → published                 │
+            │  └─ 文件恢复：filesystem_missing 自动清除        │
+            └──────────────────────────────────────────────┘
+```
+
+---
+
+**技能进化系统整体优势**：
+- **从实践中学习**：不是预设规则，而是从真实运行数据中发现可封装的行为
+- **相同去重 + 相似融合**：Pattern Hash 确定性去重 + 六维相似度 LLM 评估 + AI 炼化合并，既防冗余又促整合
+- **人机协同审批**：自动进化 + 人工审批，Proposal 状态机确保每步有据可查
+- **递进加载省 Token**：3 阶段按需加载，L0 仅注入清单，L1/L2 按需获取，大幅节省 Token 预算
+- **消亡与新生闭环**：健康度评估驱动消亡建议，版本回滚和文件恢复保障重生能力
+
+---
+
+### 3.7 Agent 进化系统
+
+**功能**：
+- **指标采集**：工具成功率、检索质量、情景数、负面反馈
+- **建议生成**：
+  - persona 类型：写入 IDENTITY.md 的 ## Persona 段
+  - prompt 类型：写入 AGENTS_CORE.md
+- **应用/拒绝**：ApplySuggestion 直接修改 Agent 的 prompt 文件
+- **学习闭环**（LearningLoop）：Observation → Pattern → Proposal → Validation → Registration
+  - 观察类型：tool_call / feedback / error / retrieval
+
+**护栏机制**：
+- `GuardrailMaxChangePerPeriod`：限制变更速率
+- `GuardrailMinDataPoints`：最低数据点要求
+- `GuardrailRollbackOnDeclinePercent`：质量下降自动回滚
+
+**Agent 设置**（50+ 运行时参数）：详见 [3.14 Agent 设置](#314-agent-设置)
+
+**优势**：
+- **自动进化闭环**：从运行数据中提取模式 → 生成建议 → 人工审批 → 自动应用
+- **护栏机制**确保进化不失控——限速、最低数据、回滚三重保障
+- **50+ 参数**让每个 Agent 可精细调优
+
+---
+
+### 3.8 A2A 协议
+
+**功能**：
+- **AgentCard 管理**：发布/更新 Agent 的 A2A 能力卡片（Capabilities + InputSchema + OutputSchema）
+- **能力发现**：Discover 聚合本地 + 远程 Agent 的能力卡片，支持按 capability 过滤
+- **调用管理**：StartInvocation / FinishInvocation 记录跨 Agent 调用生命周期
+- **审计日志**：所有跨 Agent 调用都有审计记录
+- **远程注册**：RegisterRemoteAgent 自动发现远程 AgentCard 并持久化
+- **网关发现**：GatewayDiscover 聚合本地端点 + 远程注册表，支持健康检查
+- **A2A Proxy**：Agent 可作为 A2A 代理，将远程 Agent 包装为本地 Agent
+
+**优势**：
+- **Google A2A 标准**：基于业界标准的多 Agent 互操作协议
+- **联邦发现**：跨组织 Agent 发现和调用，打破 Agent 孤岛
+- **完整审计**：所有跨 Agent 调用可追溯
+
+---
+
+### 3.9 多 Channel 支持
+
+**支持 13 种 IM 平台**：
+
+| 平台 | 接入方式 |
+|------|----------|
+| 飞书 / Lark | WebSocket 长连接 |
+| 钉钉 | Webhook / Stream |
+| 企业微信（智能机器人） | Webhook |
+| 企业微信（自建应用） | API |
+| 微信公众号 | API |
+| Slack | WebSocket |
+| Telegram | Long Polling |
+| Discord | WebSocket |
+| LINE | Webhook |
+| Microsoft Teams | API |
+| Mattermost | WebSocket |
+| QQ | OneBot 协议 |
+| 个人 QQ | OneBot 协议 |
+
+**功能**：
+- **统一抽象**：所有平台通过统一 Channel 接口管理，Agent 无需关心底层平台差异
+- **消息路由**：IM 消息自动路由到对应 Agent
+- **IM 渲染**：Agent 输出自动渲染为各平台卡片/消息格式
+- **凭证加密**：API 密钥加密存储 + masked preview
+- **连通性测试**：实时验证通道连通性
+- **入站去重**：防止消息重复处理
+
+**优势**：
+- **13 种平台一键接入**，Agent 一次创建、全平台可用
+- **统一抽象**让 Agent 与平台解耦，新增平台无需改 Agent 代码
+
+---
+
+### 3.10 MCP 支持
+
+**功能**：
+- **MCP Server CRUD**：创建/配置/删除 MCP 服务器
+- **连通性测试**：MCPProber.Evaluate 验证 MCP 服务器可达性
+- **健康监控**：自动探测 + 告警去抖 + 重连计数
+- **凭证加密**：CredentialCrypto 加密存储 MCP 认证信息
+- **用户级凭证**：每个用户可配置独立的 MCP 认证
+
+**优势**：
+- **MCP（Model Context Protocol）**是 Anthropic 推出的工具调用标准，支持跨平台工具集成
+- 健康监控确保 MCP 服务可靠性
+
+---
+
+### 3.11 钩子系统（Hook）
+
+**功能**：
+- **Hook CRUD**：创建/更新/删除/启用/禁用 Hook
+- **条件过滤**：HookCondition 支持按 Agent + Tool + Event 三维过滤
+- **动作执行**：HookAction 支持 Webhook 回调、日志记录等
+- **Webhook 出站**：run.completed / run.failed / run.cancelled 等事件触发外部回调
+- **投递追踪**：HookDelivery 记录每次投递状态（pending/success/failed）+ 重试机制
+
+**优势**：
+- **事件驱动**的松耦合通知机制，Agent 行为可触发外部系统
+- **三维过滤**避免无关通知，精准触达
+- **投递保证**确保通知可靠送达
+
+---
+
+### 3.12 Plugin 系统
+
+**11 个内置插件**：
+
+| 插件 | 功能 |
 |------|------|
-| **架构边界清晰** | Kratos 管传输，`trpc-agent-go` 管运行时；`biz` 层零框架依赖 — 改业务不怕牵一发动全身 |
-| **不是黑盒 SDK** | `pkg/trpc-agent-go` 源码在仓内，可对齐 [OpenClaw](https://github.com/trpc-group/trpc-agent-go/tree/main/openclaw) 参考实现，按需扩展 Runner / Plugin / Graph |
-| **Proto 即契约** | `api/kratos/*.proto` 生成 Go HTTP/gRPC + 前端 TS 类型，前后端同一份 API 真相 |
-| **扩展点齐全** | Tools · MCP Broker · Skill · Plugin/Callback · CodeExecutor · Knowledge RAG · Evaluation · Artifact |
-| **可观测、可排障** | **`/overview` Token/成本大屏** + FlowLog 中文流程日志 + Runs 瀑布图 + 告警 Webhook — 业务与研发各看各的视图 |
-| **文档即生产力** | 为 AI 编码入口，模块需求 / 设计 / 开发计划齐全，适合人机协作迭代 |
+| **identity** | 身份注入，自动将 Agent 身份信息注入上下文 |
+| **guardrail** | 安全护栏，防止 Agent 输出违规内容 |
+| **toolcallid** | 工具调用 ID 追踪，确保调用链完整 |
+| **messagemerger** | 消息合并，优化流式输出 |
+| **confirmation_guard** | 工具调用确认，高危操作需人工审批 |
+| **permission_guard** | 工具权限控制，deny_list 机制 |
+| **cost_guard** | 成本预算守卫，按 scope 限流 |
+| **model_router** | 模型路由，按规则自动切换模型 |
+| **output_policy** | 输出策略控制，限制输出格式和内容 |
+| **sensitive_mask** | 敏感信息脱敏，防止泄露隐私数据 |
+| **skill_tracker** | Skill 调用追踪，记录技能使用情况 |
+
+**回调编排边界**（三层）：
+- Runner 层：DB-backed 插件 + 框架插件
+- LLMAgent 层：产品指标 + 工具计时/记录 + Hook 规则
+- ModelSelector 层：model_router / cost_guard
+
+**优势**：
+- **五重安全防护**：confirmation_guard + permission_guard + sensitive_mask + output_policy + cost_guard
+- **成本控制**：cost_guard 按 scope 限流，避免超支
+- **分层编排**：三层回调链职责清晰，互不干扰
 
 ---
 
-## Aranea 特色功能
+### 3.13 Provider 与模型目录
 
-> 区别于「单 Bot + 文件记忆 + IM 转发」的通用 OpenClaw 装配，Aranea 面向 **企业组织、长期记忆与可观测运维** 做了产品级设计。
+**功能**：
+- **models.dev 同步**：从 models.dev 拉取全球 AI 模型规格，作为模型参数和定价的外部真相源
+- **定价优先级**：manual（100）> model-inspect（50）> models.dev-sync（10），低优先级不能覆盖高优先级
+- **六维定价**：Input / Output / CacheRead / CacheWrite / Reasoning / Embedding
+- **双轨定价模型**：MicroPricing（内部精确计算）+ CostUSDPer1M（对外展示）
+- **能力标记**：text / vision / audio / file / tool_call / cache / thinking / text_only
+- **Provider 迁移**：旧 provider_code 自动迁移到 models.dev id，支持断点续传
+- **Runtime Overlay**：models.dev provider id → trpc-agent-go 运行时映射
+- **定时同步**：每小时自动同步 models.dev 数据
 
-### 企业职级 Agent：公司 → 部门 → 职员
+**支持 12+ Provider**：OpenAI、Anthropic、Gemini、DeepSeek、Qwen（阿里通义）、Moonshot（月之暗面）、OpenRouter、ZhipuAI（智谱）、Amazon Bedrock、Ollama、Hunyuan（腾讯混元）、HuggingFace
 
-Aranea 用 **三层业务分类树** 管理 Agent 编制，像搭公司架构一样搭 AI 团队 — 每个 Agent 绑定一个 **职员（职位）** 节点，行业与部门由树结构自动推导。
-
-```
-IT 行业（公司）
-├── 游戏开发部（部门）
-│   ├── UE5 场景设计师（职员 Agent）
-│   └── 游戏策划（职员 Agent）
-└── 系统开发部（部门）
-    ├── Golang 后端高级工程师（职员 Agent）
-    └── DevOps 工程师（职员 Agent）
-```
-
-| 层级 | 产品语义 | 你能做什么 |
-|------|----------|------------|
-| **公司** | 行业（Industry） | 按业务线划分 Agent 池，预置 + 自建并存 |
-| **部门** | 部门（Department） | 同一行业下按职能分组，列表筛选、批量管理 |
-| **职员** | 职位（Position） | 每个 Agent 的「岗位画像」— 创建时级联选择，绑定 `category_position_id` |
-
-**与 Team 编排组合**：职员 Agent 是「编制」，Team 是「项目组」— 主控分派像部门经理协调各岗位，顺序 / 并行 / 评审闭环像跨部门流水线。内置 Team 模板（顺序链、专家组、生成-评审、主控分派）可直接套用。
-
-```mermaid
-flowchart LR
-  subgraph Org["企业编制（Agent Category）"]
-    Co["公司 / 行业"]
-    De["部门"]
-    Em["职员 / 职位 Agent"]
-    Co --> De --> Em
-  end
-  subgraph Run["运行时协作（Team / Graph）"]
-    T["Team 项目组"]
-    G["Graph 审批流"]
-    Em --> T
-    Em --> G
-  end
-```
+**优势**：
+- **models.dev 同步**确保模型参数和定价始终最新，无需手动维护
+- **六维定价**精确计算每分钱，为消费统计做精准计量
+- **定价优先级**防止自动同步覆盖手动设置
+- **能力标记**让系统自动选择合适的模型（如仅 vision 模型用于图像理解）
 
 ---
 
-### 内置工具生态 — 开箱即用，不是空壳
+### 3.14 Agent 设置
 
-平台启动时自动种子 **30+ 内置工具**，按风险分级、支持 Agent 级覆盖与确认门控，并可与 MCP / Skill 混挂 — 无需从零写 Tool 注册代码。
+**50+ 运行时参数**，按配置域分组：
 
-| 类别 | 代表工具 | 典型用途 |
-|------|----------|----------|
-| **Web 研究** | `web_research` · `web_fetch` · `google_search` · `arxiv_search` · `wikipedia_search` | 联网检索、论文、百科 |
-| **文件工作区** | `read_file` · `save_file` · `search_content` · `diff_edit` · `patch_file` | 读写在库、片段级编辑（Cursor 式） |
-| **记忆** | `memory_search` · `memory_get` · `working_memory.*` | 长期 recall + L1 结构化任务板读写 |
-| **Skill** | `skill_search` · `use_skill` | 技能包发现与运行时挂载 |
-| **多模态** | `read_image` · `read_document` | 图片 / PDF / Office 理解 |
-| **协作** | `call_agent` · `kanban` · `knowledge_search` · `await_user_reply` | A2A 互调、Graph 看板、RAG、HITL 暂停 |
-| **系统** | `datetime` · `todo_write` | 时间上下文、待办追踪 |
-| **高权限（默认关）** | `shell_exec` · `send_email` · `claude_code` | 需显式启用 + 确认门控 |
+| 配置域 | 参数示例 |
+|--------|----------|
+| Identity | 路由身份、Agent Kind（llm/a2a_proxy）、Source（user/system/builtin/industry/marketplace） |
+| Reasoning | 推理模式、推理深度 |
+| Memory | L0~L4 每层独立开关和参数、记忆模式（Agentic/Auto） |
+| Tools | 工具执行策略、重试次数、并行度、流式、熔断器 |
+| Skills | Skill 加载模式、意图传递 |
+| Evolution | 自进化开关、子Agent、护栏参数 |
+| Context | 上下文压缩、输出 schema、压缩缓存 |
+| CodeExecutor | 代码执行后端选择 |
 
-工具目录在管理台可视化配置：启用 / 禁用、参数 Schema、Agent 覆盖、`requires_confirmation` 策略。
----
-
-### 五层神经记忆系统 — Aranea 的核心差异
-
-多数 Agent 框架只有「聊天记录 + 向量库」。Aranea 设计了 **L0–L4 五层记忆 + Memory Center 治理面**，把「上下文、任务、事件、知识、进化」分开管理，并支持 **冲突检测、级联更新、用户纠正与回滚**。
-
-#### 用户视角：Agent 记得什么？
-
-| 层 | 用户名称 | Agent 用它做什么 |
-|----|----------|------------------|
-| **L0** | 上下文窗口 | 本轮发给模型的材料 — 消息、摘要、压缩快照、Token 预算 |
-| **L1** | 工作记忆 | 当前任务的「状态板」— 结构化字段（目标、进度、中间结论），Agent 可 `working_memory.write` |
-| **L2** | 会话事件 | 这次对话的关键片段 — 时间线、Episode、重要性标记 |
-| **L3** | 知识记忆 | 长期事实与偏好 — 可搜索、可反驳、可版本化；支持向量 + 关键词混合检索 |
-| **L4** | 图谱与进化 | 实体关系网（人 / 项目 / 地点）+ Agent 自我进化提议 — **属性变更可级联关联记忆** |
-
-#### 架构核心：Ledger → Views → Policy
-
-```mermaid
-flowchart TB
-  Turn["每轮对话 Turn Event<br/>（不可变追加）"]
-  Worker["MemoryWorker / AutoMemory<br/>异步巩固"]
-  L1["L1 工作记忆<br/>任务字段"]
-  L2["L2 情景事件<br/>Episodes"]
-  L3["L3 语义事实<br/>Facts + 向量索引"]
-  L4["L4 实体图谱<br/>Entities + Relations"]
-  Assemble["L0 Context Package<br/>每轮 Prompt 装配"]
-  LLM["LLM 推理"]
-
-  Turn --> Worker
-  Worker --> L1 & L2 & L3 & L4
-  L1 & L2 & L3 & L4 --> Assemble
-  Turn --> Assemble
-  Assemble --> LLM
-```
-
-- **Ledger（账本）**：消息、工具调用、记忆变更动作 — 全程可审计、可溯源  
-- **Views（视图）**：L1–L4 表 + pgvector 可选索引 — 从 Ledger 派生，可重建  
-- **Policy（策略）**：何时读 / 写 / 遗忘 / 级联 — 显式记录为 ADD / UPDATE / DELETE 动作，不是 prompt 黑箱  
-
-#### 为什么这很重要？（级联记忆示例）
-
-> 用户：「我原来在北京工作，通勤走 13 号线；现在调到纽约了。」
-
-普通 RAG 可能仍检索到「13 号线」旧事实。Aranea L4 将 **人 → 工作地点** 建模为带时序的实体关系；地点变更触发 **级联提议**，关联的交通、天气、日程类 L3 事实进入待审核队列，用户确认后批量更新 — Agent 不会用旧地点答新问题了。
-
-Memory Center 管理台回答四个问题：**Agent 现在看见什么？正在记什么任务？会话发生了什么？长期知道什么？** — 每条注入 Prompt 的记忆都可追溯来源与分数。
+**优势**：
+- 每个 Agent 可独立配置，**术业专攻**
+- 五层记忆全部可配，按需开关
+- 工具策略细粒度控制（重试/并行/熔断/确认）
 
 ---
 
-### 大屏监控 — 登录即见的运营大盘
+### 3.15 评估系统
 
-Aranea 把 **用量 / 成本 / 成功率** 做成独立 Dashboard（`/overview`），登录后默认首页 — 适合投屏、晨会、管理层一眼看全局，而不是埋在日志文件里。
+**功能**：
+- **数据集管理**：创建/上传/删除评估用例集
+- **多维度评分**：
+  - ExactMatch（精确匹配）
+  - ContainsMatch（包含匹配）
+  - LLMjudgeScore（LLM 评审打分）
+  - ToolCallAccuracy（工具调用准确率）
+  - PassAtK / PassHatK（统计通过率）
+- **趋势分析**：GetAgentEvalTrend 生成质量趋势图
+- **运行对比**：CompareEvalRuns 计算多次运行的指标增量（Delta）
+- **人工标注**：AnnotateCaseResult 支持人工 pass/fail + 评分 + 评论
+- **自动评估**：AgentEvalAutoConfig 支持每轮对话后自动触发评估
+- **PromptIter 引擎**：多轮优化循环——训练集生成梯度 → 验证集验收 → 接受/拒绝补丁
 
-| 能力 | 说明 |
+**优势**：
+- **闭环质量保障**：自动评估 → 趋势追踪 → PromptIter 优化，形成完整改进闭环
+- **多维度评分**：不仅看文本匹配，还评估工具调用准确率和 LLM 评审质量
+- **人工 + 自动混合**：LLM 评审 + 人工标注双轨
+
+---
+
+### 3.16 内置行业、Team、Graph、Agent
+
+**三大内置行业**：
+
+| 行业 | 部门数 | 岗位数 | 预置团队 |
+|------|--------|--------|----------|
+| **金融** | 6 | 30+ | 8 |
+| **自媒体** | 5 | 24+ | - |
+| **软件开发** | 10 | 30+ | - |
+
+**金融行业（最完整）**：
+
+6 个部门：量化交易、风控合规、投资研究、金融工程、财富管理、衍生品
+
+8 个预置团队：
+1. **盘前简报**（coordinator 模式，6 成员）
+2. **个股深度研究**（coordinator 模式，10 成员）
+3. **板块轮动**（sequential 模式，4 成员）
+4. **组合诊断**（parallel 模式，4 成员）
+5. **市场复盘**（sequential 模式，5 成员）
+6. **量化策略研发**（sequential 模式，4 成员）
+7. **投资决策委员会**（coordinator 模式，5 成员）
+8. **风险监控**（parallel 模式，3 成员）
+
+**Agent 来源分类**：user | system | system_builtin | industry_template | marketplace | certified
+
+**Graph 模板**：ListGraphTemplates / CreateGraphFromTemplate / SaveGraphAsTemplate
+
+**优势**：
+- **开箱即用**：内置行业知识 + 岗位模板 + 预置团队，用户无需从零开始
+- **可扩展**：通过 scenario 目录添加新行业/岗位/变体，无需改代码
+
+---
+
+## 四、竞品痛点与 Aranea-Agents 的解决方案
+
+### 4.1 竞品痛点
+
+| 痛点 | 说明 |
 |------|------|
-| **核心指标卡** | 今日调用次数、Token 消耗、估算费用、成功率 — 支持日期区间切换 |
-| **ECharts 趋势** | 调用量 / Token / 费用 / 成功率按天折线；成功率堆叠柱 |
-| **Top 排行** | 最贵模型、最活跃 Agent、异常调用 — 快速定位热点 |
-| **Runner 指标条** | 窗口内成功率 / 错误率 — 点击下钻 **Runs 瀑布图** 排障 |
-| **运维快捷入口** | 从大盘一键跳转 Monitor：Runs · Events · Alerts · Logs |
-| **告警出站** | 错误率超阈触发规则 → Webhook / Channel 通知 + 冷却防刷 |
+| **Agent 是"金鱼脑"** | 主流 Agent 平台只有短期对话记忆，跨会话即遗忘，无法积累经验和知识 |
+| **单 Agent 天花板** | 单个 Agent 能力有限，复杂任务需要多 Agent 协作，但编排手段匮乏 |
+| **编排黑盒** | 多 Agent 编排过程不可观测、不可调试、不可回溯，出了问题无从排查 |
+| **成本失控** | Token 消费不透明，无法按模型/Agent/时间维度统计，月底账单吓人 |
+| **平台锁定** | Agent 只能在 Web 端使用，无法接入飞书/钉钉/企微等 IM 工作台 |
+| **无行业知识** | 创建 Agent 需要从零写 prompt，缺乏行业专业知识注入 |
+| **不会进化** | Agent 创建后能力固化，无法从运行经验中学习和改进 |
+| **孤岛效应** | 不同系统/组织的 Agent 无法互操作，形成 Agent 孤岛 |
+| **安全失控** | Agent 可执行任意工具调用，缺乏权限控制和成本守卫 |
+| **一人难成军** | 个人用户无法像管理公司一样管理多个 Agent 团队 |
 
-**典型视图**：登录 → `/overview` 看今日 Token 与成功率 → 异常下钻 Runs 瀑布图 → Logs「流程日志」定位卡在哪一步（如 LLM 超时、Tool 失败、Channel 出站异常）。
+### 4.2 Aranea-Agents 的解决方案
 
-```mermaid
-flowchart LR
-  Login["登录"] --> OV["/overview 大屏"]
-  OV --> Cards["指标卡 · 趋势 · Top"]
-  OV --> Runner["Runner 指标条"]
-  Runner --> Runs["Monitor Runs 瀑布图"]
-  OV --> Mon["/monitor/logs 运维"]
-  Mon --> Audit["审计 Audit"]
-  Mon --> Events["实时 Events"]
-  Mon --> Alerts["告警 Alerts"]
-```
-
----
-
-### 全链路日志跟踪 — 知道「卡在哪一步」
-
-多数 Agent 项目只有 stderr 或 Jaeger Span，业务同学看不懂。Aranea 用 **FlowLogger v2** 做「业务语义层」日志，与 OTel Trace、Runs 瀑布图 **同源 trace_id**，Monitor 三分流各司其职：
-
-| Monitor 模块 | 回答什么问题 | 特点 |
-|--------------|--------------|------|
-| **Audit 审计** | 谁改了什么配置？ | 管理操作留痕，支持筛选 / 详情 |
-| **Events 实时事件** | Team / Agent 现在正在发生什么？ | WebSocket 推送 `team_run_*`、告警等 |
-| **Runs（Traces）** | 这一轮对话花了多久、用了多少 Token？ | 单次运行列表 + **瀑布图** + Span 导出 |
-| **Logs → 流程日志** | **这次对话卡在哪一步？** | 中文步骤 + **红/黄/绿 severity** + 排障 hint |
-| **Logs → 进程日志** | Gateway / 插件底层是否正常？ | 进程 stderr，与业务流程分离 |
-
-#### 流程日志：人类可读 + AI 可解析
-
-一次用户请求从进入到结束，关键步骤经 **TraceEmitter** 统一打点，实时推到 Monitor「流程日志」Tab：
-
-```mermaid
-flowchart TB
-  Req["用户消息 / Channel / Cron"]
-  TE["TraceEmitter 统一点位"]
-  FL["FlowLog 流程日志<br/>中文 · severity · hint"]
-  SP["Span 瀑布图<br/>耗时结构"]
-  OT["OTLP（可选）<br/>Jaeger / Tempo"]
-  WS["Monitor WebSocket"]
-  DB["落库 · 按 trace_id 回放"]
-
-  Req --> TE
-  TE --> FL & SP & OT
-  FL --> WS & DB
-  SP --> Runs["Runs 详情 Tab"]
-```
-
-- **severity 五级**：`ok / info / warn / error / critical` — 前端映射红 / 黄 / 绿，一眼识别异常  
-- **业务中文文案**：如「正在调用语言模型」「工具执行完成」，而非 `chat.llm_call.start`  
-- **按链路聚合**：同一 `trace_id` / `run_id` 下 Chat、Team、Channel、Tool 步骤串成时间线  
-- **与 Chat 联动**：从 Runs 详情可「打开会话」深链，从 Session 可反查 FlowLog  
-- **Channel / Team 同源**：飞书入站、Team 多成员、Graph 节点执行共用同一套 `trace_id`，Monitor 按 Session 订阅即可看到全链路
-
-**流程日志示例（同一轮对话）**：
-
-```
-✓ 收到用户消息
-✓ 装配 Agent 与工具
-→ 正在调用语言模型 …
-✓ 工具 web_research 执行完成
-✓ 本轮回复已发送
-```
+| 痛点 | 解决方案 |
+|------|----------|
+| Agent 是"金鱼脑" | **五层记忆系统**：L0~L4 完整记忆架构，从短期对话到长期知识图谱全覆盖，支持多 scope 融合召回和 Saga 级联更新 |
+| 单 Agent 天花板 | **三层编排引擎**：Team 六模式编排 + Graph 图编排 + Spirit 动态编排，覆盖从简单到复杂的全场景 |
+| 编排黑盒 | **全链路可观测**：Trace + Flow Log + 根因分析 + 自动自愈 + TimeTravel 回溯，每一步都可追踪 |
+| 成本失控 | **精细计费体系**：六维定价 × 微美元精度 × 三级配额 × 预算告警 × 低效模型洞察，每分钱都算得清 |
+| 平台锁定 | **13 种 Channel 一键接入**：飞书/钉钉/企微/微信/Slack/Telegram/Discord 等，Agent 一次创建全平台可用 |
+| 无行业知识 | **内置行业体系**：三级分类 + FieldGuide + 预置 prompt 模板 + 预置团队，开箱即用 |
+| 不会进化 | **三层自动进化**：LearningLoop → Evolution → SkillEvolution，从运行数据中学习并持续优化 |
+| 孤岛效应 | **A2A 联邦协议**：基于 Google A2A 标准的跨组织 Agent 互操作，打破 Agent 孤岛 |
+| 安全失控 | **五重安全防护**：confirmation_guard + permission_guard + sensitive_mask + output_policy + cost_guard |
+| 一人难成军 | **Spirit 动态编排 + 组织架构**：一人控制 N 家虚拟公司，分行业/部门/岗位，专人专事，你当总裁 |
 
 ---
 
-### 与通用 OpenClaw 装配的差异（一览）
+## 五、核心差异化优势总结
 
-| 维度 | 典型 OpenClaw 装配 | Aranea |
-|------|-------------------|--------|
-| **Agent 组织** | 扁平 Agent 列表 | **公司 → 部门 → 职员** 三层编制 + Team 项目组 |
-| **记忆** | 文件 / 单层向量 | **L0–L4 五层** + Memory Center + 级联治理 |
-| **工具** | 按需手写注册 | **30+ 内置工具** 种子 + 目录治理 + MCP/Skill 混挂 |
-| **接入** | 常见单 IM | Web + **飞书 / 钉钉 / 企微** + Cron + A2A |
-| **工程** | 单体 app.go | **Kratos 分层** + Proto 契约 + Vue 企业后台 |
-| **观测** | 日志为主 | **`/overview` 大屏** + FlowLog 流程跟踪 + Runs 瀑布图 + Audit/Events 三分流 |
+1. **五层记忆架构**：业界最完整的 Agent 记忆系统，从会话窗口到知识图谱全覆盖，支持多 scope 融合召回和 Saga 级联更新，让 Agent 从"金鱼脑"变成"过目不忘"
 
----
+2. **三层编排引擎**：Team 六模式 + Graph 图编排 + Spirit 动态编排，覆盖从简单对话到复杂企业级任务的全场景，Graph 即 Team 统一底层引擎
 
-## 系统架构
+3. **自动进化闭环**：LearningLoop → Evolution → SkillEvolution 三层自动进化，Agent 和技能都能从运行数据中学习并持续优化，护栏机制确保进化不失控
 
-### 分层总览
+4. **全链路可观测**：Trace + Flow Log + 根因分析 + 自动自愈 + TimeTravel，从故障检测到根因分析到自动修复的完整闭环
 
-```mermaid
-flowchart TB
-  subgraph Access["接入层 — 用户从哪来"]
-    Web["Web UI<br/>Vue 3 + Quasar"]
-    IM["Channel<br/>飞书 · 钉钉 · 企微"]
-    Auto["Cron · A2A · CLI"]
-  end
+5. **精细成本管控**：六维定价 × 微美元精度 × 三级配额 × 预算告警 × 低效模型洞察，Token 消费全透明
 
-  subgraph Transport["传输层 — Kratos v2"]
-    HTTP["HTTP :8000"]
-    GRPC["gRPC :9000"]
-    WS["WebSocket /v1/ws"]
-  end
+6. **13 通道统一接入**：Agent 一次创建、全平台可用，统一抽象让 Agent 与平台解耦
 
-  subgraph Platform["平台层 — 你的业务壳"]
-    Svc["Service<br/>Chat · Agent · Team · Graph · …"]
-    Biz["Biz<br/>Usecase + 领域模型"]
-    Data["Data<br/>SQLite + Ent · pgvector"]
-  end
+7. **A2A 联邦协议**：基于 Google A2A 标准的跨组织 Agent 互操作，打破 Agent 孤岛
 
-  subgraph Runtime["运行时 — trpc-agent-go"]
-    GW["RunGateway / RunRegistry"]
-    Runner["Runner → Agent / Team / Graph"]
-    Cap["Memory · Tool · MCP · Skill · Plugin · Planner"]
-  end
+8. **内置行业体系**：三级分类 + FieldGuide + 预置 prompt + 预置团队，开箱即用的行业专业知识
 
-  subgraph Models["模型与观测"]
-    LLM["多厂商 LLM + Failover"]
-    Obs["Prometheus · OTLP · FlowLog"]
-  end
+9. **五重安全防护**：confirmation_guard + permission_guard + sensitive_mask + output_policy + cost_guard，安全与成本双重保障
 
-  Web --> HTTP & WS
-  IM --> HTTP
-  Auto --> Svc
-  HTTP & WS --> Svc
-  Svc --> Biz
-  Svc --> GW
-  Biz --> Data
-  GW --> Runner
-  Runner --> Cap
-  Runner --> LLM
-  Runner --> Obs
-  Cap --> Data
-```
-
-### 一次对话怎么跑（主链路）
-
-```mermaid
-sequenceDiagram
-  participant U as 用户 / IM / Cron
-  participant C as ChatService
-  participant R as trpc Runner
-  participant M as 模型 + 工具 + 记忆
-  participant W as WebSocket
-
-  U->>C: 发送消息
-  C->>C: RunRegistry 排队 / 并发控制
-  C->>R: 装配 Agent 并 Run
-  R->>M: LLM 推理 · Tool 调用 · Memory 读写
-  M-->>R: 事件流
-  R-->>C: text / tool / state / usage
-  C-->>W: Envelope 实时推送
-  W-->>U: 流式展示 + 工具卡片
-  C->>C: 持久化 Session / Usage
-```
-
-### 代码分层（双框架分工）
-
-Kratos 负责「怎么连进来」，trpc-agent-go 负责「怎么跑 Agent」— 互不越界。
-
-```
-api/**/*.proto          ← 唯一对外契约
-        ↓
-internal/service        ← proto ↔ biz + Runner 装配（唯一运行时桥点）
-        ↓
-internal/biz            ← 领域规则（禁止 import trpc-agent-go）
-        ↓
-internal/data           ← Ent ORM + SQLite
-        ↓
-internal/agent · team · graph · tools …  →  pkg/trpc-agent-go
-```
----
-
-## 核心能力一览
-
-| 能力域 | 你能做什么 |
-|--------|------------|
-| **Agent** | **公司→部门→职员** 三级编制 · 可视化创建 / 配置 · 提示词 · 文件注入 · 进化扫描 |
-| **Team** | 多 Agent 协作编排 · 运行测试 · 成员轨迹 · `team_summary` 结构化汇总 |
-| **Graph** | 可视化工作流 · LLM/Tool 节点 · 检查点 · HITL 人工介入 · 时间旅行 |
-| **Chat** | 流式对话 · 多模态附件 · 工具卡片 · Reasoning · Run 状态 · 待用户回复 |
-| **Channel** | IM Webhook 入站 → Agent/Team 路由 → 卡片/文本出站 · 与 Web Session 同步 |
-| **Tools & MCP** | 工具目录 · Agent 覆盖 · 确认门控 · MCP Server/Broker · OAuth |
-| **Skill & Plugin** | Skill 包导入 · 运行时挂载 · 9 内置 Plugin · Callback 链 |
-| **Memory** | **L0–L4 五层神经记忆** · Memory Center · 工作记忆工具 · L4 级联 — 见 [§五层记忆](#五层神经记忆系统--aranea-的核心差异) |
-| **Knowledge** | 文档摄取 · 分块 · Embedding · RAG 检索工具 |
-| **Monitor** | **`/overview` 用量大屏** · Audit / Events / Alerts · **FlowLog 流程日志** · Runs 瀑布图 · 告警 Webhook |
-| **Evaluation & A2A** | LLM-as-Judge 评测 · Agent 互联 · 联邦 Gateway |
+10. **一人当总裁**：Spirit 动态编排 + 组织架构模拟，一人通过精灵控制 N 家虚拟公司，分行业/部门/岗位，专人专事——助力做你想做不敢做的事
 
 ---
 
-## 适用场景
+## 六、系统架构概览
 
-- **企业内部 AI 助手** — 飞书 / 钉钉接入 + 权限可控的自托管后台
-- **多 Agent 工作流** — 调研 → 撰写 → 评审的 Team 流水线，或 Graph 确定性审批流
-- **Agent 平台底座** — 基于 Proto + Biz 分层二次开发，而非 fork 一个脚本仓库
-- **可观测的 LLM 应用** — `/overview` 投屏大盘 + FlowLog 逐步追踪 + Runs 瀑布图 + Prometheus `/metrics`
-- **运维与成本管控** — Token/费用趋势、Top 模型排行、错误率告警 Webhook，出问题从大屏下钻到步骤级日志
-
----
-
-## 技术栈
-
-| 层级 | 选型 |
-|------|------|
-| 后端 | Go + **Kratos v2**（HTTP / gRPC / WebSocket · Wire DI） |
-| Agent 运行时 | **trpc-agent-go**（Runner / Team / Graph / Memory / Tool / Event / …） |
-| 前端 | Vue 3 + Quasar + Pinia + TypeScript |
-| 存储 | SQLite（Ent ORM）· PostgreSQL + pgvector（可选） |
-| 观测 | Prometheus + OTLP + FlowLog / Runs 投影 |
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        前端 (Vue 3 + Quasar)                      │
+│  43 Store · 37+ 页面 · 45 种 Envelope 事件 · WebSocket 实时通信    │
+├─────────────────────────────────────────────────────────────────┤
+│                     传输层 (Kratos v2)                            │
+│           HTTP · gRPC · WebSocket · 中间件链 · Wire DI            │
+├─────────────────────────────────────────────────────────────────┤
+│                      Service 层 (38+ Service)                     │
+│    ChatService(核心编排器) · AgentService · TeamService · ...      │
+├─────────────────────────────────────────────────────────────────┤
+│                       Biz 层 (36+ Usecase)                        │
+│  AgentUsecase · ChatUsecase · TeamUsecase · MemoryUsecase · ...   │
+├─────────────────────────────────────────────────────────────────┤
+│                      Data 层 (60+ Repo)                           │
+│          Ent ORM + 原生 SQL · SQLite + PostgreSQL(向量)            │
+├─────────────────────────────────────────────────────────────────┤
+│                   运行时 (trpc-agent-go)                           │
+│   Runner · Agent · Session · Memory · Tool · Skill · Graph · Team  │
+├─────────────────────────────────────────────────────────────────┤
+│                     基础设施层                                     │
+│  Provider(12+) · Channel(13) · MCP · Hook · Plugin(11) · A2A      │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -422,4 +787,4 @@ cd web && npm install && npm run dev
 
 See [LICENSE](./LICENSE).
 
-
+*Aranea-Agents — 一人通过精灵控制 N 家公司，自己当发号施令的总裁。*

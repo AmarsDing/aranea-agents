@@ -97,21 +97,38 @@ session_runtime（运行时状态，Turn 内频繁变更）
 
 **选择**：按 Memory 层级拆分为 6 个独立 Repo struct
 
+> **实现备注**：最终代码中，6 个 Repo 直接放在 `internal/data/` 包（而非子目录 `internal/data/memory/`），文件名保持 `memory_shim_*.go`。所有 Repo 已从 shim 委托模式转为直接实现（Raw SQL via ReadWriteDB），`sessionmemory` 包已完全删除。
+
 ```
-internal/data/memory/
-├── l0_snapshot_repo.go      L0SnapshotRepo (4 方法)
-├── l1_working_memory_repo.go L1WorkingMemoryRepo (8 方法)
-├── l2_episode_repo.go       L2EpisodeRepo (12 方法)
-├── l3_fact_repo.go          L3FactRepo (16 方法)
-├── l4_entity_repo.go        L4EntityRepo (12 方法)
-└── cascade_repo.go          CascadeRepo (14 方法)
+internal/data/
+├── memory_shim_l0.go          l0SnapshotRepo (4 方法)
+├── memory_shim_l1.go          l1WorkingMemoryRepo (8 方法，含 L1IdleTaskReader)
+├── memory_shim_l2.go          l2EpisodeRepo (5 方法 + VectorStore recall)
+├── memory_shim_l3.go          l3FactRepo (11 方法 + VectorStore recall)
+├── memory_shim_l4.go          l4EntityRepo (9 方法)
+├── memory_shim_cascade.go     cascadeRepo (14 方法)
+├── memory_shim_l2_recall.go   l2RecallRepo (1 方法，适配 biz.SessionL2RecallStore)
+├── memory_shim_l3_recall.go   l3RecallRepo (1 方法，适配 biz.SessionL3RecallStore)
+├── memory_shim_action_log.go  actionLogRepo (1 方法，适配 biz.MemoryActionLogWriter)
+├── memory_admin_adapter.go    sessionAdminStoreAdapter (组合接口)
+├── memory_composite_adapter.go MemoryCompositeRecallAdapter (L2+L3 composite recall)
+├── memory_l3_scored_adapter.go L3ScoredRecallAdapter (scored L3 recall → biz.RecallHit)
+├── memory_maintenance_adapter.go 多个适配器：memoryConsolidationWriterAdapter / memoryFactIndexMaintainerAdapter / memoryEpisodeDecayerAdapter / memoryFactDecayerAdapter / memoryEpisodeBackfillReaderAdapter / memoryLegacyMigratorAdapter
+├── memory_debug_recall.go     memoryDebugRecallAdapter (调试用 recall) + memoryFactIndexCounterAdapter
+├── memory_episode_sync.go     memoryEpisodeIndexSync (episode 向量索引同步)
+├── memory_fact_index_sync.go  memoryFactIndexSync (fact 向量索引同步)
+├── memory_fact_reader.go      memoryFactReader (biz.MemoryFactReader)
+├── vector_searcher_adapter.go vectorSearcherAdapter (VectorStore → 本地 VectorSearcher)
+└── memory_l4.go               l4GraphRepo + l4GraphWriterAdapter (L4 图操作)
 ```
 
 **替代方案**：
 - A) 保持 Store 不变，仅增加 adapter：God Object 仍在，维护成本持续增长
 - B) 完全删除 Store，方法分散到各文件但仍是同一 struct：方法数不变，仅文件拆分
 
-**理由**：独立 struct 意味着独立生命周期、独立测试、独立事务边界。每个 Repo 持有 `*Data` 而非 `*ent.Client`，通过 `ReadWriteClient` 访问连接。Store 的 `TxManager` 接口废弃，统一使用 `Data.ExecInTx`。
+**理由**：独立 struct 意味着独立生命周期、独立测试、独立事务边界。每个 Repo 持有 `*Data` 而非 `*ent.Client`，通过 `ReadWriteDB` 访问连接。Store 的 `TxManager` 接口废弃，统一使用 `Data.ExecInTx`。
+
+> **实现备注**：L2 和 L3 Repo 额外持有 `vector.VectorStore`，recall 方法优先使用 VectorStore.Search，fallback 到本地 embedding_blob 计算。biz 接口方法参数仍使用 biz 类型（如 `biz.L0AssemblySnapshotInsert`），因为 Repo 直接实现 biz 接口，方法签名必须匹配。
 
 **biz 接口映射**：
 
@@ -119,19 +136,27 @@ internal/data/memory/
 |-----------|-------------|--------|
 | L0SnapshotRepo | L0AdminStore | 4 |
 | L1WorkingMemoryRepo | L1TaskWriter + L1FieldWriter + L1AdminReader + L1IdleTaskReader | 8 |
-| L2EpisodeRepo | L2ConsolidationStore + L2RecallStore + L2EpisodeWriter + MemoryEpisodeDecayer + MemoryEpisodeBackfillReader | 12 |
-| L3FactRepo | L3FactReader + L3FactWriter + L3ConflictStore + PIIReviewStore + MemoryFactDecayer + MemoryFactIndexMaintainer + MemoryFactIndexCounter | 16 |
-| L4EntityRepo | L4EntityStore + L4EvolutionStore + L4GraphRepo + L4DecayWriter | 12 |
+| L2EpisodeRepo | L2ConsolidationStore + L2RecallStore + L2EpisodeWriter | 5 |
+| L3FactRepo | L3FactReader + L3FactWriter + L3ConflictStore + PIIReviewStore | 11 |
+| L4EntityRepo | L4EntityStore + L4EvolutionStore | 9 |
 | CascadeRepo | CascadeProposalStore + CascadeGraphReader + CascadeFactMutator + CascadeSagaStore | 14 |
+| L4GraphRepo（独立） | L4GraphRepo（= L4EntityReader + L4EntityWriter + L4DecayWriter） | 9 |
+| L4GraphWriterAdapter（独立） | L4GraphWriter | 4 |
+
+> **实现备注**：L4 层实际拆分为 `l4EntityRepo`（L4EntityStore + L4EvolutionStore）和 `l4GraphRepo`（L4GraphRepo = L4EntityReader + L4EntityWriter + L4DecayWriter）+ `l4GraphWriterAdapter`（L4GraphWriter）。此外还有 `l2RecallRepo`（适配 biz.SessionL2RecallStore）、`l3RecallRepo`（适配 biz.SessionL3RecallStore）、`actionLogRepo`（适配 biz.MemoryActionLogWriter）等独立适配器。
 
 **迁移策略**：
 1. 创建 6 个新 Repo，每个方法委托到 Store 对应方法（shim 阶段）
 2. 逐步将 Store 内的 Raw SQL 迁移到新 Repo（Ent API 优先，Raw SQL 保留）
 3. 删除 Store，所有调用指向新 Repo
 
+> **实现备注**：迁移策略已简化——跳过了 data 层 DTO 中间层。6 个 Repo 直接实现 biz 接口（方法签名使用 biz 类型），因为 biz 接口本身就是 data 层的契约。引入 data DTO 会破坏接口契约满足，且增加不必要的转换层。
+
 ### Decision 3：ReadWriteClient 自动路由抽象
 
 **选择**：引入 `ReadWriteClient` struct，封装读写分离 + 事务感知逻辑
+
+> **实现备注**：`ReadWriteDB.ReadDB()`/`WriteDB()` 实际返回 `execer` 接口（而非 `*sql.DB`），事务中返回 `tx.Client()` 以确保 Raw SQL 参与 Ent 管理的事务。额外提供 `WriteHandle()`/`ReadHandle()` 方法返回底层 `*sql.DB`（用于 DDL 操作和 QueryRowContext 兼容）。
 
 ```go
 // internal/data/readwrite.go
@@ -141,14 +166,14 @@ type ReadWriteClient struct {
 }
 
 func (c *ReadWriteClient) Read(ctx context.Context) *ent.Client {
-    if tx := EntTxFromCtx(ctx); tx != nil {
+    if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
         return tx.Client()  // 事务中用事务 client
     }
     return c.read
 }
 
 func (c *ReadWriteClient) Write(ctx context.Context) *ent.Client {
-    if tx := EntTxFromCtx(ctx); tx != nil {
+    if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
         return tx.Client()  // 事务中用事务 client
     }
     return c.write
@@ -160,19 +185,23 @@ type ReadWriteDB struct {
     read  *sql.DB  // readDB
 }
 
-func (c *ReadWriteDB) ReadDB(ctx context.Context) *sql.DB {
-    if tx := RawTxFromCtx(ctx); tx != nil {
-        return tx  // 事务中用事务连接
+func (c *ReadWriteDB) ReadDB(ctx context.Context) execer {
+    if tx, ok := ctx.Value(rawTxKey{}).(*ent.Tx); ok {
+        return tx.Client()  // 事务中返回 Ent client（满足 execer）
     }
     return c.read
 }
 
-func (c *ReadWriteDB) WriteDB(ctx context.Context) *sql.DB {
-    if tx := RawTxFromCtx(ctx); tx != nil {
-        return tx
+func (c *ReadWriteDB) WriteDB(ctx context.Context) execer {
+    if tx, ok := ctx.Value(rawTxKey{}).(*ent.Tx); ok {
+        return tx.Client()  // 事务中返回 Ent client（满足 execer）
     }
     return c.write
 }
+
+// WriteHandle/ReadHandle 返回底层 *sql.DB（无事务感知）
+func (c *ReadWriteDB) WriteHandle() *sql.DB
+func (c *ReadWriteDB) ReadHandle() *sql.DB
 ```
 
 **替代方案**：
@@ -188,17 +217,25 @@ func (c *ReadWriteDB) WriteDB(ctx context.Context) *sql.DB {
 ```go
 // internal/data/vector/store.go
 type VectorStore interface {
-    Upsert(ctx context.Context, id string, embedding []float32, model string, dim int) error
-    Search(ctx context.Context, embedding []float32, limit int, minScore float64) ([]VectorHit, error)
+    Upsert(ctx context.Context, id string, embedding []float64, meta map[string]string) error
+    Search(ctx context.Context, embedding []float64, topK int, minScore float64) ([]VectorHit, error)
     Delete(ctx context.Context, id string) error
 }
 
-// SQLite 实现：json_set 存储 + Go 侧余弦相似度
-type SQLiteVectorStore struct { db *ReadWriteDB }
+type VectorHit struct {
+    ID    string
+    Score float64
+    Meta  map[string]string
+}
 
-// Postgres 实现：pgvector + IVFFlat/HNSW
-type PgVectorStore struct { db *sql.DB; dim int }
+// SQLite 实现：JSON 列存储 + Go 侧余弦相似度
+type SQLiteVectorStore struct { db *sql.DB; tableName string; lg loggateway.Logger }
+
+// Postgres 实现：pgvector + IVFFlat/HNSW（build tag `pgvector`）
+type PgVectorStore struct { db *sql.DB; tableName string; dim int; lg loggateway.Logger }
 ```
+
+> **实现备注**：接口使用 `[]float64`（而非 `[]float32`），与 Go 生态的 JSON 序列化习惯一致。`Upsert` 参数使用 `meta map[string]string`（而非 `model string, dim int`），便于存储任意元数据。`PgVectorStore` 通过 build tag `pgvector` 条件编译，非 pgvector 构建时 `pgvector_stub.go` 返回错误。
 
 **替代方案**：
 - A) 保持双写：一致性无保障，维护成本高
@@ -216,17 +253,19 @@ type PgVectorStore struct { db *sql.DB; dim int }
 func entErrToBizErr(err error, domain, msg string) error {
     if err == nil { return nil }
     if ent.IsNotFound(err) {
-        return kerrors.NotFound(domain, msg)
+        return kerrors.NotFound(domain, msg).WithCause(err)
     }
     if ent.IsConstraintError(err) {
-        return kerrors.Conflict(domain, msg)
+        return kerrors.Conflict(domain, msg).WithCause(err)
     }
     if ent.IsNotLoaded(err) {
-        return kerrors.BadRequest(domain, msg)
+        return kerrors.BadRequest(domain, msg).WithCause(err)
     }
-    return kerrors.InternalServer(domain, msg)
+    return kerrors.InternalServer(domain, msg).WithCause(err)
 }
 ```
+
+> **实现备注**：所有翻译均通过 `.WithCause(err)` 保留原始错误链，确保上层可以 `errors.Is` / `errors.As` 追溯到 Ent 原始错误。
 
 **理由**：当前 3 种错误翻译风格（kerrors / biz 领域错误 / fmt.Errorf）导致上层无法统一处理。统一为 kerrors 后，service 层可直接映射为 HTTP 状态码。
 
@@ -267,31 +306,49 @@ ddlMigrations = []ddlMigration{
 
 ### Decision 8：Session Metrics 缓存策略
 
-**选择**：进程内 LRU 缓存 + EventBus 事件通知
+**选择**：进程内 sync.Map + TTL 缓存 + EventBus 事件通知
 
 ```go
 // internal/data/session_metrics_cache.go
-type SessionMetricsCache struct {
-    cache *lru.Cache[string, biz.SessionMetrics]
-    repo  SessionMetricsReader
-    lg    loggateway.Logger
+type metricsCacheEntry struct {
+    metrics  *biz.SessionMetrics
+    expireAt time.Time
 }
 
-func (c *SessionMetricsCache) Get(ctx context.Context, sessionID string) (*biz.SessionMetrics, error) {
-    if v, ok := c.cache.Get(sessionID); ok {
-        return &v, nil
+type SessionMetricsCache struct {
+    reader   biz.SessionMetricsReader
+    entries  sync.Map           // map[string]*metricsCacheEntry
+    ttl      time.Duration      // 30s
+    capacity int                // 500
+    lg       loggateway.Logger
+}
+
+func (c *SessionMetricsCache) GetSessionMetrics(ctx context.Context, sessionID string) (*biz.SessionMetrics, error) {
+    if v, ok := c.entries.Load(sessionID); ok {
+        entry := v.(*metricsCacheEntry)
+        if time.Now().Before(entry.expireAt) {
+            return entry.metrics, nil
+        }
+        c.entries.Delete(sessionID)
     }
-    m, err := c.repo.GetSessionMetrics(ctx, sessionID)
+    m, err := c.reader.GetSessionMetrics(ctx, sessionID)
     if err != nil { return nil, err }
-    c.cache.Add(sessionID, *m)
+    if m != nil {
+        c.entries.Store(sessionID, &metricsCacheEntry{metrics: m, expireAt: time.Now().Add(c.ttl)})
+    }
     return m, nil
 }
 
-// Metrics 写入后失效缓存 + 发布事件
-func (c *SessionMetricsCache) Invalidate(sessionID string) {
-    c.cache.Remove(sessionID)
+func (c *SessionMetricsCache) ListSessionMetricsByIDs(ctx context.Context, ids []string) (map[string]*biz.SessionMetrics, error) {
+    // 批量查询：先从缓存取，缓存未命中的批量查 DB
 }
+
+// Metrics 写入后失效缓存
+func (c *SessionMetricsCache) Invalidate(sessionID string) { c.entries.Delete(sessionID) }
+func (c *SessionMetricsCache) InvalidateAll() { /* Range + Delete */ }
 ```
+
+> **实现备注**：使用 `sync.Map` + TTL（而非 `lru.Cache`），因为 `sync.Map` 对读多写少场景性能更优且并发安全。缓存条目包含 `expireAt` 字段实现 TTL，读取时检查过期。`ListSessionMetricsByIDs` 支持批量查询，先从缓存取，未命中的批量查 DB。
 
 **替代方案**：
 - A) 无缓存，每次 JOIN 查询：拆表后列表查询性能下降

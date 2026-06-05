@@ -11,6 +11,8 @@
 - **WHEN** 应用编译时
 - **THEN** `internal/scenario/packs/finance/`、`internal/scenario/packs/selfmedia/`、`internal/scenario/packs/softwaredev/` 目录 SHALL 包含对应行业的 .arpack 格式文件
 
+**注意**：当前 `finance/` 目录的 `manifest.yaml` 已列出完整的 37 个 agent 和 8 个 team 引用，但 `agents/` 目录下仅创建了 `technical-analyst-general.yaml` 一个文件。`selfmedia/` 和 `softwaredev/` 目录尚未创建。行业数据当前通过 `loader.LoadIndustrySpec` + `ConvertIndustrySpecToPack` 动态转换加载，不依赖 `ReadPackFromFS` 读取这些目录。
+
 ### Requirement: 启动时通过 Pack 引擎加载内置种子
 系统 SHALL 在启动时使用统一的 Pack 导入引擎加载内置 .arpack 数据，替代 RawSQL 种子。
 

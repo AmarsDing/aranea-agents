@@ -256,7 +256,7 @@ func (m *mockSessionRepo) ListByParentSessionID(_ context.Context, _ string) ([]
 	return nil, nil
 }
 
-func (m *mockSessionRepo) TransitionSessionStatus(_ context.Context, _ string, _ string, _ string) error {
+func (m *mockSessionRepo) TransitionSessionStatus(_ context.Context, _ string, _ string, _ string, _ string) error {
 	return nil
 }
 

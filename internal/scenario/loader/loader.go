@@ -238,7 +238,7 @@ func BuildBizAgentFromSpec(ctx context.Context, d Deps, spec *IndustrySpec, as *
 		PositionKey:        as.PositionKey,
 		AgentVariant:       variant,
 		VariantDescription: variantDesc,
-		Status:             "active",
+		Status:             biz.TeamStatusPending,
 		SystemPromptMode:   spm,
 		ContextWindow:      cw,
 		Roles:              roles,
@@ -305,7 +305,7 @@ func BuildBizTeamFromSpec(spec *IndustrySpec, ts *TeamSpec, keyToID map[string]s
 	return biz.Team{
 		TeamKey:            ts.Key,
 		DisplayName:        ts.DisplayName,
-		Status:             "active",
+		Status:             biz.TeamStatusPending,
 		IsDefault:          false,
 		DefinitionJSON:     defJSON,
 		CategoryIndustryID: spec.IndustryKey,

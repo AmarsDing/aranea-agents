@@ -1,6 +1,9 @@
 package biz
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type NodeTaskMeta struct {
 	RequiredRole             string `json:"required_role"`
@@ -25,11 +28,13 @@ type CompiledTeam struct {
 	GraphBuildConfig
 	RoleManifest   map[string]RoleInfo      `json:"role_manifest"`
 	OriginalPolicy *TeamFailurePolicy       `json:"original_policy,omitempty"`
+	CompiledAt     time.Time                `json:"compiled_at"`
 }
 
 type CompiledTeamRepo interface {
-	Save(ctx context.Context, teamID, graphID string, ct *CompiledTeam) error
+	Save(ctx context.Context, teamID, graphID, sessionID string, ct *CompiledTeam) error
 	Load(ctx context.Context, teamID, graphID string) (*CompiledTeam, error)
+	LoadForSession(ctx context.Context, teamID, graphID, sessionID string) (*CompiledTeam, error)
 	Delete(ctx context.Context, teamID, graphID string) error
 }
 
@@ -44,6 +49,7 @@ func NewCompiledTeam(cfg GraphBuildConfig, roleManifest map[string]RoleInfo, ori
 		GraphBuildConfig: cfg,
 		RoleManifest:     roleManifest,
 		OriginalPolicy:   originalPolicy,
+		CompiledAt:       time.Now(),
 	}
 }
 

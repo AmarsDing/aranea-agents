@@ -20,6 +20,8 @@ func NewChannelInboundReceiptRepo(d *Data) biz.ChannelInboundReceiptRepo {
 	return &channelInboundReceiptRepo{data: d}
 }
 
+// TryClaim uses Raw SQL because it relies on ON CONFLICT DO NOTHING upsert
+// which requires special handling not easily expressible via Ent's Create API.
 func (r *channelInboundReceiptRepo) TryClaim(ctx context.Context, channelID, idempotencyKey, peerID, textPreview string) (bool, error) {
 	channelID = strings.TrimSpace(channelID)
 	idempotencyKey = strings.TrimSpace(idempotencyKey)

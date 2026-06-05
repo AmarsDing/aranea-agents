@@ -154,6 +154,7 @@ type GraphExecution struct {
 	FinishedAt    *time.Time
 	execMu        sync.RWMutex // protects Status, CurrentNode, LineageID, ErrorMessage, Steps, runtime, FinishedAt
 	evicted       bool         // set by GC before removing from map; not persisted
+	ctx           context.Context // detached context preserving trace info for background DB writes
 }
 
 func (e *GraphExecution) GetStatus() string {
@@ -166,6 +167,36 @@ func (e *GraphExecution) IsEvicted() bool {
 	e.execMu.RLock()
 	defer e.execMu.RUnlock()
 	return e.evicted
+}
+
+// SetEvicted marks the execution as evicted from the in-memory cache.
+// Must be called while holding uc.mu (the usecase-level lock).
+func (e *GraphExecution) SetEvicted() {
+	e.execMu.Lock()
+	e.evicted = true
+	e.execMu.Unlock()
+}
+
+// SnapshotForPersist returns a shallow copy of the execution safe for
+// out-of-lock DB writes. Caller must hold execMu (or RLock) while calling.
+func (e *GraphExecution) SnapshotForPersist() *GraphExecution {
+	snap := &GraphExecution{
+		ID:           e.ID,
+		GraphID:      e.GraphID,
+		SessionID:    e.SessionID,
+		Status:       e.Status,
+		CurrentNode:  e.CurrentNode,
+		LineageID:    e.LineageID,
+		ErrorMessage: e.ErrorMessage,
+		StartedAt:    e.StartedAt,
+		FinishedAt:   e.FinishedAt,
+	}
+	if e.Steps != nil {
+		snap.Steps = make([]GraphStepSnapshot, len(e.Steps))
+		copy(snap.Steps, e.Steps)
+	}
+	snap.InterruptNode = e.InterruptNode
+	return snap
 }
 
 func (e *GraphExecution) IsInterrupted() bool {
@@ -285,7 +316,7 @@ func ShouldCreateTeamGraphTaskNode(node *NodeDef) bool {
 
 const gcInterval = 5 * time.Minute
 const executionMaxAge = 30 * time.Minute
-const maxExecutions = 500
+const maxExecutions = 500 // per-node execution cache limit; estimated at ~1KB per execution, ~500KB per node
 
 func (uc *GraphUsecase) gcLoop() {
 	ticker := time.NewTicker(gcInterval)
@@ -304,6 +335,7 @@ func (uc *GraphUsecase) gc() {
 			continue
 		}
 		if exec.FinishedAt != nil && now.Sub(*exec.FinishedAt) > executionMaxAge {
+			exec.SetEvicted()
 			delete(uc.executions, id)
 			delete(uc.teamBuildConfigs, id)
 		} else if exec.FinishedAt == nil && now.Sub(exec.StartedAt) > executionMaxAge {
@@ -316,6 +348,7 @@ func (uc *GraphUsecase) gc() {
 			exec.ErrorMessage = "execution expired: no activity within timeout"
 			nowCopy := now
 			exec.FinishedAt = &nowCopy
+			exec.SetEvicted()
 			expired = append(expired, exec)
 			delete(uc.executions, id)
 			delete(uc.teamBuildConfigs, id)
@@ -325,7 +358,11 @@ func (uc *GraphUsecase) gc() {
 
 	// Persist expired executions to repo before discarding from memory.
 	for _, exec := range expired {
-		if err := uc.runRepo.UpdateRun(context.Background(), exec); err != nil {
+		persistCtx := exec.ctx
+		if persistCtx == nil {
+			persistCtx = context.Background()
+		}
+		if err := uc.runRepo.UpdateRun(persistCtx, exec); err != nil {
 			uc.lg.Error("gc expired execution persist failed", loggateway.StepID("graph.gc_expired_persist"), loggateway.Str("run_id", exec.ID), loggateway.Err(err))
 		}
 	}

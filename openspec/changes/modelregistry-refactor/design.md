@@ -1,7 +1,7 @@
 # Model Registry Refactor Design
 
 > Date: 2026-05-30
-> Status: Draft
+> Status: Implemented
 > Scope: `internal/modelcatalog/` → `internal/modelregistry/` + trpc-agent-go integration
 
 ---
@@ -159,11 +159,17 @@ type PhaseContext struct {
     Ctx        context.Context
     Store      *Store
     Backend    ApplyBackend
+    Reader     ApplyReader
+    Writer     ApplyWriter
+    Migrator   MigrationWriter
     Directory  Directory       // Populated after FetchPhase
     Policy     Policy
     Checkpoint *MigrationCheckpoint
+    Lg         loggateway.Logger
 }
 ```
+
+> **实现偏差说明**：相比原始设计，PhaseContext 增加了 `Reader`、`Writer`、`Migrator` 三个细分接口字段和 `Lg` 日志字段。这是因为 ApplyBackend 被拆分为 ApplyReader/ApplyWriter/MigrationWriter 三个接口，Phase 实现可以按需依赖最小接口。`Lg` 字段用于各 Phase 内部的结构化日志输出。
 
 ### 3.3 Directory Type (renamed from Catalog)
 
@@ -189,7 +195,7 @@ func (p *FetchPhase) Name() string         { return "fetch" }
 func (p *FetchPhase) Timeout() time.Duration { return 120 * time.Second }
 
 func (p *FetchPhase) Run(pc *PhaseContext) PhaseResult {
-    syncer := NewSyncer(pc.Store)
+    syncer := NewSyncer(pc.Store, pc.Lg)
     out, err := syncer.Sync(pc.Ctx, SyncInput{})
     if err != nil {
         return PhaseResult{PhaseName: "fetch", Status: PhaseFailed, Errors: []string{err.Error()}}
@@ -212,7 +218,11 @@ func (p *FetchPhase) Run(pc *PhaseContext) PhaseResult {
 
 ```go
 type MigratePhase struct {
-    backend ApplyBackend
+    backend MigrationWriter
+}
+
+func NewMigratePhase(backend MigrationWriter) *MigratePhase {
+    return &MigratePhase{backend: backend}
 }
 
 func (p *MigratePhase) Name() string         { return "migrate" }
@@ -302,20 +312,35 @@ func (p *LogoPhase) Run(pc *PhaseContext) PhaseResult {
 }
 ```
 
-### 3.5 ApplyBackend — New Batch Interfaces
+### 3.5 ApplyBackend — Split Interface Design
+
+> **实现偏差说明**：原始设计将所有方法放在单一 `ApplyBackend` 接口中。实际实现将接口拆分为三个最小接口 + 一个组合接口，遵循接口隔离原则（ISP）：
 
 ```go
-type ApplyBackend interface {
-    // Existing (kept for manual API compatibility)
+// 读操作接口
+type ApplyReader interface {
     ListProviderModels(ctx context.Context) ([]ApplyRow, error)
+    CountProviderBindings(ctx context.Context, provider string) (ApplyMigrationStats, error)
+}
+
+// 写操作接口
+type ApplyWriter interface {
     SaveProviderModel(ctx context.Context, row ApplyRow) error
     UpsertModelPricing(ctx context.Context, provider, model string, micro MicroPricing, source string) error
-    CountProviderBindings(ctx context.Context, provider string) (ApplyMigrationStats, error)
-    MigrateProviderBindings(ctx context.Context, from, to string) (ApplyMigrationStats, error)
-
-    // New batch interfaces
-    BatchMigrateProviderBindings(ctx context.Context, rules []ProviderMigrationRule, skipRules []string) BatchMigrationResult
     BatchApply(ctx context.Context, patches []ApplyRow, pricing []PricingUpsert) BatchApplyResult
+}
+
+// 迁移操作接口
+type MigrationWriter interface {
+    MigrateProviderBindings(ctx context.Context, from, to string) (ApplyMigrationStats, error)
+    BatchMigrateProviderBindings(ctx context.Context, rules []ProviderMigrationRule, skipRules []string) BatchMigrationResult
+}
+
+// 组合接口（data 层实现）
+type ApplyBackend interface {
+    ApplyReader
+    ApplyWriter
+    MigrationWriter
 }
 
 type BatchMigrationResult struct {
@@ -338,14 +363,25 @@ type BatchApplyResult struct {
 
 ### 4.1 ModelRegistrySyncAgent
 
+> **实现偏差说明**：相比原始设计，实际实现有以下差异：
+> 1. 增加 `lg loggateway.Logger` 字段，通过构造注入满足红线 #16
+> 2. 增加 `runner trpcrunner.Runner` 字段，用于 `RunSync()` 方法
+> 3. Phase 构建委托给 `internal/tools/modelsync/registry.go` 的 `BuildPhases` 函数
+> 4. Tool 注册委托给 `internal/tools/modelsync/registry.go` 的 `RegisterAll` 函数
+> 5. Logo Phase 在主 Phase 循环之后独立执行（仅当 Directory 非空时）
+> 6. 事件发射使用 `trpcagent.EmitEvent(ctx, inv, ch, evt)` 而非直接操作 channel
+
 ```go
 package agent
 
 import (
-    trpcagent "aranea-agents/pkg/trpc-agent-go/agent"
-    trpcevent "aranea-agents/pkg/trpc-agent-go/event"
-    trpctool "aranea-agents/pkg/trpc-agent-go/tool"
+    trpcagent "trpc.group/trpc-go/trpc-agent-go/agent"
+    trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
+    trpctool "trpc.group/trpc-go/trpc-agent-go/tool"
+    trpcrunner "trpc.group/trpc-go/trpc-agent-go/runner"
     "aranea-agents/internal/modelregistry"
+    "aranea-agents/internal/tools/modelsync"
+    "aranea-agents/pkg/loggateway"
     "aranea-agents/pkg/safego"
 )
 
@@ -355,31 +391,33 @@ type ModelRegistrySyncAgent struct {
     tools     []trpctool.Tool
     storeProv modelregistry.StoreProvider
     backend   modelregistry.ApplyBackend
+    lg        loggateway.Logger
+    runner    trpcrunner.Runner
 }
 
 func BuildModelRegistrySyncAgent(
     storeProv modelregistry.StoreProvider,
     backend modelregistry.ApplyBackend,
+    lg loggateway.Logger,
 ) (*ModelRegistrySyncAgent, error) {
-    fetchPhase := modelregistry.NewFetchPhase()
-    migratePhase := modelregistry.NewMigratePhase(backend)
-    applyPhase := modelregistry.NewApplyPhase(backend)
-    logoPhase := modelregistry.NewLogoPhase()
+    phases := modelsync.BuildPhases(backend, lg)
+    tools := modelsync.RegisterAll(modelsync.Deps{
+        Phases:        phases,
+        StoreProvider: storeProv,
+        Backend:       backend,
+    })
 
-    tools := []trpctool.Tool{
-        &fetchDirectoryTool{phase: fetchPhase},
-        &migrateProvidersTool{phase: migratePhase},
-        &applyDirectoryTool{phase: applyPhase},
-        &syncProviderLogosTool{phase: logoPhase},
-    }
-
-    return &ModelRegistrySyncAgent{
-        phases:    []modelregistry.Phase{fetchPhase, migratePhase, applyPhase},
-        logoPhase: logoPhase,
+    ag := &ModelRegistrySyncAgent{
+        phases:    phases.List(),
+        logoPhase: phases.LogoPhase(),
         tools:     tools,
         storeProv: storeProv,
         backend:   backend,
-    }, nil
+        lg:        lg,
+    }
+
+    ag.runner = trpcrunner.NewRunner("model-registry-sync", ag)
+    return ag, nil
 }
 
 func (a *ModelRegistrySyncAgent) Run(ctx context.Context, inv *trpcagent.Invocation) (<-chan *trpcevent.Event, error) {
@@ -475,59 +513,102 @@ func emitCompletion(ch chan<- *trpcevent.Event) {
 
 ---
 
-## 5. Tool Layer Design (internal/tools/)
+## 5. Tool Layer Design (internal/tools/modelsync/)
 
-### 5.1 Tool Implementations
+> **实现偏差说明**：原始设计将 Tool 放在 `internal/tools/model_registry_sync.go` 中，使用自定义 `CallableTool` 实现。实际实现改为独立子包 `internal/tools/modelsync/`，使用 `trpcfunction.FunctionTool` 泛型类型工具，提供类型安全的输入输出结构体。
+
+### 5.1 Package Structure
+
+```
+internal/tools/modelsync/
+├── registry.go    # Deps + Phases 结构体 + BuildPhases + RegisterAll
+├── tools.go       # 4 个 FunctionTool 实现
+└── registry_test.go
+```
+
+### 5.2 Phases Registry
 
 ```go
-package tools
+package modelsync
 
-type fetchDirectoryTool struct {
-    phase *modelregistry.FetchPhase
+type Deps struct {
+    Phases        *Phases
+    StoreProvider modelregistry.StoreProvider
+    Backend       modelregistry.ApplyBackend
 }
 
-func (t *fetchDirectoryTool) Declaration() *trpctool.Declaration {
-    return &trpctool.Declaration{
-        Name:        "fetch_model_directory",
-        Description: "Fetch the latest model directory from models.dev",
-        Parameters:  &trpctool.DeclarationParameters{Type: "object"},
+type Phases struct {
+    fetchPhase   modelregistry.Phase
+    migratePhase modelregistry.Phase
+    applyPhase   modelregistry.Phase
+    logoPhase    modelregistry.Phase
+}
+
+func BuildPhases(backend modelregistry.ApplyBackend, lg loggateway.Logger) *Phases {
+    return &Phases{
+        fetchPhase:   modelregistry.NewFetchPhase(),
+        migratePhase: modelregistry.NewMigratePhase(backend),
+        applyPhase:   modelregistry.NewApplyPhase(backend, backend, lg),
+        logoPhase:    modelregistry.NewLogoPhase(),
     }
 }
 
-func (t *fetchDirectoryTool) Call(ctx context.Context, jsonArgs []byte) (any, error) {
-    pc := modelregistry.PhaseContextFromCtx(ctx)
-    result := t.phase.Run(pc)
-    if result.Status == modelregistry.PhaseFailed {
-        return nil, fmt.Errorf("fetch failed: %v", result.Errors)
+func (p *Phases) List() []modelregistry.Phase {
+    return []modelregistry.Phase{p.fetchPhase, p.migratePhase, p.applyPhase}
+}
+
+func (p *Phases) LogoPhase() modelregistry.Phase {
+    return p.logoPhase
+}
+
+func RegisterAll(deps Deps) []trpctool.Tool {
+    return []trpctool.Tool{
+        newFetchDirectoryTool(deps),
+        newMigrateProvidersTool(deps),
+        newApplyDirectoryTool(deps),
+        newSyncProviderLogosTool(deps),
     }
-    return result, nil
 }
 ```
 
-Similarly: `migrateProvidersTool`, `applyDirectoryTool`, `syncProviderLogosTool`.
+### 5.3 Tool Implementations (FunctionTool Pattern)
 
-### 5.2 Registry Integration
+每个 Tool 使用 `trpcfunction.FunctionTool[I, O]` 泛型，提供类型安全的输入输出：
 
 ```go
-func RegisterModelRegistryTools(r *Registry, backend modelregistry.ApplyBackend) {
-    r.Register(ToolRegistration{
-        Key:  "fetch_model_directory",
-        Tool: &fetchDirectoryTool{phase: modelregistry.NewFetchPhase()},
-    })
-    r.Register(ToolRegistration{
-        Key:  "migrate_provider_bindings",
-        Tool: &migrateProvidersTool{phase: modelregistry.NewMigratePhase(backend)},
-    })
-    r.Register(ToolRegistration{
-        Key:  "apply_model_directory",
-        Tool: &applyDirectoryTool{phase: modelregistry.NewApplyPhase(backend)},
-    })
-    r.Register(ToolRegistration{
-        Key:  "sync_provider_logos",
-        Tool: &syncProviderLogosTool{phase: modelregistry.NewLogoPhase()},
-    })
+// 示例：FetchDirectoryTool
+func newFetchDirectoryTool(deps Deps) *trpcfunction.FunctionTool[noArgs, fetchDirectoryOutput] {
+    return trpcfunction.NewFunctionTool(
+        func(ctx context.Context, _ noArgs) (fetchDirectoryOutput, error) {
+            store, err := deps.StoreProvider.Store(ctx)
+            if err != nil {
+                return fetchDirectoryOutput{}, fmt.Errorf("store error: %w", err)
+            }
+            policy, policyErr := store.LoadPolicy()
+            if policyErr != nil {
+                return fetchDirectoryOutput{}, fmt.Errorf("load policy: %w", policyErr)
+            }
+            pc := &modelregistry.PhaseContext{
+                Ctx:     ctx,
+                Store:   store,
+                Backend: deps.Backend,
+                Reader:  deps.Backend,
+                Writer:  deps.Backend,
+                Policy:  policy,
+            }
+            result := deps.Phases.fetchPhase.Run(pc)
+            if result.Status == modelregistry.PhaseFailed {
+                return fetchDirectoryOutput{Status: "failed", Errors: result.Errors}, nil
+            }
+            return fetchDirectoryOutput{Status: "succeeded", Message: "model directory fetched"}, nil
+        },
+        trpcfunction.WithName("fetch_model_directory"),
+        trpcfunction.WithDescription("Fetch the latest model directory from models.dev"),
+    )
 }
 ```
+
+同样模式：`newMigrateProvidersTool`、`newApplyDirectoryTool`、`newSyncProviderLogosTool`。
 
 ---
 
@@ -697,26 +778,51 @@ func provideModelCatalogRunner(...) *modelcatalog.Runner
 
 ```go
 // cmd/admin/wire.go — added
-func provideModelRegistrySyncAgent(
-    sys biz.SystemSettingRepo,
-    llm biz.LlmProviderModelRepo,
-    d *data.Data,
-) *agent.ModelRegistrySyncAgent {
-    storeProv := biz.NewModelRegistryStoreProvider(biz.NewSystemSettingRootAdapter(sys))
-    backend := data.NewModelRegistryApplyBackend(d, llm)
-    ag, _ := agent.BuildModelRegistrySyncAgent(storeProv, backend)
-    return ag
+func provideModelRegistryApplyBackend(llm biz.LlmProviderModelRepo, d *data.Data) modelregistry.ApplyBackend {
+    return data.NewModelRegistryApplyBackend(d, llm)
+}
+
+func provideModelRegistrySyncAgent(sys biz.SystemSettingRepo, backend modelregistry.ApplyBackend, lg loggateway.Logger) (*agent.ModelRegistrySyncAgent, error) {
+    storeProv := biz.NewModelRegistryStoreProvider(biz.NewSystemSettingRootAdapter(sys), lg)
+    return agent.BuildModelRegistrySyncAgent(storeProv, backend, lg)
+}
+
+func provideModelRegistryUsecase(sys biz.SystemSettingRepo, backend modelregistry.ApplyBackend, lg loggateway.Logger) *biz.ModelRegistryUsecase {
+    uc := biz.NewModelRegistryUsecase(biz.NewSystemSettingRootAdapter(sys), backend, lg)
+    return uc
 }
 ```
 
-### 9.3 Agent Registry
+### 9.3 CronRunner Integration
 
-The `ModelRegistrySyncAgent` is registered in the Runner's agent lookup table:
+CronRunner 通过 `CronRegistrySyncAgent` 接口与 `ModelRegistrySyncAgent` 集成：
 
 ```go
-// In ChatOrchestrator or RunnerManager
-lookupAgents := map[string]trpcagent.Agent{
-    "model-registry-sync": catalogSyncAgent,
+// Wire 绑定
+wire.Bind(new(cronrunner.CronRegistrySyncAgent), new(*agent.ModelRegistrySyncAgent))
+
+// CronRunner 路由
+case "model_registry_sync":
+    if r.deps.RegistrySyncAgent == nil {
+        return cronDispatchResult{}, validationErr("model registry sync agent not available")
+    }
+    if err := r.deps.RegistrySyncAgent.RunSync(ctx); err != nil {
+        return cronDispatchResult{}, err
+    }
+    return cronDispatchResult{}, nil
+```
+
+`ModelRegistrySyncAgent.RunSync()` 方法通过 `trpcrunner.Runner` 执行同步：
+
+```go
+func (a *ModelRegistrySyncAgent) RunSync(ctx context.Context) error {
+    ch, err := a.runner.Run(ctx, "system", "model-registry-sync", trpcmodel.NewUserMessage("run model registry sync"))
+    if err != nil {
+        return err
+    }
+    for range ch {
+    }
+    return nil
 }
 ```
 
@@ -728,47 +834,75 @@ lookupAgents := map[string]trpcagent.Agent{
 
 | File | Description |
 |------|-------------|
-| `internal/modelregistry/phase.go` | Phase interface, PhaseResult, PhaseContext, PhaseStatus |
+| `internal/modelregistry/phase.go` | Phase interface, PhaseResult, PhaseContext, PhaseStatus, WithPhaseCtx/PhaseFromCtx |
 | `internal/modelregistry/fetch_phase.go` | FetchPhase implementation |
 | `internal/modelregistry/migrate_phase.go` | MigratePhase + Checkpoint |
 | `internal/modelregistry/apply_phase.go` | ApplyPhase + BatchApply |
 | `internal/modelregistry/logo_phase.go` | LogoPhase |
+| `internal/modelregistry/directory.go` | Directory type (renamed from Catalog) + Provider/Model/Meta/Policy |
+| `internal/modelregistry/store.go` | Disk Store (adapted from modelcatalog) |
+| `internal/modelregistry/store_provider.go` | StoreProvider interface |
+| `internal/modelregistry/sync.go` | Syncer (without SyncProviderLogos) |
+| `internal/modelregistry/fetch.go` | FetchDirectory + ParseDirectory |
+| `internal/modelregistry/fetch_retry.go` | HTTP retry logic |
+| `internal/modelregistry/apply.go` | ApplyReader/ApplyWriter/MigrationWriter/ApplyBackend + Applier + BatchApply/BatchMigrate types |
+| `internal/modelregistry/migrate_bindings.go` | RunProviderMigrations |
+| `internal/modelregistry/migrate.go` | PreviewMigration |
+| `internal/modelregistry/migration_map.go` | ProviderMigrationRule + ListProviderMigrationRules |
+| `internal/modelregistry/migration_checkpoint.go` | MigrationCheckpoint (with CompletedRules) |
+| `internal/modelregistry/logos.go` | SyncProviderLogos + LogoPhase |
+| `internal/modelregistry/overlay.go` | Runtime overlay + list/search helpers |
+| `internal/modelregistry/search.go` | SearchDirectoryBlocks |
+| `internal/modelregistry/urlguard.go` | SSRF protection |
+| `internal/modelregistry/pricing.go` | MicroPricing conversion |
+| `internal/modelregistry/policy_validate.go` | Policy normalization |
+| `internal/modelregistry/config_merge.go` | Config/Metadata merge |
+| `internal/modelregistry/chips.go` | CapabilityChips |
+| `internal/modelregistry/backfill.go` | Cost backfill |
+| `internal/modelregistry/logs.go` | JSONL sync logs |
+| `internal/modelregistry/runtime_overlay.json` | Runtime overlay data |
 | `internal/agent/model_registry_sync.go` | ModelRegistrySyncAgent (bridge) |
-| `internal/tools/model_registry_sync.go` | 4 CallableTools (bridge) |
+| `internal/agent/model_registry_sync_test.go` | Agent 测试 |
+| `internal/tools/modelsync/registry.go` | Deps + Phases 结构体 + BuildPhases + RegisterAll |
+| `internal/tools/modelsync/tools.go` | 4 个 FunctionTool 实现 |
+| `internal/tools/modelsync/registry_test.go` | Tools 测试 |
+| `internal/data/model_registry_apply.go` | BatchApply + BatchMigrate 数据层实现 |
+| `internal/data/model_registry_apply_test.go` | 数据层测试 |
+| `internal/biz/model_registry.go` | ModelRegistryUsecase + SeedModelRegistryCronTask |
+| `internal/biz/model_registry_test.go` | Biz 层测试 |
 
 ### Modified Files
 
 | File | Change |
 |------|--------|
-| `internal/modelcatalog/` → `internal/modelregistry/` | Package rename + all type renames |
-| `internal/modelregistry/sync.go` | Sync() removes SyncProviderLogos call |
-| `internal/modelregistry/apply.go` | ApplyWithMigration split, BatchApply interface |
-| `internal/modelregistry/migrate_bindings.go` | Adapt to Phase interface |
-| `internal/modelregistry/logos.go` | LogoPhase wrapper |
-| `internal/modelregistry/catalog.go` → `directory.go` | Catalog → Directory rename |
-| `internal/data/model_catalog_apply.go` → `model_registry_apply.go` | BatchApply + BatchMigrate implementations |
-| `internal/biz/model_catalog.go` → `model_registry.go` | Adapt to new architecture |
-| `internal/provider/catalog.go` | CatalogConfig → ProviderConfig rename |
-| `internal/runtime/deps.go` | Catalog → TurnDeps rename |
-| `internal/session/context_update.go` | ModelConfigCatalog → ModelConfigResolver rename |
-| `internal/cronrunner/runner.go` | Support model-registry-sync target routing |
-| `cmd/admin/wire.go` | Wire injection changes |
-| `cmd/admin/main.go` | Remove ModelCatalogRunner startup, add CronTask seed |
+| `internal/service/model_catalog.go` | imports 从 modelcatalog → modelregistry，使用 biz.ModelRegistryUsecase |
+| `internal/biz/llm_provider_model.go` | imports 从 modelcatalog → modelregistry |
+| `internal/biz/llm_provider_model_pricing_test.go` | imports 从 modelcatalog → modelregistry |
+| `internal/biz/usage/usage.go` | imports 从 modelcatalog → modelregistry |
+| `internal/data/usage_write.go` | modelcatalog.MigrateProviderCode → modelregistry.MigrateProviderCode |
+| `internal/cronrunner/runner.go` | 添加 model_registry_sync target 路由 + CronRegistrySyncAgent 接口 |
+| `internal/data/builtin_tools_seed.go` | 添加 model_registry_sync 工具集种子 |
+| `internal/tools/toolset.go` | 添加 model_registry_sync 工具集注册 |
+| `cmd/admin/wire.go` | 替换 provideModelCatalogRunner → provideModelRegistrySyncAgent + provideModelRegistryApplyBackend |
+| `cmd/admin/main.go` | 替换 ModelCatalogRunner 启动 → ModelRegistrySyncAgent + SeedModelRegistryCronTask |
 
 ### Deleted Files
 
 | File | Reason |
 |------|--------|
-| `internal/modelregistry/runner.go` | Replaced by CronRunner + ModelRegistrySyncAgent |
+| `internal/modelcatalog/` (entire directory) | Replaced by `internal/modelregistry/` |
+| `internal/data/model_catalog_apply.go` | Replaced by `model_registry_apply.go` |
+| `internal/biz/model_catalog.go` | Replaced by `model_registry.go` |
 
 ---
 
 ## 11. Red Line Fixes
 
-| # | Violation | Current | Fix |
-|---|-----------|---------|-----|
-| 9 | Bare goroutine | `go r.loop(ctx)` | `safego.Go(ctx, "modelregistry.sync_agent", ...)` |
-| 10 | log.Printf | `r.logger.Printf(...)` | Events flow through EventBus → FlowLog automatically |
+| # | Violation | Current | Fix | Status |
+|---|-----------|---------|-----|--------|
+| 9 | Bare goroutine | `go r.loop(ctx)` | `safego.Go(ctx, "modelregistry.sync_agent", ...)` | ✅ Fixed |
+| 10 | log.Printf | `r.logger.Printf(...)` | Events flow through EventBus → FlowLog automatically; 内部日志使用 `loggateway.Logger` | ✅ Fixed |
+| 16 | log/slog | N/A | 统一使用 `loggateway.Logger`（通过构造注入） | ✅ Fixed |
 
 ---
 
@@ -786,7 +920,7 @@ lookupAgents := map[string]trpcagent.Agent{
 
 ## 13. Migration Strategy
 
-### Phase 1: Package Rename + Domain Refactor
+### Phase 1: Package Rename + Domain Refactor ✅
 
 1. Rename `internal/modelcatalog/` → `internal/modelregistry/`
 2. Rename `Catalog` → `Directory`, `CatalogConfig` → `ProviderConfig`, etc.
@@ -795,20 +929,21 @@ lookupAgents := map[string]trpcagent.Agent{
 5. Add Checkpoint for migration
 6. All existing tests must pass
 
-### Phase 2: Bridge Layer
+### Phase 2: Bridge Layer ✅
 
 1. Add `internal/agent/model_registry_sync.go` (ModelRegistrySyncAgent)
-2. Add `internal/tools/model_registry_sync.go` (4 CallableTools)
+2. Add `internal/tools/modelsync/` (4 FunctionTools + Phases Registry)
 3. Wire injection
 
-### Phase 3: CronRunner Integration
+### Phase 3: CronRunner Integration ✅
 
-1. Add system CronTask seed
-2. Extend CronRunner routing for model-registry-sync target
-3. Remove standalone ModelCatalogRunner
-4. End-to-end test
+1. Add system CronTask seed (`SeedModelRegistryCronTask`)
+2. Extend CronRunner routing for model_registry_sync target
+3. Add `CronRegistrySyncAgent` interface + `RunSync()` method
+4. Remove standalone ModelCatalogRunner
+5. End-to-end test
 
-### Phase 4: Naming Cleanup (Separate Task)
+### Phase 4: Naming Cleanup (Separate Task) ⬜
 
 1. `runtime.Catalog` → `TurnDeps`
 2. `provider.CatalogConfig` → `ProviderConfig`

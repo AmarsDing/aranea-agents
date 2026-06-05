@@ -7,7 +7,6 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/data/ent"
-	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/pkg/loggateway"
 
 	"entgo.io/ent/dialect"
@@ -40,8 +39,8 @@ func (m *mockFactVectorRepo) UpsertFactVector(context.Context, string, string, s
 func TestMemoryFactIndexSync_DualWrite(t *testing.T) {
 	repo := &mockFactVectorRepo{}
 	vec := biz.NewMemoryUsecase(repo, mockFactEmbedder{})
-	client, store := openFactEmbedTestStore(t)
-	sync := NewMemoryFactIndexSync(vec, store, loggateway.Global())
+	client, d := openFactEmbedTestData(t)
+	sync := NewMemoryFactIndexSync(vec, d, loggateway.NewNoop())
 	if err := sync.SyncFactIndex(context.Background(), "agent-1", "u1", "fact-1", "User prefers dark mode"); err != nil {
 		t.Fatal(err)
 	}
@@ -62,12 +61,12 @@ func TestMemoryFactIndexSync_DualWrite(t *testing.T) {
 	if err := rows.Scan(&status, &blobLen); err != nil {
 		t.Fatal(err)
 	}
-	if status != "ready" || blobLen != 16 {
-		t.Fatalf("expected ready blob len 16, got status=%q len=%d", status, blobLen)
+	if status != "fresh" || blobLen != 16 {
+		t.Fatalf("expected fresh blob len 16, got status=%q len=%d", status, blobLen)
 	}
 }
 
-func openFactEmbedTestStore(t *testing.T) (*ent.Client, *sessionmemory.Store) {
+func openFactEmbedTestData(t *testing.T) (*ent.Client, *Data) {
 	t.Helper()
 	db, err := sql.Open("sqlite", "file:"+t.Name()+"?mode=memory&cache=shared")
 	if err != nil {
@@ -92,7 +91,7 @@ func openFactEmbedTestStore(t *testing.T) (*ent.Client, *sessionmemory.Store) {
  pii_flag INTEGER NOT NULL DEFAULT 0, redacted_statement TEXT NOT NULL DEFAULT '',
  ttl_days INTEGER NOT NULL DEFAULT 0, decay_factor REAL NOT NULL DEFAULT 0.98, next_decay_at TEXT NOT NULL DEFAULT '',
  last_used_at TEXT NOT NULL DEFAULT '', expires_at TEXT NOT NULL DEFAULT '',
- metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+ metadata_json TEXT NOT NULL DEFAULT '{}', quality_score REAL NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
  archived_at TEXT NOT NULL DEFAULT '', deleted_at TEXT NOT NULL DEFAULT '',
  UNIQUE(scope_type, scope_id, fingerprint))`); err != nil {
 		t.Fatal(err)
@@ -102,5 +101,7 @@ INSERT INTO memory_facts (id, scope_type, scope_id, agent_id, user_id, statement
 VALUES ('fact-1', 'agent', 'agent-1', 'agent-1', 'u1', 'User prefers dark mode', 'user prefers dark mode', 'fp1', 'active', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
-	return client, sessionmemory.NewStore(client, loggateway.NewNoop())
+	d := &Data{}
+	d.SetEntClientForTest(client, db, loggateway.NewNoop())
+	return client, d
 }

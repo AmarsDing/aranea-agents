@@ -14,7 +14,7 @@ import (
 	"aranea-agents/internal/data/ent"
 	"aranea-agents/internal/data/ent/migrate"
 	"aranea-agents/internal/data/pgvector"
-	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/internal/data/vector"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -59,7 +59,6 @@ var ProviderSet = wire.NewSet(
 	NewUsageRepo,
 	NewMonitorRepo,
 	NewSystemSettingRepo,
-	NewSessionMemoryStore,
 	NewEvolutionMetricsRepo,
 	NewEvolutionSuggestionRepo,
 	NewGraphRepo,
@@ -96,9 +95,18 @@ var ProviderSet = wire.NewSet(
 	NewCompiledTeamRepo,
 	NewSkillProposalRepo,
 	NewSkillInvocationStatsRepo,
+	NewSkillHealthRepo,
 	NewSessionMetricsRepo,
 	NewSessionMetricsReader,
 	NewSessionMetricsCache,
+	NewSessionRuntimeRepo,
+	NewSessionRuntimeReader,
+	NewSpiritTransactor,
+	NewTaskPlanRepo,
+	NewOrchestrationRepo,
+	NewAllocationPlanRepo,
+	NewAgentPerformanceRepo,
+	NewSelfCheckReportRepo,
 )
 
 // Data: Ent/SQLite holds app CRUD; Postgres (optional) holds pgvector agent memory only.
@@ -112,6 +120,7 @@ type Data struct {
 	rw          *ReadWriteClient
 	rwDB        *ReadWriteDB
 	vectorDim   int
+	vectorStore vector.VectorStore
 	readiness   *ReadinessGate
 	lazySeeders map[string]*LazySeeder
 	p1Cancel    context.CancelFunc
@@ -125,6 +134,17 @@ func (d *Data) Ent() *ent.Client {
 		return nil
 	}
 	return d.entClient
+}
+
+// SetEntClientForTest sets up a Data instance for testing with the given client and DB.
+func (d *Data) SetEntClientForTest(client *ent.Client, rawDB *sql.DB, lg loggateway.Logger) {
+	d.entClient = client
+	d.readClient = client
+	d.rawDB = rawDB
+	d.readDB = rawDB
+	d.lg = lg
+	d.rw = NewReadWriteClient(client, client)
+	d.rwDB = NewReadWriteDB(rawDB, rawDB)
 }
 
 // RawDB returns the write *sql.DB handle.
@@ -202,6 +222,14 @@ func (d *Data) VectorDim() int {
 	return d.vectorDim
 }
 
+// VectorStore returns the configured VectorStore implementation.
+func (d *Data) VectorStore() vector.VectorStore {
+	if d == nil {
+		return nil
+	}
+	return d.vectorStore
+}
+
 func (d *Data) Readiness() *ReadinessGate {
 	if d == nil {
 		return nil
@@ -239,11 +267,6 @@ func (d *Data) SeedLazy(ctx context.Context, name string) error {
 		return nil
 	}
 	return seeder.SeedIfNeeded(ctx)
-}
-
-// SetEntClientForTest sets the ent client for test purposes only.
-func (d *Data) SetEntClientForTest(client *ent.Client) {
-	d.entClient = client
 }
 
 const defaultVectorDim = 1536
@@ -376,9 +399,30 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 	}
 
 	vdim := vectorDimFromConf(c)
+
+	// Initialize VectorStore based on config and feature flag.
+	var vs vector.VectorStore
+	if pg != nil && conf.DAOVectorPgVector() {
+		pgvs, vsErr := vector.NewPgVectorStore(pg, "vector_embeddings", vdim, lg)
+		if vsErr != nil {
+			lg.Warn("pgvector store init failed, falling back to SQLite",
+				loggateway.StepID("data.vector_store"), loggateway.Err(vsErr))
+		} else {
+			vs = pgvs
+		}
+	}
+	if vs == nil {
+		sqliteVS, vsErr := vector.NewSQLiteVectorStore(rawDB, "vector_embeddings", lg)
+		if vsErr != nil {
+			cleanup()
+			return nil, nil, fmt.Errorf("sqlite vector store init: %w", vsErr)
+		}
+		vs = sqliteVS
+	}
+
 	p1Ctx, p1Cancel := context.WithCancel(context.Background())
 	p1Done := make(chan struct{})
-	st = &Data{entClient: entClient, rawDB: rawDB, readClient: readClient, readDB: readDB, pg: pg, rw: NewReadWriteClient(entClient, readClient), rwDB: NewReadWriteDB(rawDB, readDB), vectorDim: vdim, readiness: newReadinessGate(), p1Cancel: p1Cancel, p1Done: p1Done, lg: lg}
+	st = &Data{entClient: entClient, rawDB: rawDB, readClient: readClient, readDB: readDB, pg: pg, rw: NewReadWriteClient(entClient, readClient), rwDB: NewReadWriteDB(rawDB, readDB), vectorDim: vdim, vectorStore: vs, readiness: newReadinessGate(), p1Cancel: p1Cancel, p1Done: p1Done, lg: lg}
 
 	safego.Go(context.Background(), "startup.p1", func() {
 		defer close(p1Done)
@@ -628,7 +672,7 @@ func runPendingDataMigrations(d *Data) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	entClient := d.Ent()
-	migrated, skipped, err := RunLegacyTRPCMemoryMigration(ctx, sessionmemory.NewStore(entClient, d.lg), d, d.lg)
+	migrated, skipped, err := RunLegacyTRPCMemoryMigration(ctx, d, d.lg)
 	if err != nil {
 		d.lg.Error("migration step failed", loggateway.StepID("data.migration.legacy_trpc_memory"), loggateway.Err(err))
 		return fmt.Errorf("legacy trpc memory backfill: %w", err)
@@ -717,6 +761,14 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_agent"), loggateway.Err(err))
 		return err
 	}
+	if err := SeedMemoryAgent(context.Background(), entClient, lg); err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.memory_agent"), loggateway.Err(err))
+		return err
+	}
+	if err := SeedSkillsAgent(context.Background(), entClient, lg); err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.skills_agent"), loggateway.Err(err))
+		return err
+	}
 	if err := SeedBuiltinCLIAdminTools(context.Background(), entClient, lg); err != nil {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.cli_admin_tools"), loggateway.Err(err))
 		return err
@@ -733,6 +785,14 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 		lg.Warn("seed step failed", loggateway.StepID("data.seed.spirit_prompt_files"), loggateway.Err(err))
 		return err
 	}
+	if err := SeedButlerPromptFiles(context.Background(), entClient, scenarioDir, lg); err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.butler_prompt_files"), loggateway.Err(err))
+		return err
+	}
+	if err := SeedCronTasks(context.Background(), entClient, lg); err != nil {
+		lg.Warn("seed step failed", loggateway.StepID("data.seed.cron_tasks"), loggateway.Err(err))
+		return err
+	}
 	d.lazySeeders = map[string]*LazySeeder{
 		"agent_categories": NewLazySeeder(entClient, func(ctx context.Context, client *ent.Client) error {
 			return SeedBuiltinTaxonomy(ctx, client, scenarioDir, lg)
@@ -746,14 +806,6 @@ func seedP1Data(entClient *ent.Client, c *conf.Data, d *Data) error {
 	}
 
 	return nil
-}
-
-// NewSessionMemoryStore exposes SQLite session-chain reads (L0–L4, evolution) on the same DB as Ent.
-func NewSessionMemoryStore(d *Data) *sessionmemory.Store {
-	if d == nil {
-		return nil
-	}
-	return sessionmemory.NewStore(d.Ent(), d.lg, sessionmemory.WithTxManager(d))
 }
 
 func NewArtifactRepo(d *Data) biz.ArtifactRepo {
@@ -782,7 +834,13 @@ func NewA2ARepoFromData(d *Data, lg loggateway.Logger) biz.A2ARepo {
 
 // NewCLIData wraps SQLite handles opened by OpenSQLiteEntClient for offline maintenance CLIs.
 func NewCLIData(client *ent.Client, rawDB *sql.DB, lg loggateway.Logger) *Data {
-	return &Data{entClient: client, readClient: client, rawDB: rawDB, readDB: rawDB, rw: NewReadWriteClient(client, client), rwDB: NewReadWriteDB(rawDB, rawDB), lg: lg}
+	var vs vector.VectorStore
+	if rawDB != nil {
+		if s, err := vector.NewSQLiteVectorStore(rawDB, "vector_embeddings", lg); err == nil {
+			vs = s
+		}
+	}
+	return &Data{entClient: client, readClient: client, rawDB: rawDB, readDB: rawDB, rw: NewReadWriteClient(client, client), rwDB: NewReadWriteDB(rawDB, rawDB), vectorStore: vs, lg: lg}
 }
 
 // OpenSQLiteEntClient opens SQLite for offline CLI maintenance tools (e.g. memory-migrate).

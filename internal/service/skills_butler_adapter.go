@@ -85,6 +85,101 @@ func (a skillsButlerQueryAdapter) GetSkillInvocationStats(ctx context.Context, a
 	return out, nil
 }
 
+type skillsButlerAnalyticsAdapter struct {
+	uc      *biz.ExperienceAnalyticsUsecase
+	agentID string
+}
+
+func (a skillsButlerAnalyticsAdapter) AnalyzeToolWeights(ctx context.Context) ([]biz.ToolWeightReport, error) {
+	if a.uc == nil {
+		return nil, nil
+	}
+	analysis, err := a.uc.AnalyzeToolWeights(ctx, a.agentID, time.Now().AddDate(0, 0, -30))
+	if err != nil {
+		return nil, err
+	}
+	reports := make([]biz.ToolWeightReport, 0, len(analysis.Items))
+	for _, it := range analysis.Items {
+		reports = append(reports, biz.ToolWeightReport{
+			ToolKey:        it.ToolKey,
+			CallCount:      it.CallCount,
+			SuccessRate:    it.SuccessRate,
+			AvgDurationMS:  it.AvgDurationMS,
+			WeightScore:    it.WeightScore,
+			Recommendation: it.Recommendation,
+		})
+	}
+	return reports, nil
+}
+
+func (a skillsButlerAnalyticsAdapter) AnalyzeSkillHealth(ctx context.Context) ([]biz.SkillHealth, error) {
+	if a.uc == nil {
+		return nil, nil
+	}
+	analysis, err := a.uc.AnalyzeSkillHealth(ctx, a.agentID, time.Now().AddDate(0, 0, -7))
+	if err != nil {
+		return nil, err
+	}
+	reports := make([]biz.SkillHealth, 0, len(analysis.Items))
+	for _, it := range analysis.Items {
+		trend := "stable"
+		if it.InvokeCount == 0 {
+			trend = "dormant"
+		} else if it.SuccessRate < 0.5 {
+			trend = "declining"
+		} else if it.SuccessRate >= 0.9 {
+			trend = "rising"
+		}
+		reports = append(reports, biz.SkillHealth{
+			SkillID:        it.SkillID,
+			InvokeCount7d:  it.InvokeCount,
+			SuccessRate:    it.SuccessRate,
+			AvgDurationMS:  it.AvgDurationMS,
+			Trend:          trend,
+			HealthStatus:   it.HealthStatus,
+			Recommendation: it.Recommendation,
+		})
+	}
+	return reports, nil
+}
+
+func (a skillsButlerAnalyticsAdapter) AnalyzeOrchestration(ctx context.Context, timeRange string, modeFilter string) ([]biz.OrchestrationModeReport, error) {
+	if a.uc == nil {
+		return nil, nil
+	}
+	since := bizTimeRangeToSince(timeRange)
+	analysis, err := a.uc.AnalyzeOrchestration(ctx, a.agentID, since)
+	if err != nil {
+		return nil, err
+	}
+	reports := make([]biz.OrchestrationModeReport, 0, len(analysis.Items))
+	for _, it := range analysis.Items {
+		if modeFilter != "" && it.Mode != modeFilter {
+			continue
+		}
+		reports = append(reports, biz.OrchestrationModeReport{
+			Mode:        it.Mode,
+			SuccessRate: it.SuccessRate,
+			DQScore:     it.DQScore,
+		})
+	}
+	return reports, nil
+}
+
+func bizTimeRangeToSince(tr string) time.Time {
+	now := time.Now()
+	switch tr {
+	case "7d":
+		return now.AddDate(0, 0, -7)
+	case "30d":
+		return now.AddDate(0, 0, -30)
+	case "90d":
+		return now.AddDate(0, 0, -90)
+	default:
+		return now.AddDate(0, 0, -30)
+	}
+}
+
 type skillsButlerRegistrationAdapter struct {
 	uc *biz.SkillUsecase
 }

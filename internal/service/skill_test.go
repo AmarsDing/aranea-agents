@@ -155,7 +155,7 @@ func (m *memSkillRepo) FilesystemHealthStats(_ context.Context) (biz.SkillFilesy
 func newSkillService() *service.SkillService {
 	repo := newMemSkillRepo()
 	repo.items["sk1"] = biz.Skill{ID: "sk1", Name: "Test Skill", Enabled: true, Status: "active"}
-	return service.NewSkillService(biz.NewSkillUsecase(repo, nil), nil, nil, nil, loggateway.NewNoop())
+	return service.NewSkillService(biz.NewSkillUsecase(repo, nil), nil, nil, nil, nil, loggateway.NewNoop())
 }
 
 func adminCtx() context.Context {

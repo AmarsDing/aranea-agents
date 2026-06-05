@@ -31,11 +31,15 @@
     <learning-proposal-list
       :proposals="proposals"
       :loading="loading"
+      :status-filter="proposalStatusFilter"
       :approving-id="approvingId"
       :rejecting-id="rejectingId"
+      @update:status-filter="proposalStatusFilter = $event"
       @approve="onApprove"
       @reject="onReject"
     />
+
+    <learning-observation-list :observations="observations" :loading="loading" />
   </div>
 </template>
 
@@ -44,6 +48,7 @@ import { toValue } from 'vue';
 import LearningLoopOverview from './LearningLoopOverview.vue';
 import LearningPatternList from './LearningPatternList.vue';
 import LearningProposalList from './LearningProposalList.vue';
+import LearningObservationList from './LearningObservationList.vue';
 import { useLearningLoopPanel } from '../../features/agents/useLearningLoopPanel';
 
 const props = defineProps<{
@@ -58,6 +63,7 @@ const {
   approvingId,
   rejectingId,
   patternStatusFilter,
+  proposalStatusFilter,
   observations,
   patterns,
   proposals,

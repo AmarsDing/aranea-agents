@@ -145,6 +145,7 @@ func recordToolInvocationWrite(ctx context.Context, write biz.ToolInvocationWrit
 	}
 
 	var toolDelta, mcpDelta, skillDelta int
+	var isSkillCall bool
 	countSession := strings.TrimSpace(sessionID) != "" && deps.Sessions != nil && status != "blocked"
 	if countSession {
 		toolDelta = 1
@@ -155,6 +156,10 @@ func recordToolInvocationWrite(ctx context.Context, write biz.ToolInvocationWrit
 		if skill {
 			skillDelta = 1
 		}
+		isSkillCall = skill
+	} else {
+		// Classify skill even when not counting session, for skill_invocation recording.
+		_, isSkillCall = classifyToolInvocation(ctx, write.ToolKey, toolResult, deps)
 	}
 
 	safego.Go(ctx, "recordToolInvocation", func() {
@@ -187,5 +192,75 @@ func recordToolInvocationWrite(ctx context.Context, write biz.ToolInvocationWrit
 				deps.Logger().With(loggateway.SessionID(sessionID)).Warn("会话工具调用计数更新失败", loggateway.StepID("agent.tool.record_fail"), loggateway.Str("tool", write.ToolKey), loggateway.Err(err))
 			}
 		}
+		// Record skill_invocation for skill-type tool calls.
+		if isSkillCall && deps.SkillUC != nil {
+			recordSkillInvocation(bg, ctx, write, ag, deps)
+		}
 	})
+}
+
+// recordSkillInvocation creates a skill_invocation row when a skill-type tool call completes.
+// It reads selection_reason from invocation state (set by skill_guidance_inject) and derives
+// outcome from the tool invocation status.
+func recordSkillInvocation(bg context.Context, origCtx context.Context, write biz.ToolInvocationWrite, ag biz.Agent, deps TRPCBuilderDeps) {
+	lg := deps.Logger()
+
+	// Derive outcome from tool invocation status.
+	outcome := ""
+	switch write.Status {
+	case "success":
+		outcome = "success"
+	case "error":
+		outcome = "failure"
+	default:
+		outcome = "partial"
+	}
+
+	// Read selection_reason from invocation state.
+	var selectionReason map[string]interface{}
+	if inv, ok := trpcagent.InvocationFromContext(origCtx); ok {
+		if raw, ok2 := inv.GetState(skillSelectionReasonStateKey); ok2 {
+			if m, ok3 := raw.(map[string]string); ok3 {
+				selectionReason = make(map[string]interface{}, len(m))
+				for k, v := range m {
+					selectionReason[k] = v
+				}
+			}
+		}
+	}
+
+	// Resolve skill_id from tool_key (slug).
+	skillID := ""
+	slug := strings.TrimPrefix(write.ToolKey, "use_skill_")
+	if sk, err := deps.SkillUC.GetBySlug(bg, slug); err == nil {
+		skillID = sk.ID
+	} else {
+		// Fallback: try the raw tool key as slug.
+		if sk2, err2 := deps.SkillUC.GetBySlug(bg, write.ToolKey); err2 == nil {
+			skillID = sk2.ID
+		}
+	}
+
+	skillWrite := biz.SkillInvocationWrite{
+		SkillID:         skillID,
+		AgentID:         ag.ID,
+		UserID:          write.UserID,
+		SessionID:       write.SessionID,
+		Status:          write.Status,
+		DurationMS:      write.DurationMS,
+		StartedAt:       write.StartedAt,
+		EndedAt:         write.EndedAt,
+		InputPreview:    write.InputPreview,
+		InputHash:       write.InputHash,
+		OutputPreview:   write.OutputPreview,
+		ErrorCode:       write.ErrorCode,
+		ErrorMessage:    write.ErrorMessage,
+		Source:          "runtime",
+		ActivationID:    write.ToolCallID,
+		SelectionReason: selectionReason,
+		Outcome:         outcome,
+	}
+	if err := deps.SkillUC.RecordInvocation(bg, skillWrite); err != nil {
+		lg.Warn("skill invocation 记录失败", loggateway.StepID("agent.skill.record_fail"), loggateway.Str("tool", write.ToolKey), loggateway.Err(err))
+	}
 }

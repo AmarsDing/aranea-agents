@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/internal/agent/llmcompat"
 	"aranea-agents/internal/biz"
 	"aranea-agents/pkg/strutil"
 )
@@ -15,28 +16,10 @@ func RFC3339Now() string {
 }
 
 // ProviderAPIConfig holds outbound HTTP credential hints deserialized from llm_provider_models.config_json.
-type ProviderAPIConfig struct {
-	ProviderType string `json:"provider_type"`
-	APIBaseURL   string `json:"api_base_url"`
-	APIKey       string `json:"api_key"`
-}
+type ProviderAPIConfig = llmcompat.ProviderAPIConfig
 
 // MergeProviderConfigJSON overlays JSON config from LlmProviderModel.ConfigJSON.
-func MergeProviderConfigJSON(raw string, out *ProviderAPIConfig) {
-	var c ProviderAPIConfig
-	if json.Unmarshal([]byte(strings.TrimSpace(raw)), &c) != nil {
-		return
-	}
-	if out.ProviderType == "" {
-		out.ProviderType = c.ProviderType
-	}
-	if out.APIBaseURL == "" {
-		out.APIBaseURL = c.APIBaseURL
-	}
-	if out.APIKey == "" {
-		out.APIKey = c.APIKey
-	}
-}
+var MergeProviderConfigJSON = llmcompat.MergeProviderConfigJSON
 
 // IsLikelyAnthropicNativeAPI is true when the configured base URL targets Anthropic's
 // Messages API host. OpenAI-compatible /chat/completions proxies may still use

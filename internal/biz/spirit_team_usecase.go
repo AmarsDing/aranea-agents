@@ -40,15 +40,22 @@ type SpiritTeamResult struct {
 	Session Session
 }
 
-type SpiritTeamUsecase struct {
-	teamUC    *TeamUsecase
-	sessionUC *SessionUsecase
-	agentUC   *AgentUsecase
-	lg        loggateway.Logger
+// SpiritTransactor executes a function within a single database transaction.
+// Defined in biz to avoid direct data-layer dependency; implemented in data.
+type SpiritTransactor interface {
+	ExecInTx(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
-func NewSpiritTeamUsecase(teamUC *TeamUsecase, sessionUC *SessionUsecase, agentUC *AgentUsecase, lg loggateway.Logger) *SpiritTeamUsecase {
-	return &SpiritTeamUsecase{teamUC: teamUC, sessionUC: sessionUC, agentUC: agentUC, lg: lg}
+type SpiritTeamUsecase struct {
+	teamUC     *TeamUsecase
+	sessionUC  *SessionUsecase
+	agentUC    *AgentUsecase
+	transactor SpiritTransactor
+	lg         loggateway.Logger
+}
+
+func NewSpiritTeamUsecase(teamUC *TeamUsecase, sessionUC *SessionUsecase, agentUC *AgentUsecase, transactor SpiritTransactor, lg loggateway.Logger) *SpiritTeamUsecase {
+	return &SpiritTeamUsecase{teamUC: teamUC, sessionUC: sessionUC, agentUC: agentUC, transactor: transactor, lg: lg}
 }
 
 func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamParams) (SpiritTeamResult, error) {
@@ -67,41 +74,50 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 
 	defJSON := buildSpiritTeamDefinitionJSON(mode, params.AgentKeys, u.lg, params.ParallelConfigJSON)
 
-	initialStatus := "active"
-	if len(params.DependsOn) > 0 {
-		initialStatus = "waiting_deps"
-	}
+	// All teams start as pending regardless of depends_on.
+	// AutoStart=true teams transition to running when StartTeamTurn is called.
+	// AutoStart=false DAG root nodes stay pending until manually started or
+	// scheduled by scheduleDependentTeams.
+	initialStatus := TeamStatusPending
 
-	team, err := u.teamUC.Create(ctx, Team{
-		TeamKey:           fmt.Sprintf("spirit_%s_%s", spiritSessionID, uuid.New().String()[:8]),
-		DisplayName:       TruncateRunes(taskDesc, 64),
-		Status:            initialStatus,
-		SpiritSessionID:   spiritSessionID,
-		TaskDescription:   taskDesc,
-		AutoCreated:       true,
-		DefinitionJSON:    defJSON,
-		DagNodeID:         params.DagNodeID,
-		DependsOn:         params.DependsOn,
-		ParallelConfigJSON: params.ParallelConfigJSON,
-		Topology:          mode,
+	var result SpiritTeamResult
+	err := u.transactor.ExecInTx(ctx, func(txCtx context.Context) error {
+		team, err := u.teamUC.Create(txCtx, Team{
+			TeamKey:           fmt.Sprintf("spirit_%s_%s", spiritSessionID, uuid.New().String()[:8]),
+			DisplayName:       TruncateRunes(taskDesc, 64),
+			Status:            initialStatus,
+			SpiritSessionID:   spiritSessionID,
+			TaskDescription:   taskDesc,
+			AutoCreated:       true,
+			DefinitionJSON:    defJSON,
+			DagNodeID:         params.DagNodeID,
+			DependsOn:         params.DependsOn,
+			ParallelConfigJSON: params.ParallelConfigJSON,
+			Topology:          mode,
+		})
+		if err != nil {
+			return kerrors.InternalServer("SPIRIT", "create team: "+err.Error())
+		}
+
+		teamSession, err := u.sessionUC.Create(txCtx, Session{
+			OwnerType:       "team",
+			TeamID:          team.ID,
+			ParentSessionID: spiritSessionID,
+			RootSessionID:   spiritSessionID,
+			AgentDepth:      1,
+			Title:           TruncateRunes(taskDesc, 128),
+		})
+		if err != nil {
+			return kerrors.InternalServer("SPIRIT", "create team session: "+err.Error())
+		}
+
+		result = SpiritTeamResult{Team: team, Session: teamSession}
+		return nil
 	})
 	if err != nil {
-		return SpiritTeamResult{}, kerrors.InternalServer("SPIRIT", "create team: "+err.Error())
+		return SpiritTeamResult{}, err
 	}
-
-	teamSession, err := u.sessionUC.Create(ctx, Session{
-		OwnerType:       "team",
-		TeamID:          team.ID,
-		ParentSessionID: spiritSessionID,
-		RootSessionID:   spiritSessionID,
-		AgentDepth:      1,
-		Title:           TruncateRunes(taskDesc, 128),
-	})
-	if err != nil {
-		return SpiritTeamResult{}, kerrors.InternalServer("SPIRIT", "create team session: "+err.Error())
-	}
-
-	return SpiritTeamResult{Team: team, Session: teamSession}, nil
+	return result, nil
 }
 
 func (u *SpiritTeamUsecase) GetTeam(ctx context.Context, teamID string) (Team, error) {
@@ -120,7 +136,7 @@ func (u *SpiritTeamUsecase) ListActiveTeams(ctx context.Context, spiritSessionID
 	var active []Team
 	for i := range teams {
 		s := teams[i].Status
-		if s == "active" || s == "running" || s == "assembled" {
+		if IsTeamStatusActive(s) {
 			active = append(active, teams[i])
 		}
 	}
@@ -146,7 +162,7 @@ func (u *SpiritTeamUsecase) ListCompletedAndFailedTeams(ctx context.Context, spi
 	}
 	var out []Team
 	for i := range teams {
-		if teams[i].Status == "completed" || teams[i].Status == "failed" {
+		if teams[i].Status == TeamStatusCompleted || teams[i].Status == TeamStatusFailed {
 			out = append(out, teams[i])
 		}
 	}
@@ -173,19 +189,19 @@ func (u *SpiritTeamUsecase) BuildCascadeBlockedResults(ctx context.Context, team
 			Summary:     summary,
 			KeyFindings: keyFindings,
 		}
-		if t.Status == "failed" {
+		if t.Status == TeamStatusFailed {
 			result.Summary = "[执行失败] " + result.Summary
 		}
 		results = append(results, result)
 	}
 	failedDagNodes := make(map[string]string)
 	for i := range teams {
-		if teams[i].Status == "failed" && teams[i].DagNodeID != "" {
+		if teams[i].Status == TeamStatusFailed && teams[i].DagNodeID != "" {
 			failedDagNodes[teams[i].DagNodeID] = teams[i].DisplayName
 		}
 	}
 	for i := range teams {
-		if teams[i].Status != "waiting_deps" {
+		if teams[i].Status != TeamStatusPending {
 			continue
 		}
 		for _, depID := range teams[i].DependsOn {
@@ -236,16 +252,9 @@ func (u *SpiritTeamUsecase) CancelTeam(ctx context.Context, teamID string) error
 	if strings.TrimSpace(teamID) == "" {
 		return kerrors.BadRequest("SPIRIT", "team_id is required")
 	}
-	t, err := u.teamUC.Get(ctx, teamID)
+	_, err := u.teamUC.TransitionStatus(ctx, teamID, TeamStatusCancelled)
 	if err != nil {
-		return kerrors.NotFound("SPIRIT", "team not found")
-	}
-	if t.Status != "active" && t.Status != "waiting_deps" && t.Status != "running" {
-		return kerrors.BadRequest("SPIRIT", "only active, waiting or running teams can be cancelled")
-	}
-	_, err = u.teamUC.Update(ctx, teamID, Team{Status: "cancelled"})
-	if err != nil {
-		return kerrors.InternalServer("SPIRIT", "cancel team: "+err.Error())
+		return err
 	}
 	return nil
 }
@@ -341,25 +350,25 @@ func (u *SpiritTeamUsecase) CheckTeamProgress(ctx context.Context, spiritSession
 			Status:   teams[i].Status,
 		}
 		switch teams[i].Status {
-		case "completed":
+		case TeamStatusCompleted:
 			tp.ProgressPct = 100
 			tp.CurrentStep = "已完成"
-		case "failed":
+		case TeamStatusFailed:
 			tp.ProgressPct = 0
 			tp.CurrentStep = "执行失败"
-		case "cancelled":
+		case TeamStatusCancelled:
 			tp.ProgressPct = 0
 			tp.CurrentStep = "已取消"
-		case "waiting_deps":
+		case TeamStatusPending:
 			tp.ProgressPct = 0
-			tp.CurrentStep = "等待依赖完成"
+			tp.CurrentStep = "等待执行"
 		default:
 		}
 		runs, runErr := u.teamUC.ListRuns(ctx, teams[i].ID, 10)
 		if runErr == nil && len(runs) > 0 {
 			latestRun := runs[0]
 			tp.DurationMs = int64(latestRun.DurationMS)
-			if tp.Status == "running" || tp.Status == "active" || tp.Status == "assembled" {
+			if IsTeamStatusActive(tp.Status) {
 				completedRuns := 0
 				for _, r := range runs {
 					if r.Status == "success" {

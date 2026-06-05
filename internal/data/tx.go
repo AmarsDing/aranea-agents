@@ -62,6 +62,7 @@ func (d *Data) ExecInTx(ctx context.Context, fn func(ctx context.Context) error)
 	// #endregion debug-point
 	if err := fn(txCtx); err != nil {
 		_ = tx.Rollback()
+		detachedCancel()
 		d.lg.Warn("transaction rolled back", loggateway.StepID("data.tx"), loggateway.Err(err))
 		return err
 	}
@@ -113,10 +114,23 @@ func txClientFromCtx(ctx context.Context) *ent.Client {
 	return nil
 }
 
-type execer interface {
+// TxExecerFromCtx returns a transaction-aware execer: if a transaction is
+// active in ctx it returns the Ent tx client (which satisfies execer), otherwise
+// it falls back to the provided *sql.DB handle.
+func TxExecerFromCtx(ctx context.Context, fallback *sql.DB) execer {
+	if tx, ok := ctx.Value(txClientKey{}).(*ent.Tx); ok {
+		return tx.Client()
+	}
+	return fallback
+}
+
+type Execer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
+
+// execer is an alias for Execer for internal use.
+type execer = Execer
 
 func (d *Data) PostgresExecInTx(ctx context.Context, fn func(ctx context.Context, tx *sql.Tx) error) error {
 	if d == nil {
@@ -155,4 +169,9 @@ func queryRowScan(ctx context.Context, e execer, query string, args []any, dest 
 		return err
 	}
 	return rows.Err()
+}
+
+// QueryRowScan is the exported version of queryRowScan for use outside the data package.
+func QueryRowScan(ctx context.Context, e execer, query string, args []any, dest ...any) error {
+	return queryRowScan(ctx, e, query, args, dest...)
 }

@@ -4,34 +4,34 @@ import (
 	"context"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/sessionmemory"
+	"aranea-agents/internal/data/vector"
 )
 
-// l2RecallRepo delegates L2 recall operations to sessionmemory.Store.
-// Implements biz.SessionL2RecallStore.
+// l2RecallRepo implements biz.SessionL2RecallStore using direct Raw SQL.
 type l2RecallRepo struct {
-	store *sessionmemory.Store
+	data        *Data
+	vectorStore vector.VectorStore
 }
 
-func newL2RecallRepo(store *sessionmemory.Store) *l2RecallRepo {
-	if store == nil {
+func newL2RecallRepo(data *Data, vs vector.VectorStore) *l2RecallRepo {
+	if data == nil {
 		return nil
 	}
-	return &l2RecallRepo{store: store}
+	return &l2RecallRepo{data: data, vectorStore: vs}
 }
 
-// NewSessionL2RecallStore creates a biz.SessionL2RecallStore backed by sessionmemory.Store.
-// Returns nil if store is nil.
-func NewSessionL2RecallStore(store *sessionmemory.Store) biz.SessionL2RecallStore {
-	if store == nil {
+// NewSessionL2RecallStore creates a biz.SessionL2RecallStore backed by data.
+func NewSessionL2RecallStore(data *Data, vs vector.VectorStore) biz.SessionL2RecallStore {
+	if data == nil {
 		return nil
 	}
-	return newL2RecallRepo(store)
+	return newL2RecallRepo(data, vs)
 }
 
 // Compile-time interface check.
 var _ biz.SessionL2RecallStore = (*l2RecallRepo)(nil)
 
 func (r *l2RecallRepo) RecallL2Episodes(ctx context.Context, agentID, sessionID, query string, queryEmbedding []float32, limit int32) ([][]byte, error) {
-	return r.store.RecallL2Episodes(ctx, agentID, sessionID, query, queryEmbedding, limit)
+	l2 := newL2EpisodeRepo(r.data, r.vectorStore)
+	return l2.RecallL2Episodes(ctx, agentID, sessionID, query, queryEmbedding, limit)
 }

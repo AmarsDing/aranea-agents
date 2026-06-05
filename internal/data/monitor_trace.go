@@ -2,6 +2,7 @@ package data
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -52,9 +53,15 @@ func (r *monitorRepo) EnsureTraceSchema(ctx context.Context) error {
 			}
 		}
 
-		_, _ = db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_traces_session_id ON monitor_traces(session_id)`)
-		_, _ = db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_traces_run_id ON monitor_traces(run_id)`)
-		_, _ = db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_traces_agent_id ON monitor_traces(agent_id)`)
+		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_traces_session_id ON monitor_traces(session_id)`); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("create index idx_monitor_traces_session_id: %w", err)
+		}
+		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_traces_run_id ON monitor_traces(run_id)`); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("create index idx_monitor_traces_run_id: %w", err)
+		}
+		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_traces_agent_id ON monitor_traces(agent_id)`); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("create index idx_monitor_traces_agent_id: %w", err)
+		}
 
 		_, firstErr = db.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS monitor_trace_spans (
@@ -74,8 +81,12 @@ CREATE TABLE IF NOT EXISTS monitor_trace_spans (
 		if firstErr != nil {
 			return
 		}
-		_, _ = db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_trace_spans_trace_id ON monitor_trace_spans(trace_id)`)
-		_, _ = db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_trace_spans_kind ON monitor_trace_spans(kind)`)
+		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_trace_spans_trace_id ON monitor_trace_spans(trace_id)`); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("create index idx_monitor_trace_spans_trace_id: %w", err)
+		}
+		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_trace_spans_kind ON monitor_trace_spans(kind)`); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("create index idx_monitor_trace_spans_kind: %w", err)
+		}
 	})
 
 	eventSchemaOnce.Do(func() {
@@ -111,9 +122,15 @@ CREATE TABLE IF NOT EXISTS monitor_trace_spans (
 				}
 			}
 		}
-		_, _ = db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_events_meta_session_id ON monitor_events(meta_session_id)`)
-		_, _ = db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_events_meta_invocation_id ON monitor_events(meta_invocation_id, event_key)`)
-		_, _ = db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_events_meta_trace_id ON monitor_events(meta_trace_id)`)
+		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_events_meta_session_id ON monitor_events(meta_session_id)`); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("create index idx_monitor_events_meta_session_id: %w", err)
+		}
+		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_events_meta_invocation_id ON monitor_events(meta_invocation_id, event_key)`); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("create index idx_monitor_events_meta_invocation_id: %w", err)
+		}
+		if _, err := db.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_monitor_events_meta_trace_id ON monitor_events(meta_trace_id)`); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("create index idx_monitor_events_meta_trace_id: %w", err)
+		}
 	})
 
 	return firstErr

@@ -16,7 +16,8 @@ type observatoryTeamRepo struct {
 	runs  []biz.TeamRun
 }
 
-func (r *observatoryTeamRepo) ListTeams(context.Context) ([]biz.Team, error) { return nil, nil }
+func (r *observatoryTeamRepo) ListTeams(context.Context) ([]biz.Team, error)                    { return nil, nil }
+func (r *observatoryTeamRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) { return nil, nil }
 func (r *observatoryTeamRepo) GetTeamByID(_ context.Context, id string) (biz.Team, error) {
 	if id == r.team.ID {
 		return r.team, nil

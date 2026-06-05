@@ -289,6 +289,7 @@ export function useChatSender(deps: SenderDeps) {
     } else if (deps.sessionStore.entityKind === 'team' && deps.sessionStore.selectedTeamId) {
       await sendTeamMessage(content);
     } else {
+      // unsupported entity kind — no action
     }
   }
 

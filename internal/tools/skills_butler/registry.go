@@ -24,6 +24,12 @@ type SkillQueryReaderPort interface {
 	GetSkillInvocationStats(ctx context.Context, agentID string, since time.Time) ([]SkillInvocationStat, error)
 }
 
+type AnalyticsPort interface {
+	AnalyzeToolWeights(ctx context.Context) ([]biz.ToolWeightReport, error)
+	AnalyzeSkillHealth(ctx context.Context) ([]biz.SkillHealth, error)
+	AnalyzeOrchestration(ctx context.Context, timeRange string, modeFilter string) ([]biz.OrchestrationModeReport, error)
+}
+
 type SkillInvocationStat struct {
 	SkillName     string  `json:"skill_name"`
 	Count         int     `json:"count"`
@@ -35,13 +41,23 @@ type Deps struct {
 	Skills    SkillUsecasePort
 	Evolution EvolutionUsecasePort
 	Queries   SkillQueryReaderPort
+	Analytics AnalyticsPort
 }
 
 func RegisterAll(deps Deps) []trpctool.Tool {
-	return []trpctool.Tool{
+	tools := []trpctool.Tool{
 		newAnalyzeSkillUsageTool(deps),
 		newRecommendSkillsTool(deps),
 		newEvolveSkillTool(deps),
 		newOptimizeSkillTool(deps),
 	}
+	if deps.Analytics != nil {
+		tools = append(tools,
+			newAnalyzeSkillHealthTool(deps),
+			newAnalyzeToolWeightsTool(deps),
+			newAnalyzeOrchestrationTool(deps),
+			newOptimizeOrchestrationTool(deps),
+		)
+	}
+	return tools
 }

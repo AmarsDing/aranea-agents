@@ -3,6 +3,13 @@ import { ref, computed } from 'vue';
 import { listSpiritTeams } from '../../features/spirit/api';
 import type { SpiritTeam, SpiritPanelMode, TeamProgressView, SynthesisOutput } from '../../features/spirit/types';
 import type { Envelope } from '../../realtime/envelope';
+import type {
+  SpiritPlanCreatedPayload,
+  SpiritAllocationCreatedPayload,
+  SpiritOrchestrationStartedPayload,
+  SpiritOrchestrationCheckpointPayload,
+  SpiritOrchestrationInterruptedPayload,
+} from '../../realtime/envelope';
 
 export const useSpiritTeamStore = defineStore('spiritTeam', () => {
   const teams = ref<SpiritTeam[]>([]);
@@ -15,6 +22,13 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
   const allTeamsCompleted = ref(false);
   const synthesisCompleted = ref(false);
   const synthesisResult = ref<SynthesisOutput | null>(null);
+
+  // Spirit Orchestration state (new envelope types)
+  const planCreated = ref<SpiritPlanCreatedPayload | null>(null);
+  const allocationCreated = ref<SpiritAllocationCreatedPayload | null>(null);
+  const orchestrationStarted = ref<SpiritOrchestrationStartedPayload | null>(null);
+  const lastCheckpoint = ref<SpiritOrchestrationCheckpointPayload | null>(null);
+  const orchestrationInterrupted = ref<SpiritOrchestrationInterruptedPayload | null>(null);
 
   const activeTeam = computed(() => teams.value.find((t) => t.id === activeTeamId.value) ?? null);
 
@@ -217,6 +231,43 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
           };
         }
         break;
+
+      // --- New Spirit Orchestration envelope types ---
+
+      case 'spirit_plan_created':
+        {
+          const payload = md as unknown as SpiritPlanCreatedPayload;
+          planCreated.value = payload;
+        }
+        break;
+
+      case 'spirit_allocation_created':
+        {
+          const payload = md as unknown as SpiritAllocationCreatedPayload;
+          allocationCreated.value = payload;
+        }
+        break;
+
+      case 'spirit_orchestration_started':
+        {
+          const payload = md as unknown as SpiritOrchestrationStartedPayload;
+          orchestrationStarted.value = payload;
+        }
+        break;
+
+      case 'spirit_orchestration_checkpoint':
+        {
+          const payload = md as unknown as SpiritOrchestrationCheckpointPayload;
+          lastCheckpoint.value = payload;
+        }
+        break;
+
+      case 'spirit_orchestration_interrupted':
+        {
+          const payload = md as unknown as SpiritOrchestrationInterruptedPayload;
+          orchestrationInterrupted.value = payload;
+        }
+        break;
     }
   }
 
@@ -231,6 +282,11 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
     allTeamsCompleted,
     synthesisCompleted,
     synthesisResult,
+    planCreated,
+    allocationCreated,
+    orchestrationStarted,
+    lastCheckpoint,
+    orchestrationInterrupted,
     activeTeam,
     activeTeams,
     completedTeams,

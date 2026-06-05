@@ -10,6 +10,7 @@ import (
 
 	v1 "aranea-agents/api/kratos/monitor/v1"
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/biz/monitor"
 	"aranea-agents/internal/conf"
 	"aranea-agents/pkg/loggateway"
 
@@ -23,14 +24,16 @@ type MonitorService struct {
 	server *conf.Server
 	diag   *biz.DiagBundleGenerator
 	selfHeal *biz.SelfHealUsecase
+	selfCheckScheduler *monitor.SelfCheckScheduler
+	selfCheckRepo      monitor.SelfCheckReportRepo
 	lg     loggateway.Logger
 
 	flowLogSvc  *FlowLogService
 	codeExecSvc *CodeExecutorService
 }
 
-func NewMonitorService(uc *biz.MonitorUsecase, server *conf.Server, flowLogSvc *FlowLogService, codeExecSvc *CodeExecutorService, diag *biz.DiagBundleGenerator, selfHeal *biz.SelfHealUsecase, lg loggateway.Logger) *MonitorService {
-	return &MonitorService{uc: uc, server: server, flowLogSvc: flowLogSvc, codeExecSvc: codeExecSvc, diag: diag, selfHeal: selfHeal, lg: lg}
+func NewMonitorService(uc *biz.MonitorUsecase, server *conf.Server, flowLogSvc *FlowLogService, codeExecSvc *CodeExecutorService, diag *biz.DiagBundleGenerator, selfHeal *biz.SelfHealUsecase, selfCheckScheduler *monitor.SelfCheckScheduler, selfCheckRepo monitor.SelfCheckReportRepo, lg loggateway.Logger) *MonitorService {
+	return &MonitorService{uc: uc, server: server, flowLogSvc: flowLogSvc, codeExecSvc: codeExecSvc, diag: diag, selfHeal: selfHeal, selfCheckScheduler: selfCheckScheduler, selfCheckRepo: selfCheckRepo, lg: lg}
 }
 
 func bizAuditToProto(a biz.AuditLog) *v1.AuditLog {
@@ -434,7 +437,8 @@ func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAnd
 		return nil, kerrors.New(500, "INTERNAL", err.Error())
 	}
 	fixParamsJSON, _ := json.Marshal(rec.FixAction.Params)
-	return &v1.DiagnoseAndHealResponse{
+
+	resp := &v1.DiagnoseAndHealResponse{
 		HealId:              rec.ID,
 		RuleId:              rec.RuleID,
 		Status:              rec.Status,
@@ -444,5 +448,40 @@ func (s *MonitorService) DiagnoseAndHeal(ctx context.Context, in *v1.DiagnoseAnd
 		FixActionMaxAttempts: int32(rec.FixAction.MaxAttempts),
 		FixActionParamsJson: string(fixParamsJSON),
 		CreatedAt:           rec.CreatedAt,
-	}, nil
+	}
+
+	// Populate RootCauseCondition based on heal result.
+	switch rec.Status {
+	case string(monitor.HealStatusApplied):
+		resp.RootCauseCondition = &v1.RootCauseCondition{
+			Condition: &v1.RootCauseCondition_AutoHealed{
+				AutoHealed: &v1.AutoHealedCondition{
+					AutoHealed:   true,
+					HealStrategy: rec.FixAction.Type,
+				},
+			},
+		}
+	case string(monitor.HealStatusSkippedLowConfidence), string(monitor.HealStatusSkippedCooldown), string(monitor.HealStatusSkippedNoAction):
+		resp.RootCauseCondition = &v1.RootCauseCondition{
+			Condition: &v1.RootCauseCondition_HealAttempts{
+				HealAttempts: &v1.HealAttemptsCondition{
+					Attempts:     0,
+					MaxAttempts:  int32(rec.FixAction.MaxAttempts),
+					LastStrategy: rec.FixAction.Type,
+				},
+			},
+		}
+	case string(monitor.HealStatusFailed):
+		resp.RootCauseCondition = &v1.RootCauseCondition{
+			Condition: &v1.RootCauseCondition_SelfCheckStatus{
+				SelfCheckStatus: &v1.SelfCheckStatusCondition{
+					CheckName: rec.RuleID,
+					Status:    "failed",
+					Message:   rec.Reason,
+				},
+			},
+		}
+	}
+
+	return resp, nil
 }

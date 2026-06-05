@@ -14,6 +14,11 @@ export type SessionContextPatch = Partial<
     | 'output_tokens'
     | 'total_cost_micro_usd'
     | 'last_context_window_tokens'
+    | 'message_count'
+    | 'model_call_count'
+    | 'tool_call_count'
+    | 'skill_call_count'
+    | 'mcp_call_count'
   >
 > & {
   promptBreakdown?: PromptTokenBreakdown;
@@ -129,17 +134,46 @@ export function sessionContextPatchFromCompressMeta(
   return patch;
 }
 
-export function reconcilePatchFromServer(server: Session): SessionContextPatch {
+export function reconcilePatchFromServer(
+  server: Session,
+  local?: Pick<
+    Session,
+    | 'total_tokens'
+    | 'max_context_used_ratio'
+    | 'input_tokens'
+    | 'output_tokens'
+    | 'total_cost_micro_usd'
+    | 'message_count'
+    | 'model_call_count'
+    | 'tool_call_count'
+    | 'skill_call_count'
+    | 'mcp_call_count'
+    | 'context_used_ratio'
+    | 'context_used_tokens'
+  >,
+): SessionContextPatch {
+  // For context metrics: use Math.max to prevent stale server values from
+  // overwriting locally-accumulated real-time WS values. During an active turn,
+  // the frontend receives context_usage events that are more recent than the
+  // server's last flush. After compression, the flush includes the compression
+  // delta so the server value is post-compression; Math.max still works because
+  // a new turn's context_usage will have a higher ratio.
+  const reconciledRatio = Math.max(server.context_used_ratio ?? 0, local?.context_used_ratio ?? 0);
   return {
-    context_used_ratio: server.context_used_ratio,
-    context_used_tokens: server.context_used_tokens,
-    context_status: server.context_status,
-    total_tokens: server.total_tokens,
-    max_context_used_ratio: server.max_context_used_ratio,
-    input_tokens: server.input_tokens,
-    output_tokens: server.output_tokens,
-    total_cost_micro_usd: server.total_cost_micro_usd,
+    context_used_ratio: reconciledRatio,
+    context_used_tokens: Math.max(server.context_used_tokens ?? 0, local?.context_used_tokens ?? 0),
+    context_status: contextStatusFromRatio(reconciledRatio),
+    total_tokens: Math.max(server.total_tokens ?? 0, local?.total_tokens ?? 0),
+    max_context_used_ratio: Math.max(server.max_context_used_ratio ?? 0, local?.max_context_used_ratio ?? 0),
+    input_tokens: Math.max(server.input_tokens ?? 0, local?.input_tokens ?? 0),
+    output_tokens: Math.max(server.output_tokens ?? 0, local?.output_tokens ?? 0),
+    total_cost_micro_usd: Math.max(server.total_cost_micro_usd ?? 0, local?.total_cost_micro_usd ?? 0),
     last_context_window_tokens: server.last_context_window_tokens,
+    message_count: Math.max(server.message_count ?? 0, local?.message_count ?? 0),
+    model_call_count: Math.max(server.model_call_count ?? 0, local?.model_call_count ?? 0),
+    tool_call_count: Math.max(server.tool_call_count ?? 0, local?.tool_call_count ?? 0),
+    skill_call_count: Math.max(server.skill_call_count ?? 0, local?.skill_call_count ?? 0),
+    mcp_call_count: Math.max(server.mcp_call_count ?? 0, local?.mcp_call_count ?? 0),
   };
 }
 

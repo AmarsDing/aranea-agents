@@ -22,18 +22,19 @@ import (
 type SkillService struct {
 	v1.UnimplementedSkillServiceServer
 
-	uc      *biz.SkillUsecase
-	agentUC *biz.AgentUsecase
-	fs      biz.SkillFilesystem
-	import_ *importer.Engine
-	lg      loggateway.Logger
+	uc       *biz.SkillUsecase
+	agentUC  *biz.AgentUsecase
+	healthUC *biz.SkillHealthUsecase
+	fs       biz.SkillFilesystem
+	import_  *importer.Engine
+	lg       loggateway.Logger
 }
 
-func NewSkillService(uc *biz.SkillUsecase, agentUC *biz.AgentUsecase, fs biz.SkillFilesystem, importEng *importer.Engine, lg loggateway.Logger) *SkillService {
+func NewSkillService(uc *biz.SkillUsecase, agentUC *biz.AgentUsecase, healthUC *biz.SkillHealthUsecase, fs biz.SkillFilesystem, importEng *importer.Engine, lg loggateway.Logger) *SkillService {
 	if lg == nil {
 		lg = loggateway.NewNoop()
 	}
-	return &SkillService{uc: uc, agentUC: agentUC, fs: fs, import_: importEng, lg: lg}
+	return &SkillService{uc: uc, agentUC: agentUC, healthUC: healthUC, fs: fs, import_: importEng, lg: lg}
 }
 
 func (s *SkillService) GetSkillFilesystemHealth(ctx context.Context, _ *emptypb.Empty) (*v1.SkillFilesystemHealth, error) {
@@ -429,6 +430,41 @@ func toProtoVersionDetail(v biz.SkillVersionDetail) *v1.SkillVersionDetail {
 		CreatedAt:        v.CreatedAt,
 		FileManifestJson: v.FileManifestJSON,
 	}
+}
+
+func (s *SkillService) GetSkillHealth(ctx context.Context, req *v1.GetSkillHealthRequest) (*v1.SkillHealthMetric, error) {
+	skillID := strings.TrimSpace(req.GetSkillId())
+	if skillID == "" {
+		return nil, kerrors.BadRequest("SKILL_INTELLIGENCE", "skill_id is required")
+	}
+	if s.healthUC == nil {
+		return nil, kerrors.ServiceUnavailable("SKILL_INTELLIGENCE", "skill health usecase not available")
+	}
+	detail, err := s.healthUC.GetSkillHealth(ctx, skillID)
+	if err != nil {
+		return nil, err
+	}
+	dailyMetrics := make([]*v1.SkillHealthDailyMetric, 0, len(detail.DailyMetrics))
+	for _, dm := range detail.DailyMetrics {
+		dailyMetrics = append(dailyMetrics, &v1.SkillHealthDailyMetric{
+			Date:          dm.Date,
+			Invocations:   int32(dm.Invocations),
+			Successes:     int32(dm.Successes),
+			AvgDurationMs: dm.AvgDurationMs,
+		})
+	}
+	return &v1.SkillHealthMetric{
+		SkillId:              detail.SkillID,
+		TotalInvocations_7D:  int32(detail.TotalInvocations7d),
+		SuccessCount_7D:      int32(detail.SuccessCount7d),
+		SuccessRate_7D:       detail.SuccessRate7d,
+		P95DurationMs_7D:     int32(detail.P95DurationMs7d),
+		TotalInvocations_30D: int32(detail.TotalInvocations30d),
+		SuccessCount_30D:     int32(detail.SuccessCount30d),
+		SuccessRate_30D:      detail.SuccessRate30d,
+		P95DurationMs_30D:    int32(detail.P95DurationMs30d),
+		DailyMetrics:         dailyMetrics,
+	}, nil
 }
 
 func (s *SkillService) skillDir(ctx context.Context, id string) (string, error) {

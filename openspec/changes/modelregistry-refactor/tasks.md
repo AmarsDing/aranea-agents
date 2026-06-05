@@ -46,7 +46,8 @@
 | `internal/modelregistry/logs.go` | JSONL sync logs |
 | `internal/modelregistry/runtime_overlay.json` | Runtime overlay data (copy) |
 | `internal/agent/model_registry_sync.go` | ModelRegistrySyncAgent (bridge) |
-| `internal/tools/model_registry_sync.go` | 4 CallableTools (bridge) |
+| `internal/tools/modelsync/registry.go` | Phases 结构体 + BuildPhases + RegisterAll |
+| `internal/tools/modelsync/tools.go` | 4 个 FunctionTool（fetch/migrate/apply/logo） |
 
 ### Modified Files
 
@@ -75,7 +76,7 @@
 - Create: `internal/modelregistry/phase.go`
 - Create: `internal/modelregistry/store_provider.go`
 
-- [ ] **Step 1: Create `internal/modelregistry/directory.go`**
+- [x] **Step 1: Create `internal/modelregistry/directory.go`**
 
 Port from `internal/modelcatalog/catalog.go`, rename `Catalog` → `Directory`:
 
@@ -188,7 +189,7 @@ type SyncLogEntry struct {
 }
 ```
 
-- [ ] **Step 2: Create `internal/modelregistry/phase.go`**
+- [x] **Step 2: Create `internal/modelregistry/phase.go`**
 
 ```go
 package modelregistry
@@ -231,7 +232,7 @@ type PhaseContext struct {
 }
 ```
 
-- [ ] **Step 3: Create `internal/modelregistry/store_provider.go`**
+- [x] **Step 3: Create `internal/modelregistry/store_provider.go`**
 
 ```go
 package modelregistry
@@ -243,7 +244,7 @@ type StoreProvider interface {
 }
 ```
 
-- [ ] **Step 4: Verify new package compiles**
+- [x] **Step 4: Verify new package compiles**
 
 Run: `go build ./internal/modelregistry/...`
 Expected: PASS (no import errors)
@@ -262,7 +263,7 @@ Expected: PASS (no import errors)
 - Create: `internal/modelregistry/migration_checkpoint.go`
 - Create: `internal/modelregistry/runtime_overlay.json`
 
-- [ ] **Step 1: Port `store.go` from modelcatalog**
+- [x] **Step 1: Port `store.go` from modelcatalog**
 
 Copy `internal/modelcatalog/store.go` to `internal/modelregistry/store.go`, change:
 - `package modelcatalog` → `package modelregistry`
@@ -272,7 +273,7 @@ Copy `internal/modelcatalog/store.go` to `internal/modelregistry/store.go`, chan
 - All `Catalog` type references → `Directory`
 - `SearchCatalogBlocks` → `SearchDirectoryBlocks` (store method delegates to search.go)
 
-- [ ] **Step 2: Port remaining support files**
+- [x] **Step 2: Port remaining support files**
 
 Copy and adapt each file from `internal/modelcatalog/`:
 - `pricing.go` — change package name only
@@ -283,7 +284,7 @@ Copy and adapt each file from `internal/modelcatalog/`:
 - `migration_checkpoint.go` — change package name only
 - `runtime_overlay.json` — copy as-is
 
-- [ ] **Step 3: Verify package compiles**
+- [x] **Step 3: Verify package compiles**
 
 Run: `go build ./internal/modelregistry/...`
 Expected: PASS
@@ -306,7 +307,7 @@ Expected: PASS
 - Create: `internal/modelregistry/backfill.go`
 - Create: `internal/modelregistry/logs.go`
 
-- [ ] **Step 1: Port `fetch.go` + `fetch_retry.go`**
+- [x] **Step 1: Port `fetch.go` + `fetch_retry.go`**
 
 Copy from modelcatalog, change:
 - `package modelcatalog` → `package modelregistry`
@@ -314,7 +315,7 @@ Copy from modelcatalog, change:
 - `ParseCatalog` → `ParseDirectory`
 - Return types use `Directory` instead of `Catalog`
 
-- [ ] **Step 2: Port `sync.go` — Remove SyncProviderLogos call**
+- [x] **Step 2: Port `sync.go` — Remove SyncProviderLogos call**
 
 Copy from modelcatalog, change:
 - `package modelcatalog` → `package modelregistry`
@@ -326,7 +327,7 @@ Copy from modelcatalog, change:
 - `SaveCatalog` → `SaveDirectory`
 - `LoadCatalog` → `LoadDirectory`
 
-- [ ] **Step 3: Port `apply.go` — Add BatchApply types**
+- [x] **Step 3: Port `apply.go` — Add BatchApply types**
 
 Copy from modelcatalog, change:
 - `package modelcatalog` → `package modelregistry`
@@ -365,7 +366,7 @@ type BatchApplyResult struct {
 }
 ```
 
-- [ ] **Step 4: Port `migrate_bindings.go` + `migrate.go` + `logos.go` + `overlay.go` + `search.go` + `config_merge.go` + `backfill.go` + `logs.go`**
+- [x] **Step 4: Port `migrate_bindings.go` + `migrate.go` + `logos.go` + `overlay.go` + `search.go` + `config_merge.go` + `backfill.go` + `logs.go`**
 
 Copy each from modelcatalog, change:
 - `package modelcatalog` → `package modelregistry`
@@ -376,7 +377,7 @@ Copy each from modelcatalog, change:
 - `catalog_managed` / `catalog_source` JSON field names — **keep unchanged** (these are persisted in DB, renaming would break existing data)
 - `CountProviders` / `ListProviders` / `CountModels` / `ListModels` — parameter type `Catalog` → `Directory`
 
-- [ ] **Step 5: Verify package compiles**
+- [x] **Step 5: Verify package compiles**
 
 Run: `go build ./internal/modelregistry/...`
 Expected: PASS
@@ -391,7 +392,7 @@ Expected: PASS
 - Create: `internal/modelregistry/apply_phase.go`
 - Create: `internal/modelregistry/logo_phase.go`
 
-- [ ] **Step 1: Create `fetch_phase.go`**
+- [x] **Step 1: Create `fetch_phase.go`**
 
 ```go
 package modelregistry
@@ -422,7 +423,7 @@ func (p *FetchPhase) Run(pc *PhaseContext) PhaseResult {
 }
 ```
 
-- [ ] **Step 2: Create `migrate_phase.go`**
+- [x] **Step 2: Create `migrate_phase.go`**
 
 ```go
 package modelregistry
@@ -468,7 +469,7 @@ func NewCheckpoint(completedRules []string) *MigrationCheckpoint {
 
 **Note:** `MigrationCheckpoint` struct needs a `CompletedRules []string` field added (currently only has `AppliedAt`, `Version`, `Stats`).
 
-- [ ] **Step 3: Create `apply_phase.go`**
+- [x] **Step 3: Create `apply_phase.go`**
 
 ```go
 package modelregistry
@@ -588,7 +589,7 @@ func (p *ApplyPhase) Run(pc *PhaseContext) PhaseResult {
 }
 ```
 
-- [ ] **Step 4: Create `logo_phase.go`**
+- [x] **Step 4: Create `logo_phase.go`**
 
 ```go
 package modelregistry
@@ -620,7 +621,7 @@ func (p *LogoPhase) Run(pc *PhaseContext) PhaseResult {
 }
 ```
 
-- [ ] **Step 5: Update `migration_checkpoint.go` to add CompletedRules field**
+- [x] **Step 5: Update `migration_checkpoint.go` to add CompletedRules field**
 
 ```go
 package modelregistry
@@ -641,7 +642,7 @@ func NewMigrationCheckpoint(stats ApplyMigrationStats) MigrationCheckpoint {
 }
 ```
 
-- [ ] **Step 6: Verify package compiles**
+- [x] **Step 6: Verify package compiles**
 
 Run: `go build ./internal/modelregistry/...`
 Expected: PASS
@@ -663,7 +664,7 @@ Expected: PASS
 - Create: `internal/modelregistry/backfill_test.go`
 - Create: `internal/modelregistry/apply_test.go`
 
-- [ ] **Step 1: Copy and adapt all test files**
+- [x] **Step 1: Copy and adapt all test files**
 
 For each `_test.go` file in `internal/modelcatalog/`:
 1. Copy to `internal/modelregistry/`
@@ -674,7 +675,7 @@ For each `_test.go` file in `internal/modelcatalog/`:
 6. Change `IsCatalogJSONBlock` → `IsDirectoryJSONBlock`
 7. Change `ValidateCatalogSourceURL` → `ValidateDirectorySourceURL`
 
-- [ ] **Step 2: Run tests**
+- [x] **Step 2: Run tests**
 
 Run: `go test ./internal/modelregistry/... -count=1`
 Expected: All tests PASS
@@ -687,7 +688,7 @@ Expected: All tests PASS
 - Create: `internal/data/model_registry_apply.go`
 - Modify: `internal/data/data.go` (if ProviderSet needs update)
 
-- [ ] **Step 1: Create `internal/data/model_registry_apply.go`**
+- [x] **Step 1: Create `internal/data/model_registry_apply.go`**
 
 Copy from `internal/data/model_catalog_apply.go`, change:
 - `package data` stays
@@ -907,7 +908,7 @@ func (b *modelRegistryApplyBackend) upsertPricingInTx(ctx context.Context, tx *s
 }
 ```
 
-- [ ] **Step 2: Verify data layer compiles**
+- [x] **Step 2: Verify data layer compiles**
 
 Run: `go build ./internal/data/...`
 Expected: PASS (both old modelcatalog and new modelregistry references coexist)
@@ -920,7 +921,7 @@ Expected: PASS (both old modelcatalog and new modelregistry references coexist)
 - Create: `internal/biz/model_registry.go`
 - Modify: `internal/biz/biz.go` (add new ProviderSet entry)
 
-- [ ] **Step 1: Create `internal/biz/model_registry.go`**
+- [x] **Step 1: Create `internal/biz/model_registry.go`**
 
 Copy from `internal/biz/model_catalog.go`, change:
 - `ModelCatalogRootResolver` → `ModelRegistryRootResolver`
@@ -939,7 +940,7 @@ Key changes in `Sync` method:
 - Remove `u.runner.SyncNow()` path — always use direct syncer
 - After sync, run Phase pipeline: FetchPhase → MigratePhase → ApplyPhase → LogoPhase
 
-- [ ] **Step 2: Verify biz layer compiles**
+- [x] **Step 2: Verify biz layer compiles**
 
 Run: `go build ./internal/biz/...`
 Expected: PASS
@@ -951,7 +952,7 @@ Expected: PASS
 **Files:**
 - Modify: `internal/service/model_catalog.go`
 
-- [ ] **Step 1: Update `internal/service/model_catalog.go`**
+- [x] **Step 1: Update `internal/service/model_catalog.go`**
 
 Change:
 - `modelcatalog` → `modelregistry` in imports
@@ -965,7 +966,7 @@ Change:
 - `modelcatalog.Policy{...}` → `modelregistry.Policy{...}`
 - `modelcatalog.ProviderMigrationVersion` → `modelregistry.ProviderMigrationVersion`
 
-- [ ] **Step 2: Verify service layer compiles**
+- [x] **Step 2: Verify service layer compiles**
 
 Run: `go build ./internal/service/...`
 Expected: PASS
@@ -980,25 +981,25 @@ Expected: PASS
 - Modify: `internal/biz/llm_provider_model_pricing_test.go`
 - Modify: `internal/data/usage_write.go`
 
-- [ ] **Step 1: Update `internal/biz/usage/usage.go`**
+- [x] **Step 1: Update `internal/biz/usage/usage.go`**
 
 Change import: `"aranea-agents/internal/modelcatalog"` → `"aranea-agents/internal/modelregistry"`
 Change all `modelcatalog.` → `modelregistry.`
 
-- [ ] **Step 2: Update `internal/biz/llm_provider_model.go`**
+- [x] **Step 2: Update `internal/biz/llm_provider_model.go`**
 
 Change import: `"aranea-agents/internal/modelcatalog"` → `"aranea-agents/internal/modelregistry"`
 Change all `modelcatalog.` → `modelregistry.`
 
-- [ ] **Step 3: Update `internal/biz/llm_provider_model_pricing_test.go`**
+- [x] **Step 3: Update `internal/biz/llm_provider_model_pricing_test.go`**
 
 Change import and all `modelcatalog.` → `modelregistry.`
 
-- [ ] **Step 4: Update `internal/data/usage_write.go`**
+- [x] **Step 4: Update `internal/data/usage_write.go`**
 
 Change import and `modelcatalog.MigrateProviderCode` → `modelregistry.MigrateProviderCode`
 
-- [ ] **Step 5: Verify compilation**
+- [x] **Step 5: Verify compilation**
 
 Run: `go build ./internal/...`
 Expected: PASS
@@ -1010,7 +1011,7 @@ Expected: PASS
 **Files:**
 - Create: `internal/agent/model_registry_sync.go`
 
-- [ ] **Step 1: Create `internal/agent/model_registry_sync.go`**
+- [x] **Step 1: Create `internal/agent/model_registry_sync.go`**
 
 ```go
 package agent
@@ -1151,7 +1152,7 @@ func emitAgentCompletion(ch chan<- *trpcevent.Event) {
 }
 ```
 
-- [ ] **Step 2: Verify agent layer compiles**
+- [x] **Step 2: Verify agent layer compiles**
 
 Run: `go build ./internal/agent/...`
 Expected: PASS
@@ -1163,7 +1164,7 @@ Expected: PASS
 **Files:**
 - Create: `internal/tools/model_registry_sync.go`
 
-- [ ] **Step 1: Create `internal/tools/model_registry_sync.go`**
+- [x] **Step 1: Create `internal/tools/model_registry_sync.go`**
 
 ```go
 package tools
@@ -1286,7 +1287,7 @@ func PhaseFromCtx(ctx context.Context) *PhaseContext {
 }
 ```
 
-- [ ] **Step 2: Verify tools layer compiles**
+- [x] **Step 2: Verify tools layer compiles**
 
 Run: `go build ./internal/tools/...`
 Expected: PASS
@@ -1301,7 +1302,7 @@ Expected: PASS
 - Modify: `internal/cronrunner/runner.go` (add model-registry-sync routing)
 - Modify: `internal/server/service_registry.go`
 
-- [ ] **Step 1: Update `cmd/admin/wire.go`**
+- [x] **Step 1: Update `cmd/admin/wire.go`**
 
 Replace `provideModelCatalogRunner`:
 
@@ -1340,7 +1341,7 @@ Update wire provider list:
 
 Remove `modelcatalog` import, add `agent` import.
 
-- [ ] **Step 2: Update `cmd/admin/main.go`**
+- [x] **Step 2: Update `cmd/admin/main.go`**
 
 Replace:
 ```go
@@ -1362,7 +1363,7 @@ if out.ModelRegistrySyncAgent != nil {
 }
 ```
 
-- [ ] **Step 3: Add `SeedModelRegistryCronTask` to `internal/biz/model_registry.go`**
+- [x] **Step 3: Add `SeedModelRegistryCronTask` to `internal/biz/model_registry.go`**
 
 ```go
 func SeedModelRegistryCronTask(ctx context.Context, cronRepo CronRepo) error {
@@ -1386,7 +1387,7 @@ func SeedModelRegistryCronTask(ctx context.Context, cronRepo CronRepo) error {
 }
 ```
 
-- [ ] **Step 4: Verify wire + build**
+- [x] **Step 4: Verify wire + build**
 
 Run: `make wire && go build ./cmd/admin`
 Expected: PASS
@@ -1399,18 +1400,18 @@ Expected: PASS
 - Delete: `internal/modelcatalog/` (entire directory)
 - Delete: `internal/data/model_catalog_apply.go`
 
-- [ ] **Step 1: Delete old package**
+- [x] **Step 1: Delete old package**
 
 Run: `rm -rf internal/modelcatalog/`
 Run: `rm internal/data/model_catalog_apply.go`
 Run: `rm internal/biz/model_catalog.go`
 
-- [ ] **Step 2: Search for any remaining `modelcatalog` references**
+- [x] **Step 2: Search for any remaining `modelcatalog` references**
 
 Run: `grep -r "modelcatalog" internal/ cmd/ --include="*.go" -l`
 Expected: No results (proto-generated code in `api/` is separate and uses `modelcatalogv1`)
 
-- [ ] **Step 3: Verify full build**
+- [x] **Step 3: Verify full build**
 
 Run: `make api && make wire && make build`
 Expected: PASS
@@ -1421,27 +1422,27 @@ Expected: PASS
 
 **Files:** None (verification only)
 
-- [ ] **Step 1: Run all modelregistry tests**
+- [x] **Step 1: Run all modelregistry tests**
 
 Run: `go test ./internal/modelregistry/... -count=1 -v`
 Expected: All PASS
 
-- [ ] **Step 2: Run biz/data tests**
+- [x] **Step 2: Run biz/data tests**
 
 Run: `go test ./internal/biz/... ./internal/data/... -count=1`
 Expected: All PASS
 
-- [ ] **Step 3: Run service tests**
+- [x] **Step 3: Run service tests**
 
 Run: `go test ./internal/service/... -count=1`
 Expected: All PASS
 
-- [ ] **Step 4: Run full build**
+- [x] **Step 4: Run full build**
 
 Run: `make api && make wire && make build && make test && make lint`
 Expected: All PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add -A

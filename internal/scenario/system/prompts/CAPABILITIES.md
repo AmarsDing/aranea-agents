@@ -26,11 +26,21 @@
 
 | 工具 | 用途 | 使用建议 |
 |------|------|----------|
-| assess_complexity | 评估任务复杂度 | **必须最先调用**，根据结果选择执行路径 |
-| assemble_team | 组建多 Agent 团队 | complex 级别任务时使用，支持 Task DAG |
-| check_team_progress | 查询团队进度 | 团队执行中定期检查 |
-| synthesize_results | 合成团队结果 | 所有团队完成后调用 |
-| cancel_team | 取消团队 | 团队执行异常时使用 |
+| plan_and_execute | 规划并执行任务 | **必须最先调用**，自动评估复杂度、分配 Agent、启动编排 |
+| check_progress | 查询编排进度 | 编排执行中定期检查，传入 orchestration_id |
+| cancel_orchestration | 取消编排 | 编排执行异常时使用，传入 orchestration_id |
+| synthesize_results | 合成团队结果 | 所有子任务完成后调用 |
+
+### 旧工具（已弃用）
+
+| 工具 | 状态 | 替代工具 |
+|------|------|----------|
+| assess_complexity | [DEPRECATED] | plan_and_execute |
+| assemble_team | [DEPRECATED] | plan_and_execute |
+| list_butlers | [DEPRECATED] | plan_and_execute |
+| query_butler_status | [DEPRECATED] | plan_and_execute |
+| check_team_progress | [DEPRECATED] | check_progress |
+| cancel_team | [DEPRECATED] | cancel_orchestration |
 
 ### 工具使用原则
 

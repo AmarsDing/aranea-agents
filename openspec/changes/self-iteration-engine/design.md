@@ -637,3 +637,107 @@ telemetry:
 2. staging 环境基础设施：当前是否有 staging K8s 集群？若无，staging 冒烟验证如何实现？
 3. PAT token 权限：auto-fix 需要创建 PR 的 PAT token，需确认 GitHub 组织策略
 4. E2E 测试环境：Playwright 需要运行中的后端服务，CI 中如何启动完整后端？
+
+## 实现偏差记录
+
+> 以下记录代码实际实现与设计文档的差异，供后续迭代参考。
+
+### D1 偏差：自动修复引擎 — 自托管 Agent API 替代 OPENAI_API_KEY
+
+**设计文档**：任务 6.13 提到配置 `OPENAI_API_KEY`，D1 决策中提到"自托管 Agent API"。
+
+**实际实现**：auto-fix.yml 使用以下环境变量调用自托管 Agent：
+- `ARANEA_API_URL`：自托管 aranea-agents 实例 URL
+- `ARANEA_AUTO_FIX_SESSION`：预配置的 Agent session ID
+- `ARANEA_API_TOKEN`：API 认证 token
+
+未配置时回退到 `.auto-fix/scripts/pattern-fix.sh`（7 种模式匹配：race condition、nil pointer、import cycle、proto/wire 同步、gofmt drift、goimports drift、go mod tidy），而非文档中的 4 种 known-fixes。
+
+**影响**：GitHub Secrets 需配置的是 ARANEA_API_URL / ARANEA_AUTO_FIX_SESSION / ARANEA_API_TOKEN，而非 OPENAI_API_KEY。
+
+### D4 偏差：GoReleaser 配置
+
+**设计文档**：before hooks 包含 `make api` 和 `make wire`；ldflags 注入 `main.version`、`main.commit`、`main.date`；araneactl 入口为 `./cmd/araneactl`。
+
+**实际实现**：
+- before hooks 仅 `go mod tidy`（无 make api/make wire）
+- ldflags 注入 `main.Version` 和 `main.Name`（无 commit/date）
+- araneactl 入口为 `./cmd/aranea`（非 ./cmd/araneactl）
+- 新增 archives 配置（tar.gz + zip for windows）
+
+### D4 偏差：Release Workflow
+
+**设计文档**：release workflow 包含 staging 部署 → 冒烟测试 → production promote（需人工审批）。
+
+**实际实现**：release.yml 仅包含 GoReleaser + Docker push 到 ghcr.io，无 staging/production 步骤。staging 和 production 部署需在基础设施就绪后补充。
+
+### D6 偏差：Husky + lint-staged 状态
+
+**设计文档**：Husky pre-commit hook 调用 lint-staged，commit-msg hook 调用 commitlint。
+
+**实际实现**：
+- `.husky/pre-commit` 内容为 `# lint-staged disabled`
+- `.husky/commit-msg` 内容为 `# commitlint disabled`
+- 根目录无 package.json，husky/lint-staged/commitlint 的 npm 依赖未安装
+- `.commitlintrc.yml` 文件不存在
+- CI 中 commitlint 通过 `npm install -g` 临时安装
+
+**原因**：可能为避免影响开发体验而临时禁用，待代码库规范化后再启用。
+
+### D9 偏差：CI Pipeline 结构
+
+**设计文档**：CI 12 Job 包含独立的 doc-sync-check job。
+
+**实际实现**：CI 有 12 个 job，但无独立的 doc-sync-check job。proto-clean job 中包含 OpenAPI spec 存在性检查（`if [ -f api/openapi.yaml ]`），功能已部分覆盖 doc-sync-check 的职责。security-scan 使用 Trivy filesystem scan（非容器扫描），且 continue-on-error: true。CodeQL 在独立的 codeql.yml workflow 中运行。
+
+### D5 偏差：文档同步引擎
+
+**设计文档**：doc-sync 包含 LLM 辅助 spec 更新步骤。
+
+**实际实现**：doc-sync.yml 中无 LLM 辅助 spec 更新步骤。当前仅包含：变更范围检测、OpenAPI 重新生成、关键 spec Issue 通知、changelog 条目生成。LLM 辅助 spec 更新待后续实现。
+
+### D8 偏差：迭代仪表盘
+
+**设计文档**：发布频率采集从 GitHub Releases API 获取最近一周的发布数据。
+
+**实际实现**：使用 `gh release list --limit 50 | grep $(date +%Y-%m)` 统计当月发布数（非周维度）。覆盖率仅采集最新值，无历史趋势对比。
+
+### 额外实现：pattern-fix.sh 回退脚本
+
+代码中实现了 `.auto-fix/scripts/pattern-fix.sh`，包含 7 种已知失败模式的自动修复尝试：
+1. Race condition → 提示手动修复（无法安全自动修复）
+2. Nil pointer dereference → 提示手动修复
+3. Import cycle → 提示手动修复
+4. Proto/wire out of sync → `make api && make wire`
+5. gofmt drift → `gofmt -w .`
+6. goimports drift → `goimports -w .`
+7. go mod tidy needed → `go mod tidy`
+
+此脚本在自托管 Agent API 不可用时作为回退方案，设计文档中未详细描述。
+
+### 额外实现：集成测试骨架
+
+chat_integration_test.go 和 agent_integration_test.go 仅为骨架实现——启动 PostgreSQL 容器后只打印 DSN，实际 API 测试标记为 TODO。需要后续补充 Wire 注入的完整服务器实例来运行真实 API 测试。
+
+### 额外实现：ESLint 渐进式规则
+
+ESLint 配置使用渐进式规则（gradual adoption），包括：
+- `vue/no-mutating-props: warn`（而非 error）
+- `no-undef: off`（TypeScript 编译器覆盖）
+- `@typescript-eslint/no-explicit-any: warn`
+- `@typescript-eslint/no-unused-vars: warn`（argsIgnorePattern: ^_）
+- `vue/multi-word-component-names: off`
+- 忽略 `src/services/**`（自动生成代码）
+
+### 额外实现：Prettier 扩展配置
+
+Prettier 配置比文档描述更完整，额外包含：
+- `trailingComma: "all"`
+- `bracketSpacing: true`
+- `arrowParens: "always"`
+- `endOfLine: "lf"`
+- `vueIndentScriptAndStyle: false`
+
+### 额外实现：Playwright 仅 Chromium
+
+Playwright 配置仅使用 Chromium 项目（设计文档提到多浏览器支持），本地运行时自动启动 `pnpm dev` 作为 webServer。baseURL 默认为 `http://localhost:9001`。

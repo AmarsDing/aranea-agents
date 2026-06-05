@@ -2,42 +2,75 @@ package data
 
 import (
 	"context"
+	"encoding/json"
+	"sort"
+	"strings"
 
 	"aranea-agents/internal/biz"
-	"aranea-agents/internal/data/sessionmemory"
 )
 
-// MemoryCompositeRecallAdapter maps sessionmemory composite recall to biz ports.
+// MemoryCompositeRecallAdapter maps composite recall to biz ports.
 type MemoryCompositeRecallAdapter struct {
-	store *sessionmemory.Store
+	data *Data
 }
 
 var _ biz.SessionCompositeRecallStore = (*MemoryCompositeRecallAdapter)(nil)
 
-func NewMemoryCompositeRecallAdapter(store *sessionmemory.Store) biz.SessionCompositeRecallStore {
-	if store == nil {
+func NewMemoryCompositeRecallAdapter(data *Data) biz.SessionCompositeRecallStore {
+	if data == nil {
 		return nil
 	}
-	return &MemoryCompositeRecallAdapter{store: store}
+	return &MemoryCompositeRecallAdapter{data: data}
 }
 
 func (a *MemoryCompositeRecallAdapter) CompositeSearchMemories(ctx context.Context, agentID, sessionID, userID, query string, limit int32) ([]biz.CompositeRecallStoreRow, error) {
-	if a == nil || a.store == nil {
+	if a == nil || a.data == nil {
 		return nil, nil
 	}
-	rows, err := a.store.CompositeSearchMemories(ctx, agentID, sessionID, userID, query, limit)
-	if err != nil {
-		return nil, err
+	var all []biz.CompositeRecallStoreRow
+
+	// L2 episodes
+	l2 := newL2EpisodeRepo(a.data, nil)
+	episodes, err := l2.RecallL2Episodes(ctx, agentID, sessionID, query, nil, limit)
+	if err == nil {
+		for _, raw := range episodes {
+			var row map[string]any
+			if json.Unmarshal(raw, &row) != nil {
+				continue
+			}
+			title, _ := row["title"].(string)
+			summary, _ := row["outcome_summary"].(string)
+			all = append(all, biz.CompositeRecallStoreRow{
+				Layer:   "L2",
+				Title:   title,
+				Summary: summary,
+			})
+		}
 	}
-	out := make([]biz.CompositeRecallStoreRow, 0, len(rows))
-	for _, row := range rows {
-		out = append(out, biz.CompositeRecallStoreRow{
-			Layer:     row.Layer,
-			Title:     row.Title,
-			Summary:   row.Summary,
-			Statement: row.Statement,
-			Score:     row.Scores.Total,
-		})
+
+	// L3 facts
+	l3 := newL3FactRepo(a.data, nil)
+	facts, err := l3.RecallL3Facts(ctx, "agent", agentID, userID, query, nil, limit, 0)
+	if err == nil {
+		for _, raw := range facts {
+			var row map[string]any
+			if json.Unmarshal(raw, &row) != nil {
+				continue
+			}
+			stmt, _ := row["statement"].(string)
+			all = append(all, biz.CompositeRecallStoreRow{
+				Layer:     "L3",
+				Statement: stmt,
+			})
+		}
 	}
-	return out, nil
+
+	sort.Slice(all, func(i, j int) bool { return all[i].Score > all[j].Score })
+	if len(all) > int(limit) {
+		all = all[:limit]
+	}
+	return all, nil
 }
+
+// ensure strings is referenced
+var _ = strings.TrimSpace

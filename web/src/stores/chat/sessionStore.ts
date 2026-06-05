@@ -383,7 +383,26 @@ export const useChatSessionStore = defineStore('chatSession', () => {
   function reconcileFromServer(sessionId: string, serverSession: Session) {
     const id = sessionId.trim();
     if (!id) return;
-    const patch = reconcilePatchFromServer(serverSession);
+    const local = findSessionById(id);
+    const patch = reconcilePatchFromServer(
+      serverSession,
+      local
+        ? {
+            total_tokens: local.total_tokens,
+            max_context_used_ratio: local.max_context_used_ratio,
+            input_tokens: local.input_tokens,
+            output_tokens: local.output_tokens,
+            total_cost_micro_usd: local.total_cost_micro_usd,
+            message_count: local.message_count,
+            model_call_count: local.model_call_count,
+            tool_call_count: local.tool_call_count,
+            skill_call_count: local.skill_call_count,
+            mcp_call_count: local.mcp_call_count,
+            context_used_ratio: local.context_used_ratio,
+            context_used_tokens: local.context_used_tokens ?? 0,
+          }
+        : undefined,
+    );
     patchSessionMetricsLocal(id, patch);
   }
 

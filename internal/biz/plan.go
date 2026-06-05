@@ -12,6 +12,7 @@ type PlanStatus string
 const (
 	PlanStatusDraft     PlanStatus = "draft"
 	PlanStatusApproved  PlanStatus = "approved"
+	PlanStatusConfirmed PlanStatus = "confirmed"
 	PlanStatusExecuting PlanStatus = "executing"
 	PlanStatusCompleted PlanStatus = "completed"
 	PlanStatusFailed    PlanStatus = "failed"

@@ -5,9 +5,11 @@ import prettierConfig from 'eslint-config-prettier'
 import prettierPlugin from 'eslint-plugin-prettier'
 import globals from 'globals'
 
-// Disable strict rules for gradual adoption
+// Relaxed rules for gradual adoption — tighten as codebase matures
 const gradualRules = {
-  'vue/no-mutating-props': 'off',
+  // Warn on prop mutation instead of silently allowing it
+  'vue/no-mutating-props': 'warn',
+  // TypeScript compiler covers undef checks; keep off to avoid SFC template false positives
   'no-undef': 'off',
 }
 

@@ -40,7 +40,14 @@ jobs:
       - name: Start backend
         run: |
           KRATOS_HTTP_AUTH_DISABLED=1 DEPLOY_ENV=dev ./bin/admin -conf ./configs &
-          sleep 5
+          # Wait for backend to be ready (up to 30s)
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "Backend ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
 
       - name: Build frontend
         working-directory: web
@@ -50,7 +57,14 @@ jobs:
         working-directory: web
         run: |
           npx vite preview --port 9000 --host 0.0.0.0 &
-          sleep 3
+          # Wait for frontend to be ready (up to 15s)
+          for i in $(seq 1 15); do
+            if curl -sf http://localhost:9000 > /dev/null 2>&1; then
+              echo "Frontend ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
 
       - name: Run E2E tests
         working-directory: web

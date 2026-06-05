@@ -11,13 +11,14 @@ export function useLearningLoopPanel(agentId: () => string) {
   const approvingId = ref<string | null>(null);
   const rejectingId = ref<string | null>(null);
   const patternStatusFilter = ref<string>('');
+  const proposalStatusFilter = ref<string>('');
 
   const observations = computed<LearningObservation[]>(() => store.observations);
   const patterns = computed<LearningPattern[]>(() => store.patterns);
   const proposals = computed<LearningProposal[]>(() => store.proposals);
 
-  const pendingProposalsCount = computed(() => proposals.value.filter((p) => p.status === 'pending').length);
-  const registeredKnowledgeCount = computed(() => proposals.value.filter((p) => p.status === 'approved').length);
+  const pendingProposalsCount = computed(() => proposals.value.filter((p) => p.status === 'validated').length);
+  const registeredKnowledgeCount = computed(() => proposals.value.filter((p) => p.status === 'applied').length);
 
   async function fetchAll() {
     const id = agentId();
@@ -27,7 +28,7 @@ export function useLearningLoopPanel(agentId: () => string) {
       await Promise.all([
         store.fetchObservations(id),
         store.fetchPatterns(id, patternStatusFilter.value || undefined),
-        store.fetchProposals(id),
+        store.fetchProposals(id, proposalStatusFilter.value || undefined),
       ]);
     } finally {
       loading.value = false;
@@ -78,7 +79,7 @@ export function useLearningLoopPanel(agentId: () => string) {
   }
 
   watch(
-    () => [agentId(), patternStatusFilter.value],
+    () => [agentId(), patternStatusFilter.value, proposalStatusFilter.value],
     () => {
       void fetchAll();
     },
@@ -91,6 +92,7 @@ export function useLearningLoopPanel(agentId: () => string) {
     approvingId,
     rejectingId,
     patternStatusFilter,
+    proposalStatusFilter,
     observations,
     patterns,
     proposals,

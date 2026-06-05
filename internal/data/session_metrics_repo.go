@@ -99,25 +99,27 @@ func (r *sessionMetricsRepo) UpsertSessionMetrics(ctx context.Context, sessionID
 	c := r.data.RW().Write(ctx)
 	now := nowRFC3339()
 
+	// INSERT with zero values; ON CONFLICT adds the delta.
+	// This ensures first-time rows start at 0 and deltas accumulate correctly.
 	builder := c.SessionMetrics.Create().
 		SetID(sessionID).
-		SetMessageCount(delta.MessageCount).
+		SetMessageCount(0).
 		SetRunCount(0).
-		SetModelCallCount(delta.ModelCallCount).
-		SetToolCallCount(delta.ToolCallCount).
-		SetSkillCallCount(delta.SkillCallCount).
-		SetMcpCallCount(delta.McpCallCount).
-		SetInputTokens(int(delta.InputTokens)).
-		SetOutputTokens(int(delta.OutputTokens)).
-		SetTotalTokens(int(delta.TotalTokens)).
-		SetTotalCostMicroUsd(delta.TotalCostMicroUsd).
+		SetModelCallCount(0).
+		SetToolCallCount(0).
+		SetSkillCallCount(0).
+		SetMcpCallCount(0).
+		SetInputTokens(0).
+		SetOutputTokens(0).
+		SetTotalTokens(0).
+		SetTotalCostMicroUsd(0).
 		SetAvgLatencyMs(0).
 		SetErrorCount(0).
 		SetContextUsedTokens(0).
 		SetContextUsedRatio(0).
 		SetMaxContextUsedRatio(0).
 		SetContextStatus("").
-		SetLastMessageAt(delta.LastMessageAt).
+		SetLastMessageAt("").
 		SetUpdatedAt(now)
 
 	err := builder.
@@ -153,6 +155,15 @@ func (r *sessionMetricsRepo) UpsertSessionMetrics(ctx context.Context, sessionID
 			if delta.LastMessageAt != "" {
 				u.SetLastMessageAt(delta.LastMessageAt)
 			}
+			if delta.ContextUsedTokens != 0 {
+				u.SetContextUsedTokens(delta.ContextUsedTokens)
+			}
+			if delta.ContextUsedRatio != 0 {
+				u.SetContextUsedRatio(delta.ContextUsedRatio)
+			}
+			if delta.MaxContextUsedRatio != 0 {
+				u.SetMaxContextUsedRatio(delta.MaxContextUsedRatio)
+			}
 			u.SetUpdatedAt(now)
 		}).
 		Exec(ctx)
@@ -170,46 +181,7 @@ func (r *sessionMetricsRepo) ApplyMetricsDelta(ctx context.Context, d *session.S
 	if sessionID == "" {
 		return nil
 	}
-	upd := r.data.RW().Write(ctx).SessionMetrics.UpdateOneID(sessionID).SetUpdatedAt(nowRFC3339())
-	if d.MessageCount != 0 {
-		upd = upd.AddMessageCount(d.MessageCount)
-	}
-	if d.ModelCallCount != 0 {
-		upd = upd.AddModelCallCount(d.ModelCallCount)
-	}
-	if d.ToolCallCount != 0 {
-		upd = upd.AddToolCallCount(d.ToolCallCount)
-	}
-	if d.SkillCallCount != 0 {
-		upd = upd.AddSkillCallCount(d.SkillCallCount)
-	}
-	if d.McpCallCount != 0 {
-		upd = upd.AddMcpCallCount(d.McpCallCount)
-	}
-	if d.InputTokens != 0 {
-		upd = upd.AddInputTokens(int(d.InputTokens))
-	}
-	if d.OutputTokens != 0 {
-		upd = upd.AddOutputTokens(int(d.OutputTokens))
-	}
-	if d.TotalTokens != 0 {
-		upd = upd.AddTotalTokens(int(d.TotalTokens))
-	}
-	if d.TotalCostMicroUsd != 0 {
-		upd = upd.AddTotalCostMicroUsd(d.TotalCostMicroUsd)
-	}
-	if d.LastMessageAt != "" {
-		upd = upd.SetLastMessageAt(d.LastMessageAt)
-	}
-	if d.ContextUsedTokens != 0 {
-		upd = upd.SetContextUsedTokens(d.ContextUsedTokens)
-	}
-	if d.ContextUsedRatio != 0 {
-		upd = upd.SetContextUsedRatio(d.ContextUsedRatio)
-	}
-	if d.MaxContextUsedRatio != 0 {
-		upd = upd.SetMaxContextUsedRatio(d.MaxContextUsedRatio)
-	}
-	_, err := upd.Save(ctx)
-	return err
+	// Delegate to UpsertSessionMetrics which handles both INSERT and UPDATE
+	// via ON CONFLICT, avoiding NotFound errors when the row doesn't exist yet.
+	return r.UpsertSessionMetrics(ctx, sessionID, d)
 }

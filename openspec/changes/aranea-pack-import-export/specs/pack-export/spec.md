@@ -15,6 +15,10 @@
 - **WHEN** 导出 Agent RuntimeSettings
 - **THEN** 系统 SHALL 排除 channel_id、chat_id、workspace、variables_json、model_instructions_json、code_executor_type 等实例绑定字段
 
+#### Scenario: A2A Proxy Agent 导出
+- **WHEN** 导出的 Agent 类型为 a2a_proxy
+- **THEN** 系统 SHALL 将 A2AProxy 配置（remote_url、agent_card_url、enable_streaming、auth_type、timeout_seconds）写入 Pack 的 a2a_proxy 字段
+
 ### Requirement: 单 Team 导出
 系统 SHALL 支持导出单个 Team 为 .arpack 文件，kind 为 "team"。
 
@@ -33,6 +37,10 @@
 #### Scenario: Team 内嵌 Graph 提取
 - **WHEN** Team 的 definition_json 中包含 EmbeddedGraphSpec
 - **THEN** 系统 SHALL 将内嵌图定义提取到 Team YAML 的 graph 字段，节点中的 agent_id 转换为 agent_key
+
+#### Scenario: Team 完整配置导出
+- **WHEN** 导出 Team
+- **THEN** 系统 SHALL 导出完整 OrchestrationSpec 配置，包括 run_timeout_sec、turn_timeout_sec、first_byte_timeout_sec、runtime_engine、team_graph_runtime、failure_policy（含 retry、node_overrides、circuit_breaker、parallel_fail、on_error）、critic_loop（含 max_iterations、score_threshold）、intent_anchor_key、synthesizer_key
 
 ### Requirement: 整行业导出
 系统 SHALL 支持导出整个行业场景为 .arpack 文件，kind 为 "industry"。
@@ -59,6 +67,12 @@
 ### Requirement: 导出时 FuncRef 依赖收集
 系统 SHALL 在导出时收集 Graph 节点引用的 func_ref 列表，写入 manifest.yaml 的 dependencies.func_refs 字段。
 
+**注意**：当前 `collectDependencies` 只从 `p.Graphs`（独立 Graph 模板）收集 FuncRef，不从 `p.Teams[].Graph`（Team 内嵌 Graph）收集。这是因为 `TeamGraphNodeSpec` 不包含 `func_ref` 字段。如果未来 Team 内嵌 Graph 节点支持 `func_ref`，需补充收集逻辑。
+
 #### Scenario: FuncRef 收集
 - **WHEN** Graph 节点中 func_ref 包含 `aranea://func/generate`
 - **THEN** manifest.yaml 的 dependencies.func_refs SHALL 包含 `aranea://func/generate`
+
+#### Scenario: 条件边 FuncRef 收集
+- **WHEN** Graph 条件边中 cond_func_ref 包含 `aranea://func/router`
+- **THEN** manifest.yaml 的 dependencies.func_refs SHALL 包含 `aranea://func/router`

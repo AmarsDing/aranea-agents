@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/data"
 	"aranea-agents/internal/data/pgvector"
-	"aranea-agents/internal/data/sessionmemory"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -30,7 +30,8 @@ const (
 var memoryReadConsistencyCheck = os.Getenv("MEMORY_READ_CONSISTENCY_CHECK") == "1"
 
 type sqliteMemoryService struct {
-	store           *sessionmemory.Store
+	data            *data.Data
+	factWriter      biz.L3FactWriter
 	indexSync       biz.MemoryFactIndexSyncer
 	autoMemoryQueue AutoMemoryQueue
 	vector          vectorFactSearcher
@@ -70,12 +71,13 @@ func (g *singleflightGroup) Done(key string) {
 	delete(g.m, key)
 }
 
-func NewSQLiteMemoryService(store *sessionmemory.Store, indexSync biz.MemoryFactIndexSyncer, queue AutoMemoryQueue, vector vectorFactSearcher, settingsLoader AgentRuntimeSettingsLoader, lg loggateway.Logger) trpcmemory.Service {
-	if store == nil {
+func NewSQLiteMemoryService(d *data.Data, factWriter biz.L3FactWriter, indexSync biz.MemoryFactIndexSyncer, queue AutoMemoryQueue, vector vectorFactSearcher, settingsLoader AgentRuntimeSettingsLoader, lg loggateway.Logger) trpcmemory.Service {
+	if d == nil {
 		return nil
 	}
 	return &sqliteMemoryService{
-		store:           store,
+		data:            d,
+		factWriter:      factWriter,
 		indexSync:       indexSync,
 		autoMemoryQueue: queue,
 		vector:          vector,
@@ -85,8 +87,8 @@ func NewSQLiteMemoryService(store *sessionmemory.Store, indexSync biz.MemoryFact
 }
 
 func (s *sqliteMemoryService) requireStore() error {
-	if s == nil || s.store == nil {
-		return errors.New("sqlite memory service: store not wired")
+	if s == nil || s.data == nil {
+		return errors.New("sqlite memory service: data not wired")
 	}
 	return nil
 }
@@ -101,8 +103,7 @@ func (s *sqliteMemoryService) AddMemory(ctx context.Context, uk trpcmemory.UserK
 	if meta != nil && meta.Kind != "" {
 		factKind = string(meta.Kind)
 	}
-	// Empty id: UpsertFactRow dedupes via fingerprint(scope, statement).
-	raw, err := s.store.UpsertFactRow(ctx, trpcFactUpsert(uk, "", mem, topics, factKind, now, now))
+	raw, err := s.factWriter.UpsertFactRow(ctx, trpcFactUpsert(uk, "", mem, topics, factKind, now, now))
 	if err != nil {
 		return err
 	}
@@ -120,7 +121,7 @@ func (s *sqliteMemoryService) UpdateMemory(ctx context.Context, mk trpcmemory.Ke
 		return errors.New("memory id is required")
 	}
 	uk := trpcmemory.UserKey{AppName: mk.AppName, UserID: mk.UserID}
-	raw, err := s.store.UpsertFactRow(ctx, trpcFactUpsert(uk, id, mem, topics, "fact", now, now))
+	raw, err := s.factWriter.UpsertFactRow(ctx, trpcFactUpsert(uk, id, mem, topics, "fact", now, now))
 	if err != nil {
 		return err
 	}
@@ -132,14 +133,18 @@ func (s *sqliteMemoryService) DeleteMemory(ctx context.Context, mk trpcmemory.Ke
 	if err := s.requireStore(); err != nil {
 		return err
 	}
-	return s.store.DeleteFactByID(ctx, mk.MemoryID)
+	return s.factWriter.DeleteFactRow(ctx, mk.MemoryID)
 }
 
 func (s *sqliteMemoryService) ClearMemories(ctx context.Context, uk trpcmemory.UserKey) error {
 	if err := s.requireStore(); err != nil {
 		return err
 	}
-	return s.store.ClearFacts(ctx, factScopeTypeAgent, uk.AppName, uk.UserID)
+	// Delete all facts for this agent+user
+	_, err := s.data.RWDB().WriteDB(ctx).ExecContext(ctx,
+		`UPDATE memory_facts SET deleted_at = ?, status = 'deleted' WHERE scope_type = ? AND scope_id = ? AND user_id = ? AND status = 'active' AND deleted_at = ''`,
+		time.Now().UTC().Format(time.RFC3339Nano), factScopeTypeAgent, uk.AppName, uk.UserID)
+	return err
 }
 
 func (s *sqliteMemoryService) ReadMemories(ctx context.Context, uk trpcmemory.UserKey, limit int) ([]*trpcmemory.Entry, error) {
@@ -194,8 +199,8 @@ func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.
 				if entryID == "" {
 					entryID = fmt.Sprintf("%d", h.ID)
 				}
-				if memoryReadConsistencyCheck && factID != "" && s.store != nil {
-					row, consistencyErr := s.store.GetFactConsistencyRow(ctx, factID)
+				if memoryReadConsistencyCheck && factID != "" && s.data != nil {
+					row, consistencyErr := s.getFactConsistencyRow(ctx, factID)
 					if consistencyErr != nil {
 						s.lg.Warn("read consistency check failed, skipping validation",
 						loggateway.StepID("memory.search"),
@@ -238,22 +243,111 @@ func (s *sqliteMemoryService) SearchMemories(ctx context.Context, uk trpcmemory.
 	return entries, nil
 }
 
+type factConsistencyRow struct {
+	Status      string
+	IndexStatus string
+	Statement   string
+}
+
+func (s *sqliteMemoryService) getFactConsistencyRow(ctx context.Context, factID string) (factConsistencyRow, error) {
+	var row factConsistencyRow
+	err := data.QueryRowScan(ctx, s.data.RWDB().ReadDB(ctx),
+		`SELECT status, embedding_status, statement FROM memory_facts WHERE id = ?`,
+		[]any{factID}, &row.Status, &row.IndexStatus, &row.Statement)
+	return row, err
+}
+
 func (s *sqliteMemoryService) asyncResyncFact(ctx context.Context, factID string) {
-	if s.indexSync == nil || s.store == nil {
+	if s.indexSync == nil || s.data == nil {
 		return
 	}
 	if !s.resyncFlight.TryStart(factID) {
 		return
 	}
 	syncer := s.indexSync
-	store := s.store
+	d := s.data
 	bgCtx := context.WithoutCancel(ctx)
 	safego.Go(bgCtx, "memory.index_resync_on_hit", func() {
 		defer s.resyncFlight.Done(factID)
-		raw, err := store.GetFactRawRow(bgCtx, factID)
-		if err != nil || raw == nil {
+		// Read raw fact row
+		rows, err := d.RWDB().ReadDB(bgCtx).QueryContext(bgCtx,
+			`SELECT id, scope_type, scope_id, workspace_id, user_id, team_id, agent_id,
+			statement, statement_normalized, fingerprint, details_markdown,
+			fact_kind, tags_json,
+			confidence, importance, use_count, hit_count,
+			positive_feedback_count, negative_feedback_count, conflict_count,
+			source_kind, source_episode_id, source_session_id, source_message_id, source_external,
+			version, status, superseded_by,
+			embedding_status, embedding_model, embedding_dim, embedding_blob, embedding_norm,
+			pii_flag, redacted_statement,
+			ttl_days, decay_factor, next_decay_at, last_used_at, expires_at,
+			metadata_json, quality_score, created_at, updated_at, archived_at, deleted_at
+			FROM memory_facts WHERE id = ?`, factID)
+		if err != nil || !rows.Next() {
+			if rows != nil {
+				rows.Close()
+			}
 			return
 		}
+		var (
+			id, stype, sid, wid, uid, tid, aid string
+			stmt, snorm, fp, details           string
+			fkind, tags                        string
+			conf, imp                          float64
+			uc, hc, pfc, nfc, cc               int
+			srcKind, epID, sessID, msgID, ext  string
+			ver                                int
+			st, sup                            string
+			embSt, embModel                    string
+			embDim                             int
+			embBlob                            []byte
+			embNorm                            float64
+			pii                                int
+			redacted                           string
+			ttlD                               int
+			decay                              float64
+			nextD, lastU, exp                  string
+			meta, ca, ua, arch, del            string
+			qScore                             float64
+		)
+		err = rows.Scan(
+			&id, &stype, &sid, &wid, &uid, &tid, &aid,
+			&stmt, &snorm, &fp, &details,
+			&fkind, &tags,
+			&conf, &imp, &uc, &hc, &pfc, &nfc, &cc,
+			&srcKind, &epID, &sessID, &msgID, &ext,
+			&ver, &st, &sup,
+			&embSt, &embModel, &embDim, &embBlob, &embNorm,
+			&pii, &redacted,
+			&ttlD, &decay, &nextD, &lastU, &exp,
+			&meta, &qScore, &ca, &ua, &arch, &del,
+		)
+		rows.Close()
+		if err != nil {
+			return
+		}
+		// Build raw JSON
+		m := map[string]any{
+			"id": id, "scope_type": stype, "scope_id": sid, "workspace_id": wid,
+			"user_id": uid, "team_id": tid, "agent_id": aid,
+			"statement": stmt, "statement_normalized": snorm, "fingerprint": fp,
+			"details_markdown": details, "fact_kind": fkind, "tags_json": tags,
+			"confidence": conf, "importance": imp,
+			"use_count": uc, "hit_count": hc,
+			"positive_feedback_count": pfc, "negative_feedback_count": nfc, "conflict_count": cc,
+			"source_kind": srcKind, "source_episode_id": epID,
+			"source_session_id": sessID, "source_message_id": msgID, "source_external": ext,
+			"version": ver, "status": st, "superseded_by": sup,
+			"embedding_status": embSt, "embedding_model": embModel, "embedding_dim": embDim,
+			"embedding_norm":     embNorm,
+			"pii_flag":           pii != 0,
+			"redacted_statement": redacted,
+			"ttl_days":           ttlD, "decay_factor": decay,
+			"next_decay_at": nextD, "last_used_at": lastU, "expires_at": exp,
+			"metadata_json": meta, "quality_score": qScore, "created_at": ca, "updated_at": ua,
+			"archived_at": arch, "deleted_at": del,
+		}
+		raw, _ := json.Marshal(m)
 		if err := syncer.SyncFactIndexFromRow(bgCtx, raw); err != nil {
 			s.lg.Warn("async resync on stale hit failed",
 				loggateway.StepID("memory.index_resync"),
@@ -268,7 +362,9 @@ func (s *sqliteMemoryService) listEntries(ctx context.Context, uk trpcmemory.Use
 	if limit32 <= 0 {
 		limit32 = 50
 	}
-	rows, err := s.store.ListFactRowsForUser(ctx, factScopeTypeAgent, uk.AppName, uk.UserID, keyword, limit32, 0)
+	// Use L3FactReader to list facts
+	reader := data.NewL3FactReaderForUser(s.data)
+	rows, err := reader.ListFactRowsForUser(ctx, factScopeTypeAgent, uk.AppName, uk.UserID, keyword, limit32, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -304,15 +400,14 @@ func (s *sqliteMemoryService) syncIndexBestEffort(ctx context.Context, raw []byt
 	if s == nil || s.indexSync == nil || len(raw) == 0 {
 		return
 	}
-	// MEM-OPT-01 Phase 1: errors are captured by SyncFactIndexFromRow → MarkFactIndexStale.
 	if err := s.indexSync.SyncFactIndexFromRow(ctx, raw); err != nil {
 		s.lg.Warn("sqlite_adapter index sync failed", loggateway.StepID("memory.index_sync"), loggateway.Err(err))
 	}
 }
 
-func trpcFactUpsert(uk trpcmemory.UserKey, id, mem string, topics []string, factKind, createdAt, updatedAt string) sessionmemory.MemoryFactUpsert {
+func trpcFactUpsert(uk trpcmemory.UserKey, id, mem string, topics []string, factKind, createdAt, updatedAt string) biz.FactUpsert {
 	mem = strings.TrimSpace(mem)
-	return sessionmemory.MemoryFactUpsert{
+	return biz.FactUpsert{
 		ID:              id,
 		ScopeType:       factScopeTypeAgent,
 		ScopeID:         strings.TrimSpace(uk.AppName),

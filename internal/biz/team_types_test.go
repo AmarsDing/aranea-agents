@@ -100,3 +100,88 @@ func TestExtractScore(t *testing.T) {
 		}
 	}
 }
+
+// --- T1.2: Team status state machine tests ---
+
+func TestValidTeamStatusTransition(t *testing.T) {
+	valid := [][2]string{
+		// pending → running, cancelled
+		{TeamStatusPending, TeamStatusRunning},
+		{TeamStatusPending, TeamStatusCancelled},
+		{TeamStatusPending, TeamStatusPending},
+		// running → completed, failed, cancelled, interrupted
+		{TeamStatusRunning, TeamStatusCompleted},
+		{TeamStatusRunning, TeamStatusFailed},
+		{TeamStatusRunning, TeamStatusCancelled},
+		{TeamStatusRunning, TeamStatusInterrupted},
+		{TeamStatusRunning, TeamStatusRunning},
+		// interrupted → running (recovery)
+		{TeamStatusInterrupted, TeamStatusRunning},
+		{TeamStatusInterrupted, TeamStatusInterrupted},
+	}
+	for _, pair := range valid {
+		if !ValidTeamStatusTransition(pair[0], pair[1]) {
+			t.Errorf("expected team transition %s → %s to be valid", pair[0], pair[1])
+		}
+	}
+
+	invalid := [][2]string{
+		// Terminal states cannot transition out
+		{TeamStatusCompleted, TeamStatusRunning},
+		{TeamStatusCompleted, TeamStatusPending},
+		{TeamStatusFailed, TeamStatusRunning},
+		{TeamStatusFailed, TeamStatusPending},
+		{TeamStatusCancelled, TeamStatusRunning},
+		{TeamStatusCancelled, TeamStatusPending},
+		// Cannot skip states
+		{TeamStatusPending, TeamStatusCompleted},
+		{TeamStatusPending, TeamStatusFailed},
+		{TeamStatusPending, TeamStatusInterrupted},
+		// interrupted can only go to running
+		{TeamStatusInterrupted, TeamStatusCompleted},
+		{TeamStatusInterrupted, TeamStatusFailed},
+		{TeamStatusInterrupted, TeamStatusCancelled},
+		{TeamStatusInterrupted, TeamStatusPending},
+	}
+	for _, pair := range invalid {
+		if ValidTeamStatusTransition(pair[0], pair[1]) {
+			t.Errorf("expected team transition %s → %s to be INVALID", pair[0], pair[1])
+		}
+	}
+}
+
+func TestIsTeamStatusActive(t *testing.T) {
+	active := []string{TeamStatusPending, TeamStatusRunning}
+	for _, s := range active {
+		if !IsTeamStatusActive(s) {
+			t.Errorf("expected %q to be active", s)
+		}
+	}
+	inactive := []string{TeamStatusCompleted, TeamStatusFailed, TeamStatusCancelled, TeamStatusInterrupted}
+	for _, s := range inactive {
+		if IsTeamStatusActive(s) {
+			t.Errorf("expected %q to NOT be active", s)
+		}
+	}
+}
+
+func TestTeamStatusConstants_NoOldStates(t *testing.T) {
+	// Verify that old status values are not present as constants.
+	// The state machine should only have: pending, running, completed, failed, cancelled, interrupted.
+	allStatuses := map[string]bool{
+		TeamStatusPending:     true,
+		TeamStatusRunning:     true,
+		TeamStatusCompleted:   true,
+		TeamStatusFailed:      true,
+		TeamStatusCancelled:   true,
+		TeamStatusInterrupted: true,
+	}
+	for _, old := range []string{"active", "assembled", "waiting_deps"} {
+		if allStatuses[old] {
+			t.Errorf("old status %q should not be in the state machine", old)
+		}
+	}
+	if len(allStatuses) != 6 {
+		t.Errorf("expected exactly 6 team statuses, got %d", len(allStatuses))
+	}
+}

@@ -22,15 +22,21 @@ func (uc *SessionUsecase) BatchTransitionInterrupted(ctx context.Context, reason
 	changedAt := time.Now().UTC().Format(time.RFC3339)
 	var failedCount int
 	for _, s := range sessions {
-		if _, err := uc.sessionWriter.UpdateSession(ctx, s.ID, SessionUpdateFields{
-			Status:          &interrupted,
-			StatusReason:    &reasonStr,
-			StatusChangedAt: &changedAt,
-		}); err != nil {
+		var updateErr error
+		if uc.runtimeWriter != nil {
+			updateErr = uc.runtimeWriter.TransitionSessionStatus(ctx, s.ID, s.Status, interrupted, reasonStr, changedAt)
+		} else {
+			_, updateErr = uc.sessionWriter.UpdateSession(ctx, s.ID, SessionUpdateFields{
+				Status:          &interrupted,
+				StatusReason:    &reasonStr,
+				StatusChangedAt: &changedAt,
+			})
+		}
+		if updateErr != nil {
 			failedCount++
 			uc.lg.Warn("batch transition interrupted: failed to update session",
 				loggateway.Str("session_id", s.ID),
-				loggateway.Err(err),
+				loggateway.Err(updateErr),
 			)
 		}
 	}

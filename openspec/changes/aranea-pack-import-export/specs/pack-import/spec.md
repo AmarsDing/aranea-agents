@@ -3,13 +3,17 @@
 ### Requirement: Pack 校验（validate）
 系统 SHALL 支持对 .arpack 文件进行 dry-run 校验，不实际写入数据库。
 
+**注意**：`Validate(ctx, p, repo)` 函数允许 `repo` 参数为 nil，此时跳过依赖校验和冲突预检，仅执行格式校验和引用完整性检查。这支持离线校验场景。
+
 #### Scenario: 格式校验通过
 - **WHEN** 用户提交 .arpack 文件进行校验
 - **THEN** 系统 SHALL 验证 manifest.yaml 格式正确、api_version 为 "v1"、各实体 YAML 格式正确
 
 #### Scenario: Skill 依赖缺失报告
 - **WHEN** manifest.yaml 中 dependencies.skills 包含目标系统不存在的 slug
-- **THEN** 校验结果 SHALL 报告缺失的 Skill slug 列表，但不阻断导入
+- **THEN** 校验结果 SHALL 报告缺失的 Skill slug 列表
+
+**注意**：当前代码实现中，Skill 缺失会将 `result.Valid` 设为 `false`（阻断项），与原始设计"但不阻断导入"的意图不一致。实际行为是 Skill 缺失会阻止导入。如需改为非阻断警告，需在 `ValidationResult` 中添加 `Warnings` 字段，并将 Skill 缺失从 `Errors` 移至 `Warnings`。
 
 #### Scenario: FuncRef 依赖缺失报告
 - **WHEN** manifest.yaml 中 dependencies.func_refs 包含目标系统未注册的函数
@@ -61,9 +65,11 @@
 - **GIVEN** ImporterRepo 接口定义
 - **THEN** SHALL 包含以下方法：
   - **Taxonomy**：`CreateTaxonomyNode`、`UpdateTaxonomyNode`、`GetTaxonomyNodeByKey`、`ListTaxonomyNodesByParentID`
-  - **Agent**：`GetAgentByAgentKey`、`CreateAgent`、`UpdateAgent`、`GetAgentRuntimeSettings`、`UpsertAgentRuntimeSettings`、`ReplaceAgentPromptFiles`
+  - **Agent**：`GetAgentByAgentKey`、`CreateAgent`、`UpdateAgent`、`DeleteAgent`、`GetAgentRuntimeSettings`、`UpsertAgentRuntimeSettings`、`ReplaceAgentPromptFiles`
   - **Team**：`GetTeamByID`、`GetTeamByKey`、`CreateTeam`、`UpdateTeam`
   - **Graph**：`SaveGraphDefinition`
+
+**注意**：`DeleteAgent` 方法用于导入回滚——当 Files 或 RuntimeSettings 写入失败时，通过 `DeleteAgent` 清理已创建的 Agent 记录，避免残留不完整数据。
 
 #### Scenario: GetTeamByKey 方法
 - **GIVEN** ImporterRepo 接口
@@ -79,6 +85,8 @@
 #### Scenario: taxonomy_key 路径 → taxonomy_position_id 映射
 - **WHEN** 导入 Taxonomy 成功后
 - **THEN** 系统 SHALL 记录 `industry/dept/pos → position_id` 映射，供 Agent 的 position_key 解析使用
+
+**注意**：通过 `ConvertIndustrySpecToPack` 转换的行业 Pack 中，`position_key` 只包含 position 级别的 key（如 `quant_researcher`），而非完整路径（如 `finance/quant_trading/quant_researcher`）。这导致 `ResolvePositionKey` 无法在 mapper 中找到对应 ID，Agent 的 `taxonomy_position_id` 不会被设置。通过 `Exporter` 导出的 Pack 不受此影响。
 
 #### Scenario: graph_id 映射
 - **WHEN** 导入 Graph 创建新记录后
@@ -118,12 +126,16 @@
 - **WHEN** 导入过程中部分实体写入失败
 - **THEN** 系统 SHALL 返回已成功的统计和失败实体列表（包含 entity_type、key、reason）
 
-### Requirement: 导入使用 ORM 路径写入
-系统 SHALL 通过 biz 层 Usecase 的 ORM 路径写入数据库，不使用 RawSQL。
+### Requirement: 导入使用 ImporterRepo 直接写入
+系统 SHALL 通过 `ImporterRepo` 接口直接调用 data 层 Repo 写入数据库，不经过 biz 层 Usecase。
 
-#### Scenario: Agent 写入通过 AgentUsecase
+#### Scenario: Agent 写入通过 ImporterRepo
 - **WHEN** 导入 Agent
-- **THEN** 系统 SHALL 调用 `AgentUsecase.Create` 或 `AgentUsecase.Update`，确保 biz 层校验和事件触发
+- **THEN** 系统 SHALL 调用 `ImporterRepo.CreateAgent` 或 `ImporterRepo.UpdateAgent`，不经过 `AgentUsecase`
+
+#### Scenario: 不触发 Usecase 业务校验
+- **WHEN** Pack 导入写入实体
+- **THEN** 系统 SHALL 不触发 Usecase 层的业务校验和事件触发逻辑
 
 ### Requirement: JSON 序列化工具函数
 系统 SHALL 使用 `encoding/json` 进行 slice ↔ JSON list 的序列化/反序列化。
@@ -139,3 +151,30 @@
 #### Scenario: parseSkillRuntime
 - **WHEN** 解析 SkillRuntimeJSON 字段
 - **THEN** 系统 SHALL 使用 `json.Unmarshal` 解析 `{allowed_slugs: [...], denied_slugs: [...]}` 结构
+
+### Requirement: overwrite 策略保留原始元数据
+系统 SHALL 在 overwrite 策略下保留原始记录的 Status、Readonly、Source 字段。
+
+#### Scenario: Agent overwrite 保留元数据
+- **WHEN** 冲突策略为 overwrite 且目标系统已存在相同 agent_key 的 Agent
+- **THEN** 系统 SHALL 保留已有 Agent 的 Status、Readonly、Source 字段，不使用 Pack 中的默认值覆盖
+
+#### Scenario: Team overwrite 保留元数据
+- **WHEN** 冲突策略为 overwrite 且目标系统已存在相同 team_key 的 Team
+- **THEN** 系统 SHALL 保留已有 Team 的 Status、Readonly、Source 字段
+
+### Requirement: duplicate 策略下原始 key 映射
+系统 SHALL 在 duplicate 策略下同时注册原始 key 和新 key 到 ID 的映射。
+
+#### Scenario: Agent duplicate 注册双映射
+- **WHEN** 冲突策略为 duplicate 且 Agent 被创建为新 key（如 `go-senior-general-copy`）
+- **THEN** 系统 SHALL 同时注册 `go-senior-general → 新ID` 和 `go-senior-general-copy → 新ID`，确保后续 Team/Graph 引用能通过原始 key 解析
+
+### Requirement: 导入结果包含 warnings
+系统 SHALL 在导入结果中包含警告信息列表。
+
+#### Scenario: Taxonomy 导入部分失败产生 warnings
+- **WHEN** Taxonomy 导入过程中某个部门或岗位写入失败
+- **THEN** 系统 SHALL 将失败信息记录为 warning 而非 error，继续导入后续节点
+
+**注意**：`ImportResult` Go 结构体包含 `Warnings` 字段，但 proto `ImportPackResponse` 没有 `warnings` 字段，service 层未映射。Taxonomy 导入的警告信息当前无法通过 API 传递给客户端。

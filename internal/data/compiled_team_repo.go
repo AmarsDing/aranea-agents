@@ -9,16 +9,19 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 type compiledTeamRepo struct {
-	data *Data
+	data          *Data
+	runtimeReader biz.SessionRuntimeReader
 }
 
 var _ biz.CompiledTeamRepo = (*compiledTeamRepo)(nil)
 
-func NewCompiledTeamRepo(d *Data) biz.CompiledTeamRepo {
-	return &compiledTeamRepo{data: d}
+func NewCompiledTeamRepo(d *Data, runtimeReader biz.SessionRuntimeReader) biz.CompiledTeamRepo {
+	return &compiledTeamRepo{data: d, runtimeReader: runtimeReader}
 }
 
 func (r *compiledTeamRepo) readDB(ctx context.Context) execer {
@@ -39,7 +42,7 @@ func compiledTeamRowID(teamID, graphID string) string {
 	return teamID + ":" + graphID
 }
 
-func (r *compiledTeamRepo) Save(ctx context.Context, teamID, graphID string, ct *biz.CompiledTeam) error {
+func (r *compiledTeamRepo) Save(ctx context.Context, teamID, graphID, sessionID string, ct *biz.CompiledTeam) error {
 	db := r.writeDB(ctx)
 	if db == nil {
 		return nil
@@ -49,8 +52,9 @@ func (r *compiledTeamRepo) Save(ctx context.Context, teamID, graphID string, ct 
 	}
 	teamID = strings.TrimSpace(teamID)
 	graphID = strings.TrimSpace(graphID)
+	sessionID = strings.TrimSpace(sessionID)
 	if teamID == "" || graphID == "" {
-		return fmt.Errorf("compiled_team repo save: team_id and graph_id required")
+		return kerrors.BadRequest("COMPILED_TEAM", "team_id and graph_id required")
 	}
 	configJSON, err := json.Marshal(ct)
 	if err != nil {
@@ -60,9 +64,9 @@ func (r *compiledTeamRepo) Save(ctx context.Context, teamID, graphID string, ct 
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err = db.ExecContext(ctx, `
 INSERT OR REPLACE INTO compiled_teams
-  (id, team_id, graph_id, config_json, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?)`,
-		id, teamID, graphID, string(configJSON), now, now,
+  (id, team_id, graph_id, session_id, config_json, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		id, teamID, graphID, sessionID, string(configJSON), now, now,
 	)
 	if err != nil {
 		return fmt.Errorf("compiled_team repo save: %w", err)
@@ -82,7 +86,7 @@ func (r *compiledTeamRepo) Load(ctx context.Context, teamID, graphID string) (*b
 	err := queryRowScan(ctx, db, `SELECT config_json FROM compiled_teams WHERE id = ? LIMIT 1`, []any{id}, &configJSON)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("compiled_team repo load: not found: %s", id)
+			return nil, kerrors.NotFound("COMPILED_TEAM", fmt.Sprintf("compiled_team not found: %s", id))
 		}
 		return nil, fmt.Errorf("compiled_team repo load: %w", err)
 	}
@@ -91,6 +95,23 @@ func (r *compiledTeamRepo) Load(ctx context.Context, teamID, graphID string) (*b
 		return nil, fmt.Errorf("compiled_team repo load: unmarshal: %w", err)
 	}
 	return &ct, nil
+}
+
+// LoadForSession loads a compiled team and verifies the session is still active
+// via SessionRuntimeRepo. Returns the compiled team only if the session exists.
+func (r *compiledTeamRepo) LoadForSession(ctx context.Context, teamID, graphID, sessionID string) (*biz.CompiledTeam, error) {
+	ct, err := r.Load(ctx, teamID, graphID)
+	if err != nil {
+		return nil, err
+	}
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID != "" && r.runtimeReader != nil {
+		rt, err := r.runtimeReader.GetSessionRuntime(ctx, sessionID)
+		if err != nil || rt == nil {
+			return nil, kerrors.New(412, "COMPILED_TEAM", fmt.Sprintf("session %s not active", sessionID))
+		}
+	}
+	return ct, nil
 }
 
 func (r *compiledTeamRepo) Delete(ctx context.Context, teamID, graphID string) error {

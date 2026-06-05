@@ -84,7 +84,7 @@ func (r *obsRepo) BatchCreate(ctx context.Context, obs []biz.Observation) error 
 		return nil
 	}
 	return r.data.ExecInTx(ctx, func(txCtx context.Context) error {
-		e := r.data.RWDB().WriteDB(txCtx)
+		e := TxExecerFromCtx(txCtx, r.data.RWDB().WriteHandle())
 		q := `INSERT INTO learning_observations (id, agent_id, session_id, kind, content, metadata, observed_at)
 		      VALUES (?, ?, ?, ?, ?, ?, ?)`
 		for _, o := range obs {

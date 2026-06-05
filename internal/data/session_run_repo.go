@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/internal/data/ent"
+	"aranea-agents/internal/data/ent/sessionrun"
 	"aranea-agents/pkg/loggateway"
 )
 
@@ -26,11 +28,18 @@ func NewSessionRunRepo(d *Data) biz.SessionRunRepo {
 	return &sessionRunRepo{data: d}
 }
 
-func (r *sessionRunRepo) readDB(ctx context.Context) execer {
+func (r *sessionRunRepo) readClient(ctx context.Context) *ent.Client {
 	if r == nil || r.data == nil {
 		return nil
 	}
-	return r.data.RWDB().ReadDB(ctx)
+	return r.data.RW().Read(ctx)
+}
+
+func (r *sessionRunRepo) writeClient(ctx context.Context) *ent.Client {
+	if r == nil || r.data == nil {
+		return nil
+	}
+	return r.data.RW().Write(ctx)
 }
 
 func (r *sessionRunRepo) writeDB(ctx context.Context) execer {
@@ -40,72 +49,76 @@ func (r *sessionRunRepo) writeDB(ctx context.Context) execer {
 	return r.data.RWDB().WriteDB(ctx)
 }
 
-const sessionRunSelectSQL = `
-SELECT id, session_id, turn_id, runtime_run_id, source, phase,
-  soft_budget_sec, hard_budget_sec, checkpoint_id, workflow_job_id, agent_id,
-  error_message, started_at, phase_changed_at, finished_at, resume_started_at, created_at, updated_at
-FROM session_runs`
-
-func scanSessionRunRow(scanner interface {
-	Scan(dest ...any) error
-}) (biz.SessionRun, error) {
-	var run biz.SessionRun
-	err := scanner.Scan(
-		&run.ID, &run.SessionID, &run.TurnID, &run.RuntimeRunID, &run.Source, &run.Phase,
-		&run.SoftBudgetSec, &run.HardBudgetSec, &run.CheckpointID, &run.WorkflowJobID, &run.AgentID,
-		&run.ErrorMessage, &run.StartedAt, &run.PhaseChangedAt, &run.FinishedAt, &run.ResumeStartedAt,
-		&run.CreatedAt, &run.UpdatedAt,
-	)
-	return run, err
+// entSessionRunToBiz converts an Ent SessionRun entity to a biz SessionRun.
+func entSessionRunToBiz(e *ent.SessionRun) biz.SessionRun {
+	if e == nil {
+		return biz.SessionRun{}
+	}
+	return biz.SessionRun{
+		ID:              e.ID,
+		SessionID:       e.SessionID,
+		TurnID:          e.TurnID,
+		RuntimeRunID:    e.RuntimeRunID,
+		Source:          e.Source,
+		Phase:           e.Phase,
+		SoftBudgetSec:   e.SoftBudgetSec,
+		HardBudgetSec:   e.HardBudgetSec,
+		CheckpointID:    e.CheckpointID,
+		WorkflowJobID:   e.WorkflowJobID,
+		AgentID:         e.AgentID,
+		ErrorMessage:    e.ErrorMessage,
+		StartedAt:       e.StartedAt,
+		PhaseChangedAt:  e.PhaseChangedAt,
+		FinishedAt:      e.FinishedAt,
+		ResumeStartedAt: e.ResumeStartedAt,
+		CreatedAt:       e.CreatedAt,
+		UpdatedAt:       e.UpdatedAt,
+	}
 }
 
 func (r *sessionRunRepo) Create(ctx context.Context, run biz.SessionRun) (string, error) {
-	db := r.writeDB(ctx)
-	if db == nil {
+	client := r.writeClient(ctx)
+	if client == nil {
 		return run.ID, nil
 	}
 	id := strings.TrimSpace(run.ID)
 	if id == "" {
 		return "", sql.ErrNoRows
 	}
-	_, err := db.ExecContext(ctx, `
-INSERT INTO session_runs (
-  id, session_id, turn_id, runtime_run_id, source, phase,
-  soft_budget_sec, hard_budget_sec, checkpoint_id, workflow_job_id, agent_id,
-  error_message, started_at, phase_changed_at, finished_at, resume_started_at, created_at, updated_at
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		id,
-		run.SessionID,
-		run.TurnID,
-		run.RuntimeRunID,
-		run.Source,
-		biz.NormalizeSessionRunPhase(run.Phase),
-		run.SoftBudgetSec,
-		run.HardBudgetSec,
-		run.CheckpointID,
-		run.WorkflowJobID,
-		run.AgentID,
-		run.ErrorMessage,
-		run.StartedAt,
-		run.PhaseChangedAt,
-		run.FinishedAt,
-		run.ResumeStartedAt,
-		run.CreatedAt,
-		run.UpdatedAt,
-	)
+	_, err := client.SessionRun.Create().
+		SetID(id).
+		SetSessionID(run.SessionID).
+		SetTurnID(run.TurnID).
+		SetRuntimeRunID(run.RuntimeRunID).
+		SetSource(run.Source).
+		SetPhase(biz.NormalizeSessionRunPhase(run.Phase)).
+		SetSoftBudgetSec(run.SoftBudgetSec).
+		SetHardBudgetSec(run.HardBudgetSec).
+		SetCheckpointID(run.CheckpointID).
+		SetWorkflowJobID(run.WorkflowJobID).
+		SetAgentID(run.AgentID).
+		SetErrorMessage(run.ErrorMessage).
+		SetStartedAt(run.StartedAt).
+		SetPhaseChangedAt(run.PhaseChangedAt).
+		SetFinishedAt(run.FinishedAt).
+		SetResumeStartedAt(run.ResumeStartedAt).
+		SetCreatedAt(run.CreatedAt).
+		SetUpdatedAt(run.UpdatedAt).
+		Save(ctx)
 	return id, err
 }
 
 func (r *sessionRunRepo) UpdatePhase(ctx context.Context, id, phase string) error {
-	db := r.writeDB(ctx)
-	if db == nil {
+	client := r.writeClient(ctx)
+	if client == nil {
 		return nil
 	}
 	now := biz.ChannelTurnJobNow()
-	_, err := db.ExecContext(ctx, `
-UPDATE session_runs SET phase=?, phase_changed_at=?, updated_at=? WHERE id=?`,
-		biz.NormalizeSessionRunPhase(phase), now, now, strings.TrimSpace(id),
-	)
+	_, err := client.SessionRun.UpdateOneID(strings.TrimSpace(id)).
+		SetPhase(biz.NormalizeSessionRunPhase(phase)).
+		SetPhaseChangedAt(now).
+		SetUpdatedAt(now).
+		Save(ctx)
 	if err != nil {
 		r.data.lg.Warn("update phase failed", loggateway.StepID("data.session_run.update_phase"), loggateway.Err(err))
 	}
@@ -113,15 +126,19 @@ UPDATE session_runs SET phase=?, phase_changed_at=?, updated_at=? WHERE id=?`,
 }
 
 func (r *sessionRunRepo) MarkTerminal(ctx context.Context, id, phase, errMsg string) error {
-	db := r.writeDB(ctx)
-	if db == nil {
+	client := r.writeClient(ctx)
+	if client == nil {
 		return nil
 	}
 	now := biz.ChannelTurnJobNow()
-	_, err := db.ExecContext(ctx, `
-UPDATE session_runs SET phase=?, error_message=?, finished_at=?, phase_changed_at=?, updated_at=?, resume_started_at='' WHERE id=?`,
-		biz.NormalizeSessionRunPhase(phase), errMsg, now, now, now, strings.TrimSpace(id),
-	)
+	_, err := client.SessionRun.UpdateOneID(strings.TrimSpace(id)).
+		SetPhase(biz.NormalizeSessionRunPhase(phase)).
+		SetErrorMessage(errMsg).
+		SetFinishedAt(now).
+		SetPhaseChangedAt(now).
+		SetUpdatedAt(now).
+		SetResumeStartedAt("").
+		Save(ctx)
 	if err != nil {
 		r.data.lg.Warn("mark terminal failed", loggateway.StepID("data.session_run.mark_terminal"), loggateway.Err(err))
 	}
@@ -129,21 +146,23 @@ UPDATE session_runs SET phase=?, error_message=?, finished_at=?, phase_changed_a
 }
 
 func (r *sessionRunRepo) UpdateCheckpointID(ctx context.Context, id, checkpointID string) error {
-	db := r.writeDB(ctx)
-	if db == nil {
+	client := r.writeClient(ctx)
+	if client == nil {
 		return nil
 	}
 	now := biz.ChannelTurnJobNow()
-	_, err := db.ExecContext(ctx, `
-UPDATE session_runs SET checkpoint_id=?, updated_at=? WHERE id=?`,
-		strings.TrimSpace(checkpointID), now, strings.TrimSpace(id),
-	)
+	_, err := client.SessionRun.UpdateOneID(strings.TrimSpace(id)).
+		SetCheckpointID(strings.TrimSpace(checkpointID)).
+		SetUpdatedAt(now).
+		Save(ctx)
 	if err != nil {
 		r.data.lg.Warn("update checkpoint id failed", loggateway.StepID("data.session_run.update_checkpoint"), loggateway.Err(err))
 	}
 	return err
 }
 
+// TryClaimDurableResume uses Raw SQL because it relies on conditional WHERE with
+// multi-column checks that are not expressible via Ent's predicate system.
 func (r *sessionRunRepo) TryClaimDurableResume(ctx context.Context, id, staleBefore string) (bool, error) {
 	db := r.writeDB(ctx)
 	if db == nil {
@@ -174,8 +193,8 @@ WHERE id=? AND phase='durable'
 }
 
 func (r *sessionRunRepo) ClearResumeClaim(ctx context.Context, id string) error {
-	db := r.writeDB(ctx)
-	if db == nil {
+	client := r.writeClient(ctx)
+	if client == nil {
 		return nil
 	}
 	id = strings.TrimSpace(id)
@@ -183,8 +202,10 @@ func (r *sessionRunRepo) ClearResumeClaim(ctx context.Context, id string) error 
 		return nil
 	}
 	now := biz.ChannelTurnJobNow()
-	_, err := db.ExecContext(ctx, `
-UPDATE session_runs SET resume_started_at='', updated_at=? WHERE id=?`, now, id)
+	_, err := client.SessionRun.UpdateOneID(id).
+		SetResumeStartedAt("").
+		SetUpdatedAt(now).
+		Save(ctx)
 	if err != nil {
 		r.data.lg.Warn("clear resume claim failed", loggateway.StepID("data.session_run.clear_resume"), loggateway.Err(err))
 	}
@@ -192,26 +213,36 @@ UPDATE session_runs SET resume_started_at='', updated_at=? WHERE id=?`, now, id)
 }
 
 func (r *sessionRunRepo) ListByPhase(ctx context.Context, phase string, limit int) ([]biz.SessionRun, error) {
-	db := r.readDB(ctx)
-	if db == nil {
+	client := r.readClient(ctx)
+	if client == nil {
 		return nil, nil
 	}
 	if limit <= 0 {
 		limit = 20
 	}
 	phase = biz.NormalizeSessionRunPhase(phase)
-	rows, err := db.QueryContext(ctx, sessionRunSelectSQL+`
-WHERE phase=? AND (finished_at IS NULL OR finished_at='')
-ORDER BY created_at ASC LIMIT ?`, phase, limit)
+	items, err := client.SessionRun.Query().
+		Where(
+			sessionrun.PhaseEQ(phase),
+			sessionrun.FinishedAtEQ(""),
+		).
+		Order(ent.Asc(sessionrun.FieldCreatedAt)).
+		Limit(limit).
+		All(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	return scanSessionRunRows(rows)
+	out := make([]biz.SessionRun, len(items))
+	for i, item := range items {
+		out[i] = entSessionRunToBiz(item)
+	}
+	return out, nil
 }
 
+// ListForJobs uses Raw SQL because it JOINs sessions table for agent_id lookup,
+// which is not expressible via Ent's predicate system.
 func (r *sessionRunRepo) ListForJobs(ctx context.Context, q biz.SessionRunListQuery) ([]biz.SessionRun, error) {
-	db := r.readDB(ctx)
+	db := r.data.RWDB().ReadDB(ctx)
 	if db == nil {
 		return nil, nil
 	}
@@ -266,32 +297,48 @@ func scanSessionRunRows(rows *sql.Rows) ([]biz.SessionRun, error) {
 	return out, rows.Err()
 }
 
+func scanSessionRunRow(scanner interface {
+	Scan(dest ...any) error
+}) (biz.SessionRun, error) {
+	var run biz.SessionRun
+	err := scanner.Scan(
+		&run.ID, &run.SessionID, &run.TurnID, &run.RuntimeRunID, &run.Source, &run.Phase,
+		&run.SoftBudgetSec, &run.HardBudgetSec, &run.CheckpointID, &run.WorkflowJobID, &run.AgentID,
+		&run.ErrorMessage, &run.StartedAt, &run.PhaseChangedAt, &run.FinishedAt, &run.ResumeStartedAt,
+		&run.CreatedAt, &run.UpdatedAt,
+	)
+	return run, err
+}
+
 func (r *sessionRunRepo) GetActiveForSession(ctx context.Context, sessionID string) (biz.SessionRun, error) {
-	db := r.readDB(ctx)
-	if db == nil {
+	client := r.readClient(ctx)
+	if client == nil {
 		return biz.SessionRun{}, sql.ErrNoRows
 	}
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return biz.SessionRun{}, sql.ErrNoRows
 	}
-	rows, err := db.QueryContext(ctx, sessionRunSelectSQL+`
-WHERE session_id=? AND phase IN ('interactive','escalating','durable')
-  AND (finished_at IS NULL OR finished_at='')
-ORDER BY created_at DESC LIMIT 1`, sessionID)
+	item, err := client.SessionRun.Query().
+		Where(
+			sessionrun.SessionIDEQ(sessionID),
+			sessionrun.PhaseIn(biz.SessionRunPhaseInteractive, biz.SessionRunPhaseEscalating, biz.SessionRunPhaseDurable),
+			sessionrun.FinishedAtEQ(""),
+		).
+		Order(ent.Desc(sessionrun.FieldCreatedAt)).
+		First(ctx)
 	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.SessionRun{}, sql.ErrNoRows
+		}
 		return biz.SessionRun{}, err
 	}
-	defer rows.Close()
-	if !rows.Next() {
-		return biz.SessionRun{}, sql.ErrNoRows
-	}
-	return scanSessionRunRow(rows)
+	return entSessionRunToBiz(item), nil
 }
 
 func (r *sessionRunRepo) ListBySession(ctx context.Context, sessionID string, limit, offset int) ([]biz.SessionRun, int, error) {
-	db := r.readDB(ctx)
-	if db == nil {
+	client := r.readClient(ctx)
+	if client == nil {
 		return nil, 0, nil
 	}
 	sessionID = strings.TrimSpace(sessionID)
@@ -307,41 +354,45 @@ func (r *sessionRunRepo) ListBySession(ctx context.Context, sessionID string, li
 	if offset < 0 {
 		offset = 0
 	}
-	var total int
-	if err := queryRowScan(ctx, db, `SELECT COUNT(*) FROM session_runs WHERE session_id=?`, []any{sessionID}, &total); err != nil {
-		return nil, 0, err
-	}
-	rows, err := db.QueryContext(ctx, sessionRunSelectSQL+`
-WHERE session_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?`, sessionID, limit, offset)
+	total, err := client.SessionRun.Query().
+		Where(sessionrun.SessionIDEQ(sessionID)).
+		Count(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
-	items, err := scanSessionRunRows(rows)
+	items, err := client.SessionRun.Query().
+		Where(sessionrun.SessionIDEQ(sessionID)).
+		Order(ent.Desc(sessionrun.FieldCreatedAt)).
+		Offset(offset).
+		Limit(limit).
+		All(ctx)
 	if err != nil {
 		return nil, 0, err
 	}
-	return items, total, nil
+	out := make([]biz.SessionRun, len(items))
+	for i, item := range items {
+		out[i] = entSessionRunToBiz(item)
+	}
+	return out, total, nil
 }
 
 func (r *sessionRunRepo) Get(ctx context.Context, id string) (biz.SessionRun, error) {
-	db := r.readDB(ctx)
-	if db == nil {
+	client := r.readClient(ctx)
+	if client == nil {
 		return biz.SessionRun{}, sql.ErrNoRows
 	}
-	rows, err := db.QueryContext(ctx, sessionRunSelectSQL+` WHERE id=? LIMIT 1`, strings.TrimSpace(id))
+	item, err := client.SessionRun.Get(ctx, strings.TrimSpace(id))
 	if err != nil {
+		if ent.IsNotFound(err) {
+			return biz.SessionRun{}, sql.ErrNoRows
+		}
 		return biz.SessionRun{}, err
 	}
-	defer rows.Close()
-	if !rows.Next() {
-		return biz.SessionRun{}, sql.ErrNoRows
-	}
-	return scanSessionRunRow(rows)
+	return entSessionRunToBiz(item), nil
 }
 
-// MarkOrphanedRunsCancelled marks all active session_runs with no finished_at as cancelled.
-// Called on startup to clean up zombie runs left from a previous process crash/restart.
+// MarkOrphanedRunsCancelled uses Raw SQL because it does a bulk conditional UPDATE
+// with a WHERE clause that is not easily expressible via Ent's Update API.
 func (r *sessionRunRepo) MarkOrphanedRunsCancelled(ctx context.Context) (int, error) {
 	db := r.writeDB(ctx)
 	if db == nil {

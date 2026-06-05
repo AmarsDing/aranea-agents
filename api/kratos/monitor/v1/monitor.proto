@@ -233,6 +233,31 @@ message DiagnoseAndHealRequest {
   int32  context_minutes = 6;
 }
 
+message AutoHealedCondition {
+  bool auto_healed = 1;
+  string heal_strategy = 2;
+}
+
+message HealAttemptsCondition {
+  int32 attempts = 1;
+  int32 max_attempts = 2;
+  string last_strategy = 3;
+}
+
+message SelfCheckStatusCondition {
+  string check_name = 1;
+  string status = 2; // "passed" | "warning" | "failed"
+  string message = 3;
+}
+
+message RootCauseCondition {
+  oneof condition {
+    AutoHealedCondition auto_healed = 10;
+    HealAttemptsCondition heal_attempts = 11;
+    SelfCheckStatusCondition self_check_status = 12;
+  }
+}
+
 message DiagnoseAndHealResponse {
   string heal_id = 1;
   string rule_id = 2;
@@ -243,6 +268,50 @@ message DiagnoseAndHealResponse {
   int32  fix_action_max_attempts = 7;
   string fix_action_params_json = 8;
   string created_at = 9;
+  RootCauseCondition root_cause_condition = 10;
+}
+
+// Self-check messages.
+
+message SelfCheckResultEntry {
+  string check_id = 1;
+  string checker = 2;
+  string status = 3; // "passed" | "warning" | "failed"
+  string message = 4;
+  string details_json = 5;
+  string checked_at = 6;
+}
+
+message RepairActionEntry {
+  bool success = 1;
+  string action = 2;
+  string message = 3;
+}
+
+message SelfCheckReportEntry {
+  string id = 1;
+  repeated SelfCheckResultEntry check_results = 2;
+  string overall_status = 3;
+  repeated RepairActionEntry repair_actions = 4;
+  string started_at = 5;
+  string finished_at = 6;
+  int64  duration_ms = 7;
+}
+
+message TriggerSelfCheckRequest {}
+
+message TriggerSelfCheckResponse {
+  SelfCheckReportEntry report = 1;
+}
+
+message ListSelfCheckReportsRequest {
+  int32 limit = 1;
+  int32 offset = 2;
+}
+
+message ListSelfCheckReportsResponse {
+  repeated SelfCheckReportEntry items = 1;
+  int32 total = 2;
 }
 
 service MonitorService {
@@ -294,5 +363,14 @@ service MonitorService {
       post: "/v1/monitor/diagnose-and-heal"
       body: "*"
     };
+  }
+  rpc TriggerSelfCheck(TriggerSelfCheckRequest) returns (TriggerSelfCheckResponse) {
+    option (google.api.http) = {
+      post: "/v1/monitor/self-check"
+      body: "*"
+    };
+  }
+  rpc ListSelfCheckReports(ListSelfCheckReportsRequest) returns (ListSelfCheckReportsResponse) {
+    option (google.api.http) = {get: "/v1/monitor/self-check-reports"};
   }
 }

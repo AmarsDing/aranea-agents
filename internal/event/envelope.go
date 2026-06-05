@@ -65,7 +65,19 @@ const (
 	EnvelopeTypeSpiritTeamProgress          = contract.EnvelopeTypeSpiritTeamProgress
 	EnvelopeTypeSpiritTeamsAllCompleted     = contract.EnvelopeTypeSpiritTeamsAllCompleted
 	EnvelopeTypeSpiritSynthesisCompleted    = contract.EnvelopeTypeSpiritSynthesisCompleted
+	EnvelopeTypeSpiritPlanCreated           = contract.EnvelopeTypeSpiritPlanCreated
+	EnvelopeTypeSpiritAllocationCreated     = contract.EnvelopeTypeSpiritAllocationCreated
+	EnvelopeTypeSpiritOrchestrationStarted  = contract.EnvelopeTypeSpiritOrchestrationStarted
+	EnvelopeTypeSpiritOrchestrationCheckpoint = contract.EnvelopeTypeSpiritOrchestrationCheckpoint
+	EnvelopeTypeSpiritOrchestrationInterrupted = contract.EnvelopeTypeSpiritOrchestrationInterrupted
 	EnvelopeTypeMetricsUpdated              = contract.EnvelopeTypeMetricsUpdated
+	EnvelopeTypeButlerOrchestrationStarted  = contract.EnvelopeTypeButlerOrchestrationStarted
+	EnvelopeTypeButlerOrchestrationCompleted = contract.EnvelopeTypeButlerOrchestrationCompleted
+	EnvelopeTypeButlerOrchestrationFailed   = contract.EnvelopeTypeButlerOrchestrationFailed
+	EnvelopeTypeSkillHealthChanged          = contract.EnvelopeTypeSkillHealthChanged
+	EnvelopeTypeSkillEvolutionProposed      = contract.EnvelopeTypeSkillEvolutionProposed
+	EnvelopeTypeMonitorAutoHealed           = contract.EnvelopeTypeMonitorAutoHealed
+	EnvelopeTypeMonitorSelfCheckCompleted   = contract.EnvelopeTypeMonitorSelfCheckCompleted
 )
 
 // Re-export functions.

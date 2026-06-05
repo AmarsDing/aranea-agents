@@ -21,6 +21,17 @@ const (
 	SelfHealCooldownSec = 300 // 5 minutes
 )
 
+// HealStatus represents the outcome of a self-heal action.
+type HealStatus string
+
+const (
+	HealStatusApplied             HealStatus = "applied"
+	HealStatusSkippedLowConfidence HealStatus = "skipped_low_confidence"
+	HealStatusSkippedCooldown     HealStatus = "skipped_cooldown"
+	HealStatusSkippedNoAction     HealStatus = "skipped_no_action"
+	HealStatusFailed              HealStatus = "failed"
+)
+
 // HealRecord documents a self-heal action taken.
 type HealRecord struct {
 	ID         string         `json:"id"`
@@ -31,7 +42,7 @@ type HealRecord struct {
 	StepID     string         `json:"step_id"`
 	FixAction  FixAction      `json:"fix_action"`
 	Confidence float64        `json:"confidence"`
-	Status     string         `json:"status"` // "applied", "skipped_low_confidence", "skipped_cooldown", "skipped_no_action", "failed"
+	Status     string         `json:"status"` // HealStatus values: applied, skipped_low_confidence, skipped_cooldown, skipped_no_action, failed
 	Reason     string         `json:"reason,omitempty"`
 	CreatedAt  string         `json:"created_at"`
 	Metadata   map[string]any `json:"metadata,omitempty"`
@@ -99,7 +110,7 @@ func (uc *SelfHealUsecase) evaluateAndFix(ctx context.Context, causes []RootCaus
 	}
 
 	if len(causes) == 0 {
-		record.Status = "skipped_no_action"
+		record.Status = string(HealStatusSkippedNoAction)
 		record.Reason = "no root causes identified"
 		uc.recordHeal(record)
 		return record
@@ -108,7 +119,7 @@ func (uc *SelfHealUsecase) evaluateAndFix(ctx context.Context, causes []RootCaus
 	// Pick the highest-confidence cause with a fixable action
 	best := uc.pickBestFixableCause(causes)
 	if best == nil {
-		record.Status = "skipped_no_action"
+		record.Status = string(HealStatusSkippedNoAction)
 		record.Reason = "no fixable root cause with sufficient confidence"
 		uc.recordHeal(record)
 		return record
@@ -121,7 +132,7 @@ func (uc *SelfHealUsecase) evaluateAndFix(ctx context.Context, causes []RootCaus
 
 	// Check confidence threshold
 	if best.Confidence < SelfHealMinConfidence {
-		record.Status = "skipped_low_confidence"
+		record.Status = string(HealStatusSkippedLowConfidence)
 		record.Reason = "confidence below threshold"
 		uc.recordHeal(record)
 		return record
@@ -129,7 +140,7 @@ func (uc *SelfHealUsecase) evaluateAndFix(ctx context.Context, causes []RootCaus
 
 	// Check cooldown
 	if !uc.checkCooldown(best.RuleID) {
-		record.Status = "skipped_cooldown"
+		record.Status = string(HealStatusSkippedCooldown)
 		record.Reason = "same rule recently applied, in cooldown period"
 		uc.recordHeal(record)
 		return record
@@ -137,7 +148,7 @@ func (uc *SelfHealUsecase) evaluateAndFix(ctx context.Context, causes []RootCaus
 
 	// Apply fix action
 	if err := uc.handler.HandleFixAction(ctx, best.FixAction, best.Metadata); err != nil {
-		record.Status = "failed"
+		record.Status = string(HealStatusFailed)
 		record.Reason = err.Error()
 		uc.lg.Error("SelfHeal: fix action failed",
 			loggateway.StepID("monitor.self_heal_fix_fail"),
@@ -147,7 +158,7 @@ func (uc *SelfHealUsecase) evaluateAndFix(ctx context.Context, causes []RootCaus
 		return record
 	}
 
-	record.Status = "applied"
+	record.Status = string(HealStatusApplied)
 	uc.setCooldown(best.RuleID, now)
 	uc.lg.Info("SelfHeal: fix action applied",
 		loggateway.StepID("monitor.self_heal_applied"),

@@ -7,6 +7,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/runtime/turn"
+	"aranea-agents/pkg/loggateway"
 )
 
 func TestTurnExecutor_Execute_rejectsEmptyInput(t *testing.T) {
@@ -21,7 +22,7 @@ func TestTurnExecutor_Execute_rejectsEmptyInput(t *testing.T) {
 }
 
 func TestTurnExecutor_ExecuteTurnGateway(t *testing.T) {
-	svc := &ChatService{orch: &ChatOrchestrator{}}
+	svc := &ChatService{orch: &ChatOrchestrator{}, lg: loggateway.NewNoop()}
 	got, err := svc.ExecuteTurn(context.Background(), biz.TurnInput{SessionID: "s1"})
 	if err == nil {
 		t.Fatal("expected error for empty content")

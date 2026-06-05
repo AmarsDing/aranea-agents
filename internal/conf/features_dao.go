@@ -22,3 +22,10 @@ func DAOSessionRuntimeTable() bool {
 func DAOSessionDualWrite() bool {
 	return parseBoolFlag("DAO_SESSION_DUAL_WRITE")
 }
+
+// DAOVectorPgVector returns true if the PgVectorStore should be used for vector
+// storage instead of the default SQLiteVectorStore.
+// Env: DAO_VECTOR_PGVECTOR (default: false)
+func DAOVectorPgVector() bool {
+	return parseBoolFlag("DAO_VECTOR_PGVECTOR")
+}

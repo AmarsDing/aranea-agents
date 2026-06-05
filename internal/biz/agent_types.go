@@ -232,6 +232,12 @@ type AgentRuntimeSettings struct {
 	RalphLoopPromiseTagOpen       string
 	RalphLoopPromiseTagClose      string
 	RalphLoopVerifyWorkDir        string
+	// ForgetPolicyJSON stores the memory butler's forget policy configuration.
+	ForgetConfigJSON string `json:"forget_policy_json,omitempty"`
+	// ToolWeightJSON stores tool weight analysis results for prompt priority hints.
+	ToolWeightJSON string `json:"tool_weight_json,omitempty"`
+	// DreamSnapshotJSON stores dream_cycle execution snapshots for rollback.
+	DreamSnapshotJSON string `json:"dream_snapshot_json,omitempty"`
 	CreatedAt   string
 	UpdatedAt   string
 }

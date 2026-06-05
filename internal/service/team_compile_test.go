@@ -15,7 +15,8 @@ type compileTeamRepo struct {
 	team biz.Team
 }
 
-func (r *compileTeamRepo) ListTeams(context.Context) ([]biz.Team, error) { return nil, nil }
+func (r *compileTeamRepo) ListTeams(context.Context) ([]biz.Team, error)                    { return nil, nil }
+func (r *compileTeamRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) { return nil, nil }
 func (r *compileTeamRepo) GetTeamByID(_ context.Context, id string) (biz.Team, error) {
 	if id == r.team.ID {
 		return r.team, nil

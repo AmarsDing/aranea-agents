@@ -13,7 +13,8 @@ type deadLetterTeamRepo struct {
 	items []biz.TaskDeadLetter
 }
 
-func (r *deadLetterTeamRepo) ListTeams(context.Context) ([]biz.Team, error) { return nil, nil }
+func (r *deadLetterTeamRepo) ListTeams(context.Context) ([]biz.Team, error)                    { return nil, nil }
+func (r *deadLetterTeamRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team, error) { return nil, nil }
 func (r *deadLetterTeamRepo) GetTeamByID(context.Context, string) (biz.Team, error) {
 	return biz.Team{}, biz.ErrNotFound
 }

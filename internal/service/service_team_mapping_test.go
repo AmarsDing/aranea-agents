@@ -24,7 +24,7 @@ func TestToProtoTeam(t *testing.T) {
 				ID:             "team-1",
 				TeamKey:        "my-team",
 				DisplayName:    "My Team",
-				Status:         "active",
+				Status:         biz.TeamStatusPending,
 				IsDefault:      true,
 				DefinitionJSON: `{"version":2,"mode":"sequential"}`,
 				ADKAppName:     "my-team",
@@ -42,8 +42,8 @@ func TestToProtoTeam(t *testing.T) {
 				if got.DisplayName != "My Team" {
 					t.Errorf("DisplayName = %q, want %q", got.DisplayName, "My Team")
 				}
-				if got.Status != "active" {
-					t.Errorf("Status = %q, want %q", got.Status, "active")
+				if got.Status != biz.TeamStatusPending {
+					t.Errorf("Status = %q, want %q", got.Status, biz.TeamStatusPending)
 				}
 				if !got.IsDefault {
 					t.Errorf("IsDefault = %v, want true", got.IsDefault)
@@ -329,7 +329,7 @@ func TestTeamFromProto(t *testing.T) {
 				Id:             "team-1",
 				TeamKey:        "my-team",
 				DisplayName:    "My Team",
-				Status:         "active",
+				Status:         biz.TeamStatusPending,
 				IsDefault:      true,
 				DefinitionJson: `{"version":2}`,
 				AdkAppName:     "my-team",

@@ -7,6 +7,14 @@
         </div>
         <p class="settings-section__hint">基于模式生成的知识注册提议，需审批后生效。</p>
       </div>
+      <q-btn-toggle
+        :model-value="statusFilter"
+        rounded
+        unelevated
+        toggle-color="primary"
+        :options="statusOptions"
+        @update:model-value="emit('update:status-filter', $event)"
+      />
     </div>
     <q-inner-loading :showing="loading" label="加载提议..." />
     <q-list v-if="!loading && proposals.length > 0" separator class="app-glass-list">
@@ -17,10 +25,13 @@
             {{ p.title }}
           </q-item-label>
           <q-item-label caption class="q-mt-xs">{{ p.content }}</q-item-label>
-          <q-item-label caption class="q-mt-xs text-grey-5">{{ formatDate(p.created_at) }}</q-item-label>
+          <q-item-label caption class="q-mt-xs text-grey-5">
+            {{ formatDate(p.created_at) }}
+            <span v-if="p.approved_by"> · 审批人: {{ p.approved_by }}</span>
+          </q-item-label>
         </q-item-section>
         <q-item-section side>
-          <div v-if="p.status === 'pending'" class="row q-gutter-xs">
+          <div v-if="p.status === 'validated'" class="row q-gutter-xs">
             <q-btn
               flat
               round
@@ -60,24 +71,35 @@ import type { LearningProposal } from '../../features/agents/learning.types';
 defineProps<{
   proposals: LearningProposal[];
   loading: boolean;
+  statusFilter: string;
   approvingId: string | null;
   rejectingId: string | null;
 }>();
 
 const emit = defineEmits<{
+  'update:status-filter': [value: string];
   approve: [id: string];
   reject: [id: string];
 }>();
 
+const statusOptions = [
+  { label: '全部', value: '' },
+  { label: '已验证', value: 'validated' },
+  { label: '已审批', value: 'approved' },
+  { label: '已应用', value: 'applied' },
+  { label: '已拒绝', value: 'rejected' },
+  { label: '冲突', value: 'conflict' },
+];
+
 function proposalKindColor(kind: string): string {
   switch (kind) {
-    case 'tool_optimization':
+    case 'prompt':
       return 'blue';
-    case 'prompt_refinement':
-      return 'purple';
-    case 'skill_creation':
+    case 'skill':
       return 'teal';
-    case 'behavior_adjustment':
+    case 'persona':
+      return 'purple';
+    case 'behavior':
       return 'orange';
     default:
       return 'grey';
@@ -86,12 +108,20 @@ function proposalKindColor(kind: string): string {
 
 function proposalStatusColor(status: string): string {
   switch (status) {
+    case 'draft':
+      return 'grey';
+    case 'validated':
+      return 'blue';
     case 'approved':
-      return 'positive';
+      return 'teal';
     case 'rejected':
       return 'negative';
-    case 'pending':
+    case 'applied':
+      return 'positive';
+    case 'conflict':
       return 'warning';
+    case 'expired':
+      return 'grey';
     default:
       return 'grey';
   }
@@ -99,12 +129,20 @@ function proposalStatusColor(status: string): string {
 
 function proposalStatusLabel(status: string): string {
   switch (status) {
+    case 'draft':
+      return '草稿';
+    case 'validated':
+      return '已验证';
     case 'approved':
       return '已审批';
     case 'rejected':
       return '已拒绝';
-    case 'pending':
-      return '待审批';
+    case 'applied':
+      return '已应用';
+    case 'conflict':
+      return '冲突';
+    case 'expired':
+      return '已过期';
     default:
       return status;
   }
