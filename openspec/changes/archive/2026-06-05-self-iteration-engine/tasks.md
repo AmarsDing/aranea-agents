@@ -126,11 +126,11 @@
   > ⚠️ 实际状态：--version flag 存在，输出 Name + Version。但 ldflags 仅注入 Version 和 Name，未注入 commit 和 date。main.go 中 Name 和 Version 为空字符串变量，通过 ldflags -X main.Version / -X main.Name 注入。
 - [x] 7.4 创建 .github/workflows/release.yml：tag v* 触发 → 复用 CI → GoReleaser → Docker push
   > ✅ 已确认：使用 goreleaser-action@v6，Docker push 到 ghcr.io。
-- [x] 7.5 实现 staging 部署步骤（占位，需 K8s 集群）
+- [x] 7.5 (deferred - no staging infra) 实现 staging 部署步骤
   > ⚠️ 实际状态：release.yml 中无 staging 部署步骤，仅有 GoReleaser + Docker push。
-- [x] 7.6 实现 staging 冒烟测试步骤（占位，需 staging 环境）
+- [x] 7.6 (deferred - no staging infra) 实现 staging 冒烟测试步骤
   > ⚠️ 实际状态：release.yml 中无 staging 冒烟测试步骤。
-- [x] 7.7 实现 production promote 步骤（占位，需 production 环境）
+- [x] 7.7 (deferred - no staging infra) 实现 production promote 步骤
   > ⚠️ 实际状态：release.yml 中无 production promote 步骤。
 - [x] 7.8 更新 Dockerfile 基础镜像：golang:1.19 → golang:1.23，CMD: server → admin
   > ✅ 已确认：Dockerfile 使用 golang:1.23，CMD ["./admin", "-conf", "/data/conf"]。

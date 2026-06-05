@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { listSpiritTeams, cancelSpiritTeam } from '../../features/spirit/api';
-import type { SpiritTeam, SpiritPanelMode, TeamProgressView, SynthesisOutput } from '../../features/spirit/types';
+import type { SpiritTeam, SpiritPanelMode, SpiritTeamMode, TeamProgressView, SynthesisOutput } from '../../features/spirit/types';
 import type { Envelope } from '../../realtime/envelope';
 import type {
   SpiritPlanCreatedPayload,
@@ -10,6 +10,7 @@ import type {
   SpiritOrchestrationCheckpointPayload,
   SpiritOrchestrationInterruptedPayload,
 } from '../../realtime/envelope';
+import { Notify } from 'quasar';
 
 export const useSpiritTeamStore = defineStore('spiritTeam', () => {
   const teams = ref<SpiritTeam[]>([]);
@@ -94,8 +95,8 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
   async function cancelTeam(teamId: string) {
     try {
       await cancelSpiritTeam(teamId);
-    } catch {
-      // 即使 API 调用失败也本地移除，保证 UI 响应
+    } catch (e) {
+      Notify.create({ type: 'warning', message: '取消团队请求可能未生效，请刷新确认', position: 'top' });
     }
     teams.value = teams.value.filter((t) => t.id !== teamId);
     if (activeTeamId.value === teamId) {
@@ -148,7 +149,7 @@ export const useSpiritTeamStore = defineStore('spiritTeam', () => {
             teamName: String(md.team_name ?? ''),
             taskSummary: String(md.task_summary ?? ''),
             status: 'assembled',
-            mode: String(md.mode ?? 'coordinator'),
+            mode: String(md.mode ?? 'coordinator') as SpiritTeamMode,
             memberAvatars: [],
             completedSteps: 0,
             totalSteps: Number(md.total_steps ?? 1),

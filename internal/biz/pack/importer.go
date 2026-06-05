@@ -586,16 +586,17 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 		return 0, 0, 0, kerrors.BadRequest("PACK_TEAM_DEFINITION", fmt.Sprintf("序列化 Team %s definition_json 失败: %s", spec.Key, err.Error()))
 	}
 
-	teamSource := "imported"
+	teamKind := "user"
 	if cfg.kindOverride != "" {
-		teamSource = cfg.kindOverride
+		teamKind = cfg.kindOverride
 	}
 	team := biz.Team{
 		TeamKey:        spec.Key,
 		DisplayName:    spec.DisplayName,
 		DefinitionJSON: defJSON,
 		Status:         biz.TeamStatusPending,
-		Source:         teamSource,
+		Kind:           teamKind,
+		Source:         "imported",
 		Readonly:       false,
 	}
 

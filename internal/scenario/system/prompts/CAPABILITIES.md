@@ -30,6 +30,7 @@
 | check_progress | 查询编排进度 | 编排执行中定期检查，传入 orchestration_id |
 | cancel_orchestration | 取消编排 | 编排执行异常时使用，传入 orchestration_id |
 | synthesize_results | 合成团队结果 | 所有子任务完成后调用 |
+| build_orchestration_graph | 构建 Graph DAG 编排 | 复杂任务（4+ Agent，有并行/条件路由）时使用 |
 
 ### 旧工具（已弃用）
 

@@ -77,3 +77,14 @@
 - [x] 9.1 后端全量验证：`go build ./cmd/admin` 通过 + 关键测试通过
 - [x] 9.2 前端全量验证：`pnpm lint && pnpm build` 通过
 - [ ] 9.3 手动验证：启动系统 → 确认 L1 内置 Agent/Team 正常加载 → 确认行业 Pack 不自动加载 → 加载附带生态 → 确认 Agent/Team Kind 为 ecosystem_preset → 确认分类树展示正常 → 确认内置 Agent/Team 不可删除 → 确认预设 Agent/Team 可编辑可删除 → 卸载某行业 → 确认该行业 Agent/Team/分类节点已删除 → 重新加载该行业 → 确认数据恢复
+
+## 10. 代码审查修复
+
+- [x] 10.1 修复 team_repo.go CreateTeam/UpdateTeam 未写入 Kind/Source/Readonly 字段（🔴 阻断）
+- [x] 10.2 修复 importer.go importTeam 未设置 Team.Kind 字段（🔴 阻断）
+- [x] 10.3 修复 importer.go importTeam Source 枚举值越界（kindOverride 误写入 Source 字段）（🔴 阻断）
+- [x] 10.4 修复 biz/ecosystem_preset.go 业务错误使用 fmt.Errorf 而非 kerrors（🔴 阻断）
+- [x] 10.5 修复 SystemSettingsPage.vue 卸载确认 Dialog 缺少 app-dialog-card 类（🔴 阻断）
+- [x] 10.6 修复 useTaxonomyPage.ts reorderTaxonomy 直接调 API 而非通过 Store 委托（🟡 建议）
+- [x] 10.7 更新 importer_test.go 测试断言（Team Source 改为 "imported"，新增 Team Kind 断言）
+- [x] 10.8 验证：后端编译+测试通过，前端 lint+build 通过

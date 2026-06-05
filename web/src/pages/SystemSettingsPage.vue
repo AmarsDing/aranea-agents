@@ -350,7 +350,7 @@
     </div>
 
     <q-dialog v-model="unloadDialogVisible" persistent>
-      <q-card style="min-width: 340px">
+      <q-card class="app-dialog-card" style="min-width: 340px">
         <q-card-section>
           <div class="text-h6">确认卸载</div>
         </q-card-section>

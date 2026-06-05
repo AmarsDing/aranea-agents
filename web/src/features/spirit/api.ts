@@ -1,5 +1,5 @@
 import { createSpiritService } from '../../services';
-import type { SpiritTeam, SpiritMember } from './types';
+import type { SpiritTeam, SpiritMember, SpiritTeamStatus, SpiritTeamMode } from './types';
 
 const spiritService = createSpiritService();
 
@@ -19,19 +19,24 @@ export async function cancelSpiritTeam(teamId: string): Promise<void> {
 }
 
 function mapSpiritTeam(raw: Record<string, unknown>): SpiritTeam {
+  const dependsOnRaw = raw.dependsOn ?? raw.depends_on;
   return {
     id: String(raw.id ?? ''),
-    teamName: String(raw.teamName ?? ''),
-    taskSummary: String(raw.taskSummary ?? ''),
-    status: String(raw.status ?? ''),
-    mode: String(raw.mode ?? ''),
+    teamName: String(raw.teamName ?? raw.team_name ?? ''),
+    taskSummary: String(raw.taskSummary ?? raw.task_summary ?? ''),
+    status: String(raw.status ?? '') as SpiritTeamStatus,
+    mode: String(raw.mode ?? '') as SpiritTeamMode,
     memberAvatars: Array.isArray(raw.memberAvatars) ? (raw.memberAvatars as string[]) : [],
     completedSteps: Number(raw.completedSteps ?? 0),
     totalSteps: Number(raw.totalSteps ?? 0),
-    spiritSessionId: String(raw.spiritSessionId ?? ''),
-    teamSessionId: String(raw.teamSessionId ?? ''),
+    durationMs: Number(raw.durationMs ?? raw.duration_ms ?? 0),
+    spiritSessionId: String(raw.spiritSessionId ?? raw.spirit_session_id ?? ''),
+    teamSessionId: String(raw.teamSessionId ?? raw.team_session_id ?? ''),
     members: Array.isArray(raw.members) ? (raw.members as Record<string, unknown>[]).map(mapSpiritMember) : [],
     sharedAgentIds: Array.isArray(raw.sharedAgentIds) ? (raw.sharedAgentIds as string[]) : [],
+    dagNodeId: String(raw.dagNodeId ?? raw.dag_node_id ?? ''),
+    dependsOn: Array.isArray(dependsOnRaw) ? (dependsOnRaw as unknown[]).map(String) : [],
+    topologyReason: String(raw.topologyReason ?? raw.topology_reason ?? ''),
   };
 }
 

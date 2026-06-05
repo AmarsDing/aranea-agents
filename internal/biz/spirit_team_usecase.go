@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -49,13 +50,17 @@ type SpiritTransactor interface {
 }
 
 type SpiritTeamUsecase struct {
-	teamUC       *TeamUsecase
-	sessionUC    *SessionUsecase
-	agentUC      *AgentUsecase
-	transactor   SpiritTransactor
-	orchCache    *OrchestrationCache
+	teamUC        *TeamUsecase
+	sessionUC     *SessionUsecase
+	agentUC       *AgentUsecase
+	transactor    SpiritTransactor
+	orchCache     *OrchestrationCache
 	evolutionSugg EvolutionSuggestionRepo
-	lg           loggateway.Logger
+	lg            loggateway.Logger
+
+	// timeoutTimers tracks pending timeout callbacks so they can be cancelled
+	// when a team completes normally before the timeout fires.
+	timeoutTimers sync.Map // map[string]*time.Timer
 }
 
 func NewSpiritTeamUsecase(teamUC *TeamUsecase, sessionUC *SessionUsecase, agentUC *AgentUsecase, transactor SpiritTransactor, orchCache *OrchestrationCache, evolutionSugg EvolutionSuggestionRepo, lg loggateway.Logger) *SpiritTeamUsecase {
@@ -137,7 +142,8 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 	// Register team timeout callback if configured.
 	if cfg.TeamTimeoutSeconds > 0 {
 		teamID := result.Team.ID
-		time.AfterFunc(cfg.TeamTimeout(), func() {
+		timer := time.AfterFunc(cfg.TeamTimeout(), func() {
+			u.timeoutTimers.Delete(teamID)
 			safego.Go(context.Background(), "spirit-team-timeout", func() {
 				timeoutCtx := context.Background()
 				team, err := u.teamUC.Get(timeoutCtx, teamID)
@@ -154,6 +160,7 @@ func (u *SpiritTeamUsecase) AssembleTeam(ctx context.Context, params SpiritTeamP
 				u.teamUC.TransitionStatus(timeoutCtx, teamID, TeamStatusFailed)
 			})
 		})
+		u.timeoutTimers.Store(teamID, timer)
 	}
 
 	return result, nil
@@ -291,6 +298,7 @@ func (u *SpiritTeamUsecase) CancelTeam(ctx context.Context, teamID string) error
 	if strings.TrimSpace(teamID) == "" {
 		return kerrors.BadRequest("SPIRIT", "team_id is required")
 	}
+	u.CancelTimeoutTimer(teamID)
 	_, err := u.teamUC.TransitionStatus(ctx, teamID, TeamStatusCancelled)
 	if err != nil {
 		return err
@@ -305,16 +313,40 @@ func (u *SpiritTeamUsecase) AutoArchiveCompletedTeams(ctx context.Context, spiri
 	}
 	teams, err := u.teamUC.ListBySpiritSessionID(ctx, spiritSessionID)
 	if err != nil {
+		u.lg.Warn("查询精灵团队列表失败，跳过自动归档",
+			loggateway.StepID("spirit.auto_archive.list_err"),
+			loggateway.Str("spirit_session_id", spiritSessionID),
+			loggateway.Err(err),
+		)
 		return
 	}
 	threshold := time.Now().Add(-cfg.AutoArchiveAfter())
+	// TODO(debt): batch archive — collect IDs and use a single UPDATE query
+	// instead of per-team TransitionStatus calls.
 	for _, t := range teams {
 		if t.Status == TeamStatusCompleted {
 			updatedAt, parseErr := time.Parse(time.RFC3339, t.UpdatedAt)
-			if parseErr == nil && updatedAt.Before(threshold) {
+			if parseErr != nil {
+				u.lg.Warn("解析团队更新时间失败，跳过归档",
+					loggateway.StepID("spirit.auto_archive.parse_err"),
+					loggateway.Str("team_id", t.ID),
+					loggateway.Err(parseErr),
+				)
+				continue
+			}
+			if updatedAt.Before(threshold) {
 				u.teamUC.TransitionStatus(ctx, t.ID, TeamStatusArchived)
 			}
 		}
+	}
+}
+
+// CancelTimeoutTimer stops the timeout timer for a team if one is pending.
+// Should be called when a team reaches a terminal state (completed/failed/cancelled)
+// to prevent the timeout callback from firing unnecessarily.
+func (u *SpiritTeamUsecase) CancelTimeoutTimer(teamID string) {
+	if v, ok := u.timeoutTimers.LoadAndDelete(teamID); ok {
+		v.(*time.Timer).Stop()
 	}
 }
 
@@ -528,6 +560,9 @@ func (u *SpiritTeamUsecase) UpdateTeamDefinitionJSON(ctx context.Context, teamID
 // RecordTeamCompletion records DQ Score, infers topology, and creates evolution suggestions
 // for a completed team. Returns the computed DQ Score and inferred topology.
 func (u *SpiritTeamUsecase) RecordTeamCompletion(ctx context.Context, team Team, durationMs int64) (dqScore float64, topology TopologyType) {
+	// Cancel timeout timer since team has completed.
+	u.CancelTimeoutTimer(team.ID)
+
 	if u.orchCache == nil || team.DagNodeID == "" {
 		return 0, ""
 	}

@@ -97,3 +97,19 @@
 | query_butler_status | plan_and_execute | Agent 状态查询已集成到 plan_and_execute |
 | check_team_progress | check_progress | 基于 orchestration_id 查询进度 |
 | cancel_team | cancel_orchestration | 基于 orchestration_id 取消编排 |
+
+## Graph 编排决策规则
+
+当 plan_and_execute 评估结果为 complex 且涉及 4+ Agent 时，考虑使用 Graph 编排：
+
+| 场景 | 推荐模式 | 说明 |
+|------|---------|------|
+| 2-3 Agent 顺序执行 | coordinator | 编排管家协调，assemble_team 即可 |
+| 4+ Agent 有并行/条件路由 | dag | 使用 build_orchestration_graph 构建 Graph DAG |
+| 需要验证门禁 | dag + verification | Graph 支持自动验证节点 |
+
+Graph 编排的优势：
+- 检查点（Checkpoint）：每个节点执行后自动保存状态
+- 中断恢复（Interrupt/Resume）：支持 HITL 人机协作
+- 验证门禁（Verification Gate）：自动验证输出质量
+- 条件路由（Conditional Edge）：根据中间结果动态选择路径

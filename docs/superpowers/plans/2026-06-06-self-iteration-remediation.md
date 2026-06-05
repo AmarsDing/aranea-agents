@@ -25,11 +25,11 @@
 - Verify: `.husky/commit-msg`
 - Modify: `openspec/changes/archive/2026-06-05-self-iteration-engine/tasks.md`
 
-- [ ] **Step 1: Verify Husky hook deprecation comments already exist**
+- [x] **Step 1: Verify Husky hook deprecation comments already exist**
 
 Read `.husky/pre-commit` and `.husky/commit-msg` to confirm they contain deprecation comments. Expected: both files contain `# DEPRECATED: This project relies on CI lint checks instead of Husky hooks`.
 
-- [ ] **Step 2: Update archive tasks.md — mark Husky tasks as deferred**
+- [x] **Step 2: Update archive tasks.md — mark Husky tasks as deferred**
 
 In `openspec/changes/archive/2026-06-05-self-iteration-engine/tasks.md`, change tasks 1.1 through 1.4 from `- [x]` to `- [x] (deferred - Husky deprecated)`. Specifically, append ` (deferred - Husky deprecated)` after the existing checkbox marker text for items 1.1, 1.2, 1.3, 1.4. Also mark 1.5 as `- [ ] (deferred - Husky deprecated)`.
 
@@ -40,12 +40,12 @@ The changes should be:
 - Line with `- [x] 1.4` → change to `- [x] 1.4 (deferred - Husky deprecated)`
 - Line with `- [ ] 1.5` → change to `- [ ] 1.5 (deferred - Husky deprecated)`
 
-- [ ] **Step 3: Verify build passes**
+- [x] **Step 3: Verify build passes**
 
 Run: `go build ./...`
 Expected: PASS (no compilation errors)
 
-- [ ] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
+- [x] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
 
 ---
 
@@ -63,7 +63,7 @@ Expected: PASS (no compilation errors)
 - Review: `.github/workflows/iteration-dashboard.yml`
 - Review: `.github/workflows/codeql.yml`
 
-- [ ] **Step 1: Check CI job name references**
+- [x] **Step 1: Check CI job name references**
 
 For each workflow file in `.github/workflows/`, verify that all `needs:` references match actual job names defined in the same file. Specifically check:
 
@@ -72,7 +72,7 @@ For each workflow file in `.github/workflows/`, verify that all `needs:` referen
 
 Also check that `release.yml` correctly references `ci.yml` via `workflow_call`.
 
-- [ ] **Step 2: Check commitlint config file reference**
+- [x] **Step 2: Check commitlint config file reference**
 
 In `ci.yml`, the `commitlint` job runs `npx commitlint --config .commitlintrc.yml`. Check if `.commitlintrc.yml` exists at the repo root. If it doesn't exist, the commitlint job will fail on PRs. Fix by either:
 - Creating a minimal `.commitlintrc.yml` with `extends: ['@commitlint/config-conventional']`
@@ -80,13 +80,13 @@ In `ci.yml`, the `commitlint` job runs `npx commitlint --config .commitlintrc.ym
 
 Preferred fix: Create `.commitlintrc.yml` since CI explicitly references it.
 
-- [ ] **Step 3: Verify CI workflow syntax**
+- [x] **Step 3: Verify CI workflow syntax**
 
 Run: Check each workflow file for YAML syntax correctness. If `actionlint` is available, run `actionlint .github/workflows/*.yml`. Otherwise, manually verify key fields (on, jobs, steps, uses, runs-on) are correct.
 
 Expected: No job name mismatches; commitlint config file issue resolved.
 
-- [ ] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
+- [x] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
 
 ---
 
@@ -99,7 +99,7 @@ Expected: No job name mismatches; commitlint config file issue resolved.
 - Modify: `internal/service/chat_integration_test.go`
 - Modify: `internal/service/agent_integration_test.go`
 
-- [ ] **Step 1: Write failing test — enhance chat_integration_test.go**
+- [x] **Step 1: Write failing test — enhance chat_integration_test.go**
 
 Replace the current skeleton test with Ent Client-based integration test. The test should:
 1. Start PostgreSQL container (already done)
@@ -221,12 +221,12 @@ func TestIntegrationChatAPI(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it compiles**
+- [x] **Step 2: Run test to verify it compiles**
 
 Run: `go build -tags=integration ./internal/service/...`
 Expected: PASS (compiles without errors)
 
-- [ ] **Step 3: Write failing test — enhance agent_integration_test.go**
+- [x] **Step 3: Write failing test — enhance agent_integration_test.go**
 
 Replace the current skeleton test with Ent Client-based integration test for Agent CRUD:
 
@@ -345,19 +345,19 @@ func TestIntegrationAgentCRUD(t *testing.T) {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it compiles**
+- [x] **Step 4: Run test to verify it compiles**
 
 Run: `go build -tags=integration ./internal/service/...`
 Expected: PASS (compiles without errors)
 
-- [ ] **Step 5: Run integration tests (requires Docker)**
+- [x] **Step 5: Run integration tests (requires Docker)**
 
 Run: `go test -tags=integration ./internal/service/... -run "TestIntegrationChatAPI|TestIntegrationAgentCRUD" -count=1 -timeout 10m`
 Expected: Both tests PASS
 
 Note: If Docker is not available in the current environment, this step can be deferred to CI. The compilation check in Steps 2 and 4 is the minimum gate.
 
-- [ ] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
+- [x] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
 
 ---
 
@@ -370,7 +370,7 @@ Note: If Docker is not available in the current environment, this step can be de
 - Verify: `Makefile` (lines 13-16)
 - Verify: `cmd/admin/main.go` (lines 24-31)
 
-- [ ] **Step 1: Verify Makefile ldflags already include commit and date**
+- [x] **Step 1: Verify Makefile ldflags already include commit and date**
 
 Read `Makefile` lines 13-16. Expected content:
 ```makefile
@@ -382,7 +382,7 @@ LDFLAGS=-X main.Version=$(VERSION) -X main.Commit=$(COMMIT) -X main.BuildDate=$(
 
 Confirm that `main.Commit` and `main.BuildDate` are present in LDFLAGS.
 
-- [ ] **Step 2: Verify cmd/admin/main.go has matching variable declarations**
+- [x] **Step 2: Verify cmd/admin/main.go has matching variable declarations**
 
 Read `cmd/admin/main.go` lines 24-31. Expected:
 ```go
@@ -397,7 +397,7 @@ var (
 
 Confirm that `Commit` and `BuildDate` variables exist and match the ldflags targets (`main.Commit`, `main.BuildDate`).
 
-- [ ] **Step 3: Build and verify --version output**
+- [x] **Step 3: Build and verify --version output**
 
 Run: `make build`
 Then run: `./bin/admin --version`
@@ -405,7 +405,7 @@ Expected: Output contains a commit hash and build date, e.g. `aranea v0.0.1-abc1
 
 Note: On Windows, use `.\bin\admin.exe --version`.
 
-- [ ] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
+- [x] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
 
 ---
 
@@ -418,7 +418,7 @@ Note: On Windows, use `.\bin\admin.exe --version`.
 - Modify: `openspec/changes/archive/2026-06-05-self-iteration-engine/tasks.md`
 - Create: `openspec/changes/staging-deployment/proposal.md`
 
-- [ ] **Step 1: Update archive tasks.md — mark staging tasks as deferred**
+- [x] **Step 1: Update archive tasks.md — mark staging tasks as deferred**
 
 In `openspec/changes/archive/2026-06-05-self-iteration-engine/tasks.md`, change tasks 7.5, 7.6, 7.7 from `- [x]` to `- [x] (deferred - no staging infra)`:
 
@@ -426,7 +426,7 @@ In `openspec/changes/archive/2026-06-05-self-iteration-engine/tasks.md`, change 
 - Line with `- [x] 7.6 实现 staging 冒烟测试步骤` → change to `- [x] 7.6 (deferred - no staging infra) 实现 staging 冒烟测试步骤`
 - Line with `- [x] 7.7 实现 production promote 步骤` → change to `- [x] 7.7 (deferred - no staging infra) 实现 production promote 步骤`
 
-- [ ] **Step 2: Create staging-deployment change placeholder**
+- [x] **Step 2: Create staging-deployment change placeholder**
 
 Create `openspec/changes/staging-deployment/proposal.md`:
 
@@ -457,12 +457,12 @@ Create `openspec/changes/staging-deployment/proposal.md`:
 - **基础设施**: 需要 K8s 集群和 staging 命名空间
 ```
 
-- [ ] **Step 3: Verify staging-deployment change exists**
+- [x] **Step 3: Verify staging-deployment change exists**
 
 Run: `ls openspec/changes/staging-deployment/`
 Expected: `proposal.md` file exists
 
-- [ ] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
+- [x] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
 
 ---
 
@@ -474,16 +474,16 @@ Expected: `proposal.md` file exists
 **Files:**
 - None (verification only)
 
-- [ ] **Step 1: Backend full verification**
+- [x] **Step 1: Backend full verification**
 
 Run: `make api && make wire && make build && make test && make lint`
 Expected: All commands PASS
 
 Note: On Windows, run commands individually if needed. `make api` requires protoc; `make wire` requires wire; `make lint` may require golangci-lint.
 
-- [ ] **Step 2: Frontend full verification**
+- [x] **Step 2: Frontend full verification**
 
 Run: `cd web && pnpm lint && pnpm test && pnpm build`
 Expected: All commands PASS
 
-- [ ] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）
+- [x] **Task complete**（本 Task 全部 Step 为 `[x]` 后勾选；与 plan-ready **任务完成**、tasks.md 对应行同步）

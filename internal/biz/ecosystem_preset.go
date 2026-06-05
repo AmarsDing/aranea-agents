@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"aranea-agents/pkg/loggateway"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // EcosystemLoadedStatus tracks per-industry load state.
@@ -86,7 +88,7 @@ func (uc *EcosystemPresetUsecase) LoadEcosystemPreset(ctx context.Context, indus
 
 	status, err := uc.repo.GetEcosystemLoaded(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("read ecosystem status: %w", err)
+		return nil, kerrors.InternalServer("ECOSYSTEM", fmt.Sprintf("read ecosystem status: %s", err.Error()))
 	}
 	if status == nil {
 		status = make(EcosystemLoadedStatus)
@@ -125,7 +127,7 @@ func (uc *EcosystemPresetUsecase) LoadEcosystemPreset(ctx context.Context, indus
 	}
 
 	if err := uc.repo.SetEcosystemLoaded(ctx, status); err != nil {
-		return nil, fmt.Errorf("save ecosystem status: %w", err)
+		return nil, kerrors.InternalServer("ECOSYSTEM", fmt.Sprintf("save ecosystem status: %s", err.Error()))
 	}
 
 	return resp, nil
@@ -134,12 +136,12 @@ func (uc *EcosystemPresetUsecase) LoadEcosystemPreset(ctx context.Context, indus
 // UnloadEcosystemPreset unloads ecosystem preset data for the specified industries.
 func (uc *EcosystemPresetUsecase) UnloadEcosystemPreset(ctx context.Context, industries []string) (*EcosystemUnloadResponse, error) {
 	if len(industries) == 0 {
-		return nil, fmt.Errorf("industries list is required")
+		return nil, kerrors.BadRequest("ECOSYSTEM", "industries list is required")
 	}
 
 	status, err := uc.repo.GetEcosystemLoaded(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("read ecosystem status: %w", err)
+		return nil, kerrors.InternalServer("ECOSYSTEM", fmt.Sprintf("read ecosystem status: %s", err.Error()))
 	}
 	if status == nil {
 		status = make(EcosystemLoadedStatus)
@@ -185,7 +187,7 @@ func (uc *EcosystemPresetUsecase) UnloadEcosystemPreset(ctx context.Context, ind
 	}
 
 	if err := uc.repo.SetEcosystemLoaded(ctx, status); err != nil {
-		return nil, fmt.Errorf("save ecosystem status: %w", err)
+		return nil, kerrors.InternalServer("ECOSYSTEM", fmt.Sprintf("save ecosystem status: %s", err.Error()))
 	}
 
 	return resp, nil

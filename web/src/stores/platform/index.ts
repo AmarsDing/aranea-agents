@@ -9,6 +9,7 @@ import {
   revealProviderModelCredentials,
   validateModel,
   inspectProviderModel,
+  reorderTaxonomy,
 } from '../../features/platform/api';
 import { getSystemSettings } from '../../features/system-settings/api';
 import type {
@@ -76,6 +77,10 @@ export const usePlatformStore = defineStore('platform', () => {
     }
   }
 
+  async function reorderTaxonomyNodes(ids: string[]) {
+    return reorderTaxonomy(ids);
+  }
+
   return {
     providerModels,
     taxonomyTree,
@@ -87,6 +92,7 @@ export const usePlatformStore = defineStore('platform', () => {
     addResource,
     editResource,
     removeResource,
+    reorderTaxonomyNodes,
     checkModel,
     revealCredentials,
     inspectModel,

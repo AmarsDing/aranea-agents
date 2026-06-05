@@ -164,9 +164,12 @@ func TestImport_WithKindOverride(t *testing.T) {
 		t.Errorf("Agent Source = %q, want %q", agent.Source, "ecosystem_preset")
 	}
 
-	// Verify team source overridden to "ecosystem_preset"
+	// Verify team kind overridden to "ecosystem_preset", source stays "imported"
 	team := repo.teams["eco-team"]
-	if team.Source != "ecosystem_preset" {
-		t.Errorf("Team Source = %q, want %q", team.Source, "ecosystem_preset")
+	if team.Kind != "ecosystem_preset" {
+		t.Errorf("Team Kind = %q, want %q", team.Kind, "ecosystem_preset")
+	}
+	if team.Source != "imported" {
+		t.Errorf("Team Source = %q, want %q", team.Source, "imported")
 	}
 }

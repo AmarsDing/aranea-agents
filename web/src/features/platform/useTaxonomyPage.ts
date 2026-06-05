@@ -14,7 +14,6 @@ import {
   trimmedDesc,
   type TaxonomyLevel,
 } from './taxonomyTreeUtils';
-import { reorderTaxonomy } from './api';
 
 const CATEGORY_RESOURCE = 'taxonomy' as const;
 
@@ -219,7 +218,7 @@ export function useTaxonomyPage() {
 
   async function reorderNodes(ids: string[]) {
     try {
-      await reorderTaxonomy(ids);
+      await platformStore.reorderTaxonomyNodes(ids);
     } catch {
       $q.notify({ type: 'negative', message: '排序保存失败' });
     }
@@ -235,7 +234,7 @@ export function useTaxonomyPage() {
   ) {
     const ids = positions.map((p) => p.id);
     try {
-      await reorderTaxonomy(ids);
+      await platformStore.reorderTaxonomyNodes(ids);
       // Optimistically update local tree
       const patchedChildren = positions.map((p, i) => ({ ...p, sort_order: (i + 1) * 10 }));
       tree.value = patchTaxonomyTreeNode(tree.value, department.id, {

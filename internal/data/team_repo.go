@@ -175,6 +175,9 @@ func (r *teamRepo) CreateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 		SetTeamKey(t.TeamKey).
 		SetDisplayName(t.DisplayName).
 		SetStatus(t.Status).
+		SetKind(team.Kind(t.Kind)).
+		SetSource(team.Source(t.Source)).
+		SetReadonly(t.Readonly).
 		SetIsDefault(t.IsDefault).
 		SetDefinitionJSON(t.DefinitionJSON).
 		SetAdkAppName(t.ADKAppName).
@@ -209,6 +212,9 @@ func (r *teamRepo) UpdateTeam(ctx context.Context, t biz.Team) (biz.Team, error)
 		SetTeamKey(t.TeamKey).
 		SetDisplayName(t.DisplayName).
 		SetStatus(t.Status).
+		SetKind(team.Kind(t.Kind)).
+		SetSource(team.Source(t.Source)).
+		SetReadonly(t.Readonly).
 		SetIsDefault(t.IsDefault).
 		SetDefinitionJSON(t.DefinitionJSON).
 		SetAdkAppName(t.ADKAppName).
