@@ -12,15 +12,6 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-const (
-	// SelfHealMinConfidence is the minimum confidence threshold for auto-fix.
-	SelfHealMinConfidence = 0.7
-	// SelfHealMaxHistory is the maximum number of heal records retained.
-	SelfHealMaxHistory = 1000
-	// SelfHealCooldownSec is the cooldown period between same-rule heals.
-	SelfHealCooldownSec = 300 // 5 minutes
-)
-
 // HealStatus represents the outcome of a self-heal action.
 type HealStatus string
 
@@ -110,9 +101,9 @@ type SelfHealUsecase struct {
 }
 
 // NewSelfHealUsecase creates a new self-heal usecase.
-// handler may be nil (runtime handles healing); diag must not be nil.
+// Both diag and handler must not be nil.
 func NewSelfHealUsecase(diag *DiagBundleGenerator, handler HealActionHandler, lg loggateway.Logger) *SelfHealUsecase {
-	if diag == nil {
+	if diag == nil || handler == nil {
 		return nil
 	}
 	return &SelfHealUsecase{

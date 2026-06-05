@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -43,7 +44,7 @@ func NewHookDeliveryRetryWorker(repo biz.HookDeliveryRepo, notifier *HookNotifie
 
 // Start launches the background polling loop. Call Stop to shut it down cleanly.
 func (w *HookDeliveryRetryWorker) Start() {
-	safego.Go(context.Background(), "hook.delivery.retry_worker", w.loop)
+	safego.Go(appctx.Ctx(), "hook.delivery.retry_worker", w.loop)
 }
 
 // Stop signals the polling loop to exit.

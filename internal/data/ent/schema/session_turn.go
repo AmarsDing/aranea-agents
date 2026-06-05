@@ -57,5 +57,8 @@ func (SessionTurn) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("session_id", "turn_number"),
 		index.Fields("status", "started_at"),
+		index.Fields("run_id").StorageKey("idx_session_turns_run_id"),
+		index.Fields("agent_id").StorageKey("idx_session_turns_agent_id"),
+		index.Fields("team_id").StorageKey("idx_session_turns_team_id"),
 	}
 }

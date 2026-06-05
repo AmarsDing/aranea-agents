@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/loggateway"
 )
 
 type testTurnService struct {
@@ -63,6 +64,7 @@ func TestTurnPipelineRunProjectsCompletion(t *testing.T) {
 		Executor:  testTurnExecutor{},
 		Projector: projector,
 		Now:       func() time.Time { return time.Date(2026, 5, 27, 0, 0, 0, 0, time.UTC) },
+		Lg:        loggateway.NewNoop(),
 	}
 
 	turn, result, err := pipeline.Run(context.Background(), biz.TurnIntent{
@@ -95,6 +97,7 @@ func TestTurnPipelineRunProjectsFailure(t *testing.T) {
 		Service:   &testTurnService{},
 		Executor:  testTurnExecutor{err: errors.New("boom")},
 		Projector: projector,
+		Lg:        loggateway.NewNoop(),
 	}
 
 	turn, _, err := pipeline.Run(context.Background(), biz.TurnIntent{

@@ -9,7 +9,7 @@ import (
 )
 
 func TestBusPublishSubscribe(t *testing.T) {
-	b := event.NewBus()
+	b := event.NewBus(nil)
 
 	ch, cancel := b.Subscribe(event.SubscribeOptions{SessionID: "s1", BufferSize: 8})
 	defer cancel()
@@ -29,7 +29,7 @@ func TestBusPublishSubscribe(t *testing.T) {
 }
 
 func TestBusSubscribeCancel(t *testing.T) {
-	b := event.NewBus()
+	b := event.NewBus(nil)
 
 	ch, cancel := b.Subscribe(event.SubscribeOptions{SessionID: "s2", BufferSize: 8})
 	cancel()
@@ -47,14 +47,14 @@ func TestBusSubscribeCancel(t *testing.T) {
 }
 
 func TestBusDropCountInitiallyZero(t *testing.T) {
-	b := event.NewBus()
+	b := event.NewBus(nil)
 	if b.DropCount() != 0 {
 		t.Fatalf("expected 0 drop count, got %d", b.DropCount())
 	}
 }
 
 func TestBusEventTypeFilter(t *testing.T) {
-	b := event.NewBus()
+	b := event.NewBus(nil)
 
 	ch, cancel := b.Subscribe(event.SubscribeOptions{
 		SessionID:  "s3",
@@ -118,7 +118,7 @@ func TestNewEnvelopeFields(t *testing.T) {
 }
 
 func TestBusMultipleSubscribers(t *testing.T) {
-	b := event.NewBus()
+	b := event.NewBus(nil)
 
 	ch1, cancel1 := b.Subscribe(event.SubscribeOptions{SessionID: "ms-1", BufferSize: 4})
 	defer cancel1()
@@ -142,7 +142,7 @@ func TestBusMultipleSubscribers(t *testing.T) {
 }
 
 func TestBusNoMatchingSubscriber(t *testing.T) {
-	b := event.NewBus()
+	b := event.NewBus(nil)
 
 	ch, cancel := b.Subscribe(event.SubscribeOptions{SessionID: "sess-A", BufferSize: 4})
 	defer cancel()

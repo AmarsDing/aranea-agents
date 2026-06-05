@@ -22,11 +22,11 @@ import (
 	rt "aranea-agents/internal/runtime"
 	"aranea-agents/internal/runtime/turn"
 	sessctx "aranea-agents/internal/session"
-	"aranea-agents/internal/team"
 	"aranea-agents/internal/telemetry/turntrace"
 	knowledgetool "aranea-agents/internal/tools/knowledge"
 	serviceawaitreply "aranea-agents/internal/tools/serviceawaitreply"
 	"aranea-agents/internal/tools/skillruntime"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 	"aranea-agents/pkg/strutil"
@@ -68,7 +68,7 @@ func (o *ChatOrchestrator) RunNativeAgentTurnWithOutcome(ctx context.Context, in
 		ctx = event.WithEnvelopeSource(ctx, ep)
 	}
 
-	flow := event.NewFlowLogger(o.td.Pipeline.Bus, o.td.Pipeline.Buffer, sessionID, "")
+	flow := event.NewFlowLogger(o.td.Pipeline.Bus, o.td.Pipeline.Buffer, sessionID, "", o.lg)
 	flow.LogStart("chat.receive", "收到用户消息", event.P("content_len", len(content)))
 
 	hasActive := o.runs.HasActive(sessionID)
@@ -417,25 +417,11 @@ func (o *ChatOrchestrator) resumeAwaitAfterRestart(ctx context.Context, sessionI
 
 // checkTeamMemberQuotas rejects the turn when any enabled team member exceeds agent scope quota.
 func (o *ChatOrchestrator) checkTeamMemberQuotas(ctx context.Context, teamID string) error {
-	if o == nil || o.team.TeamUC == nil {
+	if o == nil || o.usage == nil {
 		return nil
 	}
-	teamID = strings.TrimSpace(teamID)
-	if teamID == "" {
-		return nil
-	}
-	t, err := o.team.TeamUC.Get(ctx, teamID)
-	if err != nil {
-		return err
-	}
-	def, err := team.ParseDefinition(t.DefinitionJSON)
-	if err != nil {
-		return nil
-	}
-	for _, m := range team.EnabledMembers(def) {
-		if err := enforceQuota(ctx, o.usage, "agent", m.AgentID); err != nil {
-			return err
-		}
+	if err := o.usage.CheckTeamMemberQuotas(ctx, teamID); err != nil {
+		return kerrors.Forbidden("USAGE_QUOTA", err.Error())
 	}
 	return nil
 }
@@ -534,7 +520,7 @@ func (o *ChatOrchestrator) runSingleAgentViaTRPC(
 	emitter := event.NewTraceEmitterForRun(event.TraceEmitterOpts{
 		Ctx: ctx, Bus: o.td.Pipeline.Bus, Buffer: o.td.Pipeline.Buffer,
 		SessionID: sessionID, RunID: runID, AgentKey: ag.AgentKey, AgentID: ag.ID,
-		Domain: event.TraceDomainChat,
+		Domain: event.TraceDomainChat, LG: o.lg,
 	})
 	emitter.SetOtelRefs(traceBridge.TraceID(), traceBridge.RootSpanID())
 	ctx = event.WithTraceEmitter(ctx, emitter)
@@ -1051,9 +1037,9 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 	}
 	pendingContent := entry.Content
 	pendingEntryID := entry.ID
-	pendingEmitter := event.NewFlowLogger(o.td.Pipeline.Bus, o.td.Pipeline.Buffer, sessionID, ag.AgentKey)
+	pendingEmitter := event.NewFlowLogger(o.td.Pipeline.Bus, o.td.Pipeline.Buffer, sessionID, ag.AgentKey, o.lg)
 	pendingEmitter.LogStart("chat.pending_dequeue", "排队消息开始处理", event.P("entry_id", pendingEntryID), event.P("content_len", len(pendingContent)))
-	safego.Go(context.Background(), "pending-queue", func() {
+	safego.Go(appctx.Ctx(), "pending-queue", func() {
 		unlock := o.lockSession(sessionID)
 		defer unlock()
 		if o.runs.HasActive(sessionID) {
@@ -1061,7 +1047,7 @@ func (o *ChatOrchestrator) processPendingQueue(sessionID string, sess biz.Sessio
 			pendingEmitter.Log("chat.pending_dequeue", event.FlowPhaseDone, "会话仍活跃，消息已重新入队", event.P("entry_id", pendingEntryID))
 			return
 		}
-		bgCtx, cancel := context.WithTimeout(o.svcCtx, o.turnTimeout)
+		bgCtx, cancel := context.WithTimeout(appctx.Ctx(), o.turnTimeout)
 		o.runs.SetPendingCancel(sessionID, cancel)
 		defer func() {
 			cancel()
@@ -1215,70 +1201,35 @@ func (o *ChatOrchestrator) recordTurnUsage(
 	if o == nil || o.usage == nil {
 		return
 	}
-	now := time.Now().UTC()
 	meta := "{}"
 	if emitter != nil {
 		meta = emitter.MetadataJSON()
 	}
-	usageID := uuid.NewString()
 	traceID := ""
 	if emitter != nil {
 		traceID = emitter.TraceID()
 	}
-	ev := biz.TokenUsageEvent{
-		ID:               usageID,
-		SessionID:        sessionID,
-		AgentKey:         agentKey,
-		AgentID:          agentID,
-		ModelAPIID:       mod,
-		ModelDisplayName: mod,
-		ProviderCode:     prov,
-		InputTokens:      promptTok,
-		OutputTokens:     completionTok,
-		TotalTokens:      promptTok + completionTok,
-		LatencyMS:        int(latency.Milliseconds()),
-		Status:           status,
-		UsageKind:        biz.UsageKindChatTurn,
-		MetadataJSON:     meta,
-		OccurredAt:       now.Format(time.RFC3339),
-		DateKey:          now.Format("2006-01-02"),
-		HourKey:          now.Format("2006-01-02T15"),
-		ErrorMessage:     errMsg,
-	}
-	if runID != "" {
-		ev.MessageID = runID
-	}
-	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
-	defer cancel()
-	if _, err := o.usage.RecordTokenUsageEvent(recCtx, ev); err != nil && emitter != nil {
+	if err := o.usage.RecordTurnUsage(ctx, biz.TurnUsageInput{
+		SessionID:     sessionID,
+		RunID:         runID,
+		AgentKey:      agentKey,
+		AgentID:       agentID,
+		Provider:      prov,
+		Model:         mod,
+		Status:        status,
+		PromptTok:     promptTok,
+		CompletionTok: completionTok,
+		Latency:       latency,
+		ErrMsg:        errMsg,
+		MetadataJSON:  meta,
+		TraceID:       traceID,
+	}); err != nil && emitter != nil {
 		emitter.LogError("chat.usage_record", "用量落库失败",
 			event.P("error", err.Error()),
 			event.P("run_id", runID),
-			event.P("usage_kind", ev.UsageKind),
+			event.P("usage_kind", biz.UsageKindChatTurn),
 			event.P("status", status),
 		)
-		return
-	}
-	if o.td.Sessions != nil && strings.TrimSpace(sessionID) != "" {
-		o.td.Sessions.AccumulateMetricsDelta(sessstatus.SessionMetricsDelta{
-			SessionID:        sessionID,
-			ModelCallCount:   ev.CallCount,
-			InputTokens:      int64(ev.InputTokens),
-			OutputTokens:     int64(ev.OutputTokens),
-			TotalTokens:      int64(ev.TotalTokens),
-			TotalCostMicroUsd: ev.TotalCostMicroUSD,
-		})
-	}
-	biz.PublishTokenUsageEnvelope(ctx, o.td.Pipeline.Bus, ev)
-	if o.monitor != nil && sessionID != "" && runID != "" {
-		linkCtx, linkCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-		defer linkCancel()
-		if err := biz.LinkRunnerCompletionUsage(linkCtx, o.monitor, sessionID, runID, usageID, traceID); err != nil && emitter != nil {
-			emitter.LogWarn("chat.completion_link", "关联 runner.completion 失败", err.Error(),
-				event.P("run_id", runID),
-				event.P("usage_event_id", usageID),
-			)
-		}
 	}
 }
 

@@ -5,7 +5,7 @@ import (
 )
 
 func TestPublishSessionRevisionEnvelopeSyncStatus(t *testing.T) {
-	bus := NewBus()
+	bus := NewBus(nil)
 	ch, unsub := bus.Subscribe(SubscribeOptions{SessionID: "sess-1", BufferSize: 4})
 	defer unsub()
 
@@ -25,7 +25,7 @@ func TestPublishSessionRevisionEnvelopeSyncStatus(t *testing.T) {
 }
 
 func TestPublishSessionRevisionEnvelopeDefaultCompleted(t *testing.T) {
-	bus := NewBus()
+	bus := NewBus(nil)
 	ch, unsub := bus.Subscribe(SubscribeOptions{SessionID: "sess-1", BufferSize: 4})
 	defer unsub()
 

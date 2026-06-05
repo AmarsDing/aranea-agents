@@ -75,7 +75,7 @@ func (r *Runner) runTeamTRPCFromInput(ctx context.Context, sess biz.Session, inp
 		teamEmitter = event.NewTraceEmitterForRun(event.TraceEmitterOpts{
 			Ctx: ctx, Bus: r.td.Pipeline.Bus, Buffer: r.td.Pipeline.Buffer,
 			SessionID: sess.ID, RunID: run.ID, AgentKey: teamRow.ID,
-			Domain: event.TraceDomainTeam,
+			Domain: event.TraceDomainTeam, LG: r.lg,
 		})
 		teamEmitter.SetOtelRefs(teamBridge.TraceID(), teamBridge.RootSpanID())
 		ctx = event.WithTraceEmitter(ctx, teamEmitter)

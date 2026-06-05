@@ -12,14 +12,14 @@ import (
 
 // ResumeDurableSessionRun continues an agent turn from a durable checkpoint (CC-R-03).
 func (s *ChatService) ResumeDurableSessionRun(ctx context.Context, sessionRunID string) error {
-	if s == nil || s.orch == nil || s.orch.chTurn.SessionRuns == nil {
+	if s == nil || s.orch == nil || s.orch.chJobs.SessionRuns == nil {
 		return nil
 	}
 	sessionRunID = strings.TrimSpace(sessionRunID)
 	if sessionRunID == "" {
 		return nil
 	}
-	run, err := s.orch.chTurn.SessionRuns.Get(ctx, sessionRunID)
+	run, err := s.orch.chJobs.SessionRuns.Get(ctx, sessionRunID)
 	if err != nil || run.ID == "" {
 		return err
 	}
@@ -32,18 +32,18 @@ func (s *ChatService) ResumeDurableSessionRun(ctx context.Context, sessionRunID 
 	if s.orch.HasActiveRun(run.SessionID) {
 		return nil
 	}
-	claimed, err := s.orch.chTurn.SessionRuns.TryClaimDurableResume(ctx, sessionRunID)
+	claimed, err := s.orch.chJobs.SessionRuns.TryClaimDurableResume(ctx, sessionRunID)
 	if err != nil || !claimed {
 		return err
 	}
-	cp, err := s.orch.chTurn.SessionRuns.GetCheckpoint(ctx, sessionRunID)
+	cp, err := s.orch.chJobs.SessionRuns.GetCheckpoint(ctx, sessionRunID)
 	if err != nil || cp.ID == "" {
-		_ = s.orch.chTurn.SessionRuns.ClearResumeClaim(ctx, sessionRunID)
+		_ = s.orch.chJobs.SessionRuns.ClearResumeClaim(ctx, sessionRunID)
 		return err
 	}
 	payload, err := biz.ParseDurableCheckpointPayload(cp.PayloadJSON)
 	if err != nil {
-		_ = s.orch.chTurn.SessionRuns.ClearResumeClaim(ctx, sessionRunID)
+		_ = s.orch.chJobs.SessionRuns.ClearResumeClaim(ctx, sessionRunID)
 		return err
 	}
 	deadline := time.Duration(biz.DefaultDurableDeadlineSec()) * time.Second
@@ -74,20 +74,20 @@ func (s *ChatService) ResumeDurableSessionRun(ctx context.Context, sessionRunID 
 		_, asst, turnErr := s.RunNativeTurn(bgCtx, req)
 		persistCtx := context.WithoutCancel(runCtx)
 		if turnErr != nil {
-			_ = s.orch.chTurn.SessionRuns.Fail(persistCtx, sessionRunID, turnErr.Error())
-			if s.orch.chTurn.RunEscalation != nil {
-				if failed, gerr := s.orch.chTurn.SessionRuns.Get(persistCtx, sessionRunID); gerr == nil && failed.ID != "" {
-					_ = s.orch.chTurn.RunEscalation.NotifyRunFailed(persistCtx, failed, turnErr.Error())
+			_ = s.orch.chJobs.SessionRuns.Fail(persistCtx, sessionRunID, turnErr.Error())
+			if s.orch.chNotify.RunEscalation != nil {
+				if failed, gerr := s.orch.chJobs.SessionRuns.Get(persistCtx, sessionRunID); gerr == nil && failed.ID != "" {
+					_ = s.orch.chNotify.RunEscalation.NotifyRunFailed(persistCtx, failed, turnErr.Error())
 				} else {
-					_ = s.orch.chTurn.RunEscalation.NotifyRunFailed(persistCtx, biz.SessionRun{ID: sessionRunID, SessionID: run.SessionID}, turnErr.Error())
+					_ = s.orch.chNotify.RunEscalation.NotifyRunFailed(persistCtx, biz.SessionRun{ID: sessionRunID, SessionID: run.SessionID}, turnErr.Error())
 				}
 			}
 			return
 		}
-		_ = s.orch.chTurn.SessionRuns.Complete(persistCtx, sessionRunID)
-		if s.orch.chTurn.RunEscalation != nil {
-			if completed, gerr := s.orch.chTurn.SessionRuns.Get(persistCtx, sessionRunID); gerr == nil && completed.ID != "" {
-				_ = s.orch.chTurn.RunEscalation.NotifyRunCompleted(persistCtx, completed, asst.ContentMarkdown)
+		_ = s.orch.chJobs.SessionRuns.Complete(persistCtx, sessionRunID)
+		if s.orch.chNotify.RunEscalation != nil {
+			if completed, gerr := s.orch.chJobs.SessionRuns.Get(persistCtx, sessionRunID); gerr == nil && completed.ID != "" {
+				_ = s.orch.chNotify.RunEscalation.NotifyRunCompleted(persistCtx, completed, asst.ContentMarkdown)
 			}
 		}
 	})
@@ -98,5 +98,5 @@ func (s *ChatService) GetSessionRunUsecase() *biz.SessionRunUsecase {
 	if s == nil || s.orch == nil {
 		return nil
 	}
-	return s.orch.chTurn.SessionRuns
+	return s.orch.chJobs.SessionRuns
 }

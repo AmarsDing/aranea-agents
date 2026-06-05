@@ -143,7 +143,12 @@ func (r *channelRepo) Delete(ctx context.Context, id string) error {
 		SetStatus("deleted").
 		SetUpdatedAt(now).
 		Save(ctx)
-	return err
+	if err != nil {
+		return err
+	}
+	// Cascade: clean up related records after successful soft-delete
+	cascadeDeleteByChannel(ctx, r.data, strings.TrimSpace(id))
+	return nil
 }
 
 func credentialEntToBiz(e *ent.PlatformChannelCredential) biz.ChannelCredential {

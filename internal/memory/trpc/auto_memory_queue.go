@@ -5,13 +5,13 @@ package trpcmem
 // type aliases so existing call sites in this package compile unchanged.
 
 import (
-	"context"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -106,8 +106,8 @@ func NewMemoryJobQueue(size int, debounce time.Duration, lg loggateway.Logger) *
 		done:           make(chan struct{}),
 		lg:             lg,
 	}
-	safego.Go(context.Background(), "memory.job_queue.drain", q.drain)
-	safego.Go(context.Background(), "memory.job_queue.cleanup_recent", q.cleanupRecent)
+	safego.Go(appctx.Ctx(), "memory.job_queue.drain", q.drain)
+	safego.Go(appctx.Ctx(), "memory.job_queue.cleanup_recent", q.cleanupRecent)
 	return q
 }
 

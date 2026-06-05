@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -49,7 +50,7 @@ func (d *TaskDispatcher) Start() {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	d.cancel = cancel
-	safego.Go(context.Background(), "task_dispatcher.loop", func() { d.loop(ctx) })
+	safego.Go(appctx.Ctx(), "task_dispatcher.loop", func() { d.loop(ctx) })
 }
 
 func (d *TaskDispatcher) Stop() {

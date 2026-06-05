@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -73,7 +74,7 @@ func (h *ChannelIngress) processInboundNow(ctx context.Context, chRow biz.Channe
 	if outcome.DispatchAsync {
 		ltCfg := biz.ParseChannelLongTaskConfig(chRow.ConfigJSON)
 		release := outcome.releaseConcurrent
-		safego.Go(context.Background(), "channel.inbound.async", func() {
+		safego.Go(appctx.Ctx(), "channel.inbound.async", func() {
 			procCtx := context.WithoutCancel(ctx)
 			defer h.releaseInboundInflight(ev, platform)
 			if release != nil {

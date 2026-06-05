@@ -25,6 +25,7 @@ vi.mock('../../features/session/api', () => ({
 
 vi.mock('../sessionSync', () => ({
   emitSessionMutation: vi.fn(),
+  onSessionMutation: vi.fn(() => vi.fn()),
 }));
 
 const mockSession = {

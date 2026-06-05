@@ -48,7 +48,7 @@ func TestWSE2E_UserMessageStream(t *testing.T) {
 	t.Setenv("DEPLOY_ENV", "dev")
 
 	const sessionID = "sess-e2e"
-	bus := event.NewBus()
+	bus := event.NewBus(nil)
 	sender := &e2eChatSender{bus: bus, sessionID: sessionID}
 	srv := newTestWSServer(bus, event.NewBuffer(), nil, sender)
 

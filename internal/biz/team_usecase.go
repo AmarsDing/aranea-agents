@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -64,12 +65,33 @@ type TeamRepository interface {
 }
 
 type TeamUsecase struct {
-	repo         TeamRepository
-	agentChecker AgentIDExistenceChecker
+	reader         TeamReader
+	writer         TeamWriter
+	runReader      TeamRunReader
+	runWriter      TeamRunWriter
+	stepRepo       OrchestrationStepRepo
+	deadLetter     TaskDeadLetterRepo
+	agentChecker   AgentIDExistenceChecker
 }
 
-func NewTeamUsecase(repo TeamRepository, agentChecker AgentIDExistenceChecker) *TeamUsecase {
-	return &TeamUsecase{repo: repo, agentChecker: agentChecker}
+func NewTeamUsecase(
+	reader TeamReader,
+	writer TeamWriter,
+	runReader TeamRunReader,
+	runWriter TeamRunWriter,
+	stepRepo OrchestrationStepRepo,
+	deadLetter TaskDeadLetterRepo,
+	agentChecker AgentIDExistenceChecker,
+) *TeamUsecase {
+	return &TeamUsecase{
+		reader:       reader,
+		writer:       writer,
+		runReader:    runReader,
+		runWriter:    runWriter,
+		stepRepo:     stepRepo,
+		deadLetter:   deadLetter,
+		agentChecker: agentChecker,
+	}
 }
 
 func defaultTeamDefinitionJSON() string {
@@ -203,15 +225,15 @@ func (u *TeamUsecase) validateTeamMembersExist(ctx context.Context, raw string) 
 }
 
 func (u *TeamUsecase) List(ctx context.Context) ([]Team, error) {
-	return u.repo.ListTeams(ctx)
+	return u.reader.ListTeams(ctx)
 }
 
 func (u *TeamUsecase) ListTeamsByStatus(ctx context.Context, status string) ([]Team, error) {
-	return u.repo.ListTeamsByStatus(ctx, status)
+	return u.reader.ListTeamsByStatus(ctx, status)
 }
 
 func (u *TeamUsecase) ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]Team, error) {
-	return u.repo.ListBySpiritSessionID(ctx, spiritSessionID)
+	return u.reader.ListBySpiritSessionID(ctx, spiritSessionID)
 }
 
 func (u *TeamUsecase) Get(ctx context.Context, id string) (Team, error) {
@@ -219,7 +241,28 @@ func (u *TeamUsecase) Get(ctx context.Context, id string) (Team, error) {
 	if err != nil {
 		return Team{}, err
 	}
-	return u.repo.GetTeamByID(ctx, id)
+	return u.reader.GetTeamByID(ctx, id)
+}
+
+// EnabledMemberAgentIDs returns the agent IDs of all enabled team members.
+// This satisfies the usage.TeamQuotaReader interface.
+func (u *TeamUsecase) EnabledMemberAgentIDs(ctx context.Context, teamID string) ([]string, error) {
+	t, err := u.Get(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+	def, err := parseTeamDefinition(t.DefinitionJSON)
+	if err != nil {
+		return nil, nil
+	}
+	members := enabledTeamMembers(def)
+	ids := make([]string, 0, len(members))
+	for _, m := range members {
+		if aid := strings.TrimSpace(m.AgentID); aid != "" {
+			ids = append(ids, aid)
+		}
+	}
+	return ids, nil
 }
 
 func (u *TeamUsecase) Create(ctx context.Context, in Team) (Team, error) {
@@ -245,7 +288,7 @@ func (u *TeamUsecase) Create(ctx context.Context, in Team) (Team, error) {
 	if err := u.validateTeamMembersExist(ctx, in.DefinitionJSON); err != nil {
 		return Team{}, err
 	}
-	return u.repo.CreateTeam(ctx, in)
+	return u.writer.CreateTeam(ctx, in)
 }
 
 func (u *TeamUsecase) GetRunObservatory(ctx context.Context, runID string) (TeamRunObservatory, error) {
@@ -273,7 +316,7 @@ func (u *TeamUsecase) HasActiveRun(ctx context.Context, teamID string) (bool, er
 	if err != nil {
 		return false, err
 	}
-	return u.repo.HasActiveTeamRun(ctx, teamID)
+	return u.runReader.HasActiveTeamRun(ctx, teamID)
 }
 
 func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, error) {
@@ -288,7 +331,7 @@ func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, 
 	if active {
 		return Team{}, kerrors.Conflict("TEAM", "team has an active run; orchestration is read-only until the run finishes")
 	}
-	current, err := u.repo.GetTeamByID(ctx, id)
+	current, err := u.reader.GetTeamByID(ctx, id)
 	if err != nil {
 		return Team{}, err
 	}
@@ -307,7 +350,7 @@ func (u *TeamUsecase) Update(ctx context.Context, id string, patch Team) (Team, 
 	if err := u.validateTeamMembersExist(ctx, current.DefinitionJSON); err != nil {
 		return Team{}, err
 	}
-	return u.repo.UpdateTeam(ctx, current)
+	return u.writer.UpdateTeam(ctx, current)
 }
 
 // TransitionStatus validates and applies a team status transition.
@@ -319,7 +362,7 @@ func (u *TeamUsecase) TransitionStatus(ctx context.Context, id string, newStatus
 	if err != nil {
 		return Team{}, err
 	}
-	current, err := u.repo.GetTeamByID(ctx, id)
+	current, err := u.reader.GetTeamByID(ctx, id)
 	if err != nil {
 		return Team{}, err
 	}
@@ -327,7 +370,7 @@ func (u *TeamUsecase) TransitionStatus(ctx context.Context, id string, newStatus
 		return Team{}, kerrors.BadRequest("TEAM", fmt.Sprintf("invalid team status transition: %s → %s", current.Status, newStatus))
 	}
 	current.Status = newStatus
-	return u.repo.UpdateTeam(ctx, current)
+	return u.writer.UpdateTeam(ctx, current)
 }
 
 func (u *TeamUsecase) Delete(ctx context.Context, id string) error {
@@ -335,7 +378,7 @@ func (u *TeamUsecase) Delete(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	team, err := u.repo.GetTeamByID(ctx, id)
+	team, err := u.reader.GetTeamByID(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -345,7 +388,7 @@ func (u *TeamUsecase) Delete(ctx context.Context, id string) error {
 	if team.Readonly {
 		return kerrors.Forbidden("TEAM", "cannot delete a readonly team")
 	}
-	return u.repo.DeleteTeam(ctx, id)
+	return u.writer.DeleteTeam(ctx, id)
 }
 
 func (u *TeamUsecase) Duplicate(ctx context.Context, id string) (Team, error) {
@@ -353,7 +396,7 @@ func (u *TeamUsecase) Duplicate(ctx context.Context, id string) (Team, error) {
 	if err != nil {
 		return Team{}, err
 	}
-	current, err := u.repo.GetTeamByID(ctx, id)
+	current, err := u.reader.GetTeamByID(ctx, id)
 	if err != nil {
 		return Team{}, err
 	}
@@ -361,11 +404,11 @@ func (u *TeamUsecase) Duplicate(ctx context.Context, id string) (Team, error) {
 	current.TeamKey = current.TeamKey + "-copy-" + newAgentCatalogID()
 	current.DisplayName = current.DisplayName + " Copy"
 	current.IsDefault = false
-	return u.repo.CreateTeam(ctx, current)
+	return u.writer.CreateTeam(ctx, current)
 }
 
 func (u *TeamUsecase) ListRuns(ctx context.Context, teamID string, limit int) ([]TeamRun, error) {
-	return u.repo.ListTeamRuns(ctx, teamID, limit)
+	return u.runReader.ListTeamRuns(ctx, teamID, limit)
 }
 
 func (u *TeamUsecase) GetRun(ctx context.Context, id string) (TeamRun, error) {
@@ -373,21 +416,21 @@ func (u *TeamUsecase) GetRun(ctx context.Context, id string) (TeamRun, error) {
 	if err != nil {
 		return TeamRun{}, err
 	}
-	return u.repo.GetTeamRunByID(ctx, id)
+	return u.runReader.GetTeamRunByID(ctx, id)
 }
 
 func (u *TeamUsecase) UpdateRun(ctx context.Context, r TeamRun) error {
 	if strings.TrimSpace(r.ID) == "" {
 		return kerrors.BadRequest("TEAM", "run id is required")
 	}
-	return u.repo.UpdateTeamRun(ctx, r)
+	return u.runWriter.UpdateTeamRun(ctx, r)
 }
 
 func (u *TeamUsecase) UpdateRunSummaryJSON(ctx context.Context, runID, summaryJSON string) error {
 	if strings.TrimSpace(runID) == "" {
 		return kerrors.BadRequest("TEAM", "run id is required")
 	}
-	return u.repo.UpdateTeamRunSummaryJSON(ctx, runID, summaryJSON)
+	return u.runWriter.UpdateTeamRunSummaryJSON(ctx, runID, summaryJSON)
 }
 
 func (u *TeamUsecase) UpdateRunTraceID(ctx context.Context, runID, traceID string) error {
@@ -396,7 +439,7 @@ func (u *TeamUsecase) UpdateRunTraceID(ctx context.Context, runID, traceID strin
 	if runID == "" || traceID == "" {
 		return nil
 	}
-	return u.repo.UpdateTeamRunTraceID(ctx, runID, traceID)
+	return u.runWriter.UpdateTeamRunTraceID(ctx, runID, traceID)
 }
 
 func (u *TeamUsecase) ListRunSteps(ctx context.Context, runID string) ([]TeamRunStep, error) {
@@ -404,7 +447,7 @@ func (u *TeamUsecase) ListRunSteps(ctx context.Context, runID string) ([]TeamRun
 	if err != nil {
 		return nil, err
 	}
-	return u.repo.ListTeamRunSteps(ctx, runID)
+	return u.runReader.ListTeamRunSteps(ctx, runID)
 }
 
 func (u *TeamUsecase) ListRunObservatoryTimeline(ctx context.Context, runID, nodeID string, limit int) ([]OrchestrationStep, error) {
@@ -418,7 +461,7 @@ func (u *TeamUsecase) ListRunObservatoryTimeline(ctx context.Context, runID, nod
 	if limit > 500 {
 		limit = 500
 	}
-	return u.repo.ListOrchestrationSteps(ctx, runID, strings.TrimSpace(nodeID), limit)
+	return u.stepRepo.ListOrchestrationSteps(ctx, runID, strings.TrimSpace(nodeID), limit)
 }
 
 func (u *TeamUsecase) GetRunSummary(ctx context.Context, runID string) (TeamRunSummaryData, error) {
@@ -445,7 +488,7 @@ func (u *TeamUsecase) UpdateSwarmMembers(ctx context.Context, teamID string, add
 	if active {
 		return false, kerrors.BadRequest("TEAM", "cannot update members while team has active run")
 	}
-	t, err := u.repo.GetTeamByID(ctx, teamID)
+	t, err := u.reader.GetTeamByID(ctx, teamID)
 	if err != nil {
 		return false, err
 	}
@@ -484,7 +527,7 @@ func (u *TeamUsecase) UpdateSwarmMembers(ctx context.Context, teamID string, add
 	if err := validateTeamDefinition(t.DefinitionJSON); err != nil {
 		return false, err
 	}
-	_, err = u.repo.UpdateTeam(ctx, t)
+	_, err = u.writer.UpdateTeam(ctx, t)
 	if err != nil {
 		return false, err
 	}
@@ -496,7 +539,7 @@ func (u *TeamUsecase) ExportStructure(ctx context.Context, teamID string) (*Team
 	if teamID == "" {
 		return nil, kerrors.BadRequest("TEAM", "team_id is required")
 	}
-	t, err := u.repo.GetTeamByID(ctx, teamID)
+	t, err := u.reader.GetTeamByID(ctx, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -573,17 +616,17 @@ func parseDefinitionForUpdate(raw string) (*definitionForUpdate, error) {
 }
 
 func (uc *TeamUsecase) ListTaskDeadLetters(ctx context.Context, filter TaskDeadLetterListFilter) ([]TaskDeadLetter, error) {
-	if uc == nil || uc.repo == nil {
+	if uc == nil || uc.deadLetter == nil {
 		return nil, nil
 	}
-	return uc.repo.ListTaskDeadLetters(ctx, filter)
+	return uc.deadLetter.ListTaskDeadLetters(ctx, filter)
 }
 
 func (uc *TeamUsecase) ResolveTaskDeadLetter(ctx context.Context, id string) (TaskDeadLetter, error) {
-	if uc == nil || uc.repo == nil {
+	if uc == nil || uc.deadLetter == nil {
 		return TaskDeadLetter{}, ErrNotFound
 	}
-	return uc.repo.ResolveTaskDeadLetter(ctx, id)
+	return uc.deadLetter.ResolveTaskDeadLetter(ctx, id)
 }
 
 func boolPtr(v bool) *bool { return &v }
@@ -680,5 +723,79 @@ func (u *TeamUsecase) SaveTeamWithGraph(ctx context.Context, team Team, graphIDM
 	if err := validateTeamDefinition(team.DefinitionJSON); err != nil {
 		return Team{}, err
 	}
-	return u.repo.CreateTeam(ctx, team)
+	return u.writer.CreateTeam(ctx, team)
+}
+
+// teamMemberDef mirrors team.MemberDef to avoid import cycle (biz → team → biz).
+type teamMemberDef struct {
+	AgentID    string `json:"agent_id"`
+	Role       string `json:"role"`
+	Enabled    *bool  `json:"enabled"`
+	SortOrder  int    `json:"sort_order"`
+	Name       string `json:"name"`
+	TaskPrompt string `json:"task_prompt,omitempty"`
+}
+
+// teamDefinition mirrors team.Definition (subset needed for EnabledMemberAgentIDs).
+type teamDefinition struct {
+	Version            int               `json:"version"`
+	Mode               string            `json:"mode"`
+	SynthesizerAgentID string            `json:"synthesizer_agent_id"`
+	Members            []teamMemberDef   `json:"members"`
+	MaxConcurrency     int               `json:"max_concurrency"`
+	TimeoutSeconds     int               `json:"timeout_seconds"`
+}
+
+// parseTeamDefinition unmarshals team JSON; empty string yields default.
+func parseTeamDefinition(raw string) (teamDefinition, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return teamDefinition{Version: 1, Mode: "sequential"}, nil
+	}
+	var d teamDefinition
+	if err := json.Unmarshal([]byte(raw), &d); err != nil {
+		return teamDefinition{}, err
+	}
+	if strings.TrimSpace(d.Mode) == "" {
+		d.Mode = "sequential"
+	}
+	return d, nil
+}
+
+func teamMemberEnabled(m teamMemberDef) bool {
+	return m.Enabled == nil || *m.Enabled
+}
+
+type teamMemberWithIndex struct {
+	m teamMemberDef
+	i int
+}
+
+// enabledTeamMembers returns enabled members with non-empty agent_id, ordered by sort_order.
+func enabledTeamMembers(d teamDefinition) []teamMemberDef {
+	var pairs []teamMemberWithIndex
+	for i, m := range d.Members {
+		if !teamMemberEnabled(m) || strings.TrimSpace(m.AgentID) == "" {
+			continue
+		}
+		pairs = append(pairs, teamMemberWithIndex{m: m, i: i})
+	}
+	sort.SliceStable(pairs, func(a, b int) bool {
+		sa, sb := pairs[a].m.SortOrder, pairs[b].m.SortOrder
+		switch {
+		case sa > 0 && sb > 0 && sa != sb:
+			return sa < sb
+		case sa > 0 && sb <= 0:
+			return true
+		case sa <= 0 && sb > 0:
+			return false
+		default:
+			return pairs[a].i < pairs[b].i
+		}
+	})
+	out := make([]teamMemberDef, len(pairs))
+	for i, p := range pairs {
+		out[i] = p.m
+	}
+	return out
 }

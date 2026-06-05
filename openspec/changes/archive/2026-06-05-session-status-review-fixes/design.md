@@ -22,9 +22,9 @@ Session Status Monitoring 变更（归档于 `2026-06-05-session-status-monitori
 
 ### D1: 错误码统一为 FailedPrecondition
 
-**决策**：`SessionStatusMachine.TransitionTo` 和 `SessionUsecase.Archive/Delete` 中的非法状态转换/保护状态操作，统一返回 `kerrors.FailedPrecondition`。
+**决策**：`SessionStatusMachine.TransitionTo` 和 `SessionUsecase.Archive/Delete` 中的非法状态转换/保护状态操作，统一返回 `kerrors.Conflict`。
 
-**理由**：`BadRequest` 语义是"请求格式错误"，而非法状态转换是"前置条件不满足"。HTTP 409 Conflict / gRPC FAILED_PRECONDITION 更准确，客户端可据此做重试或状态刷新。
+**理由**：`BadRequest` 语义是"请求格式错误"，而非法状态转换是"前置条件不满足"。`Conflict`（HTTP 409 / gRPC ABORTED）比 `BadRequest` 更准确，客户端可据此做重试或状态刷新。实际代码中使用 `kerrors.Conflict` 而非 `kerrors.FailedPrecondition`，因为 Kratos 的 `Conflict` 映射到 HTTP 409，语义更贴合"状态冲突"。
 
 **替代方案**：保持 `BadRequest` — 被否决，语义不匹配。
 
@@ -38,11 +38,11 @@ Session Status Monitoring 变更（归档于 `2026-06-05-session-status-monitori
 
 ### D3: TransitionSessionStatus 并发冲突返回错误
 
-**决策**：`sessionRuntimeRepo.TransitionSessionStatus` 在 `n == 0` 时返回 `kerrors.FailedPrecondition`，而非静默返回 nil。
+**决策**：`sessionRuntimeRepo.TransitionSessionStatus` 在 `n == 0` 时返回 `kerrors.Conflict`，而非静默返回 nil。
 
 **理由**：`n == 0` 意味着 WHERE 条件中的 `currentStatus` 已被并发修改，转换未生效。调用方需要知道这一点以决策是否重试。静默 nil 会导致数据不一致。
 
-**替代方案**：返回 sentinel error `ErrStatusConflict` — 可行但需额外定义，`FailedPrecondition` 已足够表达语义。
+**替代方案**：返回 sentinel error `ErrStatusConflict` — 可行但需额外定义，`kerrors.Conflict` 已足够表达语义。
 
 ### D4: DeleteSessionsByAgentID 移除 SetStatus("deleted")
 
@@ -66,6 +66,6 @@ Session Status Monitoring 变更（归档于 `2026-06-05-session-status-monitori
 
 ## Risks / Trade-offs
 
-- **[D3 并发冲突错误]** → 调用方需处理 `FailedPrecondition` 错误。当前 `transitionSessionStatus`（ChatOrchestrator）已做 warn 日志，不影响主流程。`BatchTransitionInterrupted` 中已有 failedCount 计数逻辑。
+- **[D3 并发冲突错误]** → 调用方需处理 `kerrors.Conflict` 错误。当前 `transitionSessionStatus`（ChatOrchestrator）已做 warn 日志，不影响主流程。`BatchTransitionInterrupted` 中已有 failedCount 计数逻辑。
 - **[D5 启动时 WS 事件丢失]** → 可接受。前端有刷新机制兜底。
 - **[D2 reason 变更]** → 已中断 session 的 `status_reason` 可能从 `error` 变为 `timeout`。这是正确的语义修正，不影响功能。

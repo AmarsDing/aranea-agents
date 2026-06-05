@@ -37,6 +37,22 @@ THEN the handler SHALL NOT throw an error
 
 ---
 
+### Requirement: Chat Session Store WS Status Changed Listener
+
+The Chat Session Store (`stores/chat/sessionStore.ts`) SHALL also register an `onSessionMutation` listener for the `status_changed` event type. Upon receiving this event, it SHALL update the corresponding session's `status`, `statusReason`, and `statusChangedAt` fields in the store.
+
+#### Scenario: Chat store updates session on WS status_changed
+
+WHEN a `session.status_changed` WS event is received with `session_id = "s1"`, `status = "interrupted"`, `status_reason = "timeout"`
+THEN the Chat Session Store SHALL update session "s1" with the new status, reason, and timestamp
+
+#### Scenario: Chat store ignores unknown session
+
+WHEN a `session.status_changed` WS event is received for a session ID not in the Chat store
+THEN the handler SHALL NOT throw an error
+
+---
+
 ### Requirement: Remove Dead Code statusBadgeColor
 
 The `statusBadgeColor` function in `components/sessions/sessionUi.ts` SHALL be removed. It uses Quasar color names that are inconsistent with the `SessionStatusBadge` component's CSS variable approach, and it has no callers.

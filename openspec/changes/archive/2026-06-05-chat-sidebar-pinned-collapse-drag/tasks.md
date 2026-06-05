@@ -20,17 +20,23 @@
 - [x] **Step 1:** 创建 `useChatEntityCollapse.ts`，实现折叠状态管理
 
 ```typescript
-const LS_SECTION_COLLAPSED = "chat:collapsed:sections";  // { agents: bool, teams: bool }
+const LS_SECTION_COLLAPSED = "chat:collapsed:sections";  // { agents: bool, teams: bool, activeTeams: bool, completedTeams: bool }
 const LS_GROUP_COLLAPSED = "chat:collapsed:groups";       // { [groupKey]: bool }
 ```
 
 功能：
-- `sectionCollapsed` reactive：大区折叠状态
+- `sectionCollapsed` reactive：大区折叠状态（含 `agents`、`teams`、`activeTeams`、`completedTeams`）
 - `groupCollapsed` reactive：分组折叠状态
+- `groupSnapshot` ref：搜索前快照
 - `restore()`：从 localStorage 恢复
-- `save()`：保存到 localStorage
-- `toggleSection(section)`：切换大区折叠
+- `saveSections()`：保存大区折叠到 localStorage
+- `saveGroups()`：保存分组折叠到 localStorage
+- `toggleSection(section)`：切换大区折叠（支持 `'agents' | 'teams' | 'activeTeams' | 'completedTeams'`）
 - `toggleGroup(key)`：切换分组折叠
+- `isGroupCollapsed(key)`：查询分组折叠状态
+- `expandAllGroups()`：展开所有分组
+- `onSearchActive()`：搜索激活时快照+展开
+- `onSearchClear()`：搜索清空时从快照恢复
 
 **DoD:**
 - composable 存在且 TypeScript 编译通过
@@ -65,10 +71,12 @@ Emits: `update:collapsed`
 
 - [x] **Step 1:** 创建单行展示组件
 
-Props: `entity`, `active`, `statusIcon`, `statusColor`, `statusLabel`
+Props: `name`, `active`, `statusIcon`, `statusColor`, `statusLabel`, `settingsAriaLabel`, `deleteAriaLabel`
 Emits: `click`, `settings`, `delete`
 
 模板：状态图标 + 名称 + 状态 pill + 操作按钮（hover 显示）
+
+> **实现偏差**：使用 `name` prop 替代原始设计的 `entity` prop（将 entity 对象拆分为独立 props），新增 `settingsAriaLabel`、`deleteAriaLabel` 无障碍标签 props。
 
 **DoD:**
 - 组件存在且渲染正常
@@ -84,16 +92,20 @@ Emits: `click`, `settings`, `delete`
 
 - [x] **Step 1:** 创建分组容器组件
 
-Props: `items`, `label`, `icon`, `collapsed`, `draggable`, `pinnedId`
-Emits: `update:collapsed`, `reorder`
+Props: `items`, `label`, `icon`, `collapsed`, `activeId`, `pinnedId`, `settingsAriaLabel`, `deleteAriaLabel`
+Emits: `update:collapsed`, `select`, `settings`, `delete`, `reorder`
 
 功能：
 - 使用 `ChatSectionHeader` 作为分组头
 - 折叠时隐藏 items，仅显示分组头
 - 使用 `vuedraggable` 实现组内排序
-- `onMove` 回调阻止拖到 pinnedId 之前
+- `onMove` 回调阻止拖到 pinnedId 元素之前
 - `delay: 300` 长按触发拖拽
-- 系统 Agent（pinnedId）disabled 不可拖动
+- `onDragEnd` 若 pinnedId 不在首位则强制归位
+- 使用 `chatUi.ts` 中的 `entityStatusIconFor`、`entityStatusColorFor`、`entityStatusLabelFor` 计算状态
+- 导出 `EntityItem` 类型供外部使用
+
+> **实现偏差**：无 `draggable` prop（draggable 始终启用），新增 `activeId`、`settingsAriaLabel`、`deleteAriaLabel` props，新增 `select`、`settings`、`delete` emits。`localItems` 使用 `computed get/set` 而非独立的 reactive。
 
 **DoD:**
 - 组件存在且编译通过
@@ -112,9 +124,11 @@ Emits: `update:collapsed`, `reorder`
 - [x] **Step 1:** 新增组内排序工具函数
 
 新增：
-- `loadGroupOrder(groupKey: string): string[]`：从 localStorage 读取组内排序
+- `LS_AG_GROUP_ORDER_PREFIX = 'chat:order:agents:'`：组内排序 localStorage key 前缀
+- `loadGroupOrder<T>(items: T[], groupKey: string, pinnedId?: string | null): T[]`：从 localStorage 读取组内排序并重排 items
 - `saveGroupOrder(groupKey: string, ids: string[]): void`：保存组内排序到 localStorage
-- `applyGroupOrder(items: Agent[], groupKey: string): Agent[]`：按组内排序重排 items
+
+> **实现偏差**：原始设计中的 `applyGroupOrder` 在实际实现中为 `loadGroupOrder`（签名不同，泛型化，含 pinnedId 参数）。底层复用已有的 `applyStoredOrder` 通用函数。
 
 **DoD:**
 - 函数存在且编译通过
@@ -131,12 +145,21 @@ Emits: `update:collapsed`, `reorder`
 
 变更：
 - 引入 `ChatSectionHeader`、`ChatEntityGroup`、`ChatEntityItem` 子组件
+- 引入 `SpiritEntry`（精灵助手入口）和 `TeamTaskCard`（Team 行卡片）组件
 - 引入 `useChatEntityCollapse` composable
-- Agent 大区和 Team 大区各使用 `ChatSectionHeader`
-- 每个 Agent 分组使用 `ChatEntityGroup`
-- 搜索激活时自动展开所有分组
-- 搜索清空时恢复折叠状态
-- 监听 `reorder` 事件，保存排序到 localStorage
+- 顶部显示 SpiritEntry 精灵助手入口
+- Agent 大区使用 `ChatSectionHeader` + `ChatEntityGroup`（分为系统/自定义两组）
+- Active Teams 大区使用 `ChatSectionHeader` + `TeamTaskCard`
+- Completed Teams 大区使用 `ChatSectionHeader` + `TeamTaskCard`（默认折叠）
+- 搜索激活时通过 `collapse.onSearchActive()` 自动展开所有分组
+- 搜索清空时通过 `collapse.onSearchClear()` 恢复折叠状态
+- 监听 `reorder` 事件，emit `agent-reorder`（含 groupKey 和 ids）给上层
+
+> **实现偏差**：
+> - Team 不再使用 ChatEntityGroup，而是使用独立的 TeamTaskCard 组件
+> - Team 大区拆分为"进行中"和"已完成"两个独立大区
+> - 新增 SpiritEntry 精灵助手入口
+> - Props/Emits 与原始设计差异较大
 
 **DoD:**
 - ChatEntitySidebar 代码行数 < 300 行（从 500 行拆分后）

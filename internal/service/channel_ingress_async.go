@@ -10,6 +10,7 @@ import (
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/channel/port"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -123,7 +124,7 @@ func (h *ChannelIngress) watchAsyncGraphCompletion(ctx context.Context, chRow bi
 	chCopy := chRow
 	evCopy := ev
 	watchCtx, cancel := context.WithTimeout(context.Background(), asyncWatchTimeout)
-	safego.Go(context.Background(), "channel.async.graph.watch", func() {
+	safego.Go(appctx.Ctx(), "channel.async.graph.watch", func() {
 		defer cancel()
 		ch, unsub := h.eventBus.Subscribe(event.SubscribeOptions{
 			SessionID:  sessionID,
@@ -173,7 +174,7 @@ func (h *ChannelIngress) watchAsyncCronCompletion(ctx context.Context, chRow biz
 	chCopy := chRow
 	evCopy := ev
 	watchCtx, cancel := context.WithTimeout(context.Background(), asyncWatchTimeout)
-	safego.Go(context.Background(), "channel.async.cron.watch", func() {
+	safego.Go(appctx.Ctx(), "channel.async.cron.watch", func() {
 		defer cancel()
 		ticker := time.NewTicker(asyncCronPollInterval)
 		defer ticker.Stop()

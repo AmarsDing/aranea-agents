@@ -19,12 +19,15 @@ type PatternReadWriter = biz.PatternReadWriter
 type ProposalReadWriter = biz.ProposalReadWriter
 
 var (
-	_ biz.ObservationReader = (*obsRepo)(nil)
-	_ biz.ObservationWriter = (*obsRepo)(nil)
-	_ biz.PatternReader     = (*patternRepo)(nil)
-	_ biz.PatternWriter     = (*patternRepo)(nil)
-	_ biz.ProposalReader    = (*proposalRepo)(nil)
-	_ biz.ProposalWriter    = (*proposalRepo)(nil)
+	_ biz.ObservationReadWriter = (*obsRepo)(nil)
+	_ biz.ObservationReader     = (*obsRepo)(nil)
+	_ biz.ObservationWriter     = (*obsRepo)(nil)
+	_ biz.PatternReadWriter     = (*patternRepo)(nil)
+	_ biz.PatternReader         = (*patternRepo)(nil)
+	_ biz.PatternWriter         = (*patternRepo)(nil)
+	_ biz.ProposalReadWriter    = (*proposalRepo)(nil)
+	_ biz.ProposalReader        = (*proposalRepo)(nil)
+	_ biz.ProposalWriter        = (*proposalRepo)(nil)
 )
 
 func NewObservationRepo(data *Data) biz.ObservationReadWriter { return &obsRepo{data: data} }

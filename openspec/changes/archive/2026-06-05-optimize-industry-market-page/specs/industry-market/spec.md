@@ -59,12 +59,12 @@ THEN 搜索框边框 SHALL 变为 accent 色（`--color-accent`）并展示聚�
 
 ### Requirement: Monogram 图标替代 Emoji
 
-行业卡、列表行和 Drawer 中的行业图标 SHALL 使用 monogram（大写字母缩写）替代 emoji。monogram SHALL 由行业 key 的前两个字母大写生成，放置在圆角矩形内，背景色由 key 的 hash 值映射到预设色板。色板 SHALL 包含至少 6 种渐变色（indigo / rose / sky / emerald / amber / violet）。新增行业时 SHALL 无需手动选色，自动由 key 派生。
+行业卡、列表行和 Drawer 中的行业图标 SHALL 使用 monogram（大写字母缩写）替代 emoji。monogram SHALL 由行业 key 去除非字母字符后取前 2 个字母大写生成（若 key 去除非字母后不足 2 字符，则 fallback 到行业 name 的前 2 字母），放置在圆角矩形内，背景色由 key 的 hash 值映射到预设色板。色板 SHALL 包含 6 种渐变色（indigo / rose / sky / emerald / amber / violet）。新增行业时 SHALL 无需手动选色，自动由 key 派生。monogram 逻辑 SHALL 封装在 `industryMonogram.ts` 共享模块中，提供 `monoBgForKey(key)` 和 `monoLettersForKey(key, fallback)` 两个纯函数。
 
 #### Scenario: 行业卡展示 monogram 图标
 
 WHEN 渲染 key 为 "software_development" 的行业卡
-THEN monogram 区域 SHALL 显示 "SO" 两个大写字母
+THEN monogram 区域 SHALL 显示 "SO" 两个大写字母（key 去除下划线后前 2 个字母）
 AND 背景为 key hash 映射的渐变色
 
 #### Scenario: key 仅含非字母字符时回退
@@ -229,12 +229,16 @@ THEN SHALL 不展示 CTA 卡
 
 ### Requirement: useIndustryMarket 扩展
 
-`useIndustryMarket` composable SHALL 扩展以下能力：`summary` computed 聚合所有行业的 KPI 数据（总行业数/已启用/已禁用/部门数/岗位数/Agent数/已部署数）；`fetchIndustries` 内部 SHALL 对每个行业并行调用 `listDepartments` + `listPositions` 填充 `deptCount` / `posCount` / `agentCount`；`fetchIndustryDetail` SHALL 拉取单个行业的部门+岗位详情供 Drawer 使用；单个行业的并行 fetch 失败 SHALL 不影响其他行业数据。Industry 类型 SHALL 扩展可选字段 `deptCount?` / `posCount?` / `agentCount?` / `installed?`，不破坏后端契约。
+`useIndustryMarket` composable SHALL 扩展以下能力：`summary` computed 聚合所有行业的 KPI 数据（总行业数/已启用/已禁用/部门数/岗位数/Agent数/已部署数），委托到 `industryMarketFilters.ts` 的 `summarizeIndustries()` 纯函数；`fetchIndustries` 内部 SHALL 对每个行业并行调用 `listDepartments` + `listPositions` 填充 `deptCount` / `posCount` / `agentCount`（实际命中 `api.ts` 的 `_allNodesCache` 缓存，无额外网络开销）；`fetchIndustryDetail` SHALL 拉取单个行业的部门+岗位详情供 Drawer 使用，返回 `IndustryDetail`（含 `departments: Department[]` + `positionsByDept: Record<string, Position[]>`）；`clearIndustryDetail` SHALL 清空详情数据；`applyFilters` SHALL 委托到 `industryMarketFilters.ts` 的 `filterIndustries()` 纯函数应用筛选条件；单个行业的并行 fetch 失败 SHALL 不影响其他行业数据。Industry 类型 SHALL 扩展可选字段 `deptCount?` / `posCount?` / `agentCount?` / `installed?`，不破坏后端契约。
+
+`industryMarketFilters.ts` 独立模块 SHALL 导出类型 `IndustryStatusFilter`（'all' | 'enabled' | 'disabled'）、`IndustrySourceFilter`（'all' | 'system' | 'custom'）、`IndustryFilters`、`IndustrySummary`，以及纯函数 `filterIndustries` 和 `summarizeIndustries`。`IndustrySummary` SHALL 包含 `disabled` 字段用于状态 chip 计数。source 筛选为未来扩展保留，当前 `source=custom` SHALL 返回空结果。
+
+`api.ts` SHALL 使用内部变量 `_allNodesCache` 缓存 `ListTaxonomy` 全量结果，所有 `listIndustries` / `listDepartments` / `listPositions` 调用共享同一份缓存。SHALL 提供 `invalidateCache()` 函数用于刷新场景。
 
 #### Scenario: fetchIndustries 并行填充 counts
 
 WHEN 调用 fetchIndustries 且后端返回 3 个行业
-THEN SHALL 并行发起 6 次 API 请求（每个行业 2 次：listDepartments + listPositions）
+THEN SHALL 并行发起 6 次 API 调用（每个行业 2 次：listDepartments + listPositions，实际命中 api.ts 缓存无额外网络请求）
 AND 每个行业对象的 deptCount / posCount / agentCount SHALL 被填充
 
 #### Scenario: 单个行业 fetch 失败不影响整体
@@ -304,3 +308,29 @@ THEN 页面 SHALL 展示空状态区域
 
 WHEN 行业市场页渲染完成
 THEN 页面底部 SHALL 展示包含装饰线、斜体引用和署名的签名区域
+
+---
+
+### Requirement: 测试覆盖
+
+`industryMarketFilters.spec.ts` SHALL 覆盖 `filterIndustries` 和 `summarizeIndustries` 两个纯函数的单元测试。
+
+#### Scenario: 搜索匹配测试
+
+WHEN 运行 filterIndustries 测试
+THEN SHALL 验证中英文搜索、大小写不敏感、按 name/key/description 匹配、空白 trim、无匹配返回空
+
+#### Scenario: 状态筛选测试
+
+WHEN 运行 filterIndustries 测试
+THEN SHALL 验证 status=enabled/disabled/all 筛选、组合 query+status 筛选
+
+#### Scenario: source 筛选测试
+
+WHEN 运行 filterIndustries 测试
+THEN SHALL 验证 source=custom 返回空（未来扩展预留）
+
+#### Scenario: 聚合计算测试
+
+WHEN 运行 summarizeIndustries 测试
+THEN SHALL 验证空输入返回零值、counts 跨行业求和、agentCount 缺失时 posCount 兜底

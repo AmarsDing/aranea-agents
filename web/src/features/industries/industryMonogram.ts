@@ -7,21 +7,28 @@
  */
 
 const PALETTES = [
-  'linear-gradient(135deg, #4F46E5 0%, #312E81 100%)', // indigo
-  'linear-gradient(135deg, #E55C5C 0%, #9B2226 100%)', // rose
-  'linear-gradient(135deg, #0EA5E9 0%, #075985 100%)', // sky
-  'linear-gradient(135deg, #10B981 0%, #065F46 100%)', // emerald
-  'linear-gradient(135deg, #F59E0B 0%, #92400E 100%)', // amber
-  'linear-gradient(135deg, #8B5CF6 0%, #4C1D95 100%)', // violet
-];
+  'indigo',
+  'rose',
+  'sky',
+  'emerald',
+  'amber',
+  'violet',
+] as const;
 
-/** 根据 key hash 选择渐变色板 */
+/** 根据 key hash 选择渐变色板，从 CSS 变量读取颜色值 */
 export function monoBgForKey(key: string): string {
   let h = 0;
   for (let i = 0; i < key.length; i++) {
     h = (h * 31 + key.charCodeAt(i)) | 0;
   }
-  return PALETTES[Math.abs(h) % PALETTES.length];
+  const idx = Math.abs(h) % PALETTES.length;
+  const s = getComputedStyle(document.documentElement)
+    .getPropertyValue(`--palette-industry-${idx}-start`)
+    .trim();
+  const e = getComputedStyle(document.documentElement)
+    .getPropertyValue(`--palette-industry-${idx}-end`)
+    .trim();
+  return `linear-gradient(135deg, ${s} 0%, ${e} 100%)`;
 }
 
 /** 提取 key 前 2 个字母大写作为 monogram */

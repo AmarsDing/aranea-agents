@@ -7,9 +7,11 @@ Chat 侧边栏（ChatEntitySidebar）已膨胀至 500 行，随着 Agent/Team �
 ## Goals
 
 - 系统 Agent（`is_default=true`）始终置顶，不可被拖拽超越
-- 两层折叠：大区（Agent/Team）可折叠 + 分组可折叠，状态持久化到 localStorage
+- 多层折叠：大区（Agent/Active Teams/Completed Teams）可折叠 + Agent 分组可折叠，状态持久化到 localStorage
 - 分组内拖拽排序，长按 300ms 触发，不可跨分组拖动
 - 将 ChatEntitySidebar 拆分为 ChatSectionHeader + ChatEntityGroup + ChatEntityItem 三个展示子组件
+- 集成 SpiritEntry（精灵助手入口）和 TeamTaskCard（Team 行卡片）组件
+- Team 大区拆分为"进行中"和"已完成"两个独立大区
 
 ## Non-goals
 

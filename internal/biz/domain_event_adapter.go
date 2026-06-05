@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/event/contract"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/safego"
 )
 
@@ -39,7 +40,7 @@ func (a *eventBusAdapter) SubscribeDomainEvents() (<-chan DomainEvent, func()) {
 	ch, unsub := a.bus.Subscribe(contract.SubscribeOptions{BufferSize: 256})
 	out := make(chan DomainEvent, 256)
 	done := make(chan struct{})
-	safego.Go(context.Background(), "domain-event-adapter", func() {
+	safego.Go(appctx.Ctx(), "domain-event-adapter", func() {
 		defer close(out)
 		for {
 			select {

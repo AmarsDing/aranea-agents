@@ -29,6 +29,9 @@ func newTestUsecaseWithMock() (*SessionUsecase, *mockMetricsRepo) {
 		metricsDeltas:  make(map[string]*SessionMetricsDelta),
 		flushInterval:  1 * time.Hour, // disable periodic flush for test
 	}
+	// Wire up the sub-usecase so delegation works.
+	uc.metricsUsecase = NewSessionMetricsUsecase(repo, nil, nil)
+	uc.metricsUsecase.flushInterval = 1 * time.Hour
 	return uc, repo
 }
 
@@ -44,9 +47,9 @@ func TestAccumulateMetricsDelta_BasicAccumulation(t *testing.T) {
 		MessageCount: 2,
 	})
 
-	uc.metricsDeltaMu.Lock()
-	d := uc.metricsDeltas["s1"]
-	uc.metricsDeltaMu.Unlock()
+	uc.metricsUsecase.metricsDeltaMu.Lock()
+	d := uc.metricsUsecase.metricsDeltas["s1"]
+	uc.metricsUsecase.metricsDeltaMu.Unlock()
 
 	if d == nil {
 		t.Fatal("expected delta to exist")
@@ -97,10 +100,10 @@ func TestAccumulateMetricsDelta_ForceFlushOnAgeOverflow(t *testing.T) {
 	})
 
 	// Manually age the delta to exceed MaxDeltaAge
-	uc.metricsDeltaMu.Lock()
-	d := uc.metricsDeltas["s1"]
+	uc.metricsUsecase.metricsDeltaMu.Lock()
+	d := uc.metricsUsecase.metricsDeltas["s1"]
 	d.FirstAccumulatedAt = time.Now().Add(-MaxDeltaAge - time.Second)
-	uc.metricsDeltaMu.Unlock()
+	uc.metricsUsecase.metricsDeltaMu.Unlock()
 
 	// Next accumulation should trigger force flush
 	uc.AccumulateMetricsDelta(SessionMetricsDelta{

@@ -240,7 +240,12 @@ func (r *teamRepo) DeleteTeam(ctx context.Context, id string) error {
 		SetStatus("deleted").
 		SetUpdatedAt(now).
 		Save(ctx)
-	return err
+	if err != nil {
+		return err
+	}
+	// Cascade: clean up related records after successful soft-delete
+	cascadeDeleteByTeam(ctx, r.data, id)
+	return nil
 }
 
 func (r *teamRepo) ListBySpiritSessionID(ctx context.Context, spiritSessionID string) ([]biz.Team, error) {

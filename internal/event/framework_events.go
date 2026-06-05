@@ -1,8 +1,7 @@
 package event
 
 import (
-	"context"
-
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/safego"
 
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
@@ -33,7 +32,7 @@ func WrapFrameworkEventsWithOtel(in <-chan *trpcevent.Event, emitter *TraceEmitt
 		return in
 	}
 	out := make(chan *trpcevent.Event, 64)
-	safego.Go(context.Background(), "event.framework_events.tee", func() {
+	safego.Go(appctx.Ctx(), "event.framework_events.tee", func() {
 		defer close(out)
 		for ev := range in {
 			if emitter != nil {

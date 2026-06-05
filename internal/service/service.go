@@ -4,7 +4,6 @@ import (
 	a2apkg "aranea-agents/internal/a2a"
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/compress"
-	"aranea-agents/internal/data"
 	"aranea-agents/internal/knowledge"
 	araneasession "aranea-agents/internal/session"
 	"aranea-agents/internal/skill/importer"
@@ -103,14 +102,15 @@ var ProviderSet = wire.NewSet(
 	ProvideWebResearchTester,
 	// PGO-3: AI prompt refinement service.
 	NewAIRefineService,
-	WireSessionStatusPublisher,
+	ProvideSessionStatusPublisher,
+	ProvideMetricsUpdatedPublisher,
+	NewSessionStatusGuard,
 	NewSpiritTeamAssembler,
 	NewSpiritSynthesisService,
 	NewTeamStarter,
 	NewSkillEvolutionService,
+	NewSkillIntelligenceService,
 	NewPackService,
-	data.NewPackRepoAdapter,
-	wire.Bind(new(packExporterImporterValidator), new(*data.PackRepoAdapter)),
 )
 
 func ProvideSkillResolveRootFn(sys biz.SystemSettingRepo) func(ctx context.Context) string {

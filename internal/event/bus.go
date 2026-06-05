@@ -11,6 +11,7 @@ import (
 
 	"aranea-agents/internal/event/contract"
 	arametrics "aranea-agents/internal/metrics"
+	"aranea-agents/pkg/loggateway"
 )
 
 // Re-export contract types for backward compatibility.
@@ -34,6 +35,7 @@ type bus struct {
 	subscribers map[uint64]*subscriber
 	nextID      uint64
 	dropCount   atomic.Uint64
+	lg          loggateway.Logger
 }
 
 type subscriber struct {
@@ -44,9 +46,11 @@ type subscriber struct {
 }
 
 // NewBus returns a new in-process event bus.
-func NewBus() Bus {
+// If lg is nil, drop notifications fall back to stderr.
+func NewBus(lg loggateway.Logger) Bus {
 	return &bus{
 		subscribers: make(map[uint64]*subscriber),
+		lg:          lg,
 	}
 }
 
@@ -187,8 +191,18 @@ func (b *bus) deliverDropNewest(sub *subscriber, env Envelope) {
 func (b *bus) logDrop(env Envelope, policy string) {
 	b.dropCount.Add(1)
 	arametrics.EventBusDropped.WithLabelValues(string(env.Type), policy).Inc()
-	fmt.Fprintf(os.Stderr, "[event_bus] drop policy=%s type=%s channel=%s session=%s total_drops=%d\n",
-		policy, env.Type, env.Channel, env.SessionID, b.dropCount.Load())
+	if b.lg != nil {
+		b.lg.Warn("[event_bus] drop",
+			loggateway.Str("policy", policy),
+			loggateway.Str("type", string(env.Type)),
+			loggateway.Str("channel", env.Channel),
+			loggateway.SessionID(env.SessionID),
+			loggateway.Int64("total_drops", int64(b.dropCount.Load())),
+		)
+	} else {
+		fmt.Fprintf(os.Stderr, "[event_bus] drop policy=%s type=%s channel=%s session=%s total_drops=%d\n",
+			policy, env.Type, env.Channel, env.SessionID, b.dropCount.Load())
+	}
 }
 
 func (b *bus) DropCount() uint64 {

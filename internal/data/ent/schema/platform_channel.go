@@ -5,6 +5,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // PlatformChannel maps SQLite table `channel`.
@@ -32,5 +33,12 @@ func (PlatformChannel) Fields() []ent.Field {
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("deleted_at").Default(""),
+	}
+}
+
+func (PlatformChannel) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("status", "enabled").StorageKey("idx_channel_status_enabled"),
+		index.Fields("deleted_at").StorageKey("idx_channel_deleted_at"),
 	}
 }

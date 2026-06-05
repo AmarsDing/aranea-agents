@@ -81,12 +81,16 @@ type TeamOrchestrationDeps struct {
 	TaskOrchestrator biz.TaskOrchestratorPort
 }
 
-// ChannelTurnDeps groups channel turn job tracking and session run management.
-// These are used for channel async job lifecycle and durable session run escalation.
-type ChannelTurnDeps struct {
-	TurnJobs      *biz.ChannelTurnJobUsecase
-	SessionRuns   *biz.SessionRunUsecase
-	Channels      *biz.ChannelUsecase
+// ChannelTurnJobDeps groups channel turn job tracking and session run management.
+// These are used for channel async job lifecycle.
+type ChannelTurnJobDeps struct {
+	TurnJobs    *biz.ChannelTurnJobUsecase
+	SessionRuns *biz.SessionRunUsecase
+	Channels    *biz.ChannelUsecase
+}
+
+// ChannelNotifierDeps groups notification dependencies for session run escalation.
+type ChannelNotifierDeps struct {
 	RunEscalation SessionRunEscalationNotifier
 }
 
@@ -96,7 +100,8 @@ type ChatOrchestrator struct {
 	td              rt.TurnDeps
 	rt              RuntimeTooling
 	team            TeamOrchestrationDeps
-	chTurn          ChannelTurnDeps
+	chJobs          ChannelTurnJobDeps
+	chNotify        ChannelNotifierDeps
 	admitGate       *turn.AdmissionGate
 	usage           *biz.UsageUsecase
 	monitor         *biz.MonitorUsecase
@@ -123,15 +128,10 @@ type ChatOrchestrator struct {
 	resumeInFlight       sync.Map
 	pendingMergeFollowup sync.Map
 	sweepStop            chan struct{}
-	// svcCtx is a service-lifecycle context cancelled in Close(). Background
-	// goroutines (pending queue turns) derive their timeout from it so they
-	// are cancelled cleanly on server shutdown.
-	svcCtx    context.Context
-	svcCancel context.CancelFunc
 }
 
 // ChatOrchestratorDeps groups all dependencies for ChatOrchestrator construction.
-// Sub-aggregates (RuntimeTooling, TeamOrchestrationDeps, ChannelTurnDeps) reduce
+// Sub-aggregates (RuntimeTooling, TeamOrchestrationDeps, ChannelTurnJobDeps, ChannelNotifierDeps) reduce
 // the flat parameter count and make responsibility boundaries explicit.
 type ChatOrchestratorDeps struct {
 	rt.TurnDeps
@@ -139,7 +139,8 @@ type ChatOrchestratorDeps struct {
 	PendingQueue    *rt.PendingMessageQueue
 	RT              RuntimeTooling
 	Team            TeamOrchestrationDeps
-	ChTurn          ChannelTurnDeps
+	ChJobs          ChannelTurnJobDeps
+	ChNotify        ChannelNotifierDeps
 	Usage           *biz.UsageUsecase
 	Monitor         *biz.MonitorUsecase
 	Artifacts       *biz.ArtifactUsecase
@@ -182,7 +183,8 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 		td:              deps.TurnDeps,
 		rt:              deps.RT,
 		team:            deps.Team,
-		chTurn:          deps.ChTurn,
+		chJobs:          deps.ChJobs,
+		chNotify:        deps.ChNotify,
 		usage:           deps.Usage,
 		monitor:         deps.Monitor,
 		artifacts:       deps.Artifacts,
@@ -225,7 +227,6 @@ func NewChatOrchestrator(deps ChatOrchestratorDeps) *ChatOrchestrator {
 
 	configureMCPObserve(deps.TurnDeps.Pipeline.Bus, deps.MCPServers)
 	o.sweepStop = make(chan struct{})
-	o.svcCtx, o.svcCancel = context.WithCancel(context.Background())
 	safego.Go(nil, "orch-map-sweep", o.sweepLoop)
 	return o
 }
@@ -240,6 +241,7 @@ var (
 	_ biz.TurnControlGateway     = (*ChatService)(nil)
 	_ biz.DurableResumeGateway   = (*ChatService)(nil)
 	_ biz.PendingQueueGateway    = (*ChatService)(nil)
+	_ biz.A2ARunnerFactory       = (*ChatService)(nil)
 )
 
 // Execute implements biz.TurnExecutor — the shared entry point for all turn
@@ -582,9 +584,6 @@ func (o *ChatOrchestrator) endResume(sessionID string) {
 func (o *ChatOrchestrator) Close() {
 	if o == nil {
 		return
-	}
-	if o.svcCancel != nil {
-		o.svcCancel()
 	}
 	if o.sweepStop != nil {
 		select {

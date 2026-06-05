@@ -184,9 +184,23 @@ func TestNewService_EmptyStateDir(t *testing.T) {
 }
 
 func TestNewService_NilRunner(t *testing.T) {
-	_, err := NewService(t.TempDir(), nil, loggateway.NewNoop())
-	if err == nil {
-		t.Fatal("expected error for nil runner")
+	// Nil runner is allowed at construction; SetRunner is called later at runtime.
+	svc, err := NewService(t.TempDir(), nil, loggateway.NewNoop())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if svc == nil {
+		t.Fatal("expected non-nil service")
+	}
+	// Spawn should fail gracefully when runner is not yet configured.
+	svc.Start(context.Background())
+	_, spawnErr := svc.Spawn(context.Background(), SpawnRequest{
+		OwnerUserID:    "u1",
+		ParentSessionID: "s1",
+		Task:           "do something",
+	})
+	if spawnErr == nil {
+		t.Fatal("expected error when spawning with nil runner")
 	}
 }
 

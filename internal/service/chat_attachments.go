@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	artifactbiz "aranea-agents/internal/biz/artifact"
@@ -55,32 +53,10 @@ func (o *ChatOrchestrator) validateTurnAttachmentCapabilities(ctx context.Contex
 	if len(refs) == 0 || o == nil {
 		return nil
 	}
-	if hasImageAttachment(refs) && !provider.ModelSupportsImageAttachments(ctx, o.td.Catalog.LLM, prov, mod) {
-		return TurnError(TurnErrAttachmentUnsupported, fmt.Sprintf("%s/%s does not support image attachments", strings.TrimSpace(prov), strings.TrimSpace(mod)))
-	}
-	if hasFileAttachment(refs) && !provider.ModelSupportsFileAttachments(ctx, o.td.Catalog.LLM, prov, mod) {
-		return TurnError(TurnErrAttachmentUnsupported, fmt.Sprintf("%s/%s does not support file attachments", strings.TrimSpace(prov), strings.TrimSpace(mod)))
+	if err := provider.ValidateAttachmentCapabilities(ctx, o.td.Catalog.LLM, prov, mod, refs); err != nil {
+		return TurnError(TurnErrAttachmentUnsupported, err.Error())
 	}
 	return nil
-}
-
-func hasImageAttachment(refs []artifactbiz.Ref) bool {
-	for _, ref := range refs {
-		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(ref.MimeType)), "image/") {
-			return true
-		}
-	}
-	return false
-}
-
-func hasFileAttachment(refs []artifactbiz.Ref) bool {
-	for _, ref := range refs {
-		mime := strings.ToLower(strings.TrimSpace(ref.MimeType))
-		if mime != "" && !strings.HasPrefix(mime, "image/") {
-			return true
-		}
-	}
-	return false
 }
 
 func mergeTurnArtifactRefs(optionsJSON string, refs []artifactbiz.Ref) (string, error) {

@@ -135,14 +135,18 @@ func PublishMetricsUpdated(bus event.Bus, sessionID string) {
 	bus.Publish(context.Background(), env)
 }
 
-// WireSessionStatusPublisher injects the service-layer WS publisher into SessionUsecase.
-func WireSessionStatusPublisher(uc *biz.SessionUsecase, teamUC *biz.TeamUsecase, orchestrator biz.TaskOrchestratorPort, infra *event.Infra, runtimeWriter biz.SessionRuntimeWriter, lg loggateway.Logger) *SessionStatusGuard {
-	if uc != nil && infra != nil {
-		uc.SetStatusPublisher(&sessionStatusPublisher{bus: infra.SessionBus})
-		uc.SetMetricsUpdatedPublisher(&metricsUpdatedPublisher{bus: infra.SessionBus})
+// ProvideSessionStatusPublisher creates a SessionStatusPublisher backed by EventBus.
+func ProvideSessionStatusPublisher(infra *event.Infra) biz.SessionStatusPublisher {
+	if infra == nil {
+		return nil
 	}
-	if uc != nil && runtimeWriter != nil {
-		uc.SetRuntimeWriter(runtimeWriter)
+	return &sessionStatusPublisher{bus: infra.SessionBus}
+}
+
+// ProvideMetricsUpdatedPublisher creates a MetricsUpdatedPublisher backed by EventBus.
+func ProvideMetricsUpdatedPublisher(infra *event.Infra) biz.MetricsUpdatedPublisher {
+	if infra == nil {
+		return nil
 	}
-	return NewSessionStatusGuard(uc, teamUC, orchestrator, lg)
+	return &metricsUpdatedPublisher{bus: infra.SessionBus}
 }

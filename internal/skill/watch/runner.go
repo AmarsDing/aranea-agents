@@ -13,6 +13,7 @@ import (
 	"aranea-agents/internal/event"
 	"aranea-agents/internal/skill/importer"
 	"aranea-agents/internal/skill/storage"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -373,7 +374,7 @@ func (r *Runner) checkSimilarityAsync(slug, name string) {
 		return
 	}
 	slug = strings.TrimSpace(slug)
-	safego.Go(context.Background(), "skill.fs.similarity", func() {
+	safego.Go(appctx.Ctx(), "skill.fs.similarity", func() {
 		ctx := context.Background()
 		sources, err := r.reader.ListSimilaritySources(ctx)
 		if err != nil {

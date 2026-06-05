@@ -1,5 +1,16 @@
 import { formatTokenCount } from './composerUsageMetrics';
-import type { PromptTokenBreakdown } from '../../realtime/envelope';
+
+/** Local mirror of the former backend PromptTokenBreakdown (removed from envelope contract). */
+export type PromptTokenBreakdown = {
+  system_prompt?: number;
+  skills?: number;
+  memory?: number;
+  intent_pass?: number;
+  session_summary?: number;
+  tool_results?: number;
+  history?: number;
+  user_message?: number;
+};
 
 export type PromptBreakdownCategory = {
   key: string;

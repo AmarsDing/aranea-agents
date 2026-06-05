@@ -1,10 +1,10 @@
 ## Why
 
-Session Status Monitoring 变更已归档，但代码审查发现 5 个阻断级问题和 9 个建议级问题：错误码语义错误（BadRequest 应为 FailedPrecondition）、超时场景 reason 分类错误、遗留非法 status 值、并发冲突静默吞错、前端 REST API 映射缺失关键字段。这些问题会导致前端 tooltip 永远为空、状态转换错误码误导客户端、并发场景数据不一致。
+Session Status Monitoring 变更已归档，但代码审查发现 5 个阻断级问题和 9 个建议级问题：错误码语义错误（BadRequest 应为 Conflict）、超时场景 reason 分类错误、遗留非法 status 值、并发冲突静默吞错、前端 REST API 映射缺失关键字段。这些问题会导致前端 tooltip 永远为空、状态转换错误码误导客户端、并发场景数据不一致。
 
 ## What Changes
 
-- **修复错误码语义**：`SessionStatusMachine.TransitionTo` 和 `SessionUsecase.Archive/Delete` 中 `kerrors.BadRequest` 改为 `kerrors.FailedPrecondition`
+- **修复错误码语义**：`SessionStatusMachine.TransitionTo` 和 `SessionUsecase.Archive/Delete` 中 `kerrors.BadRequest` 改为 `kerrors.Conflict`
 - **修复超时 reason 分类**：首字节超时和 Turn 超时场景使用 `StatusReasonTimeout` 替代 `StatusReasonError`
 - **移除非法 status 值**：`DeleteSessionsByAgentID` 不再设置 `status = "deleted"`，仅依赖 `deleted_at` 时间戳
 - **修复并发冲突处理**：`TransitionSessionStatus` 在 `n == 0` 时返回错误而非静默 nil

@@ -105,7 +105,7 @@ THEN `status_changed_at` SHALL be T2
 
 ### Requirement: Session Status State Machine
 
-The `SessionStatusMachine` SHALL enforce legal status transitions. Any transition not in the legal transition table SHALL be rejected with `kerrors.FailedPrecondition`.
+The `SessionStatusMachine` SHALL enforce legal status transitions. Any transition not in the legal transition table SHALL be rejected with `kerrors.Conflict` (HTTP 409 / gRPC ABORTED).
 
 **Legal transition table:**
 
@@ -132,9 +132,11 @@ The `SessionStatusMachine` SHALL provide:
 - `NewSessionStatusMachine(status, reason, changedAt)` — construct from current state
 - `TransitionTo(target, reason)` — validate and apply transition
 - `CanTransitionTo(target)` — check if transition is legal without applying
-- `IsProtected()` — return true if status is `running` or `awaiting_confirmation`
 - `Status()` — return current status
 - `StatusReason()` — return current reason
+- `ChangedAt()` — return current changedAt timestamp (ISO 8601 string)
+
+A standalone function `IsProtectedStatus(status SessionStatus) bool` SHALL be provided in `internal/biz/session/status.go` (NOT as a method on `SessionStatusMachine`). It SHALL return `true` if status is `running` or `awaiting_confirmation`.
 
 #### Scenario: Legal transition idle to running
 
@@ -144,12 +146,12 @@ THEN the transition SHALL succeed and `status` SHALL be `"running"`
 #### Scenario: Illegal transition idle to completed
 
 WHEN a session in `idle` status attempts to transition to `completed`
-THEN the transition SHALL be rejected with `FailedPrecondition`
+THEN the method SHALL return `kerrors.Conflict` (HTTP 409 / gRPC ABORTED)
 
 #### Scenario: Illegal transition completed to interrupted
 
 WHEN a session in `completed` status attempts to transition to `interrupted`
-THEN the transition SHALL be rejected with `FailedPrecondition`
+THEN the transition SHALL be rejected with `kerrors.Conflict`
 
 #### Scenario: Running to interrupted with reason
 
@@ -185,24 +187,24 @@ THEN `IsProtected()` SHALL return `false`
 
 ### Requirement: Delete and Archive Protection
 
-Sessions with protected statuses (`running`, `awaiting_confirmation`) SHALL NOT be deleted or archived. The backend SHALL return `kerrors.FailedPrecondition` with message indicating the session is in a protected status and cannot be deleted/archived.
+Sessions with protected statuses (`running`, `awaiting_confirmation`) SHALL NOT be deleted or archived. The backend SHALL return `kerrors.Conflict` with message indicating the session is in a protected status and cannot be deleted/archived.
 
 For batch operations (`BatchDelete`, `BatchArchive`), the system SHALL skip protected sessions and return a partial failure result indicating which sessions were skipped and why.
 
 #### Scenario: Delete protected running session rejected
 
 WHEN a delete request is made for a session with `status = 'running'`
-THEN the system SHALL return `FailedPrecondition` and the session SHALL NOT be deleted
+THEN the system SHALL return `Conflict` and the session SHALL NOT be deleted
 
 #### Scenario: Delete protected awaiting_confirmation session rejected
 
 WHEN a delete request is made for a session with `status = 'awaiting_confirmation'`
-THEN the system SHALL return `FailedPrecondition` and the session SHALL NOT be deleted
+THEN the system SHALL return `Conflict` and the session SHALL NOT be deleted
 
 #### Scenario: Archive protected session rejected
 
 WHEN an archive request is made for a session with `status = 'running'`
-THEN the system SHALL return `FailedPrecondition` and the session SHALL NOT be archived
+THEN the system SHALL return `Conflict` and the session SHALL NOT be archived
 
 #### Scenario: Batch delete skips protected sessions
 
@@ -291,7 +293,7 @@ THEN the machine's status SHALL become `interrupted` and reason SHALL become `er
 #### Scenario: TransitionTo rejects invalid transition
 
 WHEN `TransitionTo("idle", "")` is called on a machine with status `running`
-THEN the method SHALL return `kerrors.FailedPrecondition` and the machine state SHALL remain unchanged
+THEN the method SHALL return `kerrors.Conflict` and the machine state SHALL remain unchanged
 
 #### Scenario: CanTransitionTo returns correct result
 
@@ -321,7 +323,7 @@ THEN the session's status SHALL be updated to `running` in the database, `status
 #### Scenario: TransitionStatus rejects invalid transition
 
 WHEN `TransitionStatus(ctx, "session-1", "completed", "")` is called on an idle session
-THEN the method SHALL return `FailedPrecondition` and no database write or WS event SHALL occur
+THEN the method SHALL return `Conflict` and no database write or WS event SHALL occur
 
 ---
 
@@ -357,20 +359,26 @@ THEN the method SHALL return without error
 
 ---
 
-### Requirement: SessionMutator TransitionSessionStatus
+### Requirement: SessionRuntimeWriter TransitionSessionStatus
 
-The `SessionMutator` interface SHALL add a new method:
-
+The `SessionRuntimeWriter` interface (defined in `internal/biz/session/metrics_repo.go`) SHALL include a method for status transitions:
 ```go
-TransitionSessionStatus(ctx context.Context, id string, status SessionStatus, reason SessionStatusReason) error
+TransitionSessionStatus(ctx context.Context, sessionID string, currentStatus string, newStatus string, statusReason string, statusChangedAt string) error
 ```
 
-The data layer implementation SHALL update `status`, `status_reason`, and `status_changed_at` in a single database write.
+The data layer implementation (in `internal/data/session_runtime_repo.go`) SHALL update `status`, `status_reason`, and `status_changed_at` in a single database write. The `currentStatus` parameter is used as a WHERE condition to prevent TOCTOU races: the UPDATE only succeeds if the row still has the expected current status.
+
+When zero rows are affected (indicating the current status has been concurrently modified), the method SHALL return `kerrors.Conflict` indicating the status was concurrently modified, NOT silently return nil.
 
 #### Scenario: TransitionSessionStatus persists all fields
 
-WHEN `TransitionSessionStatus(ctx, "session-1", "interrupted", "timeout")` is called
-THEN the database row SHALL have `status = 'interrupted'`, `status_reason = 'timeout'`, and `status_changed_at` set to the current ISO 8601 timestamp
+WHEN `TransitionSessionStatus(ctx, "session-1", "running", "interrupted", "timeout", "2026-05-31T12:00:00Z")` is called
+THEN the database row SHALL have `status = 'interrupted'`, `status_reason = 'timeout'`, and `status_changed_at = '2026-05-31T12:00:00Z'`
+
+#### Scenario: TransitionSessionStatus concurrent conflict returns error
+
+WHEN `TransitionSessionStatus` is called and the WHERE condition `status = currentStatus` matches zero rows
+THEN the method SHALL return `kerrors.Conflict` indicating the status has been concurrently modified
 
 ---
 
@@ -384,11 +392,21 @@ THEN the database row SHALL have `status = 'interrupted'`, `status_reason = 'tim
 | Runner finishes normally | `completed` | — |
 | Runner cancelled by user | `interrupted` | `user_cancelled` |
 | Runner timeout | `interrupted` | `timeout` |
+| First-byte timeout | `interrupted` | `timeout` |
 | Runner error | `interrupted` | `error` |
+| Stream error | `interrupted` | `error` |
+| Resume await failure | `interrupted` | `error` |
+| Empty reply | `interrupted` | `error` |
 | Budget escalation | `interrupted` | `budget_escalated` |
 | Tool needs confirmation | `awaiting_confirmation` | `tool_confirmation` |
 | Agent awaits reply | `awaiting_confirmation` | `agent_awaiting_reply` |
 | User confirms/replies | `running` | — |
+| Team Turn starts | `running` | — |
+| Team Turn fails | `interrupted` | `error` |
+| Team Turn completes | `completed` | — |
+| Pending Queue execution starts | `running` | — |
+| Pending Queue execution fails | `interrupted` | `error` |
+| Pending Queue execution completes | `completed` | — |
 
 `persistRunStatus` SHALL be retained but simplified: it SHALL only write runtime metadata keys (`runtime.run_id`, etc.) to `state_json`, NOT `runtime.status`.
 
@@ -423,6 +441,8 @@ THEN `uc.TransitionStatus(sessionID, "running", "")` SHALL be called
 
 A `SessionStatusGuard` SHALL be implemented in `internal/service/session_status_guard.go` and registered as a Kratos lifecycle hook.
 
+The constructor SHALL accept `*biz.SessionUsecase`, `*biz.TeamUsecase`, `biz.TaskOrchestratorPort`, and `loggateway.Logger` parameters.
+
 **OnShutdown**: When the server shuts down gracefully:
 1. Cancel all active Runners
 2. Call `uc.BatchTransitionInterrupted(ctx, "server_shutdown")` to transition all running sessions to `interrupted`
@@ -430,6 +450,8 @@ A `SessionStatusGuard` SHALL be implemented in `internal/service/session_status_
 
 **OnStartup**: When the server starts:
 1. Call `uc.RecoverOrphanedRunningSessions(ctx)` to transition orphaned running sessions to `interrupted` + `unexpected_shutdown`
+2. Call `recoverOrphanedRunningTeams(ctx)` to transition running teams to `interrupted` and running team runs to `failed`
+3. Call `recoverInterruptedOrchestrations(ctx)` to recover interrupted orchestration tasks
 
 The `SessionStatusGuard` SHALL cooperate with the existing `SessionRunDurableWorker.CleanupOrphanedRuns`: the Guard fixes `sessions.status` while the Durable Worker cleans `session_runs` table records.
 
@@ -455,7 +477,7 @@ THEN `RecoverOrphanedRunningSessions` SHALL complete without error
 
 ---
 
-### Requirement: Confirmation Timeout Auto-Cleanup
+### Requirement: Confirmation Timeout Auto-Cleanup (**二期任务，当前未实现**)
 
 `SessionStatusGuard` SHALL provide a `CleanupExpiredConfirmations(ctx)` method that finds all sessions with `status = 'awaiting_confirmation'` where `status_changed_at` is older than the confirmation timeout (default 24 hours) and transitions them to `interrupted` with reason `confirmation_timeout`.
 
@@ -517,7 +539,7 @@ message Session {
 }
 ```
 
-A new admin-only RPC SHALL be added:
+A new admin-only RPC SHALL be added (**二期任务，当前未实现**):
 
 ```protobuf
 rpc ForceTransitionSessionStatus(ForceTransitionSessionStatusRequest) returns (ForceTransitionSessionStatusResponse) {

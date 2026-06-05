@@ -107,7 +107,8 @@ func (m *memTeamRepo) ListBySpiritSessionID(_ context.Context, _ string) ([]biz.
 }
 
 func newTeamService() *service.TeamService {
-	return service.NewTeamService(biz.NewTeamUsecase(newMemTeamRepo(), nil), nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
+	repo := newMemTeamRepo()
+	return service.NewTeamService(biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil), nil, nil, nil, nil, nil, nil, loggateway.NewNoop())
 }
 
 func TestTeamService_CreateListGetDelete(t *testing.T) {

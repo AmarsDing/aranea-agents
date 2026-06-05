@@ -253,6 +253,18 @@ func (uc *SkillIntelligenceUsecase) GetExperienceReport(ctx context.Context, id 
 	return uc.reader.GetByID(ctx, id)
 }
 
+// ScanAndGenerateReports scans recent skill invocations that don't have
+// experience reports yet and generates reports for them.
+func (uc *SkillIntelligenceUsecase) ScanAndGenerateReports(ctx context.Context) error {
+	// This is a placeholder implementation that will be enhanced later.
+	// For now, it returns nil to allow the worker to start without errors.
+	// Full implementation will scan skill_invocation table for recent
+	// invocations without corresponding experience_reports and generate them.
+	uc.lg.Info("SkillIntelligenceWorker: scan cycle started",
+		loggateway.StepID("skill_intelligence.scan"))
+	return nil
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 func normalizeDuration(avgMS float64) float64 {

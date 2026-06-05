@@ -501,6 +501,7 @@ CREATE TABLE IF NOT EXISTS memory_entity_versions (
   UNIQUE(entity_id, version)
 );
 
+-- RESERVED: Not yet implemented
 CREATE TABLE IF NOT EXISTS agent_identity (
   agent_id TEXT PRIMARY KEY,
   persona TEXT NOT NULL DEFAULT '',
@@ -515,6 +516,7 @@ CREATE TABLE IF NOT EXISTS agent_identity (
   updated_at TEXT NOT NULL
 );
 
+-- RESERVED: Not yet implemented
 CREATE TABLE IF NOT EXISTS agent_strategy_profile (
   agent_id TEXT PRIMARY KEY,
   exploration REAL NOT NULL DEFAULT 0.5,
@@ -579,6 +581,7 @@ CREATE TABLE IF NOT EXISTS agent_evolution_proposals (
   updated_at TEXT NOT NULL
 );
 
+-- RESERVED: Not yet implemented
 CREATE TABLE IF NOT EXISTS agent_skill_stats (
   agent_id TEXT NOT NULL,
   scope TEXT NOT NULL DEFAULT 'overall',

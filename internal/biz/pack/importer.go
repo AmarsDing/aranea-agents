@@ -7,6 +7,8 @@ import (
 	"sort"
 
 	"aranea-agents/internal/biz"
+
+	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
 // ImporterRepo 导入引擎所需的写入仓库接口。
@@ -55,7 +57,7 @@ func (im *Importer) Import(ctx context.Context, p *Pack, strategy ConflictStrate
 	if p.Taxonomy != nil {
 		count, warns, err := im.importTaxonomy(ctx, p.Taxonomy, strategy, mapper)
 		if err != nil {
-			return result, fmt.Errorf("pack import: Phase 1 (Taxonomy) 失败: %w", err)
+			return result, kerrors.BadRequest("PACK_TAXONOMY_IMPORT", fmt.Sprintf("pack import: Phase 1 (Taxonomy) 失败: %s", err.Error()))
 		}
 		result.TaxonomyNodes = count
 		result.Warnings = append(result.Warnings, warns...)
@@ -125,7 +127,7 @@ func (im *Importer) importTaxonomy(ctx context.Context, spec *TaxonomyPackSpec, 
 			IsSystem:    true,
 		}, strategy)
 		if err != nil {
-			return count, warnings, fmt.Errorf("导入行业 %s 失败: %w", ind.Key, err)
+			return count, warnings, kerrors.BadRequest("PACK_INDUSTRY_IMPORT", fmt.Sprintf("导入行业 %s 失败: %s", ind.Key, err.Error()))
 		}
 		mapper.RegisterTaxonomy(ind.Key, indNode.ID)
 		count++
@@ -255,7 +257,7 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 		agent.ID = existing.ID
 		updatedAgent, err := im.repo.UpdateAgent(ctx, agent)
 		if err != nil {
-			return 0, 0, 0, fmt.Errorf("更新 Agent %s 失败: %w", spec.Key, err)
+			return 0, 0, 0, kerrors.BadRequest("PACK_AGENT_UPDATE", fmt.Sprintf("更新 Agent %s 失败: %s", spec.Key, err.Error()))
 		}
 		agentID = updatedAgent.ID
 		updated = 1
@@ -263,7 +265,7 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 		// 创建
 		createdAgent, err := im.repo.CreateAgent(ctx, agent)
 		if err != nil {
-			return 0, 0, 0, fmt.Errorf("创建 Agent %s 失败: %w", spec.Key, err)
+			return 0, 0, 0, kerrors.BadRequest("PACK_AGENT_CREATE", fmt.Sprintf("创建 Agent %s 失败: %s", spec.Key, err.Error()))
 		}
 		agentID = createdAgent.ID
 		created = 1
@@ -298,10 +300,10 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 			if created == 1 {
 				if delErr := im.repo.DeleteAgent(ctx, agentID); delErr != nil {
 					// 回滚失败：记录到错误信息中
-					return 0, 0, 0, fmt.Errorf("写入 Agent %s 文件失败: %w（回滚删除也失败: %v）", spec.Key, err, delErr)
+					return 0, 0, 0, kerrors.BadRequest("PACK_AGENT_FILES", fmt.Sprintf("写入 Agent %s 文件失败: %s（回滚删除也失败: %v）", spec.Key, err.Error(), delErr))
 				}
 			}
-			return 0, 0, 0, fmt.Errorf("写入 Agent %s 文件失败: %w", spec.Key, err)
+			return 0, 0, 0, kerrors.BadRequest("PACK_AGENT_FILES", fmt.Sprintf("写入 Agent %s 文件失败: %s", spec.Key, err.Error()))
 		}
 	}
 
@@ -312,10 +314,10 @@ func (im *Importer) importAgent(ctx context.Context, spec AgentPackSpec, agentFi
 			// 回滚：删除已创建的 Agent（Files 已通过 Replace 覆盖，无需单独清理）
 			if created == 1 {
 				if delErr := im.repo.DeleteAgent(ctx, agentID); delErr != nil {
-					return 0, 0, 0, fmt.Errorf("写入 Agent %s 运行时设置失败: %w（回滚删除也失败: %v）", spec.Key, err, delErr)
+					return 0, 0, 0, kerrors.BadRequest("PACK_AGENT_RUNTIME", fmt.Sprintf("写入 Agent %s 运行时设置失败: %s（回滚删除也失败: %v）", spec.Key, err.Error(), delErr))
 				}
 			}
-			return 0, 0, 0, fmt.Errorf("写入 Agent %s 运行时设置失败: %w", spec.Key, err)
+			return 0, 0, 0, kerrors.BadRequest("PACK_AGENT_RUNTIME", fmt.Sprintf("写入 Agent %s 运行时设置失败: %s", spec.Key, err.Error()))
 		}
 	}
 
@@ -440,7 +442,7 @@ func (im *Importer) importGraph(ctx context.Context, spec GraphPackSpec, mapper 
 
 	saved, err := im.repo.SaveGraphDefinition(ctx, def)
 	if err != nil {
-		return 0, fmt.Errorf("创建 Graph %s 失败: %w", spec.ID, err)
+		return 0, kerrors.BadRequest("PACK_GRAPH_CREATE", fmt.Sprintf("创建 Graph %s 失败: %s", spec.ID, err.Error()))
 	}
 
 	mapper.RegisterGraph(spec.ID, saved.ID)
@@ -473,7 +475,7 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 	for _, m := range spec.Members {
 		agentID, err := mapper.ResolveAgentKey(m.AgentKey)
 		if err != nil {
-			return 0, 0, 0, fmt.Errorf("Team %s 成员 %s 的 agent_key 未找到: %w", spec.Key, m.AgentKey, err)
+			return 0, 0, 0, kerrors.BadRequest("PACK_TEAM_MEMBER", fmt.Sprintf("Team %s 成员 %s 的 agent_key 未找到: %s", spec.Key, m.AgentKey, err.Error()))
 		}
 		enabled := true
 		if m.Enabled != nil {
@@ -555,7 +557,7 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 	// 序列化 definition_json
 	defJSON, err := biz.OrchestrationSpecToDefinitionJSON(ospec)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("序列化 Team %s definition_json 失败: %w", spec.Key, err)
+		return 0, 0, 0, kerrors.BadRequest("PACK_TEAM_DEFINITION", fmt.Sprintf("序列化 Team %s definition_json 失败: %s", spec.Key, err.Error()))
 	}
 
 	team := biz.Team{
@@ -582,7 +584,7 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 			team.Readonly = existing.Readonly
 			team.Source = existing.Source
 			if _, err := im.repo.UpdateTeam(ctx, team); err != nil {
-				return 0, 0, 0, fmt.Errorf("更新 Team %s 失败: %w", spec.Key, err)
+				return 0, 0, 0, kerrors.BadRequest("PACK_TEAM_UPDATE", fmt.Sprintf("更新 Team %s 失败: %s", spec.Key, err.Error()))
 			}
 			return 0, 1, 0, nil
 		case ConflictDuplicate:
@@ -600,7 +602,7 @@ func (im *Importer) importTeam(ctx context.Context, spec TeamPackSpec, strategy 
 	}
 
 	if _, err := im.repo.CreateTeam(ctx, team); err != nil {
-		return 0, 0, 0, fmt.Errorf("创建 Team %s 失败: %w", spec.Key, err)
+		return 0, 0, 0, kerrors.BadRequest("PACK_TEAM_CREATE", fmt.Sprintf("创建 Team %s 失败: %s", spec.Key, err.Error()))
 	}
 
 	return 1, 0, 0, nil

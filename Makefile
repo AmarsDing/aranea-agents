@@ -11,6 +11,9 @@ else
 GO_BIN_DIR:=$(subst \,/,$(GOBIN_RAW))
 endif
 VERSION=$(shell git describe --tags --always)
+COMMIT=$(shell git rev-parse HEAD)
+BUILD_DATE=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS=-X main.Version=$(VERSION) -X main.Commit=$(COMMIT) -X main.BuildDate=$(BUILD_DATE)
 
 # Explicit plugin path: Windows protoc often does not see Cygwin/MSYS PATH for protoc-gen-*.
 PROTOC_GEN_TYPESCRIPT_HTTP:=$(GO_BIN_DIR)/protoc-gen-typescript-http$(GOEXE)
@@ -71,17 +74,17 @@ check-overlay:
 .PHONY: cli
 # build the aranea CLI binary to ./bin/aranea
 cli:
-	mkdir -p bin/ && go build -ldflags "-X main.Version=$(VERSION)" -o ./bin/aranea$(GOEXE) ./cmd/aranea
+	mkdir -p bin/ && go build -ldflags "$(LDFLAGS)" -o ./bin/aranea$(GOEXE) ./cmd/aranea
 
 .PHONY: cli-all
 # build aranea CLI for linux/amd64 (cross-compile)
 cli-all: cli
-	GOOS=linux GOARCH=amd64 go build -ldflags "-X main.Version=$(VERSION)" -o ./bin/aranea-linux-amd64 ./cmd/aranea
+	GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o ./bin/aranea-linux-amd64 ./cmd/aranea
 
 .PHONY: build
 # build
 build:
-	mkdir -p bin/ && go build -ldflags "-X main.Version=$(VERSION)" -o ./bin/ ./...
+	mkdir -p bin/ && go build -ldflags "$(LDFLAGS)" -o ./bin/ ./...
 
 .PHONY: runtime-boundary
 # check Agent runtime import boundaries (legacy PowerShell; use `make lint` instead)

@@ -149,6 +149,5 @@ var (
 	ChatIngressRecordingEnabled   = chatIngressRecordingEnabled
 	ChatIngressRecordingDisabled  = chatIngressRecordingDisabled
 	EnvInt                        = envInt
-	HasFileAttachment             = hasFileAttachment
 	GraphExecutionFinishErr       = graphExecutionFinishErr
 )

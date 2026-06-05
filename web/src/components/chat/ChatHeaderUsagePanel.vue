@@ -108,9 +108,7 @@ const usageParts = computed(() => (props.usageSnapshot ? composerUsageParts(prop
 const hasBreakdown = computed(() => props.breakdown != null && props.breakdown.categories.length > 0);
 
 const isPrecise = computed(
-  () =>
-    props.usageSnapshot?.promptBreakdown != null &&
-    Object.values(props.usageSnapshot.promptBreakdown).some((v) => v != null && v > 0),
+  () => props.breakdown != null && props.breakdown.categories.some((c) => c.estTokens > 0),
 );
 
 function onRingClick() {

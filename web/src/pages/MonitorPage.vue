@@ -53,7 +53,13 @@
         :class="{ 'monitor-panels--logs-fill': tab === 'logs' }"
       >
         <q-tab-panel name="usage">
-          <SelfCheckStatusPanel />
+          <SelfCheckStatusPanel
+            :loading="monitorStore.selfCheckLoading"
+            :triggering="monitorStore.selfCheckTriggering"
+            :latest-report="monitorStore.selfCheckReports[0] ?? null"
+            @refresh="monitorStore.loadSelfCheckReports()"
+            @trigger="monitorStore.triggerSelfCheckAction()"
+          />
           <MonitorRunnerMetrics />
           <MonitorUsageDashboardLink :range="filters.range" />
         </q-tab-panel>

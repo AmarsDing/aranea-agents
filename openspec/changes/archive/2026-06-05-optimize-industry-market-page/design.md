@@ -41,21 +41,27 @@
 
 ## 3. Decisions
 
-### 3.1 拆分 IndustryMarketPage 为编排层 + 4 个新子组件
+### 3.1 拆分 IndustryMarketPage 为编排层 + 4 个新子组件 + 2 个共享模块
 
 ```
-IndustryMarketPage.vue                ← 编排层：hero + metrics + toolbar + content 切换
+IndustryMarketPage.vue                ← 编排层：hero + metrics + toolbar + content 切换 + signature
   ├─ IndustryMetricStrip.vue          ← 4 KPI glass 卡
   ├─ IndustryMarketToolbar.vue        ← 搜索 + 状态 chips + 来源 chips + 视图切换
   ├─ IndustryCard.vue                 ← 重写：monogram + 4 metric + hover lift
   ├─ IndustryTableRow.vue             ← 列表视图的单行（密集对比）
   └─ IndustryDrawer.vue               ← 侧滑详情：部门 + 岗位列表
+
+共享模块（features/industries/）：
+  ├─ industryMarketFilters.ts         ← 筛选/聚合纯函数（filterIndustries / summarizeIndustries / 类型定义）
+  └─ industryMonogram.ts             ← monogram 工具函数（monoBgForKey / monoLettersForKey），被 Card/Drawer/TableRow 共享
 ```
 
 理由：
 - 单文件超 200 行不易维护，编排层负责状态，子组件各司其职
 - IndustryDrawer 复用 IndustryDetailPage 的部门/岗位数据（无需重写数据获取）
 - 4 个 metric 子组件与 [TaxonomyIndustryCard.vue](../../../../web/src/components/agents/TaxonomyIndustryCard.vue) 字段对齐，方便后续抽取共享类型
+- `industryMarketFilters.ts` 将筛选和聚合逻辑从 composable 中抽出为纯函数，便于单测（已有 `industryMarketFilters.spec.ts`）
+- `industryMonogram.ts` 将 monogram 计算逻辑抽出，避免 3 个组件重复实现
 
 ### 3.2 不引入新 composable，沿用 `useIndustryMarket` + 轻扩展
 
@@ -67,9 +73,18 @@ IndustryMarketPage.vue                ← 编排层：hero + metrics + toolbar +
 - drawer：local `openKey` ref
 
 **`useIndustryMarket` 扩展**：
-1. `summary` computed（总部门/岗位/Agent/已部署数）
+1. `summary` computed（总部门/岗位/Agent/已部署数）— 委托到 `industryMarketFilters.ts` 的 `summarizeIndustries()` 纯函数
 2. `fetchIndustries` 内部对每个 industry 并行 `listDepartments + listPositions` 注入 `deptCount/posCount`（Agent 数 = pos 数 × 平均，每个 position 配 1 个 Agent MVP，后续支持 1:N）
-3. 行业类型扩展（仅前端）：`Industry` 加可选 `deptCount?: number; posCount?: number; agentCount?: number`，**不破坏后端**
+3. `fetchIndustryDetail(industryKey)` 拉取单个行业的部门+岗位详情供 Drawer 使用，返回 `IndustryDetail`（含 `departments: Department[]` + `positionsByDept: Record<string, Position[]>`）
+4. `clearIndustryDetail()` 清空详情数据
+5. `applyFilters(filters)` 应用筛选条件，委托到 `industryMarketFilters.ts` 的 `filterIndustries()` 纯函数
+6. 行业类型扩展（仅前端）：`Industry` 加可选 `deptCount?: number; posCount?: number; agentCount?: number; installed?: number`，**不破坏后端**
+
+**`industryMarketFilters.ts` 独立模块**：
+- 导出类型 `IndustryStatusFilter`（'all' | 'enabled' | 'disabled'）、`IndustrySourceFilter`（'all' | 'system' | 'custom'）、`IndustryFilters`、`IndustrySummary`
+- 导出纯函数 `filterIndustries(industries, filters)` 和 `summarizeIndustries(industries)`
+- `IndustrySummary` 含 `disabled` 字段（比原始设计多一个，用于状态 chip 计数）
+- source 筛选为未来扩展保留，当前 Industry 类型不含 source 字段，`source=custom` 返回空
 
 **不引入 `useIndustrySearch` 等独立 composable**——本页面 UI 状态内聚，无复用场景，过度抽象反而违反红线（[aranea-frontend-guide §1](../../../../.trae/skills/aranea-frontend-guide/SKILL.md)）。
 
@@ -82,15 +97,21 @@ IndustryMarketPage.vue                ← 编排层：hero + metrics + toolbar +
 
 ### 3.4 monogram 替代 emoji 杜绝 AI slop
 
-行业"icon" 改为 monogram：取行业 key 的大写首字母（SD / SM / FI），放进一个 40×40 圆角矩形 + 行业专属渐变背景：
-- 软件开发：`linear-gradient(135deg, #4F46E5 0%, #312E81 100%)` indigo
-- 自媒体：`linear-gradient(135deg, #E55C5C 0%, #9B2226 100%)` rose
-- 金融：`linear-gradient(135deg, #0EA5E9 0%, #075985 100%)` sky
+行业"icon" 改为 monogram：取行业 key 去除非字母字符后前 2 个字母大写（fallback 到 name 前 2 字母），放进一个 40×40 圆角矩形 + 行业专属渐变背景。色板包含 6 种渐变色，由 key 的 hash 值映射：
+- indigo：`linear-gradient(135deg, #4F46E5 0%, #312E81 100%)`
+- rose：`linear-gradient(135deg, #E55C5C 0%, #9B2226 100%)`
+- sky：`linear-gradient(135deg, #0EA5E9 0%, #075985 100%)`
+- emerald：`linear-gradient(135deg, #10B981 0%, #065F46 100%)`
+- amber：`linear-gradient(135deg, #F59E0B 0%, #92400E 100%)`
+- violet：`linear-gradient(135deg, #8B5CF6 0%, #4C1D95 100%)`
+
+monogram 逻辑封装在 `industryMonogram.ts` 中，提供 `monoBgForKey(key)` 和 `monoLettersForKey(key, fallback)` 两个纯函数，被 IndustryCard / IndustryDrawer / IndustryTableRow 共享引用。
 
 理由：
 - emoji 在多 OS 渲染差异大，且为典型 AI slop
 - 字母 monogram 配合渐变既保留视觉识别度又不失简约
-- 颜色由行业 key 派生，**新增行业时无需手动选色**（用 key 的 hash 选预设 3 色之一即可）
+- 颜色由行业 key 派生，**新增行业时无需手动选色**（用 key 的 hash 选预设 6 色之一即可）
+- 6 色色板可支撑 8-12 行业不撞色；未来行业更多时可扩展色板
 
 ### 3.5 侧滑 drawer 而非路由跳转
 
@@ -124,6 +145,34 @@ IndustryMarketPage.vue                ← 编排层：hero + metrics + toolbar +
 | `--space-1` ~ `--space-8` | 间距体系 |
 
 新增样式仅作为 `app-theme.sass` 的 partial（或独立 `_industry-market.sass`），不破坏现有结构。
+
+### 3.9 空状态处理
+
+当搜索/筛选结果为空时，展示空状态提示区域：dashed 边框 + glass 背景 + 标题 + 提示文字。理由：
+- 比空白页面更友好，明确告知用户"没有匹配"而非"加载失败"
+- 与 CTA 卡的 dashed 边框风格一致
+
+### 3.10 签名引用区（Signature Quote）
+
+页面底部展示签名引用区：水平装饰线（`--color-accent`）+ 斜体引用文字 + 署名文字。理由：
+- Direction A（信息建筑派）的"120% 细节"——每个数字可被追溯、每个选项可被对比
+- 为页面增加品牌辨识度，不增加功能复杂度
+
+### 3.11 API 层缓存机制
+
+`api.ts` 使用内部变量 `_allNodesCache` 缓存 `ListTaxonomy` 的全量结果，所有 `listIndustries` / `listDepartments` / `listPositions` 调用共享同一份缓存数据。`invalidateCache()` 用于刷新场景（如用户点击"刷新"按钮时在 `fetchIndustries` 内调用）。理由：
+- 后端 TaxonomyService 只有一个 `ListTaxonomy` 端点，行业/部门/岗位均从同一份全量数据中按 level + parent_id 过滤
+- 避免每次切换行业或打开 Drawer 时重复请求全量数据
+- `fetchIndustries` 内的并行 `listDepartments + listPositions` 实际命中缓存，无额外网络开销
+
+### 3.12 测试覆盖
+
+`industryMarketFilters.spec.ts` 覆盖 `filterIndustries` 和 `summarizeIndustries` 两个纯函数的单元测试，包括：
+- 搜索匹配（中英文、大小写不敏感、按 name/key/description）
+- 状态筛选（enabled/disabled）
+- 组合筛选
+- source=custom 返回空（未来扩展预留）
+- 聚合计算（counts 求和、agentCount 缺失时 posCount 兜底、全 undefined 时的默认值）
 
 ---
 

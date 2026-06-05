@@ -1,10 +1,10 @@
 package event
 
 import (
-	"context"
 	"sync"
 	"time"
 
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/safego"
 )
 
@@ -33,7 +33,7 @@ func NewBuffer() *Buffer {
 		lastAcc: make(map[string]time.Time),
 		stopCh:  make(chan struct{}),
 	}
-	safego.Go(context.Background(), "buffer-evict", b.evictLoop)
+	safego.Go(appctx.Ctx(), "buffer-evict", b.evictLoop)
 	return b
 }
 

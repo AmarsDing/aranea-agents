@@ -45,18 +45,30 @@ TaskOrchestrator 是 Spirit 编排三阶段架构的第三阶段，单一职责�
 - 取消依赖团队（级联取消）
 
 ### REQ-TO-08: 可观测性
-- StepID: spirit.orchestrator.strategy / graph_build / graph_agent / execute / checkpoint / synthesize / learn
+- StepID: spirit.orchestrator.strategy / graph_build / graph_agent / execute / checkpoint / synthesize / learn / recover
 - Graph 节点执行事件自动产生：graph.node.start/complete/error
+
+### REQ-TO-09: DAG Definition 写入 Team（review-fixes 新增）
+- orchestrateDAG() 中 assembler.AssembleTeam() 创建 Team 后，通过 SpiritTeamUsecase.UpdateTeamDefinitionJSON 将 DAG 编译的 DefinitionJSON 写入 Team
+- 写入失败时非致命降级（仅日志告警，Team 使用 assembler 生成的原始 Definition）
+- 修复 DEV-01：DAG 编译核心路径现在生效
+
+### REQ-TO-10: 在线学习闭环（实现补充）
+- 编排完成后 Synthesize() 自动调用 learnFromOrchestration()
+- 更新 OrchestrationCache：RecordCompletionWithAgents（DQ Score + 拓扑 + Agent 列表）
+- 更新 AgentPerformance：每个参与 Agent 的 TotalRuns/SuccessRuns/SuccessRate/AvgDQScore
+- DQ Score 计算：全成功 0.8+findings*0.05（上限 1.0），部分成功 0.5，全失败 0.2
 
 ## Port Interface
 
 ```go
 type TaskOrchestratorPort interface {
-    Orchestrate(ctx context.Context, taskPlan *TaskPlan, allocPlan *AllocationPlan) (OrchestrationHandle, error)
+    Orchestrate(ctx context.Context, taskPlan *TaskPlan, allocPlan *AllocationPlan) (*OrchestrationHandle, error)
     CheckProgress(ctx context.Context, orchestrationID OrchestrationID) ([]TaskProgress, error)
     Cancel(ctx context.Context, orchestrationID OrchestrationID) error
     Synthesize(ctx context.Context, orchestrationID OrchestrationID) (*SynthesisOutput, error)
     Recover(ctx context.Context, orchestrationID OrchestrationID) error
+    RecoverAllInterrupted(ctx context.Context) error  // DEV-09: 扩展方法，被 SessionStatusGuard 使用
 }
 ```
 

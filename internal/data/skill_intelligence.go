@@ -19,6 +19,7 @@ type SkillIntelligenceRepo struct {
 }
 
 var (
+	_ biz.SkillIntelligenceRepo  = (*SkillIntelligenceRepo)(nil)
 	_ biz.ExperienceReportReader  = (*SkillIntelligenceRepo)(nil)
 	_ biz.ExperienceReportWriter  = (*SkillIntelligenceRepo)(nil)
 	_ biz.SkillHealthAggregator   = (*SkillIntelligenceRepo)(nil)

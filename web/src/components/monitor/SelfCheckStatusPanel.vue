@@ -97,28 +97,25 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
-import { useMonitorStore } from '../../stores/monitor';
-import type { SelfCheckStatus } from '../../features/monitor/types';
+import type { SelfCheckReport, SelfCheckStatus } from '../../features/monitor/types';
 
-const store = useMonitorStore();
+const props = defineProps<{
+  loading: boolean;
+  triggering: boolean;
+  latestReport: SelfCheckReport | null;
+}>();
 
-const loading = computed(() => store.selfCheckLoading);
-const triggering = computed(() => store.selfCheckTriggering);
-const latestReport = computed(() => store.selfCheckReports[0] ?? null);
-
-onMounted(() => {
-  if (store.selfCheckReports.length === 0) {
-    store.loadSelfCheckReports();
-  }
-});
+const emit = defineEmits<{
+  refresh: [];
+  trigger: [];
+}>();
 
 function onRefresh() {
-  store.loadSelfCheckReports();
+  emit('refresh');
 }
 
 async function onTrigger() {
-  await store.triggerSelfCheckAction();
+  emit('trigger');
 }
 
 function statusColor(status: SelfCheckStatus): string {

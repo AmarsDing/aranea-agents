@@ -46,11 +46,15 @@ func (SkillInvocation) Fields() []ent.Field {
 		field.JSON("selection_reason", map[string]any{}).Optional(),
 		field.String("outcome").Default("").MaxLen(32),
 		field.JSON("token_usage", map[string]any{}).Optional(),
+		field.String("deleted_at").Default("").Optional(),
 	}
 }
 
 func (SkillInvocation) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("skill_id", "created_at").StorageKey("idx_skill_invocation_skill"),
+		index.Fields("session_id").StorageKey("idx_skill_invocation_session"),
+		index.Fields("agent_id").StorageKey("idx_skill_invocation_agent"),
+		index.Fields("deleted_at").StorageKey("idx_skill_invocation_deleted_at"),
 	}
 }

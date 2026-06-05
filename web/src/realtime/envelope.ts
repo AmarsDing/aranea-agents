@@ -57,6 +57,14 @@ export type EnvelopeType =
   | 'spirit_orchestration_started'
   | 'spirit_orchestration_checkpoint'
   | 'spirit_orchestration_interrupted'
+  | 'token_usage'
+  | 'butler.orchestration.started'
+  | 'butler.orchestration.completed'
+  | 'butler.orchestration.failed'
+  | 'skill.health_changed'
+  | 'skill.evolution_proposed'
+  | 'monitor.auto_healed'
+  | 'monitor.self_check_completed'
   | 'metrics_updated';
 
 export type EnvelopeContent = {
@@ -106,17 +114,6 @@ export type EnvelopeError = {
   pending_id?: string;
 };
 
-export type PromptTokenBreakdown = {
-  system_prompt?: number;
-  skills?: number;
-  memory?: number;
-  intent_pass?: number;
-  session_summary?: number;
-  tool_results?: number;
-  history?: number;
-  user_message?: number;
-};
-
 export type EnvelopeUsage = {
   prompt_tokens: number;
   completion_tokens: number;
@@ -125,8 +122,63 @@ export type EnvelopeUsage = {
   /** Max prompt tokens in the turn — context window fill (ReAct uses peak prompt). */
   context_prompt_tokens?: number;
   turn_total_tokens?: number;
-  /** Category-level prompt token breakdown (CC-E-02 Phase 2). When present, frontend uses this instead of estimation. */
-  prompt_breakdown?: PromptTokenBreakdown;
+};
+
+export type EnvelopeTokenUsage = {
+  id: string;
+  occurred_at: string;
+  date_key: string;
+  hour_key: string;
+  workspace_id: string;
+  user_id: string;
+  team_id: string;
+  agent_id: string;
+  agent_key: string;
+  session_id: string;
+  message_id: string;
+  request_id: string;
+  provider_code: string;
+  canonical_provider_code: string;
+  provider_type: string;
+  provider_display_name: string;
+  model_api_id: string;
+  model_display_name: string;
+  model_category_json: string;
+  usage_kind: string;
+  call_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  cached_input_tokens: number;
+  cache_write_tokens: number;
+  reasoning_tokens: number;
+  embedding_tokens: number;
+  total_tokens: number;
+  input_price_micro_usd_per_1k: number;
+  output_price_micro_usd_per_1k: number;
+  cached_input_price_micro_usd_per_1k: number;
+  cache_write_price_micro_usd_per_1k: number;
+  reasoning_price_micro_usd_per_1k: number;
+  embedding_price_micro_usd_per_1k: number;
+  input_cost_micro_usd: number;
+  output_cost_micro_usd: number;
+  cached_input_cost_micro_usd: number;
+  cache_write_cost_micro_usd: number;
+  reasoning_cost_micro_usd: number;
+  embedding_cost_micro_usd: number;
+  total_cost_micro_usd: number;
+  latency_ms: number;
+  time_to_first_token_ms: number;
+  tokens_per_second: number;
+  status: string;
+  error_code: string;
+  error_message: string;
+  retry_count: number;
+  prompt_mode: string;
+  max_output_tokens: number;
+  context_window_k: number;
+  stream_enabled: boolean;
+  metadata_json: string;
+  created_at: string;
 };
 
 export type EnvelopeActions = {
@@ -162,6 +214,7 @@ export type Envelope = {
   transfer?: EnvelopeTransfer;
   error?: EnvelopeError;
   usage?: EnvelopeUsage;
+  token_usage?: EnvelopeTokenUsage;
   extensions?: Record<string, string>;
   actions?: EnvelopeActions;
   trace?: EnvelopeTrace;

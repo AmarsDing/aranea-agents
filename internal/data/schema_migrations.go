@@ -37,9 +37,16 @@ func recordMigrationApplied(ctx context.Context, client *ent.Client, version int
 		SetAppliedAt(now).
 		Save(ctx)
 	if err != nil {
-		lg.Warn("seed step failed", loggateway.StepID("data.migration.record"), loggateway.Int("version", version), loggateway.Err(err))
+		// If the record already exists (duplicate), treat as idempotent success
+		if isColumnExistsErr(err) {
+			lg.Debug("migration record already exists, skipping",
+				loggateway.StepID("data.migration.record"),
+				loggateway.Int("version", version))
+			return nil
+		}
+		return fmt.Errorf("record migration %d (%s): %w", version, name, err)
 	}
-	return err
+	return nil
 }
 
 func IsSeedApplied(ctx context.Context, client *ent.Client, version int, lg loggateway.Logger) (bool, error) {

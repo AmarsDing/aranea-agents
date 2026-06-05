@@ -1048,6 +1048,46 @@ func sessionMemoryEnsureMonitorSchemaPatches(ctx context.Context, client execer)
 	if client == nil {
 		return nil
 	}
+	// audit_logs is a raw-SQL table (no Ent schema). Ensure it exists before patching columns.
+	if _, err := client.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS audit_logs (
+		id TEXT PRIMARY KEY,
+		action TEXT NOT NULL DEFAULT '',
+		resource TEXT NOT NULL DEFAULT '',
+		resource_id TEXT NOT NULL DEFAULT '',
+		request_id TEXT NOT NULL DEFAULT '',
+		detail TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		return fmt.Errorf("monitor patch create audit_logs: %w", err)
+	}
+	// monitor_events is a raw-SQL table (no Ent schema). Ensure it exists before ALTER TABLE patches.
+	if _, err := client.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS monitor_events (
+		id TEXT PRIMARY KEY,
+		event_key TEXT NOT NULL DEFAULT '',
+		name TEXT NOT NULL DEFAULT '',
+		description TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'ok',
+		metadata_json TEXT NOT NULL DEFAULT '{}',
+		created_at TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT '',
+		deleted_at TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		return fmt.Errorf("monitor patch create monitor_events: %w", err)
+	}
+	// monitor_traces is a raw-SQL table (no Ent schema). Ensure it exists before ALTER TABLE patches.
+	if _, err := client.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS monitor_traces (
+		id TEXT PRIMARY KEY,
+		trace_key TEXT NOT NULL DEFAULT '',
+		name TEXT NOT NULL DEFAULT '',
+		description TEXT NOT NULL DEFAULT '',
+		status TEXT NOT NULL DEFAULT 'ok',
+		metadata_json TEXT NOT NULL DEFAULT '{}',
+		created_at TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT '',
+		deleted_at TEXT NOT NULL DEFAULT ''
+	)`); err != nil {
+		return fmt.Errorf("monitor patch create monitor_traces: %w", err)
+	}
 	patches := []struct {
 		table string
 		col   string

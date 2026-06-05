@@ -53,7 +53,8 @@ func applyTeamRuntimeExecutionOptions(cfg biz.GraphBuildConfig, def Definition, 
 	}
 	applyEmbeddedNodePoliciesFromNodes(&cfg, opts.Nodes)
 	if def.FailurePolicy != nil && def.FailurePolicy.CircuitBreaker != nil {
-		cfg = biz.ApplyCircuitBreakerPolicy(cfg, def.FailurePolicy.CircuitBreaker)
+		bizPolicy := failurePolicyToBiz(def.FailurePolicy).CircuitBreaker
+		cfg = biz.ApplyCircuitBreakerPolicy(cfg, bizPolicy)
 	}
 	return cfg
 }

@@ -14,8 +14,8 @@ func (s *ChatService) CancelSessionRunForCard(ctx context.Context, sessionRunID,
 	}
 	sessionRunID = strings.TrimSpace(sessionRunID)
 	expectedSessionID = strings.TrimSpace(expectedSessionID)
-	if sessionRunID != "" && s.orch.chTurn.SessionRuns != nil {
-		run, err := s.orch.chTurn.SessionRuns.Get(ctx, sessionRunID)
+	if sessionRunID != "" && s.orch.chJobs.SessionRuns != nil {
+		run, err := s.orch.chJobs.SessionRuns.Get(ctx, sessionRunID)
 		if err != nil || run.ID == "" {
 			return false, channelBackgroundReplyNoActiveRun
 		}

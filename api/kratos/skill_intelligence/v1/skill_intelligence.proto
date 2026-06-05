@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package kratos.skill_intelligence.v1;
+
+import "google/api/annotations.proto";
+import "google/api/field_behavior.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+option go_package = "aranea-agents/api/kratos/skill_intelligence/v1;v1";
+option java_multiple_files = true;
+option java_package = "api.kratos.skill_intelligence.v1";
+
+message ExperienceReport {
+  string id = 1;
+  string tenant_id = 2;
+  string session_id = 3;
+  string invocation_id = 4;
+  string skill_id = 5;
+  bool is_success = 6;
+  int32 score = 7;
+  repeated string failure_tags = 8;
+  string flow_summary = 9;
+  string optimization_advice = 10;
+  google.protobuf.Struct selection_snapshot = 11;
+  string generated_suggestion_id = 12;
+  google.protobuf.Timestamp created_at = 13;
+}
+
+message ListExperienceReportsRequest {
+  string skill_id = 1;
+  google.protobuf.Timestamp start_time = 2;
+  google.protobuf.Timestamp end_time = 3;
+  int32 page = 4;
+  int32 page_size = 5;
+}
+
+message ListExperienceReportsResponse {
+  repeated ExperienceReport items = 1;
+  int64 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message GetExperienceReportRequest {
+  string id = 1 [(google.api.field_behavior) = REQUIRED];
+}
+
+message GetExperienceReportResponse {
+  ExperienceReport report = 1;
+}
+
+service SkillIntelligenceService {
+  rpc ListExperienceReports(ListExperienceReportsRequest) returns (ListExperienceReportsResponse) {
+    option (google.api.http) = {get: "/v1/skill-intelligence/experience-reports"};
+  }
+  rpc GetExperienceReport(GetExperienceReportRequest) returns (GetExperienceReportResponse) {
+    option (google.api.http) = {get: "/v1/skill-intelligence/experience-reports/{id}"};
+  }
+}

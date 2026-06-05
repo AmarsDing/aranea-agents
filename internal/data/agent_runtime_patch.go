@@ -17,6 +17,14 @@ func isColumnExistsErr(err error) bool {
 	return strings.Contains(msg, "duplicate column name") || strings.Contains(msg, "already exists")
 }
 
+func isNoSuchTableErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no such table")
+}
+
 func sqliteTableExists(ctx context.Context, c *ent.Client, lg loggateway.Logger, table string) (bool, error) {
 	table = strings.TrimSpace(table)
 	if table == "" {

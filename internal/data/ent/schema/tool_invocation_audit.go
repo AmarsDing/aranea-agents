@@ -40,5 +40,6 @@ func (ToolInvocationAudit) Indexes() []ent.Index {
 		index.Fields("tool_key", "created_at"),
 		index.Fields("agent_id", "created_at"),
 		index.Fields("user_id", "created_at"),
+		index.Fields("session_id").StorageKey("idx_tool_invocation_audit_session"),
 	}
 }

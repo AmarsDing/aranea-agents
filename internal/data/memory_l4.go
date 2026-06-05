@@ -196,7 +196,7 @@ func (r *l4GraphRepo) GetRecentReinforcementCounts(ctx context.Context, scopeTyp
 	}
 	cutoff := time.Now().UTC().AddDate(0, 0, -windowDays).Format(time.RFC3339Nano)
 	rows, err := r.data.RWDB().ReadDB(ctx).QueryContext(ctx,
-		`SELECT target_id, COUNT(*) FROM memory_action_logs WHERE target_kind = 'entity' AND action = 'REINFORCE' AND metadata_json LIKE ? AND created_at > ? GROUP BY target_id`,
+		`SELECT target_id, COUNT(*) FROM memory_action_log WHERE target_kind = 'entity' AND action = 'REINFORCE' AND metadata_json LIKE ? AND created_at > ? GROUP BY target_id`,
 		fmt.Sprintf("%%scope_type:%s%%scope_id:%s%%", scopeType, scopeID), cutoff)
 	if err != nil {
 		return nil, err
@@ -257,7 +257,7 @@ func (r *l4GraphRepo) writeActionLog(ctx context.Context, action, targetKind, ta
 	if meta == "" {
 		meta = "{}"
 	}
-	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_action_logs (
+	_, err := r.data.RWDB().WriteDB(ctx).ExecContext(ctx, `INSERT INTO memory_action_log (
 		id, action, target_kind, target_id, reason, policy_version, turn_id, source_event_ids_json, metadata_json, created_at
 	) VALUES (?,?,?,?,?,?,?,?,?,?)`,
 		id, action, targetKind, targetID, reason, policyVersion, "", "[]", meta, now)

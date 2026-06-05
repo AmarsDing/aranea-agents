@@ -7,16 +7,16 @@ import type { ToolUseEvent } from './types';
 import type { Message } from './types';
 
 const AVATAR_PALETTE = [
-  { name: 'indigo', hex: '#5c6bc0' },
-  { name: 'cyan', hex: '#26c6da' },
-  { name: 'purple', hex: '#ab47bc' },
-  { name: 'teal', hex: '#26a69a' },
-  { name: 'deep-purple', hex: '#7e57c2' },
-  { name: 'deep-orange', hex: '#ff7043' },
-  { name: 'blue', hex: '#42a5f5' },
-  { name: 'pink', hex: '#ec407a' },
-  { name: 'green', hex: '#66bb6a' },
-  { name: 'amber', hex: '#ffa726' },
+  { name: 'indigo', varIdx: 0 },
+  { name: 'cyan', varIdx: 1 },
+  { name: 'purple', varIdx: 2 },
+  { name: 'teal', varIdx: 3 },
+  { name: 'deep-purple', varIdx: 4 },
+  { name: 'deep-orange', varIdx: 5 },
+  { name: 'blue', varIdx: 6 },
+  { name: 'pink', varIdx: 7 },
+  { name: 'green', varIdx: 8 },
+  { name: 'amber', varIdx: 9 },
 ] as const;
 
 type TeamMemberMessageMeta = {
@@ -150,7 +150,14 @@ export function useChatMessageRow(messages: ComputedRef<Message[]>) {
   }
 
   function memberAccentHex(message: Message): string {
-    return AVATAR_PALETTE[paletteIndex(message)]?.hex || '#5c6bc0';
+    const idx = AVATAR_PALETTE[paletteIndex(message)]?.varIdx;
+    if (idx !== undefined) {
+      const v = getComputedStyle(document.documentElement)
+        .getPropertyValue(`--palette-avatar-${idx}`)
+        .trim();
+      if (v) return v;
+    }
+    return '#5c6bc0';
   }
 
   function bubbleAccentStyle(message: Message): Record<string, string> | undefined {

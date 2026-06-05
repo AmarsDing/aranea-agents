@@ -39,7 +39,7 @@ func TestSessionService_ListSessionMessages_afterRevision(t *testing.T) {
 			{ID: "a2", SessionID: "s1", Role: "assistant", TurnNumber: 2, TurnID: "t2"},
 		},
 	}
-	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil)
+	uc := biz.NewSessionUsecase(repo, nil, nil, nil, nil, nil, nil, nil)
 	svc := service.NewSessionService(uc, nil, nil, nil, nil)
 
 	after := int64(1)

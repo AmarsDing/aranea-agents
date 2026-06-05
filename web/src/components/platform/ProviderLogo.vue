@@ -7,13 +7,13 @@
 
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue';
-import { useModelCatalogStore } from '../../stores/model-catalog';
 
 const props = withDefaults(
   defineProps<{
     providerId: string;
     size?: string;
     fallbackIcon?: string;
+    fetchSvg?: (id: string) => Promise<string>;
   }>(),
   {
     size: '32px',
@@ -25,11 +25,11 @@ const svg = ref('');
 
 async function load() {
   const id = props.providerId.trim();
-  if (!id) {
+  if (!id || !props.fetchSvg) {
     svg.value = '';
     return;
   }
-  svg.value = await useModelCatalogStore().fetchProviderLogoSvg(id);
+  svg.value = await props.fetchSvg(id);
 }
 
 onMounted(() => {

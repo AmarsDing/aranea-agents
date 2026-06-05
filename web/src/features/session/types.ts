@@ -1,5 +1,3 @@
-import type { PromptTokenBreakdown } from '../../realtime/envelope';
-
 export type SessionStatus = 'idle' | 'running' | 'completed' | 'interrupted' | 'awaiting_confirmation';
 
 export type SessionStatusReason =
@@ -51,8 +49,6 @@ export type Session = {
   metadata_json?: string;
   context_used_tokens?: number;
   last_context_window_tokens?: number;
-  /** Frontend-only: category-level prompt token breakdown from WS context_usage (CC-E-02 Phase 2). */
-  promptBreakdown?: PromptTokenBreakdown;
 };
 
 export type SessionSearchQuery = {

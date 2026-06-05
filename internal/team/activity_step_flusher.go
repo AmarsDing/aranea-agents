@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -45,7 +46,7 @@ func NewActivityStepFlusher(repo biz.OrchestrationStepRepo, runID, graphExecutio
 		done:             make(chan struct{}),
 		lg:               lg,
 	}
-	safego.Go(context.Background(), "orchestration.activity.flusher", f.loop)
+	safego.Go(appctx.Ctx(), "orchestration.activity.flusher", f.loop)
 	return f
 }
 

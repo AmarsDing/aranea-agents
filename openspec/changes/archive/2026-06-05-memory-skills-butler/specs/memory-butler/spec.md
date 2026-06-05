@@ -6,18 +6,18 @@ The system SHALL register a system builtin agent with `AgentKey="__memory__"`, `
 #### Scenario: Memory butler seed data
 - **WHEN** the system seeds builtin agents
 - **THEN** `SeedMemoryAgent()` SHALL insert the `__memory__` agent with `DisplayName="记忆管家"` and `Description="基于学术原则的智能记忆管理者：选择性记忆、质量驱动遗忘、记忆蒸馏"`
-- **AND** `Ownership` field SHALL be `"system_builtin"` for agent list filtering
+- **AND** `Kind` field SHALL be `"system_builtin"` for agent classification
 
 #### Scenario: Memory butler prompt file seeding
 - **WHEN** the system seeds prompt files
 - **THEN** `SeedButlerPromptFiles()` SHALL load `prompts/memory/memory.md` into `agent_prompt_files` table for the `__memory__` agent
 
-### Requirement: Memory butler tool injection via Port+Adapter
-The memory butler tools SHALL be injected using a Port+Adapter pattern. The `Deps` struct in `internal/tools/memory_butler/registry.go` SHALL define port interfaces, and `internal/service/cli_admin_tools.go` SHALL construct the adapter.
+### Requirement: Memory butler tool injection
+The memory butler tools SHALL be injected when the agent's `AgentKey` is `"__memory__"`. The `Deps` struct in `internal/tools/memory_butler/registry.go` SHALL define the dependencies.
 
 #### Scenario: Memory butler Deps structure
 - **WHEN** `memory_butler.RegisterAll(deps)` is called
-- **THEN** `deps` SHALL contain `Analytics *biz.ExperienceAnalyticsUsecase`, `MemoryAdmin *biz.MemoryAdminUsecase`, `Embedder biz.SkillEmbedder`, `ProviderCatalog *biz.LlmProviderModelUsecase`, `RoundTrip *provider.RoundTrip`, `ProviderCode string`, `ModelAPIID string`, `EventBus event.Bus`
+- **THEN** `deps` SHALL contain `Analytics *biz.ExperienceAnalyticsUsecase`, `MemoryAdmin *biz.MemoryAdminUsecase`, `Embedder skill.SkillEmbedder`, `EventBus contract.Bus`, `Agents biz.AgentRuntimeSettingsRepo`
 
 #### Scenario: Tool injection in ChatOrchestrator
 - **WHEN** `ChatOrchestrator` processes a turn for an agent with `AgentKey="__memory__"`
@@ -25,85 +25,79 @@ The memory butler tools SHALL be injected using a Port+Adapter pattern. The `Dep
 - **AND** the tools SHALL be injected at the turn execution point in `chat_orchestrator_turn.go`
 
 ### Requirement: analyze_memory_quality tool
-The system SHALL provide `analyze_memory_quality` tool that invokes `ExperienceAnalyticsUsecase.AnalyzeMemoryQuality` and returns a `MemoryQualityReport`.
+The system SHALL provide `memory_butler_analyze_quality` tool that invokes `ExperienceAnalyticsUsecase.AnalyzeMemoryQuality` and returns a quality report.
 
 #### Scenario: Analyze memory quality for specific agent
-- **WHEN** the memory butler calls `analyze_memory_quality` with `agent_id="agent_x"`
-- **THEN** the tool SHALL call `ExperienceAnalyticsUsecase.AnalyzeMemoryQuality(ctx, "agent_x")`
-- **AND** return `hit_rate`, `miss_rate`, `redundancy_score`, `misaligned_count`, `inactive_count`, `predictable_count`, `health_score`
+- **WHEN** the memory butler calls `memory_butler_analyze_quality` with `agent_id="agent_x"`
+- **THEN** the tool SHALL call `ExperienceAnalyticsUsecase.AnalyzeMemoryQuality(ctx, "agent_x", since)`
+- **AND** return `hit_rate` (mapped from `RetrievalQuality`), `miss_rate` (computed as `1 - hit_rate`), `redundancy_score` (0 in P0), `misaligned_count` (mapped from `NegativeFeedback`), `inactive_count` (0 in P0), `predictable_count` (0 in P0), `health_score`
 
-#### Scenario: Analyze global memory quality
-- **WHEN** the memory butler calls `analyze_memory_quality` with `agent_id=""`
-- **THEN** the tool SHALL call `ExperienceAnalyticsUsecase.AnalyzeMemoryQuality(ctx, "")` for global aggregation
+#### Scenario: P0 simplified metrics
+- **WHEN** the tool returns results in P0 stage
+- **THEN** `redundancy_score`, `inactive_count`, and `predictable_count` SHALL be 0
+- **AND** these fields SHALL be populated in P1 when the underlying data becomes available
 
 ### Requirement: selective_remember tool
-The system SHALL provide `selective_remember` tool that implements prediction-error-based selective memory writing. P0 stage SHALL use semantic novelty rules (embedding similarity) instead of LLM prediction to save tokens.
+The system SHALL provide `memory_butler_selective_remember` tool that implements selective memory writing. P0 stage SHALL use substring matching instead of LLM prediction or embedding similarity to save tokens.
 
-#### Scenario: P0 semantic novelty check - redundant content
-- **WHEN** `selective_remember` is called with `content` and `agent_id`
-- **THEN** the tool SHALL compute the embedding of `content`
-- **AND** search for the most similar existing memory via `MemoryRepo.FindSimilar(ctx, agentID, emb, 5)`
-- **AND** if the top result has `cosine_similarity > 0.85`, return `remembered=false` with `reason="redundant with existing memory"`
+#### Scenario: P0 substring-based redundancy check - redundant content
+- **WHEN** `memory_butler_selective_remember` is called with `content` and `agent_id`
+- **THEN** the tool SHALL list existing facts via `MemoryAdminUsecase.ListFactRows`
+- **AND** if the new content exactly matches or is a substring of an existing fact (or vice versa, for strings >20 chars), return `remembered=false` with `reason="redundant with existing memory"`
 
-#### Scenario: P0 semantic novelty check - novel content
-- **WHEN** the most similar existing memory has `cosine_similarity <= 0.85`
-- **THEN** the tool SHALL write the memory via `MemoryAdminUsecase.UpsertFactRow`
+#### Scenario: P0 substring-based redundancy check - novel content
+- **WHEN** the content is not found to be redundant
+- **THEN** the tool SHALL write the memory via `MemoryAdminUsecase.UpsertFactRow` with `FactKind="semantic"` and `SourceKind="selective_remember"`
 - **AND** return `remembered=true` with `reason="novel content worth remembering"`
 
-#### Scenario: Embedding failure fallback
-- **WHEN** embedding computation fails
-- **THEN** the tool SHALL default to `remembered=true` (fail-open) and log the error
-
-#### Scenario: P1 prediction error distillation (future)
+#### Scenario: P1 embedding-based check (future)
 - **WHEN** P1 stage is enabled
-- **THEN** `selective_remember` SHALL first run the P0 semantic novelty check
-- **AND** if P0 passes, call LLM to predict content given context, compute `prediction_error = 1 - cosine_similarity(prediction_embedding, actual_embedding)`
-- **AND** only remember if `prediction_error > PredictionErrorThreshold`
+- **THEN** `selective_remember` SHALL use embedding cosine similarity (threshold 0.85) instead of substring matching
+- **AND** further use LLM prediction error distillation for higher quality filtering
 
 ### Requirement: forget_low_quality tool
-The system SHALL provide `forget_low_quality` tool that detects and deletes misaligned experiences (high input similarity but low output similarity / high negative feedback rate). P0 stage SHALL use retrieval + negative feedback rate as a proxy for misaligned detection.
+The system SHALL provide `memory_butler_forget_low_quality` tool that detects and deletes misaligned experiences. P0 stage SHALL use hit_count + negative_feedback_count from fact rows as a proxy for misaligned detection.
 
 #### Scenario: Misaligned detection via negative feedback rate
-- **WHEN** `forget_low_quality` is called with `agent_id`
-- **THEN** the tool SHALL list all facts for the agent via `MemoryAdminUsecase.ListFactRows(ctx, "agent", agentID, "", "", "", 1000, 0)`
-- **AND** for each fact, compute `retrieval_count` from `memory_search` tool invocation records
-- **AND** compute `negative_feedback_count` from feedback records after retrieval
-- **AND** identify facts where `retrieval_count >= 3` AND `negative_feedback_count / retrieval_count > 0.5` as misaligned
+- **WHEN** `memory_butler_forget_low_quality` is called with `agent_id`
+- **THEN** the tool SHALL list all facts for the agent via `MemoryAdminUsecase.ListFactRows(ctx, "agent", agentID, "", "", "", 500, 0)`
+- **AND** for each fact, read `hit_count` and `negative_feedback_count` from the JSON row
+- **AND** identify facts where `hit_count >= 3` AND `negative_feedback_count > 0` AND `negative_feedback_count / hit_count > 0.5` as misaligned
 
 #### Scenario: Dry run mode
-- **WHEN** `forget_low_quality` is called with `dry_run=true`
-- **THEN** the tool SHALL return `deleted_count=0` and `deleted_ids` listing the IDs of misaligned facts WITHOUT actually deleting them
+- **WHEN** `memory_butler_forget_low_quality` is called with `dry_run=true`
+- **THEN** the tool SHALL return `deleted_count` (number of candidates) and `deleted_ids` listing the IDs of misaligned facts WITHOUT actually deleting them
 
 #### Scenario: Execute deletion
-- **WHEN** `forget_low_quality` is called with `dry_run=false`
+- **WHEN** `memory_butler_forget_low_quality` is called with `dry_run=false`
 - **THEN** the tool SHALL delete misaligned facts via `MemoryAdminUsecase.DeleteFactRowsByIDs(ctx, factIDs)`
 - **AND** return `deleted_count` and `deleted_ids`
 
 ### Requirement: forget_inactive tool
-The system SHALL provide `forget_inactive` tool that attenuates or forgets memories not retrieved within a configurable threshold period.
+The system SHALL provide `memory_butler_forget_inactive` tool that forgets memories not updated within a configurable threshold period.
 
 #### Scenario: Inactive memory detection
-- **WHEN** `forget_inactive` is called with `agent_id` and `inactive_threshold_days`
-- **THEN** the tool SHALL identify all facts for the agent not retrieved (via `memory_search`/`memory_load` records) within `inactive_threshold_days`
-- **AND** return the list of inactive fact IDs
+- **WHEN** `memory_butler_forget_inactive` is called with `agent_id` and `inactive_threshold_days`
+- **THEN** the tool SHALL identify all facts for the agent with `updated_at` before the cutoff date
+- **AND** default `inactive_threshold_days` to 30 if not provided or <= 0
 
 #### Scenario: Dry run mode for inactive memories
-- **WHEN** `forget_inactive` is called with `dry_run=true`
-- **THEN** the tool SHALL return `forgotten_count=0` and `forgotten_ids` listing inactive fact IDs WITHOUT deleting
+- **WHEN** `memory_butler_forget_inactive` is called with `dry_run=true`
+- **THEN** the tool SHALL return `forgotten_count` (number of candidates) and `forgotten_ids` listing inactive fact IDs WITHOUT deleting
 
 #### Scenario: Execute inactive memory deletion
-- **WHEN** `forget_inactive` is called with `dry_run=false`
+- **WHEN** `memory_butler_forget_inactive` is called with `dry_run=false`
 - **THEN** the tool SHALL delete inactive facts via `MemoryAdminUsecase.DeleteFactRowsByIDs`
 - **AND** return `forgotten_count` and `forgotten_ids`
 
 ### Requirement: deduplicate_memories tool
-The system SHALL provide `deduplicate_memories` tool that merges semantically highly similar memories. P0 stage SHALL use trigram similarity instead of embedding cosine similarity.
+The system SHALL provide `memory_butler_deduplicate_memories` tool that merges highly similar memories. P0 stage SHALL use trigram similarity instead of embedding cosine similarity.
 
 #### Scenario: P0 trigram-based deduplication
-- **WHEN** `deduplicate_memories` is called with `agent_id` and `sim_threshold`
+- **WHEN** `memory_butler_deduplicate_memories` is called with `agent_id` and `sim_threshold`
 - **THEN** the tool SHALL compute trigram similarity between all fact pairs for the agent
-- **AND** identify pairs with similarity above `sim_threshold`
-- **AND** merge duplicate facts by keeping the more recent one and deleting the older one via `MemoryAdminUsecase.DeleteFactRowsByIDs`
+- **AND** identify pairs with similarity above `sim_threshold` (default 0.8)
+- **AND** keep the newer fact and delete the older one via `MemoryAdminUsecase.DeleteFactRowsByIDs`
 - **AND** return `merged_count`
 
 #### Scenario: P1 embedding-based deduplication (future)
@@ -111,38 +105,38 @@ The system SHALL provide `deduplicate_memories` tool that merges semantically hi
 - **THEN** `deduplicate_memories` SHALL use embedding cosine similarity > `dedup_sim_threshold` (default 0.95) instead of trigram similarity
 
 ### Requirement: consolidate_episodes tool
-The system SHALL provide `consolidate_episodes` tool that distills fragmented episodic memories into structured semantic knowledge. P0 stage SHALL use deduplication + concatenation instead of LLM distillation.
+The system SHALL provide `memory_butler_consolidate_episodes` tool that distills fragmented episodic memories into structured semantic knowledge. P0 stage SHALL use deduplication + concatenation instead of LLM distillation.
 
 #### Scenario: P0 simple consolidation
-- **WHEN** `consolidate_episodes` is called with `agent_id`
-- **THEN** the tool SHALL list all `episode`-type facts for the agent via `MemoryAdminUsecase.ListFactRows`
-- **AND** deduplicate and concatenate episode facts
-- **AND** write the result as a new `semantic`-type fact via `MemoryAdminUsecase.UpsertFactRow`
+- **WHEN** `memory_butler_consolidate_episodes` is called with `agent_id`
+- **THEN** the tool SHALL list all `episode`-type facts for the agent via `MemoryAdminUsecase.ListFactRows(ctx, "agent", agentID, "episode", "", "", 500, 0)`
+- **AND** deduplicate episode statements (case-insensitive)
+- **AND** concatenate unique statements with `"[Distilled from episodes] "` prefix
+- **AND** write the result as a new `semantic`-type fact via `MemoryAdminUsecase.UpsertFactRow` with `SourceKind="consolidate_episodes"`
 - **AND** return `distilled_count`
 
 #### Scenario: P1 LLM distillation (future)
 - **WHEN** P1 stage is enabled
 - **THEN** `consolidate_episodes` SHALL call LLM with the distillation prompt template to extract structured knowledge from episodes
-- **AND** write each distilled fact as a separate `semantic`-type fact
 
 ### Requirement: dream_cycle composite operation
-The system SHALL provide `dream_cycle` tool as a composite operation that orchestrates multiple memory maintenance tools in sequence. The actual implementation SHALL execute 8 steps.
+The system SHALL provide `memory_butler_dream_cycle` tool as a composite operation that orchestrates multiple memory maintenance tools in sequence. The actual implementation SHALL execute 8 steps.
 
 #### Scenario: dream_cycle 8-step execution flow
-- **WHEN** `dream_cycle` is called with `agent_id` and `dry_run`
+- **WHEN** `memory_butler_dream_cycle` is called with `agent_id` and `dry_run`
 - **THEN** it SHALL execute the following steps in order:
   1. `analyze_memory_quality` - obtain current memory health report (record `quality_before`)
-  2. Save pre-operation snapshot to `dream_snapshot_json` (for rollback)
+  2. Save pre-operation snapshot to `DreamSnapshot` (for rollback)
   3. `forget_low_quality` - delete misaligned memories
   4. `forget_inactive` - attenuate/forget long-unretrieved memories
   5. `deduplicate_memories` - merge semantically duplicate memories
   6. `consolidate_episodes` - distill episodic memories to semantic knowledge
-  7. `analyze_memory_quality` again (record `quality_after`)
-  8. Generate `dream_report` with `quality_before`, `quality_after`, `actions_taken`, `deleted_count`, `merged_count`, `distilled_count`
+  7. Save dream snapshot to `agent_runtime_settings.dream_snapshot_json` via `Agents.UpsertAgentRuntimeSettings`
+  8. `analyze_memory_quality` again (record `quality_after`)
 
 #### Scenario: dream_cycle dry run mode
-- **WHEN** `dream_cycle` is called with `dry_run=true`
-- **THEN** steps 3-6 SHALL be executed in dry_run mode (no actual deletion/merge)
+- **WHEN** `memory_butler_dream_cycle` is called with `dry_run=true`
+- **THEN** only step 1 SHALL execute (quality measurement)
 - **AND** the report SHALL show what WOULD be done without making changes
 
 #### Scenario: dream_cycle returns quality delta
@@ -159,11 +153,7 @@ The system SHALL store `ForgetConfig` as JSON in `agent_runtime_settings.forget_
 
 #### Scenario: ForgetConfig fields
 - **WHEN** `ForgetConfig` is deserialized from `forget_policy_json`
-- **THEN** it SHALL contain: `Policy string` ("fifo"|"lru"|"priority_decay"|"reflection_summary"|"random_drop"|"hybrid"), `MaxMemoryCount int`, `MaxMemoryAgeDays int`, `InactiveThresholdDays int`, `MisalignedInputSimThreshold float64`, `MisalignedOutputSimThreshold float64`, `PredictionErrorThreshold float64`, `DedupSimThreshold float64`
-
-#### Scenario: Default policy is hybrid
-- **WHEN** `ForgetConfig.Policy` is not explicitly set
-- **THEN** it SHALL default to `"hybrid"` (combining priority_decay + lru + reflection_summary)
+- **THEN** it SHALL contain: `Policy string` ("hybrid" for P0), `MaxMemoryCount int`, `MaxMemoryAgeDays int`, `InactiveThresholdDays int`, `MisalignedInputSimThreshold float64`, `MisalignedOutputSimThreshold float64`, `PredictionErrorThreshold float64`, `DedupSimThreshold float64`
 
 ### Requirement: L3FactWriter sub-interface for memory deletion
 The system SHALL define `L3FactWriter` as a sub-interface of the memory admin store, providing `DeleteFactRow(ctx context.Context, factID string) error` and `DeleteFactRowsByIDs(ctx context.Context, factIDs []string) (int, error)`.
@@ -179,84 +169,53 @@ The system SHALL define `L3FactWriter` as a sub-interface of the memory admin st
 - **THEN** the data layer implementation SHALL delete the `memory_facts` table row via Ent ORM
 - **AND** call `MemoryFactIndexSyncer` to clean up the vector index entry
 
-#### Scenario: Deletion checks observation references
-- **WHEN** a fact is about to be deleted
-- **THEN** the system SHALL check if any observations reference this fact
-- **AND** if references exist, the deletion SHALL be blocked with an error indicating dependent observations
-
 ### Requirement: dream_cycle cron task
-The system SHALL register a cron task for `dream_cycle` that triggers the memory butler agent daily at 3:00 AM via `CronChatRunner`.
+The system SHALL register a cron task for `dream_cycle` that triggers the memory butler agent daily at 3:00 AM.
 
 #### Scenario: Cron task seed data
 - **WHEN** the system seeds cron tasks via `SeedCronTasks()`
-- **THEN** a `CronTask` with `TaskKey="cron_dream_cycle"`, `Schedule="0 3 * * *"`, `AgentID` pointing to the `__memory__` agent SHALL be created
-- **AND** `ConfigJSON` SHALL be `{"schedule":"0 3 * * *","message":"请执行 dream_cycle，整理记忆系统","type":"agent"}`
-
-#### Scenario: Cron execution via CronChatRunner
-- **WHEN** the cron runner dispatches the `dream_cycle` task
-- **THEN** it SHALL create an Agent Session for the `__memory__` agent
-- **AND** call `Chat.RunCronTurn(sessionID, "请执行 dream_cycle，整理记忆系统", "")`
-- **AND** the memory butler agent SHALL respond by invoking the `dream_cycle` tool
+- **THEN** a cron task with `TaskKey="dream_cycle"`, `Schedule="0 3 * * *"`, `AgentID` pointing to the `__memory__` agent SHALL be created
+- **AND** `ConfigJSON` SHALL be `{"schedule":"0 3 * * *","dry_run":true}`
 
 ### Requirement: Dream snapshot for rollback
-The system SHALL save a pre-operation snapshot before dream_cycle executes any destructive operations. The snapshot SHALL be stored in `agent_runtime_settings.dream_snapshot_json` and retained for 7 days.
+The system SHALL save a pre-operation snapshot before dream_cycle executes any destructive operations. The snapshot SHALL be stored in `agent_runtime_settings.dream_snapshot_json`.
 
 #### Scenario: Snapshot saved before deletion
 - **WHEN** dream_cycle step 2 executes
-- **THEN** all facts targeted for deletion/merge SHALL be serialized into a `DreamSnapshot` struct containing `ExecutedAt string`, `DeletedFacts []FactSnapshot`, `MergedFacts []FactSnapshot`
+- **THEN** all facts SHALL be serialized into a `DreamSnapshot` struct containing `ExecutedAt string`, `DeletedFacts []FactSnapshot`, `MergedFacts []FactSnapshot`
 - **AND** each `FactSnapshot` SHALL contain `ID`, `Statement`, `ScopeType`, `ScopeID`, `Kind`
 
-#### Scenario: Rollback within 7-day window
-- **WHEN** a user requests "撤销上次整理" within 7 days of a dream_cycle execution
-- **THEN** the memory butler SHALL restore deleted facts from the snapshot via `MemoryAdminUsecase.UpsertFactRow`
-
-#### Scenario: Snapshot expired after 7 days
-- **WHEN** a dream_snapshot is older than 7 days
-- **THEN** the snapshot SHALL be considered expired and no rollback SHALL be possible
-
-### Requirement: HealthScore auto-trigger dream_cycle
-The system SHALL automatically trigger dream_cycle when `MemoryQualityReport.HealthScore` drops below 0.6.
-
-#### Scenario: Suboptimal health triggers suggestion
-- **WHEN** `HealthScore` is between 0.6 and 0.8
-- **THEN** the memory butler SHALL suggest "建议整理记忆" to the user without auto-triggering
-
-#### Scenario: Unhealthy health triggers dry_run dream_cycle
-- **WHEN** `HealthScore` is between 0.4 and 0.6
-- **THEN** the memory butler SHALL auto-trigger `dream_cycle` with `dry_run=true`
-
-#### Scenario: Critical health triggers full dream_cycle with alert
-- **WHEN** `HealthScore` is below 0.4
-- **THEN** the memory butler SHALL auto-trigger `dream_cycle` with `dry_run=false`
-- **AND** publish an alert via `EventBus` with `EnvelopeTypeAlertNotify` and `alert_type="memory_critical"`
+#### Scenario: Snapshot saved to agent runtime settings
+- **WHEN** dream_cycle step 7 executes
+- **THEN** the snapshot JSON SHALL be saved via `Agents.GetAgentRuntimeSettings` + `Agents.UpsertAgentRuntimeSettings` with `DreamSnapshotJSON` field
 
 ### Requirement: Memory butler tool input/output structs
-The system SHALL define typed input/output structs for each memory butler tool using `function.NewFunctionTool[I, O]` pattern.
+The system SHALL define typed input/output structs for each memory butler tool using `function.NewFunctionTool[I, O]` pattern. All tool names SHALL use the `memory_butler_` prefix.
 
 #### Scenario: AnalyzeMemoryQuality IO
-- **WHEN** `analyze_memory_quality` tool is invoked
-- **THEN** input SHALL be `AnalyzeMemoryQualityInput{AgentID string}` and output SHALL be `AnalyzeMemoryQualityOutput{HitRate, MissRate, RedundancyScore, MisalignedCount, InactiveCount, PredictableCount, HealthScore float64/int}`
+- **WHEN** `memory_butler_analyze_quality` tool is invoked
+- **THEN** input SHALL be `analyzeMemoryQualityInput{AgentID string}` and output SHALL be `analyzeMemoryQualityOutput{HitRate, MissRate, RedundancyScore, MisalignedCount, InactiveCount, PredictableCount, HealthScore float64/int}`
 
 #### Scenario: SelectiveRemember IO
-- **WHEN** `selective_remember` tool is invoked
-- **THEN** input SHALL be `SelectiveRememberInput{Content string, Context string, AgentID string}` and output SHALL be `SelectiveRememberOutput{Remembered bool, Reason string}`
+- **WHEN** `memory_butler_selective_remember` tool is invoked
+- **THEN** input SHALL be `selectiveRememberInput{Content string, Context string, AgentID string}` and output SHALL be `selectiveRememberOutput{Remembered bool, Reason string}`
 
 #### Scenario: ForgetLowQuality IO
-- **WHEN** `forget_low_quality` tool is invoked
-- **THEN** input SHALL be `ForgetLowQualityInput{AgentID string, DryRun bool}` and output SHALL be `ForgetLowQualityOutput{DeletedCount int, DeletedIDs []string}`
+- **WHEN** `memory_butler_forget_low_quality` tool is invoked
+- **THEN** input SHALL be `forgetLowQualityInput{AgentID string, DryRun bool}` and output SHALL be `forgetLowQualityOutput{DeletedCount int, DeletedIDs []string}`
 
 #### Scenario: ForgetInactive IO
-- **WHEN** `forget_inactive` tool is invoked
-- **THEN** input SHALL be `ForgetInactiveInput{AgentID string, InactiveThresholdDays int, DryRun bool}` and output SHALL be `ForgetInactiveOutput{ForgottenCount int, ForgottenIDs []string}`
+- **WHEN** `memory_butler_forget_inactive` tool is invoked
+- **THEN** input SHALL be `forgetInactiveInput{AgentID string, InactiveThresholdDays int, DryRun bool}` and output SHALL be `forgetInactiveOutput{ForgottenCount int, ForgottenIDs []string}`
 
 #### Scenario: DeduplicateMemories IO
-- **WHEN** `deduplicate_memories` tool is invoked
-- **THEN** input SHALL be `DeduplicateMemoriesInput{AgentID string, SimThreshold float64}` and output SHALL be `DeduplicateMemoriesOutput{MergedCount int}`
+- **WHEN** `memory_butler_deduplicate_memories` tool is invoked
+- **THEN** input SHALL be `deduplicateMemoriesInput{AgentID string, SimThreshold float64}` and output SHALL be `deduplicateMemoriesOutput{MergedCount int}`
 
 #### Scenario: ConsolidateEpisodes IO
-- **WHEN** `consolidate_episodes` tool is invoked
-- **THEN** input SHALL be `ConsolidateEpisodesInput{AgentID string}` and output SHALL be `ConsolidateEpisodesOutput{DistilledCount int}`
+- **WHEN** `memory_butler_consolidate_episodes` tool is invoked
+- **THEN** input SHALL be `consolidateEpisodesInput{AgentID string}` and output SHALL be `consolidateEpisodesOutput{DistilledCount int}`
 
 #### Scenario: DreamCycle IO
-- **WHEN** `dream_cycle` tool is invoked
-- **THEN** input SHALL be `DreamCycleInput{AgentID string, DryRun bool}` and output SHALL be `DreamCycleOutput{QualityBefore float64, QualityAfter float64, ActionsTaken []string, DeletedCount int, MergedCount int, DistilledCount int}`
+- **WHEN** `memory_butler_dream_cycle` tool is invoked
+- **THEN** input SHALL be `dreamCycleInput{AgentID string, DryRun bool}` and output SHALL be `dreamCycleOutput{QualityBefore float64, QualityAfter float64, ActionsTaken []string, DeletedCount int, MergedCount int, DistilledCount int}`

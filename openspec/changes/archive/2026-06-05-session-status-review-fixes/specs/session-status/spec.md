@@ -2,12 +2,12 @@
 
 ### Requirement: Session Status State Machine
 
-The `SessionStatusMachine` SHALL enforce legal status transitions. Any transition not in the legal transition table SHALL be rejected with `kerrors.FailedPrecondition` (NOT `kerrors.BadRequest`).
+The `SessionStatusMachine` SHALL enforce legal status transitions. Any transition not in the legal transition table SHALL be rejected with `kerrors.Conflict` (NOT `kerrors.BadRequest`).
 
 #### Scenario: Illegal transition returns FailedPrecondition
 
 WHEN a session in `idle` status attempts to transition to `completed`
-THEN the method SHALL return `kerrors.FailedPrecondition` (HTTP 409 / gRPC FAILED_PRECONDITION)
+THEN the method SHALL return `kerrors.Conflict` (HTTP 409 / gRPC ABORTED)
 
 #### Scenario: Legal transition succeeds
 
@@ -18,17 +18,17 @@ THEN the transition SHALL succeed without error
 
 ### Requirement: Delete and Archive Protection
 
-Sessions with protected statuses (`running`, `awaiting_confirmation`) SHALL NOT be deleted or archived. The backend SHALL return `kerrors.FailedPrecondition` (NOT `kerrors.BadRequest`) with message indicating the session is in a protected status.
+Sessions with protected statuses (`running`, `awaiting_confirmation`) SHALL NOT be deleted or archived. The backend SHALL return `kerrors.Conflict` (NOT `kerrors.BadRequest`) with message indicating the session is in a protected status.
 
 #### Scenario: Delete protected running session returns FailedPrecondition
 
 WHEN a delete request is made for a session with `status = 'running'`
-THEN the system SHALL return `FailedPrecondition` and the session SHALL NOT be deleted
+THEN the system SHALL return `Conflict` and the session SHALL NOT be deleted
 
 #### Scenario: Archive protected session returns FailedPrecondition
 
 WHEN an archive request is made for a session with `status = 'running'`
-THEN the system SHALL return `FailedPrecondition` and the session SHALL NOT be archived
+THEN the system SHALL return `Conflict` and the session SHALL NOT be archived
 
 ---
 
@@ -45,6 +45,9 @@ Updated trigger points:
 | Runner error | `interrupted` | `error` |
 | Empty reply | `interrupted` | `error` |
 | Stream error | `interrupted` | `error` |
+| Spirit Team error | `interrupted` | `error` |
+
+> Note: Spirit Team error trigger is implemented in `internal/service/spirit_team.go:101`.
 
 #### Scenario: First-byte timeout uses timeout reason
 
@@ -81,7 +84,7 @@ THEN the sessions SHALL have `deleted_at` set to the current timestamp and `stat
 #### Scenario: Concurrent status conflict returns error
 
 WHEN `TransitionSessionStatus` is called and the WHERE condition `status = currentStatus` matches zero rows
-THEN the method SHALL return `kerrors.FailedPrecondition` indicating the status has been concurrently modified
+THEN the method SHALL return `kerrors.Conflict` indicating the status has been concurrently modified
 
 #### Scenario: Normal transition succeeds
 

@@ -12,7 +12,7 @@ import (
 )
 
 func TestTurnPreviewCoordinator_eventBusWithHeartbeat(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(nil)
 	updater := &mockPreviewUpdater{}
 	lt := biz.ParseChannelLongTaskConfig(`{"config":{"im_render_mode":"transcript","progress_quiet_sec":3600}}`)
 	coord := newTurnPreviewCoordinator(turnPreviewParams{

@@ -21,7 +21,7 @@ type PackService struct {
 
 // NewPackService creates a new PackService.
 // adapter must satisfy pack.ExporterRepo, pack.ImporterRepo, and pack.ValidatorRepo.
-func NewPackService(adapter packExporterImporterValidator) *PackService {
+func NewPackService(adapter PackExporterImporterValidator) *PackService {
 	return &PackService{
 		exporter:      pack.NewExporter(adapter),
 		importer:      pack.NewImporter(adapter),
@@ -29,8 +29,8 @@ func NewPackService(adapter packExporterImporterValidator) *PackService {
 	}
 }
 
-// packExporterImporterValidator is the composite interface required by PackService.
-type packExporterImporterValidator interface {
+// PackExporterImporterValidator is the composite interface required by PackService.
+type PackExporterImporterValidator interface {
 	pack.ExporterRepo
 	pack.ImporterRepo
 	pack.ValidatorRepo

@@ -3,8 +3,9 @@ package event
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
+
+	"aranea-agents/pkg/loggateway"
 )
 
 // FlowTracker holds FlowContext + optional SpanCollector + optional UsageAggregator.
@@ -16,10 +17,11 @@ type FlowTracker struct {
 	fc     *FlowContext
 	sc     *SpanCollector
 	ua     *UsageAggregator
+	lg     loggateway.Logger
 }
 
 // NewFlowTracker creates a FlowTracker with injected Infra (replaces bus parameter).
-func NewFlowTracker(infra *Infra, buffer *Buffer, tc TraceContext) *FlowTracker {
+func NewFlowTracker(infra *Infra, buffer *Buffer, tc TraceContext, lg loggateway.Logger) *FlowTracker {
 	fc := NewFlowContext()
 	uc := NewUsageContext()
 	ft := &FlowTracker{
@@ -173,9 +175,12 @@ func (ft *FlowTracker) emit(stepID string, phase FlowPhase, explicitSev FlowSeve
 	}
 	entry := newFlowLogEntry(ft.tc, stepID, phase, explicitSev, titleOverride, message, "", timing, flowErr, ex)
 
-	if os.Getenv("FLOW_LOG_STDERR") == "1" {
-		fmt.Fprintf(os.Stderr, "[flow] %s\n", entry.displayText())
-		_ = os.Stderr.Sync()
+	if ft.lg != nil {
+		ft.lg.Info(entry.displayText(),
+			loggateway.StepID(stepID),
+			loggateway.Str("phase", string(phase)),
+			loggateway.SessionID(ft.tc.SessionID),
+		)
 	}
 
 	if ft.infra == nil {

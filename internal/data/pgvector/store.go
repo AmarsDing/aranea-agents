@@ -27,6 +27,9 @@ type Row struct {
 }
 
 // Store uses a fixed-dimension table agent_memory_<dim>.
+//
+// Deprecated: Use internal/data/vector/pgvector.go instead. This package is
+// retained for backward compatibility and will not receive new features.
 type Store struct {
 	db    *sql.DB
 	dim   int

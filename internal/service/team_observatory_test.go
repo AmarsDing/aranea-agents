@@ -97,7 +97,7 @@ func TestGetTeamRunObservatory(t *testing.T) {
 		{AgentID: "a1", AgentKey: "k1", AgentName: "A", SortOrder: 1, Status: biz.TeamMemberStepStatusOK, OutputPreview: "done"},
 		},
 	}
-	svc := &TeamService{uc: biz.NewTeamUsecase(repo, nil)}
+	svc := &TeamService{uc: biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil)}
 	resp, err := svc.GetTeamRunObservatory(context.Background(), &v1.GetTeamRunObservatoryRequest{RunId: "run-1"})
 	if err != nil {
 		t.Fatal(err)

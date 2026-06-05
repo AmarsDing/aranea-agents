@@ -19,7 +19,7 @@ export function useContextBreakdown(deps: {
       snap.contextWindow ?? 0,
       deps.toolCallCount.value,
       deps.messageCount.value,
-      snap.promptBreakdown,
+      undefined,
     );
   });
 }

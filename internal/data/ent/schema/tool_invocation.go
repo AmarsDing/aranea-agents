@@ -47,6 +47,7 @@ func (ToolInvocation) Fields() []ent.Field {
 		field.Int("chunk_count").Default(0),
 		field.Text("metadata_json").Default("{}"),
 		field.String("created_at"),
+		field.String("deleted_at").Default("").Optional(),
 	}
 }
 
@@ -56,5 +57,6 @@ func (ToolInvocation) Indexes() []ent.Index {
 		index.Fields("agent_id", "started_at").StorageKey("idx_tool_invocations_agent_time"),
 		index.Fields("session_id").StorageKey("idx_tool_invocations_session"),
 		index.Fields("status").StorageKey("idx_tool_invocations_status"),
+		index.Fields("deleted_at").StorageKey("idx_tool_invocations_deleted_at"),
 	}
 }

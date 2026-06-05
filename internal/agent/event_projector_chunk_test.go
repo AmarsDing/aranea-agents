@@ -11,7 +11,7 @@ import (
 )
 
 func TestProjectChatCompletionChunkToolAndTextSameChunk(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(nil)
 	p := NewEventProjector(bus, nil)
 	meta := ProjectMeta{SessionID: "sess-1"}
 

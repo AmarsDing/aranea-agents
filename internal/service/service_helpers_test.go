@@ -6,6 +6,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	artifactbiz "aranea-agents/internal/biz/artifact"
+	"aranea-agents/internal/provider"
 	"aranea-agents/internal/service"
 
 	kerrors "github.com/go-kratos/kratos/v2/errors"
@@ -218,8 +219,8 @@ func TestHasFileAttachment(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := service.HasFileAttachment(tt.refs); got != tt.want {
-				t.Errorf("hasFileAttachment() = %v, want %v", got, tt.want)
+			if got := provider.HasFileAttachment(tt.refs); got != tt.want {
+				t.Errorf("HasFileAttachment() = %v, want %v", got, tt.want)
 			}
 		})
 	}

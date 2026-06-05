@@ -24,7 +24,7 @@ export function useTaxonomyTreeField(opts: UseTaxonomyTreeFieldOptions) {
   const menuKeyword = ref('');
   const expanded = ref<string[]>([]);
 
-  const industryTree = computed(() => opts.tree.value.filter((node) => node.level === 'industry'));
+  const industryTree = computed(() => (opts.tree.value ?? []).filter((node) => node.level === 'industry'));
 
   const filteredTree = computed(() => filterTaxonomyTree(industryTree.value, menuKeyword.value));
 
@@ -37,7 +37,7 @@ export function useTaxonomyTreeField(opts: UseTaxonomyTreeFieldOptions) {
 
   const displayLabel = computed(() => {
     if (!opts.modelValue.value) return '';
-    const path = findTaxonomyPath(opts.tree.value, opts.modelValue.value);
+    const path = findTaxonomyPath(opts.tree.value ?? [], opts.modelValue.value);
     return path.length ? formatTaxonomyPath(path) : '';
   });
 

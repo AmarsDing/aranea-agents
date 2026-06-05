@@ -4,7 +4,7 @@
 
 **Goal:** 把 [IndustryMarketPage.vue](file:///f:/aranea-agents/web/src/pages/industries/IndustryMarketPage.vue) 从 50 行极简页升级为可比较、可筛选、带 drawer 的「行业模板注册表」，沿用项目 glass/cream/amber 设计 token，0 新增依赖。
 
-**Architecture:** 编排层 + 4 子组件。`IndustryMarketPage` 变薄，新增 `IndustryMetricStrip` / `IndustryMarketToolbar` / `IndustryTableRow` / `IndustryDrawer` 4 个展示组件，重写 `IndustryCard`、扩展 `useIndustryMarket`。
+**Architecture:** 编排层 + 4 子组件 + 2 共享模块。`IndustryMarketPage` 变薄，新增 `IndustryMetricStrip` / `IndustryMarketToolbar` / `IndustryTableRow` / `IndustryDrawer` 4 个展示组件，重写 `IndustryCard`、扩展 `useIndustryMarket`。新增 `industryMarketFilters.ts`（筛选/聚合纯函数）和 `industryMonogram.ts`（monogram 工具函数）2 个共享模块。
 
 **Tech Stack:** Vue 3 + Quasar + Pinia + TypeScript + vuedraggable（已装） + 现有 SCSS tokens
 
@@ -17,6 +17,9 @@
 
 **Files:**
 - Modify: `web/src/features/industries/useIndustryMarket.ts`
+- Create: `web/src/features/industries/industryMarketFilters.ts`
+- Create: `web/src/features/industries/industryMonogram.ts`
+- Modify: `web/src/features/industries/types.ts`
 
 - [x] **1.1** 在 `useIndustryMarket` 返回值中新增 `summary` computed
 
@@ -214,6 +217,7 @@ git commit -m "feat(industries): redesign market page with metrics/toolbar/drawe
 
 以下文件是实现中创建的，不在原始 tasks.md 的文件列表中：
 
-1. **`web/src/features/industries/industryMarketFilters.ts`** — 筛选/聚合纯函数模块，包含 `IndustryStatusFilter`、`IndustrySourceFilter`、`IndustryFilters` 类型，以及 `filterIndustries()`、`summarizeIndustries()` 函数
+1. **`web/src/features/industries/industryMarketFilters.ts`** — 筛选/聚合纯函数模块，包含 `IndustryStatusFilter`、`IndustrySourceFilter`、`IndustryFilters`、`IndustrySummary` 类型，以及 `filterIndustries()`、`summarizeIndustries()` 函数
 2. **`web/src/features/industries/industryMonogram.ts`** — monogram 工具函数，提供 `monoBgForKey()` 和 `monoLettersForKey()`，被 IndustryCard/IndustryDrawer/IndustryTableRow 共享
 3. **`web/src/features/industries/types.ts`** 扩展 — `Industry` 类型新增可选字段 `deptCount?`、`posCount?`、`agentCount?`、`installed?`（后端不返回故为可选，客户端并行拉取后填充）
+4. **`web/src/features/industries/__tests__/industryMarketFilters.spec.ts`** — `filterIndustries` 和 `summarizeIndustries` 纯函数的单元测试，覆盖搜索匹配（中英文/大小写/按字段）、状态筛选、组合筛选、source 预留、聚合计算（含 agentCount 缺失兜底）

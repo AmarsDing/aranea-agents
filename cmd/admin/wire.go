@@ -26,6 +26,7 @@ import (
 	bizskill "aranea-agents/internal/biz/skill"
 	biztool "aranea-agents/internal/biz/tool"
 	bizusage "aranea-agents/internal/biz/usage"
+	bizsession "aranea-agents/internal/biz/session"
 	"aranea-agents/internal/chatactivity"
 	"aranea-agents/internal/conf"
 	"aranea-agents/internal/cronrunner"
@@ -430,10 +431,55 @@ func provideFilesystemHealthReader(skillUC *biz.SkillUsecase) biz.FilesystemHeal
 	return monitorSkillHealthAdapter{skills: skillUC}
 }
 
-func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase, lg loggateway.Logger) *biz.UsageUsecase {
+func provideUsageUsecase(repo biz.UsageRepo, mon *biz.MonitorUsecase, teamUC *biz.TeamUsecase, sessions *biz.SessionUsecase, bus contract.Bus, lg loggateway.Logger) *biz.UsageUsecase {
 	uc := biz.NewUsageUsecase(repo, lg)
 	uc.SetAlertNotifier(service.NewMonitorBudgetAlertNotifier(mon))
+	uc.SetTeamReader(teamUC)
+	uc.SetSessionMetricsAccumulator(&sessionMetricsAdapter{sessions: sessions})
+	uc.SetCompletionUsageLinker(&completionLinkerAdapter{mon: mon})
+	uc.SetUsageEnvelopePublisher(&envelopePublisherAdapter{bus: bus})
 	return uc
+}
+
+// sessionMetricsAdapter adapts SessionUsecase to the usage.SessionMetricsWriter interface.
+type sessionMetricsAdapter struct {
+	sessions *biz.SessionUsecase
+}
+
+func (a *sessionMetricsAdapter) AccumulateMetricsDelta(delta bizusage.SessionMetricsDelta) {
+	if a.sessions == nil {
+		return
+	}
+	a.sessions.AccumulateMetricsDelta(bizsession.SessionMetricsDelta{
+		SessionID:        delta.SessionID,
+		MessageCount:     delta.MessageCount,
+		ModelCallCount:   delta.ModelCallCount,
+		ToolCallCount:    delta.ToolCallCount,
+		SkillCallCount:   delta.SkillCallCount,
+		McpCallCount:     delta.McpCallCount,
+		InputTokens:      delta.InputTokens,
+		OutputTokens:     delta.OutputTokens,
+		TotalTokens:      delta.TotalTokens,
+		TotalCostMicroUsd: delta.TotalCostMicroUsd,
+	})
+}
+
+// completionLinkerAdapter adapts MonitorUsecase to the usage.CompletionUsageLinker interface.
+type completionLinkerAdapter struct {
+	mon *biz.MonitorUsecase
+}
+
+func (a *completionLinkerAdapter) LinkRunnerCompletionUsage(ctx context.Context, sessionID, runID, usageEventID, traceID string) error {
+	return biz.LinkRunnerCompletionUsage(ctx, a.mon, sessionID, runID, usageEventID, traceID)
+}
+
+// envelopePublisherAdapter adapts contract.Bus to the usage.UsageEnvelopePublisher interface.
+type envelopePublisherAdapter struct {
+	bus contract.Bus
+}
+
+func (a *envelopePublisherAdapter) PublishTokenUsageEnvelope(ctx context.Context, e bizusage.TokenUsageEvent) {
+	biz.PublishTokenUsageEnvelope(ctx, a.bus, e)
 }
 
 func provideSystemSettingUsecase(repo biz.SystemSettingRepo, quota biz.UsageQuotaRepo, tester biz.WebResearchTester) *biz.SystemSettingUsecase {
@@ -560,16 +606,22 @@ func provideRunnerConfig(
 	return cfg
 }
 
-func provideChannelTurnDeps(
+func provideChannelTurnJobDeps(
 	turnJobs *biz.ChannelTurnJobUsecase,
 	sessionRuns *biz.SessionRunUsecase,
 	channels *biz.ChannelUsecase,
+) service.ChannelTurnJobDeps {
+	return service.ChannelTurnJobDeps{
+		TurnJobs:    turnJobs,
+		SessionRuns: sessionRuns,
+		Channels:    channels,
+	}
+}
+
+func provideChannelNotifierDeps(
 	runEscalation service.SessionRunEscalationNotifier,
-) service.ChannelTurnDeps {
-	return service.ChannelTurnDeps{
-		TurnJobs:      turnJobs,
-		SessionRuns:   sessionRuns,
-		Channels:      channels,
+) service.ChannelNotifierDeps {
+	return service.ChannelNotifierDeps{
 		RunEscalation: runEscalation,
 	}
 }
@@ -593,7 +645,8 @@ func provideChatServiceDeps(
 	eventBuffer *event.Buffer,
 	rtDeps service.RuntimeTooling,
 	teamDeps service.TeamOrchestrationDeps,
-	chTurn service.ChannelTurnDeps,
+	chJobs service.ChannelTurnJobDeps,
+	chNotify service.ChannelNotifierDeps,
 	a2aUC *biz.A2AUsecase,
 	artifacts *biz.ArtifactUsecase,
 	mcpUC *biz.MCPServerUsecase,
@@ -635,7 +688,8 @@ func provideChatServiceDeps(
 		PendingQueue:    pendingQueue,
 		RT:              rtDeps,
 		Team:            teamDeps,
-		ChTurn:          chTurn,
+		ChJobs:          chJobs,
+		ChNotify:        chNotify,
 		Usage:           usage,
 		Monitor:         mon,
 		Artifacts:       artifacts,
@@ -832,6 +886,13 @@ func provideSkillEvolutionScanner(skillEvo *biz.SkillEvolutionUsecase, lg loggat
 	return jobs.NewSkillEvolutionScanner(0, skillEvo, lg)
 }
 
+func provideSkillIntelligenceWorker(uc *biz.SkillIntelligenceUsecase, lg loggateway.Logger) *jobs.SkillIntelligenceWorker {
+	if strings.TrimSpace(os.Getenv("SKILL_INTELLIGENCE_DISABLED")) == "1" {
+		return nil
+	}
+	return jobs.NewSkillIntelligenceWorker(0, uc, lg)
+}
+
 func provideSkillRegistrationPort(skillUC *biz.SkillUsecase) biz.SkillRegistrationPort {
 	return service.NewSkillsButlerRegistrationAdapter(skillUC)
 }
@@ -977,6 +1038,10 @@ func provideFlowLogCleanup(flowLogs *biz.FlowLogUsecase, lg loggateway.Logger) *
 
 func provideMonitorAlertCooldownCleanup(uc *biz.MonitorUsecase, logger log.Logger) *jobs.MonitorAlertCooldownCleanup {
 	return jobs.NewMonitorAlertCooldownCleanup(0, 0, uc, logger)
+}
+
+func provideAutoHealTTLCleanup(repo monitor.HealRecordRepo, lg loggateway.Logger, logger log.Logger) *jobs.AutoHealTTLCleanup {
+	return jobs.NewAutoHealTTLCleanup(0, 0, repo, lg, logger)
 }
 
 func provideMonitorAlertEvalWorker(uc *biz.MonitorUsecase) *monitor.AlertEvalWorker {
@@ -1146,6 +1211,7 @@ type wireOut struct {
 	EvolutionScanner            *jobs.EvolutionScanner
 	LearningLoopScanner         *jobs.LearningLoopScanner
 	SkillEvolutionScanner       *jobs.SkillEvolutionScanner
+	SkillIntelligenceWorker     *jobs.SkillIntelligenceWorker
 	ProviderHealthScanner       *jobs.ProviderHealthScanner
 	ChannelHealthScanner        *jobs.ChannelHealthScanner
 	ChannelDeliveryScanner      *jobs.ChannelDeliveryWorker
@@ -1156,6 +1222,7 @@ type wireOut struct {
 	ToolAuditCleanup            *jobs.ToolAuditCleanup
 	FlowLogCleanup              *jobs.FlowLogCleanup
 	MonitorAlertCooldownCleanup *jobs.MonitorAlertCooldownCleanup
+	AutoHealTTLCleanup         *jobs.AutoHealTTLCleanup
 	MonitorAlertEvalWorker      *monitor.AlertEvalWorker
 	MonitorTraceBackfillWorker  *jobs.MonitorTraceBackfillWorker
 	MemoryL2Decay               *jobs.MemoryL2DecayWorker
@@ -1195,6 +1262,7 @@ func provideWireOut(
 	toolAuditCleanup *jobs.ToolAuditCleanup,
 	flowLogCleanup *jobs.FlowLogCleanup,
 	monitorAlertCooldown *jobs.MonitorAlertCooldownCleanup,
+	autoHealTTLCleanup *jobs.AutoHealTTLCleanup,
 	monitorAlertEvalWorker *monitor.AlertEvalWorker,
 	monitorTraceBackfillWorker *jobs.MonitorTraceBackfillWorker,
 	memoryL2Decay *jobs.MemoryL2DecayWorker,
@@ -1213,6 +1281,7 @@ func provideWireOut(
 	cronRepo biz.CronRepo,
 	skillIntelligence *biz.SkillIntelligenceUsecase,
 	skillEvolutionScanner *jobs.SkillEvolutionScanner,
+	skillIntelligenceWorker *jobs.SkillIntelligenceWorker,
 ) wireOut {
 	return wireOut{
 		App: app, Data: dataData, CronRunner: runner, SkillWatch: skillWatch, AutoMemory: autoMem,
@@ -1222,7 +1291,7 @@ func provideWireOut(
 		ChannelRuntime:          channelRuntime,
 		PluginRuntime:           pluginRuntime,
 		EventStoreCleanup:       eventStoreCleanup, ToolAuditCleanup: toolAuditCleanup,
-		FlowLogCleanup: flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL2Consolidate: memoryL2Consolidate, MemoryL1Archive: memoryL1Archive, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
+		FlowLogCleanup: flowLogCleanup, MonitorAlertCooldownCleanup: monitorAlertCooldown, AutoHealTTLCleanup: autoHealTTLCleanup, MonitorAlertEvalWorker: monitorAlertEvalWorker, MonitorTraceBackfillWorker: monitorTraceBackfillWorker, MemoryL2Decay: memoryL2Decay, MemoryL2Consolidate: memoryL2Consolidate, MemoryL1Archive: memoryL1Archive, MemoryL3Decay: memoryL3Decay, MemoryL4Decay: memoryL4Decay,
 		MemoryEpisodeBackfill:     memoryEpisodeBackfill,
 		MemoryDataMigration:       memoryDataMigration,
 		MemoryFactIndexReconciler: memoryFactIndexReconciler,
@@ -1234,6 +1303,7 @@ func provideWireOut(
 		CronRepo:                  cronRepo,
 		SkillIntelligence:         skillIntelligence,
 		SkillEvolutionScanner:     skillEvolutionScanner,
+		SkillIntelligenceWorker:   skillIntelligenceWorker,
 	}
 }
 
@@ -1346,6 +1416,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		event.ProviderSet,
 		araneasession.ProviderSet,
 		service.ProviderSet,
+		data.NewPackRepoAdapter,
+		wire.Bind(new(service.PackExporterImporterValidator), new(*data.PackRepoAdapter)),
 		provideEventBusSideConsumers,
 		provideCronRunnerDeps,
 		provideCronRunner,
@@ -1382,7 +1454,8 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideRuntimeTooling,
 		provideTeamOrchestrationDeps,
 		provideRunnerConfig,
-		provideChannelTurnDeps,
+		provideChannelTurnJobDeps,
+		provideChannelNotifierDeps,
 		provideRunCanceller,
 		provideChatSender,
 		provideArtifactRuntimeService,
@@ -1408,6 +1481,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideSkillAutoCreator,
 		provideSkillRegistrationPort,
 		provideSkillEvolutionScanner,
+		provideSkillIntelligenceWorker,
 		provideLearningLoopScanner,
 		provideProviderHealthScanner,
 		provideChannelHealthScanner,
@@ -1431,6 +1505,7 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		provideToolAuditCleanup,
 		provideFlowLogCleanup,
 		provideMonitorAlertCooldownCleanup,
+		provideAutoHealTTLCleanup,
 		provideMonitorAlertEvalWorker,
 		provideTraceProjector,
 		provideFlowFileAppender,
@@ -1496,6 +1571,11 @@ func wireApp(*conf.Server, *conf.Data, *conf.DebugRecorder, log.Logger, loggatew
 		wire.Bind(new(biz.MCPServerReader), new(biz.MCPServerRepo)),
 		wire.Bind(new(biz.TeamReader), new(biz.TeamRepository)),
 		wire.Bind(new(biz.TeamRunRepo), new(biz.TeamRepository)),
+		wire.Bind(new(biz.TeamWriter), new(biz.TeamRepository)),
+		wire.Bind(new(biz.TeamRunReader), new(biz.TeamRepository)),
+		wire.Bind(new(biz.TeamRunWriter), new(biz.TeamRepository)),
+		wire.Bind(new(biz.OrchestrationStepRepo), new(biz.TeamRepository)),
+		wire.Bind(new(biz.TaskDeadLetterRepo), new(biz.TeamRepository)),
 		wire.Bind(new(biz.PatternReader), new(biz.PatternReadWriter)),
 		wire.Bind(new(biz.AgentReader), new(biz.AgentRepository)),
 		// Team-layer narrow interface bindings

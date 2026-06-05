@@ -36,12 +36,13 @@ type TurnPipeline struct {
 	Executor  TurnExecutor
 	Projector TurnProjector
 	Now       func() time.Time
+	Lg        loggateway.Logger
 }
 
 // Run executes the canonical pipeline without knowing whether the request came from Web, WS, or Channel.
 func (p TurnPipeline) Run(ctx context.Context, intent biz.TurnIntent) (biz.Turn, biz.NativeTurnResult, error) {
 	intent = intent.Canonicalize()
-	lg := loggateway.Global()
+	lg := p.Lg
 	start := time.Now()
 
 	turn, err := p.Service.AdmitTurn(ctx, intent)

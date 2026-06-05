@@ -21,6 +21,11 @@ type (
 	UsageAlertNotifier   = usage.AlertNotifier
 	QuotaDashboard       = usage.QuotaDashboard
 	UsageModelInsight    = usage.ModelInsight
+	TeamQuotaReader      = usage.TeamQuotaReader
+	SessionMetricsAccumulator = usage.SessionMetricsAccumulator
+	CompletionUsageLinker = usage.CompletionUsageLinker
+	UsageEnvelopePublisher = usage.UsageEnvelopePublisher
+	TurnUsageInput       = usage.TurnUsageInput
 )
 
 const (

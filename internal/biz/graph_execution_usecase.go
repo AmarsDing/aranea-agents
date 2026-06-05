@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -45,7 +46,7 @@ func NewGraphExecutionUsecase(
 		executions:   make(map[string]*GraphExecution),
 		lg:           lg,
 	}
-	safego.Go(context.Background(), "graph-gc-loop", func() { uc.gcLoop() })
+	safego.Go(appctx.Ctx(), "graph-gc-loop", func() { uc.gcLoop() })
 	return uc
 }
 
@@ -184,7 +185,7 @@ func (uc *GraphExecutionUsecase) ExecuteGraph(ctx context.Context, graphID, sess
 		return nil, kerrors.FromError(ErrGraphSaveRun).WithCause(err)
 	}
 
-	safego.Go(context.Background(), "graph.consumeEvents", func() {
+	safego.Go(appctx.Ctx(), "graph.consumeEvents", func() {
 		uc.consumeRuntimeEvents(eventCh, exec, execID, graphID, sessionID, func() { uc.notifyExecComplete(exec) })
 	})
 
@@ -225,7 +226,7 @@ func (uc *GraphExecutionUsecase) ExecuteGraphBuildConfig(ctx context.Context, gr
 		return nil, kerrors.FromError(ErrGraphSaveRun).WithCause(err)
 	}
 
-	safego.Go(context.Background(), "graph.consumeEvents", func() {
+	safego.Go(appctx.Ctx(), "graph.consumeEvents", func() {
 		uc.consumeRuntimeEvents(eventCh, exec, execID, graphID, sessionID, func() { uc.notifyExecComplete(exec) })
 	})
 
@@ -316,7 +317,7 @@ func (uc *GraphExecutionUsecase) ResumeExecution(ctx context.Context, executionI
 	exec.InterruptNode = ""
 	exec.interruptMu.Unlock()
 
-	safego.Go(context.Background(), "graph.consumeEvents(resume)", func() {
+	safego.Go(appctx.Ctx(), "graph.consumeEvents(resume)", func() {
 		uc.consumeRuntimeEvents(eventCh, exec, executionID, exec.GraphID, exec.SessionID, func() { uc.notifyExecComplete(exec) })
 	})
 

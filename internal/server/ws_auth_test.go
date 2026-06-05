@@ -17,8 +17,8 @@ func TestHandleWS_AuthBypassWithoutToken(t *testing.T) {
 	t.Setenv("DEPLOY_ENV", "dev")
 
 	srv := NewWSServerFromInfra(&conf.Server{Ws: &conf.Server_WS{Enable: true}}, &event.Infra{
-		SessionBus: event.NewBus(),
-		MonitorBus: event.NewBus(),
+		SessionBus: event.NewBus(nil),
+		MonitorBus: event.NewBus(nil),
 		Buffer:     event.NewBuffer(),
 	}, nil, nil, nil, loggateway.NewNoop())
 	if srv == nil {
@@ -48,8 +48,8 @@ func TestHandleWS_RequiresTokenWhenAuthOn(t *testing.T) {
 	t.Setenv("KRATOS_AUTH_SECRET", "test-secret-at-least-32-characters-long")
 
 	srv := NewWSServerFromInfra(&conf.Server{Ws: &conf.Server_WS{Enable: true}}, &event.Infra{
-		SessionBus: event.NewBus(),
-		MonitorBus: event.NewBus(),
+		SessionBus: event.NewBus(nil),
+		MonitorBus: event.NewBus(nil),
 		Buffer:     event.NewBuffer(),
 	}, nil, nil, nil, loggateway.NewNoop())
 	req := httptest.NewRequest(http.MethodGet, "/v1/ws?session_id=s1", nil)

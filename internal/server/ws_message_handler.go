@@ -8,6 +8,7 @@ import (
 
 	chatv1 "aranea-agents/api/kratos/chat/v1"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -125,7 +126,7 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 			loggateway.Any("team_id", input.TeamID),
 			loggateway.Any("content_len", len(content)))
 		connCtx := wc.contextOrBackground()
-		safego.Go(context.Background(), "ws-user-message", func() {
+		safego.Go(appctx.Ctx(), "ws-user-message", func() {
 			ctx, cancel := context.WithTimeout(connCtx, defaultWSTurnTimeout)
 			defer cancel()
 			if err := s.turnExecutor.ExecuteTurn(ctx, input); err != nil {
@@ -165,7 +166,7 @@ func (s *WSServer) handleUserMessage(wc *wsConn, up wsUpstream) {
 	// COR-03: derive turn context from the connection context so disconnecting
 	// the WebSocket also cancels in-flight agent turns for this connection.
 	connCtx := wc.contextOrBackground()
-	safego.Go(context.Background(), "ws-user-message", func() {
+	safego.Go(appctx.Ctx(), "ws-user-message", func() {
 		ctx, cancel := context.WithTimeout(connCtx, defaultWSTurnTimeout)
 		defer cancel()
 		_, err := s.sender.SendChatMessage(ctx, req)
@@ -204,7 +205,7 @@ func (s *WSServer) handleEnqueueMessage(wc *wsConn, up wsUpstream) {
 	}
 
 	connCtxEq := wc.contextOrBackground()
-	safego.Go(context.Background(), "ws-enqueue-message", func() {
+	safego.Go(appctx.Ctx(), "ws-enqueue-message", func() {
 		ctx, cancel := context.WithTimeout(connCtxEq, defaultWSTurnTimeout)
 		defer cancel()
 		resp, err := s.sender.EnqueueUserMessage(ctx, req)

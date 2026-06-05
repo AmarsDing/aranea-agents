@@ -32,6 +32,7 @@ import (
 	pluginv1 "aranea-agents/api/kratos/plugin/v1"
 	sessionv1 "aranea-agents/api/kratos/session/v1"
 	skillv1 "aranea-agents/api/kratos/skill/v1"
+	skillintlv1 "aranea-agents/api/kratos/skill_intelligence/v1"
 	skillevov1 "aranea-agents/api/kratos/skill_evolution/v1"
 	systemsettingv1 "aranea-agents/api/kratos/system_setting/v1"
 	teamv1 "aranea-agents/api/kratos/team/v1"
@@ -126,6 +127,7 @@ func registerProtoServices(srv *kratoshttp.Server, s *ServiceRegistry) {
 	taxonomyv1.RegisterTaxonomyServiceHTTPServer(srv, s.Taxonomy)
 	industrytaxonomyv1.RegisterIndustryTaxonomyServiceHTTPServer(srv, s.IndustryTaxonomy)
 	skillevov1.RegisterSkillEvolutionServiceHTTPServer(srv, s.SkillEvo)
+	skillintlv1.RegisterSkillIntelligenceServiceHTTPServer(srv, s.SkillIntel)
 	packv1.RegisterPackServiceHTTPServer(srv, s.Pack)
 }
 

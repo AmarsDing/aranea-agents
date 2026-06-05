@@ -10,7 +10,7 @@ import (
 )
 
 func TestStartOrchestrationStatusProjector_PublishesStatus(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(nil)
 	reg := biz.NewOrchestrationRegistry([]biz.OrchestrationNodeRegistryEntry{
 		{NodeID: "member-1", AgentID: "a1", AgentKey: "worker-a", AgentName: "A", Role: "worker"},
 	})

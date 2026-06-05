@@ -433,6 +433,9 @@ type CompressRepo interface {
 // Consumers should depend on the specific sub-interface they need.
 // TECH-DEBT: SessionRepo aggregates 17+ methods; should be split into sub-interfaces.
 // New code should depend on narrow interfaces like SessionRuntimeWriter, SessionMetricsReader, etc.
+//
+// Deprecated: Use fine-grained sub-interfaces (SessionReader, SessionWriter, MessageReader, etc.)
+// instead of this aggregate. This interface is retained only for Wire binding convenience.
 type SessionRepo interface {
 	SessionReader
 	SessionTreeReader
@@ -464,13 +467,13 @@ type TeamLookup interface {
 }
 
 // SessionStatusPublisher emits session status change events to realtime observers (WS).
-// Implemented in service layer; set via SetStatusPublisher after construction.
+// Implemented in service layer; injected via constructor.
 type SessionStatusPublisher interface {
 	PublishSessionStatusChanged(sessionID string, status string, statusReason string, statusChangedAt string)
 }
 
 // MetricsUpdatedPublisher emits metrics_updated events to realtime observers (WS).
-// Implemented in service layer; set via SetMetricsUpdatedPublisher after construction.
+// Implemented in service layer; injected via constructor.
 type MetricsUpdatedPublisher interface {
 	PublishMetricsUpdated(sessionID string)
 }
@@ -501,53 +504,54 @@ type SessionUsecase struct {
 	participants            SessionParticipantRepository
 	lg                      loggateway.Logger
 	statusPublisher         SessionStatusPublisher
+
+	// Sub-usecases (Facade pattern — old callers delegate through these).
+	metricsUsecase     *SessionMetricsUsecase
+	compressionUsecase *SessionCompressionUsecase
+
+	// Legacy fields kept for backward-compatible Set* methods; delegate to sub-usecases.
 	metricsUpdatedPublisher MetricsUpdatedPublisher
 	metricsDeltaMu          sync.Mutex
 	metricsDeltas           map[string]*SessionMetricsDelta
 	flushInterval           time.Duration
 }
 
-func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository) *SessionUsecase {
+func NewSessionUsecase(sessions SessionRepo, agents AgentLookup, teams TeamLookup, titleGenerator SessionTitleGenerator, participants SessionParticipantRepository, statusPublisher SessionStatusPublisher, metricsUpdatedPublisher MetricsUpdatedPublisher, runtimeWriter SessionRuntimeWriter) *SessionUsecase {
 	if titleGenerator == nil {
 		titleGenerator = NewNoopSessionTitleGenerator()
 	}
-	return &SessionUsecase{
-		sessionReader:       sessions,
-		sessionTreeReader:   sessions,
-		sessionWriter:       sessions,
-		sessionMutator:      sessions,
-		sessionBatchMutator: sessions,
-		messageReader:       sessions,
-		messageSearchReader: sessions,
-		messageWriter:       sessions,
-		messageStatusWriter: sessions,
-		timelineReader:      sessions,
-		invocationReader:    sessions,
-		summaryReader:       sessions,
-		summaryWriter:       sessions,
-		stateRepo:           sessions,
-		turnRepo:            sessions,
-		contextUpdater:      sessions,
-		compressRepo:        sessions,
-		agents:              agents,
-		teams:               teams,
-		titleGenerator:      titleGenerator,
-		participants:        participants,
-		metricsDeltas:       make(map[string]*SessionMetricsDelta),
-		flushInterval:       200 * time.Millisecond,
+	uc := &SessionUsecase{
+		sessionReader:           sessions,
+		sessionTreeReader:       sessions,
+		sessionWriter:           sessions,
+		sessionMutator:          sessions,
+		sessionBatchMutator:     sessions,
+		messageReader:           sessions,
+		messageSearchReader:     sessions,
+		messageWriter:           sessions,
+		messageStatusWriter:     sessions,
+		timelineReader:          sessions,
+		invocationReader:        sessions,
+		summaryReader:           sessions,
+		summaryWriter:           sessions,
+		stateRepo:               sessions,
+		turnRepo:                sessions,
+		contextUpdater:          sessions,
+		compressRepo:            sessions,
+		runtimeWriter:           runtimeWriter,
+		agents:                  agents,
+		teams:                   teams,
+		titleGenerator:          titleGenerator,
+		participants:            participants,
+		statusPublisher:         statusPublisher,
+		metricsUpdatedPublisher: metricsUpdatedPublisher,
+		metricsDeltas:           make(map[string]*SessionMetricsDelta),
+		flushInterval:           200 * time.Millisecond,
 	}
-}
-
-func (uc *SessionUsecase) SetStatusPublisher(publisher SessionStatusPublisher) {
-	uc.statusPublisher = publisher
-}
-
-func (uc *SessionUsecase) SetMetricsUpdatedPublisher(publisher MetricsUpdatedPublisher) {
-	uc.metricsUpdatedPublisher = publisher
-}
-
-func (uc *SessionUsecase) SetRuntimeWriter(w SessionRuntimeWriter) {
-	uc.runtimeWriter = w
+	// Create sub-usecases with shared repo references.
+	uc.metricsUsecase = NewSessionMetricsUsecase(sessions, loggateway.NewNoop(), metricsUpdatedPublisher)
+	uc.compressionUsecase = NewSessionCompressionUsecase(sessions, sessions, sessions, sessions)
+	return uc
 }
 
 func (uc *SessionUsecase) TransitionStatus(ctx context.Context, sessionID string, target SessionStatus, reason SessionStatusReason) error {

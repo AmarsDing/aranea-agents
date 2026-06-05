@@ -13,6 +13,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/go-kratos/kratos/v2/errors"
+	"github.com/google/uuid"
 
 	"aranea-agents/internal/biz/shared"
 	"aranea-agents/internal/modelregistry"
@@ -296,6 +297,45 @@ type Repo interface {
 	QuotaRepo
 }
 
+// ── Narrow interfaces for cross-usecase dependencies ──────────────────────────
+
+// TeamQuotaReader provides the minimal team information needed for quota checks.
+type TeamQuotaReader interface {
+	// EnabledMemberAgentIDs returns the agent IDs of all enabled team members.
+	// Returns nil (not error) when the team has no enabled members.
+	EnabledMemberAgentIDs(ctx context.Context, teamID string) ([]string, error)
+}
+
+// SessionMetricsAccumulator accumulates session-level metrics deltas after a usage event.
+type SessionMetricsAccumulator interface {
+	AccumulateMetricsDelta(delta SessionMetricsDelta)
+}
+
+// SessionMetricsDelta mirrors session.SessionMetricsDelta for the usage package
+// to avoid importing the session package directly.
+type SessionMetricsDelta struct {
+	SessionID         string
+	MessageCount      int
+	ModelCallCount    int
+	ToolCallCount     int
+	SkillCallCount    int
+	McpCallCount      int
+	InputTokens       int64
+	OutputTokens      int64
+	TotalTokens       int64
+	TotalCostMicroUsd int64
+}
+
+// CompletionUsageLinker patches runner completion rows with usage_event_id.
+type CompletionUsageLinker interface {
+	LinkRunnerCompletionUsage(ctx context.Context, sessionID, runID, usageEventID, traceID string) error
+}
+
+// UsageEnvelopePublisher publishes token usage events to the event bus.
+type UsageEnvelopePublisher interface {
+	PublishTokenUsageEnvelope(ctx context.Context, e TokenUsageEvent)
+}
+
 // ── Usecase ───────────────────────────────────────────────────────────────────
 
 var alertCooldown = 60 * time.Minute
@@ -307,6 +347,10 @@ type Usecase struct {
 	alertNotifier AlertNotifier
 	alertFired    map[string]time.Time
 	alertFiredMu  sync.Mutex
+	teamReader    TeamQuotaReader
+	sessAccum     SessionMetricsAccumulator
+	completion    CompletionUsageLinker
+	envelopePub   UsageEnvelopePublisher
 	lg            loggateway.Logger
 }
 
@@ -320,6 +364,26 @@ func NewUsecase(repo Repo, lg loggateway.Logger) *Usecase {
 		now:  func() time.Time { return time.Now().UTC() },
 		lg:   lg,
 	}
+}
+
+// SetTeamReader wires the optional team dependency for member quota checks.
+func (u *Usecase) SetTeamReader(tr TeamQuotaReader) {
+	u.teamReader = tr
+}
+
+// SetSessionMetricsAccumulator wires the optional session metrics accumulator.
+func (u *Usecase) SetSessionMetricsAccumulator(sa SessionMetricsAccumulator) {
+	u.sessAccum = sa
+}
+
+// SetCompletionUsageLinker wires the optional runner completion linker.
+func (u *Usecase) SetCompletionUsageLinker(cl CompletionUsageLinker) {
+	u.completion = cl
+}
+
+// SetUsageEnvelopePublisher wires the optional event bus publisher.
+func (u *Usecase) SetUsageEnvelopePublisher(pub UsageEnvelopePublisher) {
+	u.envelopePub = pub
 }
 
 // SetAlertNotifier wires optional budget alert delivery.
@@ -769,6 +833,129 @@ func (u *Usecase) quotaSpent(ctx context.Context, scopeType, scopeID string, q Q
 	default:
 		return 0, shared.ErrQuotaUnsupportedScope
 	}
+}
+
+// CheckTeamMemberQuotas validates that all enabled team members are within quota.
+// Returns nil when teamID is empty or no team reader is configured.
+func (u *Usecase) CheckTeamMemberQuotas(ctx context.Context, teamID string) error {
+	if u == nil || u.teamReader == nil {
+		return nil
+	}
+	teamID = strings.TrimSpace(teamID)
+	if teamID == "" {
+		return nil
+	}
+	agentIDs, err := u.teamReader.EnabledMemberAgentIDs(ctx, teamID)
+	if err != nil {
+		return err
+	}
+	for _, agentID := range agentIDs {
+		if err := u.enforceQuota(ctx, "agent", agentID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// enforceQuota blocks when the scope monthly cap is exceeded (no-op if quota unset).
+func (u *Usecase) enforceQuota(ctx context.Context, scopeType, scopeID string) error {
+	scopeType = strings.TrimSpace(scopeType)
+	scopeID = strings.TrimSpace(scopeID)
+	if scopeType == "" || scopeID == "" {
+		return nil
+	}
+	check, err := u.CheckQuota(ctx, scopeType, scopeID)
+	if err != nil {
+		return err
+	}
+	if !check.Allowed {
+		return fmt.Errorf("USAGE_QUOTA: %s", check.Reason)
+	}
+	return nil
+}
+
+// TurnUsageInput captures the data needed to record usage for a single chat turn.
+type TurnUsageInput struct {
+	SessionID     string
+	RunID         string
+	AgentKey      string
+	AgentID       string
+	Provider      string
+	Model         string
+	Status        string
+	PromptTok     int
+	CompletionTok int
+	Latency       time.Duration
+	ErrMsg        string
+	MetadataJSON  string
+	TraceID       string
+}
+
+// RecordTurnUsage records token usage for a completed chat turn.
+// It persists the usage event, accumulates session metrics, publishes an
+// envelope, and links the runner completion row.
+func (u *Usecase) RecordTurnUsage(ctx context.Context, in TurnUsageInput) error {
+	if u == nil {
+		return nil
+	}
+	now := u.now()
+	meta := strings.TrimSpace(in.MetadataJSON)
+	if meta == "" {
+		meta = "{}"
+	}
+	usageID := newUsageID()
+	ev := TokenUsageEvent{
+		ID:               usageID,
+		SessionID:        in.SessionID,
+		AgentKey:         in.AgentKey,
+		AgentID:          in.AgentID,
+		ModelAPIID:       in.Model,
+		ModelDisplayName: in.Model,
+		ProviderCode:     in.Provider,
+		InputTokens:      in.PromptTok,
+		OutputTokens:     in.CompletionTok,
+		TotalTokens:      in.PromptTok + in.CompletionTok,
+		LatencyMS:        int(in.Latency.Milliseconds()),
+		Status:           in.Status,
+		UsageKind:        KindChatTurn,
+		MetadataJSON:     meta,
+		OccurredAt:       now.Format(time.RFC3339),
+		DateKey:          now.Format("2006-01-02"),
+		HourKey:          now.Format("2006-01-02T15"),
+		ErrorMessage:     in.ErrMsg,
+	}
+	if in.RunID != "" {
+		ev.MessageID = in.RunID
+	}
+	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
+	defer cancel()
+	if _, err := u.RecordTokenUsageEvent(recCtx, ev); err != nil {
+		return err
+	}
+	if u.sessAccum != nil && strings.TrimSpace(in.SessionID) != "" {
+		u.sessAccum.AccumulateMetricsDelta(SessionMetricsDelta{
+			SessionID:        in.SessionID,
+			ModelCallCount:   ev.CallCount,
+			InputTokens:      int64(ev.InputTokens),
+			OutputTokens:     int64(ev.OutputTokens),
+			TotalTokens:      int64(ev.TotalTokens),
+			TotalCostMicroUsd: ev.TotalCostMicroUSD,
+		})
+	}
+	if u.envelopePub != nil {
+		u.envelopePub.PublishTokenUsageEnvelope(ctx, ev)
+	}
+	if u.completion != nil && strings.TrimSpace(in.SessionID) != "" && strings.TrimSpace(in.RunID) != "" {
+		linkCtx, linkCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer linkCancel()
+		_ = u.completion.LinkRunnerCompletionUsage(linkCtx, in.SessionID, in.RunID, usageID, in.TraceID)
+	}
+	return nil
+}
+
+// newUsageID returns a new UUID for usage events.
+func newUsageID() string {
+	return uuid.NewString()
 }
 
 // ── Budget alerts ─────────────────────────────────────────────────────────────

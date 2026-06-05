@@ -35,36 +35,63 @@
 ### 3.1 新组件层级
 
 ```
-ChatEntitySidebar.vue              ← 编排层：搜索 + 两大区 + 空状态
+ChatEntitySidebar.vue              ← 编排层：搜索 + Spirit 入口 + Agent 大区 + Active Teams 大区 + Completed Teams 大区 + 空状态
+  ├─ SpiritEntry.vue               ← 精灵助手入口（独立组件，非本 change 新建）
   ├─ ChatSectionHeader.vue         ← 可复用的大区/分组折叠头
-  ├─ ChatEntityGroup.vue           ← 分组容器：折叠 + 组内 draggable
-  │   └─ ChatEntityItem.vue        ← 单个 Agent/Team 行（纯展示）
-  └─ (Team 侧同结构)
+  ├─ ChatEntityGroup.vue           ← 分组容器：折叠 + 组内 draggable（仅 Agent 分组使用）
+  │   └─ ChatEntityItem.vue        ← 单个 Agent 行（纯展示）
+  ├─ TeamTaskCard.vue              ← Team 行卡片（独立组件，非本 change 新建，非 ChatEntityGroup 结构）
+  └─ (Active Teams / Completed Teams 各使用 ChatSectionHeader + TeamTaskCard)
 ```
+
+> **实现偏差说明**：原始设计中文档假设 Team 侧与 Agent 侧同结构（使用 ChatEntityGroup + ChatEntityItem），但实际实现中 Team 使用独立的 TeamTaskCard 组件（支持展开详情、进度条、成员头像等），且 Team 大区拆分为"进行中"和"已完成"两个大区。
 
 ### 3.2 各组件职责
 
 | 组件 | 职责 | 关键 props | 关键 emits |
 |------|------|-----------|-----------|
-| **ChatEntitySidebar** | 编排：搜索过滤、大区折叠、分组聚合 | `agents`, `teams`, `search`, `selectedId` | `select-agent`, `select-team`, `settings`, `delete`, `agent-reorder-end` |
+| **ChatEntitySidebar** | 编排：搜索过滤、Spirit 入口、大区折叠、分组聚合 | `open`, `search`, `agents`, `spiritTeams`, `expandedTeamIds`, `selectedKind`, `selectedAgentId`, `selectedTeamId`, `defaultAgentId`, `isDark` | `update:search`, `select-spirit`, `select-agent`, `agent-settings`, `agent-delete`, `agent-reorder`, `select-spirit-team`, `toggle-team-expand` |
 | **ChatSectionHeader** | 可点击的折叠头，带图标+标签+计数+展开箭头 | `icon`, `label`, `count`, `collapsed` | `update:collapsed` |
-| **ChatEntityGroup** | 分组折叠 + 组内 vuedraggable 排序 | `items`, `label`, `icon`, `collapsed`, `draggable`, `pinnedId` | `update:collapsed`, `reorder` |
-| **ChatEntityItem** | 单行展示：状态图标+名称+状态pill+操作按钮 | `entity`, `active`, `statusIcon`, `statusColor`, `statusLabel` | `click`, `settings`, `delete` |
+| **ChatEntityGroup** | 分组折叠 + 组内 vuedraggable 排序 | `items`, `label`, `icon`, `collapsed`, `activeId`, `pinnedId`, `settingsAriaLabel`, `deleteAriaLabel` | `update:collapsed`, `select`, `settings`, `delete`, `reorder` |
+| **ChatEntityItem** | 单行展示：状态图标+名称+状态pill+操作按钮 | `name`, `active`, `statusIcon`, `statusColor`, `statusLabel`, `settingsAriaLabel`, `deleteAriaLabel` | `click`, `settings`, `delete` |
+| **SpiritEntry** | 精灵助手入口卡片 | `active` | `click` |
+| **TeamTaskCard** | Team 行卡片（展开详情、进度、成员） | `team`, `expanded`, `active` | `click`, `toggle-expand` |
+
+> **实现偏差说明**：
+> - ChatEntityItem 使用 `name` prop 替代原始设计的 `entity` prop（将 entity 对象拆分为独立 props）
+> - ChatEntityGroup 无 `draggable` prop（draggable 始终启用），新增 `activeId`、`settingsAriaLabel`、`deleteAriaLabel` props，新增 `select`、`settings`、`delete` emits
+> - ChatEntitySidebar 的 props/emits 与原始设计差异较大，增加了 Spirit 入口和 Team 展开/折叠相关接口
 
 ### 3.3 系统 Agent 置顶约束
 
 三层保障：
 
 1. **初始加载**：`loadAgentOrder()` 将 default Agent 排到首位（已有逻辑）
-2. **拖拽约束**：`<draggable :move="onMove">` 回调阻止任何 Agent 拖到 index 0
-3. **onEnd 修正**：`onEndAgent()` 若系统 Agent 不在首位则强制归位（已有逻辑）
+2. **拖拽约束**：`<draggable :move="onMove">` 回调阻止任何 Agent 拖到 pinnedId 之前
+3. **onEnd 修正**：`onDragEnd()` 若系统 Agent 不在首位则强制归位
 
 ```typescript
-function onMove(evt: MoveEvent): boolean {
-  if (props.pinnedId && evt.toIndex === 0) return false;
+function onMove(evt: DragMoveContext): boolean {
+  if (props.pinnedId && evt.relatedContext?.element?.id === props.pinnedId && evt.newIndex <= 0) {
+    return false;
+  }
   return true;
 }
+
+function onDragEnd() {
+  if (props.pinnedId) {
+    const current = localItems.value;
+    const pinnedIndex = current.findIndex((item) => item.id === props.pinnedId);
+    if (pinnedIndex > 0) {
+      const [pinned] = current.splice(pinnedIndex, 1);
+      current.unshift(pinned);
+      emit('reorder', current.map((item) => item.id));
+    }
+  }
+}
 ```
+
+> **实现偏差说明**：`onMove` 的判断逻辑与原始设计略有不同——实际实现检查 `relatedContext.element.id === pinnedId && newIndex <= 0`，而非简单的 `toIndex === 0`。`onDragEnd` 在 ChatEntityGroup 内部实现，而非在 ChatEntitySidebar 中。
 
 ---
 
@@ -78,11 +105,15 @@ useAppStore.loadAgents()
     → useChatWorkspace.displayAgents (经 loadAgentOrder 重排，系统 Agent 置顶)
       → ChatEntitySidebar :agents prop
         → filteredAgents = agents.filter(agentMatches)
-        → agentGroups = groupEntities(filteredAgents)
-        → 每组内: pinned Agent 排首位 + 组内 localStorage 排序
+        → agentGroups = groupEntities(filteredAgents)  // 分为 system / custom 两组
+        → 每组内: pinned Agent 排首位 + 组内 localStorage 排序 (loadGroupOrder)
           → ChatEntityGroup :items prop
-            → <draggable v-model="localItems">
-              → onEnd → emit('reorder', ids)
+            → <draggable v-model="localItems">  // computed get/set
+              → onDragEnd → emit('reorder', ids)
+                → ChatEntitySidebar emit('agent-reorder', { groupKey, ids })
+                  → ChatPage → useChatSidebarOrder.onGroupReorder(groupKey, ids)
+                    → saveGroupOrder(groupKey, ids)  // 保存组内排序
+                    → 更新全局 localStorage (chat:order:agents)
 ```
 
 ### 4.2 排序持久化策略
@@ -94,36 +125,55 @@ useAppStore.loadAgents()
 
 排序逻辑变更：
 1. `loadAgentOrder()` 保持不变
-2. `ChatEntityGroup` 内部维护 `localItems`，从 props.items 初始化时按组内 localStorage 排序
-3. 拖拽 `onEnd` 时：更新 `localItems` → emit `reorder` → 保存到组内 localStorage → 同步更新全局 localStorage
+2. `ChatEntitySidebar` 中使用 `loadGroupOrder(items, groupKey, pinnedId)` 对每个分组独立排序
+3. `ChatEntityGroup` 内部使用 `computed get/set` 的 `localItems`，set 时 emit `reorder` 事件
+4. 拖拽 `onDragEnd` 时：emit `reorder` → ChatEntitySidebar 转发 `agent-reorder` → ChatPage 调用 `onGroupReorder(groupKey, ids)` → `saveGroupOrder` 保存组内排序 + 同步更新全局 localStorage
 
 ### 4.3 折叠状态管理
 
 新建 `useChatEntityCollapse.ts` composable：
 
 ```typescript
-const LS_SECTION_COLLAPSED = "chat:collapsed:sections";  // { agents: bool, teams: bool }
+const LS_SECTION_COLLAPSED = "chat:collapsed:sections";  // { agents: bool, teams: bool, activeTeams: bool, completedTeams: bool }
 const LS_GROUP_COLLAPSED = "chat:collapsed:groups";       // { [groupKey]: bool }
 
 export function useChatEntityCollapse() {
-  const sectionCollapsed = reactive({ agents: false, teams: false });
+  const sectionCollapsed = reactive<{ agents: boolean; teams: boolean; activeTeams: boolean; completedTeams: boolean }>({
+    agents: false,
+    teams: false,
+    activeTeams: false,
+    completedTeams: true,
+  });
   const groupCollapsed = reactive<Record<string, boolean>>({});
+  const groupSnapshot = ref<Record<string, boolean> | null>(null);  // 搜索前快照
 
   function restore() { /* 从 localStorage 恢复 */ }
-  function save() { /* 保存到 localStorage */ }
-  function toggleSection(section: 'agents' | 'teams') { ... }
+  function saveSections() { /* 保存大区折叠到 localStorage */ }
+  function saveGroups() { /* 保存分组折叠到 localStorage */ }
+  function toggleSection(section: 'agents' | 'teams' | 'activeTeams' | 'completedTeams') { ... }
   function toggleGroup(key: string) { ... }
+  function isGroupCollapsed(key: string): boolean { ... }
+  function expandAllGroups() { ... }
+  function onSearchActive() { /* 快照当前状态 + 展开所有分组 */ }
+  function onSearchClear() { /* 从快照恢复分组折叠状态 */ }
 
-  return { sectionCollapsed, groupCollapsed, toggleSection, toggleGroup };
+  return { sectionCollapsed, groupCollapsed, toggleSection, toggleGroup, isGroupCollapsed, expandAllGroups, onSearchActive, onSearchClear };
 }
 ```
+
+> **实现偏差说明**：
+> - `sectionCollapsed` 新增 `activeTeams` 和 `completedTeams` 两个大区（Team 拆分为"进行中"和"已完成"）
+> - 新增 `isGroupCollapsed`、`expandAllGroups` 辅助方法
+> - 新增 `onSearchActive`/`onSearchClear` 方法，使用 `groupSnapshot` 实现搜索激活时展开/清空时恢复
+> - `save` 拆分为 `saveSections` 和 `saveGroups` 两个独立方法
 
 ### 4.4 搜索与折叠交互
 
 - 搜索过滤在分组前执行（保持现有逻辑）
-- 搜索有内容时：自动展开所有折叠的分组（方便查看结果）
-- 搜索清空时：恢复之前的折叠状态
+- 搜索有内容时：通过 `collapse.onSearchActive()` 自动展开所有折叠的分组（快照当前状态）
+- 搜索清空时：通过 `collapse.onSearchClear()` 从快照恢复之前的折叠状态
 - 大区折叠时：搜索仍然过滤，但整个区域隐藏
+- 搜索交互通过 `watch(search)` 在 ChatEntitySidebar 中实现
 
 ---
 
@@ -154,13 +204,18 @@ export function useChatEntityCollapse() {
 
 ```
 ┌─────────────────────────────┐
+│ 🔍 搜索...                  │  ← 搜索框
+│ ✨ 精灵助手                  │  ← SpiritEntry（精灵入口）
 │ ▼ Agent                    │  ← 大区头（可折叠）
-│   ▼ 系统 Agent      [1]  │  ← 分组头（可折叠）
-│     🔵 系统管家  空闲       │  ← 系统 Agent（置顶，不可拖拽）
-│     ⚪ 助手A      空闲      │  ← 可拖拽（长按触发）
-│     ⚪ 助手B      空闲      │  ← 可拖拽（长按触发）
-│   ▶ 技术 / 后端      [3]  │  ← 折叠的分组
-│ ▶ Team                     │  ← 折叠的大区
+│   ▼ 系统 Agent      [1]  │  ← 分组头（可折叠，ChatEntityGroup）
+│     🔵 系统管家  空闲       │  ← 系统 Agent（置顶，不可拖拽，ChatEntityItem）
+│     ⚪ 助手A      空闲      │  ← 可拖拽（长按触发，ChatEntityItem）
+│     ⚪ 助手B      空闲      │  ← 可拖拽（长按触发，ChatEntityItem）
+│   ▶ 自定义 Agent    [2]  │  ← 折叠的分组（ChatEntityGroup）
+│ ▼ 进行中                   │  ← Active Teams 大区头（可折叠）
+│   🏠 团队A  ▼              │  ← TeamTaskCard（可展开详情）
+│   🏠 团队B  ▶              │  ← TeamTaskCard（折叠状态）
+│ ▶ 已完成                   │  ← Completed Teams 大区头（默认折叠）
 └─────────────────────────────┘
 ```
 
@@ -171,17 +226,18 @@ export function useChatEntityCollapse() {
 | 操作 | 文件 | 说明 |
 |------|------|------|
 | **新建** | `components/chat/ChatSectionHeader.vue` | 可复用折叠头组件 |
-| **新建** | `components/chat/ChatEntityGroup.vue` | 分组容器（折叠+draggable） |
-| **新建** | `components/chat/ChatEntityItem.vue` | 单行展示组件 |
-| **新建** | `features/chat/composables/useChatEntityCollapse.ts` | 折叠状态管理 |
-| **修改** | `components/chat/ChatEntitySidebar.vue` | 重构为编排层，消费子组件 |
-| **修改** | `features/chat/composables/chatWorkspaceUtils.ts` | 新增组内排序工具函数 |
-| **修改** | `features/chat/composables/useChatSidebarOrder.ts` | 适配组内排序持久化 |
+| **新建** | `components/chat/ChatEntityGroup.vue` | 分组容器（折叠+draggable），含 EntityItem 类型定义 |
+| **新建** | `components/chat/ChatEntityItem.vue` | 单行展示组件（使用 `name` prop 替代 `entity`） |
+| **新建** | `features/chat/composables/useChatEntityCollapse.ts` | 折叠状态管理（含搜索快照恢复） |
+| **修改** | `components/chat/ChatEntitySidebar.vue` | 重构为编排层，消费子组件 + SpiritEntry + TeamTaskCard |
+| **修改** | `features/chat/composables/chatWorkspaceUtils.ts` | 新增 `loadGroupOrder`、`saveGroupOrder`、`LS_AG_GROUP_ORDER_PREFIX` |
+| **修改** | `features/chat/composables/useChatSidebarOrder.ts` | 新增 `onGroupReorder` 方法适配组内排序持久化 |
+| **修改** | `components/chat/chatUi.ts` | 新增 `entityStatusIconFor`、`entityStatusColorFor`、`entityStatusLabelFor` 等 EntityItem 状态工具函数 |
 
 **不需要改动的**：
 - 后端（无 API 变更）
 - Store 层（数据流不变）
-- `useChatWorkspace.ts`（接口不变）
+- `useChatWorkspace.ts`（接口不变，仅消费 `useChatSidebarOrder` 的 `onGroupReorder`）
 
 ---
 

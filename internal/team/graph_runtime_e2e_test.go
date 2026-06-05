@@ -79,9 +79,9 @@ func TestCompileToGraphRuntimeConfig_failurePolicyRetry(t *testing.T) {
 			{AgentID: "a", SortOrder: 1},
 			{AgentID: "b", SortOrder: 2},
 		},
-		FailurePolicy: &biz.TeamFailurePolicy{
-			Default: biz.FailureDefaultRetryThenBlock,
-			Retry:   biz.TeamRetryPolicy{MaxAttempts: 4},
+		FailurePolicy: &FailurePolicy{
+			Default: "retry_then_block",
+			Retry:   RetryPolicy{MaxAttempts: 4},
 		},
 	}
 	cfg, err := CompileToGraphRuntimeConfig(def, nil, loggateway.NewNoop())
@@ -102,10 +102,10 @@ func TestCompileToGraphRuntimeConfig_parallelFailContinue(t *testing.T) {
 			{AgentID: "w2", SortOrder: 2},
 			{AgentID: "synth", Role: "synthesizer", SortOrder: 3},
 		},
-		FailurePolicy: &biz.TeamFailurePolicy{
-			Default:      biz.FailureDefaultRetryThenBlock,
-			Retry:        biz.TeamRetryPolicy{MaxAttempts: 2},
-			ParallelFail: biz.ParallelFailContinue,
+		FailurePolicy: &FailurePolicy{
+			Default:      "retry_then_block",
+			Retry:        RetryPolicy{MaxAttempts: 2},
+			ParallelFail: "continue",
 		},
 	}
 	cfg, err := CompileToGraphRuntimeConfig(def, nil, loggateway.NewNoop())
@@ -139,9 +139,9 @@ func TestGraphRuntimeE2E_buildSequentialTeamGraph(t *testing.T) {
 			{AgentID: "a", SortOrder: 1, Name: "Agent A"},
 			{AgentID: "b", SortOrder: 2, Name: "Agent B"},
 		},
-		FailurePolicy: &biz.TeamFailurePolicy{
-			Default: biz.FailureDefaultRetryThenBlock,
-			Retry:   biz.TeamRetryPolicy{MaxAttempts: 2},
+		FailurePolicy: &FailurePolicy{
+			Default: "retry_then_block",
+			Retry:   RetryPolicy{MaxAttempts: 2},
 		},
 	}
 	cfg, err := CompileToGraphRuntimeConfig(def, func(id string) string { return "key-" + id }, loggateway.NewNoop())

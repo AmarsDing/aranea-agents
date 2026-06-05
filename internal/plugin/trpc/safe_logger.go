@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -98,7 +99,7 @@ func (l *PluginSafeLogger) write(level, msg string, attrs ...any) {
 		env.Metadata = map[string]any{"level": level, "source": l.pluginName}
 		env.Content = &event.EnvelopeContent{Text: text, IsPartial: false}
 		bus := l.bus
-		safego.Go(context.Background(), "plugin-log-"+l.pluginName, func() {
+		safego.Go(appctx.Ctx(), "plugin-log-"+l.pluginName, func() {
 			bus.Publish(context.Background(), env)
 		})
 	}

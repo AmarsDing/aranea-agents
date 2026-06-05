@@ -9,6 +9,36 @@ import (
 	"aranea-agents/internal/biz"
 )
 
+// FailurePolicy is the team-level failure handling configuration.
+// Mirrors biz.TeamFailurePolicy to avoid import cycle (biz → team → biz).
+type FailurePolicy struct {
+	Default        string                       `json:"default"`
+	Retry          RetryPolicy                  `json:"retry"`
+	NodeOverrides  map[string]NodeFailureOverride `json:"node_overrides"`
+	ParallelFail   string                       `json:"parallel_fail"`
+	CircuitBreaker *CircuitBreakerPolicyDef     `json:"circuit_breaker,omitempty"`
+	OnError        string                       `json:"on_error,omitempty"`
+}
+
+type RetryPolicy struct {
+	MaxAttempts       int     `json:"max_attempts"`
+	InitialIntervalMs int     `json:"initial_interval_ms"`
+	BackoffFactor     float64 `json:"backoff_factor"`
+	MaxIntervalMs     int     `json:"max_interval_ms"`
+}
+
+type NodeFailureOverride struct {
+	Policy        string      `json:"policy"`
+	Retry         *RetryPolicy `json:"retry"`
+	FallbackAgent string      `json:"fallback_agent"`
+}
+
+type CircuitBreakerPolicyDef struct {
+	FailureThreshold int `json:"failure_threshold"`
+	WindowSeconds    int `json:"window_seconds"`
+	HalfOpenMax      int `json:"half_open_max"`
+}
+
 // Definition mirrors team DefinitionJSON (subset used by native runner).
 type Definition struct {
 	Version            int               `json:"version"`
@@ -24,7 +54,7 @@ type Definition struct {
 	IntentAnchorAgentID string                `json:"intent_anchor_agent_id,omitempty"`
 	Swarm               *SwarmConfigDef        `json:"swarm,omitempty"`
 	MemberTool          *MemberToolDef         `json:"member_tool_config,omitempty"`
-	FailurePolicy       *biz.TeamFailurePolicy `json:"failure_policy,omitempty"`
+	FailurePolicy       *FailurePolicy         `json:"failure_policy,omitempty"`
 }
 
 type SwarmConfigDef struct {
@@ -162,4 +192,48 @@ func TurnDeadlineDuration(d Definition) time.Duration {
 		sec = teamTurnMaxSeconds
 	}
 	return time.Duration(sec) * time.Second
+}
+
+// failurePolicyToBiz converts the local FailurePolicy (which matches the
+// frontend JSON schema) to biz.TeamFailurePolicy used by the runtime.
+func failurePolicyToBiz(fp *FailurePolicy) *biz.TeamFailurePolicy {
+	if fp == nil {
+		return nil
+	}
+	p := &biz.TeamFailurePolicy{
+		Default:       fp.Default,
+		ParallelFail:  fp.ParallelFail,
+		OnError:       fp.OnError,
+		Retry: biz.TeamRetryPolicy{
+			MaxAttempts:       fp.Retry.MaxAttempts,
+			InitialIntervalMs: fp.Retry.InitialIntervalMs,
+			BackoffFactor:     fp.Retry.BackoffFactor,
+			MaxIntervalMs:     fp.Retry.MaxIntervalMs,
+		},
+	}
+	if len(fp.NodeOverrides) > 0 {
+		p.NodeOverrides = make(map[string]biz.TeamNodeFailureOverride, len(fp.NodeOverrides))
+		for k, v := range fp.NodeOverrides {
+			override := biz.TeamNodeFailureOverride{
+				Policy:        v.Policy,
+				FallbackAgent: v.FallbackAgent,
+			}
+			if v.Retry != nil {
+				override.Retry = &biz.TeamRetryPolicy{
+					MaxAttempts:       v.Retry.MaxAttempts,
+					InitialIntervalMs: v.Retry.InitialIntervalMs,
+					BackoffFactor:     v.Retry.BackoffFactor,
+					MaxIntervalMs:     v.Retry.MaxIntervalMs,
+				}
+			}
+			p.NodeOverrides[k] = override
+		}
+	}
+	if fp.CircuitBreaker != nil {
+		p.CircuitBreaker = &biz.CircuitBreakerPolicy{
+			FailureThreshold:    fp.CircuitBreaker.FailureThreshold,
+			ResetTimeoutSeconds: fp.CircuitBreaker.WindowSeconds,
+		}
+	}
+	return p
 }

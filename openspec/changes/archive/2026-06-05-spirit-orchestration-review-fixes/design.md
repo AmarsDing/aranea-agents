@@ -2,6 +2,8 @@
 
 spirit-orchestration-redesign 变更已归档，但 aranea-review 全栈代码审查发现 3 个阻断级问题和 10 个建议级问题。阻断项涉及错误处理、DAG 编译核心路径、Service 层业务逻辑泄漏，必须修复才能保证生产可用。
 
+**当前状态**：所有阻断级和建议级修复已全部实现（2026-06-05 代码审查确认）。
+
 当前技术约束：
 - biz 层不得 import trpc-agent-go，框架交互通过 agent/tools 层桥接
 - Service 层只做 proto↔biz 映射 + Runner 编排，不含业务逻辑

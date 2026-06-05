@@ -209,6 +209,9 @@ type L3ConflictStore interface {
 // the fine-grained sub-interfaces (L0AdminStore, L1AdminReader, L1TaskWriter, etc.)
 // directly rather than embedding SessionAdminStore. It is retained only for backward
 // compatibility with existing Wire providers.
+//
+// Deprecated: Use fine-grained sub-interfaces (L0AdminStore, L1AdminReader, L2RecallStore, etc.)
+// instead of this aggregate. This interface is retained only for Wire binding convenience.
 type SessionAdminStore interface {
 	L0AdminStore
 	L1AdminReader

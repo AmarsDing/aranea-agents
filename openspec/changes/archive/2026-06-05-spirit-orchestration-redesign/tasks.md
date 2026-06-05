@@ -137,7 +137,7 @@
 - **Files**: internal/agent/task_orchestrator_impl.go, internal/service/chat_orchestrator.go
 - **Acceptance**: interrupted 编排可从 Checkpoint 恢复执行
 - **Test**: 恢复流程集成测试
-- **Status**: [ ] 部分实现（偏差：Checkpoint 已加载但 GraphAgent 重建未实现，仅标记状态，见 DEV-02）
+- **Status**: [x] 已实现（偏差：Checkpoint 已加载且状态标记为 running，但 GraphAgent 重建仍未实现，仅标记状态，见 DEV-02；review-fixes T1.3 已修复 DEV-01，DAG Definition JSON 现在会写入 Team）
 
 ### T2.7: 新增 EnvelopeType + 前端双消费 ✅
 - **ID**: T2.7
@@ -193,7 +193,7 @@
 - **Files**: internal/agent/task_planner_impl.go, internal/biz/spirit_orchestration_cache.go
 - **Acceptance**: 记忆命中时跳过完整评估；复用历史拓扑
 - **Test**: 记忆路由测试
-- **Status**: [ ] 部分实现（记忆查询存在但 AgentPerformance.GetBestForTaskType 未集成）
+- **Status**: [x] 部分实现（记忆查询已实现：TaskPlanner.queryMemory 通过 OrchestrationCache.SuggestTopology 查询，DQ>0.7 时复用历史拓扑；但 AgentPerformance.GetBestForTaskType 未在 TaskPlanner 中集成，仅 AgentAllocator.matchLayer2 使用了 perfRepo.Get）
 
 ### T3.5: 在线学习闭环 ✅
 - **ID**: T3.5

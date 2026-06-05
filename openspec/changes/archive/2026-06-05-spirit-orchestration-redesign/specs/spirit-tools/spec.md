@@ -8,9 +8,11 @@ Spirit 工具集从 7 工具精简为 3 工具，旧工具双写过渡期保留�
 ### REQ-SKT-01: 新工具 plan_and_execute
 - 替代 assess_complexity + assemble_team + list_butlers + query_butler_status
 - 输入：task_prompt + mode(auto|direct|single|parallel|dag|coordinator)
-- 输出：plan_id, strategy, complexity_level, subtask_count, sub_tasks[], orchestration_id, memory_hit
+- 输出：plan_id, strategy, complexity_level, subtask_count, sub_tasks[], orchestration_id, memory_hit, steps[]
 - 内部顺序调用 TaskPlanner.Plan → AgentAllocator.Allocate → TaskOrchestrator.Orchestrate
 - mode=auto 时自动选择策略
+- steps[] 包含 OrchestrationStepRecord（plan/allocate/orchestrate 各阶段执行记录）
+- 发布 ButlerOrchestrationStarted/Completed/Failed 事件
 
 ### REQ-SKT-02: 新工具 check_progress
 - 替代 check_team_progress

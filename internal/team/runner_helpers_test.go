@@ -43,7 +43,7 @@ func (r *stepBusRepo) ListTeamsByStatus(_ context.Context, _ string) ([]biz.Team
 }
 
 func TestPersistStep_EmitsStartedAndFinished(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(nil)
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{BufferSize: 8})
 	defer unsub()
 

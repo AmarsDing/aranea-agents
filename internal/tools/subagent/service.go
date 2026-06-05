@@ -116,9 +116,6 @@ func NewService(stateDir string, r trpcrunner.Runner, lg loggateway.Logger) (*Se
 	if strings.TrimSpace(stateDir) == "" {
 		return nil, kerrors.InternalServer("SUBAGENT", "empty state dir")
 	}
-	if r == nil {
-		return nil, kerrors.InternalServer("SUBAGENT", "nil runner")
-	}
 
 	path := filepath.Join(
 		strings.TrimSpace(stateDir),

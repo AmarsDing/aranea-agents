@@ -157,12 +157,12 @@ interrupted → running（从 Checkpoint 恢复）
 
 > 以下记录了实际代码实现与规格设计之间的偏差，供后续迭代参考。
 
-### DEV-01: DAG 编译后的 Definition JSON 未实际替换 Team 的 DefinitionJSON
+### DEV-01: DAG 编译后的 Definition JSON 已实际替换 Team 的 DefinitionJSON ✅ 已修复
 
 - **关联规格**: REQ-TO-02 — Generated Definition should go through existing CompileToCompiledTeam compilation
-- **实际实现**: `DAGToGraphCompiler.Compile()` 生成了 Definition JSON，但在 `orchestrateDAG()` 中，编译后的 Definition JSON 仅用于日志记录（"For now, we log the compiled definition for observability"）。实际 Team 创建仍通过 `assembler.AssembleTeam()` 走原始路径。
-- **影响**: **高** — DAG 编译当前仅为可观测性用途，未替换 Team 的 Definition
-- **文件**: `internal/agent/task_orchestrator_impl.go`（~318-324 行）
+- **实际实现**: `orchestrateDAG()` 中，`assembler.AssembleTeam()` 创建 Team 后，通过 `o.spiritUC.UpdateTeamDefinitionJSON(ctx, team.ID, defJSON)` 将 DAG 编译的 DefinitionJSON 写入 Team。写入失败时非致命降级（仅日志告警）。
+- **修复来源**: spirit-orchestration-review-fixes T1.3
+- **文件**: `internal/agent/task_orchestrator_impl.go`（~319-331 行）
 
 ### DEV-02: Graph Checkpoint 恢复未完整实现
 
@@ -178,11 +178,11 @@ interrupted → running（从 Checkpoint 恢复）
 - **影响**: **中**
 - **文件**: `internal/biz/agent_capability.go`
 
-### DEV-04: spirit profile (agent_effective_tools.go) 仍引用旧工具名
+### DEV-04: spirit profile (agent_effective_tools.go) 已更新包含新工具名 ⚠️ 部分修复
 
 - **关联规格**: REQ-SKT-06 — 更新 complexAvailableTools / moderateAvailableTools 工具名
-- **实际实现**: `agent_effective_tools.go` 中的 spirit profile 仍引用旧工具名（assemble_team, list_butlers, query_butler_status, check_team_progress, cancel_team），未更新为新工具名。
-- **影响**: **中**
+- **实际实现**: `agent_effective_tools.go` 中的 spirit profile 现在同时包含新旧工具名：`{"plan_and_execute", "check_progress", "cancel_orchestration", "assemble_team", "check_team_progress", "cancel_team", "synthesize_results", "memory_search", "datetime"}`。新旧工具并存，符合双写过渡期策略。
+- **修复来源**: spirit-orchestration-review-fixes T2.2
 - **文件**: `internal/biz/agent_effective_tools.go`（~191 行）
 
 ### DEV-05: Layer 2 语义匹配使用 TF-IDF 占位
@@ -205,11 +205,12 @@ interrupted → running（从 Checkpoint 恢复）
 - **实际实现**: `RecoverAllInterrupted` 仅处理 `OrchestrationHandle`，未处理 `TaskPlan` 和 `AllocationPlan` 的 draft 状态恢复。
 - **影响**: **中**
 
-### DEV-08: list_butlers/query_butler_status 在 builtin_tools_seed.go 中仍注册
+### DEV-08: list_butlers/query_butler_status 在 builtin_tools_seed.go 中仍注册 ⚠️ 部分修复
 
 - **关联规格**: REQ-ST-03 — "Delete list_butlers / query_butler_status tools"
-- **实际实现**: 仍在 `builtin_tools_seed.go` 中注册（标记为 DEPRECATED）。与 REQ-ST-03 "删除"措辞矛盾，但与 REQ-SKT-05 双写过渡期一致。
+- **实际实现**: 仍在 `builtin_tools_seed.go` 中注册（标记为 DEPRECATED）。与 REQ-ST-03 "删除"措辞矛盾，但与 REQ-SKT-05 双写过渡期一致。新工具 plan_and_execute / check_progress / cancel_orchestration 已注册。
 - **影响**: **低**
+- **备注**: 旧工具（assemble_team, assess_complexity, list_butlers, query_butler_status, check_team_progress, cancel_team）全部标记为 [DEPRECATED]，新工具已并行注册
 
 ### DEV-09: TaskOrchestratorPort 额外增加 RecoverAllInterrupted 方法
 
@@ -223,11 +224,36 @@ interrupted → running（从 Checkpoint 恢复）
 - **实际实现**: `internal/data/ent/schema/orchestration_step.go` 存在，包含 team_run_id, graph_execution_id, node_id, activity_snapshot_json 字段。未在任何规格文档中提及。
 - **文件**: `internal/data/ent/schema/orchestration_step.go`
 
-### DEV-11: spirit_trace_id 未在 ChatOrchestrator turn 入口生成
+### DEV-11: spirit_trace_id 已在 ChatOrchestrator turn 入口生成 ✅ 已修复
 
 - **关联规格**: REQ-SO-01 — spirit_trace_id 在 ChatOrchestrator turn 入口生成
-- **实际实现**: spirit_trace_id 生成逻辑在 `task_planner_impl.go` 和 `task_orchestrator_impl.go` 中，但不在 `ChatOrchestrator` 的 turn 入口处。跳过 TaskPlanner 的 simple/moderate 路径可能缺失 trace ID。
-- **影响**: **中** — 非复杂编排路径可能缺失 trace ID
+- **实际实现**: spirit_trace_id 已在 `chat_orchestrator_turn.go` 的 turn 入口处生成（行 61-65），通过 `biz.ContextWithSpiritTraceID(ctx, biz.NewSpiritTraceID())` 注入 context。所有 Spirit 编排路径（simple/moderate/complex）均会携带 trace ID。
+- **修复来源**: spirit-orchestration-review-fixes T2.1
+- **文件**: `internal/service/chat_orchestrator_turn.go`（~61-65 行）
+
+### DEV-12: ButlerOrchestration 事件类型未在规格中提及
+
+- **关联规格**: 无
+- **实际实现**: `internal/event/contract/envelope.go` 新增了 3 个 ButlerOrchestration 事件类型：`butler.orchestration.started`、`butler.orchestration.completed`、`butler.orchestration.failed`。由 `plan_and_execute` 工具在编排各阶段发布。这些事件与 Spirit EnvelopeType 并行存在，用于 butler 层面的编排追踪。
+- **文件**: `internal/event/contract/envelope.go`（~69-71 行），`internal/tools/spirit_tools.go`
+
+### DEV-13: OrchestrationStepRecord 类型未在规格中提及
+
+- **关联规格**: 无
+- **实际实现**: `internal/biz/types/butler_types.go` 定义了 `OrchestrationStepRecord` 结构体，用于记录 `plan_and_execute` 工具内部各阶段（plan/allocate/orchestrate）的执行记录。与 DB 持久化的 `OrchestrationStep` 不同，这是工具级别的轻量值对象。
+- **文件**: `internal/biz/types/butler_types.go`（~36-44 行）
+
+### DEV-14: SpiritTeamUsecase.UpdateTeamDefinitionJSON 方法未在规格中提及
+
+- **关联规格**: 无
+- **实际实现**: `SpiritTeamUsecase` 新增 `UpdateTeamDefinitionJSON(ctx, teamID, definitionJSON)` 方法，用于 TaskOrchestrator 在 DAG 编排后将编译后的 Definition JSON 写入 Team。这是 DEV-01 修复的配套方法。
+- **文件**: `internal/biz/spirit_team_usecase.go`（~461-469 行）
+
+### DEV-15: SessionStatusGuard 集成编排恢复
+
+- **关联规格**: REQ-SR-01 — 启动时自动恢复
+- **实际实现**: `SessionStatusGuard.OnStartup()` 现在依次执行：(1) RecoverOrphanedRunningSessions（Session 恢复），(2) recoverOrphanedRunningTeams（Team running→interrupted），(3) recoverInterruptedOrchestrations（调用 TaskOrchestratorPort.RecoverAllInterrupted）。三阶段恢复串联执行，后两步失败不阻断启动。
+- **文件**: `internal/service/session_status_guard.go`
 
 ## Open Questions
 

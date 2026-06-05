@@ -149,7 +149,7 @@ const (
 | completed              | running                | 用户发新消息      | —                      |
 | interrupted            | running                | 用户发新消息      | —                      |
 
-**非法转换**：任何不在上表中的转换都是非法的，Usecase 层做防御性校验，返回 `kerrors.FailedPrecondition`。
+**非法转换**：任何不在上表中的转换都是非法的，Usecase 层做防御性校验，返回 `kerrors.Conflict`。
 
 ### 3.4 删除/归档保护
 
@@ -164,7 +164,7 @@ var ProtectedStatuses = map[SessionStatus]bool{
 
 * 前端在 UI 上禁用删除/归档按钮，并显示原因提示
 
-* 后端返回 `kerrors.FailedPrecondition("SESSION", "session is %s, cannot delete/archive", status)`
+* 后端返回 `kerrors.Conflict("SESSION", "session is %s, cannot delete/archive", status)`
 
 ***
 
@@ -256,32 +256,40 @@ UPDATE sessions SET status = 'idle' WHERE status = 'active';
 type SessionStatusMachine struct {
     status       SessionStatus
     statusReason SessionStatusReason
-    changedAt    time.Time
+    changedAt    string  // ISO 8601 字符串，非 time.Time
 }
 
 func NewSessionStatusMachine(status SessionStatus, reason SessionStatusReason, changedAt string) *SessionStatusMachine
 func (m *SessionStatusMachine) TransitionTo(target SessionStatus, reason SessionStatusReason) error
 func (m *SessionStatusMachine) CanTransitionTo(target SessionStatus) bool
-func (m *SessionStatusMachine) IsProtected() bool
 func (m *SessionStatusMachine) Status() SessionStatus
 func (m *SessionStatusMachine) StatusReason() SessionStatusReason
+func (m *SessionStatusMachine) ChangedAt() string
 ```
 
-* `TransitionTo` 校验合法转换表，非法转换返回 `kerrors.FailedPrecondition`
+* `TransitionTo` 校验合法转换表，非法转换返回 `kerrors.Conflict`（HTTP 409 / gRPC ABORTED）
+* `ChangedAt` 返回最近一次状态变更的 ISO 8601 时间戳
 
-* `IsProtected` 返回 `status ∈ {running, awaiting_confirmation}`
+**独立保护状态判断函数** **`internal/biz/session/status.go`**：
+
+```go
+func IsProtectedStatus(s SessionStatus) bool
+```
+
+* 返回 `status ∈ {running, awaiting_confirmation}` 的布尔值
+* 注意：`IsProtected` 不是 `SessionStatusMachine` 的方法，而是独立函数，供 `SessionUsecase` 直接调用
 
 ### 5.2 SessionUsecase 变更
 
 | 方法                               | 变更                                                                   |
 | -------------------------------- | -------------------------------------------------------------------- |
-| `Delete`                         | 调用 `statusMachine.IsProtected()`，保护中返回 `FailedPrecondition`          |
+| `Delete`                         | 调用 `IsProtectedStatus()`，保护中返回 `kerrors.Conflict`                  |
 | `Archive`                        | 同上                                                                   |
 | `BatchDelete`                    | 过滤掉 protected 状态的 session，返回部分失败结果                                   |
 | `BatchArchive`                   | 同上                                                                   |
-| `TransitionStatus`               | **新增**，统一的状态转换入口，内部调用 `statusMachine.TransitionTo` + 写 DB + 发布 WS 事件 |
-| `BatchTransitionInterrupted`     | **新增**，批量将 running 转为 interrupted（用于优雅退出/异常恢复）                       |
-| `RecoverOrphanedRunningSessions` | **新增**，启动时恢复孤儿 running session                                       |
+| `TransitionStatus`               | **新增**，统一的状态转换入口，内部调用 `statusMachine.TransitionTo` + 写 DB（通过 `SessionRuntimeWriter.TransitionSessionStatus`）+ 发布 WS 事件 |
+| `BatchTransitionInterrupted`     | **新增**，批量将 running 转为 interrupted（用于优雅退出/异常恢复），每个成功转换后发布 WS 事件 |
+| `RecoverOrphanedRunningSessions` | **新增**，启动时恢复孤儿 running session（内部委托 `BatchTransitionInterrupted` + `unexpected_shutdown`） |
 
 **`SessionMutator`** **子接口变更**：
 
@@ -292,7 +300,15 @@ type SessionMutator interface {
     DeleteSessionsByAgentID(ctx, agentID) error
     PinSession(ctx, id) error
     UnpinSession(ctx, id) error
-    TransitionSessionStatus(ctx, id, status, reason) error  // 新增
+}
+```
+
+> **注意**：`TransitionSessionStatus` 方法实际定义在 `SessionRuntimeWriter` 接口上（`internal/biz/session/metrics_repo.go`），而非 `SessionMutator`。这是因为状态转换属于运行时管理域，且需要 `currentStatus` WHERE 条件防 TOCTOU 竞争，与 `session_runtime` 表的职责一致。
+
+```go
+type SessionRuntimeWriter interface {
+    UpsertSessionRuntime(ctx, sessionID, runtime) error
+    TransitionSessionStatus(ctx, sessionID, currentStatus, newStatus, statusReason, statusChangedAt) error
 }
 ```
 
@@ -311,6 +327,16 @@ type SessionMutator interface {
 | 工具需确认       | `setRunStatusWithAwait(tool)` 写 state\_json  | `uc.TransitionStatus(sessionID, awaiting_confirmation, "tool_confirmation")`    |
 | Agent等待回复   | `setRunStatusWithAwait(human)` 写 state\_json | `uc.TransitionStatus(sessionID, awaiting_confirmation, "agent_awaiting_reply")` |
 | 用户确认/回复     | `setRunStatus(running)` 写 state\_json        | `uc.TransitionStatus(sessionID, running, "")`                                   |
+| 首字节超时       | —                                            | `uc.TransitionStatus(sessionID, interrupted, "timeout")`                        |
+| 流式错误        | —                                            | `uc.TransitionStatus(sessionID, interrupted, "error")`                          |
+| Resume await 失败 | —                                       | `uc.TransitionStatus(sessionID, interrupted, "error")`                          |
+| 空回复         | —                                            | `uc.TransitionStatus(sessionID, interrupted, "error")`                          |
+| Team Turn 开始 | —                                            | `uc.TransitionStatus(sessionID, running, "")`                                   |
+| Team Turn 失败 | —                                            | `uc.TransitionStatus(sessionID, interrupted, "error")`                          |
+| Team Turn 完成 | —                                            | `uc.TransitionStatus(sessionID, completed, "")`                                 |
+| Pending Queue 执行 | —                                       | `uc.TransitionStatus(sessionID, running, "")`                                   |
+| Pending Queue 失败 | —                                      | `uc.TransitionStatus(sessionID, interrupted, "error")`                          |
+| Pending Queue 完成 | —                                      | `uc.TransitionStatus(sessionID, completed, "")`                                 |
 
 **`persistRunStatus`** **保留但简化**：只写 `runtime.run_id` 等元数据 key，不再写 `runtime.status`。
 
@@ -320,7 +346,7 @@ type SessionMutator interface {
 
 * `BatchDeleteSessions` / `BatchArchiveSessions`：同上
 
-* **新增 RPC** `ForceTransitionSessionStatus`（仅 Admin 权限）：
+* **新增 RPC** `ForceTransitionSessionStatus`（仅 Admin 权限）— **二期任务，当前未实现**：
 
 ```protobuf
 rpc ForceTransitionSessionStatus(ForceTransitionSessionStatusRequest) returns (ForceTransitionSessionStatusResponse) {
@@ -358,8 +384,14 @@ message ForceTransitionSessionStatusRequest {
 
 ```go
 type SessionStatusGuard struct {
-    uc *biz.SessionUsecase
+    uc           *biz.SessionUsecase
+    teamUC       *biz.TeamUsecase
+    orchestrator biz.TaskOrchestratorPort
+    lg           loggateway.Logger
 }
+
+func NewSessionStatusGuard(uc *biz.SessionUsecase, teamUC *biz.TeamUsecase, orchestrator biz.TaskOrchestratorPort, lg loggateway.Logger) *SessionStatusGuard
+```
 
 // OnShutdown: 程序正常退出时
 func (g *SessionStatusGuard) OnShutdown(ctx context.Context) error {
@@ -371,15 +403,21 @@ func (g *SessionStatusGuard) OnShutdown(ctx context.Context) error {
 
 // OnStartup: 程序启动时
 func (g *SessionStatusGuard) OnStartup(ctx context.Context) error {
-    // 查找所有 status = running 的 session
-    // 批量转为 interrupted + "unexpected_shutdown"
-    return g.uc.RecoverOrphanedRunningSessions(ctx)
+    // 1. 查找所有 status = running 的 session
+    //    批量转为 interrupted + "unexpected_shutdown"
+    g.uc.RecoverOrphanedRunningSessions(ctx)
+    // 2. 恢复孤儿 running teams（转为 interrupted + running team runs 转为 failed）
+    g.recoverOrphanedRunningTeams(ctx)
+    // 3. 恢复中断的编排任务
+    g.recoverInterruptedOrchestrations(ctx)
 }
 ```
 
+> **注意**：代码中 `SessionStatusGuard` 除了处理 Session 恢复外，还负责恢复孤儿 Team（`recoverOrphanedRunningTeams`）和中断的编排任务（`recoverInterruptedOrchestrations`），这两个功能在原始设计中未提及。构造函数也比原始设计多了 `teamUC` 和 `orchestrator` 参数。
+
 **与现有 Durable Worker 的关系**：现有 `SessionRunDurableWorker.CleanupOrphanedRuns` 清理 `session_runs` 表的孤儿记录。`SessionStatusGuard.OnStartup` 在此基础上额外修复 `sessions.status`，两者配合执行。
 
-### 5.7 确认超时自动清理
+### 5.7 确认超时自动清理 — **二期任务，当前未实现**
 
 复用现有 Durable Worker 的轮询机制，新增清理逻辑：
 
@@ -448,28 +486,31 @@ export interface Session {
 
 ### 7.2 状态指示器组件
 
-**新增** **`components/session/SessionStatusBadge.vue`**：
+**新增** **`components/sessions/SessionStatusBadge.vue`**：
 
 | 状态                      | 图标   | 颜色                    | 文案   |
 | ----------------------- | ---- | --------------------- | ---- |
-| `idle`                  | ○    | 灰色                    | 空闲   |
-| `running`               | ⟳ 旋转 | 强调色（`--color-accent`） | 执行中  |
-| `completed`             | ✓    | 绿色                    | 已完成  |
-| `interrupted`           | ✕    | 橙色/警告色                | 已中断  |
-| `awaiting_confirmation` | ⏸    | 蓝色/信息色                | 等待确认 |
+| `idle`                  | ○    | 灰色（`grey-6`）          | 空闲   |
+| `running`               | ⟳ 旋转 | 强调色（`accent`）         | 执行中  |
+| `completed`             | ✓    | 绿色（`positive`）        | 已完成  |
+| `interrupted`           | ✕    | 警告色（`warning`）        | 已中断  |
+| `awaiting_confirmation` | ⏸    | 强调色（`accent`）         | 等待确认 |
 
-**中断原因文案映射**：
+**中断/等待原因文案映射**：
 
 | status\_reason         | 显示文案         |
 | ---------------------- | ------------ |
 | `user_cancelled`       | 用户取消         |
 | `timeout`              | 执行超时         |
-| `budget_escalated`     | 预算超限，已升级后台执行 |
+| `budget_escalated`     | 预算超限         |
 | `error`                | 执行出错         |
 | `context_overflow`     | 上下文溢出        |
 | `server_shutdown`      | 服务关闭         |
 | `unexpected_shutdown`  | 服务异常退出       |
 | `confirmation_timeout` | 确认超时         |
+| `tool_confirmation`    | 工具执行确认       |
+| `agent_awaiting_reply` | Agent 等待回复   |
+| `manual_override`      | 手动覆盖         |
 
 **悬停提示**：Badge 悬停时显示完整信息，如「已中断 · 执行超时 · 3 分钟前」。
 
@@ -477,9 +518,9 @@ export interface Session {
 
 **SessionsPage 变更**：
 
-1. **单选删除**：`status ∈ {running, awaiting_confirmation}` 时，删除按钮 disabled + tooltip 提示「会话正在执行中，无法删除」
-2. **批量删除**：勾选 protected 状态的 session 时，批量操作栏显示「N 个会话正在执行中，无法删除」
-3. **删除确认弹窗**：对非 protected 的 session 也增加状态提示
+1. **单选删除**：`status ∈ {running, awaiting_confirmation}` 时，删除按钮 disabled + tooltip 提示「执行中或等待确认时不可删除」
+2. **单选归档**：`status ∈ {running, awaiting_confirmation}` 时，归档按钮 disabled + tooltip 提示「执行中不可归档」
+3. **批量删除/归档**：后端 `batchUpdateWheres` WHERE 条件排除 `running` 和 `awaiting_confirmation` 状态的 session，返回部分失败结果
 
 **ChatPage 变更**：
 
@@ -488,14 +529,25 @@ export interface Session {
 
 ### 7.4 WS 推送处理
 
-**`sessionSync.ts`** **变更**：
+**`stores/session/index.ts`** **变更**（Admin Session Store）：
 
 ```typescript
-onSessionMutation('session.status_changed', (payload) => {
-  const { session_id, status, status_reason, status_changed_at } = payload
-  sessionStore.patchSessionStatus(session_id, status, status_reason, status_changed_at)
+onSessionMutation('status_changed', (mutation) => {
+  const { id, status, statusReason, statusChangedAt } = mutation
+  patchSessionStatus(id, status, statusReason, statusChangedAt)
 })
 ```
+
+**`stores/chat/sessionStore.ts`** **变更**（Chat Session Store）：
+
+```typescript
+onSessionMutation('status_changed', (mutation) => {
+  const { id, status, statusReason, statusChangedAt } = mutation
+  patchSessionStatus(id, status, statusReason, statusChangedAt)
+})
+```
+
+> 注意：WS 事件类型为 `status_changed`（非 `session.status_changed`），payload 字段为 `id`/`status`/`statusReason`/`statusChangedAt`（camelCase，经 envelope dispatcher 转换）。
 
 ### 7.5 中断/等待恢复引导
 
@@ -518,7 +570,7 @@ onSessionMutation('session.status_changed', (payload) => {
 | 1.1  | Ent Schema 新增 `status_reason`、`status_changed_at` 字段，修改 `status` 默认值                                 | `internal/data/ent/schema/session.go`                            |
 | 1.2  | 新增 `SessionStatusMachine`                                                                            | `internal/biz/session/status_machine.go`                         |
 | 1.3  | `SessionUsecase` 新增 `TransitionStatus`、`BatchTransitionInterrupted`、`RecoverOrphanedRunningSessions` | `internal/biz/session/usecase.go`                                |
-| 1.4  | `SessionMutator` 新增 `TransitionSessionStatus`                                                        | `internal/biz/session/repo.go` + `internal/data/session_repo.go` |
+| 1.4  | `SessionRuntimeWriter` 新增 `TransitionSessionStatus`                                                 | `internal/biz/session/metrics_repo.go` + `internal/data/session_runtime_repo.go` |
 | 1.5  | `ChatOrchestrator` 状态转换触发点改造                                                                         | `internal/service/chat_orchestrator*.go`                         |
 | 1.6  | 删除/归档保护逻辑                                                                                            | `internal/biz/session/usecase.go`                                |
 | 1.7  | `SessionStatusGuard` 优雅退出 + 异常恢复                                                                     | `internal/service/session_status_guard.go`                       |
@@ -528,15 +580,15 @@ onSessionMutation('session.status_changed', (payload) => {
 | 1.11 | 前端类型 + SessionStatusBadge + 删除保护 UI                                                                  | `web/src/`                                                       |
 | 1.12 | Wire 装配更新                                                                                            | `cmd/admin/wire.go`                                              |
 
-### 二期（增强）
+### 二期（增强）— **当前未实现**
 
-| #   | 任务                | 涉及模块                                       |
-| --- | ----------------- | ------------------------------------------ |
-| 2.1 | 确认超时自动清理（CronJob） | `internal/service/session_status_guard.go` |
-| 2.2 | Admin 强制状态覆盖 RPC  | `api/` + `internal/service/session.go`     |
-| 2.3 | 中断会话恢复引导 UI       | `web/src/`                                 |
-| 2.4 | 工具确认弹窗 UI         | `web/src/`                                 |
-| 2.5 | Agent 等待回复提示 UI   | `web/src/`                                 |
+| #   | 任务                | 涉及模块                                       | 状态   |
+| --- | ----------------- | ------------------------------------------ | ------ |
+| 2.1 | 确认超时自动清理（CronJob） | `internal/service/session_status_guard.go` | ❌ 未实现 |
+| 2.2 | Admin 强制状态覆盖 RPC  | `api/` + `internal/service/session.go`     | ❌ 未实现 |
+| 2.3 | 中断会话恢复引导 UI       | `web/src/`                                 | ❌ 未实现 |
+| 2.4 | 工具确认弹窗 UI         | `web/src/`                                 | ❌ 未实现 |
+| 2.5 | Agent 等待回复提示 UI   | `web/src/`                                 | ❌ 未实现 |
 
 ***
 
@@ -547,9 +599,9 @@ onSessionMutation('session.status_changed', (payload) => {
 | `sessions.status` 值域变更    | Data 层查询、Service 层映射、前端类型                         | `internal/data/session_repo.go` + `internal/service/session.go` + `web/src/features/session/types.ts` |
 | 新增 `status_reason` 字段     | Ent Schema → Data → Biz → Service → Proto → 前端    | 全栈                                                                                                    |
 | 新增 `status_changed_at` 字段 | 同上                                                | 全栈                                                                                                    |
-| `SessionMutator` 新增方法     | Data 层实现                                          | `internal/data/session_repo.go`                                                                       |
+| `SessionRuntimeWriter` 新增方法   | Data 层实现                                          | `internal/data/session_runtime_repo.go`                                                               |
 | `ChatOrchestrator` 状态转换改造 | Runner 生命周期管理                                     | `internal/service/chat_orchestrator*.go`                                                              |
-| WS Envelope 新增类型          | 前端 dispatcher + Store                             | `web/src/stores/sessionSync.ts`                                                                       |
+| WS Envelope 新增类型          | 前端 dispatcher + Store                             | `web/src/stores/session/index.ts` + `web/src/stores/chat/sessionStore.ts` |
 | 生命周期判断迁移                  | 所有使用 `status = 'active'/'archived'/'deleted'` 的查询 | `internal/data/session_repo.go` + 前端过滤逻辑                                                              |
 
 ***

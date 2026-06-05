@@ -392,9 +392,8 @@ func (r *sessionRepo) DeleteSession(ctx context.Context, id string) (int, error)
 	if n == 0 {
 		return 0, nil
 	}
-	if _, err := NewChannelPeerSessionRepo(r.data).DeleteBySessionID(ctx, id); err != nil {
-		r.data.lg.Warn("delete channel peer sessions by session id failed", loggateway.StepID("data.session.delete_peer"), loggateway.Err(err))
-	}
+	// Cascade: clean up related records after successful soft-delete
+	cascadeDeleteBySession(ctx, r.data, id)
 	return n, nil
 }
 
@@ -616,6 +615,7 @@ func (r *sessionRepo) UpdateSessionContextFromLLMUsage(ctx context.Context, sess
 	)
 	if err != nil {
 		r.data.lg.Warn("update session context from llm usage failed", loggateway.StepID("data.session.context_from_llm"), loggateway.Err(err))
+		return err
 	}
 
 	// dual_write: also update session_metrics table
@@ -668,6 +668,7 @@ func (r *sessionRepo) UpdateSessionContextAfterCompression(ctx context.Context, 
 		Save(ctx)
 	if err != nil {
 		r.data.lg.Warn("update session context after compression failed", loggateway.StepID("data.session.context_after_compress"), loggateway.Err(err))
+		return err
 	}
 
 	// dual_write: also update session_metrics table

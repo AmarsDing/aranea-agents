@@ -33,8 +33,11 @@ TaskPlanner 是 Spirit 编排三阶段架构的第一阶段，单一职责：评
 - Spirit LLM 可通过 ConfirmPlan 调整计划（合并/拆分/新增/删除子任务）
 
 ### REQ-TP-05: 记忆查询
-- 查询 OrchestrationCache.SuggestTopology()
-- 查询 AgentPerformance.GetBestForTaskType()
+- 查询 OrchestrationCache.SuggestTopology()：匹配历史拓扑
+- 查询 OrchestrationCache.QueryByTaskPattern()：获取详细缓存条目
+- DQ Score >= 0.7 时复用历史拓扑，跳过完整评估
+- 记忆命中时构建轻量 TaskPlan（ComplexityComplex + 历史策略）
+- 查询 AgentPerformance.GetBestForTaskType()：未在 TaskPlanner 中集成（仅 AgentAllocator 使用）
 - 查询 Embedding 相似案例（Phase 3 实现）
 - 命中结果写入 TaskPlan.MemoryHit
 

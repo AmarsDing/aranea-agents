@@ -31,3 +31,14 @@ SpiritTeamUsecase 的 AssembleTeam 流程重构，Team 状态机归一，moderat
 ### REQ-ST-05: checkAllTeamsCompleted 修复
 - 将 active 视为"仍在进行中"改为：pending/running 视为"仍在进行中"
 - interrupted 状态的 Team 不阻止完成事件发布（需先尝试恢复）
+
+### REQ-ST-06: UpdateTeamDefinitionJSON（review-fixes 新增）
+- SpiritTeamUsecase 新增 UpdateTeamDefinitionJSON(ctx, teamID, definitionJSON) 方法
+- 用于 TaskOrchestrator 在 DAG 编排后将编译后的 Definition JSON 写入 Team
+- 修复 DEV-01：DAG 编译核心路径现在生效
+- 写入失败返回 kerrors.InternalServer
+
+### REQ-ST-07: Service→biz 业务逻辑下沉（review-fixes 新增）
+- RecordTeamCompletion：DQ Score 计算 + 拓扑推断 + 进化建议创建，从 Service 层移至 biz.SpiritTeamUsecase
+- ScheduleDependentTeams：DAG 依赖调度，返回 DependentTeamAction 列表，Service 层负责执行动作
+- CheckAllTeamsCompleted：全完成检查，返回 AllTeamsCompletedResult，Service 层负责发布事件

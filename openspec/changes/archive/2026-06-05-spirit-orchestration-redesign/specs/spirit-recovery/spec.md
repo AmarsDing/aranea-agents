@@ -6,10 +6,11 @@ Spirit 编排异常恢复机制，启动时自动恢复 interrupted 编排，Gra
 ## Requirements
 
 ### REQ-SR-01: 启动时自动恢复
-- 扩展现有 RecoverOrphanedRunningSessions
-- 恢复 OrchestrationHandle：running → interrupted（有 Checkpoint）/ failed（无 Checkpoint）
-- 恢复 Team 状态：running → interrupted
-- 恢复 TeamRun 状态：running → failed
+- SessionStatusGuard.OnStartup() 依次执行三阶段恢复：
+  1. RecoverOrphanedRunningSessions（Session running→interrupted）
+  2. recoverOrphanedRunningTeams（Team running→interrupted，TeamRun running→failed）
+  3. recoverInterruptedOrchestrations（调用 TaskOrchestratorPort.RecoverAllInterrupted）
+- 后两步失败不阻断启动（非致命）
 
 ### REQ-SR-02: Graph Checkpoint 恢复
 - 检测 status=interrupted 的 OrchestrationHandle

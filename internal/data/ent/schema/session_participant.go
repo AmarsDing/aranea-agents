@@ -22,6 +22,7 @@ func (SessionParticipant) Annotations() []schema.Annotation {
 func (SessionParticipant) Indexes() []ent.Index {
 	return []ent.Index{
 		index.Fields("session_id"),
+		index.Fields("participant_id").StorageKey("idx_session_participants_participant"),
 	}
 }
 

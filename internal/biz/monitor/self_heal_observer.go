@@ -11,23 +11,6 @@ import (
 	kerrors "github.com/go-kratos/kratos/v2/errors"
 )
 
-// severityCooldown maps severity levels to cooldown durations.
-var severityCooldown = map[string]time.Duration{
-	"critical": 30 * time.Minute,
-	"high":     10 * time.Minute,
-	"medium":   5 * time.Minute,
-	"low":      2 * time.Minute,
-}
-
-// GetSeverityCooldown returns the cooldown duration for a severity level.
-// Returns the "medium" cooldown for unknown severity levels.
-func GetSeverityCooldown(severity string) time.Duration {
-	if d, ok := severityCooldown[severity]; ok {
-		return d
-	}
-	return severityCooldown["medium"]
-}
-
 // SelfHealObserver observes FlowLog events, tracks auto-heal outcomes,
 // fires alerts for repeated failures, and persists HealRecords.
 // It replaces SelfHealUsecase for the observation role (Phase 2 migration).
@@ -37,10 +20,20 @@ type SelfHealObserver struct {
 	notifier AlertNotifier
 	lg       loggateway.Logger
 
-	mu        sync.Mutex
-	cooldowns map[string]time.Time // ruleID → last alert time
-	failCounts map[string]int      // ruleID → consecutive failure count
+	mu         sync.Mutex
+	cooldowns  map[string]time.Time   // ruleID → last alert time
+	healEvents map[string][]time.Time // stepID → timestamps of recent heal events (sliding window)
 }
+
+// Sliding window circuit breaker constants.
+const (
+	// CircuitBreakerWindow is the time window for counting heal events.
+	CircuitBreakerWindow = 10 * time.Minute
+	// CircuitBreakerThreshold is the number of heal events within the window that triggers circuit open.
+	CircuitBreakerThreshold = 5
+	// CircuitBreakerResetAfter is the duration after which a circuit-open state auto-resets to half-open.
+	CircuitBreakerResetAfter = 30 * time.Minute
+)
 
 // NewSelfHealObserver creates a new SelfHealObserver.
 func NewSelfHealObserver(repo HealRecordRepo, engine *RootCauseEngine, notifier AlertNotifier, lg loggateway.Logger) (*SelfHealObserver, error) {
@@ -51,12 +44,12 @@ func NewSelfHealObserver(repo HealRecordRepo, engine *RootCauseEngine, notifier 
 		return nil, kerrors.InternalServer("MONITOR", "RootCauseEngine is required")
 	}
 	return &SelfHealObserver{
-		repo:       repo,
-		engine:     engine,
-		notifier:   notifier,
-		lg:         lg,
-		cooldowns:  make(map[string]time.Time),
-		failCounts: make(map[string]int),
+		repo:        repo,
+		engine:      engine,
+		notifier:    notifier,
+		lg:          lg,
+		cooldowns:   make(map[string]time.Time),
+		healEvents:  make(map[string][]time.Time),
 	}, nil
 }
 
@@ -107,7 +100,7 @@ func (o *SelfHealObserver) ObserveFlowLogEvent(ctx context.Context, meta map[str
 			})
 			// Reset consecutive failure count for this step
 			o.mu.Lock()
-			delete(o.failCounts, stepID)
+			delete(o.healEvents, stepID)
 			o.mu.Unlock()
 		} else {
 			// REQ-SO-03: Runtime auto-heal failed → observed_failed
@@ -125,17 +118,29 @@ func (o *SelfHealObserver) ObserveFlowLogEvent(ctx context.Context, meta map[str
 				Metadata:            meta,
 			})
 
-			// Track consecutive failures and fire alert if 3+
-			var failCount int
+			// Track heal events in sliding window and fire alert if threshold exceeded
 			o.mu.Lock()
-			o.failCounts[stepID]++
-			failCount = o.failCounts[stepID]
+			o.healEvents[stepID] = append(o.healEvents[stepID], now)
+			// Prune events outside the window
+			windowStart := now.Add(-CircuitBreakerWindow)
+			pruned := make([]time.Time, 0, len(o.healEvents[stepID]))
+			for _, t := range o.healEvents[stepID] {
+				if !t.Before(windowStart) {
+					pruned = append(pruned, t)
+				}
+			}
+			o.healEvents[stepID] = pruned
+			// Remove stepID key if empty to prevent map growth
+			if len(pruned) == 0 {
+				delete(o.healEvents, stepID)
+			}
+			countInWindow := len(pruned)
 			o.mu.Unlock()
 
-			if failCount >= 3 {
+			if countInWindow >= CircuitBreakerThreshold {
 				ruleID := "rc-repeated-auto-heal-failure"
 				if o.checkCooldown(ruleID, "critical") {
-					o.fireAlert(ctx, ruleID, stepID, sessionID, "Runtime auto-heal has failed repeatedly ("+healStrategy+")", "critical", meta)
+					o.fireCircuitOpenAlert(ctx, ruleID, stepID, sessionID, "Runtime auto-heal has failed repeatedly in sliding window ("+healStrategy+")", "critical", meta)
 				}
 			}
 		}
@@ -303,6 +308,56 @@ func (o *SelfHealObserver) fireAlert(ctx context.Context, ruleID, stepID, sessio
 			"session_id": sessionID,
 			"root_cause": rootCause,
 			"severity":   severity,
+		})
+	}
+}
+
+// fireCircuitOpenAlert fires a circuit-open alert and emits a heal_circuit_open FlowLog event.
+func (o *SelfHealObserver) fireCircuitOpenAlert(ctx context.Context, ruleID, stepID, sessionID, rootCause, severity string, meta map[string]any) {
+	o.lg.Warn("SelfHealObserver: circuit breaker open - too many heal events in sliding window",
+		loggateway.StepID("monitor.heal_circuit_open"),
+		loggateway.Str("rule_id", ruleID),
+		loggateway.Str("step_id", stepID),
+		loggateway.Str("severity", severity),
+		loggateway.Int("threshold", CircuitBreakerThreshold),
+		loggateway.Int64("window_ms", CircuitBreakerWindow.Milliseconds()))
+
+	// Record circuit_open status
+	now := time.Now().UTC()
+	o.recordObservation(ctx, HealRecord{
+		ID:          generateHealID(),
+		RuleID:      ruleID,
+		TriggerType: "circuit_breaker_open",
+		TraceID:     metaStr(meta, "trace_id"),
+		SessionID:   sessionID,
+		StepID:      stepID,
+		Status:      string(HealStatusAlertFired),
+		Reason:      "circuit breaker open: " + rootCause,
+		CreatedAt:   now.Format(time.RFC3339),
+		Metadata:    meta,
+	})
+
+	// Set cooldown with 30-minute auto-reset
+	o.mu.Lock()
+	o.cooldowns[ruleID] = now
+	o.mu.Unlock()
+
+	// Notify via AlertNotifier
+	if o.notifier != nil {
+		o.notifier.Notify(ctx, AlertRule{
+			ID:       ruleID,
+			Name:     "Circuit breaker open: " + ruleID,
+			Severity: severity,
+		}, map[string]any{
+			"rule_id":             ruleID,
+			"step_id":             stepID,
+			"session_id":          sessionID,
+			"root_cause":          rootCause,
+			"severity":            severity,
+			"circuit_breaker":     true,
+			"window":              CircuitBreakerWindow.String(),
+			"threshold":           CircuitBreakerThreshold,
+			"auto_reset_after":    CircuitBreakerResetAfter.String(),
 		})
 	}
 }

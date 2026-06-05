@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/safego"
 
 	"github.com/go-kratos/kratos/v2/log"
@@ -89,7 +90,7 @@ func (w *MonitorAlertCooldownCleanup) Start(ctx context.Context) {
 }
 
 func (w *MonitorAlertCooldownCleanup) runOnce() {
-	safego.Go(context.Background(), "monitor.alert_cooldown_cleanup", func() {
+	safego.Go(appctx.Ctx(), "monitor.alert_cooldown_cleanup", func() {
 		w.uc.CleanupStaleLastFired(time.Now(), w.maxAge)
 		if w.log != nil {
 			w.log.Debugf("monitor alert cooldown cleanup ran (maxAge=%s)", w.maxAge)

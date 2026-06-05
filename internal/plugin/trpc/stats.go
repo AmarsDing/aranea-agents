@@ -9,6 +9,7 @@ import (
 
 	"aranea-agents/internal/biz"
 	arametrics "aranea-agents/internal/metrics"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -69,7 +70,7 @@ func NewRepoStatsRecorder(repo biz.PluginRepo, runs biz.PluginRunRepo, lg loggat
 		done: make(chan struct{}),
 	}
 	r.wg.Add(1)
-	safego.Go(context.Background(), "stats.worker", r.worker)
+	safego.Go(appctx.Ctx(), "stats.worker", r.worker)
 	return r
 }
 

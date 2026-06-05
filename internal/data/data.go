@@ -15,6 +15,7 @@ import (
 	"aranea-agents/internal/data/ent/migrate"
 	"aranea-agents/internal/data/pgvector"
 	"aranea-agents/internal/data/vector"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -426,7 +427,7 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 	p1Done := make(chan struct{})
 	st = &Data{entClient: entClient, rawDB: rawDB, readClient: readClient, readDB: readDB, pg: pg, rw: NewReadWriteClient(entClient, readClient), rwDB: NewReadWriteDB(rawDB, readDB), vectorDim: vdim, vectorStore: vs, readiness: newReadinessGate(), p1Cancel: p1Cancel, p1Done: p1Done, lg: lg}
 
-	safego.Go(context.Background(), "startup.p1", func() {
+	safego.Go(appctx.Ctx(), "startup.p1", func() {
 		defer close(p1Done)
 
 		var p1Err error
@@ -488,7 +489,7 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 		_ = p1Err
 	})
 
-	safego.Go(context.Background(), "startup.lazy_seeds", func() {
+	safego.Go(appctx.Ctx(), "startup.lazy_seeds", func() {
 		if err := st.readiness.Wait(p1Ctx); err != nil {
 			if p1Ctx.Err() != nil {
 				return
@@ -535,7 +536,7 @@ func NewData(c *conf.Data, lg loggateway.Logger) (*Data, func(), error) {
 
 	// #region debug-point data.pool.trace
 	// DEBUG ONLY: periodic SQLite pool stats dump to identify connection contention.
-	safego.Go(context.Background(), "debug.pool_stats", func() {
+	safego.Go(appctx.Ctx(), "debug.pool_stats", func() {
 		t := time.NewTicker(5 * time.Second)
 		defer t.Stop()
 		for {
@@ -706,6 +707,7 @@ func ensureAllSchemas(rawDB *sql.DB, d *Data, lg loggateway.Logger) error {
 }
 
 // initPostgres opens the optional Postgres vector store connection.
+// On failure, logs a warning and returns nil (degrades to SQLite-only mode).
 func initPostgres(c *conf.Data, lg loggateway.Logger) (*sql.DB, error) {
 	pgDSN := postgresVectorDSN(c)
 	if pgDSN == "" {
@@ -713,8 +715,8 @@ func initPostgres(c *conf.Data, lg loggateway.Logger) (*sql.DB, error) {
 	}
 	pg, err := sql.Open("postgres", pgDSN)
 	if err != nil {
-		lg.Error("init postgres failed", loggateway.StepID("data.init_postgres"), loggateway.Str("step", "sql_open"), loggateway.Err(err))
-		return nil, fmt.Errorf("failed opening postgres for vectors: %w", err)
+		lg.Warn("init postgres failed, degrading to SQLite-only mode", loggateway.StepID("data.init_postgres"), loggateway.Str("step", "sql_open"), loggateway.Err(err))
+		return nil, nil
 	}
 	pg.SetMaxOpenConns(8)
 	pg.SetConnMaxLifetime(0)
@@ -722,8 +724,8 @@ func initPostgres(c *conf.Data, lg loggateway.Logger) (*sql.DB, error) {
 	defer cancel()
 	if err = pg.PingContext(ctx); err != nil {
 		pg.Close()
-		lg.Error("init postgres failed", loggateway.StepID("data.init_postgres"), loggateway.Str("step", "ping"), loggateway.Err(err))
-		return nil, fmt.Errorf("postgres ping: %w", err)
+		lg.Warn("init postgres ping failed, degrading to SQLite-only mode", loggateway.StepID("data.init_postgres"), loggateway.Str("step", "ping"), loggateway.Err(err))
+		return nil, nil
 	}
 	return pg, nil
 }

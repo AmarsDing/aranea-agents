@@ -72,15 +72,15 @@ THEN the method SHALL NOT throw an error and SHALL be a no-op
 
 ### Requirement: SessionStatusBadge Component
 
-A `SessionStatusBadge.vue` component SHALL be created at `components/session/SessionStatusBadge.vue`. It SHALL display a visual status indicator based on the session's `status` field with the following mapping:
+A `SessionStatusBadge.vue` component SHALL be created at `components/sessions/SessionStatusBadge.vue`. It SHALL display a visual status indicator based on the session's `status` field with the following mapping:
 
 | Status | Icon | Color | Text |
 |--------|------|-------|------|
-| `idle` | ○ (circle outline) | Grey | 空闲 |
-| `running` | ⟳ (spinning) | Accent color (`--color-accent`) | 执行中 |
-| `completed` | ✓ (check) | Green | 已完成 |
-| `interrupted` | ✕ (cross) | Orange/Warning | 已中断 |
-| `awaiting_confirmation` | ⏸ (pause) | Blue/Info | 等待确认 |
+| `idle` | ○ (circle outline) | Grey (`grey-6`) | 空闲 |
+| `running` | ⟳ (spinning) | Accent color (`accent`) | 执行中 |
+| `completed` | ✓ (check) | Green (`positive`) | 已完成 |
+| `interrupted` | ✕ (cross) | Warning (`warning`) | 已中断 |
+| `awaiting_confirmation` | ⏸ (pause) | Accent color (`accent`) | 等待确认 |
 
 The badge SHALL accept the following props:
 - `status: SessionStatus` — required
@@ -134,13 +134,13 @@ A mapping function SHALL be provided that converts `SessionStatusReason` values 
 |---------------|-------------|
 | `user_cancelled` | 用户取消 |
 | `timeout` | 执行超时 |
-| `budget_escalated` | 预算超限，已升级后台执行 |
+| `budget_escalated` | 预算超限 |
 | `error` | 执行出错 |
 | `context_overflow` | 上下文溢出 |
 | `server_shutdown` | 服务关闭 |
 | `unexpected_shutdown` | 服务异常退出 |
 | `confirmation_timeout` | 确认超时 |
-| `tool_confirmation` | 工具需确认 |
+| `tool_confirmation` | 工具执行确认 |
 | `agent_awaiting_reply` | Agent 等待回复 |
 | `manual_override` | 手动覆盖 |
 
@@ -236,14 +236,27 @@ THEN the "Delete" option SHALL be enabled
 
 ### Requirement: WS Push Handling for Session Status
 
-The `sessionSync.ts` module SHALL handle the `session.status_changed` WebSocket envelope type. Upon receiving this event, it SHALL call `sessionStore.patchSessionStatus(session_id, status, status_reason, status_changed_at)` to update the local store without requiring a full session list refresh.
+The Admin Session Store (`stores/session/index.ts`) and Chat Session Store (`stores/chat/sessionStore.ts`) SHALL both handle the `status_changed` WebSocket envelope type. Upon receiving this event, each store SHALL call its `patchSessionStatus(session_id, status, statusReason, statusChangedAt)` method to update the local store without requiring a full session list refresh.
+
+**Admin Session Store** (`stores/session/index.ts`):
 
 ```typescript
-onSessionMutation('session.status_changed', (payload) => {
-  const { session_id, status, status_reason, status_changed_at } = payload
-  sessionStore.patchSessionStatus(session_id, status, status_reason, status_changed_at)
+onSessionMutation('status_changed', (mutation) => {
+  const { id, status, statusReason, statusChangedAt } = mutation
+  patchSessionStatus(id, status, statusReason, statusChangedAt)
 })
 ```
+
+**Chat Session Store** (`stores/chat/sessionStore.ts`):
+
+```typescript
+onSessionMutation('status_changed', (mutation) => {
+  const { id, status, statusReason, statusChangedAt } = mutation
+  patchSessionStatus(id, status, statusReason, statusChangedAt)
+})
+```
+
+> Note: The WS event type is `status_changed` (not `session.status_changed`). The payload fields use camelCase (`id`/`status`/`statusReason`/`statusChangedAt`) after envelope dispatcher transformation.
 
 #### Scenario: WS push updates session status in store
 
@@ -262,7 +275,7 @@ THEN the handler SHALL NOT throw an error
 
 ---
 
-### Requirement: Interrupted Session Recovery Guidance
+### Requirement: Interrupted Session Recovery Guidance (**二期任务，当前未实现**)
 
 Sessions with `status = 'interrupted'` SHALL display a "继续对话" (Continue Conversation) button in the session list item. Clicking this button SHALL navigate to the chat page and focus the message input, allowing the user to send a new message which will transition the session back to `running`.
 
@@ -283,7 +296,7 @@ THEN the session SHALL transition to `running` status
 
 ---
 
-### Requirement: Awaiting Confirmation Recovery Guidance
+### Requirement: Awaiting Confirmation Recovery Guidance (**二期任务，当前未实现**)
 
 Sessions with `status = 'awaiting_confirmation'` SHALL display contextual recovery guidance based on the `statusReason`:
 

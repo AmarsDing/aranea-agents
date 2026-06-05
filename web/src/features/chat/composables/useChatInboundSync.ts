@@ -314,6 +314,29 @@ export function useChatInboundSync(deps: ChatInboundSyncDeps) {
       spiritStore.handleSpiritEnvelope(env);
     }
 
+    // P1: Register default handlers for previously-unhandled event types
+    if (env.type === 'mcp.session.reconnect' || env.type === 'mcp.health.alert') {
+      console.info(`[envelope] ${env.type} received`, { sessionId, requestId: env.request_id });
+    }
+    if (env.type === 'user_feedback') {
+      console.info('[envelope] user_feedback received', { sessionId, author: env.author });
+    }
+    if (env.type === 'alert.notify') {
+      console.warn('[envelope] alert.notify received', { sessionId, metadata: env.metadata });
+    }
+    if (env.type.startsWith('butler.orchestration.')) {
+      console.info(`[envelope] ${env.type} received`, { sessionId, metadata: env.metadata });
+    }
+    if (env.type === 'skill.health_changed' || env.type === 'skill.evolution_proposed') {
+      console.info(`[envelope] ${env.type} received`, { sessionId, metadata: env.metadata });
+    }
+    if (env.type === 'token_usage' && env.token_usage) {
+      console.info('[envelope] token_usage received', { sessionId, model: env.token_usage.model_display_name, totalTokens: env.token_usage.total_tokens });
+    }
+    if (env.type === 'monitor.auto_healed' || env.type === 'monitor.self_check_completed') {
+      console.info(`[envelope] ${env.type} received`, { sessionId, metadata: env.metadata });
+    }
+
     const envRev = projection?.revision || envelopeSessionRevision(env);
     const localRev = deps.messageStore.sessionRevisionBySession[sessionId] ?? 0;
     const inboundSource = projection?.source ?? envelopeSource(env);

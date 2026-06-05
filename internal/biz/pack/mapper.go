@@ -3,6 +3,8 @@ package pack
 import (
 	"fmt"
 	"strings"
+
+	kratos "github.com/go-kratos/kratos/v2/errors"
 )
 
 // BuildTaxonomyKey 从 industry/department/position key 组合构建 taxonomy_key 路径。
@@ -30,7 +32,7 @@ func ParseTaxonomyKeyPath(path string) (industry, dept, pos string, err error) {
 	case 3:
 		return parts[0], parts[1], parts[2], nil
 	default:
-		return "", "", "", fmt.Errorf("pack: 无效的 taxonomy_key 路径: %s", path)
+		return "", "", "", kratos.BadRequest("PACK_TAXONOMY_KEY_INVALID", fmt.Sprintf("无效的 taxonomy_key 路径: %s", path))
 	}
 }
 
@@ -87,7 +89,7 @@ func (m *KeyMapper) GraphID(origID string) (string, bool) {
 func (m *KeyMapper) ResolveAgentKey(agentKey string) (string, error) {
 	id, ok := m.agentKeyToID[agentKey]
 	if !ok {
-		return "", fmt.Errorf("pack: agent_key %q 未在映射表中找到", agentKey)
+		return "", kratos.BadRequest("PACK_AGENT_KEY_NOT_FOUND", fmt.Sprintf("agent_key %q 未在映射表中找到", agentKey))
 	}
 	return id, nil
 }
@@ -96,7 +98,7 @@ func (m *KeyMapper) ResolveAgentKey(agentKey string) (string, error) {
 func (m *KeyMapper) ResolvePositionKey(positionKey string) (string, error) {
 	id, ok := m.taxonomyKeyToID[positionKey]
 	if !ok {
-		return "", fmt.Errorf("pack: position_key %q 未在映射表中找到", positionKey)
+		return "", kratos.BadRequest("PACK_POSITION_KEY_NOT_FOUND", fmt.Sprintf("position_key %q 未在映射表中找到", positionKey))
 	}
 	return id, nil
 }

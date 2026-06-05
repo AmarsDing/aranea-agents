@@ -11,7 +11,7 @@ import (
 
 // Regression: Publish must not panic when Unsubscribe closes the channel concurrently.
 func TestBusPublishUnsubscribeRace(t *testing.T) {
-	b := event.NewBus()
+	b := event.NewBus(nil)
 	ctx := context.Background()
 	env := event.NewEnvelope(event.EnvelopeTypeFlowLog, "system", "")
 	env.Channel = "monitor"

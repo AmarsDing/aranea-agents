@@ -5,6 +5,7 @@ import (
 	"entgo.io/ent/dialect/entsql"
 	"entgo.io/ent/schema"
 	"entgo.io/ent/schema/field"
+	"entgo.io/ent/schema/index"
 )
 
 // PlatformHook maps table hooks (legacy platform "hooks"; schema type cannot be named Hook — Ent reserved).
@@ -32,5 +33,12 @@ func (PlatformHook) Fields() []ent.Field {
 		field.String("created_at").Default(""),
 		field.String("updated_at").Default(""),
 		field.String("deleted_at").Default(""),
+	}
+}
+
+func (PlatformHook) Indexes() []ent.Index {
+	return []ent.Index{
+		index.Fields("status", "enabled").StorageKey("idx_hooks_status_enabled"),
+		index.Fields("deleted_at").StorageKey("idx_hooks_deleted_at"),
 	}
 }

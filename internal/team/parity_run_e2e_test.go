@@ -152,7 +152,7 @@ type parityPathOutcome struct {
 func runNativePathHarness(t *testing.T, def Definition, outcomes []parityMemberOutcome) parityPathOutcome {
 	t.Helper()
 	repo := newParityMemRepo()
-	bus := event.NewBus()
+	bus := event.NewBus(nil)
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{BufferSize: 64})
 	defer unsub()
 
@@ -184,7 +184,7 @@ func runNativePathHarness(t *testing.T, def Definition, outcomes []parityMemberO
 func runGraphPathHarness(t *testing.T, def Definition, outcomes []parityMemberOutcome) parityPathOutcome {
 	t.Helper()
 	repo := newParityMemRepo()
-	bus := event.NewBus()
+	bus := event.NewBus(nil)
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{BufferSize: 64})
 	defer unsub()
 

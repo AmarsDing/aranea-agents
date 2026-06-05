@@ -61,3 +61,10 @@
 - 列假设 → 编码 → 分级验证 → 通过后再扩 scope
 - 只改与任务直接相关的文件；不顺带 refactor 相邻模块
 - **开发前必读模块交叉参考手册**（`openspec/specs/module-cross-reference-full.md`），确认所有关联影响面
+
+## OpenSpec 文档维护纪律（红线）
+
+- **OpenSpec 文档必须通过 OpenSpec 命令维护**，禁止手动创建、编辑、移动、删除、重命名 `openspec/` 目录下的任何文件
+- 主规格库 `openspec/specs/` 的更新只能通过 `openspec archive` 同步，禁止直接编辑
+- 如需修复格式问题，必须通过 OpenSpec 命令操作
+- **唯一例外**：用户明确要求手动操作时，须在操作前确认并记录原因

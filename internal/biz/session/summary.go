@@ -23,52 +23,85 @@ type StateDelta struct {
 	ValueJSON string
 }
 
-// UpdateSessionContextFromLLMUsage refreshes sessions.context_used_ratio after a native LLM turn.
+// UpdateSessionContextFromLLMUsage delegates to SessionCompressionUsecase (Facade pattern).
 func (uc *SessionUsecase) UpdateSessionContextFromLLMUsage(ctx context.Context, sessionID string, promptTokens, completionTokens, contextWindow int) error {
+	if uc.compressionUsecase != nil {
+		return uc.compressionUsecase.UpdateSessionContextFromLLMUsage(ctx, sessionID, promptTokens, completionTokens, contextWindow)
+	}
 	return uc.contextUpdater.UpdateSessionContextFromLLMUsage(ctx, sessionID, promptTokens, completionTokens, contextWindow)
 }
 
-// UpdateSessionContextAfterCompression refreshes context_used_* from an estimate of the compacted prompt.
+// UpdateSessionContextAfterCompression delegates to SessionCompressionUsecase (Facade pattern).
 func (uc *SessionUsecase) UpdateSessionContextAfterCompression(ctx context.Context, sessionID string, estimatedPromptTokens int, contextWindow int) error {
+	if uc.compressionUsecase != nil {
+		return uc.compressionUsecase.UpdateSessionContextAfterCompression(ctx, sessionID, estimatedPromptTokens, contextWindow)
+	}
 	return uc.contextUpdater.UpdateSessionContextAfterCompression(ctx, sessionID, estimatedPromptTokens, contextWindow)
 }
 
-// InsertSessionSummary appends a rolling summary row.
+// InsertSessionSummary delegates to SessionCompressionUsecase (Facade pattern).
 func (uc *SessionUsecase) InsertSessionSummary(ctx context.Context, row SessionSummary) error {
 	if strings.TrimSpace(row.SessionID) == "" {
 		return validationErr("session id is required")
 	}
+	if uc.compressionUsecase != nil {
+		return uc.compressionUsecase.InsertSessionSummary(ctx, row)
+	}
 	return uc.summaryWriter.InsertSessionSummary(ctx, row)
 }
 
-// MaxSessionSummaryToTurn returns the largest to_turn stored for the session (0 if none).
+// MaxSessionSummaryToTurn delegates to SessionCompressionUsecase (Facade pattern).
 func (uc *SessionUsecase) MaxSessionSummaryToTurn(ctx context.Context, sessionID string) (int, error) {
+	if uc.compressionUsecase != nil {
+		return uc.compressionUsecase.MaxSessionSummaryToTurn(ctx, sessionID)
+	}
 	return uc.summaryReader.MaxSessionSummaryToTurn(ctx, sessionID)
 }
 
-// ListSessionSummaries returns summary rows in chronological order.
+// ListSessionSummaries delegates to SessionCompressionUsecase (Facade pattern).
 func (uc *SessionUsecase) ListSessionSummaries(ctx context.Context, sessionID string) ([]SessionSummary, error) {
+	if uc.compressionUsecase != nil {
+		return uc.compressionUsecase.ListSessionSummaries(ctx, sessionID)
+	}
 	return uc.summaryReader.ListSessionSummaries(ctx, sessionID)
 }
 
-// LatestSessionSummaryTime returns created_at of the newest summary row or empty string.
+// LatestSessionSummaryTime delegates to SessionCompressionUsecase (Facade pattern).
 func (uc *SessionUsecase) LatestSessionSummaryTime(ctx context.Context, sessionID string) (string, error) {
+	if uc.compressionUsecase != nil {
+		return uc.compressionUsecase.LatestSessionSummaryTime(ctx, sessionID)
+	}
 	return uc.summaryReader.LatestSessionSummaryTime(ctx, sessionID)
 }
 
-// UpdateSessionListSummary updates sessions.summary (short UI line).
+// UpdateSessionListSummary delegates to SessionCompressionUsecase (Facade pattern).
 func (uc *SessionUsecase) UpdateSessionListSummary(ctx context.Context, sessionID, summary string) error {
+	if uc.compressionUsecase != nil {
+		return uc.compressionUsecase.UpdateSessionListSummary(ctx, sessionID, summary)
+	}
 	return uc.summaryWriter.UpdateSessionListSummary(ctx, sessionID, summary)
 }
 
+// TryIncrementCompressVersion delegates to SessionCompressionUsecase (Facade pattern).
 func (uc *SessionUsecase) TryIncrementCompressVersion(ctx context.Context, sessionID string) (int64, error) {
+	if uc.compressionUsecase != nil {
+		return uc.compressionUsecase.TryIncrementCompressVersion(ctx, sessionID)
+	}
 	return uc.compressRepo.TryIncrementCompressVersion(ctx, sessionID)
 }
 
+// CompressSessionInTx delegates to SessionCompressionUsecase (Facade pattern).
 func (uc *SessionUsecase) CompressSessionInTx(ctx context.Context, sessionID string, fn func(ctx context.Context) error) error {
+	if uc.compressionUsecase != nil {
+		return uc.compressionUsecase.CompressSessionInTx(ctx, sessionID, fn)
+	}
 	return uc.compressRepo.CompressSessionInTx(ctx, sessionID, fn)
 }
 
+// SessionSummaryExists delegates to SessionCompressionUsecase (Facade pattern).
 func (uc *SessionUsecase) SessionSummaryExists(ctx context.Context, sessionID string, fromTurn, toTurn int) (bool, error) {
+	if uc.compressionUsecase != nil {
+		return uc.compressionUsecase.SessionSummaryExists(ctx, sessionID, fromTurn, toTurn)
+	}
 	return uc.summaryWriter.SessionSummaryExists(ctx, sessionID, fromTurn, toTurn)
 }

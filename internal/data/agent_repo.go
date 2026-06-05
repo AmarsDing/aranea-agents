@@ -747,7 +747,12 @@ func (r *agentRepo) DeleteAgent(ctx context.Context, id string) error {
 		SetStatus("deleted").
 		SetUpdatedAt(now).
 		Save(ctx)
-	return err
+	if err != nil {
+		return err
+	}
+	// Cascade: clean up related records after successful soft-delete
+	cascadeDeleteByAgent(ctx, r.data, id)
+	return nil
 }
 
 func (r *agentRepo) GetAgentRuntimeSettings(ctx context.Context, agentID string) (biz.AgentRuntimeSettings, error) {

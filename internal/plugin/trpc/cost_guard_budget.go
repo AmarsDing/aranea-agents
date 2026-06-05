@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -66,7 +67,7 @@ func NewCostGuardBudgetTracker(lg loggateway.Logger, opts ...CostGuardBudgetOpti
 		opt(t)
 	}
 	t.persistWg.Add(1)
-	safego.Go(context.Background(), "cost_guard_budget.persist_worker", t.persistWorker)
+	safego.Go(appctx.Ctx(), "cost_guard_budget.persist_worker", t.persistWorker)
 	return t
 }
 

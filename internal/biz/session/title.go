@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -68,7 +69,7 @@ func (uc *SessionUsecase) maybeAutoTitleFromUserMessage(ctx context.Context, ses
 			uc.lg.Warn("auto rename from snippet failed", loggateway.StepID("session.title"), loggateway.SessionID(sessionID), loggateway.Err(err))
 		}
 	}
-	safego.Go(context.Background(), "generate-title-async", func() {
+	safego.Go(appctx.Ctx(), "generate-title-async", func() {
 		uc.generateTitleAsync(sessionID, content)
 	})
 	return nil

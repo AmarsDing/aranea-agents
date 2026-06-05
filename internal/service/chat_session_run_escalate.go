@@ -24,14 +24,14 @@ func firstNonEmptyString(parts ...string) string {
 
 // EscalateActiveSessionRun moves the active session run to durable phase (CC-R-02 /background).
 func (s *ChatService) EscalateActiveSessionRun(ctx context.Context, sessionID string) (escalated bool, reply string, err error) {
-	if s == nil || s.orch == nil || s.orch.chTurn.SessionRuns == nil {
+	if s == nil || s.orch == nil || s.orch.chJobs.SessionRuns == nil {
 		return false, channelBackgroundReplyNoActiveRun, nil
 	}
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return false, channelBackgroundReplyNoActiveRun, nil
 	}
-	run, err := s.orch.chTurn.SessionRuns.GetActiveForSession(ctx, sessionID)
+	run, err := s.orch.chJobs.SessionRuns.GetActiveForSession(ctx, sessionID)
 	if err != nil || run.ID == "" {
 		return false, channelBackgroundReplyNoActiveRun, nil
 	}
@@ -45,7 +45,7 @@ func (s *ChatService) EscalateActiveSessionRun(ctx context.Context, sessionID st
 // EscalateSessionRun moves a specific session run to durable phase (Feishu card callback / CC-F-02).
 // When expectedSessionID is non-empty, run must belong to that session (CC-R-OPT-02).
 func (s *ChatService) EscalateSessionRun(ctx context.Context, sessionRunID, expectedSessionID string) (reply string, err error) {
-	if s == nil || s.orch == nil || s.orch.chTurn.SessionRuns == nil {
+	if s == nil || s.orch == nil || s.orch.chJobs.SessionRuns == nil {
 		return channelBackgroundReplyNoActiveRun, nil
 	}
 	sessionRunID = strings.TrimSpace(sessionRunID)
@@ -53,7 +53,7 @@ func (s *ChatService) EscalateSessionRun(ctx context.Context, sessionRunID, expe
 	if sessionRunID == "" {
 		return channelBackgroundReplyNoActiveRun, nil
 	}
-	run, err := s.orch.chTurn.SessionRuns.Get(ctx, sessionRunID)
+	run, err := s.orch.chJobs.SessionRuns.Get(ctx, sessionRunID)
 	if err != nil || run.ID == "" {
 		return channelBackgroundReplyNoActiveRun, nil
 	}

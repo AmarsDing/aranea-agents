@@ -50,7 +50,7 @@ func (m *memEventStoreRepo) DeleteOlderThan(_ context.Context, _ time.Time) (int
 func newEventServiceForTest(sessions map[string]biz.Session) (*service.EventService, *memEventStoreRepo) {
 	repo := &memEventStoreRepo{}
 	storeUC := biz.NewEventStoreUsecase(repo)
-	sessionUC := biz.NewSessionUsecase(&batchSessionRepo{sessions: sessions}, nil, nil, nil, nil)
+	sessionUC := biz.NewSessionUsecase(&batchSessionRepo{sessions: sessions}, nil, nil, nil, nil, nil, nil, nil)
 	return service.NewEventService(storeUC, sessionUC), repo
 }
 

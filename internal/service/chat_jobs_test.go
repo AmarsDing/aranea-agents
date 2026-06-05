@@ -45,7 +45,7 @@ func (s *chatJobsRepoStub) ListFiltered(_ context.Context, q biz.ChannelTurnJobL
 
 func TestChatService_ListChatBackgroundJobs_validation(t *testing.T) {
 	svc := service.NewChatService(service.ChatOrchestratorDeps{
-		ChTurn: service.ChannelTurnDeps{
+		ChJobs: service.ChannelTurnJobDeps{
 			TurnJobs: biz.NewChannelTurnJobUsecase(nil, &chatJobsRepoStub{}),
 		},
 	})
@@ -69,7 +69,7 @@ func TestChatService_ListChatBackgroundJobs_bySession(t *testing.T) {
 		},
 	}}
 	svc := service.NewChatService(service.ChatOrchestratorDeps{
-		ChTurn: service.ChannelTurnDeps{
+		ChJobs: service.ChannelTurnJobDeps{
 			TurnJobs: biz.NewChannelTurnJobUsecase(nil, repo),
 		},
 	})
@@ -105,7 +105,7 @@ func TestChatService_ListChatBackgroundJobs_sanitizesInvalidUTF8Summary(t *testi
 		},
 	}}
 	svc := service.NewChatService(service.ChatOrchestratorDeps{
-		ChTurn: service.ChannelTurnDeps{
+		ChJobs: service.ChannelTurnJobDeps{
 			TurnJobs: biz.NewChannelTurnJobUsecase(nil, repo),
 		},
 	})

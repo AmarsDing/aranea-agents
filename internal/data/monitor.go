@@ -21,6 +21,7 @@ type monitorRepo struct {
 	firingColsOnce sync.Once // H-04: run schema migration only once per process
 }
 
+var _ biz.MonitorRepo = (*monitorRepo)(nil)
 var _ bizmonitor.Repo = (*monitorRepo)(nil)
 var _ bizmonitor.AuditRepo = (*monitorRepo)(nil)
 var _ bizmonitor.EventRepo = (*monitorRepo)(nil)

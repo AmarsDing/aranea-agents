@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"aranea-agents/internal/biz"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -53,7 +54,7 @@ func (r *Runner) Start(ctx context.Context, run biz.EvalRun, metrics string, num
 		loggateway.Str("dataset_id", run.DatasetID),
 	)
 	evalRunsTotal.WithLabelValues("started").Inc()
-	safego.Go(context.Background(), "eval-runner", func() {
+	safego.Go(appctx.Ctx(), "eval-runner", func() {
 		if err := r.execute(ctx, run, metrics, numRuns, useUserSimulation); err != nil {
 			evalRunsTotal.WithLabelValues("error").Inc()
 		} else {

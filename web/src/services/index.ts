@@ -28,8 +28,11 @@ import { createModelCatalogServiceClient } from "./kratos/model_catalog/v1/index
 import { createMonitorServiceClient } from "./kratos/monitor/v1/index";
 import { createMemoryServiceClient } from "./kratos/memory/v1/index";
 import { createGraphServiceClient } from "./kratos/graph/v1/index";
+import { createAgentCategoryServiceClient } from "./kratos/agent_category/v1/index";
+import { createSkillEvolutionServiceClient } from "./kratos/skill_evolution/v1/index";
+import { createPackServiceClient } from "./kratos/pack/v1/index";
 import { createChatServiceClient } from "./kratos/chat/v1/index";
-import { requestHandler } from "./axiosHandler";
+import { requestHandler, kratosApi } from "./axiosHandler";
 
 // 每个功能模块的 service（proto 生成客户端 + requestHandler → kratosApi）。
 export function createAdminService() {
@@ -156,8 +159,44 @@ export function createGatewayService() {
   return createGatewayServiceClient(requestHandler);
 }
 
+export function createAgentCategoryService() {
+  return createAgentCategoryServiceClient(requestHandler);
+}
+
+export function createSkillEvolutionService() {
+  return createSkillEvolutionServiceClient(requestHandler);
+}
+
+export function createWebhookService() {
+  return createGatewayServiceClient(requestHandler);
+}
+
+export function createPackService() {
+  return createPackServiceClient(requestHandler);
+}
+
+export function createPlanService() {
+  const basePath = "/v1/plan";
+  return {
+    listPlans(sessionId: string) {
+      return kratosApi.get(`${basePath}`, { params: { sessionId } });
+    },
+    getPlan(id: string) {
+      return kratosApi.get(`${basePath}/${encodeURIComponent(id)}`);
+    },
+    createPlan(input: { sessionId: string; agentKey: string; goal: string; steps?: unknown[] }) {
+      return kratosApi.post(`${basePath}`, input);
+    },
+    updatePlan(id: string, input: { status?: string; steps?: unknown[] }) {
+      return kratosApi.patch(`${basePath}/${encodeURIComponent(id)}`, input);
+    },
+  };
+}
+
 export { kratosApi, requestHandler, syncHttpClients } from "./axiosHandler";
 
+// TODO: Replace createSpiritService with proto-generated client from spirit/v1
+// once the spirit proto definition is available.
 export function createSpiritService() {
   const basePath = "/v1/spirit";
   return {

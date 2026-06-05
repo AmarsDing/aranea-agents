@@ -29,10 +29,10 @@ func (o *ChatOrchestrator) resolveChannelLongTaskConfig(ctx context.Context, ses
 		return biz.ChannelLongTaskConfig{}
 	}
 	meta, ok := biz.ParseChannelSessionMeta(sess.MetadataJSON)
-	if !ok || strings.TrimSpace(meta.ChannelID) == "" || o.chTurn.Channels == nil {
+	if !ok || strings.TrimSpace(meta.ChannelID) == "" || o.chJobs.Channels == nil {
 		return biz.ChannelLongTaskConfig{}
 	}
-	ch, err := o.chTurn.Channels.Get(ctx, meta.ChannelID)
+	ch, err := o.chJobs.Channels.Get(ctx, meta.ChannelID)
 	if err != nil {
 		return biz.ChannelLongTaskConfig{}
 	}
@@ -47,13 +47,13 @@ func (o *ChatOrchestrator) beginSessionRunLifecycle(
 	turnID, runtimeRunID, userContent, dialogMode, provider, model string,
 ) (context.Context, string, context.CancelFunc) {
 	stopBudget := func() {}
-	if o == nil || o.chTurn.SessionRuns == nil {
+	if o == nil || o.chJobs.SessionRuns == nil {
 		return ctx, "", stopBudget
 	}
 	sessionID := strings.TrimSpace(sess.ID)
 	ltCfg := o.resolveChannelLongTaskConfig(ctx, sess)
 	budget := ltCfg.RunPolicy()
-	run, err := o.chTurn.SessionRuns.StartInteractive(
+	run, err := o.chJobs.SessionRuns.StartInteractive(
 		ctx,
 		sessionID,
 		turnID,
@@ -91,7 +91,7 @@ func (o *ChatOrchestrator) beginSessionRunLifecycle(
 			event.P("turn_id", turnID),
 		)
 	}
-	stopBudget = o.chTurn.SessionRuns.StartBudgetWatcher(ctx, run.ID, budget, biz.BudgetPhaseCallbacks{
+	stopBudget = o.chJobs.SessionRuns.StartBudgetWatcher(ctx, run.ID, budget, biz.BudgetPhaseCallbacks{
 		OnSoftBudget: func(phase string) {
 			if emitter != nil {
 				emitter.Log("run.budget.soft", event.FlowPhaseDone, "软预算到达",
@@ -115,8 +115,8 @@ func (o *ChatOrchestrator) onSessionRunSoftBudget(ctx context.Context, run biz.S
 		return
 	}
 	auto := ltCfg.AutoEscalateAfterSoftBudget
-	if o.chTurn.RunEscalation != nil {
-		_ = o.chTurn.RunEscalation.NotifySoftBudget(ctx, run, auto)
+	if o.chNotify.RunEscalation != nil {
+		_ = o.chNotify.RunEscalation.NotifySoftBudget(ctx, run, auto)
 	}
 	if !auto {
 		return
@@ -135,7 +135,7 @@ func (o *ChatOrchestrator) onSessionRunSoftBudget(ctx context.Context, run biz.S
 		}
 		escalateCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		cur, err := o.chTurn.SessionRuns.Get(escalateCtx, runID)
+		cur, err := o.chJobs.SessionRuns.Get(escalateCtx, runID)
 		if err != nil || cur.ID == "" {
 			return
 		}
@@ -154,7 +154,7 @@ func (o *ChatOrchestrator) onSessionRunSoftBudget(ctx context.Context, run biz.S
 }
 
 func (o *ChatOrchestrator) escalateSessionRunToDurable(ctx context.Context, sessionID, sessionRunID string) {
-	if o == nil || o.chTurn.SessionRuns == nil {
+	if o == nil || o.chJobs.SessionRuns == nil {
 		return
 	}
 	sessionRunID = strings.TrimSpace(sessionRunID)
@@ -163,7 +163,7 @@ func (o *ChatOrchestrator) escalateSessionRunToDurable(ctx context.Context, sess
 		return
 	}
 	bind, hasBind := o.sessionRunBinding(sessionID)
-	run, err := o.chTurn.SessionRuns.Get(ctx, sessionRunID)
+	run, err := o.chJobs.SessionRuns.Get(ctx, sessionRunID)
 	if err != nil || run.ID == "" {
 		o.lg.Warn("session run not found for escalate",
 			loggateway.StepID(flowStepRunEscalate),
@@ -185,7 +185,7 @@ func (o *ChatOrchestrator) escalateSessionRunToDurable(ctx context.Context, sess
 	model := bind.model
 	runtimeRunID := bind.runtimeRunID
 	if !hasBind || (userContent == "" && dialogMode == "") {
-		if cp, cpErr := o.chTurn.SessionRuns.GetCheckpoint(ctx, sessionRunID); cpErr == nil && strings.TrimSpace(cp.PayloadJSON) != "" {
+		if cp, cpErr := o.chJobs.SessionRuns.GetCheckpoint(ctx, sessionRunID); cpErr == nil && strings.TrimSpace(cp.PayloadJSON) != "" {
 			if p, pErr := biz.ParseDurableCheckpointPayload(cp.PayloadJSON); pErr == nil {
 				userContent = firstNonEmptyString(userContent, p.UserContent)
 				dialogMode = firstNonEmptyString(dialogMode, p.DialogMode)
@@ -205,7 +205,7 @@ func (o *ChatOrchestrator) escalateSessionRunToDurable(ctx context.Context, sess
 			sessionRevision = rev
 		}
 	}
-	cp, err := o.chTurn.SessionRuns.CreateDurableCheckpoint(ctx, biz.DurableCheckpointSnapshot{
+	cp, err := o.chJobs.SessionRuns.CreateDurableCheckpoint(ctx, biz.DurableCheckpointSnapshot{
 		Run:              run,
 		AgentID:          agentID,
 		UserContent:      userContent,
@@ -224,7 +224,7 @@ func (o *ChatOrchestrator) escalateSessionRunToDurable(ctx context.Context, sess
 		)
 		return
 	}
-	if err := o.chTurn.SessionRuns.MarkPhase(ctx, sessionRunID, biz.SessionRunPhaseDurable); err != nil {
+	if err := o.chJobs.SessionRuns.MarkPhase(ctx, sessionRunID, biz.SessionRunPhaseDurable); err != nil {
 		o.lg.Warn("session run mark durable failed",
 			loggateway.StepID(flowStepRunEscalate),
 			loggateway.Str("session_run_id", sessionRunID),
@@ -236,8 +236,8 @@ func (o *ChatOrchestrator) escalateSessionRunToDurable(ctx context.Context, sess
 	o.transitionSessionStatus(ctx, sessionID, sessstatus.SessionStatusInterrupted, sessstatus.StatusReasonBudgetEscalated)
 	run.Phase = biz.SessionRunPhaseDurable
 	run.CheckpointID = cp.ID
-	if o.chTurn.RunEscalation != nil {
-		if err := o.chTurn.RunEscalation.NotifyDurableEscalated(ctx, run); err != nil {
+	if o.chNotify.RunEscalation != nil {
+		if err := o.chNotify.RunEscalation.NotifyDurableEscalated(ctx, run); err != nil {
 			o.lg.Warn("durable escalation notify failed",
 				loggateway.StepID(flowStepRunEscalate),
 				loggateway.Str("session_run_id", sessionRunID),
@@ -267,12 +267,12 @@ func (o *ChatOrchestrator) sessionRunBinding(sessionID string) (sessionRunTurnBi
 }
 
 func (o *ChatOrchestrator) finishSessionRunLifecycle(ctx context.Context, sessionID, sessionRunID string, turnErr error) {
-	if o == nil || o.chTurn.SessionRuns == nil || sessionRunID == "" {
+	if o == nil || o.chJobs.SessionRuns == nil || sessionRunID == "" {
 		return
 	}
 	o.sessionRunBindings.Delete(strings.TrimSpace(sessionID))
 	if turnErr != nil {
-		if err := o.chTurn.SessionRuns.Fail(ctx, sessionRunID, turnErr.Error()); err != nil {
+		if err := o.chJobs.SessionRuns.Fail(ctx, sessionRunID, turnErr.Error()); err != nil {
 			o.lg.Error("session run fail transition failed",
 				loggateway.StepID("chat.session_run_fail"),
 				loggateway.Str("session_run_id", sessionRunID),
@@ -280,11 +280,11 @@ func (o *ChatOrchestrator) finishSessionRunLifecycle(ctx context.Context, sessio
 		}
 		return
 	}
-	cur, err := o.chTurn.SessionRuns.Get(ctx, sessionRunID)
+	cur, err := o.chJobs.SessionRuns.Get(ctx, sessionRunID)
 	if err == nil && cur.Phase == biz.SessionRunPhaseDurable {
 		return
 	}
-	if err := o.chTurn.SessionRuns.Complete(ctx, sessionRunID); err != nil {
+	if err := o.chJobs.SessionRuns.Complete(ctx, sessionRunID); err != nil {
 		o.lg.Error("session run complete transition failed",
 			loggateway.StepID("chat.session_run_complete"),
 			loggateway.Str("session_run_id", sessionRunID),

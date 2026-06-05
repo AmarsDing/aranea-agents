@@ -33,7 +33,7 @@ func TestTraceEmitterPublishesFlowLog(t *testing.T) {
 		Domain:    TraceDomainChat,
 		AgentKey:  "a1",
 	}
-	em := NewTraceEmitter(bus, nil, tc)
+	em := NewTraceEmitter(bus, nil, tc, nil)
 	em.LogStart("chat.llm.invoke", "正在调用语言模型")
 	em.LogDone("chat.llm.invoke", "模型已返回")
 	time.Sleep(50 * time.Millisecond)
@@ -60,7 +60,7 @@ func TestTraceEmitterPublishesFlowLog(t *testing.T) {
 
 func TestTraceEmitterSkipsChatErrorForMonitorOnlySteps(t *testing.T) {
 	bus := &captureBus{}
-	em := NewTraceEmitter(bus, nil, TraceContext{SessionID: "sess_1"})
+	em := NewTraceEmitter(bus, nil, TraceContext{SessionID: "sess_1"}, nil)
 	em.LogError("chat.usage_record", "用量落库失败")
 	time.Sleep(50 * time.Millisecond)
 
@@ -74,7 +74,7 @@ func TestTraceEmitterSkipsChatErrorForMonitorOnlySteps(t *testing.T) {
 }
 
 func TestTraceEmitterMetadataJSON(t *testing.T) {
-	em := NewTraceEmitter(nil, nil, TraceContext{TraceID: "tr_x", RunID: "r1"})
+	em := NewTraceEmitter(nil, nil, TraceContext{TraceID: "tr_x", RunID: "r1"}, nil)
 	em.FinishRoot("ok")
 	raw := em.MetadataJSON()
 	if raw == "" || raw == "{}" {

@@ -1,6 +1,5 @@
 import { formatUsdCompact } from '../usage/moneyFormat';
 import { contextProgressColor } from '../../components/sessions/sessionUi';
-import type { PromptTokenBreakdown } from '../../realtime/envelope';
 
 export type ComposerUsageSnapshot = {
   contextRatio: number;
@@ -11,8 +10,6 @@ export type ComposerUsageSnapshot = {
   outputTokens: number;
   totalTokens: number;
   totalCostMicroUsd: number;
-  /** Category-level prompt token breakdown from backend (CC-E-02 Phase 2). Undefined when backend hasn't sent it. */
-  promptBreakdown?: PromptTokenBreakdown;
 };
 
 export function formatTokenCount(value?: number | null): string {

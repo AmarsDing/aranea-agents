@@ -43,6 +43,7 @@ type ServiceRegistry struct {
 	Taxonomy           *service.TaxonomyService
 	IndustryTaxonomy   *service.IndustryTaxonomyService
 	SkillEvo           *service.SkillEvolutionService
+	SkillIntel         *service.SkillIntelligenceService
 	Pack               *service.PackService
 }
 
@@ -82,6 +83,7 @@ func NewServiceRegistry(
 	taxonomy *service.TaxonomyService,
 	industryTaxonomy *service.IndustryTaxonomyService,
 	skillEvo *service.SkillEvolutionService,
+	skillIntel *service.SkillIntelligenceService,
 	packSvc *service.PackService,
 ) *ServiceRegistry {
 	return &ServiceRegistry{
@@ -118,6 +120,7 @@ func NewServiceRegistry(
 		Taxonomy:         taxonomy,
 		IndustryTaxonomy: industryTaxonomy,
 		SkillEvo:         skillEvo,
+		SkillIntel:       skillIntel,
 		Pack:           packSvc,
 	}
 }

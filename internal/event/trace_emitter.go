@@ -1,6 +1,8 @@
 package event
 
 import (
+	"aranea-agents/pkg/loggateway"
+
 	trpcevent "trpc.group/trpc-go/trpc-agent-go/event"
 )
 
@@ -12,7 +14,7 @@ type TraceEmitter struct {
 
 // NewTraceEmitter creates an emitter and opens the root chat.turn span.
 // The bus parameter is accepted for backward compatibility; it is wrapped into a minimal Infra.
-func NewTraceEmitter(bus Bus, buffer *Buffer, tc TraceContext) *TraceEmitter {
+func NewTraceEmitter(bus Bus, buffer *Buffer, tc TraceContext, lg loggateway.Logger) *TraceEmitter {
 	var infra *Infra
 	if bus != nil {
 		infra = &Infra{
@@ -21,7 +23,7 @@ func NewTraceEmitter(bus Bus, buffer *Buffer, tc TraceContext) *TraceEmitter {
 			Buffer:     buffer,
 		}
 	}
-	ft := NewFlowTracker(infra, buffer, tc)
+	ft := NewFlowTracker(infra, buffer, tc, lg)
 	return &TraceEmitter{FlowTracker: ft}
 }
 

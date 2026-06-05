@@ -1,11 +1,11 @@
 package ui
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"time"
 
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/safego"
 )
 
@@ -22,7 +22,7 @@ func (u UI) Spinner(label string) StopFunc {
 	}
 
 	done := make(chan struct{})
-	safego.Go(context.Background(), "cli.spinner", func() {
+	safego.Go(appctx.Ctx(), "cli.spinner", func() {
 		frames := []string{"|", "/", "-", "\\"}
 		i := 0
 		start := time.Now()

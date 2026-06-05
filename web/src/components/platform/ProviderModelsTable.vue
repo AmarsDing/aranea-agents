@@ -13,7 +13,7 @@
     <template #body-cell-model="props">
       <q-td :props="props">
         <div class="row items-center no-wrap q-gutter-sm min-width-0">
-          <ProviderLogo :provider-id="props.row.provider || ''" size="32px" />
+          <ProviderLogo :provider-id="props.row.provider || ''" size="32px" :fetch-svg="fetchProviderLogoSvg" />
           <div class="provider-identity min-width-0">
             <div class="provider-identity__title">
               <span class="status-dot" :class="{ 'status-dot--off': !props.row.enabled }" />
@@ -195,6 +195,7 @@
 <script setup lang="ts">
 import AppRegistryTable from '../layout/AppRegistryTable.vue';
 import ProviderLogo from './ProviderLogo.vue';
+import { useModelCatalogStore } from '../../stores/model-catalog';
 import type { PlatformResource } from '../../features/platform/types';
 import {
   PROVIDER_MODEL_TABLE_COLUMNS,
@@ -220,6 +221,9 @@ import {
 } from './providerModelUi';
 
 type ListKeyEntry = { visible: boolean; revealing: boolean; value: string };
+
+const modelCatalogStore = useModelCatalogStore();
+const fetchProviderLogoSvg = (id: string) => modelCatalogStore.fetchProviderLogoSvg(id);
 
 withDefaults(
   defineProps<{

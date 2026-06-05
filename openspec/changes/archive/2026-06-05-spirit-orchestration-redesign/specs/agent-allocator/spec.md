@@ -6,10 +6,11 @@ AgentAllocator 是 Spirit 编排三阶段架构的第二阶段，单一职责：
 ## Requirements
 
 ### REQ-AA-01: 三层 Agent 匹配
-- Layer 1 精确匹配（<1ms）：Agent Domains 包含 required_capabilities；AgentPerformance 历史成功率 > 0.8
-- Layer 2 语义匹配（~10ms，Phase 3 实现）：任务描述 Embedding ↔ Agent 能力 Embedding 余弦相似度
-- Layer 3 LLM 冷启动（~2s）：无精确匹配、无 Embedding 数据时，LLM 从 Agent 列表选择
+- Layer 1 精确匹配（<1ms）：Agent Roles 与 required_capabilities 重叠率；综合得分 = overlap_ratio*0.7 + historical_success_rate*0.3（历史成功率默认 0.5）
+- Layer 2 语义匹配（~10ms，Phase 3 实现）：当前使用 TF-IDF 关键词匹配占位（DEV-05），score = semantic*0.6 + perfRepo.SuccessRate*0.4
+- Layer 3 LLM 冷启动（~2s）：无精确匹配、无语义匹配时，LLM 从 Agent 列表选择
 - 输出：AgentMatchResult{agent_key, score, match_layer, match_reason}
+- 无子任务时（simple/moderate）：matchWholePlan 使用用户消息关键词作为能力提示
 
 ### REQ-AA-02: 分配类型判断
 - 子任务 estimated_complexity < 0.5 → AssignedType=agent

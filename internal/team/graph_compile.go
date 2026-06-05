@@ -201,8 +201,8 @@ func CompileToCompiledTeam(
 				if mode == "adaptive" {
 					cfg = applyAdaptiveAgentDestinations(cfg)
 				}
-				cfg = finalizeRuntimeGraphConfig(cfg, def, raw, def.FailurePolicy, nil)
-				return biz.NewCompiledTeam(cfg, nil, buildRoleManifest(cfg), def.FailurePolicy), nil
+				cfg = finalizeRuntimeGraphConfig(cfg, def, raw, failurePolicyToBiz(def.FailurePolicy), nil)
+				return biz.NewCompiledTeam(cfg, nil, buildRoleManifest(cfg), failurePolicyToBiz(def.FailurePolicy)), nil
 			}
 		}
 	}
@@ -214,8 +214,8 @@ func CompileToCompiledTeam(
 	if mode == "adaptive" {
 		cfg = applyAdaptiveAgentDestinations(cfg)
 	}
-	cfg = finalizeRuntimeGraphConfig(cfg, def, raw, def.FailurePolicy, branchIDs)
-	return biz.NewCompiledTeam(cfg, taskMeta, buildRoleManifest(cfg), def.FailurePolicy), nil
+	cfg = finalizeRuntimeGraphConfig(cfg, def, raw, failurePolicyToBiz(def.FailurePolicy), branchIDs)
+	return biz.NewCompiledTeam(cfg, taskMeta, buildRoleManifest(cfg), failurePolicyToBiz(def.FailurePolicy)), nil
 }
 
 func buildRoleManifest(cfg biz.GraphBuildConfig) map[string]biz.RoleInfo {

@@ -1972,3 +1972,432 @@ type Deps struct {
 | `consolidate_episodes` 使用 LLM 蒸馏 | P0 使用去重拼接 | 节省 Token，P1 阶段升级 |
 | `dream_cycle` 6 步流程 | 8 步流程（增加快照和前后质量测量） | 更完善的实现，支持回滚 |
 
+***
+
+## 十三、代码验证勘误与实现偏差（第四轮）
+
+> 本节基于代码库深度交叉验证，记录 §1~§12 中尚未覆盖的与实际实现不符的内容，补充缺失的实现细节。
+
+### 13.1 `ExperienceAnalyticsUsecase` 方法签名偏差
+
+**§2.3 和 §9.1** 定义的方法签名与实际实现不同：
+
+| 设计文档方法签名 | 实际方法签名 | 偏差说明 |
+|-----------------|-------------|---------|
+| `AnalyzeToolWeights()` | `AnalyzeToolWeights(ctx, agentID string, since time.Time)` | 实际需要 agentID 和时间范围参数 |
+| `AnalyzeSkillHealth()` | `AnalyzeSkillHealth(ctx, agentID string, since time.Time)` | 实际需要 agentID 和时间范围参数 |
+| `AnalyzeOrchestration(timeRange, modeFilter)` | `AnalyzeOrchestration(ctx, agentID string, since time.Time)` | 参数从字符串改为 time.Time，无 modeFilter 参数 |
+| `AnalyzeMemoryQuality(agentID)` | `AnalyzeMemoryQuality(ctx, agentID string, since time.Time)` | 实际需要时间范围参数 |
+| `AnalyzeAgentCapability()` | `AnalyzeAgentCapability(ctx, agentID string, timeRange string)` | 实际需要 agentID 和 timeRange 参数 |
+
+**构造函数**：实际包含 `lg loggateway.Logger` 参数（§9.1 未提及）。
+
+**依赖类型**：`usageRepo` 实际类型为 `UsageAnalyticsRepo`（`biz` 包的类型别名 `= usage.AnalyticsRepo`），非 `usage.AnalyticsRepo`。
+
+### 13.2 `MemoryQualityAnalysis` 与 `MemoryQualityReport` 结构偏差
+
+**§2.5 和 §9.8** 定义了详细的 `MemoryQualityReport`，但实际 biz 层使用的是简化的 `MemoryQualityAnalysis`：
+
+| 设计文档字段 | 实际字段 | 偏差说明 |
+|-------------|---------|---------|
+| `HitRate float64` | `RetrievalQuality float64` | 字段名不同，语义相同 |
+| `MissRate float64` | — | 未独立字段，由工具层计算 `1 - RetrievalQuality` |
+| `RedundancyScore float64` | — | 未实现，工具层返回 0 |
+| `MisalignedCount int` | `NegativeFeedback int` | 字段名和语义不同 |
+| `InactiveCount int` | — | 未实现，工具层返回 0 |
+| `PredictableCount int` | — | 未实现，工具层返回 0 |
+| — | `FactCount int` | 新增：记忆条数 |
+| — | `Recommendation string` | 新增：建议字符串 |
+| `HealthScore float64` | `HealthScore float64` | ✅ 一致 |
+
+**HealthScore 计算公式偏差**：
+
+设计文档（§9.8）：
+```
+HealthScore = 0.3 * hit_rate + 0.2 * (1 - redundancy_score) + 0.2 * (1 - misaligned_count/max(total_facts,1)) + 0.15 * (1 - inactive_count/max(total_facts,1)) + 0.15 * (1 - predictable_count/max(total_facts,1))
+```
+
+实际实现：
+```go
+func computeMemoryHealthScore(factCount int, retrievalQuality float64, negFeedback int) float64 {
+    coverageScore := math.Min(float64(factCount)/100.0, 1.0)
+    penalty := math.Min(float64(negFeedback)/10.0, 1.0)
+    return 0.4*coverageScore + 0.4*retrievalQuality + 0.2*(1.0-penalty)
+}
+```
+
+实际公式更简化：`0.4 * coverageScore + 0.4 * retrievalQuality + 0.2 * (1 - penalty)`。
+
+**Recommendation 值偏差**：
+
+| 设计文档 | 实际实现 | 说明 |
+|----------|---------|------|
+| — | `"healthy"` | HealthScore >= 0.8 |
+| — | `"review_facts"` | 0.6 <= HealthScore < 0.8 |
+| — | `"seed_memory"` | factCount == 0 |
+| — | `"prune_and_enrich"` | 其他 |
+
+### 13.3 `SkillHealthItem` 与 `SkillHealth` 结构偏差
+
+**§4.4** 定义了 `SkillHealth`，实际 biz 层使用 `SkillHealthItem`：
+
+| 设计文档字段 | 实际字段 | 偏差说明 |
+|-------------|---------|---------|
+| `SkillID string` | `SkillID string` | ✅ 一致 |
+| — | `SkillName string` | 新增：Skill 名称 |
+| `InvokeCount7d int` | `InvokeCount int` | 字段名不同，语义相同 |
+| — | `SuccessCount int` | 新增 |
+| — | `FailureCount int` | 新增 |
+| `SuccessRate float64` | `SuccessRate float64` | ✅ 一致 |
+| `AvgDurationMS float64` | `AvgDurationMS float64` | ✅ 一致 |
+| `Trend string` | — | biz 层未计算 Trend，由适配器层补充 |
+| `HealthStatus string` | `HealthStatus string` | ✅ 一致，但值域不同 |
+| `Recommendation string` | `Recommendation string` | ✅ 一致，但值域不同 |
+
+**HealthStatus 值域偏差**：
+
+| 设计文档 | 实际实现 | 说明 |
+|----------|---------|------|
+| `"healthy"` | `"healthy"` | ✅ 一致 |
+| `"warning"` | `"degraded"` | 值不同 |
+| `"critical"` | `"unstable"` / `"critical"` | 拆分为两个状态 |
+| `"dormant"` | `"unused"` | 值不同 |
+
+**HealthStatus 判定规则偏差**：
+
+设计文档（§4.4）：
+- healthy: InvokeCount7d > 10 且 SuccessRate > 80%
+- warning: InvokeCount7d > 5 且 SuccessRate 60-80%
+- critical: InvokeCount7d < 2 或 SuccessRate < 60%
+- dormant: 30天无调用
+
+实际实现：
+```go
+func skillHealthStatus(successRate float64, invokeCount int) (status, recommendation string) {
+    switch {
+    case invokeCount == 0:     return "unused", "consider_removing"
+    case successRate >= 0.9:   return "healthy", "keep"
+    case successRate >= 0.7:   return "degraded", "review_errors"
+    case successRate >= 0.5:   return "unstable", "investigate_failures"
+    default:                   return "critical", "disable_or_rewrite"
+    }
+}
+```
+
+**Recommendation 值域偏差**：
+
+| 设计文档 | 实际实现 |
+|----------|---------|
+| `"keep"` | `"keep"` |
+| `"evolve"` | `"review_errors"` / `"investigate_failures"` |
+| `"retire"` | `"consider_removing"` / `"disable_or_rewrite"` |
+| `"merge"` | — |
+
+### 13.4 `ToolWeightItem` 与 `ToolWeightReport` 结构偏差
+
+**§4.8** 定义了 `ToolWeightReport`，实际 biz 层使用 `ToolWeightItem`（嵌套在 `ToolWeightAnalysis` 中）：
+
+| 设计文档字段 | 实际字段 | 偏差说明 |
+|-------------|---------|---------|
+| `ToolKey string` | `ToolKey string` | ✅ 一致 |
+| `CallCount int` | `CallCount int` | ✅ 一致 |
+| — | `SuccessCount int` | 新增 |
+| `SuccessRate float64` | `SuccessRate float64` | ✅ 一致 |
+| `AvgDurationMS float64` | `AvgDurationMS float64` | ✅ 一致 |
+| `WeightScore float64` | `WeightScore float64` | ✅ 一致 |
+| `Recommendation string` | `Recommendation string` | ✅ 一致，但值域不同 |
+
+**Recommendation 值域偏差**：
+
+设计文档：`"promote"` | `"demote"` | `"keep"` | `"disable"`
+
+实际实现：
+```go
+func toolWeightRecommendation(score, successRate float64) string {
+    switch {
+    case score >= 0.7 && successRate >= 0.9: return "keep"
+    case score >= 0.5:                       return "monitor"
+    case successRate < 0.5:                  return "disable"
+    default:                                 return "review"
+    }
+}
+```
+
+实际值域：`"keep"` | `"monitor"` | `"review"` | `"disable"`
+
+### 13.5 记忆管家 Deps 偏差
+
+**§10.14** 定义的记忆管家 Deps 与实际实现不同：
+
+设计文档：
+```go
+type Deps struct {
+    Analytics       *biz.ExperienceAnalyticsUsecase
+    MemoryAdmin     *biz.MemoryAdminUsecase
+    Embedder        biz.SkillEmbedder
+    ProviderCatalog *biz.LlmProviderModelUsecase
+    RoundTrip       *provider.RoundTrip
+    ProviderCode    string
+    ModelAPIID      string
+    EventBus        event.Bus
+}
+```
+
+实际实现：
+```go
+type Deps struct {
+    Analytics   *biz.ExperienceAnalyticsUsecase
+    MemoryAdmin *biz.MemoryAdminUsecase
+    Embedder    skill.SkillEmbedder
+    EventBus    contract.Bus
+    Agents      biz.AgentRuntimeSettingsRepo
+}
+```
+
+**差异**：
+- 实际无 `ProviderCatalog`、`RoundTrip`、`ProviderCode`、`ModelAPIID`（P0 阶段不需要 LLM 调用）
+- 实际新增 `Agents biz.AgentRuntimeSettingsRepo`（用于 dream_cycle 保存快照到 agent_runtime_settings）
+- `EventBus` 类型从 `event.Bus` 改为 `contract.Bus`
+- `Embedder` 类型从 `biz.SkillEmbedder` 改为 `skill.SkillEmbedder`
+
+### 13.6 工具名前缀偏差
+
+**§3.3 和 §4.3** 定义的工具名与实际实现不同：
+
+| 设计文档工具名 | 实际工具名 | 前缀 |
+|-------------|-----------|------|
+| `analyze_memory_quality` | `memory_butler_analyze_quality` | `memory_butler_` |
+| `selective_remember` | `memory_butler_selective_remember` | `memory_butler_` |
+| `forget_low_quality` | `memory_butler_forget_low_quality` | `memory_butler_` |
+| `forget_inactive` | `memory_butler_forget_inactive` | `memory_butler_` |
+| `deduplicate_memories` | `memory_butler_deduplicate_memories` | `memory_butler_` |
+| `consolidate_episodes` | `memory_butler_consolidate_episodes` | `memory_butler_` |
+| `dream_cycle` | `memory_butler_dream_cycle` | `memory_butler_` |
+| `analyze_skill_health` | `skills_butler_analyze_skill_health` | `skills_butler_` |
+| `evolve_skill` | `skills_butler_evolve_skill` | `skills_butler_` |
+| `recommend_skills` | `skills_butler_recommend_skills` | `skills_butler_` |
+| `optimize_skill` | `skills_butler_optimize_skill` | `skills_butler_` |
+| `analyze_skill_usage` | `skills_butler_analyze_skill_usage` | `skills_butler_` |
+| `analyze_tool_weights` | `skills_butler_analyze_tool_weights` | `skills_butler_` |
+| `analyze_orchestration` | `skills_butler_analyze_orchestration` | `skills_butler_` |
+| `optimize_orchestration` | `skills_butler_optimize_orchestration` | `skills_butler_` |
+
+所有工具名都加了 `memory_butler_` 或 `skills_butler_` 前缀，避免命名冲突。
+
+### 13.7 `evolve_skill` 工具输入/输出偏差
+
+**§4.5 和 §9.9** 定义了 `EvolveSkillInput`/`EvolveSkillOutput`，实际实现不同：
+
+设计文档：
+```go
+type EvolveSkillInput struct {
+    SkillID         string
+    FailurePatterns []string
+}
+type EvolveSkillOutput struct {
+    NewVersion  string
+    DiffPreview string
+    Status      string
+}
+```
+
+实际实现：
+```go
+type evolveSkillInput struct {
+    AgentID                string `json:"agent_id"`
+    SkillName              string `json:"skill_name"`
+    ImprovementDescription string `json:"improvement_description"`
+}
+type evolveSkillOutput struct {
+    ProposalID  string `json:"proposal_id"`
+    SkillName   string `json:"skill_name"`
+    Status      string `json:"status"`
+    PatternDesc string `json:"pattern_desc"`
+    CreatedAt   string `json:"created_at"`
+}
+```
+
+**差异**：
+- 输入从 `SkillID + FailurePatterns` 改为 `AgentID + SkillName + ImprovementDescription`
+- 输出从 `NewVersion + DiffPreview + Status` 改为 `ProposalID + SkillName + Status + PatternDesc + CreatedAt`
+- 实际实现创建 `SkillProposal` 而非新 Skill 版本
+- 实际不调用 LLM，而是基于用户描述创建提案
+
+### 13.8 `recommend_skills` 工具输入/输出偏差
+
+**§4.3 和 §9.9** 定义了 `RecommendSkillsInput`/`RecommendSkillsOutput`，实际实现不同：
+
+设计文档：
+```go
+type RecommendSkillsInput struct {
+    TaskDescription string
+    TopK            int
+}
+type RecommendSkillsOutput struct {
+    Recommendations []SkillRecommendation  // {SkillID, Name, Score}
+}
+```
+
+实际实现：
+```go
+type recommendSkillsInput struct {
+    AgentID            string `json:"agent_id"`
+    ContextDescription string `json:"context_description"`
+}
+type recommendSkillsOutput struct {
+    AgentID         string
+    Recommendations []skillRecommendation  // {SkillName, Reason, Source}
+}
+```
+
+**差异**：
+- 输入从 `TaskDescription + TopK` 改为 `AgentID + ContextDescription`
+- 输出从 `{SkillID, Name, Score}` 改为 `{SkillName, Reason, Source}`
+- 实际不使用 embedding 相似度，而是基于 pending proposals 和 usage stats 推荐
+
+### 13.9 `OrchestrationModeItem` 与 `OrchestrationModeReport` 偏差
+
+**§4.7** 定义了 `OrchestrationModeReport`，实际 biz 层使用 `OrchestrationModeItem`：
+
+| 设计文档字段 | 实际字段 | 偏差说明 |
+|-------------|---------|---------|
+| `Mode string` | `Mode string` | ✅ 一致 |
+| — | `RunCount int` | 新增 |
+| — | `SuccessCount int` | 新增 |
+| `SuccessRate float64` | `SuccessRate float64` | ✅ 一致 |
+| `AvgTokens int` | — | 未实现 |
+| `AvgDurationSec int` | — | 未实现 |
+| `MemberContributions map[string]float64` | — | 未实现 |
+| `DQScore float64` | `DQScore float64` | ✅ 一致 |
+| — | `Validity float64` | 新增 |
+| — | `Specificity float64` | 新增 |
+| — | `Correctness float64` | 新增 |
+
+**DQ Score 计算方式偏差**：
+
+设计文档 Specificity = `min(avg_output_length / 500, 1.0)`，Correctness = `1 - negative_feedback_rate`。
+
+实际实现：
+```go
+func orchSpecificity(a *orchAgg) float64 {
+    return float64(a.RunCount-a.ErrorCount) / float64(a.RunCount)  // 无错误率
+}
+func orchCorrectness(a *orchAgg) float64 {
+    return float64(a.SuccessCount) / float64(a.RunCount)  // 成功率
+}
+```
+
+实际 Specificity = 无错误率，Correctness = 成功率。两者数值可能相同（当 SuccessCount + ErrorCount = RunCount 时）。
+
+### 13.10 `AgentCapabilityAnalysis` 与 `AgentCapabilityProfile` 偏差
+
+**§2.3** 定义了 `AgentCapabilityProfile`，实际 biz 层使用 `AgentCapabilityAnalysis`：
+
+设计文档：
+```go
+type AgentCapabilityProfile struct {
+    AgentID                    string
+    ToolSuccessRates           map[string]float64
+    SkillScores                map[string]float64
+    OrchestrationContributions map[string]float64
+    CostEfficiency             float64
+}
+```
+
+实际实现：
+```go
+type AgentCapabilityAnalysis struct {
+    AgentID       string
+    ToolWeights   ToolWeightAnalysis
+    SkillHealth   SkillHealthAnalysis
+    Orchestration OrchestrationAnalysis
+    MemoryQuality MemoryQualityAnalysis
+    CostSummary   CostSummary
+}
+```
+
+实际实现组合了完整的分析结果（ToolWeights + SkillHealth + Orchestration + MemoryQuality + CostSummary），而非简化的 map 指标。
+
+### 13.11 种子数据 Cron 任务 ConfigJSON 偏差
+
+**§10.7** 定义了 Cron 任务的 ConfigJSON 结构，实际实现不同：
+
+设计文档 dream_cycle：
+```json
+{"schedule":"0 3 * * *","message":"请执行 dream_cycle，整理记忆系统","type":"agent"}
+```
+
+实际 dream_cycle：
+```json
+{"schedule":"0 3 * * *","dry_run":true}
+```
+
+设计文档 skill_health_scan：
+```json
+{"schedule":"0 4 * * 1","message":"请分析所有 Skill 的健康度","type":"agent"}
+```
+
+实际 skill_health_scan：
+```json
+{"schedule":"0 4 * * 1"}
+```
+
+实际 ConfigJSON 更简化，不含 `message` 和 `type` 字段。dream_cycle 默认 `dry_run: true`。
+
+### 13.12 技能管家注入条件偏差
+
+**§6.3** 说记忆管家检查 `ag.AgentKey == "__memory__"`，技能管家检查 `ag.AgentKey == "__skills__"`。
+
+实际实现：
+- 记忆管家：检查 `ag.AgentKey == "__memory__"` ✅ 一致
+- 技能管家：检查 `settings.EvolutionSkillEvolve` 开关（非 AgentKey 检查）
+
+技能管家不限于 `__skills__` Agent，任何开启了 `EvolutionSkillEvolve` 开关的 Agent 都能获得技能管家工具。
+
+### 13.13 `analyze_memory_quality` 工具输出映射偏差
+
+**§9.9** 定义了 `AnalyzeMemoryQualityOutput`，实际实现中 biz 层的 `MemoryQualityAnalysis` 字段映射如下：
+
+```go
+return analyzeMemoryQualityOutput{
+    HitRate:          report.RetrievalQuality,     // RetrievalQuality → HitRate
+    MissRate:         1.0 - report.RetrievalQuality, // 计算得出
+    RedundancyScore:  0,                           // 未实现，返回 0
+    MisalignedCount:  report.NegativeFeedback,     // NegativeFeedback → MisalignedCount
+    InactiveCount:    0,                           // 未实现，返回 0
+    PredictableCount: 0,                           // 未实现，返回 0
+    HealthScore:      report.HealthScore,          // ✅ 一致
+}
+```
+
+多个字段（RedundancyScore、InactiveCount、PredictableCount）在 P0 阶段返回 0，因为 biz 层的 `MemoryQualityAnalysis` 不包含这些指标。
+
+### 13.14 `SkillInvocationStatsReader` 接口
+
+**§10.5** 提到使用 `SkillQueryReader.SearchSkillInvocations`，但实际技能管家工具使用的是 `SkillInvocationStatsReader` 接口（`internal/biz/skill_invocation_stats.go`）：
+
+```go
+type SkillInvocationStatsReader interface {
+    GetSkillInvocationStats(ctx context.Context, agentID string, since time.Time) ([]SkillInvocationStat, error)
+}
+```
+
+这是 `SkillQueryReader` 之外的独立接口，由 `skillsButlerQueryAdapter` 适配。
+
+### 13.15 偏差汇总（补充 §12.7）
+
+| 设计文档 | 实际实现 | 原因 |
+|----------|----------|------|
+| 方法签名无 agentID/since 参数 | 所有分析方法需要 agentID + since | 实际需要按 Agent 和时间范围查询 |
+| `MemoryQualityReport` 7 字段 | `MemoryQualityAnalysis` 5 字段（简化） | P0 阶段简化，部分指标未实现 |
+| HealthScore 5 因子公式 | 3 因子公式（coverage + retrieval + penalty） | P0 简化，缺少冗余/不活跃/可预测数据 |
+| SkillHealth "warning"/"dormant" | "degraded"/"unused" | 更直观的命名 |
+| ToolWeight "promote"/"demote" | "keep"/"monitor"/"review"/"disable" | 更实用的分类 |
+| 记忆管家 Deps 含 LLM 依赖 | 无 LLM 依赖 | P0 不需要 LLM 调用 |
+| 工具名无前缀 | `memory_butler_`/`skills_butler_` 前缀 | 避免命名冲突 |
+| `evolve_skill` 调用 LLM + 创建新版本 | 创建 SkillProposal | P0 简化，LLM 调用留给 P1 |
+| `recommend_skills` 用 embedding | 基于 proposals + usage stats | P0 简化，无需 embedding 服务 |
+| OrchestrationModeReport 含 AvgTokens/MemberContributions | 不含 | P0 未实现 Token 统计和成员贡献度 |
+| Cron ConfigJSON 含 message/type | 简化版不含 | 实际 cron 系统不需要这些字段 |
+| 技能管家仅 `__skills__` Agent | 任何开启 EvolutionSkillEvolve 的 Agent | 更灵活的注入策略 |
+

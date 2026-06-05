@@ -1,4 +1,4 @@
-import { createGatewayService } from '../../services';
+import { createWebhookService } from '../../services';
 import type { WebhookRow } from './types';
 
 function wireToWebhook(raw: Record<string, unknown>): WebhookRow {
@@ -16,7 +16,7 @@ function wireToWebhook(raw: Record<string, unknown>): WebhookRow {
 }
 
 export async function listWebhooks(): Promise<WebhookRow[]> {
-  const svc = createGatewayService();
+  const svc = createWebhookService();
   const res = await svc.ListWebhooks({});
   return (res.items ?? []).map((row) => wireToWebhook(row as Record<string, unknown>));
 }
@@ -29,7 +29,7 @@ export async function createWebhook(input: {
   headers?: Record<string, string>;
   enabled?: boolean;
 }): Promise<WebhookRow> {
-  const svc = createGatewayService();
+  const svc = createWebhookService();
   const row = await svc.CreateWebhook({
     name: input.name,
     url: input.url,
@@ -52,7 +52,7 @@ export async function updateWebhook(
     enabled?: boolean;
   },
 ): Promise<WebhookRow> {
-  const svc = createGatewayService();
+  const svc = createWebhookService();
   const row = await svc.UpdateWebhook({
     id,
     name: patch.name,
@@ -66,6 +66,6 @@ export async function updateWebhook(
 }
 
 export async function deleteWebhook(id: string): Promise<void> {
-  const svc = createGatewayService();
+  const svc = createWebhookService();
   await svc.DeleteWebhook({ id });
 }

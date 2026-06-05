@@ -9,7 +9,7 @@ import (
 )
 
 func TestCancelRun_PublishesCancelledRunStatus(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(nil)
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{BufferSize: 8})
 	defer unsub()
 

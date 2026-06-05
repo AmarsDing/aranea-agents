@@ -1,12 +1,12 @@
 package service
 
 import (
-	"context"
 	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 )
@@ -37,7 +37,7 @@ func allowWebhookRequest(channelKey string, lg loggateway.Logger) bool {
 	now := time.Now()
 	if now.Sub(time.Unix(webhookRateLimitsLastCleaned.Load(), 0)) >= webhookRateLimitsCleanupInterval {
 		webhookRateLimitsLastCleaned.Store(now.Unix())
-		safego.Go(context.Background(), "channel.webhook.rate_limit_cleanup", func() {
+		safego.Go(appctx.Ctx(), "channel.webhook.rate_limit_cleanup", func() {
 			cleanupStaleWebhookRateLimits()
 		})
 	}

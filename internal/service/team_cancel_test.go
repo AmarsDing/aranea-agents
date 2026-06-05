@@ -69,7 +69,7 @@ func (r *cancelTeamRunRepo) ListBySpiritSessionID(_ context.Context, _ string) (
 }
 
 func TestCancelTeamRun_PublishesCancelledRunStatus(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(nil)
 	ch, unsub := bus.Subscribe(event.SubscribeOptions{BufferSize: 4})
 	defer unsub()
 
@@ -80,7 +80,7 @@ func TestCancelTeamRun_PublishesCancelledRunStatus(t *testing.T) {
 	repo := &cancelTeamRunRepo{runs: map[string]biz.TeamRun{
 		"tr-1": {ID: "tr-1", SessionID: "sess-team-1", Status: biz.TeamRunStatusRunning},
 	}}
-	svc := NewTeamService(biz.NewTeamUsecase(repo, nil), nil, nil, nil, nil, reg, bus, loggateway.NewNoop())
+	svc := NewTeamService(biz.NewTeamUsecase(repo, repo, repo, repo, repo, repo, nil), nil, nil, nil, nil, reg, bus, loggateway.NewNoop())
 
 	resp, err := svc.CancelTeamRun(context.Background(), &v1.CancelTeamRunRequest{Id: "tr-1"})
 	if err != nil {

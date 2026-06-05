@@ -22,7 +22,7 @@ func newTestWSServer(bus event.Bus, buf *event.Buffer, canceller RunCanceller, s
 }
 
 func TestCountGlobalMonitorConnsExcludesProbe(t *testing.T) {
-	srv := newTestWSServer(event.NewBus(), event.NewBuffer(), nil, nil)
+	srv := newTestWSServer(event.NewBus(nil), event.NewBuffer(), nil, nil)
 	srv.store.conns["*"] = []*wsConn{
 		{probeMode: true},
 		{probeMode: false},
@@ -35,7 +35,7 @@ func TestCountGlobalMonitorConnsExcludesProbe(t *testing.T) {
 }
 
 func TestWSUpstreamPingProducesPong(t *testing.T) {
-	srv := newTestWSServer(event.NewBus(), event.NewBuffer(), nil, nil)
+	srv := newTestWSServer(event.NewBus(nil), event.NewBuffer(), nil, nil)
 	wc := &wsConn{
 		channels: map[string]bool{"system": true},
 		send:     make(chan []byte, 4),
@@ -67,7 +67,7 @@ func TestWSUpstreamPingProducesPong(t *testing.T) {
 }
 
 func TestWSUpstreamSubscribeAddsChannel(t *testing.T) {
-	srv := newTestWSServer(event.NewBus(), event.NewBuffer(), nil, nil)
+	srv := newTestWSServer(event.NewBus(nil), event.NewBuffer(), nil, nil)
 	wc := &wsConn{
 		channels: map[string]bool{"chat": true, "system": true},
 		send:     make(chan []byte, 1),
@@ -85,7 +85,7 @@ func TestWSUpstreamSubscribeAddsChannel(t *testing.T) {
 }
 
 func TestWSUpstreamCancelInvokesCanceller(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(nil)
 	canceller := &stubRunCanceller{}
 	srv := newTestWSServer(bus, event.NewBuffer(), canceller, nil)
 	wc := &wsConn{
@@ -113,7 +113,7 @@ func TestWSUpstreamCancelInvokesCanceller(t *testing.T) {
 }
 
 func TestWSUpstreamUnsubscribeRemovesChannel(t *testing.T) {
-	srv := newTestWSServer(event.NewBus(), event.NewBuffer(), nil, nil)
+	srv := newTestWSServer(event.NewBus(nil), event.NewBuffer(), nil, nil)
 	wc := &wsConn{
 		channels: map[string]bool{"chat": true, "monitor": true, "system": true},
 		send:     make(chan []byte, 1),
@@ -133,7 +133,7 @@ func TestWSUpstreamUnsubscribeRemovesChannel(t *testing.T) {
 }
 
 func TestWSUpstreamBadDirectionIgnored(t *testing.T) {
-	srv := newTestWSServer(event.NewBus(), event.NewBuffer(), nil, nil)
+	srv := newTestWSServer(event.NewBus(nil), event.NewBuffer(), nil, nil)
 	wc := &wsConn{
 		channels: map[string]bool{"system": true},
 		send:     make(chan []byte, 1),
@@ -151,7 +151,7 @@ func TestWSUpstreamBadDirectionIgnored(t *testing.T) {
 }
 
 func TestWSUpstreamEnqueueMessageAccepted(t *testing.T) {
-	srv := newTestWSServer(event.NewBus(), event.NewBuffer(), nil, nil)
+	srv := newTestWSServer(event.NewBus(nil), event.NewBuffer(), nil, nil)
 	wc := &wsConn{
 		sessionID: "sess-enq",
 		channels:  map[string]bool{"chat": true, "system": true},
@@ -203,7 +203,7 @@ func (s stubTurnExecutor) ExecuteTurn(_ context.Context, _ WSTurnInput) error {
 }
 
 func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(nil)
 	srv := newTestWSServer(bus, event.NewBuffer(), nil, stubChatSender{sendErr: context.Canceled})
 	wc := &wsConn{
 		sessionID: "sess-user",
@@ -245,7 +245,7 @@ func TestWSUpstreamUserMessagePublishesErrorWithRequestID(t *testing.T) {
 }
 
 func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(nil)
 	srv := NewWSServerFromInfra(
 		&conf.Server{Ws: &conf.Server_WS{Enable: true}},
 		&event.Infra{SessionBus: bus, MonitorBus: bus, Buffer: event.NewBuffer()},
@@ -297,7 +297,7 @@ func TestWSUpstreamTurnGatewayErrorPublishesEnvelope(t *testing.T) {
 }
 
 func TestWSUpstreamUserMessageAccepted(t *testing.T) {
-	bus := event.NewBus()
+	bus := event.NewBus(nil)
 	srv := newTestWSServer(bus, event.NewBuffer(), nil, stubChatSender{})
 	wc := &wsConn{
 		sessionID: "sess-ok",

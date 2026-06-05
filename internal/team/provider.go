@@ -1,11 +1,11 @@
 package team
 
 import (
-	"context"
 	"time"
 
 	"aranea-agents/internal/biz"
 	"aranea-agents/internal/event"
+	"aranea-agents/pkg/appctx"
 	"aranea-agents/pkg/loggateway"
 	"aranea-agents/pkg/safego"
 
@@ -20,7 +20,7 @@ func ProvideTeamGraphRunCoordinator(graphs *biz.GraphUsecase, teams biz.TeamRunR
 	if interval <= 0 {
 		interval = defaultCleanupInterval
 	}
-	safego.Go(context.Background(), "team.graph.coordinator.cleanup", func() {
+	safego.Go(appctx.Ctx(), "team.graph.coordinator.cleanup", func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for range ticker.C {

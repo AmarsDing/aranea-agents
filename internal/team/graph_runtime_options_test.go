@@ -68,8 +68,8 @@ func TestApplyEmbeddedNodePolicies(t *testing.T) {
 
 func TestApplyTeamRuntimeExecutionOptions_circuitBreaker(t *testing.T) {
 	def := Definition{
-		FailurePolicy: &biz.TeamFailurePolicy{
-			CircuitBreaker: &biz.CircuitBreakerPolicy{FailureThreshold: 3},
+		FailurePolicy: &FailurePolicy{
+			CircuitBreaker: &CircuitBreakerPolicyDef{FailureThreshold: 3},
 		},
 	}
 	cfg := biz.GraphBuildConfig{

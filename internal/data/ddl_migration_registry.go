@@ -20,16 +20,18 @@ type ddlMigration struct {
 	Name    string
 	// SQL is an optional path to a SQL file to execute (relative to project root).
 	// If set, the SQL file is executed first via rawDB, then Func is called (if not nil).
-	SQL string
+	SQL  string
 	Func func(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error
 }
 
 var ddlMigrations = []ddlMigration{
 	{Version: 20260601, Name: "session_memory_patches", Func: ddlSessionMemoryPatches},
-	{Version: 20260602, Name: "memory_facts_index_status", SQL: "sql/migrations/20260602_memory_facts_index_status.sql"},
-	{Version: 20260603, Name: "messages_turn_number", Func: ddlMessagesTurnNumber},
 	{Version: 20260604, Name: "session_memory_schema", Func: ddlSessionMemorySchema},
-	{Version: 20260605, Name: "memory_relation_patches", Func: ddlMemoryRelationPatches},
+	// 20260602 memory_facts_index_status: columns already included in memory_chain.sql CREATE TABLE (20260604).
+	{Version: 20260602, Name: "memory_facts_index_status"},
+	{Version: 20260603, Name: "messages_turn_number", Func: ddlMessagesTurnNumber},
+	// 20260605 memory_relation_patches: valid_from/valid_to already included in memory_chain.sql CREATE TABLE (20260604).
+	{Version: 20260605, Name: "memory_relation_patches"},
 	{Version: 20260606, Name: "monitor_schema_patches", Func: ddlMonitorSchemaPatches},
 	{Version: 20260607, Name: "agent_runtime_patches", SQL: "sql/migrations/20260607_agent_runtime_patches.sql"},
 	{Version: 20260608, Name: "entity_reinforcements_schema", SQL: "sql/migrations/20260608_entity_reinforcements_schema.sql"},
@@ -55,7 +57,8 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260628, Name: "session_run_schema", Func: ddlSessionRunSchema},
 	{Version: 20260629, Name: "session_participant_schema", Func: ddlSessionParticipantSchema},
 	{Version: 20260630, Name: "session_run_checkpoint_schema", SQL: "sql/migrations/20260630_session_run_checkpoint_schema.sql"},
-	{Version: 20260701, Name: "session_run_column_patches", SQL: "sql/migrations/20260701_session_run_column_patches.sql"},
+	// 20260701 session_run_column_patches: checkpoint_id/agent_id/resume_started_at already in session_run_schema.go CREATE TABLE (20260628).
+	{Version: 20260701, Name: "session_run_column_patches"},
 	{Version: 20260702, Name: "monitor_alert_schema", Func: ddlMonitorAlertSchema},
 	{Version: 20260703, Name: "ecosystem_schema", Func: ddlEcosystemSchema},
 	{Version: 20260704, Name: "team_graph_session_schema", Func: ddlTeamGraphSessionSchema},
@@ -68,8 +71,11 @@ var ddlMigrations = []ddlMigration{
 	{Version: 20260711, Name: "allocation_plan_schema", Func: ddlAllocationPlanSchema},
 	{Version: 20260712, Name: "agent_performance_schema", Func: ddlAgentPerformanceSchema},
 	{Version: 20260713, Name: "orchestration_schema", Func: ddlOrchestrationSchema},
-	{Version: 20260714, Name: "compiled_team_session_id", Func: ddlCompiledTeamSessionID},
+	// 20260714 compiled_team_session_id: session_id + index already in compiled_team_schema.go CREATE TABLE (20260705).
+	{Version: 20260714, Name: "compiled_team_session_id"},
 	{Version: 20260715, Name: "self_check_report_schema", SQL: "sql/migrations/20260715_self_check_report_schema.sql"},
+	{Version: 20260716, Name: "missing_indexes", SQL: "sql/migrations/20260716_missing_indexes.sql"},
+	{Version: 20260717, Name: "usage_events_schema", SQL: "sql/migrations/20260717_usage_events_schema.sql"},
 }
 
 func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
@@ -107,10 +113,11 @@ func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger
 			}
 		}
 		if err := recordMigrationApplied(ctx, entClient, m.Version, m.Name, lg); err != nil {
-			lg.Warn("failed to record migration",
+			lg.Error("failed to record migration, aborting to prevent re-execution",
 				loggateway.StepID("data.ddl_migration.record"),
 				loggateway.Int("version", m.Version),
 				loggateway.Err(err))
+			return fmt.Errorf("record migration %s: %w", m.Name, err)
 		}
 	}
 	return nil
@@ -118,7 +125,8 @@ func runDDLMigrations(rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger
 
 // executeSQLFile reads a SQL file (path relative to project root), splits it into
 // individual statements using splitDDLStatements, and executes each via rawDB.
-// "duplicate column name" and "already exists" errors are treated as idempotent successes.
+// "duplicate column name", "already exists", and "no such table" errors are treated
+// as idempotent successes (the table/column will be created by a later migration).
 func executeSQLFile(ctx context.Context, rawDB *sql.DB, path string, lg loggateway.Logger) error {
 	if rawDB == nil {
 		return nil
@@ -135,6 +143,12 @@ func executeSQLFile(ctx context.Context, rawDB *sql.DB, path string, lg loggatew
 		if _, err := rawDB.ExecContext(ctx, stmt); err != nil {
 			if isColumnExistsErr(err) {
 				lg.Debug("ddl patch skipped (already exists)",
+					loggateway.StepID("data.ddl_migration.sql_file"),
+					loggateway.Str("statement", stmt[:min(len(stmt), 120)]))
+				continue
+			}
+			if isNoSuchTableErr(err) {
+				lg.Debug("ddl patch skipped (table not yet created, will be created by later migration)",
 					loggateway.StepID("data.ddl_migration.sql_file"),
 					loggateway.Str("statement", stmt[:min(len(stmt), 120)]))
 				continue
@@ -190,6 +204,7 @@ func ddlA2ASchema(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg 
 
 // ddlSessionRevisionDataMigration backfills session_revision from message counts.
 // The ALTER TABLE is handled by the SQL file; this Func only does the data migration.
+// Uses WHERE session_revision IS NULL OR session_revision = ” to ensure idempotency.
 func ddlSessionRevisionDataMigration(ctx context.Context, rawDB *sql.DB, entClient *ent.Client, lg loggateway.Logger) error {
 	if entClient == nil {
 		return nil
@@ -197,7 +212,7 @@ func ddlSessionRevisionDataMigration(ctx context.Context, rawDB *sql.DB, entClie
 	_, err := entClient.ExecContext(ctx, `
 UPDATE sessions SET session_revision = (
   SELECT COUNT(*) FROM messages WHERE messages.session_id = sessions.id AND role = 'user'
-) WHERE session_revision = 0`)
+) WHERE session_revision IS NULL OR session_revision = ''`)
 	return err
 }
 
@@ -274,7 +289,11 @@ func ddlCompiledTeamSessionID(ctx context.Context, rawDB *sql.DB, _ *ent.Client,
 		return nil
 	}
 	// Add session_id column if it doesn't exist (SQLite ALTER TABLE ADD COLUMN is safe if column exists)
-	_, _ = rawDB.ExecContext(ctx, `ALTER TABLE compiled_teams ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`)
-	_, _ = rawDB.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_compiled_teams_session_id ON compiled_teams(session_id)`)
+	if _, err := rawDB.ExecContext(ctx, `ALTER TABLE compiled_teams ADD COLUMN session_id TEXT NOT NULL DEFAULT ''`); err != nil && !isColumnExistsErr(err) {
+		return fmt.Errorf("add compiled_teams.session_id: %w", err)
+	}
+	if _, err := rawDB.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS idx_compiled_teams_session_id ON compiled_teams(session_id)`); err != nil {
+		return fmt.Errorf("create idx_compiled_teams_session_id: %w", err)
+	}
 	return nil
 }

@@ -23,6 +23,12 @@ Spirit 编排可观测性体系，spirit_trace_id 贯穿三阶段，StepID 注�
 - spirit_orchestration_checkpoint: Checkpoint 保存
 - spirit_orchestration_interrupted: 异常中断
 
+### REQ-SO-03b: ButlerOrchestration 事件类型（实现新增）
+- butler.orchestration.started: plan_and_execute 工具开始执行
+- butler.orchestration.completed: plan_and_execute 工具执行完成
+- butler.orchestration.failed: plan_and_execute 工具执行失败
+- 与 Spirit EnvelopeType 并行存在，用于 butler 层面的编排追踪
+
 ### REQ-SO-04: 旧事件兼容
 - 保留现有 6 个 Spirit EnvelopeType
 - 新旧事件并行发布（双发）
