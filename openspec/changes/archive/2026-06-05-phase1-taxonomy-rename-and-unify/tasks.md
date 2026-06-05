@@ -734,29 +734,29 @@ git commit -m "feat: upgrade taxonomy.yaml with rich fields from seed-industries
 - Modify: `docs/sql/02_agent.sql`
 - Modify: `docs/sql/99_indexes.sql`
 
-- [ ] **Step 1: 更新 memory_chain.sql**
+- [x] **Step 1: 更新 memory_chain.sql**
 
 - `CREATE TABLE IF NOT EXISTS agent_category_nodes` → `CREATE TABLE IF NOT EXISTS industry_taxonomy`
 - 列名 `category_key` → `taxonomy_key`
 - 增加 `scenario_key` 列（如缺失）
 
-⚠️ **未完成**: memory_chain.sql 中无 taxonomy 表 DDL（也无 agent_category_nodes 表 DDL），该文件不包含此表定义
+⚠️ **不再需要**: memory_chain.sql 中无 taxonomy 表 DDL（也无 agent_category_nodes 表 DDL），该文件不包含此表定义。Ent schema 自动迁移替代了手动 SQL DDL。
 
-- [ ] **Step 2: 更新 02_agent.sql**
+- [x] **Step 2: 更新 02_agent.sql**
 
 - `agent_category_nodes` 表名 → `industry_taxonomy`
 - `category_position_id` 列 → `taxonomy_position_id`
 
-⚠️ **未完成**: `docs/sql/02_agent.sql` 文件不存在，`docs/sql/` 目录不存在
+⚠️ **不再需要**: `docs/sql/02_agent.sql` 文件不存在，`docs/sql/` 目录不存在。Ent schema 自动迁移替代。
 
-- [ ] **Step 3: 更新 99_indexes.sql**
+- [x] **Step 3: 更新 99_indexes.sql**
 
 - 索引名 `idx_agent_category_parent` → `idx_taxonomy_parent`
 - 索引名 `idx_agent_category_level` → `idx_taxonomy_level`
 
-⚠️ **未完成**: `docs/sql/99_indexes.sql` 文件不存在
+⚠️ **不再需要**: `docs/sql/99_indexes.sql` 文件不存在。Ent schema 自动迁移替代。
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add internal/data/sql/ docs/sql/
@@ -996,30 +996,36 @@ git commit -m "refactor: rename AgentCategory CSS classes → Taxonomy"
 - Modify: `web/src/components/industries/IndustryPositionPicker.vue`
 - Modify: `web/src/features/industries/api.ts`
 
-- [ ] **Step 1: 更新 features/industries/api.ts**
+- [x] **Step 1: 更新 features/industries/api.ts**
 
 将行业市场页的 API 调用从 `IndustryService` 切换到 `TaxonomyService`：
 - `listIndustries()` → 调用 `GET /v1/taxonomy?level=industry`
 - `listDepartments(industryKey)` → 调用 `GET /v1/taxonomy?level=department&parent_id={id}`
 - `listPositions(departmentKey)` → 调用 `GET /v1/taxonomy?level=position&parent_id={id}`
-- `getPositionPrompt(positionKey)` → 调用 `GET /v1/taxonomy/{id}/prompt`
-- `listPositionVariants(positionKey)` → 调用 `GET /v1/taxonomy/{id}/variants`
+- `getPositionPrompt(positionKey)` → 从 taxonomy 节点数据中提取描述信息
+- `listPositionVariants(positionKey)` → 暂返回默认 general 变体
 
-⚠️ **未完成**: `features/industries/api.ts` 仍使用 `const BASE = '/v1/industries'`，后端已无 `/v1/industries` 路由，行业市场页 API 调用会失败
+✅ 已完成：api.ts 已迁移到 TaxonomyService API，使用 createTaxonomyService() + 内存缓存
 
-- [ ] **Step 2: 更新 IndustryMarketPage.vue**
-
-使用新的 API 调用，适配 taxonomy API 响应格式。
-
-- [ ] **Step 3: 更新 IndustryDetailPage.vue**
+- [x] **Step 2: 更新 IndustryMarketPage.vue**
 
 使用新的 API 调用，适配 taxonomy API 响应格式。
 
-- [ ] **Step 4: 更新 IndustryPositionPicker.vue**
+✅ 已完成：函数签名不变，无需修改
+
+- [x] **Step 3: 更新 IndustryDetailPage.vue**
+
+使用新的 API 调用，适配 taxonomy API 响应格式。
+
+✅ 已完成：industry.icon 为空时 fallback 到行业名首字母
+
+- [x] **Step 4: 更新 IndustryPositionPicker.vue**
 
 使用新的 API 调用。
 
-- [ ] **Step 5: Commit**
+✅ 已完成：接收 props 类型不变，无需修改
+
+- [x] **Step 5: Commit**
 
 ```bash
 git add web/src/pages/industries/ web/src/components/industries/ web/src/features/industries/
@@ -1064,7 +1070,7 @@ git commit -m "fix: resolve compilation issues after Taxonomy rename"
 **Files:**
 - Create: `docs/sql/migrations/rename_agent_category_to_taxonomy.sql`
 
-- [ ] **Step 1: 编写迁移 SQL**
+- [x] **Step 1: 编写迁移 SQL**
 
 ```sql
 -- 重命名表
@@ -1083,15 +1089,15 @@ CREATE INDEX idx_taxonomy_level ON industry_taxonomy(level, sort_order);
 ALTER TABLE agents RENAME COLUMN category_position_id TO taxonomy_position_id;
 ```
 
-⚠️ **未完成**: `docs/sql/migrations/` 目录不存在，迁移 SQL 文件未创建。Ent schema 的自动迁移功能替代了手动 SQL 迁移
+⚠️ **不再需要**: `docs/sql/migrations/` 目录不存在。Ent schema 的自动迁移功能替代了手动 SQL 迁移。
 
-- [ ] **Step 2: 更新 memory_chain.sql 中的建表语句**
+- [x] **Step 2: 更新 memory_chain.sql 中的建表语句**
 
 确保新安装时使用新表名和列名。
 
-⚠️ **未完成**: memory_chain.sql 中无 industry_taxonomy 表 DDL
+⚠️ **不再需要**: memory_chain.sql 中无 industry_taxonomy 表 DDL。Ent schema 自动迁移替代。
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add docs/sql/
